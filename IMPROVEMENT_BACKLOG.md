@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-07-21T10:20:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-07-21T11:05:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,22 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **29** — Area 2 48회차(07-21T10:20) 신규 #548(급여교부 batch 청크 회귀) 1건 편입. 7건(#528·#529·#530·#541·#542·#543·#547)은 fixed-in-tree 확인 후 close-pending 코멘트 게시 완료(owner batch-close 대기, 카운트는 owner close 전까지 그대로 — #528/#530은 이번 사이클 신규 확인). |
+| 🆕 new | **24** — Area 3 41회차(07-21T11:05) 신규 #549(직원 셀프서비스 세션만료 UX) 1건 편입. `list_issues(state:OPEN,label:auto-improve)` **절대값 실측 24건**으로 재동기화(직전 기재값 29는 stale — owner가 사이의 close-pending 다수(#529·#530·#541·#542·#543)를 이번 사이클 사이에 실측상 `not_planned`/기타 사유로 close함, #528·#547은 여전히 open). |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **448** — `search_issues(is:closed,reason:completed)` 실측 정합, 변동 없음. |
-| ❌ rejected | 3 (`reason:not_planned`=1 + `reason:duplicate`=2, 실측 정합·변동 없음) |
+| ✔️ done | **451** — `search_issues(is:closed,reason:completed)` 실측 재동기화(+3, owner의 근접 close 반영). |
+| ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 실측 재동기화 — not_planned +3: #541·#542·#543이 fixed-in-tree였음에도 owner가 not_planned 사유로 close, owner 판단 존중·재오픈 안 함) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 3 UX/기능 감사 (2026-07-21T11:05):**
+> - **방법**: `git fetch origin main`(HEAD `352a177` = origin/main 일치, 워킹트리 clean, detached). Area 3 **41회차** — 직전 Area3(`afd639c`, 07-20T09:14, 40회차) 이후 `git log afd639c..HEAD`(16커밋) 대부분은 Area1/2/4/5/6(41~48회차)이 각자 렌즈로 이미 심층 감사 완료(#546~#548). 순수 UX 표면 신규 churn은 없었으나, **직전 몇 사이클 동안 어느 Area도 UX 렌즈로 다루지 않은 대형 기능**을 역추적 — `360cb51`(07-18, Area3 39→40회차 사이 착륙, 직원 셀프서비스 급여명세서 교부+근로계약서 본인서명, `/employee-self` 신규 페이지)이 Area4/5가 데이터정합성·보안 렌즈로는 검증했으나(TOCTOU 안전·#544 XSS) 로딩/빈상태/에러메시지 UX 렌즈로는 미감사 상태임을 확인, 오케스트레이터가 `src/pages/employeeSelf.ts`+`src/scripts/employeeSelf.js`+`src/routes/hrSelf.ts`를 직접 Read로 전수 점검(범위가 3파일이라 위임 없이 직접 검증).
+> - **🔴 신규 이슈 — #549 (S, bug)**: `verifySelfToken()`이 임시 토큰을 **30분 TTL**로 발급하고 만료 시 전 엔드포인트가 일관되게 "인증이 필요합니다. 다시 로그인하세요." 401을 반환하는데, `employeeSelf.js`의 **계약서 목록**(`:149-151`)·**급여명세서 목록**(`:203-205`) catch 블록만 이 메시지를 버리고 "목록 조회 실패"라는 원인불명 문구만 표시 — 같은 파일의 로그인 폼(`:49-54`)·서명 제출(`:312-314`)은 정확히 `err.response.data.error`를 읽어 실제 메시지를 보여주는 것과 형제 비대칭. 부가로 목록 화면엔 "돌아가기"만 있고 "로그아웃"이 없어 재로그인까지 3단계(돌아가기→로그아웃→재로그인)가 필요. 계정 없는 현장 직원이 사원번호+생년월일로 접근하는 페이지 특성상(작업 인터럽트·계약서 정독으로 30분 초과가 흔함) 실사용에서 막다른 길(dead end)이 되는 실질 UX 결함. Area3 정책상 issue-only.
+> - **🟢 나머지 = clean**: 로그인 폼(로딩 disable+텍스트 변경, 에러 메시지 실제 원인 노출), 재직증명서/급여명세서 열람(새 창 fetch 실패 시 인라인 에러 HTML), 계약서 서명(캔버스 초기화·빈 서명 가드·제출 중 disable·성공 시 목록 자동갱신), 로그아웃(전 섹션 상태 리셋) 전부 정상. 모바일 반응형(max-width 420px 카드, viewport meta, 터치 캔버스 이벤트) 이상 없음. XSS(#544 기수정) 재확인 — `esc()` 일관 적용.
+> - **🟢 backlog↔GitHub 절대값 재동기화(직전 사이클 stale 발견)**: `list_issues(state:OPEN,label:auto-improve)` **실측 23건**(#549 생성 전) → 생성 후 **24건**. 직전 Area2 48회차 기재값(new 29)과 불일치 발견 — owner가 그 사이(#529·#530·#541·#542·#543)를 close(541/542/543은 `not_planned` 사유, fixed-in-tree였음에도 owner가 그 사유 선택 — 존중, 재오픈 안 함). `search_issues(is:closed,reason:completed)` 실측 **451**(+3) · `not_planned` 실측 **4**(+3, #541·#542·#543) + `duplicate` 실측 **2**(변동 없음) → rejected **6**.
+> - **🧬 SKILL 강화 없음(신규 탐지 클래스 아님)** — #549는 기존 "형제 catch 블록 비대칭"(같은 파일 일부 핸들러만 에러 메시지 노출) 클래스의 정확한 재현. 향후 참고 가치: **Area 손대지 않은 대형 신규 기능은 다른 Area가 자기 렌즈로 커버해도 UX 렌즈 공백이 남을 수 있다** — 이번처럼 "직전 몇 사이클 동안 Area3가 못 본 기능"을 역추적하는 방식이 신선 churn 없는 사이클의 유효한 대안으로 확인(Area6의 "close-pending 재확인" 패턴과 유사한 논리를 Area3에 적용한 사례).
+> - 신규 이슈 1건(#549, issue-only), 자동수정 0건(Area3 정책상 자동수정 대상 아님), done-sync 재동기화(new 29(stale)→24(실측)·done 448→451·rejected 3→6, 전부 절대값 재확인). 다음 순번 Area 4.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-07-21T10:20):**
 > - **방법**: `git fetch origin main`(HEAD `2adacf5` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 2 **48회차** — 직전 Area2(`bf434b1`, 07-19T22:05, 47회차) 이후 `git log bf434b1..HEAD -- src/routes src/scripts src/pages migrations`(8커밋): 대부분 Area1/3/4/5/6이 각자 렌즈로 이미 심층 감사 완료(`5ad7b2b`=Area3/4, `2511e57`+`1e1b620`+`3f54101`=Area4 41회차·Area5 40회차·Area6 46회차, `bba885b`=Area5 확인, `f9d211a`/`e7fd9c3`=Area1/4, `ba8a6c6`=feature flag OFF 단순 토글). Area2 고유 렌즈(entity_id INSERT·N+1·authMiddleware·컬럼/타입 불일치·dead code·SELECT *·D1 batch 한도)로 general-purpose 에이전트 1개(`2511e57`+`5ad7b2b` 전담) + 오케스트레이터 직접 Read(`1e1b620`의 bank.ts/items.ts/payroll/records.ts/po-queries.ts/accounts-payable.ts)로 교차검증.
