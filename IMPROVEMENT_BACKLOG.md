@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-07-22T15:17:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-07-22T21:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,22 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **14** — Area 6 47회차(07-22T15:17) `search_issues(state:open,label:auto-improve)` 실측 14건, Area 5 41회차 값과 일치(변동 없음). |
+| 🆕 new | **14** — Area 1 48회차(07-22T21:20) `search_issues(state:open,label:auto-improve)` 실측 14건, Area 6 47회차 값과 일치(변동 없음). |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **465** — `search_issues(is:closed,reason:completed)` 재확인, 변동 없음. |
-| ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 실측 재확인 — 변동 없음) |
+| ✔️ done | **465** — 변동 없음(이번 사이클 close 0건). |
+| ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 1 프로덕션 헬스 (2026-07-22T21:20):**
+> - **방법**: `git fetch origin main`(HEAD `c292250` = origin/main 일치, 워킹트리 clean, detached). 프록시가 이번 세션도 prod 호스트 직접 curl 차단(exit 56, CONNECT tunnel 403 — `webapp-9i0.pages.dev` 대상 재시도 동일, 기존 33~47회차와 동일 제약, `cloudflare-observability` MCP 미인증). Playwright MCP 브라우저 점검은 이번 세션도 도구 승인 게이트에서 거부되어 미수행(46~47회차와 동일 패턴) — 배포체인 로그로 대체. Area 1 **48회차** — 직전 Area1(`2adacf5`, 07-21T00:18, 47회차) 이후 `git log 2adacf5..HEAD`(26커밋): 전부 Area2~6(48/41/42/41/47회차)가 각자 렌즈로 이미 심층 감사 완료(#548~#553 생성, SSOT 리팩터 3단계 검증 포함) — 순수 미검증 Area1 관점 신규 항목 없음. **신규 마이그레이션 0건**(`git diff 2adacf5..HEAD --stat -- migrations` 무출력) — (b)-risk 컬럼드리프트 후보 없음.
+> - **🟢 배포체인 = 전수 정상**: `deploy.yml` 최근 15회 실행(07-20T07:53~07-22T07:58) 전부 `conclusion:success`. 최신 커밋(`c292250`, run #29902206952) job 단계별 Typecheck/Build/Deploy/Wait/Smoke 전부 success(07:58:53~08:00:08) — 현재 origin/main HEAD가 정상 배포·스모크 통과 상태로 prod에 반영돼 있음 확인. `backup.yml`(Daily D1 Backup) 최근 10회(07-12~07-21) 전부 success, 최신 07-21T18:10. `e2e.yml`은 여전히 `disabled_manually`(재발 아님, 33회차 이래 동일 상태).
+> - **🟢 신규 이슈 0건**: 이번 창의 26커밋(feat/dept-pnl superset 배포·SSOT 리팩터 4단계·XSS escapeHtml 자동수정·P0/P1/P2 UX sweep·flatpickr 전환·design-token 문서 등)은 전부 Area2~6가 각자 렌즈로 완결 감사(신규이슈 #548~#553 생성 확인·close-pending 재검증 포함) + 매 배포 스텝 success 유지 — Area1 렌즈(가용성/CI/배포/헬스)로 추가 발견 없음.
+> - **🟢 backlog↔GitHub sync**: `search_issues(state:open,label:auto-improve)` 실측 **14건**(변동 없음, 신규 이슈 0). done `search_issues(is:closed,reason:completed)`=**465**(변동 없음) · rejected 6(변동 없음).
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — 이번 사이클은 신선 churn 전량이 다른 Area가 이미 커버 + 마이그레이션 0건이라 (b)-risk 재현 없음. Playwright 도구 거부·prod 직접 curl 차단은 기존 인지 제약의 연장.
+> - 신규 이슈 0건, 자동수정 0건(수정 대상 없음), done-sync 변동 없음(new 14·done 465·rejected 6 정합 재확인). 다음 순번 Area 2.
+>
 
 > **Area 6 자기 진화 (2026-07-22T15:17):**
 > - **방법**: `git fetch origin main`(HEAD `686adf1` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 6 **47회차** — 직전 Area6(`5847d13`, 07-20T19:20, 46회차) 이후 `src/routes`/`src/scripts`/`src/pages`/`migrations` churn은 Area 1~5(42~48회차)가 각자 렌즈로 이미 심층 감사 완료(직전 Area5 41회차 HEAD `4881ed4`까지 포함, P0-1~P0-5·P1-6~P1-10 UI sweep 및 CSV/ledger 신기능 전부 커버됨). **유일한 미검증 신선 churn** = Area5 감사 지점 이후 다른 세션(Claude Fable 5)이 머지한 대형 3단계 "공유 헬퍼 SSOT 도입" 리팩터(`275e5d5`/`3c1dbfa`/`baa6a8d`, 20+파일 — CSV다운로드/숫자·날짜포맷터/모달표준/거래처검색모달/상태배지를 shell.js 전역 헬퍼로 위임 + 전역 함수명 충돌 리네임 15곳) + 스킬 문서 갱신(`37a0e64`, mes-ui-consistency §9·review-checklist §14 신설, 재구현 금지 게이트). "behavior-preserving" 자칭 대규모 SSOT 위임은 이 프로젝트에서 반복적으로 회귀가 발견된 클래스(HTML↔JS silent fail·전역 스코프 함수명 충돌 shadow·CSV formula injection 산재)라 general-purpose 에이전트 1개로 diff 전수 대조 위임.
