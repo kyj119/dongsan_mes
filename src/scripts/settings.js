@@ -599,6 +599,7 @@ async function loadCompanyPrintInfo(entityId) {
     renderPcStamp(d.stamp_base64);
   } catch (e) {
     console.warn('[settings] loadCompanyPrintInfo 실패', e);
+    showToast('회사 인쇄정보 로드 실패', 'error');
   }
 }
 

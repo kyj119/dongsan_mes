@@ -211,6 +211,13 @@ coreRouter.post('/preview', async (c) => {
         },
         deductions,
         net_pay,
+        // #509 일할근거: 월중 입사/퇴사 근무일 일할 컨텍스트(명세서/편집 화면 배지용). isPartial=false면 완전월(전액).
+        prorationContext: {
+          isPartial: prCtx.isPartial,
+          workedWeekdays: prCtx.workedWeekdays,
+          monthWeekdays: prCtx.monthWeekdays,
+          ratio: prCtx.monthWeekdays > 0 ? Math.round((prCtx.workedWeekdays / prCtx.monthWeekdays) * 100) / 100 : 1,
+        },
       },
     })
   } catch (err: any) {
@@ -400,9 +407,14 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     // #B1 급여확정잠금: 확정(승인/지급) 급여는 재계산 덮어쓰기 차단.
     //   approve/pay가 status를 바꾼 뒤 동일 employee+period로 /save 재호출 시 net_pay 등 재무필드 변조 방지.
+    // 별건A 교부가드: status가 PENDING이어도 이미 교부(published_at NOT NULL)된 급여는 재계산 덮어쓰기 차단.
+    //   교부 후 명세서와 저장값이 어긋나는 무결성 훼손 방지. 재계산하려면 먼저 교부 취소(unpublish).
     const existingPayroll = await c.env.DB.prepare(
-      `SELECT status FROM payroll WHERE employee_id = ? AND pay_period = ?`
-    ).bind(employeeId, payPeriod).first<{ status: string }>()
+      `SELECT status, published_at FROM payroll WHERE employee_id = ? AND pay_period = ?`
+    ).bind(employeeId, payPeriod).first<{ status: string; published_at: string | null }>()
+    if (existingPayroll && existingPayroll.published_at != null) {
+      return c.json({ success: false, error: '교부된 급여는 재계산·수정할 수 없습니다. 먼저 교부를 취소(unpublish)하세요.' }, 409)
+    }
     if (existingPayroll && existingPayroll.status !== 'PENDING') {
       return c.json({ success: false, error: '확정(승인/지급)된 급여는 수정할 수 없습니다. 먼저 승인을 취소하세요.' }, 409)
     }
@@ -492,7 +504,19 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
       notes, user?.id || null, getEntityId(c) || 1
     ).run()
 
-    return c.json({ success: true, data: { employee_id: employeeId, pay_period: payPeriod, net_pay } })
+    return c.json({
+      success: true,
+      data: {
+        employee_id: employeeId, pay_period: payPeriod, net_pay,
+        // #509 일할근거: 월중 입사/퇴사 근무일 일할 컨텍스트(편집 화면 배지용).
+        prorationContext: {
+          isPartial: prCtx.isPartial,
+          workedWeekdays: prCtx.workedWeekdays,
+          monthWeekdays: prCtx.monthWeekdays,
+          ratio: prCtx.monthWeekdays > 0 ? Math.round((prCtx.workedWeekdays / prCtx.monthWeekdays) * 100) / 100 : 1,
+        },
+      },
+    })
   } catch (err: any) {
     console.error('Payroll save error:', err)
     return c.json({ success: false, error: '저장 실패', detail: '서버 오류가 발생했습니다' }, 500)
@@ -708,7 +732,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
              e.hire_date, e.resignation_date
       FROM payroll p
       JOIN employees e ON e.id = p.employee_id
-      WHERE p.pay_period = ? AND p.status != 'PAID'${efP.clause}
+      WHERE p.pay_period = ? AND p.status != 'PAID' AND p.published_at IS NULL${efP.clause}
     `
     const targetParams: any[] = [payPeriod, ...efP.params]
     if (employeeIds.length > 0) {

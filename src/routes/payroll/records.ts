@@ -35,6 +35,7 @@ recordsRouter.get('/', async (c) => {
     const rows = await c.env.DB.prepare(
       `SELECT p.*, e.name as employee_name, e.employee_code, e.department, e.position,
               e.base_salary as employee_base_salary, e.mobile as employee_mobile,
+              e.hire_date, e.resignation_date,
               ent.name as entity_name
        FROM payroll p
        JOIN employees e ON p.employee_id = e.id
@@ -62,6 +63,7 @@ recordsRouter.get('/:id', async (c) => {
   const efP = entityFilter(c, 'p')
   const row = await c.env.DB.prepare(
     `SELECT p.*, e.name as employee_name, e.employee_code, e.department, e.position,
+            e.hire_date, e.resignation_date,
             ent.name as entity_name
      FROM payroll p JOIN employees e ON p.employee_id = e.id
      LEFT JOIN entities ent ON ent.id = p.entity_id WHERE p.id = ?${efP.clause}`

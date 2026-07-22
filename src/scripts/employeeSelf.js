@@ -147,7 +147,18 @@
           }
         }
       } catch (err) {
-        list.innerHTML = '<div style="text-align:center;color:#dc2626;padding:20px;">목록 조회 실패</div>';
+        var msg = (err.response && err.response.data && err.response.data.error) || '목록 조회 실패';
+        list.innerHTML = '<div style="text-align:center;color:#dc2626;padding:20px;">' + esc(msg) + '</div>';
+        if (err.response && err.response.status === 401) {
+          selfToken = null; employeeInfo = null;
+          setTimeout(function() {
+            loginSection.style.display = 'block';
+            menuSection.classList.remove('active');
+            contractsSection.classList.remove('active');
+            payslipsSection.classList.remove('active');
+            showError(msg);
+          }, 1200);
+        }
       }
     });
   }
@@ -201,7 +212,18 @@
           }
         }
       } catch (err) {
-        list.innerHTML = '<div style="text-align:center;color:#dc2626;padding:20px;">목록 조회 실패</div>';
+        var msg = (err.response && err.response.data && err.response.data.error) || '목록 조회 실패';
+        list.innerHTML = '<div style="text-align:center;color:#dc2626;padding:20px;">' + esc(msg) + '</div>';
+        if (err.response && err.response.status === 401) {
+          selfToken = null; employeeInfo = null;
+          setTimeout(function() {
+            loginSection.style.display = 'block';
+            menuSection.classList.remove('active');
+            contractsSection.classList.remove('active');
+            payslipsSection.classList.remove('active');
+            showError(msg);
+          }, 1200);
+        }
       }
     });
   }
@@ -335,21 +357,25 @@
     });
   }
 
-  // 로그아웃
-  var btnLogout = document.getElementById('btnLogout');
-  if (btnLogout) {
-    btnLogout.addEventListener('click', function() {
-      selfToken = null;
-      employeeInfo = null;
-      loginSection.style.display = 'block';
-      menuSection.classList.remove('active');
-      contractsSection.classList.remove('active');
-      if (payslipsSection) payslipsSection.classList.remove('active');
-      if (signSection) signSection.classList.remove('active');
-      selfContracts = [];
-      errorMsg.style.display = 'none';
-      document.getElementById('employeeCode').value = '';
-      document.getElementById('birthDate').value = '';
-    });
+  // 로그아웃 (메뉴/계약서/급여명세서 화면 공통)
+  function selfLogout() {
+    selfToken = null;
+    employeeInfo = null;
+    loginSection.style.display = 'block';
+    menuSection.classList.remove('active');
+    contractsSection.classList.remove('active');
+    if (payslipsSection) payslipsSection.classList.remove('active');
+    if (signSection) signSection.classList.remove('active');
+    selfContracts = [];
+    errorMsg.style.display = 'none';
+    var ecEl = document.getElementById('employeeCode'); if (ecEl) ecEl.value = '';
+    var bdEl = document.getElementById('birthDate'); if (bdEl) bdEl.value = '';
   }
+
+  var btnLogout = document.getElementById('btnLogout');
+  if (btnLogout) { btnLogout.addEventListener('click', selfLogout); }
+  var btnContractsLogout = document.getElementById('btnContractsLogout');
+  if (btnContractsLogout) { btnContractsLogout.addEventListener('click', selfLogout); }
+  var btnPayslipsLogout = document.getElementById('btnPayslipsLogout');
+  if (btnPayslipsLogout) { btnPayslipsLogout.addEventListener('click', selfLogout); }
 })();

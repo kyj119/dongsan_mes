@@ -32,7 +32,7 @@ aiInsights.get('/credit-risk/summary', requireRole('ADMIN', 'MANAGER'), async (c
          - COALESCE((SELECT SUM(amount) FROM adjustments WHERE client_id = cl.id), 0)) as balance,
         cl.credit_limit
       FROM clients cl
-      WHERE cl.is_active = 1 AND cl.credit_risk_grade IN ('D', 'F')
+      WHERE cl.is_active = 1 AND cl.credit_risk_grade IN ('D', 'F')${excludeInternalClientsSql('cl.id')}
       ORDER BY cl.credit_risk_score DESC LIMIT 10
     `).all()
 
@@ -142,7 +142,7 @@ aiInsights.post('/credit-risk/calculate-all', requireRole('ADMIN', 'MANAGER'), a
            THEN 1 ELSE 0 END) as overdue_count
     FROM orders o
     JOIN clients c ON o.client_id = c.id AND c.is_active = 1
-    WHERE o.status NOT IN ('CANCELLED','DELETED','QUOTATION')
+    WHERE o.status NOT IN ('CANCELLED','DELETED','QUOTATION')${excludeInternalClientsSql('c.id')}
     GROUP BY o.client_id
     HAVING total_orders > 0
   `).all<{ client_id: number; total_orders: number; total_revenue: number; outstanding: number; overdue_count: number }>()
