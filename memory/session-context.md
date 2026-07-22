@@ -1,50 +1,34 @@
-# 세션 핸드오프 — 선명 매입원장 품목 노출 + 거래처 원장 공급가액·부가세·합계 3열 (2026-07-21)
+# 세션 핸드오프 — UI/UX 전수감사→P0~P2→공유화→백로그①④③ 완주 (2026-07-21~22)
 
-> 세션별 덮어쓰기 파일. 이전 핸드오프(IA JSX 세션루프)의 durable 내용은 [[project-ia-designer-loop]]·[[project-ia-web-sunset]]에 보존됨.
-> 이번 세션 durable = 아래 + [[feedback-shared-checkout-git]](강화)·[[design-ledger-line-vat-columns]].
+> 세션별 덮어쓰기 파일. 이전 핸드오프(원장 3열)의 durable 내용은 [[design-ledger-line-vat-columns]]에 보존됨.
 
-## 이번 세션 요약
-거래처 원장(매출·매입) 상세 모달 2건 개선. **전부 prod 배포·검증 완료**.
-1. **선명 매입원장 품목 라인 노출** — "매입내역 정리 안 됨"의 실체 = 데이터(purchase_order_items 1,006라인)는 처음부터 존재, **원장 화면이 발주 총액 행만** 그리고 품목 라인을 안 펼침(매출 원장엔 있던 기능이 매입엔 없었음). 매출(ar-ledger) 패턴 미러링으로 해결.
-2. **원장 금액열 공급가액·부가세·합계 3열 분할** — 품목=공급가(net)·헤더=총액(VAT포함)이 같은 열에 섞여 "라인 합≠헤더" 가독성 저하. 세금계산서 표준(=우리 거래명세서·견적서 관례) 벤치마크로 3열 분할.
+## 완료 상태 (전부 prod 배포·main 동기·worktree 정리 완료)
+- **prod 배포 4회**: P0+P1(`338f0e0b`) → P2+공유화1~4(`86799860`) → (중간 XSS 봇픽스 병합) → 백로그①④③(`19a3a434`). origin/main tip=`c292250d`. worktree `ui-p0`=end-session으로 제거, 원격 `session/ui-p0` 브랜치=백업 잔존.
+- **P0**: XSS ~20곳 escape·모달 ESC 실결함(인라인 display→hidden)·employeeSelf 접근성·cashFlow data-money·깨진한글
+- **P1**: 매입원장 tabular-nums+인쇄명세서 3열(ledgerAllocVat)·금액표 fixed 6곳·accounting CSV(페이지루프 5000캡)·AREA 청구치수 힌트·팔레트 스윕 24파일(SHIPPED=green·PRINTING=blue·입금방법 뱃지 시맨틱화)
+- **P2**: "검색" 라벨 통일·뱃지 3요소 아이콘·이모지→FA·로컬 esc 위임 (35파일)
+- **공유화 1~4**: 전역 헬퍼 신설(dsDownloadCsv/dsBuildCsv·fmtNum·fmtDateOnly·dsPaginate·dsOpenModal/dsCloseModal·openClientSearchModal·MES_STATUS 색/아이콘 SSOT=dsStatusBadge)+채택 스윕+동명 전역 충돌 전멸(switchTab 5·renderPagination 5 페이지-prefix)+**정본 명문화**(ui-consistency §9 헬퍼 카탈로그·review-checklist §14 재구현 반려 게이트)
+- **백로그①**: native date→flatpickr js-fp 109곳/36파일 전멸. shell.js DOMContentLoaded+**SPA fast-path** 양쪽 자동 init(SPA 경로 누락은 에이전트가 발견한 잠복버그였음). 동적모달 4곳 배선·valueAsDate 5곳 변환
+- **백로그④**: 거래처 picker 4벌→openClientSearchModal(1건 자동선택·부수효과 보존·죽은 함수 16개 제거. bank=복합UI 의도적 스킵)+상태뱃지 SSOT 2건(productionReports·scan, 시각회귀0 정책)
+- **백로그③**: design-token.md 실코드 재생성(--fs-*·--space-xs..2xl 실명·z-index 실측표·사이드바==모달 50 동률 경고)+3문서 상충 정정(버튼 rounded-lg·amber-600·ds-card 정본)
 
-## 산출/배포
-| 커밋 | 내용 | prod deploy |
-|---|---|---|
-| `0f2d7454` | 매입원장 발주 품목 라인 노출(accounts-payable.ts items[] 부착 + ledger.js 렌더) | `42992db2` |
-| `601392b6` | 원장 공급가액·부가세·합계 3열(ledger.ts thead 9열 + ledger.js ledgerAllocVat 배분/양쪽 렌더/CSV) | `01afbb7d` (superset) |
-- **origin/feat/dept-pnl = `601392b6`** (내 VAT 커밋이 최신). 원격 백업 브랜치 `session/ledgervat` 존재(삭제 가능).
-- 검증: `npm run verify` green·`node --check`·**prod 스모크 102/102**·prod `/ledger` HTML thead 마커(부가세·합계 각 2=AR/AP)·apex 302. VAT 배분 함수 node 단위검증(10%·9품목·면세·반올림 전부 라인합=소계=총액 정확 일치).
+## 판단기준 (이 세션 결정 — 번복 금지)
+- **상태색 정본**: SHIPPED=green·PRINTING=blue·HOLD/QUOTATION=amber (statusLabels.ts TONES가 유일 소스. 색 변경=그 파일만)
+- **입금방법 뱃지**: 카드=gray·현금=green·계좌이체=blue·수표=amber·어음=red (ledger↔accounting 동일)
+- **entity(법인) 뱃지 인디고**(#eef2ff/#4338ca)=의도적 별도 체계로 보존
+- **포털(portal*) 상태색**=의도적 로컬 설계(고객대면) — SSOT 위임 금지
+- **시각회귀 0 정책**: SSOT 위임은 픽셀 동일하거나 드리프트 교정일 때만. 음영 불일치(cardDetail bg-*-100 등)는 스킵됨
+- **AP client_type 필터 금지** 등 기존 정책 불변
 
-## 핵심 결정 + 이유
-- **원장 상세 = 발주/전표 단위 행**(품목 미표시가 원래 설계, 매출과 동일). 요청은 품목 노출 → 매출 방식 미러링.
-- **3열 분할 벤치마크 = 내부 세금계산서/거래명세서/견적서 관례**(`invoice.js`·`taxInvoices.ts`·`quotationForm.ts` 전부 공급가액|세액|합계) = 국세청 세금계산서 표준. 원장 상세만 안 따르고 있었음.
-- **`ledgerAllocVat`(ledger.js)**: 부가세=총액−공급가합(신뢰식, 면세·할인 자동처리), 품목별 **비례배분+마지막 잔차 흡수** → Σ부가세=총부가세·Σ합계=총액 **정확 일치**. 무품목/면세 안전(hasBreakdown 가드로 공급가·부가세 공란).
-- **주문/발주 헤더 = 소계 행**(공급가액계·부가세·합계, bold). 별도 소계행 불요.
-- **`vat_included` 플래그 신뢰 불가**: 매출품목 vat_included=0·선명매입 vat_included=1인데 **양쪽 다 amount=공급가(net)**. 오해 유발 `✓ 부가세포함` 표시 제거.
-- **격리 배포(worktree)** = 사용자 지시 + 사고 복구 수단. 아래 주의사항 참조.
+## 다음 세션 TODO (우선순위)
+1. **감사 잔여 소항목 일괄** (반나절): approvals 탭 pill→밑줄 통일 · settings/purchaseOrderForm Lucide SVG→FA · 요약카드 숫자 text-3xl 통일(payroll/laborContracts 2xl 혼용) · orders 행 액션버튼 상시노출→호버 · 빈상태 CTA(quotations.js:82·clients.js:166) · clientDetail 성공동작 warning 토스트색(416,446) · showToast 로컬 중복 3파일(iaScan/invoice/quotation — invoice/quotation은 독립렌더라 폴백 필요 확인) · 임의 z-[60]×4/z-[70]×2 정리(품목·거래처검색 모달 70)
+2. **장비상태 SSOT 확장** (~1h, ★사용자 결정 필요: IDLE 음영 amber(equipment.js) vs gray(production/schedule.js) 중 택1): statusLabels.ts에 equip kind 추가 → equipment.js:15-31·production.js:742-748·schedule.js:74-80·dashboard.js:443-444 위임
+3. **다크모드 인라인 hex 345곳/29파일** (★착수 전 사용자에게 다크모드 실사용 여부 확인 — 미사용이면 보류): 최다=productionReports 22·equipment 18·production 16·quality 15·inventory 13
+4. **점진 이관** (페이지 손댈 때 자연 이관, 별도 스윕 불요 — §14 게이트가 신규 차단 중): 수제 뱃지 44파일→ds-badge · ds-input/ds-filter-bar/ds-empty/스켈레톤 채택 · dsPaginate 실전환 · dsOpenModal 이관 · printHtml/collectFilters/initTabs 공용화(미구현 잔여 헬퍼)
 
-## 판단 기준 (다음 세션용)
-- 원장 거래처 조회는 **로그인 법인 컨텍스트로 entityFilter**(admin 기본=법인1). 법인2(선명) 데이터는 `POST /api/auth/switch-entity {entity_id:2}` 후 조회. entity_id=0=전체모드(필터 생략).
-- 원장 상세 모달 컬럼 정합: 모든 행 **9칸**(일자·구분·내용·공급가액·부가세·합계·입금/지급·잔액·action). 전기이월/헤더/품목/입금/감액/빈행 각각 9칸 맞춰야 정렬 안 깨짐.
-- 매출=`ar-ledger.ts`+`loadClientDetail`, 매입=`accounts-payable.ts`+`loadPurchaseClientLedger`. 한쪽 고치면 대칭 반영.
-
-## 검증 명령
-```powershell
-npm run verify                                        # typecheck + build
-node --check src/scripts/ledger.js                    # ?raw JS 문법
-$env:SMOKE_URL='https://webapp-9i0.pages.dev'; npm run smoke   # prod 102/102
-# prod 원장 thead 마커: /ledger HTML에 부가세</th>·합계</th> 각 2 (AR+AP)
-# VAT 배분 검증: ledgerAllocVat 추출해 node로 (라인합=소계=총액 확인)
-```
-
-## 다음 세션 TODO
-1. **메인 체크아웃 sync**: 로컬 `feat/dept-pnl`이 origin(`601392b6`)보다 뒤질 수 있음 → 배포 전 `git pull --ff-only` 필수(안 하면 VAT 회귀).
-2. (선택) **인쇄/팩스 명세서도 3열 정합**: 현재 화면 모달만 3열. `_ledgerStatementData` 기반 print/fax는 별도 작업.
-3. (사소) `ledger.js:401` 주석 "매출(+)/입금(-) 2컬럼" stale → 다음 배포 때 정정.
-
-## 주의사항 (함정)
-- ⚠️ **공유 메인 체크아웃 = 미커밋 변경 실제 유실**(이번 세션 실증): VAT 변경을 메인에서 편집·빌드 중 타 세션 커밋/체크아웃이 내 **미커밋 파일을 완전히 덮어씀**(git status clean·변경 소실). "허상 원복"이 아니라 진짜 유실. → **처음부터 worktree 격리가 정답**. [[feedback-shared-checkout-git]]
-- ⚠️ **동시 세션 6개 가동**(worktree: bank-ap-link·cardtl·ia-designer-loop·ia-web-sunset·issuefix + 메인). 배포=`new-session.ps1 <이름> feat/dept-pnl`(회귀방지 base) → 워크트리 빌드 → **rebase origin/feat/dept-pnl(superset)** → `deploy:prod` → `git push session/X:feat/dept-pnl`(FF) → `end-session.ps1 X -DeleteBranch`.
-- ⚠️ **end-session은 port 3000 dev 서버도 종료**(재기동 안내). 배포≠push(deploy:prod 후 push 필수).
-- ⚠️ prod 로그인=admin/password 유효(스모크/검증용).
+## 주의사항
+- **정본**: 디자인=`.claude/skills/mes-ui-consistency/`(SKILL §9 헬퍼 카탈로그 필독)·리뷰=`review-checklist` §14. design-token.md=2026-07-22 실코드 스냅샷
+- **로컬 D1 드리프트**: 스모크 1FAIL(activity-logs 500)=`actor_entity_id` 컬럼 미적용 — `npm run db:migrate:local`로 해소 (prod 무관)
+- **배포 게이트**: 배포는 명시 "배포 진행" 확인 필수. push-to-main FIRST(superset — origin/main 봇커밋 수시 전진, fetch→merge 후 push)→`deploy:prod`(--branch main 포함됨)→apex 15페이지/13API(401)/필드마커
+- **멀티세션**: 새 작업=`.\scripts\new-session.ps1 <이름>` worktree 격리. 메인 체크아웃(feat/dept-pnl)=상태판용
+- 검증 명령: `npm run verify` / 스모크=`npm run dev:d1` 백그라운드 기동 후 `npm run smoke`(포트 3000 단일)
