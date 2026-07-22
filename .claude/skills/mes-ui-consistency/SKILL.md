@@ -30,14 +30,16 @@ description: "동산기획 ERP+MES UI 일관성 가이드. 프론트엔드 작�
 
 - 보라/핑크/틸은 **차트 전용**. 같은 데이터는 어디서든 같은 색.
 
-## 2. 버튼 (4종만)
+## 2. 버튼 (4종만) — `ds-btn` 클래스 우선
 
-| 종류 | 용도 | 스타일 |
-|------|------|--------|
-| Primary | 생성/검색 (페이지당 1~2개) | `bg-blue-600 text-white rounded` |
-| Danger | 삭제, 위험 액션 | `bg-red-600 text-white rounded` |
-| Secondary | CSV, 내보내기 | `border border-gray-300 text-gray-700 bg-white rounded` |
-| Ghost | 초기화, 닫기 | `text-gray-500` (배경 없음) |
+| 종류 | 클래스 (우선) | 수제 시 스타일 |
+|------|--------------|---------------|
+| Primary | `ds-btn ds-btn-primary` | `bg-blue-600 text-white rounded-lg` |
+| Danger | `ds-btn ds-btn-danger` | `bg-red-600 text-white rounded-lg` |
+| Secondary | `ds-btn ds-btn-secondary` | `border border-gray-300 text-gray-700 bg-white rounded-lg` |
+| Ghost | `ds-btn ds-btn-ghost` | `text-gray-500` (배경 없음) |
+
+- radius 표준=`--radius-md` 8px(`rounded-lg`). 구 문서의 `rounded`(4px)는 폐기값.
 
 - 검색 버튼 텍스트: 항상 **"검색"**. 새 변형 금지.
 

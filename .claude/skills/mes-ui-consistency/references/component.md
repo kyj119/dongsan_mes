@@ -28,7 +28,7 @@ interface SummaryCardProps {
 |---------|-----------|------|
 | `default` | `text-gray-900` | 일반 집계 (전체 주문, 거래처 수 등) |
 | `success` | `text-green-600` | 완료, 정상 (출고완료, 입고완료) |
-| `warning` | `text-amber-500` | 주의 (대기, 보류, 30~60일) |
+| `warning` | `text-amber-600` | 주의 (대기, 보류, 30~60일) |
 | `danger` | `text-red-600` | 긴급/위험 (납기 지연, 미수금, 60일 초과) |
 | `info` | `text-blue-600` | 진행중 (생산중, 입고대기) |
 
@@ -42,10 +42,8 @@ interface SummaryCardProps {
 └────────────────────────────┘
 ```
 
-- 배경: `bg-white`
-- 테두리: `border border-gray-200`
-- 라운드: `rounded-xl` (12px)
-- 패딩: `p-5`
+- **`ds-card` 클래스 사용이 정본** (radius 12px·패딩 24px·shadow md→hover lg 자동). 수제 시: `bg-white border border-gray-200 rounded-xl`(12px)
+- 밀집형은 `ds-card-compact`(패딩 16px)
 - 그리드: `grid grid-cols-4 gap-4` (부모에서)
 - 3개 카드면 `grid-cols-4` 유지, 마지막 칸 비움
 - 5개면 `grid-cols-5` 또는 4+1 별도 행

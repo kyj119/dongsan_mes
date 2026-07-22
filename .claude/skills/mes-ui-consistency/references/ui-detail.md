@@ -1,6 +1,7 @@
 # UI 상세 패턴 & 코드 예제
 
 > SKILL.md 핵심 규칙의 상세 구현 참조용.
+> 표준 카드=`ds-card`(radius 12px·패딩 24px). 아래 예제는 **소형 밀집 KPI 카드**(rounded-lg·p-2.5·gap-2) 변형 — 일반 요약 카드에 복사 금지.
 
 ## 카드 HTML
 
