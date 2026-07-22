@@ -8,12 +8,12 @@ export function purchaseRequestFormPage(c: Context<HonoEnv>) {
     title: '발주 요청 작성',
     activePage: '/purchase-requests',
     pageCSS: `
-      .pr-item-dd { position:absolute; z-index:50; background:white; border:1px solid #d1d5db; border-radius:0.5rem; max-height:200px; overflow-y:auto; width:100%; box-shadow:0 4px 12px rgba(0,0,0,.12); top:100%; left:0; margin-top:2px; }
+      .pr-item-dd { position:absolute; z-index:50; background:var(--c-surface); border:1px solid var(--c-border); border-radius:0.5rem; max-height:200px; overflow-y:auto; width:100%; box-shadow:0 4px 12px rgba(0,0,0,.12); top:100%; left:0; margin-top:2px; }
       .pr-item-dd-entry { padding:8px 12px; cursor:pointer; font-size:13px; }
-      .pr-item-dd-entry:hover { background:#eff6ff; }
-      .pr-supplier-dd { position:absolute; z-index:50; background:white; border:1px solid #d1d5db; border-radius:0.5rem; max-height:200px; overflow-y:auto; width:100%; box-shadow:0 4px 12px rgba(0,0,0,.12); top:100%; left:0; margin-top:2px; }
+      .pr-item-dd-entry:hover { background:var(--c-primary-light); }
+      .pr-supplier-dd { position:absolute; z-index:50; background:var(--c-surface); border:1px solid var(--c-border); border-radius:0.5rem; max-height:200px; overflow-y:auto; width:100%; box-shadow:0 4px 12px rgba(0,0,0,.12); top:100%; left:0; margin-top:2px; }
       .pr-supplier-dd-entry { padding:8px 12px; cursor:pointer; font-size:13px; }
-      .pr-supplier-dd-entry:hover { background:#eff6ff; }
+      .pr-supplier-dd-entry:hover { background:var(--c-primary-light); }
     `,
     pageContent: `
       <div class="max-w-4xl mx-auto">

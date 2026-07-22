@@ -8,12 +8,12 @@ export function priceManagementPage(c: Context<HonoEnv>) {
     title: '단가 관리',
     activePage: '/price-list',
     pageCSS: `
-      .pm-tab { padding:10px 20px; font-size:14px; font-weight:500; border-bottom:2px solid transparent; cursor:pointer; color:#6b7280; transition:all 0.15s; }
-      .pm-tab.active { border-bottom-color:#2563eb; color:#2563eb; }
-      .pm-tab:hover:not(.active) { color:#374151; }
-      .client-dd { position:absolute; z-index:50; background:white; border:1px solid #d1d5db; border-radius:0.5rem; max-height:220px; overflow-y:auto; width:100%; box-shadow:0 4px 12px rgba(0,0,0,.12); top:100%; left:0; margin-top:2px; }
+      .pm-tab { padding:10px 20px; font-size:14px; font-weight:500; border-bottom:2px solid transparent; cursor:pointer; color:var(--c-text-secondary); transition:all 0.15s; }
+      .pm-tab.active { border-bottom-color:var(--c-info); color:var(--c-info); }
+      .pm-tab:hover:not(.active) { color:var(--c-text); }
+      .client-dd { position:absolute; z-index:50; background:var(--c-surface); border:1px solid var(--c-border); border-radius:0.5rem; max-height:220px; overflow-y:auto; width:100%; box-shadow:0 4px 12px rgba(0,0,0,.12); top:100%; left:0; margin-top:2px; }
       .client-dd-entry { padding:8px 12px; cursor:pointer; font-size:13px; }
-      .client-dd-entry:hover { background:#eff6ff; }
+      .client-dd-entry:hover { background:var(--c-primary-light); }
       @media screen { #printArea { display:none; } }
       @media print {
         body, .main-content, .page-body { position:static !important; overflow:visible !important; height:auto !important; margin:0 !important; padding:0 !important; }

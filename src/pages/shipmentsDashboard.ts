@@ -11,11 +11,11 @@ export function shipmentsDashboardPage(c: Context) {
         <div class="flex flex-wrap items-end gap-3">
           <div>
             <label class="block text-[10px] text-gray-400 mb-1">날짜</label>
-            <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="dashDate" class="js-fp border rounded px-2 py-1 text-xs" style="color:#212529;" />
+            <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="dashDate" class="js-fp border rounded px-2 py-1 text-xs" style="color:var(--c-text);" />
           </div>
           <div>
             <label class="block text-[10px] text-gray-400 mb-1">배송방법</label>
-            <select id="dashMethod" class="border rounded px-2 py-1 text-xs" style="color:#212529;">
+            <select id="dashMethod" class="border rounded px-2 py-1 text-xs" style="color:var(--c-text);">
               <option value="">전체</option>
               <option value="택배">택배</option>
               <option value="방문수령">방문수령</option>
@@ -26,7 +26,7 @@ export function shipmentsDashboardPage(c: Context) {
           </div>
           <div>
             <label class="block text-[10px] text-gray-400 mb-1">상태</label>
-            <select id="dashStatus" class="border rounded px-2 py-1 text-xs" style="color:#212529;">
+            <select id="dashStatus" class="border rounded px-2 py-1 text-xs" style="color:var(--c-text);">
               <option value="all">전체</option>
               <option value="ready">출고 가능</option>
               <option value="pending">미완료</option>
@@ -44,7 +44,7 @@ export function shipmentsDashboardPage(c: Context) {
       <!-- 요약 카드 -->
       <div class="grid grid-cols-3 gap-2">
         <div class="ds-card p-2.5 text-center hover:shadow-md transition-shadow">
-          <div id="dashTotal" class="text-xl font-bold tabular-nums" style="color:#212529;">-</div>
+          <div id="dashTotal" class="text-xl font-bold tabular-nums" style="color:var(--c-text);">-</div>
           <div class="text-[10px] text-gray-400">전체</div>
         </div>
         <div class="ds-card p-2.5 text-center hover:shadow-md transition-shadow">

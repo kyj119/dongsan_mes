@@ -92,8 +92,8 @@ function renderStorageZones() {
       + '<td class="px-3 py-3 text-center">' + statusBadge + '</td>'
       + '<td class="px-3 py-3 text-center">'
       + '<div class="flex items-center justify-center gap-1">'
-      + '<button onclick="openEditZoneModal(' + z.id + ')" class="p-1.5 text-gray-400 hover:text-blue-600 rounded" title="수정"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>'
-      + '<button onclick="deleteZone(' + z.id + ')" class="p-1.5 text-gray-400 hover:text-red-600 rounded" title="삭제"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>'
+      + '<button onclick="openEditZoneModal(' + z.id + ')" class="p-1.5 text-gray-400 hover:text-blue-600 rounded" title="수정"><i class="fas fa-edit"></i></button>'
+      + '<button onclick="deleteZone(' + z.id + ')" class="p-1.5 text-gray-400 hover:text-red-600 rounded" title="삭제"><i class="fas fa-trash-alt"></i></button>'
       + '</div>'
       + '</td>'
       + '</tr>';

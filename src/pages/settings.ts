@@ -85,7 +85,7 @@ ${capsSettingsScript}
           <!-- 회사 정보 -->
           <div class="bg-white rounded-lg border border-gray-200 p-6">
             <h2 class="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <svg class="w-5 h-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>
+              <i class="fas fa-building text-gray-500"></i>
               <span>법인 정보</span> <span id="entityLabel" class="text-sm font-normal text-blue-600 ml-2"></span>
             </h2>
             <div id="settingsForm" class="space-y-4">
@@ -228,7 +228,7 @@ ${capsSettingsScript}
           <!-- 전자세금계산서 (바로빌) -->
           <div class="bg-white rounded-lg border border-gray-200 p-6">
             <h2 class="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <svg class="w-5 h-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+              <i class="fas fa-file-invoice text-gray-500"></i>
               전자세금계산서
             </h2>
             <div class="space-y-4">
@@ -276,7 +276,7 @@ ${capsSettingsScript}
           <div class="bg-white rounded-lg border border-gray-200 p-6">
             <div class="flex items-center justify-between mb-6">
               <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2">
-                <svg class="w-5 h-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>
+                <i class="fas fa-calculator text-gray-500"></i>
                 원가 기준 설정
               </h2>
               <button onclick="addCostRow()" class="ds-btn ds-btn-primary">+ 추가</button>
@@ -312,7 +312,7 @@ ${capsSettingsScript}
           <!-- 발주 자동승인 설정 -->
           <div class="bg-white rounded-lg border border-gray-200 p-6">
             <h2 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <svg class="w-5 h-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+              <i class="fas fa-check-square text-gray-500"></i>
               빠른 발주 설정
             </h2>
             <p class="text-sm text-gray-500 mb-4">자동승인 한도를 설정하면, 해당 금액 이하의 빠른 발주는 승인 없이 바로 확정됩니다.</p>
@@ -338,7 +338,7 @@ ${capsSettingsScript}
           <div class="bg-white rounded-lg border border-gray-200 p-6">
             <div class="flex items-center justify-between mb-6">
               <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2">
-                <svg class="w-5 h-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 7 10-4 10 4"/><path d="M4 10v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M10 20v-6h4v6"/><path d="M2 7v4l10 4 10-4V7"/></svg>
+                <i class="fas fa-warehouse text-gray-500"></i>
                 창고 구역 관리
               </h2>
               <button onclick="openAddZoneModal()" class="ds-btn ds-btn-primary">+ 구역 추가</button>
@@ -362,7 +362,7 @@ ${capsSettingsScript}
               </table>
             </div>
             <div id="noZonesMsg" class="text-center py-8 hidden">
-              <svg class="w-10 h-10 text-gray-300 mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 7 10-4 10 4"/><path d="M4 10v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M10 20v-6h4v6"/><path d="M2 7v4l10 4 10-4V7"/></svg>
+              <i class="fas fa-warehouse text-3xl mb-2 block text-gray-300"></i>
               <p class="text-gray-400 text-sm">등록된 창고 구역이 없습니다.</p>
               <button onclick="openAddZoneModal()" class="mt-3 ds-btn ds-btn-primary">+ 첫 구역 추가</button>
             </div>

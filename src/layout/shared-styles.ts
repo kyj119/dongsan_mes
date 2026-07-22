@@ -720,6 +720,8 @@ export const SHARED_CSS = `
     z-index: 50; display: flex; align-items: center; justify-content: center; padding: var(--space-lg);
     animation: ds-fadeIn 0.15s ease;
   }
+  /* 모달 위 모달(검색·라이트박스·결과 오버레이) 전용 층 — 임의 z-[60]/z-[70] 금지, 이 클래스만 사용 */
+  .ds-z-stack { z-index: 60; }
   .ds-modal {
     background: var(--c-surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-xl);
     width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto;
@@ -899,4 +901,32 @@ export const SHARED_CSS = `
   html.dark .ds-table-striped thead th { background: var(--c-surface-secondary); }
   html.dark .hover\\:bg-gray-50:hover { background-color: #1e293b !important; }
   html.dark .hover\\:bg-blue-50\\/30:hover { background-color: rgba(96,165,250,0.1) !important; }
+
+  /* === 인쇄 = 항상 라이트 팔레트 (다크모드 중 인쇄 시 흰 종이·검정 글자 보장) === */
+  @media print {
+    html.dark {
+      color-scheme: light;
+      --c-bg: #F0F1F3; --c-surface: #ffffff; --c-surface-secondary: #f9fafb; --c-surface-stripe: #f8fafc;
+      --c-text: #1e293b; --c-text-secondary: #64748b; --c-text-muted: #94a3b8;
+      --c-border: #e2e8f0; --c-border-light: #f1f5f9;
+      --c-primary: #3b82f6; --c-primary-hover: #2563eb; --c-primary-light: #eff6ff; --c-primary-dark: #1e40af;
+      --c-success: #16a34a; --c-success-light: #dcfce7;
+      --c-warning: #d97706; --c-warning-light: #fef3c7;
+      --c-danger: #dc2626; --c-danger-light: #fee2e2;
+      --c-info: #2563eb; --c-info-light: #dbeafe;
+      --c-purple: #7c3aed; --c-purple-light: #f5f3ff;
+      --c-orange: #ea580c; --c-orange-light: #fff7ed;
+      --c-teal: #0d9488; --c-teal-light: #f0fdfa;
+    }
+    html.dark .bg-white { background-color: #ffffff !important; }
+    html.dark .bg-gray-50 { background-color: #f9fafb !important; }
+    html.dark .bg-gray-100 { background-color: #f3f4f6 !important; }
+    html.dark .text-gray-900 { color: #111827 !important; }
+    html.dark .text-gray-800 { color: #1f2937 !important; }
+    html.dark .text-gray-700 { color: #374151 !important; }
+    html.dark .text-gray-600 { color: #4b5563 !important; }
+    html.dark .text-gray-500 { color: #6b7280 !important; }
+    html.dark .text-gray-400 { color: #9ca3af !important; }
+    html.dark .border, html.dark .border-gray-100, html.dark .border-gray-200, html.dark .border-gray-300 { border-color: #e5e7eb !important; }
+  }
 </style>`

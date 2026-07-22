@@ -71,15 +71,9 @@ function renderCard(card) {
 
 // ── 장비 칼럼 생성 ──
 function renderEquipmentColumn(eq) {
-  const statusColors = {
-    RUNNING: 'bg-green-50 text-green-700',
-    IDLE: 'bg-gray-100 text-gray-600',
-    MAINTENANCE: 'bg-amber-50 text-amber-700',
-    BROKEN: 'bg-red-50 text-red-700'
-  };
-  const statusLabels = { RUNNING: '가동중', IDLE: '대기', MAINTENANCE: '정비중', BROKEN: '고장' };
-  const statusClass = statusColors[eq.equipment_status] || statusColors.IDLE;
-  const statusLabel = statusLabels[eq.equipment_status] || eq.equipment_status;
+  // 장비상태 라벨·색 = MES_STATUS 'equip' SSOT (utils/statusLabels.ts)
+  const statusClass = window.MES_STATUS.chipClass('equip', eq.equipment_status);
+  const statusLabel = window.MES_STATUS.equipLabel(eq.equipment_status || 'IDLE');
 
   const capacity = eq.daily_capacity || 0;
   const count = eq.queue_count || 0;

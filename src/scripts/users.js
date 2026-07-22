@@ -81,7 +81,7 @@
     if (existing) existing.remove();
     var modal = document.createElement('div');
     modal.id = 'itemAccessModal';
-    modal.className = 'fixed inset-0 bg-black/40 flex items-center justify-center z-[70]';
+    modal.className = 'fixed inset-0 bg-black/40 flex items-center justify-center ds-z-stack';
     modal.innerHTML = '<div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col mx-4">' +
       '<div class="p-4 border-b flex items-center justify-between">' +
         '<h2 class="text-lg font-bold"><i class="fas fa-user-tag text-purple-600 mr-2"></i>사용 품목 배정 — ' + esc(userName || '') + '</h2>' +

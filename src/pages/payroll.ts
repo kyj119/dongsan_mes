@@ -101,19 +101,19 @@ export function payrollPage(c: Context<HonoEnv>) {
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div class="ds-card p-4">
             <div class="text-xs text-gray-500">총 인원</div>
-            <div class="text-2xl font-bold text-gray-900 mt-1" id="prSumCount">-</div>
+            <div class="text-3xl font-bold text-gray-900 mt-1 tabular-nums" id="prSumCount">-</div>
           </div>
           <div class="ds-card p-4">
             <div class="text-xs text-gray-500">지급 총액</div>
-            <div class="text-2xl font-bold text-gray-900 mt-1" id="prSumGross">-</div>
+            <div class="text-3xl font-bold text-gray-900 mt-1 tabular-nums" id="prSumGross">-</div>
           </div>
           <div class="ds-card p-4">
             <div class="text-xs text-gray-500">공제 총액</div>
-            <div class="text-2xl font-bold text-red-600 mt-1" id="prSumDeduct">-</div>
+            <div class="text-3xl font-bold text-red-600 mt-1 tabular-nums" id="prSumDeduct">-</div>
           </div>
           <div class="ds-card p-4">
             <div class="text-xs text-gray-500">실지급 총액</div>
-            <div class="text-2xl font-bold text-green-600 mt-1" id="prSumNet">-</div>
+            <div class="text-3xl font-bold text-green-600 mt-1 tabular-nums" id="prSumNet">-</div>
           </div>
         </div>
 
@@ -159,31 +159,31 @@ export function payrollPage(c: Context<HonoEnv>) {
         <style>
           /* 급여대장: 고정형(table-layout:fixed) — 값이 바뀌어도 컬럼 폭 불변 */
           .ds-ledger { border-collapse: collapse; table-layout: fixed; font-variant-numeric: tabular-nums; }
-          .ds-ledger th, .ds-ledger td { border: 1px solid #e5e7eb; padding: 3px 6px; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 1.35; }
-          .ds-ledger thead th { background: #f1f5f9; font-weight: 600; }
+          .ds-ledger th, .ds-ledger td { border: 1px solid var(--c-border); padding: 3px 6px; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 1.35; }
+          .ds-ledger thead th { background: var(--c-border-light); font-weight: 600; }
           .ds-ledger td.num, .ds-ledger th.num { text-align: right; }
           .ds-ledger td.lft, .ds-ledger th.lft { text-align: left; }
           .ds-ledger td.ctr, .ds-ledger th.ctr { text-align: center; }
-          .ds-ledger td.z { color: #c8d0da; }                          /* 0원 값 흐리게 (구조상 표시는 유지) */
-          .ds-ledger tr.band-b td { border-bottom: 2px solid #cbd5e1; } /* 직원(지급/공제 2행) 블록 구분선 */
-          .ds-ledger .stick { position: sticky; background: #fff; z-index: 1; }
-          .ds-ledger thead .stick { z-index: 3; background: #f1f5f9; }
-          .ds-ledger .grp-pay { background: #eff6ff; }
-          .ds-ledger .grp-ded { background: #fef2f2; }
+          .ds-ledger td.z { color: var(--c-text-muted); }                          /* 0원 값 흐리게 (구조상 표시는 유지) */
+          .ds-ledger tr.band-b td { border-bottom: 2px solid var(--c-border); } /* 직원(지급/공제 2행) 블록 구분선 */
+          .ds-ledger .stick { position: sticky; background: var(--c-surface); z-index: 1; }
+          .ds-ledger thead .stick { z-index: 3; background: var(--c-border-light); }
+          .ds-ledger .grp-pay { background: var(--c-primary-light); }
+          .ds-ledger .grp-ded { background: var(--c-danger-light); }
           /* 4단 구조: 라벨+금액 셀 / 병합 계 셀 / 근태 메타 */
-          .ds-ledger td.lv .lv-l { float: left; color: #94a3b8; font-size: 10px; }
+          .ds-ledger td.lv .lv-l { float: left; color: var(--c-text-muted); font-size: 10px; }
           .ds-ledger td.lv .lv-v { float: right; font-variant-numeric: tabular-nums; }
           .ds-ledger td.sumcell { font-size: 12.5px; font-weight: 700; text-align: right; }
-          .ds-ledger td.meta { color: #94a3b8; font-size: 10px; }
-          .ds-ledger .grp-emp { background: #f0fdf4; }
-          .ds-ledger .grp-sum { background: #fefce8; }
+          .ds-ledger td.meta { color: var(--c-text-muted); font-size: 10px; }
+          .ds-ledger .grp-emp { background: var(--c-success-light); }
+          .ds-ledger .grp-sum { background: var(--c-warning-light); }
           .ds-ledger .b { font-weight: 600; }
-          .ds-ledger tbody tr.subtotal td { background: #eef2f7; font-weight: 600; }
-          .ds-ledger tbody tr.subtotal .stick { background: #eef2f7; }
-          .ds-ledger tbody tr.grandtotal td { background: #dbe3ec; font-weight: 700; }
-          .ds-ledger tbody tr.grandtotal .stick { background: #dbe3ec; }
-          .ds-ledger tbody tr:hover td { background: #fafafa; }
-          .ds-ledger tbody tr:hover .stick { background: #fafafa; }
+          .ds-ledger tbody tr.subtotal td { background: var(--c-border-light); font-weight: 600; }
+          .ds-ledger tbody tr.subtotal .stick { background: var(--c-border-light); }
+          .ds-ledger tbody tr.grandtotal td { background: var(--c-border); font-weight: 700; }
+          .ds-ledger tbody tr.grandtotal .stick { background: var(--c-border); }
+          .ds-ledger tbody tr:hover td { background: var(--c-surface-secondary); }
+          .ds-ledger tbody tr:hover .stick { background: var(--c-surface-secondary); }
         </style>
       </div>
 

@@ -10,16 +10,16 @@ export function ledgerPage(c: Context<HonoEnv>) {
     pageCSS: `
       .bar-cell{position:relative;height:24px;border-radius:4px;min-width:2px}
       .client-row{cursor:pointer;transition:background .15s}
-      .client-row:hover{background:#fff7ed}
+      .client-row:hover{background:var(--c-orange-light)}
       .client-row.active{background:#fed7aa}
       #adjustmentModal.show{display:flex!important}
       .aging-badge{display:inline-block;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:500}
-      .aging-normal{background:#dcfce7;color:#15803d}
-      .aging-warning{background:#fef9c3;color:#a16207}
-      .aging-danger{background:#ffedd5;color:#c2410c}
-      .aging-critical{background:#fee2e2;color:#b91c1c}
+      .aging-normal{background:var(--c-success-light);color:var(--c-success)}
+      .aging-warning{background:var(--c-warning-light);color:var(--c-warning)}
+      .aging-danger{background:var(--c-orange-light);color:var(--c-orange)}
+      .aging-critical{background:var(--c-danger-light);color:var(--c-danger)}
       #clientDetailModal .modal-body{overflow-y:auto;max-height:calc(100vh - 72px)}
-      #clientDetailModal .modal-header{position:sticky;top:0;background:#fff;border-bottom:1px solid #e5e7eb;padding:12px 24px;z-index:10}
+      #clientDetailModal .modal-header{position:sticky;top:0;background:var(--c-surface);border-bottom:1px solid var(--c-border);padding:12px 24px;z-index:10}
       #clientDetailModal .ds-table td{font-size:13px}
       #transactionsTableBody .tx-badge{display:inline-block;min-width:52px;text-align:center;padding:2px 6px;font-size:11px;font-weight:600;border-radius:4px;white-space:nowrap}
       /* 거래처별 원장 표: 헤더/바디/합계 패딩 통일 (specificity 0,2,2 > ds-table-striped, Tailwind px-4 무력화) */
@@ -30,7 +30,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
     `,
     pageContent: `
         <!-- 회계반영 대기 배너 -->
-        <div id="billingPendingBanner" class="hidden ds-card mb-4" style="border:2px solid #93c5fd;background:#eff6ff;padding:12px 16px">
+        <div id="billingPendingBanner" class="hidden ds-card mb-4" style="border:2px solid var(--c-info);background:var(--c-primary-light);padding:12px 16px">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
               <i class="fas fa-clock text-blue-500"></i>
@@ -103,11 +103,11 @@ export function ledgerPage(c: Context<HonoEnv>) {
                     <div class="text-lg font-bold text-red-600 tabular-nums text-right" id="totalBalance">-</div>
                     <div class="text-xs text-gray-400 mt-1 text-right" id="balanceRatio"></div>
                 </div>
-                <div class="ds-card ds-card-compact" style="border-left:3px solid #f59e0b">
+                <div class="ds-card ds-card-compact" style="border-left:3px solid var(--c-warning)">
                     <div class="ds-label mb-1"><i class="fas fa-clock text-amber-500 mr-1"></i>30일+ 연체</div>
                     <div class="text-lg font-bold text-amber-600 tabular-nums text-right" id="agingOver30">-</div>
                 </div>
-                <div class="ds-card ds-card-compact" style="border-left:3px solid #ef4444">
+                <div class="ds-card ds-card-compact" style="border-left:3px solid var(--c-danger)">
                     <div class="ds-label mb-1"><i class="fas fa-fire text-red-500 mr-1"></i>60일+ 연체</div>
                     <div class="text-lg font-bold text-red-600 tabular-nums text-right" id="agingOver60">-</div>
                 </div>
@@ -172,7 +172,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
                         </button>
                     </div>
                 </div>
-                <div id="clientsCapNote" class="hidden mx-3 mb-2 px-3 py-2 rounded text-xs" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;"></div>
+                <div id="clientsCapNote" class="hidden mx-3 mb-2 px-3 py-2 rounded text-xs" style="background:var(--c-warning-light);color:var(--c-warning);border:1px solid var(--c-warning);"></div>
                 <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
                     <table class="ds-table ds-table-compact ds-table-striped led-tbl">
                         <thead>
@@ -314,7 +314,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
                         <div class="text-lg font-bold text-red-600 tabular-nums text-right" id="closingReceivables">-</div>
                         <div class="text-xs text-gray-400 text-right mt-1" id="closingReceivableClients"></div>
                     </div>
-                    <div class="ds-card ds-card-compact" style="border-left:3px solid #f59e0b">
+                    <div class="ds-card ds-card-compact" style="border-left:3px solid var(--c-warning)">
                         <div class="ds-label mb-1"><i class="fas fa-file-invoice text-amber-500 mr-1"></i>미발행 계산서</div>
                         <div class="text-lg font-bold text-amber-600 tabular-nums text-right" id="closingUnbilled">-</div>
                         <div class="text-xs text-gray-400 text-right mt-1" id="closingUnbilledAmount"></div>
@@ -420,7 +420,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
         <!-- ===== 거래처 상세 모달 (은행 거래내역 스타일) ===== -->
         <div id="clientDetailModal" class="hidden" data-esc-close="closeDetailModal" style="position:fixed;inset:0;z-index:50">
             <div style="position:absolute;inset:0;background:rgba(0,0,0,0.3)" onclick="closeDetailModal()"></div>
-            <div style="position:relative;background:#fff;max-width:1100px;margin:16px auto;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15);display:flex;flex-direction:column;max-height:calc(100vh - 32px)">
+            <div style="position:relative;background:var(--c-surface);max-width:1100px;margin:16px auto;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15);display:flex;flex-direction:column;max-height:calc(100vh - 32px)">
 
                 <!-- 모달 헤더 -->
                 <div class="modal-header" style="flex-shrink:0">

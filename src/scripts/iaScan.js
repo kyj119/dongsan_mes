@@ -610,7 +610,7 @@ function resetFilters() {
 // ── 일괄 승인/거부 ───────────────────────────────────────
 function bulkApprove() {
   if (!canBulkApprove()) {
-    showToast('샘플 검수 오류율이 5% 초과입니다', true);
+    showToast('샘플 검수 오류율이 5% 초과입니다', 'error');
     return;
   }
   var count = 0;
@@ -626,7 +626,7 @@ function bulkApprove() {
     saveState();
     updateStats();
     renderTable();
-    showToast(count + '건 일괄 승인 완료 (paired만)');
+    showToast(count + '건 일괄 승인 완료 (paired만)', 'success');
   }
 }
 
@@ -643,7 +643,7 @@ function bulkReject() {
     saveState();
     updateStats();
     renderTable();
-    showToast(count + '건 일괄 거부 완료');
+    showToast(count + '건 일괄 거부 완료', 'success');
   }
 }
 
@@ -653,7 +653,7 @@ async function bulkApproveFiltered() {
     return !s || s.status === 'pending';
   });
   if (pending.length === 0) {
-    showToast('승인 대상이 없습니다');
+    showToast('승인 대상이 없습니다', 'warning');
     return;
   }
   if (!(await showConfirm('현재 필터에 보이는 ' + pending.length + '건을 모두 승인하시겠습니까?'))) return;
@@ -665,12 +665,12 @@ async function bulkApproveFiltered() {
   updateStats();
   renderTable();
   renderPreview();
-  showToast(pending.length + '건 일괄 승인 완료');
+  showToast(pending.length + '건 일괄 승인 완료', 'success');
 }
 
 async function bulkApproveSameOutput() {
   if (!previewRowId) {
-    showToast('먼저 행을 선택하세요');
+    showToast('먼저 행을 선택하세요', 'warning');
     return;
   }
   var current = allRows.find(function(r) { return r.id === previewRowId; });
@@ -680,7 +680,7 @@ async function bulkApproveSameOutput() {
     return r.output_file === current.output_file;
   });
   if (sameRows.length <= 1) {
-    showToast('같은 출력 파일의 다른 행이 없습니다');
+    showToast('같은 출력 파일의 다른 행이 없습니다', 'warning');
     return;
   }
 
@@ -701,17 +701,17 @@ async function bulkApproveSameOutput() {
   updateStats();
   renderTable();
   renderPreview();
-  showToast(pendingCount + '건 일괄 승인 완료 (같은 출력 파일)');
+  showToast(pendingCount + '건 일괄 승인 완료 (같은 출력 파일)', 'success');
 }
 
 async function bulkApproveClientDate() {
   if (!previewRowId) {
-    showToast('먼저 행을 선택하세요');
+    showToast('먼저 행을 선택하세요', 'warning');
     return;
   }
   var current = allRows.find(function(r) { return r.id === previewRowId; });
   if (!current || !current.client || !current.day) {
-    showToast('거래처 또는 날짜 정보가 없습니다');
+    showToast('거래처 또는 날짜 정보가 없습니다', 'warning');
     return;
   }
 
@@ -719,7 +719,7 @@ async function bulkApproveClientDate() {
     return r.client === current.client && r.day === current.day;
   });
   if (sameRows.length <= 1) {
-    showToast('같은 거래처+날짜의 다른 행이 없습니다');
+    showToast('같은 거래처+날짜의 다른 행이 없습니다', 'warning');
     return;
   }
 
@@ -740,7 +740,7 @@ async function bulkApproveClientDate() {
   updateStats();
   renderTable();
   renderPreview();
-  showToast(pendingCount + '건 일괄 승인 완료 (거래처+날짜)');
+  showToast(pendingCount + '건 일괄 승인 완료 (거래처+날짜)', 'success');
 }
 
 // ── 정렬 ──────────────────────────────────────────────────
@@ -949,7 +949,7 @@ function exportVerified() {
   a.download = 'verified_' + loadedFileName.replace('.csv', '') + '.json';
   a.click();
   URL.revokeObjectURL(url);
-  showToast('verified.json 다운로드 (' + approved.length + '건 승인, ' + rejected.length + '건 거부)');
+  showToast('verified.json 다운로드 (' + approved.length + '건 승인, ' + rejected.length + '건 거부)', 'success');
 }
 
 // ── 불러오기 ──────────────────────────────────────────────
@@ -964,11 +964,11 @@ function handleVerifiedJson(file) {
     try {
       var data = JSON.parse(e.target.result);
       if (!data.items || !data.metadata) {
-        showToast('올바른 verified.json 파일이 아닙니다', true);
+        showToast('올바른 verified.json 파일이 아닙니다', 'error');
         return;
       }
       if (allRows.length === 0) {
-        showToast('먼저 pairs.csv를 로드해주세요', true);
+        showToast('먼저 pairs.csv를 로드해주세요', 'error');
         return;
       }
       var count = 0;
@@ -992,9 +992,9 @@ function handleVerifiedJson(file) {
       saveState();
       updateStats();
       renderTable();
-      showToast(count + '건 검수 상태 복원 완료');
+      showToast(count + '건 검수 상태 복원 완료', 'success');
     } catch(err) {
-      showToast('JSON 파싱 오류: ' + err.message, true);
+      showToast('JSON 파싱 오류: ' + err.message, 'error');
     }
   };
   reader.readAsText(file, 'UTF-8');
@@ -1086,15 +1086,6 @@ function saveFinEdit(id) {
   });
   closeFinEdit();
   renderTable();
-}
-
-function showToast(msg, isError) {
-  var el = document.createElement('div');
-  el.className = 'fixed bottom-4 right-4 px-4 py-2 rounded-lg text-sm shadow-lg z-50 ' +
-    (isError ? 'bg-red-600 text-white' : 'bg-gray-800 text-white');
-  el.textContent = msg;
-  document.body.appendChild(el);
-  setTimeout(function() { el.remove(); }, 3000);
 }
 
 // ── 행 선택 + 미리보기 ──────────────────────────────────────
@@ -1322,14 +1313,14 @@ function handleGuerrillaJson(file) {
     try {
       gData = JSON.parse(e.target.result);
       if (!gData.files || !gData.summary) {
-        showToast('올바른 guerrilla-ocr.json이 아닙니다', true);
+        showToast('올바른 guerrilla-ocr.json이 아닙니다', 'error');
         gData = null;
         return;
       }
       initGuerrillaState();
       onGuerrillaLoaded();
     } catch(err) {
-      showToast('JSON 파싱 오류: ' + err.message, true);
+      showToast('JSON 파싱 오류: ' + err.message, 'error');
     }
   };
   reader.readAsText(file, 'UTF-8');
@@ -1426,7 +1417,7 @@ function gBulkApprove() {
   if (count > 0) {
     updateGuerrillaStats();
     renderGuerrillaTable();
-    showToast(count + '건 일괄 승인');
+    showToast(count + '건 일괄 승인', 'success');
   }
 }
 
@@ -1557,7 +1548,7 @@ function exportGuerrilla() {
   var a = document.createElement('a');
   a.href = url; a.download = 'guerrilla-verified.json';
   a.click(); URL.revokeObjectURL(url);
-  showToast('guerrilla-verified.json 다운로드 (' + approved.length + '건)');
+  showToast('guerrilla-verified.json 다운로드 (' + approved.length + '건)', 'success');
 }
 
 // ── 이벤트 바인딩 ─────────────────────────────────────────

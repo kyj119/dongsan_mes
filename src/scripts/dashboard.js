@@ -440,16 +440,15 @@ async function loadEquipmentLoad() {
     if (items.length === 0) { section.style.display = 'none'; return; }
     section.style.display = '';
     var container = document.getElementById('equipmentLoadList');
-    var statusLabels = { RUNNING: '가동중', IDLE: '대기', MAINTENANCE: '정비중', BROKEN: '고장' };
-    var statusDots = { RUNNING: 'text-green-500', IDLE: 'text-gray-400', MAINTENANCE: 'text-amber-500', BROKEN: 'text-red-500' };
+    // 장비상태 라벨·도트색 = MES_STATUS 'equip' SSOT (utils/statusLabels.ts)
     container.innerHTML = items.map(function(eq) {
       var count = eq.queue_count || 0;
       var cap = eq.daily_capacity || 0;
       var isOverloaded = cap > 0 && count > cap;
       var pct = cap > 0 ? Math.min(100, Math.round((count / cap) * 100)) : 0;
       var barColor = isOverloaded ? 'bg-red-500' : pct > 70 ? 'bg-amber-500' : 'bg-green-500';
-      var statusLabel = statusLabels[eq.equipment_status] || eq.equipment_status || 'IDLE';
-      var dotClass = statusDots[eq.equipment_status] || 'text-gray-400';
+      var statusLabel = window.MES_STATUS.equipLabel(eq.equipment_status || 'IDLE');
+      var dotClass = window.MES_STATUS.dotClass('equip', eq.equipment_status);
       var onlineDot = eq.agent_status === 'ONLINE' ? '<span class="w-1.5 h-1.5 bg-green-500 rounded-full inline-block ml-1"></span>' : '';
       var loadText = cap > 0 ? (count + '/' + cap) : (count + '건');
       return '<div class="p-3 rounded-lg border ' + (isOverloaded ? 'border-red-300 bg-red-50' : 'border-gray-200') + ' cursor-pointer hover:shadow" onclick="location.href=\'/schedule\'">'

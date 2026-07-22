@@ -466,7 +466,7 @@ async function loadOrders() {
           consBadge = `<div class="mt-0.5"><span class="inline-block px-1.5 py-0.5 text-[10px] rounded bg-amber-100 text-amber-700 font-bold" title="합배송 묶음 대표 — ${escapeHtml(order.consolidation_child_numbers || '')}와 한 박스로 출고 (주문서·청구서는 각각 유지)"><i class="fas fa-box mr-0.5"></i>합배송 ${order.consolidation_child_count}건</span></div>`;
         }
         return `
-          <tr class="hover:bg-gray-50" data-order-id="${order.id}" data-status="${order.status}" data-billing-status="${order.billing_status || ''}" data-order-number="${escapeHtml(order.order_number || ('#' + order.id))}">
+          <tr class="group hover:bg-gray-50" data-order-id="${order.id}" data-status="${order.status}" data-billing-status="${order.billing_status || ''}" data-order-number="${escapeHtml(order.order_number || ('#' + order.id))}">
             <td class="px-2 py-2.5 text-center">
               <input type="checkbox" class="order-checkbox rounded border-gray-300" data-order-id="${order.id}" onchange="toggleOrderSelect(this)" ${selectedOrderIds.has(order.id) ? 'checked' : ''}>
             </td>
@@ -495,7 +495,7 @@ async function loadOrders() {
             <td class="px-2 py-2.5 whitespace-nowrap">
               <div class="text-xs text-gray-500">${formatKST(order.created_at, 'date')}</div>
             </td>
-            <td class="px-2 py-2.5 whitespace-nowrap text-center text-sm ord-act">
+            <td class="px-2 py-2.5 whitespace-nowrap text-center text-sm ord-act opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
               <button onclick="viewOrder(${order.id})" class="text-blue-600 hover:text-blue-900 mx-1" title="상세"><i class="fas fa-eye"></i></button>
               <button onclick="showStatusChangeModal(${order.id}, '${order.status}')" class="text-green-600 hover:text-green-900 mx-1" title="상태변경"><i class="fas fa-sync-alt"></i></button>
               <button onclick="openInvoice(${order.id})" class="text-blue-600 hover:text-blue-900 mx-1" title="명세서"><i class="fas fa-file-invoice"></i></button>

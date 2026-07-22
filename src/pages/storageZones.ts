@@ -75,7 +75,7 @@ export function storageZonesPage(c: Context<HonoEnv>) {
           </button>
         </div>
       </div>
-      <div id="szLayoutCanvas" style="height:580px; position:relative; overflow:hidden; border-radius:8px; background:#f0f4f8; border:1px solid #e5e7eb;">
+      <div id="szLayoutCanvas" style="height:580px; position:relative; overflow:hidden; border-radius:8px; background:var(--c-bg); border:1px solid var(--c-border);">
         <div id="szLayoutBg" style="position:absolute;inset:0;z-index:0;background-size:100% 100%;background-position:center;background-repeat:no-repeat;"></div>
         <div id="szLayoutZones" style="position:absolute;inset:0;z-index:1;"></div>
         <div id="szLayoutEmpty" style="position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:5;pointer-events:none;">

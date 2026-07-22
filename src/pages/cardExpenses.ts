@@ -12,12 +12,12 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
       .card-stat{border-left:3px solid}
       .status-pill{display:inline-block;padding:1px 8px;border-radius:9999px;font-size:11px;font-weight:600}
       .tx-row{transition:background .15s}
-      .tx-row:hover{background:#f8fafc}
-      .tx-row.selected{background:#eff6ff}
-      .tx-row.offset-row{opacity:.55;background:#f9fafb}
-      .tx-row.offset-row td{color:#9ca3af}
+      .tx-row:hover{background:var(--c-surface-stripe)}
+      .tx-row.selected{background:var(--c-primary-light)}
+      .tx-row.offset-row{opacity:.55;background:var(--c-surface-secondary)}
+      .tx-row.offset-row td{color:var(--c-text-muted)}
       .tx-row td{vertical-align:middle}
-      .receipt-preview{max-width:200px;max-height:200px;border-radius:8px;border:1px solid #e5e7eb}
+      .receipt-preview{max-width:200px;max-height:200px;border-radius:8px;border:1px solid var(--c-border)}
     `,
     pageContent: `
       <!-- 탭 -->
@@ -503,7 +503,7 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- ===== 영수증 라이트박스 ===== -->
-      <div id="receiptLightbox" class="hidden fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4" onclick="closeReceiptLightbox()">
+      <div id="receiptLightbox" class="hidden fixed inset-0 ds-z-stack bg-black/70 flex items-center justify-center p-4" onclick="closeReceiptLightbox()">
         <div class="relative max-w-3xl max-h-[90vh]" onclick="event.stopPropagation()">
           <button onclick="closeReceiptLightbox()" class="absolute -top-3 -right-3 bg-white rounded-full w-8 h-8 shadow text-gray-700 hover:text-red-600"><i class="fas fa-times"></i></button>
           <div id="receiptLightboxBody" class="bg-white rounded-lg p-2 overflow-auto" style="max-height:90vh"><div class="p-10 text-center text-gray-400"><i class="fas fa-spinner fa-spin"></i></div></div>

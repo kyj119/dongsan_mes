@@ -11,12 +11,12 @@ export const approvalsPage = (c: Context<HonoEnv>) => {
   const content = `
     <div class="space-y-4">
       <!-- 상단 버튼 -->
-      <div class="flex justify-between items-center">
-        <div class="flex space-x-2">
-          <button data-tab="pending" class="px-4 py-2 rounded text-sm font-medium bg-blue-600 text-white">대기 결재<span id="pending-count"></span></button>
-          <button data-tab="my" class="px-4 py-2 rounded text-sm font-medium bg-gray-200 text-gray-700">내 요청</button>
-          <button data-tab="all" class="px-4 py-2 rounded text-sm font-medium bg-gray-200 text-gray-700">전체 현황</button>
-          <button data-tab="templates" class="px-4 py-2 rounded text-sm font-medium bg-gray-200 text-gray-700" onclick="renderTemplates()">양식 관리</button>
+      <div class="flex justify-between items-center border-b border-gray-200">
+        <div class="flex">
+          <button data-tab="pending" class="px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600 -mb-px">대기 결재<span id="pending-count"></span></button>
+          <button data-tab="my" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 -mb-px">내 요청</button>
+          <button data-tab="all" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 -mb-px">전체 현황</button>
+          <button data-tab="templates" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 -mb-px" onclick="renderTemplates()">양식 관리</button>
         </div>
         <button onclick="openNewRequestModal()" class="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
           <i class="fas fa-plus mr-1"></i>새 결재 요청

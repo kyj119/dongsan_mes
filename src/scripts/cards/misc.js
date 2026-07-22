@@ -4,7 +4,7 @@ function zoomThumb(src) {
     if (existing) existing.remove();
     var modal = document.createElement('div');
     modal.id = 'zoomModal';
-    modal.className = 'fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[60]';
+    modal.className = 'fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center ds-z-stack';
     modal.style.cursor = 'grab';
     var safeSrc = src.replace(/[<>"']/g, '');
     modal.innerHTML = '<img src="' + safeSrc + '" id="zoomImg" style="max-width:95vw;max-height:90vh;object-fit:contain;transform-origin:center;transition:transform 0.1s">'

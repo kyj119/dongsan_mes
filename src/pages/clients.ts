@@ -191,7 +191,7 @@ export function clientsPage(c: Context<HonoEnv>) {
               <div>
                 <label class="ds-label">연체 기준일(일)</label>
                 <input type="number" id="clientModalOverdueDays" class="ds-input" placeholder="30" min="1" max="365">
-                <div class="text-xs mt-1" style="color:#6b7280">미입력 시 30일. 청구 후 이 일수 초과 시 연체 경고</div>
+                <div class="text-xs mt-1" style="color:var(--c-text-secondary)">미입력 시 30일. 청구 후 이 일수 초과 시 연체 경고</div>
               </div>
               <div>
                 <label class="ds-label">대표자</label>
@@ -252,7 +252,7 @@ export function clientsPage(c: Context<HonoEnv>) {
                 <label class="ds-label">검색 키워드</label>
                 <textarea id="clientModalSearchKeywords" rows="2" class="ds-input" placeholder="검색에 사용할 키워드 (쉼표로 구분)"></textarea>
               </div>
-              <div class="col-span-1 md:col-span-2" style="border-top:1px solid #e5e7eb;padding-top:10px">
+              <div class="col-span-1 md:col-span-2" style="border-top:1px solid var(--c-border);padding-top:10px">
                 <label class="ds-label">결제 주기 <span class="text-xs font-normal" style="color:var(--c-primary)">(미수금 회수예측)</span></label>
                 <div class="flex flex-wrap items-center gap-2">
                   <select id="clientModalCycleType" class="ds-input" style="width:auto" onchange="onCycleTypeChange()">
@@ -261,9 +261,9 @@ export function clientsPage(c: Context<HonoEnv>) {
                     <option value="THRESHOLD">누적 임계(후순위)</option>
                   </select>
                   <div id="cycleNetWrap" class="flex items-center gap-1">
-                    <span class="text-sm" style="color:#6b7280">청구일 +</span>
+                    <span class="text-sm" style="color:var(--c-text-secondary)">청구일 +</span>
                     <input type="number" id="clientModalTermsDays" class="ds-input" style="width:80px" placeholder="30" min="0">
-                    <span class="text-sm" style="color:#6b7280">일</span>
+                    <span class="text-sm" style="color:var(--c-text-secondary)">일</span>
                   </div>
                   <div id="cycleMonthlyWrap" class="hidden items-center gap-1" style="flex-wrap:wrap">
                     <input type="number" id="clientModalClosingDay" class="ds-input" style="width:140px" placeholder="마감일(빈칸=말일)" min="1" max="28" title="1~28일만 지정, 말일은 빈칸. 29~31은 코드상 말일 처리됨">

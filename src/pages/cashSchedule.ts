@@ -352,7 +352,7 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
           </div>
           <div class="p-4 space-y-3">
             <div>
-              <label class="text-xs font-medium mb-1 block" style="color:#374151;">거래처 (선택)</label>
+              <label class="text-xs font-medium mb-1 block" style="color:var(--c-text);">거래처 (선택)</label>
               <div class="relative">
                 <input id="schAddClientSearch" type="text" autocomplete="off" placeholder="거래처명 입력" class="w-full border rounded px-3 py-2 text-sm text-gray-900" oninput="schSearchClient(this.value)" onfocus="schSearchClient(this.value)">
                 <input type="hidden" id="schAddClientId">
@@ -360,19 +360,19 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
               </div>
             </div>
             <div>
-              <label class="text-xs font-medium mb-1 block" style="color:#374151;">예정일</label>
+              <label class="text-xs font-medium mb-1 block" style="color:var(--c-text);">예정일</label>
               <input id="schAddDate" type="text" class="js-fp w-full border rounded px-3 py-2 text-sm text-gray-900" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
               <div id="schAddDateErr" class="text-[10px] text-red-600 mt-0.5"></div>
             </div>
             <div>
-              <label class="text-xs font-medium mb-1 block" style="color:#374151;">유형</label>
+              <label class="text-xs font-medium mb-1 block" style="color:var(--c-text);">유형</label>
               <select id="schAddType" class="w-full border rounded px-3 py-2 text-sm text-gray-900">
                 <option value="IN">입금</option>
                 <option value="OUT">지급</option>
               </select>
             </div>
             <div>
-              <label class="text-xs font-medium mb-1 block" style="color:#374151;">분류</label>
+              <label class="text-xs font-medium mb-1 block" style="color:var(--c-text);">분류</label>
               <select id="schAddSource" class="w-full border rounded px-3 py-2 text-sm text-gray-900">
                 <option value="ORDER">매출 주문</option>
                 <option value="PURCHASE">구매 발주</option>
@@ -384,12 +384,12 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
               </select>
             </div>
             <div>
-              <label class="text-xs font-medium mb-1 block" style="color:#374151;">금액</label>
+              <label class="text-xs font-medium mb-1 block" style="color:var(--c-text);">금액</label>
               <input id="schAddAmount" type="text" inputmode="numeric" data-money class="w-full border rounded px-3 py-2 text-sm text-gray-900">
               <div id="schAddAmountErr" class="text-[10px] text-red-600 mt-0.5"></div>
             </div>
             <div>
-              <label class="text-xs font-medium mb-1 block" style="color:#374151;">설명</label>
+              <label class="text-xs font-medium mb-1 block" style="color:var(--c-text);">설명</label>
               <input id="schAddDesc" type="text" placeholder="선택사항" class="w-full border rounded px-3 py-2 text-sm text-gray-900">
             </div>
             <div class="flex gap-2 justify-end pt-2">

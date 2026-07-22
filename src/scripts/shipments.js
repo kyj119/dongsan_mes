@@ -926,7 +926,7 @@ function showShipBlockedModal(blocked) {
       + '</tr>';
   }).join('');
 
-  var html = '<div id="shipBlockedOverlay" class="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">'
+  var html = '<div id="shipBlockedOverlay" class="fixed inset-0 bg-black/40 ds-z-stack flex items-center justify-center p-4">'
     + '<div class="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">'
     + '<div class="px-5 py-4 border-b flex items-center justify-between">'
     + '<h3 class="text-base font-semibold text-red-700"><i class="fas fa-ban mr-1"></i>출고 차단 ' + blocked.length + '건 — 전량 출고 원칙</h3>'
@@ -1336,7 +1336,7 @@ function showShipmentSendResult(d, originalPayload) {
     ? '<button id="shipSendResultResend" class="ds-btn ds-btn-primary text-sm">실패 ' + fail + '건 재발송</button>'
     : '';
 
-  var html = '<div id="shipSendResultOverlay" class="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">'
+  var html = '<div id="shipSendResultOverlay" class="fixed inset-0 bg-black/40 ds-z-stack flex items-center justify-center p-4">'
     + '<div class="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">'
     + '<div class="px-5 py-4 border-b flex items-center justify-between">'
     + '<h3 class="text-base font-semibold">발송 결과</h3>'

@@ -356,32 +356,32 @@ export const productionReportsContent = `
               <!-- 상단 요약 카드 (4개) -->
               <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div class="ds-card ds-card-compact summary-card">
-                  <div class="label"><i class="fas fa-calculator" style="color:#3b82f6;margin-right:4px"></i>평균 원가/㎡</div>
-                  <div class="value" style="color:#3b82f6" id="avgCostPerSqm">-</div>
-                  <div style="font-size:11px;color:#9ca3af;margin-top:4px;">금월 기준</div>
+                  <div class="label"><i class="fas fa-calculator" style="color:var(--c-primary);margin-right:4px"></i>평균 원가/㎡</div>
+                  <div class="value" style="color:var(--c-primary)" id="avgCostPerSqm">-</div>
+                  <div style="font-size:11px;color:var(--c-text-muted);margin-top:4px;">금월 기준</div>
                 </div>
                 <div class="ds-card ds-card-compact summary-card">
-                  <div class="label"><i class="fas fa-percent" style="color:#f59e0b;margin-right:4px"></i>평균 로스율</div>
-                  <div class="value" style="color:#f59e0b" id="avgLossRate">-</div>
-                  <div style="font-size:11px;color:#9ca3af;margin-top:4px;">로스 비율</div>
+                  <div class="label"><i class="fas fa-percent" style="color:var(--c-warning);margin-right:4px"></i>평균 로스율</div>
+                  <div class="value" style="color:var(--c-warning)" id="avgLossRate">-</div>
+                  <div style="font-size:11px;color:var(--c-text-muted);margin-top:4px;">로스 비율</div>
                 </div>
                 <div class="ds-card ds-card-compact summary-card">
-                  <div class="label"><i class="fas fa-layer-group" style="color:#16a34a;margin-right:4px"></i>총 소모량</div>
-                  <div class="value" style="color:#16a34a;font-size:20px" id="totalConsumed">-</div>
-                  <div style="font-size:11px;color:#9ca3af;margin-top:4px;">㎡ 기준</div>
+                  <div class="label"><i class="fas fa-layer-group" style="color:var(--c-success);margin-right:4px"></i>총 소모량</div>
+                  <div class="value" style="color:var(--c-success);font-size:20px" id="totalConsumed">-</div>
+                  <div style="font-size:11px;color:var(--c-text-muted);margin-top:4px;">㎡ 기준</div>
                 </div>
                 <div class="ds-card ds-card-compact summary-card">
-                  <div class="label"><i class="fas fa-coins" style="color:#8b5cf6;margin-right:4px"></i>총 원가</div>
-                  <div class="value" style="color:#8b5cf6;font-size:20px" id="totalCost">-</div>
-                  <div style="font-size:11px;color:#9ca3af;margin-top:4px;">금액 합계</div>
+                  <div class="label"><i class="fas fa-coins" style="color:var(--c-purple);margin-right:4px"></i>총 원가</div>
+                  <div class="value" style="color:var(--c-purple);font-size:20px" id="totalCost">-</div>
+                  <div style="font-size:11px;color:var(--c-text-muted);margin-top:4px;">금액 합계</div>
                 </div>
               </div>
 
               <!-- 필터 바 -->
               <div class="ds-card ds-card-compact flex flex-wrap gap-2 items-center">
-                <label style="font-size:12px;color:#666;">기간:</label>
+                <label style="font-size:12px;color:var(--c-text-secondary);">기간:</label>
                 <input type="month" id="fPeriodFrom" class="ds-input" style="width:140px" />
-                <span style="color:#9ca3af;">~</span>
+                <span style="color:var(--c-text-muted);">~</span>
                 <input type="month" id="fPeriodTo" class="ds-input" style="width:140px" />
                 <div class="ml-auto flex gap-2">
                   <button onclick="loadAnalysis()" class="ds-btn ds-btn-ghost ds-btn-sm">
@@ -393,8 +393,8 @@ export const productionReportsContent = `
               <!-- 월별 원가 추이 차트 -->
               <div class="ds-card">
                 <div style="padding-bottom:12px;border-bottom:1px solid var(--c-border);margin-bottom:16px;">
-                  <h3 style="font-size:14px;font-weight:600;color:#374151;margin:0;">
-                    <i class="fas fa-chart-bar" style="color:#3b82f6;margin-right:6px;"></i>월별 원가 추이 (원가/㎡)
+                  <h3 style="font-size:14px;font-weight:600;color:var(--c-text);margin:0;">
+                    <i class="fas fa-chart-bar" style="color:var(--c-primary);margin-right:6px;"></i>월별 원가 추이 (원가/㎡)
                   </h3>
                 </div>
                 <div id="monthlyChart" style="display:flex;flex-direction:column;gap:12px;"></div>
@@ -403,8 +403,8 @@ export const productionReportsContent = `
               <!-- 로스율 추이 -->
               <div class="ds-card">
                 <div style="padding-bottom:12px;border-bottom:1px solid var(--c-border);margin-bottom:16px;">
-                  <h3 style="font-size:14px;font-weight:600;color:#374151;margin:0;">
-                    <i class="fas fa-chart-line" style="color:#f59e0b;margin-right:6px;"></i>로스율 추이
+                  <h3 style="font-size:14px;font-weight:600;color:var(--c-text);margin:0;">
+                    <i class="fas fa-chart-line" style="color:var(--c-warning);margin-right:6px;"></i>로스율 추이
                   </h3>
                 </div>
                 <div id="lossRateChart" style="display:flex;flex-direction:column;gap:12px;"></div>
@@ -414,7 +414,7 @@ export const productionReportsContent = `
               <div class="ds-card" style="padding:0;overflow:hidden;">
                 <div style="padding:var(--space-md);border-bottom:1px solid var(--c-border);display:flex;align-items:center;justify-content:space-between;">
                   <h2 class="ds-card-title">
-                    <i class="fas fa-list" style="color:#16a34a;margin-right:8px"></i>원단별 원가 분석
+                    <i class="fas fa-list" style="color:var(--c-success);margin-right:8px"></i>원단별 원가 분석
                   </h2>
                 </div>
                 <div class="ds-table-wrap">
@@ -430,7 +430,7 @@ export const productionReportsContent = `
                       </tr>
                     </thead>
                     <tbody id="materialBody">
-                      <tr><td colspan="6" style="text-align:center;padding:32px;color:#9ca3af;">데이터 없음</td></tr>
+                      <tr><td colspan="6" style="text-align:center;padding:32px;color:var(--c-text-muted);">데이터 없음</td></tr>
                     </tbody>
                   </table>
                 </div>
@@ -440,7 +440,7 @@ export const productionReportsContent = `
               <div class="ds-card" style="padding:0;overflow:hidden;">
                 <div style="padding:var(--space-md);border-bottom:1px solid var(--c-border);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
                   <h2 class="ds-card-title">
-                    <i class="fas fa-history" style="color:#8b5cf6;margin-right:8px"></i>자동차감 이력
+                    <i class="fas fa-history" style="color:var(--c-purple);margin-right:8px"></i>자동차감 이력
                   </h2>
                   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                     <select id="deductMaterial" class="ds-input" style="width:auto" onchange="filterDeductions()" title="원단">
@@ -464,7 +464,7 @@ export const productionReportsContent = `
                       </tr>
                     </thead>
                     <tbody id="deductionBody">
-                      <tr><td colspan="7" style="text-align:center;padding:32px;color:#9ca3af;"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</td></tr>
+                      <tr><td colspan="7" style="text-align:center;padding:32px;color:var(--c-text-muted);"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</td></tr>
                     </tbody>
                   </table>
                 </div>

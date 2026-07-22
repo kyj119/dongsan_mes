@@ -99,7 +99,7 @@ description: "동산기획 ERP+MES UI 일관성 가이드. 프론트엔드 작�
 | 모달 | `dsOpenModal`/`dsCloseModal`(hidden 클래스 SSOT) + 부수효과 모달 `data-esc-close` | 인라인 `style.display` 토글 (ESC closer 충돌) |
 | 거래처 검색 | `openClientSearchModal({onSelect, search})` | 자체 드롭다운/모달 신작 |
 | 품목 검색 | `openItemSearchModal({onSelect, type})` | 〃 |
-| 주문/카드 상태 | `MES_STATUS` label·tone·icon·`badgeClass`(ds-badge)·`textClass`·`chipClass`(bg-*-50)·`badge`(완성 HTML=`dsStatusBadge`) | 상태→라벨/색/아이콘 리터럴 맵 재정의 |
+| 주문/카드/장비 상태 | `MES_STATUS` kind=`'order'\|'card'\|'equip'` label·tone·icon·`badgeClass`(ds-badge)·`textClass`·`chipClass`(bg-*-50)·`dotClass`/`dotBgClass`(상태 도트)·`badge`(완성 HTML=`dsStatusBadge`) — 장비 IDLE=gray 확정 | 상태→라벨/색/아이콘 리터럴 맵 재정의 |
 | 토스트/확인 | `showToast`·`showConfirm`·`showPrompt`·`showFieldError` | alert/confirm/prompt |
 | 로딩/빈상태 | `dsSkeleton`·`ds-empty`·`emptyRow` | fa-spinner 단독·수제 빈상태 |
 | 탭 | 페이지-prefix 함수(accSwitchTab식) | top-level `switchTab` 동명 전역 |

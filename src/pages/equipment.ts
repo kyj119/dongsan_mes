@@ -53,7 +53,7 @@ export function equipmentPage(c: Context<HonoEnv>) {
         display: inline-block;
         height: 20px;
         border-radius: 2px;
-        background: #d1d5db;
+        background: var(--c-border);
         min-width: 4px;
       }
 
@@ -65,12 +65,12 @@ export function equipmentPage(c: Context<HonoEnv>) {
         font-weight: 600;
       }
       .status-badge.online {
-        background: #dcfce7;
-        color: #15803d;
+        background: var(--c-success-light);
+        color: var(--c-success);
       }
       .status-badge.offline {
-        background: #fee2e2;
-        color: #991b1b;
+        background: var(--c-danger-light);
+        color: var(--c-danger);
       }
     `,
     pageContent: `
@@ -129,34 +129,34 @@ export function equipmentPage(c: Context<HonoEnv>) {
                     <!-- 상단 요약 카드 -->
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div class="ds-card ds-card-compact summary-card">
-                            <div class="label"><i class="fas fa-microchip" style="color:#3b82f6;margin-right:4px"></i>총 장비</div>
+                            <div class="label"><i class="fas fa-microchip" style="color:var(--c-primary);margin-right:4px"></i>총 장비</div>
                             <div class="value" id="totalEquipment">-</div>
                             <div class="subtext" id="totalEquipmentSub"></div>
                         </div>
                         <div class="ds-card ds-card-compact summary-card">
-                            <div class="label"><i class="fas fa-plug" style="color:#10b981;margin-right:4px"></i>가동 중</div>
-                            <div class="value" style="color:#10b981" id="activeEquipment">-</div>
+                            <div class="label"><i class="fas fa-plug" style="color:var(--c-success);margin-right:4px"></i>가동 중</div>
+                            <div class="value" style="color:var(--c-success)" id="activeEquipment">-</div>
                             <div class="subtext" id="activeEquipmentSub"></div>
                         </div>
                         <div class="ds-card ds-card-compact summary-card">
-                            <div class="label"><i class="fas fa-file" style="color:#6b7280;margin-right:4px"></i>오늘 출력</div>
-                            <div class="value" style="color:#212529" id="todayPrints">-</div>
+                            <div class="label"><i class="fas fa-file" style="color:var(--c-text-secondary);margin-right:4px"></i>오늘 출력</div>
+                            <div class="value" style="color:var(--c-text)" id="todayPrints">-</div>
                             <div class="subtext" id="todayPrintsSub"></div>
                         </div>
                         <div class="ds-card ds-card-compact summary-card">
-                            <div class="label"><i class="fas fa-chart-pie" style="color:#6b7280;margin-right:4px"></i>평균 가동률</div>
-                            <div class="value" style="color:#212529" id="avgUtilization">-</div>
+                            <div class="label"><i class="fas fa-chart-pie" style="color:var(--c-text-secondary);margin-right:4px"></i>평균 가동률</div>
+                            <div class="value" style="color:var(--c-text)" id="avgUtilization">-</div>
                             <div class="subtext">%</div>
                         </div>
                     </div>
 
                     <!-- 필터 바 -->
                     <div class="ds-card ds-card-compact flex flex-wrap gap-2 items-center filter-bar">
-                        <label style="font-size:12px;color:#666;display:flex;align-items:center;gap:6px;">
+                        <label style="font-size:12px;color:var(--c-text-secondary);display:flex;align-items:center;gap:6px;">
                             기간
                             <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="fFromDate" class="js-fp ds-input" style="width:140px" />
                         </label>
-                        <label style="font-size:12px;color:#666;display:flex;align-items:center;gap:6px;">
+                        <label style="font-size:12px;color:var(--c-text-secondary);display:flex;align-items:center;gap:6px;">
                             ~
                             <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="fToDate" class="js-fp ds-input" style="width:140px" />
                         </label>
@@ -171,11 +171,11 @@ export function equipmentPage(c: Context<HonoEnv>) {
                     <div class="ds-card" style="padding:0;overflow:hidden;">
                         <div style="padding:var(--space-md);border-bottom:1px solid var(--c-border);display:flex;align-items:center;justify-content:space-between;">
                             <h2 class="ds-card-title">
-                                <i class="fas fa-chart-bar" style="color:#3b82f6;margin-right:8px"></i>장비별 가동률
+                                <i class="fas fa-chart-bar" style="color:var(--c-primary);margin-right:8px"></i>장비별 가동률
                             </h2>
                         </div>
                         <div id="utilizationChartContainer" style="padding:var(--space-md);min-height:200px;display:flex;flex-direction:column;gap:12px;">
-                            <div style="text-align:center;padding:32px;color:#9ca3af;"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</div>
+                            <div style="text-align:center;padding:32px;color:var(--c-text-muted);"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</div>
                         </div>
                     </div>
 
@@ -183,7 +183,7 @@ export function equipmentPage(c: Context<HonoEnv>) {
                     <div class="ds-card" style="padding:0;overflow:hidden;">
                         <div style="padding:var(--space-md);border-bottom:1px solid var(--c-border);display:flex;align-items:center;justify-content:space-between;">
                             <h2 class="ds-card-title">
-                                <i class="fas fa-th-large" style="color:#10b981;margin-right:8px"></i>장비별 실적
+                                <i class="fas fa-th-large" style="color:var(--c-success);margin-right:8px"></i>장비별 실적
                             </h2>
                         </div>
                         <div class="ds-table-wrap">
@@ -200,7 +200,7 @@ export function equipmentPage(c: Context<HonoEnv>) {
                                     </tr>
                                 </thead>
                                 <tbody id="equipmentBody">
-                                    <tr><td colspan="7" style="text-align:center;padding:32px;color:#9ca3af;"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</td></tr>
+                                    <tr><td colspan="7" style="text-align:center;padding:32px;color:var(--c-text-muted);"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -210,11 +210,11 @@ export function equipmentPage(c: Context<HonoEnv>) {
                     <div class="ds-card" style="padding:0;overflow:hidden;">
                         <div style="padding:var(--space-md);border-bottom:1px solid var(--c-border);display:flex;align-items:center;justify-content:space-between;">
                             <h2 class="ds-card-title">
-                                <i class="fas fa-line-chart" style="color:#f59e0b;margin-right:8px"></i>주간 출력 추이
+                                <i class="fas fa-line-chart" style="color:var(--c-warning);margin-right:8px"></i>주간 출력 추이
                             </h2>
                         </div>
                         <div id="weeklyTrendContainer" style="padding:var(--space-md);min-height:120px;display:flex;align-items:flex-end;gap:4px;justify-content:space-around;">
-                            <div style="text-align:center;padding:32px;color:#9ca3af;width:100%;"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</div>
+                            <div style="text-align:center;padding:32px;color:var(--c-text-muted);width:100%;"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</div>
                         </div>
                     </div>
 
@@ -227,7 +227,7 @@ export function equipmentPage(c: Context<HonoEnv>) {
                     <!-- 툴바 -->
                     <div class="ds-card ds-card-compact flex flex-wrap gap-2 items-center">
                         <div class="text-sm text-gray-600">
-                            <i class="fas fa-layer-group mr-1" style="color:#3b82f6"></i>장비별 인쇄 큐 · 부하 (진행중 카드 기준)
+                            <i class="fas fa-layer-group mr-1" style="color:var(--c-primary)"></i>장비별 인쇄 큐 · 부하 (진행중 카드 기준)
                             <span class="text-[11px] text-gray-400 ml-1">— 예상시간·부하는 큐에서 "예상시간 재계산" 실행 후 반영</span>
                         </div>
                         <div class="ml-auto flex gap-2">
@@ -249,7 +249,7 @@ export function equipmentPage(c: Context<HonoEnv>) {
                     <div class="ds-card" style="padding:0;overflow:hidden;">
                         <div style="padding:var(--space-md);border-bottom:1px solid var(--c-border);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
                             <h2 class="ds-card-title">
-                                <i class="fas fa-list-ol" style="color:#10b981;margin-right:8px"></i><span id="eqqQueueTitle">장비를 선택하세요</span>
+                                <i class="fas fa-list-ol" style="color:var(--c-success);margin-right:8px"></i><span id="eqqQueueTitle">장비를 선택하세요</span>
                             </h2>
                             <button id="eqqRecalcBtn" onclick="window.eqqRecalc()" class="ds-btn ds-btn-ghost ds-btn-sm hidden" title="큐 순서 기준으로 예상 시작·종료 시각을 재계산합니다">
                                 <i class="fas fa-clock-rotate-left" style="margin-right:4px"></i>예상시간 재계산
@@ -289,8 +289,8 @@ export function equipmentPage(c: Context<HonoEnv>) {
                     <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
                         <div class="flex items-center gap-3 text-xs">
                             <span class="inline-flex items-center gap-1"><span class="w-3 h-3 rounded bg-green-500 inline-block"></span>가동중</span>
-                            <span class="inline-flex items-center gap-1"><span class="w-3 h-3 rounded bg-amber-400 inline-block"></span>대기</span>
-                            <span class="inline-flex items-center gap-1"><span class="w-3 h-3 rounded bg-orange-500 inline-block"></span>점검중</span>
+                            <span class="inline-flex items-center gap-1"><span class="w-3 h-3 rounded bg-gray-400 inline-block"></span>대기</span>
+                            <span class="inline-flex items-center gap-1"><span class="w-3 h-3 rounded bg-orange-500 inline-block"></span>정비중</span>
                             <span class="inline-flex items-center gap-1"><span class="w-3 h-3 rounded bg-red-500 inline-block"></span>고장</span>
                         </div>
                         <!-- 공정 필터 (P2, renderProcessFilter가 채움) -->
@@ -313,7 +313,7 @@ export function equipmentPage(c: Context<HonoEnv>) {
                     </div>
 
                     <!-- 배치도 캔버스 -->
-                    <div id="layoutCanvas" style="height:580px; position:relative; overflow:hidden; border-radius:8px; background:#f0f4f8; border:1px solid #e5e7eb; cursor:default;">
+                    <div id="layoutCanvas" style="height:580px; position:relative; overflow:hidden; border-radius:8px; background:var(--c-bg); border:1px solid var(--c-border); cursor:default;">
                         <!-- 도면 배경 이미지 (R2 blob, z0) -->
                         <div id="layoutBg" style="position:absolute;inset:0;z-index:0;background-size:100% 100%;background-position:center;background-repeat:no-repeat;"></div>
                         <!-- 구역 박스 (facility_zones.bounds %, renderZones가 채움, z1) -->

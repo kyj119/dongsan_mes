@@ -322,7 +322,7 @@ function renderCostTable() {
       + '<td class="px-3 py-2"><input type="number" value="' + (cs.media_cost_per_sqm || 0) + '" data-field="media_cost_per_sqm" class="w-full px-2 py-1 border border-gray-300 rounded text-sm text-right" min="0" step="100"></td>'
       + '<td class="px-3 py-2"><input type="number" value="' + (cs.ink_cost_per_sqm || 0) + '" data-field="ink_cost_per_sqm" class="w-full px-2 py-1 border border-gray-300 rounded text-sm text-right" min="0" step="100"></td>'
       + '<td class="px-3 py-2"><input type="text" value="' + escapeAttr(cs.description || '') + '" data-field="description" class="w-full px-2 py-1 border border-gray-300 rounded text-sm" placeholder="비고"></td>'
-      + '<td class="px-3 py-2 text-center"><button onclick="removeCostRow(' + idx + ')" class="text-red-500 hover:text-red-700 p-1" title="삭제"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button></td>'
+      + '<td class="px-3 py-2 text-center"><button onclick="removeCostRow(' + idx + ')" class="text-red-500 hover:text-red-700 p-1" title="삭제"><i class="fas fa-trash-alt"></i></button></td>'
       + '</tr>';
   }).join('');
 }

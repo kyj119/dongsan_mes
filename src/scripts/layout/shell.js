@@ -179,7 +179,7 @@ window.openClientSearchModal = function(opts) {
 
   var modal = document.createElement('div');
   modal.id = 'clientSearchModal';
-  modal.className = 'fixed inset-0 bg-black/40 flex items-center justify-center z-[70]';
+  modal.className = 'fixed inset-0 bg-black/40 flex items-center justify-center ds-z-stack';
   modal.innerHTML = '<div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col mx-4">'
     + '<div class="p-4 border-b">'
     + '<div class="flex items-center justify-between mb-3">'
@@ -2098,7 +2098,7 @@ window.openItemSearchModal = function(opts) {
 
   var modal = document.createElement('div');
   modal.id = 'itemSearchModal';
-  modal.className = 'fixed inset-0 bg-black/40 flex items-center justify-center z-[70]';
+  modal.className = 'fixed inset-0 bg-black/40 flex items-center justify-center ds-z-stack';
   modal.innerHTML = '<div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col mx-4">'
     + '<div class="p-4 border-b">'
     + '<div class="flex items-center justify-between mb-3">'

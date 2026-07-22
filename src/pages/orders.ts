@@ -20,7 +20,7 @@ export function ordersPage(c: Context<HonoEnv>) {
         </div>
         <div class="ds-card ds-card-compact" style="text-align:center">
           <div class="text-sm" style="color:var(--c-text-secondary)">생산중</div>
-          <div class="text-3xl font-bold" style="color:#f97316" id="statProduction">-</div>
+          <div class="text-3xl font-bold" style="color:var(--c-orange)" id="statProduction">-</div>
         </div>
         <div class="ds-card ds-card-compact" style="text-align:center">
           <div class="text-sm" style="color:var(--c-text-secondary)">출고완료</div>
@@ -52,7 +52,7 @@ export function ordersPage(c: Context<HonoEnv>) {
           <label class="ds-label">출고지연</label>
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;height:36px" title="납기일이 지났는데 아직 출고완료되지 않은 주문만 보기">
             <input type="checkbox" id="overdueFilter" onchange="currentPage=1;loadOrders();" class="rounded border-gray-300">
-            <span style="white-space:nowrap;color:#dc2626;font-size:13px"><i class="fas fa-clock" style="margin-right:3px"></i>지연만</span>
+            <span style="white-space:nowrap;color:var(--c-danger);font-size:13px"><i class="fas fa-clock" style="margin-right:3px"></i>지연만</span>
           </label>
         </div>
         <div class="ds-filter-divider"></div>

@@ -93,9 +93,9 @@ async function initApprovals() {
 function setupTabs() {
   document.querySelectorAll('[data-tab]').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('[data-tab]').forEach(b => { b.classList.remove('bg-blue-600', 'text-white'); b.classList.add('bg-gray-200', 'text-gray-700'); });
-      btn.classList.remove('bg-gray-200', 'text-gray-700');
-      btn.classList.add('bg-blue-600', 'text-white');
+      document.querySelectorAll('[data-tab]').forEach(b => { b.classList.remove('border-blue-600', 'text-blue-600'); b.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700'); });
+      btn.classList.remove('border-transparent', 'text-gray-500', 'hover:text-gray-700');
+      btn.classList.add('border-blue-600', 'text-blue-600');
       document.querySelectorAll('.tab-content').forEach(p => p.classList.add('hidden'));
       document.getElementById('tab-' + btn.dataset.tab)?.classList.remove('hidden');
     });

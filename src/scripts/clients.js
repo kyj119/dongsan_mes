@@ -165,9 +165,10 @@ function displayClients(clients, pagination) {
 
     if (clients.length === 0) {
         document.getElementById('clientsList').innerHTML =
-            '<div class="text-center py-12">'
-            + '<i class="fas fa-inbox text-3xl mb-3 block text-gray-300"></i>'
-            + '<div class="text-sm text-gray-500 mb-1">검색 결과가 없습니다</div>'
+            '<div class="ds-empty">'
+            + '<i class="fas fa-inbox"></i>'
+            + '<p>검색 결과가 없습니다</p>'
+            + '<button onclick="showAddClientModal()" class="ds-btn ds-btn-primary ds-btn-sm mt-3">+ 거래처 등록</button>'
             + '</div>';
         document.getElementById('paginationArea').innerHTML = '';
         return;

@@ -407,7 +407,7 @@ window.saveBillingGroup = async function() {
     await axios.patch('/api/clients/' + CLIENT_ID + '/billing-group', {
       billing_group_id: val ? parseInt(val) : null
     });
-    showToast('사업자 그룹이 변경되었습니다.', 'warning');
+    showToast('사업자 그룹이 변경되었습니다.', 'success');
     loadGroupMembers();
   } catch(e) {
     showToast('저장 실패: ' + (e.response?.data?.error || e.message), 'error');
@@ -437,7 +437,7 @@ window.toggleClientActive = async function() {
   try {
     var res = await axios.patch('/api/clients/' + CLIENT_ID + '/toggle-active');
     if (res.data.success) {
-      showToast(res.data.message, 'warning');
+      showToast(res.data.message, 'success');
       loadClientDetail();
     }
   } catch(e) {

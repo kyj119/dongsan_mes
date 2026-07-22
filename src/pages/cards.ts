@@ -43,15 +43,15 @@ export function cardsPage(c: Context<HonoEnv>) {
         }
         .kanban-card:hover { box-shadow: var(--shadow-md); }
         .kanban-card:active { transform: scale(0.99); }
-        .kanban-card.urgency-d0 { border-left-color: #ef4444; }
-        .kanban-card.urgency-d1 { border-left-color: #f97316; }
-        .kanban-card.urgency-d2 { border-left-color: #eab308; }
-        .kanban-card.urgency-d4 { border-left-color: #22c55e; }
+        .kanban-card.urgency-d0 { border-left-color: var(--c-danger); }
+        .kanban-card.urgency-d1 { border-left-color: var(--c-orange); }
+        .kanban-card.urgency-d2 { border-left-color: var(--c-warning); }
+        .kanban-card.urgency-d4 { border-left-color: var(--c-success); }
         .kanban-card.hold-card {
             background: repeating-linear-gradient(
-                135deg, #f9fafb, #f9fafb 8px, #f1f5f9 8px, #f1f5f9 16px
+                135deg, var(--c-surface-secondary), var(--c-surface-secondary) 8px, var(--c-border-light) 8px, var(--c-border-light) 16px
             );
-            border-left-color: #94a3b8; opacity: 0.85;
+            border-left-color: var(--c-text-muted); opacity: 0.85;
         }
         @keyframes pulse-urgent {
             0%, 100% { opacity: 1; }
@@ -69,7 +69,7 @@ export function cardsPage(c: Context<HonoEnv>) {
         .action-btn:active { opacity: 0.7; }
         /* UI가이드: Primary(파랑) / Danger(빨강) / Secondary(테두리) / Ghost */
         .action-btn-done { background: #2563eb; color: #fff; }
-        .action-btn-hold { background: #fff; color: #dc2626; border: 1px solid #fca5a5; }
+        .action-btn-hold { background: var(--c-surface); color: var(--c-danger); border: 1px solid #fca5a5; }
         .action-btn-resume { background: #2563eb; color: #fff; }
         .action-btn-rip { background: #2563eb; color: #fff; }
 
@@ -77,7 +77,7 @@ export function cardsPage(c: Context<HonoEnv>) {
         .mobile-tab {
             flex: 1; padding: 10px 6px; text-align: center;
             font-size: 13px; font-weight: 600;
-            background: #e2e8f0; border-radius: 8px;
+            background: var(--c-border); border-radius: 8px;
             border: none; cursor: pointer;
         }
         .mobile-tab.active { background: #3b82f6; color: #fff; }
@@ -85,8 +85,8 @@ export function cardsPage(c: Context<HonoEnv>) {
         /* 보류 섹션 */
         .hold-toggle {
             padding: 10px 14px; margin-top: 8px;
-            background: #fef2f2; border-radius: 8px;
-            cursor: pointer; font-size: 13px; font-weight: 600; color: #991b1b;
+            background: var(--c-danger-light); border-radius: 8px;
+            cursor: pointer; font-size: 13px; font-weight: 600; color: var(--c-danger);
             border: 1px dashed #fca5a5;
         }
 
@@ -96,7 +96,7 @@ export function cardsPage(c: Context<HonoEnv>) {
         .dnd-dragging { opacity: 0.4; transform: scale(0.96); }
         .dnd-over {
             background: rgba(59, 130, 246, 0.08) !important;
-            outline: 2px dashed #3b82f6;
+            outline: 2px dashed var(--c-primary);
             outline-offset: -2px;
             border-radius: var(--radius-md);
             min-height: 80px;
@@ -114,8 +114,8 @@ export function cardsPage(c: Context<HonoEnv>) {
             font-size: 10px; padding: 2px 6px; border-radius: 4px;
             font-weight: 700; letter-spacing: 0.02em;
         }
-        .rip-badge-queued { background: #fef9c3; color: #854d0e; }
-        .rip-badge-sent { background: #dbeafe; color: #1e40af; }
+        .rip-badge-queued { background: var(--c-warning-light); color: var(--c-warning); }
+        .rip-badge-sent { background: var(--c-info-light); color: var(--c-info); }
 
         /* 대시보드 패널 */
         #dashboardPanel { align-items: stretch; }
@@ -143,7 +143,7 @@ export function cardsPage(c: Context<HonoEnv>) {
         /* 썸네일 영역 */
         .grid-card-thumb {
             position: relative;
-            background: #f9fafb;
+            background: var(--c-surface-secondary);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -157,7 +157,7 @@ export function cardsPage(c: Context<HonoEnv>) {
             min-height: 90px;
             max-height: 140px;
             object-fit: contain;
-            background: #f9fafb;
+            background: var(--c-surface-secondary);
         }
         .grid-card-thumb.no-thumb .grid-card-img { display: none; }
         .grid-card-no-img {
@@ -167,7 +167,7 @@ export function cardsPage(c: Context<HonoEnv>) {
             justify-content: center;
             height: 90px;
             width: 100%;
-            color: #d1d5db;
+            color: var(--c-text-muted);
         }
 
         /* 규격 오버레이 */
@@ -201,7 +201,7 @@ export function cardsPage(c: Context<HonoEnv>) {
             border-radius: 6px;
             font-size: 11px;
             font-weight: 600;
-            border: 1px solid #e5e7eb;
+            border: 1px solid var(--c-border);
             cursor: pointer;
             transition: opacity 0.1s;
             min-height: 30px;
@@ -217,7 +217,7 @@ export function cardsPage(c: Context<HonoEnv>) {
         .card-panel {
             position: absolute; right: 0; top: 0; bottom: 0;
             width: 560px; max-width: 100vw;
-            background: #fff;
+            background: var(--c-surface);
             box-shadow: -4px 0 24px rgba(0,0,0,0.12);
             display: flex; flex-direction: column;
             transform: translateX(100%);
@@ -228,7 +228,7 @@ export function cardsPage(c: Context<HonoEnv>) {
         }
         .card-panel-header {
             padding: 16px 20px;
-            border-bottom: 1px solid #e5e7eb;
+            border-bottom: 1px solid var(--c-border);
             display: flex; align-items: flex-start; gap: 12px;
             flex-shrink: 0;
         }
@@ -238,27 +238,27 @@ export function cardsPage(c: Context<HonoEnv>) {
         }
         .card-panel-footer {
             padding: 12px 20px;
-            border-top: 1px solid #e5e7eb;
-            background: #fafafa;
+            border-top: 1px solid var(--c-border);
+            background: var(--c-surface-secondary);
             flex-shrink: 0;
         }
         /* 모달 내 아이템 행 */
         .card-modal-item {
             display: flex; align-items: flex-start; gap: 14px;
             padding: 12px 8px;
-            border-bottom: 1px solid #f3f4f6;
+            border-bottom: 1px solid var(--c-border-light);
             border-radius: 8px;
             transition: background 0.1s;
         }
-        .card-modal-item:hover { background: #f9fafb; }
+        .card-modal-item:hover { background: var(--c-surface-secondary); }
         .card-modal-item:last-child { border-bottom: none; }
         .card-modal-item.item-completed { opacity: 0.55; }
         /* 모달 내 썸네일 */
         .card-modal-thumb {
             width: 120px; height: 120px;
             border-radius: 8px;
-            border: 1px solid #e5e7eb;
-            background: #f9fafb;
+            border: 1px solid var(--c-border);
+            background: var(--c-surface-secondary);
             overflow: hidden;
             flex-shrink: 0;
             cursor: zoom-in;
@@ -383,14 +383,14 @@ export function cardsPage(c: Context<HonoEnv>) {
         <div class="hidden lg:grid lg:grid-cols-2 gap-3 items-start" id="kanbanBoard">
             <!-- 진행중 (RIP대기 + 출력중 통합) -->
             <div class="kanban-col" id="colInProgress">
-                <div class="col-header" style="background:#dbeafe;border-bottom-color:#93c5fd">
+                <div class="col-header" style="background:var(--c-info-light);border-bottom-color:var(--c-info)">
                     <i class="fas fa-play-circle" style="margin-right:4px"></i> 진행중 <span class="col-count" id="colCntProgress">0</span>
                 </div>
                 <div id="listInProgress"></div>
             </div>
             <!-- 출력완료 -->
             <div class="kanban-col" id="colPrintDone">
-                <div class="col-header" style="background:#dcfce7;border-bottom-color:#86efac">
+                <div class="col-header" style="background:var(--c-success-light);border-bottom-color:var(--c-success)">
                     &#10003; 출력완료 <span class="col-count" id="colCntDone">0</span>
                 </div>
                 <div id="listPrintDone"></div>

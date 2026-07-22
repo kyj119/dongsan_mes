@@ -8,15 +8,15 @@ var itemSearchTimers = {};
 var storageZones = [];
 var groupItemsCache = [];
 
-// ── SVG 아이콘 헬퍼 ──
+// ── 아이콘 헬퍼 (FA) ──
 var SVG = {
-  x: '<svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
-  trash: '<svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>',
-  inbox: '<svg class="w-8 h-8 text-gray-300 mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
-  chevronRight: '<svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>',
-  file: '<svg class="w-4 h-4 text-blue-500 mr-2 inline" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>',
-  edit: '<svg class="w-5 h-5 text-blue-600 inline mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>',
-  notepad: '<svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M12 2v4"/><path d="M16 2v4"/><rect width="16" height="18" x="4" y="4" rx="2"/><path d="M8 10h6"/><path d="M8 14h8"/><path d="M8 18h5"/></svg>'
+  x: '<i class="fas fa-times"></i>',
+  trash: '<i class="fas fa-trash-alt"></i>',
+  inbox: '<i class="fas fa-inbox text-3xl text-gray-300 mx-auto mb-2 block"></i>',
+  chevronRight: '<i class="fas fa-chevron-right"></i>',
+  file: '<i class="fas fa-file-alt text-blue-500 mr-2"></i>',
+  edit: '<i class="fas fa-edit text-blue-600 mr-2"></i>',
+  notepad: '<i class="fas fa-clipboard-list"></i>'
 };
 
 // ── 유틸리티 ──
@@ -706,7 +706,7 @@ async function savePO(status) {
   } catch(e) {
     showToast('저장 중 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
   } finally {
-    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.innerHTML = '<svg class="w-4 h-4 inline -mt-0.5 mr-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>발주 확정'; }
+    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.innerHTML = '<i class="fas fa-check mr-1"></i>발주 확정'; }
   }
 }
 

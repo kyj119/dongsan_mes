@@ -9,7 +9,7 @@ export function scanPage(c: Context<HonoEnv>) {
     activePage: '/scan',
     pageCSS: `.modal-overlay { display:none; position:fixed; inset:0; z-index:50; background:rgba(0,0,0,.45); justify-content:center; align-items:center; }
       .modal-overlay.show { display:flex; }
-      .modal-box { background:white; border-radius:12px; padding:20px; width:90%; max-width:400px; }`,
+      .modal-box { background:var(--c-surface); border-radius:12px; padding:20px; width:90%; max-width:400px; }`,
     pageContent: `
       <div class="max-w-lg mx-auto">
         <!-- 카메라 스캔 영역 -->

@@ -11,22 +11,26 @@ var floorPlanObjUrl = null;
 var activeProcessFilter = null; // P2: 공정 필터(선택된 process_code, null=전체)
 
 // ─── 상태 맵핑 ─────────────────────────────────────────────────────────────
+// 라벨·칩·도트 = window.MES_STATUS 'equip' SSOT 위임 (utils/statusLabels.ts) — 페이지 리터럴 금지
 
-var STATUS_MAP = {
-    RUNNING: { label: '가동중', color: 'green', bg: 'bg-green-50 text-green-700', dot: 'bg-green-500' },
-    IDLE: { label: '대기', color: 'yellow', bg: 'bg-amber-50 text-amber-700', dot: 'bg-amber-400' },
-    MAINTENANCE: { label: '점검중', color: 'orange', bg: 'bg-amber-50 text-amber-700', dot: 'bg-amber-500' },
-    BROKEN: { label: '고장', color: 'red', bg: 'bg-red-50 text-red-700', dot: 'bg-red-500' }
-};
+var STATUS_MAP = ['RUNNING', 'IDLE', 'MAINTENANCE', 'BROKEN'].reduce(function(m, s) {
+    m[s] = {
+        label: window.MES_STATUS.equipLabel(s),
+        bg: window.MES_STATUS.chipClass('equip', s),
+        dot: window.MES_STATUS.dotBgClass('equip', s)
+    };
+    return m;
+}, {});
 
 var SIZE_MAP = {
     SMALL: { w: 72, h: 28 },   // 1.8m
     LARGE: { w: 128, h: 36 },  // 3.2m (기본)
 };
 
+// 배치도 전용 hex (카드 글로우·팝오버) — 톤은 SSOT와 동조 (IDLE=gray)
 var STATUS_COLORS = {
     RUNNING: '#16a34a',
-    IDLE: '#ca8a04',
+    IDLE: '#9ca3af',
     MAINTENANCE: 'var(--c-orange)',
     BROKEN: '#dc2626',
 };

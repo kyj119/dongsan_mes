@@ -9,11 +9,11 @@ export function accountingPage(c: Context<HonoEnv>) {
     activePage: '/accounting',
     pageCSS: `
       .acc-kpi{border-left:3px solid;border-radius:8px}
-      .acc-tab{padding:10px 18px;font-size:13px;font-weight:600;border-bottom:2px solid transparent;color:#6b7280;white-space:nowrap}
-      .acc-tab.active{border-color:#2563eb;color:#2563eb}
-      .acc-tab.disabled{color:#cbd5e1;cursor:not-allowed}
+      .acc-tab{padding:10px 18px;font-size:13px;font-weight:600;border-bottom:2px solid transparent;color:var(--c-text-secondary);white-space:nowrap}
+      .acc-tab.active{border-color:var(--c-info);color:var(--c-info)}
+      .acc-tab.disabled{color:var(--c-text-muted);cursor:not-allowed}
       .acc-row{transition:background .15s}
-      .acc-row:hover{background:#f8fafc}
+      .acc-row:hover{background:var(--c-surface-stripe)}
       .pm-badge{display:inline-block;padding:1px 8px;border-radius:9999px;font-size:11px;font-weight:600}
     `,
     pageContent: `
@@ -32,16 +32,16 @@ export function accountingPage(c: Context<HonoEnv>) {
           <button id="accCsvBtn" onclick="accExportCsv()" class="ds-btn ds-btn-secondary ds-btn-sm ml-auto" title="현재 탭의 필터 결과를 CSV로 내보냅니다"><i class="fas fa-file-csv mr-1"></i>CSV</button>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
-          <div class="acc-kpi ds-card-compact bg-blue-50/40" style="border-color:#3b82f6;padding:12px 14px">
+          <div class="acc-kpi ds-card-compact bg-blue-50/40" style="border-color:var(--c-primary);padding:12px 14px">
             <div class="ds-label mb-1"><i class="fas fa-arrow-down text-blue-500 mr-1"></i>수입 (기간 매출)</div>
             <div class="text-2xl font-bold text-blue-700 tabular-nums text-right" id="accKpiRevenue">-</div>
           </div>
-          <div class="acc-kpi ds-card-compact bg-red-50/40" style="border-color:#ef4444;padding:12px 14px">
+          <div class="acc-kpi ds-card-compact bg-red-50/40" style="border-color:var(--c-danger);padding:12px 14px">
             <div class="ds-label mb-1"><i class="fas fa-arrow-up text-red-500 mr-1"></i>지출 (카드+매입)</div>
             <div class="text-2xl font-bold text-red-600 tabular-nums text-right" id="accKpiExpense">-</div>
             <div class="text-[11px] text-gray-400 text-right mt-0.5" id="accKpiExpenseBreak"></div>
           </div>
-          <div class="acc-kpi ds-card-compact bg-amber-50/40" style="border-color:#f59e0b;padding:12px 14px">
+          <div class="acc-kpi ds-card-compact bg-amber-50/40" style="border-color:var(--c-warning);padding:12px 14px">
             <div class="ds-label mb-1"><i class="fas fa-hand-holding-usd text-amber-500 mr-1"></i>미수금 (현재 전체)</div>
             <div class="text-2xl font-bold text-amber-600 tabular-nums text-right" id="accKpiReceivable">-</div>
             <div class="text-[11px] text-gray-400 text-right mt-0.5">기간 무관 현재 잔액</div>

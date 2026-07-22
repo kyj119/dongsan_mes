@@ -8,12 +8,12 @@ export function quotationFormPage(c: Context<HonoEnv>) {
     title: '견적서 작성',
     activePage: '/quotations',
     pageCSS: `
-      .item-dd { position:absolute; z-index:50; background:white; border:1px solid #d1d5db; border-radius:0.5rem; max-height:220px; overflow-y:auto; width:100%; box-shadow:0 4px 12px rgba(0,0,0,.12); top:100%; left:0; margin-top:2px; }
-      .item-dd-entry:hover { background:#eff6ff; }
+      .item-dd { position:absolute; z-index:50; background:var(--c-surface); border:1px solid var(--c-border); border-radius:0.5rem; max-height:220px; overflow-y:auto; width:100%; box-shadow:0 4px 12px rgba(0,0,0,.12); top:100%; left:0; margin-top:2px; }
+      .item-dd-entry:hover { background:var(--c-primary-light); }
       .client-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:100; display:flex; align-items:center; justify-content:center; }
-      .client-modal { background:white; border-radius:0.75rem; width:90%; max-width:500px; max-height:80vh; box-shadow:0 20px 60px rgba(0,0,0,.3); overflow:hidden; }
-      .client-modal-row { padding:10px 16px; cursor:pointer; border-bottom:1px solid #f3f4f6; }
-      .client-modal-row:hover { background:#eff6ff; }
+      .client-modal { background:var(--c-surface); border-radius:0.75rem; width:90%; max-width:500px; max-height:80vh; box-shadow:0 20px 60px rgba(0,0,0,.3); overflow:hidden; }
+      .client-modal-row { padding:10px 16px; cursor:pointer; border-bottom:1px solid var(--c-border-light); }
+      .client-modal-row:hover { background:var(--c-primary-light); }
     `,
     pageContent: `
       <div class="max-w-5xl mx-auto">

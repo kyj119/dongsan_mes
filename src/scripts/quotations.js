@@ -79,7 +79,7 @@ async function loadQuotations(page) {
 function renderQuotationTable(orders) {
   var tbody = document.getElementById('quotTableBody');
   if (!orders || orders.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8"><div class="ds-empty"><i class="fas fa-file-invoice"></i><p>견적 내역이 없습니다</p></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8"><div class="ds-empty"><i class="fas fa-file-invoice"></i><p>견적 내역이 없습니다</p><a href="/quotation-form" class="ds-btn ds-btn-primary ds-btn-sm mt-3" style="text-decoration:none;">+ 새 견적서</a></div></td></tr>';
     return;
   }
   tbody.innerHTML = orders.map(function(q) {

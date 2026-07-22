@@ -68,7 +68,7 @@ export function appLayout(opts: AppLayoutOptions): string {
         </div>
     </div>
     <!-- 통합 메시지 발송 모달 (전역) -->
-    <div id="msgSendModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+    <div id="msgSendModal" class="hidden fixed inset-0 ds-z-stack flex items-center justify-center bg-black/50">
       <div class="bg-white rounded-lg shadow-xl w-[720px] max-h-[85vh] overflow-y-auto p-6">
         <div class="flex items-center justify-between mb-4">
           <h3 class="text-lg font-bold text-gray-800">메시지 발송</h3>

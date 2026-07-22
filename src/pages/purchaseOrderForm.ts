@@ -8,20 +8,20 @@ export function purchaseOrderFormPage(c: Context<HonoEnv>) {
     title: '발주 등록',
     activePage: '/purchase-orders',
     pageCSS: `
-      .po-dropdown { position:absolute; z-index:50; background:white; border:1px solid #e5e7eb; border-radius:0.5rem; max-height:240px; overflow-y:auto; min-width:340px; width:max-content; box-shadow:0 4px 12px rgba(0,0,0,.1); top:100%; left:0; margin-top:4px; }
-      .po-dropdown-item { padding:8px 12px; cursor:pointer; font-size:13px; transition:background .1s; border-bottom:1px solid #f9fafb; }
+      .po-dropdown { position:absolute; z-index:50; background:var(--c-surface); border:1px solid var(--c-border); border-radius:0.5rem; max-height:240px; overflow-y:auto; min-width:340px; width:max-content; box-shadow:0 4px 12px rgba(0,0,0,.1); top:100%; left:0; margin-top:4px; }
+      .po-dropdown-item { padding:8px 12px; cursor:pointer; font-size:13px; transition:background .1s; border-bottom:1px solid var(--c-border-light); }
       .po-dropdown-item:last-child { border-bottom:none; }
-      .po-dropdown-item:hover { background:#eff6ff; }
-      .po-dropdown-item.active { background:#dbeafe; }
+      .po-dropdown-item:hover { background:var(--c-primary-light); }
+      .po-dropdown-item.active { background:var(--c-info-light); }
       .overlay-bg { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:100; display:flex; align-items:center; justify-content:center; }
-      .modal-box { background:white; border-radius:0.75rem; width:90%; max-width:500px; max-height:80vh; box-shadow:0 20px 60px rgba(0,0,0,.3); overflow:hidden; }
-      .modal-list-item { padding:10px 16px; cursor:pointer; border-bottom:1px solid #f3f4f6; transition:background .1s; }
-      .modal-list-item:hover { background:#eff6ff; }
+      .modal-box { background:var(--c-surface); border-radius:0.75rem; width:90%; max-width:500px; max-height:80vh; box-shadow:0 20px 60px rgba(0,0,0,.3); overflow:hidden; }
+      .modal-list-item { padding:10px 16px; cursor:pointer; border-bottom:1px solid var(--c-border-light); transition:background .1s; }
+      .modal-list-item:hover { background:var(--c-primary-light); }
       .item-row-animate { animation: fadeIn .2s ease; }
       @keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
-      .po-item-table input[type="text"], .po-item-table input[type="number"] { border:1px solid #e5e7eb; border-radius:0.375rem; padding:6px 8px; font-size:13px; width:100%; }
-      .po-item-table input:focus { outline:none; ring:2px; border-color:#3b82f6; box-shadow:0 0 0 2px rgba(59,130,246,.2); }
-      .po-item-table input[readonly] { background:#f9fafb; cursor:default; }
+      .po-item-table input[type="text"], .po-item-table input[type="number"] { border:1px solid var(--c-border); border-radius:0.375rem; padding:6px 8px; font-size:13px; width:100%; }
+      .po-item-table input:focus { outline:none; ring:2px; border-color:var(--c-primary); box-shadow:0 0 0 2px rgba(59,130,246,.2); }
+      .po-item-table input[readonly] { background:var(--c-surface-secondary); cursor:default; }
       .po-item-table td { padding:6px 8px; vertical-align:middle; }
     `,
     pageContent: `
@@ -30,15 +30,15 @@ export function purchaseOrderFormPage(c: Context<HonoEnv>) {
         <!-- ─── 상단 헤더 ─── -->
         <div class="flex items-center justify-between">
           <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2" id="formTitle">
-            <svg class="w-5 h-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
+            <i class="fas fa-shopping-cart text-blue-600"></i>
             새 발주서
           </h2>
           <div class="flex items-center gap-2">
             <button onclick="openTemplateModal()" class="px-3 py-1.5 border border-gray-300 text-gray-700 bg-white rounded-lg text-sm hover:bg-gray-50 font-medium">
-              <svg class="w-4 h-4 inline -mt-0.5 mr-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>템플릿 불러오기
+              <i class="fas fa-file-alt mr-1"></i>템플릿 불러오기
             </button>
             <a href="/purchase-orders" class="px-3 py-1.5 text-gray-500 hover:text-gray-700 text-sm">
-              <svg class="w-4 h-4 inline -mt-0.5 mr-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>목록으로
+              <i class="fas fa-arrow-left mr-1"></i>목록으로
             </a>
           </div>
         </div>
@@ -46,7 +46,7 @@ export function purchaseOrderFormPage(c: Context<HonoEnv>) {
         <!-- ─── 기본 정보 카드 ─── -->
         <div class="bg-white rounded-lg border border-gray-200 p-6">
           <h3 class="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
-            <svg class="w-4 h-4 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+            <i class="fas fa-file-alt text-gray-500"></i>
             기본 정보
           </h3>
           <div id="templateModal"></div>
@@ -96,7 +96,7 @@ export function purchaseOrderFormPage(c: Context<HonoEnv>) {
         <div class="bg-white rounded-lg border border-gray-200 p-6">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
-              <svg class="w-4 h-4 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+              <i class="fas fa-box text-gray-500"></i>
               발주 품목
               <span id="itemCountBadge" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">0개</span>
             </h3>
@@ -105,10 +105,10 @@ export function purchaseOrderFormPage(c: Context<HonoEnv>) {
                 <option value="">전체 구역</option>
               </select>
               <button onclick="showGroupAddModal()" class="px-3 py-1.5 border border-gray-300 text-gray-700 bg-white rounded-lg text-sm hover:bg-gray-50">
-                <svg class="w-4 h-4 inline -mt-0.5 mr-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>그룹 추가
+                <i class="fas fa-th-large mr-1"></i>그룹 추가
               </button>
               <button onclick="addItemRow()" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 font-medium">
-                <svg class="w-4 h-4 inline -mt-0.5 mr-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>품목 추가
+                <i class="fas fa-plus mr-1"></i>품목 추가
               </button>
             </div>
           </div>
@@ -134,7 +134,7 @@ export function purchaseOrderFormPage(c: Context<HonoEnv>) {
 
           <!-- 빈 상태 -->
           <div id="emptyItemsMsg" class="hidden text-center py-8">
-            <svg class="w-10 h-10 text-gray-300 mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+            <i class="fas fa-box text-3xl mb-2 block text-gray-300"></i>
             <p class="text-gray-400 text-sm mb-2">발주할 품목이 없습니다</p>
             <button onclick="addItemRow()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 font-medium">+ 첫 품목 추가</button>
           </div>
@@ -186,13 +186,13 @@ export function purchaseOrderFormPage(c: Context<HonoEnv>) {
         <!-- ─── 하단 버튼 ─── -->
         <div class="flex items-center justify-between">
           <button onclick="saveAsTemplate()" class="px-3 py-2 border border-gray-300 text-gray-700 bg-white rounded-lg hover:bg-gray-50 text-sm font-medium">
-            <svg class="w-4 h-4 inline -mt-0.5 mr-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>템플릿으로 저장
+            <i class="fas fa-save mr-1"></i>템플릿으로 저장
           </button>
           <div class="flex items-center gap-3">
             <a href="/purchase-orders" class="px-4 py-2 text-gray-500 hover:text-gray-700 text-sm">취소</a>
             <button onclick="savePO('DRAFT')" class="px-4 py-2 border border-gray-300 text-gray-700 bg-white rounded-lg hover:bg-gray-50 text-sm font-medium">임시저장</button>
             <button onclick="savePO('CONFIRMED')" id="confirmBtn" class="ds-btn ds-btn-primary text-sm font-medium">
-              <svg class="w-4 h-4 inline -mt-0.5 mr-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>발주 확정
+              <i class="fas fa-check mr-1"></i>발주 확정
             </button>
           </div>
         </div>
@@ -205,7 +205,7 @@ export function purchaseOrderFormPage(c: Context<HonoEnv>) {
           <div class="p-4 border-b flex justify-between items-center">
             <h2 class="text-base font-bold text-gray-900">그룹 품목 추가</h2>
             <button onclick="closeGroupAddModal()" class="text-gray-400 hover:text-gray-600 p-1">
-              <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              <i class="fas fa-times text-lg"></i>
             </button>
           </div>
           <div class="p-6">

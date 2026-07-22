@@ -193,16 +193,16 @@ export function inventoryPage(c: Context<HonoEnv>) {
               <!-- 상단 요약 카드 -->
               <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div class="ds-card ds-card-compact summary-card">
-                  <div class="label"><i class="fas fa-list-check" style="color:#3b82f6;margin-right:4px"></i>총 실사 횟수</div>
-                  <div class="value" style="color:#3b82f6" id="totalCounts">-</div>
+                  <div class="label"><i class="fas fa-list-check" style="color:var(--c-primary);margin-right:4px"></i>총 실사 횟수</div>
+                  <div class="value" style="color:var(--c-primary)" id="totalCounts">-</div>
                 </div>
                 <div class="ds-card ds-card-compact summary-card">
-                  <div class="label"><i class="fas fa-hourglass-half" style="color:#f59e0b;margin-right:4px"></i>진행중</div>
-                  <div class="value" style="color:#f59e0b" id="inProgressCounts">-</div>
+                  <div class="label"><i class="fas fa-hourglass-half" style="color:var(--c-warning);margin-right:4px"></i>진행중</div>
+                  <div class="value" style="color:var(--c-warning)" id="inProgressCounts">-</div>
                 </div>
                 <div class="ds-card ds-card-compact summary-card">
-                  <div class="label"><i class="fas fa-calendar" style="color:#16a34a;margin-right:4px"></i>최근 실사일</div>
-                  <div class="value" style="color:#16a34a;font-size:16px" id="countTabLastCountDate">-</div>
+                  <div class="label"><i class="fas fa-calendar" style="color:var(--c-success);margin-right:4px"></i>최근 실사일</div>
+                  <div class="value" style="color:var(--c-success);font-size:16px" id="countTabLastCountDate">-</div>
                 </div>
               </div>
 
@@ -228,7 +228,7 @@ export function inventoryPage(c: Context<HonoEnv>) {
               <div class="ds-card" style="padding:0;overflow:hidden;">
                 <div style="padding:var(--space-md);border-bottom:1px solid var(--c-border);display:flex;align-items:center;justify-content:space-between;">
                   <h2 class="ds-card-title">
-                    <i class="fas fa-list" style="color:#3b82f6;margin-right:8px"></i>실사 목록
+                    <i class="fas fa-list" style="color:var(--c-primary);margin-right:8px"></i>실사 목록
                   </h2>
                 </div>
                 <div class="ds-table-wrap" style="max-height: calc(100vh - 280px); overflow-y: auto;">
@@ -245,7 +245,7 @@ export function inventoryPage(c: Context<HonoEnv>) {
                       </tr>
                     </thead>
                     <tbody id="countBody">
-                      <tr><td colspan="7" style="text-align:center;padding:32px;color:#9ca3af;"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</td></tr>
+                      <tr><td colspan="7" style="text-align:center;padding:32px;color:var(--c-text-muted);"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</td></tr>
                     </tbody>
                   </table>
                 </div>
@@ -268,16 +268,16 @@ export function inventoryPage(c: Context<HonoEnv>) {
             </div>
 
             <!-- 상세 패널 (우측 슬라이드) -->
-            <div id="detailPanel" class="hidden" style="position:fixed;right:0;top:0;height:100vh;width:500px;background:#fff;box-shadow:-4px 0 24px rgba(0,0,0,.12);z-index:60;overflow-y:auto;display:none;">
+            <div id="detailPanel" class="hidden" style="position:fixed;right:0;top:0;height:100vh;width:500px;background:var(--c-surface);box-shadow:-4px 0 24px rgba(0,0,0,.12);z-index:60;overflow-y:auto;display:none;">
               <div style="padding:20px;">
 
                 <!-- 패널 헤더 -->
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
                   <div>
-                    <h3 id="panelCountNumber" style="font-size:18px;font-weight:700;color:#1e293b;"></h3>
-                    <div id="panelCountDate" style="font-size:12px;color:#9ca3af;margin-top:2px;"></div>
+                    <h3 id="panelCountNumber" style="font-size:18px;font-weight:700;color:var(--c-text);"></h3>
+                    <div id="panelCountDate" style="font-size:12px;color:var(--c-text-muted);margin-top:2px;"></div>
                   </div>
-                  <button onclick="closeDetailPanel()" style="background:none;border:none;cursor:pointer;font-size:18px;color:#9ca3af;padding:4px;" title="닫기">
+                  <button onclick="closeDetailPanel()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--c-text-muted);padding:4px;" title="닫기">
                     <i class="fas fa-times"></i>
                   </button>
                 </div>
@@ -296,13 +296,13 @@ export function inventoryPage(c: Context<HonoEnv>) {
 
                 <!-- 항목 목록 -->
                 <div style="margin-bottom:20px;">
-                  <h4 style="font-size:13px;font-weight:600;color:#374151;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #f1f5f9;">
+                  <h4 style="font-size:13px;font-weight:600;color:var(--c-text);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--c-border-light);">
                     <i class="fas fa-boxes" style="margin-right:6px"></i>품목 실사 현황
                   </h4>
                   <!-- 실사 UX 다①: 품목 검색·필터 / 다②: 차이 요약 -->
                   <div style="display:flex;gap:6px;margin-bottom:8px;">
-                    <input type="text" id="panelItemSearch" placeholder="품목명·코드 검색" oninput="icApplyFilter()" style="flex:1;min-width:0;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;">
-                    <select id="panelItemFilter" onchange="icApplyFilter()" style="padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;">
+                    <input type="text" id="panelItemSearch" placeholder="품목명·코드 검색" oninput="icApplyFilter()" style="flex:1;min-width:0;padding:6px 8px;border:1px solid var(--c-border);border-radius:6px;font-size:12px;">
+                    <select id="panelItemFilter" onchange="icApplyFilter()" style="padding:6px 8px;border:1px solid var(--c-border);border-radius:6px;font-size:12px;">
                       <option value="all">전체</option>
                       <option value="unfilled">미입력만</option>
                       <option value="diff">차이만</option>
@@ -314,7 +314,7 @@ export function inventoryPage(c: Context<HonoEnv>) {
                 </div>
 
                 <!-- 액션 버튼 -->
-                <div id="panelActions" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:20px;padding-top:12px;border-top:1px solid #f1f5f9;">
+                <div id="panelActions" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:20px;padding-top:12px;border-top:1px solid var(--c-border-light);">
                 </div>
 
               </div>

@@ -15,17 +15,17 @@ export function usersPage(c: Context<HonoEnv>) {
         font-size: 12px;
         font-weight: 600;
       }
-      .role-ADMIN      { background: #fee2e2; color: #991b1b; }
-      .role-MANAGER    { background: #dbeafe; color: #1e40af; }
-      .role-DESIGNER   { background: #ede9fe; color: #5b21b6; }
-      .role-OPERATOR   { background: #dcfce7; color: #166534; }
-      .role-ACCOUNTANT { background: #fef9c3; color: #854d0e; }
-      .role-SALES      { background: #ffedd5; color: #9a3412; }
-      .role-FINISHING  { background: #cffafe; color: #155e75; }
-      .role-SHIPPING   { background: #f3e8ff; color: #6b21a8; }
+      .role-ADMIN      { background: var(--c-danger-light); color: var(--c-danger); }
+      .role-MANAGER    { background: var(--c-info-light); color: var(--c-primary-dark); }
+      .role-DESIGNER   { background: var(--c-purple-light); color: var(--c-purple); }
+      .role-OPERATOR   { background: var(--c-success-light); color: var(--c-success); }
+      .role-ACCOUNTANT { background: var(--c-warning-light); color: var(--c-warning); }
+      .role-SALES      { background: var(--c-orange-light); color: var(--c-orange); }
+      .role-FINISHING  { background: var(--c-teal-light); color: var(--c-teal); }
+      .role-SHIPPING   { background: var(--c-purple-light); color: var(--c-purple); }
       .status-badge  { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 12px; font-weight: 600; }
-      .status-active   { background: #dcfce7; color: #166534; }
-      .status-inactive { background: #f1f5f9; color: #64748b; }
+      .status-active   { background: var(--c-success-light); color: var(--c-success); }
+      .status-inactive { background: var(--c-border-light); color: var(--c-text-secondary); }
       .modal-overlay {
         position: fixed; inset: 0; background: rgba(0,0,0,0.5);
         display: flex; align-items: center; justify-content: center;
@@ -34,7 +34,7 @@ export function usersPage(c: Context<HonoEnv>) {
       /* 전역 ESC closer가 hidden 클래스로 닫으므로 인라인 display 대신 클래스 토글 (P0-2) */
       .modal-overlay.hidden { display: none; }
       .modal-box {
-        background: #fff; border-radius: 12px; padding: 24px;
+        background: var(--c-surface); border-radius: 12px; padding: 24px;
         width: 100%; max-width: 480px;
         box-shadow: 0 20px 60px rgba(0,0,0,0.3);
       }

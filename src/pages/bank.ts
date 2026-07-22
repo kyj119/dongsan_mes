@@ -6,41 +6,41 @@ import bankScript from '../scripts/bank.js?raw'
 // P3 자금 허브(/cash-schedule) 이식용 단일소스 export. 표준 /bank 라우트와 공유(HTML 중복 방지).
 export const bankPageCSS = `
       .tab-btn { cursor:pointer; transition:border-color .15s, color .15s; }
-      .tab-btn.active { border-bottom-color:#2563eb; color:#2563eb; }
+      .tab-btn.active { border-bottom-color:var(--c-info); color:var(--c-info); }
       .tab-content { display:none; }
       .tab-content.active { display:block; }
       .kpi-card { border-radius:8px; padding:16px 20px; display:flex; flex-direction:column; gap:4px; }
       .status-badge { display:inline-block; padding:2px 8px; border-radius:9999px; font-size:11px; font-weight:600; }
-      .badge-unmatched { background:#e5e7eb; color:#374151; }
-      .badge-suggested { background:#fef3c7; color:#92400e; }
-      .badge-confirmed { background:#dbeafe; color:#1e40af; }
-      .badge-applied   { background:#d1fae5; color:#065f46; }
-      .badge-ignored   { background:#fee2e2; color:#991b1b; }
-      .tx-row:hover { background:#f8fafc; }
-      .tx-row td { padding:6px 10px; border-bottom:1px solid #f1f5f9; font-size:12px; vertical-align:middle; }
-      .account-card { background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+      .badge-unmatched { background:var(--c-border); color:var(--c-text); }
+      .badge-suggested { background:var(--c-warning-light); color:var(--c-warning); }
+      .badge-confirmed { background:var(--c-info-light); color:var(--c-info); }
+      .badge-applied   { background:var(--c-success-light); color:var(--c-success); }
+      .badge-ignored   { background:var(--c-danger-light); color:var(--c-danger); }
+      .tx-row:hover { background:var(--c-surface-stripe); }
+      .tx-row td { padding:6px 10px; border-bottom:1px solid var(--c-border-light); font-size:12px; vertical-align:middle; }
+      .account-card { background:var(--c-surface); border:1px solid var(--c-border); border-radius:8px; padding:16px 20px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
       .modal-overlay { display:none; position:fixed; inset:0; z-index:50; background:rgba(0,0,0,.45); justify-content:center; align-items:center; }
       .modal-overlay.show { display:flex; }
-      .modal-box { background:#fff; border-radius:10px; width:480px; max-width:95vw; padding:28px; box-shadow:0 8px 32px rgba(0,0,0,.18); }
-      .form-label { font-size:13px; font-weight:500; color:#374151; margin-bottom:4px; display:block; }
+      .modal-box { background:var(--c-surface); border-radius:10px; width:480px; max-width:95vw; padding:28px; box-shadow:0 8px 32px rgba(0,0,0,.18); }
+      .form-label { font-size:13px; font-weight:500; color:var(--c-text); margin-bottom:4px; display:block; }
       .form-input { width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:13px; outline:none; }
-      .form-input:focus { border-color:#3b82f6; box-shadow:0 0 0 2px #bfdbfe; }
-      .form-select { width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:13px; background:#fff; outline:none; }
+      .form-input:focus { border-color:var(--c-primary); box-shadow:0 0 0 2px var(--c-primary-light); }
+      .form-select { width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:13px; background:var(--c-surface); outline:none; }
       .btn-primary { background:#2563eb; color:#fff; border:none; border-radius:6px; padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer; }
       .btn-primary:hover { background:#1d4ed8; }
-      .btn-secondary { background:#fff; color:#374151; border:1px solid #d1d5db; border-radius:6px; padding:8px 16px; font-size:13px; cursor:pointer; }
-      .btn-secondary:hover { background:#f9fafb; }
+      .btn-secondary { background:var(--c-surface); color:var(--c-text); border:1px solid var(--c-border); border-radius:6px; padding:8px 16px; font-size:13px; cursor:pointer; }
+      .btn-secondary:hover { background:var(--c-surface-secondary); }
       .btn-sm { padding:4px 10px; font-size:12px; border-radius:4px; cursor:pointer; border:none; font-weight:500; }
-      .btn-match { background:#dbeafe; color:#1e40af; }
-      .btn-match:hover { background:#bfdbfe; }
-      .btn-ignore { background:#fee2e2; color:#991b1b; }
-      .btn-ignore:hover { background:#fecaca; }
-      .btn-unmatch { background:#f3f4f6; color:#374151; }
-      .btn-unmatch:hover { background:#e5e7eb; }
-      .btn-sync { background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; }
-      .btn-sync:hover { background:#dcfce7; }
-      .btn-delete { background:#fee2e2; color:#991b1b; border:1px solid #fecaca; }
-      .btn-delete:hover { background:#fecaca; }
+      .btn-match { background:var(--c-info-light); color:var(--c-info); }
+      .btn-match:hover { filter:brightness(.95); }
+      .btn-ignore { background:var(--c-danger-light); color:var(--c-danger); }
+      .btn-ignore:hover { filter:brightness(.95); }
+      .btn-unmatch { background:var(--c-border-light); color:var(--c-text); }
+      .btn-unmatch:hover { filter:brightness(.95); }
+      .btn-sync { background:var(--c-success-light); color:var(--c-success); border:1px solid var(--c-success-light); }
+      .btn-sync:hover { filter:brightness(.95); }
+      .btn-delete { background:var(--c-danger-light); color:var(--c-danger); border:1px solid var(--c-danger-light); }
+      .btn-delete:hover { filter:brightness(.95); }
     `
 
 export const bankPageContent = `
@@ -560,7 +560,7 @@ export const bankPageContent = `
           <div class="space-y-3">
             <div>
               <label class="form-label">거래처 <span class="text-red-500">*</span></label>
-              <input type="text" id="applyClientSearch" class="form-input" placeholder="클릭하여 거래처 선택..." readonly style="cursor:pointer;background:#fff;"
+              <input type="text" id="applyClientSearch" class="form-input" placeholder="클릭하여 거래처 선택..." readonly style="cursor:pointer;background:var(--c-surface);"
                 onclick="openClientPicker(window.onApplyClientPicked, this.value)">
               <input type="hidden" id="applyClientId">
             </div>
@@ -617,7 +617,7 @@ export const bankPageContent = `
                 <button type="button" id="ruleTgtCategory" onclick="setRuleTarget('category')" class="flex-1 px-3 py-2 text-sm rounded-lg border font-medium">비용분류</button>
               </div>
               <div id="ruleClientBlock">
-                <input type="text" id="ruleEditClientSearch" class="form-input" placeholder="클릭하여 거래처 선택..." readonly style="cursor:pointer;background:#fff;"
+                <input type="text" id="ruleEditClientSearch" class="form-input" placeholder="클릭하여 거래처 선택..." readonly style="cursor:pointer;background:var(--c-surface);"
                   onclick="openClientPicker(function(id,name){document.getElementById('ruleEditClientSearch').value=name;document.getElementById('ruleEditClientId').value=id;}, this.value)">
                 <input type="hidden" id="ruleEditClientId">
               </div>

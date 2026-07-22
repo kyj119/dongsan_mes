@@ -65,7 +65,7 @@ export function productionPage(c: Context<HonoEnv>) {
             <div class="text-[10px] text-gray-400 mb-1">
               <i class="fas fa-check-circle text-green-500 mr-1"></i>오늘 완료
             </div>
-            <div id="kpiOk" class="text-2xl font-bold tabular-nums" style="color:#212529;">
+            <div id="kpiOk" class="text-2xl font-bold tabular-nums" style="color:var(--c-text);">
               <span class="ds-skeleton ds-skeleton-title inline-block w-10"></span>
             </div>
             <div class="text-[10px] text-gray-400 mt-1">건</div>
@@ -76,7 +76,7 @@ export function productionPage(c: Context<HonoEnv>) {
             <div class="text-[10px] text-gray-400 mb-1">
               <i class="fas fa-spinner text-blue-500 mr-1"></i>인쇄 진행중
             </div>
-            <div id="kpiPrinting" class="text-2xl font-bold tabular-nums" style="color:#212529;">
+            <div id="kpiPrinting" class="text-2xl font-bold tabular-nums" style="color:var(--c-text);">
               <span class="ds-skeleton ds-skeleton-title inline-block w-10"></span>
             </div>
             <div class="text-[10px] text-gray-400 mt-1">카드</div>
@@ -87,7 +87,7 @@ export function productionPage(c: Context<HonoEnv>) {
             <div class="text-[10px] text-gray-400 mb-1">
               <i class="fas fa-exclamation-triangle text-red-500 mr-1"></i>에러 / 취소
             </div>
-            <div id="kpiError" class="text-2xl font-bold tabular-nums" style="color:#212529;">
+            <div id="kpiError" class="text-2xl font-bold tabular-nums" style="color:var(--c-text);">
               <span class="ds-skeleton ds-skeleton-title inline-block w-10"></span>
             </div>
             <div class="text-[10px] text-gray-400 mt-1">건</div>
@@ -98,7 +98,7 @@ export function productionPage(c: Context<HonoEnv>) {
             <div class="text-[10px] text-gray-400 mb-1">
               <i class="fas fa-stopwatch text-amber-500 mr-1"></i>평균 인쇄시간
             </div>
-            <div id="kpiAvgDur" class="text-2xl font-bold tabular-nums" style="color:#212529;">
+            <div id="kpiAvgDur" class="text-2xl font-bold tabular-nums" style="color:var(--c-text);">
               <span class="ds-skeleton ds-skeleton-title inline-block w-14"></span>
             </div>
             <div class="text-[10px] text-gray-400 mt-1">오늘 기준</div>
@@ -310,11 +310,11 @@ export function productionPage(c: Context<HonoEnv>) {
             <div class="grid grid-cols-2 gap-2">
               <div>
                 <label class="block text-[11px] text-gray-500 mb-1">날짜</label>
-                <input id="wrDate" type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" class="js-fp w-full border rounded px-2 py-1 text-xs" style="color:#212529;" />
+                <input id="wrDate" type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" class="js-fp w-full border rounded px-2 py-1 text-xs" style="color:var(--c-text);" />
               </div>
               <div>
                 <label class="block text-[11px] text-gray-500 mb-1">근무조</label>
-                <select id="wrShift" class="w-full border rounded px-2 py-1 text-xs" style="color:#212529;">
+                <select id="wrShift" class="w-full border rounded px-2 py-1 text-xs" style="color:var(--c-text);">
                   <option value="DAY">주간(DAY)</option>
                   <option value="NIGHT">야간(NIGHT)</option>
                 </select>
@@ -323,14 +323,14 @@ export function productionPage(c: Context<HonoEnv>) {
 
             <div>
               <label class="block text-[11px] text-gray-500 mb-1">작업자</label>
-              <select id="wrEmployee" class="w-full border rounded px-2 py-1 text-xs" style="color:#212529;">
+              <select id="wrEmployee" class="w-full border rounded px-2 py-1 text-xs" style="color:var(--c-text);">
                 <option value="">로딩…</option>
               </select>
             </div>
 
             <div>
               <label class="block text-[11px] text-gray-500 mb-1">공정유형</label>
-              <select id="wrType" class="w-full border rounded px-2 py-1 text-xs" style="color:#212529;">
+              <select id="wrType" class="w-full border rounded px-2 py-1 text-xs" style="color:var(--c-text);">
                 <option value="POST_PROCESS">후가공</option>
                 <option value="SEWING">봉제</option>
                 <option value="PACKING">포장</option>
@@ -342,7 +342,7 @@ export function productionPage(c: Context<HonoEnv>) {
             <div>
               <label class="block text-[11px] text-gray-500 mb-1">카드 (번호·거래처 검색)</label>
               <div class="flex gap-2">
-                <input id="wrCardSearch" class="flex-1 border rounded px-2 py-1 text-xs" placeholder="카드번호 또는 거래처명" style="color:#212529;" />
+                <input id="wrCardSearch" class="flex-1 border rounded px-2 py-1 text-xs" placeholder="카드번호 또는 거래처명" style="color:var(--c-text);" />
                 <button onclick="window.wrSearchCard()" class="px-2 py-1 bg-gray-100 text-xs rounded hover:bg-gray-200">조회</button>
               </div>
               <div id="wrCardResults" class="mt-1 max-h-32 overflow-y-auto"></div>
@@ -352,18 +352,18 @@ export function productionPage(c: Context<HonoEnv>) {
             <div class="grid grid-cols-2 gap-2">
               <div>
                 <label class="block text-[11px] text-gray-500 mb-1">목표수량</label>
-                <input id="wrTarget" type="number" min="0" class="w-full border rounded px-2 py-1 text-xs" placeholder="선택" style="color:#212529;" />
+                <input id="wrTarget" type="number" min="0" class="w-full border rounded px-2 py-1 text-xs" placeholder="선택" style="color:var(--c-text);" />
               </div>
               <div>
                 <label class="block text-[11px] text-gray-500 mb-1">완료수량</label>
-                <input id="wrCompleted" type="number" min="0" class="w-full border rounded px-2 py-1 text-xs" value="0" style="color:#212529;" />
+                <input id="wrCompleted" type="number" min="0" class="w-full border rounded px-2 py-1 text-xs" value="0" style="color:var(--c-text);" />
               </div>
             </div>
 
             <div class="grid grid-cols-3 gap-2">
               <div>
                 <label class="block text-[11px] text-gray-500 mb-1">상태</label>
-                <select id="wrStatus" class="w-full border rounded px-2 py-1 text-xs" style="color:#212529;">
+                <select id="wrStatus" class="w-full border rounded px-2 py-1 text-xs" style="color:var(--c-text);">
                   <option value="COMPLETED">완료</option>
                   <option value="IN_PROGRESS">진행중</option>
                   <option value="PAUSED">일시중지</option>
@@ -371,17 +371,17 @@ export function productionPage(c: Context<HonoEnv>) {
               </div>
               <div>
                 <label class="block text-[11px] text-gray-500 mb-1">시작(선택)</label>
-                <input id="wrStart" type="time" class="w-full border rounded px-2 py-1 text-xs" style="color:#212529;" />
+                <input id="wrStart" type="time" class="w-full border rounded px-2 py-1 text-xs" style="color:var(--c-text);" />
               </div>
               <div>
                 <label class="block text-[11px] text-gray-500 mb-1">종료(선택)</label>
-                <input id="wrEnd" type="time" class="w-full border rounded px-2 py-1 text-xs" style="color:#212529;" />
+                <input id="wrEnd" type="time" class="w-full border rounded px-2 py-1 text-xs" style="color:var(--c-text);" />
               </div>
             </div>
 
             <div>
               <label class="block text-[11px] text-gray-500 mb-1">메모</label>
-              <textarea id="wrNotes" rows="2" class="w-full border rounded px-2 py-1 text-xs" style="color:#212529;"></textarea>
+              <textarea id="wrNotes" rows="2" class="w-full border rounded px-2 py-1 text-xs" style="color:var(--c-text);"></textarea>
             </div>
 
             <div class="flex justify-end pt-1">
@@ -398,7 +398,7 @@ export function productionPage(c: Context<HonoEnv>) {
                 <i class="fas fa-list-check text-blue-500 mr-1.5"></i>최근 작업 실적
               </h2>
               <div class="flex items-center gap-2">
-                <select id="wrFilterStatus" onchange="window.wrLoadRecords()" class="border rounded px-2 py-1 text-xs" style="color:#212529;" title="상태 필터">
+                <select id="wrFilterStatus" onchange="window.wrLoadRecords()" class="border rounded px-2 py-1 text-xs" style="color:var(--c-text);" title="상태 필터">
                   <option value="">전체 상태</option>
                   <option value="COMPLETED">완료</option>
                   <option value="IN_PROGRESS">진행중</option>

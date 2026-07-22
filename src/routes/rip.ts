@@ -4,6 +4,7 @@ import { authMiddleware, requireRole, agentKeyMiddleware } from '../middleware/a
 import { getEntityId, entityFilter, cardEntityFilter } from '../utils/entityFilter'
 import { PROCESS_CODES } from '../constants/process'
 import { kstDate, kstDateOf } from '../utils/kstDate'
+import { EQUIP_STATUS_LABELS } from '../utils/statusLabels'
 
 // ─── D1 row types ───────────────────────────────────────────────────────────
 
@@ -597,8 +598,8 @@ ripRouter.patch('/equipment/:id/status', authMiddleware, async (c) => {
       'UPDATE equipment SET equipment_status = ?, notes = COALESCE(?, notes), updated_at = CURRENT_TIMESTAMP WHERE id = ?'
     ).bind(equipment_status, notes || null, equipId).run()
 
-    // 상태 변경 이력 기록 — 라벨은 equipment.js STATUS_MAP과 통일
-    const equipStatusLabel: Record<string, string> = { RUNNING: '가동중', IDLE: '대기', MAINTENANCE: '점검중', BROKEN: '고장' }
+    // 상태 변경 이력 기록 — 라벨은 EQUIP_STATUS_LABELS SSOT (utils/statusLabels.ts)
+    const equipStatusLabel = EQUIP_STATUS_LABELS
     await c.env.DB.prepare(`
       INSERT INTO maintenance_logs (equipment_id, log_type, description, performed_by)
       VALUES (?, 'STATUS_CHANGE', ?, ?)
