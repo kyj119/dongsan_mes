@@ -200,6 +200,22 @@ grep -n "for\s*(" src/routes/CHANGED.ts | head -20
 **오탐 주의**:
 - `webhooks.ts allowedPrefixes` — 의도적 IP 화이트리스트, 하드코딩이 아님
 
+### 14. 공용 헬퍼 우선 게이트 (프론트 JS/페이지 변경 시)
+
+새 코드가 아래를 **재구현하면 반려** — 전역 헬퍼 사용으로 유도 (카탈로그=mes-ui-consistency SKILL §9):
+- CSV 다운로드 Blob+a.click 조립 → `dsDownloadCsv` / 셀 이스케이프 → `dsCsvCell`
+- 숫자 콤마 포맷 로컬 함수(fmt/fmtAmt류) → `fmtNum` (금액 표시=`fmtMoney`) / 날짜 YYYY-MM-DD 절단 → `fmtDateOnly`
+- 페이지네이션 렌더러 → `dsPaginate` (top-level `renderPagination`/`switchTab` 동명 전역 정의 = 즉시 반려, 페이지-prefix 필수)
+- 모달 열기/닫기 → `dsOpenModal`/`dsCloseModal` (인라인 `style.display` 토글 금지 — ESC closer와 충돌)
+- 거래처 검색 UI → `openClientSearchModal` / 품목 검색 → `openItemSearchModal`
+- 주문/카드 상태 라벨·색·아이콘 리터럴 맵 → `MES_STATUS`(label/tone/icon/badgeClass/textClass/chipClass/badge)
+
+```bash
+# 신규 재구현 탐지
+grep -n "new Blob\|function renderPagination\|function switchTab\|toLocaleString()" src/scripts/CHANGED.js
+grep -n "statusColors\s*=\|statusLabels\s*=\s*{" src/scripts/CHANGED.js
+```
+
 ## 참조
 
 상세 안티패턴 목록: [anti-patterns.md](references/anti-patterns.md)

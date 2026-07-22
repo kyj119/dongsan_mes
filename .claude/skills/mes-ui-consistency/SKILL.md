@@ -82,6 +82,28 @@ description: "동산기획 ERP+MES UI 일관성 가이드. 프론트엔드 작�
 - 금액 입력: `type="text" inputmode="numeric" data-money` (상세 → decisions-money.md)
 - 날짜 입력: `type="text" class="js-fp" maxlength="10" inputmode="numeric" placeholder="예: 2020-01-15"` + 폼 로드/모달 시 `window.hrInitDatePickers(rootSel)` 호출(flatpickr 달력 — 헤더 년도 빠른 선택 + 텍스트 자동하이픈 병행). **native `type="date"` 지양**(년도 점프 불편).
 
+## 9. 공용 헬퍼 카탈로그 — 재구현 금지 (공유 우선 원칙)
+
+같은 UI/로직은 반드시 전역 헬퍼·ds-* 컴포넌트를 쓴다. **페이지별 재구현 = 리뷰 반려**(review-checklist §14). ?raw 단일 전역 스코프에서 공유 경로는 ①`window.*` 헬퍼(shell.js) ②전역 CSS 클래스(shared-styles.ts ds-*) ③주입 상수(STATUS_LABELS_JS 등) 3가지 — 이 경로로 못 만드는 위젯은 없다(품목검색 모달 실증).
+
+| 용도 | 전역 헬퍼 (window.*) | 금지 패턴 |
+|------|---------------------|----------|
+| HTML 이스케이프 | `escapeHtml` | 로컬 esc 재구현 (가드형 `window.escapeHtml \|\| fallback`만 허용) |
+| 금액 표시 | `fmtMoney`(null→'-') / 숫자 콤마 `fmtNum`(null→'0') | 로컬 `fmt()`/`accWon`류 재정의 |
+| 금액 입력 | `data-money` + `bindMoneyInputs`/`readMoney`/`fmtMoneyInput` | `type="number"` 금액 입력 |
+| 날짜 표시 | `fmtDateOnly`(YYYY-MM-DD 절단) / `formatKST`(시각) | 로컬 formatDate/fmtDate slice 재작성 |
+| CSV | `dsCsvCell`(셀) · `dsBuildCsv`(조립) · `dsDownloadCsv`(BOM+Blob+click+revoke) | Blob+a.click 복붙 |
+| 페이지네이션 | `dsPaginate(el, pag, 'gotoFn')` | top-level `renderPagination` 동명 전역 (덮어쓰기 사고 전례) |
+| 모달 | `dsOpenModal`/`dsCloseModal`(hidden 클래스 SSOT) + 부수효과 모달 `data-esc-close` | 인라인 `style.display` 토글 (ESC closer 충돌) |
+| 거래처 검색 | `openClientSearchModal({onSelect, search})` | 자체 드롭다운/모달 신작 |
+| 품목 검색 | `openItemSearchModal({onSelect, type})` | 〃 |
+| 주문/카드 상태 | `MES_STATUS` label·tone·icon·`badgeClass`(ds-badge)·`textClass`·`chipClass`(bg-*-50)·`badge`(완성 HTML=`dsStatusBadge`) | 상태→라벨/색/아이콘 리터럴 맵 재정의 |
+| 토스트/확인 | `showToast`·`showConfirm`·`showPrompt`·`showFieldError` | alert/confirm/prompt |
+| 로딩/빈상태 | `dsSkeleton`·`ds-empty`·`emptyRow` | fa-spinner 단독·수제 빈상태 |
+| 탭 | 페이지-prefix 함수(accSwitchTab식) | top-level `switchTab` 동명 전역 |
+
+- 새 공통 위젯이 필요하면 **페이지에 만들지 말고 shell.js에 window 헬퍼로 추가** 후 사용 (openClientSearchModal 선례).
+
 ## 체크리스트
 
 ### 기본
