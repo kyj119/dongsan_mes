@@ -777,15 +777,7 @@
                 return window.MES_STATUS.orderLabel(status);
             }
             function getStatusColor(status) {
-                const map = {
-                    'CONFIRMED': 'bg-blue-50 text-blue-700',
-                    'PRINTING': 'bg-orange-100 text-orange-800',
-                    'PRINT_DONE': 'bg-green-50 text-green-700',
-                    'SHIPPED': 'bg-gray-100 text-gray-700',
-                    'HOLD': 'bg-gray-200 text-gray-600',
-                    'CANCELLED': 'bg-red-50 text-red-700'
-                };
-                return map[status] || 'bg-gray-100 text-gray-800';
+                return window.MES_STATUS.chipClass('order', status); // 상태 색상 SSOT (statusLabels.ts)
             }
 
             // 후가공 복원 헬퍼

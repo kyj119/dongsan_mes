@@ -90,6 +90,7 @@ window.MES_STATUS = (function(){
   // 톤 → 표현 클래스 (ds-badge 팔레트 / 텍스트 컬러). 표현 규칙 변경은 여기 한 곳만.
   var toneBadge = { blue: 'ds-badge-blue', green: 'ds-badge-green', amber: 'ds-badge-yellow', red: 'ds-badge-red', gray: 'ds-badge-gray' };
   var toneText = { blue: 'text-blue-600', green: 'text-green-600', amber: 'text-amber-600', red: 'text-red-500', gray: 'text-gray-500' };
+  var toneChip = { blue: 'bg-blue-50 text-blue-700', green: 'bg-green-50 text-green-700', amber: 'bg-amber-50 text-amber-700', red: 'bg-red-50 text-red-700', gray: 'bg-gray-100 text-gray-600' };
   function pick(kind) { return kind === 'card' ? { l: card, t: cardTones, i: cardIcons } : { l: order, t: orderTones, i: orderIcons }; }
   var api = {
     cardLabels: card,
@@ -100,6 +101,7 @@ window.MES_STATUS = (function(){
     icon: function(kind, s){ return pick(kind).i[s] || 'fas fa-circle'; },
     badgeClass: function(kind, s){ return 'ds-badge ' + (toneBadge[api.tone(kind, s)] || 'ds-badge-gray'); },
     textClass: function(kind, s){ return toneText[api.tone(kind, s)] || 'text-gray-500'; },
+    chipClass: function(kind, s){ return toneChip[api.tone(kind, s)] || toneChip.gray; },
     badge: function(kind, s){
       var p = pick(kind);
       return '<span class="' + api.badgeClass(kind, s) + '"><i class="' + api.icon(kind, s) + ' text-[9px] mr-1"></i>' + (p.l[s] || s) + '</span>';

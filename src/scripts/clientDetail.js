@@ -1,12 +1,6 @@
 var cdData = null;
 
 var statusLabels = window.MES_STATUS.orderLabels; // 단일 소스 (layout 주입)
-var statusColors = {
-  'QUOTATION': 'bg-gray-100 text-gray-600',
-  'CONFIRMED': 'bg-blue-50 text-blue-700', 'PRINTING': 'bg-amber-50 text-amber-700',
-  'PRINT_DONE': 'bg-green-50 text-green-700', 'SHIPPED': 'bg-blue-50 text-blue-700',
-  'HOLD': 'bg-amber-50 text-amber-700', 'CANCELLED': 'bg-red-50 text-red-700'
-};
 var noteTypeLabels = { 'GENERAL': '일반', 'IMPORTANT': '중요', 'COMPLAINT': '클레임', 'FOLLOW_UP': '후속조치' };
 var noteTypeColors = { 'GENERAL': 'bg-gray-100 text-gray-700', 'IMPORTANT': 'bg-red-50 text-red-700', 'COMPLAINT': 'bg-amber-50 text-amber-700', 'FOLLOW_UP': 'bg-blue-50 text-blue-700' };
 var collMethodLabels = { 'PHONE': '전화', 'SMS': '문자', 'EMAIL': '이메일', 'VISIT': '방문', 'LETTER': '내용증명', 'OTHER': '기타' };
@@ -143,7 +137,7 @@ function renderOrders(orders) {
     return;
   }
   tbody.innerHTML = orders.map(function(o) {
-    var sBadge = '<span class="px-2 py-0.5 rounded text-xs ' + (statusColors[o.status] || 'bg-gray-100') + '">' + (statusLabels[o.status] || o.status) + '</span>';
+    var sBadge = '<span class="px-2 py-0.5 rounded text-xs ' + window.MES_STATUS.chipClass('order', o.status) + '">' + (statusLabels[o.status] || o.status) + '</span>';
     var bBadge = o.billing_status === 'BILLED'
       ? '<span class="text-green-600"><i class="fas fa-check-circle"></i></span>'
       : '<span class="text-gray-300"><i class="fas fa-clock"></i></span>';

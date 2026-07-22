@@ -253,8 +253,7 @@ function getStatusText(status) {
 }
 
 function getStatusIcon(status) {
-  const m = { CONFIRMED:'fas fa-check', PRINTING:'fas fa-spinner', PRINT_DONE:'fas fa-check-circle', SHIPPED:'fas fa-box', CANCELLED:'fas fa-times-circle' };
-  return m[status] || 'fas fa-circle';
+  return window.MES_STATUS.icon('order', status); // 상태 아이콘 SSOT (statusLabels.ts)
 }
 
 function getBillingStatusText(billingStatus) {
@@ -278,8 +277,7 @@ function getBillingStatusIcon(billingStatus) {
 }
 
 function getStatusColor(status) {
-  const m = { CONFIRMED:'ds-badge ds-badge-blue', PRINTING:'ds-badge ds-badge-blue', PRINT_DONE:'ds-badge ds-badge-green', SHIPPED:'ds-badge ds-badge-green', CANCELLED:'ds-badge ds-badge-red' };
-  return m[status] || 'ds-badge ds-badge-gray';
+  return window.MES_STATUS.badgeClass('order', status); // 상태 색상 SSOT (statusLabels.ts)
 }
 
 

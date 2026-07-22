@@ -525,14 +525,13 @@ async function loadRecentActivity() {
     var ordersEl = document.getElementById('recentOrdersList');
     var orders = data.recent_orders || [];
     var orderStatusLabels = window.MES_STATUS.orderLabels; // 단일 소스 (PRINTING=출력중)
-    var orderStatusColors = { CONFIRMED:'text-blue-500', PRINTING:'text-blue-600', PRINT_DONE:'text-green-600', SHIPPED:'text-green-700', CANCELLED:'text-red-400', QUOTATION:'text-amber-600' };
     if (ordersEl) {
       if (orders.length === 0) {
         ordersEl.innerHTML = '<div class="ds-empty"><i class="fas fa-file-alt"></i><p>최근 주문이 없습니다</p></div>';
       } else {
         ordersEl.innerHTML = orders.map(function(o) {
           var statusLabel = orderStatusLabels[o.status] || o.status;
-          var statusColor = orderStatusColors[o.status] || 'text-gray-500';
+          var statusColor = window.MES_STATUS.textClass('order', o.status); // 상태 색상 SSOT
           var createdAt = o.created_at ? o.created_at.slice(0, 10) : '-';
           return '<div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 cursor-pointer" onclick="location.href=\'/orders\'">'
             + '<div class="flex items-center gap-2">'
