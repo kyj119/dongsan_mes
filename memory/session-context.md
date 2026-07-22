@@ -1,4 +1,13 @@
-# 세션 핸드오프 — UI/UX 후속: 감사잔여 8건 + 장비 SSOT + 다크모드 hex 전수 (2026-07-22)
+# 세션 핸드오프 — UI/UX 후속 3종 + 보안이슈 5건 (2026-07-22~23)
+
+## [추가] 보안·정합 이슈 5건 prod 배포완료 (2026-07-23, main `32773c00`·deploy `a29aead4`·마이그 0470)
+- #552(독촉이력 GET 격리)·#553(연말정산 POST 소유검증+귀속+★INSERT 39컬럼/36값 잠복버그 동반수정)·#535(bank LINKED 부분 UNIQUE 0470+catch 409)·#550(급여삭제 published_at 가드)·#528(fixed-in-tree 확인) — **전부 close**. worktree `issues-sec` 정리 완료
+- ⚠️신규 백로그: 교부된 PENDING 급여를 `/save` 재계산이 덮어씀(core.ts:406 status만 검사) — 이슈 미등록 상태
+- 남은 오픈 이슈 9건=504·509·520·525·526·536·540·549·551 (다음 세션)
+- 검증 요령: 격리 E2E는 로컬 D1에 E99 시드(employees는 NOT NULL 5컬럼: employee_code·name·department·position·hire_date) 후 admin(E1) 토큰으로 404/비노출 확인·테스트행 삭제
+
+---
+# (이전) UI/UX 후속: 감사잔여 8건 + 장비 SSOT + 다크모드 hex 전수 (2026-07-22)
 
 > 세션별 덮어쓰기 파일. 이전 핸드오프(UI/UX 전수감사→P0~P2→공유화→백로그) durable 내용은 SKILL §9·design-token.md·MEMORY.md에 보존됨.
 
