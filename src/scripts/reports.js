@@ -201,7 +201,7 @@ async function loadDesignerStats() {
       var completionRate = total > 0 ? Math.round(((d.completed_count || 0) / total) * 100) : 0;
       var barColor = completionRate >= 80 ? 'bg-green-500' : completionRate >= 50 ? 'bg-amber-500' : 'bg-red-500';
       return '<tr class="border-t hover:bg-gray-50">'
-        + '<td class="px-4 py-3 font-medium" title="' + esc(d.designer_name || '-') + '">' + (d.designer_name || '-') + '</td>'
+        + '<td class="px-4 py-3 font-medium" title="' + esc(d.designer_name || '-') + '">' + esc(d.designer_name || '-') + '</td>'
         + '<td class="px-4 py-3 text-right">' + fmt(d.order_count) + '건</td>'
         + '<td class="px-4 py-3 text-right font-medium text-blue-600">' + fmt(d.total_revenue) + '원</td>'
         + '<td class="px-4 py-3 text-right">' + fmt(Math.round(d.avg_amount)) + '원</td>'
@@ -300,7 +300,7 @@ async function loadMarginAnalysis() {
         var marginColor = marginRate < 0 ? 'text-red-600 font-bold' : marginRate < 15 ? 'text-orange-600' : 'text-gray-700';
         return '<tr class="border-t hover:bg-gray-50 cursor-pointer" onclick="location.href=\'/orders?highlight=' + o.order_id + '\'">'
           + '<td class="px-4 py-3 font-medium text-blue-600" title="' + esc(o.order_number || '') + '">' + (o.order_number || '') + '</td>'
-          + '<td class="px-4 py-3" title="' + esc(o.client_name || '') + '">' + (o.client_name || '') + '</td>'
+          + '<td class="px-4 py-3" title="' + esc(o.client_name || '') + '">' + esc(o.client_name || '') + '</td>'
           + '<td class="px-4 py-3 text-right">' + fmtWon(o.total_revenue) + '</td>'
           + '<td class="px-4 py-3 text-right">' + fmtWon(o.total_cost) + '</td>'
           + '<td class="px-4 py-3 text-right' + (profit < 0 ? ' text-red-600' : '') + '">' + fmtWon(profit) + '</td>'
@@ -343,7 +343,7 @@ function renderClientMarginTable(tbodyId, clients) {
     else if (marginRate >= 35) grade = 'B';
     else if (marginRate >= 20) grade = 'C';
     return '<tr class="border-t hover:bg-gray-50">'
-      + '<td class="px-3 py-2 font-medium" title="' + esc(cl.client_name || '') + '">' + (cl.client_name || '') + ' <span class="text-xs text-gray-400">(' + (cl.order_count || 0) + '건)</span></td>'
+      + '<td class="px-3 py-2 font-medium" title="' + esc(cl.client_name || '') + '">' + esc(cl.client_name || '') + ' <span class="text-xs text-gray-400">(' + (cl.order_count || 0) + '건)</span></td>'
       + '<td class="px-3 py-2 text-right">' + fmtWon(cl.total_revenue) + '</td>'
       + '<td class="px-3 py-2 text-right font-bold ' + marginColor + '">' + marginRate.toFixed(1) + '%</td>'
       + '<td class="px-3 py-2 text-center">' + gradeBadge(grade) + '</td>'
@@ -451,7 +451,7 @@ async function loadReceivablesAnalysis() {
       var daysClass = (cl.days_overdue || 0) > 90 ? 'text-red-600 font-bold' : (cl.days_overdue || 0) > 60 ? 'text-orange-600' : '';
       return '<tr class="border-t hover:bg-gray-50 cursor-pointer" onclick="location.href=\'/clients/' + cl.id + '\'">'
         + '<td class="px-4 py-3 text-center text-gray-400 font-bold">' + (i+1) + '</td>'
-        + '<td class="px-4 py-3 font-medium" title="' + esc(cl.client_name || '') + '">' + (cl.client_name || '') + '</td>'
+        + '<td class="px-4 py-3 font-medium" title="' + esc(cl.client_name || '') + '">' + esc(cl.client_name || '') + '</td>'
         + '<td class="px-4 py-3 text-right font-bold text-red-600">' + fmt(balance) + '원</td>'
         + '<td class="px-4 py-3 text-right text-sm">' + (cl.last_payment_date || '-') + '</td>'
         + '<td class="px-4 py-3 text-right ' + daysClass + '">' + (cl.days_overdue || '-') + '일</td>'
