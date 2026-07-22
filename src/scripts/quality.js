@@ -63,9 +63,9 @@
     if (name === 'analytics' && !loaded.analytics) { loaded.analytics = true; window.qcLoadAnalytics(); }
   };
 
-  // 인라인 display 토글 금지 — 전역 ESC closer(hidden 클래스)와 충돌 (P0-2)
-  window.qcCloseModal = function (id) { var m = document.getElementById(id); if (m) m.classList.add('hidden'); };
-  function openModal(id) { var m = document.getElementById(id); if (m) m.classList.remove('hidden'); }
+  // 표준 모달 헬퍼 위임 (dsOpenModal/dsCloseModal — hidden 클래스 SSOT, 인라인 display 토글 금지)
+  window.qcCloseModal = function (id) { window.dsCloseModal(id); };
+  function openModal(id) { window.dsOpenModal(id); }
 
   // ─── 클레임 ───
   window.qcLoadClaims = function (page) {

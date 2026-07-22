@@ -337,7 +337,6 @@ async function openApproveModal(id) {
       + '<button onclick="searchApprSupplier()" class="px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm">'
       + '<i class="fas fa-search"></i></button>'
       + '</div>'
-      + '<div id="apprSupplierDd" class="border rounded-lg hidden max-h-40 overflow-y-auto mt-1 bg-white shadow-lg"></div>'
       + '</div>';
 
     document.getElementById('prApproveContent').innerHTML =
@@ -374,32 +373,15 @@ async function openApproveModal(id) {
   }
 }
 
-async function searchApprSupplier() {
-  var q = document.getElementById('apprSupplierName').value.trim();
-  if (!q) return;
-  try {
-    var res = await axios.get('/api/clients?type=PURCHASE&search=' + encodeURIComponent(q) + '&limit=20');
-    var clients = (res.data && res.data.data && res.data.data.clients) ? res.data.data.clients : [];
-    var dd = document.getElementById('apprSupplierDd');
-    if (clients.length === 0) {
-      dd.innerHTML = '<div class="px-3 py-2 text-sm text-gray-400">검색 결과 없음</div>';
-    } else {
-      dd.innerHTML = clients.map(function(cl) {
-        // JS 문자열 이스케이프 후 속성 컨텍스트용 HTML 이스케이프 (둘 다 필요)
-        var safeName = escapeHtml((cl.client_name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
-        return '<div class="px-3 py-2 cursor-pointer hover:bg-blue-50 text-sm border-b last:border-b-0"'
-          + ' onclick="selectApprSupplier(' + cl.id + ',\'' + safeName + '\')">'
-          + escapeHtml(cl.client_name || '') + '</div>';
-      }).join('');
+// 공용 거래처 검색 모달 채택 (openClientSearchModal 파일럿 — 자체 드롭다운 9벌 통합의 1호)
+function searchApprSupplier() {
+  window.openClientSearchModal({
+    search: document.getElementById('apprSupplierName').value.trim(),
+    onSelect: function(cl) {
+      document.getElementById('apprSupplierId').value = cl.id;
+      document.getElementById('apprSupplierName').value = cl.client_name || '';
     }
-    dd.classList.remove('hidden');
-  } catch(e) { console.error('searchApprSupplier error:', e); }
-}
-
-function selectApprSupplier(id, name) {
-  document.getElementById('apprSupplierId').value = id;
-  document.getElementById('apprSupplierName').value = name;
-  document.getElementById('apprSupplierDd').classList.add('hidden');
+  });
 }
 
 async function submitApprove(prId, itemIds) {
