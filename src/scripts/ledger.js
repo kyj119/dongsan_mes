@@ -455,7 +455,7 @@ async function loadClientDetail(clientId) {
                                 '<span class="text-gray-800">' + escapeHtml(item.item_name) + '</span>' +
                                 '<span class="text-gray-400">' + specStr + '</span>' +
                                 '<span class="text-gray-500 italic">' + contentStr + '</span>' +
-                                '<span class="text-gray-400 ml-2">' + item.quantity + (item.unit || '') + ' × ' + (item.unit_price ? item.unit_price.toLocaleString() : '-') + '</span>' +
+                                '<span class="text-gray-400 ml-2">' + item.quantity + escapeHtml(item.unit || '') + ' × ' + (item.unit_price ? item.unit_price.toLocaleString() : '-') + '</span>' +
                             '</td>' +
                             '<td class="px-3 py-1 text-right tabular-nums text-xs text-gray-600">' + _net.toLocaleString() + '</td>' +
                             '<td class="px-3 py-1 text-right tabular-nums text-xs text-gray-400">' + (_iv ? _iv.toLocaleString() : '') + '</td>' +
@@ -1185,7 +1185,7 @@ async function loadPurchaseClientLedger(clientId) {
                             '<td></td><td></td>' +
                             '<td class="pl-8 pr-4 py-1 text-xs text-gray-700">' +
                                 '<span class="text-gray-800">' + escapeHtml(item.item_name) + '</span>' +
-                                '<span class="text-gray-400 ml-2">' + item.quantity + (item.unit || '') + ' × ' + (item.unit_price ? item.unit_price.toLocaleString() : '-') + '</span>' +
+                                '<span class="text-gray-400 ml-2">' + item.quantity + escapeHtml(item.unit || '') + ' × ' + (item.unit_price ? item.unit_price.toLocaleString() : '-') + '</span>' +
                             '</td>' +
                             '<td class="px-4 py-1 text-right tabular-nums text-xs text-gray-600">' + _net.toLocaleString() + '</td>' +
                             '<td class="px-4 py-1 text-right tabular-nums text-xs text-gray-400">' + (_iv ? _iv.toLocaleString() : '') + '</td>' +
