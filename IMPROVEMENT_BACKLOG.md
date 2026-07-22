@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-07-22T21:20:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-07-23T03:14:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,23 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **14** — Area 1 48회차(07-22T21:20) `search_issues(state:open,label:auto-improve)` 실측 14건, Area 6 47회차 값과 일치(변동 없음). |
+| 🆕 new | **1** — Area 2 49회차(07-23T03:14) `search_issues(state:open,label:auto-improve)` 실측. 직전 기재값(14)에서 대폭 감소 — owner가 이번 사이클 사이 12개 이슈(#552/#553/#535/#550/#509/#520/#525/#526/#536/#549/#551/#504)를 코드로 직접 픽스(`32773c0`+`1edba25`)하고 close, `#548`도 옵션2(단일batch 유지+상한 주석 문서화)로 완료 close — 실측 신뢰, 재검증 없이 반영. 남은 1건 = `#554`(Area4, 부문손익 자재비 이동평균단가 비재현성, M공수 정책판단 대기). |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **465** — 변동 없음(이번 사이클 close 0건). |
+| ✔️ done | **479** — 실측 재동기화(+14, 위 12건 close분 반영). |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 2 코드 품질 심층 분석 (2026-07-23T03:14):**
+> - **방법**: `git fetch origin main`(HEAD `1edba25` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 2 **49회차** — 직전 Area2(`2adacf5`, 07-21T10:20, 48회차) 이후 27커밋 중 Area1 48회차(`7b93234`, HEAD `c292250`까지 커버)가 이미 감사한 부분을 제외하면, **순수 미검증 신선 churn = `32773c0`+`1edba25` 단 2개 커밋**(owner/worktree 세션의 대형 배치 픽스 — IDOR 2건·bank 링크 동시성·급여 교부증빙 가드·연말정산 INSERT 잠복버그·부문 검증·AR aging SSOT 전환 등 12+이슈). 오케스트레이터가 직접 Read로 두 커밋의 전체 diff(`bank.ts`/`ar-dunning.ts`/`payroll/records.ts`/`payroll/year-end.ts`/`payroll/core.ts`/`dashboard.ts`/`departments.ts`/`workbench.ts`/`aiAnalysis.ts`/`aiInsights.ts`)를 컬럼정합성·claim-state 가드·entity 귀속 관점에서 전수 검증(위임 없이 직접 수행 — 범위가 좁고 각 파일이 이미 특정 이슈번호에 스코프됨).
+> - **🟢 핵심 검증 1 — year-end.ts INSERT 컬럼/값 개수 정합 재확인**: 커밋 메시지가 자체 언급한 "INSERT VALUES 플레이스홀더 35→38" 수정을 Python으로 독립 재검산 — `year_end_settlements` INSERT 컬럼 39개(`status`만 리터럴 `'CALCULATED'`) ↔ VALUES `?` 38개 ↔ `.bind()` 인자 38개, 전부 정합(NOT NULL 컬럼 전부 바인드 확인). 형제 UPDATE(같은 함수 UPSERT 분기)도 컬럼-값 개수 일치. 자기-탐지·자기-수정된 버그가 실제로 해소됐음을 재확인(재발 0).
+> - **🟢 핵심 검증 2 — workbench.ts/aiAnalysis.ts lost-update 가드(#520)의 claim-state 문자열이 migrations 문서화 값과 정합**: `sheet_layouts.render_status`(`0318`: `queued→rendering→done|error`)·`ia_process_jobs.status`(`0386`: `queued|rendering|done|error`)·`ai_analysis_requests.status`(`0011`/`0130`: `pending/processing/done/error`) 3테이블 전부 코드가 참조하는 claim-state 리터럴(`'rendering'`/`'processing'`)이 마이그레이션 주석의 상태다이어그램과 정확히 일치 — WHERE 가드가 잘못된 상태값으로 항상 0-row가 되는 회귀 없음. `aiAnalysis.ts:479` 리퍼(`processing→pending/error`)도 재큐 코멘트가 인용한 실제 코드 위치와 일치.
+> - **🟢 핵심 검증 3 — 나머지 Area2 표준 스캔 = clean**: `node scripts/entity-audit.mjs` = 검사 122파일·통과 **59**·누락 **0**(직전 48회차 "누락 3"[bank.ts×2+cron.ts×1]에서 해소 확인 — `entity-audit.mjs` 자체는 미변경(`978791c` 이후 무변경), 즉 스크립트 완화가 아니라 실제 코드가 격리됨). `npx tsc --noEmit` 에러 0. 마이그레이션 번호 중복 재확인 = 기존 문서화 5쌍(`0327`·`0412`·`0416`·`0420`·`0453`)만 존재, 신규 `0470`(bank 부분 UNIQUE)은 미중복. N+1 재확인 — `dashboard.ts` aging 재작성(SSOT 전환)·`payroll/core.ts` 일괄생성 루프 전부 루프 밖 prefetch 유지(신규 DB-in-loop 없음).
+> - **🟢 backlog↔GitHub 절대값 재동기화(대폭 stale 발견)**: `search_issues(state:open,label:auto-improve)` 실측 **1건**(`#554`만, Area4 소관) — 직전 기재값 14와 큰 괴리. 원인 확인 = owner가 32773c0/1edba25로 12개 이슈를 코드 픽스+close, `#548`(Area2 자체 발견, D1 batch 80-청크 회귀)은 issue가 제시한 옵션2(단일 batch 유지 + 상한 근접 시 재검토 주석 추가, `records.ts:135-137`)를 owner가 직접 채택해 completed close — 코드 확인 결과 옵션2가 정확히 반영됨(청크화 아님, 문서화만) → **closed=completed가 실제 코드 상태와 정합**(#473 "closed≠fixed" 우려 케이스 아님, 재오픈 불요). done `search_issues(is:closed,reason:completed)` 실측 **479**(+14)·not_planned 실측 4+duplicate 실측 2 → rejected **6**(변동 없음).
+> - **🧬 SKILL 강화 없음(신규 탐지 클래스 아님)** — 이번 사이클은 자기-탐지 버그(연말정산 INSERT)의 자가수정 재검증, lost-update 가드의 claim-state 정합 확인, done-sync 대폭 재동기화(owner의 대규모 배치 클로징)가 실질 가치. #548 클로징은 "issue가 제시한 2개 옵션 중 owner가 명시적으로 하나를 선택+코드 반영"이라는 점에서 기존 "closed≠fixed"(line 281 계열) 사례와 구분되는 **건강한 종결 패턴**으로 참고 가치.
+> - 신규 이슈 0건, 자동수정 0건(수정 대상 없음 — churn이 이미 clean), done-sync 대폭 재동기화(new 14(stale)→1(실측)·done 465→479·rejected 6, 전부 절대값 재확인). 다음 순번 Area 3.
+>
 
 > **Area 1 프로덕션 헬스 (2026-07-22T21:20):**
 > - **방법**: `git fetch origin main`(HEAD `c292250` = origin/main 일치, 워킹트리 clean, detached). 프록시가 이번 세션도 prod 호스트 직접 curl 차단(exit 56, CONNECT tunnel 403 — `webapp-9i0.pages.dev` 대상 재시도 동일, 기존 33~47회차와 동일 제약, `cloudflare-observability` MCP 미인증). Playwright MCP 브라우저 점검은 이번 세션도 도구 승인 게이트에서 거부되어 미수행(46~47회차와 동일 패턴) — 배포체인 로그로 대체. Area 1 **48회차** — 직전 Area1(`2adacf5`, 07-21T00:18, 47회차) 이후 `git log 2adacf5..HEAD`(26커밋): 전부 Area2~6(48/41/42/41/47회차)가 각자 렌즈로 이미 심층 감사 완료(#548~#553 생성, SSOT 리팩터 3단계 검증 포함) — 순수 미검증 Area1 관점 신규 항목 없음. **신규 마이그레이션 0건**(`git diff 2adacf5..HEAD --stat -- migrations` 무출력) — (b)-risk 컬럼드리프트 후보 없음.
