@@ -105,7 +105,7 @@ async function loadStats() {
 }
 
 function formatAmount(n) {
-  return Number(n || 0).toLocaleString('ko-KR');
+  return window.fmtNum(n); // SSOT 위임 (shell.js fmtNum) — 숫자 입력 시 출력 동일
 }
 
 // 재발주 기능 삭제됨 (2026-04-16)
@@ -156,7 +156,7 @@ async function loadPOs(page) {
     var res = await axios.get(url);
     if (res.data.success) {
       displayPOs(res.data.data);
-      renderPagination(res.data.pagination);
+      poRenderPagination(res.data.pagination);
     }
   } catch(e) { console.error('loadPOs error:', e); }
 }
@@ -214,7 +214,7 @@ function displayPOs(items) {
   }).join('');
 }
 
-function renderPagination(p) {
+function poRenderPagination(p) {
   if (!p || p.total_pages <= 1) { document.getElementById('pagination').innerHTML = ''; return; }
   var html = '';
   for (var i = 1; i <= p.total_pages; i++) {

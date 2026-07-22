@@ -946,12 +946,7 @@ function exportTransactionsCSV() {
 }
 
 function downloadCSV(csv, filename) {
-    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    var link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(link.href);
+    window.dsDownloadCsv(filename, csv);
     showToast('CSV 다운로드 완료', 'success');
 }
 

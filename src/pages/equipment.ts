@@ -78,19 +78,19 @@ export function equipmentPage(c: Context<HonoEnv>) {
             <!-- 탭 네비게이션 -->
             <div class="flex items-center justify-between mb-4">
                 <div class="flex gap-1 bg-gray-100 rounded-lg p-1">
-                    <button onclick="switchTab('list')" id="tabList" class="tab-btn px-4 py-2 rounded-md text-sm font-medium bg-white shadow text-gray-800">
+                    <button onclick="eqSwitchTab('list')" id="tabList" class="tab-btn px-4 py-2 rounded-md text-sm font-medium bg-white shadow text-gray-800">
                         <i class="fas fa-list mr-1"></i>목록
                     </button>
-                    <button onclick="switchTab('layout')" id="tabLayout" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700">
+                    <button onclick="eqSwitchTab('layout')" id="tabLayout" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700">
                         <i class="fas fa-map mr-1"></i>배치도
                     </button>
-                    <button onclick="switchTab('dashboard')" id="tabDashboard" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700">
+                    <button onclick="eqSwitchTab('dashboard')" id="tabDashboard" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700">
                         <i class="fas fa-chart-bar mr-1"></i>현황
                     </button>
-                    <button onclick="switchTab('queue')" id="tabQueue" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700">
+                    <button onclick="eqSwitchTab('queue')" id="tabQueue" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700">
                         <i class="fas fa-layer-group mr-1"></i>큐/부하
                     </button>
-                    <button onclick="switchTab('maintenance')" id="tabMaintenance" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700 hidden">
+                    <button onclick="eqSwitchTab('maintenance')" id="tabMaintenance" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700 hidden">
                         <i class="fas fa-wrench mr-1"></i>정비
                     </button>
                 </div>

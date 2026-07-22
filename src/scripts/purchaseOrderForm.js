@@ -26,7 +26,7 @@ function escapeAttr(str) {
 }
 
 function formatAmount(n) {
-  return (n || 0).toLocaleString() + '원';
+  return window.fmtNum(n) + '원';
 }
 
 function buildSpecStr(item) {

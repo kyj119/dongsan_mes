@@ -11,7 +11,7 @@ var monthlyData = null;
 var monthlyChart = null;
 var currentFinancialTab = 'pnl';
 
-function fmt(n) { return (n || 0).toLocaleString(); }
+function fmt(n) { return window.fmtNum(n); }
 // 초기화는 파일 맨 아래에서 실행 (window.* 함수 정의 이후)
 
 // ============================================================

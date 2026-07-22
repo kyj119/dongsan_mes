@@ -221,13 +221,7 @@ window.exportVatExcel = function() {
   lines.push('');
   lines.push('납부세액,,,,,' + vatData.payable_tax);
 
-  var blob = new Blob([BOM + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement('a');
-  a.href = url;
-  a.download = 'vat_' + vatData.report_year + '_Q' + vatData.report_quarter + '.csv';
-  a.click();
-  URL.revokeObjectURL(url);
+  window.dsDownloadCsv('vat_' + vatData.report_year + '_Q' + vatData.report_quarter + '.csv', BOM + lines.join('\r\n'));
 };
 
 // ============================================================

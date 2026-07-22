@@ -58,8 +58,8 @@
       '<span style="font-size:13px;color:#6b7280;margin-left:8px;">' + page + ' / ' + totalPages + ' 페이지 (총 ' + total + '건)</span>';
   }
 
-  // Tab Switching
-  window.switchTab = function(tab) {
+  // Tab Switching (?raw 전역 충돌 방지 — 페이지-prefix, 구 switchTab 금지)
+  window.htSwitchTab = function(tab) {
     currentTab = tab;
     var tabs = ['collect', 'invoices', 'compare'];
     tabs.forEach(function(t) {

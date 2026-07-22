@@ -91,4 +91,25 @@ window.dsCsvCell = function(val) {
   if (str.indexOf(',') >= 0 || str.indexOf('"') >= 0 || str.indexOf('\\n') >= 0) { return '"' + str.replace(/"/g, '""') + '"'; }
   return str;
 };
+// 클라 CSV 조립 SSOT — headers/rows 배열을 dsCsvCell 이스케이프로 CRLF 결합
+window.dsBuildCsv = function(headers, rows) {
+  var lines = [headers.map(window.dsCsvCell).join(',')];
+  (rows || []).forEach(function(r) { lines.push(r.map(window.dsCsvCell).join(',')); });
+  return lines.join('\\r\\n');
+};
+// 클라 CSV 다운로드 SSOT — BOM 보장 + Blob + click + revoke (페이지별 boilerplate 금지)
+// 사용: dsDownloadCsv(파일명, csv문자열) 또는 dsDownloadCsv(파일명, headers배열, rows배열)
+window.dsDownloadCsv = function(filename, csvOrHeaders, rows) {
+  var csv = Array.isArray(csvOrHeaders) ? window.dsBuildCsv(csvOrHeaders, rows) : String(csvOrHeaders == null ? '' : csvOrHeaders);
+  if (csv.charCodeAt(0) !== 0xFEFF) csv = String.fromCharCode(0xFEFF) + csv;
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+};
 `

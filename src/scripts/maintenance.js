@@ -141,8 +141,7 @@
   }
 
   function formatWon(v) {
-    if (!v) return '₩0';
-    return '₩' + Number(v).toLocaleString();
+    return '₩' + window.fmtNum(v);
   }
 
   function esc(s) { return s == null ? '' : window.escapeHtml(String(s)); }

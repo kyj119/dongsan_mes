@@ -1198,12 +1198,7 @@ function pmCsvCell(v) {
 function pmCsvDownload(rows, filename) {
   var csv = rows.map(function(r) { return r.map(pmCsvCell).join(','); }).join('\r\n');
   // BOM(U+FEFF) 선두 → Excel 한글 깨짐 방지
-  var blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement('a');
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click();
-  setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+  window.dsDownloadCsv(filename, '﻿' + csv);
 }
 function pmActiveTab() {
   var tabs = ['purchase', 'sales', 'policies'];

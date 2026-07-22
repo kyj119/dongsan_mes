@@ -1207,11 +1207,7 @@ window.payrollLedgerExportCsv = function(){
   var csv = '﻿' + lines.join('\r\n');
   var period = (rows[0] && rows[0].pay_period) || '';
   var name = (window.payrollLedgerTab==='emp' ? '회사부담금' : '급여대장') + '_' + period;
-  var blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-  var a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = name + '.csv';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+  window.dsDownloadCsv(name + '.csv', csv);
 };
 
 window.payrollLedgerPrint = function(){

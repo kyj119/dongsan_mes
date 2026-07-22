@@ -75,7 +75,7 @@ function loadReceipts(page) {
   axios.get('/api/cash-receipts?' + params.toString())
     .then(function(response) {
       displayReceipts(response.data.data || []);
-      renderPagination(response.data.pagination || {});
+      crRenderPagination(response.data.pagination || {});
     })
     .catch(function(error) {
       console.error('Error loading receipts:', error);
@@ -123,7 +123,7 @@ function displayReceipts(items) {
   document.getElementById('receiptsTable').innerHTML = html;
 }
 
-function renderPagination(pagination) {
+function crRenderPagination(pagination) {
   var pageCount = pagination.pageCount || 1;
   var currentPage_ = pagination.page || 1;
 

@@ -4,7 +4,7 @@
 
 var accState = { tab: 'payments', pPage: 1, tPage: 1, cPage: 1, cardPage: 1, purPage: 1, tlPage: 1, ietPage: 1, limit: 50, loaded: { payments: false, tax: false, cash: false, card: false, purchase: false, timeline: false, inter: false } };
 
-function accWon(n) { return (Number(n) || 0).toLocaleString() + '원'; }
+function accWon(n) { return window.fmtNum(n) + '원'; }
 
 // 세금계산서·현금영수증 공통 상태 라벨/색상 (taxInvoices.js 미러, acc-prefix 격리)
 var ACC_STATUS_LABEL = { DRAFT: '작성중', ISSUING: '발행중', ISSUED: '발행완료', SENT: '전송완료', FAILED: '전송실패', CANCELLED: '취소', NTS_SUCCESS: '국세청성공', NTS_FAILED: '국세청실패' };
@@ -524,14 +524,7 @@ async function accExportCsv() {
     var end = document.getElementById('accEnd').value;
     var fname = '회계_' + cfg.name + '_' + (start || '전체') + '_' + (end || '전체') + '.csv';
     var BOM = String.fromCharCode(0xFEFF);
-    var blob = new Blob([BOM + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = fname;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(a.href);
+    window.dsDownloadCsv(fname, BOM + lines.join('\r\n'));
     showToast(rows.length.toLocaleString() + '건 CSV 다운로드 완료', 'success');
   } catch (e) {
     console.error('[accounting] csv export error', e);

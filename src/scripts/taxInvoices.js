@@ -1,6 +1,6 @@
 ﻿// #tax-cash-scope: taxInvoices.js·cashReceipts.js가 같은 ?raw 전역 스코프에 concat됨.
-// cashReceipts.js(나중 로드)가 동명 top-level(statusLabels/statusColors/renderPagination)을 silent 덮어씀
-// → 세금계산서 탭 뱃지(SENT/ISSUING 누락)·페이지네이션(loadReceipts 호출·pageCount shape) 깨짐.
+// (과거) cashReceipts.js의 동명 top-level이 silent 덮어쓰던 사고 → 현재 renderPagination은 crRenderPagination으로 페이지-prefix 격리됨.
+// 신규 페이지네이션은 window.dsPaginate 사용, top-level 동명 전역 금지.
 // 세금계산서 전용 식별자에 ti 프리픽스로 격리(이 파일 내부 참조만, onclick 전역 노출 아님).
 // tiRefreshStatus: cash refreshStatus(현금영수증 미지원 400 stub)가 tax 버전을 shadow해 상태새로고침 버튼이
 //   /api/cash-receipts/:id/refresh-status 400을 치던 것을 ti 프리픽스+onclick(:175/:544)로 격리(auto-improve Area 3).
@@ -141,12 +141,7 @@ async function exportInvoicesCsv() {
       ].map(tiCsvCell).join(',');
     });
     var csv = '﻿' + headers.join(',') + '\n' + rows.join('\n');
-    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    var link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'tax_invoices_' + (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10)) + '.csv';
-    link.click();
-    URL.revokeObjectURL(link.href);
+    window.dsDownloadCsv('tax_invoices_' + (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10)) + '.csv', csv);
     showToast('CSV 다운로드 완료', 'success');
   } catch (e) {
     showToast('내보내기 오류: ' + (e.message || ''), 'error');

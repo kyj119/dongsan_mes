@@ -1297,7 +1297,7 @@ var gState = {};        // { [idx]: { status, phone_edit, suffix_edit, unit_edit
 var gPage = 1;
 var G_PAGE_SIZE = 50;
 
-function switchTab(tab) {
+function iaScanSwitchTab(tab) {
   var normal = document.getElementById('normalSection');
   var guerrilla = document.getElementById('guerrillaSection');
   var tabN = document.getElementById('tabNormal');

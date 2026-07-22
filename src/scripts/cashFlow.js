@@ -16,7 +16,7 @@
     BULLET: '만기일시', INTEREST_ONLY: '이자만'
   };
 
-  function fmt(n) { return (n || 0).toLocaleString(); }
+  function fmt(n) { return window.fmtNum(n); }
   function esc(s) {
     if (s == null) return '';
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');

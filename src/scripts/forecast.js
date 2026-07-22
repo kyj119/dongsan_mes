@@ -16,7 +16,7 @@ function switchFcTab(tab) {
   });
 }
 
-function fmt(n) { return (n || 0).toLocaleString(); }
+function fmt(n) { return window.fmtNum(n); }
 
 // 1. 수주 예측
 async function loadForecast() {

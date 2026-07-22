@@ -36,7 +36,7 @@ var inspStatusColors = {
 };
 
 // ── 탭 전환 ──
-function switchTab(tab) {
+function rcvSwitchTab(tab) {
   currentTab = tab;
   var pending = document.getElementById('panelPending');
   var history = document.getElementById('panelHistory');
@@ -91,12 +91,11 @@ function getDueBadge(expectedDate, status) {
 
 // ── 숫자 콤마 포맷 ──
 function formatNumber(n) {
-  if (!n && n !== 0) return '0';
-  return Number(n).toLocaleString();
+  return window.fmtNum(n); // SSOT 위임 (shell.js fmtNum) — null/undefined/0 → '0' 동일 보존
 }
 
 // ── 페이지네이션 렌더 ──
-function renderPagination(containerId, currentPage, totalPages, loadFn) {
+function rcvRenderPagination(containerId, currentPage, totalPages, loadFn) {
   var container = document.getElementById(containerId);
   if (!container) return;
   if (!totalPages || totalPages <= 1) { container.innerHTML = ''; return; }
@@ -155,7 +154,7 @@ async function loadReceiptHistory(page) {
         + '</td>'
         + '</tr>';
     }).join('');
-    renderPagination('historyPagination', historyPage, pagination.total_pages, 'loadReceiptHistory');
+    rcvRenderPagination('historyPagination', historyPage, pagination.total_pages, 'loadReceiptHistory');
   } catch(e) {
     console.error('loadReceiptHistory error:', e);
     if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-red-500">조회 실패: ' + escapeHtml(e.message) + '</td></tr>';

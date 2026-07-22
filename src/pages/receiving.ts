@@ -10,11 +10,11 @@ export function receivingPage(c: Context<HonoEnv>) {
     pageContent: `
       <!-- 탭 네비게이션 -->
       <div class="flex border-b mb-6 bg-white rounded-t-lg shadow-sm px-2">
-        <button id="tabPending" onclick="switchTab('pending')"
+        <button id="tabPending" onclick="rcvSwitchTab('pending')"
           class="px-6 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600">
           <i class="fas fa-clock mr-1"></i>입고대기
         </button>
-        <button id="tabHistory" onclick="switchTab('history')"
+        <button id="tabHistory" onclick="rcvSwitchTab('history')"
           class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
           <i class="fas fa-history mr-1"></i>입고이력
         </button>

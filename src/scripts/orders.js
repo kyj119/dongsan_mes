@@ -284,7 +284,7 @@ function getStatusColor(status) {
 
 
 // 페이지네이션 렌더링
-function renderPagination(pagination) {
+function ordRenderPagination(pagination) {
   const container = document.getElementById('ordersPagination');
   if (!pagination || pagination.total_pages <= 1) {
     container.innerHTML = pagination ? `<span style="font-size:13px;color:#6b7280;">총 ${pagination.total}건</span>` : '';
@@ -425,7 +425,7 @@ async function loadOrders() {
 
       if (orders.length === 0) {
         tbody.innerHTML = '<tr><td colspan="10" class="text-center py-12"><i class="fas fa-inbox text-3xl mb-3 block text-gray-300"></i><div class="text-sm text-gray-500 mb-1">주문이 없습니다.</div></td></tr>';
-        renderPagination(pagination || null);
+        ordRenderPagination(pagination || null);
         return;
       }
 
@@ -506,7 +506,7 @@ async function loadOrders() {
           </tr>
         `;
       }).join('');
-      renderPagination(pagination || null);
+      ordRenderPagination(pagination || null);
       // selectAll 체크박스 상태 동기화
       var allCb = document.getElementById('selectAllOrders');
       if (allCb) allCb.checked = false;

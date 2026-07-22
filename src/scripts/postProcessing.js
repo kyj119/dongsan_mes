@@ -381,7 +381,7 @@ function closeModal() {
 }
 
 // ── 탭 전환 ─────────────────────────────────────────────────
-function switchTab(tab) {
+function ppSwitchTab(tab) {
     document.querySelectorAll('[id^="panel-"]').forEach(function(el) { el.classList.add('hidden'); });
     document.querySelectorAll('[id^="tab-"]').forEach(function(el) {
         el.classList.remove('border-blue-600', 'text-blue-700');

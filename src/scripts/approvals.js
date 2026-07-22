@@ -51,7 +51,7 @@ function paginate(arr, page, size) {
   return arr.slice(start, start + size);
 }
 
-function renderPagination(containerId, total, page, onPageChange) {
+function apprRenderPagination(containerId, total, page, onPageChange) {
   var container = document.getElementById(containerId);
   if (!container) return;
   var totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -234,7 +234,7 @@ function renderMyRequests() {
 
   var filtered = applyFilter(myRequests, 'my');
   var paged = paginate(filtered, myPage, PAGE_SIZE);
-  renderPagination('my-pagination', filtered.length, myPage, function(p) { myPage = p; renderMyRequests(); });
+  apprRenderPagination('my-pagination', filtered.length, myPage, function(p) { myPage = p; renderMyRequests(); });
 
   if (paged.length === 0) {
     tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-500">요청 내역이 없습니다.</td></tr>';
@@ -259,7 +259,7 @@ function renderAllRequests() {
 
   var filtered = applyFilter(allRequests, 'all');
   var paged = paginate(filtered, allPage, PAGE_SIZE);
-  renderPagination('all-pagination', filtered.length, allPage, function(p) { allPage = p; renderAllRequests(); });
+  apprRenderPagination('all-pagination', filtered.length, allPage, function(p) { allPage = p; renderAllRequests(); });
 
   if (paged.length === 0) {
     tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-500">결재 내역이 없습니다.</td></tr>';

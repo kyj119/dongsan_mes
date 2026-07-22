@@ -345,12 +345,7 @@ window.prRDeleteTaxRow = async function(id) {
 window.prRDownloadCsvTemplate = function() {
   var header = 'monthly_pay_min,monthly_pay_max,dependents_1,dependents_2,dependents_3,dependents_4,dependents_5,dependents_6,dependents_7,dependents_8,dependents_9,dependents_10,dependents_11';
   var sample = '2000000,2010000,22950,10350,2850,0,0,0,0,0,0,0,0';
-  var blob = new Blob(['\uFEFF' + header + '\n' + sample + '\n'], { type: 'text/csv;charset=utf-8' });
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement('a');
-  a.href = url; a.download = 'income_tax_template.csv';
-  a.click();
-  URL.revokeObjectURL(url);
+  window.dsDownloadCsv('income_tax_template.csv', '\uFEFF' + header + '\n' + sample + '\n');
 };
 
 window.prRImportCsv = function(ev) {

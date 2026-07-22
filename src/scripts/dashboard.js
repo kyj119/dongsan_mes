@@ -19,7 +19,7 @@ function changeRateBadge(current, prev) {
 }
 
 // 금액 포맷
-function fmtAmt(v) { return (v || 0).toLocaleString() + '원'; }
+function fmtAmt(v) { return window.fmtNum(v) + '원'; }
 function fmtAmtShort(v) {
   var n = v || 0;
   if (n >= 100000000) return (n / 100000000).toFixed(1) + '억원';

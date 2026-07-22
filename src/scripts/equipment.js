@@ -48,7 +48,7 @@ var LOG_TYPE_MAP = {
 
 // ─── 탭 전환 ────────────────────────────────────────────────────────────────
 
-function switchTab(tab) {
+function eqSwitchTab(tab) {
     currentTab = tab;
     document.getElementById('panelList').classList.toggle('hidden', tab !== 'list');
     document.getElementById('panelLayout').classList.toggle('hidden', tab !== 'layout');
@@ -1502,6 +1502,6 @@ document.addEventListener('click', function(e) {
     loadEquipment();
     if (tab === 'dashboard' || tab === 'layout' || tab === 'queue') {
         currentTab = tab;
-        switchTab(tab);
+        eqSwitchTab(tab);
     }
 })();

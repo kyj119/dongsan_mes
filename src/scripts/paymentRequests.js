@@ -6,7 +6,7 @@
   if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(5, 9);
 })();
 
-function fmt(n) { return (n || 0).toLocaleString(); }
+function fmt(n) { return window.fmtNum(n); }
 var prEditingId = null;
 var prCurrentPage = 1;
 // 초기화는 파일 맨 아래에서 실행 (window.* 함수 정의 이후)

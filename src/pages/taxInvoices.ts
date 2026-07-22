@@ -655,15 +655,15 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
       <div class="ds-card rounded-b-none border-b">
         <div class="flex">
           <button id="tabCollect" class="tab-btn active px-6 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600"
-            onclick="switchTab('collect')">
+            onclick="htSwitchTab('collect')">
             <i class="fas fa-cloud-download-alt mr-2"></i>수집 관리
           </button>
           <button id="tabInvoices" class="tab-btn px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700"
-            onclick="switchTab('invoices')">
+            onclick="htSwitchTab('invoices')">
             <i class="fas fa-list mr-2"></i>수집 내역
           </button>
           <button id="tabCompare" class="tab-btn px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700"
-            onclick="switchTab('compare')">
+            onclick="htSwitchTab('compare')">
             <i class="fas fa-balance-scale mr-2"></i>대조 비교
           </button>
         </div>

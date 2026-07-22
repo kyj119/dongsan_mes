@@ -25,7 +25,7 @@ function getMonths() {
   return el.value || '6';
 }
 
-function fmt(n) { return (n || 0).toLocaleString(); }
+function fmt(n) { return window.fmtNum(n); }
 
 async function loadAllReports() {
   loadMonthlySummary();
@@ -234,7 +234,7 @@ async function loadMarginAnalysis() {
     var low_margin_orders = json.data.low_margin_orders;
 
     // 요약 카드
-    var fmtWon = function(n) { return (n || 0).toLocaleString() + '원'; };
+    var fmtWon = function(n) { return window.fmtNum(n) + '원'; };
     var elMgRev = document.getElementById('mgTotalRevenue'); if (!elMgRev) { console.warn('[reports] #mgTotalRevenue not found'); return; }
     elMgRev.textContent = fmtWon(summary.total_revenue);
     var elMgCost = document.getElementById('mgTotalCost'); if (!elMgCost) { console.warn('[reports] #mgTotalCost not found'); return; }

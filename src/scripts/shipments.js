@@ -502,13 +502,7 @@ function downloadHanjinExcel() {
   });
   axios.post('/api/shipments/hanjin-export', { date: date, targets: targets }).then(function(res) {
     if (!res.data.success) { showToast(res.data.error || '엑셀 생성 실패', 'error'); return; }
-    var blob = new Blob([res.data.data.csv], { type: 'text/csv;charset=utf-8;' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = '한진업로드_' + (date || '') + '.csv';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    window.dsDownloadCsv('한진업로드_' + (date || '') + '.csv', res.data.data.csv);
     showToast(targets.length + '건 한진 업로드 엑셀 다운로드', 'success');
   }).catch(function(e) {
     showToast('엑셀 생성 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');

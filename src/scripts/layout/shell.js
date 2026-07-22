@@ -137,6 +137,118 @@ window.readMoney = function(id) {
   return window.parseMoney(el.value) || 0;
 };
 
+// 숫자 콤마 포맷 SSOT (null/NaN → '0') — 페이지별 로컬 fmt() 재정의 금지, var fmt = window.fmtNum 위임
+// fmtMoney(null→'-')와 의미 구분: 집계/수량 표시엔 fmtNum, 금액 셀 표시엔 fmtMoney
+window.fmtNum = function(n) {
+  return (Number(n) || 0).toLocaleString('ko-KR');
+};
+
+// 날짜 표시 포맷 SSOT — ISO/타임스탬프 문자열 → 'YYYY-MM-DD' (falsy → '')
+// 페이지별 formatDate/fmtDate/accFmtDate 재정의 금지, null 표기는 호출부에서 || '-'
+window.fmtDateOnly = function(v) {
+  return v ? String(v).slice(0, 10) : '';
+};
+
+// === 표준 모달 열기/닫기 SSOT (hidden 클래스 계통 단일화) ===
+// 인라인 style.display 토글 금지 — 전역 ESC closer(hidden)와 충돌 (quality/users 모달 사망 전례).
+// 마크업 규약: 기본 hidden 클래스 + (flex 레이아웃이면 flex 클래스 병기 — Tailwind에서 hidden이 후순위라 우선).
+// 스크롤락 필요 모달: data-scroll-lock 속성 + 닫기 부수효과가 더 있으면 data-esc-close="함수명" 선언.
+window.dsOpenModal = function(idOrEl) {
+  var m = typeof idOrEl === 'string' ? document.getElementById(idOrEl) : idOrEl;
+  if (!m) return;
+  m.classList.remove('hidden');
+  if (m.dataset && m.dataset.scrollLock != null) document.body.style.overflow = 'hidden';
+};
+window.dsCloseModal = function(idOrEl) {
+  var m = typeof idOrEl === 'string' ? document.getElementById(idOrEl) : idOrEl;
+  if (!m) return;
+  m.classList.add('hidden');
+  if (m.dataset && m.dataset.scrollLock != null) document.body.style.overflow = '';
+};
+
+// === 공용 거래처 검색 모달 (openItemSearchModal 자매) ===
+// 사용: openClientSearchModal({ onSelect: function(client){...}, search: '초기검색어' })
+// client = { id, client_name, client_code, business_registration_number, phone, ... } (/api/clients 행 그대로)
+var _clientSearchCb = null;
+var _clientSearchTimer = null;
+window.openClientSearchModal = function(opts) {
+  opts = opts || {};
+  _clientSearchCb = opts.onSelect || null;
+  var existing = document.getElementById('clientSearchModal');
+  if (existing) existing.remove();
+
+  var modal = document.createElement('div');
+  modal.id = 'clientSearchModal';
+  modal.className = 'fixed inset-0 bg-black/40 flex items-center justify-center z-[70]';
+  modal.innerHTML = '<div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col mx-4">'
+    + '<div class="p-4 border-b">'
+    + '<div class="flex items-center justify-between mb-3">'
+    + '<h2 class="text-lg font-bold"><i class="fas fa-building text-blue-600 mr-2"></i>거래처 검색</h2>'
+    + '<button onclick="document.getElementById(\'clientSearchModal\').remove()" class="p-2 text-gray-400 hover:text-gray-600"><i class="fas fa-times text-lg"></i></button>'
+    + '</div>'
+    + '<input type="text" id="clientSearchModalInput" placeholder="거래처명 / 코드 / 사업자번호 / 전화..." value="' + window.escapeHtml(opts.search || '') + '"'
+    + ' class="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" autofocus>'
+    + '</div>'
+    + '<div class="flex-1 overflow-auto" id="clientSearchModalBody">'
+    + '<div class="text-center py-12 text-gray-400 text-sm">검색어를 입력하세요</div>'
+    + '</div></div>';
+  modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+
+  var input = document.getElementById('clientSearchModalInput');
+  input.addEventListener('input', function() {
+    clearTimeout(_clientSearchTimer);
+    _clientSearchTimer = setTimeout(function() { _clientSearchRun(input.value.trim()); }, 250);
+  });
+  input.focus();
+  if (opts.search) _clientSearchRun(opts.search);
+};
+function _clientSearchRun(q) {
+  var body = document.getElementById('clientSearchModalBody');
+  if (!body) return;
+  if (!q || q.length < 1) { body.innerHTML = '<div class="text-center py-12 text-gray-400 text-sm">검색어를 입력하세요</div>'; return; }
+  body.innerHTML = '<div class="text-center py-12 text-gray-400 text-sm"><i class="fas fa-spinner fa-spin mr-1"></i>검색 중...</div>';
+  axios.get('/api/clients?search=' + encodeURIComponent(q) + '&limit=50').then(function(res) {
+    var clients = (res.data && res.data.data && res.data.data.clients) ? res.data.data.clients : [];
+    if (!clients.length) { body.innerHTML = '<div class="text-center py-12 text-gray-400 text-sm"><i class="fas fa-inbox text-2xl mb-2 block text-gray-300"></i>검색 결과가 없습니다</div>'; return; }
+    window.__clientSearchResults = clients;
+    body.innerHTML = clients.map(function(cl, i) {
+      return '<div class="px-4 py-3 border-b border-gray-100 cursor-pointer hover:bg-blue-50" onclick="window.__clientSearchPick(' + i + ')">'
+        + '<div class="font-medium text-sm">' + window.escapeHtml(cl.client_name || '') + '</div>'
+        + '<div class="text-xs text-gray-500 mt-0.5">'
+        + window.escapeHtml(cl.client_code || '')
+        + (cl.business_registration_number ? ' | ' + window.escapeHtml(cl.business_registration_number) : '')
+        + (cl.phone ? ' | ' + window.escapeHtml(cl.phone) : '')
+        + '</div></div>';
+    }).join('');
+  }).catch(function(e) {
+    console.error('[clientSearchModal] search error:', e);
+    body.innerHTML = '<div class="text-center py-12 text-red-400 text-sm">검색 실패</div>';
+  });
+}
+window.__clientSearchPick = function(i) {
+  var cl = (window.__clientSearchResults || [])[i];
+  var modal = document.getElementById('clientSearchModal');
+  if (modal) modal.remove();
+  if (cl && typeof _clientSearchCb === 'function') _clientSearchCb(cl);
+};
+
+// 페이지네이션 렌더 SSOT — pag={total,page,limit,total_pages}, gotoFnName=전역 함수명 문자열
+// 페이지별 renderPagination 재정의 금지 (top-level 동명 전역이 서로 덮어쓰는 사고 전례)
+window.dsPaginate = function(elOrId, pag, gotoFnName) {
+  var el = typeof elOrId === 'string' ? document.getElementById(elOrId) : elOrId;
+  if (!el) return;
+  pag = pag || {};
+  var total = pag.total || 0, page = pag.page || 1, limit = pag.limit || 50;
+  var pages = Math.max(1, pag.total_pages || Math.ceil(total / limit));
+  if (pages <= 1) { el.innerHTML = total > 0 ? '<span class="text-xs text-gray-500">총 ' + total.toLocaleString('ko-KR') + '건</span>' : ''; return; }
+  var info = '<span class="text-xs text-gray-500">총 ' + total.toLocaleString('ko-KR') + '건 · ' + page + '/' + pages + ' 페이지</span>';
+  var btns = '';
+  if (page > 1) btns += '<button onclick="' + gotoFnName + '(' + (page - 1) + ')" class="px-3 py-1 text-xs rounded border border-gray-200 hover:bg-gray-50 mr-1"><i class="fas fa-chevron-left"></i> 이전</button>';
+  if (page < pages) btns += '<button onclick="' + gotoFnName + '(' + (page + 1) + ')" class="px-3 py-1 text-xs rounded border border-gray-200 hover:bg-gray-50">다음 <i class="fas fa-chevron-right"></i></button>';
+  el.innerHTML = '<div class="flex justify-between items-center w-full"><span>' + info + '</span><span>' + btns + '</span></div>';
+};
+
 // === 테이블 빈 상태 행 (전역) ===
 // === KPI Count-Up Animation ===
 window.animateNumber = function(el, endValue, opts) {

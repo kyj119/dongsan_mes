@@ -11,8 +11,8 @@ var noteTypeLabels = { 'GENERAL': '일반', 'IMPORTANT': '중요', 'COMPLAINT': 
 var noteTypeColors = { 'GENERAL': 'bg-gray-100 text-gray-700', 'IMPORTANT': 'bg-red-50 text-red-700', 'COMPLAINT': 'bg-amber-50 text-amber-700', 'FOLLOW_UP': 'bg-blue-50 text-blue-700' };
 var collMethodLabels = { 'PHONE': '전화', 'SMS': '문자', 'EMAIL': '이메일', 'VISIT': '방문', 'LETTER': '내용증명', 'OTHER': '기타' };
 
-function fmt(n) { return (n || 0).toLocaleString(); }
-function fmtDate(d) { return d ? d.substring(0, 10) : '-'; }
+function fmt(n) { return window.fmtNum(n); }
+function fmtDate(d) { return window.fmtDateOnly(d) || '-'; }
 
 function switchCdTab(tab) {
   var tabs = ['orders', 'notes', 'collection'];

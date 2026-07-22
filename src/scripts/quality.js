@@ -5,7 +5,7 @@
   var money = window.fmtMoney || function (n) { return Number(n || 0).toLocaleString(); };
   var toast = function (m, t) { if (window.showToast) window.showToast(m, t); else console.log('[quality]', m); };
   var apiErr = function (e, m) { if (window.handleApiError) window.handleApiError(e, m); else { console.error(m, e); toast(m, 'error'); } };
-  var fmtDate = function (s) { return s ? String(s).slice(0, 10) : ''; };
+  var fmtDate = function (s) { return window.fmtDateOnly(s); };
 
   var loaded = { returns: false, defects: false, analytics: false };
   var pickedOrder = { id: null, clientId: null, label: '' };
