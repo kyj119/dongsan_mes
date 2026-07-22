@@ -1409,17 +1409,28 @@ async function applyBankTransaction(
 
   // 2-A) 기존 기록에 연결만 (LINKED) — 원장 기록·잔액 무변경 (이중계상 방지)
   //   원자적 클레임: 조건부 UPDATE 1건이 곧 배타적 소유권 획득. changes=0 이면 동시 요청이 선점 → 409.
+  //   #535: 위 사전 SELECT(이미 연결 여부)는 UX용 fast-fail — 최종 방어선은 0470 부분 UNIQUE
+  //   (idx_bt_matched_pp_uniq / idx_bt_matched_payment_uniq). 서로 다른 은행거래 2건이 같은
+  //   원장을 동시 연결하면 둘 다 사전 SELECT를 통과하므로, UNIQUE 위반을 잡아 409로 변환.
   if (linkId) {
-    const claim = await db.prepare(`
-      UPDATE bank_transactions
-      SET match_status = 'APPLIED',
-          matched_client_id = ?,
-          ${isWithdrawal ? 'matched_purchase_payment_id' : 'matched_payment_id'} = ?,
-          matched_link_mode = 'LINKED',
-          matched_by = ?, matched_at = CURRENT_TIMESTAMP,
-          match_confidence = 1.0, match_reason = '기존 원장 연결'
-      WHERE id = ? AND match_status != 'APPLIED'
-    `).bind(clientId, linkId, user?.id ?? 1, tx.id).run()
+    let claim: D1Result
+    try {
+      claim = await db.prepare(`
+        UPDATE bank_transactions
+        SET match_status = 'APPLIED',
+            matched_client_id = ?,
+            ${isWithdrawal ? 'matched_purchase_payment_id' : 'matched_payment_id'} = ?,
+            matched_link_mode = 'LINKED',
+            matched_by = ?, matched_at = CURRENT_TIMESTAMP,
+            match_confidence = 1.0, match_reason = '기존 원장 연결'
+        WHERE id = ? AND match_status != 'APPLIED'
+      `).bind(clientId, linkId, user?.id ?? 1, tx.id).run()
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('UNIQUE')) {
+        return { ok: false, error: '이미 다른 은행거래와 연결된 원장 기록입니다', status: 409 }
+      }
+      throw err
+    }
     if (!claim.meta.changes) return { ok: false, error: '이미 처리된 은행거래입니다', status: 409 }
     return {
       ok: true, mode: 'LINKED', ledgerId: linkId,

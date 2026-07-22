@@ -23,18 +23,19 @@ arDunningRouter.use('/*', authMiddleware, requireEditOrRole('/ledger', 'MANAGER'
 arDunningRouter.get('/collection-logs/:clientId', async (c) => {
   try {
     const clientId = c.req.param('clientId')
+    const ef = entityFilter(c, 'cl')  // #552: 타법인 독촉이력 열람 차단 (DELETE와 동일 격리)
     const { results } = await c.env.DB.prepare(`
       SELECT cl.*, u.name as created_by_name
       FROM collection_logs cl
       LEFT JOIN users u ON cl.created_by = u.id
-      WHERE cl.client_id = ?
+      WHERE cl.client_id = ?${ef.clause}
       ORDER BY cl.contact_date DESC, cl.created_at DESC
       LIMIT 500
-    `).bind(clientId).all()
+    `).bind(clientId, ...ef.params).all()
     // 확장성: 전체 건수(방어적 cap 500 초과 여부 판별용)
     const countRow = await c.env.DB.prepare(
-      'SELECT COUNT(*) as cnt FROM collection_logs WHERE client_id = ?'
-    ).bind(clientId).first<{ cnt: number }>()
+      `SELECT COUNT(*) as cnt FROM collection_logs cl WHERE cl.client_id = ?${ef.clause}`
+    ).bind(clientId, ...ef.params).first<{ cnt: number }>()
     return c.json({ success: true, data: results, total: Number(countRow?.cnt) || 0 })
   } catch (error) {
     console.error('src/routes/ledger.ts error:', error)
@@ -112,7 +113,8 @@ arDunningRouter.get('/collection-logs', async (c) => {
       params.push(parseInt(client_id))
     }
 
-    const where = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : ''
+    const ef = entityFilter(c, 'cl')  // #552: 타법인 독촉이력 열람 차단
+    const where = (whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : 'WHERE 1=1') + ef.clause
 
     const { results } = await c.env.DB.prepare(`
       SELECT cl.*, c.client_name, u.name as created_by_name
@@ -122,11 +124,11 @@ arDunningRouter.get('/collection-logs', async (c) => {
       ${where}
       ORDER BY cl.contact_date DESC, cl.created_at DESC
       LIMIT ? OFFSET ?
-    `).bind(...params, safeLimit, offset).all()
+    `).bind(...params, ...ef.params, safeLimit, offset).all()
 
     const countRow = await c.env.DB.prepare(`
       SELECT COUNT(*) as count FROM collection_logs cl ${where}
-    `).bind(...params).first<{ count: number }>()
+    `).bind(...params, ...ef.params).first<{ count: number }>()
     const count = countRow?.count || 0
 
     return c.json({
@@ -248,13 +250,14 @@ arDunningRouter.post('/collection-logs', async (c) => {
 arDunningRouter.get('/collection-logs/:id', async (c) => {
   try {
     const id = c.req.param('id')
+    const ef = entityFilter(c, 'cl')  // #552: 타법인 독촉이력 열람 차단
     const log = await c.env.DB.prepare(`
       SELECT cl.*, c.client_name, u.name as created_by_name
       FROM collection_logs cl
       LEFT JOIN clients c ON cl.client_id = c.id
       LEFT JOIN users u ON cl.created_by = u.id
-      WHERE cl.id = ?
-    `).bind(id).first()
+      WHERE cl.id = ?${ef.clause}
+    `).bind(id, ...ef.params).first()
 
     if (!log) return c.json({ success: false, error: '독촉 기록을 찾을 수 없습니다.' }, 404)
     return c.json({ success: true, data: log })

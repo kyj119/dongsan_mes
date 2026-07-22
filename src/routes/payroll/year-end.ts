@@ -174,6 +174,14 @@ yearEndRouter.post('/year-end-settlement/:employeeId', requireRole('ADMIN', 'MAN
     const year = Number(body.year || kstYear())
     if (!employeeId) return c.json({ success: false, error: 'employeeId 필요' }, 400)
 
+    // #553: 자법인 직원만 계산·저장 (형제 GET :61-67과 정합 — cross-tenant 급여 열람·확정 정산 덮어쓰기 차단)
+    // 이후 쿼리는 employee_id 스코프라 이 소유게이트가 보안 경계 (payroll.entity_id는 DEFAULT 1 신뢰불가 — 필터 시 정상 행 누락)
+    const yeEf = entityFilter(c)
+    const empOwn = await c.env.DB.prepare(
+      `SELECT id, entity_id FROM employees WHERE id = ?${yeEf.clause}`
+    ).bind(employeeId, ...yeEf.params).first<{ id: number; entity_id: number }>()
+    if (!empOwn) return c.json({ success: false, error: '직원 없음' }, 404)
+
     // 1) 급여 집계 (기납부세액)
     const agg = await c.env.DB.prepare(
       `SELECT
@@ -318,7 +326,7 @@ yearEndRouter.post('/year-end-settlement/:employeeId', requireRole('ADMIN', 'MAN
           prepaid_income_tax, prepaid_local_tax,
           refund_income_tax, refund_local_tax, refund_total,
           notes, calculated_at, entity_id
-        ) VALUES (?, ?, 'CALCULATED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ) VALUES (?, ?, 'CALCULATED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         employeeId, year, totalSalary, totalNontax, grossTaxable,
         earnedIncomeDeduction, basicDeduction, dependentsCount,
@@ -333,7 +341,8 @@ yearEndRouter.post('/year-end-settlement/:employeeId', requireRole('ADMIN', 'MAN
         determinedTax, determinedLocalTax,
         prepaidIncomeTax, prepaidLocalTax,
         refundIncomeTax, refundLocalTax, refundTotal,
-        body.notes || null, now, getEntityId(c) || 1
+        // #553: 귀속=직원의 entity (호출자 entity 사용 시 전체모드 ADMIN이 타법인 직원 정산을 1번 법인으로 오귀속)
+        body.notes || null, now, empOwn.entity_id || getEntityId(c) || 1
       ).run()
       settlementId = Number(ins.meta?.last_row_id || 0)
     }

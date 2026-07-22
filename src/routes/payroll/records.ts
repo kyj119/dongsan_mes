@@ -175,9 +175,12 @@ recordsRouter.post('/unpublish', async (c) => {
 recordsRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   const id = Number(c.req.param('id'))
   const ef = entityFilter(c)
-  const row = await c.env.DB.prepare(`SELECT status FROM payroll WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<{ status: string }>()
+  const row = await c.env.DB.prepare(`SELECT status, published_at FROM payroll WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<{ status: string; published_at: string | null }>()
   if (!row) return c.json({ success: false, error: '없음' }, 404)
   if (row.status !== 'PENDING') return c.json({ success: false, error: 'PENDING 상태만 삭제 가능' }, 400)
+  // #550: 교부(publish)는 상태 무관이므로 PENDING이어도 교부됐을 수 있음.
+  // 교부된 급여를 삭제하면 payslip_issuance_logs 교부 증빙이 고아가 됨(근로기준법 증빙 보존) → 삭제 거부.
+  if (row.published_at != null) return c.json({ success: false, error: '이미 교부된 급여는 삭제할 수 없습니다 — 먼저 교부 취소 후 삭제하세요' }, 400)
   await c.env.DB.prepare(`DELETE FROM payroll WHERE id = ?${ef.clause}`).bind(id, ...ef.params).run()
   return c.json({ success: true })
 })
