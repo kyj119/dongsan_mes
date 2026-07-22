@@ -166,6 +166,9 @@ window.payrollOpenEditModal = async function(id) {
   ['prCalcNP','prCalcHI','prCalcLTC','prCalcEI','prCalcTax','prCalcLocal','prCalcGross','prCalcDeduct','prCalcNet'].forEach(function(k) {
     document.getElementById(k).textContent = '-';
   });
+  // #509 일할근거 배지 초기화(직전 편집의 잔상 방지) — 이후 preview가 대상 직원 기준으로 재표시
+  var prPb = document.getElementById('prProrationBadge');
+  if (prPb) prPb.classList.add('hidden');
 
   if (id) {
     // 기존 급여 로드
@@ -359,6 +362,28 @@ window.payrollToggleOvertimeMode = function() {
   window.payrollPreview();
 };
 
+// #509 일할근거: 월중 입퇴사(isPartial) 직원의 기본급 일할 안내 배지.
+//   preview 응답 prorationContext 기반. 배지 엘리먼트는 페이지 HTML에 없어 prBase 옆에 동적 주입(1회 생성 후 토글).
+function prRenderProrationBadge(prc) {
+  var baseInput = document.getElementById('prBase');
+  if (!baseInput) { console.warn('[payroll] #prBase not found'); return; }
+  var host = baseInput.parentNode;
+  if (!host) { console.warn('[payroll] #prBase parent not found'); return; }
+  var badge = document.getElementById('prProrationBadge');
+  if (prc && prc.isPartial) {
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.id = 'prProrationBadge';
+      badge.className = 'mt-1 px-1.5 py-0.5 text-[11px] rounded bg-amber-50 text-amber-700 border border-amber-200';
+      host.appendChild(badge);
+    }
+    badge.textContent = '중도입퇴사 · 근무일 ' + prc.workedWeekdays + '/' + prc.monthWeekdays + '일 기준 일할 적용';
+    badge.classList.remove('hidden');
+  } else if (badge) {
+    badge.classList.add('hidden');
+  }
+}
+
 window.payrollPreview = function() {
   if (prPreviewTimer) clearTimeout(prPreviewTimer);
   prPreviewTimer = setTimeout(async function() {
@@ -401,6 +426,8 @@ window.payrollPreview = function() {
       document.getElementById('prCalcGross').textContent = fmtMoney(d.earnings.total_salary);
       document.getElementById('prCalcDeduct').textContent = fmtMoney(totalDeduct);
       document.getElementById('prCalcNet').textContent = fmtMoney(d.earnings.total_salary - totalDeduct);
+      // #509 일할근거 배지 갱신 (월중 입퇴사 직원만 표시)
+      prRenderProrationBadge(d.prorationContext);
     } catch (e) {
       console.error('preview 실패', e);
     }

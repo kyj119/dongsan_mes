@@ -668,16 +668,20 @@ workbenchRouter.patch('/sheets/:id/render', async (c) => {
     const rs = (body.render_status === 'error') ? 'error' : 'done'
     const resultStr = body.render_result_json == null ? null : (typeof body.render_result_json === 'string' ? body.render_result_json : JSON.stringify(body.render_result_json))
     const ef = entityFilter(c)  // #444: 타법인 sheet_layouts 콜백 변조 차단(형제 격리, 콜백만 누락)
+    // #520: 재큐 트리거(:621 rendering→queued/error)로 세대가 교체된 지연 콜백이 최신 결과를 덮는 lost-update 차단.
+    //   render_status='rendering'(에이전트 claim 상태)일 때만 확정 → 되돌려진 좀비 콜백은 0-row가 되어 무시.
+    let res
     if (rs === 'done') {
-      await c.env.DB.prepare(
-        `UPDATE sheet_layouts SET render_status='done', status='rendered', render_result_json=?, render_error=NULL, updated_at=datetime('now') WHERE id = ?${ef.clause}`
+      res = await c.env.DB.prepare(
+        `UPDATE sheet_layouts SET render_status='done', status='rendered', render_result_json=?, render_error=NULL, updated_at=datetime('now') WHERE id = ?${ef.clause} AND render_status='rendering'`
       ).bind(resultStr, id, ...ef.params).run()
     } else {
-      await c.env.DB.prepare(
-        `UPDATE sheet_layouts SET render_status='error', render_error=?, updated_at=datetime('now') WHERE id = ?${ef.clause}`
+      res = await c.env.DB.prepare(
+        `UPDATE sheet_layouts SET render_status='error', render_error=?, updated_at=datetime('now') WHERE id = ?${ef.clause} AND render_status='rendering'`
       ).bind(body.render_error ?? '렌더 실패', id, ...ef.params).run()
     }
-    return c.json({ success: true })
+    // 0-row = 재큐로 세대 교체됨(이미 다른 세대가 처리) → 500 금지, 무시 응답.
+    return c.json({ success: true, ignored: (res.meta?.changes ?? 0) === 0 })
   } catch (error) {
     console.error('Workbench render callback error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
@@ -1025,16 +1029,20 @@ workbenchRouter.patch('/process/:id', async (c) => {
     const status = (body.status === 'error') ? 'error' : 'done'
     const resultStr = body.result_json == null ? null : (typeof body.result_json === 'string' ? body.result_json : JSON.stringify(body.result_json))
     const ef = entityFilter(c)  // #444: 타법인 ia_process_jobs 콜백 변조 차단(형제 격리, 콜백만 누락)
+    // #520: 재큐 트리거(:922 rendering→queued/error)로 세대가 교체된 지연 콜백 lost-update 차단.
+    //   ia_process_jobs의 진행중=claim 상태 'rendering'(:943 claim·:922 reaper 모두 'rendering' 기준·'processing' 아님) → 그 때만 확정.
+    let res
     if (status === 'done') {
-      await c.env.DB.prepare(
-        `UPDATE ia_process_jobs SET status='done', result_json=?, error_message=NULL, updated_at=datetime('now') WHERE id = ?${ef.clause}`
+      res = await c.env.DB.prepare(
+        `UPDATE ia_process_jobs SET status='done', result_json=?, error_message=NULL, updated_at=datetime('now') WHERE id = ?${ef.clause} AND status='rendering'`
       ).bind(resultStr, id, ...ef.params).run()
     } else {
-      await c.env.DB.prepare(
-        `UPDATE ia_process_jobs SET status='error', error_message=?, updated_at=datetime('now') WHERE id = ?${ef.clause}`
+      res = await c.env.DB.prepare(
+        `UPDATE ia_process_jobs SET status='error', error_message=?, updated_at=datetime('now') WHERE id = ?${ef.clause} AND status='rendering'`
       ).bind(body.error_message ?? '가공 실패', id, ...ef.params).run()
     }
-    return c.json({ success: true })
+    // 0-row = 재큐로 세대 교체됨(이미 다른 세대가 처리) → 500 금지, 무시 응답.
+    return c.json({ success: true, ignored: (res.meta?.changes ?? 0) === 0 })
   } catch (error) {
     console.error('Workbench process callback error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

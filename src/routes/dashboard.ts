@@ -5,6 +5,7 @@ import { requirePagePermission } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { excludeInternalClientsSql } from '../constants/intercompany'
 import { kstDate, kstDateOf, kstMonth } from '../utils/kstDate'
+import { buildOldestUnpaidJoin, agingDaysFromOldest } from './ledger/ar-helpers'
 
 /** cards 테이블용 엔티티 필터 (requesting_entity_id 컬럼 사용) */
 function cardEntityFilter(c: any, tableAlias?: string): { clause: string; params: number[] } {
@@ -376,23 +377,45 @@ dashboardRouter.get('/stats/receivables', async (c) => {
       LIMIT 10
     `).bind(...efBalG.params, ...efBalP.params, ...efBalA.params, ...ef.params).all()
 
-    // Aging buckets (연체 구간)
-    const aging = await c.env.DB.prepare(`
-      SELECT
-        SUM(CASE WHEN julianday('now') - julianday(COALESCE(o.accounting_date, o.billed_at)) <= 30 THEN o.billed_amount ELSE 0 END) as current_amount,
-        SUM(CASE WHEN julianday('now') - julianday(COALESCE(o.accounting_date, o.billed_at)) > 30 AND julianday('now') - julianday(COALESCE(o.accounting_date, o.billed_at)) <= 60 THEN o.billed_amount ELSE 0 END) as over_30,
-        SUM(CASE WHEN julianday('now') - julianday(COALESCE(o.accounting_date, o.billed_at)) > 60 AND julianday('now') - julianday(COALESCE(o.accounting_date, o.billed_at)) <= 90 THEN o.billed_amount ELSE 0 END) as over_60,
-        SUM(CASE WHEN julianday('now') - julianday(COALESCE(o.accounting_date, o.billed_at)) > 90 THEN o.billed_amount ELSE 0 END) as over_90,
-        COUNT(CASE WHEN julianday('now') - julianday(COALESCE(o.accounting_date, o.billed_at)) > 30 THEN 1 END) as overdue_count
-      FROM orders o
-      WHERE o.billing_status = 'BILLED'${ef.clause}${excludeInternalClientsSql('o.client_id')}
-        AND NOT EXISTS (
-          SELECT 1 FROM payments p
-          WHERE p.client_id = o.client_id
-          AND p.amount >= o.billed_amount
-          AND p.payment_date >= COALESCE(o.accounting_date, o.billed_at)
-        )
-    `).bind(...ef.params).first()
+    // Aging buckets (연체 구간) — 미수금 일원화(2026-07-17 SSOT): 채권 나이 = 최고령 미결제 청구건(oldest_unpaid_date) 기준.
+    //   구방식(주문건별 billed_amount + julianday('now') UTC heuristic) 폐기 → reports 미수금분석·bank 미수금현황과 동일하게
+    //   '거래처 파생잔액(order_billing_groups[BILLED] − payments − adjustments)을 그 거래처 채권나이 버킷에 전액 귀속'.
+    //   버킷 JOIN/일수 = buildOldestUnpaidJoin + agingDaysFromOldest SSOT (reports.ts:494~522 로직과 동형).
+    const efAgeG = entityFilter(c, 'g')
+    const efAgeP = entityFilter(c, 'p')
+    const efAgeA = entityFilter(c, 'a')
+    const agBalExpr = `(COALESCE(b.amt,0) - COALESCE(pp.amt,0) - COALESCE(aa.amt,0))`
+    const oupAging = buildOldestUnpaidJoin(c, { entityScoped: true }) // dashboard = 법인 스코프 → entityScoped=true (reports 와 일치)
+    const { results: agingRows } = await c.env.DB.prepare(`
+      SELECT ${agBalExpr} AS balance, oup.oldest_unpaid_date AS oldest_unpaid_date
+      FROM clients c
+      LEFT JOIN (
+        SELECT o.client_id AS cid, SUM(g.billed_amount) AS amt
+        FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+        WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${efAgeG.clause}
+        GROUP BY o.client_id
+      ) b ON b.cid = c.id
+      LEFT JOIN (
+        SELECT client_id AS cid, SUM(amount) AS amt FROM payments p WHERE 1=1${efAgeP.clause} GROUP BY client_id
+      ) pp ON pp.cid = c.id
+      LEFT JOIN (
+        SELECT client_id AS cid, SUM(amount) AS amt FROM adjustments a WHERE 1=1${efAgeA.clause} GROUP BY client_id
+      ) aa ON aa.cid = c.id${oupAging.sql}
+      WHERE c.is_active = 1${excludeInternalClientsSql('c.id')} AND ${agBalExpr} > 0
+    `).bind(...efAgeG.params, ...efAgeP.params, ...efAgeA.params, ...oupAging.params)
+      .all<{ balance: number; oldest_unpaid_date: string | null }>()
+
+    // 거래처 파생잔액을 채권나이 구간에 전액 귀속 (reports.ts 버킷 로직 동형). overdue_count = 30일 초과 거래처 수.
+    const agBuckets = { current: 0, over_30: 0, over_60: 0, over_90: 0 }
+    let agOverdueCount = 0
+    for (const row of agingRows) {
+      const days = agingDaysFromOldest(row.oldest_unpaid_date) ?? 0
+      const bal = Number(row.balance) || 0
+      if (days <= 30) agBuckets.current += bal
+      else if (days <= 60) { agBuckets.over_30 += bal; agOverdueCount++ }
+      else if (days <= 90) { agBuckets.over_60 += bal; agOverdueCount++ }
+      else { agBuckets.over_90 += bal; agOverdueCount++ }
+    }
 
     // Total receivables (법인별: 청구액 - 수금액)
     const efPlain = entityFilter(c)
@@ -408,11 +431,11 @@ dashboardRouter.get('/stats/receivables', async (c) => {
       data: {
         top_clients: topClients,
         aging: {
-          current: aging?.current_amount || 0,
-          over_30: aging?.over_30 || 0,
-          over_60: aging?.over_60 || 0,
-          over_90: aging?.over_90 || 0,
-          overdue_count: aging?.overdue_count || 0
+          current: agBuckets.current,
+          over_30: agBuckets.over_30,
+          over_60: agBuckets.over_60,
+          over_90: agBuckets.over_90,
+          overdue_count: agOverdueCount
         },
         total_receivables: (totals as Record<string, unknown>)?.total_receivables || 0,
         clients_with_balance: (totals as Record<string, unknown>)?.clients_with_balance || 0

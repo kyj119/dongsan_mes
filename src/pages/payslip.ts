@@ -204,6 +204,42 @@ export function payslipPage(c: Context<HonoEnv>) {
       });
     }
 
+    // #509 일할근거: 서버 shared.ts getProrationContext 포트(순수함수).
+    //   급여월(YYYY-MM) + 입사/퇴사일로 월중 입퇴사 여부와 재직평일/급여월평일 산정. isPartial=true면 기본급 일할.
+    //   ※ 배지 표시는 레코드에 hire_date/resignation_date가 포함될 때만 활성(GET /api/payroll[/:id]가 e.hire_date·e.resignation_date 미노출이면 완전월로 간주되어 배지 미표시).
+    function payslipCountWeekdays(start, end) {
+      if (!start || !end || start > end) return 0;
+      var n = 0;
+      var d = new Date(start + 'T00:00:00Z');
+      var e = new Date(end + 'T00:00:00Z');
+      while (d <= e) {
+        var dow = d.getUTCDay();
+        if (dow !== 0 && dow !== 6) n++;
+        d.setUTCDate(d.getUTCDate() + 1);
+      }
+      return n;
+    }
+    function payslipProration(period, hireDate, resignationDate) {
+      var empty = { isPartial: false, workedWeekdays: 0, monthWeekdays: 0, ratio: 1 };
+      if (!period || !/^\\d{4}-\\d{2}/.test(String(period))) return empty;
+      var ym = String(period).slice(0, 7);
+      var parts = ym.split('-');
+      var y = parseInt(parts[0], 10), m = parseInt(parts[1], 10);
+      var monthStart = ym + '-01';
+      var lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      var monthEnd = ym + '-' + String(lastDay).padStart(2, '0');
+      var hire = (hireDate && /^\\d{4}-\\d{2}-\\d{2}/.test(String(hireDate))) ? String(hireDate).slice(0, 10) : null;
+      var resig = (resignationDate && /^\\d{4}-\\d{2}-\\d{2}/.test(String(resignationDate))) ? String(resignationDate).slice(0, 10) : null;
+      var isPartial = (!!hire && hire > monthStart) || (!!resig && resig < monthEnd);
+      var monthWeekdays = payslipCountWeekdays(monthStart, monthEnd);
+      if (!isPartial) return { isPartial: false, workedWeekdays: monthWeekdays, monthWeekdays: monthWeekdays, ratio: 1 };
+      var windowStart = (hire && hire > monthStart) ? hire : monthStart;
+      var windowEnd = (resig && resig < monthEnd) ? resig : monthEnd;
+      var workedWeekdays = payslipCountWeekdays(windowStart, windowEnd);
+      var ratio = monthWeekdays > 0 ? Math.round((workedWeekdays / monthWeekdays) * 100) / 100 : 1;
+      return { isPartial: true, workedWeekdays: workedWeekdays, monthWeekdays: monthWeekdays, ratio: ratio };
+    }
+
     function renderSlip(p) {
       var allowTotal = (parseInt(p.overtime_pay || 0) + parseInt(p.night_pay || 0) + parseInt(p.holiday_pay || 0) +
         parseInt(p.meal_allowance || 0) + parseInt(p.transportation_allowance || 0) + parseInt(p.other_allowance || 0) +
@@ -211,7 +247,13 @@ export function payslipPage(c: Context<HonoEnv>) {
       var gross = parseInt(p.total_salary || (p.base_salary + allowTotal));
 
       var earningsRows = '';
-      earningsRows += row('기본급', p.base_salary);
+      // #509 일할근거: 월중 입퇴사(isPartial) 직원만 기본급 옆 일할 근거 배지 표시
+      var prc = payslipProration(p.pay_period, p.hire_date, p.resignation_date);
+      var baseLabel = '기본급';
+      if (prc.isPartial) {
+        baseLabel += '<span style="display:inline-block; margin-left:6px; padding:1px 5px; font-size:9px; font-weight:600; color:#92400e; background:#fef3c7; border:1px solid #fde68a; border-radius:3px;">중도입퇴사 · 근무일 ' + prc.workedWeekdays + '/' + prc.monthWeekdays + '일 기준 일할 적용</span>';
+      }
+      earningsRows += row(baseLabel, p.base_salary);
       if (p.overtime_pay) earningsRows += row('연장근로수당', p.overtime_pay);
       if (p.night_pay) earningsRows += row('야간근로수당', p.night_pay);
       if (p.holiday_pay) earningsRows += row('휴일근로수당', p.holiday_pay);

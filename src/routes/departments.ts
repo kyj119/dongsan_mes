@@ -95,6 +95,12 @@ departmentsRouter.post('/', requireRole('ADMIN'), async (c) => {
     const body = await c.req.json<{ name: string; parent_id?: number | null; dept_type?: string; serves_department_id?: number | null; sort_order?: number }>()
     if (!body.name?.trim()) return c.json({ success: false, error: '부문명을 입력해주세요.' }, 400)
     const type = body.dept_type === 'PRODUCTION' ? 'PRODUCTION' : 'SUPPORT'
+    // #525: serves_department_id 지정 시 대상이 PRODUCTION 부문인지 검증 (신규라 자기참조는 불가)
+    if (body.serves_department_id != null) {
+      const target = await c.env.DB.prepare('SELECT id, dept_type FROM departments WHERE id = ?').bind(body.serves_department_id).first<{ id: number; dept_type: string }>()
+      if (!target) return c.json({ success: false, error: '지원 대상 부문을 찾을 수 없습니다.' }, 400)
+      if (target.dept_type !== 'PRODUCTION') return c.json({ success: false, error: '지원 대상은 생산(PRODUCTION) 부문이어야 합니다.' }, 400)
+    }
     const result = await c.env.DB.prepare(`
       INSERT INTO departments (name, parent_id, dept_type, serves_department_id, sort_order)
       VALUES (?, ?, ?, ?, ?)
@@ -119,6 +125,13 @@ departmentsRouter.put('/:id', requireRole('ADMIN'), async (c) => {
     const body = await c.req.json<{ name?: string; dept_type?: string; serves_department_id?: number | null; sort_order?: number; is_active?: number }>()
     const row = await c.env.DB.prepare('SELECT id FROM departments WHERE id = ?').bind(id).first()
     if (!row) return c.json({ success: false, error: '부문을 찾을 수 없습니다.' }, 404)
+    // #525: serves_department_id 지정 시 자기참조 금지 + 대상 PRODUCTION 검증
+    if (body.serves_department_id != null) {
+      if (Number(body.serves_department_id) === Number(id)) return c.json({ success: false, error: '자기 자신을 지원 대상으로 지정할 수 없습니다.' }, 400)
+      const target = await c.env.DB.prepare('SELECT id, dept_type FROM departments WHERE id = ?').bind(body.serves_department_id).first<{ id: number; dept_type: string }>()
+      if (!target) return c.json({ success: false, error: '지원 대상 부문을 찾을 수 없습니다.' }, 400)
+      if (target.dept_type !== 'PRODUCTION') return c.json({ success: false, error: '지원 대상은 생산(PRODUCTION) 부문이어야 합니다.' }, 400)
+    }
     await c.env.DB.prepare(`
       UPDATE departments SET
         name = COALESCE(?, name),
@@ -186,7 +199,7 @@ departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
       LEFT JOIN cards ca ON ca.id = iad.card_id
       LEFT JOIN department_category_map dcm ON dcm.category = ca.category_name
       LEFT JOIN items it ON it.id = iad.material_item_id
-      WHERE date(iad.created_at) BETWEEN ? AND ?${efI.clause}
+      WHERE date(datetime(iad.created_at, '+9 hours')) BETWEEN ? AND ?${efI.clause}
       GROUP BY dcm.department_id
     `).bind(from, to, ...efI.params).all<any>()
 

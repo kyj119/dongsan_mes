@@ -338,6 +338,7 @@ export function employeeSelfPage(c: Context<HonoEnv>) {
         <button class="back-btn" id="btnPayslipsBack"><i class="fas fa-arrow-left"></i> 돌아가기</button>
         <h3 style="font-size:16px;font-weight:700;margin-bottom:12px;">급여명세서</h3>
         <div id="payslipsList"></div>
+        <button class="btn-logout" id="btnPayslipsLogout">로그아웃</button>
       </div>
 
       <!-- 계약서 목록 -->
@@ -345,6 +346,7 @@ export function employeeSelfPage(c: Context<HonoEnv>) {
         <button class="back-btn" id="btnBack"><i class="fas fa-arrow-left"></i> 돌아가기</button>
         <h3 style="font-size:16px;font-weight:700;margin-bottom:12px;">내 계약서 목록</h3>
         <div id="contractsList"></div>
+        <button class="btn-logout" id="btnContractsLogout">로그아웃</button>
       </div>
 
       <!-- 근로계약서 서명 -->

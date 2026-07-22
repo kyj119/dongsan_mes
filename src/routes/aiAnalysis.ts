@@ -577,7 +577,10 @@ aiAnalysisRouter.patch('/:id', async (c) => {
       const shouldRequeue = !isPermanent && newCount < maxRetries
       const finalStatus = shouldRequeue ? 'pending' : 'error'
 
-      await c.env.DB.prepare(
+      // #520: 재큐 트리거(:479 processing→pending/error)로 세대가 교체된 지연 error 콜백이
+      //   최신 결과(다른 세대의 'done' 또는 재큐된 'pending')를 덮고 retry_count를 중복 증가시키는 lost-update 차단.
+      //   진행중('processing')일 때만 확정 — 재큐로 되돌려진 좀비 콜백은 0-row가 되어 무시.
+      const res = await c.env.DB.prepare(
         `UPDATE ai_analysis_requests
          SET status = ?,
              error_message = ?,
@@ -585,9 +588,11 @@ aiAnalysisRouter.patch('/:id', async (c) => {
              last_error_at = datetime('now'),
              file_path = COALESCE(?, file_path),
              updated_at = datetime('now')
-         WHERE id = ?`
+         WHERE id = ? AND status = 'processing'`
       ).bind(finalStatus, cleanMsg, newCount, file_path ?? null, id).run()
 
+      // 0-row = 재큐로 세대 교체됨(이미 다른 세대가 처리) → 500 금지, 무시 응답.
+      if ((res.meta?.changes ?? 0) === 0) return c.json({ success: true, ignored: true })
       return c.json({ success: true, requeued: shouldRequeue, retry_count: newCount })
     }
 
@@ -604,7 +609,10 @@ aiAnalysisRouter.patch('/:id', async (c) => {
     // R2 이관: canvas_json.render_base64도 R2로 externalize(누적 차단)
     canvas_json = (await externalizeCanvasJson(c.env, id, canvas_json)) ?? undefined
 
-    await c.env.DB.prepare(
+    // #520: 완료(done) 지연/좀비 콜백이 재큐(:479 processing→pending)로 세대 교체된 최신 결과를 덮는 lost-update 차단.
+    //   진행중('processing')일 때만 done 확정. claim(pending→processing)·부분 갱신은 가드 없이 유지(정상 전이 보존).
+    const guardCompletion = status === 'done' ? ` AND status = 'processing'` : ''
+    const res = await c.env.DB.prepare(
       `UPDATE ai_analysis_requests
        SET status = COALESCE(?, status),
            groups_json = ?,
@@ -612,10 +620,11 @@ aiAnalysisRouter.patch('/:id', async (c) => {
            file_path = COALESCE(?, file_path),
            canvas_json = COALESCE(?, canvas_json),
            updated_at = datetime('now')
-       WHERE id = ?`
+       WHERE id = ?${guardCompletion}`
     ).bind(status ?? null, groups_json ?? null, error_message ?? null, file_path ?? null, canvas_json ?? null, id).run()
 
-    return c.json({ success: true })
+    // done 가드로 0-row면 이미 다른 세대가 처리됨(무시). 그 외(claim/부분갱신)는 정상 처리.
+    return c.json({ success: true, ignored: guardCompletion !== '' && (res.meta?.changes ?? 0) === 0 })
   } catch (error) {
     console.error('AI Analysis error:', error)
     return c.json({
