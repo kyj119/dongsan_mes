@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-07-22T04:20:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-07-22T15:17:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **14** — Area 5 41회차(07-22T04:20) `search_issues(state:open,label:auto-improve)` 실측 12건(직전 Area4 42회차 값과 일치, 변동 없음) + 이번 사이클 신규 #552·#553 2건 생성 → **14**. |
+| 🆕 new | **14** — Area 6 47회차(07-22T15:17) `search_issues(state:open,label:auto-improve)` 실측 14건, Area 5 41회차 값과 일치(변동 없음). |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **465** — `search_issues(is:closed,reason:completed)` 재확인, 변동 없음. |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 실측 재확인 — 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 6 자기 진화 (2026-07-22T15:17):**
+> - **방법**: `git fetch origin main`(HEAD `686adf1` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 6 **47회차** — 직전 Area6(`5847d13`, 07-20T19:20, 46회차) 이후 `src/routes`/`src/scripts`/`src/pages`/`migrations` churn은 Area 1~5(42~48회차)가 각자 렌즈로 이미 심층 감사 완료(직전 Area5 41회차 HEAD `4881ed4`까지 포함, P0-1~P0-5·P1-6~P1-10 UI sweep 및 CSV/ledger 신기능 전부 커버됨). **유일한 미검증 신선 churn** = Area5 감사 지점 이후 다른 세션(Claude Fable 5)이 머지한 대형 3단계 "공유 헬퍼 SSOT 도입" 리팩터(`275e5d5`/`3c1dbfa`/`baa6a8d`, 20+파일 — CSV다운로드/숫자·날짜포맷터/모달표준/거래처검색모달/상태배지를 shell.js 전역 헬퍼로 위임 + 전역 함수명 충돌 리네임 15곳) + 스킬 문서 갱신(`37a0e64`, mes-ui-consistency §9·review-checklist §14 신설, 재구현 금지 게이트). "behavior-preserving" 자칭 대규모 SSOT 위임은 이 프로젝트에서 반복적으로 회귀가 발견된 클래스(HTML↔JS silent fail·전역 스코프 함수명 충돌 shadow·CSV formula injection 산재)라 general-purpose 에이전트 1개로 diff 전수 대조 위임.
+> - **🟢 리팩터 검증 결과 = clean(회귀 0)**: ① `dsBuildCsv`/`dsDownloadCsv`가 기존 SSOT `window.dsCsvCell`(선행 `=+-@` 이스케이프, #367 CSV formula injection 가드 포함)를 재사용 확인 — 신규 미이스케이프 CSV 경로 없음, BOM 중복접두 가드도 8개 적용파일 전수 확인. ② `dsOpenModal`/`dsCloseModal`이 `classList`(hidden) 방식으로 `28bdfcc`(P0-2 모달ESC수정) 컨벤션과 일치, `quality.js` 위임 후에도 기존 열기/닫기 트리거 전부 보존. ③ `openClientSearchModal`의 거래처명/코드/사업자번호/전화번호 전부 `escapeHtml` 통과 확인(load-order 문제 없음, 신규 XSS sink 0). ④ 전역 함수명 충돌 리네임(switchTab 5종·renderPagination 5종, onclick 참조 15곳) 전수 grep 대조 — 옛 이름 호출 잔존 0(silent fail 없음). ⑤ 상태색상 SSOT 통일(PRINTING→blue·SHIPPED→green·QUOTATION→amber) 4개 파일(orders/parent/clientDetail/dashboard) 전부 일관 적용 확인. **suspect 2건 모두 non-issue로 확정**: dashboard.js 색상 톤 미세 shade차(의도된 SSOT 통일 효과, 회귀 아님) / purchaseRequests.js `openClientSearchModal` 전환이 거래처타입 필터(`type=PURCHASE`)를 안 넘기지만 `clients.ts:57-87`가 애초 `type` 파라미터를 인식 안 해(only `client_type`) 리팩터 이전부터 no-op이던 기존 버그 — 리팩터가 유입한 회귀 아님.
+> - **🔍 open≠unfixed 재확인**: `search_issues(state:open,label:auto-improve)` 실측 **14건**(Area5 41회차 값과 완전 일치, 변동 없음) 확보 후 표본 점검(#528/#535/#536/#520) — 전부 안티패턴 잔존 확인(미픽스, stale 아님). close-pending 캐시 항목 **#528**(bank.ts 원자적 claim-first, `1e1b620` 검증)은 이번 churn(`f9d211a`)이 `bank.ts`를 건드렸으나 해당 라인(`applyBankTransaction`)과 무관한 별개 diff(내부법인 제외 SQL 추가)임을 직접 확인 — 캐시 유효, 재검증 불요.
+> - **🟡 마이너 발견(이슈화 보류) — 미문서화 마이그레이션 번호 중복 4쌍**: `ls migrations | sed -E 's/.*\/([0-9]{4})_.*/\1/' | sort | uniq -d` → 기존 문서화된 `0327` 외 **0412·0416·0420·0453** 4쌍 신규 확인(각 쌍 테이블 겹침 0 — board_materials/cards, preauth/products, quality_claims/canvas, items/users+role_page_permissions). 전부 `2026-07-16` 생성(6일 전, 직전 4개 Area6 사이클 동안 미보고 상태로 존재) + 오늘까지 관련 인시던트 0건 → wrangler 파일명 정렬 결정적 적용이라 기능 안전, 이번 churn에서 신규 유입된 것도 아니라(SKILL 라인 236 기준 "이번 churn 신규 유입만 보고") 별도 이슈 생성 생략, 컨벤션 위생 메모로만 기록.
+> - **🟢 도구 상태**: `node scripts/entity-audit.mjs` = 검사 122파일·통과 59·누락 **0**(Area5와 동일). `npx tsc --noEmit` 에러 0.
+> - **🟢 backlog↔GitHub 절대값 재동기화**: open **14**·done **465**(`is:closed reason:completed`)·rejected **6**(`not_planned`=4+`duplicate`=2) 전부 Area5 41회차 값과 일치, 변동 없음.
+> - **🧬 SKILL 강화 없음(신규 탐지 클래스 아님)** — 이번 사이클의 실질 가치는 **대형 SSOT 리팩터의 완전성을 diff 전수 대조로 검증**한 데 있음(신규 회귀 0, 기존 "?raw 전역 스코프 함수명 충돌"·"CSV 이스케이프 산재" 우려 클래스가 이 리팩터에서는 실제로 정확히 방지됨 — 재사용 SSOT 설계가 그 우려를 구조적으로 해소한 사례로 참고 가치). 마이그레이션 번호 중복 4쌍은 기존 line 236 레시피의 정상 적용(신규 유입 아니므로 미보고)이라 신규 패턴 아님.
+> - 신규 이슈 0건, 자동수정 0건(검증 대상 리팩터가 clean), close-pending 캐시 1건 유효성 재확인(#528), done-sync 변동 없음(new 14·done 465·rejected 6 정합 재확인). 다음 순번 Area 1.
+>
 
 > **Area 5 보안 (2026-07-22T04:20):**
 > - **방법**: `git fetch origin main`(HEAD `4881ed4` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 5 **41회차** — 직전 Area5(`ba8a6c6`, 07-20T18:10, 40회차) 이후 14커밋. 그중 `903a780`(fix(security): XSS unescaped user fields batch escape)와 `978791c`(fix(security+ux): IDOR 4건+UX 8건+AP게이트+급여batch주석)가 **owner/worktree 세션이 이미 이전 사이클 open 이슈 다수(#473·#519·#521·#522·#524·#527·#531·#532·#533·#534·#537·#547·#548)를 fixed-in-tree로 선제 픽스**한 상태 — 오케스트레이터가 이 두 커밋의 `src/routes/{clients,departments,workbench,orders/queries,ledger/accounts-payable,financialReports,hr,payroll/records}.ts` diff 전체를 직접 Read로 대조해 각 항목이 정확·완전한 수정인지 확인(전부 clean — entityFilter 패턴이 기존 형제 컨벤션과 일치, params 바인드 순서 정합, #547 게이트가 전체모드 전용 403으로 정확히 제한). 이 두 커밋 재검증에 그치지 않고 **general-purpose 에이전트 2개 병렬**로 신선 심층 스윕 수행: ① 백엔드(미검증 도메인 — purchaseRequests/messageTemplates/ar-dunning/year-end/priceList/storageZones/inspections/facility/equipmentQueue/fixedAssets/returns/claims/budgets/cashReceipts/insuranceReports + SQLi/시크릿/authMiddleware재귀/CSV SSOT 전수) ② 프론트(이번 사이클 신규 churn 파일 — ledger.js 3회 diff·accounting.js CSV export·orderForm 등 XSS sink).
