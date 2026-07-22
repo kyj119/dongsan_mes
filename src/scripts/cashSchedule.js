@@ -324,7 +324,7 @@ window.schDeleteItem = async function(id) {
 };
 
 window.schOpenAddModal = function() {
-  document.getElementById('schAddDate').valueAsDate = new Date();
+  document.getElementById('schAddDate').value = new Date().toISOString().slice(0, 10);
   document.getElementById('schAddType').value = 'IN';
   document.getElementById('schAddSource').value = 'ORDER';
   document.getElementById('schAddAmount').value = '';
@@ -566,6 +566,6 @@ function renderForecast() {
   schCurrentYear = today.getFullYear();
   schCurrentMonth = today.getMonth() + 1;
   var addDateEl = document.getElementById('schAddDate');
-  if (addDateEl) addDateEl.valueAsDate = today;
+  if (addDateEl) addDateEl.value = today.toISOString().slice(0, 10);
   window.loadSchedule();
 })();

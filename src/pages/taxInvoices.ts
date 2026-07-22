@@ -98,7 +98,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
             <option value="CARD">카드</option>
             <option value="SIMPLE">간이영수증</option>
           </select>
-          <input type="date" id="billingAccountingDate" class="ds-input" style="width:auto;min-height:32px;padding:4px 10px;font-size:var(--fs-xs)" title="회계반영일(비우면 정산가능일 자동). 예: 출고 6/30 → 7월 이월 시 7월 날짜 지정">
+          <input type="text" id="billingAccountingDate" class="js-fp ds-input" style="width:auto;min-height:32px;padding:4px 10px;font-size:var(--fs-xs)" title="회계반영일(비우면 정산가능일 자동). 예: 출고 6/30 → 7월 이월 시 7월 날짜 지정" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
           <button onclick="submitBulkBilling()" class="ds-btn ds-btn-sm" style="background:var(--c-success);color:#fff">
             <i class="fas fa-check-double" style="margin-right:4px"></i>선택 회계반영
           </button>
@@ -126,11 +126,11 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
         </div>
         <div class="ds-filter-field">
           <label class="ds-label">기간 from</label>
-          <input type="date" id="dateFrom" onchange="loadInvoices(1)" class="ds-input">
+          <input type="text" id="dateFrom" onchange="loadInvoices(1)" class="js-fp ds-input" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
         </div>
         <div class="ds-filter-field">
           <label class="ds-label">~ to</label>
-          <input type="date" id="dateTo" onchange="loadInvoices(1)" class="ds-input">
+          <input type="text" id="dateTo" onchange="loadInvoices(1)" class="js-fp ds-input" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
         </div>
         <div class="ds-filter-field" style="flex:1;min-width:200px">
           <label class="ds-label">검색</label>
@@ -181,15 +181,15 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
         <div class="flex flex-wrap items-end gap-3">
           <div>
             <label class="block text-xs font-medium text-gray-500 mb-1">기간 시작</label>
-            <input type="date" id="unbilledFrom" class="px-3 py-2 border rounded-lg text-sm">
+            <input type="text" id="unbilledFrom" class="js-fp px-3 py-2 border rounded-lg text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
           </div>
           <div>
             <label class="block text-xs font-medium text-gray-500 mb-1">기간 종료</label>
-            <input type="date" id="unbilledTo" class="px-3 py-2 border rounded-lg text-sm">
+            <input type="text" id="unbilledTo" class="js-fp px-3 py-2 border rounded-lg text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
           </div>
           <div>
             <label class="block text-xs font-medium text-gray-500 mb-1">작성일 (발행 시 적용)</label>
-            <input type="date" id="unbilledIssueDate" class="px-3 py-2 border rounded-lg text-sm">
+            <input type="text" id="unbilledIssueDate" class="js-fp px-3 py-2 border rounded-lg text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
           </div>
           <button onclick="loadUnbilled()" class="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 text-sm font-medium">
             <i class="fas fa-search mr-1"></i>조회
@@ -253,7 +253,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
           </div>
           <div class="mb-4">
             <label class="block text-sm font-medium text-gray-700 mb-1">작성일 <span class="text-red-500">*</span></label>
-            <input type="date" id="modifyIssueDate" class="w-full px-3 py-2 border rounded-lg text-sm">
+            <input type="text" id="modifyIssueDate" class="js-fp w-full px-3 py-2 border rounded-lg text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
           </div>
           <div class="mb-4">
             <label class="block text-sm font-medium text-gray-700 mb-1">비고</label>
@@ -356,7 +356,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
           <!-- 발행일 -->
           <div>
             <label class="ds-label">발행일(작성일) <span class="text-red-500">*</span></label>
-            <input type="date" id="diIssueDate" class="ds-input" style="max-width:14rem">
+            <input type="text" id="diIssueDate" class="js-fp ds-input" style="max-width:14rem" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
           </div>
 
           <!-- 품목 행 -->
@@ -461,11 +461,11 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
           <!-- Date Range -->
           <div>
             <label for="crDateFrom" class="block text-sm font-medium text-gray-700 mb-1">시작일</label>
-            <input type="date" id="crDateFrom" class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
+            <input type="text" id="crDateFrom" class="js-fp w-full border border-gray-300 rounded px-3 py-2 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
           </div>
           <div>
             <label for="crDateTo" class="block text-sm font-medium text-gray-700 mb-1">종료일</label>
-            <input type="date" id="crDateTo" class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
+            <input type="text" id="crDateTo" class="js-fp w-full border border-gray-300 rounded px-3 py-2 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
           </div>
 
           <!-- Search -->
@@ -543,7 +543,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
             <!-- Transaction Date -->
             <div>
               <label for="transactionDate" class="block text-sm font-medium text-gray-700 mb-1">거래일 <span class="text-red-500">*</span></label>
-              <input type="date" id="transactionDate" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" required>
+              <input type="text" id="transactionDate" class="js-fp w-full border border-gray-300 rounded px-3 py-2 text-sm" required maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
             </div>
 
             <!-- Transaction Type -->
@@ -686,11 +686,11 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
             </div>
             <div>
               <label class="form-label">시작일</label>
-              <input type="date" id="collectStartDate" class="form-input">
+              <input type="text" id="collectStartDate" class="js-fp form-input" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
             </div>
             <div>
               <label class="form-label">종료일</label>
-              <input type="date" id="collectEndDate" class="form-input">
+              <input type="text" id="collectEndDate" class="js-fp form-input" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
             </div>
             <div class="flex items-end">
               <button onclick="requestCollection()" class="btn-primary w-full">
@@ -763,11 +763,11 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
             </div>
             <div>
               <label class="form-label">시작일</label>
-              <input type="date" id="invoiceFilterStartDate" class="form-input" onchange="hometaxLoadInvoices(1)">
+              <input type="text" id="invoiceFilterStartDate" class="js-fp form-input" onchange="hometaxLoadInvoices(1)" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
             </div>
             <div>
               <label class="form-label">종료일</label>
-              <input type="date" id="invoiceFilterEndDate" class="form-input" onchange="hometaxLoadInvoices(1)">
+              <input type="text" id="invoiceFilterEndDate" class="js-fp form-input" onchange="hometaxLoadInvoices(1)" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
             </div>
             <div>
               <label class="form-label">매칭 상태</label>

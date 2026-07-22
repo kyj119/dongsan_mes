@@ -243,7 +243,7 @@ export function uiGuidePage(c: Context<HonoEnv>) {
           </div>
           <div>
             <label class="text-[10px] block mb-0.5" style="color:#9ca3af;">기간</label>
-            <input type="date" class="border rounded px-2 py-1 text-xs" style="color:#212529;">
+            <input type="text" class="js-fp border rounded px-2 py-1 text-xs" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" style="color:#212529;">
           </div>
           <div class="ml-auto flex items-end gap-2">
             <button class="text-xs hover:underline" style="color:#6b7280;">초기화</button>

@@ -53,9 +53,9 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
               <option value="">전체 분류</option>
             </select>
             <div class="flex items-center gap-1">
-              <input type="date" id="filterStartDate" class="ds-input" style="width:125px;font-size:12px" onchange="loadTransactions()">
+              <input type="text" id="filterStartDate" class="js-fp ds-input" style="width:125px;font-size:12px" onchange="loadTransactions()" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
               <span class="text-gray-300">~</span>
-              <input type="date" id="filterEndDate" class="ds-input" style="width:125px;font-size:12px" onchange="loadTransactions()">
+              <input type="text" id="filterEndDate" class="js-fp ds-input" style="width:125px;font-size:12px" onchange="loadTransactions()" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
             </div>
             <input type="text" id="filterSearch" placeholder="가맹점..." class="ds-input" style="width:110px;font-size:12px">
             <div class="border-l border-gray-200 h-5 mx-1"></div>
@@ -208,9 +208,9 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
           <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-file-export text-emerald-600 mr-2"></i>세무사 전달</h3>
           <div class="flex flex-wrap items-center gap-2">
             <span class="text-xs text-gray-500">기간</span>
-            <input type="date" id="taxExportStart" class="ds-input" style="width:140px;font-size:12px">
+            <input type="text" id="taxExportStart" class="js-fp ds-input" style="width:140px;font-size:12px" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
             <span class="text-gray-300">~</span>
-            <input type="date" id="taxExportEnd" class="ds-input" style="width:140px;font-size:12px">
+            <input type="text" id="taxExportEnd" class="js-fp ds-input" style="width:140px;font-size:12px" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
             <button onclick="downloadTaxCsv()" class="ds-btn ds-btn-primary ds-btn-sm flex items-center gap-1"><i class="fas fa-file-csv"></i> 내역 CSV</button>
             <button onclick="downloadReceiptsZip()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-700 text-white hover:bg-gray-800 flex items-center gap-1"><i class="fas fa-file-zipper"></i> 영수증 ZIP</button>
             <span id="taxExportStatus" class="text-xs text-gray-400"></span>
@@ -443,7 +443,7 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
               </div>
               <div>
                 <label class="text-sm font-semibold text-gray-700 mb-1 block">사용일 <span class="text-red-500">*</span></label>
-                <input type="date" id="txDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <input type="text" id="txDate" class="js-fp w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
               </div>
             </div>
             <div>

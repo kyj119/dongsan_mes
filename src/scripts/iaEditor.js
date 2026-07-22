@@ -3057,7 +3057,7 @@ function iaeOpenOrderModalWithLines(lines) {
     + '<div class="relative"><label class="block text-xs text-gray-500 mb-1">거래처 *</label>'
     + '<input id="iaeOmClient" autocomplete="off" placeholder="거래처명/코드 검색…" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500">'
     + '<div id="iaeOmClientList" class="absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto hidden"></div></div>'
-    + '<div><label class="block text-xs text-gray-500 mb-1">납품일 *</label><input id="iaeOmDate" type="date" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"></div>'
+    + '<div><label class="block text-xs text-gray-500 mb-1">납품일 *</label><input id="iaeOmDate" type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" class="js-fp w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"></div>'
     + '</div>'
     // 기존 모드: 대상 주문 검색
     + '<div id="iaeOmAppendFields" class="hidden">'
@@ -3077,6 +3077,7 @@ function iaeOpenOrderModalWithLines(lines) {
   document.body.appendChild(modal);
   // 기본 납품일 = 오늘+3
   try { var dd = new Date(); dd.setDate(dd.getDate() + 3); document.getElementById('iaeOmDate').value = new Date(dd.getTime() - dd.getTimezoneOffset() * 60000).toISOString().split('T')[0]; } catch (_e) {}
+  if (window.hrInitDatePickers) window.hrInitDatePickers('#iaeOrderModal');
 
   document.getElementById('iaeOmClose').addEventListener('click', iaeCanCloseOrderModal);
   document.getElementById('iaeOmCancel').addEventListener('click', iaeCanCloseOrderModal);

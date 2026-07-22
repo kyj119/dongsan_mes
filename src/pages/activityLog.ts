@@ -83,12 +83,12 @@ window.switchLogTab = function(tab) {
             </div>
             <div>
               <label class="block text-xs text-gray-500 mb-1">기간 from</label>
-              <input type="date" id="logDateFrom" class="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              <input type="text" id="logDateFrom" class="js-fp px-3 py-2 border border-gray-300 rounded-lg text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15"
                 onchange="currentPage=1;loadLogs();">
             </div>
             <div>
               <label class="block text-xs text-gray-500 mb-1">~ to</label>
-              <input type="date" id="logDateTo" class="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              <input type="text" id="logDateTo" class="js-fp px-3 py-2 border border-gray-300 rounded-lg text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15"
                 onchange="currentPage=1;loadLogs();">
             </div>
             <button onclick="currentPage=1;loadLogs();"
@@ -148,8 +148,8 @@ window.switchLogTab = function(tab) {
               <option value="SENT">성공</option>
               <option value="FAILED">실패</option>
             </select>
-            <input type="date" id="filterDateFrom" class="border rounded px-3 py-2 text-sm" />
-            <input type="date" id="filterDateTo" class="border rounded px-3 py-2 text-sm" />
+            <input type="text" id="filterDateFrom" class="js-fp border rounded px-3 py-2 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" />
+            <input type="text" id="filterDateTo" class="js-fp border rounded px-3 py-2 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" />
           </div>
           <div class="mt-3 text-right">
             <button onclick="loadData()" class="ds-btn ds-btn-primary text-sm">

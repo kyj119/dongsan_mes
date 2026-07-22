@@ -689,6 +689,8 @@ window.hrInitDatePickers = function(rootSel) {
         });
     }
 };
+// 정적 마크업 .js-fp 자동 초기화 — 페이지별 호출 불요. 동적 삽입(innerHTML) 후에만 hrInitDatePickers(rootSel) 직접 호출.
+document.addEventListener('DOMContentLoaded', function() { window.hrInitDatePickers(); });
 
 // ═══ Entity Switcher (법인 전환) ═══
 var __currentEntityId = 1;
@@ -1603,9 +1605,12 @@ window.dsSkeleton = {
             } catch(e) {}
             if (typeof renderFavorites === 'function') renderFavorites();
 
-            // SPA 페이지 전환 후 금액 input 자동 바인딩
+            // SPA 페이지 전환 후 금액 input 자동 바인딩 + 날짜 플랫피커 초기화 (DOMContentLoaded 미발화 경로)
             if (typeof window.bindMoneyInputs === 'function') {
                 try { window.bindMoneyInputs(); } catch(e) {}
+            }
+            if (typeof window.hrInitDatePickers === 'function') {
+                try { window.hrInitDatePickers(); } catch(e) {}
             }
 
             if (pushState) {

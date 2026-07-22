@@ -176,9 +176,9 @@ export function hrPage(c: Context<HonoEnv>) {
                 <option value="headcount">배부:인원비례</option>
                 <option value="labor">배부:인건비비례</option>
               </select>
-              <input type="date" id="deptPnlFrom" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <input type="text" id="deptPnlFrom" class="js-fp border border-gray-300 rounded-lg px-3 py-2 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
               <span class="text-gray-400">~</span>
-              <input type="date" id="deptPnlTo" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <input type="text" id="deptPnlTo" class="js-fp border border-gray-300 rounded-lg px-3 py-2 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
               <button onclick="loadDeptPnl()" class="ds-btn ds-btn-primary text-sm"><i class="fas fa-search mr-1"></i>검색</button>
             </div>
           </div>

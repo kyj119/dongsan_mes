@@ -47,12 +47,12 @@ export function quotationsPage(c: Context<HonoEnv>) {
         </div>
         <div class="ds-filter-field" style="min-width:130px">
           <label class="ds-label">작성일 from</label>
-          <input type="date" id="quotDateFrom" class="ds-input"
+          <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="quotDateFrom" class="js-fp ds-input"
             onchange="loadQuotations(1)">
         </div>
         <div class="ds-filter-field" style="min-width:130px">
           <label class="ds-label">~ to</label>
-          <input type="date" id="quotDateTo" class="ds-input"
+          <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="quotDateTo" class="js-fp ds-input"
             onchange="loadQuotations(1)">
         </div>
         <div class="ds-filter-actions">

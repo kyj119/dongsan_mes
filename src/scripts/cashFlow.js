@@ -130,8 +130,8 @@
       + '<div><label class="block text-sm font-medium text-gray-700 mb-1">납부일</label><input id="fe_payment_day" type="number" min="1" max="31" class="w-full px-3 py-2 border rounded-lg text-sm" value="' + ((data && data.payment_day) || 1) + '"></div>'
       + '</div>'
       + '<div class="grid grid-cols-2 gap-3">'
-      + '<div><label class="block text-sm font-medium text-gray-700 mb-1">시작일</label><input id="fe_start" type="date" class="w-full px-3 py-2 border rounded-lg text-sm" value="' + ((data && data.start_date) || (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10))) + '"></div>'
-      + '<div><label class="block text-sm font-medium text-gray-700 mb-1">종료일</label><input id="fe_end" type="date" class="w-full px-3 py-2 border rounded-lg text-sm" value="' + ((data && data.end_date) || '') + '"></div>'
+      + '<div><label class="block text-sm font-medium text-gray-700 mb-1">시작일</label><input id="fe_start" type="text" class="js-fp w-full px-3 py-2 border rounded-lg text-sm" value="' + ((data && data.start_date) || (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10))) + '" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15"></div>'
+      + '<div><label class="block text-sm font-medium text-gray-700 mb-1">종료일</label><input id="fe_end" type="text" class="js-fp w-full px-3 py-2 border rounded-lg text-sm" value="' + ((data && data.end_date) || '') + '" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15"></div>'
       + '</div>'
       + '<div><label class="block text-sm font-medium text-gray-700 mb-1">은행 거래 상대명 (매칭용)</label><input id="fe_counterpart" class="w-full px-3 py-2 border rounded-lg text-sm" value="' + esc((data && data.counterpart_name) || '') + '" placeholder="예: (주)한화손해보험"></div>'
       + '<div><label class="block text-sm font-medium text-gray-700 mb-1">비고</label><input id="fe_notes" class="w-full px-3 py-2 border rounded-lg text-sm" value="' + esc((data && data.notes) || '') + '"></div>'
@@ -142,6 +142,7 @@
       + '</div></div></div>';
     document.body.insertAdjacentHTML('beforeend', html);
     if (window.bindMoneyInputs) window.bindMoneyInputs(document.getElementById('feModalOverlay'));
+    if (window.hrInitDatePickers) window.hrInitDatePickers('#feModalOverlay');
   };
 
   window.saveFixedExpense = async function (id) {
@@ -301,8 +302,8 @@
       + Object.keys(REPAY_MAP).map(function (k) { return '<option value="' + k + '"' + ((data && data.repayment_type === k) ? ' selected' : '') + '>' + REPAY_MAP[k] + '</option>'; }).join('')
       + '</select></div></div>'
       + '<div class="grid grid-cols-3 gap-3">'
-      + '<div><label class="block text-sm font-medium text-gray-700 mb-1">시작일</label><input id="ln_start" type="date" class="w-full px-3 py-2 border rounded-lg text-sm" value="' + ((data && data.start_date) || '') + '"></div>'
-      + '<div><label class="block text-sm font-medium text-gray-700 mb-1">만기일</label><input id="ln_maturity" type="date" class="w-full px-3 py-2 border rounded-lg text-sm" value="' + ((data && data.maturity_date) || '') + '"></div>'
+      + '<div><label class="block text-sm font-medium text-gray-700 mb-1">시작일</label><input id="ln_start" type="text" class="js-fp w-full px-3 py-2 border rounded-lg text-sm" value="' + ((data && data.start_date) || '') + '" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15"></div>'
+      + '<div><label class="block text-sm font-medium text-gray-700 mb-1">만기일</label><input id="ln_maturity" type="text" class="js-fp w-full px-3 py-2 border rounded-lg text-sm" value="' + ((data && data.maturity_date) || '') + '" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15"></div>'
       + '<div><label class="block text-sm font-medium text-gray-700 mb-1">상환일</label><input id="ln_payday" type="number" min="1" max="31" class="w-full px-3 py-2 border rounded-lg text-sm" value="' + ((data && data.monthly_payment_day) || 1) + '"></div>'
       + '</div>'
       + '<div><label class="block text-sm font-medium text-gray-700 mb-1">비고</label><input id="ln_notes" class="w-full px-3 py-2 border rounded-lg text-sm" value="' + esc((data && data.notes) || '') + '"></div>'
@@ -313,6 +314,7 @@
       + '</div></div></div>';
     document.body.insertAdjacentHTML('beforeend', html);
     if (window.bindMoneyInputs) window.bindMoneyInputs(document.getElementById('loanModalOverlay'));
+    if (window.hrInitDatePickers) window.hrInitDatePickers('#loanModalOverlay');
   };
 
   window.saveLoan = async function (id) {
@@ -352,7 +354,7 @@
       + '<div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm">'
       + '<h3 class="font-bold text-lg mb-4">금리 변경</h3>'
       + '<div class="space-y-3">'
-      + '<div><label class="block text-sm font-medium text-gray-700 mb-1">적용일</label><input id="rc_date" type="date" class="w-full px-3 py-2 border rounded-lg text-sm" value="' + (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10)) + '"></div>'
+      + '<div><label class="block text-sm font-medium text-gray-700 mb-1">적용일</label><input id="rc_date" type="text" class="js-fp w-full px-3 py-2 border rounded-lg text-sm" value="' + (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10)) + '" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15"></div>'
       + '<div><label class="block text-sm font-medium text-gray-700 mb-1">새 금리 (%)</label><input id="rc_rate" type="number" step="0.01" class="w-full px-3 py-2 border rounded-lg text-sm"></div>'
       + '<div><label class="block text-sm font-medium text-gray-700 mb-1">비고</label><input id="rc_notes" class="w-full px-3 py-2 border rounded-lg text-sm"></div>'
       + '</div>'
@@ -361,6 +363,7 @@
       + '<button onclick="saveRateChange()" class="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm">저장</button>'
       + '</div></div></div>';
     document.body.insertAdjacentHTML('beforeend', html);
+    if (window.hrInitDatePickers) window.hrInitDatePickers('#rateModalOverlay');
   };
 
   window.saveRateChange = async function () {

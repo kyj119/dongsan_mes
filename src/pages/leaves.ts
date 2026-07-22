@@ -120,9 +120,9 @@ export function leavesPage(c: Context<HonoEnv>) {
               <option value="APPROVED">승인</option>
               <option value="REJECTED">반려</option>
             </select>
-            <input type="date" id="lvReqFrom" class="border rounded px-2 py-1 text-xs" title="시작일(이후)">
+            <input type="text" id="lvReqFrom" class="js-fp border rounded px-2 py-1 text-xs" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" title="시작일(이후)">
             <span class="text-gray-400 text-xs">~</span>
-            <input type="date" id="lvReqTo" class="border rounded px-2 py-1 text-xs" title="종료일(이전)">
+            <input type="text" id="lvReqTo" class="js-fp border rounded px-2 py-1 text-xs" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" title="종료일(이전)">
             <button onclick="leavesLoadRequests()" class="ds-btn ds-btn-primary text-xs">
               <i class="fas fa-search mr-1"></i>검색
             </button>
@@ -230,11 +230,11 @@ export function leavesPage(c: Context<HonoEnv>) {
             <div class="grid grid-cols-2 gap-2">
               <div>
                 <label class="text-xs text-gray-600">시작일 <span class="text-red-500">*</span></label>
-                <input type="date" id="lvReqStart" class="w-full border rounded px-2 py-1.5 text-sm" onchange="leavesCalcDays()" />
+                <input type="text" id="lvReqStart" class="js-fp w-full border rounded px-2 py-1.5 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" onchange="leavesCalcDays()" />
               </div>
               <div>
                 <label class="text-xs text-gray-600">종료일 <span class="text-red-500">*</span></label>
-                <input type="date" id="lvReqEnd" class="w-full border rounded px-2 py-1.5 text-sm" onchange="leavesCalcDays()" />
+                <input type="text" id="lvReqEnd" class="js-fp w-full border rounded px-2 py-1.5 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" onchange="leavesCalcDays()" />
               </div>
             </div>
             <div>

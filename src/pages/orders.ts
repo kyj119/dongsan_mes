@@ -125,12 +125,12 @@ export function ordersPage(c: Context<HonoEnv>) {
           <div class="ds-filter-divider"></div>
           <div class="ds-filter-field">
             <label class="ds-label">등록일 from</label>
-            <input type="date" id="orderDateFrom" class="ds-input"
+            <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="orderDateFrom" class="js-fp ds-input"
               onchange="currentPage=1;loadOrders();">
           </div>
           <div class="ds-filter-field">
             <label class="ds-label">~ to</label>
-            <input type="date" id="orderDateTo" class="ds-input"
+            <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="orderDateTo" class="js-fp ds-input"
               onchange="currentPage=1;loadOrders();">
           </div>
           <div class="ds-filter-field" style="align-self:flex-end">

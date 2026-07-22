@@ -71,7 +71,7 @@ export const productionReportsContent = `
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-2">
                     <button onclick="changeDailyDate(-1)" class="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50"><i class="fas fa-chevron-left"></i></button>
-                    <input type="date" id="reportDate" class="px-3 py-1.5 text-sm border rounded-lg" onchange="loadDailySummary()">
+                    <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="reportDate" class="js-fp px-3 py-1.5 text-sm border rounded-lg" onchange="loadDailySummary()">
                     <button onclick="changeDailyDate(1)" class="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50"><i class="fas fa-chevron-right"></i></button>
                     <button onclick="setToday()" class="ds-btn ds-btn-primary">오늘</button>
                   </div>
@@ -162,9 +162,9 @@ export const productionReportsContent = `
                     </button>
                 </div>
                 <div class="flex items-center gap-2">
-                    <input type="date" id="dateFrom" class="border rounded px-2 py-1 text-sm">
+                    <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="dateFrom" class="js-fp border rounded px-2 py-1 text-sm">
                     <span class="text-gray-400">~</span>
-                    <input type="date" id="dateTo" class="border rounded px-2 py-1 text-sm">
+                    <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="dateTo" class="js-fp border rounded px-2 py-1 text-sm">
                     <button onclick="loadCurrentTab()" class="ds-btn ds-btn-primary text-sm">조회</button>
                     <button onclick="exportProductionCsv()" class="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700">
                         <i class="fas fa-file-csv mr-1"></i>CSV
@@ -446,8 +446,8 @@ export const productionReportsContent = `
                     <select id="deductMaterial" class="ds-input" style="width:auto" onchange="filterDeductions()" title="원단">
                       <option value="">전체 원단</option>
                     </select>
-                    <input type="date" id="deductDateFrom" class="ds-input" style="width:140px" onchange="filterDeductions()" title="차감일 시작" />
-                    <input type="date" id="deductDateTo" class="ds-input" style="width:140px" onchange="filterDeductions()" title="차감일 종료" />
+                    <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="deductDateFrom" class="js-fp ds-input" style="width:140px" onchange="filterDeductions()" title="차감일 시작" />
+                    <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="deductDateTo" class="js-fp ds-input" style="width:140px" onchange="filterDeductions()" title="차감일 종료" />
                   </div>
                 </div>
                 <div class="ds-table-wrap">
@@ -481,7 +481,7 @@ export const productionReportsContent = `
               <!-- 컨트롤 바 -->
               <div class="ds-card p-3 flex flex-wrap items-center gap-2">
                 <label class="text-xs text-gray-500">기준일</label>
-                <input type="date" id="oeeDate" class="border rounded px-2 py-1 text-sm" onchange="window.oeeLoad()">
+                <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="oeeDate" class="js-fp border rounded px-2 py-1 text-sm" onchange="window.oeeLoad()">
                 <button onclick="window.oeeCalculate()" class="ds-btn ds-btn-primary text-sm"><i class="fas fa-calculator mr-1"></i>OEE 계산</button>
                 <button onclick="window.oeeLoad()" class="px-3 py-1.5 text-sm border rounded hover:bg-gray-50"><i class="fas fa-sync-alt mr-1"></i>새로고침</button>
                 <span class="text-[11px] text-gray-400 ml-2 hidden md:inline">가용성 × 성능 × 품질 = 종합효율(OEE) · 기준일 데이터로 재계산</span>

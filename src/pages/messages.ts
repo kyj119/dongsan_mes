@@ -69,9 +69,9 @@ export function messagesPage(c: Context<HonoEnv>) {
         <option value="PENDING">대기</option>
         <option value="ALT_SENT">대체문자</option>
       </select>
-      <input type="date" id="logDateFrom" class="border border-gray-300 rounded-lg px-3 py-2 text-sm" title="발송일 시작">
+      <input type="text" id="logDateFrom" class="js-fp border border-gray-300 rounded-lg px-3 py-2 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" title="발송일 시작">
       <span class="text-gray-400 text-sm">~</span>
-      <input type="date" id="logDateTo" class="border border-gray-300 rounded-lg px-3 py-2 text-sm" title="발송일 종료">
+      <input type="text" id="logDateTo" class="js-fp border border-gray-300 rounded-lg px-3 py-2 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" title="발송일 종료">
       <button onclick="loadLogs()" class="ds-btn ds-btn-primary text-sm"><i class="fas fa-search mr-1"></i>검색</button>
     </div>
     <div class="ds-card overflow-hidden">

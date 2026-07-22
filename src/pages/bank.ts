@@ -157,9 +157,9 @@ export const bankPageContent = `
                 <option value="">전체 계좌</option>
               </select>
               <div class="flex items-center gap-1">
-                <input type="date" id="filterDateStart" class="form-input text-sm" style="width:130px;" onchange="loadTransactions()">
+                <input type="text" id="filterDateStart" class="js-fp form-input text-sm" style="width:130px;" onchange="loadTransactions()" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
                 <span class="text-gray-300">~</span>
-                <input type="date" id="filterDateEnd" class="form-input text-sm" style="width:130px;" onchange="loadTransactions()">
+                <input type="text" id="filterDateEnd" class="js-fp form-input text-sm" style="width:130px;" onchange="loadTransactions()" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
               </div>
               <select id="filterTxType" class="form-select text-sm" style="width:80px;" onchange="loadTransactions()">
                 <option value="">전체</option>

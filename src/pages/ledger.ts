@@ -73,9 +73,9 @@ export function ledgerPage(c: Context<HonoEnv>) {
                         <button onclick="setQuickDate('3months')" class="quick-date px-3 py-1 text-xs rounded border hover:bg-orange-50" data-key="3months">최근3개월</button>
                         <button onclick="setQuickDate('thisYear')" class="quick-date px-3 py-1 text-xs rounded border hover:bg-orange-50" data-key="thisYear">올해</button>
                     </div>
-                    <input type="date" id="startDate" class="px-2 py-1 border rounded text-sm">
+                    <input type="text" id="startDate" class="js-fp px-2 py-1 border rounded text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
                     <span class="text-gray-400">~</span>
-                    <input type="date" id="endDate" class="px-2 py-1 border rounded text-sm">
+                    <input type="text" id="endDate" class="js-fp px-2 py-1 border rounded text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
                     <button onclick="applyDateFilter()" class="ds-btn ds-btn-primary ds-btn-sm" style="background:var(--c-warning)">
                         <i class="fas fa-search" style="margin-right:4px"></i>조회
                     </button>
@@ -211,9 +211,9 @@ export function ledgerPage(c: Context<HonoEnv>) {
                         <button onclick="setPurchaseQuickDate('3months')" class="quick-date px-3 py-1 text-xs rounded border hover:bg-orange-50" data-key="3months">최근3개월</button>
                         <button onclick="setPurchaseQuickDate('thisYear')" class="quick-date px-3 py-1 text-xs rounded border hover:bg-orange-50" data-key="thisYear">올해</button>
                     </div>
-                    <input type="date" id="pStartDate" class="px-2 py-1 border rounded text-sm">
+                    <input type="text" id="pStartDate" class="js-fp px-2 py-1 border rounded text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
                     <span class="text-gray-400">~</span>
-                    <input type="date" id="pEndDate" class="px-2 py-1 border rounded text-sm">
+                    <input type="text" id="pEndDate" class="js-fp px-2 py-1 border rounded text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
                     <button onclick="applyPurchaseDateFilter()" class="ds-btn ds-btn-primary ds-btn-sm" style="background:var(--c-warning)">
                         <i class="fas fa-search" style="margin-right:4px"></i>조회
                     </button>
@@ -460,9 +460,9 @@ export function ledgerPage(c: Context<HonoEnv>) {
                     <!-- 조회 기간 컨트롤 (모달 독립, 기본=페이지 기간) -->
                     <div class="flex items-center gap-2 mt-2 flex-wrap">
                         <span class="text-xs text-gray-500"><i class="far fa-calendar-alt mr-1"></i>조회기간</span>
-                        <input type="date" id="modalStartDate" class="ds-input" style="width:142px;padding:3px 8px;font-size:12px" onchange="applyModalPeriod()">
+                        <input type="text" id="modalStartDate" class="js-fp ds-input" style="width:142px;padding:3px 8px;font-size:12px" onchange="applyModalPeriod()" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
                         <span class="text-gray-400 text-xs">~</span>
-                        <input type="date" id="modalEndDate" class="ds-input" style="width:142px;padding:3px 8px;font-size:12px" onchange="applyModalPeriod()">
+                        <input type="text" id="modalEndDate" class="js-fp ds-input" style="width:142px;padding:3px 8px;font-size:12px" onchange="applyModalPeriod()" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
                         <button onclick="setModalPeriodThisYear()" class="ds-btn ds-btn-ghost ds-btn-sm" style="font-size:12px;padding:2px 8px">올해</button>
                         <button onclick="setModalPeriodAll()" class="ds-btn ds-btn-ghost ds-btn-sm" style="font-size:12px;padding:2px 8px">전체</button>
                     </div>
@@ -479,7 +479,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
                             <div class="flex flex-wrap gap-2 items-center">
                                 <span class="text-sm font-bold text-green-700"><i class="fas fa-plus-circle mr-1"></i>입금</span>
                                 <input type="text" inputmode="numeric" data-money id="paymentAmount" placeholder="금액" class="ds-input" style="width:120px">
-                                <input type="date" id="paymentDate" class="ds-input" style="width:140px">
+                                <input type="text" id="paymentDate" class="js-fp ds-input" style="width:140px" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
                                 <select id="paymentMethod" class="ds-input" style="width:100px">
                                     <option value="">방법</option>
                                     <option value="계좌이체">계좌이체</option>
@@ -588,7 +588,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
                             <div class="flex flex-wrap gap-2 items-center">
                                 <span class="text-sm font-bold text-blue-700"><i class="fas fa-plus-circle mr-1"></i>지급</span>
                                 <input type="text" inputmode="numeric" data-money id="pPaymentAmount" placeholder="금액" class="ds-input" style="width:120px">
-                                <input type="date" id="pPaymentDate" class="ds-input" style="width:140px">
+                                <input type="text" id="pPaymentDate" class="js-fp ds-input" style="width:140px" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
                                 <select id="pPaymentMethod" class="ds-input" style="width:100px">
                                     <option value="">방법</option>
                                     <option value="계좌이체">계좌이체</option>
@@ -616,7 +616,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
                                     <option value="OTHER">기타</option>
                                 </select>
                                 <input type="text" inputmode="numeric" data-money id="purchAdjAmount" placeholder="금액" class="ds-input" style="width:100px">
-                                <input type="date" id="purchAdjDate" class="ds-input" style="width:140px">
+                                <input type="text" id="purchAdjDate" class="js-fp ds-input" style="width:140px" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
                                 <input type="text" id="purchAdjReason" placeholder="사유" class="ds-input" style="width:120px">
                                 <input type="text" id="purchAdjPoId" placeholder="PO#" class="ds-input" style="width:80px">
                                 <button onclick="recordPurchaseAdjustment()" class="ds-btn ds-btn-primary ds-btn-sm" style="background:var(--c-warning)">
@@ -694,7 +694,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
               </div>
               <div>
                 <label class="text-sm font-semibold text-gray-700 mb-1 block">입금일</label>
-                <input type="date" id="editDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <input type="text" id="editDate" class="js-fp w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
               </div>
               <div>
                 <label class="text-sm font-semibold text-gray-700 mb-1 block">입금방법</label>
@@ -780,7 +780,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
                 <div class="space-y-3">
                     <div>
                         <label class="ds-label">연락일</label>
-                        <input type="date" id="colDate" class="w-full ds-input mt-1">
+                        <input type="text" id="colDate" class="js-fp w-full ds-input mt-1" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
                     </div>
                     <div>
                         <label class="ds-label">연락 방법</label>
@@ -800,7 +800,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
                     <div class="grid grid-cols-2 gap-3">
                         <div>
                             <label class="ds-label">약속 입금일</label>
-                            <input type="date" id="colPromisedDate" class="w-full ds-input mt-1">
+                            <input type="text" id="colPromisedDate" class="js-fp w-full ds-input mt-1" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
                         </div>
                         <div>
                             <label class="ds-label">약속 금액</label>
@@ -827,7 +827,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
             <div class="space-y-3">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">지급일</label>
-                <input type="date" id="pEditPaymentDate" class="ds-input">
+                <input type="text" id="pEditPaymentDate" class="js-fp ds-input" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">금액</label>

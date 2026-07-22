@@ -245,7 +245,7 @@ export function priceManagementPage(c: Context<HonoEnv>) {
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">유효기간</label>
-              <input type="date" id="pmSheetValidUntil" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+              <input type="text" id="pmSheetValidUntil" class="js-fp w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">담당자 / 연락처</label>

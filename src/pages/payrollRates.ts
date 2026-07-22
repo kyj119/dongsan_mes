@@ -253,11 +253,11 @@ export const payrollRatesContent = `
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="text-sm font-semibold text-gray-700 mb-1 block">적용 시작일</label>
-          <input type="date" id="prREditFrom" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          <input type="text" id="prREditFrom" class="js-fp w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" />
         </div>
         <div>
           <label class="text-sm font-semibold text-gray-700 mb-1 block">적용 종료일 (선택)</label>
-          <input type="date" id="prREditTo" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          <input type="text" id="prREditTo" class="js-fp w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" />
         </div>
       </div>
     </div>

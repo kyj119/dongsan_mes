@@ -117,7 +117,7 @@ export function orderFormPage(c: Context<HonoEnv>) {
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">납품일 <span class="text-red-500">*</span></label>
-                                <input type="date" id="deliveryDate" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="deliveryDate" required class="js-fp w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">납품시간</label>
@@ -461,7 +461,7 @@ function orderFormDistPage(c: Context<HonoEnv>) {
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">납품일</label>
-                                <input type="date" id="distDeliveryDate" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="distDeliveryDate" class="js-fp w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">납품시간</label>

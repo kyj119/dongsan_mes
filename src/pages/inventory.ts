@@ -368,7 +368,7 @@ export function inventoryPage(c: Context<HonoEnv>) {
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">조정일</label>
-                                <input type="date" id="adjustDate" class="w-full px-3 py-2 border rounded">
+                                <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="adjustDate" class="js-fp w-full px-3 py-2 border rounded">
                             </div>
                         </div>
                         <div class="text-sm text-gray-600">현재고: <span id="adjustCurrentStock" class="font-bold">-</span></div>

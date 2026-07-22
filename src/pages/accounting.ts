@@ -21,9 +21,9 @@ export function accountingPage(c: Context<HonoEnv>) {
       <div class="ds-card ds-card-compact mb-4">
         <div class="flex flex-wrap items-center gap-2">
           <span class="text-xs font-medium text-gray-500"><i class="fas fa-calendar-alt mr-1"></i>기간</span>
-          <input type="date" id="accStart" class="ds-input" style="width:140px;font-size:12px" onchange="accReload()">
+          <input type="text" id="accStart" class="js-fp ds-input" style="width:140px;font-size:12px" onchange="accReload()" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
           <span class="text-gray-300">~</span>
-          <input type="date" id="accEnd" class="ds-input" style="width:140px;font-size:12px" onchange="accReload()">
+          <input type="text" id="accEnd" class="js-fp ds-input" style="width:140px;font-size:12px" onchange="accReload()" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
           <div class="flex gap-1 ml-1">
             <button onclick="accSetPeriod('thisMonth')" class="px-2.5 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200">이번달</button>
             <button onclick="accSetPeriod('lastMonth')" class="px-2.5 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200">지난달</button>
@@ -353,7 +353,7 @@ export function accountingPage(c: Context<HonoEnv>) {
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="text-sm font-semibold text-gray-700 mb-1 block">거래일 <span class="text-red-500">*</span></label>
-                <input type="date" id="accIetDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <input type="text" id="accIetDate" class="js-fp w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
               </div>
               <div>
                 <label class="text-sm font-semibold text-gray-700 mb-1 block">금액 <span class="text-red-500">*</span></label>
@@ -428,7 +428,7 @@ export function accountingPage(c: Context<HonoEnv>) {
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="text-sm font-semibold text-gray-700 mb-1 block">입금일 <span class="text-red-500">*</span></label>
-                <input type="date" id="accEditDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <input type="text" id="accEditDate" class="js-fp w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
               </div>
               <div>
                 <label class="text-sm font-semibold text-gray-700 mb-1 block">금액 <span class="text-red-500">*</span></label>

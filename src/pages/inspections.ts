@@ -91,11 +91,11 @@ export async function inspectionsPage(c: Context) {
               </div>
               <div>
                 <label class="ds-label">시작일</label>
-                <input type="date" id="resultsDateFrom" class="ds-input w-36" onchange="inspectionsLoadResults()">
+                <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="resultsDateFrom" class="js-fp ds-input w-36" onchange="inspectionsLoadResults()">
               </div>
               <div>
                 <label class="ds-label">종료일</label>
-                <input type="date" id="resultsDateTo" class="ds-input w-36" onchange="inspectionsLoadResults()">
+                <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="resultsDateTo" class="js-fp ds-input w-36" onchange="inspectionsLoadResults()">
               </div>
               <button onclick="inspectionsLoadResults()" class="ds-btn ds-btn-primary">
                 <i class="fas fa-search mr-1"></i>조회

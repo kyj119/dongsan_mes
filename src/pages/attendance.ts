@@ -48,7 +48,7 @@ export function attendancePage(c: Context<HonoEnv>) {
           </span>
           <span id="attSelectedCount" class="text-xs text-gray-600">선택: 0명</span>
           <div class="flex-1"></div>
-          <input id="attBulkDate" type="date" class="border border-amber-300 rounded px-2 py-1 text-sm" />
+          <input id="attBulkDate" type="text" class="js-fp border border-amber-300 rounded px-2 py-1 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" />
           <select id="attBulkType" class="border border-amber-300 rounded px-2 py-1 text-sm">
             <option value="NORMAL">정상</option>
             <option value="ABSENT">결근</option>

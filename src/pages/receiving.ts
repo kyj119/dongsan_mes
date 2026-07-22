@@ -65,9 +65,9 @@ export function receivingPage(c: Context<HonoEnv>) {
       <div id="panelHistory" class="hidden">
         <!-- 필터 바 -->
         <div class="ds-card p-4 mb-4 flex items-center gap-3 flex-wrap">
-          <input type="date" id="historyDateFrom" class="px-3 py-2 border rounded-lg text-sm">
+          <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="historyDateFrom" class="js-fp px-3 py-2 border rounded-lg text-sm">
           <span class="text-gray-400">~</span>
-          <input type="date" id="historyDateTo" class="px-3 py-2 border rounded-lg text-sm">
+          <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="historyDateTo" class="js-fp px-3 py-2 border rounded-lg text-sm">
           <select id="historyStatus" class="px-3 py-2 border rounded-lg text-sm">
             <option value="">전체</option>
             <option value="PASSED">합격</option>
@@ -127,7 +127,7 @@ export function receivingPage(c: Context<HonoEnv>) {
               <div class="grid grid-cols-2 gap-4 mb-4">
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">입고일</label>
-                  <input type="date" id="receipt_date" class="w-full px-3 py-2 border rounded-lg text-sm">
+                  <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="receipt_date" class="js-fp w-full px-3 py-2 border rounded-lg text-sm">
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">비고</label>

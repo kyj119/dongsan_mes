@@ -124,7 +124,7 @@ export function shipmentsPage(c: Context<HonoEnv>) {
           <label class="ds-label">날짜</label>
           <div class="flex items-center gap-1">
             <button onclick="changeDate(-1)" class="ds-btn ds-btn-secondary ds-btn-sm" style="min-width:32px">◀</button>
-            <input type="date" id="shipDate" onchange="loadShipmentsByDate()" class="ds-input" style="min-width:140px">
+            <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="shipDate" onchange="loadShipmentsByDate()" class="js-fp ds-input" style="min-width:140px">
             <button onclick="changeDate(1)" class="ds-btn ds-btn-secondary ds-btn-sm" style="min-width:32px">▶</button>
             <button onclick="goToday()" class="ds-btn ds-btn-sm" style="background:var(--c-primary-light);color:var(--c-primary);border:1px solid var(--c-primary)">오늘</button>
           </div>
@@ -447,7 +447,7 @@ export function shipmentsPage(c: Context<HonoEnv>) {
             <div class="flex flex-wrap items-end gap-3">
               <div>
                 <label class="block text-[10px] text-gray-400 mb-1">날짜</label>
-                <input type="date" id="dashDate" class="border rounded px-2 py-1 text-xs" style="color:#212529;" />
+                <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="dashDate" class="js-fp border rounded px-2 py-1 text-xs" style="color:#212529;" />
               </div>
               <div>
                 <label class="block text-[10px] text-gray-400 mb-1">배송방법</label>

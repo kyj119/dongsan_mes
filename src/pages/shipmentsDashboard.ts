@@ -11,7 +11,7 @@ export function shipmentsDashboardPage(c: Context) {
         <div class="flex flex-wrap items-end gap-3">
           <div>
             <label class="block text-[10px] text-gray-400 mb-1">날짜</label>
-            <input type="date" id="dashDate" class="border rounded px-2 py-1 text-xs" style="color:#212529;" />
+            <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="dashDate" class="js-fp border rounded px-2 py-1 text-xs" style="color:#212529;" />
           </div>
           <div>
             <label class="block text-[10px] text-gray-400 mb-1">배송방법</label>

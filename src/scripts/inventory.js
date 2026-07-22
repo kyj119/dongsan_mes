@@ -533,7 +533,7 @@ document.getElementById('closeModal').addEventListener('click', function() {
 // Adjustment modal
 var invAdjustCurrentItem = null; // MU4: 선택 품목 (다단위 환산·현재고 표시용)
 document.getElementById('adjustmentBtn').addEventListener('click', function() {
-    document.getElementById('adjustDate').valueAsDate = new Date();
+    document.getElementById('adjustDate').value = new Date().toISOString().slice(0, 10);
     document.getElementById('adjustItem').value = '';
     invAdjustCurrentItem = null;
     document.getElementById('adjustCurrentStock').textContent = '-';

@@ -73,7 +73,7 @@ export function purchaseInvoicesPage(c: Context<HonoEnv>) {
               <tbody id="confirmItemsBody"></tbody>
             </table>
             <div class="flex items-center gap-4 mb-4">
-              <label class="text-sm text-gray-600">매입일자 <input type="date" id="confirmInvoiceDate" class="border rounded px-2 py-1 ml-1"></label>
+              <label class="text-sm text-gray-600">매입일자 <input type="text" id="confirmInvoiceDate" class="js-fp border rounded px-2 py-1 ml-1" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15"></label>
               <div class="ml-auto text-sm">합계: <span id="confirmTotal" class="font-bold text-blue-700">0</span></div>
             </div>
             <div class="flex justify-end gap-2">

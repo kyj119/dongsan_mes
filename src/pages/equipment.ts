@@ -154,11 +154,11 @@ export function equipmentPage(c: Context<HonoEnv>) {
                     <div class="ds-card ds-card-compact flex flex-wrap gap-2 items-center filter-bar">
                         <label style="font-size:12px;color:#666;display:flex;align-items:center;gap:6px;">
                             기간
-                            <input type="date" id="fFromDate" class="ds-input" style="width:140px" />
+                            <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="fFromDate" class="js-fp ds-input" style="width:140px" />
                         </label>
                         <label style="font-size:12px;color:#666;display:flex;align-items:center;gap:6px;">
                             ~
-                            <input type="date" id="fToDate" class="ds-input" style="width:140px" />
+                            <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="fToDate" class="js-fp ds-input" style="width:140px" />
                         </label>
                         <div class="ml-auto flex gap-2">
                             <button onclick="loadEquipmentData()" class="ds-btn ds-btn-ghost ds-btn-sm">
@@ -605,7 +605,7 @@ export function equipmentPage(c: Context<HonoEnv>) {
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">최종 교체일</label>
-                        <input id="fConsLastReplaced" type="date" class="w-full border rounded px-3 py-2 text-sm">
+                        <input id="fConsLastReplaced" type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" class="js-fp w-full border rounded px-3 py-2 text-sm">
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">보유 수량</label>
@@ -700,7 +700,7 @@ export function equipmentPage(c: Context<HonoEnv>) {
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">교체일</label>
-                        <input id="fHeadReplacedAt" type="date" class="w-full border rounded px-3 py-2 text-sm">
+                        <input id="fHeadReplacedAt" type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" class="js-fp w-full border rounded px-3 py-2 text-sm">
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">메모</label>

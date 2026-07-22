@@ -76,11 +76,11 @@ export function purchaseOrderFormPage(c: Context<HonoEnv>) {
             <div class="grid grid-cols-2 gap-4">
               <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">발주일 <span class="text-red-500">*</span></label>
-                <input type="date" id="orderDate" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="orderDate" class="js-fp w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
               </div>
               <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">납품 요청일</label>
-                <input type="date" id="expectedDate" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="expectedDate" class="js-fp w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
               </div>
             </div>
           </div>

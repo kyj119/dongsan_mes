@@ -213,7 +213,7 @@ export function payrollPage(c: Context<HonoEnv>) {
               </div>
               <div>
                 <label class="text-xs text-gray-600">지급일</label>
-                <input type="date" id="prEditPayDate" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="비우면 자동" />
+                <input type="text" id="prEditPayDate" class="js-fp w-full border rounded px-2 py-1.5 text-sm" maxlength="10" inputmode="numeric" placeholder="비우면 자동" />
               </div>
             </div>
 
@@ -371,7 +371,7 @@ export function payrollPage(c: Context<HonoEnv>) {
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="text-xs text-gray-600">지급일</label>
-                <input type="date" id="prBulkPayDate" class="w-full border rounded px-2 py-1.5 text-sm" />
+                <input type="text" id="prBulkPayDate" class="js-fp w-full border rounded px-2 py-1.5 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" />
               </div>
               <div>
                 <label class="text-xs text-gray-600">식대 (20만 비과세)</label>

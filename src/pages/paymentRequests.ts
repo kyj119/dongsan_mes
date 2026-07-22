@@ -46,9 +46,9 @@ export function paymentRequestsPage(c: Context<HonoEnv>) {
             <option value="EXPENSE">경비</option>
             <option value="OTHER">기타</option>
           </select>
-          <input id="prFilterFrom" type="date" class="border rounded px-2 py-1 text-xs" title="시작일(청구일)">
+          <input id="prFilterFrom" type="text" class="js-fp border rounded px-2 py-1 text-xs" title="시작일(청구일)" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
           <span class="text-gray-400 text-xs">~</span>
-          <input id="prFilterTo" type="date" class="border rounded px-2 py-1 text-xs" title="종료일(청구일)">
+          <input id="prFilterTo" type="text" class="js-fp border rounded px-2 py-1 text-xs" title="종료일(청구일)" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
           <input id="prFilterSearch" type="text" placeholder="지급처/사유 검색" class="border rounded px-2 py-1 text-xs" onkeydown="if(event.key==='Enter')loadPaymentRequests()">
           <button onclick="loadPaymentRequests()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50">
             <i class="fas fa-search mr-1"></i>검색
@@ -95,7 +95,7 @@ export function paymentRequestsPage(c: Context<HonoEnv>) {
           <div class="space-y-3">
             <div>
               <label class="block text-xs font-medium text-gray-600 mb-1">신청일 <span class="text-red-500">*</span></label>
-              <input type="date" id="prDate" class="w-full border rounded px-3 py-2 text-sm">
+              <input type="text" id="prDate" class="js-fp w-full border rounded px-3 py-2 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-600 mb-1">유형 <span class="text-red-500">*</span></label>

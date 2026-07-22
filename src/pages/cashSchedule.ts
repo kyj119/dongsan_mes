@@ -361,7 +361,7 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
             </div>
             <div>
               <label class="text-xs font-medium mb-1 block" style="color:#374151;">예정일</label>
-              <input id="schAddDate" type="date" class="w-full border rounded px-3 py-2 text-sm text-gray-900">
+              <input id="schAddDate" type="text" class="js-fp w-full border rounded px-3 py-2 text-sm text-gray-900" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
               <div id="schAddDateErr" class="text-[10px] text-red-600 mt-0.5"></div>
             </div>
             <div>

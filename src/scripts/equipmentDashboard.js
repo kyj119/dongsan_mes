@@ -12,8 +12,8 @@ var weeklyTrendData = null;
   var thirtyDaysAgo = new Date(today);
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  document.getElementById('fToDate').valueAsDate = today;
-  document.getElementById('fFromDate').valueAsDate = thirtyDaysAgo;
+  document.getElementById('fToDate').value = today.toISOString().slice(0, 10);
+  document.getElementById('fFromDate').value = thirtyDaysAgo.toISOString().slice(0, 10);
 })();
 
 // ===== 메인 데이터 로드 =====

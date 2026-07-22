@@ -201,7 +201,7 @@ export function migrationPage(c: Context<HonoEnv>) {
             <h3 class="text-sm font-semibold" style="color:#212529;" id="verifyUploadTitle">CSV 업로드</h3>
             <div class="flex items-center gap-2">
               <div id="verifyDatePicker" class="hidden">
-                <input type="date" id="verifyDate" class="border rounded px-2 py-1 text-xs">
+                <input type="text" id="verifyDate" class="js-fp border rounded px-2 py-1 text-xs" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
               </div>
               <div class="flex items-center gap-1">
                 <span class="text-[10px] text-gray-400">인코딩:</span>

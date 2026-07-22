@@ -119,7 +119,7 @@ export function purchaseOrdersPage(c: Context<HonoEnv>) {
               <div class="grid grid-cols-2 gap-3 mb-4">
                 <div>
                   <label class="text-xs text-gray-500">납기예정일</label>
-                  <input type="date" id="tmplExpectedDate" class="w-full px-3 py-2 border rounded text-sm mt-1" />
+                  <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="tmplExpectedDate" class="js-fp w-full px-3 py-2 border rounded text-sm mt-1" />
                 </div>
                 <div>
                   <label class="text-xs text-gray-500">생성 상태</label>

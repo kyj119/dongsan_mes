@@ -25,9 +25,9 @@ export const financialReportsContent = `
           <div id="pnlPanel" class="p-4 space-y-4">
             <div class="ds-card p-3 flex items-center gap-2 flex-wrap">
               <label class="text-xs text-gray-500">기간</label>
-              <input type="date" id="pnlFromDate" class="border rounded px-2 py-1 text-xs">
+              <input type="text" id="pnlFromDate" class="js-fp border rounded px-2 py-1 text-xs" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
               <span class="text-gray-400">~</span>
-              <input type="date" id="pnlToDate" class="border rounded px-2 py-1 text-xs">
+              <input type="text" id="pnlToDate" class="js-fp border rounded px-2 py-1 text-xs" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
               <button onclick="loadPnl()" class="ds-btn ds-btn-primary text-xs ml-auto">
                 <i class="fas fa-search mr-1"></i>조회
               </button>

@@ -113,26 +113,26 @@ export function laborContractsPage(c: Context<HonoEnv>) {
               </div>
               <div>
                 <label class="text-xs text-gray-600 block mb-1">계약일 <span class="text-red-500">*</span></label>
-                <input type="date" id="lcContractDate" class="w-full border rounded px-2 py-1 text-sm">
+                <input type="text" id="lcContractDate" class="js-fp w-full border rounded px-2 py-1 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
               </div>
               <div class="grid grid-cols-2 gap-3">
                 <div>
                   <label class="text-xs text-gray-600 block mb-1">계약 시작일 <span class="text-red-500">*</span></label>
-                  <input type="date" id="lcStartDate" class="w-full border rounded px-2 py-1 text-sm">
+                  <input type="text" id="lcStartDate" class="js-fp w-full border rounded px-2 py-1 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
                 </div>
                 <div>
                   <label class="text-xs text-gray-600 block mb-1">계약 종료일</label>
-                  <input type="date" id="lcEndDate" class="w-full border rounded px-2 py-1 text-sm">
+                  <input type="text" id="lcEndDate" class="js-fp w-full border rounded px-2 py-1 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
                 </div>
               </div>
               <div class="grid grid-cols-2 gap-3">
                 <div>
                   <label class="text-xs text-gray-600 block mb-1">임금 시작일</label>
-                  <input type="date" id="lcWageStart" class="w-full border rounded px-2 py-1 text-sm">
+                  <input type="text" id="lcWageStart" class="js-fp w-full border rounded px-2 py-1 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
                 </div>
                 <div>
                   <label class="text-xs text-gray-600 block mb-1">임금 종료일</label>
-                  <input type="date" id="lcWageEnd" class="w-full border rounded px-2 py-1 text-sm">
+                  <input type="text" id="lcWageEnd" class="js-fp w-full border rounded px-2 py-1 text-sm" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
                 </div>
               </div>
               <div class="grid grid-cols-3 gap-3">
