@@ -161,7 +161,11 @@ function handleSupplierEnter(e) {
         selectSupplier(clients[0].id, clients[0].client_name);
         showToast(clients[0].client_name + ' 선택됨', 'success');
       } else {
-        openSupplierModal(q, clients);
+        // 공용 거래처 검색 모달 (shell.js) — 자체 supplierModal 이관 (인라인 드롭다운은 유지)
+        openClientSearchModal({ search: q, onSelect: function(cl) {
+          selectSupplier(cl.id, cl.client_name);
+          showToast(cl.client_name + ' 선택됨', 'success');
+        } });
       }
     })
     .catch(function(err) { console.error('Supplier search error:', err); });
@@ -345,74 +349,6 @@ function refreshPricesForSupplier(supplierId) {
       lookupPrice(idx, itemId.value, supplierId);
     }
   });
-}
-
-// ── 공급업체 모달 (Enter 검색 시) ──
-function openSupplierModal(query, clients) {
-  var modal = document.getElementById('supplierModal');
-  var listHtml = '';
-  if (clients.length === 0) {
-    listHtml = '<div class="text-center py-8 text-gray-400">' + SVG.inbox + '<p>검색 결과가 없습니다.</p></div>';
-  } else {
-    listHtml = clients.map(function(cl) {
-      var safeName = escapeAttr(cl.client_name || '');
-      var typeBadge = '';
-      if (cl.client_type === 'PURCHASE') typeBadge = ' <span class="text-xs text-amber-600">(매입)</span>';
-      else if (cl.client_type === 'BOTH') typeBadge = ' <span class="text-xs text-gray-500">(매출+매입)</span>';
-      return '<div class="modal-list-item" onclick="selectSupplierFromModal(' + cl.id + ',\'' + safeName + '\')">'
-        + '<div class="font-medium text-sm">' + escapeHtml(cl.client_name) + typeBadge + '</div>'
-        + '<div class="text-xs text-gray-500">'
-        + (cl.client_code || '')
-        + (cl.business_registration_number ? ' | ' + cl.business_registration_number : '')
-        + (cl.phone ? ' | ' + cl.phone : '')
-        + '</div></div>';
-    }).join('');
-  }
-  modal.innerHTML = '<div class="overlay-bg" onclick="closeSupplierModal(event)">'
-    + '<div class="modal-box" onclick="event.stopPropagation()">'
-    + '<div class="p-4 border-b flex items-center justify-between">'
-    + '<h3 class="font-bold text-gray-800">공급업체 선택</h3>'
-    + '<button onclick="closeSupplierModal()" class="text-gray-400 hover:text-gray-600 p-1">' + SVG.x + '</button>'
-    + '</div>'
-    + '<div class="p-4 border-b">'
-    + '<input type="text" id="modalSupplierSearch" value="' + escapeHtml(query || '') + '"'
-    + ' placeholder="공급업체명 검색 후 Enter" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"'
-    + ' onkeydown="handleModalSupplierSearch(event)" autofocus>'
-    + '<div class="text-xs text-gray-400 mt-1">' + (clients.length > 0 ? clients.length + '건 검색됨' : '검색 결과 없음') + '</div>'
-    + '</div>'
-    + '<div style="max-height:50vh; overflow-y:auto;">' + listHtml + '</div>'
-    + '</div></div>';
-  setTimeout(function() {
-    var si = document.getElementById('modalSupplierSearch');
-    if (si) { si.focus(); si.select(); }
-  }, 100);
-}
-
-function handleModalSupplierSearch(e) {
-  if (e.key !== 'Enter') return;
-  e.preventDefault();
-  var q = document.getElementById('modalSupplierSearch').value.trim();
-  if (!q) return;
-  axios.get('/api/clients?search=' + encodeURIComponent(q) + '&limit=50')
-    .then(function(res) {
-      var clients = (res.data && res.data.data && res.data.data.clients) ? res.data.data.clients : [];
-      if (clients.length === 1) {
-        selectSupplierFromModal(clients[0].id, clients[0].client_name);
-      } else {
-        openSupplierModal(q, clients);
-      }
-    });
-}
-
-function selectSupplierFromModal(id, name) {
-  selectSupplier(id, name);
-  closeSupplierModal();
-  showToast(name + ' 선택됨', 'success');
-}
-
-function closeSupplierModal(e) {
-  if (e && e.target && !e.target.classList.contains('overlay-bg')) return;
-  document.getElementById('supplierModal').innerHTML = '';
 }
 
 

@@ -61,7 +61,6 @@ export function purchaseOrderFormPage(c: Context<HonoEnv>) {
                     onkeydown="handleSupplierEnter(event)" oninput="debounceSupplierSearch()" autocomplete="off">
                   <input type="hidden" id="supplierId">
                   <div id="supplierDropdown" class="po-dropdown hidden"></div>
-                  <div id="supplierModal"></div>
                 </div>
                 <button id="poRecentBtn" onclick="openRecentPOModal()" class="border border-gray-300 bg-white text-gray-700 rounded px-3 py-2 text-sm hover:bg-gray-50 whitespace-nowrap">
                   <i class="fas fa-history mr-1 text-gray-500"></i>최근 발주

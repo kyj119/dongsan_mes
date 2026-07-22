@@ -14,7 +14,7 @@ function formatHours(hours) {
 }
 
 var statusLabels = window.MES_STATUS.cardLabels; // 단일 소스
-var statusColors = { PRINT_PENDING: 'text-amber-600', PRINTING: 'text-blue-600', PRINT_DONE: 'text-green-600', HOLD: 'text-red-600' };
+// 상태 텍스트색 = 단일 소스(window.MES_STATUS.textClass). 로컬 리터럴 맵 제거.
 
 // ── 바 차트 헬퍼 ──
 function renderBar(value, maxVal, label, color) {
@@ -691,7 +691,7 @@ async function loadCardDwellTime() {
         + '</tr></thead><tbody>';
       statusData.forEach(function(s) {
         var label = statusLabels[s.status] || s.status;
-        var colorCls = statusColors[s.status] || 'text-gray-700';
+        var colorCls = window.MES_STATUS.textClass('card', s.status);
         sHtml += '<tr class="border-b">'
           + '<td class="px-3 py-2 font-medium ' + colorCls + '">' + label + '</td>'
           + '<td class="px-3 py-2 text-right text-gray-600">' + (s.transition_count || 0) + '</td>'
@@ -713,7 +713,7 @@ async function loadCardDwellTime() {
       var barColor = c.status === 'PRINT_PENDING' ? 'bg-amber-500' : c.status === 'PRINTING' ? 'bg-blue-500' : 'bg-green-500';
       cHtml += '<div class="flex items-center gap-2 text-[11px] py-0.5">'
         + '<span class="w-20 text-gray-600 text-right truncate">' + escapeHtml(c.category) + '</span>'
-        + '<span class="w-12 text-[10px] ' + (statusColors[c.status] || '') + '">' + label + '</span>'
+        + '<span class="w-12 text-[10px] ' + window.MES_STATUS.textClass('card', c.status) + '">' + label + '</span>'
         + '<div class="flex-1 bg-gray-100 rounded-full h-4">'
         + '<div class="' + barColor + ' h-4 rounded-full flex items-center justify-end pr-1.5 text-[10px] text-white font-medium" style="width: ' + Math.max(Math.round((c.avg_hours || 0) / maxCatHours * 100), 8) + '%">'
         + formatHours(c.avg_hours) + '</div></div>'

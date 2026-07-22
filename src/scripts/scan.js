@@ -172,17 +172,17 @@ function getDetailLabels(type) {
 function formatDetailValue(key, val, type) {
   // 상태 뱃지
   if (key === 'status') {
-    // 카드/주문 라벨 = 단일 소스(window.MES_STATUS). CSS 클래스 + 장비/보조 상태만 로컬.
-    var cls = {
-      PRINT_PENDING: 'badge-warning', PRINTING: 'badge-info', PRINT_DONE: 'badge-success', SHIPPED: 'badge-success',
-      PP_DONE: 'badge-success', CONFIRMED: 'badge-info', IN_PRODUCTION: 'badge-warning',
-      ACTIVE: 'badge-success', IDLE: 'badge-secondary', MAINTENANCE: 'badge-warning'
-    };
-    var extra = { PP_DONE: '후가공 완료', IN_PRODUCTION: '생산중', ACTIVE: '가동중', IDLE: '대기', MAINTENANCE: '정비중' };
     var S = window.MES_STATUS;
+    // 카드/주문 상태 색·라벨 = 단일 소스(window.MES_STATUS). tone → badge 클래스로 파생.
+    // 장비/보조 상태(ACTIVE/IDLE/MAINTENANCE/PP_DONE/IN_PRODUCTION)는 SSOT 미포함 → 로컬 유지.
+    var toneCls = { blue: 'badge-info', green: 'badge-success', amber: 'badge-warning', red: 'badge-danger', gray: 'badge-secondary' };
+    var delegated = { PRINT_PENDING: 'card', PRINTING: 'card', PRINT_DONE: 'card', SHIPPED: 'card', CONFIRMED: 'order' };
+    var localCls = { PP_DONE: 'badge-success', IN_PRODUCTION: 'badge-warning', ACTIVE: 'badge-success', IDLE: 'badge-secondary', MAINTENANCE: 'badge-warning' };
+    var extra = { PP_DONE: '후가공 완료', IN_PRODUCTION: '생산중', ACTIVE: '가동중', IDLE: '대기', MAINTENANCE: '정비중' };
     var label = S.cardLabels[val] || S.orderLabels[val] || extra[val];
     if (!label) return '<span class="badge-status badge-secondary">' + escHtml(val) + '</span>';
-    return '<span class="badge-status ' + (cls[val] || 'badge-secondary') + '">' + label + '</span>';
+    var cls = delegated[val] ? toneCls[S.tone(delegated[val], val)] : (localCls[val] || 'badge-secondary');
+    return '<span class="badge-status ' + (cls || 'badge-secondary') + '">' + label + '</span>';
   }
   // 금액
   if (key === 'total_amount' || key === 'base_price' || key === 'sales_price') {

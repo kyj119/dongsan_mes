@@ -56,7 +56,6 @@ export function orderFormPage(c: Context<HonoEnv>) {
                                     onkeydown="handleClientEnter(event)"
                                     class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                                 <input type="hidden" id="clientId">
-                                <div id="clientModal"></div>
                                 <div id="creditBanner" class="hidden mt-2"></div>
                             </div>
                             <div>
@@ -407,7 +406,6 @@ function orderFormDistPage(c: Context<HonoEnv>) {
                                     onkeydown="handleClientEnter(event)"
                                     class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                                 <input type="hidden" id="clientId">
-                                <div id="clientModal"></div>
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">우선순위</label>
