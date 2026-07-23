@@ -133,6 +133,8 @@ function mesA0_process() {
   var sN = parseInt(P.scale_n, 10); if (isNaN(sN) || sN < 1) sN = 1;
   var mode = (P.mode === 'impose') ? 'impose' : ((P.mode === 'both') ? 'both' : 'single');
   var trim = !!P.trim;
+  var punchCount = parseInt(P.punch_count, 10); if (isNaN(punchCount) || punchCount < 0) punchCount = 0;
+  var annotation = P.annotation ? String(P.annotation) : '';
   var fin = P.finishing || {};
   var finJson = {}, finMargins = {}, hasFinishing = false;
   for (var fs = 0; fs < MESA0_SIDES.length; fs++) {
@@ -203,7 +205,7 @@ function mesA0_process() {
       newDoc.artboards[0].artboardRect = [oL - finMargins.left, oT + finMargins.top, oR + finMargins.right, oB - finMargins.bottom];
 
       if (hasFinishing) {
-        var mCol = new CMYKColor(); mCol.cyan = 0; mCol.magenta = 100; mCol.yellow = 0; mCol.black = 0;
+        var mCol = new CMYKColor(); mCol.cyan = 0; mCol.magenta = 0; mCol.yellow = 0; mCol.black = 100; // 접는선 검정(K100)
         function foldLine(x1, y1, x2, y2) {
           var ln = newDoc.pathItems.add();
           ln.setEntirePath([[x1, y1], [x2, y2]]);
@@ -224,6 +226,36 @@ function mesA0_process() {
       borderRect.stroked = true;
       borderRect.strokeColor = wCol;
       borderRect.strokeWidth = 0.5;
+
+      // 펀칭(아일렛 타공 마크): 개수 폭 비율분배, 지름 1cm, 중심 테두리서 2cm — 상단 변
+      if (punchCount > 0) {
+        var kColP = new CMYKColor(); kColP.cyan = 0; kColP.magenta = 0; kColP.yellow = 0; kColP.black = 100;
+        var PUNCH_DIA = 10 * MESA0_PT_PER_MM / sN;   // 1cm
+        var PUNCH_INSET = 20 * MESA0_PT_PER_MM / sN; // 2cm(중심 기준 테두리 이격)
+        var pyC = bT - PUNCH_INSET;
+        var px0 = bL + PUNCH_INSET, px1 = bR - PUNCH_INSET;
+        for (var pc = 0; pc < punchCount; pc++) {
+          var pxC = (punchCount === 1) ? ((bL + bR) / 2) : (px0 + (px1 - px0) * pc / (punchCount - 1));
+          var prR = PUNCH_DIA / 2;
+          var pel = newDoc.pathItems.ellipse(pyC + prR, pxC - prR, PUNCH_DIA, PUNCH_DIA);
+          pel.filled = false; pel.stroked = true; pel.strokeColor = kColP; pel.strokeWidth = 0.5;
+        }
+      }
+
+      // 주석: 상단 여백 밴드에 검정 텍스트(좌측정렬·상하중간·첫글자 코너서 5cm)
+      if (annotation && (bT - oT) > 0.5) {
+        try {
+          var kColA = new CMYKColor(); kColA.cyan = 0; kColA.magenta = 0; kColA.yellow = 0; kColA.black = 100;
+          var bandH = bT - oT;
+          var fsz = bandH * 0.5; if (fsz < 6) fsz = 6; if (fsz > 300) fsz = 300;
+          var atf = newDoc.textFrames.add();
+          atf.contents = annotation;
+          atf.textRange.characterAttributes.size = fsz;
+          atf.textRange.characterAttributes.fillColor = kColA;
+          atf.position = [bL + 50 * MESA0_PT_PER_MM / sN, (oT + bT) / 2 + fsz * 0.4]; // [left, top]
+          try { atf.createOutline(); } catch (eAo) {} // RIP 안전: 아웃라인
+        } catch (eAnn) {}
+      }
 
       if (trim) {
         var ar = newDoc.artboards[0].artboardRect;
@@ -252,7 +284,9 @@ function mesA0_process() {
         mkDombo(tR + CORNER_DIST, tT + CORNER_DIST);
         mkDombo(tL - CORNER_DIST, tB - CORNER_DIST);
         mkDombo(tR + CORNER_DIST, tB - CORNER_DIST);
-        mkDombo(tL + DIR_OFFSET, tT + CORNER_DIST);
+        // 방향 돔보 = 짧은 변에. 가로>세로면 좌변(하단 모서리서 60mm 위), 아니면 상변(좌측서 60mm)
+        if ((tR - tL) > (tT - tB)) mkDombo(tL - CORNER_DIST, tB - CORNER_DIST + DIR_OFFSET);
+        else mkDombo(tL + DIR_OFFSET, tT + CORNER_DIST);
         interDombo(tL, tR, tT + CORNER_DIST, true);
         interDombo(tL, tR, tB - CORNER_DIST, true);
         interDombo(tB, tT, tL - CORNER_DIST, false);
@@ -313,6 +347,8 @@ function mesA0_process() {
     qty: qty,
     finishing: hasFinishing ? finJson : null,
     trim: trim,
+    punch_count: punchCount,
+    annotation: annotation || null,
     scale_pct: Math.round(100 / sN),
     measured_cm: { w: Math.round(realW * 10) / 10, h: Math.round(realH * 10) / 10 },
     mode: mode,

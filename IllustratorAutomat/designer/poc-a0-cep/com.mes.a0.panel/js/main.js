@@ -47,7 +47,7 @@
     var elWorker = $('worker'), elSaved = $('saved'), elVer = $('ver');
     var elMeas = $('meas'), elBtnMeasure = $('btnMeasure');
     var elQty = $('qty'), elScale = $('scale'), elPreset = $('preset');
-    var elTrim = $('trim'), elClient = $('client');
+    var elTrim = $('trim'), elClient = $('client'), elPunch = $('punch'), elAnnot = $('annot');
     var elBtnProcess = $('btnProcess'), elOut = $('out'), elCfg = $('cfgStatus');
     if (!elWorker) { warnMissing('worker'); return; }
 
@@ -185,7 +185,8 @@
         fin[SIDES[s]] = { m: sel ? sel.value : '', cm: cmEl ? cmEl.value : '' };
       }
       return { qty: elQty ? elQty.value : '1', scale: elScale ? elScale.value : '1',
-        mode: modeValue(), trim: elTrim ? !!elTrim.checked : false, client: elClient ? elClient.value : '', fin: fin };
+        mode: modeValue(), trim: elTrim ? !!elTrim.checked : false, client: elClient ? elClient.value : '',
+        punch: elPunch ? elPunch.value : '0', annot: elAnnot ? elAnnot.value : '', fin: fin };
     }
     function saveSettings() { try { window.localStorage.setItem(STORE_SETTINGS, JSON.stringify(gatherSettings())); } catch (e) {} }
     function restoreSettings() {
@@ -197,6 +198,8 @@
       if (elScale && st.scale) elScale.value = st.scale;
       if (elTrim) elTrim.checked = !!st.trim;
       if (elClient && st.client) elClient.value = st.client;
+      if (elPunch && st.punch != null) elPunch.value = st.punch;
+      if (elAnnot && st.annot != null) elAnnot.value = st.annot;
       if (st.mode) setMode(st.mode);
       if (st.fin) {
         for (var s = 0; s < SIDES.length; s++) {
@@ -232,6 +235,7 @@
           finishing[side] = m; finishing[side + '_cm'] = cm;
         }
       }
+      var punchN = parseInt(elPunch ? elPunch.value : '0', 10); if (isNaN(punchN) || punchN < 0) punchN = 0;
       return {
         worker_name: elWorker.value || null,
         registered_by_id: null,   // MES user id 매핑은 B단계(§3.5 구현선행) — 현재 null
@@ -239,6 +243,8 @@
         client_id: null,
         qty: qty, scale_n: scaleN, mode: modeValue(),
         trim: elTrim ? !!elTrim.checked : false,
+        punch_count: punchN,
+        annotation: elAnnot ? (elAnnot.value || '') : '',
         finishing: finishing, order_item_id: null
       };
     }
