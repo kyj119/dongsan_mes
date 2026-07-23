@@ -18,6 +18,17 @@
 
   function $(id) { return document.getElementById(id); }
   function warnMissing(id) { console.warn('[mes-a0-cep] #' + id + ' not found'); }
+  function escHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  // 주석 조합: 거래처-키워드-식별번호-수량ea (키워드 있을 때만). 식별번호=큐 배치 seqNo
+  function composeAnnot(client, keyword, seqNo, qty) {
+    if (!keyword) return '';
+    var s = '';
+    if (client) s += client + '-';
+    s += keyword;
+    if (seqNo != null && seqNo !== '') s += '-' + seqNo;
+    s += '-' + qty + 'ea';
+    return s;
+  }
 
   // ── cep.fs helpers (guarded) ──
   function cepReadUtf8(path) {
@@ -260,11 +271,7 @@
       var pInt = function (el) { var n = parseInt(el ? el.value : '0', 10); return (isNaN(n) || n < 0) ? 0 : n; };
       var client = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
       var keyword = elAnnot ? (elAnnot.value || '').replace(/^\s+|\s+$/g, '') : '';
-      var annParts = [];
-      if (client) annParts.push(client);
-      if (keyword) annParts.push(keyword);
-      // 거래처-키워드-수량ea (식별번호 자동은 다중가공 큐 단계). 키워드 있을 때만 생성
-      var annotation = keyword ? (annParts.join('-') + '-' + qty + 'ea') : '';
+      var annotation = composeAnnot(client, keyword, null, qty); // 단건=식별번호 없음
       return {
         worker_name: elWorker.value || null,
         registered_by_id: null,   // MES user id 매핑은 B단계(§3.5 구현선행) — 현재 null
@@ -318,6 +325,103 @@
         });
       });
     });
+
+    // ── 반자동 큐 (A2) ──
+    var queue = []; // [{params, client, keyword, qty, w, h}]
+    var elQueueBox = $('queueBox'), elBtnQAdd = $('btnQueueAdd'), elBtnConfirm = $('btnConfirm'), elBtnQClear = $('btnQueueClear');
+
+    function renderQueue() {
+      if (elQueueBox) {
+        if (!queue.length) {
+          elQueueBox.innerHTML = '<div class="qempty">큐 비어있음 — 디자인 선택 후 [＋ 큐에 추가]</div>';
+        } else {
+          var html = '';
+          for (var i = 0; i < queue.length; i++) {
+            var e = queue[i];
+            var lbl = (e.client || '(파일명)') + (e.keyword ? (' · ' + e.keyword) : '') + ' · ' + e.w + '×' + e.h + 'cm ×' + e.qty;
+            html += '<div class="qrow"><span class="qn">#' + (i + 1) + '</span><span class="qlbl">' + escHtml(lbl) + '</span><button class="qdel" data-i="' + i + '">✕</button></div>';
+          }
+          elQueueBox.innerHTML = html;
+          var dels = elQueueBox.getElementsByClassName('qdel');
+          for (var d = 0; d < dels.length; d++) dels[d].addEventListener('click', function () { queueRemove(parseInt(this.getAttribute('data-i'), 10)); });
+        }
+      }
+      if (elBtnConfirm) { elBtnConfirm.textContent = '일괄 확정 (' + queue.length + ')'; elBtnConfirm.disabled = queue.length === 0; }
+    }
+
+    function queueRemove(i) {
+      if (i < 0 || i >= queue.length) return;
+      csi.evalScript('mesA0_queueRemove(' + i + ')', function () {});
+      queue.splice(i, 1);
+      renderQueue();
+    }
+
+    if (elBtnQAdd) elBtnQAdd.addEventListener('click', function () {
+      csi.evalScript('mesA0_queueAdd()', function (res) {
+        var r = null; try { r = JSON.parse(res); } catch (e) {}
+        if (!r || !r.ok) {
+          var em = { nodoc: '열린 문서 없음', nosel: '객체를 선택하세요', nobounds: '크기 측정 불가' };
+          out('큐 추가 실패: ' + (r ? (em[r.err] || r.err) : '호스트 연결 안 됨'), 'err');
+          return;
+        }
+        var qtyN = parseInt(elQty ? elQty.value : '1', 10); if (isNaN(qtyN) || qtyN < 1) qtyN = 1;
+        var client = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
+        var keyword = elAnnot ? (elAnnot.value || '').replace(/^\s+|\s+$/g, '') : '';
+        queue.push({ params: gatherParams(), client: client, keyword: keyword, qty: qtyN, w: r.w, h: r.h });
+        renderQueue();
+        out('큐 추가됨: #' + queue.length + ' (' + r.w + '×' + r.h + 'cm)', 'okmsg');
+      });
+    });
+
+    if (elBtnQClear) elBtnQClear.addEventListener('click', function () {
+      csi.evalScript('mesA0_queueClear()', function () {});
+      queue = []; renderQueue(); out('큐 비움');
+    });
+
+    if (elBtnConfirm) elBtnConfirm.addEventListener('click', function () {
+      if (!queue.length) return;
+      if (elBtnQAdd) elBtnQAdd.disabled = true;
+      if (elBtnProcess) elBtnProcess.disabled = true;
+      elBtnConfirm.disabled = true;
+      var results = [], i = 0;
+      function finishBatch() {
+        var okN = 0, failN = 0, lines = [];
+        for (var k = 0; k < results.length; k++) {
+          var r = results[k];
+          if (r && r.ok) { okN++; lines.push('#' + (k + 1) + ' ✓ ' + (r.eps || '(work.ai)')); }
+          else { failN++; lines.push('#' + (k + 1) + ' ✗ ' + (r ? r.err : '?')); }
+        }
+        out('일괄 확정 완료: 성공 ' + okN + ' / 실패 ' + failN + '\n' + lines.join('\n') + '\n→ 에이전트 ingest 후 대기함', failN ? 'err' : 'okmsg');
+        csi.evalScript('mesA0_queueClear()', function () {});
+        queue = []; renderQueue();
+        if (elBtnQAdd) elBtnQAdd.disabled = false;
+        if (elBtnProcess) elBtnProcess.disabled = false;
+      }
+      function step() {
+        if (i >= queue.length) { finishBatch(); return; }
+        out('일괄 가공 중… (' + i + '/' + queue.length + ')');
+        var e = queue[i];
+        var p = e.params;
+        p.seq_no = i + 1;
+        p.annotation = composeAnnot(e.client, e.keyword, i + 1, e.qty);
+        csi.evalScript('mesA0_paramsPath()', function (pp) {
+          if (!pp) { results.push({ ok: false, err: 'nohost' }); i++; step(); return; }
+          cepWriteUtf8(pp, JSON.stringify(p));
+          csi.evalScript('mesA0_queueSelect(' + i + ')', function (selRes) {
+            var sr = null; try { sr = JSON.parse(selRes); } catch (e2) {}
+            if (!sr || !sr.ok) { results.push({ ok: false, err: 'sel:' + (sr ? sr.err : '?') }); i++; step(); return; }
+            csi.evalScript('mesA0_process()', function (res) {
+              var r = null; try { r = JSON.parse(res); } catch (e3) {}
+              results.push(r || { ok: false, err: 'parse' });
+              i++; step();
+            });
+          });
+        });
+      }
+      step();
+    });
+
+    renderQueue();
 
     // 초기 실측 시도
     refreshMeasure();

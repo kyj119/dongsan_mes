@@ -95,7 +95,14 @@
     </div>
 
     <div class="row buttons">
-      <button id="btnProcess" type="button" class="primary">가공 실행</button>
+      <button id="btnQueueAdd" type="button">＋ 큐에 추가</button>
+      <button id="btnProcess" type="button" class="primary">가공 실행 (단건)</button>
+    </div>
+
+    <div id="queueBox" class="queuebox"></div>
+    <div class="row buttons">
+      <button id="btnConfirm" type="button" class="primary" disabled>일괄 확정 (0)</button>
+      <button id="btnQueueClear" type="button">비우기</button>
     </div>
 
     <div class="row"><div id="out" class="out"></div></div>

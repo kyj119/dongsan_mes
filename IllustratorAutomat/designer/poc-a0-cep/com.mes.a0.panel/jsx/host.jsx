@@ -136,6 +136,7 @@ function mesA0_process() {
   var punch = P.punch || {}; // {top,bottom,left,right(개수), corners:{tl,tr,bl,br}}
   var annotation = P.annotation ? String(P.annotation) : '';
   var annotPos = P.annot_pos || {}; // {top,bottom,left,right} bool (다중)
+  var seqNo = (P.seq_no != null && P.seq_no !== '') ? P.seq_no : null; // 식별번호(큐 배치)
   var fin = P.finishing || {};
   var finJson = {}, finMargins = {}, hasFinishing = false;
   for (var fs = 0; fs < MESA0_SIDES.length; fs++) {
@@ -330,6 +331,7 @@ function mesA0_process() {
 
       epsName = ymd + '-' + mesA0_sanitize(clientName) + '-' +
         Math.round(realW) + 'x' + Math.round(realH) + '-' + qty + 'EA' +
+        (seqNo != null ? '-' + mesA0_sanitize('' + seqNo) : '') +
         (sN > 1 ? '_1-' + sN : '') + '.eps';
       var epsFile = new File(jobFolder.fsName + '/' + epsName);
       var epsOpts = new EPSSaveOptions();
@@ -383,6 +385,7 @@ function mesA0_process() {
     punch: punch,
     annotation: annotation || null,
     annot_pos: annotation ? annotPos : null,
+    identifier: seqNo,
     scale_pct: Math.round(100 / sN),
     measured_cm: { w: Math.round(realW * 10) / 10, h: Math.round(realH * 10) / 10 },
     mode: mode,
@@ -402,4 +405,47 @@ function mesA0_process() {
     ',"w":' + (Math.round(realW * 10) / 10) + ',"h":' + (Math.round(realH * 10) / 10) +
     ',"items":' + diagItems + ',"normed":' + normed +
     ',"mode":"' + mode + '","warn":"' + warn + '"}';
+}
+
+// ── 반자동 큐 (A2) — 선택 보관 = 호스트 전역(같은 파일 열려있는 동안 참조 유효) ──
+// 확정 배치 = 패널이 각 행 세팅을 params로 쓰고 → queueSelect(i) → mesA0_process() 반복(검증된 가공 재사용)
+function mesA0_queueEnsure() { if (!$.global.mesA0Q) $.global.mesA0Q = []; return $.global.mesA0Q; }
+
+function mesA0_queueAdd() {
+  if (app.documents.length === 0) return '{"ok":false,"err":"nodoc"}';
+  var d = app.activeDocument;
+  if (!d.selection || d.selection.length === 0) return '{"ok":false,"err":"nosel"}';
+  var items = [];
+  for (var i = 0; i < d.selection.length; i++) items.push(d.selection[i]);
+  var ub = mesA0_unionBounds(items);
+  if (!ub) return '{"ok":false,"err":"nobounds"}';
+  var q = mesA0_queueEnsure();
+  q.push({ doc: d, items: items });
+  var w = (ub[2] - ub[0]) / MESA0_PT_PER_MM / 10, h = (ub[1] - ub[3]) / MESA0_PT_PER_MM / 10;
+  return '{"ok":true,"n":' + q.length + ',"w":' + (Math.round(w * 10) / 10) + ',"h":' + (Math.round(h * 10) / 10) + ',"items":' + items.length + '}';
+}
+
+function mesA0_queueCount() { return '' + mesA0_queueEnsure().length; }
+function mesA0_queueClear() { $.global.mesA0Q = []; return 'ok'; }
+
+function mesA0_queueRemove(idx) {
+  var q = mesA0_queueEnsure();
+  var i = parseInt(idx, 10);
+  if (!isNaN(i) && i >= 0 && i < q.length) q.splice(i, 1);
+  return '' + q.length;
+}
+
+// 큐 i번을 현재 선택으로 복원(확정 배치의 각 스텝 — 이후 mesA0_process 호출)
+function mesA0_queueSelect(idx) {
+  var q = mesA0_queueEnsure();
+  var i = parseInt(idx, 10);
+  if (isNaN(i) || i < 0 || i >= q.length) return '{"ok":false,"err":"range"}';
+  var e = q[i];
+  try {
+    app.activeDocument = e.doc;      // 원본 파일이 닫혔으면 예외
+    e.doc.selection = null;
+    e.doc.selection = e.items;       // 참조 무효면 예외/빈선택
+    if (!e.doc.selection || e.doc.selection.length === 0) return '{"ok":false,"err":"stale"}';
+    return '{"ok":true,"n":' + e.doc.selection.length + '}';
+  } catch (err) { return '{"ok":false,"err":"docgone"}'; }
 }
