@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-07-23T09:41:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-07-23T12:37:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,23 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **3** — Area 3 42회차(07-23T09:41) `search_issues(state:open,label:auto-improve)` 실측. `#554`(Area4, 이월)+`#555`(신규, Area1/4 마이그레이션 리플레이)+`#556`(신규, Area3 hover 색상). |
+| 🆕 new | **4** — Area 4 43회차(07-23T12:37) `search_issues(state:open,label:auto-improve)` 실측. `#554`(Area4, 이월)+`#555`(Area1/4, 이월)+`#556`(Area3, 이월)+`#557`(신규, Area4/5 포털계정 형제-비대칭 IDOR). |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **479** — 변동 없음(이번 사이클 close 0). |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 4 데이터 정합성 (2026-07-23T12:37):**
+> - **방법**: `git fetch origin main`(HEAD `39ce7f9` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 4 **43회차** — 직전 Area4(`73216a0`, 07-22T03:17, 42회차) 이후 `src/routes`/`migrations` churn 8커밋 중, 다른 Area가 이미 데이터정합성 렌즈 밖 관점으로 훑은 것을 제외한 **순수 미검증 5커밋**(`b93b3b7`/`0f2d745` 원장통합·`978791c` 이슈14건픽스·`b009c59` 장비SSOT·`a755c31` 포털타임라인)을 general-purpose 에이전트 1개로 위임(고아레코드·상태불일치·CHECK위반·형제-비대칭·entity_id 관점) + 오케스트레이터가 `39ce7f9`(까치발 규격분리 마이그, 22변종+발주재매칭+매입원가backfill, idempotent 가드·avg_unit_cost 기본값·client_item_prices FK 무결성 직접 검증)·`0470`(bank_link_unique, clean)을 직접 Read로 심층 검증. 전 스캔 병행: `node scripts/entity-audit.mjs`(122파일·통과59·누락0)·마이그레이션 번호 중복(기존 5쌍만, 신규 0건).
+> - **🔴 신규 이슈 — #557 (M, bug, Area4/5 크로스)**: `978791c`가 `client_accounts` 포털계정 GET/PATCH/DELETE(`clients.ts:1129/1199/1245`)에 `entityFilter` 격리를 추가(#473 형제 패턴 이식)했으나 **형제 핸들러 POST `/:id/portal-account`(:1149, 계정 생성)만 격리 누락** — #473/#481 계열 부분픽스. 단순 entity_id 정합성 문제를 넘어 확인된 실질 위험: `clients` 자체는 entity_id 없는 전역 마스터(정상)인데, `portal.ts`의 포털 API 전체(주문/미수금/세금계산서/입금)가 **client_id로만 스코프, entity_id 필터 전무**임을 직접 확인 — 즉 타법인 ADMIN이 아직 계정 없는 임의 거래처에 로그인ID/비밀번호를 스스로 정해 포털계정을 셀프발급할 수 있고, 그 계정으로 로그인하면 그 거래처의 **타법인 거래이력까지 전부 열람** 가능(credential 셀프발급을 통한 cross-entity 데이터 노출 — SKILL 우선순위 최상위 클래스). issue-only(IDOR+정책판단, 자동수정 금지).
+> - **🟢 5커밋 심층검증 결과 — 4/5 clean**: `b93b3b7`(매입원장 통합) — opening_balance 서브쿼리가 메인 쿼리와 동일한 `status NOT IN ('DRAFT','CANCELLED')` 필터 적용, 형제-비대칭 없음. `0f2d745`(매입원장 품목라인) — 이미 필터링된 결과에서 파생되는 items map 부착뿐, 신규 필터링 로직 없음. `b009c59`(장비상태 SSOT) — `equipment.equipment_status`는 애초 CHECK 제약 자체가 없어(0049 `DEFAULT 'IDLE'`만) literal 값 위반 불가, 색상/라벨만 SSOT 리팩터된 순수 프론트 변경. `a755c31`(포털 타임라인) — order_items 검색 확장이 목록·CSV export 양쪽에 동일 적용되어 오히려 형제-비대칭 해소. `978731c` 나머지 13건(#527/#539/#521/#522/#547/#519/#524/#531/#532/#533/#534/#537)은 형제 핸들러 대조 결과 전부 완전 커버 확인.
+> - **🟡 0471(까치발 규격분리) 잔여 리스크 재확인 — issue 승격 보류**: `quotation_items`는 재매칭 대상에서 빠짐(purchase_order_items·order_items만 재매칭). 그러나 `quotations.ts`의 견적→주문 전환 로직(579-742행) 전체 대조 결과 **품목 `is_active` 검사 자체가 코드에 없음** — 우려했던 "비활성 품목 참조 시 전환 차단 회귀"는 코드 경로상 발생 불가(false concern). 잔존 리스크는 데이터 품질 저하(구 스텁 품목 985/986/987을 참조하는 기존 견적서가 전환되면 규격(mm) 정보 없이 order_items에 복사)뿐이며 prod 견적서 존재 여부 검증 불가 → (b) minor/business-judgment로 분류, 이슈 미생성. avg_unit_cost는 items INSERT 컬럼리스트에 미포함이지만 스키마 DEFAULT 0(`0217`)이라 안전, 별도 backfill 스크립트(`docs/price/backfill_avg_cost_kachibal.sql`)가 매입이력 있는 11규격만 갱신·나머지 11규격은 0 유지가 문서화된 의도(주석 명시) — clean. `client_item_prices` FK(0034)는 `ON DELETE CASCADE`이나 스텁 품목이 `is_active=0`으로 보존(삭제 안 됨, 0434 규칙)되어 고아 위험 없음.
+> - **🟢 backlog↔GitHub 절대값 재동기화**: `search_issues(state:open,label:auto-improve)` 실측 **4건**(#554·#555·#556 이월 + #557 신규). `search_issues(is:closed,reason:completed)` **479**(변동 없음)·`not_planned` 4+`duplicate` 2(추정, 변동 없음) → rejected **6**.
+> - **🧬 SKILL 강화 없음(신규 탐지 클래스 아님)** — #557은 기존 "형제-비대칭 IDOR"(#437/#452/#455/#473/#481 계열) 클래스의 재현이나, "entity_id 없는 전역 마스터 테이블 자체는 정상(FP클래스⑤)"이라는 기존 규칙과 "그 마스터에 딸린 자식 리소스(client_accounts)의 CRUD 형제-비대칭"이 결합된 사례라 향후 유사 패턴(전역 마스터+entity-scoped 자식 테이블) 탐지 시 참고 가치.
+> - 신규 이슈 1건(#557, issue-only), 자동수정 0건(IDOR=owner 워크플로), done-sync 변동 없음(new 3→4[신규 1건 반영]·done 479·rejected 6 정합 재확인). 다음 순번 Area 5.
+>
 
 > **Area 3 UX/기능 감사 (2026-07-23T09:41):**
 > - **방법**: `git fetch origin main`(HEAD `edf43a2` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 3 **42회차** — 직전 Area3(`352a177`, 07-21T11:05, 41회차) 이후 28커밋. UX 표면 churn이 큼(flatpickr 전환 109곳/36파일, 원장 3열분할×4커밋, CSV export, billed-dimension hint, modal ESC, employeeSelf a11y, palette sweep, P2 일관성 스윕 35파일 등) — 대부분 다른 Area가 아직 UX 렌즈로 안 본 신선 churn이라 general-purpose 에이전트 1개(13개 커밋 전담, 각 커밋 diff 직접 Read+FP배제 규칙 적용)를 병렬로 돌리고, 오케스트레이터는 flatpickr 전환 완전성(SPA fast-path 초기화 갭 여부)·CSV export 페이지네이션 정합성·`750b951` 클라이언트피커 SSOT 이관의 형제완전성을 직접 검증. **부수적으로 로컬 D1을 from-scratch로 완전 리플레이하려다(Playwright 실환경 테스트 목적) 마이그레이션 0342~0344에서 결정적 FK 실패를 발견**(진단·재현 완료, 아래 #555).
@@ -227,10 +237,11 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 3건** — 2026-07-23T09:41 Area 3 42회차, `search_issues(state:open,label:auto-improve)` 직접 재확인. 직전 기재값 14 대비 대폭 감소 — owner가 그 사이(Area2 49회차 시점) 12건을 코드 픽스+close, #528 close-pending도 함께 정리된 것으로 확인. 이번 사이클 #555·#556 신규 생성.)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 4건** — 2026-07-23T12:37 Area 4 43회차, `search_issues(state:open,label:auto-improve)` 직접 재확인. 이번 사이클 #557 신규 생성.)
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
+| #557 | clients.ts POST /:id/portal-account 형제 entityFilter 누락 — 타법인 ADMIN 포털계정 셀프발급→cross-entity 거래이력 열람 | Area 4/5 | bug,M | issue-only, 미픽스 |
 | #556 | 인쇄뷰(invoice/quotation) 버튼 hover 색상 — 팔레트 스윕이 base만 이관, hover는 구 teal 잔존 | Area 3 | improvement,S | issue-only, 미픽스 |
 | #555 | 마이그레이션 0342~0344 풀리플레이 결정적 실패 — DR/신규환경 부트스트랩 시 전체 체인 중단 | Area1/4 | bug,M | issue-only, 원인규명 완료·owner 정책판단 대기 |
 | #554 | 부문손익 자재비 — 이동평균단가 비재현성(거래시점 원가 스냅샷 부재) + fixedRow is_active 과거조회 누락 | Area 4 | — | 미픽스, M공수 정책판단 대기 |
