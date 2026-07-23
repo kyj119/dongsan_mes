@@ -28,7 +28,11 @@ select { flex: 1; }
 select:focus, input[type="text"]:focus { outline: none; border-color: #6e9fd8; }
 
 input.short { width: 46px; flex: none; }
+input.tiny { width: 30px; flex: none; text-align: center; }
+select.short2 { width: 48px; flex: none; }
 input.grow { flex: 1; }
+.punchrow { gap: 4px; }
+.punchrow .unit { min-width: 0; }
 
 .saved { color: #8ec5ff; font-size: 11px; }
 .meas { flex: 1; color: #d9c68a; font-size: 11px; }

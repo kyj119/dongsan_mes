@@ -133,8 +133,9 @@ function mesA0_process() {
   var sN = parseInt(P.scale_n, 10); if (isNaN(sN) || sN < 1) sN = 1;
   var mode = (P.mode === 'impose') ? 'impose' : ((P.mode === 'both') ? 'both' : 'single');
   var trim = !!P.trim;
-  var punchCount = parseInt(P.punch_count, 10); if (isNaN(punchCount) || punchCount < 0) punchCount = 0;
+  var punch = P.punch || {}; // {top,bottom,left,right(개수), corners(bool)}
   var annotation = P.annotation ? String(P.annotation) : '';
+  var annotPos = P.annot_pos || 'top'; // top/bottom/left/right
   var fin = P.finishing || {};
   var finJson = {}, finMargins = {}, hasFinishing = false;
   for (var fs = 0; fs < MESA0_SIDES.length; fs++) {
@@ -227,32 +228,49 @@ function mesA0_process() {
       borderRect.strokeColor = wCol;
       borderRect.strokeWidth = 0.5;
 
-      // 펀칭(아일렛 타공 마크): 개수 폭 비율분배, 지름 1cm, 중심 테두리서 2cm — 상단 변
-      if (punchCount > 0) {
+      // 펀칭(타공 마크): 상/하/좌/우 각 개수 폭·높이 비율분배 + 꼭짓점. 지름 1cm, 중심 테두리서 2cm
+      var iTop = parseInt(punch.top, 10) || 0, iBot = parseInt(punch.bottom, 10) || 0;
+      var iLeft = parseInt(punch.left, 10) || 0, iRight = parseInt(punch.right, 10) || 0;
+      var wantCorners = !!punch.corners;
+      if (iTop || iBot || iLeft || iRight || wantCorners) {
         var kColP = new CMYKColor(); kColP.cyan = 0; kColP.magenta = 0; kColP.yellow = 0; kColP.black = 100;
-        var PUNCH_DIA = 10 * MESA0_PT_PER_MM / sN;   // 1cm
-        var PUNCH_INSET = 20 * MESA0_PT_PER_MM / sN; // 2cm(중심 기준 테두리 이격)
-        var pyC = bT - PUNCH_INSET;
-        var px0 = bL + PUNCH_INSET, px1 = bR - PUNCH_INSET;
-        for (var pc = 0; pc < punchCount; pc++) {
-          var pxC = (punchCount === 1) ? ((bL + bR) / 2) : (px0 + (px1 - px0) * pc / (punchCount - 1));
-          var prR = PUNCH_DIA / 2;
-          var pel = newDoc.pathItems.ellipse(pyC + prR, pxC - prR, PUNCH_DIA, PUNCH_DIA);
+        var PDIA = 10 * MESA0_PT_PER_MM / sN;   // 1cm
+        var PIN = 20 * MESA0_PT_PER_MM / sN;    // 2cm(중심 이격)
+        var pr = PDIA / 2;
+        var hx0 = bL + PIN, hx1 = bR - PIN, hy0 = bB + PIN, hy1 = bT - PIN;
+        var holes = [], hi, ht;
+        for (hi = 0; hi < iTop; hi++) { ht = (iTop === 1) ? ((hx0 + hx1) / 2) : (hx0 + (hx1 - hx0) * hi / (iTop - 1)); holes.push([ht, bT - PIN]); }
+        for (hi = 0; hi < iBot; hi++) { ht = (iBot === 1) ? ((hx0 + hx1) / 2) : (hx0 + (hx1 - hx0) * hi / (iBot - 1)); holes.push([ht, bB + PIN]); }
+        for (hi = 0; hi < iLeft; hi++) { ht = (iLeft === 1) ? ((hy0 + hy1) / 2) : (hy0 + (hy1 - hy0) * hi / (iLeft - 1)); holes.push([bL + PIN, ht]); }
+        for (hi = 0; hi < iRight; hi++) { ht = (iRight === 1) ? ((hy0 + hy1) / 2) : (hy0 + (hy1 - hy0) * hi / (iRight - 1)); holes.push([bR - PIN, ht]); }
+        if (wantCorners) { holes.push([bL + PIN, bT - PIN]); holes.push([bR - PIN, bT - PIN]); holes.push([bL + PIN, bB + PIN]); holes.push([bR - PIN, bB + PIN]); }
+        for (hi = 0; hi < holes.length; hi++) {
+          var pel = newDoc.pathItems.ellipse(holes[hi][1] + pr, holes[hi][0] - pr, PDIA, PDIA);
           pel.filled = false; pel.stroked = true; pel.strokeColor = kColP; pel.strokeWidth = 0.5;
         }
       }
 
-      // 주석: 상단 여백 밴드에 검정 텍스트(좌측정렬·상하중간·첫글자 코너서 5cm)
-      if (annotation && (bT - oT) > 0.5) {
+      // 주석: 선택 위치 여백 밴드에 검정 텍스트(첫글자 코너서 5cm). 상/하=가로, 좌/우=90도 회전
+      var annBand = (annotPos === 'top') ? finMargins.top : (annotPos === 'bottom') ? finMargins.bottom :
+        (annotPos === 'left') ? finMargins.left : finMargins.right;
+      if (annotation && annBand > 0.5) {
         try {
           var kColA = new CMYKColor(); kColA.cyan = 0; kColA.magenta = 0; kColA.yellow = 0; kColA.black = 100;
-          var bandH = bT - oT;
-          var fsz = bandH * 0.5; if (fsz < 6) fsz = 6; if (fsz > 300) fsz = 300;
+          var off5 = 50 * MESA0_PT_PER_MM / sN;
+          var fsz = annBand * 0.5; if (fsz < 6) fsz = 6; if (fsz > 300) fsz = 300;
           var atf = newDoc.textFrames.add();
           atf.contents = annotation;
           atf.textRange.characterAttributes.size = fsz;
           atf.textRange.characterAttributes.fillColor = kColA;
-          atf.position = [bL + 50 * MESA0_PT_PER_MM / sN, (oT + bT) / 2 + fsz * 0.4]; // [left, top]
+          try { atf.textRange.characterAttributes.textFont = app.textFonts.getByName('MalgunGothic'); } catch (eFn) {} // 한글 폰트
+          if (annotPos === 'top') atf.position = [bL + off5, (oT + bT) / 2 + fsz * 0.4];
+          else if (annotPos === 'bottom') atf.position = [bL + off5, (bB + oB) / 2 + fsz * 0.4];
+          else { // left/right — 세로 밴드: 90도 회전 후 밴드 중앙·하단서 5cm
+            atf.rotate(90);
+            var gb = atf.geometricBounds, gw = gb[2] - gb[0], gh = gb[1] - gb[3];
+            var cx = (annotPos === 'left') ? ((bL + oL) / 2) : ((oR + bR) / 2);
+            atf.position = [cx - gw / 2, bB + off5 + gh];
+          }
           try { atf.createOutline(); } catch (eAo) {} // RIP 안전: 아웃라인
         } catch (eAnn) {}
       }
@@ -347,8 +365,9 @@ function mesA0_process() {
     qty: qty,
     finishing: hasFinishing ? finJson : null,
     trim: trim,
-    punch_count: punchCount,
+    punch: punch,
     annotation: annotation || null,
+    annot_pos: annotation ? annotPos : null,
     scale_pct: Math.round(100 / sN),
     measured_cm: { w: Math.round(realW * 10) / 10, h: Math.round(realH * 10) / 10 },
     mode: mode,
