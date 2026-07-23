@@ -374,10 +374,10 @@
     });
 
     if (elBtnQBatch) elBtnQBatch.addEventListener('click', function () {
-      csi.evalScript('mesA0_queueAddBatch(30)', function (res) {
+      csi.evalScript('mesA0_queueAddBatch(0)', function (res) { // gap 0 = 겹침만(ExtractGroups)
         var r = null; try { r = JSON.parse(res); } catch (e) {}
         if (!r || !r.ok) {
-          var em = { nodoc: '열린 문서 없음', nosel: '객체를 선택하세요', nobounds: '크기 측정 불가' };
+          var em = { nodoc: '열린 문서 없음', nosel: '객체를 선택하세요', nobounds: '크기 측정 불가', allnoise: '전부 50mm 미만(노이즈)' };
           out('묶음 분리 실패: ' + (r ? (em[r.err] || r.err) : '호스트 연결 안 됨'), 'err');
           return;
         }
@@ -389,7 +389,7 @@
           queue.push({ params: JSON.parse(JSON.stringify(base)), client: client, keyword: keyword, qty: qtyN, w: r.sizes[s].w, h: r.sizes[s].h });
         }
         renderQueue();
-        out('묶음 분리: ' + r.added + '개로 나눔 (30mm 이내 병합). 틀리면 [✕] 삭제 후 개별 추가로 교정', 'okmsg');
+        out('묶음 분리: ' + r.added + '개로 나눔 (겹침만 병합·50mm↓ 제외). 틀리면 [✕] 삭제 후 개별 추가로 교정', 'okmsg');
       });
     });
 
