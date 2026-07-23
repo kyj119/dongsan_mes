@@ -114,11 +114,24 @@ function mesA0_measure() {
   if (!d.selection || d.selection.length === 0) return '{"ok":false,"err":"nosel"}';
   var sel = [];
   for (var i = 0; i < d.selection.length; i++) sel.push(d.selection[i]);
-  var ub = mesA0_unionBounds(sel);
+  var ub = mesA0_unionBounds(sel); // visibleBounds(선·효과 포함)
   if (!ub) return '{"ok":false,"err":"nobounds"}';
+  // 기하 경계(geometricBounds — 도형만, 선·효과 제외) 진단용
+  var gL = null, gT = null, gR = null, gB = null;
+  for (var j = 0; j < sel.length; j++) {
+    var gb; try { gb = sel[j].geometricBounds; } catch (eG) { gb = null; }
+    if (!gb) continue;
+    if (gL === null || gb[0] < gL) gL = gb[0];
+    if (gT === null || gb[1] > gT) gT = gb[1];
+    if (gR === null || gb[2] > gR) gR = gb[2];
+    if (gB === null || gb[3] < gB) gB = gb[3];
+  }
   var w = (ub[2] - ub[0]) / MESA0_PT_PER_MM / 10;
   var h = (ub[1] - ub[3]) / MESA0_PT_PER_MM / 10;
-  return '{"ok":true,"w":' + (Math.round(w * 10) / 10) + ',"h":' + (Math.round(h * 10) / 10) + ',"n":' + sel.length + '}';
+  var gw = (gL === null) ? w : ((gR - gL) / MESA0_PT_PER_MM / 10);
+  var gh = (gL === null) ? h : ((gT - gB) / MESA0_PT_PER_MM / 10);
+  return '{"ok":true,"w":' + (Math.round(w * 10) / 10) + ',"h":' + (Math.round(h * 10) / 10) +
+    ',"gw":' + (Math.round(gw * 10) / 10) + ',"gh":' + (Math.round(gh * 10) / 10) + ',"n":' + sel.length + '}';
 }
 
 // 가공 실행 — params 파일(UTF-8) 읽어 mes-core 로직 수행. 반환=ASCII JSON.
