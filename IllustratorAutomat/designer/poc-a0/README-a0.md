@@ -4,12 +4,19 @@
 **spec**: `docs/superpowers/specs/2026-07-23-ia-palette-session-loop.md` §Phase A0
 **성격**: throwaway PoC. prod 무관·설치만(되돌릴 것 없음). **반드시 디자이너의 최신 일러에서** 실행(버전별 quirk).
 
+> **선검증 (2026-07-23, Claude MCP · Illustrator 2026/30.3.0)** — 머신·버전 무관 항목은 사전 실측 완료:
+> - **④ 대지 한도 = 577cm 확정**(578cm FAIL, `documents.add` 경로). spec §6 "~577cm/227in" 확증.
+> - 원본 `a0-canvas-probe.jsx`가 **200cm를 오보고**하던 방법론 결함 발견·수정(모서리 고정→documents.add). ⇒ 검토문서 생성기는 작은 기본문서 리사이즈 금지, **목표크기로 문서 생성** 필수.
+> - ①② 데이터 계층(한글 roster 로드·로컬 영속)은 mes-core와 동일 검증 패턴이라 저리스크(MCP는 Window 인스턴스화에서 COM 끊김 → 실 도킹은 어차피 디자이너 몫).
+> - **남은 = ③ 상주 도킹 Go/No-go** — 이건 반드시 디자이너 일러 재시작으로만 판정 가능(아래 절차).
+
 ## 파일
 | 파일 | 용도 |
 |---|---|
 | `a0-dock-palette.jsx` | 도킹 팔레트 본체(가공자 드롭다운·로컬 영속·더미 버튼) |
 | `a0-roster.json` | 가공자 roster(인호동·김보연·정소은·김영주) — 팔레트가 UTF-8로 로드 |
-| `a0-canvas-probe.jsx` | 대지/아트보드 크기 한도 실측 + 타일 폴백 경계 |
+| `a0-canvas-probe.jsx` | 대지/문서 크기 한도 실측 + 타일 폴백 경계 (documents.add 방식, 577cm) |
+| `mes-a0-startup.jsx` | ③ 도킹 검증용 Startup Scripts 로더 스텁 (경로 1줄만 수정) |
 
 ## 검증 절차
 
@@ -23,12 +30,10 @@
 
 ### ③ 상주 도킹 (핵심 — Startup Scripts 모델)
 > ScriptUI 팔레트는 **Startup Scripts 폴더에서 로드돼야** 일러 UI에 도킹된다(F키/Other Script 실행 시엔 플로팅).
-1. 일러 설치 폴더의 `Plug-ins\Startup Scripts\` 에 아래 스텁을 `mes-a0-startup.jsx`로 저장:
-   ```
-   #target illustrator
-   $.evalFile(new File("<이 폴더 절대경로>/a0-dock-palette.jsx"));
-   ```
-   (NAS 정본 검증까지 하려면 `Z:\DESIGNS\IA-등록\_scripts\...` 경로로 지정 → ⑤)
+1. 제공된 **`mes-a0-startup.jsx`**(이 폴더) 를 일러 설치 폴더의 `Plug-ins\Startup Scripts\` 에 복사.
+   - 스텁 안 `jsxPath` 1줄만 이 폴더의 실제 절대경로로 수정(이미 로컬 경로 기본값 있음).
+   - `File.exists` 가드 내장(Z: 미마운트 시 조용히 skip, spec §6 리스크 J).
+   - (NAS 정본 검증까지 하려면 스텁 안 주석대로 `Z:\DESIGNS\IA-등록\_scripts\...` 경로로 교체 → ⑤)
 2. **일러 완전 종료 후 재시작.**
 3. **Pass**: 재시작 시 팔레트가 **자동으로 뜨고 다른 패널 옆에 도킹**됨(드래그로 패널 독에 붙일 수 있음).
    **Fail(플로팅만/미표시)**: ScriptUI 도킹 불가 → **CEP 승격** 결정(spec §8).
@@ -45,10 +50,10 @@
 ## 판정 (Go / No-go)
 | 항목 | Pass 기준 | 결과 |
 |---|---|---|
-| ③ 상주 도킹 | 재시작 후 자동 도킹 | ☐ |
-| ② 로컬 영속 | 선택 유지 | ☐ |
-| ①/②③ roster | 4명 표시 | ☐ |
-| ④ 대지 한도 | max cm 실측값 기록 | ☐ (____ cm) |
+| ③ 상주 도킹 | 재시작 후 자동 도킹 | ☐ (디자이너 판정 대기 — 핵심) |
+| ② 로컬 영속 | 선택 유지 | ☐ (디자이너 육안) |
+| ①/②③ roster | 4명 표시 | ☐ (디자이너 육안) |
+| ④ 대지 한도 | max cm 실측값 기록 | ✅ **577cm** (AI 2026/30.3.0 실측, 578 FAIL·documents.add) |
 
 - **③ Pass** → A1 착수.
 - **③ Fail** → CEP 승격으로 A1 재설계(네트워크 불요 유지).
