@@ -55,6 +55,16 @@ function mesA0_sanitize(s) {
   s = s.replace(/^\s+|\s+$/g, '');
   return s || '무명';
 }
+// 주석 조합: 거래처-키워드-식별번호-수량ea (키워드 있을 때만). 식별번호=키워드별 순번(큐 배치)
+function mesA0_annotText(client, keyword, seqNo, qty) {
+  if (!keyword) return '';
+  var s = '';
+  if (client) s += client + '-';
+  s += keyword;
+  if (seqNo != null && seqNo !== '') s += '-' + seqNo;
+  s += '-' + qty + 'ea';
+  return s;
+}
 function mesA0_unionBounds(items) {
   var L = null, T = null, R = null, B = null;
   for (var i = 0; i < items.length; i++) {
@@ -134,9 +144,9 @@ function mesA0_process() {
   var mode = (P.mode === 'impose') ? 'impose' : ((P.mode === 'both') ? 'both' : 'single');
   var trim = !!P.trim;
   var punch = P.punch || {}; // {top,bottom,left,right(개수), corners:{tl,tr,bl,br}}
-  var annotation = P.annotation ? String(P.annotation) : '';
+  var kwRaw = P.keyword ? String(P.keyword) : ''; // 키워드(주석·파일명)
   var annotPos = P.annot_pos || {}; // {top,bottom,left,right} bool (다중)
-  var seqNo = (P.seq_no != null && P.seq_no !== '') ? P.seq_no : null; // 식별번호(큐 배치)
+  var seqNo = (P.seq_no != null && P.seq_no !== '') ? P.seq_no : null; // 식별번호(키워드별 순번)
   var fin = P.finishing || {};
   var finJson = {}, finMargins = {}, hasFinishing = false;
   for (var fs = 0; fs < MESA0_SIDES.length; fs++) {
@@ -148,6 +158,7 @@ function mesA0_process() {
   }
   var docBase = mesA0_sanitize(String(srcDoc.name).replace(/\.[^.]+$/, ''));
   var clientName = P.client_name ? mesA0_sanitize(P.client_name) : docBase;
+  var annotation = mesA0_annotText(P.client_name ? String(P.client_name) : '', kwRaw, seqNo, qty); // 주석(호스트 조합)
   var orderItemId = (P.order_item_id != null) ? P.order_item_id : null;
   var realW = fileWCm * sN, realH = fileHCm * sN;
 
@@ -332,7 +343,8 @@ function mesA0_process() {
         newDoc.artboards[0].artboardRect = [tL - pad, tT + pad, tR + pad, tB - pad];
       }
 
-      epsName = ymd + '-' + mesA0_sanitize(clientName) + '-' +
+      var kwSeg = kwRaw ? ('-' + mesA0_sanitize(kwRaw)) : '';
+      epsName = ymd + '-' + mesA0_sanitize(clientName) + kwSeg + '-' +
         Math.round(realW) + 'x' + Math.round(realH) + '-' + qty + 'EA' +
         (seqNo != null ? '-' + mesA0_sanitize('' + seqNo) : '') +
         (sN > 1 ? '_1-' + sN : '') + '.eps';
@@ -386,6 +398,7 @@ function mesA0_process() {
     finishing: hasFinishing ? finJson : null,
     trim: trim,
     punch: punch,
+    keyword: kwRaw || null,
     annotation: annotation || null,
     annot_pos: annotation ? annotPos : null,
     identifier: seqNo,

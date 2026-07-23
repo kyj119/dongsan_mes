@@ -269,9 +269,7 @@
         }
       }
       var pInt = function (el) { var n = parseInt(el ? el.value : '0', 10); return (isNaN(n) || n < 0) ? 0 : n; };
-      var client = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
       var keyword = elAnnot ? (elAnnot.value || '').replace(/^\s+|\s+$/g, '') : '';
-      var annotation = composeAnnot(client, keyword, null, qty); // 단건=식별번호 없음
       return {
         worker_name: elWorker.value || null,
         registered_by_id: null,   // MES user id 매핑은 B단계(§3.5 구현선행) — 현재 null
@@ -283,7 +281,7 @@
           top: pInt(elPTop), bottom: pInt(elPBottom), left: pInt(elPLeft), right: pInt(elPRight),
           corners: { tl: elPcTL ? !!elPcTL.checked : false, tr: elPcTR ? !!elPcTR.checked : false, bl: elPcBL ? !!elPcBL.checked : false, br: elPcBR ? !!elPcBR.checked : false }
         },
-        annotation: annotation,
+        keyword: keyword, // 주석·파일명. 식별번호(seq_no)는 단건 null, 배치는 키워드별 순번
         annot_pos: { top: elATop ? !!elATop.checked : false, bottom: elABottom ? !!elABottom.checked : false, left: elALeft ? !!elALeft.checked : false, right: elARight ? !!elARight.checked : false },
         finishing: finishing, order_item_id: null
       };
@@ -411,6 +409,13 @@
         var bf = null; try { bf = JSON.parse(bres); } catch (e0) {}
         if (!bf || !bf.ok) { out('배치 폴더 생성 실패: ' + (bf ? bf.err : 'nohost'), 'err'); reenable(); elBtnConfirm.disabled = false; return; }
         var batchFolder = bf.folder, results = [], i = 0;
+        // 식별번호 = 키워드별 순번(같은 키워드끼리 1,2,3). 키워드 없으면 전체순번(파일명 유니크)
+        var kwCount = {}, seqForRow = [];
+        for (var qi = 0; qi < queue.length; qi++) {
+          var K = queue[qi].keyword || '';
+          if (K) { kwCount[K] = (kwCount[K] || 0) + 1; seqForRow[qi] = kwCount[K]; }
+          else { seqForRow[qi] = qi + 1; }
+        }
         function finishBatch() {
           var okN = 0, failN = 0, lines = [];
           for (var k = 0; k < results.length; k++) {
@@ -427,10 +432,9 @@
           out('일괄 가공 중… (' + i + '/' + queue.length + ') → ' + batchFolder);
           var e = queue[i];
           var p = e.params;
-          p.seq_no = i + 1;
+          p.seq_no = seqForRow[i]; // 키워드별 순번
           p.batch_folder = batchFolder;
-          p.batch_index = i + 1;
-          p.annotation = composeAnnot(e.client, e.keyword, i + 1, e.qty);
+          p.batch_index = i + 1;   // 폴더 내 파일 유니크(work_N/thumb_N/manifest_N)
           csi.evalScript('mesA0_paramsPath()', function (pp) {
             if (!pp) { results.push({ ok: false, err: 'nohost' }); i++; step(); return; }
             cepWriteUtf8(pp, JSON.stringify(p));
