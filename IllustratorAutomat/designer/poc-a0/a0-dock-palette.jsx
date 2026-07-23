@@ -2,7 +2,10 @@
 // spec: docs/superpowers/specs/2026-07-23-ia-palette-session-loop.md Phase A0
 // 검증: ① ScriptUI palette 도킹 ② $.evalFile NAS 업데이트 모델 ③ 가공자 드롭다운+로컬 영속
 // ES3(ExtendScript) — UTF-8. 한글 리터럴 없음(roster는 a0-roster.json UTF-8에서 로드).
+// ★필수: ScriptUI palette는 #targetengine(영속 엔진) 없으면 스크립트 종료 시 파괴돼 즉시 사라짐.
+//   Startup Scripts 로드/Ctrl+F12 모두 이 지시자가 있어야 팔레트가 화면에 상주한다(A0 발견, 2026-07-23).
 #target illustrator
+#targetengine "MES_A0"
 
 (function () {
   var VERSION = 'A0-0.1';
@@ -76,6 +79,8 @@
 
   pal.add('statictext', undefined, 'roster:' + roster.length + ' | update:re-run stub');
 
+  // 영속 엔진에서 참조 유지 (지역변수 소멸에도 창이 살아있도록 belt-and-suspenders)
+  $.global.__mesA0Pal = pal;
   pal.layout.layout(true);
   pal.show();
 })();
