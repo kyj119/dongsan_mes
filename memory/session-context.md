@@ -1,44 +1,53 @@
-# 세션 핸드오프 — 주문→출고 워크플로우 개선 + 배포 회귀 근본해결 (2026-07-23)
+# 세션 핸드오프 — IA 편집기 세션루프 v2 (팔레트·반자동 큐) 설계 spec + A0 PoC (2026-07-23)
 
-> 세션별 덮어쓰기 파일. durable 내용은 [[design-order-ship-workflow-gaps]]·[[feedback-multi-session-deploy]]에 보존.
+> 세션별 덮어쓰기 파일. durable 내용은 [[project-ia-designer-loop]]·[[project-ia-web-sunset]]·[[project-ia-editor]]에 보존.
 
-## 브랜치 상태
-- **공유 메인 체크아웃 = `main`(=origin/main `a755c317`)로 이동 완료** (세션 시작 시 stale `feat/dept-pnl` 38커밋 뒤처짐이었음)
-- 워킹트리 clean (기존 untracked 문서만: docs/receivables/intercompany-mirror, role-expansion local-copy)
-- idle 브랜치 잔존(무해): `deploy/portal-reorder-search`(=main), `feat/dept-pnl`(잉여). 삭제는 훅차단→사용자 `!git branch -D`
-- ⚠️ 로컬 다수 세션 잔재 브랜치(claude/peaceful-ride-* 100개+)·**활성 worktree `session/*` 존재(건드리지 말 것)**
+## 이 세션 = 브레인스토밍·문서화만 (코드 변경/배포 없음)
+IA 편집기의 일러 JSX "선택→실행" 방식 심층 고찰 → 세션루프 UX 전반 재설계 spec 신규 작성 + 3차 검토 반영 + **Phase A0 PoC 산출물** 생성. **prod·에이전트·마이그 무변경.**
 
-## 완료 (prod 배포·검증, origin/main `a755c317`·deploy 5eae9fd9)
-| 기능 | 내용 |
-|------|------|
-| **#1 포털 상태 타임라인** | `portal.ts` 주문상세에 `order_status_history` timeline 반환(상태·시각만) + `portalOrders.js renderTimeline`(KST). 포털 shell.js 미로드→가드형 toKstDate/formatKST 이식(기존 출고일 UTC raw 버그도 교정) |
-| **#4 주문검색 품목명 확장** | `core.ts` 목록+count WHERE, `queries.ts` CSV에 `EXISTS(order_items.item_name LIKE)`. 재주문=검색→행클릭→복사(기존 copyOrder) |
-| **#7 배송추적 B안 spec** | `docs/superpowers/specs/2026-07-23-courier-tracking-smarttracker.md` (구현 대기) |
+## 산출물
+| 종류 | 경로 |
+|---|---|
+| **정본 spec** | `docs/superpowers/specs/2026-07-23-ia-palette-session-loop.md` (D1~D9·기능표 A/B/C/D·흐름·Phase·리스크) |
+| **A0 PoC** | `IllustratorAutomat/designer/poc-a0/` (a0-dock-palette.jsx·a0-roster.json·a0-canvas-probe.jsx·README-a0.md) — node --check 3/3 통과 |
+| **별건 task** | Task #1 = 사용자 하드 삭제(참조 0건 가드, FK 위험) — IA와 무관·미착수 |
 
-## 검증
-- typecheck OK · build OK · prod 필드마커('품목명') 실반영 · apex 302 · portal API 401 · 주요 5페이지 200
+## 확정 결정 (spec D1~D9 요약)
+- **D1 폼 = ScriptUI 도킹 팔레트**(네트워크 불요→HTTPS 명분 없음, 저리스크). CEP는 큐 UI 답답 시 승격만.
+- **D2 다중 디자인 = 반자동 큐**(사람 선택 + ExtractGroups 자동감지 '첫 제안 시드'). 혼합 컨테이너(마스크/아트보드/그룹)라 단독 자동은 '추출 부정확' 재발.
+- **D3 큐 교정 = 삭제·추가만**(병합/분할=네스팅 영역).
+- **D4 검토 = 일러 검토문서(디자인당 아트보드) + 확정 게이트**. 확정 시에만 EPS 배치 저장(프리즈 완화).
+- **D5 거래처 = 단일입력+상속**(가공 시 1회 자동완성→주문 상속, clients.id 해소).
+- **D6 대기물 = 작업(원본 파일 batch_key) 그룹핑 + "내 작업"=MES 로그인 유저(registered_by)**.
+- **D7 오퍼레이터 = 기존 카드/생산+/ship에 카드상태 대기열+Z:경로 얹기**(신규 화면 최소).
+- **D8 파일 = 건별 폴더 SSOT, 취소해도 유지, _출력 중복 제거(C 시)**.
+- **D9 성능 = 확정 후 배치 저장**.
 
-## 배포 회귀 근본해결 (★핵심)
-- **위험 감지**: `feat/dept-pnl`이 origin/main보다 **38커밋·122파일 뒤처짐**(보안픽스 #552/#553 등 미포함). 그대로 배포=대규모 회귀
-- **해결(superset)**: 미커밋 5파일 stash → `git switch -c <tmp> origin/main` → stash pop(4파일 base동일 clean·orders.ts는 내 1줄이 divergent 훅 밖이라 auto-merge) → **main 위 재타입체크·빌드**(stale 검증 무효화) → commit → `push origin HEAD:main`(ff) → `deploy:prod` → 필드마커 검증
-- **정리**: 체크아웃 main 이동 / 로컬 main의 미푸시 커밋 `b9015c22`(선명 32품목=잉여, origin에 `cad853a4`·`1150e7ec`로 더완전 반영)→`archive/sunmyung-b9015c22` tag 보존 후 main을 origin/main 정렬
-- 교훈 기록=[[feedback-multi-session-deploy]] "배포 前 `git rev-list --count HEAD..origin/main` 프리플라이트 게이트"
+## 판단 기준 (이 세션 근거)
+- 파일 선행 지배(가공 시 주문 대개 없음) → 연동은 가공→대기함→주문 프리필 방향(주문 선택 UI 폐기).
+- 자동 감지는 부정확(과거 헤드리스 폐기 사유) → 사람-루프 유지, 자동은 '시드'로만.
+- 정밀 검토는 일러 캔버스가 최선 → 전용 패널(CEP) 불요, ScriptUI로 충분.
+- 저리스크 우선(용준님 도착점) → A→C 병렬, D는 후속.
 
-## 판단 기준 (이 세션 결정)
-- 재주문=별도 포털 인박스 대신 **내부 주문페이지 검색(품목명 포함)→복사** 동선 (사용자 지시)
-- #7 데이터소스=경동택배 스마트택배 무료 조회 API(자동확정) + 대신화물 딥링크. 유료 통합솔루션 계약(기각)과 별개
-- b9015c22 force-reset 금지→tag 보존 후 정렬 (타 세션 작업 유실 방지 원칙)
+## 검토 3회 반영분 (spec에 모두 패치됨)
+- 1차 설계공백: 배치 검토 방식·"내 작업" 신원·거래처 client_id 해소.
+- 2차 코드결함 A~F: **검토문서 대지 한도(~577cm)→size-aware 순차 폴백**·**EPS 파일명 충돌→디자인 index**·**그룹핑 키=batch_key(≠memo, memo는 per-run 유니크 `mes-core.jsx:314`)**·배치 부분실패 멱등·**상주 도킹=Startup Scripts 설치**·registered_by=user id.
+- 3차 G~K: **원본 불가침(시드 감지는 read-only, ExtractGroups CMYK/아웃라인 `:216-228` 제외)**·**배치 흡수=order_item_id 매핑(`workbench.ts:1268`, bulk `:1252` 부적합)**·**브랜치 정합(mes-sheet P1a clobber 주의)**·NAS 타이밍·모드 분리(큐=단일출력).
 
-## 남은 작업 (다음 세션)
-1. **#7 착수조건=스마트택배 무료 조회 API key 발급** → P1(couriers.ts 상수·경동 delivery_method 추가·smartTracker service·스키마 마이그) → P2 폴링 cron·자동확정 → P3 UI·딥링크 → P4 POD
-2. **#2 알림톡 버튼 버그** — 착수 전 바로빌 KakaoTalk WSDL `<Button>` 스키마 + 카카오 등록 템플릿 버튼 상태 검증(코드만 추가 불가). → **#3 세금계산서 알림톡**(helpers.ts:282 stub) 연쇄
-3. **Tier2/3 백로그**: #5 단계별 자동알림톡·#6 온라인 교정승인(brainstorming 선행)·#8 임시저장/중복감지·#9 SSE·#10 후가공/봉제작지 시스템화·#11 부분출고·#12 큐ETA 자동재계산 → 정본 [[design-order-ship-workflow-gaps]]
-4. **idle 브랜치 정리**(선택): `!git branch -D deploy/portal-reorder-search feat/dept-pnl`
+## ⚠️ 주의사항
+- **ScriptUI 도킹은 미검증** — A0 PoC가 바로 그걸 검증(Go→A1 / No-go→CEP). 반드시 **디자이너 최신 일러**에서.
+- **한글 리터럴 = UTF-8 BOM 필수**(mes-core 관례). PoC는 회피 위해 한글을 roster.json에서 로드.
+- **브랜치**: 현 체크아웃 **main**(=origin/main 계열). mes-sheet(판짜기) P1a·크래시픽스(`31c88d00`)는 `session/ia-web-sunset` 워크트리에만 있고 **main 미머지**(실측 후 push 예정) → A-track은 **판짜기 무수정(런처만)** + 착수 전 정합.
+- **4인 MES 계정 매핑** — "내 작업" 성립 전제(용준님 계정 생성 완료했다 함, 매핑 확인은 구현 시).
+- spec·PoC는 **미커밋 상태**(untracked). 커밋 시 경로지정 add(타 세션 WIP 스윕 금지).
 
-## 이월 (이전 ui-p0 세션 미완 TODO, 2026-07-21)
-- P2 스윕: native date→js-fp 110곳·뱃지 아이콘 누락·"검색↔조회" 통일·다크모드 인라인 hex 345곳
-- 정본 md 재생성: design-token.md 타이포/간격/radius 드리프트·z-index 스케일·ds-sheet/ds-alert 미문서화
+## 다음 세션 TODO
+1. **A0 PoC 실행**(디자이너 최신 일러): README-a0.md 절차 ①~⑤ → **③ 도킹 Go/No-go 판정** + ④ 대지 한도 실측값 기록.
+2. Go → **Phase A1 착수**(worktree 격리): 팔레트 골격+거래처 자동완성+검토문서/확정게이트+저장 SSOT.
+3. No-go → CEP 승격으로 A1 재설계.
+4. (병렬) C 오퍼레이터 = 기존 생산/카드+/ship 확장 스코핑.
+5. 4인 MES 계정↔디자이너 역할 매핑 확인.
 
-## 주의
-- 다음 배포는 이 체크아웃이 `main`이라 stale-배포 회귀 구조적 방지. 단 **배포 前 `git fetch && git rev-list --count HEAD..origin/main`=0 확인** 습관화
-- PowerShell 검증: `npm run verify` (typecheck+build) / prod 스모크는 Playwright 로그인 필요
+## 검증/빌드 명령 (참고)
+- 코드 미변경이라 build 불요. spec/PoC만. (A1 착수 시) `npm run verify` → `npm run build && npm run smoke`.
+- PoC 문법: `node --check`(#target 제외) 통과 확인함.
