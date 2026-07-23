@@ -160,11 +160,16 @@ function mesA0_process() {
   var jobFolder = new Folder(MESA0_REGISTER_ROOT + '/' + folderName);
   if (!jobFolder.exists && !jobFolder.create()) return '{"ok":false,"err":"nofolder"}';
 
+  // 원본 선택을 클립보드로 복사(cross-doc duplicate가 CEP eval 컨텍스트서 0개 실패 → copy/paste 대체)
+  // srcDoc 활성·선택 유효 상태에서 먼저 복사(참조 stale 방지). 원본 불가침(복사만·무변경).
+  var copyErr = '';
+  try { app.activeDocument = srcDoc; srcDoc.selection = sel; app.copy(); } catch (eCopy) { copyErr = '' + eCopy; }
+
   var newDoc = app.documents.add(DocumentColorSpace.CMYK, (ub[2] - ub[0]) || 100, (ub[1] - ub[3]) || 100);
   var okAll = false, outlineFailed = false, epsName = null, diagItems = 0, normed = 0;
   try {
-    for (var di = 0; di < sel.length; di++) sel[di].duplicate(newDoc.layers[0], ElementPlacement.PLACEATEND);
     app.activeDocument = newDoc;
+    app.paste(); // 신규문서 중앙에 붙음(절대위치는 이후 정규화로 원점 이동)
 
     try { for (var ti = newDoc.textFrames.length - 1; ti >= 0; ti--) newDoc.textFrames[ti].createOutline(); }
     catch (eOl) { outlineFailed = true; }
@@ -186,7 +191,7 @@ function mesA0_process() {
     var db = mesA0_docUnion(newDoc);
     if (!db) { // 복제 실패/측정 불가 — 쓰레기 산출 대신 진단 반환
       try { newDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (eC0) {}
-      return '{"ok":false,"err":"noart","items":' + diagItems + ',"sel":' + sel.length + '}';
+      return '{"ok":false,"err":"noart","items":' + diagItems + ',"sel":' + sel.length + ',"copyErr":"' + mesA0_jsonEsc(copyErr) + '"}';
     }
     newDoc.artboards[0].artboardRect = [db[0], db[1], db[2], db[3]];
 

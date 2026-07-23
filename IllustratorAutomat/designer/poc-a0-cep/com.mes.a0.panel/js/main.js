@@ -265,7 +265,7 @@
           if (!r) { out('응답 파싱 실패:\n' + res, 'err'); return; }
           if (!r.ok) {
             var em = { noparams: 'params 없음', badparams: 'params 손상', nodoc: '열린 문서 없음', nosel: '객체를 선택하세요', nobounds: '크기 측정 불가', nofolder: 'Z: 등록폴더 생성 실패', noart: '디자인 측정 실패(복제 아트 없음)' };
-            var detail = (r.err === 'noart') ? ('\n(복제 아이템 ' + r.items + '개 · 선택 ' + r.sel + '개 — 선택/복제 진단)') : '';
+            var detail = (r.err === 'noart') ? ('\n(붙여넣기 아이템 ' + r.items + '개 · 선택 ' + r.sel + '개' + (r.copyErr ? (' · copy오류: ' + r.copyErr) : '') + ')') : '';
             out('가공 실패: ' + (em[r.err] || r.err) + detail, 'err');
             return;
           }
