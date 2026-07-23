@@ -273,11 +273,17 @@ function mesA0_process() {
             try { atf.textRange.characterAttributes.textFont = app.textFonts.getByName('MalgunGothic'); } catch (eFn) {} // 한글 폰트
             if (apos === 'top') atf.position = [bL + off5, (oT + bT) / 2 + fsz * 0.4];
             else if (apos === 'bottom') atf.position = [bL + off5, (bB + oB) / 2 + fsz * 0.4];
-            else { // left/right — 세로 밴드: 90도 회전 후 밴드 중앙·하단서 5cm
-              atf.rotate(90);
-              var gb = atf.geometricBounds, gw = gb[2] - gb[0], gh = gb[1] - gb[3];
+            else { // left/right — 세로 밴드 회전(밴드 중앙 정렬)
               var cx = (apos === 'left') ? ((bL + oL) / 2) : ((oR + bR) / 2);
-              atf.position = [cx - gw / 2, bB + off5 + gh];
+              if (apos === 'left') { // 좌측: 90도(아래→위 읽기), 하단 코너서 5cm
+                atf.rotate(90);
+                var gbl = atf.geometricBounds, gwl = gbl[2] - gbl[0], ghl = gbl[1] - gbl[3];
+                atf.position = [cx - gwl / 2, bB + off5 + ghl];
+              } else { // 우측: 180도 기준(= -90도, 위→아래 읽기), 상단 코너서 5cm
+                atf.rotate(-90);
+                var gbr = atf.geometricBounds, gwr = gbr[2] - gbr[0];
+                atf.position = [cx - gwr / 2, bT - off5];
+              }
             }
             try { atf.createOutline(); } catch (eAo) {} // RIP 안전: 아웃라인
           } catch (eAnn) {}
