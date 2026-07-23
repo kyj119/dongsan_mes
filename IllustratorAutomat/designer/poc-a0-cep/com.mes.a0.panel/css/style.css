@@ -1,0 +1,94 @@
+/* MES A0 CEP panel — minimal dark theme matching Illustrator UI */
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: #323232;
+  color: #d0d0d0;
+  font-family: "Malgun Gothic", "Segoe UI", -apple-system, sans-serif;
+  font-size: 12px;
+  overflow: auto;
+}
+
+.panel {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.title {
+  margin: 0 0 4px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ededed;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.row label {
+  min-width: 52px;
+  color: #b0b0b0;
+}
+
+select#worker {
+  flex: 1;
+  background: #444444;
+  color: #d0d0d0;
+  border: 1px solid #555555;
+  border-radius: 3px;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
+.saved {
+  color: #8ec5ff;
+  font-size: 11px;
+}
+
+.buttons {
+  gap: 6px;
+}
+
+button {
+  flex: 1;
+  background: #4a4a4a;
+  color: #e0e0e0;
+  border: 1px solid #5a5a5a;
+  border-radius: 3px;
+  padding: 6px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #565656;
+  border-color: #6e9fd8;
+}
+
+button:active {
+  background: #3a3a3a;
+}
+
+.out {
+  width: 100%;
+  min-height: 70px;
+  background: #262626;
+  border: 1px solid #4a4a4a;
+  border-radius: 3px;
+  padding: 6px 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 11px;
+  color: #b8e0a0;
+}
