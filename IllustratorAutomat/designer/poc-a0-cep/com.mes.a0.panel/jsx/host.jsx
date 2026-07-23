@@ -80,7 +80,7 @@ function mesA0_docUnion(doc) {
     if (R2 === null || b2[2] > R2) R2 = b2[2];
     if (B2 === null || b2[3] < B2) B2 = b2[3];
   }
-  return (L2 === null) ? [0, 100, 100, 0] : [L2, T2, R2, B2];
+  return (L2 === null) ? null : [L2, T2, R2, B2]; // null = 측정할 아이템 없음(폴백 100pt 산출 방지)
 }
 
 // ── 브릿지 API (ASCII in/out) ──
@@ -161,7 +161,7 @@ function mesA0_process() {
   if (!jobFolder.exists && !jobFolder.create()) return '{"ok":false,"err":"nofolder"}';
 
   var newDoc = app.documents.add(DocumentColorSpace.CMYK, (ub[2] - ub[0]) || 100, (ub[1] - ub[3]) || 100);
-  var okAll = false, outlineFailed = false, epsName = null;
+  var okAll = false, outlineFailed = false, epsName = null, diagItems = 0, normed = 0;
   try {
     for (var di = 0; di < sel.length; di++) sel[di].duplicate(newDoc.layers[0], ElementPlacement.PLACEATEND);
     app.activeDocument = newDoc;
@@ -171,7 +171,23 @@ function mesA0_process() {
     try { pfRemainingText = newDoc.textFrames.length; } catch (ePf1) {}
     try { pfLinkedImages = newDoc.placedItems.length; } catch (ePf2) {}
 
+    diagItems = newDoc.pageItems.length;
+    // 위치 정규화: 복제 아트를 원점 근처로 이동(원본 절대좌표·신규문서 캔버스 범위 무관) — top-level만 이동(중첩 이중이동 방지)
+    var pre = mesA0_docUnion(newDoc);
+    if (pre) {
+      var dx = -pre[0], dy = -pre[1];
+      if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01) {
+        for (var pn = 0; pn < newDoc.pageItems.length; pn++) {
+          var itn = newDoc.pageItems[pn];
+          try { if (itn.parent && itn.parent.typename === 'Layer') { itn.translate(dx, dy); normed++; } } catch (eTr) {}
+        }
+      }
+    }
     var db = mesA0_docUnion(newDoc);
+    if (!db) { // 복제 실패/측정 불가 — 쓰레기 산출 대신 진단 반환
+      try { newDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (eC0) {}
+      return '{"ok":false,"err":"noart","items":' + diagItems + ',"sel":' + sel.length + '}';
+    }
     newDoc.artboards[0].artboardRect = [db[0], db[1], db[2], db[3]];
 
     var workFile = new File(jobFolder.fsName + '/work.ai');
@@ -300,5 +316,6 @@ function mesA0_process() {
   return '{"ok":true,"folder":"' + mesA0_jsonEsc(folderName) + '","eps":' +
     (epsName ? ('"' + mesA0_jsonEsc(epsName) + '"') : 'null') +
     ',"w":' + (Math.round(realW * 10) / 10) + ',"h":' + (Math.round(realH * 10) / 10) +
+    ',"items":' + diagItems + ',"normed":' + normed +
     ',"mode":"' + mode + '","warn":"' + warn + '"}';
 }
