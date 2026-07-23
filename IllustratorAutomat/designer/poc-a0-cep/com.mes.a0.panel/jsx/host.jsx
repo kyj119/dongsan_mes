@@ -216,6 +216,15 @@ function mesA0_process() {
         if (finMargins.right > 0) foldLine(oR, oT, oR, oB);
       }
 
+      // 여백 포함 바깥 테두리 백색 선 (도련 대신 — RIP가 여백까지 출력영역으로 포함하도록)
+      var bL = oL - finMargins.left, bT = oT + finMargins.top, bR = oR + finMargins.right, bB = oB - finMargins.bottom;
+      var wCol = new CMYKColor(); wCol.cyan = 0; wCol.magenta = 0; wCol.yellow = 0; wCol.black = 0;
+      var borderRect = newDoc.pathItems.rectangle(bT, bL, bR - bL, bT - bB); // rectangle(top,left,width,height)
+      borderRect.filled = false;
+      borderRect.stroked = true;
+      borderRect.strokeColor = wCol;
+      borderRect.strokeWidth = 0.5;
+
       if (trim) {
         var ar = newDoc.artboards[0].artboardRect;
         var tL = ar[0], tT = ar[1], tR = ar[2], tB = ar[3];
