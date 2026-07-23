@@ -48,8 +48,10 @@
     var elMeas = $('meas'), elBtnMeasure = $('btnMeasure');
     var elQty = $('qty'), elScale = $('scale'), elPreset = $('preset');
     var elTrim = $('trim'), elClient = $('client');
-    var elPTop = $('pTop'), elPBottom = $('pBottom'), elPLeft = $('pLeft'), elPRight = $('pRight'), elPCorner = $('pCorner');
-    var elAnnot = $('annot'), elAnnotPos = $('annotPos');
+    var elPTop = $('pTop'), elPBottom = $('pBottom'), elPLeft = $('pLeft'), elPRight = $('pRight');
+    var elPcTL = $('pcTL'), elPcTR = $('pcTR'), elPcBL = $('pcBL'), elPcBR = $('pcBR');
+    var elAnnot = $('annot');
+    var elATop = $('aTop'), elABottom = $('aBottom'), elALeft = $('aLeft'), elARight = $('aRight');
     var elBtnProcess = $('btnProcess'), elOut = $('out'), elCfg = $('cfgStatus');
     if (!elWorker) { warnMissing('worker'); return; }
 
@@ -188,8 +190,10 @@
       }
       return { qty: elQty ? elQty.value : '1', scale: elScale ? elScale.value : '1',
         mode: modeValue(), trim: elTrim ? !!elTrim.checked : false, client: elClient ? elClient.value : '',
-        punch: { t: elPTop ? elPTop.value : '0', b: elPBottom ? elPBottom.value : '0', l: elPLeft ? elPLeft.value : '0', r: elPRight ? elPRight.value : '0', c: elPCorner ? !!elPCorner.checked : false },
-        annot: elAnnot ? elAnnot.value : '', annotPos: elAnnotPos ? elAnnotPos.value : 'top', fin: fin };
+        punch: { t: elPTop ? elPTop.value : '0', b: elPBottom ? elPBottom.value : '0', l: elPLeft ? elPLeft.value : '0', r: elPRight ? elPRight.value : '0',
+          ctl: elPcTL ? !!elPcTL.checked : false, ctr: elPcTR ? !!elPcTR.checked : false, cbl: elPcBL ? !!elPcBL.checked : false, cbr: elPcBR ? !!elPcBR.checked : false },
+        annot: elAnnot ? elAnnot.value : '',
+        annotPos: { t: elATop ? !!elATop.checked : false, b: elABottom ? !!elABottom.checked : false, l: elALeft ? !!elALeft.checked : false, r: elARight ? !!elARight.checked : false }, fin: fin };
     }
     function saveSettings() { try { window.localStorage.setItem(STORE_SETTINGS, JSON.stringify(gatherSettings())); } catch (e) {} }
     function restoreSettings() {
@@ -206,10 +210,18 @@
         if (elPBottom && st.punch.b != null) elPBottom.value = st.punch.b;
         if (elPLeft && st.punch.l != null) elPLeft.value = st.punch.l;
         if (elPRight && st.punch.r != null) elPRight.value = st.punch.r;
-        if (elPCorner) elPCorner.checked = !!st.punch.c;
+        if (elPcTL) elPcTL.checked = !!st.punch.ctl;
+        if (elPcTR) elPcTR.checked = !!st.punch.ctr;
+        if (elPcBL) elPcBL.checked = !!st.punch.cbl;
+        if (elPcBR) elPcBR.checked = !!st.punch.cbr;
       }
       if (elAnnot && st.annot != null) elAnnot.value = st.annot;
-      if (elAnnotPos && st.annotPos) elAnnotPos.value = st.annotPos;
+      if (st.annotPos) {
+        if (elATop) elATop.checked = !!st.annotPos.t;
+        if (elABottom) elABottom.checked = !!st.annotPos.b;
+        if (elALeft) elALeft.checked = !!st.annotPos.l;
+        if (elARight) elARight.checked = !!st.annotPos.r;
+      }
       if (st.mode) setMode(st.mode);
       if (st.fin) {
         for (var s = 0; s < SIDES.length; s++) {
@@ -246,8 +258,13 @@
         }
       }
       var pInt = function (el) { var n = parseInt(el ? el.value : '0', 10); return (isNaN(n) || n < 0) ? 0 : n; };
+      var client = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
       var keyword = elAnnot ? (elAnnot.value || '').replace(/^\s+|\s+$/g, '') : '';
-      var annotation = keyword ? (keyword + '-' + qty) : ''; // 키워드-수량(식별번호 자동은 큐 단계)
+      var annParts = [];
+      if (client) annParts.push(client);
+      if (keyword) annParts.push(keyword);
+      // 거래처-키워드-수량ea (식별번호 자동은 다중가공 큐 단계). 키워드 있을 때만 생성
+      var annotation = keyword ? (annParts.join('-') + '-' + qty + 'ea') : '';
       return {
         worker_name: elWorker.value || null,
         registered_by_id: null,   // MES user id 매핑은 B단계(§3.5 구현선행) — 현재 null
@@ -255,9 +272,12 @@
         client_id: null,
         qty: qty, scale_n: scaleN, mode: modeValue(),
         trim: elTrim ? !!elTrim.checked : false,
-        punch: { top: pInt(elPTop), bottom: pInt(elPBottom), left: pInt(elPLeft), right: pInt(elPRight), corners: elPCorner ? !!elPCorner.checked : false },
+        punch: {
+          top: pInt(elPTop), bottom: pInt(elPBottom), left: pInt(elPLeft), right: pInt(elPRight),
+          corners: { tl: elPcTL ? !!elPcTL.checked : false, tr: elPcTR ? !!elPcTR.checked : false, bl: elPcBL ? !!elPcBL.checked : false, br: elPcBR ? !!elPcBR.checked : false }
+        },
         annotation: annotation,
-        annot_pos: elAnnotPos ? elAnnotPos.value : 'top',
+        annot_pos: { top: elATop ? !!elATop.checked : false, bottom: elABottom ? !!elABottom.checked : false, left: elALeft ? !!elALeft.checked : false, right: elARight ? !!elARight.checked : false },
         finishing: finishing, order_item_id: null
       };
     }

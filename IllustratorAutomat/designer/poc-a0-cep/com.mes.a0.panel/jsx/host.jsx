@@ -133,9 +133,9 @@ function mesA0_process() {
   var sN = parseInt(P.scale_n, 10); if (isNaN(sN) || sN < 1) sN = 1;
   var mode = (P.mode === 'impose') ? 'impose' : ((P.mode === 'both') ? 'both' : 'single');
   var trim = !!P.trim;
-  var punch = P.punch || {}; // {top,bottom,left,right(개수), corners(bool)}
+  var punch = P.punch || {}; // {top,bottom,left,right(개수), corners:{tl,tr,bl,br}}
   var annotation = P.annotation ? String(P.annotation) : '';
-  var annotPos = P.annot_pos || 'top'; // top/bottom/left/right
+  var annotPos = P.annot_pos || {}; // {top,bottom,left,right} bool (다중)
   var fin = P.finishing || {};
   var finJson = {}, finMargins = {}, hasFinishing = false;
   for (var fs = 0; fs < MESA0_SIDES.length; fs++) {
@@ -228,51 +228,60 @@ function mesA0_process() {
       borderRect.strokeColor = wCol;
       borderRect.strokeWidth = 0.5;
 
-      // 펀칭(타공 마크): 상/하/좌/우 각 개수 폭·높이 비율분배 + 꼭짓점. 지름 1cm, 중심 테두리서 2cm
+      // 펀칭: 원본 디자인 기준(여백 무관) 상/하/좌/우 비율분배 + 꼭짓점 개별. 지름1cm·중심 디자인edge서 2cm·검정 꽉찬 원
       var iTop = parseInt(punch.top, 10) || 0, iBot = parseInt(punch.bottom, 10) || 0;
       var iLeft = parseInt(punch.left, 10) || 0, iRight = parseInt(punch.right, 10) || 0;
-      var wantCorners = !!punch.corners;
-      if (iTop || iBot || iLeft || iRight || wantCorners) {
+      var pcn = punch.corners || {};
+      if (iTop || iBot || iLeft || iRight || pcn.tl || pcn.tr || pcn.bl || pcn.br) {
         var kColP = new CMYKColor(); kColP.cyan = 0; kColP.magenta = 0; kColP.yellow = 0; kColP.black = 100;
         var PDIA = 10 * MESA0_PT_PER_MM / sN;   // 1cm
         var PIN = 20 * MESA0_PT_PER_MM / sN;    // 2cm(중심 이격)
         var pr = PDIA / 2;
-        var hx0 = bL + PIN, hx1 = bR - PIN, hy0 = bB + PIN, hy1 = bT - PIN;
+        var hx0 = oL + PIN, hx1 = oR - PIN, hy0 = oB + PIN, hy1 = oT - PIN; // 원본 디자인 경계 기준
         var holes = [], hi, ht;
-        for (hi = 0; hi < iTop; hi++) { ht = (iTop === 1) ? ((hx0 + hx1) / 2) : (hx0 + (hx1 - hx0) * hi / (iTop - 1)); holes.push([ht, bT - PIN]); }
-        for (hi = 0; hi < iBot; hi++) { ht = (iBot === 1) ? ((hx0 + hx1) / 2) : (hx0 + (hx1 - hx0) * hi / (iBot - 1)); holes.push([ht, bB + PIN]); }
-        for (hi = 0; hi < iLeft; hi++) { ht = (iLeft === 1) ? ((hy0 + hy1) / 2) : (hy0 + (hy1 - hy0) * hi / (iLeft - 1)); holes.push([bL + PIN, ht]); }
-        for (hi = 0; hi < iRight; hi++) { ht = (iRight === 1) ? ((hy0 + hy1) / 2) : (hy0 + (hy1 - hy0) * hi / (iRight - 1)); holes.push([bR - PIN, ht]); }
-        if (wantCorners) { holes.push([bL + PIN, bT - PIN]); holes.push([bR - PIN, bT - PIN]); holes.push([bL + PIN, bB + PIN]); holes.push([bR - PIN, bB + PIN]); }
+        for (hi = 0; hi < iTop; hi++) { ht = (iTop === 1) ? ((hx0 + hx1) / 2) : (hx0 + (hx1 - hx0) * hi / (iTop - 1)); holes.push([ht, oT - PIN]); }
+        for (hi = 0; hi < iBot; hi++) { ht = (iBot === 1) ? ((hx0 + hx1) / 2) : (hx0 + (hx1 - hx0) * hi / (iBot - 1)); holes.push([ht, oB + PIN]); }
+        for (hi = 0; hi < iLeft; hi++) { ht = (iLeft === 1) ? ((hy0 + hy1) / 2) : (hy0 + (hy1 - hy0) * hi / (iLeft - 1)); holes.push([oL + PIN, ht]); }
+        for (hi = 0; hi < iRight; hi++) { ht = (iRight === 1) ? ((hy0 + hy1) / 2) : (hy0 + (hy1 - hy0) * hi / (iRight - 1)); holes.push([oR - PIN, ht]); }
+        if (pcn.tl) holes.push([oL + PIN, oT - PIN]);
+        if (pcn.tr) holes.push([oR - PIN, oT - PIN]);
+        if (pcn.bl) holes.push([oL + PIN, oB + PIN]);
+        if (pcn.br) holes.push([oR - PIN, oB + PIN]);
         for (hi = 0; hi < holes.length; hi++) {
           var pel = newDoc.pathItems.ellipse(holes[hi][1] + pr, holes[hi][0] - pr, PDIA, PDIA);
-          pel.filled = false; pel.stroked = true; pel.strokeColor = kColP; pel.strokeWidth = 0.5;
+          pel.stroked = false; pel.filled = true; pel.fillColor = kColP; // 검정 꽉찬 원
         }
       }
 
-      // 주석: 선택 위치 여백 밴드에 검정 텍스트(첫글자 코너서 5cm). 상/하=가로, 좌/우=90도 회전
-      var annBand = (annotPos === 'top') ? finMargins.top : (annotPos === 'bottom') ? finMargins.bottom :
-        (annotPos === 'left') ? finMargins.left : finMargins.right;
-      if (annotation && annBand > 0.5) {
-        try {
-          var kColA = new CMYKColor(); kColA.cyan = 0; kColA.magenta = 0; kColA.yellow = 0; kColA.black = 100;
-          var off5 = 50 * MESA0_PT_PER_MM / sN;
-          var fsz = annBand * 0.5; if (fsz < 6) fsz = 6; if (fsz > 300) fsz = 300;
-          var atf = newDoc.textFrames.add();
-          atf.contents = annotation;
-          atf.textRange.characterAttributes.size = fsz;
-          atf.textRange.characterAttributes.fillColor = kColA;
-          try { atf.textRange.characterAttributes.textFont = app.textFonts.getByName('MalgunGothic'); } catch (eFn) {} // 한글 폰트
-          if (annotPos === 'top') atf.position = [bL + off5, (oT + bT) / 2 + fsz * 0.4];
-          else if (annotPos === 'bottom') atf.position = [bL + off5, (bB + oB) / 2 + fsz * 0.4];
-          else { // left/right — 세로 밴드: 90도 회전 후 밴드 중앙·하단서 5cm
-            atf.rotate(90);
-            var gb = atf.geometricBounds, gw = gb[2] - gb[0], gh = gb[1] - gb[3];
-            var cx = (annotPos === 'left') ? ((bL + oL) / 2) : ((oR + bR) / 2);
-            atf.position = [cx - gw / 2, bB + off5 + gh];
-          }
-          try { atf.createOutline(); } catch (eAo) {} // RIP 안전: 아웃라인
-        } catch (eAnn) {}
+      // 주석: 선택된 각 위치(상/하/좌/우 다중) 여백 밴드에 검정텍스트. 상/하=가로, 좌/우=90도 회전. 첫글자 코너서 5cm
+      if (annotation) {
+        var off5 = 50 * MESA0_PT_PER_MM / sN;
+        var apList = ['top', 'bottom', 'left', 'right'];
+        for (var api = 0; api < apList.length; api++) {
+          var apos = apList[api];
+          if (!annotPos[apos]) continue;
+          var annBand = (apos === 'top') ? finMargins.top : (apos === 'bottom') ? finMargins.bottom :
+            (apos === 'left') ? finMargins.left : finMargins.right;
+          if (annBand <= 0.5) continue; // 해당 여백 없으면 skip
+          try {
+            var kColA = new CMYKColor(); kColA.cyan = 0; kColA.magenta = 0; kColA.yellow = 0; kColA.black = 100;
+            var fsz = annBand * 0.5; if (fsz < 6) fsz = 6; if (fsz > 300) fsz = 300;
+            var atf = newDoc.textFrames.add();
+            atf.contents = annotation;
+            atf.textRange.characterAttributes.size = fsz;
+            atf.textRange.characterAttributes.fillColor = kColA;
+            try { atf.textRange.characterAttributes.textFont = app.textFonts.getByName('MalgunGothic'); } catch (eFn) {} // 한글 폰트
+            if (apos === 'top') atf.position = [bL + off5, (oT + bT) / 2 + fsz * 0.4];
+            else if (apos === 'bottom') atf.position = [bL + off5, (bB + oB) / 2 + fsz * 0.4];
+            else { // left/right — 세로 밴드: 90도 회전 후 밴드 중앙·하단서 5cm
+              atf.rotate(90);
+              var gb = atf.geometricBounds, gw = gb[2] - gb[0], gh = gb[1] - gb[3];
+              var cx = (apos === 'left') ? ((bL + oL) / 2) : ((oR + bR) / 2);
+              atf.position = [cx - gw / 2, bB + off5 + gh];
+            }
+            try { atf.createOutline(); } catch (eAo) {} // RIP 안전: 아웃라인
+          } catch (eAnn) {}
+        }
       }
 
       if (trim) {
