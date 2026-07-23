@@ -7,105 +7,119 @@
 </head>
 <body>
   <div class="panel">
-    <h1 class="title">MES 가공 <span id="ver" class="ver"></span></h1>
-
-    <div class="row">
-      <label for="worker">가공자</label>
-      <select id="worker"></select>
+    <div class="topbar">
+      <span class="title">MES 가공 <span id="ver" class="ver"></span></span>
     </div>
-    <div class="row"><span id="saved" class="saved">신원: (없음)</span></div>
-
-    <div class="sep"></div>
-
-    <div class="row">
-      <label>실측</label>
-      <span id="meas" class="meas">— 객체 선택 후 새로고침</span>
-      <button id="btnMeasure" type="button" class="mini">↻</button>
+    <div class="tabbar">
+      <button class="tab active" data-tab="proc" type="button">가공</button>
+      <button class="tab" data-tab="fin" type="button">후가공</button>
+      <button class="tab" data-tab="queue" type="button">큐</button>
     </div>
 
-    <div class="row">
-      <label for="qty">수량</label>
-      <input id="qty" type="text" value="1" class="short" />
-      <label for="scale" class="l2">배율</label>
-      <select id="scale">
-        <option value="1">1/1 (원본)</option>
-        <option value="2">1/2</option>
-        <option value="4">1/4</option>
-        <option value="5">1/5</option>
-        <option value="10">1/10</option>
-      </select>
+    <!-- ── 가공 탭 ── -->
+    <div class="tabpage" data-page="proc">
+      <div class="row">
+        <label for="worker">가공자</label>
+        <select id="worker"></select>
+      </div>
+      <div class="row"><span id="saved" class="saved">신원: (없음)</span></div>
+
+      <div class="sep"></div>
+
+      <div class="row">
+        <label>실측</label>
+        <span id="meas" class="meas">— 객체 선택 후 새로고침</span>
+        <button id="btnMeasure" type="button" class="mini">↻</button>
+      </div>
+      <div class="row">
+        <label for="qty">수량</label>
+        <input id="qty" type="text" value="1" class="short" />
+        <label for="scale" class="l2">배율</label>
+        <select id="scale">
+          <option value="1">1/1 (원본)</option>
+          <option value="2">1/2</option>
+          <option value="4">1/4</option>
+          <option value="5">1/5</option>
+          <option value="10">1/10</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>용도</label>
+        <label class="rad"><input type="radio" name="mode" value="single" checked /> 단건</label>
+        <label class="rad"><input type="radio" name="mode" value="impose" /> 모아찍기</label>
+        <label class="rad"><input type="radio" name="mode" value="both" /> 둘 다</label>
+      </div>
+      <div class="row">
+        <label for="client">거래처</label>
+        <input id="client" type="text" placeholder="(비우면 파일명)" class="grow" />
+      </div>
+
+      <div class="row buttons">
+        <button id="btnProcess" type="button" class="primary">단건 가공</button>
+      </div>
     </div>
 
-    <div class="row">
-      <label>용도</label>
-      <label class="rad"><input type="radio" name="mode" value="single" checked /> 단건</label>
-      <label class="rad"><input type="radio" name="mode" value="impose" /> 모아찍기</label>
-      <label class="rad"><input type="radio" name="mode" value="both" /> 둘 다</label>
+    <!-- ── 후가공 탭 ── -->
+    <div class="tabpage hidden" data-page="fin">
+      <div class="row">
+        <label for="preset">마감</label>
+        <select id="preset"><option value="">(직접 지정)</option></select>
+      </div>
+      <table class="fin">
+        <tr><td class="fl">상</td><td><select class="finM" data-side="top"></select></td>
+            <td><input class="finCm" data-side="top" type="text" /></td><td class="fu">cm</td></tr>
+        <tr><td class="fl">하</td><td><select class="finM" data-side="bottom"></select></td>
+            <td><input class="finCm" data-side="bottom" type="text" /></td><td class="fu">cm</td></tr>
+        <tr><td class="fl">좌</td><td><select class="finM" data-side="left"></select></td>
+            <td><input class="finCm" data-side="left" type="text" /></td><td class="fu">cm</td></tr>
+        <tr><td class="fl">우</td><td><select class="finM" data-side="right"></select></td>
+            <td><input class="finCm" data-side="right" type="text" /></td><td class="fu">cm</td></tr>
+      </table>
+      <div class="row">
+        <label class="rad"><input id="trim" type="checkbox" /> 돔보(재단마크)</label>
+      </div>
+      <div class="sep"></div>
+      <div class="row punchrow">
+        <label>펀칭</label>
+        <span class="unit">상</span><input id="pTop" type="text" value="0" class="tiny" />
+        <span class="unit">하</span><input id="pBottom" type="text" value="0" class="tiny" />
+        <span class="unit">좌</span><input id="pLeft" type="text" value="0" class="tiny" />
+        <span class="unit">우</span><input id="pRight" type="text" value="0" class="tiny" />
+      </div>
+      <div class="row punchrow">
+        <label>꼭짓점</label>
+        <label class="rad"><input id="pcTL" type="checkbox" /> 좌상</label>
+        <label class="rad"><input id="pcTR" type="checkbox" /> 우상</label>
+        <label class="rad"><input id="pcBL" type="checkbox" /> 좌하</label>
+        <label class="rad"><input id="pcBR" type="checkbox" /> 우하</label>
+      </div>
+      <div class="sep"></div>
+      <div class="row punchrow">
+        <label>주석</label>
+        <label class="rad"><input id="aTop" type="checkbox" /> 상</label>
+        <label class="rad"><input id="aBottom" type="checkbox" /> 하</label>
+        <label class="rad"><input id="aLeft" type="checkbox" /> 좌</label>
+        <label class="rad"><input id="aRight" type="checkbox" /> 우</label>
+      </div>
+      <div class="row">
+        <input id="annot" type="text" placeholder="키워드(한글) · 거래처·수량 자동결합" class="grow" />
+      </div>
     </div>
 
-    <div class="sep"></div>
-
-    <div class="row">
-      <label for="preset">마감</label>
-      <select id="preset"><option value="">(직접 지정)</option></select>
-    </div>
-    <table class="fin">
-      <tr><td class="fl">상</td><td><select class="finM" data-side="top"></select></td>
-          <td><input class="finCm" data-side="top" type="text" /></td><td class="fu">cm</td></tr>
-      <tr><td class="fl">하</td><td><select class="finM" data-side="bottom"></select></td>
-          <td><input class="finCm" data-side="bottom" type="text" /></td><td class="fu">cm</td></tr>
-      <tr><td class="fl">좌</td><td><select class="finM" data-side="left"></select></td>
-          <td><input class="finCm" data-side="left" type="text" /></td><td class="fu">cm</td></tr>
-      <tr><td class="fl">우</td><td><select class="finM" data-side="right"></select></td>
-          <td><input class="finCm" data-side="right" type="text" /></td><td class="fu">cm</td></tr>
-    </table>
-    <div class="row">
-      <label class="rad"><input id="trim" type="checkbox" /> 돔보(재단마크)</label>
-    </div>
-    <div class="row punchrow">
-      <label>펀칭</label>
-      <span class="unit">상</span><input id="pTop" type="text" value="0" class="tiny" />
-      <span class="unit">하</span><input id="pBottom" type="text" value="0" class="tiny" />
-      <span class="unit">좌</span><input id="pLeft" type="text" value="0" class="tiny" />
-      <span class="unit">우</span><input id="pRight" type="text" value="0" class="tiny" />
-    </div>
-    <div class="row punchrow">
-      <label>꼭짓점</label>
-      <label class="rad"><input id="pcTL" type="checkbox" /> 좌상</label>
-      <label class="rad"><input id="pcTR" type="checkbox" /> 우상</label>
-      <label class="rad"><input id="pcBL" type="checkbox" /> 좌하</label>
-      <label class="rad"><input id="pcBR" type="checkbox" /> 우하</label>
-    </div>
-    <div class="row punchrow">
-      <label>주석</label>
-      <label class="rad"><input id="aTop" type="checkbox" /> 상</label>
-      <label class="rad"><input id="aBottom" type="checkbox" /> 하</label>
-      <label class="rad"><input id="aLeft" type="checkbox" /> 좌</label>
-      <label class="rad"><input id="aRight" type="checkbox" /> 우</label>
-    </div>
-    <div class="row">
-      <input id="annot" type="text" placeholder="키워드(한글) · 거래처·수량 자동결합" class="grow" />
+    <!-- ── 큐 탭 ── -->
+    <div class="tabpage hidden" data-page="queue">
+      <div class="row buttons">
+        <button id="btnQueueAdd" type="button">＋ 개별</button>
+        <button id="btnQueueBatch" type="button">＋ 묶음분리</button>
+      </div>
+      <div id="queueBox" class="queuebox"></div>
+      <div class="row buttons">
+        <button id="btnConfirm" type="button" class="primary" disabled>일괄 확정 (0)</button>
+        <button id="btnQueueClear" type="button">비우기</button>
+      </div>
     </div>
 
-    <div class="sep"></div>
-
-    <div class="row">
-      <label for="client">거래처</label>
-      <input id="client" type="text" placeholder="(비우면 파일명)" class="grow" />
-    </div>
-
-    <div class="row buttons">
-      <button id="btnQueueAdd" type="button">＋ 개별</button>
-      <button id="btnQueueBatch" type="button">＋ 묶음분리</button>
-      <button id="btnProcess" type="button" class="primary">단건 가공</button>
-    </div>
-
-    <div id="queueBox" class="queuebox"></div>
-    <div class="row buttons">
-      <button id="btnConfirm" type="button" class="primary" disabled>일괄 확정 (0)</button>
-      <button id="btnQueueClear" type="button">비우기</button>
-    </div>
-
+    <!-- 항상 표시 -->
     <div class="row"><div id="out" class="out"></div></div>
     <div class="row"><span id="cfgStatus" class="cfg">config…</span></div>
   </div>

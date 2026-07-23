@@ -55,6 +55,17 @@
   document.addEventListener('DOMContentLoaded', function () {
     var csi = new CSInterface();
 
+    // ── 탭 전환 ──
+    var tabs = document.getElementsByClassName('tab');
+    var pages = document.getElementsByClassName('tabpage');
+    for (var t = 0; t < tabs.length; t++) {
+      tabs[t].addEventListener('click', function () {
+        var name = this.getAttribute('data-tab');
+        for (var a = 0; a < tabs.length; a++) tabs[a].className = (tabs[a].getAttribute('data-tab') === name) ? 'tab active' : 'tab';
+        for (var b = 0; b < pages.length; b++) pages[b].className = (pages[b].getAttribute('data-page') === name) ? 'tabpage' : 'tabpage hidden';
+      });
+    }
+
     var elWorker = $('worker'), elSaved = $('saved'), elVer = $('ver');
     var elMeas = $('meas'), elBtnMeasure = $('btnMeasure');
     var elQty = $('qty'), elScale = $('scale'), elPreset = $('preset');
@@ -336,12 +347,24 @@
           var html = '';
           for (var i = 0; i < queue.length; i++) {
             var e = queue[i];
-            var lbl = (e.client || '(파일명)') + (e.keyword ? (' · ' + e.keyword) : '') + ' · ' + e.w + '×' + e.h + 'cm ×' + e.qty;
-            html += '<div class="qrow"><span class="qn">#' + (i + 1) + '</span><span class="qlbl">' + escHtml(lbl) + '</span><button class="qdel" data-i="' + i + '">✕</button></div>';
+            var meta = e.w + '×' + e.h + 'cm ×' + e.qty + (e.client ? (' · ' + e.client) : '');
+            html += '<div class="qrow"><span class="qn">#' + (i + 1) + '</span>' +
+              '<input class="qkw" data-i="' + i + '" type="text" value="' + escHtml(e.keyword || '') + '" placeholder="키워드" />' +
+              '<span class="qmeta">' + escHtml(meta) + '</span>' +
+              '<button class="qdel" data-i="' + i + '">✕</button></div>';
           }
           elQueueBox.innerHTML = html;
           var dels = elQueueBox.getElementsByClassName('qdel');
           for (var d = 0; d < dels.length; d++) dels[d].addEventListener('click', function () { queueRemove(parseInt(this.getAttribute('data-i'), 10)); });
+          var kws = elQueueBox.getElementsByClassName('qkw');
+          for (var w2 = 0; w2 < kws.length; w2++) kws[w2].addEventListener('change', function () {
+            var ix = parseInt(this.getAttribute('data-i'), 10);
+            if (ix >= 0 && ix < queue.length) {
+              var v = this.value.replace(/^\s+|\s+$/g, '');
+              queue[ix].keyword = v;
+              if (queue[ix].params) queue[ix].params.keyword = v; // 호스트 조합용 동기화
+            }
+          });
         }
       }
       if (elBtnConfirm) { elBtnConfirm.textContent = '일괄 확정 (' + queue.length + ')'; elBtnConfirm.disabled = queue.length === 0; }
