@@ -48,8 +48,16 @@ IA 편집기의 일러 JSX "선택→실행" 방식 심층 고찰 → 세션루�
 - ①② 데이터계층=mes-core 동일 패턴 저리스크(MCP Window 인스턴스화 시 COM 끊김 확인 → 실 도킹은 디자이너 몫 확정).
 - **남은 = ③ 상주 도킹 Go/No-go만** — 디자이너 최신 일러에서 스텁 복사→재시작→육안. 자율 불가.
 
+## A0 → CEP 승격 (2026-07-23 이어서, 실기 검증 완료)
+- **③ ScriptUI 도킹 = No-go 확정**: 자동실행·표시는 성공(단 **`#targetengine` 필수** + **Startup 폴더=설치 디렉터리 루트**, Plug-ins 하위 아님 = 경로버그 확정)했으나, **ScriptUI palette가 일러 네이티브 도킹 실패**(플로팅·창 뒤로 감·조작난). 실기(일러 2026/30.3.0)에서 사용자 직접 확인.
+- **→ CEP 승격 실행(spec §8)**: `IllustratorAutomat/designer/poc-a0-cep/com.mes.a0.panel/` — **네이티브 도킹 CEP 패널(A1 사용가능 수준)**. 에이전트가 스켈레톤 생성(`69b61ac1`)→**mes-core 실처리 연결로 업그레이드**(가공자 신원·마감/프리셋(Z config)·실측·수량/배율/용도·돔보·거래처·**[가공 실행]→work.ai+EPS+thumb+manifest**). host.jsx=mes-core 전 로직 포팅, **manifest 스키마 동일**(+worker/source). 한글=cep.fs(UTF-8)·evalScript는 ASCII만.
+- **설치 완료(이 PC)**: `%APPDATA%\Adobe\CEP\extensions\com.mes.a0.panel\` + PlayerDebugMode CSXS 10/11/12=1. 일러 2026=CEP 12(CSXS.12). 검증=node --check 3/3·XML 유효.
+- **⚠️ 미검증**: 패널 실기동(Window>Extensions>MES A0 Panel)·네이티브 도킹·실 가공 E2E(한글 인코딩·EPS 규약명·ingest source='cep')는 **일러 재시작 후 사용자/디자이너 확인 필요**(MCP는 CEP UI 검증 불가).
+
 ## 다음 세션 TODO
-1. **A0 ③ 도킹만 실행**(디자이너 최신 일러): `mes-a0-startup.jsx` 경로 1줄 확인→`Plug-ins\Startup Scripts\` 복사→재시작→**도킹 Go/No-go**(④는 완료). ①②는 그때 육안 병행.
+1. **CEP 패널 실기 테스트**(일러 재시작): Window>Extensions>MES A0 Panel → 도킹 드래그 → 가공자 선택 → 객체 선택·실측 → [가공 실행] → Z: 산출물+대기함 E2E. 판정 Go→A1 지속.
+2. Go 시 A1 잔여: **검토문서(아트보드)+확정게이트**·**거래처 자동완성**(clients config 재도입)·**가공자↔MES user id 매핑**(registered_by_id).
+3. No-go/이슈 시: `.debug` 포트 8888(Chrome localhost:8888)로 콘솔 디버그.
 2. Go → **Phase A1 착수**(worktree 격리): 팔레트 골격+거래처 자동완성+검토문서/확정게이트+저장 SSOT.
 3. No-go → CEP 승격으로 A1 재설계.
 4. (병렬) C 오퍼레이터 = 기존 생산/카드+/ship 확장 스코핑.

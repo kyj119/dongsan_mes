@@ -8,8 +8,9 @@
 > - **④ 대지 한도 = 577cm 확정**(578cm FAIL, `documents.add` 경로). spec §6 "~577cm/227in" 확증.
 > - 원본 `a0-canvas-probe.jsx`가 **200cm를 오보고**하던 방법론 결함 발견·수정(모서리 고정→documents.add). ⇒ 검토문서 생성기는 작은 기본문서 리사이즈 금지, **목표크기로 문서 생성** 필수.
 > - ①② 데이터 계층(한글 roster 로드·로컬 영속)은 mes-core와 동일 검증 패턴이라 저리스크(MCP는 Window 인스턴스화에서 COM 끊김 → 실 도킹은 어차피 디자이너 몫).
-> - **★핵심 quirk 발견(2026-07-23)**: ScriptUI **palette**는 **`#targetengine "MES_A0"` 없으면 스크립트 종료 시 파괴돼 즉시 사라짐**(startup 로드/Ctrl+F12 모두 아무것도 안 뜸). 팔레트 본체·스텁 양쪽 최상단에 지시자 추가 + `$.global` 참조 유지로 해결. → A1 팔레트 구현의 필수 전제.
-> - **남은 = ③ 상주 도킹 Go/No-go** — 이건 반드시 디자이너 일러 재시작으로만 판정 가능(아래 절차).
+> - **★핵심 quirk 발견(2026-07-23)**: ScriptUI **palette**는 **`#targetengine "MES_A0"` 없으면 스크립트 종료 시 파괴돼 즉시 사라짐**(startup 로드/Ctrl+F12 모두 아무것도 안 뜸). 팔레트 본체·스텁 양쪽 최상단에 지시자 추가 + `$.global` 참조 유지로 해결.
+> - **★Startup 경로 버그 확정**: 자동실행 폴더는 **설치 디렉터리 루트 `Startup Scripts\`**(Plug-ins 하위 아님). Plug-ins 하위에 두면 실행 안 됨(디버그 alert조차 미발화로 확인).
+> - **★③ 상주 도킹 = No-go(2026-07-23)**: 루트 Startup으로 자동실행·팔레트 표시는 성공했으나 **ScriptUI palette가 일러 내부 네이티브 도킹 실패**(플로팅·창 뒤로 감·조작 곤란). → spec §8 **CEP 승격 실행**. 후속 정본 = `../poc-a0-cep/`(네이티브 도킹 CEP 패널, mes-core 처리 연결).
 
 ## 파일
 | 파일 | 용도 |
@@ -31,7 +32,7 @@
 
 ### ③ 상주 도킹 (핵심 — Startup Scripts 모델)
 > ScriptUI 팔레트는 **Startup Scripts 폴더에서 로드돼야** 일러 UI에 도킹된다(F키/Other Script 실행 시엔 플로팅).
-1. 제공된 **`mes-a0-startup.jsx`**(이 폴더) 를 일러 설치 폴더의 `Plug-ins\Startup Scripts\` 에 복사.
+1. 제공된 **`mes-a0-startup.jsx`**(이 폴더) 를 **일러 설치 디렉터리 루트**의 `Startup Scripts\` 에 복사. ⚠️ **`Plug-ins\` 하위 아님**(Adobe 공식: 설치 디렉터리 직하에 폴더 생성) — 예: `C:\Program Files\Adobe\Adobe Illustrator 2026\Startup Scripts\`.
    - 스텁 안 `jsxPath` 1줄만 이 폴더의 실제 절대경로로 수정(이미 로컬 경로 기본값 있음).
    - `File.exists` 가드 내장(Z: 미마운트 시 조용히 skip, spec §6 리스크 J).
    - (NAS 정본 검증까지 하려면 스텁 안 주석대로 `Z:\DESIGNS\IA-등록\_scripts\...` 경로로 교체 → ⑤)

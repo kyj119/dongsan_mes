@@ -1,83 +1,284 @@
 /**
- * MES A0 CEP panel PoC — main.js
- * Roster dropdown + localStorage persistence + two test buttons wired to jsx/host.jsx.
+ * MES A0 CEP panel — main.js (A1 usable: mes-core 처리 파이프라인 연결)
+ * 한글: config는 cep.fs(UTF-8) 우선 + host 폴백, params는 cep.fs로 temp(ASCII경로)에 UTF-8 기록.
+ * evalScript 인자/반환은 ASCII만 → 브릿지 한글 깨짐 회피.
  */
 (function () {
   'use strict';
 
   var ROSTER = ['인호동', '김보연', '정소은', '김영주'];
-  var STORAGE_KEY = 'mes_a0_worker';
+  var STORE_WORKER = 'mes_a0_worker';
+  var STORE_SETTINGS = 'mes_a0_settings';
+  var CONFIG_PATH = 'Z:/DESIGNS/IA-등록/_config/config.json';
+  var SIDES = ['top', 'bottom', 'left', 'right'];
+  var UTF8 = (window.cep && window.cep.encoding && window.cep.encoding.UTF8) ? window.cep.encoding.UTF8 : 'UTF-8';
+
+  var methods = [];   // [{name, margin_cm}]
+  var presets = [];   // [{name, config(obj)}]
+
+  function $(id) { return document.getElementById(id); }
+  function warnMissing(id) { console.warn('[mes-a0-cep] #' + id + ' not found'); }
+
+  // ── cep.fs helpers (guarded) ──
+  function cepReadUtf8(path) {
+    if (!(window.cep && window.cep.fs)) return null;
+    try {
+      var r = window.cep.fs.readFile(path, UTF8);
+      if (r && r.err === 0 && r.data) return r.data;
+    } catch (e) { console.warn('[mes-a0-cep] cep.fs.readFile fail', e); }
+    return null;
+  }
+  function cepWriteUtf8(path, data) {
+    if (!(window.cep && window.cep.fs)) return false;
+    try {
+      var r = window.cep.fs.writeFile(path, data, UTF8);
+      return !!(r && r.err === 0);
+    } catch (e) { console.warn('[mes-a0-cep] cep.fs.writeFile fail', e); return false; }
+  }
+
+  function marginOf(name) {
+    for (var i = 0; i < methods.length; i++) if (methods[i].name === name) return methods[i].margin_cm || 0;
+    return 0;
+  }
 
   document.addEventListener('DOMContentLoaded', function () {
-    var csInterface = new CSInterface();
+    var csi = new CSInterface();
 
-    var workerSelect = document.getElementById('worker');
-    var savedLabel = document.getElementById('saved');
-    var btnProcess = document.getElementById('btnProcess');
-    var btnSheet = document.getElementById('btnSheet');
-    var outEl = document.getElementById('out');
+    var elWorker = $('worker'), elSaved = $('saved'), elVer = $('ver');
+    var elMeas = $('meas'), elBtnMeasure = $('btnMeasure');
+    var elQty = $('qty'), elScale = $('scale'), elPreset = $('preset');
+    var elTrim = $('trim'), elClient = $('client');
+    var elBtnProcess = $('btnProcess'), elOut = $('out'), elCfg = $('cfgStatus');
+    if (!elWorker) { warnMissing('worker'); return; }
 
-    if (!workerSelect) { console.warn('[mes-a0-cep] #worker not found'); return; }
-    if (!savedLabel) { console.warn('[mes-a0-cep] #saved not found'); }
-    if (!btnProcess) { console.warn('[mes-a0-cep] #btnProcess not found'); }
-    if (!btnSheet) { console.warn('[mes-a0-cep] #btnSheet not found'); }
-    if (!outEl) { console.warn('[mes-a0-cep] #out not found'); }
+    var finM = document.getElementsByClassName('finM'); // method selects
+    var finCm = document.getElementsByClassName('finCm');
 
-    // populate roster
+    function out(t, cls) { if (elOut) { elOut.textContent = t; elOut.className = 'out' + (cls ? ' ' + cls : ''); } }
+    function setCfg(t) { if (elCfg) elCfg.textContent = t; }
+
+    // ── 버전 ──
+    csi.evalScript('mesA0_ping()', function (v) { if (elVer) elVer.textContent = v ? ('· ' + v) : '· (host?)'; });
+
+    // ── 가공자 roster + 영속 ──
     for (var i = 0; i < ROSTER.length; i++) {
-      var opt = document.createElement('option');
-      opt.value = ROSTER[i];
-      opt.textContent = ROSTER[i];
-      workerSelect.appendChild(opt);
+      var o = document.createElement('option'); o.value = ROSTER[i]; o.textContent = ROSTER[i]; elWorker.appendChild(o);
     }
-
-    function updateSavedLabel(name) {
-      if (!savedLabel) return;
-      savedLabel.textContent = '저장됨: ' + (name || '(없음)');
-    }
-
-    // restore persisted selection
-    var stored = null;
-    try {
-      stored = window.localStorage.getItem(STORAGE_KEY);
-    } catch (e) {
-      console.warn('[mes-a0-cep] localStorage read failed', e);
-    }
-    if (stored && ROSTER.indexOf(stored) !== -1) {
-      workerSelect.value = stored;
-      updateSavedLabel(stored);
-    } else {
-      updateSavedLabel(workerSelect.value);
-    }
-
-    workerSelect.addEventListener('change', function () {
-      var name = workerSelect.value;
-      try {
-        window.localStorage.setItem(STORAGE_KEY, name);
-      } catch (e) {
-        console.warn('[mes-a0-cep] localStorage write failed', e);
-      }
-      updateSavedLabel(name);
+    var storedW = null;
+    try { storedW = window.localStorage.getItem(STORE_WORKER); } catch (e) {}
+    if (storedW && ROSTER.indexOf(storedW) !== -1) elWorker.value = storedW;
+    function showSaved() { if (elSaved) elSaved.textContent = '신원: ' + (elWorker.value || '(없음)'); }
+    showSaved();
+    elWorker.addEventListener('change', function () {
+      try { window.localStorage.setItem(STORE_WORKER, elWorker.value); } catch (e) {}
+      showSaved();
     });
 
-    function writeOut(text) {
-      if (!outEl) return;
-      outEl.textContent = text;
+    // ── 마감 method 셀렉트 채우기 ──
+    function fillMethodSelects() {
+      for (var s = 0; s < finM.length; s++) {
+        var sel = finM[s];
+        sel.innerHTML = '';
+        var none = document.createElement('option'); none.value = ''; none.textContent = '없음'; sel.appendChild(none);
+        for (var m = 0; m < methods.length; m++) {
+          var op = document.createElement('option'); op.value = methods[m].name; op.textContent = methods[m].name; sel.appendChild(op);
+        }
+        // method 선택 시 cm 자동채움(비어있을 때만)
+        sel.onchange = (function (side) {
+          return function () {
+            var cmEl = cmInput(side);
+            var mv = this.value;
+            if (mv && cmEl && cmEl.value === '') cmEl.value = String(marginOf(mv));
+            if (!mv && cmEl) cmEl.value = '';
+          };
+        })(sel.getAttribute('data-side'));
+      }
+    }
+    function cmInput(side) {
+      for (var i = 0; i < finCm.length; i++) if (finCm[i].getAttribute('data-side') === side) return finCm[i];
+      return null;
+    }
+    function methodSelect(side) {
+      for (var i = 0; i < finM.length; i++) if (finM[i].getAttribute('data-side') === side) return finM[i];
+      return null;
     }
 
-    if (btnProcess) {
-      btnProcess.addEventListener('click', function () {
-        var selected = workerSelect.value;
-        csInterface.evalScript('mesA0_getDocInfo()', function (result) {
-          writeOut('process OK\nworker=' + selected + '\ndoc=' + result);
+    // ── 프리셋 채우기 + 적용 ──
+    function fillPresets() {
+      if (!elPreset) return;
+      elPreset.innerHTML = '';
+      var d = document.createElement('option'); d.value = ''; d.textContent = '(직접 지정)'; elPreset.appendChild(d);
+      for (var p = 0; p < presets.length; p++) {
+        var op = document.createElement('option'); op.value = presets[p].name; op.textContent = presets[p].name; elPreset.appendChild(op);
+      }
+      elPreset.onchange = function () {
+        var name = elPreset.value;
+        if (!name) return;
+        var pr = null;
+        for (var i = 0; i < presets.length; i++) if (presets[i].name === name) { pr = presets[i]; break; }
+        if (!pr || !pr.config) return;
+        for (var s = 0; s < SIDES.length; s++) {
+          var side = SIDES[s];
+          var mName = pr.config[side] || '';
+          var sel = methodSelect(side), cmEl = cmInput(side);
+          if (sel) sel.value = mName;
+          if (cmEl) cmEl.value = mName ? String(marginOf(mName)) : '';
+        }
+      };
+    }
+
+    // ── config 로드 (cep.fs 우선 → host 폴백) ──
+    function applyConfig(text) {
+      var ok = false;
+      try {
+        var root = JSON.parse(text);
+        var data = (root && root.data) ? root.data : root;
+        methods = (data && data.methods) ? data.methods : [];
+        var rawPresets = (data && data.presets) ? data.presets : [];
+        presets = [];
+        for (var i = 0; i < rawPresets.length; i++) {
+          var cfg = {};
+          try { cfg = JSON.parse(rawPresets[i].config); } catch (e) { cfg = {}; }
+          presets.push({ name: rawPresets[i].name, config: cfg });
+        }
+        ok = true;
+      } catch (e) { console.warn('[mes-a0-cep] config parse fail', e); }
+      fillMethodSelects();
+      fillPresets();
+      setCfg(ok ? ('config ✓ 마감 ' + methods.length + '종 · 프리셋 ' + presets.length) : 'config 파싱 실패 — 마감 수동 입력');
+      restoreSettings();
+    }
+    (function loadConfig() {
+      var text = cepReadUtf8(CONFIG_PATH);
+      if (text) { applyConfig(text); return; }
+      // 폴백: host(ExtendScript)로 한글경로 읽기
+      csi.evalScript('mesA0_config()', function (res) {
+        if (res && res.length) applyConfig(res);
+        else { methods = []; presets = []; fillMethodSelects(); fillPresets(); setCfg('config 없음(Z: 미마운트?) — 마감 수동 입력'); }
+      });
+    })();
+
+    // ── 실측 ──
+    function refreshMeasure(cb) {
+      csi.evalScript('mesA0_measure()', function (res) {
+        var r = null; try { r = JSON.parse(res); } catch (e) {}
+        if (r && r.ok) {
+          var n = parseInt(elScale ? elScale.value : '1', 10) || 1;
+          var txt = r.w + ' × ' + r.h + ' cm' + (r.n > 1 ? (' · ' + r.n + '개') : '');
+          if (n > 1) txt += '  → 실물 ' + (Math.round(r.w * n * 10) / 10) + ' × ' + (Math.round(r.h * n * 10) / 10);
+          if (elMeas) elMeas.textContent = txt;
+        } else {
+          var err = r ? r.err : 'nohost';
+          if (elMeas) elMeas.textContent = (err === 'nodoc') ? '열린 문서 없음' : (err === 'nosel') ? '객체를 선택하세요' : '측정 불가(' + err + ')';
+        }
+        if (typeof cb === 'function') cb();
+      });
+    }
+    if (elBtnMeasure) elBtnMeasure.addEventListener('click', function () { refreshMeasure(); });
+    if (elScale) elScale.addEventListener('change', function () { refreshMeasure(); });
+
+    // ── 설정 영속(직전값 기억) ──
+    function gatherSettings() {
+      var fin = {};
+      for (var s = 0; s < SIDES.length; s++) {
+        var sel = methodSelect(SIDES[s]), cmEl = cmInput(SIDES[s]);
+        fin[SIDES[s]] = { m: sel ? sel.value : '', cm: cmEl ? cmEl.value : '' };
+      }
+      return { qty: elQty ? elQty.value : '1', scale: elScale ? elScale.value : '1',
+        mode: modeValue(), trim: elTrim ? !!elTrim.checked : false, client: elClient ? elClient.value : '', fin: fin };
+    }
+    function saveSettings() { try { window.localStorage.setItem(STORE_SETTINGS, JSON.stringify(gatherSettings())); } catch (e) {} }
+    function restoreSettings() {
+      var raw = null; try { raw = window.localStorage.getItem(STORE_SETTINGS); } catch (e) {}
+      if (!raw) return;
+      var st = null; try { st = JSON.parse(raw); } catch (e) { return; }
+      if (!st) return;
+      if (elQty && st.qty) elQty.value = st.qty;
+      if (elScale && st.scale) elScale.value = st.scale;
+      if (elTrim) elTrim.checked = !!st.trim;
+      if (elClient && st.client) elClient.value = st.client;
+      if (st.mode) setMode(st.mode);
+      if (st.fin) {
+        for (var s = 0; s < SIDES.length; s++) {
+          var f = st.fin[SIDES[s]]; if (!f) continue;
+          var sel = methodSelect(SIDES[s]), cmEl = cmInput(SIDES[s]);
+          if (sel && f.m) sel.value = f.m;
+          if (cmEl && f.cm != null) cmEl.value = f.cm;
+        }
+      }
+    }
+    function modeValue() {
+      var rs = document.getElementsByName('mode');
+      for (var i = 0; i < rs.length; i++) if (rs[i].checked) return rs[i].value;
+      return 'single';
+    }
+    function setMode(v) {
+      var rs = document.getElementsByName('mode');
+      for (var i = 0; i < rs.length; i++) rs[i].checked = (rs[i].value === v);
+    }
+
+    // ── 가공 실행 ──
+    function gatherParams() {
+      var qty = parseInt(elQty ? elQty.value : '1', 10); if (isNaN(qty) || qty < 1) qty = 1;
+      var scaleN = parseInt(elScale ? elScale.value : '1', 10); if (isNaN(scaleN) || scaleN < 1) scaleN = 1;
+      var finishing = {};
+      for (var s = 0; s < SIDES.length; s++) {
+        var side = SIDES[s];
+        var sel = methodSelect(side), cmEl = cmInput(side);
+        var m = sel ? sel.value : '';
+        if (m) {
+          var cm = parseFloat(cmEl ? cmEl.value : '');
+          if (isNaN(cm)) cm = marginOf(m);
+          finishing[side] = m; finishing[side + '_cm'] = cm;
+        }
+      }
+      return {
+        worker_name: elWorker.value || null,
+        registered_by_id: null,   // MES user id 매핑은 B단계(§3.5 구현선행) — 현재 null
+        client_name: elClient ? (elClient.value || '') : '',
+        client_id: null,
+        qty: qty, scale_n: scaleN, mode: modeValue(),
+        trim: elTrim ? !!elTrim.checked : false,
+        finishing: finishing, order_item_id: null
+      };
+    }
+    var warnKo = { R: '원본 RGB→CMYK 변환', T: '아웃라인 안 된 텍스트', L: '링크(미임베드) 이미지', O: '아웃라인 일부 실패' };
+    function warnText(w) {
+      if (!w) return '';
+      var out = [];
+      for (var i = 0; i < w.length; i++) if (warnKo[w[i]]) out.push('⚠ ' + warnKo[w[i]]);
+      return out.length ? ('\n' + out.join('\n')) : '';
+    }
+
+    if (elBtnProcess) elBtnProcess.addEventListener('click', function () {
+      var params = gatherParams();
+      saveSettings();
+      out('가공 중… (저장 프리즈 중 잠시 대기)');
+      elBtnProcess.disabled = true;
+      csi.evalScript('mesA0_paramsPath()', function (pp) {
+        if (!pp) { out('호스트 연결 실패(패널을 일러 안에서 열었는지 확인)', 'err'); elBtnProcess.disabled = false; return; }
+        var wrote = cepWriteUtf8(pp, JSON.stringify(params));
+        if (!wrote) { out('params 파일 쓰기 실패(' + pp + ')', 'err'); elBtnProcess.disabled = false; return; }
+        csi.evalScript('mesA0_process()', function (res) {
+          elBtnProcess.disabled = false;
+          var r = null; try { r = JSON.parse(res); } catch (e) {}
+          if (!r) { out('응답 파싱 실패:\n' + res, 'err'); return; }
+          if (!r.ok) {
+            var em = { noparams: 'params 없음', badparams: 'params 손상', nodoc: '열린 문서 없음', nosel: '객체를 선택하세요', nobounds: '크기 측정 불가', nofolder: 'Z: 등록폴더 생성 실패' };
+            out('가공 실패: ' + (em[r.err] || r.err), 'err');
+            return;
+          }
+          var msg = '가공 완료 ✓\n등록: ' + (params.client_name || '(파일명)') + ' · 수량 ' + params.qty +
+            '\n실물: ' + r.w + ' × ' + r.h + ' cm' + (params.scale_n > 1 ? (' (파일 1/' + params.scale_n + ')') : '') +
+            '\n' + (r.eps ? ('EPS: ' + r.eps) : '(모아찍기용 — work.ai만)') +
+            '\n폴더: ' + r.folder + warnText(r.warn) +
+            '\n→ 에이전트 ingest 후 대기함에 표시됩니다.';
+          out(msg, 'okmsg');
         });
       });
-    }
+    });
 
-    if (btnSheet) {
-      btnSheet.addEventListener('click', function () {
-        writeOut('sheet OK');
-      });
-    }
+    // 초기 실측 시도
+    refreshMeasure();
   });
 })();

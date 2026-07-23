@@ -2,30 +2,80 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <title>MES A0 (CEP)</title>
+  <title>MES 가공 (CEP)</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
   <div class="panel">
-    <h1 class="title">MES A0 (CEP)</h1>
+    <h1 class="title">MES 가공 <span id="ver" class="ver"></span></h1>
 
     <div class="row">
       <label for="worker">가공자</label>
       <select id="worker"></select>
     </div>
+    <div class="row"><span id="saved" class="saved">신원: (없음)</span></div>
+
+    <div class="sep"></div>
 
     <div class="row">
-      <span id="saved" class="saved">저장됨: (없음)</span>
+      <label>실측</label>
+      <span id="meas" class="meas">— 객체 선택 후 새로고침</span>
+      <button id="btnMeasure" type="button" class="mini">↻</button>
+    </div>
+
+    <div class="row">
+      <label for="qty">수량</label>
+      <input id="qty" type="text" value="1" class="short" />
+      <label for="scale" class="l2">배율</label>
+      <select id="scale">
+        <option value="1">1/1 (원본)</option>
+        <option value="2">1/2</option>
+        <option value="4">1/4</option>
+        <option value="5">1/5</option>
+        <option value="10">1/10</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <label>용도</label>
+      <label class="rad"><input type="radio" name="mode" value="single" checked /> 단건</label>
+      <label class="rad"><input type="radio" name="mode" value="impose" /> 모아찍기</label>
+      <label class="rad"><input type="radio" name="mode" value="both" /> 둘 다</label>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="row">
+      <label for="preset">마감</label>
+      <select id="preset"><option value="">(직접 지정)</option></select>
+    </div>
+    <table class="fin">
+      <tr><td class="fl">상</td><td><select class="finM" data-side="top"></select></td>
+          <td><input class="finCm" data-side="top" type="text" /></td><td class="fu">cm</td></tr>
+      <tr><td class="fl">하</td><td><select class="finM" data-side="bottom"></select></td>
+          <td><input class="finCm" data-side="bottom" type="text" /></td><td class="fu">cm</td></tr>
+      <tr><td class="fl">좌</td><td><select class="finM" data-side="left"></select></td>
+          <td><input class="finCm" data-side="left" type="text" /></td><td class="fu">cm</td></tr>
+      <tr><td class="fl">우</td><td><select class="finM" data-side="right"></select></td>
+          <td><input class="finCm" data-side="right" type="text" /></td><td class="fu">cm</td></tr>
+    </table>
+    <div class="row">
+      <label class="rad"><input id="trim" type="checkbox" /> 돔보(재단마크)</label>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="row">
+      <label for="client">거래처</label>
+      <input id="client" type="text" placeholder="(비우면 파일명)" class="grow" />
     </div>
 
     <div class="row buttons">
-      <button id="btnProcess" type="button">process (test)</button>
-      <button id="btnSheet" type="button">sheet (test)</button>
+      <button id="btnProcess" type="button" class="primary">가공 실행</button>
     </div>
 
-    <div class="row">
-      <div id="out" class="out"></div>
-    </div>
+    <div class="row"><div id="out" class="out"></div></div>
+    <div class="row"><span id="cfgStatus" class="cfg">config…</span></div>
   </div>
 
   <script src="js/CSInterface.js"></script>
