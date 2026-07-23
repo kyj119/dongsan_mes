@@ -160,9 +160,12 @@ function mesA0_process() {
   var hms = mesA0_pad2(now.getHours()) + mesA0_pad2(now.getMinutes()) + mesA0_pad2(now.getSeconds());
   var pcName = $.getenv('COMPUTERNAME') || 'PC';
   var userName = $.getenv('USERNAME') || '';
-  var folderName = ymd + '_' + hms + '_' + mesA0_sanitize(pcName) + '_' + (now.getTime() % 1000);
+  // 배치(묶음): 공유 폴더에 평면 저장 + 파일명 _식별번호 접미. 단건: 자체 건별폴더
+  var batchFolder = P.batch_folder ? String(P.batch_folder) : '';
+  var folderName = batchFolder || (ymd + '_' + hms + '_' + mesA0_sanitize(pcName) + '_' + (now.getTime() % 1000));
   var jobFolder = new Folder(MESA0_REGISTER_ROOT + '/' + folderName);
   if (!jobFolder.exists && !jobFolder.create()) return '{"ok":false,"err":"nofolder"}';
+  var sfx = (P.batch_index != null && P.batch_index !== '') ? ('_' + mesA0_sanitize('' + P.batch_index)) : '';
 
   // 원본 선택을 클립보드로 복사(cross-doc duplicate가 CEP eval 컨텍스트서 0개 실패 → copy/paste 대체)
   // srcDoc 활성·선택 유효 상태에서 먼저 복사(참조 stale 방지). 원본 불가침(복사만·무변경).
@@ -199,7 +202,7 @@ function mesA0_process() {
     }
     newDoc.artboards[0].artboardRect = [db[0], db[1], db[2], db[3]];
 
-    var workFile = new File(jobFolder.fsName + '/work.ai');
+    var workFile = new File(jobFolder.fsName + '/work' + sfx + '.ai');
     newDoc.saveAs(workFile, new IllustratorSaveOptions());
 
     if (mode !== 'impose') {
@@ -352,7 +355,7 @@ function mesA0_process() {
     var abW = abNow[2] - abNow[0], abH = abNow[1] - abNow[3];
     var maxPt = Math.max(abW, abH);
     var pct = maxPt > 0 ? Math.min(100, (400 / maxPt) * 100) : 100;
-    var pngFile = new File(jobFolder.fsName + '/thumb.png');
+    var pngFile = new File(jobFolder.fsName + '/thumb' + sfx + '.png');
     var pngOpts = new ExportOptionsPNG24();
     pngOpts.artBoardClipping = true;
     pngOpts.horizontalScale = pct;
@@ -390,13 +393,15 @@ function mesA0_process() {
     measured_cm: { w: Math.round(realW * 10) / 10, h: Math.round(realH * 10) / 10 },
     mode: mode,
     order_item_id: orderItemId,
-    files: { work_ai: 'work.ai', eps: epsName, thumb: 'thumb.png' },
+    files: { work_ai: 'work' + sfx + '.ai', eps: epsName, thumb: 'thumb' + sfx + '.png' },
+    batch_folder: batchFolder || null,
+    batch_index: (P.batch_index != null && P.batch_index !== '') ? P.batch_index : null,
     outline_failed: outlineFailed,
     preflight: { source_rgb: pfSourceRGB, remaining_text: pfRemainingText, linked_images: pfLinkedImages },
     created_at_kst: now.getFullYear() + '-' + mesA0_pad2(now.getMonth() + 1) + '-' + mesA0_pad2(now.getDate()) +
       ' ' + mesA0_pad2(now.getHours()) + ':' + mesA0_pad2(now.getMinutes()) + ':' + mesA0_pad2(now.getSeconds())
   };
-  if (!mesA0_writeText(jobFolder.fsName + '/manifest.json', mesA0_toJson(manifest)))
+  if (!mesA0_writeText(jobFolder.fsName + '/manifest' + sfx + '.json', mesA0_toJson(manifest)))
     return '{"ok":false,"err":"manifest"}';
 
   var warn = (pfSourceRGB ? 'R' : '') + (pfRemainingText > 0 ? 'T' : '') + (pfLinkedImages > 0 ? 'L' : '') + (outlineFailed ? 'O' : '');
@@ -514,4 +519,16 @@ function mesA0_queueSelect(idx) {
     if (!e.doc.selection || e.doc.selection.length === 0) return '{"ok":false,"err":"stale"}';
     return '{"ok":true,"n":' + e.doc.selection.length + '}';
   } catch (err) { return '{"ok":false,"err":"docgone"}'; }
+}
+
+// 배치 시작 — 묶음 공유 폴더 1개 생성, 폴더명 반환(각 디자인은 이 폴더에 _식별번호 접미로 평면 저장)
+function mesA0_batchBegin() {
+  var now = new Date();
+  var ymd = '' + now.getFullYear() + mesA0_pad2(now.getMonth() + 1) + mesA0_pad2(now.getDate());
+  var hms = mesA0_pad2(now.getHours()) + mesA0_pad2(now.getMinutes()) + mesA0_pad2(now.getSeconds());
+  var pcName = $.getenv('COMPUTERNAME') || 'PC';
+  var folderName = ymd + '_' + hms + '_' + mesA0_sanitize(pcName) + '_batch' + (now.getTime() % 1000);
+  var f = new Folder(MESA0_REGISTER_ROOT + '/' + folderName);
+  if (!f.exists && !f.create()) return '{"ok":false,"err":"nofolder"}';
+  return '{"ok":true,"folder":"' + mesA0_jsonEsc(folderName) + '"}';
 }

@@ -403,42 +403,50 @@
       if (elBtnQAdd) elBtnQAdd.disabled = true;
       if (elBtnProcess) elBtnProcess.disabled = true;
       elBtnConfirm.disabled = true;
-      var results = [], i = 0;
-      function finishBatch() {
-        var okN = 0, failN = 0, lines = [];
-        for (var k = 0; k < results.length; k++) {
-          var r = results[k];
-          if (r && r.ok) { okN++; lines.push('#' + (k + 1) + ' ✓ ' + (r.eps || '(work.ai)')); }
-          else { failN++; lines.push('#' + (k + 1) + ' ✗ ' + (r ? r.err : '?')); }
-        }
-        out('일괄 확정 완료: 성공 ' + okN + ' / 실패 ' + failN + '\n' + lines.join('\n') + '\n→ 에이전트 ingest 후 대기함', failN ? 'err' : 'okmsg');
-        csi.evalScript('mesA0_queueClear()', function () {});
-        queue = []; renderQueue();
+      function reenable() {
         if (elBtnQAdd) elBtnQAdd.disabled = false;
         if (elBtnProcess) elBtnProcess.disabled = false;
       }
-      function step() {
-        if (i >= queue.length) { finishBatch(); return; }
-        out('일괄 가공 중… (' + i + '/' + queue.length + ')');
-        var e = queue[i];
-        var p = e.params;
-        p.seq_no = i + 1;
-        p.annotation = composeAnnot(e.client, e.keyword, i + 1, e.qty);
-        csi.evalScript('mesA0_paramsPath()', function (pp) {
-          if (!pp) { results.push({ ok: false, err: 'nohost' }); i++; step(); return; }
-          cepWriteUtf8(pp, JSON.stringify(p));
-          csi.evalScript('mesA0_queueSelect(' + i + ')', function (selRes) {
-            var sr = null; try { sr = JSON.parse(selRes); } catch (e2) {}
-            if (!sr || !sr.ok) { results.push({ ok: false, err: 'sel:' + (sr ? sr.err : '?') }); i++; step(); return; }
-            csi.evalScript('mesA0_process()', function (res) {
-              var r = null; try { r = JSON.parse(res); } catch (e3) {}
-              results.push(r || { ok: false, err: 'parse' });
-              i++; step();
+      csi.evalScript('mesA0_batchBegin()', function (bres) {
+        var bf = null; try { bf = JSON.parse(bres); } catch (e0) {}
+        if (!bf || !bf.ok) { out('배치 폴더 생성 실패: ' + (bf ? bf.err : 'nohost'), 'err'); reenable(); elBtnConfirm.disabled = false; return; }
+        var batchFolder = bf.folder, results = [], i = 0;
+        function finishBatch() {
+          var okN = 0, failN = 0, lines = [];
+          for (var k = 0; k < results.length; k++) {
+            var r = results[k];
+            if (r && r.ok) { okN++; lines.push('#' + (k + 1) + ' ✓ ' + (r.eps || '(work.ai)')); }
+            else { failN++; lines.push('#' + (k + 1) + ' ✗ ' + (r ? r.err : '?')); }
+          }
+          out('일괄 확정 완료: 성공 ' + okN + ' / 실패 ' + failN + '\n폴더: ' + batchFolder + '\n' + lines.join('\n') + '\n→ 에이전트 ingest 후 대기함', failN ? 'err' : 'okmsg');
+          csi.evalScript('mesA0_queueClear()', function () {});
+          queue = []; renderQueue(); reenable();
+        }
+        function step() {
+          if (i >= queue.length) { finishBatch(); return; }
+          out('일괄 가공 중… (' + i + '/' + queue.length + ') → ' + batchFolder);
+          var e = queue[i];
+          var p = e.params;
+          p.seq_no = i + 1;
+          p.batch_folder = batchFolder;
+          p.batch_index = i + 1;
+          p.annotation = composeAnnot(e.client, e.keyword, i + 1, e.qty);
+          csi.evalScript('mesA0_paramsPath()', function (pp) {
+            if (!pp) { results.push({ ok: false, err: 'nohost' }); i++; step(); return; }
+            cepWriteUtf8(pp, JSON.stringify(p));
+            csi.evalScript('mesA0_queueSelect(' + i + ')', function (selRes) {
+              var sr = null; try { sr = JSON.parse(selRes); } catch (e2) {}
+              if (!sr || !sr.ok) { results.push({ ok: false, err: 'sel:' + (sr ? sr.err : '?') }); i++; step(); return; }
+              csi.evalScript('mesA0_process()', function (res) {
+                var r = null; try { r = JSON.parse(res); } catch (e3) {}
+                results.push(r || { ok: false, err: 'parse' });
+                i++; step();
+              });
             });
           });
-        });
-      }
-      step();
+        }
+        step();
+      });
     });
 
     renderQueue();
