@@ -328,7 +328,7 @@
 
     // ── 반자동 큐 (A2) ──
     var queue = []; // [{params, client, keyword, qty, w, h}]
-    var elQueueBox = $('queueBox'), elBtnQAdd = $('btnQueueAdd'), elBtnConfirm = $('btnConfirm'), elBtnQClear = $('btnQueueClear');
+    var elQueueBox = $('queueBox'), elBtnQAdd = $('btnQueueAdd'), elBtnQBatch = $('btnQueueBatch'), elBtnConfirm = $('btnConfirm'), elBtnQClear = $('btnQueueClear');
 
     function renderQueue() {
       if (elQueueBox) {
@@ -370,6 +370,26 @@
         queue.push({ params: gatherParams(), client: client, keyword: keyword, qty: qtyN, w: r.w, h: r.h });
         renderQueue();
         out('큐 추가됨: #' + queue.length + ' (' + r.w + '×' + r.h + 'cm)', 'okmsg');
+      });
+    });
+
+    if (elBtnQBatch) elBtnQBatch.addEventListener('click', function () {
+      csi.evalScript('mesA0_queueAddBatch(30)', function (res) {
+        var r = null; try { r = JSON.parse(res); } catch (e) {}
+        if (!r || !r.ok) {
+          var em = { nodoc: '열린 문서 없음', nosel: '객체를 선택하세요', nobounds: '크기 측정 불가' };
+          out('묶음 분리 실패: ' + (r ? (em[r.err] || r.err) : '호스트 연결 안 됨'), 'err');
+          return;
+        }
+        var qtyN = parseInt(elQty ? elQty.value : '1', 10); if (isNaN(qtyN) || qtyN < 1) qtyN = 1;
+        var client = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
+        var keyword = elAnnot ? (elAnnot.value || '').replace(/^\s+|\s+$/g, '') : '';
+        var base = gatherParams();
+        for (var s = 0; s < r.sizes.length; s++) {
+          queue.push({ params: JSON.parse(JSON.stringify(base)), client: client, keyword: keyword, qty: qtyN, w: r.sizes[s].w, h: r.sizes[s].h });
+        }
+        renderQueue();
+        out('묶음 분리: ' + r.added + '개로 나눔 (30mm 이내 병합). 틀리면 [✕] 삭제 후 개별 추가로 교정', 'okmsg');
       });
     });
 

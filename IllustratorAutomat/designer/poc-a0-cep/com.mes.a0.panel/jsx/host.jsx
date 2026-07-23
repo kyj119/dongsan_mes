@@ -425,6 +425,64 @@ function mesA0_queueAdd() {
   return '{"ok":true,"n":' + q.length + ',"w":' + (Math.round(w * 10) / 10) + ',"h":' + (Math.round(h * 10) / 10) + ',"items":' + items.length + '}';
 }
 
+// 선택 다중 개체를 공간 근접/겹침으로 클러스터(각 클러스터=1디자인). gapPt 이내면 병합.
+function mesA0_cluster(items, gapPt) {
+  var rects = [];
+  for (var i = 0; i < items.length; i++) {
+    var b; try { b = items[i].visibleBounds; } catch (e) { b = null; }
+    if (b) rects.push({ item: items[i], L: b[0], T: b[1], R: b[2], B: b[3], cid: i });
+  }
+  var g = gapPt / 2;
+  function ov(a, bb) { // 확장 rect(y-up: T>B) 겹침
+    return (a.L - g) <= (bb.R + g) && (bb.L - g) <= (a.R + g) && (a.B - g) <= (bb.T + g) && (bb.B - g) <= (a.T + g);
+  }
+  var changed = true;
+  while (changed) {
+    changed = false;
+    for (var x = 0; x < rects.length; x++) {
+      for (var y = x + 1; y < rects.length; y++) {
+        if (rects[x].cid === rects[y].cid) continue;
+        if (ov(rects[x], rects[y])) {
+          var from = rects[y].cid, to = rects[x].cid;
+          for (var z = 0; z < rects.length; z++) if (rects[z].cid === from) rects[z].cid = to;
+          changed = true;
+        }
+      }
+    }
+  }
+  var groups = {}, order = [];
+  for (var w = 0; w < rects.length; w++) {
+    var c = rects[w].cid;
+    if (!groups[c]) { groups[c] = []; order.push(c); }
+    groups[c].push(rects[w].item);
+  }
+  var out = [];
+  for (var o = 0; o < order.length; o++) out.push(groups[order[o]]);
+  return out;
+}
+
+// 묶음 추가 — 선택 전체를 클러스터로 분리해 각각 큐 행으로. gapMm 이내는 한 디자인.
+function mesA0_queueAddBatch(gapMm) {
+  if (app.documents.length === 0) return '{"ok":false,"err":"nodoc"}';
+  var d = app.activeDocument;
+  if (!d.selection || d.selection.length === 0) return '{"ok":false,"err":"nosel"}';
+  var items = [];
+  for (var i = 0; i < d.selection.length; i++) items.push(d.selection[i]);
+  var gap = parseFloat(gapMm); if (isNaN(gap) || gap < 0) gap = 30;
+  var clusters = mesA0_cluster(items, gap * MESA0_PT_PER_MM);
+  if (!clusters.length) return '{"ok":false,"err":"nobounds"}';
+  var q = mesA0_queueEnsure();
+  var sizes = [];
+  for (var c = 0; c < clusters.length; c++) {
+    var ub = mesA0_unionBounds(clusters[c]);
+    if (!ub) continue;
+    q.push({ doc: d, items: clusters[c] });
+    sizes.push('{"w":' + (Math.round((ub[2] - ub[0]) / MESA0_PT_PER_MM / 10 * 10) / 10) +
+      ',"h":' + (Math.round((ub[1] - ub[3]) / MESA0_PT_PER_MM / 10 * 10) / 10) + ',"items":' + clusters[c].length + '}');
+  }
+  return '{"ok":true,"added":' + sizes.length + ',"total":' + q.length + ',"sizes":[' + sizes.join(',') + ']}';
+}
+
 function mesA0_queueCount() { return '' + mesA0_queueEnsure().length; }
 function mesA0_queueClear() { $.global.mesA0Q = []; return 'ok'; }
 
