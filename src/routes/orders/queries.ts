@@ -384,8 +384,10 @@ ordersQueriesRouter.get('/export/csv', async (c) => {
 
     if (status) { whereClauses.push('o.status = ?'); params.push(status) }
     if (search) {
-      whereClauses.push('(o.order_number LIKE ? OR c.client_name LIKE ?)')
-      params.push(`%${search}%`, `%${search}%`)
+      // 목록 검색과 동일: 주문번호·거래처명·품목명 (CSV export 정합)
+      whereClauses.push('(o.order_number LIKE ? OR c.client_name LIKE ? OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND oi.item_name LIKE ?))')
+      const p = `%${search}%`
+      params.push(p, p, p)
     }
     if (date_from) { whereClauses.push('o.order_date >= ?'); params.push(date_from) }
     if (date_to) { whereClauses.push('o.order_date <= ?'); params.push(date_to) }

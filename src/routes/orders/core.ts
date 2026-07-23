@@ -68,11 +68,11 @@ ordersCoreRouter.get('/', async (c) => {
       params.push(status)
     }
 
-    // Search filter (order number or client name)
+    // Search filter (주문번호 · 거래처명 · 품목명) — #4 재주문 재검색 편의: 품목명으로도 과거주문 탐색
     if (search) {
-      whereClauses.push('(o.order_number LIKE ? OR c.client_name LIKE ?)')
+      whereClauses.push('(o.order_number LIKE ? OR c.client_name LIKE ? OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND oi.item_name LIKE ?))')
       const searchPattern = `%${search}%`
-      params.push(searchPattern, searchPattern)
+      params.push(searchPattern, searchPattern, searchPattern)
     }
 
     // Date range filter
@@ -210,9 +210,9 @@ ordersCoreRouter.get('/', async (c) => {
     }
 
     if (search) {
-      countWhereClauses.push('(o.order_number LIKE ? OR c.client_name LIKE ?)')
+      countWhereClauses.push('(o.order_number LIKE ? OR c.client_name LIKE ? OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND oi.item_name LIKE ?))')
       const searchPattern = `%${search}%`
-      countParams.push(searchPattern, searchPattern)
+      countParams.push(searchPattern, searchPattern, searchPattern)
     }
 
     // Date range filter (count query)

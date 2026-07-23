@@ -32,7 +32,7 @@ export function ordersPage(c: Context<HonoEnv>) {
       <div class="ds-filter-bar">
         <div class="ds-filter-field" style="flex:1;min-width:180px">
           <label class="ds-label">검색</label>
-          <input type="text" id="searchQuery" placeholder="주문번호, 거래처명..."
+          <input type="text" id="searchQuery" placeholder="주문번호, 거래처명, 품목명..."
             class="ds-input"
             onkeydown="if(event.key==='Enter'){currentPage=1;loadOrders();}">
         </div>

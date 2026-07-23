@@ -371,7 +371,7 @@ portal.get('/orders/:id', async (c) => {
 
     if (!order) return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)
 
-    const [itemsResult, shipmentsResult, cardProgressResult] = await Promise.all([
+    const [itemsResult, shipmentsResult, cardProgressResult, timelineResult] = await Promise.all([
       c.env.DB.prepare(
         `SELECT id, order_id, item_id, item_name, category_name,
                 width, height, quantity, unit, unit_price, amount, vat_included,
@@ -386,6 +386,13 @@ portal.get('/orders/:id', async (c) => {
       `).bind(orderId).all(),
       c.env.DB.prepare(`
         SELECT status, COUNT(*) as cnt FROM cards WHERE order_id = ? GROUP BY status
+      `).bind(orderId).all(),
+      // #1 고객 포털 진행 이력 타임라인 — 상태별 전환 시각(order_status_history).
+      // 고객 노출용이므로 change_reason(내부 메모)·changed_by(직원)는 제외, 상태·시각만 반환.
+      c.env.DB.prepare(`
+        SELECT to_status, created_at
+        FROM order_status_history WHERE order_id = ?
+        ORDER BY created_at ASC, id ASC
       `).bind(orderId).all(),
     ])
 
@@ -407,6 +414,7 @@ portal.get('/orders/:id', async (c) => {
         items: itemsResult.results,
         shipments: shipmentsResult.results,
         card_progress: cardProgress,
+        timeline: timelineResult.results,
       }
     })
   } catch (e) {

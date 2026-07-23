@@ -5,6 +5,32 @@
 // #335: XSS 방어 — 표시 텍스트 HTML 이스케이프 (외부 고객 포털)
 var esc = window.escapeHtml || function(s) { if (s === null || s === undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); };
 
+// KST 표시 헬퍼 — 포털 레이아웃은 shell.js 미로드라 전역 toKstDate 부재.
+// 저장 UTC → 표시 KST 단일정책(shell.js와 동일 로직). 가드로 중복정의 방지(invoice.js:23 패턴).
+if (typeof window.toKstDate !== 'function') {
+  window.toKstDate = function(ts) {
+    if (ts === null || ts === undefined || ts === '') return null;
+    var s = String(ts).trim();
+    if (s.length === 10 && s.charAt(4) === '-' && s.charAt(7) === '-') return new Date(s + 'T00:00:00');
+    var iso = s.indexOf('T') === -1 ? s.replace(' ', 'T') : s;
+    var timePart = iso.length > 11 ? iso.slice(11) : '';
+    var hasTz = timePart.indexOf('Z') !== -1 || timePart.indexOf('+') !== -1 || timePart.indexOf('-') !== -1;
+    if (!hasTz) iso += 'Z';
+    var d = new Date(iso);
+    return isNaN(d.getTime()) ? null : d;
+  };
+}
+if (typeof window.formatKST !== 'function') {
+  window.formatKST = function(ts, mode, opts) {
+    var d = window.toKstDate(ts);
+    if (!d) return (ts === null || ts === undefined || ts === '') ? '-' : String(ts);
+    var o = Object.assign({ timeZone: 'Asia/Seoul' }, opts || {});
+    if (mode === 'date') return d.toLocaleDateString('ko-KR', o);
+    if (mode === 'time') return d.toLocaleTimeString('ko-KR', o);
+    return d.toLocaleString('ko-KR', o);
+  };
+}
+
 // Skeleton loading
 (function() {
   var el = document.getElementById('orders-tbody');
@@ -135,11 +161,39 @@ function renderShipmentInfo(shipments) {
     }
     html += '</div>';
     if (s.shipped_at) {
-      html += '<div class="text-xs text-gray-400 mt-1">출고일: ' + s.shipped_at.replace('T', ' ').substring(0, 16) + '</div>';
+      html += '<div class="text-xs text-gray-400 mt-1">출고일: ' + esc(window.formatKST(s.shipped_at)) + '</div>';
     }
     html += '</div>';
   });
   html += '</div>';
+  return html;
+}
+
+// ─── 진행 이력 타임라인 (상세 모달용) ────────────────────────────────────────
+// #1 order_status_history 기반 날짜별 진행 이력. 스테퍼(현재상태 도식)를 보완.
+
+function renderTimeline(timeline) {
+  if (!timeline || !timeline.length) return '';
+  // 고객에게 의미있는 전환만 노출 (QUOTATION 등 내부 초기상태 제외)
+  var SHOW = { CONFIRMED: 1, PRINTING: 1, PRINT_DONE: 1, SHIPPED: 1, COMPLETED: 1, HOLD: 1, CANCELLED: 1 };
+  var rows = timeline.filter(function(t) { return SHOW[t.to_status]; });
+  if (!rows.length) return '';
+
+  var html = '<div class="mt-4 pt-4 border-t"><h4 class="text-sm font-semibold text-gray-700 mb-3"><i class="fas fa-history mr-1"></i>진행 이력</h4>';
+  html += '<ol class="relative border-l-2 border-gray-200 ml-1.5">';
+  rows.forEach(function(t, idx) {
+    var isLast = idx === rows.length - 1;
+    var isNeg = (t.to_status === 'HOLD' || t.to_status === 'CANCELLED');
+    var dotCls = isNeg ? 'bg-red-500' : (isLast ? 'bg-blue-600' : 'bg-gray-300');
+    var txtCls = isNeg ? 'text-red-600 font-medium' : (isLast ? 'text-blue-700 font-semibold' : 'text-gray-700');
+    var label = window.MES_STATUS.orderLabel(t.to_status);
+    html += '<li class="ml-4 pb-4 last:pb-0">';
+    html += '<div class="absolute w-3 h-3 rounded-full -left-[7px] mt-1 border-2 border-white ' + dotCls + '"></div>';
+    html += '<div class="text-sm ' + txtCls + '">' + esc(label) + '</div>';
+    html += '<time class="text-xs text-gray-400">' + esc(window.formatKST(t.created_at)) + '</time>';
+    html += '</li>';
+  });
+  html += '</ol></div>';
   return html;
 }
 
@@ -225,11 +279,11 @@ async function viewOrder(id) {
   try {
     var res = await axios.get('/api/portal/orders/' + id);
     var data = res.data.data;
-    showOrderDetail(data.order, data.items, data.shipments, data.card_progress);
+    showOrderDetail(data.order, data.items, data.shipments, data.card_progress, data.timeline);
   } catch (e) { showToast('조회 실패', 'error'); }
 }
 
-function showOrderDetail(order, items, shipments, card_progress) {
+function showOrderDetail(order, items, shipments, card_progress, timeline) {
   var existing = document.getElementById('order-detail-modal');
   if (existing) existing.remove();
 
@@ -248,6 +302,7 @@ function showOrderDetail(order, items, shipments, card_progress) {
   var stepperHtml = renderStepper(order.status);
   var shipmentHtml = renderShipmentInfo(shipments);
   var progressHtml = renderCardProgress(card_progress);
+  var timelineHtml = renderTimeline(timeline);
 
   var html = '<div id="order-detail-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">'
     + '<div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6">'
@@ -288,6 +343,9 @@ function showOrderDetail(order, items, shipments, card_progress) {
 
     // 배송 정보
     + '<div id="orderShipments">' + shipmentHtml + '</div>'
+
+    // 진행 이력 타임라인 (#1)
+    + '<div id="orderTimeline">' + timelineHtml + '</div>'
 
     // 액션 버튼
     + '<div class="flex justify-end space-x-2 mt-4">'
