@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-07-23T03:14:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-07-23T09:41:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **1** — Area 2 49회차(07-23T03:14) `search_issues(state:open,label:auto-improve)` 실측. 직전 기재값(14)에서 대폭 감소 — owner가 이번 사이클 사이 12개 이슈(#552/#553/#535/#550/#509/#520/#525/#526/#536/#549/#551/#504)를 코드로 직접 픽스(`32773c0`+`1edba25`)하고 close, `#548`도 옵션2(단일batch 유지+상한 주석 문서화)로 완료 close — 실측 신뢰, 재검증 없이 반영. 남은 1건 = `#554`(Area4, 부문손익 자재비 이동평균단가 비재현성, M공수 정책판단 대기). |
+| 🆕 new | **3** — Area 3 42회차(07-23T09:41) `search_issues(state:open,label:auto-improve)` 실측. `#554`(Area4, 이월)+`#555`(신규, Area1/4 마이그레이션 리플레이)+`#556`(신규, Area3 hover 색상). |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **479** — 실측 재동기화(+14, 위 12건 close분 반영). |
+| ✔️ done | **479** — 변동 없음(이번 사이클 close 0). |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 3 UX/기능 감사 (2026-07-23T09:41):**
+> - **방법**: `git fetch origin main`(HEAD `edf43a2` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 3 **42회차** — 직전 Area3(`352a177`, 07-21T11:05, 41회차) 이후 28커밋. UX 표면 churn이 큼(flatpickr 전환 109곳/36파일, 원장 3열분할×4커밋, CSV export, billed-dimension hint, modal ESC, employeeSelf a11y, palette sweep, P2 일관성 스윕 35파일 등) — 대부분 다른 Area가 아직 UX 렌즈로 안 본 신선 churn이라 general-purpose 에이전트 1개(13개 커밋 전담, 각 커밋 diff 직접 Read+FP배제 규칙 적용)를 병렬로 돌리고, 오케스트레이터는 flatpickr 전환 완전성(SPA fast-path 초기화 갭 여부)·CSV export 페이지네이션 정합성·`750b951` 클라이언트피커 SSOT 이관의 형제완전성을 직접 검증. **부수적으로 로컬 D1을 from-scratch로 완전 리플레이하려다(Playwright 실환경 테스트 목적) 마이그레이션 0342~0344에서 결정적 FK 실패를 발견**(진단·재현 완료, 아래 #555).
+> - **🔴 신규 이슈 — #556 (S, improvement)**: `4c30c90`(palette violations sweep, P1-6)가 `invoice.ts`/`quotation.ts` 인쇄뷰 버튼 3곳의 `background`를 구 teal→`var(--c-primary)`(파랑)로 이관했으나 바로 다음 줄 `:hover` 규칙은 구 teal 값(`#0f766e`/`#ccfbf1`) 그대로 잔존 — base/hover 쌍의 절반만 마이그레이션된 형제 불일치(같은 파일 `invoice.ts:55-56` `.btn-print`는 base/hover 양쪽 다 정합, 대조군으로 확인). 재현: 거래명세서·견적서 인쇄뷰에서 이메일/인쇄 버튼 호버 시 파랑 배경이 순간적으로 부조화스러운 teal로 튐. issue-only(Area3 정책상 자동수정 금지, CSS 3줄이라 공수 자체는 미미).
+> - **🟢 general-purpose 에이전트 심층검증 결과 — 13개 커밋 중 12개 clean**: `750b951`(client/supplier 피커 shared 모달 이관, 상태배지 SSOT) — 구 모달 컨테이너 완전 제거·잔존참조 0, `MES_STATUS.tone()` 매핑 전수 확인. `601392b`/`0f2d745`/`b93b3b7`/`872ef6a`(원장 3열분할) — `<thead>` 컬럼수 대 모든 동적 `<tr>`(빈 상태·소계행 포함) 9/8열 전수 대조 일치, `ledgerAllocVat` 잔차흡수 계산 검증, 커밋이 자체 언급한 `total_purchase`→`total_purchases` 오타 수정도 실제 반영 확인. `f8af7a4`(billed-dimension hint)·`dc74f2f`(고정 테이블 레이아웃, colgroup-th 개수 전 사이트 일치)·`28bdfcc`(모달 ESC)·`c35c344`(a11y)·`70ae272`(cashFlow money input)·`54ce2d8`(mojibake)·`0bb7f84`(P2 일관성 스윕 35파일, load-order 리스크 포함) 전부 clean. **flatpickr 전환(`79f5975`) 재검증**: `type="date"` 잔존 0건 재확인, 동적 모달에서 `.js-fp` 사용처는 `cashFlow.js`(3곳)·`iaEditor.js`(1곳)뿐이며 전부 삽입 직후 `hrInitDatePickers('#올바른루트')` 호출 확인 — degrade(달력 미활성화) 사이트 0건.
+> - **🟡 마이너 관찰(이슈화 보류)**: `750b951`의 `purchaseOrderForm.js` 공급업체 Enter-fallback 모달이 공용 `openClientSearchModal`로 이관되며 구 모달에 있던 `client_type`(매입/매출+매입) 배지가 빠짐 — 단 **주 경로인 인라인 자동완성 드롭다운(`:136-137`)은 배지 유지**, 영향받는 건 결과 다건일 때만 도달하는 보조 fallback뿐이라 실질 가치 낮음(별도 이슈화 생략).
+> - **🔴 부수 발견 — #555 (S~M, bug, Area1/4 소관으로 크로스포스트)**: 로컬 D1 완전 리플레이 중 마이그레이션 0342(`product_materials.product_item_id` 14건 inbound 참조를 감사에서 누락 → FK 위반)→0343(`item_categories id=6`에 활성 품목 10건 실재[ACC-001~010, 목재깃대 등 — 주석의 "잔여 0" 주장과 불일치] → FK 위반)→0344(category id=15 참조 실패, 연쇄) 순으로 **결정적 실패**를 직접 진단·재현 확인. Prod 자체는 무관(이미 과거 순차 적용 통과)하나 DR/신규환경 from-scratch 부트스트랩 시나리오에서 472개 중 341개까지만 적용되고 전체 체인이 막히는 잠재 리스크. 원인 규명 완료, 수정은 owner의 카테고리 재배정 정책 판단 필요 → issue-only.
+> - **🟢 backlog↔GitHub 절대값 재동기화**: `search_issues(state:open,label:auto-improve)` 실측 **3건**(#556·#555 생성 전 1건[#554]+생성후 3건). `search_issues(is:closed,reason:completed)` **479**(변동 없음)·`not_planned` 4+`duplicate` 2 → rejected **6**(변동 없음).
+> - **🧬 SKILL 강화 없음(신규 탐지 클래스 아님)** — #556은 기존 "base/hover 쌍 부분 마이그레이션"(A-024/A-025 계열의 CSS 버전) 클래스의 재현. #555는 신규 발견이나 Area1 SKILL의 "마이그레이션 파서 함정"류와 인접한 별도 현상(파서 함정이 아니라 실제 데이터 상태 가정 오류) — 향후 Area1/4 사이클에서 참고.
+> - 신규 이슈 2건(#556 issue-only + #555 issue-only, 크로스포스트), 자동수정 0건(Area3 정책상 자동수정 대상 아님), done-sync 변동 없음(new 1→3[신규 2건 반영]·done 479·rejected 6 정합 재확인). 다음 순번 Area 4.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-07-23T03:14):**
 > - **방법**: `git fetch origin main`(HEAD `1edba25` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 2 **49회차** — 직전 Area2(`2adacf5`, 07-21T10:20, 48회차) 이후 27커밋 중 Area1 48회차(`7b93234`, HEAD `c292250`까지 커버)가 이미 감사한 부분을 제외하면, **순수 미검증 신선 churn = `32773c0`+`1edba25` 단 2개 커밋**(owner/worktree 세션의 대형 배치 픽스 — IDOR 2건·bank 링크 동시성·급여 교부증빙 가드·연말정산 INSERT 잠복버그·부문 검증·AR aging SSOT 전환 등 12+이슈). 오케스트레이터가 직접 Read로 두 커밋의 전체 diff(`bank.ts`/`ar-dunning.ts`/`payroll/records.ts`/`payroll/year-end.ts`/`payroll/core.ts`/`dashboard.ts`/`departments.ts`/`workbench.ts`/`aiAnalysis.ts`/`aiInsights.ts`)를 컬럼정합성·claim-state 가드·entity 귀속 관점에서 전수 검증(위임 없이 직접 수행 — 범위가 좁고 각 파일이 이미 특정 이슈번호에 스코프됨).
@@ -216,26 +227,15 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 14건** — 2026-07-22T04:20 Area 5 41회차, `search_issues(state:open,label:auto-improve)` 직접 재확인 결과 직전 기재값 12와 일치(변동 없음). 이번 사이클 #552·#553 신규 생성.)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 3건** — 2026-07-23T09:41 Area 3 42회차, `search_issues(state:open,label:auto-improve)` 직접 재확인. 직전 기재값 14 대비 대폭 감소 — owner가 그 사이(Area2 49회차 시점) 12건을 코드 픽스+close, #528 close-pending도 함께 정리된 것으로 확인. 이번 사이클 #555·#556 신규 생성.)
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
-| #553 | 연말정산 계산 POST /year-end-settlement/:employeeId entity 격리 누락 — 타법인 급여열람+확정정산 덮어쓰기 | Area 5 | bug,M | issue-only, HIGH severity, 미픽스 |
-| #552 | collection_logs(독촉이력) GET 3핸들러 entity 격리 누락 — 형제 DELETE는 이미 격리 | Area 5 | bug,S | issue-only, 미픽스 |
-| #551 | 신용위험 등급(credit-risk) high_risk 쿼리·calculate-all 내부법인 제외 누락(형제-비대칭) | Area 4 | improvement,S | issue-only, 현재 dormant(도달성 0)라 LOW |
-| #550 | PENDING 급여 삭제 시 payslip_issuance_logs 교부증빙 고아화 | Area 4 | bug,S | issue-only, 정책판단 필요(삭제차단 vs 이력동반삭제) |
-| #549 | 직원 셀프서비스 — 30분 토큰만료 시 목록화면 오류메시지 무시+재로그인 경로 없음 | Area 3 | bug,S | 미픽스 |
-| #540 | entity-audit.mjs CI 게이트 커버리지 8/111테이블 — write-path 사각 | Area 6 | improvement,M | 문서 대응 완료(44회차), 로직 확장은 owner 정책 결정 대기 |
-| #536 | AR aging SSOT 통합 부분픽스 — dashboard.ts만 구 방식(UTC julianday) 잔존 | Area 4 | bug,M | 미픽스 |
-| #535 | bank LINKED 연결 경로 UNIQUE/재검증 부재 — 동시요청 시 원장 중복연결 | Area 4 | bug,S | 미픽스 |
-| #528 | bank 출금→매입지급 적용 중복제출 방어 없음 — 이중지급/이중차감 | Area 2 | bug,M | **fixed-in-tree**(`1e1b620`, 원자적 claim-first 확인, 48회차), close-pending(owner 확인/close 대기 — 코드 수정은 이슈 close를 자동 수반하지 않음) |
-| #526 | 부문 손익 자재비 — created_at UTC 미보정(KST 귀속오류) + 이동평균단가 비재현성 | Area 4 | improvement,S/M | 미픽스 |
-| #525 | 부문 손익 P5 배부 — serves_department_id 미검증 + totalWeight=0 공통비 무음소실 | Area 4 | bug,S~S-M | 미픽스 |
-| #520 | IA 크래시-하드닝 재큐 완료-콜백 세대가드 부재 → zombie write lost-update | Area 4 | bug,S | 미픽스 |
-| #509 | 급여 중도입퇴사 일할계산 근거(근무일수/비율) 화면 미표시 | — | improvement,S~S-M | 미픽스 |
-| #504 | 회사 인쇄정보 로드 실패 시 무음 처리 (CSV 포뮬러가드는 자동수정 완료, 로드실패 toast만 잔존) | — | improvement,S | 부분 자동수정됨, 잔존분 미픽스 |
+| #556 | 인쇄뷰(invoice/quotation) 버튼 hover 색상 — 팔레트 스윕이 base만 이관, hover는 구 teal 잔존 | Area 3 | improvement,S | issue-only, 미픽스 |
+| #555 | 마이그레이션 0342~0344 풀리플레이 결정적 실패 — DR/신규환경 부트스트랩 시 전체 체인 중단 | Area1/4 | bug,M | issue-only, 원인규명 완료·owner 정책판단 대기 |
+| #554 | 부문손익 자재비 — 이동평균단가 비재현성(거래시점 원가 스냅샷 부재) + fixedRow is_active 과거조회 누락 | Area 4 | — | 미픽스, M공수 정책판단 대기 |
 
-> 이전에 "fixed-in-tree, close-pending"으로 표에 남아있던 #547·#545·#543·#542·#541·#539·#537·#534·#533·#532·#531·#530·#529·#527·#524·#522·#521·#519·#473·#548은 42회차 실측 open 목록에서 전부 확인되지 않아(=closed) 표에서 제거함 — 대부분 owner가 completed로 close, #543·#542·#541은 not_planned로 close(위 Rejected 카운트에 반영). #528만 close-pending 상태(코드는 픽스됨, GitHub 이슈만 owner의 명시적 close 대기 — 코드 수정이 이슈 close를 자동 수반하지 않으므로 정상 상태) 그대로 open 유지.
+> 이전에 표에 있던 #553·#552·#551·#550·#549·#540·#536·#535·#528·#526·#525·#520·#509·#504는 42회차 실측 open 목록에서 전부 확인되지 않아(=closed) 표에서 제거함 — Area2 49회차가 확인한 대로 owner가 12건을 코드 픽스+close(#528 close-pending 포함), 나머지도 completed/not_planned로 정리됨.
 
 ---
 
