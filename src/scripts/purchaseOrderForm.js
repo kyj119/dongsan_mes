@@ -138,8 +138,8 @@ function debounceSupplierSearch() {
             return '<div class="po-dropdown-item" onmousedown="event.preventDefault();selectSupplier(' + cl.id + ',\'' + safeName + '\')">'
               + '<div class="font-medium text-sm">' + escapeHtml(cl.client_name) + typeBadge + '</div>'
               + '<div class="text-xs text-gray-400">'
-              + (cl.client_code || '')
-              + (cl.business_registration_number ? ' | ' + cl.business_registration_number : '')
+              + escapeHtml(cl.client_code || '')
+              + (cl.business_registration_number ? ' | ' + escapeHtml(cl.business_registration_number) : '')
               + '</div></div>';
           }).join('');
         }

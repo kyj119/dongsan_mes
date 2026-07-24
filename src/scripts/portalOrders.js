@@ -86,14 +86,14 @@ function renderTrackingButton(tracking_number, courier_name) {
   if (!tracking_number) return '';
   var url = '';
   if (/한진/.test(courier_name || '')) {
-    url = 'https://trace.hanjin.co.kr/newinfo/gonsang/tracking?waybillNo=' + tracking_number;
+    url = 'https://trace.hanjin.co.kr/newinfo/gonsang/tracking?waybillNo=' + encodeURIComponent(tracking_number);
   } else if (/대신/.test(courier_name || '')) {
-    return '<span class="text-xs text-gray-500"><i class="fas fa-truck mr-1"></i>' + tracking_number + '</span>';
+    return '<span class="text-xs text-gray-500"><i class="fas fa-truck mr-1"></i>' + esc(tracking_number) + '</span>';
   }
   if (url) {
     return '<a href="' + url + '" target="_blank" onclick="event.stopPropagation()" class="inline-flex items-center px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-100"><i class="fas fa-truck mr-1"></i>배송 조회</a>';
   }
-  return '<span class="text-xs text-gray-500">' + tracking_number + '</span>';
+  return '<span class="text-xs text-gray-500">' + esc(tracking_number) + '</span>';
 }
 
 // ─── 진행 스테퍼 (상세 모달용) ───────────────────────────────────────────────
@@ -157,7 +157,7 @@ function renderShipmentInfo(shipments) {
 
     // 배송 조회 버튼
     if (s.tracking_number && /한진/.test(s.courier_name || '')) {
-      html += '<a href="https://trace.hanjin.co.kr/newinfo/gonsang/tracking?waybillNo=' + s.tracking_number + '" target="_blank" class="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"><i class="fas fa-search mr-1"></i>배송 조회</a>';
+      html += '<a href="https://trace.hanjin.co.kr/newinfo/gonsang/tracking?waybillNo=' + encodeURIComponent(s.tracking_number) + '" target="_blank" class="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"><i class="fas fa-search mr-1"></i>배송 조회</a>';
     }
     html += '</div>';
     if (s.shipped_at) {
