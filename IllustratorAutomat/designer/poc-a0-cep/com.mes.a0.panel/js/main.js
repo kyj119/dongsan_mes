@@ -19,15 +19,43 @@
   function $(id) { return document.getElementById(id); }
   function warnMissing(id) { console.warn('[mes-a0-cep] #' + id + ' not found'); }
   function escHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-  // 주석 조합: 거래처-키워드-식별번호-수량ea (키워드 있을 때만). 식별번호=큐 배치 seqNo
-  function composeAnnot(client, keyword, seqNo, qty) {
+  // 주석 조합: 키워드-식별번호-수량ea (키워드 있을 때만). 거래처명 제외. 식별번호=큐 배치 seqNo
+  function composeAnnot(keyword, seqNo, qty) {
     if (!keyword) return '';
-    var s = '';
-    if (client) s += client + '-';
-    s += keyword;
+    var s = keyword;
     if (seqNo != null && seqNo !== '') s += '-' + seqNo;
     s += '-' + qty + 'ea';
     return s;
+  }
+
+  // 후가공 파일명 세그먼트 조립(한글=params UTF-8 전달). 예: 양옆접어미싱+사방펀칭
+  function posWord(o) {
+    var t = !!o.top, b = !!o.bottom, l = !!o.left, r = !!o.right;
+    var n = (t ? 1 : 0) + (b ? 1 : 0) + (l ? 1 : 0) + (r ? 1 : 0);
+    if (n === 4) return '사방';
+    if (l && r && !t && !b) return '양옆';
+    if (t && b && !l && !r) return '상하';
+    var s = '';
+    if (t) s += '상'; if (b) s += '하'; if (l) s += '좌'; if (r) s += '우';
+    return s;
+  }
+  function finishDesc(finishing, punch) {
+    var segs = [], order = [], mSides = {};
+    for (var s = 0; s < SIDES.length; s++) {
+      var sd = SIDES[s], m = finishing[sd];
+      if (!m) continue;
+      if (!mSides[m]) { mSides[m] = { top: false, bottom: false, left: false, right: false }; order.push(m); }
+      mSides[m][sd] = true;
+    }
+    for (var o = 0; o < order.length; o++) segs.push(posWord(mSides[order[o]]) + order[o]);
+    var pc = punch || {};
+    var ps = { top: pc.top > 0, bottom: pc.bottom > 0, left: pc.left > 0, right: pc.right > 0 };
+    if (ps.top || ps.bottom || ps.left || ps.right) segs.push(posWord(ps) + '펀칭');
+    var cn = pc.corners || {}, cs = [];
+    if (cn.tl) cs.push('좌상'); if (cn.tr) cs.push('우상'); if (cn.bl) cs.push('좌하'); if (cn.br) cs.push('우하');
+    if (cs.length === 4) segs.push('꼭짓점펀칭');
+    else if (cs.length) segs.push(cs.join('') + '펀칭');
+    return segs.join('+');
   }
 
   // ── cep.fs helpers (guarded) ──
@@ -80,6 +108,23 @@
     var finM = document.getElementsByClassName('finM'); // method selects
     var finCm = document.getElementsByClassName('finCm');
 
+    // ── 주석 위치 게이트: 마감 여백 3cm 이상인 변만 주석 체크 허용 ──
+    var annChkMap = { top: elATop, bottom: elABottom, left: elALeft, right: elARight };
+    function updateAnnotGates() {
+      for (var s = 0; s < SIDES.length; s++) {
+        var side = SIDES[s];
+        var cmEl = cmInput(side), sel = methodSelect(side);
+        var cm = parseFloat(cmEl ? cmEl.value : '');
+        var ok = !!(sel && sel.value) && !isNaN(cm) && cm >= 3;
+        var chk = annChkMap[side];
+        if (!chk) continue;
+        chk.disabled = !ok;
+        if (!ok && chk.checked) chk.checked = false;
+        if (chk.parentNode) chk.parentNode.style.opacity = ok ? '' : '0.4';
+      }
+    }
+    for (var fci = 0; fci < finCm.length; fci++) finCm[fci].addEventListener('input', updateAnnotGates);
+
     function out(t, cls) { if (elOut) { elOut.textContent = t; elOut.className = 'out' + (cls ? ' ' + cls : ''); } }
     function setCfg(t) { if (elCfg) elCfg.textContent = t; }
 
@@ -116,6 +161,7 @@
             var mv = this.value;
             if (mv && cmEl && cmEl.value === '') cmEl.value = String(marginOf(mv));
             if (!mv && cmEl) cmEl.value = '';
+            updateAnnotGates();
           };
         })(sel.getAttribute('data-side'));
       }
@@ -150,6 +196,7 @@
           if (sel) sel.value = mName;
           if (cmEl) cmEl.value = mName ? String(marginOf(mName)) : '';
         }
+        updateAnnotGates();
       };
     }
 
@@ -173,6 +220,7 @@
       fillPresets();
       setCfg(ok ? ('config ✓ 마감 ' + methods.length + '종 · 프리셋 ' + presets.length) : 'config 파싱 실패 — 마감 수동 입력');
       restoreSettings();
+      updateAnnotGates();
     }
     (function loadConfig() {
       var text = cepReadUtf8(CONFIG_PATH);
@@ -254,6 +302,7 @@
           if (cmEl && f.cm != null) cmEl.value = f.cm;
         }
       }
+      updateAnnotGates();
     }
     function modeValue() {
       var rs = document.getElementsByName('mode');
@@ -282,6 +331,10 @@
       }
       var pInt = function (el) { var n = parseInt(el ? el.value : '0', 10); return (isNaN(n) || n < 0) ? 0 : n; };
       var keyword = elAnnot ? (elAnnot.value || '').replace(/^\s+|\s+$/g, '') : '';
+      var punchObj = {
+        top: pInt(elPTop), bottom: pInt(elPBottom), left: pInt(elPLeft), right: pInt(elPRight),
+        corners: { tl: elPcTL ? !!elPcTL.checked : false, tr: elPcTR ? !!elPcTR.checked : false, bl: elPcBL ? !!elPcBL.checked : false, br: elPcBR ? !!elPcBR.checked : false }
+      };
       return {
         worker_name: elWorker.value || null,
         registered_by_id: null,   // MES user id 매핑은 B단계(§3.5 구현선행) — 현재 null
@@ -289,11 +342,9 @@
         client_id: null,
         qty: qty, scale_n: scaleN, mode: modeValue(),
         trim: elTrim ? !!elTrim.checked : false,
-        punch: {
-          top: pInt(elPTop), bottom: pInt(elPBottom), left: pInt(elPLeft), right: pInt(elPRight),
-          corners: { tl: elPcTL ? !!elPcTL.checked : false, tr: elPcTR ? !!elPcTR.checked : false, bl: elPcBL ? !!elPcBL.checked : false, br: elPcBR ? !!elPcBR.checked : false }
-        },
+        punch: punchObj,
         keyword: keyword, // 주석·파일명. 식별번호(seq_no)는 단건 null, 배치는 키워드별 순번
+        post_desc: finishDesc(finishing, punchObj), // 후가공 파일명 세그먼트(예: 양옆접어미싱+사방펀칭)
         annot_pos: { top: elATop ? !!elATop.checked : false, bottom: elABottom ? !!elABottom.checked : false, left: elALeft ? !!elALeft.checked : false, right: elARight ? !!elARight.checked : false },
         finishing: finishing, order_item_id: null
       };

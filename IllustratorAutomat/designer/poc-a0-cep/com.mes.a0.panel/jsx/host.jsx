@@ -55,12 +55,10 @@ function mesA0_sanitize(s) {
   s = s.replace(/^\s+|\s+$/g, '');
   return s || '무명';
 }
-// 주석 조합: 거래처-키워드-식별번호-수량ea (키워드 있을 때만). 식별번호=키워드별 순번(큐 배치)
-function mesA0_annotText(client, keyword, seqNo, qty) {
+// 주석 조합: 키워드-식별번호-수량ea (키워드 있을 때만). 거래처명 제외. 식별번호=키워드별 순번(큐 배치)
+function mesA0_annotText(keyword, seqNo, qty) {
   if (!keyword) return '';
-  var s = '';
-  if (client) s += client + '-';
-  s += keyword;
+  var s = keyword;
   if (seqNo != null && seqNo !== '') s += '-' + seqNo;
   s += '-' + qty + 'ea';
   return s;
@@ -212,20 +210,22 @@ function mesA0_process() {
   var trim = !!P.trim;
   var punch = P.punch || {}; // {top,bottom,left,right(개수), corners:{tl,tr,bl,br}}
   var kwRaw = P.keyword ? String(P.keyword) : ''; // 키워드(주석·파일명)
+  var postDesc = P.post_desc ? String(P.post_desc) : ''; // 후가공 파일명 세그먼트(main.js 조립·UTF-8 전달)
   var annotPos = P.annot_pos || {}; // {top,bottom,left,right} bool (다중)
   var seqNo = (P.seq_no != null && P.seq_no !== '') ? P.seq_no : null; // 식별번호(키워드별 순번)
   var fin = P.finishing || {};
-  var finJson = {}, finMargins = {}, hasFinishing = false;
+  var finJson = {}, finMargins = {}, finRealCm = {}, hasFinishing = false;
   for (var fs = 0; fs < MESA0_SIDES.length; fs++) {
     var sd = MESA0_SIDES[fs];
     var mName = fin[sd] || '';
     var cmVal = parseFloat(fin[sd + '_cm']); if (isNaN(cmVal)) cmVal = 0;
     if (mName) { finJson[sd] = mName; finJson[sd + '_cm'] = cmVal; hasFinishing = true; }
     finMargins[sd] = (mName ? cmVal : 0) * 10 * MESA0_PT_PER_MM / sN;
+    finRealCm[sd] = mName ? cmVal : 0; // 실측 여백 cm(주석 3cm 게이트용)
   }
   var docBase = mesA0_sanitize(String(srcDoc.name).replace(/\.[^.]+$/, ''));
   var clientName = P.client_name ? mesA0_sanitize(P.client_name) : docBase;
-  var annotation = mesA0_annotText(P.client_name ? String(P.client_name) : '', kwRaw, seqNo, qty); // 주석(호스트 조합)
+  var annotation = mesA0_annotText(kwRaw, seqNo, qty); // 주석(호스트 조합, 거래처명 제외)
   var orderItemId = (P.order_item_id != null) ? P.order_item_id : null;
   var realW = fileWCm * sN, realH = fileHCm * sN;
 
@@ -342,15 +342,17 @@ function mesA0_process() {
       }
 
       // 주석: 선택된 각 위치(상/하/좌/우 다중) 여백 밴드에 검정텍스트. 상/하=가로, 좌/우=90도 회전. 첫글자 코너서 5cm
+      // 게이트: 해당 변 마감 여백 3cm 이상일 때만 입력(여백 부족 변은 생략)
       if (annotation) {
         var off5 = 50 * MESA0_PT_PER_MM / sN;
         var apList = ['top', 'bottom', 'left', 'right'];
         for (var api = 0; api < apList.length; api++) {
           var apos = apList[api];
           if (!annotPos[apos]) continue;
+          if (finRealCm[apos] < 3) continue; // 여백 3cm 미만 변은 주석 생략
           var annBand = (apos === 'top') ? finMargins.top : (apos === 'bottom') ? finMargins.bottom :
             (apos === 'left') ? finMargins.left : finMargins.right;
-          if (annBand <= 0.5) continue; // 해당 여백 없으면 skip
+          if (annBand <= 0.5) continue; // 스케일 후 밴드 0 방지
           try {
             var kColA = new CMYKColor(); kColA.cyan = 0; kColA.magenta = 0; kColA.yellow = 0; kColA.black = 100;
             var fsz = annBand * 0.5; if (fsz < 6) fsz = 6; if (fsz > 300) fsz = 300;
@@ -416,11 +418,15 @@ function mesA0_process() {
         newDoc.artboards[0].artboardRect = [tL - pad, tT + pad, tR + pad, tB - pad];
       }
 
-      var kwSeg = kwRaw ? ('-' + mesA0_sanitize(kwRaw)) : '';
-      epsName = ymd + '-' + mesA0_sanitize(clientName) + kwSeg + '-' +
-        Math.round(realW) + 'x' + Math.round(realH) + '-' + qty + 'EA' +
-        (seqNo != null ? '-' + mesA0_sanitize('' + seqNo) : '') +
-        (sN > 1 ? '_1-' + sN : '') + '.eps';
+      // 파일명: 거래처-키워드(사이즈)-후가공-개수EA[-식별번호][_1-N]
+      // 원단종류는 여기서 생략(품목=주문서 저장 단계에서 부여). 후가공=main.js 조립(post_desc).
+      var sizeStr = Math.round(realW) + 'x' + Math.round(realH);
+      var kwSize = kwRaw ? (mesA0_sanitize(kwRaw) + '(' + sizeStr + ')') : sizeStr;
+      var nameParts = [mesA0_sanitize(clientName), kwSize];
+      if (postDesc) nameParts.push(mesA0_sanitize(postDesc));
+      nameParts.push(qty + 'EA');
+      if (seqNo != null && seqNo !== '') nameParts.push(mesA0_sanitize('' + seqNo));
+      epsName = nameParts.join('-') + (sN > 1 ? '_1-' + sN : '') + '.eps';
       var epsFile = new File(jobFolder.fsName + '/' + epsName);
       var epsOpts = new EPSSaveOptions();
       epsOpts.cmykPostScript = true;
@@ -472,6 +478,7 @@ function mesA0_process() {
     trim: trim,
     punch: punch,
     keyword: kwRaw || null,
+    post_desc: postDesc || null,
     annotation: annotation || null,
     annot_pos: annotation ? annotPos : null,
     identifier: seqNo,
