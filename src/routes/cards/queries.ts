@@ -964,6 +964,16 @@ cardsQueriesRouter.get('/:id', async (c) => {
       }, 404)
     }
 
+    // 카드 레벨 썸네일 R2 마커('r2:thumb:') → data URI 복원. 단건이라 인라인 hydrate 저렴.
+    //   (인쇄 작업지시서 등 <img src=card.thumbnail_url> 이 마커면 깨지므로 — R2 이관 회귀 방지)
+    {
+      const ct = (card as Record<string, unknown>).thumbnail_url
+      if (isThumbRef(ct)) {
+        const uri = await getThumbnailDataUri(c.env, ct)
+        ;(card as Record<string, unknown>).thumbnail_url = uri || null
+      }
+    }
+
     // Get related order items through card_items junction table
     const { results: cardItems } = await c.env.DB.prepare(`
       SELECT

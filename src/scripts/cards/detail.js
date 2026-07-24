@@ -310,17 +310,32 @@ async function printWorkOrder(orderId) {
         allItems.forEach(function(it) { if (it.parent_item_id) childIds.add(it.parent_item_id); });
         var items = allItems.filter(function(it) { return !childIds.has(it.id); });
 
-        // 카드 썸네일 조회 (주문의 카드들에서 thumbnail_url 가져오기)
+        // 카드 썸네일 조회 (주문의 카드들). R2 이관 후 목록은 thumbnail_url=null+has_thumbnail 플래그만
+        // 주므로, 인라인 url 없는 카드는 /api/cards/thumbnails 로 data URI 선조회(인쇄=동기 렌더라 미리 주입).
         var thumbMap = {};
         try {
             var cardsRes = await axios.get('/api/cards?order_id=' + orderId + '&limit=50');
             if (cardsRes.data.success) {
                 var cardsList = cardsRes.data.data?.cards || cardsRes.data.data || [];
+                var needIds = cardsList.filter(function(c) { return c.has_thumbnail && !c.thumbnail_url; }).map(function(c) { return c.id; });
+                var uriById = {};
+                for (var s = 0; s < needIds.length; s += 20) { // 엔드포인트 ids 20개 slice → 20개씩 청크
+                    var chunk = needIds.slice(s, s + 20);
+                    try {
+                        var tr = await axios.get('/api/cards/thumbnails?ids=' + chunk.join(','));
+                        if (tr.data && tr.data.success) {
+                            var mm = tr.data.data || {};
+                            Object.keys(mm).forEach(function(k) { uriById[k] = mm[k]; });
+                        }
+                    } catch(e) {}
+                }
                 cardsList.forEach(function(c) {
-                    if (c.thumbnail_url && c._items) {
-                        c._items.forEach(function(ci) { thumbMap[ci.item_name] = c.thumbnail_url; });
-                    } else if (c.thumbnail_url) {
-                        thumbMap[c.item_name] = c.thumbnail_url;
+                    var uri = c.thumbnail_url || uriById[c.id] || '';
+                    if (!uri) return;
+                    if (c._items && c._items.length) {
+                        c._items.forEach(function(ci) { thumbMap[ci.item_name] = uri; });
+                    } else if (c.item_name) {
+                        thumbMap[c.item_name] = uri;
                     }
                 });
             }
