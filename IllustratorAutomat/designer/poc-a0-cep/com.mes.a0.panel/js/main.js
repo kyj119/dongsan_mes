@@ -13,8 +13,10 @@
   var SIDES = ['top', 'bottom', 'left', 'right'];
   var UTF8 = (window.cep && window.cep.encoding && window.cep.encoding.UTF8) ? window.cep.encoding.UTF8 : 'UTF-8';
 
-  var methods = [];   // [{name, margin_cm}]
-  var presets = [];   // [{name, config(obj)}]
+  var methods = [];   // [{name, margin_cm, method_group}]
+  var presets = [];   // [{name, config(obj), group}]
+  var workerDomains = {}; // worker_name → 도메인(output/transfer/sign)
+  var DOMAIN_LABEL = { output: '현수막', transfer: '전사', sign: '간판' };
 
   function $(id) { return document.getElementById(id); }
   function warnMissing(id) { console.warn('[mes-a0-cep] #' + id + ' not found'); }
@@ -139,11 +141,16 @@
     var storedW = null;
     try { storedW = window.localStorage.getItem(STORE_WORKER); } catch (e) {}
     if (storedW && ROSTER.indexOf(storedW) !== -1) elWorker.value = storedW;
-    function showSaved() { if (elSaved) elSaved.textContent = '신원: ' + (elWorker.value || '(없음)'); }
+    function showSaved() {
+      if (!elSaved) return;
+      var dom = workerDomains[elWorker.value] || 'output';
+      elSaved.textContent = '신원: ' + (elWorker.value || '(없음)') + ' · ' + (DOMAIN_LABEL[dom] || dom);
+    }
     showSaved();
     elWorker.addEventListener('change', function () {
       try { window.localStorage.setItem(STORE_WORKER, elWorker.value); } catch (e) {}
       showSaved();
+      fillMethodSelects(); fillPresets(); updateAnnotGates(); // 도메인 전환 → 방식·프리셋 재로드
     });
 
     // ── 마감 method 셀렉트 채우기 ──
@@ -152,7 +159,9 @@
         var sel = finM[s];
         sel.innerHTML = '';
         var none = document.createElement('option'); none.value = ''; none.textContent = '없음'; sel.appendChild(none);
+        var dom = currentDomain();
         for (var m = 0; m < methods.length; m++) {
+          if ((methods[m].method_group || 'output') !== dom) continue; // 도메인(가공자) 필터
           var op = document.createElement('option'); op.value = methods[m].name; op.textContent = methods[m].name; sel.appendChild(op);
         }
         // method 선택 시 cm 자동채움(비어있을 때만)
@@ -179,13 +188,16 @@
       for (var i = 0; i < finMark.length; i++) if (finMark[i].getAttribute('data-side') === side) return finMark[i];
       return null;
     }
+    function currentDomain() { return workerDomains[elWorker.value] || 'output'; } // 가공자→도메인(기본 현수막)
 
     // ── 프리셋 채우기 + 적용 ──
     function fillPresets() {
       if (!elPreset) return;
       elPreset.innerHTML = '';
       var d = document.createElement('option'); d.value = ''; d.textContent = '(직접 지정)'; elPreset.appendChild(d);
+      var pdom = currentDomain();
       for (var p = 0; p < presets.length; p++) {
+        if ((presets[p].group || 'output') !== pdom) continue; // 도메인(가공자) 필터
         var op = document.createElement('option'); op.value = presets[p].name; op.textContent = presets[p].name; elPreset.appendChild(op);
       }
       elPreset.onchange = function () {
@@ -217,12 +229,16 @@
         for (var i = 0; i < rawPresets.length; i++) {
           var cfg = {};
           try { cfg = JSON.parse(rawPresets[i].config); } catch (e) { cfg = {}; }
-          presets.push({ name: rawPresets[i].name, config: cfg });
+          presets.push({ name: rawPresets[i].name, config: cfg, group: rawPresets[i].method_group || 'output' });
         }
+        workerDomains = {};
+        var wds = (data && data.worker_domains) ? data.worker_domains : [];
+        for (var wi = 0; wi < wds.length; wi++) if (wds[wi] && wds[wi].worker_name) workerDomains[wds[wi].worker_name] = wds[wi].domain;
         ok = true;
       } catch (e) { console.warn('[mes-a0-cep] config parse fail', e); }
       fillMethodSelects();
       fillPresets();
+      showSaved(); // 도메인 라벨 반영
       setCfg(ok ? ('config ✓ 마감 ' + methods.length + '종 · 프리셋 ' + presets.length) : 'config 파싱 실패 — 마감 수동 입력');
       restoreSettings();
       updateAnnotGates();
