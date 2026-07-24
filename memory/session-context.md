@@ -9,6 +9,8 @@
   - `cba5ee8f`: **주석 3cm 여백 게이트**(해당 변 마감≥3cm만)·**주석 거래처명 제외**(키워드-식별번호-수량ea)·**파일명=거래처-키워드(사이즈)-후가공-개수EA[-식별번호]**. **원단종류=주문서 저장 단계서 부여(A0 생략)**. **후가공=마감(변별 묶음)+펀칭 전체결합**(예 양옆접어미싱+사방펀칭), 한글은 main.js 조립→params(UTF-8) 전달(host 리터럴 무추가).
 - **현장 카드 썸네일 회귀 수정** `cc6a8ce2`(prod 버그): R2 이관(0449) 후 `GET /api/cards`가 `thumbnail_url`을 `r2:thumb:` 마커로 반환→`<img src>` 깨짐. 백엔드=마커는 `has_thumbnail` 플래그로만, 프론트=`/thumbnails` 배치 lazy-load. **미배포**(배포 시 prod 반영). ⚠️인쇄용 주문서/카드 문서 썸네일도 동일 마커 잠복.
 - **폴더 흐름 결정**: 주문 확정 시 IA-등록(스테이징)→`Z:\<archive>\<인쇄방식>\<YYYY>\<MM>\<DD>\<order_number>\` **이동**(복사 아님). spec **D8 개정**. ⚠️핵심=**이동 실행자=에이전트(MES=Workers는 Z: 직접 불가)**. 미해결=혼합인쇄방식 라우팅·날짜기준·ingest 후 이동·경로 갱신 멱등. **주문서↔폴더 연동(B) 자체 미구현**.
+- **사용자 하드 삭제 `33d87d8c` (배포됨)**: `DELETE /api/users/:id/hard`(ADMIN). PRAGMA foreign_key_list 동적열거→비-CASCADE 참조 있으면 409(목록반환·비활성화 권장), CASCADE+user_item_access(존재시) 자동정리. 본인/마지막ADMIN 차단·감사로그. ⚠️이 D1엔 `user_sessions` 없음(JWT 무상태)→하드코딩 DELETE 금지(존재검사). 로컬 E2E 4케이스 통과. UI=사용자관리 완전삭제 버튼.
+- **배포 완료(2026-07-24)**: origin/main 병합(XSS수정 `ff01040f` 흡수)→push(`2c58c40a`)→`deploy:prod --branch main`. prod 검증=/users 200·하드삭제 401(존재)·/api/cards 401. 커밋 cc6a8ce2(썸네일)+33d87d8c(하드삭제) 반영. CEP 패널 cba5ee8f는 웹 배포 무관(로컬 %APPDATA%).
 
 ## 이 세션 = 브레인스토밍·문서화만 (코드 변경/배포 없음)
 IA 편집기의 일러 JSX "선택→실행" 방식 심층 고찰 → 세션루프 UX 전반 재설계 spec 신규 작성 + 3차 검토 반영 + **Phase A0 PoC 산출물** 생성. **prod·에이전트·마이그 무변경.**
