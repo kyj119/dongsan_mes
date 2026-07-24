@@ -133,4 +133,40 @@ finishingRouter.delete('/presets/:id', requireRole('ADMIN'), async (c) => {
   }
 })
 
+// ── 가공자 ↔ 도메인 매핑 (후가공 프로파일 A1) ──────────────────────────
+// CEP 가공자 선택 → 도메인(output/transfer/sign) 자동 판별 → 해당 방식·프리셋만 로드
+finishingRouter.get('/worker-domains', async (c) => {
+  try {
+    const { results } = await c.env.DB.prepare(
+      'SELECT worker_name, domain FROM designer_worker_domains ORDER BY worker_name'
+    ).all()
+    return c.json({ success: true, data: results })
+  } catch {
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
+// PUT /worker-domains — 매핑 일괄 upsert (body: { mappings: [{worker_name, domain}] })
+finishingRouter.put('/worker-domains', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const body = (await c.req.json().catch(() => ({}))) as { mappings?: Array<{ worker_name?: string; domain?: string }> }
+    const mappings = Array.isArray(body.mappings) ? body.mappings : []
+    let count = 0
+    for (const m of mappings) {
+      const wn = String(m.worker_name || '').trim()
+      if (!wn) continue
+      const dom = ['output', 'transfer', 'sign'].includes(String(m.domain)) ? String(m.domain) : 'output'
+      await c.env.DB.prepare(
+        `INSERT INTO designer_worker_domains (worker_name, domain, updated_at) VALUES (?, ?, datetime('now'))
+         ON CONFLICT(worker_name) DO UPDATE SET domain = excluded.domain, updated_at = datetime('now')`
+      ).bind(wn, dom).run()
+      count++
+    }
+    return c.json({ success: true, data: { count } })
+  } catch (e) {
+    console.error('finishing PUT /worker-domains error:', e)
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
 export default finishingRouter

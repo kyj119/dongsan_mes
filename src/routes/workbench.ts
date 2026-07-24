@@ -1118,12 +1118,15 @@ workbenchRouter.post('/process/clear', async (c) => {
 workbenchRouter.get('/intake-config', async (c) => {
   try {
     // 거래처 스냅샷 제거(2026-07-17): 미니창 거래처 입력 폐지(이중입력) — config 123KB→경량
-    const [methods, presets] = await Promise.all([
+    const [methods, presets, workerDomains] = await Promise.all([
       c.env.DB.prepare(
         `SELECT id, name, margin_cm, method_group FROM finishing_methods WHERE is_active = 1 ORDER BY sort_order, id`
       ).all(),
       c.env.DB.prepare(
         `SELECT id, name, config, method_group FROM finishing_presets WHERE is_active = 1 ORDER BY sort_order, id`
+      ).all(),
+      c.env.DB.prepare(
+        `SELECT worker_name, domain FROM designer_worker_domains`
       ).all(),
     ])
     // 경로①(주문 선행)용 미가공 라인: 파일 미연결 + 진행 중 주문만
@@ -1152,6 +1155,7 @@ workbenchRouter.get('/intake-config', async (c) => {
         entity_id: getEntityId(c), // 디자이너 에이전트가 POST /intakes에 채워 넣을 귀속 법인(0=전체모드)
         methods: methods.results,
         presets: presets.results,
+        worker_domains: workerDomains.results, // 가공자→도메인(CEP 필터·프로파일)
         open_lines: openLines,
         intakes: imposeIntakes,
       },
