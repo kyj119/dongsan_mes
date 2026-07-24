@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-07-24T16:10:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-07-25T03:17:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,22 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **6** — Area 2 50회차(07-24T15:20) `search_issues(state:open,label:auto-improve)` 실측(#554~#558 이월 + #559 신규). |
+| 🆕 new | **7** — Area 4 44회차(07-25T03:17) `list_issues(state:OPEN,label:auto-improve)` 실측(#554~#559 이월 + #560 신규). |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **479** — 변동 없음(이번 사이클 close 0). |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 4 데이터 정합성 (2026-07-25T03:17):**
+> - **방법**: `git fetch origin main`(HEAD `216178f` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 4 **44회차** — 직전 Area4(`d227da1`, 07-23T12:37, 43회차) 이후 `git log d227da1..HEAD -- src/routes migrations`는 단 3커밋(`cc6a8ce`·`bd2eb57` 카드 썸네일 R2 마커 복구, `33d87d8` 사용자 하드삭제)뿐이며 신규 마이그레이션 0건. 세 커밋 모두 이미 Area1(49)·Area2(50)·Area3(43)이 각자 렌즈(배포헬스/컬럼정합/UX)로 검증 완료했으나 **Area4 고유 렌즈(orphan/dangling 참조)로는 미검증**이라 오케스트레이터가 `33d87d8`(사용자 하드삭제) 신규 기능을 직접 심층 검증. 로컬 D1 전체 리플레이는 #555가 이미 문서화한 0342~0344 결정적 실패(진행 중 확인, 215/472에서 중단) 재현만 반복하므로 중단하고 정적 파싱(전 마이그레이션 CREATE/ALTER를 소스순서로 파싱 + `_by` 컬럼의 인라인·테이블레벨 FK 선언 여부 대조)으로 ground-truth 확보. 표준 스캔 병행: `node scripts/entity-audit.mjs`(122파일·통과59·누락0)·마이그레이션 번호 중복(기존 5쌍만, 신규 0).
+> - **🔴 신규 이슈 — #560 (M, bug)**: `33d87d8` `DELETE /api/users/:id/hard`의 유일한 안전장치("참조 0건 가드")가 `PRAGMA foreign_key_list`로 **FK 선언된 컬럼만** 동적 열거 — `users(id)`를 논리적으로 참조하지만 FK로 선언되지 않은 plain INTEGER 감사(audit) 컬럼(정적 파싱으로 36개 격리, 예 `employees.deleted_by`[`0263` 소프트삭제 도입, 급여/근태 이력 보존 목적인데 정작 그 이력 보존을 하드삭제가 훼손]·`payroll.approved_by`·기존 문서화된 `inventory_counts.approved_by/submitted_by`·`price_change_history.changed_by` 동일 계열)은 구조적으로 못 봄. 실제 코드가 `hr.ts:742`/`payroll/records.ts:88`에서 이 컬럼들에 실사용자 id를 기록 중(dead column 아님) — 하드삭제 후 이 값들이 유령 user_id로 잔존해 "누가 승인/삭제했는가" 감사조회가 오염됨(throw 없는 silent, #436과 동일 클래스의 신규기능 버전). 부차로 FK가 `ON DELETE SET NULL`인 컬럼(`hold_by` 등)은 반대로 과잉 차단(D1이 자동 NULL 처리 가능한데도 409)하는 비대칭도 관찰(참고용, 별도 이슈화 안 함). 수정은 가드 범위를 얼마나 엄격히 할지(하드삭제 실효성 vs 감사이력 무결성 트레이드오프) 정책 판단 필요 → issue-only.
+> - **🟢 나머지 표준스캔 = clean**: `entity-audit.mjs` 누락 0(직전 사이클과 동일, 이번 churn에 entity_id 관련 변경 없음). 마이그 번호 중복 재확인 = 기존 5쌍(`0327`·`0412`·`0416`·`0420`·`0453`)만, 신규 0. `cc6a8ce`/`bd2eb57`(썸네일 R2 hydrate)는 읽기 전용 경로 변경뿐이라 Area4 렌즈(고아/정합성) 영향 없음 확인.
+> - **🟢 backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **7건**(#554~#559 이월 + #560 신규). `search_issues(is:closed,reason:completed)` **479**(변동 없음)·`not_planned`+`duplicate` 6(변동 없음, 이번 사이클은 재확인 생략 — 직전 여러 사이클 연속 정합 확인됨).
+> - **🧬 SKILL 강화 없음(기존 패턴 재현)** — #560은 기존 "비-FK audit 컬럼 silent 오기록"(#436 계열)의 "파괴적 삭제 신규기능" 변종. 정적 파싱 스크립트(소스순서 무관, `_by` 컬럼명 휴리스틱 + 인라인/테이블레벨 FK 양쪽 대조)는 기존 SKILL 파서 함정(RENAME 체인·다중컬럼 라인) 영향을 받지 않는 단순 컬럼명 매칭이라 재사용 가치 있으나 별도 codify는 보류(기존 "①③ users FK sweep" 레시피의 자연스러운 적용).
+> - 신규 이슈 1건(#560, issue-only), 자동수정 0건(파괴적 삭제 가드 정책 변경=owner 판단), done-sync 변동 없음(new 6→7[신규 1건 반영]·done 479·rejected 6 정합 재확인). 다음 순번 Area 5.
+>
 
 > **Area 3 UX/기능 감사 (2026-07-24T16:10):**
 > - **방법**: `git fetch origin main`(HEAD `a5ecec6` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 3 **43회차** — 직전 Area3(`edf43a2`, 07-23T09:41, 42회차) 이후 `git log edf43a2..HEAD`(31커밋)는 대부분 IA(Illustrator 자동화 CEP 패널/A0/A9) 세션 churn으로 MES 웹앱 UX 렌즈 밖. 실질 MES 프론트/백엔드 churn은 8파일뿐(`cards/queries.ts`·`cards/core.js`·`cards/detail.js`·`cardDetail.js`·`users.js`·`users.ts`·`portalOrders.js`·`purchaseOrderForm.js`·`pages/orders.ts`)이며 **전부 Area1/2/5가 이미 이번 사이클 안에서 다른 렌즈(IDOR/컬럼정합/XSS)로 검증 완료**(cards 썸네일 R2 마커 복구 `cc6a8ce`/`bd2eb57`, 포털 타임라인 `a755c31`, 사용자 하드삭제 `33d87d8`). 신선 churn이 UX 렌즈로 미검증 상태라 오케스트레이터가 직접 Read로 재검증: ① 썸네일 lazy-load(cc6a8ce/bd2eb57)의 UX 완결성(로딩/에러 처리·형제 파일 sibling-completeness) ② 포털 진행이력 타임라인(a755c31)의 렌더 품질 ③ 주문검색 품목명 확장의 UI 어포던스(placeholder) 정합.
