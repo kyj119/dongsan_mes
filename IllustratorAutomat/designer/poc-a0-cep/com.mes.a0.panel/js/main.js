@@ -447,7 +447,9 @@
     });
 
     if (elBtnQBatch) elBtnQBatch.addEventListener('click', function () {
-      csi.evalScript('mesA0_queueAddBatch(0)', function (res) { // gap 0 = 겹침만(ExtractGroups)
+      var gapEl = $('splitGap');
+      var gap = gapEl ? parseFloat(gapEl.value) : 0; if (isNaN(gap)) gap = 0;
+      csi.evalScript('mesA0_queueAddBatch(' + gap + ')', function (res) { // 분리 간격(mm): 0=겹칠때만·음수=더 잘게
         var r = null; try { r = JSON.parse(res); } catch (e) {}
         if (!r || !r.ok) {
           var em = { nodoc: '열린 문서 없음', nosel: '객체를 선택하세요', nobounds: '크기 측정 불가', allnoise: '전부 50mm 미만(노이즈)' };
@@ -462,7 +464,7 @@
           queue.push({ params: JSON.parse(JSON.stringify(base)), client: client, keyword: keyword, qty: qtyN, w: r.sizes[s].w, h: r.sizes[s].h });
         }
         renderQueue();
-        out('묶음 분리: ' + r.added + '개로 나눔 (겹침만 병합·50mm↓ 제외). 틀리면 [✕] 삭제 후 개별 추가로 교정', 'okmsg');
+        out('묶음 분리: ' + r.added + '개로 나눔 (분리간격 ' + gap + 'mm·클립존중·50mm↓ 제외). 틀리면 [✕] 삭제 후 개별 추가로 교정', 'okmsg');
       });
     });
 

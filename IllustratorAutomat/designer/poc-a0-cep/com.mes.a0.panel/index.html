@@ -109,6 +109,12 @@
 
     <!-- ── 큐 탭 ── -->
     <div class="tabpage hidden" data-page="queue">
+      <div class="row punchrow">
+        <label for="splitGap">분리 간격</label>
+        <input id="splitGap" type="text" value="0" class="tiny" />
+        <span class="unit">mm</span>
+        <span class="cfg">0=겹칠 때만 병합 · 음수=더 잘게 분리 · 양수=가까운 조각 병합</span>
+      </div>
       <div class="row buttons">
         <button id="btnQueueAdd" type="button">＋ 개별</button>
         <button id="btnQueueBatch" type="button">＋ 묶음분리</button>

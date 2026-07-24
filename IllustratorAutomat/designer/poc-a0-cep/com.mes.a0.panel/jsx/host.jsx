@@ -515,7 +515,7 @@ function mesA0_queueAdd() {
   if (!d.selection || d.selection.length === 0) return '{"ok":false,"err":"nosel"}';
   var items = [];
   for (var i = 0; i < d.selection.length; i++) items.push(d.selection[i]);
-  var ub = mesA0_unionBounds(items);
+  var ub = mesA0_clipUnion(items) || mesA0_unionBounds(items); // 클립 존중(메타 표시 정확)
   if (!ub) return '{"ok":false,"err":"nobounds"}';
   var q = mesA0_queueEnsure();
   q.push({ doc: d, items: items });
@@ -524,10 +524,14 @@ function mesA0_queueAdd() {
 }
 
 // 선택 다중 개체를 공간 근접/겹침으로 클러스터(각 클러스터=1디자인). gapPt 이내면 병합.
+// 경계=클립 존중(mesA0_itemBounds) — 클립 밖 블리드로 부풀린 visibleBounds가 이웃과 거짓 겹침 →
+// 나열된 디자인이 거짓 병합되던 문제 방지(실측과 동일 기준).
 function mesA0_cluster(items, gapPt) {
   var rects = [];
   for (var i = 0; i < items.length; i++) {
-    var b; try { b = items[i].visibleBounds; } catch (e) { b = null; }
+    var b = null;
+    try { b = mesA0_itemBounds(items[i]); } catch (e) {}
+    if (!b) { try { b = items[i].visibleBounds; } catch (e2) {} }
     if (b) rects.push({ item: items[i], L: b[0], T: b[1], R: b[2], B: b[3], cid: i });
   }
   var g = gapPt / 2;
@@ -564,23 +568,24 @@ function mesA0_queueAddBatch(gapMm) {
   if (app.documents.length === 0) return '{"ok":false,"err":"nodoc"}';
   var d = app.activeDocument;
   if (!d.selection || d.selection.length === 0) return '{"ok":false,"err":"nosel"}';
-  // 50mm 노이즈 제외(ExtractGroups MIN_DESIGN_PT — 가로·세로 둘 다 <50mm면 제거)
+  // 50mm 노이즈 제외 — 클립 존중 경계 기준(블리드로 부풀린 겉보기 대신 실제 디자인 크기)
   var MIN = 50 * MESA0_PT_PER_MM;
   var kept = [];
   for (var i = 0; i < d.selection.length; i++) {
-    var it = d.selection[i], b;
-    try { b = it.visibleBounds; } catch (eB) { b = null; }
+    var it = d.selection[i], b = null;
+    try { b = mesA0_itemBounds(it); } catch (eB) {}
+    if (!b) { try { b = it.visibleBounds; } catch (eB2) {} }
     if (!b) continue;
     if (Math.abs(b[2] - b[0]) >= MIN || Math.abs(b[1] - b[3]) >= MIN) kept.push(it);
   }
   if (!kept.length) return '{"ok":false,"err":"allnoise"}';
-  var gap = parseFloat(gapMm); if (isNaN(gap) || gap < 0) gap = 0; // 기본=겹침만(ExtractGroups intersects)
+  var gap = parseFloat(gapMm); if (isNaN(gap)) gap = 0; // 0=겹칠때만 · 음수=더 잘게 분리(겹침 깊이 요구)
   var clusters = mesA0_cluster(kept, gap * MESA0_PT_PER_MM);
   if (!clusters.length) return '{"ok":false,"err":"nobounds"}';
   var q = mesA0_queueEnsure();
   var sizes = [];
   for (var c = 0; c < clusters.length; c++) {
-    var ub = mesA0_unionBounds(clusters[c]);
+    var ub = mesA0_clipUnion(clusters[c]) || mesA0_unionBounds(clusters[c]);
     if (!ub) continue;
     q.push({ doc: d, items: clusters[c] });
     sizes.push('{"w":' + (Math.round((ub[2] - ub[0]) / MESA0_PT_PER_MM / 10 * 10) / 10) +
