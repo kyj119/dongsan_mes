@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-07-24T03:13:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-07-24T09:14:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,23 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **5** — Area 6 48회차(07-24T03:13) `list_issues(state:OPEN,label:auto-improve)` 실측, 변동 없음(`#554`~`#558` 전부 이월, 이번 사이클 생성/close 0). |
+| 🆕 new | **5** — Area 1 49회차(07-24T09:14) `list_issues(state:OPEN,label:auto-improve)` 실측, 변동 없음(`#554`~`#558` 전부 이월, 이번 사이클 생성/close 0). |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **479** — 변동 없음(이번 사이클 close 0). |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음, 개별 재확인 완료) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 1 프로덕션 헬스 (2026-07-24T09:14):**
+> - **방법**: `git fetch origin main`(HEAD `dcafdc4` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). 프록시가 이번 세션도 prod 호스트 직접 curl 차단(exit 56, CONNECT tunnel 403 — `webapp-9i0.pages.dev` 대상, `__agentproxy/status` `recentRelayFailures`에 동일 호스트 재확인, 33~48회차와 동일 제약, `cloudflare-observability` MCP 미인증) — 직접 prod API/Playwright 헬스체크 불가, GitHub Actions CI 기록으로 대체. Area 1 **49회차** — 직전 Area1(`7b93234`, 07-22T12:21, 48회차) 이후 `git log 7b93234..HEAD`(14커밋, `dcafdc4`까지)는 전부 Area2(49회차)~Area6(48회차)가 각자 렌즈로 이미 이번 사이클 안에서 심층 감사 완료(#556~#558 생성 포함). **신규 마이그레이션 2건**(`0470_bank_link_unique`·`0471_kachibal_size_variants`) — 둘 다 Area4 43회차가 데이터정합성 관점으로, Area2 49회차가 컬럼정합성 관점으로 이미 직접 검증 완료 확인, (b)-risk 컬럼드리프트 후보 아님(추가 컬럼을 참조하는 신규 detail-SELECT 없음). `.github/workflows`·`scripts/smoke.cjs`·`wrangler.jsonc` 자체 변경 0(diff 무출력) — 배포 인프라 자체 회귀 없음.
+> - **🟡 deploy.yml 실행 1건 실패 — CF-internal transient로 판정(비보고)**: 최근 30회 실행(07-20T01:16~07-23T18:15) 중 `d227da1`(Area4 43회차 docs 커밋, docs-only) 1건만 `conclusion:failure`, 나머지 29건 success. 잡 단계별 로그 확인 — Typecheck success(06:24:54~06:25:05)·Build success(06:25:05~06:25:08, Worker bundle 6.07MB 정상 컴파일)·**Deploy 단계만** `🌎 Deploying...` 이후 `✘ Deployment failed! Failed to publish your Function. Got error: Unknown internal error occurred.`로 실패, Wait/Smoke는 그 결과 skip. SKILL 코드화 패턴(line 15 "🌩️ 배포-step CF-internal transient")의 3판별 기준 전부 충족: ① Typecheck/Build/Upload 전부 success ② 에러가 CF finalize 단계(`Failed to publish your Function`/`Unknown internal error`)이지 wrangler config·컴파일 에러 아님 ③ **다음 커밋(`39ce7f9`, 3시간 뒤) 배포가 즉시 success로 회복**. 게다가 **docs-only 커밋이라 코드 트리가 안 바뀌어 코드 회귀 자체가 불가능**(트리 동일성 확인) — CF 측 내부 장애로 확정, 비보고.
+> - **🟢 나머지 배포체인·백업체인 = 전수 정상**: HEAD(`dcafdc4`, run #30032891862) 배포 success(2026-07-23T18:15:00Z) — 현재 origin/main HEAD가 정상 배포·스모크 통과 상태로 prod 반영 확인. `backup.yml`(Daily D1 Backup) 최근 30회(06-24~07-23) **전부 success**, 최신 07-23T18:07:51Z(사이클 시작 시점 기준 ~15시간 이내, 신선). `e2e.yml`은 여전히 `disabled_manually`(재발 아님, 33회차 이래 동일 상태 유지).
+> - **🟢 신규 이슈 0건**: 이번 창의 14커밋(까치발 규격분리·IA 세션루프 spec·주문→출고 워크플로우 handoff·포털 타임라인·배치픽스 2건·IDOR 보안픽스·SSOT UI 8건+장비상태 SSOT)은 전부 Area2~6가 각자 렌즈로 완결 감사(신규이슈 #556~#558 생성 확인, done-sync 정합 재확인 포함) + 매 배포 스텝 success 유지(1건 CF transient 제외) — Area1 렌즈(가용성/CI/배포/헬스)로 추가 발견 없음.
+> - **🟢 backlog↔GitHub sync**: `list_issues(state:OPEN,label:auto-improve)` 실측 **5건**(변동 없음, Area6 48회차 기재값과 일치). done `search_issues(is:closed,reason:completed)`=**479**(변동 없음) · rejected 6(변동 없음).
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — 이번 사이클은 신선 churn 전량이 다른 Area가 이미 커버 + 유일한 이상 신호(deploy 1건 실패)가 기존 코드화 패턴(line 15)에 정확히 부합하는 CF transient라 재확인 사례로만 가치 있음(신규 판별 기준 추가 불요). Playwright 도구 미가용·prod 직접 curl 차단은 기존 인지 제약의 연장.
+> - 신규 이슈 0건, 자동수정 0건(수정 대상 없음), done-sync 변동 없음(new 5·done 479·rejected 6 정합 재확인). 다음 순번 Area 2.
+>
 
 > **Area 6 자기 진화 (2026-07-24T03:13):**
 > - **방법**: `git fetch origin main`(HEAD `814a467` = origin/main 일치, 워킹트리 clean, detached — forced-update ref, `d227da1` 기재값보다 앞서 있어 재확인 후 진행) 후 `npm ci`(node_modules 0→81). Area 6 **48회차** — 직전 Area6(`df32679`, 07-22T15:17, 47회차) 이후 `git log df32679..HEAD`(18커밋: `79f5975`/`750b951`/`9f4756b`/`c292250`/`7b93234`/`b009c59`/`03f2f97`/`32773c0`/`1edba25`/`edf43a2`/`a755c31`/`a8b0dde`/`bd88f0d`/`72b8ae6`/`39ce7f9`/`d227da1`/`ff01040`/`814a467`) 전수 확인 — docs-only/merge 커밋을 빼면 실질 코드 churn 6건(flatpickr 전환·client picker SSOT·장비SSOT·배치픽스 2건·까치발 규격분리·포털 타임라인)인데 **전부 Area1(48회차)·Area2(49회차)·Area3(42회차)·Area4(43회차)·Area5(42회차)가 이미 이번 사이클 안에서 각자 렌즈로 심층 검증 완료**(`git log df32679..HEAD --grep`로 각 Area 보고 커밋이 해당 커밋 SHA를 전부 인용함을 확인) — 컬럼-diff/XSS bridge 대상 신선 churn 잔여 0. `.claude/skills/entity-audit/SKILL.md`·`.claude/skills/review-checklist/SKILL.md`·`scripts/entity-audit.mjs`·`.claude/skills/auto-improve/SKILL.md` 4파일 자체도 `git log df32679..HEAD` 변경 0(도구 상태 회귀 없음 재확인). "신선 churn 없음" → open≠unfixed 재검증 + 도구 상태 확인 + done-sync 절대값 재동기화 + 문서 정합성(New 상세표) 정비로 전환.
