@@ -209,9 +209,10 @@
         for (var s = 0; s < SIDES.length; s++) {
           var side = SIDES[s];
           var mName = pr.config[side] || '';
-          var sel = methodSelect(side), cmEl = cmInput(side);
+          var sel = methodSelect(side), cmEl = cmInput(side), mkEl = markSelect(side);
           if (sel) sel.value = mName;
           if (cmEl) cmEl.value = mName ? String(marginOf(mName)) : '';
+          if (mkEl) mkEl.value = pr.config[side + '_mark'] || ''; // 프리셋별 마크 프리필
         }
         updateAnnotGates();
       };

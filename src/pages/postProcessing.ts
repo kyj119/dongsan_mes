@@ -188,12 +188,21 @@ export function postProcessingPage(c: Context<HonoEnv>) {
                             <input type="hidden" id="finPresetGroup" value="output">
                             <div><label class="block text-sm font-medium mb-1">이름 *</label>
                                 <input id="finPresetName" type="text" class="w-full border rounded px-3 py-2 text-sm" placeholder="예: 사방 접어미싱"></div>
-                            <div class="grid grid-cols-2 gap-2">
-                                <div><label class="text-xs text-gray-500">상</label><select id="finPreTop" class="w-full border rounded px-2 py-1.5 text-sm"></select></div>
-                                <div><label class="text-xs text-gray-500">하</label><select id="finPreBot" class="w-full border rounded px-2 py-1.5 text-sm"></select></div>
-                                <div><label class="text-xs text-gray-500">좌</label><select id="finPreLeft" class="w-full border rounded px-2 py-1.5 text-sm"></select></div>
-                                <div><label class="text-xs text-gray-500">우</label><select id="finPreRight" class="w-full border rounded px-2 py-1.5 text-sm"></select></div>
+                            <div class="space-y-1">
+                                <div class="flex items-center gap-1"><span class="text-xs text-gray-500 w-5">상</span>
+                                    <select id="finPreTop" class="flex-1 border rounded px-2 py-1 text-sm"></select>
+                                    <select id="finPreTopMark" class="border rounded px-1 py-1 text-xs" style="width:88px"><option value="">마크없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></div>
+                                <div class="flex items-center gap-1"><span class="text-xs text-gray-500 w-5">하</span>
+                                    <select id="finPreBot" class="flex-1 border rounded px-2 py-1 text-sm"></select>
+                                    <select id="finPreBotMark" class="border rounded px-1 py-1 text-xs" style="width:88px"><option value="">마크없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></div>
+                                <div class="flex items-center gap-1"><span class="text-xs text-gray-500 w-5">좌</span>
+                                    <select id="finPreLeft" class="flex-1 border rounded px-2 py-1 text-sm"></select>
+                                    <select id="finPreLeftMark" class="border rounded px-1 py-1 text-xs" style="width:88px"><option value="">마크없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></div>
+                                <div class="flex items-center gap-1"><span class="text-xs text-gray-500 w-5">우</span>
+                                    <select id="finPreRight" class="flex-1 border rounded px-2 py-1 text-sm"></select>
+                                    <select id="finPreRightMark" class="border rounded px-1 py-1 text-xs" style="width:88px"><option value="">마크없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></div>
                             </div>
+                            <p class="text-xs text-gray-400">마크: 접는선=검정 실선 · 재단선=검정 점선 (현수막 도메인)</p>
                             <button type="button" onclick="finPreApplyAll()" class="text-xs text-blue-600 hover:underline">상단 값을 사방 동일 적용</button>
                         </div>
                         <div class="flex justify-end gap-2 p-4 border-t">

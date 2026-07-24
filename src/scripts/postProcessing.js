@@ -578,13 +578,21 @@ function renderFinMethodList(methods, containerId) {
     if (el) el.innerHTML = html || '<div class="text-center py-4 text-gray-400 text-sm">없음</div>';
 }
 
+function finMarkSummary(c) {
+    var sideKo = { top: '상', bottom: '하', left: '좌', right: '우' };
+    var markKo = { fold: '접', cut: '재' };
+    var parts = [];
+    ['top', 'bottom', 'left', 'right'].forEach(function(s) { if (c && (c[s + '_mark'] === 'fold' || c[s + '_mark'] === 'cut')) parts.push(sideKo[s] + markKo[c[s + '_mark']]); });
+    return parts.join(' ');
+}
 function renderFinPresetList(presets, containerId) {
     var html = '';
     presets.forEach(function(p) {
         var c = typeof p.config === 'string' ? JSON.parse(p.config) : p.config;
         html += '<div class="flex items-center justify-between p-3 border rounded hover:bg-gray-50">'
             + '<div><span class="font-semibold">' + escapeHtml(p.name) + '</span>'
-            + '<div class="text-xs text-gray-500 mt-0.5">상:' + (c.top||'-') + ' 하:' + (c.bottom||'-') + ' 좌:' + (c.left||'-') + ' 우:' + (c.right||'-') + '</div>'
+            + '<div class="text-xs text-gray-500 mt-0.5">상:' + (c.top||'-') + ' 하:' + (c.bottom||'-') + ' 좌:' + (c.left||'-') + ' 우:' + (c.right||'-')
+            + (finMarkSummary(c) ? ' <span class="text-purple-600">· 마크 ' + finMarkSummary(c) + '</span>' : '') + '</div>'
             + '</div><div class="flex gap-1">'
             + '<button onclick="editFinPreset(' + p.id + ')" class="text-blue-500 hover:text-blue-700 px-2"><i class="fas fa-edit"></i></button>'
             + '<button onclick="delFinPreset(' + p.id + ')" class="text-red-400 hover:text-red-600 px-2"><i class="fas fa-trash"></i></button>'
@@ -680,16 +688,31 @@ window.showFinPresetModal = function(groupOrId) {
     document.getElementById('finPreBot').value = c.bottom || '';
     document.getElementById('finPreLeft').value = c.left || '';
     document.getElementById('finPreRight').value = c.right || '';
+    // 변별 마크(프리셋별 재단선/접는선)
+    document.getElementById('finPreTopMark').value = c.top_mark || '';
+    document.getElementById('finPreBotMark').value = c.bottom_mark || '';
+    document.getElementById('finPreLeftMark').value = c.left_mark || '';
+    document.getElementById('finPreRightMark').value = c.right_mark || '';
     document.getElementById('finPresetModal').classList.remove('hidden');
 };
 window.editFinPreset = function(id) { showFinPresetModal(id); };
-window.finPreApplyAll = function() { var v = document.getElementById('finPreTop').value; ['finPreBot','finPreLeft','finPreRight'].forEach(function(id) { document.getElementById(id).value = v; }); };
+window.finPreApplyAll = function() {
+    var v = document.getElementById('finPreTop').value;
+    var mk = document.getElementById('finPreTopMark').value;
+    ['finPreBot','finPreLeft','finPreRight'].forEach(function(id) { document.getElementById(id).value = v; });
+    ['finPreBotMark','finPreLeftMark','finPreRightMark'].forEach(function(id) { document.getElementById(id).value = mk; });
+};
 
 window.saveFinPreset = async function() {
     var id = document.getElementById('finPresetId').value;
     var name = document.getElementById('finPresetName').value.trim();
     var group = document.getElementById('finPresetGroup').value || 'output';
-    var config = { top: document.getElementById('finPreTop').value, bottom: document.getElementById('finPreBot').value, left: document.getElementById('finPreLeft').value, right: document.getElementById('finPreRight').value };
+    var config = {
+        top: document.getElementById('finPreTop').value, top_mark: document.getElementById('finPreTopMark').value,
+        bottom: document.getElementById('finPreBot').value, bottom_mark: document.getElementById('finPreBotMark').value,
+        left: document.getElementById('finPreLeft').value, left_mark: document.getElementById('finPreLeftMark').value,
+        right: document.getElementById('finPreRight').value, right_mark: document.getElementById('finPreRightMark').value
+    };
     if (!name) { showToast('이름 필수', 'warning'); return; }
     try {
         if (id) await axios.put('/api/finishing/presets/' + id, { name: name, config: config, method_group: group });
