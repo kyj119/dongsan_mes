@@ -512,7 +512,55 @@ var finPresets = [];
 function loadFinishingTab() {
     loadFinMethods();
     loadFinPresets();
+    loadWorkerDomains();
 }
+
+// ── 가공자 ↔ 도메인 매핑 (후가공 프로파일 A1) ──
+var workerDomainData = [];
+var WD_DOMAINS = [['output', '현수막'], ['transfer', '전사'], ['sign', '간판']];
+function wdDomainSelect(val, idx) {
+    var h = '<select class="wd-domain border rounded px-2 py-1 text-sm" data-idx="' + idx + '">';
+    for (var i = 0; i < WD_DOMAINS.length; i++) h += '<option value="' + WD_DOMAINS[i][0] + '"' + (val === WD_DOMAINS[i][0] ? ' selected' : '') + '>' + WD_DOMAINS[i][1] + '</option>';
+    return h + '</select>';
+}
+function renderWorkerDomains() {
+    var el = document.getElementById('workerDomainList');
+    if (!el) return;
+    var html = '';
+    for (var i = 0; i < workerDomainData.length; i++) {
+        var w = workerDomainData[i];
+        html += '<div class="flex items-center gap-2"><span class="w-24 text-sm font-medium truncate">' + escapeHtml(w.worker_name) + '</span>' + wdDomainSelect(w.domain, i) + '</div>';
+    }
+    html += '<div class="flex items-center gap-2 pt-2 border-t mt-2">'
+        + '<input id="wdNewName" class="w-24 border rounded px-2 py-1 text-sm" placeholder="가공자명">'
+        + '<select id="wdNewDomain" class="border rounded px-2 py-1 text-sm"><option value="output">현수막</option><option value="transfer">전사</option><option value="sign">간판</option></select>'
+        + '<button onclick="addWorkerDomain()" class="text-blue-600 text-sm px-2"><i class="fas fa-plus"></i> 추가</button></div>';
+    el.innerHTML = html;
+}
+function loadWorkerDomains() {
+    axios.get('/api/finishing/worker-domains').then(function(res) {
+        workerDomainData = res.data.data || [];
+        renderWorkerDomains();
+    }).catch(function() { var el = document.getElementById('workerDomainList'); if (el) el.innerHTML = '<div class="text-xs text-gray-400">불러오기 실패</div>'; });
+}
+window.addWorkerDomain = function() {
+    var nameEl = document.getElementById('wdNewName');
+    var name = (nameEl ? nameEl.value : '').trim();
+    if (!name) { showToast('가공자명을 입력하세요', 'warning'); return; }
+    var dom = document.getElementById('wdNewDomain').value;
+    var found = false;
+    for (var i = 0; i < workerDomainData.length; i++) if (workerDomainData[i].worker_name === name) { workerDomainData[i].domain = dom; found = true; break; }
+    if (!found) workerDomainData.push({ worker_name: name, domain: dom });
+    renderWorkerDomains();
+};
+window.saveWorkerDomains = function() {
+    var sels = document.querySelectorAll('.wd-domain');
+    for (var i = 0; i < sels.length; i++) { var idx = parseInt(sels[i].getAttribute('data-idx'), 10); if (workerDomainData[idx]) workerDomainData[idx].domain = sels[i].value; }
+    axios.put('/api/finishing/worker-domains', { mappings: workerDomainData }).then(function() {
+        showToast('가공자 도메인 저장됨', 'success');
+        loadWorkerDomains();
+    }).catch(function(e) { showToast('저장 실패: ' + (e.response && e.response.data && e.response.data.error || e.message), 'error'); });
+};
 
 function renderFinMethodList(methods, containerId) {
     var html = '';

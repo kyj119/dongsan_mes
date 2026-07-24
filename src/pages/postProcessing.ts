@@ -97,6 +97,15 @@ export function postProcessingPage(c: Context<HonoEnv>) {
 
             <!-- 마감 방식 탭 -->
             <div id="panel-finishing" class="hidden">
+                <!-- 가공자 담당 도메인 -->
+                <div class="ds-card p-4 mb-6">
+                    <div class="flex items-center justify-between mb-2">
+                        <h2 class="text-base font-bold"><i class="fas fa-user-tag text-purple-600 mr-1"></i>가공자 담당 도메인</h2>
+                        <button onclick="saveWorkerDomains()" class="ds-btn ds-btn-primary text-xs"><i class="fas fa-save mr-1"></i>저장</button>
+                    </div>
+                    <p class="text-xs text-gray-400 mb-2">CEP 가공 패널에서 가공자 선택 시 해당 도메인의 방식·프리셋만 노출됩니다.</p>
+                    <div id="workerDomainList" class="space-y-2">로딩 중...</div>
+                </div>
                 <!-- 출력(현수막) 마감 -->
                 <div class="mb-6">
                     <div class="flex items-center gap-2 mb-3 pb-2 border-b">
