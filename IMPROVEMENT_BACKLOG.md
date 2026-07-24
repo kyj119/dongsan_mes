@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-07-24T09:14:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-07-24T15:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,21 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **5** — Area 1 49회차(07-24T09:14) `list_issues(state:OPEN,label:auto-improve)` 실측, 변동 없음(`#554`~`#558` 전부 이월, 이번 사이클 생성/close 0). |
+| 🆕 new | **6** — Area 2 50회차(07-24T15:20) `search_issues(state:open,label:auto-improve)` 실측(#554~#558 이월 + #559 신규). |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **479** — 변동 없음(이번 사이클 close 0). |
-| ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음, 개별 재확인 완료) |
+| ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 2 코드 품질 심층 분석 (2026-07-24T15:20):**
+> - **방법**: `git fetch origin main`(HEAD `dcafdc4`→`bd2eb57` 이동 확인) 후 `git checkout bd2eb57` + `npm ci`(node_modules 0→81). Area 2 **50회차** — 직전 Area2(`edf43a2`, 07-23T03:14, 49회차) 이후 `git log edf43a2..HEAD`는 27커밋(대부분 IA(Illustrator 자동화) 확장 세션 `ia-a0-cep`류라 코드품질 렌즈 밖)이나, **`src/routes`/`migrations` 실질 churn은 6파일뿐**(`cards/queries.ts`·`orders/core.ts`·`orders/queries.ts`·`portal.ts`·`users.ts`·`migrations/0471`) — Area1 49회차 보고가 "0471은 Area2 49회차가 이미 검증 완료"라 기재했으나 커밋 타임스탬프 대조 결과 **39ce7f9(0471, 03:24 UTC)가 edf43a2(Area2 49회차 자체 커밋, 03:15 UTC)보다 뒤라 실제로는 미검증**이었음을 확인(Area1 보고의 사실오류, Area6에 전달) — 이번 사이클에서 직접 커버.
+> - **🔴 신규 이슈 — #559 (S, bug, IDOR)**: `cards/queries.ts:904-929` 신설 `GET /thumbnails`(R2 썸네일 이관 배치 조회 API, `cc6a8ce`/`bd2eb57`)가 같은 파일 전체(list·count·kanban·daily·summary·단건 `GET /:id`)가 예외 없이 적용하는 `cardEntityFilter`를 누락 — `WHERE id IN (...)`만으로 임의 card id의 썸네일(R2 데이터 URI)을 법인 무관 반환. `authMiddleware`+`requireAnyPagePermission('/cards','/orders')`만 게이트라 페이지 권한만 있으면 어느 법인이든 호출 가능, `cards/core.js`·`cards/detail.js` 양쪽에서 실사용(LIVE). #414(GET /:id 카드상세 IDOR, 이미 fixed)와 동일 클래스의 신규 엔드포인트 버전. issue-only(IDOR=owner 워크플로).
+> - **🟢 나머지 5파일 검증 — 전부 clean**: `users.ts` `DELETE /:id/hard`(하드삭제, PRAGMA foreign_key_list 동적 열거+차단가드+마지막ADMIN보호+cascade자식 batch정리, 관리자 전용 저빈도 작업이라 테이블수 스캔은 N+1 bounded-FP 예외 해당) — 로직 정합·자동수정 대상 없음. `orders/core.ts`·`orders/queries.ts`(품목명 검색 확장 `EXISTS (SELECT 1 FROM order_items...)`) — list/count/CSV export 3곳 모두 동형 적용, `order_items.item_name` 컬럼 존재 확인(0001 스키마). `portal.ts`(진행이력 타임라인 `order_status_history.to_status/created_at`) — 0046 재빌드 스키마로 컬럼 존재 확인, `change_reason`/`changed_by`(내부용) 의도적 제외 확인. 프론트(`portalOrders.js`/`cards/core.js`/`cards/detail.js`/`purchaseOrderForm.js`/`users.js`) — XSS 이스케이프(Area5 `ff01040`에서 이미 처리)·`showConfirm` await 패턴·`/thumbnails` 20개 청크 배치 전부 정상 배선. `entity-audit.mjs`(122파일·통과59·누락0)·`tsc --noEmit`(clean)·마이그 번호 중복(기존 5쌍만, 신규 0) 표준스캔 전부 정상.
+> - **🧬 SKILL 강화 없음(기존 패턴 재현)** — #559는 기존 "형제-비대칭 IDOR"(#414/#437/#452/#473 계열)의 신규 엔드포인트 재현. Area1 49회차의 "0471을 Area2 49회차가 이미 검증"이라는 서술이 커밋 타임스탬프상 사실과 다름을 확인(에이전트 간 교차보고 시 커밋 SHA 인용만으로 검증완료를 단정하지 말고 타임스탬프 선후관계 확인 필요 — Area6 자기진화 노트로 전달 가치).
+> - 신규 이슈 1건(#559, issue-only), 자동수정 0건(IDOR=owner 워크플로), done-sync 변동 없음(new 5→6[신규 1건 반영]·done 479·rejected 6). 다음 순번 Area 3.
+>
 
 > **Area 1 프로덕션 헬스 (2026-07-24T09:14):**
 > - **방법**: `git fetch origin main`(HEAD `dcafdc4` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). 프록시가 이번 세션도 prod 호스트 직접 curl 차단(exit 56, CONNECT tunnel 403 — `webapp-9i0.pages.dev` 대상, `__agentproxy/status` `recentRelayFailures`에 동일 호스트 재확인, 33~48회차와 동일 제약, `cloudflare-observability` MCP 미인증) — 직접 prod API/Playwright 헬스체크 불가, GitHub Actions CI 기록으로 대체. Area 1 **49회차** — 직전 Area1(`7b93234`, 07-22T12:21, 48회차) 이후 `git log 7b93234..HEAD`(14커밋, `dcafdc4`까지)는 전부 Area2(49회차)~Area6(48회차)가 각자 렌즈로 이미 이번 사이클 안에서 심층 감사 완료(#556~#558 생성 포함). **신규 마이그레이션 2건**(`0470_bank_link_unique`·`0471_kachibal_size_variants`) — 둘 다 Area4 43회차가 데이터정합성 관점으로, Area2 49회차가 컬럼정합성 관점으로 이미 직접 검증 완료 확인, (b)-risk 컬럼드리프트 후보 아님(추가 컬럼을 참조하는 신규 detail-SELECT 없음). `.github/workflows`·`scripts/smoke.cjs`·`wrangler.jsonc` 자체 변경 0(diff 무출력) — 배포 인프라 자체 회귀 없음.
