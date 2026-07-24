@@ -112,6 +112,39 @@ function mesA0_getClipBounds(group) {
   var r = mesA0_findClipPath(group);
   return r ? r : group.geometricBounds;
 }
+// ── 보이는 잉크 축소(옵션) — 클립 마스크가 실제 콘텐츠보다 클 때 클립∩콘텐츠 교집합으로 실측 ──
+// $.global.mesA0_inkMode=true 일 때만 적용. 기본(false)=클립 경계(ExtractGroups 관례).
+function mesA0_rectIntersect(a, b) {
+  if (!a) return b; if (!b) return a;
+  var iL = Math.max(a[0], b[0]), iR = Math.min(a[2], b[2]);
+  var iT = Math.min(a[1], b[1]), iB = Math.max(a[3], b[3]);
+  return (iL < iR && iB < iT) ? [iL, iT, iR, iB] : null;
+}
+function mesA0_getContentUnion(group) { // 클립 패스 제외한 실제 아트워크 경계(중첩 클립 존중)
+  var uL = null, uT = null, uR = null, uB = null;
+  try {
+    for (var j = 0; j < group.pageItems.length; j++) {
+      var c = group.pageItems[j];
+      if (c.clipping || c.hidden || c.typename === 'TextFrame') continue;
+      var cb = mesA0_itemBounds(c);
+      if (!cb) { try { cb = c.geometricBounds; } catch (e) { cb = null; } }
+      if (cb) {
+        if (uL === null || cb[0] < uL) uL = cb[0];
+        if (uT === null || cb[1] > uT) uT = cb[1];
+        if (uR === null || cb[2] > uR) uR = cb[2];
+        if (uB === null || cb[3] < uB) uB = cb[3];
+      }
+    }
+  } catch (e) {}
+  return (uL === null) ? null : [uL, uT, uR, uB];
+}
+function mesA0_getVisibleInk(group) { // 클립 ∩ 콘텐츠 = 실제 보이는 잉크. 교집합 없으면 클립.
+  var inter = mesA0_rectIntersect(mesA0_getClipBounds(group), mesA0_getContentUnion(group));
+  return inter ? inter : mesA0_getClipBounds(group);
+}
+function mesA0_clipBoundsMode(group) { // 잉크모드=교집합, 아니면 클립 경계
+  return $.global.mesA0_inkMode ? mesA0_getVisibleInk(group) : mesA0_getClipBounds(group);
+}
 function mesA0_getClipRespecting(group) {
   var uL = null, uT = null, uR = null, uB = null;
   try {
@@ -119,7 +152,7 @@ function mesA0_getClipRespecting(group) {
       var c = group.pageItems[j];
       if (c.typename === 'TextFrame' || c.hidden) continue;
       var cb;
-      if (c.typename === 'GroupItem' && c.clipped) cb = mesA0_getClipBounds(c);
+      if (c.typename === 'GroupItem' && c.clipped) cb = mesA0_clipBoundsMode(c);
       else if (c.typename === 'GroupItem' && !c.clipped) cb = mesA0_getClipRespecting(c);
       else cb = c.geometricBounds;
       if (cb) {
@@ -134,7 +167,7 @@ function mesA0_getClipRespecting(group) {
 }
 function mesA0_itemBounds(item) {
   try {
-    if (item.typename === 'GroupItem') return item.clipped ? mesA0_getClipBounds(item) : mesA0_getClipRespecting(item);
+    if (item.typename === 'GroupItem') return item.clipped ? mesA0_clipBoundsMode(item) : mesA0_getClipRespecting(item);
     if (item.typename === 'TextFrame') return null;
     return item.geometricBounds;
   } catch (e) { return null; }
@@ -167,8 +200,9 @@ function mesA0_paramsPath() {
   return String(Folder.temp.fsName).replace(/\\/g, '/') + '/mes_a0_cep_params.json';
 }
 
-// 현재 선택 실측 (cm) — ASCII JSON
-function mesA0_measure() {
+// 현재 선택 실측 (cm) — ASCII JSON. ink=1 이면 보이는 잉크(클립∩콘텐츠)로 축소.
+function mesA0_measure(ink) {
+  $.global.mesA0_inkMode = (ink == 1 || ink === '1' || ink === true);
   if (app.documents.length === 0) return '{"ok":false,"err":"nodoc"}';
   var d = app.activeDocument;
   if (!d.selection || d.selection.length === 0) return '{"ok":false,"err":"nosel"}';
@@ -208,6 +242,7 @@ function mesA0_process() {
   var sN = parseInt(P.scale_n, 10); if (isNaN(sN) || sN < 1) sN = 1;
   var mode = (P.mode === 'impose') ? 'impose' : ((P.mode === 'both') ? 'both' : 'single');
   var trim = !!P.trim;
+  $.global.mesA0_inkMode = !!P.trim_ink; // 보이는 잉크 축소(클립∩콘텐츠) — 실측·가공 동일 기준
   var punch = P.punch || {}; // {top,bottom,left,right(개수), corners:{tl,tr,bl,br}}
   var kwRaw = P.keyword ? String(P.keyword) : ''; // 키워드(주석·파일명)
   var postDesc = P.post_desc ? String(P.post_desc) : ''; // 후가공 파일명 세그먼트(main.js 조립·UTF-8 전달)

@@ -97,7 +97,7 @@
     var elWorker = $('worker'), elSaved = $('saved'), elVer = $('ver');
     var elMeas = $('meas'), elBtnMeasure = $('btnMeasure');
     var elQty = $('qty'), elScale = $('scale'), elPreset = $('preset');
-    var elTrim = $('trim'), elClient = $('client');
+    var elTrim = $('trim'), elTrimInk = $('trimInk'), elClient = $('client');
     var elPTop = $('pTop'), elPBottom = $('pBottom'), elPLeft = $('pLeft'), elPRight = $('pRight');
     var elPcTL = $('pcTL'), elPcTR = $('pcTR'), elPcBL = $('pcBL'), elPcBR = $('pcBR');
     var elAnnot = $('annot');
@@ -234,7 +234,8 @@
 
     // ── 실측 ──
     function refreshMeasure(cb) {
-      csi.evalScript('mesA0_measure()', function (res) {
+      var inkOn = elTrimInk && elTrimInk.checked ? 1 : 0;
+      csi.evalScript('mesA0_measure(' + inkOn + ')', function (res) {
         var r = null; try { r = JSON.parse(res); } catch (e) {}
         if (r && r.ok) {
           var n = parseInt(elScale ? elScale.value : '1', 10) || 1;
@@ -251,6 +252,7 @@
     }
     if (elBtnMeasure) elBtnMeasure.addEventListener('click', function () { refreshMeasure(); });
     if (elScale) elScale.addEventListener('change', function () { refreshMeasure(); });
+    if (elTrimInk) elTrimInk.addEventListener('change', function () { refreshMeasure(); saveSettings(); });
 
     // ── 설정 영속(직전값 기억) ──
     function gatherSettings() {
@@ -260,7 +262,7 @@
         fin[SIDES[s]] = { m: sel ? sel.value : '', cm: cmEl ? cmEl.value : '' };
       }
       return { qty: elQty ? elQty.value : '1', scale: elScale ? elScale.value : '1',
-        mode: modeValue(), trim: elTrim ? !!elTrim.checked : false, client: elClient ? elClient.value : '',
+        mode: modeValue(), trim: elTrim ? !!elTrim.checked : false, trimInk: elTrimInk ? !!elTrimInk.checked : false, client: elClient ? elClient.value : '',
         punch: { t: elPTop ? elPTop.value : '0', b: elPBottom ? elPBottom.value : '0', l: elPLeft ? elPLeft.value : '0', r: elPRight ? elPRight.value : '0',
           ctl: elPcTL ? !!elPcTL.checked : false, ctr: elPcTR ? !!elPcTR.checked : false, cbl: elPcBL ? !!elPcBL.checked : false, cbr: elPcBR ? !!elPcBR.checked : false },
         annot: elAnnot ? elAnnot.value : '',
@@ -275,6 +277,7 @@
       if (elQty && st.qty) elQty.value = st.qty;
       if (elScale && st.scale) elScale.value = st.scale;
       if (elTrim) elTrim.checked = !!st.trim;
+      if (elTrimInk) elTrimInk.checked = !!st.trimInk;
       if (elClient && st.client) elClient.value = st.client;
       if (st.punch) {
         if (elPTop && st.punch.t != null) elPTop.value = st.punch.t;
@@ -342,6 +345,7 @@
         client_id: null,
         qty: qty, scale_n: scaleN, mode: modeValue(),
         trim: elTrim ? !!elTrim.checked : false,
+        trim_ink: elTrimInk ? !!elTrimInk.checked : false, // 보이는 잉크로 축소(클립∩콘텐츠)
         punch: punchObj,
         keyword: keyword, // 주석·파일명. 식별번호(seq_no)는 단건 null, 배치는 키워드별 순번
         post_desc: finishDesc(finishing, punchObj), // 후가공 파일명 세그먼트(예: 양옆접어미싱+사방펀칭)
