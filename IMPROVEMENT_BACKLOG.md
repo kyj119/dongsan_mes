@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-07-24T15:20:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-07-24T16:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -15,6 +15,15 @@
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 3 UX/기능 감사 (2026-07-24T16:10):**
+> - **방법**: `git fetch origin main`(HEAD `a5ecec6` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 3 **43회차** — 직전 Area3(`edf43a2`, 07-23T09:41, 42회차) 이후 `git log edf43a2..HEAD`(31커밋)는 대부분 IA(Illustrator 자동화 CEP 패널/A0/A9) 세션 churn으로 MES 웹앱 UX 렌즈 밖. 실질 MES 프론트/백엔드 churn은 8파일뿐(`cards/queries.ts`·`cards/core.js`·`cards/detail.js`·`cardDetail.js`·`users.js`·`users.ts`·`portalOrders.js`·`purchaseOrderForm.js`·`pages/orders.ts`)이며 **전부 Area1/2/5가 이미 이번 사이클 안에서 다른 렌즈(IDOR/컬럼정합/XSS)로 검증 완료**(cards 썸네일 R2 마커 복구 `cc6a8ce`/`bd2eb57`, 포털 타임라인 `a755c31`, 사용자 하드삭제 `33d87d8`). 신선 churn이 UX 렌즈로 미검증 상태라 오케스트레이터가 직접 Read로 재검증: ① 썸네일 lazy-load(cc6a8ce/bd2eb57)의 UX 완결성(로딩/에러 처리·형제 파일 sibling-completeness) ② 포털 진행이력 타임라인(a755c31)의 렌더 품질 ③ 주문검색 품목명 확장의 UI 어포던스(placeholder) 정합.
+> - **🟢 썸네일 lazy-load sibling-completeness — 3번째 소비 파일까지 전수 확인, clean**: `grep -rn "thumbnail_url" src/scripts`로 `cards/core.js`(칸반/그리드, cc6a8ce 수정)·`cards/detail.js`(작업지시서 인쇄, bd2eb57 수정) 외 **세 번째 소비처 `cardDetail.js:94-95`**(독립 카드상세 페이지 `it.thumbnail_url` 직접 `<img src>`, 두 수정 커밋이 손대지 않은 파일)를 발견해 #377급 부분픽스 회귀를 의심했으나, 데이터 출처를 추적한 결과 `cardDetail.js`는 `GET /api/cards/:id`(단건) 응답을 그대로 쓰고 그 엔드포인트는 `queries.ts:1030-1045`에서 `card.items[].thumbnail_url`을 R2/base64에서 **이미 실제 data URI로 hydrate**(marker 아님) — 백엔드 API 계층에서 1회 hydrate 후 모든 소비 프론트가 안전하게 raw 사용하는 설계라 사각지대 아님(list 엔드포인트만 마커→플래그 전환이 필요했던 이유와 대칭). `renderMobileTab`(misc.js)은애초 썸네일 미표시(설계, 회귀 아님). 로딩 UX: lazy-load 이미지가 `src` 속성 없이 시작(빈 자리, 깨진 아이콘 아님)+`onerror` 부모 숨김 가드+`:not([data-thumb-done])`로 재요청 방지 = 실용적 처리(스피너 부재는 미세 UX, F-004 클래스 탐지금지 대상).
+> - **🟢 포털 진행이력 타임라인(a755c31) — clean**: `renderTimeline`이 내부 초기상태(QUOTATION 등)를 화이트리스트로 제외, KST 헬퍼(`toKstDate`/`formatKST`)를 `typeof !== 'function'` 가드로 중복정의 방지(invoice.js 패턴 재사용), 전 텍스트 `esc()` 이스케이프, 빈 이력(`rows.length===0`)이면 섹션 자체 미렌더(빈 상태 처리 적절). 주문검색 확장에 맞춰 `pages/orders.ts:35` placeholder도 "주문번호, 거래처명, 품목명..."으로 동반 갱신 확인 — 기능-어포던스 불일치 없음.
+> - **🟢 backlog↔GitHub 재확인**: `list_issues(state:OPEN,label:auto-improve)` 실측 **6건**(#554~#559, Area2 50회차 기재값과 일치) — 자사 발견 #556(hover 색상 부분마이그)도 코드 재grep으로 여전히 미픽스 확인(`invoice.ts:64`/`quotation.ts:41,131` 구 teal 잔존). `search_issues(is:closed,reason:completed)` **479**(변동 없음)·rejected **6**(변동 없음).
+> - **🧬 SKILL 강화 없음(신규 탐지 클래스 아님)** — 이번 사이클은 "백엔드 API 계층 1회 hydrate → 프론트 다중 소비처 안전" 설계 패턴이 #377(부분픽스 회귀) 오탐을 유발할 뻔한 사례로, 향후 유사 멀티-소비처 데이터소스 점검 시 "수정 커밋이 건드린 파일만"이 아니라 "그 데이터를 소비하는 모든 프론트 파일"을 먼저 grep한 뒤 **백엔드 hydrate 지점이 공용인지**를 확인하는 순서가 유효함을 재확인(신규 코드화는 보류 — 기존 line 66 "명시 SELECT 존재성"·A-026 자기픽스완전성 규칙의 자연스러운 적용 사례일 뿐 별도 패턴 아님). Playwright MCP는 이번 세션에서도 연결 직후 tool-call이 거부되는 불안정 상태(prod 직접 브라우저 탐색 재차 불가, 기존 인지 제약 재확인).
+> - 신규 이슈 0건, 자동수정 0건(Area3 정책상 UX 변경은 issue-only, 이번 사이클은 애초 신규 발견 자체 없음), done-sync 변동 없음(new 6·done 479·rejected 6 정합 재확인). 다음 순번 Area 4.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-07-24T15:20):**
 > - **방법**: `git fetch origin main`(HEAD `dcafdc4`→`bd2eb57` 이동 확인) 후 `git checkout bd2eb57` + `npm ci`(node_modules 0→81). Area 2 **50회차** — 직전 Area2(`edf43a2`, 07-23T03:14, 49회차) 이후 `git log edf43a2..HEAD`는 27커밋(대부분 IA(Illustrator 자동화) 확장 세션 `ia-a0-cep`류라 코드품질 렌즈 밖)이나, **`src/routes`/`migrations` 실질 churn은 6파일뿐**(`cards/queries.ts`·`orders/core.ts`·`orders/queries.ts`·`portal.ts`·`users.ts`·`migrations/0471`) — Area1 49회차 보고가 "0471은 Area2 49회차가 이미 검증 완료"라 기재했으나 커밋 타임스탬프 대조 결과 **39ce7f9(0471, 03:24 UTC)가 edf43a2(Area2 49회차 자체 커밋, 03:15 UTC)보다 뒤라 실제로는 미검증**이었음을 확인(Area1 보고의 사실오류, Area6에 전달) — 이번 사이클에서 직접 커버.
@@ -275,10 +284,11 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 5건** — 2026-07-24T03:13 Area 6 48회차, `list_issues(state:OPEN,label:auto-improve)` 직접 재확인. 이번 사이클 생성/close 0건, `#558` 반영해 표만 갱신.)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 6건** — 2026-07-24T16:10 Area 3 43회차, `list_issues(state:OPEN,label:auto-improve)` 직접 재확인. `#559` 반영해 표 갱신.)
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
+| #559 | cards/queries.ts GET /thumbnails 멀티법인 격리 누락 IDOR — R2 썸네일 이관 신규 엔드포인트 | Area 2 | bug,small | issue-only, 신규(#559) |
 | #558 | payroll/core.ts POST /preview entityFilter 누락 — 타법인 직원 급여 미리보기 cross-tenant 열람 | Area 5 | bug,S | issue-only, 미픽스(재확인) |
 | #557 | clients.ts POST /:id/portal-account 형제 entityFilter 누락 — 타법인 ADMIN 포털계정 셀프발급→cross-entity 거래이력 열람 | Area 4/5 | bug,M | issue-only, 미픽스(재확인) |
 | #556 | 인쇄뷰(invoice/quotation) 버튼 hover 색상 — 팔레트 스윕이 base만 이관, hover는 구 teal 잔존 | Area 3 | improvement,S | issue-only, 미픽스(재확인) |
