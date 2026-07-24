@@ -43,6 +43,7 @@
             '<button onclick="showResetModal(' + u.id + ', \'' + jsStr(u.name || u.username) + '\')" class="text-orange-500 hover:text-orange-700 text-sm font-medium">비번 초기화</button>' +
             '<button onclick="toggleActive(' + u.id + ', ' + (u.is_active ? 'false' : 'true') + ')" class="' + toggleClass + ' text-sm font-medium">' + toggleLabel + '</button>' +
             '<button onclick="openItemAccessModal(' + u.id + ', \'' + jsStr(u.name || u.username) + '\')" class="text-purple-600 hover:text-purple-700 text-sm font-medium" title="주문서에서 이 사용자가 쓸 품목 그룹 제한">품목배정</button>' +
+            '<button onclick="hardDeleteUser(' + u.id + ', \'' + jsStr(u.name || u.username) + '\')" class="text-red-600 hover:text-red-700 text-sm font-medium" title="참조가 전혀 없을 때만 계정을 완전 삭제(되돌리기 불가)">완전삭제</button>' +
           '</div>' +
         '</td>' +
       '</tr>';
@@ -284,6 +285,26 @@
       })
       .catch(function(err) {
         showToast('변경 실패: ' + (err.response && err.response.data && err.response.data.error || err.message), 'error');
+      });
+  };
+
+  window.hardDeleteUser = async function(id, name) {
+    var ok = await showConfirm('[주의] "' + name + '" 계정을 완전 삭제합니다.\n\n참조(주문·카드·감사기록 등)가 전혀 없을 때만 삭제되며, 되돌릴 수 없습니다.\n참조가 있으면 대신 비활성화하세요.\n\n계속하시겠습니까?');
+    if (!ok) return;
+    axios.delete('/api/users/' + id + '/hard')
+      .then(function() {
+        showToast('완전 삭제되었습니다.', 'success');
+        loadUsers();
+      })
+      .catch(function(err) {
+        var r = err.response, d = r && r.data;
+        if (r && r.status === 409 && d && d.references) {
+          console.warn('[users] 하드삭제 차단 — 참조 목록:', d.references);
+          var top = d.references.slice(0, 4).map(function(x) { return x.table + '(' + x.count + ')'; }).join(', ');
+          showToast('삭제 불가: ' + d.references.length + '곳에서 참조 중 (' + top + (d.references.length > 4 ? ' …' : '') + '). 비활성화를 권장합니다.', 'error');
+        } else {
+          showToast('삭제 실패: ' + (d && d.error || err.message), 'error');
+        }
       });
   };
 

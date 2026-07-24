@@ -3,6 +3,8 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireAdmin } from '../middleware/auth'
 import { hashPassword, verifyPassword } from '../utils/crypto'
 import { ROLES as VALID_ROLES, toLegacyRole } from '../types/roles'
+import { logActivity } from '../utils/activityLog'
+import { getEntityId } from '../utils/entityFilter'
 
 export const usersRouter = new Hono<HonoEnv>()
 
@@ -251,6 +253,114 @@ usersRouter.patch('/:id', requireAdmin, async (c) => {
   } catch (error) {
     console.error('PATCH /api/users/:id error:', error)
     console.error('src/routes/users.ts error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// DELETE /api/users/:id/hard — 하드(완전) 삭제 (ADMIN only). "참조 0건 가드".
+//   users 를 참조하는 모든 FK를 PRAGMA foreign_key_list 로 동적 열거해 카운트.
+//   비-CASCADE 참조(주문·카드·감사 등)가 하나라도 있으면 차단 → 비활성화 권장.
+//   CASCADE FK(user_sessions 등 소유·휘발성)와 비FK 소유테이블(user_item_access)은 자동 정리.
+usersRouter.delete('/:id/hard', requireAdmin, async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    if (isNaN(id)) {
+      return c.json({ success: false, error: '유효하지 않은 사용자 ID입니다.' }, 400)
+    }
+
+    const actor = c.get('user')
+    if (actor?.id === id) {
+      return c.json({ success: false, error: '본인 계정은 하드 삭제할 수 없습니다.' }, 400)
+    }
+
+    const target = await c.env.DB.prepare(
+      `SELECT id, username, name, COALESCE(job_role, role) AS role, is_active FROM users WHERE id = ?`
+    ).bind(id).first<{ id: number; username: string; name: string; role: string; is_active: number }>()
+    if (!target) {
+      return c.json({ success: false, error: '사용자를 찾을 수 없습니다.' }, 404)
+    }
+
+    // 마지막 활성 ADMIN 삭제 차단 — 시스템 잠금 방지
+    if (target.role === 'ADMIN') {
+      const cnt = await c.env.DB.prepare(
+        `SELECT COUNT(*) as cnt FROM users WHERE COALESCE(job_role, role) = 'ADMIN' AND is_active = 1 AND id != ?`
+      ).bind(id).first<{ cnt: number }>()
+      if (!cnt || cnt.cnt === 0) {
+        return c.json({ success: false, error: '시스템에 최소 1명의 ADMIN이 필요합니다. 다른 ADMIN을 둔 뒤 삭제하세요.' }, 400)
+      }
+    }
+
+    // users 를 참조하는 모든 FK 동적 열거 (PRAGMA foreign_key_list)
+    const { results: tableRows } = await c.env.DB.prepare(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`
+    ).all<{ name: string }>()
+
+    const blockers: Array<{ table: string; column: string; count: number }> = []
+    const cascadeChildren: Array<{ table: string; column: string }> = []
+    const seenCascade = new Set<string>()
+    let capped = false
+
+    for (const t of tableRows) {
+      if (capped) break
+      const tName = t.name
+      if (!/^[A-Za-z0-9_]+$/.test(tName) || tName === 'users' || tName.startsWith('_cf_')) continue
+      let fkRows: Array<{ table: string; from: string; on_delete: string }> = []
+      try {
+        const r = await c.env.DB.prepare(`PRAGMA foreign_key_list(${tName})`).all<{ table: string; from: string; on_delete: string }>()
+        fkRows = r.results || []
+      } catch { continue }
+      for (const fk of fkRows) {
+        if (fk.table !== 'users') continue
+        const col = fk.from
+        if (!/^[A-Za-z0-9_]+$/.test(col)) continue
+        const cntRow = await c.env.DB.prepare(
+          `SELECT COUNT(*) as c FROM "${tName}" WHERE "${col}" = ?`
+        ).bind(id).first<{ c: number }>()
+        const n = cntRow?.c || 0
+        if (n <= 0) continue
+        if ((fk.on_delete || '').toUpperCase() === 'CASCADE') {
+          const key = tName + '.' + col
+          if (!seenCascade.has(key)) { seenCascade.add(key); cascadeChildren.push({ table: tName, column: col }) }
+        } else {
+          blockers.push({ table: tName, column: col, count: n })
+          if (blockers.length >= 20) { capped = true; break } // 차단 확정 — 나열은 20건까지만
+        }
+      }
+    }
+
+    if (blockers.length > 0) {
+      return c.json({
+        success: false,
+        error: '다른 데이터에서 참조 중이라 하드 삭제할 수 없습니다. 비활성화를 권장합니다.',
+        references: blockers
+      }, 409)
+    }
+
+    // 소유/휘발성 정리 + 사용자 삭제 (원자적 배치 — 자식 먼저, 부모 나중)
+    // CASCADE FK(세션 등)는 cascadeChildren 로 이미 포함. user_item_access 는 비FK 소유테이블이라
+    // 명시 정리하되, DB마다 테이블 유무가 달라 존재할 때만(하드코딩 테이블 없으면 500 방지).
+    const tableSet = new Set((tableRows || []).map((t) => t.name))
+    const stmts = []
+    for (const ch of cascadeChildren) {
+      stmts.push(c.env.DB.prepare(`DELETE FROM "${ch.table}" WHERE "${ch.column}" = ?`).bind(id))
+    }
+    if (tableSet.has('user_item_access')) {
+      stmts.push(c.env.DB.prepare(`DELETE FROM user_item_access WHERE user_id = ?`).bind(id))
+    }
+    stmts.push(c.env.DB.prepare(`DELETE FROM users WHERE id = ?`).bind(id))
+    await c.env.DB.batch(stmts)
+
+    await logActivity({
+      db: c.env.DB, userId: actor?.id, userName: actor?.username,
+      action: 'HARD_DELETE', entityType: 'USER', entityId: id,
+      entityLabel: target.username,
+      details: JSON.stringify({ name: target.name, role: target.role, cleaned: cascadeChildren.map((x) => x.table) }),
+      actorEntityId: getEntityId(c)
+    })
+
+    return c.json({ success: true, message: '사용자가 완전 삭제되었습니다.' })
+  } catch (error) {
+    console.error('DELETE /api/users/:id/hard error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
