@@ -93,6 +93,68 @@ function mesA0_docUnion(doc) {
   return (L2 === null) ? null : [L2, T2, R2, B2]; // null = 측정할 아이템 없음(폴백 100pt 산출 방지)
 }
 
+// ── 클리핑 마스크 존중 경계 (ExtractGroups getClipBounds/getClipRespectingBounds 포팅) ──
+// 클립 그룹은 겉보기/기하 경계가 '클립 밖 원본 콘텐츠'까지 잡아 커짐 → 클립 마스크(경로) 경계를 써야 정확
+function mesA0_findClipPath(item) {
+  try {
+    if (item.clipping) return item.geometricBounds;
+    if (item.typename === 'GroupItem') {
+      for (var j = 0; j < item.pageItems.length; j++) {
+        var r = mesA0_findClipPath(item.pageItems[j]);
+        if (r) return r;
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+function mesA0_getClipBounds(group) {
+  for (var j = 0; j < group.pageItems.length; j++) {
+    try { if (group.pageItems[j].clipping) return group.pageItems[j].geometricBounds; } catch (e) {}
+  }
+  var r = mesA0_findClipPath(group);
+  return r ? r : group.geometricBounds;
+}
+function mesA0_getClipRespecting(group) {
+  var uL = null, uT = null, uR = null, uB = null;
+  try {
+    for (var j = 0; j < group.pageItems.length; j++) {
+      var c = group.pageItems[j];
+      if (c.typename === 'TextFrame' || c.hidden) continue;
+      var cb;
+      if (c.typename === 'GroupItem' && c.clipped) cb = mesA0_getClipBounds(c);
+      else if (c.typename === 'GroupItem' && !c.clipped) cb = mesA0_getClipRespecting(c);
+      else cb = c.geometricBounds;
+      if (cb) {
+        if (uL === null || cb[0] < uL) uL = cb[0];
+        if (uT === null || cb[1] > uT) uT = cb[1];
+        if (uR === null || cb[2] > uR) uR = cb[2];
+        if (uB === null || cb[3] < uB) uB = cb[3];
+      }
+    }
+  } catch (e) {}
+  return (uL === null) ? group.geometricBounds : [uL, uT, uR, uB];
+}
+function mesA0_itemBounds(item) {
+  try {
+    if (item.typename === 'GroupItem') return item.clipped ? mesA0_getClipBounds(item) : mesA0_getClipRespecting(item);
+    if (item.typename === 'TextFrame') return null;
+    return item.geometricBounds;
+  } catch (e) { return null; }
+}
+function mesA0_clipUnion(items) {
+  var L = null, T = null, R = null, B = null;
+  for (var i = 0; i < items.length; i++) {
+    var b = mesA0_itemBounds(items[i]);
+    if (!b) { try { b = items[i].geometricBounds; } catch (e) { b = null; } } // top-level 텍스트 등 폴백
+    if (!b) continue;
+    if (L === null || b[0] < L) L = b[0];
+    if (T === null || b[1] > T) T = b[1];
+    if (R === null || b[2] > R) R = b[2];
+    if (B === null || b[3] < B) B = b[3];
+  }
+  return (L === null) ? null : [L, T, R, B];
+}
+
 // ── 브릿지 API (ASCII in/out) ──
 function mesA0_ping() { return MESA0_VERSION; }
 
@@ -114,24 +176,16 @@ function mesA0_measure() {
   if (!d.selection || d.selection.length === 0) return '{"ok":false,"err":"nosel"}';
   var sel = [];
   for (var i = 0; i < d.selection.length; i++) sel.push(d.selection[i]);
-  var ub = mesA0_unionBounds(sel); // visibleBounds(선·효과 포함)
-  if (!ub) return '{"ok":false,"err":"nobounds"}';
-  // 기하 경계(geometricBounds — 도형만, 선·효과 제외) 진단용
-  var gL = null, gT = null, gR = null, gB = null;
-  for (var j = 0; j < sel.length; j++) {
-    var gb; try { gb = sel[j].geometricBounds; } catch (eG) { gb = null; }
-    if (!gb) continue;
-    if (gL === null || gb[0] < gL) gL = gb[0];
-    if (gT === null || gb[1] > gT) gT = gb[1];
-    if (gR === null || gb[2] > gR) gR = gb[2];
-    if (gB === null || gb[3] < gB) gB = gb[3];
-  }
-  var w = (ub[2] - ub[0]) / MESA0_PT_PER_MM / 10;
-  var h = (ub[1] - ub[3]) / MESA0_PT_PER_MM / 10;
-  var gw = (gL === null) ? w : ((gR - gL) / MESA0_PT_PER_MM / 10);
-  var gh = (gL === null) ? h : ((gT - gB) / MESA0_PT_PER_MM / 10);
+  var cr = mesA0_clipUnion(sel);   // 클립 마스크 존중(정확한 디자인 크기)
+  var vb = mesA0_unionBounds(sel); // 겉보기(선·효과·클립밖 포함, 진단)
+  if (!cr) cr = vb;
+  if (!cr) return '{"ok":false,"err":"nobounds"}';
+  var w = (cr[2] - cr[0]) / MESA0_PT_PER_MM / 10;
+  var h = (cr[1] - cr[3]) / MESA0_PT_PER_MM / 10;
+  var vw = vb ? ((vb[2] - vb[0]) / MESA0_PT_PER_MM / 10) : w;
+  var vh = vb ? ((vb[1] - vb[3]) / MESA0_PT_PER_MM / 10) : h;
   return '{"ok":true,"w":' + (Math.round(w * 10) / 10) + ',"h":' + (Math.round(h * 10) / 10) +
-    ',"gw":' + (Math.round(gw * 10) / 10) + ',"gh":' + (Math.round(gh * 10) / 10) + ',"n":' + sel.length + '}';
+    ',"vw":' + (Math.round(vw * 10) / 10) + ',"vh":' + (Math.round(vh * 10) / 10) + ',"n":' + sel.length + '}';
 }
 
 // 가공 실행 — params 파일(UTF-8) 읽어 mes-core 로직 수행. 반환=ASCII JSON.
@@ -201,25 +255,31 @@ function mesA0_process() {
   try {
     app.activeDocument = newDoc;
     app.paste(); // 신규문서 중앙에 붙음(절대위치는 이후 정규화로 원점 이동)
+    // 붙여넣은 top-level 디자인 캡처(outline 전 — 클립 존중 경계용)
+    var pasted = [];
+    for (var ps = 0; ps < newDoc.selection.length; ps++) pasted.push(newDoc.selection[ps]);
 
     try { for (var ti = newDoc.textFrames.length - 1; ti >= 0; ti--) newDoc.textFrames[ti].createOutline(); }
     catch (eOl) { outlineFailed = true; }
     try { pfRemainingText = newDoc.textFrames.length; } catch (ePf1) {}
     try { pfLinkedImages = newDoc.placedItems.length; } catch (ePf2) {}
 
-    diagItems = newDoc.pageItems.length;
-    // 위치 정규화: 복제 아트를 원점 근처로 이동(원본 절대좌표·신규문서 캔버스 범위 무관) — top-level만 이동(중첩 이중이동 방지)
-    var pre = mesA0_docUnion(newDoc);
+    if (pasted.length === 0) { // 폴백: 레이어 top-level 수집
+      for (var pl = 0; pl < newDoc.pageItems.length; pl++) {
+        try { var itp = newDoc.pageItems[pl]; if (itp.parent && itp.parent.typename === 'Layer') pasted.push(itp); } catch (ePl) {}
+      }
+    }
+    diagItems = pasted.length;
+    // 위치 정규화: 겉보기 union 기준 원점 근처 이동(top-level만)
+    var pre = mesA0_unionBounds(pasted);
     if (pre) {
       var dx = -pre[0], dy = -pre[1];
       if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01) {
-        for (var pn = 0; pn < newDoc.pageItems.length; pn++) {
-          var itn = newDoc.pageItems[pn];
-          try { if (itn.parent && itn.parent.typename === 'Layer') { itn.translate(dx, dy); normed++; } } catch (eTr) {}
-        }
+        for (var pn = 0; pn < pasted.length; pn++) { try { pasted[pn].translate(dx, dy); normed++; } catch (eTr) {} }
       }
     }
-    var db = mesA0_docUnion(newDoc);
+    var db = mesA0_clipUnion(pasted); // 클립 마스크 존중(아트보드=정확한 디자인 크기)
+    if (!db) db = mesA0_unionBounds(pasted);
     if (!db) { // 복제 실패/측정 불가 — 쓰레기 산출 대신 진단 반환
       try { newDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (eC0) {}
       return '{"ok":false,"err":"noart","items":' + diagItems + ',"sel":' + sel.length + ',"copyErr":"' + mesA0_jsonEsc(copyErr) + '"}';

@@ -191,7 +191,7 @@
         if (r && r.ok) {
           var n = parseInt(elScale ? elScale.value : '1', 10) || 1;
           var txt = r.w + ' × ' + r.h + ' cm' + (r.n > 1 ? (' · ' + r.n + '개') : '');
-          if (r.gw != null && (Math.abs(r.gw - r.w) > 0.2 || Math.abs(r.gh - r.h) > 0.2)) txt += ' (도형 ' + r.gw + '×' + r.gh + ')';
+          if (r.vw != null && (Math.abs(r.vw - r.w) > 0.2 || Math.abs(r.vh - r.h) > 0.2)) txt += ' (겉보기 ' + r.vw + '×' + r.vh + ')';
           if (n > 1) txt += '  → 실물 ' + (Math.round(r.w * n * 10) / 10) + ' × ' + (Math.round(r.h * n * 10) / 10);
           if (elMeas) elMeas.textContent = txt;
         } else {
