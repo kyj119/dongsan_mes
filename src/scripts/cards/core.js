@@ -253,6 +253,7 @@ function renderAll() {
     renderDashboard();
     if (window.innerWidth < 1024) renderMobileTab();
     initDragAndDrop();
+    loadCardThumbnails(document); // has_thumbnail 플래그 카드 썸네일 지연로드(/thumbnails)
 }
 
 // ===== 컬럼 렌더링 =====
@@ -285,6 +286,49 @@ function renderColumn(containerId, cards, columnType) {
     el.innerHTML = html;
 }
 
+// ===== 썸네일 lazy-load (목록 API는 has_thumbnail 플래그만 → /thumbnails 배치 조회) =====
+// R2 이관 후 thumbnail_url은 마커라 인라인 불가. 플래그 카드만 지연로드하고, 레거시 data URI는 인라인 유지.
+function cardHasThumb(card) {
+    return (card.has_thumbnail == 1) || (card.thumbnail_url && card.thumbnail_url.length > 10);
+}
+function cardThumbTag(card, cls, style) {
+    var common = ' alt="" ' + (cls ? 'class="' + cls + '" ' : '') + (style ? 'style="' + style + '" ' : '')
+        + 'onerror="this.parentElement.style.display=\'none\'"';
+    if (card.thumbnail_url && card.thumbnail_url.length > 10) {
+        return '<img src="' + card.thumbnail_url + '"' + common + '>';
+    }
+    return '<img data-thumb-card="' + card.id + '"' + common + '>';
+}
+function loadCardThumbnails(scope) {
+    try {
+        var root = scope || document;
+        var imgs = root.querySelectorAll('img[data-thumb-card]:not([data-thumb-done])');
+        if (!imgs || !imgs.length) return;
+        var byId = {}, ids = [];
+        for (var i = 0; i < imgs.length; i++) {
+            imgs[i].setAttribute('data-thumb-done', '1');
+            var cid = imgs[i].getAttribute('data-thumb-card');
+            if (!byId[cid]) { byId[cid] = []; ids.push(cid); }
+            byId[cid].push(imgs[i]);
+        }
+        for (var s = 0; s < ids.length; s += 20) { // 엔드포인트가 ids 20개로 slice → 20개씩 청크
+            (function (chunk) {
+                axios.get('/api/cards/thumbnails?ids=' + chunk.join(',')).then(function (res) {
+                    if (!res.data || !res.data.success) return;
+                    var map = res.data.data || {};
+                    chunk.forEach(function (cid) {
+                        var uri = map[cid];
+                        (byId[cid] || []).forEach(function (im) {
+                            if (uri) { im.src = uri; }
+                            else if (im.parentElement) { im.parentElement.style.display = 'none'; }
+                        });
+                    });
+                }).catch(function () {});
+            })(ids.slice(s, s + 20));
+        }
+    } catch (e) { console.warn('[cards] loadCardThumbnails 실패', e); }
+}
+
 // ===== 그리드 카드 빌더 (출력중/출력완료 전용) =====
 function buildGridCard(card, columnType) {
     var urg = getUrgency(card.delivery_date);
@@ -293,7 +337,7 @@ function buildGridCard(card, columnType) {
     var deliveryMethod = card.delivery_method || '';
     var deliveryTime = card.delivery_time || '';
     var isUrgentPulse = urg.diff <= 0 && columnType !== 'done';
-    var hasThumbnail = card.thumbnail_url && card.thumbnail_url.length > 10;
+    var hasThumbnail = cardHasThumb(card);
 
     // 긴급도 보더 색상
     var borderColor = '#e5e7eb';
@@ -316,7 +360,7 @@ function buildGridCard(card, columnType) {
         } else if (card.width && card.height) {
             specText = Math.round(card.width) + ' x ' + Math.round(card.height) + 'cm';
         }
-        html += '<img src="' + card.thumbnail_url + '" alt="" class="grid-card-img" onerror="this.parentElement.style.display=\'none\'">';
+        html += cardThumbTag(card, 'grid-card-img', '');
         if (specText) {
             html += '<div class="grid-card-spec-overlay">' + specText + '</div>';
         }
@@ -575,13 +619,13 @@ function buildKanbanCard(card, columnType) {
     html += '</div>';
 
     // ── 메인 콘텐츠: 썸네일(좌) + 통합 아이템 리스트(우) ──
-    var hasThumbnail = card.thumbnail_url && card.thumbnail_url.length > 10;
+    var hasThumbnail = cardHasThumb(card);
     html += '<div class="flex gap-3">';
 
     // 썸네일 영역
     if (hasThumbnail) {
         html += '<div class="flex-shrink-0">';
-        html += '<img src="' + card.thumbnail_url + '" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb;background:#f9fafb" onerror="this.parentElement.style.display=\'none\'">';
+        html += cardThumbTag(card, '', 'width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb;background:#f9fafb');
         html += '</div>';
     }
 

@@ -477,6 +477,17 @@ cardsQueriesRouter.get('/', async (c) => {
     const countResult = await c.env.DB.prepare(countQuery).bind(...countParams).first<CountRow>()
     const count = countResult?.count ?? 0
 
+    // 썸네일: R2 마커(r2:thumb:)는 목록에 인라인하지 않고 has_thumbnail 플래그로만 노출
+    //   (프론트가 /thumbnails 로 lazy-load). 레거시 data URI/URL은 그대로 인라인(하위호환).
+    //   마커를 그대로 흘리면 <img src>가 깨져 썸네일 전멸 → R2 이관(0449) 회귀 방지.
+    for (const card of typedResults) {
+      const cc = card as Record<string, unknown>
+      const tu = cc.thumbnail_url
+      if (isThumbRef(tu)) { cc.has_thumbnail = 1; cc.thumbnail_url = null }
+      else if (typeof tu === 'string' && tu.length > 0) { cc.has_thumbnail = 1 }
+      else { cc.has_thumbnail = 0 }
+    }
+
     return c.json({
       success: true,
       data: typedResults,
