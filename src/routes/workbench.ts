@@ -1194,6 +1194,12 @@ workbenchRouter.post('/intakes', async (c) => {
     const scalePct = Math.min(100, Math.max(1, parseInt(String(body.scale_pct ?? '100'), 10) || 100))
     const mode = ['single', 'impose', 'both'].includes(String(body.mode)) ? String(body.mode) : 'single'
     const finishing = body.finishing && typeof body.finishing === 'object' ? JSON.stringify(body.finishing) : null
+    // CEP 패널 신규 필드 캐리(0472) — 구 mes-core manifest엔 없어 NULL(하위호환)
+    const keyword = body.keyword != null ? String(body.keyword) : null
+    const postDesc = body.post_desc != null ? String(body.post_desc) : null
+    const punchJson = body.punch && typeof body.punch === 'object' ? JSON.stringify(body.punch) : null
+    const workerName = body.worker_name != null ? String(body.worker_name) : null
+    const workerId = Number.isFinite(Number(body.worker_id)) && Number(body.worker_id) > 0 ? Number(body.worker_id) : null
 
     // 임포지션 팔레트 호환용 분석 레코드. file_path 소비자 규칙:
     //   single → EPS(직접연결 -3 passthrough가 완성본을 복사) / impose·both → work.ai(SheetLayout 소스 해석)
@@ -1227,8 +1233,9 @@ workbenchRouter.post('/intakes', async (c) => {
       INSERT INTO designer_intakes (
         entity_id, ai_analysis_id, client_name, qty, finishing_json, width_cm, height_cm,
         scale_pct, trim, mode, eps_path, work_ai_path, status,
-        registered_by, pc_name, script_version, outline_failed, memo
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?)
+        registered_by, pc_name, script_version, outline_failed, memo,
+        keyword, post_desc, punch_json, worker_name, worker_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING id
     `).bind(
       entityId, analysisId, clientName, qty, finishing, w, h,
@@ -1237,7 +1244,8 @@ workbenchRouter.post('/intakes', async (c) => {
       body.pc_name != null ? String(body.pc_name) : null,
       body.script_version != null ? String(body.script_version) : null,
       body.outline_failed ? 1 : 0,
-      sourceFolder
+      sourceFolder,
+      keyword, postDesc, punchJson, workerName, workerId
     ).first<{ id: number }>()
 
     // 판짜기(sheet) manifest: 판에 소비된 조각 대기물 absorbed 처리 (mes-sheet.jsx consumed_intake_ids)
@@ -1283,12 +1291,15 @@ workbenchRouter.get('/intakes', async (c) => {
   try {
     const status = (c.req.query('status') || 'waiting').trim()
     const client = (c.req.query('client') || '').trim()
+    const worker = (c.req.query('worker') || '').trim()
     const limit = Math.min(parseInt(c.req.query('limit') || '100', 10) || 100, 200)
     const ef = entityFilter(c, 'designer_intakes')
     let where = `1=1${ef.clause}`
     const params: unknown[] = [...ef.params]
     if (status && status !== 'all') { where += ` AND designer_intakes.status = ?`; params.push(status) }
-    if (client) { where += ` AND designer_intakes.client_name LIKE ?`; params.push(`%${client}%`) }
+    // 거래처 필터 시 '미지정'(디자이너 미입력)은 항상 노출 — 전멸 방지(D2)
+    if (client) { where += ` AND (designer_intakes.client_name LIKE ? OR designer_intakes.client_name = '미지정')`; params.push(`%${client}%`) }
+    if (worker) { where += ` AND designer_intakes.worker_name LIKE ?`; params.push(`%${worker}%`) }
 
     const { results } = await c.env.DB.prepare(`
       SELECT designer_intakes.*, ar.groups_json
