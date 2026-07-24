@@ -249,12 +249,14 @@ function mesA0_process() {
   var annotPos = P.annot_pos || {}; // {top,bottom,left,right} bool (다중)
   var seqNo = (P.seq_no != null && P.seq_no !== '') ? P.seq_no : null; // 식별번호(키워드별 순번)
   var fin = P.finishing || {};
-  var finJson = {}, finMargins = {}, finRealCm = {}, hasFinishing = false;
+  var finJson = {}, finMargins = {}, finRealCm = {}, finMark = {}, hasFinishing = false, hasMark = false;
   for (var fs = 0; fs < MESA0_SIDES.length; fs++) {
     var sd = MESA0_SIDES[fs];
     var mName = fin[sd] || '';
     var cmVal = parseFloat(fin[sd + '_cm']); if (isNaN(cmVal)) cmVal = 0;
     if (mName) { finJson[sd] = mName; finJson[sd + '_cm'] = cmVal; hasFinishing = true; }
+    var mk = fin[sd + '_mark']; // 변별 마크: 'fold'(접는선) | 'cut'(재단선)
+    if (mk === 'fold' || mk === 'cut') { finMark[sd] = mk; finJson[sd + '_mark'] = mk; hasMark = true; }
     finMargins[sd] = (mName ? cmVal : 0) * 10 * MESA0_PT_PER_MM / sN;
     finRealCm[sd] = mName ? cmVal : 0; // 실측 여백 cm(주석 3cm 게이트용)
   }
@@ -328,18 +330,22 @@ function mesA0_process() {
       var oL = db[0], oT = db[1], oR = db[2], oB = db[3];
       newDoc.artboards[0].artboardRect = [oL - finMargins.left, oT + finMargins.top, oR + finMargins.right, oB - finMargins.bottom];
 
-      if (hasFinishing) {
-        var mCol = new CMYKColor(); mCol.cyan = 0; mCol.magenta = 0; mCol.yellow = 0; mCol.black = 100; // 접는선 검정(K100)
-        function foldLine(x1, y1, x2, y2) {
+      // 재단/접는선: 변별 마크(fold=접는선 검정실선, cut=재단선 검정점선). 위치=디자인 경계선.
+      // 마감 방식·여백과 독립 — 재단 필요한 변에만 그림(줄미싱 등은 '없음'으로 미선택).
+      if (hasMark) {
+        var mCol = new CMYKColor(); mCol.cyan = 0; mCol.magenta = 0; mCol.yellow = 0; mCol.black = 100; // K100
+        var MDASH = 3 * MESA0_PT_PER_MM / sN; // 점선 3mm
+        function markLine(x1, y1, x2, y2, dashed) {
           var ln = newDoc.pathItems.add();
           ln.setEntirePath([[x1, y1], [x2, y2]]);
           ln.stroked = true; ln.filled = false;
           ln.strokeColor = mCol; ln.strokeWidth = 0.6;
+          if (dashed) ln.strokeDashes = [MDASH, MDASH]; // 재단선=점선
         }
-        if (finMargins.top > 0) foldLine(oL, oT, oR, oT);
-        if (finMargins.bottom > 0) foldLine(oL, oB, oR, oB);
-        if (finMargins.left > 0) foldLine(oL, oT, oL, oB);
-        if (finMargins.right > 0) foldLine(oR, oT, oR, oB);
+        if (finMark.top) markLine(oL, oT, oR, oT, finMark.top === 'cut');
+        if (finMark.bottom) markLine(oL, oB, oR, oB, finMark.bottom === 'cut');
+        if (finMark.left) markLine(oL, oT, oL, oB, finMark.left === 'cut');
+        if (finMark.right) markLine(oR, oT, oR, oB, finMark.right === 'cut');
       }
 
       // 여백 포함 바깥 테두리 백색 선 (도련 대신 — RIP가 여백까지 출력영역으로 포함하도록)
@@ -509,7 +515,7 @@ function mesA0_process() {
     client_name: clientName,
     client_id: (P.client_id != null) ? P.client_id : null,
     qty: qty,
-    finishing: hasFinishing ? finJson : null,
+    finishing: (hasFinishing || hasMark) ? finJson : null,
     trim: trim,
     punch: punch,
     keyword: kwRaw || null,

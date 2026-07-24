@@ -107,6 +107,7 @@
 
     var finM = document.getElementsByClassName('finM'); // method selects
     var finCm = document.getElementsByClassName('finCm');
+    var finMark = document.getElementsByClassName('finMark'); // 변별 재단/접는선 마크
 
     // ── 주석 위치 게이트: 마감 여백 3cm 이상인 변만 주석 체크 허용 ──
     var annChkMap = { top: elATop, bottom: elABottom, left: elALeft, right: elARight };
@@ -172,6 +173,10 @@
     }
     function methodSelect(side) {
       for (var i = 0; i < finM.length; i++) if (finM[i].getAttribute('data-side') === side) return finM[i];
+      return null;
+    }
+    function markSelect(side) {
+      for (var i = 0; i < finMark.length; i++) if (finMark[i].getAttribute('data-side') === side) return finMark[i];
       return null;
     }
 
@@ -258,8 +263,8 @@
     function gatherSettings() {
       var fin = {};
       for (var s = 0; s < SIDES.length; s++) {
-        var sel = methodSelect(SIDES[s]), cmEl = cmInput(SIDES[s]);
-        fin[SIDES[s]] = { m: sel ? sel.value : '', cm: cmEl ? cmEl.value : '' };
+        var sel = methodSelect(SIDES[s]), cmEl = cmInput(SIDES[s]), mkEl = markSelect(SIDES[s]);
+        fin[SIDES[s]] = { m: sel ? sel.value : '', cm: cmEl ? cmEl.value : '', mark: mkEl ? mkEl.value : '' };
       }
       return { qty: elQty ? elQty.value : '1', scale: elScale ? elScale.value : '1',
         mode: modeValue(), trim: elTrim ? !!elTrim.checked : false, trimInk: elTrimInk ? !!elTrimInk.checked : false, client: elClient ? elClient.value : '',
@@ -300,9 +305,10 @@
       if (st.fin) {
         for (var s = 0; s < SIDES.length; s++) {
           var f = st.fin[SIDES[s]]; if (!f) continue;
-          var sel = methodSelect(SIDES[s]), cmEl = cmInput(SIDES[s]);
+          var sel = methodSelect(SIDES[s]), cmEl = cmInput(SIDES[s]), mkEl = markSelect(SIDES[s]);
           if (sel && f.m) sel.value = f.m;
           if (cmEl && f.cm != null) cmEl.value = f.cm;
+          if (mkEl && f.mark != null) mkEl.value = f.mark;
         }
       }
       updateAnnotGates();
@@ -331,6 +337,8 @@
           if (isNaN(cm)) cm = marginOf(m);
           finishing[side] = m; finishing[side + '_cm'] = cm;
         }
+        var mkEl = markSelect(side); // 변별 마크(fold/cut) — 방식·여백과 독립
+        if (mkEl && mkEl.value) finishing[side + '_mark'] = mkEl.value;
       }
       var pInt = function (el) { var n = parseInt(el ? el.value : '0', 10); return (isNaN(n) || n < 0) ? 0 : n; };
       var keyword = elAnnot ? (elAnnot.value || '').replace(/^\s+|\s+$/g, '') : '';

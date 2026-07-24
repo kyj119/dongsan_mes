@@ -70,15 +70,21 @@
         <select id="preset"><option value="">(직접 지정)</option></select>
       </div>
       <table class="fin">
+        <tr><td class="fl"></td><td class="fhdr">방식</td><td class="fhdr" colspan="2">여백</td><td class="fhdr">마크</td></tr>
         <tr><td class="fl">상</td><td><select class="finM" data-side="top"></select></td>
-            <td><input class="finCm" data-side="top" type="text" /></td><td class="fu">cm</td></tr>
+            <td><input class="finCm" data-side="top" type="text" /></td><td class="fu">cm</td>
+            <td><select class="finMark" data-side="top"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td></tr>
         <tr><td class="fl">하</td><td><select class="finM" data-side="bottom"></select></td>
-            <td><input class="finCm" data-side="bottom" type="text" /></td><td class="fu">cm</td></tr>
+            <td><input class="finCm" data-side="bottom" type="text" /></td><td class="fu">cm</td>
+            <td><select class="finMark" data-side="bottom"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td></tr>
         <tr><td class="fl">좌</td><td><select class="finM" data-side="left"></select></td>
-            <td><input class="finCm" data-side="left" type="text" /></td><td class="fu">cm</td></tr>
+            <td><input class="finCm" data-side="left" type="text" /></td><td class="fu">cm</td>
+            <td><select class="finMark" data-side="left"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td></tr>
         <tr><td class="fl">우</td><td><select class="finM" data-side="right"></select></td>
-            <td><input class="finCm" data-side="right" type="text" /></td><td class="fu">cm</td></tr>
+            <td><input class="finCm" data-side="right" type="text" /></td><td class="fu">cm</td>
+            <td><select class="finMark" data-side="right"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td></tr>
       </table>
+      <div class="row"><span class="cfg">마크: 접는선=검정 실선 · 재단선=검정 점선 (변별 지정, 재단 필요한 변에만)</span></div>
       <div class="row">
         <label class="rad"><input id="trim" type="checkbox" /> 돔보(재단마크)</label>
       </div>
