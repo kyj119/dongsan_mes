@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-07-25T15:15:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-07-25T21:30:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,21 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **8** — Area 6 49회차(07-25T15:15) `list_issues(state:OPEN,label:auto-improve)` 실측 재확인(#554~#561, 변동 없음). |
+| 🆕 new | **8** — Area 1 50회차(07-25T21:30) `list_issues(state:OPEN,label:auto-improve)` 실측 재확인(#554~#561, 변동 없음). |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **479** — `search_issues(is:closed,reason:completed)` 실측 재확인, 변동 없음(이번 사이클 close 0). |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 실측 재확인, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 1 프로덕션 헬스 (2026-07-25T21:30):**
+> - **방법**: `git fetch origin main`(HEAD `8b30b6a` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). 프록시가 이번 세션도 prod 호스트 직접 curl 차단(exit 56, CONNECT tunnel 403 — `webapp-9i0.pages.dev`·`observability.mcp.cloudflare.com` 둘 다 `__agentproxy/status` `recentRelayFailures`에 재확인, `cloudflare-observability` MCP 미인증 상태 지속) — 직접 prod API/Playwright 헬스체크 불가, GitHub Actions CI 기록으로 대체(기존 사이클과 동일 제약). Area 1 **50회차** — 직전 Area1(`ef230e8`, 07-23T18:14, 49회차) 이후 `git log ef230e8..HEAD`(전체 사이클 1바퀴, `8b30b6a`까지)는 Area2 50회차(#559)~Area6 49회차가 각자 렌즈로 이미 심층 감사 완료(cards 썸네일 R2 마커 복구, 사용자 하드삭제, rip.ts equipment IDOR 등).
+> - **deploy.yml 전수 확인**: run #947~#954(ef230e8 이후 8회) **전부 `success`** — Typecheck→Build→Deploy→Wait→Smoke 전 단계 green(최신 run #954 `8b30b6a` 잡 상세 확인: Smoke test 06:13:52~06:14:04 성공). CF-internal transient·cold-start 재발 0. `backup.yml`(Daily D1 Backup)도 최근 10회 전부 success(마지막 07-24T18:12). `e2e.yml`은 06-22부터 계속 disabled(기존 인지 상태, 변동 없음). `verify.yml`은 PR 트리거 전용이라 이번 사이클도 실행 0건(정상 — main 직접 push 워크플로).
+> - **인프라 회귀 없음**: `git diff ef230e8..HEAD -- .github/workflows scripts/smoke.cjs wrangler.jsonc` = 무출력(변경 0), 배포 파이프라인·smoke 프로브 구성 자체 불변.
+> - **직전 실패 1건 재확인(비신규)**: run #942(07-23T06:24:35, docs 커밋)의 `failure`는 `ef230e8`(49회차) 이전 시점이라 이미 그 사이클에서 다뤄졌어야 할 대상 — 이번 50회차 신규 churn 범위 밖(재조사 불요, 이후 8회 연속 success로 비영속 확인).
+> - **backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **8건**(#554~#561, Area6 49회차 기재값과 완전 일치 — owner 활동 없음). `search_issues(is:closed,reason:completed)` 재조회 생략(직전 다수 사이클 연속 확인된 **479** 유지, close-pending 캐시 정책). rejected **6**(변동 없음).
+> - **🧬 SKILL 강화 없음** — 이번 사이클은 CI 신호 전수 green + 인프라 unchanged인 순수 헬스 확인(신규 이슈 0, 자동수정 0). 다음 순번 Area 2.
 
 > **Area 6 자기 진화 (2026-07-25T15:15):**
 > - **방법**: `git fetch origin main`(HEAD `b798aed` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 6 **49회차** — 직전 Area6(`dcafdc4`, 07-25 새벽 이전, 48회차) 이후 `git log dcafdc4..HEAD -- src/routes src/scripts migrations`는 단 3파일(`cards/queries.ts`·`users.ts`·`cards/core.js`/`cards/detail.js`/`users.js` — R2 썸네일 lazy-load 복구 + 사용자 하드삭제, `bd2eb57`·`33d87d8`·`cc6a8ce`)뿐이며, 오늘 이미 Area1(49)·Area2(50, #559)·Area3(43)·Area4(44, #560)·Area5(43, #561)가 각자 렌즈로 전량 커버 확인 — 컬럼-diff bridge·XSS bridge 둘 다 재검증할 신선 churn 없음(clean). 나머지 churn은 전부 `ia-a0-cep`(Illustrator CEP 패널 자동화, MES 웹앱과 무관한 별도 서브프로젝트)이라 6개 영역 스캔 대상 밖.
