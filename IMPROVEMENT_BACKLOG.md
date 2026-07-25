@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-07-25T21:30:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-07-26T03:17:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **8** — Area 1 50회차(07-25T21:30) `list_issues(state:OPEN,label:auto-improve)` 실측 재확인(#554~#561, 변동 없음). |
+| 🆕 new | **10** — Area 2 51회차(07-26T03:17) N+1 신규 2건(#562·#563) 반영, `list_issues(state:OPEN,label:auto-improve)` 실측 10건. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **479** — `search_issues(is:closed,reason:completed)` 실측 재확인, 변동 없음(이번 사이클 close 0). |
-| ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 실측 재확인, 변동 없음) |
+| ✔️ done | **479** — `search_issues(is:closed,reason:completed)` 재조회 생략(close-pending 캐시, 변동 없음). |
+| ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 2 코드 품질 심층 분석 (2026-07-26T03:17):**
+> - **방법**: `git fetch origin main`(HEAD `93d2c57` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 2 **51회차** — 직전 Area2(`a5ecec6`, 07-24T15:20, 50회차) 이후 `git log a5ecec6..HEAD -- src/routes migrations src/scripts`는 **0건**(그 사이 5커밋 전부 `docs(auto-improve)` — Area3~Area1이 각자 문서만 갱신, 실질 코드/마이그 churn 없음). 신선 churn이 없어 표준 스캔(`entity-audit.mjs`=122파일·통과59·누락0, `tsc --noEmit`=clean, 마이그번호 중복=기존 5쌍만, secret fallback grep=`fax.ts` 기존 FP만) 재확인 후, **아직 전용 전수 스캔이 오래 없었던 두 클래스(N+1 쿼리·dead code)**를 general-purpose 에이전트로 코드베이스 전체 스캔.
+> - **🔴 신규 이슈 — #562 (S~M, improvement)**: `taxInvoices/batch.ts:221` `POST /monthly-create`(client_ids 생략 시 전체 MONTHLY 거래처 대상, LIMIT 없음)가 거래처별로 `createSplitInvoices`(거래처당 D1 호출 4+, `auto_issue=true`면 `issueTaxInvoice`까지 포함해 K≈5~14)를 순차 호출 — 거래처 수(N)가 사업 확장에 비례해 늘어나는 helper-loop N+1(#478 계열의 새 라우트 재현). 한도 소진 시 일부 거래처만 발행되고 나머지 무응답 중단 = 부분 월정산.
+> - **🔴 신규 이슈 — #563 (S~M, improvement)**: `clients.ts:638` `POST /import`(CSV 대량 업로드, 배열 크기 무제한)가 행마다 SELECT+INSERT/UPDATE를 `db.batch()` 없이 순차 실행 — 수백 행 업로드에서 서브요청 한도 근접, 부분 임포트 위험.
+> - **🔧 자동수정 2건 — dead code 제거**: ① `payroll/shared.ts` `getSetting`(단수형, 전체 코드베이스 0참조 — 배치버전 `getSettings`로 완전 대체됨 확인) 삭제 ② `utils/paymentSchedule.ts` `describePaymentCycle`(0참조, 표시용 요약 헬퍼가 UI에 배선된 적 없음) 삭제. **`unitConvert.ts` `toBase`는 보고·수정 모두 보류** — 0참조이나 `fromBase`와 대칭을 이루는 multi-UOM 모델의 정식 변환 헬퍼(CLAUDE.md/SKILL #462가 명시하는 "일부 write-path만 pack_size 환산 적용된 진행중 기능")라 형제 함수와 별개로 삭제 시 향후 write-path 완성 시 재구현 필요 — 진짜 dead code와 구분해 보존. `npm run verify`(typecheck+build) 통과 확인 후 커밋.
+> - **🟢 나머지 N+1 후보 = 전부 clean(FP)**: bank.ts 계좌×기간 동기화·printEvents batch·weeklyPurchase/purchaseRequests 공급처그룹 루프·po-receive 품목별 단가 캐스케이드·cards/lifecycle 일괄출고·orders bulk-ship·shipments merge — 전부 기존 `db.batch()` 최적화(`#458`/`#474`/`#478` 리뷰 주석 동반) 또는 UI multi-select/자연 소규모 상한(공급처·PO 라인·법인 수)으로 bounded. dead code 후보 중 나머지(0-hit grep 매치 다수)는 같은 파일 내부 재사용(예: `statusLabels.ts` TONES/ICONS가 파일 자신의 템플릿 리터럴에서 소비)이라 FP.
+> - **🟢 backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **10건**(#554~#561 이월 + #562·#563 신규). done(`reason:completed`)은 이번 사이클 close 0건이라 재조회 생략, 직전 다수 사이클 연속 확인된 **479** 유지(close-pending 캐시 정책). rejected **6**(변동 없음, 재확인 생략).
+> - **🧬 SKILL 강화 없음(기존 패턴 재현)** — N+1 2건은 기존 "helper-loop N+1"(#478) 클래스의 다른 라우트 재현, dead code 제거는 기존 자동수정 정책의 정상 적용. `toBase` 보류 판단은 기존 #462(단위환산 형제-완전성) 규칙의 자연스러운 적용(진행중 기능의 미완 write-path 헬퍼를 dead code로 오판하지 않는 사례)이라 별도 codify 불요.
+> - 신규 이슈 2건(#562·#563, issue-only — 과금/대량write 제어흐름 변경이라 자동수정 대상 아님), 자동수정 2건(dead code 제거, 커밋 예정), done-sync 변동 없음(new 8→10[신규 2건 반영]·done 479·rejected 6). 다음 순번 Area 3.
+>
 
 > **Area 1 프로덕션 헬스 (2026-07-25T21:30):**
 > - **방법**: `git fetch origin main`(HEAD `8b30b6a` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). 프록시가 이번 세션도 prod 호스트 직접 curl 차단(exit 56, CONNECT tunnel 403 — `webapp-9i0.pages.dev`·`observability.mcp.cloudflare.com` 둘 다 `__agentproxy/status` `recentRelayFailures`에 재확인, `cloudflare-observability` MCP 미인증 상태 지속) — 직접 prod API/Playwright 헬스체크 불가, GitHub Actions CI 기록으로 대체(기존 사이클과 동일 제약). Area 1 **50회차** — 직전 Area1(`ef230e8`, 07-23T18:14, 49회차) 이후 `git log ef230e8..HEAD`(전체 사이클 1바퀴, `8b30b6a`까지)는 Area2 50회차(#559)~Area6 49회차가 각자 렌즈로 이미 심층 감사 완료(cards 썸네일 R2 마커 복구, 사용자 하드삭제, rip.ts equipment IDOR 등).
