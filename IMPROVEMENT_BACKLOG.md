@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-07-25T03:17:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-07-25T06:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,23 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **7** — Area 4 44회차(07-25T03:17) `list_issues(state:OPEN,label:auto-improve)` 실측(#554~#559 이월 + #560 신규). |
+| 🆕 new | **8** — Area 5 43회차(07-25T06:20) `list_issues(state:OPEN,label:auto-improve)` 실측(#554~#560 이월 + #561 신규). |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **479** — 변동 없음(이번 사이클 close 0). |
-| ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+| ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 실측 재확인, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 5 보안 (2026-07-25T06:20):**
+> - **방법**: `git fetch origin main`(HEAD `ee726b7` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 5 **43회차** — 직전 Area5(`814a467`, 07-23T15:26, 42회차가 만든 XSS 자동수정 커밋 `ff01040`) 이후 `git log ff01040..HEAD -- src/routes src/scripts migrations`는 단 5파일(`cards/queries.ts`·`users.ts`·`cards/core.js`·`cards/detail.js`·`users.js` — R2 썸네일 lazy-load + 사용자 하드삭제)뿐이며, 이미 Area2 50회차(#559, 썸네일 IDOR)·Area4 44회차(#560, 하드삭제 비-FK 감사컬럼)가 각자 렌즈로 완결 보고. Area5 고유 렌즈(SQLi/XSS/추가 auth 게이트)로 직접 재확인한 결과 신규 취약점 없음(하드삭제 라우트는 테이블/컬럼명 전부 `/^[A-Za-z0-9_]+$/` 화이트리스트 검증 후 PRAGMA/쿼리에 보간 — SQLi 안전, `requireAdmin` 게이트 정상; 프론트 신규 XSS 싱크 0, 기존 `jsStr`/`escapeHtml` 컨벤션과 일관). 필수 표준 스캔 전부 clean: secret fallback grep(`fax.ts` 기존 FP만)·마이그 번호 중복(기존 5쌍만)·`entity-audit.mjs`(122파일·통과59·누락0)·`tsc --noEmit`(clean).
+> - **churn 커버리지가 좁아 general-purpose 에이전트로 코드베이스 전체 형제-비대칭 IDOR 표준스캔(레시피 A) 병행 실행** — churn 한정 감사의 구조적 사각(누적 다회 코드화된 "churn-한정 수동감사는 도입 이래 잔존한 형제-비대칭을 놓친다")을 메우기 위해 최근 churn과 무관하게 코드베이스 전체를 대상으로 실행.
+> - **🔴 신규 이슈 — #561 (S, bug, IDOR/access-control)**: `src/routes/rip.ts`의 `equipment` 하위자원 4개 핸들러가 같은 파일 대다수(`PUT /equipment/:id` 등, `#342` 주석과 함께 `entityFilter(c)` 적용)의 격리 컨벤션에서 벗어남 — ① `PUT /equipment/:id/heads/:headNum`(:741, `authMiddleware`만·role 게이트 자체가 없음 + entityFilter 없음, 형제 `POST /equipment/:id/heads`는 ADMIN/MANAGER+entityFilter 요구) ② `POST/DELETE /equipment/:id/presets`(:434/:485, ADMIN 게이트는 있으나 entityFilter 없음) ③ `POST /equipment/:id/maintenance`(:802, role 게이트 없음+entityFilter 없음)·`DELETE .../maintenance/:logId`(:883, ADMIN/MANAGER는 있으나 entityFilter 없음). `equipment.entity_id`는 `migrations/0302`가 "법인별로 설비가 달라 운영이 겹치지 않음" 명시 도입. 헤드/유지보수 2곳은 **인증만 되면 어느 role·법인이든** 타법인 고가 설비(프린터)의 헤드 상태·유지보수 이력을 조작 가능(실물 설비 운영 데이터 무결성 훼손, IDOR보다 심각한 access-control 부재). 도달성 LIVE(`src/scripts/equipment.js:1062/1079/1135/1172/1189`). 직접 Read로 4곳 전부 코드 검증 완료(서브에이전트 보고를 그대로 신뢰하지 않고 라인별 재확인). issue-only(IDOR=owner 워크플로, 같은 파일 형제 패턴이 byte-단위로 명확해 구현은 기계적).
+> - **🟢 나머지 표준스캔 = clean**: 형제-비대칭 IDOR 전체 스캔에서 나온 그 외 후보(cashFlow.ts 대출·priceLists.ts·messageTemplates.ts·returns.ts·storageZones.ts PUT·fixedAssets.ts PATCH /:id/dispose)는 전부 FP 확인 — 선행 read-gate 존재, 이미 형제와 동형 격리, 또는(fixedAssets dispose) 프론트 호출처 0건(#334 dead code, 보고 제외). XSS 레시피 B 스팟체크(equipment.js) = 전 innerHTML 싱크 escapeHtml 적용 확인, net-new 0.
+> - **🟢 backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **8건**(#554~#560 이월 + #561 신규). `search_issues(is:closed,reason:not_planned)` 실측 **4**(개별 4건 직접 재확인) + `reason:duplicate` 실측 **2**(개별 2건 재확인) → rejected **6**(변동 없음). done(`reason:completed`)은 이번 사이클 close 0건이라 재조회 생략, 직전 다수 사이클 연속 확인된 **479** 유지(close-pending 캐시 정책 — line 281 규칙: 파일/이슈 상태 불변 시 재검증 스킵에 준함, 단 절대값 자체는 다음 close 발생 사이클에 재실측 필요).
+> - **🧬 SKILL 강화 없음(기존 패턴 재현)** — #561은 기존 "형제-비대칭 IDOR"(#414/#437/#452/#473/#559 계열)의 재현. 다만 이번 사이클은 "churn이 이미 타 Area에 의해 완결 커버된 상태에서 Area5가 무엇을 하는가"의 실증 사례 — churn-한정 대신 general-purpose 에이전트로 코드베이스 전체 표준스캔(레시피 A/B)을 병행해 rip.ts처럼 도입 이래 한 번도 스캔되지 않았을 가능성이 있는 파일에서 net-new를 찾음. 향후 churn이 좁은 사이클에서 이 패턴(전체 코드베이스 표준스캔 병행)을 기본값으로 굳혀도 좋을 만큼 유효했음.
+> - 신규 이슈 1건(#561, issue-only), 자동수정 0건(IDOR=owner 워크플로), done-sync 변동 없음(new 7→8[신규 1건 반영]·done 479·rejected 6). 다음 순번 Area 6.
+>
 
 > **Area 4 데이터 정합성 (2026-07-25T03:17):**
 > - **방법**: `git fetch origin main`(HEAD `216178f` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 4 **44회차** — 직전 Area4(`d227da1`, 07-23T12:37, 43회차) 이후 `git log d227da1..HEAD -- src/routes migrations`는 단 3커밋(`cc6a8ce`·`bd2eb57` 카드 썸네일 R2 마커 복구, `33d87d8` 사용자 하드삭제)뿐이며 신규 마이그레이션 0건. 세 커밋 모두 이미 Area1(49)·Area2(50)·Area3(43)이 각자 렌즈(배포헬스/컬럼정합/UX)로 검증 완료했으나 **Area4 고유 렌즈(orphan/dangling 참조)로는 미검증**이라 오케스트레이터가 `33d87d8`(사용자 하드삭제) 신규 기능을 직접 심층 검증. 로컬 D1 전체 리플레이는 #555가 이미 문서화한 0342~0344 결정적 실패(진행 중 확인, 215/472에서 중단) 재현만 반복하므로 중단하고 정적 파싱(전 마이그레이션 CREATE/ALTER를 소스순서로 파싱 + `_by` 컬럼의 인라인·테이블레벨 FK 선언 여부 대조)으로 ground-truth 확보. 표준 스캔 병행: `node scripts/entity-audit.mjs`(122파일·통과59·누락0)·마이그레이션 번호 중복(기존 5쌍만, 신규 0).
