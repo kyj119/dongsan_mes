@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-07-25T06:20:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-07-25T15:15:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,21 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **8** — Area 5 43회차(07-25T06:20) `list_issues(state:OPEN,label:auto-improve)` 실측(#554~#560 이월 + #561 신규). |
+| 🆕 new | **8** — Area 6 49회차(07-25T15:15) `list_issues(state:OPEN,label:auto-improve)` 실측 재확인(#554~#561, 변동 없음). |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **479** — 변동 없음(이번 사이클 close 0). |
+| ✔️ done | **479** — `search_issues(is:closed,reason:completed)` 실측 재확인, 변동 없음(이번 사이클 close 0). |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 실측 재확인, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 6 자기 진화 (2026-07-25T15:15):**
+> - **방법**: `git fetch origin main`(HEAD `b798aed` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 6 **49회차** — 직전 Area6(`dcafdc4`, 07-25 새벽 이전, 48회차) 이후 `git log dcafdc4..HEAD -- src/routes src/scripts migrations`는 단 3파일(`cards/queries.ts`·`users.ts`·`cards/core.js`/`cards/detail.js`/`users.js` — R2 썸네일 lazy-load 복구 + 사용자 하드삭제, `bd2eb57`·`33d87d8`·`cc6a8ce`)뿐이며, 오늘 이미 Area1(49)·Area2(50, #559)·Area3(43)·Area4(44, #560)·Area5(43, #561)가 각자 렌즈로 전량 커버 확인 — 컬럼-diff bridge·XSS bridge 둘 다 재검증할 신선 churn 없음(clean). 나머지 churn은 전부 `ia-a0-cep`(Illustrator CEP 패널 자동화, MES 웹앱과 무관한 별도 서브프로젝트)이라 6개 영역 스캔 대상 밖.
+> - **done-sync 절대값 재동기화**: `search_issues(is:closed,reason:completed)` total_count **479**(변동 없음) · `reason:not_planned` **4** + `reason:duplicate` **2** = rejected **6**(변동 없음) · `list_issues(state:OPEN,label:auto-improve)` **8**건(#554~#561, 변동 없음) — 오늘 하루 5개 Area가 순차 실행됐음에도 close 0건이라 절대값 전부 불변.
+> - **"open≠unfixed" 거울 점검(line 281 규칙)**: OPEN 8건 중 보안/데이터 성격 3건(#558 payroll preview·#557 clients portal-account·#559 cards thumbnails)을 직접 Read로 안티패턴 잔존 재확인 — **3건 전부 잔존(미픽스)**, fixed-in-tree 사례 0. 나머지 5건(#554~#556·#560·#561)도 전부 오늘 새로 생성돼(07-22~07-25) close-pending 캐시 대상 아님(2사이클 미만).
+> - **⏳ close-pending 적체 없음**: 이전 사이클들이 추적하던 #479~#481급 fixed-in-tree-but-open 누적이 현재 0건 — 현재 OPEN 8건은 전부 진짜 미픽스 상태로 owner 리뷰 대기 중.
+> - **SKILL 강화 없음** — 이번 사이클은 신규 net-new 패턴 발견도, 기존 이슈의 형제-불완전 픽스 발견도 없는 순수 정합성 확인 사이클(클린). #561(rip.ts equipment)은 Area5 자체가 이미 "기존 패턴 재현(형제-비대칭 IDOR)"으로 분류해 SKILL 변경 불요.
+> - 신규 이슈 0건, 자동수정 0건, done-sync 완전 정합 재확인. 다음 순번 Area 1.
 
 > **Area 5 보안 (2026-07-25T06:20):**
 > - **방법**: `git fetch origin main`(HEAD `ee726b7` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 5 **43회차** — 직전 Area5(`814a467`, 07-23T15:26, 42회차가 만든 XSS 자동수정 커밋 `ff01040`) 이후 `git log ff01040..HEAD -- src/routes src/scripts migrations`는 단 5파일(`cards/queries.ts`·`users.ts`·`cards/core.js`·`cards/detail.js`·`users.js` — R2 썸네일 lazy-load + 사용자 하드삭제)뿐이며, 이미 Area2 50회차(#559, 썸네일 IDOR)·Area4 44회차(#560, 하드삭제 비-FK 감사컬럼)가 각자 렌즈로 완결 보고. Area5 고유 렌즈(SQLi/XSS/추가 auth 게이트)로 직접 재확인한 결과 신규 취약점 없음(하드삭제 라우트는 테이블/컬럼명 전부 `/^[A-Za-z0-9_]+$/` 화이트리스트 검증 후 PRAGMA/쿼리에 보간 — SQLi 안전, `requireAdmin` 게이트 정상; 프론트 신규 XSS 싱크 0, 기존 `jsStr`/`escapeHtml` 컨벤션과 일관). 필수 표준 스캔 전부 clean: secret fallback grep(`fax.ts` 기존 FP만)·마이그 번호 중복(기존 5쌍만)·`entity-audit.mjs`(122파일·통과59·누락0)·`tsc --noEmit`(clean).
