@@ -374,8 +374,8 @@ async function loadOverduePos() {
                 + '<div class="flex items-center gap-3">'
                 + '<div>' + daysBadge + '</div>'
                 + '<div>'
-                + '<div class="font-medium text-sm">' + (po.po_number || '-') + '</div>'
-                + '<div class="text-xs text-gray-500">' + (po.supplier_name || '-')
+                + '<div class="font-medium text-sm">' + escapeHtml(po.po_number || '-') + '</div>'
+                + '<div class="text-xs text-gray-500">' + escapeHtml(po.supplier_name || '-')
                 + ' | ' + (statusLabels[po.status] || po.status)
                 + ' | 납기: ' + (po.expected_date || '-') + '</div>'
                 + '</div></div>'
