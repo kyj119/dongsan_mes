@@ -49,4 +49,8 @@ DELETE FROM spec_group_values;
 DELETE FROM spec_groups;
 
 -- ===== (4) 빈 폐지 분류행 =====
+-- #555 replay-safe(2026-07-27): 선행 시드(0255 ACC 등)가 이후 편집돼, 신규 D1 풀리플레이 시 이 시점
+--   폐지분류(6 부속품 등)에 활성 품목이 남아 category 삭제가 FK 위반→체인 중단. prod는 당시 비어 통과했고
+--   추적완료라 재실행 안 함. 잔여 품목을 상품(4)으로 재배정 후 분류 삭제(prod도 ACC→상품(4) 수렴).
+UPDATE items SET category_id = 4 WHERE category_id IN (6, 8, 9, 11, 12, 13);
 DELETE FROM item_categories WHERE id IN (6, 8, 9, 11, 12, 13);
