@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-07-26T15:15:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-07-26T21:40:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **17** — Area 4 45회차(07-26T15:15) 신규 1건(#570) 반영, `list_issues(state:OPEN,label:auto-improve)` 실측 16건 + 이번 사이클 신규 1건. |
+| 🆕 new | **18** — Area 5 44회차(07-26T21:40) 신규 1건(#571) 반영, `list_issues(state:OPEN,label:auto-improve)` 실측 17건 + 이번 사이클 신규 1건. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **479** — `search_issues(is:closed,reason:completed)` 재조회 생략(close-pending 캐시, 변동 없음). |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 5 보안 (2026-07-26T21:40):**
+> - **방법**: `git fetch origin main`(HEAD `31b6c1c` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 5 **44회차** — 직전 Area5(`b798aed`, 07-25T06:20, 43회차) 이후 `git log ee726b7..HEAD -- src/routes src/scripts migrations`는 4파일뿐(`migrations/0472`·`0473`, `src/routes/finishing.ts`(+36)·`src/routes/workbench.ts`(+25) — 후가공 도메인 프로파일 A1)이며 Area4 45회차가 데이터정합성 렌즈로 이미 검증 완료. Area5 고유 렌즈(SQLi/XSS/인증·인가)로 직접 재확인: `finishing.ts` GET/PUT `/worker-domains`(라우터 전역 `authMiddleware`+PUT만 `requireRole('ADMIN','MANAGER')`, `designer_worker_domains`는 0473이 entity_id 없이 도입 = finishing_methods/presets와 동일 "법인 공용 마스터" 정책과 일관), `workbench.ts` `POST /intakes`(신규 free-text 5필드 keyword/post_desc/worker_name 등은 프론트에서 `escapeHtml` 일관 적용, `entity_id`는 `getWriteEntityId` 게이트로 #487 0-sentinel 클래스 해당없음 기확인) 전부 clean — SQLi 없음(전 바인딩), XSS 없음(showToast가 sink에서 전체 메시지 escape). 필수 표준 스캔 전부 clean: secret fallback grep(`fax.ts` 기존 FP만)·마이그 번호 중복(기존 5쌍만)·`entity-audit.mjs`(122파일·통과59·누락0)·`tsc --noEmit`(clean).
+> - **open≠unfixed 재확인(Area5 소관 3건)**: `#557`(clients.ts portal-account POST)·`#558`(payroll/core.ts preview)·`#561`(rip.ts equipment 4핸들러) 전부 코드 직접 재grep — 안티패턴 그대로 잔존(fixed-in-tree 0건), 정상 open.
+> - **churn 커버리지가 좁아 코드베이스 전체 형제-비대칭 IDOR 표준스캔(레시피 A, node 정적분석) 병행 실행** — entity_id 보유 테이블(119개) 대상 `UPDATE/DELETE ... WHERE id=?` 패턴 중 entityFilter류 격리 부재 블록을 기계적으로 추출 → 20개 원시후보를 전부 직접 Read로 triage.
+> - **🔴 신규 이슈 — #571 (S, bug, IDOR, 5모듈 클러스터)**: `cards/lifecycle.ts:262 PATCH /defects/:defectId`(quality_issues, 형제 `#375` 주석 격리)·`printEvents.ts:652 PATCH /:id/actual-printed`(print_events, 형제 `entityFilter(c,'pe')`)·`purchaseOrders/stock-alerts.ts:101 PATCH /:id/acknowledge`(stock_alerts, 형제 `#446` 주석 격리)·`cardExpenses.ts:891 DELETE /auto-rules/:id`(expense_auto_rules, 형제 `entityFilter(c,'r')`)·`hometaxInvoices.ts:156 GET /jobs/:id/status`(hometax_jobs, 형제 `entityFilter(c,'hj')`) — 5곳 전부 같은 파일의 list 조회가 `entityFilter`로 명시 격리(대부분 `#375`/`#446`류 주석으로 격리의도 명문화)하는데 단건 조회/변경만 누락된 #414/#437/#452/#473/#559/#561과 동일 클래스. severity는 quality_issues(MEDIUM, 상태/원가 변조)~hometax_jobs(LOW, read-only 정보노출) 분포. issue-only(IDOR=owner 워크플로, 5곳 모두 형제 패턴이 byte 단위로 명확해 구현은 기계적).
+> - **🟢 20개 원시후보 중 15건 FP 확인**: `aiAnalysis.ts` thumbnail/PATCH(문서화된 에이전트 콜백 예외, #455 계열)·`storageZones.ts` PUT/PUT bounds/DELETE(`#368 대칭 완화` 주석의 ADMIN 신뢰 정책)·`shipments.ts` merge/unmerge(형제 `/merge`도 동일 미격리=비대칭 미성립+문서화된 intra-client cross-entity 기능)·`hr.ts DELETE /employees/:id`(파일 전역 확립된 "ADMIN role=신뢰" 패턴)·`caps.ts` ingest/employee-map(전사 공용 설정, 형제 GET도 미격리=비대칭 미성립+agent-key 인증)·`leaves.ts` promotion/run·expire(대상 후보가 내부 헬퍼에서 이미 entityFilter로 사전 필터링, 정적스캔 블록단위 한계로 인한 오탐)·`hrSelf.ts` contracts sign(`WHERE...AND employee_id=?` 본인스코프 정상).
+> - **backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **17건**(#554~#570 이월, Area4 45회차 기재값과 일치) + 이번 사이클 신규 #571 = **18**. done/rejected는 close 0건이라 재조회 생략, 직전 다수 사이클 연속 확인된 done **479**·rejected **6** 유지(close-pending 캐시 정책).
+> - **🧬 SKILL 강화 없음(기존 패턴 재현)** — #571은 기존 "형제-비대칭 IDOR" 표준스캔(레시피 A)의 정상 재현이며, FP 15건 중 신규 클래스는 없음(전부 기존 FP 카탈로그 항목의 재확인: ADMIN신뢰 주석·에이전트콜백·intra-client cross-entity·employee-self-scope·헬퍼-사전필터링). 다만 "헬퍼 함수 내부에서 이미 entityFilter가 적용된 뒤 그 결과를 순회하는 batch 루프"는 블록-단위 정적스캔이 놓치기 쉬운 FP축이라는 점을 재확인(별도 codify 불요 — 기존 레시피A의 자연스러운 한계).
+> - 신규 이슈 1건(#571, issue-only, 5모듈 클러스터), 자동수정 0건(IDOR=owner 워크플로), done-sync 변동 없음(new 17→18[신규 1건 반영]·done 479·rejected 6). 다음 순번 Area 6.
+>
 
 > **Area 4 데이터 정합성 (2026-07-26T15:15):**
 > - **방법**: `git fetch origin main`(HEAD `ac6fe38` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 4 **45회차** — 직전 Area4(`216178f`, 07-25T03:17, 44회차) 이후 `git log 216178f..HEAD -- src/routes migrations`는 5파일뿐(`migrations/0472_intake_field_carry.sql`·`0473_worker_domains.sql`·`src/routes/finishing.ts`(+36)·`src/routes/workbench.ts`(+20)·`src/routes/payroll/shared.ts`(-5, Area2 51회차 dead-code 제거)) — 후가공 도메인 프로파일 A1(가공자↔도메인 매핑) 기능. 신규 마이그 2건 직접 검증: 0472(designer_intakes 5컬럼 ADD, 전부 nullable additive)·0473(designer_worker_domains 신규 테이블, PK만). `workbench.ts` INSERT INTO designer_intakes(23컬럼 positional 대조, entityId는 `getWriteEntityId` 게이트 이미 적용돼 #487 0-sentinel 클래스 해당 없음 확인) + `finishing.ts` PUT /worker-domains(ON CONFLICT upsert, 컬럼 3개 일치) 전부 clean. 표준 스캔 병행: `node scripts/entity-audit.mjs`(122파일·통과59·누락0)·`npx tsc --noEmit`(clean)·마이그 번호 중복(기존 5쌍만, 신규 0).
