@@ -1,78 +1,49 @@
-# 세션 핸드오프 — IA 편집기 세션루프 v2 (팔레트·반자동 큐) 설계 spec + A0 PoC (2026-07-23)
+# 세션 핸드오프 — CEP 패널 대량반복 + prod 버그수정 + 대기함 필드캐리 + 후가공 도메인 A1 (2026-07-24~26)
 
-> 세션별 덮어쓰기 파일. durable 내용은 [[project-ia-designer-loop]]·[[project-ia-web-sunset]]·[[project-ia-editor]]에 보존.
+> 세션별 덮어쓰기 파일. durable=[[project-ia-designer-loop]]·[[feedback-r2-thumbnail-marker-leak]]·specs. **아래 전부 배포·검증 완료(prod).**
 
-## 진행 업데이트 (2026-07-24) — CEP 패널 반복 + 썸네일 회귀 수정 + 폴더이동 결정
-> ⚠️ 최초 세션은 문서화만이었으나 이후 세션에서 **코드 변경 발생**(아래). 모두 **로컬 커밋·미배포**.
-- **CEP 패널(A0)** `com.mes.a0.panel` 반복(전부 `%APPDATA%` 재설치·일러 재시작 후 사용자 테스트):
-  - 클리핑마스크 존중 실측(ExtractGroups getClipBounds 포팅, `27d5a82d`) → 사이즈 정상 확인.
-  - `cba5ee8f`: **주석 3cm 여백 게이트**(해당 변 마감≥3cm만)·**주석 거래처명 제외**(키워드-식별번호-수량ea)·**파일명=거래처-키워드(사이즈)-후가공-개수EA[-식별번호]**. **원단종류=주문서 저장 단계서 부여(A0 생략)**. **후가공=마감(변별 묶음)+펀칭 전체결합**(예 양옆접어미싱+사방펀칭), 한글은 main.js 조립→params(UTF-8) 전달(host 리터럴 무추가).
-- **현장 카드 썸네일 회귀 수정** `cc6a8ce2`(prod 버그): R2 이관(0449) 후 `GET /api/cards`가 `thumbnail_url`을 `r2:thumb:` 마커로 반환→`<img src>` 깨짐. 백엔드=마커는 `has_thumbnail` 플래그로만, 프론트=`/thumbnails` 배치 lazy-load. **미배포**(배포 시 prod 반영). ⚠️인쇄용 주문서/카드 문서 썸네일도 동일 마커 잠복.
-- **폴더 흐름 결정**: 주문 확정 시 IA-등록(스테이징)→`Z:\<archive>\<인쇄방식>\<YYYY>\<MM>\<DD>\<order_number>\` **이동**(복사 아님). spec **D8 개정**. ⚠️핵심=**이동 실행자=에이전트(MES=Workers는 Z: 직접 불가)**. 미해결=혼합인쇄방식 라우팅·날짜기준·ingest 후 이동·경로 갱신 멱등. **주문서↔폴더 연동(B) 자체 미구현**.
-- **사용자 하드 삭제 `33d87d8c` (배포됨)**: `DELETE /api/users/:id/hard`(ADMIN). PRAGMA foreign_key_list 동적열거→비-CASCADE 참조 있으면 409(목록반환·비활성화 권장), CASCADE+user_item_access(존재시) 자동정리. 본인/마지막ADMIN 차단·감사로그. ⚠️이 D1엔 `user_sessions` 없음(JWT 무상태)→하드코딩 DELETE 금지(존재검사). 로컬 E2E 4케이스 통과. UI=사용자관리 완전삭제 버튼.
-- **배포 완료(2026-07-24)**: origin/main 병합(XSS수정 `ff01040f` 흡수)→push(`2c58c40a`)→`deploy:prod --branch main`. prod 검증=/users 200·하드삭제 401(존재)·/api/cards 401. 커밋 cc6a8ce2(썸네일)+33d87d8c(하드삭제) 반영. CEP 패널 cba5ee8f는 웹 배포 무관(로컬 %APPDATA%).
+## 배포 상태 (2026-07-26)
+- origin/main 병합(보안 XSS 등 흡수)→push(`7ffdfac8`)→**prod D1 마이그 0472·0473 execute --file --remote 적용**→`deploy:prod --branch main`.
+- prod 검증: /post-processing 200·worker-domains 401·designer_worker_domains 생성·designer_intakes 신규컬럼 확인.
+- ⚠️ CEP 패널(`com.mes.a0.panel`)은 **웹 배포와 무관**(로컬 `%APPDATA%` 설치, 재설치 완료) → **일러 재시작 후 테스트 필요**.
 
-## 이 세션 = 브레인스토밍·문서화만 (코드 변경/배포 없음)
-IA 편집기의 일러 JSX "선택→실행" 방식 심층 고찰 → 세션루프 UX 전반 재설계 spec 신규 작성 + 3차 검토 반영 + **Phase A0 PoC 산출물** 생성. **prod·에이전트·마이그 무변경.**
+## 1) CEP 패널 A0 (com.mes.a0.panel) — 이번 세션 누적(전부 로컬 설치·미테스트)
+- 클리핑마스크 존중 실측(`27d5a82d`)·묶음분리 거짓병합 수정(클러스터도 클립존중+분리간격 UI `4ae83ba3`)·**보이는 잉크로 축소 토글**(클립∩콘텐츠, `d95ac987`).
+- 주석 3cm게이트·거래처명 제외·파일명=`거래처-키워드(사이즈)-후가공-개수EA`(`cba5ee8f`). 후가공=main.js 조립.
+- **변별 재단선/접는선 마크**(방식·여백 독립, 접는선=실선/재단선=점선, `6e9973bc`).
+- **가공자→도메인 자동 필터**(`9e63d271`)+**프리셋 마크 프리필**(`2744e540`).
+- ⚠️ 원단종류=주문서 저장단계 부여(A0 생략). 폴더=주문확정 시 조직폴더 **이동**(에이전트 실행, spec D8).
 
-## 산출물
-| 종류 | 경로 |
-|---|---|
-| **정본 spec** | `docs/superpowers/specs/2026-07-23-ia-palette-session-loop.md` (D1~D9·기능표 A/B/C/D·흐름·Phase·리스크) |
-| **A0 PoC** | `IllustratorAutomat/designer/poc-a0/` (a0-dock-palette.jsx·a0-roster.json·a0-canvas-probe.jsx·README-a0.md) — node --check 3/3 통과 |
-| **별건 task** | Task #1 = 사용자 하드 삭제(참조 0건 가드, FK 위험) — IA와 무관·미착수 |
+## 2) MES 배포분
+- **현장 카드 썸네일 회귀 복구**(`cc6a8ce2`)+**인쇄 작업지시서 썸네일**(`bd2eb57d`): R2 마커 유출→has_thumbnail 플래그+/thumbnails lazy / 단건 hydrate. [[feedback-r2-thumbnail-marker-leak]]
+- **사용자 하드 삭제**(`33d87d8c`): DELETE /api/users/:id/hard, PRAGMA foreign_key_list 동적열거·비-CASCADE 참조 409차단·CASCADE/user_item_access 자동정리. ⚠️user_sessions 테이블 없음(JWT). ⚠️auto-improve #560=비-FK 감사컬럼 dangling 지적(후속).
+- **대기함 필드캐리**(`e254922d`, 0472): designer_intakes에 keyword/post_desc/punch_json/worker_name/worker_id. ingest 수신·저장, GET worker 필터+미지정 폴백, 피커=내용=키워드·후가공 힌트·담당자/거래처 필터.
+- **후가공 도메인 프로파일 A1**(0473): designer_worker_domains(가공자→output/transfer/sign), finishing.ts worker-domains CRUD, intake-config에 worker_domains, 후가공 페이지 가공자↔도메인 매핑 UI + **프리셋별 마크 편집기**(config에 {side}_mark).
 
-## 확정 결정 (spec D1~D9 요약)
-- **D1 폼 = ScriptUI 도킹 팔레트**(네트워크 불요→HTTPS 명분 없음, 저리스크). CEP는 큐 UI 답답 시 승격만.
-- **D2 다중 디자인 = 반자동 큐**(사람 선택 + ExtractGroups 자동감지 '첫 제안 시드'). 혼합 컨테이너(마스크/아트보드/그룹)라 단독 자동은 '추출 부정확' 재발.
-- **D3 큐 교정 = 삭제·추가만**(병합/분할=네스팅 영역).
-- **D4 검토 = 일러 검토문서(디자인당 아트보드) + 확정 게이트**. 확정 시에만 EPS 배치 저장(프리즈 완화).
-- **D5 거래처 = 단일입력+상속**(가공 시 1회 자동완성→주문 상속, clients.id 해소).
-- **D6 대기물 = 작업(원본 파일 batch_key) 그룹핑 + "내 작업"=MES 로그인 유저(registered_by)**.
-- **D7 오퍼레이터 = 기존 카드/생산+/ship에 카드상태 대기열+Z:경로 얹기**(신규 화면 최소).
-- **D8 파일 = 건별 폴더 SSOT, 취소해도 유지, _출력 중복 제거(C 시)**.
-- **D9 성능 = 확정 후 배치 저장**.
+## 설계 문서(specs, 커밋됨)
+- `2026-07-24-designer-intake-field-carry.md` — 대기함 필드캐리 감사·매핑.
+- `2026-07-24-postproc-domain-profiles.md` — 후가공 도메인(현수막/전사/간판). **A1 배포완료**. B/C 별도.
 
-## 판단 기준 (이 세션 근거)
-- 파일 선행 지배(가공 시 주문 대개 없음) → 연동은 가공→대기함→주문 프리필 방향(주문 선택 UI 폐기).
-- 자동 감지는 부정확(과거 헤드리스 폐기 사유) → 사람-루프 유지, 자동은 '시드'로만.
-- 정밀 검토는 일러 캔버스가 최선 → 전용 패널(CEP) 불요, ScriptUI로 충분.
-- 저리스크 우선(용준님 도착점) → A→C 병렬, D는 후속.
-
-## 검토 3회 반영분 (spec에 모두 패치됨)
-- 1차 설계공백: 배치 검토 방식·"내 작업" 신원·거래처 client_id 해소.
-- 2차 코드결함 A~F: **검토문서 대지 한도(~577cm)→size-aware 순차 폴백**·**EPS 파일명 충돌→디자인 index**·**그룹핑 키=batch_key(≠memo, memo는 per-run 유니크 `mes-core.jsx:314`)**·배치 부분실패 멱등·**상주 도킹=Startup Scripts 설치**·registered_by=user id.
-- 3차 G~K: **원본 불가침(시드 감지는 read-only, ExtractGroups CMYK/아웃라인 `:216-228` 제외)**·**배치 흡수=order_item_id 매핑(`workbench.ts:1268`, bulk `:1252` 부적합)**·**브랜치 정합(mes-sheet P1a clobber 주의)**·NAS 타이밍·모드 분리(큐=단일출력).
-
-## ⚠️ 주의사항
-- **ScriptUI 도킹은 미검증** — A0 PoC가 바로 그걸 검증(Go→A1 / No-go→CEP). 반드시 **디자이너 최신 일러**에서.
-- **한글 리터럴 = UTF-8 BOM 필수**(mes-core 관례). PoC는 회피 위해 한글을 roster.json에서 로드.
-- **브랜치**: 현 체크아웃 **main**(=origin/main 계열). mes-sheet(판짜기) P1a·크래시픽스(`31c88d00`)는 `session/ia-web-sunset` 워크트리에만 있고 **main 미머지**(실측 후 push 예정) → A-track은 **판짜기 무수정(런처만)** + 착수 전 정합.
-- **4인 MES 계정 매핑** — "내 작업" 성립 전제(용준님 계정 생성 완료했다 함, 매핑 확인은 구현 시).
-- spec·PoC는 **미커밋 상태**(untracked). 커밋 시 경로지정 add(타 세션 WIP 스윕 금지).
-
-## 진행 업데이트 (2026-07-23 이어서, 커밋 `baf20532`)
-- **④ 대지 한도 = 577cm 실측 확정**(Claude MCP·AI 2026/30.3.0, 578 FAIL, `documents.add`). spec §6 확증.
-- **`a0-canvas-probe.jsx` 결함 수정**: 모서리고정 `[0,0,w,-w]`이 캔버스 좌표범위(초기 문서크기 의존)에 걸려 200cm 오보고 → `documents.add(목표크기)` 방식으로 교정. **교훈=검토문서 생성기는 작은 기본문서 리사이즈 금지·목표크기 생성 필수.**
-- **`mes-a0-startup.jsx` 스텁 신규**: ③ 도킹 검증 턴키화(Startup Scripts 로더, File.exists 가드). README 판정표·절차 갱신.
-- ①② 데이터계층=mes-core 동일 패턴 저리스크(MCP Window 인스턴스화 시 COM 끊김 확인 → 실 도킹은 디자이너 몫 확정).
-- **남은 = ③ 상주 도킹 Go/No-go만** — 디자이너 최신 일러에서 스텁 복사→재시작→육안. 자율 불가.
-
-## A0 → CEP 승격 (2026-07-23 이어서, 실기 검증 완료)
-- **③ ScriptUI 도킹 = No-go 확정**: 자동실행·표시는 성공(단 **`#targetengine` 필수** + **Startup 폴더=설치 디렉터리 루트**, Plug-ins 하위 아님 = 경로버그 확정)했으나, **ScriptUI palette가 일러 네이티브 도킹 실패**(플로팅·창 뒤로 감·조작난). 실기(일러 2026/30.3.0)에서 사용자 직접 확인.
-- **→ CEP 승격 실행(spec §8)**: `IllustratorAutomat/designer/poc-a0-cep/com.mes.a0.panel/` — **네이티브 도킹 CEP 패널(A1 사용가능 수준)**. 에이전트가 스켈레톤 생성(`69b61ac1`)→**mes-core 실처리 연결로 업그레이드**(가공자 신원·마감/프리셋(Z config)·실측·수량/배율/용도·돔보·거래처·**[가공 실행]→work.ai+EPS+thumb+manifest**). host.jsx=mes-core 전 로직 포팅, **manifest 스키마 동일**(+worker/source). 한글=cep.fs(UTF-8)·evalScript는 ASCII만.
-- **설치 완료(이 PC)**: `%APPDATA%\Adobe\CEP\extensions\com.mes.a0.panel\` + PlayerDebugMode CSXS 10/11/12=1. 일러 2026=CEP 12(CSXS.12). 검증=node --check 3/3·XML 유효.
-- **⚠️ 미검증**: 패널 실기동(Window>Extensions>MES A0 Panel)·네이티브 도킹·실 가공 E2E(한글 인코딩·EPS 규약명·ingest source='cep')는 **일러 재시작 후 사용자/디자이너 확인 필요**(MCP는 CEP UI 검증 불가).
+## 핵심 결정+이유
+- **후가공=제품 도메인별**(현수막=마감+재단선/펀칭, 전사=도련+봉제, 간판=추후). 가공자 1:1(섞일일 없음)→**가공자→도메인 자동**.
+- **마크=프리셋별 저장**. 재단선=검정 점선·접는선=검정 실선.
+- **후가공 매핑=힌트만**(주문서 후가공=품목 의존 구조PP라 자동체크 불가). **내용=키워드 직결**.
+- 거래처 필터 미지정 폴백(2026-07-17 제거이력 회피).
 
 ## 다음 세션 TODO
-1. **CEP 패널 실기 테스트**(일러 재시작): Window>Extensions>MES A0 Panel → 도킹 드래그 → 가공자 선택 → 객체 선택·실측 → [가공 실행] → Z: 산출물+대기함 E2E. 판정 Go→A1 지속.
-2. Go 시 A1 잔여: **검토문서(아트보드)+확정게이트**·**거래처 자동완성**(clients config 재도입)·**가공자↔MES user id 매핑**(registered_by_id).
-3. No-go/이슈 시: `.debug` 포트 8888(Chrome localhost:8888)로 콘솔 디버그.
-2. Go → **Phase A1 착수**(worktree 격리): 팔레트 골격+거래처 자동완성+검토문서/확정게이트+저장 SSOT.
-3. No-go → CEP 승격으로 A1 재설계.
-4. (병렬) C 오퍼레이터 = 기존 생산/카드+/ship 확장 스코핑.
-5. 4인 MES 계정↔디자이너 역할 매핑 확인.
+1. **CEP 일러 재시작 테스트** — 도메인 필터·프리셋 마크·잉크축소·묶음분리·마감마크 전반.
+2. **간판(sign) 도메인 탭** — 사용자가 **간판 후가공 내용 정리 대기**(방식/마크/여백). 정리되면 페이지 섹션 추가(백엔드·CEP 무변경, 3줄+HTML) + 시드.
+3. **B: 전사 곡선형 스마트 도련**(윤곽 offset·EdgeColorExtractor 계열) — 전사 실사용 관건.
+4. **C: 불규칙 네스팅**(SVGnest/deepnest, 에이전트측 연산) — 판짜기 축.
+5. **P5 에이전트 배치스캔**(`Program.cs`, manifest_N.json) — CEP 묶음출력 ingest. 단건은 정상.
+6. worker_id↔MES user 매핑("내 작업").
+7. auto-improve 지적 검토: #559 cards/thumbnails IDOR·#560 하드삭제 dangling.
 
-## 검증/빌드 명령 (참고)
-- 코드 미변경이라 build 불요. spec/PoC만. (A1 착수 시) `npm run verify` → `npm run build && npm run smoke`.
-- PoC 문법: `node --check`(#target 제외) 통과 확인함.
+## 검증/빌드 명령
+- `npm run verify`(typecheck+build) → `npm run deploy:prod`(--branch main). 마이그=`wrangler d1 execute webapp-production --remote --file migrations/XXXX.sql`(신규는 execute --file, [[feedback-migration-idempotency]]).
+- CEP 재설치=`Copy-Item $src\* %APPDATA%\Adobe\CEP\extensions\com.mes.a0.panel -Recurse -Force`.
+
+## 주의사항
+- 마이그+코드=한 단위 배포. execute --file --remote로 prod 직접 적용(0472·0473 완료).
+- CEP는 웹 배포 아님(로컬 %APPDATA%). host.jsx 한글 리터럴 금지(params UTF-8).
+- 전사 A1=스캐폴딩(도메인 필터까지), 실가공은 B 대기.
