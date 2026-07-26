@@ -357,6 +357,135 @@
     });
   }
 
+  // ===== 휴가 신청/현황 (#568) =====
+  var leaveSection = document.getElementById('leaveSection');
+  function lvDays(n) { var v = parseFloat(n || 0); return v ? (Math.round(v * 10) / 10).toString() : '0'; }
+  var LV_STATUS = { PENDING: '대기', APPROVED: '승인', REJECTED: '반려', CANCELLED: '취소' };
+
+  function lvRender(data) {
+    var bal = (data && data.balance) || null;
+    var types = (data && data.leave_types) || [];
+    var reqs = (data && data.requests) || [];
+    // 잔여 요약 (올해 유형 합산)
+    var box = document.getElementById('lvBalance');
+    if (box) {
+      var remaining = 0, used = 0, expected = '-';
+      if (bal) {
+        expected = (bal.expected_annual != null ? bal.expected_annual : '-');
+        var yr = String(bal.current_year);
+        (bal.history || []).forEach(function (h) {
+          if (String(h.year) === yr) { remaining += parseFloat(h.remaining || 0); used += parseFloat(h.used || 0); }
+        });
+      }
+      box.innerHTML =
+        '<div class="lv-stat"><div class="v">' + lvDays(remaining) + '</div><div class="l">올해 잔여(일)</div></div>' +
+        '<div class="lv-stat"><div class="v" style="color:#111;">' + lvDays(used) + '</div><div class="l">올해 사용(일)</div></div>' +
+        '<div class="lv-stat"><div class="v" style="color:#111;">' + esc(String(expected)) + '</div><div class="l">예상 부여(일)</div></div>';
+    }
+    // 유형 드롭다운
+    var sel = document.getElementById('lvType');
+    if (sel) {
+      sel.innerHTML = types.map(function (t) { return '<option value="' + esc(t.code) + '">' + esc(t.name) + '</option>'; }).join('')
+        || '<option value="">유형 없음</option>';
+    }
+    // 신청 내역
+    var list = document.getElementById('lvRequests');
+    if (list) {
+      if (!reqs.length) { list.innerHTML = '<div style="text-align:center;color:#9ca3af;padding:16px;font-size:13px;">신청 내역이 없습니다.</div>'; }
+      else {
+        list.innerHTML = reqs.map(function (r) {
+          var cancelBtn = r.status === 'PENDING' ? '<button class="lv-cancel" onclick="lvCancel(' + r.id + ')"><i class="fas fa-times mr-1"></i>신청 취소</button>' : '';
+          var rej = (r.status === 'REJECTED' && r.rejection_reason) ? '<div style="font-size:12px;color:#991b1b;margin-top:3px;">반려사유: ' + esc(r.rejection_reason) + '</div>' : '';
+          return '<div class="lv-req">' +
+            '<div class="top"><span style="font-weight:600;font-size:14px;">' + esc(r.leave_type_name || r.leave_type || '-') + ' · ' + lvDays(r.days) + '일</span>' +
+            '<span class="lv-badge lv-b-' + esc(r.status) + '">' + (LV_STATUS[r.status] || r.status) + '</span></div>' +
+            '<div class="period">' + esc(r.start_date || '') + ' ~ ' + esc(r.end_date || '') + (r.reason ? ' · ' + esc(r.reason) : '') + '</div>' +
+            rej + cancelBtn + '</div>';
+        }).join('');
+      }
+    }
+  }
+
+  function lvHandle401(err, msg) {
+    if (err && err.response && err.response.status === 401) {
+      selfToken = null; employeeInfo = null;
+      setTimeout(function () {
+        loginSection.style.display = 'block';
+        menuSection.classList.remove('active');
+        if (leaveSection) leaveSection.classList.remove('active');
+        showError(msg);
+      }, 1200);
+    }
+  }
+
+  async function lvLoad() {
+    if (!selfToken) return;
+    var list = document.getElementById('lvRequests');
+    if (list) list.innerHTML = '<div style="text-align:center;color:#9ca3af;padding:16px;">로딩 중...</div>';
+    try {
+      var res = await axios.get('/api/hr/self/leaves', { headers: { 'Authorization': 'Bearer ' + selfToken } });
+      if (res.data.success) lvRender(res.data.data);
+    } catch (err) {
+      var msg = (err.response && err.response.data && err.response.data.error) || '조회 실패';
+      if (list) list.innerHTML = '<div style="text-align:center;color:#dc2626;padding:16px;">' + esc(msg) + '</div>';
+      lvHandle401(err, msg);
+    }
+  }
+
+  var btnLeave = document.getElementById('btnLeave');
+  if (btnLeave) {
+    btnLeave.addEventListener('click', function () {
+      if (!selfToken) return;
+      menuSection.classList.remove('active');
+      if (leaveSection) leaveSection.classList.add('active');
+      var le = document.getElementById('lvError'); if (le) le.style.display = 'none';
+      lvLoad();
+    });
+  }
+
+  var btnLeaveSubmit = document.getElementById('btnLeaveSubmit');
+  if (btnLeaveSubmit) {
+    btnLeaveSubmit.addEventListener('click', async function () {
+      if (!selfToken) return;
+      var le = document.getElementById('lvError');
+      var type = (document.getElementById('lvType') || {}).value;
+      var start = (document.getElementById('lvStart') || {}).value;
+      var end = (document.getElementById('lvEnd') || {}).value;
+      var reason = (document.getElementById('lvReason') || {}).value;
+      if (!type || !start || !end) { if (le) { le.textContent = '유형·시작일·종료일을 입력하세요.'; le.style.display = 'block'; } return; }
+      if (end < start) { if (le) { le.textContent = '종료일이 시작일보다 빠릅니다.'; le.style.display = 'block'; } return; }
+      btnLeaveSubmit.disabled = true;
+      try {
+        await axios.post('/api/hr/self/leaves', { leave_type: type, start_date: start, end_date: end, reason: reason },
+          { headers: { 'Authorization': 'Bearer ' + selfToken } });
+        if (le) le.style.display = 'none';
+        document.getElementById('lvReason').value = '';
+        lvLoad();
+      } catch (err) {
+        var msg = (err.response && err.response.data && err.response.data.error) || '신청 실패';
+        if (le) { le.textContent = msg; le.style.display = 'block'; }
+        lvHandle401(err, msg);
+      } finally {
+        btnLeaveSubmit.disabled = false;
+      }
+    });
+  }
+
+  window.lvCancel = async function (id) {
+    if (!selfToken || !id) return;
+    try {
+      await axios.delete('/api/hr/self/leaves/' + id, { headers: { 'Authorization': 'Bearer ' + selfToken } });
+      lvLoad();
+    } catch (err) {
+      var msg = (err.response && err.response.data && err.response.data.error) || '취소 실패';
+      var le = document.getElementById('lvError'); if (le) { le.textContent = msg; le.style.display = 'block'; }
+      lvHandle401(err, msg);
+    }
+  };
+
+  var btnLeaveBack = document.getElementById('btnLeaveBack');
+  if (btnLeaveBack) { btnLeaveBack.addEventListener('click', function () { if (leaveSection) leaveSection.classList.remove('active'); menuSection.classList.add('active'); }); }
+
   // 로그아웃 (메뉴/계약서/급여명세서 화면 공통)
   function selfLogout() {
     selfToken = null;
@@ -366,6 +495,7 @@
     contractsSection.classList.remove('active');
     if (payslipsSection) payslipsSection.classList.remove('active');
     if (signSection) signSection.classList.remove('active');
+    if (leaveSection) leaveSection.classList.remove('active');
     selfContracts = [];
     errorMsg.style.display = 'none';
     var ecEl = document.getElementById('employeeCode'); if (ecEl) ecEl.value = '';
@@ -378,4 +508,6 @@
   if (btnContractsLogout) { btnContractsLogout.addEventListener('click', selfLogout); }
   var btnPayslipsLogout = document.getElementById('btnPayslipsLogout');
   if (btnPayslipsLogout) { btnPayslipsLogout.addEventListener('click', selfLogout); }
+  var btnLeaveLogout = document.getElementById('btnLeaveLogout');
+  if (btnLeaveLogout) { btnLeaveLogout.addEventListener('click', selfLogout); }
 })();

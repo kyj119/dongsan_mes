@@ -65,6 +65,10 @@ export function sidebarHTML(activePage: string): string {
         <i class="fas fa-user-circle"></i>
         <span class="nav-label" id="sidebarUserName">-</span>
       </div>
+      <a href="/my-leave" class="nav-item" data-path="/my-leave" title="내 휴가">
+        <i class="fas fa-umbrella-beach"></i>
+        <span class="nav-label">내 휴가</span>
+      </a>
       <a href="#" class="nav-item" id="logoutBtn" title="로그아웃">
         <i class="fas fa-sign-out-alt"></i>
         <span class="nav-label">로그아웃</span>

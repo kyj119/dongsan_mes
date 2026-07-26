@@ -6,6 +6,10 @@ import { renderEmploymentCertificateHTML } from '../templates/employmentCertific
 import { renderPayslipHTML } from '../templates/payslipHtml'
 import { renderLaborContractHTML } from '../templates/laborContract'
 import { kstYmd, kstYmdCompact } from '../utils/kstDate'
+import {
+  getLeaveBalanceForEmployee, listLeaveRequestsForEmployee, getActiveLeaveTypes,
+  createLeaveRequestForEmployee, cancelPendingLeaveRequest, LeaveRequestError,
+} from './leaveShared'
 
 const hrSelfRouter = new Hono<HonoEnv>()
 
@@ -354,6 +358,66 @@ hrSelfRouter.patch('/self/contracts/:id/sign', async (c) => {
     return c.json({ success: true })
   } catch (error: any) {
     console.error('hrSelf [PATCH /self/contracts/:id/sign]:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ============================================================================
+// 휴가 셀프서비스 (#568) — 계정 없는 직원용 포털(employee-self scope 토큰)
+//   employee_id 는 토큰 sub 로 강제 → IDOR 원천 차단. 신청은 PENDING → 기존 /leaves 승인흐름 그대로.
+// ============================================================================
+
+// GET /api/hr/self/leaves — 본인 연차 현황 + 신청 이력 + 유형 목록 (포털 섹션 1회 로드)
+hrSelfRouter.get('/self/leaves', async (c) => {
+  try {
+    const payload = await verifySelfToken(c)
+    if (!payload) return c.json({ success: false, error: '인증이 필요합니다. 다시 로그인하세요.' }, 401)
+    const employeeId = payload.sub
+    const [balance, requests, types] = await Promise.all([
+      getLeaveBalanceForEmployee(c.env.DB, employeeId),
+      listLeaveRequestsForEmployee(c.env.DB, employeeId),
+      getActiveLeaveTypes(c.env.DB),
+    ])
+    return c.json({ success: true, data: { balance, requests, leave_types: types } })
+  } catch (error: any) {
+    console.error('hrSelf [GET /self/leaves]:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// POST /api/hr/self/leaves — 본인 휴가 신청 (employee_id=토큰 sub 강제)
+hrSelfRouter.post('/self/leaves', async (c) => {
+  try {
+    const payload = await verifySelfToken(c)
+    if (!payload) return c.json({ success: false, error: '인증이 필요합니다. 다시 로그인하세요.' }, 401)
+    const employeeId = payload.sub
+    const body = await c.req.json<{ leave_type: string; start_date: string; end_date: string; reason?: string }>()
+    const emp = await c.env.DB.prepare(`SELECT entity_id FROM employees WHERE id = ? AND is_deleted = 0`).bind(employeeId).first<{ entity_id: number }>()
+    if (!emp) return c.json({ success: false, error: '직원 정보를 찾을 수 없습니다.' }, 404)
+    const res = await createLeaveRequestForEmployee(c.env.DB, {
+      employeeId, leaveType: body.leave_type, startDate: body.start_date, endDate: body.end_date,
+      reason: body.reason, createdBy: null, entityId: emp.entity_id || 1,
+    })
+    return c.json({ success: true, data: res })
+  } catch (error: any) {
+    if (error instanceof LeaveRequestError) {
+      return c.json({ success: false, error: error.message }, error.code === 'DUPLICATE' ? 409 : 400)
+    }
+    console.error('hrSelf [POST /self/leaves]:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// DELETE /api/hr/self/leaves/:id — 본인 대기(PENDING) 신청 취소
+hrSelfRouter.delete('/self/leaves/:id', async (c) => {
+  try {
+    const payload = await verifySelfToken(c)
+    if (!payload) return c.json({ success: false, error: '인증이 필요합니다. 다시 로그인하세요.' }, 401)
+    const ok = await cancelPendingLeaveRequest(c.env.DB, Number(c.req.param('id')), payload.sub)
+    if (!ok) return c.json({ success: false, error: '취소할 수 없는 신청입니다(대기 상태·본인 신청만 취소 가능).' }, 400)
+    return c.json({ success: true })
+  } catch (error: any) {
+    console.error('hrSelf [DELETE /self/leaves/:id]:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })

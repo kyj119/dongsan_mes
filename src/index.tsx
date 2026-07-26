@@ -29,6 +29,7 @@ import ledgerRouter from './routes/ledger'
 import inventoryRouter from './routes/inventory'
 import hrRouter from './routes/hr'
 import hrSelfRouter from './routes/hrSelf'
+import mySelfRouter from './routes/mySelf'
 import productionRouter from './routes/production'
 import aiAnalysisRouter from './routes/aiAnalysis'
 import aiLayoutRouter from './routes/aiLayout'
@@ -113,6 +114,7 @@ import { inventoryDashboardPage } from './pages/inventoryDashboard'
 import { productionPage } from './pages/production'
 import { hrPage } from './pages/hr'
 import { hrDetailPage } from './pages/hrDetail'
+import { myLeavePage } from './pages/myLeave'
 import { attendancePage } from './pages/attendance'
 import { usersPage } from './pages/users'
 import { postProcessingPage } from './pages/postProcessing'
@@ -257,6 +259,7 @@ app.use('/api/portal/verify-token', rateLimitMiddleware(30, 60000))  // #314 분
 
 // Mount API routers (hrSelf는 인증 미들웨어 없이 먼저 마운트)
 app.route('/api/hr', hrSelfRouter)
+app.route('/api/my', mySelfRouter)
 app.route('/api/auth', authRouter)
 app.route('/api/dashboard', dashboardRouter)
 app.route('/api/ledger', ledgerRouter)
@@ -418,6 +421,8 @@ app.get('/production', pageAuthMiddleware, requirePagePermission('/production'),
 app.get('/schedule', pageAuthMiddleware, requirePagePermission('/schedule'), schedulePage)
 app.get('/hr', pageAuthMiddleware, requirePagePermission('/hr'), hrPage)
 app.get('/hr/:id{[0-9]+}', pageAuthMiddleware, requirePagePermission('/hr'), hrDetailPage)
+// #568: 내 휴가 — 전 로그인 사용자 접근(권한 무관). data-page-key 미부여(사이드바 사용자영역 링크)라 no-permission 리다이렉트 대상 아님.
+app.get('/my-leave', pageAuthMiddleware, myLeavePage)
 app.get('/labor-contracts', pageAuthMiddleware, requirePagePermission('/labor-contracts'), laborContractsPage)
 app.get('/attendance', pageAuthMiddleware, requirePagePermission('/attendance'), attendancePage)
 app.get('/users', pageAuthMiddleware, requireAdminPage(), usersPage)

@@ -235,6 +235,28 @@ export function employeeSelfPage(c: Context<HonoEnv>) {
     /* 계약서 목록 */
     .contracts-section { display: none; }
     .contracts-section.active { display: block; }
+
+    .leave-section { display: none; }
+    .leave-section.active { display: block; }
+    .lv-balance { display:flex; gap:8px; margin-bottom:14px; }
+    .lv-stat { flex:1; background:#f8fafc; border:1px solid #e5e7eb; border-radius:8px; padding:10px; text-align:center; }
+    .lv-stat .v { font-size:20px; font-weight:700; color:#1e40af; font-variant-numeric:tabular-nums; }
+    .lv-stat .l { font-size:11px; color:#9ca3af; margin-top:2px; }
+    .lv-field { margin-bottom:10px; }
+    .lv-field label { display:block; font-size:12px; font-weight:600; color:#374151; margin-bottom:4px; }
+    .lv-field input, .lv-field select, .lv-field textarea { width:100%; border:1px solid #d1d5db; border-radius:6px; padding:8px 10px; font-size:14px; box-sizing:border-box; }
+    .lv-row { display:flex; gap:8px; }
+    .lv-row .lv-field { flex:1; }
+    .lv-req { border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; margin-bottom:8px; }
+    .lv-req .top { display:flex; justify-content:space-between; align-items:center; }
+    .lv-req .period { font-size:13px; color:#6b7280; margin-top:3px; }
+    .lv-badge { font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; }
+    .lv-b-PENDING { background:#fef3c7; color:#92400e; }
+    .lv-b-APPROVED { background:#dcfce7; color:#166534; }
+    .lv-b-REJECTED { background:#fee2e2; color:#991b1b; }
+    .lv-b-CANCELLED { background:#f3f4f6; color:#6b7280; }
+    .lv-cancel { margin-top:6px; font-size:12px; color:#dc2626; background:none; border:none; cursor:pointer; padding:0; }
+    .lv-cancel:hover { text-decoration:underline; }
     .contract-item {
       padding: 12px;
       border: 1px solid #e5e7eb;
@@ -330,6 +352,14 @@ export function employeeSelfPage(c: Context<HonoEnv>) {
           </div>
         </button>
 
+        <button type="button" class="menu-item" id="btnLeave">
+          <i class="fas fa-umbrella-beach" aria-hidden="true"></i>
+          <div>
+            <div class="label">휴가 신청/현황</div>
+            <div class="desc">연차 잔여 확인 및 휴가를 직접 신청합니다</div>
+          </div>
+        </button>
+
         <button class="btn-logout" id="btnLogout">로그아웃</button>
       </div>
 
@@ -347,6 +377,31 @@ export function employeeSelfPage(c: Context<HonoEnv>) {
         <h3 style="font-size:16px;font-weight:700;margin-bottom:12px;">내 계약서 목록</h3>
         <div id="contractsList"></div>
         <button class="btn-logout" id="btnContractsLogout">로그아웃</button>
+      </div>
+
+      <!-- 휴가 신청/현황 -->
+      <div id="leaveSection" class="leave-section">
+        <button class="back-btn" id="btnLeaveBack"><i class="fas fa-arrow-left"></i> 돌아가기</button>
+        <h3 style="font-size:16px;font-weight:700;margin-bottom:12px;">휴가 신청 / 현황</h3>
+        <div class="lv-balance" id="lvBalance"></div>
+        <div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:16px;">
+          <div style="font-size:13px;font-weight:700;margin-bottom:8px;">새 휴가 신청</div>
+          <div class="lv-field">
+            <label>휴가 유형</label>
+            <select id="lvType"></select>
+          </div>
+          <div class="lv-row">
+            <div class="lv-field"><label>시작일</label><input type="date" id="lvStart"></div>
+            <div class="lv-field"><label>종료일</label><input type="date" id="lvEnd"></div>
+          </div>
+          <div class="lv-field"><label>사유 (선택)</label><textarea id="lvReason" rows="2" placeholder="사유"></textarea></div>
+          <div class="error-msg" id="lvError" style="margin:4px 0;"></div>
+          <button type="button" id="btnLeaveSubmit" class="btn-primary" style="width:100%;">신청하기</button>
+          <div style="font-size:11px;color:#9ca3af;margin-top:6px;">* 일수는 주말·공휴일을 제외한 소정근로일로 자동 산정됩니다. 신청 후 관리자 승인 대기 상태가 됩니다.</div>
+        </div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:8px;">내 신청 내역</div>
+        <div id="lvRequests"></div>
+        <button class="btn-logout" id="btnLeaveLogout">로그아웃</button>
       </div>
 
       <!-- 근로계약서 서명 -->

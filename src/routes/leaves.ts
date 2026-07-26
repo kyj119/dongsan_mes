@@ -75,7 +75,7 @@ function kstNow(): Date {
  * C2/B4: start~end(YYYY-MM-DD, 포함) 사이 소정근로일 수 — 토·일 및 공휴일(holidays) 제외.
  * 연차는 달력일이 아닌 소정근로일 기준으로 차감해야 함(근로기준법).
  */
-async function countWorkingDays(db: D1Database, start: string, end: string): Promise<number> {
+export async function countWorkingDays(db: D1Database, start: string, end: string): Promise<number> {
   const dates = enumerateDates(start, end)
   if (dates.length === 0) return 0
   const { results } = await db.prepare(
