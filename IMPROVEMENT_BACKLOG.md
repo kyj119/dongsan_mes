@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-07-26T03:17:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-07-26T09:22:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,29 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **10** — Area 2 51회차(07-26T03:17) N+1 신규 2건(#562·#563) 반영, `list_issues(state:OPEN,label:auto-improve)` 실측 10건. |
+| 🆕 new | **16** — Area 3 44회차(07-26T09:22) 신규 6건(#564~#569) 반영, `list_issues(state:OPEN,label:auto-improve)` 실측 16건. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **479** — `search_issues(is:closed,reason:completed)` 재조회 생략(close-pending 캐시, 변동 없음). |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 3 UX/기능 감사 (2026-07-26T09:22):**
+> - **방법**: `git fetch origin main`(HEAD `7dd2105` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 3 **44회차** — 직전 Area3(`216178f`, 07-24T12:30, 43회차) 이후 `git log 216178f..HEAD -- src/routes src/scripts migrations`는 dead-code 삭제 1파일(`payroll/shared.ts`, Area2 51회차)뿐이라 churn 기반 감사가 무의미 — Playwright는 prod egress 차단으로 여전히 불가해 정적 코드 리딩으로 **아직 깊게 감사되지 않은 3개 영역**(대시보드 KPI·인사/근태 셀프서비스·품질관리 클레임↔반품 흐름)을 general-purpose 에이전트 3개 병렬 파견으로 심층 정독.
+> - **🔧 자동수정 1건(즉시 커밋+푸시, `a7ff772`)**: `src/scripts/dashboard.js` `loadOverduePos()`(발주지연 위젯)만 같은 파일의 다른 8곳 이상(client_name/item_name 등)과 달리 `po.supplier_name`/`po.po_number`에 `escapeHtml` 미적용 — 자유텍스트 거래처명이 전사 대시보드에 저장형 XSS로 노출 가능했음(SKILL "SPA innerHTML free-text XSS" standing scan 클래스). `node -c` 문법확인 + `npm run verify`(typecheck+build) 통과 후 커밋.
+> - **🔴 신규 이슈 6건(#564~#569, 전부 issue-only — Area3 정책상 UI/UX·신기능·회계로직 변경은 자동수정 금지)**:
+>   - **#564 (S, bug)**: 대시보드 매출/주문 KPI 6개 서브쿼리가 `status != 'CANCELLED'`만 필터링해 견적(QUOTATION) 상태 주문까지 실적에 합산 — 앱 전역 관례(`orders.js` TRANSIENT_STATUSES가 QUOTATION 명시 제외)와 불일치, 히어로 카드 매출/주문 수치 부풀림.
+>   - **#565 (M, bug)**: 대시보드 "총 미수금" KPI가 `adjustments` 차감 없이 계산 — 같은 파일 주석이 명시한 SSOT(`billed-payments-adjustments`, 앱 전역 통일 공식)와 어긋나 같은 화면의 TOP10/연체현황 합계와 숫자 불일치.
+>   - **#566 (M, feature)**: 반품(RMA) 등록 UI가 전무 — 백엔드 `POST /api/returns`는 완비(품목batch+롤백)되어 있으나 프론트 호출처 0건, 안내 문구가 가리키는 "주문 상세"에도 UI 없음 — 클레임→반품→재고반영 체인이 진입점부터 끊김.
+>   - **#567 (M, improvement)**: 클레임/반품 해결금액이 AR(매출채권) 조정과 미연동 — `adjustments` INSERT 경로가 회계 원장 수동입력 1곳뿐이라, REFUND 확정해도 미수금이 자동 반영 안 됨(회계 이중입력 위험).
+>   - **#568 (M~L, improvement)**: 휴가 신청이 `requireRole('ADMIN','MANAGER')`로 원천 제한 — 직원 셀프신청 경로 전무(직원포털 `employeeSelf.ts`엔 메뉴 자체가 없음), 전 직원이 구두/메신저로 HR 대리입력 필요한 병목.
+>   - **#569 (S, improvement)**: 직원 상세 페이지에 연차현황 섹션 부재 — 백엔드 `GET /api/leaves/balance/:employeeId`는 완비돼 있으나 호출처 0건(dead API), 프론트 섹션 추가만 하면 되는 저비용 개선.
+> - **오탐 배제 확인**: 각 에이전트에게 기존 오탐 카탈로그(explicit-search 패턴·필드명 불일치·상세모달 링크 등)와 열린 이슈 #554~#563 목록을 사전 제공해 중복/기지식 재보고 0건 — 인벤토리/출고 대시보드(`inventoryDashboard.js`/`shipmentsDashboard.js`)는 escape·링크·빈상태 전부 정상 확인(clean). 낮은 확신도 항목(생산파이프라인 위젯 단위혼용, 클레임 quality_issue_id/rework_order_id 미기록, leaves 탭2 부서필터 부재)은 별도 이슈화 보류.
+> - **backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **16건**(#554~#563 이월 + #564~#569 신규). done/rejected는 이번 사이클 close 0건이라 재조회 생략, 직전 사이클 연속 확인된 done **479**·rejected **6** 유지(close-pending 캐시 정책).
+> - **🧬 SKILL 강화 없음(기존 패턴 재현)** — XSS 자동수정은 기존 "SPA innerHTML free-text XSS standing scan" 클래스 재현, 6건 신규 이슈도 각각 기존 클래스(형제-비대칭 escape·SSOT 공식 불일치·dead API·백엔드완성/프론트미구현·권한모델 병목)의 신규 화면 재현이라 별도 codify 불요. 다만 "churn이 거의 없을 때는 아직 안 다룬 화면 3곳을 병렬 파견해 정독"하는 이번 접근이 유효했음 — Area1/5/6이 이미 채택한 "churn 부족 시 전체 코드베이스 표준스캔 병행" 패턴의 Area3 버전으로 참고.
+> - 신규 이슈 6건(#564~#569, issue-only), 자동수정 1건(escapeHtml, 커밋 `a7ff772` 푸시 완료), done-sync 변동 없음(new 10→16·done 479·rejected 6). 다음 순번 Area 4.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-07-26T03:17):**
 > - **방법**: `git fetch origin main`(HEAD `93d2c57` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 2 **51회차** — 직전 Area2(`a5ecec6`, 07-24T15:20, 50회차) 이후 `git log a5ecec6..HEAD -- src/routes migrations src/scripts`는 **0건**(그 사이 5커밋 전부 `docs(auto-improve)` — Area3~Area1이 각자 문서만 갱신, 실질 코드/마이그 churn 없음). 신선 churn이 없어 표준 스캔(`entity-audit.mjs`=122파일·통과59·누락0, `tsc --noEmit`=clean, 마이그번호 중복=기존 5쌍만, secret fallback grep=`fax.ts` 기존 FP만) 재확인 후, **아직 전용 전수 스캔이 오래 없었던 두 클래스(N+1 쿼리·dead code)**를 general-purpose 에이전트로 코드베이스 전체 스캔.
