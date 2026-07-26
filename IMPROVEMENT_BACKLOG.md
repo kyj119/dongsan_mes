@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-07-24T09:14:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-07-26T09:22:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,92 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **5** — Area 1 49회차(07-24T09:14) `list_issues(state:OPEN,label:auto-improve)` 실측, 변동 없음(`#554`~`#558` 전부 이월, 이번 사이클 생성/close 0). |
+| 🆕 new | **16** — Area 3 44회차(07-26T09:22) 신규 6건(#564~#569) 반영, `list_issues(state:OPEN,label:auto-improve)` 실측 16건. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **479** — 변동 없음(이번 사이클 close 0). |
-| ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음, 개별 재확인 완료) |
+| ✔️ done | **479** — `search_issues(is:closed,reason:completed)` 재조회 생략(close-pending 캐시, 변동 없음). |
+| ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 3 UX/기능 감사 (2026-07-26T09:22):**
+> - **방법**: `git fetch origin main`(HEAD `7dd2105` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 3 **44회차** — 직전 Area3(`216178f`, 07-24T12:30, 43회차) 이후 `git log 216178f..HEAD -- src/routes src/scripts migrations`는 dead-code 삭제 1파일(`payroll/shared.ts`, Area2 51회차)뿐이라 churn 기반 감사가 무의미 — Playwright는 prod egress 차단으로 여전히 불가해 정적 코드 리딩으로 **아직 깊게 감사되지 않은 3개 영역**(대시보드 KPI·인사/근태 셀프서비스·품질관리 클레임↔반품 흐름)을 general-purpose 에이전트 3개 병렬 파견으로 심층 정독.
+> - **🔧 자동수정 1건(즉시 커밋+푸시, `a7ff772`)**: `src/scripts/dashboard.js` `loadOverduePos()`(발주지연 위젯)만 같은 파일의 다른 8곳 이상(client_name/item_name 등)과 달리 `po.supplier_name`/`po.po_number`에 `escapeHtml` 미적용 — 자유텍스트 거래처명이 전사 대시보드에 저장형 XSS로 노출 가능했음(SKILL "SPA innerHTML free-text XSS" standing scan 클래스). `node -c` 문법확인 + `npm run verify`(typecheck+build) 통과 후 커밋.
+> - **🔴 신규 이슈 6건(#564~#569, 전부 issue-only — Area3 정책상 UI/UX·신기능·회계로직 변경은 자동수정 금지)**:
+>   - **#564 (S, bug)**: 대시보드 매출/주문 KPI 6개 서브쿼리가 `status != 'CANCELLED'`만 필터링해 견적(QUOTATION) 상태 주문까지 실적에 합산 — 앱 전역 관례(`orders.js` TRANSIENT_STATUSES가 QUOTATION 명시 제외)와 불일치, 히어로 카드 매출/주문 수치 부풀림.
+>   - **#565 (M, bug)**: 대시보드 "총 미수금" KPI가 `adjustments` 차감 없이 계산 — 같은 파일 주석이 명시한 SSOT(`billed-payments-adjustments`, 앱 전역 통일 공식)와 어긋나 같은 화면의 TOP10/연체현황 합계와 숫자 불일치.
+>   - **#566 (M, feature)**: 반품(RMA) 등록 UI가 전무 — 백엔드 `POST /api/returns`는 완비(품목batch+롤백)되어 있으나 프론트 호출처 0건, 안내 문구가 가리키는 "주문 상세"에도 UI 없음 — 클레임→반품→재고반영 체인이 진입점부터 끊김.
+>   - **#567 (M, improvement)**: 클레임/반품 해결금액이 AR(매출채권) 조정과 미연동 — `adjustments` INSERT 경로가 회계 원장 수동입력 1곳뿐이라, REFUND 확정해도 미수금이 자동 반영 안 됨(회계 이중입력 위험).
+>   - **#568 (M~L, improvement)**: 휴가 신청이 `requireRole('ADMIN','MANAGER')`로 원천 제한 — 직원 셀프신청 경로 전무(직원포털 `employeeSelf.ts`엔 메뉴 자체가 없음), 전 직원이 구두/메신저로 HR 대리입력 필요한 병목.
+>   - **#569 (S, improvement)**: 직원 상세 페이지에 연차현황 섹션 부재 — 백엔드 `GET /api/leaves/balance/:employeeId`는 완비돼 있으나 호출처 0건(dead API), 프론트 섹션 추가만 하면 되는 저비용 개선.
+> - **오탐 배제 확인**: 각 에이전트에게 기존 오탐 카탈로그(explicit-search 패턴·필드명 불일치·상세모달 링크 등)와 열린 이슈 #554~#563 목록을 사전 제공해 중복/기지식 재보고 0건 — 인벤토리/출고 대시보드(`inventoryDashboard.js`/`shipmentsDashboard.js`)는 escape·링크·빈상태 전부 정상 확인(clean). 낮은 확신도 항목(생산파이프라인 위젯 단위혼용, 클레임 quality_issue_id/rework_order_id 미기록, leaves 탭2 부서필터 부재)은 별도 이슈화 보류.
+> - **backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **16건**(#554~#563 이월 + #564~#569 신규). done/rejected는 이번 사이클 close 0건이라 재조회 생략, 직전 사이클 연속 확인된 done **479**·rejected **6** 유지(close-pending 캐시 정책).
+> - **🧬 SKILL 강화 없음(기존 패턴 재현)** — XSS 자동수정은 기존 "SPA innerHTML free-text XSS standing scan" 클래스 재현, 6건 신규 이슈도 각각 기존 클래스(형제-비대칭 escape·SSOT 공식 불일치·dead API·백엔드완성/프론트미구현·권한모델 병목)의 신규 화면 재현이라 별도 codify 불요. 다만 "churn이 거의 없을 때는 아직 안 다룬 화면 3곳을 병렬 파견해 정독"하는 이번 접근이 유효했음 — Area1/5/6이 이미 채택한 "churn 부족 시 전체 코드베이스 표준스캔 병행" 패턴의 Area3 버전으로 참고.
+> - 신규 이슈 6건(#564~#569, issue-only), 자동수정 1건(escapeHtml, 커밋 `a7ff772` 푸시 완료), done-sync 변동 없음(new 10→16·done 479·rejected 6). 다음 순번 Area 4.
+>
+
+> **Area 2 코드 품질 심층 분석 (2026-07-26T03:17):**
+> - **방법**: `git fetch origin main`(HEAD `93d2c57` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 2 **51회차** — 직전 Area2(`a5ecec6`, 07-24T15:20, 50회차) 이후 `git log a5ecec6..HEAD -- src/routes migrations src/scripts`는 **0건**(그 사이 5커밋 전부 `docs(auto-improve)` — Area3~Area1이 각자 문서만 갱신, 실질 코드/마이그 churn 없음). 신선 churn이 없어 표준 스캔(`entity-audit.mjs`=122파일·통과59·누락0, `tsc --noEmit`=clean, 마이그번호 중복=기존 5쌍만, secret fallback grep=`fax.ts` 기존 FP만) 재확인 후, **아직 전용 전수 스캔이 오래 없었던 두 클래스(N+1 쿼리·dead code)**를 general-purpose 에이전트로 코드베이스 전체 스캔.
+> - **🔴 신규 이슈 — #562 (S~M, improvement)**: `taxInvoices/batch.ts:221` `POST /monthly-create`(client_ids 생략 시 전체 MONTHLY 거래처 대상, LIMIT 없음)가 거래처별로 `createSplitInvoices`(거래처당 D1 호출 4+, `auto_issue=true`면 `issueTaxInvoice`까지 포함해 K≈5~14)를 순차 호출 — 거래처 수(N)가 사업 확장에 비례해 늘어나는 helper-loop N+1(#478 계열의 새 라우트 재현). 한도 소진 시 일부 거래처만 발행되고 나머지 무응답 중단 = 부분 월정산.
+> - **🔴 신규 이슈 — #563 (S~M, improvement)**: `clients.ts:638` `POST /import`(CSV 대량 업로드, 배열 크기 무제한)가 행마다 SELECT+INSERT/UPDATE를 `db.batch()` 없이 순차 실행 — 수백 행 업로드에서 서브요청 한도 근접, 부분 임포트 위험.
+> - **🔧 자동수정 2건 — dead code 제거**: ① `payroll/shared.ts` `getSetting`(단수형, 전체 코드베이스 0참조 — 배치버전 `getSettings`로 완전 대체됨 확인) 삭제 ② `utils/paymentSchedule.ts` `describePaymentCycle`(0참조, 표시용 요약 헬퍼가 UI에 배선된 적 없음) 삭제. **`unitConvert.ts` `toBase`는 보고·수정 모두 보류** — 0참조이나 `fromBase`와 대칭을 이루는 multi-UOM 모델의 정식 변환 헬퍼(CLAUDE.md/SKILL #462가 명시하는 "일부 write-path만 pack_size 환산 적용된 진행중 기능")라 형제 함수와 별개로 삭제 시 향후 write-path 완성 시 재구현 필요 — 진짜 dead code와 구분해 보존. `npm run verify`(typecheck+build) 통과 확인 후 커밋.
+> - **🟢 나머지 N+1 후보 = 전부 clean(FP)**: bank.ts 계좌×기간 동기화·printEvents batch·weeklyPurchase/purchaseRequests 공급처그룹 루프·po-receive 품목별 단가 캐스케이드·cards/lifecycle 일괄출고·orders bulk-ship·shipments merge — 전부 기존 `db.batch()` 최적화(`#458`/`#474`/`#478` 리뷰 주석 동반) 또는 UI multi-select/자연 소규모 상한(공급처·PO 라인·법인 수)으로 bounded. dead code 후보 중 나머지(0-hit grep 매치 다수)는 같은 파일 내부 재사용(예: `statusLabels.ts` TONES/ICONS가 파일 자신의 템플릿 리터럴에서 소비)이라 FP.
+> - **🟢 backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **10건**(#554~#561 이월 + #562·#563 신규). done(`reason:completed`)은 이번 사이클 close 0건이라 재조회 생략, 직전 다수 사이클 연속 확인된 **479** 유지(close-pending 캐시 정책). rejected **6**(변동 없음, 재확인 생략).
+> - **🧬 SKILL 강화 없음(기존 패턴 재현)** — N+1 2건은 기존 "helper-loop N+1"(#478) 클래스의 다른 라우트 재현, dead code 제거는 기존 자동수정 정책의 정상 적용. `toBase` 보류 판단은 기존 #462(단위환산 형제-완전성) 규칙의 자연스러운 적용(진행중 기능의 미완 write-path 헬퍼를 dead code로 오판하지 않는 사례)이라 별도 codify 불요.
+> - 신규 이슈 2건(#562·#563, issue-only — 과금/대량write 제어흐름 변경이라 자동수정 대상 아님), 자동수정 2건(dead code 제거, 커밋 예정), done-sync 변동 없음(new 8→10[신규 2건 반영]·done 479·rejected 6). 다음 순번 Area 3.
+>
+
+> **Area 1 프로덕션 헬스 (2026-07-25T21:30):**
+> - **방법**: `git fetch origin main`(HEAD `8b30b6a` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). 프록시가 이번 세션도 prod 호스트 직접 curl 차단(exit 56, CONNECT tunnel 403 — `webapp-9i0.pages.dev`·`observability.mcp.cloudflare.com` 둘 다 `__agentproxy/status` `recentRelayFailures`에 재확인, `cloudflare-observability` MCP 미인증 상태 지속) — 직접 prod API/Playwright 헬스체크 불가, GitHub Actions CI 기록으로 대체(기존 사이클과 동일 제약). Area 1 **50회차** — 직전 Area1(`ef230e8`, 07-23T18:14, 49회차) 이후 `git log ef230e8..HEAD`(전체 사이클 1바퀴, `8b30b6a`까지)는 Area2 50회차(#559)~Area6 49회차가 각자 렌즈로 이미 심층 감사 완료(cards 썸네일 R2 마커 복구, 사용자 하드삭제, rip.ts equipment IDOR 등).
+> - **deploy.yml 전수 확인**: run #947~#954(ef230e8 이후 8회) **전부 `success`** — Typecheck→Build→Deploy→Wait→Smoke 전 단계 green(최신 run #954 `8b30b6a` 잡 상세 확인: Smoke test 06:13:52~06:14:04 성공). CF-internal transient·cold-start 재발 0. `backup.yml`(Daily D1 Backup)도 최근 10회 전부 success(마지막 07-24T18:12). `e2e.yml`은 06-22부터 계속 disabled(기존 인지 상태, 변동 없음). `verify.yml`은 PR 트리거 전용이라 이번 사이클도 실행 0건(정상 — main 직접 push 워크플로).
+> - **인프라 회귀 없음**: `git diff ef230e8..HEAD -- .github/workflows scripts/smoke.cjs wrangler.jsonc` = 무출력(변경 0), 배포 파이프라인·smoke 프로브 구성 자체 불변.
+> - **직전 실패 1건 재확인(비신규)**: run #942(07-23T06:24:35, docs 커밋)의 `failure`는 `ef230e8`(49회차) 이전 시점이라 이미 그 사이클에서 다뤄졌어야 할 대상 — 이번 50회차 신규 churn 범위 밖(재조사 불요, 이후 8회 연속 success로 비영속 확인).
+> - **backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **8건**(#554~#561, Area6 49회차 기재값과 완전 일치 — owner 활동 없음). `search_issues(is:closed,reason:completed)` 재조회 생략(직전 다수 사이클 연속 확인된 **479** 유지, close-pending 캐시 정책). rejected **6**(변동 없음).
+> - **🧬 SKILL 강화 없음** — 이번 사이클은 CI 신호 전수 green + 인프라 unchanged인 순수 헬스 확인(신규 이슈 0, 자동수정 0). 다음 순번 Area 2.
+
+> **Area 6 자기 진화 (2026-07-25T15:15):**
+> - **방법**: `git fetch origin main`(HEAD `b798aed` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 6 **49회차** — 직전 Area6(`dcafdc4`, 07-25 새벽 이전, 48회차) 이후 `git log dcafdc4..HEAD -- src/routes src/scripts migrations`는 단 3파일(`cards/queries.ts`·`users.ts`·`cards/core.js`/`cards/detail.js`/`users.js` — R2 썸네일 lazy-load 복구 + 사용자 하드삭제, `bd2eb57`·`33d87d8`·`cc6a8ce`)뿐이며, 오늘 이미 Area1(49)·Area2(50, #559)·Area3(43)·Area4(44, #560)·Area5(43, #561)가 각자 렌즈로 전량 커버 확인 — 컬럼-diff bridge·XSS bridge 둘 다 재검증할 신선 churn 없음(clean). 나머지 churn은 전부 `ia-a0-cep`(Illustrator CEP 패널 자동화, MES 웹앱과 무관한 별도 서브프로젝트)이라 6개 영역 스캔 대상 밖.
+> - **done-sync 절대값 재동기화**: `search_issues(is:closed,reason:completed)` total_count **479**(변동 없음) · `reason:not_planned` **4** + `reason:duplicate` **2** = rejected **6**(변동 없음) · `list_issues(state:OPEN,label:auto-improve)` **8**건(#554~#561, 변동 없음) — 오늘 하루 5개 Area가 순차 실행됐음에도 close 0건이라 절대값 전부 불변.
+> - **"open≠unfixed" 거울 점검(line 281 규칙)**: OPEN 8건 중 보안/데이터 성격 3건(#558 payroll preview·#557 clients portal-account·#559 cards thumbnails)을 직접 Read로 안티패턴 잔존 재확인 — **3건 전부 잔존(미픽스)**, fixed-in-tree 사례 0. 나머지 5건(#554~#556·#560·#561)도 전부 오늘 새로 생성돼(07-22~07-25) close-pending 캐시 대상 아님(2사이클 미만).
+> - **⏳ close-pending 적체 없음**: 이전 사이클들이 추적하던 #479~#481급 fixed-in-tree-but-open 누적이 현재 0건 — 현재 OPEN 8건은 전부 진짜 미픽스 상태로 owner 리뷰 대기 중.
+> - **SKILL 강화 없음** — 이번 사이클은 신규 net-new 패턴 발견도, 기존 이슈의 형제-불완전 픽스 발견도 없는 순수 정합성 확인 사이클(클린). #561(rip.ts equipment)은 Area5 자체가 이미 "기존 패턴 재현(형제-비대칭 IDOR)"으로 분류해 SKILL 변경 불요.
+> - 신규 이슈 0건, 자동수정 0건, done-sync 완전 정합 재확인. 다음 순번 Area 1.
+
+> **Area 5 보안 (2026-07-25T06:20):**
+> - **방법**: `git fetch origin main`(HEAD `ee726b7` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 5 **43회차** — 직전 Area5(`814a467`, 07-23T15:26, 42회차가 만든 XSS 자동수정 커밋 `ff01040`) 이후 `git log ff01040..HEAD -- src/routes src/scripts migrations`는 단 5파일(`cards/queries.ts`·`users.ts`·`cards/core.js`·`cards/detail.js`·`users.js` — R2 썸네일 lazy-load + 사용자 하드삭제)뿐이며, 이미 Area2 50회차(#559, 썸네일 IDOR)·Area4 44회차(#560, 하드삭제 비-FK 감사컬럼)가 각자 렌즈로 완결 보고. Area5 고유 렌즈(SQLi/XSS/추가 auth 게이트)로 직접 재확인한 결과 신규 취약점 없음(하드삭제 라우트는 테이블/컬럼명 전부 `/^[A-Za-z0-9_]+$/` 화이트리스트 검증 후 PRAGMA/쿼리에 보간 — SQLi 안전, `requireAdmin` 게이트 정상; 프론트 신규 XSS 싱크 0, 기존 `jsStr`/`escapeHtml` 컨벤션과 일관). 필수 표준 스캔 전부 clean: secret fallback grep(`fax.ts` 기존 FP만)·마이그 번호 중복(기존 5쌍만)·`entity-audit.mjs`(122파일·통과59·누락0)·`tsc --noEmit`(clean).
+> - **churn 커버리지가 좁아 general-purpose 에이전트로 코드베이스 전체 형제-비대칭 IDOR 표준스캔(레시피 A) 병행 실행** — churn 한정 감사의 구조적 사각(누적 다회 코드화된 "churn-한정 수동감사는 도입 이래 잔존한 형제-비대칭을 놓친다")을 메우기 위해 최근 churn과 무관하게 코드베이스 전체를 대상으로 실행.
+> - **🔴 신규 이슈 — #561 (S, bug, IDOR/access-control)**: `src/routes/rip.ts`의 `equipment` 하위자원 4개 핸들러가 같은 파일 대다수(`PUT /equipment/:id` 등, `#342` 주석과 함께 `entityFilter(c)` 적용)의 격리 컨벤션에서 벗어남 — ① `PUT /equipment/:id/heads/:headNum`(:741, `authMiddleware`만·role 게이트 자체가 없음 + entityFilter 없음, 형제 `POST /equipment/:id/heads`는 ADMIN/MANAGER+entityFilter 요구) ② `POST/DELETE /equipment/:id/presets`(:434/:485, ADMIN 게이트는 있으나 entityFilter 없음) ③ `POST /equipment/:id/maintenance`(:802, role 게이트 없음+entityFilter 없음)·`DELETE .../maintenance/:logId`(:883, ADMIN/MANAGER는 있으나 entityFilter 없음). `equipment.entity_id`는 `migrations/0302`가 "법인별로 설비가 달라 운영이 겹치지 않음" 명시 도입. 헤드/유지보수 2곳은 **인증만 되면 어느 role·법인이든** 타법인 고가 설비(프린터)의 헤드 상태·유지보수 이력을 조작 가능(실물 설비 운영 데이터 무결성 훼손, IDOR보다 심각한 access-control 부재). 도달성 LIVE(`src/scripts/equipment.js:1062/1079/1135/1172/1189`). 직접 Read로 4곳 전부 코드 검증 완료(서브에이전트 보고를 그대로 신뢰하지 않고 라인별 재확인). issue-only(IDOR=owner 워크플로, 같은 파일 형제 패턴이 byte-단위로 명확해 구현은 기계적).
+> - **🟢 나머지 표준스캔 = clean**: 형제-비대칭 IDOR 전체 스캔에서 나온 그 외 후보(cashFlow.ts 대출·priceLists.ts·messageTemplates.ts·returns.ts·storageZones.ts PUT·fixedAssets.ts PATCH /:id/dispose)는 전부 FP 확인 — 선행 read-gate 존재, 이미 형제와 동형 격리, 또는(fixedAssets dispose) 프론트 호출처 0건(#334 dead code, 보고 제외). XSS 레시피 B 스팟체크(equipment.js) = 전 innerHTML 싱크 escapeHtml 적용 확인, net-new 0.
+> - **🟢 backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **8건**(#554~#560 이월 + #561 신규). `search_issues(is:closed,reason:not_planned)` 실측 **4**(개별 4건 직접 재확인) + `reason:duplicate` 실측 **2**(개별 2건 재확인) → rejected **6**(변동 없음). done(`reason:completed`)은 이번 사이클 close 0건이라 재조회 생략, 직전 다수 사이클 연속 확인된 **479** 유지(close-pending 캐시 정책 — line 281 규칙: 파일/이슈 상태 불변 시 재검증 스킵에 준함, 단 절대값 자체는 다음 close 발생 사이클에 재실측 필요).
+> - **🧬 SKILL 강화 없음(기존 패턴 재현)** — #561은 기존 "형제-비대칭 IDOR"(#414/#437/#452/#473/#559 계열)의 재현. 다만 이번 사이클은 "churn이 이미 타 Area에 의해 완결 커버된 상태에서 Area5가 무엇을 하는가"의 실증 사례 — churn-한정 대신 general-purpose 에이전트로 코드베이스 전체 표준스캔(레시피 A/B)을 병행해 rip.ts처럼 도입 이래 한 번도 스캔되지 않았을 가능성이 있는 파일에서 net-new를 찾음. 향후 churn이 좁은 사이클에서 이 패턴(전체 코드베이스 표준스캔 병행)을 기본값으로 굳혀도 좋을 만큼 유효했음.
+> - 신규 이슈 1건(#561, issue-only), 자동수정 0건(IDOR=owner 워크플로), done-sync 변동 없음(new 7→8[신규 1건 반영]·done 479·rejected 6). 다음 순번 Area 6.
+>
+
+> **Area 4 데이터 정합성 (2026-07-25T03:17):**
+> - **방법**: `git fetch origin main`(HEAD `216178f` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 4 **44회차** — 직전 Area4(`d227da1`, 07-23T12:37, 43회차) 이후 `git log d227da1..HEAD -- src/routes migrations`는 단 3커밋(`cc6a8ce`·`bd2eb57` 카드 썸네일 R2 마커 복구, `33d87d8` 사용자 하드삭제)뿐이며 신규 마이그레이션 0건. 세 커밋 모두 이미 Area1(49)·Area2(50)·Area3(43)이 각자 렌즈(배포헬스/컬럼정합/UX)로 검증 완료했으나 **Area4 고유 렌즈(orphan/dangling 참조)로는 미검증**이라 오케스트레이터가 `33d87d8`(사용자 하드삭제) 신규 기능을 직접 심층 검증. 로컬 D1 전체 리플레이는 #555가 이미 문서화한 0342~0344 결정적 실패(진행 중 확인, 215/472에서 중단) 재현만 반복하므로 중단하고 정적 파싱(전 마이그레이션 CREATE/ALTER를 소스순서로 파싱 + `_by` 컬럼의 인라인·테이블레벨 FK 선언 여부 대조)으로 ground-truth 확보. 표준 스캔 병행: `node scripts/entity-audit.mjs`(122파일·통과59·누락0)·마이그레이션 번호 중복(기존 5쌍만, 신규 0).
+> - **🔴 신규 이슈 — #560 (M, bug)**: `33d87d8` `DELETE /api/users/:id/hard`의 유일한 안전장치("참조 0건 가드")가 `PRAGMA foreign_key_list`로 **FK 선언된 컬럼만** 동적 열거 — `users(id)`를 논리적으로 참조하지만 FK로 선언되지 않은 plain INTEGER 감사(audit) 컬럼(정적 파싱으로 36개 격리, 예 `employees.deleted_by`[`0263` 소프트삭제 도입, 급여/근태 이력 보존 목적인데 정작 그 이력 보존을 하드삭제가 훼손]·`payroll.approved_by`·기존 문서화된 `inventory_counts.approved_by/submitted_by`·`price_change_history.changed_by` 동일 계열)은 구조적으로 못 봄. 실제 코드가 `hr.ts:742`/`payroll/records.ts:88`에서 이 컬럼들에 실사용자 id를 기록 중(dead column 아님) — 하드삭제 후 이 값들이 유령 user_id로 잔존해 "누가 승인/삭제했는가" 감사조회가 오염됨(throw 없는 silent, #436과 동일 클래스의 신규기능 버전). 부차로 FK가 `ON DELETE SET NULL`인 컬럼(`hold_by` 등)은 반대로 과잉 차단(D1이 자동 NULL 처리 가능한데도 409)하는 비대칭도 관찰(참고용, 별도 이슈화 안 함). 수정은 가드 범위를 얼마나 엄격히 할지(하드삭제 실효성 vs 감사이력 무결성 트레이드오프) 정책 판단 필요 → issue-only.
+> - **🟢 나머지 표준스캔 = clean**: `entity-audit.mjs` 누락 0(직전 사이클과 동일, 이번 churn에 entity_id 관련 변경 없음). 마이그 번호 중복 재확인 = 기존 5쌍(`0327`·`0412`·`0416`·`0420`·`0453`)만, 신규 0. `cc6a8ce`/`bd2eb57`(썸네일 R2 hydrate)는 읽기 전용 경로 변경뿐이라 Area4 렌즈(고아/정합성) 영향 없음 확인.
+> - **🟢 backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **7건**(#554~#559 이월 + #560 신규). `search_issues(is:closed,reason:completed)` **479**(변동 없음)·`not_planned`+`duplicate` 6(변동 없음, 이번 사이클은 재확인 생략 — 직전 여러 사이클 연속 정합 확인됨).
+> - **🧬 SKILL 강화 없음(기존 패턴 재현)** — #560은 기존 "비-FK audit 컬럼 silent 오기록"(#436 계열)의 "파괴적 삭제 신규기능" 변종. 정적 파싱 스크립트(소스순서 무관, `_by` 컬럼명 휴리스틱 + 인라인/테이블레벨 FK 양쪽 대조)는 기존 SKILL 파서 함정(RENAME 체인·다중컬럼 라인) 영향을 받지 않는 단순 컬럼명 매칭이라 재사용 가치 있으나 별도 codify는 보류(기존 "①③ users FK sweep" 레시피의 자연스러운 적용).
+> - 신규 이슈 1건(#560, issue-only), 자동수정 0건(파괴적 삭제 가드 정책 변경=owner 판단), done-sync 변동 없음(new 6→7[신규 1건 반영]·done 479·rejected 6 정합 재확인). 다음 순번 Area 5.
+>
+
+> **Area 3 UX/기능 감사 (2026-07-24T16:10):**
+> - **방법**: `git fetch origin main`(HEAD `a5ecec6` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 3 **43회차** — 직전 Area3(`edf43a2`, 07-23T09:41, 42회차) 이후 `git log edf43a2..HEAD`(31커밋)는 대부분 IA(Illustrator 자동화 CEP 패널/A0/A9) 세션 churn으로 MES 웹앱 UX 렌즈 밖. 실질 MES 프론트/백엔드 churn은 8파일뿐(`cards/queries.ts`·`cards/core.js`·`cards/detail.js`·`cardDetail.js`·`users.js`·`users.ts`·`portalOrders.js`·`purchaseOrderForm.js`·`pages/orders.ts`)이며 **전부 Area1/2/5가 이미 이번 사이클 안에서 다른 렌즈(IDOR/컬럼정합/XSS)로 검증 완료**(cards 썸네일 R2 마커 복구 `cc6a8ce`/`bd2eb57`, 포털 타임라인 `a755c31`, 사용자 하드삭제 `33d87d8`). 신선 churn이 UX 렌즈로 미검증 상태라 오케스트레이터가 직접 Read로 재검증: ① 썸네일 lazy-load(cc6a8ce/bd2eb57)의 UX 완결성(로딩/에러 처리·형제 파일 sibling-completeness) ② 포털 진행이력 타임라인(a755c31)의 렌더 품질 ③ 주문검색 품목명 확장의 UI 어포던스(placeholder) 정합.
+> - **🟢 썸네일 lazy-load sibling-completeness — 3번째 소비 파일까지 전수 확인, clean**: `grep -rn "thumbnail_url" src/scripts`로 `cards/core.js`(칸반/그리드, cc6a8ce 수정)·`cards/detail.js`(작업지시서 인쇄, bd2eb57 수정) 외 **세 번째 소비처 `cardDetail.js:94-95`**(독립 카드상세 페이지 `it.thumbnail_url` 직접 `<img src>`, 두 수정 커밋이 손대지 않은 파일)를 발견해 #377급 부분픽스 회귀를 의심했으나, 데이터 출처를 추적한 결과 `cardDetail.js`는 `GET /api/cards/:id`(단건) 응답을 그대로 쓰고 그 엔드포인트는 `queries.ts:1030-1045`에서 `card.items[].thumbnail_url`을 R2/base64에서 **이미 실제 data URI로 hydrate**(marker 아님) — 백엔드 API 계층에서 1회 hydrate 후 모든 소비 프론트가 안전하게 raw 사용하는 설계라 사각지대 아님(list 엔드포인트만 마커→플래그 전환이 필요했던 이유와 대칭). `renderMobileTab`(misc.js)은애초 썸네일 미표시(설계, 회귀 아님). 로딩 UX: lazy-load 이미지가 `src` 속성 없이 시작(빈 자리, 깨진 아이콘 아님)+`onerror` 부모 숨김 가드+`:not([data-thumb-done])`로 재요청 방지 = 실용적 처리(스피너 부재는 미세 UX, F-004 클래스 탐지금지 대상).
+> - **🟢 포털 진행이력 타임라인(a755c31) — clean**: `renderTimeline`이 내부 초기상태(QUOTATION 등)를 화이트리스트로 제외, KST 헬퍼(`toKstDate`/`formatKST`)를 `typeof !== 'function'` 가드로 중복정의 방지(invoice.js 패턴 재사용), 전 텍스트 `esc()` 이스케이프, 빈 이력(`rows.length===0`)이면 섹션 자체 미렌더(빈 상태 처리 적절). 주문검색 확장에 맞춰 `pages/orders.ts:35` placeholder도 "주문번호, 거래처명, 품목명..."으로 동반 갱신 확인 — 기능-어포던스 불일치 없음.
+> - **🟢 backlog↔GitHub 재확인**: `list_issues(state:OPEN,label:auto-improve)` 실측 **6건**(#554~#559, Area2 50회차 기재값과 일치) — 자사 발견 #556(hover 색상 부분마이그)도 코드 재grep으로 여전히 미픽스 확인(`invoice.ts:64`/`quotation.ts:41,131` 구 teal 잔존). `search_issues(is:closed,reason:completed)` **479**(변동 없음)·rejected **6**(변동 없음).
+> - **🧬 SKILL 강화 없음(신규 탐지 클래스 아님)** — 이번 사이클은 "백엔드 API 계층 1회 hydrate → 프론트 다중 소비처 안전" 설계 패턴이 #377(부분픽스 회귀) 오탐을 유발할 뻔한 사례로, 향후 유사 멀티-소비처 데이터소스 점검 시 "수정 커밋이 건드린 파일만"이 아니라 "그 데이터를 소비하는 모든 프론트 파일"을 먼저 grep한 뒤 **백엔드 hydrate 지점이 공용인지**를 확인하는 순서가 유효함을 재확인(신규 코드화는 보류 — 기존 line 66 "명시 SELECT 존재성"·A-026 자기픽스완전성 규칙의 자연스러운 적용 사례일 뿐 별도 패턴 아님). Playwright MCP는 이번 세션에서도 연결 직후 tool-call이 거부되는 불안정 상태(prod 직접 브라우저 탐색 재차 불가, 기존 인지 제약 재확인).
+> - 신규 이슈 0건, 자동수정 0건(Area3 정책상 UX 변경은 issue-only, 이번 사이클은 애초 신규 발견 자체 없음), done-sync 변동 없음(new 6·done 479·rejected 6 정합 재확인). 다음 순번 Area 4.
+>
+
+> **Area 2 코드 품질 심층 분석 (2026-07-24T15:20):**
+> - **방법**: `git fetch origin main`(HEAD `dcafdc4`→`bd2eb57` 이동 확인) 후 `git checkout bd2eb57` + `npm ci`(node_modules 0→81). Area 2 **50회차** — 직전 Area2(`edf43a2`, 07-23T03:14, 49회차) 이후 `git log edf43a2..HEAD`는 27커밋(대부분 IA(Illustrator 자동화) 확장 세션 `ia-a0-cep`류라 코드품질 렌즈 밖)이나, **`src/routes`/`migrations` 실질 churn은 6파일뿐**(`cards/queries.ts`·`orders/core.ts`·`orders/queries.ts`·`portal.ts`·`users.ts`·`migrations/0471`) — Area1 49회차 보고가 "0471은 Area2 49회차가 이미 검증 완료"라 기재했으나 커밋 타임스탬프 대조 결과 **39ce7f9(0471, 03:24 UTC)가 edf43a2(Area2 49회차 자체 커밋, 03:15 UTC)보다 뒤라 실제로는 미검증**이었음을 확인(Area1 보고의 사실오류, Area6에 전달) — 이번 사이클에서 직접 커버.
+> - **🔴 신규 이슈 — #559 (S, bug, IDOR)**: `cards/queries.ts:904-929` 신설 `GET /thumbnails`(R2 썸네일 이관 배치 조회 API, `cc6a8ce`/`bd2eb57`)가 같은 파일 전체(list·count·kanban·daily·summary·단건 `GET /:id`)가 예외 없이 적용하는 `cardEntityFilter`를 누락 — `WHERE id IN (...)`만으로 임의 card id의 썸네일(R2 데이터 URI)을 법인 무관 반환. `authMiddleware`+`requireAnyPagePermission('/cards','/orders')`만 게이트라 페이지 권한만 있으면 어느 법인이든 호출 가능, `cards/core.js`·`cards/detail.js` 양쪽에서 실사용(LIVE). #414(GET /:id 카드상세 IDOR, 이미 fixed)와 동일 클래스의 신규 엔드포인트 버전. issue-only(IDOR=owner 워크플로).
+> - **🟢 나머지 5파일 검증 — 전부 clean**: `users.ts` `DELETE /:id/hard`(하드삭제, PRAGMA foreign_key_list 동적 열거+차단가드+마지막ADMIN보호+cascade자식 batch정리, 관리자 전용 저빈도 작업이라 테이블수 스캔은 N+1 bounded-FP 예외 해당) — 로직 정합·자동수정 대상 없음. `orders/core.ts`·`orders/queries.ts`(품목명 검색 확장 `EXISTS (SELECT 1 FROM order_items...)`) — list/count/CSV export 3곳 모두 동형 적용, `order_items.item_name` 컬럼 존재 확인(0001 스키마). `portal.ts`(진행이력 타임라인 `order_status_history.to_status/created_at`) — 0046 재빌드 스키마로 컬럼 존재 확인, `change_reason`/`changed_by`(내부용) 의도적 제외 확인. 프론트(`portalOrders.js`/`cards/core.js`/`cards/detail.js`/`purchaseOrderForm.js`/`users.js`) — XSS 이스케이프(Area5 `ff01040`에서 이미 처리)·`showConfirm` await 패턴·`/thumbnails` 20개 청크 배치 전부 정상 배선. `entity-audit.mjs`(122파일·통과59·누락0)·`tsc --noEmit`(clean)·마이그 번호 중복(기존 5쌍만, 신규 0) 표준스캔 전부 정상.
+> - **🧬 SKILL 강화 없음(기존 패턴 재현)** — #559는 기존 "형제-비대칭 IDOR"(#414/#437/#452/#473 계열)의 신규 엔드포인트 재현. Area1 49회차의 "0471을 Area2 49회차가 이미 검증"이라는 서술이 커밋 타임스탬프상 사실과 다름을 확인(에이전트 간 교차보고 시 커밋 SHA 인용만으로 검증완료를 단정하지 말고 타임스탬프 선후관계 확인 필요 — Area6 자기진화 노트로 전달 가치).
+> - 신규 이슈 1건(#559, issue-only), 자동수정 0건(IDOR=owner 워크플로), done-sync 변동 없음(new 5→6[신규 1건 반영]·done 479·rejected 6). 다음 순번 Area 3.
+>
 
 > **Area 1 프로덕션 헬스 (2026-07-24T09:14):**
 > - **방법**: `git fetch origin main`(HEAD `dcafdc4` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). 프록시가 이번 세션도 prod 호스트 직접 curl 차단(exit 56, CONNECT tunnel 403 — `webapp-9i0.pages.dev` 대상, `__agentproxy/status` `recentRelayFailures`에 동일 호스트 재확인, 33~48회차와 동일 제약, `cloudflare-observability` MCP 미인증) — 직접 prod API/Playwright 헬스체크 불가, GitHub Actions CI 기록으로 대체. Area 1 **49회차** — 직전 Area1(`7b93234`, 07-22T12:21, 48회차) 이후 `git log 7b93234..HEAD`(14커밋, `dcafdc4`까지)는 전부 Area2(49회차)~Area6(48회차)가 각자 렌즈로 이미 이번 사이클 안에서 심층 감사 완료(#556~#558 생성 포함). **신규 마이그레이션 2건**(`0470_bank_link_unique`·`0471_kachibal_size_variants`) — 둘 다 Area4 43회차가 데이터정합성 관점으로, Area2 49회차가 컬럼정합성 관점으로 이미 직접 검증 완료 확인, (b)-risk 컬럼드리프트 후보 아님(추가 컬럼을 참조하는 신규 detail-SELECT 없음). `.github/workflows`·`scripts/smoke.cjs`·`wrangler.jsonc` 자체 변경 0(diff 무출력) — 배포 인프라 자체 회귀 없음.
@@ -267,10 +346,11 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 5건** — 2026-07-24T03:13 Area 6 48회차, `list_issues(state:OPEN,label:auto-improve)` 직접 재확인. 이번 사이클 생성/close 0건, `#558` 반영해 표만 갱신.)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 6건** — 2026-07-24T16:10 Area 3 43회차, `list_issues(state:OPEN,label:auto-improve)` 직접 재확인. `#559` 반영해 표 갱신.)
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
+| #559 | cards/queries.ts GET /thumbnails 멀티법인 격리 누락 IDOR — R2 썸네일 이관 신규 엔드포인트 | Area 2 | bug,small | issue-only, 신규(#559) |
 | #558 | payroll/core.ts POST /preview entityFilter 누락 — 타법인 직원 급여 미리보기 cross-tenant 열람 | Area 5 | bug,S | issue-only, 미픽스(재확인) |
 | #557 | clients.ts POST /:id/portal-account 형제 entityFilter 누락 — 타법인 ADMIN 포털계정 셀프발급→cross-entity 거래이력 열람 | Area 4/5 | bug,M | issue-only, 미픽스(재확인) |
 | #556 | 인쇄뷰(invoice/quotation) 버튼 hover 색상 — 팔레트 스윕이 base만 이관, hover는 구 teal 잔존 | Area 3 | improvement,S | issue-only, 미픽스(재확인) |

@@ -8,11 +8,6 @@
 // ============================================================================
 // Settings 헬퍼
 // ============================================================================
-export async function getSetting(db: D1Database, key: string, fallback: string): Promise<string> {
-  const row = await db.prepare(`SELECT setting_value FROM settings WHERE setting_key = ?`).bind(key).first<{ setting_value: string }>().catch(() => null)
-  return row?.setting_value ?? fallback
-}
-
 export async function getSettings(db: D1Database, keys: string[]): Promise<Record<string, string>> {
   const placeholders = keys.map(() => '?').join(',')
   const rows = await db.prepare(`SELECT setting_key, setting_value FROM settings WHERE setting_key IN (${placeholders})`).bind(...keys).all<{ setting_key: string; setting_value: string }>().catch(() => ({ results: [] as { setting_key: string; setting_value: string }[] }))

@@ -63,18 +63,3 @@ export function computeExpectedPaymentDate(billedDateStr: string, t: ClientPayme
   return due.toISOString().substring(0, 10)
 }
 
-/** 결제주기 사람이 읽는 요약 (UI 표시용) */
-export function describePaymentCycle(t: ClientPaymentTerms): string {
-  const cycle = (t.payment_cycle_type || 'NET_DAYS').toUpperCase()
-  if (cycle === 'MONTHLY') {
-    const close = (!t.closing_day || t.closing_day >= 29) ? '말일' : `${t.closing_day}일`
-    const offset = (t.payment_month_offset == null) ? 1 : t.payment_month_offset
-    const monthLabel = offset === 0 ? '당월' : offset === 1 ? '익월' : `${offset}개월 후`
-    const pay = (!t.payment_day || t.payment_day >= 29) ? '말일' : `${t.payment_day}일`
-    return `월정산(${close} 마감 → ${monthLabel} ${pay} 결제)`
-  }
-  if (cycle === 'THRESHOLD') {
-    return '누적 임계 정산'
-  }
-  return `청구건별 ${t.payment_terms_days ?? 30}일`
-}
