@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-07-26T09:22:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-07-26T15:15:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,22 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **16** — Area 3 44회차(07-26T09:22) 신규 6건(#564~#569) 반영, `list_issues(state:OPEN,label:auto-improve)` 실측 16건. |
+| 🆕 new | **17** — Area 4 45회차(07-26T15:15) 신규 1건(#570) 반영, `list_issues(state:OPEN,label:auto-improve)` 실측 16건 + 이번 사이클 신규 1건. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **479** — `search_issues(is:closed,reason:completed)` 재조회 생략(close-pending 캐시, 변동 없음). |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 4 데이터 정합성 (2026-07-26T15:15):**
+> - **방법**: `git fetch origin main`(HEAD `ac6fe38` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 4 **45회차** — 직전 Area4(`216178f`, 07-25T03:17, 44회차) 이후 `git log 216178f..HEAD -- src/routes migrations`는 5파일뿐(`migrations/0472_intake_field_carry.sql`·`0473_worker_domains.sql`·`src/routes/finishing.ts`(+36)·`src/routes/workbench.ts`(+20)·`src/routes/payroll/shared.ts`(-5, Area2 51회차 dead-code 제거)) — 후가공 도메인 프로파일 A1(가공자↔도메인 매핑) 기능. 신규 마이그 2건 직접 검증: 0472(designer_intakes 5컬럼 ADD, 전부 nullable additive)·0473(designer_worker_domains 신규 테이블, PK만). `workbench.ts` INSERT INTO designer_intakes(23컬럼 positional 대조, entityId는 `getWriteEntityId` 게이트 이미 적용돼 #487 0-sentinel 클래스 해당 없음 확인) + `finishing.ts` PUT /worker-domains(ON CONFLICT upsert, 컬럼 3개 일치) 전부 clean. 표준 스캔 병행: `node scripts/entity-audit.mjs`(122파일·통과59·누락0)·`npx tsc --noEmit`(clean)·마이그 번호 중복(기존 5쌍만, 신규 0).
+> - **🔴 신규 이슈 — #570 (S, bug)**: 이번 churn 범위 밖이지만 그 참조 컬럼이 기존 주문 삭제/교체 배치의 사각으로 남아있던 건 — `designer_intakes.order_item_id`(0463 도입, `REFERENCES order_items(id)` ON DELETE 절 없음=NO ACTION)가 `workbench.ts:1280`/`:1389`(흡수 시)에서 실제 order_item id로 채워지는 LIVE 참조인데, `orders/core.ts:685`(하드삭제 batch)·`orders/update.ts:219`(라인 재생성 batch)·`:242`(카드보존 standalone) 3곳 모두 이를 정리하지 않음 — designer_intakes 흡수를 거친 주문은 하드삭제도 라인교체 수정도 FK 위반 500으로 전체 실패. `update.ts`의 같은 함수가 `#480`(shipment_checks, 0439)에 대해 이미 이 정확한 클래스를 고친 이력이 있는데 0463(더 나중 도입)은 그 정리 목록에 없던 사각지대(#477/#480 계열 재현, churn-트리거 재스캔 레시피가 실제로 새 후보를 찾아낸 사례). issue-only(파괴적 삭제 batch mutation 추가 + SET NULL/DELETE 보존정책 판단 + egress 검증불가).
+> - **🟢 나머지 churn = clean**: `payroll/shared.ts` -5(Area2 51회차가 이미 dead-code 제거로 커밋, 재확인만) — 영향 없음.
+> - **backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **16건**(#554~#569, Area3 44회차 기재값과 일치) + 이번 사이클 신규 #570 = **17**. done/rejected는 close 0건이라 재조회 생략, 직전 다수 사이클 연속 확인된 done **479**·rejected **6** 유지(close-pending 캐시 정책).
+> - **🧬 SKILL 강화 없음(기존 패턴 재현)** — #570은 기존 "churn-트리거 재스캔"(#477) + "order_items 통째-교체 replace-path"(#480) 규칙의 자연스러운 적용 사례(신규 참조 컬럼을 도입 시점 아닌 그 컬럼이 실제 채워지기 시작한 뒤 처음 맞는 Area4 사이클이 잡음) — SKILL이 이미 코드화한 레시피 그대로 실행해 발견됐으므로 별도 codify 불요.
+> - 신규 이슈 1건(#570, issue-only), 자동수정 0건(파괴적 삭제 batch mutation = owner 판단), done-sync 변동 없음(new 16→17[신규 1건 반영]·done 479·rejected 6). 다음 순번 Area 5.
+>
 
 > **Area 3 UX/기능 감사 (2026-07-26T09:22):**
 > - **방법**: `git fetch origin main`(HEAD `7dd2105` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 3 **44회차** — 직전 Area3(`216178f`, 07-24T12:30, 43회차) 이후 `git log 216178f..HEAD -- src/routes src/scripts migrations`는 dead-code 삭제 1파일(`payroll/shared.ts`, Area2 51회차)뿐이라 churn 기반 감사가 무의미 — Playwright는 prod egress 차단으로 여전히 불가해 정적 코드 리딩으로 **아직 깊게 감사되지 않은 3개 영역**(대시보드 KPI·인사/근태 셀프서비스·품질관리 클레임↔반품 흐름)을 general-purpose 에이전트 3개 병렬 파견으로 심층 정독.
