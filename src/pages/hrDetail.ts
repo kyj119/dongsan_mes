@@ -352,6 +352,58 @@ export function hrDetailPage(c: Context<HonoEnv>) {
           </div>
         </div>
 
+        <!-- 연차 현황 (#569: leaves/balance API 연동) -->
+        <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div class="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-gray-700">
+              <i class="fas fa-umbrella-beach text-blue-600 mr-1"></i>
+              연차 현황
+            </h3>
+            <div class="text-xs text-gray-500">
+              <span id="hrdLeaveYear">-</span>년 기준 · 예상 부여 <span id="hrdLeaveExpected" class="font-semibold text-gray-900">-</span>일
+            </div>
+          </div>
+          <div class="p-4">
+            <div class="grid grid-cols-4 gap-2 mb-4">
+              <div class="ds-card p-2.5 text-center hover:shadow-md transition-shadow">
+                <div class="text-xl font-bold tabular-nums text-blue-700" id="hrdLeaveRemaining">-</div>
+                <div class="text-[10px] text-gray-400 mt-0.5">올해 잔여(일)</div>
+              </div>
+              <div class="ds-card p-2.5 text-center hover:shadow-md transition-shadow">
+                <div class="text-xl font-bold tabular-nums text-gray-900" id="hrdLeaveAccrued">-</div>
+                <div class="text-[10px] text-gray-400 mt-0.5">올해 발생(일)</div>
+              </div>
+              <div class="ds-card p-2.5 text-center hover:shadow-md transition-shadow">
+                <div class="text-xl font-bold tabular-nums text-gray-900" id="hrdLeaveUsed">-</div>
+                <div class="text-[10px] text-gray-400 mt-0.5">올해 사용(일)</div>
+              </div>
+              <div class="ds-card p-2.5 text-center hover:shadow-md transition-shadow">
+                <div class="text-xl font-bold tabular-nums text-gray-900" id="hrdLeaveMonthly">-</div>
+                <div class="text-[10px] text-gray-400 mt-0.5">예상 월차적립(일)</div>
+              </div>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm ds-table ds-table-striped">
+                <thead class="bg-gray-50 text-xs text-gray-600 uppercase tracking-wider">
+                  <tr>
+                    <th class="col-status px-4 py-2 text-left">연도</th>
+                    <th class="col-status px-4 py-2 text-left">유형</th>
+                    <th class="col-qty px-4 py-2 text-right">발생</th>
+                    <th class="col-qty px-4 py-2 text-right">추가부여</th>
+                    <th class="col-qty px-4 py-2 text-right">이월</th>
+                    <th class="col-qty px-4 py-2 text-right">사용</th>
+                    <th class="col-qty px-4 py-2 text-right">만료</th>
+                    <th class="col-qty px-4 py-2 text-right">잔여</th>
+                  </tr>
+                </thead>
+                <tbody id="hrdLeaveBody">
+                  <tr><td colspan="8" class="text-center py-8 text-gray-400">연차 데이터 로드 중...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
         <!-- 급여 이력 -->
         <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
           <div class="px-5 py-3 border-b border-gray-200 flex items-center justify-between">

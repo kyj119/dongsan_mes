@@ -1208,20 +1208,26 @@ async function createMonthlyInvoices(autoIssue) {
   if (!(await showConfirm(monthlyEligibleData.length + '개 거래처 월합산 세금계산서를 ' + action + '하시겠습니까?'))) return;
 
   try {
-    var res = await axios.post('/api/tax-invoices/monthly-create', {
-      year: parts[0],
-      month: parts[1],
-      auto_issue: autoIssue
-    });
-
-    if (res.data.success) {
+    // #562: 백엔드가 서브요청 한도 대비 그룹당 상한(30)으로 부분 처리 → has_more면 remaining_client_ids로 재호출해 완주.
+    var totalCreated = 0, totalErrors = 0, clientIds = null, guard = 0;
+    while (guard++ < 100) {
+      var payload = { year: parts[0], month: parts[1], auto_issue: autoIssue };
+      if (clientIds && clientIds.length > 0) payload.client_ids = clientIds;
+      var res = await axios.post('/api/tax-invoices/monthly-create', payload);
+      if (!res.data.success) { showToast(res.data.error || '생성 실패', 'error'); break; }
       var d = res.data.data || {};
-      var msg = (d.created || []).length + '건 생성';
-      if ((d.errors || []).length > 0) msg += ', ' + d.errors.length + '건 오류';
-      showToast(msg, 'success');
-      loadMonthlyEligible();
-    } else {
-      showToast(res.data.error || '생성 실패', 'error');
+      totalCreated += (d.created || []).length;
+      totalErrors += (d.errors || []).length;
+      if (d.has_more && (d.remaining_client_ids || []).length > 0) {
+        clientIds = d.remaining_client_ids;
+        showToast(totalCreated + '건 생성 · 남은 거래처 ' + d.remaining_client_count + '개 계속 처리 중…', 'info');
+      } else {
+        var msg = totalCreated + '건 생성';
+        if (totalErrors > 0) msg += ', ' + totalErrors + '건 오류';
+        showToast(msg, 'success');
+        loadMonthlyEligible();
+        break;
+      }
     }
   } catch (e) {
     showToast((e.response && e.response.data && e.response.data.error) || '생성 실패', 'error');

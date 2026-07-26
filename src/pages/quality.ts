@@ -55,7 +55,7 @@ export function qualityPage(c: Context) {
               <option value="INSPECTED">검수</option><option value="RESOLVED">완료</option>
             </select>
           </div>
-          <div class="ml-auto text-[11px] text-gray-400 self-center"><i class="fas fa-circle-info mr-1"></i>반품 생성은 주문 상세에서 (품목 선택 필요)</div>
+          <button onclick="window.qcOpenReturnCreate()" class="ml-auto px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"><i class="fas fa-plus mr-1"></i>반품 등록</button>
         </div>
         <div class="ds-card p-0 overflow-x-auto">
           <table class="ds-table w-full text-xs">
@@ -180,6 +180,47 @@ export function qualityPage(c: Context) {
         <div class="flex justify-end gap-2 pt-1">
           <button onclick="window.qcCloseModal('qcReturnModal')" class="px-3 py-1.5 text-xs text-gray-500">취소</button>
           <button onclick="window.qcSubmitReturnStatus()" class="px-3 py-1.5 bg-blue-600 text-white text-xs rounded">변경</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 반품 등록 모달 (#566: POST /api/returns 진입점) -->
+    <div id="qcReturnCreateModal" class="fixed inset-0 bg-black/40 z-50 flex hidden items-center justify-center p-4">
+      <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl p-4 space-y-3 max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between"><h3 class="text-sm font-semibold">반품 등록</h3><button onclick="window.qcCloseModal('qcReturnCreateModal')" class="text-gray-400"><i class="fas fa-times"></i></button></div>
+        <div>
+          <label class="block text-[11px] text-gray-500 mb-1">주문 검색 (번호·거래처)</label>
+          <div class="flex gap-2">
+            <input id="qcRetOrderSearch" class="flex-1 border rounded px-2 py-1 text-xs" placeholder="주문번호 또는 거래처명" style="color:var(--c-text);" onkeydown="if(event.key==='Enter'){event.preventDefault();window.qcSearchReturnOrder();}" />
+            <button onclick="window.qcSearchReturnOrder()" class="px-2 py-1 bg-gray-100 text-xs rounded">조회</button>
+          </div>
+          <div id="qcRetOrderResults" class="mt-1 max-h-32 overflow-y-auto text-xs"></div>
+          <div id="qcRetOrderPicked" class="mt-1 text-[11px] text-blue-600"></div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div><label class="block text-[11px] text-gray-500 mb-1">반품일</label><input id="qcRetDate" type="date" class="w-full border rounded px-2 py-1 text-xs" style="color:var(--c-text);" /></div>
+          <div><label class="block text-[11px] text-gray-500 mb-1">반품 사유</label>
+            <select id="qcRetReason" class="w-full border rounded px-2 py-1 text-xs" style="color:var(--c-text);">
+              <option value="DEFECT">불량품</option><option value="WRONG_ITEM">오배송</option>
+              <option value="OVERSTOCK">재고과다</option><option value="CUSTOMER_CHANGE">고객변심</option>
+            </select></div>
+        </div>
+        <div>
+          <label class="block text-[11px] text-gray-500 mb-1">반품 품목 <span class="text-gray-400">(반품수량 입력한 품목만 등록)</span></label>
+          <div class="border rounded overflow-x-auto">
+            <table class="ds-table w-full text-xs">
+              <thead><tr>
+                <th>품목</th><th class="col-qty text-right">주문수량</th><th class="col-qty">반품수량</th><th>상태</th><th>처리</th>
+              </tr></thead>
+              <tbody id="qcRetItemsBody"><tr><td colspan="5" class="text-center py-6 text-gray-400">주문을 먼저 선택하세요</td></tr></tbody>
+            </table>
+          </div>
+          <div class="text-[10px] text-amber-600 mt-1"><i class="fas fa-circle-info mr-1"></i>처리=재입고(RESTOCK) 품목은 반품 완료(RESOLVED) 처리 시 자동으로 재고에 반영됩니다.</div>
+        </div>
+        <textarea id="qcRetNotes" rows="2" class="w-full border rounded px-2 py-1 text-xs" placeholder="비고 (선택)" style="color:var(--c-text);"></textarea>
+        <div class="flex justify-end gap-2 pt-1">
+          <button onclick="window.qcCloseModal('qcReturnCreateModal')" class="px-3 py-1.5 text-xs text-gray-500">취소</button>
+          <button onclick="window.qcSubmitReturnCreate()" class="px-3 py-1.5 bg-blue-600 text-white text-xs rounded">반품 등록</button>
         </div>
       </div>
     </div>

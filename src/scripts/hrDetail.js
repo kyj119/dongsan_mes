@@ -327,6 +327,71 @@ function hrdRenderPayroll(pay) {
 }
 
 // ============================================================================
+// 연차 현황 (#569: GET /api/leaves/balance/:id — 월 무관, init 시 1회 로드)
+// ============================================================================
+function hrdFmtDays(n) {
+  var v = parseFloat(n || 0);
+  if (!v) return '0';
+  return (Math.round(v * 10) / 10).toString();
+}
+function hrdLeaveTypeLabel(t) {
+  var m = { ANNUAL: '연차', MONTHLY: '월차', SICK: '병가', SPECIAL: '특별', REWARD: '포상' };
+  return m[t] || t || '-';
+}
+async function hrdLoadLeaveBalance() {
+  var id = hrdGetEmployeeId();
+  if (!id) return;
+  var tbody = document.getElementById('hrdLeaveBody');
+  if (!tbody) { console.warn('[hrDetail] #hrdLeaveBody not found'); return; }
+  try {
+    var res = await axios.get('/api/hr/employees/' + id + '/leave-balance');
+    var data = (res.data && res.data.data) || {};
+    var year = data.current_year;
+    var history = data.history || [];
+    document.getElementById('hrdLeaveYear').textContent = year || '-';
+    document.getElementById('hrdLeaveExpected').textContent = (data.expected_annual != null ? data.expected_annual : '-');
+    document.getElementById('hrdLeaveMonthly').textContent = (data.expected_monthly_grant != null ? data.expected_monthly_grant : '-');
+
+    // 올해 요약 (유형 합산)
+    var curRemaining = 0, curAccrued = 0, curUsed = 0;
+    for (var i = 0; i < history.length; i++) {
+      if (String(history[i].year) === String(year)) {
+        curRemaining += parseFloat(history[i].remaining || 0);
+        curAccrued += parseFloat(history[i].accrued || 0) + parseFloat(history[i].granted_extra || 0) + parseFloat(history[i].carried_over || 0);
+        curUsed += parseFloat(history[i].used || 0);
+      }
+    }
+    document.getElementById('hrdLeaveRemaining').textContent = hrdFmtDays(curRemaining);
+    document.getElementById('hrdLeaveAccrued').textContent = hrdFmtDays(curAccrued);
+    document.getElementById('hrdLeaveUsed').textContent = hrdFmtDays(curUsed);
+
+    if (history.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400">연차 데이터가 없습니다</td></tr>';
+      return;
+    }
+    var html = '';
+    for (var j = 0; j < history.length; j++) {
+      var h = history[j];
+      var isCur = String(h.year) === String(year);
+      html += '<tr class="border-b border-gray-100 hover:bg-gray-50' + (isCur ? ' bg-blue-50' : '') + '">' +
+        '<td class="px-4 py-2 font-medium">' + (h.year || '-') + '</td>' +
+        '<td class="px-4 py-2">' + hrdLeaveTypeLabel(h.leave_type) + '</td>' +
+        '<td class="px-4 py-2 text-right">' + hrdFmtDays(h.accrued) + '</td>' +
+        '<td class="px-4 py-2 text-right">' + hrdFmtDays(h.granted_extra) + '</td>' +
+        '<td class="px-4 py-2 text-right">' + hrdFmtDays(h.carried_over) + '</td>' +
+        '<td class="px-4 py-2 text-right text-red-600">' + hrdFmtDays(h.used) + '</td>' +
+        '<td class="px-4 py-2 text-right text-gray-400">' + hrdFmtDays(h.expired) + '</td>' +
+        '<td class="px-4 py-2 text-right font-bold ' + (parseFloat(h.remaining || 0) > 0 ? 'text-blue-700' : 'text-gray-400') + '">' + hrdFmtDays(h.remaining) + '</td>' +
+        '</tr>';
+    }
+    tbody.innerHTML = html;
+  } catch (e) {
+    console.error('연차 현황 로드 실패', e);
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-red-400">연차 로드 실패</td></tr>';
+  }
+}
+
+// ============================================================================
 // 포맷 헬퍼 (주민번호/전화/휴대폰/금액)
 // ============================================================================
 function hrdFmtRRN(v) {
@@ -849,4 +914,5 @@ function hrdLoadSelectMasters() {
   }
   hrdLoadSelectMasters();
   window.hrdLoadDetail();
+  hrdLoadLeaveBalance(); // #569: 연차 현황 (월 무관, 1회 로드)
 })();

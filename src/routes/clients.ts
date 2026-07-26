@@ -634,105 +634,108 @@ clientsRouter.post('/import', async (c) => {
       errors: [] as string[]
     }
 
-    // Process each client
-    for (const clientData of clients) {
-      try {
-        // Validate required fields
-        if (!clientData.client_code || !clientData.client_name) {
-          results.skipped++
-          results.errors.push(`Skipped: Missing client_code or client_name`)
-          continue
-        }
-
-        // Check if client exists (by client_code OR business_registration_number)
-        const existing = await c.env.DB.prepare(
-          'SELECT id FROM clients WHERE client_code = ? OR (business_registration_number = ? AND business_registration_number IS NOT NULL AND business_registration_number != ?)'
-        ).bind(clientData.client_code, clientData.business_registration_number || '', '').first<{ id: number }>()
-
-        if (existing) {
-          // Update existing client
-          await c.env.DB.prepare(`
+    // #563: 행당 SELECT+UPSERT 순차 N+1 → 청크(벌크 존재조회 + db.batch 쓰기).
+    //   서브요청 = 행당 2회 → 청크당 2회로 축소. batch는 원자적이라 중복행/제약위반 시 청크 전체 롤백 →
+    //   그 청크만 기존 순차 로직으로 폴백해 부분반영·행별 오류리포팅·업로드 내 중복코드(insert→후속 update)를 그대로 보존.
+    const buildUpdateStmt = (cd: any, id: number) => c.env.DB.prepare(`
             UPDATE clients SET
-              client_code = ?,
-              client_name = ?,
-              representative = ?,
-              business_type = ?,
-              business_item = ?,
-              phone = ?,
-              mobile = ?,
-              fax = ?,
-              email = ?,
-              address = ?,
-              address_detail = ?,
-              search_keywords = ?,
-              transfer_info = ?,
-              is_active = ?,
-              business_registration_number = ?,
-              delivery_method = ?,
-              delivery_address = ?,
-              invoice_method = ?,
-              updated_at = CURRENT_TIMESTAMP
+              client_code = ?, client_name = ?, representative = ?, business_type = ?, business_item = ?,
+              phone = ?, mobile = ?, fax = ?, email = ?, address = ?, address_detail = ?, search_keywords = ?,
+              transfer_info = ?, is_active = ?, business_registration_number = ?, delivery_method = ?,
+              delivery_address = ?, invoice_method = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
           `).bind(
-            clientData.client_code,
-            clientData.client_name || '',
-            clientData.representative || null,
-            clientData.business_type || null,
-            clientData.business_item || null,
-            clientData.phone || null,
-            clientData.mobile || null,
-            clientData.fax || null,
-            clientData.email || null,
-            clientData.address || null,
-            clientData.address_detail || null,
-            clientData.search_keywords || null,
-            clientData.transfer_info || null,
-            clientData.is_active !== undefined ? clientData.is_active : 1,
-            clientData.business_registration_number || null,
-            clientData.delivery_method || '방문수령',
-            clientData.delivery_address || null,
-            clientData.invoice_method || clientData.invoice_type || 'PER_ORDER',
-            existing.id
-          ).run()
-
-          results.updated++
-        } else {
-          // Insert new client
-          await c.env.DB.prepare(`
+      cd.client_code, cd.client_name || '', cd.representative || null, cd.business_type || null,
+      cd.business_item || null, cd.phone || null, cd.mobile || null, cd.fax || null, cd.email || null,
+      cd.address || null, cd.address_detail || null, cd.search_keywords || null, cd.transfer_info || null,
+      cd.is_active !== undefined ? cd.is_active : 1, cd.business_registration_number || null,
+      cd.delivery_method || '방문수령', cd.delivery_address || null,
+      cd.invoice_method || cd.invoice_type || 'PER_ORDER', id
+    )
+    const buildInsertStmt = (cd: any) => c.env.DB.prepare(`
             INSERT INTO clients (
               client_code, client_name, representative, business_type, business_item,
               phone, mobile, fax, email, address, address_detail, search_keywords, transfer_info, is_active,
               business_registration_number, delivery_method, delivery_address, invoice_method
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).bind(
-            clientData.client_code,
-            clientData.client_name,
-            clientData.representative || null,
-            clientData.business_type || null,
-            clientData.business_item || null,
-            clientData.phone || null,
-            clientData.mobile || null,
-            clientData.fax || null,
-            clientData.email || null,
-            clientData.address || null,
-            clientData.address_detail || null,
-            clientData.search_keywords || null,
-            clientData.transfer_info || null,
-            clientData.is_active !== undefined ? clientData.is_active : 1,
-            clientData.business_registration_number || null,
-            clientData.delivery_method || '방문수령',
-            clientData.delivery_address || null,
-            clientData.invoice_method || clientData.invoice_type || 'PER_ORDER'
-          ).run()
+      cd.client_code, cd.client_name, cd.representative || null, cd.business_type || null,
+      cd.business_item || null, cd.phone || null, cd.mobile || null, cd.fax || null, cd.email || null,
+      cd.address || null, cd.address_detail || null, cd.search_keywords || null, cd.transfer_info || null,
+      cd.is_active !== undefined ? cd.is_active : 1, cd.business_registration_number || null,
+      cd.delivery_method || '방문수령', cd.delivery_address || null,
+      cd.invoice_method || cd.invoice_type || 'PER_ORDER'
+    )
 
-          results.inserted++
-        }
-      } catch (error) {
+    // 행별 순차 upsert (폴백 · 원본 로직과 동일: SELECT 존재확인 → update/insert, 행별 try/catch)
+    const upsertSequential = async (cd: any) => {
+      const existing = await c.env.DB.prepare(
+        'SELECT id FROM clients WHERE client_code = ? OR (business_registration_number = ? AND business_registration_number IS NOT NULL AND business_registration_number != ?)'
+      ).bind(cd.client_code, cd.business_registration_number || '', '').first<{ id: number }>()
+      if (existing) { await buildUpdateStmt(cd, existing.id).run(); results.updated++ }
+      else { await buildInsertStmt(cd).run(); results.inserted++ }
+    }
+
+    // 필수값 검증 통과분만 수집 (검증 실패는 즉시 skip)
+    const validRows: any[] = []
+    for (const cd of clients) {
+      if (!cd.client_code || !cd.client_name) {
         results.skipped++
-        console.error('src/routes/clients.ts error:', error)
-        results.errors.push(
-          `Error processing ${clientData.client_code}: 서버 오류가 발생했습니다.`
-        )
+        results.errors.push('Skipped: Missing client_code or client_name')
+      } else {
+        validRows.push(cd)
+      }
+    }
+
+    const CHUNK = 40 // codes+brns IN 파라미터 ≤ ~80 (D1 바인드 한도 대비)
+    for (let i = 0; i < validRows.length; i += CHUNK) {
+      const chunk = validRows.slice(i, i + CHUNK)
+      try {
+        // 벌크 존재조회 (client_code 또는 business_registration_number 매칭)
+        const codes = [...new Set(chunk.map(r => String(r.client_code)))]
+        const brns = [...new Set(chunk.map(r => r.business_registration_number).filter((b): b is string => !!b))]
+        const codePh = codes.map(() => '?').join(',')
+        const brnCond = brns.length
+          ? ` OR (business_registration_number IN (${brns.map(() => '?').join(',')}) AND business_registration_number IS NOT NULL AND business_registration_number != '')`
+          : ''
+        const { results: existingRows } = await c.env.DB.prepare(
+          `SELECT id, client_code, business_registration_number FROM clients WHERE client_code IN (${codePh})${brnCond}`
+        ).bind(...codes, ...brns).all<{ id: number; client_code: string; business_registration_number: string | null }>()
+
+        const byCode = new Map<string, number>()
+        const byBrn = new Map<string, number>()
+        for (const e of existingRows) {
+          byCode.set(e.client_code, e.id)
+          if (e.business_registration_number) byBrn.set(e.business_registration_number, e.id)
+        }
+
+        // 청크 내 동일 client_code 중복 시 batch가 unique 충돌로 실패 → 폴백에 맡김
+        const seenCode = new Set<string>()
+        const stmts: D1PreparedStatement[] = []
+        const plan: ('insert' | 'update')[] = []
+        for (const r of chunk) {
+          if (seenCode.has(String(r.client_code))) throw new Error('dup-code-in-chunk')
+          seenCode.add(String(r.client_code))
+          const id = byCode.get(String(r.client_code))
+            ?? (r.business_registration_number ? byBrn.get(r.business_registration_number) : undefined)
+          if (id) { stmts.push(buildUpdateStmt(r, id)); plan.push('update') }
+          else { stmts.push(buildInsertStmt(r)); plan.push('insert') }
+        }
+
+        await c.env.DB.batch(stmts)
+        for (const p of plan) { if (p === 'insert') results.inserted++; else results.updated++ }
+      } catch (batchError) {
+        // 청크 batch 실패(중복코드·제약위반 등) → 해당 청크만 행별 순차 처리로 폴백
+        console.error('src/routes/clients.ts import batch fallback:', batchError)
+        for (const cd of chunk) {
+          try {
+            await upsertSequential(cd)
+          } catch (rowError) {
+            results.skipped++
+            console.error('src/routes/clients.ts error:', rowError)
+            results.errors.push(`Error processing ${cd.client_code}: 서버 오류가 발생했습니다.`)
+          }
+        }
       }
     }
 

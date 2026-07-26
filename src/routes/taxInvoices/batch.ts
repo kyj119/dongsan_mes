@@ -217,8 +217,16 @@ taxInvoicesBatchRouter.post('/monthly-create', requireEditOrRole('/tax-invoices'
     const created: Array<{ invoice_number: string; client_name: string; issued: boolean; entity_id?: number }> = []
     const errors: Array<{ client_name: string; error: string }> = []
 
+    // #562: 거래처×법인 그룹당 createSplitInvoices가 K≈5~14회 순차 D1(auto_issue 시 발행 포함) → 무제한 거래처 시
+    //   Worker 서브요청 한도(1000) 소진 → 반쪽 월정산 위험. 그룹당 상한을 두고 나머지는 remaining으로 반환,
+    //   프론트가 client_ids=remaining으로 재호출해 완주(이미 발행된 주문은 SELECT NOT IN으로 자동 제외).
+    const MONTHLY_MAX_GROUPS = 30 // 30 × K(≤14) ≈ 420 < 1000 (헤드룸 확보)
+    const allGroups = Object.values(grouped)
+    const groupsToProcess = allGroups.slice(0, MONTHLY_MAX_GROUPS)
+    const remainingClientIds = allGroups.slice(MONTHLY_MAX_GROUPS).map((g) => g.client_id)
+
     // P4 split billing: 거래처별 월합산도 생산법인별 분할 → (거래처×법인) 1장. 같은 법인끼리만 합산.
-    for (const group of Object.values(grouped)) {
+    for (const group of groupsToProcess) {
       try {
         const g = group as any
         const orderIds = group.orders.map((o) => o.order_id)
@@ -260,8 +268,15 @@ taxInvoicesBatchRouter.post('/monthly-create', requireEditOrRole('/tax-invoices'
 
     return c.json({
       success: true,
-      data: { created, errors },
-      message: `월합산 세금계산서 ${created.length}건 생성${errors.length > 0 ? `, ${errors.length}건 오류` : ''}`
+      data: {
+        created,
+        errors,
+        processed_client_count: groupsToProcess.length,
+        remaining_client_ids: remainingClientIds,
+        remaining_client_count: remainingClientIds.length,
+        has_more: remainingClientIds.length > 0,
+      },
+      message: `월합산 세금계산서 ${created.length}건 생성${errors.length > 0 ? `, ${errors.length}건 오류` : ''}${remainingClientIds.length > 0 ? ` · 남은 거래처 ${remainingClientIds.length}개 계속 처리` : ''}`
     })
   } catch (error) {
     console.error('src/routes/taxInvoices.ts error:', error)

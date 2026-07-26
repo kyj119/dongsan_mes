@@ -220,6 +220,92 @@
       .catch(function (e) { apiErr(e, '상태 변경 실패'); });
   };
 
+  // ─── 반품 등록 (#566: POST /api/returns 진입점) ───
+  var pickedReturnOrder = { id: null, clientId: null, label: '', items: [] };
+  window.qcOpenReturnCreate = function () {
+    pickedReturnOrder = { id: null, clientId: null, label: '', items: [] };
+    ['qcRetOrderSearch', 'qcRetNotes'].forEach(function (id) { var el = document.getElementById(id); if (el) el.value = ''; });
+    var d = document.getElementById('qcRetDate'); if (d) d.value = (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10));
+    var rs = document.getElementById('qcRetOrderResults'); if (rs) rs.innerHTML = '';
+    var pk = document.getElementById('qcRetOrderPicked'); if (pk) pk.textContent = '';
+    var body = document.getElementById('qcRetItemsBody');
+    if (body) body.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-gray-400">주문을 먼저 선택하세요</td></tr>';
+    openModal('qcReturnCreateModal');
+  };
+  window.qcSearchReturnOrder = function () {
+    var q = document.getElementById('qcRetOrderSearch');
+    var box = document.getElementById('qcRetOrderResults');
+    if (!q || !box || !q.value.trim()) return;
+    axios.get('/api/search?q=' + encodeURIComponent(q.value.trim())).then(function (res) {
+      var orders = (res.data.data && res.data.data.orders) || [];
+      if (!orders.length) { box.innerHTML = '<div class="text-gray-400 py-1">검색 결과 없음</div>'; return; }
+      box.innerHTML = orders.map(function (o) {
+        return '<div class="py-1 px-1 hover:bg-blue-50 cursor-pointer rounded" onclick="window.qcPickReturnOrder(' + o.id + ',\'' + esc(o.order_number) + '\')">' +
+          '<span class="font-mono text-[11px]">' + esc(o.order_number) + '</span> · ' + esc(o.client_name || '') + '</div>';
+      }).join('');
+    }).catch(function (e) { apiErr(e, '주문 검색 실패'); });
+  };
+  window.qcPickReturnOrder = function (id, orderNumber) {
+    axios.get('/api/orders/' + id).then(function (res) {
+      var o = res.data.data || {};
+      // 상위(단독) 품목만 반품 대상으로 노출 (자식 구성품 제외)
+      var items = (o.items || []).filter(function (it) { return !it.parent_item_id; });
+      pickedReturnOrder = { id: id, clientId: o.client_id, label: orderNumber, items: items };
+      var pk = document.getElementById('qcRetOrderPicked');
+      if (pk) pk.innerHTML = '<i class="fas fa-check mr-1"></i>선택: ' + esc(orderNumber) + ' (' + esc(o.client_name || '') + ')';
+      var box = document.getElementById('qcRetOrderResults'); if (box) box.innerHTML = '';
+      qcRenderReturnItems(items);
+    }).catch(function (e) { apiErr(e, '주문 조회 실패'); });
+  };
+  function qcRenderReturnItems(items) {
+    var body = document.getElementById('qcRetItemsBody');
+    if (!body) { console.warn('[quality] #qcRetItemsBody not found'); return; }
+    if (!items.length) { body.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-gray-400">반품 가능한 품목이 없습니다</td></tr>'; return; }
+    var condSel = '<select class="qc-ret-cond w-full border rounded px-1 py-0.5 text-xs" style="color:var(--c-text);"><option value="GOOD">양호</option><option value="DAMAGED">손상</option><option value="UNUSABLE">사용불가</option></select>';
+    var dispSel = '<select class="qc-ret-disp w-full border rounded px-1 py-0.5 text-xs" style="color:var(--c-text);"><option value="RESTOCK">재입고</option><option value="SCRAP">폐기</option><option value="REWORK">재작업</option></select>';
+    body.innerHTML = items.map(function (it) {
+      var nm = it.item_name || ('품목 #' + it.id);
+      var spec = (it.width && it.height) ? (' <span class="text-gray-400">' + it.width + '×' + it.height + '</span>') : '';
+      return '<tr data-oiid="' + it.id + '">' +
+        '<td title="' + esc(nm) + '">' + esc(nm) + spec + '</td>' +
+        '<td class="col-qty text-right tabular-nums text-gray-500">' + (it.quantity != null ? it.quantity : '-') + '</td>' +
+        '<td class="col-qty"><input type="number" class="qc-ret-qty w-16 border rounded px-1 py-0.5 text-xs text-right" min="0" step="1" value="0" /></td>' +
+        '<td>' + condSel + '</td>' +
+        '<td>' + dispSel + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+  window.qcSubmitReturnCreate = function () {
+    if (!pickedReturnOrder.id || !pickedReturnOrder.clientId) { toast('주문을 선택하세요', 'error'); return; }
+    var rows = document.querySelectorAll('#qcRetItemsBody tr[data-oiid]');
+    var items = [];
+    rows.forEach(function (tr) {
+      var qty = Number((tr.querySelector('.qc-ret-qty') || {}).value || 0);
+      if (qty > 0) {
+        items.push({
+          order_item_id: Number(tr.getAttribute('data-oiid')),
+          quantity: qty,
+          condition: (tr.querySelector('.qc-ret-cond') || {}).value || 'UNKNOWN',
+          disposition: (tr.querySelector('.qc-ret-disp') || {}).value || null,
+        });
+      }
+    });
+    if (!items.length) { toast('반품 수량을 1개 이상 입력하세요', 'error'); return; }
+    axios.post('/api/returns', {
+      order_id: pickedReturnOrder.id,
+      client_id: pickedReturnOrder.clientId,
+      return_date: document.getElementById('qcRetDate').value || undefined,
+      return_reason: document.getElementById('qcRetReason').value,
+      notes: (document.getElementById('qcRetNotes').value || '').trim() || undefined,
+      items: items,
+    }).then(function (res) {
+      var rn = (res.data.data && res.data.data.return_number) || '';
+      toast('반품 등록 완료 ' + rn, 'success');
+      window.qcCloseModal('qcReturnCreateModal');
+      window.qcLoadReturns();
+    }).catch(function (e) { apiErr(e, '반품 등록 실패'); });
+  };
+
   // ─── 불량코드 ───
   window.qcLoadDefects = function () {
     var body = document.getElementById('qcDefectsBody');

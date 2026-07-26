@@ -45,7 +45,7 @@ leavesRouter.use('/*', authMiddleware, requirePagePermission('/leaves'))
 // ============================================================================
 
 /** 입사일과 기준일을 받아 해당 시점의 연간 부여 일수를 반환한다. */
-function calcAnnualEntitlement(hireDate: string, asOf: Date = new Date(kstYmd())): number {
+export function calcAnnualEntitlement(hireDate: string, asOf: Date = new Date(kstYmd())): number {
   const hire = new Date(hireDate)
   if (isNaN(hire.getTime())) return 0
   const years = (asOf.getTime() - hire.getTime()) / (365.25 * 24 * 3600 * 1000)
@@ -58,7 +58,7 @@ function calcAnnualEntitlement(hireDate: string, asOf: Date = new Date(kstYmd())
 }
 
 /** 입사 1년 미만 직원의 월별 적립 — 매월 개근 시 1일, 최대 11일 */
-function calcMonthlyAccrualUpTo(hireDate: string, asOf: Date = new Date(kstYmd())): number {
+export function calcMonthlyAccrualUpTo(hireDate: string, asOf: Date = new Date(kstYmd())): number {
   const hire = new Date(hireDate)
   if (isNaN(hire.getTime())) return 0
   const months = (asOf.getFullYear() - hire.getFullYear()) * 12 + (asOf.getMonth() - hire.getMonth())

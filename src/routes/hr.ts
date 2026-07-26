@@ -6,6 +6,7 @@ import { encryptPII, decryptPII } from '../utils/crypto'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { kstYm, kstYmd, kstYear, kstYmdCompact } from '../utils/kstDate'
 import { calcOvertimePay, loadOvertimeSettings } from './payroll/shared'
+import { calcAnnualEntitlement, calcMonthlyAccrualUpTo } from './leaves'
 
 // #338: PII(주민등록번호) 암호화 키 — JWT_SECRET 재사용하되 하드코딩 폴백('fallback-dev-key') 제거.
 // 미설정 시 명시적 실패 → 평문 박제 키로 암호화되어 git 접근자가 복호화하는 사고 차단.
@@ -1047,6 +1048,43 @@ hrRouter.get('/employees/:id/detail', async (c) => {
     })
   } catch (error: any) {
     console.error('hr.ts [GET /employees/:id/detail]:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// GET /api/hr/employees/:id/leave-balance — 직원 연차 현황 (#569)
+//   leaves.ts GET /balance/:id 와 동일 계산이나 /hr 페이지 권한으로 접근(직원 상세에서 소비).
+//   leaves 라우터는 requirePagePermission('/leaves') 게이트라 /hr-only 사용자가 못 부름 → /hr 라우터에 미러.
+hrRouter.get('/employees/:id/leave-balance', async (c) => {
+  try {
+    const employeeId = Number(c.req.param('id'))
+    const efE = entityFilter(c)
+    const emp = await c.env.DB.prepare(
+      `SELECT id, employee_code, name, department, position, hire_date, status FROM employees WHERE id = ?${efE.clause}`
+    ).bind(employeeId, ...efE.params).first<any>()
+    if (!emp) return c.json({ success: false, error: '직원을 찾을 수 없습니다.' }, 404)
+
+    const efB = entityFilter(c)
+    const { results: history } = await c.env.DB.prepare(`
+      SELECT year, leave_type, accrued, granted_extra, used, carried_over, expired,
+        (accrued + granted_extra + carried_over - used - expired) as remaining
+      FROM leave_balances
+      WHERE employee_id = ?${efB.clause}
+      ORDER BY year DESC, leave_type
+    `).bind(employeeId, ...efB.params).all()
+
+    return c.json({
+      success: true,
+      data: {
+        employee: emp,
+        current_year: kstYear(),
+        expected_annual: calcAnnualEntitlement(emp.hire_date),
+        expected_monthly_grant: calcMonthlyAccrualUpTo(emp.hire_date),
+        history,
+      },
+    })
+  } catch (error: any) {
+    console.error('hr.ts [GET /employees/:id/leave-balance]:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
