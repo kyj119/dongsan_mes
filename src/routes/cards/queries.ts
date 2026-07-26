@@ -908,9 +908,11 @@ cardsQueriesRouter.get('/thumbnails', async (c) => {
     if (ids.length === 0) return c.json({ success: true, data: {} })
 
     const ph = ids.map(() => '?').join(',')
+    // #559: 형제 GET /:id(:938)와 동일하게 법인 격리. 비관리자는 자법인 카드 썸네일만, super-admin(0)=전권.
+    const efThumb = cardEntityFilter(c)
     const { results } = await c.env.DB.prepare(
-      `SELECT id, thumbnail_url FROM cards WHERE id IN (${ph}) AND thumbnail_url IS NOT NULL AND thumbnail_url != ''`
-    ).bind(...ids).all<{ id: number; thumbnail_url: string }>()
+      `SELECT id, thumbnail_url FROM cards WHERE id IN (${ph}) AND thumbnail_url IS NOT NULL AND thumbnail_url != ''${efThumb.clause}`
+    ).bind(...ids, ...efThumb.params).all<{ id: number; thumbnail_url: string }>()
 
     // R2 이관: 'r2:thumb:' 마커는 R2에서 읽어 data URI로 복원(인증=헤더 전용이라 백엔드가 서빙). 레거시 data URI는 그대로.
     const map: Record<number, string> = {}

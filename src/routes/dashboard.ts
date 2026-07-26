@@ -51,16 +51,16 @@ dashboardRouter.get('/stats', async (c) => {
         ca.done_cards as done_cards,
         ca.hold_cards as hold_cards,
         (SELECT SUM(final_amount) FROM orders WHERE 1=1${ef.clause}) as total_revenue,
-        (SELECT COUNT(*) FROM orders WHERE ${kstDateOf('created_at')} = ${kstDate()} AND status != 'CANCELLED'${ef.clause}) as today_order_count,
-        (SELECT SUM(final_amount) FROM orders WHERE ${kstDateOf('created_at')} = ${kstDate()} AND status != 'CANCELLED'${ef.clause}) as today_revenue,
-        (SELECT COUNT(*) FROM orders WHERE ${kstMonth('created_at')} = ${kstMonth()} AND status != 'CANCELLED'${ef.clause}) as month_order_count,
-        (SELECT SUM(final_amount) FROM orders WHERE ${kstMonth('created_at')} = ${kstMonth()} AND status != 'CANCELLED'${ef.clause}) as month_revenue,
-        (SELECT SUM(final_amount) FROM orders WHERE ${kstMonth('created_at')} = ${kstMonth("'now'", "'start of month'", "'-1 month'")} AND status != 'CANCELLED'${ef.clause}) as prev_month_revenue,
-        (SELECT COUNT(*) FROM orders WHERE ${kstMonth('created_at')} = ${kstMonth("'now'", "'start of month'", "'-1 month'")} AND status != 'CANCELLED'${ef.clause}) as prev_month_order_count,
-        (SELECT SUM(final_amount) FROM orders WHERE created_at >= ${kstDate("'-7 days'")} AND status != 'CANCELLED'${ef.clause}) as week_revenue,
+        (SELECT COUNT(*) FROM orders WHERE ${kstDateOf('created_at')} = ${kstDate()} AND status NOT IN ('CANCELLED', 'QUOTATION')${ef.clause}) as today_order_count,
+        (SELECT SUM(final_amount) FROM orders WHERE ${kstDateOf('created_at')} = ${kstDate()} AND status NOT IN ('CANCELLED', 'QUOTATION')${ef.clause}) as today_revenue,
+        (SELECT COUNT(*) FROM orders WHERE ${kstMonth('created_at')} = ${kstMonth()} AND status NOT IN ('CANCELLED', 'QUOTATION')${ef.clause}) as month_order_count,
+        (SELECT SUM(final_amount) FROM orders WHERE ${kstMonth('created_at')} = ${kstMonth()} AND status NOT IN ('CANCELLED', 'QUOTATION')${ef.clause}) as month_revenue,
+        (SELECT SUM(final_amount) FROM orders WHERE ${kstMonth('created_at')} = ${kstMonth("'now'", "'start of month'", "'-1 month'")} AND status NOT IN ('CANCELLED', 'QUOTATION')${ef.clause}) as prev_month_revenue,
+        (SELECT COUNT(*) FROM orders WHERE ${kstMonth('created_at')} = ${kstMonth("'now'", "'start of month'", "'-1 month'")} AND status NOT IN ('CANCELLED', 'QUOTATION')${ef.clause}) as prev_month_order_count,
+        (SELECT SUM(final_amount) FROM orders WHERE created_at >= ${kstDate("'-7 days'")} AND status NOT IN ('CANCELLED', 'QUOTATION')${ef.clause}) as week_revenue,
         ca.shipment_ready_count as shipment_ready_count,
         (SELECT COUNT(*) FROM orders WHERE delivery_date = ${kstDate()} AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as today_shipment_due,
-        (SELECT COUNT(*) FROM orders WHERE priority='URGENT' AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as urgent_count,
+        (SELECT COUNT(*) FROM orders WHERE priority='URGENT' AND status NOT IN ('SHIPPED','CANCELLED','QUOTATION')${ef.clause}) as urgent_count,
         (SELECT COUNT(*) FROM orders WHERE id IN (SELECT DISTINCT order_id FROM order_items WHERE price_status = 'PENDING') AND status NOT IN ('CANCELLED','SHIPPED')${ef.clause}) as pending_price_orders,
         (SELECT COALESCE(SUM(final_amount),0) FROM orders WHERE billing_status='BILLED' AND strftime('%Y-%m',COALESCE(accounting_date,billed_at))=${kstMonth()}${ef.clause}) as month_billed,
         (SELECT COALESCE(SUM(amount),0) FROM payments WHERE strftime('%Y-%m',payment_date)=${kstMonth()}${ef.clause}) as month_paid,
@@ -417,14 +417,11 @@ dashboardRouter.get('/stats/receivables', async (c) => {
       else { agBuckets.over_90 += bal; agOverdueCount++ }
     }
 
-    // Total receivables (법인별: 청구액 - 수금액)
-    const efPlain = entityFilter(c)
-    const totals = await c.env.DB.prepare(`
-      SELECT
-        COALESCE((SELECT SUM(billed_amount) FROM orders WHERE billing_status = 'BILLED'${efPlain.clause}${excludeInternalClientsSql('client_id')}), 0)
-        - COALESCE((SELECT SUM(amount) FROM payments WHERE 1=1${efPlain.clause}${excludeInternalClientsSql('client_id')}), 0) as total_receivables,
-        (SELECT COUNT(DISTINCT client_id) FROM orders WHERE billing_status = 'BILLED' AND billed_amount > 0${efPlain.clause}${excludeInternalClientsSql('client_id')}) as clients_with_balance
-    `).bind(...efPlain.params, ...efPlain.params, ...efPlain.params).first()
+    // Total receivables / clients_with_balance — #565: 별도 쿼리(billed−payments, adjustments 누락) 폐기.
+    //   같은 화면 aging(agingRows)이 이미 SSOT 파생잔액(order_billing_groups[BILLED] − payments − adjustments,
+    //   balance>0, 법인스코프, 내부법인 제외)을 거래처별로 계산 완료 → 여기서 파생해 화면 내부 정합성 보장.
+    const totalReceivables = agBuckets.current + agBuckets.over_30 + agBuckets.over_60 + agBuckets.over_90
+    const clientsWithBalance = agingRows.length
 
     return c.json({
       success: true,
@@ -437,8 +434,8 @@ dashboardRouter.get('/stats/receivables', async (c) => {
           over_90: agBuckets.over_90,
           overdue_count: agOverdueCount
         },
-        total_receivables: (totals as Record<string, unknown>)?.total_receivables || 0,
-        clients_with_balance: (totals as Record<string, unknown>)?.clients_with_balance || 0
+        total_receivables: totalReceivables,
+        clients_with_balance: clientsWithBalance
       }
     })
   } catch (error) {
@@ -546,7 +543,7 @@ dashboardRouter.get('/stats/weekly-trend', async (c) => {
         COALESCE(SUM(final_amount), 0) as revenue
       FROM orders
       WHERE created_at >= date('now', '-6 days')
-        AND status != 'CANCELLED'${ef.clause}
+        AND status NOT IN ('CANCELLED', 'QUOTATION')${ef.clause}
       GROUP BY date(created_at)
       ORDER BY date ASC
     `).bind(...ef.params).all()

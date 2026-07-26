@@ -38,7 +38,7 @@ export function quotationPage(c: Context<HonoEnv>) {
                 font-size: 14px; cursor: pointer; font-weight: 600;
             }
             .no-print .btn-print { background: #fff; color: var(--c-primary); }
-            .no-print .btn-print:hover { background: #ccfbf1; }
+            .no-print .btn-print:hover { background: #dbeafe; }
             .no-print .btn-close { background: #ef4444; color: #fff; }
             .no-print .btn-close:hover { background: #dc2626; }
             .no-print .btn-email { background: #6366f1; color: #fff; }
@@ -128,7 +128,7 @@ export function quotationPage(c: Context<HonoEnv>) {
             .email-modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
             .email-modal .modal-actions button { padding: 8px 20px; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 600; }
             .email-modal .btn-send { background: var(--c-primary); color: #fff; }
-            .email-modal .btn-send:hover { background: #0f766e; }
+            .email-modal .btn-send:hover { background: #2563eb; }
             .email-modal .btn-cancel { background: #e5e7eb; color: #374151; }
             .email-modal .btn-cancel:hover { background: #d1d5db; }
         </style>

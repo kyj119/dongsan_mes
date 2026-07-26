@@ -32,11 +32,13 @@ coreRouter.post('/preview', async (c) => {
     const payPeriod = String(body.pay_period || '') // YYYY-MM
     if (!employeeId || !payPeriod) return c.json({ success: false, error: 'employee_id, pay_period 필요' }, 400)
 
+    // #558/#IDOR: 형제 /save(:245)와 동일하게 entityFilter로 자법인 직원만 로드. 타법인 급여/PII cross-tenant 열람 차단.
+    const empEf = entityFilter(c)
     const emp = await c.env.DB.prepare(
       `SELECT id, name, base_salary, hourly_rate, overtime_daily_hours, overtime_work_days,
               dependents_count, children_under_20_count, income_tax_table_option, hire_date, resignation_date
-       FROM employees WHERE id = ?`
-    ).bind(employeeId).first<any>()
+       FROM employees WHERE id = ?${empEf.clause}`
+    ).bind(employeeId, ...empEf.params).first<any>()
     if (!emp) return c.json({ success: false, error: '직원 없음' }, 404)
 
     // 입사/퇴사 월중 일할 컨텍스트 (완전월 = isPartial false → 기존 전액 로직)

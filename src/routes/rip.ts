@@ -440,9 +440,10 @@ ripRouter.post('/equipment/:id/presets', authMiddleware, requireRole('ADMIN'), a
       return c.json({ success: false, error: 'preset_name and tps_filename are required' }, 400)
     }
 
+    const ef = entityFilter(c)  // #561 타법인 설비 프리셋 추가 차단
     const equipment = await c.env.DB.prepare(
-      'SELECT id FROM equipment WHERE id = ?'
-    ).bind(equipId).first()
+      `SELECT id FROM equipment WHERE id = ?${ef.clause}`
+    ).bind(equipId, ...ef.params).first()
 
     if (!equipment) {
       return c.json({ success: false, error: 'Equipment not found' }, 404)
@@ -487,9 +488,11 @@ ripRouter.delete('/equipment/:id/presets/:presetId', authMiddleware, requireRole
     const equipId = c.req.param('id')
     const presetId = c.req.param('presetId')
 
+    const ef = entityFilter(c)  // #561 타법인 설비 프리셋 삭제 차단 (부모 설비 소유 검증)
     const preset = await c.env.DB.prepare(
-      'SELECT id FROM equipment_presets WHERE id = ? AND equipment_id = ?'
-    ).bind(presetId, equipId).first()
+      `SELECT p.id FROM equipment_presets p JOIN equipment e ON p.equipment_id = e.id
+       WHERE p.id = ? AND p.equipment_id = ?${entityFilter(c, 'e').clause}`
+    ).bind(presetId, equipId, ...ef.params).first()
 
     if (!preset) {
       return c.json({ success: false, error: 'Preset not found' }, 404)
@@ -738,7 +741,7 @@ ripRouter.post('/equipment/:id/heads', authMiddleware, requireRole('ADMIN', 'MAN
 
 // ─── PUT /api/rip/equipment/:id/heads/:headNum — 헤드 상태 업데이트 ──────────
 
-ripRouter.put('/equipment/:id/heads/:headNum', authMiddleware, async (c) => {
+ripRouter.put('/equipment/:id/heads/:headNum', authMiddleware, requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const equipId = c.req.param('id')
     const headNum = parseInt(c.req.param('headNum'))
@@ -749,6 +752,13 @@ ripRouter.put('/equipment/:id/heads/:headNum', authMiddleware, async (c) => {
     if (status && !validStatuses.includes(status)) {
       return c.json({ success: false, error: `헤드 상태는 ${validStatuses.join('|')} 중 하나여야 합니다` }, 400)
     }
+
+    // #561: 형제 POST /heads(:691)와 동일하게 부모 설비 법인 소유 검증 (타법인 헤드 상태 변조 차단).
+    const efHead = entityFilter(c)
+    const ownerEquip = await c.env.DB.prepare(
+      `SELECT id FROM equipment WHERE id = ?${efHead.clause}`
+    ).bind(equipId, ...efHead.params).first()
+    if (!ownerEquip) return c.json({ success: false, error: 'Equipment not found' }, 404)
 
     const head = await c.env.DB.prepare(
       'SELECT id, equipment_id, head_number, status, replaced_at, notes, updated_at FROM equipment_heads WHERE equipment_id = ? AND head_number = ?'
@@ -799,7 +809,7 @@ ripRouter.put('/equipment/:id/heads/:headNum', authMiddleware, async (c) => {
 
 // ─── POST /api/rip/equipment/:id/maintenance — 유지보수 이력 추가 ────────────
 
-ripRouter.post('/equipment/:id/maintenance', authMiddleware, async (c) => {
+ripRouter.post('/equipment/:id/maintenance', authMiddleware, requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const equipId = c.req.param('id')
     const user = c.get('user')
@@ -814,9 +824,10 @@ ripRouter.post('/equipment/:id/maintenance', authMiddleware, async (c) => {
       return c.json({ success: false, error: '작업 내용(description)은 필수입니다' }, 400)
     }
 
+    const ef = entityFilter(c)  // #561 타법인 설비 유지보수 이력 기록 차단
     const equipment = await c.env.DB.prepare(
-      'SELECT id FROM equipment WHERE id = ?'
-    ).bind(equipId).first()
+      `SELECT id FROM equipment WHERE id = ?${ef.clause}`
+    ).bind(equipId, ...ef.params).first()
 
     if (!equipment) {
       return c.json({ success: false, error: 'Equipment not found' }, 404)
@@ -884,9 +895,11 @@ ripRouter.delete('/equipment/:id/maintenance/:logId', authMiddleware, requireRol
   try {
     const logId = c.req.param('logId')
 
+    // #561: 부모 설비 법인 소유 검증 (타법인 유지보수 이력 삭제 차단).
     const existing = await c.env.DB.prepare(
-      'SELECT id FROM maintenance_logs WHERE id = ?'
-    ).bind(logId).first()
+      `SELECT ml.id FROM maintenance_logs ml JOIN equipment e ON ml.equipment_id = e.id
+       WHERE ml.id = ?${entityFilter(c, 'e').clause}`
+    ).bind(logId, ...entityFilter(c).params).first()
 
     if (!existing) {
       return c.json({ success: false, error: '이력을 찾을 수 없습니다' }, 404)
