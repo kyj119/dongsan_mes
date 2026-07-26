@@ -3,7 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { requireAccessOrRole } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
-import { kstYm } from '../utils/kstDate'
+import { kstYm, kstDate } from '../utils/kstDate'
 
 const cashFlowRouter = new Hono<HonoEnv>()
 cashFlowRouter.use('/*', authMiddleware)
@@ -116,8 +116,10 @@ cashFlowRouter.delete('/fixed-expenses/:id', requireRole('ADMIN'), async (c) => 
   try {
     const id = c.req.param('id')
     const ef = entityFilter(c)
+    // #554: 비활성화 시 end_date를 오늘로 마감(미설정 시). 부문손익(/pnl)이 is_active(현재상태) 대신
+    //   기간중첩(start~end)으로 과거 자재비/고정비를 재현성 있게 조회하려면 종료시점이 기록돼야 함.
     await c.env.DB.prepare(
-      `UPDATE fixed_expenses SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}`
+      `UPDATE fixed_expenses SET is_active = 0, end_date = COALESCE(end_date, ${kstDate()}), updated_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}`
     ).bind(id, ...ef.params).run()
     return c.json({ success: true })
   } catch (error) {

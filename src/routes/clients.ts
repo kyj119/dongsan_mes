@@ -1148,9 +1148,15 @@ clientsRouter.get('/:id/portal-account', requireRole('ADMIN', 'MANAGER'), async 
   }
 })
 
-// POST /:id/portal-account — 포털 계정 생성 (ADMIN)
+// POST /:id/portal-account — 포털 계정 생성 (SUPER-ADMIN 전용)
+// #557: portal.ts 전체가 client_id만 스코프(entity 무관)라, 계정 1개가 그 거래처의 전 법인 통합 거래이력을 노출.
+//   법인 스코프 ADMIN이 임의 거래처 계정을 셀프발급→cross-entity 열람 가능 → 생성을 전체모드(entityId=0) ADMIN으로 제한.
+//   (근본해결=portal.ts 전체를 account.entity_id로 스코프. 여기선 셀프발급 벡터 차단이 목적.)
 clientsRouter.post('/:id/portal-account', requireRole('ADMIN'), async (c) => {
   try {
+    if (getEntityId(c) !== 0) {
+      return c.json({ success: false, error: '포털 계정 생성은 전체 모드(SUPER-ADMIN)에서만 가능합니다. 상단에서 법인을 전체로 전환하세요.' }, 403)
+    }
     const clientId = c.req.param('id')
     const body = await c.req.json()
     const { login_id, password, contact_name, contact_phone, contact_email } = body
@@ -1159,7 +1165,7 @@ clientsRouter.post('/:id/portal-account', requireRole('ADMIN'), async (c) => {
       return c.json({ success: false, error: 'login_id와 password는 필수입니다.' }, 400)
     }
 
-    // 이 거래처에 이미 계정이 있는지 확인
+    // 이 거래처에 이미 계정이 있는지 확인 (전체모드=전 법인 조회, 중복 발급 방지)
     const existingForClient = await c.env.DB.prepare(
       'SELECT id FROM client_accounts WHERE client_id = ?'
     ).bind(clientId).first()

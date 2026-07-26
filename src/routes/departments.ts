@@ -251,9 +251,12 @@ departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     const fromDate = new Date(from), toDate = new Date(to)
     const months = Math.max(1, Math.round((toDate.getTime() - fromDate.getTime()) / (30 * 86400000)))
+    // #554: is_active(현재상태)로 필터하면 조회기간 당시엔 유효했으나 지금 비활성인 고정비가 과거조회에서 누락됨.
+    //   기간중첩(start<=to AND (end IS NULL OR end>=from))이 시간적 유효성의 정본. (비활성화는 이제 end_date를 마감 →
+    //   현재/미래 기간엔 자동 제외되고, 과거 기간엔 정상 포함. 0470 마이그가 기존 비활성행 end_date backfill.)
     const fixedRow = await c.env.DB.prepare(
       `SELECT COALESCE(SUM(amount),0) AS total FROM fixed_expenses
-       WHERE is_active=1 AND frequency='MONTHLY' AND start_date <= ? AND (end_date IS NULL OR end_date >= ?)`
+       WHERE frequency='MONTHLY' AND start_date <= ? AND (end_date IS NULL OR end_date >= ?)`
     ).bind(to, from).first<{ total: number }>().catch(() => ({ total: 0 }))
     const fixedCommon = num(fixedRow?.total) * months
 

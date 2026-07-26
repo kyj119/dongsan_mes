@@ -46,6 +46,11 @@
   var DEFECT_CATEGORY_LABEL = { PRINT: '인쇄', FINISHING: '후가공', MATERIAL: '자재', COLOR: '색상', SIZE: '규격', OTHER: '기타', POST_PROCESS: '후가공', DESIGN: '디자인' };
 
   function badge(text, cls) { return '<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium ' + cls + '">' + esc(text) + '</span>'; }
+  // #567: 클레임/반품 해결금액은 AR(adjustments)에 자동연동되지 않음 → 조정 필요 건에 원장 바로가기 넛지.
+  function qcArNudge(clientId, amount) {
+    if (!clientId || Number(amount || 0) <= 0) return '';
+    return ' <a href="/ledger?client_id=' + clientId + '" onclick="event.stopPropagation();" class="inline-block ml-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 text-[10px] hover:bg-amber-100" title="이 건의 회계 조정(adjustments)은 자동 등록되지 않습니다. 원장에서 확인·등록하세요."><i class="fas fa-scale-balanced mr-0.5"></i>조정확인</a>';
+  }
   function claimBadge(s) { return badge(CLAIM_STATUS_LABEL[s] || s || '-', s === 'RESOLVED' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'); }
   function returnBadge(s) { var m = { RESOLVED: 'bg-green-50 text-green-700', REQUESTED: 'bg-amber-50 text-amber-700' }; return badge(RETURN_LABEL[s] || s || '-', m[s] || 'bg-blue-50 text-blue-700'); }
 
@@ -82,7 +87,7 @@
       if (!rows.length) { body.innerHTML = '<tr><td colspan="9" class="text-center py-8 text-gray-400">클레임이 없습니다.</td></tr>'; return; }
       body.innerHTML = rows.map(function (r) {
         var act = r.status === 'RESOLVED'
-          ? '<span class="text-[10px] text-gray-400">' + fmtDate(r.resolved_at) + '</span>'
+          ? '<span class="text-[10px] text-gray-400">' + fmtDate(r.resolved_at) + '</span>' + qcArNudge(r.client_id, r.resolved_amount)
           : '<button onclick="window.qcOpenResolve(' + r.id + ')" class="px-2 py-0.5 bg-green-600 text-white text-[10px] rounded">해결</button>';
         return '<tr>' +
           '<td class="col-code font-mono text-[11px]">' + esc(r.claim_number) + '</td>' +
@@ -175,7 +180,7 @@
       if (!rows.length) { body.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400">반품이 없습니다.</td></tr>'; return; }
       body.innerHTML = rows.map(function (r) {
         var act = (r.status === 'RESOLVED')
-          ? '<span class="text-[10px] text-gray-400">완료</span>'
+          ? '<span class="text-[10px] text-gray-400">완료</span>' + qcArNudge(r.client_id, r.refund_amount)
           : '<button onclick="window.qcOpenReturnStatus(' + r.id + ',\'' + r.status + '\')" class="px-2 py-0.5 bg-blue-600 text-white text-[10px] rounded">상태변경</button>';
         return '<tr>' +
           '<td class="col-code font-mono text-[11px]">' + esc(r.return_number) + '</td>' +

@@ -340,6 +340,28 @@ usersRouter.delete('/:id/hard', requireAdmin, async (c) => {
     // CASCADE FK(세션 등)는 cascadeChildren 로 이미 포함. user_item_access 는 비FK 소유테이블이라
     // 명시 정리하되, DB마다 테이블 유무가 달라 존재할 때만(하드코딩 테이블 없으면 500 방지).
     const tableSet = new Set((tableRows || []).map((t) => t.name))
+
+    // #560: FK로 선언되지 않은 감사(audit) 컬럼은 위 blockers 스캔(PRAGMA foreign_key_list)에 안 잡힘 →
+    //   하드삭제 후에도 삭제된 user_id를 유령으로 보유. 정책상 삭제는 허용하되(가드 실효성 유지) 남는 이력을 경고로 고지.
+    //   실제로 값이 기록되는 주요 audit 컬럼만 스캔(테이블/컬럼 부재 시 skip).
+    const AUDIT_COLUMNS: Array<[string, string]> = [
+      ['employees', 'deleted_by'], ['payroll', 'approved_by'],
+      ['tax_invoices', 'issued_by'], ['tax_invoices', 'cancelled_by'],
+      ['purchase_orders', 'confirmed_by'], ['purchase_orders', 'updated_by'],
+      ['quality_issues', 'resolved_by'], ['inventory_counts', 'submitted_by'],
+      ['inventory_counts', 'approved_by'], ['price_change_history', 'changed_by'],
+      ['year_end_settlements', 'confirmed_by'], ['insurance_reports', 'confirmed_by'],
+      ['card_transactions', 'created_by'], ['auto_process_jobs', 'approved_by'],
+    ]
+    const orphanAudit: Array<{ table: string; column: string; count: number }> = []
+    for (const [tbl, col] of AUDIT_COLUMNS) {
+      if (!tableSet.has(tbl)) continue
+      try {
+        const r = await c.env.DB.prepare(`SELECT COUNT(*) as c FROM "${tbl}" WHERE "${col}" = ?`).bind(id).first<{ c: number }>()
+        if ((r?.c || 0) > 0) orphanAudit.push({ table: tbl, column: col, count: r!.c })
+      } catch { /* 컬럼/테이블 부재 → skip */ }
+    }
+
     const stmts = []
     for (const ch of cascadeChildren) {
       stmts.push(c.env.DB.prepare(`DELETE FROM "${ch.table}" WHERE "${ch.column}" = ?`).bind(id))
@@ -358,7 +380,11 @@ usersRouter.delete('/:id/hard', requireAdmin, async (c) => {
       actorEntityId: getEntityId(c)
     })
 
-    return c.json({ success: true, message: '사용자가 완전 삭제되었습니다.' })
+    // #560: 정리되지 않은 감사 이력 경고 — 프론트가 있으면 안내 표시.
+    const auditWarning = orphanAudit.length > 0
+      ? `승인자/발행자/삭제자 등 ${orphanAudit.reduce((s, o) => s + o.count, 0)}건의 감사 이력(${orphanAudit.map(o => o.table).join(', ')})이 삭제된 ID를 그대로 보유합니다(비-FK 컬럼이라 자동 정리 불가).`
+      : null
+    return c.json({ success: true, message: '사용자가 완전 삭제되었습니다.', audit_warning: auditWarning, orphan_audit: orphanAudit })
   } catch (error) {
     console.error('DELETE /api/users/:id/hard error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

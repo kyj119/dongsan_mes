@@ -292,8 +292,10 @@
     var ok = await showConfirm('[주의] "' + name + '" 계정을 완전 삭제합니다.\n\n참조(주문·카드·감사기록 등)가 전혀 없을 때만 삭제되며, 되돌릴 수 없습니다.\n참조가 있으면 대신 비활성화하세요.\n\n계속하시겠습니까?');
     if (!ok) return;
     axios.delete('/api/users/' + id + '/hard')
-      .then(function() {
-        showToast('완전 삭제되었습니다.', 'success');
+      .then(function(res) {
+        // #560: 비-FK 감사컬럼(승인자/발행자 등)에 남는 유령 ID 경고 고지
+        var warn = res.data && res.data.audit_warning;
+        showToast('완전 삭제되었습니다.' + (warn ? ' ⚠ ' + warn : ''), warn ? 'info' : 'success');
         loadUsers();
       })
       .catch(function(err) {
