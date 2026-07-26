@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-07-26T21:40:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-07-26T23:50:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,39 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **18** — Area 5 44회차(07-26T21:40) 신규 1건(#571) 반영, `list_issues(state:OPEN,label:auto-improve)` 실측 17건 + 이번 사이클 신규 1건. |
+| 🆕 new | **18** (GitHub OPEN 실측) — 단 **15건은 fixed-in-tree(close-pending user)**, 실질 미해결은 **#555·#570·#571 3건뿐**. Area 6 50회차(07-26T23:50) 직접 grep 재검증 완료, 상세는 아래 Area 6 로그 참조. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **479** — `search_issues(is:closed,reason:completed)` 재조회 생략(close-pending 캐시, 변동 없음). |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 6 자기 진화 (2026-07-26T23:50):**
+> - **방법**: `git fetch origin main`(HEAD `fe11c1c` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 6 **50회차** — 직전 Area6(`8b30b6a`, 07-26T02:1x경, 49회차) 이후 `git log 8b30b6a..HEAD`는 15커밋. 후가공 도메인 A1 feature churn(`83d952c`/`f823852`/`2744e54`/`e254922` 등)은 오늘 이미 Area1(50)·Area2(51)·Area3(44)·Area4(45)·Area5(44)가 각자 렌즈로 커버 완료 — 컬럼-diff/XSS bridge 대상 신선 churn 잔여 0.
+> - **🔴 최우선 발견 — open≠unfixed, 사상 최대 규모(15/18건 fixed-in-tree)**: 이번 churn 구간에 별도 세션("Claude Opus 4.8" co-author)이 커밋 4건(`97101ac`·`359dd9e`·`8efd59c`·`423be94`, 커밋 메시지에 "git 이슈 N건 수정"으로 명시)으로 **OPEN 상태인 auto-improve 이슈 15건을 실제로 픽스**했으나 GitHub 이슈는 전부 OPEN 유지(close 미실행) — SKILL "open≠unfixed"(close-pending) 규칙 사상 최대 재현. **전 15건을 코드 직접 grep으로 개별 재검증(커밋 메시지 신뢰 안 함)**:
+>   - `#554` departments.ts fixedRow: `is_active` → 기간중첩(`start_date<=? AND (end_date IS NULL OR end_date>=?)`) 전환 확인(`:257-259`, `#554` 주석)
+>   - `#556` invoice.ts/quotation.ts hover: 구 teal(`#0f766e`/`#ccfbf1`) 3곳 전부 블루 계열(`#2563eb`/`#4f46e5`)로 교체 확인
+>   - `#557` clients.ts POST /:id/portal-account: `getEntityId(c)!==0` 시 403(SUPER-ADMIN 전용 상향) 확인, `#557` 주석
+>   - `#558` payroll/core.ts POST /preview: `entityFilter(c)` 추가 확인(`#558/#IDOR` 주석), 형제 /save와 동형
+>   - `#559` cards/queries.ts GET /thumbnails: `cardEntityFilter(c)` 추가 확인(`#559` 주석)
+>   - `#560` users.ts DELETE /:id/hard: 비-FK 감사컬럼 14종 잔존 경고(`AUDIT_COLUMNS` 배열 + `orphanAudit` 응답) 추가 확인(`#560` 주석)
+>   - `#561` rip.ts equipment 4핸들러: heads PUT·presets POST/DELETE·maintenance POST 전부 `entityFilter`+역할게이트 추가 확인(`#561` 주석 4곳)
+>   - `#562` taxInvoices/batch.ts POST /monthly-create: `MONTHLY_MAX_GROUPS` 상한 + `remaining_client_ids` 응답 확인
+>   - `#563` clients.ts POST /import: `CHUNK=40` 청크 벌크조회+batch 확인(`:690-691`)
+>   - `#564` dashboard.ts KPI: 6곳 전부 `status NOT IN ('CANCELLED','QUOTATION')`로 통일 확인
+>   - `#565` dashboard.ts 총 미수금: 별도 쿼리 폐기 + aging(SSOT) 파생 재사용 확인(`#565` 주석)
+>   - `#566` 반품 등록 UI: `quality.js` `POST /api/returns` 호출 신설 확인(`#566` 주석, quality.ts 모달)
+>   - `#567` AR 넛지: `quality.js:52` "조정확인" 원장 딥링크(`/ledger?client_id=`) 확인
+>   - `#568` 휴가 셀프신청: `leaveShared.ts`/`mySelf.ts` 신설 + `employeeSelf.ts` leave-section 확인
+>   - `#569` hrDetail 연차 섹션: `hrDetail.ts`/`hrDetail.js`에 `#569` 주석과 함께 `/api/hr/employees/:id/leave-balance` 연동 확인
+>   
+>   **실질 미해결로 남은 건 3건뿐** — `#555`(마이그레이션 0342~0344 풀리플레이 실패, 관련 SQL 그대로), `#570`(designer_intakes.order_item_id 미정리, `orders/core.ts`·`update.ts`에 `designer_intakes` 참조 0건 = 그대로), `#571`(5모듈 IDOR 클러스터, 5곳 전부 안티패턴 잔존 — 오늘 Area5가 막 보고한 신규건이라 당연히 미반영). 이 3건만 정상 open으로 재확인.
+> - **도구 상태 확인**: `npx tsc --noEmit` clean(15커밋 반영 후에도 타입 정합), `node scripts/entity-audit.mjs`(124파일·통과59·누락0), 마이그 번호 중복 스캔(기존 5쌍 `0327/0412/0416/0420/0453`만, 신규 0).
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues(is:closed,reason:completed)` **479**(재확인, 변동 없음) — done 유지. rejected는 이번 사이클 close 0건이라 재조회 생략, 6 유지(close-pending 캐시). `list_issues(state:OPEN,label:auto-improve)` **18**(GitHub 실측, close 0건이라 불변) — 단 통계란에 "15건 fixed-in-tree" 명시해 실질 미해결 3건임을 문서화.
+> - **🧬 SKILL 강화 없음(기존 패턴의 최대 규모 재현)** — "open≠unfixed"(line 281)·"close-pending 캐시"(line 291) 규칙 그대로 적용, 신규 클래스 없음. 다만 규모(15건 동시)가 이례적이라 owner에게 **일괄 close 대상 15건**임을 명확히 통지할 가치가 큼(PushNotification으로 전달).
+> - 신규 이슈 0건, 자동수정 0건(전부 타 세션 기픽스 확인 작업), done-sync: new 18(실질 3)·done 479·rejected 6. 다음 순번 Area 1.
+>
 
 > **Area 5 보안 (2026-07-26T21:40):**
 > - **방법**: `git fetch origin main`(HEAD `31b6c1c` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 5 **44회차** — 직전 Area5(`b798aed`, 07-25T06:20, 43회차) 이후 `git log ee726b7..HEAD -- src/routes src/scripts migrations`는 4파일뿐(`migrations/0472`·`0473`, `src/routes/finishing.ts`(+36)·`src/routes/workbench.ts`(+25) — 후가공 도메인 프로파일 A1)이며 Area4 45회차가 데이터정합성 렌즈로 이미 검증 완료. Area5 고유 렌즈(SQLi/XSS/인증·인가)로 직접 재확인: `finishing.ts` GET/PUT `/worker-domains`(라우터 전역 `authMiddleware`+PUT만 `requireRole('ADMIN','MANAGER')`, `designer_worker_domains`는 0473이 entity_id 없이 도입 = finishing_methods/presets와 동일 "법인 공용 마스터" 정책과 일관), `workbench.ts` `POST /intakes`(신규 free-text 5필드 keyword/post_desc/worker_name 등은 프론트에서 `escapeHtml` 일관 적용, `entity_id`는 `getWriteEntityId` 게이트로 #487 0-sentinel 클래스 해당없음 기확인) 전부 clean — SQLi 없음(전 바인딩), XSS 없음(showToast가 sink에서 전체 메시지 escape). 필수 표준 스캔 전부 clean: secret fallback grep(`fax.ts` 기존 FP만)·마이그 번호 중복(기존 5쌍만)·`entity-audit.mjs`(122파일·통과59·누락0)·`tsc --noEmit`(clean).
