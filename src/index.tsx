@@ -84,6 +84,7 @@ import payrollRouter from './routes/payroll'
 import attendanceRouter from './routes/attendance'
 import kakaoRouter from './routes/kakao'
 import messagesRouter from './routes/messages'
+import contactGroupsRouter from './routes/contactGroups'
 import capsRouter from './routes/caps'
 import { insuranceReportsRouter } from './routes/insuranceReports'
 import messageTemplatesRouter from './routes/messageTemplates'
@@ -342,6 +343,7 @@ app.route('/api/attendance', attendanceRouter)
 app.route('/api/cash-flow', cashScheduleRouter)
 app.route('/api/kakao', kakaoRouter)
 app.route('/api/messages', messagesRouter)
+app.route('/api/contact-groups', contactGroupsRouter)
 app.route('/api/caps', capsRouter)
 app.route('/api/insurance-reports', insuranceReportsRouter)
 app.route('/api/message-templates', messageTemplatesRouter)

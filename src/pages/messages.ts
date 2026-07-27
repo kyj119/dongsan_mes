@@ -49,6 +49,7 @@ export function messagesPage(c: Context<HonoEnv>) {
   <div class="flex border-b">
     <button id="tabHistory" onclick="switchMsgTab('history')" class="px-5 py-2.5 text-sm font-medium border-b-2 border-blue-600 text-blue-600">발송 이력</button>
     <button id="tabBulk" onclick="switchMsgTab('bulk')" class="px-5 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-700">대량 발송</button>
+    <button id="tabGroups" onclick="switchMsgTab('groups')" class="px-5 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-700">그룹 관리</button>
     <button id="tabTemplates" onclick="switchMsgTab('templates')" class="px-5 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-700">템플릿 관리</button>
     <button id="tabStats" onclick="switchMsgTab('stats')" class="px-5 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-700">통계</button>
   </div>
@@ -102,6 +103,7 @@ export function messagesPage(c: Context<HonoEnv>) {
         <div class="flex gap-2 flex-wrap">
           <button onclick="setBulkChannel('kakao')" id="bulkChKakao" class="px-4 py-2 rounded-full text-sm font-medium bg-blue-50 border-2 border-blue-500 text-blue-700"><i class="fas fa-comment mr-1"></i>카카오톡</button>
           <button onclick="setBulkChannel('sms')" id="bulkChSms" class="px-4 py-2 rounded-full text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400"><i class="fas fa-sms mr-1"></i>문자</button>
+          <button onclick="setBulkChannel('mms')" id="bulkChMms" class="px-4 py-2 rounded-full text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400" title="이미지 첨부 문자 (100원/건)"><i class="fas fa-image mr-1"></i>MMS</button>
           <button onclick="setBulkChannel('email')" id="bulkChEmail" class="px-4 py-2 rounded-full text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400"><i class="fas fa-envelope mr-1"></i>이메일</button>
           <button disabled class="px-4 py-2 rounded-full text-sm font-medium bg-gray-100 border border-gray-200 text-gray-400 cursor-not-allowed"><i class="fas fa-fax mr-1"></i>팩스 (준비 중)</button>
         </div>
@@ -111,6 +113,7 @@ export function messagesPage(c: Context<HonoEnv>) {
         <div class="flex gap-2 flex-wrap mb-3">
           <button onclick="openRecipientPicker('employees')" id="bulkTgtEmployees" class="px-4 py-2 rounded-full text-sm font-medium bg-green-50 border-2 border-green-500 text-green-700"><i class="fas fa-users mr-1"></i>직원 선택</button>
           <button onclick="openRecipientPicker('clients')" id="bulkTgtClients" class="px-4 py-2 rounded-full text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400"><i class="fas fa-building mr-1"></i>거래처 선택</button>
+          <button onclick="openGroupPicker()" id="bulkTgtGroup" class="px-4 py-2 rounded-full text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400"><i class="fas fa-layer-group mr-1"></i>그룹 선택</button>
           <button onclick="setBulkTarget('custom')" id="bulkTgtCustom" class="px-4 py-2 rounded-full text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400"><i class="fas fa-pen mr-1"></i>직접 입력</button>
         </div>
         <div id="bulkTargetInfo" class="text-sm text-green-600 mb-2"></div>
@@ -132,6 +135,17 @@ export function messagesPage(c: Context<HonoEnv>) {
         <div id="bulkSubjectArea" class="mb-3 hidden">
           <label class="text-xs font-semibold text-gray-600 mb-1 block">제목</label>
           <input type="text" id="bulkSubject" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="제목">
+        </div>
+        <!-- MMS 이미지 첨부 (대량) -->
+        <div id="bulkImageArea" class="mb-3 hidden">
+          <label class="text-xs font-semibold text-gray-600 mb-1 block">첨부 이미지 <span class="text-gray-400 font-normal">(JPG 자동 변환·축소)</span></label>
+          <div class="flex items-center gap-2">
+            <input type="file" id="bulkImageFile" accept="image/*" class="hidden" onchange="onBulkImagePick(this)">
+            <button type="button" onclick="document.getElementById('bulkImageFile').click()" class="px-3 py-2 border border-gray-300 rounded-lg text-xs text-gray-700 hover:bg-gray-50"><i class="fas fa-upload mr-1"></i>이미지 선택</button>
+            <img id="bulkImagePreview" class="hidden h-12 w-12 object-cover rounded border" alt="">
+            <span id="bulkImageInfo" class="text-xs text-gray-400 flex-1 truncate">선택된 이미지 없음</span>
+            <button type="button" id="bulkImageClearBtn" onclick="clearBulkImage()" class="hidden text-xs text-gray-400 hover:text-red-600"><i class="fas fa-times"></i></button>
+          </div>
         </div>
         <div>
           <label class="text-xs font-semibold text-gray-600 mb-1 block">본문</label>
@@ -158,10 +172,51 @@ export function messagesPage(c: Context<HonoEnv>) {
           <div class="text-xs text-gray-400 mt-1">지정한 시간에 자동 발송됩니다 (카카오톡/SMS만 지원)</div>
         </div>
       </div>
-      <div class="flex justify-end pt-4 border-t">
+      <div class="flex items-center justify-between pt-4 border-t">
+        <div id="bulkCostInfo" class="text-xs text-gray-500"></div>
         <button onclick="sendBulk()" id="bulkSendBtn" class="ds-btn ds-btn-primary text-sm font-medium">
           <i class="fas fa-paper-plane mr-1"></i><span id="bulkSendLabel">발송</span>
         </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="panelGroups" class="hidden">
+    <div class="flex items-center justify-between mb-4">
+      <div class="text-sm text-gray-500">거래처를 그룹으로 묶어두면 대량 발송에서 그룹 하나로 수신자를 채울 수 있습니다.</div>
+      <button onclick="openGroupEditor()" class="ds-btn ds-btn-primary text-sm"><i class="fas fa-plus mr-1"></i>새 그룹</button>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div class="ds-card p-4 lg:col-span-1">
+        <div class="text-xs font-bold text-gray-600 mb-2">그룹 목록</div>
+        <div id="groupList" class="space-y-1"></div>
+      </div>
+      <div class="ds-card p-4 lg:col-span-2">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <div id="groupDetailName" class="text-sm font-bold text-gray-800">그룹을 선택하세요</div>
+            <div id="groupDetailDesc" class="text-xs text-gray-400"></div>
+          </div>
+          <div id="groupDetailActions" class="hidden flex gap-2">
+            <button onclick="openRecipientPicker('clients', true)" class="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"><i class="fas fa-user-plus mr-1"></i>거래처 추가</button>
+            <button onclick="editCurrentGroup()" class="px-3 py-1.5 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-50"><i class="fas fa-pen mr-1"></i>이름 수정</button>
+            <button onclick="deleteCurrentGroup()" class="px-3 py-1.5 border border-red-200 text-red-600 rounded text-xs hover:bg-red-50"><i class="fas fa-trash mr-1"></i>삭제</button>
+          </div>
+        </div>
+        <div id="groupMemberWarn" class="hidden text-xs text-amber-600 mb-2"></div>
+        <div class="overflow-hidden">
+          <table class="w-full ds-table ds-table-striped">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="col-name px-3 py-2 text-left text-xs font-semibold text-gray-600">이름</th>
+                <th class="col-phone px-3 py-2 text-left text-xs font-semibold text-gray-600">연락처</th>
+                <th class="col-email px-3 py-2 text-left text-xs font-semibold text-gray-600">이메일</th>
+                <th class="col-action px-3 py-2 text-center text-xs font-semibold text-gray-600">제거</th>
+              </tr>
+            </thead>
+            <tbody id="groupMemberBody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -295,6 +350,42 @@ export function messagesPage(c: Context<HonoEnv>) {
     <div class="p-4 border-t flex justify-end gap-2">
       <button onclick="closeRecipientPicker()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">취소</button>
       <button onclick="confirmRecipientPicker()" class="ds-btn ds-btn-primary text-sm"><i class="fas fa-check mr-1"></i>선택 완료</button>
+    </div>
+  </div>
+</div>
+
+<div id="groupPickerModal" class="ds-modal-overlay hidden flex items-center justify-center">
+  <div class="ds-modal w-[520px] max-h-[80vh] flex flex-col">
+    <div class="flex items-center justify-between p-4 border-b">
+      <h3 class="text-lg font-bold text-gray-800">그룹 선택</h3>
+      <button onclick="closeGroupPicker()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="flex-1 overflow-y-auto p-3" id="groupPickerList" style="max-height:420px;">
+      <div class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</div>
+    </div>
+    <div class="p-4 border-t text-xs text-gray-400">그룹을 클릭하면 수신자가 채워집니다. 그룹 만들기는 <b>그룹 관리</b> 탭에서.</div>
+  </div>
+</div>
+
+<div id="groupEditorModal" class="ds-modal-overlay hidden flex items-center justify-center">
+  <div class="ds-modal w-[420px] p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-lg font-bold text-gray-800" id="groupEditorTitle">새 그룹</h3>
+      <button onclick="closeGroupEditor()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="space-y-3">
+      <div>
+        <label class="text-xs font-semibold text-gray-600 mb-1 block">그룹명</label>
+        <input type="text" id="groupEditorName" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="예: 주요 거래처">
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-gray-600 mb-1 block">설명 <span class="text-gray-400 font-normal">(선택)</span></label>
+        <input type="text" id="groupEditorDesc" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="어떤 기준으로 묶은 그룹인지">
+      </div>
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeGroupEditor()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">취소</button>
+      <button onclick="saveGroupEditor()" class="ds-btn ds-btn-primary text-sm">저장</button>
     </div>
   </div>
 </div>

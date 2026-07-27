@@ -15,7 +15,7 @@ function msgClientTypeLabel(t) {
 
 function switchMsgTab(tab) {
   currentMsgTab = tab;
-  ['history', 'bulk', 'templates', 'stats'].forEach(function(t) {
+  ['history', 'bulk', 'groups', 'templates', 'stats'].forEach(function(t) {
     var btn = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     var panel = document.getElementById('panel' + t.charAt(0).toUpperCase() + t.slice(1));
     if (t === tab) {
@@ -28,6 +28,7 @@ function switchMsgTab(tab) {
   });
   // 탭 진입 시 데이터 로드
   if (tab === 'bulk') loadBulkTemplates();
+  if (tab === 'groups') loadContactGroups();
   if (tab === 'templates') switchTplSubTab(currentTplSubTab || 'kakao');
   if (tab === 'stats') loadStats();
 }
@@ -274,6 +275,7 @@ function setBulkChannel(ch) {
   var channels = [
     { key: 'kakao', id: 'bulkChKakao', active: 'bg-blue-50 border-2 border-blue-500 text-blue-700' },
     { key: 'sms', id: 'bulkChSms', active: 'bg-green-50 border-2 border-green-500 text-green-700' },
+    { key: 'mms', id: 'bulkChMms', active: 'bg-teal-50 border-2 border-teal-500 text-teal-700' },
     { key: 'email', id: 'bulkChEmail', active: 'bg-purple-50 border-2 border-purple-500 text-purple-700' }
   ];
   channels.forEach(function(c) {
@@ -286,8 +288,17 @@ function setBulkChannel(ch) {
   var subjectArea = document.getElementById('bulkSubjectArea');
   var byteCounter = document.getElementById('bulkByteCounter');
   var channelLabel = document.getElementById('bulkChannelLabel');
+  var imageArea = document.getElementById('bulkImageArea');
+  if (imageArea) imageArea.classList.toggle('hidden', ch !== 'mms');
 
-  if (ch === 'kakao') {
+  if (ch === 'mms') {
+    kakaoArea.classList.add('hidden');
+    subjectArea.classList.remove('hidden');
+    byteCounter.classList.remove('hidden');
+    channelLabel.textContent = 'MMS';
+    channelLabel.className = 'text-xs text-teal-600 font-medium';
+    updateBulkByteCounter();
+  } else if (ch === 'kakao') {
     kakaoArea.classList.remove('hidden');
     subjectArea.classList.add('hidden');
     byteCounter.classList.add('hidden');
@@ -324,7 +335,7 @@ function setBulkChannel(ch) {
 
   // 예약 발송: 카카오톡/SMS만 지원
   var scheduleArea = document.getElementById('bulkScheduleArea');
-  if (scheduleArea) scheduleArea.classList.toggle('hidden', ch !== 'kakao' && ch !== 'sms');
+  if (scheduleArea) scheduleArea.classList.toggle('hidden', ch !== 'kakao' && ch !== 'sms' && ch !== 'mms');
 
   updateBulkSendLabel();
 }
@@ -392,12 +403,25 @@ function setBulkTarget(target) {
 }
 
 // === 수신자 선택 팝업 ===
-function openRecipientPicker(type) {
-  _recipientPickerType = type;
-  bulkTarget = type;
-  setBulkTarget(type);
+// forGroup=true면 대량발송 수신자가 아니라 '현재 그룹에 멤버 추가' 용도로 동작한다.
+// 이때 대량발송 선택 상태를 건드리면 안 되므로 백업 후 복원한다.
+var _recipientForGroup = false;
+var _recipientBulkBackup = null;
 
-  document.getElementById('recipientPickerTitle').textContent = type === 'employees' ? '직원 선택' : '거래처 선택';
+function openRecipientPicker(type, forGroup) {
+  _recipientPickerType = type;
+  _recipientForGroup = !!forGroup;
+  if (_recipientForGroup) {
+    if (!msgCurrentGroupId) { showToast('먼저 그룹을 선택해주세요', 'warning'); return; }
+    _recipientBulkBackup = bulkSelectedRecipients;
+    bulkSelectedRecipients = [];
+  } else {
+    bulkTarget = type;
+    setBulkTarget(type);
+  }
+
+  document.getElementById('recipientPickerTitle').textContent = _recipientForGroup ? '그룹에 거래처 추가'
+    : (type === 'employees' ? '직원 선택' : '거래처 선택');
   var searchEl = document.getElementById('recipientSearch');
   if (searchEl) {
     searchEl.value = '';
@@ -540,9 +564,33 @@ function updateRecipientSelectedCount() {
 
 function closeRecipientPicker() {
   document.getElementById('recipientPickerModal').classList.add('hidden');
+  // 그룹 추가 모드에서 취소/닫기 → 대량발송 선택 상태 원복
+  if (_recipientForGroup) {
+    bulkSelectedRecipients = _recipientBulkBackup || [];
+    _recipientBulkBackup = null;
+    _recipientForGroup = false;
+  }
 }
 
-function confirmRecipientPicker() {
+async function confirmRecipientPicker() {
+  // 그룹 멤버 추가 모드
+  if (_recipientForGroup) {
+    var picked = bulkSelectedRecipients.slice();
+    var groupId = msgCurrentGroupId;
+    closeRecipientPicker();   // 여기서 백업 복원 + 모드 해제
+    if (!groupId || picked.length === 0) return;
+    try {
+      await axios.post('/api/contact-groups/' + groupId + '/members', {
+        members: picked.map(function(p) { return { member_type: 'CLIENT', member_id: p.id }; })
+      });
+      await loadContactGroups(true);
+      showToast(picked.length + '곳을 그룹에 추가했습니다', 'success');
+    } catch (e) {
+      showToast((e.response && e.response.data && e.response.data.error) || '그룹 추가 실패', 'error');
+    }
+    return;
+  }
+
   closeRecipientPicker();
   var infoEl = document.getElementById('bulkTargetInfo');
   if (bulkSelectedRecipients.length > 0) {
@@ -581,12 +629,31 @@ function removeSelectedRecipient(id) {
   updateBulkSendLabel();
 }
 
+// 현재 채널에서 실제로 발송 가능한(연락처가 있는) 수신자만 — 비용 계산·발송 payload 공통 기준
+function bulkEffectiveRecipients() {
+  var field = (bulkChannel === 'email') ? 'email' : 'phone';
+  return bulkSelectedRecipients.filter(function(r) { return !!r[field]; });
+}
+
 function updateBulkSendLabel() {
-  var chLabel = { kakao: '카카오톡', sms: '문자', email: '이메일' };
+  var chLabel = { kakao: '카카오톡', sms: '문자', mms: 'MMS', email: '이메일' };
   document.getElementById('bulkSendLabel').textContent = (chLabel[bulkChannel] || '') + ' 발송';
   var sendBtn = document.getElementById('bulkSendBtn');
-  var colors = { kakao: 'bg-blue-600 hover:bg-blue-700', sms: 'bg-green-600 hover:bg-green-700', email: 'bg-purple-600 hover:bg-purple-700' };
+  var colors = { kakao: 'bg-blue-600 hover:bg-blue-700', sms: 'bg-green-600 hover:bg-green-700', mms: 'bg-teal-600 hover:bg-teal-700', email: 'bg-purple-600 hover:bg-purple-700' };
   sendBtn.className = 'px-6 py-2.5 text-white rounded-lg text-sm font-medium ' + (colors[bulkChannel] || 'bg-blue-600 hover:bg-blue-700');
+
+  // 예상 비용 — MMS(100원/건)는 실수 한 번의 금액이 커서 항상 눈에 보이게 둔다.
+  // ⚠️ 연락처가 없는 수신자는 실제 발송에서 빠지므로 비용 계산에서도 빼야 한다(과대표시 방지).
+  var costEl = document.getElementById('bulkCostInfo');
+  if (!costEl) return;
+  var unit = { kakao: 7, sms: 15, mms: 100, email: 0 }[bulkChannel];
+  var eff = bulkEffectiveRecipients();
+  var skipped = bulkSelectedRecipients.length - eff.length;
+  if (eff.length === 0) { costEl.textContent = ''; return; }
+  var suffix = skipped > 0 ? ' <span class="text-amber-600">· 연락처 없음 ' + skipped + '명 제외</span>' : '';
+  if (!unit) { costEl.innerHTML = '발송 대상 <b>' + eff.length + '명</b>' + suffix; return; }
+  costEl.innerHTML = '예상 비용 <b class="' + (bulkChannel === 'mms' ? 'text-teal-700' : 'text-gray-700') + '">'
+    + eff.length + '명 × ' + unit + '원 = ' + (eff.length * unit).toLocaleString() + '원</b> <span class="text-gray-400">(부가세 별도)</span>' + suffix;
 }
 
 function loadBulkTemplates() {
@@ -613,14 +680,246 @@ function onBulkTemplateChange() {
 }
 
 function updateBulkByteCounter() {
-  if (bulkChannel !== 'sms') return;
+  if (bulkChannel !== 'sms' && bulkChannel !== 'mms') return;
   var content = document.getElementById('bulkContent').value;
   var bytes = 0;
   for (var i = 0; i < content.length; i++) bytes += content.charCodeAt(i) > 127 ? 2 : 1;
+  // MMS는 항상 장문 규격(2000byte) — SMS/LMS 자동전환 라벨을 덮어쓰지 않는다
+  if (bulkChannel === 'mms') {
+    document.getElementById('bulkChannelLabel').textContent = 'MMS';
+    document.getElementById('bulkByteCounter').textContent = bytes + ' / 2000 byte';
+    return;
+  }
   var subject = document.getElementById('bulkSubject').value.trim();
   var isLms = bytes > 90 || subject.length > 0;
   document.getElementById('bulkChannelLabel').textContent = isLms ? 'LMS' : 'SMS';
   document.getElementById('bulkByteCounter').textContent = bytes + ' / ' + (isLms ? '2000' : '90') + ' byte';
+}
+
+// === MMS 대량발송: 이미지 첨부 (압축 규칙은 shell.js 단일 소스 재사용) ===
+var bulkImageB64 = null;
+
+function onBulkImagePick(input) {
+  var file = input && input.files && input.files[0];
+  if (!file) return;
+  var infoEl = document.getElementById('bulkImageInfo');
+  infoEl.textContent = '이미지 처리 중...';
+  var reader = new FileReader();
+  reader.onload = async function(e) {
+    var compressed = await window.compressImageForMms(e.target.result);
+    if (!compressed) {
+      bulkImageB64 = null;
+      infoEl.textContent = '이미지 처리 실패 (다른 파일을 사용해주세요)';
+      updateBulkSendLabel();
+      return;
+    }
+    bulkImageB64 = compressed.slice(compressed.indexOf('base64,') + 7);
+    var kb = Math.round(window.mmsImageBytes(bulkImageB64) / 1024);
+    infoEl.textContent = file.name + ' · ' + kb + 'KB';
+    var prev = document.getElementById('bulkImagePreview');
+    prev.src = compressed; prev.classList.remove('hidden');
+    document.getElementById('bulkImageClearBtn').classList.remove('hidden');
+    updateBulkSendLabel();
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearBulkImage() {
+  bulkImageB64 = null;
+  var f = document.getElementById('bulkImageFile'); if (f) f.value = '';
+  document.getElementById('bulkImageInfo').textContent = '선택된 이미지 없음';
+  document.getElementById('bulkImagePreview').classList.add('hidden');
+  document.getElementById('bulkImageClearBtn').classList.add('hidden');
+  updateBulkSendLabel();
+}
+
+// ===========================================================================
+// === 연락처 그룹 (정적) — 만들어두고 대량발송에서 골라 쓴다 ===
+// 멤버는 참조만 저장하므로 거래처 연락처가 바뀌어도 그룹은 손댈 필요 없다.
+// ===========================================================================
+var msgGroups = [];
+var msgCurrentGroupId = null;
+var msgGroupEditorId = null;   // null=신규, 숫자=수정
+
+async function loadContactGroups(keepSelection) {
+  try {
+    var res = await axios.get('/api/contact-groups');
+    msgGroups = res.data.data || [];
+  } catch (e) {
+    msgGroups = [];
+    showToast('그룹 목록 조회 실패', 'error');
+  }
+  var el = document.getElementById('groupList');
+  if (!el) { console.warn('[messages] #groupList not found'); return; }
+  if (msgGroups.length === 0) {
+    el.innerHTML = '<div class="text-center py-6 text-sm text-gray-400">등록된 그룹이 없습니다.<br>오른쪽 위 <b>새 그룹</b>으로 만들어보세요.</div>';
+  } else {
+    el.innerHTML = msgGroups.map(function(g) {
+      var active = g.id === msgCurrentGroupId;
+      return '<button onclick="selectContactGroup(' + g.id + ')" class="w-full text-left px-3 py-2 rounded-lg text-sm '
+        + (active ? 'bg-blue-50 border border-blue-300 text-blue-800' : 'hover:bg-gray-50 border border-transparent text-gray-700') + '">'
+        + '<div class="flex items-center justify-between"><span class="font-medium truncate">' + escapeHtml(g.name) + '</span>'
+        + '<span class="text-xs text-gray-400 ml-2 whitespace-nowrap">' + (g.member_count || 0) + '명</span></div>'
+        + (g.description ? '<div class="text-xs text-gray-400 truncate">' + escapeHtml(g.description) + '</div>' : '')
+        + '</button>';
+    }).join('');
+  }
+  if (keepSelection && msgCurrentGroupId) selectContactGroup(msgCurrentGroupId);
+}
+
+async function selectContactGroup(groupId) {
+  msgCurrentGroupId = groupId;
+  var g = msgGroups.find(function(x) { return x.id === groupId; });
+  document.getElementById('groupDetailName').textContent = g ? g.name : '';
+  document.getElementById('groupDetailDesc').textContent = g && g.description ? g.description : '';
+  document.getElementById('groupDetailActions').classList.remove('hidden');
+  loadContactGroups(false);   // 선택 하이라이트 갱신 (재귀 방지: keepSelection=false)
+
+  var body = document.getElementById('groupMemberBody');
+  body.innerHTML = '<tr><td colspan="4" class="text-center py-6 text-gray-400"><i class="fas fa-spinner fa-spin"></i></td></tr>';
+  try {
+    var res = await axios.get('/api/contact-groups/' + groupId + '/members');
+    var d = res.data.data || { members: [] };
+    var warn = document.getElementById('groupMemberWarn');
+    var warns = [];
+    if (d.missing_phone > 0) warns.push('연락처가 없는 멤버 ' + d.missing_phone + '명은 문자·알림톡 발송 대상에서 자동 제외됩니다.');
+    if (d.orphan_count > 0) warns.push('삭제되었거나 조회되지 않는 거래처 ' + d.orphan_count + '건이 그룹에 남아 있습니다(발송 대상 아님). 목록의 인원수와 실제 대상 수가 다를 수 있습니다.');
+    if (warns.length > 0) {
+      warn.innerHTML = warns.join('<br>');
+      warn.classList.remove('hidden');
+    } else {
+      warn.classList.add('hidden');
+    }
+    if (d.members.length === 0) {
+      body.innerHTML = '<tr><td colspan="4" class="text-center py-6 text-sm text-gray-400">멤버가 없습니다. <b>거래처 추가</b>로 담아보세요.</td></tr>';
+      return;
+    }
+    body.innerHTML = d.members.map(function(m) {
+      return '<tr class="border-b border-gray-100">'
+        + '<td class="px-3 py-2 text-sm">' + escapeHtml(m.name || '') + '</td>'
+        + '<td class="px-3 py-2 text-sm ' + (m.phone ? 'text-gray-600' : 'text-amber-600') + '">' + escapeHtml(m.phone || '연락처 없음') + '</td>'
+        + '<td class="px-3 py-2 text-sm text-gray-500">' + escapeHtml(m.email || '-') + '</td>'
+        + '<td class="px-3 py-2 text-center"><button onclick="removeGroupMember(\'' + m.member_type + '\',' + m.member_id + ')" class="text-gray-400 hover:text-red-600 text-xs"><i class="fas fa-times"></i></button></td>'
+        + '</tr>';
+    }).join('');
+  } catch (e) {
+    body.innerHTML = '<tr><td colspan="4" class="text-center py-6 text-sm text-red-500">멤버 조회 실패</td></tr>';
+  }
+}
+
+function openGroupEditor(groupId) {
+  msgGroupEditorId = groupId || null;
+  var g = groupId ? msgGroups.find(function(x) { return x.id === groupId; }) : null;
+  document.getElementById('groupEditorTitle').textContent = g ? '그룹 수정' : '새 그룹';
+  document.getElementById('groupEditorName').value = g ? g.name : '';
+  document.getElementById('groupEditorDesc').value = g && g.description ? g.description : '';
+  document.getElementById('groupEditorModal').classList.remove('hidden');
+}
+
+function closeGroupEditor() {
+  document.getElementById('groupEditorModal').classList.add('hidden');
+}
+
+function editCurrentGroup() {
+  if (!msgCurrentGroupId) return;
+  openGroupEditor(msgCurrentGroupId);
+}
+
+async function saveGroupEditor() {
+  var name = document.getElementById('groupEditorName').value.trim();
+  var desc = document.getElementById('groupEditorDesc').value.trim();
+  if (!name) { showToast('그룹명을 입력해주세요', 'warning'); return; }
+  try {
+    if (msgGroupEditorId) {
+      await axios.patch('/api/contact-groups/' + msgGroupEditorId, { name: name, description: desc });
+    } else {
+      var res = await axios.post('/api/contact-groups', { name: name, description: desc });
+      msgCurrentGroupId = res.data.data.id;
+    }
+    closeGroupEditor();
+    await loadContactGroups(true);
+    showToast('저장되었습니다', 'success');
+  } catch (e) {
+    showToast((e.response && e.response.data && e.response.data.error) || '저장 실패', 'error');
+  }
+}
+
+async function deleteCurrentGroup() {
+  if (!msgCurrentGroupId) return;
+  var g = msgGroups.find(function(x) { return x.id === msgCurrentGroupId; });
+  if (!(await showConfirm('그룹 "' + (g ? g.name : '') + '"을(를) 삭제합니다.\n(거래처 자체는 삭제되지 않습니다)'))) return;
+  try {
+    await axios.delete('/api/contact-groups/' + msgCurrentGroupId);
+    msgCurrentGroupId = null;
+    document.getElementById('groupDetailName').textContent = '그룹을 선택하세요';
+    document.getElementById('groupDetailDesc').textContent = '';
+    document.getElementById('groupDetailActions').classList.add('hidden');
+    document.getElementById('groupMemberBody').innerHTML = '';
+    await loadContactGroups(false);
+    showToast('삭제되었습니다', 'success');
+  } catch (e) {
+    showToast('삭제 실패', 'error');
+  }
+}
+
+async function removeGroupMember(memberType, memberId) {
+  if (!msgCurrentGroupId) return;
+  try {
+    await axios.delete('/api/contact-groups/' + msgCurrentGroupId + '/members/' + memberType + '/' + memberId);
+    await loadContactGroups(true);
+  } catch (e) {
+    showToast('제거 실패', 'error');
+  }
+}
+
+// === 대량발송: 그룹으로 수신자 채우기 ===
+async function openGroupPicker() {
+  document.getElementById('groupPickerModal').classList.remove('hidden');
+  var el = document.getElementById('groupPickerList');
+  el.innerHTML = '<div class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</div>';
+  try {
+    var res = await axios.get('/api/contact-groups');
+    msgGroups = res.data.data || [];
+    if (msgGroups.length === 0) {
+      el.innerHTML = '<div class="text-center py-8 text-sm text-gray-400">등록된 그룹이 없습니다.<br><b>그룹 관리</b> 탭에서 먼저 만들어주세요.</div>';
+      return;
+    }
+    el.innerHTML = msgGroups.map(function(g) {
+      return '<button onclick="applyGroupToBulk(' + g.id + ')" class="w-full text-left px-3 py-2.5 rounded-lg hover:bg-blue-50 border border-gray-200 mb-1.5">'
+        + '<div class="flex items-center justify-between"><span class="text-sm font-medium text-gray-800">' + escapeHtml(g.name) + '</span>'
+        + '<span class="text-xs text-gray-500">' + (g.member_count || 0) + '명</span></div>'
+        + (g.description ? '<div class="text-xs text-gray-400">' + escapeHtml(g.description) + '</div>' : '')
+        + '</button>';
+    }).join('');
+  } catch (e) {
+    el.innerHTML = '<div class="text-center py-8 text-sm text-red-500">그룹 조회 실패</div>';
+  }
+}
+
+function closeGroupPicker() {
+  document.getElementById('groupPickerModal').classList.add('hidden');
+}
+
+// 그룹 → 수신자 채우기. 연락처는 지금 조회하므로 항상 최신값이 쓰인다.
+async function applyGroupToBulk(groupId) {
+  try {
+    var res = await axios.get('/api/contact-groups/' + groupId + '/members');
+    var d = res.data.data || { members: [] };
+    bulkTarget = 'clients';   // 서버 계약상 receivers를 직접 넘기므로 custom 경로와 동일 취급
+    setBulkTarget('clients');
+    bulkSelectedRecipients = d.members.map(function(m) {
+      return { id: m.member_id, name: m.name, phone: m.phone || '', email: m.email || '' };
+    });
+    closeGroupPicker();
+    var g = msgGroups.find(function(x) { return x.id === groupId; });
+    var infoEl = document.getElementById('bulkTargetInfo');
+    infoEl.textContent = '그룹 "' + (g ? g.name : '') + '" · 멤버 ' + bulkSelectedRecipients.length + '명';
+    infoEl.className = 'text-sm text-blue-600 mb-2';
+    renderSelectedTags();
+    updateBulkSendLabel();
+  } catch (e) {
+    showToast('그룹 수신자 조회 실패', 'error');
+  }
 }
 
 // === 템플릿 관리 ===
@@ -782,6 +1081,11 @@ async function sendBulk() {
   var templateCode = bulkChannel === 'kakao' ? document.getElementById('bulkTemplate').value : '';
   if (bulkChannel === 'kakao' && !templateCode) { showToast('카카오톡 템플릿을 선택해주세요', 'warning'); return; }
 
+  if (bulkChannel === 'mms' && !bulkImageB64) { showToast('MMS는 첨부 이미지를 선택해주세요', 'warning'); return; }
+
+  // ⚠️ 서버 계약: receivers[].phone|email + content 객체(body/subject/template_code/sndDT).
+  //    과거 이 함수는 receivers[].num + content 문자열 + 최상위 subject를 보내 400으로 전건 실패했다
+  //    (payroll.js만 올바른 형태였음). 계약을 payroll.js·서버와 일치시킨다.
   var receivers = [];
   var contactField = (bulkChannel === 'email') ? 'email' : 'phone';
 
@@ -790,18 +1094,22 @@ async function sendBulk() {
     for (var i = 0; i < lines.length; i++) {
       var parts = lines[i].split(',');
       if (parts[0] && parts[0].trim()) {
-        receivers.push({ num: parts[0].trim(), name: (parts[1] || '').trim() });
+        var rcv = { name: (parts[1] || '').trim() };
+        rcv[contactField] = parts[0].trim();
+        receivers.push(rcv);
       }
     }
     if (receivers.length === 0) { showToast('수신자를 입력해주세요', 'warning'); return; }
-  } else if (bulkTarget === 'employees' || bulkTarget === 'clients') {
-    // 선택된 수신자 사용
+  } else {
+    // 직원/거래처/그룹 선택 결과 사용
     if (bulkSelectedRecipients.length === 0) {
-      showToast('수신자를 선택해주세요. 직원/거래처 선택 버튼을 눌러주세요.', 'warning');
+      showToast('수신자를 선택해주세요. 직원/거래처/그룹 선택 버튼을 눌러주세요.', 'warning');
       return;
     }
     receivers = bulkSelectedRecipients.filter(function(r) { return !!r[contactField]; }).map(function(r) {
-      return { num: r[contactField], name: r.name };
+      var o = { name: r.name };
+      o[contactField] = r[contactField];
+      return o;
     });
     if (receivers.length === 0) {
       showToast('선택된 수신자 중 ' + (bulkChannel === 'email' ? '이메일' : '전화번호') + '이 있는 수신자가 없습니다.', 'warning');
@@ -809,21 +1117,32 @@ async function sendBulk() {
     }
   }
 
-  var chLabel = { kakao: '카카오톡', sms: '문자', email: '이메일' };
+  var chLabel = { kakao: '카카오톡', sms: '문자', mms: 'MMS', email: '이메일' };
+  var unitCost = { kakao: 7, sms: 15, mms: 100, email: 0 }[bulkChannel] || 0;
   var confirmMsg = receivers.length + '명에게 ' + chLabel[bulkChannel] + '을(를) 발송합니다.';
+  if (unitCost) {
+    confirmMsg += '\n예상 비용: ' + receivers.length + ' × ' + unitCost + '원 = '
+      + (receivers.length * unitCost).toLocaleString() + '원 (부가세 별도)';
+  }
   if (!(await showConfirm(confirmMsg))) return;
 
   try {
-    var payload = { channel: bulkChannel, target_type: 'custom', content: content, receivers: receivers };
     var subject = document.getElementById('bulkSubject') ? document.getElementById('bulkSubject').value.trim() : '';
-    if (subject) payload.subject = subject;
-    if (templateCode) payload.template_code = templateCode;
+    var payload = {
+      channel: bulkChannel,
+      target_type: 'custom',
+      receivers: receivers,
+      content: { body: content }
+    };
+    if (subject) payload.content.subject = subject;
+    if (templateCode) payload.content.template_code = templateCode;
+    if (bulkChannel === 'mms') payload.content.image_base64 = bulkImageB64;
 
     // 예약 발송
     var scheduleToggle = document.getElementById('bulkScheduleToggle');
-    if (scheduleToggle && scheduleToggle.checked && (bulkChannel === 'kakao' || bulkChannel === 'sms')) {
+    if (scheduleToggle && scheduleToggle.checked && (bulkChannel === 'kakao' || bulkChannel === 'sms' || bulkChannel === 'mms')) {
       var scheduleAt = document.getElementById('bulkScheduleAt').value;
-      if (scheduleAt) payload.sndDT = scheduleAt.replace(/[-T:]/g, '').substring(0, 14);
+      if (scheduleAt) payload.content.sndDT = scheduleAt.replace(/[-T:]/g, '').substring(0, 14);
     }
 
     var res = await axios.post('/api/messages/send-bulk', payload);

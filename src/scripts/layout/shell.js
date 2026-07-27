@@ -2069,6 +2069,11 @@ function _msgCompressImage(dataUri) {
   });
 }
 
+// 다른 화면(메시지 대량발송 등)에서도 동일 규칙으로 압축하도록 전역 노출.
+// 상한은 window.MMS_IMAGE(서버 constants 주입) 단일 소스.
+window.compressImageForMms = _msgCompressImage;
+window.mmsImageBytes = _msgB64Bytes;
+
 async function setMsgImageFromDataUri(dataUri, label) {
   var infoEl  = document.getElementById('msgImageInfo');
   var clearEl = document.getElementById('msgImageClearBtn');
