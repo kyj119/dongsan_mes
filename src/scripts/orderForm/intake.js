@@ -1,16 +1,62 @@
-// orderForm/intake.js — 디자이너 가공 대기물(designer_intakes) 프리필 피커
-// spec: docs/superpowers/specs/2026-07-16-ia-designer-session-loop.md §4.4
-// 흐름: 거래처 선택(client.js selectClient 훅) → 대기물 배지 → 피커 모달
-//        → 라인 자동 채움(크기·마감·수량·ai_analysis_id·썸네일) → 주문 저장 성공 후 absorb(calc.js 훅)
+// orderForm/intake.js — 디자이너 가공 대기함 트레이 (B단계: 작업 그룹핑·내작업·일괄 프리필)
+// spec: docs/superpowers/specs/2026-07-23-ia-palette-session-loop.md §3-B·D6·§4.2
+// 흐름: 배지 → 트레이(거래처→작업(batch_key) 2단 그룹핑 · "내 작업"=로그인 user id↔worker_id)
+//        → 단건/그룹/선택 일괄 프리필(-3 passthrough, 거래처 client_id 상속)
+//        → 주문 저장 성공 후 라인별 absorb(calc.js 훅 — 서버가 ai_analysis_id로 order_item_id 역추적)
 
-            var _ofIntakeCache = []; // 현재 거래처의 waiting 대기물
+            var _ofIntakeCache = [];   // waiting 대기물 (lite rows — 썸네일 대신 has_thumbnail)
+            var _ofTrayThumbs = {};    // intake id → base64|null (lazy 캐시, /intakes/:id/thumb)
+            var _ofTraySel = {};       // intake id → true (트레이 체크 선택)
+            var _ofTrayGroups = [];    // 직전 렌더의 작업 그룹 [{clientId, clientName, rows:[..]}]
+            var _ofTrayMyId = null;    // 로그인 user id — "내 작업" 필터(worker_id 매칭)
+            try {
+                var _ofTrayUser = JSON.parse(localStorage.getItem('user') || '{}');
+                if (_ofTrayUser && _ofTrayUser.id != null && isFinite(Number(_ofTrayUser.id))) _ofTrayMyId = Number(_ofTrayUser.id);
+            } catch (e) { /* 로그인 정보 파싱 실패 → 내작업 토글 숨김 */ }
 
             function ofIntakeThumbSrc(t) {
                 if (!t) return '';
                 return t.indexOf('data:') === 0 ? t : ('data:image/png;base64,' + t);
             }
 
-            // 대기물 배지 — 거래처 무관 전체 waiting (2026-07-17: 거래처 필터 제거, 식별=썸네일)
+            // lazy 썸네일: 목록엔 has_thumbnail만 오고 실물은 개별 fetch (r2:thumb: 마커 유출 방지 패턴)
+            function ofIntakeThumbGet(id) {
+                if (Object.prototype.hasOwnProperty.call(_ofTrayThumbs, id)) return Promise.resolve(_ofTrayThumbs[id]);
+                return axios.get('/api/workbench/intakes/' + id + '/thumb')
+                    .then(function(res) {
+                        var t = (res.data && res.data.data && res.data.data.thumbnail) || null;
+                        _ofTrayThumbs[id] = t;
+                        return t;
+                    })
+                    .catch(function() { _ofTrayThumbs[id] = null; return null; });
+            }
+
+            // memo(=source_folder)는 배치에서 '<배치폴더>#_N' — N=배치 내 순번(식별 메타)
+            function ofTraySeqOf(r) {
+                var m = /#_(\d+)$/.exec(String(r.memo || ''));
+                return m ? parseInt(m[1], 10) : null;
+            }
+
+            function ofTrayBasename(p) {
+                if (!p) return '';
+                var parts = String(p).split(/[\\\/]/);
+                return parts[parts.length - 1] || '';
+            }
+
+            function ofTrayFinSummary(r) {
+                var fin = '';
+                try {
+                    var fj = r.finishing_json ? JSON.parse(r.finishing_json) : null;
+                    if (fj) {
+                        var parts = [];
+                        ['top', 'bottom', 'left', 'right'].forEach(function(d) { if (fj[d]) parts.push(fj[d]); });
+                        fin = parts.filter(function(v, ix) { return parts.indexOf(v) === ix; }).join('·');
+                    }
+                } catch (e) { /* 표시용 파싱 실패 무시 */ }
+                return fin;
+            }
+
+            // 대기물 배지 — 전체 waiting 건수 + 트레이 진입점
             window.ofIntakeRefreshBadge = function() {
                 var anchor = document.getElementById('creditBanner');
                 if (!anchor || !anchor.parentNode) return;
@@ -23,18 +69,24 @@
                 }
                 badge.innerHTML = '';
                 _ofIntakeCache = [];
-                axios.get('/api/workbench/intakes', { params: { status: 'waiting', limit: 50 } })
+                axios.get('/api/workbench/intakes', { params: { status: 'waiting', limit: 200, lite: 1 } })
                     .then(function(res) {
                         var rows = (res.data && res.data.data) || [];
                         if (!rows.length) return;
                         _ofIntakeCache = rows;
+                        var mine = 0;
+                        if (_ofTrayMyId != null) {
+                            for (var i = 0; i < rows.length; i++) if (Number(rows[i].worker_id) === _ofTrayMyId) mine++;
+                        }
                         badge.innerHTML = '<button type="button" onclick="ofIntakeOpenPicker()" '
                             + 'class="px-3 py-1.5 text-sm rounded-lg bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200">'
-                            + '<i class="fas fa-inbox mr-1"></i>가공 대기물 <b>' + rows.length + '</b>건 — 클릭해서 라인으로 불러오기</button>';
+                            + '<i class="fas fa-inbox mr-1"></i>가공 대기함 <b>' + rows.length + '</b>건'
+                            + (mine ? ' <span class="text-purple-700">(내 작업 ' + mine + ')</span>' : '')
+                            + ' — 클릭해서 라인으로 불러오기</button>';
                     })
                     .catch(function(e) { console.warn('[orderForm] 가공 대기물 조회 실패', e); }); // 권한 없음(403) 등은 조용히 무시
             };
-            // client.js selectClient() 훅 호환 (거래처 변경 시 재조회)
+            // client.js selectClient() 훅 — 거래처 변경 시 재조회(주문선행 자동필터는 트레이 오픈 시 반영)
             window.ofIntakeOnClientSelected = function() { ofIntakeRefreshBadge(); };
             // 폼 로드 시 1회 노출 (거래처 선택 전에도 대기물 보이게)
             if (document.readyState === 'loading') {
@@ -43,71 +95,178 @@
                 ofIntakeRefreshBadge();
             }
 
-            // 피커 행 1개 HTML (담당자·키워드·후가공 표기)
-            function ofIntakeRowHtml(r) {
-                var thumb = r.thumbnail
-                    ? '<img src="' + escapeHtml(ofIntakeThumbSrc(r.thumbnail)) + '" style="width:56px;height:56px;object-fit:contain;background:#f3f4f6;border-radius:6px;flex:none">'
-                    : '<div style="width:56px;height:56px;background:#f3f4f6;border-radius:6px;flex:none"></div>';
-                var fin = '';
-                try {
-                    var fj = r.finishing_json ? JSON.parse(r.finishing_json) : null;
-                    if (fj) {
-                        var parts = [];
-                        ['top', 'bottom', 'left', 'right'].forEach(function(d) { if (fj[d]) parts.push(fj[d]); });
-                        fin = parts.filter(function(v, ix) { return parts.indexOf(v) === ix; }).join('·');
-                    }
-                } catch (e) { /* 표시용 파싱 실패 무시 */ }
-                var modeKo = r.mode === 'impose' ? '모아찍기용' : (r.mode === 'both' ? '단건+모아찍기' : '단건');
-                return '<div class="client-modal-row flex items-center gap-3" onclick="ofIntakePick(' + r.id + ')">'
+            // ── 트레이 렌더 ──────────────────────────────────────────────
+
+            // 트레이 행 1개 (체크박스 + 썸네일 lazy + 식별 메타: 파일명·순번·크기·가공자·시각)
+            function ofTrayRowHtml(r) {
+                var thumb = r.has_thumbnail
+                    ? '<img data-itk="' + r.id + '" style="width:48px;height:48px;object-fit:contain;background:#f3f4f6;border-radius:6px;flex:none">'
+                    : '<div style="width:48px;height:48px;background:#f3f4f6;border-radius:6px;flex:none"></div>';
+                var seq = ofTraySeqOf(r);
+                var fname = ofTrayBasename(r.eps_path || r.work_ai_path);
+                var fin = ofTrayFinSummary(r);
+                return '<div class="flex items-center gap-2 px-3 py-2 border-b border-gray-100 hover:bg-blue-50">'
+                    + '<input type="checkbox" ' + (_ofTraySel[r.id] ? 'checked ' : '') + 'onchange="ofTrayRowSel(' + r.id + ', this.checked)" class="itk-row-chk flex-none">'
                     + thumb
-                    + '<div class="flex-1 min-w-0">'
-                    + '<div class="font-medium text-sm truncate">' + escapeHtml(r.client_name || '') + ' · '
-                    + (r.width_cm != null ? r.width_cm : '?') + '×' + (r.height_cm != null ? r.height_cm : '?') + 'cm ×' + (r.qty || 1)
-                    + (r.keyword ? ' · <span class="text-blue-600">' + escapeHtml(r.keyword) + '</span>' : '') + '</div>'
+                    + '<div class="flex-1 min-w-0 cursor-pointer" onclick="ofIntakePick(' + r.id + ')" title="클릭 시 이 대기물만 라인으로 추가">'
+                    + '<div class="text-sm truncate">'
+                    + (seq != null ? '<span class="inline-block px-1.5 rounded bg-gray-200 text-gray-700 text-xs mr-1">#' + seq + '</span>' : '')
+                    + '<span class="font-medium">' + (r.width_cm != null ? r.width_cm : '?') + '×' + (r.height_cm != null ? r.height_cm : '?') + 'cm ×' + (r.qty || 1) + '</span>'
+                    + (r.keyword ? ' · <span class="text-blue-600">' + escapeHtml(r.keyword) + '</span>' : '')
+                    + '</div>'
                     + '<div class="text-xs text-gray-500 truncate">'
+                    + (fname ? escapeHtml(fname) + ' · ' : '')
                     + (r.worker_name ? '<span class="text-purple-600">' + escapeHtml(r.worker_name) + '</span> · ' : '')
                     + (fin ? escapeHtml(fin) : '마감 없음')
                     + (r.post_desc ? ' · ' + escapeHtml(r.post_desc) : '')
                     + (r.trim ? ' · 돔보' : '')
                     + (r.scale_pct && r.scale_pct < 100 ? ' · 1/' + Math.round(100 / r.scale_pct) : '')
-                    + ' · ' + modeKo
                     + (r.outline_failed ? ' · <span class="text-red-500">아웃라인 실패</span>' : '')
                     + ' · ' + ((typeof formatKST === 'function' && r.created_at) ? formatKST(r.created_at) : escapeHtml(String(r.created_at || '').slice(0, 16)))
                     + '</div></div>'
-                    + '<i class="fas fa-plus text-blue-500"></i>'
+                    + '<i class="fas fa-plus text-blue-400 flex-none"></i>'
                     + '</div>';
             }
 
-            // 필터 적용(클라이언트측): 담당자 + '이 거래처만'(현재 거래처 또는 미지정)
-            window.ofIntakeApplyFilter = function() {
+            // 필터 → 거래처/작업(batch_key) 2단 그룹핑 → HTML
+            window.ofTrayRender = function() {
+                var listEl = document.getElementById('intakeList');
+                if (!listEl) return;
                 var rows = _ofIntakeCache || [];
+                var myChk = document.getElementById('intakeMyWork');
                 var wSel = document.getElementById('intakeWorkerFilter');
                 var cChk = document.getElementById('intakeClientOnly');
                 var w = wSel ? wSel.value : '';
-                var clientOnly = cChk && cChk.checked;
-                var curClient = '';
-                var cs = document.getElementById('clientSearch');
-                if (cs) curClient = (cs.value || '').trim();
+                var selClientId = null;
+                var cIdEl = document.getElementById('clientId');
+                if (cIdEl && cIdEl.value) selClientId = Number(cIdEl.value);
+                var selClientName = '';
+                var csEl = document.getElementById('clientSearch');
+                if (csEl) selClientName = (csEl.value || '').trim();
+
                 var filtered = rows.filter(function(r) {
+                    if (myChk && myChk.checked && _ofTrayMyId != null && Number(r.worker_id) !== _ofTrayMyId) return false;
                     if (w && (r.worker_name || '') !== w) return false;
-                    if (clientOnly && curClient) {
-                        if ((r.client_name || '') !== curClient && (r.client_name || '') !== '미지정') return false;
+                    if (cChk && cChk.checked && (selClientId || selClientName)) {
+                        // '미지정'(디자이너 미입력)은 항상 노출 — 전멸 방지(D2 계승)
+                        if ((r.client_name || '') === '미지정') return true;
+                        if (selClientId && Number(r.client_id) === selClientId) return true;
+                        if (selClientName && (r.client_name || '') === selClientName) return true;
+                        return false;
                     }
                     return true;
                 });
-                var listEl = document.getElementById('intakeList');
-                if (!listEl) return;
-                if (!filtered.length) { listEl.innerHTML = '<div class="p-4 text-center text-sm text-gray-400">해당 조건의 대기물이 없습니다.</div>'; return; }
+
+                // 1단: 거래처 (client_id 우선, free-text는 이름 키)
+                var clientMap = {}, clientKeys = [];
+                filtered.forEach(function(r) {
+                    var ck = r.client_id ? ('c' + r.client_id) : ('n:' + (r.client_name || '미지정'));
+                    if (!clientMap[ck]) { clientMap[ck] = []; clientKeys.push(ck); }
+                    clientMap[ck].push(r);
+                });
+                // 2단: 작업(batch_key). 단건 확정(batch_key 없음)은 memo(건별 폴더) 단위 = 단독 작업
+                _ofTrayGroups = [];
                 var html = '';
-                for (var i = 0; i < filtered.length; i++) html += ofIntakeRowHtml(filtered[i]);
+                clientKeys.sort(function(a, b) {
+                    var ma = Math.max.apply(null, clientMap[a].map(function(r) { return r.id; }));
+                    var mb = Math.max.apply(null, clientMap[b].map(function(r) { return r.id; }));
+                    return mb - ma;
+                });
+                clientKeys.forEach(function(ck) {
+                    var crows = clientMap[ck];
+                    var cname = crows[0].client_name || '미지정';
+                    var registered = !!crows[0].client_id;
+                    html += '<div class="px-3 py-1.5 bg-gray-100 border-b text-sm font-semibold sticky top-0">'
+                        + '<i class="fas fa-building mr-1 text-gray-400"></i>' + escapeHtml(cname)
+                        + (registered ? '' : ' <span class="text-xs font-normal text-gray-400">(미등록/자유입력)</span>')
+                        + ' <span class="text-xs font-normal text-gray-500">' + crows.length + '건</span></div>';
+                    var batchMap = {}, batchKeys = [];
+                    crows.forEach(function(r) {
+                        var bk = r.batch_key || r.memo || ('i' + r.id);
+                        if (!batchMap[bk]) { batchMap[bk] = []; batchKeys.push(bk); }
+                        batchMap[bk].push(r);
+                    });
+                    batchKeys.sort(function(a, b) {
+                        var ma = Math.max.apply(null, batchMap[a].map(function(r) { return r.id; }));
+                        var mb = Math.max.apply(null, batchMap[b].map(function(r) { return r.id; }));
+                        return mb - ma;
+                    });
+                    batchKeys.forEach(function(bk) {
+                        var brows = batchMap[bk].slice().sort(function(x, y) {
+                            var sx = ofTraySeqOf(x), sy = ofTraySeqOf(y);
+                            if (sx != null && sy != null && sx !== sy) return sx - sy;
+                            return x.id - y.id;
+                        });
+                        var gi = _ofTrayGroups.length;
+                        _ofTrayGroups.push({ clientId: brows[0].client_id || null, clientName: cname, rows: brows });
+                        var label = ofTrayBasename(brows[0].batch_key) || '단건 등록';
+                        var allSel = brows.every(function(r) { return _ofTraySel[r.id]; });
+                        html += '<div class="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border-b border-amber-100 text-xs">'
+                            + '<input type="checkbox" ' + (allSel ? 'checked ' : '') + 'onchange="ofTrayGroupSel(' + gi + ', this.checked)" title="이 작업 전체 선택" class="flex-none">'
+                            + '<span class="font-medium text-amber-800 truncate"><i class="fas fa-folder-open mr-1"></i>' + escapeHtml(label) + '</span>'
+                            + '<span class="text-gray-500 flex-none">' + brows.length + '건</span>'
+                            + '<span class="flex-1"></span>'
+                            + '<button type="button" onclick="ofTrayCreateFromGroup(' + gi + ')" '
+                            + 'class="flex-none px-2 py-0.5 rounded border border-amber-400 bg-white text-amber-800 hover:bg-amber-100" '
+                            + 'title="거래처를 상속하고 이 작업의 모든 파일을 라인으로 추가합니다">'
+                            + '<i class="fas fa-file-invoice mr-1"></i>이 작업으로 주문 생성</button>'
+                            + '</div>';
+                        for (var bi = 0; bi < brows.length; bi++) html += ofTrayRowHtml(brows[bi]);
+                    });
+                });
+                if (!html) html = '<div class="p-4 text-center text-sm text-gray-400">해당 조건의 대기물이 없습니다.</div>';
                 listEl.innerHTML = html;
+                ofTrayUpdateFooter();
+                ofTrayLoadThumbs(listEl);
             };
+
+            // lazy 썸네일 로드 — 보이는 행만 (IntersectionObserver, 미지원 시 순차 전체)
+            function ofTrayLoadThumbs(listEl) {
+                var imgs = listEl.querySelectorAll('img[data-itk]');
+                if (!imgs.length) return;
+                function loadOne(img) {
+                    var id = parseInt(img.getAttribute('data-itk'), 10);
+                    if (!id) return;
+                    ofIntakeThumbGet(id).then(function(t) {
+                        if (t && img.isConnected) img.src = ofIntakeThumbSrc(t);
+                    });
+                }
+                if (typeof IntersectionObserver === 'function') {
+                    var io = new IntersectionObserver(function(entries) {
+                        entries.forEach(function(en) {
+                            if (en.isIntersecting) { io.unobserve(en.target); loadOne(en.target); }
+                        });
+                    }, { root: listEl });
+                    imgs.forEach(function(img) { io.observe(img); });
+                } else {
+                    imgs.forEach(loadOne);
+                }
+            }
+
+            window.ofTrayRowSel = function(id, on) {
+                if (on) _ofTraySel[id] = true; else delete _ofTraySel[id];
+                ofTrayUpdateFooter();
+            };
+            window.ofTrayGroupSel = function(gi, on) {
+                var g = _ofTrayGroups[gi];
+                if (!g) return;
+                g.rows.forEach(function(r) { if (on) _ofTraySel[r.id] = true; else delete _ofTraySel[r.id]; });
+                ofTrayRender();
+            };
+            function ofTrayUpdateFooter() {
+                var btn = document.getElementById('trayPrefillBtn');
+                if (!btn) return;
+                var n = Object.keys(_ofTraySel).length;
+                btn.disabled = !n;
+                btn.innerHTML = '<i class="fas fa-arrow-down mr-1"></i>선택 ' + n + '건 라인으로 불러오기';
+            }
 
             window.ofIntakeOpenPicker = function() {
                 var rows = _ofIntakeCache || [];
                 if (!rows.length) return;
                 var old = document.getElementById('intakePickerOverlay');
                 if (old) old.remove();
+                _ofTraySel = {};
                 var workers = [];
                 for (var i = 0; i < rows.length; i++) {
                     var wn = rows[i].worker_name;
@@ -115,33 +274,48 @@
                 }
                 var wOpts = '<option value="">담당자 전체</option>';
                 for (var k = 0; k < workers.length; k++) wOpts += '<option value="' + escapeHtml(workers[k]) + '">' + escapeHtml(workers[k]) + '</option>';
+                // "내 작업" 기본값: 사용자가 켠/끈 기억 우선, 없으면 내 waiting 존재 시 자동 ON
+                var hasMine = _ofTrayMyId != null && rows.some(function(r) { return Number(r.worker_id) === _ofTrayMyId; });
+                var savedMy = null;
+                try { savedMy = localStorage.getItem('ofTrayMyWork'); } catch (e) { /* private 모드 등 */ }
+                var myOn = savedMy != null ? savedMy === '1' : hasMine;
+                // 주문선행: 폼에 거래처가 이미 선택돼 있으면 거래처 자동필터 ON (§4.2)
+                var cIdEl = document.getElementById('clientId');
+                var clientOn = !!(cIdEl && cIdEl.value);
                 var overlay = document.createElement('div');
                 overlay.className = 'client-modal-overlay';
                 overlay.id = 'intakePickerOverlay';
-                overlay.innerHTML = '<div class="client-modal" style="max-width:640px">'
+                overlay.innerHTML = '<div class="client-modal" style="max-width:760px">'
                     + '<div class="px-4 py-3 border-b flex items-center justify-between">'
-                    + '<b><i class="fas fa-inbox mr-1 text-amber-600"></i>가공 대기물 (' + rows.length + '건)</b>'
+                    + '<b><i class="fas fa-inbox mr-1 text-amber-600"></i>가공 대기함 (' + rows.length + '건)</b>'
                     + '<button type="button" onclick="document.getElementById(\'intakePickerOverlay\').remove()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>'
                     + '</div>'
-                    + '<div class="px-4 py-2 border-b flex items-center gap-3 text-sm bg-gray-50">'
-                    + '<select id="intakeWorkerFilter" onchange="ofIntakeApplyFilter()" class="px-2 py-1 border rounded text-sm">' + wOpts + '</select>'
-                    + '<label class="flex items-center gap-1 cursor-pointer text-gray-600"><input type="checkbox" id="intakeClientOnly" onchange="ofIntakeApplyFilter()"> 이 거래처만</label>'
+                    + '<div class="px-4 py-2 border-b flex items-center gap-3 text-sm bg-gray-50 flex-wrap">'
+                    + (_ofTrayMyId != null
+                        ? '<label class="flex items-center gap-1 cursor-pointer font-medium text-purple-700"><input type="checkbox" id="intakeMyWork" ' + (myOn ? 'checked ' : '') + 'onchange="ofTrayMyWorkToggle(this.checked)"> 내 작업</label>'
+                        : '')
+                    + '<select id="intakeWorkerFilter" onchange="ofTrayRender()" class="px-2 py-1 border rounded text-sm">' + wOpts + '</select>'
+                    + '<label class="flex items-center gap-1 cursor-pointer text-gray-600"><input type="checkbox" id="intakeClientOnly" ' + (clientOn ? 'checked ' : '') + 'onchange="ofTrayRender()"> 이 거래처만</label>'
                     + '</div>'
-                    + '<div id="intakeList" style="max-height:60vh;overflow-y:auto"></div></div>';
+                    + '<div id="intakeList" style="max-height:56vh;overflow-y:auto"></div>'
+                    + '<div class="px-4 py-3 border-t bg-gray-50 flex justify-end">'
+                    + '<button type="button" id="trayPrefillBtn" disabled onclick="ofTrayPrefillSelected()" '
+                    + 'class="px-4 py-1.5 text-sm rounded-lg bg-blue-600 text-white disabled:bg-gray-300 hover:bg-blue-700"></button>'
+                    + '</div></div>';
                 overlay.addEventListener('click', function(ev) { if (ev.target === overlay) overlay.remove(); });
                 document.body.appendChild(overlay);
-                ofIntakeApplyFilter();
+                ofTrayRender();
             };
 
-            window.ofIntakePick = async function(intakeId) {
-                var r = null;
-                for (var i = 0; i < _ofIntakeCache.length; i++) {
-                    if (_ofIntakeCache[i].id === intakeId) { r = _ofIntakeCache[i]; break; }
-                }
-                if (!r) return;
-                var overlay = document.getElementById('intakePickerOverlay');
-                if (overlay) overlay.remove();
+            window.ofTrayMyWorkToggle = function(on) {
+                try { localStorage.setItem('ofTrayMyWork', on ? '1' : '0'); } catch (e) { /* 실패해도 필터는 동작 */ }
+                ofTrayRender();
+            };
 
+            // ── 프리필 (단건·그룹·선택 일괄) ─────────────────────────────
+
+            // 대기물 1건 → 주문 라인 1개 (라인별 intake_id 마커 → 저장 후 absorb가 order_item_id 매핑)
+            async function ofIntakePrefillOne(r) {
                 addItemRow();
                 var id = itemCount;
 
@@ -167,15 +341,18 @@
                 var cEl = document.querySelector('[name="content_' + id + '"]');
                 if (cEl && r.keyword) cEl.value = r.keyword;
 
-                // 썸네일
-                if (r.thumbnail) {
-                    var thumbDiv = document.getElementById('thumb_' + id);
-                    var thumbImg = document.getElementById('thumb_img_' + id);
-                    if (thumbDiv && thumbImg) {
-                        thumbImg.src = ofIntakeThumbSrc(r.thumbnail);
-                        thumbDiv.classList.remove('hidden');
+                // 썸네일 (lazy 캐시 → 없으면 개별 fetch)
+                try {
+                    var thumb = r.has_thumbnail ? await ofIntakeThumbGet(r.id) : null;
+                    if (thumb) {
+                        var thumbDiv = document.getElementById('thumb_' + id);
+                        var thumbImg = document.getElementById('thumb_img_' + id);
+                        if (thumbDiv && thumbImg) {
+                            thumbImg.src = ofIntakeThumbSrc(thumb);
+                            thumbDiv.classList.remove('hidden');
+                        }
                     }
-                }
+                } catch (e) { /* 썸네일 실패는 프리필을 막지 않음 */ }
 
                 // 마감: 옵션 로드 후 값 주입 (intake finishing_json = {top:방식명, top_cm:수치} — calc.js 직렬화와 동일 스키마)
                 try {
@@ -199,36 +376,97 @@
                     }
                 } catch (e) { console.warn('[orderForm] 대기물 마감 주입 실패', e); }
 
-                // absorb 대상 마커 (주문 저장 성공 후 calc.js 훅이 수거)
+                // absorb 대상 마커 (주문 저장 성공 후 calc.js 훅이 수거 — 라인별 order_item_id 매핑)
                 var rowEl = document.getElementById('item-' + id);
                 if (rowEl) {
                     var mark = document.createElement('input');
                     mark.type = 'hidden';
                     mark.name = 'intake_id_' + id;
-                    mark.value = String(intakeId);
+                    mark.value = String(r.id);
                     rowEl.appendChild(mark);
                 }
 
                 if (typeof calcItem === 'function') calcItem(id);
-                if (typeof calculateTotal === 'function') calculateTotal();
+            }
 
-                // 배지 갱신 (남은 대기물 수)
-                _ofIntakeCache = _ofIntakeCache.filter(function(x) { return x.id !== intakeId; });
+            // 프리필 뒤 공통 정리: 캐시 제거·배지 갱신·합계
+            function ofTrayAfterPrefill(pickedIds) {
+                _ofIntakeCache = _ofIntakeCache.filter(function(x) { return pickedIds.indexOf(x.id) === -1; });
+                pickedIds.forEach(function(pid) { delete _ofTraySel[pid]; });
+                if (typeof calculateTotal === 'function') calculateTotal();
                 var badge = document.getElementById('intakeBadge');
                 if (badge) {
                     badge.innerHTML = _ofIntakeCache.length
                         ? '<button type="button" onclick="ofIntakeOpenPicker()" class="px-3 py-1.5 text-sm rounded-lg bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200">'
-                          + '<i class="fas fa-inbox mr-1"></i>가공 대기물 <b>' + _ofIntakeCache.length + '</b>건 — 클릭해서 라인으로 불러오기</button>'
+                          + '<i class="fas fa-inbox mr-1"></i>가공 대기함 <b>' + _ofIntakeCache.length + '</b>건 — 클릭해서 라인으로 불러오기</button>'
                         : '<span class="text-xs text-green-600"><i class="fas fa-check mr-1"></i>대기물을 모두 불러왔습니다 (주문 저장 시 흡수 처리)</span>';
                 }
+            }
+
+            // 단건 추가 (행 클릭) — 기존 피커 동작 유지
+            window.ofIntakePick = async function(intakeId) {
+                var r = null;
+                for (var i = 0; i < _ofIntakeCache.length; i++) {
+                    if (_ofIntakeCache[i].id === intakeId) { r = _ofIntakeCache[i]; break; }
+                }
+                if (!r) return;
+                var overlay = document.getElementById('intakePickerOverlay');
+                if (overlay) overlay.remove();
+                await ofIntakePrefillOne(r);
+                ofTrayAfterPrefill([r.id]);
                 var pickMsg = '대기물을 라인으로 불러왔습니다. 품목·단가를 확인해 주세요.';
                 if (r.post_desc) pickMsg += ' (후가공: ' + r.post_desc + ' — 품목 선택 후 확정)';
                 if (typeof showToast === 'function') showToast(pickMsg, 'info');
             };
 
+            // 선택 일괄 프리필 — 거래처 미선택 + 선택분이 단일 등록 거래처면 client_id 상속
+            window.ofTrayPrefillSelected = async function() {
+                var rows = [];
+                _ofTrayGroups.forEach(function(g) {
+                    g.rows.forEach(function(r) { if (_ofTraySel[r.id]) rows.push(r); });
+                });
+                if (!rows.length) return;
+                var cIdEl = document.getElementById('clientId');
+                if (cIdEl && !cIdEl.value) {
+                    var cids = [];
+                    rows.forEach(function(r) { if (r.client_id && cids.indexOf(r.client_id) === -1) cids.push(r.client_id); });
+                    if (cids.length === 1 && typeof selectClient === 'function') {
+                        var cn = '';
+                        for (var ci = 0; ci < rows.length; ci++) if (rows[ci].client_id === cids[0]) { cn = rows[ci].client_name || ''; break; }
+                        selectClient(cids[0], cn);
+                    }
+                }
+                await ofTrayPrefillRows(rows);
+            };
+
+            // 파일선행: "이 작업으로 주문 생성" — 거래처 상속 + 작업 전체 N라인 프리필 (§4.2)
+            window.ofTrayCreateFromGroup = async function(gi) {
+                var g = _ofTrayGroups[gi];
+                if (!g || !g.rows.length) return;
+                if (g.clientId && typeof selectClient === 'function') {
+                    var cIdEl = document.getElementById('clientId');
+                    if (!cIdEl || Number(cIdEl.value) !== Number(g.clientId)) selectClient(g.clientId, g.clientName);
+                }
+                await ofTrayPrefillRows(g.rows.slice());
+            };
+
+            async function ofTrayPrefillRows(rows) {
+                var overlay = document.getElementById('intakePickerOverlay');
+                if (overlay) overlay.remove();
+                var ids = [];
+                for (var i = 0; i < rows.length; i++) {
+                    await ofIntakePrefillOne(rows[i]);
+                    ids.push(rows[i].id);
+                }
+                ofTrayAfterPrefill(ids);
+                if (typeof showToast === 'function') {
+                    showToast('대기물 ' + ids.length + '건을 라인으로 불러왔습니다. 품목·단가를 확인해 주세요.', 'info');
+                }
+            }
+
             // 주문 저장 성공 후(calc.js 훅) — 라인에 마킹된 대기물 absorb (실패해도 주문 등록에 영향 없음)
-            // orderId: 저장된 주문 id(넘어오면 서버가 그 주문으로 order_item 범위 축소). 미지정이어도 서버가
-            // 대기물 ai_analysis_id 로 통과 라인을 역추적해 order_item_id 를 링크(추적성 유지).
+            // orderId: 저장된 주문 id(넘어오면 서버가 그 주문으로 order_item 범위 축소). 서버가 대기물
+            // ai_analysis_id 로 통과 라인(-3)을 역추적해 라인별 order_item_id 를 링크(§4.2 배치 매핑).
             window.ofIntakeAbsorbAll = async function(orderId) {
                 var marks = document.querySelectorAll('input[name^="intake_id_"]');
                 var __failed = 0; // #533: 실패 건수 집계 → 사용자에게 1회 통지(주문 등록 자체는 막지 않음)

@@ -697,7 +697,8 @@
                         }
                         showToast(msg, 'warning');
                         // 디자이너 가공 대기물 흡수 (intake.js — 실패해도 주문 등록에 영향 없음)
-                        if (typeof ofIntakeAbsorbAll === 'function') { try { await ofIntakeAbsorbAll(); } catch (e) { /* best-effort */ } }
+                        // 저장된 주문 id를 넘겨 서버 order_item 역추적 범위를 이 주문으로 축소(§4.2 라인별 매핑)
+                        if (typeof ofIntakeAbsorbAll === 'function') { try { await ofIntakeAbsorbAll(id); } catch (e) { /* best-effort */ } }
                         // 대신화물 터미널이 거래처 기본값과 다르면 거래처 기본 터미널 자동 갱신
                         var _dm = document.getElementById('deliveryMethod').value;
                         var _term = (document.getElementById('deliveryInfo').value || '').trim();

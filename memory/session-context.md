@@ -1,55 +1,39 @@
-# 세션 핸드오프 — A0 CEP A1 후반 완결 + 배치 ingest 결함 수정 (2026-07-27 #8)
+# 세션 핸드오프 — IA 세션루프 B단계(연동 강화) 구현·로컬검증 완료, 배포 대기 (2026-07-27 #9)
 
-> durable=[[project-ia-designer-loop]]·spec `2026-07-23-ia-palette-session-loop.md`·README-cep.md. **구현·E2E 검증·커밋·push·prod 배포 전부 완료**(main `19a7018b`·deploy `af2dcd54`·격리 worktree 빌드·스모크 102/102·config 전파 실측 clients 3,424/workers 6·패널 실활성화).
+> durable=[[project-ia-designer-loop]]·spec `2026-07-23-ia-palette-session-loop.md` §3-B·D6·§4.2. **branch `session/ia-b-link`(worktree) 커밋 완료·로컬 e2e 전 구간 통과·prod 미배포(사용자 확인 대기)**. 직전 #8(A0 CEP A1 후반+배치 ingest 수정, deploy `af2dcd54`)은 PROJECT_STATUS·durable로 이관.
 > ⚠️ 아래 #4(MMS)·#3(자금관리)는 같은 날 병렬 세션 기록 — 보존.
 
-## 이번 세션 완료 (A0 남은 것 4건 전부 + 결함 1건)
-1. **검토문서+확정 게이트(D4, A1 후반)** — [검토문서]=큐 전체 가공(저장 없음)→디자인당 아트보드 타일. host.jsx `mesA0_process`에 `review_only` 분기(+검토 시 Z: 폴더 미생성) + `mesA0_review{Begin,Place,End,Discard}`(5500mm 한도 초과 시 문서 분할=순차 폴백, 재검토 시 이전 검토문서 자동 폐기, cross-doc은 copy/paste 이관). 게이트=rev 기반: 큐 변경(추가·삭제·세팅·키워드) 시 [일괄 확정] 재잠금·원복해도 잠금 유지(의도). **확정=기존 행별 재가공·저장 경로 그대로**(가공 2회 비용 대신 회귀 0 — 무거운 건 EPS 저장이고 그건 확정 시에만이라 D4/D9 취지 충족).
-2. **거래처 자동완성(D5)** — workbench.ts intake-config에 `clients`(id+client_name, 활성 전체 ~3,424) 재도입 + 패널 커스텀 제안 리스트(부분일치 15건·mousedown 선택·✓등록/자유입력 표시) + 정확일치 시 `client_id` 해소 → manifest → POST /intakes 존재검증 후 저장(불량 id는 free-text 폴백=ingest 안 죽음).
-3. **가공자↔MES user id(§3.5)** — intake-config `workers`(role/job_role=DESIGNER·활성) → 패널 이름 완전일치 매핑 → manifest `worker_id`(gatherParams registered_by_id 채움 — host가 worker_id로 기록). prod 4인 존재 확인: 인호동14·김보연8·김영주15·정소은16 (전원 username=name).
-4. **자동감지 시드(A3)** — host.jsx `mesA0_autoDetect(gapMm)`: 선택 불필요, 레이어 top-level(잠금·숨김 제외, 서브레이어 재귀) 후보→기존 클러스터 파이프라인 공용화(`mesA0_seedQueueJson`, 묶음분리와 응답 계약 동일). read-only(원본 불가침).
-5. **★배치 ingest 결함 수정(Program.cs)** — E2E가 실증한 기존 결함: 에이전트가 `manifest.json`(단수)만 스캔 → **CEP 일괄 확정 산출물(manifest_N.json)은 대기함에 영영 미등록**(단건만 동작). 사용자 실작업 batch501(07-27)·batch613(07-24)이 실제로 미등록 상태였음. 수정=`manifest_*.json` 접미 스캔+`.ingested_N`/`.rejected_N` 멱등 마커+`source_folder`에 `#_N` 접미(서버 memo dedup이 디자인 단위로 동작). **에이전트 재빌드(dotnet publish, csproj 설정 그대로)·exe만 교체·재기동(PID 34540)** → batch501·613 4건 자동 회수 ingest 확인(waiting, 사용자 처리 대기).
+## 이번 세션 완료 (B단계 범위 5건 전부)
+1. **마이그 0477** `designer_intakes.batch_key TEXT`+`idx_designer_intakes_batch_key`+backfill(`memo` `'%#\_%' ESCAPE '\'` → `substr(memo,1,instr(memo,'#_')-1)`). 로컬 적용·backfill 실증(배치행 복원·단건행 NULL 유지). **prod 미적용**.
+2. **POST /intakes**: manifest `batch_folder`→`batch_key` 저장(공백/누락=NULL=단독 작업). source_folder 멱등 dedup 보존 확인.
+3. **GET /intakes `lite=1`**: eager 썸네일 hydrate 생략, `has_thumbnail`(groups_json LIKE) 플래그만 — [[feedback-r2-thumbnail-marker-leak]] 패턴. **비파라미터 기존 응답은 무변경**(iaEditor.js:360 소비자 비파괴). + **GET /intakes/:id/thumb**(lazy hydrate, entityFilter) 신설.
+4. **대기함 트레이 전면 개편**(`src/scripts/orderForm/intake.js` 재작성): 거래처(client_id, free-text는 이름 키)→작업(batch_key, 없으면 memo=단독) 2단 그룹핑 · **"내 작업"**=localStorage user.id↔worker_id(기본=내 waiting 존재 시 ON, 토글은 `ofTrayMyWork` localStorage 기억) · 식별 메타(썸네일 lazy IntersectionObserver·EPS 파일명·순번=memo `#_N` 파싱·크기×수량·가공자·시각·마감/post_desc/돔보/배율) · 체크박스(행/그룹) 선택→[선택 N건 라인으로 불러오기](거래처 미선택+단일 client_id면 상속) · 그룹 [이 작업으로 주문 생성]=selectClient(client_id) 상속+전체 프리필(파일선행 §4.2) · 주문선행=폼 거래처 선택 시 "이 거래처만" 자동 ON(client_id 정확일치, '미지정' 항상 노출=전멸 방지 계승).
+5. **absorb**: 기존 라인별 경로(ai_analysis_id→-3 통과 라인 역추적→order_item_id 링크) 유지 + **calc.js:700이 저장된 주문 id를 `ofIntakeAbsorbAll(id)`로 전달**(역추적 범위 축소).
 
-## E2E 검증 (일러 재시작 없이)
-- **CDP(포트 8888) 패널 페이지 리로드 + host.jsx 전역 핫스왑**(`$.evalFile`을 IIFE 밖 전역에서 — IIFE 안에서 하면 함수가 지역에 갇힘 ★함정) → 재시작 불필요했음.
-- 시나리오: 테스트 문서(사각 3개) → [◎ 자동감지] 3행 → 행 바인드로 행별 마감 상이(사방접어미싱/상하줄미싱/양옆열재단+꼭짓점펀칭) → 자동완성(동산플→동산플래그 ✓등록) → [검토문서] 아트보드 3(행별 마진 정확: 308×208/600×410/900×500mm@scale10) → 게이트 재잠금 → 재검토(이전 검토문서 폐기 확인) → [일괄 확정] 3/3 → **EPS 규약명 행별 post_desc 상이** → manifest client_id=719·worker_id=14 → ingest → prod intake 행 확인(worker_id=14 저장).
-- 정리 완료: prod 테스트 행(designer_intakes 22-24·ai_analysis 59-61) 삭제·Z: batch661·_출력 EPS 3개 삭제·일러 테스트 문서 닫음(사용자 애니룩스 문서 보존·활성)·패널 localStorage 원복.
+## 로컬 e2e (worktree dev:d1, 시드 6건: batch901×3 worker1/batch902×2 worker8/단건1)
+배지(6건·내 작업 4)→트레이(내작업 자동 ON→인투3+미지정1만)→OFF(전체)→[이 작업으로 주문 생성]=거래처 9101 자동선택+3라인(크기·수량·content=키워드·ai_analysis_id·-3·intake 마커·fin_cm)→저장→**absorb 3/3 라인별 order_item_id 정확 매핑**(intake1→oi1·2→2·3→3, order 1)→주문선행(selectClient 9102→"이 거래처만" 자동 ON·혜윰 2+미지정만)→그룹 체크→[선택 2건](scale_pct 50→scale_factor 2 환산)→POST /intakes batch_folder 저장+재등록 dup 멱등→lite/non-lite 응답 계약 확인. 콘솔 에러 0. **테스트 데이터 전부 삭제**(intakes·ai_analysis·order 1·cards, 카운트 0 확인).
 
 ## ⚠️ 주의사항
-- ~~MES prod 미배포~~ → **배포 완료(deploy `af2dcd54`)**: config 전파 실측(clients 3,424·workers 6)·패널 리로드로 자동완성·worker_id 매핑 실활성.
-- **에이전트 신버전 필수**: 구 exe로 롤백하면 배치 ingest가 다시 죽음. 운영 exe=`bin/Release/net8.0/win-x64/publish/`(PID 34540). publish 폴더의 JSX·appsettings는 교체 안 함(exe/pdb만).
-- batch501(애니룩스 2건)·batch613(인퓨쳐 2건)이 대기함에 새로 등장 — 결함 회수분. 이미 수동 처리한 주문이면 대기함에서 void.
-- MCP illustrator(COM)는 CEP와 **다른 ExtendScript 엔진** — mesA0_* 미노출이 정상. COM hang 1회 발생(문서 close 중) → CEP evalScript 경유로 우회.
-- 검토문서=폐기용(저장물 아님). 확정·비우기·재검토 시 자동 close.
+- **로컬 마감 select가 비는 건 로컬 `finishing_methods` 0건 artifact** — 주입 코드는 기존과 동일(fin_cm은 주입됨). prod엔 데이터 있음. 회귀 아님.
+- **prod 마이그 0477은 `execute --remote --file` 직접**(d1_migrations 트래킹 불일치 — 파일 헤더에도 명시). backfill은 `WHERE batch_key IS NULL`이라 재실행 멱등.
+- 마이그 적용→코드 배포 사이에 들어오는 신규 배치 intake는 batch_key NULL → backfill UPDATE 1회 재실행으로 회수 가능(memo 접미 기반).
+- 트레이는 lite 목록만 쓰므로 **iaEditor(비-lite)와 응답 계약 분리** — GET /intakes 기본 동작 바꾸지 말 것.
+- 로컬 dev 서버(3000)는 이 세션이 **worktree dist로 재기동**(PID는 dev:d1 표준 경로). 메인 체크아웃 dist 서빙으로 되돌리려면 메인에서 `npm run build && npm run dev:d1`.
+- prod 대기함 waiting 19건 중 batch501·613 회수분 4건은 실데이터 — 배포 후 트레이에서 batch_key 그룹으로 묶여 보임(backfill 덕).
 
 ## 다음 TODO
-1. B단계(연동 강화): 대기함 "내 작업"(worker_id) 필터·batch_key 그룹핑·일괄 프리필 — spec §3-B. (실가공 1건에서 manifest client_id/worker_id 자연 확인 겸사)
-2. batch501·613 회수분 4건 대기함 처리(사용자 — 이미 수동 처리한 주문이면 void).
-3. (선택) 하네스 ship:gate 편입·판짜기(JSX) L4 물리검증·0.5mm 밀림(별건).
+1. **[사용자 확인 후 배포]** ⓐ prod 마이그: `npx wrangler d1 execute webapp-production --remote --file migrations/0477_intake_batch_key.sql` ⓑ `session/ia-b-link` push→main 병합→`/deploy-verify`(격리 빌드). 배포 후 실가공 1건으로 batch_key·트레이·absorb 자연 확인.
+2. worktree 종료: `.\scripts\end-session.ps1 ia-b-link -DeleteBranch` (병합 후).
+3. (이월) 판짜기 E2E·하네스 ship:gate 편입·0.5mm 밀림(별건)·D8 확정 시 조직폴더 이동.
 
 ## 검증 명령 (PowerShell)
 ```powershell
 npm run verify
-node --check IllustratorAutomat\designer\poc-a0-cep\com.mes.a0.panel\js\main.js
-# CEP 패널 상태(일러 실행+패널 열림 시): http://localhost:8888/json
-# prod intake 확인: npx wrangler d1 execute webapp-production --remote --command "SELECT id,client_id,worker_id,post_desc,memo FROM designer_intakes ORDER BY id DESC LIMIT 5"
+node --check src/scripts/orderForm/intake.js
+# 배포 후 prod 확인:
+npx wrangler d1 execute webapp-production --remote --command "SELECT id, batch_key, worker_id, status FROM designer_intakes ORDER BY id DESC LIMIT 10"
+curl.exe -s -o NUL -w "%{http_code}" -A "Mozilla/5.0" https://webapp-9i0.pages.dev/api/workbench/intakes   # 401=정상
 ```
-
-## B단계 착수 프롬프트 (다음 세션에 그대로 전달)
-> IA 세션루프 B단계(연동 강화)를 진행해줘. spec=`docs/superpowers/specs/2026-07-23-ia-palette-session-loop.md` §3-B·D6·§4.2, 직전 상태=`memory/session-context.md`(2026-07-27 #8).
->
-> **전제(완료됨)**: A0~A3+A1 후반 전부 prod(deploy `af2dcd54`) — CEP 패널이 designer_intakes에 client_id(자동완성 정확일치)·worker_id(가공자 매핑)·keyword·post_desc를 저장 중. 배치 ingest는 manifest_N.json 스캔(에이전트 PID 34540). manifest에 batch_folder·batch_index가 오지만 **서버 미저장**. memo=source_folder이고 **배치는 `…_batchNNN#_1` 접미**(2026-07-27 도입, 파싱 주의).
->
-> **범위**:
-> 1. 마이그 **0477**(최신=0476): `designer_intakes.batch_key TEXT`+인덱스. POST /intakes에서 body.batch_folder→batch_key 저장. 기존 회수분은 memo `#_N` 앞부분으로 backfill. ⚠️적용=`execute --remote --file` 직접(d1_migrations 트래킹 불일치).
-> 2. **대기함 트레이**(주문서 내): 거래처/작업(batch_key) 2단 그룹핑·**"내 작업"=로그인 user id↔worker_id 필터**·식별 메타(썸네일·파일명·순번·크기·가공자·시각).
-> 3. **파일 그룹 일괄 선택→N라인 프리필**+거래처 client_id 상속. absorb=라인별 order_item_id 매핑(`workbench.ts:1268` 경로) — bulk absorb(`:1252`)는 order_item_id 없어 **부적합**(spec §4.2).
-> 4. 2방향: 파일선행 "이 작업으로 주문 생성" / 주문선행 거래처 자동필터.
-> 5. 신규 쿼리 전부 entityFilter(경로①은 orderVisibilityFilter 참고).
->
-> **주의**: orderForm=?raw 6파일 분할·전역스코프 prefix 격리 / D1 bind 스프레드·80청크·PRAGMA 선확인 / 멀티세션=worktree 격리·경로지정 add / prod 대기함 waiting 19건 중 batch501·613 회수분 4건은 실데이터(테스트 아님) / 썸네일은 r2:thumb: 마커 유출 함정([[feedback-r2-thumbnail-marker-leak]]) — 트레이 썸네일은 has_thumbnail+lazy 패턴.
->
-> **검증**: `npm run verify` → 로컬 D1 e2e(트레이 필터·그룹핑·N라인 프리필·absorb 왕복) → 배포는 내 확인 후.
 
 ---
 

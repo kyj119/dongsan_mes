@@ -1213,6 +1213,8 @@ workbenchRouter.post('/intakes', async (c) => {
     const punchJson = body.punch && typeof body.punch === 'object' ? JSON.stringify(body.punch) : null
     const workerName = body.worker_name != null ? String(body.worker_name) : null
     const workerId = Number.isFinite(Number(body.worker_id)) && Number(body.worker_id) > 0 ? Number(body.worker_id) : null
+    // 작업 그룹핑 키(0477, D6): 일괄 확정의 공유 배치 폴더. 단건 확정은 null(단독 작업).
+    const batchKey = body.batch_folder != null && String(body.batch_folder).trim() !== '' ? String(body.batch_folder) : null
     // 거래처 자동완성 해소분(D5): 존재 검증 통과 시만 저장(불량 id는 free-text 폴백 — FK 실패로 ingest 전체가 죽지 않게)
     let clientId: number | null = null
     const rawClientId = Number(body.client_id)
@@ -1254,8 +1256,8 @@ workbenchRouter.post('/intakes', async (c) => {
         entity_id, ai_analysis_id, client_name, client_id, qty, finishing_json, width_cm, height_cm,
         scale_pct, trim, mode, eps_path, work_ai_path, status,
         registered_by, pc_name, script_version, outline_failed, memo,
-        keyword, post_desc, punch_json, worker_name, worker_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        keyword, post_desc, punch_json, worker_name, worker_id, batch_key
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING id
     `).bind(
       entityId, analysisId, clientName, clientId, qty, finishing, w, h,
@@ -1265,7 +1267,7 @@ workbenchRouter.post('/intakes', async (c) => {
       body.script_version != null ? String(body.script_version) : null,
       body.outline_failed ? 1 : 0,
       sourceFolder,
-      keyword, postDesc, punchJson, workerName, workerId
+      keyword, postDesc, punchJson, workerName, workerId, batchKey
     ).first<{ id: number }>()
 
     // 판짜기(sheet) manifest: 판에 소비된 조각 대기물 absorbed 처리 (mes-sheet.jsx consumed_intake_ids)
@@ -1306,12 +1308,15 @@ workbenchRouter.post('/intakes', async (c) => {
   }
 })
 
-// ── GET /api/workbench/intakes — 대기함 목록 (주문서 프리필 피커·지표) ──
+// ── GET /api/workbench/intakes — 대기함 목록 (주문서 프리필 피커·트레이·지표) ──
+// lite=1(트레이): 썸네일 eager hydrate 생략, has_thumbnail 플래그만 — 실물은 /intakes/:id/thumb lazy
+// ([[feedback-r2-thumbnail-marker-leak]] — 마커 원문을 목록에 싣지 않는다)
 workbenchRouter.get('/intakes', async (c) => {
   try {
     const status = (c.req.query('status') || 'waiting').trim()
     const client = (c.req.query('client') || '').trim()
     const worker = (c.req.query('worker') || '').trim()
+    const lite = c.req.query('lite') === '1'
     const limit = Math.min(parseInt(c.req.query('limit') || '100', 10) || 100, 200)
     const ef = entityFilter(c, 'designer_intakes')
     let where = `1=1${ef.clause}`
@@ -1320,6 +1325,18 @@ workbenchRouter.get('/intakes', async (c) => {
     // 거래처 필터 시 '미지정'(디자이너 미입력)은 항상 노출 — 전멸 방지(D2)
     if (client) { where += ` AND (designer_intakes.client_name LIKE ? OR designer_intakes.client_name = '미지정')`; params.push(`%${client}%`) }
     if (worker) { where += ` AND designer_intakes.worker_name LIKE ?`; params.push(`%${worker}%`) }
+
+    if (lite) {
+      const { results } = await c.env.DB.prepare(`
+        SELECT designer_intakes.*,
+               CASE WHEN ar.groups_json LIKE '%thumbnail_base64%' THEN 1 ELSE 0 END AS has_thumbnail
+        FROM designer_intakes
+        LEFT JOIN ai_analysis_requests ar ON ar.id = designer_intakes.ai_analysis_id
+        WHERE ${where}
+        ORDER BY designer_intakes.id DESC LIMIT ${limit}
+      `).bind(...params).all<Record<string, unknown>>()
+      return c.json({ success: true, data: results })
+    }
 
     const { results } = await c.env.DB.prepare(`
       SELECT designer_intakes.*, ar.groups_json
@@ -1362,6 +1379,32 @@ workbenchRouter.get('/intakes/stats', async (c) => {
     return c.json({ success: true, data: results })
   } catch (error) {
     console.error('Workbench intake stats error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ── GET /api/workbench/intakes/:id/thumb — 트레이 lazy 썸네일 (R2 ref hydrate → base64) ──
+workbenchRouter.get('/intakes/:id/thumb', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'), 10)
+    if (!Number.isFinite(id)) return c.json({ success: false, error: '잘못된 ID' }, 400)
+    const ef = entityFilter(c, 'designer_intakes')
+    const row = await c.env.DB.prepare(
+      `SELECT ar.groups_json AS groups_json
+       FROM designer_intakes
+       LEFT JOIN ai_analysis_requests ar ON ar.id = designer_intakes.ai_analysis_id
+       WHERE designer_intakes.id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ groups_json: string | null }>()
+    if (!row) return c.json({ success: false, error: '대기물을 찾을 수 없습니다.' }, 404)
+    let thumbnail: string | null = null
+    try {
+      const gj = await hydrateGroupsJson(c.env, row.groups_json)
+      const groups = gj ? JSON.parse(gj) : []
+      thumbnail = groups?.[0]?.thumbnail_base64 || null
+    } catch { /* 썸네일 실패는 목록/트레이를 막지 않음 — null 반환 */ }
+    return c.json({ success: true, data: { id, thumbnail } })
+  } catch (error) {
+    console.error('Workbench intake thumb error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
