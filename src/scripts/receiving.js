@@ -688,7 +688,7 @@ window.receivingStartInspectionFull = async function(receiptId) {
         '<select id="inspTemplateSelect" class="w-full px-3 py-2 border rounded-lg text-sm" onchange="receivingLoadInspTemplate(this.value)">' +
           '<option value="">\u2014 선택 \u2014</option>' +
           templates.map(function(t) {
-            return '<option value="' + t.id + '">' + t.template_name + (t.category_name ? ' (' + t.category_name + ')' : '') + '</option>';
+            return '<option value="' + t.id + '">' + escapeHtml(t.template_name) + (t.category_name ? ' (' + escapeHtml(t.category_name) + ')' : '') + '</option>';
           }).join('') +
         '</select>' +
       '</div>' +

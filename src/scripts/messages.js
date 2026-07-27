@@ -166,7 +166,7 @@ async function loadLogs(page) {
         + '<td class="px-4 py-3 text-sm text-gray-600">' + fmtDt(log.created_at) + '</td>'
         + '<td class="px-4 py-3 text-sm">' + channelIcon(log.channel || 'kakao') + '</td>'
         + '<td class="px-4 py-3 text-sm font-medium text-gray-900" title="' + escapeHtml(log.receiver_name || '') + '">' + escapeHtml(log.receiver_name || '-') + '</td>'
-        + '<td class="px-4 py-3 text-sm text-gray-600">' + (log.receiver_num || '-') + '</td>'
+        + '<td class="px-4 py-3 text-sm text-gray-600">' + escapeHtml(log.receiver_num || '-') + '</td>'
         + '<td class="px-4 py-3 text-sm text-gray-500">' + typeLabel(log.related_type) + '</td>'
         + '<td class="px-4 py-3 text-center">' + statusBadge(log.status) + '</td>'
         + '<td class="px-4 py-3 text-center"><button onclick="viewLogDetail(\'' + (log.receipt_num || '') + '\',\'' + (log.channel || 'kakao') + '\')" class="text-blue-600 hover:text-blue-800 text-xs"><i class="fas fa-eye"></i></button></td>'
@@ -1492,7 +1492,7 @@ function renderTopReceivers(receivers) {
     return '<div class="flex items-center gap-3 py-1">'
       + '<span class="text-xs text-gray-400 w-5">' + (i + 1) + '</span>'
       + '<span class="text-sm font-medium text-gray-800 flex-1">' + escapeHtml(r.receiver_name || '-') + '</span>'
-      + '<span class="text-xs text-gray-500">' + (r.receiver_num || '') + '</span>'
+      + '<span class="text-xs text-gray-500">' + escapeHtml(r.receiver_num || '') + '</span>'
       + '<span class="text-xs font-medium text-blue-600 w-10 text-right">' + r.count + '건</span>'
       + '</div>';
   }).join('');
