@@ -80,6 +80,8 @@ screenshots/
 .claude/.edit_counter
 .claude/deployments/
 .claude/projects/
+# 에이전트 worktree 사본 (리포 전체 복제 — 절대 커밋 금지)
+.claude/worktrees/
 
 # Config files (may contain secrets)
 .config/
