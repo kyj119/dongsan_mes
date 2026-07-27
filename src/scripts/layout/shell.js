@@ -633,6 +633,24 @@ if (__userStr) {
     } catch(e) { console.error('User parse error:', e); }
 }
 
+// user 키 유실 복구 — 토큰은 살아있는데 user만 없으면 역할 기반 UI가 조용히 사라진다
+// (실측: 자금관리 '실적' 탭이 role 미상으로 숨겨짐). /api/auth/me로 재수집 후 재적용.
+if (!__userStr && token) {
+    axios.get('/api/auth/me').then(function(r) {
+        var u = r && r.data && r.data.data;
+        if (!u) return;
+        localStorage.setItem('user', JSON.stringify(u));
+        currentUserRole = u.role;
+        var __rm = window.ROLE_NAMES || { 'ADMIN': '관리자', 'MANAGER': '매니저', 'DESIGNER': '디자이너', 'OPERATOR': '작업자' };
+        var __sn = document.getElementById('sidebarUserName');
+        if (__sn) __sn.textContent = u.name || u.username || '-';
+        var __tn = document.getElementById('topBarUserName');
+        if (__tn) __tn.textContent = (u.name || u.username || '-') + ' (' + (__rm[u.role] || u.role) + ')';
+        // 페이지 스크립트는 이미 동기 실행됐으므로 역할 게이트를 다시 적용할 기회를 준다
+        window.dispatchEvent(new CustomEvent('ds-user-restored', { detail: { role: u.role } }));
+    }).catch(function() {});
+}
+
 // ═══ Entities 공용 캐시 + 헬퍼 (법인 select 동적화) ═══
 // 향후 사업자 추가 시 DB(entities) INSERT만으로 모든 select/라벨에 자동 반영 (하드코딩 제거).
 (function(){

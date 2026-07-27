@@ -12,14 +12,26 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
   const hubScript = `
     (function(){
       var __hubRole=''; try{ __hubRole=(JSON.parse(localStorage.getItem('user')||'{}').role)||''; }catch(e){}
-      // 실적 모드는 ADMIN 전용 — 비관리자는 토글 숨김(서버에서도 bank API 차단)
+      // 실적 모드는 ADMIN 전용 — 비관리자는 토글 숨김(서버에서도 bank API 차단).
+      // ⚠️ role을 '읽지 못한 경우'(localStorage user 유실 등)는 숨기지 않는다 — 권한 최종 판정은 서버(401)이며,
+      //    판정 실패로 탭이 통째로 사라지는 사고를 막는다(2026-07-27 실측). shell.js가 /auth/me로 복구하면 재적용.
       var __ab=document.getElementById('hubTabActuals');
-      if(__ab && __hubRole!=='ADMIN') __ab.style.display='none';
+      function __hubApplyRoleGate(role){
+        var nonAdmin = !!role && role !== 'ADMIN';
+        if(__ab) __ab.style.display = nonAdmin ? 'none' : '';
+        if(nonAdmin && typeof window.switchHubMode==='function') window.switchHubMode('plan');
+      }
+      __hubApplyRoleGate(__hubRole);
+      window.addEventListener('ds-user-restored', function(e){
+        __hubRole = (e && e.detail && e.detail.role) || __hubRole;
+        __hubApplyRoleGate(__hubRole);
+        if(__hubRole==='ADMIN' && typeof window.__bankHubInit==='function') window.__bankHubInit();
+      });
       window.switchHubMode=function(mode){
         var plan=document.getElementById('hubPlan'), act=document.getElementById('hubActuals');
         var pb=document.getElementById('hubTabPlan'), ab=document.getElementById('hubTabActuals');
         if(!plan||!act||!pb||!ab){ console.warn('[cash-hub] hub nodes not found'); return; }
-        if(mode==='actuals' && __hubRole!=='ADMIN'){ return; } // 방어: 비관리자 실적 진입 차단
+        if(mode==='actuals' && __hubRole && __hubRole!=='ADMIN'){ return; } // 방어: 비관리자 실적 진입 차단(role 미상은 서버가 판정)
         if(mode==='actuals'){
           plan.classList.add('hidden'); act.classList.remove('hidden');
           ab.classList.add('border-blue-600','text-blue-600'); ab.classList.remove('border-transparent','text-gray-500');
@@ -42,11 +54,11 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
       if(__hubRole==='ADMIN'){
         Array.prototype.forEach.call(document.querySelectorAll('.hub-actuals-link'), function(el){ el.classList.remove('hidden'); });
       }
-      // 기본 랜딩 = 실적(마크업 기본). ADMIN은 bank lazy-init만 실행, 비ADMIN은 계획으로 되돌림(실적 API=ADMIN 전용).
-      if(__hubRole==='ADMIN'){
-        if(typeof window.__bankHubInit==='function') window.__bankHubInit();
-      } else {
+      // 기본 랜딩 = 실적(마크업 기본). ADMIN(또는 role 미상)은 bank lazy-init, 비ADMIN만 계획으로 되돌림.
+      if(__hubRole && __hubRole!=='ADMIN'){
         window.switchHubMode('plan');
+      } else {
+        if(typeof window.__bankHubInit==='function') window.__bankHubInit();
       }
     })();
   `
