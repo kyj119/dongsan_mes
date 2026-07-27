@@ -675,26 +675,36 @@
   window.batchApply = async function() {
     var ids = [];
     var clientMap = {};
-    var noClient = 0;
+    var categoryMap = {};
+    var unset = 0;
     document.querySelectorAll('.tx-check:checked').forEach(function(el) {
       var txId = parseInt(el.getAttribute('data-id'), 10);
       ids.push(txId);
-      // UI에서 거래처를 선택한 경우 매핑 전송
+      // 행이 비용분류 모드면 카테고리를, 아니면 거래처를 전송(둘 다 없으면 서버가 건별 실패 처리)
+      var catMode = document.getElementById('categoryMode_' + txId);
+      var isCategoryMode = catMode && !catMode.classList.contains('hidden');
       var clientInput = document.getElementById('clientId_' + txId);
+      var categoryInput = document.getElementById('categoryId_' + txId);
       var clientId = clientInput ? parseInt(clientInput.value, 10) : 0;
-      if (clientId) clientMap[String(txId)] = clientId;
-      else noClient++;
+      var categoryId = categoryInput ? parseInt(categoryInput.value, 10) : 0;
+      if (isCategoryMode && categoryId) categoryMap[String(txId)] = categoryId;
+      else if (clientId) clientMap[String(txId)] = clientId;
+      else if (categoryId) categoryMap[String(txId)] = categoryId;
+      else unset++;
     });
     if (!ids.length) { showToast('적용할 항목을 선택하세요.', 'warning'); return; }
-    var confirmMsg = ids.length + '건의 거래처를 확정하고 원장에 반영합니다. 진행할까요?';
-    if (noClient > 0) confirmMsg += '\n(거래처 미지정 ' + noClient + '건은 건너뜁니다)';
+    var confirmMsg = ids.length + '건을 적용합니다. (거래처=원장 반영, 비용분류=비용 확정)\n진행할까요?';
+    if (unset > 0) confirmMsg += '\n(거래처·비용분류 미지정 ' + unset + '건은 건너뜁니다)';
     if (!(await showConfirm(confirmMsg))) return;
     axios.post('/api/bank/transactions/batch-apply', {
       transaction_ids: ids,
-      client_map: Object.keys(clientMap).length ? clientMap : undefined
+      client_map: Object.keys(clientMap).length ? clientMap : undefined,
+      category_map: Object.keys(categoryMap).length ? categoryMap : undefined
     }).then(function(r) {
       var d = r.data.data || {};
+      var catCnt = (d.results || []).filter(function(x) { return x.success && x.link_mode === 'CATEGORY'; }).length;
       var msg = (d.succeeded || 0) + '건 적용 완료';
+      if (catCnt > 0) msg += ' (비용분류 ' + catCnt + '건)';
       if (d.failed > 0) {
         msg += ', ' + d.failed + '건 실패';
         // 실패 사유 상위 2종 요약(전건 나열 금지 — 상세는 행별 상태로 확인)

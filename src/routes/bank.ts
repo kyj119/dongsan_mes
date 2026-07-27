@@ -932,6 +932,53 @@ async function learnMatchRule(
   `).bind(name, opts.clientId ?? null, opts.categoryId ?? null, opts.userId ?? 1, opts.entityId ?? 1).run()
 }
 
+// 비용분류(+선택적 고정비) 확정 — 거래처 원장이 아닌 '비용'으로 처리하는 경로(단일 소스).
+//   거래처 매칭과 달리 원장(payments) 생성이 없으므로 확정 즉시 APPLIED.
+//   /match·단건 apply·batch-apply 3곳 공용 — 어느 경로로 들어와도 동일 결과.
+async function applyExpenseCategory(
+  c: Context<HonoEnv>,
+  tx: { id: number; transaction_date: string; amount: number; counterpart_name: string | null; entity_id: number | null },
+  categoryId: number | null,
+  fixedExpenseId: number | null,
+  userId: number | null
+): Promise<{ message: string }> {
+  await c.env.DB.prepare(`
+    UPDATE bank_transactions
+    SET match_status = 'APPLIED',
+        matched_category_id = ?,
+        matched_fixed_expense_id = ?,
+        matched_client_id = NULL,
+        matched_by = ?,
+        matched_at = CURRENT_TIMESTAMP,
+        match_confidence = 1.0,
+        match_reason = ?
+    WHERE id = ?
+  `).bind(categoryId ?? null, fixedExpenseId, userId ?? 1, fixedExpenseId ? '고정비 확정' : '비용분류', tx.id).run()
+
+  const entityId = tx.entity_id ?? (getEntityId(c) || 1)
+
+  if (fixedExpenseId) {
+    // 고정비 확정 → 당월 실적 기록(recurring_expense_actuals). 적요 변동 무관, 고정비 앵커.
+    const period = (tx.transaction_date || '').length >= 6
+      ? `${tx.transaction_date.slice(0, 4)}-${tx.transaction_date.slice(4, 6)}`
+      : kstYmd().slice(0, 7)
+    await c.env.DB.prepare(`
+      INSERT INTO recurring_expense_actuals (fixed_expense_id, period, actual_amount, actual_source, entity_id)
+      VALUES (?, ?, ?, 'BANK', ?)
+      ON CONFLICT(fixed_expense_id, period) DO UPDATE SET
+        actual_amount = excluded.actual_amount,
+        actual_source = 'BANK',
+        variance = excluded.actual_amount - COALESCE(estimated_amount, 0),
+        updated_at = CURRENT_TIMESTAMP
+    `).bind(fixedExpenseId, period, Math.abs(Number(tx.amount) || 0), entityId).run()
+  } else {
+    // 규칙 학습(고정비 확정 제외 — 고정비는 적요가 매달 달라 이름앵커 부적합)
+    await learnMatchRule(c, tx.counterpart_name, { categoryId, userId, entityId })
+  }
+
+  return { message: fixedExpenseId ? '고정비 실적이 기록되었습니다' : '비용 분류가 적용되었습니다' }
+}
+
 // ---------------------------------------------------------------------------
 // 자동매칭 엔진 (수동 [자동매칭] 버튼·바로빌 sync·무인 cron 공용 — 단일 소스)
 //   규칙(EXACT→APPLIED / CONTAINS→SUGGESTED) → 출금 고정비 제안(SUGGESTED) → 거래처명/키워드/금액.
@@ -1309,49 +1356,9 @@ bankRouter.post('/transactions/:id/match', requireRole('ADMIN'), async (c) => {
     const user = c.get('user')
 
     if (category_id || feId) {
-      // 비용 카테고리(+선택적 고정비) 매칭
-      await c.env.DB.prepare(`
-        UPDATE bank_transactions
-        SET match_status = 'APPLIED',
-            matched_category_id = ?,
-            matched_fixed_expense_id = ?,
-            matched_client_id = NULL,
-            matched_by = ?,
-            matched_at = CURRENT_TIMESTAMP,
-            match_confidence = 1.0,
-            match_reason = ?
-        WHERE id = ?
-      `).bind(category_id ?? null, feId, user?.id ?? 1, feId ? '고정비 확정' : '비용분류', id).run()
-
-      if (feId) {
-        // 고정비 확정 → 당월 실적 기록(recurring_expense_actuals). 적요 변동 무관, 고정비 앵커.
-        const period = (tx.transaction_date || '').length >= 6
-          ? `${tx.transaction_date.slice(0, 4)}-${tx.transaction_date.slice(4, 6)}`
-          : kstYmd().slice(0, 7)
-        const actual = Math.abs(Number(tx.amount) || 0)
-        await c.env.DB.prepare(`
-          INSERT INTO recurring_expense_actuals (fixed_expense_id, period, actual_amount, actual_source, entity_id)
-          VALUES (?, ?, ?, 'BANK', ?)
-          ON CONFLICT(fixed_expense_id, period) DO UPDATE SET
-            actual_amount = excluded.actual_amount,
-            actual_source = 'BANK',
-            variance = excluded.actual_amount - COALESCE(estimated_amount, 0),
-            updated_at = CURRENT_TIMESTAMP
-        `).bind(feId, period, actual, tx.entity_id ?? (getEntityId(c) || 1)).run()
-      } else if (tx.counterpart_name && tx.counterpart_name.trim()) {
-        // 규칙 학습(고정비 확정이 아닌 일반 비용분류만 — 고정비는 적요가 매달 달라 이름앵커 부적합)
-        await c.env.DB.prepare(`
-          INSERT INTO bank_match_rules (counterpart_name, matched_client_id, matched_category_id, created_by, match_count, entity_id)
-          VALUES (?, NULL, ?, ?, 1, ?)
-          ON CONFLICT(entity_id, counterpart_name) DO UPDATE SET
-            matched_client_id = NULL,
-            matched_category_id = excluded.matched_category_id,
-            match_count = match_count + 1,
-            last_used_at = CURRENT_TIMESTAMP
-        `).bind(tx.counterpart_name.trim(), category_id, user?.id ?? 1, getEntityId(c) || 1).run()
-      }
-
-      return c.json({ success: true, message: feId ? '고정비 실적이 기록되었습니다' : '비용 분류가 적용되었습니다' })
+      // 비용 카테고리(+선택적 고정비) 매칭 — 공용 헬퍼(단건/일괄 동일 결과)
+      const r = await applyExpenseCategory(c, tx, category_id ?? null, feId, user?.id ?? null)
+      return c.json({ success: true, message: r.message })
     }
 
     // 거래처 매칭 (기존 로직)
@@ -1410,6 +1417,8 @@ interface ApplyTxRow {
   amount: number
   match_status: string
   matched_client_id: number | null
+  matched_category_id: number | null
+  matched_fixed_expense_id: number | null
   counterpart_name: string | null
   description: string | null
   entity_id: number | null
@@ -1652,7 +1661,7 @@ bankRouter.post('/transactions/:id/apply', requireRole('ADMIN'), async (c) => {
 
     const ef = entityFilter(c, 'bank_transactions')
     const tx = await c.env.DB.prepare(
-      `SELECT id, transaction_date, transaction_type, amount, match_status, matched_client_id, counterpart_name, description, entity_id
+      `SELECT id, transaction_date, transaction_type, amount, match_status, matched_client_id, matched_category_id, matched_fixed_expense_id, counterpart_name, description, entity_id
        FROM bank_transactions WHERE id = ?${ef.clause}`
     ).bind(id, ...ef.params).first<ApplyTxRow>()
 
@@ -1662,17 +1671,24 @@ bankRouter.post('/transactions/:id/apply', requireRole('ADMIN'), async (c) => {
     if (tx.match_status === 'APPLIED') {
       return c.json({ success: false, error: '이미 적용된 거래입니다' }, 400)
     }
-
-    // body에서 client_id가 오면 우선 사용, 없으면 기존 matched_client_id
-    const clientId = body.client_id || tx.matched_client_id
-    if (!clientId) {
-      return c.json({ success: false, error: '매칭된 거래처가 없습니다. 먼저 매칭을 확인하세요' }, 400)
-    }
     if (!['CONFIRMED', 'SUGGESTED', 'UNMATCHED'].includes(tx.match_status)) {
       return c.json({
         success: false,
         error: 'APPLIED 또는 IGNORED 상태의 거래는 적용할 수 없습니다'
       }, 400)
+    }
+
+    // body에서 client_id가 오면 우선 사용, 없으면 기존 matched_client_id
+    const clientId = body.client_id || tx.matched_client_id
+    if (!clientId) {
+      // 거래처가 없으면 비용분류 경로 — 운임/수수료처럼 채권채무가 아닌 건은 원장이 아니라 비용으로 확정.
+      const categoryId = body.category_id || tx.matched_category_id
+      const feId = body.fixed_expense_id ?? tx.matched_fixed_expense_id ?? null
+      if (categoryId || feId) {
+        const r = await applyExpenseCategory(c, tx, categoryId ?? null, feId ? Number(feId) : null, user?.id ?? null)
+        return c.json({ success: true, data: { mode: 'CATEGORY' }, message: r.message })
+      }
+      return c.json({ success: false, error: '거래처 또는 비용분류를 먼저 지정하세요' }, 400)
     }
 
     // client_id가 body에서 왔으면 matched_client_id도 업데이트
@@ -1728,9 +1744,10 @@ bankRouter.post('/transactions/:id/apply', requireRole('ADMIN'), async (c) => {
 bankRouter.post('/transactions/batch-apply', requireRole('ADMIN'), async (c) => {
   try {
     const body = await c.req.json()
-    const { transaction_ids, client_map } = body as {
+    const { transaction_ids, client_map, category_map } = body as {
       transaction_ids: number[]
-      client_map?: Record<string, number>  // txId -> clientId (UI에서 선택한 거래처)
+      client_map?: Record<string, number>    // txId -> clientId (UI에서 선택한 거래처)
+      category_map?: Record<string, number>  // txId -> categoryId (UI 비용분류 모드)
     }
     const user = c.get('user')
 
@@ -1747,7 +1764,7 @@ bankRouter.post('/transactions/batch-apply', requireRole('ADMIN'), async (c) => 
       const chunk = transaction_ids.slice(i, i + 80)
       const placeholders = chunk.map(() => '?').join(', ')
       const { results: txRows } = await c.env.DB.prepare(
-        `SELECT id, transaction_date, transaction_type, amount, match_status, matched_client_id, counterpart_name, description, entity_id FROM bank_transactions WHERE id IN (${placeholders})${ef.clause}`
+        `SELECT id, transaction_date, transaction_type, amount, match_status, matched_client_id, matched_category_id, matched_fixed_expense_id, counterpart_name, description, entity_id FROM bank_transactions WHERE id IN (${placeholders})${ef.clause}`
       ).bind(...chunk, ...ef.params).all<ApplyTxRow>()
       for (const row of txRows) txMap.set(row.id, row)
     }
@@ -1766,13 +1783,27 @@ bankRouter.post('/transactions/batch-apply', requireRole('ADMIN'), async (c) => 
       // UI에서 거래처를 선택한 경우 client_map에서 가져옴
       const uiClientId = client_map?.[String(txId)]
       const effectiveClientId = uiClientId || tx.matched_client_id
+      // 거래처가 없으면 비용분류 경로로 처리(운임·수수료 등 채권채무 아님) — 둘 다 없을 때만 실패.
+      const effectiveCategoryId = category_map?.[String(txId)] || tx.matched_category_id
 
-      if (!effectiveClientId) {
-        results.push({ id: txId, success: false, error: '매칭된 거래처 없음' })
+      if (!effectiveClientId && !effectiveCategoryId && !tx.matched_fixed_expense_id) {
+        results.push({ id: txId, success: false, error: '거래처·비용분류 미지정' })
         continue
       }
       if (!['CONFIRMED', 'SUGGESTED', 'UNMATCHED'].includes(tx.match_status)) {
         results.push({ id: txId, success: false, error: `적용 불가 상태: ${tx.match_status}` })
+        continue
+      }
+
+      // 비용분류 확정(원장 생성 없음). 거래처가 지정돼 있으면 거래처 원장 반영이 우선.
+      if (!effectiveClientId) {
+        try {
+          await applyExpenseCategory(c, tx, effectiveCategoryId ?? null, tx.matched_fixed_expense_id ?? null, user?.id ?? null)
+          results.push({ id: txId, success: true, link_mode: 'CATEGORY' })
+        } catch (err) {
+          console.error('Category apply error for transaction:', txId, err)
+          results.push({ id: txId, success: false, error: '비용분류 처리 중 오류' })
+        }
         continue
       }
 
