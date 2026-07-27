@@ -5,6 +5,7 @@ import { getEntityId, entityFilter, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERRO
 import { getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { getItemDefaultZones } from '../utils/inventoryZone'
 import { kstYmd, kstYmdCompact } from '../utils/kstDate'
+import { syncArAdjustmentStmts } from './ledger/ar-helpers'
 
 const returns = new Hono<HonoEnv>()
 returns.use('*', authMiddleware)
@@ -108,8 +109,8 @@ returns.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => {
   // #132: entity 격리
   const patchEf = entityFilter(c)
   const currentReturn = await c.env.DB.prepare(
-    `SELECT status FROM returns WHERE id = ?${patchEf.clause}`
-  ).bind(id, ...patchEf.params).first<{ status: string }>()
+    `SELECT status, client_id, order_id, entity_id, refund_amount, return_number FROM returns WHERE id = ?${patchEf.clause}`
+  ).bind(id, ...patchEf.params).first<{ status: string; client_id: number; order_id: number | null; entity_id: number; refund_amount: number; return_number: string }>()
   if (!currentReturn) return c.json({ success: false, error: '반품을 찾을 수 없습니다.' }, 404)
 
   const allowed = transitions[currentReturn.status]
@@ -127,6 +128,21 @@ returns.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => {
   binds.push(id, ...patchEf.params)
 
   await c.env.DB.prepare(sql).bind(...binds).run()
+
+  // #567: RESOLVED 시 환불액(refund_amount>0) → AR 자동조정 멱등 동기화. body 미지정 시 기존값 사용.
+  if (status === 'RESOLVED') {
+    const effRefund = refund_amount !== undefined ? Number(refund_amount) || 0 : Number(currentReturn.refund_amount) || 0
+    const userId = c.get('user')?.id
+    await c.env.DB.batch(
+      syncArAdjustmentStmts(c.env.DB, {
+        sourceType: 'RETURN', sourceId: id,
+        clientId: currentReturn.client_id, orderId: currentReturn.order_id, entityId: currentReturn.entity_id,
+        amount: effRefund, type: 'RETURN',
+        reason: `반품 ${currentReturn.return_number} 환불 자동조정`,
+        createdBy: userId ?? null,
+      })
+    )
+  }
 
   // RESOLVED + RESTOCK → 재고 복원
   if (status === 'RESOLVED') {

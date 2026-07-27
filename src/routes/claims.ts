@@ -5,6 +5,7 @@ import { requireEditOrRole } from '../middleware/permissions'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { kstYmd, kstYmdCompact } from '../utils/kstDate'
+import { syncArAdjustmentStmts } from './ledger/ar-helpers'
 
 const claims = new Hono<HonoEnv>()
 claims.use('*', authMiddleware)
@@ -109,12 +110,32 @@ claims.patch('/:id/resolve', requireEditOrRole('/quality', 'MANAGER'), async (c)
   const { resolution_type, resolved_amount, rework_order_id } = await c.req.json()
 
   const ef = entityFilter(c)  // #446: 타법인 클레임 변조 차단(형제 분석은 cc 격리)
-  await c.env.DB.prepare(`
-    UPDATE customer_claims
-    SET status = 'RESOLVED', resolution_type = ?, resolved_amount = ?,
-        rework_order_id = ?, resolved_by = ?, resolved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?${ef.clause}
-  `).bind(resolution_type, resolved_amount || 0, rework_order_id || null, userId, id, ...ef.params).run()
+  // #567: 조정 스탬프에 필요한 client_id/order_id/entity_id/claim_number 조회 (겸 404·소유 검증)
+  const claim = await c.env.DB.prepare(
+    `SELECT client_id, order_id, entity_id, claim_number FROM customer_claims WHERE id = ?${ef.clause}`
+  ).bind(id, ...ef.params).first<{ client_id: number; order_id: number | null; entity_id: number; claim_number: string }>()
+  if (!claim) return c.json({ success: false, error: '클레임을 찾을 수 없습니다.' }, 404)
+
+  const amount = Number(resolved_amount) || 0
+  // #567: 환불/할인(REFUND·DISCOUNT)만 AR 감액. 재작업·재제작·반려는 조정 없음.
+  const arAmount = (resolution_type === 'REFUND' || resolution_type === 'DISCOUNT') ? amount : 0
+
+  await c.env.DB.batch([
+    c.env.DB.prepare(`
+      UPDATE customer_claims
+      SET status = 'RESOLVED', resolution_type = ?, resolved_amount = ?,
+          rework_order_id = ?, resolved_by = ?, resolved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?${ef.clause}
+    `).bind(resolution_type, amount, rework_order_id || null, userId, id, ...ef.params),
+    // #567: 해결금액 → AR 자동조정 멱등 동기화 (재해결/금액변경/방식전환 자동 정합)
+    ...syncArAdjustmentStmts(c.env.DB, {
+      sourceType: 'CLAIM', sourceId: id,
+      clientId: claim.client_id, orderId: claim.order_id, entityId: claim.entity_id,
+      amount: arAmount, type: 'CLAIM',
+      reason: `클레임 ${claim.claim_number} 해결(${resolution_type}) 자동조정`,
+      createdBy: userId ?? null,
+    }),
+  ])
 
   return c.json({ success: true })
 })

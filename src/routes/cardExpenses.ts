@@ -890,7 +890,16 @@ cardExpRouter.get('/auto-rules', requireEditOrRole('/card-expenses', 'MANAGER'),
 
 cardExpRouter.delete('/auto-rules/:id', requireRole('ADMIN'), async (c) => {
   try {
-    await c.env.DB.prepare('DELETE FROM expense_auto_rules WHERE id = ?').bind(c.req.param('id')).run()
+    const id = c.req.param('id')
+    // #571: 형제 GET /auto-rules entityFilter와 대칭 — 타법인 자동분류 규칙 삭제 차단
+    const ef = entityFilter(c)
+    const owned = await c.env.DB.prepare(
+      `SELECT id FROM expense_auto_rules WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first()
+    if (!owned) {
+      return c.json({ success: false, error: '규칙을 찾을 수 없습니다.' }, 404)
+    }
+    await c.env.DB.prepare('DELETE FROM expense_auto_rules WHERE id = ?').bind(id).run()
     return c.json({ success: true, message: '규칙 삭제 완료' })
   } catch (error) {
     return c.json({ success: false, error: '서버 오류' }, 500)

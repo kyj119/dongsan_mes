@@ -1148,16 +1148,28 @@ clientsRouter.get('/:id/portal-account', requireRole('ADMIN', 'MANAGER'), async 
   }
 })
 
-// POST /:id/portal-account — 포털 계정 생성 (SUPER-ADMIN 전용)
+// POST /:id/portal-account — 포털 계정 생성 (ADMIN)
 // #557: portal.ts 전체가 client_id만 스코프(entity 무관)라, 계정 1개가 그 거래처의 전 법인 통합 거래이력을 노출.
-//   법인 스코프 ADMIN이 임의 거래처 계정을 셀프발급→cross-entity 열람 가능 → 생성을 전체모드(entityId=0) ADMIN으로 제한.
+//   법인 스코프 ADMIN이 임의 거래처 계정을 셀프발급→cross-entity 열람하는 벡터를 차단해야 함.
+//   차단 정책(합집합): 전체모드(entityId=0, SUPER-ADMIN)는 항상 허용 + 법인 스코프 ADMIN은
+//   그 법인이 해당 거래처와 실거래(매출 orders / 매입 purchase_orders)가 있을 때만 허용(임의 거래처 셀프발급 차단).
 //   (근본해결=portal.ts 전체를 account.entity_id로 스코프. 여기선 셀프발급 벡터 차단이 목적.)
 clientsRouter.post('/:id/portal-account', requireRole('ADMIN'), async (c) => {
   try {
-    if (getEntityId(c) !== 0) {
-      return c.json({ success: false, error: '포털 계정 생성은 전체 모드(SUPER-ADMIN)에서만 가능합니다. 상단에서 법인을 전체로 전환하세요.' }, 403)
-    }
     const clientId = c.req.param('id')
+    const reqEntityId = getEntityId(c)
+    if (reqEntityId !== 0) {
+      // 법인 스코프 ADMIN: 자기 법인과 실거래가 있는 거래처만 포털계정 발급 허용
+      const traded = await c.env.DB.prepare(
+        `SELECT 1 FROM orders WHERE client_id = ? AND entity_id = ?
+         UNION ALL
+         SELECT 1 FROM purchase_orders WHERE supplier_id = ? AND entity_id = ?
+         LIMIT 1`
+      ).bind(clientId, reqEntityId, clientId, reqEntityId).first()
+      if (!traded) {
+        return c.json({ success: false, error: '자기 법인과 실거래가 없는 거래처는 포털 계정을 발급할 수 없습니다. (전체 모드 SUPER-ADMIN만 임의 발급 가능)' }, 403)
+      }
+    }
     const body = await c.req.json()
     const { login_id, password, contact_name, contact_phone, contact_email } = body
 

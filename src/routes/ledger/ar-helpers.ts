@@ -28,6 +28,40 @@ export async function deriveClientBalance(c: Context<HonoEnv>, clientId: number 
   ).bind(clientId, ...aP).first<{ v: number }>()
   return (Number(billed?.v) || 0) - (Number(paid?.v) || 0) - (Number(adj?.v) || 0)
 }
+
+// ── #567: 클레임/반품 해결금액 → AR(adjustments) 자동조정 멱등 동기화 ──
+// 출처(source_type/source_id)당 자동조정 1건. 재해결·금액수정·처리방식 변경 시 DELETE→(조건충족)INSERT로 재동기화.
+// amount<=0 이거나 비-환불/할인이면 기존 자동조정만 제거(INSERT 없음). 수동 조정(source_type NULL)은 불간섭.
+// D1 batch 반환 → 호출부에서 다른 mutation과 함께 원자적으로 실행.
+export function syncArAdjustmentStmts(
+  db: D1Database,
+  p: {
+    sourceType: 'CLAIM' | 'RETURN'
+    sourceId: number
+    clientId: number
+    orderId: number | null
+    entityId: number
+    amount: number          // 해결금액(REAL 가능) — INTEGER 컬럼이라 반올림
+    type: 'CLAIM' | 'RETURN'
+    reason: string
+    createdBy: number | null
+  }
+): D1PreparedStatement[] {
+  const stmts: D1PreparedStatement[] = [
+    db.prepare('DELETE FROM adjustments WHERE source_type = ? AND source_id = ?').bind(p.sourceType, p.sourceId),
+  ]
+  const amt = Math.round(Number(p.amount) || 0)
+  if (amt > 0) {
+    stmts.push(
+      db.prepare(
+        `INSERT INTO adjustments (client_id, order_id, type, amount, reason, created_by, entity_id, source_type, source_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(p.clientId, p.orderId, p.type, amt, p.reason, p.createdBy, p.entityId, p.sourceType, p.sourceId)
+    )
+  }
+  return stmts
+}
+
 // ── Row types for D1 .first<T>() / .all<T>() ──
 
 export interface ClientRow {

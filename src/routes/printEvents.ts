@@ -658,10 +658,11 @@ printEventsRouter.patch('/:id/actual-printed', authMiddleware, async (c) => {
       return c.json({ success: false, error: 'actual_printed is required' }, 400)
     }
 
-    // 이벤트 존재 확인
+    // 이벤트 존재 확인 (#571: 형제 GET / entityFilter와 대칭으로 소유 검증)
+    const ef = entityFilter(c)
     const event = await c.env.DB.prepare(
-      'SELECT id, print_status, copy_total FROM print_events WHERE id = ?'
-    ).bind(eventId).first()
+      `SELECT id, print_status, copy_total FROM print_events WHERE id = ?${ef.clause}`
+    ).bind(eventId, ...ef.params).first()
 
     if (!event) {
       return c.json({ success: false, error: 'Event not found' }, 404)

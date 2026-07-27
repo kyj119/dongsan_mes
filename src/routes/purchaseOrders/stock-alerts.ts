@@ -103,6 +103,15 @@ stockAlertsRouter.patch('/stock-alerts/:id/acknowledge', requireRole('ADMIN', 'M
     const id = c.req.param('id')
     const user = c.get('user')
 
+    // #571: 형제 GET /stock-alerts (#446) entityFilter와 대칭 — 타법인 알림 임의 해제 차단
+    const ef = entityFilter(c)
+    const owned = await c.env.DB.prepare(
+      `SELECT id FROM stock_alerts WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first()
+    if (!owned) {
+      return c.json({ success: false, error: '알림을 찾을 수 없습니다.' }, 404)
+    }
+
     await c.env.DB.prepare(`
       UPDATE stock_alerts SET status = 'ACKNOWLEDGED', acknowledged_by = ?, acknowledged_at = datetime('now')
       WHERE id = ? AND status = 'ACTIVE'

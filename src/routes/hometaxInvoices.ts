@@ -158,9 +158,11 @@ hometaxInvoicesRouter.get('/jobs/:id/status', requireRole('ADMIN', 'MANAGER'), a
     const jobDbId = c.req.param('id')
     const db = c.env.DB
 
+    // #571: 형제 GET /jobs (목록) entityFilter와 대칭 — 타법인 스크래핑 작업 상태 열람 차단
+    const ef = entityFilter(c)
     const job = await db.prepare(`
-      SELECT id, job_id, job_type, start_date, end_date, state, result, message, total_count, requested_by, requested_at, completed_at FROM hometax_jobs WHERE id = ?
-    `).bind(Number(jobDbId)).first<HometaxJobRow>()
+      SELECT id, job_id, job_type, start_date, end_date, state, result, message, total_count, requested_by, requested_at, completed_at FROM hometax_jobs WHERE id = ?${ef.clause}
+    `).bind(Number(jobDbId), ...ef.params).first<HometaxJobRow>()
 
     if (!job) {
       return c.json({ success: false, error: '작업 없음' }, 404)
@@ -219,9 +221,11 @@ hometaxInvoicesRouter.post('/jobs/:id/fetch', requireRole('ADMIN', 'MANAGER'), a
     const jobDbId = c.req.param('id')
     const db = c.env.DB
 
+    // #571: 형제 GET /jobs (목록) entityFilter와 대칭 — 타법인 작업 결과 임의 수집(import) 차단
+    const ef = entityFilter(c)
     const job = await db.prepare(`
-      SELECT id, job_id, job_type, start_date, end_date, state, result, message, total_count, requested_by, requested_at, completed_at FROM hometax_jobs WHERE id = ?
-    `).bind(Number(jobDbId)).first<HometaxJobRow>()
+      SELECT id, job_id, job_type, start_date, end_date, state, result, message, total_count, requested_by, requested_at, completed_at FROM hometax_jobs WHERE id = ?${ef.clause}
+    `).bind(Number(jobDbId), ...ef.params).first<HometaxJobRow>()
 
     if (!job) {
       return c.json({ success: false, error: '작업 없음' }, 404)

@@ -270,6 +270,15 @@ cardsLifecycleRouter.patch('/defects/:defectId', async (c) => {
       return c.json({ success: false, error: '유효하지 않은 상태입니다.' }, 400)
     }
 
+    // #571: 멀티법인 격리 — 단건 변경도 entity_id로 소유 검증 (형제 GET /defects/list #375와 대칭)
+    const ef = entityFilter(c)
+    const owned = await c.env.DB.prepare(
+      `SELECT id FROM quality_issues WHERE id = ?${ef.clause}`
+    ).bind(defectId, ...ef.params).first()
+    if (!owned) {
+      return c.json({ success: false, error: '불량 레코드를 찾을 수 없습니다.' }, 404)
+    }
+
     let employeeId: number | null = null
     if (user?.id) {
       const emp = await c.env.DB.prepare('SELECT id FROM employees WHERE user_id = ?').bind(user.id).first<{ id: number }>()

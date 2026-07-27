@@ -667,6 +667,9 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       c.env.DB.prepare('DELETE FROM inventory_auto_deductions WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
       // #464: 타 주문 품질이슈의 재작업카드 링크(0222 재빌드로 FK 제거됨=비-FK orphan) 정리 — cards 삭제 전
       c.env.DB.prepare('UPDATE quality_issues SET rework_card_id = NULL WHERE rework_card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
+      // #567: 클레임/반품 자동조정(adjustments) 정리 — 소스(customer_claims/returns) 삭제 전. 팬텀 AR 감액 방지.
+      c.env.DB.prepare("DELETE FROM adjustments WHERE source_type='CLAIM' AND source_id IN (SELECT id FROM customer_claims WHERE order_id = ?)").bind(id),
+      c.env.DB.prepare("DELETE FROM adjustments WHERE source_type='RETURN' AND source_id IN (SELECT id FROM returns WHERE order_id = ?)").bind(id),
       // #116: order_id 기반 정리
       c.env.DB.prepare('DELETE FROM customer_claims WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM returns WHERE order_id = ?').bind(id),
@@ -682,6 +685,8 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       c.env.DB.prepare('DELETE FROM return_items WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').bind(id),
       c.env.DB.prepare('DELETE FROM pp_material_deductions WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM original_archives WHERE order_id = ?').bind(id),  // ⚠️ R2 객체(archive_url)는 별도 정리 필요
+      // #570: designer_intakes.order_item_id RESTRICT(0463) — 흡수 이력 보존 위해 SET NULL(디자이너 작업 이력은 존치, status='absorbed' 유지). order_items 삭제 전 필수.
+      c.env.DB.prepare('UPDATE designer_intakes SET order_item_id = NULL WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').bind(id),
       c.env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM order_billing_groups WHERE order_id = ?').bind(id),  // split billing P3
       c.env.DB.prepare('DELETE FROM order_status_history WHERE order_id = ?').bind(id),
