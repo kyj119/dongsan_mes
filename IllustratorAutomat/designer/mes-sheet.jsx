@@ -108,6 +108,9 @@
         var ors = orient(it);
         for (var oi = 0; oi < ors.length; oi++) {
           var o = ors[oi];
+          // 마지막 shelf만 높이 성장 허용 — 중간 shelf가 자라면 이미 그 아래 y로 생성된 다음 shelf와 겹침
+          // (L1 하네스 R4 실증, 정답 원본 = iaEditor.js:1623). 면적 내림차순이라 뒤 조각이 더 높을 수 있다.
+          if (si < shelves.length - 1 && o.h > sh.height + 1e-6) continue;
           if (sh.usedWidth + xGap + o.w <= availableWidth + 1e-6) {
             placements.push({ id: it.id, x: sh.usedWidth + xGap, y: sh.y, w: o.w, h: o.h, rotated: o.rotated });
             sh.usedWidth += xGap + o.w; sh.itemCount++; if (o.h > sh.height) sh.height = o.h; placed = true; break;

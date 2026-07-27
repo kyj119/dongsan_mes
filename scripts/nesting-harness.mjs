@@ -19,30 +19,52 @@ const EPS = 1e-4
 
 // ── 함수 추출 (?raw 전역 스크립트라 import 불가 → 소스에서 브레이스 매칭으로 절취) ──
 const code = readFileSync(SRC, 'utf8')
-function extractFn(name) {
-  const idx = code.indexOf('function ' + name + '(')
+function extractFrom(src, name) {
+  const idx = src.indexOf('function ' + name + '(')
   if (idx < 0) throw new Error('함수 없음: ' + name)
-  const open = code.indexOf('{', idx)
+  const open = src.indexOf('{', idx)
   let depth = 0
-  for (let j = open; j < code.length; j++) {
-    const ch = code[j]
+  for (let j = open; j < src.length; j++) {
+    const ch = src[j]
     if (ch === '"' || ch === "'") {
       const q = ch
       j++
-      while (j < code.length && code[j] !== q) { if (code[j] === '\\') j++; j++ }
+      while (j < src.length && src[j] !== q) { if (src[j] === '\\') j++; j++ }
       continue
     }
-    if (ch === '/' && code[j + 1] === '/') { while (j < code.length && code[j] !== '\n') j++; continue }
+    if (ch === '/' && src[j + 1] === '/') { while (j < src.length && src[j] !== '\n') j++; continue }
     if (ch === '{') depth++
-    else if (ch === '}') { depth--; if (depth === 0) return code.slice(idx, j + 1) }
+    else if (ch === '}') { depth--; if (depth === 0) return src.slice(idx, j + 1) }
   }
   throw new Error('브레이스 불일치: ' + name)
 }
+const extractFn = (name) => extractFrom(code, name)
 const factory = new Function(
   extractFn('iaeShelfBinPack') + '\n' + extractFn('iaeMaxRectsPack') +
   '\nreturn { shelf: iaeShelfBinPack, maxrects: iaeMaxRectsPack };'
 )
 const packers = factory()
+
+// ── 판짜기 JSX 패커(IllustratorAutomat/designer/mes-sheet.jsx: sheetShelfBinPack) 등록 ──
+// ES3 이식본이라 계약이 다르다: {x,y,w,h}·total_height·폭초과는 error 대신 skipped[].
+// 어댑터가 iaEditor 계약(x_cm·width_cm·error)으로 정규화 → 동일 판정기(R1~R5)를 그대로 적용.
+// skipped ⟺ 폭초과(infeasible)이므로 error로 매핑해야 R5(에러정당성)가 성립한다.
+// ⚠️ 회전 잠금(allowRotate=false)은 판짜기에 없는 기능 → 이 패커는 항상 회전 허용으로 판정.
+const SHEET_SRC = (process.argv.find((a) => a.startsWith('--sheet-src=')) || '').slice('--sheet-src='.length)
+  || path.join(__dirname, '..', 'IllustratorAutomat', 'designer', 'mes-sheet.jsx')
+const sheetRaw = new Function(extractFrom(readFileSync(SHEET_SRC, 'utf8'), 'sheetShelfBinPack') + '\nreturn sheetShelfBinPack;')()
+packers.sheetShelf = function (items, W, gap) {
+  const r = sheetRaw(items, W, gap)
+  if (r.skipped && r.skipped.length) return { error: true, msg: '항목이 폭보다 큽니다 (skip ' + r.skipped.length + '개)' }
+  return {
+    error: false,
+    placements: (r.placements || []).map((p) => ({ id: p.id, x_cm: p.x, y_cm: p.y, width_cm: p.w, height_cm: p.h, rotated: p.rotated })),
+    total_height_cm: r.total_height,
+    shelves: []
+  }
+}
+const PACKERS = ['shelf', 'maxrects', 'sheetShelf']
+const ALWAYS_ROTATE = new Set(['sheetShelf'])
 
 // ── 검증기 ──
 function sepGap(a, b) {
@@ -165,20 +187,21 @@ cases.push(...real)
 // ── 실행 ──
 const summary = {}
 const failures = []
-for (const name of ['shelf', 'maxrects']) {
+for (const name of PACKERS) {
   summary[name] = { cases: 0, ok: 0, hardFail: 0, warnOnly: 0, byRule: {} }
   for (const cs of cases) {
     summary[name].cases++
+    const allowRot = ALWAYS_ROTATE.has(name) ? true : cs.allowRotate
     let res
     try {
-      res = packers[name](cs.items.map((it) => ({ ...it })), cs.W, cs.gap, cs.allowRotate)
+      res = packers[name](cs.items.map((it) => ({ ...it })), cs.W, cs.gap, allowRot)
     } catch (e) {
       summary[name].hardFail++
       summary[name].byRule.EXCEPTION = (summary[name].byRule.EXCEPTION || 0) + 1
       failures.push({ packer: name, ref: cs.ref, rule: 'EXCEPTION', msg: String(e && e.stack || e), case: cs })
       continue
     }
-    const { errs, warns } = validate(cs.ref, cs.items, res, cs.W, cs.gap, cs.allowRotate)
+    const { errs, warns } = validate(cs.ref, cs.items, res, cs.W, cs.gap, allowRot)
     if (errs.length) {
       summary[name].hardFail++
       for (const e of errs) {
@@ -198,14 +221,13 @@ for (const name of ['shelf', 'maxrects']) {
 // 효율 비교 (정보성 — 실사례만)
 console.log('── 효율 비교 (실사례, total_height_cm · 낮을수록 촘촘) ──')
 for (const cs of real) {
-  const a = packers.shelf(cs.items.map((it) => ({ ...it })), cs.W, cs.gap, cs.allowRotate)
-  const b = packers.maxrects(cs.items.map((it) => ({ ...it })), cs.W, cs.gap, cs.allowRotate)
   const fmt = (r) => (r.error ? 'ERR' : r.total_height_cm.toFixed(1))
-  console.log('  ' + cs.ref + ' → shelf ' + fmt(a) + ' / maxrects ' + fmt(b))
+  const cols = PACKERS.map((n) => n + ' ' + fmt(packers[n](cs.items.map((it) => ({ ...it })), cs.W, cs.gap, ALWAYS_ROTATE.has(n) ? true : cs.allowRotate)))
+  console.log('  ' + cs.ref + ' → ' + cols.join(' / '))
 }
 
 console.log('\n── 판정 요약 ──')
-for (const name of ['shelf', 'maxrects']) {
+for (const name of PACKERS) {
   const s = summary[name]
   console.log(`  ${name.padEnd(8)} 케이스 ${s.cases} · 통과 ${s.ok} · 하드실패 ${s.hardFail} · 경고만 ${s.warnOnly} · 규칙별 ${JSON.stringify(s.byRule)}`)
 }
