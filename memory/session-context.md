@@ -1,6 +1,6 @@
 # 세션 핸드오프 — A0 CEP A1 후반 완결 + 배치 ingest 결함 수정 (2026-07-27 #8)
 
-> durable=[[project-ia-designer-loop]]·spec `2026-07-23-ia-palette-session-loop.md`·README-cep.md. **구현·E2E 검증·커밋·push 완료(main `012630f1`), ⚠️MES `deploy:prod`만 대기(사용자 승인 필요)**.
+> durable=[[project-ia-designer-loop]]·spec `2026-07-23-ia-palette-session-loop.md`·README-cep.md. **구현·E2E 검증·커밋·push·prod 배포 전부 완료**(main `19a7018b`·deploy `af2dcd54`·격리 worktree 빌드·스모크 102/102·config 전파 실측 clients 3,424/workers 6·패널 실활성화).
 > ⚠️ 아래 #4(MMS)·#3(자금관리)는 같은 날 병렬 세션 기록 — 보존.
 
 ## 이번 세션 완료 (A0 남은 것 4건 전부 + 결함 1건)
@@ -16,15 +16,15 @@
 - 정리 완료: prod 테스트 행(designer_intakes 22-24·ai_analysis 59-61) 삭제·Z: batch661·_출력 EPS 3개 삭제·일러 테스트 문서 닫음(사용자 애니룩스 문서 보존·활성)·패널 localStorage 원복.
 
 ## ⚠️ 주의사항
-- **MES prod 미배포**: intake-config clients/workers·client_id 저장은 로컬 코드만. **배포 전엔 자동완성·worker_id 매핑 비활성**(config에 리스트가 없음 — 패널은 우아 폴백). E2E는 prod 데이터를 config에 수동 주입해 검증했고, 에이전트가 이미 정상 config로 덮어씀.
+- ~~MES prod 미배포~~ → **배포 완료(deploy `af2dcd54`)**: config 전파 실측(clients 3,424·workers 6)·패널 리로드로 자동완성·worker_id 매핑 실활성.
 - **에이전트 신버전 필수**: 구 exe로 롤백하면 배치 ingest가 다시 죽음. 운영 exe=`bin/Release/net8.0/win-x64/publish/`(PID 34540). publish 폴더의 JSX·appsettings는 교체 안 함(exe/pdb만).
 - batch501(애니룩스 2건)·batch613(인퓨쳐 2건)이 대기함에 새로 등장 — 결함 회수분. 이미 수동 처리한 주문이면 대기함에서 void.
 - MCP illustrator(COM)는 CEP와 **다른 ExtendScript 엔진** — mesA0_* 미노출이 정상. COM hang 1회 발생(문서 close 중) → CEP evalScript 경유로 우회.
 - 검토문서=폐기용(저장물 아님). 확정·비우기·재검토 시 자동 close.
 
 ## 다음 TODO
-1. **[사용자 결정] MES `deploy:prod`** — 배포되면 에이전트가 ~5분 내 config 갱신 → 자동완성·매핑 실동작. 배포 후 확인: config.json에 clients/workers 존재 + 실가공 1건 manifest client_id/worker_id.
-2. B단계(연동 강화): 대기함 "내 작업"(worker_id) 필터·batch_key 그룹핑·일괄 프리필 — spec §3-B.
+1. B단계(연동 강화): 대기함 "내 작업"(worker_id) 필터·batch_key 그룹핑·일괄 프리필 — spec §3-B. (실가공 1건에서 manifest client_id/worker_id 자연 확인 겸사)
+2. batch501·613 회수분 4건 대기함 처리(사용자 — 이미 수동 처리한 주문이면 void).
 3. (선택) 하네스 ship:gate 편입·판짜기(JSX) L4 물리검증·0.5mm 밀림(별건).
 
 ## 검증 명령 (PowerShell)
