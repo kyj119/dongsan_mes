@@ -1754,6 +1754,9 @@ bankRouter.post('/transactions/batch-apply', requireRole('ADMIN'), async (c) => 
     if (!Array.isArray(transaction_ids) || transaction_ids.length === 0) {
       return c.json({ success: false, error: 'transaction_ids 배열 필수' }, 400)
     }
+    if (transaction_ids.length > 1000) {
+      return c.json({ success: false, error: '한 번에 최대 1000건까지 처리할 수 있습니다.' }, 400)
+    }
 
     const results: { id: number; success: boolean; error?: string; payment_id?: number; link_mode?: string }[] = []
 
@@ -1872,6 +1875,9 @@ bankRouter.post('/transactions/batch-match', requireRole('ADMIN'), async (c) => 
 
     if (!Array.isArray(matches) || matches.length === 0) {
       return c.json({ success: false, error: 'matches 배열 필수 (각 항목: transaction_id, client_id)' }, 400)
+    }
+    if (matches.length > 1000) {
+      return c.json({ success: false, error: '한 번에 최대 1000건까지 처리할 수 있습니다.' }, 400)
     }
 
     const results: { id: number; success: boolean; error?: string }[] = []
