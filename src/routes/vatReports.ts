@@ -42,7 +42,7 @@ vatReportsRouter.get('/summary', async (c) => {
       FROM tax_invoices
       WHERE status IN ('ISSUED', 'NTS_SUCCESS', 'SENT')
         AND issue_date BETWEEN ? AND ?${ef.clause}
-      ORDER BY issue_date DESC
+      ORDER BY issue_date DESC, id DESC
     `).bind(periodStart, periodEnd, ...ef.params).all()
 
     // 매입 세금계산서 (홈택스 수집분)
@@ -65,7 +65,7 @@ vatReportsRouter.get('/summary', async (c) => {
       FROM hometax_invoices
       WHERE invoice_type = 'BUY'
         AND issue_date BETWEEN ? AND ?${ef.clause}
-      ORDER BY issue_date DESC
+      ORDER BY issue_date DESC, id DESC
     `).bind(periodStart, periodEnd, ...ef.params).all().catch(() => ({ results: [] }))
 
     const salesSupply = Number(salesAgg?.supply_sum) || 0

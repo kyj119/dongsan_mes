@@ -30,7 +30,7 @@ purchaseInvoices.get('/', async (c) => {
     LEFT JOIN clients cl ON pi.supplier_id = cl.id
     LEFT JOIN purchase_orders po ON pi.po_id = po.id
     ${where}
-    ORDER BY pi.invoice_date DESC LIMIT ? OFFSET ?
+    ORDER BY pi.invoice_date DESC, pi.id DESC LIMIT ? OFFSET ?
   `).bind(...binds, limit, offset).all()
 
   return c.json({
@@ -56,7 +56,7 @@ purchaseInvoices.get('/pending', async (c) => {
     LEFT JOIN clients cl ON cl.id = po.supplier_id
     WHERE poi.price_status = 'PENDING' AND poi.received_quantity > 0 ${ef.clause}
     GROUP BY po.id
-    ORDER BY po.order_date DESC
+    ORDER BY po.order_date DESC, po.id DESC
     LIMIT ${limit}
   `).bind(...ef.params).all()
 

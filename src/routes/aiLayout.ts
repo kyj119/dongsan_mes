@@ -50,7 +50,7 @@ aiLayoutRouter.get('/', async (c) => {
        FROM ai_layout_requests r
        JOIN ai_analysis_requests a ON r.analysis_id = a.id
        WHERE r.status = ?${efA.clause}
-       ORDER BY r.created_at ASC LIMIT 5`
+       ORDER BY r.created_at ASC, r.id ASC LIMIT 5`
     ).bind(status, ...efA.params).all()
 
     return c.json({ success: true, data: results })

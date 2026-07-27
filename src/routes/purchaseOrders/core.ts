@@ -11,6 +11,7 @@ import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../../utils/sequenceGenerator'
 import { getEntityCompanyInfo } from '../../utils/entitySettings'
 import { kstYmd, kstYmdCompact } from '../../utils/kstDate'
+import { excludeInternalClientsSql } from '../../constants/intercompany'
 import { validateUpload } from '../../utils/uploadValidation'
 
 const poCoreRouter = new Hono<HonoEnv>()
@@ -30,7 +31,8 @@ poCoreRouter.get('/', async (c) => {
       date_to = '',
       supplier_id = '',
       overdue = '',
-      receiving = ''
+      receiving = '',
+      include_intercompany = ''
     } = c.req.query()
     const safeLimit = Math.min(parseInt(limit) || 50, 200)
     const offset = (parseInt(page) - 1) * safeLimit
@@ -77,6 +79,15 @@ poCoreRouter.get('/', async (c) => {
 
     if (overdue === '1') {
       whereClauses.push("po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED') AND po.expected_date IS NOT NULL AND po.expected_date < date('now', '+9 hours')")
+    }
+
+    // 법인간거래(내부법인 3사 매입처) 기본 제외 — 미지급(AP) 집계가 이미 전수 제외하고 있어
+    //   목록에만 보이면 기준 불일치(accounts-payable.ts의 excludeInternalClientsSql와 동일 SSOT).
+    //   include_intercompany=1 이면 포함(화면 체크박스 '법인간거래 포함'). po_number 접두 필터 금지 —
+    //   명명 규칙 의존은 이관 규칙 변경에 깨짐. 정본 식별 = supplier_id ∈ 내부법인 clients.
+    //   ⚠️ receiving=1(입고 페이지)은 제외 대상 아님 — 입고는 실물 업무라 숨기면 입고 누락. (2026-07-27)
+    if (include_intercompany !== '1' && receiving !== '1') {
+      whereClauses.push(excludeInternalClientsSql('po.supplier_id').replace(' AND ', ''))
     }
 
     if (ef.clause) {
@@ -167,6 +178,9 @@ poCoreRouter.get('/', async (c) => {
     }
     if (overdue === '1') {
       countWhereClauses.push("po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED') AND po.expected_date IS NOT NULL AND po.expected_date < date('now', '+9 hours')")
+    }
+    if (include_intercompany !== '1' && receiving !== '1') {   // 목록과 동일 규칙(페이지네이션 총계 정합)
+      countWhereClauses.push(excludeInternalClientsSql('po.supplier_id').replace(' AND ', ''))
     }
     if (ef.clause) {
       countWhereClauses.push(ef.clause.replace(' AND ', ''))
@@ -262,7 +276,7 @@ poCoreRouter.get('/:id', async (c) => {
              (SELECT COALESCE(SUM(rejected_quantity), 0) FROM inventory_receipt_items WHERE receipt_id = inventory_receipts.id) AS total_rejected
       FROM inventory_receipts
       WHERE po_id = ?
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC, id DESC
     `).bind(id).all()
 
     const response: ApiResponse<any> = {

@@ -61,7 +61,7 @@ productionReportsRouter.get('/daily-summary', async (c) => {
       FROM orders o
       LEFT JOIN clients c ON o.client_id = c.id
       WHERE o.delivery_date < ? AND o.status IN ('CONFIRMED', 'PRINTING')${ef.clause}
-      ORDER BY o.delivery_date ASC
+      ORDER BY o.delivery_date ASC, o.id ASC
       LIMIT 20
     `).bind(targetDate, ...ef.params).all()
 

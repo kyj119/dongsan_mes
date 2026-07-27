@@ -240,7 +240,7 @@ costsRouter.get('/deductions', async (c) => {
       params.push(dateTo)
     }
 
-    query += ' ORDER BY d.created_at DESC LIMIT ? OFFSET ?'
+    query += ' ORDER BY d.created_at DESC, d.id DESC LIMIT ? OFFSET ?'  // 정렬 규약: 고유키 tie-break
     params.push(limit, offset)
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()

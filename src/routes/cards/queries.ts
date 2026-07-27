@@ -305,11 +305,12 @@ cardsQueriesRouter.get('/', async (c) => {
     query += ef.clause
     params.push(...ef.params)
 
+    // 정렬 규약: 모든 옵션에 고유키(c.id) tie-break 필수 (CLAUDE.md)
     const sortOptions: Record<string, string> = {
-      'priority_desc': 'c.priority DESC, c.delivery_date ASC, c.created_at ASC',
-      'delivery_asc': 'c.delivery_date ASC, c.priority DESC',
-      'created_desc': 'c.created_at DESC',
-      'created_asc': 'c.created_at ASC'
+      'priority_desc': 'c.priority DESC, c.delivery_date ASC, c.created_at ASC, c.id ASC',
+      'delivery_asc': 'c.delivery_date ASC, c.priority DESC, c.id DESC',
+      'created_desc': 'c.created_at DESC, c.id DESC',
+      'created_asc': 'c.created_at ASC, c.id ASC'
     }
     const orderBy = sortOptions[sort] || sortOptions['priority_desc']
     query += ` ORDER BY ${orderBy} LIMIT ? OFFSET ?`
@@ -675,7 +676,7 @@ cardsQueriesRouter.get('/defects/list', async (c) => {
     if (efDef.params.length) { wheres.push('qi.entity_id = ?'); params.push(...efDef.params) }
 
     if (wheres.length > 0) query += ' WHERE ' + wheres.join(' AND ')
-    query += ' ORDER BY qi.created_at DESC LIMIT ? OFFSET ?'
+    query += ' ORDER BY qi.created_at DESC, qi.id DESC LIMIT ? OFFSET ?'
     params.push(safeLimit, offset)
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
@@ -822,13 +823,13 @@ cardsQueriesRouter.get('/board', async (c) => {
           ELSE 3
         END,
         CASE WHEN c.pp_status = 'PENDING' THEN 0 ELSE 1 END,
-        c.delivery_date ASC, c.priority DESC`,
-      'priority_desc': 'c.priority DESC, c.delivery_date ASC',
-      'delivery_asc': 'c.delivery_date ASC, c.priority DESC',
-      'status_group': `CASE c.status WHEN 'HOLD' THEN 0 WHEN 'PRINTING' THEN 1 WHEN 'PRINT_DONE' THEN 2 ELSE 3 END, c.delivery_date ASC`
+        c.delivery_date ASC, c.priority DESC, c.id DESC`,
+      'priority_desc': 'c.priority DESC, c.delivery_date ASC, c.id DESC',
+      'delivery_asc': 'c.delivery_date ASC, c.priority DESC, c.id DESC',
+      'status_group': `CASE c.status WHEN 'HOLD' THEN 0 WHEN 'PRINTING' THEN 1 WHEN 'PRINT_DONE' THEN 2 ELSE 3 END, c.delivery_date ASC, c.id DESC`
     }
-    // 출고완료 탭은 최근 출고순
-    const orderBy = status === 'SHIPPED' ? 'c.shipped_at DESC' : (sortMap[sort] || sortMap['urgency'])
+    // 출고완료 탭은 최근 출고순 (정렬 규약: 고유키 tie-break 필수 — LIMIT+1 페이징이라 순서 안정 필요)
+    const orderBy = status === 'SHIPPED' ? 'c.shipped_at DESC, c.id DESC' : (sortMap[sort] || sortMap['urgency'])
 
     const { results: cards } = await c.env.DB.prepare(`
       SELECT c.id, c.card_number, c.client_name, c.item_name, c.category_name,
@@ -1068,7 +1069,7 @@ cardsQueriesRouter.get('/:id', async (c) => {
     let clientNotes: ClientNoteRow[] = []
     if (typedCard.client_id) {
       const { results: cnRows } = await c.env.DB.prepare(
-        `SELECT note_type, content, created_at FROM client_notes WHERE client_id = ? ORDER BY created_at DESC LIMIT 3`
+        `SELECT note_type, content, created_at FROM client_notes WHERE client_id = ? ORDER BY created_at DESC, id DESC LIMIT 3`
       ).bind(typedCard.client_id).all<ClientNoteRow>()
       clientNotes = cnRows || []
     }
@@ -1113,7 +1114,7 @@ cardsQueriesRouter.get('/:id/history', async (c) => {
       FROM card_status_history csh
       LEFT JOIN users u ON csh.changed_by = u.id
       WHERE csh.card_id = ?
-      ORDER BY csh.created_at DESC
+      ORDER BY csh.created_at DESC, csh.id DESC
     `).bind(id).all()
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -1140,7 +1141,7 @@ cardsQueriesRouter.get('/:id/defects', async (c) => {
       LEFT JOIN employees e1 ON qi.reported_by = e1.id
       LEFT JOIN employees e2 ON qi.resolved_by = e2.id
       WHERE qi.card_id = ?
-      ORDER BY qi.created_at DESC
+      ORDER BY qi.created_at DESC, qi.id DESC
     `).bind(cardId).all()
     return c.json({ success: true, data: results })
   } catch (error) {

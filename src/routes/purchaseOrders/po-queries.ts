@@ -24,10 +24,12 @@ poQueriesRouter.get('/stats', async (c) => {
     const ef = entityFilter(c)
     const efWhere = ef.params.length > 0 ? ' WHERE entity_id = ?' : ''
     const efAnd = ef.params.length > 0 ? ' AND entity_id = ?' : ''
+    // 목록(core.ts GET /)과 동일 규칙: 법인간거래 기본 제외(총계·금액이 목록과 어긋나지 않게)
+    const icAnd = c.req.query('include_intercompany') === '1' ? '' : excludeInternalClientsSql('supplier_id')
 
     const { results } = ef.params.length > 0
-      ? await c.env.DB.prepare(`SELECT status, COUNT(*) as count FROM purchase_orders WHERE entity_id = ? GROUP BY status`).bind(...ef.params).all()
-      : await c.env.DB.prepare(`SELECT status, COUNT(*) as count FROM purchase_orders GROUP BY status`).all()
+      ? await c.env.DB.prepare(`SELECT status, COUNT(*) as count FROM purchase_orders WHERE entity_id = ?${icAnd} GROUP BY status`).bind(...ef.params).all()
+      : await c.env.DB.prepare(`SELECT status, COUNT(*) as count FROM purchase_orders${icAnd ? ' WHERE 1=1' + icAnd : ''} GROUP BY status`).all()
 
     const stats: Record<string, number> = { total: 0 }
     for (const row of results as Record<string, unknown>[]) {
@@ -39,7 +41,7 @@ poQueriesRouter.get('/stats', async (c) => {
     const overdue = await c.env.DB.prepare(`
       SELECT COUNT(*) as count FROM purchase_orders
       WHERE status IN ('CONFIRMED', 'PARTIAL_RECEIVED')
-        AND expected_date IS NOT NULL AND expected_date < date('now', '+9 hours')${efAnd}
+        AND expected_date IS NOT NULL AND expected_date < date('now', '+9 hours')${efAnd}${icAnd}
     `).bind(...ef.params).first<{ count: number }>()
     stats.overdue = overdue?.count || 0
 
@@ -49,7 +51,7 @@ poQueriesRouter.get('/stats', async (c) => {
       WHERE status IN ('CONFIRMED', 'PARTIAL_RECEIVED')
         AND expected_date IS NOT NULL
         AND expected_date >= date('now', '+9 hours')
-        AND expected_date <= date('now', '+9 hours', '+3 days')${efAnd}
+        AND expected_date <= date('now', '+9 hours', '+3 days')${efAnd}${icAnd}
     `).bind(...ef.params).first<{ count: number }>()
     stats.upcoming = upcoming?.count || 0
 
@@ -58,7 +60,7 @@ poQueriesRouter.get('/stats', async (c) => {
       SELECT COALESCE(SUM(final_amount), 0) as total
       FROM purchase_orders
       WHERE status NOT IN ('CANCELLED', 'DRAFT')
-        AND order_date >= date('now', 'start of month')${efAnd}
+        AND order_date >= date('now', 'start of month')${efAnd}${icAnd}
     `).bind(...ef.params).first<{ total: number }>()
     stats.monthly_amount = monthlyAmount?.total || 0
 
@@ -115,7 +117,7 @@ poQueriesRouter.get('/stats', async (c) => {
 // ============================================================================
 poQueriesRouter.get('/export/csv', async (c) => {
   try {
-    const { status = '', search = '', date_from = '', date_to = '', supplier_id = '', overdue = '' } = c.req.query()
+    const { status = '', search = '', date_from = '', date_to = '', supplier_id = '', overdue = '', include_intercompany = '' } = c.req.query()
 
     let query = `
       SELECT po.*, c.client_name as supplier_name, u.name as created_by_name
@@ -140,6 +142,10 @@ poQueriesRouter.get('/export/csv', async (c) => {
     if (supplier_id) { whereClauses.push('po.supplier_id = ?'); params.push(parseInt(supplier_id)) }
     if (overdue === '1') {
       whereClauses.push("po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED') AND po.expected_date IS NOT NULL AND po.expected_date < date('now', '+9 hours')")
+    }
+    // 목록(core.ts GET /)과 동일 규칙: 법인간거래 기본 제외 — 화면에 없는 행이 CSV에 섞이지 않게
+    if (include_intercompany !== '1') {
+      whereClauses.push(excludeInternalClientsSql('po.supplier_id').replace(' AND ', ''))
     }
     if (whereClauses.length > 0) query += ' WHERE ' + whereClauses.join(' AND ')
     // 목록(GET /) 기본 정렬과 정합: 발주일 최신순 + id tie-break (이관 배치 데이터 동일 created_at 대응)

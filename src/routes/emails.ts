@@ -55,7 +55,7 @@ emailsRouter.get('/logs', requireRole('ADMIN', 'MANAGER'), async (c) => {
       FROM email_logs el
       LEFT JOIN users u ON el.sent_by = u.id
       ${where}
-      ORDER BY el.created_at DESC
+      ORDER BY el.created_at DESC, el.id DESC
       LIMIT ? OFFSET ?
     `).bind(...params, safeLimit, offset).all()
 

@@ -59,7 +59,7 @@ priceListRouter.get('/', async (c) => {
         const { results: rules } = await c.env.DB.prepare(`
           SELECT id, category, item_id, rate_percent, fixed_price
           FROM price_policy_rules WHERE policy_id = ?
-          ORDER BY item_id NULLS LAST, category NULLS LAST
+          ORDER BY item_id IS NULL, item_id, category IS NULL, category, id
         `).bind(policyId).all()
         policyRules = rules
       }
@@ -131,7 +131,7 @@ priceListRouter.get('/policies/:id', async (c) => {
       FROM price_policy_rules r
       LEFT JOIN items i ON r.item_id = i.id
       WHERE r.policy_id = ?
-      ORDER BY r.item_id NULLS LAST, r.category NULLS LAST, r.sort_order
+      ORDER BY r.item_id IS NULL, r.item_id, r.category IS NULL, r.category, r.sort_order, r.id
     `).bind(id).all()
 
     return c.json({ success: true, data: { ...policy, rules } })

@@ -135,7 +135,7 @@ paymentMatchRouter.get('/payment-match/suggestions', async (c) => {
        FROM payments p
        LEFT JOIN clients cl ON cl.id = p.client_id
        WHERE p.tax_invoice_id IS NULL${efP.clause}
-       ORDER BY p.payment_date DESC
+       ORDER BY p.payment_date DESC, p.id DESC
        LIMIT 500`
     ).bind(...efP.params).all<PaymentRow & { client_name: string | null }>()
     const pays = paysRaw as Array<PaymentRow & { client_name: string | null }>

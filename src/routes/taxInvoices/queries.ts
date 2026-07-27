@@ -104,7 +104,7 @@ taxInvoicesQueriesRouter.get('/', async (c) => {
     if (whereClauses.length > 0) {
       query += ' WHERE ' + whereClauses.join(' AND ')
     }
-    query += ' ORDER BY ti.created_at DESC LIMIT ? OFFSET ?'
+    query += ' ORDER BY ti.created_at DESC, ti.id DESC LIMIT ? OFFSET ?'  // 정렬 규약: 고유키 tie-break
     params.push(safeLimit, offset)
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
@@ -350,7 +350,8 @@ taxInvoicesQueriesRouter.get('/order/:orderId', async (c) => {
       JOIN tax_invoice_orders tio ON tio.tax_invoice_id = ti.id
       LEFT JOIN orders o ON ti.order_id = o.id
       WHERE tio.order_id = ?${ef.clause}
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC, id DESC
+      -- UNION(compound SELECT)의 ORDER BY는 출력 컬럼만 참조 가능 → 별칭(ti.id) 금지, id 사용
     `).bind(orderId, ...ef.params, orderId, ...ef.params).all()
 
     return c.json({ success: true, data: results })

@@ -49,7 +49,7 @@ specGroupsRouter.get('/:id', async (c) => {
       LEFT JOIN spec_groups g1 ON g1.id = b.spec_group_id
       LEFT JOIN spec_groups g2 ON g2.id = b.spec_group_id2
       WHERE (b.spec_group_id = ? OR b.spec_group_id2 = ?) AND b.spec_value IS NULL AND b.spec_value2 IS NULL
-      ORDER BY b.item_name ASC
+      ORDER BY b.item_name ASC, b.id ASC
     `).bind(id, id).all()
     return c.json({ success: true, data: { ...group, values, bases } })
   } catch (error) {

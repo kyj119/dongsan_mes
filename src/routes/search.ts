@@ -32,7 +32,7 @@ searchRouter.get('/', async (c) => {
         WHERE (o.order_number LIKE ? OR c.client_name LIKE ?)
           AND o.status != 'CANCELLED'
           ${ef.clause}
-        ORDER BY o.created_at DESC
+        ORDER BY o.created_at DESC, o.id DESC
         LIMIT 20
       `).bind(pattern, pattern, ...ef.params).all(),
 
@@ -42,7 +42,7 @@ searchRouter.get('/', async (c) => {
         FROM clients
         WHERE (client_name LIKE ? OR client_code LIKE ?)
           AND is_active = 1
-        ORDER BY client_name ASC
+        ORDER BY client_name ASC, id ASC
         LIMIT 20
       `).bind(pattern, pattern).all(),
 
@@ -54,7 +54,7 @@ searchRouter.get('/', async (c) => {
         WHERE (ca.card_number LIKE ? OR c.client_name LIKE ?)
           AND ca.status NOT IN ('CANCELLED')
           ${cardClause}
-        ORDER BY ca.created_at DESC
+        ORDER BY ca.created_at DESC, ca.id DESC
         LIMIT 20
       `).bind(pattern, pattern, ...cardParams).all(),
 
@@ -65,7 +65,7 @@ searchRouter.get('/', async (c) => {
         LEFT JOIN clients c ON q.client_id = c.id
         WHERE (q.quotation_number LIKE ? OR c.client_name LIKE ?)
           ${qEf.clause}
-        ORDER BY q.created_at DESC
+        ORDER BY q.created_at DESC, q.id DESC
         LIMIT 20
       `).bind(pattern, pattern, ...qEf.params).all(),
     ])

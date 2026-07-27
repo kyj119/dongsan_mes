@@ -80,7 +80,7 @@ bankRouter.get('/fund-summary', requireRole('ADMIN'), async (c) => {
           WHERE bt.bank_account_id = ba.id) AS last_tx_date
       FROM bank_accounts ba
       WHERE ba.is_active = 1${ef.clause}
-      ORDER BY ba.created_at DESC`
+      ORDER BY ba.created_at DESC, ba.id DESC`
     ).bind(...ef.params).all<{ current_balance: number | null }>()
 
     const totalBalance = results.reduce((s, a) => s + (Number(a.current_balance) || 0), 0)

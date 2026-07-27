@@ -51,7 +51,7 @@ tasksRouter.get('/', async (c) => {
     if (order_id) { query += ' AND t.order_id = ?'; params.push(parseInt(order_id)) }
     if (card_id) { query += ' AND t.card_id = ?'; params.push(parseInt(card_id)) }
 
-    query += ' ORDER BY t.created_at DESC LIMIT ?'
+    query += ' ORDER BY t.created_at DESC, t.id DESC LIMIT ?'
     params.push(Math.min(parseInt(limit), 500))
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
@@ -154,7 +154,7 @@ tasksRouter.post('/claim', async (c) => {
     const { results } = await c.env.DB.prepare(`
       SELECT id FROM tasks
       WHERE type = ? AND status = 'PENDING' AND retry_count < max_retries
-      ORDER BY created_at ASC
+      ORDER BY created_at ASC, id ASC
       LIMIT ?
     `).bind(type, limit).all<{ id: number }>()
 

@@ -795,7 +795,7 @@ dashboardRouter.get('/stats/recent-activity', async (c) => {
       FROM orders o
       LEFT JOIN clients c ON o.client_id = c.id
       WHERE o.status != 'CANCELLED'${ef.clause}
-      ORDER BY o.created_at DESC
+      ORDER BY o.created_at DESC, o.id DESC
       LIMIT 5
     `).bind(...ef.params).all()
 
@@ -807,7 +807,7 @@ dashboardRouter.get('/stats/recent-activity', async (c) => {
       LEFT JOIN orders o ON s.order_id = o.id
       LEFT JOIN clients c ON o.client_id = c.id
       WHERE s.status != 'CANCELLED'${ef.clause}
-      ORDER BY s.shipped_at DESC
+      ORDER BY s.shipped_at DESC, s.id DESC
       LIMIT 5
     `).bind(...ef.params).all()
 

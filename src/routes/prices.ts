@@ -475,7 +475,7 @@ pricesRouter.get('/item-detail/:id', async (c) => {
       FROM client_item_prices cip
       JOIN clients cl ON cip.client_id = cl.id
       WHERE cip.item_id = ?
-      ORDER BY cip.updated_at DESC
+      ORDER BY cip.updated_at DESC, cip.id DESC
     `).bind(itemId).all()
 
     // 최근 변경 이력

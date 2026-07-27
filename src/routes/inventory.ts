@@ -61,7 +61,7 @@ inventoryRouter.get('/', async (c) => {
       query += ` HAVING COALESCE(SUM(inv.quantity), 0) <= COALESCE(MAX(inv.safe_stock), 0) AND COALESCE(MAX(inv.safe_stock), 0) > 0`
     }
 
-    query += ` ORDER BY i.category, i.item_name LIMIT ? OFFSET ?`
+    query += ` ORDER BY i.category, i.item_name, i.id LIMIT ? OFFSET ?`  // 정렬 규약: 고유키 tie-break
     params.push(Number(limit), offset)
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
@@ -442,7 +442,7 @@ inventoryRouter.get('/receipts/pending-review', async (c) => {
               (SELECT u.name FROM users u WHERE u.id = r.received_by) AS receiver_name
        FROM inventory_receipts r
        WHERE r.inspection_status = 'PENDING_REVIEW'
-       ORDER BY r.created_at DESC LIMIT 100`
+       ORDER BY r.created_at DESC, r.id DESC LIMIT 100`
     ).all()
     return c.json({ success: true, data: results })
   } catch (err: any) {

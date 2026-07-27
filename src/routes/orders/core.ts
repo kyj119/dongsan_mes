@@ -138,15 +138,19 @@ ordersCoreRouter.get('/', async (c) => {
     }
 
     // Sorting
+    // ⚠️ 정렬 규약(CLAUDE.md): 모든 옵션에 고유키(o.id) tie-break 필수.
+    //   이관 주문은 created_at이 'order_date 09:00:00'로 고정돼 동값 군집이 최대 29건 →
+    //   tie-break 없으면 필터·인덱스 경로에 따라 군집 내부가 id ASC↔DESC로 반전되고
+    //   LIMIT/OFFSET 페이징에서 행 중복·누락이 발생. NULL 처리는 D1 방언(NULLS LAST) 대신 IS NULL.
     const sortOptions: Record<string, string> = {
-      'created_at_desc': 'o.created_at DESC',
-      'created_at_asc': 'o.created_at ASC',
-      'delivery_date_asc': 'o.delivery_date ASC NULLS LAST',
-      'delivery_date_desc': 'o.delivery_date DESC NULLS LAST',
-      'final_amount_desc': 'o.final_amount DESC',
-      'priority_desc': "CASE WHEN o.priority = 'URGENT' THEN 0 ELSE 1 END, o.delivery_date ASC"
+      'created_at_desc': 'o.created_at DESC, o.id DESC',
+      'created_at_asc': 'o.created_at ASC, o.id ASC',
+      'delivery_date_asc': 'o.delivery_date IS NULL, o.delivery_date ASC, o.id DESC',
+      'delivery_date_desc': 'o.delivery_date IS NULL, o.delivery_date DESC, o.id DESC',
+      'final_amount_desc': 'o.final_amount DESC, o.id DESC',
+      'priority_desc': "CASE WHEN o.priority = 'URGENT' THEN 0 ELSE 1 END, o.delivery_date IS NULL, o.delivery_date ASC, o.id DESC"
     }
-    const orderBy = sortOptions[sort] || 'o.created_at DESC'
+    const orderBy = sortOptions[sort] || sortOptions['created_at_desc']
     
     query += ` ORDER BY ${orderBy} LIMIT ? OFFSET ?`
     params.push(safeLimit, offset)
@@ -302,7 +306,7 @@ ordersCoreRouter.get('/:id/timeline', async (c) => {
       FROM order_status_history osh
       LEFT JOIN users u ON osh.changed_by = u.id
       WHERE osh.order_id = ?
-      ORDER BY osh.created_at ASC
+      ORDER BY osh.created_at ASC, osh.id ASC
     `).bind(id).all()
     return c.json({ success: true, data: results })
   } catch (error) {

@@ -761,7 +761,7 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
     const count = countRow?.count ?? 0
 
     // 장비명 표시 통일: 사용자가 /장비관리에서 정한 equipment.name 우선, 없으면 RIPLOG 원본(printer_name)
-    const selectQuery = `SELECT pe.*, COALESCE(eq.name, pe.printer_name) as printer_name FROM print_events pe LEFT JOIN equipment eq ON pe.equipment_id = eq.id ${where} ORDER BY COALESCE(pe.print_completed_at, pe.created_at) DESC LIMIT ? OFFSET ?`
+    const selectQuery = `SELECT pe.*, COALESCE(eq.name, pe.printer_name) as printer_name FROM print_events pe LEFT JOIN equipment eq ON pe.equipment_id = eq.id ${where} ORDER BY COALESCE(pe.print_completed_at, pe.created_at) DESC, pe.id DESC LIMIT ? OFFSET ?`
     params.push(limitNum, offset)
     const { results } = await c.env.DB.prepare(selectQuery).bind(...params).all()
 
@@ -863,7 +863,7 @@ printEventsRouter.get('/stats', authMiddleware, async (c) => {
     const { results: recent } = await c.env.DB.prepare(`
       SELECT id, agent_id, card_number, card_id, order_number, file_path, file_name, printer_name, print_status, print_started_at, print_completed_at, output_width, output_height, dpi, equipment_id, copy_total, print_duration_sec, created_at FROM print_events
       WHERE 1=1${ef.clause}
-      ORDER BY created_at DESC LIMIT 20
+      ORDER BY created_at DESC, id DESC LIMIT 20
     `).bind(...ef.params).all()
 
     return c.json({

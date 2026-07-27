@@ -92,11 +92,12 @@ quotationsRouter.get('/', async (c) => {
     query += ef.clause
     params.push(...ef.params)
 
+    // 정렬 규약: 모든 옵션에 고유키(q.id) tie-break 필수 (CLAUDE.md)
     const sortOptions: Record<string, string> = {
-      'created_desc': 'q.created_at DESC',
-      'created_asc': 'q.created_at ASC',
-      'valid_asc': 'q.valid_until ASC',
-      'amount_desc': 'q.final_amount DESC',
+      'created_desc': 'q.created_at DESC, q.id DESC',
+      'created_asc': 'q.created_at ASC, q.id ASC',
+      'valid_asc': 'q.valid_until IS NULL, q.valid_until ASC, q.id DESC',
+      'amount_desc': 'q.final_amount DESC, q.id DESC',
     }
     const orderBy = sortOptions[sort] || sortOptions['created_desc']
     query += ` ORDER BY ${orderBy} LIMIT ? OFFSET ?`
@@ -766,7 +767,7 @@ quotationsRouter.get('/:id/orders', async (c) => {
     const { results } = await c.env.DB.prepare(`
       SELECT id, order_number, status, final_amount, created_at, delivery_date
       FROM orders WHERE quotation_id = ?
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC, id DESC
     `).bind(id).all()
     return c.json({ success: true, data: results })
   } catch (error) {

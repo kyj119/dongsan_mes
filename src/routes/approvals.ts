@@ -120,7 +120,7 @@ approvals.get('/', async (c) => {
 
     const limit = Math.min(Number(limitQ) || 200, 500)
     const offset = Number(offsetQ) || 0
-    query += ` ORDER BY ar.created_at DESC LIMIT ? OFFSET ?`
+    query += ` ORDER BY ar.created_at DESC, ar.id DESC LIMIT ? OFFSET ?`  // 정렬 규약: 고유키 tie-break
     params.push(limit, offset)
 
     const stmt = params.length > 0 ? c.env.DB.prepare(query).bind(...params) : c.env.DB.prepare(query)
@@ -153,7 +153,7 @@ approvals.get('/pending', async (c) => {
     const { results } = await c.env.DB.prepare(`
       SELECT ar.*, u.name as requester_name, ast.step_order, ast.label as step_label
       ${fromWhere}
-      ORDER BY ar.created_at DESC
+      ORDER BY ar.created_at DESC, ar.id DESC
       LIMIT ${PENDING_CAP}
     `).bind(userId, userRole, ...ef.params).all()
 

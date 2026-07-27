@@ -120,10 +120,11 @@ clientsRouter.get('/', async (c) => {
 
     const { where: filterWhere, params: filterParams } = buildClientFilters({ active, search, client_type, invoice_method, delivery_method, has_balance, credit_hold })
 
-    // Sort option
-    let orderByClause = ' ORDER BY c.client_name ASC'
-    if (sort === 'last_order') orderByClause = ' ORDER BY last_order_date DESC NULLS LAST, c.client_name ASC'
-    else if (sort === 'created') orderByClause = ' ORDER BY c.created_at DESC'
+    // Sort option — 정렬 규약(CLAUDE.md): 고유키(c.id) tie-break 필수.
+    //   client_name은 동명 거래처가 존재해 비고유. NULL 처리는 D1 방언(NULLS LAST) 대신 IS NULL.
+    let orderByClause = ' ORDER BY c.client_name ASC, c.id ASC'
+    if (sort === 'last_order') orderByClause = ' ORDER BY last_order_date IS NULL, last_order_date DESC, c.client_name ASC, c.id ASC'
+    else if (sort === 'created') orderByClause = ' ORDER BY c.created_at DESC, c.id DESC'
 
     // Dormant filter (needs last_order_date subquery)
     let dormantWhere = ''
@@ -308,7 +309,7 @@ clientsRouter.get('/:id/detail', async (c) => {
       FROM orders
       WHERE client_id = ? AND status != 'QUOTATION'
         ${ef.clause}
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC, id DESC
       LIMIT 20
     `).bind(id, ...ef.params).all()
 
@@ -318,7 +319,7 @@ clientsRouter.get('/:id/detail', async (c) => {
       FROM orders
       WHERE client_id = ? AND status = 'QUOTATION'
         ${ef.clause}
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC, id DESC
       LIMIT 10
     `).bind(id, ...ef.params).all()
 
@@ -344,7 +345,7 @@ clientsRouter.get('/:id/detail', async (c) => {
       FROM client_item_prices cp
       JOIN items i ON cp.item_id = i.id
       WHERE cp.client_id = ?
-      ORDER BY i.item_name
+      ORDER BY i.item_name, cp.id
       LIMIT 30
     `).bind(id).all()
 
@@ -354,7 +355,7 @@ clientsRouter.get('/:id/detail', async (c) => {
       FROM client_notes cn
       LEFT JOIN users u ON cn.created_by = u.id
       WHERE cn.client_id = ?
-      ORDER BY cn.created_at DESC
+      ORDER BY cn.created_at DESC, cn.id DESC
       LIMIT 20
     `).bind(id).all()
 

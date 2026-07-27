@@ -177,7 +177,7 @@ shipmentsRouter.get('/daily', async (c) => {
       LEFT JOIN orders om ON om.id = spm.order_id
       WHERE o.delivery_date = ? AND o.status NOT IN ('CANCELLED', 'DELETED', 'DRAFT')${efDaily.clause}
       GROUP BY o.id
-      ORDER BY o.delivery_time ASC NULLS LAST, o.delivery_method ASC, cl.client_name ASC
+      ORDER BY o.delivery_time IS NULL, o.delivery_time ASC, o.delivery_method ASC, cl.client_name ASC, o.id ASC
     `).bind(targetDate, ...efDaily.params).all()
 
     // 품목 상세

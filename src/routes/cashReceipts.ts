@@ -102,7 +102,7 @@ cashReceiptsRouter.get('/', async (c) => {
     if (whereClauses.length > 0) {
       query += ' WHERE ' + whereClauses.join(' AND ')
     }
-    query += ' ORDER BY cr.created_at DESC LIMIT ? OFFSET ?'
+    query += ' ORDER BY cr.created_at DESC, cr.id DESC LIMIT ? OFFSET ?'  // 정렬 규약: 고유키 tie-break
     params.push(safeLimit, offset)
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()

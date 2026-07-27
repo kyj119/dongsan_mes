@@ -366,7 +366,7 @@ arPaymentsRouter.get('/adjustments/:clientId', async (c) => {
       FROM adjustments a
       LEFT JOIN users u ON a.created_by = u.id
       WHERE a.client_id = ?${efAdjList.clause}
-      ORDER BY a.created_at DESC
+      ORDER BY a.created_at DESC, a.id DESC
       LIMIT 500
     `).bind(clientId, ...efAdjList.params).all()
 

@@ -108,7 +108,7 @@ cardExpRouter.get('/cards', requireEditOrRole('/card-expenses', 'MANAGER'), asyn
       FROM corporate_cards cc
       LEFT JOIN users u ON cc.assigned_user_id = u.id
       WHERE cc.is_active = 1${ef.clause}
-      ORDER BY cc.created_at DESC
+      ORDER BY cc.created_at DESC, cc.id DESC
     `).bind(thisMonth + '01', thisMonth + '31', thisMonth + '01', thisMonth + '31', ...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {

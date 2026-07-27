@@ -36,7 +36,7 @@ workbenchRouter.get('/orders', async (c) => {
       LEFT JOIN clients cl ON cl.id = o.client_id
       LEFT JOIN ai_analysis_requests ar ON ar.id = o.ai_analysis_id
       WHERE ${where}${ef.clause}
-      ORDER BY o.created_at DESC
+      ORDER BY o.created_at DESC, o.id DESC
       LIMIT ?
     `).bind(...params, ...ef.params, limit).all()
 

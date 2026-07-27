@@ -200,7 +200,7 @@ prRouter.get('/:id/comments', async (c) => {
       FROM pr_comments pc
       JOIN users u ON pc.user_id = u.id
       WHERE pc.request_id = ?
-      ORDER BY pc.created_at ASC
+      ORDER BY pc.created_at ASC, pc.id ASC
     `).bind(Number(id)).all()
     return c.json({ success: true, comments: results })
   } catch (error) {
@@ -350,7 +350,7 @@ prRouter.get('/:id', async (c) => {
       FROM pr_comments pc
       JOIN users u ON pc.user_id = u.id
       WHERE pc.request_id = ?
-      ORDER BY pc.created_at ASC
+      ORDER BY pc.created_at ASC, pc.id ASC
     `).bind(id).all()
 
     let linkedPO = null

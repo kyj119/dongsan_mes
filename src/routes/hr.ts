@@ -95,7 +95,7 @@ hrRouter.get('/employees', async (c) => {
       params.push(searchTerm, searchTerm, searchTerm)
     }
 
-    query += ` ORDER BY e.employee_code LIMIT ? OFFSET ?`
+    query += ` ORDER BY e.employee_code, e.id LIMIT ? OFFSET ?`  // 정렬 규약: 고유키 tie-break
     params.push(safeLimit, offset)
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
@@ -1177,7 +1177,7 @@ hrRouter.get('/contracts', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const countResult = await c.env.DB.prepare(countQuery).bind(...params).first<{ total: number }>()
     const total = countResult?.total || 0
 
-    query += ` ORDER BY lc.created_at DESC LIMIT ? OFFSET ?`
+    query += ` ORDER BY lc.created_at DESC, lc.id DESC LIMIT ? OFFSET ?`  // 정렬 규약: 고유키 tie-break
     params.push(safeLimit, offset)
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()

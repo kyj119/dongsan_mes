@@ -35,7 +35,7 @@ notificationsRouter.get('/', async (c) => {
       query += ' AND is_read = 0'
     }
 
-    query += ' ORDER BY is_read ASC, created_at DESC LIMIT ?'
+    query += ' ORDER BY is_read ASC, created_at DESC, id DESC LIMIT ?'
     params.push(safeLimit)
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
@@ -205,7 +205,7 @@ notificationsRouter.post('/generate', async (c) => {
       WHERE o.status IN ('CONFIRMED','PRINTING','PRINT_DONE')
         AND o.delivery_date IS NOT NULL
         AND o.delivery_date <= ?${ef.clause}
-      ORDER BY o.delivery_date ASC LIMIT 10
+      ORDER BY o.delivery_date ASC, o.id ASC LIMIT 10
     `).bind(tomorrow, ...ef.params).all()
 
     if (dueOrders && dueOrders.length > 0) {

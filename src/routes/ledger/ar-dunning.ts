@@ -200,7 +200,7 @@ arDunningRouter.post('/collection-logs', async (c) => {
               AND id NOT IN (
                 SELECT DISTINCT order_id FROM payments WHERE order_id IS NOT NULL${emailPayEf}
               )
-            ORDER BY order_date ASC LIMIT 10
+            ORDER BY order_date ASC, id ASC LIMIT 10
           `).bind(body.client_id, ...emailOrdEfParams, ...emailPayEfParams).all<UnpaidOrderRow>()
 
           const balance = (await deriveClientBalance(c, body.client_id)) || body.amount_requested || 0  // split billing P3: 파생
@@ -300,21 +300,21 @@ arDunningRouter.post('/send-email', async (c) => {
     const { results: orders } = await c.env.DB.prepare(`
       SELECT id, order_number, order_date, final_amount, billed_amount, billing_status, status, created_at
       FROM orders WHERE client_id = ?${ordersEf} AND date(created_at) >= ? AND date(created_at) <= ?
-      ORDER BY created_at ASC
+      ORDER BY created_at ASC, id ASC
     `).bind(client_id, ...ordersEfParams, startDate, endDate).all<OrderRow>()
 
     const { clause: paymentsEf, params: paymentsEfParams } = entityFilter(c)
     const { results: payments } = await c.env.DB.prepare(`
       SELECT id, payment_date, amount, payment_method, reference_number, notes, created_at
       FROM payments WHERE client_id = ?${paymentsEf} AND date(payment_date) >= ? AND date(payment_date) <= ?
-      ORDER BY payment_date ASC
+      ORDER BY payment_date ASC, id ASC
     `).bind(client_id, ...paymentsEfParams, startDate, endDate).all<PaymentRow>()
 
     const { clause: adjEf, params: adjEfParams } = entityFilter(c)
     const { results: adjustments } = await c.env.DB.prepare(`
       SELECT id, order_id, type, amount, reason, created_at
       FROM adjustments WHERE client_id = ?${adjEf} AND date(created_at) >= ? AND date(created_at) <= ?
-      ORDER BY created_at ASC
+      ORDER BY created_at ASC, id ASC
     `).bind(client_id, ...adjEfParams, startDate, endDate).all<AdjustmentRow>()
 
     // Combine and sort
