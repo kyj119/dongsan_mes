@@ -25,7 +25,7 @@
 
 | 문서 | 상태 | 성격 | 비고 |
 |---|---|---|---|
-| `PROJECT_STATUS.md` | 🟢 | 현황판(단일 소스) | 작업 시작/완료 시 갱신. **2026-07-27 다이어트 완료: 192KB→43KB(77%↓), 읽기 상한 해소.** 완료분은 ARCHIVE, 미해결은 상단 "⚠️ 미해결 잠복" 절 |
+| `PROJECT_STATUS.md` | 🟢 | 현황판(단일 소스) | 작업 시작/완료 시 갱신. **2026-07-27 다이어트 + 자동 트림 도입: 192KB→43KB.** `npm run status:trim`(배포 후·sync-docs가 호출, 임계 미만 no-op) — **수동 트림 불필요**. 완료분은 ARCHIVE, 미해결은 상단 "⚠️ 미해결 잠복" 절 |
 | `PROJECT_STATUS_ARCHIVE.md` | 🗄️ | 현황판 과거분 이관 싱크 | **삭제 금지** — 다이어트 이관 목적지 |
 | `design-decisions.md` | 🟢 | 설계 결정 인덱스(A~BI) | references/decisions-*와 연결. ⚠️BI(역할확장)는 인덱스 전용 — 상세는 auto-memory 정본 |
 | `references/` 8건 | 🟢 | architecture-flow·decisions-{business,code,money}·glossary·project-context·agent-team-guide·hex-to-tailwind-map | 정리됨, 손대지 말 것 |

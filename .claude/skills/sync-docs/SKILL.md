@@ -85,6 +85,8 @@ design-decisions.md와 관련 SKILL.md 파일이 실제 코드와 일치하는�
 - 숫자 불일치 (파일 수, 라우터 수 등) → 실제 값으로 갱신
 - PROJECT_STATUS.md 최종 업데이트 날짜 → 오늘로 갱신
 - CLAUDE.md 프로젝트 규모 날짜 → 오늘로 갱신
+- **현황판/백로그 비대화 방지**: `npm run status:trim && npm run backlog:trim`
+  (임계 미만이면 no-op. 무손실·형식 계약·BOM 검증 후 실패 시 자동 롤백하므로 그냥 호출)
 
 #### 사용자 확인 후 수정
 - PROJECT_STATUS.md의 항목 이동 (진행중→완료, 대기→진행중)

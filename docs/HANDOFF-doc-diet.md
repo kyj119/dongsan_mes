@@ -95,7 +95,10 @@ IMPROVEMENT_BACKLOG.md 가 196KB/605줄로 비대해서 auto-improve 사이클�
 - [x] `PROJECT_STATUS.md` 상단 "⚠️ 미해결 잠복" 절 신설 — 6건 승격, 각 항목에 정본 링크/다음 액션 표기
 - [x] `IMPROVEMENT_BACKLOG.md` — **완료 (2026-07-27)**: 195,928 B → 63,142 B (68%↓). 형식 계약 13항목 전수 OK, 카운터·메타 주석 값 무변경
 - [x] **백로그는 자동화 완료** — `npm run backlog:trim`(`scripts/backlog-trim.cjs`)을 auto-improve가 매 사이클 호출. 13건 이상일 때만 동작, 8건 유지 + Area 커버리지 보강 + 무손실/계약 검증 + 실패 시 자동 롤백. **더는 수동 트림 불필요**
-- [ ] ⚠️ **`PROJECT_STATUS.md`는 여전히 수동** — 배포마다 배너가 쌓이므로 같은 문제가 재발한다. 자동화하려면 배너 이관 스크립트가 별도로 필요(백로그와 구조가 달라 `backlog-trim.cjs` 재사용 불가)
+- [x] **`PROJECT_STATUS.md`도 자동화 완료** — `npm run status:trim`(`scripts/status-trim.cjs`). 배포 배너 12건↑ → 6건 유지, '현재 진행 중'의 ✅ 완료 항목 5건↑ → 전량 이관. 보호 배너(현재 초점·블로커·다음 액션·핸드오프·멀티세션·⚠️)와 비-✅ 항목은 절대 미이관. 호출 지점 = `deploy-verify` Phase 5, `sync-docs` 자동 수정
+
+> **두 스크립트 공통 안전장치**: 무손실 지문 대조 + 형식 계약 검증(백로그 13항목 / 현황판 11항목) + BOM 보존, 하나라도 실패하면 **양쪽 파일 원본 복구 후 exit 1**. 임계 미만이면 no-op이라 조건 없이 호출해도 된다.
+> `--check`(현황만) / `--force`(강제) / `status-trim`은 `--root <dir>`로 테스트 픽스처 지정 가능.
 - [x] ARCHIVE는 **앞에 붙이기만** 했고 기존 내용 무손실 — 원본 지문 106건 전수 대조, 유실 0
 - [x] `docs/INDEX.md` 크기 표기 갱신
 

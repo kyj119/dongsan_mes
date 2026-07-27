@@ -139,7 +139,8 @@ function main() {
   const arch = fs.readFileSync(ARCHIVE, 'utf8')
   const pool = after + '\n' + arch
   const lost = logs.filter((x) => !pool.includes(x.head))
-  const broken = CONTRACT.filter(([, re]) => !re.test(after)).map(([n]) => n)
+  // BOM이 있으면 첫 줄이 '﻿# ...'가 되어 ^# 앵커가 불일치 → 검사 전 제거
+  const broken = CONTRACT.filter(([, re]) => !re.test(after.replace(/^﻿/, ''))).map(([n]) => n)
 
   if (lost.length || broken.length) {
     fs.writeFileSync(ACTIVE, rawActive, 'utf8')
