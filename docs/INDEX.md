@@ -18,7 +18,7 @@
 |---|---|---|---|
 | `README.md` | 🟢 | 프로젝트 소개·실행법 | 루트 유지(표준) |
 | `CLAUDE.md` | 🟢 | Claude 작업 규칙 | 루트 유지 |
-| `IMPROVEMENT_BACKLOG.md` | 🟢 | 개선 백로그(활성 단일본) | **2026-07-27 다이어트 완료: 196KB→63KB(68%↓)**. 사이클 로그는 최근 8건만 유지(그 이상은 ARCHIVE). 카운터·오탐표·형식 절은 auto-improve 계약이라 보존 |
+| `IMPROVEMENT_BACKLOG.md` | 🟢 | 개선 백로그(활성 단일본) | **2026-07-27 다이어트 + 자동 트림 도입: 196KB→62KB**. `npm run backlog:trim`을 auto-improve가 매 사이클 호출(13건↑ 시 8건으로, 무손실·계약 검증·실패 시 롤백) — **수동 트림 불필요**. 카운터·오탐표·형식 절은 스킬 계약이라 보존 |
 | `IMPROVEMENT_BACKLOG_ARCHIVE.md` | 🗄️ | 과거 auto-improve 사이클 이관 싱크 | **삭제 금지** — 백로그 다이어트의 이관 목적지 |
 
 ## 2. `.claude/` (운영 메모리)

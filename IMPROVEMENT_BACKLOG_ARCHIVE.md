@@ -1,3 +1,22 @@
+## 📦 2026-07-27 이관분 (8차 자동 트림 — scripts/backlog-trim.cjs)
+
+> 사이클 로그 1건. 원본 순서(시간 역순) 보존. 활성 파일은 최근 8건 유지.
+
+> **Area 2 코드 품질 심층 분석 (2026-07-26T03:17):**
+> - **방법**: `git fetch origin main`(HEAD `93d2c57` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 2 **51회차** — 직전 Area2(`a5ecec6`, 07-24T15:20, 50회차) 이후 `git log a5ecec6..HEAD -- src/routes migrations src/scripts`는 **0건**(그 사이 5커밋 전부 `docs(auto-improve)` — Area3~Area1이 각자 문서만 갱신, 실질 코드/마이그 churn 없음). 신선 churn이 없어 표준 스캔(`entity-audit.mjs`=122파일·통과59·누락0, `tsc --noEmit`=clean, 마이그번호 중복=기존 5쌍만, secret fallback grep=`fax.ts` 기존 FP만) 재확인 후, **아직 전용 전수 스캔이 오래 없었던 두 클래스(N+1 쿼리·dead code)**를 general-purpose 에이전트로 코드베이스 전체 스캔.
+> - **🔴 신규 이슈 — #562 (S~M, improvement)**: `taxInvoices/batch.ts:221` `POST /monthly-create`(client_ids 생략 시 전체 MONTHLY 거래처 대상, LIMIT 없음)가 거래처별로 `createSplitInvoices`(거래처당 D1 호출 4+, `auto_issue=true`면 `issueTaxInvoice`까지 포함해 K≈5~14)를 순차 호출 — 거래처 수(N)가 사업 확장에 비례해 늘어나는 helper-loop N+1(#478 계열의 새 라우트 재현). 한도 소진 시 일부 거래처만 발행되고 나머지 무응답 중단 = 부분 월정산.
+> - **🔴 신규 이슈 — #563 (S~M, improvement)**: `clients.ts:638` `POST /import`(CSV 대량 업로드, 배열 크기 무제한)가 행마다 SELECT+INSERT/UPDATE를 `db.batch()` 없이 순차 실행 — 수백 행 업로드에서 서브요청 한도 근접, 부분 임포트 위험.
+> - **🔧 자동수정 2건 — dead code 제거**: ① `payroll/shared.ts` `getSetting`(단수형, 전체 코드베이스 0참조 — 배치버전 `getSettings`로 완전 대체됨 확인) 삭제 ② `utils/paymentSchedule.ts` `describePaymentCycle`(0참조, 표시용 요약 헬퍼가 UI에 배선된 적 없음) 삭제. **`unitConvert.ts` `toBase`는 보고·수정 모두 보류** — 0참조이나 `fromBase`와 대칭을 이루는 multi-UOM 모델의 정식 변환 헬퍼(CLAUDE.md/SKILL #462가 명시하는 "일부 write-path만 pack_size 환산 적용된 진행중 기능")라 형제 함수와 별개로 삭제 시 향후 write-path 완성 시 재구현 필요 — 진짜 dead code와 구분해 보존. `npm run verify`(typecheck+build) 통과 확인 후 커밋.
+> - **🟢 나머지 N+1 후보 = 전부 clean(FP)**: bank.ts 계좌×기간 동기화·printEvents batch·weeklyPurchase/purchaseRequests 공급처그룹 루프·po-receive 품목별 단가 캐스케이드·cards/lifecycle 일괄출고·orders bulk-ship·shipments merge — 전부 기존 `db.batch()` 최적화(`#458`/`#474`/`#478` 리뷰 주석 동반) 또는 UI multi-select/자연 소규모 상한(공급처·PO 라인·법인 수)으로 bounded. dead code 후보 중 나머지(0-hit grep 매치 다수)는 같은 파일 내부 재사용(예: `statusLabels.ts` TONES/ICONS가 파일 자신의 템플릿 리터럴에서 소비)이라 FP.
+> - **🟢 backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **10건**(#554~#561 이월 + #562·#563 신규). done(`reason:completed`)은 이번 사이클 close 0건이라 재조회 생략, 직전 다수 사이클 연속 확인된 **479** 유지(close-pending 캐시 정책). rejected **6**(변동 없음, 재확인 생략).
+> - **🧬 SKILL 강화 없음(기존 패턴 재현)** — N+1 2건은 기존 "helper-loop N+1"(#478) 클래스의 다른 라우트 재현, dead code 제거는 기존 자동수정 정책의 정상 적용. `toBase` 보류 판단은 기존 #462(단위환산 형제-완전성) 규칙의 자연스러운 적용(진행중 기능의 미완 write-path 헬퍼를 dead code로 오판하지 않는 사례)이라 별도 codify 불요.
+> - 신규 이슈 2건(#562·#563, issue-only — 과금/대량write 제어흐름 변경이라 자동수정 대상 아님), 자동수정 2건(dead code 제거, 커밋 예정), done-sync 변동 없음(new 8→10[신규 2건 반영]·done 479·rejected 6). 다음 순번 Area 3.
+>
+
+> 이전 사이클 로그 31건 전량 → `IMPROVEMENT_BACKLOG_ARCHIVE.md` (2026-07-27 이관)
+
+
+---
 ## 📦 2026-07-27 이관분 (백로그 다이어트 — auto-improve 사이클 읽기 비용 절감)
 
 > 사이클 로그 31건. 원본 순서(시간 역순) 보존.
