@@ -1287,9 +1287,14 @@ workbenchRouter.post('/intakes', async (c) => {
     let absorbed = false
     const orderItemId = Number(body.order_item_id) || null
     if (orderItemId) {
+      // #582 IDOR: 라인 소유 법인 검증 없이는 타법인 주문 라인에 남의 분석을 물릴 수 있었다(write 오염).
+      // 필터는 이 id의 출처인 /intake-config open_lines(:1140)와 동일한 orderVisibilityFilter —
+      // 분할청구 협업 라인(assigned_entity_id)은 통과, 타법인 라인은 차단(피커가 준 것만 링크 가능).
+      const ovf = orderVisibilityFilter(c, 'o')
       const line = await c.env.DB.prepare(
-        `SELECT id FROM order_items WHERE id = ? AND ai_analysis_id IS NULL`
-      ).bind(orderItemId).first<{ id: number }>()
+        `SELECT oi.id FROM order_items oi JOIN orders o ON o.id = oi.order_id
+          WHERE oi.id = ? AND oi.ai_analysis_id IS NULL${ovf.clause}`
+      ).bind(orderItemId, ...ovf.params).first<{ id: number }>()
       if (line) {
         await c.env.DB.prepare(
           `UPDATE order_items SET ai_analysis_id = ?, ai_group_index = -3 WHERE id = ?`
@@ -1426,6 +1431,18 @@ workbenchRouter.post('/intakes/:id/absorb', async (c) => {
     ).bind(id, ...ef.params).first<{ id: number; status: string; ai_analysis_id: number | null }>()
     if (!row) return c.json({ success: false, error: '대기물을 찾을 수 없습니다.' }, 404)
     if (row.status !== 'waiting') return c.json({ success: false, error: `대기 상태가 아닙니다 (${row.status}).` }, 409)
+
+    // #582 변종: body로 명시된 order_item_id도 소유 검증 후에만 링크. 무검증이면 타법인 라인에
+    // provenance가 꽂히고, 그 라인은 아래 역추적의 NOT EXISTS에 걸려 정당한 흡수까지 막힌다.
+    // (미지정 경로는 아래 역추적이 자체 entity 가드를 가짐. 현재 웹 클라는 order_item_id를 보내지 않음)
+    if (orderItemId) {
+      const ovfB = orderVisibilityFilter(c, 'o')
+      const ok = await c.env.DB.prepare(
+        `SELECT oi.id FROM order_items oi JOIN orders o ON o.id = oi.order_id
+          WHERE oi.id = ?${ovfB.clause}`
+      ).bind(orderItemId, ...ovfB.params).first<{ id: number }>()
+      if (!ok) return c.json({ success: false, error: '주문 라인을 찾을 수 없습니다.' }, 404)
+    }
 
     // order_item_id 미지정 시: 대기물의 ai_analysis_id 로 방금 생성된 통과 라인(ai_group_index=-3 passthrough)을
     // 역추적해 링크(대기물↔order_item 추적성). 현재 법인·미링크 후보가 정확히 1건일 때만 연결 —
