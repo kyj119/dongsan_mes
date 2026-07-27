@@ -416,9 +416,10 @@
       });
     });
 
-    // ── 반자동 큐 (A2) ──
+    // ── 반자동 큐 (A2) + 행↔폼 연동 (A안: 묶음분리로 분해 → 행 선택 → 행별 후가공 세팅 → 확정) ──
     var queue = []; // [{params, client, keyword, qty, w, h}]
-    var elQueueBox = $('queueBox'), elBtnQAdd = $('btnQueueAdd'), elBtnQBatch = $('btnQueueBatch'), elBtnConfirm = $('btnConfirm'), elBtnQClear = $('btnQueueClear');
+    var bound = -1; // 폼과 연동 중인 행 인덱스(-1=없음). 연동 중 폼 변경=그 행에만 반영
+    var elQueueBox = $('queueBox'), elBtnQAdd = $('btnQueueAdd'), elBtnQBatch = $('btnQueueBatch'), elBtnConfirm = $('btnConfirm'), elBtnQClear = $('btnQueueClear'), elBtnApplyAll = $('btnApplyAll');
 
     function renderQueue() {
       if (elQueueBox) {
@@ -428,13 +429,20 @@
           var html = '';
           for (var i = 0; i < queue.length; i++) {
             var e = queue[i];
-            var meta = e.w + '×' + e.h + 'cm ×' + e.qty + (e.client ? (' · ' + e.client) : '');
-            html += '<div class="qrow"><span class="qn">#' + (i + 1) + '</span>' +
+            var fx = (e.params && e.params.post_desc) ? (' · ' + e.params.post_desc) : '';
+            var meta = e.w + '×' + e.h + 'cm ×' + e.qty + (e.client ? (' · ' + e.client) : '') + fx;
+            html += '<div class="qrow' + (i === bound ? ' sel' : '') + '" data-i="' + i + '"><span class="qn">#' + (i + 1) + '</span>' +
               '<input class="qkw" data-i="' + i + '" type="text" value="' + escHtml(e.keyword || '') + '" placeholder="키워드" />' +
-              '<span class="qmeta">' + escHtml(meta) + '</span>' +
+              '<span class="qmeta" title="' + escHtml(meta) + '">' + escHtml(meta) + '</span>' +
               '<button class="qdel" data-i="' + i + '">✕</button></div>';
           }
           elQueueBox.innerHTML = html;
+          var rows = elQueueBox.getElementsByClassName('qrow');
+          for (var r = 0; r < rows.length; r++) rows[r].addEventListener('click', function (ev) {
+            var cls = (ev.target && ev.target.className) ? String(ev.target.className) : '';
+            if (cls.indexOf('qkw') !== -1 || cls.indexOf('qdel') !== -1) return; // 인라인 편집·삭제 클릭은 행 선택 아님
+            toggleBind(parseInt(this.getAttribute('data-i'), 10));
+          });
           var dels = elQueueBox.getElementsByClassName('qdel');
           for (var d = 0; d < dels.length; d++) dels[d].addEventListener('click', function () { queueRemove(parseInt(this.getAttribute('data-i'), 10)); });
           var kws = elQueueBox.getElementsByClassName('qkw');
@@ -444,17 +452,106 @@
               var v = this.value.replace(/^\s+|\s+$/g, '');
               queue[ix].keyword = v;
               if (queue[ix].params) queue[ix].params.keyword = v; // 호스트 조합용 동기화
+              if (ix === bound && elAnnot) elAnnot.value = v;     // 연동 행이면 폼(주석 키워드)도 정합
             }
           });
         }
       }
       if (elBtnConfirm) { elBtnConfirm.textContent = '일괄 확정 (' + queue.length + ')'; elBtnConfirm.disabled = queue.length === 0; }
+      if (elBtnApplyAll) elBtnApplyAll.disabled = queue.length === 0;
     }
+
+    // 행 클릭=폼 연동 토글: 행 params를 가공·후가공 탭에 로드, 이후 폼 변경은 그 행에만 반영
+    function toggleBind(i) {
+      if (isNaN(i) || i < 0 || i >= queue.length) return;
+      if (bound === i) { bound = -1; renderQueue(); out('행 연동 해제 — 폼 설정은 이후 새 담기에 사용'); return; }
+      bound = i;
+      applyRowToForm(queue[i]);
+      renderQueue();
+      out('#' + (i + 1) + ' 행 연동 중 — 가공·후가공 탭 수정이 이 행에 반영됩니다 (행 다시 클릭=해제)');
+    }
+
+    function setSelectValue(sel, v) { if (!sel) return; sel.value = ''; if (v != null && v !== '') sel.value = v; }
+
+    function applyRowToForm(e) {
+      var p = e.params || {};
+      if (elQty) elQty.value = String(e.qty || p.qty || 1);
+      if (elScale && p.scale_n) elScale.value = String(p.scale_n);
+      if (p.mode) setMode(p.mode);
+      if (elTrim) elTrim.checked = !!p.trim;
+      if (elTrimInk) elTrimInk.checked = !!p.trim_ink;
+      if (elClient) elClient.value = e.client || p.client_name || '';
+      var pc = p.punch || {}, cn = pc.corners || {};
+      if (elPTop) elPTop.value = String(pc.top || 0);
+      if (elPBottom) elPBottom.value = String(pc.bottom || 0);
+      if (elPLeft) elPLeft.value = String(pc.left || 0);
+      if (elPRight) elPRight.value = String(pc.right || 0);
+      if (elPcTL) elPcTL.checked = !!cn.tl;
+      if (elPcTR) elPcTR.checked = !!cn.tr;
+      if (elPcBL) elPcBL.checked = !!cn.bl;
+      if (elPcBR) elPcBR.checked = !!cn.br;
+      if (elAnnot) elAnnot.value = e.keyword || p.keyword || '';
+      var ap = p.annot_pos || {};
+      if (elATop) elATop.checked = !!ap.top;
+      if (elABottom) elABottom.checked = !!ap.bottom;
+      if (elALeft) elALeft.checked = !!ap.left;
+      if (elARight) elARight.checked = !!ap.right;
+      var fin = p.finishing || {};
+      for (var s = 0; s < SIDES.length; s++) {
+        var side = SIDES[s];
+        setSelectValue(methodSelect(side), fin[side] || '');
+        var cmEl = cmInput(side);
+        if (cmEl) cmEl.value = fin[side] ? String(fin[side + '_cm'] != null ? fin[side + '_cm'] : marginOf(fin[side])) : '';
+        setSelectValue(markSelect(side), fin[side + '_mark'] || '');
+      }
+      if (elPreset) elPreset.value = ''; // 프리셋 표기는 (직접 지정)으로 — 실값은 위에서 로드됨
+      updateAnnotGates();
+    }
+
+    // 연동 행에 현재 폼 반영 — gatherParams 재사용으로 post_desc(파일명 세그먼트)·주석 게이트까지 행별 재계산
+    function syncBoundRow() {
+      if (bound < 0 || bound >= queue.length) return;
+      var p = gatherParams();
+      var e = queue[bound];
+      e.params = p;
+      e.qty = p.qty;
+      e.client = p.client_name || '';
+      e.keyword = p.keyword || '';
+      renderQueue();
+    }
+
+    // 폼 변경 위임 감지(연동 시 자동 반영). 큐 내부(qkw)·가공자·분리간격은 제외
+    document.addEventListener('change', function (ev) {
+      if (bound < 0) return;
+      var t = ev.target;
+      if (!t) return;
+      if (elQueueBox && elQueueBox.contains(t)) return;
+      if (t.id === 'worker' || t.id === 'splitGap') return;
+      syncBoundRow();
+    });
+
+    // 현재 폼 설정을 전체 행에 적용 — 행 고유값(수량·키워드·거래처)은 보존
+    if (elBtnApplyAll) elBtnApplyAll.addEventListener('click', function () {
+      if (!queue.length) return;
+      var base = gatherParams();
+      for (var i = 0; i < queue.length; i++) {
+        var e = queue[i];
+        var p = JSON.parse(JSON.stringify(base));
+        p.qty = e.qty;
+        p.keyword = e.keyword || '';
+        p.client_name = e.client || '';
+        e.params = p;
+      }
+      renderQueue();
+      out('현재 가공·후가공 설정을 전체 ' + queue.length + '행에 적용 (수량·키워드·거래처는 행값 유지)');
+    });
 
     function queueRemove(i) {
       if (i < 0 || i >= queue.length) return;
       csi.evalScript('mesA0_queueRemove(' + i + ')', function () {});
       queue.splice(i, 1);
+      if (bound === i) bound = -1;
+      else if (bound > i) bound--;
       renderQueue();
     }
 
@@ -499,7 +596,7 @@
 
     if (elBtnQClear) elBtnQClear.addEventListener('click', function () {
       csi.evalScript('mesA0_queueClear()', function () {});
-      queue = []; renderQueue(); out('큐 비움');
+      queue = []; bound = -1; renderQueue(); out('큐 비움');
     });
 
     if (elBtnConfirm) elBtnConfirm.addEventListener('click', function () {
@@ -531,7 +628,7 @@
           }
           out('일괄 확정 완료: 성공 ' + okN + ' / 실패 ' + failN + '\n폴더: ' + batchFolder + '\n' + lines.join('\n') + '\n→ 에이전트 ingest 후 대기함', failN ? 'err' : 'okmsg');
           csi.evalScript('mesA0_queueClear()', function () {});
-          queue = []; renderQueue(); reenable();
+          queue = []; bound = -1; renderQueue(); reenable();
         }
         function step() {
           if (i >= queue.length) { finishBatch(); return; }
