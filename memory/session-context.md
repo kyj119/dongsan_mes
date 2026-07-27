@@ -1,26 +1,38 @@
-# 세션 핸드오프 — 네스팅 패커 검증·수정 + A0 패널 행별 후가공 (2026-07-27 #5)
+# 세션 핸드오프 — A0 CEP A1 후반 완결 + 배치 ingest 결함 수정 (2026-07-27 #8)
 
-> durable=[[reference-nesting-harness]]·spec `2026-07-23-ia-palette-session-loop.md`. **prod 배포·검증 완료**(main `3437ff73`·deploy `a5fb469f`·스모크 102/102·격리 worktree 빌드).
+> durable=[[project-ia-designer-loop]]·spec `2026-07-23-ia-palette-session-loop.md`·README-cep.md. **구현·E2E 검증·커밋·push 완료(main `012630f1`), ⚠️MES `deploy:prod`만 대기(사용자 승인 필요)**.
 > ⚠️ 아래 #4(MMS)·#3(자금관리)는 같은 날 병렬 세션 기록 — 보존.
 
-## 결정 + 이유
-1. **L1 네스팅 하네스 신설**(`scripts/nesting-harness.mjs`) — 패킹은 순수함수라 일러/브라우저 없이 단위검증이 최저비용. `iaEditor.js`에서 브레이스 매칭 절취(?raw 전역이라 import 불가), seeded 랜덤+실사례, 판정=R1 전수배치·R2 치수회전·R3 경계·R4 겹침간격·R5 에러정당성(+W1 total_height 경고). 실행: `node scripts/nesting-harness.mjs --cases=1000 --seed=7777` (실패=exit 1+`docs/audits/nesting-harness-failures.json`).
-2. **shelf 패커 겹침 버그 수정**(하네스 실증 112/205케이스) — 면적정렬 back-fill로 중간 선반 높이가 자라면 이미 아래 y로 생성된 다음 선반과 겹침. 마지막 선반만 성장 허용으로 수정. **형제 스윕**: `iaEditor.js`(레거시·UI는 maxrects 고정) + **원본 `orderForm/sheet.js:427`(주문서 시트배치 실사용 3호출부)**. maxrects total_height gap 과소보고도 수정. 수정 후 각 1005케이스 그린. maxrects 배치 자체는 원래 무결(혼합케이스 효율 356 vs shelf 416cm — 고정 결정 타당성 실증).
-3. **A0 CEP 패널 큐 행↔폼 연동(A안, 사용자 선택)** — 기존엔 담는 순간 전역 폼 스냅샷 복제라 행별 후가공 불가(spec §3-A 위반). 새 순서=`묶음분리 분해→행 클릭 연동→행별 후가공 세팅→일괄 확정`. 행 클릭=토글(하이라이트), 폼 change 위임→그 행만 반영, `gatherParams()` 재사용이라 post_desc·주석 3cm 게이트 행별 재계산, [전체 적용]=수량·키워드·거래처 보존. **설치본(%APPDATA% CEP) 동기배포 완료 — 일러 재시작 필요**. host.jsx 무변경.
+## 이번 세션 완료 (A0 남은 것 4건 전부 + 결함 1건)
+1. **검토문서+확정 게이트(D4, A1 후반)** — [검토문서]=큐 전체 가공(저장 없음)→디자인당 아트보드 타일. host.jsx `mesA0_process`에 `review_only` 분기(+검토 시 Z: 폴더 미생성) + `mesA0_review{Begin,Place,End,Discard}`(5500mm 한도 초과 시 문서 분할=순차 폴백, 재검토 시 이전 검토문서 자동 폐기, cross-doc은 copy/paste 이관). 게이트=rev 기반: 큐 변경(추가·삭제·세팅·키워드) 시 [일괄 확정] 재잠금·원복해도 잠금 유지(의도). **확정=기존 행별 재가공·저장 경로 그대로**(가공 2회 비용 대신 회귀 0 — 무거운 건 EPS 저장이고 그건 확정 시에만이라 D4/D9 취지 충족).
+2. **거래처 자동완성(D5)** — workbench.ts intake-config에 `clients`(id+client_name, 활성 전체 ~3,424) 재도입 + 패널 커스텀 제안 리스트(부분일치 15건·mousedown 선택·✓등록/자유입력 표시) + 정확일치 시 `client_id` 해소 → manifest → POST /intakes 존재검증 후 저장(불량 id는 free-text 폴백=ingest 안 죽음).
+3. **가공자↔MES user id(§3.5)** — intake-config `workers`(role/job_role=DESIGNER·활성) → 패널 이름 완전일치 매핑 → manifest `worker_id`(gatherParams registered_by_id 채움 — host가 worker_id로 기록). prod 4인 존재 확인: 인호동14·김보연8·김영주15·정소은16 (전원 username=name).
+4. **자동감지 시드(A3)** — host.jsx `mesA0_autoDetect(gapMm)`: 선택 불필요, 레이어 top-level(잠금·숨김 제외, 서브레이어 재귀) 후보→기존 클러스터 파이프라인 공용화(`mesA0_seedQueueJson`, 묶음분리와 응답 계약 동일). read-only(원본 불가침).
+5. **★배치 ingest 결함 수정(Program.cs)** — E2E가 실증한 기존 결함: 에이전트가 `manifest.json`(단수)만 스캔 → **CEP 일괄 확정 산출물(manifest_N.json)은 대기함에 영영 미등록**(단건만 동작). 사용자 실작업 batch501(07-27)·batch613(07-24)이 실제로 미등록 상태였음. 수정=`manifest_*.json` 접미 스캔+`.ingested_N`/`.rejected_N` 멱등 마커+`source_folder`에 `#_N` 접미(서버 memo dedup이 디자인 단위로 동작). **에이전트 재빌드(dotnet publish, csproj 설정 그대로)·exe만 교체·재기동(PID 34540)** → batch501·613 4건 자동 회수 ingest 확인(waiting, 사용자 처리 대기).
 
-## 주의사항
-- 큐 항목=라이브 문서 참조(host.jsx `{doc,items}`) — 행별 세팅 중 원본 문서 닫으면 확정 시 `stale`/`docgone`.
-- shelf 수정=밀도 소폭 손해 가능(정확성 우선). 주 패커는 maxrects라 실사용 영향 미미.
-- 배포는 타 세션 messages WIP 격리 위해 **worktree 격리 빌드**(junction 선제거 후 정리, 메인 node_modules 무손상 확인).
+## E2E 검증 (일러 재시작 없이)
+- **CDP(포트 8888) 패널 페이지 리로드 + host.jsx 전역 핫스왑**(`$.evalFile`을 IIFE 밖 전역에서 — IIFE 안에서 하면 함수가 지역에 갇힘 ★함정) → 재시작 불필요했음.
+- 시나리오: 테스트 문서(사각 3개) → [◎ 자동감지] 3행 → 행 바인드로 행별 마감 상이(사방접어미싱/상하줄미싱/양옆열재단+꼭짓점펀칭) → 자동완성(동산플→동산플래그 ✓등록) → [검토문서] 아트보드 3(행별 마진 정확: 308×208/600×410/900×500mm@scale10) → 게이트 재잠금 → 재검토(이전 검토문서 폐기 확인) → [일괄 확정] 3/3 → **EPS 규약명 행별 post_desc 상이** → manifest client_id=719·worker_id=14 → ingest → prod intake 행 확인(worker_id=14 저장).
+- 정리 완료: prod 테스트 행(designer_intakes 22-24·ai_analysis 59-61) 삭제·Z: batch661·_출력 EPS 3개 삭제·일러 테스트 문서 닫음(사용자 애니룩스 문서 보존·활성)·패널 localStorage 원복.
+
+## ⚠️ 주의사항
+- **MES prod 미배포**: intake-config clients/workers·client_id 저장은 로컬 코드만. **배포 전엔 자동완성·worker_id 매핑 비활성**(config에 리스트가 없음 — 패널은 우아 폴백). E2E는 prod 데이터를 config에 수동 주입해 검증했고, 에이전트가 이미 정상 config로 덮어씀.
+- **에이전트 신버전 필수**: 구 exe로 롤백하면 배치 ingest가 다시 죽음. 운영 exe=`bin/Release/net8.0/win-x64/publish/`(PID 34540). publish 폴더의 JSX·appsettings는 교체 안 함(exe/pdb만).
+- batch501(애니룩스 2건)·batch613(인퓨쳐 2건)이 대기함에 새로 등장 — 결함 회수분. 이미 수동 처리한 주문이면 대기함에서 void.
+- MCP illustrator(COM)는 CEP와 **다른 ExtendScript 엔진** — mesA0_* 미노출이 정상. COM hang 1회 발생(문서 close 중) → CEP evalScript 경유로 우회.
+- 검토문서=폐기용(저장물 아님). 확정·비우기·재검토 시 자동 close.
 
 ## 다음 TODO
-1. **A0 패널 실사용 E2E**(일러 재시작 후): 묶음분리→행별 마감 상이 세팅→일괄 확정→EPS 파일명 후가공 세그먼트 행별 상이+ingest 대기함 확인.
-2. A0 남은 것: 검토문서+확정게이트(A1 후반)·거래처 자동완성·가공자↔user id 매핑·자동감지 시드(A3).
+1. **[사용자 결정] MES `deploy:prod`** — 배포되면 에이전트가 ~5분 내 config 갱신 → 자동완성·매핑 실동작. 배포 후 확인: config.json에 clients/workers 존재 + 실가공 1건 manifest client_id/worker_id.
+2. B단계(연동 강화): 대기함 "내 작업"(worker_id) 필터·batch_key 그룹핑·일괄 프리필 — spec §3-B.
 3. (선택) 하네스 ship:gate 편입·판짜기(JSX) L4 물리검증·0.5mm 밀림(별건).
 
 ## 검증 명령 (PowerShell)
 ```powershell
-npm run verify; node scripts/nesting-harness.mjs --cases=1000 --seed=7777; npm run smoke
+npm run verify
+node --check IllustratorAutomat\designer\poc-a0-cep\com.mes.a0.panel\js\main.js
+# CEP 패널 상태(일러 실행+패널 열림 시): http://localhost:8888/json
+# prod intake 확인: npx wrangler d1 execute webapp-production --remote --command "SELECT id,client_id,worker_id,post_desc,memo FROM designer_intakes ORDER BY id DESC LIMIT 5"
 ```
 
 ---
