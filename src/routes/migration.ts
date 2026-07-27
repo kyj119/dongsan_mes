@@ -17,7 +17,7 @@ migrationRouter.get('/logs', async (c) => {
       SELECT ml.*, u.name as created_by_name
       FROM migration_logs ml
       LEFT JOIN users u ON u.id = ml.created_by
-      ORDER BY ml.created_at DESC
+      ORDER BY ml.created_at DESC, ml.id DESC
       LIMIT 50
     `).all()
     return c.json({ success: true, data: results })

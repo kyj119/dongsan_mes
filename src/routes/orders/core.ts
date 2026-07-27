@@ -306,7 +306,7 @@ ordersCoreRouter.get('/:id/timeline', async (c) => {
       FROM order_status_history osh
       LEFT JOIN users u ON osh.changed_by = u.id
       WHERE osh.order_id = ?
-      ORDER BY osh.created_at ASC
+      ORDER BY osh.created_at ASC, osh.id ASC
     `).bind(id).all()
     return c.json({ success: true, data: results })
   } catch (error) {

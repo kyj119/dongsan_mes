@@ -65,7 +65,7 @@ itemsRouter.get('/category/:categoryId', async (c) => {
       LEFT JOIN item_categories ic ON i.category_id = ic.id
       LEFT JOIN item_subcategories isc ON i.subcategory_id = isc.id
       WHERE i.category_id = ? AND i.is_active = 1
-      ORDER BY i.item_name ASC
+      ORDER BY i.item_name ASC, i.id ASC
     `).bind(categoryId).all<Item>()
 
     const response: ApiResponse<Item[]> = {
@@ -356,7 +356,7 @@ itemsRouter.get('/variant-bases', async (c) => {
     if (type === 'sales') q += ' AND b.is_sales_item = 1'
     else if (type === 'purchase') q += ' AND b.is_purchase_item = 1'
     if (search) { q += ' AND (b.item_name LIKE ? OR b.search_keywords LIKE ?)'; params.push(`%${search}%`, `%${search}%`) }
-    q += ' ORDER BY b.item_name ASC'
+    q += ' ORDER BY b.item_name ASC, b.id ASC'
     const { results } = await c.env.DB.prepare(q).bind(...params).all<{ variant_count: number }>()
     return c.json({ success: true, data: (results || []).filter(r => r.variant_count > 0) })
   } catch (error) {

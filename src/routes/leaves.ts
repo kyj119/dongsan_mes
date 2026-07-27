@@ -499,7 +499,7 @@ leavesRouter.get('/requests', async (c) => {
       LEFT JOIN employees e ON e.id = lr.employee_id
       LEFT JOIN users ap ON ap.id = lr.approved_by
       ${where}
-      ORDER BY lr.created_at DESC
+      ORDER BY lr.created_at DESC, lr.id DESC
       LIMIT ? OFFSET ?
     `).bind(...params, limit, offset).all()
 

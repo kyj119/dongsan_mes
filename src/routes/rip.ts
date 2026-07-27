@@ -207,7 +207,7 @@ ripRouter.get('/status', authMiddleware, async (c) => {
         status, client_name, item_name
       FROM cards
       WHERE rip_filename IS NOT NULL
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC, id DESC
       LIMIT 50
     `).all<CardRipRow>()
 
@@ -1349,7 +1349,7 @@ ripRouter.get('/maintenance/alerts', authMiddleware, requireRole('ADMIN', 'MANAG
       WHERE e.status = 'ACTIVE'${ef.clause}
         AND ec.next_due_at IS NOT NULL
         AND ec.next_due_at <= date('now', '+9 hours', '+7 days')
-      ORDER BY ec.next_due_at ASC
+      ORDER BY ec.next_due_at ASC, ec.id ASC
     `).bind(...ef.params).all()
 
     // 정비 기한 도래 스케줄
@@ -1364,7 +1364,7 @@ ripRouter.get('/maintenance/alerts', authMiddleware, requireRole('ADMIN', 'MANAG
       WHERE e.status = 'ACTIVE' AND ms.is_active = 1${ef.clause}
         AND ms.next_due_at IS NOT NULL
         AND ms.next_due_at <= date('now', '+9 hours', '+7 days')
-      ORDER BY ms.next_due_at ASC
+      ORDER BY ms.next_due_at ASC, ms.id ASC
     `).bind(...ef.params).all()
 
     return c.json({
@@ -2128,7 +2128,7 @@ ripRouter.get('/maintenance/dashboard', authMiddleware, requireRole('ADMIN', 'MA
       FROM maintenance_schedules ms
       JOIN equipment e ON ms.equipment_id = e.id
       WHERE ms.is_active = 1${ef.clause}
-      ORDER BY ms.next_due_at ASC
+      ORDER BY ms.next_due_at IS NULL, ms.next_due_at ASC, ms.id ASC
     `).bind(...ef.params).all()
 
     // 소모품 현황
@@ -2142,7 +2142,7 @@ ripRouter.get('/maintenance/dashboard', authMiddleware, requireRole('ADMIN', 'MA
       FROM equipment_consumables ec
       JOIN equipment e ON ec.equipment_id = e.id
       WHERE e.status = 'ACTIVE'${ef.clause}
-      ORDER BY ec.next_due_at ASC
+      ORDER BY ec.next_due_at IS NULL, ec.next_due_at ASC, ec.id ASC
     `).bind(...ef.params).all()
 
     // 프린터 헤드 상태

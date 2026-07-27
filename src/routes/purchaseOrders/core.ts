@@ -262,7 +262,7 @@ poCoreRouter.get('/:id', async (c) => {
              (SELECT COALESCE(SUM(rejected_quantity), 0) FROM inventory_receipt_items WHERE receipt_id = inventory_receipts.id) AS total_rejected
       FROM inventory_receipts
       WHERE po_id = ?
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC, id DESC
     `).bind(id).all()
 
     const response: ApiResponse<any> = {

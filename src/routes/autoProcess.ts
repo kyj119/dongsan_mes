@@ -205,7 +205,7 @@ autoProcessRouter.get('/pending', async (c) => {
               scale_factor, ia_params, created_at
        FROM auto_process_jobs
        WHERE status = 'pending'${ef.clause}
-       ORDER BY created_at ASC
+       ORDER BY created_at ASC, id ASC
        LIMIT 10`
     ).bind(...ef.params).all()
 

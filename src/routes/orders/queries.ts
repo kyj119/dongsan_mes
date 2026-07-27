@@ -141,7 +141,7 @@ ordersQueriesRouter.get('/ready-to-ship', async (c) => {
       GROUP BY o.id
       HAVING COUNT(cards.id) > 0
          AND COUNT(cards.id) = SUM(CASE WHEN cards.status = 'PRINT_DONE' THEN 1 ELSE 0 END)
-      ORDER BY o.delivery_date ASC
+      ORDER BY o.delivery_date ASC, o.id ASC
     `).bind(...entityFilter(c, 'o').params).all()
 
     return c.json({ success: true, data: results })

@@ -1114,7 +1114,7 @@ cardsQueriesRouter.get('/:id/history', async (c) => {
       FROM card_status_history csh
       LEFT JOIN users u ON csh.changed_by = u.id
       WHERE csh.card_id = ?
-      ORDER BY csh.created_at DESC
+      ORDER BY csh.created_at DESC, csh.id DESC
     `).bind(id).all()
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -1141,7 +1141,7 @@ cardsQueriesRouter.get('/:id/defects', async (c) => {
       LEFT JOIN employees e1 ON qi.reported_by = e1.id
       LEFT JOIN employees e2 ON qi.resolved_by = e2.id
       WHERE qi.card_id = ?
-      ORDER BY qi.created_at DESC
+      ORDER BY qi.created_at DESC, qi.id DESC
     `).bind(cardId).all()
     return c.json({ success: true, data: results })
   } catch (error) {

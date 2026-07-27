@@ -45,7 +45,7 @@ export async function listLeaveRequestsForEmployee(db: D1Database, employeeId: n
     FROM leave_requests lr
     LEFT JOIN leave_types lt ON lt.code = lr.leave_type
     WHERE lr.employee_id = ?
-    ORDER BY lr.created_at DESC
+    ORDER BY lr.created_at DESC, lr.id DESC
     LIMIT ?
   `).bind(employeeId, Math.min(200, Math.max(1, limit))).all()
   return results || []

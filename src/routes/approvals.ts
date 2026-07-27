@@ -153,7 +153,7 @@ approvals.get('/pending', async (c) => {
     const { results } = await c.env.DB.prepare(`
       SELECT ar.*, u.name as requester_name, ast.step_order, ast.label as step_label
       ${fromWhere}
-      ORDER BY ar.created_at DESC
+      ORDER BY ar.created_at DESC, ar.id DESC
       LIMIT ${PENDING_CAP}
     `).bind(userId, userRole, ...ef.params).all()
 

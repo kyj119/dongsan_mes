@@ -80,11 +80,39 @@
 
 **`NULLS LAST`(D1 방언) 제거 전량**: `orders/core.ts` 2곳 · `orders/queries.ts` 1곳 · `clients.ts:125` · `priceList.ts:62,134` · `rip.ts:939,1129` · `shipments.ts:180` → `col IS NULL, col` 형태로 통일. 소스 전체에 `NULLS LAST` 잔존 0건.
 
-### 남은 잠복 (미처리)
+## 3차: 잔여 전량 정비 (2026-07-27 동일 세션, "나머지 55곳도 진행")
 
-`LIMIT` 없는 **전체 조회** 55곳 (상세 모달의 이력·메모·첨부 목록 등, 예: `approvals.ts:156` · `claims.ts:71` · `clients.ts:312,322,358` · `dashboard.ts:798,810` · `leaves.ts:502` · `kakao.ts:1380` …).
-- 전건을 반환하므로 **페이징 중복·누락 위험은 없음**. 동일 초 생성된 항목 간 상하 순서만 미정의.
-- 기계적 일괄 치환은 위험: JOIN 쿼리에서 별칭 없는 `id` 추가 시 ambiguous column → 500. 개별 확인 필요.
+2차에서 남긴 `LIMIT` 없는 전체 조회 및 상위 N 조회 **59곳**(재스캔에서 4곳 추가 발견)을 전량 처리. 대상 = 상세 모달의 이력·메모·코멘트 목록, 대시보드 최근 활동, 원장 거래 시계열, 검색 결과, 큐 처리 순서 등.
+
+| 파일 | 처리 |
+|---|---|
+| `approvals.ts:156` · `autoProcess.ts:208` · `cardExpenses.ts:111` · `claims.ts:71` | 승인 대기·자동가공 큐·법인카드·클레임 |
+| `cards/queries.ts:1117,1144` | 카드 상태이력·불량이력 |
+| `clients.ts:312,322,348,358` | 거래처 상세의 최근주문·견적·단가·메모 |
+| `dashboard.ts:798,810` | 최근 주문·출고 위젯 |
+| `emails.ts:58` · `kakao.ts:1380` · `messages.ts:584` · `messageTemplates.ts:24` · `migration.ts:20` | 발송 로그·템플릿·이관 로그 |
+| `hometaxInvoices.ts:424,438` · `vatReports.ts:45,68` | 홈택스 수집분·부가세 신고 상세 |
+| `inspections.ts:454` · `items.ts:68,359` · `specGroups.ts:52` | 검수 이력·분류별 품목·규격 베이스 |
+| `leaves.ts:502` · `leaveShared.ts:48` | 휴가 신청 목록(관리자·본인) |
+| `ledger/ar-dunning.ts:303,310,317` · `ar-ledger.ts:67,116,138` · `ar-payments.ts:369` · `ar-receivables.ts:386` | 원장 거래 시계열(주문·입금·감액) — 잔액 누적 순서라 결정론 중요 |
+| `notifications.ts:208` · `productionReports.ts:64` · `orders/queries.ts:144` | 납기 임박·초과 목록 |
+| `orders/core.ts:309` · `purchaseRequests.ts:203,353` | 주문 상태이력·발주요청 코멘트 |
+| `portal.ts:757,763,769` | 고객 포털 원장 |
+| `prices.ts:478` · `purchaseInvoices.ts:59` · `purchaseOrders/core.ts:265` | 매입처 단가·미확정 단가·발주 입고이력 |
+| `quotations.ts:770` · `rip.ts:210,1352,1367,2131,2145` · `search.ts:35,45,57,68` · `tasks.ts:157` · `taxInvoices/queries.ts:353` · `taxInvoices/paymentMatch.ts:138` · `workbench.ts:39` | 견적→주문·RIP·정비/소모품·통합검색·태스크 클레임·세금계산서 |
+
+### 주의해서 처리한 케이스
+
+- **UNION(compound SELECT)** `taxInvoices/queries.ts:353` — SQLite는 compound SELECT의 `ORDER BY`에서 **출력 컬럼만** 참조 가능. `ti.id`처럼 별칭을 붙이면 오류 → 별칭 없는 `id` 사용(주석 명기).
+- **GROUP BY** `purchaseInvoices.ts:59`(`po.id`) · `orders/queries.ts:144`(`o.id` + HAVING) — tie-break 키가 그룹 키여야 함.
+- **SELECT 목록에 `id` 없음** `portal.ts:757,763,769` — 단일 SELECT는 출력 컬럼 밖의 테이블 컬럼도 `ORDER BY` 참조 가능하므로 안전(compound와 다름).
+- **NULL 가능 정렬키** `rip.ts:2131,2145` — 필터가 없어 `next_due_at IS NULL, … ASC, id ASC` 형태로 처리(1352·1367은 `IS NOT NULL` 필터가 이미 있어 불필요).
+
+### 검증
+
+- `npm run verify` 통과. 단 **타입체크는 SQL 오류를 잡지 못함** — ambiguous column·compound SELECT 위반은 런타임 500.
+- 위험 케이스 6종을 로컬 D1에 **직접 실행**해 확인(UNION·GROUP BY+HAVING·SELECT에 id 없는 쿼리·`IS NULL` 정렬·서브쿼리+별칭) → 전부 `success: true`.
+- 로컬 스모크 102/102 PASS (dev 서버가 구 dist를 서빙할 가능성이 있어 위 직접 실행으로 보강).
 
 ### 프론트엔드
 

@@ -754,19 +754,19 @@ portal.post('/verify-document', async (c) => {
       const { results: orders } = await c.env.DB.prepare(`
         SELECT order_number, created_at, billed_amount, final_amount, billing_status
         FROM orders WHERE client_id = ? AND status != 'CANCELLED' AND date(created_at) >= ?
-        ORDER BY created_at ASC
+        ORDER BY created_at ASC, id ASC
       `).bind(clientId, sixMonthsAgo).all<OrderRow>()
 
       const { results: payments } = await c.env.DB.prepare(`
         SELECT payment_date, amount, payment_method
         FROM payments WHERE client_id = ? AND date(payment_date) >= ?
-        ORDER BY payment_date ASC
+        ORDER BY payment_date ASC, id ASC
       `).bind(clientId, sixMonthsAgo).all<PaymentRow>()
 
       const { results: adjustments } = await c.env.DB.prepare(`
         SELECT created_at, amount, reason, type
         FROM adjustments WHERE client_id = ? AND date(created_at) >= ?
-        ORDER BY created_at ASC
+        ORDER BY created_at ASC, id ASC
       `).bind(clientId, sixMonthsAgo).all<AdjustmentRow>()
 
       const transactions = [

@@ -383,7 +383,7 @@ arReceivablesRouter.get('/receivables/:clientId/orders', async (c) => {
         notes
       FROM payments
       WHERE client_id = ?${recvPayDetailEf}
-      ORDER BY payment_date DESC
+      ORDER BY payment_date DESC, id DESC
       LIMIT 50
     `).bind(clientId, ...recvPayDetailEfParams).all<PaymentRow>()
 

@@ -64,7 +64,7 @@ arLedgerRouter.get('/client/:clientId', async (c) => {
       ordersParams.push(endDate)
     }
 
-    ordersQuery += ' ORDER BY created_at ASC'
+    ordersQuery += ' ORDER BY created_at ASC, id ASC'  // 정렬 규약: 고유키 tie-break
     const { results: orders } = await c.env.DB.prepare(ordersQuery).bind(...ordersParams).all<OrderRow>()
 
     // Get order items (주문 품목 라인) for all orders
@@ -113,7 +113,7 @@ arLedgerRouter.get('/client/:clientId', async (c) => {
       paymentsParams.push(endDate)
     }
 
-    paymentsQuery += ' ORDER BY payment_date ASC'
+    paymentsQuery += ' ORDER BY payment_date ASC, id ASC'  // 정렬 규약: 고유키 tie-break
     const { results: payments } = await c.env.DB.prepare(paymentsQuery).bind(...paymentsParams).all<PaymentRow>()
 
     // Get adjustments (감액)
@@ -135,7 +135,7 @@ arLedgerRouter.get('/client/:clientId', async (c) => {
       adjParams.push(endDate)
     }
 
-    adjQuery += ' ORDER BY created_at ASC'
+    adjQuery += ' ORDER BY created_at ASC, id ASC'  // 정렬 규약: 고유키 tie-break
     const { results: adjustments } = await c.env.DB.prepare(adjQuery).bind(...adjParams).all<AdjustmentRow>()
 
     // ===== 전기이월(opening, 조회 시작일 이전 잔액) + 전체 정합성(all-time) 계산 =====

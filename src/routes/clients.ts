@@ -309,7 +309,7 @@ clientsRouter.get('/:id/detail', async (c) => {
       FROM orders
       WHERE client_id = ? AND status != 'QUOTATION'
         ${ef.clause}
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC, id DESC
       LIMIT 20
     `).bind(id, ...ef.params).all()
 
@@ -319,7 +319,7 @@ clientsRouter.get('/:id/detail', async (c) => {
       FROM orders
       WHERE client_id = ? AND status = 'QUOTATION'
         ${ef.clause}
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC, id DESC
       LIMIT 10
     `).bind(id, ...ef.params).all()
 
@@ -345,7 +345,7 @@ clientsRouter.get('/:id/detail', async (c) => {
       FROM client_item_prices cp
       JOIN items i ON cp.item_id = i.id
       WHERE cp.client_id = ?
-      ORDER BY i.item_name
+      ORDER BY i.item_name, cp.id
       LIMIT 30
     `).bind(id).all()
 
@@ -355,7 +355,7 @@ clientsRouter.get('/:id/detail', async (c) => {
       FROM client_notes cn
       LEFT JOIN users u ON cn.created_by = u.id
       WHERE cn.client_id = ?
-      ORDER BY cn.created_at DESC
+      ORDER BY cn.created_at DESC, cn.id DESC
       LIMIT 20
     `).bind(id).all()
 

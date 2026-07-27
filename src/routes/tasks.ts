@@ -154,7 +154,7 @@ tasksRouter.post('/claim', async (c) => {
     const { results } = await c.env.DB.prepare(`
       SELECT id FROM tasks
       WHERE type = ? AND status = 'PENDING' AND retry_count < max_retries
-      ORDER BY created_at ASC
+      ORDER BY created_at ASC, id ASC
       LIMIT ?
     `).bind(type, limit).all<{ id: number }>()
 

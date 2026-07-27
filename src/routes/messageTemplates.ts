@@ -21,7 +21,7 @@ messageTemplatesRouter.get('/', async (c) => {
       query += ' AND channel = ?'
       bindings.push(channel)
     }
-    query += ' ORDER BY created_at DESC'
+    query += ' ORDER BY created_at DESC, id DESC'  // 정렬 규약: 고유키 tie-break
 
     const { results } = await db.prepare(query).bind(...bindings).all() as any
     return c.json({ success: true, data: results || [] })

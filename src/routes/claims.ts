@@ -68,7 +68,7 @@ claims.get('/', async (c) => {
     LEFT JOIN clients cl ON cc.client_id = cl.id
     LEFT JOIN orders o ON cc.order_id = o.id
     ${where}
-    ORDER BY cc.created_at DESC
+    ORDER BY cc.created_at DESC, cc.id DESC
     LIMIT ? OFFSET ?
   `).bind(...binds, limit, offset).all()
 

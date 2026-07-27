@@ -581,7 +581,7 @@ messagesRouter.get('/logs', async (c) => {
       LEFT JOIN clients c ON ksl.client_id = c.id
       LEFT JOIN users u ON ksl.sent_by = u.id
       ${whereClause}
-      ORDER BY ksl.created_at DESC
+      ORDER BY ksl.created_at DESC, ksl.id DESC
       LIMIT ? OFFSET ?
     `
 

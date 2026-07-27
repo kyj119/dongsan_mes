@@ -421,7 +421,7 @@ hometaxInvoicesRouter.get('/compare', requireRole('ADMIN', 'MANAGER'), async (c)
     const { results: htInvoices } = await db.prepare(`
       SELECT id, job_id, invoice_type, nts_confirm_number, issue_date, send_date, supply_amount, tax_amount, total_amount, issuer_corp_num, issuer_corp_name, issuer_ceo_name, receiver_corp_num, receiver_corp_name, receiver_ceo_name, invoice_detail_type, tax_type, purpose_type, matched_invoice_id, match_status, match_note, collected_at AS created_at FROM hometax_invoices
       WHERE invoice_type = ? AND SUBSTR(issue_date, 1, 7) = ?${ef.clause}
-      ORDER BY issue_date DESC
+      ORDER BY issue_date DESC, id DESC
     `).bind(type, month, ...ef.params).all<HometaxInvoiceRow>()
 
     // Get system tax invoices for comparison
@@ -435,7 +435,7 @@ hometaxInvoicesRouter.get('/compare', requireRole('ADMIN', 'MANAGER'), async (c)
                supply_amount, tax_amount, total_amount, nts_approval_number, status
         FROM tax_invoices
         WHERE SUBSTR(issue_date, 1, 7) = ?${efTi.clause}
-        ORDER BY issue_date DESC
+        ORDER BY issue_date DESC, id DESC
       `).bind(month, ...efTi.params).all<TaxInvoiceRow>()
       sysInvoices = result.results || []
     }

@@ -451,7 +451,7 @@ inspectionsRouter.get('/supplier-quality/:supplierId', async (c) => {
       JOIN inventory_receipts rec ON ir.receipt_id = rec.id
       LEFT JOIN users u ON ir.inspector_id = u.id
       WHERE rec.supplier_id = ?
-      ORDER BY ir.inspected_at DESC
+      ORDER BY ir.inspected_at DESC, ir.id DESC
       LIMIT 10
     `).bind(supplierId).all()
 
