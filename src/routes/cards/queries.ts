@@ -12,7 +12,7 @@ import type { Card, ApiResponse } from '../../types/models'
 import { authMiddleware } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { cardEntityFilter, entityFilter } from '../../utils/entityFilter'
-import { isThumbRef, getThumbnailDataUri } from '../../utils/thumbnailStore'
+import { isThumbRef, getThumbnailDataUri, resolveGroupByAiIndex, type AnalysisGroup } from '../../utils/thumbnailStore'
 import { kstYmd } from '../../utils/kstDate'
 
 // ── Row types for D1 query results ──
@@ -1014,7 +1014,6 @@ cardsQueriesRouter.get('/:id', async (c) => {
       }
     }
 
-    interface AnalysisGroup { index: number; thumbnail_base64?: string; thumbnail_r2_key?: string; [key: string]: unknown }
     const analysisCache = new Map<number, AnalysisGroup[]>()
     if (analysisIds.size > 0) {
       const idArr = Array.from(analysisIds)
@@ -1036,9 +1035,8 @@ cardsQueriesRouter.get('/:id', async (c) => {
     for (const item of cardItems || []) {
       if (item.ai_analysis_id && item.ai_group_index !== null && item.ai_group_index !== undefined) {
         const groups = analysisCache.get(item.ai_analysis_id) || []
-        const matched = item.ai_group_index === -1
-          ? groups[0]
-          : groups.find((g) => g.index === item.ai_group_index)
+        // 음수 인덱스(-1 전체문서 · -3 완성본 passthrough)는 첫 그룹 — resolveGroupByAiIndex가 정본
+        const matched = resolveGroupByAiIndex(groups, item.ai_group_index)
         if (matched?.thumbnail_base64) {
           item.thumbnail_url = `data:image/png;base64,${matched.thumbnail_base64}`
         } else if (matched?.thumbnail_r2_key) {

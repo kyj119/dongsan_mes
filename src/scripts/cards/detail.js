@@ -120,6 +120,11 @@ function showCardModal(card, history, defects, siblingCards) {
     var hasProgress = card.status !== 'PRINT_DONE' && itemsArr.length > 0;
 
     // ── 아이템 리스트 (개별 썸네일 + 체크박스) ──
+    // 단품 카드 폴백: 품목 썸네일(ai_analysis 그룹)이 없으면 카드 썸네일을 쓴다.
+    //   1품목 카드에선 카드 썸네일 = 그 품목의 시안이라 모호하지 않음(다품목은 폴백 금지 — 오표시).
+    //   /api/cards/:id 가 R2 마커('r2:thumb:')를 data URI로 복원해 주므로 그대로 <img src> 가능.
+    var cardThumbFallback = (itemsArr.length === 1 && card.thumbnail_url && card.thumbnail_url.length > 10)
+        ? card.thumbnail_url : '';
     var itemsHtml = '';
     if (itemsArr.length > 0) {
         itemsArr.forEach(function(it) {
@@ -130,8 +135,9 @@ function showCardModal(card, history, defects, siblingCards) {
             var ciId = it.card_item_id || it.id;
 
             // 썸네일 (크게)
-            var thumbHtml = it.thumbnail_url
-                ? '<img src="' + it.thumbnail_url + '" style="width:100%;height:100%;object-fit:contain;background:#f9fafb" onclick="event.stopPropagation();zoomThumb(this.src)">'
+            var itThumb = it.thumbnail_url || cardThumbFallback;
+            var thumbHtml = itThumb
+                ? '<img src="' + itThumb + '" style="width:100%;height:100%;object-fit:contain;background:#f9fafb" onclick="event.stopPropagation();zoomThumb(this.src)" onerror="this.style.display=\'none\'">'
                 : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#d1d5db"><i class="fas fa-image" style="font-size:28px"></i></div>';
 
             itemsHtml += '<div class="card-modal-item' + (isDone ? ' item-completed' : '') + '">';

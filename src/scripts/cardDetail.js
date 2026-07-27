@@ -130,11 +130,15 @@
         html += '</div>';
 
         // 디자인 썸네일
+        // 단품 카드 폴백: 품목 썸네일이 없으면 카드 썸네일 사용(1품목이면 동일 시안이라 모호하지 않음).
+        var cdThumbFallback = (items.length === 1 && card.thumbnail_url && card.thumbnail_url.length > 10)
+            ? card.thumbnail_url : '';
         html += '<div class="cd-designs">';
         items.forEach(function(it) {
+            var cdThumb = it.thumbnail_url || cdThumbFallback;
             html += '<div class="cd-design-item">';
-            if (it.thumbnail_url) {
-                html += '<img src="' + it.thumbnail_url + '" class="cd-design-thumb" onclick="zoomThumb && zoomThumb(this.src)">';
+            if (cdThumb) {
+                html += '<img src="' + cdThumb + '" class="cd-design-thumb" onclick="zoomThumb && zoomThumb(this.src)">';
             } else {
                 html += '<div class="cd-design-thumb cd-design-placeholder"><i class="fas fa-image text-3xl text-gray-300"></i></div>';
             }

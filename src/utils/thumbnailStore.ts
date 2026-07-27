@@ -85,7 +85,7 @@ export async function getThumbnailDataUri(env: R2Env, refOrKey: string, mime = '
   return b64 ? `data:${mime};base64,${b64}` : null
 }
 
-interface Group {
+export interface AnalysisGroup {
   index?: number
   thumbnail_base64?: string | null
   thumbnail_r2_key?: string | null
@@ -93,11 +93,29 @@ interface Group {
 }
 
 /**
+ * order_items.ai_group_index → 대응 그룹.
+ * **음수 = "파일 전체" 약속값**이므로 첫 그룹을 쓴다.
+ *   -1 = 전체문서(가공)        — orderForm/itemRow.js onDirectModeToggle
+ *   -3 = 완성본(복사) passthrough — workbench.ts 대기물 흡수(UPDATE ... ai_group_index = -3)
+ * 0 이상은 group.index 일치로 찾는다.
+ * ⚠️ -1만 특별처리하면 -3 라인의 썸네일이 통째로 누락된다(현장 카드 상세 썸네일 실종).
+ */
+export function resolveGroupByAiIndex(
+  groups: AnalysisGroup[] | null | undefined,
+  aiGroupIndex: number | null | undefined
+): AnalysisGroup | undefined {
+  if (!Array.isArray(groups) || groups.length === 0) return undefined
+  if (aiGroupIndex === null || aiGroupIndex === undefined) return undefined
+  if (aiGroupIndex < 0) return groups[0]
+  return groups.find((g) => g.index === aiGroupIndex)
+}
+
+/**
  * 저장 직전: 각 group의 base64 썸네일을 R2로 옮기고 thumbnail_r2_key로 치환(thumbnail_base64 제거).
  * R2 실패 시 해당 group은 base64 원본을 유지해 무손실. 이미 r2_key만 있는 group은 그대로 통과.
  * 반환 = 저장용 lean groups (in-place 변형).
  */
-export async function externalizeGroups(env: R2Env, analysisId: number | string, groups: Group[]): Promise<Group[]> {
+export async function externalizeGroups(env: R2Env, analysisId: number | string, groups: AnalysisGroup[]): Promise<AnalysisGroup[]> {
   if (!Array.isArray(groups)) return groups
   for (const g of groups) {
     if (g && typeof g.thumbnail_base64 === 'string' && g.thumbnail_base64.length > 0) {
@@ -118,7 +136,7 @@ export async function externalizeGroups(env: R2Env, analysisId: number | string,
  * emit 직전: thumbnail_r2_key만 있는 group에 thumbnail_base64(raw)를 R2에서 복원.
  * 이미 base64가 있으면(레거시 미이관 행) 그대로 둔다. 프론트 계약(=thumbnail_base64) 무변.
  */
-export async function hydrateGroups(env: R2Env, groups: Group[]): Promise<Group[]> {
+export async function hydrateGroups(env: R2Env, groups: AnalysisGroup[]): Promise<AnalysisGroup[]> {
   if (!Array.isArray(groups)) return groups
   for (const g of groups) {
     if (g && !g.thumbnail_base64 && typeof g.thumbnail_r2_key === 'string' && g.thumbnail_r2_key) {
@@ -136,7 +154,7 @@ export async function hydrateGroups(env: R2Env, groups: Group[]): Promise<Group[
 export async function hydrateGroupsJson(env: R2Env, groupsJson: string | null | undefined): Promise<string | null | undefined> {
   if (!groupsJson || typeof groupsJson !== 'string') return groupsJson
   if (groupsJson.indexOf('thumbnail_r2_key') < 0) return groupsJson // 이관 전이거나 썸네일 없음 → no-op
-  let groups: Group[]
+  let groups: AnalysisGroup[]
   try { groups = JSON.parse(groupsJson) } catch { return groupsJson }
   if (!Array.isArray(groups) || groups.length === 0) return groupsJson
   await hydrateGroups(env, groups)
