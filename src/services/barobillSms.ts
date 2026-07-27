@@ -5,7 +5,7 @@
  *   SMS: SMS.asmx (SendSMSMessage, SendLMSMessage, SendMessages)
  *   알림톡: KakaoTalk.asmx (SendATKakaotalk, SendATKakaotalks, GetKakaotalkTemplates)
  */
-import { barobillCall, getPartnerBalance, parseXmlArray, parseXmlValues, type BarobillConfig } from './barobillClient'
+import { assertBarobillQueryOk, barobillCall, getPartnerBalance, parseXmlArray, parseXmlValues, type BarobillConfig } from './barobillClient'
 import { BAROBILL_CHARGE_CODE } from '../constants/barobillCodes'
 
 // ── 메시지 타입 (기존 kakaoProvider.ts에서 이관) ──
@@ -345,10 +345,14 @@ export class BarobillSmsProvider {
    * 사전등록된 SMS 발신번호 목록 (GetSMSFromNumbers).
    * 발신번호 사전등록제(전기통신사업법)라 미등록 번호로는 SMS/LMS/MMS 발송이 거절된다.
    */
-  async listFromNumbers(): Promise<string[]> {
+  async listFromNumbers(): Promise<Array<{ number: string; validDate: string }>> {
     const raw = await barobillCall(this.config, 'SMS', 'GetSMSFromNumbers', {})
-    const nums = Array.from(raw.matchAll(/<string>(.*?)<\/string>/gs)).map(m => (m[1] || '').trim()).filter(Boolean)
-    return nums
+    assertBarobillQueryOk(raw, 'GetSMSFromNumbers')
+    // ⚠️ 응답은 ArrayOfString이 아니라 **ArrayOfFromNumber**(<FromNumber><Number>·<ValidDate>).
+    //    <string> 파싱은 항상 빈 배열 → "미등록" 오판정을 낳는다(2026-07-27 실측).
+    return parseXmlArray(raw, 'FromNumber')
+      .map(r => ({ number: (r.Number || '').trim(), validDate: (r.ValidDate || '').trim() }))
+      .filter(r => r.number)
   }
 
   /** 발송 결과 조회 */

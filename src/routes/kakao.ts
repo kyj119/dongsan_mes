@@ -333,7 +333,7 @@ kakaoRouter.get('/sms-diag', async (c) => {
     const codeParam = c.req.query('code')
     const code = codeParam ? parseInt(codeParam, 10) : null
 
-    let fromNumbers: string[] = []
+    let fromNumbers: Array<{ number: string; validDate: string }> = []
     let fromNumbersError = ''
     try {
       fromNumbers = await provider.listFromNumbers()
@@ -347,7 +347,7 @@ kakaoRouter.get('/sms-diag', async (c) => {
       data: {
         sender_num: settings.senderNum,
         registered_numbers: fromNumbers,
-        sender_registered: fromNumbers.some(n => n.replace(/-/g, '') === senderNorm),
+        sender_registered: fromNumbers.some(n => n.number.replace(/-/g, '') === senderNorm),
         from_numbers_error: fromNumbersError || undefined,
         error_code: code,
         error_string: code != null && Number.isFinite(code) ? await provider.getErrString(code) : undefined,
