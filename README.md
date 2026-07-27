@@ -59,21 +59,44 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 ```
 
 > **JSX만 수정할 경우**: 재빌드 불필요 — `publish\` 폴더의 JSX 직접 수정 후 Automat 재시작
+> ⚠️ **JSX 런타임 경로 = exe의 BaseDirectory**. 리포 루트의 `*.jsx`를 고쳐도 `publish\`에 동기화하지 않으면 반영되지 않는다.
 
-### JSX 스크립트 3종
+### JSX 스크립트 (Program.cs가 호출하는 6종)
 
 | 파일 | 호출 시점 | 출력 |
 |------|---------|------|
-| `ExtractGroups.jsx` | AI 분석 요청 | PNG 썸네일 + groups.json |
-| `ProcessOrderItem.jsx` | 주문 CONFIRMED | PDF + PNG |
+| `ExtractGroups.jsx` | AI 분석 요청 | PNG 썸네일 + groups.json (아트보드 기반 + 클램핑) |
+| `ProcessOrderItem.jsx` | 주문 CONFIRMED / 가공 잡 | PDF + PNG (CMYK·아웃라인·도련) |
 | `PackGroups.jsx` | AI 레이아웃 요청 | PDF x 2 + 썸네일 PNG |
+| `SheetLayout.jsx` | 시트 렌더 요청 | 판짜기 시트 PDF |
+| `AnalyzeStructure.jsx` | 구조 진단 | 레이어/클립 구조 로그 |
+| `designer/mes-core.jsx` | A0 CEP 패널 | 디자이너 세션 루프(추출→가공→확정) |
 
-### 폴링 흐름 (5초 주기)
+> 그 외 `PrepareArtboards.jsx` · `TestClipExtract.jsx`는 도구/시험용으로 상시 폴링 경로에 없다.
+
+### 디자이너 패널 (A0 CEP)
+
+`IllustratorAutomat/designer/` — 일러스트레이터 안에서 도는 CEP 확장.
+
+| 경로 | 내용 |
+|------|------|
+| `designer/mes-core.jsx` · `mes-sheet.jsx` | 패널이 호출하는 코어 로직 (+`*-stub.jsx` = 부트스트랩) |
+| `designer/poc-a0-cep/com.mes.a0.panel` | CEP 확장 본체 (설치본은 `%APPDATA%` CEP 폴더) |
+| `designer/poc-a0-cep/README-cep.md` | **패널 정본 문서** — 설치·핫스왑·디버깅 |
+
+> ⚠️ CEP 엔진은 COM 자동화와 **별개 런타임**이다. 핫스왑은 CDP + `$.evalFile` 전역 방식이며 IIFE로 감싸면 안 된다(상세=`README-cep.md`).
+
+### 폴링 흐름 (5초 주기, `Program.cs`)
 
 ```
-PollOrdersAsync()     → CONFIRMED 주문 → ProcessOrderItem.jsx → PDF 저장
-PollAIAnalysisAsync() → pending 분석   → ExtractGroups.jsx    → groups_json DB 저장
-PollAILayoutAsync()   → pending 레이아웃 → PackGroups.jsx      → result_json DB 저장
+PollOrdersAsync()          → CONFIRMED 주문      → ProcessOrderItem.jsx → PDF 저장
+PollAIAnalysisAsync()      → pending 분석        → ExtractGroups.jsx    → groups_json DB 저장
+PollAILayoutAsync()        → pending 레이아웃    → PackGroups.jsx       → result_json DB 저장
+PollSheetRenderAsync()     → 시트 렌더 요청      → SheetLayout.jsx      → 판짜기 PDF
+PollProcessJobsAsync()     → 가공 잡 큐          → ProcessOrderItem.jsx → 재가공/개별 출력
+PollDesignerIntakesAsync() → 디자이너 확정 산출물 → (ingest)            → 주문서 대기함 등록
+PollNasInputAsync()        → NAS 투입 폴더       → (ingest)             → 파일 수집
+PollTestWatchAsync()       → 테스트 감시 폴더    → (개발용)             → —
 ```
 
 ### 로그 파일
@@ -89,37 +112,65 @@ PollAILayoutAsync()   → pending 레이아웃 → PackGroups.jsx      → resul
 
 ## 자동화 워크플로우
 
+> IA는 **D1에 직접 붙지 않는다.** 전부 MES REST API 경유(`ERP_API_URL` + JWT 로그인).
+
 ### A. 개별 주문 PDF 출력
 
 ```
 1. 웹에서 주문 등록 (품목에 ai_group_index, post_processing 지정)
 2. 주문 CONFIRMED
-3. IllustratorAutomat 감지 (5초마다)
+3. IllustratorAutomat 감지 (5초마다) — 두 경로가 플래그로 분기
+   (신) POST /api/tasks/claim?type=AI_PROCESS  → N건 원자적 클레임 (중복 처리 방지)
+   (구) GET  /api/orders?status=CONFIRMED      → 레거시 폴링
 4. ProcessOrderItem.jsx 실행
    - CMYK 변환, 텍스트 아웃라인 자동 처리
    - 클리핑 마스크 그룹: clip path geometricBounds 기준
+   - 도련: Design 클립 직접 확장 방식(스마트 도련)
 5. Z:\DESIGN\[카테고리]\YYYY\MM\[주문번호]\[파일명].pdf 저장
-6. 주문 상태 → PRODUCTION
+6. PATCH /api/tasks/{id} 로 처리 결과 회신
 ```
 
 ### B. AI 파일 그룹 분석
 
 ```
 1. 웹에서 AI 파일 업로드 (청크 분할 전송)
-2. ExtractGroups.jsx 실행 → 레이어 직속 GroupItem 탐지
-3. groups_json (base64 썸네일 포함) → DB
+2. ExtractGroups.jsx 실행 → 아트보드 기준 그룹 탐지 + 경계 클램핑
+3. groups_json → DB (썸네일 원본은 R2 blob, D1 비대 회피)
 4. 웹에서 그룹 선택 UI → 주문 품목에 ai_group_index 지정
 ```
+
+> `ai_group_index` 음수는 "파일 전체"를 뜻하는 약속값이 둘(`-1` 전체문서 가공, `-3` 완성본 passthrough)이라
+> 썸네일 해석은 반드시 `thumbnailStore.resolveGroupByAiIndex()`를 거친다(음수는 전부 `groups[0]`).
 
 ### C. AI 레이아웃 (Combined / Individual)
 
 ```
-1. 웹에서 레이아웃 요청 (mode: combined | individual)
+1. 레이아웃 요청 (mode: combined | individual)
 2. PackGroups.jsx 실행
-   - combined: 최적 배치 (Shelf FFD, 105/127/152cm 롤)
+   - combined: 최적 배치 (105/127/152cm 롤)
    - individual: 그룹별 개별 PDF (_g0, _g1 접미사)
-3. result_json → DB → 웹에서 확정 → Z:\DESIGN\ 복사
+3. result_json → DB → 확정 → Z:\DESIGN\ 복사
 ```
+
+> 주문서의 **웹 진입부 게이트는 꺼져 있고** JSX 축(판짜기)으로 이관 중이다. 진행 상태는 spec `2026-07-20-ia-jsx-enhancement.md`.
+
+### D. 디자이너 세션 루프 (A0 CEP → 주문서 대기함)
+
+현재 디자이너 실작업의 주 경로.
+
+```
+1. 일러스트레이터 A0 CEP 패널에서 추출 → 행별 가공/후가공 세팅 → 검토문서 → 일괄 확정
+2. 확정 산출물(manifest*.json + EPS)이 NAS에 떨어짐
+3. PollDesignerIntakesAsync() 가 수거 → POST /api/workbench/intakes
+4. 주문서(/order-form) 대기함 트레이에 등록
+   - 거래처 → 작업(batch_key) 2단 그룹핑, "내 작업"(worker_id) 필터
+5. 선택 → 주문 라인 프리필 → 저장 → absorb(라인별 order_item_id 링크)
+```
+
+### E. 웹 워크벤치 `/ia-editor`
+
+브라우저에서 도는 네스팅·임포지션 편집기(일러스트레이터 불필요).
+패킹 알고리즘 정본은 **MaxRects 고정**이며, 패킹 로직 수정 시 `node scripts/nesting-harness.mjs`를 **선행 게이트**로 돌린다(shelf 패커 겹침 회귀 실증 사례 있음).
 
 ---
 
@@ -294,4 +345,4 @@ npm run db:console:local   # DB SQL 콘솔
 
 ---
 
-**마지막 업데이트**: 2026-07-27 (규모·외부연동 정합성 갱신 / IA·이슈이력 섹션은 2026-03-18 기준 유지)
+**마지막 업데이트**: 2026-07-27 (규모·외부연동·IllustratorAutomat 섹션 갱신 / 아래 이슈 이력 표는 2026-02~03 기록 보존)
