@@ -216,6 +216,25 @@ grep -n "new Blob\|function renderPagination\|function switchTab\|toLocaleString
 grep -n "statusColors\s*=\|statusLabels\s*=\s*{" src/scripts/CHANGED.js
 ```
 
+### 15. 목록 정렬 tie-break 검사 (라우트 변경 시)
+
+`ORDER BY`가 **비고유 컬럼(날짜/시각/금액/상태)으로 끝나면 반려** — 고유키(`id`) tie-break 필수.
+이관·배치 INSERT 데이터는 `created_at`이 초 단위까지 동일해서, 동값 구간이 rowid ASC(=오래된 순)로 반환되어
+목록이 역순으로 뒤집힌다. `LIMIT ? OFFSET ?` 페이징이면 페이지 간 중복·누락까지 발생.
+(실제 사고: 발주 목록 258건 중 241건 동일 `created_at` → 첫 줄이 `SMP-0001`(가장 오래된 발주), 2026-07-27 수정)
+
+```bash
+# tie-break 없이 날짜/시각으로 끝나는 ORDER BY (페이징 목록이면 P1)
+grep -nE "ORDER BY [^,]*(created_at|updated_at|order_date|receipt_date|issue_date|payment_date) (DESC|ASC)'? *(LIMIT|\`)" src/routes/CHANGED.ts
+```
+
+**판정 기준**:
+- 🔴 페이징 목록(`LIMIT ? OFFSET ?`)에 tie-break 없음 → 반드시 수정
+- 🔴 기본 정렬 키가 `created_at` 단독인데 해당 테이블에 이관/배치 데이터 존재 → 업무일자(`order_date` 등)로 교체
+- 🟡 `LIMIT N` 단순 상위 조회 tie-break 없음 → 권장 수정
+- `NULLS LAST` 사용 → `col IS NULL, col ASC`로 대체 (D1 방언 의존 회피)
+- 정렬 옵션 맵은 **모든 항목**에 tie-break 포함 여부 확인 (일부만 적용 = 반려)
+
 ## 참조
 
 상세 안티패턴 목록: [anti-patterns.md](references/anti-patterns.md)

@@ -195,7 +195,8 @@ async function loadFreqItems(supplierId) {
   if (!container) return;
   try {
     // include_items=1 필수 — 목록 API 기본 응답엔 items가 없어 칩이 영구 숨김이었음
-    var res = await axios.get('/api/purchase-orders?supplier_id=' + supplierId + '&limit=5&sort=created_at_desc&include_items=1');
+    // sort=order_date_desc: 이관 배치 데이터는 created_at이 전건 동일 → '최근 발주'가 1월 이관건으로 뒤집혔음
+    var res = await axios.get('/api/purchase-orders?supplier_id=' + supplierId + '&limit=5&sort=order_date_desc&include_items=1');
     if (!res.data.success) { container.classList.add('hidden'); return; }
     var pos = res.data.data || [];
     // 최근 PO들에서 품목 집계 (TOP 5)
@@ -255,7 +256,7 @@ async function openRecentPOModal() {
   var modal = document.getElementById('recentPOModal');
   if (!modal) { console.warn('[purchaseOrderForm] #recentPOModal not found'); return; }
   try {
-    var res = await axios.get('/api/purchase-orders?supplier_id=' + supplierId + '&limit=10&sort=created_at_desc&include_items=1');
+    var res = await axios.get('/api/purchase-orders?supplier_id=' + supplierId + '&limit=10&sort=order_date_desc&include_items=1');
     if (!res.data.success) { showToast('발주 이력 조회 실패', 'error'); return; }
     recentPOCache = res.data.data || [];
     var listHtml = '';

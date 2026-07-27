@@ -25,7 +25,7 @@ poCoreRouter.get('/', async (c) => {
       limit = '50',
       status = '',
       search = '',
-      sort = 'created_at_desc',
+      sort = 'order_date_desc',   // 기본=발주일 최신순(+id tie-break). sortOptions 주석 참조
       date_from = '',
       date_to = '',
       supplier_id = '',
@@ -88,14 +88,22 @@ poCoreRouter.get('/', async (c) => {
       query += ' WHERE ' + whereClauses.join(' AND ')
     }
 
+    // ⚠️ 정렬 규약: 모든 옵션에 고유키(po.id) tie-break 필수.
+    //   이관/배치 INSERT 데이터는 created_at이 초 단위까지 동일(prod 발주 258건 중 241건이 동일값).
+    //   tie-break 없이 created_at DESC만 걸면 SQLite가 동값 구간을 rowid ASC(=오래된 순)로 반환 →
+    //   화면 첫 줄이 가장 오래된 발주(SMP-0001)로 뒤집히고, LIMIT/OFFSET 페이징도 불안정해짐.
+    //   기본 정렬은 등록시각(created_at)이 아니라 업무일자(order_date) 기준 — 이관 데이터의 created_at은
+    //   실제 발주 시점이 아니라 이관 실행 시각이므로 업무상 의미가 없음. (2026-07-27)
     const sortOptions: Record<string, string> = {
-      'created_at_desc': 'po.created_at DESC',
-      'created_at_asc': 'po.created_at ASC',
-      'order_date_desc': 'po.order_date DESC',
-      'expected_date_asc': 'po.expected_date ASC NULLS LAST',
-      'final_amount_desc': 'po.final_amount DESC'
+      'order_date_desc': 'po.order_date DESC, po.id DESC',
+      'order_date_asc': 'po.order_date ASC, po.id ASC',
+      'created_at_desc': 'po.created_at DESC, po.id DESC',
+      'created_at_asc': 'po.created_at ASC, po.id ASC',
+      'expected_date_asc': 'po.expected_date IS NULL, po.expected_date ASC, po.id DESC',
+      'final_amount_desc': 'po.final_amount DESC, po.id DESC',
+      'po_number_asc': 'po.po_number ASC, po.id ASC'
     }
-    const orderBy = sortOptions[sort] || 'po.created_at DESC'
+    const orderBy = sortOptions[sort] || sortOptions['order_date_desc']
 
     query += ` ORDER BY ${orderBy} LIMIT ? OFFSET ?`
     params.push(safeLimit, offset)
@@ -116,7 +124,7 @@ poCoreRouter.get('/', async (c) => {
           FROM purchase_order_items poi
           LEFT JOIN items i ON i.id = poi.item_id
           WHERE poi.po_id IN (${ph})
-          ORDER BY poi.po_id, poi.sort_order ASC
+          ORDER BY poi.po_id, poi.sort_order ASC, poi.id ASC
         `).bind(...chunk).all()
         for (const row of (poiRows as any[]) || []) {
           const arr = itemsByPo.get(row.po_id as number) || []
@@ -233,7 +241,7 @@ poCoreRouter.get('/:id', async (c) => {
       LEFT JOIN users u_mgr ON u_mgr.id = sz.manager_id
       LEFT JOIN users u_rcv ON u_rcv.id = poi.received_by
       WHERE poi.po_id = ?
-      ORDER BY poi.sort_order ASC
+      ORDER BY poi.sort_order ASC, poi.id ASC
     `).bind(id).all()
 
     // 원본 발주요청(PR) 역참조

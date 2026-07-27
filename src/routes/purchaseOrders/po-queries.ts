@@ -87,7 +87,7 @@ poQueriesRouter.get('/stats', async (c) => {
       -- 내부법인(그룹 3사)만 supplier_id NOT IN 제외 — 법인간거래는 회계허브 법인간거래 탭으로 이관 (client_type 필터 아님)
       WHERE (COALESCE(bpo.v, 0) - COALESCE(bpp.v, 0) - COALESCE(bpa.v, 0)) > 0${excludeInternalClientsSql('c.id')}
       GROUP BY c.id
-      ORDER BY balance DESC
+      ORDER BY balance DESC, c.id ASC
       LIMIT 5
     `).bind(...ef.params, ...ef.params, ...ef.params, ...ef.params).all()
     ;(stats as Record<string, unknown>).supplier_balances = supplierBalances
@@ -142,7 +142,8 @@ poQueriesRouter.get('/export/csv', async (c) => {
       whereClauses.push("po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED') AND po.expected_date IS NOT NULL AND po.expected_date < date('now', '+9 hours')")
     }
     if (whereClauses.length > 0) query += ' WHERE ' + whereClauses.join(' AND ')
-    query += ' ORDER BY po.created_at DESC LIMIT 5001'  // #372: 캡+1 조회로 잘림 감지
+    // 목록(GET /) 기본 정렬과 정합: 발주일 최신순 + id tie-break (이관 배치 데이터 동일 created_at 대응)
+    query += ' ORDER BY po.order_date DESC, po.id DESC LIMIT 5001'  // #372: 캡+1 조회로 잘림 감지
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
     const truncated = (results || []).length > 5000

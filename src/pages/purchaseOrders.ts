@@ -45,10 +45,12 @@ export function purchaseOrdersPage(c: Context<HonoEnv>) {
           <option value="">전체 공급업체</option>
         </select>
         <select id="sortSelect" onchange="loadPOs(1)" class="px-3 py-2 border rounded-lg text-sm">
-          <option value="created_at_desc">최신순</option>
-          <option value="order_date_desc">발주일순</option>
-          <option value="expected_date_asc">납기순</option>
-          <option value="final_amount_desc">금액순</option>
+          <option value="order_date_desc">발주일 최신순</option>
+          <option value="order_date_asc">발주일 오래된순</option>
+          <option value="created_at_desc">등록 최신순</option>
+          <option value="expected_date_asc">납기 임박순</option>
+          <option value="final_amount_desc">금액 큰순</option>
+          <option value="po_number_asc">발주번호순</option>
         </select>
         <button onclick="exportPoCsv()" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm font-medium">
           <i class="fas fa-file-csv mr-1"></i>CSV

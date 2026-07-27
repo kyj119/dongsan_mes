@@ -49,7 +49,7 @@ poReceiptsRouter.get('/receipts/export/csv', async (c) => {
       params.push(p, p, p)
     }
     if (whereClauses.length > 0) query += ' WHERE ' + whereClauses.join(' AND ')
-    query += ' ORDER BY ir.created_at DESC LIMIT 5001'  // #372: 캡+1 조회로 잘림 감지
+    query += ' ORDER BY ir.receipt_date DESC, ir.id DESC LIMIT 5001'  // #372: 캡+1 조회로 잘림 감지
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
     const truncated = (results || []).length > 5000
@@ -193,7 +193,8 @@ poReceiptsRouter.get('/receipts', async (c) => {
     if (whereClauses.length > 0) {
       query += ' WHERE ' + whereClauses.join(' AND ')
     }
-    query += ' ORDER BY ir.created_at DESC LIMIT ? OFFSET ?'
+    // 정렬 규약: 페이징 목록은 고유키 tie-break 필수 (동일 created_at 배치 데이터에서 페이지 간 중복/누락 방지)
+    query += ' ORDER BY ir.receipt_date DESC, ir.id DESC LIMIT ? OFFSET ?'
     params.push(safeLimit, offset)
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()

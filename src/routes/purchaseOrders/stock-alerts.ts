@@ -31,7 +31,7 @@ stockAlertsRouter.get('/stock-alerts', requireRole('ADMIN', 'MANAGER'), async (c
       LEFT JOIN storage_zones sz ON i.storage_zone_id = sz.id
       LEFT JOIN users u ON sa.acknowledged_by = u.id
       WHERE sa.status = ?${ef.clause}
-      ORDER BY sa.created_at DESC
+      ORDER BY sa.created_at DESC, sa.id DESC
       LIMIT 500
     `).bind(status, ...ef.params).all()
 

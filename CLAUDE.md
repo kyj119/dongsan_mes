@@ -70,5 +70,16 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 ```
 **pages/*.ts 변경 시 scripts/*.js getElementById 참조 대조** (review-checklist §12).
 
+### 목록 정렬 = 고유키 tie-break 필수 (`ORDER BY`)
+목록 쿼리의 `ORDER BY`에 **고유 컬럼(`id`) tie-break를 반드시 마지막에** 붙인다. 이관·배치 INSERT 데이터는 `created_at`이 초 단위까지 동일해(발주 258건 중 241건 동일) 동값 구간이 rowid ASC=**오래된 순으로 뒤집혀 표시**되고, `LIMIT/OFFSET` 페이징도 페이지 간 중복·누락이 난다.
+```sql
+-- ❌ ORDER BY po.created_at DESC LIMIT ? OFFSET ?         -- 동값 구간 순서 미정의
+-- ✅ ORDER BY po.order_date DESC, po.id DESC LIMIT ? OFFSET ?
+```
+- **기본 정렬 키는 업무일자**(`order_date`·`receipt_date`·`issue_date`) 우선. `created_at`은 이관 데이터에서 "이관 실행 시각"이라 업무상 무의미 → 단독 기본 정렬 금지.
+- 정렬 옵션 맵(`sortOptions`)은 **모든 항목**에 tie-break 포함. NULL 처리는 `col IS NULL, col ASC` (D1 `NULLS LAST` 의존 회피).
+- 라벨은 기준을 명시("발주일 최신순"·"등록 최신순") — "최신순"만 쓰면 어느 날짜 기준인지 불명확.
+(발주 계열 전면 적용 2026-07-27. 미적용 잠복 = `docs/audits/2026-07-27-list-sort-tiebreak.md`)
+
 > 사업 도메인·역할·아키텍처·에이전트 팀·참조 문서 → `.claude/references/project-context.md`
 > **단일 소스 원칙**: 참조 파일에 코드 값 복사 금지. 구조 변경 시 참조 파일도 동기 업데이트.

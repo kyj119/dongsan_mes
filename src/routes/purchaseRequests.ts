@@ -77,7 +77,8 @@ prRouter.get('/', async (c) => {
     if (whereClauses.length > 0) {
       query += ' WHERE ' + whereClauses.join(' AND ')
     }
-    query += ' ORDER BY pr.created_at DESC LIMIT ? OFFSET ?'
+    // 정렬 규약: 페이징 목록은 고유키 tie-break 필수 (동일 created_at 다건 → OFFSET 페이징 중복/누락 방지)
+    query += ' ORDER BY pr.created_at DESC, pr.id DESC LIMIT ? OFFSET ?'
     params.push(safeLimit, offset)
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
@@ -278,7 +279,7 @@ prRouter.get('/export/csv', async (c) => {
     if (date_to) { whereClauses.push('pr.created_at <= ?'); params.push(date_to + ' 23:59:59') }
 
     if (whereClauses.length > 0) query += ' WHERE ' + whereClauses.join(' AND ')
-    query += ' ORDER BY pr.created_at DESC LIMIT 5001'  // #372: 캡+1 조회로 잘림 감지
+    query += ' ORDER BY pr.created_at DESC, pr.id DESC LIMIT 5001'  // #372: 캡+1 조회로 잘림 감지
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
     const truncated = (results || []).length > 5000

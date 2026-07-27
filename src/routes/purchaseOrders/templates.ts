@@ -23,7 +23,7 @@ templatesRouter.get('/templates', async (c) => {
       FROM po_templates t
       LEFT JOIN clients c ON t.supplier_id = c.id
       WHERE t.is_active = 1
-      ORDER BY t.updated_at DESC
+      ORDER BY t.updated_at DESC, t.id DESC
     `).all()
 
     return c.json({ success: true, data: results })
