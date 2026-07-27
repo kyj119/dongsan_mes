@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-07-27T21:35:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-07-27T23:54:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,22 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **8** (GitHub OPEN 실측, 07-27T21:35 — 직전 #572 1건 + 이번 사이클 신규 #573~#579 7건) |
+| 🆕 new | **9** (GitHub OPEN 실측, 07-27T23:54 — #572~#579 8건 이월 + 이번 사이클 신규 #580) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **497** (`reason:completed` 절대값, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
-> 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+> 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, 2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그 이관: 306KB→80KB, **2026-07-27T23:00 7차 트림 — 사이클 로그 39건 중 31건 이관(최근 8건=전 Area 1바퀴+2만 유지): 196KB→63KB**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 **최근 8사이클 로그**(전 Area 1바퀴 커버 = 직전 사이클 diff 판단에 필요한 최소분) + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 4 데이터 정합성 (2026-07-27T23:54):**
+> - **방법**: 로컬 체크아웃(HEAD `1921e7ef` = origin/main 일치, 워킹트리 clean, node_modules 64). Area 4 **46회차** — 직전 Area4(`ac6fe38`, 07-26T15:15, 45회차) 이후 `git log ac6fe38..HEAD -- src/routes migrations` = **20+커밋/75파일(+1798/-432)** 대량 churn(정렬 tie-break 전역 스윕 92곳·발주 법인간거래 제외·IA B단계 batch_key·MMS/SMS 대량발송+거래처그룹·은행 자동매칭 3종·IDOR 6핸들러). **에이전트 위임 없이 인라인 수행**(과다 위임 억제 정책 신설분 적용 — 스캔 대상이 grep 수준이라 위임 오버헤드가 더 큼).
+> - **🔴 신규 이슈 — #580 (M, bug, issue-only)**: 연락처 그룹 멤버 조회(`contactGroups.ts` GET `/:id/members` = 대량발송 대상 미리보기 동일 소스)가 **거래처에 `is_active` 필터 미적용** — 같은 함수의 형제 직원 조회는 `AND is_deleted = 0` 적용(**형제 비대칭**). 거래처 삭제는 soft delete(`clients.ts:1112` `SET is_active = 0`)라 비활성 거래처가 정상 멤버로 반환 → 발송 대상 포함. **설계 의도와 모순**: 같은 응답의 `orphan_count` 주석이 "조회되지 않는 건수(하드삭제·**비활성** 등)"로 비활성을 명시 전제하고 프론트도 "발송 대상 아님" 경고를 띄우는데, 실제로는 걸러지지 않아 **경고조차 안 뜨고 발송됨**. MMS 건당 100원 과금 + 외부 발송은 되돌릴 수 없음. FP 배제 = is_active 실재·같은 파일이 그룹 자체엔 `g.is_active = 1` 사용·도달성 LIVE(`messages.js`)·의도적 포함 근거 없음. 자동수정 금지 판정 = 발송 대상 집합 축소는 운영 케이스 확인 필요 + egress로 검증 불가.
+> - **🟢 churn 정합성 = clean(3종 전수)**: ① **신규 비-FK 참조 `adjustments.source_id`(0475, `customer_claims.id|returns.id` polymorphic이라 FK 미선언)** → #477 churn-트리거 재스캔 적용: `orders/core.ts:675-676`이 `DELETE FROM adjustments WHERE source_type='CLAIM'/'RETURN' AND source_id IN (...)`를 **소스(customer_claims/returns) 삭제 前**에 실행(`#567` 주석 명시, 팬텀 AR 감액 방지) + 클레임/반품 단건 하드삭제 경로 부재(`DELETE FROM customer_claims` 전수 1건=주문삭제 batch만, `returns.ts:84`는 생성실패 보상 rollback=FP클래스(d)) → dangling 0. ② **`contact_group_members.member_id`(0476, CLIENT/EMPLOYEE polymorphic 비-FK)** → clients·employees 양쪽 **soft delete**라 부모 행 물리 소멸 없음 = 구조적 dangling 불가(단 stale membership이 위 #580). ③ **신규 컬럼 detail SELECT(#484 (b)-risk)** = `source_type`/`source_id`는 DELETE WHERE절에만 사용(명시 SELECT 아님), `batch_key`는 SELECT 미등장 → 마이그 미적용 시 500 나는 경로 없음. `cashSchedule.ts:104`·`purchaseInvoices.ts:247`의 동명 `source_type`은 **다른 테이블(cash_schedule) 기존 컬럼** = FP.
+> - **backlog↔GitHub 절대값 재동기화**: `gh issue list(OPEN,auto-improve)` 실측 **8건**(#572~#579, 백로그 기재값과 일치) + 이번 신규 #580 = **9**. `search/issues` 실측 done(`reason:completed`) **497**·rejected(`not_planned` 4 + `duplicate` 2) **6** — 둘 다 백로그 기재값과 **정확히 일치**(이번 사이클 close 0건).
+> - **🧬 SKILL 강화 없음(기존 패턴 재현)** — #580은 기존 "형제-비대칭"(#437/#452 IDOR의 **soft-delete 필터 버전**) + "설계 의도(주석·UI)와 구현 불일치" 조합. 새 탐지 클래스가 아니라 이미 코드화된 렌즈를 신규 기능(0476 연락처 그룹)에 적용해 발견. 다만 **soft-delete 필터 비대칭**은 기존 카탈로그가 IDOR/컬럼존재성 축으로만 다뤄 명시 항목이 없었으므로, 향후 Area 4에서 "polymorphic 멤버십 테이블의 부모 조회 시 각 부모 타입별 활성/삭제 필터 대칭성"을 함께 볼 것.
+> - **📌 부수 — 백로그 7차 트림 직후 첫 사이클**: 이 사이클이 다이어트(196KB→63KB) 후 auto-improve 정상 동작 검증을 겸함. 형식 계약 13항목·메타 주석·카운터 전부 보존 확인, 직전 Area4(45회차) 로그 참조 성공(최근 8건 유지분에 포함), done-sync 절대값 3종 일치.
+> - 신규 이슈 1건(#580, issue-only), 자동수정 0건, done-sync new 8→9·done 497·rejected 6. 다음 순번 **Area 5**.
 
 > **Area 3 UX/기능 감사 (2026-07-27T21:35):**
 > - **방법**: `git fetch --deepen=200 origin main`(shallow clone이라 이전 사이클 SHA 확보 위해 확장, HEAD `295b029` = origin/main 일치, 워킹트리 clean, detached). Area 3 **45회차** — 직전 Area3(`1e3a122`/`7dd2105`, 07-26T09:22, 44회차) 이후 `git log 7dd2105..HEAD`는 **78커밋**(대량 churn — MMS/SMS 대량발송+거래처그룹 신기능, 은행 자동매칭/일괄매칭 통합+체크박스 Shift 범위선택 전역 도입, 디자이너 대기함 필드캐리+후가공 도메인 프로파일 A1(가공자↔도메인 매핑)+B단계 배치그룹핑, 발주 목록 법인간거래 토글, 목록 정렬 tie-break 전역 스윕, 카드 썸네일/실적탭 버그수정 다수). general-purpose 에이전트 3개 병렬 파견(①MMS 대량발송+거래처그룹 ②은행 일괄적용+Shift범위선택 전역도입 일관성 ③디자이너 대기함+후가공 도메인 프로파일)로 신규 기능 표면 심층 감사.
