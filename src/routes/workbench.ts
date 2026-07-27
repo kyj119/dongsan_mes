@@ -1117,8 +1117,9 @@ workbenchRouter.post('/process/clear', async (c) => {
 // JSX(ExtendScript)는 HTTPS 호출 불가 → 에이전트가 이 응답을 {IA-등록}\_config\config.json으로 중계.
 workbenchRouter.get('/intake-config', async (c) => {
   try {
-    // 거래처 스냅샷 제거(2026-07-17): 미니창 거래처 입력 폐지(이중입력) — config 123KB→경량
-    const [methods, presets, workerDomains] = await Promise.all([
+    // 거래처 리스트 재도입(2026-07-27, spec 2026-07-23 D5): CEP 패널 자동완성 소스(id+name 경량 전체).
+    // workers = 가공자↔MES user id 매핑(spec §3.5) — manifest worker_id → 대기함 "내 작업" 상관.
+    const [methods, presets, workerDomains, workers, clients] = await Promise.all([
       c.env.DB.prepare(
         `SELECT id, name, margin_cm, method_group FROM finishing_methods WHERE is_active = 1 ORDER BY sort_order, id`
       ).all(),
@@ -1127,6 +1128,12 @@ workbenchRouter.get('/intake-config', async (c) => {
       ).all(),
       c.env.DB.prepare(
         `SELECT worker_name, domain FROM designer_worker_domains`
+      ).all(),
+      c.env.DB.prepare(
+        `SELECT id, name FROM users WHERE is_active = 1 AND (role = 'DESIGNER' OR job_role = 'DESIGNER') ORDER BY name`
+      ).all(),
+      c.env.DB.prepare(
+        `SELECT id, client_name FROM clients WHERE COALESCE(is_active, 1) = 1 ORDER BY client_name`
       ).all(),
     ])
     // 경로①(주문 선행)용 미가공 라인: 파일 미연결 + 진행 중 주문만
@@ -1156,6 +1163,8 @@ workbenchRouter.get('/intake-config', async (c) => {
         methods: methods.results,
         presets: presets.results,
         worker_domains: workerDomains.results, // 가공자→도메인(CEP 필터·프로파일)
+        workers: workers.results, // 가공자↔user id 매핑(id, name) — 패널 worker_id 해소
+        clients: clients.results, // 거래처 자동완성(id, client_name) — 정확일치 시 client_id 해소
         open_lines: openLines,
         intakes: imposeIntakes,
       },
@@ -1204,6 +1213,13 @@ workbenchRouter.post('/intakes', async (c) => {
     const punchJson = body.punch && typeof body.punch === 'object' ? JSON.stringify(body.punch) : null
     const workerName = body.worker_name != null ? String(body.worker_name) : null
     const workerId = Number.isFinite(Number(body.worker_id)) && Number(body.worker_id) > 0 ? Number(body.worker_id) : null
+    // 거래처 자동완성 해소분(D5): 존재 검증 통과 시만 저장(불량 id는 free-text 폴백 — FK 실패로 ingest 전체가 죽지 않게)
+    let clientId: number | null = null
+    const rawClientId = Number(body.client_id)
+    if (Number.isFinite(rawClientId) && rawClientId > 0) {
+      const cl = await c.env.DB.prepare(`SELECT id FROM clients WHERE id = ?`).bind(rawClientId).first<{ id: number }>()
+      if (cl) clientId = cl.id
+    }
 
     // 임포지션 팔레트 호환용 분석 레코드. file_path 소비자 규칙:
     //   single → EPS(직접연결 -3 passthrough가 완성본을 복사) / impose·both → work.ai(SheetLayout 소스 해석)
@@ -1235,14 +1251,14 @@ workbenchRouter.post('/intakes', async (c) => {
 
     const intake = await c.env.DB.prepare(`
       INSERT INTO designer_intakes (
-        entity_id, ai_analysis_id, client_name, qty, finishing_json, width_cm, height_cm,
+        entity_id, ai_analysis_id, client_name, client_id, qty, finishing_json, width_cm, height_cm,
         scale_pct, trim, mode, eps_path, work_ai_path, status,
         registered_by, pc_name, script_version, outline_failed, memo,
         keyword, post_desc, punch_json, worker_name, worker_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING id
     `).bind(
-      entityId, analysisId, clientName, qty, finishing, w, h,
+      entityId, analysisId, clientName, clientId, qty, finishing, w, h,
       scalePct, body.trim ? 1 : 0, mode, epsPath, workAiPath,
       body.registered_by != null ? String(body.registered_by) : null,
       body.pc_name != null ? String(body.pc_name) : null,

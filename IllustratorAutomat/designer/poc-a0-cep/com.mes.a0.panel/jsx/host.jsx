@@ -226,6 +226,7 @@ function mesA0_process() {
   if (!raw) return '{"ok":false,"err":"noparams"}';
   var P;
   try { P = eval('(' + raw + ')'); } catch (e) { return '{"ok":false,"err":"badparams"}'; }
+  var review = !!P.review_only; // 검토문서 모드(D4): 가공만 하고 저장 없이 검토문서 아트보드로 이관
 
   if (app.documents.length === 0) return '{"ok":false,"err":"nodoc"}';
   var srcDoc = app.activeDocument;
@@ -279,7 +280,7 @@ function mesA0_process() {
   var batchFolder = P.batch_folder ? String(P.batch_folder) : '';
   var folderName = batchFolder || (ymd + '_' + hms + '_' + mesA0_sanitize(pcName) + '_' + (now.getTime() % 1000));
   var jobFolder = new Folder(MESA0_REGISTER_ROOT + '/' + folderName);
-  if (!jobFolder.exists && !jobFolder.create()) return '{"ok":false,"err":"nofolder"}';
+  if (!review && !jobFolder.exists && !jobFolder.create()) return '{"ok":false,"err":"nofolder"}'; // 검토=저장 없음(폴더 미생성)
   var sfx = (P.batch_index != null && P.batch_index !== '') ? ('_' + mesA0_sanitize('' + P.batch_index)) : '';
 
   // 원본 선택을 클립보드로 복사(cross-doc duplicate가 CEP eval 컨텍스트서 0개 실패 → copy/paste 대체)
@@ -323,8 +324,10 @@ function mesA0_process() {
     }
     newDoc.artboards[0].artboardRect = [db[0], db[1], db[2], db[3]];
 
-    var workFile = new File(jobFolder.fsName + '/work' + sfx + '.ai');
-    newDoc.saveAs(workFile, new IllustratorSaveOptions());
+    if (!review) {
+      var workFile = new File(jobFolder.fsName + '/work' + sfx + '.ai');
+      newDoc.saveAs(workFile, new IllustratorSaveOptions());
+    }
 
     if (mode !== 'impose') {
       var oL = db[0], oT = db[1], oR = db[2], oB = db[3];
@@ -461,6 +464,7 @@ function mesA0_process() {
 
       // 파일명: 거래처-키워드(사이즈)-후가공-개수EA[-식별번호][_1-N]
       // 원단종류는 여기서 생략(품목=주문서 저장 단계에서 부여). 후가공=main.js 조립(post_desc).
+      if (!review) {
       var sizeStr = Math.round(realW) + 'x' + Math.round(realH);
       var kwSize = kwRaw ? (mesA0_sanitize(kwRaw) + '(' + sizeStr + ')') : sizeStr;
       var nameParts = [mesA0_sanitize(clientName), kwSize];
@@ -481,18 +485,31 @@ function mesA0_process() {
         if (!outDir.exists) outDir.create();
         epsFile.copy(outDir.fsName + '/' + epsName);
       } catch (eCp) {}
+      } // !review
     }
 
-    var abNow = newDoc.artboards[0].artboardRect;
-    var abW = abNow[2] - abNow[0], abH = abNow[1] - abNow[3];
-    var maxPt = Math.max(abW, abH);
-    var pct = maxPt > 0 ? Math.min(100, (400 / maxPt) * 100) : 100;
-    var pngFile = new File(jobFolder.fsName + '/thumb' + sfx + '.png');
-    var pngOpts = new ExportOptionsPNG24();
-    pngOpts.artBoardClipping = true;
-    pngOpts.horizontalScale = pct;
-    pngOpts.verticalScale = pct;
-    newDoc.exportFile(pngFile, ExportType.PNG24, pngOpts);
+    if (!review) {
+      var abNow = newDoc.artboards[0].artboardRect;
+      var abW = abNow[2] - abNow[0], abH = abNow[1] - abNow[3];
+      var maxPt = Math.max(abW, abH);
+      var pct = maxPt > 0 ? Math.min(100, (400 / maxPt) * 100) : 100;
+      var pngFile = new File(jobFolder.fsName + '/thumb' + sfx + '.png');
+      var pngOpts = new ExportOptionsPNG24();
+      pngOpts.artBoardClipping = true;
+      pngOpts.horizontalScale = pct;
+      pngOpts.verticalScale = pct;
+      newDoc.exportFile(pngFile, ExportType.PNG24, pngOpts);
+    }
+
+    if (review) {
+      // 검토문서 이관(D4): 가공 결과(마감·돔보 포함)를 검토문서 타일 아트보드로 옮기고 복제문서를 닫는다.
+      var rres = mesA0_reviewPlace(newDoc);
+      if (rres !== 'ok') {
+        try { newDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (eRc) {}
+        return '{"ok":false,"err":"review:' + mesA0_jsonEsc(rres) + '"}';
+      }
+      return '{"ok":true,"review":1,"w":' + (Math.round(realW * 10) / 10) + ',"h":' + (Math.round(realH * 10) / 10) + ',"mode":"' + mode + '"}';
+    }
 
     okAll = true;
   } catch (eProc) {
@@ -604,16 +621,13 @@ function mesA0_cluster(items, gapPt) {
   return out;
 }
 
-// 묶음 추가 — 선택 전체를 클러스터로 분리해 각각 큐 행으로. gapMm 이내는 한 디자인.
-function mesA0_queueAddBatch(gapMm) {
-  if (app.documents.length === 0) return '{"ok":false,"err":"nodoc"}';
-  var d = app.activeDocument;
-  if (!d.selection || d.selection.length === 0) return '{"ok":false,"err":"nosel"}';
+// 공용 시드(묶음분리·자동감지): 후보를 노이즈 제거→클러스터→큐 행 추가. 응답 계약 동일(added/total/sizes).
+function mesA0_seedQueueJson(d, cands, gapMm) {
   // 50mm 노이즈 제외 — 클립 존중 경계 기준(블리드로 부풀린 겉보기 대신 실제 디자인 크기)
   var MIN = 50 * MESA0_PT_PER_MM;
   var kept = [];
-  for (var i = 0; i < d.selection.length; i++) {
-    var it = d.selection[i], b = null;
+  for (var i = 0; i < cands.length; i++) {
+    var it = cands[i], b = null;
     try { b = mesA0_itemBounds(it); } catch (eB) {}
     if (!b) { try { b = it.visibleBounds; } catch (eB2) {} }
     if (!b) continue;
@@ -633,6 +647,38 @@ function mesA0_queueAddBatch(gapMm) {
       ',"h":' + (Math.round((ub[1] - ub[3]) / MESA0_PT_PER_MM / 10 * 10) / 10) + ',"items":' + clusters[c].length + '}');
   }
   return '{"ok":true,"added":' + sizes.length + ',"total":' + q.length + ',"sizes":[' + sizes.join(',') + ']}';
+}
+
+// 묶음 추가 — 선택 전체를 클러스터로 분리해 각각 큐 행으로. gapMm 이내는 한 디자인.
+function mesA0_queueAddBatch(gapMm) {
+  if (app.documents.length === 0) return '{"ok":false,"err":"nodoc"}';
+  var d = app.activeDocument;
+  if (!d.selection || d.selection.length === 0) return '{"ok":false,"err":"nosel"}';
+  var cands = [];
+  for (var i = 0; i < d.selection.length; i++) cands.push(d.selection[i]);
+  return mesA0_seedQueueJson(d, cands, gapMm);
+}
+
+// 자동감지 시드(A3, spec D2) — 선택 불필요: 라이브 문서 top-level 아이템(잠금·숨김 레이어 제외) 전체에서
+// 디자인 후보 감지. read-only(원본 불가침 — 변형은 확정 시 복제문서에서만). 시드 오류는 큐에서 삭제·개별추가로 교정.
+function mesA0_autoDetect(gapMm) {
+  if (app.documents.length === 0) return '{"ok":false,"err":"nodoc"}';
+  var d = app.activeDocument;
+  var tops = [];
+  function collectLayer(ly) {
+    try {
+      if (ly.locked || !ly.visible) return;
+      for (var i = 0; i < ly.pageItems.length; i++) {
+        var it = ly.pageItems[i];
+        try { if (!it.locked && !it.hidden) tops.push(it); } catch (eIt) {}
+      }
+      for (var s = 0; s < ly.layers.length; s++) collectLayer(ly.layers[s]);
+    } catch (eLy) {}
+  }
+  try { for (var l = 0; l < d.layers.length; l++) collectLayer(d.layers[l]); }
+  catch (eScan) { return '{"ok":false,"err":"scan"}'; }
+  if (!tops.length) return '{"ok":false,"err":"noitems"}';
+  return mesA0_seedQueueJson(d, tops, gapMm);
 }
 
 function mesA0_queueCount() { return '' + mesA0_queueEnsure().length; }
@@ -658,6 +704,95 @@ function mesA0_queueSelect(idx) {
     if (!e.doc.selection || e.doc.selection.length === 0) return '{"ok":false,"err":"stale"}';
     return '{"ok":true,"n":' + e.doc.selection.length + '}';
   } catch (err) { return '{"ok":false,"err":"docgone"}'; }
+}
+
+// ── 검토문서(D4): 큐 N디자인을 디자인당 아트보드 타일로 가공 미리보기 — 저장 없음, 확정 게이트의 근거 ──
+// 캔버스/아트보드 한도 577cm(A0 실측) → 5500mm 안전값. 목표크기로 문서 생성(작은 문서 리사이즈 금지 — spec §6).
+// 초과 시 검토문서 분할(순차 폴백). 상태=$.global.mesA0Rev {docs[], x,y(타일 커서·아래로+), rowH, count, ox,oy(원점), first}
+var MESA0_REVIEW_LIMIT_MM = 5500;
+var MESA0_REVIEW_GAP_MM = 50;
+
+function mesA0_reviewEnsure() {
+  if (!$.global.mesA0Rev) $.global.mesA0Rev = { docs: [], x: 0, y: 0, rowH: 0, count: 0, ox: 0, oy: 0, first: true };
+  return $.global.mesA0Rev;
+}
+
+function mesA0_reviewDiscard() {
+  var R = $.global.mesA0Rev;
+  if (R && R.docs) for (var i = 0; i < R.docs.length; i++) { try { R.docs[i].close(SaveOptions.DONOTSAVECHANGES); } catch (e) {} }
+  $.global.mesA0Rev = null;
+  return 'ok';
+}
+
+function mesA0_reviewBegin() { mesA0_reviewDiscard(); mesA0_reviewEnsure(); return '{"ok":true}'; }
+
+function mesA0_reviewNewDoc(R) {
+  var lim = MESA0_REVIEW_LIMIT_MM * MESA0_PT_PER_MM;
+  var rd = app.documents.add(DocumentColorSpace.CMYK, lim, lim);
+  R.docs.push(rd);
+  var ab = rd.artboards[0].artboardRect;
+  R.ox = ab[0]; R.oy = ab[1]; // 좌상 원점 — 타일 좌표는 이 기준 오프셋
+  R.x = 0; R.y = 0; R.rowH = 0; R.first = true;
+  return rd;
+}
+
+// 가공 완료된 복제문서(newDoc)를 검토문서 타일 아트보드로 이관 후 닫는다. 성공='ok', 실패=사유.
+// cross-doc duplicate가 CEP eval 컨텍스트서 실패하는 전례(process 주석) → copy/paste로 이관.
+function mesA0_reviewPlace(newDoc) {
+  var R = mesA0_reviewEnsure();
+  var lim = MESA0_REVIEW_LIMIT_MM * MESA0_PT_PER_MM;
+  var gap = MESA0_REVIEW_GAP_MM * MESA0_PT_PER_MM;
+  var AB = newDoc.artboards[0].artboardRect; // 타일 크기 = 가공 아트보드(여백·돔보 패드 포함)
+  var wPt = AB[2] - AB[0], hPt = AB[1] - AB[3];
+  if (wPt > lim || hPt > lim) return 'toobig'; // 이론상 저장스케일 1/N이 선차단 — 방어
+  var tops = [];
+  for (var i = 0; i < newDoc.pageItems.length; i++) {
+    try { var it = newDoc.pageItems[i]; if (it.parent && it.parent.typename === 'Layer') tops.push(it); } catch (e0) {}
+  }
+  if (!tops.length) return 'empty';
+  var ub = mesA0_unionBounds(tops);
+  if (!ub) return 'nobounds';
+  var relDx = ub[0] - AB[0], relDy = ub[1] - AB[1]; // 아이템 union의 아트보드 대비 상대 오프셋 보존
+  try {
+    app.activeDocument = newDoc;
+    newDoc.selection = null;
+    newDoc.selection = tops;
+    app.copy();
+  } catch (eCp) { return 'copy:' + eCp; }
+  try { newDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCl) {}
+  var rd = R.docs.length ? R.docs[R.docs.length - 1] : mesA0_reviewNewDoc(R);
+  if (R.x > 0 && R.x + wPt > lim) { R.x = 0; R.y += R.rowH + gap; R.rowH = 0; } // 줄바꿈
+  if (R.y + hPt > lim) rd = mesA0_reviewNewDoc(R);                              // 문서 분할(순차 폴백)
+  try {
+    app.activeDocument = rd;
+    app.paste();
+    var pasted = [];
+    for (var p = 0; p < rd.selection.length; p++) pasted.push(rd.selection[p]);
+    if (!pasted.length) return 'paste0';
+    var pb = mesA0_unionBounds(pasted);
+    if (!pb) return 'pastebounds';
+    var tileL = R.ox + R.x, tileT = R.oy - R.y;
+    var dx = (tileL + relDx) - pb[0], dy = (tileT + relDy) - pb[1];
+    for (var t = 0; t < pasted.length; t++) { try { pasted[t].translate(dx, dy); } catch (eT) {} }
+    var abRect = [tileL, tileT, tileL + wPt, tileT - hPt];
+    if (R.first) { rd.artboards[0].artboardRect = abRect; R.first = false; }
+    else rd.artboards.add(abRect);
+    rd.selection = null;
+    R.x += wPt + gap;
+    if (hPt > R.rowH) R.rowH = hPt;
+    R.count++;
+    return 'ok';
+  } catch (ePl) { return 'place:' + ePl; }
+}
+
+function mesA0_reviewEnd() {
+  var R = $.global.mesA0Rev;
+  if (!R || !R.docs.length || !R.count) return '{"ok":false,"err":"noreview"}';
+  try {
+    app.activeDocument = R.docs[R.docs.length - 1];
+    app.executeMenuCommand('fitall'); // 전체 보기 — 아트보드 이동/줌으로 검토
+  } catch (e) {}
+  return '{"ok":true,"docs":' + R.docs.length + ',"count":' + R.count + '}';
 }
 
 // 배치 시작 — 묶음 공유 폴더 1개 생성, 폴더명 반환(각 디자인은 이 폴더에 _식별번호 접미로 평면 저장)

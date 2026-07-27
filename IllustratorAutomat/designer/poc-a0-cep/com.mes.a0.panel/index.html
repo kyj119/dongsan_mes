@@ -55,7 +55,11 @@
       </div>
       <div class="row">
         <label for="client">거래처</label>
-        <input id="client" type="text" placeholder="(비우면 파일명)" class="grow" />
+        <div class="acwrap grow">
+          <input id="client" type="text" placeholder="(비우면 파일명)" autocomplete="off" />
+          <div id="clientSug" class="sug hidden"></div>
+        </div>
+        <span id="clientHit" class="achit"></span>
       </div>
 
       <div class="row buttons">
@@ -128,10 +132,12 @@
       <div class="row buttons">
         <button id="btnQueueAdd" type="button">＋ 개별</button>
         <button id="btnQueueBatch" type="button">＋ 묶음분리</button>
+        <button id="btnAutoDetect" type="button" title="선택 없이 문서 전체에서 디자인 자동 감지(시드) — 틀리면 삭제·개별 추가로 교정">◎ 자동감지</button>
       </div>
-      <div class="row"><span class="cfg">행 클릭=폼 연동(가공·후가공 수정이 그 행에 반영, 다시 클릭=해제) · 행별 세팅 후 확정</span></div>
+      <div class="row"><span class="cfg">행 클릭=폼 연동(가공·후가공 수정이 그 행에 반영, 다시 클릭=해제) · 행별 세팅 → [검토문서] 확인 → 확정</span></div>
       <div id="queueBox" class="queuebox"></div>
       <div class="row buttons">
+        <button id="btnReview" type="button" title="큐 전체를 가공해 검토문서(디자인당 아트보드)로 생성 — 저장 없음, 확인 후 확정 가능" disabled>검토문서</button>
         <button id="btnConfirm" type="button" class="primary" disabled>일괄 확정 (0)</button>
         <button id="btnApplyAll" type="button" title="현재 가공·후가공 설정을 모든 행에 적용 (수량·키워드·거래처는 행값 유지)" disabled>전체 적용</button>
         <button id="btnQueueClear" type="button">비우기</button>

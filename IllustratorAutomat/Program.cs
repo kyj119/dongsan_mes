@@ -1025,16 +1025,27 @@ namespace IllustratorAutomation
                     var name = Path.GetFileName(sub);
                     if (name.StartsWith("_") || name.StartsWith(".")) continue; // _scripts/_config 등 예약 폴더
                     var manifest = Path.Combine(sub, "manifest.json");
-                    if (!File.Exists(manifest)) continue;                       // 커밋 마커 없음 = 아직 기록 중
-                    if (File.Exists(Path.Combine(sub, ".ingested"))) continue;  // 멱등
-                    if (File.Exists(Path.Combine(sub, ".rejected"))) continue;  // poison 격리분
-                    await IngestDesignerFolderAsync(sub, manifest);
+                    if (File.Exists(manifest)
+                        && !File.Exists(Path.Combine(sub, ".ingested"))   // 멱등
+                        && !File.Exists(Path.Combine(sub, ".rejected")))  // poison 격리분
+                    {
+                        await IngestDesignerFolderAsync(sub, manifest, "");
+                    }
+                    // 배치(CEP 일괄 확정, 2026-07-27): 공유 폴더에 manifest_N.json 평면 저장 — 각각 1 intake.
+                    // 멱등/격리 마커도 접미 단위(.ingested_N/.rejected_N). 기존 단건(manifest.json)과 공존.
+                    foreach (var mf in Directory.GetFiles(sub, "manifest_*.json"))
+                    {
+                        var sfx = Path.GetFileNameWithoutExtension(mf).Substring("manifest".Length); // "_1", "_2"…
+                        if (File.Exists(Path.Combine(sub, ".ingested" + sfx))) continue;
+                        if (File.Exists(Path.Combine(sub, ".rejected" + sfx))) continue;
+                        await IngestDesignerFolderAsync(sub, mf, sfx);
+                    }
                 }
             }
             catch (Exception ex) { Console.WriteLine($"[디자이너등록] 스캔 오류: {ex.Message}"); }
         }
 
-        private static async Task IngestDesignerFolderAsync(string folder, string manifestPath)
+        private static async Task IngestDesignerFolderAsync(string folder, string manifestPath, string sfx)
         {
             try
             {
@@ -1042,13 +1053,13 @@ namespace IllustratorAutomation
                 try { obj = JsonNode.Parse(File.ReadAllText(manifestPath))?.AsObject(); }
                 catch (Exception pe)
                 {
-                    File.WriteAllText(Path.Combine(folder, ".rejected"), $"manifest parse: {pe.Message}");
-                    Console.WriteLine($"[디자이너등록] manifest 파싱 실패 → 격리: {folder}");
+                    File.WriteAllText(Path.Combine(folder, ".rejected" + sfx), $"manifest parse: {pe.Message}");
+                    Console.WriteLine($"[디자이너등록] manifest 파싱 실패 → 격리: {manifestPath}");
                     return;
                 }
                 if (obj == null)
                 {
-                    File.WriteAllText(Path.Combine(folder, ".rejected"), "manifest not an object");
+                    File.WriteAllText(Path.Combine(folder, ".rejected" + sfx), "manifest not an object");
                     return;
                 }
 
@@ -1059,15 +1070,16 @@ namespace IllustratorAutomation
                     var p = Path.Combine(folder, rel);
                     return File.Exists(p) ? p : null;
                 }
-                obj["work_ai_path"] = Abs("work_ai", "work.ai");
+                obj["work_ai_path"] = Abs("work_ai", $"work{sfx}.ai");
                 obj["eps_path"] = Abs("eps", "output.eps");
-                var thumbPath = Abs("thumb", "thumb.png");
+                var thumbPath = Abs("thumb", $"thumb{sfx}.png");
                 if (thumbPath != null)
                 {
                     var bytes = File.ReadAllBytes(thumbPath);
                     if (bytes.Length <= 1_500_000) obj["thumb_base64"] = Convert.ToBase64String(bytes); // D5 썸네일 크기 가드와 동일
                 }
-                obj["source_folder"] = folder;
+                // 배치는 폴더 공유 → 서버 memo 기반 중복가드가 디자인 단위로 동작하게 접미 포함 유니크 키
+                obj["source_folder"] = folder + (string.IsNullOrEmpty(sfx) ? "" : "#" + sfx);
 
                 var content = new StringContent(obj.ToJsonString(), System.Text.Encoding.UTF8, "application/json");
                 var res = await httpClient.PostAsync($"{ERP_API_URL}/api/workbench/intakes", content);
@@ -1077,17 +1089,17 @@ namespace IllustratorAutomation
                 }
                 if (res.IsSuccessStatusCode)
                 {
-                    File.WriteAllText(Path.Combine(folder, ".ingested"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                    WriteAgentLog($"디자이너 등록 ingest OK: {Path.GetFileName(folder)}");
-                    Console.WriteLine($"[디자이너등록] 등록 완료: {Path.GetFileName(folder)}");
+                    File.WriteAllText(Path.Combine(folder, ".ingested" + sfx), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                    WriteAgentLog($"디자이너 등록 ingest OK: {Path.GetFileName(folder)}{sfx}");
+                    Console.WriteLine($"[디자이너등록] 등록 완료: {Path.GetFileName(folder)}{sfx}");
                     // 등록 직후 config 즉시 갱신 — "등록 → 바로 판짜기" 동선에서 5분 주기 대기 제거
                     await BroadcastDesignerConfigAsync();
                 }
                 else if ((int)res.StatusCode >= 400 && (int)res.StatusCode < 500)
                 {
                     // 검증 실패 = 재시도 무의미 → 격리 (서버 응답을 사유로 보존)
-                    File.WriteAllText(Path.Combine(folder, ".rejected"), $"{(int)res.StatusCode} {await res.Content.ReadAsStringAsync()}");
-                    Console.WriteLine($"[디자이너등록] 서버 거부({(int)res.StatusCode}) → 격리: {folder}");
+                    File.WriteAllText(Path.Combine(folder, ".rejected" + sfx), $"{(int)res.StatusCode} {await res.Content.ReadAsStringAsync()}");
+                    Console.WriteLine($"[디자이너등록] 서버 거부({(int)res.StatusCode}) → 격리: {manifestPath}");
                 }
                 else
                 {

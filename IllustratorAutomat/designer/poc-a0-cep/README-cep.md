@@ -61,8 +61,10 @@
 | `.debug` | 원격 디버그 포트 |
 
 ## 남은 것(후속)
-- **가공자↔MES user id 매핑**(registered_by_id, spec §3.5·B단계) — 현재 worker_name만, id는 null.
-- **거래처 자동완성**(clients 리스트 config 재도입, spec §5) — 현재 free-text.
-- ~~반자동 큐(A2) 행별 세팅~~ → **완료(행↔폼 연동)**. 남은 A2/A3=자동감지 시드·검토문서 확정게이트(A1 후반).
-- ⚠️ 큐 항목은 라이브 문서 참조 — 행별 세팅으로 확정까지 시간이 길어지면 원본 문서를 닫지 말 것(확정 시 `stale`/`docgone`).
-- 실사용 검증: 실제 디자인으로 [가공 실행] → 대기함까지 E2E(한글 인코딩·EPS 규약명·ingest source='cep' 인식).
+- ~~가공자↔MES user id 매핑~~ → **완료(2026-07-27)**: config `workers`(intake-config, role/job_role=DESIGNER) 이름 완전일치 → manifest `worker_id`. prod 4인 확인(인호동14·김보연8·김영주15·정소은16).
+- ~~거래처 자동완성~~ → **완료(2026-07-27)**: config `clients`(id+client_name 경량 전체) 부분일치 제안 + 정확일치 시 `client_id` 해소(✓등록 표시)·미일치=free-text 폴백. ⚠️ **MES prod 배포 후 실동작**(config에 clients/workers가 실려야 함 + POST /intakes client_id 저장).
+- ~~검토문서+확정 게이트(A1 후반, D4)~~ → **완료(2026-07-27)**: [검토문서]=큐 전체 가공(저장 없음)→디자인당 아트보드 타일(5500mm 한도 초과 시 문서 분할). 확정은 검토문서 생성 후에만 활성, 큐 수정 시 재잠금(rev 기반). 확정=기존 행별 재가공·저장 경로(회귀 0).
+- ~~자동감지 시드(A3)~~ → **완료(2026-07-27)**: [◎ 자동감지]=선택 불필요, 레이어 top-level(잠금·숨김 제외) 전체에서 감지(클립존중·50mm 노이즈·분리간격 클러스터). read-only.
+- ~~실사용 검증~~ → **완료(2026-07-27 E2E)**: 자동감지→행별 마감 상이→검토문서→일괄 확정→EPS 규약명 행별 post_desc→ingest 대기함(한글·client_id·worker_id 포함).
+- ⚠️ 큐 항목은 라이브 문서 참조 — 행별 세팅으로 확정까지 시간이 길어지면 원본 문서를 닫지 말 것(확정 시 `stale`/`docgone`). 검토문서는 폐기용(저장물 아님).
+- ⚠️ **배치 ingest는 에이전트 신버전 필요**(2026-07-27 수정): 구버전은 `manifest.json`만 스캔 → 일괄 확정 산출물(manifest_N.json)이 대기함에 안 올라감. 신버전=접미 마커(.ingested_N)·source_folder `#_N` 유니크.

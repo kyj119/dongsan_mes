@@ -16,7 +16,20 @@
   var methods = [];   // [{name, margin_cm, method_group}]
   var presets = [];   // [{name, config(obj), group}]
   var workerDomains = {}; // worker_name → 도메인(output/transfer/sign)
+  var workers = [];    // [{id, name}] — 가공자↔MES user id 매핑(spec §3.5)
+  var clientList = []; // [{id, client_name}] — 거래처 자동완성(spec D5)
   var DOMAIN_LABEL = { output: '현수막', transfer: '전사', sign: '간판' };
+
+  function workerIdOf(name) {
+    for (var i = 0; i < workers.length; i++) if (workers[i].name === name) return workers[i].id;
+    return null;
+  }
+  function clientIdOf(name) {
+    var t = (name || '').replace(/^\s+|\s+$/g, '');
+    if (!t) return null;
+    for (var i = 0; i < clientList.length; i++) if (clientList[i].client_name === t) return clientList[i].id;
+    return null; // 미일치 = free-text 폴백(client_id null)
+  }
 
   function $(id) { return document.getElementById(id); }
   function warnMissing(id) { console.warn('[mes-a0-cep] #' + id + ' not found'); }
@@ -153,6 +166,48 @@
       fillMethodSelects(); fillPresets(); updateAnnotGates(); // 도메인 전환 → 방식·프리셋 재로드
     });
 
+    // ── 거래처 자동완성(spec D5): config.clients에서 부분일치 제안, 정확일치 시 client_id 해소 표시 ──
+    var elClientSug = $('clientSug'), elClientHit = $('clientHit');
+    function updateClientHit() {
+      if (!elClientHit) return;
+      var v = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
+      var id = clientIdOf(v);
+      elClientHit.textContent = id ? '✓등록' : (v ? '자유입력' : '');
+      elClientHit.className = 'achit' + (id ? ' ok' : '');
+    }
+    function hideClientSug() { if (elClientSug) { elClientSug.className = 'sug hidden'; elClientSug.innerHTML = ''; } }
+    function renderClientSug() {
+      if (!elClientSug || !elClient) return;
+      var q = (elClient.value || '').replace(/^\s+|\s+$/g, '');
+      if (!q || !clientList.length) { hideClientSug(); return; }
+      var qq = q.toLowerCase(), hits = [];
+      for (var i = 0; i < clientList.length && hits.length < 15; i++) {
+        var nm = clientList[i].client_name || '';
+        if (nm.toLowerCase().indexOf(qq) !== -1) hits.push(nm);
+      }
+      if (!hits.length || (hits.length === 1 && hits[0] === q)) { hideClientSug(); return; }
+      var html = '';
+      for (var h = 0; h < hits.length; h++) html += '<div class="sgi" data-name="' + escHtml(hits[h]) + '">' + escHtml(hits[h]) + '</div>';
+      elClientSug.innerHTML = html;
+      elClientSug.className = 'sug';
+      var sgis = elClientSug.getElementsByClassName('sgi');
+      for (var k = 0; k < sgis.length; k++) sgis[k].addEventListener('mousedown', function (ev) {
+        ev.preventDefault(); // blur로 목록이 닫히기 전에 선택 확정
+        if (elClient) {
+          elClient.value = this.getAttribute('data-name');
+          hideClientSug();
+          updateClientHit();
+          saveSettings();
+          try { elClient.dispatchEvent(new Event('change', { bubbles: true })); } catch (eD) {} // 연동 행 반영
+        }
+      });
+    }
+    if (elClient) {
+      elClient.addEventListener('input', function () { renderClientSug(); updateClientHit(); });
+      elClient.addEventListener('focus', function () { renderClientSug(); });
+      elClient.addEventListener('blur', function () { window.setTimeout(hideClientSug, 150); updateClientHit(); });
+    }
+
     // ── 마감 method 셀렉트 채우기 ──
     function fillMethodSelects() {
       for (var s = 0; s < finM.length; s++) {
@@ -235,13 +290,18 @@
         workerDomains = {};
         var wds = (data && data.worker_domains) ? data.worker_domains : [];
         for (var wi = 0; wi < wds.length; wi++) if (wds[wi] && wds[wi].worker_name) workerDomains[wds[wi].worker_name] = wds[wi].domain;
+        workers = (data && data.workers) ? data.workers : [];       // 가공자↔user id
+        clientList = (data && data.clients) ? data.clients : [];    // 거래처 자동완성
         ok = true;
       } catch (e) { console.warn('[mes-a0-cep] config parse fail', e); }
       fillMethodSelects();
       fillPresets();
       showSaved(); // 도메인 라벨 반영
-      setCfg(ok ? ('config ✓ 마감 ' + methods.length + '종 · 프리셋 ' + presets.length) : 'config 파싱 실패 — 마감 수동 입력');
+      setCfg(ok ? ('config ✓ 마감 ' + methods.length + '종 · 프리셋 ' + presets.length +
+        (clientList.length ? (' · 거래처 ' + clientList.length) : '') +
+        (workers.length ? (' · 가공자 ' + workers.length) : '')) : 'config 파싱 실패 — 마감 수동 입력');
       restoreSettings();
+      updateClientHit();
       updateAnnotGates();
     }
     (function loadConfig() {
@@ -365,9 +425,9 @@
       };
       return {
         worker_name: elWorker.value || null,
-        registered_by_id: null,   // MES user id 매핑은 B단계(§3.5 구현선행) — 현재 null
+        registered_by_id: workerIdOf(elWorker.value), // config.workers 매핑 → manifest worker_id("내 작업" 상관)
         client_name: elClient ? (elClient.value || '') : '',
-        client_id: null,
+        client_id: clientIdOf(elClient ? elClient.value : ''), // 정확일치 시 해소, 미일치=null(free-text)
         qty: qty, scale_n: scaleN, mode: modeValue(),
         trim: elTrim ? !!elTrim.checked : false,
         trim_ink: elTrimInk ? !!elTrimInk.checked : false, // 보이는 잉크로 축소(클립∩콘텐츠)
@@ -416,10 +476,28 @@
       });
     });
 
-    // ── 반자동 큐 (A2) + 행↔폼 연동 (A안: 묶음분리로 분해 → 행 선택 → 행별 후가공 세팅 → 확정) ──
+    // ── 반자동 큐 (A2) + 행↔폼 연동 (A안: 분해 → 행 선택 → 행별 후가공 세팅 → 검토문서 → 확정) ──
     var queue = []; // [{params, client, keyword, qty, w, h}]
     var bound = -1; // 폼과 연동 중인 행 인덱스(-1=없음). 연동 중 폼 변경=그 행에만 반영
     var elQueueBox = $('queueBox'), elBtnQAdd = $('btnQueueAdd'), elBtnQBatch = $('btnQueueBatch'), elBtnConfirm = $('btnConfirm'), elBtnQClear = $('btnQueueClear'), elBtnApplyAll = $('btnApplyAll');
+    var elBtnReview = $('btnReview'), elBtnAutoDetect = $('btnAutoDetect');
+
+    // 확정 게이트(D4): 검토문서를 만든 큐 상태(rev)에서만 확정 허용. 큐가 바뀌면 재검토 요구.
+    var queueRev = 0;      // 큐 내용 변경마다 증가(행 추가·삭제·세팅·키워드)
+    var reviewedRev = -1;  // 마지막 검토문서 생성 시점의 rev
+    var reviewBusy = false;
+    function updateGate() {
+      var stale = reviewedRev !== queueRev;
+      if (elBtnConfirm) {
+        elBtnConfirm.disabled = queue.length === 0 || stale || reviewBusy;
+        elBtnConfirm.title = (queue.length && stale) ? '검토문서로 확인한 뒤 확정할 수 있습니다' : '';
+      }
+      if (elBtnReview) {
+        elBtnReview.disabled = queue.length === 0 || reviewBusy;
+        elBtnReview.textContent = (queue.length && !stale) ? '검토문서 ✓' : '검토문서';
+      }
+    }
+    function bumpRev() { queueRev++; updateGate(); }
 
     function renderQueue() {
       if (elQueueBox) {
@@ -453,12 +531,14 @@
               queue[ix].keyword = v;
               if (queue[ix].params) queue[ix].params.keyword = v; // 호스트 조합용 동기화
               if (ix === bound && elAnnot) elAnnot.value = v;     // 연동 행이면 폼(주석 키워드)도 정합
+              bumpRev(); // 키워드=주석·식별번호에 반영 → 재검토 필요
             }
           });
         }
       }
-      if (elBtnConfirm) { elBtnConfirm.textContent = '일괄 확정 (' + queue.length + ')'; elBtnConfirm.disabled = queue.length === 0; }
+      if (elBtnConfirm) elBtnConfirm.textContent = '일괄 확정 (' + queue.length + ')';
       if (elBtnApplyAll) elBtnApplyAll.disabled = queue.length === 0;
+      updateGate();
     }
 
     // 행 클릭=폼 연동 토글: 행 params를 가공·후가공 탭에 로드, 이후 폼 변경은 그 행에만 반영
@@ -505,6 +585,7 @@
         setSelectValue(markSelect(side), fin[side + '_mark'] || '');
       }
       if (elPreset) elPreset.value = ''; // 프리셋 표기는 (직접 지정)으로 — 실값은 위에서 로드됨
+      updateClientHit();
       updateAnnotGates();
     }
 
@@ -517,6 +598,7 @@
       e.qty = p.qty;
       e.client = p.client_name || '';
       e.keyword = p.keyword || '';
+      bumpRev();
       renderQueue();
     }
 
@@ -540,8 +622,10 @@
         p.qty = e.qty;
         p.keyword = e.keyword || '';
         p.client_name = e.client || '';
+        p.client_id = clientIdOf(p.client_name); // 행 거래처 기준 재해소(폼 거래처 id가 남지 않게)
         e.params = p;
       }
+      bumpRev();
       renderQueue();
       out('현재 가공·후가공 설정을 전체 ' + queue.length + '행에 적용 (수량·키워드·거래처는 행값 유지)');
     });
@@ -552,6 +636,7 @@
       queue.splice(i, 1);
       if (bound === i) bound = -1;
       else if (bound > i) bound--;
+      bumpRev();
       renderQueue();
     }
 
@@ -567,6 +652,7 @@
         var client = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
         var keyword = elAnnot ? (elAnnot.value || '').replace(/^\s+|\s+$/g, '') : '';
         queue.push({ params: gatherParams(), client: client, keyword: keyword, qty: qtyN, w: r.w, h: r.h });
+        bumpRev();
         renderQueue();
         out('큐 추가됨: #' + queue.length + ' (' + r.w + '×' + r.h + 'cm)', 'okmsg');
       });
@@ -589,6 +675,7 @@
         for (var s = 0; s < r.sizes.length; s++) {
           queue.push({ params: JSON.parse(JSON.stringify(base)), client: client, keyword: keyword, qty: qtyN, w: r.sizes[s].w, h: r.sizes[s].h });
         }
+        bumpRev();
         renderQueue();
         out('묶음 분리: ' + r.added + '개로 나눔 (분리간격 ' + gap + 'mm·클립존중·50mm↓ 제외). 틀리면 [✕] 삭제 후 개별 추가로 교정', 'okmsg');
       });
@@ -596,17 +683,100 @@
 
     if (elBtnQClear) elBtnQClear.addEventListener('click', function () {
       csi.evalScript('mesA0_queueClear()', function () {});
-      queue = []; bound = -1; renderQueue(); out('큐 비움');
+      csi.evalScript('mesA0_reviewDiscard()', function () {}); // 검토문서도 폐기
+      queue = []; bound = -1; bumpRev(); renderQueue(); out('큐 비움');
+    });
+
+    // ── 자동감지 시드(A3): 선택 불필요 — 문서 전체에서 디자인 후보 감지 → 큐 제안 ──
+    if (elBtnAutoDetect) elBtnAutoDetect.addEventListener('click', function () {
+      var gapEl = $('splitGap');
+      var gap = gapEl ? parseFloat(gapEl.value) : 0; if (isNaN(gap)) gap = 0;
+      csi.evalScript('mesA0_autoDetect(' + gap + ')', function (res) {
+        var r = null; try { r = JSON.parse(res); } catch (e) {}
+        if (!r || !r.ok) {
+          var em = { nodoc: '열린 문서 없음', noitems: '감지할 개체 없음(잠금·숨김 제외)', allnoise: '전부 50mm 미만(노이즈)', nobounds: '크기 측정 불가', scan: '문서 스캔 실패' };
+          out('자동감지 실패: ' + (r ? (em[r.err] || r.err) : '호스트 연결 안 됨'), 'err');
+          return;
+        }
+        var qtyN = parseInt(elQty ? elQty.value : '1', 10); if (isNaN(qtyN) || qtyN < 1) qtyN = 1;
+        var client = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
+        var keyword = elAnnot ? (elAnnot.value || '').replace(/^\s+|\s+$/g, '') : '';
+        var base = gatherParams();
+        for (var s = 0; s < r.sizes.length; s++) {
+          queue.push({ params: JSON.parse(JSON.stringify(base)), client: client, keyword: keyword, qty: qtyN, w: r.sizes[s].w, h: r.sizes[s].h });
+        }
+        bumpRev();
+        renderQueue();
+        out('자동감지 시드: ' + r.added + '개 제안 (문서 전체·클립존중·50mm↓ 제외·분리간격 ' + gap + 'mm)\n틀리면 [✕] 삭제·선택 후 [＋ 개별]로 교정', 'okmsg');
+      });
+    });
+
+    // ── 검토문서(D4): 큐 전체를 가공해 디자인당 아트보드로 생성(저장 없음) → 확정 게이트 해제 ──
+    if (elBtnReview) elBtnReview.addEventListener('click', function () {
+      if (!queue.length || reviewBusy) return;
+      reviewBusy = true;
+      if (elBtnQAdd) elBtnQAdd.disabled = true;
+      if (elBtnProcess) elBtnProcess.disabled = true;
+      updateGate();
+      var revAtStart = queueRev;
+      // 식별번호 미리보기 = 확정과 동일 규칙(키워드별 순번)
+      var kwCount = {}, seqForRow = [];
+      for (var qi = 0; qi < queue.length; qi++) {
+        var K = queue[qi].keyword || '';
+        if (K) { kwCount[K] = (kwCount[K] || 0) + 1; seqForRow[qi] = kwCount[K]; }
+        else { seqForRow[qi] = qi + 1; }
+      }
+      var i = 0, fails = [];
+      function finishReview() {
+        csi.evalScript('mesA0_reviewEnd()', function (er) {
+          reviewBusy = false;
+          if (elBtnQAdd) elBtnQAdd.disabled = false;
+          if (elBtnProcess) elBtnProcess.disabled = false;
+          var r = null; try { r = JSON.parse(er); } catch (e) {}
+          if (!fails.length && r && r.ok) {
+            if (queueRev === revAtStart) reviewedRev = queueRev; // 생성 중 큐가 안 바뀐 경우만 해제
+            out('검토문서 ✓ — 아트보드 ' + r.count + '개' + (r.docs > 1 ? (' · 문서 ' + r.docs + '개(대지 한도 분할)') : '') +
+              '\n일러에서 확인(아트보드 이동/줌) 후 [일괄 확정]. 큐를 고치면 재검토 필요.', 'okmsg');
+          } else {
+            out('검토문서 실패: ' + (fails.length ? fails.join(', ') : (r ? r.err : '호스트 연결 안 됨')), 'err');
+          }
+          updateGate();
+        });
+      }
+      function step() {
+        if (i >= queue.length) { finishReview(); return; }
+        out('검토 가공 중… (' + i + '/' + queue.length + ')');
+        var p = JSON.parse(JSON.stringify(queue[i].params));
+        p.review_only = 1;
+        p.seq_no = seqForRow[i];
+        csi.evalScript('mesA0_paramsPath()', function (pp) {
+          if (!pp) { fails.push('#' + (i + 1) + ' nohost'); i++; step(); return; }
+          cepWriteUtf8(pp, JSON.stringify(p));
+          csi.evalScript('mesA0_queueSelect(' + i + ')', function (selRes) {
+            var sr = null; try { sr = JSON.parse(selRes); } catch (e2) {}
+            if (!sr || !sr.ok) { fails.push('#' + (i + 1) + ' sel:' + (sr ? sr.err : '?')); i++; step(); return; }
+            csi.evalScript('mesA0_process()', function (res) {
+              var r2 = null; try { r2 = JSON.parse(res); } catch (e3) {}
+              if (!r2 || !r2.ok) fails.push('#' + (i + 1) + ' ' + (r2 ? r2.err : 'parse'));
+              i++; step();
+            });
+          });
+        });
+      }
+      csi.evalScript('mesA0_reviewBegin()', function () { step(); });
     });
 
     if (elBtnConfirm) elBtnConfirm.addEventListener('click', function () {
       if (!queue.length) return;
+      if (reviewedRev !== queueRev) { out('검토문서로 확인한 뒤 확정하세요 — [검토문서] 버튼', 'err'); updateGate(); return; }
       if (elBtnQAdd) elBtnQAdd.disabled = true;
       if (elBtnProcess) elBtnProcess.disabled = true;
+      if (elBtnReview) elBtnReview.disabled = true;
       elBtnConfirm.disabled = true;
       function reenable() {
         if (elBtnQAdd) elBtnQAdd.disabled = false;
         if (elBtnProcess) elBtnProcess.disabled = false;
+        updateGate();
       }
       csi.evalScript('mesA0_batchBegin()', function (bres) {
         var bf = null; try { bf = JSON.parse(bres); } catch (e0) {}
@@ -628,6 +798,7 @@
           }
           out('일괄 확정 완료: 성공 ' + okN + ' / 실패 ' + failN + '\n폴더: ' + batchFolder + '\n' + lines.join('\n') + '\n→ 에이전트 ingest 후 대기함', failN ? 'err' : 'okmsg');
           csi.evalScript('mesA0_queueClear()', function () {});
+          csi.evalScript('mesA0_reviewDiscard()', function () {}); // 검토문서 정리(저장물과 무관)
           queue = []; bound = -1; renderQueue(); reenable();
         }
         function step() {
