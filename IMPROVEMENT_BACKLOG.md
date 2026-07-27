@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-07-26T23:50:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-07-27T09:17:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,25 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **18** (GitHub OPEN 실측) — 단 **15건은 fixed-in-tree(close-pending user)**, 실질 미해결은 **#555·#570·#571 3건뿐**. Area 6 50회차(07-26T23:50) 직접 grep 재검증 완료, 상세는 아래 Area 6 로그 참조. |
+| 🆕 new | **18** (GitHub OPEN 실측, 07-27T09:17 재확인 — owner 활동 없음, 동일 #554~#571) — 단 **15건은 이전 사이클에서 fixed-in-tree 확인됨(close-pending user)**, 이번 사이클 추가로 **#555도 별도 세션이 fixed-in-tree**(아래 Area 1 로그 참조) — 실질 미해결은 **#570·#571 2건뿐**. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **479** — `search_issues(is:closed,reason:completed)` 재조회 생략(close-pending 캐시, 변동 없음). |
+| ✔️ done | **479** — 재조회 생략(close-pending 캐시, 변동 없음). |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 1 프로덕션 헬스 (2026-07-27T09:17):**
+> - **방법**: `git fetch origin main`(HEAD `e8acc62` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). 프록시가 이번 세션도 prod 호스트 직접 curl 차단(exit 56, CONNECT tunnel 403 — `webapp-9i0.pages.dev`·`observability.mcp.cloudflare.com` 둘 다 `__agentproxy/status` `recentRelayFailures`에 재확인, `cloudflare-observability` MCP 미인증 상태 지속) — 직접 prod API/Playwright 헬스체크 불가, GitHub Actions CI 기록으로 대체(기존 사이클과 동일 제약). Area 1 **51회차** — 직전 Area1(`93d2c57`, 07-25T21:30, 50회차) 이후 전체 사이클 1바퀴(Area2~Area6) + 별도 세션(co-author \"Claude Opus 4.8\") 커밋 다수가 이미 각 Area에서 렌즈별 커버 완료.
+> - **deploy.yml 전수 확인**: 직전 사이클 이후 실행분(`#955`~`#963`대, `93d2c57`→`e8acc62` 구간) **전부 `success`** — Typecheck→Build→Deploy→Wait→Smoke 전 단계 green(최신 run `30225695930`, `e8acc62` merge, 2026-07-26T23:38:59Z 완료 확인). CF-internal transient·cold-start 재발 0. `backup.yml`(Daily D1 Backup)도 최근 10회 전부 success(마지막 07-26T17:55:31Z, 24h 이내 신선). `e2e.yml`은 계속 disabled(기존 인지 상태, 변동 없음). `verify.yml`은 PR 트리거 전용이라 이번 사이클도 실행 0건(정상).
+> - **🔴 신규 발견 — #555도 open≠unfixed 대열에 합류(별도 세션이 이번 churn 구간에 직접 픽스)**: 직전 Area6(50회차)가 "실질 미해결 3건 — #555·#570·#571"로 분류했으나, 그 로그 시점(23:50) **직후**에 같은 세션이 커밋 2건을 더 만들어 #555를 실질 해소함을 코드 직접 확인:
+>   - `50b5433`(fix#555): `migrations/0342`(product_materials가 삭제대상 legacy 품목 참조 → 먼저 정리 후 DELETE 추가)·`0343`(폐지분류 잔존 활성품목을 상품(4)으로 재배정 후 분류 삭제) — 신규 D1 풀리플레이가 막히던 FK 위반 2지점 해소, prod는 추적완료라 재실행 안 돼 무영향.
+>   - `6bf25f8`(fix#555): 남은 블로커(0344+ 카테고리 id 환경분기)를 정면 수정하는 대신 **접근 자체를 전환** — `schema/baseline_schema.sql`(prod 스키마 스냅샷, 191테이블)+`schema/baseline_reference.sql`(설정 참조데이터, PII/거래데이터 제외)+`schema/baseline_applied_migrations.sql`(0001~0474 applied 마킹)로 신규/로컬 D1을 부트스트랩하는 `npm run db:bootstrap`(PowerShell) 신설, 472개 풀리플레이 경로는 `db:reset:replay`로 보존만. 커밋 메시지가 "신규 D1 부트스트랩 완주 검증(9카테고리·admin·job_role·수성=15)"을 주장.
+>   - 검증(직접 확인, 커밋 메시지 신뢰 안 함): `git show` 2커밋 diff 직접 Read로 SQL/구성 내용 확인, `npx tsc --noEmit` clean(baseline 파일 추가가 타입 영향 없음 확인). **단 `db:bootstrap`은 PowerShell 스크립트라 이 Linux 세션에서 실행 검증은 불가**(Windows 전용 프로젝트 제약, 기존 인지 사항) — owner가 다음 Windows 세션에서 `npm run db:reset` 1회 실행해 실제 완주를 재확인 권장.
+> - **backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **18건**(#554~#571, 변동 없음 — owner 활동 없음). `search_issues` 재조회 생략(close 0건, done **479**·rejected **6** 캐시 유지). 마이그 번호 중복 재확인 = 기존 5쌍(`0327`·`0412`·`0416`·`0420`·`0453`)만, 신규 0(0472~0476 정상).
+> - **🧬 SKILL 강화 없음** — #555 fixed-in-tree는 기존 "open≠unfixed"(line 281) 규칙의 재현(신규 클래스 아님). 다만 인프라 접근 자체를 바꾼(풀리플레이 폐기→베이스라인 스쿼시) 근본 픽스라 다음 Area 6에서 owner의 실제 `npm run db:reset` 검증 결과를 close-pending 노트에 반영할 가치 있음.
+> - 신규 이슈 0건, 자동수정 0건(순수 CI/인프라 헬스 확인 + 타 세션 픽스 재검증), done-sync: new 18(실질 2, #555 이번 사이클로 실질미해결에서 제외)·done 479·rejected 6. 다음 순번 Area 2.
+>
 
 > **Area 6 자기 진화 (2026-07-26T23:50):**
 > - **방법**: `git fetch origin main`(HEAD `fe11c1c` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 6 **50회차** — 직전 Area6(`8b30b6a`, 07-26T02:1x경, 49회차) 이후 `git log 8b30b6a..HEAD`는 15커밋. 후가공 도메인 A1 feature churn(`83d952c`/`f823852`/`2744e54`/`e254922` 등)은 오늘 이미 Area1(50)·Area2(51)·Area3(44)·Area4(45)·Area5(44)가 각자 렌즈로 커버 완료 — 컬럼-diff/XSS bridge 대상 신선 churn 잔여 0.
