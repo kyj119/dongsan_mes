@@ -42,6 +42,12 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
       if(__hubRole==='ADMIN'){
         Array.prototype.forEach.call(document.querySelectorAll('.hub-actuals-link'), function(el){ el.classList.remove('hidden'); });
       }
+      // 기본 랜딩 = 실적(마크업 기본). ADMIN은 bank lazy-init만 실행, 비ADMIN은 계획으로 되돌림(실적 API=ADMIN 전용).
+      if(__hubRole==='ADMIN'){
+        if(typeof window.__bankHubInit==='function') window.__bankHubInit();
+      } else {
+        window.switchHubMode('plan');
+      }
     })();
   `
   return renderPage(c, {
@@ -49,18 +55,18 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
     activePage: '/cash-schedule',
     pageCSS: bankPageCSS,
     pageContent: `
-      <!-- 최상위 허브 토글: [계획]/[실적] (P3 자금 허브 통합) -->
+      <!-- 최상위 허브 토글: [실적](기본·ADMIN)/[계획] (P3 자금 허브 통합, 2026-07-27 순서·기본값 변경) -->
       <div class="ds-card flex border-b mb-3">
-        <button id="hubTabPlan" onclick="switchHubMode('plan')" class="px-5 py-2.5 text-sm font-semibold border-b-2 border-blue-600 text-blue-600 flex items-center gap-2">
-          <i class="fas fa-calendar-alt"></i>계획
-        </button>
-        <button id="hubTabActuals" onclick="switchHubMode('actuals')" class="px-5 py-2.5 text-sm font-semibold border-b-2 border-transparent text-gray-500 hover:text-gray-700 flex items-center gap-2">
+        <button id="hubTabActuals" onclick="switchHubMode('actuals')" class="px-5 py-2.5 text-sm font-semibold border-b-2 border-blue-600 text-blue-600 flex items-center gap-2">
           <i class="fas fa-university"></i>실적 <span class="text-[10px] font-normal text-gray-400">은행·매칭</span>
+        </button>
+        <button id="hubTabPlan" onclick="switchHubMode('plan')" class="px-5 py-2.5 text-sm font-semibold border-b-2 border-transparent text-gray-500 hover:text-gray-700 flex items-center gap-2">
+          <i class="fas fa-calendar-alt"></i>계획
         </button>
       </div>
 
-      <!-- ===== 계획 모드 (cashSchedule, 기본) ===== -->
-      <div id="hubPlan">
+      <!-- ===== 계획 모드 (cashSchedule) — 기본은 실적, 비ADMIN은 스크립트가 이쪽으로 되돌림 ===== -->
+      <div id="hubPlan" class="hidden">
       <div class="space-y-4">
         <!-- 탭 버튼 -->
         <div class="ds-card flex border-b">
@@ -401,8 +407,8 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
       </div>
       </div><!-- /#hubPlan -->
 
-      <!-- ===== 실적 모드 (bank, ADMIN·lazy) — 단일소스 bankPageContent 이식 ===== -->
-      <div id="hubActuals" class="hidden">
+      <!-- ===== 실적 모드 (bank, ADMIN·기본 랜딩) — 단일소스 bankPageContent 이식 ===== -->
+      <div id="hubActuals">
         ${bankPageContent}
       </div>
     `,

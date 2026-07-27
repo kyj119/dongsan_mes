@@ -58,12 +58,12 @@ export const MENU_ITEMS: MenuGroup[] = [
     group: '재무',
     items: [
       { path: '/accounting', icon: 'fa-coins', label: '회계 허브', roles: ['ADMIN', 'MANAGER'] },
-      { path: '/ledger', icon: 'fa-file-invoice-dollar', label: '거래처 원장', roles: ['ADMIN', 'MANAGER'], badgeId: 'nav-badge-receivables' },
-      { path: '/tax-invoices', icon: 'fa-file-invoice', label: '세금 증빙', roles: ['ADMIN', 'MANAGER'] },
       // /bank 사이드바 은퇴 (P3 자금 허브 통합, 2026-07-17): /cash-schedule '실적' 탭으로 흡수.
       // 페이지·라우트·API는 보존(직접 URL만 접근). 되살릴 경우 이 줄 복원.
       // { path: '/bank', icon: 'fa-university', label: '자금 관리', roles: ['ADMIN'] },
       { path: '/cash-schedule', icon: 'fa-wallet', label: '자금 관리', roles: ['ADMIN', 'MANAGER'] },
+      { path: '/ledger', icon: 'fa-file-invoice-dollar', label: '거래처 원장', roles: ['ADMIN', 'MANAGER'], badgeId: 'nav-badge-receivables' },
+      { path: '/tax-invoices', icon: 'fa-file-invoice', label: '세금 증빙', roles: ['ADMIN', 'MANAGER'] },
       { path: '/payment-requests', icon: 'fa-money-check-alt', label: '지출결의서', roles: ['ADMIN', 'MANAGER'] },
       { path: '/card-expenses', icon: 'fa-credit-card', label: '법인카드', roles: ['ADMIN', 'MANAGER'] },
       // /vat-reports 사이드바 은퇴 (세무 통합, 2026-07-18): /tax-invoices '부가세 신고' 탭으로 흡수(lazy).

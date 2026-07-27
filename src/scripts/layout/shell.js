@@ -2371,3 +2371,64 @@ function _doItemSearch(q) {
     body.innerHTML = '<div class="text-center py-8 text-red-500">검색 실패</div>';
   });
 }
+
+// ============================================================
+// [전역] 체크박스 Shift 범위 선택 (2026-07-27)
+//   목록에서 A를 클릭한 뒤 B를 Shift+클릭하면 A~B 사이 전체가 B의 상태로 일괄 토글.
+//   페이지별 구현 없이 document 위임 1곳에서 처리(단일 소스) → 체크박스 목록이 있는 모든 페이지 자동 적용.
+//   그룹 판정 = 같은 class(없으면 name) + 같은 컨테이너(tbody / [data-check-group], 없으면 문서 전체).
+//   숨김(다른 탭)·disabled 체크박스는 제외. 변경분마다 change 이벤트를 재발행해
+//   기존 onchange/addEventListener 핸들러(선택 카운터·배지·선택 Set)가 그대로 동작하게 한다.
+// ============================================================
+(function() {
+  var lastEl = null;
+
+  function checkSig(el) {
+    var cls = (el.className || '').trim();
+    if (cls) return 'c:' + cls;
+    if (el.name) return 'n:' + el.name;
+    return '';
+  }
+
+  function checkGroup(el) {
+    var sig = checkSig(el);
+    if (!sig) return [];
+    var root = el.closest('tbody') || el.closest('[data-check-group]') || document;
+    var all = root.querySelectorAll('input[type="checkbox"]');
+    var out = [];
+    for (var i = 0; i < all.length; i++) {
+      var c = all[i];
+      if (c.disabled) continue;
+      if (checkSig(c) !== sig) continue;
+      if (c.offsetParent === null) continue; // 숨겨진 탭/모달 제외
+      out.push(c);
+    }
+    return out;
+  }
+
+  document.addEventListener('click', function(e) {
+    var el = e.target;
+    if (!el || el.tagName !== 'INPUT' || el.type !== 'checkbox') return;
+
+    var group = checkGroup(el);
+    var idx = group.indexOf(el);
+    if (idx < 0 || group.length < 2) { lastEl = el; return; }
+
+    if (e.shiftKey && lastEl && lastEl !== el) {
+      var prev = group.indexOf(lastEl);
+      if (prev >= 0) {
+        var start = Math.min(prev, idx);
+        var end = Math.max(prev, idx);
+        var state = el.checked;
+        for (var i = start; i <= end; i++) {
+          var c = group[i];
+          if (c === el || c.checked === state) continue;
+          c.checked = state;
+          c.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        try { window.getSelection().removeAllRanges(); } catch (err) {} // shift+click 텍스트 선택 해제
+      }
+    }
+    lastEl = el;
+  });
+})();
