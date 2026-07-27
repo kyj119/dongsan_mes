@@ -1,9 +1,10 @@
 > **파일 구조**: 최신 세션이 맨 위. 아래로 갈수록 과거 세션(각각 durable 메모리에 정본 있음).
 > **다음 세션은 이 문서 상단의 "이월 TODO 통합"만 읽으면 된다** — 그 아래 상세 핸드오프는 판단 근거가 필요할 때만.
 
-# 세션 핸드오프 — 문서 인프라 정비 + 자동 트림 도입 (2026-07-28 #13)
+# 세션 핸드오프 — 문서 인프라 정비 + 자동 트림 + 잠복 재검증 prod 배포 완료 (2026-07-28 #13)
 
-> durable=[[feedback-claude-structure-opus48]]·`docs/HANDOFF-doc-diet.md`. **코드 무변경(문서·스크립트만) → 배포 불필요.** 커밋 10건 전부 push 완료(`17c8847e`..`fcb9ec15`), `main == origin/main`.
+> durable=[[feedback-claude-structure-opus48]]·`docs/HANDOFF-doc-diet.md`. **prod 배포 완료** — main `dc514a40`, CI 자동배포(`deploy.yml` main push 트리거), **Typecheck·Build·Deploy·Smoke 전 단계 통과**. 검증=root 302·API 3종 401(contact-groups/orders/workbench). 마이그 없음(prod DB 직접 변경 1건은 아래 ②).
+> ⚠️ **rebase 주의**: push 시점에 타 세션이 3커밋 선점(Area 5 보안 45회차 + XSS 3곳 + 배치캡) → 파일 충돌 0 확인 후 rebase·재verify·push. 멀티세션 상시 가정할 것.
 
 ## 이번 세션 완료
 
@@ -19,6 +20,20 @@
 | 8 | `19ea9aed` | auto-improve Area 4 46회차 — #580 발견 |
 | 9 | `e231d331` | **백로그 자동 트림** `scripts/backlog-trim.cjs` |
 | 10 | `fcb9ec15` | **현황판 자동 트림** `scripts/status-trim.cjs` + BOM 검증 버그 수정 |
+| 11 | `f57abc96` | **#580** 비활성 거래처를 대량발송 대상에서 제외 (`is_active=1` 필터) |
+| 12 | `dc514a40` | 미해결 잠복 6건 **prod 실태 재검증** — 4건이 이미 배포된 상태였음 |
+| ※ | prod DB | 워크벤치 `role_page_permissions` DESIGNER `can_access` 0→1 (UPDATE) |
+
+## ★ A~F 순차 처리 결과 — "남은 작업" 대부분이 이미 끝나 있었다
+
+**핵심 교훈**: `deploy.yml`이 **main push 자동배포**다. main에 코드가 있으면 **이미 prod**이므로, "커밋·미배포" 기록을 믿고 재배포하려던 것을 prod 실측으로 정정했다. 앞으로 잠복 처리 전 **반드시 prod 실태부터 확인**할 것.
+
+| 그룹 | 결과 |
+|---|---|
+| **A** 배포 대기 5건 | 실제 조치는 **1건뿐**(워크벤치 DESIGNER 개방). 나머지 4건은 이미 배포됨 — 상세는 PROJECT_STATUS 잠복 표 |
+| **B** 사용자 결정 | #580만 처리·배포 완료. 나머지(제안 189건 검토·한진 선정·바코드 구체화·#336 비번)는 **owner 액션** |
+| **D** 실검증 | **전부 중단** — 알림톡(수신번호 필요)·MMS(바로빌 공식 규격 미확보)·IA 실가공/#310(현장) |
+| **F** IA 트랙 | 미머지 브랜치 3개 중 **2개는 이미 main 반영된 잔재**(`claude/peaceful-ride-ia0bN`·`feat/ia-multisource-imposition` — 삭제 가능). 1개는 중단(아래) |
 
 ## 핵심 판단·이유
 
@@ -37,11 +52,23 @@
 - **`ARCHIVE` 2종은 삭제·재작성 금지**(이관 목적지). 트림은 항상 **앞에 붙이기**만.
 - **`memory/session-context.md`를 정본으로 가리키는 옛 기록이 있으면 그건 깨진 포인터다** — 이 파일은 세션마다 갱신되므로 장기 정본이 될 수 없다. 발견 시 auto-memory로 정정할 것(품목 마스터 기록에서 실제 발생).
 
+## 🛑 중단 — 다음 세션이 판단 후 재개할 것
+
+| 건 | 왜 멈췄나 |
+|---|---|
+| **#582 워크벤치 IDOR** ⚠️최우선 | 타 세션이 같은 시각 보고. `workbench.ts` POST `/intakes`가 body `order_item_id`를 **entity 검증 없이 UPDATE** → 타법인 주문 라인 오염(write). **이번 세션이 DESIGNER 페이지 권한을 열어 노출면이 넓어진 상태**. API는 `requireRole`에 원래 DESIGNER 포함이라 이전부터 호출 가능했으나, 지금은 UI 진입점까지 열렸으니 **우선 수정** 권장. 되돌리려면 `role_page_permissions` DESIGNER를 0으로 |
+| `session/ia-web-sunset` 머지 | 브랜치가 `iaeShelfBinPack` 이식(주석 명시)인데 이후 세션이 **shelf 겹침 버그를 실증**하고 정본을 **maxrects로 고정**. 그대로 머지하면 알려진 버그를 JSX 판짜기에 도입 → maxrects 기준 재작성 판단 필요. [[reference-nesting-harness]] |
+| MMS 이미지 규격 상향 | 바로빌 개발자센터가 SPA라 공식 규격 못 읽음. 확보한 건 통신사 표준(300KB·SKT/KT 1280×960). 현재 `MAX_BYTES=300KB`(표준 일치)·`MAX_PX=1000`(보수적, `shell.js:_mmsLimits`, `window.MMS_IMAGE`로 오버라이드 가능하나 주입처 없음). **실발송 검증 전 변경 보류** |
+| 알림톡 대량발송 실검증 | 수신번호 확정 필요(7원) |
+| IA 실가공 자연검증 · #310 직접발행 폼 | 현장·실사용 작업 |
+
 ## 다음 TODO (이번 세션 발생분)
 
-1. **#580 처리 결정** — 연락처 그룹 멤버 조회가 거래처에 `is_active` 필터 미적용(형제인 직원 조회는 `is_deleted=0` 적용). 비활성 거래처가 대량발송 대상에 포함되고 **MMS는 건당 100원**. 수정은 `AND is_active = 1` 한 줄이나, "비활성에도 의도적으로 보내는" 운영 케이스가 있는지 owner 확인 필요해 issue-only로 뒀음.
-2. **auto-improve 다음 순번 = Area 5**(보안). `last_run_area: 4` 기록됨.
-3. (선택) `IMPROVEMENT_BACKLOG_ARCHIVE.md`가 609KB로 커졌다 — 이관 목적지라 정상이나, 필요하면 연도별 분할 검토.
+1. **#582 우선 처리** (위 중단표 참조). 형제 정답 패턴이 같은 파일에 있음(`entityFilter(c,'o')`).
+2. **auto-improve 다음 순번 = Area 6**. 타 세션이 Area 5(45회차)를 돌려 `last_run_area`가 갱신됐을 수 있으니 백로그 메타 확인 후 진행.
+3. **브랜치 정리**: `claude/peaceful-ride-ia0bN`·`feat/ia-multisource-imposition` 삭제 가능(main 반영 확인 완료).
+4. `quotations.ts`(동적 IN절 1·for 5)·`taxInvoices/batch.ts`(동적 IN절 2) N+1 별건 재감사 → Area 2.
+5. (선택) `IMPROVEMENT_BACKLOG_ARCHIVE.md` 609KB — 이관 목적지라 정상이나 필요 시 연도별 분할.
 
 ## 검증 명령 (PowerShell)
 
