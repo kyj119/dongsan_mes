@@ -29,6 +29,7 @@ export function messagesPage(c: Context<HonoEnv>) {
         <div class="flex justify-between"><span class="text-gray-600">카톡 이미지</span><span class="font-bold text-gray-900" id="msgUcKkoImg">-</span></div>
         <div class="flex justify-between"><span class="text-gray-600">SMS 단문</span><span class="font-bold text-gray-900" id="msgUcSms">-</span></div>
         <div class="flex justify-between"><span class="text-gray-600">SMS 장문</span><span class="font-bold text-gray-900" id="msgUcLms">-</span></div>
+        <div class="flex justify-between"><span class="text-gray-600">MMS 그림</span><span class="font-bold text-gray-900" id="msgUcMms">-</span></div>
         <div class="flex justify-between"><span class="text-gray-600">팩스</span><span class="font-bold text-gray-900" id="msgUcFax">-</span></div>
       </div>
     </div>
@@ -59,6 +60,7 @@ export function messagesPage(c: Context<HonoEnv>) {
         <option value="">전체 채널</option>
         <option value="kakao">카카오톡</option>
         <option value="sms">문자</option>
+        <option value="mms">MMS</option>
         <option value="email">이메일</option>
         <option value="fax">팩스</option>
       </select>

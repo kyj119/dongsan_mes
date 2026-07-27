@@ -19,6 +19,45 @@ async function viewCardDetail(cardId) {
     } catch (e) { showToast('카드 정보 로드 실패', 'error'); }
 }
 
+// ===== 시안 MMS 발송 (카드 썸네일 자동 첨부) =====
+// /api/cards/:id 는 R2 마커('r2:thumb:')를 data URI로 복원해 주므로(queries.ts) 그대로 첨부 가능.
+// 리사이즈·JPG 압축은 통합 발송 모달(shell.js setMsgImageFromDataUri)이 담당.
+async function sendCardProofMms(cardId) {
+    try {
+        var res = await axios.get('/api/cards/' + cardId);
+        var card = res.data.data;
+        if (!card) { showToast('카드 정보를 불러오지 못했습니다', 'error'); return; }
+
+        var thumb = (card.thumbnail_url && card.thumbnail_url.length > 10) ? card.thumbnail_url : '';
+        var items = card.items || card._items || [];
+        if (!thumb) {
+            for (var i = 0; i < items.length; i++) {
+                if (items[i].thumbnail_url && items[i].thumbnail_url.length > 10) { thumb = items[i].thumbnail_url; break; }
+            }
+        }
+        if (!thumb) { showToast('이 카드에는 시안 이미지가 없습니다', 'warning'); return; }
+
+        var itemName = items.length > 0 ? (items[0].item_name || '') : '';
+        var body = '[동산기획] 시안 확인 요청' + String.fromCharCode(10)
+            + '주문번호: ' + (card.order_number || '-') + String.fromCharCode(10)
+            + (itemName ? ('품목: ' + itemName + (items.length > 1 ? ' 외 ' + (items.length - 1) + '건' : '') + String.fromCharCode(10)) : '')
+            + '첨부된 시안을 확인 후 회신 부탁드립니다.';
+
+        openSendMessage({
+            defaultChannel: 'mms',
+            defaultSubject: '시안 확인',
+            defaultContent: body,
+            receiver: { name: card.client_name || '', phone: card.contact_mobile || card.contact_phone || '' },
+            context: { type: 'card', id: card.id, client_id: card.client_id },
+            imageDataUri: thumb,
+            imageName: card.card_number || '시안'
+        });
+    } catch (e) {
+        showToast('시안 발송 준비 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message || ''), 'error');
+    }
+}
+window.sendCardProofMms = sendCardProofMms;
+
 function buildDefectsHtml(defects) {
   if (!defects || defects.length === 0) return '';
   var catLabels = { COLOR: '색상', ALIGNMENT: '정렬', CUT: '재단', MATERIAL: '소재', PRINT: '출력', PP: '후가공', SIZE: '규격', DAMAGE: '파손', DESIGN: '디자인', OTHER: '기타' };
@@ -195,6 +234,12 @@ function showCardModal(card, history, defects, siblingCards) {
         }
     }
     actionBtns += '<button class="action-btn action-btn-hold flex-1" onclick="closeCardModal();showDefectForm(' + card.id + ')"><i class="fas fa-exclamation-triangle"></i> 불량접수</button>';
+    // 시안 MMS 발송 — 썸네일(카드 또는 품목)이 있을 때만 노출
+    var hasProofImg = (card.thumbnail_url && card.thumbnail_url.length > 10)
+        || itemsArr.some(function(it) { return it.thumbnail_url && it.thumbnail_url.length > 10; });
+    if (hasProofImg) {
+        actionBtns += '<button class="action-btn flex-1" style="background:#f0fdfa;color:#0f766e;border:1px solid #99f6e4;border-radius:8px" onclick="closeCardModal();sendCardProofMms(' + card.id + ')"><i class="fas fa-image"></i> 시안 발송</button>';
+    }
     actionBtns += '<button class="action-btn flex-1" style="background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:8px" onclick="printWorkOrder(' + card.order_id + ')"><i class="fas fa-print"></i> 작업지시서</button>';
     if (card.category_name === 'TRANSFER_FLAG' || card.category_name === '전사') {
         actionBtns += '<button class="action-btn flex-1" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:8px" onclick="printSewingWorkOrder(' + card.id + ')"><i class="fas fa-cut"></i> 봉제작지</button>';

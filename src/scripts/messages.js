@@ -68,6 +68,7 @@ async function loadSummary() {
       setMsg('msgUcKkoImg', (b.unit_cost_kko_image || 0).toLocaleString() + '원/건');
       setMsg('msgUcSms', (b.unit_cost_sms || 0).toLocaleString() + '원/건');
       setMsg('msgUcLms', (b.unit_cost_lms || 0).toLocaleString() + '원/건');
+      setMsg('msgUcMms', (b.unit_cost_mms || 0).toLocaleString() + '원/건');
       setMsg('msgUcFax', (b.unit_cost_fax || 0).toLocaleString() + '원/장');
     }
   } catch(e) {
@@ -76,6 +77,7 @@ async function loadSummary() {
     setMsg('msgUcKkoImg', '-');
     setMsg('msgUcSms', '-');
     setMsg('msgUcLms', '-');
+    setMsg('msgUcMms', '-');
     setMsg('msgUcFax', '-');
   }
 
@@ -101,6 +103,7 @@ async function refreshUnitCost() {
       setMsg('msgUcKkoImg', (b.unit_cost_kko_image || 0).toLocaleString() + '원/건');
       setMsg('msgUcSms', (b.unit_cost_sms || 0).toLocaleString() + '원/건');
       setMsg('msgUcLms', (b.unit_cost_lms || 0).toLocaleString() + '원/건');
+      setMsg('msgUcMms', (b.unit_cost_mms || 0).toLocaleString() + '원/건');
       setMsg('msgUcFax', (b.unit_cost_fax || 0).toLocaleString() + '원/장');
       if (typeof showToast === 'function') showToast('발송 단가를 바로빌에서 갱신했습니다.', 'success');
     }
@@ -140,7 +143,7 @@ async function loadLogs(page) {
     }
 
     var channelIcon = function(ch) {
-      var map = { kakao: '<i class="fas fa-comment text-yellow-500"></i>', sms: '<i class="fas fa-sms text-green-500"></i>', email: '<i class="fas fa-envelope text-purple-500"></i>', fax: '<i class="fas fa-fax text-gray-500"></i>' };
+      var map = { kakao: '<i class="fas fa-comment text-yellow-500"></i>', sms: '<i class="fas fa-sms text-green-500"></i>', mms: '<i class="fas fa-image text-teal-500" title="MMS"></i>', email: '<i class="fas fa-envelope text-purple-500"></i>', fax: '<i class="fas fa-fax text-gray-500"></i>' };
       return map[ch] || '<i class="fas fa-paper-plane text-gray-400"></i>';
     };
 

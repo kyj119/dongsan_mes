@@ -1699,6 +1699,9 @@ var _msgChannel = 'kakao';
 var _msgContext = {};
 var _msgTemplates = [];
 var _msgQuill = null;
+// MMS 첨부 이미지 (raw base64 JPEG — data URI 접두어 없음). 압축 결과만 보관.
+var _msgImageB64 = null;
+var _msgImageDataUri = null;
 
 window.openSendMessage = function(opts) {
   opts = opts || {};
@@ -1711,21 +1714,27 @@ window.openSendMessage = function(opts) {
   _msgContext._receiver = receiver;
   _msgContext._templateVars = opts.templateVars || {};
 
+  // 첨부 이미지 초기화 후, 호출부가 준 시안(imageDataUri)이 있으면 자동 첨부
+  clearMsgImage();
+  if (opts.imageDataUri) setMsgImageFromDataUri(opts.imageDataUri, opts.imageName || '시안');
+
   // 기본 채널 설정
   setMsgChannel(opts.defaultChannel || 'kakao');
 
-  // 수신자 연락처에 따라 가용 채널 표시 (카카오톡/SMS는 항상 활성 — 번호 직접 입력 가능)
+  // 수신자 연락처에 따라 가용 채널 표시 (카카오톡/SMS/MMS는 항상 활성 — 번호 직접 입력 가능)
   var btnKakao = document.getElementById('msgChKakao');
   var btnSms   = document.getElementById('msgChSms');
+  var btnMms   = document.getElementById('msgChMms');
   var btnEmail = document.getElementById('msgChEmail');
   var btnFax   = document.getElementById('msgChFax');
   if (btnKakao) btnKakao.disabled = false;
   if (btnSms)   btnSms.disabled   = false;
+  if (btnMms)   btnMms.disabled   = false;
   if (btnEmail) btnEmail.disabled = !receiver.email;
   if (btnFax)   btnFax.disabled   = !receiver.fax;
 
   // 비활성 채널 스타일
-  ['Kakao','Sms','Email','Fax'].forEach(function(ch) {
+  ['Kakao','Sms','Mms','Email','Fax'].forEach(function(ch) {
     var btn = document.getElementById('msgCh' + ch);
     if (!btn) return;
     if (btn.disabled) btn.classList.add('opacity-40');
@@ -1738,6 +1747,8 @@ window.openSendMessage = function(opts) {
   // 기본 내용
   document.getElementById('msgBody').value = opts.defaultContent || '';
   document.getElementById('msgSubject').value = opts.defaultSubject || '';
+  // 본문 프리필은 setMsgChannel 이후라 바이트 카운터가 0으로 남는다 → 여기서 재계산(SMS/MMS)
+  if (_msgChannel === 'sms' || _msgChannel === 'mms') updateMsgByteCounter();
 
   // 카카오톡 템플릿 로드
   var _autoTpl = opts.autoTemplate || '';
@@ -1777,14 +1788,14 @@ function closeMsgSendModal() {
 
 function setMsgChannel(ch) {
   _msgChannel = ch;
-  var channelKeys = {kakao:'Kakao', sms:'Sms', email:'Email', fax:'Fax'};
-  var colors      = {kakao:'blue',  sms:'green', email:'purple', fax:'gray'};
+  var channelKeys = {kakao:'Kakao', sms:'Sms', mms:'Mms', email:'Email', fax:'Fax'};
+  var colors      = {kakao:'blue',  sms:'green', mms:'teal', email:'purple', fax:'gray'};
 
   Object.keys(channelKeys).forEach(function(c) {
     var btn = document.getElementById('msgCh' + channelKeys[c]);
     if (!btn) return;
     var disabledCls = btn.disabled ? ' opacity-40' : '';
-    var pillColors = {kakao:'bg-blue-50 border-2 border-blue-500 text-blue-700', sms:'bg-green-50 border-2 border-green-500 text-green-700', email:'bg-purple-50 border-2 border-purple-500 text-purple-700', fax:'bg-gray-100 border-2 border-gray-400 text-gray-700'};
+    var pillColors = {kakao:'bg-blue-50 border-2 border-blue-500 text-blue-700', sms:'bg-green-50 border-2 border-green-500 text-green-700', mms:'bg-teal-50 border-2 border-teal-500 text-teal-700', email:'bg-purple-50 border-2 border-purple-500 text-purple-700', fax:'bg-gray-100 border-2 border-gray-400 text-gray-700'};
     if (c === ch) {
       btn.className = 'px-3 py-1.5 rounded-full text-xs font-medium ' + pillColors[c] + disabledCls;
     } else {
@@ -1801,6 +1812,10 @@ function setMsgChannel(ch) {
   var channelInfo = document.getElementById('msgChannelInfo');
   var sendBtn     = document.getElementById('msgSendBtn');
   var recvAddr    = document.getElementById('msgRecvAddr');
+  var imageArea   = document.getElementById('msgImageArea');
+
+  // 이미지 첨부는 MMS 전용
+  if (imageArea) imageArea.classList.toggle('hidden', ch !== 'mms');
 
   if (ch === 'kakao') {
     kakaoArea.classList.remove('hidden');
@@ -1821,6 +1836,17 @@ function setMsgChannel(ch) {
     channelInfo.textContent = 'SMS';
     channelInfo.className = 'text-xs text-green-600 font-medium';
     sendBtn.className = 'px-5 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700';
+    updateMsgByteCounter();
+  } else if (ch === 'mms') {
+    kakaoArea.classList.add('hidden');
+    subjectArea.classList.remove('hidden');
+    if (subjectHint) subjectHint.textContent = '(MMS 제목)';
+    byteCounter.classList.remove('hidden');
+    recvLabel.textContent = '수신번호';
+    recvAddr.placeholder  = '010-0000-0000';
+    channelInfo.textContent = 'MMS';
+    channelInfo.className = 'text-xs text-teal-600 font-medium';
+    sendBtn.className = 'px-5 py-2 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700';
     updateMsgByteCounter();
   } else if (ch === 'email') {
     kakaoArea.classList.add('hidden');
@@ -1866,14 +1892,14 @@ function setMsgChannel(ch) {
     portalArea.classList.toggle('hidden', !_msgContext || !_msgContext.client_id);
   }
 
-  // 예약 발송: 카카오톡/SMS만 지원
+  // 예약 발송: 카카오톡/SMS/MMS 지원 (바로빌 SendDT 파라미터 공통)
   var scheduleArea = document.getElementById('msgScheduleArea');
   if (scheduleArea) {
-    scheduleArea.classList.toggle('hidden', ch !== 'kakao' && ch !== 'sms');
+    scheduleArea.classList.toggle('hidden', ch !== 'kakao' && ch !== 'sms' && ch !== 'mms');
   }
 
   // 미리보기 전환
-  ['Kakao','Sms','Email','Fax'].forEach(function(name) {
+  ['Kakao','Sms','Mms','Email','Fax'].forEach(function(name) {
     var preview = document.getElementById('msgPreview' + name);
     if (preview) preview.classList.toggle('hidden', name.toLowerCase() !== ch);
   });
@@ -1885,7 +1911,7 @@ function updateMsgRecvAddr(receiver) {
   _msgContext._receiver = receiver;
   var addr = document.getElementById('msgRecvAddr');
   if (!addr) return;
-  if (_msgChannel === 'kakao' || _msgChannel === 'sms') addr.value = receiver.phone || '';
+  if (_msgChannel === 'kakao' || _msgChannel === 'sms' || _msgChannel === 'mms') addr.value = receiver.phone || '';
   else if (_msgChannel === 'email') addr.value = receiver.email || '';
   else if (_msgChannel === 'fax')   addr.value = receiver.fax   || '';
 }
@@ -1926,6 +1952,12 @@ function updateMsgByteCounter() {
   var isLms = bytes > 90 || subj.length > 0;
   var infoEl   = document.getElementById('msgChannelInfo');
   var counterEl = document.getElementById('msgByteCounter');
+  // MMS는 항상 장문 규격(2000byte) — SMS/LMS 자동전환 라벨을 덮어쓰지 않는다.
+  if (_msgChannel === 'mms') {
+    if (infoEl)    infoEl.textContent    = 'MMS';
+    if (counterEl) counterEl.textContent = bytes + ' / 2000 byte';
+    return;
+  }
   if (infoEl)    infoEl.textContent    = isLms ? 'LMS' : 'SMS';
   if (counterEl) counterEl.textContent = bytes + ' / ' + (isLms ? '2000' : '90') + ' byte';
 }
@@ -1969,6 +2001,98 @@ function toggleScheduleInput() {
   }
 }
 
+// ===== MMS 첨부 이미지 (선택 → JPG 리사이즈·압축 → 미리보기) =====
+// Cloudflare Workers엔 이미지 처리기가 없어 리사이즈/압축은 브라우저 canvas 담당.
+// 상한(window.MMS_IMAGE)은 서버 constants/barobillCodes.ts 단일 소스에서 주입된다.
+function _mmsLimits() {
+  var L = window.MMS_IMAGE || {};
+  return { maxBytes: L.MAX_BYTES || 300 * 1024, maxPx: L.MAX_PX || 1000 };
+}
+
+function _msgB64Bytes(b64) {
+  if (!b64) return 0;
+  var pad = b64.slice(-2) === '==' ? 2 : b64.slice(-1) === '=' ? 1 : 0;
+  return Math.floor(b64.length * 3 / 4) - pad;
+}
+
+// dataUri → 긴 변 maxPx 이하 + maxBytes 이하 JPEG dataUri. 품질을 단계적으로 낮추고,
+// 그래도 초과하면 해상도를 75%씩 줄여 재시도한다. 실패 시 null.
+function _msgCompressImage(dataUri) {
+  var lim = _mmsLimits();
+  return new Promise(function(resolve) {
+    var img = new Image();
+    img.onload = function() {
+      var w = img.naturalWidth || img.width;
+      var h = img.naturalHeight || img.height;
+      if (!w || !h) { resolve(null); return; }
+      var scale = Math.min(1, lim.maxPx / Math.max(w, h));
+      for (var attempt = 0; attempt < 4; attempt++) {
+        var cw = Math.max(1, Math.round(w * scale));
+        var chh = Math.max(1, Math.round(h * scale));
+        var canvas = document.createElement('canvas');
+        canvas.width = cw; canvas.height = chh;
+        var ctx = canvas.getContext('2d');
+        // JPEG는 투명을 지원하지 않음 → 흰 배경 선칠(투명 PNG 시안이 검게 나오는 것 방지)
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, cw, chh);
+        ctx.drawImage(img, 0, 0, cw, chh);
+        var qualities = [0.85, 0.7, 0.55, 0.4];
+        for (var qi = 0; qi < qualities.length; qi++) {
+          var out = canvas.toDataURL('image/jpeg', qualities[qi]);
+          var b64 = out.slice(out.indexOf('base64,') + 7);
+          if (_msgB64Bytes(b64) <= lim.maxBytes) { resolve(out); return; }
+        }
+        scale = scale * 0.75;
+      }
+      resolve(null);
+    };
+    img.onerror = function() { resolve(null); };
+    img.src = dataUri;
+  });
+}
+
+async function setMsgImageFromDataUri(dataUri, label) {
+  var infoEl  = document.getElementById('msgImageInfo');
+  var clearEl = document.getElementById('msgImageClearBtn');
+  if (infoEl) infoEl.textContent = '이미지 처리 중...';
+  var compressed = await _msgCompressImage(dataUri);
+  if (!compressed) {
+    _msgImageB64 = null; _msgImageDataUri = null;
+    if (infoEl) infoEl.textContent = '이미지 처리 실패 (다른 파일을 사용해주세요)';
+    updateMsgPreview();
+    return false;
+  }
+  _msgImageDataUri = compressed;
+  _msgImageB64 = compressed.slice(compressed.indexOf('base64,') + 7);
+  if (infoEl) infoEl.textContent = (label || '이미지') + ' · ' + Math.round(_msgB64Bytes(_msgImageB64) / 1024) + 'KB';
+  if (clearEl) clearEl.classList.remove('hidden');
+  updateMsgPreview();
+  return true;
+}
+window.setMsgImageFromDataUri = setMsgImageFromDataUri;
+
+function onMsgImagePick(input) {
+  var file = input && input.files && input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) { setMsgImageFromDataUri(e.target.result, file.name); };
+  reader.readAsDataURL(file);
+}
+window.onMsgImagePick = onMsgImagePick;
+
+function clearMsgImage() {
+  _msgImageB64 = null;
+  _msgImageDataUri = null;
+  var fileEl  = document.getElementById('msgImageFile');
+  var infoEl  = document.getElementById('msgImageInfo');
+  var clearEl = document.getElementById('msgImageClearBtn');
+  if (fileEl)  fileEl.value = '';
+  if (infoEl)  infoEl.textContent = '선택된 이미지 없음';
+  if (clearEl) clearEl.classList.add('hidden');
+  updateMsgPreview();
+}
+window.clearMsgImage = clearMsgImage;
+
 function updateMsgPreview() {
   var textBody = document.getElementById('msgBody').value || '';
   var subject = document.getElementById('msgSubject') ? document.getElementById('msgSubject').value : '';
@@ -1979,6 +2103,22 @@ function updateMsgPreview() {
   if (kakaoBody) kakaoBody.textContent = displayText;
   var smsBody = document.getElementById('msgPreviewSmsBody');
   if (smsBody) smsBody.textContent = displayText;
+
+  // MMS 미리보기 (이미지 + 본문)
+  var mmsBody = document.getElementById('msgPreviewMmsBody');
+  if (mmsBody) mmsBody.textContent = displayText;
+  var mmsImg   = document.getElementById('msgPreviewMmsImg');
+  var mmsNoImg = document.getElementById('msgPreviewMmsNoImg');
+  if (mmsImg && mmsNoImg) {
+    if (_msgImageDataUri) {
+      mmsImg.src = _msgImageDataUri;
+      mmsImg.classList.remove('hidden');
+      mmsNoImg.classList.add('hidden');
+    } else {
+      mmsImg.classList.add('hidden');
+      mmsNoImg.classList.remove('hidden');
+    }
+  }
 
   // 이메일 미리보기 (HTML)
   var emailSubj = document.getElementById('msgPreviewEmailSubject');
@@ -2005,6 +2145,11 @@ async function execMsgSend() {
   if (!body && channel !== 'fax') { if (window.showToast) showToast('내용을 입력해주세요', 'warning'); return; }
   if (channel === 'kakao' && !templateCode) { if (window.showToast) showToast('카카오톡은 템플릿을 선택해주세요', 'warning'); return; }
   if (channel === 'fax') { if (window.showToast) showToast('팩스는 명세서/견적서 페이지에서 발송해주세요', 'warning'); return; }
+  if (channel === 'mms') {
+    if (!_msgImageB64) { if (window.showToast) showToast('MMS는 첨부 이미지를 선택해주세요', 'warning'); return; }
+    // 100원/건 — 오발송 시 비용이 크므로 명시 확인
+    if (!confirm('MMS를 발송합니다.\n건당 100원(부가세 별도)이 과금됩니다. 계속할까요?')) return;
+  }
 
   // 이메일 평문일 경우 줄바꿈 → <br> 변환
   if (channel === 'email' && !_msgQuill) {
@@ -2024,9 +2169,11 @@ async function execMsgSend() {
       context:  { type: _msgContext.type, id: _msgContext.id, client_id: _msgContext.client_id }
     };
 
-    if (channel === 'kakao' || channel === 'sms') payload.receiver.phone = recvAddr;
+    if (channel === 'kakao' || channel === 'sms' || channel === 'mms') payload.receiver.phone = recvAddr;
     else if (channel === 'email') payload.receiver.email = recvAddr;
     else if (channel === 'fax')   payload.receiver.fax   = recvAddr;
+
+    if (channel === 'mms') payload.content.image_base64 = _msgImageB64;
 
     if (subject) payload.content.subject = subject;
     if (templateCode && channel === 'kakao') payload.content.template_code = templateCode;
@@ -2042,7 +2189,7 @@ async function execMsgSend() {
 
     // 예약 발송
     var scheduleToggle = document.getElementById('msgScheduleToggle');
-    if (scheduleToggle && scheduleToggle.checked && (channel === 'kakao' || channel === 'sms')) {
+    if (scheduleToggle && scheduleToggle.checked && (channel === 'kakao' || channel === 'sms' || channel === 'mms')) {
       var scheduleAt = document.getElementById('msgScheduleAt').value;
       if (scheduleAt) {
         if (new Date(scheduleAt) <= new Date()) {
@@ -2065,6 +2212,7 @@ async function execMsgSend() {
       } else {
         var msg = channel === 'email' ? '이메일이 발송되었습니다'
                 : channel === 'sms'   ? '문자가 발송되었습니다'
+                : channel === 'mms'   ? 'MMS가 발송되었습니다'
                 :                       '카카오톡이 발송되었습니다';
         if (window.showToast) showToast(msg, 'success');
         closeMsgSendModal();

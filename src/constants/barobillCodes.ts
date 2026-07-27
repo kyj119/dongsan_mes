@@ -128,6 +128,7 @@ export const BAROBILL_CHARGE_CODE = {
   KKO_IMAGE: 17,  // 카카오(친구톡) 이미지 21원
   SMS: 11,        // 문자 단문 15원  (구 9=10원은 오답)
   LMS: 13,        // 문자 장문(LMS) 35원
+  MMS: 14,        // 문자 그림(MMS) 100원 ({1,14} 중 채택)
   FAX: 12,        // 팩스 1장 50원  ({3~8,12} 중 채택)
 } as const
 
@@ -142,8 +143,28 @@ export const BAROBILL_UNIT_COST_VAT_EXCL = {
   kkoImage: 21,
   sms: 15,
   lms: 35,
+  mms: 100,
   fax: 50,
 } as const
+
+/**
+ * MMS(문자 그림) 이미지 제약.
+ * ⚠️ WSDL에는 규격 정의가 없다(ImageFile=base64Binary 뿐). 아래 값은 이통사 MMS 표준 관행 기준의
+ *    **보수적 상한**이며, 실제 바로빌 허용치는 첫 실발송 검증에서 확정할 것.
+ *    (초과 시 바로빌이 음수 코드로 거절 → 사용자에겐 "이미지 용량 초과"로 안내)
+ * Workers에는 이미지 처리기가 없으므로 리사이즈/압축은 브라우저 canvas(shell.js)에서 수행하고,
+ * 서버는 디코드 후 바이트 수만 방어 검증한다.
+ */
+export const MMS_IMAGE = {
+  MAX_BYTES: 300 * 1024,   // 디코드 기준 300KB
+  MAX_PX: 1000,            // 긴 변 최대 픽셀(클라이언트 리사이즈 목표)
+  MIME: 'image/jpeg',      // JPG 고정(이통사 공통 지원 포맷)
+} as const
+
+/** 클라 JS 주입(layout.ts) — 서버/브라우저가 같은 상한을 쓰도록 단일 소스 유지. */
+export const MMS_IMAGE_JS = `
+window.MMS_IMAGE = ${JSON.stringify(MMS_IMAGE)};
+`
 
 /** 바로빌 결과코드(음수) → 한글 사유. 등록/해지/즉시조회·과금 관련. 출처: 개발자센터 오류코드. */
 export const BAROBILL_ERROR_MESSAGES: Record<number, string> = {

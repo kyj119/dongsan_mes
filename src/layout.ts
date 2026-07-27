@@ -5,6 +5,7 @@ import { STATUS_LABELS_JS } from './utils/statusLabels'
 import { CSV_UTIL_JS } from './utils/csv'
 import { HR_ENUMS_JS } from './constants/hr'
 import { PROCESS_ENUMS_JS } from './constants/process'
+import { MMS_IMAGE_JS } from './constants/barobillCodes'
 import { sidebarHTML } from './layout/sidebar'
 import { topBarHTML } from './layout/topbar'
 import { SHARED_CSS } from './layout/shared-styles'
@@ -79,6 +80,7 @@ export function appLayout(opts: AppLayoutOptions): string {
             <div class="flex gap-1.5 flex-wrap">
               <button onclick="setMsgChannel(&apos;kakao&apos;)" id="msgChKakao" class="px-3 py-1.5 rounded-full text-xs font-medium bg-blue-50 border-2 border-blue-500 text-blue-700"><i class="fas fa-comment mr-1"></i>카카오톡</button>
               <button onclick="setMsgChannel(&apos;sms&apos;)" id="msgChSms" class="px-3 py-1.5 rounded-full text-xs font-medium bg-white border border-gray-300 text-gray-600"><i class="fas fa-sms mr-1"></i>문자</button>
+              <button onclick="setMsgChannel(&apos;mms&apos;)" id="msgChMms" class="px-3 py-1.5 rounded-full text-xs font-medium bg-white border border-gray-300 text-gray-600" title="이미지 첨부 문자 (100원/건)"><i class="fas fa-image mr-1"></i>MMS</button>
               <button onclick="setMsgChannel(&apos;email&apos;)" id="msgChEmail" class="px-3 py-1.5 rounded-full text-xs font-medium bg-white border border-gray-300 text-gray-600"><i class="fas fa-envelope mr-1"></i>이메일</button>
               <button onclick="setMsgChannel(&apos;fax&apos;)" id="msgChFax" class="px-3 py-1.5 rounded-full text-xs font-medium bg-white border border-gray-300 text-gray-600"><i class="fas fa-fax mr-1"></i>팩스</button>
             </div>
@@ -102,11 +104,22 @@ export function appLayout(opts: AppLayoutOptions): string {
               <label class="text-xs font-semibold text-gray-600 mb-1 block">제목 <span id="msgSubjectHint" class="text-gray-400 font-normal"></span></label>
               <input type="text" id="msgSubject" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="제목">
             </div>
+            <!-- MMS 이미지 첨부 -->
+            <div id="msgImageArea" class="hidden">
+              <label class="text-xs font-semibold text-gray-600 mb-1 block">첨부 이미지 <span class="text-gray-400 font-normal">(JPG 자동 변환·축소)</span></label>
+              <div class="flex items-center gap-2">
+                <input type="file" id="msgImageFile" accept="image/*" class="hidden" onchange="onMsgImagePick(this)">
+                <button type="button" onclick="document.getElementById(&apos;msgImageFile&apos;).click()" class="px-3 py-2 border border-gray-300 rounded-lg text-xs text-gray-700 hover:bg-gray-50"><i class="fas fa-upload mr-1"></i>이미지 선택</button>
+                <span id="msgImageInfo" class="text-xs text-gray-400 flex-1 truncate">선택된 이미지 없음</span>
+                <button type="button" id="msgImageClearBtn" onclick="clearMsgImage()" class="hidden text-xs text-gray-400 hover:text-red-600"><i class="fas fa-times"></i></button>
+              </div>
+              <div class="text-xs text-amber-600 mt-1"><i class="fas fa-won-sign mr-1"></i>MMS는 1건 100원(부가세 별도)으로 문자 장문(35원)보다 비쌉니다.</div>
+            </div>
             <div>
               <label class="text-xs font-semibold text-gray-600 mb-1 block">내용</label>
               <!-- 일반 텍스트 (카카오/SMS/팩스) -->
               <div id="msgBodyTextArea">
-                <textarea id="msgBody" rows="5" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="메시지 내용" oninput="if(_msgChannel===&apos;sms&apos;)updateMsgByteCounter();updateMsgPreview()"></textarea>
+                <textarea id="msgBody" rows="5" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="메시지 내용" oninput="if(_msgChannel===&apos;sms&apos;||_msgChannel===&apos;mms&apos;)updateMsgByteCounter();updateMsgPreview()"></textarea>
               </div>
               <!-- 이메일 HTML 에디터 -->
               <div id="msgBodyEditorArea" class="hidden">
@@ -163,6 +176,14 @@ export function appLayout(opts: AppLayoutOptions): string {
                 </div>
                 <div class="text-center text-xs text-gray-400 mt-2">SMS</div>
               </div>
+              <div id="msgPreviewMms" class="hidden bg-gray-900 rounded-2xl p-3 min-h-[260px]">
+                <div class="bg-green-500 rounded-xl p-2">
+                  <img id="msgPreviewMmsImg" class="w-full rounded-lg bg-white hidden" style="max-height:150px;object-fit:contain">
+                  <div id="msgPreviewMmsNoImg" class="rounded-lg bg-green-400/40 text-center text-xs text-white py-6">이미지를 선택하세요</div>
+                  <div id="msgPreviewMmsBody" class="text-xs text-white whitespace-pre-wrap leading-relaxed mt-2" style="min-height:40px;">메시지 내용</div>
+                </div>
+                <div class="text-center text-xs text-gray-400 mt-2">MMS</div>
+              </div>
               <div id="msgPreviewEmail" class="hidden bg-white border rounded-xl min-h-[260px]">
                 <div class="bg-gray-100 rounded-t-xl px-3 py-2 border-b">
                   <div class="text-xs text-gray-400">제목</div>
@@ -188,6 +209,7 @@ ${STATUS_LABELS_JS}
 ${CSV_UTIL_JS}
 ${HR_ENUMS_JS}
 ${PROCESS_ENUMS_JS}
+${MMS_IMAGE_JS}
 ${SHARED_AUTH_JS}
     </script>
     <script>

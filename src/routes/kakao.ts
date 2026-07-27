@@ -307,6 +307,7 @@ kakaoRouter.get('/balance', async (c) => {
         unit_cost_kko_image: uc.kkoImage,
         unit_cost_sms: uc.sms,
         unit_cost_lms: uc.lms,
+        unit_cost_mms: uc.mms,
         unit_cost_fax: uc.fax,
         unit_cost_source: 'static'
       }
@@ -335,6 +336,7 @@ kakaoRouter.get('/unit-cost', async (c) => {
         unit_cost_kko_image: uc.kkoImage,
         unit_cost_sms: uc.sms,
         unit_cost_lms: uc.lms,
+        unit_cost_mms: uc.mms,
         unit_cost_fax: uc.fax,
         unit_cost_source: 'live'
       }

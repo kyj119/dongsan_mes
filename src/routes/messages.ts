@@ -13,6 +13,19 @@ import { getKakaoProvider, getKakaoSettings } from './kakao'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import type { SMSMessage, ATSMessage } from './kakao'
 import { generatePortalToken } from './portal'
+import { MMS_IMAGE } from '../constants/barobillCodes'
+import { stripDataUri } from '../utils/thumbnailStore'
+
+/**
+ * base64 문자열의 디코드 후 바이트 수 (atob 없이 길이 산술 — 수백KB 문자열 복사 회피).
+ * 공백/개행이 섞여도 되도록 whitespace는 제외하고 계산한다.
+ */
+function base64ByteLength(b64: string): number {
+  const clean = b64.replace(/\s/g, '')
+  if (clean.length === 0) return 0
+  const pad = clean.endsWith('==') ? 2 : clean.endsWith('=') ? 1 : 0
+  return Math.floor((clean.length * 3) / 4) - pad
+}
 
 const messagesRouter = new Hono<HonoEnv>()
 messagesRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
@@ -72,7 +85,7 @@ messagesRouter.post('/send', async (c) => {
     const body = await c.req.json() as any
     const userId = c.get('user').id
 
-    const channel: 'kakao' | 'sms' | 'email' | 'fax' = body.channel
+    const channel: 'kakao' | 'sms' | 'mms' | 'email' | 'fax' = body.channel
     const receiver = body.receiver || {}
     const content = body.content || {}
     const ctx = body.context || {}
@@ -102,7 +115,7 @@ messagesRouter.post('/send', async (c) => {
             linkPc: typeof btn.linkPc === 'string' ? btn.linkPc.replace(/#{토큰}/g, token) : btn.linkPc,
           }))
         }
-      } else if (channel === 'sms') {
+      } else if (channel === 'sms' || channel === 'mms') {
         if (typeof content.body === 'string') {
           content.body = content.body + `\n\n거래내역 확인: ${url}`
         }
@@ -332,6 +345,63 @@ messagesRouter.post('/send', async (c) => {
       })
     }
 
+    // ── MMS (문자 그림) ──────────────────────────────────────────────────
+    // 이미지 1장 + 장문. 100원/건(LMS의 약 3배)이라 대량 발송(/send-bulk)에서는 막고 단건만 허용한다.
+    // 이미지 리사이즈/압축은 브라우저 canvas 담당(Workers엔 이미지 처리기 없음) — 여기선 용량만 방어 검증.
+    if (channel === 'mms') {
+      const rawImage = typeof content.image_base64 === 'string' ? stripDataUri(content.image_base64).replace(/\s/g, '') : ''
+      if (!rawImage) {
+        return c.json({ success: false, error: 'mms 채널에서는 content.image_base64(이미지)가 필요합니다.' }, 400)
+      }
+      const imgBytes = base64ByteLength(rawImage)
+      if (imgBytes > MMS_IMAGE.MAX_BYTES) {
+        return c.json({
+          success: false,
+          error: `이미지 용량이 큽니다 (${Math.round(imgBytes / 1024)}KB / 최대 ${Math.round(MMS_IMAGE.MAX_BYTES / 1024)}KB). 더 작은 이미지를 사용해주세요.`,
+        }, 400)
+      }
+
+      const sendResult = await provider.sendMMS({
+        snd: kakaoSettings.senderNum,
+        subject: content.subject || '동산기획',
+        content: content.body,
+        imageBase64: rawImage,
+        messages: [{ rcv: receiver.phone, rcvnm: receiver.name || '수신자' }],
+        sndDT: content.sndDT || undefined,
+      })
+
+      // ⚠️ 로그 content에는 본문만 저장 — base64를 넣으면 D1이 급팽창(확장성 감사 P3 R2 이관 취지 역행).
+      const logId = await insertSendLog(db, {
+        receiptNum: sendResult.receiptNum,
+        templateCode: 'MMS',
+        receiverNum: receiver.phone,
+        receiverName: receiver.name || null,
+        relatedType: ctx.type || null,
+        relatedId: ctx.id || null,
+        clientId: ctx.client_id || null,
+        content: content.body,
+        altContent: `[이미지 ${Math.round(imgBytes / 1024)}KB]`,
+        status: sendResult.receiptNum ? 'SUCCESS' : 'FAILED',
+        resultCode: sendResult.code,
+        resultMessage: sendResult.receiptNum ? `접수완료 (${sendResult.receiptNum})` : sendResult.message,
+        sentBy: userId,
+        channel: 'mms',
+        entityId: getEntityId(c),
+      })
+
+      return c.json({
+        success: true,
+        data: {
+          log_id: logId,
+          receipt_num: sendResult.receiptNum,
+          status: sendResult.receiptNum ? 'SUCCESS' : 'FAILED',
+          message: sendResult.message,
+          channel: 'mms',
+          type: 'MMS',
+        }
+      })
+    }
+
     return c.json({ success: false, error: '지원하지 않는 채널입니다.' }, 400)
   } catch (error) {
     console.error('src/routes/messages.ts POST /send error:', error)
@@ -462,6 +532,10 @@ messagesRouter.post('/send-bulk', async (c) => {
 
     if (!channel) {
       return c.json({ success: false, error: 'channel은 필수입니다.' }, 400)
+    }
+    // MMS는 100원/건 — 대량 발송 오폭 방지를 위해 단건(/send)만 허용
+    if ((channel as string) === 'mms') {
+      return c.json({ success: false, error: 'MMS는 대량 발송을 지원하지 않습니다. 개별 발송을 사용해주세요.' }, 400)
     }
     if (!content.body) {
       return c.json({ success: false, error: 'content.body는 필수입니다.' }, 400)

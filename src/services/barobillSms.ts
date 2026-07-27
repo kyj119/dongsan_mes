@@ -203,6 +203,52 @@ export class BarobillSmsProvider {
     }
   }
 
+  /**
+   * MMS(문자 그림) 발송 — 이미지 1장 + 장문 텍스트.
+   * SendMMSMessage는 ImageFile을 base64Binary로 직접 받으므로 팩스와 달리 FTP 업로드가 불필요하다.
+   * (FTP 경로 SendMMSMessageFromFTP도 있으나 바로빌 FTP는 동시 1세션이라 팩스 발송과 경합 — base64 채택)
+   * ⚠️ 바로빌 MMS는 1:1 전용(다건 API 없음) → 수신자 N명은 N콜. 100원/건이라 호출부에서 건수를 통제할 것.
+   */
+  async sendMMS(params: {
+    snd: string
+    subject?: string
+    content: string
+    imageBase64: string        // raw base64 (data URI 접두어 제거된 상태)
+    messages: SMSMessage[]
+    sndDT?: string
+  }): Promise<SendResult> {
+    try {
+      const results: SendItemResult[] = []
+      for (const msg of params.messages) {
+        const raw = await barobillCall(this.config, 'SMS', 'SendMMSMessage', {
+          SenderID: '',
+          FromNumber: params.snd,
+          ToName: msg.rcvnm || '',
+          ToNumber: msg.rcv,
+          TXTSubject: params.subject || '',
+          TXTMESSAGE: msg.msg || params.content,
+          ImageFile: params.imageBase64,
+          SendDT: params.sndDT || '',
+          RefKey: '',
+        })
+        results.push(interpretReceipt(raw).results![0])
+      }
+      const ok = results.filter(r => r.ok)
+      if (ok.length > 0) {
+        return {
+          receiptNum: ok[0].receiptNum,
+          code: results.length === 1 ? 1 : ok.length,
+          message: results.length === 1 ? '발송 성공' : `발송 접수 ${ok.length}건${results.length - ok.length ? `, 실패 ${results.length - ok.length}건` : ''}`,
+          results,
+        }
+      }
+      const firstErr = results.find(r => r.code < 0)?.code || 0
+      return { receiptNum: '', code: firstErr, message: `발송 실패 (바로빌 코드: ${firstErr || 'empty'})`, results }
+    } catch (err) {
+      return { receiptNum: '', code: 0, message: err instanceof Error ? err.message : 'Unknown error' }
+    }
+  }
+
   private async sendSMSBulk(params: any, type: 'SMS' | 'LMS'): Promise<SendResult> {
     const { callSoap } = this.soapHelpers()
     let msgsXml = ''
@@ -321,7 +367,7 @@ export class BarobillSmsProvider {
    * GetChargeUnitCostEx = 부가세 포함가 → ÷1.1로 부가세별도 산출. 음수/비정상은 0.
    */
   async getUnitCost(): Promise<{
-    alimtalk: number; kkoImage: number; sms: number; lms: number; fax: number
+    alimtalk: number; kkoImage: number; sms: number; lms: number; mms: number; fax: number
   }> {
     const q = async (chargeCode: number): Promise<number> => {
       try {
@@ -333,14 +379,15 @@ export class BarobillSmsProvider {
         return 0
       }
     }
-    const [alimtalk, kkoImage, sms, lms, fax] = await Promise.all([
+    const [alimtalk, kkoImage, sms, lms, mms, fax] = await Promise.all([
       q(BAROBILL_CHARGE_CODE.ALIMTALK),
       q(BAROBILL_CHARGE_CODE.KKO_IMAGE),
       q(BAROBILL_CHARGE_CODE.SMS),
       q(BAROBILL_CHARGE_CODE.LMS),
+      q(BAROBILL_CHARGE_CODE.MMS),
       q(BAROBILL_CHARGE_CODE.FAX),
     ])
-    return { alimtalk, kkoImage, sms, lms, fax }
+    return { alimtalk, kkoImage, sms, lms, mms, fax }
   }
 
   // ========================================================================
