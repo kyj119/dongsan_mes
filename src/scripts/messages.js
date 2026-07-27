@@ -453,29 +453,93 @@ function openRecipientPicker(type, forGroup) {
   }
 }
 
-// 거래처 서버검색: GET /api/clients?search=&limit=100 (out-of-order 응답 무시)
-function searchRecipientClients(keyword) {
+// 거래처 서버검색 — 페이지당 200건(clients API 상한)씩 누적 로드.
+//   예전엔 100건 한 페이지만 불러와 3,700+ 거래처 중 100곳만 보였다(그룹 담기가 사실상 불가).
+//   현재: '더 보기'로 이어 담고, '검색 결과 전체'로 조건에 맞는 전부를 한 번에 선택한다.
+var RECIPIENT_PAGE_SIZE = 200;
+var _recipientPage = 1;
+var _recipientKeyword = '';
+var _recipientTotal = 0;
+
+function searchRecipientClients(keyword, append) {
   var seq = ++_recipientSearchSeq;
   var listEl = document.getElementById('recipientList');
   var hintEl = document.getElementById('recipientCountInfo');
-  axios.get('/api/clients', { params: { search: keyword || '', limit: 100 } }).then(function(res) {
+  if (!append) { _recipientPage = 1; _recipientKeyword = keyword || ''; _recipientAllData = []; }
+
+  axios.get('/api/clients', { params: { search: _recipientKeyword, limit: RECIPIENT_PAGE_SIZE, page: _recipientPage } }).then(function(res) {
     if (seq !== _recipientSearchSeq) return; // 늦게 도착한 이전 검색 응답 폐기
     var clients = (res.data.data && res.data.data.clients) ? res.data.data.clients : (res.data.data || []);
     if (!Array.isArray(clients)) clients = [];
     var items = clients.map(function(c) {
       return { id: c.id, name: c.client_name || c.name, phone: c.mobile || c.phone || '', email: c.email || '', role: '', dept: c.client_type || '' };
     });
-    _recipientAllData = items;
-    var total = (res.data.data && res.data.data.pagination) ? res.data.data.pagination.total : items.length;
+    _recipientAllData = append ? _recipientAllData.concat(items) : items;
+    _recipientTotal = (res.data.data && res.data.data.pagination) ? res.data.data.pagination.total : _recipientAllData.length;
     if (hintEl) {
-      if (!keyword) hintEl.textContent = '검색어를 입력하면 전체 거래처(' + total + ')에서 찾습니다 · ' + items.length + '명 표시';
-      else hintEl.textContent = total + '명 중 ' + items.length + '명 표시' + (total > items.length ? ' (검색어를 좁혀주세요)' : '');
+      hintEl.textContent = '전체 ' + _recipientTotal + '곳 중 ' + _recipientAllData.length + '곳 불러옴'
+        + (_recipientKeyword ? ' (검색: ' + _recipientKeyword + ')' : '');
     }
-    renderRecipientList(items);
+    var selectAllBtn = document.getElementById('recipientSelectAllServer');
+    if (selectAllBtn) {
+      selectAllBtn.classList.toggle('hidden', _recipientTotal <= _recipientAllData.length);
+      selectAllBtn.textContent = '검색 결과 전체 선택 (' + _recipientTotal + ')';
+    }
+    renderRecipientList(_recipientAllData);
   }).catch(function(e) {
     if (seq !== _recipientSearchSeq) return;
     listEl.innerHTML = '<div class="text-center py-8 text-red-500">목록 조회 실패</div>';
   });
+}
+
+// '더 보기' — 다음 페이지를 이어 붙인다
+function loadMoreRecipients() {
+  _recipientPage += 1;
+  searchRecipientClients(_recipientKeyword, true);
+}
+
+// '검색 결과 전체 선택' — 현재 검색 조건의 모든 페이지를 받아 전부 선택.
+// 수천 건이 한 번에 잡힐 수 있어 진행 상태를 보여주고, 완료 후 인원수를 알린다.
+async function selectAllServerRecipients() {
+  var btn = document.getElementById('recipientSelectAllServer');
+  var hintEl = document.getElementById('recipientCountInfo');
+  if (btn) { btn.disabled = true; btn.textContent = '불러오는 중...'; }
+  try {
+    var page = 1, all = [], total = 0;
+    while (true) {
+      var res = await axios.get('/api/clients', { params: { search: _recipientKeyword, limit: RECIPIENT_PAGE_SIZE, page: page } });
+      var d = res.data.data || {};
+      var rows = d.clients || d || [];
+      if (!Array.isArray(rows)) rows = [];
+      total = (d.pagination && d.pagination.total) || rows.length;
+      all = all.concat(rows.map(function(c) {
+        return { id: c.id, name: c.client_name || c.name, phone: c.mobile || c.phone || '', email: c.email || '', role: '', dept: c.client_type || '' };
+      }));
+      if (all.length >= total || rows.length === 0) break;
+      page += 1;
+      if (hintEl) hintEl.textContent = '불러오는 중... ' + all.length + ' / ' + total;
+    }
+    _recipientAllData = all;
+    _recipientTotal = total;
+    _recipientPage = page;
+
+    // 그룹 담기 모드에선 연락처 없는 곳도 멤버가 될 수 있다(채널 무관 그룹)
+    var requireContact = !_recipientForGroup;
+    var contactField = (bulkChannel === 'email') ? 'email' : 'phone';
+    var picked = all.filter(function(r) { return requireContact ? !!r[contactField] : true; });
+    picked.forEach(function(r) {
+      if (!bulkSelectedRecipients.some(function(x) { return x.id === r.id; })) {
+        bulkSelectedRecipients.push({ id: r.id, name: r.name, phone: r.phone, email: r.email });
+      }
+    });
+    renderRecipientList(_recipientAllData);
+    if (hintEl) hintEl.textContent = '전체 ' + total + '곳 불러옴 · ' + picked.length + '곳 선택'
+      + (requireContact && all.length > picked.length ? ' (연락처 없는 ' + (all.length - picked.length) + '곳 제외)' : '');
+  } catch (e) {
+    showToast('전체 불러오기 실패', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.classList.add('hidden'); }
+  }
 }
 
 function renderRecipientList(items) {
@@ -485,10 +549,13 @@ function renderRecipientList(items) {
     return;
   }
   var contactField = (bulkChannel === 'email') ? 'email' : 'phone';
+  // 그룹 담기 모드에선 연락처가 없어도 멤버가 될 수 있다(그룹은 채널 무관).
+  // 발송 대상에서 빠지는 건 그룹 상세·대량발송 총액에서 따로 경고한다.
+  var requireContact = !_recipientForGroup;
   el.innerHTML = items.map(function(item) {
     var contact = item[contactField] || '';
     var isSelected = bulkSelectedRecipients.some(function(r) { return r.id === item.id; });
-    var hasContact = !!contact;
+    var hasContact = !!contact || !requireContact;
     var disabledCls = hasContact ? '' : ' opacity-40';
     var checkedAttr = isSelected ? ' checked' : '';
     var disabledAttr = hasContact ? '' : ' disabled';
@@ -502,6 +569,12 @@ function renderRecipientList(items) {
       + '</div>'
       + '</label>';
   }).join('');
+
+  // 더 보기 — 서버에 남은 거래처가 있을 때만
+  if (_recipientPickerType === 'clients' && _recipientTotal > items.length) {
+    el.innerHTML += '<button onclick="loadMoreRecipients()" class="w-full mt-2 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50">'
+      + '<i class="fas fa-chevron-down mr-1"></i>더 보기 (' + items.length + ' / ' + _recipientTotal + ')</button>';
+  }
   updateRecipientSelectedCount();
 }
 

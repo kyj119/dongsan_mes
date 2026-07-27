@@ -337,7 +337,8 @@ export function messagesPage(c: Context<HonoEnv>) {
     <div class="p-4 border-b">
       <div class="flex gap-2">
         <input type="text" id="recipientSearch" class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="이름/전화번호 검색" oninput="filterRecipients()">
-        <button onclick="toggleAllRecipients()" class="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 whitespace-nowrap" id="recipientToggleAll">전체 선택</button>
+        <button onclick="toggleAllRecipients()" class="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 whitespace-nowrap" id="recipientToggleAll">화면 전체</button>
+        <button onclick="selectAllServerRecipients()" class="hidden px-3 py-2 border border-blue-300 bg-blue-50 text-blue-700 rounded-lg text-sm hover:bg-blue-100 whitespace-nowrap" id="recipientSelectAllServer">검색 결과 전체 선택</button>
       </div>
       <div class="flex items-center justify-between mt-2">
         <span class="text-xs text-gray-500" id="recipientCountInfo">0명 로딩 중...</span>
