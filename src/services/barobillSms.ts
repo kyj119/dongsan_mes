@@ -155,7 +155,7 @@ export class BarobillSmsProvider {
       if (params.messages.length === 1) {
         const msg = params.messages[0]
         const result = await barobillCall(this.config, 'SMS', 'SendSMSMessage', {
-          SenderID: '',
+          SenderID: this.config.senderId || '',   // 형제 스윕: 빈값이면 -24005
           FromNumber: params.snd,
           ToName: msg.rcvnm || '',
           ToNumber: msg.rcv,
@@ -185,7 +185,7 @@ export class BarobillSmsProvider {
       if (params.messages.length === 1) {
         const msg = params.messages[0]
         const result = await barobillCall(this.config, 'SMS', 'SendLMSMessage', {
-          SenderID: '',
+          SenderID: this.config.senderId || '',   // 형제 스윕: 빈값이면 -24005
           FromNumber: params.snd,
           ToName: msg.rcvnm || '',
           ToNumber: msg.rcv,
@@ -221,7 +221,7 @@ export class BarobillSmsProvider {
       const results: SendItemResult[] = []
       for (const msg of params.messages) {
         const raw = await barobillCall(this.config, 'SMS', 'SendMMSMessage', {
-          SenderID: '',
+          SenderID: this.config.senderId || '',   // 빈값 → -24005(사업자번호·아이디 불일치). 알림톡에서 겪은 동일 결함
           FromNumber: params.snd,
           ToName: msg.rcvnm || '',
           ToNumber: msg.rcv,
@@ -267,7 +267,7 @@ export class BarobillSmsProvider {
       <SendMessages xmlns="http://ws.baroservice.com/">
         <CERTKEY>${esc(this.config.certKey)}</CERTKEY>
         <CorpNum>${esc(this.config.corpNum)}</CorpNum>
-        <SenderID></SenderID>
+        <SenderID>${esc(this.config.senderId || '')}</SenderID>
         <SendCount>${params.messages.length}</SendCount>
         <CutToSMS>${type === 'SMS' ? 'true' : 'false'}</CutToSMS>
         <Messages>${msgsXml}</Messages>
