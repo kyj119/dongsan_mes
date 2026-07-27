@@ -400,15 +400,16 @@ ordersQueriesRouter.get('/export/csv', async (c) => {
 
     if (whereClauses.length > 0) query += ' WHERE ' + whereClauses.join(' AND ')
 
+    // 정렬 규약: 고유키 tie-break 필수 + NULLS LAST(D1 방언) 회피 — orders/core.ts 목록과 동일 규칙
     const sortOptions: Record<string, string> = {
-      'created_at_desc': 'o.created_at DESC',
-      'created_at_asc': 'o.created_at ASC',
-      'delivery_date_asc': 'o.delivery_date ASC NULLS LAST',
-      'final_amount_desc': 'o.final_amount DESC',
+      'created_at_desc': 'o.created_at DESC, o.id DESC',
+      'created_at_asc': 'o.created_at ASC, o.id ASC',
+      'delivery_date_asc': 'o.delivery_date IS NULL, o.delivery_date ASC, o.id DESC',
+      'final_amount_desc': 'o.final_amount DESC, o.id DESC',
     }
     // LIMIT: 최대 5000, 기본 3000 — 메모리/타임아웃 방지
     const maxRows = Math.min(parseInt(c.req.query('limit') || '3000') || 3000, 5000)
-    const orderBy = sortOptions[sort] || 'o.created_at DESC'
+    const orderBy = sortOptions[sort] || sortOptions['created_at_desc']
     query += ` ORDER BY ${orderBy} LIMIT ?`
     params.push(maxRows)
 

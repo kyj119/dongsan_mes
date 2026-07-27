@@ -326,7 +326,7 @@ inspectionsRouter.get('/results', async (c) => {
       LEFT JOIN users u ON ir.inspector_id = u.id
       LEFT JOIN inventory_receipts rec ON ir.receipt_id = rec.id
       ${w}
-      ORDER BY ir.inspected_at DESC LIMIT ? OFFSET ?
+      ORDER BY ir.inspected_at DESC, ir.id DESC LIMIT ? OFFSET ?
     `
     const { results } = await c.env.DB.prepare(sql).bind(...p, limit, offset).all()
     return c.json({
@@ -383,7 +383,7 @@ inspectionsRouter.get('/results/export/csv', async (c) => {
       LEFT JOIN users u ON ir.inspector_id = u.id
       LEFT JOIN inventory_receipts rec ON ir.receipt_id = rec.id
       ${w}
-      ORDER BY ir.inspected_at DESC LIMIT 5001
+      ORDER BY ir.inspected_at DESC, ir.id DESC LIMIT 5001
     `).bind(...p).all()
     const truncated = (results || []).length > 5000  // #372
     const exportRows = truncated ? (results || []).slice(0, 5000) : (results || [])

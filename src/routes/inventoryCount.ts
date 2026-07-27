@@ -33,7 +33,7 @@ inventoryCountRouter.get('/', async (c) => {
       params.push(Number(storageZoneId))
     }
 
-    query += ' ORDER BY ic.count_date DESC LIMIT ? OFFSET ?'
+    query += ' ORDER BY ic.count_date DESC, ic.id DESC LIMIT ? OFFSET ?'  // 정렬 규약: 고유키 tie-break
     params.push(limit, offset)
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()

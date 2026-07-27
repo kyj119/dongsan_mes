@@ -44,23 +44,48 @@
 - `CLAUDE.md` → "알려진 함정 (Critical)" 에 **목록 정렬 = 고유키 tie-break 필수** 항목 추가
 - `.claude/skills/review-checklist/SKILL.md` → **§15 목록 정렬 tie-break 검사** 추가 (grep 패턴 + 판정 기준)
 
-## 미적용 잠복 지점 (전역 — 이번 범위 밖)
+## 2차: 전역 스윕 (2026-07-27 동일 세션, 사용자 승인 "전체 진행")
 
-사용자 지시 범위는 "발주 계열 + 전역 규약 문서화". 아래는 **동일 결함이 남아 있는 목록**으로, 별도 승인 시 스윕 대상.
+### tie 순서는 예측 불가 — 실증
 
-### 정렬 옵션 맵 (tie-break 전무)
+같은 `orders` 테이블, 같은 `ORDER BY created_at DESC`인데 필터 유무로 동값 구간 순서가 **반전**됐다.
 
-| 파일:라인 | 기본 정렬 | prod tie 밀도 |
-|---|---|---|
-| `src/routes/orders/core.ts:141-149` | `o.created_at DESC` | orders 1021건 / distinct 135 → **평균 7.6건 동값** |
-| `src/routes/orders/queries.ts:403-411` | `o.created_at DESC` | 상동 |
-| `src/routes/quotations.ts:95-101` | `q.created_at DESC` | 미측정 |
-| `src/routes/cards/queries.ts:308-314` | `c.priority DESC, c.delivery_date ASC, c.created_at ASC` | 미측정 |
-| `src/routes/cards/queries.ts:815-831` | `sortMap` / `c.shipped_at DESC` | 미측정 |
-| `src/routes/clients.ts:124-126` | `c.client_name ASC`(고유성 없음) / `c.created_at DESC` | clients 3782건 / distinct 1266 |
+| 조건 | 동값 구간 내부 |
+|---|---|
+| 필터 없음 | id 내림차순 (1116 → 1099 → 1098) |
+| `WHERE created_at='2026-04-01 09:00:00'` | id 오름차순 (495 → 496 → 497) |
 
-### 페이징 목록 (`LIMIT ? OFFSET ?`, tie-break 없음)
+즉 발주는 ASC로 뒤집혀 사고가 났고 주문은 우연히 DESC였을 뿐. 필터·인덱스 경로가 바뀌면 언제든 반전된다. "현재 정상으로 보임"은 안전을 의미하지 않는다.
 
-`activityLogs.ts:37` · `approvals.ts:123` · `cashReceipts.ts:105` · `costs.ts:243` · `cards/queries.ts:678` · `hr.ts:1180` · `portal.ts:336` · `portal.ts:481` · `returns.ts:42` · `taxInvoices/queries.ts:107`
+### prod tie 밀도 실측
 
-> `NULLS LAST` 사용처(`orders/core.ts:144-145`, `clients.ts:125`)는 D1 방언 의존 — `col IS NULL, col ASC` 형태로 대체 권장.
+| 테이블.정렬키 | 건수 | distinct | 판정 |
+|---|---|---|---|
+| orders.created_at | 1021 | 135 | 평균 7.6, **최대 군집 29건**(이관분 `'날짜 09:00:00'` 고정) |
+| items (favorite\|분류\|item_name) | 922 | 718 | **204건 동값** |
+| purchase_invoices.invoice_date | 241 | 107 | 평균 2.25 |
+| activity_logs.created_at | 3292 | 2725 | 경미 |
+| print_events (완료시각) | 2049 | 2044 | 거의 고유 |
+| inventory (category\|item_name) | 79 | 75 | 4건 |
+| employees.employee_code | 112 | 112 | 고유(안전) |
+| cards / quotations / cash_receipts / returns / tax_invoices / inspection_results / quality_issues / approval_requests / inventory_auto_deductions / labor_contracts | 0~3 | — | 데이터 없음(코드 결함만) |
+
+### 적용 (33곳)
+
+**🔴 실데이터 위험**: `orders/core.ts:141-153`(sortOptions 6항목 + `NULLS LAST`→`IS NULL`) · `orders/queries.ts:403-412` · `items.ts:158` · `purchaseInvoices.ts:33`
+
+**🟡 경미**: `activityLogs.ts:37` · `printEvents.ts:764,866` · `inventory.ts:64,445` · `notifications.ts:38` · `tasks.ts:54` · `hr.ts:98`
+
+**⚪ 데이터 유입 전 예방**: `quotations.ts:95-100` · `cashReceipts.ts:105` · `returns.ts:42` · `taxInvoices/queries.ts:107` · `portal.ts:290,336,481,712` · `inspections.ts:329,386` · `cards/queries.ts:308-315,678,825-831,1072` · `approvals.ts:123` · `costs.ts:243` · `inventoryCount.ts:36` · `hr.ts:1180` · `clients.ts:124-126` · `items.ts:23,544` · `bank.ts:83` · `cashSchedule.ts:542` · `ledger/ar-dunning.ts:203` · `aiAnalysis.ts:502` · `aiLayout.ts:53`
+
+**`NULLS LAST`(D1 방언) 제거 전량**: `orders/core.ts` 2곳 · `orders/queries.ts` 1곳 · `clients.ts:125` · `priceList.ts:62,134` · `rip.ts:939,1129` · `shipments.ts:180` → `col IS NULL, col` 형태로 통일. 소스 전체에 `NULLS LAST` 잔존 0건.
+
+### 남은 잠복 (미처리)
+
+`LIMIT` 없는 **전체 조회** 55곳 (상세 모달의 이력·메모·첨부 목록 등, 예: `approvals.ts:156` · `claims.ts:71` · `clients.ts:312,322,358` · `dashboard.ts:798,810` · `leaves.ts:502` · `kakao.ts:1380` …).
+- 전건을 반환하므로 **페이징 중복·누락 위험은 없음**. 동일 초 생성된 항목 간 상하 순서만 미정의.
+- 기계적 일괄 치환은 위험: JOIN 쿼리에서 별칭 없는 `id` 추가 시 ambiguous column → 500. 개별 확인 필요.
+
+### 프론트엔드
+
+`src/scripts/*.js` `.sort()` 20곳 점검 — 비교자 없는 2곳(`cardExpenses.js:966`, `costAnalysis.js:46`)은 날짜 문자열 키라 사전순=날짜순으로 정상. 이상 없음.

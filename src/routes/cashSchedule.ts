@@ -539,7 +539,7 @@ cashScheduleRouter.get('/clients/search', requireEditOrRole('/cash-schedule', 'M
       SELECT id, client_name, representative
       FROM clients
       WHERE is_active = 1 AND client_name LIKE ?
-      ORDER BY client_name LIMIT 20
+      ORDER BY client_name, id LIMIT 20
     `).bind('%' + q + '%').all()
     return c.json({ success: true, data: results })
   } catch (error) {

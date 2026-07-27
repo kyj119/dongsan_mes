@@ -287,7 +287,7 @@ portal.get('/dashboard', async (c) => {
       c.env.DB.prepare(`
         SELECT id, order_number, order_date, status, total_amount
         FROM orders WHERE client_id = ?
-        ORDER BY created_at DESC LIMIT 5
+        ORDER BY created_at DESC, id DESC LIMIT 5
       `).bind(clientId).all(),
       c.env.DB.prepare(`
         SELECT SUM(balance) as total_balance
@@ -333,7 +333,7 @@ portal.get('/orders', async (c) => {
       query += ` AND o.status = ?`
       params.push(status)
     }
-    query += ` ORDER BY o.created_at DESC LIMIT ? OFFSET ?`
+    query += ` ORDER BY o.created_at DESC, o.id DESC LIMIT ? OFFSET ?`  // 정렬 규약: 고유키 tie-break
     params.push(limit, offset)
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
@@ -478,7 +478,7 @@ portal.get('/invoices', async (c) => {
       SELECT id, invoice_number, issue_date, supply_amount, tax_amount, total_amount, status
       FROM tax_invoices
       ${where}
-      ORDER BY issue_date DESC LIMIT ? OFFSET ?
+      ORDER BY issue_date DESC, id DESC LIMIT ? OFFSET ?
     `).bind(...binds, limit, offset).all()
 
     return c.json({
@@ -709,7 +709,7 @@ portal.post('/verify-document', async (c) => {
            FROM orders WHERE id = ? AND client_id = ? AND status != 'CANCELLED'`
         : `SELECT id, order_number, final_amount, total_amount, vat_amount, discount_amount, billed_amount, order_date
            FROM orders WHERE client_id = ? AND status NOT IN ('CANCELLED','DRAFT')
-           ORDER BY created_at DESC LIMIT 1`
+           ORDER BY created_at DESC, id DESC LIMIT 1`
       const orderParams = order_id ? [order_id, clientId] : [clientId]
       const order = await c.env.DB.prepare(orderQuery).bind(...orderParams).first<OrderRow>()
 

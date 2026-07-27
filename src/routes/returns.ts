@@ -39,7 +39,7 @@ returns.get('/', async (c) => {
     LEFT JOIN clients cl ON r.client_id = cl.id
     LEFT JOIN orders o ON r.order_id = o.id
     ${where}
-    ORDER BY r.created_at DESC LIMIT ? OFFSET ?
+    ORDER BY r.created_at DESC, r.id DESC LIMIT ? OFFSET ?
   `).bind(...binds, limit, offset).all()
 
   const total = countRow?.cnt || 0

@@ -120,10 +120,11 @@ clientsRouter.get('/', async (c) => {
 
     const { where: filterWhere, params: filterParams } = buildClientFilters({ active, search, client_type, invoice_method, delivery_method, has_balance, credit_hold })
 
-    // Sort option
-    let orderByClause = ' ORDER BY c.client_name ASC'
-    if (sort === 'last_order') orderByClause = ' ORDER BY last_order_date DESC NULLS LAST, c.client_name ASC'
-    else if (sort === 'created') orderByClause = ' ORDER BY c.created_at DESC'
+    // Sort option — 정렬 규약(CLAUDE.md): 고유키(c.id) tie-break 필수.
+    //   client_name은 동명 거래처가 존재해 비고유. NULL 처리는 D1 방언(NULLS LAST) 대신 IS NULL.
+    let orderByClause = ' ORDER BY c.client_name ASC, c.id ASC'
+    if (sort === 'last_order') orderByClause = ' ORDER BY last_order_date IS NULL, last_order_date DESC, c.client_name ASC, c.id ASC'
+    else if (sort === 'created') orderByClause = ' ORDER BY c.created_at DESC, c.id DESC'
 
     // Dormant filter (needs last_order_date subquery)
     let dormantWhere = ''

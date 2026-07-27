@@ -34,7 +34,7 @@ activityLogsRouter.get('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const countQuery = `SELECT COUNT(*) as count FROM (${query})`
     const total = await c.env.DB.prepare(countQuery).bind(...params).first() as any
 
-    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?'
+    query += ' ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?'  // 정렬 규약: 고유키 tie-break
     params.push(safeLimit, offset)
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()

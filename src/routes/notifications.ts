@@ -35,7 +35,7 @@ notificationsRouter.get('/', async (c) => {
       query += ' AND is_read = 0'
     }
 
-    query += ' ORDER BY is_read ASC, created_at DESC LIMIT ?'
+    query += ' ORDER BY is_read ASC, created_at DESC, id DESC LIMIT ?'
     params.push(safeLimit)
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()

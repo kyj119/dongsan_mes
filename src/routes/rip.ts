@@ -936,7 +936,7 @@ ripRouter.get('/equipment/:id/consumables', authMiddleware, async (c) => {
         END as due_status
       FROM equipment_consumables
       WHERE equipment_id = ?${ef.clause}
-      ORDER BY next_due_at ASC NULLS LAST
+      ORDER BY next_due_at IS NULL, next_due_at ASC, id ASC
     `).bind(equipId, ...ef.params).all()
 
     return c.json({ success: true, data: results })
@@ -1126,7 +1126,7 @@ ripRouter.get('/equipment/:id/schedules', authMiddleware, async (c) => {
         END as due_status
       FROM maintenance_schedules
       WHERE equipment_id = ? AND is_active = 1${ef.clause}
-      ORDER BY next_due_at ASC NULLS LAST
+      ORDER BY next_due_at IS NULL, next_due_at ASC, id ASC
     `).bind(equipId, ...ef.params).all()
 
     return c.json({ success: true, data: results })

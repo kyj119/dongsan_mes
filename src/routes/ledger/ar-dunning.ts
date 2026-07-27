@@ -200,7 +200,7 @@ arDunningRouter.post('/collection-logs', async (c) => {
               AND id NOT IN (
                 SELECT DISTINCT order_id FROM payments WHERE order_id IS NOT NULL${emailPayEf}
               )
-            ORDER BY order_date ASC LIMIT 10
+            ORDER BY order_date ASC, id ASC LIMIT 10
           `).bind(body.client_id, ...emailOrdEfParams, ...emailPayEfParams).all<UnpaidOrderRow>()
 
           const balance = (await deriveClientBalance(c, body.client_id)) || body.amount_requested || 0  // split billing P3: 파생

@@ -20,7 +20,7 @@ itemsRouter.get('/price-history', async (c) => {
     const params: any[] = [...ef.params]
     if (target_type) { query += ' AND pch.target_type = ?'; params.push(target_type) }
     if (target_id) { query += ' AND pch.target_id = ?'; params.push(parseInt(target_id)) }
-    query += ' ORDER BY pch.changed_at DESC LIMIT ?'; params.push(limit)
+    query += ' ORDER BY pch.changed_at DESC, pch.id DESC LIMIT ?'; params.push(limit)
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -155,7 +155,8 @@ itemsRouter.get('/', async (c) => {
       params.push(item_group)
     }
 
-    query += ' ORDER BY i.is_favorite DESC, ic.sort_order, i.item_name ASC LIMIT ? OFFSET ?'
+    // 정렬 규약: 고유키 tie-break 필수 — 동명 품목 204건(922건 중)이 동값이라 페이징 중복·누락 발생
+    query += ' ORDER BY i.is_favorite DESC, ic.sort_order, i.item_name ASC, i.id ASC LIMIT ? OFFSET ?'
     params.push(safeLimit, offset)
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
@@ -540,7 +541,7 @@ itemsRouter.get('/materials/search', async (c) => {
       params.push(`%${search}%`, `%${search}%`)
     }
 
-    query += ' ORDER BY item_name ASC LIMIT 50'
+    query += ' ORDER BY item_name ASC, id ASC LIMIT 50'  // 동명 품목 다수 → 고유키 tie-break
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
