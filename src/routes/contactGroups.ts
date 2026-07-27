@@ -59,7 +59,11 @@ contactGroupsRouter.get('/:id/members', async (c) => {
       const chunk = clientIds.slice(i, i + 80)
       const ph = chunk.map(() => '?').join(',')
       const { results } = await c.env.DB.prepare(
-        `SELECT id, client_name, mobile, phone, email FROM clients WHERE id IN (${ph})`
+        // #580: 비활성 거래처 제외 — 형제 경로(employees)의 is_deleted=0과 대칭.
+        // 거래처 삭제는 soft delete(clients.ts SET is_active=0)라 필터가 없으면
+        // 거래 종료·폐업 거래처가 대량발송(MMS 100원/건) 대상에 그대로 포함된다.
+        // 제외분은 아래 orphan_count에 잡혀 UI 경고로 노출된다(주석·경고 문구의 원래 전제).
+        `SELECT id, client_name, mobile, phone, email FROM clients WHERE id IN (${ph}) AND is_active = 1`
       ).bind(...chunk).all<{ id: number; client_name: string; mobile: string; phone: string; email: string }>()
       for (const r of results || []) {
         members.push({
