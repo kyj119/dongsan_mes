@@ -241,10 +241,9 @@ export const bankPageContent = `
           <div id="floatingSelectionBar" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-gray-900 text-white rounded-xl shadow-2xl px-5 py-3 flex items-center gap-4" style="min-width:420px;">
             <span class="text-sm"><b id="selectedCount">0</b>건 선택</span>
             <div class="border-l border-gray-600 h-5"></div>
-            <button onclick="batchMatch()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1">
-              <i class="fas fa-link"></i> 일괄 매칭
-            </button>
-            <button onclick="batchApply()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1">
+            <!-- 2026-07-27: [일괄 매칭]+[일괄 적용] 통합 → 버튼 1개(거래처 확정 + 원장 반영 + 규칙 학습) -->
+            <button onclick="batchApply()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1"
+              title="선택 건의 거래처를 확정하고 입금/지급 원장에 반영합니다. 확정된 거래처는 자동매칭 규칙으로 학습됩니다.">
               <i class="fas fa-check-double"></i> 일괄 적용
             </button>
             <button onclick="clearSelection()" class="ml-auto px-2 py-1 text-xs text-gray-400 hover:text-white">

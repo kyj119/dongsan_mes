@@ -901,6 +901,37 @@ bankRouter.delete('/match-rules/:id', requireRole('ADMIN'), async (c) => {
 // 자동 매칭
 // ---------------------------------------------------------------------------
 
+// 입금자명/거래처명 정규화 — 법인격 표기·공백·괄호·구분기호 차이를 흡수.
+//   "(주)동산기획" · "㈜ 동산기획" · "동산기획(주)" → "동산기획"
+//   자동매칭에서만 사용(저장값은 원문 유지).
+function normalizeCounterpart(s: string | null | undefined): string {
+  return String(s ?? '')
+    .replace(/주식회사|유한회사|합자회사|합명회사|\(주\)|\(유\)|㈜|㈜/g, '')
+    .replace(/[\s()（）[\]{}.,\-_/·:'"]/g, '')
+    .toLowerCase()
+}
+
+// 매칭 규칙 학습(단일 소스) — 사람이 거래처/비용분류를 확정한 시점마다 호출.
+//   다음 동기화부터 같은 적요(counterpart_name)는 자동매칭이 잡는다.
+async function learnMatchRule(
+  c: Context<HonoEnv>,
+  counterpartName: string | null | undefined,
+  opts: { clientId?: number | null; categoryId?: number | null; userId?: number | null; entityId?: number | null }
+): Promise<void> {
+  const name = (counterpartName ?? '').trim()
+  if (!name) return
+  if (!opts.clientId && !opts.categoryId) return
+  await c.env.DB.prepare(`
+    INSERT INTO bank_match_rules (counterpart_name, matched_client_id, matched_category_id, created_by, match_count, entity_id)
+    VALUES (?, ?, ?, ?, 1, ?)
+    ON CONFLICT(entity_id, counterpart_name) DO UPDATE SET
+      matched_client_id = excluded.matched_client_id,
+      matched_category_id = excluded.matched_category_id,
+      match_count = match_count + 1,
+      last_used_at = CURRENT_TIMESTAMP
+  `).bind(name, opts.clientId ?? null, opts.categoryId ?? null, opts.userId ?? 1, opts.entityId ?? 1).run()
+}
+
 // ---------------------------------------------------------------------------
 // 자동매칭 엔진 (수동 [자동매칭] 버튼·바로빌 sync·무인 cron 공용 — 단일 소스)
 //   규칙(EXACT→APPLIED / CONTAINS→SUGGESTED) → 출금 고정비 제안(SUGGESTED) → 거래처명/키워드/금액.
@@ -933,9 +964,9 @@ async function runAutoMatchEngine(
 
     if (unmatchedTxs.length === 0) return { matched: 0, total: 0 }
 
-    // 2. 모든 활성 거래처 가져오기
+    // 2. 모든 활성 거래처 가져오기 (대표자명 포함 — 대표자 개인명 입금 대응)
     const { results: clients } = await c.env.DB.prepare(`
-      SELECT id, client_name, search_keywords
+      SELECT id, client_name, search_keywords, representative
       FROM clients
       WHERE is_active = 1
       ORDER BY client_name
@@ -943,7 +974,23 @@ async function runAutoMatchEngine(
       id: number
       client_name: string
       search_keywords: string | null
+      representative: string | null
     }>()
+
+    // 2-a. 정규화 캐시: 법인격·공백·괄호 제거 후 비교 → "(주)동산기획" ≡ "동산기획 " ≡ "동산기획".
+    //      normDup = 정규화 후 같은 이름의 거래처 수(2 이상이면 자동확정 금지 — 모호).
+    const normClients = clients.map(cl => ({
+      id: cl.id,
+      name: cl.client_name.trim(),
+      norm: normalizeCounterpart(cl.client_name),
+      rep: normalizeCounterpart(cl.representative),
+      keywords: (cl.search_keywords ?? '').split(/[,\s]+/).map(k => k.trim()).filter(Boolean),
+    }))
+    const normDup = new Map<string, number>()
+    for (const cl of normClients) {
+      if (!cl.norm) continue
+      normDup.set(cl.norm, (normDup.get(cl.norm) ?? 0) + 1)
+    }
 
     // 2-b. 거래처별 미수금 파생잔액(1쿼리) — clients.balance 캐시 폐기 → /receivables·deriveClientBalance 동일 정의.
     //      rule 3(금액일치) 매칭에 사용. 같은 잔액 거래처가 여럿이면 모호 → 매칭 제외(유일성 가드).
@@ -1099,45 +1146,74 @@ async function runAutoMatchEngine(
             }
           }
           // Step 2: 규칙이 없으면 기존 로직으로 매칭 시도
-          for (const client of clients) {
-          const clientName = client.client_name.trim()
-          const keywords   = (client.search_keywords ?? '')
-            .split(/[,\s]+/)
-            .map(k => k.trim())
-            .filter(Boolean)
+          //   강한 규칙(완전일치·정규화 완전일치·키워드·금액)은 즉시 best 갱신,
+          //   약한 규칙(거래처명 부분포함·대표자명)은 후보만 모아 "유일할 때만" 채택(SUGGESTED).
+          const normTx = normalizeCounterpart(txName)
+          const partialHits = new Set<number>()
+          const repHits = new Set<number>()
 
-          let confidence = 0
-          let reason     = ''
+          for (const client of normClients) {
+            const clientName = client.name
+            const keywords = client.keywords
 
-          // 규칙 1: 입금자명 == 거래처명 → 0.9
-          if (txName === clientName) {
-            confidence = 0.9
-            reason     = '입금자명 완전일치'
-          }
-          // 규칙 2: 입금자명이 search_keywords에 포함 → 0.7
-          else if (keywords.some(k => k && txName.includes(k))) {
-            confidence = 0.7
-            reason     = '검색키워드 일치'
-          }
-          // 규칙 3: (입금) 금액 == 미수금 파생잔액 + 해당 잔액 거래처 유일 — 모호/무의미 매칭 방지
-          const derivedBal = clientBalance.get(client.id) ?? 0
-          if (tx.transaction_type === 'DEPOSIT' && derivedBal > 0 && tx.amount === derivedBal && balanceCount.get(derivedBal) === 1) {
-            if (confidence >= 0.5) {
-              // 이름도 부분 일치하면 0.8로 상향
-              const namePartial = clientName.includes(txName) || txName.includes(clientName)
-              confidence = namePartial ? 0.8 : Math.max(confidence, 0.5)
-              reason += reason ? ' + 금액일치' : '금액일치'
-            } else {
-              confidence = 0.5
-              reason     = '금액일치'
+            let confidence = 0
+            let reason     = ''
+
+            // 규칙 1: 입금자명 == 거래처명 → 0.9
+            if (txName === clientName) {
+              confidence = 0.9
+              reason     = '입금자명 완전일치'
+            }
+            // 규칙 1-b: 정규화 완전일치("(주)" · 공백 · 괄호 차이만) → 0.85. 동명 거래처가 둘 이상이면 모호 → 제외
+            else if (normTx && client.norm && normTx === client.norm && (normDup.get(client.norm) ?? 0) === 1) {
+              confidence = 0.85
+              reason     = '입금자명 일치(표기차이 무시)'
+            }
+            // 규칙 2: 입금자명이 search_keywords에 포함 → 0.7
+            else if (keywords.some(k => k && txName.includes(k))) {
+              confidence = 0.7
+              reason     = '검색키워드 일치'
+            }
+            // 규칙 3: (입금) 금액 == 미수금 파생잔액 + 해당 잔액 거래처 유일 — 모호/무의미 매칭 방지
+            const derivedBal = clientBalance.get(client.id) ?? 0
+            if (tx.transaction_type === 'DEPOSIT' && derivedBal > 0 && tx.amount === derivedBal && balanceCount.get(derivedBal) === 1) {
+              if (confidence >= 0.5) {
+                // 이름도 부분 일치하면 0.8로 상향
+                const namePartial = clientName.includes(txName) || txName.includes(clientName)
+                confidence = namePartial ? 0.8 : Math.max(confidence, 0.5)
+                reason += reason ? ' + 금액일치' : '금액일치'
+              } else {
+                confidence = 0.5
+                reason     = '금액일치'
+              }
+            }
+
+            if (confidence > bestConfidence) {
+              bestConfidence = confidence
+              bestClientId   = client.id
+              bestReason     = reason
+            }
+
+            // 약한 후보 수집(강한 규칙이 하나도 없을 때만 사용)
+            if (normTx && client.norm.length >= 2 && (normTx.includes(client.norm) || client.norm.includes(normTx))) {
+              partialHits.add(client.id) // 예: "홍길동(동산기획)" ⊃ "동산기획", "동산기획" ⊂ "(주)동산기획"
+            }
+            if (normTx && client.rep.length >= 2 && (normTx === client.rep || normTx.includes(client.rep))) {
+              repHits.add(client.id)     // 예: 거래처 대표자명으로 입금
             }
           }
 
-          if (confidence > bestConfidence) {
-            bestConfidence = confidence
-            bestClientId   = client.id
-            bestReason     = reason
-          }
+          // 약한 규칙은 후보가 정확히 1곳일 때만 제안(SUGGESTED). 여러 곳이면 사람이 판단.
+          if (bestConfidence < 0.5) {
+            if (partialHits.size === 1) {
+              bestClientId   = [...partialHits][0]
+              bestConfidence = 0.65
+              bestReason     = '거래처명 부분일치'
+            } else if (repHits.size === 1) {
+              bestClientId   = [...repHits][0]
+              bestConfidence = 0.65
+              bestReason     = '대표자명 일치'
+            }
           }
         }
       }
@@ -1602,6 +1678,13 @@ bankRouter.post('/transactions/:id/apply', requireRole('ADMIN'), async (c) => {
       }, outcome.status as 400 | 404 | 409)
     }
 
+    // 적용 = 사람이 이 거래처를 승인한 것 → 규칙 학습(다음부터 자동매칭)
+    await learnMatchRule(c, tx.counterpart_name, {
+      clientId: Number(clientId),
+      userId: user?.id ?? 1,
+      entityId: tx.entity_id ?? getEntityId(c) ?? 1,
+    })
+
     return c.json({
       success: true,
       data: {
@@ -1689,6 +1772,13 @@ bankRouter.post('/transactions/batch-apply', requireRole('ADMIN'), async (c) => 
           })
           continue
         }
+        // 매칭+적용 통합(2026-07-27): 적용 = 거래처 승인 → 규칙 학습까지 한 번에.
+        // (구 [일괄 매칭] 버튼이 하던 학습을 여기로 흡수 — '적용만 쓰면 학습 안 되는' 갭 제거)
+        await learnMatchRule(c, tx.counterpart_name, {
+          clientId: Number(effectiveClientId),
+          userId: user?.id ?? 1,
+          entityId: tx.entity_id ?? getEntityId(c) ?? 1,
+        })
         results.push({ id: txId, success: true, payment_id: outcome.ledgerId, link_mode: outcome.mode })
       } catch (err) {
         console.error('Payment record error for transaction:', txId, err)
@@ -1719,7 +1809,9 @@ bankRouter.post('/transactions/batch-apply', requireRole('ADMIN'), async (c) => 
   }
 })
 
-// POST /api/bank/transactions/batch-match — 일괄 매칭
+// POST /api/bank/transactions/batch-match — 일괄 매칭(거래처 확정만, 원장 미반영)
+//   2026-07-27 UI 통합: [일괄 매칭] 버튼 제거 → 화면 진입점 없음. batch-apply가 확정+반영+학습을 모두 수행.
+//   라우트는 보존(외부/스크립트 호출·되돌리기 대비). UI 복원 시 pages/bank.ts 플로팅바에 버튼 추가.
 bankRouter.post('/transactions/batch-match', requireRole('ADMIN'), async (c) => {
   try {
     const body = await c.req.json()

@@ -670,36 +670,12 @@
     });
   };
 
-  // Batch match — 선택한 거래들을 각 행에서 지정한 거래처로 한번에 CONFIRMED
-  window.batchMatch = async function() {
-    var matches = [];
-    document.querySelectorAll('.tx-check:checked').forEach(function(el) {
-      var txId = parseInt(el.getAttribute('data-id'), 10);
-      var clientInput = document.getElementById('clientId_' + txId);
-      var clientId = clientInput ? parseInt(clientInput.value, 10) : 0;
-      if (clientId) {
-        matches.push({ transaction_id: txId, client_id: clientId });
-      }
-    });
-    if (!matches.length) {
-      showToast('매칭할 항목을 선택하고 거래처를 지정하세요.', 'warning');
-      return;
-    }
-    if (!(await showConfirm(matches.length + '건을 일괄 매칭하시겠습니까?'))) return;
-    axios.post('/api/bank/transactions/batch-match', { matches: matches }).then(function(r) {
-      var d = r.data.data || {};
-      showToast((d.succeeded || matches.length) + '건 매칭 완료', 'success');
-      loadTransactions();
-    }).catch(function(e) {
-      var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '일괄 매칭 실패';
-      showToast(msg, 'error');
-    });
-  };
-
-  // Batch apply — 선택한 거래들을 일괄 적용 (UI에서 선택한 거래처 매핑 포함)
+  // Batch apply — 선택 건의 거래처 확정 + 원장 반영 + 규칙 학습을 한 번에 (구 [일괄 매칭] 통합, 2026-07-27)
+  //   거래처 미지정 건은 서버가 '매칭된 거래처 없음'으로 건별 실패 처리 → 결과 요약에 사유별로 표시.
   window.batchApply = async function() {
     var ids = [];
     var clientMap = {};
+    var noClient = 0;
     document.querySelectorAll('.tx-check:checked').forEach(function(el) {
       var txId = parseInt(el.getAttribute('data-id'), 10);
       ids.push(txId);
@@ -707,16 +683,26 @@
       var clientInput = document.getElementById('clientId_' + txId);
       var clientId = clientInput ? parseInt(clientInput.value, 10) : 0;
       if (clientId) clientMap[String(txId)] = clientId;
+      else noClient++;
     });
     if (!ids.length) { showToast('적용할 항목을 선택하세요.', 'warning'); return; }
-    if (!(await showConfirm(ids.length + '건을 일괄 적용하시겠습니까?'))) return;
+    var confirmMsg = ids.length + '건의 거래처를 확정하고 원장에 반영합니다. 진행할까요?';
+    if (noClient > 0) confirmMsg += '\n(거래처 미지정 ' + noClient + '건은 건너뜁니다)';
+    if (!(await showConfirm(confirmMsg))) return;
     axios.post('/api/bank/transactions/batch-apply', {
       transaction_ids: ids,
       client_map: Object.keys(clientMap).length ? clientMap : undefined
     }).then(function(r) {
       var d = r.data.data || {};
       var msg = (d.succeeded || 0) + '건 적용 완료';
-      if (d.failed > 0) msg += ', ' + d.failed + '건 실패';
+      if (d.failed > 0) {
+        msg += ', ' + d.failed + '건 실패';
+        // 실패 사유 상위 2종 요약(전건 나열 금지 — 상세는 행별 상태로 확인)
+        var reasons = {};
+        (d.results || []).forEach(function(x) { if (!x.success && x.error) reasons[x.error] = (reasons[x.error] || 0) + 1; });
+        var top = Object.keys(reasons).sort(function(a, b) { return reasons[b] - reasons[a]; }).slice(0, 2);
+        if (top.length) msg += ' (' + top.map(function(k) { return k + ' ' + reasons[k] + '건'; }).join(', ') + ')';
+      }
       showToast(msg, d.failed > 0 ? 'warning' : 'success');
       loadTransactions();
     }).catch(function(e) {
