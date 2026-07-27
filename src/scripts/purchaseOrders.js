@@ -87,9 +87,16 @@ async function loadSupplierFilter() {
   } catch(e) { console.warn('loadSupplierFilter:', e); }
 }
 
+// 법인간거래 포함 여부 — 목록·통계·CSV가 같은 값을 써야 총계가 어긋나지 않음
+function poIncludeIcParam() {
+  var el = document.getElementById('poIncludeIntercompany');
+  return (el && el.checked) ? '1' : '';
+}
+
 async function loadStats() {
   try {
-    var res = await axios.get('/api/purchase-orders/stats');
+    var ic = poIncludeIcParam();
+    var res = await axios.get('/api/purchase-orders/stats' + (ic ? '?include_intercompany=1' : ''));
     if (res.data.success) {
       var d = res.data.data;
       var confirmedEl = document.getElementById('statConfirmed');
@@ -146,9 +153,11 @@ async function loadPOs(page) {
     overdue = '1';
   }
   var supplierId = document.getElementById('supplierFilter') ? document.getElementById('supplierFilter').value : '';
+  var includeIc = poIncludeIcParam();
   var url = '/api/purchase-orders?page=' + currentPage + '&limit=20&search=' + encodeURIComponent(search)
     + '&status=' + status + '&sort=' + sort + (overdue ? '&overdue=1' : '')
-    + (supplierId ? '&supplier_id=' + supplierId : '');
+    + (supplierId ? '&supplier_id=' + supplierId : '')
+    + (includeIc ? '&include_intercompany=1' : '');
   try {
     // #421: 로딩 표시(일관 포맷)
     var _poTb = document.getElementById('poTableBody');
@@ -590,6 +599,7 @@ async function exportPoCsv() {
     var search = document.getElementById('searchInput').value;
     if (status) params.set('status', status);
     if (search) params.set('search', search);
+    if (poIncludeIcParam()) params.set('include_intercompany', '1');
     var res = await authFetch('/api/purchase-orders/export/csv?' + params.toString());
     if (!res.ok) throw new Error('서버 오류');
     var blob = await res.blob();
