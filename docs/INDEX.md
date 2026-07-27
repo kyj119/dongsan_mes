@@ -18,14 +18,14 @@
 |---|---|---|---|
 | `README.md` | 🟢 | 프로젝트 소개·실행법 | 루트 유지(표준) |
 | `CLAUDE.md` | 🟢 | Claude 작업 규칙 | 루트 유지 |
-| `IMPROVEMENT_BACKLOG.md` | 🟢 | 개선 백로그(활성 단일본) | ⚠️266K 비대 — 다이어트 필요(auto-improve 연동이라 수동 절삭 금지, 사이클 이관으로) |
+| `IMPROVEMENT_BACKLOG.md` | 🟢 | 개선 백로그(활성 단일본) | ⚠️**196KB/605줄 비대** — 다이어트 필요. 작업 지시=`docs/HANDOFF-doc-diet.md` |
 | `IMPROVEMENT_BACKLOG_ARCHIVE.md` | 🗄️ | 과거 auto-improve 사이클 이관 싱크 | **삭제 금지** — 백로그 다이어트의 이관 목적지 |
 
 ## 2. `.claude/` (운영 메모리)
 
 | 문서 | 상태 | 성격 | 비고 |
 |---|---|---|---|
-| `PROJECT_STATUS.md` | 🟢 | 현황판(단일 소스) | 작업 시작/완료 시 갱신 |
+| `PROJECT_STATUS.md` | 🟢 | 현황판(단일 소스) | 작업 시작/완료 시 갱신. 🔴**192KB/302줄 — "세션 시작 시 읽기" 지시가 읽기 상한에 걸려 상단 일부만 로드됨.** 이관 지시=`docs/HANDOFF-doc-diet.md` |
 | `PROJECT_STATUS_ARCHIVE.md` | 🗄️ | 현황판 과거분 이관 싱크 | **삭제 금지** — 다이어트 이관 목적지 |
 | `design-decisions.md` | 🟢 | 설계 결정 인덱스(A~BI) | references/decisions-*와 연결. ⚠️BI(역할확장)는 인덱스 전용 — 상세는 auto-memory 정본 |
 | `references/` 8건 | 🟢 | architecture-flow·decisions-{business,code,money}·glossary·project-context·agent-team-guide·hex-to-tailwind-map | 정리됨, 손대지 말 것 |
@@ -44,6 +44,7 @@
 | `BARCODE_INVENTORY_SPEC_PENDING.md` | 🟡 | 바코드 입출고 재고 — 구체화 대기(#412, owner 결정) |
 | `HANDOFF-flexi-nest-tracking.md` | 🟡 | Flexi 네스팅 추적 — 코드 완료·**prod 미배포** 인계 |
 | `HANDOFF-fax-barobill.md` | 🟡 | 바로빌 팩스 FTP — prod 배포완료·**실전 미검증** |
+| `HANDOFF-doc-diet.md` | 🟢 | **상태판·백로그 다이어트 인계** — 복붙용 프롬프트 포함. PROJECT_STATUS가 읽기 상한 초과로 잘리는 현행 장애 해소용 |
 | `HANDOFF-sunmyung-import-execution.md` | 🟡 | 선명 매입매출 이관 실행 인계 (이관 완결) |
 | `HANDOFF-sunmyung-purchase.md` | 🟡 | 선명 매입 인계 (이관 완결) |
 | ~~`bank-review-2026-06-24.md`~~ | 🗄️ | 완결 → `archive/` 이동 (2026-07-02) |
