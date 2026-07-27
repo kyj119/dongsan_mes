@@ -99,7 +99,7 @@ export const bankPageContent = `
             <button onclick="loadFundSummary()" class="text-xs text-gray-500 hover:text-blue-600"><i class="fas fa-sync-alt mr-1"></i>새로고침</button>
           </div>
           <div class="ds-card overflow-hidden mb-6">
-            <div class="overflow-x-auto">
+            <div class="overflow-x-auto" style="max-height: 38vh; min-height: 140px; overflow-y: auto;">
               <table class="w-full border-collapse ds-table">
                 <thead>
                   <tr class="bg-gray-50 border-b">
@@ -125,7 +125,7 @@ export const bankPageContent = `
             </button>
           </div>
           <div class="ds-card overflow-hidden">
-            <div class="overflow-x-auto">
+            <div class="overflow-x-auto" style="max-height: 42vh; min-height: 140px; overflow-y: auto;">
               <table class="w-full border-collapse ds-table">
                 <thead>
                   <tr class="bg-gray-50 border-b">
