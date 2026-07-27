@@ -726,14 +726,21 @@ messagesRouter.post('/send-bulk', async (c) => {
       entityId: getEntityId(c),
     })
 
+    // 건별 결과(sendMMS 등)가 있으면 성공/실패 건수를 함께 돌려준다.
+    // 프론트가 '완료'로 뭉뚱그리면 전건 실패도 성공처럼 보이므로 판단 근거를 준다.
+    const perItem = sendResult.results || []
+    const successCount = perItem.length > 0 ? perItem.filter(r => r.ok).length : (sendResult.receiptNum ? messages.length : 0)
     return c.json({
       success: true,
       data: {
         log_id: logId,
         receipt_num: sendResult.receiptNum,
         status: sendResult.receiptNum ? 'SUCCESS' : 'FAILED',
+        message: sendResult.message,
         channel,
         receiver_count: messages.length,
+        success_count: successCount,
+        fail_count: messages.length - successCount,
         type: templateCode,
       }
     })

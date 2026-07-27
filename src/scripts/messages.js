@@ -1219,16 +1219,31 @@ async function sendBulk() {
     }
 
     var res = await axios.post('/api/messages/send-bulk', payload);
-    if (res.data.success) {
-      showToast('대량 발송 완료 (' + (res.data.data.receiver_count || res.data.data.sent_count || 0) + '건)', 'success');
-      bulkSelectedRecipients = [];
-      renderSelectedTags();
-      switchMsgTab('history');
+    if (!res.data.success) { showToast(res.data.error || '발송 실패', 'error'); return; }
+
+    // ⚠️ 서버는 발송 실패도 HTTP 200(success:true)+data.status='FAILED'로 돌려준다.
+    //    이걸 그냥 '완료'로 표시하면 전건 실패가 성공으로 보인다(실제 겪음: 바로빌 -10000 전건 실패).
+    var d = res.data.data || {};
+    var total = d.receiver_count || 0;
+    var okCnt = (d.success_count != null) ? d.success_count : (d.status === 'FAILED' ? 0 : total);
+    var failCnt = (d.fail_count != null) ? d.fail_count : (total - okCnt);
+
+    if (okCnt === 0) {
+      showToast('발송 실패 (' + total + '건) — ' + (d.message || '바로빌 응답 오류'), 'error');
       loadLogs();
-      loadSummary();
-    } else {
-      showToast(res.data.error || '발송 실패', 'error');
+      return;   // 실패 시 수신자 선택을 지우지 않는다(원인 고치고 바로 재시도)
     }
+    if (failCnt > 0) {
+      showToast('일부 발송 (' + okCnt + '건 접수 / ' + failCnt + '건 실패) — ' + (d.message || ''), 'warning');
+    } else {
+      showToast('대량 발송 완료 (' + okCnt + '건)', 'success');
+    }
+    bulkSelectedRecipients = [];
+    renderSelectedTags();
+    updateBulkSendLabel();
+    switchMsgTab('history');
+    loadLogs();
+    loadSummary();
   } catch(e) {
     showToast('발송 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
   }
