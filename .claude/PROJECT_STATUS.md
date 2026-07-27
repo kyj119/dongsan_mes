@@ -9,14 +9,26 @@
 
 ## ⚠️ 미해결 잠복 (2026-07-27 다이어트 시 승격 — 완료 이력에 묻혀 있던 것)
 
-| 건 | 상태 | 다음 액션 |
+> **2026-07-28 prod 실태 전수 재검증 완료.** 아래 6건 중 **4건이 이미 배포된 상태**였다(기록만 낡음).
+> `deploy.yml`이 **main push 자동배포**라 main에 코드가 있으면 이미 prod다 — "커밋·미배포" 기록을 그대로 믿지 말고 **prod 실측으로 확인**할 것.
+
+| 건 | 재검증 결과 (2026-07-28) | 남은 것 |
 |---|---|---|
-| 워크벤치 P1 시안 검수 | 코드 prod 배포됨(`b0df71c4`, 2026-06-11)이나 **권한 마이그 0307 미적용 → /workbench 비노출** | `npm run db:migrate:prod`(0307) 후 계정 실확인·권한 개방 |
-| 세션5 미배포분 | N+1 8파일 + 청구 NULL버그 = 로컬 검증완료·**미커밋·미배포**(2026-06월 기록) | ⚠️**유효성 먼저 검증** — 그 세션 워킹트리 소실 가능. 대상: orders/core·orders/queries·purchaseInvoices·purchaseOrders/templates·purchaseRequests·quotations·rip·taxInvoices |
-| 휴가→근태 자동연동 | 커밋·**미배포** (2026-06-13) | 정본=[[design-leave-attendance-link]] |
-| LogWatcher 장비중심 | P1~P3 구현·**미배포**, P4 대기 | 정본=[[project-logwatcher-rollout]] |
-| IA 멀티소스 임포지션 | 🚧 P1 배관만 prod, 이후 단계 미착수 | spec `2026-07-08-ia-editor-multisource-imposition.md` |
-| 품목 마스터 신모델 | 단가 전부 0(전역 과제)·간판 BOM 보류. 등록 자체는 진행됨 | **정본=auto-memory 품목 마스터 항목**. ⚠️구 기록의 "정본=memory/session-context.md" 포인터는 그 파일이 세션마다 덮어써져 **이미 깨짐** |
+| 워크벤치 P1 시안 검수 | ✅ **해소** — 0307은 **이미 적용돼 있었고**(prod `permission_pages`에 `/workbench` 존재) 메뉴도 등록됨(`menu.ts:98`). 실제 원인은 `INSERT OR IGNORE`가 기존 행을 못 덮어써 **DESIGNER만 `can_access=0`** 이었던 것 | 없음. prod UPDATE로 DESIGNER 개방 완료 |
+| 휴가→근태 자동연동 | ✅ **이미 배포됨** — `src/utils/leaveAttendance.ts` main 존재, `leaves.ts:615` `markLeaveAttendance` 호출, 이후 `a4081ba9`로 hardening까지. prod `source='LEAVE'`가 0건인 건 **`leave_requests` 자체가 0행**이라 그런 것(정상) | 없음. 실사용 시 자연 검증 |
+| LogWatcher 장비중심 | ✅ **P1~P3 배포됨** — prod `equipment` 24행 운영 중 | P4만 잔여(spec `2026-06-15-logwatcher-equipment-centric.md`) |
+| IA 멀티소스 임포지션 | ✅ **P1 배관 배포됨** — `6ff41f40`이 main에 포함, `iaEditor.js` 마커 13개. 브랜치 `feat/ia-multisource-imposition`은 **잔재**(삭제 가능) | P2 이후 미착수 |
+| 세션5 미배포분 | ⚠️ **원 기록 무효** — 그 세션 워킹트리는 소실. 다만 N+1 청크 패턴이 **8파일 중 6개에 이미 적용**돼 있어 실질 해소 | `quotations.ts`(동적 IN절 1·for 5)·`taxInvoices/batch.ts`(동적 IN절 2)만 **별건 재감사** 대상 → auto-improve Area 2 |
+| 품목 마스터 신모델 | 유지 — 단가 전부 0(전역 과제)·간판 BOM 보류 | **정본=auto-memory 품목 마스터 항목**. ⚠️구 기록의 "정본=memory/session-context.md" 포인터는 그 파일이 세션마다 덮어써져 **이미 깨짐** |
+
+### 🛑 중단 — 판단 후 재개할 것
+
+| 건 | 왜 멈췄나 |
+|---|---|
+| `session/ia-web-sunset` 머지 (JSX 판짜기 P1a) | 브랜치가 `iaeShelfBinPack` 이식(주석에 명시)인데, 이후 세션이 **shelf 패커 겹침 버그를 실증**하고 정본을 **maxrects로 고정**했다. 그대로 머지하면 **알려진 버그를 JSX 판짜기에 도입**한다. maxrects 기준으로 재작성할지 판단 필요 → [[reference-nesting-harness]] |
+| MMS 이미지 규격 상향 | 바로빌 개발자센터가 SPA라 공식 규격을 못 읽음. 확보한 건 통신사 표준(300KB·SKT/KT 1280×960)뿐. 현재 `MAX_BYTES=300KB`(표준 일치)·`MAX_PX=1000`(보수적, `shell.js:_mmsLimits`). **실발송 검증 전 변경 보류** |
+| 알림톡 대량발송 실검증 | 수신번호 확정 필요(실발송 7원) |
+| IA 실가공 자연검증 · #310 직접발행 폼 | 현장/실사용 작업 |
 
 > **현재 초점**: 워크플로우 마스터 기획(`docs/superpowers/specs/2026-07-01-workflow-improvement-master-plan.md`) 실행 + 인사/급여/근태 강화. **배포완료**: Phase0·X2·X4·X5·G-1·G-7 + HR(B1 급여확정잠금·B2 CAPS경보·B4 연차무인+촉진소멸배너·미사용연차수당 주입) + 급여관리 기본뷰=급여대장 전환 + **출고관리 v2(검수·전량출고·합배송 확장·/pack)** + **창고 배치도(0440)** + 전체 코드리뷰 P1/P2. **HR ✅B1~B5 완결**(B3 셀프·B5 7월요율 2026-07-18 배포). 그외=Phase1~5(단가·실원가·간판BOM 등).
 > **⚠️ 급여계산 진단(신현서 케이스, 코드정상·입력차이)**: MES 공제가 ECOUNT보다 높음 = **①부양가족 0명(→본인1, 소득세 +66k 최대) ②차량유지비 20만 비과세 미처리(taxable=400만) ③국민연금 base=당월급여(400만) vs ECOUNT 기준소득월액(~371만)**. MES 간이세액표 룩업·100/120옵션·요율(9.5/7.19/13.14%)·상한(637만) 전부 정상. 조치=부양가족·차량유지비 비과세 입력 / 개선여지=국민연금 기준소득월액 필드. → [[payroll-calc-ecount-diff]]
