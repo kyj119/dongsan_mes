@@ -319,6 +319,47 @@ kakaoRouter.get('/balance', async (c) => {
 })
 
 // ────────────────────────────────────────────────────────────────────────────
+// GET /sms-diag — 문자(SMS/LMS/MMS) 발송 진단.
+//   발신번호 사전등록 목록 + (code 지정 시) 바로빌 오류코드 한글 사유.
+//   오류코드 문서가 SPA라 브라우저 없이는 못 읽는 문제를 API로 대체 — 발송 실패 원인 규명용.
+// ────────────────────────────────────────────────────────────────────────────
+kakaoRouter.get('/sms-diag', async (c) => {
+  try {
+    const provider = await getKakaoProvider(c)
+    if (!provider) {
+      return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
+    }
+    const settings = await getKakaoSettings(c.env.DB, c.get('entityId') || 1)
+    const codeParam = c.req.query('code')
+    const code = codeParam ? parseInt(codeParam, 10) : null
+
+    let fromNumbers: string[] = []
+    let fromNumbersError = ''
+    try {
+      fromNumbers = await provider.listFromNumbers()
+    } catch (e) {
+      fromNumbersError = e instanceof Error ? e.message : String(e)
+    }
+
+    const senderNorm = (settings.senderNum || '').replace(/-/g, '')
+    return c.json({
+      success: true,
+      data: {
+        sender_num: settings.senderNum,
+        registered_numbers: fromNumbers,
+        sender_registered: fromNumbers.some(n => n.replace(/-/g, '') === senderNorm),
+        from_numbers_error: fromNumbersError || undefined,
+        error_code: code,
+        error_string: code != null && Number.isFinite(code) ? await provider.getErrString(code) : undefined,
+      }
+    })
+  } catch (error) {
+    console.error('src/routes/kakao.ts GET /sms-diag error:', error)
+    return c.json({ success: false, error: '문자 발송 진단 실패' }, 500)
+  }
+})
+
+// ────────────────────────────────────────────────────────────────────────────
 // GET /unit-cost — 라이브 발송 단가 조회(바로빌 SOAP 5콜). '단가 새로고침' 전용.
 //   #466: 상시 조회는 상수(/balance)로, 실측 대조가 필요할 때만 명시적으로 이 엔드포인트 호출.
 // ────────────────────────────────────────────────────────────────────────────

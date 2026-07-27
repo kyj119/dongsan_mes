@@ -329,6 +329,28 @@ export class BarobillSmsProvider {
     }
   }
 
+  /**
+   * 바로빌 오류코드 → 한글 사유 (GetErrString).
+   * 오류코드 문서는 dev.barobill.co.kr SPA라 fetch로 못 읽는다(Playwright 필요) → API로 직접 조회.
+   */
+  async getErrString(code: number): Promise<string> {
+    try {
+      return (await barobillCall(this.config, 'SMS', 'GetErrString', { ErrCode: code })).trim()
+    } catch (err) {
+      return ''
+    }
+  }
+
+  /**
+   * 사전등록된 SMS 발신번호 목록 (GetSMSFromNumbers).
+   * 발신번호 사전등록제(전기통신사업법)라 미등록 번호로는 SMS/LMS/MMS 발송이 거절된다.
+   */
+  async listFromNumbers(): Promise<string[]> {
+    const raw = await barobillCall(this.config, 'SMS', 'GetSMSFromNumbers', {})
+    const nums = Array.from(raw.matchAll(/<string>(.*?)<\/string>/gs)).map(m => (m[1] || '').trim()).filter(Boolean)
+    return nums
+  }
+
   /** 발송 결과 조회 */
   async getMessages(receiptNum: string): Promise<any> {
     try {
