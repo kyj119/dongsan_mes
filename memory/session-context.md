@@ -1,6 +1,6 @@
-# 세션 핸드오프 — IA 세션루프 B단계(연동 강화) 구현·로컬검증 완료, 배포 대기 (2026-07-27 #9)
+# 세션 핸드오프 — IA 세션루프 B단계(연동 강화) prod 배포 완료 (2026-07-27 #11)
 
-> durable=[[project-ia-designer-loop]]·spec `2026-07-23-ia-palette-session-loop.md` §3-B·D6·§4.2. **branch `session/ia-b-link`(worktree) 커밋 완료·로컬 e2e 전 구간 통과·prod 미배포(사용자 확인 대기)**. 직전 #8(A0 CEP A1 후반+배치 ingest 수정, deploy `af2dcd54`)은 PROJECT_STATUS·durable로 이관.
+> durable=[[project-ia-designer-loop]]·spec `2026-07-23-ia-palette-session-loop.md` §3-B·D6·§4.2. **main `fcb94129`·deploy `10f2d4de`·마이그 0477 prod 적용·배포 완료**(격리 worktree 빌드, 로컬 main `696791a6` 발주 법인간거래 커밋 흡수 superset·push FIRST, 직후 타 세션 `fca59656` 동일 커밋 재배포=내용 동일 수렴). 검증=entity 60/60·페이지 16/16·API 게이트 15/15(401)·prod 번들 마커(ofTray*·batch_key·법인간거래)·prod backfill(waiting 19 중 6건 batch_key). 직전 #8(A0 CEP A1 후반+배치 ingest 수정, deploy `af2dcd54`)은 PROJECT_STATUS·durable로 이관.
 > ⚠️ 아래 #4(MMS)·#3(자금관리)는 같은 날 병렬 세션 기록 — 보존.
 
 ## 이번 세션 완료 (B단계 범위 5건 전부)
@@ -22,8 +22,8 @@
 - prod 대기함 waiting 19건 중 batch501·613 회수분 4건은 실데이터 — 배포 후 트레이에서 batch_key 그룹으로 묶여 보임(backfill 덕).
 
 ## 다음 TODO
-1. **[사용자 확인 후 배포]** ⓐ prod 마이그: `npx wrangler d1 execute webapp-production --remote --file migrations/0477_intake_batch_key.sql` ⓑ `session/ia-b-link` push→main 병합→`/deploy-verify`(격리 빌드). 배포 후 실가공 1건으로 batch_key·트레이·absorb 자연 확인.
-2. worktree 종료: `.\scripts\end-session.ps1 ia-b-link -DeleteBranch` (병합 후).
+1. ~~배포~~ **완료**(0477 prod 적용 + deploy `10f2d4de`). 남은 것: **실가공 1건에서 batch_key·트레이(내작업/그룹핑)·absorb 자연 검증**(디자이너 일괄 확정 → 대기함 트레이 → 주문 생성). prod 대기함의 로그인 사용자별 "내 작업"은 worker_id 있는 신규 회수분부터 유효(기존 19건 중 worker_id NULL 다수).
+2. worktree 종료: `.\scripts\end-session.ps1 ia-b-link -DeleteBranch` (병합 완료 상태 — 언제든 정리 가능. ⚠️로컬 dev 서버(3000)가 이 worktree dist를 서빙 중이라 end-session이 서버를 내림 → 메인에서 `npm run build && npm run dev:d1` 재기동).
 3. (이월) 판짜기 E2E·하네스 ship:gate 편입·0.5mm 밀림(별건)·D8 확정 시 조직폴더 이동.
 
 ## 검증 명령 (PowerShell)
