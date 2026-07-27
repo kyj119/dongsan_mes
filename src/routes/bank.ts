@@ -1149,8 +1149,15 @@ async function runAutoMatchEngine(
           //   강한 규칙(완전일치·정규화 완전일치·키워드·금액)은 즉시 best 갱신,
           //   약한 규칙(거래처명 부분포함·대표자명)은 후보만 모아 "유일할 때만" 채택(SUGGESTED).
           const normTx = normalizeCounterpart(txName)
-          const partialHits = new Set<number>()
-          const repHits = new Set<number>()
+          // 괄호 표기는 "개인명(상호)" 형태 → 괄호 안 상호가 실제 거래 주체.
+          //   "이성현(무지개기획)" → ['무지개기획'] (닫는 괄호가 없는 "이도운(88광고기획"도 인식)
+          const parenNames = (txName.match(/[(（][^)）]*/g) || [])
+            .map(s => normalizeCounterpart(s))
+            .filter(s => s.length >= 2)
+          const hasParen = /[(（]/.test(txName)
+          const parenHits = new Set<number>()   // 괄호 안 상호가 이 거래처와 일치
+          const prefixHits = new Set<number>()  // 입금자명이 거래처명의 앞부분(잘린 표기)
+          const repHits = new Set<number>()     // 대표자명 단독 입금
 
           for (const client of normClients) {
             const clientName = client.name
@@ -1194,19 +1201,33 @@ async function runAutoMatchEngine(
               bestReason     = reason
             }
 
-            // 약한 후보 수집(강한 규칙이 하나도 없을 때만 사용)
-            if (normTx && client.norm.length >= 2 && (normTx.includes(client.norm) || client.norm.includes(normTx))) {
-              partialHits.add(client.id) // 예: "홍길동(동산기획)" ⊃ "동산기획", "동산기획" ⊂ "(주)동산기획"
+            // 약한 후보 수집(강한 규칙이 하나도 없을 때만 사용).
+            //   ⚠️ "포함되기만 하면 후보"는 오매칭을 부른다(prod 실측: '대진'⊂'대진국기사박대혁',
+            //   '플랜'⊂'이수정(더플랜디)'). 아래 3가지 신호로만 제한한다.
+            if (client.norm.length >= 2 && parenNames.some(inner => client.norm === inner || client.norm.startsWith(inner))) {
+              // (a) 괄호 안 상호 = 실제 주체. "이금란(혜윰세이프티)"→혜윰 세이프티,
+              //     "이도운(88광고기획"→88광고기획(구미). "이수정(더플랜디)"는 '플랜'과 불일치 → 제외.
+              parenHits.add(client.id)
+            } else if (normTx.length >= 4 && client.norm.includes(normTx)) {
+              // (b) 입금자명이 거래처명의 앞부분/일부(은행 표기 잘림). "대전광역시옥외광"→사단법인 대전광역시옥외광고협회.
+              //     반대 방향(입금자명 ⊃ 거래처명)은 우연 포함 오탐이 많아 채택하지 않는다(수동 1회 → 규칙 학습으로 흡수).
+              prefixHits.add(client.id)
             }
-            if (normTx && client.rep.length >= 2 && (normTx === client.rep || normTx.includes(client.rep))) {
-              repHits.add(client.id)     // 예: 거래처 대표자명으로 입금
+            if (!hasParen && client.rep.length >= 2 && normTx === client.rep) {
+              // (c) 대표자명 단독 입금만 인정. 괄호 상호가 있으면 그 상호가 주체이므로 대표자명 매칭 금지
+              //     ("이성현(무지개기획)"에서 무지개기획 미등록인데 동명 대표자의 다른 거래처로 붙는 사고 방지).
+              repHits.add(client.id)
             }
           }
 
-          // 약한 규칙은 후보가 정확히 1곳일 때만 제안(SUGGESTED). 여러 곳이면 사람이 판단.
+          // 약한 규칙은 후보가 정확히 1곳일 때만 제안(SUGGESTED). 여러 곳이면 모호 → 사람이 판단.
           if (bestConfidence < 0.5) {
-            if (partialHits.size === 1) {
-              bestClientId   = [...partialHits][0]
+            if (parenHits.size === 1) {
+              bestClientId   = [...parenHits][0]
+              bestConfidence = 0.7
+              bestReason     = '상호 표기 일치'
+            } else if (prefixHits.size === 1) {
+              bestClientId   = [...prefixHits][0]
               bestConfidence = 0.65
               bestReason     = '거래처명 부분일치'
             } else if (repHits.size === 1) {
