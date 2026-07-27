@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-07-27T09:17:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-07-27T15:33:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,27 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **18** (GitHub OPEN 실측, 07-27T09:17 재확인 — owner 활동 없음, 동일 #554~#571) — 단 **15건은 이전 사이클에서 fixed-in-tree 확인됨(close-pending user)**, 이번 사이클 추가로 **#555도 별도 세션이 fixed-in-tree**(아래 Area 1 로그 참조) — 실질 미해결은 **#570·#571 2건뿐**. |
+| 🆕 new | **1** (GitHub OPEN 실측, 07-27T15:33 재확인 — 직전 사이클 open 18건 전부 owner가 completed로 close, 이번 사이클 신규 #572 1건만 open) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **479** — 재조회 생략(close-pending 캐시, 변동 없음). |
+| ✔️ done | **497** (`reason:completed` 절대값 실측, 07-27T15:33 — 직전 479 + 이번 사이클 사이 owner가 18건 전부 completed close) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 2 코드 품질 심층 분석 (2026-07-27T15:33):**
+> - **방법**: `git fetch origin main`(HEAD `0e0e2d0` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 2 **52회차** — 직전 Area2(`7dd2105`, 07-25T18:18, 51회차) 이후 `git log 7dd2105..HEAD -- src/routes migrations src/scripts`는 **24커밋**(후가공 도메인 프로파일 A1 P1~P4·인테이크 대기함 필드캐리·자금관리 자동매칭/일괄매칭 통합·MMS/SMS 발송·거래처 그룹(신규 contactGroups.ts)·직원 휴가 셀프신청·git 이슈 정책분 다수). 표준 스캔 전부 clean: `entity-audit.mjs`(125파일·SELECT 60·통과60·누락0), 마이그 번호 중복(기존 5쌍만, 신규 0), secret fallback grep(`fax.ts` 기존 FP만).
+> - **general-purpose 에이전트 3개 병렬**로 이번 churn 구간(24커밋) 심층 점검(N+1·dead code / authMiddleware·IDOR 형제완전성·마이그 컬럼존재성 / XSS·CHECK제약):
+>   - **🔴 net-new 확정 — #572 bank.ts batch-apply N+1 심화**: 오늘 커밋 `fb02d25`("일괄매칭+일괄적용 통합")가 `POST /transactions/batch-apply` 루프(`bank.ts:1771`)에 `learnMatchRule` 호출을 신규 추가(+1 서브요청/건). `applyBankTransaction`(:1476) 자체가 이미 경로별 4~6회 순차 D1 호출(claim UPDATE·db.batch·후속 UPDATE·cash_schedule 보조 UPDATE 등)이라 건당 6~9회. 같은 사이클의 `7f6afdf`("체크박스 Shift 범위선택 전역 도입")가 목록(cap 1000)에서 두 클릭으로 전체선택을 가능케 해 "1000건 일괄적용 시 6,000~9,000 서브요청"이라는 새 경로가 열림(Worker 서브요청 한도 1000/req 초과 위험). Area 2 SKILL의 "N+1 3번째 축"(#478) 표준 패턴과 동일 클래스 — write-path 배치 세만틱 정책 판단 필요해 **issue-only**로 #572 등록.
+>   - authMiddleware 커버리지(recursive) 후보 5건 전부 FP(순수헬퍼 `.get(` 오탐 3·`cron.ts` agentKeyMiddleware·`hrSelf.ts` scoped-token) — net-new 0.
+>   - entity_id/IDOR 형제-비대칭: 신규 `contactGroups.ts`(거래처 그룹, `migrations/0476`에 entity_id 컬럼 자체 없음=법인공유 자산 정책 명시, `clients.ts` 동일 정책과 일치)·`claims.ts`/`returns.ts`(#567 AR 자동조정, mutate 직전 entityFilter 선행 확인) 전부 정상. (참고: `messages.ts:606-611` send-bulk의 employees 타깃 조회가 entity 필터 없음을 확인했으나 이번 churn 이전부터 존재하는 코드라 범위 밖, 다음 사이클 참고용 메모만.)
+>   - 신규 마이그 0472~0476(intake_field_carry·worker_domains·fixed_expenses backfill·adjustments source_type·contact_groups) 컬럼 존재성 전수 대조 — INSERT/SELECT 컬럼 전부 일치, net-new 0.
+>   - 명시 컬럼 SELECT 존재성(~20건)·CHECK 제약 literal write·SPA innerHTML XSS(messages.js/employeeSelf.js/myLeave.js/hrDetail.js/postProcessing.js/orderForm intake.js) 전부 clean — net-new 0(dashboard.js po_number/supplier_name escapeHtml은 오늘 별도 커밋 `a7ff772`로 이미 수정됨 확인).
+> - **자동수정 0건**(발견 1건이 write-path 배치정책 판단 필요해 issue-only). **신규 이슈 1건(#572)**.
+> - **backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **1건**(#572, 직전 사이클 open 18건 전부 owner가 completed close 확인) → new **1**. `search_issues(reason:completed)` **497**(직전 479+18) → done **497**. rejected(not_planned 4 + duplicate 2) **6** 변동 없음.
+> - **🧬 SKILL 강화 없음** — 이번 사이클 발견은 기존 "N+1 3번째 축"(#478) 클래스의 재현(신규 클래스 아님).
+> - done-sync: new 1·done 497·rejected 6. 다음 순번 Area 3.
+>
 
 > **Area 1 프로덕션 헬스 (2026-07-27T09:17):**
 > - **방법**: `git fetch origin main`(HEAD `e8acc62` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). 프록시가 이번 세션도 prod 호스트 직접 curl 차단(exit 56, CONNECT tunnel 403 — `webapp-9i0.pages.dev`·`observability.mcp.cloudflare.com` 둘 다 `__agentproxy/status` `recentRelayFailures`에 재확인, `cloudflare-observability` MCP 미인증 상태 지속) — 직접 prod API/Playwright 헬스체크 불가, GitHub Actions CI 기록으로 대체(기존 사이클과 동일 제약). Area 1 **51회차** — 직전 Area1(`93d2c57`, 07-25T21:30, 50회차) 이후 전체 사이클 1바퀴(Area2~Area6) + 별도 세션(co-author \"Claude Opus 4.8\") 커밋 다수가 이미 각 Area에서 렌즈별 커버 완료.
