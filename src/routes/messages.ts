@@ -15,6 +15,9 @@ import type { SMSMessage, ATSMessage } from './kakao'
 import { generatePortalToken } from './portal'
 import { MMS_IMAGE } from '../constants/barobillCodes'
 import { stripDataUri } from '../utils/thumbnailStore'
+import { deriveClientBalancesBulk } from './ledger/ar-helpers'
+import { kstYmd } from '../utils/kstDate'
+import type { Context } from 'hono'
 
 /**
  * base64 문자열의 디코드 후 바이트 수 (atob 없이 길이 산술 — 수백KB 문자열 복사 회피).
@@ -22,6 +25,89 @@ import { stripDataUri } from '../utils/thumbnailStore'
  */
 /** MMS 대량 발송 1회 상한 기본값(건). settings.mms_bulk_limit로 조정. */
 const MMS_BULK_LIMIT_DEFAULT = 50
+
+// ────────────────────────────────────────────────────────────────────────────
+// 대량 발송 변수 치환 (#{변수})
+//
+// 알림톡은 승인 템플릿과 글자 단위로 일치해야 하고 #{} 자리만 치환 가능하다.
+// 기존 대량 발송은 전 수신자에게 동일 본문을 보내 #{고객명}이 리터럴로 나갔다
+// (출고 경로 kakao.ts resolveMsg만 수신자별 치환을 하고 있었음) → 여기서 공통화한다.
+// ────────────────────────────────────────────────────────────────────────────
+
+/** 수신자별 기본 변수 이름 — 문서·UI 도움말과 단일 소스로 맞춘다. */
+export const BULK_VAR_NAMES = ['거래처명', '고객명', '연락처', '대표자', '거래처코드', '미수금', '날짜', '기준일', '회사명'] as const
+
+/** `#{변수}` 치환. 정의되지 않은 변수는 남겨두고 호출부가 미치환 검사로 잡는다. */
+function applyVars(template: string, vars: Record<string, string>): string {
+  return template.replace(/#\{([^}]+)\}/g, (whole, name) => {
+    const key = String(name).trim()
+    return Object.prototype.hasOwnProperty.call(vars, key) ? (vars[key] ?? '') : whole
+  })
+}
+
+/** 본문에 남은 미치환 변수명 목록 (중복 제거) */
+function unresolvedVars(text: string): string[] {
+  const found = Array.from(text.matchAll(/#\{([^}]+)\}/g)).map(m => String(m[1]).trim())
+  return Array.from(new Set(found))
+}
+
+interface BulkReceiver { name?: string; phone?: string; client_id?: number; vars?: Record<string, string> }
+
+/**
+ * 수신자별 변수 해석기 — 거래처 정보·미수금·법인명·오늘 날짜를 한 번에 준비한다.
+ * 미수금은 거래처당 3쿼리(deriveClientBalance)라 대량에선 못 쓰므로 IN 그룹쿼리 일괄판을 사용.
+ * 엑셀/CSV로 들어온 vars가 자동 변수보다 **우선**한다(사용자가 명시한 값이 정답).
+ */
+async function buildBulkVarContext(c: Context<HonoEnv>, receivers: BulkReceiver[]) {
+  const db = c.env.DB
+  const clientIds = receivers.map(r => Number(r.client_id)).filter(n => Number.isFinite(n) && n > 0)
+
+  const info: Record<number, { client_name: string; client_code: string; representative: string }> = {}
+  for (let i = 0; i < clientIds.length; i += 80) {
+    const chunk = clientIds.slice(i, i + 80)
+    const ph = chunk.map(() => '?').join(',')
+    const { results } = await db.prepare(
+      `SELECT id, client_name, client_code, representative FROM clients WHERE id IN (${ph})`
+    ).bind(...chunk).all<{ id: number; client_name: string; client_code: string; representative: string }>()
+    for (const r of results || []) {
+      info[Number(r.id)] = {
+        client_name: r.client_name || '',
+        client_code: r.client_code || '',
+        representative: r.representative || '',
+      }
+    }
+  }
+
+  // 미수금은 본문에서 실제로 쓸 때만 계산(수백 명 발송에서 불필요한 부하 회피)
+  let balances: Record<number, number> = {}
+  const needsBalance = clientIds.length > 0
+  if (needsBalance) balances = await deriveClientBalancesBulk(c, clientIds)
+
+  const entityRow = await db.prepare('SELECT name FROM entities WHERE id = ?')
+    .bind(c.get('entityId') || 1).first<{ name: string }>()
+  const companyName = entityRow?.name || '동산기획'
+  const today = kstYmd()
+
+  return {
+    varsFor(r: BulkReceiver): Record<string, string> {
+      const ci = r.client_id ? info[Number(r.client_id)] : undefined
+      const bal = r.client_id ? balances[Number(r.client_id)] : undefined
+      const name = r.name || ci?.client_name || ''
+      return {
+        거래처명: name,
+        고객명: name,                                   // 승인 템플릿이 '고객명'을 쓰므로 동의어 제공
+        연락처: r.phone || '',
+        대표자: ci?.representative || '',
+        거래처코드: ci?.client_code || '',
+        미수금: bal != null ? Math.round(bal).toLocaleString() : '',
+        날짜: today,
+        기준일: today,
+        회사명: companyName,
+        ...(r.vars || {}),                              // 엑셀 열 우선
+      }
+    }
+  }
+}
 
 function base64ByteLength(b64: string): number {
   const clean = b64.replace(/\s/g, '')
@@ -595,14 +681,14 @@ messagesRouter.post('/send-bulk', async (c) => {
       return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
     }
 
-    // 수신자 목록 구성
-    let rawReceivers: Array<{ name?: string; phone?: string; client_id?: number }> = body.receivers || []
+    // 수신자 목록 구성. vars = 엑셀/CSV 추가 열(헤더명이 변수명)
+    let rawReceivers: Array<{ name?: string; phone?: string; client_id?: number; vars?: Record<string, string> }> = body.receivers || []
 
     if (targetType === 'clients') {
       const { results: clientRows } = await db.prepare(
-        `SELECT client_name, mobile FROM clients WHERE mobile IS NOT NULL AND mobile != '' ORDER BY client_name`
-      ).all<{ client_name: string; mobile: string }>()
-      rawReceivers = (clientRows || []).map((r) => ({ name: r.client_name, phone: r.mobile }))
+        `SELECT id, client_name, mobile FROM clients WHERE mobile IS NOT NULL AND mobile != '' ORDER BY client_name`
+      ).all<{ id: number; client_name: string; mobile: string }>()
+      rawReceivers = (clientRows || []).map((r) => ({ name: r.client_name, phone: r.mobile, client_id: r.id }))
     } else if (targetType === 'employees') {
       const { results: empRows } = await db.prepare(
         `SELECT name, phone FROM employees WHERE phone IS NOT NULL AND phone != '' AND is_deleted = 0 ORDER BY name`
@@ -614,12 +700,28 @@ messagesRouter.post('/send-bulk', async (c) => {
       return c.json({ success: false, error: '발송 대상이 없습니다.' }, 400)
     }
 
-    const messages: SMSMessage[] = rawReceivers
-      .filter(r => !!r.phone)
-      .map(r => ({ rcv: r.phone!, rcvnm: r.name || '수신자' }))
-
-    if (messages.length === 0) {
+    const sendable = rawReceivers.filter(r => !!r.phone)
+    if (sendable.length === 0) {
       return c.json({ success: false, error: '유효한 전화번호가 없습니다.' }, 400)
+    }
+
+    // ── 수신자별 변수 해석 ────────────────────────────────────────────────
+    const varCtx = await buildBulkVarContext(c, sendable)
+    const messages: SMSMessage[] = sendable.map(r => ({
+      rcv: r.phone!,
+      rcvnm: r.name || '수신자',
+      msg: applyVars(content.body, varCtx.varsFor(r)),
+    }))
+
+    // 미치환 변수가 남으면 발송 차단 — 알림톡은 카카오가 거부하고, 문자는 "#{고객명}"이 그대로 찍힌다
+    const leftover = unresolvedVars(messages[0].msg || '')
+    if (leftover.length > 0) {
+      return c.json({
+        success: false,
+        error: `값을 찾지 못한 변수가 있습니다: ${leftover.map(v => '#{' + v + '}').join(', ')}. `
+          + `엑셀에 해당 이름의 열을 추가하거나 본문에서 변수를 빼주세요. `
+          + `(자동 제공 변수: ${BULK_VAR_NAMES.map(v => '#{' + v + '}').join(', ')})`,
+      }, 400)
     }
 
     // ── MMS 대량 발송 가드 ────────────────────────────────────────────────
@@ -747,6 +849,40 @@ messagesRouter.post('/send-bulk', async (c) => {
   } catch (error) {
     console.error('src/routes/messages.ts POST /send-bulk error:', error)
     return c.json({ success: false, error: '대량 메시지 발송 실패' }, 500)
+  }
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// POST /preview-bulk — 대량 발송 변수 치환 미리보기 (발송·과금 없음)
+//   미수금·대표자 등 서버에서만 아는 값이 있어 프론트 단독 미리보기는 부정확하다.
+//   앞 3명분 치환 결과 + 미치환 변수 목록을 돌려준다.
+// ────────────────────────────────────────────────────────────────────────────
+messagesRouter.post('/preview-bulk', async (c) => {
+  try {
+    const body = await c.req.json() as any
+    const content = body.content || {}
+    const receivers: BulkReceiver[] = (body.receivers || []).filter((r: BulkReceiver) => !!r.phone)
+    if (!content.body) return c.json({ success: false, error: 'content.body는 필수입니다.' }, 400)
+    if (receivers.length === 0) return c.json({ success: false, error: '수신자가 없습니다.' }, 400)
+
+    const sample = receivers.slice(0, 3)
+    const varCtx = await buildBulkVarContext(c, sample)
+    const previews = sample.map(r => {
+      const resolved = applyVars(content.body, varCtx.varsFor(r))
+      return { name: r.name || '', phone: r.phone || '', body: resolved, unresolved: unresolvedVars(resolved) }
+    })
+    return c.json({
+      success: true,
+      data: {
+        previews,
+        total: receivers.length,
+        unresolved: Array.from(new Set(previews.flatMap(p => p.unresolved))),
+        available_vars: BULK_VAR_NAMES,
+      }
+    })
+  } catch (error) {
+    console.error('src/routes/messages.ts POST /preview-bulk error:', error)
+    return c.json({ success: false, error: '미리보기 실패' }, 500)
   }
 })
 

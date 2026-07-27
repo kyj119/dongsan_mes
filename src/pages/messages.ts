@@ -120,8 +120,13 @@ export function messagesPage(c: Context<HonoEnv>) {
         <!-- 선택된 수신자 태그 표시 영역 -->
         <div id="bulkSelectedTags" class="flex flex-wrap gap-1.5 mb-2"></div>
         <div id="bulkCustomArea" class="hidden">
-          <textarea id="bulkReceivers" rows="4" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="전화번호,이름 (줄바꿈 구분)&#10;010-1234-5678,홍길동&#10;010-9876-5432,김철수"></textarea>
-          <div class="text-xs text-gray-400 mt-1">이메일 채널의 경우: email@example.com,이름</div>
+          <div class="flex items-center gap-2 mb-2">
+            <input type="file" id="bulkCsvFile" accept=".csv,text/csv" class="hidden" onchange="onBulkCsvPick(this)">
+            <button type="button" onclick="document.getElementById('bulkCsvFile').click()" class="px-3 py-1.5 border border-gray-300 rounded-lg text-xs text-gray-700 hover:bg-gray-50"><i class="fas fa-file-csv mr-1"></i>CSV 파일</button>
+            <span class="text-xs text-gray-400">또는 엑셀에서 범위를 복사해 아래에 붙여넣기</span>
+          </div>
+          <textarea id="bulkReceivers" rows="6" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono" oninput="parseBulkReceivers()" placeholder="엑셀에서 복사해 붙여넣으세요 (탭·쉼표 모두 인식)&#10;&#10;전화번호	거래처명	미수금&#10;010-1234-5678	대진	350000&#10;010-9876-5432	푸른솔	120000"></textarea>
+          <div id="bulkParseInfo" class="text-xs text-gray-500 mt-1"></div>
         </div>
       </div>
       <div class="mb-6">
@@ -158,6 +163,15 @@ export function messagesPage(c: Context<HonoEnv>) {
           <div class="flex justify-between mt-1">
             <span id="bulkChannelLabel" class="text-xs text-blue-600 font-medium">카카오톡</span>
             <span id="bulkByteCounter" class="text-xs text-gray-400 hidden">0 / 90 byte</span>
+          </div>
+          <!-- 변수 도움말 + 미리보기 -->
+          <div class="mt-2 p-2.5 bg-gray-50 rounded-lg">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-xs font-semibold text-gray-600">수신자별 변수 <span class="font-normal text-gray-400">(클릭하면 본문에 삽입)</span></span>
+              <button type="button" onclick="previewBulkMessage()" class="text-xs text-blue-600 hover:text-blue-800"><i class="fas fa-eye mr-1"></i>치환 미리보기</button>
+            </div>
+            <div id="bulkVarChips" class="flex flex-wrap gap-1"></div>
+            <div id="bulkPreviewBox" class="hidden mt-2 p-2 bg-white border border-gray-200 rounded text-xs whitespace-pre-wrap text-gray-700"></div>
           </div>
         </div>
       </div>

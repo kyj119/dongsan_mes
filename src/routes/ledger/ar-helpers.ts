@@ -29,6 +29,52 @@ export async function deriveClientBalance(c: Context<HonoEnv>, clientId: number 
   return (Number(billed?.v) || 0) - (Number(paid?.v) || 0) - (Number(adj?.v) || 0)
 }
 
+/**
+ * 여러 거래처의 미수금을 한 번에 파생 — deriveClientBalance와 동일 정의(billed − payments − adjustments).
+ * 단건 헬퍼는 거래처당 3쿼리라 대량 발송(수백 명)에서 못 쓴다 → IN 그룹쿼리 3회(청크당)로 축약.
+ * ⚠️ D1 바인드 한도(~100) 때문에 80개씩 청크 분할 [[d1-bind-param-limit]].
+ * 반환: { [clientId]: 미수금 }. 조회되지 않은 거래처는 키 없음.
+ */
+export async function deriveClientBalancesBulk(
+  c: Context<HonoEnv>,
+  clientIds: Array<number | string>
+): Promise<Record<number, number>> {
+  const ids = Array.from(new Set(clientIds.map(Number).filter(n => Number.isFinite(n) && n > 0)))
+  const out: Record<number, number> = {}
+  if (ids.length === 0) return out
+
+  for (let i = 0; i < ids.length; i += 80) {
+    const chunk = ids.slice(i, i + 80)
+    const ph = chunk.map(() => '?').join(',')
+
+    const { clause: gEf, params: gP } = entityFilter(c, 'g')
+    const { results: billed } = await c.env.DB.prepare(
+      `SELECT o.client_id AS cid, COALESCE(SUM(g.billed_amount), 0) AS v
+       FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+       WHERE o.client_id IN (${ph}) AND g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${gEf}
+       GROUP BY o.client_id`
+    ).bind(...chunk, ...gP).all<{ cid: number; v: number }>()
+
+    const { clause: pEf, params: pP } = entityFilter(c, 'p')
+    const { results: paid } = await c.env.DB.prepare(
+      `SELECT client_id AS cid, COALESCE(SUM(amount), 0) AS v FROM payments p
+       WHERE client_id IN (${ph})${pEf} GROUP BY client_id`
+    ).bind(...chunk, ...pP).all<{ cid: number; v: number }>()
+
+    const { clause: aEf, params: aP } = entityFilter(c, 'a')
+    const { results: adj } = await c.env.DB.prepare(
+      `SELECT client_id AS cid, COALESCE(SUM(amount), 0) AS v FROM adjustments a
+       WHERE client_id IN (${ph})${aEf} GROUP BY client_id`
+    ).bind(...chunk, ...aP).all<{ cid: number; v: number }>()
+
+    for (const id of chunk) out[id] = 0
+    for (const r of billed || []) out[Number(r.cid)] = (out[Number(r.cid)] || 0) + (Number(r.v) || 0)
+    for (const r of paid || []) out[Number(r.cid)] = (out[Number(r.cid)] || 0) - (Number(r.v) || 0)
+    for (const r of adj || []) out[Number(r.cid)] = (out[Number(r.cid)] || 0) - (Number(r.v) || 0)
+  }
+  return out
+}
+
 // ── #567: 클레임/반품 해결금액 → AR(adjustments) 자동조정 멱등 동기화 ──
 // 출처(source_type/source_id)당 자동조정 1건. 재해결·금액수정·처리방식 변경 시 DELETE→(조건충족)INSERT로 재동기화.
 // amount<=0 이거나 비-환불/할인이면 기존 자동조정만 제거(INSERT 없음). 수동 조정(source_type NULL)은 불간섭.

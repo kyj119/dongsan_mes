@@ -27,7 +27,7 @@ function switchMsgTab(tab) {
     }
   });
   // 탭 진입 시 데이터 로드
-  if (tab === 'bulk') loadBulkTemplates();
+  if (tab === 'bulk') { loadBulkTemplates(); renderBulkVarChips(); }
   if (tab === 'groups') loadContactGroups();
   if (tab === 'templates') switchTplSubTab(currentTplSubTab || 'kakao');
   if (tab === 'stats') loadStats();
@@ -337,6 +337,8 @@ function setBulkChannel(ch) {
   var scheduleArea = document.getElementById('bulkScheduleArea');
   if (scheduleArea) scheduleArea.classList.toggle('hidden', ch !== 'kakao' && ch !== 'sms' && ch !== 'mms');
 
+  // 채널이 바뀌면 연락처 열의 의미(전화/이메일)가 달라져 재파싱이 필요하다
+  if (bulkTarget === 'custom') parseBulkReceivers();
   updateBulkSendLabel();
 }
 
@@ -396,9 +398,11 @@ function setBulkTarget(target) {
     infoEl.textContent = '';
     bulkSelectedRecipients = [];
     renderSelectedTags();
+    parseBulkReceivers();   // 붙여넣은 내용이 남아 있으면 인원수·변수 재인식
   } else {
     customArea.classList.add('hidden');
   }
+  renderBulkVarChips();
   updateBulkSendLabel();
 }
 
@@ -702,10 +706,10 @@ function removeSelectedRecipient(id) {
   updateBulkSendLabel();
 }
 
-// 현재 채널에서 실제로 발송 가능한(연락처가 있는) 수신자만 — 비용 계산·발송 payload 공통 기준
+// 현재 채널에서 실제로 발송 가능한(연락처가 있는) 수신자만 — 비용 계산·발송 payload 공통 기준.
+// 직접 입력(엑셀/CSV) 경로도 포함해야 총액이 맞는다.
 function bulkEffectiveRecipients() {
-  var field = (bulkChannel === 'email') ? 'email' : 'phone';
-  return bulkSelectedRecipients.filter(function(r) { return !!r[field]; });
+  return bulkCollectReceivers();
 }
 
 function updateBulkSendLabel() {
@@ -721,7 +725,8 @@ function updateBulkSendLabel() {
   if (!costEl) return;
   var unit = { kakao: 7, sms: 15, mms: 100, email: 0 }[bulkChannel];
   var eff = bulkEffectiveRecipients();
-  var skipped = bulkSelectedRecipients.length - eff.length;
+  var selectedTotal = (bulkTarget === 'custom') ? bulkParsedReceivers.length : bulkSelectedRecipients.length;
+  var skipped = Math.max(0, selectedTotal - eff.length);
   if (eff.length === 0) { costEl.textContent = ''; return; }
   var suffix = skipped > 0 ? ' <span class="text-amber-600">· 연락처 없음 ' + skipped + '명 제외</span>' : '';
   if (!unit) { costEl.innerHTML = '발송 대상 <b>' + eff.length + '명</b>' + suffix; return; }
@@ -767,6 +772,131 @@ function updateBulkByteCounter() {
   var isLms = bytes > 90 || subject.length > 0;
   document.getElementById('bulkChannelLabel').textContent = isLms ? 'LMS' : 'SMS';
   document.getElementById('bulkByteCounter').textContent = bytes + ' / ' + (isLms ? '2000' : '90') + ' byte';
+}
+
+// ===========================================================================
+// === 수신자 엑셀/CSV 입력 + 수신자별 변수(#{...}) ===
+// 엑셀에서 복사하면 탭 구분이라 기존 '전화번호,이름' 파서가 깨졌다 → 탭·쉼표 모두 인식.
+// 첫 줄이 헤더면 헤더명이 그대로 변수명이 된다(#{미수금} 등). 전화번호 열만 필수.
+// ===========================================================================
+var BULK_BASE_VARS = ['거래처명', '고객명', '연락처', '대표자', '거래처코드', '미수금', '날짜', '기준일', '회사명'];
+var bulkParsedReceivers = [];   // [{ phone|email, name, vars:{} }]
+var bulkExtraVarNames = [];     // 엑셀에서 온 추가 변수명
+
+function renderBulkVarChips() {
+  var el = document.getElementById('bulkVarChips');
+  if (!el) return;
+  var names = BULK_BASE_VARS.concat(bulkExtraVarNames.filter(function(v) { return BULK_BASE_VARS.indexOf(v) < 0; }));
+  el.innerHTML = names.map(function(v) {
+    var isExtra = BULK_BASE_VARS.indexOf(v) < 0;
+    return '<button type="button" onclick="insertBulkVar(\'' + v + '\')" class="px-1.5 py-0.5 rounded text-xs '
+      + (isExtra ? 'bg-teal-50 text-teal-700 border border-teal-200' : 'bg-white text-gray-600 border border-gray-200')
+      + ' hover:bg-blue-50">#{' + v + '}</button>';
+  }).join('');
+}
+
+function insertBulkVar(name) {
+  var ta = document.getElementById('bulkContent');
+  if (!ta) return;
+  var token = '#{' + name + '}';
+  var start = ta.selectionStart || ta.value.length;
+  ta.value = ta.value.slice(0, start) + token + ta.value.slice(ta.selectionEnd || start);
+  ta.focus();
+  ta.selectionStart = ta.selectionEnd = start + token.length;
+  updateBulkByteCounter();
+}
+
+// 붙여넣기/CSV 텍스트 → 수신자 배열. 구분자는 탭 우선(엑셀 복사), 없으면 쉼표.
+function parseBulkReceivers() {
+  var raw = document.getElementById('bulkReceivers').value;
+  var infoEl = document.getElementById('bulkParseInfo');
+  bulkParsedReceivers = [];
+  bulkExtraVarNames = [];
+  var lines = raw.split(/\r?\n/).filter(function(l) { return l.trim().length > 0; });
+  if (lines.length === 0) { if (infoEl) infoEl.textContent = ''; renderBulkVarChips(); updateBulkSendLabel(); return; }
+
+  var delim = lines[0].indexOf('\t') >= 0 ? '\t' : ',';
+  var rows = lines.map(function(l) { return l.split(delim).map(function(c) { return c.trim().replace(/^"|"$/g, ''); }); });
+
+  // 첫 줄이 헤더인지 판정: 첫 칸에 숫자(전화번호)가 거의 없으면 헤더로 본다
+  var firstCell = (rows[0][0] || '').replace(/[^0-9]/g, '');
+  var hasHeader = firstCell.length < 8;
+  var headers = hasHeader ? rows[0] : [];
+  var dataRows = hasHeader ? rows.slice(1) : rows;
+
+  var contactIsEmail = (bulkChannel === 'email');
+  for (var i = 0; i < dataRows.length; i++) {
+    var cells = dataRows[i];
+    if (!cells[0]) continue;
+    var r = { name: cells[1] || '', vars: {} };
+    if (contactIsEmail) r.email = cells[0]; else r.phone = cells[0];
+    // 3번째 열부터(헤더가 있으면 헤더명, 없으면 열N) 변수로 담는다
+    for (var j = 1; j < cells.length; j++) {
+      var key = hasHeader ? (headers[j] || ('열' + (j + 1))) : (j === 1 ? '거래처명' : '열' + (j + 1));
+      if (!key) continue;
+      r.vars[key] = cells[j] || '';
+      if (bulkExtraVarNames.indexOf(key) < 0) bulkExtraVarNames.push(key);
+    }
+    if (hasHeader && headers[1]) r.name = cells[1] || '';
+    bulkParsedReceivers.push(r);
+  }
+
+  if (infoEl) {
+    infoEl.innerHTML = bulkParsedReceivers.length + '명 인식'
+      + (hasHeader ? ' · 헤더 사용' : ' · 헤더 없음(1열=연락처, 2열=이름)')
+      + (bulkExtraVarNames.length ? ' · 변수: ' + bulkExtraVarNames.map(function(v){return '#{'+v+'}';}).join(' ') : '');
+  }
+  renderBulkVarChips();
+  updateBulkSendLabel();
+}
+
+function onBulkCsvPick(input) {
+  var file = input && input.files && input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    document.getElementById('bulkReceivers').value = e.target.result;
+    parseBulkReceivers();
+    showToast(file.name + ' 불러옴', 'success');
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+// 서버 치환 미리보기 — 미수금·대표자는 서버만 아는 값이라 서버에 물어본다(발송·과금 없음)
+async function previewBulkMessage() {
+  var box = document.getElementById('bulkPreviewBox');
+  var content = document.getElementById('bulkContent').value.trim();
+  if (!content) { showToast('본문을 먼저 입력해주세요', 'warning'); return; }
+  var receivers = bulkCollectReceivers();
+  if (receivers.length === 0) { showToast('수신자를 먼저 선택/입력해주세요', 'warning'); return; }
+  box.classList.remove('hidden');
+  box.textContent = '조회 중...';
+  try {
+    var res = await axios.post('/api/messages/preview-bulk', { content: { body: content }, receivers: receivers });
+    var d = res.data.data;
+    var html = d.previews.map(function(p) {
+      return '<div class="pb-1.5 mb-1.5 border-b border-gray-100 last:border-0"><b>' + escapeHtml(p.name || p.phone) + '</b>\n' + escapeHtml(p.body) + '</div>';
+    }).join('');
+    if (d.unresolved && d.unresolved.length) {
+      html = '<div class="text-red-600 mb-1.5">⚠ 값을 못 찾은 변수: ' + d.unresolved.map(function(v){return '#{'+v+'}';}).join(', ') + ' — 이대로 보내면 발송이 거부되거나 그대로 찍힙니다.</div>' + html;
+    }
+    box.innerHTML = html + '<div class="text-gray-400 mt-1">전체 ' + d.total + '명 중 앞 ' + d.previews.length + '명</div>';
+  } catch (e) {
+    box.textContent = (e.response && e.response.data && e.response.data.error) || '미리보기 실패';
+  }
+}
+
+// 발송·미리보기 공용 수신자 수집
+function bulkCollectReceivers() {
+  var contactField = (bulkChannel === 'email') ? 'email' : 'phone';
+  if (bulkTarget === 'custom') {
+    return bulkParsedReceivers.filter(function(r) { return !!r[contactField]; });
+  }
+  return bulkSelectedRecipients.filter(function(r) { return !!r[contactField]; }).map(function(r) {
+    var o = { name: r.name, client_id: r.id };
+    o[contactField] = r[contactField];
+    return o;
+  });
 }
 
 // === MMS 대량발송: 이미지 첨부 (압축 규칙은 shell.js 단일 소스 재사용) ===
@@ -1159,35 +1289,14 @@ async function sendBulk() {
   // ⚠️ 서버 계약: receivers[].phone|email + content 객체(body/subject/template_code/sndDT).
   //    과거 이 함수는 receivers[].num + content 문자열 + 최상위 subject를 보내 400으로 전건 실패했다
   //    (payroll.js만 올바른 형태였음). 계약을 payroll.js·서버와 일치시킨다.
-  var receivers = [];
-  var contactField = (bulkChannel === 'email') ? 'email' : 'phone';
-
-  if (bulkTarget === 'custom') {
-    var lines = document.getElementById('bulkReceivers').value.trim().split('\n');
-    for (var i = 0; i < lines.length; i++) {
-      var parts = lines[i].split(',');
-      if (parts[0] && parts[0].trim()) {
-        var rcv = { name: (parts[1] || '').trim() };
-        rcv[contactField] = parts[0].trim();
-        receivers.push(rcv);
-      }
-    }
-    if (receivers.length === 0) { showToast('수신자를 입력해주세요', 'warning'); return; }
-  } else {
-    // 직원/거래처/그룹 선택 결과 사용
-    if (bulkSelectedRecipients.length === 0) {
-      showToast('수신자를 선택해주세요. 직원/거래처/그룹 선택 버튼을 눌러주세요.', 'warning');
-      return;
-    }
-    receivers = bulkSelectedRecipients.filter(function(r) { return !!r[contactField]; }).map(function(r) {
-      var o = { name: r.name };
-      o[contactField] = r[contactField];
-      return o;
-    });
-    if (receivers.length === 0) {
-      showToast('선택된 수신자 중 ' + (bulkChannel === 'email' ? '이메일' : '전화번호') + '이 있는 수신자가 없습니다.', 'warning');
-      return;
-    }
+  // 수신자 수집 — 직접 입력(엑셀/CSV 파싱 결과) 또는 선택(직원·거래처·그룹).
+  // 선택 경로는 client_id를 함께 넘겨야 서버가 #{대표자}·#{미수금} 같은 변수를 채울 수 있다.
+  var receivers = bulkCollectReceivers();
+  if (receivers.length === 0) {
+    if (bulkTarget === 'custom') showToast('수신자를 입력해주세요 (엑셀에서 복사해 붙여넣기)', 'warning');
+    else if (bulkSelectedRecipients.length === 0) showToast('수신자를 선택해주세요. 직원/거래처/그룹 선택 버튼을 눌러주세요.', 'warning');
+    else showToast('선택된 수신자 중 ' + (bulkChannel === 'email' ? '이메일' : '전화번호') + '이 있는 수신자가 없습니다.', 'warning');
+    return;
   }
 
   var chLabel = { kakao: '카카오톡', sms: '문자', mms: 'MMS', email: '이메일' };
