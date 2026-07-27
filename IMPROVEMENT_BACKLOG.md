@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-07-27T23:54:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-07-28T03:35:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,14 +8,29 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **9** (GitHub OPEN 실측, 07-27T23:54 — #572~#579 8건 이월 + 이번 사이클 신규 #580) |
+| 🆕 new | **12** (GitHub OPEN 실측, 07-28T03:35 — #572~#580 9건 이월 + 이번 사이클 신규 #581·#582·#584) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **497** (`reason:completed` 절대값, 변동 없음) |
+| ✔️ done | **498** (`reason:completed` 절대값, +1 — #583 이번 사이클 자동수정 완료) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, 2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그 이관: 306KB→80KB, **2026-07-27T23:00 7차 트림 — 사이클 로그 39건 중 31건 이관(최근 8건=전 Area 1바퀴+2만 유지): 196KB→63KB**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 **최근 8사이클 로그**(전 Area 1바퀴 커버 = 직전 사이클 diff 판단에 필요한 최소분) + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 > ↳ **8차 트림 (2026-07-27, 자동)**: 사이클 로그 9건 → 8건 유지, 1건 이관 (66KB → 트림 후 아래 참조).
+
+> **Area 5 보안 (2026-07-28T03:35):**
+> - **방법**: `git fetch origin main`(forced-update 감지, HEAD `8604557` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81, #439 표준절차). Area 5 **45회차** — 직전 Area5(`b798aed`, 07-26T21:40, 44회차) 이후 `git log b798aed..HEAD -- src/routes src/scripts migrations`는 **35커밋/98파일(+3672/-649)** 대량 churn(MMS/SMS 대량발송+거래처그룹·은행 일괄매칭 통합+Shift범위선택·직원 휴가 셀프신청·클레임반품 AR 자동조정+포털계정 게이트(#557)+IDOR 6핸들러(#571) 수정·후가공 도메인 프로파일 A1·발주 법인간거래 토글·정렬 tie-break 전역 스윕). 필수 표준 스캔 전부 clean: secret fallback grep(`fax.ts` 기존 FP만)·기본비밀번호 리터럴 0·마이그 번호 중복(기존 5쌍만, 신규 0)·`entity-audit.mjs`(125파일·SELECT60·통과60·누락0)·`tsc --noEmit` clean·GitHub Actions 워크플로 변경 0(`pull_request_target` 없음, 기존 안전).
+> - **general-purpose 에이전트 5개 병렬**로 churn을 기능 클러스터 단위 분할 심층 감사(①메시징/카카오/거래처그룹 ②은행 일괄매칭 ③직원셀프서비스+AR자동조정 ④IA워크벤치/생산 ⑤발주/구매/세금계산서) + 오케스트레이터 직접 재검증:
+>   - **🔴 신규 이슈 4건**:
+>     - **#581 (M, bug, issue-only)**: `taxInvoices/batch.ts` `POST /batch-create`·`POST /monthly-create` 양쪽 모두 entity_id 필터 전무(형제 `queries.ts GET /eligible-orders`는 `entityFilter` 적용 — 부분픽스 패턴). MANAGER(법인 스코프)가 타법인 order_id 지정 또는 월합산 대상 조회만으로 **타법인 명의 실제 전자세금계산서(바로빌)를 발행**할 수 있음 — cross-entity 금융/법적효력 write. 오케스트레이터가 에이전트 보고("LOW, pre-existing")를 직접 재검증해 HIGH로 상향(`createSplitInvoices`→`issueTaxInvoice` 외부발행 확인).
+>     - **#582 (S, bug, issue-only)**: `workbench.ts POST /intakes`(대기함 등록)가 body의 `order_item_id`를 entity 검증 없이 `order_items` UPDATE — 같은 파일 형제(`/intakes/:id/absorb`)는 `entityFilter(c,'o')` JOIN으로 올바르게 격리(byte-명확한 형제 정답 패턴 존재). 타법인 주문라인에 잘못된 시안이 연결되는 실제 데이터 오염(읽기 유출 아님).
+>     - **#583 (S, improvement) → 자동수정 완료(done)**: `bank.ts` `batch-apply`/`batch-match`가 서버측 건수 상한 없음(오늘 도입된 Shift 범위선택 UI 1000건 캡은 클라이언트 전용). 기존 `/transactions` limit 클램프와 동일 패턴으로 서버측 1000건 상한 추가 — `npm run verify` 통과 후 커밋(`59330b5`), 이슈는 커밋 직후 close.
+>     - **#584 (S, improvement, issue-only)**: SMS/LMS/카카오 대량발송에 건수 상한 없음(MMS만 방어) — 실수/오남용 시 실비용 발생 리스크.
+>   - **🔧 오케스트레이터 직접 자동수정 2건(경미 XSS, 승인 불요 — escapeHtml 추가는 표시 불변)**: `messages.js` 발송이력/통계 상위수신자 패널의 `receiver_num` 2곳(형제 `receiver_name`은 escape인데 누락 — A-025급 형제필드 비대칭) + `receiving.js` 검수템플릿 드롭다운의 `template_name`/`category_name`(관리화면 `inspections.js`는 escape인데 소비 화면만 raw). 커밋 `040d882`.
+>   - **확인 후 드롭(기존 이슈로 이미 문서화, 재보고 불요)**: `clients.ts POST /:id/portal-account` 형제 entityFilter 자체는 #557(closed-completed)로 셀프발급 벡터는 이미 차단됨 — 에이전트가 재발견한 "portal.ts 전체가 client_id만 스코프"라는 **근본 갭은 #557 본문에 이미 명시적으로 인지·후속과제로 남겨진 것**(owner가 (a)/(b)/(c) 수정옵션 중 미결정) → 중복 이슈화 안 함.
+> - **오탐 배제**: bank.ts `client_id` cross-entity 의심(에이전트가 초기 의심 후 스스로 반증) — `clients` 테이블 자체가 entity_id 없는 전역 마스터(기존 컨벤션)라 FP. purchaseOrders 법인간거래 토글은 entityFilter가 4개 쿼리사이트 모두 독립 적용돼 있어 #368 패턴(클라 플래그로 필터 무력화) 아님 — 자기 엔티티 범위 내에서만 토글 작동.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues(label:auto-improve,state:open)` 실측 **12건**(#572~#580 9건 이월 + #581·#582·#584 신규 3건, #583은 생성 직후 자동수정으로 같은 사이클에 close). done(`reason:completed`) 실측 **498**(+1, #583) · rejected(`not_planned` 4 + `duplicate` 2) **6**(변동 없음).
+> - **🧬 SKILL 강화 없음(기존 패턴 재현)** — #581/#582 모두 기존 "형제-비대칭 IDOR"(#437/#452급) 클래스의 신규 도메인(세금계산서 월합산·IA워크벤치) 재현. #583/#584는 "UI 클라이언트 캡이 서버측 미반영" 신규 하위패턴이나 기존 "N+1 3번째 축"(#478)·"MMS 전용 방어" 관찰과 인접해 별도 codify 불요. 5개 병렬 에이전트 + 오케스트레이터 재검증(에이전트가 LOW로 축소평가한 #581을 실제 코드 추적으로 HIGH 재상향) 체계가 이번 대량churn(98파일)에서 유효했음.
+> - 신규 이슈 3건(#581·#582·#584, issue-only) + 자동수정 2종(XSS escapeHtml 3곳·bank 배치캡 2곳, #583 done 처리), done-sync: new 9→12·done 497→498·rejected 6. 다음 순번 **Area 6**.
 
 > **Area 4 데이터 정합성 (2026-07-27T23:54):**
 > - **방법**: 로컬 체크아웃(HEAD `1921e7ef` = origin/main 일치, 워킹트리 clean, node_modules 64). Area 4 **46회차** — 직전 Area4(`ac6fe38`, 07-26T15:15, 45회차) 이후 `git log ac6fe38..HEAD -- src/routes migrations` = **20+커밋/75파일(+1798/-432)** 대량 churn(정렬 tie-break 전역 스윕 92곳·발주 법인간거래 제외·IA B단계 batch_key·MMS/SMS 대량발송+거래처그룹·은행 자동매칭 3종·IDOR 6핸들러). **에이전트 위임 없이 인라인 수행**(과다 위임 억제 정책 신설분 적용 — 스캔 대상이 grep 수준이라 위임 오버헤드가 더 큼).
@@ -155,6 +170,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-020c | XSS escapeHtml 누락 3곳 + bank.ts 배치 상한 2곳 — `messages.js` 발송이력/통계 `receiver_num`(형제 `receiver_name`은 escape인데 누락) + `receiving.js` 검수템플릿 드롭다운 `template_name`/`category_name`(관리화면 `inspections.js`는 escape인데 소비화면만 raw) + `bank.ts` batch-apply/batch-match 서버측 1000건 상한(#583, UI Shift범위선택 1000건 캡이 클라이언트 전용이던 것 보완). Area 5 45회차. verify PASS(tsc clean+build) | 040d882, 59330b5 | 2026-07-28 |
 | A-020b | XSS escapeHtml 누락 6곳 — `reports.js` 4곳(designer_name/client_name×3, title속성만 escape하고 content는 raw이던 복붙누락) + `ledger.js` 2곳(item.unit, 형제 item_name/spec/content는 escape인데 unit만 누락 — 매입PO품목라인 신기능(0f2d745)이 매출측 기존 미이스케이프 패턴 그대로 복제). Area 5 41회차 프론트 XSS sweep 에이전트 격리 → 오케스트레이터 직접 Read 재확인 후 escapeHtml/esc() 래핑(표시 불변). verify PASS(tsc clean+build) | (이번 커밋) | 2026-07-22 |
 | A-019 | #377 잔여분 — 주문생성 자동가공 `orders/create.ts:643` `SELECT id, name FROM items`(존재X 컬럼)→`item_name`. #377 원 위치(core.ts:1489)가 파일분할로 create.ts D.자동가공 블록으로 이동했고 owner 픽스 eadba44는 autoProcess.ts만 정정·이 경로 누락 → best-effort catch(:695)에 삼켜져 `auto_process_jobs` 미생성 지속. autoProcess.ts:96·eadba44와 동일 정정. 휴면 write 활성화 우려는 eadba44의 `ia_auto_enabled` 게이트(0308 기본 OFF)로 이미 해소(서빙 게이트라 job 생성돼도 미노출). 안전 자동수정(컬럼 사실-정정 A-017 클래스 + owner 승인 정정의 누락분 완성). verify PASS(tsc clean+build 391) | 96e98d2 | 2026-06-12 |
 | A-018 | 대시보드 납기준수율 KPI 라벨 오기 정정 — `scripts/dashboard.js:47`이 skeleton 교체 시 KPI 그리드 재구성하며 "이번 달 **출고 기준**" 노출, 권위 서버템플릿 `pages/dashboard.ts:85`/title은 "**납기 기준**". #380 수정(6b06512) 후 메트릭이 `delivery_date` 기준 월버킷이므로 "납기 기준"이 정답 → JS 라벨을 권위본에 정합. 사실-정정+기존 사본 정렬(A-014 클래스), 동작/데이터 무변 텍스트만. verify PASS(tsc clean+build 383) | (이번 커밋) | 2026-06-11 |
