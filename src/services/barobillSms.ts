@@ -355,6 +355,23 @@ export class BarobillSmsProvider {
       .filter(r => r.number)
   }
 
+  /**
+   * 문자(SMS/LMS/MMS) 발송 결과 조회 — GetSMSSendMessage(SendKey).
+   * 알림톡용 getMessages(GetSendKakaotalk)로는 문자 접수번호를 조회할 수 없다.
+   * SendState 의미(바로빌): 0=대기, 1=전송중, 2=성공, 3=실패 로 관측 — 라벨은 참고용이며 원값(state)도 함께 반환.
+   */
+  async getSmsSendMessage(sendKey: string): Promise<Record<string, string> | null> {
+    try {
+      const raw = await barobillCall(this.config, 'SMS', 'GetSMSSendMessage', { SendKey: sendKey })
+      assertBarobillQueryOk(raw, 'GetSMSSendMessage')
+      const v = parseXmlValues(raw)
+      return Object.keys(v).length > 0 ? v : null
+    } catch (err) {
+      console.error('getSmsSendMessage error:', err)
+      return null
+    }
+  }
+
   /** 발송 결과 조회 */
   async getMessages(receiptNum: string): Promise<any> {
     try {

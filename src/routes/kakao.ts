@@ -1417,8 +1417,18 @@ kakaoRouter.get('/logs/:receiptNum/status', async (c) => {
       return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
     }
 
+    // 채널별 조회 API가 다르다: 알림톡=GetSendKakaotalk, 문자(SMS/LMS/MMS)=GetSMSSendMessage.
+    // channel 미지정 시 알림톡 먼저 조회하고 비면 문자로 폴백(레거시 호출 하위호환).
+    const channel = (c.req.query('channel') || '').toLowerCase()
+    if (channel === 'sms' || channel === 'mms') {
+      const sms = await provider.getSmsSendMessage(receiptNum)
+      return c.json({ success: true, data: sms })
+    }
     const messages = await provider.getMessages(receiptNum)
-    return c.json({ success: true, data: messages })
+    if (messages && Object.keys(messages).length > 0) {
+      return c.json({ success: true, data: messages })
+    }
+    return c.json({ success: true, data: await provider.getSmsSendMessage(receiptNum) })
   } catch (error) {
     console.error('src/routes/kakao.ts GET /logs/:receiptNum/status error:', error)
     return c.json({ success: false, error: '발송 결과 조회 실패' }, 500)

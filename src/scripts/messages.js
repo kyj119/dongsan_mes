@@ -168,7 +168,7 @@ async function loadLogs(page) {
         + '<td class="px-4 py-3 text-sm text-gray-600">' + (log.receiver_num || '-') + '</td>'
         + '<td class="px-4 py-3 text-sm text-gray-500">' + typeLabel(log.related_type) + '</td>'
         + '<td class="px-4 py-3 text-center">' + statusBadge(log.status) + '</td>'
-        + '<td class="px-4 py-3 text-center"><button onclick="viewLogDetail(\'' + (log.receipt_num || '') + '\')" class="text-blue-600 hover:text-blue-800 text-xs"><i class="fas fa-eye"></i></button></td>'
+        + '<td class="px-4 py-3 text-center"><button onclick="viewLogDetail(\'' + (log.receipt_num || '') + '\',\'' + (log.channel || 'kakao') + '\')" class="text-blue-600 hover:text-blue-800 text-xs"><i class="fas fa-eye"></i></button></td>'
         + '</tr>';
     }).join('');
 
@@ -191,7 +191,7 @@ function renderLogsPagination(totalPages) {
   el.innerHTML = html;
 }
 
-async function viewLogDetail(receiptNum) {
+async function viewLogDetail(receiptNum, channel) {
   var el = document.getElementById('logDetailContent');
   document.getElementById('logDetailModal').classList.remove('hidden');
 
@@ -203,9 +203,31 @@ async function viewLogDetail(receiptNum) {
   el.innerHTML = '<div class="text-center py-4 text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>조회 중...</div>';
 
   try {
-    var res = await axios.get('/api/kakao/logs/' + encodeURIComponent(receiptNum) + '/status');
+    // 채널별 조회 API가 다름(알림톡=GetSendKakaotalk, 문자=GetSMSSendMessage) → 서버에 채널 전달
+    var qs = (channel === 'sms' || channel === 'mms') ? '?channel=' + channel : '';
+    var res = await axios.get('/api/kakao/logs/' + encodeURIComponent(receiptNum) + '/status' + qs);
     if (res.data.success) {
-      var d = res.data.data;
+      var d = res.data.data || {};
+
+      // 문자(SMS/LMS/MMS) 응답: SMSMessage 단건(SendKey/SenderNum/ReceiverNum/SendState/Message)
+      if ((channel === 'sms' || channel === 'mms') || (d.SendKey && d.SendState !== undefined)) {
+        if (!d.SendKey) {
+          el.innerHTML = '<div class="text-center py-4 text-gray-500">결과 정보가 없습니다.<br><span class="text-xs text-gray-400">접수번호: ' + escapeHtml(receiptNum) + '</span></div>';
+          return;
+        }
+        var smsState = { '0': { label: '대기', color: 'blue' }, '1': { label: '전송중', color: 'blue' }, '2': { label: '성공', color: 'green' }, '3': { label: '실패', color: 'red' } };
+        var ss = smsState[String(d.SendState)] || { label: '상태 ' + d.SendState, color: 'gray' };
+        el.innerHTML = '<div class="mb-3 p-3 bg-gray-50 rounded-lg"><div class="text-xs text-gray-500">접수번호</div><div class="font-mono text-sm">' + escapeHtml(receiptNum) + '</div></div>'
+          + '<div class="space-y-2 text-sm">'
+          + '<div class="flex justify-between"><span class="text-gray-500">전송 상태</span><span class="px-2 py-0.5 rounded text-xs font-medium bg-' + ss.color + '-50 text-' + ss.color + '-700">' + ss.label + '</span></div>'
+          + '<div class="flex justify-between"><span class="text-gray-500">발신번호</span><span>' + escapeHtml(d.SenderNum || '-') + '</span></div>'
+          + '<div class="flex justify-between"><span class="text-gray-500">수신번호</span><span>' + escapeHtml(d.ReceiverNum || '-') + '</span></div>'
+          + '<div class="flex justify-between"><span class="text-gray-500">발송일시</span><span>' + escapeHtml(d.SendDT || '-') + '</span></div>'
+          + '</div>'
+          + '<div class="mt-3 p-3 bg-gray-50 rounded-lg"><div class="text-xs text-gray-500 mb-1">내용</div><div class="text-sm whitespace-pre-wrap">' + escapeHtml(d.Message || '') + '</div></div>';
+        return;
+      }
+
       var messages = Array.isArray(d) ? d : (d.messages && Array.isArray(d.messages)) ? d.messages : d.receiveNum ? [d] : [];
 
       if (messages.length === 0) {
