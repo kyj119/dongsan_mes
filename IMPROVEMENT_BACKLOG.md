@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-07-27T15:33:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-07-27T21:35:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,29 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **1** (GitHub OPEN 실측, 07-27T15:33 재확인 — 직전 사이클 open 18건 전부 owner가 completed로 close, 이번 사이클 신규 #572 1건만 open) |
+| 🆕 new | **8** (GitHub OPEN 실측, 07-27T21:35 — 직전 #572 1건 + 이번 사이클 신규 #573~#579 7건) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **497** (`reason:completed` 절대값 실측, 07-27T15:33 — 직전 479 + 이번 사이클 사이 owner가 18건 전부 completed close) |
+| ✔️ done | **497** (`reason:completed` 절대값, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 3 UX/기능 감사 (2026-07-27T21:35):**
+> - **방법**: `git fetch --deepen=200 origin main`(shallow clone이라 이전 사이클 SHA 확보 위해 확장, HEAD `295b029` = origin/main 일치, 워킹트리 clean, detached). Area 3 **45회차** — 직전 Area3(`1e3a122`/`7dd2105`, 07-26T09:22, 44회차) 이후 `git log 7dd2105..HEAD`는 **78커밋**(대량 churn — MMS/SMS 대량발송+거래처그룹 신기능, 은행 자동매칭/일괄매칭 통합+체크박스 Shift 범위선택 전역 도입, 디자이너 대기함 필드캐리+후가공 도메인 프로파일 A1(가공자↔도메인 매핑)+B단계 배치그룹핑, 발주 목록 법인간거래 토글, 목록 정렬 tie-break 전역 스윕, 카드 썸네일/실적탭 버그수정 다수). general-purpose 에이전트 3개 병렬 파견(①MMS 대량발송+거래처그룹 ②은행 일괄적용+Shift범위선택 전역도입 일관성 ③디자이너 대기함+후가공 도메인 프로파일)로 신규 기능 표면 심층 감사.
+> - **🔴 신규 이슈 7건(#573~#579, 전부 issue-only — Area3 정책상 UI/UX 변경은 자동수정 금지)**:
+>   - **#573 (S, bug)**: 대량발송(SMS/MMS) 버튼에 기존 `safeSubmit` 헬퍼 미적용 — 중복클릭 시 confirm 다이얼로그 중복 노출 후 실제 중복 POST 발생, MMS는 건당 100원 과금이라 이중과금 위험. 동일 수정으로 로딩표시 부재도 해소.
+>   - **#574 (M, improvement)**: 대량발송 부분실패 시 실패 대상자 미노출 + `bulkSelectedRecipients` 초기화로 재발송 경로 자체가 소실(형제 패턴 `bank.js:1312` 카카오 일괄발송 결과모달 존재).
+>   - **#575 (M, bug)**: 디자이너 대기함 일괄 프리필(`ofTrayPrefillRows`) try/catch 없음 — 부분실패 시 무응답 중단 + 캐시 미정리로 중복 프리필 위험(형제 함수 `absorb`는 이미 올바른 패턴 보유).
+>   - **#576 (M, improvement)**: 디자이너 대기함 200건 하드캡 + 키워드/날짜 검색 전무 — 초과분 존재 자체가 무통보.
+>   - **#577 (M, bug)**: 가공자↔도메인 매핑이 자유텍스트 이름 입력 — 오타 시 CEP 측이 조용히 기본 도메인(현수막)으로 폴백, 오늘 도입된 핵심기능 목적 무력화 가능.
+>   - **#578 (M, improvement)**: 은행 일괄적용 3종 묶음 보고 — 커밋 전 미리보기 없음·건별결과 없이 집계토스트뿐(형제 패턴 `orders.js` bulkResultModal 존재)·버튼 로딩표시 없음(형제 `confirmAllTransfers()` 이미 보유).
+>   - **#579 (S, bug)**: `messages.js` 수신자 피커 체크박스가 `tbody`/`data-check-group` 경계 없이 `<label>` 목록이라 신규 shift-select 헬퍼가 document 전체로 폴백 — 현재 무해하나 중첩 피커 시나리오에서 스코프 오염 위험.
+> - **오탐 배제 확인**: 각 에이전트에게 기존 FP 카탈로그(필드명 불일치·explicit-search 패턴·상세모달 링크) 사전 제공, 이미 보고된 #572(N+1 서브요청 한도)와 중복되는 은행 배치 성능 이슈는 재보고 배제(순수 UX 피드백만 분리 보고). "간판(sign) 도메인 관리화면 부재"는 커밋 메시지 자체가 "남은 A1=간판 도메인 탭"으로 이미 인지된 진행중 항목이라 신규 이슈화 보류. "법인간거래 숨김건수 배지"·"그룹멤버 목록 검색"은 저가치 코스메틱 판단해 이슈화 생략.
+> - **backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **8건**(#572 이월 + #573~#579 신규). done(`reason:completed`) **497**·rejected **6** 변동 없음(이번 사이클 close 0건).
+> - **🧬 SKILL 강화 없음(기존 패턴 재현)** — 7건 모두 기존 클래스(safeSubmit 미적용·부분실패 재시도경로 소실·helper-loop 부분실패 무응답·검색/필터 부재·자유텍스트 마스터 매핑 오타·로딩표시 패턴 확립vs부분적용·shift-select 스코프 경계)의 신규 화면 재현. 다만 이번 사이클처럼 **하나의 순환 주기(24h) 안에 78커밋급 대형 churn**이 몰릴 때 general-purpose 에이전트를 기능 단위(메시징/은행/워크벤치)로 쪼개 병렬 파견하는 접근이 유효했음 — Area1/5/6이 이미 채택한 "churn 과다 시 기능 단위 병렬 분할" 패턴의 Area3 버전으로 참고.
+> - 신규 이슈 7건(#573~#579, issue-only), 자동수정 0건, done-sync: new 1→8·done 497·rejected 6. 다음 순번 Area 4.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-07-27T15:33):**
 > - **방법**: `git fetch origin main`(HEAD `0e0e2d0` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 2 **52회차** — 직전 Area2(`7dd2105`, 07-25T18:18, 51회차) 이후 `git log 7dd2105..HEAD -- src/routes migrations src/scripts`는 **24커밋**(후가공 도메인 프로파일 A1 P1~P4·인테이크 대기함 필드캐리·자금관리 자동매칭/일괄매칭 통합·MMS/SMS 발송·거래처 그룹(신규 contactGroups.ts)·직원 휴가 셀프신청·git 이슈 정책분 다수). 표준 스캔 전부 clean: `entity-audit.mjs`(125파일·SELECT 60·통과60·누락0), 마이그 번호 중복(기존 5쌍만, 신규 0), secret fallback grep(`fax.ts` 기존 FP만).
