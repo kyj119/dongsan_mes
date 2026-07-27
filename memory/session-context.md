@@ -1,3 +1,30 @@
+# 세션 핸드오프 — 네스팅 패커 검증·수정 + A0 패널 행별 후가공 (2026-07-27 #5)
+
+> durable=[[reference-nesting-harness]]·spec `2026-07-23-ia-palette-session-loop.md`. **prod 배포·검증 완료**(main `3437ff73`·deploy `a5fb469f`·스모크 102/102·격리 worktree 빌드).
+> ⚠️ 아래 #4(MMS)·#3(자금관리)는 같은 날 병렬 세션 기록 — 보존.
+
+## 결정 + 이유
+1. **L1 네스팅 하네스 신설**(`scripts/nesting-harness.mjs`) — 패킹은 순수함수라 일러/브라우저 없이 단위검증이 최저비용. `iaEditor.js`에서 브레이스 매칭 절취(?raw 전역이라 import 불가), seeded 랜덤+실사례, 판정=R1 전수배치·R2 치수회전·R3 경계·R4 겹침간격·R5 에러정당성(+W1 total_height 경고). 실행: `node scripts/nesting-harness.mjs --cases=1000 --seed=7777` (실패=exit 1+`docs/audits/nesting-harness-failures.json`).
+2. **shelf 패커 겹침 버그 수정**(하네스 실증 112/205케이스) — 면적정렬 back-fill로 중간 선반 높이가 자라면 이미 아래 y로 생성된 다음 선반과 겹침. 마지막 선반만 성장 허용으로 수정. **형제 스윕**: `iaEditor.js`(레거시·UI는 maxrects 고정) + **원본 `orderForm/sheet.js:427`(주문서 시트배치 실사용 3호출부)**. maxrects total_height gap 과소보고도 수정. 수정 후 각 1005케이스 그린. maxrects 배치 자체는 원래 무결(혼합케이스 효율 356 vs shelf 416cm — 고정 결정 타당성 실증).
+3. **A0 CEP 패널 큐 행↔폼 연동(A안, 사용자 선택)** — 기존엔 담는 순간 전역 폼 스냅샷 복제라 행별 후가공 불가(spec §3-A 위반). 새 순서=`묶음분리 분해→행 클릭 연동→행별 후가공 세팅→일괄 확정`. 행 클릭=토글(하이라이트), 폼 change 위임→그 행만 반영, `gatherParams()` 재사용이라 post_desc·주석 3cm 게이트 행별 재계산, [전체 적용]=수량·키워드·거래처 보존. **설치본(%APPDATA% CEP) 동기배포 완료 — 일러 재시작 필요**. host.jsx 무변경.
+
+## 주의사항
+- 큐 항목=라이브 문서 참조(host.jsx `{doc,items}`) — 행별 세팅 중 원본 문서 닫으면 확정 시 `stale`/`docgone`.
+- shelf 수정=밀도 소폭 손해 가능(정확성 우선). 주 패커는 maxrects라 실사용 영향 미미.
+- 배포는 타 세션 messages WIP 격리 위해 **worktree 격리 빌드**(junction 선제거 후 정리, 메인 node_modules 무손상 확인).
+
+## 다음 TODO
+1. **A0 패널 실사용 E2E**(일러 재시작 후): 묶음분리→행별 마감 상이 세팅→일괄 확정→EPS 파일명 후가공 세그먼트 행별 상이+ingest 대기함 확인.
+2. A0 남은 것: 검토문서+확정게이트(A1 후반)·거래처 자동완성·가공자↔user id 매핑·자동감지 시드(A3).
+3. (선택) 하네스 ship:gate 편입·판짜기(JSX) L4 물리검증·0.5mm 밀림(별건).
+
+## 검증 명령 (PowerShell)
+```powershell
+npm run verify; node scripts/nesting-harness.mjs --cases=1000 --seed=7777; npm run smoke
+```
+
+---
+
 # 세션 핸드오프 — MMS 발송 + 거래처 그룹 + 대량발송 변수 (2026-07-27 #4)
 
 > durable=[[design-mms-send]]·[[design-contact-groups]]. **전부 prod 배포·검증 완료(배포 8회).**
