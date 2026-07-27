@@ -117,3 +117,12 @@
 ### 프론트엔드
 
 `src/scripts/*.js` `.sort()` 20곳 점검 — 비교자 없는 2곳(`cardExpenses.js:966`, `costAnalysis.js:46`)은 날짜 문자열 키라 사전순=날짜순으로 정상. 이상 없음.
+
+---
+
+## 후속(정렬과 별개 건)
+
+정렬을 고친 뒤 발주 목록 첫 화면이 법인간거래 이관건(`ICM-AP-*`)으로 채워지는 것이 드러나, **발주 목록·COUNT·통계·CSV에서 내부법인 매입처를 기본 제외 + '법인간거래 포함' 토글**을 추가했다(main `696791a6`, prod 반영은 타 세션 배포 `10f2d4de`에 수렴).
+- 식별은 SSOT `constants/intercompany`(`supplier_id ∈ {53,1271,3757}`) — `po_number` 접두 필터 금지
+- `receiving=1`(입고 페이지)은 제외 대상 아님(입고 누락 방지)
+- 상세 기록 = `.claude/PROJECT_STATUS.md` #12 · 설계 정본 = 법인간거래 원장 이관 메모리
