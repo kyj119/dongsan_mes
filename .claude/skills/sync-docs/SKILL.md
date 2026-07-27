@@ -18,20 +18,25 @@ description: "프로젝트 문서 동기화 및 정합성 검증. CLAUDE.md, PRO
 ### Phase 1: 병렬 수집 (에이전트 5개)
 
 #### Agent 1 — 프로젝트 규모 검증
-실제 파일 수를 세고 `CLAUDE.md`의 "프로젝트 규모" 테이블과 비교한다.
+실제 파일 수를 세고 `.claude/references/architecture-flow.md`의 "프로젝트 규모" 테이블과 비교한다.
 
 ```bash
-# 각각 실행하여 실제 숫자 확인
-ls src/routes/*.ts | wc -l          # API 라우터
-find src/pages -name "*.ts" | wc -l  # 페이지 (포털 포함)
-ls src/scripts/*.js | wc -l          # 스크립트
-ls migrations/*.sql | wc -l          # 마이그레이션
-ls seed_*.sql 2>/dev/null | wc -l    # Seed 파일
+# 각각 실행하여 실제 숫자 확인 (top-level / 서브파일 포함 양쪽)
+ls src/routes/*.ts | wc -l           # API 라우터 top-level
+find src/routes -name "*.ts" | wc -l # 라우터 전체(서브파일 포함)
+ls src/pages/*.ts | wc -l            # 페이지 top-level
+find src/pages -name "*.ts" | wc -l  # 페이지 전체(포털 포함)
+ls src/scripts/*.js | wc -l          # 스크립트 top-level
+find src/scripts -name "*.js" | wc -l # 스크립트 전체
+ls migrations/*.sql | wc -l          # 마이그레이션 (최신 번호도 확인)
 ```
 
 비교 대상:
-- `CLAUDE.md` → "프로젝트 규모" 테이블의 숫자
+- `.claude/references/architecture-flow.md` → "프로젝트 규모" 테이블 (**정본**)
+- `.claude/references/project-context.md` → "코드 아키텍처" 항목의 숫자
+- `README.md` → 라우트/페이지/마이그레이션 수
 - 날짜 기준("2026-XX-XX 기준")도 오늘로 갱신
+> ⚠️ 루트 `seed_*.sql`은 폐기됨(DB 부트스트랩 스쿼시) — `schema/baseline_*.sql`이 대체. seed 카운트 항목을 되살리지 말 것.
 
 #### Agent 2 — 라우트 등록 검증
 `src/index.tsx`의 import/route 등록과 실제 파일을 대조한다.
@@ -53,7 +58,7 @@ ls seed_*.sql 2>/dev/null | wc -l    # Seed 파일
 #### Agent 4 — auto-memory 교훈 검증
 이번 세션에서 발생한 실수, 반복 패턴, 사용자 수정 요청이 **auto-memory**에 기록되었는지 확인한다.
 기록 위치: `~/.claude/projects/.../memory/` 아래 `feedback-*.md`(작업/판단 교훈) 또는 `bug-history.md`(기술 실수) 신규/갱신 + `MEMORY.md` 인덱스에 1줄 포인터.
-> ⚠️ `.claude/MEMORY.md`는 **deprecated** — 여기에 새 교훈을 기록하지 말 것.
+> ⚠️ `.claude/MEMORY.md`는 **폐기·삭제 완료**(파일 없음) — 다시 만들지 말 것. 교훈 정본은 auto-memory 뿐이다.
 
 기록 대상 판별 기준:
 - 사용자가 "아니야", "그게 아니라", "다시" 등으로 수정을 요청한 경우
@@ -125,8 +130,8 @@ design-decisions.md와 관련 SKILL.md 파일이 실제 코드와 일치하는�
 
 ## 에이전트 배정
 
-5개 검증은 **읽기·대조 위주**라 빌트인 **Explore**(또는 general-purpose)로 병렬 실행. 모델은 메인(Opus 4.8) 상속 — 오버라이드 기본 생략.
-> 구 haiku/sonnet 티어 배정은 **폐기**(2026-06-05). 상세 → `references/agent-team-guide.md`
+5개 검증은 **읽기·대조 위주**라 빌트인 **Explore**(또는 general-purpose)로 병렬 실행 — 단, 사용자가 에이전트/병렬을 요청하지 않았으면 **인라인 처리가 기본**(파일 수가 적어 위임 오버헤드가 더 크다). 모델은 **세션 모델 상속** — 오버라이드 기본 생략.
+> 구 고정 티어 배정은 **폐기**(2026-06-05). 과다 위임 억제 기준 포함 상세 → `.claude/references/agent-team-guide.md`
 
 ---
 

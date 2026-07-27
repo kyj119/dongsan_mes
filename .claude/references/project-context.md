@@ -17,19 +17,19 @@
 
 ## 코드 아키텍처
 - **엔트리**: `src/index.tsx` — API 라우터 + 페이지 라우트 등록
-- **API**: `src/routes/*.ts` (120개, 하위폴더 포함, 2026-07-01 기준)
+- **API**: `src/routes/*.ts` (125개, 하위폴더 포함, 2026-07-27 기준)
 - **미들웨어**: `src/middleware/auth.ts` — authMiddleware, requireRole, pageAuthMiddleware, agentKeyMiddleware
-- **페이지**: `src/pages/*.ts` (78개 최상위) → `renderPage(c, { pageScript })`
-- **스크립트**: `src/scripts` (102개, 하위폴더 포함, `?raw` import)
-- **레이아웃**: `src/layout.ts` — 사이드바, SHARED_AUTH_JS, SPA 네비게이션
+- **페이지**: `src/pages/*.ts` (81개 최상위) → `renderPage(c, { pageScript })`
+- **스크립트**: `src/scripts` (105개, 하위폴더 포함, `?raw` import)
+- **레이아웃**: `src/layout.ts` + `src/layout/`(menu·shared-styles·sidebar·topbar) — 사이드바, SHARED_AUTH_JS, SPA 네비게이션
 - **포털**: `src/pages/portal/` (7개) — 별도 인증, 자체 레이아웃
 - **독립 페이지**: invoice.ts, quotation.ts, purchaseInvoice.ts — 자체 HTML
 > 상세 흐름도: `architecture-flow.md`
 
-## 작업 위임 (Opus 4.8 단일 모델)
-- **메인 루프 = Opus 4.8(1M)**. 대부분 **인라인(직접) 처리**로 충분.
+## 작업 위임 (세션 모델 단일)
+- **메인 루프 = 세션 모델**(2026-07-27 현재 Opus 5, 1M). 대부분 **인라인(직접) 처리**로 충분.
 - 위임 모드: **Explore**(넓은 코드 탐색, 결론만) / **Plan**(구현 전략) / **Workflow**(4+파일·전수감사·다중검증, ⚠️사용자 opt-in 필수).
-- 모델 티어(haiku/sonnet/opus) 배정은 **폐기** — SKILL.md에 `model:` 필드 없어 실효 없었고, 메인이 opus라 자기모순이었음.
+- 고정 모델 티어 배정은 **폐기** — SKILL.md에 `model:` 필드 없어 실효 없었고, 메인이 최상위 티어라 자기모순이었음. 위임 시 `model:` 오버라이드는 케이스별 판단(→ `agent-team-guide.md`).
 - **중형 이상 기능**: dispatch 전 설계 계약서(인터페이스 명세) 작성 필수.
 - **통합 검증**: 모든 위임 완료 후 `npm run typecheck` + 계약서 대조.
 > 상세: `agent-team-guide.md`

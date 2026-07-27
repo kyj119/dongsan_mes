@@ -458,5 +458,5 @@ gh issue comment {number} --body "🤔 구현 중 질문:\n\n{질문 내용}\n\n
 
 ## 에이전트 배정
 
-각 영역은 빌트인 **Explore**(읽기·탐색) 또는 general-purpose로 병렬 위임. 모델은 메인(Opus 4.8) 상속 — 오버라이드 기본 생략.
-> 구 haiku/sonnet/opus 티어 배정은 **폐기**(2026-06-05). 상세 → `references/agent-team-guide.md`
+각 영역은 빌트인 **Explore**(읽기·탐색) 또는 general-purpose로 병렬 위임. 모델은 **세션 모델 상속** — 오버라이드 기본 생략.
+> 구 고정 티어 배정은 **폐기**(2026-06-05). 과다 위임 억제 기준 포함 상세 → `.claude/references/agent-team-guide.md`

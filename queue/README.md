@@ -12,7 +12,7 @@
 
 ```markdown
 ---
-model: opus        # 선택: opus(기본) | sonnet(단순 작업)
+model: opus        # 선택: opus(기본) | sonnet(단순 작업). CLI alias라 항상 최신 Opus로 해석 — 버전 고정 불필요
 max_turns: 60      # 선택: 폭주 방지 상한
 ---
 <Claude에게 줄 지시문>

@@ -1,8 +1,13 @@
 # ERP+MES 시스템 - 동산기획
 
+> ⚠️ **이 README는 개요 문서다.** 2026-03-18 이후 기능이 대폭 확장되어 아래 표·목록은 **전수가 아니다**.
+> 최신 정본: 규모·구조=`.claude/references/architecture-flow.md` · 도메인/역할=`.claude/references/project-context.md` ·
+> 설계결정=`.claude/design-decisions.md` · 진행현황=`.claude/PROJECT_STATUS.md`.
+> 코드 값(역할 enum·상태 목록 등)은 **여기에 복사하지 않는다** — 소스가 정본.
+
 ---
 
-## 시스템 현황 (2026-03-18)
+## 시스템 현황 (기능 표 갱신: 2026-07-27)
 
 | 컴포넌트 | 상태 | 실행 방식 |
 |---------|------|---------|
@@ -14,9 +19,11 @@
 | CMYK 자동변환 + 텍스트 아웃라인 | 구현 완료 | JSX 3종 내장 |
 | 카드/칸반 (긴급도, 필터) | 구현 완료 | 웹 UI |
 | 발주/구매 시스템 | 구현 완료 | 웹 UI |
-| 전자세금계산서 (팝빌) | 구현 완료 | 웹 UI |
-| 은행 거래내역 (Codef) | 구현 완료 | 웹 UI |
-| 카카오톡 알림 | 미구현 | — |
+| 전자세금계산서 | 구현 완료 | 웹 UI (팝빌→바로빌 전환 중, 병행 운영) |
+| 은행 거래내역 | 구현 완료 | 바로빌 연동 (**Codef는 2026-05-21 전면 제거** — 설계결정 AE) |
+| 카카오톡 알림톡 | 구현·동작 | 바로빌 KakaoTalk.asmx (2026-06-10 — 설계결정 C) |
+| 회계·자금·급여/HR | 구현 완료 | 웹 UI (원장·미수금·자금예측·급여대장·연차) |
+| 멀티사업자 (3법인) | 구현 완료 | entity 분리 — 동산기획/선명/동산기획 청주 |
 
 ---
 
@@ -116,7 +123,7 @@ PollAILayoutAsync()   → pending 레이아웃 → PackGroups.jsx      → resul
 
 ---
 
-## API 라우트 (37개)
+## API 라우트 (아래는 주요 항목 발췌 — 실제 89 top-level + 36 서브파일)
 
 | 라우트 | 용도 |
 |--------|------|
@@ -160,13 +167,15 @@ PollAILayoutAsync()   → pending 레이아웃 → PackGroups.jsx      → resul
 
 ---
 
-## DB 마이그레이션 (0001~0080)
+## DB 마이그레이션 (0001~0477, 479개 · 아래는 핵심 테이블 발췌)
+
+> 신규/로컬 D1 초기화는 마이그레이션 풀리플레이가 아니라 `npm run db:reset`(=`schema/baseline_*.sql` 베이스라인).
 
 ### 핵심 테이블
 
 | 테이블 | 설명 |
 |--------|------|
-| users | 사용자 (ADMIN/MANAGER/DESIGNER/OPERATOR) |
+| users | 사용자 (역할은 4→8종으로 확장 — 목록 정본은 `src/middleware/auth.ts`·`permission_pages`) |
 | clients | 거래처 (SALES/PURCHASE/BOTH) |
 | items, item_categories, item_subcategories | 품목 마스터 |
 | orders, order_items | 주문 + 상세 (parent_item_id 묶음 지원) |
@@ -195,15 +204,16 @@ PollAILayoutAsync()   → pending 레이아웃 → PackGroups.jsx      → resul
 dongsan_mes/
 ├── src/
 │   ├── index.tsx              # 메인 앱 (라우트 등록 + 페이지 스크립트)
-│   ├── layout.ts              # 공통 레이아웃
-│   ├── routes/                # API 라우트 (37개)
-│   ├── pages/                 # 프론트엔드 페이지 (51개, 포털 6개 포함)
-│   ├── services/              # 외부 연동 (popbillProvider, taxProvider)
-│   ├── lib/                   # 유틸리티 (codef, payments, crypto)
+│   ├── layout.ts + layout/    # 공통 레이아웃 (menu·shared-styles·sidebar·topbar)
+│   ├── routes/                # API 라우트 (89 top-level + 36 서브파일)
+│   ├── pages/                 # 프론트엔드 페이지 (88개, 포털 7개 포함)
+│   ├── services/              # 외부 연동 (barobill* 6종, taxProvider, email*, ftpUpload)
+│   ├── lib/                   # 유틸리티 (payments)
 │   ├── utils/                 # 헬퍼 함수
 │   ├── middleware/auth.ts     # JWT 인증 미들웨어
 │   └── types/                 # TypeScript 타입 정의
-├── migrations/                # D1 마이그레이션 (0001~0080, 81개)
+├── migrations/                # D1 마이그레이션 (0001~0477, 479개)
+├── schema/                    # DB 부트스트랩 베이스라인 (db:reset 소스)
 ├── IllustratorAutomat/        # C# .NET 8 자동화
 │   ├── Program.cs             # 메인 폴링 로직
 │   ├── ExtractGroups.jsx      # AI 그룹 분석 (source)
@@ -284,4 +294,4 @@ npm run db:console:local   # DB SQL 콘솔
 
 ---
 
-**마지막 업데이트**: 2026-03-18
+**마지막 업데이트**: 2026-07-27 (규모·외부연동 정합성 갱신 / IA·이슈이력 섹션은 2026-03-18 기준 유지)

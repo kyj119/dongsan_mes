@@ -8,13 +8,14 @@
 - **feature→verify→next**: 기능 완료→검증(`npm run build && npm run smoke`)→다음 착수.
 - **타입 체크 필수**: 백엔드→`npm run verify`, 전체→`npm run build && npm run smoke`.
 - **subagent dispatch**: typecheck 포함 의무화. 라우트 수정 시 stats/count/badge 포함.
+- **위임보다 인라인 우선**: 도구 몇 번으로 끝나는 일·검증/재확인은 직접 처리. 위임은 독립·병렬 가능한 큰 트랙만, Workflow는 사용자 opt-in 필수 → `.claude/references/agent-team-guide.md` §과다 위임 억제.
 - **신규 페이지→권한 등록**: `permission_pages` INSERT + `requirePagePermission`.
 
 ### 배포 워크플로우 (자동)
 1. **배포 요청 시** → `/deploy-verify` 스킬 자동 실행 (빌드→타입체크→entity감사→배포→스모크)
 2. **routes/*.ts 수정 시** → hook이 entity 필터 감사 리마인더 표시
 3. **migrations/*.sql 생성 시** → hook이 `/migration-check` 실행 리마인더 표시
-4. **배포 후** → 프로덕션 15페이지 + 11 API 자동 검증
+4. **배포 후** → `npm run smoke`(엔드포인트 ~102개, 목록 정본=`scripts/smoke.cjs`) + 주요/변경 페이지 로드 + 변경분 prod 마커 실측
 
 ### 멀티세션 워크플로우 (동시 작업 시 필수)
 - **동시 세션은 git worktree로 격리**: 새 작업은 `.\scripts\new-session.ps1 <이름>` → `dongsan_mes-worktrees\<이름>`에서 진행(빌드·배포·커밋 격리). 메인 체크아웃은 상태판/조율용 — 직접 코드작업 지양. 종료=`.\scripts\end-session.ps1 <이름> -DeleteBranch`.

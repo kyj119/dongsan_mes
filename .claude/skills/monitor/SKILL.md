@@ -37,7 +37,7 @@ disable-model-invocation: true
 ### 운영 모니터링 (종합)
 
 "모니터링", "시스템 점검", "에러 확인", "운영 상태" 같은 요청 시 실행.
-**Fan-out → Fan-in 패턴** (병렬 수집 → 종합. 위임 방식 → `references/agent-team-guide.md`).
+**Fan-out → Fan-in 패턴** (병렬 수집 → 종합. 위임 방식·과다 위임 억제 → `.claude/references/agent-team-guide.md`).
 
 #### Phase 1: 병렬 수집 (에이전트 4개 동시 실행)
 **Agent 1**: 웹 서버 — workerd 프로세스 확인, API 헬스 체크

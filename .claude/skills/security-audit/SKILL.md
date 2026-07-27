@@ -74,7 +74,7 @@ review-checklist과의 차이: review-checklist은 **변경 파일** 코드 리�
 
 ### 전체 점검
 
-1. **병렬 에이전트** (haiku 모델):
+1. **병렬 에이전트** (모델은 세션 모델 상속 — 보안 판단은 품질 민감 구간이라 하향 오버라이드 금지):
    - Agent 1: SQL Injection (카테고리 1)
    - Agent 2: XSS (카테고리 2)
    - Agent 3: 인증/인가 (카테고리 3)

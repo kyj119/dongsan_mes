@@ -37,7 +37,7 @@ git log --oneline -5
 ### 종합 모드
 
 "PM 보고", "종합 보고서", "전체 현황 분석" 같은 요청 시 실행.
-**Fan-out → Fan-in 패턴** (병렬 수집 → 종합. 위임 방식 → `references/agent-team-guide.md`).
+**Fan-out → Fan-in 패턴** (병렬 수집 → 종합. 위임 방식·과다 위임 억제 → `.claude/references/agent-team-guide.md`).
 
 #### Phase 1: 병렬 수집 (에이전트 4개 동시 실행)
 **Agent 1**: Git & 코드 변경 — 최근 10커밋 요약, 변경 파일 패턴 분석
