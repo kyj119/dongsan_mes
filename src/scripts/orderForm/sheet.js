@@ -426,6 +426,8 @@
                         ];
                         for (let oi = 0; oi < orientations.length; oi++) {
                             const o = orientations[oi];
+                            // 마지막 shelf만 높이 성장 허용 — 중간 shelf가 자라면 이미 아래 y로 생성된 다음 shelf와 겹침(nesting-harness R4 실증)
+                            if (si < shelves.length - 1 && o.h > shelf.height) continue;
                             if (shelf.usedWidth + xGap + o.w <= availableWidth) {
                                 placements.push({
                                     group_index: item.groupIndex,

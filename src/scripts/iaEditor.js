@@ -1619,6 +1619,8 @@ function iaeShelfBinPack(items, availableWidth, gap, allowRotate) {
       var ors = orient(it);
       for (var oi = 0; oi < ors.length; oi++) {
         var o = ors[oi];
+        // 마지막 shelf만 높이 성장 허용 — 중간 shelf가 자라면 이미 그 아래 y로 생성된 다음 shelf와 겹침(L1 하네스 R4 실증)
+        if (si < shelves.length - 1 && o.h > sh.height + 1e-6) continue;
         if (sh.usedWidth + xGap + o.w <= availableWidth + 1e-6) {
           placements.push({ id: it.id, x_cm: sh.usedWidth + xGap, y_cm: sh.y, width_cm: o.w, height_cm: o.h, rotated: o.rotated });
           sh.usedWidth += xGap + o.w; sh.itemCount++; if (o.h > sh.height) sh.height = o.h; placed = true; break;
@@ -1706,8 +1708,8 @@ function iaeMaxRectsPack(items, availableWidth, gap, allowRotate) {
       return true;
     });
   }
-  // total_height = 마지막 조각 하단 - gap(우/하 gap은 조각간 간격이므로 외곽 1개분 환원). shelf와 의미 정합.
-  var totalHeight = Math.max(0, maxBottom - (placements.length ? gap : 0));
+  // total_height = 조각 ink 최하단. maxBottom은 gap 미포함(py+o.h)이라 추가 환원하면 재료 길이가 gap만큼 과소보고됨(L1 하네스 W1).
+  var totalHeight = maxBottom;
   return { error: false, placements: placements, total_height_cm: totalHeight, shelves: [] };
 }
 
