@@ -35,6 +35,22 @@ node --check IllustratorAutomat\designer\poc-a0-cep\com.mes.a0.panel\js\main.js
 # prod intake 확인: npx wrangler d1 execute webapp-production --remote --command "SELECT id,client_id,worker_id,post_desc,memo FROM designer_intakes ORDER BY id DESC LIMIT 5"
 ```
 
+## B단계 착수 프롬프트 (다음 세션에 그대로 전달)
+> IA 세션루프 B단계(연동 강화)를 진행해줘. spec=`docs/superpowers/specs/2026-07-23-ia-palette-session-loop.md` §3-B·D6·§4.2, 직전 상태=`memory/session-context.md`(2026-07-27 #8).
+>
+> **전제(완료됨)**: A0~A3+A1 후반 전부 prod(deploy `af2dcd54`) — CEP 패널이 designer_intakes에 client_id(자동완성 정확일치)·worker_id(가공자 매핑)·keyword·post_desc를 저장 중. 배치 ingest는 manifest_N.json 스캔(에이전트 PID 34540). manifest에 batch_folder·batch_index가 오지만 **서버 미저장**. memo=source_folder이고 **배치는 `…_batchNNN#_1` 접미**(2026-07-27 도입, 파싱 주의).
+>
+> **범위**:
+> 1. 마이그 **0477**(최신=0476): `designer_intakes.batch_key TEXT`+인덱스. POST /intakes에서 body.batch_folder→batch_key 저장. 기존 회수분은 memo `#_N` 앞부분으로 backfill. ⚠️적용=`execute --remote --file` 직접(d1_migrations 트래킹 불일치).
+> 2. **대기함 트레이**(주문서 내): 거래처/작업(batch_key) 2단 그룹핑·**"내 작업"=로그인 user id↔worker_id 필터**·식별 메타(썸네일·파일명·순번·크기·가공자·시각).
+> 3. **파일 그룹 일괄 선택→N라인 프리필**+거래처 client_id 상속. absorb=라인별 order_item_id 매핑(`workbench.ts:1268` 경로) — bulk absorb(`:1252`)는 order_item_id 없어 **부적합**(spec §4.2).
+> 4. 2방향: 파일선행 "이 작업으로 주문 생성" / 주문선행 거래처 자동필터.
+> 5. 신규 쿼리 전부 entityFilter(경로①은 orderVisibilityFilter 참고).
+>
+> **주의**: orderForm=?raw 6파일 분할·전역스코프 prefix 격리 / D1 bind 스프레드·80청크·PRAGMA 선확인 / 멀티세션=worktree 격리·경로지정 add / prod 대기함 waiting 19건 중 batch501·613 회수분 4건은 실데이터(테스트 아님) / 썸네일은 r2:thumb: 마커 유출 함정([[feedback-r2-thumbnail-marker-leak]]) — 트레이 썸네일은 has_thumbnail+lazy 패턴.
+>
+> **검증**: `npm run verify` → 로컬 D1 e2e(트레이 필터·그룹핑·N라인 프리필·absorb 왕복) → 배포는 내 확인 후.
+
 ---
 
 # 세션 핸드오프 — MMS 발송 + 거래처 그룹 + 대량발송 변수 (2026-07-27 #4)
