@@ -224,7 +224,17 @@
                         for (var bi = 0; bi < brows.length; bi++) html += ofTrayRowHtml(brows[bi]);
                     });
                 });
-                if (!html) html = '<div class="p-4 text-center text-sm text-gray-400">해당 조건의 대기물이 없습니다.</div>';
+                if (!html) {
+                    // ⚠️ 서버 검색 결과가 있는데 화면이 비면, 클라이언트 필터('내 작업'·'이 거래처만')가
+                    //    가린 것이다. 그냥 "없습니다"라고 하면 헤더는 N건인데 목록은 빈 모순으로 보인다.
+                    var loaded = (_ofIntakeCache || []).length;
+                    html = loaded > 0
+                        ? '<div class="p-4 text-center text-sm text-amber-700 bg-amber-50">'
+                          + '조회된 ' + loaded + '건이 화면 필터에 가려져 있습니다.'
+                          + ' <button type="button" onclick="ofTrayClearViewFilters()" class="underline font-medium">필터 해제</button>'
+                          + '</div>'
+                        : '<div class="p-4 text-center text-sm text-gray-400">해당 조건의 대기물이 없습니다.</div>';
+                }
                 listEl.innerHTML = html;
                 ofTrayUpdateFooter();
                 ofTrayLoadThumbs(listEl);
@@ -377,6 +387,18 @@
                 };
                 if (typeof safeSubmit === 'function') return safeSubmit(btn, run);
                 return run();
+            };
+
+            // 화면 필터('내 작업'·담당자·'이 거래처만')만 해제 — 서버 검색 조건은 유지한다.
+            window.ofTrayClearViewFilters = function() {
+                var my = document.getElementById('intakeMyWork');
+                if (my && my.checked) { my.checked = false; try { localStorage.setItem('ofTrayMyWork', '0'); } catch (e) { /* private 모드 */ } }
+                var wf = document.getElementById('intakeWorkerFilter');
+                if (wf) wf.value = '';
+                var co = document.getElementById('intakeClientOnly');
+                if (co) co.checked = false;
+                ofTrayRender();
+                ofTrayUpdateFooter();
             };
 
             window.ofTraySearchReset = function() {
