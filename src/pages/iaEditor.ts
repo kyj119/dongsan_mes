@@ -1,7 +1,12 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
-import pageScript from '../scripts/iaEditor.js?raw'
+import iaeScript from '../scripts/iaEditor.js?raw'
+// Phase 7b: /workbench(시안 검수) 페이지를 이 화면의 3번째 뷰로 흡수.
+//   전역 스코프 충돌 없음 — 검수는 wb* , 편집기는 iae* 프리픽스([[feedback-raw-concat-global-scope]]).
+import wbScript from '../scripts/workbench.js?raw'
+
+const pageScript = iaeScript + '\n' + wbScript
 
 // IA 편집·네스팅·접수 워크벤치
 // spec: docs/superpowers/specs/2026-06-16-ia-editor-nesting-intake.md
@@ -19,6 +24,7 @@ export function iaEditorPage(c: Context<HonoEnv>) {
       <div class="flex gap-2 mb-4">
         <button id="iaeViewEdit" class="px-4 py-2 rounded-lg text-sm font-medium border border-blue-500 bg-blue-50 text-blue-700"><i class="fas fa-object-group mr-1"></i>파일 처리</button>
         <button id="iaeViewCanvas" class="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50"><i class="fas fa-layer-group mr-1"></i>네스팅/모아찍기</button>
+        <button id="iaeViewReview" class="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50"><i class="fas fa-clipboard-check mr-1"></i>시안 검수</button>
       </div>
 
       <!-- 파일 처리 뷰 -->
@@ -61,6 +67,59 @@ export function iaEditorPage(c: Context<HonoEnv>) {
           <div class="flex-1 min-w-0 p-4 bg-gray-50 overflow-auto">
             <div id="iaeNestPreview" class="min-h-[480px] flex items-center justify-center text-gray-300 text-sm text-center">
               왼쪽에서 그룹·수량·시트 규격을 설정하고 <b class="mx-1">자동 배치</b>를 누르면<br>시트 배치 미리보기가 표시됩니다.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 시안 검수 뷰 (Phase 7b: 구 /workbench 흡수 — AI 그룹 ↔ 주문 품목 매칭) -->
+      <div id="iaeReviewView" class="hidden">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          <div class="ds-card p-4">
+            <div class="text-sm text-gray-600 mb-1">검수 대상 주문</div>
+            <div class="text-2xl font-bold text-gray-900" id="statTotal">-</div>
+          </div>
+          <div class="ds-card p-4">
+            <div class="text-sm text-gray-600 mb-1">매칭 완료</div>
+            <div class="text-2xl font-bold text-green-600" id="statMatched">-</div>
+          </div>
+          <div class="ds-card p-4">
+            <div class="text-sm text-gray-600 mb-1">미매칭 품목 보유</div>
+            <div class="text-2xl font-bold text-amber-500" id="statUnmatched">-</div>
+          </div>
+          <div class="ds-card p-4">
+            <div class="text-sm text-gray-600 mb-1">분석 실패</div>
+            <div class="text-2xl font-bold text-red-600" id="statFailed">-</div>
+          </div>
+        </div>
+
+        <div class="flex gap-4" style="min-height: 600px;">
+          <!-- 좌: 주문 목록 -->
+          <div class="flex-shrink-0 w-80 ds-card flex flex-col">
+            <div class="p-3 border-b border-gray-200">
+              <div class="flex gap-2">
+                <input id="wbSearch" type="text" placeholder="주문번호/거래처 검색"
+                       class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                <button id="wbSearchBtn" class="bg-blue-600 text-white rounded-lg px-3 py-2 text-sm hover:bg-blue-700">
+                  <i class="fas fa-search"></i>
+                </button>
+              </div>
+            </div>
+            <div id="wbOrderList" class="flex-1 overflow-y-auto divide-y divide-gray-100">
+              <div class="text-center text-gray-400 py-8 text-sm">주문을 불러오는 중...</div>
+            </div>
+          </div>
+
+          <!-- 우: 검수 패널 -->
+          <div class="flex-1 ds-card flex flex-col">
+            <div id="wbDetailHeader" class="p-4 border-b border-gray-200">
+              <div class="text-sm text-gray-500">좌측에서 주문을 선택하세요</div>
+            </div>
+            <div id="wbDetailBody" class="flex-1 overflow-y-auto p-4">
+              <div class="flex flex-col items-center justify-center h-full text-gray-300">
+                <i class="fas fa-object-group text-5xl mb-3"></i>
+                <div class="text-gray-400 text-sm">주문을 선택하면 AI 그룹과 품목 매칭을 검수할 수 있습니다</div>
+              </div>
             </div>
           </div>
         </div>

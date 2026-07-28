@@ -200,10 +200,19 @@ function wbRefreshCounts() {
 }
 
 // ── 초기화 (모든 함수 정의 이후, 파일 맨 아래) ──────────────────────
+// Phase 7b: 이 스크립트는 ia-editor 페이지에 흡수됐다(/workbench 페이지 제거).
+//   검수 뷰는 기본 숨김이므로 **자동 로드하지 않는다** — 뷰를 처음 열 때 ia-editor 가
+//   wbLoadOrders() 를 호출한다(불필요한 GET /orders 방지). 핸들러 바인딩만 여기서.
+var wbLoaded = false;
 (function initWorkbench() {
   var searchBtn = document.getElementById('wbSearchBtn');
   var searchInput = document.getElementById('wbSearch');
   if (searchBtn) searchBtn.addEventListener('click', wbLoadOrders);
   if (searchInput) searchInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') wbLoadOrders(); });
-  wbLoadOrders();
 })();
+// ia-editor 검수 뷰 최초 진입 시 1회 로드(이후엔 검색·새로고침으로 갱신).
+function wbEnsureLoaded() {
+  if (wbLoaded) return;
+  wbLoaded = true;
+  wbLoadOrders();
+}

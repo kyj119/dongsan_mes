@@ -95,7 +95,7 @@ export const MENU_ITEMS: MenuGroup[] = [
       { path: '/bom', icon: 'fa-sitemap', label: '자재명세(BOM)', roles: ['ADMIN', 'MANAGER'] },
       { path: '/tasks', icon: 'fa-tasks', label: '작업 큐', roles: ['ADMIN', 'MANAGER'], badgeId: 'nav-badge-tasks' },
       { path: '/scan', icon: 'fa-qrcode', label: 'QR 스캔', roles: ['ADMIN', 'MANAGER', 'OPERATOR'] },
-      { path: '/workbench', icon: 'fa-object-group', label: '시안 검수', roles: ['ADMIN', 'MANAGER', 'DESIGNER'] },
+      // 시안 검수는 /ia-editor 의 '시안 검수' 뷰로 흡수(2026-07-28 Phase 7b) — 메뉴 항목 제거.
       { path: '/ia-editor', icon: 'fa-layer-group', label: 'IA 편집기', roles: ['ADMIN', 'MANAGER', 'DESIGNER'] },
     ],
   },

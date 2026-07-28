@@ -121,7 +121,6 @@ import { usersPage } from './pages/users'
 import { postProcessingPage } from './pages/postProcessing'
 import { equipmentPage } from './pages/equipment'
 import { maintenancePage } from './pages/maintenance'
-import { workbenchPage } from './pages/workbench'
 import { iaEditorPage } from './pages/iaEditor'
 import { iaScanPage } from './pages/iaScan'
 import { iaAutoProcessPage } from './pages/iaAutoProcess'
@@ -431,7 +430,8 @@ app.get('/users', pageAuthMiddleware, requireAdminPage(), usersPage)
 app.get('/post-processing', pageAuthMiddleware, requirePagePermission('/post-processing'), postProcessingPage)
 app.get('/equipment', pageAuthMiddleware, requirePagePermission('/equipment'), equipmentPage)
 app.get('/maintenance', pageAuthMiddleware, requirePagePermission('/maintenance'), maintenancePage)
-app.get('/workbench', pageAuthMiddleware, requirePagePermission('/workbench'), workbenchPage)
+// /workbench(시안 검수)는 2026-07-28 Phase 7b 에서 /ia-editor 의 '시안 검수' 뷰로 흡수·제거됨.
+//   API(/api/workbench/*)는 그대로 유지 — 검수·대기함·네스팅이 전부 이 라우터를 쓴다.
 app.get('/ia-editor', pageAuthMiddleware, requirePagePermission('/ia-editor'), iaEditorPage)
 app.get('/ia-scan', pageAuthMiddleware, requireAdminPage(), iaScanPage)
 app.get('/ia-auto', pageAuthMiddleware, requireAdminPage(), iaAutoProcessPage)

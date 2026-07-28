@@ -1269,15 +1269,22 @@ function iaeSetView(v) {
   iaeStopRenderPoll(); // 탭 전환 시 진행 중 렌더 폴링 정리(결과 패널이 교체됨)
   iaeView = v;
   var ev = document.getElementById('iaeEditView'), cv = document.getElementById('iaeCanvasView');
+  var rv = document.getElementById('iaeReviewView'); // Phase 7b: 구 /workbench 흡수
   var be = document.getElementById('iaeViewEdit'), bc = document.getElementById('iaeViewCanvas');
+  var br = document.getElementById('iaeViewReview');
   if (ev) ev.classList.toggle('hidden', v !== 'edit');
   if (cv) cv.classList.toggle('hidden', v !== 'canvas');
+  if (rv) rv.classList.toggle('hidden', v !== 'review');
   var on = 'border-blue-500 bg-blue-50 text-blue-700', off = 'border-gray-200 text-gray-600 hover:bg-gray-50';
   var cls = function (sel) { return 'px-4 py-2 rounded-lg text-sm font-medium border ' + (v === sel ? on : off); };
   if (be) be.className = cls('edit');
   if (bc) bc.className = cls('canvas');
+  if (br) br.className = cls('review');
   if (v === 'canvas') { iaeRenderCanvas(); iaeStopAgentPoll(); } // ② 캔버스 뷰선 에이전트 폴 정지
   if (v === 'edit') { iaeStartAgentPoll(); } // ② 에이전트 폴 시작 (③ 가공 이력 보드는 Phase 7a 에서 제거)
+  // 검수 뷰: 최초 진입 시 1회만 주문 로드(뷰가 기본 숨김이라 자동 로드하지 않는다).
+  //   wbEnsureLoaded 는 workbench.js(같은 페이지에 concat) 제공 — 없으면 조용히 스킵.
+  if (v === 'review') { iaeStopAgentPoll(); if (typeof wbEnsureLoaded === 'function') wbEnsureLoaded(); }
 }
 
 // shelfBinPack 포팅 (원본: src/scripts/orderForm/sheet.js:402) — 폭 고정·면적 내림차순 shelf 적재 + 회전
@@ -3052,10 +3059,12 @@ function iaeCanSubmitOrderProceed() {
   // 디자이너 세션 루프: 가공 대기물 불러오기 버튼
   var intakeBtn = document.getElementById('iaeIntakeBtn');
   if (intakeBtn) intakeBtn.addEventListener('click', iaeIntakeToggle);
-  // 뷰 토글 (파일 처리 / 대지 편집 / 네스팅)
+  // 뷰 토글 (파일 처리 / 네스팅·모아찍기 / 시안 검수)
   var vEdit = document.getElementById('iaeViewEdit'), vCanvas = document.getElementById('iaeViewCanvas');
+  var vReview = document.getElementById('iaeViewReview'); // Phase 7b: 구 /workbench
   if (vEdit) vEdit.addEventListener('click', function () { iaeSetView('edit'); });
   if (vCanvas) vCanvas.addEventListener('click', function () { iaeSetView('canvas'); });
+  if (vReview) vReview.addEventListener('click', function () { iaeSetView('review'); });
   iaeCanLoad();          // 네스팅 시트 영속 복원
 
   var ids = iaeLoadIds();
