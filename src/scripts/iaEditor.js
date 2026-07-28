@@ -1143,6 +1143,10 @@ function iaeLoadFflate() {
 function iaeZipSafeName(s) {
   return String(s == null ? '' : s).replace(/[\/\\:*?"<>|\x00-\x1f]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 60) || '_';
 }
+// ── ③ 가공 이력 보드 (영속 재다운로드) — GET /api/workbench/process?limit=12 ──
+// ia_process_jobs 최근 N건(서버 entity 격리·created_at desc). 새로고침/탭전환에도 보존(서버 조회).
+// 카드별: 상태 뱃지·생성시각·크기·jpg 썸네일 + [EPS][JPG][DXF] 재다운로드.
+var iaeHistLoading = false;
 function iaeHistHost() {
   // 파일처리 뷰에 이력 host 1회 주입(페이지 템플릿 무수정 — 팀A 스코프=iaEditor.js 단독)
   var host = document.getElementById('iaeHistory');
