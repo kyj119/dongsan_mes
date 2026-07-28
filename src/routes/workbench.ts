@@ -1,6 +1,7 @@
 // src/routes/workbench.ts — 웹 캔버스 IA 워크벤치 P1: 시안 검수 (그룹 ↔ 품목 매칭)
 // spec: docs/archive/superpowers/specs/2026-06-11-web-canvas-ia-workbench.md §5 (ia-editor 마스터에 흡수)
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter, orderVisibilityFilter, getEntityId, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../utils/entityFilter'
@@ -659,6 +660,38 @@ workbenchRouter.get('/render-queue', async (c) => {
   }
 })
 
+// 판에 실린 대기물 소비 — 판짜기 은퇴 대비(웹 네스팅이 mes-sheet.jsx의 consumed_intake_ids를 대체).
+//   sheet의 source_analysis_ids → designer_intakes.ai_analysis_id 역참조(POST /intakes가 분석 1건을
+//   1:1로 만들므로 유일). waiting 인 것만 바꾸므로 재렌더·중복 콜백에 멱등.
+//   미리보기(preview_only) 시트는 산출물이 없으므로 제외 — 조회 조건에서 걸러낸다.
+//   반환 = 소비된 대기물 수(0이면 웹 업로드 소스라 대응 대기물이 없는 정상 케이스 포함).
+async function consumeSheetIntakes(c: Context<HonoEnv>, sheetId: number): Promise<number> {
+  const row = await c.env.DB.prepare(
+    `SELECT source_analysis_ids FROM sheet_layouts
+      WHERE id = ? AND COALESCE(canvas_json,'') NOT LIKE '%"preview_only":true%'`
+  ).bind(sheetId).first<{ source_analysis_ids: string | null }>()
+  if (!row?.source_analysis_ids) return 0
+  let aids: number[] = []
+  try {
+    const parsed = JSON.parse(row.source_analysis_ids)
+    if (Array.isArray(parsed)) aids = parsed.map(Number).filter((n) => Number.isFinite(n) && n > 0)
+  } catch (_e) { return 0 }
+  if (!aids.length) return 0
+
+  const ef = entityFilter(c, 'designer_intakes')
+  let total = 0
+  for (let i = 0; i < aids.length; i += 80) { // D1 바인드 한도([[d1-bind-param-limit]])
+    const chunk = aids.slice(i, i + 80)
+    const ph = chunk.map(() => '?').join(',')
+    const r = await c.env.DB.prepare(
+      `UPDATE designer_intakes SET status = 'absorbed', absorbed_at = datetime('now')
+        WHERE status = 'waiting' AND ai_analysis_id IN (${ph})${ef.clause}`
+    ).bind(...chunk, ...ef.params).run()
+    total += r.meta?.changes ?? 0
+  }
+  return total
+}
+
 // PATCH /api/workbench/sheets/:id/render — 에이전트 결과 콜백
 workbenchRouter.patch('/sheets/:id/render', async (c) => {
   try {
@@ -680,8 +713,17 @@ workbenchRouter.patch('/sheets/:id/render', async (c) => {
         `UPDATE sheet_layouts SET render_status='error', render_error=?, updated_at=datetime('now') WHERE id = ?${ef.clause} AND render_status='rendering'`
       ).bind(body.render_error ?? '렌더 실패', id, ...ef.params).run()
     }
+    // 판 출력이 실제로 완료되면 그 판에 쓰인 대기물을 소비(absorbed) 처리.
+    //   판짜기(mes-sheet.jsx)가 manifest `consumed_intake_ids`로 하던 것과 **동일 시점·동일 의미**
+    //   (EPS 생성 완료 = 조각이 판에 실렸다). 이 배선이 없으면 웹 네스팅으로 판을 짜도 대기함에
+    //   waiting으로 남아 무한 적체 + 같은 조각이 다른 판에 또 실리는 이중 출력이 난다.
+    //   실패해도 렌더 결과 확정은 막지 않는다(best-effort).
+    let consumed = 0
+    if (rs === 'done' && (res.meta?.changes ?? 0) > 0) {
+      try { consumed = await consumeSheetIntakes(c, id) } catch (_e) { /* best-effort */ }
+    }
     // 0-row = 재큐로 세대 교체됨(이미 다른 세대가 처리) → 500 금지, 무시 응답.
-    return c.json({ success: true, ignored: (res.meta?.changes ?? 0) === 0 })
+    return c.json({ success: true, ignored: (res.meta?.changes ?? 0) === 0, consumed_intakes: consumed })
   } catch (error) {
     console.error('Workbench render callback error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

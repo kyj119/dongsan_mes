@@ -18,20 +18,43 @@
 
 > 한글 인코딩 안전설계: config·params는 **cep.fs(UTF-8)** 로만 오가고, evalScript 인자/반환은 **ASCII(경로·상태코드)만** → CEP 브릿지 한글 깨짐 회피.
 
-## 설치 (이 PC엔 이미 적용됨 — 다른 PC는 아래대로)
-1. `com.mes.a0.panel` 폴더를 아래로 복사(사용자 폴더 — 관리자 불요·일러 업데이트에도 생존):
-   ```
-   %APPDATA%\Adobe\CEP\extensions\com.mes.a0.panel\
-   (= C:\Users\<user>\AppData\Roaming\Adobe\CEP\extensions\com.mes.a0.panel\)
-   ```
-2. **미서명 확장 허용** — 레지스트리 `PlayerDebugMode="1"`(String):
-   ```
-   HKCU\Software\Adobe\CSXS.12\PlayerDebugMode = "1"   (일러 2026)
-   (호환 위해 CSXS.10/11도 함께 두면 무해)
-   ```
-3. 일러 **완전 종료 후 재시작**.
+## ★ 로직은 패널 안에 없다 — Z: 정본 스텁 구조 (2026-07-28)
 
-> 이 PC(개발기)엔 부모 세션이 설치+레지스트리(10/11/12)까지 적용 완료.
+`jsx/host.jsx`는 **스텁**이고, 실제 로직 정본은 아래 1곳이다:
+
+```
+Z:\DESIGNS\IA-등록\_scripts\mes-a0-host.jsx      (repo: IllustratorAutomat/designer/mes-a0-host.jsx)
+```
+
+스텁이 이 파일을 `$.evalFile`로 전역 로드한다. 따라서 **로직 수정 = Z: 정본 1개 교체**로 끝나고,
+각 PC를 다시 돌 필요가 없다(반영 시점 = 다음 패널 로드/일러 재시작). `mes-core.jsx`·`mes-sheet.jsx`가
+쓰는 스텁 모델과 동일하다.
+
+- ⚠️ **IIFE 금지** — `$.evalFile`은 반드시 전역 스코프에서. 감싸면 `mesA0_*`가 지역에 갇혀
+  evalScript에서 "함수가 아닙니다"가 난다(2026-07-27 실제 발생). 검증 = `typeof mesA0_process`.
+- Z: 정본을 못 읽으면 패널 버전 표시가 `ERROR 정본 없음 …`으로 뜬다(무증상 실패 방지).
+- 패널 **폼/화면**(index.html·main.js·css)이 바뀐 경우에만 각 PC 재설치가 필요하다.
+
+## 설치 — 스크립트 1개 (관리자 권한 불요)
+
+디자이너 PC에서 Z:의 스크립트를 그대로 실행하면 된다:
+
+```powershell
+& 'Z:\DESIGNS\IA-등록\_scripts\install-a0-panel.ps1'
+```
+
+하는 일 = ①패널 껍데기를 `%APPDATA%\Adobe\CEP\extensions\com.mes.a0.panel`로 복사(기존은 자동 백업)
+②미서명 확장 허용 레지스트리 `PlayerDebugMode=1`(HKCU, CSXS 10/11/12) ③Z: 정본 존재 확인.
+제거는 `-Uninstall`. 리포에서 직접 돌릴 때는 `scripts\install-a0-panel.ps1`(소스 자동 탐색).
+
+설치 후 **일러 완전 종료 → 재시작 → 창(Window) > 확장(Extensions) > MES A0 Panel**.
+
+<details><summary>수동 설치 (스크립트를 못 쓸 때)</summary>
+
+1. `com.mes.a0.panel` 폴더를 `%APPDATA%\Adobe\CEP\extensions\com.mes.a0.panel\`로 복사
+2. `HKCU\Software\Adobe\CSXS.12\PlayerDebugMode = "1"` (String). CSXS.10/11도 두면 무해
+3. 일러 완전 종료 후 재시작
+</details>
 
 ## 테스트 (사용가능 판정)
 1. 일러 재시작 → **Window(창) > Extensions(확장) > MES A0 Panel** 클릭 → 패널이 뜬다.
