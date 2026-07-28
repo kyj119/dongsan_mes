@@ -347,7 +347,8 @@ function iaeNasAnalyze(name, btn) {
 }
 
 // ── 디자이너 세션 루프(2026-07-17): 가공 대기물 불러오기 ────────────────────
-// 일러 MES가공(mes-core.jsx)으로 등록된 대기물(designer_intakes)을 세션에 추가 → 팔레트/모아찍기에서 사용.
+// 일러 MES 패널(용도=모아찍기)로 등록된 대기물(designer_intakes)을 세션에 추가 → 모아찍기에서 사용.
+// (mes-core.jsx/MES가공 스텁은 2026-07-28 은퇴 — 등록 경로는 패널 하나다)
 // 팔레트는 iae_session_ids 기반이라 등록분이 자동으로 안 뜨는 갭을 메움. NAS 패널 패턴 미러.
 function iaeIntakeThumb(t) { if (!t) return ''; return t.indexOf('data:') === 0 ? t : ('data:image/png;base64,' + t); }
 function iaeIntakeToggle() {
@@ -1143,134 +1144,6 @@ function iaeLoadFflate() {
 function iaeZipSafeName(s) {
   return String(s == null ? '' : s).replace(/[\/\\:*?"<>|\x00-\x1f]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 60) || '_';
 }
-// ── ③ 가공 이력 보드 (영속 재다운로드) — GET /api/workbench/process?limit=12 ──
-// ia_process_jobs 최근 N건(서버 entity 격리·created_at desc). 새로고침/탭전환에도 보존(서버 조회).
-// 카드별: 상태 뱃지·생성시각·크기·jpg 썸네일 + [EPS][JPG][DXF] 재다운로드.
-var iaeHistLoading = false;
-function iaeHistHost() {
-  // 파일처리 뷰에 이력 host 1회 주입(페이지 템플릿 무수정 — 팀A 스코프=iaEditor.js 단독)
-  var host = document.getElementById('iaeHistory');
-  if (host) return host;
-  var view = document.getElementById('iaeEditView');
-  if (!view) return null;
-  host = document.createElement('div');
-  host.id = 'iaeHistory';
-  host.className = 'ds-card mt-4 p-4';
-  view.appendChild(host);
-  return host;
-}
-function iaeLoadHistory() {
-  var host = iaeHistHost();
-  if (!host) return;
-  if (iaeHistLoading) return; // 중복 로드 방지
-  iaeHistLoading = true;
-  axios.get('/api/workbench/process', { params: { limit: 12 } }).then(function (res) {
-    var rows = (res.data && res.data.data) || [];
-    iaeRenderHistory(rows);
-  }).catch(function (err) {
-    console.warn('[ia-editor] 이력 로드 실패', err);
-    iaeRenderHistory(null);
-  }).finally(function () { iaeHistLoading = false; });
-}
-// W2: 완료·실패 가공 이력 일괄 삭제(R2 산출물 포함, 대기·진행 잡은 유지). 누적 방지·D1 비대 해소.
-function iaeClearHistory() {
-  if (!window.confirm('완료·실패한 가공 이력을 모두 삭제할까요? (R2 산출물 포함, 되돌릴 수 없음)')) return;
-  var cb = document.getElementById('iaeHistClear');
-  if (cb) { cb.disabled = true; cb.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>삭제 중…'; }
-  // #506: 서버가 배치(150건)씩 삭제하고 hasMore로 잔여를 알림 → 다 지울 때까지 반복 호출.
-  var totalDeleted = 0;
-  var guard = 0;
-  function clearBatch() {
-    return axios.post('/api/workbench/process/clear').then(function (res) {
-      var d = (res.data && res.data.data) || {};
-      totalDeleted += (d.deleted || 0);
-      guard++;
-      if (d.hasMore && guard < 200) {
-        if (cb) cb.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>삭제 중… (' + totalDeleted + '건)';
-        return clearBatch();
-      }
-    });
-  }
-  clearBatch().then(function () {
-    iaeToast(totalDeleted + '건 이력 삭제 완료', 'success');
-    iaeLoadHistory();
-  }).catch(function (err) {
-    var msg = (err.response && err.response.data && err.response.data.error) || err.message || '이력 삭제 실패';
-    iaeToast(totalDeleted > 0 ? (totalDeleted + '건 삭제 후 중단: ' + msg) : msg, 'error');
-    if (cb) { cb.disabled = false; cb.innerHTML = '<i class="fas fa-trash-can mr-1"></i>이력 비우기'; }
-  });
-}
-function iaeRenderHistory(rows) {
-  var host = document.getElementById('iaeHistory');
-  if (!host) { console.warn('[ia-editor] #iaeHistory not found'); return; }
-  var headHtml = '<div class="flex items-center justify-between mb-3">'
-    + '<span class="text-sm font-semibold text-gray-700"><i class="fas fa-clock-rotate-left mr-1.5 text-blue-500"></i>내 출력 이력 <span class="text-xs font-normal text-gray-400">(최근 12건 · 새로고침·탭전환에도 보존)</span></span>'
-    + '<div class="flex items-center gap-2">'
-    + '<span id="iaeAgentBadge" class="text-[11px] rounded-full px-2 py-0.5 bg-gray-100 text-gray-500"><i class="fas fa-circle-notch fa-spin mr-1"></i>에이전트 확인 중</span>' // ② 에이전트 온라인/오프라인
-    + '<button id="iaeHistRefresh" class="text-xs text-gray-500 hover:text-blue-600"><i class="fas fa-rotate-right mr-1"></i>새로고침</button>'
-    + '<button id="iaeHistClear" class="text-xs text-gray-400 hover:text-red-600" title="완료·실패 이력 삭제(R2 산출물 포함). 대기·진행 중 잡은 유지"><i class="fas fa-trash-can mr-1"></i>이력 비우기</button>'
-    + '</div>'
-    + '</div>';
-  var body;
-  if (rows == null) {
-    body = '<div class="text-xs text-gray-400 py-2">이력을 불러오지 못했습니다</div>';
-  } else if (rows.length === 0) {
-    body = '<div class="text-xs text-gray-400 py-2">아직 가공 출력 이력이 없습니다</div>';
-  } else {
-    body = '<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">'
-      + rows.map(iaeHistCardHTML).join('') + '</div>';
-  }
-  host.innerHTML = headHtml + body;
-  iaeWireBlobThumbs(host); // W2: jpg_r2 blob 썸네일 로드(base64 미보유 신규 잡)
-  var rb = document.getElementById('iaeHistRefresh');
-  if (rb) rb.addEventListener('click', iaeLoadHistory);
-  var cb = document.getElementById('iaeHistClear'); // W2: 이력 비우기
-  if (cb) cb.addEventListener('click', iaeClearHistory);
-  iaeRefreshAgentStatus(); // ② 배지 즉시 1회 갱신(이후 주기 폴러가 유지)
-  // [EPS][JPG][DXF] 위임 바인딩 — R2-3 파일명 {yyyymmdd}_{사이즈}_{그룹명}.{kind}
-  var byId = {}; (rows || []).forEach(function (r) { byId[r.id] = r; });
-  Array.prototype.forEach.call(host.querySelectorAll('.iae-hist-dl'), function (b) {
-    b.addEventListener('click', function () {
-      var id = b.getAttribute('data-id'), kind = b.getAttribute('data-kind');
-      var r = byId[id] || {}; var meta = r.result_meta || {};
-      var base = iaeDownloadBase({
-        when: r.created_at, w_cm: meta.width_cm, h_cm: meta.height_cm,
-        name: '그룹' + (r.group_index != null ? r.group_index : '') + (r.analysis_id != null ? ('_분석' + r.analysis_id) : '')
-      });
-      iaeDownloadBlob('/api/workbench/process/' + id + '/download?kind=' + kind, base + '.' + kind);
-    });
-  });
-  // R2-1: '주문 만들기' 위임 바인딩
-  Array.prototype.forEach.call(host.querySelectorAll('.iae-hist-order'), function (b) {
-    b.addEventListener('click', function () { iaeHistOrder(byId[b.getAttribute('data-id')]); });
-  });
-}
-// R2-1: 가공 이력 잡 1건 → 주문 라인 1개 프리필 후 주문 모달 오픈(거래처/품목/수량/단가만 입력).
-//   이력 응답(analysis_id·group_index·result_meta.width/height_cm)으로 목표크기,
-//   finishing/trim/scale_factor는 localStorage 가공설정(iaeSettings[fid:gidx])에서 보강(없으면 빈값).
-function iaeHistOrder(r) {
-  if (!r) { iaeToast('이력 정보를 찾을 수 없습니다', 'error'); return; }
-  var fid = r.analysis_id, gi = r.group_index;
-  if (fid == null || gi == null) { iaeToast('이 이력은 주문 생성에 필요한 분석 정보가 없습니다', 'error'); return; }
-  var meta = r.result_meta || {};
-  var wCm = (meta.width_cm != null && Number(meta.width_cm) > 0) ? Number(meta.width_cm) : 0;
-  var hCm = (meta.height_cm != null && Number(meta.height_cm) > 0) ? Number(meta.height_cm) : 0;
-  // 보강: 같은 그룹의 마지막 가공설정(localStorage). 키 = fid:gidx.
-  var saved = (iaeSettings && iaeSettings[iaeSettingsKey(fid, gi)]) || {};
-  var fin = (saved.fin_top || saved.fin_bottom || saved.fin_left || saved.fin_right)
-    ? { top: saved.fin_top || '', bottom: saved.fin_bottom || '', left: saved.fin_left || '', right: saved.fin_right || '' } : null;
-  // 목표크기: 이력 result_meta 우선, 없으면 저장설정 target, 없으면 0(사용자 보정 유도)
-  var w = wCm || Number(saved.target_w) || 0, h = hCm || Number(saved.target_h) || 0;
-  var label = '가공 #' + gi + ' · 분석 ' + fid + (r.id != null ? (' (이력 ' + r.id + ')') : '');
-  var ln = {
-    kind: 'obj', fid: fid, gi: gi, label: label,
-    w_cm: w, h_cm: h, qty: 1,
-    fin: fin, trim: !!saved.trim, scale_factor: iaeScaleFromPct(saved.save_scale_pct), // 저장 스케일(축소저장)
-    det_w_cm: w, det_h_cm: h,  // 검출=목표(이력엔 검출원본 미보유 → 리사이즈 pp 미생성, 왜곡경고 회피)
-    item_id: null, item_name: '', pricing_method: 'FIXED', unit_price: 0
-  };
-  iaeOpenOrderModalWithLines([ln]);
-}
 // ② 에이전트 상태 배지 — GET /agent-status {online, last_seen}. 폴링(폴=heartbeat)이라 last_seen<60s면 online.
 var iaeAgentStatusTimer = null;
 function iaeRefreshAgentStatus() {
@@ -1404,7 +1277,7 @@ function iaeSetView(v) {
   if (be) be.className = cls('edit');
   if (bc) bc.className = cls('canvas');
   if (v === 'canvas') { iaeRenderCanvas(); iaeStopAgentPoll(); } // ② 캔버스 뷰선 에이전트 폴 정지
-  if (v === 'edit') { iaeLoadHistory(); iaeStartAgentPoll(); } // ③ 파일처리 탭 복귀 시 출력 이력 새로고침 + ② 에이전트 폴 시작
+  if (v === 'edit') { iaeStartAgentPoll(); } // ② 에이전트 폴 시작 (③ 가공 이력 보드는 Phase 7a 에서 제거)
 }
 
 // shelfBinPack 포팅 (원본: src/scripts/orderForm/sheet.js:402) — 폭 고정·면적 내림차순 shelf 적재 + 회전
@@ -3189,6 +3062,7 @@ function iaeCanSubmitOrderProceed() {
   iaeActiveId = ids.length ? ids[0] : null;
   iaeLoadFinishing(); // 마감 데이터 로드 후 패널 렌더
   iaeRefresh();
-  iaeLoadHistory(); // ③ 가공 이력 보드 초기 로드(서버 조회 — 새로고침에도 보존)
+  // ③ 가공 이력 보드는 Phase 7a 에서 제거 — 단건 가공 진입점(Phase 6)이 사라져 writer 가 0이 되면서
+  //   ia_process_jobs 가 frozen 테이블이 됐고, 보드는 영원히 0건만 보여주게 됐다.
   iaeStartAgentPoll(); // ② 에이전트 상태 배지 주기 폴 시작(편집 뷰 기본)
 })();

@@ -32,7 +32,11 @@ export function iaEditorPage(c: Context<HonoEnv>) {
         </div>
         <div class="mb-4">
           <button id="iaeNasBtn" class="text-xs px-3 py-1.5 rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50"><i class="fas fa-folder-open mr-1"></i>NAS에서 분석 <span class="text-gray-400">(대용량·업로드 없이 · Z:\\Designs\\IA-입력)</span></button>
-          <button id="iaeIntakeBtn" class="text-xs px-3 py-1.5 rounded-md border border-amber-300 text-amber-700 hover:bg-amber-50 ml-1"><i class="fas fa-inbox mr-1"></i>가공 대기물 불러오기 <span class="text-amber-400">(일러 MES가공 등록분)</span></button>
+          <button id="iaeIntakeBtn" class="text-xs px-3 py-1.5 rounded-md border border-amber-300 text-amber-700 hover:bg-amber-50 ml-1"><i class="fas fa-inbox mr-1"></i>모아찍기 대기함 <span class="text-amber-400">(일러 MES 패널 등록분)</span></button>
+          <!-- 에이전트 상태 배지: 렌더(EPS 출력) 가능 여부를 알려준다. Phase 7a 이전엔 가공 이력 보드
+               헤더가 이 span 을 만들었는데 그 보드를 제거하면서 페이지 템플릿의 고정 자리로 옮겼다
+               (JS 주입 → 정적 배치. check:dom 이 ID 를 찾을 수 있어 silent-fail 위험도 사라진다). -->
+          <span id="iaeAgentBadge" class="text-[11px] rounded-full px-2 py-0.5 bg-gray-100 text-gray-500 ml-2"><i class="fas fa-circle-notch fa-spin mr-1"></i>에이전트 확인 중</span>
           <div id="iaeNasPanel" class="hidden mt-2 border border-gray-200 rounded-lg p-3 bg-white"></div>
           <div id="iaeIntakePanel" class="hidden mt-2 border border-amber-200 rounded-lg p-3 bg-white"></div>
         </div>
