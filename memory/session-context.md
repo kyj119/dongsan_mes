@@ -12,6 +12,7 @@
 | 1 | `adc13bef` | **#582** workbench `order_item_id` 크로스엔티티 검증(경로① + absorb 변종). 이슈 close |
 | 2 | `4b8c250e`·`adfc0773` | `session/ia-web-sunset` 2커밋 cherry-pick (shelf 교체 + 조각 로딩 실버그 수정) |
 | 3 | `38cc411e` | 판짜기 shelf **겹침 1줄 수정** + 하네스에 `sheetShelf` 패커 등록 |
+| 4 | (Z: 직접) | **`Z:\DESIGNS\IA-등록\_scripts\mes-sheet.jsx` 교체** — 백업 `mes-sheet.20260721.bak` 후 복사, 리포와 해시 일치(`C8B1A7BC…`), **배포 실물을 하네스에 직접 걸어 1005/1005 확인**. 스텁이 매 실행 Z:를 읽으므로 전 디자이너 PC 즉시 반영 |
 
 ## 핵심 판단·이유
 
@@ -22,7 +23,9 @@
 
 ## ⚠️ 주의사항 (다음 세션이 반드시 알아야 할 것)
 
-- **판짜기 JSX는 웹 번들에 안 들어간다.** `38cc411e`를 배포했다고 디자이너 PC에 반영된 게 아니다 → **Z: 동기화 + 일러 실측**이 남았고, 이월 TODO의 판짜기 E2E와 같은 회차에 해야 한다. ([[feedback-ia-jsx-runtime-path]])
+- **★git 미머지 ≠ 미배포** — `session/ia-web-sunset`이 main에 없어서 "미적용"으로 판단했는데 **Z: 정본은 이미 그 브랜치 tip과 byte 동일**이었다(07-21 수동 배포). 겹침 버그 패커가 **7일간 디자이너 PC에서 운영 중**이었던 것. 웹은 `deploy.yml` 자동배포라 "main에 있으면 이미 prod"가 성립하지만 **역은 성립하지 않는다**. JSX 판단 전엔 브랜치가 아니라 **런타임 실물(Z: / exe 폴더)을 대조**할 것. 정본=[[feedback-ia-jsx-runtime-path]]
+- **판짜기는 A0 CEP 패널이 아니다** — `com.mes.a0.panel`의 `host.jsx`·`main.js`에 sheet 참조 0건(실측). Scripts 메뉴 독립 실행이고, 스텁이 `Z:\DESIGNS\IA-등록\_scripts\mes-sheet.jsx`를 매 실행 `$.evalFile` → **Z: 파일 1개 교체 = 전 PC 반영**(PC별 재설치·CEP 핫스왑 불요).
+- **JSX는 웹 번들에 안 들어간다** — `38cc411e` 배포는 디자이너 PC와 무관했다(이번엔 Z: 직접 교체로 해소). 파일 크기 비교는 CRLF·BOM 때문에 오판하니 `git diff --no-index --ignore-cr-at-eol`로 볼 것.
 - **`node --check`가 `.jsx`를 못 읽는다**(확장자 거부 + `#target`=private field 파싱 오류). 문법 검증은 `#directive`를 주석 처리한 사본을 `.js`로 만들어 검사할 것.
 - **판짜기 shelf엔 회전 잠금(allowRotate)이 없다** — 항상 회전한다. 방향성 소재를 판짜기로 다루게 되면 추가 필요(하네스는 이 패커만 항상 회전 허용으로 판정 중).
 - **패커를 다른 파일로 이식할 땐 원본의 버그 이력부터 확인**할 것. 이번 겹침의 근본 원인.
@@ -33,11 +36,11 @@
 | 건 | 왜 멈췄나 |
 |---|---|
 | MMS 규격 상향 · 알림톡 실검증 | **블로커 동일 = 테스트 수신번호 1개 확정**. 확정되면 2건 동시 해제(알림톡 7원 + MMS 계단 4건 ≈ 400원, 실패분 과금 0) |
-| IA 실가공 자연검증 · 판짜기 E2E · #310 직접발행 폼 | 현장·실사용 작업. **판짜기 E2E에 이번 JSX 실측을 합칠 것** |
+| IA 실가공 자연검증 · 판짜기 E2E · #310 직접발행 폼 | 현장·실사용 작업. 판짜기 코드·배포는 완료 — 남은 건 **디자이너가 실제 판을 한 번 짜서 겹침 해소 확인** |
 
 ## 다음 TODO
 
-1. **판짜기 Z: 동기화 + 일러 실측**(위 주의사항). 실측 전까진 디자이너 PC 동작은 구버전.
+1. ~~판짜기 Z: 동기화~~ **완료**(위 표 #4). 남은 것 = 디자이너가 실제 판 1건을 짜서 **겹침 해소 자연 검증**. 되돌리려면 `Z:\…\_scripts\mes-sheet.20260721.bak` → `mes-sheet.jsx`.
 2. **auto-improve 다음 순번 = Area 6**(백로그 메타의 `last_run_area` 확인 후).
 3. `quotations.ts`·`taxInvoices/batch.ts` N+1 별건 재감사 → Area 2.
 4. (선택) 브랜치 정리 — `session/ia-web-sunset`(내용 전량 main 반영)·`claude/peaceful-ride-ia0bN`·`feat/ia-multisource-imposition`. ⚠️로컬 미머지 브랜치는 **122개**(대부분 봇 잔재)라 개별 삭제보다 일괄 스윕이 실익.
