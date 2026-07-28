@@ -1,6 +1,59 @@
 > **파일 구조**: 최신 세션이 맨 위. 아래로 갈수록 과거 세션(각각 durable 메모리에 정본 있음).
 > **다음 세션은 이 문서 상단의 "이월 TODO 통합"만 읽으면 된다** — 그 아래 상세 핸드오프는 판단 근거가 필요할 때만.
 
+# 세션 핸드오프 — #582 워크벤치 IDOR + 판짜기 shelf 겹침 prod 배포 완료 (2026-07-28 #14)
+
+> durable=[[reference-nesting-harness]]·[[project-ia-designer-loop]]. **prod 배포 완료** — main `adc13bef`(#582)·`38cc411e`(판짜기), CI 2회 전부 success(Typecheck·Build·Deploy·Smoke). 마이그 없음. 직전 #13의 🛑중단표 **2건 해소**(#582·ia-web-sunset), 남은 중단 3건은 아래 표.
+
+## 이번 세션 완료
+
+| # | 커밋 | 내용 |
+|---|---|---|
+| 1 | `adc13bef` | **#582** workbench `order_item_id` 크로스엔티티 검증(경로① + absorb 변종). 이슈 close |
+| 2 | `4b8c250e`·`adfc0773` | `session/ia-web-sunset` 2커밋 cherry-pick (shelf 교체 + 조각 로딩 실버그 수정) |
+| 3 | `38cc411e` | 판짜기 shelf **겹침 1줄 수정** + 하네스에 `sheetShelf` 패커 등록 |
+
+## 핵심 판단·이유
+
+- **#582 가드 필터로 `entityFilter`가 아니라 `orderVisibilityFilter`를 골랐다** — 이슈 본문은 형제로 absorb의 `entityFilter(c,'o')`(엄격)를 지목했지만, 이 `order_item_id`의 **출처가 `/intake-config` open_lines(`:1140`, `orderVisibilityFilter`)**이고 `mes-core.jsx:275`가 그 목록에서만 id를 뽑는다. 엄격 필터를 쓰면 분할청구 혼합주문의 협업 라인이 **조용히 `absorbed=false`로 떨어진다**(에러도 안 남). 출처와 같은 필터 = 구조적 회귀 0 + 타법인 차단.
+- **"머지냐 폐기냐"는 잘못된 이분법이었다** — 브랜치 2커밋의 성격이 완전히 달랐다. `31c88d00`은 **main에 살아있던 실버그**(cross-doc `duplicate(grp,…)` PARM 실패를 catch가 삼켜 빈 판→크래시, qty 복제 stale) 수정이고 COM 실측 기록까지 있었다. 통째 폐기했으면 판짜기가 계속 깨진 채였다.
+- **겹침은 "이식이 나쁘다"가 아니라 "낡은 버전을 이식했다"였다** — 원본 `iaEditor.js`는 이미 고쳐져 있었고(`:1623`), 브랜치는 그 **이전** 코드를 떠왔다. 그래서 재작성이 아니라 **1줄 동기화**가 정답.
+- **하네스에 등록해야 이 실수가 반복되지 않는다** — 눈으로 "겹칠 것 같다"까지는 갔지만, 실제 규모(1,005케이스 중 584 실패·겹침 3,203건)는 하네스가 알려줬다. 수정 후 1005/1005 + 실사례 total_height가 iaEditor shelf와 완전 일치.
+
+## ⚠️ 주의사항 (다음 세션이 반드시 알아야 할 것)
+
+- **판짜기 JSX는 웹 번들에 안 들어간다.** `38cc411e`를 배포했다고 디자이너 PC에 반영된 게 아니다 → **Z: 동기화 + 일러 실측**이 남았고, 이월 TODO의 판짜기 E2E와 같은 회차에 해야 한다. ([[feedback-ia-jsx-runtime-path]])
+- **`node --check`가 `.jsx`를 못 읽는다**(확장자 거부 + `#target`=private field 파싱 오류). 문법 검증은 `#directive`를 주석 처리한 사본을 `.js`로 만들어 검사할 것.
+- **판짜기 shelf엔 회전 잠금(allowRotate)이 없다** — 항상 회전한다. 방향성 소재를 판짜기로 다루게 되면 추가 필요(하네스는 이 패커만 항상 회전 허용으로 판정 중).
+- **패커를 다른 파일로 이식할 땐 원본의 버그 이력부터 확인**할 것. 이번 겹침의 근본 원인.
+- **`window.MMS_IMAGE` 주입처 없음은 오기록** — `layout.ts:212`가 주입 중. 상한 상향은 `constants/barobillCodes.ts:160` 1줄로 서버·클라 동시 반영된다.
+
+## 🛑 남은 중단 (직전 세션에서 승계 — 3건으로 축소)
+
+| 건 | 왜 멈췄나 |
+|---|---|
+| MMS 규격 상향 · 알림톡 실검증 | **블로커 동일 = 테스트 수신번호 1개 확정**. 확정되면 2건 동시 해제(알림톡 7원 + MMS 계단 4건 ≈ 400원, 실패분 과금 0) |
+| IA 실가공 자연검증 · 판짜기 E2E · #310 직접발행 폼 | 현장·실사용 작업. **판짜기 E2E에 이번 JSX 실측을 합칠 것** |
+
+## 다음 TODO
+
+1. **판짜기 Z: 동기화 + 일러 실측**(위 주의사항). 실측 전까진 디자이너 PC 동작은 구버전.
+2. **auto-improve 다음 순번 = Area 6**(백로그 메타의 `last_run_area` 확인 후).
+3. `quotations.ts`·`taxInvoices/batch.ts` N+1 별건 재감사 → Area 2.
+4. (선택) 브랜치 정리 — `session/ia-web-sunset`(내용 전량 main 반영)·`claude/peaceful-ride-ia0bN`·`feat/ia-multisource-imposition`. ⚠️로컬 미머지 브랜치는 **122개**(대부분 봇 잔재)라 개별 삭제보다 일괄 스윕이 실익.
+5. (별건 판단) `workbench.ts:1201`이 body `entity_id`를 세션 법인과 대조 없이 신뢰 — 타법인 대기함에 행 생성 가능(#582 동류, 낮은 심각도). 에이전트 인증 경로 영향 확인 후 처리.
+
+## 검증 명령 (PowerShell)
+
+```powershell
+npm run verify
+node scripts/entity-audit.mjs
+node scripts/nesting-harness.mjs --cases=1000 --seed=7777    # 3패커 전부 1005/1005 기대
+# 판짜기 JSX 문법(#directive 제외 파싱) — .jsx 직접 --check는 실패가 정상
+```
+
+---
+
 # 세션 핸드오프 — 문서 인프라 정비 + 자동 트림 + 잠복 재검증 prod 배포 완료 (2026-07-28 #13)
 
 > durable=[[feedback-claude-structure-opus48]]·`docs/HANDOFF-doc-diet.md`. **prod 배포 완료** — main `dc514a40`, CI 자동배포(`deploy.yml` main push 트리거), **Typecheck·Build·Deploy·Smoke 전 단계 통과**. 검증=root 302·API 3종 401(contact-groups/orders/workbench). 마이그 없음(prod DB 직접 변경 1건은 아래 ②).
