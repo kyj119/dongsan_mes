@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-07-28T09:20:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-07-28T15:22:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,15 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, 2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그 이관: 306KB→80KB, **2026-07-27T23:00 7차 트림 — 사이클 로그 39건 중 31건 이관(최근 8건=전 Area 1바퀴+2만 유지): 196KB→63KB**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 **최근 8사이클 로그**(전 Area 1바퀴 커버 = 직전 사이클 diff 판단에 필요한 최소분) + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 > ↳ **8차 트림 (2026-07-27, 자동)**: 사이클 로그 9건 → 8건 유지, 1건 이관 (66KB → 트림 후 아래 참조).
+
+> **Area 1 프로덕션 헬스 (2026-07-28T15:22):**
+> - **방법**: `git fetch origin main`(forced-update, HEAD `2f4e6d6` = origin/main 일치, 워킹트리 clean, detached), node_modules 0(설치 불요 — 이번 사이클은 커밋 없음 전제하에 grep/GitHub API 위주). 프록시가 이번 세션도 prod 호스트 직접 curl 차단(exit 56, CONNECT tunnel 403 — `webapp-9i0.pages.dev`·`observability.mcp.cloudflare.com` 둘 다 `__agentproxy/status` `recentRelayFailures`에 재확인, `cloudflare-observability` MCP 미인증 지속) — 직접 prod API/Playwright 헬스체크 불가, GitHub Actions CI 기록으로 대체(기존 사이클과 동일 제약). Area 1 **52회차** — 직전 Area1(`e8acc62`, 07-27T09:17, 51회차) 이후 이미 전체 사이클 1바퀴(Area2~Area6, 51회차)가 각 렌즈로 커버 완료, Area6(51회차, `616c976`, 09:20) 이후로는 `feat(ia)` 모아찍기/대기물 3커밋(`78b1170`·`7d61fc2`·`2f4e6d6`, `workbench.ts`+`iaEditor.js`+`orderForm/intake.js` 변경)뿐 — 이슈 번호 인용 0(신규 기능, 픽스 아님), 다음 Area2/3/5 사이클이 렌즈 적용할 신선 churn.
+> - **deploy.yml 전수 확인**: `e8acc62`→`2f4e6d6` 구간(07-27T02:31~07-28T06:04, 60개 run 확인, per_page 페이지네이션 2회) **전부 `success`** — CF-internal transient·cold-start 재발 0. 최신 run(`30333624471`, `2f4e6d6` merge, 2026-07-28T06:04:56Z 완료, 현재시각 06:22 UTC 대비 18분 전) 포함 전량 green. `backup.yml`도 최근 6회 전부 success(마지막 07-27T18:18:39Z, 현재 대비 ~12시간 전 = 일일 주기 내 신선). `e2e.yml` = `disabled_manually`(기존 인지 상태, 변동 없음). `verify.yml`은 PR 트리거 전용이라 이번 사이클도 실행 0건(정상, 열린 PR 없음).
+> - **open≠unfixed 재확인 불요**: 직전 Area6(51회차, 09:20)가 이미 절대값 재동기화(open 11·done 499·rejected 6) + close-pending(#580) 재검증을 방금 완료했고, 그 이후 신규 churn 3건은 이슈 번호 미인용 신규기능이라 OPEN 11건(#572~#584 중 11개) 상태에 영향 없음 — `git log 616c976..HEAD --oneline | grep -E "#5[0-9][0-9]"` = 0건으로 직접 확인.
+> - **backlog↔GitHub 절대값 재동기화**: 변동 없음 유지 — open **11**(`list_issues` 재조회로 재확인, #572~#584 동일 목록), done **499**·rejected **6**(close 0건이라 재조회 생략, Area6 51회차 캐시 신뢰).
+> - **🧬 SKILL 강화 없음** — 순수 CI/헬스 확인 사이클, 신규 클래스 없음.
+> - 신규 이슈 0건, 자동수정 0건(순수 CI/인프라 헬스 확인), done-sync: new 11·done 499·rejected 6. 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-07-28T09:20):**
 > - **방법**: `git fetch origin main`(forced-update, HEAD `6685a36` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 6 **51회차** — 직전 Area6(`fe11c1c`, 07-26T23:50, 50회차)이 아니라 직전 Area5(`8604557`, 07-28T03:35, 45회차) 기준으로 재점검(6영역 순환상 직전 사이클이 Area5) — `git log 8604557..HEAD -- src/routes src/scripts migrations` = **4커밋뿐**(`040d882` XSS 자동수정·`59330b5` #583 자동수정·`f57abc9` #580 픽스·`adc13be` #582 픽스, 전부 Area5 자기 사이클 산출물 또는 owner/타세션 후속 픽스) — 컬럼-diff/XSS bridge 대상 신선 churn 없음. 같은 구간의 `4b8c250`/`adfc077`/`38cc411`(판짜기 shelf bin-pack)은 `IllustratorAutomat/**`·`nesting-harness.mjs` CEP 패널 코드로 웹앱 라우트/스크립트/마이그 범위 밖 — 스킵.
