@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-07-28T03:35:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-07-28T09:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,14 +8,23 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **12** (GitHub OPEN 실측, 07-28T03:35 — #572~#580 9건 이월 + 이번 사이클 신규 #581·#582·#584) |
+| 🆕 new | **11** (GitHub OPEN 실측, 07-28T09:20 — 실질 미해결 10건 + close-pending 1건[#580, fixed-in-tree]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **498** (`reason:completed` 절대값, +1 — #583 이번 사이클 자동수정 완료) |
+| ✔️ done | **499** (`reason:completed` 절대값, +1 — #582 별도세션 자동픽스 확인) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, 2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그 이관: 306KB→80KB, **2026-07-27T23:00 7차 트림 — 사이클 로그 39건 중 31건 이관(최근 8건=전 Area 1바퀴+2만 유지): 196KB→63KB**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 **최근 8사이클 로그**(전 Area 1바퀴 커버 = 직전 사이클 diff 판단에 필요한 최소분) + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 > ↳ **8차 트림 (2026-07-27, 자동)**: 사이클 로그 9건 → 8건 유지, 1건 이관 (66KB → 트림 후 아래 참조).
+
+> **Area 6 자기 진화 (2026-07-28T09:20):**
+> - **방법**: `git fetch origin main`(forced-update, HEAD `6685a36` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 6 **51회차** — 직전 Area6(`fe11c1c`, 07-26T23:50, 50회차)이 아니라 직전 Area5(`8604557`, 07-28T03:35, 45회차) 기준으로 재점검(6영역 순환상 직전 사이클이 Area5) — `git log 8604557..HEAD -- src/routes src/scripts migrations` = **4커밋뿐**(`040d882` XSS 자동수정·`59330b5` #583 자동수정·`f57abc9` #580 픽스·`adc13be` #582 픽스, 전부 Area5 자기 사이클 산출물 또는 owner/타세션 후속 픽스) — 컬럼-diff/XSS bridge 대상 신선 churn 없음. 같은 구간의 `4b8c250`/`adfc077`/`38cc411`(판짜기 shelf bin-pack)은 `IllustratorAutomat/**`·`nesting-harness.mjs` CEP 패널 코드로 웹앱 라우트/스크립트/마이그 범위 밖 — 스킵.
+> - **🔴 open≠unfixed 재확인 — #580 close-pending 신규 합류**: `f57abc9`(owner/별도세션, 00:31)가 `contactGroups.ts GET /:id/members`에 `AND is_active = 1` 추가해 #580(비활성 거래처 대량발송 포함) 픽스를 완결했으나 **GitHub 이슈는 OPEN 유지**(commit 메시지에 `(#580)` 인용 O, close 실행 X) — SKILL "open≠unfixed"(line 281) 표준 재현. 코드 직접 확인(diff Read, 커밋 메시지 신뢰 안 함): 유일 소스(`clients` 조회 1곳)에 필터 추가 완료, 형제(employees `is_deleted=0`)와 대칭 확보 — **형제완전성 clean**(파일 내 거래처 조회 사이트 1곳뿐이라 재검토 대상 자체가 단순).
+> - **✅ #582도 검증 확인(이미 정상 close)**: `adc13be`(owner/별도세션, 08:42)가 `workbench.ts POST /intakes` 본경로 + `/intakes/:id/absorb` 변종(이슈 본문이 "부수" 항목으로 명시했던 낮은심각도 변종)까지 **양쪽 다** `orderVisibilityFilter(c,'o')` JOIN 가드로 픽스 — 이슈에 GitHub이 이미 `state_reason:completed`로 정상 close돼 있어 close-pending 아님(정상 사이클). 코드 diff 직접 확인해 이슈 본문의 "부수 변종"까지 누락 없이 커버됐음을 재검증(형제완전성 clean, `absorb` 경로도 동일 필터 적용).
+> - **backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **11건**(#572~#579, #580[close-pending], #581, #584 — #582·#583은 이미 completed close로 제외). `search_issues(reason:completed)` 실측 **499**(+1, #582가 이전 캐시 498에 반영 안 돼 있던 것 보정). rejected(`not_planned` 4 + `duplicate` 2) **6** 변동 없음.
+> - **도구 상태 확인**: `npx tsc --noEmit` clean, `node scripts/entity-audit.mjs`(125파일·SELECT60·통과60·누락0), 마이그 번호 중복 스캔(기존 5쌍 `0327/0412/0416/0420/0453`만, 신규 0).
+> - **🧬 SKILL 강화 없음(기존 패턴 재현)** — #580 close-pending은 "open≠unfixed"(line 281)의 정상 재현(신규 클래스 아님), 규모도 1건뿐이라 "close-pending 적체" 집계 경고(line 291) 임계치 아님(현재 적체 = #580 1건, owner 배치클로즈 유도 불필요할 만큼 소규모). #582는 형제완전성까지 커버된 완결 픽스라 별도 재오픈 불요.
+> - 신규 이슈 0건, 자동수정 0건(전부 타 세션 기픽스 확인 작업), done-sync: new 12→11(#582 completed 이관 -1, #583 이미 반영, #580 close-pending 유지)·done 498→499(+1)·rejected 6. 다음 순번 **Area 1**.
 
 > **Area 5 보안 (2026-07-28T03:35):**
 > - **방법**: `git fetch origin main`(forced-update 감지, HEAD `8604557` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81, #439 표준절차). Area 5 **45회차** — 직전 Area5(`b798aed`, 07-26T21:40, 44회차) 이후 `git log b798aed..HEAD -- src/routes src/scripts migrations`는 **35커밋/98파일(+3672/-649)** 대량 churn(MMS/SMS 대량발송+거래처그룹·은행 일괄매칭 통합+Shift범위선택·직원 휴가 셀프신청·클레임반품 AR 자동조정+포털계정 게이트(#557)+IDOR 6핸들러(#571) 수정·후가공 도메인 프로파일 A1·발주 법인간거래 토글·정렬 tie-break 전역 스윕). 필수 표준 스캔 전부 clean: secret fallback grep(`fax.ts` 기존 FP만)·기본비밀번호 리터럴 0·마이그 번호 중복(기존 5쌍만, 신규 0)·`entity-audit.mjs`(125파일·SELECT60·통과60·누락0)·`tsc --noEmit` clean·GitHub Actions 워크플로 변경 0(`pull_request_target` 없음, 기존 안전).
