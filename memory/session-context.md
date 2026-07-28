@@ -1,7 +1,86 @@
 > **파일 구조**: 최신 세션이 맨 위. 아래로 갈수록 과거 세션(각각 durable 메모리에 정본 있음).
 > **다음 세션은 이 문서 상단의 "이월 TODO 통합"만 읽으면 된다** — 그 아래 상세 핸드오프는 판단 근거가 필요할 때만.
 
-# 세션 핸드오프 — IA 진입점 통합 Phase 1~8 + 판짜기 은퇴 prod 완료 (2026-07-28 #15)
+# 세션 핸드오프 — IA 진입점 통합 완결(Phase 1~8·7a·7b-1) + JSX 전량 은퇴 (2026-07-28 #15)
+
+> **다음 세션은 이것만 하면 된다 → `docs/HANDOFF-phase7b2.md`** (프롬프트 포함).
+> durable=[[project-ia-web-sunset]]·[[feedback-ia-jsx-runtime-path]]. **main `1577c107` push·CI 전건 success.**
+
+## ★ 목표 달성 — 진입점 4개 → 2개
+
+| 전 | 후 |
+|---|---|
+MES가공.jsx · MES판짜기.jsx · A0 패널 · ia-editor(+/workbench) | **A0 패널** · **ia-editor** |
+
+- **JSX 스텁 2개 전량 은퇴**(`retire-legacy-jsx.ps1`). 일러 Scripts 메뉴에 MES 항목 0개.
+  보관함 `Z:\…\_scripts\_retired\20260728-164533`(판짜기)·`-170424`(가공) · 복구=`-Restore`
+- **`/workbench` 페이지 제거** → ia-editor '시안 검수' 뷰로 흡수. prod 마이그 0478 적용
+  (`permission_pages` is_active=0 — **삭제 아님**, `role_page_permissions` 3행 보존 확인)
+- ia-editor = `[파일 처리][네스팅/모아찍기][시안 검수]` 3뷰
+
+## ★ 최대 성과 — 판 렌더 EPS 미생성 근본 원인 해결
+
+`SheetLayout.jsx` `_slOpenPrep` 이 **최상위 `GroupItem` 만** 조각으로 수집하는데 **패널이 만든 work.ai 는
+아트워크를 그룹으로 묶지 않는다** → 조각 **0개** 인식 → 판이 빈 채로 나가 EPS 미생성.
+
+- 성공 9건 = 전부 `Temp\IllustratorAutomat\req_N\`(IA 파이프라인, 그룹 있음) / 실패 전건 = 패널 소스
+- **Z: 매핑드라이브·한글경로·멀티소스 개수·갓 띄운 일러는 전부 무관**(하나씩 실측 배제)
+- 수정 = 그룹 0개면 전 레이어 최상위 아이템을 하나로 묶는 폴백(그룹 있는 소스는 미진입=회귀 0)
+- 검증 = sheet #19 재큐 `groups=0→1`·`error→done`·EPS 35MB·JPG·DXF 실측
+
+## 완료 커밋 (전부 push·CI success)
+
+| 커밋 | 내용 |
+|---|---|
+| `592ced20` | Phase 5 은퇴 스크립트 |
+| `f7350ea9`·`5b6d345e` | Phase 8 진단 캡처 + **EPS 근본 원인 수정** |
+| `571d11d7` | Phase 6 ia-editor 단건가공·배치 제거(353줄) |
+| `6fd45e27` | 문서·메모리 동기화(방향 전환 반영) |
+| `90724486` | Phase 6 경계 초과 회귀 수정(`iaeHistLoading`) |
+| `63983da9` | Phase 7a 고립된 가공 이력 보드 제거 + 낡은 문구 정정 |
+| `1577c107` | **Phase 7b-1 검수 흡수 + /workbench 제거** |
+| (Z:/DB 직접) | JSX 스텁 2개 은퇴 · prod 마이그 0478 |
+
+## ⚠️ 다음 세션이 반드시 알아야 할 것
+
+- **경계 삭제는 시작·끝 양쪽 + 바로 바깥 한 줄을 assert**. Phase 6에서 5줄 초과로
+  `ReferenceError: iaeHistLoading` 회귀를 냈고(브라우저가 잡음), 같은 assert가 Phase 7a에서
+  **두 번 더** 사고를 막았다(종료 경계가 `var iaeAgentStatusTimer` 였던 건 특히 위험).
+- **제거 블록이 DOM 엘리먼트를 만들고 있는지 확인** — `#iaeAgentBadge` 를 가공 이력 보드 헤더가
+  생성하고 있어서 보드를 지우면 에이전트 배지가 함께 죽었다(페이지 템플릿으로 이동해 해결).
+- **정적 링크검사는 함수+변수 전수여야 한다** — 함수 호출만 보면 변수 참조 회귀를 못 잡는다.
+- **`check:dom` 9건이 기준선.** 늘어나면 진입점만 지우고 핸들러를 남긴 것 — 훅이 이번 세션에
+  총 5회 정확히 잡아줬다.
+- **브라우저 실클릭이 유일하게 잡는 회귀가 있다.** Playwright 가 타 세션에 잠기면 Chrome 확장 사용.
+  `confirm()` 쓰는 버튼은 클릭 금지(브라우저 블로킹) — API 로 검증.
+- **`$.fileName` 은 `DoJavaScript(문자열)` 실행에서 무의미** — JSX 로그 경로는 에이전트가 주입해야 한다.
+- **모아찍기는 마감 여백 미적용이 설계**(`mes-a0-host.jsx` `if (mode !== 'impose')`). 모아찍기+접어미싱
+  조합은 실무에 없다(사용자 확인) → 판 배치에 마감 여백 반영 불요.
+- 에이전트는 새 빌드로 상주(로그 캡처 중). JSX 2개 런타임 수동 동기화 완료.
+- **실사용 0건을 근거로 쓰지 말 것**(사용자 정정) — 전체가 테스트 단계라 당연한 수치다.
+  단 "경로가 통째로 전환된 패턴"(웹 업로드→패널)은 대체 정황으로 인정됨.
+
+## 다음 TODO
+
+1. **Phase 7b-2 = `docs/HANDOFF-phase7b2.md`** (프롬프트·위험·검증절차 전부 정리됨)
+2. **디자이너 흐름 1건 통과** — 패널 모아찍기 추출 → ia-editor 대기함 선택 → 판 → EPS.
+   각 구간은 개별 검증됨, 전 구간 연속 통과만 남음
+3. (선택) `POST /api/workbench/process` dead route 정리 · 옛 AI추출·합판 패널 코드 완전 제거
+4. (선택) 로컬 브랜치 17개 중 REVIEW 7개(스쿼시 이전 화석) — `npm run branch:clean`
+
+## 검증 명령 (PowerShell)
+
+```powershell
+npm run verify; node scripts/entity-audit.mjs; npm run check:dom   # 9건=기준선
+node scripts/nesting-harness.mjs --cases=1000 --seed=7777          # 3패커 1005/1005
+npm run branch:clean                                               # 브랜치 위생(dry-run)
+.\scripts\retire-legacy-jsx.ps1 -WhatIfOnly                        # 은퇴 대상(이제 0개)
+# 에이전트 진단: Start-Process -RedirectStandardOutput 로 stdout 확보 후 시트 재큐
+```
+
+---
+
+# (이전) 세션 핸드오프 — IA 진입점 통합 Phase 1~8 + 판짜기 은퇴 prod 완료 (2026-07-28 #15 초안)
 
 > durable=[[project-ia-web-sunset]](★방향 전환 반영)·[[feedback-ia-jsx-runtime-path]]·[[project-ia-designer-loop]].
 > **push 완료 `main == origin/main`(`571d11d7`)· CI 6회 전부 success.** 아래 #14는 같은 날 앞부분(#582·판짜기 겹침) — 보존.
