@@ -19,6 +19,7 @@
     "smoke": "node scripts/smoke.cjs",
     "backlog:trim": "node scripts/backlog-trim.cjs",
     "status:trim": "node scripts/status-trim.cjs",
+    "branch:clean": "node scripts/branch-cleanup.cjs",
     "canary:write": "node scripts/write-canary.cjs",
     "ship:gate": "npm run verify && node scripts/entity-audit.mjs && npm run canary:write",
     "ship": "npm run ship:gate && npm run deploy:prod",

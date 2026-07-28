@@ -273,6 +273,7 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
   - closed + 거절 코멘트 → rejected로 이동 + 오탐 패턴 목록 갱신
   - 백로그에 없는 GitHub 이슈도 수집하여 done 섹션에 추가
   - **⚠️ done 카운터는 절대값 재계산, 델타 누적 금지(37회차 codify)**: "직전값+이번사이클 델타"로만 갱신하면 다회차·다차례 백로그 트림(아카이브 이관)을 거치며 오차가 조용히 누적된다(37회차 실측: 기재값 184 vs `search_issues(label:auto-improve,is:closed,reason:completed)` 실측 427 — **243건 과소집계**, rejected는 `reason:not_planned`+`reason:duplicate` 합으로 3건 정합이라 드리프트는 done에만 국한). **매 Area 6 사이클마다 절대값 재동기화**: `search_issues("repo:<owner>/<repo> label:auto-improve is:closed reason:completed")`의 `total_count`를 done에, `reason:not_planned`+`reason:duplicate`(개별 쿼리 후 합산)를 rejected에 직접 대입 — 직전 기재값과 비교해서만 델타 판단 금지, 매번 절대값으로 덮어쓸 것. open 카운트(`state:OPEN`)도 동일하게 매 사이클 실측 대입.
+- **브랜치 위생 (매 사이클, 읽기 전용)**: `npm run branch:clean` — 로컬 잔류 브랜치를 SAFE-remote(원격에 원본 존재=삭제 무손실)/SAFE-absorbed(고유 커밋 0)/REVIEW(로컬 전용+고유 커밋)/SKIP(main·현재HEAD·워크트리)로 **판정만** 한다. **`--apply`(실삭제)는 자동 실행 금지** — owner 확인 대상이라 위험명령 훅이 차단한다. 삭제 대상이 30건을 넘으면 백로그에 정리 제안 **1건만** 등록(브랜치별 등록 금지). 유입원은 `end-session.ps1` 없이 끝난 워크트리 세션의 `session/*` 잔류 — 스크립트가 워크트리 체크아웃 브랜치를 자동 제외하므로 진행 중인 타 세션을 건드릴 위험은 없다. (봇 브랜치 `claude/peaceful-ride-*`·`auto-improve/*`는 2026-05~06에 멈춘 과거 잔재이지 현재 유입원이 아님 — 현 사이클은 `git push origin HEAD:main` 직접 푸시)
 - 스킬 파일 업데이트:
   - 새로 발견한 패턴을 다른 스킬(review-checklist, security-audit 등)에 추가
   - 오탐(false positive) 패턴 제외 목록 갱신 (IMPROVEMENT_BACKLOG.md 하단 표도 갱신)

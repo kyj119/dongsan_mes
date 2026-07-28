@@ -12,6 +12,9 @@ const HARD_BLOCK = [
   /\brm\s+-[a-z]*r/i, // 재귀 rm (-r/-rf/-fr) — 단일파일 rm -f는 허용
   /\bgit\s+clean\s+-[a-z]*f/i,
   /\bgit\s+branch\s+-D\b/i,
+  // 브랜치 일괄 삭제 — 스크립트 경유도 동일 게이트(우회 방지).
+  // 실행 형태(node …branch-cleanup / npm run branch:clean)만 매치 — 커밋 메시지 등 산문 오탐 방지.
+  /(?:node\s+\S*branch-cleanup(?:\.cjs)?|branch:clean)[^\n]*--apply/i,
   /\bgit\s+checkout\s+--\s+\./i,
   /\bgit\s+restore\s+(--staged\s+)?\.(\s|$)/i,
   /\bgit\s+push\b.*--force(?!-with-lease)/i,
