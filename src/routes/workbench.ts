@@ -1526,6 +1526,63 @@ workbenchRouter.post('/intakes/:id/absorb', async (c) => {
   }
 })
 
+// 대기물 취소 권한(2026-07-28): 등록자 본인 또는 ADMIN/MANAGER.
+//   여러 디자이너가 한 대기함에 올리므로 남의 작업을 실수로 지우는 사고를 막는다.
+//   ⚠️ worker_id NULL(패널 도입 전 등록분)은 소유자 판정이 불가 → 제한 없음(현행 유지).
+//     관리자 전용으로 막으면 기존 잔류물을 디자이너가 못 치우고, 지금도 누구나 지울 수
+//     있는 상태라 보안이 후퇴하지도 않는다. 신규 등록분부터 자연히 소유자 규칙이 적용된다.
+function canVoidIntake(c: Context<HonoEnv>, workerId: number | null): boolean {
+  if (workerId == null) return true
+  const user = c.get('user') as { id?: number; role?: string } | undefined
+  if (!user) return false
+  if (user.role === 'ADMIN' || user.role === 'MANAGER') return true
+  return Number(user.id) === Number(workerId)
+}
+
+// ── POST /api/workbench/intakes/void-bulk — 선택 대기물 일괄 취소 ──
+// 관리 화면의 [선택 N건 취소]. 권한 없는 건은 조용히 건너뛰고(전체 실패로 만들지 않음)
+// 결과 카운트로 알린다. :id/void 와 동일한 소유자 규칙.
+// ⚠️ :id 라우트보다 먼저 등록 — 경로 형태가 달라 충돌은 없으나 순서로도 못박는다.
+workbenchRouter.post('/intakes/void-bulk', async (c) => {
+  try {
+    const body = await c.req.json<{ ids?: unknown }>().catch(() => ({} as { ids?: unknown }))
+    const ids = Array.isArray(body.ids)
+      ? (body.ids as unknown[]).map(Number).filter((n) => Number.isFinite(n) && n > 0)
+      : []
+    if (!ids.length) return c.json({ success: false, error: '취소할 대기물을 선택하세요.' }, 400)
+
+    const ef = entityFilter(c, 'designer_intakes')
+    const allowed: number[] = []
+    let denied = 0, skipped = 0
+    for (let i = 0; i < ids.length; i += 80) { // D1 바인드 한도([[d1-bind-param-limit]])
+      const chunk = ids.slice(i, i + 80)
+      const ph = chunk.map(() => '?').join(',')
+      const { results } = await c.env.DB.prepare(
+        `SELECT id, status, worker_id FROM designer_intakes WHERE id IN (${ph})${ef.clause}`
+      ).bind(...chunk, ...ef.params).all<{ id: number; status: string; worker_id: number | null }>()
+      for (const r of results || []) {
+        if (r.status !== 'waiting') { skipped++; continue }
+        if (!canVoidIntake(c, r.worker_id)) { denied++; continue }
+        allowed.push(r.id)
+      }
+    }
+
+    let voided = 0
+    for (let i = 0; i < allowed.length; i += 80) {
+      const chunk = allowed.slice(i, i + 80)
+      const ph = chunk.map(() => '?').join(',')
+      const r = await c.env.DB.prepare(
+        `UPDATE designer_intakes SET status = 'void' WHERE id IN (${ph}) AND status = 'waiting'${ef.clause}`
+      ).bind(...chunk, ...ef.params).run()
+      voided += r.meta?.changes ?? 0
+    }
+    return c.json({ success: true, data: { voided, denied, skipped } })
+  } catch (error) {
+    console.error('Workbench intake void-bulk error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // ── POST /api/workbench/intakes/:id/void — 대기물 취소 ──
 workbenchRouter.post('/intakes/:id/void', async (c) => {
   try {
@@ -1533,9 +1590,12 @@ workbenchRouter.post('/intakes/:id/void', async (c) => {
     if (!Number.isFinite(id)) return c.json({ success: false, error: '잘못된 ID' }, 400)
     const ef = entityFilter(c, 'designer_intakes')
     const row = await c.env.DB.prepare(
-      `SELECT id, status FROM designer_intakes WHERE id = ?${ef.clause}`
-    ).bind(id, ...ef.params).first<{ id: number; status: string }>()
+      `SELECT id, status, worker_id FROM designer_intakes WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; status: string; worker_id: number | null }>()
     if (!row) return c.json({ success: false, error: '대기물을 찾을 수 없습니다.' }, 404)
+    if (!canVoidIntake(c, row.worker_id)) {
+      return c.json({ success: false, error: '등록한 본인 또는 관리자만 취소할 수 있습니다.' }, 403)
+    }
     if (row.status !== 'waiting') return c.json({ success: false, error: `대기 상태가 아닙니다 (${row.status}).` }, 409)
     await c.env.DB.prepare(
       `UPDATE designer_intakes SET status = 'void' WHERE id = ?`

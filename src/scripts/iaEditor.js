@@ -354,43 +354,193 @@ function iaeIntakeToggle() {
   var p = document.getElementById('iaeIntakePanel'); if (!p) { console.warn('[ia-editor] #iaeIntakePanel not found'); return; }
   if (p.classList.contains('hidden')) { p.classList.remove('hidden'); iaeIntakeLoad(); } else { p.classList.add('hidden'); }
 }
+// ── 모아찍기 대기함 관리 (Phase 4b, 2026-07-28) ────────────────────────────
+// 여러 디자이너가 각자 패널에서 올리는 공용 풀이라 "누가 올렸는지 → 어떤 묶음인지"가 축이다.
+// 그룹핑 2단(가공자 → batch_key) · 3단 체크박스 · 선택 담기/일괄취소 · 썸네일 lazy.
+// 재사용(재구현 금지): 썸네일 lazy·batch 그룹핑=주문서 트레이(orderForm/intake.js) 패턴,
+//   Shift 범위선택=shell.js 전역 위임(같은 class + [data-check-group] 컨테이너면 자동 적용).
+var iaeIntkThumbs = {};   // id → base64|null (세션 캐시)
+var iaeIntkMyId = null;   // 로그인 user id — "내 작업" 필터(worker_id 매칭)
+try {
+  var _iaeIntkUser = JSON.parse(localStorage.getItem('user') || '{}');
+  if (_iaeIntkUser && _iaeIntkUser.id != null && isFinite(Number(_iaeIntkUser.id))) iaeIntkMyId = Number(_iaeIntkUser.id);
+} catch (e) { /* 로그인 정보 파싱 실패 → 내작업 토글 숨김 */ }
+
+function iaeIntkThumbGet(id) {
+  if (Object.prototype.hasOwnProperty.call(iaeIntkThumbs, id)) return Promise.resolve(iaeIntkThumbs[id]);
+  return axios.get('/api/workbench/intakes/' + id + '/thumb')
+    .then(function (res) { var t = (res.data && res.data.data && res.data.data.thumbnail) || null; iaeIntkThumbs[id] = t; return t; })
+    .catch(function () { iaeIntkThumbs[id] = null; return null; });
+}
+// 액션바 엘리먼트는 이 스크립트가 패널 안에 그리므로 페이지 HTML엔 없다 →
+// 전역 getElementById 대신 패널 루트 기준 스코프 조회(정확하고 check:dom 오탐도 피함).
+function iaeIntkRoot() { return document.getElementById('iaeIntakePanel'); }
+function iaeIntkSelected() {
+  var p = iaeIntkRoot(); if (!p) return [];
+  return Array.prototype.slice.call(p.querySelectorAll('.iae-intk-cb:checked'));
+}
+function iaeIntkSyncBar() {
+  var p = iaeIntkRoot(); if (!p) return;
+  var n = p.querySelectorAll('.iae-intk-cb:checked').length;
+  var el = p.querySelector('[data-intk-count]'); if (el) el.textContent = n;
+  var add = p.querySelector('[data-intk-add]'), del = p.querySelector('[data-intk-void]');
+  if (add) add.disabled = (n === 0);
+  if (del) del.disabled = (n === 0);
+}
+// 상위(가공자/묶음) 체크 → 하위 행 일괄 토글. change 재발행으로 카운터 갱신.
+function iaeIntkBindGroupCb(root) {
+  Array.prototype.forEach.call(root.querySelectorAll('.iae-intk-gcb'), function (g) {
+    g.addEventListener('change', function () {
+      var sel = g.getAttribute('data-target');
+      Array.prototype.forEach.call(root.querySelectorAll(sel), function (cb) {
+        if (cb.checked !== g.checked) { cb.checked = g.checked; }
+      });
+      iaeIntkSyncBar();
+    });
+  });
+}
+
 function iaeIntakeLoad() {
   var p = document.getElementById('iaeIntakePanel'); if (!p) return;
   p.innerHTML = '<div class="text-xs text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>대기물 불러오는 중…</div>';
   // mode=impose,both — ia-editor는 '모아찍기' 용도만 다룬다(단건은 주문서 트레이 담당, 2026-07-28).
-  axios.get('/api/workbench/intakes', { params: { status: 'waiting', limit: 100, mode: 'impose,both' } }).then(function (res) {
-    var rows = (res.data && res.data.data) || [];
-    var head = '<div class="flex items-center justify-between mb-2">'
-      + '<div class="text-xs text-gray-500"><b>가공 대기물</b> · 일러 MES가공 등록분 (waiting)</div>'
-      + '<div class="flex gap-2">'
-      + (rows.length ? '<button id="iaeIntakeAddAll" class="text-xs text-amber-700 hover:text-amber-900"><i class="fas fa-plus mr-1"></i>모두 추가</button>' : '')
-      + '<button id="iaeIntakeRefresh" class="text-xs text-gray-500 hover:text-blue-600"><i class="fas fa-rotate-right mr-1"></i>새로고침</button></div></div>';
+  // lite=1 — 썸네일은 has_thumbnail 플래그만 받고 실물은 lazy([[feedback-r2-thumbnail-marker-leak]]).
+  axios.get('/api/workbench/intakes', { params: { status: 'waiting', limit: 200, lite: 1, mode: 'impose,both' } }).then(function (res) {
+    var all = (res.data && res.data.data) || [];
+    // "내 작업" — 내 waiting 이 있을 때 기본 ON, 토글 상태는 기억(주문서 트레이와 동일 규칙)
+    var mineCount = 0;
+    if (iaeIntkMyId != null) for (var mi = 0; mi < all.length; mi++) if (Number(all[mi].worker_id) === iaeIntkMyId) mineCount++;
+    var saved = null;
+    try { saved = localStorage.getItem('iaeIntkMyWork'); } catch (e) { }
+    var myWork = (saved === '1') ? true : (saved === '0' ? false : (mineCount > 0));
+    if (iaeIntkMyId == null) myWork = false;
+    var rows = myWork ? all.filter(function (r) { return Number(r.worker_id) === iaeIntkMyId; }) : all;
+
+    var head = '<div class="flex items-center justify-between mb-2 gap-2">'
+      + '<div class="text-xs text-gray-500"><b>모아찍기 대기함</b> · 전체 ' + all.length + '건'
+      + (mineCount ? (' · 내 작업 ' + mineCount) : '') + '</div>'
+      + '<div class="flex items-center gap-3">'
+      + (iaeIntkMyId != null ? ('<label class="text-xs text-gray-600 flex items-center gap-1 cursor-pointer"><input type="checkbox" data-intk-mywork' + (myWork ? ' checked' : '') + '> 내 작업</label>') : '')
+      + '<button data-intk-refresh class="text-xs text-gray-500 hover:text-blue-600"><i class="fas fa-rotate-right mr-1"></i>새로고침</button></div></div>';
+
     var body;
     if (!rows.length) {
-      body = '<div class="text-xs text-gray-400 py-4 text-center">대기물이 없습니다.<br><span class="text-[11px]">일러에서 객체 선택 → 파일 &gt; 스크립트 &gt; MES가공 으로 등록하세요 (~30초 내 반영).</span></div>';
+      body = '<div class="text-xs text-gray-400 py-4 text-center">'
+        + (myWork && all.length ? '내 작업이 없습니다. <b>내 작업</b> 체크를 풀면 전체 ' + all.length + '건이 보입니다.'
+          : '모아찍기 대기물이 없습니다.<br><span class="text-[11px]">일러 MES 패널에서 용도=<b>모아찍기</b>로 추출하세요 (~30초 내 반영).</span>')
+        + '</div>';
     } else {
-      body = '<div class="max-h-64 overflow-y-auto divide-y divide-gray-100">' + rows.map(function (r) {
-        var thumb = r.thumbnail
-          ? '<img src="' + iaeEscape(iaeIntakeThumb(r.thumbnail)) + '" class="flex-shrink-0" style="width:40px;height:40px;object-fit:contain;background:#f3f4f6;border-radius:6px">'
+      // 2단 그룹핑: 가공자 → 묶음(batch_key). 없으면 '미지정' / '단독'.
+      var order = [], byWorker = {};
+      rows.forEach(function (r) {
+        var wk = (r.worker_name || '').trim() || '미지정';
+        if (!byWorker[wk]) { byWorker[wk] = { order: [], groups: {} }; order.push(wk); }
+        var bk = (r.batch_key || '').trim() || ('__solo__' + r.id);
+        var g = byWorker[wk].groups;
+        if (!g[bk]) { g[bk] = { key: bk, solo: !(r.batch_key || '').trim(), rows: [] }; byWorker[wk].order.push(bk); }
+        g[bk].rows.push(r);
+      });
+
+      function rowHtml(r) {
+        var thumbBox = r.has_thumbnail
+          ? '<div class="iae-intk-thumb flex-shrink-0" data-id="' + r.id + '" style="width:40px;height:40px;background:#f3f4f6;border-radius:6px"></div>'
           : '<div class="flex-shrink-0" style="width:40px;height:40px;background:#f3f4f6;border-radius:6px"></div>';
-        var modeKo = r.mode === 'impose' ? '모아찍기용' : (r.mode === 'both' ? '단건+모아찍기' : '단건');
-        return '<div class="flex items-center justify-between py-1.5 gap-2">' + thumb
-          + '<div class="min-w-0 flex-1"><div class="text-sm text-gray-700 truncate">' + iaeEscape(r.client_name || '') + ' · ' + (r.width_cm != null ? r.width_cm : '?') + '×' + (r.height_cm != null ? r.height_cm : '?') + 'cm ×' + (r.qty || 1) + '</div>'
-          + '<div class="text-[11px] text-gray-400">' + modeKo + (r.trim ? ' · 돔보' : '') + ' · ' + ((typeof formatKST === 'function' && r.created_at) ? formatKST(r.created_at) : iaeEscape(r.created_at || '')) + '</div></div>'
-          + '<button class="iae-intake-add flex-shrink-0 text-xs px-2 py-1 rounded bg-amber-600 text-white hover:bg-amber-700" data-aid="' + (r.ai_analysis_id || '') + '"><i class="fas fa-plus mr-1"></i>추가</button></div>';
-      }).join('') + '</div>';
+        var size = (r.width_cm != null ? r.width_cm : '?') + '×' + (r.height_cm != null ? r.height_cm : '?') + 'cm ×' + (r.qty || 1);
+        var when = (typeof formatKST === 'function' && r.created_at) ? formatKST(r.created_at) : iaeEscape(r.created_at || '');
+        return '<label class="flex items-center gap-2 py-1.5 pl-6 pr-1 hover:bg-gray-50 cursor-pointer">'
+          + '<input type="checkbox" class="iae-intk-cb" data-id="' + r.id + '" data-aid="' + (r.ai_analysis_id || '') + '">'
+          + thumbBox
+          + '<div class="min-w-0 flex-1"><div class="text-sm text-gray-700 truncate">' + iaeEscape(r.client_name || '미지정') + ' · ' + size + '</div>'
+          + '<div class="text-[11px] text-gray-400">' + when + (r.trim ? ' · 돔보' : '') + '</div></div></label>';
+      }
+
+      body = '<div class="max-h-80 overflow-y-auto border border-gray-100 rounded-md" data-check-group>';
+      order.forEach(function (wk) {
+        var w = byWorker[wk];
+        var wkCount = 0;
+        w.order.forEach(function (bk) { wkCount += w.groups[bk].rows.length; });
+        var wkSel = 'input.iae-intk-cb[data-worker="' + iaeEscape(wk) + '"]';
+        body += '<div class="border-b border-gray-100 last:border-b-0">'
+          + '<label class="flex items-center gap-2 px-2 py-1.5 bg-gray-50 cursor-pointer">'
+          + '<input type="checkbox" class="iae-intk-gcb" data-target=\'' + wkSel + '\'>'
+          + '<span class="text-xs font-semibold text-gray-700">' + iaeEscape(wk) + '</span>'
+          + '<span class="text-[11px] text-gray-400">' + wkCount + '건</span></label>';
+        w.order.forEach(function (bk) {
+          var g = w.groups[bk];
+          var gid = 'w' + iaeEscape(wk) + '-' + iaeEscape(bk);
+          var gSel = 'input.iae-intk-cb[data-grp="' + iaeEscape(gid) + '"]';
+          if (!g.solo) {
+            body += '<label class="flex items-center gap-2 px-2 py-1 pl-4 cursor-pointer">'
+              + '<input type="checkbox" class="iae-intk-gcb" data-target=\'' + gSel + '\'>'
+              + '<span class="text-[11px] text-gray-500"><i class="fas fa-layer-group mr-1"></i>묶음 ' + iaeEscape(g.key) + '</span>'
+              + '<span class="text-[11px] text-gray-400">' + g.rows.length + '건</span></label>';
+          }
+          body += g.rows.map(function (r) {
+            return rowHtml(r).replace('class="iae-intk-cb"', 'class="iae-intk-cb" data-worker="' + iaeEscape(wk) + '" data-grp="' + iaeEscape(gid) + '"');
+          }).join('');
+        });
+        body += '</div>';
+      });
+      body += '</div>'
+        + '<div class="flex items-center justify-between mt-2 gap-2">'
+        + '<div class="text-xs text-gray-500">선택 <b data-intk-count>0</b>건</div>'
+        + '<div class="flex gap-2">'
+        + '<button data-intk-void class="text-xs px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-40" disabled><i class="fas fa-xmark mr-1"></i>취소</button>'
+        + '<button data-intk-add class="text-xs px-2 py-1 rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40" disabled><i class="fas fa-plus mr-1"></i>세션에 담기</button>'
+        + '</div></div>';
     }
     p.innerHTML = head + body;
-    var rb = document.getElementById('iaeIntakeRefresh'); if (rb) rb.addEventListener('click', iaeIntakeLoad);
-    function addOne(aid) { var n = parseInt(aid, 10); if (n) iaeAddId(n); }
-    Array.prototype.forEach.call(p.querySelectorAll('.iae-intake-add'), function (b) {
-      b.addEventListener('click', function () { addOne(b.getAttribute('data-aid')); b.disabled = true; b.innerHTML = '추가됨'; iaeRefresh(); iaeToast('대기물을 세션에 추가했습니다.', 'success'); });
+
+    var rb = p.querySelector('[data-intk-refresh]'); if (rb) rb.addEventListener('click', iaeIntakeLoad);
+    var mw = p.querySelector('[data-intk-mywork]');
+    if (mw) mw.addEventListener('change', function () {
+      try { localStorage.setItem('iaeIntkMyWork', mw.checked ? '1' : '0'); } catch (e) { }
+      iaeIntakeLoad();
     });
-    var allBtn = document.getElementById('iaeIntakeAddAll');
-    if (allBtn) allBtn.addEventListener('click', function () {
-      rows.forEach(function (r) { addOne(r.ai_analysis_id); });
-      iaeRefresh(); iaeToast('대기물 ' + rows.length + '건을 세션에 추가했습니다.', 'success');
+    iaeIntkBindGroupCb(p);
+    Array.prototype.forEach.call(p.querySelectorAll('.iae-intk-cb'), function (cb) {
+      cb.addEventListener('change', iaeIntkSyncBar); // Shift 범위선택(shell.js 전역)이 재발행하는 change도 여기로
+    });
+    iaeIntkSyncBar();
+
+    // 썸네일 lazy — 화면에 들어온 행만 개별 fetch
+    if (typeof IntersectionObserver === 'function') {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          if (!en.isIntersecting) return;
+          var box = en.target; io.unobserve(box);
+          iaeIntkThumbGet(box.getAttribute('data-id')).then(function (t) {
+            if (!t) return;
+            box.innerHTML = '<img src="' + iaeEscape(iaeIntakeThumb(t)) + '" style="width:40px;height:40px;object-fit:contain;border-radius:6px">';
+          });
+        });
+      }, { root: p, rootMargin: '80px' });
+      Array.prototype.forEach.call(p.querySelectorAll('.iae-intk-thumb'), function (b) { io.observe(b); });
+    }
+
+    var addBtn = p.querySelector('[data-intk-add]');
+    if (addBtn) addBtn.addEventListener('click', function () {
+      var sel = iaeIntkSelected(), n = 0;
+      sel.forEach(function (cb) { var aid = parseInt(cb.getAttribute('data-aid'), 10); if (aid) { iaeAddId(aid); n++; } });
+      iaeRefresh();
+      iaeToast('대기물 ' + n + '건을 세션에 담았습니다.', 'success');
       p.classList.add('hidden');
+    });
+
+    var voidBtn = p.querySelector('[data-intk-void]');
+    if (voidBtn) voidBtn.addEventListener('click', function () {
+      var ids = iaeIntkSelected().map(function (cb) { return parseInt(cb.getAttribute('data-id'), 10); }).filter(Boolean);
+      if (!ids.length) return;
+      if (!confirm('선택한 ' + ids.length + '건을 취소합니다.\n취소한 대기물은 목록에서 사라집니다. 계속할까요?')) return;
+      voidBtn.disabled = true;
+      axios.post('/api/workbench/intakes/void-bulk', { ids: ids }).then(function (r) {
+        var d = (r.data && r.data.data) || {};
+        var msg = '취소 ' + (d.voided || 0) + '건';
+        if (d.denied) msg += ' · 권한없음 ' + d.denied + '건(등록한 본인/관리자만)';
+        if (d.skipped) msg += ' · 대기상태 아님 ' + d.skipped + '건';
+        iaeToast(msg, d.denied ? 'warning' : 'success');
+        iaeIntakeLoad();
+      }).catch(function () { voidBtn.disabled = false; iaeToast('취소에 실패했습니다.', 'error'); });
     });
   }).catch(function () { p.innerHTML = '<div class="text-xs text-red-500">대기물을 불러오지 못했습니다.</div>'; });
 }
