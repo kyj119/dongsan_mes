@@ -9,6 +9,10 @@
             var _ofTraySel = {};       // intake id → true (트레이 체크 선택)
             var _ofTrayGroups = [];    // 직전 렌더의 작업 그룹 [{clientId, clientName, rows:[..]}]
             var _ofTrayMyId = null;    // 로그인 user id — "내 작업" 필터(worker_id 매칭)
+            // #576 서버 응답 메타(전체 건수·절단 여부·담당자 마스터). 로드된 rows에서 담당자를 뽑으면
+            //   상한(200) 밖 담당자가 필터 옵션에도 안 나타나 그 사람 작업엔 아예 접근할 수 없었다.
+            var _ofIntakeMeta = { total: 0, truncated: false, workerNames: [] };
+            var _ofTrayQuery = { q: '', date_from: '', date_to: '' };
             try {
                 var _ofTrayUser = JSON.parse(localStorage.getItem('user') || '{}');
                 if (_ofTrayUser && _ofTrayUser.id != null && isFinite(Number(_ofTrayUser.id))) _ofTrayMyId = Number(_ofTrayUser.id);
@@ -73,16 +77,20 @@
                 // 여기 뜨면 주문 라인으로 불러올 수 없는 조각이 목록을 채우는 노이즈가 된다(2026-07-28).
                 axios.get('/api/workbench/intakes', { params: { status: 'waiting', limit: 200, lite: 1, mode: 'single,both' } })
                     .then(function(res) {
-                        var rows = (res.data && res.data.data) || [];
+                        var d = res.data || {};
+                        var rows = d.data || [];
                         if (!rows.length) return;
                         _ofIntakeCache = rows;
+                        // #576 서버가 준 전체 건수·담당자 마스터 — 200건 상한 밖도 존재를 알리기 위함
+                        _ofIntakeMeta = { total: d.total != null ? d.total : rows.length, truncated: !!d.truncated, workerNames: d.worker_names || [] };
                         var mine = 0;
                         if (_ofTrayMyId != null) {
                             for (var i = 0; i < rows.length; i++) if (Number(rows[i].worker_id) === _ofTrayMyId) mine++;
                         }
                         badge.innerHTML = '<button type="button" onclick="ofIntakeOpenPicker()" '
                             + 'class="px-3 py-1.5 text-sm rounded-lg bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200">'
-                            + '<i class="fas fa-inbox mr-1"></i>가공 대기함 <b>' + rows.length + '</b>건'
+                            + '<i class="fas fa-inbox mr-1"></i>가공 대기함 <b>' + _ofIntakeMeta.total + '</b>건'
+                            + (_ofIntakeMeta.truncated ? ' <span class="text-amber-700">(최근 ' + rows.length + '건 표시)</span>' : '')
                             + (mine ? ' <span class="text-purple-700">(내 작업 ' + mine + ')</span>' : '')
                             + ' — 클릭해서 라인으로 불러오기</button>';
                     })
@@ -269,10 +277,13 @@
                 var old = document.getElementById('intakePickerOverlay');
                 if (old) old.remove();
                 _ofTraySel = {};
-                var workers = [];
-                for (var i = 0; i < rows.length; i++) {
-                    var wn = rows[i].worker_name;
-                    if (wn && workers.indexOf(wn) === -1) workers.push(wn);
+                // #576 담당자 옵션은 전체 집합(server worker_names) 기준. 서버가 안 주면 로드된 rows로 폴백.
+                var workers = (_ofIntakeMeta.workerNames || []).slice();
+                if (workers.length === 0) {
+                    for (var i = 0; i < rows.length; i++) {
+                        var wn = rows[i].worker_name;
+                        if (wn && workers.indexOf(wn) === -1) workers.push(wn);
+                    }
                 }
                 var wOpts = '<option value="">담당자 전체</option>';
                 for (var k = 0; k < workers.length; k++) wOpts += '<option value="' + escapeHtml(workers[k]) + '">' + escapeHtml(workers[k]) + '</option>';
@@ -289,7 +300,8 @@
                 overlay.id = 'intakePickerOverlay';
                 overlay.innerHTML = '<div class="client-modal" style="max-width:760px">'
                     + '<div class="px-4 py-3 border-b flex items-center justify-between">'
-                    + '<b><i class="fas fa-inbox mr-1 text-amber-600"></i>가공 대기함 (' + rows.length + '건)</b>'
+                    + '<b><i class="fas fa-inbox mr-1 text-amber-600"></i>가공 대기함 '
+                    + '<span id="intakeTrayCount">(' + rows.length + (_ofIntakeMeta.truncated ? ' / 전체 ' + _ofIntakeMeta.total : '') + '건)</span></b>'
                     + '<button type="button" onclick="document.getElementById(\'intakePickerOverlay\').remove()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>'
                     + '</div>'
                     + '<div class="px-4 py-2 border-b flex items-center gap-3 text-sm bg-gray-50 flex-wrap">'
@@ -299,6 +311,20 @@
                     + '<select id="intakeWorkerFilter" onchange="ofTrayRender()" class="px-2 py-1 border rounded text-sm">' + wOpts + '</select>'
                     + '<label class="flex items-center gap-1 cursor-pointer text-gray-600"><input type="checkbox" id="intakeClientOnly" ' + (clientOn ? 'checked ' : '') + 'onchange="ofTrayRender()"> 이 거래처만</label>'
                     + '</div>'
+                    // #576 서버 검색 — 위 필터들은 로드된 200건 안에서만 걸러내므로 상한 밖은 못 찾는다.
+                    + '<div class="px-4 py-2 border-b flex items-center gap-2 text-sm flex-wrap">'
+                    + '<input type="text" id="intakeSearchQ" placeholder="거래처·담당자·메모·묶음 검색" value="' + escapeHtml(_ofTrayQuery.q) + '" '
+                    + 'onkeydown="if(event.key===\'Enter\'){event.preventDefault();ofTraySearch();}" class="px-2 py-1 border rounded text-sm" style="flex:1;min-width:180px">'
+                    + '<input type="date" id="intakeSearchFrom" value="' + escapeHtml(_ofTrayQuery.date_from) + '" class="px-2 py-1 border rounded text-sm">'
+                    + '<span class="text-gray-400">~</span>'
+                    + '<input type="date" id="intakeSearchTo" value="' + escapeHtml(_ofTrayQuery.date_to) + '" class="px-2 py-1 border rounded text-sm">'
+                    + '<button type="button" id="intakeSearchBtn" onclick="ofTraySearch()" class="px-3 py-1 text-sm rounded bg-gray-700 text-white hover:bg-gray-800"><i class="fas fa-magnifying-glass"></i></button>'
+                    + '<button type="button" onclick="ofTraySearchReset()" class="px-2 py-1 text-sm text-gray-500 hover:text-gray-700">초기화</button>'
+                    + '</div>'
+                    + (_ofIntakeMeta.truncated
+                        ? '<div id="intakeTruncNotice" class="px-4 py-1.5 text-xs bg-amber-50 text-amber-800 border-b">'
+                          + '전체 ' + _ofIntakeMeta.total + '건 중 최근 ' + rows.length + '건만 표시됩니다 — 오래된 항목은 위 검색으로 찾으세요.</div>'
+                        : '')
                     + '<div id="intakeList" style="max-height:56vh;overflow-y:auto"></div>'
                     + '<div class="px-4 py-3 border-t bg-gray-50 flex justify-end">'
                     + '<button type="button" id="trayPrefillBtn" disabled onclick="ofTrayPrefillSelected()" '
@@ -307,6 +333,60 @@
                 overlay.addEventListener('click', function(ev) { if (ev.target === overlay) overlay.remove(); });
                 document.body.appendChild(overlay);
                 ofTrayRender();
+            };
+
+            // #576 서버 재조회 — 키워드·기간은 200건 상한 '밖'을 찾기 위한 것이라 서버로 내려야 한다.
+            window.ofTraySearch = async function() {
+                var qEl = document.getElementById('intakeSearchQ');
+                var fEl = document.getElementById('intakeSearchFrom');
+                var tEl = document.getElementById('intakeSearchTo');
+                _ofTrayQuery = {
+                    q: qEl ? qEl.value.trim() : '',
+                    date_from: fEl ? fEl.value : '',
+                    date_to: tEl ? tEl.value : ''
+                };
+                var btn = document.getElementById('intakeSearchBtn');
+                var run = async function() {
+                    var params = { status: 'waiting', limit: 200, lite: 1, mode: 'single,both' };
+                    if (_ofTrayQuery.q) params.q = _ofTrayQuery.q;
+                    if (_ofTrayQuery.date_from) params.date_from = _ofTrayQuery.date_from;
+                    if (_ofTrayQuery.date_to) params.date_to = _ofTrayQuery.date_to;
+                    try {
+                        var res = await axios.get('/api/workbench/intakes', { params: params });
+                        var d = res.data || {};
+                        _ofIntakeCache = d.data || [];
+                        _ofIntakeMeta = {
+                            total: d.total != null ? d.total : _ofIntakeCache.length,
+                            truncated: !!d.truncated,
+                            workerNames: d.worker_names || []
+                        };
+                        _ofTraySel = {};   // 목록이 바뀌었으므로 선택 초기화(사라진 항목 프리필 방지)
+                        var cntEl = document.getElementById('intakeTrayCount');
+                        if (cntEl) {
+                            cntEl.textContent = '(' + _ofIntakeCache.length
+                                + (_ofIntakeMeta.truncated ? ' / 전체 ' + _ofIntakeMeta.total : '') + '건)';
+                        }
+                        var notice = document.getElementById('intakeTruncNotice');
+                        if (notice) notice.style.display = _ofIntakeMeta.truncated ? '' : 'none';
+                        ofTrayRender();
+                        ofTrayUpdateFooter();
+                    } catch (e) {
+                        console.warn('[orderForm] 대기함 검색 실패', e);
+                        if (typeof showToast === 'function') showToast('대기함 검색에 실패했습니다.', 'error');
+                    }
+                };
+                if (typeof safeSubmit === 'function') return safeSubmit(btn, run);
+                return run();
+            };
+
+            window.ofTraySearchReset = function() {
+                var qEl = document.getElementById('intakeSearchQ');
+                var fEl = document.getElementById('intakeSearchFrom');
+                var tEl = document.getElementById('intakeSearchTo');
+                if (qEl) qEl.value = '';
+                if (fEl) fEl.value = '';
+                if (tEl) tEl.value = '';
+                return window.ofTraySearch();
             };
 
             window.ofTrayMyWorkToggle = function(on) {
@@ -452,17 +532,35 @@
                 await ofTrayPrefillRows(g.rows.slice());
             };
 
+            // #575 항목별 try/catch — 예전엔 가드가 없어서 중간 1건이 던지면 루프가 통째로 중단되고
+            //   뒤처리(ofTrayAfterPrefill = 대기함 캐시 정리 + 완료 안내)까지 도달하지 못했다.
+            //   결과: 앞쪽 항목은 폼에 들어갔는데 대기함 상태는 그대로 → 같은 항목을 또 프리필해
+            //   라인이 중복되고, 사용자에겐 에러 토스트조차 없이 조용히 멈췄다.
+            //   같은 파일 ofIntakeAbsorbAll(#533)이 쓰는 "건별 격리 + 실패 집계 1회 통지" 패턴을 맞춘다.
+            //   성공분만 ofTrayAfterPrefill로 넘겨 실패한 대기물은 대기함에 남긴다(재시도 가능).
             async function ofTrayPrefillRows(rows) {
                 var overlay = document.getElementById('intakePickerOverlay');
                 if (overlay) overlay.remove();
                 var ids = [];
+                var failed = [];
                 for (var i = 0; i < rows.length; i++) {
-                    await ofIntakePrefillOne(rows[i]);
-                    ids.push(rows[i].id);
+                    try {
+                        await ofIntakePrefillOne(rows[i]);
+                        ids.push(rows[i].id);
+                    } catch (e) {
+                        failed.push(rows[i]);
+                        console.warn('[orderForm] 대기물 프리필 실패 (intake #' + (rows[i] && rows[i].id) + ')', e);
+                    }
                 }
-                ofTrayAfterPrefill(ids);
+                if (ids.length > 0) ofTrayAfterPrefill(ids);
                 if (typeof showToast === 'function') {
-                    showToast('대기물 ' + ids.length + '건을 라인으로 불러왔습니다. 품목·단가를 확인해 주세요.', 'info');
+                    if (failed.length === 0) {
+                        showToast('대기물 ' + ids.length + '건을 라인으로 불러왔습니다. 품목·단가를 확인해 주세요.', 'info');
+                    } else if (ids.length === 0) {
+                        showToast('대기물 ' + failed.length + '건을 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.', 'error');
+                    } else {
+                        showToast('대기물 ' + ids.length + '건 불러옴 / ' + failed.length + '건 실패 — 실패분은 대기함에 그대로 남아 있습니다.', 'warning');
+                    }
                 }
             }
 

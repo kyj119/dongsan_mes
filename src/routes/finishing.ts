@@ -137,10 +137,18 @@ finishingRouter.delete('/presets/:id', requireRole('ADMIN'), async (c) => {
 // CEP 가공자 선택 → 도메인(output/transfer/sign) 자동 판별 → 해당 방식·프리셋만 로드
 finishingRouter.get('/worker-domains', async (c) => {
   try {
-    const { results } = await c.env.DB.prepare(
-      'SELECT worker_name, domain FROM designer_worker_domains ORDER BY worker_name'
-    ).all()
-    return c.json({ success: true, data: results })
+    // #577 매핑은 worker_name(문자열)으로만 연결되는데, CEP가 실제 작업자를 식별하는 축은
+    //   users(role/job_role=DESIGNER)다. 등록 화면이 자유 텍스트라 한 글자만 달라도 매핑이
+    //   어긋나고, CEP는 못 찾으면 기본 도메인(현수막)으로 조용히 폴백한다(경고 없음).
+    //   → 선택 가능한 가공자 목록을 함께 내려 드롭다운으로 만들고, 목록에 없는 기존 매핑은
+    //     화면에서 경고로 드러낸다. 쿼리는 workbench intake-config의 workers와 동일 기준.
+    const [mappings, workers] = await Promise.all([
+      c.env.DB.prepare('SELECT worker_name, domain FROM designer_worker_domains ORDER BY worker_name').all(),
+      c.env.DB.prepare(
+        `SELECT id, name FROM users WHERE is_active = 1 AND (role = 'DESIGNER' OR job_role = 'DESIGNER') ORDER BY name`
+      ).all<{ id: number; name: string }>(),
+    ])
+    return c.json({ success: true, data: mappings.results, workers: workers.results || [] })
   } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
   }

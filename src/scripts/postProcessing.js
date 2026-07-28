@@ -523,30 +523,65 @@ function wdDomainSelect(val, idx) {
     for (var i = 0; i < WD_DOMAINS.length; i++) h += '<option value="' + WD_DOMAINS[i][0] + '"' + (val === WD_DOMAINS[i][0] ? ' selected' : '') + '>' + WD_DOMAINS[i][1] + '</option>';
     return h + '</select>';
 }
+// #577 선택 가능한 가공자(users role/job_role=DESIGNER). 서버가 함께 내려준다.
+var workerDomainUsers = [];
+
+function wdIsKnownWorker(name) {
+    for (var i = 0; i < workerDomainUsers.length; i++) {
+        if (workerDomainUsers[i].name === name) return true;
+    }
+    return false;
+}
+
 function renderWorkerDomains() {
     var el = document.getElementById('workerDomainList');
     if (!el) return;
     var html = '';
     for (var i = 0; i < workerDomainData.length; i++) {
         var w = workerDomainData[i];
-        html += '<div class="flex items-center gap-2"><span class="w-24 text-sm font-medium truncate">' + escapeHtml(w.worker_name) + '</span>' + wdDomainSelect(w.domain, i) + '</div>';
+        // 매핑 이름이 DESIGNER 목록에 없으면 CEP가 못 찾아 기본 도메인(현수막)으로 조용히 폴백한다.
+        // 화면에서 유일하게 드러나는 지점이므로 여기서 경고한다(#577 무소음 폴백).
+        var unknown = workerDomainUsers.length > 0 && !wdIsKnownWorker(w.worker_name);
+        html += '<div class="flex items-center gap-2"><span class="w-24 text-sm font-medium truncate' + (unknown ? ' text-amber-700' : '') + '">'
+            + escapeHtml(w.worker_name)
+            + (unknown ? ' <i class="fas fa-triangle-exclamation text-amber-500" title="이 이름의 디자이너 계정이 없습니다 — 일러스트 패널이 매핑을 못 찾아 기본값(현수막) 프리셋으로 동작합니다. 이름을 확인하세요."></i>' : '')
+            + '</span>' + wdDomainSelect(w.domain, i) + '</div>';
+    }
+    // 신규 등록은 자유 텍스트 대신 DESIGNER 계정 드롭다운 — 오타를 원천 차단한다.
+    var opts = '<option value="">가공자 선택...</option>';
+    for (var k = 0; k < workerDomainUsers.length; k++) {
+        var nm = workerDomainUsers[k].name;
+        if (wdIsMapped(nm)) continue;   // 이미 매핑된 사람은 목록에서 제외(중복 등록 방지)
+        opts += '<option value="' + escapeHtml(nm) + '">' + escapeHtml(nm) + '</option>';
     }
     html += '<div class="flex items-center gap-2 pt-2 border-t mt-2">'
-        + '<input id="wdNewName" class="w-24 border rounded px-2 py-1 text-sm" placeholder="가공자명">'
+        + '<select id="wdNewName" class="w-28 border rounded px-2 py-1 text-sm">' + opts + '</select>'
         + '<select id="wdNewDomain" class="border rounded px-2 py-1 text-sm"><option value="output">현수막</option><option value="transfer">전사</option><option value="sign">간판</option></select>'
         + '<button onclick="addWorkerDomain()" class="text-blue-600 text-sm px-2"><i class="fas fa-plus"></i> 추가</button></div>';
+    if (workerDomainUsers.length === 0) {
+        html += '<div class="text-xs text-gray-400 mt-1">등록 가능한 디자이너 계정이 없습니다 (사용자 관리에서 역할을 DESIGNER로 지정하세요).</div>';
+    }
     el.innerHTML = html;
 }
+
+function wdIsMapped(name) {
+    for (var i = 0; i < workerDomainData.length; i++) {
+        if (workerDomainData[i].worker_name === name) return true;
+    }
+    return false;
+}
+
 function loadWorkerDomains() {
     axios.get('/api/finishing/worker-domains').then(function(res) {
         workerDomainData = res.data.data || [];
+        workerDomainUsers = res.data.workers || [];
         renderWorkerDomains();
     }).catch(function() { var el = document.getElementById('workerDomainList'); if (el) el.innerHTML = '<div class="text-xs text-gray-400">불러오기 실패</div>'; });
 }
 window.addWorkerDomain = function() {
     var nameEl = document.getElementById('wdNewName');
     var name = (nameEl ? nameEl.value : '').trim();
-    if (!name) { showToast('가공자명을 입력하세요', 'warning'); return; }
+    if (!name) { showToast('가공자를 선택하세요', 'warning'); return; }
     var dom = document.getElementById('wdNewDomain').value;
     var found = false;
     for (var i = 0; i < workerDomainData.length; i++) if (workerDomainData[i].worker_name === name) { workerDomainData[i].domain = dom; found = true; break; }

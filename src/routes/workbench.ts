@@ -1372,6 +1372,21 @@ workbenchRouter.get('/intakes', async (c) => {
     // 거래처 필터 시 '미지정'(디자이너 미입력)은 항상 노출 — 전멸 방지(D2)
     if (client) { where += ` AND (designer_intakes.client_name LIKE ? OR designer_intakes.client_name = '미지정')`; params.push(`%${client}%`) }
     if (worker) { where += ` AND designer_intakes.worker_name LIKE ?`; params.push(`%${worker}%`) }
+    // #576 키워드·기간 검색 — 200건 상한을 넘어간 오래된 항목은 담당자 드롭다운(로드된 rows에서
+    //   추출)에도 안 잡혀 사실상 접근 불가였다. 검색을 서버로 내려 상한 밖도 찾을 수 있게 한다.
+    const q = (c.req.query('q') || '').trim()
+    if (q) {
+      where += ` AND (designer_intakes.client_name LIKE ? OR designer_intakes.worker_name LIKE ?`
+        + ` OR designer_intakes.memo LIKE ? OR designer_intakes.keyword LIKE ?`
+        + ` OR designer_intakes.batch_key LIKE ?)`
+      const like = `%${q}%`
+      params.push(like, like, like, like, like)
+    }
+    // created_at은 'YYYY-MM-DD HH:MM:SS' → 날짜 경계는 문자열 비교로 충분(인덱스 친화적)
+    const dateFrom = (c.req.query('date_from') || '').trim()
+    const dateTo = (c.req.query('date_to') || '').trim()
+    if (dateFrom) { where += ` AND designer_intakes.created_at >= ?`; params.push(`${dateFrom} 00:00:00`) }
+    if (dateTo) { where += ` AND designer_intakes.created_at <= ?`; params.push(`${dateTo} 23:59:59`) }
     // 용도 필터(2026-07-28): 단건=주문서 트레이, 모아찍기=ia-editor 로 목적지 분리.
     //   미지정/`all` = 전체 → 기존 호출자 비파괴(하위호환). 콤마 다중 허용.
     //   ⚠️ 레거시 'both'는 양쪽 호출 모두에 포함시켜야 어느 목록에서도 사라지지 않는다
@@ -1385,6 +1400,19 @@ workbenchRouter.get('/intakes', async (c) => {
       }
     }
 
+    // #576 절단 사실을 노출한다 — 예전엔 상한에 걸려도 "200건"만 보이고 초과분이 있다는 것조차
+    //   어디에도 안 나타났다. 담당자 옵션도 로드된 rows에서 뽑아 상한 밖 담당자는 필터에도 없었다
+    //   → 전체 집합 기준 distinct를 함께 준다(응답의 data는 배열 그대로 = 기존 호출자 비파괴).
+    const totalRow = await c.env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM designer_intakes WHERE ${where}`
+    ).bind(...params).first<{ n: number }>()
+    const total = totalRow?.n ?? 0
+    const { results: workerRows } = await c.env.DB.prepare(
+      `SELECT DISTINCT worker_name FROM designer_intakes WHERE ${where} AND worker_name IS NOT NULL AND worker_name != ''
+       ORDER BY worker_name`
+    ).bind(...params).all<{ worker_name: string }>()
+    const workerNames = (workerRows || []).map((r) => r.worker_name)
+
     if (lite) {
       const { results } = await c.env.DB.prepare(`
         SELECT designer_intakes.*,
@@ -1394,7 +1422,10 @@ workbenchRouter.get('/intakes', async (c) => {
         WHERE ${where}
         ORDER BY designer_intakes.id DESC LIMIT ${limit}
       `).bind(...params).all<Record<string, unknown>>()
-      return c.json({ success: true, data: results })
+      return c.json({
+        success: true, data: results,
+        total, returned: results.length, truncated: total > results.length, worker_names: workerNames,
+      })
     }
 
     const { results } = await c.env.DB.prepare(`
@@ -1416,7 +1447,10 @@ workbenchRouter.get('/intakes', async (c) => {
       const { groups_json: _gj, ...rest } = r
       return { ...rest, thumbnail }
     }))
-    return c.json({ success: true, data: rows })
+    return c.json({
+      success: true, data: rows,
+      total, returned: rows.length, truncated: total > rows.length, worker_names: workerNames,
+    })
   } catch (error) {
     console.error('Workbench intakes list error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

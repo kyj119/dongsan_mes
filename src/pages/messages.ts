@@ -457,6 +457,23 @@ export function messagesPage(c: Context<HonoEnv>) {
   </div>
 </div>
 
+<!-- #574 대량 발송 부분실패 — 실패 대상 목록 + 실패건만 재선택 -->
+<div id="msgBulkResultModal" class="ds-modal-overlay hidden flex items-center justify-center">
+  <div class="ds-modal w-[520px] max-h-[80vh] flex flex-col p-6">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-triangle-exclamation text-amber-500 mr-2"></i>대량 발송 결과</h3>
+      <button onclick="msgCloseBulkResult()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+    </div>
+    <div id="msgBulkResultBody" class="overflow-y-auto" style="max-height:56vh"></div>
+    <div class="flex gap-2 justify-end mt-4">
+      <button onclick="msgCloseBulkResult()" class="ds-btn ds-btn-secondary text-sm">닫기</button>
+      <button id="msgBulkRetryBtn" onclick="msgRetryFailed()" class="ds-btn ds-btn-primary text-sm hidden">
+        <i class="fas fa-rotate-right mr-1"></i>실패건만 다시 선택
+      </button>
+    </div>
+  </div>
+</div>
+
 <div id="logDetailModal" class="ds-modal-overlay hidden flex items-center justify-center">
   <div class="ds-modal w-[500px] max-h-[80vh] overflow-y-auto p-6">
     <div class="flex items-center justify-between mb-4">
@@ -485,7 +502,10 @@ export function messagesPage(c: Context<HonoEnv>) {
         <span class="text-xs text-blue-600 font-medium" id="recipientSelectedCount">0명 선택됨</span>
       </div>
     </div>
-    <div class="flex-1 overflow-y-auto p-2" id="recipientList" style="max-height:400px;">
+    <!-- #579 shift 범위선택 스코프 경계. 이 목록은 <label> 행이라 tbody가 없어 shell.js의
+         전역 핸들러가 document 전체로 폴백한다 — 동일 클래스 체크박스 목록이 둘 이상 열리면
+         범위 선택이 경계를 넘는다. 다른 채택 페이지(tbody 경계)와 같은 규칙을 명시적으로 준다. -->
+    <div class="flex-1 overflow-y-auto p-2" id="recipientList" data-check-group="recipient-picker" style="max-height:400px;">
       <div class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</div>
     </div>
     <div class="p-4 border-t flex justify-end gap-2">

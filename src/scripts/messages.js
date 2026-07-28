@@ -1358,10 +1358,15 @@ async function msgSendBulkExec() {
       return;   // 실패 시 수신자 선택을 지우지 않는다(원인 고치고 바로 재시도)
     }
     if (failCnt > 0) {
-      showToast('일부 발송 (' + okCnt + '건 접수 / ' + failCnt + '건 실패) — ' + (d.message || ''), 'warning');
-    } else {
-      showToast('대량 발송 완료 (' + okCnt + '건)', 'success');
+      // #574 부분 실패 — 예전엔 집계 토스트만 띄우고 선택목록까지 비워서, 누가 못 받았는지도
+      //   모르고 재발송 경로도 사라졌다(대량 로그는 'BULK(N)' 1건이라 이력으로도 추적 불가).
+      //   실패 목록을 보여주고, 그 대상만 다시 선택할 수 있게 남긴다.
+      msgShowBulkResult(d, okCnt, failCnt);
+      loadLogs();
+      loadSummary();
+      return;   // 선택목록을 비우지 않는다 — 재발송 버튼이 실패자만 남긴다
     }
+    showToast('대량 발송 완료 (' + okCnt + '건)', 'success');
     bulkSelectedRecipients = [];
     renderSelectedTags();
     updateBulkSendLabel();
@@ -1372,6 +1377,72 @@ async function msgSendBulkExec() {
     showToast('발송 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
   }
 }
+
+// === #574 대량 발송 부분실패 결과 ===
+var msgLastFailed = [];   // [{ name, phone, client_id, error }] — 재발송 대상
+
+function msgShowBulkResult(d, okCnt, failCnt) {
+  msgLastFailed = d.failed || [];
+  var modal = document.getElementById('msgBulkResultModal');
+  var body = document.getElementById('msgBulkResultBody');
+  var retryBtn = document.getElementById('msgBulkRetryBtn');
+  if (!modal || !body) {
+    showToast('일부 발송 (' + okCnt + '건 접수 / ' + failCnt + '건 실패)', 'warning');
+    return;
+  }
+
+  var html = '<div class="text-sm mb-2"><span class="font-semibold text-green-700">' + okCnt + '건 접수</span>'
+    + ' · <span class="font-semibold text-red-600">' + failCnt + '건 실패</span></div>';
+
+  if (msgLastFailed.length > 0) {
+    // 같은 오류끼리 묶어 보여준다(전건 나열은 길고, 원인은 대개 소수 종류다).
+    var byErr = {};
+    msgLastFailed.forEach(function(f) { (byErr[f.error] = byErr[f.error] || []).push(f); });
+    html += '<div class="text-xs font-semibold text-gray-600 mb-1">실패 대상</div>';
+    Object.keys(byErr).forEach(function(err) {
+      html += '<div class="mb-2"><div class="text-xs text-red-600 mb-0.5">' + escapeHtml(err)
+        + ' <span class="text-gray-400">' + byErr[err].length + '건</span></div>'
+        + '<div class="text-xs text-gray-700 pl-2">'
+        + byErr[err].map(function(f) {
+            return escapeHtml(f.name || '(이름없음)') + ' <span class="text-gray-400">' + escapeHtml(f.phone || '') + '</span>';
+          }).join(', ')
+        + '</div></div>';
+    });
+  } else if (d.failed_identifiable === false) {
+    // 바로빌이 건별 결과 없이 단일 접수번호만 준 경우 — 없는 정보를 있는 척하지 않는다.
+    html += '<div class="text-xs text-gray-500">이 발송은 제공사가 건별 결과를 돌려주지 않아 '
+      + '실패한 수신자를 특정할 수 없습니다. 발송 이력에서 접수번호로 확인해 주세요.</div>';
+  }
+
+  if (retryBtn) {
+    if (msgLastFailed.length > 0) retryBtn.classList.remove('hidden');
+    else retryBtn.classList.add('hidden');
+  }
+  body.innerHTML = html;
+  modal.classList.remove('hidden');
+}
+
+// 실패한 대상만 선택목록에 남긴다 → 사용자는 [발송]만 다시 누르면 된다.
+window.msgRetryFailed = function() {
+  if (msgLastFailed.length === 0) return;
+  var phones = {};
+  msgLastFailed.forEach(function(f) { if (f.phone) phones[String(f.phone)] = 1; });
+
+  if (bulkTarget === 'custom') {
+    bulkParsedReceivers = bulkParsedReceivers.filter(function(r) { return phones[String(r.phone)]; });
+  } else {
+    bulkSelectedRecipients = bulkSelectedRecipients.filter(function(r) { return phones[String(r.phone)]; });
+    renderSelectedTags();
+  }
+  updateBulkSendLabel();
+  msgCloseBulkResult();
+  showToast('실패한 ' + msgLastFailed.length + '건만 남겼습니다. 원인을 확인한 뒤 다시 발송하세요.', 'info');
+};
+
+window.msgCloseBulkResult = function() {
+  var m = document.getElementById('msgBulkResultModal');
+  if (m) m.classList.add('hidden');
+};
 
 // === 발송 통계 ===
 var statsDays = 30;

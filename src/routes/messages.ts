@@ -13,7 +13,7 @@ import { getKakaoProvider, getKakaoSettings } from './kakao'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import type { SMSMessage, ATSMessage } from './kakao'
 import { generatePortalToken } from './portal'
-import { MMS_IMAGE } from '../constants/barobillCodes'
+import { MMS_IMAGE, barobillErrorMessage } from '../constants/barobillCodes'
 import { stripDataUri } from '../utils/thumbnailStore'
 import { deriveClientBalancesBulk } from './ledger/ar-helpers'
 import { kstYmd } from '../utils/kstDate'
@@ -858,6 +858,20 @@ messagesRouter.post('/send-bulk', async (c) => {
     // 프론트가 '완료'로 뭉뚱그리면 전건 실패도 성공처럼 보이므로 판단 근거를 준다.
     const perItem = sendResult.results || []
     const successCount = perItem.length > 0 ? perItem.filter(r => r.ok).length : (sendResult.receiptNum ? messages.length : 0)
+
+    // #574 실패한 수신자를 식별 가능하게 돌려준다. 예전엔 success_count/fail_count로만 축약해
+    //   "누가 못 받았는지 영원히 알 수 없는" 상태였다(대량 로그도 'BULK(N)' 1건이라 추적 불가).
+    //   perItem은 입력 순서와 1:1이므로(sendMMS 순차 push·interpretBulkResult 배열 파싱)
+    //   길이가 일치할 때만 매핑한다 — 단일 접수번호로 폴백된 응답은 건별 판정이 불가능하다.
+    const failedReceivers = perItem.length === sendable.length
+      ? perItem.map((r, i) => ({ r, i })).filter(x => !x.r.ok).map(x => ({
+          name: sendable[x.i].name || '',
+          phone: sendable[x.i].phone || '',
+          client_id: sendable[x.i].client_id,
+          error: barobillErrorMessage(x.r.code),
+        }))
+      : []
+
     return c.json({
       success: true,
       data: {
@@ -869,6 +883,9 @@ messagesRouter.post('/send-bulk', async (c) => {
         receiver_count: messages.length,
         success_count: successCount,
         fail_count: messages.length - successCount,
+        failed: failedReceivers,
+        // 건별 판정이 불가능한 응답이면 프론트가 "실패자 목록 없음"을 정확히 안내하도록 구분한다.
+        failed_identifiable: perItem.length === sendable.length,
         type: templateCode,
       }
     })
