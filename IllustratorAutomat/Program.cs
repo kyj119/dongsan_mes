@@ -1723,7 +1723,7 @@ namespace IllustratorAutomation
             // P3-b: 미리보기 — EPS/DXF 미생성, R2 업로드 없이 JPG(base64)만 콜백 후 임시폴더 정리.
             if (preview)
             {
-                if (jpgB64 == null) { await PatchSheetRender(jobId, "error", null, "미리보기 JPG 생성 실패 (SheetLayout 결과 없음)"); return; }
+                if (jpgB64 == null) { await PatchSheetRender(jobId, "error", null, $"미리보기 JPG 생성 실패 — {JsxDiag()}"); return; }
                 var pvResult = new Dictionary<string, object?>
                 {
                     ["jpg_base64"] = jpgB64,
@@ -1737,7 +1737,19 @@ namespace IllustratorAutomation
                 return;
             }
 
-            if (!File.Exists(epsOut)) { await PatchSheetRender(jobId, "error", null, "EPS 생성 실패 (SheetLayout 결과 없음)"); return; }
+            if (!File.Exists(epsOut))
+            {
+                // JSX가 남긴 error.log 가 있으면 그 내용까지 실어 보낸다(가장 구체적인 단서).
+                string extra = "";
+                try
+                {
+                    string elog = Path.Combine(outFolder, "error.log");
+                    if (File.Exists(elog)) extra = " · error.log: " + File.ReadAllText(elog).Trim();
+                }
+                catch { }
+                await PatchSheetRender(jobId, "error", null, $"EPS 생성 실패 — {JsxDiag()}{extra}");
+                return;
+            }
 
             // R2 업로드 (브라우저 다운로드용) — 실패해도 NAS 경로는 유지
             string? epsR2 = await UploadRenderAssetAsync("sheet", jobId, "eps", epsOut);
@@ -3522,6 +3534,11 @@ namespace IllustratorAutomation
         /// ia_params.json 경로를 스크립트 프리앰블로 주입하고 COM을 통해 실행.
         /// DoJavaScript()는 동기(blocking) — 스크립트 완료까지 대기.
         /// </summary>
+        // JSX 최종 상태(DoJavaScript 반환값). 실패 진단의 유일한 단서라 잡별로 보관한다.
+        //   "" = JSX가 실행되지 않았거나 조기 종료 / "done" = 완주 / "ERR: …" = JSX 내부 예외.
+        //   (2026-07-28: 이 값을 버리고 있어서 sheet #19 실패 원인이 어디에도 남지 않았다)
+        private static string _lastJsxStatus = "";
+
         private static void RunJsxScript(string scriptPath, string paramsJsonPath, int timeoutMinutes = 5)
         {
             var ai = GetOrStartIllustrator();
@@ -3529,8 +3546,9 @@ namespace IllustratorAutomation
             string preamble = $"var _ia_params_override_path = \"{paramsEscaped}\";\n";
             string scriptContent = preamble + File.ReadAllText(scriptPath, System.Text.Encoding.UTF8);
 
-            // DoJavaScript는 동기이지만 Task로 감싸 타임아웃 처리
-            var task = Task.Run(() => { ai.DoJavaScript(scriptContent); });
+            _lastJsxStatus = "";
+            // DoJavaScript는 동기이지만 Task로 감싸 타임아웃 처리. 반환값=JSX 최종 상태(위 주석).
+            var task = Task.Run(() => { _lastJsxStatus = ai.DoJavaScript(scriptContent)?.ToString() ?? ""; });
             if (!task.Wait(TimeSpan.FromMinutes(timeoutMinutes)))
             {
                 // 갭①: 진짜 hang. task.Wait는 대기만 포기할 뿐 COM 호출 스레드는 여전히 blocking이고
@@ -3538,6 +3556,17 @@ namespace IllustratorAutomation
                 RestartIllustrator();
                 throw new TimeoutException($"JSX 스크립트 시간 초과 ({timeoutMinutes}분): {Path.GetFileName(scriptPath)} — Illustrator 재시작함");
             }
+            Console.WriteLine($"   🧾 JSX 상태: {(_lastJsxStatus.Length == 0 ? "(빈값 = 미실행/조기종료)" : _lastJsxStatus)}");
+        }
+
+        // 산출물이 없을 때 붙일 진단 문구 — JSX 반환값과 열린 문서 수를 함께 남긴다.
+        //   빈값이면 Illustrator가 스크립트를 아예 돌리지 않은 것(모달 대화상자·COM 거부 등)이 의심된다.
+        private static string JsxDiag()
+        {
+            string st = _lastJsxStatus.Length == 0 ? "JSX 반환 빈값(미실행/조기종료 의심 — 일러 모달 대화상자 확인)" : $"JSX={_lastJsxStatus}";
+            string docs = "";
+            try { docs = $" · 열린문서 {GetOrStartIllustrator().Documents.Count}개"; } catch { }
+            return st + docs;
         }
 
         // 갭①: Illustrator hang 감지 시 프로세스 kill → COM 재연결 강제(다음 GetOrStartIllustrator에서 fresh 기동).

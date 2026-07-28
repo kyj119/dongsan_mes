@@ -32,6 +32,11 @@
 app.userInteractionLevel = UserInteractionLevel.DONTDISPLAYALERTS;
 
 var _savedResultJson = "";
+// 진단(2026-07-28): 이 스크립트의 최종 상태를 호출자(에이전트 DoJavaScript)에게 반환한다.
+//   기존에는 최상위가 try/catch 라 반환값이 없어, 실패 시 에이전트가 남길 수 있는 말이
+//   "EPS 생성 실패 (결과 없음)" 뿐이었다 — 원인이 어디에도 기록되지 않았다(sheet #19).
+//   ""(빈값) = 스크립트가 아예 실행되지 않았거나 조기 return, "done" = 완주, "ERR: …" = 예외.
+var _ia_status = "";
 try {
 (function() {
 
@@ -552,6 +557,7 @@ if (resultJson) {
 }
 
 $.writeln("SheetLayout 완료");
+_ia_status = "done";
 
 })();
 } catch(e) {
@@ -565,4 +571,8 @@ $.writeln("SheetLayout 완료");
         _logF2.open("w"); _logF2.write("JSError: " + e.message + " (line " + e.line + ")"); _logF2.close();
     }
     $.writeln("SheetLayout EXCEPTION: " + e.message + " (line " + e.line + ")");
+    _ia_status = "ERR: " + e.message + " (line " + e.line + ")";
 }
+// ★ 마지막 표현식 = DoJavaScript 반환값. 에이전트가 이 문자열을 render_error 에 실어
+//   "왜 산출물이 없는지"를 남긴다. 문자열이 아니면 COM 이 빈값으로 넘기므로 String() 고정.
+String(_ia_status);
