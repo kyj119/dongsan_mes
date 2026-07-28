@@ -4,7 +4,12 @@
 # 세션 핸드오프 — Phase 7b-2 '파일 처리' 뷰 제거 = IA 진입점 통합 **전 단계 종료** (2026-07-28 #16)
 
 > durable=[[project-ia-web-sunset]] · 결과 기록=`docs/HANDOFF-phase7b2.md`
-> **커밋 `7c1fff74` — 로컬 커밋만. 아직 push 안 함 = prod 미배포**(`deploy.yml` main push 자동배포).
+> **prod 배포·검증 완료** — main `62fba6c4`(코드=`7c1fff74`)·deploy `2bf631f5`·CI 전건 success·마이그 없음.
+> 검증=스모크 **102/102** · 페이지 15/15 · entity 60/60 · prod 번들 마커 전건 일치(NEW 6종 / OLD 12종 0) ·
+> prod 실클릭(콘솔 0 · 대기함 실데이터 3건 batch 그룹핑 · 검수 2건 · 소스바 토글).
+> ⚠️ 직후 **타 세션이 3커밋 선점**(광고성 발송 법적 가드 + auto-improve Area 2). ff 머지로 동기화했고
+> 그쪽 `f80e02f5` 가 **내가 범위 밖으로 남긴 Konva 잔재 중 2개**(`iaeCanUpdateMembership`·`iaeCanSheetByUid`)를
+> 정리 → 잔재 **15→13**. 머지 후 재검증(문법·dangling 0·check:dom 9·entity 60/60) 및 prod 마커 재실측 통과.
 
 ## 한 일
 

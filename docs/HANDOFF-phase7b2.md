@@ -74,8 +74,8 @@
   `GET /api/ai-analysis/nas-listing` · `POST /api/ai-analysis/from-nas`.
   ⚠️에이전트가 NAS 스캔 결과를 보고하는 쓰기 경로가 살아 있을 수 있어 **에이전트 측 확인 후** 판단.
   (`POST /api/workbench/process` 계열 dead route 정리도 함께)
-- **§14.5 폐기 Konva 자유드래그 캔버스 잔재 15개** — `iaeCanStage`·`iaeCanLayer`·`iaeCanGrid`·
+- **§14.5 폐기 Konva 자유드래그 캔버스 잔재 13개** — `iaeCanStage`·`iaeCanLayer`·`iaeCanGrid`·
   `iaeCanOverlay`·`iaeCanTr`·`iaeCanGuide`·`iaeCanSnapThreshMm`·`iaeCanSnapTargets`·`iaeCanSel`·
-  `iaeCanPxPerMm`·`iaeCanThumbCache`·`iaeCanRatioLock`·`iaeCanHotkeysBound`·`iaeCanSheetByUid`·
-  `iaeCanUpdateMembership`. **이번 퍼지 이전부터 참조 0**(별건 은퇴의 잔재)이라 범위 분리.
+  `iaeCanPxPerMm`·`iaeCanThumbCache`·`iaeCanRatioLock`·`iaeCanHotkeysBound`.
+  (`iaeCanSheetByUid`·`iaeCanUpdateMembership` 2개는 타 세션 `f80e02f5` 가 정리 — 15→13) **이번 퍼지 이전부터 참조 0**(별건 은퇴의 잔재)이라 범위 분리.
 - `orderForm.ts` `IA_WEB_INTAKE_ENABLED=false` 게이트로 숨긴 옛 AI추출·합판 패널 코드 완전 제거.
