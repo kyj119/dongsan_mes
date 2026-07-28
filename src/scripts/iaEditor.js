@@ -1,22 +1,17 @@
-// iaEditor.js — IA 편집·접수 워크벤치
+// iaEditor.js — IA 네스팅·접수 워크벤치
 // spec: docs/superpowers/specs/2026-06-16-ia-editor-nesting-intake.md §5.1·5.2·5.3·5.6
-// P1a: 업로드→탭→ExtractGroups 폴링→그룹 썸네일.
-// P2 (web 근사): 그룹 선택 → 처리설정 인스펙터(목표크기→배율·마감 상/하/좌/우→여백·회전90°·복제수)
-//     + CSS 근사 미리보기 + 프리플라이트 경고. "편집 = 그림 수정 ❌, 처리 설정 ⭕".
-//     IA 실제 렌더 미리보기는 에이전트 preview 잡 연동 후(별도 세션). 네스팅·주문 라인은 P3·P4.
+// 세션 파일(iae_session_ids) = 일러 MES 패널이 등록한 분석건을 대기함에서 담은 것.
+//   → 네스팅/모아찍기 팔레트의 소스. 배치 → 실제 렌더/EPS 출력 → 주문(P3·P4).
+// Phase 7b-2(2026-07-28): '파일 처리' 뷰 제거 — 업로드·NAS 분석·처리설정 인스펙터·근사 미리보기·
+//   프리플라이트. 소스 공급은 패널이 전담하고, 인스펙터 설정(iaeSettings)은 배치가 읽지 않았다
+//   (네스팅·모아찍기는 fin 을 빈값으로 두고 자체 입력을 쓴다). 남긴 것 = 파일 탭·상태줄·대기함·배지.
 
 var IAE_STORE_KEY = 'iae_session_ids';
-var IAE_SETTINGS_KEY = 'iae_settings_v1';
 var iaeFiles = [];        // [{id, filename, status, error_message, group_count, groups:[]}]
-var iaeActiveId = null;
-var iaeActiveGroup = null; // 활성 파일 내 선택 그룹 index
 var iaePollTimer = null;
-var iaeFinMethods = [];   // [{name, margin_cm}]
-var iaeFinPresets = [];   // [{name, config}]
-var iaeSettings = {};     // key 'fid:gidx' → {target_w,target_h,aspect_lock,rotate90,trim,scale_factor,fin_top,fin_bottom,fin_left,fin_right}
 
 // ── 뷰 상태 ───────────────────────────────────────────
-var iaeView = 'edit';     // 'edit' | 'canvas' (구 'nest' 탭은 통합 폐기 — 대지 편집 시트 네스팅이 대체)
+var iaeView = 'canvas';   // 'canvas' | 'review' (구 'edit'=파일 처리는 Phase 7b-2 에서 제거)
 // 규격 프리셋 (cm) — 롤폭 914~1520mm, 평판 900×1800·1200×2400 (spec §12). 대지 시트 네스팅 공용
 // R2-2: 기본 프리셋. 사용자 추가 프리셋(localStorage iae_custom_presets)을 iaeAllRollPresets/iaeAllFlatPresets로 병합.
 var IAE_ROLL_PRESETS = [
@@ -206,144 +201,37 @@ function iaeSaveIds(ids) { try { localStorage.setItem(IAE_STORE_KEY, JSON.string
 function iaeAddId(id) { var ids = iaeLoadIds(); if (ids.indexOf(id) === -1) ids.push(id); iaeSaveIds(ids); }
 function iaeRemoveId(id) { iaeSaveIds(iaeLoadIds().filter(function (n) { return n !== id; })); }
 
-// ── 처리설정 영속 (그룹별) ────────────────────────────────────────
-function iaeLoadSettings() {
-  try { var raw = localStorage.getItem(IAE_SETTINGS_KEY); iaeSettings = raw ? (JSON.parse(raw) || {}) : {}; }
-  catch (_e) { iaeSettings = {}; }
-}
-function iaeSaveSettings() { try { localStorage.setItem(IAE_SETTINGS_KEY, JSON.stringify(iaeSettings)); } catch (_e) {} }
-function iaeSettingsKey(fid, gidx) { return fid + ':' + gidx; }
-function iaeGetSettings(fid, group, gidx) {
-  var key = iaeSettingsKey(fid, gidx);
-  if (!iaeSettings[key]) {
-    var dw = (group && group.width_mm != null) ? Math.round(group.width_mm / 10) : 0;
-    var dh = (group && group.height_mm != null) ? Math.round(group.height_mm / 10) : 0;
-    iaeSettings[key] = {
-      target_w: dw, target_h: dh, aspect_lock: true, rotate90: false,
-      trim: false, save_scale_pct: null, scale_factor: 1, real_size: true,
-      fin_top: '', fin_bottom: '', fin_left: '', fin_right: '',
-      // R3a-2: 고급 후가공(접이식, 기본 빈값). 미입력 시 body 미전송 → 기존 동작 무영향.
-      adv: { offset_method: '', offset_top: '', offset_bottom: '', offset_left: '', offset_right: '', punching: '', annotation: '' }
-    };
-  }
-  return iaeSettings[key];
-}
-
-// ── 마감방식 데이터 로드 ──────────────────────────────────────────
-function iaeLoadFinishing() {
-  axios.get('/api/finishing/methods').then(function (res) {
-    iaeFinMethods = (res.data && res.data.data) || [];
-  }).catch(function (_e) { /* 마감 데이터 실패는 무시 — 셀렉트만 비게 됨 */ })
-    .finally(function () {
-      axios.get('/api/finishing/presets').then(function (res) {
-        iaeFinPresets = (res.data && res.data.data) || [];
-      }).catch(function (_e) {}).finally(function () { iaeRenderPanel(); });
-    });
-}
-function iaeMarginOf(name) {
-  if (!name) return 0;
-  var m = iaeFinMethods.filter(function (x) { return x.name === name; })[0];
-  return m ? (Number(m.margin_cm) || 0) : 0;
-}
-function iaeComputeMargins(s) {
-  return { t: iaeMarginOf(s.fin_top), b: iaeMarginOf(s.fin_bottom), l: iaeMarginOf(s.fin_left), r: iaeMarginOf(s.fin_right) };
-}
-
-// ── 업로드 ────────────────────────────────────────────────────────
-function iaeUpload(fileList) {
-  var files = Array.prototype.slice.call(fileList || []);
-  if (files.length === 0) return;
-  iaeToast(files.length + '개 파일 업로드 중...', 'info');
-  var chain = Promise.resolve();
-  var okCount = 0;
-  files.forEach(function (f) {
-    chain = chain.then(function () {
-      var fd = new FormData();
-      fd.append('file', f);
-      return axios.post('/api/workbench/files/analyze', fd)
-        .then(function (res) {
-          var d = res.data && res.data.data;
-          if (d && d.id) { iaeAddId(d.id); okCount++; if (iaeActiveId == null) iaeActiveId = d.id; }
-        })
-        .catch(function (err) {
-          console.error('[ia-editor] upload fail', f.name, err);
-          var msg = (err.response && err.response.data && err.response.data.error) || (f.name + ' 업로드 실패');
-          iaeToast(msg, 'error');
-        });
-    });
-  });
-  chain.then(function () {
-    if (okCount > 0) iaeToast(okCount + '개 분석 요청 완료', 'success');
-    iaeRefresh();
-  });
-}
-
 // ── 데이터 새로고침 + 폴링 ────────────────────────────────────────
+// Phase 7b-2: '파일 처리' 뷰가 사라져 뷰 전환이 팔레트를 갱신해 주지 않는다(대기함에서 담고
+//   바로 네스팅 뷰에 머무름). 그래서 파일 변화 후 팔레트도 직접 갱신한다. 단 iaeRenderCanvas 는
+//   좌측 설정 폼을 통째로 다시 그리므로, 소스(done 그룹) 지문이 실제로 바뀐 경우에만 재렌더해
+//   폴링 중 입력이 날아가지 않게 한다.
+var iaeGroupsSig = null;
+function iaeCanGroupsSig() {
+  return iaeCanAllGroups().map(function (g) { return g.key + ':' + g.w_mm + 'x' + g.h_mm; }).join('|');
+}
+function iaeAfterFilesChanged() {
+  iaeRenderTabs();
+  iaeRenderFileStatus();
+  var sig = iaeCanGroupsSig();
+  if (sig === iaeGroupsSig) return;   // 소스 무변화 → 폼 유지(폴링이 입력을 날리지 않게)
+  iaeGroupsSig = sig;
+  // 초기 iaeSetView('canvas')는 iaeRefresh 응답 전이라 빈 팔레트를 그린다 → 첫 로드도 반드시 재렌더.
+  if (iaeView === 'canvas') iaeRenderCanvas();
+}
 function iaeRefresh() {
   var ids = iaeLoadIds();
-  if (ids.length === 0) { iaeFiles = []; iaeRenderTabs(); iaeRenderPanel(); return; }
+  if (ids.length === 0) { iaeFiles = []; iaeAfterFilesChanged(); return; }
   axios.get('/api/workbench/files', { params: { ids: ids.join(',') } })
     .then(function (res) {
       iaeFiles = (res.data && res.data.data) || [];
       var present = iaeFiles.map(function (f) { return f.id; });
       var cleaned = ids.filter(function (n) { return present.indexOf(n) !== -1; });
       if (cleaned.length !== ids.length) iaeSaveIds(cleaned);
-      if (iaeActiveId == null || present.indexOf(iaeActiveId) === -1) {
-        iaeActiveId = present.length ? present[0] : null;
-        iaeActiveGroup = null;
-      }
-      iaeRenderTabs();
-      iaeRenderPanel();
+      iaeAfterFilesChanged();
       iaeSchedulePoll();
     })
     .catch(function (err) { console.error('[ia-editor] files load fail', err); });
-}
-
-// ── A안(2026-07-16): NAS에서 분석 (업로드 우회 대용량) ────────────────────────
-// 에이전트가 Z:\Designs\IA-입력 을 스캔해 보고한 목록을 조회 → 선택 → from-nas(pending) → iaeRefresh로 탭 반영.
-function iaeFmtSize(bytes) { if (!bytes) return ''; var mb = bytes / 1048576; return mb >= 1 ? mb.toFixed(1) + 'MB' : Math.round(bytes / 1024) + 'KB'; }
-function iaeNasToggle() {
-  var p = document.getElementById('iaeNasPanel'); if (!p) { console.warn('[ia-editor] #iaeNasPanel not found'); return; }
-  if (p.classList.contains('hidden')) { p.classList.remove('hidden'); iaeNasLoad(); } else { p.classList.add('hidden'); }
-}
-function iaeNasLoad() {
-  var p = document.getElementById('iaeNasPanel'); if (!p) return;
-  p.innerHTML = '<div class="text-xs text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>NAS 목록 불러오는 중…</div>';
-  axios.get('/api/ai-analysis/nas-listing').then(function (res) {
-    var d = (res.data && res.data.data) || {}; var files = d.files || [];
-    var at = d.reported_at ? (' · ' + iaeEscape(d.reported_at) + ' 기준(UTC)') : ' · 에이전트 보고 없음';
-    var head = '<div class="flex items-center justify-between mb-2">'
-      + '<div class="text-xs text-gray-500"><b>Z:\\Designs\\IA-입력</b>' + at + '</div>'
-      + '<button id="iaeNasRefresh" class="text-xs text-gray-500 hover:text-blue-600"><i class="fas fa-rotate-right mr-1"></i>새로고침</button></div>';
-    var body;
-    if (!files.length) {
-      body = '<div class="text-xs text-gray-400 py-4 text-center"><b>Z:\\Designs\\IA-입력</b> 에 .ai/.eps/.pdf를 복사한 뒤 새로고침하세요.<br><span class="text-[11px]">에이전트가 ~30초마다 자동 스캔합니다.</span></div>';
-    } else {
-      body = '<div class="max-h-64 overflow-y-auto divide-y divide-gray-100">' + files.map(function (f) {
-        return '<div class="flex items-center justify-between py-1.5 gap-2">'
-          + '<div class="min-w-0"><div class="text-sm text-gray-700 truncate" title="' + iaeEscape(f.name) + '">' + iaeEscape(f.name) + '</div>'
-          + '<div class="text-[11px] text-gray-400">' + iaeFmtSize(f.size) + (f.mtime ? ' · ' + iaeEscape(f.mtime) : '') + '</div></div>'
-          + '<button class="iae-nas-go flex-shrink-0 text-xs px-2 py-1 rounded bg-gray-800 text-white hover:bg-black" data-name="' + iaeEscape(f.name) + '"><i class="fas fa-play mr-1"></i>분석</button></div>';
-      }).join('') + '</div>';
-    }
-    p.innerHTML = head + body;
-    var rb = document.getElementById('iaeNasRefresh'); if (rb) rb.addEventListener('click', iaeNasLoad);
-    Array.prototype.forEach.call(p.querySelectorAll('.iae-nas-go'), function (b) {
-      b.addEventListener('click', function () { iaeNasAnalyze(b.getAttribute('data-name'), b); });
-    });
-  }).catch(function () { p.innerHTML = '<div class="text-xs text-red-500">목록을 불러오지 못했습니다.</div>'; });
-}
-function iaeNasAnalyze(name, btn) {
-  if (!name) return;
-  if (btn) { btn.disabled = true; btn.innerHTML = '요청 중…'; }
-  axios.post('/api/ai-analysis/from-nas', { name: name }).then(function (res) {
-    var d = res.data && res.data.data;
-    if (d && d.id) { iaeAddId(d.id); if (iaeActiveId == null) iaeActiveId = d.id; iaeToast('분석 요청: ' + name, 'success'); iaeRefresh(); }
-    else { iaeToast('분석 요청 실패', 'error'); if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-play mr-1"></i>분석'; } }
-  }).catch(function (err) {
-    var msg = (err.response && err.response.data && err.response.data.error) || '분석 요청 실패';
-    iaeToast(msg, 'error'); if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-play mr-1"></i>분석'; }
-  });
 }
 
 // ── 디자이너 세션 루프(2026-07-17): 가공 대기물 불러오기 ────────────────────
@@ -588,30 +476,23 @@ function iaeStatusBadge(status, f) {
   var m = map[status] || ['bg-gray-100 text-gray-600', status || '-'];
   return '<span class="rounded-full px-2 py-0.5 text-xs font-medium ' + m[0] + '">' + iaeEscape(m[1]) + '</span>';
 }
+// Phase 7b-2: 탭은 "세션에 무엇이 담겼나 + 빼기" 전용이 됐다. 활성 파일(iaeActiveId) 개념은
+//   그 파일만 보여주던 그룹 카드/인스펙터가 사라지면서 소멸 — 팔레트는 전 파일의 done 그룹을
+//   한꺼번에 노출하므로 선택 상태가 아무 의미도 갖지 않는다.
 function iaeRenderTabs() {
   var el = document.getElementById('iaeTabs');
   if (!el) { console.warn('[ia-editor] #iaeTabs not found'); return; }
   if (iaeFiles.length === 0) { el.innerHTML = ''; return; }
   var html = '';
   iaeFiles.forEach(function (f) {
-    var active = (f.id === iaeActiveId);
-    var cls = active ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-transparent text-gray-600 hover:bg-gray-50';
-    html += '<div class="iae-tab flex items-center gap-2 px-3 py-2 border-b-2 cursor-pointer whitespace-nowrap ' + cls + '" data-id="' + f.id + '">'
+    html += '<div class="iae-tab flex items-center gap-2 px-3 py-2 border-b-2 border-transparent text-gray-600 whitespace-nowrap" data-id="' + f.id + '">'
       + '<i class="fas fa-file-image text-gray-400"></i>'
-      + '<span class="text-sm font-medium truncate" style="max-width:160px;">' + iaeEscape(f.filename) + '</span>'
+      + '<span class="text-sm font-medium truncate" style="max-width:160px;" title="' + iaeEscape(f.filename) + '">' + iaeEscape(f.filename) + '</span>'
       + iaeStatusBadge(f.status, f)
-      + '<button class="iae-tab-close text-gray-300 hover:text-red-500 ml-1" data-close="' + f.id + '" title="닫기"><i class="fas fa-times"></i></button>'
+      + '<button class="iae-tab-close text-gray-300 hover:text-red-500 ml-1" data-close="' + f.id + '" title="세션에서 빼기"><i class="fas fa-times"></i></button>'
       + '</div>';
   });
   el.innerHTML = html;
-  Array.prototype.forEach.call(el.querySelectorAll('.iae-tab'), function (t) {
-    t.addEventListener('click', function (e) {
-      if (e.target.closest && e.target.closest('.iae-tab-close')) return;
-      iaeActiveId = parseInt(t.getAttribute('data-id'), 10);
-      iaeActiveGroup = null;
-      iaeRenderTabs(); iaeRenderPanel();
-    });
-  });
   Array.prototype.forEach.call(el.querySelectorAll('.iae-tab-close'), function (b) {
     b.addEventListener('click', function (e) { e.stopPropagation(); iaeCloseTab(parseInt(b.getAttribute('data-close'), 10)); });
   });
@@ -619,8 +500,7 @@ function iaeRenderTabs() {
 function iaeCloseTab(id) {
   iaeRemoveId(id);
   iaeFiles = iaeFiles.filter(function (f) { return f.id !== id; });
-  if (iaeActiveId === id) { iaeActiveId = iaeFiles.length ? iaeFiles[0].id : null; iaeActiveGroup = null; }
-  iaeRenderTabs(); iaeRenderPanel();
+  iaeAfterFilesChanged();
 }
 // 분석 강제 취소 (EXP-2, 2026-07-15): 서버가 terminal 처리 → 에이전트 폴(status=pending)에서 즉시 제외.
 //   탭 닫기(×)는 로컬 제거만 하므로 서버 큐엔 pending이 남음 → 이 버튼으로 서버까지 정리.
@@ -634,163 +514,67 @@ function iaeCancelAnalysis(id) {
     iaeToast(msg, 'error');
   });
 }
+// 상태줄엔 미완료 파일이 여러 건 설 수 있어 단일 id 대신 class 로 바인딩(스코프=상태줄 루트).
 function iaeWireCancelAnalysis() {
-  var b = document.getElementById('iaeCancelAnalysis');
-  if (!b) return;
-  b.addEventListener('click', function () { iaeCancelAnalysis(parseInt(b.getAttribute('data-id'), 10)); });
+  var host = document.getElementById('iaeFileStatus');
+  if (!host) return;
+  Array.prototype.forEach.call(host.querySelectorAll('.iae-cancel-analysis'), function (b) {
+    b.addEventListener('click', function () { iaeCancelAnalysis(parseInt(b.getAttribute('data-id'), 10)); });
+  });
 }
 
-// ── 패널 (활성 파일: 그룹 리스트 + 인스펙터) ──────────────────────
-function iaeRenderPanel() {
-  var panel = document.getElementById('iaePanel');
-  var empty = document.getElementById('iaeEmpty');
-  if (!panel) { console.warn('[ia-editor] #iaePanel not found'); return; }
-  var f = iaeFiles.filter(function (x) { return x.id === iaeActiveId; })[0];
-  if (!f) { panel.innerHTML = ''; if (empty) empty.classList.remove('hidden'); return; }
-  if (empty) empty.classList.add('hidden');
-
-  var head = '<div class="flex items-center justify-between mb-4">'
-    + '<div class="flex items-center gap-2"><span class="text-base font-bold text-gray-900">' + iaeEscape(f.filename) + '</span>' + iaeStatusBadge(f.status, f) + '</div>'
-    + '<button id="iaeRefreshBtn" class="text-sm text-gray-500 hover:text-blue-600"><i class="fas fa-rotate-right mr-1"></i>새로고침</button>'
-    + '</div>';
-
-  // 비완료 상태
-  if (f.status === 'error') {
-    panel.innerHTML = head + '<div class="border border-dashed border-red-200 rounded-lg p-8 text-center text-sm text-red-500">분석 실패'
-      + (f.error_message ? '<br><span class="text-xs text-red-400">' + iaeEscape(f.error_message) + '</span>' : '') + '</div>';
-    iaeWireRefresh();
+// ── 파일 상태줄 (Phase 7b-2) ──────────────────────────────────────
+// 그룹 카드 리스트 + 인스펙터를 걷어낸 자리. 네스팅/모아찍기 팔레트는 status='done' 만 노출하므로,
+// 아직 분석이 끝나지 않았거나 실패한 파일이 "사라진 것처럼" 보이는 것을 이 줄이 막는다.
+// 분석 취소(서버 큐 정리)의 유일한 진입점이기도 하다 — 탭 ×(iaeCloseTab)는 로컬 제거만 한다.
+function iaeRenderFileStatus() {
+  var host = document.getElementById('iaeFileStatus');
+  if (!host) { console.warn('[ia-editor] #iaeFileStatus not found'); return; }
+  if (!iaeFiles.length) {
+    host.innerHTML = '<div class="text-xs text-gray-400"><i class="fas fa-inbox mr-1"></i>세션에 담긴 파일이 없습니다. '
+      + '<b>모아찍기 대기함</b>에서 대기물을 담으면 아래 팔레트에 아트보드가 나타납니다.</div>';
     return;
   }
-  if (f.status !== 'done') {
-    // EXP-2(2026-07-15): 대기·진행·지연 상태에서 분석을 강제 취소(서버 terminal → 에이전트 폴 제외).
-    var _cancelBtn = '<button id="iaeCancelAnalysis" data-id="' + f.id + '" class="mt-3 px-3 py-1.5 rounded-md bg-gray-100 text-gray-600 text-xs hover:bg-red-50 hover:text-red-600"><i class="fas fa-ban mr-1"></i>분석 취소</button>';
-    panel.innerHTML = head + (iaeIsAnalysisStuck(f)
-      ? '<div class="border border-dashed border-orange-200 rounded-lg p-8 text-center text-sm text-orange-600">'
-        + '<i class="fas fa-triangle-exclamation text-2xl mb-2"></i>'
-        + '<div>분석이 10분 이상 응답이 없습니다.</div>'
-        + '<div class="text-xs text-orange-400 mt-1">IA 에이전트 상태를 확인하거나, 아래에서 분석을 취소하세요. (서버가 10분 후 자동 만료 처리합니다)</div>'
-        + _cancelBtn + '</div>'
-      : '<div class="border border-dashed border-gray-200 rounded-lg p-10 text-center text-gray-400">'
-        + '<i class="fas fa-spinner fa-spin text-2xl mb-2"></i><div class="text-sm">ExtractGroups 분석 중입니다…</div>'
-        + _cancelBtn + '</div>');
-    iaeWireRefresh();
-    iaeWireCancelAnalysis();
-    return;
-  }
-  if (!f.groups || f.groups.length === 0) {
-    panel.innerHTML = head + '<div class="border border-dashed border-gray-200 rounded-lg p-8 text-center text-sm text-gray-400">추출된 그룹이 없습니다</div>';
+  var refreshBtn = '<button id="iaeRefreshBtn" class="text-xs text-gray-500 hover:text-blue-600 flex-shrink-0"><i class="fas fa-rotate-right mr-1"></i>새로고침</button>';
+  var pending = iaeFiles.filter(function (f) { return f.status !== 'done'; });
+  var doneN = iaeFiles.length - pending.length;
+
+  if (!pending.length) {
+    host.innerHTML = '<div class="flex items-center justify-between gap-2">'
+      + '<div class="text-xs text-gray-500"><i class="fas fa-circle-check text-green-500 mr-1"></i>파일 ' + doneN + '건 분석 완료 — 아래 팔레트에서 아트보드를 고르세요.</div>'
+      + refreshBtn + '</div>';
     iaeWireRefresh();
     return;
   }
 
-  // 완료: 활성 그룹 기본값
-  var gis = f.groups.map(function (g, i) { return (g.index != null) ? g.index : i; });
-  if (iaeActiveGroup == null || gis.indexOf(iaeActiveGroup) === -1) iaeActiveGroup = gis[0];
+  var rows = pending.map(function (f) {
+    var msg = (f.status === 'error')
+      ? ('분석 실패' + (f.error_message ? ' — ' + iaeEscape(f.error_message) : ''))
+      : (iaeIsAnalysisStuck(f)
+        ? '10분 이상 응답 없음 — IA 에이전트 상태를 확인하세요 (서버가 자동 만료 처리합니다)'
+        : '분석 중 — 완료되면 팔레트에 나타납니다');
+    // 실패는 이미 terminal 이라 취소할 것이 없다(대기·진행·지연만 서버 큐에 남는다).
+    var cancel = (f.status === 'error') ? ''
+      : '<button class="iae-cancel-analysis text-[11px] px-2 py-0.5 rounded border border-gray-300 text-gray-500 hover:bg-red-50 hover:text-red-600 flex-shrink-0" data-id="' + f.id + '"><i class="fas fa-ban mr-1"></i>분석 취소</button>';
+    return '<div class="flex items-center gap-2 py-0.5">'
+      + iaeStatusBadge(f.status, f)
+      + '<span class="text-xs text-gray-600 truncate min-w-0 flex-1">' + iaeEscape(f.filename) + ' <span class="text-gray-400">· ' + msg + '</span></span>'
+      + cancel + '</div>';
+  }).join('');
 
-  // 좌: 그룹 리스트 + 인스펙터 (검출보정 캔버스는 §14.5 폐기 — '대지 편집' 뷰가 시안 편집 담당)
-  // ① 일괄 가공 — 모든 그룹을 각 settings로 큐잉 → 진행(N/M) → ZIP
-  var listHtml = '<div class="flex items-center justify-between mb-2 gap-1">'
-    + '<span class="text-xs font-semibold text-gray-500 flex-shrink-0">그룹 (' + f.groups.length + ')</span>'
-    + '<div class="flex items-center gap-1">'
-    + '<button id="iaeApplyAllBtn" class="text-[11px] px-2 py-0.5 rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50" title="현재 그룹의 마감·돔보·회전·파일배율을 모든 그룹에 적용(목표크기는 그룹별 유지)"><i class="fas fa-clone mr-1"></i>설정 전체적용</button>'
-    // Phase 6: [전체 가공](배치 ZIP) 제거 — 패널 배치 큐가 담당한다.
-    + '</div>'
-    + '</div>'
-    + '<div class="space-y-2">';
-  f.groups.forEach(function (g, i) {
-    var gi = gis[i];
-    var sel = (gi === iaeActiveGroup);
-    var thumb = g.thumbnail_base64
-      ? '<img src="data:image/png;base64,' + g.thumbnail_base64 + '" class="w-full h-16 object-contain bg-gray-50">'
-      : '<div class="w-full h-16 flex items-center justify-center bg-gray-50 text-gray-300"><i class="fas fa-image"></i></div>';
-    var dims = (g.width_mm != null && g.height_mm != null) ? (Math.round(g.width_mm / 10) + '×' + Math.round(g.height_mm / 10) + 'cm') : '-';
-    listHtml += '<div class="iae-group cursor-pointer rounded-lg border ' + (sel ? 'border-blue-500 ring-1 ring-blue-300' : 'border-gray-200 hover:border-gray-300') + ' overflow-hidden" data-gi="' + gi + '">'
-      + thumb
-      + '<div class="px-2 py-1 border-t border-gray-100"><div class="text-xs font-semibold text-gray-700 truncate">#' + gi + ' ' + iaeEscape(g.name || '') + '</div><div class="text-[11px] text-gray-400">' + dims + '</div></div>'
-      + '</div>';
-  });
-  listHtml += '</div>';
-
-  panel.innerHTML = head
-    + '<div class="flex gap-5 items-start">'
-    + '<div class="w-40 flex-shrink-0 overflow-y-auto" style="max-height:560px;">' + listHtml + '</div>'
-    + '<div class="flex-1 min-w-0" id="iaeInspector"></div>'
-    + '</div>';
-
+  host.innerHTML = '<div class="flex items-start justify-between gap-2">'
+    + '<div class="min-w-0 flex-1 space-y-0.5">' + rows + '</div>' + refreshBtn + '</div>'
+    + (doneN ? '<div class="text-[11px] text-gray-400 mt-1">완료 ' + doneN + '건은 팔레트에 표시됩니다.</div>' : '');
   iaeWireRefresh();
-  Array.prototype.forEach.call(panel.querySelectorAll('.iae-group'), function (el) {
-    el.addEventListener('click', function () { iaeActiveGroup = parseInt(el.getAttribute('data-gi'), 10); iaeRenderPanel(); });
-  });
-  var applyAllBtn = document.getElementById('iaeApplyAllBtn'); // W4: 설정 전체적용
-  if (applyAllBtn) applyAllBtn.addEventListener('click', function () { iaeApplyActiveToAll(f); });
-  iaeRenderInspector(f);
+  iaeWireCancelAnalysis();
 }
-// W4: 현재 활성 그룹의 공통 설정(마감 4면·돔보·회전·파일배율·고급후가공)을 모든 그룹에 복사.
-//     목표크기(target_w/h)는 그룹별 검출크기 기준이라 유지 → 그룹마다 따로 설정하는 수고 제거.
-function iaeApplyActiveToAll(f) {
-  if (!f || !f.groups || !f.groups.length) return;
-  var gis = f.groups.map(function (g, i) { return (g.index != null) ? g.index : i; });
-  var actGroup = f.groups.filter(function (g, i) { return gis[i] === iaeActiveGroup; })[0];
-  if (!actGroup) { iaeToast('기준 그룹을 먼저 선택하세요', 'error'); return; }
-  var src = iaeGetSettings(f.id, actGroup, iaeActiveGroup);
-  var keys = ['fin_top', 'fin_bottom', 'fin_left', 'fin_right', 'trim', 'rotate90', 'scale_factor', 'real_size', 'adv'];
-  var n = 0;
-  f.groups.forEach(function (g, i) {
-    var gi = gis[i];
-    if (gi === iaeActiveGroup) return;
-    var d = iaeGetSettings(f.id, g, gi);
-    keys.forEach(function (k) {
-      if (src[k] === undefined) return;
-      d[k] = (k === 'adv' && src.adv) ? JSON.parse(JSON.stringify(src.adv)) : src[k];
-    });
-    n++;
-  });
-  iaeSaveSettings();
-  iaeRenderInspector(f);
-  iaeToast('현재 설정을 ' + n + '개 그룹에 적용 (목표크기는 그룹별 유지)', 'success');
-}
+
 function iaeWireRefresh() {
   var rb = document.getElementById('iaeRefreshBtn');
   if (rb) rb.addEventListener('click', iaeRefresh);
 }
 
-// ── Konva 동적 로드 (대지 편집 캔버스 N1~ 공용) ──
-// 검출보정 캔버스/좌표보정(iae_corrections_v1)은 §14.5 폐기 — '대지 편집' 뷰로 대체.
-var iaeKonvaLoading = false, iaeKonvaCbs = [];
 
-function iaeLoadKonva(cb) {
-  if (window.Konva) { cb(); return; }
-  iaeKonvaCbs.push(cb);
-  if (iaeKonvaLoading) return;
-  iaeKonvaLoading = true;
-  var sc = document.createElement('script');
-  sc.src = 'https://cdn.jsdelivr.net/npm/konva@9.3.6/konva.min.js';
-  sc.onload = function () { iaeKonvaLoading = false; var cbs = iaeKonvaCbs.slice(); iaeKonvaCbs = []; cbs.forEach(function (fn) { try { fn(); } catch (e) { console.error(e); } }); };
-  sc.onerror = function () { iaeKonvaLoading = false; iaeKonvaCbs = []; console.warn('[ia-editor] Konva 로드 실패'); iaeToast('캔버스 라이브러리 로드 실패', 'error'); };
-  document.head.appendChild(sc);
-}
-
-// 그룹 유효 크기(mm) — 인스펙터 표시용 (검출보정 폐기로 단순화: 검출 원본 크기)
-function iaeEffMm(fid, group, gi) {
-  return { w_mm: (group && group.width_mm != null) ? group.width_mm : 0, h_mm: (group && group.height_mm != null) ? group.height_mm : 0 };
-}
-
-// ── 인스펙터 (처리 설정 + 근사 미리보기 + 프리플라이트) ───────────
-function iaeMethodOptions(selected) {
-  var html = '<option value="">없음</option>';
-  iaeFinMethods.forEach(function (m) {
-    html += '<option value="' + iaeEscape(m.name) + '"' + (m.name === selected ? ' selected' : '') + '>'
-      + iaeEscape(m.name) + ' (' + (Number(m.margin_cm) || 0) + 'cm)</option>';
-  });
-  return html;
-}
-// W3: 파일배율 안내 — 소스가 용량 때문에 1/N 축소본으로 들어온 경우. 마감·돔보는 ÷N로 실물 비율 보정,
-//     EPS는 소스(원본) 크기 그대로 저장(출력 RIP에서 ×N 확대). 실물 추정크기를 라이브로 병기.
-function iaeScaleHint(w, h, n) {
-  n = Math.max(1, parseInt(n, 10) || 1);
-  if (n <= 1) return '원본 크기 (1/1 · 보정 없음)';
-  return '1/' + n + ' 축소본 · 실물 ≈ ' + Math.round((w || 0) * n) + '×' + Math.round((h || 0) * n) + 'cm (마감·돔보 자동 보정 · EPS는 원본 크기 저장)';
-}
 
 // ══════════════════════════════════════════════════════════════════════════
 // 저장 스케일 프리셋 — 출력(파일명·카드·주문)과 저장(실제 파일 물리 크기)을 분리.
@@ -812,70 +596,14 @@ function iaeSavePresets() {
 function iaeSetSavePresets(arr) { try { localStorage.setItem(IAE_SAVE_PRESET_KEY, JSON.stringify(arr)); } catch (_e) {} }
 // 저장% → scale_factor (= 출력/저장 = RIP 확대배율). 100%→1, 20%→5, 40%→2.5.
 function iaeScaleFromPct(pct) { pct = Number(pct) || 100; if (pct > 100) pct = 100; if (pct < 1) pct = 1; return 100 / pct; }
-// scale_factor → 파일명 토큰 '1-5' (디스크 저장용, '/' 불가). 표시는 iaeScaleLabel. ≤1이면 빈 문자열(무축소).
-function iaeScaleToken(sf) { sf = Number(sf) || 1; if (sf <= 1.0001) return ''; var n = Math.round(sf * 100) / 100; return '1-' + (n % 1 === 0 ? n.toFixed(0) : String(n)); }
-function iaeScaleLabel(sf) { var t = iaeScaleToken(sf); return t ? t.replace('-', '/') : '1/1'; }
+// (파일명 배율 토큰 iaeScaleToken/iaeScaleLabel 은 Phase 7b-2 에서 제거 — 유일 소비자가
+//  인스펙터의 저장 스케일 힌트였다. 시트 경로는 scale_factor 숫자만 쓰고 토큰을 만들지 않는다.)
 // 추천 저장%: 출력 최대변 × 저장%가 IL 한계(560cm) 안에 드는 가장 큰 프리셋(전부 초과면 최소값).
 function iaeRecommendSavePct(outMaxCm) {
   var ps = iaeSavePresets();
   if (!(outMaxCm > 0)) return ps[0];
   for (var i = 0; i < ps.length; i++) { if (outMaxCm * ps[i] / 100 <= IAE_IL_REDUCE_CM) return ps[i]; }
   return ps[ps.length - 1];
-}
-// 인스펙터 저장 스케일 컨트롤(프리셋 select + 라이브 힌트 + 프리셋 편집).
-function iaeSaveScaleControlHTML(s, inputCls) {
-  var ps = iaeSavePresets();
-  var outMax = Math.max(Number(s.target_w) || 0, Number(s.target_h) || 0);
-  var rec = iaeRecommendSavePct(outMax);
-  if (s.save_scale_pct == null) { s.save_scale_pct = rec; s._save_scale_auto = true; }   // 기본 = 추천값(목표크기 변경 시 추종)
-  var cur = Number(s.save_scale_pct) || rec;
-  if (ps.indexOf(cur) < 0) ps = ps.concat([cur]).sort(function (a, b) { return b - a; }); // 현재값이 프리셋에 없으면 노출
-  var opts = ps.map(function (p) {
-    return '<option value="' + p + '"' + (p === cur ? ' selected' : '') + '>저장 ' + p + '%' + (p === rec ? ' · 추천' : '') + '</option>';
-  }).join('');
-  return '<div class="w-full">'
-    + '<label class="block text-xs text-gray-500 mb-1">저장 스케일 <span class="text-gray-400">(출력=파일명·카드·주문 / 저장=실제 파일)</span></label>'
-    + '<div class="flex items-center gap-2">'
-    + '<select id="iaeSaveScale" class="flex-1 ' + inputCls + '">' + opts + '</select>'
-    + '<button id="iaeSaveScaleEdit" type="button" class="text-xs text-gray-400 hover:text-gray-600 px-1" title="프리셋 편집"><i class="fas fa-gear"></i></button>'
-    + '</div>'
-    + '<div id="iaeSaveScaleEditor" class="hidden mt-1 flex items-center gap-1">'
-    + '<input id="iaeSaveScaleEditInput" type="text" value="' + iaeSavePresets().join(',') + '" class="flex-1 ' + inputCls + '" placeholder="100,50,25,20,10">'
-    + '<button id="iaeSaveScaleEditSave" type="button" class="text-[11px] px-2 py-1 rounded bg-gray-800 text-white hover:bg-black whitespace-nowrap">저장</button>'
-    + '</div>'
-    + '<div id="iaeSaveScaleHint" class="text-[11px] text-gray-400 mt-1">' + iaeSaveScaleHint(s) + '</div>'
-    + '</div>';
-}
-function iaeSaveScaleHint(s) {
-  var pct = Number(s.save_scale_pct) || 100;
-  var ow = Number(s.target_w) || 0, oh = Number(s.target_h) || 0;
-  var sw = Math.round(ow * pct / 100), sh = Math.round(oh * pct / 100);
-  var sf = iaeScaleFromPct(pct);
-  if (pct >= 100) return '<i class="fas fa-circle-info mr-1"></i>실물 저장 · ' + sw + '×' + sh + 'cm · RIP 100% 출력';
-  return '<i class="fas fa-circle-info mr-1"></i>저장 <b>' + sw + '×' + sh + 'cm</b> · 파일명 <b>' + iaeScaleLabel(sf) + '</b> · <span class="text-amber-600">RIP ×' + (Math.round(sf * 100) / 100) + ' 확대 출력</span>';
-}
-// 인스펙터 저장 스케일 이벤트 바인딩(select 변경·프리셋 편집 토글/저장).
-function iaeWireSaveScale(s, f) {
-  var sel = document.getElementById('iaeSaveScale');
-  if (sel) sel.addEventListener('change', function () {
-    s.save_scale_pct = Number(sel.value) || 100;
-    s._save_scale_auto = false;   // 수동 선택 → 추천 자동추종 중단
-    iaeSaveSettings();
-    var hint = document.getElementById('iaeSaveScaleHint');
-    if (hint) hint.innerHTML = iaeSaveScaleHint(s);
-  });
-  var edit = document.getElementById('iaeSaveScaleEdit');
-  var editor = document.getElementById('iaeSaveScaleEditor');
-  if (edit && editor) edit.addEventListener('click', function () { editor.classList.toggle('hidden'); });
-  var save = document.getElementById('iaeSaveScaleEditSave');
-  if (save) save.addEventListener('click', function () {
-    var raw = (document.getElementById('iaeSaveScaleEditInput') || {}).value || '';
-    var arr = raw.split(/[,\s]+/).map(Number).filter(function (n) { return n > 0 && n <= 100; });
-    if (!arr.length) { iaeToast('저장% 값을 1~100 사이로 입력하세요 (예: 100,50,25,20,10)', 'error'); return; }
-    iaeSetSavePresets(arr);
-    iaeToast('저장 스케일 프리셋 저장', 'success');
-    if (f) iaeRenderInspector(f);
-  });
 }
 // 시트(네스팅·모아찍기) 저장 스케일 프리셋 — o.save_scale_pct. recMaxCm=예상 판 최대변(추천 계산).
 function iaeSaveScaleSheetHTML(o, recMaxCm, inputCls) {
@@ -925,210 +653,9 @@ function iaeUpdateSaveScaleRec(selId, s, maxDimCm) {
     return '<option value="' + p + '"' + (p === cur ? ' selected' : '') + '>저장 ' + p + '%' + (p === rec ? ' · 추천' : '') + '</option>';
   }).join('');
 }
-function iaeRenderInspector(f) {
-  var host = document.getElementById('iaeInspector');
-  if (!host) return;
-  var group = f.groups.filter(function (g, i) { return ((g.index != null) ? g.index : i) === iaeActiveGroup; })[0];
-  if (!group) { host.innerHTML = '<div class="text-sm text-gray-400 p-6">그룹을 선택하세요</div>'; return; }
-  var s = iaeGetSettings(f.id, group, iaeActiveGroup);
-  var eff = iaeEffMm(f.id, group, iaeActiveGroup);
-  var effW = Math.round((eff.w_mm || 0) / 10), effH = Math.round((eff.h_mm || 0) / 10);
-
-  var presetOpts = '<option value="">마감 프리셋…</option>';
-  iaeFinPresets.forEach(function (p) { presetOpts += '<option value="' + iaeEscape(p.name) + '">' + iaeEscape(p.name) + '</option>'; });
-
-  var inputCls = 'border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500';
-  var selCls = 'w-full ' + inputCls;
-
-  var html = ''
-    + '<div class="grid grid-cols-1 lg:grid-cols-2 gap-5">'
-    // 설정 폼
-    + '<div>'
-    + '<div class="flex items-center justify-between mb-3">'
-    + '<span class="text-sm font-semibold text-gray-700">#' + iaeActiveGroup + ' ' + iaeEscape(group.name || '') + ' <span class="text-xs font-normal text-gray-400">검출 ' + effW + '×' + effH + 'cm · <span class="text-blue-500">대지 편집에서 네스팅</span></span></span>'
-    + '</div>'
-    + '<div class="space-y-3">'
-    // 목표 크기
-    + '<div><label class="block text-xs text-gray-500 mb-1">목표 크기 (cm)</label>'
-    + '<div class="flex items-center gap-2">'
-    + '<input id="iaeTW" type="number" min="0" step="0.1" value="' + s.target_w + '" class="w-24 ' + inputCls + '" placeholder="W">'
-    + '<span class="text-gray-400">×</span>'
-    + '<input id="iaeTH" type="number" min="0" step="0.1" value="' + s.target_h + '" class="w-24 ' + inputCls + '" placeholder="H">'
-    + '<label class="flex items-center gap-1 text-xs text-gray-600 ml-1 cursor-pointer"><input id="iaeAspect" type="checkbox"' + (s.aspect_lock ? ' checked' : '') + '> 비율잠금</label>'
-    + '</div>'
-    + '</div>'
-    // 마감 프리셋
-    + '<div><label class="block text-xs text-gray-500 mb-1">마감 프리셋</label><select id="iaePreset" class="' + selCls + '">' + presetOpts + '</select></div>'
-    // 마감 상/하/좌/우
-    + '<div class="grid grid-cols-2 gap-2">'
-    + '<div><label class="block text-xs text-gray-500 mb-1">상</label><select id="iaeFinTop" class="' + selCls + '">' + iaeMethodOptions(s.fin_top) + '</select></div>'
-    + '<div><label class="block text-xs text-gray-500 mb-1">하</label><select id="iaeFinBottom" class="' + selCls + '">' + iaeMethodOptions(s.fin_bottom) + '</select></div>'
-    + '<div><label class="block text-xs text-gray-500 mb-1">좌</label><select id="iaeFinLeft" class="' + selCls + '">' + iaeMethodOptions(s.fin_left) + '</select></div>'
-    + '<div><label class="block text-xs text-gray-500 mb-1">우</label><select id="iaeFinRight" class="' + selCls + '">' + iaeMethodOptions(s.fin_right) + '</select></div>'
-    + '</div>'
-    // 회전 / 돔보 / 파일배율 (복제수 제거 — 단일 가공은 1매 출력. 다매 면付은 대지편집 네스팅)
-    + '<div class="flex items-center gap-4 flex-wrap">'
-    + '<label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer"><input id="iaeRot" type="checkbox"' + (s.rotate90 ? ' checked' : '') + '> 90° 회전</label>'
-    + '<label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer"><input id="iaeTrim" type="checkbox"' + (s.trim ? ' checked' : '') + '> 돔보</label>'
-    + '</div>'
-    // 저장 스케일 프리셋 — 출력(파일명·카드·주문) ≠ 저장(실제 파일 물리 크기). 추천값 기본선택, 프리셋 편집 가능.
-    + iaeSaveScaleControlHTML(s, inputCls)
-    // R3a-2: 고급 후가공 (접이식, 기본 접힘) — 도련 offset(method+4면)·펀칭·주석. 미입력 시 가공 body 미전송.
-    + iaeAdvancedSectionHTML(iaeAdv(s), inputCls, selCls)
-    + '<div class="text-[11px] text-gray-400"><i class="fas fa-circle-info mr-1"></i>단일 가공은 1매 출력입니다. 여러 매 면付(자동 배치)은 <span class="text-blue-500">대지 편집</span>의 시트 네스팅을 사용하세요.</div>'
-    + '</div></div>'
-    // 미리보기 + 프리플라이트
-    + '<div>'
-    + '<div class="text-sm font-semibold text-gray-700 mb-3">미리보기 <span class="text-xs font-normal text-gray-400">(웹 근사 · IA 실제 렌더는 연동 후)</span></div>'
-    + '<div id="iaePreview" class="bg-gray-50 border border-gray-200 rounded-lg p-3 min-h-[200px] flex items-center justify-center"></div>'
-    + '<div id="iaePreflight" class="mt-3"></div>'
-    // Phase 6(2026-07-28): 단건 가공·미리보기 진입점 제거 — 가공은 일러 MES 패널이 담당.
-    //   ia-editor에도 [미리보기]·[가공해서 받기]가 있어 패널과 중복이었다.
-    //   이 인스펙터의 설정(마감·돔보·회전·목표크기)은 네스팅/모아찍기 배치에 계속 쓰이므로 유지.
-    + '<div class="border-t border-gray-100 pt-3 mt-3 text-[11px] text-gray-400">'
-    + '가공(EPS 출력)은 일러스트레이터 <b>MES 패널</b>에서 합니다. 이 화면은 <b>배치·네스팅</b> 전용입니다.'
-    + '</div>'
-    + '</div>'
-    + '</div>';
-
-  host.innerHTML = html;
-  function updatePv() {
-    iaeUpdatePreview(group, s);
-  }
-
-  // 입력 변경 → 설정 갱신 + 미리보기/프리플라이트 즉시 반영 (폼 재렌더 없이 포커스 유지)
-  function sync() {
-    var tw = parseFloat(document.getElementById('iaeTW').value) || 0;
-    var th = parseFloat(document.getElementById('iaeTH').value) || 0;
-    s.target_w = tw; s.target_h = th;
-    s.aspect_lock = document.getElementById('iaeAspect').checked;
-    s.rotate90 = document.getElementById('iaeRot').checked;
-    s.trim = document.getElementById('iaeTrim').checked;
-    // 저장 스케일: 출력(목표크기)에 의존 → 목표 변경 시 추천 마커·힌트 동적 갱신(미선택 시 추천 추종).
-    iaeUpdateSaveScaleRec('iaeSaveScale', s, Math.max(Number(s.target_w) || 0, Number(s.target_h) || 0));
-    var ssHint = document.getElementById('iaeSaveScaleHint');
-    if (ssHint) ssHint.innerHTML = iaeSaveScaleHint(s);
-    s.fin_top = document.getElementById('iaeFinTop').value;
-    s.fin_bottom = document.getElementById('iaeFinBottom').value;
-    s.fin_left = document.getElementById('iaeFinLeft').value;
-    s.fin_right = document.getElementById('iaeFinRight').value;
-    iaeSyncAdvanced(s); // R3a-2: 고급 후가공(접이식) 입력 → s.adv
-    iaeSaveSettings();
-    updatePv();
-  }
-  var detAspect = (group.width_mm && group.height_mm) ? (group.width_mm / group.height_mm) : 0;
-  var twEl = document.getElementById('iaeTW'), thEl = document.getElementById('iaeTH');
-  twEl.addEventListener('input', function () {
-    if (document.getElementById('iaeAspect').checked && detAspect > 0) {
-      var w = parseFloat(twEl.value) || 0; if (w > 0) thEl.value = Math.round((w / detAspect) * 10) / 10;
-    }
-    sync();
-  });
-  thEl.addEventListener('input', function () {
-    if (document.getElementById('iaeAspect').checked && detAspect > 0) {
-      var h = parseFloat(thEl.value) || 0; if (h > 0) twEl.value = Math.round((h * detAspect) * 10) / 10;
-    }
-    sync();
-  });
-  ['iaeAspect', 'iaeRot', 'iaeTrim', 'iaeFinTop', 'iaeFinBottom', 'iaeFinLeft', 'iaeFinRight'].forEach(function (id) {
-    var el = document.getElementById(id);
-    if (el) el.addEventListener('change', sync);
-  });
-  // R3a-2: 고급 후가공 입력(도련 4면 mm·method·펀칭·주석) change/input → sync
-  ['iaeAdvOffMethod', 'iaeAdvOffTop', 'iaeAdvOffBottom', 'iaeAdvOffLeft', 'iaeAdvOffRight', 'iaeAdvPunching', 'iaeAdvAnnotation'].forEach(function (id) {
-    var el = document.getElementById(id);
-    if (el) { el.addEventListener('change', sync); el.addEventListener('input', sync); }
-  });
-  // ⑥ 비율잠금 해제 토스트 — 자유 변형 시 왜곡 위험 환기
-  var aspEl = document.getElementById('iaeAspect');
-  if (aspEl) aspEl.addEventListener('change', function () { if (!aspEl.checked) iaeToast('비율잠금 해제 — 원본 비율과 달라지면 잘림/늘어남이 발생할 수 있습니다', 'warning'); });
-  // 프리셋 적용 → 4면 채우고 폼 재렌더
-  var preEl = document.getElementById('iaePreset');
-  if (preEl) preEl.addEventListener('change', function () {
-    var p = iaeFinPresets.filter(function (x) { return x.name === preEl.value; })[0];
-    if (!p) return;
-    var cfg = {};
-    try { cfg = (typeof p.config === 'string') ? JSON.parse(p.config) : (p.config || {}); } catch (_e) { cfg = {}; }
-    s.fin_top = cfg.top || ''; s.fin_bottom = cfg.bottom || ''; s.fin_left = cfg.left || ''; s.fin_right = cfg.right || '';
-    iaeSaveSettings();
-    iaeRenderInspector(f); // 셀렉트 반영 위해 재렌더
-  });
-  // 저장 스케일 프리셋 — select 변경·프리셋 편집 바인딩
-  iaeWireSaveScale(s, f);
-
-  // Phase 6: 단건 가공·미리보기 바인딩 제거(진입점과 함께 걷어냄 — 남기면 항상 null 인
-  //   dangling 참조가 되어 check:dom 회귀로 잡힌다).
-  updatePv();
-}
-
-// ── R3a-2: 고급 후가공 (도련 offset·펀칭·주석) ────────────────────
-// 접이식 섹션(기본 접힘). settings.adv에 보관. body엔 입력 있을 때만 offset/punching/annotation 추가(미입력=무영향).
-// 레거시 settings(adv 없음)도 안전하게 기본값 보강.
-function iaeAdv(s) {
-  if (!s.adv || typeof s.adv !== 'object') {
-    s.adv = { offset_method: '', offset_top: '', offset_bottom: '', offset_left: '', offset_right: '', punching: '', annotation: '' };
-  }
-  return s.adv;
-}
-function iaeAdvancedSectionHTML(adv, inputCls, selCls) {
-  var hasVals = !!(adv.offset_method || adv.offset_top || adv.offset_bottom || adv.offset_left || adv.offset_right || adv.punching || adv.annotation);
-  var offCls = 'w-16 ' + inputCls;
-  return ''
-    + '<details class="border border-gray-200 rounded-lg" ' + (hasVals ? 'open' : '') + '>'
-    + '<summary class="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50"><i class="fas fa-sliders mr-1.5 text-gray-400"></i>고급 후가공 <span class="font-normal text-gray-400">(도련·펀칭·주석 · 선택)</span></summary>'
-    + '<div class="px-3 pb-3 pt-1 space-y-3 border-t border-gray-100">'
-    // 도련(offset)
-    + '<div><label class="block text-xs text-gray-500 mb-1">도련 방식</label>'
-    + '<select id="iaeAdvOffMethod" class="' + selCls + ' text-xs">'
-    + '<option value="">없음</option>'
-    + '<option value="scale"' + (adv.offset_method === 'scale' ? ' selected' : '') + '>scale (확대 도련)</option>'
-    + '<option value="edge_strip"' + (adv.offset_method === 'edge_strip' ? ' selected' : '') + '>edge_strip (가장자리 복제)</option>'
-    + '</select></div>'
-    + '<div class="grid grid-cols-4 gap-2">'
-    + '<div><label class="block text-[11px] text-gray-400 mb-0.5">상(mm)</label><input id="iaeAdvOffTop" type="number" min="0" step="1" value="' + iaeEscape(adv.offset_top) + '" class="' + offCls + '"></div>'
-    + '<div><label class="block text-[11px] text-gray-400 mb-0.5">하(mm)</label><input id="iaeAdvOffBottom" type="number" min="0" step="1" value="' + iaeEscape(adv.offset_bottom) + '" class="' + offCls + '"></div>'
-    + '<div><label class="block text-[11px] text-gray-400 mb-0.5">좌(mm)</label><input id="iaeAdvOffLeft" type="number" min="0" step="1" value="' + iaeEscape(adv.offset_left) + '" class="' + offCls + '"></div>'
-    + '<div><label class="block text-[11px] text-gray-400 mb-0.5">우(mm)</label><input id="iaeAdvOffRight" type="number" min="0" step="1" value="' + iaeEscape(adv.offset_right) + '" class="' + offCls + '"></div>'
-    + '</div>'
-    // 펀칭 / 주석
-    + '<div class="grid grid-cols-2 gap-2">'
-    + '<div><label class="block text-xs text-gray-500 mb-1">펀칭</label><input id="iaeAdvPunching" type="text" value="' + iaeEscape(adv.punching) + '" placeholder="예: 상단 2개·중앙" class="w-full ' + inputCls + ' text-xs"></div>'
-    + '<div><label class="block text-xs text-gray-500 mb-1">주석</label><input id="iaeAdvAnnotation" type="text" value="' + iaeEscape(adv.annotation) + '" placeholder="가공 메모(시안에 미인쇄)" class="w-full ' + inputCls + ' text-xs"></div>'
-    + '</div>'
-    + '<div class="text-[11px] text-gray-400"><i class="fas fa-circle-info mr-1"></i>입력한 항목만 가공 요청에 반영됩니다. 비우면 기존 동작과 동일.</div>'
-    + '</div></details>';
-}
-// 고급 입력 → s.adv (null 가드). 빈값은 빈 문자열로.
-function iaeSyncAdvanced(s) {
-  var adv = iaeAdv(s);
-  var v = function (id) { var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
-  var m = document.getElementById('iaeAdvOffMethod');
-  adv.offset_method = m ? m.value : adv.offset_method;
-  adv.offset_top = v('iaeAdvOffTop'); adv.offset_bottom = v('iaeAdvOffBottom');
-  adv.offset_left = v('iaeAdvOffLeft'); adv.offset_right = v('iaeAdvOffRight');
-  adv.punching = v('iaeAdvPunching'); adv.annotation = v('iaeAdvAnnotation');
-}
-// s.adv → body 부분객체 {offset?,punching?,annotation?}. 빈값 키는 미포함(미전송=무영향).
-function iaeAdvBody(s) {
-  var adv = (s && s.adv) || {};
-  var out = {};
-  var num = function (x) { var n = Number(x); return (x !== '' && x != null && !isNaN(n)) ? n : null; };
-  // 도련 offset: method 또는 4면 중 하나라도 있으면 전송
-  var ot = num(adv.offset_top), ob = num(adv.offset_bottom), ol = num(adv.offset_left), or = num(adv.offset_right);
-  if (adv.offset_method || ot != null || ob != null || ol != null || or != null) {
-    var off = {};
-    if (adv.offset_method) off.method = adv.offset_method;
-    if (ot != null) off.top = ot; if (ob != null) off.bottom = ob;
-    if (ol != null) off.left = ol; if (or != null) off.right = or;
-    out.offset = off;
-  }
-  if (adv.punching) out.punching = adv.punching;
-  if (adv.annotation) out.annotation = adv.annotation;
-  return out;
-}
 
 // ② 경과시간 표시 — 진행 메시지에 1초 간격 카운터. iaeStopRenderPoll 시 함께 정리되도록 토큰 공유.
-var iaeProcElapsedTimer = null, iaeProcElapsedStart = 0;
+var iaeProcElapsedTimer = null;
 function iaeProcStopElapsed() { if (iaeProcElapsedTimer) { clearInterval(iaeProcElapsedTimer); iaeProcElapsedTimer = null; } }
 // fflate 동적 로드(cardExpenses.js 동일 CDN). iae 스코프로 중복정의 회피.
 function iaeLoadFflate() {
@@ -1175,113 +702,27 @@ function iaeStartAgentPoll() {
   }, 20000);
 }
 function iaeStopAgentPoll() { if (iaeAgentStatusTimer) { clearInterval(iaeAgentStatusTimer); iaeAgentStatusTimer = null; } }
-function iaeHistCardHTML(r) {
-  var meta = r.result_meta || {};
-  var done = r.status === 'done', err = r.status === 'error';
-  var dims = (meta.width_cm != null && meta.height_cm != null)
-    ? (Math.round(meta.width_cm) + '×' + Math.round(meta.height_cm) + 'cm') : '';
-  var when = (typeof formatKST === 'function' && r.created_at) ? formatKST(r.created_at) : iaeEscape(r.created_at || '');
-  var thumb = (done && meta.jpg_base64)
-    ? '<img src="data:image/jpeg;base64,' + meta.jpg_base64 + '" class="w-full h-20 object-contain bg-white border border-gray-100 rounded">'
-    : ((done && meta.has_jpg)
-      ? '<img data-jpg-blob="/api/workbench/process/' + iaeEscape(r.id) + '/download?kind=jpg" class="w-full h-20 object-contain bg-white border border-gray-100 rounded">'
-      : '<div class="w-full h-20 flex items-center justify-center bg-gray-50 text-gray-300 rounded border border-gray-100">'
-        + (err ? '<i class="fas fa-triangle-exclamation text-red-300"></i>' : '<i class="fas ' + (done ? 'fa-image' : 'fa-spinner fa-spin') + '"></i>') + '</div>');
-  var title = '#' + iaeEscape(r.group_index != null ? r.group_index : '-') + ' · 분석 ' + iaeEscape(r.analysis_id != null ? r.analysis_id : '-');
-  var dlBtn = function (kind, has, primary) {
-    if (!has) return '';
-    var cls = primary ? 'bg-gray-800 text-white hover:bg-black' : 'border border-gray-300 text-gray-700 hover:bg-gray-50';
-    return '<button class="iae-hist-dl px-2 py-0.5 rounded ' + cls + ' text-[11px]" data-id="' + iaeEscape(r.id) + '" data-kind="' + kind + '">' + kind.toUpperCase() + '</button>';
-  };
-  // R2-1: done 잡 → '주문 만들기'(이력 데이터로 주문 라인 프리필)
-  var orderBtn = done
-    ? '<button class="iae-hist-order w-full mt-1.5 px-2 py-0.5 rounded bg-green-600 text-white hover:bg-green-700 text-[11px]" data-id="' + iaeEscape(r.id) + '"><i class="fas fa-file-invoice mr-1"></i>주문 만들기</button>'
-    : '';
-  var btns = done
-    ? '<div class="flex items-center gap-1 mt-1.5">' + dlBtn('eps', meta.has_eps, true) + dlBtn('jpg', meta.has_jpg, false) + dlBtn('dxf', meta.has_dxf, false) + '</div>' + orderBtn
-    : (err ? '<div class="text-[11px] text-red-500 mt-1 truncate" title="' + iaeEscape(r.error_message || '') + '">' + iaeEscape(r.error_message || '실패') + '</div>' : '');
-  return '<div class="border border-gray-200 rounded-lg p-2">'
-    + thumb
-    + '<div class="flex items-center justify-between mt-1.5"><span class="text-[11px] font-semibold text-gray-700 truncate" title="' + title + '">' + title + '</span>' + iaeStatusBadge(r.status) + '</div>'
-    + '<div class="text-[10px] text-gray-400 mt-0.5">' + (dims ? iaeEscape(dims) + ' · ' : '') + when + '</div>'
-    + btns
-    + '</div>';
-}
-
-function iaeUpdatePreview(group, s) {
-  var pv = document.getElementById('iaePreview');
-  var pf = document.getElementById('iaePreflight');
-  if (pv) pv.innerHTML = iaeBuildPreviewHTML(group, s);
-  if (pf) pf.innerHTML = iaeBuildPreflightHTML(group, s);
-}
-function iaeBuildPreviewHTML(group, s) {
-  var tw = Number(s.target_w) || 0, th = Number(s.target_h) || 0;
-  if (tw <= 0 || th <= 0) return '<div class="text-sm text-gray-400 text-center">목표 크기를 입력하면 미리보기가 표시됩니다</div>';
-  var rot = !!s.rotate90;
-  var dispW = rot ? th : tw, dispH = rot ? tw : th;
-  var maxPx = 300, ratio = dispW / dispH, boxW, boxH;
-  if (ratio >= 1) { boxW = maxPx; boxH = Math.max(40, Math.round(maxPx / ratio)); }
-  else { boxH = maxPx; boxW = Math.max(40, Math.round(maxPx * ratio)); }
-  var ppcW = boxW / dispW, ppcH = boxH / dispH;
-  var m = iaeComputeMargins(s);
-  var mt = Math.round(m.t * ppcH), mb = Math.round(m.b * ppcH), ml = Math.round(m.l * ppcW), mr = Math.round(m.r * ppcW);
-  var thumb = group.thumbnail_base64 ? ('data:image/png;base64,' + group.thumbnail_base64) : '';
-  var ov = 'position:absolute;background:rgba(245,158,11,0.20);';
-  var html = '<div><div class="relative mx-auto bg-white border border-gray-300" style="width:' + boxW + 'px;height:' + boxH + 'px;">';
-  html += '<div class="absolute" style="top:' + mt + 'px;bottom:' + mb + 'px;left:' + ml + 'px;right:' + mr + 'px;background:#fff;overflow:hidden;">';
-  html += thumb ? '<img id="iaePreviewImg" src="' + thumb + '" style="width:100%;height:100%;object-fit:contain;">'
-    : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#cbd5e1;"><i class="fas fa-image text-2xl"></i></div>';
-  html += '</div>';
-  if (mt > 0) html += '<div style="' + ov + 'top:0;left:0;right:0;height:' + mt + 'px;"></div>';
-  if (mb > 0) html += '<div style="' + ov + 'bottom:0;left:0;right:0;height:' + mb + 'px;"></div>';
-  if (ml > 0) html += '<div style="' + ov + 'top:0;bottom:0;left:0;width:' + ml + 'px;"></div>';
-  if (mr > 0) html += '<div style="' + ov + 'top:0;bottom:0;right:0;width:' + mr + 'px;"></div>';
-  html += '</div>';
-  var trimTxt = s.trim ? ' · 돔보' : '';
-  html += '<div class="text-center text-xs text-gray-500 mt-2">출력 ' + dispW + '×' + dispH + 'cm' + (rot ? ' (90° 회전)' : '')
-    + ' · 여백 상' + m.t + '/하' + m.b + '/좌' + m.l + '/우' + m.r + 'cm' + trimTxt + ' · 1매</div></div>';
-  return html;
-}
-function iaeBuildPreflightHTML(group, s) {
-  var warns = [];
-  var tw = Number(s.target_w) || 0, th = Number(s.target_h) || 0;
-  if (tw <= 0 || th <= 0) warns.push(['err', '목표 크기(W×H)를 입력하세요']);
-  var dw = (group.width_mm != null) ? group.width_mm / 10 : 0;
-  var dh = (group.height_mm != null) ? group.height_mm / 10 : 0;
-  if (tw > 0 && th > 0 && dw > 0 && dh > 0) {
-    var ta = tw / th, da = dw / dh, rota = dh / dw;
-    var diff = Math.min(Math.abs(ta - da), Math.abs(ta - rota)) / da;
-    if (diff > 0.05) warns.push(['warn', '원본 비율(' + Math.round(dw) + '×' + Math.round(dh) + 'cm)과 목표 비율이 다릅니다 — 잘림/여백 발생 가능']);
-    var sc = tw / dw;
-    if (sc > 1.5) warns.push(['info', '목표가 검출 크기의 ' + sc.toFixed(1) + '배 — 확대 출력(해상도 확인)']);
-  }
-  if (warns.length === 0) return '<div class="text-xs text-green-600"><i class="fas fa-circle-check mr-1"></i>프리플라이트 이상 없음</div>';
-  var color = { err: 'text-red-600', warn: 'text-amber-600', info: 'text-blue-600' };
-  var icon = { err: 'fa-circle-exclamation', warn: 'fa-triangle-exclamation', info: 'fa-circle-info' };
-  return '<div class="space-y-1">' + warns.map(function (w) {
-    return '<div class="text-xs ' + color[w[0]] + '"><i class="fas ' + icon[w[0]] + ' mr-1"></i>' + iaeEscape(w[1]) + '</div>';
-  }).join('') + '</div>';
-}
 
 // ── P3 시트 네스팅 ────────────────────────────────────────────────
-// 뷰 토글 (파일 처리 / 대지 편집) — 구 '네스팅' 탭은 §통합으로 폐기(대지 편집 시트 네스팅이 대체)
+// 뷰 토글 (네스팅/모아찍기 · 시안 검수) — Phase 7b-2 로 '파일 처리' 뷰가 제거돼 2뷰다.
+//   소스바(대기함·에이전트 배지·파일 탭·상태줄)는 뷰 밖 공통이지만, 검수 뷰에선 무관해 숨긴다.
 function iaeSetView(v) {
   iaeStopRenderPoll(); // 탭 전환 시 진행 중 렌더 폴링 정리(결과 패널이 교체됨)
   iaeView = v;
-  var ev = document.getElementById('iaeEditView'), cv = document.getElementById('iaeCanvasView');
+  var cv = document.getElementById('iaeCanvasView');
   var rv = document.getElementById('iaeReviewView'); // Phase 7b: 구 /workbench 흡수
-  var be = document.getElementById('iaeViewEdit'), bc = document.getElementById('iaeViewCanvas');
+  var sb = document.getElementById('iaeSourceBar');
+  var bc = document.getElementById('iaeViewCanvas');
   var br = document.getElementById('iaeViewReview');
-  if (ev) ev.classList.toggle('hidden', v !== 'edit');
   if (cv) cv.classList.toggle('hidden', v !== 'canvas');
   if (rv) rv.classList.toggle('hidden', v !== 'review');
+  if (sb) sb.classList.toggle('hidden', v !== 'canvas');
   var on = 'border-blue-500 bg-blue-50 text-blue-700', off = 'border-gray-200 text-gray-600 hover:bg-gray-50';
   var cls = function (sel) { return 'px-4 py-2 rounded-lg text-sm font-medium border ' + (v === sel ? on : off); };
-  if (be) be.className = cls('edit');
   if (bc) bc.className = cls('canvas');
   if (br) br.className = cls('review');
-  if (v === 'canvas') { iaeRenderCanvas(); iaeStopAgentPoll(); } // ② 캔버스 뷰선 에이전트 폴 정지
-  if (v === 'edit') { iaeStartAgentPoll(); } // ② 에이전트 폴 시작 (③ 가공 이력 보드는 Phase 7a 에서 제거)
+  // 에이전트 배지가 소스바(=네스팅 뷰)에만 보이므로 폴도 그 뷰에서만 돈다.
+  if (v === 'canvas') { iaeRenderCanvas(); iaeStartAgentPoll(); }
   // 검수 뷰: 최초 진입 시 1회만 주문 로드(뷰가 기본 숨김이라 자동 로드하지 않는다).
   //   wbEnsureLoaded 는 workbench.js(같은 페이지에 concat) 제공 — 없으면 조용히 스킵.
   if (v === 'review') { iaeStopAgentPoll(); if (typeof wbEnsureLoaded === 'function') wbEnsureLoaded(); }
@@ -2125,7 +1566,7 @@ function iaeCanRenderNestPanel() {
     host.innerHTML = iaeCanSubModeTabsHTML()
       + '<div class="flex items-center justify-between mb-2"><span class="text-sm font-semibold text-gray-700"><i class="fas fa-layer-group mr-1 text-blue-500"></i>시트 네스팅</span>'
       + '<button id="iaeCanNestClose" class="text-gray-400 hover:text-gray-600 text-xs"><i class="fas fa-xmark"></i></button></div>'
-      + '<div class="text-xs text-gray-400">완료된 분석 그룹이 없습니다.</div>';
+      + '<div class="text-xs text-gray-400">완료된 분석 그룹이 없습니다. 위 <b>모아찍기 대기함</b>에서 대기물을 세션에 담으세요.</div>';
     iaeCanBindSubModeTabs(host);
     var ce = document.getElementById('iaeCanNestClose'); if (ce) ce.addEventListener('click', function () { host.classList.add('hidden'); host.innerHTML = ''; });
     return;
@@ -2364,7 +1805,7 @@ function iaeImposeRenderPanel() {
   // ── 팔레트: 모든 done 그룹 체크박스 다중선택 ──
   var paletteHTML;
   if (!groups.length) {
-    paletteHTML = '<div class="text-xs text-gray-400">완료된 분석 그룹이 없습니다. <b>파일 처리</b> 탭에서 업로드·추출하세요.</div>';
+    paletteHTML = '<div class="text-xs text-gray-400">완료된 분석 그룹이 없습니다. 위 <b>모아찍기 대기함</b>에서 대기물을 세션에 담으세요.</div>';
   } else {
     paletteHTML = '<div class="space-y-1.5 max-h-56 overflow-y-auto pr-1 border border-gray-100 rounded-md p-1.5 bg-gray-50/40">' + groups.map(function (g) {
       var on = !!selKeys[g.key];
@@ -3037,41 +2478,20 @@ function iaeCanSubmitOrderProceed() {
 
 // ── 초기화 (모든 함수 정의 이후, 파일 맨 아래) ────────────────────
 (function initIaEditor() {
-  iaeLoadSettings();
-  var drop = document.getElementById('iaeDrop');
-  var input = document.getElementById('iaeFileInput');
-  if (drop && input) {
-    drop.addEventListener('click', function () { input.click(); });
-    drop.addEventListener('dragover', function (e) { e.preventDefault(); drop.classList.add('border-blue-400', 'bg-blue-50'); });
-    drop.addEventListener('dragleave', function () { drop.classList.remove('border-blue-400', 'bg-blue-50'); });
-    drop.addEventListener('drop', function (e) {
-      e.preventDefault();
-      drop.classList.remove('border-blue-400', 'bg-blue-50');
-      if (e.dataTransfer && e.dataTransfer.files) iaeUpload(e.dataTransfer.files);
-    });
-    input.addEventListener('change', function () { if (input.files) iaeUpload(input.files); input.value = ''; });
-  } else {
-    console.warn('[ia-editor] #iaeDrop / #iaeFileInput not found');
-  }
-  // A안: NAS에서 분석 버튼 (업로드 우회 대용량)
-  var nasBtn = document.getElementById('iaeNasBtn');
-  if (nasBtn) nasBtn.addEventListener('click', iaeNasToggle);
-  // 디자이너 세션 루프: 가공 대기물 불러오기 버튼
+  // 디자이너 세션 루프: 가공 대기물 불러오기 버튼 (Phase 7b-2 이후 유일한 소스 공급 진입점)
   var intakeBtn = document.getElementById('iaeIntakeBtn');
   if (intakeBtn) intakeBtn.addEventListener('click', iaeIntakeToggle);
-  // 뷰 토글 (파일 처리 / 네스팅·모아찍기 / 시안 검수)
-  var vEdit = document.getElementById('iaeViewEdit'), vCanvas = document.getElementById('iaeViewCanvas');
+  else console.warn('[ia-editor] #iaeIntakeBtn not found');
+  // 뷰 토글 (네스팅·모아찍기 / 시안 검수)
+  var vCanvas = document.getElementById('iaeViewCanvas');
   var vReview = document.getElementById('iaeViewReview'); // Phase 7b: 구 /workbench
-  if (vEdit) vEdit.addEventListener('click', function () { iaeSetView('edit'); });
   if (vCanvas) vCanvas.addEventListener('click', function () { iaeSetView('canvas'); });
   if (vReview) vReview.addEventListener('click', function () { iaeSetView('review'); });
   iaeCanLoad();          // 네스팅 시트 영속 복원
 
-  var ids = iaeLoadIds();
-  iaeActiveId = ids.length ? ids[0] : null;
-  iaeLoadFinishing(); // 마감 데이터 로드 후 패널 렌더
-  iaeRefresh();
+  iaeRenderFileStatus(); // 파일 로드 전 빈 상태 안내(대기함 유도)
+  iaeSetView('canvas');  // 기본 뷰 = 네스팅/모아찍기 (캔버스 렌더 + 에이전트 폴 시작)
+  iaeRefresh();          // 세션 파일 로드 → 탭·상태줄·팔레트 갱신
   // ③ 가공 이력 보드는 Phase 7a 에서 제거 — 단건 가공 진입점(Phase 6)이 사라져 writer 가 0이 되면서
   //   ia_process_jobs 가 frozen 테이블이 됐고, 보드는 영원히 0건만 보여주게 됐다.
-  iaeStartAgentPoll(); // ② 에이전트 상태 배지 주기 폴 시작(편집 뷰 기본)
 })();
