@@ -1,108 +1,81 @@
-# 인계 — Phase 7b-2: ia-editor '파일 처리' 뷰 제거
+# Phase 7b-2 완료 기록 — ia-editor '파일 처리' 뷰 제거
 
-> 작성 2026-07-28. IA 진입점 통합의 **마지막 단계**. 앞 단계(Phase 1~6·7a·7b-1)는 전부 prod 배포 완료.
-> 정본 메모리 = [[project-ia-web-sunset]] · 세션 핸드오프 = `memory/session-context.md`
+> **완료 2026-07-28** · 커밋 `7c1fff74` · 이 문서는 인계용이었고 지금은 결과 기록이다.
+> 정본 메모리 = [[project-ia-web-sunset]] · IA 진입점 통합은 이로써 **전 단계 종료**.
 
-## 다음 세션에 붙여넣을 프롬프트
+## 결과 — ia-editor 2뷰
 
-```
-ia-editor의 '파일 처리' 뷰를 제거해줘 (Phase 7b-2).
-docs/HANDOFF-phase7b2.md 를 먼저 읽고, 거기 적힌 위험과 검증 절차를 그대로 따라줘.
-```
+`[네스팅/모아찍기] [시안 검수]` + 뷰 밖 공통 **소스바**(모아찍기 대기함 · 에이전트 배지 ·
+세션 파일 탭 · 파일 상태줄). 검수 뷰에서는 소스바를 숨긴다.
 
----
+`src/scripts/iaEditor.js` 3,077 → 2,494줄 (−704 / +115).
 
-## 왜 하는가
+## 제거·유지 판정 (계획 대비)
 
-A0 패널이 **소스 공급을 이미 대체**했다. prod `ai_analysis_requests` 경로별 집계:
-
-| 경로 | 건수 | 처음 | 마지막 |
-|---|---|---|---|
-| 패널/JSX 등록 (`Z:\DESIGNS\IA-등록`) | 25 | 2026-07-16 | **2026-07-28** |
-| 웹 업로드 (에이전트 temp) | 25 | 2026-06-25 | **2026-07-16** |
-| R2 업로드 | 5 | 2026-07-15 | 2026-07-16 |
-| NAS에서 분석 | 1 | 2026-07-16 | 2026-07-16 |
-
-**07-16 기점으로 경로가 통째로 전환**됐다. 단순 미사용이 아니라 대체 정황.
-사용자 결정 = **완전 제거**(플래그 숨김 아님, 2026-07-28).
-
-## 무엇을 제거하고 무엇을 남기는가
-
-`src/pages/iaEditor.ts` `#iaeEditView` 안에서:
-
-| 요소 | 처리 | 근거 |
+| 대상 | 판정 | 근거 |
 |---|---|---|
-`#iaeDrop` + `#iaeFileInput` (업로드) | **제거** | 패널이 대체 |
-`#iaeNasBtn` + `#iaeNasPanel` (NAS에서 분석) | **제거** | 07-16 이후 1건, 그 이후 0 |
-인스펙터 설정 폼 (목표크기·마감·돔보·회전·저장스케일) | **제거** | `iaeSettings` 소비자 = 인스펙터 자신 + `iaeApplyActiveToAll` 뿐. **네스팅·모아찍기는 안 읽음**(전수 추적 확인) |
-`#iaeApplyAllBtn` (설정 전체적용) | **제거** | 위 설정을 복사할 뿐 |
-**`#iaeIntakeBtn` + `#iaeIntakePanel` (모아찍기 대기함)** | **유지·이동** | 패널 경로의 **유일한 진입점** |
-**`#iaeAgentBadge`** | **유지·이동** | 렌더(EPS 출력) 가능 여부 표시 |
-**`#iaeTabs` (파일 탭)** | **유지·이동** | 세션에 담긴 파일 확인·닫기(×) |
-**`#iaePanel` (그룹 카드)** | 판단 필요 | 네스팅 팔레트(`iaeCanAllGroups`)와 중복일 수 있음. 다만 분석 진행/실패 상태 표시를 겸함 |
-프리플라이트 · 근사 미리보기 | 판단 필요 | 프리플라이트(텍스트 잔존·링크 이미지 경고)는 QC로 유용. 설정 폼과 얽혀 있어 분리 비용 확인 |
+| 업로드 `#iaeDrop`·`#iaeFileInput` | 제거 | 패널이 대체 |
+| NAS에서 분석 | 제거 | 07-16 이후 0건 |
+| 인스펙터 설정 폼 · 설정 전체적용 | 제거 | `iaeSettings` 소비자 = 인스펙터 자신 + `iaeApplyActiveToAll` 뿐. **네스팅·모아찍기는 `fin:{top:'',…}` 하드코딩**(`iaeCanNestPlace`·`iaeImposePlace`)이라 배치 무영향 |
+| **그룹 카드 `#iaePanel`** | **제거 + 상태줄 신설** | 팔레트가 썸네일·크기·선택을 이미 제공. 단 카드가 겸하던 *분석 진행/실패/지연 + 분석 취소*는 기능이라 상태줄로 이전 |
+| **프리플라이트 · 근사 미리보기** | **제거** | ⚠️인계 문서에 적힌 "텍스트 잔존·링크 이미지 경고"는 **코드에 없었다**. 실제 경고 3종(목표크기 미입력·비율 왜곡·확대배율)은 전부 인스펙터 입력값 의존이라 폼과 함께 죽는다. 비율 왜곡 QC는 주문 생성 경로(`iaeDistortRatio`)에 살아 있음 |
+| 대기함 · 에이전트 배지 · 파일 탭 | 유지·이동 | 소스바 |
 
-목표 형태: **`[네스팅/모아찍기] [시안 검수]` 2뷰**, 대기함·에이전트배지·파일탭은 뷰 밖 공통 영역.
+**활성 파일(`iaeActiveId`/`iaeActiveGroup`) 개념도 소멸** — 그 파일만 보여주던 카드/인스펙터가
+사라지면서 선택 상태가 의미를 잃었다(팔레트는 전 파일의 done 그룹을 한꺼번에 노출).
 
-## ⚠️ 이 작업의 위험 — 오늘 실제로 두 번 사고가 났다
+함께 정리한 **기존 dead code**: `iaeHistCardHTML` · `iaeLoadKonva`+Konva 로더 변수 ·
+`iaeScaleHint` · `iaeAdvBody` · `iaeProcElapsedStart`. 이번 퍼지가 고아로 만든
+`iaeScaleToken`/`iaeScaleLabel`도 제거(유일 소비자가 인스펙터 저장스케일 힌트였다).
 
-### 1. 블록 삭제 경계 초과 (Phase 6에서 발생, 브라우저가 잡음)
-`iaeBatchZip` 종료 다음 5줄이 **유지 대상 섹션의 주석 + `var iaeHistLoading`** 이었는데 함께 삭제 →
-페이지 로드 시 `ReferenceError: iaeHistLoading is not defined`.
+## ★ 신규 배선 — 뷰 전환이 없어져 생긴 갭
 
-**규칙**: 라인 범위 삭제는 **시작·끝 양쪽 + 바로 바깥 한 줄**을 모두 assert한 뒤에만 실행.
-Phase 7a에서 같은 assert가 **두 번 더** 사고를 막았다(시작 경계 오판 1회, 종료 경계가 `var iaeAgentStatusTimer` 1회).
+'파일 처리' 뷰가 있을 땐 **뷰를 옮기는 행위가 팔레트를 갱신**했다(`iaeSetView('canvas')` →
+`iaeRenderCanvas()`). 뷰가 하나로 줄면서 그 경로가 사라져, 대기함에서 담아도 팔레트가
+**그대로 비어 있는** 상태가 된다.
 
-### 2. 제거한 블록이 유지 대상의 엘리먼트를 만들고 있었다 (Phase 7a)
-`#iaeAgentBadge` 를 **가공 이력 보드 헤더가 생성**하고 있어서, 보드를 지우면 에이전트 배지가 함께 죽었다.
-→ 페이지 템플릿의 고정 자리로 옮겨 해결.
+→ `iaeAfterFilesChanged()` 신설: 탭·상태줄 렌더 + **done 그룹 지문이 바뀐 경우에만**
+`iaeRenderCanvas()`. 지문 비교를 넣은 이유는 `iaeRenderCanvas`가 좌측 설정 폼을 통째로
+다시 그려서, 3초 폴링이 입력 중인 값을 날릴 수 있기 때문.
 
-**규칙**: 제거 대상이 **DOM 엘리먼트를 만들고 있지 않은지** 확인(`createElement`·`id="..."` 문자열).
+⚠️ **첫 구현에서 `first` 가드를 넣어 초기 로드를 건너뛰게 만든 것이 버그였다.** 초기
+`iaeSetView('canvas')`는 `iaeRefresh` 응답 **전**이라 빈 팔레트를 그린다 → 첫 로드도 반드시
+재렌더해야 한다. **정적 검사 전부 통과 상태에서 브라우저 실클릭만이 잡았다.**
 
-### 3. 정적 링크검사 v1의 구멍
-`iaeXxx(` **함수 호출만** 대조해서 **변수 참조**를 놓쳤다(위 1번을 못 잡음).
-→ v2(함수+변수 전수)를 쓸 것. 스크립트는 세션마다 재작성해도 되지만 로직은 이것:
+## 검증 결과
 
-```js
-// 정의: function iaeX( · var/let/const iaeX · iaeX = function · window.iaeX =
-// 참조: 주석·문자열 제거 후 모든 \biae\w+\b
-// 참조 - 정의 = dangling
-```
+| 게이트 | 결과 |
+|---|---|
+| `node --check` | OK |
+| 정적 링크검사 v2(함수+변수 전수) | dangling **0** (퍼지 전후 동일) |
+| `npm run check:dom` | **9건 = 기준선 유지** |
+| `npm run verify` | typecheck·build OK |
+| `node scripts/entity-audit.mjs` | 60/60 |
+| 브라우저 실클릭(Playwright) | 아래 |
 
-## 검증 절차 (이 순서대로)
+실클릭: 콘솔 에러 **0**(로드 시점 포함) · 에이전트 배지 갱신(확인 중→오프라인) ·
+대기함 2단 그룹핑(가공자→묶음, 내 작업 자동 ON) · 탭 ×→팔레트 3→2 · **대기함 담기→팔레트
+2→3 자동 복구(뷰 전환 없이)** · 네스팅 자동배치 조각 10개+시트+SVG · 모아찍기 멀티소스
+2파일 3조각 · 검수 뷰 전환 시 소스바 숨김·통계 로드 · 분석 취소 바인딩(confirm 스텁으로 검증).
+로컬 시드·localStorage 정리 완료.
 
-1. `node --check src/scripts/iaEditor.js`
-2. **정적 링크검사 v2** — dangling 0건 (퍼지 전/후 비교)
-3. `npm run check:dom` — **9건이 기준선**. 늘어나면 진입점만 지우고 핸들러를 남긴 것
-4. `npm run verify` (typecheck+build) · `node scripts/entity-audit.mjs` (60/60)
-5. **브라우저 실클릭** — 이게 1·2번을 잡은 유일한 수단이었다
-   - Playwright MCP가 타 세션에 잠겨 있으면 **Chrome 확장**(`mcp__claude-in-chrome__*`) 사용
-   - 로그인: `POST /api/auth/login` (admin/password) → `localStorage.token` + `document.cookie`
-   - 세션 파일 주입: `localStorage.setItem('iae_session_ids','[<analysisId>]')`
-   - 확인: 콘솔 에러 0(로드 시점 포함 — 새로고침 후 read_console) · 에이전트 배지 갱신 ·
-     대기함 열림·그룹핑 · 네스팅 [자동 배치] → `iaeCanObjs` 좌표 생성 · 검수 뷰 매칭 저장
-   - ⚠️ `confirm()` 쓰는 버튼([취소] 등)은 **클릭 금지** — 브라우저가 블로킹된다. API로 검증
-6. 테스트 데이터·localStorage 정리
+## 이 작업에서 재확인된 위험 (다음 퍼지에 그대로 적용)
 
-## 로컬 검증용 시드 (참고)
+1. **라인 범위 삭제는 시작·끝 + 바로 바깥 한 줄을 assert** — 이번에도 NAS 블록에서
+   `iaeRefresh`의 닫는 `}`를 함께 지웠고, assert가 즉시 잡았다(`node --check` 이전에).
+2. **정적 검사 통과 ≠ 동작** — 위 `first` 가드 버그는 dangling 0·check:dom 9·typecheck
+   전부 통과 상태였다. 브라우저 실클릭이 유일한 검출 수단.
+3. **낡은 안내 문구도 퍼지 대상** — 팔레트 빈 메시지가 "파일 처리 탭에서 업로드·추출하세요"로
+   남아 없는 화면을 가리키고 있었다.
 
-```sql
--- 네스팅에 쓸 분석 1건(그룹 2개)
-INSERT INTO ai_analysis_requests (file_path, status, entity_id, groups_json)
-VALUES ('Z:\TNEST\demo.ai','done',1,
- '[{"index":0,"name":"배너A","width_mm":600,"height_mm":1800},{"index":1,"name":"배너B","width_mm":450,"height_mm":1200}]');
+## 남은 것 (이번 범위 밖)
 
--- 모아찍기 대기물(가공자·묶음 그룹핑 확인용) — mode='impose' 여야 ia-editor 대기함에 뜬다
-INSERT INTO designer_intakes (entity_id, ai_analysis_id, client_name, qty, width_cm, height_cm,
-  work_ai_path, status, mode, worker_id, worker_name, batch_key, memo)
-VALUES (1,<aid>,'가나광고',3,60,180,'Z:\T\a.ai','waiting','impose',1,'인호동','batch1','T-a');
-```
-
-`dev:d1` 은 `dist/` 를 서빙하므로 **`npm run build` 먼저**. 그리고 build 가 실행 중인 dev 서버를 죽이므로
-빌드 후 재기동 필요(오늘 3번 겪음).
-
-## 참고 — 함께 정리할 후보 (선택)
-
-- `POST /api/workbench/process` 계열: Phase 6 이후 **호출하는 프론트 0**(dead route).
-  진입점이 없어 404는 안 나지만, 에이전트 `/process-queue` 폴링도 함께 정리할지 판단.
-- `orderForm.ts` `IA_WEB_INTAKE_ENABLED=false` 게이트로 숨긴 옛 AI추출·합판 패널 — 코드 완전 제거 여부.
+- **프론트 호출 0이 된 라우트 3개** — `POST /api/workbench/files/analyze` ·
+  `GET /api/ai-analysis/nas-listing` · `POST /api/ai-analysis/from-nas`.
+  ⚠️에이전트가 NAS 스캔 결과를 보고하는 쓰기 경로가 살아 있을 수 있어 **에이전트 측 확인 후** 판단.
+  (`POST /api/workbench/process` 계열 dead route 정리도 함께)
+- **§14.5 폐기 Konva 자유드래그 캔버스 잔재 15개** — `iaeCanStage`·`iaeCanLayer`·`iaeCanGrid`·
+  `iaeCanOverlay`·`iaeCanTr`·`iaeCanGuide`·`iaeCanSnapThreshMm`·`iaeCanSnapTargets`·`iaeCanSel`·
+  `iaeCanPxPerMm`·`iaeCanThumbCache`·`iaeCanRatioLock`·`iaeCanHotkeysBound`·`iaeCanSheetByUid`·
+  `iaeCanUpdateMembership`. **이번 퍼지 이전부터 참조 0**(별건 은퇴의 잔재)이라 범위 분리.
+- `orderForm.ts` `IA_WEB_INTAKE_ENABLED=false` 게이트로 숨긴 옛 AI추출·합판 패널 코드 완전 제거.
