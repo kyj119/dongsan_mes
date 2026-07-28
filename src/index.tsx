@@ -65,6 +65,7 @@ import approvalsRouter from './routes/approvals'
 import cashReceiptsRouter from './routes/cashReceipts'
 import hometaxInvoicesRouter from './routes/hometaxInvoices'
 import portalRouter from './routes/portal'
+import publicUnsubscribeRouter from './routes/publicUnsubscribe'
 import { iaAuto } from './routes/iaAuto'
 import inventoryCountRouter from './routes/inventoryCount'
 import autoProcessRouter from './routes/autoProcess'
@@ -189,6 +190,7 @@ import { messagesPage } from './pages/messages'
 import { laborContractsPage } from './pages/laborContracts'
 import { employeeSelfPage } from './pages/employeeSelf'
 // costAnalysisPage → productionReports 통합됨
+import { unsubscribePage } from './pages/unsubscribe'
 import { portalLoginPage } from './pages/portal/portalLogin'
 import { portalDashboardPage } from './pages/portal/portalDashboard'
 import { portalOrdersPage } from './pages/portal/portalOrders'
@@ -256,8 +258,12 @@ app.use('/api/auth/refresh', rateLimitMiddleware(10, 60000))  // 분당 10회
 app.use('/api/hr/self-auth', rateLimitMiddleware(5, 60000))  // 분당 5회
 app.use('/api/portal/verify-document', rateLimitMiddleware(10, 60000))  // #314 사업자번호 브루트포스 방지 (분당 10회)
 app.use('/api/portal/verify-token', rateLimitMiddleware(30, 60000))  // #314 분당 30회
+// 수신거부는 무인증(§50⑧ 무료·간편 수단) → 토큰 스캔 방지용 레이트리밋만 건다
+app.use('/api/public/unsubscribe/*', rateLimitMiddleware(20, 60000))  // 분당 20회
 
 // Mount API routers (hrSelf는 인증 미들웨어 없이 먼저 마운트)
+// 수신거부 API도 인증 없음 — 로그인을 요구하면 그 자체가 수신거부 방해(§50⑤)가 된다
+app.route('/api/public/unsubscribe', publicUnsubscribeRouter)
 app.route('/api/hr', hrSelfRouter)
 app.route('/api/my', mySelfRouter)
 app.route('/api/auth', authRouter)
@@ -402,6 +408,7 @@ app.get('/favicon.ico', (c) => new Response(faviconBytes(), {
 // Page routes (login은 인증 불필요, 나머지는 pageAuthMiddleware로 SPA 토큰 검증)
 app.get('/', (c) => c.redirect('/login'))
 app.get('/login', loginPage)
+app.get('/unsubscribe', unsubscribePage)   // 광고 문자 수신거부 — 로그인 불필요
 app.get('/dashboard', pageAuthMiddleware, requirePagePermission('/dashboard'), dashboardPage)
 app.get('/clients', pageAuthMiddleware, requirePagePermission('/clients'), clientsPage)
 app.get('/clients/:id', pageAuthMiddleware, requirePagePermission('/clients'), (c) => clientDetailPage(c))

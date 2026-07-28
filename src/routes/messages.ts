@@ -17,6 +17,8 @@ import { MMS_IMAGE } from '../constants/barobillCodes'
 import { stripDataUri } from '../utils/thumbnailStore'
 import { deriveClientBalancesBulk } from './ledger/ar-helpers'
 import { kstYmd } from '../utils/kstDate'
+import messagesAdRouter from './messagesAd'
+import { getBannedWords, findBannedWords } from '../services/messageCompliance'
 import type { Context } from 'hono'
 
 /**
@@ -38,7 +40,7 @@ const MMS_BULK_LIMIT_DEFAULT = 50
 export const BULK_VAR_NAMES = ['거래처명', '고객명', '연락처', '대표자', '거래처코드', '미수금', '날짜', '기준일', '회사명'] as const
 
 /** `#{변수}` 치환. 정의되지 않은 변수는 남겨두고 호출부가 미치환 검사로 잡는다. */
-function applyVars(template: string, vars: Record<string, string>): string {
+export function applyVars(template: string, vars: Record<string, string>): string {
   return template.replace(/#\{([^}]+)\}/g, (whole, name) => {
     const key = String(name).trim()
     return Object.prototype.hasOwnProperty.call(vars, key) ? (vars[key] ?? '') : whole
@@ -46,19 +48,19 @@ function applyVars(template: string, vars: Record<string, string>): string {
 }
 
 /** 본문에 남은 미치환 변수명 목록 (중복 제거) */
-function unresolvedVars(text: string): string[] {
+export function unresolvedVars(text: string): string[] {
   const found = Array.from(text.matchAll(/#\{([^}]+)\}/g)).map(m => String(m[1]).trim())
   return Array.from(new Set(found))
 }
 
-interface BulkReceiver { name?: string; phone?: string; client_id?: number; vars?: Record<string, string> }
+export interface BulkReceiver { name?: string; phone?: string; client_id?: number; vars?: Record<string, string> }
 
 /**
  * 수신자별 변수 해석기 — 거래처 정보·미수금·법인명·오늘 날짜를 한 번에 준비한다.
  * 미수금은 거래처당 3쿼리(deriveClientBalance)라 대량에선 못 쓰므로 IN 그룹쿼리 일괄판을 사용.
  * 엑셀/CSV로 들어온 vars가 자동 변수보다 **우선**한다(사용자가 명시한 값이 정답).
  */
-async function buildBulkVarContext(c: Context<HonoEnv>, receivers: BulkReceiver[]) {
+export async function buildBulkVarContext(c: Context<HonoEnv>, receivers: BulkReceiver[]) {
   const db = c.env.DB
   const clientIds = receivers.map(r => Number(r.client_id)).filter(n => Number.isFinite(n) && n > 0)
 
@@ -119,10 +121,13 @@ function base64ByteLength(b64: string): number {
 const messagesRouter = new Hono<HonoEnv>()
 messagesRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 
+// 광고성 발송은 별도 경로 + ADMIN 전용 (정보통신망법 §50 강제 가드) — src/routes/messagesAd.ts
+messagesRouter.route('/ad', messagesAdRouter)
+
 // ────────────────────────────────────────────────────────────────────────────
 // 공통: 로그 저장 헬퍼
 // ────────────────────────────────────────────────────────────────────────────
-async function insertSendLog(db: D1Database, log: {
+export async function insertSendLog(db: D1Database, log: {
   receiptNum: string
   templateCode: string
   receiverNum: string
@@ -138,13 +143,15 @@ async function insertSendLog(db: D1Database, log: {
   sentBy: number
   channel: string
   entityId: number
+  /** INFO(거래 관련 통지) | AD(영리목적 광고성). 분쟁 시 "정보성이었다"의 입증 근거 — 마이그 0479. */
+  messageType?: 'INFO' | 'AD'
 }): Promise<number> {
   const result = await db.prepare(
     `INSERT INTO kakao_send_logs (
       receipt_num, template_code, receiver_num, receiver_name,
       related_type, related_id, client_id, content, alt_content,
-      status, result_code, result_message, sent_by, channel, entity_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      status, result_code, result_message, sent_by, channel, entity_id, message_type
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     log.receiptNum,
     log.templateCode,
@@ -161,6 +168,7 @@ async function insertSendLog(db: D1Database, log: {
     log.sentBy,
     log.channel,
     log.entityId,
+    log.messageType || 'INFO',
   ).run()
   return result.meta.last_row_id
 }
@@ -624,6 +632,26 @@ messagesRouter.post('/send-bulk', async (c) => {
     }
     if (!content.body) {
       return c.json({ success: false, error: 'content.body는 필수입니다.' }, 400)
+    }
+
+    // ── 광고 문구 차단 (정보통신망법 §50) ──────────────────────────────────
+    // 이 라우트는 "정보성" 전용이다. 할인·이벤트 같은 광고 문구가 섞이면 (광고) 표기·수신거부
+    // 안내 없이 광고성 정보를 보내는 셈이 되고, 과태료는 직원이 아니라 사업자에게 귀속된다.
+    //  - 대량 발송만 검사한다. 단건(/send)은 시안 확인·배송 안내 같은 1:1 거래 통신이라
+    //    광고성 위험이 낮고, 오탐으로 업무를 막는 손해가 더 크다.
+    //  - 알림톡(kakao)은 제외 — 카카오가 승인 템플릿을 강제해 이미 정보성 게이트가 있다.
+    if (channel !== 'kakao') {
+      const banned = await getBannedWords(db)
+      const hits = findBannedWords(String(content.body) + ' ' + String(content.subject || ''), banned)
+      if (hits.length > 0) {
+        return c.json({
+          success: false,
+          error: `광고성 문구가 포함되어 있습니다: ${hits.join(', ')}. `
+            + `광고 문자는 (광고) 표기·수신거부 안내·수신동의가 필요합니다. `
+            + `[광고 발송] 탭에서 보내주세요(관리자 전용). 오탐이면 광고 발송 탭에서 금지어를 삭제할 수 있습니다.`,
+          banned_hits: hits,
+        }, 400)
+      }
     }
 
     // ── 이메일 대량 발송 ─────────────────────────────────────────────────

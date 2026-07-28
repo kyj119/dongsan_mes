@@ -163,6 +163,9 @@ const ENDPOINTS = [
   { path: '/api/permissions/me', name: 'permissions.me' },
   { path: '/api/permissions/pages', name: 'permissions.pages' },
   { path: '/api/messages/logs', name: 'messages.logs' },
+  // 광고성 발송 가드(§50) — ADMIN 전용. smoke는 admin 계정이라 200을 기대한다.
+  { path: '/api/messages/ad/banned-words', name: 'messagesAd.bannedWords' },
+  { path: '/api/messages/ad/opt-outs', name: 'messagesAd.optOuts' },
   { path: '/api/tasks?limit=10', name: 'tasks.list' },
   { path: '/api/activity-logs?limit=10', name: 'activityLogs.list' },
   { path: '/api/approvals?limit=10', name: 'approvals.list' },

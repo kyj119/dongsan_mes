@@ -2,6 +2,7 @@ import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import pageScript from '../scripts/messages.js?raw'
+import adScript from '../scripts/messagesAd.js?raw'
 
 export function messagesPage(c: Context<HonoEnv>) {
   return renderPage(c, {
@@ -49,6 +50,7 @@ export function messagesPage(c: Context<HonoEnv>) {
   <div class="flex border-b">
     <button id="tabHistory" onclick="switchMsgTab('history')" class="px-5 py-2.5 text-sm font-medium border-b-2 border-blue-600 text-blue-600">발송 이력</button>
     <button id="tabBulk" onclick="switchMsgTab('bulk')" class="px-5 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-700">대량 발송</button>
+    <button id="tabAd" onclick="switchMsgTab('ad')" class="hidden px-5 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-700">광고 발송</button>
     <button id="tabGroups" onclick="switchMsgTab('groups')" class="px-5 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-700">그룹 관리</button>
     <button id="tabTemplates" onclick="switchMsgTab('templates')" class="px-5 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-700">템플릿 관리</button>
     <button id="tabStats" onclick="switchMsgTab('stats')" class="px-5 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-700">통계</button>
@@ -191,6 +193,130 @@ export function messagesPage(c: Context<HonoEnv>) {
         <button onclick="sendBulk()" id="bulkSendBtn" class="ds-btn ds-btn-primary text-sm font-medium">
           <i class="fas fa-paper-plane mr-1"></i><span id="bulkSendLabel">발송</span>
         </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="panelAd" class="hidden">
+    <div class="ds-card p-4 mb-4 border-l-4 border-amber-500" style="background:#fffbeb;">
+      <div class="flex items-start gap-3">
+        <i class="fas fa-scale-balanced text-amber-600 mt-0.5"></i>
+        <div class="text-xs text-gray-700 leading-relaxed">
+          <b class="text-sm text-gray-900">광고성 정보 전송 (정보통신망법 §50)</b>
+          <div class="mt-1">할인·이벤트·신제품 안내 등 <b>구매를 유도하는 내용</b>은 이 탭으로 발송해야 합니다. 아래 4가지가 <b>자동 적용</b>되며 해제할 수 없습니다.</div>
+          <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+            <div>· 본문·제목 앞 <b>(광고)</b> 표기</div>
+            <div>· 무료 수신거부 링크 자동 첨부</div>
+            <div>· 수신거부자 자동 제외</div>
+            <div>· 21시~08시 발송 차단</div>
+            <div class="sm:col-span-2">· 최근 <b>6개월 내 거래처</b>만 대상 (사전동의 예외 요건 · 3사 전체 거래 기준)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ds-card p-6 max-w-3xl">
+      <div class="mb-6">
+        <div class="text-sm font-bold text-gray-700 mb-3">1. 발송 채널</div>
+        <div class="flex gap-2 flex-wrap">
+          <button onclick="adSetChannel('lms')" id="adChLms" class="px-4 py-2 rounded-full text-sm font-medium bg-blue-50 border-2 border-blue-500 text-blue-700"><i class="fas fa-comment-dots mr-1"></i>장문(LMS)</button>
+          <button onclick="adSetChannel('mms')" id="adChMms" class="px-4 py-2 rounded-full text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400" title="이미지 첨부 (100원/건)"><i class="fas fa-image mr-1"></i>MMS</button>
+        </div>
+        <div class="text-xs text-gray-400 mt-2">단문(SMS)은 (광고) 표기와 수신거부 안내를 담을 수 없어 광고 발송에 쓸 수 없습니다.</div>
+      </div>
+
+      <div class="mb-6">
+        <div class="text-sm font-bold text-gray-700 mb-3">2. 수신자</div>
+        <div class="flex gap-2 flex-wrap mb-3">
+          <select id="adGroupSelect" onchange="adLoadGroup()" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <option value="">그룹 선택...</option>
+          </select>
+          <button onclick="adToggleCustom()" id="adTgtCustom" class="px-4 py-2 rounded-full text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400"><i class="fas fa-pen mr-1"></i>직접 입력</button>
+        </div>
+        <div id="adCustomArea" class="hidden mb-2">
+          <textarea id="adReceiversRaw" rows="5" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono" oninput="adParseReceivers()" placeholder="엑셀에서 복사해 붙여넣으세요 (탭·쉼표 인식)&#10;전화번호	거래처명&#10;010-1234-5678	대진"></textarea>
+        </div>
+        <div id="adTargetInfo" class="text-sm text-gray-500"></div>
+      </div>
+
+      <div class="mb-6">
+        <div class="text-sm font-bold text-gray-700 mb-3">3. 내용</div>
+        <div class="mb-3">
+          <label class="text-xs font-semibold text-gray-600 mb-1 block">제목</label>
+          <input type="text" id="adSubject" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="예: 7월 단가 안내">
+          <div class="text-xs text-gray-400 mt-1">발송 시 제목 앞에도 (광고)가 자동으로 붙습니다.</div>
+        </div>
+        <div id="adImageArea" class="mb-3 hidden">
+          <label class="text-xs font-semibold text-gray-600 mb-1 block">첨부 이미지 <span class="text-gray-400 font-normal">(JPG 자동 변환·축소)</span></label>
+          <div class="flex items-center gap-2">
+            <input type="file" id="adImageFile" accept="image/*" class="hidden" onchange="adPickImage(this)">
+            <button type="button" onclick="document.getElementById('adImageFile').click()" class="px-3 py-2 border border-gray-300 rounded-lg text-xs text-gray-700 hover:bg-gray-50"><i class="fas fa-upload mr-1"></i>이미지 선택</button>
+            <img id="adImagePreview" class="hidden h-12 w-12 object-cover rounded border" alt="">
+            <span id="adImageInfo" class="text-xs text-gray-400 flex-1 truncate">선택된 이미지 없음</span>
+          </div>
+          <div class="text-xs text-amber-600 mt-1"><i class="fas fa-triangle-exclamation mr-1"></i>이미지에 가격표·타 고객 작업물을 넣지 마세요. 이미지 내용도 광고 판정 대상입니다.</div>
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-gray-600 mb-1 block">본문</label>
+          <textarea id="adContent" rows="6" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="메시지 내용을 입력하세요"></textarea>
+          <div class="mt-2 p-2.5 bg-gray-50 rounded-lg">
+            <span class="text-xs font-semibold text-gray-600">수신자별 변수 <span class="font-normal text-gray-400">(클릭하면 본문에 삽입)</span></span>
+            <div id="adVarChips" class="flex flex-wrap gap-1 mt-1.5"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mb-4">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="adScheduleToggle" class="w-4 h-4 text-blue-600 rounded" onchange="adToggleSchedule()">
+          <span class="text-sm font-semibold text-gray-700">예약 발송</span>
+        </label>
+        <div id="adScheduleInput" class="hidden mt-2">
+          <input type="datetime-local" id="adScheduleAt" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm max-w-xs">
+          <div class="text-xs text-gray-400 mt-1">21시~08시는 발송할 수 없습니다.</div>
+        </div>
+      </div>
+
+      <!-- 대상 확인 결과 -->
+      <div id="adPreviewBox" class="hidden mb-4 border border-gray-200 rounded-lg overflow-hidden">
+        <div class="bg-gray-50 px-4 py-2 text-xs font-bold text-gray-600">대상 확인 결과</div>
+        <div class="p-4 space-y-3">
+          <div id="adPreviewSummary" class="text-sm"></div>
+          <div id="adPreviewExcluded" class="text-xs"></div>
+          <div id="adPreviewBody" class="text-xs bg-gray-50 border border-gray-200 rounded p-3 whitespace-pre-wrap text-gray-700"></div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between pt-4 border-t">
+        <div id="adCostInfo" class="text-xs text-gray-500"></div>
+        <div class="flex gap-2">
+          <button onclick="adPreviewSend()" class="ds-btn text-sm font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50">
+            <i class="fas fa-list-check mr-1"></i>대상 확인
+          </button>
+          <button onclick="adSend()" id="adSendBtn" disabled class="ds-btn ds-btn-primary text-sm font-medium opacity-50 cursor-not-allowed">
+            <i class="fas fa-paper-plane mr-1"></i>발송
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 수신거부 명단 · 금지어 -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4 max-w-3xl">
+      <div class="ds-card p-4">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-xs font-bold text-gray-600">수신거부 명단</div>
+          <button onclick="adAddOptOut()" class="text-xs text-blue-600 hover:text-blue-800"><i class="fas fa-plus mr-1"></i>직접 등록</button>
+        </div>
+        <div class="text-xs text-gray-400 mb-2">전화로 거부 의사를 밝힌 경우 여기에 등록하세요.</div>
+        <div id="adOptOutList" class="space-y-1 max-h-64 overflow-y-auto"></div>
+      </div>
+      <div class="ds-card p-4">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-xs font-bold text-gray-600">금지어</div>
+          <button onclick="adAddBannedWord()" class="text-xs text-blue-600 hover:text-blue-800"><i class="fas fa-plus mr-1"></i>추가</button>
+        </div>
+        <div class="text-xs text-gray-400 mb-2">일반 발송(대량 발송 탭)에서 이 단어가 있으면 차단됩니다.</div>
+        <div id="adBannedList" class="flex flex-wrap gap-1.5 max-h-64 overflow-y-auto"></div>
       </div>
     </div>
   </div>
@@ -434,6 +560,7 @@ export function messagesPage(c: Context<HonoEnv>) {
   </div>
 </div>
     `,
-    pageScript
+    // ?raw concat — 광고 탭 스크립트는 messages.js의 전역(BULK_BASE_VARS 등)을 쓰므로 뒤에 붙인다
+    pageScript: pageScript + '\n' + adScript
   })
 }

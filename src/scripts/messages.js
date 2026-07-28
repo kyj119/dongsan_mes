@@ -15,9 +15,12 @@ function msgClientTypeLabel(t) {
 
 function switchMsgTab(tab) {
   currentMsgTab = tab;
-  ['history', 'bulk', 'groups', 'templates', 'stats'].forEach(function(t) {
+  ['history', 'bulk', 'ad', 'groups', 'templates', 'stats'].forEach(function(t) {
     var btn = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     var panel = document.getElementById('panel' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (!btn || !panel) { console.warn('[messages] tab/panel not found: ' + t); return; }
+    // 역할로 숨긴 탭(광고 발송 = ADMIN 전용)은 className 교체 시 hidden이 날아가므로 보존한다
+    var wasHidden = btn.classList.contains('hidden');
     if (t === tab) {
       btn.className = 'px-5 py-2.5 text-sm font-medium border-b-2 border-blue-600 text-blue-600';
       panel.classList.remove('hidden');
@@ -25,9 +28,11 @@ function switchMsgTab(tab) {
       btn.className = 'px-5 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-700';
       panel.classList.add('hidden');
     }
+    if (wasHidden) btn.classList.add('hidden');
   });
   // 탭 진입 시 데이터 로드
   if (tab === 'bulk') { loadBulkTemplates(); renderBulkVarChips(); }
+  if (tab === 'ad') adInit();   // 광고 발송(ADMIN 전용) — messagesAd.js
   if (tab === 'groups') loadContactGroups();
   if (tab === 'templates') switchTplSubTab(currentTplSubTab || 'kakao');
   if (tab === 'stats') loadStats();
