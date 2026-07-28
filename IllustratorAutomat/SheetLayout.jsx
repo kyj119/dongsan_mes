@@ -40,6 +40,21 @@ var _ia_status = "";
 try {
 (function() {
 
+// ── 0. 실행 추적(2026-07-28 진단) ─────────────────────────────────────────
+// "JSX 반환 빈값" 의 정체를 가리기 위한 체크포인트 로그. 스크립트 폴더(ASCII 경로)에
+// 항상 append 하므로 Z:·한글 경로 문제와 무관하게 남는다. 원인 확정 후 제거 가능.
+// 경로는 에이전트가 preamble 로 주입한다(_ia_trace_path). $.fileName 에 의존하면
+// DoJavaScript(문자열) 실행 시 파일을 가리키지 않아 첫 줄부터 죽는다.
+var _traceFile = (typeof _ia_trace_path !== "undefined" && _ia_trace_path) ? _ia_trace_path : "";
+function _tr(msg) {
+    if (!_traceFile) return;
+    try {
+        var f = new File(_traceFile);
+        f.open("a"); f.writeln("" + msg); f.close();
+    } catch (e_tr) {}
+}
+_tr("--- SheetLayout start ---");
+
 // ── 1. 파라미터 읽기 ──────────────────────────────────────────────────────
 var _scriptDir = new File($.fileName).parent.fsName;
 var _cfgPathSL = (typeof _ia_params_override_path !== "undefined" && _ia_params_override_path)
@@ -135,6 +150,30 @@ function _slOpenPrep(path) {
         var it = d.pageItems[_gpi];
         if (it.typename === "GroupItem" && (it.parent === d || it.parent.typename === "Layer")) gs.push(it);
     }
+    // ★ 폴백(2026-07-28 원인 수정): 최상위 GroupItem 이 없는 소스 = 조각 0개로 인식돼
+    //   판이 빈 채로 나가고 EPS 가 생기지 않았다(sheet #19 및 과거 실패 전건).
+    //   디자이너 패널(mes-a0-host)이 만든 work.ai 는 아트워크를 그룹으로 묶지 않는다
+    //   — IA 파이프라인 산출물(req_N-work.ai)만 그룹을 갖고 있어 그동안 가려져 있었다.
+    //   이런 문서는 "문서 전체 = 조각 1개"가 맞으므로 최상위 아이템을 하나로 묶어 준다.
+    if (gs.length === 0) {
+        try {
+            var _tops = [];
+            for (var _li = 0; _li < d.layers.length; _li++) {
+                var _lay = d.layers[_li];
+                for (var _pi2 = 0; _pi2 < _lay.pageItems.length; _pi2++) _tops.push(_lay.pageItems[_pi2]);
+            }
+            if (_tops.length > 0) {
+                var _wrap = d.layers[0].groupItems.add();
+                // 역순 이동 — 컬렉션이 변하므로 앞에서부터 돌면 항목을 건너뛴다.
+                for (var _mi = _tops.length - 1; _mi >= 0; _mi--) {
+                    if (_tops[_mi] === _wrap) continue;
+                    try { _tops[_mi].move(_wrap, ElementPlacement.PLACEATBEGINNING); } catch (e_mv) {}
+                }
+                if (_wrap.pageItems.length > 0) gs.push(_wrap);
+                else { try { _wrap.remove(); } catch (e_rm) {} }
+            }
+        } catch (e_wrap) {}
+    }
     return { doc: d, groups: gs };
 }
 
@@ -142,17 +181,27 @@ var srcDocs = [];           // 열린 소스 문서(마지막에 전부 close)
 var groupsByAid = {};       // String(analysis_id) → 루트 그룹 배열
 var defaultGroups = null;   // 단일 소스 / analysis_id 없는 placement 폴백
 
+_tr("params ok · sources=" + (sourcesArr ? sourcesArr.length : 0) + " placements=" + placements.length + " eps=" + (epsPath ? "set" : "EMPTY"));
 if (sourcesArr && sourcesArr.length) {
     for (var _si = 0; _si < sourcesArr.length; _si++) {
         var _s = sourcesArr[_si];
+        // ★ 멀티소스는 열기 실패를 조용히 건너뛰고 있었다(로그·return 없음) → 원인 추적 불가의
+        //   한 축. 실패를 명시 기록한다(2026-07-28).
+        var _exists = false;
+        try { _exists = new File(_s.path).exists; } catch (e_ex) {}
         var _prep = _slOpenPrep(_s.path);
         if (_prep) {
             srcDocs.push(_prep.doc);
             groupsByAid[String(_s.analysis_id)] = _prep.groups;
             if (!defaultGroups) defaultGroups = _prep.groups;
             $.writeln("SheetLayout: 소스 aid=" + _s.analysis_id + " 그룹=" + _prep.groups.length);
+            _tr("  source OK aid=" + _s.analysis_id + " groups=" + _prep.groups.length + " path=" + _s.path);
+        } else {
+            $.writeln("SheetLayout ERROR: 소스 열기 실패 aid=" + _s.analysis_id + " path=" + _s.path);
+            _tr("  source FAIL aid=" + _s.analysis_id + " exists=" + _exists + " path=" + _s.path);
         }
     }
+    _tr("sources loaded: srcDocs=" + srcDocs.length + " defaultGroups=" + (defaultGroups ? defaultGroups.length : "null"));
 } else {
     var _prep0 = _slOpenPrep(sourceFile);
     if (!_prep0) {

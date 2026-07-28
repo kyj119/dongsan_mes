@@ -3543,7 +3543,12 @@ namespace IllustratorAutomation
         {
             var ai = GetOrStartIllustrator();
             string paramsEscaped = paramsJsonPath.Replace("\\", "\\\\");
-            string preamble = $"var _ia_params_override_path = \"{paramsEscaped}\";\n";
+            // 추적/오류 로그 경로도 주입한다(2026-07-28). JSX 안에서 쓰던
+            // `new File($.fileName).parent` 는 DoJavaScript(문자열) 실행 시 $.fileName 이
+            // 파일을 가리키지 않아 신뢰할 수 없다 — ia_error.log 가 한 번도 안 남은 이유.
+            string traceEscaped = Path.Combine(Path.GetDirectoryName(paramsJsonPath) ?? ".", "jsx_trace.log").Replace("\\", "\\\\");
+            string preamble = $"var _ia_params_override_path = \"{paramsEscaped}\";\n"
+                            + $"var _ia_trace_path = \"{traceEscaped}\";\n";
             string scriptContent = preamble + File.ReadAllText(scriptPath, System.Text.Encoding.UTF8);
 
             _lastJsxStatus = "";
