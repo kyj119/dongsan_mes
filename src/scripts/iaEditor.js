@@ -1016,21 +1016,12 @@ function iaeCanRotBBox(o) {
   });
   return { left: minX, top: minY, w: maxX - minX, h: maxY - minY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, rot: rot, rotated: (rot % 180 !== 0) };
 }
-function iaeCanSheetByUid(uid) { return iaeCanSheets.filter(function (s) { return s.uid === uid; })[0]; }
 function iaeCanSheetForPoint(xmm, ymm) {
   for (var i = iaeCanSheets.length - 1; i >= 0; i--) {
     var s = iaeCanSheets[i];
     if (xmm >= (s.x_mm || 0) && xmm <= (s.x_mm || 0) + (s.w_mm || 0) && ymm >= (s.y_mm || 0) && ymm <= (s.y_mm || 0) + (s.h_mm || 0)) return s;
   }
   return null;
-}
-// 객체 sheetUid를 bbox 중심 포함관계로 (재)배정 — 드래그/회전/복제 후 호출. 영향 시트 재동기화.
-function iaeCanUpdateMembership(o) {
-  var prev = o.sheetUid;
-  var bb = iaeCanRotBBox(o);
-  var s = iaeCanSheetForPoint(bb.cx, bb.cy);
-  o.sheetUid = s ? s.uid : null;
-  iaeCanSheets.forEach(function (sh) { if (sh.uid === prev || sh.uid === o.sheetUid) iaeCanSyncSheet(sh); });
 }
 // 빌드 시 멤버십 전수 확정 + 시트 앵커 fid 정합(SheetLayout 단일 소스 → 다른 파일 조각은 개별 라인으로).
 function iaeCanReassignSheets() {

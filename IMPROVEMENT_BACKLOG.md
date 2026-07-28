@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-07-28T15:22:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-07-28T21:28:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,17 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, 2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그 이관: 306KB→80KB, **2026-07-27T23:00 7차 트림 — 사이클 로그 39건 중 31건 이관(최근 8건=전 Area 1바퀴+2만 유지): 196KB→63KB**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 **최근 8사이클 로그**(전 Area 1바퀴 커버 = 직전 사이클 diff 판단에 필요한 최소분) + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 > ↳ **8차 트림 (2026-07-27, 자동)**: 사이클 로그 9건 → 8건 유지, 1건 이관 (66KB → 트림 후 아래 참조).
+
+> **Area 2 코드 품질 심층 분석 (2026-07-28T21:28):**
+> - **방법**: `git fetch origin main`(forced-update, HEAD `62fba6c` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 2 **53회차** — 직전 Area2(`e3664c6` 인근, 07-27T15:33, 52회차) 이후 `git log e3664c6..HEAD -- src/routes migrations src/scripts`는 **17커밋** — 대부분 IA 워크벤치/에디터 통합 Phase 1~7b(a3d6244~7c1fff7, `feat(ia)`/`refactor(ia-editor)` 9건, `workbench.ts`+`iaEditor.js` 대량 churn: 진입점 4개→2개 통합, 판짜기 은퇴, `/workbench` 페이지 제거 후 `/ia-editor` 3번째 뷰로 흡수)와 이미 Area5/6이 렌즈 적용 완료한 보안픽스(#580/#582/#583/XSS) + 발주 법인간거래 토글 + 정렬 tie-break 스윕(59곳, 기존 codify 패턴 재적용이라 재검토 불요).
+> - **표준 스캔 전부 clean**: `entity-audit.mjs`(125파일·SELECT60·통과60·누락0), `check-dom-refs.cjs`(9건, 기존 baseline과 동일 — IA에디터 신규 액션바가 페이지 HTML 대신 스코프 쿼리 사용해 회귀 0, 커밋 메시지 자체가 이를 명시), 마이그 번호 중복(기존 5쌍만, 신규 0472~0478 정상).
+> - **IA 워크벤치/에디터 churn 심층 점검(직접 Read, 위임 없이 인라인)**: `workbench.ts` 신규 엔드포인트(`POST /intakes/void-bulk`·`/intakes/:id/void` 소유자게이트·`consumeSheetIntakes`)는 D1 바인드한도 80청크 분할·entityFilter·멱등(status='waiting' 조건)·best-effort 격리 전부 SKILL 표준 패턴 그대로 적용돼 net-new 이슈 0(`#444`/`#520`/`[[d1-bind-param-limit]]` 등 기존 codify를 코드 주석에서 직접 인용하며 준수). `/workbench` 페이지 은퇴(migration 0478)는 권한 비활성화(삭제 아님, CASCADE 회피)·`index.tsx` 라우트 제거·API는 유지·`iaEditor.ts`가 `workbench.js?raw`를 3번째 뷰로 흡수하는 3단 정합 확인, menu.ts 잔존 참조 0(#429 purge-완전성 3축 전부 clean).
+> - **🔧 자동수정 1건(A-021, dead code)**: `iaEditor.js`의 `iaeCanUpdateMembership`(드래그/회전/복제 후 시트 멤버십 재배정, 문서화된 용도 有)와 유일 의존 헬퍼 `iaeCanSheetByUid`가 코드베이스 전수(호출처 0, 동적 dispatch 없음) 확인 결과 dead — 실제 드래그 인터랙션이 구현 전(주석 "Konva 대신 정적 SVG 미리보기"로 방향전환, dragend/transformend 핸들러 자체 부재)이라 대기 중인 미완성 훅. 제거 후 `node --check`+`tsc --noEmit`+`npm run build`+`check-dom-refs.cjs`(9, 회귀 0) 전부 PASS.
+> - **N+1/entity_id/authMiddleware/SELECT * 전수**: `purchaseOrders/core.ts`·`po-queries.ts`(법인간거래 토글) 4개 쿼리사이트 독립 entityFilter 적용 확인(#368 클래스 아님, Area5 45회차 기보고 재확인)·`contactGroups.ts` 신규 컬럼(0476) 컬럼존재성 일치. `workbench.ts:466` `SELECT *`는 이번 churn 이전부터 존재하는 pre-existing(net-new 아님, 점진 전환 대상으로만 인지).
+> - **backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **11건**(#572~#584 중 11개, 직전 Area1 52회차와 동일 — 변동 없음). done/rejected 재조회 생략(close 0건, 직전 캐시 499/6 신뢰).
+> - **🧬 SKILL 강화 없음** — dead-code 발견은 기존 "학습된 패턴" 범주(자동수정 허용)의 정상 재현, 신규 클래스 아님.
+> - 신규 이슈 0건, 자동수정 1건(A-021), done-sync: new 11·done 499·rejected 6. 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-07-28T15:22):**
 > - **방법**: `git fetch origin main`(forced-update, HEAD `2f4e6d6` = origin/main 일치, 워킹트리 clean, detached), node_modules 0(설치 불요 — 이번 사이클은 커밋 없음 전제하에 grep/GitHub API 위주). 프록시가 이번 세션도 prod 호스트 직접 curl 차단(exit 56, CONNECT tunnel 403 — `webapp-9i0.pages.dev`·`observability.mcp.cloudflare.com` 둘 다 `__agentproxy/status` `recentRelayFailures`에 재확인, `cloudflare-observability` MCP 미인증 지속) — 직접 prod API/Playwright 헬스체크 불가, GitHub Actions CI 기록으로 대체(기존 사이클과 동일 제약). Area 1 **52회차** — 직전 Area1(`e8acc62`, 07-27T09:17, 51회차) 이후 이미 전체 사이클 1바퀴(Area2~Area6, 51회차)가 각 렌즈로 커버 완료, Area6(51회차, `616c976`, 09:20) 이후로는 `feat(ia)` 모아찍기/대기물 3커밋(`78b1170`·`7d61fc2`·`2f4e6d6`, `workbench.ts`+`iaEditor.js`+`orderForm/intake.js` 변경)뿐 — 이슈 번호 인용 0(신규 기능, 픽스 아님), 다음 Area2/3/5 사이클이 렌즈 적용할 신선 churn.
@@ -188,6 +199,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-021 | iaEditor.js dead code 2건 제거 — `iaeCanUpdateMembership`(드래그/회전/복제 후 시트 멤버십 재배정용, 문서화된 의도는 있었으나 실제 드래그 이벤트 핸들러 자체가 미구현 — 캔버스가 Konva 대신 정적 SVG 미리보기로 방향전환돼 호출부 0) + 유일 의존 헬퍼 `iaeCanSheetByUid`. 코드베이스 전수 grep으로 호출처 0건 확인(동적 dispatch 패턴 없음) 후 제거. Area 2 53회차. verify PASS(tsc clean+build), check:dom 9(회귀 0) | (이번 커밋) | 2026-07-28 |
 | A-020c | XSS escapeHtml 누락 3곳 + bank.ts 배치 상한 2곳 — `messages.js` 발송이력/통계 `receiver_num`(형제 `receiver_name`은 escape인데 누락) + `receiving.js` 검수템플릿 드롭다운 `template_name`/`category_name`(관리화면 `inspections.js`는 escape인데 소비화면만 raw) + `bank.ts` batch-apply/batch-match 서버측 1000건 상한(#583, UI Shift범위선택 1000건 캡이 클라이언트 전용이던 것 보완). Area 5 45회차. verify PASS(tsc clean+build) | 040d882, 59330b5 | 2026-07-28 |
 | A-020b | XSS escapeHtml 누락 6곳 — `reports.js` 4곳(designer_name/client_name×3, title속성만 escape하고 content는 raw이던 복붙누락) + `ledger.js` 2곳(item.unit, 형제 item_name/spec/content는 escape인데 unit만 누락 — 매입PO품목라인 신기능(0f2d745)이 매출측 기존 미이스케이프 패턴 그대로 복제). Area 5 41회차 프론트 XSS sweep 에이전트 격리 → 오케스트레이터 직접 Read 재확인 후 escapeHtml/esc() 래핑(표시 불변). verify PASS(tsc clean+build) | (이번 커밋) | 2026-07-22 |
 | A-019 | #377 잔여분 — 주문생성 자동가공 `orders/create.ts:643` `SELECT id, name FROM items`(존재X 컬럼)→`item_name`. #377 원 위치(core.ts:1489)가 파일분할로 create.ts D.자동가공 블록으로 이동했고 owner 픽스 eadba44는 autoProcess.ts만 정정·이 경로 누락 → best-effort catch(:695)에 삼켜져 `auto_process_jobs` 미생성 지속. autoProcess.ts:96·eadba44와 동일 정정. 휴면 write 활성화 우려는 eadba44의 `ia_auto_enabled` 게이트(0308 기본 OFF)로 이미 해소(서빙 게이트라 job 생성돼도 미노출). 안전 자동수정(컬럼 사실-정정 A-017 클래스 + owner 승인 정정의 누락분 완성). verify PASS(tsc clean+build 391) | 96e98d2 | 2026-06-12 |
