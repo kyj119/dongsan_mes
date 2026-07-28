@@ -1,6 +1,68 @@
 > **파일 구조**: 최신 세션이 맨 위. 아래로 갈수록 과거 세션(각각 durable 메모리에 정본 있음).
 > **다음 세션은 이 문서 상단의 "이월 TODO 통합"만 읽으면 된다** — 그 아래 상세 핸드오프는 판단 근거가 필요할 때만.
 
+# 세션 핸드오프 — IA 진입점 통합 Phase 1~8 + 판짜기 은퇴 prod 완료 (2026-07-28 #15)
+
+> durable=[[project-ia-web-sunset]](★방향 전환 반영)·[[feedback-ia-jsx-runtime-path]]·[[project-ia-designer-loop]].
+> **push 완료 `main == origin/main`(`571d11d7`)· CI 6회 전부 success.** 아래 #14는 같은 날 앞부분(#582·판짜기 겹침) — 보존.
+
+## ★ 이번 세션 최대 성과 — 판 렌더 EPS 미생성 근본 원인 해결
+
+`SheetLayout.jsx` `_slOpenPrep` 이 **최상위 `GroupItem` 만** 조각으로 수집하는데, **패널이 만든 work.ai 는 아트워크를 그룹으로 묶지 않는다** → 조각 **0개** 인식 → 판이 빈 채로 나가 EPS 미생성.
+
+- 성공 9건 = 전부 `Temp\IllustratorAutomat\req_N\`(IA 파이프라인, 그룹 있음) / 실패 전건 = 패널 소스
+- **Z: 매핑드라이브·한글경로·멀티소스 개수·갓 띄운 일러는 전부 무관**(하나씩 실측 배제)
+- 수정 = 그룹 0개면 전 레이어 최상위 아이템을 하나로 묶는 폴백. 그룹 있는 소스는 경로를 안 타 회귀 0
+- 검증 = sheet #19 재큐 → `groups=0→1`, `error→done`, EPS 35MB·JPG·DXF 생성 실측
+
+## 완료 (커밋순)
+
+| 커밋 | 내용 |
+|---|---|
+| `592ced20` | Phase 5 은퇴 스크립트 `retire-legacy-jsx.ps1`(내리기+`-Restore`) |
+| `f7350ea9` | Phase 8 진단 캡처(JSX 반환값·trace 주입) |
+| `5b6d345e` | **Phase 8 근본 원인 수정** |
+| `571d11d7` | Phase 6 ia-editor 단건가공·배치 제거(353줄) |
+| (앞서) | Phase 1 패널 중앙화 · 2 보급 스크립트 · 3 대기물 소비 · 4a 용도분리 · 4b 대기함 관리 |
+| (Z: 직접) | **판짜기 은퇴 실행** — 스텁 제거, 보관함 `_retired\20260728-164533\` |
+
+## 핵심 판단·이유
+
+- **진입점 통합 방향이 뒤집혔다** — 옛 기록은 "웹 폐기→JSX 중심"인데 이번엔 **JSX 은퇴, 웹+패널 2개**. 패널이 `mes-core.jsx`와 동일 산출물을 내면서 도킹·배치 큐까지 갖췄고, 사용자가 셋 다 쓸 이유가 없다고 판단. durable 메모리를 그 방향으로 **재작성**했다.
+- **패널 로직을 Z: 스텁으로 중앙화한 이유** — CEP는 각 PC `%APPDATA%`에 복사본이 있어 로직 수정마다 전 PC를 돌아야 한다. JSX 스텁 모델(Z: 1곳 → 전 PC)로 그 후퇴를 막았다. 보급 전에 넣지 않으면 나중에 전 PC를 다시 돌아야 했다.
+- **대기물 소비 배선이 판짜기 은퇴의 전제였다** — 판짜기는 manifest `consumed_intake_ids`로 대기물을 absorbed 처리하는데 ia-editor엔 그 경로가 없었다. 없이 은퇴하면 대기함 무한 적체 + 같은 조각 이중 출력.
+- **Phase 6은 한 번 멈추고 다시 했다** — "버튼 3개"로 잡았는데 12개 함수가 얽힌 353줄 퍼지였고, `iaeProcStopElapsed`·`iaeLoadFflate`·`iaeZipSafeName` 는 **캔버스/공용이 쓰는 공유 함수**였다. 호출 그래프 전수 대조 후 배타적인 것만 제거.
+- **실사용 0건을 은퇴 근거로 쓴 것은 오독이었다**(사용자 정정) — 전체가 테스트 단계라 당연한 수치. 은퇴 판단에서 제외.
+
+## ⚠️ 주의사항
+
+- **`$.fileName` 은 `DoJavaScript(문자열)` 실행에서 무의미** — JSX가 쓸 로그 경로는 에이전트가 preamble로 주입해야 한다(`_ia_trace_path`). `ia_error.log`가 한 번도 안 남은 이유. 정본=[[feedback-ia-jsx-runtime-path]]
+- **모아찍기는 마감 여백을 적용하지 않는 게 설계**(`mes-a0-host.jsx` `if (mode !== 'impose')`). "후가공이 안 먹었다"는 오해가 여기서 나왔고, 패널에서 모아찍기 선택 시 후가공 탭을 잠가 차단했다. 모아찍기+접어미싱 조합은 **실무에 없다**(사용자 확인).
+- **check:dom 훅이 3번 잡아줬다**(9→16·11·10) — 진입점만 지우고 핸들러를 남기면 항상 null인 dangling 참조가 된다. 훅 신호를 따라가면 퍼지 완전성이 확보된다.
+- **PS 5.1은 BOM 없는 UTF-8을 ANSI로 읽는다** — 한글 포함 `.ps1`은 **UTF-8 BOM 필수**(없으면 파싱 자체 실패). `install-a0-panel.ps1`에서 실증 후 `retire-legacy-jsx.ps1`에도 선제 적용.
+- **에이전트 stdout은 기본 유실** — 진단 시 `Start-Process -RedirectStandardOutput` 으로 받아야 렌더 진행 로그가 보인다. `agent.log`는 하트비트/ingest만 남는다.
+- 에이전트는 **새 빌드로 상주**(PID 45952, 로그 캡처 중). JSX 2개는 런타임 수동 동기화 완료(해시 일치).
+
+## 다음 TODO
+
+1. **`/ia-editor` 네스팅 실클릭 검증** — Phase 6 퍼지 후 브라우저 실동작 미확인(Playwright가 타 세션 점유). 정적 링크검사(dangling 0)·렌더 마커로 대체했음.
+2. **디자이너 흐름 1건 통과** — 패널 모아찍기 추출 → ia-editor 대기함에서 선택 → 판 → EPS. 메커니즘은 #19로 검증됨.
+3. **`MES가공.jsx` 은퇴** — 패널 숙달 후 `retire-legacy-jsx.ps1 -Core`(관리자).
+4. **Phase 7** 검수·대기함 ia-editor 통합(범위 큼, 별도 세션).
+5. (선택) 로컬 브랜치 17개 중 REVIEW 7개 — 스쿼시 이전 화석, 필요 시 `npm run branch:clean`.
+
+## 검증 명령 (PowerShell)
+
+```powershell
+npm run verify; node scripts/entity-audit.mjs; npm run check:dom   # 9건=기준선
+node scripts/nesting-harness.mjs --cases=1000 --seed=7777          # 3패커 1005/1005
+npm run branch:clean                                               # 브랜치 위생(dry-run)
+.\scripts\retire-legacy-jsx.ps1 -WhatIfOnly                        # 은퇴 대상 확인
+# 에이전트 진단: Start-Process -RedirectStandardOutput 로 stdout 확보 후 시트 재큐
+```
+
+---
+
 # 세션 핸드오프 — #582 워크벤치 IDOR + 판짜기 shelf 겹침 prod 배포 완료 (2026-07-28 #14)
 
 > durable=[[reference-nesting-harness]]·[[project-ia-designer-loop]]. **prod 배포 완료** — main `adc13bef`(#582)·`38cc411e`(판짜기), CI 2회 전부 success(Typecheck·Build·Deploy·Smoke). 마이그 없음. 직전 #13의 🛑중단표 **2건 해소**(#582·ia-web-sunset), 남은 중단 3건은 아래 표.
