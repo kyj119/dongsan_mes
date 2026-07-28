@@ -1760,11 +1760,25 @@ bankRouter.post('/transactions/batch-apply', requireRole('ADMIN'), async (c) => 
 
     const results: { id: number; success: boolean; error?: string; payment_id?: number; link_mode?: string }[] = []
 
+    // #572 서브요청 한도 가드 — 건당 순차 D1이 최대 9회다:
+    //   findLinkCandidates(1) + applyBankTransaction(입금 신규생성 최대 5·출금 4) +
+    //   matched_client_id UPDATE(1) + learnMatchRule(1).
+    //   1000건 × 9 = 9,000 > Workers 요청당 서브요청 한도(1000) → 처리 도중 요청이 죽어
+    //   "어디까지 반영됐는지 모르는" 반쪽 상태가 된다. Shift 범위선택(7f6afdf)으로 목록
+    //   1000건 전체 선택이 두 번 클릭에 가능해지면서 실제로 도달 가능한 경로가 됐다.
+    //   → 요청당 처리 상한을 두고 나머지는 remaining으로 반환, 프론트가 이어서 재호출한다.
+    //   (#562 monthly-create·#478 orders/lifecycle과 동일한 표준 픽스 패턴)
+    //   ⚠️ learnMatchRule을 counterpart별로 dedup하면 서브요청이 더 줄지만 match_count(학습
+    //      가중치)가 달라져 자동매칭 정밀도에 영향 → 건수 상한만 적용한다.
+    const BATCH_APPLY_MAX = 80 // 80 × 9 = 720 + 조회 1회 < 1000 (헤드룸 확보)
+    const idsToProcess = transaction_ids.slice(0, BATCH_APPLY_MAX)
+    const remainingIds = transaction_ids.slice(BATCH_APPLY_MAX)
+
     // Bulk-fetch all transactions (D1 바인드 한도 회피: 80개 청크 분할)
     const ef = entityFilter(c, 'bank_transactions')
     const txMap = new Map<number, ApplyTxRow>()
-    for (let i = 0; i < transaction_ids.length; i += 80) {
-      const chunk = transaction_ids.slice(i, i + 80)
+    for (let i = 0; i < idsToProcess.length; i += 80) {
+      const chunk = idsToProcess.slice(i, i + 80)
       const placeholders = chunk.map(() => '?').join(', ')
       const { results: txRows } = await c.env.DB.prepare(
         `SELECT id, transaction_date, transaction_type, amount, match_status, matched_client_id, matched_category_id, matched_fixed_expense_id, counterpart_name, description, entity_id FROM bank_transactions WHERE id IN (${placeholders})${ef.clause}`
@@ -1772,7 +1786,7 @@ bankRouter.post('/transactions/batch-apply', requireRole('ADMIN'), async (c) => 
       for (const row of txRows) txMap.set(row.id, row)
     }
 
-    for (const txId of transaction_ids) {
+    for (const txId of idsToProcess) {
       const tx = txMap.get(txId) ?? null
 
       if (!tx) {
@@ -1852,8 +1866,14 @@ bankRouter.post('/transactions/batch-apply', requireRole('ADMIN'), async (c) => 
         results,
         succeeded: succeededCount,
         failed: results.length - succeededCount,
+        // #572 이어서 처리할 나머지 — 프론트가 remaining_transaction_ids로 재호출해 완주한다.
+        processed_count: idsToProcess.length,
+        remaining_transaction_ids: remainingIds,
+        remaining_count: remainingIds.length,
+        has_more: remainingIds.length > 0,
       },
       message: `${results.length}건 중 ${succeededCount}건 적용 완료`
+        + (remainingIds.length > 0 ? ` · 남은 ${remainingIds.length}건 계속 처리` : '')
     })
   } catch (error) {
     console.error('Batch apply error:', error)

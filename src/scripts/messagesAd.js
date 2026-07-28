@@ -285,7 +285,25 @@ async function adPreviewSend() {
   }
 }
 
+// #573 형제: 광고 발송도 같은 결함 2건이 있었다.
+//   ① disable이 showConfirm '이후'라 확인창이 두 개 뜰 수 있었다(둘 다 확인 = 이중 발송·이중 과금).
+//      → safeSubmit으로 클릭 즉시 잠근다.
+//   ② finally가 innerHTML만 복구하고 disabled를 되돌리지 않아, 발송 실패 시 버튼이 "발송" 모습
+//      그대로 영구 잠김이었다(adResetPreview는 성공 경로에서만 호출). → safeSubmit의 finally가 복구.
 async function adSend() {
+  var __btn = document.getElementById('adSendBtn');
+  try {
+    if (typeof safeSubmit === 'function') return await safeSubmit(__btn, adSendExec);
+    return await adSendExec();
+  } finally {
+    // ⚠️ safeSubmit의 finally는 disabled를 무조건 false로 되돌린다. 이 버튼은 adPreviewOk
+    //    게이트로 잠겨 있어야 하므로(발송 성공 시 adSendExec가 adResetPreview 호출) 재적용한다.
+    //    발송 실패 시엔 adPreviewOk가 true로 남아 정상적으로 재시도 가능 상태가 된다(위 ② 해소).
+    if (!adPreviewOk) adResetPreview();
+  }
+}
+
+async function adSendExec() {
   if (!adPreviewOk) { showToast('먼저 [대상 확인]을 눌러주세요', 'warning'); return; }
   var payload = adBuildPayload();
 
@@ -295,8 +313,6 @@ async function adSend() {
   );
   if (!confirmed) return;
 
-  var btn = document.getElementById('adSendBtn');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>발송 중...'; }
   try {
     var res = await axios.post('/api/messages/ad/send', payload);
     var d = res.data.data;
@@ -306,8 +322,6 @@ async function adSend() {
     if (typeof loadLogs === 'function') loadLogs();
   } catch (e) {
     showToast((e.response && e.response.data && e.response.data.error) || '발송 실패', 'error');
-  } finally {
-    if (btn) btn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i>발송';
   }
 }
 

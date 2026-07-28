@@ -19,15 +19,13 @@ import { deriveClientBalancesBulk } from './ledger/ar-helpers'
 import { kstYmd } from '../utils/kstDate'
 import messagesAdRouter from './messagesAd'
 import { getBannedWords, findBannedWords } from '../services/messageCompliance'
+import { checkBulkLimit, type BulkChannel } from '../services/messageBulkLimit'
 import type { Context } from 'hono'
 
 /**
  * base64 문자열의 디코드 후 바이트 수 (atob 없이 길이 산술 — 수백KB 문자열 복사 회피).
  * 공백/개행이 섞여도 되도록 whitespace는 제외하고 계산한다.
  */
-/** MMS 대량 발송 1회 상한 기본값(건). settings.mms_bulk_limit로 조정. */
-const MMS_BULK_LIMIT_DEFAULT = 50
-
 // ────────────────────────────────────────────────────────────────────────────
 // 대량 발송 변수 치환 (#{변수})
 //
@@ -752,10 +750,7 @@ messagesRouter.post('/send-bulk', async (c) => {
       }, 400)
     }
 
-    // ── MMS 대량 발송 가드 ────────────────────────────────────────────────
-    // 바로빌 MMS는 1:1 전용이라 N명 = N콜 = N×100원. 실수 한 번의 비용이 커서
-    // 서버에서도 상한을 강제한다(프론트 확인창만으로는 API 직접호출을 못 막는다).
-    // 상한은 settings.mms_bulk_limit로 조정(기본 50건, 0 이하/미설정 시 기본값).
+    // ── MMS 이미지 검증 ───────────────────────────────────────────────────
     let mmsImage = ''
     if (channel === 'mms') {
       mmsImage = typeof content.image_base64 === 'string' ? stripDataUri(content.image_base64).replace(/\s/g, '') : ''
@@ -769,16 +764,19 @@ messagesRouter.post('/send-bulk', async (c) => {
           error: `이미지 용량이 큽니다 (${Math.round(bytes / 1024)}KB / 최대 ${Math.round(MMS_IMAGE.MAX_BYTES / 1024)}KB).`,
         }, 400)
       }
-      const limitRow = await db.prepare("SELECT setting_value FROM settings WHERE setting_key = 'mms_bulk_limit'")
-        .first<{ setting_value: string }>()
-      const limit = Math.max(1, parseInt(limitRow?.setting_value || '', 10) || MMS_BULK_LIMIT_DEFAULT)
-      if (messages.length > limit) {
-        return c.json({
-          success: false,
-          error: `MMS 대량 발송은 1회 ${limit}건까지입니다 (요청 ${messages.length}건, 예상 ${(messages.length * 100).toLocaleString()}원). 대상을 나눠 발송하거나 설정(mms_bulk_limit)에서 상한을 조정하세요.`,
-        }, 400)
-      }
     }
+
+    // ── 대량 발송 건수 상한 (#584) ────────────────────────────────────────
+    // 예전엔 MMS에만 상한이 있었다. 그런데 SMS(15원)·알림톡(7원)도 target_type=clients면
+    // 전 거래처(수천 건)가 한 번에 나가 수만~십수만 원이 즉시 발생한다 — 발송은 취소 불가.
+    // 채널 판정은 실제 발송 분기(아래 isLms)와 같은 규칙: sms + subject 있으면 LMS.
+    // (email 채널은 이 지점 이전에 분기가 끝나 여기 도달하지 않는다 — 타입도 그렇게 좁혀져 있다)
+    const limitChannel: BulkChannel =
+      channel === 'mms' ? 'mms'
+      : channel === 'kakao' ? 'kakao'
+      : (content.subject ? 'lms' : 'sms')
+    const limitErr = await checkBulkLimit(db, limitChannel, messages.length)
+    if (limitErr) return c.json({ success: false, error: limitErr }, 400)
 
     let sendResult
     let templateCode: string

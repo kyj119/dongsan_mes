@@ -1282,7 +1282,17 @@ async function deleteTpl(id, channel) {
   }
 }
 
+// #573 중복 클릭 = 실제 이중 발송(MMS 건당 100원). showConfirm은 싱글턴이 아니라 호출마다
+//   오버레이를 새로 append하므로, 버튼을 즉시 잠그지 않으면 확인창이 두 개 뜨고 둘 다 확인 시
+//   POST가 실제로 두 번 나간다. safeSubmit이 클릭 즉시 disable+스피너 → finally 복구까지 담당.
+//   (바로빌 sendMMS는 수신자마다 순차 SOAP이라 50건이면 수십 초 — 스피너 없으면 재클릭을 부른다)
 async function sendBulk() {
+  var __btn = document.getElementById('bulkSendBtn');
+  if (typeof safeSubmit === 'function') return safeSubmit(__btn, msgSendBulkExec);
+  return msgSendBulkExec();
+}
+
+async function msgSendBulkExec() {
   var content = (bulkChannel === 'email' && bulkQuill) ? bulkQuill.root.innerHTML : document.getElementById('bulkContent').value.trim();
   if (!content || (bulkChannel === 'email' && bulkQuill && bulkQuill.getText().trim().length === 0)) { showToast('내용을 입력해주세요', 'warning'); return; }
 

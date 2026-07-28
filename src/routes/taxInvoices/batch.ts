@@ -8,7 +8,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import { authMiddleware } from '../../middleware/auth'
 import { requireAccessOrRole, requireEditOrRole } from '../../middleware/permissions'
-import { getEntityId } from '../../utils/entityFilter'
+import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { getCompanySettings, createSplitInvoices } from './helpers'
 import { kstYmd } from '../../utils/kstDate'
 import type { ClientRow, MonthlyEligibleRow } from './helpers'
@@ -94,17 +94,22 @@ taxInvoicesBatchRouter.post('/batch-create', requireEditOrRole('/tax-invoices', 
 
         const orderIds = group.order_ids
         const placeholders = orderIds.map(() => '?').join(', ')
+        // #581 크로스엔티티 발행 차단: order_ids는 body 그대로라 entity 검증 없이는 타법인 주문을
+        //   지정해 그 법인 사업자번호로 실제 계산서가 발행된다(auto_issue면 국세청 전송까지).
+        //   가드는 이 id의 출처인 GET /eligible-orders(queries.ts)와 동일한 entityFilter(c,'o') →
+        //   목록에 나온 id는 전부 통과, 구조적 회귀 0. 미통과분은 아래 개수 대조에서 걸러진다.
+        const efOrders = entityFilter(c, 'o')
         const { results: orders } = await c.env.DB.prepare(`
           SELECT o.*, c.client_name, c.business_registration_number,
             c.representative, c.address, c.business_type, c.business_item,
             c.email as client_email, c.id as client_id
           FROM orders o
           LEFT JOIN clients c ON o.client_id = c.id
-          WHERE o.id IN (${placeholders}) AND o.client_id = ?
-        `).bind(...orderIds, group.client_id).all()
+          WHERE o.id IN (${placeholders}) AND o.client_id = ?${efOrders.clause}
+        `).bind(...orderIds, group.client_id, ...efOrders.params).all()
 
         if (orders.length !== orderIds.length) {
-          results.push({ client_id: group.client_id, client_name: client.client_name, success: false, error: '일부 주문이 존재하지 않거나 거래처가 다릅니다.' })
+          results.push({ client_id: group.client_id, client_name: client.client_name, success: false, error: '일부 주문이 존재하지 않거나 거래처·법인이 다릅니다.' })
           failCount++
           continue
         }
@@ -182,6 +187,12 @@ taxInvoicesBatchRouter.post('/monthly-create', requireEditOrRole('/tax-invoices'
       params.push(...body.client_ids)
     }
 
+    // #581 크로스엔티티 발행 차단: client_ids만 지정하면 그 거래처의 전 법인 주문이 조회돼
+    //   법인별로 실제 계산서가 자동 발행됐다(order_id를 몰라도 되는 경로). 미리보기인
+    //   GET /monthly-eligible에도 동일 필터를 넣어 대상 집합을 일치시킨다.
+    const efMonthly = entityFilter(c, 'o')
+    if (efMonthly.params.length > 0) params.push(...efMonthly.params)
+
     const { results } = await c.env.DB.prepare(`
       SELECT c.id as client_id, c.client_name, c.business_registration_number,
              c.representative, c.address, c.business_type, c.business_item,
@@ -197,7 +208,7 @@ taxInvoicesBatchRouter.post('/monthly-create', requireEditOrRole('/tax-invoices'
           JOIN tax_invoices ti ON tio.tax_invoice_id = ti.id
           WHERE ti.status != 'CANCELLED'
         )
-        ${clientFilter}
+        ${clientFilter}${efMonthly.clause}
       ORDER BY c.id, o.order_date
     `).bind(...params).all()
 

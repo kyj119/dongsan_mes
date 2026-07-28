@@ -28,10 +28,8 @@ import {
   withAdPrefix, unsubscribeFooter, isNightTimeKst, parseSendDT, AD_PREFIX,
   getBannedWords,
 } from '../services/messageCompliance'
+import { checkBulkLimit } from '../services/messageBulkLimit'
 import type { SMSMessage } from './kakao'
-
-/** 광고 MMS 1회 상한(건) — 100원/건이라 오조작 비용이 크다. settings.mms_bulk_limit와 동일 키 사용. */
-const AD_MMS_LIMIT_DEFAULT = 50
 
 /** 사전동의 면제 기간 — 시행령 §61② "거래가 종료된 날부터 6개월" */
 const CONSENT_EXEMPT_MONTHS = 6
@@ -288,16 +286,14 @@ messagesAdRouter.post('/send', async (c) => {
           error: `이미지 용량이 큽니다 (${Math.round(bytes / 1024)}KB / 최대 ${Math.round(MMS_IMAGE.MAX_BYTES / 1024)}KB).`,
         }, 400)
       }
-      const limitRow = await db.prepare("SELECT setting_value FROM settings WHERE setting_key = 'mms_bulk_limit'")
-        .first<{ setting_value: string }>()
-      const limit = Math.max(1, parseInt(limitRow?.setting_value || '', 10) || AD_MMS_LIMIT_DEFAULT)
-      if (audience.sendable.length > limit) {
-        return c.json({
-          success: false,
-          error: `MMS 발송은 1회 ${limit}건까지입니다 (대상 ${audience.sendable.length}건, 예상 ${(audience.sendable.length * 100).toLocaleString()}원).`,
-        }, 400)
-      }
     }
+
+    // ── 발송 건수 상한 (#584) ─────────────────────────────────────────────
+    // 광고 채널은 LMS·MMS만 허용된다(SMS는 90byte라 (광고)+수신거부 URL이 본문을 다 먹어 금지).
+    // 예전엔 MMS만 막혀 있어 LMS 광고는 무제한으로 나갔다 — 광고는 대량 발송이 기본이라
+    // 오조작 노출이 가장 큰 경로다. 상한은 공용 헬퍼(settings <channel>_bulk_limit)로 일원화.
+    const adLimitErr = await checkBulkLimit(db, channel === 'mms' ? 'mms' : 'lms', audience.sendable.length)
+    if (adLimitErr) return c.json({ success: false, error: adLimitErr }, 400)
 
     // ── 본문 조립: 변수 치환 → (광고) 접두 → 수신거부 링크(수신자별) ──
     const siteUrlSetting = await db.prepare("SELECT setting_value FROM settings WHERE setting_key = 'site_base_url'")

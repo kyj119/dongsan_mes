@@ -255,7 +255,13 @@
       }
 
       html += '<tr class="tx-row">';
-      html += '<td><input type="checkbox" class="tx-check" data-id="' + tx.id + '"></td>';
+      // #578 일괄적용 미리보기·결과모달이 행을 식별할 수 있도록 요약값을 체크박스에 실어둔다
+      //   (DOM 셀 파싱은 열 순서 변경에 깨진다).
+      html += '<td><input type="checkbox" class="tx-check" data-id="' + tx.id + '"'
+        + ' data-name="' + escHtml(tx.counterpart_name || tx.description || '') + '"'
+        + ' data-date="' + escHtml(dateStr) + '"'
+        + ' data-amount="' + amt + '"'
+        + ' data-dir="' + (isDeposit ? 'IN' : 'OUT') + '"></td>';
       html += '<td class="text-gray-600 text-xs whitespace-nowrap">' + dateStr + '</td>';
       html += '<td><span class="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">' + escHtml(accountLabel) + '</span></td>';
       html += '<td class="font-medium text-gray-800" title="' + escHtml(tx.counterpart_name || tx.description || '') + '">' + escHtml(tx.counterpart_name || tx.description || '') + '</td>';
@@ -676,7 +682,7 @@
     var ids = [];
     var clientMap = {};
     var categoryMap = {};
-    var unset = 0;
+    bankBatchItems = {};
     document.querySelectorAll('.tx-check:checked').forEach(function(el) {
       var txId = parseInt(el.getAttribute('data-id'), 10);
       ids.push(txId);
@@ -687,38 +693,189 @@
       var categoryInput = document.getElementById('categoryId_' + txId);
       var clientId = clientInput ? parseInt(clientInput.value, 10) : 0;
       var categoryId = categoryInput ? parseInt(categoryInput.value, 10) : 0;
-      if (isCategoryMode && categoryId) categoryMap[String(txId)] = categoryId;
-      else if (clientId) clientMap[String(txId)] = clientId;
-      else if (categoryId) categoryMap[String(txId)] = categoryId;
-      else unset++;
+      // 미리보기/결과 모달용 행 요약 — 표시명은 검색 입력값(clientSearch_/categorySearch_)에서 가져온다.
+      var clientNameEl = document.getElementById('clientSearch_' + txId);
+      var categoryNameEl = document.getElementById('categorySearch_' + txId);
+      var item = {
+        id: txId,
+        name: el.getAttribute('data-name') || '',
+        date: el.getAttribute('data-date') || '',
+        amount: Number(el.getAttribute('data-amount') || 0),
+        dir: el.getAttribute('data-dir') || '',
+        mode: 'SKIP',
+        target: ''
+      };
+      if (isCategoryMode && categoryId) {
+        categoryMap[String(txId)] = categoryId;
+        item.mode = 'CATEGORY';
+        item.target = (categoryNameEl && categoryNameEl.value) || '비용분류';
+      } else if (clientId) {
+        clientMap[String(txId)] = clientId;
+        item.mode = 'CLIENT';
+        item.target = (clientNameEl && clientNameEl.value) || '거래처';
+      } else if (categoryId) {
+        categoryMap[String(txId)] = categoryId;
+        item.mode = 'CATEGORY';
+        item.target = (categoryNameEl && categoryNameEl.value) || '비용분류';
+      }
+      bankBatchItems[txId] = item;
     });
     if (!ids.length) { showToast('적용할 항목을 선택하세요.', 'warning'); return; }
-    var confirmMsg = ids.length + '건을 적용합니다. (거래처=원장 반영, 비용분류=비용 확정)\n진행할까요?';
-    if (unset > 0) confirmMsg += '\n(거래처·비용분류 미지정 ' + unset + '건은 건너뜁니다)';
-    if (!(await showConfirm(confirmMsg))) return;
-    axios.post('/api/bank/transactions/batch-apply', {
-      transaction_ids: ids,
-      client_map: Object.keys(clientMap).length ? clientMap : undefined,
-      category_map: Object.keys(categoryMap).length ? categoryMap : undefined
-    }).then(function(r) {
-      var d = r.data.data || {};
-      var catCnt = (d.results || []).filter(function(x) { return x.success && x.link_mode === 'CATEGORY'; }).length;
-      var msg = (d.succeeded || 0) + '건 적용 완료';
-      if (catCnt > 0) msg += ' (비용분류 ' + catCnt + '건)';
-      if (d.failed > 0) {
-        msg += ', ' + d.failed + '건 실패';
-        // 실패 사유 상위 2종 요약(전건 나열 금지 — 상세는 행별 상태로 확인)
-        var reasons = {};
-        (d.results || []).forEach(function(x) { if (!x.success && x.error) reasons[x.error] = (reasons[x.error] || 0) + 1; });
-        var top = Object.keys(reasons).sort(function(a, b) { return reasons[b] - reasons[a]; }).slice(0, 2);
-        if (top.length) msg += ' (' + top.map(function(k) { return k + ' ' + reasons[k] + '건'; }).join(', ') + ')';
+
+    // #578 커밋 전 항목별 미리보기 — 예전엔 집계 카운트만 담긴 confirm 문구뿐이라
+    //   운영자가 "무엇이" 반영되는지 못 보고 재무 데이터를 커밋했다.
+    //   ⚠️ '신규 생성 vs 기존 원장 연결'은 서버가 findLinkCandidates로 판정하므로 여기서는 알 수 없다.
+    //      → 미리보기는 클라가 아는 것(거래처/비용분류·금액·일자·건너뜀 사유)만 정확히 보여주고,
+    //        생성/연결 구분은 아래 결과 모달에서 서버가 돌려준 link_mode로 표시한다.
+    if (!(await bankShowBatchPreview(bankBatchItems))) return;
+
+    var __btn = document.getElementById('batchApplyBtn');
+    var run = async function() {
+      // #572 서브요청 한도 대응 — 서버가 요청당 상한(80건)만 처리하고 나머지를 has_more로 돌려준다.
+      //   완주할 때까지 이어서 호출하고, 진행률을 버튼 옆에 표시한다.
+      var pending = ids.slice();
+      var allResults = [];
+      var rounds = 0;
+      try {
+        while (pending.length > 0) {
+          if (++rounds > 50) { showToast('처리 회차가 너무 많아 중단했습니다. 남은 건은 다시 선택해 주세요.', 'warning'); break; }
+          bankSetBatchProgress(allResults.length, ids.length);
+          var r = await axios.post('/api/bank/transactions/batch-apply', {
+            transaction_ids: pending,
+            client_map: Object.keys(clientMap).length ? clientMap : undefined,
+            category_map: Object.keys(categoryMap).length ? categoryMap : undefined
+          });
+          var d = (r.data && r.data.data) || {};
+          allResults = allResults.concat(d.results || []);
+          pending = d.has_more ? (d.remaining_transaction_ids || []) : [];
+          // 서버가 아무것도 처리 못 했는데 남은 게 그대로면 무한 루프 → 방어적 중단
+          if (d.has_more && (d.processed_count || 0) === 0) {
+            showToast('처리가 진행되지 않아 중단했습니다.', 'error');
+            break;
+          }
+        }
+      } catch (e) {
+        var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '일괄 적용 실패';
+        showToast(msg, 'error');
+        if (allResults.length === 0) { bankSetBatchProgress(0, 0); loadTransactions(); return; }
+        showToast('일부만 처리된 상태입니다 — 결과를 확인하세요.', 'warning');
       }
-      showToast(msg, d.failed > 0 ? 'warning' : 'success');
+      bankSetBatchProgress(0, 0);
       loadTransactions();
-    }).catch(function(e) {
-      var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '일괄 적용 실패';
-      showToast(msg, 'error');
+      bankShowBatchResult(allResults, bankBatchItems);
+    };
+
+    if (typeof safeSubmit === 'function') return safeSubmit(__btn, run);
+    return run();
+  };
+
+  // 선택 행의 요약 정보 — 미리보기/결과 모달에서 txId로 라벨을 찾는다.
+  var bankBatchItems = {};
+
+  function bankBatchLabel(txId) {
+    var it = bankBatchItems[txId];
+    if (!it) return '#' + txId;
+    return (it.date ? it.date + ' ' : '') + (it.name || '(적요 없음)')
+      + (it.amount ? ' ' + (it.dir === 'IN' ? '+' : '-') + Number(it.amount).toLocaleString() : '');
+  }
+
+  function bankSetBatchProgress(done, total) {
+    var el = document.getElementById('selectedCount');
+    if (!el) return;
+    if (!total) { el.textContent = document.querySelectorAll('.tx-check:checked').length; return; }
+    el.textContent = done + '/' + total + ' 처리중';
+  }
+
+  // 커밋 전 미리보기 모달 — 확인 누르면 true
+  function bankShowBatchPreview(items) {
+    return new Promise(function(resolve) {
+      var modal = document.getElementById('bankBatchPreviewModal');
+      var body = document.getElementById('bankBatchPreviewBody');
+      var okBtn = document.getElementById('bankBatchPreviewOk');
+      var list = Object.keys(items).map(function(k) { return items[k]; });
+      if (!modal || !body || !okBtn) {
+        // 모달 미존재 시 기존 confirm으로 폴백(기능 상실 방지)
+        var n = list.filter(function(x) { return x.mode !== 'SKIP'; }).length;
+        var s = list.length - n;
+        resolve(showConfirm(n + '건을 적용합니다.' + (s ? '\n(미지정 ' + s + '건은 건너뜁니다)' : '')));
+        return;
+      }
+      var apply = list.filter(function(x) { return x.mode !== 'SKIP'; });
+      var skip = list.filter(function(x) { return x.mode === 'SKIP'; });
+      var html = '<div class="text-sm font-semibold text-blue-700 mb-1">'
+        + '<i class="fas fa-check-double mr-1"></i>' + apply.length + '건 적용</div>'
+        + '<div class="text-xs text-gray-500 mb-2 pl-5">거래처 = 입금/지급 원장 반영 · 비용분류 = 비용 확정</div>';
+      if (apply.length) {
+        html += '<ul class="text-xs text-gray-700 space-y-0.5 mb-3">';
+        apply.forEach(function(x) {
+          var tag = x.mode === 'CATEGORY'
+            ? '<span class="px-1 py-0.5 rounded bg-purple-50 text-purple-700">비용분류</span>'
+            : '<span class="px-1 py-0.5 rounded bg-blue-50 text-blue-700">거래처</span>';
+          html += '<li class="flex items-start gap-1"><span class="shrink-0">' + tag + '</span>'
+            + '<span>' + escHtml(bankBatchLabel(x.id)) + ' → <b>' + escHtml(x.target || '') + '</b></span></li>';
+        });
+        html += '</ul>';
+      }
+      if (skip.length) {
+        html += '<div class="text-sm font-semibold text-gray-500 mb-1">'
+          + '<i class="fas fa-forward mr-1"></i>' + skip.length + '건 건너뜀 <span class="font-normal text-xs">(거래처·비용분류 미지정)</span></div>';
+        html += '<ul class="text-xs text-gray-500 space-y-0.5">';
+        skip.forEach(function(x) { html += '<li>· ' + escHtml(bankBatchLabel(x.id)) + '</li>'; });
+        html += '</ul>';
+      }
+      body.innerHTML = html;
+      modal.classList.add('show');
+
+      var done = function(val) {
+        modal.classList.remove('show');
+        okBtn.onclick = null;
+        var cancel = document.getElementById('bankBatchPreviewCancel');
+        if (cancel) cancel.onclick = null;
+        resolve(val);
+      };
+      okBtn.onclick = function() { done(true); };
+      var cancelBtn = document.getElementById('bankBatchPreviewCancel');
+      if (cancelBtn) cancelBtn.onclick = function() { done(false); };
     });
+  }
+
+  // 건별 결과 모달 — 집계 토스트만 띄우던 것을 대체(#578).
+  function bankShowBatchResult(results, items) {
+    var ok = results.filter(function(x) { return x.success; });
+    var fail = results.filter(function(x) { return !x.success; });
+    var modal = document.getElementById('bankBatchResultModal');
+    var body = document.getElementById('bankBatchResultBody');
+    if (!modal || !body) {
+      showToast(ok.length + '건 적용' + (fail.length ? ', ' + fail.length + '건 실패' : ''), fail.length ? 'warning' : 'success');
+      return;
+    }
+    var modeLabel = { CATEGORY: '비용분류', LINKED: '기존 원장 연결', CREATED: '원장 생성' };
+    var html = '<div class="text-sm font-semibold text-green-700 mb-1">'
+      + '<i class="fas fa-check-circle mr-1"></i>' + ok.length + '건 적용</div>';
+    if (ok.length) {
+      html += '<ul class="text-xs text-gray-700 space-y-0.5 mb-3">';
+      ok.forEach(function(x) {
+        html += '<li>· ' + escHtml(bankBatchLabel(x.id))
+          + ' <span class="text-gray-400">' + escHtml(modeLabel[x.link_mode] || x.link_mode || '') + '</span></li>';
+      });
+      html += '</ul>';
+    }
+    if (fail.length) {
+      html += '<div class="text-sm font-semibold text-red-600 mb-1"><i class="fas fa-triangle-exclamation mr-1"></i>'
+        + fail.length + '건 실패</div><ul class="text-xs text-gray-700 space-y-0.5">';
+      fail.forEach(function(x) {
+        html += '<li>· <span class="font-medium">' + escHtml(bankBatchLabel(x.id)) + '</span> — '
+          + '<span class="text-red-600">' + escHtml(x.error || '실패') + '</span></li>';
+      });
+      html += '</ul>';
+    }
+    body.innerHTML = html;
+    modal.classList.add('show');
+  }
+
+  window.bankCloseBatchResult = function() {
+    var m = document.getElementById('bankBatchResultModal');
+    if (m) m.classList.remove('show');
   };
 
   // Match / confirm

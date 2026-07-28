@@ -242,7 +242,7 @@ export const bankPageContent = `
             <span class="text-sm"><b id="selectedCount">0</b>건 선택</span>
             <div class="border-l border-gray-600 h-5"></div>
             <!-- 2026-07-27: [일괄 매칭]+[일괄 적용] 통합 → 버튼 1개(거래처 확정 + 원장 반영 + 규칙 학습) -->
-            <button onclick="batchApply()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1"
+            <button onclick="batchApply()" id="batchApplyBtn" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1"
               title="선택 건의 거래처를 확정하고 입금/지급 원장에 반영합니다. 확정된 거래처는 자동매칭 규칙으로 학습됩니다.">
               <i class="fas fa-check-double"></i> 일괄 적용
             </button>
@@ -647,6 +647,35 @@ export const bankPageContent = `
       </div>
 
       <!-- 계좌이체 후보 확정 모달 -->
+      <!-- #578 일괄 적용 — 커밋 전 항목별 미리보기 (집계 confirm 문구 대체) -->
+      <div class="modal-overlay" id="bankBatchPreviewModal">
+        <div class="modal-box" style="width:560px; max-height:82vh; display:flex; flex-direction:column;">
+          <div class="flex items-center justify-between mb-1">
+            <h3 class="text-base font-bold text-gray-800"><i class="fas fa-list-check text-blue-500 mr-2"></i>일괄 적용 미리보기</h3>
+          </div>
+          <p class="text-xs text-gray-400 mb-3">아래 내용으로 원장에 반영됩니다. 반영 후에는 건별로 되돌려야 합니다.</p>
+          <div id="bankBatchPreviewBody" class="border border-gray-100 rounded-lg p-3 overflow-y-auto" style="flex:1; min-height:120px; max-height:56vh;"></div>
+          <div class="flex gap-2 justify-end mt-4">
+            <button id="bankBatchPreviewCancel" class="btn-secondary">취소</button>
+            <button id="bankBatchPreviewOk" class="btn-primary"><i class="fas fa-check-double mr-1"></i>적용</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- #578 일괄 적용 — 건별 결과 (상위 2개 사유 토스트 대체) -->
+      <div class="modal-overlay" id="bankBatchResultModal">
+        <div class="modal-box" style="width:560px; max-height:82vh; display:flex; flex-direction:column;">
+          <div class="flex items-center justify-between mb-1">
+            <h3 class="text-base font-bold text-gray-800"><i class="fas fa-clipboard-check text-green-600 mr-2"></i>일괄 적용 결과</h3>
+            <button onclick="bankCloseBatchResult()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+          </div>
+          <div id="bankBatchResultBody" class="border border-gray-100 rounded-lg p-3 overflow-y-auto" style="flex:1; min-height:120px; max-height:60vh;"></div>
+          <div class="flex gap-2 justify-end mt-4">
+            <button onclick="bankCloseBatchResult()" class="btn-primary">확인</button>
+          </div>
+        </div>
+      </div>
+
       <div class="modal-overlay" id="transferModal">
         <div class="modal-box" style="width:640px; max-height:82vh; display:flex; flex-direction:column;">
           <div class="flex items-center justify-between mb-1">

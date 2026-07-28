@@ -410,6 +410,10 @@ taxInvoicesQueriesRouter.get('/monthly-eligible', async (c) => {
     const dateFrom = `${y}-${m}-01`
     const dateTo = `${y}-${m}-31`
 
+    // #581 형제 완전성: 실발행(POST /monthly-create)에 entity 필터를 넣었으므로 미리보기도
+    //   같은 집합을 보여야 한다(안 그러면 "미리보기 N건인데 발행은 M건" 불일치).
+    const efMonthly = entityFilter(c, 'o')
+
     // 월합산 대상 거래처의 해당 월 미발행 BILLED 주문
     const { results } = await c.env.DB.prepare(`
       SELECT c.id as client_id, c.client_name, c.business_registration_number,
@@ -425,9 +429,9 @@ taxInvoicesQueriesRouter.get('/monthly-eligible', async (c) => {
           SELECT tio.order_id FROM tax_invoice_orders tio
           JOIN tax_invoices ti ON tio.tax_invoice_id = ti.id
           WHERE ti.status != 'CANCELLED'
-        )
+        )${efMonthly.clause}
       ORDER BY c.client_name ASC, o.order_date ASC
-    `).bind(dateFrom, dateTo).all()
+    `).bind(dateFrom, dateTo, ...efMonthly.params).all()
 
     // 거래처별 그룹핑
     type MonthlyEligibleGroup = {

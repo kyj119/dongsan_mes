@@ -6,6 +6,7 @@ import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { BarobillSmsProvider } from '../services/barobillSms'
 import { getEntityCorpNum } from '../utils/entitySettings'
 import { BAROBILL_UNIT_COST_VAT_EXCL } from '../constants/barobillCodes'
+import { checkBulkLimit } from '../services/messageBulkLimit'
 import type { SMSMessage, ATSMessage } from '../services/barobillSms'
 export type { SMSMessage, ATSMessage }
 
@@ -1042,6 +1043,10 @@ kakaoRouter.post('/send-sms-bulk', async (c) => {
       return c.json({ success: false, error: '발송 대상이 없습니다.' }, 400)
     }
 
+    // #584 건수 상한 — target_type=clients면 전 거래처(수천 건)가 한 번에 나간다.
+    const smsBulkLimitErr = await checkBulkLimit(db, subject ? 'lms' : 'sms', messages.length)
+    if (smsBulkLimitErr) return c.json({ success: false, error: smsBulkLimitErr }, 400)
+
     const provider = await getKakaoProvider(c)
     if (!provider) {
       return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
@@ -1160,6 +1165,14 @@ kakaoRouter.post('/send-shipment-bulk', async (c) => {
     if (targets.length === 0) {
       return c.json({ success: true, data: { status: 'SKIPPED', reason: 'all_already_sent_or_merged', skipped: skippedDup } })
     }
+
+    // #584 건수 상한 — dedup 이후 실제 발송 건수 기준으로 판정한다.
+    const shipBulkLimitErr = await checkBulkLimit(
+      db,
+      channel === 'alimtalk' ? 'kakao' : (subject ? 'lms' : 'sms'),
+      targets.length
+    )
+    if (shipBulkLimitErr) return c.json({ success: false, error: shipBulkLimitErr }, 400)
 
     // 각 대상별 변수 치환
     const resolveMsg = (t: any): string => content
