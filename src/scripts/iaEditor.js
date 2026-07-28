@@ -692,10 +692,9 @@ function iaeRenderPanel() {
     + '<span class="text-xs font-semibold text-gray-500 flex-shrink-0">그룹 (' + f.groups.length + ')</span>'
     + '<div class="flex items-center gap-1">'
     + '<button id="iaeApplyAllBtn" class="text-[11px] px-2 py-0.5 rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50" title="현재 그룹의 마감·돔보·회전·파일배율을 모든 그룹에 적용(목표크기는 그룹별 유지)"><i class="fas fa-clone mr-1"></i>설정 전체적용</button>'
-    + '<button id="iaeBatchBtn" class="text-[11px] px-2 py-0.5 rounded-md bg-gray-800 text-white hover:bg-black" title="모든 그룹을 각 설정으로 가공 → 완료 후 ZIP 자동 다운로드"><i class="fas fa-layer-group mr-1"></i>전체 가공</button>'
+    // Phase 6: [전체 가공](배치 ZIP) 제거 — 패널 배치 큐가 담당한다.
     + '</div>'
     + '</div>'
-    + '<div id="iaeBatchResult" class="mb-2"></div>'
     + '<div class="space-y-2">';
   f.groups.forEach(function (g, i) {
     var gi = gis[i];
@@ -721,8 +720,6 @@ function iaeRenderPanel() {
   Array.prototype.forEach.call(panel.querySelectorAll('.iae-group'), function (el) {
     el.addEventListener('click', function () { iaeActiveGroup = parseInt(el.getAttribute('data-gi'), 10); iaeRenderPanel(); });
   });
-  var batchBtn = document.getElementById('iaeBatchBtn'); // ① 전체 가공
-  if (batchBtn) batchBtn.addEventListener('click', function () { iaeBatchProcess(f); });
   var applyAllBtn = document.getElementById('iaeApplyAllBtn'); // W4: 설정 전체적용
   if (applyAllBtn) applyAllBtn.addEventListener('click', function () { iaeApplyActiveToAll(f); });
   iaeRenderInspector(f);
@@ -984,14 +981,11 @@ function iaeRenderInspector(f) {
     + '<div class="text-sm font-semibold text-gray-700 mb-3">미리보기 <span class="text-xs font-normal text-gray-400">(웹 근사 · IA 실제 렌더는 연동 후)</span></div>'
     + '<div id="iaePreview" class="bg-gray-50 border border-gray-200 rounded-lg p-3 min-h-[200px] flex items-center justify-center"></div>'
     + '<div id="iaePreflight" class="mt-3"></div>'
-    // (§5.5) 주문 없이 이 그룹을 가공 EPS/JPG/DXF로 출력·다운로드 + ③ 실제 렌더 미리보기
-    + '<div class="border-t border-gray-100 pt-3 mt-3">'
-    + '<div class="flex items-center gap-2">'
-    + '<button id="iaePreviewBtn" class="px-3 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm whitespace-nowrap"><i class="fas fa-eye mr-1"></i>미리보기</button>'
-    + '<button id="iaeProcBtn" class="flex-1 px-3 py-2 rounded-md bg-gray-800 text-white hover:bg-black text-sm"><i class="fas fa-file-export mr-1"></i>가공해서 받기</button>'
-    + '</div>'
-    + '<div class="text-[11px] text-gray-400 mt-1">미리보기 = 실제 IA 렌더 JPG 1장(마감·돔보·회전 확인, 다운로드/이력 없음). 가공 = EPS·JPG·DXF 출력.</div>'
-    + '<div id="iaeProcResult" class="mt-2"></div>'
+    // Phase 6(2026-07-28): 단건 가공·미리보기 진입점 제거 — 가공은 일러 MES 패널이 담당.
+    //   ia-editor에도 [미리보기]·[가공해서 받기]가 있어 패널과 중복이었다.
+    //   이 인스펙터의 설정(마감·돔보·회전·목표크기)은 네스팅/모아찍기 배치에 계속 쓰이므로 유지.
+    + '<div class="border-t border-gray-100 pt-3 mt-3 text-[11px] text-gray-400">'
+    + '가공(EPS 출력)은 일러스트레이터 <b>MES 패널</b>에서 합니다. 이 화면은 <b>배치·네스팅</b> 전용입니다.'
     + '</div>'
     + '</div>'
     + '</div>';
@@ -1061,13 +1055,8 @@ function iaeRenderInspector(f) {
   // 저장 스케일 프리셋 — select 변경·프리셋 편집 바인딩
   iaeWireSaveScale(s, f);
 
-  // (§5.5) 가공해서 받기 — 현재 그룹 settings로 단일 가공 잡 제출·폴링·다운로드
-  var procBtn = document.getElementById('iaeProcBtn');
-  if (procBtn) procBtn.addEventListener('click', function () { iaeProcessGroup(f.id, group, iaeActiveGroup, s); });
-  // ③ 미리보기 — preview_only 잡(실제 렌더 JPG 1장, 이력/다운로드 없음)
-  var pvBtn = document.getElementById('iaePreviewBtn');
-  if (pvBtn) pvBtn.addEventListener('click', function () { iaePreviewGroup(f.id, group, iaeActiveGroup, s); });
-
+  // Phase 6: 단건 가공·미리보기 바인딩 제거(진입점과 함께 걷어냄 — 남기면 항상 null 인
+  //   dangling 참조가 되어 check:dom 회귀로 잡힌다).
   updatePv();
 }
 
@@ -1137,296 +1126,9 @@ function iaeAdvBody(s) {
   return out;
 }
 
-// 단일 그룹 가공 EPS 출력 (파일처리 탭). settings → finishing(4면 method+margin_cm)·target·trim·rotate90.
-function iaeProcessGroup(fid, group, gidx, s) {
-  var tw = Number(s.target_w) || 0, th = Number(s.target_h) || 0;
-  if (tw <= 0 || th <= 0) { iaeToast('목표 크기(W×H)를 입력하세요', 'error'); return; }
-  // ⑥ 비율 왜곡 강한 경고: 목표가 검출 종횡비와 >5% 다르면 진행 전 확인
-  var dr = iaeDistortRatio(tw, th, (group && group.width_mm) ? group.width_mm / 10 : 0, (group && group.height_mm) ? group.height_mm / 10 : 0);
-  if (dr > 0.05 && window.showConfirm) {
-    window.showConfirm('목표 크기가 원본 비율과 약 ' + Math.round(dr * 100) + '% 달라 잘림/늘어남이 발생할 수 있습니다.\n그대로 가공할까요?',
-      { title: '비율 왜곡 경고', confirmText: '가공', danger: true }).then(function (ok) { if (ok) iaeProcessGroupProceed(fid, group, gidx, s); });
-    return;
-  }
-  iaeProcessGroupProceed(fid, group, gidx, s);
-}
-function iaeProcessGroupProceed(fid, group, gidx, s) {
-  var tw = Number(s.target_w) || 0, th = Number(s.target_h) || 0;
-  var fin = {};
-  [['top', s.fin_top], ['bottom', s.fin_bottom], ['left', s.fin_left], ['right', s.fin_right]].forEach(function (p) {
-    if (p[1]) fin[p[0]] = { method: p[1], margin_cm: iaeMarginOf(p[1]) };
-  });
-  var body = {
-    analysis_id: fid, group_index: gidx,
-    target_w_cm: tw, target_h_cm: th,
-    finishing: fin, trim: !!s.trim, rotate90: !!s.rotate90,
-    rotation: (s.rotate90 ? 90 : 0),                       // ⑥ 워커가 rotation으로 정규화 (rotate90도 호환)
-    scale_factor: iaeScaleFromPct(s.save_scale_pct)        // 저장 스케일: 출력/저장 = RIP 배율(100%→1). real_size 미전송=축소저장(에이전트가 목표를 ÷sf로 리사이즈)
-  };
-  Object.assign(body, iaeAdvBody(s)); // R3a-2: 고급 후가공(offset/punching/annotation) — 입력 있을 때만
-  var resHost = document.getElementById('iaeProcResult');
-  var btn = document.getElementById('iaeProcBtn');
-  var namePrefix = '가공 ' + (group && group.name ? group.name : ('#' + gidx));
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>요청 중…'; }
-  if (resHost) resHost.innerHTML = '<div class="text-xs text-blue-600"><i class="fas fa-spinner fa-spin mr-1"></i>가공 요청 중…</div>';
-
-  iaeStopRenderPoll();
-  axios.post('/api/workbench/process', body).then(function (res) {
-    var d = res.data && res.data.data;
-    if (!d || d.id == null) throw new Error('가공 요청 응답 오류');
-    iaeProcPoll(d.id, resHost, btn, namePrefix);
-  }).catch(function (err) {
-    var msg = (err.response && err.response.data && err.response.data.error) || err.message || '가공 요청 실패';
-    iaeToast(msg, 'error');
-    if (resHost) resHost.innerHTML = '';
-    iaeProcResetBtn(btn);
-  });
-}
-function iaeProcResetBtn(btn) {
-  btn = btn || document.getElementById('iaeProcBtn');
-  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-file-export mr-1"></i>가공해서 받기'; }
-}
-function iaePreviewResetBtn(btn) {
-  btn = btn || document.getElementById('iaePreviewBtn');
-  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-eye mr-1"></i>미리보기'; }
-}
-// ③ 실제 렌더 미리보기 — preview_only 잡(EPS/DXF 스킵, JPG만). 결과 JPG를 #iaePreview 패널 + 라이트박스로.
-function iaePreviewGroup(fid, group, gidx, s) {
-  var tw = Number(s.target_w) || 0, th = Number(s.target_h) || 0;
-  if (tw <= 0 || th <= 0) { iaeToast('목표 크기(W×H)를 입력하세요', 'error'); return; }
-  var fin = {};
-  [['top', s.fin_top], ['bottom', s.fin_bottom], ['left', s.fin_left], ['right', s.fin_right]].forEach(function (p) {
-    if (p[1]) fin[p[0]] = { method: p[1], margin_cm: iaeMarginOf(p[1]) };
-  });
-  var body = {
-    analysis_id: fid, group_index: gidx, preview_only: true,
-    target_w_cm: tw, target_h_cm: th,
-    finishing: fin, trim: !!s.trim, rotate90: !!s.rotate90,
-    rotation: (s.rotate90 ? 90 : 0),
-    scale_factor: iaeScaleFromPct(s.save_scale_pct)        // 저장 스케일(미리보기도 실렌더 반영). real_size 미전송=축소저장
-  };
-  Object.assign(body, iaeAdvBody(s)); // R3a-2: 미리보기에도 고급 후가공 반영(실렌더 확인)
-  var pv = document.getElementById('iaePreview');
-  var btn = document.getElementById('iaePreviewBtn');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>렌더 중…'; }
-  if (pv) pv.innerHTML = '<div class="text-xs text-blue-600 text-center"><i class="fas fa-spinner fa-spin mr-1"></i>실제 렌더 미리보기 생성 중… (최대 2분)</div>';
-
-  iaeStopRenderPoll();
-  axios.post('/api/workbench/process', body).then(function (res) {
-    var d = res.data && res.data.data;
-    if (!d || d.id == null) throw new Error('미리보기 요청 응답 오류');
-    iaePollRender(function () {
-      return axios.get('/api/workbench/process/' + d.id).then(function (r2) {
-        var dd = (r2.data && r2.data.data) || {};
-        var rj = {};
-        try { rj = dd.result_json ? (typeof dd.result_json === 'string' ? JSON.parse(dd.result_json) : dd.result_json) : {}; } catch (_e) { rj = {}; }
-        if (dd.status === 'done') return { done: true, result: rj };
-        if (dd.status === 'error') return { error: true, msg: dd.error_message || '미리보기 실패' };
-        return null;
-      });
-    }, function (result) {
-      iaePreviewResetBtn(btn);
-      var jpg = result && result.jpg_base64;
-      if (pv) {
-        if (jpg) {
-          pv.innerHTML = '<div class="w-full"><img id="iaePreviewRendered" src="data:image/jpeg;base64,' + jpg + '" class="w-full max-h-72 object-contain bg-white border border-gray-200 rounded cursor-zoom-in" title="클릭해 확대">'
-            + '<div class="text-center text-[11px] text-green-600 mt-1"><i class="fas fa-circle-check mr-1"></i>실제 렌더(마감·돔보·회전 반영)</div></div>';
-          var img = document.getElementById('iaePreviewRendered');
-          if (img) img.addEventListener('click', function () { iaeLightbox('data:image/jpeg;base64,' + jpg); });
-        } else { pv.innerHTML = '<div class="text-xs text-gray-400 text-center">미리보기 이미지를 받지 못했습니다</div>'; }
-      }
-      iaeToast('미리보기 완료', 'success');
-    }, function (msg) {
-      iaePreviewResetBtn(btn);
-      if (pv) pv.innerHTML = '<div class="text-xs text-red-500 text-center"><i class="fas fa-triangle-exclamation mr-1"></i>' + iaeEscape(msg) + '</div>';
-      iaeToast(msg, 'error');
-    });
-  }).catch(function (err) {
-    var msg = (err.response && err.response.data && err.response.data.error) || err.message || '미리보기 요청 실패';
-    iaeToast(msg, 'error');
-    iaePreviewResetBtn(btn);
-    if (pv) pv.innerHTML = '';
-  });
-}
-// 간이 라이트박스 (미리보기 확대) — 인증 불필요 data URL
-function iaeLightbox(src) {
-  var prev = document.getElementById('iaeLightbox'); if (prev) prev.remove();
-  var ov = document.createElement('div');
-  ov.id = 'iaeLightbox';
-  ov.className = 'fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6 cursor-zoom-out';
-  ov.innerHTML = '<img src="' + src + '" class="max-w-full max-h-full object-contain rounded shadow-2xl">';
-  ov.addEventListener('click', function () { ov.remove(); });
-  document.body.appendChild(ov);
-}
 // ② 경과시간 표시 — 진행 메시지에 1초 간격 카운터. iaeStopRenderPoll 시 함께 정리되도록 토큰 공유.
 var iaeProcElapsedTimer = null, iaeProcElapsedStart = 0;
 function iaeProcStopElapsed() { if (iaeProcElapsedTimer) { clearInterval(iaeProcElapsedTimer); iaeProcElapsedTimer = null; } }
-function iaeProcStartElapsed(resHost, label) {
-  iaeProcStopElapsed();
-  iaeProcElapsedStart = Date.now();
-  var paint = function () {
-    var el = resHost && resHost.querySelector('.iae-proc-elapsed');
-    if (el) el.textContent = ' · ' + Math.round((Date.now() - iaeProcElapsedStart) / 1000) + '초 경과';
-  };
-  if (resHost) resHost.innerHTML = '<div class="text-xs text-blue-600"><i class="fas fa-spinner fa-spin mr-1"></i>' + label + ' (최대 2분)<span class="iae-proc-elapsed"></span></div>';
-  paint();
-  iaeProcElapsedTimer = setInterval(paint, 1000);
-}
-function iaeProcPoll(jobId, resHost, btn, namePrefix) {
-  iaeProcStartElapsed(resHost, '가공 중…');
-  iaePollRender(function () {
-    return axios.get('/api/workbench/process/' + jobId).then(function (res) {
-      var d = (res.data && res.data.data) || {};
-      var rj = {};
-      try { rj = d.result_json ? (typeof d.result_json === 'string' ? JSON.parse(d.result_json) : d.result_json) : {}; } catch (_e) { rj = {}; }
-      if (d.status === 'done') return { done: true, result: rj };
-      if (d.status === 'error') return { error: true, msg: d.error_message || '가공 실패' };
-      return null; // queued | rendering
-    });
-  }, function (result) {
-    iaeProcStopElapsed();
-    if (resHost) {
-      resHost.innerHTML = iaeRenderResultHTML(result, '/api/workbench/process/' + jobId + '/download', namePrefix);
-      iaeWireResultButtons(resHost, '/api/workbench/process/' + jobId + '/download', namePrefix, result);
-    }
-    iaeProcResetBtn(btn);
-    iaeToast('가공 EPS 출력 완료', 'success');
-    iaeLoadHistory(); // ③ 완료 잡을 출력 이력 보드에 합류
-  }, function (msg) {
-    iaeProcStopElapsed();
-    // ② 재시도 버튼 — error|timeout 시 /process/:id/retry → 재폴링
-    if (resHost) {
-      resHost.innerHTML = '<div class="border border-red-200 bg-red-50 rounded-md p-2">'
-        + '<div class="text-xs text-red-600 mb-1.5"><i class="fas fa-triangle-exclamation mr-1"></i>' + iaeEscape(msg) + '</div>'
-        + '<button class="iae-proc-retry px-2 py-1 rounded bg-gray-800 text-white text-xs hover:bg-black"><i class="fas fa-rotate-right mr-1"></i>재시도</button></div>';
-      var rb = resHost.querySelector('.iae-proc-retry');
-      if (rb) rb.addEventListener('click', function () { iaeProcRetry(jobId, resHost, btn, namePrefix); });
-    }
-    iaeToast(msg, 'error');
-    iaeProcResetBtn(btn);
-    iaeLoadHistory(); // 실패 잡도 이력에 (재시도 추적)
-  });
-}
-// ② 가공 잡 재시도 — POST /process/:id/retry(error|rendering→queued) → 재폴링
-function iaeProcRetry(jobId, resHost, btn, namePrefix) {
-  if (resHost) resHost.innerHTML = '<div class="text-xs text-blue-600"><i class="fas fa-spinner fa-spin mr-1"></i>재시도 요청 중…</div>';
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>재시도…'; }
-  iaeStopRenderPoll();
-  axios.post('/api/workbench/process/' + jobId + '/retry').then(function () {
-    iaeProcPoll(jobId, resHost, btn, namePrefix);
-  }).catch(function (err) {
-    var msg = (err.response && err.response.data && err.response.data.error) || err.message || '재시도 실패';
-    iaeToast(msg, 'error');
-    iaeProcResetBtn(btn);
-    if (resHost) resHost.innerHTML = '<div class="text-xs text-red-500">' + iaeEscape(msg) + '</div>';
-  });
-}
-
-// ── ① 다중 그룹 일괄 가공 + ZIP ────────────────────────────────────
-// 모든 그룹을 각 settings(iaeGetSettings)로 POST /process 다중 큐잉 → 잡 id 폴링(진행 N/M) → 완료 후 ZIP.
-// 각 그룹 settings에 목표크기 없으면 검출 크기로 기본 설정(가공 전제). fflate zipSync(cardExpenses.js 패턴).
-var iaeBatchState = null; // {jobs:[{gi,name,id,status,result}], host}
-function iaeProcessBody(fid, gidx, s) {
-  var fin = {};
-  [['top', s.fin_top], ['bottom', s.fin_bottom], ['left', s.fin_left], ['right', s.fin_right]].forEach(function (p) {
-    if (p[1]) fin[p[0]] = { method: p[1], margin_cm: iaeMarginOf(p[1]) };
-  });
-  var body = {
-    analysis_id: fid, group_index: gidx,
-    target_w_cm: Number(s.target_w) || 0, target_h_cm: Number(s.target_h) || 0,
-    finishing: fin, trim: !!s.trim, rotate90: !!s.rotate90,
-    rotation: (s.rotate90 ? 90 : 0),
-    scale_factor: iaeScaleFromPct(s.save_scale_pct)        // 저장 스케일(일괄 가공도 반영). real_size 미전송=축소저장
-  };
-  Object.assign(body, iaeAdvBody(s)); // R3a-2: 일괄 가공에도 고급 후가공 반영
-  return body;
-}
-function iaeBatchProcess(f) {
-  if (!f || !f.groups || !f.groups.length) { iaeToast('가공할 그룹이 없습니다', 'error'); return; }
-  var host = document.getElementById('iaeBatchResult');
-  var gis = f.groups.map(function (g, i) { return (g.index != null) ? g.index : i; });
-  var jobs = [];
-  // 각 그룹 settings 확보(목표크기 없으면 검출 크기로 기본). 크기 0이면 스킵(가공 불가).
-  var skipped = 0;
-  f.groups.forEach(function (g, i) {
-    var gi = gis[i];
-    var s = iaeGetSettings(f.id, g, gi);
-    if (!(Number(s.target_w) > 0) && g.width_mm) s.target_w = Math.round(g.width_mm) / 10;
-    if (!(Number(s.target_h) > 0) && g.height_mm) s.target_h = Math.round(g.height_mm) / 10;
-    if (!(Number(s.target_w) > 0) || !(Number(s.target_h) > 0)) { skipped++; return; }
-    jobs.push({ gi: gi, name: (g.name || ('#' + gi)), s: s, id: null, status: 'queued', result: null });
-  });
-  if (!jobs.length) { iaeToast('가공 가능한 그룹이 없습니다 (크기 미상)', 'error'); return; }
-  iaeSaveSettings();
-  iaeBatchState = { jobs: jobs, fid: f.id };
-  var btn = document.getElementById('iaeBatchBtn');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>가공 중'; }
-  iaeBatchRender('submit');
-  // 순차 제출(D1 부담·레이트리밋 회피) → 폴링은 병렬
-  var chain = Promise.resolve();
-  jobs.forEach(function (job) {
-    chain = chain.then(function () {
-      return axios.post('/api/workbench/process', iaeProcessBody(f.id, job.gi, job.s)).then(function (res) {
-        var d = res.data && res.data.data;
-        if (d && d.id != null) { job.id = d.id; job.status = 'rendering'; }
-        else { job.status = 'error'; job.error = '요청 실패'; }
-      }).catch(function (err) {
-        job.status = 'error'; job.error = (err.response && err.response.data && err.response.data.error) || '요청 실패';
-      });
-    });
-  });
-  chain.then(function () { iaeBatchRender('poll'); iaeBatchPoll(); });
-}
-function iaeBatchPoll() {
-  var st = iaeBatchState; if (!st) return;
-  var pending = st.jobs.filter(function (j) { return j.id != null && (j.status === 'queued' || j.status === 'rendering'); });
-  if (!pending.length) { iaeBatchFinish(); return; }
-  Promise.all(pending.map(function (job) {
-    return axios.get('/api/workbench/process/' + job.id).then(function (res) {
-      var d = (res.data && res.data.data) || {};
-      if (d.status === 'done') { job.status = 'done'; try { job.result = d.result_json ? (typeof d.result_json === 'string' ? JSON.parse(d.result_json) : d.result_json) : {}; } catch (_e) { job.result = {}; } }
-      else if (d.status === 'error') { job.status = 'error'; job.error = d.error_message || '가공 실패'; }
-    }).catch(function () { /* 일시 실패는 다음 폴에서 재시도 */ });
-  })).then(function () {
-    iaeBatchRender('poll');
-    var stillPending = st.jobs.some(function (j) { return j.id != null && (j.status === 'queued' || j.status === 'rendering'); });
-    if (stillPending) { st.timer = setTimeout(iaeBatchPoll, 2000); }
-    else iaeBatchFinish();
-  });
-}
-function iaeBatchFinish() {
-  var st = iaeBatchState; if (!st) return;
-  if (st.timer) { clearTimeout(st.timer); st.timer = null; }
-  var btn = document.getElementById('iaeBatchBtn');
-  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-layer-group mr-1"></i>전체 가공'; }
-  iaeBatchRender('done');
-  var done = st.jobs.filter(function (j) { return j.status === 'done'; }).length;
-  iaeToast('일괄 가공 완료: ' + done + '/' + st.jobs.length, done === st.jobs.length ? 'success' : 'warning');
-  iaeLoadHistory();
-  // W4: 완료 후 ZIP 자동 다운로드(한번에 받기). 결과 있으면 1회 자동 실행, ZIP 버튼은 폴백으로 유지.
-  if (done > 0 && !st.zipped) { st.zipped = true; iaeBatchZip(); }
-}
-function iaeBatchRender(phase) {
-  var host = document.getElementById('iaeBatchResult'); var st = iaeBatchState;
-  if (!host || !st) return;
-  var done = st.jobs.filter(function (j) { return j.status === 'done'; }).length;
-  var errs = st.jobs.filter(function (j) { return j.status === 'error'; }).length;
-  var total = st.jobs.length;
-  var html = '<div class="border border-gray-200 rounded-md p-2 bg-gray-50">';
-  if (phase !== 'done') {
-    html += '<div class="text-[11px] text-blue-600"><i class="fas fa-spinner fa-spin mr-1"></i>일괄 가공 ' + done + '/' + total + ' 완료'
-      + (errs ? ' · <span class="text-red-500">실패 ' + errs + '</span>' : '') + '</div>';
-  } else {
-    html += '<div class="text-[11px] font-semibold ' + (errs ? 'text-amber-600' : 'text-green-700') + ' mb-1.5">'
-      + '<i class="fas fa-circle-check mr-1"></i>일괄 가공 ' + done + '/' + total + ' 완료'
-      + (errs ? ' · 실패 ' + errs : '') + '</div>';
-    if (done > 0) html += '<button id="iaeBatchZip" class="w-full px-2 py-1 rounded bg-gray-800 text-white text-[11px] hover:bg-black"><i class="fas fa-file-zipper mr-1"></i>ZIP 받기 (' + done + '건)</button>';
-  }
-  html += '</div>';
-  host.innerHTML = html;
-  var zb = document.getElementById('iaeBatchZip');
-  if (zb) zb.addEventListener('click', iaeBatchZip);
-}
 // fflate 동적 로드(cardExpenses.js 동일 CDN). iae 스코프로 중복정의 회피.
 function iaeLoadFflate() {
   return new Promise(function (resolve, reject) {
@@ -1441,52 +1143,6 @@ function iaeLoadFflate() {
 function iaeZipSafeName(s) {
   return String(s == null ? '' : s).replace(/[\/\\:*?"<>|\x00-\x1f]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 60) || '_';
 }
-// 완료 잡들의 EPS/JPG/DXF blob을 받아 zipSync로 묶어 다운로드. 파일명 {그룹명}_{사이즈cm}.{kind}.
-function iaeBatchZip() {
-  var st = iaeBatchState; if (!st) return;
-  var doneJobs = st.jobs.filter(function (j) { return j.status === 'done' && j.id != null; });
-  if (!doneJobs.length) { iaeToast('받을 결과가 없습니다', 'error'); return; }
-  var zb = document.getElementById('iaeBatchZip');
-  if (zb) { zb.disabled = true; zb.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>ZIP 생성 중…'; }
-  var kinds = ['eps', 'jpg', 'dxf'];
-  iaeLoadFflate().then(function (fflate) {
-    var files = {};
-    var tasks = [];
-    doneJobs.forEach(function (job) {
-      var r = job.result || {};
-      // R2-3: {yyyymmdd}_{사이즈cm}_{그룹명} (zip 내 파일명 통일)
-      var base = iaeDownloadBase({ w_cm: r.width_cm, h_cm: r.height_cm, name: job.name });
-      kinds.forEach(function (kind) {
-        // result_json 의 {eps_r2,jpg_r2,dxf_r2} 존재 여부로 거름 (워커 다운로드 키와 동일 소스)
-        if (!r[kind + '_r2']) return;
-        tasks.push(axios.get('/api/workbench/process/' + job.id + '/download?kind=' + kind, { responseType: 'arraybuffer' })
-          .then(function (res) { files[base + '.' + kind] = new Uint8Array(res.data); })
-          .catch(function () { /* 해당 kind 없음 — 스킵 */ }));
-      });
-    });
-    return Promise.all(tasks).then(function () {
-      var names = Object.keys(files);
-      if (!names.length) { iaeToast('다운로드할 파일을 받지 못했습니다', 'error'); if (zb) { zb.disabled = false; zb.innerHTML = '<i class="fas fa-file-zipper mr-1"></i>ZIP 받기'; } return; }
-      var zipped = fflate.zipSync(files, { level: 6 });
-      var blob = new Blob([zipped], { type: 'application/zip' });
-      var a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'IA가공_' + iaeKstYmd() + '.zip';
-      document.body.appendChild(a); a.click();
-      setTimeout(function () { try { URL.revokeObjectURL(a.href); } catch (_e) {} a.remove(); }, 1000);
-      iaeToast(names.length + '개 파일 ZIP 다운로드', 'success');
-      if (zb) { zb.disabled = false; zb.innerHTML = '<i class="fas fa-file-zipper mr-1"></i>ZIP 받기 (' + doneJobs.length + '건)'; }
-    });
-  }).catch(function (err) {
-    iaeToast(err.message || 'ZIP 생성 실패', 'error');
-    if (zb) { zb.disabled = false; zb.innerHTML = '<i class="fas fa-file-zipper mr-1"></i>ZIP 받기'; }
-  });
-}
-
-// ── ③ 가공 이력 보드 (영속 재다운로드) — GET /api/workbench/process?limit=12 ──
-// ia_process_jobs 최근 N건(서버 entity 격리·created_at desc). 새로고침/탭전환에도 보존(서버 조회).
-// 카드별: 상태 뱃지·생성시각·크기·jpg 썸네일 + [EPS][JPG][DXF] 재다운로드(기존 download 엔드포인트 재사용).
-var iaeHistLoading = false;
 function iaeHistHost() {
   // 파일처리 뷰에 이력 host 1회 주입(페이지 템플릿 무수정 — 팀A 스코프=iaEditor.js 단독)
   var host = document.getElementById('iaeHistory');
@@ -2436,7 +2092,8 @@ function iaeCanMultiRender(phase) {
   var zb = document.getElementById('iaeCanMultiZip');
   if (zb) zb.addEventListener('click', iaeCanMultiZip);
 }
-// 완료 판들의 EPS/JPG/DXF blob을 받아 zipSync로 묶어 다운로드(iaeBatchZip 패턴). 파일명 {yyyymmdd}_{사이즈}_{이름}_{n}.{kind}.
+// 완료 판들의 EPS/JPG/DXF blob을 받아 zipSync로 묶어 다운로드. 파일명 {yyyymmdd}_{사이즈}_{이름}_{n}.{kind}.
+// (Phase 6 이후 ZIP 경로는 이 함수 하나 — iaeLoadFflate·iaeZipSafeName 를 공유한다)
 function iaeCanMultiZip() {
   var st = iaeCanMultiState; if (!st) return;
   var doneJobs = st.jobs.filter(function (j) { return j.status === 'done' && j.id != null; });
