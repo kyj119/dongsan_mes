@@ -357,7 +357,8 @@ function iaeIntakeToggle() {
 function iaeIntakeLoad() {
   var p = document.getElementById('iaeIntakePanel'); if (!p) return;
   p.innerHTML = '<div class="text-xs text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>대기물 불러오는 중…</div>';
-  axios.get('/api/workbench/intakes', { params: { status: 'waiting', limit: 100 } }).then(function (res) {
+  // mode=impose,both — ia-editor는 '모아찍기' 용도만 다룬다(단건은 주문서 트레이 담당, 2026-07-28).
+  axios.get('/api/workbench/intakes', { params: { status: 'waiting', limit: 100, mode: 'impose,both' } }).then(function (res) {
     var rows = (res.data && res.data.data) || [];
     var head = '<div class="flex items-center justify-between mb-2">'
       + '<div class="text-xs text-gray-500"><b>가공 대기물</b> · 일러 MES가공 등록분 (waiting)</div>'

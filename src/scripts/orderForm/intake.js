@@ -69,7 +69,9 @@
                 }
                 badge.innerHTML = '';
                 _ofIntakeCache = [];
-                axios.get('/api/workbench/intakes', { params: { status: 'waiting', limit: 200, lite: 1 } })
+                // mode=single,both — 주문서 트레이는 '단건' 용도만 다룬다. 모아찍기용은 ia-editor 담당이라
+                // 여기 뜨면 주문 라인으로 불러올 수 없는 조각이 목록을 채우는 노이즈가 된다(2026-07-28).
+                axios.get('/api/workbench/intakes', { params: { status: 'waiting', limit: 200, lite: 1, mode: 'single,both' } })
                     .then(function(res) {
                         var rows = (res.data && res.data.data) || [];
                         if (!rows.length) return;

@@ -109,6 +109,12 @@
       });
     }
 
+    // 용도 라디오 변경 → 후가공 게이트·버튼 라벨 즉시 반영
+    (function bindModeRadios() {
+      var rs = document.getElementsByName('mode');
+      for (var i = 0; i < rs.length; i++) rs[i].addEventListener('change', function () { applyModeUi(); });
+    })();
+
     var elWorker = $('worker'), elSaved = $('saved'), elVer = $('ver');
     var elMeas = $('meas'), elBtnMeasure = $('btnMeasure');
     var elQty = $('qty'), elScale = $('scale'), elPreset = $('preset');
@@ -303,6 +309,7 @@
       restoreSettings();
       updateClientHit();
       updateAnnotGates();
+      applyModeUi(); // 직전값에 mode가 없어도 라벨·게이트가 현재 선택과 맞도록 무조건 1회
     }
     (function loadConfig() {
       var text = cepReadUtf8(CONFIG_PATH);
@@ -397,7 +404,40 @@
     }
     function setMode(v) {
       var rs = document.getElementsByName('mode');
-      for (var i = 0; i < rs.length; i++) rs[i].checked = (rs[i].value === v);
+      var hit = false;
+      for (var i = 0; i < rs.length; i++) { rs[i].checked = (rs[i].value === v); if (rs[i].checked) hit = true; }
+      // 레거시 'both'(선택지 제거됨)는 단건으로 흡수 — 라디오가 전부 해제된 채 남지 않게.
+      if (!hit) { for (var j = 0; j < rs.length; j++) if (rs[j].value === 'single') rs[j].checked = true; }
+      applyModeUi();
+    }
+
+    // 용도에 따른 UI 게이트(2026-07-28): 모아찍기는 후가공이 없다.
+    //   host.jsx:332 `if (mode !== 'impose')` — 모아찍기는 마감 여백·EPS를 아예 만들지 않고
+    //   원본 크기 work.ai만 저장한다. 그런데 폼에서는 마감·펀칭 입력이 열려 있어
+    //   "후가공을 넣었는데 안 먹었다"는 오해가 실제로 발생했다(2026-07-28). 입력 자체를 닫는다.
+    function applyModeUi() {
+      var impose = (modeValue() === 'impose');
+      var finTab = null, finPage = null;
+      for (var a = 0; a < tabs.length; a++) if (tabs[a].getAttribute('data-tab') === 'fin') finTab = tabs[a];
+      for (var b = 0; b < pages.length; b++) if (pages[b].getAttribute('data-page') === 'fin') finPage = pages[b];
+      if (finPage) {
+        var ins = finPage.querySelectorAll('input, select, textarea, button');
+        for (var i = 0; i < ins.length; i++) ins[i].disabled = impose;
+        finPage.style.opacity = impose ? '0.45' : '';
+      }
+      if (finTab) {
+        finTab.disabled = impose;
+        finTab.title = impose ? '모아찍기 용도에는 후가공이 적용되지 않습니다 (판에서 처리)' : '';
+        finTab.style.opacity = impose ? '0.45' : '';
+        // 후가공 탭을 보고 있는 상태에서 모아찍기로 바꾸면 가공 탭으로 되돌린다(빈 화면 방지).
+        if (impose && finTab.className.indexOf('active') >= 0) {
+          for (var c2 = 0; c2 < tabs.length; c2++) tabs[c2].className = (tabs[c2].getAttribute('data-tab') === 'proc') ? 'tab active' : 'tab';
+          for (var d = 0; d < pages.length; d++) pages[d].className = (pages[d].getAttribute('data-page') === 'proc') ? 'tabpage' : 'tabpage hidden';
+        }
+      }
+      var hint = document.getElementById('modeHint');
+      if (hint) hint.textContent = impose ? '후가공 없음 · work.ai만 추출 → ia-editor' : '';
+      if (elBtnProcess) elBtnProcess.textContent = impose ? '모아찍기 추출' : '단건 가공';
     }
 
     // ── 가공 실행 ──

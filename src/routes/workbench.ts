@@ -1372,6 +1372,18 @@ workbenchRouter.get('/intakes', async (c) => {
     // 거래처 필터 시 '미지정'(디자이너 미입력)은 항상 노출 — 전멸 방지(D2)
     if (client) { where += ` AND (designer_intakes.client_name LIKE ? OR designer_intakes.client_name = '미지정')`; params.push(`%${client}%`) }
     if (worker) { where += ` AND designer_intakes.worker_name LIKE ?`; params.push(`%${worker}%`) }
+    // 용도 필터(2026-07-28): 단건=주문서 트레이, 모아찍기=ia-editor 로 목적지 분리.
+    //   미지정/`all` = 전체 → 기존 호출자 비파괴(하위호환). 콤마 다중 허용.
+    //   ⚠️ 레거시 'both'는 양쪽 호출 모두에 포함시켜야 어느 목록에서도 사라지지 않는다
+    //     (패널 폼에서는 제거했지만 과거 레코드 보호. prod 0건이나 방어).
+    const modeQ = (c.req.query('mode') || '').trim()
+    if (modeQ && modeQ !== 'all') {
+      const modes = modeQ.split(',').map((s) => s.trim()).filter((s) => ['single', 'impose', 'both'].includes(s))
+      if (modes.length) {
+        where += ` AND designer_intakes.mode IN (${modes.map(() => '?').join(',')})`
+        params.push(...modes)
+      }
+    }
 
     if (lite) {
       const { results } = await c.env.DB.prepare(`
