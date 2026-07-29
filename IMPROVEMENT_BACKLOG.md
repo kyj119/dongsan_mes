@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-07-29T09:17:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-07-29T15:19:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -26,6 +26,16 @@
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, 2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그 이관: 306KB→80KB, **2026-07-27T23:00 7차 트림 — 사이클 로그 39건 중 31건 이관(최근 8건=전 Area 1바퀴+2만 유지): 196KB→63KB**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 **최근 8사이클 로그**(전 Area 1바퀴 커버 = 직전 사이클 diff 판단에 필요한 최소분) + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 > ↳ **9차 트림 (2026-07-28, 자동)**: 사이클 로그 13건 → 8건 유지, 5건 이관 (82KB → 트림 후 아래 참조).
 > ↳ **8차 트림 (2026-07-27, 자동)**: 사이클 로그 9건 → 8건 유지, 1건 이관 (66KB → 트림 후 아래 참조).
+
+> **Area 5 보안 (2026-07-29T15:19):**
+> - **방법**: `git fetch origin main`(forced-update, HEAD `f25e6fb` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 5 **46회차** — 직전 Area5(`8604557`, 07-28T03:35, 45회차) 이후 `git log 5733bbc..HEAD -- src/routes src/scripts migrations`는 **10커밋**(orders/update.ts 카드 재매핑 로직 변경 포함 ORDER BY tie-break 전역 완결 70파일 + items.ts 그룹 우선순위 신규 엔드포인트 1개 + 자재 마스터 데이터 정정 다수, 나머지 45커밋은 IA 에디터 통합/모아찍기 CEP 패널(`IllustratorAutomat/**`)로 웹 라우트·스크립트·마이그 범위 밖). 에이전트 위임 없이 인라인 수행(과다 위임 억제 정책 — 신선 churn이 작아 정독이 더 빠름).
+> - **필수 표준 스캔 전부 clean**: secret fallback grep(`fax.ts` 기존 FP만) · 기본비밀번호 리터럴 0 · 마이그 번호 중복(기존 5쌍 `0327/0412/0416/0420/0453`만, 신규 0480~0489 정상) · `entity-audit.mjs`(127파일·SELECT60·통과60·누락0) · `tsc --noEmit` 0 · `.github/workflows` 변경 0.
+> - **authMiddleware recursive 스캔**: 미적용 후보 7개(`publicUnsubscribe.ts`·`orders/helpers.ts`·`payroll/shared.ts`·`cron.ts`·`messagesAd.ts`·`hrSelf.ts`·`taxInvoices/helpers.ts`) 전부 기존 FP 클래스로 확인 — `publicUnsubscribe.ts`는 정보통신망법 §50⑧(무료 수신거부, 무인증 설계 명시) + rate limit(`index.tsx:262` 분당 20회) 확인, `messagesAd.ts`는 barrel 서브라우터(부모 `messages.ts:120` `authMiddleware+requireRole('ADMIN','MANAGER')`가 선적용 + 자체 `requireRole('ADMIN')`로 재차 좁힘, 완전 안전) · `orders/helpers.ts`/`payroll/shared.ts`/`taxInvoices/helpers.ts`는 `Map.get(` false-positive · `cron.ts`는 `agentKeyMiddleware`(X-Agent-Key) 적용 · `hrSelf.ts`는 scoped-token 설계.
+> - **🔍 신규기능 심층 감사 — 광고성 문자 컴플라이언스(0479, messagesAd.ts/publicUnsubscribe.ts/messageCompliance.ts/messageBulkLimit.ts)**: 직전 Area5(45회차) 이후 신설된 기능이라 보안 렌즈 최초 적용. 전 경로 직접 Read로 재검증 — ① `messagesAd.ts` 전 엔드포인트(`/send`·`/preview`·`/banned-words`·`/opt-outs`) `requireRole('ADMIN')` 게이트, IN절 80청크 바인드, 파라미터화 SQL(문자열 삽입 0) ② `publicUnsubscribe.ts`(무인증 공개 페이지) 토큰 `crypto.randomUUID()` 128bit + `UNIQUE(phone)` 인덱스 멱등 + 응답에 `maskPhone()`만 노출(전체번호 미노출) + rate limit 확인 ③ `messagesAd.js` 프론트 렌더 전수(`client_name`/`phone`/`word`) `escapeHtml` 일관 적용, XSS 0 ④ entity_id 미적용은 라우터 주석(`messagesAd.ts:66-68`)·마이그 주석 양쪽에 "거래처 3사 공유 자산 + 수신거부는 번호기준 전사 적용" 설계 근거 명시(FP클래스⑤와 다른 축 — 애초 무-entity 설계) ⑤ `items.ts PUT /groups/:groupName/priority`(신규, 521f047) — `requireRole('ADMIN','MANAGER')` + 그룹 소속 검증(요청 id가 실제 그 그룹 품목인지 확인, 임의 품목 조작 차단) + D1 40-청크 배치. **net-new 보안 이슈 0** — 기존 open #585·#586·#587(Area3 46회차 발견, UX/기능 범주)과 겹치지 않는 독립 확인이며 셋 다 현재도 코드상 유효함을 재확인(`#585` fail 식별 불가·`#586` oninput 부재·`#587` 검색창 부재 — 전부 fixed-in-tree 아님, 재오픈 불요).
+> - **backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **3건**(#585·#586·#587, 변동 없음). `search_issues(reason:completed)` **510** · `reason:not_planned` **4**(rejected 6 중, 변동 없음 확인) — 전부 캐시와 일치.
+> - **🧬 SKILL 강화 없음** — 신규기능(광고 컴플라이언스) 보안 심층감사는 처음이었으나 기존 카탈로그(barrel 라우터 FP·scoped-token·rate-limit 전역등록·entity_id 없는 전역설계 FP클래스⑤)로 전부 판정 가능했음. 새 취약점 클래스 없음.
+> - 신규 이슈 0건, 자동수정 0건, done-sync: new 3·done 510·rejected 6. 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-07-29T09:17):**
 > - **방법**: `git fetch origin main`(forced-update, HEAD `5733bbc` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 4 **47회차** — 직전 Area4(`1921e7ef`, 07-27T23:54, 46회차) 이후 `git log`는 **45커밋** 대량 churn(IA 에디터 진입점 통합 Phase 1~8·모아찍기 대기함 관리+취소소유자게이트·광고성 문자/MMS 법적준수 가드 신규(정보통신망법 §50)+공개 수신거부 페이지·판짜기 shelf bin-pack). 신규 마이그레이션은 **2건뿐**(`0478_retire_workbench_page`=권한 비활성화 only·`0479_message_ad_compliance`=신규 3테이블+kakao_send_logs.message_type). 에이전트 위임 없이 인라인 수행(과다 위임 억제 정책 — 핵심 write-path가 이미 식별돼 정독이 위임보다 빠름).
