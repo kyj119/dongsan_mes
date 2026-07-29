@@ -84,7 +84,10 @@ export async function autoDeductPostProcessingMaterials(
             .prepare(
               `SELECT id, width_mm, item_name FROM items
                WHERE item_group = ? AND width_mm IS NOT NULL AND width_mm >= ?
-               ORDER BY width_mm ASC LIMIT 1`
+               ORDER BY width_mm ASC, id ASC LIMIT 1`
+            // ⚠️ 동일 item_group 내 같은 width_mm 이 prod 31조합·최대 6개 존재 →
+            //    tie-break 없으면 차감되는 자재 SKU가 실행마다 달라진다(재고 정합성).
+            //    지금은 id 최소값으로 고정. "동폭 중 어느 SKU를 소비할지"는 별도 업무규칙 필요.
             )
             .bind(cons.group, ow)
             .first() as any

@@ -33,7 +33,7 @@ aiInsights.get('/credit-risk/summary', requireRole('ADMIN', 'MANAGER'), async (c
         cl.credit_limit
       FROM clients cl
       WHERE cl.is_active = 1 AND cl.credit_risk_grade IN ('D', 'F')${excludeInternalClientsSql('cl.id')}
-      ORDER BY cl.credit_risk_score DESC LIMIT 10
+      ORDER BY cl.credit_risk_score DESC, cl.id DESC LIMIT 10
     `).all()
 
     return c.json({ success: true, data: { by_grade: results, high_risk: highRisk } })

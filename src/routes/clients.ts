@@ -365,7 +365,7 @@ clientsRouter.get('/:id/detail', async (c) => {
       FROM collection_logs cl
       LEFT JOIN users u ON cl.created_by = u.id
       WHERE cl.client_id = ?
-      ORDER BY cl.contact_date DESC
+      ORDER BY cl.contact_date DESC, cl.id DESC
       LIMIT 10
     `).bind(id).all()
 
@@ -1323,7 +1323,7 @@ clientsRouter.get('/:id/billing-group-members', async (c) => {
     const { results } = await c.env.DB.prepare(
       `SELECT id, client_name, business_registration_number
        FROM clients WHERE billing_group_id = ? AND id != ?
-       ORDER BY client_name`
+       ORDER BY client_name, id`
     ).bind(client.billing_group_id, clientId).all()
     return c.json({ success: true, data: results })
   } catch (error) {

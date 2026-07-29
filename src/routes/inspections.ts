@@ -357,7 +357,8 @@ inspectionsRouter.get('/results/suppliers', async (c) => {
       FROM inspection_results ir
       JOIN inventory_receipts rec ON ir.receipt_id = rec.id
       WHERE rec.supplier_id IS NOT NULL${ef.clause}
-      ORDER BY supplier_name
+      ORDER BY supplier_name, supplier_id
+      -- DISTINCT라 ORDER BY는 출력 컬럼만 참조 가능 → ir.id 불가, 출력된 supplier_id 사용
     `).bind(...ef.params).all()
     return c.json({ success: true, data: results || [] })
   } catch (error) {

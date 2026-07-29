@@ -158,7 +158,7 @@ oee.get('/daily', async (c) => {
     FROM equipment_oee_daily o
     LEFT JOIN equipment e ON o.equipment_id = e.id
     WHERE o.oee_date = ?${ef.clause}
-    ORDER BY o.oee_pct DESC
+    ORDER BY o.oee_pct DESC, o.id DESC
   `).bind(date, ...ef.params).all()
 
   return c.json({ success: true, data: results })

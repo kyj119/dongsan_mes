@@ -224,16 +224,18 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
 
     // 카드 보존 경로에서는 order_items 삭제 전 card_items 매핑을 저장
     // (order_items 삭제 시 card_items가 ON DELETE CASCADE로 함께 삭제되기 때문)
-    let savedCardItemMappings: Array<{ card_id: number; item_id: number | null; sort_order: number; quantity: number }> = []
+    let savedCardItemMappings: Array<{ card_id: number; old_item_id: number; item_id: number | null; sort_order: number; quantity: number }> = []
     if (cardsPreserved) {
       const { results: existingMappings } = await c.env.DB.prepare(`
-        SELECT ci.card_id, ci.quantity, oi.item_id, oi.sort_order
+        SELECT ci.card_id, ci.quantity, oi.id AS old_item_id, oi.item_id, oi.sort_order
         FROM card_items ci
         JOIN order_items oi ON ci.order_item_id = oi.id
         WHERE oi.order_id = ?
+        ORDER BY oi.sort_order ASC, oi.id ASC, ci.id ASC
       `).bind(id).all()
       savedCardItemMappings = (existingMappings || []).map((m: any) => ({
         card_id: m.card_id,
+        old_item_id: m.old_item_id,
         item_id: m.item_id,
         sort_order: m.sort_order,
         quantity: m.quantity,
@@ -388,25 +390,37 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
     if (cardsPreserved && savedCardItemMappings.length > 0) {
       // 새로 삽입된 order_items 조회
       const { results: newOrderItems } = await c.env.DB.prepare(`
-        SELECT id, item_id, sort_order FROM order_items WHERE order_id = ? ORDER BY sort_order
+        SELECT id, item_id, sort_order FROM order_items WHERE order_id = ? ORDER BY sort_order, id
       `).bind(id).all()
 
+      // prod의 order_items.sort_order는 전 행 0이라 매칭이 item_id 단독으로 퇴화한다.
+      // 같은 item_id 라인이 2개 이상인 주문(prod 102건)에서 매 mapping이 같은 첫 행을 집어
+      // 카드가 엉뚱한 라인에 붙는 것을 막기 위해, 배정된 신규 order_item은 소진 처리한다.
+      // 소진 단위는 mapping이 아니라 **원본 order_item(old_item_id)** — 한 라인이 여러 카드에
+      // 걸린 경우(현 prod 0건이나 구조상 가능) 그 카드들이 모두 같은 신규 라인을 가리켜야 한다.
+      const claimedItemIds = new Set<number>()
+      const resolvedByOldItem = new Map<number, number>()
       const remapStmts: any[] = []
       for (const mapping of savedCardItemMappings) {
-        // item_id + sort_order로 매칭, 없으면 item_id만으로 매칭
-        let matched = (newOrderItems || []).find(
-          (oi: any) => oi.item_id === mapping.item_id && oi.sort_order === mapping.sort_order
-        )
-        if (!matched) {
-          matched = (newOrderItems || []).find((oi: any) => oi.item_id === mapping.item_id)
-        }
-        if (matched) {
-          remapStmts.push(
-            c.env.DB.prepare(
-              `INSERT INTO card_items (card_id, order_item_id, quantity) VALUES (?, ?, ?)`
-            ).bind(mapping.card_id, (matched as any).id, mapping.quantity)
+        let newItemId = resolvedByOldItem.get(mapping.old_item_id)
+        if (newItemId === undefined) {
+          // item_id + sort_order로 매칭, 없으면 item_id만으로 매칭 (둘 다 미배정 행에서만)
+          let matched = (newOrderItems || []).find(
+            (oi: any) => !claimedItemIds.has(oi.id) && oi.item_id === mapping.item_id && oi.sort_order === mapping.sort_order
           )
+          if (!matched) {
+            matched = (newOrderItems || []).find((oi: any) => !claimedItemIds.has(oi.id) && oi.item_id === mapping.item_id)
+          }
+          if (!matched) continue
+          newItemId = (matched as any).id as number
+          claimedItemIds.add(newItemId)
+          resolvedByOldItem.set(mapping.old_item_id, newItemId)
         }
+        remapStmts.push(
+          c.env.DB.prepare(
+            `INSERT INTO card_items (card_id, order_item_id, quantity) VALUES (?, ?, ?)`
+          ).bind(mapping.card_id, newItemId, mapping.quantity)
+        )
       }
       if (remapStmts.length > 0) {
         await c.env.DB.batch(remapStmts)

@@ -35,7 +35,7 @@ storageZonesRouter.get('/', async (c) => {
       LEFT JOIN users u ON sz.manager_id = u.id
       LEFT JOIN entities e ON sz.entity_id = e.id
       ${where}
-      ORDER BY sz.entity_id, sz.sort_order, sz.zone_name
+      ORDER BY sz.entity_id, sz.sort_order, sz.zone_name, sz.id
     `
     const { results } = await c.env.DB.prepare(sql).bind(...params).all()
     return c.json({ success: true, data: results })
@@ -54,7 +54,7 @@ storageZonesRouter.get('/my', async (c) => {
         (SELECT COUNT(*) FROM items WHERE storage_zone_id = sz.id AND is_active = 1) as item_count
       FROM storage_zones sz
       WHERE sz.manager_id = ? AND sz.is_active = 1
-      ORDER BY sz.sort_order, sz.zone_name
+      ORDER BY sz.sort_order, sz.zone_name, sz.id
     `).bind(user.id).all()
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -97,7 +97,7 @@ storageZonesRouter.get('/layout-data', async (c) => {
         LEFT JOIN entities e ON sz.entity_id = e.id
         LEFT JOIN users u ON sz.manager_id = u.id
         ${where}
-        ORDER BY sz.sort_order, sz.zone_name
+        ORDER BY sz.sort_order, sz.zone_name, sz.id
       `).bind(...params).all(),
       c.env.DB.prepare(
         "SELECT setting_value FROM facility_settings WHERE setting_key = 'storage_background_image'"
@@ -269,7 +269,7 @@ storageZonesRouter.get('/:id/stock', async (c) => {
       FROM inventory inv
       JOIN items i ON i.id = inv.item_id AND i.is_active = 1
       WHERE inv.storage_zone_id = ? AND inv.entity_id = ?
-      ORDER BY i.item_name
+      ORDER BY i.item_name, inv.id
     `).bind(zone.id, zone.entity_id).all()
 
     return c.json({ success: true, data: { ...zone, items } })

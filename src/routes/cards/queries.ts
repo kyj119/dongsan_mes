@@ -116,7 +116,7 @@ cardsQueriesRouter.get('/schedule/queues', async (c) => {
       WHERE c.status = 'PRINTING' AND c.equipment_id IN (
         SELECT id FROM equipment WHERE status = 'ACTIVE'
       )${ef2.clause}
-      ORDER BY c.equipment_id, c.priority DESC, c.delivery_date ASC, c.created_at ASC
+      ORDER BY c.equipment_id, c.priority DESC, c.delivery_date ASC, c.created_at ASC, c.id ASC
     `).bind(...ef2.params).all<PrintingCardRow>()
 
     const cardsByEquipment = new Map<number, PrintingCardRow[]>()
@@ -152,7 +152,7 @@ cardsQueriesRouter.get('/schedule/unassigned', async (c) => {
       LEFT JOIN orders o ON c.order_id = o.id
       WHERE c.status = 'PRINTING'
         AND (c.equipment_id IS NULL OR c.equipment_id = '')${efUn.clause}
-      ORDER BY c.priority DESC, c.delivery_date ASC, c.created_at ASC
+      ORDER BY c.priority DESC, c.delivery_date ASC, c.created_at ASC, c.id ASC
     `).bind(...efUn.params).all()
 
     return c.json({ success: true, data: results })
@@ -338,7 +338,7 @@ cardsQueriesRouter.get('/', async (c) => {
           LEFT JOIN product_materials pmat ON pmat.product_item_id = oi.item_id AND pmat.is_default = 1
           LEFT JOIN items mat ON mat.id = pmat.material_item_id
           WHERE ci.card_id IN (${ph})
-          ORDER BY ci.card_id, oi.sort_order ASC
+          ORDER BY ci.card_id, oi.sort_order ASC, oi.id ASC
         `).bind(...chunk).all<LiveItemRow>()
         if (part) liveItems.push(...part)
       }
@@ -1004,7 +1004,7 @@ cardsQueriesRouter.get('/:id', async (c) => {
       LEFT JOIN product_materials pmat ON pmat.product_item_id = oi.item_id AND pmat.is_default = 1
       LEFT JOIN items mat ON mat.id = pmat.material_item_id
       WHERE ci.card_id = ?
-      ORDER BY oi.sort_order ASC
+      ORDER BY oi.sort_order ASC, ci.id ASC
     `).bind(id).all<CardItemRow>()
 
     // Resolve per-item thumbnails from ai_analysis_requests
@@ -1059,7 +1059,7 @@ cardsQueriesRouter.get('/:id', async (c) => {
          FROM order_items oi
          LEFT JOIN items it ON oi.item_id = it.id
          WHERE oi.order_id = ? AND oi.parent_item_id IN (${mainItemIds.map(() => '?').join(',')})
-         ORDER BY oi.sort_order ASC`
+         ORDER BY oi.sort_order ASC, oi.id ASC`
       ).bind(typedCard.order_id as number, ...mainItemIds).all<{ item_name: string; quantity: number; item_code?: string }>()
       accessories = accRows || []
     }

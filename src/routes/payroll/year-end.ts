@@ -116,7 +116,7 @@ yearEndRouter.get('/year-end/:employeeId', async (c) => {
               employment_insurance, income_tax, local_tax, status
        FROM payroll
        WHERE employee_id = ? AND pay_period LIKE ?
-       ORDER BY pay_period`
+       ORDER BY pay_period, id`
     ).bind(employeeId, `${year}-%`).all()
 
     return c.json({

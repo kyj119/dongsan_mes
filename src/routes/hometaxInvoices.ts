@@ -130,7 +130,7 @@ hometaxInvoicesRouter.get('/jobs', requireRole('ADMIN', 'MANAGER'), async (c) =>
       FROM hometax_jobs hj
       LEFT JOIN users u ON hj.requested_by = u.id
       WHERE 1=1${ef.clause}
-      ORDER BY hj.requested_at DESC
+      ORDER BY hj.requested_at DESC, hj.id DESC
       LIMIT ? OFFSET ?
     `).bind(...ef.params, safeLimit, offset).all()
 
@@ -376,7 +376,7 @@ hometaxInvoicesRouter.get('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       LEFT JOIN hometax_jobs hj ON hi.job_id = hj.id
       LEFT JOIN tax_invoices ti ON hi.matched_invoice_id = ti.id
       ${where}${ef.clause}
-      ORDER BY hi.issue_date DESC, hi.collected_at DESC
+      ORDER BY hi.issue_date DESC, hi.collected_at DESC, hi.id DESC
       LIMIT ? OFFSET ?
     `).bind(...params, ...ef.params, safeLimit, offset).all()
 

@@ -228,7 +228,7 @@ priceListsRouter.get('/:id/preview', async (c) => {
       SELECT id, item_code, item_name, unit, base_price
       FROM items
       WHERE is_active = 1 AND base_price > 0
-      ORDER BY item_name
+      ORDER BY item_name, id
     `).all<{ id: number; item_code: string; item_name: string; unit: string; base_price: number }>()
 
     const adjustmentPercent: number = priceList.adjustment_percent ?? 0

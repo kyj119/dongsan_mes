@@ -1016,7 +1016,7 @@ kakaoRouter.post('/send-sms-bulk', async (c) => {
 
     if (targetType === 'clients') {
       const { results: clientRows } = await db.prepare(
-        `SELECT client_name, mobile FROM clients WHERE mobile IS NOT NULL AND mobile != '' ORDER BY client_name`
+        `SELECT client_name, mobile FROM clients WHERE mobile IS NOT NULL AND mobile != '' ORDER BY client_name, id`
       ).all<{ client_name: string; mobile: string }>()
       messages = clientRows.map((r) => ({
         rcv: r.mobile,

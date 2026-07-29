@@ -154,7 +154,7 @@ vatReportsRouter.get('/reports', async (c) => {
       FROM vat_reports vr
       LEFT JOIN users u ON u.id = vr.created_by
       WHERE 1=1${ef.clause}
-      ORDER BY vr.report_year DESC, vr.report_quarter DESC
+      ORDER BY vr.report_year DESC, vr.report_quarter DESC, vr.id DESC
     `).bind(...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {

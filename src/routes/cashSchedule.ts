@@ -75,7 +75,7 @@ cashScheduleRouter.get('/schedule', requireEditOrRole('/cash-schedule', 'MANAGER
       FROM cash_schedule cs
       LEFT JOIN clients c ON c.id = cs.client_id
       WHERE ${clauses.join(' AND ')}
-      ORDER BY cs.schedule_date ASC, cs.flow_type DESC
+      ORDER BY cs.schedule_date ASC, cs.flow_type DESC, cs.id DESC
       LIMIT 500
     `).bind(...params).all()
 
@@ -106,7 +106,7 @@ cashScheduleRouter.get('/schedule/export/csv', requireEditOrRole('/cash-schedule
       FROM cash_schedule cs
       LEFT JOIN clients c ON c.id = cs.client_id
       WHERE ${clauses.join(' AND ')}
-      ORDER BY cs.schedule_date ASC, cs.flow_type DESC
+      ORDER BY cs.schedule_date ASC, cs.flow_type DESC, cs.id DESC
       LIMIT 5001
     `).bind(...params).all()
     const truncated = (results || []).length > 5000  // #372

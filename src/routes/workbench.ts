@@ -171,7 +171,7 @@ workbenchRouter.get('/archives', async (c) => {
       LEFT JOIN orders o ON o.id = oa.order_id
       LEFT JOIN clients cl ON cl.id = o.client_id
       WHERE ${where}${ef.clause}
-      ORDER BY oa.archived_at DESC
+      ORDER BY oa.archived_at DESC, oa.id DESC
       LIMIT ?
     `).bind(...params, ...ef.params, limit).all()
 
@@ -1175,7 +1175,7 @@ workbenchRouter.get('/intake-config', async (c) => {
         `SELECT id, name FROM users WHERE is_active = 1 AND (role = 'DESIGNER' OR job_role = 'DESIGNER') ORDER BY name`
       ).all(),
       c.env.DB.prepare(
-        `SELECT id, client_name FROM clients WHERE COALESCE(is_active, 1) = 1 ORDER BY client_name`
+        `SELECT id, client_name FROM clients WHERE COALESCE(is_active, 1) = 1 ORDER BY client_name, id`
       ).all(),
     ])
     // 경로①(주문 선행)용 미가공 라인: 파일 미연결 + 진행 중 주문만

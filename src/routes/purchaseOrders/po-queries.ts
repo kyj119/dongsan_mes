@@ -221,7 +221,7 @@ poQueriesRouter.get('/:id/invoice', async (c) => {
              i.width_mm AS item_width_mm, i.specification AS item_specification
       FROM purchase_order_items poi
       LEFT JOIN items i ON i.id = poi.item_id
-      WHERE poi.po_id = ? ORDER BY poi.sort_order ASC
+      WHERE poi.po_id = ? ORDER BY poi.sort_order ASC, poi.id ASC
     `).bind(id).all()
 
     // Get company settings (entity 우선, 폴백 settings)

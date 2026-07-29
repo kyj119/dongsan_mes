@@ -795,7 +795,7 @@ printEventsRouter.get('/agents', authMiddleware, async (c) => {
           ELSE 'online'
         END as computed_status
       FROM agent_heartbeats
-      ORDER BY last_seen_at DESC
+      ORDER BY last_seen_at DESC, id DESC
     `).all()
 
     const online = (results as AgentHeartbeatRow[]).filter((a) => a.computed_status === 'online').length

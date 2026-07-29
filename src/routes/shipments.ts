@@ -79,7 +79,7 @@ shipmentsRouter.get('/', async (c) => {
       LEFT JOIN clients cl ON o.client_id = cl.id
       LEFT JOIN users u ON s.created_by = u.id
       ${where}
-      ORDER BY s.shipped_at DESC, s.created_at DESC
+      ORDER BY s.shipped_at DESC, s.created_at DESC, s.id DESC
       LIMIT ? OFFSET ?
     `).bind(...params, safeLimit, offset).all()
 
@@ -655,7 +655,7 @@ shipmentsRouter.get('/dashboard', async (c) => {
       WHERE o.status IN ('CONFIRMED', 'PRINTING', 'PRINT_DONE')
         AND DATE(o.delivery_date) = ?
         ${ef.clause}
-      ORDER BY c.client_name ASC, o.id ASC, oi.sort_order ASC
+      ORDER BY c.client_name ASC, o.id ASC, oi.sort_order ASC, oi.id ASC
     `).bind(targetDate, ...ef.params).all<{
       order_id: number; order_number: string; delivery_method: string | null; delivery_date: string | null; delivery_time: string | null; order_status: string;
       client_id: number; client_name: string;

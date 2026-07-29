@@ -280,7 +280,7 @@ autoProcessRouter.get('/order/:orderId', async (c) => {
        LEFT JOIN order_items oi ON apj.order_item_id = oi.id
        LEFT JOIN items i ON oi.item_id = i.id
        WHERE apj.order_id = ?${ef.clause}
-       ORDER BY apj.ai_group_index ASC`
+       ORDER BY apj.ai_group_index ASC, apj.id ASC`
     ).bind(orderId, ...ef.params).all()
 
     return c.json({ success: true, jobs: result.results || [] })

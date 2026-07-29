@@ -458,7 +458,7 @@ capsRouter.get('/sites', async (c) => {
       `SELECT id, name, relay_db_host, relay_db_port, relay_db_engine, relay_db_name,
               relay_db_user, relay_table, sync_enabled, sync_interval_min, sync_lookback_days,
               worker_endpoint, ignored_fpids, last_sync_ok_at, last_unmapped, is_active, created_at
-       FROM caps_sites WHERE is_active = 1 ORDER BY created_at`
+       FROM caps_sites WHERE is_active = 1 ORDER BY created_at, id`
     ).all()
     return c.json({ success: true, data: results || [] })
   } catch (err) {
@@ -575,7 +575,7 @@ capsRouter.get('/employee-map', async (c) => {
       query += ` WHERE m.site_id = ?`
       bindings.push(siteId)
     }
-    query += ` ORDER BY m.site_id, m.caps_e_idno`
+    query += ` ORDER BY m.site_id, m.caps_e_idno, m.id`
     const { results } = await c.env.DB.prepare(query).bind(...bindings).all()
     return c.json({ success: true, data: results })
   } catch (err) {
@@ -706,7 +706,7 @@ capsRouter.get('/sync-log', async (c) => {
       query += ` WHERE l.site_id = ?`
       bindings.push(siteId)
     }
-    query += ` ORDER BY l.started_at DESC LIMIT ?`
+    query += ` ORDER BY l.started_at DESC, l.id DESC LIMIT ?`
     bindings.push(limit)
     const { results } = await c.env.DB.prepare(query).bind(...bindings).all()
     return c.json({ success: true, data: results })
@@ -740,7 +740,7 @@ capsRouter.post('/sync/trigger', async (c) => {
 capsRouter.get('/settings', async (c) => {
   try {
     const { results } = await c.env.DB.prepare(
-      `SELECT id, name, relay_db_host, relay_db_port, relay_db_engine, relay_db_name, relay_db_user, relay_table, sync_enabled, sync_interval_min, sync_lookback_days, worker_endpoint, ignored_fpids, last_sync_ok_at, last_unmapped, is_active, created_at FROM caps_sites WHERE is_active = 1 ORDER BY created_at`
+      `SELECT id, name, relay_db_host, relay_db_port, relay_db_engine, relay_db_name, relay_db_user, relay_table, sync_enabled, sync_interval_min, sync_lookback_days, worker_endpoint, ignored_fpids, last_sync_ok_at, last_unmapped, is_active, created_at FROM caps_sites WHERE is_active = 1 ORDER BY created_at, id`
     ).all()
     return c.json({ success: true, data: results || [] })
   } catch (err) {

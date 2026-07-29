@@ -970,7 +970,7 @@ cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
     // Get order items
     interface OrderItemRow { id: number; item_name: string; category_name: string | null; width: number | null; height: number | null; quantity: number; unit: string | null; post_processing: string | null; ai_analysis_id: number | null; assigned_entity_id: number | null }
     const { results: orderItems } = await c.env.DB.prepare(`
-      SELECT id, item_name, category_name, width, height, quantity, unit, post_processing, ai_analysis_id, assigned_entity_id FROM order_items WHERE order_id = ? ORDER BY sort_order ASC
+      SELECT id, item_name, category_name, width, height, quantity, unit, post_processing, ai_analysis_id, assigned_entity_id FROM order_items WHERE order_id = ? ORDER BY sort_order ASC, id ASC
     `).bind(orderId).all<OrderItemRow>()
 
     if (orderItems.length === 0) {

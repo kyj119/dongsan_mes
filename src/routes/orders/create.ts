@@ -620,7 +620,7 @@ ordersCreateRouter.post('/', async (c) => {
                     post_processing, content, sort_order, parent_item_id,
                     scale_factor, finishing,
                     ai_group_index, ai_analysis_id
-             FROM order_items WHERE order_id = ? AND ai_analysis_id IS NOT NULL ORDER BY sort_order ASC`
+             FROM order_items WHERE order_id = ? AND ai_analysis_id IS NOT NULL ORDER BY sort_order ASC, id ASC`
           ).bind(orderId).all()
           const aiItems = postOrderItems
 

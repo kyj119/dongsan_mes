@@ -462,7 +462,7 @@ dashboardRouter.get('/overdue-pos', async (c) => {
       WHERE po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED')
         AND po.expected_date IS NOT NULL
         AND po.expected_date < ${kstDate()}${ef.clause}
-      ORDER BY po.expected_date ASC
+      ORDER BY po.expected_date ASC, po.id ASC
       LIMIT 20
     `).bind(...ef.params).all()
 
@@ -522,7 +522,7 @@ dashboardRouter.get('/stats/today-due', async (c) => {
       LEFT JOIN clients c ON o.client_id = c.id
       WHERE o.delivery_date <= ${kstDate()}
         AND o.status NOT IN ('SHIPPED', 'CANCELLED', 'QUOTATION')${ef.clause}
-      ORDER BY o.delivery_date ASC, o.priority DESC
+      ORDER BY o.delivery_date ASC, o.priority DESC, o.id DESC
       LIMIT 20
     `).bind(...ef.params).all()
     return c.json({ success: true, data: results })

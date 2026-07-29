@@ -209,7 +209,7 @@ taxInvoicesBatchRouter.post('/monthly-create', requireEditOrRole('/tax-invoices'
           WHERE ti.status != 'CANCELLED'
         )
         ${clientFilter}${efMonthly.clause}
-      ORDER BY c.id, o.order_date
+      ORDER BY c.id, o.order_date, o.id
     `).bind(...params).all()
 
     // 거래처별 그룹핑

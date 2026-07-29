@@ -38,7 +38,7 @@ poSpecialRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER'), async (c) => 
 
     const { results: originalItems } = await c.env.DB.prepare(`
       SELECT item_id, item_name, category_name, quantity, unit, unit_price, amount, vat_included, sort_order, notes
-      FROM purchase_order_items WHERE po_id = ? ORDER BY sort_order ASC
+      FROM purchase_order_items WHERE po_id = ? ORDER BY sort_order ASC, id ASC
     `).bind(id).all()
 
     // 새 발주번호 생성
@@ -144,7 +144,7 @@ poSpecialRouter.post('/:id/reorder', requireRole('ADMIN', 'MANAGER'), async (c) 
     // 원본 PO 아이템 조회
     const { results: originalItems } = await c.env.DB.prepare(`
       SELECT item_id, item_name, category_name, quantity, unit, unit_price, amount, vat_included, sort_order, notes
-      FROM purchase_order_items WHERE po_id = ? ORDER BY sort_order
+      FROM purchase_order_items WHERE po_id = ? ORDER BY sort_order, id
     `).bind(id).all()
 
     // 새 PO 번호 생성

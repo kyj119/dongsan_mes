@@ -57,7 +57,7 @@ templatesRouter.get('/templates/:id', async (c) => {
     const { results: items } = await c.env.DB.prepare(`
       SELECT id, template_id, item_id, item_name, category_name, quantity, unit, unit_price, vat_included, sort_order FROM po_template_items
       WHERE template_id = ? AND is_active = 1
-      ORDER BY sort_order ASC
+      ORDER BY sort_order ASC, id ASC
     `).bind(id).all()
 
     return c.json({ success: true, data: { ...template, items } })
@@ -181,7 +181,7 @@ templatesRouter.post('/from-template/:templateId', async (c) => {
     const { results: templateItems } = await c.env.DB.prepare(`
       SELECT id, template_id, item_id, item_name, category_name, quantity, unit, unit_price, vat_included, sort_order FROM po_template_items
       WHERE template_id = ? AND is_active = 1
-      ORDER BY sort_order ASC
+      ORDER BY sort_order ASC, id ASC
     `).bind(templateId).all<{ id: number; item_id: number | null; item_name: string; category_name: string | null; quantity: number; unit: string; unit_price: number; vat_included: number }>()
 
     if (!templateItems || templateItems.length === 0) {

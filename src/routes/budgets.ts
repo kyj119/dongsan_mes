@@ -15,7 +15,7 @@ budgets.get('/', async (c) => {
   const { results } = await c.env.DB.prepare(`
     SELECT * FROM budgets b
     WHERE b.fiscal_year = ? ${eFilter.clause}
-    ORDER BY department, category
+    ORDER BY department, category, b.id
   `).bind(year, ...eFilter.params).all()
 
   return c.json({ success: true, data: results })

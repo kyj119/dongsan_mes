@@ -76,7 +76,7 @@ taxAgentRouter.get('/tax-agent/changes', requireRole('ADMIN', 'MANAGER'), async 
       `SELECT employee_code, name, resident_number, hire_date, department, position, base_salary
        FROM employees
        WHERE hire_date BETWEEN ? AND ?${ef.clause}
-       ORDER BY hire_date`
+       ORDER BY hire_date, id`
     ).bind(first, last, ...ef.params).all<{ employee_code: string; name: string; resident_number: string | null; hire_date: string; department: string; position: string; base_salary: number }>()
 
     // 이번 달 퇴사자
@@ -84,7 +84,7 @@ taxAgentRouter.get('/tax-agent/changes', requireRole('ADMIN', 'MANAGER'), async 
       `SELECT employee_code, name, resident_number, hire_date, resignation_date, department, position, base_salary
        FROM employees
        WHERE resignation_date BETWEEN ? AND ?${ef.clause}
-       ORDER BY resignation_date`
+       ORDER BY resignation_date, id`
     ).bind(first, last, ...ef.params).all<{ employee_code: string; name: string; resident_number: string | null; hire_date: string; resignation_date: string; department: string; position: string; base_salary: number }>()
 
     const rows: string[] = []
@@ -216,7 +216,7 @@ taxAgentRouter.get('/tax-agent/annual', requireRole('ADMIN', 'MANAGER'), async (
        FROM employees e
        LEFT JOIN payroll p ON p.employee_id = e.id AND substr(p.pay_period, 1, 4) = ?
        WHERE (e.hire_date IS NULL OR substr(e.hire_date, 1, 4) <= ?)${efE.clause}
-       ORDER BY e.department, e.name, p.pay_period`
+       ORDER BY e.department, e.name, p.pay_period, p.id`
     ).bind(year, year, ...efE.params).all<{
       employee_id: number; employee_code: string; name: string; resident_number: string | null
       department: string; position: string; hire_date: string; resignation_date: string | null; employee_status: string

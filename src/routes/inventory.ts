@@ -148,7 +148,7 @@ inventoryRouter.get('/:id', async (c) => {
       zonesSql += ` AND inv.entity_id = ?`
       zonesParams.push(entityId)
     }
-    zonesSql += ` ORDER BY inv.storage_zone_id IS NULL, sz.sort_order, sz.zone_name`
+    zonesSql += ` ORDER BY inv.storage_zone_id IS NULL, sz.sort_order, sz.zone_name, inv.id`
     const { results: zones } = await c.env.DB.prepare(zonesSql).bind(...zonesParams).all()
 
     return c.json({ success: true, data: { ...result, zones } })

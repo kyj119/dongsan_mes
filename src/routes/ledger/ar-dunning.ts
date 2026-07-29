@@ -29,7 +29,7 @@ arDunningRouter.get('/collection-logs/:clientId', async (c) => {
       FROM collection_logs cl
       LEFT JOIN users u ON cl.created_by = u.id
       WHERE cl.client_id = ?${ef.clause}
-      ORDER BY cl.contact_date DESC, cl.created_at DESC
+      ORDER BY cl.contact_date DESC, cl.created_at DESC, cl.id DESC
       LIMIT 500
     `).bind(clientId, ...ef.params).all()
     // 확장성: 전체 건수(방어적 cap 500 초과 여부 판별용)
@@ -122,7 +122,7 @@ arDunningRouter.get('/collection-logs', async (c) => {
       LEFT JOIN clients c ON cl.client_id = c.id
       LEFT JOIN users u ON cl.created_by = u.id
       ${where}
-      ORDER BY cl.contact_date DESC, cl.created_at DESC
+      ORDER BY cl.contact_date DESC, cl.created_at DESC, cl.id DESC
       LIMIT ? OFFSET ?
     `).bind(...params, ...ef.params, safeLimit, offset).all()
 

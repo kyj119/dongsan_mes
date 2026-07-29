@@ -335,14 +335,14 @@ prRouter.get('/:id', async (c) => {
 
     const { results: items } = await c.env.DB.prepare(`
       SELECT id, request_id, item_id, item_name, category_name, quantity, unit, estimated_unit_price, admin_unit_price, admin_quantity, sort_order, notes, created_at
-      FROM purchase_request_items WHERE request_id = ? ORDER BY sort_order ASC
+      FROM purchase_request_items WHERE request_id = ? ORDER BY sort_order ASC, id ASC
     `).bind(id).all()
 
     const { results: history } = await c.env.DB.prepare(`
       SELECT h.*, u.name as changed_by_name
       FROM pr_status_history h
       LEFT JOIN users u ON h.changed_by = u.id
-      WHERE h.request_id = ? ORDER BY h.created_at ASC
+      WHERE h.request_id = ? ORDER BY h.created_at ASC, h.id ASC
     `).bind(id).all()
 
     const { results: comments } = await c.env.DB.prepare(`
@@ -467,7 +467,7 @@ prRouter.put('/:id', async (c) => {
 
     // 수정 전 품목 조회 (이력 비교용)
     const { results: oldItems } = await c.env.DB.prepare(
-      `SELECT item_name, quantity, unit, estimated_unit_price FROM purchase_request_items WHERE request_id = ? ORDER BY sort_order ASC`
+      `SELECT item_name, quantity, unit, estimated_unit_price FROM purchase_request_items WHERE request_id = ? ORDER BY sort_order ASC, id ASC`
     ).bind(id).all<Pick<PurchaseRequestItem, 'item_name' | 'quantity' | 'unit' | 'estimated_unit_price'>>()
 
     const deleteStmt = c.env.DB.prepare(`DELETE FROM purchase_request_items WHERE request_id = ?`).bind(id)
@@ -636,7 +636,7 @@ prRouter.post('/:id/convert', requireRole('ADMIN'), async (c) => {
 
     const { results: requestItems } = await c.env.DB.prepare(`
       SELECT id, request_id, item_id, item_name, category_name, quantity, unit, estimated_unit_price, admin_unit_price, admin_quantity, sort_order, notes, created_at
-      FROM purchase_request_items WHERE request_id = ? ORDER BY sort_order ASC
+      FROM purchase_request_items WHERE request_id = ? ORDER BY sort_order ASC, id ASC
     `).bind(id).all<PurchaseRequestItem>()
 
     if (!requestItems || requestItems.length === 0) {
@@ -746,7 +746,7 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
 
     const { results: requestItems } = await c.env.DB.prepare(`
       SELECT id, request_id, item_id, item_name, category_name, quantity, unit, estimated_unit_price, admin_unit_price, admin_quantity, sort_order, notes, created_at
-      FROM purchase_request_items WHERE request_id = ? ORDER BY sort_order ASC
+      FROM purchase_request_items WHERE request_id = ? ORDER BY sort_order ASC, id ASC
     `).bind(id).all<PurchaseRequestItem>()
 
     if (!requestItems || requestItems.length === 0) {
@@ -765,7 +765,7 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
       const { results: recentRows } = await c.env.DB.prepare(`
         WITH ranked AS (
           SELECT poi.item_id AS item_id, po.supplier_id AS supplier_id, c.client_name AS client_name,
-            ROW_NUMBER() OVER (PARTITION BY poi.item_id ORDER BY po.created_at DESC) AS rn
+            ROW_NUMBER() OVER (PARTITION BY poi.item_id ORDER BY po.created_at DESC, po.id DESC) AS rn
           FROM purchase_order_items poi
           JOIN purchase_orders po ON poi.po_id = po.id
           LEFT JOIN clients c ON po.supplier_id = c.id

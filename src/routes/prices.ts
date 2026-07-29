@@ -318,7 +318,7 @@ pricesRouter.get('/item-supplier-prices', async (c) => {
       FROM client_item_prices cip
       JOIN clients c ON cip.client_id = c.id
       WHERE cip.item_id = ?
-      ORDER BY cip.price ASC
+      ORDER BY cip.price ASC, cip.id ASC
     `).bind(item_id).all<SupplierPriceRow>()
 
     // Enrich with recent purchase prices

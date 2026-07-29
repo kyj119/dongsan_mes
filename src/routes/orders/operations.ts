@@ -81,7 +81,7 @@ ordersOpsRouter.post('/:id/copy', requireEditOrRole('/orders', 'MANAGER', 'DESIG
              width, height, quantity, unit, unit_price, amount, vat_included,
              post_processing, content, specification, sort_order, parent_item_id,
              scale_factor, ai_group_index, assigned_entity_id, assignment_status
-      FROM order_items WHERE order_id = ? ORDER BY sort_order ASC
+      FROM order_items WHERE order_id = ? ORDER BY sort_order ASC, id ASC
     `).bind(id).all<OrderItemCopyRow>()
 
     // Generate new order number
@@ -338,7 +338,7 @@ ordersOpsRouter.post('/:id/send-email', requireRole('ADMIN', 'MANAGER'), async (
       SELECT item_name, width, height, specification, quantity, unit, unit_price, amount, vat_included
       FROM order_items
       WHERE order_id = ? AND parent_item_id IS NULL
-      ORDER BY sort_order ASC
+      ORDER BY sort_order ASC, id ASC
     `).bind(id).all<EmailItemRow>()
 
     // 회사 settings 조회

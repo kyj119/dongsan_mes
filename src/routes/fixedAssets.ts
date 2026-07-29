@@ -24,7 +24,7 @@ fixedAssets.get('/', async (c) => {
     FROM fixed_assets fa
     LEFT JOIN equipment e ON fa.equipment_id = e.id
     ${where}
-    ORDER BY fa.acquisition_date DESC
+    ORDER BY fa.acquisition_date DESC, fa.id DESC
   `).bind(...binds).all()
 
   return c.json({ success: true, data: results })
@@ -65,7 +65,7 @@ fixedAssets.get('/:id', async (c) => {
   `).bind(id, ...eFilter.params).first()
 
   const { results: depreciations } = await c.env.DB.prepare(`
-    SELECT * FROM depreciation_records WHERE asset_id = ? ORDER BY period DESC LIMIT 24
+    SELECT * FROM depreciation_records WHERE asset_id = ? ORDER BY period DESC, id DESC LIMIT 24
   `).bind(id).all()
 
   return c.json({ success: true, data: { ...asset, depreciations } })

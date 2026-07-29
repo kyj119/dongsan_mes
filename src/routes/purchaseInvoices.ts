@@ -91,13 +91,13 @@ purchaseInvoices.get('/pending/:poId', async (c) => {
     FROM purchase_order_items poi
     LEFT JOIN items i ON i.id = poi.item_id
     WHERE poi.po_id = ? AND poi.price_status = 'PENDING' AND poi.received_quantity > 0
-    ORDER BY poi.sort_order ASC
+    ORDER BY poi.sort_order ASC, poi.id ASC
   `).bind(poId).all()
 
   // 거래명세서 첨부된 입고 건
   const { results: receipts } = await c.env.DB.prepare(`
     SELECT id, receipt_number, receipt_date, statement_file_key
-    FROM inventory_receipts WHERE po_id = ? ORDER BY receipt_date DESC
+    FROM inventory_receipts WHERE po_id = ? ORDER BY receipt_date DESC, id DESC
   `).bind(poId).all()
 
   return c.json({ success: true, data: { po, items, receipts } })

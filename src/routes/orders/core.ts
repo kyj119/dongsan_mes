@@ -359,7 +359,7 @@ ordersCoreRouter.get('/:id/invoice', async (c) => {
       FROM order_items oi
       LEFT JOIN ai_analysis_requests ar ON ar.id = oi.ai_analysis_id
       WHERE oi.order_id = ? AND oi.parent_item_id IS NULL
-      ORDER BY oi.sort_order ASC
+      ORDER BY oi.sort_order ASC, oi.id ASC
     `).bind(id).all()
 
     // Get company settings (entity 우선, 폴백 settings)
@@ -406,7 +406,7 @@ ordersCoreRouter.get('/in-transit', requireAccessOrRole('/orders', 'MANAGER'), a
       WHERE o.auto_complete_date IS NOT NULL
         AND o.status NOT IN ('SHIPPED', 'COMPLETED', 'CANCELLED')
         ${ef.clause}
-      ORDER BY o.auto_complete_date ASC
+      ORDER BY o.auto_complete_date ASC, o.id ASC
     `).bind(...ef.params).all()
 
     return c.json({ success: true, data: results })
@@ -455,7 +455,7 @@ ordersCoreRouter.get('/:id', async (c) => {
       LEFT JOIN card_items ci ON ci.order_item_id = oi.id
       LEFT JOIN cards ca ON ca.id = ci.card_id
       WHERE oi.order_id = ?
-      ORDER BY oi.sort_order ASC
+      ORDER BY oi.sort_order ASC, oi.id ASC
     `).bind(id).all()
 
     // R2 이관: ai_groups_json 썸네일을 emit 직전 base64로 복원(주문접수/편집 화면 무수정). r2_key 없으면 no-op.

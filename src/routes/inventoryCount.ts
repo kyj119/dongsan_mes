@@ -112,7 +112,7 @@ inventoryCountRouter.post('/', async (c) => {
         FROM items i
         JOIN inventory inv ON i.id = inv.item_id AND inv.entity_id = ? AND inv.storage_zone_id = ?
         WHERE i.is_active = 1 AND i.is_purchase_item = 1
-        ORDER BY i.category, i.item_name
+        ORDER BY i.category, i.item_name, i.id
       `).bind(countEntityId, zoneId).all<typeof items[number]>()
       items = results || []
     } else {
@@ -232,7 +232,7 @@ inventoryCountRouter.get('/:id', async (c) => {
         WHERE inv.storage_zone_id IS NULL AND inv.entity_id = ?
           AND i.is_active = 1 AND i.is_purchase_item = 1
           AND i.id NOT IN (SELECT item_id FROM inventory_count_items WHERE count_id = ?)
-        ORDER BY i.category, i.item_name
+        ORDER BY i.category, i.item_name, inv.id
       `).bind(entityId, id).all()
       unassignedItems = unassigned || []
     }

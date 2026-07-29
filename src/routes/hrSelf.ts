@@ -182,7 +182,7 @@ hrSelfRouter.get('/self/contracts', async (c) => {
       FROM labor_contracts lc
       LEFT JOIN entities ent ON lc.entity_id = ent.id
       WHERE lc.employee_id = ?
-      ORDER BY lc.contract_date DESC
+      ORDER BY lc.contract_date DESC, lc.id DESC
     `).bind(employeeId).all()
 
     return c.json({ success: true, data: results || [] })
@@ -203,7 +203,7 @@ hrSelfRouter.get('/self/payslips', async (c) => {
       SELECT p.id, p.pay_period, p.pay_date, p.total_salary, p.total_deduction, p.net_pay, p.published_at
       FROM payroll p
       WHERE p.employee_id = ? AND p.published_at IS NOT NULL
-      ORDER BY p.pay_period DESC
+      ORDER BY p.pay_period DESC, p.id DESC
     `).bind(employeeId).all()
 
     return c.json({ success: true, data: results || [] })

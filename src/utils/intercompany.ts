@@ -111,7 +111,7 @@ export async function getIntercompanyArOrders(
     FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
     WHERE g.billing_status='BILLED' AND o.status!='CANCELLED'
       AND g.entity_id = ? AND o.client_id = ?
-    ORDER BY COALESCE(g.accounting_date, g.billed_at) DESC
+    ORDER BY COALESCE(g.accounting_date, g.billed_at) DESC, g.id DESC
     LIMIT 500
   `).bind(fromEntityId, toClientId).all<IntercompanyArOrder>()
   return (results || []).map(r => ({ ...r, billed_amount: Number(r.billed_amount) || 0 }))

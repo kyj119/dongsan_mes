@@ -30,7 +30,7 @@ ordersQueriesRouter.get('/quotations/expired', async (c) => {
       WHERE o.status = 'QUOTATION'
         AND o.valid_until IS NOT NULL
         AND o.valid_until < ?${entityFilter(c, 'o').clause}
-      ORDER BY o.valid_until ASC
+      ORDER BY o.valid_until ASC, o.id ASC
     `).bind(today, ...entityFilter(c, 'o').params).all()
 
     return c.json({ success: true, data: results })
@@ -108,7 +108,7 @@ ordersQueriesRouter.get('/stats', async (c) => {
 ordersQueriesRouter.get('/options/post-processing', async (c) => {
   try {
     const { results } = await c.env.DB.prepare(`
-      SELECT id, option_code, option_name, margin_left, margin_right, margin_top, margin_bottom, additional_cost, description, pp_category, parameter_schema, pricing_type, unit_price, display_on_card, is_active FROM post_processing_options WHERE is_active = 1 ORDER BY option_name ASC
+      SELECT id, option_code, option_name, margin_left, margin_right, margin_top, margin_bottom, additional_cost, description, pp_category, parameter_schema, pricing_type, unit_price, display_on_card, is_active FROM post_processing_options WHERE is_active = 1 ORDER BY option_name ASC, id ASC
     `).all()
 
     return c.json({

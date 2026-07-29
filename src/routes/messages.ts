@@ -658,7 +658,7 @@ messagesRouter.post('/send-bulk', async (c) => {
 
       if (targetType === 'clients') {
         const { results: clientRows } = await db.prepare(
-          `SELECT client_name, email FROM clients WHERE email IS NOT NULL AND email != '' ORDER BY client_name`
+          `SELECT client_name, email FROM clients WHERE email IS NOT NULL AND email != '' ORDER BY client_name, id`
         ).all<{ client_name: string; email: string }>()
         receivers = (clientRows || []).map((r) => ({ name: r.client_name, email: r.email }))
       }
@@ -712,7 +712,7 @@ messagesRouter.post('/send-bulk', async (c) => {
 
     if (targetType === 'clients') {
       const { results: clientRows } = await db.prepare(
-        `SELECT id, client_name, mobile FROM clients WHERE mobile IS NOT NULL AND mobile != '' ORDER BY client_name`
+        `SELECT id, client_name, mobile FROM clients WHERE mobile IS NOT NULL AND mobile != '' ORDER BY client_name, id`
       ).all<{ id: number; client_name: string; mobile: string }>()
       rawReceivers = (clientRows || []).map((r) => ({ name: r.client_name, phone: r.mobile, client_id: r.id }))
     } else if (targetType === 'employees') {

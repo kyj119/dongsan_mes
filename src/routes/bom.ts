@@ -44,7 +44,7 @@ bom.get('/overview', async (c) => {
       JOIN items p ON pm.product_item_id = p.id
       JOIN items m ON pm.material_item_id = m.id
       WHERE p.is_active = 1
-      ORDER BY category, p.item_name, pm.is_default DESC, m.width_mm, m.item_name
+      ORDER BY category, p.item_name, pm.is_default DESC, m.width_mm, m.item_name, pm.id
     `).all() as { results: any[] }
 
     // 제품 단위로 그룹핑 (제품 → materials[])
@@ -83,7 +83,7 @@ bom.get('/overview', async (c) => {
       FROM items
       WHERE is_active = 1 AND item_type = 'PRODUCT'
         AND id NOT IN (SELECT DISTINCT product_item_id FROM product_materials)
-      ORDER BY category, item_name
+      ORDER BY category, item_name, id
     `).all() as { results: any[] }
 
     // 3. 전체 제품 수

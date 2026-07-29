@@ -273,7 +273,7 @@ itemsRouter.get('/groups/:groupName', async (c) => {
       LEFT JOIN item_categories ic ON i.category_id = ic.id
       LEFT JOIN item_subcategories isc ON i.subcategory_id = isc.id
       WHERE i.item_group = ? AND i.is_active = 1
-      ORDER BY i.group_sort ASC, i.width_mm ASC, i.item_name ASC
+      ORDER BY i.group_sort ASC, i.width_mm ASC, i.item_name ASC, i.id ASC
     `).bind(groupName).all()
 
     return c.json({
@@ -486,7 +486,7 @@ itemsRouter.get('/:id/variants', async (c) => {
       LEFT JOIN spec_group_values sgv ON sgv.group_id = i.spec_group_id AND sgv.value_code = i.spec_value
       LEFT JOIN spec_group_values sgv2 ON sgv2.group_id = i.spec_group_id2 AND sgv2.value_code = i.spec_value2
       WHERE i.item_group = ? AND i.spec_value IS NOT NULL
-      ORDER BY COALESCE(sgv.sort_order, i.group_sort) ASC, COALESCE(sgv2.sort_order, 0) ASC, i.item_name ASC
+      ORDER BY COALESCE(sgv.sort_order, i.group_sort) ASC, COALESCE(sgv2.sort_order, 0) ASC, i.item_name ASC, i.id ASC
     `).bind(base.item_group).all()
     return c.json({ success: true, data: { base, variants: results } })
   } catch (error) {
@@ -936,7 +936,7 @@ itemsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       const { results: lastItems } = await c.env.DB.prepare(`
         SELECT item_code FROM items WHERE item_code LIKE 'PM-%'
           AND CAST(SUBSTR(item_code, 4) AS INTEGER) BETWEEN ? AND ?
-        ORDER BY CAST(SUBSTR(item_code, 4) AS INTEGER) DESC LIMIT 1
+        ORDER BY CAST(SUBSTR(item_code, 4) AS INTEGER) DESC, id DESC LIMIT 1
       `).bind(range.start, range.end).all<{ item_code: string }>()
 
       let nextNum = range.start

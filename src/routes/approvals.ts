@@ -250,7 +250,7 @@ approvals.get('/:id', async (c) => {
       FROM approval_steps ast
       LEFT JOIN users u ON ast.approver_id = u.id
       WHERE ast.request_id = ?
-      ORDER BY ast.step_order
+      ORDER BY ast.step_order, ast.id
     `).bind(id).all()
 
     const { results: attachments } = await c.env.DB.prepare(

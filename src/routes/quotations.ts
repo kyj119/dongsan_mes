@@ -218,7 +218,7 @@ quotationsRouter.get('/:id', async (c) => {
 
     const { results: convertedOrders } = await c.env.DB.prepare(`
       SELECT id, order_number, status, final_amount, created_at
-      FROM orders WHERE quotation_id = ? ORDER BY created_at DESC
+      FROM orders WHERE quotation_id = ? ORDER BY created_at DESC, id DESC
     `).bind(id).all()
 
     return c.json({

@@ -453,7 +453,7 @@ export async function createSplitInvoices(
         `SELECT oi.item_name, oi.specification, oi.width, oi.height, oi.quantity, oi.unit_price, oi.amount, oi.vat_included
          FROM order_items oi JOIN orders o ON o.id = oi.order_id
          WHERE oi.order_id IN (${eph}) AND COALESCE(oi.assigned_entity_id, o.entity_id) = ?
-         ORDER BY oi.order_id, oi.sort_order`
+         ORDER BY oi.order_id, oi.sort_order, oi.id`
       ).bind(...entOrderIds, entityId).all<Record<string, unknown>>()
       const vatRate = 0.1
       items.forEach((oi, idx) => {

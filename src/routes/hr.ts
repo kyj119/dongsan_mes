@@ -987,7 +987,7 @@ hrRouter.get('/employees/:id/detail', async (c) => {
       FROM attendance
       WHERE employee_id = ?
         AND strftime('%Y-%m', work_date) = ?
-      ORDER BY work_date
+      ORDER BY work_date, id
     `).bind(id, month).all()
 
     // 월간 근태 집계
@@ -1015,7 +1015,7 @@ hrRouter.get('/employees/:id/detail', async (c) => {
       FROM payroll
       WHERE employee_id = ?
         AND pay_period LIKE ?
-      ORDER BY pay_period
+      ORDER BY pay_period, id
     `).bind(id, `${year}-%`).all()
 
     const payrollSummary = (payrollRecords || []).reduce((acc: any, r: any) => {
@@ -1031,7 +1031,7 @@ hrRouter.get('/employees/:id/detail', async (c) => {
       FROM leave_requests
       WHERE employee_id = ?
         AND strftime('%Y', start_date) = ?
-      ORDER BY start_date DESC
+      ORDER BY start_date DESC, id DESC
     `).bind(id, year).all().catch(() => ({ results: [] }))
 
     return c.json({
@@ -1075,7 +1075,7 @@ hrRouter.get('/employees/:id/leave-balance', async (c) => {
         (accrued + granted_extra + carried_over - used - expired) as remaining
       FROM leave_balances
       WHERE employee_id = ?${efB.clause}
-      ORDER BY year DESC, leave_type
+      ORDER BY year DESC, leave_type, id
     `).bind(employeeId, ...efB.params).all()
 
     return c.json({
@@ -1123,7 +1123,7 @@ hrRouter.get('/contracts/expiring', requireRole('ADMIN', 'MANAGER'), async (c) =
       params.push(entityId)
     }
 
-    query += ` ORDER BY lc.contract_end_date ASC`
+    query += ` ORDER BY lc.contract_end_date ASC, lc.id ASC`
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 

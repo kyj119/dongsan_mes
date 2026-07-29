@@ -288,7 +288,7 @@ cardExpRouter.get('/categories', requireEditOrRole('/card-expenses', 'MANAGER'),
   try {
     const ef = entityFilter(c, 'expense_categories')
     const { results } = await c.env.DB.prepare(
-      `SELECT * FROM expense_categories WHERE is_active = 1${ef.clause} ORDER BY sort_order`
+      `SELECT * FROM expense_categories WHERE is_active = 1${ef.clause} ORDER BY sort_order, id`
     ).bind(...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -544,7 +544,7 @@ cardExpRouter.get('/transactions', requireEditOrRole('/card-expenses', 'MANAGER'
       LEFT JOIN users u ON cc.assigned_user_id = u.id
       LEFT JOIN expense_categories ec ON ct.category_id = ec.id
       ${where}
-      ORDER BY ct.transaction_date DESC, ct.transaction_time DESC
+      ORDER BY ct.transaction_date DESC, ct.transaction_time DESC, ct.id DESC
       LIMIT ? OFFSET ?
     `).bind(...params, limit, offset).all()
 
@@ -670,7 +670,7 @@ cardExpRouter.get('/payment-schedule', requireEditOrRole('/card-expenses', 'MANA
       SELECT cc.id as card_id, cc.card_name, cc.card_company, cc.card_number_last4, cc.holder_name,
              cc.monthly_limit, COALESCE(cc.cutoff_day, 15) as cutoff_day, COALESCE(cc.payment_day, 15) as payment_day
       FROM corporate_cards cc WHERE cc.is_active = 1${ef.clause}
-      ORDER BY cc.card_name
+      ORDER BY cc.card_name, cc.id
     `).bind(...ef.params).all<{ card_id: number; card_name: string; card_company: string; card_number_last4: string | null; holder_name: string | null; monthly_limit: number; cutoff_day: number; payment_day: number }>()
 
     // 오늘(KST) Y/M/D
@@ -800,7 +800,7 @@ cardExpRouter.get('/export-csv', requireEditOrRole('/card-expenses', 'MANAGER'),
       LEFT JOIN corporate_cards cc ON ct.card_id = cc.id
       LEFT JOIN expense_categories ec ON ct.category_id = ec.id
       WHERE ct.transaction_date >= ? AND ct.transaction_date <= ?${ef.clause}
-      ORDER BY ct.transaction_date ASC, ct.transaction_time ASC
+      ORDER BY ct.transaction_date ASC, ct.transaction_time ASC, ct.id ASC
       LIMIT ?
     `).bind(ds, de, ...ef.params, CSV_EXPORT_CAP + 1).all<any>()
 
@@ -880,7 +880,7 @@ cardExpRouter.get('/auto-rules', requireEditOrRole('/card-expenses', 'MANAGER'),
     const ef = entityFilter(c, 'r')
     const { results } = await c.env.DB.prepare(`
       SELECT r.*, ec.name as category_name FROM expense_auto_rules r
-      LEFT JOIN expense_categories ec ON r.category_id = ec.id WHERE 1=1${ef.clause} ORDER BY r.match_count DESC
+      LEFT JOIN expense_categories ec ON r.category_id = ec.id WHERE 1=1${ef.clause} ORDER BY r.match_count DESC, r.id DESC
     `).bind(...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {

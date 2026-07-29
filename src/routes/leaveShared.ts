@@ -25,7 +25,7 @@ export async function getLeaveBalanceForEmployee(db: D1Database, employeeId: num
       (accrued + granted_extra + carried_over - used - expired) as remaining
     FROM leave_balances
     WHERE employee_id = ?
-    ORDER BY year DESC, leave_type
+    ORDER BY year DESC, leave_type, id
   `).bind(employeeId).all()
   return {
     employee: emp,

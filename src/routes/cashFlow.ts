@@ -150,7 +150,7 @@ cashFlowRouter.get('/loans', requireAccessOrRole('/cash-schedule', 'MANAGER'), a
       FROM loans l
       LEFT JOIN users u ON l.created_by = u.id
       ${where}
-      ORDER BY l.is_active DESC, l.creditor
+      ORDER BY l.is_active DESC, l.creditor, l.id
     `).bind(...params).all()
 
     return c.json({ success: true, data: results })
@@ -286,7 +286,7 @@ cashFlowRouter.get('/loans/:id/rate-history', requireAccessOrRole('/cash-schedul
       FROM loan_rate_history lrh
       LEFT JOIN users u ON lrh.changed_by = u.id
       WHERE lrh.loan_id = ?${ef.clause}
-      ORDER BY lrh.effective_date DESC
+      ORDER BY lrh.effective_date DESC, lrh.id DESC
     `).bind(id, ...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -306,7 +306,7 @@ cashFlowRouter.get('/loans/:id/schedule', requireAccessOrRole('/cash-schedule', 
     const ef = entityFilter(c)
     // 기존 스케줄 조회
     const { results } = await c.env.DB.prepare(`
-      SELECT id, loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, actual_paid_amount, actual_paid_date, status, notes, created_at FROM loan_payments WHERE loan_id = ?${ef.clause} ORDER BY payment_number
+      SELECT id, loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, actual_paid_amount, actual_paid_date, status, notes, created_at FROM loan_payments WHERE loan_id = ?${ef.clause} ORDER BY payment_number, id
     `).bind(id, ...ef.params).all()
 
     // 대출 정보도 함께

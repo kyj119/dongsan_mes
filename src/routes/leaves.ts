@@ -288,7 +288,7 @@ leavesRouter.get('/balance/:employeeId', async (c) => {
         (accrued + granted_extra + carried_over - used - expired) as remaining
       FROM leave_balances
       WHERE employee_id = ?${efB.clause}
-      ORDER BY year DESC, leave_type
+      ORDER BY year DESC, leave_type, id
     `).bind(employeeId, ...efB.params).all()
 
     const currentYear = kstYear()

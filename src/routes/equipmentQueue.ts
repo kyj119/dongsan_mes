@@ -20,7 +20,7 @@ equipmentQueue.get('/:equipmentId/queue', async (c) => {
       c.rip_status, c.status
     FROM cards c
     WHERE c.equipment_id = ? AND c.status = 'PRINTING'${eClause}
-    ORDER BY c.priority DESC, c.delivery_date ASC, c.created_at ASC
+    ORDER BY c.priority DESC, c.delivery_date ASC, c.created_at ASC, c.id ASC
   `).bind(equipmentId, ...eParams).all()
 
   return c.json({ success: true, data: results })
@@ -70,7 +70,7 @@ equipmentQueue.post('/:equipmentId/recalculate', requireRole('ADMIN', 'MANAGER')
     SELECT id, width, height, quantity
     FROM cards
     WHERE equipment_id = ? AND status = 'PRINTING'${recalcEClause}
-    ORDER BY priority DESC, delivery_date ASC, created_at ASC
+    ORDER BY priority DESC, delivery_date ASC, created_at ASC, id ASC
   `).bind(equipmentId, ...recalcEParams).all<{ id: number; width: number; height: number; quantity: number }>()
 
   // 예상시간 계산 + 큐 위치

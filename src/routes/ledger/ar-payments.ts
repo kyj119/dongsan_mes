@@ -255,7 +255,7 @@ arPaymentsRouter.get('/payments', async (c) => {
       LEFT JOIN clients c ON p.client_id = c.id
       LEFT JOIN users u ON p.created_by = u.id
       ${where}
-      ORDER BY p.payment_date DESC, p.created_at DESC
+      ORDER BY p.payment_date DESC, p.created_at DESC, p.id DESC
       LIMIT ${limit} OFFSET ${offset}
     `
 

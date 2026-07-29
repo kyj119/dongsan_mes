@@ -84,7 +84,7 @@ arLedgerRouter.get('/client/:clientId', async (c) => {
         const { results: items } = await c.env.DB.prepare(`
           SELECT order_id, item_name, width, height, quantity, unit, unit_price, amount, vat_included, content, specification
           FROM order_items WHERE order_id IN (${ph}) AND parent_item_id IS NULL
-          ORDER BY sort_order ASC
+          ORDER BY sort_order ASC, id ASC
         `).bind(...chunk).all<OrderItemLine>()
         for (const item of items) {
           if (!orderItemsMap.has(item.order_id)) orderItemsMap.set(item.order_id, [])

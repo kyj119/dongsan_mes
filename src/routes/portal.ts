@@ -377,7 +377,7 @@ portal.get('/orders/:id', async (c) => {
                 width, height, quantity, unit, unit_price, amount, vat_included,
                 post_processing, content, sort_order, parent_item_id,
                 scale_factor, finishing
-         FROM order_items WHERE order_id = ? ORDER BY sort_order`
+         FROM order_items WHERE order_id = ? ORDER BY sort_order, id`
       ).bind(orderId).all(),
       c.env.DB.prepare(`
         SELECT id, tracking_number, courier_name, delivery_type, status as shipment_status,
@@ -438,7 +438,7 @@ portal.get('/balance', async (c) => {
              o.billed_at as billing_date
       FROM orders o
       WHERE o.client_id = ? AND o.billing_status = 'BILLED'
-      ORDER BY o.billed_at DESC
+      ORDER BY o.billed_at DESC, o.id DESC
     `).bind(user.portal_client_id).all()
 
     // 총 미수 = 전체 청구(BILLED) − 전체 입금 (거래처 실 미수, 입금은 주문단위 배분 불가하므로 합계로 차감)
@@ -719,7 +719,7 @@ portal.post('/verify-document', async (c) => {
 
       const { results: items } = await c.env.DB.prepare(`
         SELECT item_name, specification, width, height, quantity, unit, unit_price, amount
-        FROM order_items WHERE order_id = ? AND parent_item_id IS NULL ORDER BY sort_order
+        FROM order_items WHERE order_id = ? AND parent_item_id IS NULL ORDER BY sort_order, id
       `).bind(order.id).all<OrderItemRow>()
 
       const invoiceItems = (items || []).map((i) => ({

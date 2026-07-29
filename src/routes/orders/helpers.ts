@@ -183,7 +183,7 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
     FROM order_items oi
     LEFT JOIN items i ON oi.item_id = i.id
     WHERE oi.order_id = ?
-    ORDER BY oi.sort_order ASC
+    ORDER BY oi.sort_order ASC, oi.id ASC
   `).bind(orderId).all()
 
   const { results: finMethods } = await db.prepare(

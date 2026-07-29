@@ -64,7 +64,7 @@ paymentMatchRouter.get('/:id{[0-9]+}/payment-match', async (c) => {
     const efP = entityFilter(c, 'p')
     const { results: linked } = await c.env.DB.prepare(
       `SELECT p.id, p.client_id, p.payment_date, p.amount, p.payment_method, p.reference_number, p.notes, p.tax_invoice_id
-       FROM payments p WHERE p.tax_invoice_id = ?${efP.clause} ORDER BY p.payment_date DESC`
+       FROM payments p WHERE p.tax_invoice_id = ?${efP.clause} ORDER BY p.payment_date DESC, p.id DESC`
     ).bind(id, ...efP.params).all<PaymentRow>()
 
     const linkedTotal = (linked as PaymentRow[]).reduce((s, p) => s + (p.amount || 0), 0)
@@ -88,7 +88,7 @@ paymentMatchRouter.get('/:id{[0-9]+}/payment-match', async (c) => {
            AND p.client_id = ?
            AND ${amountClause}
            AND ABS(julianday(p.payment_date) - julianday(?)) <= ?${efP.clause}
-         ORDER BY ABS(julianday(p.payment_date) - julianday(?)) ASC, p.payment_date DESC
+         ORDER BY ABS(julianday(p.payment_date) - julianday(?)) ASC, p.payment_date DESC, p.id DESC
          LIMIT 20`
       ).bind(
         inv.buyer_client_id,

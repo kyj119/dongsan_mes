@@ -57,7 +57,7 @@ bankRouter.get('/accounts', requireRole('ADMIN'), async (c) => {
   try {
     const ef = entityFilter(c, 'bank_accounts')
     const { results } = await c.env.DB.prepare(
-      `SELECT id, bank_code, bank_name, account_number, account_holder, account_alias, connected_id, is_active, last_synced_at, last_synced_date, entity_id, created_at, barobill_registered, collect_cycle, barobill_registered_at FROM bank_accounts WHERE is_active = 1${ef.clause} ORDER BY created_at DESC`
+      `SELECT id, bank_code, bank_name, account_number, account_holder, account_alias, connected_id, is_active, last_synced_at, last_synced_date, entity_id, created_at, barobill_registered, collect_cycle, barobill_registered_at FROM bank_accounts WHERE is_active = 1${ef.clause} ORDER BY created_at DESC, id DESC`
     ).bind(...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -458,7 +458,7 @@ bankRouter.get('/transactions', requireRole('ADMIN'), async (c) => {
       LEFT JOIN expense_categories ec ON bt.matched_category_id = ec.id
       LEFT JOIN fixed_expenses fe ON bt.matched_fixed_expense_id = fe.id
       ${where}
-      ORDER BY bt.transaction_date DESC, bt.transaction_time DESC
+      ORDER BY bt.transaction_date DESC, bt.transaction_time DESC, bt.id DESC
       LIMIT ${limit} OFFSET ${offset}
     `
 
@@ -756,7 +756,7 @@ bankRouter.get('/expense-categories', requireRole('ADMIN', 'MANAGER'), async (c)
     const { results } = await c.env.DB.prepare(`
       SELECT id, name, icon, color FROM expense_categories
       WHERE is_active = 1${ef.clause}
-      ORDER BY sort_order
+      ORDER BY sort_order, id
     `).bind(...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -775,7 +775,7 @@ bankRouter.get('/match-rules', requireRole('ADMIN', 'MANAGER'), async (c) => {
       LEFT JOIN clients c ON r.matched_client_id = c.id
       LEFT JOIN expense_categories ec ON r.matched_category_id = ec.id
       WHERE 1=1${ef.clause}
-      ORDER BY r.match_count DESC
+      ORDER BY r.match_count DESC, r.id DESC
     `).bind(...ef.params).all()
 
     return c.json({ success: true, data: results })
@@ -1016,7 +1016,7 @@ async function runAutoMatchEngine(
       SELECT id, client_name, search_keywords, representative
       FROM clients
       WHERE is_active = 1
-      ORDER BY client_name
+      ORDER BY client_name, id
     `).all<{
       id: number
       client_name: string
@@ -1618,7 +1618,7 @@ async function applyBankTransaction(
         SELECT id FROM cash_schedule
         WHERE client_id = ? AND flow_type = 'IN' AND source_type = 'ORDER'
           AND status IN ('PENDING', 'OVERDUE') AND amount = ? AND entity_id = ?
-        ORDER BY schedule_date ASC LIMIT 1
+        ORDER BY schedule_date ASC, id ASC LIMIT 1
       )
     `).bind(tx.id, payDate, amount, clientId, amount, entityId).run()
   } catch (e) {

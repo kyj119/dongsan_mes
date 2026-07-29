@@ -155,7 +155,7 @@ accountingRouter.get('/payments', async (c) => {
       LEFT JOIN clients c ON p.client_id = c.id
       LEFT JOIN users u ON p.created_by = u.id
       ${where}
-      ORDER BY date(p.payment_date) DESC, p.created_at DESC
+      ORDER BY date(p.payment_date) DESC, p.created_at DESC, p.id DESC
       LIMIT ? OFFSET ?
     `).bind(...params, limit, offset).all()
 
@@ -301,7 +301,7 @@ accountingRouter.get('/timeline', async (c) => {
         WHERE date(pi.invoice_date) >= ? AND date(pi.invoice_date) <= ?${efPi.clause}
       ) t
       ${flowFilter}
-      ORDER BY t.evt_date DESC, t.label
+      ORDER BY t.evt_date DESC, t.label, t.ref_id DESC
       LIMIT ? OFFSET ?
     `).bind(
       start, end, ...efP.params,

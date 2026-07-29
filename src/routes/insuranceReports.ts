@@ -26,7 +26,7 @@ insuranceReportsRouter.get('/', async (c) => {
       sql += ` AND month = ?`
       params.push(Number(month))
     }
-    sql += ` ORDER BY month DESC, report_type`
+    sql += ` ORDER BY month DESC, report_type, id`
 
     const rows = await c.env.DB.prepare(sql).bind(...params).all()
     return c.json({ success: true, data: rows.results || [] })
@@ -49,7 +49,7 @@ insuranceReportsRouter.get('/annual-summary', async (c) => {
       `SELECT month, employee_count, grand_total_employee, grand_total_employer, grand_total, status
        FROM insurance_reports
        WHERE year = ? AND report_type = 'MONTHLY'${ef.clause}
-       ORDER BY month`
+       ORDER BY month, id`
     ).bind(year, ...ef.params).all()
     return c.json({ success: true, data: rows.results || [] })
   } catch (err: any) {
@@ -70,7 +70,7 @@ insuranceReportsRouter.get('/:id', async (c) => {
     if (!report) return c.json({ success: false, error: '신고서 없음' }, 404)
 
     const details = await c.env.DB.prepare(
-      `SELECT id, report_id, employee_id, employee_name, rrn, base_salary, national_pension, health_insurance, long_term_care, employment_insurance, employer_national_pension, employer_health_insurance, employer_long_term_care, employer_employment_insurance, employer_industrial_accident FROM insurance_report_details WHERE report_id = ? ORDER BY employee_name`
+      `SELECT id, report_id, employee_id, employee_name, rrn, base_salary, national_pension, health_insurance, long_term_care, employment_insurance, employer_national_pension, employer_health_insurance, employer_long_term_care, employer_employment_insurance, employer_industrial_accident FROM insurance_report_details WHERE report_id = ? ORDER BY employee_name, id`
     ).bind(id).all()
 
     return c.json({ success: true, data: { report, details: details.results || [] } })

@@ -26,7 +26,7 @@ facilityRouter.get('/zones', async (c) => {
         (SELECT COUNT(*) FROM equipment e WHERE e.zone_id = fz.id${ef.clause}) as equipment_count
       FROM facility_zones fz
       WHERE fz.is_active = 1
-      ORDER BY fz.sort_order
+      ORDER BY fz.sort_order, fz.id
     `).bind(...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -111,7 +111,7 @@ facilityRouter.get('/layout-data', async (c) => {
     const [zonesRes, equipRes, cardsRes] = await Promise.all([
       // facility_zones: entity_id 없음 = 전사 공용(물리 구역)
       c.env.DB.prepare(`
-        SELECT id, name, description, color, sort_order, bounds, is_active, created_at, updated_at FROM facility_zones WHERE is_active = 1 ORDER BY sort_order
+        SELECT id, name, description, color, sort_order, bounds, is_active, created_at, updated_at FROM facility_zones WHERE is_active = 1 ORDER BY sort_order, id
       `).all(),
       // 바인드 순서: cards 서브쿼리(SELECT절)가 equipment WHERE보다 앞 → cardEf, equipEf 순
       c.env.DB.prepare(`

@@ -33,7 +33,7 @@ priceListRouter.get('/', async (c) => {
       SELECT id, item_code, item_name, item_type, category,
              specification, unit, base_price, sales_price, is_sales_item
       FROM items WHERE is_active = 1
-      ORDER BY item_type, category, item_name, specification
+      ORDER BY item_type, category, item_name, specification, id
     `).all()
 
     const media: any[] = []  // 소재(print_media) 폐기 — 단가표 소재 export 제거

@@ -224,16 +224,34 @@ grep -n "statusColors\s*=\|statusLabels\s*=\s*{" src/scripts/CHANGED.js
 (실제 사고: 발주 목록 258건 중 241건 동일 `created_at` → 첫 줄이 `SMP-0001`(가장 오래된 발주), 2026-07-27 수정)
 
 ```bash
-# tie-break 없이 날짜/시각으로 끝나는 ORDER BY (페이징 목록이면 P1)
-grep -nE "ORDER BY [^,]*(created_at|updated_at|order_date|receipt_date|issue_date|payment_date) (DESC|ASC)'? *(LIMIT|\`)" src/routes/CHANGED.ts
+node scripts/sort-audit.cjs            # 전체 (P1·P2). P1 있으면 exit 1
+node scripts/sort-audit.cjs orders     # 변경 파일만 (경로 정규식)
+node scripts/sort-audit.cjs --all      # P3(GROUP BY)·P4(집계 랭킹)까지
 ```
 
+> ⛔ **grep으로 대체하지 말 것.** 예전 패턴 `ORDER BY [^,]*(created_at|...)` 은 `[^,]*` 때문에
+> **다항 ORDER BY를 구조적으로 못 잡았고**, `ORDER BY a DESC, b DESC` 형태의 페이징 목록 10곳이
+> 그대로 통과했다(2026-07-29 감사에서 발견). 정렬키 컬럼명 목록에 의존하는 방식도 마찬가지로 샌다.
+
 **판정 기준**:
-- 🔴 페이징 목록(`LIMIT ? OFFSET ?`)에 tie-break 없음 → 반드시 수정
+- 🔴 **P1** 페이징 목록(`LIMIT ? OFFSET ?`)에 tie-break 없음 → 반드시 수정 (페이지 간 중복·누락)
 - 🔴 기본 정렬 키가 `created_at` 단독인데 해당 테이블에 이관/배치 데이터 존재 → 업무일자(`order_date` 등)로 교체
-- 🟡 `LIMIT N` 단순 상위 조회 tie-break 없음 → 권장 수정
+- 🔴 **쓰기·선택 경로**(`UPDATE ... WHERE id = (SELECT ... LIMIT 1)`, `ROW_NUMBER() OVER (ORDER BY ...)`,
+  자재 선택 `ORDER BY ... LIMIT 1`)는 등급과 무관하게 필수 — 표시가 아니라 **어느 행이 처리되는지**가 바뀐다
+- 🟡 **P2** `LIMIT N` 상위 조회·전량 조회 → 권장 수정
 - `NULLS LAST` 사용 → `col IS NULL, col ASC`로 대체 (D1 방언 의존 회피)
 - 정렬 옵션 맵은 **모든 항목**에 tie-break 포함 여부 확인 (일부만 적용 = 반려)
+
+**tie-break 키 고르기 (틀리면 런타임 500)**:
+- 키는 **최외곽 FROM(행 grain)의 PK** — 조인된 lookup 테이블 별칭을 쓰면 유일하지 않다
+- `SELECT DISTINCT` → ORDER BY가 **출력 컬럼만** 참조 가능. 단일 컬럼 DISTINCT는 이미 유일하므로 **붙이지 말 것**
+- `UNION`(compound SELECT) → 출력 컬럼만 참조 가능. `ti.id` 같은 별칭 불가, 별칭 없는 `id` 사용
+- `GROUP BY` → tie-break 키가 그룹 키여야 함
+- `id` 컬럼이 없는 복합PK 테이블(`holidays`·`equipment_processes` 등)에 `id`를 붙이면 **`no such column` 500**.
+  해당 키로 WHERE 필터되면 이미 결정론적 → `scripts/sort-audit.cjs` 의 `KNOWN_SAFE` 에 사유와 함께 등록
+
+**검증 (타입체크는 SQL 오류를 못 잡는다)**: 수정 후 반드시 로컬 D1에 `prepare()`/실행으로 확인.
+`npm run verify` 통과 ≠ SQL 정상. ambiguous column·compound SELECT 위반은 런타임 500으로만 드러난다.
 
 ## 참조
 

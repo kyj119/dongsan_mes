@@ -739,7 +739,7 @@ apRouter.get('/purchase-adjustments/:supplierId', async (c) => {
       FROM purchase_adjustments pa
       LEFT JOIN users u ON pa.created_by = u.id
       WHERE pa.supplier_id = ?${paEf.clause}
-      ORDER BY pa.adjustment_date DESC
+      ORDER BY pa.adjustment_date DESC, pa.id DESC
       LIMIT 500
     `).bind(supplierId, ...paEf.params).all()
 

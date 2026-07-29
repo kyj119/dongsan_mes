@@ -430,7 +430,7 @@ taxInvoicesQueriesRouter.get('/monthly-eligible', async (c) => {
           JOIN tax_invoices ti ON tio.tax_invoice_id = ti.id
           WHERE ti.status != 'CANCELLED'
         )${efMonthly.clause}
-      ORDER BY c.client_name ASC, o.order_date ASC
+      ORDER BY c.client_name ASC, o.order_date ASC, o.id ASC
     `).bind(dateFrom, dateTo, ...efMonthly.params).all()
 
     // 거래처별 그룹핑

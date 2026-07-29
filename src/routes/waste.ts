@@ -28,7 +28,7 @@ waste.get('/', async (c) => {
     LEFT JOIN cards c ON w.card_id = c.id
     LEFT JOIN items i ON w.material_item_id = i.id
     ${where}
-    ORDER BY w.waste_date DESC, w.created_at DESC
+    ORDER BY w.waste_date DESC, w.created_at DESC, w.id DESC
     LIMIT 200
   `).bind(...binds).all()
 

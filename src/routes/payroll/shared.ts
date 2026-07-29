@@ -347,7 +347,7 @@ export async function lookupIncomeTax(db: D1Database, year: number, monthlyPay: 
   const row = await db.prepare(
     `SELECT id, ${col} as tax FROM income_tax_table
      WHERE year = ? AND monthly_pay_min <= ? AND monthly_pay_max > ?
-     ORDER BY monthly_pay_min DESC LIMIT 1`
+     ORDER BY monthly_pay_min DESC, id DESC LIMIT 1`
   ).bind(year, monthlyPay, monthlyPay).first<{ id: number; tax: number }>().catch(() => null)
   if (row) return { tax: row.tax || 0, rowId: row.id }
   // fallback: 표 없으면 공식 계산 (국세청 간이세액표 공식 기준, 80/100/120% 선택은 별도 적용)

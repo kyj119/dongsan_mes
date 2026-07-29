@@ -18,7 +18,7 @@ claims.get('/defect-codes', async (c) => {
     FROM defect_codes d
     LEFT JOIN defect_codes p ON d.parent_id = p.id
     WHERE d.is_active = 1 ${dcEf.clause}
-    ORDER BY d.sort_order ASC
+    ORDER BY d.sort_order ASC, d.id ASC
   `).bind(...dcEf.params).all()
   return c.json({ success: true, data: results })
 })

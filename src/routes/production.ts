@@ -43,7 +43,7 @@ productionRouter.get('/logs', async (c) => {
       params.push(shift)
     }
 
-    query += ` ORDER BY pl.log_date DESC, pl.shift LIMIT ?`
+    query += ` ORDER BY pl.log_date DESC, pl.shift, pl.id DESC LIMIT ?`
     params.push(Number(limit))
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
@@ -87,7 +87,7 @@ productionRouter.get('/logs/:id', async (c) => {
       LEFT JOIN employees e ON wr.employee_id = e.id
       LEFT JOIN cards c ON wr.card_id = c.id
       WHERE wr.production_log_id = ?
-      ORDER BY wr.start_time
+      ORDER BY wr.start_time, wr.id
     `).bind(id).all()
 
     // Get quality issues for this log
@@ -103,7 +103,7 @@ productionRouter.get('/logs/:id', async (c) => {
       LEFT JOIN employees e2 ON qi.resolved_by = e2.id
       LEFT JOIN work_records wr ON qi.work_record_id = wr.id
       WHERE wr.production_log_id = ?
-      ORDER BY qi.reported_at DESC
+      ORDER BY qi.reported_at DESC, qi.id DESC
     `).bind(id).all()
 
     return c.json({
@@ -183,7 +183,7 @@ productionRouter.get('/work-records', async (c) => {
       params.push(status)
     }
 
-    query += ` ORDER BY wr.start_time DESC LIMIT ?`
+    query += ` ORDER BY wr.start_time DESC, wr.id DESC LIMIT ?`
     params.push(Number(limit))
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
@@ -328,7 +328,7 @@ productionRouter.get('/quality-issues', async (c) => {
       params.push(end_date)
     }
 
-    query += ` ORDER BY qi.reported_at DESC LIMIT ?`
+    query += ` ORDER BY qi.reported_at DESC, qi.id DESC LIMIT ?`
     params.push(Number(limit))
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()

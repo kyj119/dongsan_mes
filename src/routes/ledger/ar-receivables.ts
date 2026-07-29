@@ -369,7 +369,7 @@ arReceivablesRouter.get('/receivables/:clientId/orders', async (c) => {
         CAST(julianday('now') - julianday(COALESCE(o.accounting_date, o.billed_at)) AS INTEGER) as days_since_billed
       FROM orders o
       WHERE o.client_id = ? AND o.billing_status = 'BILLED'${recvOrdDetailEf}
-      ORDER BY COALESCE(o.accounting_date, o.billed_at) ASC
+      ORDER BY COALESCE(o.accounting_date, o.billed_at) ASC, o.id ASC
     `).bind(clientId, ...recvOrdDetailEfParams).all<ReceivableOrderRow>()
 
     // 입금 내역

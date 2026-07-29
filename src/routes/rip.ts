@@ -262,7 +262,7 @@ ripRouter.get('/equipment', authMiddleware, async (c) => {
         SELECT id, equipment_id, preset_name, tps_filename, description, is_default
         FROM equipment_presets
         WHERE equipment_id IN (${placeholders})
-        ORDER BY is_default DESC, preset_name ASC
+        ORDER BY is_default DESC, preset_name ASC, id ASC
       `).bind(...eqIds).all<PresetRow>()
       for (const p of allPresets) {
         if (!presetsMap[p.equipment_id]) presetsMap[p.equipment_id] = []
@@ -551,7 +551,7 @@ ripRouter.get('/equipment/:id', authMiddleware, async (c) => {
       FROM maintenance_logs ml
       LEFT JOIN users u ON ml.performed_by = u.id
       WHERE ml.equipment_id = ?
-      ORDER BY ml.performed_at DESC
+      ORDER BY ml.performed_at DESC, ml.id DESC
       LIMIT 20
     `).bind(equipId).all()
 
@@ -1604,7 +1604,7 @@ ripRouter.get('/pending', agentKeyMiddleware, async (c) => {
       FROM cards c
       WHERE c.equipment_id = ?
         AND c.rip_status = 'QUEUED'
-      ORDER BY c.priority DESC, c.delivery_date ASC
+      ORDER BY c.priority DESC, c.delivery_date ASC, c.id ASC
       LIMIT 10
     `).bind(equipment_id).all()
 
@@ -1910,7 +1910,7 @@ ripRouter.get('/pending-items', agentKeyMiddleware, async (c) => {
       WHERE ci.rip_equipment_id = ?
         AND ci.rip_status = 'QUEUED'
         AND COALESCE(ci.rip_retry_count, 0) < 5
-      ORDER BY c.priority DESC, c.delivery_date ASC
+      ORDER BY c.priority DESC, c.delivery_date ASC, ci.id ASC
       LIMIT 10
     `).bind(equipment_id).all()
 
@@ -2079,7 +2079,7 @@ ripRouter.get('/card-items/:cardId', authMiddleware, async (c) => {
       FROM card_items ci
       JOIN order_items oi ON ci.order_item_id = oi.id
       WHERE ci.card_id = ?
-      ORDER BY oi.sort_order ASC
+      ORDER BY oi.sort_order ASC, ci.id ASC
     `).bind(cardId).all()
 
     return c.json({ success: true, data: results })
@@ -2100,7 +2100,7 @@ ripRouter.get('/maintenance/dashboard', authMiddleware, requireRole('ADMIN', 'MA
       FROM maintenance_logs ml
       JOIN equipment e ON ml.equipment_id = e.id
       WHERE ml.performed_at >= date('now', '-30 days')${ef.clause}
-      ORDER BY ml.performed_at DESC
+      ORDER BY ml.performed_at DESC, ml.id DESC
       LIMIT 50
     `).bind(...ef.params).all()
 
@@ -2151,7 +2151,7 @@ ripRouter.get('/maintenance/dashboard', authMiddleware, requireRole('ADMIN', 'MA
       FROM equipment_heads eh
       JOIN equipment e ON eh.equipment_id = e.id
       WHERE e.status = 'ACTIVE'${ef.clause}
-      ORDER BY e.name, eh.head_number
+      ORDER BY e.name, eh.head_number, eh.id
     `).bind(...ef.params).all()
 
     // KPI
