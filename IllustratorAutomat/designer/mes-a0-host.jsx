@@ -233,7 +233,14 @@ function mesA0_process() {
   if (!srcDoc.selection || srcDoc.selection.length === 0) return '{"ok":false,"err":"nosel"}';
   var sel = [];
   for (var si = 0; si < srcDoc.selection.length; si++) sel.push(srcDoc.selection[si]);
-  var ub = mesA0_unionBounds(sel);
+  // ★ 등록 크기의 기준 = **클립 마스크 존중**(2026-07-29 수정).
+  //   여기만 겉보기(visibleBounds)를 쓰고 있었다 — 실측(mesA0_measure:211)·개별추가(:576)·
+  //   분리/자동감지(:643)는 전부 이미 mesA0_clipUnion(클립 존중)이었는데 **등록 경로만 누락**.
+  //   그래서 클립으로 8.7×19.7cm 로 잘린 디자인이 겉보기 53.9×24.3 으로 잡혀,
+  //   배율 10 에서 539×243.3cm 로 등록됐다(실측 표시와 등록값이 서로 다른 함수를 쓰던 것).
+  //   realW/realH 를 통해 manifest measured_cm · 파일명 sizeStr · 패널 완료 메시지가 한꺼번에 교정된다.
+  var vbAll = mesA0_unionBounds(sel);            // 겉보기 — 임시 문서 캔버스 크기용(기존 동작 보존)
+  var ub = mesA0_clipUnion(sel) || vbAll;        // 클립 존중 — 크기 메타의 기준
   if (!ub) return '{"ok":false,"err":"nobounds"}';
   var fileWCm = (ub[2] - ub[0]) / MESA0_PT_PER_MM / 10;
   var fileHCm = (ub[1] - ub[3]) / MESA0_PT_PER_MM / 10;
@@ -288,7 +295,10 @@ function mesA0_process() {
   var copyErr = '';
   try { app.activeDocument = srcDoc; srcDoc.selection = sel; app.copy(); } catch (eCopy) { copyErr = '' + eCopy; }
 
-  var newDoc = app.documents.add(DocumentColorSpace.CMYK, (ub[2] - ub[0]) || 100, (ub[1] - ub[3]) || 100);
+  // 캔버스는 겉보기 기준을 유지한다 — 클립 밖 아트까지 담을 자리를 두려는 원래 의도(아트보드는
+  //   아래에서 db(클립 존중)로 다시 잡는다). ub 를 클립 기준으로 바꾼 것과 무관하게 기존 동작 보존.
+  var cvB = vbAll || ub;
+  var newDoc = app.documents.add(DocumentColorSpace.CMYK, (cvB[2] - cvB[0]) || 100, (cvB[1] - cvB[3]) || 100);
   var okAll = false, outlineFailed = false, epsName = null, diagItems = 0, normed = 0;
   try {
     app.activeDocument = newDoc;
