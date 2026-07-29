@@ -10,6 +10,31 @@ const itemsRouter = new Hono<HonoEnv>()
 // Apply authentication middleware to all routes
 itemsRouter.use('/*', authMiddleware)
 
+/**
+ * 그룹 목록 응답에 동폭 중복(dup_widths) 표식 부착.
+ *
+ * 같은 item_group 안에 동일 width_mm SKU가 2개 이상이면 자재 자동차감이 "어느 것을 소비할지"를
+ * group_sort/재고로 갈라야 한다(utils/autoDeductPostProcessingMaterials). 그런데 실제 사례는
+ * 대부분 대체 불가한 자재가 한 그룹에 섞인 분류 오류였다(0480 — 코인텍 코팅지가 호홍 그룹에
+ * 들어가 있었고, 평량·라미방식이 달라 서로 대체 불가). 그래서 규칙으로 조용히 넘기지 않고
+ * 목록에 경고 배지로 드러내 분류 점검을 유도한다.
+ *
+ * widths 는 GROUP_CONCAT(width_mm) — 순서가 정의되지 않으므로 중복 판정에만 쓴다.
+ */
+function withDupWidths<T extends { widths?: unknown }>(rows: T[] | null | undefined) {
+  return (rows || []).map((g) => {
+    const seen = new Set<string>()
+    const dup = new Set<string>()
+    for (const raw of String(g.widths ?? '').split(',')) {
+      const w = raw.trim()
+      if (!w) continue
+      if (seen.has(w)) dup.add(w)
+      else seen.add(w)
+    }
+    return { ...g, dup_widths: Array.from(dup).sort((a, b) => Number(a) - Number(b)) }
+  })
+}
+
 // 단가 변경 이력 (구 print-system /price-history에서 이전) — /:id 보다 먼저 등록
 itemsRouter.get('/price-history', async (c) => {
   try {
@@ -244,11 +269,11 @@ itemsRouter.get('/groups', async (c) => {
 
     query += ' GROUP BY item_group ORDER BY item_group ASC'
 
-    const { results } = await c.env.DB.prepare(query).bind(...params).all()
+    const { results } = await c.env.DB.prepare(query).bind(...params).all<{ widths?: string }>()
 
     return c.json({
       success: true,
-      data: results
+      data: withDupWidths(results)
     })
   } catch (error) {
     console.error('src/routes/items.ts error:', error)
@@ -584,11 +609,11 @@ itemsRouter.get('/materials/groups', async (c) => {
 
     query += ' GROUP BY item_group ORDER BY item_group ASC'
 
-    const { results } = await c.env.DB.prepare(query).bind(...params).all()
+    const { results } = await c.env.DB.prepare(query).bind(...params).all<{ widths?: string }>()
 
     return c.json({
       success: true,
-      data: results
+      data: withDupWidths(results)
     })
   } catch (error) {
     console.error('src/routes/items.ts error:', error)

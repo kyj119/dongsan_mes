@@ -7,7 +7,9 @@ import { getItemDefaultZone } from './inventoryZone'
  * 인쇄 자재차감(autoDeductInventory)과 동일한 폭매칭 로직을 후가공 소비재에 적용.
  * - 트리거: 출고 등록(shipment POST)에서 출고된 카드들
  * - 대상: order_item.post_processing(JSON)에 선택된 PP옵션 중 material_item_group이 매핑된 것(예 무광/유광코팅)
- * - 폭: 해당 카드 print_events의 output_width 이상 최소폭 자재 선택 (인쇄와 동일)
+ * - 자재 선택: 출력폭 이상 최소폭 → group_sort(지정 우선순위) → 재고보유 → id (아래 상세 주석)
+ *   ⚠️ 인쇄(autoDeductInventory)는 후보가 product_materials(제품별 연결자재)로 좁혀지지만
+ *      후가공은 item_group 전체가 후보라 동폭 경합이 구조적으로 발생할 수 있다.
  * - 차감량: output_height / 914.4 × copy_total (yd)
  * - 중복방지: pp_material_deductions UNIQUE(print_event_id, material_item_id)
  */
@@ -79,19 +81,46 @@ export async function autoDeductPostProcessingMaterials(
           const copy = pe.copy_total || 1
           if (ow <= 0 || oh <= 0) continue
 
-          // output_width 이상 최소폭 자재 선택 (해당 자재그룹 내)
-          const mat = await db
+          // 자재 선택 규칙 (2026-07-29 확정 — 어느 SKU를 소비할지의 업무규칙)
+          //   ① width_mm >= 출력폭 중 최소폭 — 폭이 자재 적합성의 1차 기준
+          //   ② group_sort ASC — 운영자가 지정한 그룹내 우선순위(= 기본자재). 미지정은 0.
+          //   ③ 재고 > 0 우선 — 같은 우선순위면 실물이 있는 SKU를 소비 (차감 법인 기준)
+          //   ④ id ASC — 최종 결정론. 위 셋이 전부 동값이어도 실행마다 달라지지 않는다.
+          // ⚠️ ①이 ③보다 우선 = 최소폭 자재의 재고가 0이어도 더 넓은 폭으로 넘어가지 않는다.
+          //    폭이 안 맞는 자재를 쓰는 건 재고 부족보다 나쁜 선택이라 의도적으로 이 순서다.
+          // ⚠️ 애초에 ②③④가 갈리는 상황(동일 그룹·동일 폭 SKU 다수)은 대부분 그룹 분류 오류다
+          //    (0480: 코인텍 코팅지가 호홍 그룹에 섞여 있던 건). 그래서 발생 시 아래에서 경고한다.
+          const { results: matCands } = await db
             .prepare(
-              `SELECT id, width_mm, item_name FROM items
-               WHERE item_group = ? AND width_mm IS NOT NULL AND width_mm >= ?
-               ORDER BY width_mm ASC, id ASC LIMIT 1`
-            // ⚠️ 동일 item_group 내 같은 width_mm 이 prod 31조합·최대 6개 존재 →
-            //    tie-break 없으면 차감되는 자재 SKU가 실행마다 달라진다(재고 정합성).
-            //    지금은 id 최소값으로 고정. "동폭 중 어느 SKU를 소비할지"는 별도 업무규칙 필요.
+              `SELECT i.id, i.width_mm, i.item_name, COALESCE(i.group_sort, 0) AS group_sort,
+                      COALESCE((SELECT SUM(v.quantity) FROM inventory v
+                                 WHERE v.item_id = i.id AND v.entity_id = ?), 0) AS stock
+                 FROM items i
+                WHERE i.item_group = ? AND i.is_active = 1
+                  AND i.width_mm IS NOT NULL AND i.width_mm >= ?
+                ORDER BY i.width_mm ASC,
+                         COALESCE(i.group_sort, 0) ASC,
+                         CASE WHEN COALESCE((SELECT SUM(v.quantity) FROM inventory v
+                                              WHERE v.item_id = i.id AND v.entity_id = ?), 0) > 0
+                              THEN 0 ELSE 1 END ASC,
+                         i.id ASC
+                LIMIT 5`
             )
-            .bind(cons.group, ow)
-            .first() as any
+            .bind(entityId, cons.group, ow, entityId)
+            .all() as any
+          const mat = matCands?.[0]
           if (!mat) continue // 적정폭 없음 → 스킵
+
+          // 분류 점검 유도: 선택된 폭에 경합 SKU가 더 있으면 경고 (품목 페이지 배지와 동일 조건)
+          const sameWidth = matCands.filter((m: any) => m.width_mm === mat.width_mm)
+          if (sameWidth.length > 1) {
+            console.warn(
+              `[ppDeduct] ⚠️ 동폭 자재 경합: 그룹 "${cons.group}" ${mat.width_mm}mm 에 ${sameWidth.length}개 SKU. ` +
+              `선택=${mat.item_name}(id=${mat.id}, group_sort=${mat.group_sort}, 재고=${mat.stock}) / ` +
+              `밀림=${sameWidth.slice(1).map((m: any) => `${m.item_name}(id=${m.id})`).join(', ')}. ` +
+              `대체 가능한 자재가 아니라면 자재그룹 분리 필요.`
+            )
+          }
 
           // 중복 차감 방지
           const exist = await db

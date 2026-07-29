@@ -630,9 +630,18 @@ async function showMaterialSearchDropdown() {
             html += groups.map(function(g) {
                 var widths = (g.widths || '').split(',').map(function(w) { return (parseInt(w)/10) + 'cm'; }).join(', ');
                 var escapedGroup = (g.item_group || '').replace(/'/g, "\\'");
+                // 동폭 중복 경고: 같은 그룹에 폭이 겹치는 SKU가 있으면 자동차감이 무엇을 소비할지
+                // group_sort/재고로 갈라야 한다 → 대체 불가한 자재가 섞인 분류 오류일 가능성이 높다.
+                var dup = g.dup_widths || [];
+                var dupBadge = dup.length
+                    ? '<div class="text-xs text-amber-700 mt-0.5"><i class="fas fa-triangle-exclamation mr-1"></i>폭 중복 ' +
+                      dup.map(function(w) { return (parseInt(w)/10) + 'cm'; }).join(', ') +
+                      ' — 대체 가능한 자재가 아니면 그룹 분리 필요</div>'
+                    : '';
                 return '<div class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100" onclick="addMaterialGroupMapping(' + currentProductId + ', \'' + escapedGroup + '\')">' +
                     '<div class="font-medium text-blue-800"><i class="fas fa-layer-group mr-1"></i>' + escapeHtml(g.item_group || '') + ' <span class="text-xs text-blue-500">(' + g.item_count + '개)</span></div>' +
                     '<div class="text-xs text-gray-500">폭: ' + widths + '</div>' +
+                    dupBadge +
                 '</div>';
             }).join('');
         }
