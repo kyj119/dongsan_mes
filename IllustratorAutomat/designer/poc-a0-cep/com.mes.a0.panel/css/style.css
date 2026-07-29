@@ -17,6 +17,14 @@ html, body {
 .tab:hover { color: #ededed; }
 .tabpage { display: flex; flex-direction: column; gap: 7px; }
 .hidden { display: none; }
+/* 공통 헤더(탭 밖 고정) — 가공자·실측·거래처·수량·배율은 두 갈래가 함께 쓴다(2026-07-29 리모델) */
+.common { display: flex; flex-direction: column; gap: 7px; padding-bottom: 7px; border-bottom: 1px solid #454545; }
+/* 접이식 섹션 헤더(단건 탭의 후가공) — 탭에서 강등된 자리 */
+.disc { width: 100%; text-align: left; background: #2b2b2b; border: 1px solid #444; border-radius: 3px; color: #d8d8d8; padding: 5px 8px; font-size: 12px; }
+.disc:hover { border-color: #6e9fd8; }
+#finBody { display: flex; flex-direction: column; gap: 7px; }
+/* id 선택자가 .hidden(클래스)을 이기므로 접힘이 안 먹는다 — 같은 특이성으로 되받는다. */
+#finBody.hidden { display: none; }
 
 .title { margin: 0; font-size: 13px; font-weight: 600; color: #ededed; }
 .title .ver { font-size: 10px; font-weight: 400; color: #7a7a7a; }

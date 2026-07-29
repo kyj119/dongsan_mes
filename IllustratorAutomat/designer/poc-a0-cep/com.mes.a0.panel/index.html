@@ -6,26 +6,28 @@
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
+  <!--
+    탭 = 작업 갈래(2026-07-29 리모델). 이전 구조는 탭이 '설정 종류'(가공/후가공/큐)로 나뉘어 있어
+    `용도` 라디오 하나가 세 곳을 원격 조작했다 — 실행 버튼의 의미가 바뀌고, 후가공 탭이 잠긴 채 남고,
+    모아찍기의 본체(분리)는 다른 탭에 있었다. 그 구조에서 "모아찍기인데 전체가 1건으로 등록"이 났다.
+    이제 탭을 고르는 순간 무엇을 하는지 확정된다. 용도 라디오는 제거 — 탭이 곧 용도다.
+      단건    = 지금 선택 1건 가공(후가공 포함)
+      모아찍기 = 분리 → 조각 목록 → 등록까지 한 탭에서 완결
+      묶음    = 단건 여러 건을 행별로 세팅 → 검토문서 → 일괄 확정
+    두 갈래 공통 정보(가공자·실측·거래처·수량·배율)는 탭 밖 상단에 고정한다.
+  -->
   <div class="panel">
     <div class="topbar">
       <span class="title">MES 가공 <span id="ver" class="ver"></span></span>
     </div>
-    <div class="tabbar">
-      <button class="tab active" data-tab="proc" type="button">가공</button>
-      <button class="tab" data-tab="fin" type="button">후가공</button>
-      <button class="tab" data-tab="queue" type="button">큐</button>
-    </div>
 
-    <!-- ── 가공 탭 ── -->
-    <div class="tabpage" data-page="proc">
+    <!-- ── 공통 헤더(탭 밖 고정) ── -->
+    <div class="common">
       <div class="row">
         <label for="worker">가공자</label>
         <select id="worker"></select>
+        <span id="saved" class="saved">신원: (없음)</span>
       </div>
-      <div class="row"><span id="saved" class="saved">신원: (없음)</span></div>
-
-      <div class="sep"></div>
-
       <div class="row">
         <label>실측</label>
         <span id="meas" class="meas">— 객체 선택 후 새로고침</span>
@@ -34,6 +36,14 @@
       <div class="row">
         <label class="rad"><input id="trimInk" type="checkbox" /> 보이는 잉크로 축소</label>
         <span class="cfg">클립 마스크가 실제 그림보다 클 때 여백 제거</span>
+      </div>
+      <div class="row">
+        <label for="client">거래처</label>
+        <div class="acwrap grow">
+          <input id="client" type="text" placeholder="(비우면 파일명)" autocomplete="off" />
+          <div id="clientSug" class="sug hidden"></div>
+        </div>
+        <span id="clientHit" class="achit"></span>
       </div>
       <div class="row">
         <label for="qty">수량</label>
@@ -47,19 +57,70 @@
           <option value="10">1/10</option>
         </select>
       </div>
+    </div>
+
+    <div class="tabbar">
+      <button class="tab active" data-tab="single" type="button">단건</button>
+      <button class="tab" data-tab="impose" type="button">모아찍기</button>
+      <button class="tab" data-tab="bundle" type="button">묶음</button>
+    </div>
+
+    <!-- ── 단건 탭 — 지금 선택 1건을 후가공까지 걸어 가공 ── -->
+    <div class="tabpage" data-page="single">
       <div class="row">
-        <label>용도</label>
-        <label class="rad"><input type="radio" name="mode" value="single" checked /> 단건</label>
-        <label class="rad"><input type="radio" name="mode" value="impose" /> 모아찍기</label>
-        <span id="modeHint" class="cfg"></span>
+        <button id="finToggle" type="button" class="disc">▸ 후가공 <span class="cfg">마감·돔보·펀칭·주석</span></button>
       </div>
-      <div class="row">
-        <label for="client">거래처</label>
-        <div class="acwrap grow">
-          <input id="client" type="text" placeholder="(비우면 파일명)" autocomplete="off" />
-          <div id="clientSug" class="sug hidden"></div>
+      <div id="finBody" class="hidden">
+        <div class="row">
+          <label for="preset">마감</label>
+          <select id="preset"><option value="">(직접 지정)</option></select>
         </div>
-        <span id="clientHit" class="achit"></span>
+        <table class="fin">
+          <tr><td class="fl"></td><td class="fhdr">방식</td><td class="fhdr" colspan="2">여백</td><td class="fhdr">마크</td></tr>
+          <tr><td class="fl">상</td><td><select class="finM" data-side="top"></select></td>
+              <td><input class="finCm" data-side="top" type="text" /></td><td class="fu">cm</td>
+              <td><select class="finMark" data-side="top"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td></tr>
+          <tr><td class="fl">하</td><td><select class="finM" data-side="bottom"></select></td>
+              <td><input class="finCm" data-side="bottom" type="text" /></td><td class="fu">cm</td>
+              <td><select class="finMark" data-side="bottom"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td></tr>
+          <tr><td class="fl">좌</td><td><select class="finM" data-side="left"></select></td>
+              <td><input class="finCm" data-side="left" type="text" /></td><td class="fu">cm</td>
+              <td><select class="finMark" data-side="left"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td></tr>
+          <tr><td class="fl">우</td><td><select class="finM" data-side="right"></select></td>
+              <td><input class="finCm" data-side="right" type="text" /></td><td class="fu">cm</td>
+              <td><select class="finMark" data-side="right"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td></tr>
+        </table>
+        <div class="row"><span class="cfg">마크: 접는선=검정 실선 · 재단선=검정 점선 (변별 지정, 재단 필요한 변에만)</span></div>
+        <div class="row">
+          <label class="rad"><input id="trim" type="checkbox" /> 돔보(재단마크)</label>
+        </div>
+        <div class="sep"></div>
+        <div class="row punchrow">
+          <label>펀칭</label>
+          <span class="unit">상</span><input id="pTop" type="text" value="0" class="tiny" />
+          <span class="unit">하</span><input id="pBottom" type="text" value="0" class="tiny" />
+          <span class="unit">좌</span><input id="pLeft" type="text" value="0" class="tiny" />
+          <span class="unit">우</span><input id="pRight" type="text" value="0" class="tiny" />
+        </div>
+        <div class="row punchrow">
+          <label>꼭짓점</label>
+          <label class="rad"><input id="pcTL" type="checkbox" /> 좌상</label>
+          <label class="rad"><input id="pcTR" type="checkbox" /> 우상</label>
+          <label class="rad"><input id="pcBL" type="checkbox" /> 좌하</label>
+          <label class="rad"><input id="pcBR" type="checkbox" /> 우하</label>
+        </div>
+        <div class="sep"></div>
+        <div class="row punchrow">
+          <label>주석</label>
+          <label class="rad"><input id="aTop" type="checkbox" /> 상</label>
+          <label class="rad"><input id="aBottom" type="checkbox" /> 하</label>
+          <label class="rad"><input id="aLeft" type="checkbox" /> 좌</label>
+          <label class="rad"><input id="aRight" type="checkbox" /> 우</label>
+        </div>
+        <div class="row">
+          <input id="annot" type="text" placeholder="키워드(한글) · 식별번호·수량 자동결합" class="grow" />
+        </div>
+        <div class="row"><span class="cfg">주석은 마감 여백 3cm 이상인 변만 선택 가능</span></div>
       </div>
 
       <div class="row buttons">
@@ -67,74 +128,38 @@
       </div>
     </div>
 
-    <!-- ── 후가공 탭 ── -->
-    <div class="tabpage hidden" data-page="fin">
-      <div class="row">
-        <label for="preset">마감</label>
-        <select id="preset"><option value="">(직접 지정)</option></select>
-      </div>
-      <table class="fin">
-        <tr><td class="fl"></td><td class="fhdr">방식</td><td class="fhdr" colspan="2">여백</td><td class="fhdr">마크</td></tr>
-        <tr><td class="fl">상</td><td><select class="finM" data-side="top"></select></td>
-            <td><input class="finCm" data-side="top" type="text" /></td><td class="fu">cm</td>
-            <td><select class="finMark" data-side="top"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td></tr>
-        <tr><td class="fl">하</td><td><select class="finM" data-side="bottom"></select></td>
-            <td><input class="finCm" data-side="bottom" type="text" /></td><td class="fu">cm</td>
-            <td><select class="finMark" data-side="bottom"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td></tr>
-        <tr><td class="fl">좌</td><td><select class="finM" data-side="left"></select></td>
-            <td><input class="finCm" data-side="left" type="text" /></td><td class="fu">cm</td>
-            <td><select class="finMark" data-side="left"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td></tr>
-        <tr><td class="fl">우</td><td><select class="finM" data-side="right"></select></td>
-            <td><input class="finCm" data-side="right" type="text" /></td><td class="fu">cm</td>
-            <td><select class="finMark" data-side="right"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td></tr>
-      </table>
-      <div class="row"><span class="cfg">마크: 접는선=검정 실선 · 재단선=검정 점선 (변별 지정, 재단 필요한 변에만)</span></div>
-      <div class="row">
-        <label class="rad"><input id="trim" type="checkbox" /> 돔보(재단마크)</label>
-      </div>
-      <div class="sep"></div>
+    <!-- ── 모아찍기 탭 — 분리 → 조각 목록 → 등록(자체 완결). 후가공 없음(판에서 처리) ── -->
+    <div class="tabpage hidden" data-page="impose">
       <div class="row punchrow">
-        <label>펀칭</label>
-        <span class="unit">상</span><input id="pTop" type="text" value="0" class="tiny" />
-        <span class="unit">하</span><input id="pBottom" type="text" value="0" class="tiny" />
-        <span class="unit">좌</span><input id="pLeft" type="text" value="0" class="tiny" />
-        <span class="unit">우</span><input id="pRight" type="text" value="0" class="tiny" />
+        <label for="imposeGap">분리 간격</label>
+        <input id="imposeGap" type="text" value="0" class="tiny" />
+        <span class="unit">mm</span>
+        <button id="btnImposeSplit" type="button">선택분 분리</button>
+        <button id="btnImposeDetect" type="button" title="선택 없이 문서 전체에서 디자인 자동 감지">◎ 자동감지</button>
       </div>
-      <div class="row punchrow">
-        <label>꼭짓점</label>
-        <label class="rad"><input id="pcTL" type="checkbox" /> 좌상</label>
-        <label class="rad"><input id="pcTR" type="checkbox" /> 우상</label>
-        <label class="rad"><input id="pcBL" type="checkbox" /> 좌하</label>
-        <label class="rad"><input id="pcBR" type="checkbox" /> 우하</label>
+      <div class="row"><span class="cfg">0=겹칠 때만 병합 · 음수=더 잘게 · 양수=가까운 조각 병합. 행 클릭=일러에서 그 조각 선택</span></div>
+      <div id="imposeBox" class="queuebox"></div>
+      <div class="row buttons">
+        <button id="btnImposeRegister" type="button" class="primary" disabled>등록 (0)</button>
+        <button id="btnImposeClear" type="button">비우기</button>
       </div>
-      <div class="sep"></div>
-      <div class="row punchrow">
-        <label>주석</label>
-        <label class="rad"><input id="aTop" type="checkbox" /> 상</label>
-        <label class="rad"><input id="aBottom" type="checkbox" /> 하</label>
-        <label class="rad"><input id="aLeft" type="checkbox" /> 좌</label>
-        <label class="rad"><input id="aRight" type="checkbox" /> 우</label>
-      </div>
-      <div class="row">
-        <input id="annot" type="text" placeholder="키워드(한글) · 식별번호·수량 자동결합" class="grow" />
-      </div>
-      <div class="row"><span class="cfg">주석은 마감 여백 3cm 이상인 변만 선택 가능</span></div>
+      <div class="row"><span class="cfg">후가공 없음 · work.ai만 추출 → ia-editor 모아찍기 대기함</span></div>
     </div>
 
-    <!-- ── 큐 탭 ── -->
-    <div class="tabpage hidden" data-page="queue">
+    <!-- ── 묶음 탭 — 단건 여러 건을 행별로 세팅 → 검토문서 → 일괄 확정 ── -->
+    <div class="tabpage hidden" data-page="bundle">
       <div class="row punchrow">
         <label for="splitGap">분리 간격</label>
         <input id="splitGap" type="text" value="0" class="tiny" />
         <span class="unit">mm</span>
-        <span class="cfg">0=겹칠 때만 병합 · 음수=더 잘게 분리 · 양수=가까운 조각 병합</span>
+        <span class="cfg">0=겹칠 때만 병합 · 음수=더 잘게 · 양수=병합</span>
       </div>
       <div class="row buttons">
         <button id="btnQueueAdd" type="button">＋ 개별</button>
         <button id="btnQueueBatch" type="button">＋ 묶음분리</button>
         <button id="btnAutoDetect" type="button" title="선택 없이 문서 전체에서 디자인 자동 감지(시드) — 틀리면 삭제·개별 추가로 교정">◎ 자동감지</button>
       </div>
-      <div class="row"><span class="cfg">행 클릭=폼 연동(가공·후가공 수정이 그 행에 반영, 다시 클릭=해제) · 행별 세팅 → [검토문서] 확인 → 확정</span></div>
+      <div class="row"><span class="cfg">행 클릭=일러에서 그 조각 선택 + 폼 연동(단건 탭 후가공 수정이 그 행에 반영, 다시 클릭=해제)</span></div>
       <div id="queueBox" class="queuebox"></div>
       <div class="row buttons">
         <button id="btnReview" type="button" title="큐 전체를 가공해 검토문서(디자인당 아트보드)로 생성 — 저장 없음, 확인 후 확정 가능" disabled>검토문서</button>

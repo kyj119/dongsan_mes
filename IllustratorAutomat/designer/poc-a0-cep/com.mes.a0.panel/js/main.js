@@ -98,22 +98,26 @@
   document.addEventListener('DOMContentLoaded', function () {
     var csi = new CSInterface();
 
-    // ── 탭 전환 ──
+    // ── 탭 전환 = 용도 선택(2026-07-29 리모델) ──
+    //   **탭이 곧 용도다.** 이전 `용도` 라디오는 제거했다 — 라디오 하나가 다른 탭을 원격으로 잠그고
+    //   실행 버튼의 의미까지 바꾸던 구조가 "모아찍기인데 전체가 1건으로 등록"의 뿌리였다.
+    //   single=단건 · impose=모아찍기 · bundle=묶음(단건 여러 건).
     var tabs = document.getElementsByClassName('tab');
     var pages = document.getElementsByClassName('tabpage');
-    for (var t = 0; t < tabs.length; t++) {
-      tabs[t].addEventListener('click', function () {
-        var name = this.getAttribute('data-tab');
-        for (var a = 0; a < tabs.length; a++) tabs[a].className = (tabs[a].getAttribute('data-tab') === name) ? 'tab active' : 'tab';
-        for (var b = 0; b < pages.length; b++) pages[b].className = (pages[b].getAttribute('data-page') === name) ? 'tabpage' : 'tabpage hidden';
-      });
+    function activeTab() {
+      for (var a = 0; a < tabs.length; a++) {
+        if (tabs[a].className.indexOf('active') >= 0) return tabs[a].getAttribute('data-tab');
+      }
+      return 'single';
     }
-
-    // 용도 라디오 변경 → 후가공 게이트·버튼 라벨 즉시 반영
-    (function bindModeRadios() {
-      var rs = document.getElementsByName('mode');
-      for (var i = 0; i < rs.length; i++) rs[i].addEventListener('change', function () { applyModeUi(); });
-    })();
+    function activateTab(name) {
+      for (var a = 0; a < tabs.length; a++) tabs[a].className = (tabs[a].getAttribute('data-tab') === name) ? 'tab active' : 'tab';
+      for (var b = 0; b < pages.length; b++) pages[b].className = (pages[b].getAttribute('data-page') === name) ? 'tabpage' : 'tabpage hidden';
+      applyTabUi();
+    }
+    for (var t = 0; t < tabs.length; t++) {
+      tabs[t].addEventListener('click', function () { activateTab(this.getAttribute('data-tab')); });
+    }
 
     var elWorker = $('worker'), elSaved = $('saved'), elVer = $('ver');
     var elMeas = $('meas'), elBtnMeasure = $('btnMeasure');
@@ -124,7 +128,24 @@
     var elAnnot = $('annot');
     var elATop = $('aTop'), elABottom = $('aBottom'), elALeft = $('aLeft'), elARight = $('aRight');
     var elBtnProcess = $('btnProcess'), elOut = $('out'), elCfg = $('cfgStatus');
+    // 후가공 접이식(단건 탭 안) — 최상위 탭에서 강등. 모아찍기엔 아예 존재하지 않는 개념이라
+    //   "잠긴 채 자리만 차지하는 탭"이 사라진다.
+    var elFinToggle = $('finToggle'), elFinBody = $('finBody');
+    // 모아찍기 탭 전용
+    var elImposeBox = $('imposeBox'), elImposeGap = $('imposeGap');
+    var elBtnImposeSplit = $('btnImposeSplit'), elBtnImposeDetect = $('btnImposeDetect');
+    var elBtnImposeRegister = $('btnImposeRegister'), elBtnImposeClear = $('btnImposeClear');
     if (!elWorker) { warnMissing('worker'); return; }
+    if (!elImposeBox) warnMissing('imposeBox');
+    if (!elFinBody) warnMissing('finBody');
+
+    if (elFinToggle && elFinBody) {
+      elFinToggle.addEventListener('click', function () {
+        var open = elFinBody.className.indexOf('hidden') >= 0;
+        elFinBody.className = open ? '' : 'hidden';
+        elFinToggle.innerHTML = (open ? '▾' : '▸') + ' 후가공 <span class="cfg">마감·돔보·펀칭·주석</span>';
+      });
+    }
 
     var finM = document.getElementsByClassName('finM'); // method selects
     var finCm = document.getElementsByClassName('finCm');
@@ -309,7 +330,7 @@
       restoreSettings();
       updateClientHit();
       updateAnnotGates();
-      applyModeUi(); // 직전값에 mode가 없어도 라벨·게이트가 현재 선택과 맞도록 무조건 1회
+      applyTabUi(); // 직전값에 mode가 없어도 게이트·버튼이 현재 탭과 맞도록 무조건 1회
     }
     (function loadConfig() {
       var text = cepReadUtf8(CONFIG_PATH);
@@ -369,18 +390,14 @@
       // st.punch·st.annotPos·st.fin(구버전 저장분)은 의도적으로 무시 — 위 gatherSettings 주석 참조.
       updateAnnotGates();
     }
-    function modeValue() {
-      var rs = document.getElementsByName('mode');
-      for (var i = 0; i < rs.length; i++) if (rs[i].checked) return rs[i].value;
-      return 'single';
-    }
+    // 용도 = 활성 탭에서 파생(2026-07-29). 묶음 탭은 '단건 여러 건'이라 single.
+    //   레거시 'both'는 single 로 흡수한다(선택지 자체가 없어진 지 오래).
+    function modeValue() { return activeTab() === 'impose' ? 'impose' : 'single'; }
     function setMode(v) {
-      var rs = document.getElementsByName('mode');
-      var hit = false;
-      for (var i = 0; i < rs.length; i++) { rs[i].checked = (rs[i].value === v); if (rs[i].checked) hit = true; }
-      // 레거시 'both'(선택지 제거됨)는 단건으로 흡수 — 라디오가 전부 해제된 채 남지 않게.
-      if (!hit) { for (var j = 0; j < rs.length; j++) if (rs[j].value === 'single') rs[j].checked = true; }
-      applyModeUi();
+      var want = (v === 'impose') ? 'impose' : 'single';
+      // 이미 같은 용도면 탭을 옮기지 않는다 — 묶음 탭에서 행을 클릭할 때마다
+      //   단건 탭으로 튕겨 나가는 것을 막는다(행 mode 는 전부 single).
+      if (modeValue() !== want) activateTab(want);
     }
 
     // 후가공 초기화(2026-07-29) — ⓐ모아찍기 전환 시 즉시 ⓑ등록 1건이 끝날 때마다.
@@ -410,39 +427,18 @@
       updateAnnotGates();
     }
 
-    // 용도에 따른 UI 게이트(2026-07-28): 모아찍기는 후가공이 없다.
-    //   host.jsx:332 `if (mode !== 'impose')` — 모아찍기는 마감 여백·EPS를 아예 만들지 않고
-    //   원본 크기 work.ai만 저장한다. 그런데 폼에서는 마감·펀칭 입력이 열려 있어
-    //   "후가공을 넣었는데 안 먹었다"는 오해가 실제로 발생했다(2026-07-28). 입력 자체를 닫는다.
-    function applyModeUi() {
-      var impose = (modeValue() === 'impose');
-      if (impose) clearFinishing(); // 잠그기 전에 비운다 — 값이 남으면 manifest 에 실린다(위 주석)
-      var finTab = null, finPage = null;
-      for (var a = 0; a < tabs.length; a++) if (tabs[a].getAttribute('data-tab') === 'fin') finTab = tabs[a];
-      for (var b = 0; b < pages.length; b++) if (pages[b].getAttribute('data-page') === 'fin') finPage = pages[b];
-      if (finPage) {
-        var ins = finPage.querySelectorAll('input, select, textarea, button');
-        for (var i = 0; i < ins.length; i++) ins[i].disabled = impose;
-        finPage.style.opacity = impose ? '0.45' : '';
-      }
-      if (finTab) {
-        finTab.disabled = impose;
-        finTab.title = impose ? '모아찍기 용도에는 후가공이 적용되지 않습니다 (판에서 처리)' : '';
-        finTab.style.opacity = impose ? '0.45' : '';
-        // 후가공 탭을 보고 있는 상태에서 모아찍기로 바꾸면 가공 탭으로 되돌린다(빈 화면 방지).
-        if (impose && finTab.className.indexOf('active') >= 0) {
-          for (var c2 = 0; c2 < tabs.length; c2++) tabs[c2].className = (tabs[c2].getAttribute('data-tab') === 'proc') ? 'tab active' : 'tab';
-          for (var d = 0; d < pages.length; d++) pages[d].className = (pages[d].getAttribute('data-page') === 'proc') ? 'tabpage' : 'tabpage hidden';
-        }
-      }
-      var hint = document.getElementById('modeHint');
-      if (hint) hint.textContent = impose ? '후가공 없음 · 선택분 자동 분리 → 조각별 등록 → ia-editor' : '';
-      if (elBtnProcess) {
-        if (!impose) imposePending = 0; // 단건으로 돌아가면 분리 대기 해제
-        elBtnProcess.textContent = impose
-          ? (imposePending > 0 ? ('▶ ' + imposePending + '건 등록') : '모아찍기 추출')
-          : '단건 가공';
-      }
+    // 탭 전환 후 UI 정합(2026-07-29). 후가공은 이제 단건 탭 안 접이식이라 잠글 대상이 없다 —
+    //   모아찍기 탭에서는 화면에 보이지도 않는다. 다만 **값은 반드시 비운다**:
+    //   host.jsx 는 `mode !== 'impose'` 에서만 후가공을 쓰므로, 값이 남아 있으면 manifest 에만
+    //   실려 "기록됐는데 안 먹는" 상태가 된다(intake #28 실증).
+    function applyTabUi() {
+      if (modeValue() === 'impose') clearFinishing();
+      // config 로드(restoreSettings→setMode)가 큐 초기화보다 먼저 도는 경로가 있다 —
+      //   그때 queue 는 아직 undefined 다. 여기서 막지 않으면 패널이 통째로 죽는다.
+      //   이후 DOMContentLoaded 끝의 renderQueue() 가 게이트·버튼을 정리한다.
+      if (!queue) return;
+      updateGate();
+      updateImposeBar();
     }
 
     // ── 가공 실행 ──
@@ -503,11 +499,8 @@
       return out.length ? ('\n' + out.join('\n')) : '';
     }
 
+    // 단건 탭 전용 버튼 — 이제 의미가 하나다(모아찍기는 자기 탭에서 분리→등록).
     if (elBtnProcess) elBtnProcess.addEventListener('click', function () {
-      // P2(2026-07-29): 모아찍기는 선택분을 **자동으로 개별 분리**해 조각별로 등록한다.
-      //   전에는 선택 전체가 work.ai 1개로 합쳐져 판에 올릴 조각이 1개가 됐고 — 모아찍기를 고르는
-      //   의미 자체가 없었다. 분리 수단(묶음분리)은 큐 탭에만 있어 발견도 어려웠다.
-      if (modeValue() === 'impose') { imposeExtractClick(); return; }
       var params = gatherParams();
       saveSettings();
       out('가공 중… (저장 프리즈 중 잠시 대기)');
@@ -542,11 +535,10 @@
     // ── 반자동 큐 (A2) + 행↔폼 연동 (A안: 분해 → 행 선택 → 행별 후가공 세팅 → 검토문서 → 확정) ──
     var queue = []; // [{params, client, keyword, qty, w, h}]
     var bound = -1; // 폼과 연동 중인 행 인덱스(-1=없음). 연동 중 폼 변경=그 행에만 반영
-    var imposePending = 0; // P2: >0 = 모아찍기 분리 완료·등록 대기(다음 [모아찍기 추출] 클릭이 등록)
-    function imposeResetPending() {
-      imposePending = 0;
-      if (elBtnProcess && modeValue() === 'impose') elBtnProcess.textContent = '모아찍기 추출';
-    }
+    // 큐를 그리는 컨테이너들 — 묶음 탭과 모아찍기 탭이 **같은 큐를 각자 화면에서** 본다.
+    //   자료구조를 둘로 쪼개면 host($.global.mesA0Q)까지 갈라야 해서 Z: 축을 건드리게 된다.
+    //   대신 "다른 용도의 행이 섞이면 거부"하는 가드로 혼선을 막는다(아래 imposeGuard).
+    var queueBoxes = [];
     var elQueueBox = $('queueBox'), elBtnQAdd = $('btnQueueAdd'), elBtnQBatch = $('btnQueueBatch'), elBtnConfirm = $('btnConfirm'), elBtnQClear = $('btnQueueClear'), elBtnApplyAll = $('btnApplyAll');
     var elBtnReview = $('btnReview'), elBtnAutoDetect = $('btnAutoDetect');
 
@@ -577,10 +569,11 @@
     }
     function bumpRev() { queueRev++; updateGate(); }
 
-    function renderQueue() {
-      if (elQueueBox) {
+    // 큐 1개를 여러 컨테이너에 그린다(묶음 탭·모아찍기 탭). 컨테이너별로 이벤트를 다시 붙인다.
+    function renderQueueInto(box, emptyMsg) {
+      if (box) {
         if (!queue.length) {
-          elQueueBox.innerHTML = '<div class="qempty">큐 비어있음 — 디자인 선택 후 [＋ 큐에 추가]</div>';
+          box.innerHTML = '<div class="qempty">' + emptyMsg + '</div>';
         } else {
           var html = '';
           for (var i = 0; i < queue.length; i++) {
@@ -594,16 +587,16 @@
               '<span class="qmeta" title="' + escHtml(meta) + '">' + escHtml(meta) + '</span>' +
               '<button class="qdel" data-i="' + i + '">✕</button></div>';
           }
-          elQueueBox.innerHTML = html;
-          var rows = elQueueBox.getElementsByClassName('qrow');
+          box.innerHTML = html;
+          var rows = box.getElementsByClassName('qrow');
           for (var r = 0; r < rows.length; r++) rows[r].addEventListener('click', function (ev) {
             var cls = (ev.target && ev.target.className) ? String(ev.target.className) : '';
             if (cls.indexOf('qkw') !== -1 || cls.indexOf('qqty') !== -1 || cls.indexOf('qdel') !== -1) return; // 인라인 편집·삭제 클릭은 행 선택 아님
             toggleBind(parseInt(this.getAttribute('data-i'), 10));
           });
-          var dels = elQueueBox.getElementsByClassName('qdel');
+          var dels = box.getElementsByClassName('qdel');
           for (var d = 0; d < dels.length; d++) dels[d].addEventListener('click', function () { queueRemove(parseInt(this.getAttribute('data-i'), 10)); });
-          var kws = elQueueBox.getElementsByClassName('qkw');
+          var kws = box.getElementsByClassName('qkw');
           for (var w2 = 0; w2 < kws.length; w2++) kws[w2].addEventListener('change', function () {
             var ix = parseInt(this.getAttribute('data-i'), 10);
             if (ix >= 0 && ix < queue.length) {
@@ -618,7 +611,7 @@
           //   행마다 다른 수량을 넣으려면 행을 하나씩 연동해 폼을 고치는 수밖에 없었다.
           //   ⚠️ 여기서 renderQueue() 를 부르지 않는다 — DOM 재생성으로 입력 포커스가 날아간다.
           //   (수량을 메타 문자열에서 뺀 이유 = 재렌더 없이도 표시가 어긋나지 않게)
-          var qts = elQueueBox.getElementsByClassName('qqty');
+          var qts = box.getElementsByClassName('qqty');
           for (var q2 = 0; q2 < qts.length; q2++) qts[q2].addEventListener('change', function () {
             var ix = parseInt(this.getAttribute('data-i'), 10);
             if (isNaN(ix) || ix < 0 || ix >= queue.length) return;
@@ -631,15 +624,26 @@
           });
         }
       }
+    }
+
+    // 큐 상태 → 모아찍기 탭 등록 버튼. 단건 행이 섞이면 비활성(용도가 다른 걸 같이 등록하지 않는다).
+    function updateImposeBar() {
+      if (!elBtnImposeRegister) return;
+      var n = queue.length, allImpose = queueAllImpose();
+      elBtnImposeRegister.textContent = '등록 (' + n + ')';
+      elBtnImposeRegister.disabled = (n === 0) || !allImpose;
+      elBtnImposeRegister.title = (n && !allImpose)
+        ? '단건 용도 행이 섞여 있습니다 — [묶음] 탭에서 확정하거나 비우고 다시 분리하세요'
+        : '';
+    }
+
+    function renderQueue() {
+      renderQueueInto(elQueueBox, '큐 비어있음 — 디자인 선택 후 [＋ 개별] 또는 [＋ 묶음분리]');
+      renderQueueInto(elImposeBox, '조각 없음 — 디자인 선택 후 [선택분 분리] 또는 [◎ 자동감지]');
       if (elBtnConfirm) elBtnConfirm.textContent = '일괄 확정 (' + queue.length + ')';
       if (elBtnApplyAll) elBtnApplyAll.disabled = queue.length === 0;
       updateGate();
-      // P2 등록 대기 중이면 버튼 개수 라벨을 큐와 동기화(행 삭제 대응). 큐가 비면 대기 해제.
-      if (imposePending > 0) {
-        imposePending = queue.length;
-        if (!imposePending) imposeResetPending();
-        else if (elBtnProcess && modeValue() === 'impose') elBtnProcess.textContent = '▶ ' + imposePending + '건 등록';
-      }
+      updateImposeBar();
     }
 
     // 행 클릭=폼 연동 토글: 행 params를 가공·후가공 탭에 로드, 이후 폼 변경은 그 행에만 반영
@@ -649,7 +653,7 @@
       bound = i;
       applyRowToForm(queue[i]);
       renderQueue();
-      var baseMsg = '#' + (i + 1) + ' 행 연동 중 — 가공·후가공 탭 수정이 이 행에 반영됩니다 (행 다시 클릭=해제)';
+      var baseMsg = '#' + (i + 1) + ' 행 연동 중 — [단건] 탭의 설정·후가공 수정이 이 행에 반영됩니다 (행 다시 클릭=해제)';
       out(baseMsg);
       // P3(2026-07-29): 이 행이 **어느 그룹인지** 일러에서 보여준다 — 원본 조각을 선택.
       //   mesA0_queueSelect 는 검토·확정 루프가 이미 쓰던 함수를 그대로 재사용(재구현 금지).
@@ -719,6 +723,7 @@
       var t = ev.target;
       if (!t) return;
       if (elQueueBox && elQueueBox.contains(t)) return;
+      if (elImposeBox && elImposeBox.contains(t)) return; // 모아찍기 탭 목록의 인라인 편집도 제외
       if (t.id === 'worker' || t.id === 'splitGap') return;
       syncBoundRow();
     });
@@ -943,35 +948,31 @@
       });
     }
 
-    // P2 — [모아찍기 추출] 2단 흐름. 1클릭=분리(큐 적재·결과 표시) → 2클릭=등록.
-    //   조각이 1개면 확인 없이 바로 등록한다(기존 단건 추출과 결과·클릭 수가 같아 퇴행이 없다).
-    //   분리는 `mesA0_queueAddBatch`(큐 탭 [＋묶음분리])를 그대로 쓴다 — 분리 로직 재구현 금지.
-    //   등록은 `runBatchConfirm`(= [일괄 확정])을 공유하므로 산출 구조가 batch734와 동일하다.
-    function imposeExtractClick() {
-      if (imposePending > 0) { // 2클릭 = 등록
-        out('모아찍기 등록 중… ' + imposePending + '건');
-        runBatchConfirm(function () { imposeResetPending(); });
+    // ── 모아찍기 탭 — 분리 → 목록 → 등록(자체 완결) ──────────────────────────
+    //   분리는 `mesA0_queueAddBatch`/`mesA0_autoDetect`(호스트), 등록은 `runBatchConfirm`
+    //   (= [일괄 확정])을 **그대로 재사용**한다. 산출 구조가 묶음 확정과 동일하다.
+    //   결과는 항상 목록으로 보인 뒤 별도 버튼으로 등록한다 — 1덩어리로 뭉쳐도 눈에 먼저 띈다.
+    function imposeSeed(hostCall, gap) {
+      if (queue.length) { // 남은 큐를 휩쓸어 등록하는 사고 차단
+        out('목록에 ' + queue.length + '건이 남아 있습니다 — [등록]하거나 [비우기] 후 다시 분리하세요.', 'err');
         return;
       }
-      if (queue.length) { // 남은 큐를 휩쓸어 등록하는 사고 차단 — 어느 쪽을 등록할지 사람이 정한다
-        out('큐에 ' + queue.length + '건이 남아 있습니다 — [큐] 탭에서 확정하거나 [비우기] 후 다시 시도하세요.', 'err');
-        return;
-      }
-      var gapEl = $('splitGap');
-      var gap = gapEl ? parseFloat(gapEl.value) : 0; if (isNaN(gap)) gap = 0;
-      elBtnProcess.disabled = true;
-      csi.evalScript('mesA0_queueAddBatch(' + gap + ')', function (res) {
-        elBtnProcess.disabled = false;
+      if (elBtnImposeSplit) elBtnImposeSplit.disabled = true;
+      if (elBtnImposeDetect) elBtnImposeDetect.disabled = true;
+      csi.evalScript(hostCall + '(' + gap + ')', function (res) {
+        if (elBtnImposeSplit) elBtnImposeSplit.disabled = false;
+        if (elBtnImposeDetect) elBtnImposeDetect.disabled = false;
         var r = null; try { r = JSON.parse(res); } catch (e) {}
         if (!r || !r.ok) {
-          var em = { nodoc: '열린 문서 없음', nosel: '객체를 선택하세요', nobounds: '크기 측정 불가', allnoise: '전부 50mm 미만(노이즈)' };
-          out('모아찍기 분리 실패: ' + (r ? (em[r.err] || r.err) : '호스트 연결 안 됨'), 'err');
+          var em = { nodoc: '열린 문서 없음', nosel: '객체를 선택하세요', noitems: '감지할 개체 없음(잠금·숨김 제외)',
+            nobounds: '크기 측정 불가', allnoise: '전부 50mm 미만(노이즈)', scan: '문서 스캔 실패' };
+          out('분리 실패: ' + (r ? (em[r.err] || r.err) : '호스트 연결 안 됨'), 'err');
           return;
         }
         var qtyN = parseInt(elQty ? elQty.value : '1', 10); if (isNaN(qtyN) || qtyN < 1) qtyN = 1;
         var client = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
         var keyword = elAnnot ? (elAnnot.value || '').replace(/^\s+|\s+$/g, '') : '';
-        var base = gatherParams(); // impose라 finishing·punch·annot_pos는 이미 비어 있다(P1)
+        var base = gatherParams(); // impose 탭이라 finishing·punch·annot_pos는 이미 비어 있다
         var lines = [];
         for (var s = 0; s < r.sizes.length; s++) {
           queue.push({ params: JSON.parse(JSON.stringify(base)), client: client, keyword: keyword, qty: qtyN, w: r.sizes[s].w, h: r.sizes[s].h });
@@ -979,18 +980,34 @@
         }
         bumpRev();
         renderQueue();
-        if (queue.length === 1) {
-          out('모아찍기 1건 등록 중… (' + lines[0] + ')');
-          runBatchConfirm(function () { imposeResetPending(); });
+        // ★ 1덩어리 경고 — 여러 디자인인데 하나로 뭉치는 전형적 원인이 "선택이 그룹 1개"다.
+        //   이 경고가 없어서 전체(539×243.3cm·work.ai 110MB)가 조각 1건으로 등록된 적이 있다.
+        if (r.added === 1) {
+          out('⚠ 1개로만 인식됐습니다 — ' + lines[0] +
+            '\n여러 디자인이라면: ①선택이 그룹 하나로 묶여 있는지 확인(Ctrl+Shift+G로 풀기)' +
+            '\n②분리 간격을 음수로 낮춰 더 잘게 나누기 ③[◎ 자동감지]로 문서 전체 스캔' +
+            '\n진짜 1개 디자인이면 그대로 [등록]하세요.', 'err');
           return;
         }
-        imposePending = queue.length;
-        if (elBtnProcess) elBtnProcess.textContent = '▶ ' + imposePending + '건 등록';
         out('분리됨: ' + r.added + '개 (분리간격 ' + gap + 'mm · 클립존중 · 50mm↓ 제외)\n' + lines.join(' · ') +
-          '\n→ [▶ ' + imposePending + '건 등록]을 한 번 더 누르면 조각별로 등록합니다.' +
-          '\n틀리면 [큐] 탭에서 ✕ 삭제·수량 조정, [비우기]=취소.', 'okmsg');
+          '\n→ 행 클릭 = 일러에서 그 조각 선택 · 수량은 행에서 직접 수정 · [등록]으로 조각별 등록', 'okmsg');
       });
     }
+    function imposeGapValue() {
+      var g = elImposeGap ? parseFloat(elImposeGap.value) : 0;
+      return isNaN(g) ? 0 : g;
+    }
+    if (elBtnImposeSplit) elBtnImposeSplit.addEventListener('click', function () { imposeSeed('mesA0_queueAddBatch', imposeGapValue()); });
+    if (elBtnImposeDetect) elBtnImposeDetect.addEventListener('click', function () { imposeSeed('mesA0_autoDetect', imposeGapValue()); });
+    if (elBtnImposeClear) elBtnImposeClear.addEventListener('click', function () {
+      csi.evalScript('mesA0_queueClear()', function () {});
+      queue = []; bound = -1; bumpRev(); renderQueue(); out('목록 비움');
+    });
+    if (elBtnImposeRegister) elBtnImposeRegister.addEventListener('click', function () {
+      if (!queue.length || !queueAllImpose()) return;
+      out('모아찍기 등록 중… ' + queue.length + '건');
+      runBatchConfirm();
+    });
 
     if (elBtnConfirm) elBtnConfirm.addEventListener('click', function () {
       if (!queue.length) return;
