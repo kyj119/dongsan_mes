@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter, isZoneOwnedByEntity, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../utils/entityFilter'
 import { getItemDefaultZones } from '../utils/inventoryZone'
+import { resolveStockUnit } from '../utils/rollConsumption'
 import { kstStamp14, kstYmd } from '../utils/kstDate'
 
 const inventoryCountRouter = new Hono<HonoEnv>()
@@ -104,11 +105,11 @@ inventoryCountRouter.post('/', async (c) => {
     const countId = (result.meta.last_row_id as number)
 
     // 품목 로드: 구역(zone) 우선 > category 필터 > 전체
-    let items: Array<{ id: number; item_code: string; item_name: string; unit: string; category: string; storage_zone_id: number | null; quantity: number | null }> = []
+    let items: Array<{ id: number; item_code: string; item_name: string; unit: string; base_unit?: string | null; category: string; storage_zone_id: number | null; quantity: number | null }> = []
     if (zoneId) {
       // 구역 실사: 해당 구역·법인 재고가 있는 품목만 (INNER JOIN). 라인 창고 = 그 구역(inv.storage_zone_id=zoneId)
       const { results } = await c.env.DB.prepare(`
-        SELECT i.id, i.item_code, i.item_name, i.unit, i.category, inv.storage_zone_id, inv.quantity
+        SELECT i.id, i.item_code, i.item_name, i.unit, i.base_unit, i.category, inv.storage_zone_id, inv.quantity
         FROM items i
         JOIN inventory inv ON i.id = inv.item_id AND inv.entity_id = ? AND inv.storage_zone_id = ?
         WHERE i.is_active = 1 AND i.is_purchase_item = 1
@@ -129,7 +130,7 @@ inventoryCountRouter.post('/', async (c) => {
         params.push(category)
       }
       itemQuery += ' ORDER BY i.category, i.item_name'
-      const { results: baseItems } = await c.env.DB.prepare(itemQuery).bind(...params).all<{ id: number; item_code: string; item_name: string; unit: string; category: string }>()
+      const { results: baseItems } = await c.env.DB.prepare(itemQuery).bind(...params).all<{ id: number; item_code: string; item_name: string; unit: string; base_unit?: string | null; category: string }>()
       const ids = (baseItems || []).map(r => Number(r.id))
       const zoneMap = await getItemDefaultZones(c.env.DB, ids, countEntityId)
       // 실사 UX 라④: 전수 실사는 (item, zone) 재고 행별로 라인 전개 — 기본창고 1행만 스냅샷하면
@@ -163,7 +164,9 @@ inventoryCountRouter.post('/', async (c) => {
           c.env.DB.prepare(`
             INSERT INTO inventory_count_items (count_id, item_id, system_quantity, unit, storage_zone_id)
             VALUES (?, ?, ?, ?, ?)
-          `).bind(countId, item.id, item.quantity || 0, item.unit || 'YD', item.storage_zone_id ?? null)
+          // 실사 단위 = **재고 단위**(base_unit) — items.unit 은 입고·발주 단위('롤')라
+          // 수량(base·미터)과 짝이 맞지 않는다. 150m 를 '150 롤'로 보여주면 오입력을 부른다.
+          `).bind(countId, item.id, item.quantity || 0, resolveStockUnit(item), item.storage_zone_id ?? null)
         )
       )
     }

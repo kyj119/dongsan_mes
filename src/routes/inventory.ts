@@ -559,22 +559,38 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
 
       // 차감 + 역분개 + (PO 롤백) + receipt 상태변경을 단일 batch(트랜잭션)로 원자 실행
       // → "차감됨 ⇔ CANCELLED 표기됨 ⇔ PO 롤백됨" 보장 → 부분실패 후 재시도가 위 멱등 가드와 결합해 안전
+      // MU3 대칭: 정방향 입고가 `관리단위 × pack_size` 로 base(미터) 를 쌓았으므로
+      //   역분개도 같은 환산으로 빼야 한다. 환산 없이 관리단위를 그대로 빼면 롤당 길이만큼
+      //   재고가 남는다(50m 롤 3개 입고=+150 → 취소 -3 → 147 잔존).
+      //   pack_size 가 전부 NULL 이던 동안은 ×1 이라 드러나지 않던 비대칭이다.
+      const cancelPackMap = new Map<number, number>()
+      if (invItems.length > 0) {
+        const cIds = invItems.map((ri) => ri.item_id as number)
+        const { results: cpsRows } = await c.env.DB.prepare(
+          `SELECT id, pack_size FROM items WHERE id IN (${cIds.map(() => '?').join(',')})`
+        ).bind(...cIds).all<{ id: number; pack_size: number | null }>()
+        for (const r of cpsRows || []) {
+          cancelPackMap.set(Number(r.id), (r.pack_size && r.pack_size > 0) ? r.pack_size : 1)
+        }
+      }
+      const cps = (id: number) => cancelPackMap.get(id) || 1
+
       const ops: D1PreparedStatement[] = []
       for (const ri of invItems) {
-        const acc = ri.accepted_quantity as number
+        const accBase = (ri.accepted_quantity as number) * cps(ri.item_id as number)
         const zoneId = cancelZoneMap.get(ri.item_id as number) ?? null
         const before = cancelBalMap[`${ri.item_id}:${zoneId ?? 0}`] || 0
-        const after = Math.max(0, before - acc)
+        const after = Math.max(0, before - accBase)
         ops.push(
           c.env.DB.prepare(`UPDATE inventory SET quantity = MAX(0, quantity - ?), last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`)
-            .bind(acc, ri.item_id, cancelEntityId, zoneId)
+            .bind(accBase, ri.item_id, cancelEntityId, zoneId)
         )
         ops.push(
           c.env.DB.prepare(
             `INSERT INTO inventory_transactions (item_id, transaction_type, quantity, balance_after, reference_type, reference_id, notes, handled_by, transaction_date, entity_id, storage_zone_id)
              VALUES (?, 'OUT', ?, ?, 'RECEIPT_CANCEL', ?, ?, ?, datetime('now'), ?, ?)`
           ).bind(
-            ri.item_id, acc, after,
+            ri.item_id, accBase, after,
             Number(id), '입고 취소 역분개(합격분)', c.get('user')?.id || null, cancelEntityId, zoneId
           )
         )

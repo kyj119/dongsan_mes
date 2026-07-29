@@ -63,18 +63,13 @@ export function computeRollConsumption(
   return { qty: (len / 914.4) * n, unit: 'yd' }
 }
 
-/**
- * 입고 수량 → 재고 수량 환산.
- * 롤로 입고하는 자재는 재고를 미터로 들기 때문에 `롤 개수 × 롤당 길이` 로 바꿔 쌓아야 한다.
- * 그 외(yd 입고 등)는 입고 수량이 곧 재고 수량이다.
- */
-export function convertReceiptToStock(m: RollUnitSpec, receiptQty: number): number {
-  const qty = Number(receiptQty) || 0
-  const pack = Number(m?.pack_size) || 0
-  const base = String(m?.base_unit ?? '').toLowerCase()
-  if (m?.unit === '롤' && base === 'm' && pack > 0) return qty * pack
-  return qty
-}
+// ── 입고 환산은 여기가 아니다 ────────────────────────────────────────────────
+// 입고 수량(관리단위) → 재고 수량(base) 환산은 **#462 MU3 로 이미 구현돼 있다**:
+//   routes/inventory.ts        입고 등록 / 입고 취소 역분개
+//   routes/purchaseOrders/po-receive.ts   발주 입고
+// 규칙은 `pack_size > 0 이면 × pack_size, 아니면 ×1`. 이 파일에 같은 함수를 또 두면
+// 규칙이 둘이 되어 갈린다 — 입고 쪽을 고칠 일이 있으면 위 두 파일을 고칠 것.
+// (2026-07-29: 취소 경로만 환산이 빠져 있어 비대칭이었고, 같은 회차에 맞췄다.)
 
 /** 소요량 표기용 단위 라벨 — computeRollConsumption 과 동일 규칙 (BOARD 는 호출측에서 '장'). */
 export function resolveStockUnit(m: RollUnitSpec): string {
