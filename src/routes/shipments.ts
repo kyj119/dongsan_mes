@@ -380,12 +380,15 @@ shipmentsRouter.post('/merge', requireEditOrRole('/shipments', 'MANAGER'), async
     // 같은 거래처 검증 (한 박스 전제).
     // v2: 납품일 동일 검증 제거 — 납품일이 다른 주문도 묶기 허용(이른 주문은 '합배송 대기'로 보류,
     // 실제 출고 시점에 함께 나감). 대기 가시성 = /daily consolidate_partner_pending_date 배지.
+    // status 조건은 후보 조회(:300)와 동일 — 취소·삭제·초안·견적 주문이 묶음에 섞이던
+    //   형제-비대칭 차단(2026-07-29 구조감사). 법인 조건은 의도적으로 없음(cross-entity 합포장 = 요구사항).
     const ph = order_ids.map(() => '?').join(',')
     const { results: orders } = await c.env.DB.prepare(
-      `SELECT id, client_id, delivery_date FROM orders WHERE id IN (${ph})`
+      `SELECT id, client_id, delivery_date FROM orders
+       WHERE id IN (${ph}) AND status NOT IN ('CANCELLED', 'DELETED', 'DRAFT', 'QUOTATION')`
     ).bind(...order_ids).all<{ id: number; client_id: number; delivery_date: string | null }>()
     if (orders.length !== order_ids.length) {
-      return c.json({ success: false, error: '존재하지 않는 주문이 포함되어 있습니다.' }, 404)
+      return c.json({ success: false, error: '취소·삭제·견적 상태이거나 존재하지 않는 주문이 포함되어 있습니다.' }, 404)
     }
     if (new Set(orders.map(o => o.client_id)).size > 1) {
       return c.json({ success: false, error: '같은 거래처의 주문만 합포장할 수 있습니다.' }, 400)

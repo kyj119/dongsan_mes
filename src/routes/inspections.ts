@@ -198,6 +198,14 @@ inspectionsRouter.post('/results', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), 
 
     if (!body.receipt_id) return c.json({ success: false, error: '입고 정보가 필요합니다.' }, 400)
 
+    // 입고건 소유 검증 — 형제 조회(:305 :348 :412)는 entityFilter로 격리돼 있는데 등록만 무검증이던
+    //   형제-비대칭 차단(2026-07-29 구조감사). 타법인 입고에 검수 부착 + inspection_status 변경 방지.
+    const receiptEf = entityFilter(c)
+    const ownedReceipt = await c.env.DB.prepare(
+      `SELECT id FROM inventory_receipts WHERE id = ?${receiptEf.clause}`
+    ).bind(body.receipt_id, ...receiptEf.params).first()
+    if (!ownedReceipt) return c.json({ success: false, error: '입고 정보를 찾을 수 없습니다.' }, 404)
+
     const mode = body.mode || 'full'
 
     // Step 1. 수량 부족 판단 (두 모드 공통)

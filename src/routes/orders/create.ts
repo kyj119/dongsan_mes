@@ -187,14 +187,17 @@ ordersCreateRouter.post('/', async (c) => {
     ).run()
 
     // Phase 3.2: 견적서로부터 생성된 주문이면 quotations 카운트 갱신
+    //   entity_id 조건 = 타법인 견적서의 전환 카운터가 오염되지 않도록 (2026-07-29 구조감사).
+    //   실패를 삼키는 부가 갱신이므로 조건 불일치 시 0-row로 조용히 통과 = 종전 동작과 동일.
     if (sourceQuotationId && initialStatus !== 'QUOTATION') {
+      const quoteEf = entityFilter(c)
       await c.env.DB.prepare(`
         UPDATE quotations
         SET converted_count = converted_count + 1,
             first_converted_at = COALESCE(first_converted_at, CURRENT_TIMESTAMP),
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `).bind(sourceQuotationId).run().catch(() => {})
+        WHERE id = ?${quoteEf.clause}
+      `).bind(sourceQuotationId, ...quoteEf.params).run().catch(() => {})
     }
 
     const orderId = orderResult.meta.last_row_id

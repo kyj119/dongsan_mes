@@ -149,6 +149,14 @@ fixedAssets.patch('/:id/dispose', requireRole('ADMIN'), async (c) => {
   const id = Number(c.req.param('id'))
   const { disposal_amount, disposal_reason } = await c.req.json()
 
+  // 소유 검증 — 목록(:13)과 동일 격리. 선행 조회가 아예 없어 타법인 자산도 처분되던 경로 차단
+  //   (2026-07-29 구조감사). ADMIN 전체모드(entityId=0)는 clause가 비므로 종전대로 전 법인 처분 가능.
+  const ef = entityFilter(c)
+  const owned = await c.env.DB.prepare(
+    `SELECT id FROM fixed_assets WHERE id = ?${ef.clause}`
+  ).bind(id, ...ef.params).first()
+  if (!owned) return c.json({ success: false, error: '자산을 찾을 수 없습니다.' }, 404)
+
   await c.env.DB.prepare(`
     UPDATE fixed_assets SET status = 'DISPOSED', disposed_at = date('now', '+9 hours'),
       disposal_amount = ?, disposal_reason = ?, updated_at = CURRENT_TIMESTAMP

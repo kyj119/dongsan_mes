@@ -6,7 +6,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
-import { entityFilter, getEntityId, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../utils/entityFilter'
+import { entityFilter, cardEntityFilter, getEntityId, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../utils/entityFilter'
 import { getItemDefaultZone } from '../utils/inventoryZone'
 
 const scanRouter = new Hono<HonoEnv>()
@@ -41,7 +41,10 @@ scanRouter.get('/:code', async (c) => {
     if (prefix === 'CARD' || value.startsWith('CARD-')) {
       const cardNum = prefix === 'CARD' ? value : value
       // #170: entity 필터 추가
-      const cardEf = entityFilter(c, 'c')
+      // ⚠️ cards에는 entity_id 컬럼이 없다(requesting_entity_id만) — entityFilter를 쓰면
+      //    ` AND c.entity_id = ?`가 생성돼 법인 선택 사용자(entityId≠0)의 카드 스캔이 SQLITE_ERROR로
+      //    전부 실패했다. ADMIN 전체모드(0)만 clause가 비어 우연히 동작. (2026-07-29 구조감사에서 발견)
+      const cardEf = cardEntityFilter(c, 'c')
       const card = await c.env.DB.prepare(`
         SELECT c.id, c.card_number, c.status, c.order_id,
                o.order_number, c.client_name,
@@ -205,6 +208,16 @@ scanRouter.post('/action', async (c) => {
   const user = c.get('user')
 
   try {
+    // 카드 대상 액션 소유 검증 — 조회(GET /:code)는 격리돼 있는데 액션만 무검증이던
+    //   형제-비대칭 차단(2026-07-29 구조감사). 타법인 카드의 출고·출력 상태 변경 방지.
+    if (body.type === 'CARD') {
+      const cardEf = cardEntityFilter(c)
+      const owned = await c.env.DB.prepare(
+        `SELECT id FROM cards WHERE id = ?${cardEf.clause}`
+      ).bind(body.id, ...cardEf.params).first()
+      if (!owned) return c.json({ success: false, error: '카드를 찾을 수 없습니다.' }, 404)
+    }
+
     switch (`${body.type}:${body.action}`) {
       case 'CARD:ship': {
         // 카드 출고 처리

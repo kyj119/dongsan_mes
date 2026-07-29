@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { getEntityId, entityFilter, cardEntityFilter } from '../utils/entityFilter'
 
 const waste = new Hono<HonoEnv>()
 waste.use('*', authMiddleware)
@@ -56,6 +56,16 @@ waste.post('/', async (c) => {
         userId, getEntityId(c)
       )
     ]
+    // 카드 소유 검증 — 목록(:14)은 격리돼 있는데 등록만 무검증이던 형제-비대칭 차단
+    //   (2026-07-29 구조감사). cards는 entity_id가 없고 requesting_entity_id로 귀속하므로 cardEntityFilter.
+    if (card_id) {
+      const cardEf = cardEntityFilter(c)
+      const ownedCard = await c.env.DB.prepare(
+        `SELECT id FROM cards WHERE id = ?${cardEf.clause}`
+      ).bind(card_id, ...cardEf.params).first()
+      if (!ownedCard) return c.json({ success: false, error: '카드를 찾을 수 없습니다.' }, 404)
+    }
+
     // 카드에 waste_sqm 업데이트 (SQM 단위일 때만)
     if (card_id && (unit === 'SQM' || !unit)) {
       stmts.push(c.env.DB.prepare(`

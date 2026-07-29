@@ -1,0 +1,12 @@
+{
+  "files": 387,
+  "lines": 162917,
+  "oversized": 52,
+  "writePathAsymmetry": 13,
+  "writePathAsymmetryStrict": 13,
+  "missingTieBreak": 55,
+  "deadExports": 107,
+  "deadExportsUnusedValue": 9,
+  "domainLogicInRoutes": 18,
+  "duplicateClusters": 40
+}

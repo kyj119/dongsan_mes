@@ -269,10 +269,11 @@ hrRouter.post('/attendance/checkout', async (c) => {
     const data = await c.req.json()
     const { employee_id, work_date } = data
 
-    // Get check-in record
+    // Get check-in record — 타법인 직원의 근태 조작 차단 (2026-07-29 구조감사)
+    const attEf = entityFilter(c)
     const { results } = await c.env.DB.prepare(`
-      SELECT id, check_in_time, check_out_time FROM attendance WHERE employee_id = ? AND work_date = ?
-    `).bind(employee_id, work_date || new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().split('T')[0]).all()
+      SELECT id, check_in_time, check_out_time FROM attendance WHERE employee_id = ? AND work_date = ?${attEf.clause}
+    `).bind(employee_id, work_date || new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().split('T')[0], ...attEf.params).all()
 
     if (results.length === 0) {
       return c.json({ success: false, error: 'No check-in record found' }, 404)
@@ -729,7 +730,11 @@ hrRouter.delete('/employees/:id', async (c) => {
       return c.json({ success: false, error: '유효하지 않은 직원 ID입니다.' }, 400)
     }
 
-    const emp = await c.env.DB.prepare(`SELECT id, name, employee_code, is_deleted FROM employees WHERE id = ?`).bind(id).first<any>()
+    // 타법인 직원 삭제 차단 (2026-07-29 구조감사). ADMIN 전체모드는 clause가 비어 종전 동작 유지.
+    const empEf = entityFilter(c)
+    const emp = await c.env.DB.prepare(
+      `SELECT id, name, employee_code, is_deleted FROM employees WHERE id = ?${empEf.clause}`
+    ).bind(id, ...empEf.params).first<any>()
     if (!emp) {
       return c.json({ success: false, error: '직원을 찾을 수 없습니다.' }, 404)
     }
