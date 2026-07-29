@@ -31,7 +31,9 @@ const CHECK_ONLY = argv.includes('--check')
 const FORCE = argv.includes('--force')
 
 /** 배포 배너만 대상. 나머지 `> **` 상시 정보(현재 초점·블로커·다음 액션 등)는 절대 건드리지 않는다 */
-const BANNER_RE = /^> \*\*✅ prod/
+// 웹(prod) 배포 배너 + 에이전트 런타임 배포 배너. 후자를 빼면 IA 축 배너가 영원히 트림 대상에서 빠져
+// 활성 파일에 누적된다(2026-07-29 IA JSX 배포축 건에서 발견).
+const BANNER_RE = /^> \*\*✅ (prod|에이전트)/
 /** '현재 진행 중' 섹션에서 완료 처리된 항목 */
 const DONE_ITEM_RE = /^- \*\*✅/
 

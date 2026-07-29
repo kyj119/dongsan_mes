@@ -20,9 +20,10 @@ if (/src\/routes\/.*\.ts$/.test(file)) {
 if (/migrations\/.*\.sql$/.test(file)) {
   msgs.push('[HOOK] 마이그레이션 생성 — /migration-check: ①ALTER 대상 테이블 존재 ②NOT NULL엔 DEFAULT ③clients엔 entity_id 없음 ④users.name(≠display_name).');
 }
-// IA JSX 동기화
-if (/IllustratorAutomat\/.*\.jsx$/i.test(file)) {
-  msgs.push('[HOOK] JSX 수정 — /ia-automat sync로 source↔publish 동기화 필요.');
+// IA JSX/패널 동기화 — 웹 배포와 분리된 수동 축. publish 폴더는 런타임이 아니다(오안내로 6일 사고, 2026-07-29).
+if (/IllustratorAutomat\/.*\.(jsx|js|html|css|xml)$/i.test(file)) {
+  msgs.push('[HOOK] IA 스크립트 수정 — 런타임은 repo가 아니다. `npm run audit:ia-jsx` 로 3축 대조 필수.\n'
+    + '        축1(에이전트 JSX)=실행 중 exe 폴더 · 축2(디자이너 JSX)/축3(CEP 패널)=Z:\\DESIGNS\\IA-등록\\_scripts.');
 }
 
 // JS 문법 게이트 (src/scripts/*.js) — silent-fail 방지, 실패 시 차단

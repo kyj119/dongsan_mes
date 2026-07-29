@@ -86,5 +86,22 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 
 (발주 계열 2026-07-27, 전역 P0~P2 전량 2026-07-29. 상세 = `docs/audits/2026-07-27-list-sort-tiebreak.md`)
 
+### IA 스크립트 = 웹과 분리된 수동 배포 축 3개 (`npm run audit:ia-jsx`)
+`git push`·`npm run deploy` 로는 **절대 반영되지 않는다**. main에 있어도 런타임은 옛날 파일일 수 있다 — 브랜치·커밋 기록으로 배포 여부를 추론하면 틀린다.
+
+| 축 | repo | 런타임(정본) |
+|---|---|---|
+| 1 에이전트 JSX | `IllustratorAutomat/*.jsx` | **실행 중 exe 폴더**(`Get-Process IllustratorAutomat`). `publish\` 아님 |
+| 2 디자이너 JSX | `IllustratorAutomat/designer/*.jsx` | `Z:\DESIGNS\IA-등록\_scripts\` |
+| 3 CEP 패널 | `.../com.mes.a0.panel/**` | `Z:\...\_scripts\a0-panel\com.mes.a0.panel\` |
+
+- **감사 = `npm run audit:ia-jsx`** (드리프트 시 exit 1). JSX 수정 후 이걸 안 돌리면 조용히 구버전이 돈다.
+- 축1은 `.csproj CopyToOutputDirectory=Always` → **빌드하면 자동 복사**(빌드를 안 돌리면 미반영). 급하면 `--sync-agent`. JSX만 바뀌면 에이전트 재시작 불필요(잡마다 새로 읽음).
+- 축2·3 교체 = **전 디자이너 PC 즉시 반영** → 백업·실기기 확인 선행. 자동 동기화 금지.
+- JSX 조기 `return` 은 반드시 `_ia_status` 설정. 미설정=반환 `""` → 에이전트가 "JSX 반환 빈값(모달 의심)"이라는 **틀린 진단**을 UI에 띄운다. 실패 메시지엔 스크립트 지문(`파일@시각·해시`)이 실린다.
+- `.jsx`는 `node --check` 불가(확장자+`#target`) → `sed 's/^#/\/\/#/'` 로 `.js` 사본 만들어 검사.
+
+(2026-07-29: SheetLayout 폴백 수정이 exe 폴더에 미복사 → 모아찍기 판 렌더 6일간 실패. 상세 = memory `feedback-ia-jsx-runtime-path`)
+
 > 사업 도메인·역할·아키텍처·에이전트 팀·참조 문서 → `.claude/references/project-context.md`
 > **단일 소스 원칙**: 참조 파일에 코드 값 복사 금지. 구조 변경 시 참조 파일도 동기 업데이트.
