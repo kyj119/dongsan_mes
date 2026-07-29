@@ -436,8 +436,13 @@
         }
       }
       var hint = document.getElementById('modeHint');
-      if (hint) hint.textContent = impose ? '후가공 없음 · work.ai만 추출 → ia-editor' : '';
-      if (elBtnProcess) elBtnProcess.textContent = impose ? '모아찍기 추출' : '단건 가공';
+      if (hint) hint.textContent = impose ? '후가공 없음 · 선택분 자동 분리 → 조각별 등록 → ia-editor' : '';
+      if (elBtnProcess) {
+        if (!impose) imposePending = 0; // 단건으로 돌아가면 분리 대기 해제
+        elBtnProcess.textContent = impose
+          ? (imposePending > 0 ? ('▶ ' + imposePending + '건 등록') : '모아찍기 추출')
+          : '단건 가공';
+      }
     }
 
     // ── 가공 실행 ──
@@ -499,6 +504,10 @@
     }
 
     if (elBtnProcess) elBtnProcess.addEventListener('click', function () {
+      // P2(2026-07-29): 모아찍기는 선택분을 **자동으로 개별 분리**해 조각별로 등록한다.
+      //   전에는 선택 전체가 work.ai 1개로 합쳐져 판에 올릴 조각이 1개가 됐고 — 모아찍기를 고르는
+      //   의미 자체가 없었다. 분리 수단(묶음분리)은 큐 탭에만 있어 발견도 어려웠다.
+      if (modeValue() === 'impose') { imposeExtractClick(); return; }
       var params = gatherParams();
       saveSettings();
       out('가공 중… (저장 프리즈 중 잠시 대기)');
@@ -533,6 +542,11 @@
     // ── 반자동 큐 (A2) + 행↔폼 연동 (A안: 분해 → 행 선택 → 행별 후가공 세팅 → 검토문서 → 확정) ──
     var queue = []; // [{params, client, keyword, qty, w, h}]
     var bound = -1; // 폼과 연동 중인 행 인덱스(-1=없음). 연동 중 폼 변경=그 행에만 반영
+    var imposePending = 0; // P2: >0 = 모아찍기 분리 완료·등록 대기(다음 [모아찍기 추출] 클릭이 등록)
+    function imposeResetPending() {
+      imposePending = 0;
+      if (elBtnProcess && modeValue() === 'impose') elBtnProcess.textContent = '모아찍기 추출';
+    }
     var elQueueBox = $('queueBox'), elBtnQAdd = $('btnQueueAdd'), elBtnQBatch = $('btnQueueBatch'), elBtnConfirm = $('btnConfirm'), elBtnQClear = $('btnQueueClear'), elBtnApplyAll = $('btnApplyAll');
     var elBtnReview = $('btnReview'), elBtnAutoDetect = $('btnAutoDetect');
 
@@ -540,15 +554,25 @@
     var queueRev = 0;      // 큐 내용 변경마다 증가(행 추가·삭제·세팅·키워드)
     var reviewedRev = -1;  // 마지막 검토문서 생성 시점의 rev
     var reviewBusy = false;
+    // 큐 전 행이 모아찍기인가 — 검토문서 게이트 면제 판정(P2). 빈 큐는 false.
+    function queueAllImpose() {
+      if (!queue.length) return false;
+      for (var qi = 0; qi < queue.length; qi++) {
+        if (!queue[qi].params || queue[qi].params.mode !== 'impose') return false;
+      }
+      return true;
+    }
     function updateGate() {
-      var stale = reviewedRev !== queueRev;
+      var stale = (reviewedRev !== queueRev) && !queueAllImpose();
       if (elBtnConfirm) {
         elBtnConfirm.disabled = queue.length === 0 || stale || reviewBusy;
         elBtnConfirm.title = (queue.length && stale) ? '검토문서로 확인한 뒤 확정할 수 있습니다' : '';
       }
       if (elBtnReview) {
         elBtnReview.disabled = queue.length === 0 || reviewBusy;
-        elBtnReview.textContent = (queue.length && !stale) ? '검토문서 ✓' : '검토문서';
+        // ✓ 는 "실제로 검토했는가"만 표시한다 — stale 로 판정하면 게이트가 면제된 모아찍기 큐가
+        //   검토한 적 없는데도 ✓ 로 보인다(2026-07-29).
+        elBtnReview.textContent = (queue.length && reviewedRev === queueRev) ? '검토문서 ✓' : '검토문서';
       }
     }
     function bumpRev() { queueRev++; updateGate(); }
@@ -610,6 +634,12 @@
       if (elBtnConfirm) elBtnConfirm.textContent = '일괄 확정 (' + queue.length + ')';
       if (elBtnApplyAll) elBtnApplyAll.disabled = queue.length === 0;
       updateGate();
+      // P2 등록 대기 중이면 버튼 개수 라벨을 큐와 동기화(행 삭제 대응). 큐가 비면 대기 해제.
+      if (imposePending > 0) {
+        imposePending = queue.length;
+        if (!imposePending) imposeResetPending();
+        else if (elBtnProcess && modeValue() === 'impose') elBtnProcess.textContent = '▶ ' + imposePending + '건 등록';
+      }
     }
 
     // 행 클릭=폼 연동 토글: 행 params를 가공·후가공 탭에 로드, 이후 폼 변경은 그 행에만 반영
@@ -619,7 +649,17 @@
       bound = i;
       applyRowToForm(queue[i]);
       renderQueue();
-      out('#' + (i + 1) + ' 행 연동 중 — 가공·후가공 탭 수정이 이 행에 반영됩니다 (행 다시 클릭=해제)');
+      var baseMsg = '#' + (i + 1) + ' 행 연동 중 — 가공·후가공 탭 수정이 이 행에 반영됩니다 (행 다시 클릭=해제)';
+      out(baseMsg);
+      // P3(2026-07-29): 이 행이 **어느 그룹인지** 일러에서 보여준다 — 원본 조각을 선택.
+      //   mesA0_queueSelect 는 검토·확정 루프가 이미 쓰던 함수를 그대로 재사용(재구현 금지).
+      //   실패(문서 닫힘·참조 무효)해도 연동은 유지한다 — 폼 편집까지 막을 이유가 없다.
+      csi.evalScript('mesA0_queueSelect(' + i + ')', function (sres) {
+        var sr = null; try { sr = JSON.parse(sres); } catch (e) {}
+        if (sr && sr.ok) { out(baseMsg + '\n· 일러에서 이 행의 조각 ' + sr.n + '개를 선택했습니다'); return; }
+        var em = { range: '행 범위 오류', stale: '원본 객체 참조 무효(문서가 수정됨)', docgone: '원본 문서가 닫힘' };
+        out(baseMsg + '\n· 일러 선택 실패: ' + (sr ? (em[sr.err] || sr.err) : '호스트 연결 안 됨'));
+      });
     }
 
     function setSelectValue(sel, v) { if (!sel) return; sel.value = ''; if (v != null && v !== '') sel.value = v; }
@@ -837,13 +877,15 @@
       csi.evalScript('mesA0_reviewBegin()', function () { step(); });
     });
 
-    if (elBtnConfirm) elBtnConfirm.addEventListener('click', function () {
+    // 큐 일괄 등록 루프 — [일괄 확정] 과 [모아찍기 추출](P2 자동분리) 이 **공유**한다. 재구현 금지.
+    //   batch 폴더 1개에 work_N·thumb_N·manifest_N 을 만든다(= batch734 산출 구조).
+    //   onDone(okN, failN) = 완료 콜백(선택).
+    function runBatchConfirm(onDone) {
       if (!queue.length) return;
-      if (reviewedRev !== queueRev) { out('검토문서로 확인한 뒤 확정하세요 — [검토문서] 버튼', 'err'); updateGate(); return; }
       if (elBtnQAdd) elBtnQAdd.disabled = true;
       if (elBtnProcess) elBtnProcess.disabled = true;
       if (elBtnReview) elBtnReview.disabled = true;
-      elBtnConfirm.disabled = true;
+      if (elBtnConfirm) elBtnConfirm.disabled = true;
       function reenable() {
         if (elBtnQAdd) elBtnQAdd.disabled = false;
         if (elBtnProcess) elBtnProcess.disabled = false;
@@ -851,7 +893,7 @@
       }
       csi.evalScript('mesA0_batchBegin()', function (bres) {
         var bf = null; try { bf = JSON.parse(bres); } catch (e0) {}
-        if (!bf || !bf.ok) { out('배치 폴더 생성 실패: ' + (bf ? bf.err : 'nohost'), 'err'); reenable(); elBtnConfirm.disabled = false; return; }
+        if (!bf || !bf.ok) { out('배치 폴더 생성 실패: ' + (bf ? bf.err : 'nohost'), 'err'); reenable(); if (elBtnConfirm) elBtnConfirm.disabled = false; return; }
         var batchFolder = bf.folder, results = [], i = 0;
         // 식별번호 = 키워드별 순번(같은 키워드끼리 1,2,3). 키워드 없으면 전체순번(파일명 유니크)
         var kwCount = {}, seqForRow = [];
@@ -873,6 +915,7 @@
           queue = []; bound = -1; renderQueue(); reenable();
           clearFinishing(); // 일괄 등록 완료 = 후가공 리셋(단건 경로와 동일 규칙)
           saveSettings();
+          if (typeof onDone === 'function') onDone(okN, failN);
         }
         function step() {
           if (i >= queue.length) { finishBatch(); return; }
@@ -898,6 +941,66 @@
         }
         step();
       });
+    }
+
+    // P2 — [모아찍기 추출] 2단 흐름. 1클릭=분리(큐 적재·결과 표시) → 2클릭=등록.
+    //   조각이 1개면 확인 없이 바로 등록한다(기존 단건 추출과 결과·클릭 수가 같아 퇴행이 없다).
+    //   분리는 `mesA0_queueAddBatch`(큐 탭 [＋묶음분리])를 그대로 쓴다 — 분리 로직 재구현 금지.
+    //   등록은 `runBatchConfirm`(= [일괄 확정])을 공유하므로 산출 구조가 batch734와 동일하다.
+    function imposeExtractClick() {
+      if (imposePending > 0) { // 2클릭 = 등록
+        out('모아찍기 등록 중… ' + imposePending + '건');
+        runBatchConfirm(function () { imposeResetPending(); });
+        return;
+      }
+      if (queue.length) { // 남은 큐를 휩쓸어 등록하는 사고 차단 — 어느 쪽을 등록할지 사람이 정한다
+        out('큐에 ' + queue.length + '건이 남아 있습니다 — [큐] 탭에서 확정하거나 [비우기] 후 다시 시도하세요.', 'err');
+        return;
+      }
+      var gapEl = $('splitGap');
+      var gap = gapEl ? parseFloat(gapEl.value) : 0; if (isNaN(gap)) gap = 0;
+      elBtnProcess.disabled = true;
+      csi.evalScript('mesA0_queueAddBatch(' + gap + ')', function (res) {
+        elBtnProcess.disabled = false;
+        var r = null; try { r = JSON.parse(res); } catch (e) {}
+        if (!r || !r.ok) {
+          var em = { nodoc: '열린 문서 없음', nosel: '객체를 선택하세요', nobounds: '크기 측정 불가', allnoise: '전부 50mm 미만(노이즈)' };
+          out('모아찍기 분리 실패: ' + (r ? (em[r.err] || r.err) : '호스트 연결 안 됨'), 'err');
+          return;
+        }
+        var qtyN = parseInt(elQty ? elQty.value : '1', 10); if (isNaN(qtyN) || qtyN < 1) qtyN = 1;
+        var client = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
+        var keyword = elAnnot ? (elAnnot.value || '').replace(/^\s+|\s+$/g, '') : '';
+        var base = gatherParams(); // impose라 finishing·punch·annot_pos는 이미 비어 있다(P1)
+        var lines = [];
+        for (var s = 0; s < r.sizes.length; s++) {
+          queue.push({ params: JSON.parse(JSON.stringify(base)), client: client, keyword: keyword, qty: qtyN, w: r.sizes[s].w, h: r.sizes[s].h });
+          lines.push('#' + (s + 1) + ' ' + r.sizes[s].w + '×' + r.sizes[s].h + 'cm');
+        }
+        bumpRev();
+        renderQueue();
+        if (queue.length === 1) {
+          out('모아찍기 1건 등록 중… (' + lines[0] + ')');
+          runBatchConfirm(function () { imposeResetPending(); });
+          return;
+        }
+        imposePending = queue.length;
+        if (elBtnProcess) elBtnProcess.textContent = '▶ ' + imposePending + '건 등록';
+        out('분리됨: ' + r.added + '개 (분리간격 ' + gap + 'mm · 클립존중 · 50mm↓ 제외)\n' + lines.join(' · ') +
+          '\n→ [▶ ' + imposePending + '건 등록]을 한 번 더 누르면 조각별로 등록합니다.' +
+          '\n틀리면 [큐] 탭에서 ✕ 삭제·수량 조정, [비우기]=취소.', 'okmsg');
+      });
+    }
+
+    if (elBtnConfirm) elBtnConfirm.addEventListener('click', function () {
+      if (!queue.length) return;
+      // 모아찍기 전용 큐는 검토문서 게이트 면제(2026-07-29) — 검토문서는 마감·돔보·주석 배치를
+      //   눈으로 보는 장치인데 모아찍기는 그 셋이 전부 없다(work.ai 원본 그대로 저장).
+      //   단건이 하나라도 섞여 있으면 기존대로 검토를 요구한다.
+      if (reviewedRev !== queueRev && !queueAllImpose()) {
+        out('검토문서로 확인한 뒤 확정하세요 — [검토문서] 버튼', 'err'); updateGate(); return;
+      }
+      runBatchConfirm();
     });
 
     renderQueue();
