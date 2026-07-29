@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-07-29T03:12:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-07-29T09:17:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -26,6 +26,22 @@
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, 2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그 이관: 306KB→80KB, **2026-07-27T23:00 7차 트림 — 사이클 로그 39건 중 31건 이관(최근 8건=전 Area 1바퀴+2만 유지): 196KB→63KB**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 **최근 8사이클 로그**(전 Area 1바퀴 커버 = 직전 사이클 diff 판단에 필요한 최소분) + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 > ↳ **9차 트림 (2026-07-28, 자동)**: 사이클 로그 13건 → 8건 유지, 5건 이관 (82KB → 트림 후 아래 참조).
 > ↳ **8차 트림 (2026-07-27, 자동)**: 사이클 로그 9건 → 8건 유지, 1건 이관 (66KB → 트림 후 아래 참조).
+
+> **Area 4 데이터 정합성 (2026-07-29T09:17):**
+> - **방법**: `git fetch origin main`(forced-update, HEAD `5733bbc` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 4 **47회차** — 직전 Area4(`1921e7ef`, 07-27T23:54, 46회차) 이후 `git log`는 **45커밋** 대량 churn(IA 에디터 진입점 통합 Phase 1~8·모아찍기 대기함 관리+취소소유자게이트·광고성 문자/MMS 법적준수 가드 신규(정보통신망법 §50)+공개 수신거부 페이지·판짜기 shelf bin-pack). 신규 마이그레이션은 **2건뿐**(`0478_retire_workbench_page`=권한 비활성화 only·`0479_message_ad_compliance`=신규 3테이블+kakao_send_logs.message_type). 에이전트 위임 없이 인라인 수행(과다 위임 억제 정책 — 핵심 write-path가 이미 식별돼 정독이 위임보다 빠름).
+> - **🟢 특기사항 — 직전 Area3(46회차) 종료 후 별도 세션이 구조감사 도구를 신설해 8건을 이미 픽스·push함**: `331ce7d`(신규 `scripts/structure-audit.mjs`)가 write-path entity 비대칭 29건을 코드 대조해 진짜 8건(inspections 검수등록·hr 근태체크아웃/직원삭제·fixedAssets 처분·scan.ts POST /action·waste.ts card_id·orders/create.ts 견적전환카운터·shipments merge status)을 형제-비대칭 패턴(선행 SELECT+entity가드+404)으로 수정, `5733bbc`(prod 배포 후 실측)가 `fixedAssets.ts`/`waste.ts`의 alias 누락(bare `entity_id`가 equipment JOIN과 충돌해 `ambiguous column name` 500)을 추가 수정. 두 커밋 모두 이번 Area4 47회차 범위 내 churn — 직접 diff Read로 전건 재확인(아래).
+> - **Area4 렌즈로 직접 재검증(코드 Read, 신뢰 없이 직접 확인)**:
+>   - `messagesAd.ts`/`publicUnsubscribe.ts`/`messageCompliance.ts`(신규 3파일, 0479 write-path) — `message_opt_outs`/`unsubscribe_tokens` 둘 다 `UNIQUE(phone)` 인덱스로 `INSERT OR IGNORE` 멱등 보장(중복 등록·토큰 증식 불가), `client_id`는 soft-delete 테이블(`clients.is_active`) 참조라 구조적 dangling 불가, entity_id 부재는 "거래처는 3사 공유 자산 + 수신거부는 번호기준 전사 적용" 설계 의도가 마이그 주석·라우터 주석 양쪽에 명시(FP클래스⑤와 다른 축 — 아예 처음부터 무-entity 설계).
+>   - `messageBulkLimit.ts`(신규 서비스) — 문서화된 "4곳 전부 사용" 주장을 직접 grep으로 검증: `messages.ts:778`·`messagesAd.ts:295`·`kakao.ts:1047`·`kakao.ts:1170` 전부 호출 확인(#584 형제완전성 clean, 문서-코드 불일치 0).
+>   - `workbench.ts` `consumeSheetIntakes()`(신규 헬퍼, 판짜기 은퇴 대비 웹네스팅 대기물 소비) — `status='waiting'` 조건부 UPDATE라 재렌더/중복 콜백에 멱등, D1 80청크 분할, entityFilter 적용. `/intakes/void-bulk`(신규 대량취소)도 동일 청크+entityFilter+소유자게이트(`canVoidIntake`) 패턴. 신규 `/intakes` 검색(`q`/`date_from`/`date_to`/`mode`) 컬럼 전부 마이그 0463 ground-truth와 일치.
+>   - `taxInvoices/batch.ts`·`taxInvoices/queries.ts`(#581 픽스, 6ce1831) — 실발행(`batch-create`/`monthly-create`)과 미리보기(`monthly-eligible`)에 **동일** `entityFilter(c,'o')` 적용 확인 → "미리보기 N건인데 발행 M건" 불일치 형제갭 없음(형제완전성 clean).
+>   - `shipments.ts` merge — 후보조회(`:300`)와 실병합(`:388`) 양쪽에 동일 `status NOT IN ('CANCELLED','DELETED','DRAFT','QUOTATION')` 필터 확인(형제완전성 clean, cross-entity는 합포장 설계 의도로 유지).
+>   - `designer_intakes.status`(`'void'`/`'absorbed'`/`'waiting'`) — CHECK 제약 없는 자유 TEXT 컬럼 확인, literal write 위반 위험 0.
+> - **표준 standing scan 전부 clean**: `entity-audit.mjs`(127파일·SELECT60·통과60·누락0), `npx tsc --noEmit`(0), 마이그 번호 중복(기존 5쌍 `0327/0412/0416/0420/0453`만, 신규 0472~0479 정상).
+> - **backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **3건**(#585·#586·#587, 백로그 기재값과 정확히 일치). `search_issues(reason:completed)` **510**·`reason:not_planned`(4)+`reason:duplicate`(2) **6** — 셋 다 백로그 기재값과 일치(이번 사이클 close 0건).
+> - **🧬 SKILL 강화 없음** — 이번 churn의 데이터정합성 리스크는 별도 세션의 structure-audit.mjs가 IDOR/write-path 축으로 선점 처리했고, Area4 렌즈(orphan/상태불일치/중복/필수값누락/인덱스/entity NULL)로 직접 재검증한 신규 write-path(광고문자 컴플라이언스·모아찍기 대기함)는 설계 단계부터 멱등성·형제일관성을 갖춰 net-new 0. 신규 클래스 없음.
+> - 신규 이슈 0건, 자동수정 0건, done-sync: new 3·done 510·rejected 6. 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-07-29T03:12):**
 > - **방법**: `git fetch --deepen=300 origin main`(shallow clone, HEAD `da70faa` = origin/main 일치, 워킹트리 clean, detached). Area 3 **46회차** — 직전 Area3(`295b029`, 07-27T21:35, 45회차) 이후 `git log 295b029..HEAD`는 **52커밋**, 대량 churn: IA 에디터 진입점 통합 Phase 1~8(판짜기/워크벤치 흡수, 2뷰 확정) + **광고성 문자·MMS 법적 준수 가드 신규**(정보통신망법 §50, `messagesAd.ts/js` 412줄 신규 + `/unsubscribe` 공개 옵트아웃 페이지 149줄 신규) + 발송실패 수신자 식별(#574) + 은행 배치상한(#583) + 대기함 소유자게이트(#582). general-purpose 에이전트 2개 병렬 파견(①광고 컴플라이언스 UI+공개 옵트아웃 페이지 ②IA에디터 통합 회귀) 후 오케스트레이터가 3건을 직접 코드 대조로 재확인.
