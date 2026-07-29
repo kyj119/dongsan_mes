@@ -95,11 +95,11 @@ ok('분리 결과 3행', rows === 3, 'rows=' + rows)
 ok('등록 버튼 라벨', await page.locator('#btnImposeRegister').innerText() === '등록 (3)')
 ok('등록 버튼 활성', !(await page.locator('#btnImposeRegister').isDisabled()))
 
-// 5) 행별 수량(P4)
-await page.fill('#imposeBox .qqty[data-i="1"]', '5')
-await page.dispatchEvent('#imposeBox .qqty[data-i="1"]', 'change')
-const qtyKept = await page.inputValue('#imposeBox .qqty[data-i="1"]')
-ok('행별 수량 유지', qtyKept === '5', 'qty=' + qtyKept)
+// 5) 수량 3분화 — 모아찍기는 수량을 받지 않는다(행 수량칸 자체가 없어야 한다)
+ok('모아찍기 행에 수량칸 없음', (await page.locator('#imposeBox .qqty').count()) === 0)
+ok('모아찍기 탭에 수량 입력 없음', (await page.locator('[data-page="impose"] #qty, [data-page="impose"] #seedQty').count()) === 0)
+ok('수량은 단건 탭 소속', (await page.locator('[data-page="single"] #qty').count()) === 1)
+ok('기본수량은 묶음 탭 소속', (await page.locator('[data-page="bundle"] #seedQty').count()) === 1)
 
 // 6) 큐 잔여 상태에서 재분리 거부
 await page.click('#btnImposeSplit')
@@ -119,8 +119,17 @@ ok('1건이어도 자동등록 안 함(목록에 남음)', (await page.locator('
 // 8) 묶음 탭에서 행 클릭 → 단건 탭으로 튕기지 않음
 await page.click('#btnImposeClear')
 await page.click('.tab[data-tab="bundle"]')
+await page.evaluate(() => { window.__splitCount = 3 }) // 7)에서 1로 낮췄던 것 복구
+await page.fill('#seedQty', '4')
 await page.click('#btnQueueBatch')
 await page.waitForTimeout(200)
+
+// 묶음: seedQty 가 새 행에 채워지고, 행에서 고친 값이 정본으로 남는다
+ok('새 행에 기본수량 채워짐', (await page.inputValue('#queueBox .qqty[data-i="0"]')) === '4')
+await page.fill('#queueBox .qqty[data-i="1"]', '7')
+await page.dispatchEvent('#queueBox .qqty[data-i="1"]', 'change')
+ok('행 수량 편집 유지', (await page.inputValue('#queueBox .qqty[data-i="1"]')) === '7')
+ok('단건 수량은 행 편집에 안 끌려감', (await page.inputValue('#qty')) === '1')
 await page.click('#queueBox .qrow[data-i="0"] .qmeta')
 await page.waitForTimeout(150)
 ok('묶음 탭 유지(행 클릭이 탭을 안 바꿈)', await page.locator('.tab.active').innerText() === '묶음')

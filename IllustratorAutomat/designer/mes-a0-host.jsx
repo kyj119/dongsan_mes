@@ -10,7 +10,8 @@
 //   다시 열기 전에는 구버전이 계속 돈다. 그 사실을 눈으로 확인할 수 있게 수정 시 버전을 올린다.
 //   0.1.1 = 등록 크기 기준을 클립 마스크 존중으로 통일(measured_cm 겉보기 버그 수정, 2026-07-29)
 //   0.1.2 = 출력 경계선(백색 테두리) on/off — 원본 테두리와 겹쳐 두 줄로 보이던 건 (2026-07-29)
-var MESA0_VERSION = 'A0-CEP-0.1.2';
+//   0.1.3 = 수량 3분화 — 단건=최종값 · 묶음=새 행 기본값 · 모아찍기=수량 안 받음 (2026-07-29)
+var MESA0_VERSION = 'A0-CEP-0.1.3';
 var MESA0_REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
 var MESA0_PT_PER_MM = 72 / 25.4;
 var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];

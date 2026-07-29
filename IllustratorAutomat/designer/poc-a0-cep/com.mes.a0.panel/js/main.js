@@ -544,6 +544,16 @@
     //   대신 "다른 용도의 행이 섞이면 거부"하는 가드로 혼선을 막는다(아래 imposeGuard).
     var queueBoxes = [];
     var elQueueBox = $('queueBox'), elBtnQAdd = $('btnQueueAdd'), elBtnQBatch = $('btnQueueBatch'), elBtnConfirm = $('btnConfirm'), elBtnQClear = $('btnQueueClear'), elBtnApplyAll = $('btnApplyAll');
+    // 수량 3분화(2026-07-29) — 한 칸이 탭마다 다른 의미를 갖던 구조를 끊는다.
+    //   #qty(단건 탭)   = 그 건의 **최종 수량**(주문서 라인으로 프리필)
+    //   #seedQty(묶음)  = 담을 때 채우는 **기본값**뿐. 확정 수량은 각 행(qqty)이 정본
+    //   모아찍기        = **수량을 받지 않는다**. ia-editor 가 intake.qty 를 안 쓰고
+    //                     판짜기 인스펙터에서 조각별 개수를 다시 받기 때문(iaEditor.js:1892 qty:1 고정).
+    var elSeedQty = $('seedQty');
+    function seedQtyValue() {
+      var n = parseInt(elSeedQty ? elSeedQty.value : '1', 10);
+      return (isNaN(n) || n < 1) ? 1 : n;
+    }
     var elBtnReview = $('btnReview'), elBtnAutoDetect = $('btnAutoDetect');
 
     // 확정 게이트(D4): 검토문서를 만든 큐 상태(rev)에서만 확정 허용. 큐가 바뀌면 재검토 요구.
@@ -574,7 +584,8 @@
     function bumpRev() { queueRev++; updateGate(); }
 
     // 큐 1개를 여러 컨테이너에 그린다(묶음 탭·모아찍기 탭). 컨테이너별로 이벤트를 다시 붙인다.
-    function renderQueueInto(box, emptyMsg) {
+    //   showQty=false 면 행 수량칸을 아예 그리지 않는다(모아찍기 — 수량을 받지 않는 경로).
+    function renderQueueInto(box, emptyMsg, showQty) {
       if (box) {
         if (!queue.length) {
           box.innerHTML = '<div class="qempty">' + emptyMsg + '</div>';
@@ -587,7 +598,7 @@
             var meta = e.w + '×' + e.h + 'cm' + (e.client ? (' · ' + e.client) : '') + fx;
             html += '<div class="qrow' + (i === bound ? ' sel' : '') + '" data-i="' + i + '"><span class="qn">#' + (i + 1) + '</span>' +
               '<input class="qkw" data-i="' + i + '" type="text" value="' + escHtml(e.keyword || '') + '" placeholder="키워드" />' +
-              '<input class="qqty" data-i="' + i + '" type="text" value="' + escHtml(String(e.qty || 1)) + '" title="수량(행별)" />' +
+              (showQty ? ('<input class="qqty" data-i="' + i + '" type="text" value="' + escHtml(String(e.qty || 1)) + '" title="확정 수량(이 행의 정본)" />') : '') +
               '<span class="qmeta" title="' + escHtml(meta) + '">' + escHtml(meta) + '</span>' +
               '<button class="qdel" data-i="' + i + '">✕</button></div>';
           }
@@ -623,7 +634,7 @@
             this.value = String(n); // 잘못 입력한 값 즉시 교정 표시
             queue[ix].qty = n;
             if (queue[ix].params) queue[ix].params.qty = n; // 호스트 전송값 동기화
-            if (ix === bound && elQty) elQty.value = String(n); // 연동 행이면 폼 수량도 정합
+            // 폼(#qty)으로 되쓰지 않는다 — #qty 는 단건 탭 전용값이고, 행 수량의 정본은 이 칸이다.
             bumpRev(); // 수량=주석 문구에 반영 → 재검토 필요
           });
         }
@@ -642,8 +653,8 @@
     }
 
     function renderQueue() {
-      renderQueueInto(elQueueBox, '큐 비어있음 — 디자인 선택 후 [＋ 개별] 또는 [＋ 묶음분리]');
-      renderQueueInto(elImposeBox, '조각 없음 — 디자인 선택 후 [선택분 분리] 또는 [◎ 자동감지]');
+      renderQueueInto(elQueueBox, '큐 비어있음 — 디자인 선택 후 [＋ 개별] 또는 [＋ 묶음분리]', true);
+      renderQueueInto(elImposeBox, '조각 없음 — 디자인 선택 후 [선택분 분리] 또는 [◎ 자동감지]', false);
       if (elBtnConfirm) elBtnConfirm.textContent = '일괄 확정 (' + queue.length + ')';
       if (elBtnApplyAll) elBtnApplyAll.disabled = queue.length === 0;
       updateGate();
@@ -674,7 +685,7 @@
 
     function applyRowToForm(e) {
       var p = e.params || {};
-      if (elQty) elQty.value = String(e.qty || p.qty || 1);
+      // 행 수량은 폼(#qty)으로 끌어오지 않는다 — 정본이 행이므로 왕복시키면 다시 두 곳이 된다.
       if (elScale && p.scale_n) elScale.value = String(p.scale_n);
       if (p.mode) setMode(p.mode);
       if (elTrim) elTrim.checked = !!p.trim;
@@ -714,8 +725,8 @@
       if (bound < 0 || bound >= queue.length) return;
       var p = gatherParams();
       var e = queue[bound];
+      p.qty = e.qty;   // 행 수량 보존 — 폼(#qty)은 단건 전용이라 행을 덮어쓰면 안 된다
       e.params = p;
-      e.qty = p.qty;
       e.client = p.client_name || '';
       e.keyword = p.keyword || '';
       bumpRev();
@@ -769,10 +780,11 @@
           out('큐 추가 실패: ' + (r ? (em[r.err] || r.err) : '호스트 연결 안 됨'), 'err');
           return;
         }
-        var qtyN = parseInt(elQty ? elQty.value : '1', 10); if (isNaN(qtyN) || qtyN < 1) qtyN = 1;
+        var qtyN = seedQtyValue(); // 묶음: 새 행 기본수량(#seedQty). 확정 수량은 각 행에서.
         var client = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
         var keyword = elAnnot ? (elAnnot.value || '').replace(/^\s+|\s+$/g, '') : '';
-        queue.push({ params: gatherParams(), client: client, keyword: keyword, qty: qtyN, w: r.w, h: r.h });
+        var pAdd = gatherParams(); pAdd.qty = qtyN; // #qty(단건 최종값)가 아니라 seedQty 가 기본값이다
+        queue.push({ params: pAdd, client: client, keyword: keyword, qty: qtyN, w: r.w, h: r.h });
         bumpRev();
         renderQueue();
         out('큐 추가됨: #' + queue.length + ' (' + r.w + '×' + r.h + 'cm)', 'okmsg');
@@ -789,12 +801,13 @@
           out('묶음 분리 실패: ' + (r ? (em[r.err] || r.err) : '호스트 연결 안 됨'), 'err');
           return;
         }
-        var qtyN = parseInt(elQty ? elQty.value : '1', 10); if (isNaN(qtyN) || qtyN < 1) qtyN = 1;
+        var qtyN = seedQtyValue(); // 묶음: 새 행 기본수량(#seedQty). 확정 수량은 각 행에서.
         var client = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
         var keyword = elAnnot ? (elAnnot.value || '').replace(/^\s+|\s+$/g, '') : '';
         var base = gatherParams();
         for (var s = 0; s < r.sizes.length; s++) {
-          queue.push({ params: JSON.parse(JSON.stringify(base)), client: client, keyword: keyword, qty: qtyN, w: r.sizes[s].w, h: r.sizes[s].h });
+          var pRow = JSON.parse(JSON.stringify(base)); pRow.qty = qtyN;
+          queue.push({ params: pRow, client: client, keyword: keyword, qty: qtyN, w: r.sizes[s].w, h: r.sizes[s].h });
         }
         bumpRev();
         renderQueue();
@@ -819,12 +832,13 @@
           out('자동감지 실패: ' + (r ? (em[r.err] || r.err) : '호스트 연결 안 됨'), 'err');
           return;
         }
-        var qtyN = parseInt(elQty ? elQty.value : '1', 10); if (isNaN(qtyN) || qtyN < 1) qtyN = 1;
+        var qtyN = seedQtyValue(); // 묶음: 새 행 기본수량(#seedQty). 확정 수량은 각 행에서.
         var client = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
         var keyword = elAnnot ? (elAnnot.value || '').replace(/^\s+|\s+$/g, '') : '';
         var base = gatherParams();
         for (var s = 0; s < r.sizes.length; s++) {
-          queue.push({ params: JSON.parse(JSON.stringify(base)), client: client, keyword: keyword, qty: qtyN, w: r.sizes[s].w, h: r.sizes[s].h });
+          var pRow = JSON.parse(JSON.stringify(base)); pRow.qty = qtyN;
+          queue.push({ params: pRow, client: client, keyword: keyword, qty: qtyN, w: r.sizes[s].w, h: r.sizes[s].h });
         }
         bumpRev();
         renderQueue();
@@ -974,13 +988,17 @@
           out('분리 실패: ' + (r ? (em[r.err] || r.err) : '호스트 연결 안 됨'), 'err');
           return;
         }
-        var qtyN = parseInt(elQty ? elQty.value : '1', 10); if (isNaN(qtyN) || qtyN < 1) qtyN = 1;
+        // 모아찍기는 수량을 받지 않는다 — 판에 몇 개 앉힐지는 ia-editor 판짜기가 조각별로 정한다
+        //   (iaEditor.js:1892 는 intake.qty 를 쓰지 않고 qty:1 로 담는다). 여기서 받아봐야 표시용 메모다.
+        var qtyN = 1;
         var client = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
         var keyword = elAnnot ? (elAnnot.value || '').replace(/^\s+|\s+$/g, '') : '';
         var base = gatherParams(); // impose 탭이라 finishing·punch·annot_pos는 이미 비어 있다
+        base.qty = qtyN;
         var lines = [];
         for (var s = 0; s < r.sizes.length; s++) {
-          queue.push({ params: JSON.parse(JSON.stringify(base)), client: client, keyword: keyword, qty: qtyN, w: r.sizes[s].w, h: r.sizes[s].h });
+          var pRow = JSON.parse(JSON.stringify(base)); pRow.qty = qtyN;
+          queue.push({ params: pRow, client: client, keyword: keyword, qty: qtyN, w: r.sizes[s].w, h: r.sizes[s].h });
           lines.push('#' + (s + 1) + ' ' + r.sizes[s].w + '×' + r.sizes[s].h + 'cm');
         }
         bumpRev();

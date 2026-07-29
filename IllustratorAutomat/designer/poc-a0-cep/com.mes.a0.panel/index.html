@@ -45,10 +45,10 @@
         </div>
         <span id="clientHit" class="achit"></span>
       </div>
+      <!-- 배율은 공통 유지: 단건·모아찍기 모두 실물 환산(realW = 파일cm × N)에 쓰인다.
+           수량은 경로마다 의미가 달라 각 탭으로 내렸다(2026-07-29). -->
       <div class="row">
-        <label for="qty">수량</label>
-        <input id="qty" type="text" value="1" class="short" />
-        <label for="scale" class="l2">배율</label>
+        <label for="scale">배율</label>
         <select id="scale">
           <option value="1">1/1 (원본)</option>
           <option value="2">1/2</option>
@@ -56,6 +56,7 @@
           <option value="5">1/5</option>
           <option value="10">1/10</option>
         </select>
+        <span class="cfg">파일이 실물의 1/N 축소본일 때</span>
       </div>
     </div>
 
@@ -67,6 +68,11 @@
 
     <!-- ── 단건 탭 — 지금 선택 1건을 후가공까지 걸어 가공 ── -->
     <div class="tabpage" data-page="single">
+      <div class="row">
+        <label for="qty">수량</label>
+        <input id="qty" type="text" value="1" class="short" />
+        <span class="cfg">이 건의 최종 수량 — 주문서 라인 수량으로 프리필됩니다</span>
+      </div>
       <div class="row">
         <button id="finToggle" type="button" class="disc">▸ 후가공 <span class="cfg">마감·돔보·펀칭·주석</span></button>
       </div>
@@ -145,7 +151,8 @@
         <button id="btnImposeRegister" type="button" class="primary" disabled>등록 (0)</button>
         <button id="btnImposeClear" type="button">비우기</button>
       </div>
-      <div class="row"><span class="cfg">후가공 없음 · work.ai만 추출 → ia-editor 모아찍기 대기함</span></div>
+      <div class="row"><span class="cfg">후가공 없음 · work.ai만 추출 → ia-editor 모아찍기 대기함<br>
+        <b>수량은 받지 않습니다</b> — 판에 몇 개 앉힐지는 ia-editor 판짜기에서 조각별로 지정합니다</span></div>
     </div>
 
     <!-- ── 묶음 탭 — 단건 여러 건을 행별로 세팅 → 검토문서 → 일괄 확정 ── -->
@@ -155,6 +162,11 @@
         <input id="splitGap" type="text" value="0" class="tiny" />
         <span class="unit">mm</span>
         <span class="cfg">0=겹칠 때만 병합 · 음수=더 잘게 · 양수=병합</span>
+      </div>
+      <div class="row punchrow">
+        <label for="seedQty">새 행 기본수량</label>
+        <input id="seedQty" type="text" value="1" class="tiny" />
+        <span class="cfg">담을 때 채워 넣는 값 — 확정 수량은 각 행에서 수정</span>
       </div>
       <div class="row buttons">
         <button id="btnQueueAdd" type="button">＋ 개별</button>
