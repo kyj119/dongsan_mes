@@ -9,7 +9,8 @@
 //   ⚠️ 이 파일은 패널 **로드 시점에만** $.evalFile 된다(jsx/host.jsx 스텁) — 고쳐도 패널을
 //   다시 열기 전에는 구버전이 계속 돈다. 그 사실을 눈으로 확인할 수 있게 수정 시 버전을 올린다.
 //   0.1.1 = 등록 크기 기준을 클립 마스크 존중으로 통일(measured_cm 겉보기 버그 수정, 2026-07-29)
-var MESA0_VERSION = 'A0-CEP-0.1.1';
+//   0.1.2 = 출력 경계선(백색 테두리) on/off — 원본 테두리와 겹쳐 두 줄로 보이던 건 (2026-07-29)
+var MESA0_VERSION = 'A0-CEP-0.1.2';
 var MESA0_REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
 var MESA0_PT_PER_MM = 72 / 25.4;
 var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];
@@ -366,6 +367,10 @@ function mesA0_process() {
       }
 
       // 여백 포함 바깥 테두리 백색 선 (도련 대신 — RIP가 여백까지 출력영역으로 포함하도록)
+      //   ⚠️ 원본에 이미 테두리가 있는 디자인에서는 이 선이 그 바깥(여백만큼 떨어진 곳)에 겹쳐
+      //   "사각형 두 줄"로 보인다(2026-07-29 실사용 확인). 패널에서 끌 수 있게 했다.
+      //   `!== false` 로 읽는 이유 = 구 패널이 보낸 params 에는 이 키가 없다(기존 동작 = ON 유지).
+      if (P.border_line !== false) {
       var bL = oL - finMargins.left, bT = oT + finMargins.top, bR = oR + finMargins.right, bB = oB - finMargins.bottom;
       var wCol = new CMYKColor(); wCol.cyan = 0; wCol.magenta = 0; wCol.yellow = 0; wCol.black = 0;
       var borderRect = newDoc.pathItems.rectangle(bT, bL, bR - bL, bT - bB); // rectangle(top,left,width,height)
@@ -373,6 +378,7 @@ function mesA0_process() {
       borderRect.stroked = true;
       borderRect.strokeColor = wCol;
       borderRect.strokeWidth = 0.5;
+      }
 
       // 펀칭: 원본 디자인 기준(여백 무관) 상/하/좌/우 비율분배 + 꼭짓점 개별. 지름1cm·중심 디자인edge서 2cm·검정 꽉찬 원
       var iTop = parseInt(punch.top, 10) || 0, iBot = parseInt(punch.bottom, 10) || 0;
@@ -548,6 +554,7 @@ function mesA0_process() {
     qty: qty,
     finishing: (hasFinishing || hasMark) ? finJson : null,
     trim: trim,
+    border_line: (P.border_line !== false), // 출력 경계선 적용 여부(추적용 — 산출물 차이의 근거)
     punch: punch,
     keyword: kwRaw || null,
     post_desc: postDesc || null,

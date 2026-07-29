@@ -75,11 +75,17 @@ await page.selectOption('select.finM[data-side="left"]', '접어미싱')
 await page.fill('#pTop', '3')
 ok('후가공 값 입력됨', await page.inputValue('#pTop') === '3')
 
+// 출력 경계선 토글 — 기본 ON, 끄면 params 로 false 가 나가야 한다
+ok('출력 경계선 기본 ON', await page.isChecked('#borderLine'))
+await page.uncheck('#borderLine')
+ok('출력 경계선 끔', !(await page.isChecked('#borderLine')))
+
 // 3) 모아찍기 탭 → 후가공 자동 초기화(P1의 핵심)
 await page.click('.tab[data-tab="impose"]')
 ok('탭 전환됨', await page.locator('.tab.active').innerText() === '모아찍기')
 ok('마감 초기화됨', await page.inputValue('#pTop') === '0')
 ok('마감 방식 초기화됨', await page.locator('select.finM[data-side="left"]').inputValue() === '')
+ok('출력 경계선도 기본값(ON)으로 복귀', await page.isChecked('#borderLine'))
 
 // 4) 분리 → 목록 3건 → 등록 버튼 활성
 await page.click('#btnImposeSplit')

@@ -123,6 +123,7 @@
     var elMeas = $('meas'), elBtnMeasure = $('btnMeasure');
     var elQty = $('qty'), elScale = $('scale'), elPreset = $('preset');
     var elTrim = $('trim'), elTrimInk = $('trimInk'), elClient = $('client');
+    var elBorderLine = $('borderLine'); // 출력 경계선(백색 테두리) on/off — 기본 ON(기존 동작)
     var elPTop = $('pTop'), elPBottom = $('pBottom'), elPLeft = $('pLeft'), elPRight = $('pRight');
     var elPcTL = $('pcTL'), elPcTR = $('pcTR'), elPcBL = $('pcBL'), elPcBR = $('pcBR');
     var elAnnot = $('annot');
@@ -424,6 +425,7 @@
       if (elALeft) elALeft.checked = false;
       if (elARight) elARight.checked = false;
       if (elPreset) elPreset.value = '';
+      if (elBorderLine) elBorderLine.checked = true; // 기본 ON 으로 복귀(끈 상태가 다음 건에 상속되지 않게)
       updateAnnotGates();
     }
 
@@ -483,6 +485,8 @@
         client_id: clientIdOf(elClient ? elClient.value : ''), // 정확일치 시 해소, 미일치=null(free-text)
         qty: qty, scale_n: scaleN, mode: modeValue(),
         trim: elTrim ? !!elTrim.checked : false,
+        // 출력 경계선(백색 테두리). host 는 `!== false` 로 읽으므로 구 패널(키 없음)은 기존대로 ON.
+        border_line: elBorderLine ? !!elBorderLine.checked : true,
         trim_ink: elTrimInk ? !!elTrimInk.checked : false, // 보이는 잉크로 축소(클립∩콘텐츠)
         punch: punchObj,
         keyword: keyword, // 주석·파일명. 식별번호(seq_no)는 단건 null, 배치는 키워드별 순번
@@ -674,6 +678,7 @@
       if (elScale && p.scale_n) elScale.value = String(p.scale_n);
       if (p.mode) setMode(p.mode);
       if (elTrim) elTrim.checked = !!p.trim;
+      if (elBorderLine) elBorderLine.checked = (p.border_line !== false); // 구 행(키 없음)=ON
       if (elTrimInk) elTrimInk.checked = !!p.trim_ink;
       if (elClient) elClient.value = e.client || p.client_name || '';
       var pc = p.punch || {}, cn = pc.corners || {};
