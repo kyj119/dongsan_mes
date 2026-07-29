@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-07-29T15:19:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-07-29T21:25:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -11,7 +11,7 @@
 | 🆕 new | **3** (Area 3 46회차 신규 #585·#586·#587, GitHub OPEN 실측) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **510** (`reason:completed` 절대값, +11 — 2026-07-29 세션에서 #572·#573·#574·#575·#576·#577·#578·#579·#581·#584 픽스 배포 후 close + #580 close-pending 해소) |
+| ✔️ done | **510** (`reason:completed` 절대값, 변동 없음 — Area6 52회차 재확인) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > **2026-07-29 백로그 소진 세션** (main `9686bf69`, deploy success): 11건을 심각도순으로 전건 처리.
@@ -26,6 +26,19 @@
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, 2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그 이관: 306KB→80KB, **2026-07-27T23:00 7차 트림 — 사이클 로그 39건 중 31건 이관(최근 8건=전 Area 1바퀴+2만 유지): 196KB→63KB**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 **최근 8사이클 로그**(전 Area 1바퀴 커버 = 직전 사이클 diff 판단에 필요한 최소분) + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 > ↳ **9차 트림 (2026-07-28, 자동)**: 사이클 로그 13건 → 8건 유지, 5건 이관 (82KB → 트림 후 아래 참조).
 > ↳ **8차 트림 (2026-07-27, 자동)**: 사이클 로그 9건 → 8건 유지, 1건 이관 (66KB → 트림 후 아래 참조).
+
+> **Area 6 자기 진화 (2026-07-29T21:25):**
+> - **방법**: `git fetch origin main`(forced-update, HEAD `e469425` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `git fetch --deepen=300`(shallow clone이라 직전 Area6 SHA 확보 위해 확장). Area 6 **52회차** — 직전 Area6(`6685a36`, 07-28T09:20, 51회차) 이후 `git log 6685a36..HEAD` = **68커밋**, `-- src/routes src/scripts migrations` 한정 **31커밋**: 자재 마스터 폭/규격/그룹 정정 다수(0481~0489, 데이터 UPDATE만) + **롤→미터 단위체계 확정**(0490~0496, `utils/rollConsumption.ts` 신설·정정 3커밋) + entity write-path 구조감사 도구(`331ce7d`)·정렬 tie-break 전역 완결(`1dca583`) + Area5(46회차)가 이미 다룬 광고문자 컴플라이언스/#572~#584 픽스 + IA에디터 통합 Phase(웹 라우트 범위 밖 다수).
+> - **🔴 open≠unfixed 재확인 — close-pending 0건**: `list_issues(OPEN,auto-improve)` 실측 3건(#585·#586·#587) 전부 Area3 46회차(07-28T18:15) 신규 발견 + Area5 46회차가 직접 재확인한 그대로(fixed-in-tree 없음, 6ce1831/98865cf/9686bf6는 별개 이슈 #572~#584를 픽스한 것이지 #585~#587은 미착수). close-pending 적체 0.
+> - **backlog↔GitHub 절대값 재동기화**: open **3**(변동 없음) · `search_issues(reason:completed)` **510**(변동 없음) · `not_planned`(4)+`duplicate`(2) **6**(변동 없음) — 전부 백로그 기재값과 정확히 일치, 드리프트 0.
+> - **🔧 브랜치 위생 도구 자체 버그 발견·수정**: `npm run branch:clean`이 이 세션(Linux 컨테이너)에서 즉시 크래시(`/bin/sh: Syntax error: "(" unexpected`) — 원인은 `scripts/branch-cleanup.cjs`가 `git branch --format=%(refname:short)`를 **미인용 문자열로 실행**해 POSIX 셸(bash -c/dash 둘 다 재현)이 괄호를 메타문자로 파싱한 것. 사용자 실제환경(Windows cmd.exe)에서는 괄호가 특별 취급되지 않아 지금까지 드러나지 않았을 뿐 — 어떤 Linux/CI 실행에서도 100% 재현되는 순수 셸 이식성 버그(app 런타임과 무관, dry-run 진단 스크립트). 큰따옴표 인용으로 수정(cmd.exe·bash·dash 3方 검증) 후 재실행 → SAFE-remote 0·SAFE-absorbed 1·REVIEW 0·SKIP 1(main) 정상 출력, 30건 임계치 미달이라 정리 제안 불요.
+> - **🧬 롤→미터 단위체계(0490~0496) 형제완전성 심층 재검증 — Area2 #462 클래스 재현 + net-new 1건 자동수정**: 이번 세션 자체가 이미 #462 방법론을 스스로 적용해 3차 자기교정(① unit='롤'→롤수 차감 오판 → ② base_unit='M'→미터 소모로 정정 → ③ 입고취소 역분개 비대칭 발견·수정)까지 마쳤음을 직접 diff로 확인(`convertReceiptToStock` 헬퍼 신설 후 "이미 있었다" 판명돼 자진 제거하는 등 이례적으로 꼼꼼한 자기검증). Area 6가 **write-path 완전성(개발자가 이미 검증)이 아니라 그 값을 소비하는 표시/알림 라벨** 축으로 독립 재검증:
+>   - ✅ `po-receive.ts`에 취소 경로 없음(grep 0건, 개발자 주장 직접 확인) · ✅ adjust/release/실사승인은 화면 입력값이 곧 base 수량이라 환산 불요(코드 직접 확인, `inventory.ts:750` release가 `item.quantity`를 그대로 차감) · ✅ 메인 재고목록(`inventory.js` `uomFmt`→`window.uomFormatStock`)·실사 스냅샷(`resolveStockUnit`) 둘 다 정확.
+>   - **🔴 net-new 발견·자동수정**: `utils/inventoryAlert.ts`(저재고 in-app 알림) `${i.current_stock}${i.unit}` — `current_stock`은 base_unit(미터) 저장값인데 라벨은 `items.unit`(입고단위 '롤')을 그대로 붙여 "45롤"(실제 45m)로 표시하는 세 번째 소비처 누락(같은 세션이 목록·실사 두 곳은 고쳤는데 알림 텍스트만 빠뜨림). `src/routes/inventory.ts` 쿼리에 `base_unit`/`pack_size` 추가 + `resolveStockUnit()`로 라벨 교체(inventoryCount.ts 오늘자 수정과 동일 패턴). 순수 표시 라벨 치환(알림 message는 문자열 저장, 다른 소비자가 구조적으로 파싱 안 함 확인) — 안전 자동수정.
+>   - 검증: `tsc --noEmit` 0 · `npm run build` OK · `entity-audit.mjs`(127파일·SELECT60·통과60·누락0) · 마이그 번호 중복(기존 5쌍만, 신규 0481~0496 정상). 로컬 dev 서버/스모크는 Windows 전용 스크립트(`dev:d1`이 PowerShell 의존)라 이 Linux 세션에서 실행 불가 — 기존 Area1 사이클과 동일한 환경 제약.
+> - **🧬 SKILL 강화 1건**: Area2 #462("단위/스케일 환산 형제-완전성") 항목에 하위 codify 추가 — "형제완전성 점검은 write-path 값뿐 아니라 그 값을 소비하는 모든 read/알림 경로의 라벨까지 포함해야 함"(오늘 발견한 알림-라벨 누락이 기존 레시피의 사각이었음).
+> - 신규 이슈 0건(발견 즉시 자동수정), 자동수정 2건(branch-cleanup 셸버그 + 저재고알림 라벨), done-sync: new 3·done 510·rejected 6(전부 변동 없음, 드리프트 0). 커밋 `87b5023` push 완료. 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 (2026-07-29T15:19):**
 > - **방법**: `git fetch origin main`(forced-update, HEAD `f25e6fb` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 5 **46회차** — 직전 Area5(`8604557`, 07-28T03:35, 45회차) 이후 `git log 5733bbc..HEAD -- src/routes src/scripts migrations`는 **10커밋**(orders/update.ts 카드 재매핑 로직 변경 포함 ORDER BY tie-break 전역 완결 70파일 + items.ts 그룹 우선순위 신규 엔드포인트 1개 + 자재 마스터 데이터 정정 다수, 나머지 45커밋은 IA 에디터 통합/모아찍기 CEP 패널(`IllustratorAutomat/**`)로 웹 라우트·스크립트·마이그 범위 밖). 에이전트 위임 없이 인라인 수행(과다 위임 억제 정책 — 신선 churn이 작아 정독이 더 빠름).
@@ -170,6 +183,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-022 | branch-cleanup.cjs 셸 인용 버그 + 저재고 알림 단위라벨 불일치 — ①`git branch --format=%(refname:short)` 미인용이 POSIX 셸(bash/dash)에서 괄호 메타문자로 파싱돼 즉시 크래시(Windows cmd.exe에서만 우연히 동작, 순수 셸 이식성 버그) → 큰따옴표 인용. ②`utils/inventoryAlert.ts` 저재고 알림이 base_unit(미터) 저장값에 입고단위(`items.unit`='롤') 라벨을 그대로 붙여 "45롤"(실제 45m)로 오표시 — 0496(롤→미터 단위체계) 형제완전성 사각, `resolveStockUnit()`로 교체(오늘자 inventoryCount.ts 수정과 동일 패턴). Area 6 52회차. verify PASS(tsc clean+build+entity 60/60) | 87b5023 | 2026-07-29 |
 | A-021 | iaEditor.js dead code 2건 제거 — `iaeCanUpdateMembership`(드래그/회전/복제 후 시트 멤버십 재배정용, 문서화된 의도는 있었으나 실제 드래그 이벤트 핸들러 자체가 미구현 — 캔버스가 Konva 대신 정적 SVG 미리보기로 방향전환돼 호출부 0) + 유일 의존 헬퍼 `iaeCanSheetByUid`. 코드베이스 전수 grep으로 호출처 0건 확인(동적 dispatch 패턴 없음) 후 제거. Area 2 53회차. verify PASS(tsc clean+build), check:dom 9(회귀 0) | (이번 커밋) | 2026-07-28 |
 | A-020c | XSS escapeHtml 누락 3곳 + bank.ts 배치 상한 2곳 — `messages.js` 발송이력/통계 `receiver_num`(형제 `receiver_name`은 escape인데 누락) + `receiving.js` 검수템플릿 드롭다운 `template_name`/`category_name`(관리화면 `inspections.js`는 escape인데 소비화면만 raw) + `bank.ts` batch-apply/batch-match 서버측 1000건 상한(#583, UI Shift범위선택 1000건 캡이 클라이언트 전용이던 것 보완). Area 5 45회차. verify PASS(tsc clean+build) | 040d882, 59330b5 | 2026-07-28 |
 | A-020b | XSS escapeHtml 누락 6곳 — `reports.js` 4곳(designer_name/client_name×3, title속성만 escape하고 content는 raw이던 복붙누락) + `ledger.js` 2곳(item.unit, 형제 item_name/spec/content는 escape인데 unit만 누락 — 매입PO품목라인 신기능(0f2d745)이 매출측 기존 미이스케이프 패턴 그대로 복제). Area 5 41회차 프론트 XSS sweep 에이전트 격리 → 오케스트레이터 직접 Read 재확인 후 escapeHtml/esc() 래핑(표시 불변). verify PASS(tsc clean+build) | (이번 커밋) | 2026-07-22 |
