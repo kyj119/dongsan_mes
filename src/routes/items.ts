@@ -314,6 +314,62 @@ itemsRouter.get('/groups/:groupName', async (c) => {
   }
 })
 
+/**
+ * 그룹 내 우선 소비 자재 지정 (group_sort)
+ *
+ * 같은 그룹에 폭이 겹치는 SKU가 있을 때 자재 자동차감이 무엇을 먼저 소비할지를 정한다
+ * (utils/autoDeductPostProcessingMaterials 규칙 ②). 제조사만 다른 대체재 —
+ * 예: "켈 30M 호홍" ↔ "켈 30M 잉크테크" — 는 그룹을 나누는 게 아니라 여기서 순서를 준다.
+ * 우선 = group_sort 0, 후순위 = 1. 나중에 제조사를 바꾸려면 이 값만 뒤집으면 되고
+ * is_active 를 건드리지 않으므로 매입·발주 화면에서는 양쪽 다 그대로 보인다.
+ */
+itemsRouter.put('/groups/:groupName/priority', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const groupName = decodeURIComponent(c.req.param('groupName'))
+    const body = await c.req.json()
+    const priorities = Array.isArray(body?.priorities) ? body.priorities : null
+    if (!priorities || priorities.length === 0) {
+      return c.json({ success: false, error: 'priorities 배열이 필요합니다' }, 400)
+    }
+
+    // 그룹 소속 검증 — 요청 id 가 실제로 이 그룹 품목인지 확인한다.
+    // 없으면 임의 품목의 group_sort 를 그룹명만 바꿔가며 조작할 수 있다.
+    const { results: owned } = await c.env.DB.prepare(
+      'SELECT id FROM items WHERE item_group = ? AND is_active = 1'
+    ).bind(groupName).all<{ id: number }>()
+    const ownedIds = new Set((owned || []).map((r) => r.id))
+
+    const stmts = []
+    const rejected: number[] = []
+    for (const p of priorities) {
+      const id = Number(p?.id)
+      const sort = Number(p?.group_sort)
+      if (!Number.isInteger(id) || !ownedIds.has(id)) { rejected.push(id); continue }
+      if (!Number.isFinite(sort)) continue
+      stmts.push(
+        c.env.DB.prepare('UPDATE items SET group_sort = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+          .bind(Math.trunc(sort), id)
+      )
+    }
+    if (rejected.length > 0) {
+      return c.json({ success: false, error: `이 그룹의 품목이 아닙니다: ${rejected.join(', ')}` }, 400)
+    }
+    if (stmts.length === 0) {
+      return c.json({ success: false, error: '적용할 항목이 없습니다' }, 400)
+    }
+
+    // D1 바인드 한도(약 100개) 회피 — 문 2바인드 × 80문 청크
+    for (let i = 0; i < stmts.length; i += 40) {
+      await c.env.DB.batch(stmts.slice(i, i + 40))
+    }
+
+    return c.json({ success: true, data: { updated: stmts.length } })
+  } catch (error) {
+    console.error('items PUT /groups/:groupName/priority error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
 // Bulk update items in a group (그룹 일괄 수정)
 itemsRouter.patch('/groups/:groupName', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {

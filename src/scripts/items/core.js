@@ -249,7 +249,51 @@ function showGroupEditModal(groupName) {
         if (res.data.settings && plCheck) plCheck.checked = !!res.data.settings.price_linked;
     }).catch(function() {});
 
+    loadGroupPriority(groupName);
+
     document.getElementById('groupEditModal').classList.remove('hidden');
+}
+
+// 동폭 경합이 있는 폭만 "우선 소비 자재" 선택 UI로 노출.
+// 경합이 없으면 고를 게 없으므로 섹션 자체를 숨긴다(빈 상자 노출 방지).
+var groupPriorityWidths = [];
+async function loadGroupPriority(groupName) {
+    var box = document.getElementById('groupEditPriorityBox');
+    var list = document.getElementById('groupEditPriorityList');
+    if (!box || !list) { console.warn('[items] #groupEditPriorityBox/List not found'); return; }
+    groupPriorityWidths = [];
+    box.classList.add('hidden');
+    list.innerHTML = '';
+    try {
+        var res = await axios.get('/api/items/groups/' + encodeURIComponent(groupName));
+        var items = (res.data && res.data.success) ? (res.data.data || []) : [];
+        var byWidth = {};
+        items.forEach(function(it) {
+            if (it.width_mm == null) return;
+            (byWidth[it.width_mm] = byWidth[it.width_mm] || []).push(it);
+        });
+        var widths = Object.keys(byWidth).filter(function(w) { return byWidth[w].length > 1; })
+            .sort(function(a, b) { return Number(a) - Number(b); });
+        if (widths.length === 0) return;
+
+        groupPriorityWidths = widths.map(function(w) { return { width: w, ids: byWidth[w].map(function(i) { return i.id; }) }; });
+        list.innerHTML = widths.map(function(w) {
+            var cands = byWidth[w].slice().sort(function(a, b) {
+                return (a.group_sort || 0) - (b.group_sort || 0) || a.id - b.id;
+            });
+            return '<div class="flex items-center gap-2">' +
+                '<span class="text-xs text-gray-600 w-16 shrink-0">' + (Number(w) / 10) + 'cm</span>' +
+                '<select data-priority-width="' + w + '" class="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm">' +
+                    cands.map(function(it, idx) {
+                        return '<option value="' + it.id + '"' + (idx === 0 ? ' selected' : '') + '>' +
+                            escapeHtml(it.item_name || '') + ' (' + escapeHtml(it.item_code || '') + ')</option>';
+                    }).join('') +
+                '</select></div>';
+        }).join('');
+        box.classList.remove('hidden');
+    } catch (error) {
+        console.warn('[items] 우선순위 로드 실패:', error);
+    }
 }
 
 function populateGroupSubcatSelect(sel) {
@@ -310,6 +354,18 @@ async function saveGroupEdit() {
         // 일괄 수정 필드가 있으면 함께 저장
         if (Object.keys(updates).length > 0) {
             await axios.patch('/api/items/groups/' + encodeURIComponent(groupName), updates);
+        }
+
+        // 우선 소비 자재 (동폭 경합이 있는 폭에서만 노출됨) — 선택=0, 나머지=1
+        var priorities = [];
+        groupPriorityWidths.forEach(function(w) {
+            var sel = document.querySelector('[data-priority-width="' + w.width + '"]');
+            if (!sel) return;
+            var chosen = parseInt(sel.value, 10);
+            w.ids.forEach(function(id) { priorities.push({ id: id, group_sort: id === chosen ? 0 : 1 }); });
+        });
+        if (priorities.length > 0) {
+            await axios.put('/api/items/groups/' + encodeURIComponent(groupName) + '/priority', { priorities: priorities });
         }
 
         showToast('그룹 "' + groupName + '" 설정 저장 완료' + (priceLinked ? ' (단가 연동 ON)' : ''), 'success');

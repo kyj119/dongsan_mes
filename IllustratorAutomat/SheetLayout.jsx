@@ -91,16 +91,25 @@ if (!resultJson && epsPath) {
 }
 _savedResultJson = resultJson;
 
+// ★ 조기 return 은 반드시 _ia_status 를 설정한다(2026-07-29). 미설정이면 반환값이 ""(빈값)이라
+//   에이전트가 "JSX 반환 빈값(미실행/조기종료 의심 — 일러 모달 확인)" 이라는 **틀린** 진단을 UI에 띄운다.
+//   실제 사유(파라미터 누락·소스 없음·조각 0개)가 모두 같은 문구로 뭉개졌던 원인. sheet #20·#21 오진.
 if (!sourceFile && (!sourcesArr || !sourcesArr.length)) {
     $.writeln("SheetLayout ERROR: source 또는 sources 파라미터 필요");
+    _ia_status = "ERR: 파라미터 누락 — source/sources 없음";
+    _tr(_ia_status);
     return;
 }
 if (!previewOnly && !epsPath) {
     $.writeln("SheetLayout ERROR: outputs.eps 파라미터 필요");
+    _ia_status = "ERR: 파라미터 누락 — outputs.eps 없음";
+    _tr(_ia_status);
     return;
 }
 if (previewOnly && !jpgPath) {
     $.writeln("SheetLayout ERROR: preview_only는 outputs.jpg 필요");
+    _ia_status = "ERR: 파라미터 누락 — preview_only 인데 outputs.jpg 없음";
+    _tr(_ia_status);
     return;
 }
 
@@ -169,10 +178,10 @@ function _slOpenPrep(path) {
                     if (_tops[_mi] === _wrap) continue;
                     try { _tops[_mi].move(_wrap, ElementPlacement.PLACEATBEGINNING); } catch (e_mv) {}
                 }
-                if (_wrap.pageItems.length > 0) gs.push(_wrap);
+                if (_wrap.pageItems.length > 0) { gs.push(_wrap); _tr("  [폴백] 최상위 아트 " + _wrap.pageItems.length + "개를 1그룹으로 묶음: " + path); }
                 else { try { _wrap.remove(); } catch (e_rm) {} }
             }
-        } catch (e_wrap) {}
+        } catch (e_wrap) { _tr("  [폴백] 그룹화 실패: " + e_wrap); }
     }
     return { doc: d, groups: gs };
 }
@@ -211,6 +220,8 @@ if (sourcesArr && sourcesArr.length) {
             var _ef = new File(_errDir + "error.log");
             _ef.open("w"); _ef.write("JSError: 파일 없음: " + sourceFile); _ef.close();
         } catch(e_ef) {}
+        _ia_status = "ERR: 소스 파일 없음 — " + sourceFile;
+        _tr(_ia_status);
         return;
     }
     srcDocs.push(_prep0.doc);
@@ -220,6 +231,9 @@ if (sourcesArr && sourcesArr.length) {
 
 if (!defaultGroups || defaultGroups.length === 0) {
     $.writeln("SheetLayout ERROR: 그룹이 없습니다");
+    // 위 _slOpenPrep 폴백(최상위 아트 자동 그룹화)까지 실패 = 소스 문서에 아트 자체가 없음.
+    _ia_status = "ERR: 소스에 조각 0개 — 소스 .ai 에 아트워크가 없거나 열기 실패(경로/권한 확인)";
+    _tr(_ia_status);
     for (var _ci = 0; _ci < srcDocs.length; _ci++) { try { srcDocs[_ci].close(SaveOptions.DONOTSAVECHANGES); } catch(e_c){} }
     return;
 }
@@ -515,6 +529,8 @@ if (previewOnly) {
     $.writeln("SheetLayout: preview_only → JPG만 생성(EPS/DXF·검증 스킵)");
     newDoc.close(SaveOptions.DONOTSAVECHANGES);
     for (var _pvc = 0; _pvc < srcDocs.length; _pvc++) { try { srcDocs[_pvc].close(SaveOptions.DONOTSAVECHANGES); } catch (e_pvc) {} }
+    _ia_status = "done(preview)";   // 정상 종료인데도 ""(빈값)이라 실패로 오독되던 경로
+    _tr(_ia_status);
     return;
 }
 

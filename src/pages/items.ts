@@ -371,6 +371,12 @@ export function itemsPage(c: Context<HonoEnv>) {
                             </label>
                             <p class="text-xs text-gray-400 mt-1 ml-6">입고 시 이 그룹 품목의 매입단가가 함께 변경됩니다</p>
                         </div>
+                        <!-- 우선 소비 자재 (group_sort) — 동폭 경합이 있을 때만 노출 -->
+                        <div id="groupEditPriorityBox" class="border-t pt-4 mt-2 hidden">
+                            <div class="text-sm font-medium text-gray-700"><i class="fas fa-arrow-down-1-9 text-amber-500 mr-1"></i>우선 소비 자재</div>
+                            <p class="text-xs text-gray-500 mt-1">폭이 같은 자재가 둘 이상입니다. 자동차감이 <b>먼저 소비할 자재</b>를 폭별로 고르세요. 나머지는 후순위가 될 뿐 매입·발주에서는 그대로 보입니다.</p>
+                            <div id="groupEditPriorityList" class="mt-2 space-y-2"></div>
+                        </div>
                     </div>
                     <div class="mt-6 flex gap-2">
                         <button onclick="saveGroupEdit()" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">일괄 저장</button>

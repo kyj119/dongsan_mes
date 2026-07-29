@@ -136,6 +136,7 @@ namespace IllustratorAutomation
             Console.WriteLine($"   실행 경로: {baseDir}");
             Console.WriteLine("================================================\n");
             WriteAgentLog($"에이전트 시작 (PID {pid}, 경로 {baseDir})");
+            LogJsxInventory();  // 어느 버전 JSX가 실려 있는지 시동 로그에 고정
 
             LoadConfig();
 
@@ -3538,6 +3539,36 @@ namespace IllustratorAutomation
         //   "" = JSX가 실행되지 않았거나 조기 종료 / "done" = 완주 / "ERR: …" = JSX 내부 예외.
         //   (2026-07-28: 이 값을 버리고 있어서 sheet #19 실패 원인이 어디에도 남지 않았다)
         private static string _lastJsxStatus = "";
+        // 마지막으로 실행한 JSX의 지문(파일명@수정시각·해시8). 실패 메시지에 실어 **어느 버전이 돌았는지**를 남긴다.
+        //   JSX는 웹 배포와 분리된 수동 축이라 "repo는 고쳤는데 exe 폴더는 옛날 파일"이 반복 사고였다(sheet #20·#21).
+        private static string _lastJsxFingerprint = "";
+
+        // JSX 지문: "SheetLayout.jsx@07-29 11:20·3f9a1c02". 파일 없음/읽기 실패는 사유를 그대로 노출.
+        private static string JsxFingerprint(string scriptPath)
+        {
+            try
+            {
+                if (!File.Exists(scriptPath)) return Path.GetFileName(scriptPath) + "@없음";
+                var bytes = File.ReadAllBytes(scriptPath);
+                using var sha = System.Security.Cryptography.SHA1.Create();
+                string hash = Convert.ToHexString(sha.ComputeHash(bytes)).ToLowerInvariant().Substring(0, 8);
+                return $"{Path.GetFileName(scriptPath)}@{File.GetLastWriteTime(scriptPath):MM-dd HH:mm}·{hash}";
+            }
+            catch (Exception ex) { return Path.GetFileName(scriptPath) + "@지문실패(" + ex.Message + ")"; }
+        }
+
+        // 시동 시 1회: 에이전트가 실제로 읽는 JSX 4종의 지문을 콘솔+agent.log 에 남긴다.
+        //   repo와 대조하려면 `node scripts/ia-jsx-audit.cjs` (드리프트 시 exit 1).
+        private static void LogJsxInventory()
+        {
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            string[] names = { "SheetLayout.jsx", "ProcessOrderItem.jsx", "ExtractGroups.jsx", "PackGroups.jsx" };
+            var parts = new List<string>();
+            foreach (var n in names) parts.Add(JsxFingerprint(Path.Combine(baseDir, n)));
+            string line = "JSX 지문: " + string.Join(" | ", parts);
+            Console.WriteLine("   🧾 " + line);
+            WriteAgentLog(line);
+        }
 
         private static void RunJsxScript(string scriptPath, string paramsJsonPath, int timeoutMinutes = 5)
         {
@@ -3552,6 +3583,7 @@ namespace IllustratorAutomation
             string scriptContent = preamble + File.ReadAllText(scriptPath, System.Text.Encoding.UTF8);
 
             _lastJsxStatus = "";
+            _lastJsxFingerprint = JsxFingerprint(scriptPath);
             // DoJavaScript는 동기이지만 Task로 감싸 타임아웃 처리. 반환값=JSX 최종 상태(위 주석).
             var task = Task.Run(() => { _lastJsxStatus = ai.DoJavaScript(scriptContent)?.ToString() ?? ""; });
             if (!task.Wait(TimeSpan.FromMinutes(timeoutMinutes)))
@@ -3571,7 +3603,9 @@ namespace IllustratorAutomation
             string st = _lastJsxStatus.Length == 0 ? "JSX 반환 빈값(미실행/조기종료 의심 — 일러 모달 대화상자 확인)" : $"JSX={_lastJsxStatus}";
             string docs = "";
             try { docs = $" · 열린문서 {GetOrStartIllustrator().Documents.Count}개"; } catch { }
-            return st + docs;
+            // 스크립트 지문 동봉 — 구버전 JSX가 도는 사고(축1 배포 누락)를 UI 메시지만으로 판별하기 위함.
+            string fp = string.IsNullOrEmpty(_lastJsxFingerprint) ? "" : $" · {_lastJsxFingerprint}";
+            return st + docs + fp;
         }
 
         // 갭①: Illustrator hang 감지 시 프로세스 kill → COM 재연결 강제(다음 GetOrStartIllustrator에서 fresh 기동).
