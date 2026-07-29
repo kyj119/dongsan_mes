@@ -1,6 +1,42 @@
 > **파일 구조**: 최신 세션이 맨 위. 아래로 갈수록 과거 세션(각각 durable 메모리에 정본 있음).
 > **다음 세션은 이 문서 상단의 "이월 TODO 통합"만 읽으면 된다** — 그 아래 상세 핸드오프는 판단 근거가 필요할 때만.
 
+# 세션 핸드오프 — 코드 구조 전수 감사 + write-path entity 가드 (2026-07-29 #2)
+
+> **prod 배포·검증 완료** — main `5733bbc2`(커밋 2개: `331ce7d5`·`5733bbc2`)·deploy success·마이그 없음.
+> 검증=tsc 0 · build · entity **60/60 누락 0** · **prod 스모크 104/104** · 변경 라우트 5종 prod 실측 200.
+
+## 이월 TODO (다음 세션 — 사용자가 명시적으로 이월 지시)
+
+1. **ORDER BY tie-break 누락 55건** — `docs/audits/2026-07-27-list-sort-tiebreak.md`가 "발주 계열만 적용, 나머지 잠복"이라 남긴 그 잔여분. 목록=`node scripts/structure-audit.mjs --json` → `missingTieBreak`.
+2. **도메인 서비스 추출 + 단위 테스트** — 러너는 **Vitest 확정**(Vite 5 이미 사용, 설정 공유). `routes/payroll/*` 계열(계산 40·34·33줄)부터 순수 함수 분리.
+3. **대형 파일 분할 52개** — `bank.ts` 2,717 / `iaEditor.js` 2,489 / `shell.js` 2,458 / `ledger.js` 2,332 / `rip.ts` 2,180. 기존 성공 패턴(cards·items·orderForm) 확장.
+4. **ambiguous entity_id 잠복 50건** — 이번에 `fixedAssets`·`waste` 2건만 실측 확정·수정. 나머지는 `node C:\Users\user\.claude\jobs\ef58dd9b\tmp\find-ambiguous.mjs` 류로 재생성 후 **반드시 실제 API 호출로 확인**(정적 판정은 오탐 다수 — smoke 104개가 통과하는 걸로 봐서 대부분 문제없음).
+5. write-path 후보 잔여 13건 = 전부 오탐 확정분(caps 동기화·agentKey 경로·전역 sweep). 재검토 불요.
+
+## 한 일
+
+- **신규 감사 도구** `scripts/structure-audit.mjs` (`npm run audit:structure` / `audit:structure:gate`)
+  6축: 크기 임계·write-path entity 비대칭·ORDER BY tie-break·dead export·라우트 계산밀집·중복 블록.
+  baseline=`scripts/.structure-baseline.json`, entity 테이블 정본=`scripts/.entity-tables.json`(111개).
+- **entity 가드 7곳** — inspections(검수 등록) · hr(근태 체크아웃·직원삭제) · fixedAssets(처분) · scan(POST /action) · waste(card_id) · orders/create(견적 카운터)
+- 🔴 **`scan.ts:44` 실장애 수정** — `cards`에 `entity_id`가 **없다**(=`requesting_entity_id`만). `entityFilter`가 `AND c.entity_id = ?`를 만들어 **법인 선택 사용자(entityId≠0)의 카드 QR 스캔이 SQLITE_ERROR로 전면 실패**했다. ADMIN 전체모드(0)만 clause가 비어 우연히 동작 → 여태 미발견. `cardEntityFilter`로 교체.
+- 🔴 **`fixedAssets`·`waste` 목록 500 수정** — alias 없는 `entityFilter(c)`가 JOIN 쿼리에서 bare `entity_id` 생성 → `ambiguous column name`. `entityFilter(c,'fa')`/`(c,'w')`. **선재 버그**(이번 변경과 무관, 검증 중 발견).
+- `shipments.ts` merge에 status 검증(취소·삭제·초안·견적 주문이 합포장에 편입되던 형제 비대칭)
+
+## 핵심 판단·이유 (다음 세션이 반복하지 말 것)
+
+- **정적 스캐너 단독 판정 불가 — 오탐률 초기 97%**. write-path 초기 215건 → 실제 조치 5건(2.3%).
+  오탐 제거에 5차례 보정이 필요했고 그중 **3번은 스캐너 자체 결함**: ① `c.get('user')`를 라우트 시작으로 오인 ② `cardEntityFilter`·`cardEf.clause`가 **대문자 E**라 소문자 패턴 미매칭 ③ 동적 `await import()` 미수집.
+  → `audit:structure`는 **검토 큐 생성기**로만 쓰고 반드시 코드 대조. 수치를 결론으로 보고하지 말 것.
+- **`.entity-tables.json`을 `LIKE '%entity_id%'`로 만들면 안 된다** — `requesting_entity_id`·`assigned_entity_id`가 부분 매칭돼 `cards`·`order_items`·`users`·`inter_entity_transactions`가 오판됐다. 컬럼 경계 정확 매칭 + 변종은 `variantTables`로 분리(격리 의미 있는 `cards`·`order_items`만 감사 대상 유지).
+- **합포장 cross-entity는 오탐 = 요구사항** — `shipments.ts:264,267,314,368` 주석이 "법인 통합 뷰"·"목적상 entityFilter 미적용"·"법인 무관"을 명시. 필터 부착 시 기능 파괴(3법인 주문을 한 박스로 묶어 배송비 절감이 존재 이유). `WRITE_ALLOWLIST`에 근거와 함께 등록.
+- **aiAnalysis 콜백도 오탐 = 의도** — `:334-335` "분석 행 entity ≠ 에이전트 토큰 entity일 때 404 나는 문제 방지". 역시 allowlist.
+- **prod 배포 직후 검증은 전파 지연을 감안** — `fixed-assets`가 배포 직후엔 500, 잠시 후 200. 한 번 실패했다고 롤백 판단하지 말고 재확인할 것.
+- 회귀 확인은 **prod 읽기전용 실측**으로 — `attendance` 4,245건·`employees` 112건 `entity_id` NULL 0 확인 후에야 필터를 붙였다.
+
+---
+
 # 세션 핸드오프 — auto-improve 백로그 **전량 소진** (10건 픽스 + #580 close) (2026-07-29 #1)
 
 > **prod 배포·검증 완료** — main `9686bf69`(커밋 3개: `6ce18317`·`98865cf9`·`9686bf69`)·deploy success·마이그 없음.
