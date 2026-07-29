@@ -356,9 +356,11 @@ inventoryRouter.post('/receipts', async (c) => {
 
       receiptStmts.push(
         c.env.DB.prepare(`
-          INSERT INTO inventory_receipt_items (receipt_id, item_id, quantity, unit_price, amount, location, unit)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).bind(receiptId, item_id, quantity, unit_price, amount, location || null, unitMap.get(item_id) || 'EA'),  // MU5: 입고 단위 스냅샷(관리단위)
+          INSERT INTO inventory_receipt_items (receipt_id, item_id, quantity, unit_price, amount, location, unit,
+                                               received_quantity, accepted_quantity, rejected_quantity)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+        `).bind(receiptId, item_id, quantity, unit_price, amount, location || null, unitMap.get(item_id) || 'EA',  // MU5: 입고 단위 스냅샷(관리단위)
+          quantity, quantity),  // 검수 없는 직접입고 = 전량 합격. 취소 역분개가 accepted_quantity 기준이라 필수
         c.env.DB.prepare(`
           INSERT OR IGNORE INTO inventory (item_id, quantity, entity_id, storage_zone_id, last_updated)
           VALUES (?, 0, ?, ?, CURRENT_TIMESTAMP)
@@ -494,13 +496,17 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
       }
 
       const { results: receiptItems } = await c.env.DB.prepare(
-        `SELECT item_id, received_quantity, accepted_quantity, rejected_quantity, po_item_id
+        `SELECT item_id, quantity, received_quantity, accepted_quantity, rejected_quantity, po_item_id
            FROM inventory_receipt_items WHERE receipt_id = ?`
       ).bind(id).all()
 
       // 재고 역분개는 '합격분(accepted_quantity)'만 차감 — 정방향(po-receive)이 합격분만 입고했기 때문.
       //   received_quantity로 빼면 거부분까지 과차감되어 정상재고가 훼손됨(#373 동반수정).
-      const invItems = (receiptItems || []).filter((ri) => ri.item_id && (ri.accepted_quantity as number) > 0)
+      // ⚠️ 검수 없는 직접입고(POST /receipts)는 accepted_quantity 를 안 넣던 시절이 있어 NULL 이 남아 있다.
+      //    그 상태로 필터하면 역분개 대상에서 통째로 빠져 **취소해도 재고가 그대로 남는다** → quantity 폴백.
+      //    (신규 입고는 accepted_quantity=quantity 로 채워 넣는다)
+      const accOf = (ri: any) => Number(ri.accepted_quantity ?? ri.quantity ?? 0)
+      const invItems = (receiptItems || []).filter((ri) => ri.item_id && accOf(ri) > 0)
 
       // 역분개 대상 창고 = 품목 기본창고(정방향 입고가 거기 누적했으므로). NULL=미배정.
       const cancelZoneMap = await getItemDefaultZones(c.env.DB, invItems.map((ri) => ri.item_id as number), cancelEntityId)
@@ -578,7 +584,7 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
 
       const ops: D1PreparedStatement[] = []
       for (const ri of invItems) {
-        const accBase = (ri.accepted_quantity as number) * cps(ri.item_id as number)
+        const accBase = accOf(ri) * cps(ri.item_id as number)
         const zoneId = cancelZoneMap.get(ri.item_id as number) ?? null
         const before = cancelBalMap[`${ri.item_id}:${zoneId ?? 0}`] || 0
         const after = Math.max(0, before - accBase)
