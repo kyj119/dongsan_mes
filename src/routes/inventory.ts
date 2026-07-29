@@ -6,6 +6,7 @@ import { getNextEntitySeqNumber } from '../utils/sequenceGenerator'
 import { kstYmdCompact } from '../utils/kstDate'
 import { triggerLowStockAlert } from '../utils/inventoryAlert'
 import { getItemDefaultZone, getItemDefaultZones } from '../utils/inventoryZone'
+import { resolveStockUnit } from '../utils/rollConsumption'
 
 const inventoryRouter = new Hono<HonoEnv>()
 
@@ -774,7 +775,7 @@ inventoryRouter.post('/releases', async (c) => {
         const lowItemIds = lowItems.map((i: any) => i.item_id)
         const lowPh = lowItemIds.map(() => '?').join(',')
         const { results: lowDetails } = await c.env.DB.prepare(`
-          SELECT i.id as item_id, i.item_name, i.unit,
+          SELECT i.id as item_id, i.item_name, i.unit, i.base_unit, i.pack_size,
                  COALESCE(SUM(inv.quantity), 0) as current_stock,
                  COALESCE(MAX(inv.safe_stock), 0) as safe_stock
           FROM items i LEFT JOIN inventory inv ON i.id = inv.item_id AND inv.entity_id = ?
@@ -783,7 +784,10 @@ inventoryRouter.post('/releases', async (c) => {
         `).bind(entityId, ...lowItemIds).all()
         await triggerLowStockAlert(c.env.DB, (lowDetails || []).map((d: any) => ({
           item_id: d.item_id, item_name: d.item_name, current_stock: d.current_stock,
-          safe_stock: d.safe_stock, unit: d.unit || 'EA',
+          // #462/0496 대칭: current_stock/safe_stock 은 base_unit 저장값 — 표시 라벨도
+          // 입고단위(i.unit, 예 '롤')가 아니라 재고단위(resolveStockUnit)를 써야 짝이 맞는다
+          // (inventoryCount.ts 실사 스냅샷 수정과 동일 패턴).
+          safe_stock: d.safe_stock, unit: resolveStockUnit(d) || 'EA',
         })), entityId)
       }
     } catch (_alertErr) { /* 알림 실패가 출고를 방해하면 안 됨 */ }

@@ -33,7 +33,7 @@ const worktreeBranches = new Set(
     .map((l) => l.replace('branch refs/heads/', '').trim())
 )
 const current = gitTry('rev-parse --abbrev-ref HEAD') || ''
-const locals = git("branch --format=%(refname:short)").split('\n').map((s) => s.trim()).filter(Boolean)
+const locals = git('branch --format="%(refname:short)"').split('\n').map((s) => s.trim()).filter(Boolean)
 
 // 원격 추적 ref가 stale(원격에서 이미 삭제됨)이면 "원격 백업 있음" 판정이 거짓이 된다.
 let staleWarn = null
@@ -88,5 +88,5 @@ let ok = 0, fail = 0
 for (const b of deletable) {
   try { git(`branch -D ${b}`); ok++ } catch (e) { fail++; console.error(`  실패 ${b}: ${String(e.stderr || e.message).trim()}`) }
 }
-console.log(`\n삭제 ${ok}건 / 실패 ${fail}건 · 남은 로컬 브랜치 ${git('branch --format=%(refname:short)').split('\n').length}개`)
+console.log(`\n삭제 ${ok}건 / 실패 ${fail}건 · 남은 로컬 브랜치 ${git('branch --format="%(refname:short)"').split('\n').length}개`)
 process.exit(fail ? 1 : 0)
