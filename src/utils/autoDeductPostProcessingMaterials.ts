@@ -1,5 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { getItemDefaultZone } from './inventoryZone'
+import { computeRollConsumption } from './rollConsumption'
 
 /**
  * 출고 완료 시 후가공(코팅 등) 소비 자재 자동차감
@@ -92,7 +93,8 @@ export async function autoDeductPostProcessingMaterials(
           //    (0480: 코인텍 코팅지가 호홍 그룹에 섞여 있던 건). 그래서 발생 시 아래에서 경고한다.
           const { results: matCands } = await db
             .prepare(
-              `SELECT i.id, i.width_mm, i.item_name, COALESCE(i.group_sort, 0) AS group_sort,
+              `SELECT i.id, i.width_mm, i.item_name, i.unit, i.base_unit, i.pack_size,
+                      COALESCE(i.group_sort, 0) AS group_sort,
                       COALESCE((SELECT SUM(v.quantity) FROM inventory v
                                  WHERE v.item_id = i.id AND v.entity_id = ?), 0) AS stock
                  FROM items i
@@ -129,7 +131,10 @@ export async function autoDeductPostProcessingMaterials(
             .first()
           if (exist) continue
 
-          const dedYd = (oh / 914.4) * copy
+          // 단위 환산 = utils/rollConsumption 단일 소스(인쇄차감과 동일 규칙).
+          // 코팅지는 현재 전부 unit='yd' 라 기존 ÷914.4 경로가 그대로 유지된다(회귀 0).
+          const ppCons = computeRollConsumption(mat, oh, copy)
+          const dedYd = ppCons.qty
 
           // 소모 대상 창고 = 코팅지 품목 기본창고 (NULL=미배정). 재고 행 키 = (item, entity, zone).
           // UP2 제외: 코팅은 라미네이터에서 소비되나 card.equipment_id는 출력 프린터뿐 → 라미 장비 신호 없음.
@@ -153,7 +158,7 @@ export async function autoDeductPostProcessingMaterials(
 
           const after = before - dedYd
           if (after < 0) {
-            console.warn(`[ppDeduct] ⚠️ 코팅지 재고 음수: ${mat.item_name} (entity=${entityId}), 잔량=${after.toFixed(2)}yd, 차감=${dedYd.toFixed(2)}yd, card=${cardId}`)
+            console.warn(`[ppDeduct] ⚠️ 코팅지 재고 음수: ${mat.item_name} (entity=${entityId}), 잔량=${after.toFixed(2)}${ppCons.unit}, 차감=${dedYd.toFixed(2)}${ppCons.unit}, card=${cardId}`)
           }
 
           try {

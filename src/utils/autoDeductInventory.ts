@@ -1,5 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { resolveDeductionZone } from './inventoryZone'
+import { computeRollConsumption } from './rollConsumption'
 
 /**
  * Print event OK 상태 → 원단 재고 자동 차감
@@ -120,7 +121,7 @@ export async function autoDeductInventory(
       .prepare(
         `SELECT pm.material_item_id, i.width_mm, i.item_name,
                 COALESCE(i.deduction_method, 'ROLL') AS deduction_method, i.sheet_spec,
-                COALESCE(i.waste_factor, 1.0) AS waste_factor, i.base_unit
+                COALESCE(i.waste_factor, 1.0) AS waste_factor, i.base_unit, i.unit, i.pack_size
          FROM product_materials pm
          JOIN items i ON pm.material_item_id = i.id
          WHERE pm.product_item_id = ?`
@@ -145,12 +146,15 @@ export async function autoDeductInventory(
     let matchedWidthMm: number | null = null
 
     // ROLL: output_width 이상 최소폭 → 길이
-    // MU4: base_unit 분기 — 'cm' 품목만 신규 mm/10(cm), 그 외(yd·NULL)는 mm/914.4(yd) 현행 무변경(회귀0).
+    // 단위 환산은 utils/rollConsumption 단일 소스. unit='롤'+pack_size 면 롤 수,
+    // base_unit='cm' 면 cm, 그 외는 yd(현행) — 롤이 아닌 자재는 회귀 0.
+    let dedUnitFromCalc = 'yd'
     for (const m of rollMats) {
       if (m.width_mm >= outputWidthMm) {
         selectedMaterial = m; dedMethod = 'ROLL'; matchedWidthMm = m.width_mm
-        const rollDivisor = (m.base_unit === 'cm') ? 10 : 914.4
-        deductedLengthYd = (outputHeightMm / rollDivisor) * copyTotal
+        const cons = computeRollConsumption(m, outputHeightMm, copyTotal)
+        deductedLengthYd = cons.qty
+        dedUnitFromCalc = cons.unit
         break
       }
     }
@@ -165,7 +169,7 @@ export async function autoDeductInventory(
     if (!selectedMaterial) {
       return { success: false, deducted: false, reason: `no matching material (roll width >= ${outputWidthMm} or board)` }
     }
-    const dedUnit = dedMethod === 'BOARD' ? '장' : (selectedMaterial.base_unit === 'cm' ? 'cm' : 'yd')
+    const dedUnit = dedMethod === 'BOARD' ? '장' : dedUnitFromCalc
 
     // 7. 차감 법인 = COALESCE(cards.requesting_entity_id, orders.entity_id)
     //    requesting_entity_id = 담당 법인(Phase 2 주입). 타법인 담당 공정의 원단은 그 담당 법인 재고에서 차감(물리 정합).

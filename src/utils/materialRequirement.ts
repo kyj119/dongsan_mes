@@ -4,11 +4,12 @@
 //   부족체크(materialShortageCheck)·주간발주(weeklyPurchase) 계획 공용. (#465 bom_items 대체)
 // ============================================================================
 import type { D1Database } from '@cloudflare/workers-types'
+import { computeRollConsumption, resolveStockUnit } from './rollConsumption'
 
 export interface MaterialReq {
   material_item_id: number
   material_name: string
-  required: number   // base_unit 단위 (yd / cm / 장)
+  required: number   // 재고 단위 (롤 / yd / cm / 장)
   base_unit: string
 }
 
@@ -39,7 +40,8 @@ export async function computeMaterialRequirements(
     const { results } = await db.prepare(
       `SELECT pm.product_item_id, pm.material_item_id, i.item_name AS material_name,
               i.width_mm, COALESCE(i.deduction_method,'ROLL') AS deduction_method,
-              i.sheet_spec, COALESCE(i.waste_factor,1.0) AS waste_factor, i.base_unit
+              i.sheet_spec, COALESCE(i.waste_factor,1.0) AS waste_factor, i.base_unit,
+              i.unit, i.pack_size
        FROM product_materials pm JOIN items i ON pm.material_item_id = i.id
        WHERE pm.product_item_id IN (${ph})`
     ).bind(...chunk).all<any>()
@@ -58,7 +60,7 @@ export async function computeMaterialRequirements(
       material_item_id: m.material_item_id,
       material_name: m.material_name,
       required,
-      base_unit: m.base_unit === 'cm' ? 'cm' : (m.deduction_method === 'BOARD' ? '장' : 'yd'),
+      base_unit: m.deduction_method === 'BOARD' ? '장' : resolveStockUnit(m),
     })
   }
 
@@ -80,15 +82,14 @@ export async function computeMaterialRequirements(
     const boardMats = mats.filter((m: any) => m.deduction_method === 'BOARD')
 
     if (rollMats.length > 0) {
-      const divisorOf = (m: any) => (m.base_unit === 'cm' ? 10 : 914.4)
       const fit = rollMats.find((m: any) => m.width_mm >= outWmm)
       if (fit) {
-        add(fit, (outHmm / divisorOf(fit)) * qty)
+        add(fit, computeRollConsumption(fit, outHmm, qty).qty)
       } else {
         // 주문폭 > 원단 최대폭 → 최대폭 원단 분할출력 근사(봉제). N=ceil(주문폭÷최대폭).
         const maxRoll = rollMats[rollMats.length - 1]
         const splits = Math.ceil(outWmm / maxRoll.width_mm)
-        add(maxRoll, (outHmm / divisorOf(maxRoll)) * qty * splits)
+        add(maxRoll, computeRollConsumption(maxRoll, outHmm, qty).qty * splits)
       }
     } else if (boardMats.length > 0) {
       const bm = boardMats[0]
