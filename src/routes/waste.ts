@@ -11,7 +11,9 @@ waste.get('/', async (c) => {
   const from = c.req.query('from')
   const to = c.req.query('to')
   const equipmentId = c.req.query('equipment_id')
-  const eFilter = entityFilter(c)
+  // alias 필수 — equipment JOIN에도 entity_id가 있어 bare `entity_id`는
+  //   "ambiguous column name: entity_id"(SQLITE_ERROR)로 목록 전체가 500이었다 (2026-07-29 실측)
+  const eFilter = entityFilter(c, 'w')
 
   let where = `WHERE 1=1 ${eFilter.clause}`
   const binds: any[] = [...eFilter.params]
@@ -82,7 +84,9 @@ waste.post('/', async (c) => {
 
 // ─── 로스 분석 (원인별/장비별/기간별) ─────────────────────────────────────────
 waste.get('/analytics', async (c) => {
-  const eFilter = entityFilter(c)
+  // alias 필수 — 아래 장비별 집계가 equipment를 JOIN한다(양쪽 entity_id 보유 → ambiguous).
+  //   모든 사용처가 `FROM waste_records w`라 'w' 부여로 전부 해소.
+  const eFilter = entityFilter(c, 'w')
 
   // 원인별 파레토
   const { results: byReason } = await c.env.DB.prepare(`

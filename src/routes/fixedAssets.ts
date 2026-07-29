@@ -10,7 +10,10 @@ fixedAssets.use('*', authMiddleware)
 fixedAssets.get('/', async (c) => {
   const category = c.req.query('category')
   const status = c.req.query('status')
-  const eFilter = entityFilter(c)
+  // alias 필수 — equipment JOIN에도 entity_id가 있어 bare `entity_id`는
+  //   "ambiguous column name: entity_id"(SQLITE_ERROR)로 목록 전체가 500이었다.
+  //   상세(:57)는 이미 'fa'를 쓰고 있어 정상이었다 — 형제 비대칭 (2026-07-29 실측)
+  const eFilter = entityFilter(c, 'fa')
   let where = `WHERE 1=1 ${eFilter.clause}`
   const binds: any[] = [...eFilter.params]
   if (category) { where += ' AND fa.category = ?'; binds.push(category) }
