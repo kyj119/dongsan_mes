@@ -344,18 +344,14 @@
     if (elTrimInk) elTrimInk.addEventListener('change', function () { refreshMeasure(); saveSettings(); });
 
     // ── 설정 영속(직전값 기억) ──
+    // ⚠️ 후가공(마감·펀칭·주석위치)은 **영속 대상이 아니다**(2026-07-29).
+    //   등록 1건이 끝날 때마다 초기화하는 정책([[clearFinishing]])인데 localStorage 로 되살리면
+    //   패널을 다시 열 때 앞 건 설정이 그대로 상속돼 정책이 무의미해진다.
+    //   계속 기억하는 것 = 수량·배율·용도·돔보·거래처·키워드(작업 연속성 축).
     function gatherSettings() {
-      var fin = {};
-      for (var s = 0; s < SIDES.length; s++) {
-        var sel = methodSelect(SIDES[s]), cmEl = cmInput(SIDES[s]), mkEl = markSelect(SIDES[s]);
-        fin[SIDES[s]] = { m: sel ? sel.value : '', cm: cmEl ? cmEl.value : '', mark: mkEl ? mkEl.value : '' };
-      }
       return { qty: elQty ? elQty.value : '1', scale: elScale ? elScale.value : '1',
         mode: modeValue(), trim: elTrim ? !!elTrim.checked : false, trimInk: elTrimInk ? !!elTrimInk.checked : false, client: elClient ? elClient.value : '',
-        punch: { t: elPTop ? elPTop.value : '0', b: elPBottom ? elPBottom.value : '0', l: elPLeft ? elPLeft.value : '0', r: elPRight ? elPRight.value : '0',
-          ctl: elPcTL ? !!elPcTL.checked : false, ctr: elPcTR ? !!elPcTR.checked : false, cbl: elPcBL ? !!elPcBL.checked : false, cbr: elPcBR ? !!elPcBR.checked : false },
-        annot: elAnnot ? elAnnot.value : '',
-        annotPos: { t: elATop ? !!elATop.checked : false, b: elABottom ? !!elABottom.checked : false, l: elALeft ? !!elALeft.checked : false, r: elARight ? !!elARight.checked : false }, fin: fin };
+        annot: elAnnot ? elAnnot.value : '' };
     }
     function saveSettings() { try { window.localStorage.setItem(STORE_SETTINGS, JSON.stringify(gatherSettings())); } catch (e) {} }
     function restoreSettings() {
@@ -368,33 +364,9 @@
       if (elTrim) elTrim.checked = !!st.trim;
       if (elTrimInk) elTrimInk.checked = !!st.trimInk;
       if (elClient && st.client) elClient.value = st.client;
-      if (st.punch) {
-        if (elPTop && st.punch.t != null) elPTop.value = st.punch.t;
-        if (elPBottom && st.punch.b != null) elPBottom.value = st.punch.b;
-        if (elPLeft && st.punch.l != null) elPLeft.value = st.punch.l;
-        if (elPRight && st.punch.r != null) elPRight.value = st.punch.r;
-        if (elPcTL) elPcTL.checked = !!st.punch.ctl;
-        if (elPcTR) elPcTR.checked = !!st.punch.ctr;
-        if (elPcBL) elPcBL.checked = !!st.punch.cbl;
-        if (elPcBR) elPcBR.checked = !!st.punch.cbr;
-      }
       if (elAnnot && st.annot != null) elAnnot.value = st.annot;
-      if (st.annotPos) {
-        if (elATop) elATop.checked = !!st.annotPos.t;
-        if (elABottom) elABottom.checked = !!st.annotPos.b;
-        if (elALeft) elALeft.checked = !!st.annotPos.l;
-        if (elARight) elARight.checked = !!st.annotPos.r;
-      }
       if (st.mode) setMode(st.mode);
-      if (st.fin) {
-        for (var s = 0; s < SIDES.length; s++) {
-          var f = st.fin[SIDES[s]]; if (!f) continue;
-          var sel = methodSelect(SIDES[s]), cmEl = cmInput(SIDES[s]), mkEl = markSelect(SIDES[s]);
-          if (sel && f.m) sel.value = f.m;
-          if (cmEl && f.cm != null) cmEl.value = f.cm;
-          if (mkEl && f.mark != null) mkEl.value = f.mark;
-        }
-      }
+      // st.punch·st.annotPos·st.fin(구버전 저장분)은 의도적으로 무시 — 위 gatherSettings 주석 참조.
       updateAnnotGates();
     }
     function modeValue() {
@@ -411,12 +383,40 @@
       applyModeUi();
     }
 
+    // 후가공 초기화(2026-07-29) — ⓐ모아찍기 전환 시 즉시 ⓑ등록 1건이 끝날 때마다.
+    //   ⚠️ disabled 입력도 `.value` 는 그대로 읽힌다 → 화면만 잠가서는 manifest 에 실리는 걸 못 막는다.
+    //   실증: intake #28 은 mode=impose 인데 finishing.left=접어미싱 4cm · post_desc=접쫑접어미싱 이 기록됐다.
+    //   키워드(주석)는 파일명·식별번호 축이라 지우지 않는다.
+    function clearFinishing() {
+      for (var ci = 0; ci < SIDES.length; ci++) {
+        var cside = SIDES[ci];
+        var cms = methodSelect(cside); if (cms) cms.value = '';
+        var ccm = cmInput(cside); if (ccm) ccm.value = '';
+        var cmk = markSelect(cside); if (cmk) cmk.value = '';
+      }
+      if (elPTop) elPTop.value = '0';
+      if (elPBottom) elPBottom.value = '0';
+      if (elPLeft) elPLeft.value = '0';
+      if (elPRight) elPRight.value = '0';
+      if (elPcTL) elPcTL.checked = false;
+      if (elPcTR) elPcTR.checked = false;
+      if (elPcBL) elPcBL.checked = false;
+      if (elPcBR) elPcBR.checked = false;
+      if (elATop) elATop.checked = false;
+      if (elABottom) elABottom.checked = false;
+      if (elALeft) elALeft.checked = false;
+      if (elARight) elARight.checked = false;
+      if (elPreset) elPreset.value = '';
+      updateAnnotGates();
+    }
+
     // 용도에 따른 UI 게이트(2026-07-28): 모아찍기는 후가공이 없다.
     //   host.jsx:332 `if (mode !== 'impose')` — 모아찍기는 마감 여백·EPS를 아예 만들지 않고
     //   원본 크기 work.ai만 저장한다. 그런데 폼에서는 마감·펀칭 입력이 열려 있어
     //   "후가공을 넣었는데 안 먹었다"는 오해가 실제로 발생했다(2026-07-28). 입력 자체를 닫는다.
     function applyModeUi() {
       var impose = (modeValue() === 'impose');
+      if (impose) clearFinishing(); // 잠그기 전에 비운다 — 값이 남으면 manifest 에 실린다(위 주석)
       var finTab = null, finPage = null;
       for (var a = 0; a < tabs.length; a++) if (tabs[a].getAttribute('data-tab') === 'fin') finTab = tabs[a];
       for (var b = 0; b < pages.length; b++) if (pages[b].getAttribute('data-page') === 'fin') finPage = pages[b];
@@ -463,6 +463,18 @@
         top: pInt(elPTop), bottom: pInt(elPBottom), left: pInt(elPLeft), right: pInt(elPRight),
         corners: { tl: elPcTL ? !!elPcTL.checked : false, tr: elPcTR ? !!elPcTR.checked : false, bl: elPcBL ? !!elPcBL.checked : false, br: elPcBR ? !!elPcBR.checked : false }
       };
+      var annotPos = {
+        top: elATop ? !!elATop.checked : false, bottom: elABottom ? !!elABottom.checked : false,
+        left: elALeft ? !!elALeft.checked : false, right: elARight ? !!elARight.checked : false
+      };
+      // 모아찍기는 후가공이 없다(host.jsx `mode !== 'impose'` 게이트). UI 초기화(clearFinishing)와
+      // **별개로 전송 단계에서도 잘라낸다** — 화면 경로가 하나라도 새면 manifest 에 그대로 실린다.
+      // post_desc(파일명 세그먼트)도 아래에서 빈 finishing 기준으로 재계산되어 ''가 된다.
+      if (modeValue() === 'impose') {
+        finishing = {};
+        punchObj = { top: 0, bottom: 0, left: 0, right: 0, corners: { tl: false, tr: false, bl: false, br: false } };
+        annotPos = { top: false, bottom: false, left: false, right: false };
+      }
       return {
         worker_name: elWorker.value || null,
         registered_by_id: workerIdOf(elWorker.value), // config.workers 매핑 → manifest worker_id("내 작업" 상관)
@@ -474,7 +486,7 @@
         punch: punchObj,
         keyword: keyword, // 주석·파일명. 식별번호(seq_no)는 단건 null, 배치는 키워드별 순번
         post_desc: finishDesc(finishing, punchObj), // 후가공 파일명 세그먼트(예: 양옆접어미싱+사방펀칭)
-        annot_pos: { top: elATop ? !!elATop.checked : false, bottom: elABottom ? !!elABottom.checked : false, left: elALeft ? !!elALeft.checked : false, right: elARight ? !!elARight.checked : false },
+        annot_pos: annotPos,
         finishing: finishing, order_item_id: null
       };
     }
@@ -511,7 +523,9 @@
             '\n폴더: ' + r.folder + warnText(r.warn) +
             '\n[diag] 아이템 ' + r.items + ' · 정규화 ' + r.normed +
             '\n→ 에이전트 ingest 후 대기함에 표시됩니다.';
-          out(msg, 'okmsg');
+          out(msg + '\n(후가공 설정은 초기화됨 — 다음 건에 상속되지 않습니다)', 'okmsg');
+          clearFinishing();  // 등록 완료 = 후가공 리셋. 연속 작업에서 앞 건 마감이 뒤 건에 새는 사고 차단.
+          saveSettings();
         });
       });
     });
@@ -548,9 +562,11 @@
           for (var i = 0; i < queue.length; i++) {
             var e = queue[i];
             var fx = (e.params && e.params.post_desc) ? (' · ' + e.params.post_desc) : '';
-            var meta = e.w + '×' + e.h + 'cm ×' + e.qty + (e.client ? (' · ' + e.client) : '') + fx;
+            // 수량은 메타 문자열에서 뺀다 — 아래 인라인 입력칸이 정본(2026-07-29 P4).
+            var meta = e.w + '×' + e.h + 'cm' + (e.client ? (' · ' + e.client) : '') + fx;
             html += '<div class="qrow' + (i === bound ? ' sel' : '') + '" data-i="' + i + '"><span class="qn">#' + (i + 1) + '</span>' +
               '<input class="qkw" data-i="' + i + '" type="text" value="' + escHtml(e.keyword || '') + '" placeholder="키워드" />' +
+              '<input class="qqty" data-i="' + i + '" type="text" value="' + escHtml(String(e.qty || 1)) + '" title="수량(행별)" />' +
               '<span class="qmeta" title="' + escHtml(meta) + '">' + escHtml(meta) + '</span>' +
               '<button class="qdel" data-i="' + i + '">✕</button></div>';
           }
@@ -558,7 +574,7 @@
           var rows = elQueueBox.getElementsByClassName('qrow');
           for (var r = 0; r < rows.length; r++) rows[r].addEventListener('click', function (ev) {
             var cls = (ev.target && ev.target.className) ? String(ev.target.className) : '';
-            if (cls.indexOf('qkw') !== -1 || cls.indexOf('qdel') !== -1) return; // 인라인 편집·삭제 클릭은 행 선택 아님
+            if (cls.indexOf('qkw') !== -1 || cls.indexOf('qqty') !== -1 || cls.indexOf('qdel') !== -1) return; // 인라인 편집·삭제 클릭은 행 선택 아님
             toggleBind(parseInt(this.getAttribute('data-i'), 10));
           });
           var dels = elQueueBox.getElementsByClassName('qdel');
@@ -573,6 +589,21 @@
               if (ix === bound && elAnnot) elAnnot.value = v;     // 연동 행이면 폼(주석 키워드)도 정합
               bumpRev(); // 키워드=주석·식별번호에 반영 → 재검토 필요
             }
+          });
+          // 행별 수량(2026-07-29 P4) — 전엔 큐 추가 시점의 폼 수량이 전 행에 복사돼,
+          //   행마다 다른 수량을 넣으려면 행을 하나씩 연동해 폼을 고치는 수밖에 없었다.
+          //   ⚠️ 여기서 renderQueue() 를 부르지 않는다 — DOM 재생성으로 입력 포커스가 날아간다.
+          //   (수량을 메타 문자열에서 뺀 이유 = 재렌더 없이도 표시가 어긋나지 않게)
+          var qts = elQueueBox.getElementsByClassName('qqty');
+          for (var q2 = 0; q2 < qts.length; q2++) qts[q2].addEventListener('change', function () {
+            var ix = parseInt(this.getAttribute('data-i'), 10);
+            if (isNaN(ix) || ix < 0 || ix >= queue.length) return;
+            var n = parseInt(this.value, 10); if (isNaN(n) || n < 1) n = 1;
+            this.value = String(n); // 잘못 입력한 값 즉시 교정 표시
+            queue[ix].qty = n;
+            if (queue[ix].params) queue[ix].params.qty = n; // 호스트 전송값 동기화
+            if (ix === bound && elQty) elQty.value = String(n); // 연동 행이면 폼 수량도 정합
+            bumpRev(); // 수량=주석 문구에 반영 → 재검토 필요
           });
         }
       }
@@ -840,6 +871,8 @@
           csi.evalScript('mesA0_queueClear()', function () {});
           csi.evalScript('mesA0_reviewDiscard()', function () {}); // 검토문서 정리(저장물과 무관)
           queue = []; bound = -1; renderQueue(); reenable();
+          clearFinishing(); // 일괄 등록 완료 = 후가공 리셋(단건 경로와 동일 규칙)
+          saveSettings();
         }
         function step() {
           if (i >= queue.length) { finishBatch(); return; }

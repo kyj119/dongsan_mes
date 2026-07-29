@@ -8,7 +8,15 @@
  *
  *   축1 에이전트 JSX  : repo IllustratorAutomat/*.jsx        → 실행 중 exe 폴더(BaseDirectory)
  *   축2 디자이너 JSX  : repo IllustratorAutomat/designer/*.jsx → Z:\DESIGNS\IA-등록\_scripts\
- *   축3 CEP 패널      : repo .../com.mes.a0.panel/**          → Z:\DESIGNS\IA-등록\_scripts\a0-panel\com.mes.a0.panel\
+ *   축3 CEP 패널 배포본: repo .../com.mes.a0.panel/**          → Z:\DESIGNS\IA-등록\_scripts\a0-panel\com.mes.a0.panel\
+ *   축4 CEP 패널 설치본: 같은 repo 원본                        → %APPDATA%\Adobe\CEP\extensions\com.mes.a0.panel
+ *
+ * ★ 패널은 **2단 배포**다(install-a0-panel.ps1 실측, 2026-07-29).
+ *   - 로직 `mes-a0-host.jsx` = 패널의 `jsx/host.jsx` 스텁이 Z: 정본을 `$.evalFile` → Z: 1개 교체로 전 PC 반영(축2)
+ *   - 껍데기 `index.html`·`js/main.js`·`css/style.css` = **PC별 복사 설치** → Z:만 갱신하면 반영 안 된다.
+ *     각 PC에서 `install-a0-panel.ps1` 재실행이 필요하고, 그 누락을 잡는 게 축4다.
+ *     (실측: 이 PC 설치본은 07-27자로 Z:보다 낡았고, host.jsx 가 스텁이 아니라 구 로직 본체였다
+ *      = Z: 로직 수정이 이 PC에 전혀 반영되지 않는 상태였다)
  *
  * 실제 사고(2026-07-29): 축1에서 SheetLayout.jsx 폴백 수정(커밋 5b6d345e, 07-28 15:43)이
  *   exe 폴더에 복사되지 않아 구버전이 계속 돌았다. 모아찍기 판 렌더가 "JSX 반환 빈값"으로
@@ -55,6 +63,10 @@ const PANEL_FILES = [
 ]
 const PANEL_REPO = path.join(IA, 'designer', 'poc-a0-cep', 'com.mes.a0.panel')
 const PANEL_RUNTIME = path.join(Z_SCRIPTS, 'a0-panel', 'com.mes.a0.panel')
+// 축4: 이 PC에 실제로 설치돼 일러가 읽는 패널. install-a0-panel.ps1 의 설치 위치와 동일.
+const PANEL_INSTALLED = process.env.APPDATA
+  ? path.join(process.env.APPDATA, 'Adobe', 'CEP', 'extensions', 'com.mes.a0.panel')
+  : ''
 
 // CRLF·BOM 정규화 후 해시 — 수동 복사(robocopy·탐색기)와 git 체크아웃이 줄끝을 바꾸므로
 // 파일 크기·바이트 비교는 오판한다(memory feedback-ia-jsx-runtime-path).
@@ -100,7 +112,8 @@ const agent = detectAgentDir()
 const axes = [
   compare('agent', `축1 에이전트 JSX ${agent.live ? '(실행 중 프로세스 실측)' : '(미실행 — 기본 빌드 경로 추정)'}`, AGENT_JSX, IA, agent.dir),
   compare('designer', '축2 디자이너 JSX (Z: 정본)', DESIGNER_JSX, path.join(IA, 'designer'), Z_SCRIPTS),
-  compare('panel', '축3 CEP 패널 (Z: 정본)', PANEL_FILES, PANEL_REPO, PANEL_RUNTIME),
+  compare('panel', '축3 CEP 패널 배포본 (Z: 정본)', PANEL_FILES, PANEL_REPO, PANEL_RUNTIME),
+  compare('installed', '축4 CEP 패널 설치본 (이 PC · 일러가 실제로 읽는 것)', PANEL_FILES, PANEL_REPO, PANEL_INSTALLED || path.join(REPO, '__no_appdata__')),
 ]
 
 const drifted = axes.flatMap((ax) => ax.rows.filter((r) => r.state !== '동일').map((r) => ({ axis: ax.axis, ...r })))
@@ -138,9 +151,20 @@ if (agentDrift.length) {
   console.log('    node scripts/ia-jsx-audit.cjs --sync-agent')
 }
 if (zDrift.length) {
-  console.log('\n[축2·축3 조치] Z: 교체 = 전 디자이너 PC 즉시 반영. 자동 동기화하지 않는다.')
-  console.log('  백업 → 복사 → 재감사 순서로 수동 진행:')
-  for (const d of zDrift) console.log(`    ${d.rel}  (${d.state})`)
+  const inst = zDrift.filter((d) => d.axis === 'installed')
+  const zOnly = zDrift.filter((d) => d.axis !== 'installed')
+  if (zOnly.length) {
+    console.log('\n[축2·축3 조치] Z: 교체. 축2(로직)는 스텁 evalFile 이라 전 PC 즉시 반영 — 자동 동기화하지 않는다.')
+    console.log('  백업 → 복사 → 재감사 순서로 수동 진행:')
+    for (const d of zOnly) console.log(`    ${d.rel}  (${d.state})`)
+  }
+  if (inst.length) {
+    console.log('\n[축4 조치] 이 PC 패널 설치본이 낡았다 = 껍데기 수정이 일러에 반영되지 않는다.')
+    console.log('  설치 스크립트 재실행(관리자 권한 불요, 기존은 자동 백업):')
+    console.log('    powershell -ExecutionPolicy Bypass -File "Z:\\DESIGNS\\IA-등록\\_scripts\\install-a0-panel.ps1"')
+    console.log('  → 실행 후 일러스트레이터 재시작(패널 재로드) 필요.')
+    for (const d of inst) console.log(`    ${d.rel}  (${d.state})`)
+  }
 }
 
 if (SYNC_AGENT && agentDrift.length) {

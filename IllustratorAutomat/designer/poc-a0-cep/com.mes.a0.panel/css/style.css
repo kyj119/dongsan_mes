@@ -87,6 +87,8 @@ button.mini { flex: none; padding: 2px 8px; font-size: 12px; }
 .qn { color: #8ec5ff; font-size: 11px; flex: none; }
 .qkw { flex: none; width: 72px; background: #383838; color: #d8d8d8; border: 1px solid #555; border-radius: 3px; padding: 1px 4px; font-size: 11px; }
 .qkw:focus { outline: none; border-color: #6e9fd8; }
+.qqty { flex: none; width: 34px; text-align: center; background: #383838; color: #d8d8d8; border: 1px solid #555; border-radius: 3px; padding: 1px 3px; font-size: 11px; }
+.qqty:focus { outline: none; border-color: #6e9fd8; }
 .qmeta { flex: 1; font-size: 10px; color: #a0a0a0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .qdel { flex: none; background: #4a3030; border-color: #6b3232; color: #f0b0b0; padding: 1px 7px; font-size: 11px; }
 .qdel:hover { background: #5a3636; }
