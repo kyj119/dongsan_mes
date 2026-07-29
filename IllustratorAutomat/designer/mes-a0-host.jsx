@@ -5,7 +5,11 @@
 // 한글은 params 파일(cep.fs UTF-8)로만 전달 — evalScript 인자/반환은 ASCII만.
 // 처리 로직 정본 = IllustratorAutomat/designer/mes-core.jsx (동일 산출물·manifest 스키마 유지).
 
-var MESA0_VERSION = 'A0-CEP-0.1.0';
+// 버전은 패널 우상단 표시(mesA0_ping)와 manifest script_version 에 실린다.
+//   ⚠️ 이 파일은 패널 **로드 시점에만** $.evalFile 된다(jsx/host.jsx 스텁) — 고쳐도 패널을
+//   다시 열기 전에는 구버전이 계속 돈다. 그 사실을 눈으로 확인할 수 있게 수정 시 버전을 올린다.
+//   0.1.1 = 등록 크기 기준을 클립 마스크 존중으로 통일(measured_cm 겉보기 버그 수정, 2026-07-29)
+var MESA0_VERSION = 'A0-CEP-0.1.1';
 var MESA0_REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
 var MESA0_PT_PER_MM = 72 / 25.4;
 var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];

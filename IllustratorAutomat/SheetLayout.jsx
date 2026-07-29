@@ -468,7 +468,8 @@ for (var _ci = 0; _ci < placements.length; _ci++) {
 // fallback: placements 비어있으면 캔버스 전체
 if (!isFinite(artL)) { artL = 0; artT = canvasHeightPt; artR = canvasWidthPt; artB = 0; }
 
-// 꼭짓점 4개 (대각선 1cm 바깥)
+// 꼭짓점 4개 — 조각 전체 바운드에서 대각 바깥으로 CORNER_DIST(17mm).
+//   원 지름 6mm 이므로 바깥 끝까지 17+3=20mm. (주석이 "1cm"로 남아 있어 실제 값과 어긋났다 — 2026-07-29 정정)
 createDombo(artL - CORNER_DIST, artT + CORNER_DIST); // 좌상단
 createDombo(artR + CORNER_DIST, artT + CORNER_DIST); // 우상단
 createDombo(artL - CORNER_DIST, artB - CORNER_DIST); // 좌하단
