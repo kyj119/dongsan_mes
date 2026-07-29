@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-07-29T21:25:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-07-30T03:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -26,6 +26,17 @@
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, 2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그 이관: 306KB→80KB, **2026-07-27T23:00 7차 트림 — 사이클 로그 39건 중 31건 이관(최근 8건=전 Area 1바퀴+2만 유지): 196KB→63KB**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 **최근 8사이클 로그**(전 Area 1바퀴 커버 = 직전 사이클 diff 판단에 필요한 최소분) + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 > ↳ **9차 트림 (2026-07-28, 자동)**: 사이클 로그 13건 → 8건 유지, 5건 이관 (82KB → 트림 후 아래 참조).
 > ↳ **8차 트림 (2026-07-27, 자동)**: 사이클 로그 9건 → 8건 유지, 1건 이관 (66KB → 트림 후 아래 참조).
+
+> **Area 1 프로덕션 헬스 (2026-07-30T03:10):**
+> - **방법**: `git fetch origin main`(forced-update, HEAD `84ebbb9` = origin/main 일치, 워킹트리 clean, detached). 프록시가 이번 세션도 prod 호스트 직접 curl 차단(exit 56, CONNECT tunnel 403 — `webapp-9i0.pages.dev`·`observability.mcp.cloudflare.com` 둘 다 `__agentproxy/status` `recentRelayFailures`에 재확인, `cloudflare-observability` MCP 미인증 지속) — 직접 prod API/Playwright 헬스체크 불가, GitHub Actions CI 기록으로 대체(기존 사이클과 동일 제약). Area 1 **53회차** — 직전 Area6(52회차, `84ebbb9`) 종료 직후라 `git log 84ebbb9..HEAD` = **0커밋**(신선 churn 없음, 다음 Area2 사이클이 검토할 신규 코드 변경 자체가 아직 없음).
+> - **deploy.yml 전수 확인**: 최근 30개 run(2026-07-29T01:20~18:01Z, `88f29c58`~`84ebbb9`) **전부 `success`** — CF-internal transient·cold-start 재발 0. 자재 마스터 대량 정정(0480~0496, 47커밋 규모) + 롤→미터 단위체계 확정 churn을 관통하며도 배포 전량 green. 유일 이례 = `9074a5ab`(자재 마스터 전수점검 커밋) 1건 `cancelled` — 직후 1분 내 동일 작업범위의 후속 커밋(`dd60c2d1`)이 이미 success로 완료돼 있어 **push 연속 발생 시 이전 run이 최신 커밋에 의해 superseded된 정상 취소**로 판정(코드/빌드 결함 아님, 재현 조건 = 짧은 간격 연속 push).
+> - **backup.yml 신선도**: 최신 run(`84ebbb9`, 2026-07-29T18:01:37Z) success, 직전 6회 전부 success(일일 주기 정상). 07-28 회차에 `cancelled` 1건(`da70faae`) 있었으나 다음날 정상 success로 회복 — deploy.yml과 동일한 "연속 트리거 supersede" 패턴으로 무해 판정.
+> - **e2e.yml**: `disabled_manually`(기존 인지 상태, 변동 없음). **verify.yml**: 열린 PR 0건이라 이번 사이클도 실행 0건(정상, `list_pull_requests(open)`=[] 직접 확인).
+> - **open≠unfixed 재확인**: `list_issues(OPEN,auto-improve)` 실측 **3건**(#585·#586·#587, Area6 52회차 캐시와 정확히 일치) — 신선 churn 0커밋이라 재오픈/fixed-in-tree 후보 자체가 없음(위 git log 확인).
+> - **backlog↔GitHub 절대값 재동기화**: open **3**(변동 없음, 재조회 확인) · done/rejected는 이번 사이클 close 0건이라 재조회 생략, Area6 52회차 캐시(510/6) 신뢰.
+> - **🧬 SKILL 강화 없음** — 순수 CI/헬스 확인 사이클, 신규 클래스 없음.
+> - 신규 이슈 0건, 자동수정 0건(순수 CI/인프라 헬스 확인), done-sync: new 3·done 510·rejected 6. 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-07-29T21:25):**
 > - **방법**: `git fetch origin main`(forced-update, HEAD `e469425` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `git fetch --deepen=300`(shallow clone이라 직전 Area6 SHA 확보 위해 확장). Area 6 **52회차** — 직전 Area6(`6685a36`, 07-28T09:20, 51회차) 이후 `git log 6685a36..HEAD` = **68커밋**, `-- src/routes src/scripts migrations` 한정 **31커밋**: 자재 마스터 폭/규격/그룹 정정 다수(0481~0489, 데이터 UPDATE만) + **롤→미터 단위체계 확정**(0490~0496, `utils/rollConsumption.ts` 신설·정정 3커밋) + entity write-path 구조감사 도구(`331ce7d`)·정렬 tie-break 전역 완결(`1dca583`) + Area5(46회차)가 이미 다룬 광고문자 컴플라이언스/#572~#584 픽스 + IA에디터 통합 Phase(웹 라우트 범위 밖 다수).
