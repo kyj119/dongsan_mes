@@ -6,6 +6,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter } from '../utils/entityFilter'
 import { LATEST_BALANCE_SUBQUERY } from '../utils/bankBalance'
 import { excludeInternalClientsSql } from '../constants/intercompany'
+import { excludeArExcludedClientsSql } from '../constants/arPolicy'
 import { kstYear } from '../utils/kstDate'
 
 // ── Row types for D1 queries ──
@@ -249,9 +250,9 @@ financialReportsRouter.get('/balance-snapshot', async (c) => {
     // split billing P3: clients.balance 캐시 폐기 → 전체 미수금 파생(order_billing_groups[BILLED] − payments − adjustments)
     const arRow = await c.env.DB.prepare(`
       SELECT (
-        (SELECT COALESCE(SUM(g.billed_amount), 0) FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${excludeInternalClientsSql('o.client_id')})
-        - (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE 1=1${excludeInternalClientsSql('client_id')})
-        - (SELECT COALESCE(SUM(amount), 0) FROM adjustments WHERE 1=1${excludeInternalClientsSql('client_id')})
+        (SELECT COALESCE(SUM(g.billed_amount), 0) FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${excludeArExcludedClientsSql('o.client_id')})
+        - (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE 1=1${excludeArExcludedClientsSql('client_id')})
+        - (SELECT COALESCE(SUM(amount), 0) FROM adjustments WHERE 1=1${excludeArExcludedClientsSql('client_id')})
       ) as total_ar
     `).first<ArRow>()
 

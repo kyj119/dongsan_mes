@@ -3,7 +3,7 @@ import type { HonoEnv } from '../types/env'
 import type { D1Database } from '@cloudflare/workers-types'
 import { authMiddleware } from '../middleware/auth'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
-import { excludeInternalClientsSql } from '../constants/intercompany'
+import { excludeArExcludedClientsSql } from '../constants/arPolicy'
 import { kstYmd, kstDate, kstDateOf } from '../utils/kstDate'
 
 const notificationsRouter = new Hono<HonoEnv>()
@@ -120,7 +120,7 @@ notificationsRouter.get('/nav-badges', async (c) => {
           WHERE g.billing_status = 'BILLED'
             AND o.status != 'CANCELLED'
             AND date(COALESCE(g.accounting_date, g.billed_at), '+' || COALESCE(c.overdue_alert_days, 30) || ' days') < date('now', '+9 hours')
-            ${efNbMain.clause}${excludeInternalClientsSql('c.id')}
+            ${efNbMain.clause}${excludeArExcludedClientsSql('c.id')}
           GROUP BY c.id, bg.billed_sum, pay.paid_sum, adj.adj_sum
           HAVING balance > 0
         )

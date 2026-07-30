@@ -8,7 +8,7 @@ import type { Context } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import { entityFilter } from '../../utils/entityFilter'
 import { kstYmd } from '../../utils/kstDate'
-import { excludeInternalClientsSql } from '../../constants/intercompany'
+import { excludeArExcludedClientsSql } from '../../constants/arPolicy'
 
 // ── split billing P3: (거래처) 미수금 파생 — order_billing_groups[BILLED] − payments − adjustments ──
 // clients.balance 캐시 대체. entityFilter 적용(현재 사용자 법인 = 청구 법인 기준).
@@ -261,7 +261,7 @@ export function buildIntegrityQuery(c: Context<HonoEnv>): { query: string; param
   LEFT JOIN (
     SELECT client_id, SUM(amount) as v FROM adjustments WHERE 1=1${aEf} GROUP BY client_id
   ) a ON a.client_id = c.id
-  WHERE c.is_active = 1${excludeInternalClientsSql('c.id')}
+  WHERE c.is_active = 1${excludeArExcludedClientsSql('c.id')}
 `
   return { query, params: [...oParams, ...pParams, ...aParams] }
 }

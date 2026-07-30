@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter, cardEntityFilter } from '../utils/entityFilter'
-import { excludeInternalClientsSql } from '../constants/intercompany'
+import { excludeArExcludedClientsSql } from '../constants/arPolicy'
 
 const aiInsights = new Hono<HonoEnv>()
 aiInsights.use('*', authMiddleware)
@@ -20,7 +20,7 @@ aiInsights.get('/credit-risk/summary', requireRole('ADMIN', 'MANAGER'), async (c
         ), 0) as total_outstanding,
         ROUND(AVG(cl.credit_risk_score), 1) as avg_score
       FROM clients cl
-      WHERE cl.is_active = 1 AND cl.credit_risk_grade != 'N/A'${excludeInternalClientsSql('cl.id')}
+      WHERE cl.is_active = 1 AND cl.credit_risk_grade != 'N/A'${excludeArExcludedClientsSql('cl.id')}
       GROUP BY cl.credit_risk_grade
       ORDER BY avg_score DESC
     `).all()
@@ -32,7 +32,7 @@ aiInsights.get('/credit-risk/summary', requireRole('ADMIN', 'MANAGER'), async (c
          - COALESCE((SELECT SUM(amount) FROM adjustments WHERE client_id = cl.id), 0)) as balance,
         cl.credit_limit
       FROM clients cl
-      WHERE cl.is_active = 1 AND cl.credit_risk_grade IN ('D', 'F')${excludeInternalClientsSql('cl.id')}
+      WHERE cl.is_active = 1 AND cl.credit_risk_grade IN ('D', 'F')${excludeArExcludedClientsSql('cl.id')}
       ORDER BY cl.credit_risk_score DESC, cl.id DESC LIMIT 10
     `).all()
 
@@ -142,7 +142,7 @@ aiInsights.post('/credit-risk/calculate-all', requireRole('ADMIN', 'MANAGER'), a
            THEN 1 ELSE 0 END) as overdue_count
     FROM orders o
     JOIN clients c ON o.client_id = c.id AND c.is_active = 1
-    WHERE o.status NOT IN ('CANCELLED','DELETED','QUOTATION')${excludeInternalClientsSql('c.id')}
+    WHERE o.status NOT IN ('CANCELLED','DELETED','QUOTATION')${excludeArExcludedClientsSql('c.id')}
     GROUP BY o.client_id
     HAVING total_orders > 0
   `).all<{ client_id: number; total_orders: number; total_revenue: number; outstanding: number; overdue_count: number }>()

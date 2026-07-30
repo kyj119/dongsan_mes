@@ -13,6 +13,7 @@ import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { getNextEntitySeqNumber } from '../../utils/sequenceGenerator'
 import { kstYmd, kstYmdCompact } from '../../utils/kstDate'
 import { generateInvoiceNumber, getCompanySettings, issueTaxInvoice, createSplitInvoices } from './helpers'
+import { isCashRetailBrn } from '../../constants/arPolicy'
 import type { TaxInvoiceWithOrder, ClientRow, OrderWithClient } from './helpers'
 
 const taxInvoicesIssueRouter = new Hono<HonoEnv>()
@@ -73,6 +74,9 @@ taxInvoicesIssueRouter.post('/direct', requireEditOrRole('/tax-invoices', 'MANAG
     }
     if (!client.business_registration_number) {
       return c.json({ success: false, error: '거래처에 사업자등록번호가 등록되어 있지 않습니다.' }, 400)
+    }
+    if (isCashRetailBrn(client.business_registration_number)) {
+      return c.json({ success: false, error: '기타거래처(현금·카드 소매)는 세금계산서 발행 대상이 아닙니다.' }, 400)
     }
 
     const issueDate = body.issue_date || kstYmd()
@@ -358,6 +362,9 @@ taxInvoicesIssueRouter.post('/', requireEditOrRole('/tax-invoices', 'MANAGER'), 
       if (!firstOrder.business_registration_number) {
         return c.json({ success: false, error: '거래처에 사업자등록번호가 등록되어 있지 않습니다.' }, 400)
       }
+      if (isCashRetailBrn(String(firstOrder.business_registration_number))) {
+        return c.json({ success: false, error: '기타거래처(현금·카드 소매)는 세금계산서 발행 대상이 아닙니다.' }, 400)
+      }
 
       const fo = firstOrder as any
       const created = await createSplitInvoices(c.env.DB, c.env, {
@@ -406,6 +413,9 @@ taxInvoicesIssueRouter.post('/', requireEditOrRole('/tax-invoices', 'MANAGER'), 
     }
     if (!order.business_registration_number) {
       return c.json({ success: false, error: '거래처에 사업자등록번호가 등록되어 있지 않습니다.' }, 400)
+    }
+    if (isCashRetailBrn(String(order.business_registration_number))) {
+      return c.json({ success: false, error: '기타거래처(현금·카드 소매)는 세금계산서 발행 대상이 아닙니다.' }, 400)
     }
 
     // P4 split billing: 단건도 혼합주문이면 생산법인별 분할 → N장 (단일법인=1장, 기존 동일).

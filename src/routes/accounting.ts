@@ -20,7 +20,8 @@ import { authMiddleware } from '../middleware/auth'
 import { requireAccessOrRole } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { kstDateOf } from '../utils/kstDate'
-import { excludeInternalClientsSql, INTERCOMPANY_ENTITIES } from '../constants/intercompany'
+import { INTERCOMPANY_ENTITIES } from '../constants/intercompany'
+import { excludeArExcludedClientsSql } from '../constants/arPolicy'
 
 const accountingRouter = new Hono<HonoEnv>()
 // ACCOUNTANT(경리) 등 신규 역할은 /accounting 매트릭스 열람권으로 통과(회귀 0: ADMIN·MANAGER 종전 유지)
@@ -80,15 +81,15 @@ accountingRouter.get('/summary', async (c) => {
     const billedAll = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(g.billed_amount), 0) AS v
       FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
-      WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${efGall.clause}${excludeInternalClientsSql('o.client_id')}
+      WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${efGall.clause}${excludeArExcludedClientsSql('o.client_id')}
     `).bind(...efGall.params).first<{ v: number }>()
     const efP = entityFilter(c, 'p')
     const paidAll = await c.env.DB.prepare(
-      `SELECT COALESCE(SUM(p.amount), 0) AS v FROM payments p WHERE 1=1${efP.clause}${excludeInternalClientsSql('p.client_id')}`
+      `SELECT COALESCE(SUM(p.amount), 0) AS v FROM payments p WHERE 1=1${efP.clause}${excludeArExcludedClientsSql('p.client_id')}`
     ).bind(...efP.params).first<{ v: number }>()
     const efA = entityFilter(c, 'a')
     const adjAll = await c.env.DB.prepare(
-      `SELECT COALESCE(SUM(a.amount), 0) AS v FROM adjustments a WHERE 1=1${efA.clause}${excludeInternalClientsSql('a.client_id')}`
+      `SELECT COALESCE(SUM(a.amount), 0) AS v FROM adjustments a WHERE 1=1${efA.clause}${excludeArExcludedClientsSql('a.client_id')}`
     ).bind(...efA.params).first<{ v: number }>()
 
     const revenue = Number(revenueRow?.v) || 0

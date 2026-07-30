@@ -12,7 +12,7 @@ import { requireEditOrRole } from '../../middleware/permissions'
 import { notifyRoles } from '../../utils/notify'
 import { entityFilter } from '../../utils/entityFilter'
 import { kstYmd } from '../../utils/kstDate'
-import { excludeInternalClientsSql } from '../../constants/intercompany'
+import { excludeArExcludedClientsSql } from '../../constants/arPolicy'
 import {
   deriveClientBalance, buildIntegrityQuery, getAgingCategory,
   type PaymentRow, type IntegrityRow, type OverdueClientRow, type OverdueAlertRow, type ReceivableClientRow,
@@ -200,7 +200,7 @@ arReceivablesRouter.get('/overdue', async (c) => {
       WHERE g.billing_status = 'BILLED'
         AND o.status != 'CANCELLED'
         AND date(COALESCE(g.accounting_date, g.billed_at), '+' || COALESCE(c.overdue_alert_days, 30) || ' days') < date('now', '+9 hours')
-        ${overdueEf}${excludeInternalClientsSql('c.id')}
+        ${overdueEf}${excludeArExcludedClientsSql('c.id')}
       GROUP BY c.id, c.client_name, c.overdue_alert_days, bg.billed_sum, pay.paid_sum, adj.adj_sum
       HAVING balance > 0
     `).bind(...efOdBg.params, ...efOdPay.params, ...efOdAdj.params, ...overdueEfParams).all<OverdueAlertRow>()
@@ -287,7 +287,7 @@ arReceivablesRouter.get('/receivables', async (c) => {
             )
           GROUP BY o.client_id
         ) oup ON oup.client_id = c.id
-        WHERE c.is_active = 1${excludeInternalClientsSql('c.id')}
+        WHERE c.is_active = 1${excludeArExcludedClientsSql('c.id')}
       ) WHERE balance > ?
     `).bind(...efBg.params, ...efPay.params, ...efAdj.params, ...efOupG.params, ...efOupP.params, minBalance).all<ReceivableClientRow>()
 
@@ -461,7 +461,7 @@ arReceivablesRouter.post('/receivables/check-overdue', requireEditOrRole('/ledge
         FROM adjustments a WHERE 1=1${efCoAdj.clause}
         GROUP BY a.client_id
       ) adj ON adj.client_id = c.id
-      WHERE c.is_active = 1${excludeInternalClientsSql('c.id')}
+      WHERE c.is_active = 1${excludeArExcludedClientsSql('c.id')}
         AND o.status != 'CANCELLED'
         AND g.billing_status = 'BILLED'${checkOverdueEf}
       GROUP BY c.id, c.client_name, c.overdue_alert_days
@@ -574,7 +574,7 @@ arReceivablesRouter.get('/collection-period', async (c) => {
         FROM adjustments a2 WHERE 1=1${cpAEf.clause}
         GROUP BY a2.client_id
       ) cpadj ON cpadj.client_id = c.id
-      WHERE c.is_active = 1${excludeInternalClientsSql('c.id')}
+      WHERE c.is_active = 1${excludeArExcludedClientsSql('c.id')}
       GROUP BY c.id
       HAVING settled_orders >= 2
       ORDER BY avg_days DESC

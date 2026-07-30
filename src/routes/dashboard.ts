@@ -3,7 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
-import { excludeInternalClientsSql } from '../constants/intercompany'
+import { excludeArExcludedClientsSql } from '../constants/arPolicy'
 import { kstDate, kstDateOf, kstMonth } from '../utils/kstDate'
 import { buildOldestUnpaidJoin, agingDaysFromOldest } from './ledger/ar-helpers'
 
@@ -371,7 +371,7 @@ dashboardRouter.get('/stats/receivables', async (c) => {
           FROM orders o WHERE o.billing_status = 'BILLED'${ef.clause}
           GROUP BY o.client_id
         ) bo ON bo.client_id = c.id
-        WHERE c.is_active = 1${excludeInternalClientsSql('c.id')}
+        WHERE c.is_active = 1${excludeArExcludedClientsSql('c.id')}
       ) WHERE balance > 0
       ORDER BY balance DESC
       LIMIT 10
@@ -401,7 +401,7 @@ dashboardRouter.get('/stats/receivables', async (c) => {
       LEFT JOIN (
         SELECT client_id AS cid, SUM(amount) AS amt FROM adjustments a WHERE 1=1${efAgeA.clause} GROUP BY client_id
       ) aa ON aa.cid = c.id${oupAging.sql}
-      WHERE c.is_active = 1${excludeInternalClientsSql('c.id')} AND ${agBalExpr} > 0
+      WHERE c.is_active = 1${excludeArExcludedClientsSql('c.id')} AND ${agBalExpr} > 0
     `).bind(...efAgeG.params, ...efAgeP.params, ...efAgeA.params, ...oupAging.params)
       .all<{ balance: number; oldest_unpaid_date: string | null }>()
 
