@@ -250,6 +250,13 @@ function iaeIntakeToggle() {
 //   Shift 범위선택=shell.js 전역 위임(같은 class + [data-check-group] 컨테이너면 자동 적용).
 var iaeIntkThumbs = {};   // id → base64|null (세션 캐시)
 var iaeIntkMyId = null;   // 로그인 user id — "내 작업" 필터(worker_id 매칭)
+// #576 서버 검색 상태 — '내 작업'·그룹핑은 **로드된 200건 안에서만** 걸러내므로 상한 밖은 못 찾는다.
+//   응답의 total·truncated 를 받아놓고 쓰지 않아 헤더가 all.length 를 "전체"로 표시했고(200건을
+//   넘으면 거짓), 오래된 대기물에 도달할 수단이 아예 없었다. 주문서 트레이(orderForm/intake.js)와
+//   같은 패턴으로 q·date_from·date_to 를 서버로 내리고 절단 사실을 화면에 노출한다.
+//   q 는 서버에서 거래처·담당자·메모·키워드·묶음을 LIKE 로 훑으므로 담당자 이름으로도 상한 밖에 닿는다.
+var iaeIntkQuery = { q: '', date_from: '', date_to: '' };
+var iaeIntkMeta = { total: 0, truncated: false, returned: 0 };
 try {
   var _iaeIntkUser = JSON.parse(localStorage.getItem('user') || '{}');
   if (_iaeIntkUser && _iaeIntkUser.id != null && isFinite(Number(_iaeIntkUser.id))) iaeIntkMyId = Number(_iaeIntkUser.id);
@@ -289,13 +296,27 @@ function iaeIntkBindGroupCb(root) {
   });
 }
 
-function iaeIntakeLoad() {
+// opts.focusSearch — 검색/초기화로 재렌더한 경우 검색창에 포커스를 되돌린다(패널 전체를 다시 그리므로).
+function iaeIntakeLoad(opts) {
   var p = document.getElementById('iaeIntakePanel'); if (!p) return;
+  var focusSearch = !!(opts && opts.focusSearch);
   p.innerHTML = '<div class="text-xs text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>대기물 불러오는 중…</div>';
   // mode=impose,both — ia-editor는 '모아찍기' 용도만 다룬다(단건은 주문서 트레이 담당, 2026-07-28).
   // lite=1 — 썸네일은 has_thumbnail 플래그만 받고 실물은 lazy([[feedback-r2-thumbnail-marker-leak]]).
-  axios.get('/api/workbench/intakes', { params: { status: 'waiting', limit: 200, lite: 1, mode: 'impose,both' } }).then(function (res) {
-    var all = (res.data && res.data.data) || [];
+  var params = { status: 'waiting', limit: 200, lite: 1, mode: 'impose,both' };
+  if (iaeIntkQuery.q) params.q = iaeIntkQuery.q;
+  if (iaeIntkQuery.date_from) params.date_from = iaeIntkQuery.date_from;
+  if (iaeIntkQuery.date_to) params.date_to = iaeIntkQuery.date_to;
+  var searchActive = !!(iaeIntkQuery.q || iaeIntkQuery.date_from || iaeIntkQuery.date_to);
+  axios.get('/api/workbench/intakes', { params: params }).then(function (res) {
+    var d = res.data || {};
+    var all = d.data || [];
+    // #576 절단 메타 — total 은 **조건에 맞는 전체 건수**(로드분이 아님), truncated=상한에 걸렸는지
+    iaeIntkMeta = {
+      total: (d.total != null) ? d.total : all.length,
+      truncated: !!d.truncated,
+      returned: all.length
+    };
     // "내 작업" — 내 waiting 이 있을 때 기본 ON, 토글 상태는 기억(주문서 트레이와 동일 규칙)
     var mineCount = 0;
     if (iaeIntkMyId != null) for (var mi = 0; mi < all.length; mi++) if (Number(all[mi].worker_id) === iaeIntkMyId) mineCount++;
@@ -305,17 +326,39 @@ function iaeIntakeLoad() {
     if (iaeIntkMyId == null) myWork = false;
     var rows = myWork ? all.filter(function (r) { return Number(r.worker_id) === iaeIntkMyId; }) : all;
 
+    // 검색이 걸려 있으면 total 은 '전체'가 아니라 '검색결과' 건수다 — 라벨을 구분해야 거짓이 안 된다.
     var head = '<div class="flex items-center justify-between mb-2 gap-2">'
-      + '<div class="text-xs text-gray-500"><b>모아찍기 대기함</b> · 전체 ' + all.length + '건'
+      + '<div class="text-xs text-gray-500"><b>모아찍기 대기함</b> · ' + (searchActive ? '검색결과 ' : '전체 ') + iaeIntkMeta.total + '건'
+      + (iaeIntkMeta.truncated ? ('<span class="text-amber-700"> (최근 ' + iaeIntkMeta.returned + '건 표시)</span>') : '')
       + (mineCount ? (' · 내 작업 ' + mineCount) : '') + '</div>'
       + '<div class="flex items-center gap-3">'
       + (iaeIntkMyId != null ? ('<label class="text-xs text-gray-600 flex items-center gap-1 cursor-pointer"><input type="checkbox" data-intk-mywork' + (myWork ? ' checked' : '') + '> 내 작업</label>') : '')
       + '<button data-intk-refresh class="text-xs text-gray-500 hover:text-blue-600"><i class="fas fa-rotate-right mr-1"></i>새로고침</button></div></div>';
 
+    // #576 서버 검색줄 — 위의 '내 작업'/그룹핑은 로드분 안에서만 걸러내므로 상한 밖은 여기로만 닿는다.
+    var searchBar = '<div class="flex items-center gap-1 mb-2 flex-wrap">'
+      + '<input type="text" data-intk-q placeholder="거래처·담당자·메모·묶음 검색" value="' + iaeEscape(iaeIntkQuery.q) + '" '
+      + 'class="px-2 py-1 border border-gray-300 rounded text-xs" style="flex:1;min-width:150px">'
+      + '<input type="date" data-intk-from value="' + iaeEscape(iaeIntkQuery.date_from) + '" class="px-2 py-1 border border-gray-300 rounded text-xs">'
+      + '<span class="text-xs text-gray-400">~</span>'
+      + '<input type="date" data-intk-to value="' + iaeEscape(iaeIntkQuery.date_to) + '" class="px-2 py-1 border border-gray-300 rounded text-xs">'
+      + '<button data-intk-search class="px-2 py-1 text-xs rounded bg-gray-700 text-white hover:bg-gray-800" title="서버에서 검색(200건 상한 밖 포함)"><i class="fas fa-magnifying-glass"></i></button>'
+      + (searchActive ? '<button data-intk-reset class="px-2 py-1 text-xs text-gray-500 hover:text-gray-700">초기화</button>' : '')
+      + '</div>';
+
+    var trunc = iaeIntkMeta.truncated
+      ? '<div class="text-[11px] bg-amber-50 text-amber-800 border border-amber-100 rounded px-2 py-1 mb-2">'
+        + '<i class="fas fa-triangle-exclamation mr-1"></i>' + (searchActive ? '검색결과 ' : '전체 ') + iaeIntkMeta.total
+        + '건 중 최근 ' + iaeIntkMeta.returned + '건만 표시됩니다 — 오래된 대기물은 위 검색으로 찾으세요.</div>'
+      : '';
+
     var body;
     if (!rows.length) {
+      // 빈 화면의 원인이 3가지(내작업 필터 / 서버 검색조건 / 진짜 없음)라 구분해서 안내한다 —
+      // 뭉개면 헤더는 N건인데 목록은 비는 모순으로 보인다(트레이 ofTrayRender 와 동일 판단).
       body = '<div class="text-xs text-gray-400 py-4 text-center">'
-        + (myWork && all.length ? '내 작업이 없습니다. <b>내 작업</b> 체크를 풀면 전체 ' + all.length + '건이 보입니다.'
+        + (myWork && all.length ? '내 작업이 없습니다. <b>내 작업</b> 체크를 풀면 ' + all.length + '건이 보입니다.'
+          : searchActive ? '검색 조건에 맞는 대기물이 없습니다. <b>초기화</b>를 눌러 전체를 보세요.'
           : '모아찍기 대기물이 없습니다.<br><span class="text-[11px]">일러 MES 패널에서 용도=<b>모아찍기</b>로 추출하세요 (~30초 내 반영).</span>')
         + '</div>';
     } else {
@@ -378,9 +421,28 @@ function iaeIntakeLoad() {
         + '<button data-intk-add class="text-xs px-2 py-1 rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40" disabled><i class="fas fa-plus mr-1"></i>세션에 담기</button>'
         + '</div></div>';
     }
-    p.innerHTML = head + body;
+    p.innerHTML = head + searchBar + trunc + body;
 
-    var rb = p.querySelector('[data-intk-refresh]'); if (rb) rb.addEventListener('click', iaeIntakeLoad);
+    // #576 서버 재조회 — 키워드·기간은 200건 상한 '밖'을 찾기 위한 것이라 서버로 내려야 한다.
+    var qEl = p.querySelector('[data-intk-q]');
+    var fEl = p.querySelector('[data-intk-from]');
+    var tEl = p.querySelector('[data-intk-to]');
+    function intkRunSearch() {
+      iaeIntkQuery = {
+        q: qEl ? qEl.value.trim() : '',
+        date_from: fEl ? fEl.value : '',
+        date_to: tEl ? tEl.value : ''
+      };
+      iaeIntakeLoad({ focusSearch: true });
+    }
+    var sbtn = p.querySelector('[data-intk-search]'); if (sbtn) sbtn.addEventListener('click', intkRunSearch);
+    if (qEl) qEl.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); intkRunSearch(); } });
+    var rst = p.querySelector('[data-intk-reset]');
+    if (rst) rst.addEventListener('click', function () { iaeIntkQuery = { q: '', date_from: '', date_to: '' }; iaeIntakeLoad({ focusSearch: true }); });
+    if (focusSearch && qEl) { try { qEl.focus(); qEl.setSelectionRange(qEl.value.length, qEl.value.length); } catch (eFo) {} }
+
+    // 새로고침은 검색 조건을 유지한 재조회(리스너가 Event 를 opts 로 넘기지 않게 감싼다)
+    var rb = p.querySelector('[data-intk-refresh]'); if (rb) rb.addEventListener('click', function () { iaeIntakeLoad(); });
     var mw = p.querySelector('[data-intk-mywork]');
     if (mw) mw.addEventListener('change', function () {
       try { localStorage.setItem('iaeIntkMyWork', mw.checked ? '1' : '0'); } catch (e) { }
@@ -431,7 +493,18 @@ function iaeIntakeLoad() {
         iaeIntakeLoad();
       }).catch(function () { voidBtn.disabled = false; iaeToast('취소에 실패했습니다.', 'error'); });
     });
-  }).catch(function () { p.innerHTML = '<div class="text-xs text-red-500">대기물을 불러오지 못했습니다.</div>'; });
+  }).catch(function (err) {
+    console.warn('[ia-editor] 대기함 조회 실패', err);
+    // 실패 시 패널을 통째로 갈아치우면 검색줄도 사라져 재시도·초기화 수단이 없어진다 → 버튼을 남긴다.
+    p.innerHTML = '<div class="text-xs text-red-500 py-2">대기물을 불러오지 못했습니다.'
+      + ' <button data-intk-retry class="underline ml-1">다시 시도</button>'
+      + (searchActive ? ' <button data-intk-reset class="underline ml-1">검색 초기화</button>' : '')
+      + '</div>';
+    var rt = p.querySelector('[data-intk-retry]');
+    if (rt) rt.addEventListener('click', function () { iaeIntakeLoad(); });
+    var rs2 = p.querySelector('[data-intk-reset]');
+    if (rs2) rs2.addEventListener('click', function () { iaeIntkQuery = { q: '', date_from: '', date_to: '' }; iaeIntakeLoad(); });
+  });
 }
 
 // ── 분석 폴링 데드라인(갭④): 에이전트 crash 시 무한 "분석 중" 방지 ──
