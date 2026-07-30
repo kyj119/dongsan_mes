@@ -158,14 +158,14 @@ inventoryCountRouter.post('/', async (c) => {
       })
     }
 
+    // 실사 단위 = **재고 단위**(base_unit) — items.unit 은 입고·발주 단위('롤')라
+    // 수량(base·미터)과 짝이 맞지 않는다. 150m 를 '150 롤'로 보여주면 오입력을 부른다.
     if (items && items.length > 0) {
       await c.env.DB.batch(
         items.map((item) =>
           c.env.DB.prepare(`
             INSERT INTO inventory_count_items (count_id, item_id, system_quantity, unit, storage_zone_id)
             VALUES (?, ?, ?, ?, ?)
-          // 실사 단위 = **재고 단위**(base_unit) — items.unit 은 입고·발주 단위('롤')라
-          // 수량(base·미터)과 짝이 맞지 않는다. 150m 를 '150 롤'로 보여주면 오입력을 부른다.
           `).bind(countId, item.id, item.quantity || 0, resolveStockUnit(item), item.storage_zone_id ?? null)
         )
       )
