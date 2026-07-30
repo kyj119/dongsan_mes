@@ -1,3 +1,72 @@
+## 📦 2026-07-30 이관분 (10차 자동 트림 — scripts/backlog-trim.cjs)
+
+> 사이클 로그 5건. 원본 순서(시간 역순) 보존. 활성 파일은 최근 8건 유지.
+
+> **Area 6 자기 진화 (2026-07-28T09:20):**
+> - **방법**: `git fetch origin main`(forced-update, HEAD `6685a36` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 6 **51회차** — 직전 Area6(`fe11c1c`, 07-26T23:50, 50회차)이 아니라 직전 Area5(`8604557`, 07-28T03:35, 45회차) 기준으로 재점검(6영역 순환상 직전 사이클이 Area5) — `git log 8604557..HEAD -- src/routes src/scripts migrations` = **4커밋뿐**(`040d882` XSS 자동수정·`59330b5` #583 자동수정·`f57abc9` #580 픽스·`adc13be` #582 픽스, 전부 Area5 자기 사이클 산출물 또는 owner/타세션 후속 픽스) — 컬럼-diff/XSS bridge 대상 신선 churn 없음. 같은 구간의 `4b8c250`/`adfc077`/`38cc411`(판짜기 shelf bin-pack)은 `IllustratorAutomat/**`·`nesting-harness.mjs` CEP 패널 코드로 웹앱 라우트/스크립트/마이그 범위 밖 — 스킵.
+> - **🔴 open≠unfixed 재확인 — #580 close-pending 신규 합류**: `f57abc9`(owner/별도세션, 00:31)가 `contactGroups.ts GET /:id/members`에 `AND is_active = 1` 추가해 #580(비활성 거래처 대량발송 포함) 픽스를 완결했으나 **GitHub 이슈는 OPEN 유지**(commit 메시지에 `(#580)` 인용 O, close 실행 X) — SKILL "open≠unfixed"(line 281) 표준 재현. 코드 직접 확인(diff Read, 커밋 메시지 신뢰 안 함): 유일 소스(`clients` 조회 1곳)에 필터 추가 완료, 형제(employees `is_deleted=0`)와 대칭 확보 — **형제완전성 clean**(파일 내 거래처 조회 사이트 1곳뿐이라 재검토 대상 자체가 단순).
+> - **✅ #582도 검증 확인(이미 정상 close)**: `adc13be`(owner/별도세션, 08:42)가 `workbench.ts POST /intakes` 본경로 + `/intakes/:id/absorb` 변종(이슈 본문이 "부수" 항목으로 명시했던 낮은심각도 변종)까지 **양쪽 다** `orderVisibilityFilter(c,'o')` JOIN 가드로 픽스 — 이슈에 GitHub이 이미 `state_reason:completed`로 정상 close돼 있어 close-pending 아님(정상 사이클). 코드 diff 직접 확인해 이슈 본문의 "부수 변종"까지 누락 없이 커버됐음을 재검증(형제완전성 clean, `absorb` 경로도 동일 필터 적용).
+> - **backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **11건**(#572~#579, #580[close-pending], #581, #584 — #582·#583은 이미 completed close로 제외). `search_issues(reason:completed)` 실측 **499**(+1, #582가 이전 캐시 498에 반영 안 돼 있던 것 보정). rejected(`not_planned` 4 + `duplicate` 2) **6** 변동 없음.
+> - **도구 상태 확인**: `npx tsc --noEmit` clean, `node scripts/entity-audit.mjs`(125파일·SELECT60·통과60·누락0), 마이그 번호 중복 스캔(기존 5쌍 `0327/0412/0416/0420/0453`만, 신규 0).
+> - **🧬 SKILL 강화 없음(기존 패턴 재현)** — #580 close-pending은 "open≠unfixed"(line 281)의 정상 재현(신규 클래스 아님), 규모도 1건뿐이라 "close-pending 적체" 집계 경고(line 291) 임계치 아님(현재 적체 = #580 1건, owner 배치클로즈 유도 불필요할 만큼 소규모). #582는 형제완전성까지 커버된 완결 픽스라 별도 재오픈 불요.
+> - 신규 이슈 0건, 자동수정 0건(전부 타 세션 기픽스 확인 작업), done-sync: new 12→11(#582 completed 이관 -1, #583 이미 반영, #580 close-pending 유지)·done 498→499(+1)·rejected 6. 다음 순번 **Area 1**.
+
+> **Area 5 보안 (2026-07-28T03:35):**
+> - **방법**: `git fetch origin main`(forced-update 감지, HEAD `8604557` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81, #439 표준절차). Area 5 **45회차** — 직전 Area5(`b798aed`, 07-26T21:40, 44회차) 이후 `git log b798aed..HEAD -- src/routes src/scripts migrations`는 **35커밋/98파일(+3672/-649)** 대량 churn(MMS/SMS 대량발송+거래처그룹·은행 일괄매칭 통합+Shift범위선택·직원 휴가 셀프신청·클레임반품 AR 자동조정+포털계정 게이트(#557)+IDOR 6핸들러(#571) 수정·후가공 도메인 프로파일 A1·발주 법인간거래 토글·정렬 tie-break 전역 스윕). 필수 표준 스캔 전부 clean: secret fallback grep(`fax.ts` 기존 FP만)·기본비밀번호 리터럴 0·마이그 번호 중복(기존 5쌍만, 신규 0)·`entity-audit.mjs`(125파일·SELECT60·통과60·누락0)·`tsc --noEmit` clean·GitHub Actions 워크플로 변경 0(`pull_request_target` 없음, 기존 안전).
+> - **general-purpose 에이전트 5개 병렬**로 churn을 기능 클러스터 단위 분할 심층 감사(①메시징/카카오/거래처그룹 ②은행 일괄매칭 ③직원셀프서비스+AR자동조정 ④IA워크벤치/생산 ⑤발주/구매/세금계산서) + 오케스트레이터 직접 재검증:
+>   - **🔴 신규 이슈 4건**:
+>     - **#581 (M, bug, issue-only)**: `taxInvoices/batch.ts` `POST /batch-create`·`POST /monthly-create` 양쪽 모두 entity_id 필터 전무(형제 `queries.ts GET /eligible-orders`는 `entityFilter` 적용 — 부분픽스 패턴). MANAGER(법인 스코프)가 타법인 order_id 지정 또는 월합산 대상 조회만으로 **타법인 명의 실제 전자세금계산서(바로빌)를 발행**할 수 있음 — cross-entity 금융/법적효력 write. 오케스트레이터가 에이전트 보고("LOW, pre-existing")를 직접 재검증해 HIGH로 상향(`createSplitInvoices`→`issueTaxInvoice` 외부발행 확인).
+>     - **#582 (S, bug, issue-only)**: `workbench.ts POST /intakes`(대기함 등록)가 body의 `order_item_id`를 entity 검증 없이 `order_items` UPDATE — 같은 파일 형제(`/intakes/:id/absorb`)는 `entityFilter(c,'o')` JOIN으로 올바르게 격리(byte-명확한 형제 정답 패턴 존재). 타법인 주문라인에 잘못된 시안이 연결되는 실제 데이터 오염(읽기 유출 아님).
+>     - **#583 (S, improvement) → 자동수정 완료(done)**: `bank.ts` `batch-apply`/`batch-match`가 서버측 건수 상한 없음(오늘 도입된 Shift 범위선택 UI 1000건 캡은 클라이언트 전용). 기존 `/transactions` limit 클램프와 동일 패턴으로 서버측 1000건 상한 추가 — `npm run verify` 통과 후 커밋(`59330b5`), 이슈는 커밋 직후 close.
+>     - **#584 (S, improvement, issue-only)**: SMS/LMS/카카오 대량발송에 건수 상한 없음(MMS만 방어) — 실수/오남용 시 실비용 발생 리스크.
+>   - **🔧 오케스트레이터 직접 자동수정 2건(경미 XSS, 승인 불요 — escapeHtml 추가는 표시 불변)**: `messages.js` 발송이력/통계 상위수신자 패널의 `receiver_num` 2곳(형제 `receiver_name`은 escape인데 누락 — A-025급 형제필드 비대칭) + `receiving.js` 검수템플릿 드롭다운의 `template_name`/`category_name`(관리화면 `inspections.js`는 escape인데 소비 화면만 raw). 커밋 `040d882`.
+>   - **확인 후 드롭(기존 이슈로 이미 문서화, 재보고 불요)**: `clients.ts POST /:id/portal-account` 형제 entityFilter 자체는 #557(closed-completed)로 셀프발급 벡터는 이미 차단됨 — 에이전트가 재발견한 "portal.ts 전체가 client_id만 스코프"라는 **근본 갭은 #557 본문에 이미 명시적으로 인지·후속과제로 남겨진 것**(owner가 (a)/(b)/(c) 수정옵션 중 미결정) → 중복 이슈화 안 함.
+> - **오탐 배제**: bank.ts `client_id` cross-entity 의심(에이전트가 초기 의심 후 스스로 반증) — `clients` 테이블 자체가 entity_id 없는 전역 마스터(기존 컨벤션)라 FP. purchaseOrders 법인간거래 토글은 entityFilter가 4개 쿼리사이트 모두 독립 적용돼 있어 #368 패턴(클라 플래그로 필터 무력화) 아님 — 자기 엔티티 범위 내에서만 토글 작동.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues(label:auto-improve,state:open)` 실측 **12건**(#572~#580 9건 이월 + #581·#582·#584 신규 3건, #583은 생성 직후 자동수정으로 같은 사이클에 close). done(`reason:completed`) 실측 **498**(+1, #583) · rejected(`not_planned` 4 + `duplicate` 2) **6**(변동 없음).
+> - **🧬 SKILL 강화 없음(기존 패턴 재현)** — #581/#582 모두 기존 "형제-비대칭 IDOR"(#437/#452급) 클래스의 신규 도메인(세금계산서 월합산·IA워크벤치) 재현. #583/#584는 "UI 클라이언트 캡이 서버측 미반영" 신규 하위패턴이나 기존 "N+1 3번째 축"(#478)·"MMS 전용 방어" 관찰과 인접해 별도 codify 불요. 5개 병렬 에이전트 + 오케스트레이터 재검증(에이전트가 LOW로 축소평가한 #581을 실제 코드 추적으로 HIGH 재상향) 체계가 이번 대량churn(98파일)에서 유효했음.
+> - 신규 이슈 3건(#581·#582·#584, issue-only) + 자동수정 2종(XSS escapeHtml 3곳·bank 배치캡 2곳, #583 done 처리), done-sync: new 9→12·done 497→498·rejected 6. 다음 순번 **Area 6**.
+
+> **Area 4 데이터 정합성 (2026-07-27T23:54):**
+> - **방법**: 로컬 체크아웃(HEAD `1921e7ef` = origin/main 일치, 워킹트리 clean, node_modules 64). Area 4 **46회차** — 직전 Area4(`ac6fe38`, 07-26T15:15, 45회차) 이후 `git log ac6fe38..HEAD -- src/routes migrations` = **20+커밋/75파일(+1798/-432)** 대량 churn(정렬 tie-break 전역 스윕 92곳·발주 법인간거래 제외·IA B단계 batch_key·MMS/SMS 대량발송+거래처그룹·은행 자동매칭 3종·IDOR 6핸들러). **에이전트 위임 없이 인라인 수행**(과다 위임 억제 정책 신설분 적용 — 스캔 대상이 grep 수준이라 위임 오버헤드가 더 큼).
+> - **🔴 신규 이슈 — #580 (M, bug, issue-only)**: 연락처 그룹 멤버 조회(`contactGroups.ts` GET `/:id/members` = 대량발송 대상 미리보기 동일 소스)가 **거래처에 `is_active` 필터 미적용** — 같은 함수의 형제 직원 조회는 `AND is_deleted = 0` 적용(**형제 비대칭**). 거래처 삭제는 soft delete(`clients.ts:1112` `SET is_active = 0`)라 비활성 거래처가 정상 멤버로 반환 → 발송 대상 포함. **설계 의도와 모순**: 같은 응답의 `orphan_count` 주석이 "조회되지 않는 건수(하드삭제·**비활성** 등)"로 비활성을 명시 전제하고 프론트도 "발송 대상 아님" 경고를 띄우는데, 실제로는 걸러지지 않아 **경고조차 안 뜨고 발송됨**. MMS 건당 100원 과금 + 외부 발송은 되돌릴 수 없음. FP 배제 = is_active 실재·같은 파일이 그룹 자체엔 `g.is_active = 1` 사용·도달성 LIVE(`messages.js`)·의도적 포함 근거 없음. 자동수정 금지 판정 = 발송 대상 집합 축소는 운영 케이스 확인 필요 + egress로 검증 불가.
+> - **🟢 churn 정합성 = clean(3종 전수)**: ① **신규 비-FK 참조 `adjustments.source_id`(0475, `customer_claims.id|returns.id` polymorphic이라 FK 미선언)** → #477 churn-트리거 재스캔 적용: `orders/core.ts:675-676`이 `DELETE FROM adjustments WHERE source_type='CLAIM'/'RETURN' AND source_id IN (...)`를 **소스(customer_claims/returns) 삭제 前**에 실행(`#567` 주석 명시, 팬텀 AR 감액 방지) + 클레임/반품 단건 하드삭제 경로 부재(`DELETE FROM customer_claims` 전수 1건=주문삭제 batch만, `returns.ts:84`는 생성실패 보상 rollback=FP클래스(d)) → dangling 0. ② **`contact_group_members.member_id`(0476, CLIENT/EMPLOYEE polymorphic 비-FK)** → clients·employees 양쪽 **soft delete**라 부모 행 물리 소멸 없음 = 구조적 dangling 불가(단 stale membership이 위 #580). ③ **신규 컬럼 detail SELECT(#484 (b)-risk)** = `source_type`/`source_id`는 DELETE WHERE절에만 사용(명시 SELECT 아님), `batch_key`는 SELECT 미등장 → 마이그 미적용 시 500 나는 경로 없음. `cashSchedule.ts:104`·`purchaseInvoices.ts:247`의 동명 `source_type`은 **다른 테이블(cash_schedule) 기존 컬럼** = FP.
+> - **backlog↔GitHub 절대값 재동기화**: `gh issue list(OPEN,auto-improve)` 실측 **8건**(#572~#579, 백로그 기재값과 일치) + 이번 신규 #580 = **9**. `search/issues` 실측 done(`reason:completed`) **497**·rejected(`not_planned` 4 + `duplicate` 2) **6** — 둘 다 백로그 기재값과 **정확히 일치**(이번 사이클 close 0건).
+> - **🧬 SKILL 강화 없음(기존 패턴 재현)** — #580은 기존 "형제-비대칭"(#437/#452 IDOR의 **soft-delete 필터 버전**) + "설계 의도(주석·UI)와 구현 불일치" 조합. 새 탐지 클래스가 아니라 이미 코드화된 렌즈를 신규 기능(0476 연락처 그룹)에 적용해 발견. 다만 **soft-delete 필터 비대칭**은 기존 카탈로그가 IDOR/컬럼존재성 축으로만 다뤄 명시 항목이 없었으므로, 향후 Area 4에서 "polymorphic 멤버십 테이블의 부모 조회 시 각 부모 타입별 활성/삭제 필터 대칭성"을 함께 볼 것.
+> - **📌 부수 — 백로그 7차 트림 직후 첫 사이클**: 이 사이클이 다이어트(196KB→63KB) 후 auto-improve 정상 동작 검증을 겸함. 형식 계약 13항목·메타 주석·카운터 전부 보존 확인, 직전 Area4(45회차) 로그 참조 성공(최근 8건 유지분에 포함), done-sync 절대값 3종 일치.
+> - 신규 이슈 1건(#580, issue-only), 자동수정 0건, done-sync new 8→9·done 497·rejected 6. 다음 순번 **Area 5**.
+
+> **Area 3 UX/기능 감사 (2026-07-27T21:35):**
+> - **방법**: `git fetch --deepen=200 origin main`(shallow clone이라 이전 사이클 SHA 확보 위해 확장, HEAD `295b029` = origin/main 일치, 워킹트리 clean, detached). Area 3 **45회차** — 직전 Area3(`1e3a122`/`7dd2105`, 07-26T09:22, 44회차) 이후 `git log 7dd2105..HEAD`는 **78커밋**(대량 churn — MMS/SMS 대량발송+거래처그룹 신기능, 은행 자동매칭/일괄매칭 통합+체크박스 Shift 범위선택 전역 도입, 디자이너 대기함 필드캐리+후가공 도메인 프로파일 A1(가공자↔도메인 매핑)+B단계 배치그룹핑, 발주 목록 법인간거래 토글, 목록 정렬 tie-break 전역 스윕, 카드 썸네일/실적탭 버그수정 다수). general-purpose 에이전트 3개 병렬 파견(①MMS 대량발송+거래처그룹 ②은행 일괄적용+Shift범위선택 전역도입 일관성 ③디자이너 대기함+후가공 도메인 프로파일)로 신규 기능 표면 심층 감사.
+> - **🔴 신규 이슈 7건(#573~#579, 전부 issue-only — Area3 정책상 UI/UX 변경은 자동수정 금지)**:
+>   - **#573 (S, bug)**: 대량발송(SMS/MMS) 버튼에 기존 `safeSubmit` 헬퍼 미적용 — 중복클릭 시 confirm 다이얼로그 중복 노출 후 실제 중복 POST 발생, MMS는 건당 100원 과금이라 이중과금 위험. 동일 수정으로 로딩표시 부재도 해소.
+>   - **#574 (M, improvement)**: 대량발송 부분실패 시 실패 대상자 미노출 + `bulkSelectedRecipients` 초기화로 재발송 경로 자체가 소실(형제 패턴 `bank.js:1312` 카카오 일괄발송 결과모달 존재).
+>   - **#575 (M, bug)**: 디자이너 대기함 일괄 프리필(`ofTrayPrefillRows`) try/catch 없음 — 부분실패 시 무응답 중단 + 캐시 미정리로 중복 프리필 위험(형제 함수 `absorb`는 이미 올바른 패턴 보유).
+>   - **#576 (M, improvement)**: 디자이너 대기함 200건 하드캡 + 키워드/날짜 검색 전무 — 초과분 존재 자체가 무통보.
+>   - **#577 (M, bug)**: 가공자↔도메인 매핑이 자유텍스트 이름 입력 — 오타 시 CEP 측이 조용히 기본 도메인(현수막)으로 폴백, 오늘 도입된 핵심기능 목적 무력화 가능.
+>   - **#578 (M, improvement)**: 은행 일괄적용 3종 묶음 보고 — 커밋 전 미리보기 없음·건별결과 없이 집계토스트뿐(형제 패턴 `orders.js` bulkResultModal 존재)·버튼 로딩표시 없음(형제 `confirmAllTransfers()` 이미 보유).
+>   - **#579 (S, bug)**: `messages.js` 수신자 피커 체크박스가 `tbody`/`data-check-group` 경계 없이 `<label>` 목록이라 신규 shift-select 헬퍼가 document 전체로 폴백 — 현재 무해하나 중첩 피커 시나리오에서 스코프 오염 위험.
+> - **오탐 배제 확인**: 각 에이전트에게 기존 FP 카탈로그(필드명 불일치·explicit-search 패턴·상세모달 링크) 사전 제공, 이미 보고된 #572(N+1 서브요청 한도)와 중복되는 은행 배치 성능 이슈는 재보고 배제(순수 UX 피드백만 분리 보고). "간판(sign) 도메인 관리화면 부재"는 커밋 메시지 자체가 "남은 A1=간판 도메인 탭"으로 이미 인지된 진행중 항목이라 신규 이슈화 보류. "법인간거래 숨김건수 배지"·"그룹멤버 목록 검색"은 저가치 코스메틱 판단해 이슈화 생략.
+> - **backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **8건**(#572 이월 + #573~#579 신규). done(`reason:completed`) **497**·rejected **6** 변동 없음(이번 사이클 close 0건).
+> - **🧬 SKILL 강화 없음(기존 패턴 재현)** — 7건 모두 기존 클래스(safeSubmit 미적용·부분실패 재시도경로 소실·helper-loop 부분실패 무응답·검색/필터 부재·자유텍스트 마스터 매핑 오타·로딩표시 패턴 확립vs부분적용·shift-select 스코프 경계)의 신규 화면 재현. 다만 이번 사이클처럼 **하나의 순환 주기(24h) 안에 78커밋급 대형 churn**이 몰릴 때 general-purpose 에이전트를 기능 단위(메시징/은행/워크벤치)로 쪼개 병렬 파견하는 접근이 유효했음 — Area1/5/6이 이미 채택한 "churn 과다 시 기능 단위 병렬 분할" 패턴의 Area3 버전으로 참고.
+> - 신규 이슈 7건(#573~#579, issue-only), 자동수정 0건, done-sync: new 1→8·done 497·rejected 6. 다음 순번 Area 4.
+>
+
+> **Area 2 코드 품질 심층 분석 (2026-07-27T15:33):**
+> - **방법**: `git fetch origin main`(HEAD `0e0e2d0` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 2 **52회차** — 직전 Area2(`7dd2105`, 07-25T18:18, 51회차) 이후 `git log 7dd2105..HEAD -- src/routes migrations src/scripts`는 **24커밋**(후가공 도메인 프로파일 A1 P1~P4·인테이크 대기함 필드캐리·자금관리 자동매칭/일괄매칭 통합·MMS/SMS 발송·거래처 그룹(신규 contactGroups.ts)·직원 휴가 셀프신청·git 이슈 정책분 다수). 표준 스캔 전부 clean: `entity-audit.mjs`(125파일·SELECT 60·통과60·누락0), 마이그 번호 중복(기존 5쌍만, 신규 0), secret fallback grep(`fax.ts` 기존 FP만).
+> - **general-purpose 에이전트 3개 병렬**로 이번 churn 구간(24커밋) 심층 점검(N+1·dead code / authMiddleware·IDOR 형제완전성·마이그 컬럼존재성 / XSS·CHECK제약):
+>   - **🔴 net-new 확정 — #572 bank.ts batch-apply N+1 심화**: 오늘 커밋 `fb02d25`("일괄매칭+일괄적용 통합")가 `POST /transactions/batch-apply` 루프(`bank.ts:1771`)에 `learnMatchRule` 호출을 신규 추가(+1 서브요청/건). `applyBankTransaction`(:1476) 자체가 이미 경로별 4~6회 순차 D1 호출(claim UPDATE·db.batch·후속 UPDATE·cash_schedule 보조 UPDATE 등)이라 건당 6~9회. 같은 사이클의 `7f6afdf`("체크박스 Shift 범위선택 전역 도입")가 목록(cap 1000)에서 두 클릭으로 전체선택을 가능케 해 "1000건 일괄적용 시 6,000~9,000 서브요청"이라는 새 경로가 열림(Worker 서브요청 한도 1000/req 초과 위험). Area 2 SKILL의 "N+1 3번째 축"(#478) 표준 패턴과 동일 클래스 — write-path 배치 세만틱 정책 판단 필요해 **issue-only**로 #572 등록.
+>   - authMiddleware 커버리지(recursive) 후보 5건 전부 FP(순수헬퍼 `.get(` 오탐 3·`cron.ts` agentKeyMiddleware·`hrSelf.ts` scoped-token) — net-new 0.
+>   - entity_id/IDOR 형제-비대칭: 신규 `contactGroups.ts`(거래처 그룹, `migrations/0476`에 entity_id 컬럼 자체 없음=법인공유 자산 정책 명시, `clients.ts` 동일 정책과 일치)·`claims.ts`/`returns.ts`(#567 AR 자동조정, mutate 직전 entityFilter 선행 확인) 전부 정상. (참고: `messages.ts:606-611` send-bulk의 employees 타깃 조회가 entity 필터 없음을 확인했으나 이번 churn 이전부터 존재하는 코드라 범위 밖, 다음 사이클 참고용 메모만.)
+>   - 신규 마이그 0472~0476(intake_field_carry·worker_domains·fixed_expenses backfill·adjustments source_type·contact_groups) 컬럼 존재성 전수 대조 — INSERT/SELECT 컬럼 전부 일치, net-new 0.
+>   - 명시 컬럼 SELECT 존재성(~20건)·CHECK 제약 literal write·SPA innerHTML XSS(messages.js/employeeSelf.js/myLeave.js/hrDetail.js/postProcessing.js/orderForm intake.js) 전부 clean — net-new 0(dashboard.js po_number/supplier_name escapeHtml은 오늘 별도 커밋 `a7ff772`로 이미 수정됨 확인).
+> - **자동수정 0건**(발견 1건이 write-path 배치정책 판단 필요해 issue-only). **신규 이슈 1건(#572)**.
+> - **backlog↔GitHub 절대값 재동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **1건**(#572, 직전 사이클 open 18건 전부 owner가 completed close 확인) → new **1**. `search_issues(reason:completed)` **497**(직전 479+18) → done **497**. rejected(not_planned 4 + duplicate 2) **6** 변동 없음.
+> - **🧬 SKILL 강화 없음** — 이번 사이클 발견은 기존 "N+1 3번째 축"(#478) 클래스의 재현(신규 클래스 아님).
+> - done-sync: new 1·done 497·rejected 6. 다음 순번 Area 3.
+>
+
+
+---
 ## 📦 2026-07-28 이관분 (9차 자동 트림 — scripts/backlog-trim.cjs)
 
 > 사이클 로그 5건. 원본 순서(시간 역순) 보존. 활성 파일은 최근 8건 유지.
