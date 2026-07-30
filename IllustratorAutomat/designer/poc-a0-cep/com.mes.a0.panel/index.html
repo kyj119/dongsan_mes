@@ -73,7 +73,10 @@
         <input id="qty" type="text" value="1" class="short" />
         <span class="cfg">이 건의 최종 수량 — 주문서 라인 수량으로 프리필됩니다</span>
       </div>
-      <div class="row">
+      <!-- 후가공 = 단건·묶음 공용 1벌. 탭 전환 때 finHostSingle ↔ finHostBundle 로 이동한다.
+           (복제하지 않는 이유 = id 중복 + 두 벌이 되면 값이 갈려 어느 쪽이 등록됐는지 알 수 없다) -->
+      <div id="finHostSingle"></div>
+      <div class="row" id="finToggleRow">
         <button id="finToggle" type="button" class="disc">▸ 후가공 <span class="cfg">마감·돔보·펀칭·주석</span></button>
       </div>
       <div id="finBody" class="hidden">
@@ -164,17 +167,19 @@
         <span class="cfg">0=겹칠 때만 병합 · 음수=더 잘게 · 양수=병합</span>
       </div>
       <div class="row punchrow">
-        <label for="seedQty">담을 때 수량</label>
+        <label for="seedQty">기본수량</label>
         <input id="seedQty" type="text" value="1" class="tiny" />
-        <span class="cfg">＋개별·＋묶음분리·자동감지로 담는 행에 채워지는 초기값 — 이미 담긴 행은 안 바뀌고, 확정 수량은 각 행에서 수정</span>
+        <span class="cfg">새로 담는 행에 채워지는 값 — 이미 담긴 행은 안 바뀌고, 확정 수량은 각 행에서 수정</span>
       </div>
       <div class="row buttons">
         <button id="btnQueueAdd" type="button">＋ 개별</button>
         <button id="btnQueueBatch" type="button">＋ 묶음분리</button>
         <button id="btnAutoDetect" type="button" title="선택 없이 문서 전체에서 디자인 자동 감지(시드) — 틀리면 삭제·개별 추가로 교정">◎ 자동감지</button>
       </div>
-      <div class="row"><span class="cfg">행 클릭=일러에서 그 조각 선택 + 폼 연동(단건 탭 후가공 수정이 그 행에 반영, 다시 클릭=해제)</span></div>
+      <div class="row"><span class="cfg">행 클릭=일러에서 그 조각 선택 + 폼 연동(아래 후가공 수정이 그 행에 즉시 반영, 다시 클릭=해제)</span></div>
       <div id="queueBox" class="queuebox"></div>
+      <!-- 후가공 접이식이 탭 전환 때 여기로 옮겨 온다(폼은 1벌 — id 중복·값 갈림 방지). main.js moveFinishingTo() -->
+      <div id="finHostBundle"></div>
       <div class="row buttons">
         <button id="btnReview" type="button" title="큐 전체를 가공해 검토문서(디자인당 아트보드)로 생성 — 저장 없음, 확인 후 확정 가능" disabled>검토문서</button>
         <button id="btnConfirm" type="button" class="primary" disabled>일괄 확정 (0)</button>

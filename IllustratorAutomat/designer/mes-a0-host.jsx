@@ -12,7 +12,8 @@
 //   0.1.2 = 출력 경계선(백색 테두리) on/off — 원본 테두리와 겹쳐 두 줄로 보이던 건 (2026-07-29)
 //   0.1.3 = 수량 3분화 — 단건=최종값 · 묶음=새 행 기본값 · 모아찍기=수량 안 받음 (2026-07-29)
 //   0.1.4 = work.ai PDF 합성부 제외(용량 −52%) + 임베드 래스터 계측·경고 (2026-07-30)
-var MESA0_VERSION = 'A0-CEP-0.1.4';
+//   0.1.5 = 돔보 선택 시 재단선 사각(레이어 '재단선') + DXF 내보내기·_출력 복사 (2026-07-30)
+var MESA0_VERSION = 'A0-CEP-0.1.5';
 var MESA0_REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
 var MESA0_PT_PER_MM = 72 / 25.4;
 var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];
@@ -20,6 +21,9 @@ var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];
 // 실측 근거(2026-07-30): 107MB work.ai = 임베드 49개 54.1MB 중 10개가 각 면적의 67%가 밖.
 // 안 완전포함 39개는 0% → 30 은 정상 디자인을 오탐하지 않는 하한.
 var MESA0_RASTER_OUT_PCT = 30;
+// 재단선 레이어명 — mes-sheet.jsx 의 CUT_LAYER 와 **같은 이름·같은 규약**(M100 실선 0.6)이어야 한다.
+// DXF 는 이 레이어만 남기고 나머지를 숨겨 내보내므로, 이름이 갈리면 빈 DXF 가 나간다.
+var MESA0_CUT_LAYER = '재단선';
 
 // ── 유틸 (mes-core 포팅) ──
 function mesA0_readText(path) {
@@ -311,7 +315,7 @@ function mesA0_process() {
   //   아래에서 db(클립 존중)로 다시 잡는다). ub 를 클립 기준으로 바꾼 것과 무관하게 기존 동작 보존.
   var cvB = vbAll || ub;
   var newDoc = app.documents.add(DocumentColorSpace.CMYK, (cvB[2] - cvB[0]) || 100, (cvB[1] - cvB[3]) || 100);
-  var okAll = false, outlineFailed = false, epsName = null, diagItems = 0, normed = 0;
+  var okAll = false, outlineFailed = false, epsName = null, dxfName = null, diagItems = 0, normed = 0;
   try {
     app.activeDocument = newDoc;
     app.paste(); // 신규문서 중앙에 붙음(절대위치는 이후 정규화로 원점 이동)
@@ -398,10 +402,14 @@ function mesA0_process() {
           ln.strokeColor = mCol; ln.strokeWidth = 0.6;
           if (dashed) ln.strokeDashes = [MDASH, MDASH]; // 재단선=점선
         }
-        if (finMark.top) markLine(oL, oT, oR, oT, finMark.top === 'cut');
-        if (finMark.bottom) markLine(oL, oB, oR, oB, finMark.bottom === 'cut');
-        if (finMark.left) markLine(oL, oT, oL, oB, finMark.left === 'cut');
-        if (finMark.right) markLine(oR, oT, oR, oB, finMark.right === 'cut');
+        // 돔보를 켜면 아래에서 디자인 테두리 사방에 재단선 사각(레이어 '재단선')을 그린다 →
+        // 변별 'cut' 마크는 같은 자리에 겹쳐 색만 다른 선이 두 겹으로 남으므로 생략한다.
+        // 'fold'(접는선)는 목적이 달라(마감) 그대로 그린다.
+        function wantMark(side) { var m = finMark[side]; return m && !(trim && m === 'cut'); }
+        if (wantMark('top')) markLine(oL, oT, oR, oT, finMark.top === 'cut');
+        if (wantMark('bottom')) markLine(oL, oB, oR, oB, finMark.bottom === 'cut');
+        if (wantMark('left')) markLine(oL, oT, oL, oB, finMark.left === 'cut');
+        if (wantMark('right')) markLine(oR, oT, oR, oB, finMark.right === 'cut');
       }
 
       // 여백 포함 바깥 테두리 백색 선 (도련 대신 — RIP가 여백까지 출력영역으로 포함하도록)
@@ -483,6 +491,22 @@ function mesA0_process() {
       }
 
       if (trim) {
+        // ── 재단선(디자인 테두리 사방) = 돔보와 한 쌍 ──
+        // 돔보는 재단 기준 마크이므로 재단선 없이는 반쪽이다(2026-07-30 실사용 지시).
+        // 규약은 mes-sheet.jsx:386~393 과 동일 — 레이어 '재단선' · M100 실선 0.6 · 조각 외곽 사각.
+        // 위치 = 디자인 경계(마감 여백 제외) = 기존 변별 마크와 같은 기준.
+        // work.ai 는 이 블록 앞에서 이미 저장됐으므로 영향 없다(정제본 유지).
+        var cutLayer = null;
+        for (var cly = 0; cly < newDoc.layers.length; cly++) {
+          if (newDoc.layers[cly].name === MESA0_CUT_LAYER) { cutLayer = newDoc.layers[cly]; break; }
+        }
+        if (!cutLayer) { cutLayer = newDoc.layers.add(); cutLayer.name = MESA0_CUT_LAYER; }
+        try {
+          var cCol = new CMYKColor(); cCol.cyan = 0; cCol.magenta = 100; cCol.yellow = 0; cCol.black = 0;
+          var cRect = cutLayer.pathItems.rectangle(oT, oL, oR - oL, oT - oB); // rectangle(top,left,width,height)
+          cRect.stroked = true; cRect.filled = false; cRect.strokeColor = cCol; cRect.strokeWidth = 0.6;
+        } catch (eCut) {}
+
         var ar = newDoc.artboards[0].artboardRect;
         var tL = ar[0], tT = ar[1], tR = ar[2], tB = ar[3];
         var DOMBO_DIAM = 6 * MESA0_PT_PER_MM / sN;
@@ -538,10 +562,40 @@ function mesA0_process() {
       epsOpts.embedAllFonts = true;
       newDoc.saveAs(epsFile, epsOpts);
 
+      // ── DXF (돔보 선택 시만 · 재단선 레이어만) ──
+      // 트리거를 돔보로 둔 이유 = 돔보를 쓰는 건이 곧 재단하는 건이다(2026-07-30 지시).
+      // 규약·옵션은 mes-sheet.jsx:450~468 과 동일(R21·mm·MaximumEditability).
+      // ⚠️ 레이어 가시성을 되돌리지 않으면 이어지는 검토문서 이관·썸네일이 재단선만 남은 문서를 본다 →
+      //    복원은 finally 성격으로 반드시 실행한다.
+      if (trim) {
+        var visSaved = [];
+        try {
+          for (var lv = 0; lv < newDoc.layers.length; lv++) {
+            visSaved.push(newDoc.layers[lv].visible);
+            newDoc.layers[lv].visible = (newDoc.layers[lv].name === MESA0_CUT_LAYER);
+          }
+          var dxfCand = epsName.replace(/\.eps$/i, '.dxf');
+          var dxfFile = new File(jobFolder.fsName + '/' + dxfCand);
+          var dxfOpts = new ExportOptionsAutoCAD();
+          dxfOpts.exportFileFormat = AutoCADExportFileFormat.DXF;
+          dxfOpts.version = AutoCADCompatibility.AutoCADRelease21;
+          dxfOpts.unit = AutoCADUnit.Millimeters;
+          dxfOpts.scaleLineweights = false;
+          try { dxfOpts.exportOption = AutoCADExportOption.MaximumEditability; } catch (eDOpt) {}
+          newDoc.exportFile(dxfFile, ExportType.AUTOCAD, dxfOpts);
+          dxfName = dxfCand; // 성공했을 때만 채운다 = manifest·반환값이 없는 파일을 가리키지 않게
+        } catch (eDxf) {}
+        for (var lr = 0; lr < newDoc.layers.length && lr < visSaved.length; lr++) {
+          try { newDoc.layers[lr].visible = visSaved[lr]; } catch (eVs) {}
+        }
+      }
+
       try {
         var outDir = new Folder(MESA0_REGISTER_ROOT + '/_출력/' + ymd);
         if (!outDir.exists) outDir.create();
         epsFile.copy(outDir.fsName + '/' + epsName);
+        // 재단기 픽업 지점 — EPS와 같은 폴더에 둔다(판짜기 mes-sheet.jsx:485 와 동일 규칙)
+        if (dxfName) new File(jobFolder.fsName + '/' + dxfName).copy(outDir.fsName + '/' + dxfName);
       } catch (eCp) {}
       } // !review
     }
@@ -603,7 +657,8 @@ function mesA0_process() {
     measured_cm: { w: Math.round(realW * 10) / 10, h: Math.round(realH * 10) / 10 },
     mode: mode,
     order_item_id: orderItemId,
-    files: { work_ai: 'work' + sfx + '.ai', eps: epsName, thumb: 'thumb' + sfx + '.png', work_bytes: workBytes },
+    // dxf = 돔보 선택 시 재단선 레이어만 담은 재단 데이터(없으면 null). ingest 는 무시 — 추적용
+    files: { work_ai: 'work' + sfx + '.ai', eps: epsName, dxf: dxfName, thumb: 'thumb' + sfx + '.png', work_bytes: workBytes },
     batch_folder: batchFolder || null,
     batch_index: (P.batch_index != null && P.batch_index !== '') ? P.batch_index : null,
     outline_failed: outlineFailed,
@@ -620,6 +675,7 @@ function mesA0_process() {
     (pfOversize > 0 ? 'E' : '');
   return '{"ok":true,"folder":"' + mesA0_jsonEsc(folderName) + '","eps":' +
     (epsName ? ('"' + mesA0_jsonEsc(epsName) + '"') : 'null') +
+    ',"dxf":' + (dxfName ? ('"' + mesA0_jsonEsc(dxfName) + '"') : 'null') +
     ',"w":' + (Math.round(realW * 10) / 10) + ',"h":' + (Math.round(realH * 10) / 10) +
     ',"items":' + diagItems + ',"normed":' + normed +
     ',"bytes":' + workBytes + ',"oversize":' + pfOversize +

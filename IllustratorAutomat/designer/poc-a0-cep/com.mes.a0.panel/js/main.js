@@ -132,6 +132,17 @@
     // 후가공 접이식(단건 탭 안) — 최상위 탭에서 강등. 모아찍기엔 아예 존재하지 않는 개념이라
     //   "잠긴 채 자리만 차지하는 탭"이 사라진다.
     var elFinToggle = $('finToggle'), elFinBody = $('finBody');
+    // 후가공은 단건·묶음 공용 1벌 — 탭 전환 때 폼 자체를 옮긴다(2026-07-30).
+    //   묶음도 후가공이 필요한데 폼이 단건 탭 안에만 있어 "묶음엔 후가공이 없다"로 보였다.
+    //   기능은 원래 있었다(행 연동 → syncBoundRow 가 그 행에만 반영) — 없던 것은 접근 경로다.
+    //   복제 대신 이동인 이유 = id 중복 금지 + 두 벌이면 값이 갈려 등록된 쪽을 특정할 수 없다.
+    var elFinToggleRow = $('finToggleRow'), elFinHostSingle = $('finHostSingle'), elFinHostBundle = $('finHostBundle');
+    function moveFinishingTo(host) {
+      if (!host || !elFinToggleRow || !elFinBody) return;
+      if (elFinToggleRow.parentNode === host) return; // 이미 그 자리 = 재부착 금지(포커스·접힘 유실 방지)
+      host.appendChild(elFinToggleRow);
+      host.appendChild(elFinBody);
+    }
     // 모아찍기 탭 전용
     var elImposeBox = $('imposeBox'), elImposeGap = $('imposeGap');
     var elBtnImposeSplit = $('btnImposeSplit'), elBtnImposeDetect = $('btnImposeDetect');
@@ -434,7 +445,11 @@
     //   host.jsx 는 `mode !== 'impose'` 에서만 후가공을 쓰므로, 값이 남아 있으면 manifest 에만
     //   실려 "기록됐는데 안 먹는" 상태가 된다(intake #28 실증).
     function applyTabUi() {
-      if (modeValue() === 'impose') clearFinishing();
+      var mv = modeValue();
+      if (mv === 'impose') clearFinishing();
+      // ⚠️ 폼 위치는 modeValue() 로 판단하면 안 된다 — 묶음 탭도 modeValue()='single' 이다(:407,
+      //    행 mode 가 전부 single 이라 그렇게 설계됨). 위치는 '어느 탭을 보고 있나'라서 activeTab().
+      else moveFinishingTo(activeTab() === 'bundle' ? elFinHostBundle : elFinHostSingle);
       // config 로드(restoreSettings→setMode)가 큐 초기화보다 먼저 도는 경로가 있다 —
       //   그때 queue 는 아직 undefined 다. 여기서 막지 않으면 패널이 통째로 죽는다.
       //   이후 DOMContentLoaded 끝의 renderQueue() 가 게이트·버튼을 정리한다.
@@ -533,6 +548,7 @@
           var msg = '가공 완료 ✓\n등록: ' + (params.client_name || '(파일명)') + ' · 수량 ' + params.qty +
             '\n실물: ' + r.w + ' × ' + r.h + ' cm' + (params.scale_n > 1 ? (' (파일 1/' + params.scale_n + ')') : '') +
             '\n' + (r.eps ? ('EPS: ' + r.eps) : '(모아찍기용 — work.ai만)') +
+            (r.dxf ? ('\nDXF: ' + r.dxf + ' (재단선 — 돔보 선택분)') : '') +
             '\n폴더: ' + r.folder + warnText(r.warn) +
             '\n[diag] 아이템 ' + r.items + ' · 정규화 ' + r.normed + mbText(r.bytes) +
             '\n→ 에이전트 ingest 후 대기함에 표시됩니다.';
@@ -938,7 +954,7 @@
           for (var k = 0; k < results.length; k++) {
             var r = results[k];
             // 모아찍기 = 100MB급 work.ai 가 실제로 나온 경로 → 행별로 용량·경고를 반드시 노출한다.
-            if (r && r.ok) { okN++; lines.push('#' + (k + 1) + ' ✓ ' + (r.eps || '(work.ai)') + mbText(r.bytes) + warnText(r.warn).replace(/\n/g, ' ')); }
+            if (r && r.ok) { okN++; lines.push('#' + (k + 1) + ' ✓ ' + (r.eps || '(work.ai)') + (r.dxf ? ' +DXF' : '') + mbText(r.bytes) + warnText(r.warn).replace(/\n/g, ' ')); }
             else { failN++; lines.push('#' + (k + 1) + ' ✗ ' + (r ? r.err : '?')); }
           }
           out('일괄 확정 완료: 성공 ' + okN + ' / 실패 ' + failN + '\n폴더: ' + batchFolder + '\n' + lines.join('\n') + '\n→ 에이전트 ingest 후 대기함', failN ? 'err' : 'okmsg');
