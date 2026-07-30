@@ -51,6 +51,8 @@ input.grow { flex: 1; }
 .punchrow .unit { min-width: 0; }
 
 .saved { color: #8ec5ff; font-size: 11px; }
+/* 가공자 도메인 미지정 — 전사(봉제) 방식이 통째로 안 보이는 상태를 눈에 남긴다(조용한 폴백 차단) */
+.saved.warn { color: #e8b45a; }
 .meas { flex: 1; color: #d9c68a; font-size: 11px; }
 
 .rad { display: inline-flex; align-items: center; gap: 3px; color: #c4c4c4; }

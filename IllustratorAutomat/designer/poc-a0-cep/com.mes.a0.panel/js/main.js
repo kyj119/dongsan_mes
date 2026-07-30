@@ -6,7 +6,11 @@
 (function () {
   'use strict';
 
-  var ROSTER = ['인호동', '김보연', '정소은', '김영주'];
+  // 껍데기(index.html · main.js · style.css) 버전 — 축3/축4 배포 여부를 사람이 눈으로 확인하는 유일한 수단.
+  //   우상단 표시는 여태 host(mesA0_ping = MESA0_VERSION, 축2 = Z: 1곳)만 보여줬다. 껍데기는 PC 별
+  //   복사 설치라서 재설치를 안 한 PC 도 최신 번호로 보였다(2026-07-30 점검에서 확인).
+  //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다.
+  var SHELL_VERSION = '0.1.9';
   var STORE_WORKER = 'mes_a0_worker';
   var STORE_SETTINGS = 'mes_a0_settings';
   var CONFIG_PATH = 'Z:/DESIGNS/IA-등록/_config/config.json';
@@ -116,7 +120,24 @@
       applyTabUi();
     }
     for (var t = 0; t < tabs.length; t++) {
-      tabs[t].addEventListener('click', function () { activateTab(this.getAttribute('data-tab')); });
+      tabs[t].addEventListener('click', function () {
+        var target = this.getAttribute('data-tab');
+        // ★사용자가 탭을 옮기면 행 연동을 끊는다(2026-07-30 점검). 연동이 탭을 넘어 살아 있으면
+        //   다른 탭의 폼 상태가 그 행으로 흘러들어간다 — 재현 확인된 사고 2건:
+        //     H1) 모아찍기 행 연동 → 단건 탭 → 입력 하나 → 그 행이 single 로 변질돼 [등록]이
+        //         잠기고 "단건 용도 행이 섞여 있습니다"가 뜬다. 비우고 재분리 외엔 복구 불가.
+        //     H2) 묶음 행 연동 → 모아찍기 탭(clearFinishing) → 입력 하나 → 그 행의 마감이 소실.
+        //   ⚠️ activateTab() 안에 두면 안 된다 — toggleBind → applyRowToForm → setMode 가
+        //      activateTab 을 부르므로 방금 맺은 연동이 즉시 끊긴다.
+        if (target !== activeTab()) unbindRow();
+        activateTab(target);
+      });
+    }
+    // 연동 해제(행 선택만 풀고 폼 값은 건드리지 않는다 — 다음 담기에 그대로 쓰인다)
+    function unbindRow() {
+      if (bound < 0) return;
+      bound = -1;
+      if (queue) renderQueue(); // config 로드가 큐 초기화보다 먼저 도는 경로가 있다(:463 주석과 동일)
     }
 
     var elWorker = $('worker'), elSaved = $('saved'), elVer = $('ver');
@@ -183,22 +204,59 @@
     function out(t, cls) { if (elOut) { elOut.textContent = t; elOut.className = 'out' + (cls ? ' ' + cls : ''); } }
     function setCfg(t) { if (elCfg) elCfg.textContent = t; }
 
-    // ── 버전 ──
-    csi.evalScript('mesA0_ping()', function (v) { if (elVer) elVer.textContent = v ? ('· ' + v) : '· (host?)'; });
+    // ── 버전 = 로직(축2) + 화면(축3/축4) 두 축을 함께 보여준다 ──
+    //   하나만 보여주면 "Z: 로직은 최신인데 껍데기는 구버전"인 PC 를 구분할 수 없다.
+    csi.evalScript('mesA0_ping()', function (v) {
+      if (elVer) elVer.textContent = '· ' + (v || '(host?)') + ' / 화면 ' + SHELL_VERSION;
+    });
 
-    // ── 가공자 roster + 영속 ──
-    for (var i = 0; i < ROSTER.length; i++) {
-      var o = document.createElement('option'); o.value = ROSTER[i]; o.textContent = ROSTER[i]; elWorker.appendChild(o);
+    // ── 가공자 명단 = config 정본(하드코딩 제거, 2026-07-30) ──
+    //   1순위 = 도메인 매핑(designer_worker_domains)이 있는 사람. → '가공자 담당 도메인' 화면이
+    //           곧 명단 관리 화면이 된다. 매핑 없는 테스트·레거시 DESIGNER 계정이 목록에 뜨는 것을
+    //           구조적으로 막고, 사람이 바뀌어도 PC 재설치가 필요 없다.
+    //   2순위(폴백) = config.workers 전량 + 경고. 매핑이 0건인 동안 패널이 죽지 않게.
+    //   ⚠️ 이전 하드코딩 배열(ROSTER 4명)은 config.workers 와 정본이 둘이라, 이름이 어긋나면
+    //      registered_by_id 가 null 이 되어 "내 작업" 필터에서 조용히 누락됐다.
+    function fillWorkerSelect() {
+      if (!elWorker) return;
+      var prev = elWorker.value;
+      var stored = null;
+      try { stored = window.localStorage.getItem(STORE_WORKER); } catch (e) {}
+      var mapped = [];
+      for (var i = 0; i < workers.length; i++) if (workerDomains[workers[i].name]) mapped.push(workers[i]);
+      var list = mapped.length ? mapped : workers;
+      elWorker.innerHTML = '';
+      if (!list.length) {
+        var none = document.createElement('option');
+        none.value = ''; none.textContent = '(config 없음)';
+        elWorker.appendChild(none);
+        return;
+      }
+      for (var k = 0; k < list.length; k++) {
+        var o = document.createElement('option'); o.value = list[k].name; o.textContent = list[k].name;
+        elWorker.appendChild(o);
+      }
+      // 직전 선택은 목록에 남아 있을 때만 복원한다 — 명단에서 빠진 사람이 선택돼 있으면
+      //   조용히 다른 사람 이름으로 등록되는 것보다 첫 항목으로 떨어지는 편이 안전하다.
+      var want = prev || stored || '';
+      for (var m = 0; m < list.length; m++) if (list[m].name === want) { elWorker.value = want; break; }
     }
-    var storedW = null;
-    try { storedW = window.localStorage.getItem(STORE_WORKER); } catch (e) {}
-    if (storedW && ROSTER.indexOf(storedW) !== -1) elWorker.value = storedW;
     function showSaved() {
       if (!elSaved) return;
-      var dom = workerDomains[elWorker.value] || 'output';
-      elSaved.textContent = '신원: ' + (elWorker.value || '(없음)') + ' · ' + (DOMAIN_LABEL[dom] || dom);
+      var w = elWorker.value || '';
+      if (!w) { elSaved.textContent = '신원: (없음)'; elSaved.className = 'saved'; return; }
+      var dom = workerDomains[w];
+      if (!dom) {
+        // ★조용한 폴백이 사고다 — 매핑이 없으면 currentDomain() 이 'output' 으로 떨어져
+        //   전사(봉제) 방식·프리셋이 드롭다운에서 통째로 사라지는데 화면엔 아무 표시가 없었다.
+        //   실측(2026-07-30): config worker_domains 0건 = 전원이 현수막으로 고정된 상태였다.
+        elSaved.textContent = '신원: ' + w + ' · ⚠도메인 미지정(현수막만 보임)';
+        elSaved.className = 'saved warn';
+        return;
+      }
+      elSaved.textContent = '신원: ' + w + ' · ' + (DOMAIN_LABEL[dom] || dom);
+      elSaved.className = 'saved';
     }
-    showSaved();
     elWorker.addEventListener('change', function () {
       try { window.localStorage.setItem(STORE_WORKER, elWorker.value); } catch (e) {}
       showSaved();
@@ -333,9 +391,10 @@
         clientList = (data && data.clients) ? data.clients : [];    // 거래처 자동완성
         ok = true;
       } catch (e) { console.warn('[mes-a0-cep] config parse fail', e); }
+      fillWorkerSelect(); // 명단 = config 정본(매핑 우선 → 없으면 전량). showSaved 보다 먼저.
       fillMethodSelects();
       fillPresets();
-      showSaved(); // 도메인 라벨 반영
+      showSaved(); // 도메인 라벨·미지정 경고 반영
       setCfg(ok ? ('config ✓ 마감 ' + methods.length + '종 · 프리셋 ' + presets.length +
         (clientList.length ? (' · 거래처 ' + clientList.length) : '') +
         (workers.length ? (' · 가공자 ' + workers.length) : '')) : 'config 파싱 실패 — 마감 수동 입력');
@@ -350,7 +409,12 @@
       // 폴백: host(ExtendScript)로 한글경로 읽기
       csi.evalScript('mesA0_config()', function (res) {
         if (res && res.length) applyConfig(res);
-        else { methods = []; presets = []; fillMethodSelects(); fillPresets(); setCfg('config 없음(Z: 미마운트?) — 마감 수동 입력'); }
+        else {
+          methods = []; presets = []; workers = [];
+          fillWorkerSelect(); // 가공자 칸이 빈 채로 남지 않게 — '(config 없음)'을 명시한다
+          fillMethodSelects(); fillPresets();
+          setCfg('config 없음(Z: 미마운트?) — 가공자·마감 목록을 불러올 수 없습니다');
+        }
       });
     })();
 
@@ -492,15 +556,7 @@
         top: elATop ? !!elATop.checked : false, bottom: elABottom ? !!elABottom.checked : false,
         left: elALeft ? !!elALeft.checked : false, right: elARight ? !!elARight.checked : false
       };
-      // 모아찍기는 후가공이 없다(host.jsx `mode !== 'impose'` 게이트). UI 초기화(clearFinishing)와
-      // **별개로 전송 단계에서도 잘라낸다** — 화면 경로가 하나라도 새면 manifest 에 그대로 실린다.
-      // post_desc(파일명 세그먼트)도 아래에서 빈 finishing 기준으로 재계산되어 ''가 된다.
-      if (modeValue() === 'impose') {
-        finishing = {};
-        punchObj = { top: 0, bottom: 0, left: 0, right: 0, corners: { tl: false, tr: false, bl: false, br: false } };
-        annotPos = { top: false, bottom: false, left: false, right: false };
-      }
-      return {
+      var ret = {
         worker_name: elWorker.value || null,
         registered_by_id: workerIdOf(elWorker.value), // config.workers 매핑 → manifest worker_id("내 작업" 상관)
         client_name: elClient ? (elClient.value || '') : '',
@@ -516,6 +572,29 @@
         annot_pos: annotPos,
         finishing: finishing, order_item_id: null
       };
+      // 모아찍기는 후가공이 없다(host.jsx `mode !== 'impose'` 게이트). UI 초기화(clearFinishing)와
+      // **별개로 전송 단계에서도 잘라낸다** — 화면 경로가 하나라도 새면 manifest 에 그대로 실린다.
+      if (ret.mode === 'impose') stripFinishing(ret);
+      return ret;
+    }
+    // 후가공 제거 = 한 규칙(2026-07-30). 전엔 gatherParams 안에만 있어서, 행에 적용하는 경로들이
+    //   각자 판단해야 했다. 규칙이 둘이면 갈린다(services/messageBulkLimit 선례와 같은 정리).
+    function stripFinishing(p) {
+      p.finishing = {};
+      p.punch = { top: 0, bottom: 0, left: 0, right: 0, corners: { tl: false, tr: false, bl: false, br: false } };
+      p.annot_pos = { top: false, bottom: false, left: false, right: false };
+      p.post_desc = ''; // 파일명 세그먼트도 빈 finishing 기준으로 되돌린다
+      return p;
+    }
+    // ★행의 용도(mode)는 '담을 때' 확정된 값이 정본이다 — 폼(=현재 탭)이 행의 용도를 바꿔선 안 된다.
+    //   modeValue() 가 활성 탭에서 파생되므로(:407) 이 고정이 없으면 탭을 옮긴 뒤의 어떤 반영도
+    //   행 용도를 뒤집는다. 연동 해제(탭 클릭)와 **둘 다** 있어야 경로가 닫힌다.
+    function keepRowMode(p, e) {
+      var rowMode = (e && e.params && e.params.mode) ? e.params.mode : null;
+      if (!rowMode) return p;
+      p.mode = rowMode;
+      if (rowMode === 'impose') stripFinishing(p);
+      return p;
     }
     // E = 임베드 이미지가 디자인 밖까지 큰 상태(host 계측 warn 'E'). 잘려 안 보이는 부분까지 파일에 저장돼
     //     용량이 급증하는데 스크립트로는 줄일 수 없다 → 디자이너가 원본에서 정리해야 한다(유일한 근본 수단).
@@ -717,6 +796,7 @@
         var e = queue[idx[k]];
         if (!e) continue;
         var p = JSON.parse(JSON.stringify(base));
+        keepRowMode(p, e); // 행 용도 보존 — 모아찍기 행에 후가공이 실리지 않게
         p.qty = e.qty;
         if (!e.keyword && formKw) e.keyword = formKw; // 행 표시(qkw)도 같이 정합
         p.keyword = e.keyword || '';
@@ -770,7 +850,12 @@
       bound = i;
       applyRowToForm(queue[i]);
       renderQueue();
-      var baseMsg = '#' + (i + 1) + ' 행 연동 중 — [단건] 탭의 설정·후가공 수정이 이 행에 반영됩니다 (행 다시 클릭=해제)';
+      // 문구를 행 용도에 맞춘다 — 모아찍기 행에 "후가공 수정이 반영됩니다"는 거짓이고(후가공 없음),
+      //   후가공 폼은 이제 묶음 탭에도 있으므로 "[단건] 탭의"도 사실과 다르다.
+      //   탭을 옮기면 연동이 끊기므로(위 탭 클릭 핸들러) 그 사실도 함께 알린다.
+      var baseMsg = (queue[i].params && queue[i].params.mode === 'impose')
+        ? '#' + (i + 1) + ' 행 선택 — 일러에서 이 조각을 보여줍니다 (모아찍기는 후가공이 없습니다 · 다시 클릭=해제)'
+        : '#' + (i + 1) + ' 행 연동 중 — 후가공 폼의 수정이 이 행에 반영됩니다 (다시 클릭=해제 · 탭을 옮기면 자동 해제)';
       out(baseMsg);
       // P3(2026-07-29): 이 행이 **어느 그룹인지** 일러에서 보여준다 — 원본 조각을 선택.
       //   mesA0_queueSelect 는 검토·확정 루프가 이미 쓰던 함수를 그대로 재사용(재구현 금지).
@@ -825,8 +910,8 @@
     // 연동 행에 현재 폼 반영 — gatherParams 재사용으로 post_desc(파일명 세그먼트)·주석 게이트까지 행별 재계산
     function syncBoundRow() {
       if (bound < 0 || bound >= queue.length) return;
-      var p = gatherParams();
       var e = queue[bound];
+      var p = keepRowMode(gatherParams(), e); // 행 용도는 폼이 바꾸지 않는다
       p.qty = e.qty;   // 행 수량 보존 — 폼(#qty)은 단건 전용이라 행을 덮어쓰면 안 된다
       e.params = p;
       e.client = p.client_name || '';
@@ -1027,23 +1112,44 @@
           else { seqForRow[qi] = qi + 1; }
         }
         function finishBatch() {
-          var okN = 0, failN = 0, lines = [];
+          var okN = 0, failN = 0, lines = [], okIdx = [];
           for (var k = 0; k < results.length; k++) {
             var r = results[k];
             // 모아찍기 = 100MB급 work.ai 가 실제로 나온 경로 → 행별로 용량·경고를 반드시 노출한다.
-            if (r && r.ok) { okN++; lines.push('#' + (k + 1) + ' ✓ ' + (r.eps || '(work.ai)') + (r.dxf ? ' +DXF' : '') + mbText(r.bytes) + warnText(r.warn).replace(/\n/g, ' ')); }
+            if (r && r.ok) { okN++; okIdx.push(k); lines.push('#' + (k + 1) + ' ✓ ' + (r.eps || '(work.ai)') + (r.dxf ? ' +DXF' : '') + mbText(r.bytes) + warnText(r.warn).replace(/\n/g, ' ')); }
             else { failN++; lines.push('#' + (k + 1) + ' ✗ ' + (r ? r.err : '?')); }
           }
           // 검토가 선택 사항이 된 뒤로는 '검토 없이 확정했다'는 사실을 결과에 남긴다(추적 수단)
           var unrev = (reviewedRev !== queueRev) && !queueAllImpose();
-          out('일괄 확정 완료: 성공 ' + okN + ' / 실패 ' + failN + (unrev ? ' (미검토 확정)' : '') +
-            '\n폴더: ' + batchFolder + '\n' + lines.join('\n') + '\n→ 에이전트 ingest 후 대기함', failN ? 'err' : 'okmsg');
-          csi.evalScript('mesA0_queueClear()', function () {});
-          csi.evalScript('mesA0_reviewDiscard()', function () {}); // 검토문서 정리(저장물과 무관)
-          queue = []; bound = -1; renderQueue(); reenable();
-          clearFinishing(); // 일괄 등록 완료 = 후가공 리셋(단건 경로와 동일 규칙)
-          saveSettings();
-          if (typeof onDone === 'function') onDone(okN, failN);
+          // ★성공분만 큐에서 뺀다(2026-07-30 점검). 전엔 실패해도 큐를 통째로 비워
+          //   조각 참조(host $.global.mesA0Q)까지 사라져 **재시도 수단이 없었다** — 3건 실패 시
+          //   처음부터 다시 선택·분리해야 했다(#574 '실패자만 재선택'과 같은 클래스).
+          //   내림차순 + 콜백 체이닝으로 제거해 패널 큐와 host 큐의 인덱스 정합을 보장한다
+          //   (한꺼번에 evalScript 를 뿌리면 순서가 보장되지 않아 엉뚱한 행이 지워질 수 있다).
+          function removeOk(list, done) {
+            if (!list.length) { done(); return; }
+            var ix = list.pop();
+            csi.evalScript('mesA0_queueRemove(' + ix + ')', function () {
+              queue.splice(ix, 1);
+              removeOk(list, done);
+            });
+          }
+          removeOk(okIdx.slice(), function () {
+            bound = -1;
+            bumpRev(); // 큐가 바뀌었다 → 재검토 표시가 다시 붙는다
+            csi.evalScript('mesA0_reviewDiscard()', function () {}); // 검토문서 정리(저장물과 무관)
+            renderQueue(); reenable();
+            if (!queue.length) {
+              clearFinishing(); // 전건 성공 = 후가공 리셋(단건 경로와 동일 규칙)
+              saveSettings();
+            }
+            out('일괄 확정 완료: 성공 ' + okN + ' / 실패 ' + failN + (unrev ? ' (미검토 확정)' : '') +
+              '\n폴더: ' + batchFolder + '\n' + lines.join('\n') +
+              (failN
+                ? '\n⚠ 실패 ' + failN + '건은 목록에 남겨 뒀습니다 — 원인을 고친 뒤 [일괄 확정]으로 재시도하세요 (성공분은 제거됨)'
+                : '\n→ 에이전트 ingest 후 대기함'), failN ? 'err' : 'okmsg');
+            if (typeof onDone === 'function') onDone(okN, failN);
+          });
         }
         function step() {
           if (i >= queue.length) { finishBatch(); return; }
