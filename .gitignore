@@ -173,3 +173,14 @@ payroll-ledger-employer-burden.png
 
 # DB 백업 (PII 포함 — 절대 커밋 금지)
 backups/
+
+# 이관 작업 산출물 (거래처 이름·사업자번호·주소·Email·전화 = PII 포함 — 커밋 금지)
+# 분석 문서(.md)와 규칙 모듈(.py)은 추적 대상. 데이터 덤프만 제외한다.
+docs/dongsan-import/*.csv
+docs/dongsan-import/backup/
+__pycache__/
+# 이관 데이터 SQL — prod 적용 완료분. 거래처 PII가 리터럴로 박혀 있어 git 히스토리에 남기지 않는다.
+# (로컬/신규 D1 베이스라인은 db:reset 이라 이관 데이터가 없어도 무관 — project-db-bootstrap-squash)
+migrations/0498_dongsan_import_clients.sql
+# 매출 적재 생성 SQL — 담당자명·배송처주소 등 PII 포함. 생성기(gen_sales_sql.py)만 추적.
+docs/dongsan-import/load/
