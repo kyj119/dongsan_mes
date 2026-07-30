@@ -1413,10 +1413,20 @@ workbenchRouter.get('/intakes', async (c) => {
     ).bind(...params).all<{ worker_name: string }>()
     const workerNames = (workerRows || []).map((r) => r.worker_name)
 
+    // ★has_thumbnail 판정 = 두 저장 형태를 모두 본다(2026-07-30 수정).
+    //   R2 이관 후 썸네일은 thumbnail_r2_key 로 저장되고 externalizeGroups 가 thumbnail_base64 키를
+    //   **삭제**한다(thumbnailStore.ts). 그런데 판정이 옛 키만 찾아 prod waiting 39건 전부
+    //   has_thumbnail=0 이었고, 프론트가 <img> 를 아예 만들지 않아 **썸네일이 한 장도 안 보였다**
+    //   (/intakes/:id/thumb 는 hydrate 로 정상 base64 를 반환하는데 요청조차 되지 않았다).
+    //   R2 이관 시 이 판정을 같이 고치지 않은 형제-불완전이고, 소비자 3곳(주문서 트레이 ·
+    //   ia-editor 대기함 · 주문 라인 프리필)이 모두 이 플래그를 보므로 여기가 정본 1곳이다.
+    //   패턴에 '":"' 를 붙여 값이 null 인 경우("thumbnail_base64":null)를 함께 배제한다.
+    //   ⚠️ SQL 안에 이 설명을 두지 않는다 — 백틱이 템플릿 리터럴을 끊고, 주석이 매 쿼리에 실린다.
     if (lite) {
       const { results } = await c.env.DB.prepare(`
         SELECT designer_intakes.*,
-               CASE WHEN ar.groups_json LIKE '%thumbnail_base64%' THEN 1 ELSE 0 END AS has_thumbnail
+               CASE WHEN ar.groups_json LIKE '%thumbnail_r2_key":"%'
+                      OR ar.groups_json LIKE '%thumbnail_base64":"%' THEN 1 ELSE 0 END AS has_thumbnail
         FROM designer_intakes
         LEFT JOIN ai_analysis_requests ar ON ar.id = designer_intakes.ai_analysis_id
         WHERE ${where}

@@ -87,10 +87,22 @@
                         if (_ofTrayMyId != null) {
                             for (var i = 0; i < rows.length; i++) if (Number(rows[i].worker_id) === _ofTrayMyId) mine++;
                         }
+                        // 이 거래처 대기물 수 — 거래처를 정하면 트레이가 '이 거래처만'으로 자동 열리는데
+                        //   배지는 전체 건수만 보여줘서 "거래처를 정했는데 숫자가 안 바뀐다"로 보였다(2026-07-30).
+                        //   ⚠️ 상한(200) 밖은 셀 수 없으므로 절단 상태면 '+'로 최소값임을 밝힌다.
+                        var cIdEl0 = document.getElementById('clientId');
+                        var curClientId = cIdEl0 && cIdEl0.value ? Number(cIdEl0.value) : null;
+                        var forClient = 0;
+                        if (curClientId) {
+                            for (var ci = 0; ci < rows.length; ci++) if (Number(rows[ci].client_id) === curClientId) forClient++;
+                        }
                         badge.innerHTML = '<button type="button" onclick="ofIntakeOpenPicker()" '
                             + 'class="px-3 py-1.5 text-sm rounded-lg bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200">'
                             + '<i class="fas fa-inbox mr-1"></i>가공 대기함 <b>' + _ofIntakeMeta.total + '</b>건'
                             + (_ofIntakeMeta.truncated ? ' <span class="text-amber-700">(최근 ' + rows.length + '건 표시)</span>' : '')
+                            + (curClientId
+                                ? ' <span class="text-blue-700">(이 거래처 ' + forClient + (_ofIntakeMeta.truncated ? '+' : '') + ')</span>'
+                                : '')
                             + (mine ? ' <span class="text-purple-700">(내 작업 ' + mine + ')</span>' : '')
                             + ' — 클릭해서 라인으로 불러오기</button>';
                     })
@@ -136,6 +148,24 @@
                     + '</div></div>'
                     + '<i class="fas fa-plus text-blue-400 flex-none"></i>'
                     + '</div>';
+            }
+
+            // 건수 문구 — **보이는 건수가 정본**이고, 감춰진 것이 있으면 이유와 함께 밝힌다(2026-07-30).
+            //   전엔 헤더가 서버 반환 건수(=필터 전)만 보여줘서 한 화면에 세 숫자가 어긋났다:
+            //   실측 — 헤더 `39건` / 거래처 그룹 `12건` / 실제 행 12개. '이 거래처만'이 자동 ON 인데도
+            //   헤더가 39 라서 "거래처를 정했는데 수량이 안 바뀐다"로 보였다.
+            //   갱신 지점도 서버 검색(ofTraySearch)뿐이어서 화면 필터를 만져도 헤더가 굳어 있었다.
+            function ofTrayCountText(shown) {
+                var loaded = (_ofIntakeCache || []).length;
+                var total = _ofIntakeMeta.total || loaded;
+                var s = '(' + shown + '건';
+                if (shown !== loaded) s += ' 표시 · 조회 ' + loaded + '건';   // 화면 필터가 가린 만큼
+                if (_ofIntakeMeta.truncated && total > loaded) s += ' / 전체 ' + total + '건';
+                return s + ')';
+            }
+            function ofTraySetCount(shown) {
+                var el = document.getElementById('intakeTrayCount');
+                if (el) el.textContent = ofTrayCountText(shown);
             }
 
             // 필터 → 거래처/작업(batch_key) 2단 그룹핑 → HTML
@@ -236,6 +266,7 @@
                         : '<div class="p-4 text-center text-sm text-gray-400">해당 조건의 대기물이 없습니다.</div>';
                 }
                 listEl.innerHTML = html;
+                ofTraySetCount(filtered.length); // 헤더 = 실제 보이는 건수(필터를 만질 때마다 갱신)
                 ofTrayUpdateFooter();
                 ofTrayLoadThumbs(listEl);
             };
@@ -323,8 +354,13 @@
                     + '</div>'
                     // #576 서버 검색 — 위 필터들은 로드된 200건 안에서만 걸러내므로 상한 밖은 못 찾는다.
                     + '<div class="px-4 py-2 border-b flex items-center gap-2 text-sm flex-wrap">'
-                    + '<input type="text" id="intakeSearchQ" placeholder="거래처·담당자·메모·묶음 검색" value="' + escapeHtml(_ofTrayQuery.q) + '" '
-                    + 'onkeydown="if(event.key===\'Enter\'){event.preventDefault();ofTraySearch();}" class="px-2 py-1 border rounded text-sm" style="flex:1;min-width:180px">'
+                    // 자동 검색으로 바꾸지 않는 이유 = 서버 호출이라 타이핑마다 질의하면 부하가 붙는다(사용자 결정).
+                    //   대신 **입력했는데 아무 일도 안 일어난다**는 오해를 없앤다: placeholder 에 Enter 를 명시하고,
+                    //   입력값이 마지막 실행 검색어와 달라지면 옆에 '↵ Enter 로 검색' 을 띄운다.
+                    + '<input type="text" id="intakeSearchQ" placeholder="거래처·담당자·메모·묶음 검색 후 Enter" value="' + escapeHtml(_ofTrayQuery.q) + '" '
+                    + 'oninput="ofTraySearchDirty()" onkeydown="if(event.key===\'Enter\'){event.preventDefault();ofTraySearch();}" '
+                    + 'class="px-2 py-1 border rounded text-sm" style="flex:1;min-width:180px">'
+                    + '<span id="intakeSearchDirty" class="text-xs text-amber-700 hidden"><i class="fas fa-turn-down fa-rotate-90 mr-0.5"></i>Enter 로 검색</span>'
                     + '<input type="date" id="intakeSearchFrom" value="' + escapeHtml(_ofTrayQuery.date_from) + '" class="px-2 py-1 border rounded text-sm">'
                     + '<span class="text-gray-400">~</span>'
                     + '<input type="date" id="intakeSearchTo" value="' + escapeHtml(_ofTrayQuery.date_to) + '" class="px-2 py-1 border rounded text-sm">'
@@ -343,6 +379,15 @@
                 overlay.addEventListener('click', function(ev) { if (ev.target === overlay) overlay.remove(); });
                 document.body.appendChild(overlay);
                 ofTrayRender();
+            };
+
+            // 입력값이 '마지막으로 실행한 검색어'와 다른 동안만 안내를 띄운다 — 검색을 실행하면 사라진다.
+            window.ofTraySearchDirty = function() {
+                var qEl = document.getElementById('intakeSearchQ');
+                var hint = document.getElementById('intakeSearchDirty');
+                if (!qEl || !hint) return;
+                var dirty = (qEl.value || '').trim() !== (_ofTrayQuery.q || '');
+                hint.className = dirty ? 'text-xs text-amber-700' : 'text-xs text-amber-700 hidden';
             };
 
             // #576 서버 재조회 — 키워드·기간은 200건 상한 '밖'을 찾기 위한 것이라 서버로 내려야 한다.
@@ -371,14 +416,12 @@
                             workerNames: d.worker_names || []
                         };
                         _ofTraySel = {};   // 목록이 바뀌었으므로 선택 초기화(사라진 항목 프리필 방지)
-                        var cntEl = document.getElementById('intakeTrayCount');
-                        if (cntEl) {
-                            cntEl.textContent = '(' + _ofIntakeCache.length
-                                + (_ofIntakeMeta.truncated ? ' / 전체 ' + _ofIntakeMeta.total : '') + '건)';
-                        }
+                        // 헤더는 ofTrayRender() 가 화면 필터 적용 후 건수로 갱신한다(정본 1곳).
+                        //   여기서 서버 반환 건수로 먼저 써 버리면 다시 두 숫자가 갈린다.
                         var notice = document.getElementById('intakeTruncNotice');
                         if (notice) notice.style.display = _ofIntakeMeta.truncated ? '' : 'none';
-                        ofTrayRender();
+                        ofTrayRender();      // 헤더 건수도 여기서 갱신된다(정본 1곳)
+                        ofTraySearchDirty(); // 실행 완료 → 'Enter 로 검색' 안내 해제
                         ofTrayUpdateFooter();
                     } catch (e) {
                         console.warn('[orderForm] 대기함 검색 실패', e);
