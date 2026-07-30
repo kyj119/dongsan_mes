@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-07-30T21:35:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-07-31T00:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,10 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **3** (Area 3 46회차 신규 #585·#586·#587, GitHub OPEN 실측 — Area4 48회차 재확인 동일) |
+| 🆕 new | **3** (Area 3 46회차 신규 #585·#586·#587, GitHub OPEN 실측 — Area5 47회차 재확인 동일) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **511** (`reason:completed` 절대값 — Area4 48회차 #588 자동수정+커밋 시 `closes #588`로 즉시 auto-close, 510→511) |
+| ✔️ done | **511** (`reason:completed` 절대값 — Area5 47회차 close 0건, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > **2026-07-29 백로그 소진 세션** (main `9686bf69`, deploy success): 11건을 심각도순으로 전건 처리.
@@ -27,6 +27,20 @@
 > ↳ **10차 트림 (2026-07-30, 자동)**: 사이클 로그 13건 → 8건 유지, 5건 이관 (83KB → 트림 후 아래 참조).
 > ↳ **9차 트림 (2026-07-28, 자동)**: 사이클 로그 13건 → 8건 유지, 5건 이관 (82KB → 트림 후 아래 참조).
 > ↳ **8차 트림 (2026-07-27, 자동)**: 사이클 로그 9건 → 8건 유지, 1건 이관 (66KB → 트림 후 아래 참조).
+
+> **Area 5 보안 (2026-07-31T00:20):**
+> - **방법**: `git fetch origin main`(HEAD `d41699b` = origin/main 일치, 워킹트리 clean, detached — 세션 시작 시 강제갱신 감지, docs-only 아니라 재체크아웃 재확인) 후 `npm ci`(node_modules 0→81). Area 5 **47회차** — 직전 Area5(`f25e6fb`, 07-29T15:19, 46회차) 이후 `git log f25e6fb..HEAD -- src/routes src/scripts migrations`는 **18커밋**(전체 55커밋 중 나머지는 IA패널/CEP·자재마스터 데이터 UPDATE만 — 웹 라우트·스크립트 범위 밖). 대부분 Area2(54)·Area3(47)·Area4(48)·Area6(52)가 이미 자기 렌즈로 다뤘으나 보안(IDOR·XSS·인증·인젝션) 렌즈는 이번이 최초 — 에이전트 위임 없이 인라인 직접 diff Read(과다 위임 억제 정책, 신선 churn이 작아 정독이 빠름).
+> - **`e744bc4`+`e0c8c60`(주문 행 에누리 확정, order_items 신규 컬럼 write) 보안 렌즈 재검증**: `create.ts POST /`·`POST /:id/items`·`update.ts PUT /:id` 3개 write 진입점 모두 `entityFilter(c,'orders')`로 대상 주문의 소유 법인을 먼저 검증한 뒤에만 금액 수정(에누리)을 허용 — entity-scoped MANAGER가 타법인 주문 금액을 조작할 수 없음을 직접 코드 대조로 확인(Area4 48회차는 데이터정합성 관점만 봤고 entity 격리는 미확인이었던 gap을 이번에 메움). 에누리 범위 무제한 수용은 설계자의 명시적 비즈니스 결정(커밋 메시지)이라 보안 이슈 아님.
+> - **`d41699b`(AR 정책 SSOT, `constants/arPolicy.ts` 신규)**: `excludeCashRetailClientSql()`이 문자열 템플릿으로 SQL 조각을 만들지만 보간값은 **컴파일타임 상수**(`CASH_RETAIL_CLIENT_CODE = '000-00-00000'`)뿐이고 `clientIdColumn` 파라미터도 호출부 10파일 22곳 전부 리터럴 컬럼 표현식(`'c.id'`/`'o.client_id'` 등) — 사용자 입력이 SQL 조각에 도달하는 경로 0, 인젝션 위험 없음.
+> - **XSS — `2fe74b9`(ia-editor 대기함 서버검색)·`54287e6`(주문서 대기함 검색 UX)**: 신규 검색어 input(`intakeSearchQ` 등) 렌더가 `escapeHtml()`로 일관 래핑됨을 직접 diff 확인(두 커밋 모두 검색어를 그대로 `value=` 속성에 넣는 지점 전수 escape). net-new sink 0.
+> - **`c8f255d`/`67ecf26`(finishing.ts·postProcessing.ts UNIQUE 충돌 안내문 개선)**: 에러 메시지가 "어느 칸에 등록돼 있는지"를 노출하나 그 정보는 이미 같은 화면에서 role-gated(`requirePagePermission('/post-processing')`) 사용자가 조회 가능한 내부 마스터데이터(마감방식/후가공 이름)라 정보노출 위험 없음. authMiddleware 양쪽 라우터 모두 정상 적용.
+> - **`f10a8fa`/`8819705`/기타 8커밋(이카운트 이관 적재·롤→미터 단위체계·branch-cleanup 툴링)**: 신규 API 노출·인증경로·write-isolation 변경 없음(마이그레이션 데이터 UPDATE 또는 일회성 적재 스크립트, PII 포함 SQL/CSV는 의도적 gitignore로 저장소 미노출 확인) — 보안 렌즈 대상 아님.
+> - **필수 표준 스캔 전부 clean**: 시크릿 폴백 grep(`fax.ts` 기존 FP 1건만, env 폴백이 빈 문자열이라 하드코딩 아님) · 기본비밀번호 리터럴 grep(`bank.ts:212` account_password 폴백은 사용자 입력 바로빌 API 전달용, 하드코딩 아님) · `.github/workflows/*.yml` secrets 폴백 0 · authMiddleware 신규 미적용 라우트 0(신규/변경 라우터 5개 전부 `.use('/*', authMiddleware, ...)` 확인) · 마이그 번호 중복 기존 5쌍만(신규 0490~0504 전부 유일) · `tsc --noEmit` 0 · `entity-audit.mjs` 60/60 · `sort-audit.cjs` P1 0.
+> - **open≠unfixed 재확인**: `list_issues(state:OPEN,label:auto-improve)` 실측 **3건**(#585·#586·#587, 변동 없음) — 전부 비보안(UX/컴플라이언스 UI) 범주라 이번 사이클과 무관, Area3 47회차가 이미 재grep으로 잔존 확인.
+> - **backlog↔GitHub 절대값 재동기화**: open **3**(재확인) · done/rejected는 이번 사이클 close 0건이라 재조회 생략, Area4 48회차 캐시(511/6) 신뢰.
+> - **🧬 SKILL 강화 없음** — 이번 델타는 기존 IDOR/XSS/인젝션 FP·confirmed 카탈로그로 전량 판정 가능, 신규 취약점 클래스 없음.
+> - 신규 이슈 0건, 자동수정 0건(전 구간 clean), done-sync: new 3·done 511·rejected 6. 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-07-30T21:35):**
 > - **방법**: `git fetch origin main`(HEAD `95f87e6`, 이후 동시 세션 push로 `adba70c`까지 전진 확인 후 재체크아웃 — docs-only라 무충돌) 후 `npm ci`(node_modules 0→81), `git fetch --deepen=200`(shallow 확장). Area 4 **48회차** — 직전 Area4(`aa5fe2c`, 07-29T09:17, 47회차) 이후 `git log`는 **68커밋**, 대부분 a0-panel(별도 배포축)·자재 마스터 데이터 정정(0480~0489)·롤→미터 단위체계(0490~0497, Area2 54회차·Area6 52회차 이미 형제완전성 검증)·주문 행 에누리 신설(0501, prod 백필 실측까지 자기검증 완료) — 신선한 write-path 위험이 큰 커밋만 인라인 직접 diff Read(위임 없이, 신선 churn 규모가 커서 오히려 정독이 빠름).
