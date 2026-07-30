@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-07-30T09:17:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-07-30T14:05:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -27,6 +27,18 @@
 > ↳ **10차 트림 (2026-07-30, 자동)**: 사이클 로그 13건 → 8건 유지, 5건 이관 (83KB → 트림 후 아래 참조).
 > ↳ **9차 트림 (2026-07-28, 자동)**: 사이클 로그 13건 → 8건 유지, 5건 이관 (82KB → 트림 후 아래 참조).
 > ↳ **8차 트림 (2026-07-27, 자동)**: 사이클 로그 9건 → 8건 유지, 1건 이관 (66KB → 트림 후 아래 참조).
+
+> **Area 3 UX/기능 감사 (2026-07-30T14:05):**
+> - **방법**: `git fetch origin main`(forced-update, HEAD `c8f255d` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `git fetch --deepen=500`(shallow라 직전 Area3 SHA 확보 위해 확장). Area 3 **47회차** — 직전 Area3(`da70faa`, 07-29T03:12, 46회차) 이후 `git log da70faa..HEAD`는 **63커밋**이나 UX 렌즈 대상(`src/scripts`·`src/pages`·`src/layout`·`index.tsx`)에 한정하면 **4커밋뿐**(나머지는 IA패널(`IllustratorAutomat/**`, 별도 배포축·웹 범위 밖) + 자재마스터 데이터 UPDATE(0480~0497) + 롤→미터 단위체계로 Area2/4/6이 이미 렌즈 적용 완료). 프론트 delta 4커밋을 직접 Read로 전수 감사(에이전트 위임 없이 인라인 — 과다 위임 억제 정책, 신선 churn이 작아 정독이 빠름).
+> - **`2fe74b9`(ia-editor 모아찍기 대기함 서버검색+절단경고, #576 이식)**: `iaeIntakeLoad()` 직접 Read — 헤더 total/truncated 라벨 분기(검색중="검색결과"·평시="전체", 거짓 방지) · 절단 시 경고배너 · 빈 상태 3분기 안내(내작업필터/검색조건/진짜없음, 모순 방지) · 조회실패 시 재시도+검색초기화 버튼 보존(검색줄 통째 사라지는 구 패턴 회피) · `iaeEscape`로 검색어 XSS 방어 · Enter/버튼 양쪽 트리거. 자매 구현(orderForm/intake.js #576)과 동일 컨벤션 — net-new 이슈 0.
+> - **`521f047`(품목 그룹 "우선 소비 자재" UI)**: `loadGroupPriority()`/`saveGroupEdit()` 직접 Read — 동폭 경합 없으면 섹션 자체 숨김(빈 상자 노출 방지, FP패턴 정확 준수) · `escapeHtml` 적용 · 저장 시 그룹 소속 재계산(서버측 `id in group` 가드와 별개 프론트 정합) · 로드 실패는 console.warn만(섹션이 부가 기능이라 silent-hide가 합리적, 오도 없음 — 보고가치 없음).
+> - **`a5e1b70`(후가공 자재 동폭 dup_widths 경고배지)**: `showMaterialSearchDropdown()` 직접 Read — dup 폭 목록이 숫자(`parseInt`)만 렌더돼 XSS 무관, 배지 문구가 "대체 가능한 자재가 아니면 그룹 분리 필요"로 조치 방향 명확. clean.
+> - **`c8f255d`(후가공관리 코드 필수 해제 등)**: 프론트(`fCode` placeholder "비우면 자동"+`savePP()` 검증 완화)↔백엔드(`postProcessing.ts:99` `optionCode = (body.option_code||'').trim()` 후 자동채번) 라운드트립 직접 대조 — 정합 확인, clean.
+> - **open≠unfixed 재확인**: `list_issues(state:OPEN,label:auto-improve)` 실측 **3건**(#585·#586·#587, 변동 없음) — 각 이슈 본문의 안티패턴을 코드에 재grep해 전부 잔존 확인(`messagesAd.ts:381-382` success_count/fail_count만·`messages.ts:246/261` adSubject/adContent oninput 부재·`messagesAd.js` adLoadOptOuts에 search 파라미터 미전달) — fixed-in-tree 없음, 3건 모두 정상 open 유지.
+> - **backlog↔GitHub 절대값 재동기화**: open **3**(재확인) · `search_issues(reason:completed)` **510**(재확인, 변동 없음) · rejected는 close 0건이라 재조회 생략(Area2 54회차 캐시 6 신뢰).
+> - **🧬 SKILL 강화 없음** — 이번 델타는 기존 FP 카탈로그(explicit-search 버튼 존재/빈상자 숨김/silent-hide 부가기능)로 전량 판정 가능, 신규 클래스 없음.
+> - 신규 이슈 0건, 자동수정 0건(리뷰 결과 전부 clean), done-sync: new 3·done 510·rejected 6. 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-07-30T09:17):**
 > - **방법**: `git fetch origin main`(forced-update, HEAD `1d7e67d` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `git fetch --deepen=400`(shallow라 직전 Area2 SHA 확보 위해 확장), `npx tsc --noEmit` clean. Area 2 **54회차** — 직전 Area2(`62fba6c`, 07-28T21:28, 53회차) 이후 `git log 62fba6c..HEAD -- src/routes migrations src/scripts`는 **24커밋** — 대부분 이미 Area1/3/4/5/6이 렌즈 적용 완료한 광고문자 컴플라이언스(#572~#584)·정렬 tie-break 전역완결·entity write-path 구조감사(`331ce7d`)·자재 마스터 데이터 정정(0481~0489) + **롤→미터 단위체계 확정**(0490~0497, Area6 52회차가 표시/알림 라벨 축으로 이미 재검증) 범위. **이번 Area2 렌즈로 처음 보는 신선 churn = Area1 53회차(84ebbb9, 03:10) 이후 발생한 2건**: `bd69a0b`(검수 없는 직접입고 취소 시 재고 미차감 수정)·`5b70c58`(검증용 E2E 흔적 정리, 마이그 0497) — 둘 다 owner/별도 Opus 세션이 직접 prod에서 실입고 테스트 중 발견·수정·커밋한 것(tsc/build/entity/sort-audit/로컬스모크 자체검증 완료 상태로 착지).
