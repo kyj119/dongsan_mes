@@ -91,8 +91,18 @@ ppRouter.post('/', async (c) => {
       pp_category?: string
     }>()
 
-    if (!body.option_code || !body.option_name) {
-      return c.json({ success: false, error: 'option_code and option_name are required' }, 400)
+    if (!body.option_name) {
+      return c.json({ success: false, error: '이름을 입력하세요' }, 400)
+    }
+    // 코드는 내부 식별자일 뿐이라 사용자가 정할 값이 아니다 — 비면 자동 생성한다.
+    // (2026-07-30: 코드가 필수라 후가공 추가가 실패하던 것. 화면에도 필드가 있지만 눈에 안 띈다)
+    let optionCode = (body.option_code || '').trim()
+    if (!optionCode) {
+      const row = await c.env.DB.prepare(
+        `SELECT COALESCE(MAX(id), 0) + 1 AS n FROM post_processing_options`
+      ).first<{ n: number }>()
+      const n = row?.n ?? 1
+      optionCode = 'PP-' + String(n).padStart(3, '0')
     }
     const marginErr = validateMargins(body as Record<string, unknown>)
     if (marginErr) return c.json({ success: false, error: marginErr }, 400)
@@ -105,7 +115,7 @@ ppRouter.post('/', async (c) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
       RETURNING *
     `).bind(
-      body.option_code,
+      optionCode,
       body.option_name,
       body.description ?? null,
       body.margin_left ?? 0,

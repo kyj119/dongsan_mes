@@ -126,7 +126,7 @@
     var elBorderLine = $('borderLine'); // 출력 경계선(백색 테두리) on/off — 기본 ON(기존 동작)
     var elPTop = $('pTop'), elPBottom = $('pBottom'), elPLeft = $('pLeft'), elPRight = $('pRight');
     var elPcTL = $('pcTL'), elPcTR = $('pcTR'), elPcBL = $('pcBL'), elPcBR = $('pcBR');
-    var elAnnot = $('annot');
+    var elAnnot = $('annot'), elAnnotKwRow = $('annotKwRow'), elAnnotHint = $('annotHint');
     var elATop = $('aTop'), elABottom = $('aBottom'), elALeft = $('aLeft'), elARight = $('aRight');
     var elBtnProcess = $('btnProcess'), elOut = $('out'), elCfg = $('cfgStatus');
     // 후가공 접이식(단건 탭 안) — 최상위 탭에서 강등. 모아찍기엔 아예 존재하지 않는 개념이라
@@ -450,6 +450,13 @@
       // ⚠️ 폼 위치는 modeValue() 로 판단하면 안 된다 — 묶음 탭도 modeValue()='single' 이다(:407,
       //    행 mode 가 전부 single 이라 그렇게 설계됨). 위치는 '어느 탭을 보고 있나'라서 activeTab().
       else moveFinishingTo(activeTab() === 'bundle' ? elFinHostBundle : elFinHostSingle);
+      // 주석 키워드 칸: 묶음에선 행별 키워드가 정본이라 중복 → 숨긴다. 단건은 유일한 입력 경로라 유지.
+      // ⚠️ class 'hidden' 을 쓰지 않는다 — `.row`(display:flex)와 `.hidden` 이 같은 명시도라
+      //    stylesheet 순서에 따라 .row 가 이겨 안 숨는다(#finBody 때와 같은 함정, 스모크가 잡았다).
+      if (elAnnotKwRow) elAnnotKwRow.style.display = (activeTab() === 'bundle') ? 'none' : '';
+      if (elAnnotHint) elAnnotHint.textContent = (activeTab() === 'bundle')
+        ? '주석 = 키워드-식별번호-후가공-수량 · 키워드는 각 행에서 입력 · 여백 3cm 이상인 변만'
+        : '주석 = 키워드-식별번호-후가공-수량 · 마감 여백 3cm 이상인 변만 선택 가능';
       // config 로드(restoreSettings→setMode)가 큐 초기화보다 먼저 도는 경로가 있다 —
       //   그때 queue 는 아직 undefined 다. 여기서 막지 않으면 패널이 통째로 죽는다.
       //   이후 DOMContentLoaded 끝의 renderQueue() 가 게이트·버튼을 정리한다.

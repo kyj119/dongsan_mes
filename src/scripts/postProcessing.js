@@ -321,7 +321,8 @@ async function savePP() {
         margin_right: parseFloat(document.getElementById('fMarginRight').value) || 0,
         parameter_schema: schema ? JSON.stringify(schema) : null,
     };
-    if (!body.option_code || !body.option_name) { showFieldError('fCode', '코드와 이름을 입력하세요.'); return; }
+    // 코드는 비워도 된다 — 서버가 PP-NNN 으로 자동 생성한다(2026-07-30). 이름만 필수.
+    if (!body.option_name) { showFieldError('fName', '이름을 입력하세요.'); return; }
     var marginFields = [body.margin_top, body.margin_bottom, body.margin_left, body.margin_right];
     for (var i = 0; i < marginFields.length; i++) {
         if (marginFields[i] < 0) { showFieldError('fMarginTop', '여백은 0 이상이어야 합니다.'); return; }

@@ -16,7 +16,9 @@
 //   0.1.6 = 묶음분리·자동감지 결과를 공간 정렬(위→아래·좌→우) — 행 번호를 눈에 맞춤 (2026-07-30)
 //   0.1.7 = 검토문서 타일을 '실제 아트 크기'로 배치 — 아트보드 밖으로 삐져나온 아트가
 //           캔버스를 벗어나 "붙일 수 없습니다" 모달을 띄우던 것 수정 (2026-07-30)
-var MESA0_VERSION = 'A0-CEP-0.1.7';
+//   0.1.8 = 마감재단선(여백 위치 검정 실선·4변 한 그룹) + 주석 구조에 후가공 추가
+//           (키워드-식별번호-후가공-수량) (2026-07-30)
+var MESA0_VERSION = 'A0-CEP-0.1.8';
 var MESA0_REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
 var MESA0_PT_PER_MM = 72 / 25.4;
 var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];
@@ -74,10 +76,14 @@ function mesA0_sanitize(s) {
   return s || '무명';
 }
 // 주석 조합: 키워드-식별번호-수량ea (키워드 있을 때만). 거래처명 제외. 식별번호=키워드별 순번(큐 배치)
-function mesA0_annotText(keyword, seqNo, qty) {
+// 주석 = 키워드-식별번호-후가공-수량 (2026-07-30 지시로 후가공 세그먼트 추가).
+//   후가공이 없으면 그 칸만 빠진다(빈 세그먼트로 '--' 가 생기지 않게).
+//   키워드가 없으면 주석 자체를 그리지 않는다 = 기존 규칙 유지.
+function mesA0_annotText(keyword, seqNo, postDesc, qty) {
   if (!keyword) return '';
   var s = keyword;
   if (seqNo != null && seqNo !== '') s += '-' + seqNo;
+  if (postDesc) s += '-' + postDesc;
   s += '-' + qty + 'ea';
   return s;
 }
@@ -288,7 +294,7 @@ function mesA0_process() {
   }
   var docBase = mesA0_sanitize(String(srcDoc.name).replace(/\.[^.]+$/, ''));
   var clientName = P.client_name ? mesA0_sanitize(P.client_name) : docBase;
-  var annotation = mesA0_annotText(kwRaw, seqNo, qty); // 주석(호스트 조합, 거래처명 제외)
+  var annotation = mesA0_annotText(kwRaw, seqNo, postDesc, qty); // 주석(호스트 조합, 거래처명 제외)
   var orderItemId = (P.order_item_id != null) ? P.order_item_id : null;
   var realW = fileWCm * sN, realH = fileHCm * sN;
 
@@ -405,10 +411,18 @@ function mesA0_process() {
           ln.strokeColor = mCol; ln.strokeWidth = 0.6;
           if (dashed) ln.strokeDashes = [MDASH, MDASH]; // 재단선=점선
         }
-        // 돔보를 켜면 아래에서 디자인 테두리 사방에 재단선 사각(레이어 '재단선')을 그린다 →
-        // 변별 'cut' 마크는 같은 자리에 겹쳐 색만 다른 선이 두 겹으로 남으므로 생략한다.
-        // 'fold'(접는선)는 목적이 달라(마감) 그대로 그린다.
-        function wantMark(side) { var m = finMark[side]; return m && !(trim && m === 'cut'); }
+        // 변별 'cut'(재단선 점선)을 생략하는 두 경우 — 둘 다 이미 재단 자리를 알려주는 선이 있다:
+        //   ⓐ돔보 ON = 디자인 테두리 사방에 재단선 사각(레이어 '재단선'). 같은 자리 이중선이 된다.
+        //   ⓑ그 변에 마감 여백 있음 = 위에서 여백 위치에 '마감재단선'을 그렸다. 진짜 자르는 자리는
+        //     디자인 경계가 아니라 여백 바깥이므로, 경계의 점선은 오히려 오독을 부른다(2026-07-30 지적).
+        // 'fold'(접는선)는 목적이 달라(접는 위치=디자인 경계) 항상 그린다.
+        function wantMark(side) {
+          var m = finMark[side];
+          if (!m) return false;
+          if (m !== 'cut') return true;
+          if (trim) return false;
+          return !(finMargins[side] > 0);
+        }
         if (wantMark('top')) markLine(oL, oT, oR, oT, finMark.top === 'cut');
         if (wantMark('bottom')) markLine(oL, oB, oR, oB, finMark.bottom === 'cut');
         if (wantMark('left')) markLine(oL, oT, oL, oB, finMark.left === 'cut');
@@ -428,6 +442,30 @@ function mesA0_process() {
       borderRect.strokeColor = wCol;
       borderRect.strokeWidth = 0.5;
       }
+
+      // ── ★마감 재단선: 마감 여백이 있는 변의 '여백 위치'에 검정 실선 ──
+      // 접어미싱 3cm 를 넣으면 3cm 바깥(= 실제 자르는 자리)에 선이 있어야 재단 판단이 된다
+      // (2026-07-30 지시). 돔보/DXF 재단선과는 **별개** — 저건 재단기 데이터, 이건 사람이 보는 선이다.
+      // 위치 = 디자인 경계 + 그 변의 마감 여백. 여백 0인 변은 자를 게 없으므로 그리지 않는다.
+      // ⚠️ 백색 출력 경계선(위 블록)과 **좌표가 같다** → 반드시 그 뒤에 그려야 한다.
+      //    일러는 나중에 추가한 것이 위로 오므로, 앞에 두면 백색이 검정을 덮어 안 보인다.
+      // 4변을 **한 그룹('마감재단선')**으로 묶는다 — 하나만 골라도 전부 잡혀 수정·삭제가 쉽다.
+      var finCutGrp = null;
+      function finCutLine(x1, y1, x2, y2) {
+        if (!finCutGrp) { finCutGrp = newDoc.groupItems.add(); finCutGrp.name = '마감재단선'; }
+        var ln = newDoc.pathItems.add();
+        ln.setEntirePath([[x1, y1], [x2, y2]]);
+        ln.stroked = true; ln.filled = false;
+        var kc = new CMYKColor(); kc.cyan = 0; kc.magenta = 0; kc.yellow = 0; kc.black = 100;
+        ln.strokeColor = kc; ln.strokeWidth = 0.6;
+        try { ln.moveToBeginning(finCutGrp); } catch (eMv) {}
+      }
+      var fcL = oL - finMargins.left, fcT = oT + finMargins.top;
+      var fcR = oR + finMargins.right, fcB = oB - finMargins.bottom;
+      if (finMargins.top > 0) finCutLine(fcL, fcT, fcR, fcT);
+      if (finMargins.bottom > 0) finCutLine(fcL, fcB, fcR, fcB);
+      if (finMargins.left > 0) finCutLine(fcL, fcT, fcL, fcB);
+      if (finMargins.right > 0) finCutLine(fcR, fcT, fcR, fcB);
 
       // 펀칭: 원본 디자인 기준(여백 무관) 상/하/좌/우 비율분배 + 꼭짓점 개별. 지름1cm·중심 디자인edge서 2cm·검정 꽉찬 원
       var iTop = parseInt(punch.top, 10) || 0, iBot = parseInt(punch.bottom, 10) || 0;

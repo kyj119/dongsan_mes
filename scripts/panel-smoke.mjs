@@ -139,6 +139,8 @@ ok('행 클릭 시 일러 선택 호출(P3)', await page.evaluate(() => window._
 // 9) 후가공 = 단건·묶음 공용 1벌(탭 전환 시 이동) — 묶음도 후가공이 필요하다(2026-07-30 지시).
 //    복제가 아니라 이동이므로 어느 시점에도 폼이 2벌이 되면 안 된다(값 갈림 = 등록된 쪽 특정 불가).
 ok('묶음 탭에 후가공 폼 이동', await page.evaluate(() => !!document.querySelector('[data-page="bundle"] #finToggleRow')))
+// 주석 키워드 칸 = 묶음에선 행 키워드가 정본이라 숨긴다(2026-07-30 지적)
+ok('묶음에서 주석 키워드칸 숨김', await page.locator('#annotKwRow').isHidden())
 ok('후가공 폼은 항상 1벌', await page.evaluate(() => document.querySelectorAll('#finToggleRow').length === 1 && document.querySelectorAll('#finBody').length === 1))
 
 // 9-2) 적용 버튼은 폼 옆(편집 도구) · 하단은 확정 액션만 (2026-07-30 ③)
@@ -159,8 +161,9 @@ await page.click('#btnApplySel')
 await page.waitForTimeout(150)
 ok('선택 행만 적용 메시지', (await page.locator('#out').innerText()).includes('#1 #3'), (await page.locator('#out').innerText()).slice(0, 90))
 
-// 9-3b) 주석 키워드 폴백 — 담은 뒤 #annot 을 입력해도 빈 행에 채워져야 주석이 나온다 (2026-07-30 ②)
-await page.fill('#annot', '주석테스트')
+// 9-3b) 주석 키워드 폴백 — 단건 탭에서 넣어둔 주석 키워드가 묶음 적용 때 빈 행에 채워져야 한다.
+//   (묶음 탭에선 #annot 이 숨겨져 있으므로 값 주입으로 '단건에서 입력해 둔 상태'를 재현한다)
+await page.evaluate(() => { document.getElementById('annot').value = '주석테스트' })
 await page.click('#btnApplyAll')
 await page.waitForTimeout(200)
 ok('빈 행 키워드에 폼 주석값 채움', await page.evaluate(() => {
@@ -188,6 +191,7 @@ await page.click('#btnProcess')
 await page.waitForTimeout(300)
 const doneMsg = await page.locator('#out').innerText()
 ok('단건 복귀 시 후가공 폼도 단건으로', await page.evaluate(() => !!document.querySelector('[data-page="single"] #finToggleRow')))
+ok('단건에선 주석 키워드칸 표시', await page.locator('#annotKwRow').isVisible())
 ok('등록 결과에 work.ai 용량 표시', doneMsg.includes('work.ai 51.2MB'), doneMsg.slice(0, 140))
 ok('임베드 여분 경고 표시', doneMsg.includes('임베드 이미지가 디자인 밖까지 큼'), doneMsg.slice(0, 200))
 ok('돔보 등록분 DXF 표시', doneMsg.includes('DXF: a.dxf'), doneMsg.slice(0, 220))

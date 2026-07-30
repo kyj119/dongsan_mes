@@ -29,15 +29,27 @@ finishingRouter.get('/methods', async (c) => {
 
 // POST /methods
 finishingRouter.post('/methods', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  // name 을 try 밖에 둔다 — 충돌 메시지에 쓰는데 c.req.json() 은 두 번 읽을 수 없다
+  let name = ''
   try {
-    const { name, margin_cm, description, method_group } = await c.req.json()
+    const body = await c.req.json()
+    name = body.name
+    const { margin_cm, description, method_group } = body
     if (!name) return c.json({ success: false, error: '이름 필수' }, 400)
     const r = await c.env.DB.prepare(
       'INSERT INTO finishing_methods (name, margin_cm, description, method_group, sort_order) VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(sort_order),0)+1 FROM finishing_methods))'
     ).bind(name, margin_cm || 0, description || null, method_group || 'output').run()
     return c.json({ success: true, data: { id: r.meta.last_row_id } })
   } catch (e: any) {
-    if (e.message?.includes('UNIQUE')) return c.json({ success: false, error: '이미 존재' }, 409)
+    // 이름 UNIQUE 충돌 — 어느 이름이 걸렸는지 알려준다('이미 존재'만으론 목록과 대조가 안 된다).
+    // is_active=0 으로 내린 이름도 UNIQUE 에 걸리는데 목록엔 안 보이므로 그 경우를 구분해 준다.
+    if (e.message?.includes('UNIQUE')) {
+      const dead = name
+        ? await c.env.DB.prepare('SELECT is_active FROM finishing_methods WHERE name = ?').bind(name).first<{ is_active: number }>()
+        : null
+      const hint = dead && dead.is_active === 0 ? '(삭제 처리된 항목에 같은 이름이 남아 있습니다)' : ''
+      return c.json({ success: false, error: `'${name}' 은(는) 이미 있는 마감 방식입니다 ${hint}`.trim() }, 409)
+    }
     console.error('finishing POST /methods error:', e)
     return c.json({ success: false, error: '서버 오류' }, 500)
   }

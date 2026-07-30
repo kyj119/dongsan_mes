@@ -239,8 +239,8 @@ export function postProcessingPage(c: Context<HonoEnv>) {
                     <!-- 기본 정보 -->
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">코드 <span class="text-red-500">*</span></label>
-                            <input id="fCode" type="text" placeholder="예: HOLE_PUNCH" class="w-full border rounded px-3 py-2 text-sm uppercase" oninput="this.value=this.value.toUpperCase()">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">코드 <span class="text-xs text-gray-400">(비우면 자동)</span></label>
+                            <input id="fCode" type="text" placeholder="비워두면 PP-001 형식으로 자동 생성" class="w-full border rounded px-3 py-2 text-sm uppercase" oninput="this.value=this.value.toUpperCase()">
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">이름 <span class="text-red-500">*</span></label>
