@@ -1113,12 +1113,10 @@
 
     if (elBtnConfirm) elBtnConfirm.addEventListener('click', function () {
       if (!queue.length) return;
-      // 모아찍기 전용 큐는 검토문서 게이트 면제(2026-07-29) — 검토문서는 마감·돔보·주석 배치를
-      //   눈으로 보는 장치인데 모아찍기는 그 셋이 전부 없다(work.ai 원본 그대로 저장).
-      //   단건이 하나라도 섞여 있으면 기존대로 검토를 요구한다.
-      if (reviewedRev !== queueRev && !queueAllImpose()) {
-        out('검토문서로 확인한 뒤 확정하세요 — [검토문서] 버튼', 'err'); updateGate(); return;
-      }
+      // ⚠️ 검토 게이트는 **여기에도** 있었다(2026-07-30 실사용 지적) — updateGate() 의 버튼 잠금만
+      //    풀었더니 클릭 핸들러의 이 가드가 그대로 막아서 "미검토로는 확정이 안 된다"가 유지됐다.
+      //    검토는 선택 사항이므로 두 곳 모두 게이트를 두지 않는다. 상태 표시는
+      //    확정 버튼 라벨('· 미검토')과 완료 메시지('(미검토 확정)')로만 한다.
       runBatchConfirm();
     });
 

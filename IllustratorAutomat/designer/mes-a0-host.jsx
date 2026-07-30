@@ -14,7 +14,9 @@
 //   0.1.4 = work.ai PDF 합성부 제외(용량 −52%) + 임베드 래스터 계측·경고 (2026-07-30)
 //   0.1.5 = 돔보 선택 시 재단선 사각(레이어 '재단선') + DXF 내보내기·_출력 복사 (2026-07-30)
 //   0.1.6 = 묶음분리·자동감지 결과를 공간 정렬(위→아래·좌→우) — 행 번호를 눈에 맞춤 (2026-07-30)
-var MESA0_VERSION = 'A0-CEP-0.1.6';
+//   0.1.7 = 검토문서 타일을 '실제 아트 크기'로 배치 — 아트보드 밖으로 삐져나온 아트가
+//           캔버스를 벗어나 "붙일 수 없습니다" 모달을 띄우던 것 수정 (2026-07-30)
+var MESA0_VERSION = 'A0-CEP-0.1.7';
 var MESA0_REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
 var MESA0_PT_PER_MM = 72 / 25.4;
 var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];
@@ -883,7 +885,6 @@ function mesA0_reviewPlace(newDoc) {
   var gap = MESA0_REVIEW_GAP_MM * MESA0_PT_PER_MM;
   var AB = newDoc.artboards[0].artboardRect; // 타일 크기 = 가공 아트보드(여백·돔보 패드 포함)
   var wPt = AB[2] - AB[0], hPt = AB[1] - AB[3];
-  if (wPt > lim || hPt > lim) return 'toobig'; // 이론상 저장스케일 1/N이 선차단 — 방어
   var tops = [];
   for (var i = 0; i < newDoc.pageItems.length; i++) {
     try { var it = newDoc.pageItems[i]; if (it.parent && it.parent.typename === 'Layer') tops.push(it); } catch (e0) {}
@@ -892,6 +893,20 @@ function mesA0_reviewPlace(newDoc) {
   var ub = mesA0_unionBounds(tops);
   if (!ub) return 'nobounds';
   var relDx = ub[0] - AB[0], relDy = ub[1] - AB[1]; // 아이템 union의 아트보드 대비 상대 오프셋 보존
+
+  // ── ★타일 간격·한도는 아트보드가 아니라 '실제 아트 크기'로 잡는다 (2026-07-30) ──
+  // 아트가 아트보드보다 클 수 있다(임베드 래스터가 클립 밖으로 삐져나온 디자인 = warn 'E' 사례.
+  // 실측: 아트보드 22.4cm 인데 배치 53.6cm = 2.4배). 아트보드 크기로만 타일을 잡으면
+  // 붙인 아트가 타일 밖으로 흘러 캔버스(일러 한계 227인치=약 5766mm) 밖으로 나가고,
+  // 일러가 "오브젝트를 붙일 수 없습니다 … 드로잉 영역에서 완전히 떨어지게 할 수 있습니다"
+  // 모달을 띄운다(2026-07-30 실사용 발생 · 모달은 패널을 멈춘다).
+  var ubW = ub[2] - ub[0], ubH = ub[1] - ub[3];
+  var advW = (ubW > wPt) ? ubW : wPt;   // 다음 타일까지 밀 거리
+  var advH = (ubH > hPt) ? ubH : hPt;
+  // 아트가 아트보드 왼쪽·위로 삐져나온 양 = 타일을 그만큼 안쪽으로 밀어 캔버스 밖을 막는다
+  var padL = (AB[0] - ub[0] > 0) ? (AB[0] - ub[0]) : 0;
+  var padT = (ub[1] - AB[1] > 0) ? (ub[1] - AB[1]) : 0;
+  if (advW > lim || advH > lim) return 'toobig'; // 이론상 저장스케일 1/N이 선차단 — 방어
   try {
     app.activeDocument = newDoc;
     newDoc.selection = null;
@@ -900,8 +915,8 @@ function mesA0_reviewPlace(newDoc) {
   } catch (eCp) { return 'copy:' + eCp; }
   try { newDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCl) {}
   var rd = R.docs.length ? R.docs[R.docs.length - 1] : mesA0_reviewNewDoc(R);
-  if (R.x > 0 && R.x + wPt > lim) { R.x = 0; R.y += R.rowH + gap; R.rowH = 0; } // 줄바꿈
-  if (R.y + hPt > lim) rd = mesA0_reviewNewDoc(R);                              // 문서 분할(순차 폴백)
+  if (R.x > 0 && R.x + advW > lim) { R.x = 0; R.y += R.rowH + gap; R.rowH = 0; } // 줄바꿈
+  if (R.y + advH > lim) rd = mesA0_reviewNewDoc(R);                              // 문서 분할(순차 폴백)
   try {
     app.activeDocument = rd;
     app.paste();
@@ -910,15 +925,16 @@ function mesA0_reviewPlace(newDoc) {
     if (!pasted.length) return 'paste0';
     var pb = mesA0_unionBounds(pasted);
     if (!pb) return 'pastebounds';
-    var tileL = R.ox + R.x, tileT = R.oy - R.y;
+    // padL/padT = 삐져나온 아트를 캔버스 안으로 들이는 보정. 아트가 아트보드 안이면 0 = 기존 동작 그대로.
+    var tileL = R.ox + R.x + padL, tileT = R.oy - R.y - padT;
     var dx = (tileL + relDx) - pb[0], dy = (tileT + relDy) - pb[1];
     for (var t = 0; t < pasted.length; t++) { try { pasted[t].translate(dx, dy); } catch (eT) {} }
     var abRect = [tileL, tileT, tileL + wPt, tileT - hPt];
     if (R.first) { rd.artboards[0].artboardRect = abRect; R.first = false; }
     else rd.artboards.add(abRect);
     rd.selection = null;
-    R.x += wPt + gap;
-    if (hPt > R.rowH) R.rowH = hPt;
+    R.x += advW + gap;
+    if (advH > R.rowH) R.rowH = advH;
     R.count++;
     return 'ok';
   } catch (ePl) { return 'place:' + ePl; }
