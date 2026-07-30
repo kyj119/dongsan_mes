@@ -86,18 +86,21 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 
 (발주 계열 2026-07-27, 전역 P0~P2 전량 2026-07-29. 상세 = `docs/audits/2026-07-27-list-sort-tiebreak.md`)
 
-### IA 스크립트 = 웹과 분리된 수동 배포 축 3개 (`npm run audit:ia-jsx`)
+### IA 스크립트 = 웹과 분리된 수동 배포 축 4개 (`npm run audit:ia-jsx`)
 `git push`·`npm run deploy` 로는 **절대 반영되지 않는다**. main에 있어도 런타임은 옛날 파일일 수 있다 — 브랜치·커밋 기록으로 배포 여부를 추론하면 틀린다.
 
 | 축 | repo | 런타임(정본) |
 |---|---|---|
 | 1 에이전트 JSX | `IllustratorAutomat/*.jsx` | **실행 중 exe 폴더**(`Get-Process IllustratorAutomat`). `publish\` 아님 |
 | 2 디자이너 JSX | `IllustratorAutomat/designer/*.jsx` | `Z:\DESIGNS\IA-등록\_scripts\` |
-| 3 CEP 패널 | `.../com.mes.a0.panel/**` | `Z:\...\_scripts\a0-panel\com.mes.a0.panel\` |
+| 3 CEP 패널 배포본 | `.../com.mes.a0.panel/**` | `Z:\...\_scripts\a0-panel\com.mes.a0.panel\` |
+| 4 CEP 패널 설치본 | 같은 repo 원본 | `%APPDATA%\Adobe\CEP\extensions\com.mes.a0.panel` (**일러가 실제 읽는 것**) |
 
 - **감사 = `npm run audit:ia-jsx`** (드리프트 시 exit 1). JSX 수정 후 이걸 안 돌리면 조용히 구버전이 돈다.
 - 축1은 `.csproj CopyToOutputDirectory=Always` → **빌드하면 자동 복사**(빌드를 안 돌리면 미반영). 급하면 `--sync-agent`. JSX만 바뀌면 에이전트 재시작 불필요(잡마다 새로 읽음).
-- 축2·3 교체 = **전 디자이너 PC 즉시 반영** → 백업·실기기 확인 선행. 자동 동기화 금지.
+- **축2(로직)만 즉시 반영**: 패널 `jsx/host.jsx`가 스텁이라 실행 때마다 Z: 정본을 `$.evalFile` → Z: 1개 교체 = 전 PC. 백업·실기기 확인 선행, 자동 동기화 금지.
+- **축3(껍데기 `index.html`·`js/main.js`·`css/style.css`)는 Z: 갱신만으론 반영 안 된다** → PC별 `install-a0-panel.ps1` 재실행(축4). 배포 순서 = ①축3 Z: → ②각 PC 설치(뒤집으면 구버전이 깔린다).
+- **산출물 용량 감사 = `npm run audit:ia-storage`** — Z: work.ai/판.ai 를 첫 바이트로 판정(`%PDF-` = pdfCompatible 켜짐 = 같은 그림 2벌). 배포된 로직에 `pdfCompatible=false` 가 있는지+수정시각으로 자기 교정해 **회귀만** exit 1.
 - JSX 조기 `return` 은 반드시 `_ia_status` 설정. 미설정=반환 `""` → 에이전트가 "JSX 반환 빈값(모달 의심)"이라는 **틀린 진단**을 UI에 띄운다. 실패 메시지엔 스크립트 지문(`파일@시각·해시`)이 실린다.
 - `.jsx`는 `node --check` 불가(확장자+`#target`) → `sed 's/^#/\/\/#/'` 로 `.js` 사본 만들어 검사.
 

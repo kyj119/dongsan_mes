@@ -45,7 +45,8 @@ window.__adobe_cep__ = {
     else if (/^mesA0_queueSelect/.test(script)) res = JSON.stringify({ ok: true, n: 2 });
     else if (/^mesA0_paramsPath/.test(script)) res = 'C:/tmp/ia_params.json';
     else if (/^mesA0_batchBegin/.test(script)) res = JSON.stringify({ ok: true, folder: 'Z:/test/batch1' });
-    else if (/^mesA0_process/.test(script)) res = JSON.stringify({ ok: true, w: 87, h: 197, folder: 'Z:/test', items: 1, normed: 0 });
+    // bytes·oversize·warn'E' = 용량 근본원인 계측(host 0.1.4). 51.2MB + 여분 래스터 2개 상태를 재현한다.
+    else if (/^mesA0_process/.test(script)) res = JSON.stringify({ ok: true, w: 87, h: 197, folder: 'Z:/test', items: 1, normed: 0, bytes: 53687091, oversize: 2, warn: 'E' });
     else res = JSON.stringify({ ok: true });
     if (cb) setTimeout(function () { cb(res); }, 0);
   }
@@ -134,6 +135,15 @@ await page.click('#queueBox .qrow[data-i="0"] .qmeta')
 await page.waitForTimeout(150)
 ok('묶음 탭 유지(행 클릭이 탭을 안 바꿈)', await page.locator('.tab.active').innerText() === '묶음')
 ok('행 클릭 시 일러 선택 호출(P3)', await page.evaluate(() => window.__calls.some((c) => /mesA0_queueSelect/.test(c))))
+
+// 9) 등록 결과에 용량·임베드 여분 경고 노출 — 100MB work.ai 재발을 알아채는 유일한 지점.
+//    (사고 당시엔 용량이 어디에도 안 보여 5건 524MB가 쌓인 뒤에야 발견됐다)
+await page.click('.tab[data-tab="single"]')
+await page.click('#btnProcess')
+await page.waitForTimeout(300)
+const doneMsg = await page.locator('#out').innerText()
+ok('등록 결과에 work.ai 용량 표시', doneMsg.includes('work.ai 51.2MB'), doneMsg.slice(0, 140))
+ok('임베드 여분 경고 표시', doneMsg.includes('임베드 이미지가 디자인 밖까지 큼'), doneMsg.slice(0, 200))
 
 ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
 

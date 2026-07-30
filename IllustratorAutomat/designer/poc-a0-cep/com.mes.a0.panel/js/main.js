@@ -495,7 +495,14 @@
         finishing: finishing, order_item_id: null
       };
     }
-    var warnKo = { R: '원본 RGB→CMYK 변환', T: '아웃라인 안 된 텍스트', L: '링크(미임베드) 이미지', O: '아웃라인 일부 실패' };
+    // E = 임베드 이미지가 디자인 밖까지 큰 상태(host 계측 warn 'E'). 잘려 안 보이는 부분까지 파일에 저장돼
+    //     용량이 급증하는데 스크립트로는 줄일 수 없다 → 디자이너가 원본에서 정리해야 한다(유일한 근본 수단).
+    var warnKo = { R: '원본 RGB→CMYK 변환', T: '아웃라인 안 된 텍스트', L: '링크(미임베드) 이미지', O: '아웃라인 일부 실패',
+      E: '임베드 이미지가 디자인 밖까지 큼 — 원본에서 잘라내면 파일이 크게 줄어듭니다' };
+    function mbText(bytes) { // 용량을 눈에 보이게 = 커지는 걸 알아채는 유일한 지점
+      if (!bytes) return '';
+      return ' · work.ai ' + (Math.round(bytes / 1048576 * 10) / 10) + 'MB';
+    }
     function warnText(w) {
       if (!w) return '';
       var out = [];
@@ -527,7 +534,7 @@
             '\n실물: ' + r.w + ' × ' + r.h + ' cm' + (params.scale_n > 1 ? (' (파일 1/' + params.scale_n + ')') : '') +
             '\n' + (r.eps ? ('EPS: ' + r.eps) : '(모아찍기용 — work.ai만)') +
             '\n폴더: ' + r.folder + warnText(r.warn) +
-            '\n[diag] 아이템 ' + r.items + ' · 정규화 ' + r.normed +
+            '\n[diag] 아이템 ' + r.items + ' · 정규화 ' + r.normed + mbText(r.bytes) +
             '\n→ 에이전트 ingest 후 대기함에 표시됩니다.';
           out(msg + '\n(후가공 설정은 초기화됨 — 다음 건에 상속되지 않습니다)', 'okmsg');
           clearFinishing();  // 등록 완료 = 후가공 리셋. 연속 작업에서 앞 건 마감이 뒤 건에 새는 사고 차단.
@@ -930,7 +937,8 @@
           var okN = 0, failN = 0, lines = [];
           for (var k = 0; k < results.length; k++) {
             var r = results[k];
-            if (r && r.ok) { okN++; lines.push('#' + (k + 1) + ' ✓ ' + (r.eps || '(work.ai)')); }
+            // 모아찍기 = 100MB급 work.ai 가 실제로 나온 경로 → 행별로 용량·경고를 반드시 노출한다.
+            if (r && r.ok) { okN++; lines.push('#' + (k + 1) + ' ✓ ' + (r.eps || '(work.ai)') + mbText(r.bytes) + warnText(r.warn).replace(/\n/g, ' ')); }
             else { failN++; lines.push('#' + (k + 1) + ' ✗ ' + (r ? r.err : '?')); }
           }
           out('일괄 확정 완료: 성공 ' + okN + ' / 실패 ' + failN + '\n폴더: ' + batchFolder + '\n' + lines.join('\n') + '\n→ 에이전트 ingest 후 대기함', failN ? 'err' : 'okmsg');

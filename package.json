@@ -29,6 +29,7 @@
     "audit:structure": "node scripts/structure-audit.mjs",
     "audit:structure:gate": "node scripts/structure-audit.mjs --fail-on-regress",
     "audit:ia-jsx": "node scripts/ia-jsx-audit.cjs",
+    "audit:ia-storage": "node scripts/ia-storage-audit.cjs",
     "panel:smoke": "node scripts/panel-smoke.mjs",
     "db:migrate:local": "wrangler d1 migrations apply webapp-production --local",
     "db:migrate:prod": "wrangler d1 migrations apply webapp-production --remote",

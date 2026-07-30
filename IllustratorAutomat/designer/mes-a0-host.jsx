@@ -11,10 +11,15 @@
 //   0.1.1 = 등록 크기 기준을 클립 마스크 존중으로 통일(measured_cm 겉보기 버그 수정, 2026-07-29)
 //   0.1.2 = 출력 경계선(백색 테두리) on/off — 원본 테두리와 겹쳐 두 줄로 보이던 건 (2026-07-29)
 //   0.1.3 = 수량 3분화 — 단건=최종값 · 묶음=새 행 기본값 · 모아찍기=수량 안 받음 (2026-07-29)
-var MESA0_VERSION = 'A0-CEP-0.1.3';
+//   0.1.4 = work.ai PDF 합성부 제외(용량 −52%) + 임베드 래스터 계측·경고 (2026-07-30)
+var MESA0_VERSION = 'A0-CEP-0.1.4';
 var MESA0_REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
 var MESA0_PT_PER_MM = 72 / 25.4;
 var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];
+// 임베드 래스터가 디자인 경계 밖으로 이 비율(%) 이상 삐져나오면 '원본 정리 권장' 경고(warn 'E').
+// 실측 근거(2026-07-30): 107MB work.ai = 임베드 49개 54.1MB 중 10개가 각 면적의 67%가 밖.
+// 안 완전포함 39개는 0% → 30 은 정상 디자인을 오탐하지 않는 하한.
+var MESA0_RASTER_OUT_PCT = 30;
 
 // ── 유틸 (mes-core 포팅) ──
 function mesA0_readText(path) {
@@ -283,6 +288,7 @@ function mesA0_process() {
   var pfSourceRGB = false;
   try { pfSourceRGB = (srcDoc.documentColorSpace == DocumentColorSpace.RGB); } catch (ePf0) {}
   var pfRemainingText = 0, pfLinkedImages = 0;
+  var pfRasters = 0, pfOversize = 0, pfOversizeMax = 0, workBytes = 0;
 
   var now = new Date();
   var ymd = '' + now.getFullYear() + mesA0_pad2(now.getMonth() + 1) + mesA0_pad2(now.getDate());
@@ -340,9 +346,40 @@ function mesA0_process() {
     }
     newDoc.artboards[0].artboardRect = [db[0], db[1], db[2], db[3]];
 
+    // ── 임베드 래스터 계측 (용량의 근본 원인 추적) ──
+    // 실측(2026-07-30): 107MB work.ai 의 내용물은 벡터가 아니라 임베드 래스터 49개 54.1MB 이고,
+    // 그 중 10개가 아트보드 경계에 걸쳐 각 면적의 67%가 밖에 있다. 이건 지울 수 있는 '밖 오브젝트'가
+    // 아니라 대형 래스터의 잘려나간 부분이라 스크립트로 줄일 수 없다(크롭 API 없음·재래스터화는 화질 고정).
+    // → 유일한 실효 수단은 디자이너 원본을 고치도록 되돌리는 것이라 여기서 계측해 경고로 노출한다.
+    try {
+      var abM = newDoc.artboards[0].artboardRect; // [L,T,R,B] = 디자인 경계(마감 여백 확장 전)
+      var rsM = newDoc.rasterItems;
+      pfRasters = rsM.length;
+      for (var rmi = 0; rmi < rsM.length; rmi++) {
+        var gbM = rsM[rmi].geometricBounds; // 클립돼도 원본 이미지 전체 범위를 보고한다 = 여분이 보인다
+        var rwM = gbM[2] - gbM[0], rhM = gbM[1] - gbM[3];
+        if (rwM <= 0 || rhM <= 0) continue;
+        var ixM = Math.max(0, Math.min(gbM[2], abM[2]) - Math.max(gbM[0], abM[0]));
+        var iyM = Math.max(0, Math.min(gbM[1], abM[1]) - Math.max(gbM[3], abM[3]));
+        var outPctM = Math.round(100 * (1 - (ixM * iyM) / (rwM * rhM)));
+        if (outPctM >= MESA0_RASTER_OUT_PCT) {
+          pfOversize++;
+          if (outPctM > pfOversizeMax) pfOversizeMax = outPctM;
+        }
+      }
+    } catch (ePf3) {}
+
     if (!review) {
       var workFile = new File(jobFolder.fsName + '/work' + sfx + '.ai');
-      newDoc.saveAs(workFile, new IllustratorSaveOptions());
+      // PDF 합성부 제외 — 기본값(pdfCompatible=true)은 같은 그림을 AI 편집부와 PDF 복사본으로 2벌 쓴다
+      // (실측 107MB = PDF 55.7MB + AI 51.3MB). work.ai 소비자는 전수 확인 결과 전부 일러 app.open
+      // (mes-sheet.jsx:237 · SheetLayout.jsx:150 · 에이전트 Program.cs:1547 은 경로/바이트만)이고
+      // place(링크) 배치가 0건이라 PDF 스트림이 불필요하다. 잃는 것 = 탐색기 미리보기·Bridge 썸네일
+      // (같은 폴더 thumb.png 로 대체). ⚠️work.ai 를 링크 배치·InDesign·Acrobat 로 여는 소비자가 생기면 재검토.
+      var workOpts = new IllustratorSaveOptions();
+      workOpts.pdfCompatible = false;
+      newDoc.saveAs(workFile, workOpts);
+      try { workBytes = new File(workFile.fsName).length; } catch (eWb) {}
     }
 
     if (mode !== 'impose') {
@@ -566,22 +603,26 @@ function mesA0_process() {
     measured_cm: { w: Math.round(realW * 10) / 10, h: Math.round(realH * 10) / 10 },
     mode: mode,
     order_item_id: orderItemId,
-    files: { work_ai: 'work' + sfx + '.ai', eps: epsName, thumb: 'thumb' + sfx + '.png' },
+    files: { work_ai: 'work' + sfx + '.ai', eps: epsName, thumb: 'thumb' + sfx + '.png', work_bytes: workBytes },
     batch_folder: batchFolder || null,
     batch_index: (P.batch_index != null && P.batch_index !== '') ? P.batch_index : null,
     outline_failed: outlineFailed,
-    preflight: { source_rgb: pfSourceRGB, remaining_text: pfRemainingText, linked_images: pfLinkedImages },
+    // embedded_rasters·oversize_* = 용량 근본원인 추적(ingest 는 무시 — border_line 과 같은 추적용 필드)
+    preflight: { source_rgb: pfSourceRGB, remaining_text: pfRemainingText, linked_images: pfLinkedImages,
+      embedded_rasters: pfRasters, oversize_rasters: pfOversize, oversize_max_pct: pfOversizeMax },
     created_at_kst: now.getFullYear() + '-' + mesA0_pad2(now.getMonth() + 1) + '-' + mesA0_pad2(now.getDate()) +
       ' ' + mesA0_pad2(now.getHours()) + ':' + mesA0_pad2(now.getMinutes()) + ':' + mesA0_pad2(now.getSeconds())
   };
   if (!mesA0_writeText(jobFolder.fsName + '/manifest' + sfx + '.json', mesA0_toJson(manifest)))
     return '{"ok":false,"err":"manifest"}';
 
-  var warn = (pfSourceRGB ? 'R' : '') + (pfRemainingText > 0 ? 'T' : '') + (pfLinkedImages > 0 ? 'L' : '') + (outlineFailed ? 'O' : '');
+  var warn = (pfSourceRGB ? 'R' : '') + (pfRemainingText > 0 ? 'T' : '') + (pfLinkedImages > 0 ? 'L' : '') + (outlineFailed ? 'O' : '') +
+    (pfOversize > 0 ? 'E' : '');
   return '{"ok":true,"folder":"' + mesA0_jsonEsc(folderName) + '","eps":' +
     (epsName ? ('"' + mesA0_jsonEsc(epsName) + '"') : 'null') +
     ',"w":' + (Math.round(realW * 10) / 10) + ',"h":' + (Math.round(realH * 10) / 10) +
     ',"items":' + diagItems + ',"normed":' + normed +
+    ',"bytes":' + workBytes + ',"oversize":' + pfOversize +
     ',"mode":"' + mode + '","warn":"' + warn + '"}';
 }
 

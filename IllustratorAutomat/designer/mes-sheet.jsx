@@ -308,7 +308,11 @@
 
     // ── 저장 + 메타 ──
     var sheetFile = new File(jobFolder.fsName + '/' + SHEET_DOC_PREFIX + st.ymd + '_' + st.hms + '.ai');
-    sheetDoc.saveAs(sheetFile, new IllustratorSaveOptions());
+    // PDF 합성부 제외(mes-a0-host.jsx 와 동일 근거) — 판 .ai 는 조각 work.ai 들을 실물크기로 실은 문서라
+    // 조각 수만큼 용량이 곱해진다. 소비자는 일러(재편집)·RIP 픽업은 별도 EPS(:444) 라 PDF 스트림 불요.
+    var sheetOpts = new IllustratorSaveOptions();
+    sheetOpts.pdfCompatible = false;
+    sheetDoc.saveAs(sheetFile, sheetOpts);
     writeTextFile(jobFolder.fsName + '/sheet-meta.json', toJson({
       intake_ids: usedIds, is_roll: isRoll, sheet_w_mm: sheetWmm, sheet_h_mm: sheetHmm,
       margin_mm: (parseFloat(marginEt.text) || 10), gap_mm: (parseFloat(gapEt.text) || 5), created: st.kst

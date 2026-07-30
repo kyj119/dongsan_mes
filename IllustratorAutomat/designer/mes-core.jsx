@@ -355,8 +355,12 @@
     newDoc.artboards[0].artboardRect = [db[0], db[1], db[2], db[3]];
 
     // ③ work.ai 저장 — 가공 '전' 정제본(D6). 마감·돔보 없음(돔보는 판 단위).
+    // ⚠️이 경로(MES가공 스텁)는 2026-07-28 은퇴 — 등록은 패널 하나다. Z: 에 남아 있어 실행은 가능하므로
+    // pdfCompatible 만 패널과 동일하게 맞춘다(계측·경고는 패널 전용, 여기 추가하지 않음).
     var workFile = new File(jobFolder.fsName + '/work.ai');
-    newDoc.saveAs(workFile, new IllustratorSaveOptions());
+    var workOpts = new IllustratorSaveOptions();
+    workOpts.pdfCompatible = false;
+    newDoc.saveAs(workFile, workOpts);
 
     // ④ 가공 적용 + EPS (mode=impose면 스킵 — 모아찍기는 work.ai가 정본)
     if (mode !== 'impose') {
