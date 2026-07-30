@@ -229,14 +229,33 @@
         elWorker.appendChild(none);
         return;
       }
+      // ★첫 사용에는 **아무도 선택되지 않은 상태**로 둔다(2026-07-30 배포 전 점검).
+      //   실측: prod 매핑이 0건이라 전량 폴백이고, 정렬상 맨 위가 테스트 계정 `123`(id 13) 이다.
+      //   드롭다운의 첫 항목이 곧 기본값이므로, 가공자를 고르지 않고 등록하면 **남의(그것도 테스트
+      //   계정) worker_id 로 기록**되어 "내 작업" 필터에서 사라진다. 빈 항목을 앞에 두고
+      //   등록 시점에 선택을 요구한다(requireWorker) — 매핑을 나중에 채워도 이 안전망은 유지된다.
+      var want = prev || stored || '';
+      var hit = false;
+      for (var m = 0; m < list.length; m++) if (list[m].name === want) { hit = true; break; }
+      if (!hit) {
+        var ph = document.createElement('option');
+        ph.value = ''; ph.textContent = '(가공자 선택)';
+        elWorker.appendChild(ph);
+      }
       for (var k = 0; k < list.length; k++) {
         var o = document.createElement('option'); o.value = list[k].name; o.textContent = list[k].name;
         elWorker.appendChild(o);
       }
       // 직전 선택은 목록에 남아 있을 때만 복원한다 — 명단에서 빠진 사람이 선택돼 있으면
-      //   조용히 다른 사람 이름으로 등록되는 것보다 첫 항목으로 떨어지는 편이 안전하다.
-      var want = prev || stored || '';
-      for (var m = 0; m < list.length; m++) if (list[m].name === want) { elWorker.value = want; break; }
+      //   조용히 다른 사람 이름으로 등록되는 것보다 빈 항목으로 두는 편이 안전하다.
+      elWorker.value = hit ? want : '';
+    }
+    // 등록 직전 가공자 확인 — 비어 있으면 진행하지 않는다(worker_id null = "내 작업" 누락).
+    function requireWorker() {
+      if (elWorker && elWorker.value) return true;
+      out('가공자를 먼저 고르세요 — 등록물이 "내 작업"에서 빠지지 않도록 필요합니다.', 'err');
+      if (elWorker) { try { elWorker.focus(); } catch (e) {} }
+      return false;
     }
     function showSaved() {
       if (!elSaved) return;
@@ -417,6 +436,11 @@
 
     // ── 실측 ──
     function refreshMeasure(cb) {
+      // ★잠금 판정을 **여기 한 곳**에서 한다(2026-07-30 배포 전 점검).
+      //   setHostBusy 는 버튼만 잠그는데 `#scale`·`#trimInk` 는 select/checkbox 라 잠기지 않아,
+      //   **배치가 도는 중에 배율을 바꾸면 mesA0_measure 호출이 끼어들었다**. 호출자마다 가드를
+      //   붙이면 새 호출자에서 또 새므로 진입점에서 막는다(호출자 4곳 + 앞으로 추가될 것들).
+      if (hostBusy) return;
       var inkOn = elTrimInk && elTrimInk.checked ? 1 : 0;
       csi.evalScript('mesA0_measure(' + inkOn + ')', function (res) {
         var r = null; try { r = JSON.parse(res); } catch (e) {}
@@ -627,6 +651,7 @@
     // 단건 탭 전용 버튼 — 이제 의미가 하나다(모아찍기는 자기 탭에서 분리→등록).
     if (elBtnProcess) elBtnProcess.addEventListener('click', function () {
       if (hostBusy) return; // 배치·검토가 도는 중이면 진입 금지(params 파일 1개를 공유한다)
+      if (!requireWorker()) return;
       var params = gatherParams();
       saveSettings();
       out('가공 중… (저장 프리즈 중 잠시 대기)');
@@ -725,17 +750,29 @@
       // 취소는 진행 중에만 쓸 수 있다(호스트 호출 사이에서 멈춘다 — 실행 중인 JSX 는 중단 불가)
       if (elBtnCancel) {
         elBtnCancel.style.display = on ? '' : 'none';
-        elBtnCancel.disabled = false;
+        elBtnCancel.disabled = false; // 취소는 진행 중에도 항상 눌려야 한다(잠금 탈출구를 겸한다)
         elBtnCancel.textContent = '취소' + (label ? (' (' + label + ')') : '');
       }
       // 끝난 뒤에는 각 버튼의 고유 게이트(큐 비었는지·용도 섞였는지)를 다시 적용해야 한다
       if (!on && queue) { updateGate(); updateImposeBar(); updateApplyBar(); }
     }
     if (elBtnCancel) elBtnCancel.addEventListener('click', function () {
-      cancelRequested = true;
-      elBtnCancel.disabled = true;
-      elBtnCancel.textContent = '취소 중…';
-      out('취소 요청 — 진행 중인 1건을 마치고 멈춥니다(실행 중인 작업은 중단할 수 없습니다).');
+      // ★2단 동작 = 정상 취소 + **영구 잠김 탈출구**(2026-07-30 배포 전 점검).
+      //   호스트 콜백이 끝내 안 돌아오는 경우가 실재한다(JSX 모달 대기·COM wedge 전례) →
+      //   그때 setHostBusy(false) 가 영영 실행되지 않아 **패널이 못 쓰는 상태로 굳는다**.
+      //   취소는 플래그만 세우므로 그것만으로는 풀리지 않는다 → 두 번째 클릭에 강제 해제.
+      //   ⚠️강제 해제는 호스트가 아직 작업 중일 수 있다는 뜻이므로 경고를 함께 남긴다.
+      if (!cancelRequested) {
+        cancelRequested = true;
+        elBtnCancel.textContent = '강제 해제 (호스트 무응답일 때)';
+        out('취소 요청 — 진행 중인 1건을 마치고 멈춥니다(실행 중인 작업은 중단할 수 없습니다).' +
+          '\n응답이 없으면 [강제 해제]를 눌러 패널 잠금만 풀 수 있습니다.');
+        return;
+      }
+      setHostBusy(false);
+      out('⚠ 패널 잠금을 강제로 풀었습니다. 호스트(일러)가 아직 작업 중일 수 있으니 ' +
+        '일러 화면에 모달/진행이 없는지 확인한 뒤 다시 실행하세요.\n' +
+        'Z: 등록 폴더에 중간 산출물이 남았을 수 있습니다.', 'err');
     });
     // 큐 전 행이 모아찍기인가 — 검토문서 게이트 면제 판정(P2). 빈 큐는 false.
     function queueAllImpose() {
@@ -1343,12 +1380,14 @@
     });
     if (elBtnImposeRegister) elBtnImposeRegister.addEventListener('click', function () {
       if (!queue.length || !queueAllImpose()) return;
+      if (!requireWorker()) return;
       out('모아찍기 등록 중… ' + queue.length + '건');
       runBatchConfirm();
     });
 
     if (elBtnConfirm) elBtnConfirm.addEventListener('click', function () {
       if (!queue.length) return;
+      if (!requireWorker()) return;
       // ⚠️ 검토 게이트는 **여기에도** 있었다(2026-07-30 실사용 지적) — updateGate() 의 버튼 잠금만
       //    풀었더니 클릭 핸들러의 이 가드가 그대로 막아서 "미검토로는 확정이 안 된다"가 유지됐다.
       //    검토는 선택 사항이므로 두 곳 모두 게이트를 두지 않는다. 상태 표시는

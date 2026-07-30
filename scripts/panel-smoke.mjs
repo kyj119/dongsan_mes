@@ -73,7 +73,9 @@ const hostStub = mkStub(CONFIG)
 
 const browser = await chromium.launch()
 // 격리 케이스용 — 상태가 얽히면 뒤 어서션이 앞 케이스에 오염된다(탭 전환·연동·실패분은 새 페이지로).
-async function openPanel(cfg) {
+// 신규 패널은 **가공자 미선택** 상태로 뜬다(첫 사용 오등록 차단 가드) → 등록을 보는 케이스는
+//   먼저 가공자를 골라야 한다. 미선택 상태 자체를 검증하는 17c 만 pickWorker:false 로 연다.
+async function openPanel(cfg, opts) {
   const p = await browser.newPage()
   const errs = []
   p.on('pageerror', (e) => errs.push(String(e)))
@@ -81,8 +83,14 @@ async function openPanel(cfg) {
   await p.addInitScript(mkStub(cfg))
   await p.goto(pathToFileURL(PANEL).href)
   await p.waitForTimeout(300)
+  if (!opts || opts.pickWorker !== false) await pickWorker(p)
   p.__errs = errs
   return p
+}
+async function pickWorker(p) {
+  const names = await p.evaluate(() => Array.from(document.getElementById('worker').options)
+    .map((o) => o.value).filter(Boolean))
+  if (names.length) await p.selectOption('#worker', names[0])
 }
 
 const page = await browser.newPage()
@@ -96,6 +104,9 @@ await page.waitForTimeout(300)
 
 // 1) 초기화 무예외 + 기본 탭 = 단건
 ok('초기화 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
+// 첫 사용은 가공자 미선택이 정상 → 이후 등록 케이스를 위해 골라 둔다(가드 자체는 17c 에서 검증)
+ok('신규 패널은 가공자 미선택', (await page.locator('#worker').inputValue()) === '')
+await pickWorker(page)
 ok('기본 탭 = 단건', await page.locator('.tab.active').innerText() === '단건')
 ok('후가공은 접이식(기본 접힘)', await page.locator('#finBody').isHidden())
 // 액션 동사 통일(P3) — 세 탭이 모두 '등록' 어간을 쓰고 범위만 다르다
@@ -242,7 +253,8 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
 
 // ── 12) 가공자 명단 = config 정본 (하드코딩 제거, 점검 ④) ──
 {
-  const opts = await page.evaluate(() => Array.from(document.querySelectorAll('#worker option')).map((o) => o.value))
+  // 빈 안내 항목('(가공자 선택)')은 명단이 아니므로 제외하고 센다
+  const opts = await page.evaluate(() => Array.from(document.querySelectorAll('#worker option')).map((o) => o.value).filter(Boolean))
   ok('명단이 도메인 매핑으로 걸러짐', opts.length === 1 && opts[0] === '인호동', JSON.stringify(opts))
   ok('매핑 없는 계정(123) 제외', !opts.includes('123'), JSON.stringify(opts))
 }
@@ -250,7 +262,7 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
 // ── 12b) 매핑 0건(= 현재 prod) → 전량 폴백 + 도메인 미지정 경고 ──
 {
   const p2 = await openPanel(CONFIG_NOMAP)
-  const opts = await p2.evaluate(() => Array.from(document.querySelectorAll('#worker option')).map((o) => o.value))
+  const opts = await p2.evaluate(() => Array.from(document.querySelectorAll('#worker option')).map((o) => o.value).filter(Boolean))
   ok('매핑 0건이면 전량 폴백', opts.length === 2, JSON.stringify(opts))
   const saved = await p2.locator('#saved').innerText()
   ok('도메인 미지정 경고 표시', saved.includes('도메인 미지정'), saved)
@@ -366,6 +378,73 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   ok('취소 시 미처리분은 큐에 남음', after.rows > 0, 'rows=' + after.rows)
   ok('17 콘솔 에러 0', p7.__errs.length === 0, p7.__errs.join(' | '))
   await p7.close()
+}
+
+// ── 17c) 배포 전 점검: 가공자 미선택 방지 (첫 실사용 데이터 오염 차단) ──
+//    prod 실측 — worker_domains 0건이라 전량 폴백이고 정렬상 맨 위가 테스트 계정 `123`(id 13).
+//    드롭다운 첫 항목이 곧 기본값이므로 안 고르고 등록하면 남의 worker_id 로 기록돼
+//    "내 작업" 에서 사라진다. → 빈 항목을 앞에 두고 등록 시점에 선택을 요구한다.
+{
+  const p11 = await openPanel(CONFIG_NOMAP, { pickWorker: false })   // 매핑 0건 = 현재 prod 상태
+  const first = await p11.evaluate(() => {
+    const s = document.getElementById('worker')
+    return { value: s.value, firstOpt: s.options[0] ? s.options[0].textContent : '(없음)', count: s.options.length }
+  })
+  ok('매핑 0건이면 가공자 미선택 상태', first.value === '', JSON.stringify(first))
+  ok('빈 안내 항목이 맨 위', first.firstOpt.includes('가공자 선택'), first.firstOpt)
+  // 미선택으로 단건 등록 시도 → 차단되어야 하고 호스트를 부르지 않아야 한다
+  await p11.click('#btnProcess')
+  await p11.waitForTimeout(300)
+  const blocked = await p11.evaluate(() => ({
+    out: document.getElementById('out').textContent,
+    processCalls: window.__calls.filter((c) => /mesA0_process/.test(c)).length,
+  }))
+  ok('가공자 미선택 시 등록 차단', /가공자를 먼저 고르세요/.test(blocked.out), blocked.out.slice(0, 60))
+  ok('차단 시 호스트 호출 0', blocked.processCalls === 0, 'process 호출 ' + blocked.processCalls)
+  // 고르면 통과
+  await p11.selectOption('#worker', '인호동')
+  await p11.click('#btnProcess')
+  await p11.waitForTimeout(400)
+  ok('가공자 선택 후에는 등록 진행', await p11.evaluate(() => window.__calls.some((c) => /mesA0_process/.test(c))))
+  ok('17c 콘솔 에러 0', p11.__errs.length === 0, p11.__errs.join(' | '))
+  await p11.close()
+}
+
+// ── 17b) 배포 전 점검: 잠금이 새는 두 경로 ──
+//    ⓐ #scale·#trimInk 는 select/checkbox 라 setHostBusy 가 못 잠근다 → 배치 중 배율을 바꾸면
+//       mesA0_measure 호출이 끼어들었다. 가드는 refreshMeasure 진입점 한 곳에서 한다.
+//    ⓑ 호스트 콜백이 끝내 안 돌아오면(JSX 모달·COM wedge 전례) 잠금이 영영 안 풀려 패널이 굳는다
+//       → 취소 2번째 클릭 = 강제 해제(탈출구).
+{
+  const p10 = await openPanel(CONFIG)
+  await p10.click('.tab[data-tab="bundle"]')
+  await p10.click('#btnQueueBatch')
+  await p10.waitForTimeout(200)
+  await p10.evaluate(() => { window.__processDelay = 600 })
+  await p10.click('#btnConfirm')
+  await p10.waitForTimeout(250)
+  const callsBefore = await p10.evaluate(() => window.__calls.filter((c) => /mesA0_measure/.test(c)).length)
+  await p10.selectOption('#scale', '10')                 // 배치 중 배율 변경
+  await p10.evaluate(() => document.getElementById('trimInk').click())
+  await p10.waitForTimeout(400)
+  const callsAfter = await p10.evaluate(() => window.__calls.filter((c) => /mesA0_measure/.test(c)).length)
+  ok('배치 중 배율·잉크 변경이 호스트 실측을 부르지 않음', callsAfter === callsBefore,
+    'measure 호출 ' + callsBefore + ' → ' + callsAfter)
+  // 취소 2단: 1번째=정상 취소 요청, 2번째=강제 해제
+  await p10.click('#btnCancel')
+  ok('취소 1회 → 강제 해제 안내로 바뀜', (await p10.locator('#btnCancel').innerText()).includes('강제 해제'),
+    await p10.locator('#btnCancel').innerText())
+  await p10.click('#btnCancel')
+  await p10.waitForTimeout(150)
+  const forced = await p10.evaluate(() => ({
+    processEnabled: !document.getElementById('btnProcess').disabled,
+    out: document.getElementById('out').textContent,
+  }))
+  ok('취소 2회 → 잠금 강제 해제', forced.processEnabled, JSON.stringify(forced).slice(0, 120))
+  ok('강제 해제 시 경고 표시', /강제로 풀었습니다/.test(forced.out), forced.out.slice(0, 80))
+  await p10.waitForTimeout(1500)
+  ok('17b 콘솔 에러 0', p10.__errs.length === 0, p10.__errs.join(' | '))
+  await p10.close()
 }
 
 // ── 18) P2: 적용 버튼은 묶음 탭에서만 (탭=용도 원칙) ──
