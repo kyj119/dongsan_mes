@@ -82,6 +82,14 @@
                             <label class="block text-xs font-medium text-gray-600 mb-0.5">금액</label>
                             <input type="text" name="amount_${id}" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm font-bold text-blue-700" value="0원"
                                    oninput="onAmountManualEdit(${id})" data-auto-amount="0">
+                            <!-- 금액을 손으로 고치면 = 그 행의 에누리(할인)다(2026-07-30 확정).
+                                 자동값과의 차액을 눈에 보이게 남기고 사유를 받는다 — 저장 시 line_discount·
+                                 discount_reason 으로 기록되어 나중에 '무엇을 부정했는지' 추적된다. -->
+                            <div id="line_disc_${id}" class="hidden mt-0.5">
+                                <div class="text-[10px] text-amber-700" id="line_disc_txt_${id}"></div>
+                                <input type="text" name="discount_reason_${id}" placeholder="에누리 사유 (선택)"
+                                       class="w-full px-1.5 py-1 border border-amber-300 rounded text-[11px] mt-0.5">
+                            </div>
                         </div>
                     </div>
                     <div class="grid grid-cols-4 md:grid-cols-8 gap-2 mb-2">

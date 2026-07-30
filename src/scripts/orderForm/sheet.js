@@ -211,43 +211,10 @@
                 '#EC4899','#06B6D4','#84CC16','#F97316','#6366F1'
             ];
 
-            // ── 시트 배치 탭 전환 ─────────────────────────────────────────
-            window.switchAiTab = function(tab) {
-                var tabExtract = document.getElementById('tabExtract');
-                var tabSheet   = document.getElementById('tabSheet');
-                var sheetPanel = document.getElementById('sheetLayoutPanel');
-
-                function setTabStyle(el, active) {
-                    if (!el) return;
-                    if (active) {
-                        el.className = 'flex-1 px-4 py-3 text-sm font-semibold rounded-lg border-2 border-blue-600 bg-blue-600 text-white hover:bg-blue-700 transition-colors';
-                    } else {
-                        el.className = 'flex-1 px-4 py-3 text-sm font-semibold rounded-lg border-2 border-blue-300 bg-white text-blue-600 hover:bg-blue-50 transition-colors';
-                    }
-                }
-
-                var extractPanel = document.getElementById('extractPanel');
-
-                if (tab === 'sheet') {
-                    setTabStyle(tabSheet, true);
-                    setTabStyle(tabExtract, false);
-                    if (sheetPanel) sheetPanel.classList.remove('hidden');
-                    if (extractPanel) extractPanel.classList.add('hidden');
-                    populateSheetElements(sheetLayoutGroups);
-                } else {
-                    setTabStyle(tabExtract, true);
-                    setTabStyle(tabSheet, false);
-                    if (sheetPanel) sheetPanel.classList.add('hidden');
-
-                    // 품목 추출 패널 표시
-                    var extractPanel = document.getElementById('extractPanel');
-                    if (extractPanel) {
-                        extractPanel.classList.remove('hidden');
-                        // #370 populateExtractGroupsList 제거 — extractGroupsList/extractPanel DOM이 페이지에 없는 레거시 경로.
-                        //   현행 추출 UI는 gridExtractAll()(parent.js), 추출 자체는 doExtractToLines가 sheetLayoutGroups 직접 사용.
-                    }
-                }
-            };
+            // (2026-07-30 제거) switchAiTab — **호출처 0** 이고 참조하던 #tabExtract·#tabSheet·
+            //   #extractPanel 은 어느 페이지 템플릿에도 없다(#370 에서 추출 UI가 gridExtractAll 로
+            //   옮겨간 뒤 남은 화석). check:dom 기준선 9건 중 주문서 4건이 전부 여기서 나왔다 → 9→5.
+            //   시트 패널 자체(#sheetLayoutPanel)와 populateSheetElements 는 살아 있으므로 그대로 둔다.
 
             // ── 시트 배치 요소 테이블 렌더링 ──────────────────────────────
             function getSheetScaleFactor() {

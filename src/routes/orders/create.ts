@@ -10,6 +10,7 @@ import type { Order } from '../../types/models'
 import { authMiddleware } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { getNextEntitySeqNumber } from '../../utils/sequenceGenerator'
+import { computeLineAmount, type LineAmount } from '../../utils/orderLineAmount'
 import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
 import { checkMaterialShortage } from '../../utils/materialShortageCheck'
@@ -97,19 +98,10 @@ ordersCreateRouter.post('/', async (c) => {
     for (const item of orderData.items) {
       if (item.price_status === 'PENDING') { continue }
       const pricingMethod = item.item_id ? (pricingMethodMap.get(item.item_id) || 'FIXED') : 'FIXED'
-      const w = item.width_mm || item.width || 0
-      const h = item.height_mm || item.height || 0
-      let itemAmount: number
-      if (pricingMethod === 'AREA' && w > 0 && h > 0) {
-        // 10cm 올림 후 면적 계산 (프론트엔드와 동일)
-        const wRound = Math.ceil(w / 10) * 10
-        const hRound = Math.ceil(h / 10) * 10
-        itemAmount = (item.unit_price || 0) * (wRound / 100) * (hRound / 100) * (item.quantity || 1)
-      } else {
-        itemAmount = (item.unit_price || 0) * (item.quantity || 1)
-      }
-      // 100원 단위 반올림
-      itemAmount = Math.round(itemAmount / 100) * 100
+      // 금액 산식 = utils/orderLineAmount 단일 소스. 수동 금액(에누리)이 오면 final 이 그 값이 된다.
+      //   총액·부가세는 **최종 청구액 기준**이어야 한다 — 자동값으로 잡으면 에누리가 총액에 반영되지 않아
+      //   행 합계와 주문 총액이 갈린다(화면에서 이미 그렇게 어긋나 있었다).
+      const itemAmount = computeLineAmount(item, pricingMethod).final
       totalAmount += itemAmount
       if (item.vat_included) {
         vatAmount += itemAmount * vatRatePost
@@ -204,7 +196,8 @@ ordersCreateRouter.post('/', async (c) => {
 
     // Insert order items — two-pass batch for parent_item_id support (#63 원자화)
     // Pre-resolve: item detail lookups for items missing name
-    const parentItems: Array<{ idx: number; item: any; itemName: string | null; categoryName: string | null; unit: string; itemAmount: number }> = []
+    // amt = 금액 3종(자동·최종·에누리). INSERT 에서 auto_amount·line_discount 를 기록해야 하므로 함께 들고 간다.
+    const parentItems: Array<{ idx: number; item: any; itemName: string | null; categoryName: string | null; unit: string; itemAmount: number; amt: LineAmount }> = []
     const itemIdsToLookup: number[] = []
     const lookupIndices: number[] = []
 
@@ -213,19 +206,11 @@ ordersCreateRouter.post('/', async (c) => {
       if (item.parent_client_id) continue
 
       const itemPricingMethod = item.item_id ? (pricingMethodMap.get(item.item_id) || 'FIXED') : 'FIXED'
-      const itemW = item.width_mm || item.width || 0
-      const itemH = item.height_mm || item.height || 0
-      let itemAmount: number
-      if (itemPricingMethod === 'AREA' && itemW > 0 && itemH > 0) {
-        const iwRound = Math.ceil(itemW / 10) * 10
-        const ihRound = Math.ceil(itemH / 10) * 10
-        itemAmount = (item.unit_price || 0) * (iwRound / 100) * (ihRound / 100) * (item.quantity || 1)
-      } else {
-        itemAmount = (item.unit_price || 0) * (item.quantity || 1)
-      }
-      itemAmount = Math.round(itemAmount / 100) * 100
+      // 금액 3종(자동·최종·에누리)을 함께 들고 다닌다 — INSERT 에서 전부 기록해야 하기 때문.
+      const amt = computeLineAmount(item, itemPricingMethod)
+      const itemAmount = amt.final
 
-      const entry = { idx: i, item, itemName: item.item_name || null, categoryName: item.category_name || null, unit: item.unit || 'EA', itemAmount }
+      const entry = { idx: i, item, itemName: item.item_name || null, categoryName: item.category_name || null, unit: item.unit || 'EA', itemAmount, amt }
       parentItems.push(entry)
 
       if (item.item_id && !entry.itemName) {
@@ -253,7 +238,7 @@ ordersCreateRouter.post('/', async (c) => {
 
     // Pass 1: batch insert parent/regular rows
     const orderEntityId = billingEntityId
-    const pass1Stmts = parentItems.map(({ idx, item, itemName, categoryName, unit, itemAmount }) => {
+    const pass1Stmts = parentItems.map(({ idx, item, itemName, categoryName, unit, itemAmount, amt }) => {
       // 담당 법인: 요청 명시값 우선, 없으면 카드그룹 기반 추천. NULL=청구 법인 담당(투명)
       const assignedEntity = (item.assigned_entity_id !== undefined && item.assigned_entity_id !== null)
         ? item.assigned_entity_id
@@ -266,8 +251,9 @@ ordersCreateRouter.post('/', async (c) => {
           unit_price, amount, vat_included,
           post_processing, content, specification, sort_order,
           ai_group_index, scale_factor, ai_analysis_id, parent_item_id, finishing, price_status,
-          assigned_entity_id, assignment_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
+          assigned_entity_id, assignment_status,
+          auto_amount, line_discount, discount_reason, discount_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         orderId,
         item.item_id || null,
@@ -290,7 +276,14 @@ ordersCreateRouter.post('/', async (c) => {
         item.finishing || null,
         item.price_status || 'CONFIRMED',
         assignedEntity,
-        assignmentStatus
+        assignmentStatus,
+        // 에누리 기록 — amount(최종)만 남기면 '무엇을 부정했는지'가 사라진다.
+        //   ⚠️ auto_amount 는 NULL 로 두지 않는다 — departments.ts:183 의
+        //      COALESCE(oi.amount, quantity*unit_price) 류 폴백과 같은 사고를 예방한다.
+        item.price_status === 'PENDING' ? 0 : amt.auto,
+        item.price_status === 'PENDING' ? 0 : amt.discount,
+        amt.manual ? ((item as { discount_reason?: string }).discount_reason || null) : null,
+        amt.manual ? (user?.id ?? null) : null
       )
     })
 
@@ -321,8 +314,12 @@ ordersCreateRouter.post('/', async (c) => {
             unit_price, amount, vat_included,
             post_processing, content, specification, sort_order,
             ai_group_index, scale_factor, ai_analysis_id, parent_item_id,
-            assigned_entity_id, assignment_status
-          ) VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, 0, 0, 1, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            assigned_entity_id, assignment_status,
+            auto_amount, line_discount
+          -- 자녀(분할청구) 라인은 금액 0 이 설계다(부모 행이 금액을 갖는다) → 에누리 개념 없음.
+          --   그래도 auto_amount 를 0 으로 박는다: NULL 로 두면 COALESCE 폴백 경로에서
+          --   단가×수량으로 되살아나 이중 계상될 수 있다.
+          ) VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, 0, 0, 1, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
         `).bind(
           orderId,
           item.item_name || '',
@@ -832,16 +829,10 @@ ordersCreateRouter.post('/:id/items', async (c) => {
       const categoryName = item.category_name || lookup?.category || null
       const unit = item.unit || lookup?.unit || 'EA'
       const pm = item.item_id ? (pricingMethodMap.get(item.item_id) || 'FIXED') : 'FIXED'
-      const w = item.width_mm || item.width || 0
-      const h = item.height_mm || item.height || 0
       const isPending = item.price_status === 'PENDING'
-      let amount: number
-      if (pm === 'AREA' && w > 0 && h > 0) {
-        amount = (item.unit_price || 0) * (Math.ceil(w / 10) * 10 / 100) * (Math.ceil(h / 10) * 10 / 100) * (item.quantity || 1)
-      } else {
-        amount = (item.unit_price || 0) * (item.quantity || 1)
-      }
-      amount = Math.round(amount / 100) * 100
+      // 금액 산식 = utils/orderLineAmount 단일 소스(라인 추가 경로도 동일 규칙·에누리 지원)
+      const amt = computeLineAmount(item, pm)
+      const amount = amt.final
       const vatIncluded = item.vat_included !== undefined ? (item.vat_included ? 1 : 0) : 1
       if (!isPending) {
         totalDelta += amount
@@ -858,8 +849,9 @@ ordersCreateRouter.post('/:id/items', async (c) => {
           unit_price, amount, vat_included,
           post_processing, content, specification, sort_order,
           ai_group_index, scale_factor, ai_analysis_id, parent_item_id, finishing, price_status,
-          assigned_entity_id, assignment_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
+          assigned_entity_id, assignment_status,
+          auto_amount, line_discount, discount_reason, discount_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         orderId, item.item_id || null, itemName, categoryName,
         item.width_mm || item.width || null, item.height_mm || item.height || null,
@@ -868,7 +860,10 @@ ordersCreateRouter.post('/:id/items', async (c) => {
         item.post_processing || null, item.content || null, item.specification || null, sortOrder++,
         item.ai_group_index !== undefined ? item.ai_group_index : null,
         item.scale_factor || 1, item.ai_analysis_id || null, item.finishing || null, item.price_status || 'CONFIRMED',
-        assignedEntity, assignmentStatus
+        assignedEntity, assignmentStatus,
+        isPending ? 0 : amt.auto, isPending ? 0 : amt.discount,
+        amt.manual ? ((item as { discount_reason?: string }).discount_reason || null) : null,
+        amt.manual ? (user?.id ?? null) : null
       ))
     }
 

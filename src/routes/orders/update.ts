@@ -12,6 +12,7 @@ import { requireAnyPagePermission, requireEditOrRole } from '../../middleware/pe
 import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { recommendAssignedEntity, recalcOrderBillingGroups, generateCardsForOrder } from './helpers'
+import { computeLineAmount } from '../../utils/orderLineAmount'
 
 const ordersUpdateRouter = new Hono<HonoEnv>()
 ordersUpdateRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
@@ -95,17 +96,8 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
     for (const item of orderData.items) {
       if (item.price_status === 'PENDING') { continue }
       const pricingMethod = item.item_id ? (putPricingMethodMap.get(item.item_id) || 'FIXED') : 'FIXED'
-      const w = item.width_mm || item.width || 0
-      const h = item.height_mm || item.height || 0
-      let putItemAmt: number
-      if (pricingMethod === 'AREA' && w > 0 && h > 0) {
-        const wR = Math.ceil(w / 10) * 10
-        const hR = Math.ceil(h / 10) * 10
-        putItemAmt = (item.unit_price || 0) * (wR / 100) * (hR / 100) * (item.quantity || 1)
-      } else {
-        putItemAmt = (item.unit_price || 0) * (item.quantity || 1)
-      }
-      putItemAmt = Math.round(putItemAmt / 100) * 100
+      // 총액도 **최종 청구액(에누리 반영) 기준** — 자동값으로 잡으면 행 합계와 주문 총액이 갈린다
+      const putItemAmt = computeLineAmount(item, pricingMethod).final
       totalAmount += putItemAmt
       if (item.vat_included) {
         vatAmount += putItemAmt * vatRatePut
@@ -274,17 +266,11 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
       if (item.parent_client_id) continue  // 자식 행은 2단계에서 처리
 
       const putItemPricingMethod = item.item_id ? (putPricingMethodMap.get(item.item_id) || 'FIXED') : 'FIXED'
-      const putItemW = item.width_mm || item.width || 0
-      const putItemH = item.height_mm || item.height || 0
-      let itemAmount: number
-      if (putItemPricingMethod === 'AREA' && putItemW > 0 && putItemH > 0) {
-        const piWR = Math.ceil(putItemW / 10) * 10
-        const piHR = Math.ceil(putItemH / 10) * 10
-        itemAmount = (item.unit_price || 0) * (piWR / 100) * (piHR / 100) * (item.quantity || 1)
-      } else {
-        itemAmount = (item.unit_price || 0) * (item.quantity || 1)
-      }
-      itemAmount = Math.round(itemAmount / 100) * 100
+      // 금액 산식 = utils/orderLineAmount 단일 소스.
+      //   ★수정 경로에도 반드시 있어야 한다 — 여기가 빠지면 "주문을 수정하면 에누리가 사라진다"
+      //     (PUT 은 라인을 지우고 다시 INSERT 하는 구조라 에누리가 그대로 유실된다).
+      const putAmt = computeLineAmount(item, putItemPricingMethod)
+      const itemAmount = putAmt.final
       let itemName = item.item_name || null
       let categoryName = item.category_name || null
       let unit = item.unit || 'EA'
@@ -309,8 +295,9 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
           unit_price, amount, vat_included,
           post_processing, content, specification, sort_order,
           ai_group_index, scale_factor, ai_analysis_id, parent_item_id, finishing, price_status,
-          assigned_entity_id, assignment_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
+          assigned_entity_id, assignment_status,
+          auto_amount, line_discount, discount_reason, discount_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         id,
         item.item_id || null,
@@ -333,7 +320,11 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
         item.finishing || null,
         item.price_status || 'CONFIRMED',
         putAssignedEntity,
-        putAssignmentStatus
+        putAssignmentStatus,
+        item.price_status === 'PENDING' ? 0 : putAmt.auto,
+        item.price_status === 'PENDING' ? 0 : putAmt.discount,
+        putAmt.manual ? ((item as { discount_reason?: string }).discount_reason || null) : null,
+        putAmt.manual ? (user?.id ?? null) : null
       ))
       putParentClientGroupIds.push(item.client_group_id || null)
     }
@@ -361,8 +352,10 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
           unit_price, amount, vat_included,
           post_processing, content, specification, sort_order,
           ai_group_index, scale_factor, ai_analysis_id, parent_item_id,
-          assigned_entity_id, assignment_status
-        ) VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, 0, 0, 1, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          assigned_entity_id, assignment_status,
+          auto_amount, line_discount
+        -- 자녀(분할청구) 라인 = 금액 0 설계. auto_amount NULL 금지(COALESCE 폴백 이중계상 예방)
+        ) VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, 0, 0, 1, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
       `).bind(
         id,
         item.item_name || '',

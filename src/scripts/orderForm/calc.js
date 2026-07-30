@@ -151,32 +151,33 @@
                 calculateTotal();
             };
 
+            // 행의 최종 청구액 = 에누리(수동 수정)가 있으면 그 값. 없으면 자동 계산값.
+            //   ★전엔 합계가 수동값을 무시해 화면 안에서 어긋났다(행 200,000인데 합계 62,000).
+            //     수동 금액의 의미가 '행 에누리'로 확정됐으므로(2026-07-30) 합계도 최종액 기준이어야 한다.
+            //     서버 utils/orderLineAmount.computeLineAmount() 와 같은 규칙이다.
+            function lineFinalAmount(id) {
+                var amtEl = document.querySelector('[name="amount_' + id + '"]');
+                var auto = amtEl ? (parseInt(amtEl.dataset.autoAmount) || 0) : 0;
+                if (amtEl && amtEl.classList.contains('border-amber-400')) {
+                    var manual = parseMoney(amtEl.value);
+                    if (isFinite(manual)) return manual;
+                }
+                return auto;
+            }
             function calculateTotal() {
                 var total = 0, vat = 0, ppTotal = 0;
+                var vatRate = (typeof window.VAT_RATE === 'number' && isFinite(window.VAT_RATE)) ? window.VAT_RATE : 0.1;
                 document.querySelectorAll('#itemsContainer > [id^="item-"]').forEach(function(row) {
                     var id = row.id.replace('item-', '');
                     var isChildInput = row.querySelector('[name^="is_child_"]');
                     var isChild = isChildInput && isChildInput.value === '1';
-                    var qty = parseInt((document.querySelector('[name="quantity_' + id + '"]') || {}).value || 0);
-                    var price = parseMoney((document.querySelector('[name="unit_price_' + id + '"]') || {}).value);
-                    var pmEl = document.querySelector('[name="pricing_method_' + id + '"]');
-                    var pm = pmEl ? pmEl.value : 'FIXED';
-                    var amt;
-                    if (pm === 'AREA') {
-                        var wEl = document.querySelector('[name="width_' + id + '"]');
-                        var hEl = document.querySelector('[name="height_' + id + '"]');
-                        var wRaw2 = wEl ? (parseFloat(wEl.value) || 0) : 0;
-                        var hRaw2 = hEl ? (parseFloat(hEl.value) || 0) : 0;
-                        var w2 = Math.ceil(wRaw2 / 10) * 10;
-                        var h2 = Math.ceil(hRaw2 / 10) * 10;
-                        amt = price * (w2 / 100) * (h2 / 100) * qty;
-                    } else {
-                        amt = qty * price;
-                    }
-                    amt = Math.round(amt / 100) * 100;
+                    // 자동값은 calcItem()이 dataset.autoAmount 에 넣어 둔 것을 쓴다(산식 중복 제거).
+                    var amt = lineFinalAmount(id);
                     total += amt;
                     var vatEl = document.querySelector('[name="vat_' + id + '"]');
-                    if (vatEl && vatEl.checked) vat += Math.round(amt * 0.1);
+                    // 부가세율 = 서버 settings 주입값(window.VAT_RATE). 하드코딩 0.1 이던 것을 해소 —
+                    //   설정을 바꾸면 화면과 저장이 갈리던 이중 정본이었다.
+                    if (vatEl && vatEl.checked) vat += Math.round(amt * vatRate);
                     if (!isChild) ppTotal += calculatePPCost(id) || 0;
                 });
                 var discount = parseMoney((document.getElementById('discountAmount') || {}).value);
@@ -558,6 +559,21 @@
                         unit: document.querySelector(`[name="item_unit_${id}"]`)?.value || 'EA',
                         unit_price: parseMoney(document.querySelector(`[name="unit_price_${id}"]`)?.value),
                         pricing_method: pmItem,
+                        // 에누리 = 금액을 손으로 고친 행만 전송한다. 안 보내면 서버가 자동값을 쓴다
+                        //   (utils/orderLineAmount 의 hasManual 판정과 짝). 전엔 amount 를 아예 안 보내
+                        //   수동 수정이 조용히 유실됐다.
+                        amount: (function() {
+                            var a = document.querySelector('[name="amount_' + id + '"]');
+                            if (!a || !a.classList.contains('border-amber-400')) return undefined;
+                            var m = parseMoney(a.value);
+                            return isFinite(m) ? m : undefined;
+                        })(),
+                        discount_reason: (function() {
+                            var a = document.querySelector('[name="amount_' + id + '"]');
+                            if (!a || !a.classList.contains('border-amber-400')) return undefined;
+                            var rEl = document.querySelector('[name="discount_reason_' + id + '"]');
+                            return (rEl && rEl.value.trim()) ? rEl.value.trim() : undefined;
+                        })(),
                         vat_included: document.querySelector(`[name="vat_${id}"]`)?.checked ? 1 : 0,
                         assigned_entity_id: (document.querySelector(`[name="assigned_entity_${id}"]`)?.value ? parseInt(document.querySelector(`[name="assigned_entity_${id}"]`).value) : undefined),
                         post_processing: JSON.stringify(pp),

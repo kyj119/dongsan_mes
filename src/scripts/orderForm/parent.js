@@ -1424,12 +1424,23 @@
                 if (!el) return;
                 var autoAmt = parseInt(el.dataset.autoAmount) || 0;
                 var manual = parseMoney(el.value);
+                var box = document.getElementById('line_disc_' + id);
+                var txt = document.getElementById('line_disc_txt_' + id);
                 if (autoAmt > 0 && manual !== autoAmt) {
                     el.classList.add('border-amber-400');
                     el.title = '자동 계산: ' + autoAmt.toLocaleString() + '원 (수동 수정됨)';
+                    // 에누리(차액)를 문구로 드러낸다 — 증액이면 '추가'로 표기(음수 할인)
+                    var diff = autoAmt - manual;
+                    if (txt) {
+                        txt.textContent = diff > 0
+                            ? '자동 ' + autoAmt.toLocaleString() + '원 − 에누리 ' + diff.toLocaleString() + '원'
+                            : '자동 ' + autoAmt.toLocaleString() + '원 + 추가 ' + Math.abs(diff).toLocaleString() + '원';
+                    }
+                    if (box) box.classList.remove('hidden');
                 } else {
                     el.classList.remove('border-amber-400');
                     el.title = '';
+                    if (box) box.classList.add('hidden');
                 }
                 calculateTotal();
             };
