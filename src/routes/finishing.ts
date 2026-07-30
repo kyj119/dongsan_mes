@@ -9,6 +9,37 @@ finishingRouter.use('/*', authMiddleware)
 // 후가공 방법/프리셋 정의는 마스터·카탈로그 데이터로, BOM·품목·단가와 동일하게 법인 공유 정책.
 // → entityFilter 미적용이 의도된 설계. (법인별 후가공 단가가 필요해지면 별도 entity 스코프 검토)
 
+// 화면의 칸 이름 — 사용자는 '출력(현수막)'·'전사(봉제)' 라는 칸으로 보므로 오류 문구도 같은 말을
+// 써야 어느 칸을 봐야 하는지 바로 안다. 표시 원본 = src/pages/postProcessing.ts 그룹 헤더.
+const METHOD_GROUP_LABEL: Record<string, string> = {
+  output: '출력(현수막)',
+  transfer: '전사(봉제)',
+  sign: '간판',
+}
+
+// 이름 UNIQUE 충돌 문구 — 추가(POST)·이름 변경(PUT) 양쪽이 같은 문구를 쓴다.
+//
+// ★ name UNIQUE 는 method_group 을 가리지 않는 전역 제약이다. 프리셋 config 와 CEP 패널이
+//   방식을 '이름'으로 찾으므로 전역 유일이 요구사항이고, 그래서 다른 칸에 있는 이름으로도 거부된다.
+//   그런데 사용자가 보고 있는 칸의 목록엔 그 이름이 없어 이유를 알 수 없는 실패로 보인다
+//   (2026-07-30 실제 신고: 출력 칸에 추가했는데 봉제 칸의 이름과 충돌) → 어느 칸에 있는지,
+//   삭제 처리된 항목인지를 문구에 실어 준다. reqGroup 을 모르면(부분 수정) 칸 힌트는 생략.
+async function uniqueNameMessage(db: D1Database, name: string, reqGroup: string | null): Promise<string> {
+  const dup = name
+    ? await db
+        .prepare('SELECT is_active, method_group FROM finishing_methods WHERE name = ?')
+        .bind(name)
+        .first<{ is_active: number; method_group: string | null }>()
+    : null
+  const dupGroup = dup?.method_group || 'output'
+  const hints: string[] = []
+  if (dup && reqGroup && dupGroup !== reqGroup) {
+    hints.push(`'${METHOD_GROUP_LABEL[dupGroup] || dupGroup}' 칸에 등록돼 있습니다 (이름은 칸을 합쳐 유일해야 합니다)`)
+  }
+  if (dup && dup.is_active === 0) hints.push('삭제 처리된 항목에 같은 이름이 남아 있습니다')
+  return `'${name}' 은(는) 이미 있는 마감 방식입니다${hints.length ? ' — ' + hints.join(' · ') : ''}`
+}
+
 // GET /methods?group=output|transfer (optional filter)
 finishingRouter.get('/methods', async (c) => {
   try {
@@ -29,26 +60,22 @@ finishingRouter.get('/methods', async (c) => {
 
 // POST /methods
 finishingRouter.post('/methods', requireRole('ADMIN', 'MANAGER'), async (c) => {
-  // name 을 try 밖에 둔다 — 충돌 메시지에 쓰는데 c.req.json() 은 두 번 읽을 수 없다
+  // name·group 을 try 밖에 둔다 — 충돌 메시지에 쓰는데 c.req.json() 은 두 번 읽을 수 없다
   let name = ''
+  let reqGroup = 'output'
   try {
     const body = await c.req.json()
     name = body.name
     const { margin_cm, description, method_group } = body
+    reqGroup = method_group || 'output'
     if (!name) return c.json({ success: false, error: '이름 필수' }, 400)
     const r = await c.env.DB.prepare(
       'INSERT INTO finishing_methods (name, margin_cm, description, method_group, sort_order) VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(sort_order),0)+1 FROM finishing_methods))'
-    ).bind(name, margin_cm || 0, description || null, method_group || 'output').run()
+    ).bind(name, margin_cm || 0, description || null, reqGroup).run()
     return c.json({ success: true, data: { id: r.meta.last_row_id } })
   } catch (e: any) {
-    // 이름 UNIQUE 충돌 — 어느 이름이 걸렸는지 알려준다('이미 존재'만으론 목록과 대조가 안 된다).
-    // is_active=0 으로 내린 이름도 UNIQUE 에 걸리는데 목록엔 안 보이므로 그 경우를 구분해 준다.
     if (e.message?.includes('UNIQUE')) {
-      const dead = name
-        ? await c.env.DB.prepare('SELECT is_active FROM finishing_methods WHERE name = ?').bind(name).first<{ is_active: number }>()
-        : null
-      const hint = dead && dead.is_active === 0 ? '(삭제 처리된 항목에 같은 이름이 남아 있습니다)' : ''
-      return c.json({ success: false, error: `'${name}' 은(는) 이미 있는 마감 방식입니다 ${hint}`.trim() }, 409)
+      return c.json({ success: false, error: await uniqueNameMessage(c.env.DB, name, reqGroup) }, 409)
     }
     console.error('finishing POST /methods error:', e)
     return c.json({ success: false, error: '서버 오류' }, 500)
@@ -57,9 +84,15 @@ finishingRouter.post('/methods', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
 // PUT /methods/:id
 finishingRouter.put('/methods/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  // 이름 변경도 같은 UNIQUE 를 밟는다 — 추가 경로만 고치면 '수정하다 서버 오류'로 남는다(형제 완전성)
+  let name: string | undefined
+  let reqGroup: string | null = null
   try {
     const id = c.req.param('id')
-    const { name, margin_cm, description, method_group } = await c.req.json()
+    const body = await c.req.json()
+    const { margin_cm, description, method_group } = body
+    name = body.name
+    if (method_group !== undefined) reqGroup = method_group || 'output'
     const sets: string[] = [], params: any[] = []
     if (name !== undefined) { sets.push('name = ?'); params.push(name) }
     if (margin_cm !== undefined) { sets.push('margin_cm = ?'); params.push(margin_cm) }
@@ -69,7 +102,11 @@ finishingRouter.put('/methods/:id', requireRole('ADMIN', 'MANAGER'), async (c) =
     params.push(parseInt(id))
     await c.env.DB.prepare(`UPDATE finishing_methods SET ${sets.join(', ')} WHERE id = ?`).bind(...params).run()
     return c.json({ success: true })
-  } catch {
+  } catch (e: any) {
+    if (e.message?.includes('UNIQUE')) {
+      return c.json({ success: false, error: await uniqueNameMessage(c.env.DB, name || '', reqGroup) }, 409)
+    }
+    console.error('finishing PUT /methods/:id error:', e)
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })

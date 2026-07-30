@@ -75,6 +75,9 @@ ppRouter.get('/by-subcategory/:subcatName', async (c) => {
 
 // ── 후가공 옵션 등록 ──────────────────────────────────────────────────────────
 ppRouter.post('/', async (c) => {
+  // 코드는 충돌 문구에 쓰는데 c.req.json() 은 두 번 읽을 수 없어 try 밖에 둔다
+  let optionCode = ''
+  let userGaveCode = false
   try {
     const body = await c.req.json<{
       option_code: string
@@ -96,13 +99,17 @@ ppRouter.post('/', async (c) => {
     }
     // 코드는 내부 식별자일 뿐이라 사용자가 정할 값이 아니다 — 비면 자동 생성한다.
     // (2026-07-30: 코드가 필수라 후가공 추가가 실패하던 것. 화면에도 필드가 있지만 눈에 안 띈다)
-    let optionCode = (body.option_code || '').trim()
+    optionCode = (body.option_code || '').trim()
+    userGaveCode = !!optionCode
     if (!optionCode) {
+      // 번호는 기존 PP-NNN '코드'끼리 비교해서 뽑는다. MAX(id)+1 로 만들면 id 가 하드삭제로
+      // 건너뛴 만큼 어긋나(실측: id 22 인데 코드는 PP-017) 이미 쓰인 번호를 다시 만들 수 있다.
       const row = await c.env.DB.prepare(
-        `SELECT COALESCE(MAX(id), 0) + 1 AS n FROM post_processing_options`
+        `SELECT COALESCE(MAX(CAST(SUBSTR(option_code, 4) AS INTEGER)), 0) + 1 AS n
+           FROM post_processing_options
+          WHERE option_code GLOB 'PP-[0-9]*'`
       ).first<{ n: number }>()
-      const n = row?.n ?? 1
-      optionCode = 'PP-' + String(n).padStart(3, '0')
+      optionCode = 'PP-' + String(row?.n ?? 1).padStart(3, '0')
     }
     const marginErr = validateMargins(body as Record<string, unknown>)
     if (marginErr) return c.json({ success: false, error: marginErr }, 400)
@@ -130,7 +137,17 @@ ppRouter.post('/', async (c) => {
     ).first()
 
     return c.json({ success: true, data: result }, 201)
-  } catch (error) {
+  } catch (error: any) {
+    // option_code UNIQUE 충돌 — '서버 오류'로 뭉개면 사용자는 무엇을 고쳐야 하는지 알 수 없다.
+    // 직접 입력한 코드가 겹친 경우와 자동 생성이 겹친 경우는 조치가 정반대다.
+    if (error?.message?.includes('UNIQUE')) {
+      return c.json({
+        success: false,
+        error: userGaveCode
+          ? `코드 '${optionCode}' 는 이미 다른 후가공이 쓰고 있습니다 — 다른 코드를 쓰거나 비워두면 자동 생성됩니다`
+          : `코드 자동 생성값 '${optionCode}' 가 기존 코드와 겹쳤습니다 — 코드를 직접 입력해 주세요`,
+      }, 409)
+    }
     console.error('src/routes/postProcessing.ts error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
