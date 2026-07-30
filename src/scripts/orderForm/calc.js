@@ -103,6 +103,12 @@
                 calculateTotal();
             };
 
+            // ★이 함수의 자동값 산식은 서버 `src/utils/orderLineAmount.ts` computeLineAmount() 와
+            //   **같은 규칙이어야 한다**(10cm 올림 → 면적 → 100원 반올림). 언어가 달라 코드를 공유할
+            //   수 없는 유일한 지점이므로, 규칙을 바꿀 때는 **반드시 두 곳을 함께** 고친다.
+            //   정본 판정은 서버다 — 수동 수정(에누리)이 없으면 서버가 자기 자동값으로 저장하므로,
+            //   여기서 산식이 갈리면 "화면 금액과 저장 금액이 다른" 상태가 된다.
+            //   서버 쪽은 단위 테스트(14케이스)가 지키고, 이쪽은 브라우저 실측으로 확인한다.
             window.calcItem = function(id) {
                 // 미정 품목은 계산 스킵
                 var pendingCb = document.querySelector('[name="price_pending_' + id + '"]');
@@ -167,10 +173,14 @@
             function calculateTotal() {
                 var total = 0, vat = 0, ppTotal = 0;
                 var vatRate = (typeof window.VAT_RATE === 'number' && isFinite(window.VAT_RATE)) ? window.VAT_RATE : 0.1;
+                // ⚠️ 셀렉터 한 글자가 자녀행 포함 여부를 가른다(2026-07-30 점검에서 확인):
+                //     `[id^="item-"]` (하이픈) = 부모/일반 행만 — 자녀행 id 는 `item_row_N` 이라 제외된다
+                //     `[id^="item"]`  (하이픈 없음) = 자녀행까지 포함 (제출 수집 :311 · sheet.js:7,25)
+                //   여기는 **의도적으로 하이픈**이다: 자녀(분할청구) 행은 금액을 갖지 않는 설계라
+                //   (unit_price·amount = 0) 합계에 넣을 것이 없다. 서버도 0 으로 저장해 결과가 일치한다.
+                //   ★그래서 이 루프 안에서 isChild 를 검사하던 분기는 **도달 불가한 죽은 코드**였다 → 제거.
                 document.querySelectorAll('#itemsContainer > [id^="item-"]').forEach(function(row) {
                     var id = row.id.replace('item-', '');
-                    var isChildInput = row.querySelector('[name^="is_child_"]');
-                    var isChild = isChildInput && isChildInput.value === '1';
                     // 자동값은 calcItem()이 dataset.autoAmount 에 넣어 둔 것을 쓴다(산식 중복 제거).
                     var amt = lineFinalAmount(id);
                     total += amt;
@@ -178,7 +188,7 @@
                     // 부가세율 = 서버 settings 주입값(window.VAT_RATE). 하드코딩 0.1 이던 것을 해소 —
                     //   설정을 바꾸면 화면과 저장이 갈리던 이중 정본이었다.
                     if (vatEl && vatEl.checked) vat += Math.round(amt * vatRate);
-                    if (!isChild) ppTotal += calculatePPCost(id) || 0;
+                    ppTotal += calculatePPCost(id) || 0;
                 });
                 var discount = parseMoney((document.getElementById('discountAmount') || {}).value);
                 document.getElementById('totalAmount').textContent = Math.round(total).toLocaleString();
