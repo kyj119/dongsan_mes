@@ -183,5 +183,6 @@ __pycache__/
 # (로컬/신규 D1 베이스라인은 db:reset 이라 이관 데이터가 없어도 무관 — project-db-bootstrap-squash)
 migrations/0498_dongsan_import_clients.sql
 migrations/0505_dongsan_import_clients2.sql
+migrations/0506_dongsan_import_clients3.sql
 # 매출 적재 생성 SQL — 담당자명·배송처주소 등 PII 포함. 생성기(gen_sales_sql.py)만 추적.
 docs/dongsan-import/load/
