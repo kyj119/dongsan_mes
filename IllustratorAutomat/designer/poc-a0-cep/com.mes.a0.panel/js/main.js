@@ -10,7 +10,7 @@
   //   우상단 표시는 여태 host(mesA0_ping = MESA0_VERSION, 축2 = Z: 1곳)만 보여줬다. 껍데기는 PC 별
   //   복사 설치라서 재설치를 안 한 PC 도 최신 번호로 보였다(2026-07-30 점검에서 확인).
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다.
-  var SHELL_VERSION = '0.1.9';
+  var SHELL_VERSION = '0.1.10';
   var STORE_WORKER = 'mes_a0_worker';
   var STORE_SETTINGS = 'mes_a0_settings';
   var CONFIG_PATH = 'Z:/DESIGNS/IA-등록/_config/config.json';
@@ -439,6 +439,15 @@
     if (elBtnMeasure) elBtnMeasure.addEventListener('click', function () { refreshMeasure(); });
     if (elScale) elScale.addEventListener('change', function () { refreshMeasure(); });
     if (elTrimInk) elTrimInk.addEventListener('change', function () { refreshMeasure(); saveSettings(); });
+    // ★실측이 선택 변경을 따라가지 않던 문제(2026-07-30 P2) — 일러에서 다른 객체를 골라도 패널의
+    //   숫자는 그대로여서 **화면값과 실행 기준이 달랐다**(결과는 맞다: 가공은 호스트가 다시 잰다.
+    //   틀리는 것은 사람이 보고 판단하는 숫자다).
+    //   3초 폴링은 안 쓴다 — 무거운 문서에서 호스트를 계속 찔러 COM wedge 전례를 되살릴 수 있다.
+    //   대신 **패널이 포커스를 되찾을 때** 1회 갱신한다(일러에서 선택을 바꾸고 패널로 오는 실제 동선).
+    //   진행 중(hostBusy)에는 호출하지 않는다 — params 파일·호스트 경쟁을 만들지 않기 위함.
+    window.addEventListener('focus', function () {
+      if (!hostBusy) refreshMeasure();
+    });
 
     // ── 설정 영속(직전값 기억) ──
     // ⚠️ 후가공(마감·펀칭·주석위치)은 **영속 대상이 아니다**(2026-07-29).
@@ -527,6 +536,10 @@
       if (!queue) return;
       updateGate();
       updateImposeBar();
+      // 적용 버튼은 '어느 탭인가'에 따라 잠긴다(묶음 전용) → 탭이 바뀌면 반드시 다시 계산해야 한다.
+      //   스모크가 이 누락을 잡았다: updateApplyBar 를 고쳐도 탭 전환 경로에서 호출되지 않아
+      //   단건 탭에서 여전히 활성인 채였다.
+      updateApplyBar();
     }
 
     // ── 가공 실행 ──
@@ -547,6 +560,9 @@
         if (mkEl && mkEl.value) finishing[side + '_mark'] = mkEl.value;
       }
       var pInt = function (el) { var n = parseInt(el ? el.value : '0', 10); return (isNaN(n) || n < 0) ? 0 : n; };
+      // ⚠️ 여기서는 가시성을 따지지 않고 칸 값을 그대로 읽는다 — gatherParams 는 단건 전송에도 쓰이고,
+      //    숨김 판정을 넣으면 묶음 탭에서 syncBoundRow 가 **연동 행의 키워드를 ''로 지운다**.
+      //    '숨은 칸이 행에 쓰지 못하게' 하는 것은 행 반영 지점(syncBoundRow·applyFormToRows)의 책임이다.
       var keyword = elAnnot ? (elAnnot.value || '').replace(/^\s+|\s+$/g, '') : '';
       var punchObj = {
         top: pInt(elPTop), bottom: pInt(elPBottom), left: pInt(elPLeft), right: pInt(elPRight),
@@ -613,16 +629,17 @@
 
     // 단건 탭 전용 버튼 — 이제 의미가 하나다(모아찍기는 자기 탭에서 분리→등록).
     if (elBtnProcess) elBtnProcess.addEventListener('click', function () {
+      if (hostBusy) return; // 배치·검토가 도는 중이면 진입 금지(params 파일 1개를 공유한다)
       var params = gatherParams();
       saveSettings();
       out('가공 중… (저장 프리즈 중 잠시 대기)');
-      elBtnProcess.disabled = true;
+      setHostBusy(true, '단건 가공');
       csi.evalScript('mesA0_paramsPath()', function (pp) {
-        if (!pp) { out('호스트 연결 실패(패널을 일러 안에서 열었는지 확인)', 'err'); elBtnProcess.disabled = false; return; }
+        if (!pp) { out('호스트 연결 실패(패널을 일러 안에서 열었는지 확인)', 'err'); setHostBusy(false); return; }
         var wrote = cepWriteUtf8(pp, JSON.stringify(params));
-        if (!wrote) { out('params 파일 쓰기 실패(' + pp + ')', 'err'); elBtnProcess.disabled = false; return; }
+        if (!wrote) { out('params 파일 쓰기 실패(' + pp + ')', 'err'); setHostBusy(false); return; }
         csi.evalScript('mesA0_process()', function (res) {
-          elBtnProcess.disabled = false;
+          setHostBusy(false);
           var r = null; try { r = JSON.parse(res); } catch (e) {}
           if (!r) { out('응답 파싱 실패:\n' + res, 'err'); return; }
           if (!r.ok) {
@@ -663,12 +680,66 @@
       var n = parseInt(elSeedQty ? elSeedQty.value : '1', 10);
       return (isNaN(n) || n < 1) ? 1 : n;
     }
+    // 새 행에 채울 키워드 — **화면에 보이는 칸의 값만** 시드로 쓴다(2026-07-30 P2).
+    //   ★사고: 묶음·모아찍기 탭에선 주석 키워드 칸이 숨겨져 있는데(applyTabUi), 시드 로직이 그 값을
+    //     계속 읽었다. localStorage 로 복원되기까지 해서 **지난번에 단건 탭에서 넣은 키워드가
+    //     새로 담는 행에 조용히 들어갔다**(재현 확인). 사용자는 칸이 안 보이니 이유를 알 수 없다.
+    //   → 가시성으로 판정한다(offsetParent). 탭 구조가 또 바뀌어도 자동으로 맞는다.
+    //     묶음에선 **행별 키워드가 정본**이므로 빈 값으로 시드하는 것이 사용자 지시와도 일치한다.
+    function annotVisible() {
+      return !!(elAnnot && elAnnot.offsetParent !== null);
+    }
+    function seedKeyword() {
+      if (!annotVisible()) return '';
+      return (elAnnot.value || '').replace(/^\s+|\s+$/g, '');
+    }
     var elBtnReview = $('btnReview'), elBtnAutoDetect = $('btnAutoDetect');
 
     // 확정 게이트(D4): 검토문서를 만든 큐 상태(rev)에서만 확정 허용. 큐가 바뀌면 재검토 요구.
     var queueRev = 0;      // 큐 내용 변경마다 증가(행 추가·삭제·세팅·키워드)
     var reviewedRev = -1;  // 마지막 검토문서 생성 시점의 rev
     var reviewBusy = false;
+
+    // ── 호스트 작업 잠금 = 단일 개념(2026-07-30 P2) ─────────────────────────
+    //   ★사고의 뿌리: 잠금이 버튼별 임시 disable 이라 **새 진입점이 계속 새어 나갔다**.
+    //     재현 확인 — 배치 진행 중 [＋묶음분리]·[비우기]·[◎자동감지]·[선택분 분리]가 안 잠기고,
+    //     단건 가공 중 [일괄 확정]·[검토문서]가 눌렸다. 진행 중 [비우기]는 큐를 비워 루프를 끊고,
+    //     두 파이프라인은 `mesA0_paramsPath()` **파일 1개를 공유**하므로 설정이 섞일 수 있다.
+    //   → 호스트를 건드리는 모든 버튼을 한 곳에 모아 busy 하나로 잠근다. 새 버튼을 추가할 때
+    //     이 배열에 넣기만 하면 되므로 다음 사람이 같은 사고를 반복하지 않는다.
+    var hostBusy = false;
+    var cancelRequested = false;
+    var BUSY_BTN_IDS = [
+      'btnProcess',                                    // 단건 가공
+      'btnReview', 'btnConfirm', 'btnQueueClear',      // 묶음: 검토·확정·비우기
+      'btnQueueAdd', 'btnQueueBatch', 'btnAutoDetect', // 묶음: 담기·분리·자동감지
+      'btnImposeSplit', 'btnImposeDetect',             // 모아찍기: 분리·자동감지
+      'btnImposeRegister', 'btnImposeClear',           // 모아찍기: 등록·비우기
+      'btnMeasure'                                     // 실측(호스트 호출)
+    ];
+    var elBtnCancel = $('btnCancel');
+    function setHostBusy(on, label) {
+      hostBusy = !!on;
+      if (!on) cancelRequested = false;
+      for (var i = 0; i < BUSY_BTN_IDS.length; i++) {
+        var el = $(BUSY_BTN_IDS[i]);
+        if (el) el.disabled = !!on;
+      }
+      // 취소는 진행 중에만 쓸 수 있다(호스트 호출 사이에서 멈춘다 — 실행 중인 JSX 는 중단 불가)
+      if (elBtnCancel) {
+        elBtnCancel.style.display = on ? '' : 'none';
+        elBtnCancel.disabled = false;
+        elBtnCancel.textContent = '취소' + (label ? (' (' + label + ')') : '');
+      }
+      // 끝난 뒤에는 각 버튼의 고유 게이트(큐 비었는지·용도 섞였는지)를 다시 적용해야 한다
+      if (!on && queue) { updateGate(); updateImposeBar(); updateApplyBar(); }
+    }
+    if (elBtnCancel) elBtnCancel.addEventListener('click', function () {
+      cancelRequested = true;
+      elBtnCancel.disabled = true;
+      elBtnCancel.textContent = '취소 중…';
+      out('취소 요청 — 진행 중인 1건을 마치고 멈춥니다(실행 중인 작업은 중단할 수 없습니다).');
+    });
     // 큐 전 행이 모아찍기인가 — 검토문서 게이트 면제 판정(P2). 빈 큐는 false.
     function queueAllImpose() {
       if (!queue.length) return false;
@@ -775,12 +846,25 @@
       return idx;
     }
     function updateApplyBar() {
+      // ★[선택 적용]·[전체 적용]의 대상은 **큐 행**이다 → 묶음 탭에서만 의미가 있다(2026-07-30 P2).
+      //   전엔 `queue.length` 만 봐서 **단건 탭에 있으면서 묶음 큐 3행을 전부 바꿀 수 있었다**
+      //   (재현 확인). "탭이 곧 용도"라는 이 패널의 원칙에 정면으로 어긋난다.
+      //   폼이 탭 사이를 이동하므로 버튼도 함께 따라가는데, 단건 탭에서는 잠그고 이유를 남긴다.
+      var onBundle = (activeTab() === 'bundle');
       var n = selectedRows().length;
       if (elBtnApplySel) {
         elBtnApplySel.textContent = n ? ('선택 적용 (' + n + ')') : '선택 적용';
-        elBtnApplySel.disabled = (n === 0);
+        elBtnApplySel.disabled = !onBundle || n === 0;
+        elBtnApplySel.title = onBundle
+          ? '체크한 행에만 현재 후가공·가공 설정 적용 (수량·키워드·거래처는 행값 유지)'
+          : '[묶음] 탭에서만 사용합니다 — 적용 대상이 큐 행입니다';
       }
-      if (elBtnApplyAll) elBtnApplyAll.disabled = queue.length === 0;
+      if (elBtnApplyAll) {
+        elBtnApplyAll.disabled = !onBundle || queue.length === 0;
+        elBtnApplyAll.title = onBundle
+          ? '현재 가공·후가공 설정을 모든 행에 적용 (수량·키워드·거래처는 행값 유지)'
+          : '[묶음] 탭에서만 사용합니다 — 적용 대상이 큐 행입니다';
+      }
     }
     // 현재 폼 설정을 지정 행들에 적용 — 행 고유값(수량·키워드·거래처)은 보존.
     //   [선택 적용]·[전체 적용]이 **이 함수를 공유**한다(규칙이 둘이면 갈린다).
@@ -791,7 +875,9 @@
       //   행 키워드는 '담을 때' #annot 값으로 시드되므로, 담은 뒤에 주석 키워드를 입력하면 행에는
       //   반영되지 않아 "묶음에선 주석이 안 생긴다"로 보였다(2026-07-30 지적).
       //   → 빈 행만 폼 값으로 채운다. 값이 있는 행은 보존한다(식별번호·파일명 구분이 키워드에 걸려 있다).
-      var formKw = base.keyword || '';
+      //   ⚠️ 단, 칸이 **숨어 있으면 폴백하지 않는다**(2026-07-30 P2) — 묶음 탭에선 보이지도 않는
+      //      지난번 값이 전 행에 퍼지는 사고가 된다(재현 확인). 그 탭에선 행 키워드가 정본이다.
+      var formKw = annotVisible() ? (base.keyword || '') : '';
       for (var k = 0; k < idx.length; k++) {
         var e = queue[idx[k]];
         if (!e) continue;
@@ -913,6 +999,9 @@
       var e = queue[bound];
       var p = keepRowMode(gatherParams(), e); // 행 용도는 폼이 바꾸지 않는다
       p.qty = e.qty;   // 행 수량 보존 — 폼(#qty)은 단건 전용이라 행을 덮어쓰면 안 된다
+      // 주석 키워드 칸이 **숨어 있으면 행에 쓰지 않는다**(2026-07-30 P2). 묶음 탭에선 행별 키워드가
+      //   정본이고, 숨은 칸엔 지난번 값이 남아 있어(localStorage 복원) 그대로 쓰면 조용히 덮인다.
+      if (!annotVisible()) p.keyword = e.keyword || '';
       e.params = p;
       e.client = p.client_name || '';
       e.keyword = p.keyword || '';
@@ -920,14 +1009,25 @@
       renderQueue();
     }
 
-    // 폼 변경 위임 감지(연동 시 자동 반영). 큐 내부(qkw)·가공자·분리간격은 제외
+    // 폼 변경 위임 감지(연동 시 자동 반영).
+    //   ★제외목록 → **허용목록으로 뒤집었다**(2026-07-30 P2). 전엔 `worker`·`splitGap` 만 제외해서
+    //     `#seedQty`·`#imposeGap` 처럼 **행과 무관한 칸을 건드려도 연동 행이 폼 기준으로 덮어써졌다**
+    //     (재현 확인). 제외목록은 칸이 하나 늘 때마다 새는 구조라, 무엇이 행에 반영돼야 하는지를
+    //     명시하는 편이 안전하다 — 새 칸을 추가해도 기본이 '반영 안 함'이 된다.
+    //   행에 반영되어야 하는 것 = 후가공 폼 전체(finBody·finToggleRow) + 행별로 의미가 있는 공통 칸.
+    var ROW_SYNC_IDS = ['client', 'scale', 'trim', 'trimInk', 'borderLine', 'annot', 'preset'];
+    function isRowSyncTarget(t) {
+      if (!t) return false;
+      if (elQueueBox && elQueueBox.contains(t)) return false;   // 큐 내부 인라인 편집은 자기 경로가 있다
+      if (elImposeBox && elImposeBox.contains(t)) return false;
+      if (elFinBody && elFinBody.contains(t)) return true;      // 마감·펀칭·주석위치 전체
+      if (elFinToggleRow && elFinToggleRow.contains(t)) return true;
+      if (t.id && ROW_SYNC_IDS.indexOf(t.id) !== -1) return true;
+      return false;
+    }
     document.addEventListener('change', function (ev) {
       if (bound < 0) return;
-      var t = ev.target;
-      if (!t) return;
-      if (elQueueBox && elQueueBox.contains(t)) return;
-      if (elImposeBox && elImposeBox.contains(t)) return; // 모아찍기 탭 목록의 인라인 편집도 제외
-      if (t.id === 'worker' || t.id === 'splitGap') return;
+      if (!isRowSyncTarget(ev.target)) return;
       syncBoundRow();
     });
 
@@ -967,7 +1067,7 @@
         }
         var qtyN = seedQtyValue(); // 묶음: 새 행 기본수량(#seedQty). 확정 수량은 각 행에서.
         var client = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
-        var keyword = elAnnot ? (elAnnot.value || '').replace(/^\s+|\s+$/g, '') : '';
+        var keyword = seedKeyword(); // 보이는 칸만 시드(숨은 값 주입 차단)
         var pAdd = gatherParams(); pAdd.qty = qtyN; // #qty(단건 최종값)가 아니라 seedQty 가 기본값이다
         queue.push({ params: pAdd, client: client, keyword: keyword, qty: qtyN, w: r.w, h: r.h });
         bumpRev();
@@ -988,7 +1088,7 @@
         }
         var qtyN = seedQtyValue(); // 묶음: 새 행 기본수량(#seedQty). 확정 수량은 각 행에서.
         var client = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
-        var keyword = elAnnot ? (elAnnot.value || '').replace(/^\s+|\s+$/g, '') : '';
+        var keyword = seedKeyword(); // 보이는 칸만 시드(숨은 값 주입 차단)
         var base = gatherParams();
         for (var s = 0; s < r.sizes.length; s++) {
           var pRow = JSON.parse(JSON.stringify(base)); pRow.qty = qtyN;
@@ -1019,7 +1119,7 @@
         }
         var qtyN = seedQtyValue(); // 묶음: 새 행 기본수량(#seedQty). 확정 수량은 각 행에서.
         var client = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
-        var keyword = elAnnot ? (elAnnot.value || '').replace(/^\s+|\s+$/g, '') : '';
+        var keyword = seedKeyword(); // 보이는 칸만 시드(숨은 값 주입 차단)
         var base = gatherParams();
         for (var s = 0; s < r.sizes.length; s++) {
           var pRow = JSON.parse(JSON.stringify(base)); pRow.qty = qtyN;
@@ -1034,10 +1134,9 @@
     // ── 검토문서(D4): 큐 전체를 가공해 디자인당 아트보드로 생성(저장 없음) → 확정 게이트 해제 ──
     if (elBtnReview) elBtnReview.addEventListener('click', function () {
       if (!queue.length || reviewBusy) return;
+      if (hostBusy) return; // 다른 파이프라인 진행 중이면 진입 금지(params 파일 공유)
       reviewBusy = true;
-      if (elBtnQAdd) elBtnQAdd.disabled = true;
-      if (elBtnProcess) elBtnProcess.disabled = true;
-      updateGate();
+      setHostBusy(true, '검토문서');
       var revAtStart = queueRev;
       // 식별번호 미리보기 = 확정과 동일 규칙(키워드별 순번)
       var kwCount = {}, seqForRow = [];
@@ -1050,8 +1149,7 @@
       function finishReview() {
         csi.evalScript('mesA0_reviewEnd()', function (er) {
           reviewBusy = false;
-          if (elBtnQAdd) elBtnQAdd.disabled = false;
-          if (elBtnProcess) elBtnProcess.disabled = false;
+          setHostBusy(false);
           var r = null; try { r = JSON.parse(er); } catch (e) {}
           if (!fails.length && r && r.ok) {
             if (queueRev === revAtStart) reviewedRev = queueRev; // 생성 중 큐가 안 바뀐 경우만 해제
@@ -1065,6 +1163,12 @@
       }
       function step() {
         if (i >= queue.length) { finishReview(); return; }
+        // 취소 지점 — 검토문서는 저장물이 없으므로 만든 아트보드까지만 두고 정상 마감한다
+        if (cancelRequested) {
+          out('검토 취소됨 — ' + i + '/' + queue.length + '건까지 배치했습니다.');
+          finishReview();
+          return;
+        }
         out('검토 가공 중… (' + i + '/' + queue.length + ')');
         var p = JSON.parse(JSON.stringify(queue[i].params));
         p.review_only = 1;
@@ -1090,20 +1194,14 @@
     //   batch 폴더 1개에 work_N·thumb_N·manifest_N 을 만든다(= batch734 산출 구조).
     //   onDone(okN, failN) = 완료 콜백(선택).
     function runBatchConfirm(onDone) {
-      if (!queue.length) return;
-      if (elBtnQAdd) elBtnQAdd.disabled = true;
-      if (elBtnProcess) elBtnProcess.disabled = true;
-      if (elBtnReview) elBtnReview.disabled = true;
-      if (elBtnConfirm) elBtnConfirm.disabled = true;
-      function reenable() {
-        if (elBtnQAdd) elBtnQAdd.disabled = false;
-        if (elBtnProcess) elBtnProcess.disabled = false;
-        updateGate();
-      }
+      if (!queue.length || hostBusy) return; // hostBusy = 다른 파이프라인 진행 중(params 파일 공유)
+      setHostBusy(true, '진행 중');
+      function reenable() { setHostBusy(false); }
       csi.evalScript('mesA0_batchBegin()', function (bres) {
         var bf = null; try { bf = JSON.parse(bres); } catch (e0) {}
-        if (!bf || !bf.ok) { out('배치 폴더 생성 실패: ' + (bf ? bf.err : 'nohost'), 'err'); reenable(); if (elBtnConfirm) elBtnConfirm.disabled = false; return; }
+        if (!bf || !bf.ok) { out('배치 폴더 생성 실패: ' + (bf ? bf.err : 'nohost'), 'err'); reenable(); return; }
         var batchFolder = bf.folder, results = [], i = 0;
+        var cancelledAt = -1; // 취소로 멈춘 지점(-1 = 취소 없음). 완료 메시지에 함께 남긴다.
         // 식별번호 = 키워드별 순번(같은 키워드끼리 1,2,3). 키워드 없으면 전체순번(파일명 유니크)
         var kwCount = {}, seqForRow = [];
         for (var qi = 0; qi < queue.length; qi++) {
@@ -1143,16 +1241,27 @@
               clearFinishing(); // 전건 성공 = 후가공 리셋(단건 경로와 동일 규칙)
               saveSettings();
             }
-            out('일괄 확정 완료: 성공 ' + okN + ' / 실패 ' + failN + (unrev ? ' (미검토 확정)' : '') +
+            out((cancelledAt >= 0 ? '취소됨 — ' + cancelledAt + '건 처리 후 중단. ' : '') +
+              '일괄 확정 완료: 성공 ' + okN + ' / 실패 ' + failN + (unrev ? ' (미검토 확정)' : '') +
               '\n폴더: ' + batchFolder + '\n' + lines.join('\n') +
               (failN
                 ? '\n⚠ 실패 ' + failN + '건은 목록에 남겨 뒀습니다 — 원인을 고친 뒤 [일괄 확정]으로 재시도하세요 (성공분은 제거됨)'
-                : '\n→ 에이전트 ingest 후 대기함'), failN ? 'err' : 'okmsg');
+                : (cancelledAt >= 0
+                    ? '\n남은 건은 목록에 있습니다 — [일괄 확정]으로 이어서 진행하세요 (성공분은 제거됨)'
+                    : '\n→ 에이전트 ingest 후 대기함')), (failN || cancelledAt >= 0) ? 'err' : 'okmsg');
             if (typeof onDone === 'function') onDone(okN, failN);
           });
         }
         function step() {
           if (i >= queue.length) { finishBatch(); return; }
+          // ★취소 지점 — 실행 중인 JSX 는 중단할 수 없으므로 **다음 건으로 넘어가기 직전**에 멈춘다.
+          //   여기까지 처리된 건은 이미 Z: 에 저장됐으므로 finishBatch 로 정상 마감한다
+          //   (성공분은 큐에서 빠지고 미처리분은 남아 재시도 가능 = 실패분 보존과 같은 규칙).
+          if (cancelRequested) {
+            cancelledAt = i; // finishBatch 의 완료 메시지에 실어야 한다 — 여기서 out() 하면 덮인다
+            finishBatch();
+            return;
+          }
           out('일괄 가공 중… (' + i + '/' + queue.length + ') → ' + batchFolder);
           var e = queue[i];
           var p = e.params;
@@ -1186,11 +1295,10 @@
         out('목록에 ' + queue.length + '건이 남아 있습니다 — [등록]하거나 [비우기] 후 다시 분리하세요.', 'err');
         return;
       }
-      if (elBtnImposeSplit) elBtnImposeSplit.disabled = true;
-      if (elBtnImposeDetect) elBtnImposeDetect.disabled = true;
+      if (hostBusy) return;
+      setHostBusy(true, '분리');
       csi.evalScript(hostCall + '(' + gap + ')', function (res) {
-        if (elBtnImposeSplit) elBtnImposeSplit.disabled = false;
-        if (elBtnImposeDetect) elBtnImposeDetect.disabled = false;
+        setHostBusy(false);
         var r = null; try { r = JSON.parse(res); } catch (e) {}
         if (!r || !r.ok) {
           var em = { nodoc: '열린 문서 없음', nosel: '객체를 선택하세요', noitems: '감지할 개체 없음(잠금·숨김 제외)',
@@ -1202,7 +1310,7 @@
         //   (iaEditor.js:1892 는 intake.qty 를 쓰지 않고 qty:1 로 담는다). 여기서 받아봐야 표시용 메모다.
         var qtyN = 1;
         var client = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
-        var keyword = elAnnot ? (elAnnot.value || '').replace(/^\s+|\s+$/g, '') : '';
+        var keyword = seedKeyword(); // 보이는 칸만 시드(숨은 값 주입 차단)
         var base = gatherParams(); // impose 탭이라 finishing·punch·annot_pos는 이미 비어 있다
         base.qty = qtyN;
         var lines = [];

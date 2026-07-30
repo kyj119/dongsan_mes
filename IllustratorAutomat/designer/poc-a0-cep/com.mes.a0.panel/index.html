@@ -194,6 +194,9 @@
     </div>
 
     <!-- 항상 표시 -->
+    <!-- 진행 취소 — 10건 배치는 수 분이 걸리는데 여태 멈출 수단이 없었다(2026-07-30 P2).
+         실행 중인 JSX 는 중단할 수 없으므로 **호스트 호출 사이에서** 멈춘다. 평상시엔 숨김. -->
+    <div class="row"><button id="btnCancel" type="button" class="cancel" style="display:none">취소</button></div>
     <div class="row"><div id="out" class="out"></div></div>
     <div class="row"><span id="cfgStatus" class="cfg">config…</span></div>
   </div>

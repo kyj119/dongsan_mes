@@ -38,6 +38,7 @@ const mkStub = (cfg) => `
 window.__calls = [];
 window.__splitCount = 3;
 window.__failProcess = false;
+window.__processDelay = 0;   // 느린 호스트 재현 — 진행 중 잠금·취소를 관찰하려면 필요
 window.cep = { fs: { readFile: () => ({ err: 1 }), writeFile: () => ({ err: 0 }) } };
 window.__adobe_cep__ = {
   getExtensionID: function () { return 'com.mes.a0.panel'; },
@@ -62,7 +63,8 @@ window.__adobe_cep__ = {
       ? JSON.stringify({ ok: false, err: 'noart', items: 0, sel: 1 })
       : JSON.stringify({ ok: true, w: 87, h: 197, folder: 'Z:/test', items: 1, normed: 0, bytes: 53687091, oversize: 2, warn: 'E', eps: 'a.eps', dxf: 'a.dxf' });
     else res = JSON.stringify({ ok: true });
-    if (cb) setTimeout(function () { cb(res); }, 0);
+    var delay = /^mesA0_process/.test(script) ? (window.__processDelay || 0) : 0;
+    if (cb) setTimeout(function () { cb(res); }, delay);
   }
 };
 `
@@ -190,16 +192,18 @@ await page.click('#btnApplySel')
 await page.waitForTimeout(150)
 ok('선택 행만 적용 메시지', (await page.locator('#out').innerText()).includes('#1 #3'), (await page.locator('#out').innerText()).slice(0, 90))
 
-// 9-3b) 주석 키워드 폴백 — 단건 탭에서 넣어둔 주석 키워드가 묶음 적용 때 빈 행에 채워져야 한다.
-//   (묶음 탭에선 #annot 이 숨겨져 있으므로 값 주입으로 '단건에서 입력해 둔 상태'를 재현한다)
-await page.evaluate(() => { document.getElementById('annot').value = '주석테스트' })
+// 9-3b) ★숨은 주석 키워드 칸은 행에 쓰지 못한다(2026-07-30 P2 — 이전 동작을 의도적으로 뒤집었다).
+//   전엔 묶음 탭에서 #annot 이 숨겨져 있는데도 그 값을 시드·폴백으로 써서, **지난번에 단건 탭에서
+//   넣었던 키워드(localStorage 복원값)가 새 행에 조용히 주입**됐다. 사용자는 칸이 안 보이니 이유를
+//   알 수 없다. 묶음에선 행별 키워드가 정본이므로 숨은 칸의 값은 무시한다.
+await page.evaluate(() => { document.getElementById('annot').value = '숨은키워드' })
 await page.click('#btnApplyAll')
 await page.waitForTimeout(200)
-ok('빈 행 키워드에 폼 주석값 채움', await page.evaluate(() => {
+ok('묶음: 숨은 키워드가 행에 주입되지 않음', await page.evaluate(() => {
   const v = Array.from(document.querySelectorAll('#queueBox .qkw')).map((e) => e.value)
-  return v.length === 3 && v.every((x) => x === '주석테스트')
+  return v.length === 3 && v.every((x) => x !== '숨은키워드')
 }), await page.evaluate(() => Array.from(document.querySelectorAll('#queueBox .qkw')).map((e) => e.value).join('|')))
-ok('키워드 있으면 주석 경고 없음', !(await page.locator('#out').innerText()).includes('주석이 안 나옵니다'))
+ok('묶음: 주석 키워드칸 여전히 숨김', await page.locator('#annotKwRow').isHidden())
 ok('재렌더 후에도 체크 유지', await page.evaluate(() => document.querySelector('#queueBox .qsel[data-i="0"]').checked && document.querySelector('#queueBox .qsel[data-i="2"]').checked))
 
 // 9-4) 검토는 선택 사항 (2026-07-30 ②) — 검토 없이도 확정 가능해야 하고, 미검토가 눈에 보여야 한다
@@ -318,6 +322,93 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
     (await p5.locator('#out').innerText()).slice(0, 60))
   ok('15 콘솔 에러 0', p5.__errs.length === 0, p5.__errs.join(' | '))
   await p5.close()
+}
+
+// ── 17) P2: 호스트 작업 잠금 단일화 + 취소 (params 파일 경쟁 차단) ──
+//    전엔 잠금이 버튼별 임시 disable 이라 새 진입점이 계속 새어 나갔다: 배치 중 [＋묶음분리]·
+//    [비우기]·[◎자동감지]·[선택분 분리] 가 안 잠기고, 단건 가공 중 [일괄 확정]도 눌렸다.
+//    두 파이프라인은 mesA0_paramsPath() 파일 1개를 공유하므로 설정이 섞일 수 있다.
+{
+  const p7 = await openPanel(CONFIG)
+  await p7.click('.tab[data-tab="bundle"]')
+  await p7.click('#btnQueueBatch')
+  await p7.waitForTimeout(200)
+  await p7.evaluate(() => { window.__processDelay = 500 }) // 느린 호스트 재현
+  await p7.click('#btnConfirm')
+  await p7.waitForTimeout(250)
+  const mid = await p7.evaluate(() => ({
+    process: document.getElementById('btnProcess').disabled,
+    queueBatch: document.getElementById('btnQueueBatch').disabled,
+    queueClear: document.getElementById('btnQueueClear').disabled,
+    autoDetect: document.getElementById('btnAutoDetect').disabled,
+    imposeSplit: document.getElementById('btnImposeSplit').disabled,
+    imposeRegister: document.getElementById('btnImposeRegister').disabled,
+    measure: document.getElementById('btnMeasure').disabled,
+    review: document.getElementById('btnReview').disabled,
+    cancelShown: document.getElementById('btnCancel').style.display !== 'none',
+  }))
+  const allLocked = mid.process && mid.queueBatch && mid.queueClear && mid.autoDetect &&
+    mid.imposeSplit && mid.imposeRegister && mid.measure && mid.review
+  ok('배치 중 모든 호스트 진입점 잠김', allLocked, JSON.stringify(mid))
+  ok('배치 중 취소 버튼 노출', mid.cancelShown)
+  // 취소 → 남은 건은 큐에 남고 잠금이 풀려야 한다
+  await p7.click('#btnCancel')
+  await p7.waitForTimeout(2500)
+  const after = await p7.evaluate(() => ({
+    out: document.getElementById('out').textContent,
+    rows: document.querySelectorAll('#queueBox .qrow').length,
+    cancelShown: document.getElementById('btnCancel').style.display !== 'none',
+    processEnabled: !document.getElementById('btnProcess').disabled,
+  }))
+  ok('취소 메시지 표시', /취소/.test(after.out), after.out.slice(0, 70))
+  ok('취소 후 잠금 해제', after.processEnabled && !after.cancelShown, JSON.stringify(after))
+  ok('취소 시 미처리분은 큐에 남음', after.rows > 0, 'rows=' + after.rows)
+  ok('17 콘솔 에러 0', p7.__errs.length === 0, p7.__errs.join(' | '))
+  await p7.close()
+}
+
+// ── 18) P2: 적용 버튼은 묶음 탭에서만 (탭=용도 원칙) ──
+{
+  const p8 = await openPanel(CONFIG)
+  await p8.click('.tab[data-tab="bundle"]')
+  await p8.click('#btnQueueBatch')
+  await p8.waitForTimeout(200)
+  await p8.check('#queueBox .qsel[data-i="0"]')
+  ok('묶음 탭에선 전체 적용 활성', !(await p8.locator('#btnApplyAll').isDisabled()))
+  await p8.click('.tab[data-tab="single"]')
+  await p8.waitForTimeout(150)
+  ok('단건 탭에선 전체 적용 잠김', await p8.locator('#btnApplyAll').isDisabled())
+  ok('단건 탭에선 선택 적용 잠김', await p8.locator('#btnApplySel').isDisabled())
+  ok('잠근 이유가 title 에 있음', (await p8.getAttribute('#btnApplyAll', 'title') || '').includes('묶음'))
+  ok('18 콘솔 에러 0', p8.__errs.length === 0, p8.__errs.join(' | '))
+  await p8.close()
+}
+
+// ── 19) P2: 행과 무관한 칸은 연동 행을 덮지 않는다 (제외목록 → 허용목록) ──
+{
+  const p9 = await openPanel(CONFIG)
+  await p9.click('.tab[data-tab="bundle"]')
+  await p9.click('#btnQueueBatch')
+  await p9.waitForTimeout(200)
+  await p9.click('#queueBox .qrow[data-i="0"] .qmeta')   // 행0 연동
+  await p9.waitForTimeout(150)
+  await p9.click('#finToggle')
+  await p9.selectOption('select.finM[data-side="left"]', '접어미싱')
+  await p9.waitForTimeout(200)
+  const withFin = await p9.evaluate(() => document.querySelector('#queueBox .qmeta').textContent)
+  // 폼만 비운 뒤(행에는 남아 있다) seedQty·imposeGap 을 건드린다 → 행이 덮이면 결함
+  await p9.evaluate(() => { document.querySelector('select.finM[data-side="left"]').value = '' })
+  await p9.fill('#seedQty', '9')
+  await p9.dispatchEvent('#seedQty', 'change')
+  await p9.waitForTimeout(200)
+  const afterSeed = await p9.evaluate(() => document.querySelector('#queueBox .qmeta').textContent)
+  ok('seedQty 변경이 연동 행을 덮지 않음', afterSeed === withFin, 'before="' + withFin + '" after="' + afterSeed + '"')
+  // 후가공 폼 변경은 여전히 반영되어야 한다(허용목록이 과하게 막지 않았는지)
+  await p9.selectOption('select.finM[data-side="top"]', '열재단')
+  await p9.waitForTimeout(200)
+  ok('후가공 변경은 정상 반영', (await p9.evaluate(() => document.querySelector('#queueBox .qmeta').textContent)) !== afterSeed)
+  ok('19 콘솔 에러 0', p9.__errs.length === 0, p9.__errs.join(' | '))
+  await p9.close()
 }
 
 // ── 16) 패널 기본 크기가 콘텐츠를 담는가 (점검 ①) ──

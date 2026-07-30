@@ -50,6 +50,10 @@ input.grow { flex: 1; }
 .punchrow { gap: 4px; }
 .punchrow .unit { min-width: 0; }
 
+/* 진행 취소 — 파괴적 동작이 아니라 '멈춤'이라 경고색(빨강) 대신 중립+테두리 강조 */
+button.cancel { width: 100%; background: #4a3f2b; border-color: #8a6d3b; color: #f0d9a8; }
+button.cancel:hover { background: #5a4c33; border-color: #d9a84a; }
+
 .saved { color: #8ec5ff; font-size: 11px; }
 /* 가공자 도메인 미지정 — 전사(봉제) 방식이 통째로 안 보이는 상태를 눈에 남긴다(조용한 폴백 차단) */
 .saved.warn { color: #e8b45a; }
