@@ -701,11 +701,17 @@
     function applyFormToRows(idx) {
       if (!idx.length) return 0;
       var base = gatherParams();
+      // 주석 문구 = mesA0_annotText(keyword, seq, qty) 이고 **keyword 가 비면 주석을 아예 안 그린다**.
+      //   행 키워드는 '담을 때' #annot 값으로 시드되므로, 담은 뒤에 주석 키워드를 입력하면 행에는
+      //   반영되지 않아 "묶음에선 주석이 안 생긴다"로 보였다(2026-07-30 지적).
+      //   → 빈 행만 폼 값으로 채운다. 값이 있는 행은 보존한다(식별번호·파일명 구분이 키워드에 걸려 있다).
+      var formKw = base.keyword || '';
       for (var k = 0; k < idx.length; k++) {
         var e = queue[idx[k]];
         if (!e) continue;
         var p = JSON.parse(JSON.stringify(base));
         p.qty = e.qty;
+        if (!e.keyword && formKw) e.keyword = formKw; // 행 표시(qkw)도 같이 정합
         p.keyword = e.keyword || '';
         p.client_name = e.client || '';
         p.client_id = clientIdOf(p.client_name); // 행 거래처 기준 재해소(폼 거래처 id가 남지 않게)
@@ -714,6 +720,18 @@
       bumpRev();
       renderQueue();
       return idx.length;
+    }
+    // 주석 위치는 켜져 있는데 키워드가 빈 행 = 주석이 조용히 안 나오는 조합 → 적용 결과에 알린다.
+    //   (여백 3cm 미만 변은 host 가 그 변만 생략한다 — updateAnnotGates 가 체크 자체를 막는다)
+    function annotGapNote(idx) {
+      var n = 0;
+      for (var k = 0; k < idx.length; k++) {
+        var e = queue[idx[k]];
+        if (!e || !e.params) continue;
+        var ap = e.params.annot_pos || {};
+        if ((ap.top || ap.bottom || ap.left || ap.right) && !(e.keyword || '')) n++;
+      }
+      return n ? ('\n⚠ ' + n + '행은 주석 위치가 켜졌지만 키워드가 비어 주석이 안 나옵니다 — 행 키워드를 입력하세요') : '';
     }
 
     // 큐 상태 → 모아찍기 탭 등록 버튼. 단건 행이 섞이면 비활성(용도가 다른 걸 같이 등록하지 않는다).
@@ -825,7 +843,7 @@
       if (!queue.length) return;
       var all = [];
       for (var i = 0; i < queue.length; i++) all.push(i);
-      out('현재 가공·후가공 설정을 전체 ' + applyFormToRows(all) + '행에 적용 (수량·키워드·거래처는 행값 유지)');
+      out('현재 가공·후가공 설정을 전체 ' + applyFormToRows(all) + '행에 적용 (수량·거래처는 행값 유지)' + annotGapNote(all));
     });
     // 선택 적용 — 5+5 처럼 설정이 갈리는 묶음에서 행을 하나씩 연동하지 않게 하는 핵심 경로
     if (elBtnApplySel) elBtnApplySel.addEventListener('click', function () {
@@ -834,7 +852,7 @@
       var rowNos = [];
       for (var k = 0; k < idx.length; k++) rowNos.push('#' + (idx[k] + 1));
       out('현재 가공·후가공 설정을 ' + applyFormToRows(idx) + '행에 적용 — ' + rowNos.join(' ') +
-        ' (수량·키워드·거래처는 행값 유지)');
+        ' (수량·거래처는 행값 유지)' + annotGapNote(idx));
     });
 
     function queueRemove(i) {

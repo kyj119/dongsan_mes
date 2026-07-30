@@ -158,6 +158,16 @@ ok('선택 적용 라벨에 개수', (await page.locator('#btnApplySel').innerTe
 await page.click('#btnApplySel')
 await page.waitForTimeout(150)
 ok('선택 행만 적용 메시지', (await page.locator('#out').innerText()).includes('#1 #3'), (await page.locator('#out').innerText()).slice(0, 90))
+
+// 9-3b) 주석 키워드 폴백 — 담은 뒤 #annot 을 입력해도 빈 행에 채워져야 주석이 나온다 (2026-07-30 ②)
+await page.fill('#annot', '주석테스트')
+await page.click('#btnApplyAll')
+await page.waitForTimeout(200)
+ok('빈 행 키워드에 폼 주석값 채움', await page.evaluate(() => {
+  const v = Array.from(document.querySelectorAll('#queueBox .qkw')).map((e) => e.value)
+  return v.length === 3 && v.every((x) => x === '주석테스트')
+}), await page.evaluate(() => Array.from(document.querySelectorAll('#queueBox .qkw')).map((e) => e.value).join('|')))
+ok('키워드 있으면 주석 경고 없음', !(await page.locator('#out').innerText()).includes('주석이 안 나옵니다'))
 ok('재렌더 후에도 체크 유지', await page.evaluate(() => document.querySelector('#queueBox .qsel[data-i="0"]').checked && document.querySelector('#queueBox .qsel[data-i="2"]').checked))
 
 // 9-4) 검토는 선택 사항 (2026-07-30 ②) — 검토 없이도 확정 가능해야 하고, 미검토가 눈에 보여야 한다
