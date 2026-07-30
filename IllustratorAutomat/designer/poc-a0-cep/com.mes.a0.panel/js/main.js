@@ -566,7 +566,7 @@
     //   자료구조를 둘로 쪼개면 host($.global.mesA0Q)까지 갈라야 해서 Z: 축을 건드리게 된다.
     //   대신 "다른 용도의 행이 섞이면 거부"하는 가드로 혼선을 막는다(아래 imposeGuard).
     var queueBoxes = [];
-    var elQueueBox = $('queueBox'), elBtnQAdd = $('btnQueueAdd'), elBtnQBatch = $('btnQueueBatch'), elBtnConfirm = $('btnConfirm'), elBtnQClear = $('btnQueueClear'), elBtnApplyAll = $('btnApplyAll');
+    var elQueueBox = $('queueBox'), elBtnQAdd = $('btnQueueAdd'), elBtnQBatch = $('btnQueueBatch'), elBtnConfirm = $('btnConfirm'), elBtnQClear = $('btnQueueClear'), elBtnApplyAll = $('btnApplyAll'), elBtnApplySel = $('btnApplySel');
     // 수량 3분화(2026-07-29) — 한 칸이 탭마다 다른 의미를 갖던 구조를 끊는다.
     //   #qty(단건 탭)   = 그 건의 **최종 수량**(주문서 라인으로 프리필)
     //   #seedQty(묶음)  = 담을 때 채우는 **기본값**뿐. 확정 수량은 각 행(qqty)이 정본
@@ -592,10 +592,16 @@
       return true;
     }
     function updateGate() {
+      // 검토는 **선택 사항**이다(2026-07-30 지시). 이전엔 검토 없이는 확정이 불가능해
+      //   N행이면 검토 N회 + 확정 N회 = 2N회 가공을 강제했다(10건이면 20회).
+      // ⚠️ 안전망을 없앤 것이므로 대신 상태를 눈에 남긴다:
+      //   버튼 라벨에 '· 미검토'(renderQueue) + 확정 완료 메시지에 미검토 명기.
       var stale = (reviewedRev !== queueRev) && !queueAllImpose();
       if (elBtnConfirm) {
-        elBtnConfirm.disabled = queue.length === 0 || stale || reviewBusy;
-        elBtnConfirm.title = (queue.length && stale) ? '검토문서로 확인한 뒤 확정할 수 있습니다' : '';
+        elBtnConfirm.disabled = queue.length === 0 || reviewBusy;
+        elBtnConfirm.title = (queue.length && stale)
+          ? '미검토 상태로 확정합니다 — [검토문서]로 마감·돔보·크기를 먼저 볼 수 있습니다'
+          : '';
       }
       if (elBtnReview) {
         elBtnReview.disabled = queue.length === 0 || reviewBusy;
@@ -608,7 +614,7 @@
 
     // 큐 1개를 여러 컨테이너에 그린다(묶음 탭·모아찍기 탭). 컨테이너별로 이벤트를 다시 붙인다.
     //   showQty=false 면 행 수량칸을 아예 그리지 않는다(모아찍기 — 수량을 받지 않는 경로).
-    function renderQueueInto(box, emptyMsg, showQty) {
+    function renderQueueInto(box, emptyMsg, showQty, showSel) {
       if (box) {
         if (!queue.length) {
           box.innerHTML = '<div class="qempty">' + emptyMsg + '</div>';
@@ -619,7 +625,10 @@
             var fx = (e.params && e.params.post_desc) ? (' · ' + e.params.post_desc) : '';
             // 수량은 메타 문자열에서 뺀다 — 아래 인라인 입력칸이 정본(2026-07-29 P4).
             var meta = e.w + '×' + e.h + 'cm' + (e.client ? (' · ' + e.client) : '') + fx;
-            html += '<div class="qrow' + (i === bound ? ' sel' : '') + '" data-i="' + i + '"><span class="qn">#' + (i + 1) + '</span>' +
+            html += '<div class="qrow' + (i === bound ? ' sel' : '') + '" data-i="' + i + '">' +
+              // 체크 상태는 queue[i].sel 이 정본 — innerHTML 재작성으로 DOM 이 날아가도 유지된다.
+              (showSel ? ('<input class="qsel" data-i="' + i + '" type="checkbox" title="선택 적용 대상"' + (e.sel ? ' checked' : '') + ' />') : '') +
+              '<span class="qn">#' + (i + 1) + '</span>' +
               '<input class="qkw" data-i="' + i + '" type="text" value="' + escHtml(e.keyword || '') + '" placeholder="키워드" />' +
               (showQty ? ('<input class="qqty" data-i="' + i + '" type="text" value="' + escHtml(String(e.qty || 1)) + '" title="확정 수량(이 행의 정본)" />') : '') +
               '<span class="qmeta" title="' + escHtml(meta) + '">' + escHtml(meta) + '</span>' +
@@ -629,7 +638,7 @@
           var rows = box.getElementsByClassName('qrow');
           for (var r = 0; r < rows.length; r++) rows[r].addEventListener('click', function (ev) {
             var cls = (ev.target && ev.target.className) ? String(ev.target.className) : '';
-            if (cls.indexOf('qkw') !== -1 || cls.indexOf('qqty') !== -1 || cls.indexOf('qdel') !== -1) return; // 인라인 편집·삭제 클릭은 행 선택 아님
+            if (cls.indexOf('qkw') !== -1 || cls.indexOf('qqty') !== -1 || cls.indexOf('qdel') !== -1 || cls.indexOf('qsel') !== -1) return; // 인라인 편집·삭제·체크 클릭은 행 선택(연동) 아님
             toggleBind(parseInt(this.getAttribute('data-i'), 10));
           });
           var dels = box.getElementsByClassName('qdel');
@@ -660,8 +669,51 @@
             // 폼(#qty)으로 되쓰지 않는다 — #qty 는 단건 탭 전용값이고, 행 수량의 정본은 이 칸이다.
             bumpRev(); // 수량=주석 문구에 반영 → 재검토 필요
           });
+          // 선택 적용 대상 체크 — 정본은 queue[i].sel. 재렌더 없이 버튼 라벨만 갱신한다
+          //   (renderQueue 를 부르면 체크하는 순간 DOM 이 재생성돼 연속 체크가 끊긴다)
+          var sels = box.getElementsByClassName('qsel');
+          for (var s2 = 0; s2 < sels.length; s2++) sels[s2].addEventListener('change', function () {
+            var ix = parseInt(this.getAttribute('data-i'), 10);
+            if (isNaN(ix) || ix < 0 || ix >= queue.length) return;
+            queue[ix].sel = !!this.checked;
+            updateApplyBar();
+          });
         }
       }
+    }
+
+    // 선택 적용 대상 = queue[i].sel 인 행. 체크가 0개면 버튼을 잠근다(대상 없는 적용 방지)
+    function selectedRows() {
+      var idx = [];
+      for (var i = 0; i < queue.length; i++) if (queue[i].sel) idx.push(i);
+      return idx;
+    }
+    function updateApplyBar() {
+      var n = selectedRows().length;
+      if (elBtnApplySel) {
+        elBtnApplySel.textContent = n ? ('선택 적용 (' + n + ')') : '선택 적용';
+        elBtnApplySel.disabled = (n === 0);
+      }
+      if (elBtnApplyAll) elBtnApplyAll.disabled = queue.length === 0;
+    }
+    // 현재 폼 설정을 지정 행들에 적용 — 행 고유값(수량·키워드·거래처)은 보존.
+    //   [선택 적용]·[전체 적용]이 **이 함수를 공유**한다(규칙이 둘이면 갈린다).
+    function applyFormToRows(idx) {
+      if (!idx.length) return 0;
+      var base = gatherParams();
+      for (var k = 0; k < idx.length; k++) {
+        var e = queue[idx[k]];
+        if (!e) continue;
+        var p = JSON.parse(JSON.stringify(base));
+        p.qty = e.qty;
+        p.keyword = e.keyword || '';
+        p.client_name = e.client || '';
+        p.client_id = clientIdOf(p.client_name); // 행 거래처 기준 재해소(폼 거래처 id가 남지 않게)
+        e.params = p;
+      }
+      bumpRev();
+      renderQueue();
+      return idx.length;
     }
 
     // 큐 상태 → 모아찍기 탭 등록 버튼. 단건 행이 섞이면 비활성(용도가 다른 걸 같이 등록하지 않는다).
@@ -676,10 +728,12 @@
     }
 
     function renderQueue() {
-      renderQueueInto(elQueueBox, '큐 비어있음 — 디자인 선택 후 [＋ 개별] 또는 [＋ 묶음분리]', true);
-      renderQueueInto(elImposeBox, '조각 없음 — 디자인 선택 후 [선택분 분리] 또는 [◎ 자동감지]', false);
-      if (elBtnConfirm) elBtnConfirm.textContent = '일괄 확정 (' + queue.length + ')';
-      if (elBtnApplyAll) elBtnApplyAll.disabled = queue.length === 0;
+      // 체크박스는 묶음 탭에만 — 모아찍기는 후가공이 없어 '선택 적용'의 대상이 될 게 없다
+      renderQueueInto(elQueueBox, '큐 비어있음 — 디자인 선택 후 [＋ 개별] 또는 [＋ 묶음분리]', true, true);
+      renderQueueInto(elImposeBox, '조각 없음 — 디자인 선택 후 [선택분 분리] 또는 [◎ 자동감지]', false, false);
+      if (elBtnConfirm) elBtnConfirm.textContent = '일괄 확정 (' + queue.length + ')' +
+        (((reviewedRev !== queueRev) && !queueAllImpose() && queue.length) ? ' · 미검토' : '');
+      updateApplyBar();
       updateGate();
       updateImposeBar();
     }
@@ -767,22 +821,20 @@
       syncBoundRow();
     });
 
-    // 현재 폼 설정을 전체 행에 적용 — 행 고유값(수량·키워드·거래처)은 보존
     if (elBtnApplyAll) elBtnApplyAll.addEventListener('click', function () {
       if (!queue.length) return;
-      var base = gatherParams();
-      for (var i = 0; i < queue.length; i++) {
-        var e = queue[i];
-        var p = JSON.parse(JSON.stringify(base));
-        p.qty = e.qty;
-        p.keyword = e.keyword || '';
-        p.client_name = e.client || '';
-        p.client_id = clientIdOf(p.client_name); // 행 거래처 기준 재해소(폼 거래처 id가 남지 않게)
-        e.params = p;
-      }
-      bumpRev();
-      renderQueue();
-      out('현재 가공·후가공 설정을 전체 ' + queue.length + '행에 적용 (수량·키워드·거래처는 행값 유지)');
+      var all = [];
+      for (var i = 0; i < queue.length; i++) all.push(i);
+      out('현재 가공·후가공 설정을 전체 ' + applyFormToRows(all) + '행에 적용 (수량·키워드·거래처는 행값 유지)');
+    });
+    // 선택 적용 — 5+5 처럼 설정이 갈리는 묶음에서 행을 하나씩 연동하지 않게 하는 핵심 경로
+    if (elBtnApplySel) elBtnApplySel.addEventListener('click', function () {
+      var idx = selectedRows();
+      if (!idx.length) { out('적용할 행을 체크하세요', 'err'); return; }
+      var rowNos = [];
+      for (var k = 0; k < idx.length; k++) rowNos.push('#' + (idx[k] + 1));
+      out('현재 가공·후가공 설정을 ' + applyFormToRows(idx) + '행에 적용 — ' + rowNos.join(' ') +
+        ' (수량·키워드·거래처는 행값 유지)');
     });
 
     function queueRemove(i) {
@@ -957,7 +1009,10 @@
             if (r && r.ok) { okN++; lines.push('#' + (k + 1) + ' ✓ ' + (r.eps || '(work.ai)') + (r.dxf ? ' +DXF' : '') + mbText(r.bytes) + warnText(r.warn).replace(/\n/g, ' ')); }
             else { failN++; lines.push('#' + (k + 1) + ' ✗ ' + (r ? r.err : '?')); }
           }
-          out('일괄 확정 완료: 성공 ' + okN + ' / 실패 ' + failN + '\n폴더: ' + batchFolder + '\n' + lines.join('\n') + '\n→ 에이전트 ingest 후 대기함', failN ? 'err' : 'okmsg');
+          // 검토가 선택 사항이 된 뒤로는 '검토 없이 확정했다'는 사실을 결과에 남긴다(추적 수단)
+          var unrev = (reviewedRev !== queueRev) && !queueAllImpose();
+          out('일괄 확정 완료: 성공 ' + okN + ' / 실패 ' + failN + (unrev ? ' (미검토 확정)' : '') +
+            '\n폴더: ' + batchFolder + '\n' + lines.join('\n') + '\n→ 에이전트 ingest 후 대기함', failN ? 'err' : 'okmsg');
           csi.evalScript('mesA0_queueClear()', function () {});
           csi.evalScript('mesA0_reviewDiscard()', function () {}); // 검토문서 정리(저장물과 무관)
           queue = []; bound = -1; renderQueue(); reenable();

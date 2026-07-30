@@ -78,6 +78,10 @@
       <div id="finHostSingle"></div>
       <div class="row" id="finToggleRow">
         <button id="finToggle" type="button" class="disc">▸ 후가공 <span class="cfg">마감·돔보·펀칭·주석</span></button>
+        <!-- 적용 대상 버튼은 폼 옆에 둔다 — 하단 확정 버튼줄(검토·확정·비우기)과 섞으면
+             '편집 도구'와 '확정 액션'의 구분이 사라진다(2026-07-30 지시). -->
+        <button id="btnApplySel" type="button" title="체크한 행에만 현재 후가공·가공 설정 적용 (수량·키워드·거래처는 행값 유지)" disabled>선택 적용</button>
+        <button id="btnApplyAll" type="button" title="현재 가공·후가공 설정을 모든 행에 적용 (수량·키워드·거래처는 행값 유지)" disabled>전체 적용</button>
       </div>
       <div id="finBody" class="hidden">
         <div class="row">
@@ -181,9 +185,8 @@
       <!-- 후가공 접이식이 탭 전환 때 여기로 옮겨 온다(폼은 1벌 — id 중복·값 갈림 방지). main.js moveFinishingTo() -->
       <div id="finHostBundle"></div>
       <div class="row buttons">
-        <button id="btnReview" type="button" title="큐 전체를 가공해 검토문서(디자인당 아트보드)로 생성 — 저장 없음, 확인 후 확정 가능" disabled>검토문서</button>
+        <button id="btnReview" type="button" title="큐 전체를 가공해 검토문서(디자인당 아트보드)로 생성 — 저장 없음. 선택 사항이다" disabled>검토문서</button>
         <button id="btnConfirm" type="button" class="primary" disabled>일괄 확정 (0)</button>
-        <button id="btnApplyAll" type="button" title="현재 가공·후가공 설정을 모든 행에 적용 (수량·키워드·거래처는 행값 유지)" disabled>전체 적용</button>
         <button id="btnQueueClear" type="button">비우기</button>
       </div>
     </div>

@@ -13,7 +13,8 @@
 //   0.1.3 = 수량 3분화 — 단건=최종값 · 묶음=새 행 기본값 · 모아찍기=수량 안 받음 (2026-07-29)
 //   0.1.4 = work.ai PDF 합성부 제외(용량 −52%) + 임베드 래스터 계측·경고 (2026-07-30)
 //   0.1.5 = 돔보 선택 시 재단선 사각(레이어 '재단선') + DXF 내보내기·_출력 복사 (2026-07-30)
-var MESA0_VERSION = 'A0-CEP-0.1.5';
+//   0.1.6 = 묶음분리·자동감지 결과를 공간 정렬(위→아래·좌→우) — 행 번호를 눈에 맞춤 (2026-07-30)
+var MESA0_VERSION = 'A0-CEP-0.1.6';
 var MESA0_REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
 var MESA0_PT_PER_MM = 72 / 25.4;
 var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];
@@ -756,14 +757,33 @@ function mesA0_seedQueueJson(d, cands, gapMm) {
   var gap = parseFloat(gapMm); if (isNaN(gap)) gap = 0; // 0=겹칠때만 · 음수=더 잘게 분리(겹침 깊이 요구)
   var clusters = mesA0_cluster(kept, gap * MESA0_PT_PER_MM);
   if (!clusters.length) return '{"ok":false,"err":"nobounds"}';
+  // ── 공간 정렬: 위→아래, 같은 줄에서는 좌→우 (2026-07-30 지시) ──
+  // 클러스터 순서는 선택·순회 순서(사실상 z-order)라 화면에 보이는 순서와 무관했다.
+  // 행 번호가 눈에 보이는 순서와 어긋나면 행 다중선택이 헷갈려 쓸 수 없다.
+  // ⚠️ 정렬은 **반드시 여기서** 한다. 패널이 표시만 바꾸면 mesA0_queueSelect(i)·확정 루프의
+  //    인덱스가 어긋나 "고른 것과 다른 조각이 등록되는" 사고가 된다(인덱스 단일 소스 = 이 배열).
+  var entries = [];
+  for (var c = 0; c < clusters.length; c++) {
+    var ub0 = mesA0_clipUnion(clusters[c]) || mesA0_unionBounds(clusters[c]);
+    if (!ub0) continue;
+    entries.push({ items: clusters[c], b: ub0 });
+  }
+  if (!entries.length) return '{"ok":false,"err":"nobounds"}';
+  // BAND = 같은 줄 판정 허용오차. 조금 어긋나게 놓인 조각이 다른 줄로 튀는 것을 막는다.
+  var BAND = 20 * MESA0_PT_PER_MM;
+  entries.sort(function (p1, p2) {
+    var dt = p2.b[1] - p1.b[1];              // top 이 큰(위에 있는) 것이 먼저
+    if (Math.abs(dt) > BAND) return dt;
+    return p1.b[0] - p2.b[0];                // 같은 줄 → left 작은(왼쪽) 것이 먼저
+  });
+
   var q = mesA0_queueEnsure();
   var sizes = [];
-  for (var c = 0; c < clusters.length; c++) {
-    var ub = mesA0_clipUnion(clusters[c]) || mesA0_unionBounds(clusters[c]);
-    if (!ub) continue;
-    q.push({ doc: d, items: clusters[c] });
+  for (var e2 = 0; e2 < entries.length; e2++) {
+    var ub = entries[e2].b;
+    q.push({ doc: d, items: entries[e2].items });
     sizes.push('{"w":' + (Math.round((ub[2] - ub[0]) / MESA0_PT_PER_MM / 10 * 10) / 10) +
-      ',"h":' + (Math.round((ub[1] - ub[3]) / MESA0_PT_PER_MM / 10 * 10) / 10) + ',"items":' + clusters[c].length + '}');
+      ',"h":' + (Math.round((ub[1] - ub[3]) / MESA0_PT_PER_MM / 10 * 10) / 10) + ',"items":' + entries[e2].items.length + '}');
   }
   return '{"ok":true,"added":' + sizes.length + ',"total":' + q.length + ',"sizes":[' + sizes.join(',') + ']}';
 }

@@ -141,6 +141,29 @@ ok('행 클릭 시 일러 선택 호출(P3)', await page.evaluate(() => window._
 ok('묶음 탭에 후가공 폼 이동', await page.evaluate(() => !!document.querySelector('[data-page="bundle"] #finToggleRow')))
 ok('후가공 폼은 항상 1벌', await page.evaluate(() => document.querySelectorAll('#finToggleRow').length === 1 && document.querySelectorAll('#finBody').length === 1))
 
+// 9-2) 적용 버튼은 폼 옆(편집 도구) · 하단은 확정 액션만 (2026-07-30 ③)
+ok('적용 버튼 2개가 폼 헤더에', await page.evaluate(() => !!document.querySelector('#finToggleRow #btnApplySel') && !!document.querySelector('#finToggleRow #btnApplyAll')))
+ok('하단 확정줄에 적용 버튼 없음', await page.evaluate(() => {
+  const r = document.querySelector('#btnConfirm').parentNode
+  return !r.querySelector('#btnApplyAll') && !r.querySelector('#btnApplySel')
+}))
+
+// 9-3) 행 다중선택 → 선택 적용 (2026-07-30 ①) — 5+5 를 2회로 줄이는 경로
+ok('묶음 행에 체크박스', (await page.locator('#queueBox .qsel').count()) === 3)
+ok('모아찍기 행엔 체크박스 없음', await page.evaluate(() => document.querySelectorAll('#imposeBox .qsel').length === 0))
+ok('체크 0개면 선택 적용 비활성', await page.locator('#btnApplySel').isDisabled())
+await page.check('#queueBox .qsel[data-i="0"]')
+await page.check('#queueBox .qsel[data-i="2"]')
+ok('선택 적용 라벨에 개수', (await page.locator('#btnApplySel').innerText()) === '선택 적용 (2)')
+await page.click('#btnApplySel')
+await page.waitForTimeout(150)
+ok('선택 행만 적용 메시지', (await page.locator('#out').innerText()).includes('#1 #3'), (await page.locator('#out').innerText()).slice(0, 90))
+ok('재렌더 후에도 체크 유지', await page.evaluate(() => document.querySelector('#queueBox .qsel[data-i="0"]').checked && document.querySelector('#queueBox .qsel[data-i="2"]').checked))
+
+// 9-4) 검토는 선택 사항 (2026-07-30 ②) — 검토 없이도 확정 가능해야 하고, 미검토가 눈에 보여야 한다
+ok('검토 없이 확정 가능', !(await page.locator('#btnConfirm').isDisabled()))
+ok('미검토 표시', (await page.locator('#btnConfirm').innerText()).indexOf('미검토') > 0, await page.locator('#btnConfirm').innerText())
+
 // 10) 등록 결과에 용량·임베드 여분 경고 노출 — 100MB work.ai 재발을 알아채는 유일한 지점.
 //    (사고 당시엔 용량이 어디에도 안 보여 5건 524MB가 쌓인 뒤에야 발견됐다)
 await page.click('.tab[data-tab="single"]')
