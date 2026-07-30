@@ -38,14 +38,11 @@
   function $(id) { return document.getElementById(id); }
   function warnMissing(id) { console.warn('[mes-a0-cep] #' + id + ' not found'); }
   function escHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-  // 주석 조합: 키워드-식별번호-수량ea (키워드 있을 때만). 거래처명 제외. 식별번호=큐 배치 seqNo
-  function composeAnnot(keyword, seqNo, qty) {
-    if (!keyword) return '';
-    var s = keyword;
-    if (seqNo != null && seqNo !== '') s += '-' + seqNo;
-    s += '-' + qty + 'ea';
-    return s;
-  }
+  // (2026-07-30 P3 제거) composeAnnot — **호출처 0**인데다 `키워드-식별번호-수량ea` 라는
+  //   **낡은 주석 규칙**을 담고 있어 읽는 사람을 오도했다. 현행 주석 문구의 정본은 호스트
+  //   `mes-a0-host.jsx` 의 mesA0_annotText(keyword, seqNo, postDesc, qty) 이고 구조는
+  //   `키워드-식별번호-후가공-수량` 이다(후가공 세그먼트가 2026-07-30 에 추가됐다).
+  //   패널이 만드는 것은 post_desc(파일명 세그먼트)까지이고 주석 조합은 호스트가 한다.
 
   // 후가공 파일명 세그먼트 조립(한글=params UTF-8 전달). 예: 양옆접어미싱+사방펀칭
   function posWord(o) {
@@ -784,7 +781,7 @@
             var meta = e.w + '×' + e.h + 'cm' + (e.client ? (' · ' + e.client) : '') + fx;
             html += '<div class="qrow' + (i === bound ? ' sel' : '') + '" data-i="' + i + '">' +
               // 체크 상태는 queue[i].sel 이 정본 — innerHTML 재작성으로 DOM 이 날아가도 유지된다.
-              (showSel ? ('<input class="qsel" data-i="' + i + '" type="checkbox" title="선택 적용 대상"' + (e.sel ? ' checked' : '') + ' />') : '') +
+              (showSel ? ('<input class="qsel" data-i="' + i + '" type="checkbox" title="적용 대상 체크"' + (e.sel ? ' checked' : '') + ' />') : '') +
               '<span class="qn">#' + (i + 1) + '</span>' +
               '<input class="qkw" data-i="' + i + '" type="text" value="' + escHtml(e.keyword || '') + '" placeholder="키워드" />' +
               (showQty ? ('<input class="qqty" data-i="' + i + '" type="text" value="' + escHtml(String(e.qty || 1)) + '" title="확정 수량(이 행의 정본)" />') : '') +
@@ -853,7 +850,7 @@
       var onBundle = (activeTab() === 'bundle');
       var n = selectedRows().length;
       if (elBtnApplySel) {
-        elBtnApplySel.textContent = n ? ('선택 적용 (' + n + ')') : '선택 적용';
+        elBtnApplySel.textContent = n ? ('체크한 행 적용 (' + n + ')') : '체크한 행 적용';
         elBtnApplySel.disabled = !onBundle || n === 0;
         elBtnApplySel.title = onBundle
           ? '체크한 행에만 현재 후가공·가공 설정 적용 (수량·키워드·거래처는 행값 유지)'
@@ -911,7 +908,7 @@
     function updateImposeBar() {
       if (!elBtnImposeRegister) return;
       var n = queue.length, allImpose = queueAllImpose();
-      elBtnImposeRegister.textContent = '등록 (' + n + ')';
+      elBtnImposeRegister.textContent = '조각 ' + n + '건 등록'; // 라벨 어간 '등록' 통일(P3)
       elBtnImposeRegister.disabled = (n === 0) || !allImpose;
       elBtnImposeRegister.title = (n && !allImpose)
         ? '단건 용도 행이 섞여 있습니다 — [묶음] 탭에서 확정하거나 비우고 다시 분리하세요'
@@ -919,10 +916,10 @@
     }
 
     function renderQueue() {
-      // 체크박스는 묶음 탭에만 — 모아찍기는 후가공이 없어 '선택 적용'의 대상이 될 게 없다
-      renderQueueInto(elQueueBox, '큐 비어있음 — 디자인 선택 후 [＋ 개별] 또는 [＋ 묶음분리]', true, true);
-      renderQueueInto(elImposeBox, '조각 없음 — 디자인 선택 후 [선택분 분리] 또는 [◎ 자동감지]', false, false);
-      if (elBtnConfirm) elBtnConfirm.textContent = '일괄 확정 (' + queue.length + ')' +
+      // 체크박스는 묶음 탭에만 — 모아찍기는 후가공이 없어 '체크한 행 적용'의 대상이 될 게 없다
+      renderQueueInto(elQueueBox, '목록 비어있음 — 일러에서 디자인을 고른 뒤 [＋ 개별] 또는 [＋ 묶음분리]', true, true);
+      renderQueueInto(elImposeBox, '조각 없음 — 일러에서 디자인을 고른 뒤 [선택분 분리] 또는 [◎ 자동감지]', false, false);
+      if (elBtnConfirm) elBtnConfirm.textContent = queue.length + '건 등록' +
         (((reviewedRev !== queueRev) && !queueAllImpose() && queue.length) ? ' · 미검토' : '');
       updateApplyBar();
       updateGate();
@@ -940,7 +937,7 @@
       //   후가공 폼은 이제 묶음 탭에도 있으므로 "[단건] 탭의"도 사실과 다르다.
       //   탭을 옮기면 연동이 끊기므로(위 탭 클릭 핸들러) 그 사실도 함께 알린다.
       var baseMsg = (queue[i].params && queue[i].params.mode === 'impose')
-        ? '#' + (i + 1) + ' 행 선택 — 일러에서 이 조각을 보여줍니다 (모아찍기는 후가공이 없습니다 · 다시 클릭=해제)'
+        ? '#' + (i + 1) + ' 행 — 일러에 이 조각을 표시했습니다 (모아찍기는 후가공이 없습니다 · 다시 클릭=해제)'
         : '#' + (i + 1) + ' 행 연동 중 — 후가공 폼의 수정이 이 행에 반영됩니다 (다시 클릭=해제 · 탭을 옮기면 자동 해제)';
       out(baseMsg);
       // P3(2026-07-29): 이 행이 **어느 그룹인지** 일러에서 보여준다 — 원본 조각을 선택.
@@ -948,7 +945,7 @@
       //   실패(문서 닫힘·참조 무효)해도 연동은 유지한다 — 폼 편집까지 막을 이유가 없다.
       csi.evalScript('mesA0_queueSelect(' + i + ')', function (sres) {
         var sr = null; try { sr = JSON.parse(sres); } catch (e) {}
-        if (sr && sr.ok) { out(baseMsg + '\n· 일러에서 이 행의 조각 ' + sr.n + '개를 선택했습니다'); return; }
+        if (sr && sr.ok) { out(baseMsg + '\n· 일러에서 이 행의 조각 ' + sr.n + '개를 표시했습니다'); return; }
         var em = { range: '행 범위 오류', stale: '원본 객체 참조 무효(문서가 수정됨)', docgone: '원본 문서가 닫힘' };
         out(baseMsg + '\n· 일러 선택 실패: ' + (sr ? (em[sr.err] || sr.err) : '호스트 연결 안 됨'));
       });

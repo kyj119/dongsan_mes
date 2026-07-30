@@ -98,7 +98,8 @@ await page.waitForTimeout(300)
 ok('초기화 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
 ok('기본 탭 = 단건', await page.locator('.tab.active').innerText() === '단건')
 ok('후가공은 접이식(기본 접힘)', await page.locator('#finBody').isHidden())
-ok('실행 버튼 = 단건 가공', await page.locator('#btnProcess').innerText() === '단건 가공')
+// 액션 동사 통일(P3) — 세 탭이 모두 '등록' 어간을 쓰고 범위만 다르다
+ok('실행 버튼 = 1건 등록', await page.locator('#btnProcess').innerText() === '1건 등록')
 
 // 2) 후가공 펼치기 → 값 입력
 await page.click('#finToggle')
@@ -124,7 +125,7 @@ await page.click('#btnImposeSplit')
 await page.waitForTimeout(200)
 const rows = await page.locator('#imposeBox .qrow').count()
 ok('분리 결과 3행', rows === 3, 'rows=' + rows)
-ok('등록 버튼 라벨', await page.locator('#btnImposeRegister').innerText() === '등록 (3)')
+ok('등록 버튼 라벨', await page.locator('#btnImposeRegister').innerText() === '조각 3건 등록')
 ok('등록 버튼 활성', !(await page.locator('#btnImposeRegister').isDisabled()))
 
 // 5) 수량 3분화 — 모아찍기는 수량을 받지 않는다(행 수량칸 자체가 없어야 한다)
@@ -187,7 +188,7 @@ ok('모아찍기 행엔 체크박스 없음', await page.evaluate(() => document
 ok('체크 0개면 선택 적용 비활성', await page.locator('#btnApplySel').isDisabled())
 await page.check('#queueBox .qsel[data-i="0"]')
 await page.check('#queueBox .qsel[data-i="2"]')
-ok('선택 적용 라벨에 개수', (await page.locator('#btnApplySel').innerText()) === '선택 적용 (2)')
+ok('체크한 행 적용 라벨에 개수', (await page.locator('#btnApplySel').innerText()) === '체크한 행 적용 (2)')
 await page.click('#btnApplySel')
 await page.waitForTimeout(150)
 ok('선택 행만 적용 메시지', (await page.locator('#out').innerText()).includes('#1 #3'), (await page.locator('#out').innerText()).slice(0, 90))

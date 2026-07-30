@@ -52,7 +52,12 @@ const AS_JSON = args.includes('--json')
 const AGENT_JSX = ['SheetLayout.jsx', 'ProcessOrderItem.jsx', 'ExtractGroups.jsx', 'PackGroups.jsx']
 // 스텁이 $.evalFile 로 실행하는 Z: 정본 (디자이너 PC엔 스텁만 설치돼 있다)
 const DESIGNER_JSX = ['mes-core.jsx', 'mes-sheet.jsx', 'mes-a0-host.jsx']
-// CEP 패널 — 배포 산출물만(.debug 는 로컬 디버그 플래그라 제외)
+// CEP 패널 배포 산출물.
+//   ⚠️ `.debug` 는 여태 "로컬 디버그 플래그"라며 제외돼 있었지만 **전제가 틀렸다**(2026-07-30 실측):
+//      install-a0-panel.ps1 이 폴더째 복사하므로 Z: 배포본과 각 PC 설치본에 **실제로 들어가 있다**.
+//      삭제하지는 않는다 — CDP 원격 디버깅(핫스왑)이 이 파일에 의존하고, 손이 닿지 않는 디자이너 PC를
+//      진단할 때 그게 유일한 수단이다([[reference-cep-hotswap]]). 대신 **추적 대상에 넣어**
+//      조용히 드리프트하지 못하게 한다(감사 목록에 없으면 바뀌어도 아무도 모른다).
 const PANEL_FILES = [
   'index.html',
   'css/style.css',
@@ -60,6 +65,7 @@ const PANEL_FILES = [
   'js/CSInterface.js',
   'js/main.js',
   'jsx/host.jsx',
+  '.debug',
 ]
 const PANEL_REPO = path.join(IA, 'designer', 'poc-a0-cep', 'com.mes.a0.panel')
 const PANEL_RUNTIME = path.join(Z_SCRIPTS, 'a0-panel', 'com.mes.a0.panel')
