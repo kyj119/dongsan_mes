@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-07-30T14:05:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-07-30T21:35:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,10 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **3** (Area 3 46회차 신규 #585·#586·#587, GitHub OPEN 실측) |
+| 🆕 new | **3** (Area 3 46회차 신규 #585·#586·#587, GitHub OPEN 실측 — Area4 48회차 재확인 동일) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **510** (`reason:completed` 절대값, 변동 없음 — Area6 52회차 재확인) |
+| ✔️ done | **511** (`reason:completed` 절대값 — Area4 48회차 #588 자동수정+커밋 시 `closes #588`로 즉시 auto-close, 510→511) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > **2026-07-29 백로그 소진 세션** (main `9686bf69`, deploy success): 11건을 심각도순으로 전건 처리.
@@ -27,6 +27,15 @@
 > ↳ **10차 트림 (2026-07-30, 자동)**: 사이클 로그 13건 → 8건 유지, 5건 이관 (83KB → 트림 후 아래 참조).
 > ↳ **9차 트림 (2026-07-28, 자동)**: 사이클 로그 13건 → 8건 유지, 5건 이관 (82KB → 트림 후 아래 참조).
 > ↳ **8차 트림 (2026-07-27, 자동)**: 사이클 로그 9건 → 8건 유지, 1건 이관 (66KB → 트림 후 아래 참조).
+
+> **Area 4 데이터 정합성 (2026-07-30T21:35):**
+> - **방법**: `git fetch origin main`(HEAD `95f87e6`, 이후 동시 세션 push로 `adba70c`까지 전진 확인 후 재체크아웃 — docs-only라 무충돌) 후 `npm ci`(node_modules 0→81), `git fetch --deepen=200`(shallow 확장). Area 4 **48회차** — 직전 Area4(`aa5fe2c`, 07-29T09:17, 47회차) 이후 `git log`는 **68커밋**, 대부분 a0-panel(별도 배포축)·자재 마스터 데이터 정정(0480~0489)·롤→미터 단위체계(0490~0497, Area2 54회차·Area6 52회차 이미 형제완전성 검증)·주문 행 에누리 신설(0501, prod 백필 실측까지 자기검증 완료) — 신선한 write-path 위험이 큰 커밋만 인라인 직접 diff Read(위임 없이, 신선 churn 규모가 커서 오히려 정독이 빠름).
+> - **🔴 net-new 발견 + 자동수정: #588 실사 생성 100% 500(SQL 안 주석 문법오류)** — `5e22800`(07-29T17:47 "입고 취소 pack_size 환산 누락 수정 + 실사 단위 정정")이 `inventoryCount.ts`의 `inventory_count_items` INSERT 템플릿 리터럴 **닫는 백틱 안쪽**에 설명 주석 2줄(`// ...`)을 남김 → SQLite가 `//`를 문법오류로 거부(`--`/`/* */`만 유효) → **품목 1건 이상인 모든 실사 생성 요청이 구역/전체 실사 불문 100% 실패**. `inventory_counts` 헤더 INSERT는 배치 밖 별도 `.run()`이라 먼저 커밋되고 품목 배치만 throw → **시도마다 자식 0건 DRAFT 고아 헤더가 누적**. `scripts/smoke.cjs`는 GET 위주(POST는 로그인 1곳뿐)라 이 write-path 회귀를 탐지 못함(#430 스모크 맹점 클래스의 신규 변형 — "SQL 안 주석"), CI(typecheck+build+smoke)는 전부 green으로 배포됨(TS 문자열은 유효, tsc가 SQL 문법을 못 봄). **로컬 D1에 정확히 동형인 SQL을 직접 실행해 재현**(`near "/": syntax error` 확인) 후 주석을 리터럴 밖으로 이동(순수 문법정정, 로직 무변경) — 재실행으로 해소 확인. 검증: tsc 0·build OK·entity-audit 60/60·sort-audit P1 0. 커밋+`closes #588`로 GitHub 즉시 auto-close(done 510→511). owner 후속 확인 요청: prod에 07-29T17:47 이후 누적됐을 자식-0건 DRAFT 실사 헤더 정리(이슈 본문에 조회 SQL 첨부).
+> - **`e744bc4`+`e0c8c60`(주문 행 에누리 확정, 마이그 0501)**: `auto_amount`/`line_discount`/`discount_reason`/`discount_by` 신규 컬럼이 이미 배포된 INSERT(create.ts 3곳·update.ts 2곳)에서 참조되는 **(b)-risk 패턴**(#483/#484)이었으나, 커밋 메시지·후속 배너(`95f87e6`)에서 "마이그 0501 커밋+prod 적용 완료"를 직접 확인(다른 동시 세션의 미커밋 `0501_dongsan_import_...`과 번호충돌 예고는 별건, 현재 트리엔 미착륙이라 net-new 아님). prod 백필 검증(2,878행 auto_amount=amount·line_discount≠0 0건)까지 자기검증 완료 — 재검증 불요, clean.
+> - **item 마스터 정정 마이그 0480~0489(그룹분리·병합·폭 채움) 전수**: 유일 하드삭제(`0485` SVB-PR-152)는 **items(id) FK 참조 22컬럼 전건 조회 후 유일 참조(purchase_order_items 2건)를 재연결한 뒤 삭제** — 고아 참조 0, 모범 사례. 나머지는 UPDATE-only(그룹 분리/병합/폭 채움)라 orphan 위험 없음. `finishing.ts`(+59, UNIQUE 충돌 안내 개선)는 POST·PUT 양쪽에 동일 안내 문구 적용(형제완전성 확보), `items.ts`(+95, 그룹 우선소비 UI)는 그룹 소속 검증 후 UPDATE(임의 품목 조작 차단) + D1 바인드 한도 회피 청크 — 둘 다 clean.
+> - **마이그 번호 중복 재확인**: 기존 5쌍(0327·0412·0416·0420·0453, 종전과 동일) + 신규 0480~0501 전부 유일 — net-new 0.
+> - **표준 스캔**: `entity-audit.mjs` 60/60, `sort-audit.cjs` P1 0(신규 churn 포함), FK-literal(users FK) 신규 write 없음, CHECK 제약 위반 신규 없음.
+> - 신규 이슈 1건(#588, 자동수정 완료·auto-close), 자동수정 1건(SQL 문법 정정), done-sync: new 3(변동없음)·done 511(+1)·rejected 6(변동없음). 다음 순번 **Area 5**.
 
 > **Area 3 UX/기능 감사 (2026-07-30T14:05):**
 > - **방법**: `git fetch origin main`(forced-update, HEAD `c8f255d` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `git fetch --deepen=500`(shallow라 직전 Area3 SHA 확보 위해 확장). Area 3 **47회차** — 직전 Area3(`da70faa`, 07-29T03:12, 46회차) 이후 `git log da70faa..HEAD`는 **63커밋**이나 UX 렌즈 대상(`src/scripts`·`src/pages`·`src/layout`·`index.tsx`)에 한정하면 **4커밋뿐**(나머지는 IA패널(`IllustratorAutomat/**`, 별도 배포축·웹 범위 밖) + 자재마스터 데이터 UPDATE(0480~0497) + 롤→미터 단위체계로 Area2/4/6이 이미 렌즈 적용 완료). 프론트 delta 4커밋을 직접 Read로 전수 감사(에이전트 위임 없이 인라인 — 과다 위임 억제 정책, 신선 churn이 작아 정독이 빠름).
