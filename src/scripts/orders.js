@@ -1329,11 +1329,18 @@ async function deleteOrder(orderId, orderNumber, status) {
     showToast('출고완료된 주문은 삭제할 수 없습니다.', 'warning');
     return;
   }
-  if (!(await showConfirm(`주문 ${orderNumber}을(를) 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`, { danger: true }))) return;
+  // 2단계 삭제: 취소된 주문=완전 삭제(ADMIN) / 확정 이후=취소 처리(소프트) / 견적=삭제
+  var confirmMsg = status === 'CANCELLED'
+    ? `취소된 주문 ${orderNumber}을(를) 완전 삭제하시겠습니까? 카드·이력까지 함께 삭제되며 되돌릴 수 없습니다. (관리자 전용)`
+    : ['CONFIRMED', 'PRINTING', 'PRINT_DONE'].includes(status)
+      ? `주문 ${orderNumber}을(를) 취소 처리하시겠습니까? 생산 카드는 보류(HOLD)됩니다. 완전 삭제는 취소된 주문에서 다시 삭제를 누르면 됩니다.`
+      : `주문 ${orderNumber}을(를) 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`;
+  if (!(await showConfirm(confirmMsg, { danger: true }))) return;
   try {
     const res = await axios.delete(`/api/orders/${orderId}`);
     if (res.data.success) {
-      showToast('주문이 삭제되었습니다.');
+      // 서버 메시지 우선 — 소프트 삭제(취소 처리)와 완전 삭제를 구분해 알린다
+      showToast(res.data.message || '주문이 삭제되었습니다.');
       document.getElementById('orderModal')?.remove();
       loadOrders();
     } else {

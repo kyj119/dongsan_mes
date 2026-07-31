@@ -562,9 +562,13 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       }, 404)
     }
 
-    // 이미 취소된 주문은 이중 차감 방지
-    if (order.status === 'CANCELLED') {
-      return c.json({ success: false, error: '이미 취소된 주문입니다.' }, 400)
+    // 2단계 삭제(2026-07-31): 취소(CANCELLED)된 주문은 ADMIN 하드 삭제 경로로 통과한다.
+    //   구 가드("이미 취소된 주문입니다" 무조건 400)는 clients.balance 캐시 시절 이중 차감 방지의
+    //   화석 — 미수금이 파생 계산(취소 주문 자동 제외)으로 바뀌며 근거가 사라졌는데 가드만 남아,
+    //   아래에 문서·구현된 "CANCELLED = ADMIN 하드 삭제"가 도달 불가였고 상세 모달의 삭제 버튼
+    //   (QUOTATION·CANCELLED 노출)과도 어긋났다. 발행분 차단은 아래 세금계산서·현금영수증 가드 유지.
+    if (order.status === 'CANCELLED' && user.role !== 'ADMIN') {
+      return c.json({ success: false, error: '취소된 주문입니다. 완전 삭제(복구 불가)는 관리자(ADMIN)만 가능합니다.' }, 403)
     }
 
     // 세금계산서 발행 여부 확인
@@ -709,7 +713,7 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     return c.json({
       success: true,
-      message: `Order ${order.order_number} deleted successfully`
+      message: `주문 ${order.order_number}이(가) 완전 삭제되었습니다.`
     })
   } catch (error) {
     console.error('Order deletion error:', error)
