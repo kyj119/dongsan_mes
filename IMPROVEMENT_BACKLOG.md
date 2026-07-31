@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-07-31T16:26:43+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-07-31T17:15:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **3** (#585·#586·#587, GitHub OPEN 실측 — Area6 53회차 재확인 동일) |
+| 🆕 new | **4** (#585·#586·#587·#589, GitHub OPEN 실측 — Area2 55회차 #589 신규 등록) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **511** (`reason:completed` 절대값 — Area6 53회차 재조회, 변동 없음) |
@@ -28,6 +28,20 @@
 > ↳ **10차 트림 (2026-07-30, 자동)**: 사이클 로그 13건 → 8건 유지, 5건 이관 (83KB → 트림 후 아래 참조).
 > ↳ **9차 트림 (2026-07-28, 자동)**: 사이클 로그 13건 → 8건 유지, 5건 이관 (82KB → 트림 후 아래 참조).
 > ↳ **8차 트림 (2026-07-27, 자동)**: 사이클 로그 9건 → 8건 유지, 1건 이관 (66KB → 트림 후 아래 참조).
+
+> **Area 2 코드 품질 심층 분석 (2026-07-31T17:15):**
+> - **방법**: `git fetch origin main`(HEAD `f0383ef` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 2 **55회차** — 직전 Area2(`1d7e67d`, 07-30T09:17, 54회차) 이후 `git log 1d7e67d..HEAD -- src/routes src/scripts migrations`는 **11커밋**: 취소주문 완전삭제 2단계 복원(`a621cdd`)·트레이 관리+파일명 정보우선형(`1a66d92`)·가공대기함 자동 묶음 프리필(`737ecbb`)·AR정책 SSOT(`d41699b`, Area5 47회차 기검증)·이카운트 매출 적재(`f10a8fa`)·실사 SQL주석 문법오류(`8819705`, Area4 48회차가 이미 #588로 발견·자동수정·close)·자녀행 합계 dead분기 제거(`e0c8c60`)·행 에누리 확정(`e744bc4`, Area4/5 기검증)·대기함 썸네일/검색(`54287e6`)·후가공 실패사유 문구(`67ecf26`)·마감재단선+후가공코드(`c8f255d`, Area3/5 기검증). 코드품질 렌즈(entity_id·N+1·authMiddleware·dead code·SELECT *)로 아직 안 본 3건(`a621cdd`·`1a66d92`·`737ecbb`)을 인라인 직접 diff Read로 심층 분석(과다위임 억제, 신선 churn 작아 정독이 빠름).
+> - **🔴 net-new 발견(issue-only): #589 취소주문 2단계 하드삭제(`a621cdd`)가 처음 도달 가능해진 consolidate_with_order_id 정리 누락** — `a621cdd`가 "CANCELLED=무조건 400" 화석 가드를 풀어 ADMIN이 취소주문을 실제 하드삭제할 수 있게 함(도입 이래 최초로 이 경로가 살아있는 데이터에 도달). 같은 하드삭제 batch가 #454/#464/#477/#570로 비-FK 참조(`shipments.merged_into_id`·`print_file_map`·`designer_intakes.order_item_id` 등)를 꼼꼼히 정리하는데, **`orders.consolidate_with_order_id`(0438, 합배송 예약 포인터)만 빠짐**. 대표 주문이 취소→하드삭제되면 자식 주문은 존재하지 않는 id를 계속 들고 있어 `orders.js:463-464`(목록 배지)가 `#<죽은id>`를 그대로 노출하며 클릭 시 `viewOrder(<죽은id>)`로 존재하지 않는 주문을 열려 시도(죽은 링크), 상세 모달(`:1037-1038`)도 "대표 주문 #<죽은id>"로 영구 표시. 기존 #483(07-04, 닫힘)이 "하드삭제 dangling은 read-path 무해(FP)"로 판정했으나 그건 쿼리 레벨(status 필터로 자연배제)만 본 것 — 이번 발견은 **표시 레이어**(raw-id fallback + 클릭 이동)라 #483 범위 밖. 파괴적 삭제 batch 수정 + "그룹에서 조용히 이탈 vs 대표 재선출" 정책 판단 필요해 issue-only(#589).
+> - **`1a66d92`(트레이 관리 restore 엔드포인트) 검증**: entityFilter 적용·소유자 검증(`canVoidIntake`)·TOCTOU 가드(UPDATE WHERE status IN 재명시, absorb 패턴과 동일) 전부 정상. `printEvents.ts` resolveCard 정규식 변경(anchored→비anchored)은 read-only 파일명 파싱이라 회귀 위험 낮음, `(?!\d)` 오매칭 가드 확인.
+> - **`737ecbb`(자동 묶음 프리필) 검증**: `helpers.ts` 자식카드 수량 하드코딩(1)→`child.quantity` 실제 반영 — read-only 산식 수정, N+1/entity_id 영향 없음. 프론트(intake.js/parent.js/calc.js) 신규 루프에 N+1급 DB 호출 없음(프론트 전용).
+> - **authMiddleware 전체 recursive 재스캔(25회차 이후 첫 전면 재확인)**: `for f in $(find src/routes -name '*.ts'); do grep -q authMiddleware "$f" || (grep -qE "\.(get|post|put|delete|patch)\(" "$f" && echo "$f"); done` → 후보 7건(`publicUnsubscribe.ts`·`orders/helpers.ts`·`payroll/shared.ts`·`cron.ts`·`messagesAd.ts`·`hrSelf.ts`·`taxInvoices/helpers.ts`) 전수 확인 — `orders/helpers.ts`·`payroll/shared.ts`·`taxInvoices/helpers.ts`는 `Map.get(` FP(라우터 아님), `publicUnsubscribe.ts`는 정보통신망법 §50⑧ 명시 무인증+rate-limit(기존 FP), `cron.ts`는 `agentKeyMiddleware`(에이전트 키 게이트, 기존 FP), `hrSelf.ts`는 scoped-token(기존 FP), `messagesAd.ts`는 barrel 패턴(`messages.ts:120` 부모가 `authMiddleware+requireRole` 선적용 후 `:123 .route('/ad', ...)`로 마운트, 자체 `:40 requireRole('ADMIN')`은 추가 강화) — **net-new 0**, 전부 기존 FP 카탈로그로 판정 가능.
+> - **SELECT * / N+1 / dead code**: 이번 델타 신규 INSERT 0건(entity_id 점검 대상 없음), 신규 `for/forEach`+`await prepare` N+1 패턴 0건, `e0c8c60`의 `isChild` 분기 제거는 이미 dead-code 정리(안전, 커밋 자체가 정리).
+> - **표준 스캔**: `npx tsc --noEmit` 0.
+> - **open≠unfixed 재확인**: `list_issues(OPEN,auto-improve)` 실측 신규발견 전 3건(#585·#586·#587) 잔존(Area1 54회차 재확인과 동일) — fixed-in-tree 없음.
+> - **backlog↔GitHub 절대값 재동기화**: open **4**(#589 신규 추가) · done/rejected는 이번 사이클 close 0건이라 재조회 생략, Area1 54회차 캐시(511/6) 신뢰.
+> - **🧬 SKILL 강화 없음** — #589는 기존 #454/#477/#570 형제완전성 레시피 그대로 적용 가능, 신규 클래스 아님(다만 #483이 "쿼리레벨 FP"로 이미 닫은 컬럼을 "표시레이어"에서 재발견한 사례로 — 향후 "#483급 dangling-FP 판정"은 쿼리뿐 아니라 그 값을 그대로 노출/클릭이동에 쓰는 프론트 소비처까지 재확인 필요라는 교훈만 メモ, 별도 codify 불필요 수준).
+> - 신규 이슈 1건(#589), 자동수정 0건(파괴적 삭제 batch 수정 + 정책판단 필요라 issue-only), done-sync: new 4(+1)·done 511·rejected 6. 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-07-31T16:26):**
 > - **방법**: `git fetch origin main`(HEAD `1237056` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). 프록시가 이번 세션도 prod 호스트 직접 curl 차단(`webapp-9i0.pages.dev` CONNECT exit 56 — #453 기존 인지 상태 재확인, 변동 없음) — 직접 prod API 헬스체크 불가, GitHub Actions CI 기록으로 대체. Area 1 **54회차** — 직전 Area6(53회차, `7ae8c81`) 이후 `git log 7ae8c81..HEAD`는 **10커밋**(취소주문 완전삭제 2단계 복원·트레이 관리+파일명 정보우선형·가공대기함 자동 묶음 프리필·이카운트 상반기 통장매칭 적재 등 신규 feature churn — 다음 Area2/3/4/5 사이클이 각자 렌즈로 다룰 대상, Area1은 헬스만 확인).
@@ -128,13 +142,14 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 3건** — 2026-07-29T03:12 Area 3 46회차 신규 등록, `list_issues(state:OPEN,label:auto-improve)`로 직전 0건 확인 후 등록.)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 4건** — #589는 2026-07-31T17:15 Area 2 55회차 신규 등록.)
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
 | #585 | messagesAd.ts POST /send 실패 수신자 식별 불가 — #574 형제 라우트(messages.ts /send-bulk) 미반영 | Area 3 | bug,M | issue-only, 신규(#585) |
 | #586 | 광고문자 제목/본문 수정 시 "대상 확인" 미리보기 게이트 미무효화 | Area 3 | bug,S | issue-only, 신규(#586) |
 | #587 | 광고문자 수신거부 명단 — 서버 search 파라미터 미사용, 300건 상한 초과 시 과거건 조회 불가 | Area 3 | improvement,S | issue-only, 신규(#587) |
+| #589 | 취소주문 2단계 하드삭제(a621cdd)가 처음 도달 가능해진 consolidate_with_order_id 정리 누락 — 자식 주문에 죽은 링크/유령 ID 잔존 | Area 2 | bug,S | issue-only, 신규(#589) |
 
 > 직전 사이클(45회차) 표에 있던 #559·#558·#557·#556·#555·#554는 2026-07-29 백로그 소진 세션에서 owner가 심각도순 전건 처리(코드 픽스+배포+close, 상세는 상단 "2026-07-29 백로그 소진 세션" 노트 참조) → Done 이관.
 
