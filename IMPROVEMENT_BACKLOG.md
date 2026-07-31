@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-07-31T17:15:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-07-31T18:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **4** (#585·#586·#587·#589, GitHub OPEN 실측 — Area2 55회차 #589 신규 등록) |
+| 🆕 new | **5** (#585·#586·#587·#589·#590, GitHub OPEN 실측 — Area3 48회차 #590 신규 등록) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **511** (`reason:completed` 절대값 — Area6 53회차 재조회, 변동 없음) |
@@ -22,6 +22,20 @@
 > 가리는데 빈 상태 문구는 "없습니다"라고 안내) → 별도 커밋. Phase 7b-2의 교훈이 그대로 재현됐다.
 > ⚠️ **발송 계열은 실호출 미검증** — 테스트 호출이 곧 실발송이라 `/send-bulk`·`/ad/send`는 부르지 않고
 > 모의 응답·단위 로직으로 대체([[design-ad-compliance-guard]] 함정). 소량 1건 자연검증 필요.
+
+> **Area 3 UX/기능 감사 (2026-07-31T18:10):**
+> - **방법**: `git fetch origin main`(HEAD `e5ba1ad` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 3 **48회차** — 직전 Area3(`c8f255d`, 07-30T14:05, 47회차) 이후 `git log c8f255d..HEAD -- src/scripts src/pages src/layout index.tsx`는 **6커밋**(취소주문 완전삭제 2단계 복원·트레이 삭제/복구+파일명 정보우선형·가공대기함 자동 묶음 프리필·자녀행 합계 dead분기 제거·행 에누리 확정·대기함 썸네일/검색 수정). 나머지 churn(자재마스터·이카운트 적재·IA패널)은 웹 UX 렌즈 밖. 6커밋 전수 인라인 직접 Read(과다위임 억제, 신선 churn 작아 정독이 빠름).
+> - **`a621cdd`(취소주문 완전삭제 confirm) 검증**: `orders.js:1329` 2단계 confirm 문구가 상태별로 정확히 분기(CANCELLED=완전삭제 경고+관리자전용 명시 / CONFIRMED·PRINTING·PRINT_DONE=취소처리+카드HOLD 안내+"완전삭제는 다시 삭제 누르면" 안내 / 기타=기존 문구), 토스트가 서버 메시지 우선 사용(소프트/완전 구분) — `showConfirm`은 `await` 패턴(콜백오용 아님, 기존 FP 패턴 확인). clean.
+> - **`1a66d92`(트레이 처리됨보기·삭제·복구) 검증**: `ofTrayVoidSelected`/`ofTrayRestoreSelected` 둘 다 결과 토스트에 성공/거부/이미처리 건수 세분 표시, 복구는 #575 패턴(건별 try/catch+실패집계 1회 통지) 준수. "처리됨 보기" 모드는 프리필 진입점(행 클릭·그룹 일괄생성 버튼) 전부 차단해 오조작 방지. 빈 상태 문구("해당 조건의 대기물이 없습니다")는 처리됨/대기 모드 공용으로 자연스러움. 배지 캐시가 피커의 "처리됨 보기"에 의해 덮이지 않도록 가드(`_pickerDone`)도 확인 — clean.
+> - **`737ecbb`(자동 묶음 프리필) 검증**: 묶음 발생 시 결과 토스트에 "(동일 규격·마감 → 묶음 N개 자동 구성)" 안내 포함 — 사용자가 왜 자식행이 자동 생성됐는지 인지 가능(묵시적 자동화가 아님). 자식 전멸 시 빈 부모 자동 제거(유령행 방지). clean.
+> - **🔴 net-new 발견: #590 주문 수정(edit) 재진입 시 기존 행 에누리(line_discount)가 화면에 복원되지 않고 다음 저장에서 소멸** — `e744bc4`(07-30, 행 에누리 기능 확정)가 **저장 경로**는 정확히 고쳤으나(auto_amount·line_discount·discount_reason·discount_by 정확 기록, prod 백필 실측 회귀 0), **로드(edit 재진입) 경로가 짝을 이루지 못함**: `parent.js:loadOrderForEdit()`이 `item.amount`/`item.auto_amount`/`item.line_discount`/`item.discount_reason`을 전혀 안 읽고 `unit_price`·`width`·`height`만 복원 후 `calcItem(id)` 호출 — `calcItem()`은 `border-amber-400`(수동수정 표식) 없는 갓 렌더된 행을 항상 "비수동"으로 보고 금액을 **자동 재계산값으로 덮어씀**(`calc.js:148-156`, `wasManual` 판정이 로드 시 항상 false). 화면엔 주황 테두리·에누리 문구·사유칸이 전혀 안 뜨고, 이 상태로 아무 필드나 고쳐 저장하면 `calc.js:576` 페이로드가 `amount:undefined`를 보내 서버 `computeLineAmount()`(`orderLineAmount.ts:82`)가 `hasManual=false`로 판정 → **line_discount·discount_reason·discount_by가 전부 초기화되고 금액이 자동값으로 원복**. GET `/api/orders/:id`는 `SELECT oi.*`로 4필드 전부 이미 응답에 포함(`core.ts:446-459`) — 서버엔 데이터가 있는데 프론트 복원 로직만 누락된 순수 load-path 갭. 마이그 0501 백필로 현재 prod 전량 `line_discount=0`이라 아직 실피해 0건이지만, **이 기능으로 실제 에누리를 기록한 첫 주문이 재수정되는 순간부터 재발**(주문 수정은 일상 업무라 빠른 재현 예상) — 이 기능 자체가 고치려던 "수동 조정이 조용히 사라진다"는 증상이 edit 재진입 경로에서 그대로 재발하는 구조. 프론트 함수 1개(로드 시 amber 상태 재현) + 순서 조정으로 수정 가능해 보이나, Area 3 정책상 issue-only(#590 등록, S~M).
+> - **`e0c8c60`(자녀행 합계 dead분기 제거)**: `calculateTotal()` 셀렉터 `[id^="item-"]`(부모/일반) vs `[id^="item"]`(자녀 포함) 구분 근거를 주석으로 명시한 정리 — UX 영향 없음(코드품질 영역, Area2 55회차 기확인).
+> - **`54287e6`(대기함 썸네일/검색 수정)**: 2026-07-29 백로그 소진 세션이 브라우저 실클릭으로 발견한 "검색결과를 클라 필터가 가리는데 빈 상태 문구는 '없습니다'" 버그의 수정 커밋 자체 — 새로 발견할 대상 아님(이미 그 사이클에서 처리 완료).
+> - **open≠unfixed 재확인**: `search_issues(is:open,label:auto-improve)` 실측 이전 4건(#585·#586·#587·#589) 안티패턴 재grep 전부 잔존 확인(`messagesAd.ts:381-382` success_count/fail_count만·`messagesAd.js` adLoadOptOuts 파라미터 미전달·`orders/core.ts` consolidate_with_order_id 하드삭제 미정리 잔존) — fixed-in-tree 없음.
+> - **backlog↔GitHub 절대값 재동기화**: open **5**(#590 신규 추가) · done/rejected는 이번 사이클 close 0건이라 재조회 생략, Area2 55회차 캐시(511/6) 신뢰.
+> - **🧬 SKILL 강화 없음** — #590은 기존 "저장 경로만 고치고 로드 경로 누락" 클래스(#377 부분픽스 계열의 save/load 비대칭 변종)로 설명 가능, 별도 codify 불필요 수준.
+> - 신규 이슈 1건(#590), 자동수정 0건(Area 3 정책상 issue-only), done-sync: new 5(+1)·done 511·rejected 6. 다음 순번 **Area 4**.
+>
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, 2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그 이관: 306KB→80KB, **2026-07-27T23:00 7차 트림 — 사이클 로그 39건 중 31건 이관(최근 8건=전 Area 1바퀴+2만 유지): 196KB→63KB**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 **최근 8사이클 로그**(전 Area 1바퀴 커버 = 직전 사이클 diff 판단에 필요한 최소분) + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 > ↳ **11차 트림 (2026-07-31, 자동)**: 사이클 로그 13건 → 8건 유지, 5건 이관 (79KB → 트림 후 아래 참조).
@@ -142,7 +156,7 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 4건** — #589는 2026-07-31T17:15 Area 2 55회차 신규 등록.)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 5건** — #590은 2026-07-31T18:10 Area 3 48회차 신규 등록.)
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
@@ -150,6 +164,7 @@
 | #586 | 광고문자 제목/본문 수정 시 "대상 확인" 미리보기 게이트 미무효화 | Area 3 | bug,S | issue-only, 신규(#586) |
 | #587 | 광고문자 수신거부 명단 — 서버 search 파라미터 미사용, 300건 상한 초과 시 과거건 조회 불가 | Area 3 | improvement,S | issue-only, 신규(#587) |
 | #589 | 취소주문 2단계 하드삭제(a621cdd)가 처음 도달 가능해진 consolidate_with_order_id 정리 누락 — 자식 주문에 죽은 링크/유령 ID 잔존 | Area 2 | bug,S | issue-only, 신규(#589) |
+| #590 | 주문 수정 재진입 시 기존 행 에누리(line_discount) 미복원 → 다음 저장에서 소멸 | Area 3 | bug,M | issue-only, 신규(#590) |
 
 > 직전 사이클(45회차) 표에 있던 #559·#558·#557·#556·#555·#554는 2026-07-29 백로그 소진 세션에서 owner가 심각도순 전건 처리(코드 픽스+배포+close, 상세는 상단 "2026-07-29 백로그 소진 세션" 노트 참조) → Done 이관.
 
