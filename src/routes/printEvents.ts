@@ -110,7 +110,10 @@ async function resolveCard(db: D1Database, extractedName: string, entityId?: num
   const entClause = entityId != null ? ' AND entity_id = ?' : ''
   // 1차: file_map 조회 — 법인 접두 포함 E{n}-YYYYMMDD-NNN-FFF 및 구형식 YYYYMMDD-NNN-FFF 모두 지원
   // (주문번호 법인별 채번 E{eid}- 도입 후 접두어 미대응으로 매칭 전멸하던 버그 수정)
-  const seqMatch = extractedName.match(/^((?:E\d+-)?\d{8}-\d{3})-(\d{3})/)
+  // 위치 무관(비anchored, 2026-07-31): 정보 우선형 파일명(거래처-규격-…-주문번호-FFF)은 키가 꼬리에 온다.
+  //   선두 anchored를 유지하면 신형식 전멸 — RIP가 접미사를 붙여도 키가 살아남는 성질은 그대로.
+  //   (?!\d)로 FFF가 더 긴 숫자열의 앞부분을 오려내는 오매칭 차단.
+  const seqMatch = extractedName.match(/((?:E\d+-)?\d{8}-\d{3})-(\d{3})(?!\d)/)
   if (seqMatch) {
     const orderNum = seqMatch[1]
     const fileSeq = Number(seqMatch[2])

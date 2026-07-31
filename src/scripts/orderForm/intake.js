@@ -13,6 +13,8 @@
             //   상한(200) 밖 담당자가 필터 옵션에도 안 나타나 그 사람 작업엔 아예 접근할 수 없었다.
             var _ofIntakeMeta = { total: 0, truncated: false, workerNames: [] };
             var _ofTrayQuery = { q: '', date_from: '', date_to: '' };
+            // '처리됨 보기'(2026-07-31): absorbed·void 조회 모드 — 프리필 금지·복구 전용
+            var _ofTrayDone = false;
             try {
                 var _ofTrayUser = JSON.parse(localStorage.getItem('user') || '{}');
                 if (_ofTrayUser && _ofTrayUser.id != null && isFinite(Number(_ofTrayUser.id))) _ofTrayMyId = Number(_ofTrayUser.id);
@@ -72,7 +74,10 @@
                     anchor.parentNode.insertBefore(badge, anchor.nextSibling);
                 }
                 badge.innerHTML = '';
-                _ofIntakeCache = [];
+                // 피커가 '처리됨 보기'로 열려 있으면 캐시를 건드리지 않는다(배지의 waiting 결과가
+                //   done 목록을 덮어쓰는 경합 방지, 2026-07-31). 배지 자체는 로컬 rows/meta로 그린다.
+                var _pickerDone = _ofTrayDone && !!document.getElementById('intakePickerOverlay');
+                if (!_pickerDone) _ofIntakeCache = [];
                 // mode=single,both — 주문서 트레이는 '단건' 용도만 다룬다. 모아찍기용은 ia-editor 담당이라
                 // 여기 뜨면 주문 라인으로 불러올 수 없는 조각이 목록을 채우는 노이즈가 된다(2026-07-28).
                 axios.get('/api/workbench/intakes', { params: { status: 'waiting', limit: 200, lite: 1, mode: 'single,both' } })
@@ -80,9 +85,9 @@
                         var d = res.data || {};
                         var rows = d.data || [];
                         if (!rows.length) return;
-                        _ofIntakeCache = rows;
                         // #576 서버가 준 전체 건수·담당자 마스터 — 200건 상한 밖도 존재를 알리기 위함
-                        _ofIntakeMeta = { total: d.total != null ? d.total : rows.length, truncated: !!d.truncated, workerNames: d.worker_names || [] };
+                        var meta = { total: d.total != null ? d.total : rows.length, truncated: !!d.truncated, workerNames: d.worker_names || [] };
+                        if (!_pickerDone) { _ofIntakeCache = rows; _ofIntakeMeta = meta; }
                         var mine = 0;
                         if (_ofTrayMyId != null) {
                             for (var i = 0; i < rows.length; i++) if (Number(rows[i].worker_id) === _ofTrayMyId) mine++;
@@ -98,10 +103,10 @@
                         }
                         badge.innerHTML = '<button type="button" onclick="ofIntakeOpenPicker()" '
                             + 'class="px-3 py-1.5 text-sm rounded-lg bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200">'
-                            + '<i class="fas fa-inbox mr-1"></i>가공 대기함 <b>' + _ofIntakeMeta.total + '</b>건'
-                            + (_ofIntakeMeta.truncated ? ' <span class="text-amber-700">(최근 ' + rows.length + '건 표시)</span>' : '')
+                            + '<i class="fas fa-inbox mr-1"></i>가공 대기함 <b>' + meta.total + '</b>건'
+                            + (meta.truncated ? ' <span class="text-amber-700">(최근 ' + rows.length + '건 표시)</span>' : '')
                             + (curClientId
-                                ? ' <span class="text-blue-700">(이 거래처 ' + forClient + (_ofIntakeMeta.truncated ? '+' : '') + ')</span>'
+                                ? ' <span class="text-blue-700">(이 거래처 ' + forClient + (meta.truncated ? '+' : '') + ')</span>'
                                 : '')
                             + (mine ? ' <span class="text-purple-700">(내 작업 ' + mine + ')</span>' : '')
                             + ' — 클릭해서 라인으로 불러오기</button>';
@@ -127,11 +132,19 @@
                 var seq = ofTraySeqOf(r);
                 var fname = ofTrayBasename(r.eps_path || r.work_ai_path);
                 var fin = ofTrayFinSummary(r);
+                // 처리됨 모드: 상태 배지 표시 + 행 클릭 프리필 차단(복구 선택만)
+                var stBadge = !_ofTrayDone ? ''
+                    : (r.status === 'absorbed'
+                        ? '<span class="inline-block px-1.5 rounded bg-blue-100 text-blue-700 text-xs mr-1">주문반영</span>'
+                        : '<span class="inline-block px-1.5 rounded bg-gray-200 text-gray-600 text-xs mr-1">취소됨</span>');
                 return '<div class="flex items-center gap-2 px-3 py-2 border-b border-gray-100 hover:bg-blue-50">'
                     + '<input type="checkbox" ' + (_ofTraySel[r.id] ? 'checked ' : '') + 'onchange="ofTrayRowSel(' + r.id + ', this.checked)" class="itk-row-chk flex-none">'
                     + thumb
-                    + '<div class="flex-1 min-w-0 cursor-pointer" onclick="ofIntakePick(' + r.id + ')" title="클릭 시 이 대기물만 라인으로 추가">'
+                    + (_ofTrayDone
+                        ? '<div class="flex-1 min-w-0">'
+                        : '<div class="flex-1 min-w-0 cursor-pointer" onclick="ofIntakePick(' + r.id + ')" title="클릭 시 이 대기물만 라인으로 추가">')
                     + '<div class="text-sm truncate">'
+                    + stBadge
                     + (seq != null ? '<span class="inline-block px-1.5 rounded bg-gray-200 text-gray-700 text-xs mr-1">#' + seq + '</span>' : '')
                     + '<span class="font-medium">' + (r.width_cm != null ? r.width_cm : '?') + '×' + (r.height_cm != null ? r.height_cm : '?') + 'cm ×' + (r.qty || 1) + '</span>'
                     + (r.keyword ? ' · <span class="text-blue-600">' + escapeHtml(r.keyword) + '</span>' : '')
@@ -146,7 +159,7 @@
                     + (r.outline_failed ? ' · <span class="text-red-500">아웃라인 실패</span>' : '')
                     + ' · ' + ((typeof formatKST === 'function' && r.created_at) ? formatKST(r.created_at) : escapeHtml(String(r.created_at || '').slice(0, 16)))
                     + '</div></div>'
-                    + '<i class="fas fa-plus text-blue-400 flex-none"></i>'
+                    + (_ofTrayDone ? '' : '<i class="fas fa-plus text-blue-400 flex-none"></i>')
                     + '</div>';
             }
 
@@ -246,10 +259,11 @@
                             + '<span class="font-medium text-amber-800 truncate"><i class="fas fa-folder-open mr-1"></i>' + escapeHtml(label) + '</span>'
                             + '<span class="text-gray-500 flex-none">' + brows.length + '건</span>'
                             + '<span class="flex-1"></span>'
-                            + '<button type="button" onclick="ofTrayCreateFromGroup(' + gi + ')" '
-                            + 'class="flex-none px-2 py-0.5 rounded border border-amber-400 bg-white text-amber-800 hover:bg-amber-100" '
-                            + 'title="거래처를 상속하고 이 작업의 모든 파일을 라인으로 추가합니다">'
-                            + '<i class="fas fa-file-invoice mr-1"></i>이 작업으로 주문 생성</button>'
+                            + (_ofTrayDone ? '' // 처리됨 모드는 프리필 진입점 숨김(복구 전용)
+                                : '<button type="button" onclick="ofTrayCreateFromGroup(' + gi + ')" '
+                                + 'class="flex-none px-2 py-0.5 rounded border border-amber-400 bg-white text-amber-800 hover:bg-amber-100" '
+                                + 'title="거래처를 상속하고 이 작업의 모든 파일을 라인으로 추가합니다">'
+                                + '<i class="fas fa-file-invoice mr-1"></i>이 작업으로 주문 생성</button>')
                             + '</div>';
                         for (var bi = 0; bi < brows.length; bi++) html += ofTrayRowHtml(brows[bi]);
                     });
@@ -305,11 +319,20 @@
                 ofTrayRender();
             };
             function ofTrayUpdateFooter() {
-                var btn = document.getElementById('trayPrefillBtn');
-                if (!btn) return;
                 var n = Object.keys(_ofTraySel).length;
-                btn.disabled = !n;
-                btn.innerHTML = '<i class="fas fa-arrow-down mr-1"></i>선택 ' + n + '건 라인으로 불러오기';
+                var btn = document.getElementById('trayPrefillBtn');
+                if (btn) {
+                    btn.disabled = !n;
+                    btn.innerHTML = _ofTrayDone
+                        ? '<i class="fas fa-rotate-left mr-1"></i>선택 ' + n + '건 대기로 복구'
+                        : '<i class="fas fa-arrow-down mr-1"></i>선택 ' + n + '건 라인으로 불러오기';
+                }
+                var vbtn = document.getElementById('trayVoidBtn');
+                if (vbtn) {
+                    vbtn.style.display = _ofTrayDone ? 'none' : '';
+                    vbtn.disabled = !n;
+                    vbtn.innerHTML = '<i class="fas fa-trash mr-1"></i>선택 삭제';
+                }
             }
 
             window.ofIntakeOpenPicker = function() {
@@ -318,6 +341,7 @@
                 var old = document.getElementById('intakePickerOverlay');
                 if (old) old.remove();
                 _ofTraySel = {};
+                _ofTrayDone = false; // 피커는 항상 '대기' 모드로 시작(배지 캐시 = waiting 결과)
                 // #576 담당자 옵션은 전체 집합(server worker_names) 기준. 서버가 안 주면 로드된 rows로 폴백.
                 var workers = (_ofIntakeMeta.workerNames || []).slice();
                 if (workers.length === 0) {
@@ -351,6 +375,7 @@
                         : '')
                     + '<select id="intakeWorkerFilter" onchange="ofTrayRender()" class="px-2 py-1 border rounded text-sm">' + wOpts + '</select>'
                     + '<label class="flex items-center gap-1 cursor-pointer text-gray-600"><input type="checkbox" id="intakeClientOnly" ' + (clientOn ? 'checked ' : '') + 'onchange="ofTrayRender()"> 이 거래처만</label>'
+                    + '<label class="flex items-center gap-1 cursor-pointer text-gray-600" title="주문반영·취소된 대기물 조회 — 선택 후 대기 상태로 복구할 수 있습니다"><input type="checkbox" id="intakeShowDone" onchange="ofTrayDoneToggle(this.checked)"> 처리됨 보기</label>'
                     + '</div>'
                     // #576 서버 검색 — 위 필터들은 로드된 200건 안에서만 걸러내므로 상한 밖은 못 찾는다.
                     + '<div class="px-4 py-2 border-b flex items-center gap-2 text-sm flex-wrap">'
@@ -372,8 +397,10 @@
                           + '전체 ' + _ofIntakeMeta.total + '건 중 최근 ' + rows.length + '건만 표시됩니다 — 오래된 항목은 위 검색으로 찾으세요.</div>'
                         : '')
                     + '<div id="intakeList" style="max-height:56vh;overflow-y:auto"></div>'
-                    + '<div class="px-4 py-3 border-t bg-gray-50 flex justify-end">'
-                    + '<button type="button" id="trayPrefillBtn" disabled onclick="ofTrayPrefillSelected()" '
+                    + '<div class="px-4 py-3 border-t bg-gray-50 flex justify-end gap-2">'
+                    + '<button type="button" id="trayVoidBtn" disabled onclick="ofTrayVoidSelected()" '
+                    + 'class="px-4 py-1.5 text-sm rounded-lg border border-red-300 text-red-600 bg-white disabled:opacity-40 hover:bg-red-50"></button>'
+                    + '<button type="button" id="trayPrefillBtn" disabled onclick="ofTrayPrimaryAction()" '
                     + 'class="px-4 py-1.5 text-sm rounded-lg bg-blue-600 text-white disabled:bg-gray-300 hover:bg-blue-700"></button>'
                     + '</div></div>';
                 overlay.addEventListener('click', function(ev) { if (ev.target === overlay) overlay.remove(); });
@@ -402,7 +429,8 @@
                 };
                 var btn = document.getElementById('intakeSearchBtn');
                 var run = async function() {
-                    var params = { status: 'waiting', limit: 200, lite: 1, mode: 'single,both' };
+                    // '처리됨 보기'면 absorbed·void 조회(서버 콤마 다중 status)
+                    var params = { status: _ofTrayDone ? 'absorbed,void' : 'waiting', limit: 200, lite: 1, mode: 'single,both' };
                     if (_ofTrayQuery.q) params.q = _ofTrayQuery.q;
                     if (_ofTrayQuery.date_from) params.date_from = _ofTrayQuery.date_from;
                     if (_ofTrayQuery.date_to) params.date_to = _ofTrayQuery.date_to;
@@ -457,6 +485,63 @@
             window.ofTrayMyWorkToggle = function(on) {
                 try { localStorage.setItem('ofTrayMyWork', on ? '1' : '0'); } catch (e) { /* 실패해도 필터는 동작 */ }
                 ofTrayRender();
+            };
+
+            // ── 처리됨 보기 · 삭제 · 복구 (2026-07-31) ──────────────────
+            window.ofTrayDoneToggle = function(on) {
+                _ofTrayDone = !!on;
+                _ofTraySel = {};
+                ofTraySearch(); // 서버 재조회(waiting ↔ absorbed,void) — 렌더·푸터·건수 갱신 포함
+            };
+
+            // 푸터 주 버튼: 대기 모드=프리필 / 처리됨 모드=복구
+            window.ofTrayPrimaryAction = function() {
+                return _ofTrayDone ? ofTrayRestoreSelected() : ofTrayPrefillSelected();
+            };
+
+            window.ofTrayVoidSelected = async function() {
+                var ids = Object.keys(_ofTraySel).map(Number);
+                if (!ids.length) return;
+                if (typeof showConfirm === 'function'
+                    && !(await showConfirm('선택 ' + ids.length + '건을 대기함에서 삭제(취소)할까요?\n"처리됨 보기"에서 다시 대기로 복구할 수 있습니다.'))) return;
+                try {
+                    var res = await axios.post('/api/workbench/intakes/void-bulk', { ids: ids });
+                    var d = (res.data && res.data.data) || {};
+                    var msg = '삭제 ' + (d.voided || 0) + '건';
+                    if (d.denied) msg += ' · 권한 없음 ' + d.denied + '건(등록 본인·관리자만)';
+                    if (d.skipped) msg += ' · 이미 처리됨 ' + d.skipped + '건';
+                    if (typeof showToast === 'function') showToast(msg, d.voided ? 'info' : 'warning');
+                } catch (e) {
+                    console.warn('[orderForm] 대기물 삭제 실패', e);
+                    if (typeof showToast === 'function') showToast('삭제에 실패했습니다.', 'error');
+                }
+                _ofTraySel = {};
+                await ofTraySearch();   // 목록 정본 재조회
+                ofIntakeRefreshBadge(); // 배지 waiting 건수 갱신
+            };
+
+            window.ofTrayRestoreSelected = async function() {
+                var ids = Object.keys(_ofTraySel).map(Number);
+                if (!ids.length) return;
+                // 건별 격리 + 실패 집계 1회 통지(#575 패턴) — 복구는 대량이 드물어 bulk API 없이 순차
+                var ok = 0, fail = 0, failMsg = '';
+                for (var i = 0; i < ids.length; i++) {
+                    try {
+                        await axios.post('/api/workbench/intakes/' + ids[i] + '/restore');
+                        ok++;
+                    } catch (e) {
+                        fail++;
+                        failMsg = (e && e.response && e.response.data && e.response.data.error) || failMsg;
+                        console.warn('[orderForm] 대기물 복구 실패 (intake #' + ids[i] + ')', e);
+                    }
+                }
+                if (typeof showToast === 'function') {
+                    if (!fail) showToast('대기물 ' + ok + '건을 대기 상태로 복구했습니다.', 'info');
+                    else showToast('복구 ' + ok + '건 / 실패 ' + fail + '건' + (failMsg ? ' — ' + failMsg : ''), ok ? 'warning' : 'error');
+                }
+                _ofTraySel = {};
+                await ofTraySearch();
+                ofIntakeRefreshBadge();
             };
 
             // ── 프리필 (단건·그룹·선택 일괄) ─────────────────────────────
@@ -552,6 +637,7 @@
 
             // 단건 추가 (행 클릭) — 기존 피커 동작 유지
             window.ofIntakePick = async function(intakeId) {
+                if (_ofTrayDone) return; // 처리됨 모드는 프리필 금지(복구 전용)
                 var r = null;
                 for (var i = 0; i < _ofIntakeCache.length; i++) {
                     if (_ofIntakeCache[i].id === intakeId) { r = _ofIntakeCache[i]; break; }

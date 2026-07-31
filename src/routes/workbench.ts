@@ -1368,7 +1368,12 @@ workbenchRouter.get('/intakes', async (c) => {
     const ef = entityFilter(c, 'designer_intakes')
     let where = `1=1${ef.clause}`
     const params: unknown[] = [...ef.params]
-    if (status && status !== 'all') { where += ` AND designer_intakes.status = ?`; params.push(status) }
+    // 콤마 다중 허용(2026-07-31): 트레이 '처리됨 보기' = absorbed,void 한 번에 조회. 단일값은 기존과 동일.
+    if (status && status !== 'all') {
+      const sts = status.split(',').map((s) => s.trim()).filter(Boolean)
+      where += ` AND designer_intakes.status IN (${sts.map(() => '?').join(',')})`
+      params.push(...sts)
+    }
     // 거래처 필터 시 '미지정'(디자이너 미입력)은 항상 노출 — 전멸 방지(D2)
     if (client) { where += ` AND (designer_intakes.client_name LIKE ? OR designer_intakes.client_name = '미지정')`; params.push(`%${client}%`) }
     if (worker) { where += ` AND designer_intakes.worker_name LIKE ?`; params.push(`%${worker}%`) }
@@ -1647,6 +1652,36 @@ workbenchRouter.post('/intakes/:id/void', async (c) => {
     return c.json({ success: true, data: { id, status: 'void' } })
   } catch (error) {
     console.error('Workbench intake void error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ── POST /api/workbench/intakes/:id/restore — 처리된 대기물 waiting 복귀 (2026-07-31) ──
+// absorbed·void → waiting. absorbed는 intake↔주문라인 링크만 해제 — **주문 라인 자체는 불변**
+// (이미 저장된 주문의 ai_analysis_id·파일 연결을 여기서 건드리면 조용한 주문 변조가 된다).
+// 소유자 규칙 = void와 동일(등록 본인 또는 관리자, canVoidIntake).
+workbenchRouter.post('/intakes/:id/restore', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'), 10)
+    if (!Number.isFinite(id)) return c.json({ success: false, error: '잘못된 ID' }, 400)
+    const ef = entityFilter(c, 'designer_intakes')
+    const row = await c.env.DB.prepare(
+      `SELECT id, status, worker_id, order_item_id FROM designer_intakes WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; status: string; worker_id: number | null; order_item_id: number | null }>()
+    if (!row) return c.json({ success: false, error: '대기물을 찾을 수 없습니다.' }, 404)
+    if (!canVoidIntake(c, row.worker_id)) {
+      return c.json({ success: false, error: '등록한 본인 또는 관리자만 복구할 수 있습니다.' }, 403)
+    }
+    if (row.status === 'waiting') return c.json({ success: false, error: '이미 대기 상태입니다.' }, 409)
+    // TOCTOU 가드: 상태 조건을 UPDATE에 재명시(absorb #534와 동일 패턴)
+    const upd = await c.env.DB.prepare(
+      `UPDATE designer_intakes SET status = 'waiting', order_item_id = NULL, absorbed_at = NULL
+       WHERE id = ? AND status IN ('absorbed', 'void')`
+    ).bind(id).run()
+    if (upd.meta.changes === 0) return c.json({ success: false, error: '이미 처리된 요청입니다.' }, 409)
+    return c.json({ success: true, data: { id, status: 'waiting', prev_status: row.status, unlinked_order_item_id: row.order_item_id } })
+  } catch (error) {
+    console.error('Workbench intake restore error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })

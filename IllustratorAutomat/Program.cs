@@ -2678,6 +2678,7 @@ namespace IllustratorAutomation
                 // post_processing에서 블리드 마진 파싱 (cm 단위)
                 // 자식 행은 부모의 post_processing 상속 (묶음 품목 블리드 마진)
                 double marginL = 0, marginR = 0, marginT = 0, marginB = 0;
+                var ppNameParts = new List<string>();   // 파일명 후가공 표기(정보 우선형) — 주석(ANNOTATION) 제외
                 object? punchingConfig = null;
                 object? annotationConfig = null;
                 object? offsetConfig = null;
@@ -2711,6 +2712,13 @@ namespace IllustratorAutomation
                                     string ppCode2 = "";
                                     if (ppEntry.TryGetProperty("code", out var codeEl2) && codeEl2.ValueKind == JsonValueKind.String)
                                         ppCode2 = codeEl2.GetString() ?? "";
+
+                                    if (ppCode2 != "ANNOTATION"
+                                        && ppEntry.TryGetProperty("name", out var ppNmEl) && ppNmEl.ValueKind == JsonValueKind.String)
+                                    {
+                                        string ppNm = ppNmEl.GetString() ?? "";
+                                        if (!string.IsNullOrWhiteSpace(ppNm) && !ppNameParts.Contains(ppNm)) ppNameParts.Add(ppNm);
+                                    }
 
                                     // FINISH 계열 PP만 블리드 마진에 반영 (PUNCHING/ANNOTATION/OFFSET은 제외)
                                     // PUNCHING: 마크가 디자인 안쪽에 배치되므로 블리드 불필요
@@ -2878,6 +2886,7 @@ namespace IllustratorAutomation
                 // ── 마감방식(finishing) 파싱: 빈 여백 확장 + 접는/재단 선 ──
                 // finishing은 bleed(디자인 확장)과 다름: 빈 여백 추가 + 경계에 M100 0.6pt 선
                 object? finishingConfig = null;
+                string finLabel = "";   // 파일명 마감 표기(정보 우선형) — 4방향 중복제거
                 var finSource = item;
                 if (parentItem.HasValue && parentItem.Value.ValueKind == JsonValueKind.Object)
                 {
@@ -2923,6 +2932,8 @@ namespace IllustratorAutomation
                                     left = new { method = finLeft, margin_cm = fmL },
                                     right = new { method = finRight, margin_cm = fmR }
                                 };
+                                finLabel = string.Join("+", new[] { finTop, finBottom, finLeft, finRight }
+                                    .Where(s => !string.IsNullOrEmpty(s)).Distinct());
                                 Console.WriteLine($"      ✂️ 마감: 상={finTop}({fmT}cm) 하={finBottom}({fmB}cm) 좌={finLeft}({fmL}cm) 우={finRight}({fmR}cm)");
                             }
                         }
@@ -2961,12 +2972,22 @@ namespace IllustratorAutomation
                     }
                 }
 
-                // 파일명 생성: [오더번호]-[FFF]-[거래처명]-[규격]-[품목]-[수량]EA
-                // FFF: 주문 내 파일 순번 (001~, 3자리 zero-pad) — LogWatcher 카드 매칭용
+                // 파일명 생성(정보 우선형 2026-07-31): [거래처명]-[규격]-[내용]-[후가공]-[수량]EA-[오더번호]-[FFF]
+                // 오퍼레이터 식별 정보가 앞, 주문번호·FFF(파일 순번, LogWatcher 카드 매칭 키)는 꼬리.
+                // ⚠️ 매칭 전제: printEvents.ts resolveCard 1차 정규식이 주문번호-순번을 위치 무관으로
+                //    추출하도록 보강돼 있어야 한다(웹 먼저 배포 후 에이전트 교체 — 역순이면 매칭 유실).
                 string wStr = ((int)Math.Round(width)).ToString();
                 string hStr = ((int)Math.Round(height)).ToString();
                 string fileSeqStr = fileSeq.ToString("D3"); // 001, 002, ...
-                string baseName = $"{orderNumber}-{fileSeqStr}-{SanitizeFilename(clientName)}-{wStr}x{hStr}-{SanitizeFilename(content)}-{qty}EA";
+                string contentPart = SanitizeFilename(content);
+                if (contentPart.Length > 40) contentPart = contentPart.Substring(0, 40); // 경로 260자 한도 보호
+                var ppAll = finLabel.Split('+').Concat(ppNameParts)
+                    .Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToList();
+                string ppLabel = SanitizeFilename(string.Join("+", ppAll));
+                if (ppLabel.Length > 30) ppLabel = ppLabel.Substring(0, 30);
+                string baseName = $"{SanitizeFilename(clientName)}-{wStr}x{hStr}-{contentPart}"
+                    + (ppLabel.Length > 0 ? $"-{ppLabel}" : "")
+                    + $"-{qty}EA-{orderNumber}-{fileSeqStr}";
 
                 // 카테고리, 연도, 월 추출
                 // 자식 행은 부모의 category_name 상속 (묶음 품목에서 올바른 Z드라이브 폴더 사용)
@@ -2983,7 +3004,10 @@ namespace IllustratorAutomation
                 string orderFolder = Path.Combine(ZDRIVE_PATH, "DESIGN", category, year, month, day, orderNumber);
                 Directory.CreateDirectory(orderFolder);
                 string epsOutputPath = Path.Combine(orderFolder, baseName + ".eps");
-                string pngOutputPath = Path.Combine(orderFolder, baseName + ".png");
+                // PNG(작업 미리보기)는 하위폴더 분리 — 오퍼레이터 폴더엔 출력 파일(EPS)만 (2026-07-31)
+                string previewFolder = Path.Combine(orderFolder, "미리보기");
+                Directory.CreateDirectory(previewFolder);
+                string pngOutputPath = Path.Combine(previewFolder, baseName + ".png");
 
                 // ── N4 다중시트 네스팅: SHEET 파라미터가 있으면 SheetLayout.jsx로 시트 렌더(per-item) ──
                 if (sheetParamsEl.HasValue)
