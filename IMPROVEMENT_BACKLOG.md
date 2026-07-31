@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-07-31T00:20:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-07-31T09:15:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,10 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **3** (Area 3 46회차 신규 #585·#586·#587, GitHub OPEN 실측 — Area5 47회차 재확인 동일) |
+| 🆕 new | **3** (#585·#586·#587, GitHub OPEN 실측 — Area6 53회차 재확인 동일) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **511** (`reason:completed` 절대값 — Area5 47회차 close 0건, 변동 없음) |
+| ✔️ done | **511** (`reason:completed` 절대값 — Area6 53회차 재조회, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > **2026-07-29 백로그 소진 세션** (main `9686bf69`, deploy success): 11건을 심각도순으로 전건 처리.
@@ -27,6 +27,16 @@
 > ↳ **10차 트림 (2026-07-30, 자동)**: 사이클 로그 13건 → 8건 유지, 5건 이관 (83KB → 트림 후 아래 참조).
 > ↳ **9차 트림 (2026-07-28, 자동)**: 사이클 로그 13건 → 8건 유지, 5건 이관 (82KB → 트림 후 아래 참조).
 > ↳ **8차 트림 (2026-07-27, 자동)**: 사이클 로그 9건 → 8건 유지, 1건 이관 (66KB → 트림 후 아래 참조).
+
+> **Area 6 자기 진화 (2026-07-31T09:15):**
+> - **방법**: `git fetch origin main`(HEAD `7368054` = origin/main 일치, 워킹트리 clean) 후 `npm ci`(node_modules 0→81). Area 6 **53회차** — 직전 Area6(`87b5023`, 07-29T21:25, 52회차) 이후 `git log 87b5023..HEAD`는 39커밋, 웹 렌즈 대상(`src/routes`/`src/scripts`/`migrations`) 한정 **11커밋**(bd69a0b·5b70c58·2fe74b9·c8f255d·67ecf26·54287e6·e744bc4·e0c8c60·8819705·f10a8fa·d41699b). **핵심 관찰 = 이번 사이클은 신선 churn이 사실상 0** — Area1(53회차)~Area5(47회차)가 직전 24시간 내 연속 실행되며 위 11커밋을 전부 각자 렌즈로 이미 커버했고(코드품질=Area2 54회차, UX=Area3 47회차, 데이터정합성=Area4 48회차, 보안=Area5 47회차), **현재 HEAD(`7368054`)가 정확히 Area5 47회차 자신의 커밋 마커** — 즉 Area5 종료 이후 신규 커밋이 0건이라 Area6의 표준 브릿지(직전 Area4 이후 컬럼-diff, 직전 Area5 이후 XSS 재감사)가 검토할 신선 대상 자체가 없음.
+> - **브랜치 위생**: `npm run branch:clean` — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0·SKIP 1(main). 정리 대상 0건.
+> - **open≠unfixed 재확인**: `search_issues(is:open,label:auto-improve)` 실측 **3건**(#585·#586·#587) — Area3 47회차·Area5 47회차가 같은 HEAD에서 이미 안티패턴 잔존을 직접 재grep 확인했고(§messagesAd.ts success_count/fail_count만·messages.ts oninput 부재·messagesAd.js search 파라미터 미전달) 그 이후 churn이 0이므로 verified-once+unchanged 캐시를 신뢰(스팟체크: `success_count`/`fail_count` 필드만 존재 재확인, 잔존).
+> - **close-pending 적체 해소 확인**: 이전 사이클들이 close-pending으로 추적하던 #479(showPrompt options 오전달 자동수정)를 직접 조회 — `state:closed, reason:completed`로 정상 종결 확인(#480·#481도 open 3건에 미포함 = 종결). close-pending 잔류 0건.
+> - **backlog↔GitHub 절대값 재동기화**: open **3**(재확인) · `search_issues(reason:completed)` **511**(재확인, 변동 없음) · `not_planned`(4)+`duplicate`(2) **6**(재확인, 변동 없음) — 전부 백로그 기재값과 정확히 일치, 드리프트 0.
+> - **🧬 SKILL 강화 없음**: 이번 사이클은 순수 확인(신선 churn 0·done-sync 정합·브랜치 clean)이라 신규 코드화 패턴 없음. 백로그 사이클 로그 11건(트림 임계 13건 미달) → 트림 스킵.
+> - 신규 이슈 0건, 자동수정 0건(검토 대상 자체 없음), done-sync: new 3·done 511·rejected 6(전부 변동 없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 (2026-07-31T00:20):**
 > - **방법**: `git fetch origin main`(HEAD `d41699b` = origin/main 일치, 워킹트리 clean, detached — 세션 시작 시 강제갱신 감지, docs-only 아니라 재체크아웃 재확인) 후 `npm ci`(node_modules 0→81). Area 5 **47회차** — 직전 Area5(`f25e6fb`, 07-29T15:19, 46회차) 이후 `git log f25e6fb..HEAD -- src/routes src/scripts migrations`는 **18커밋**(전체 55커밋 중 나머지는 IA패널/CEP·자재마스터 데이터 UPDATE만 — 웹 라우트·스크립트 범위 밖). 대부분 Area2(54)·Area3(47)·Area4(48)·Area6(52)가 이미 자기 렌즈로 다뤘으나 보안(IDOR·XSS·인증·인젝션) 렌즈는 이번이 최초 — 에이전트 위임 없이 인라인 직접 diff Read(과다 위임 억제 정책, 신선 churn이 작아 정독이 빠름).
