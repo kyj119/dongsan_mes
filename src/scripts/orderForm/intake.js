@@ -597,6 +597,109 @@
                 await ofTrayPrefillRows(g.rows.slice());
             };
 
+            // ── 자동 묶음 (2026-07-31 결정) ──────────────────────────────
+            // 규격+마감+배율(+거래처) 동일 2건 이상 → 묶음 품목(부모 1 + 자식 N)으로 프리필.
+            //   마감을 키에 넣는 이유: 마감은 부모 행 1곳에만 실려 자식 전체에 상속되므로,
+            //   다른 마감을 한 묶음에 섞으면 일부 대기물의 마감 정보가 유실된다.
+            //   규격 미상(width/height null)은 묶음 불가 → null 반환(개별 라인).
+            function ofTrayBundleKey(r) {
+                if (r.width_cm == null || r.height_cm == null) return null;
+                var fin = '';
+                try {
+                    var fj = r.finishing_json ? JSON.parse(r.finishing_json) : null;
+                    if (fj) fin = ['top', 'bottom', 'left', 'right'].map(function(d) {
+                        return (fj[d] || '') + ':' + (fj[d + '_cm'] != null ? fj[d + '_cm'] : '');
+                    }).join('|');
+                } catch (e) { fin = String(r.finishing_json || ''); } // 파싱불가 마감은 원문 일치로만 묶음
+                var ck = r.client_id ? ('c' + r.client_id) : ('n:' + (r.client_name || ''));
+                return [ck, r.width_cm, r.height_cm, r.scale_pct || 100, fin].join('§');
+            }
+
+            // 동일 조건 대기물 N건 → 묶음 품목. 청구·마감은 부모, 파일연결은 자식별
+            //   (자식 = ai_group_index -3 passthrough + 자기 ai_analysis_id → 저장 후
+            //    absorb 역추적·카드 편입·에이전트 출력이 기존 묶음 플로우를 그대로 탄다).
+            async function ofIntakePrefillBundle(rows) {
+                var r0 = rows[0];
+                var sf = (r0.scale_pct && r0.scale_pct < 100) ? Math.round(100 / r0.scale_pct) : 1;
+                var parentId = addParentItemRow(rows.length);
+                var sfEl = document.querySelector('[name="scale_factor_' + parentId + '"]');
+                if (sfEl) sfEl.value = sf; // 자식 행 생성 전에 설정(addChildItemRow가 참조)
+                var wEl = document.querySelector('[name="width_' + parentId + '"]');
+                if (wEl) { wEl.value = r0.width_cm; wEl.dataset.origMm = String(r0.width_cm * 10 / sf); }
+                var hEl = document.querySelector('[name="height_' + parentId + '"]');
+                if (hEl) { hEl.value = r0.height_cm; hEl.dataset.origMm = String(r0.height_cm * 10 / sf); }
+
+                // 마감: 부모 행에 주입(자식 카드 상속) — ofIntakePrefillOne과 동일 스키마
+                try {
+                    if (typeof loadFinishingForOrder === 'function') await loadFinishingForOrder(parentId);
+                    var fj2 = r0.finishing_json ? JSON.parse(r0.finishing_json) : null;
+                    if (fj2) {
+                        var vals = [];
+                        ['top', 'bottom', 'left', 'right'].forEach(function(dir) {
+                            var sel = document.querySelector('[name="fin_' + dir + '_' + parentId + '"]');
+                            if (sel && fj2[dir]) sel.value = fj2[dir];
+                            var cmIn = document.querySelector('[name="fin_cm_' + dir + '_' + parentId + '"]');
+                            if (cmIn && fj2[dir + '_cm'] != null) cmIn.value = fj2[dir + '_cm'];
+                            vals.push(fj2[dir] || '');
+                        });
+                        if (!(vals[0] === vals[1] && vals[0] === vals[2] && vals[0] === vals[3])) {
+                            var sides = document.getElementById('finishing_sides_' + parentId);
+                            if (sides) sides.classList.remove('hidden');
+                        }
+                        if (typeof calcFinishing === 'function') calcFinishing(parentId);
+                    }
+                } catch (e) { console.warn('[orderForm] 묶음 마감 주입 실패', e); }
+
+                var okIds = [], failed = [];
+                for (var i = 0; i < rows.length; i++) {
+                    var r = rows[i];
+                    try {
+                        var thumb = r.has_thumbnail ? await ofIntakeThumbGet(r.id) : null;
+                        // addChildItemRow는 raw base64를 기대 — data: 접두 제거
+                        if (thumb && thumb.indexOf('data:') === 0) thumb = thumb.slice(thumb.indexOf(',') + 1);
+                        var childId = addChildItemRow(parentId, {
+                            index: i + 1,
+                            label: '완성본',
+                            ai_group_index: -3,
+                            width_mm: r.width_cm * 10 / sf,
+                            height_mm: r.height_cm * 10 / sf,
+                            thumbnail_base64: thumb || null,
+                            _analysis_id: r.ai_analysis_id || '',
+                            content: r.keyword || '', // 내용 = 키워드(직결) — 단건 프리필과 동일
+                            qty: r.qty || 1
+                        });
+                        var rowEl = document.getElementById('item_row_' + childId);
+                        if (rowEl) {
+                            var mark = document.createElement('input');
+                            mark.type = 'hidden';
+                            mark.name = 'intake_id_' + childId; // 저장 후 ofIntakeAbsorbAll 수거 대상
+                            mark.value = String(r.id);
+                            rowEl.appendChild(mark);
+                            // AI_PROCESS 태스크 트리거용 — calc.js 직접연결 수집이 자식 행도 읽는다
+                            var df = document.createElement('input');
+                            df.type = 'hidden';
+                            df.name = 'child_direct_file_path_' + childId;
+                            df.value = r.eps_path || r.work_ai_path || '';
+                            rowEl.appendChild(df);
+                        }
+                        okIds.push(r.id);
+                    } catch (e) {
+                        failed.push(r);
+                        console.warn('[orderForm] 묶음 자식 프리필 실패 (intake #' + (r && r.id) + ')', e);
+                    }
+                }
+                if (!okIds.length) {
+                    // 자식이 전멸하면 빈 부모만 남는다 → 제거(저장 검증에 걸리는 유령 행 방지)
+                    var pEl = document.getElementById('item-' + parentId);
+                    if (pEl) pEl.remove();
+                    if (typeof renumberDisplay === 'function') renumberDisplay();
+                } else {
+                    if (typeof updateParentChildCount === 'function') updateParentChildCount(parentId);
+                    if (typeof calcItem === 'function') calcItem(parentId);
+                }
+                return { ids: okIds, failed: failed };
+            }
+
             // #575 항목별 try/catch — 예전엔 가드가 없어서 중간 1건이 던지면 루프가 통째로 중단되고
             //   뒤처리(ofTrayAfterPrefill = 대기함 캐시 정리 + 완료 안내)까지 도달하지 못했다.
             //   결과: 앞쪽 항목은 폼에 들어갔는데 대기함 상태는 그대로 → 같은 항목을 또 프리필해
@@ -606,25 +709,46 @@
             async function ofTrayPrefillRows(rows) {
                 var overlay = document.getElementById('intakePickerOverlay');
                 if (overlay) overlay.remove();
+                // 묶음 판정: 표시 순서(첫 등장) 유지하며 동일 키끼리 수집
+                var byKey = {}, seq = [];
+                rows.forEach(function(r) {
+                    var k = ofTrayBundleKey(r);
+                    if (k != null && byKey[k]) { byKey[k].rows.push(r); return; }
+                    var entry = { key: k, rows: [r] };
+                    if (k != null) byKey[k] = entry;
+                    seq.push(entry);
+                });
                 var ids = [];
                 var failed = [];
-                for (var i = 0; i < rows.length; i++) {
-                    try {
-                        await ofIntakePrefillOne(rows[i]);
-                        ids.push(rows[i].id);
-                    } catch (e) {
-                        failed.push(rows[i]);
-                        console.warn('[orderForm] 대기물 프리필 실패 (intake #' + (rows[i] && rows[i].id) + ')', e);
+                var bundles = 0;
+                for (var gi = 0; gi < seq.length; gi++) {
+                    var g = seq[gi];
+                    if (g.key != null && g.rows.length >= 2) {
+                        var res = await ofIntakePrefillBundle(g.rows);
+                        ids = ids.concat(res.ids);
+                        failed = failed.concat(res.failed);
+                        if (res.ids.length) bundles++;
+                        continue;
+                    }
+                    for (var ri = 0; ri < g.rows.length; ri++) {
+                        try {
+                            await ofIntakePrefillOne(g.rows[ri]);
+                            ids.push(g.rows[ri].id);
+                        } catch (e) {
+                            failed.push(g.rows[ri]);
+                            console.warn('[orderForm] 대기물 프리필 실패 (intake #' + (g.rows[ri] && g.rows[ri].id) + ')', e);
+                        }
                     }
                 }
                 if (ids.length > 0) ofTrayAfterPrefill(ids);
                 if (typeof showToast === 'function') {
+                    var bundleNote = bundles ? ' (동일 규격·마감 → 묶음 ' + bundles + '개 자동 구성)' : '';
                     if (failed.length === 0) {
-                        showToast('대기물 ' + ids.length + '건을 라인으로 불러왔습니다. 품목·단가를 확인해 주세요.', 'info');
+                        showToast('대기물 ' + ids.length + '건을 라인으로 불러왔습니다.' + bundleNote + ' 품목·단가를 확인해 주세요.', 'info');
                     } else if (ids.length === 0) {
                         showToast('대기물 ' + failed.length + '건을 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.', 'error');
                     } else {
-                        showToast('대기물 ' + ids.length + '건 불러옴 / ' + failed.length + '건 실패 — 실패분은 대기함에 그대로 남아 있습니다.', 'warning');
+                        showToast('대기물 ' + ids.length + '건 불러옴' + bundleNote + ' / ' + failed.length + '건 실패 — 실패분은 대기함에 그대로 남아 있습니다.', 'warning');
                     }
                 }
             }
@@ -639,7 +763,8 @@
                     var iid = parseInt(marks[i].value, 10);
                     if (!iid) continue;
                     var rowId = marks[i].name.slice('intake_id_'.length);
-                    var aidEl = document.querySelector('[name="ai_analysis_id_' + rowId + '"]');
+                    var aidEl = document.querySelector('[name="ai_analysis_id_' + rowId + '"]')
+                        || document.querySelector('[name="child_ai_analysis_id_' + rowId + '"]'); // 묶음 자식 행
                     var aid = (aidEl && aidEl.value !== '') ? parseInt(aidEl.value, 10) : null;
                     var payload = {};
                     if (orderId) payload.order_id = orderId;

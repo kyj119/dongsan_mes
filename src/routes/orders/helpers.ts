@@ -246,7 +246,8 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
     const ee = effEntityOf(parent)  // 자식은 부모 담당 법인 상속
     const key = `${cg}__${ee ?? 'null'}`
     if (!itemsByCardGroup.has(key)) itemsByCardGroup.set(key, [])
-    itemsByCardGroup.get(key)!.push({ item: child, ppJson: (parent.post_processing as string) || null, qty: 1, cardGroup: cg, reqEntity: ee })
+    // 자식 수량 반영(2026-07-31) — 대기물 qty≥2 묶음 프리필에서 카드 수량=실제 출력 장수
+    itemsByCardGroup.get(key)!.push({ item: child, ppJson: (parent.post_processing as string) || null, qty: (child.quantity as number) || 1, cardGroup: cg, reqEntity: ee })
   }
 
   // shipment_ready: 카드 미생성 품목은 바로 출고 준비 완료

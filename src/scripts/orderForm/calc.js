@@ -674,6 +674,16 @@
                     var daid = (document.querySelector('[name="ai_analysis_id_' + rid + '"]') || {}).value || '';
                     if (dfp && daid) _directFiles.push({ file_path: dfp, analysis_id: parseInt(daid), groups_count: 0 });
                 });
+                // 묶음 자식 행(트레이 완성본 프리필)도 수집 — 묶음만 있는 주문은 여기가 없으면
+                //   orders.ai_file_path가 비어 AI_PROCESS 태스크가 안 생기고 에이전트 출력이 누락된다.
+                //   (그룹추출 묶음 자식은 child_direct_file_path가 없어 기존 동작 그대로 스킵)
+                document.querySelectorAll('#itemsContainer > .child-item-row').forEach(function(rowEl) {
+                    var m = /^item_row_(\d+)$/.exec(rowEl.id || '');
+                    if (!m) return;
+                    var dfp = (document.querySelector('[name="child_direct_file_path_' + m[1] + '"]') || {}).value || '';
+                    var daid = (document.querySelector('[name="child_ai_analysis_id_' + m[1] + '"]') || {}).value || '';
+                    if (dfp && daid) _directFiles.push({ file_path: dfp, analysis_id: parseInt(daid), groups_count: 0 });
+                });
                 var _combinedAiFiles = (window._aiAnalyzedFiles || []).concat(_directFiles);
                 // 그룹분석 경로(resolvedFilePath)가 없고 직접연결만 있으면 첫 직접연결을 대표 경로로 → task 생성 보장
                 var _firstAiPath = resolvedFilePath || (_directFiles[0] ? _directFiles[0].file_path : null);

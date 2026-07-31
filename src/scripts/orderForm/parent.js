@@ -663,6 +663,10 @@
                 const wCm = group.width_mm ? (group.width_mm / 10 * sf).toFixed(1) : '';
                 const hCm = group.height_mm ? (group.height_mm / 10 * sf).toFixed(1) : '';
                 const isManual = (!group.width_mm && !group.height_mm && !group.thumbnail_base64);
+                // 그룹추출 자식 = group.index(≥0) / 트레이 완성본 자식 = -3 passthrough (intake.js 묶음 프리필)
+                const gIdxVal = (group.ai_group_index !== undefined && group.ai_group_index !== null)
+                    ? group.ai_group_index : group.index;
+                const sizeLabel = group.label ? `${group.label} ${group.index}` : `그룹 ${group.index}`;
 
                 const thumbHtml = group.thumbnail_base64
                     ? `<img src="data:image/png;base64,${group.thumbnail_base64}"
@@ -686,7 +690,7 @@
                     : `<span class="text-xs text-gray-500 w-20 flex-shrink-0"
                               data-orig-mm-w="${group.width_mm || 0}"
                               data-orig-mm-h="${group.height_mm || 0}">
-                            그룹 ${group.index}<br>
+                            ${sizeLabel}<br>
                             <span id="child_size_${id}" class="text-gray-400">${wCm ? wCm + '×' + hCm + 'cm' : ''}</span>
                         </span>`;
 
@@ -711,7 +715,7 @@
                         <i class="fas fa-times"></i>
                     </button>
                     <input type="hidden" name="parent_client_id_${id}" value="pg${parentId}">
-                    <input type="hidden" name="child_ai_group_index_${id}" value="${group.index}">
+                    <input type="hidden" name="child_ai_group_index_${id}" value="${gIdxVal}">
                     <input type="hidden" name="child_ai_analysis_id_${id}" value="${group._analysis_id || aiAnalysisId || ''}">
                     ${hiddenSizeHtml}
                     <input type="hidden" name="child_scale_factor_${id}" value="${sf}">
@@ -724,6 +728,15 @@
                     siblings[siblings.length - 1].insertAdjacentHTML('afterend', html);
                 } else {
                     document.getElementById('item-' + parentId).insertAdjacentHTML('afterend', html);
+                }
+                // 내용·수량 프리필은 DOM 주입(HTML attr 이스케이프 회피 — 키워드에 따옴표 가능)
+                if (group.content) {
+                    const cEl = document.querySelector('[name="child_content_' + id + '"]');
+                    if (cEl) cEl.value = group.content;
+                }
+                if (group.qty && Number(group.qty) > 1) {
+                    const qEl = document.querySelector('[name="child_qty_' + id + '"]');
+                    if (qEl) qEl.value = group.qty;
                 }
                 return id;
             }
