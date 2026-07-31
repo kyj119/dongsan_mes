@@ -1,6 +1,44 @@
 > **파일 구조**: 최신 세션이 맨 위. 아래로 갈수록 과거 세션(각각 durable 메모리에 정본 있음).
 > **다음 세션은 이 문서 상단의 "이월 TODO 통합"만 읽으면 된다** — 그 아래 상세 핸드오프는 판단 근거가 필요할 때만.
 
+# 세션 핸드오프 — 가공대기함 묶음 프리필 + 트레이 관리·파일명·PNG + 취소주문 2단계 삭제 (2026-07-31 #23~#25)
+
+> **prod 3회 배포 + 축1 에이전트 재기동 완료** — 묶음 프리필 `737ecbbc` · 트레이/파일명/PNG `1a66d922`(+Program.cs, 에이전트 PID 9760 재기동) · 2단계 삭제 `a621cdd6`. 마이그 없음. CI 스모크 전부 success·마커 실측 전부 OK.
+> durable = [[design-tray-bundle-prefill]] · [[feedback-ia-jsx-runtime-path]](축1 절차 추가)
+
+## 이월 TODO 통합
+
+1. **실가공 자연검증 1건 (최우선·사람 필요)** — 패널에서 동일 규격·마감 대기물 2건+ 확정 → 주문서 트레이 일괄 프리필 → ①묶음(부모+자식) 자동 구성·내용=키워드 ②저장 후 absorb·카드 수량 합 ③**신 파일명**(`거래처-규격-내용-후가공-수량EA-주문번호-FFF`)으로 출력 → **출력완료 카드 매칭**(PRINTING→PRINT_DONE) ④주문폴더에 EPS만·PNG는 `미리보기\` 확인.
+2. **취소주문 완전 삭제 실사용 확인** — 용준님이 시도했던 그 취소 주문에서 삭제 재시도(ADMIN) → "완전 삭제되었습니다" 확인.
+3. (이월) 디자이너 PC 4대 `install-a0-panel.ps1` 잔여분 — #18 항목 참조.
+
+## 핵심 판단·이유 (반복하지 말 것)
+
+- **"원래도 묶어서 했다"는 기억이 맞았다** — 묶음 품목(부모+자식 `parent_item_id`)은 주문서→카드→에이전트 출력까지 전 구간 살아 있었고, 갭은 트레이 프리필이 그걸 안 쓰는 것뿐. **기존 구조를 태우는 쪽**(자식=-3+자기 분석ID)을 택해 서버 수정이 거의 없었다.
+- **`child_direct_file_path` 없으면 묶음-only 주문은 AI_PROCESS 태스크가 안 생긴다** — calc.js 직접연결 수집이 부모/일반 행만 스캔했음. 묶음 프리필 만들 때 반드시 같이 챙길 것.
+- **파일명 변경은 웹 정규식(printEvents resolveCard) 먼저 배포 → 에이전트 교체 순서** — 역순이면 신형식 매칭 유실. LogWatcher C# 쪽 anchored 정규식은 **매칭에 관여 안 함**(서버가 파일명에서 재추출이 정본 — E-접두 도입 후 이미 사문).
+- **축1(에이전트 exe) = repo `bin\Release\net8.0\win-x64` 가 곧 런타임** — 실행 중이면 빌드가 exe 복사에서 잠김(MSB3027, 컴파일은 성공). 절차: CPU delta로 유휴 확인→Stop-Process→dotnet build→Start-Process→`audit:ia-jsx`.
+- **화석 가드 패턴** — 주문 삭제의 "이미 취소된 주문입니다" 400은 balance 캐시 시절 근거가 사라진 채 남아, 문서·구현된 ADMIN 하드삭제 경로와 UI(삭제 버튼 CANCELLED 노출)를 막고 있었다. **가드를 만나면 그 근거가 아직 유효한지부터 확인.**
+- **멀티세션**: 재단 패널 세션과 동시 작업 — 커밋은 전부 경로지정 add, push는 fetch→`rebase --autostash`(superset) 후. 로컬 `deploy:prod` 금지(타 세션 dirty WIP 휩쓸림) — **push→CI 배포만 사용**했다.
+
+## 주의사항
+
+- 로그인 API 연타 시 rate limit(8초) — E2E는 토큰 1회 발급 후 재사용.
+- prod 마커 grep은 배포 직후 엣지 전파 지연으로 MISS 가능 — 캐시버스터(`?cb=`) 붙여 재확인.
+- Playwright 브라우저 인스턴스는 타 세션이 점유 중일 수 있음 — 콘솔 검증 대신 배포 HTML 인라인 스크립트 `new Function` 파싱 검증으로 대체 가능.
+- 트레이 '처리됨 보기' 복구는 **주문 라인을 건드리지 않는다**(intake 링크만 해제) — absorbed 복구 후 같은 파일을 다른 주문에 다시 쓰면 분석 1개↔라인 2개가 될 수 있음(absorb 역추적은 미링크 후보만 잡아 안전하나 인지할 것).
+
+## 빌드/검증 명령 (PowerShell)
+
+```powershell
+npm run verify                 # tsc + build
+npm run check:dom              # 기준선 5건(items/*)
+npm run audit:entity           # 60/60
+npm run smoke                  # prod 104/104
+npm run audit:ia-jsx           # 4축 드리프트 0 (에이전트/패널 건드렸으면 필수)
+dotnet build IllustratorAutomat\IllustratorAutomat.csproj -c Release   # 에이전트 (실행 중이면 중지 후)
+```
+
 # 세션 핸드오프 — 후가공/대기함/주문 에누리 + A0 패널 P1·P2·P3 전량 (2026-07-30 #18)
 
 > **prod 배포·검증 완료** — main `7a3a0086`(커밋 7개 `9ad3fd20`→`7a3a0086`)·deploy `cd59e08f`·마이그 **0501** 적용.
