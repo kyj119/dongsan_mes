@@ -1,7 +1,9 @@
 > **파일 구조**: 최신 세션이 맨 위. 아래로 갈수록 과거 세션(각각 durable 메모리에 정본 있음).
 > **다음 세션은 이 문서 상단의 "이월 TODO 통합"만 읽으면 된다** — 그 아래 상세 핸드오프는 판단 근거가 필요할 때만.
 
-# 세션 핸드오프 — LED4U 간판자재 52종 등록+327라인 소급 · 정운교역 계산서 상태 (2026-07-31 #30)
+# 세션 핸드오프 — 간판 자재 트랙 일괄: 등록·품명 백필·이카운트 매칭·원장 일별 분할 (2026-07-31~08-01 #30)
+
+> **전부 prod DB·문서 작업 — src 변경 0·웹 배포 없음.** 커밋 4개(로컬·push 대기): LED4U 등록 `df63cf06` · SK 백필 `1d0a73a8` · 매칭표 기록 `8739726c` · 일별 분할 생성기. 검증 = AP 5곳 원단위 불변 · smoke 104/104.
 
 ## 이번 세션 결과 (DB만 — src 무변경·배포 없음)
 - **LED4U 간판자재 등록 완결(prod)**: 생성기=`docs/dongsan-import/gen_led4u_items.py`. 신규 52종 + 기존 85코드 매핑 → **327라인 179,681,990 연결**(=발생 180,708,490−의도SKIP 1,026,500 정확)·NULL 잔여 6(이월1·직송1·SKIP4)·**AP 269,075,065 불변**. items 1,234.
@@ -12,6 +14,36 @@
 - **(08-01 추가) 매입 원장 일자별 분할 완결(prod)** — 용준님 "원장은 날짜별이어야" → 월 전표 29건을 **일별 169전표로 분할**(정운 20·LED 51·운산 21·KM 16·SK 61), OPEN·EXTRA·KM-EQ(실일자 이벤트)는 유지. 생성기=`gen_daily_split.py`(4개사 — prod 라인 스냅샷 재편성·라인 비고 '납품 날짜' 파싱·VAT 월잔차 보정) + `gen_sk_daily_split.py`(**SK 날짜=PDF 그래픽 병합셀** → find_tables cell geometry로 그룹 91 검출→78그룹 텍스트밴드 렌더→Read 판독 GID_DATES 내장·교차검증 일치). **검증 = 5개사 AP 원단위 불변·라인수 보존·smoke 104/104**(SMOKE_URL=prod 필요 — 기본값은 localhost). 롤백=일별 전표 notes '일별 분할 2026-08-01' 삭제 후 원 적재 SQL(멱등) 재실행.
 - **(08-01 추가) 간판자재↔이카운트 품목 매칭표** = `품목마스터/간판자재_이카운트품목_매칭.xlsx`(gitignore·생성기=잡 tmp `build_match_xlsx.py`+`build_ecount_dict.py`): MES 자재 379종 ↔ 이카운트 판매현황 실사용 480코드 — 확실 53·유사 145·미등록 181(매입 전용). ⚠️이카운트 정본=판매현황 6개월 실사용분(품목등록 export 미확보 — EXPORT-SPEC "필수 아님" 결정). 핵심 확정쌍: LED3구2835=10030·SMPS W100~500=B0023~28·YESLED20W=10064·LT4071=0-0-0102·씨트용120폭=10228(규격일치)·사각경관봉PC커버=10555·볼로프5mm=B0034·포인트사각550=10210.
 - **(08-01 추가) SK 품명 빈칸 26종 백필 완결(prod+JSON+xlsx)**: 이 ERP PDF는 **일부 행 품명도 그래픽 레이어**(날짜와 동일 함정) → 행 스트립 렌더→Read 판독. 정체=예스후렉스 그레이(비조명) 12폭·YESLED형광등 5종·LG시트 3종·사각경관봉 2종·고무자석롤 2종·유니온SMPS·보조시트. `extract_sk_pdf.py`에 `NAME_FIX` 26종 내장(재추출 시 재발 방지)·백필=`load/sk_name_backfill.sql`(빈이름 가드 멱등)·검산 3중 재통과. ⚠️간판자재 정본축 중복 추가 확인: YESLED형광등↔SGM-LEDF·유니온SMPS300↔SGM-SMPS-W300.
+
+## 판단기준 (다음 세션이 이어받을 것)
+
+1. **간판 BOM은 SGM/일반코드에 건다** — 같은 자재가 공급사 코드(SK-105 상바·SK-472 알마이트)와 일반코드(SGM-SB·ALM-*)로 2벌. 공급사 코드는 매입 전용, 원가·BOM 집계는 일반코드 축.
+2. **앞으로 명세 적재 생성기는 일별 전표로 생성** — 월 전표는 이번에 전량 분할했다. 명세 수취 46곳 도착분(`품목마스터/매입명세요청_명단.xlsx`)을 새로 적재할 때 월 묶음으로 만들면 역행.
+3. **이 ERP PDF 함정 3종 세트 확립**: 텍스트 레이어에 없는 것 = 날짜·일계·월계·**일부 품명**. 해법 = find_tables 병합셀 geometry(그룹 검출) + 텍스트 밴드 렌더 → Read 판독. 정석 파이프라인이 `gen_sk_daily_split.py`·`sk_dates_*.py`(잡 tmp)에 있다.
+4. **매입 플래그 실측 완료** — 자재 379종 중 348 정상 매입품목·17 비활성=패밀리 대표(의도)·5 매입0=UV 판매품목. **UV-PC-1.8T-M에 선명 E2 LIVE 매입 4라인**(2.68M) — 향후 선명 발주는 PC-1.8T-M-48로(기존 라인은 실운영 데이터라 미조치).
+
+## 주의사항 (이 세션에서 실제로 밟음)
+
+- **wrangler --file 상대경로는 bash 현재 디렉토리 기준** — cd 후 실행하면 "Unable to read SQL text file". 절대경로 사용.
+- wrangler --json 출력 앞에 ANSI 진행줄이 섞인다 — 파싱은 `re.search(r'\[\s*\{')` 위치부터.
+- **smoke는 `SMOKE_URL=https://webapp-9i0.pages.dev` 필요**(기본 localhost라 힌트만 나옴).
+- 롤백 마커: 일별 전표=`일별 분할 2026-08-01` / LED4U 품목=`엘이디포유 간판자재 등록 2026-07-31` / SK 품명=`load/sk_name_backfill.sql`(가드 멱등).
+
+## 다음 세션 TODO
+
+1. **간판 완제품 매출 307M NULL 소급 + 간판 BOM 설계** — 준비 완료 상태: 자재 379종·실단가 870라인·매출 타깃(채널 193M+프레임 102M=87%)·이카운트 매칭표. brainstorming 스킬로 BOM 구조부터.
+2. **items.ecount_code 저장 여부 질문** — 매칭 확실 53건(+검토 후 유사 145건)을 DB에 박을지. 하반기 증분 이관 자동매칭 기반.
+3. 명세 수취 46곳 도착분 적재(일별 전표로) · 정운교역 4·5월 계산서 발행 추적.
+4. push 대기 커밋 4개(명시 요청 시) · (기존 이월) 디자이너 PC 4대 설치·재단/A0 실기 검증은 #26~28 참조.
+
+## 검증 명령 (PowerShell)
+
+```powershell
+npm run verify    # src 무변경이지만 관례 게이트
+$env:SMOKE_URL='https://webapp-9i0.pages.dev'; npm run smoke   # 104/104
+# AP 5곳 원단위 재검(읽기전용): 310,636,189 / 269,075,065 / 93,717,824 / 72,075,900 / 17,208,213
+npx wrangler d1 execute webapp-production --remote --json --command "SELECT c.client_name,(SELECT COALESCE(SUM(final_amount),0) FROM purchase_orders WHERE supplier_id=c.id AND entity_id=1 AND status NOT IN ('DRAFT','CANCELLED'))-(SELECT COALESCE(SUM(amount),0) FROM purchase_payments WHERE supplier_id=c.id AND entity_id=1) AS ap FROM clients c WHERE c.client_code IN ('503-81-42473','402-81-69392','134-81-34990','128-87-17213','514-32-63198')"
+```
 
 ---
 
