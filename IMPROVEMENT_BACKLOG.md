@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-08-01T15:15:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-08-01T21:16:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -61,6 +61,17 @@
 > - **backlog↔GitHub 절대값 재동기화**: open **6**(변동 없음, 이번 사이클 신규 이슈·close 0건) · done/rejected 511/6(Area4 49회차 캐시 신뢰).
 > - **🧬 SKILL 강화 없음** — 이번 사이클은 기존 표준 레시피(entityFilter 형제대조·TOCTOU 재명시·DOM 프로퍼티 vs innerHTML 구분)로 전부 판정 가능, 신규 클래스 없음.
 > - 신규 이슈 0건, 자동수정 0건(net-new 보안 이슈 없음), done-sync: new 6(변동없음)·done 511·rejected 6. 다음 순번 **Area 6**.
+>
+
+> **Area 6 자기 진화 (2026-08-01T21:16):**
+> - **방법**: `git fetch origin main`(HEAD `c555deb` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 6 **54회차** — 직전 Area5(`b87aa4b`, 08-01T15:15, 48회차) 이후 `git log b87aa4b..HEAD`는 11커밋, 웹 렌즈 대상(`src/routes`/`src/scripts`/`migrations`/`index.tsx`/`src/layout`/`src/pages`) 한정 diff는 **마이그레이션 3개뿐**(`0507_jungwoon_flag_fabric_items`·`0508_sign_bom_products`·`0509_sign_bom_calibration` — 정운교역/간판 BOM 데이터 정비, 병렬 worktree 세션). 나머지 8커밋은 `docs/dongsan-import/*.py`(일회성 데이터 생성 스크립트, 웹앱 밖) + `memory/session-context.md`/`PROJECT_STATUS.md` 문서뿐.
+> - **컬럼-diff bridge**: 0508이 `product_materials`에 `quantity`/`usage_type`/`usage_param`/`notes` 4컬럼을 신규 ADD COLUMN + INSERT하나, `grep -rn "usage_type\|usage_param" src/routes src/scripts` = **0건** — 이 데이터를 소비하는 라우트/스크립트 코드가 아직 없는 순수 데이터 준비 단계(Python 리포트 생성기 `gen_sign_cost_report.py`가 오프라인 소비, 웹 스택 밖). `bom.ts`는 `product_materials`를 여전히 기존 방식(quantity 미참조)으로만 읽어 회귀 없음. 컬럼 존재성 위험 0(소비 코드 자체가 없어 no-such-column throw 불가능한 상태).
+> - **브랜치 위생**: `npm run branch:clean` — SAFE-remote 0·SAFE-absorbed 1(임계 30 미달, 백로그 미등록)·REVIEW 0·SKIP 1(main).
+> - **open≠unfixed 재확인**: `search_issues(is:open,label:auto-improve)` 실측 **6건**(#585·#586·#587·#589·#590·#591) — 이번 델타 11커밋이 그 이슈들의 대상 파일(`messagesAd.ts`·`messagesAd.js`·`orders/core.ts`·`orders.js`/`orderForm/parent.js`·`docs/dongsan-import` 이관감사)을 전혀 안 건드려, 6건 전부 직접 재grep으로 안티패턴 잔존 재확인(캐시 아닌 실측): `messagesAd.ts:381-382` success_count/fail_count만 · `messagesAd.js:329` adLoadOptOuts 파라미터 미전달 패턴 유지 · `orders/core.ts:711` 하드삭제 batch에 `UPDATE orders SET consolidate_with_order_id=NULL` 정리문 여전히 부재(#589) · `orderForm/parent.js` loadOrderForEdit류가 여전히 amount/line_discount 미복원(#590). fixed-in-tree 0건.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **6**(변동없음) · `reason:completed` **511**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음). 백로그 기재값과 완전 일치, 드리프트 0.
+> - **사이클 로그 트림 체크**: `grep -c "^> \*\*Area" IMPROVEMENT_BACKLOG.md` = 12건(임계 13 미달) → 트림 스킵.
+> - **🧬 SKILL 강화 없음** — 이번 사이클은 순수 확인(신선 churn이 데이터전용 마이그 3건뿐·done-sync 정합·브랜치 clean)이라 신규 코드화 패턴 없음.
+> - 신규 이슈 0건, 자동수정 0건(검토 대상 자체가 데이터 전용), done-sync: new 6(변동없음)·done 511·rejected 6(변동없음). 다음 순번 **Area 1**.
 >
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, 2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그 이관: 306KB→80KB, **2026-07-27T23:00 7차 트림 — 사이클 로그 39건 중 31건 이관(최근 8건=전 Area 1바퀴+2만 유지): 196KB→63KB**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 **최근 8사이클 로그**(전 Area 1바퀴 커버 = 직전 사이클 diff 판단에 필요한 최소분) + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
