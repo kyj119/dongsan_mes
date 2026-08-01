@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-07-31T18:10:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-08-01T09:17:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,10 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **5** (#585·#586·#587·#589·#590, GitHub OPEN 실측 — Area3 48회차 #590 신규 등록) |
+| 🆕 new | **6** (#585·#586·#587·#589·#590·#591, GitHub OPEN 실측 — Area4 49회차 #591 신규 등록) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **511** (`reason:completed` 절대값 — Area6 53회차 재조회, 변동 없음) |
+| ✔️ done | **511** (`reason:completed` 절대값 — Area4 49회차 재조회, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > **2026-07-29 백로그 소진 세션** (main `9686bf69`, deploy success): 11건을 심각도순으로 전건 처리.
@@ -35,6 +35,19 @@
 > - **backlog↔GitHub 절대값 재동기화**: open **5**(#590 신규 추가) · done/rejected는 이번 사이클 close 0건이라 재조회 생략, Area2 55회차 캐시(511/6) 신뢰.
 > - **🧬 SKILL 강화 없음** — #590은 기존 "저장 경로만 고치고 로드 경로 누락" 클래스(#377 부분픽스 계열의 save/load 비대칭 변종)로 설명 가능, 별도 codify 불필요 수준.
 > - 신규 이슈 1건(#590), 자동수정 0건(Area 3 정책상 issue-only), done-sync: new 5(+1)·done 511·rejected 6. 다음 순번 **Area 4**.
+>
+
+> **Area 4 데이터 정합성 (2026-08-01T09:17):**
+> - **방법**: `git fetch origin main`(HEAD `efe8b36` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 4 **49회차** — 직전 Area4(`29ee563`, 07-30T21:35, 48회차) 이후 `git log 29ee563..HEAD -- src/routes migrations src/scripts`는 **5커밋**: 취소주문 완전삭제 2단계 복원(`a621cdd`)·트레이 관리+파일명 정보우선형(`1a66d92`)·가공대기함 자동 묶음 프리필(`737ecbb`)·AR정책 SSOT(`d41699b`, Area5 47회차 기검증)·동산 이카운트 매출 상반기 prod 적재(`f10a8fa`, 주문 7,446·라인 16,873). 전부 인라인 직접 diff Read(과다위임 억제, 신선 churn 작아 정독이 빠름).
+> - **`a621cdd`(취소주문 하드삭제 재활성화) 고아 참조 전수 재검증**: node 스크립트로 마이그레이션을 소스순서(CREATE/ALTER/DROP/RENAME) 파싱해 `order_id`류 컬럼을 가진 전 테이블(19개) 목록화 후 하드삭제 batch(`orders/core.ts:653-706`)의 정리 커버리지와 대조 — **`orders.consolidate_with_order_id` 1건만 미정리**(Area2 55회차가 이미 #589로 보고, 재중복 아님). 나머지 후보 `adjustments.order_id`·`mrp_runs.order_id`는 마이그레이션에 `FOREIGN KEY ... ON DELETE SET NULL` 실선언(0047·0073) — prod D1 FK 강제(#413) 하에 자동 정리되므로 수동 batch 불필요(FP, cascade 확인 규칙 §Area4 line148② 그대로 적용). net-new 고아 클래스 0.
+> - **`1a66d92`(트레이 restore 엔드포인트) 컬럼존재성+TOCTOU 재확인**: `designer_intakes.status`(CHECK waiting/absorbed/void)·`order_item_id`(REFERENCES order_items(id))·`absorbed_at` 전부 0463 마이그레이션에 실재(그라운드트루스 대조). `UPDATE ... WHERE id=? AND status IN ('absorbed','void')` 상태 재명시 가드로 TOCTOU 안전. `order_item_id=NULL`만 해제하고 주문 라인 자체는 불변 — 주석이 명시한 설계("조용한 주문 변조 방지")와 실제 SQL 일치. clean.
+> - **🔴 net-new 발견: #591 `f10a8fa`(이카운트 이관) 자체 감사문서가 진단한 prod 정정이 미실행 상태로 방치** — `docs/dongsan-import/INSPECTION.md:413`이 "공군사관학교(id=3763)의 `business_registration_number`가 실제 BRN이 아니라 내부코드 `'00017'`이므로 NULL로 정정 필요"라고 명시했으나, 추적되는 마이그레이션(0499·0500·0503·0504) 어디에도 이 UPDATE가 없고 세션노트에도 완료 언급이 없다(실제 적재 SQL은 PII라 gitignore 대상이라 저장소에서 실행 여부 확인 불가). `business_registration_number`는 세금계산서 발행 시 그대로 `buyer_brn`으로 제공사에 전송되는데(`taxInvoices/issue.ts:214/374/426`) 코드베이스에 BRN 형식/체크섬 사전검증이 없어(이관 스크립트 자체는 체크섬 게이트를 두고도) 5자리 내부코드가 그대로 나가 발행 실패 위험. egress 차단으로 prod 현재값 직접 확인 불가 + 단일행 financial-master UPDATE라 자동수정 대상 아님 → issue-only(#591, S).
+> - **`737ecbb`(카드 편입 자식수량 하드코딩→실제값)**: `helpers.ts` 1줄 read-only 산식 수정(qty:1→child.quantity), N+1/entity_id 영향 없음, Area2 55회차·Area3 48회차 기검증과 합치. 재확인만.
+> - **표준 스캔 전부 clean**: `npx tsc --noEmit` 0 · `entity-audit.mjs` 127파일/SELECT60/통과60/누락0 · `sort-audit.cjs` P1 0(P3/P4만 기존 141건, 변동 없음) · 마이그 번호 중복 기존 5쌍만(0327·0412·0416·0420·0453, 신규 0499~0504 전부 유일) · `branch:clean` SAFE-absorbed 1건(임계 30 미달, 백로그 미등록).
+> - **open≠unfixed 재확인**: `search_issues(is:open,label:auto-improve)` 실측 **5건**(#585·#586·#587·#589·#590) — 이번 델타 5커밋이 그 이슈들의 대상 파일(`messagesAd.ts`·`messages.ts`·`orders.js`의 edit-load 경로 등)을 건드리지 않아 재grep 없이 unchanged 캐시 신뢰(Area3 48회차가 직전에 직접 재grep 완료).
+> - **backlog↔GitHub 절대값 재동기화**: open **6**(#591 신규 추가) · done/rejected는 이번 사이클 close 0건이라 재조회 값 그대로(511/6, Area3 48회차 캐시와 일치 재확인 완료).
+> - **🧬 SKILL 강화 없음** — #591은 "감사문서가 스스로 진단한 정정 항목이 실행 추적 없이 방치"라는 변종이나, 단발성 마스터데이터 1건이라 아직 반복 클래스로 codify할 근거 부족(다음 대량이관 시 재현되면 standing scan 후보).
+> - 신규 이슈 1건(#591), 자동수정 0건(financial-master 단일행 수정 + egress 검증불가라 issue-only), done-sync: new 6(+1)·done 511·rejected 6. 다음 순번 **Area 5**.
 >
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, 2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그 이관: 306KB→80KB, **2026-07-27T23:00 7차 트림 — 사이클 로그 39건 중 31건 이관(최근 8건=전 Area 1바퀴+2만 유지): 196KB→63KB**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 **최근 8사이클 로그**(전 Area 1바퀴 커버 = 직전 사이클 diff 판단에 필요한 최소분) + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
