@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-08-01T09:17:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-08-01T15:15:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -48,6 +48,19 @@
 > - **backlog↔GitHub 절대값 재동기화**: open **6**(#591 신규 추가) · done/rejected는 이번 사이클 close 0건이라 재조회 값 그대로(511/6, Area3 48회차 캐시와 일치 재확인 완료).
 > - **🧬 SKILL 강화 없음** — #591은 "감사문서가 스스로 진단한 정정 항목이 실행 추적 없이 방치"라는 변종이나, 단발성 마스터데이터 1건이라 아직 반복 클래스로 codify할 근거 부족(다음 대량이관 시 재현되면 standing scan 후보).
 > - 신규 이슈 1건(#591), 자동수정 0건(financial-master 단일행 수정 + egress 검증불가라 issue-only), done-sync: new 6(+1)·done 511·rejected 6. 다음 순번 **Area 5**.
+>
+
+> **Area 5 보안 (2026-08-01T15:15):**
+> - **방법**: `git fetch origin main`(HEAD `605cf54` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 5 **48회차** — 직전 Area5(`d41699b`, 07-30T?, 47회차) 이후 `git log d41699b..HEAD -- src/routes src/scripts migrations index.tsx src/layout`는 **3커밋**: 취소주문 완전삭제 2단계 복원(`a621cdd`)·트레이 관리+파일명 정보우선형(`1a66d92`)·가공대기함 자동 묶음 프리필(`737ecbb`). 전부 Area2 55회차·Area3 48회차·Area4 49회차가 각자 렌즈(entity_id/N+1/UX/고아참조/컬럼존재성)로 이미 리뷰했으나 보안 렌즈(IDOR·XSS·인증·인젝션)는 이번이 최초 — 3커밋 인라인 직접 diff Read(과다위임 억제, 신선 churn 작아 정독이 빠름).
+> - **`a621cdd`(취소주문 하드삭제 재활성화) IDOR·권한 재확인**: `DELETE /:id`가 `entityFilter(c)`로 주문 조회를 이미 격리(`efOrd`, #333) — CANCELLED 하드삭제 신규 게이트(`user.role !== 'ADMIN' → 403`)는 기존 `requireRole('ADMIN','MANAGER')` 라우터 가드 안에서 ADMIN만 하드삭제 통과·MANAGER는 403으로 명확히 차단, 권한 상승 경로 없음. 하드삭제 batch(662-711행) 전체 파라미터라이즈 확인(문자열 결합 SQL 0건) — 인젝션 없음. clean.
+> - **`1a66d92`(트레이 restore·void-bulk) IDOR·TOCTOU 재확인**: `POST /intakes/:id/restore`·기존 `/void-bulk` 둘 다 `entityFilter(c,'designer_intakes')`로 조회 격리 + `canVoidIntake()`(등록 본인 또는 ADMIN/MANAGER) 소유자 검증 + UPDATE에 상태조건 재명시(`WHERE id=? AND status IN(...)`)로 TOCTOU 안전(#534 absorb 패턴과 동일). `GET /intakes` status 콤마다중 파라미터는 `split(',').map(trim)` 후 전량 파라미터 바인드(IN절 플레이스홀더) — SQL 인젝션 경로 없음, entityFilter도 그대로 유지. `printEvents.ts` resolveCard 정규식 anchored→비anchored 변경은 read-only 파일명 파싱 + 파라미터 바인드된 후속 조회라 보안 영향 없음(정규식 자체도 ReDoS 취약 패턴 아님 — 중첩 quantifier 없음).
+> - **`737ecbb`(자동 묶음 프리필) XSS 재확인**: `intake.js`/`parent.js` 신규 innerHTML 삽입 지점(`ofTrayRowHtml`·`stBadge`·`sizeLabel`) 전수 확인 — 자유입력 소스(`r.keyword`)는 기존과 동일하게 `escapeHtml()` 적용 유지, 신규 `group.label` 필드는 이 커밋에서 유일하게 하드코딩 리터럴(`'완성본'`)로만 세팅되고 `ai_groups_json`/`groups_json`(IA 에이전트 응답) 스키마엔 `label` 키 자체가 없음(`grep -rn "\"label\"" IllustratorAutomat/*.cs` 0건) — 즉 free-text 유입 경로 없음, dormant sink 아님(FP, 향후 다른 caller가 `.label`에 실제 자유입력을 넣으면 재오픈 대상). `group.content`/`group.qty`는 커밋 메시지가 명시한 대로 `.value =` DOM 프로퍼티 직접 대입(HTML 문자열 조립 아님)이라 attr 이스케이프 문제 자체가 발생 안 함 — 올바른 패턴. `helpers.ts` 카드수량 반영은 read-only 산식이라 보안 영향 없음.
+> - **필수 grep 2종(매 사이클)**: `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43 BAROBILL_FTP_PASSWORD || ''`(빈 문자열 폴백, 시크릿 리터럴 아님·인증 실패로 이어질 뿐 백도어 아님 = FP) 1건 외 없음. `grep -rnE "password.*\|\| *'[^']+'" src` + CI yml `secrets\.[A-Z_]+ *\|\| *'` → 0건. net-new 하드코딩 시크릿/기본비밀번호 없음(기존 #314/#338 판정과 동형 유지).
+> - **형제-비대칭 IDOR 스팟체크**: 이번 델타가 건드린 3파일(`orders/core.ts`·`workbench.ts`·`printEvents.ts`) 모두 단건/벌크 mutate 핸들러가 형제 read 핸들러와 동일하게 entityFilter를 적용 — #452/#455/#481 클래스의 "일부만 격리" 비대칭 재발 없음.
+> - **open≠unfixed 재확인**: `search_issues(is:open,label:auto-improve)` 실측 **6건**(#585·#586·#587·#589·#590·#591) 전부 보안 라벨 아님(bug/improvement)이고 이번 델타 3커밋이 그 이슈 대상 파일(`messagesAd.ts`·`messages.ts`·`orders.js` edit-load·`docs/dongsan-import`)을 안 건드려 재grep 없이 unchanged 캐시 신뢰(Area4 49회차 직전 재grep 완료).
+> - **backlog↔GitHub 절대값 재동기화**: open **6**(변동 없음, 이번 사이클 신규 이슈·close 0건) · done/rejected 511/6(Area4 49회차 캐시 신뢰).
+> - **🧬 SKILL 강화 없음** — 이번 사이클은 기존 표준 레시피(entityFilter 형제대조·TOCTOU 재명시·DOM 프로퍼티 vs innerHTML 구분)로 전부 판정 가능, 신규 클래스 없음.
+> - 신규 이슈 0건, 자동수정 0건(net-new 보안 이슈 없음), done-sync: new 6(변동없음)·done 511·rejected 6. 다음 순번 **Area 6**.
 >
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, 2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그 이관: 306KB→80KB, **2026-07-27T23:00 7차 트림 — 사이클 로그 39건 중 31건 이관(최근 8건=전 Area 1바퀴+2만 유지): 196KB→63KB**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 **최근 8사이클 로그**(전 Area 1바퀴 커버 = 직전 사이클 diff 판단에 필요한 최소분) + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
