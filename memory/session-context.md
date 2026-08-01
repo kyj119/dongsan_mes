@@ -94,6 +94,22 @@ npm run verify         # tsc + build (웹 — 이번 세션 변경 없음)
 > **다음=P3**: 유형×규격→BOM 원가 계산으로 이관 매출 원가율 리포트(생성기 레벨). 착수 전 ★가정치 보정(특히 LED 밀도 35→100/㎡ 의심 — 작업지시서 2~3장 역산) 권장.
 > ⚠️이 세션에서 밟은 함정: D1 다항 UNION ALL="too many terms in compound SELECT"→행별 INSERT / items.category_id FK=**item_categories**(간판=id 14 기존 — categories 테이블은 없음).
 
+## 다음 세션 P3 착수 가이드
+
+1. **P3 = 이관 매출 원가율·마진 리포트**: SIGN-* 연결 533라인 × 표준 BOM(usage_type 산식) × 실단가(base_price=최신 매입단가) → 유형별·거래처별 원가율. 생성기 레벨(화면 별도). 규격 파싱은 `gen_sign_retro.py`의 `per_m2()` 재사용(mm·cm 방어 포함).
+2. **착수 전 가정치 보정 권장** — 최소 LED 밀도: 실제 작업지시서 2~3장(`Z:\1. 광고물`)에서 규격↔LED수 역산 → `product_materials` notes ★행 UPDATE. 보정 목록 7건 = [[design-sign-bom]].
+3. 소급 분류를 바꿀 일이 생기면: 롤백 = `UPDATE order_items SET item_id=NULL WHERE item_id IN (SELECT id FROM items WHERE item_code LIKE 'SIGN-%')` 후 `gen_sign_retro.py` 수정·재실행(감사=`load/sign_retro_audit.csv`).
+4. 2차(견적 BOM sign_components·작업지시서·pricing_method COMPONENT)는 6-13 spec §2 그대로 — P3 후 별도 세션 권장.
+5. 대기 중 결정: items.ecount_code 저장 여부(매칭 확실 53건) · 커밋 push(명시 요청 시 — 마이그 0508은 prod 기적용이라 push는 기록 동기화일 뿐).
+
+## 검증 명령 (PowerShell)
+
+```powershell
+$env:SMOKE_URL='https://webapp-9i0.pages.dev'; npm run smoke   # 104/104
+# 간판 BOM 상태 재검(읽기전용): 대표 8종·BOM 24행·SIGN 연결 533·이관 매출 총액 2,885,353,724 불변
+npx wrangler d1 execute webapp-production --remote --json --command "SELECT (SELECT COUNT(*) FROM items WHERE item_code LIKE 'SIGN-%') items8, (SELECT COUNT(*) FROM product_materials WHERE usage_type IS NOT NULL) bom24, (SELECT COUNT(*) FROM order_items oi JOIN items i ON i.id=oi.item_id WHERE i.item_code LIKE 'SIGN-%') linked533"
+```
+
 ---
 
 # 세션 핸드오프 — 간판 자재 트랙 일괄: 등록·품명 백필·이카운트 매칭·원장 일별 분할 (2026-07-31~08-01 #30)
