@@ -1,6 +1,49 @@
 > **파일 구조**: 최신 세션이 맨 위. 아래로 갈수록 과거 세션(각각 durable 메모리에 정본 있음).
 > **다음 세션은 이 문서 상단의 "이월 TODO 통합"만 읽으면 된다** — 그 아래 상세 핸드오프는 판단 근거가 필요할 때만.
 
+# 세션 핸드오프 — 간판 BOM P3: 원가율 리포트 + LED 밀도 실측 보정 (2026-08-01 #34)
+
+> **P3 완결 — prod 데이터(마이그 0509)·생성기·리포트. 웹 코드 변경 0·배포 없음.** 정본=[[design-sign-bom]] · smoke 104/104.
+> 산출물: `gen_sign_cost_report.py` → `load/sign_cost_{lines.csv,summary.md}` · `품목마스터/간판원가율_P3_v1.xlsx`(검토용)
+
+## 이번 세션 결과
+
+| 건 | 결과 |
+|---|---|
+| ★LED 밀도 실측 보정 | 가정 35/㎡ → **실측 62/㎡**(성환농협 5세트 역산·54~76 가중평균). 돌출 양면 124 |
+| SMPS 가정 검증 | 실청구 12대 = ceil(LED 3,400/300) **정확 일치** — 가정 그대로 확정 |
+| 단가 0 자재 실단가 | 후렉스 **전 폭 1,750원/㎡ 일관**(130폭 롤 113,750)·알마이트 백 19,000/장 |
+| 원가율 리포트 | 파싱분(265L·120.2M) **자재원가율 10.6%** — CH 17.4%·교체 3~5%·PRT 41.4% |
+| 규격 단위 오파싱 재분류 | cm를 mm로 읽어 신규 오분류 3라인 → 교체(-R)로 정정(0509) |
+
+## 핵심 판단·이유 (반복 금지)
+
+- **★LED 역산의 결정타 = 실측 문서와 주문의 결합**: `Z:\1. 광고물\다담 010-9909-7001\260609_다담_성환농협_LED갯수확인.jpg`(글자별 LED 산출·간격 40×40)에는 폭이 없고, **동일 건 주문(6/15 다담 oi 18387~18403)의 트러스바 규격이 간판 폭**(8700×1800 등)이라 bbox 면적이 나온다. 앞으로 채널 실측 검증은 이 짝(LED갯수확인 파일 ↔ 주문 트러스 라인)을 찾을 것.
+- **채널간판은 LED·SMPS·트러스를 별도 라인으로 청구하는 주문이 있다**(성환농협이 그 예 — 간판 라인은 글자+시트만). 이런 건 간판 라인 규격이 "1800mm"(높이만)라 area 파싱이 안 되고 → BOM 원가도 안 걸려 **우연히 이중계상이 없다**. 통금액형(W*H 규격)만 BOM 원가가 걸리는 구조가 실제로 맞아떨어진다.
+- **LED 전선(SGM-LEDW)은 비례 산정** — PER_LED ceil 로 하면 소형 간판마다 롤 1개(44,600) 전액이 계상돼 CH 원가의 30%를 차지하는 과대(수정 후 4%). SMPS 는 간판별 개별 장착이라 ceil 이 맞다. **연속 소모품 vs 개별 장치를 구분**할 것.
+- **규격 단위(cm/mm)가 분류를 뒤집는다**: '1300x130cm'를 mm로 읽으면 판가/㎡ 이 100배 과대 → 판가≥90k 규칙이 신규로 오분류. 보정 규칙 = cm 명시 ×10 · 미표기+판가≥500k/㎡+cm읽기 정상범위 → cm 재해석 · **3차원 규격(철제 입간판 W*D*H)은 보정 제외**(면적 무관 가격이라 오탐). `gen_sign_retro.py`·`gen_sign_cost_report.py` 양쪽 동일 반영.
+- **교체(-R) 원가율 3~5%는 정상** — 원단만 소요(1,750원/㎡)라 낮은 게 맞고, 교체 매출의 본질이 인건비·출력임을 정량 확인한 것. 이상하게 보인다고 자재를 더 붙이지 말 것.
+
+## ★검토 대기 (용준님)
+
+1. **신규 프레임 이상치**: FRL 96.9%·FRN 112.6%(7+2라인·4.7M) — 소형 신규는 트러스바 개당(7m) ceil 지배. 실제 신규 제작인지, 교체+프리미엄 판가의 오분류인지. 특히 oi 17638 '완제품' 표기인데 34k/㎡(교체 가격대).
+2. 갈바 산정규칙(돌출 20L 미산정) · 캡바 사용 여부 · 트러스 폭 규칙 — 확정 시 `product_materials` UPDATE 후 리포트 재실행만.
+
+## 검증 명령 (PowerShell)
+
+```powershell
+python docs\dongsan-import\gen_sign_cost_report.py   # 리포트 재생성(스냅샷 기반)
+$env:SMOKE_URL='https://webapp-9i0.pages.dev'; npm run smoke   # 104/104
+# 보정 상태 재검(읽기전용): LED 62/124·후렉스 113750·알마이트 19000·SIGN 라인 533 불변
+npx wrangler d1 execute webapp-production --remote --json --command "SELECT (SELECT usage_param FROM product_materials pm JOIN items p ON p.id=pm.product_item_id JOIN items m ON m.id=pm.material_item_id WHERE p.item_code='SIGN-CH' AND m.item_code='SGM-LED3-2835') led, (SELECT base_price FROM items WHERE item_code='FLEXL-130') flex, (SELECT COUNT(*) FROM order_items oi JOIN items i ON i.id=oi.item_id WHERE i.item_code LIKE 'SIGN-%') lines533"
+```
+
+## 커밋 필요 (이 세션분 — 경로지정 add)
+
+`migrations/0509_sign_bom_calibration.sql` · `docs/dongsan-import/gen_sign_cost_report.py` · `docs/dongsan-import/gen_sign_retro.py`(단위 규칙) · `memory/session-context.md` · `.claude/PROJECT_STATUS.md` (xlsx·load/는 gitignore)
+
+---
+
 # 세션 핸드오프 — 재단 패널: 간격·곡선·여백분리·선도안 (2026-07-31~08-01 #31~#33)
 
 > **전부 IA 수동배포 축(웹 변경 0).** 정본 = `docs/superpowers/specs/2026-07-31-cut-file-panel.md` §6.20~6.28 · 메모리 = `[[design-irregular-nesting]]`

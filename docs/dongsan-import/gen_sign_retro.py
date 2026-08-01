@@ -18,18 +18,34 @@ PAT = re.compile(r'(\d{2,5})\s*[xX*×]\s*(\d{2,5})')
 
 
 def per_m2(r):
-    m = PAT.search(r['spec'])
+    """P3 보정(2026-08-01): 'cm' 명시 ×10 · 미표기+판가≥500k/㎡+cm읽기 정상범위 → cm 재해석.
+    (프레임 분기에서만 호출 — 3차원 규격(철제 입간판류)은 보정 제외)"""
+    s = r['spec']
+    m = PAT.search(s)
     if not m:
         return None
     w, h = int(m.group(1)), int(m.group(2))
-    if w < 100:
-        w *= 10
-    if h < 100:
-        h *= 10
+    q = max(1, r['quantity'] or 1)
+    if re.search(r'\d\s*cm', s, re.I):
+        w, h = w * 10, h * 10
+    elif 'mm' not in s.lower():
+        if w < 100:
+            w *= 10
+        if h < 100:
+            h *= 10
+        a_mm = w * h / 1e6
+        if a_mm > 0 and not re.search(r'\d+\s*[xX*×]\s*\d+\s*[xX*×]\s*\d+', s):
+            unit_rev = r['amount'] / q
+            if unit_rev / a_mm >= 500000 and 0.05 <= a_mm * 100 <= 60 and 3000 <= unit_rev / (a_mm * 100) <= 300000:
+                w, h = w * 10, h * 10
+    else:
+        if w < 100:
+            w *= 10
+        if h < 100:
+            h *= 10
     a = w * h / 1e6
     if not (0.05 <= a <= 60):
         return None
-    q = max(1, r['quantity'] or 1)
     return r['amount'] / q / a
 
 
