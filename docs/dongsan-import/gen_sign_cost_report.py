@@ -11,9 +11,12 @@
   | PER_LED=ceil(LED수/param)개 (LED수=같은 제품의 PER_AREA LED 행에서)
   | PER_WIDTH=ceil(가로m/param)개 | PER_AREA_ROLL=area/param롤(원단=㎡ 비례, ceil 안 함)
 
+★비례 산정(자투리 이월 — 용준님 확정 2026-08-01): 트러스바·날개·보강대·LED전선은
+  잘라 쓰고 자투리를 다음 건에 활용 → ceil 대신 비례. SMPS·형광등·옆마구리는 개별
+  장착이라 ceil/고정 유지. (입체바·캡바는 미결 — 같은 질문 성립, ceil 유지 중)
 한계(리포트에 명시): ①자재만 — 인건비·시공·출력잉크 미포함 ②입체바/캡바는 간판 bbox
-  둘레 기준(실제=글자 윤곽 둘레 — 과소. 2차 견적 BOM에서 해소) ③장물 ceil은 자투리
-  공유 미반영(소형 과대) ④규격 미파싱 라인은 원가 미산정(커버리지 별도 표기).
+  둘레 기준(실제=글자 윤곽 둘레 — 과소. 2차 견적 BOM에서 해소) ③규격 미파싱 라인은
+  원가 미산정(커버리지 별도 표기).
 사용: python gen_sign_cost_report.py
 """
 import json, re, csv, math, os
@@ -78,6 +81,9 @@ bom = defaultdict(list)
 for r in bom_rows:
     bom[r['pcode']].append(r)
 
+# 잘라 쓰고 자투리 이월하는 연속 소모 자재 → 비례 산정 (ceil 금지)
+PRORATE = {'SGM-TRB-R200-WH', 'SGM-TRW-WH', 'SGM-TRF', 'SGM-LEDW'}
+
 def unit_cost(pcode, w_mm, h_mm, area):
     """간판 1개(면적 area㎡)의 자재 원가. (총원가, {자재코드: 원가}, 경고목록)"""
     rows = bom.get(pcode, [])
@@ -100,15 +106,18 @@ def unit_cost(pcode, w_mm, h_mm, area):
         elif t == 'PER_AREA_SHEET':
             c = math.ceil(area / p) * price
         elif t == 'PER_PERIMETER':
-            c = math.ceil(perim / p) * price
+            n = perim / p
+            c = (n if r['mcode'] in PRORATE else math.ceil(n)) * price
         elif t == 'PER_LED':
-            # 전선(연속 소모품)은 비례 — ceil 이면 소형 간판마다 롤 1개 전액 과대
-            if r['mcode'] == 'SGM-LEDW':
-                c = led / p * price if led else 0
-            else:
-                c = math.ceil(led / p) * price if led else 0
+            if not led:
+                c = 0
+            elif r['mcode'] in PRORATE:  # 전선 — 비례
+                c = led / p * price
+            else:  # SMPS — 개별 장착 ceil
+                c = math.ceil(led / p) * price
         elif t == 'PER_WIDTH':
-            c = math.ceil(width_m / p) * price
+            n = width_m / p
+            c = (n if r['mcode'] in PRORATE else math.ceil(n)) * price
         elif t == 'PER_AREA_ROLL':
             c = area / p * price
         else:
@@ -204,8 +213,8 @@ L.append('# 간판 이관 매출 자재 원가율 리포트 (P3 — 2026-08-01)'
 L.append('')
 L.append('> 표준 BOM(0508) × **실측 보정(0509: LED 62/㎡·후렉스 1,750/㎡·알마이트 19,000/장)** × base_price.')
 L.append('> **자재 원가만** — 인건비·시공·출력잉크 제외. 원가율 = 자재원가/매출(규격 파싱분 기준).')
-L.append('> 입체바·캡바는 bbox 둘레, 백판·전면판은 bbox 면적 기준(채널 글자 실면적 대비 과대 가능)')
-L.append('> · 장물 ceil 자투리 미공유(소형 과대) · LED 전선은 비례 산정 · cm 표기/추정 단위 보정 반영.')
+L.append('> ★트러스바·날개·보강대·LED전선 = **비례 산정**(자투리 이월 — 용준님 확정 2026-08-01) · SMPS·형광등·옆마구리 = ceil/고정(개별 장착).')
+L.append('> 입체바·캡바는 bbox 둘레, 백판·전면판은 bbox 면적 기준(채널 글자 실면적 대비 과대 가능) · cm 표기/추정 단위 보정 반영.')
 L.append('')
 L.append('## 유형별')
 L.append('')

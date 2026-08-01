@@ -13,8 +13,9 @@
 | ★LED 밀도 실측 보정 | 가정 35/㎡ → **실측 62/㎡**(성환농협 5세트 역산·54~76 가중평균). 돌출 양면 124 |
 | SMPS 가정 검증 | 실청구 12대 = ceil(LED 3,400/300) **정확 일치** — 가정 그대로 확정 |
 | 단가 0 자재 실단가 | 후렉스 **전 폭 1,750원/㎡ 일관**(130폭 롤 113,750)·알마이트 백 19,000/장 |
-| 원가율 리포트 | 파싱분(265L·120.2M) **자재원가율 10.6%** — CH 17.4%·교체 3~5%·PRT 41.4% |
+| 원가율 리포트 | 파싱분(265L·120.2M) **자재원가율 10.2%** — CH 17.4%·교체 3~5%·PRT 41.4%·신규 프레임 64.6/82.9% |
 | 규격 단위 오파싱 재분류 | cm를 mm로 읽어 신규 오분류 3라인 → 교체(-R)로 정정(0509) |
+| ★바류 산정=비례 확정 | 트러스바·날개·보강대·전선 = 자투리 이월 비례(용준님·0510 notes). SMPS·형광등·옆마구리=ceil 유지 |
 
 ## 핵심 판단·이유 (반복 금지)
 
@@ -26,8 +27,8 @@
 
 ## ★검토 대기 (용준님)
 
-1. **신규 프레임 이상치**: FRL 96.9%·FRN 112.6%(7+2라인·4.7M) — 소형 신규는 트러스바 개당(7m) ceil 지배. 실제 신규 제작인지, 교체+프리미엄 판가의 오분류인지. 특히 oi 17638 '완제품' 표기인데 34k/㎡(교체 가격대).
-2. 갈바 산정규칙(돌출 20L 미산정) · 캡바 사용 여부 · 트러스 폭 규칙 — 확정 시 `product_materials` UPDATE 후 리포트 재실행만.
+1. **신규 프레임**: 비례 산정 후에도 FRL 64.6%·FRN 82.9%(라인별 37~95%·9라인 4.7M) — 자재만으로 이 수준이면 인건비 포함 역마진. 실제 신규 제작인지(띠형 소형 5건 = 교체 오분류 가능성), oi 17638 '완제품' 표기인데 34k/㎡(교체 가격대), 완제 2건(14218·15578, 3.2M) 규격 미상.
+2. 갈바 산정규칙(돌출 20L 미산정) · 캡바 사용 여부 · **입체바·캡바 비례 여부**(트러스와 같은 질문 — 현재 ceil) · 트러스 폭 규칙 — 확정 시 `product_materials` UPDATE 후 리포트 재실행만.
 
 ## 검증 명령 (PowerShell)
 
@@ -40,7 +41,7 @@ npx wrangler d1 execute webapp-production --remote --json --command "SELECT (SEL
 
 ## 커밋 필요 (이 세션분 — 경로지정 add)
 
-`migrations/0509_sign_bom_calibration.sql` · `docs/dongsan-import/gen_sign_cost_report.py` · `docs/dongsan-import/gen_sign_retro.py`(단위 규칙) · `memory/session-context.md` · `.claude/PROJECT_STATUS.md` (xlsx·load/는 gitignore)
+~~0509·생성기~~ **push 완료(`c555debe`·CI success·smoke 104/104)**. 추가분: `migrations/0510_sign_bom_prorate_notes.sql`(prod 기적용) · `gen_sign_cost_report.py`(비례 산정) · `memory/session-context.md` (xlsx·load/는 gitignore)
 
 ---
 
