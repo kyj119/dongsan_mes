@@ -175,11 +175,35 @@
         <label for="regWorker" class="l2">가공자</label>
         <select id="regWorker"><option value="">(미지정)</option></select>
       </div>
+      <div class="row">
+        <label for="regMaterial">자재</label>
+        <input id="regMaterial" type="text" list="materialList" placeholder="예: 포맥스5T" autocomplete="off" />
+        <datalist id="materialList"></datalist>
+        <label for="regFinish" class="l2">후가공</label>
+        <input id="regFinish" type="text" list="finishList" placeholder="예: 자동바니쉬" autocomplete="off" />
+        <datalist id="finishList"></datalist>
+      </div>
+      <div class="row">
+        <label for="regItem">품목</label>
+        <input id="regItem" type="text" placeholder="예: 쓰레기불법투기" autocomplete="off" />
+      </div>
       <div class="hint" id="regHint">
         네스팅 시트를 <b>주문서 대기함</b>으로 보냅니다(시트 1장 = 1건).
         저장 후 에이전트가 자동으로 올리며, 주문서에서 불러 쓰면 됩니다.
       </div>
       <button id="btnRegister" type="button" disabled title="네스팅을 먼저 실행하세요">주문 등록</button>
+
+      <div class="sep"></div>
+      <!-- 작업 폴더 산출 — 실물 규약(§2.7): EPS(인쇄) + DXF(재단) **같은 이름 쌍** -->
+      <div class="row">
+        <label>파일명</label>
+        <span id="pairName" class="meas">— 네스팅 후 자동으로 만들어집니다</span>
+      </div>
+      <div class="hint">
+        작업 폴더에는 <b>EPS + DXF 를 같은 이름</b>으로 둡니다(실물 규약).
+        규격은 <b>판 전체 크기·cm</b>이고 장수는 배치한 조각 수입니다 — 예 <code>(포맥스5T+자동바니쉬)쓰레기불법투기(103x206-6장)</code>.
+      </div>
+      <button id="btnExportPair" type="button" disabled title="네스팅을 먼저 실행하세요">작업 폴더로 내보내기 (EPS+DXF)</button>
     </details>
 
     <!-- ── 진단 (P0 의 본체) ── -->

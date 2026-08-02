@@ -117,7 +117,7 @@
   var elPunch = $('punch');
 
   // 잠금 시 막을 버튼. **새 버튼은 여기에 넣기만 하면 된다** — 개별 .disabled 조작 금지.
-  var BUSY_IDS = ['btnRefresh', 'btnMakeCut', 'btnNest', 'btnWidth', 'btnRegister', 'btnLockProbe', 'btnLockTest', 'btnUnlock'];
+  var BUSY_IDS = ['btnRefresh', 'btnMakeCut', 'btnNest', 'btnWidth', 'btnRegister', 'btnExportPair', 'btnLockProbe', 'btnLockTest', 'btnUnlock'];
 
   function setBusy(on) {
     hostBusy = !!on;
@@ -146,6 +146,7 @@
         ? '벡터 = 일러가 실루엣을 직접 오프셋합니다 (근사 오차 없음 · 물결 없음)'
         : '호스트가 구버전(' + (hostVersion || '?') + ')이라 래스터로 만들어집니다 (mes-cut-host.jsx 배포 필요)';
     }
+    refreshPairName();
     var rb = document.getElementById('btnRegister');
     if (rb) { rb.disabled = !nestReady; rb.title = nestReady ? '네스팅 시트를 주문서 대기함으로 보냅니다' : '네스팅을 먼저 실행하세요'; }
     var mk = document.getElementById('btnMakeCut');
@@ -743,6 +744,11 @@
   // 일러 없이 회귀를 잡기 위한 노출 — 해상도 스냅·효율 산식·조각 칼선 인코딩은 순수 계산이다.
   window.__mesCutFill = resolveFill;   // 스모크에서 판정 규칙을 직접 검증
   window.__mesCutLineMode = resolveLineMode;
+  // 스모크에서 파일명 규칙을 직접 검증 — 저장 직전에야 이름을 알면 회귀를 못 잡는다
+  window.__mesCutPair = {
+    name: function () { return pairBaseName(); },
+    setNest: function (o) { lastNest = o; refreshPairName(); },
+  };
   window.__mesCutNest = {
     resolution: function (offsetMm, gapMm, wMm, hMm) { return nestResolution(window.MesCutGeom, offsetMm, gapMm, wMm, hMm); },
     place: function (prep, wMm, hMm, rot, opts) { return nestPlace(window.MesCutNest, prep, wMm, hMm, rot, opts); },
@@ -832,6 +838,16 @@
             // ★효율% = 팽창 전 실면적 / 실제 소요 재료. 예전 값(팽창 잉크 / usable)은 1.7배 부풀려졌다.
             var areaMm2 = sheetAreaMm2(res, prep, sheetWmm, sheetHmm);
             var eff = areaMm2 ? (prep.rawInkPx * mmpp * mmpp / areaMm2) : 0;
+            // ★파일명 규격의 출처 = **호스트가 돌려준 실제 아트보드 크기**다.
+            //   시트 프리셋(예 1370)을 쓰면 안 된다 — `nestApply` 가 아트보드를 배치 bbox + 돔보
+            //   여백으로 줄이므로 이름과 파일이 어긋난다(실물은 파일명 규격 = EPS 바운딩박스).
+            var placed = 0;
+            for (var ps = 0; ps < res.sheets.length; ps++) placed += res.sheets[ps].placements.length;
+            var swMm = parseFloat(a.sheetw), shMm = parseFloat(a.sheeth);
+            lastNest = (swMm > 0 && shMm > 0)
+              ? { wCm: Math.round(swMm / 10), hCm: Math.round(shMm / 10), n: placed, sheets: res.sheets.length }
+              : null;
+            refreshPairName();
             setNestReady(true);
             done('네스팅 완료 — 시트 ' + a.sheets + '개 · 조각 ' + a.items + '/' + prep.n
               + '\n' + lenTxt + ' · 효율 ' + (100 * eff).toFixed(1) + '% (재료 기준)'
@@ -1030,6 +1046,89 @@
     return null;   // 미일치 = free-text 폴백(서버가 이름으로 처리)
   }
 
+  // ── ★작업 폴더 산출 — EPS + DXF 같은 이름 쌍 (2026-08-02 · spec §2.7) ──
+  // 실물 작업 폴더는 판마다 `(자재+후가공)품목(<W>x<H>-<N>장)` 로 **EPS 와 DXF 가 확장자만 다른 쌍**이다.
+  // 규격은 **판 전체 크기이고 단위는 cm**(파일명 `103x206` ↔ EPS 바운딩박스 1030×2060mm 로 확인).
+  // 자재·후가공 후보는 6~7월 작업 폴더명에서 실제로 쓰인 값을 빈도순으로 뽑은 것이다(지어내지 않았다).
+  var MATERIALS = ['솔벤시트', '솔벤현수막', 'UV후렉스-조', 'UV후렉스', 'UV그레이후렉스', 'UV시트',
+    '포맥스3T', '포맥스5T', '포맥스2T', '솔벤그레이시트', '매쉬배너', '솔벤랩핑시트', '솔벤매쉬', '폼보드5T', 'UV현수막'];
+  var FINISHES = ['자동바니쉬', '조', '돔보', '무광', '유광', '반컷팅', '바니쉬-양면'];
+  var lastNest = null;     // {wCm, hCm, n} — 파일명 규격의 출처
+
+  function fillDatalist(id, arr) {
+    var dl = document.getElementById(id);
+    if (!dl) return;
+    dl.innerHTML = '';
+    for (var i = 0; i < arr.length; i++) {
+      var o = document.createElement('option');
+      o.value = arr[i];
+      dl.appendChild(o);
+    }
+  }
+
+  /** 파일 이름에 못 쓰는 문자만 걷어낸다 — 한글은 그대로 둔다(경로는 파일 경유라 ASCII 제약이 없다). */
+  function safeName(s) {
+    return String(s == null ? '' : s).replace(/[\\/:*?"<>|]/g, '_').replace(/^\s+|\s+$/g, '');
+  }
+
+  /** `(자재+후가공)품목(WxH-N장)` — 빠진 값은 건너뛴다(부분 입력에서도 쓸 수 있게). */
+  function pairBaseName() {
+    if (!lastNest) return '';
+    var mat = safeName((document.getElementById('regMaterial') || {}).value);
+    var fin = safeName((document.getElementById('regFinish') || {}).value);
+    var item = safeName((document.getElementById('regItem') || {}).value);
+    var head = '';
+    if (mat || fin) head = '(' + mat + (mat && fin ? '+' : '') + fin + ')';
+    return head + item + '(' + lastNest.wCm + 'x' + lastNest.hCm + '-' + lastNest.n + '장)';
+  }
+
+  function refreshPairName() {
+    var el = document.getElementById('pairName');
+    var btn = document.getElementById('btnExportPair');
+    var base = pairBaseName();
+    if (el) {
+      el.textContent = base || '— 네스팅 후 자동으로 만들어집니다';
+      // 실물은 판마다 파일이 따로다 — 여러 판이면 지금은 **첫 판만** 나간다는 걸 숨기지 않는다
+      if (base && lastNest && lastNest.sheets > 1) el.textContent = base + '  ⚠ 판 ' + lastNest.sheets + '개 중 첫 판만';
+    }
+    if (btn) {
+      btn.disabled = !base || hostBusy;
+      btn.title = base ? ('작업 폴더를 고르면 ' + base + '.eps / .dxf 로 저장합니다') : '네스팅을 먼저 실행하세요';
+    }
+  }
+
+  function exportPair() {
+    if (hostBusy) return;
+    var base = pairBaseName();
+    if (!base) { out('네스팅을 먼저 실행하세요.', 'err'); return; }
+    setBusy(true);
+    out('잠금 확인 중...');
+    host('mesCut_acquireLock("' + PANEL_OWNER + '","export-pair")', function (lk) {
+      if (lk.indexOf('busy:') === 0) { setBusy(false); out('다른 쪽이 일러를 점유 중입니다: ' + lk.substring(5), 'err'); return; }
+      // ★이름·경로가 한글이라 evalScript 인자로 못 넘긴다 → params 파일(UTF-8) 경유(등록과 같은 방식)
+      host('mesCut_paramsPath()', function (pp) {
+        var w = window.cep.fs.writeFile(pp, 'NAME ' + base, window.cep.encoding.UTF8);
+        if (!w || w.err !== 0) { fin2('params 쓰기 실패', 'err'); return; }
+        out('작업 폴더를 고르세요...');
+        host('mesCut_exportPair()', function (r, bad) {
+          if (!bad && r.indexOf('cancel') === 0) { fin2('취소했습니다.', null); return; }
+          if (bad || r.indexOf('ok;') !== 0) { fin2('내보내기 실패: ' + r, 'err'); return; }
+          var d = kv(r.substring(3));
+          fin2('작업 폴더에 저장했습니다 — ' + base
+            + '\nEPS ' + (d.eps === '1' ? '✔' : '✘') + ' · DXF ' + (d.dxf === '1' ? '✔' : '✘')
+            + (d.dxfitems ? (' (칼선 ' + d.dxfitems + '개)') : '')
+            + '\n※ 폴더 경로는 패널이 읽지 못합니다(한글) — 고른 폴더를 확인하세요.',
+            (d.eps === '1' && d.dxf === '1') ? 'ok' : 'err');
+        });
+      });
+    });
+    function fin2(msg, kind) {
+      host('mesCut_releaseLock("' + PANEL_OWNER + '")', function () {
+        setBusy(false); refreshLock(); if (msg) out(msg, kind);
+      });
+    }
+  }
+
   var nestReady = false;   // 네스팅을 돌린 뒤에만 등록할 수 있다
   function setNestReady(on) {
     nestReady = !!on;
@@ -1086,6 +1185,15 @@
   // ── 이벤트 ───────────────────────────────────────────────────────
   var btnReg = $('btnRegister');
   if (btnReg) btnReg.addEventListener('click', registerNest);
+
+  var btnPair = $('btnExportPair');
+  if (btnPair) btnPair.addEventListener('click', exportPair);
+  // 자재·후가공·품목을 고칠 때마다 파일명 미리보기를 갱신한다 — 저장 직전에야 이름을 알면 늦다
+  var pairIds = ['regMaterial', 'regFinish', 'regItem'];
+  for (var pi = 0; pi < pairIds.length; pi++) {
+    var pel = document.getElementById(pairIds[pi]);
+    if (pel) { pel.addEventListener('input', refreshPairName); pel.addEventListener('change', refreshPairName); }
+  }
 
   var btnNest = $('btnNest');
   if (btnNest) btnNest.addEventListener('click', runNest);
@@ -1144,6 +1252,8 @@
   // ── 초기화 ───────────────────────────────────────────────────────
   applyGates();
   loadConfig();
+  fillDatalist('materialList', MATERIALS);
+  fillDatalist('finishList', FINISHES);
   host('mesCut_ping()', function (res, bad) {
     if (elVer) elVer.textContent = 'shell ' + SHELL_VERSION + ' · host ' + res;
     if (bad) { out(res + '\nZ: 연결과 mes-cut-host.jsx 배포를 확인하세요.', 'err'); return; }

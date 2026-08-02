@@ -1152,6 +1152,7 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed) {
 
     var made = 0, items = 0, dombo = 0;
     MESCUT_NEST_DOCS = [];
+    MESCUT_LAST_SHEET_W = 0; MESCUT_LAST_SHEET_H = 0;
     try {
         for (var s = 0; s < sheets.length; s++) {
             var sh = sheets[s];
@@ -1230,14 +1231,122 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed) {
                 var m = mesCut_domboMargin() * MESCUT_PT_PER_MM;
                 doc.artboards[0].artboardRect = [u[0] - m, u[1] + m, u[2] + m, u[3] - m];
             }
+            // ★첫 판 크기를 **여기서** 읽는다 — 이 시트가 활성일 때다.
+            //   ⚠️ 비활성 문서의 `artboards[0].artboardRect` 는 **활성 문서 값**을 돌려준다
+            //      (2026-08-02 실측: 시트 312×273 인데 원본 크기 600×400 이 나왔다).
+            if (s === 0) {
+                try {
+                    var ar1 = doc.artboards[0].artboardRect;
+                    MESCUT_LAST_SHEET_W = Math.round((ar1[2] - ar1[0]) / MESCUT_PT_PER_MM);
+                    MESCUT_LAST_SHEET_H = Math.round((ar1[1] - ar1[3]) / MESCUT_PT_PER_MM);
+                } catch (eAB0) {}
+            }
             if (mesCut_addDombo(doc).indexOf('ok:') === 0) dombo++;
         }
         app.activeDocument = srcDoc;
-        return 'ok;sheets=' + made + ';items=' + items + ';dombo=' + dombo;
+        // ★실제 아트보드 크기를 돌려준다 — 파일명 규격(`103x206`)은 **판 전체 크기**이고
+        //   실물은 EPS 바운딩박스와 정확히 일치한다(1030×2060mm). 우리 아트보드는 배치 bbox +
+        //   돔보 여백으로 줄어들므로 시트 프리셋(예 1370)을 쓰면 이름과 파일이 어긋난다.
+        return 'ok;sheets=' + made + ';items=' + items + ';dombo=' + dombo
+            + ';sheetw=' + MESCUT_LAST_SHEET_W + ';sheeth=' + MESCUT_LAST_SHEET_H;
     } catch (e) {
         try { app.activeDocument = srcDoc; } catch (e2) {}
         return 'ERROR nestApply: ' + e;
     }
+}
+
+// ── ★작업 폴더 산출 — EPS + DXF 같은 이름 쌍 (2026-08-02 · spec §2.7) ─────
+//
+// 실물 작업 폴더(`Z:\★UV솔벤★\<월>\<일>\<배송>\<순번>-(자재+후가공)<거래처>-<납기>\`)는
+// 판마다 **EPS(인쇄) 와 DXF(재단) 를 확장자만 다른 같은 이름**으로 둔다. `.ai` 는 두지 않는다.
+//   (포맥스5T+자동바니쉬)쓰레기불법투기(103x206-6장).eps / .dxf   ← 규격은 판 전체 크기·**cm**
+//
+// ⚠️ 폴더와 파일 이름이 한글이라 evalScript 인자로는 못 받는다 → **params 파일(UTF-8)** 로 이름을 받고,
+//    폴더는 여기서 다이얼로그로 고른다. 반환은 ASCII 만 담는다(경로를 돌려주면 브릿지가 깨뜨린다).
+// ⚠️ EPS 옵션은 A0(`mes-a0-host.jsx:623~628`)와 **같은 값**을 쓴다 — 실물 EPS 가 전부 그 형식이다
+//    (DOS 바이너리 EPS + TIFF 미리보기 = 파일 첫 바이트 `C5 D0 D3 C6`).
+
+var MESCUT_LASTDIR_PATH = null;
+function mesCut_lastDirFile() {
+    return Folder.temp.fsName.replace(/\\/g, '/') + '/mes_cut_lastdir.txt';
+}
+function mesCut_readLastDir() {
+    try {
+        var f = new File(mesCut_lastDirFile());
+        if (!f.exists) return null;
+        f.encoding = 'UTF-8'; f.open('r');
+        var s = f.read(); f.close();
+        var d = new Folder(String(s).replace(/^\s+|\s+$/g, ''));
+        return d.exists ? d : null;
+    } catch (e) { return null; }
+}
+function mesCut_writeLastDir(path) {
+    try { mesCut_writeTextUtf8(mesCut_lastDirFile(), String(path)); } catch (e) {}
+}
+
+/**
+ * 네스팅 시트를 작업 폴더에 **EPS + DXF 한 쌍**으로 저장한다.
+ * params 파일에서 `NAME <basename>` 을 읽고, 폴더는 다이얼로그로 고른다.
+ * 반환 'ok;eps=<0|1>;dxf=<0|1>;dxfitems=<n>' · 'cancel' · 'ERROR ..'
+ */
+function mesCut_exportPair() {
+    if (app.documents.length === 0) return 'ERROR 문서 없음';
+    var raw = mesCut_readParams();
+    if (!raw) return 'ERROR params 없음';
+    var base = '';
+    var lines = String(raw).split(/[\r\n]+/);
+    for (var i = 0; i < lines.length; i++) {
+        var sp = lines[i].indexOf(' ');
+        if (sp > 0 && lines[i].substring(0, sp) === 'NAME') base = lines[i].substring(sp + 1);
+    }
+    base = String(base).replace(/^\s+|\s+$/g, '');
+    if (!base) return 'ERROR 파일명 없음';
+
+    // 대상 = 네스팅이 만든 시트 문서(없으면 활성 문서)
+    var doc = null;
+    if (MESCUT_NEST_DOCS && MESCUT_NEST_DOCS.length) {
+        try { if (MESCUT_NEST_DOCS[0].name) doc = MESCUT_NEST_DOCS[0]; } catch (eD) { doc = null; }
+    }
+    if (!doc) doc = app.activeDocument;
+
+    var dir = null;
+    try { dir = Folder.selectDlg('작업 폴더를 고르세요 — EPS + DXF 를 같은 이름으로 저장합니다', mesCut_readLastDir()); }
+    catch (eS) { return 'ERROR 폴더 선택 실패: ' + eS; }
+    if (!dir) return 'cancel';
+    mesCut_writeLastDir(dir.fsName);
+
+    var prev = app.activeDocument;
+    var okEps = 0, okDxf = 0, nDxf = 0;
+    try {
+        app.activeDocument = doc;
+        var stem = dir.fsName.replace(/\\/g, '/') + '/' + base;
+        // ① DXF 먼저 — 실패해도 EPS 는 남기려면 순서가 중요하지 않지만, DXF 는 칼선이 없으면 못 만든다
+        var dr = mesCut_exportDxf(stem + '.dxf');
+        if (dr.indexOf('ok;') === 0) { okDxf = 1; nDxf = parseInt(mesCut_kvGet(dr, 'items'), 10) || 0; }
+        // ② EPS — A0 와 같은 옵션(실물 EPS 와 같은 형식)
+        var epsOpts = new EPSSaveOptions();
+        epsOpts.cmykPostScript = true;
+        epsOpts.compatibility = Compatibility.ILLUSTRATOR10;
+        epsOpts.preview = EPSPreview.COLORTIFF;
+        epsOpts.embedAllFonts = true;
+        doc.saveAs(new File(stem + '.eps'), epsOpts);
+        okEps = 1;
+    } catch (e) {
+        try { app.activeDocument = prev; } catch (e2) {}
+        return 'ERROR exportPair: ' + e + ';eps=' + okEps + ';dxf=' + okDxf;
+    }
+    try { app.activeDocument = prev; } catch (e3) {}
+    return 'ok;eps=' + okEps + ';dxf=' + okDxf + ';dxfitems=' + nDxf;
+}
+
+/** 'ok;a=1;b=2' 에서 값 하나 — 반환 문자열을 파싱할 곳이 늘어 공용으로 뺀다. */
+function mesCut_kvGet(s, key) {
+    var parts = String(s).split(';');
+    for (var i = 0; i < parts.length; i++) {
+        var eq = parts[i].indexOf('=');
+        if (eq > 0 && parts[i].substring(0, eq) === key) return parts[i].substring(eq + 1);
+    }
+    return '';
 }
 
 // ── P3-N1/N2: 네스팅 결과 등록 (주문서 연동) ─────────────────────────
@@ -1249,6 +1358,7 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed) {
 
 var MESCUT_REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
 var MESCUT_NEST_DOCS = [];   // nestApply 가 만든 시트 문서(등록 대상)
+var MESCUT_LAST_SHEET_W = 0, MESCUT_LAST_SHEET_H = 0;   // 첫 판의 실제 아트보드 크기(mm) — 파일명 규격
 
 function mesCut_regPath() {
     return Folder.temp.fsName.replace(/\\/g, '/') + '/mes_cut_reg.txt';

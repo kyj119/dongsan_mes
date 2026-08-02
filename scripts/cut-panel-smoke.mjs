@@ -610,6 +610,65 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     !/mesCut_vecSilhouette[\s\S]*?(simplify|fitCurves)\s*\(/.test(hostSrc))
 }
 
+// ── 3l ★작업 폴더 산출 — EPS + DXF 같은 이름 쌍 (spec §2.7) ──────────
+// 실물 작업 폴더는 판마다 `(자재+후가공)품목(<W>x<H>-<N>장)` 로 EPS·DXF 를 쌍으로 둔다.
+// 규격은 **판 전체 크기이고 단위는 cm** — 파일명 `103x206` ↔ EPS 1030×2060mm 로 확인했다.
+{
+  const p = await openPanel({ ping: 'CUT-CEP-0.7.0' })
+  ok('3l UI 필드·버튼 존재', await p.evaluate(() => {
+    return !!document.getElementById('regMaterial') && !!document.getElementById('regFinish')
+      && !!document.getElementById('regItem') && !!document.getElementById('btnExportPair')
+  }))
+  // 네스팅 전에는 낼 것이 없다 — 눌러도 아무 일 없는 버튼을 열어 두지 않는다
+  ok('3l 네스팅 전에는 비활성', await p.evaluate(() => document.getElementById('btnExportPair').disabled === true))
+  ok('3l 자재·후가공 후보가 실물 값', await p.evaluate(() => {
+    const m = [...document.querySelectorAll('#materialList option')].map((o) => o.value)
+    const f = [...document.querySelectorAll('#finishList option')].map((o) => o.value)
+    return m.includes('포맥스5T') && m.includes('솔벤시트') && f.includes('자동바니쉬') && f.includes('조')
+  }))
+  const rows = await p.evaluate(() => {
+    const P = window.__mesCutPair
+    const set = (id, v) => { document.getElementById(id).value = v }
+    const out = {}
+    out.before = P.name()
+    P.setNest({ wCm: 103, hCm: 206, n: 6 })
+    set('regMaterial', '포맥스5T'); set('regFinish', '자동바니쉬'); set('regItem', '쓰레기불법투기')
+    out.full = P.name()
+    out.enabled = document.getElementById('btnExportPair').disabled === false
+    set('regFinish', '')
+    out.noFinish = P.name()
+    set('regMaterial', ''); set('regItem', '테스트/이름:주의')
+    out.sanitized = P.name()
+    return out
+  })
+  ok('3l 네스팅 전에는 이름이 없다', rows.before === '', JSON.stringify(rows.before))
+  ok('3l 파일명이 실물 규약대로', rows.full === '(포맥스5T+자동바니쉬)쓰레기불법투기(103x206-6장)', rows.full)
+  ok('3l 이름이 생기면 버튼 활성', rows.enabled === true)
+  ok('3l 후가공이 없으면 + 를 안 붙임', rows.noFinish === '(포맥스5T)쓰레기불법투기(103x206-6장)', rows.noFinish)
+  ok('3l 파일명 금지문자 치환(한글은 유지)', rows.sanitized === '테스트_이름_주의(103x206-6장)', rows.sanitized)
+  await p.close()
+}
+{
+  const hostSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
+  ok('3l 호스트에 exportPair', /function mesCut_exportPair\(\)/.test(hostSrc))
+  // ★이름·경로가 한글이라 인자로 받으면 브릿지에서 깨진다 → params 파일 경유여야 한다
+  ok('3l 이름은 params 파일로 받는다', /mesCut_exportPair[\s\S]{0,900}mesCut_readParams\(\)/.test(hostSrc))
+  ok('3l 폴더는 다이얼로그로 고른다', /Folder\.selectDlg/.test(hostSrc))
+  // ★EPS 옵션은 A0 와 같아야 한다 — 실물 EPS 가 전부 그 형식이다
+  const a0 = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-a0-host.jsx'), 'utf8')
+  const opts = (src) => ['cmykPostScript = true', 'Compatibility.ILLUSTRATOR10', 'EPSPreview.COLORTIFF', 'embedAllFonts = true']
+    .filter((k) => src.includes(k)).join('|')
+  ok('3l EPS 옵션이 A0 와 동일', opts(hostSrc) === opts(a0) && opts(hostSrc).split('|').length === 4, opts(hostSrc))
+  ok('3l BUSY_IDS 에 btnExportPair', fs.readFileSync(path.join(PANEL_DIR, 'js/main.js'), 'utf8').includes("'btnExportPair'"))
+  // ★파일명 규격 = 실제 아트보드여야 한다. 시트 프리셋을 쓰면 이름과 파일이 어긋난다
+  //   (nestApply 가 아트보드를 배치 bbox + 돔보 여백으로 줄이기 때문)
+  ok('3l 판 크기를 nestApply 가 돌려준다', /sheetw=' \+ MESCUT_LAST_SHEET_W/.test(hostSrc))
+  // ★비활성 문서의 artboardRect 는 **활성 문서 값**을 돌려준다(실측: 312×273 인데 600×400)
+  ok('3l 비활성 문서 아트보드를 읽지 않는다', !/MESCUT_NEST_DOCS\[0\]\.artboards/.test(hostSrc))
+  ok('3l 패널이 시트 프리셋으로 이름을 만들지 않는다',
+    !/wCm: Math\.round\(sheetWmm/.test(fs.readFileSync(path.join(PANEL_DIR, 'js/main.js'), 'utf8')))
+}
+
 // ── 5b P3 네스팅 UI ────────────────────────────────────────────────
 {
   const p = await openPanel()
