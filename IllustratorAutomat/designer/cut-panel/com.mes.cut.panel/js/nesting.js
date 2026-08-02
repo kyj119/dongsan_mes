@@ -1,0 +1,269 @@
+/**
+ * 재단 패널 — 래스터 true-shape 네스팅 (의존성: geometry.js)
+ *
+ * spec = docs/superpowers/specs/2026-07-31-cut-file-panel.md §6.8
+ *
+ * ★왜 래스터인가 (2026-07-31 실측):
+ *   조각 마스크·거리변환·오프셋을 칼선 파이프라인에서 이미 갖고 있다. 그래서
+ *   ⓐ**조각 간 gap 이 공짜** — 마스크를 gap/2 팽창(offsetMask)시켜 배치하면 끝
+ *   ⓑ**충돌 판정이 픽셀 AND** — NFP(Minkowski) 구현이 통째로 불필요
+ *   ⓒ**구멍 안에 다른 조각을 넣는 것도 자동** — 마스크는 구멍을 그냥 빈 공간으로 본다
+ *   bbox 패킹 대비 실측 절감 = 삼각형 20개 40%, 혼합 18개 13%.
+ *
+ * ⚠️ 정본은 이 파일이다. Node 하네스(scripts/cut/nest-bench.mjs)가 **이 파일을 직접 검증**한다.
+ */
+(function (root, factory) {
+  var api = factory()
+  if (typeof module === 'object' && module.exports) module.exports = api
+  if (root) root.MesCutNest = api
+})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+  'use strict'
+
+  /** 마스크 90° 회전(시계). {W,H,m} */
+  function rot90(p) {
+    var W = p.H, H = p.W
+    var m = new Uint8Array(W * H)
+    for (var y = 0; y < p.H; y++) {
+      for (var x = 0; x < p.W; x++) {
+        if (p.m[y * p.W + x]) m[x * W + (p.H - 1 - y)] = 1
+      }
+    }
+    return { W: W, H: H, m: m }
+  }
+
+  /** rot ∈ {0,90,180,270} */
+  function rotate(p, rot) {
+    var r = ((rot % 360) + 360) % 360
+    var out = p
+    for (var i = 0; i < (r / 90); i++) out = rot90(out)
+    return out
+  }
+
+  /** 마스크의 실제 잉크 bbox 로 잘라낸다 — 여백이 붙어 있으면 배치가 헐거워진다. */
+  function trim(p) {
+    var L = p.W, T = p.H, R = -1, B = -1
+    for (var y = 0; y < p.H; y++) {
+      for (var x = 0; x < p.W; x++) {
+        if (!p.m[y * p.W + x]) continue
+        if (x < L) L = x
+        if (x > R) R = x
+        if (y < T) T = y
+        if (y > B) B = y
+      }
+    }
+    if (R < 0) return { W: 0, H: 0, m: new Uint8Array(0), offX: 0, offY: 0 }
+    var W = R - L + 1, H = B - T + 1
+    var m = new Uint8Array(W * H)
+    for (var yy = 0; yy < H; yy++) {
+      for (var xx = 0; xx < W; xx++) m[yy * W + xx] = p.m[(T + yy) * p.W + (L + xx)]
+    }
+    return { W: W, H: H, m: m, offX: L, offY: T }
+  }
+
+  function inkOf(p) { var n = 0; for (var i = 0; i < p.m.length; i++) n += p.m[i]; return n }
+
+  /**
+   * 시트에 조각을 놓을 수 있는가 (픽셀 AND).
+   * 조각 마스크는 이미 gap/2 만큼 팽창돼 있다고 가정한다 → 겹치지 않으면 gap 이 보장된다.
+   */
+  function fits(sheet, SW, SH, p, ox, oy) {
+    if (ox < 0 || oy < 0 || ox + p.W > SW || oy + p.H > SH) return false
+    for (var y = 0; y < p.H; y++) {
+      var row = (oy + y) * SW + ox
+      var prow = y * p.W
+      for (var x = 0; x < p.W; x++) {
+        if (p.m[prow + x] && sheet[row + x]) return false
+      }
+    }
+    return true
+  }
+
+  function stamp(sheet, SW, p, ox, oy) {
+    for (var y = 0; y < p.H; y++) {
+      var row = (oy + y) * SW + ox, prow = y * p.W
+      for (var x = 0; x < p.W; x++) if (p.m[prow + x]) sheet[row + x] = 1
+    }
+  }
+
+  /**
+   * bottom-left 배치. **스카이라인으로 후보를 줄인다** — 전 픽셀 스캔은 큰 시트에서 못 쓴다.
+   * 각 x 열의 현재 점유 최고선을 들고, 조각 폭 구간의 최댓값을 후보 y 로 삼는다.
+   */
+  /**
+   * ★순수 bottom-left: y 를 바깥 루프로 돌며 **첫 가능 위치**를 잡는다.
+   *
+   * 처음엔 스카이라인으로 후보를 줄이는 "최적화"를 했는데 실측에서 **더 느리고 더 나빴다**
+   * (삼각형 20개: 순수 BL 360px·13ms vs 스카이라인 528px·198ms). 스카이라인은 조각 폭 전체의
+   * 최고점에서 출발하므로 오목한 틈을 놓치고, 그걸 만회하려 아래로 파고들면 검사 횟수만 늘었다.
+   * 순수 BL 은 첫 발견 즉시 반환하므로 대개 낮은 y 에서 끝난다 — 단순한 쪽이 빠르고 촘촘하다.
+   *
+   * 유일한 최적화 = `minSky` 아래는 건너뛴다(모든 열이 그보다 높으면 그 위로만 놓인다).
+   */
+  function placeOne(sheet, SW, SH, sky, p, step) {
+    var minSky = Infinity
+    for (var k = 0; k < SW; k++) if (sky[k] < minSky) minSky = sky[k]
+    var y0 = Math.max(0, Math.floor((minSky - p.H) / step) * step)
+    for (var y = y0; y + p.H <= SH; y += step) {
+      for (var x = 0; x + p.W <= SW; x += step) {
+        if (fits(sheet, SW, SH, p, x, y)) return { x: x, y: y, top: y + p.H }
+      }
+    }
+    return null
+  }
+
+  function updateSky(sky, p, ox, oy) {
+    for (var x = 0; x < p.W; x++) {
+      // 이 열에서 조각의 가장 아래(=큰 y) 잉크
+      var last = -1
+      for (var y = p.H - 1; y >= 0; y--) { if (p.m[y * p.W + x]) { last = y; break } }
+      if (last < 0) continue
+      var top = oy + last + 1
+      if (top > sky[ox + x]) sky[ox + x] = top
+    }
+  }
+
+  /**
+   * 다중 시트 네스팅.
+   * @param pieces [{id, W, H, m}]  — gap 팽창은 호출자가 미리 적용(offsetMask(gap/2))
+   * @param opts {sheetW, sheetH, step, rotations, maxSheets}
+   *   sheetH = 0 이면 **롤**(길이 무제한) — 한 장만 쓰고 사용 길이를 보고한다.
+   * @returns {sheets:[{placements:[{id,x,y,rot,W,H}], usedH, inkPx}], unplaced:[id], efficiency}
+   */
+  /**
+   * 다중 시트 네스팅 — **여러 투입 순서를 돌려 가장 좋은 결과**를 쓴다(GRASP 계열의 최소 형태).
+   *
+   * 순서 하나만 쓰면 안 되는 이유는 실측이 보여줬다: "큰 것 먼저"가 정석인데 삼각형 케이스에서는
+   * 입력 순서(544px → 360px)가 훨씬 나았다 — 서로 맞물리게 배치된 순서를 정렬이 깨뜨린다.
+   * 반대로 무작위 크기가 섞인 벤치마크에서는 큰 것 먼저가 유리하다. **한쪽을 고를 근거가 없으므로 다 돌린다.**
+   *
+   * 비용: 한 번이 수십~수백 ms 라 6~8회를 돌려도 실사용(조각 수십 개)에서 체감되지 않는다.
+   * `opts.tries` 로 조절(기본 8, 최소 4 = 결정적 순서 4종).
+   */
+  function nest(pieces, opts) {
+    opts = opts || {}
+    // 조각이 적으면 정밀하게, 많으면 성글게 — 사용자가 초 단위로 기다리는 도구다.
+    var n = pieces.length
+    var coarse = opts.step || (n <= 20 ? 2 : n <= 60 ? 3 : 4)
+    var tries = opts.tries || (n <= 20 ? 8 : n <= 60 ? 6 : 4)
+
+    // ★2단계: ①성근 격자로 여러 투입 순서를 훑고 ②이긴 순서만 촘촘한 격자로 다시 돈다.
+    //   step 이 품질을 좌우하는데(벤치마크 평균격차 step3 18.0 → step1 16.4%p) 전부 촘촘히 돌면
+    //   느리다. 순서 선택은 성글어도 대체로 같은 결론이 나오므로 마무리에만 정밀도를 쓴다.
+    var cands = buildOrders(pieces, tries)
+    var best = null, bestScore = Infinity, bestOrder = null
+    for (var i = 0; i < cands.length; i++) {
+      var r = nestOnce(cands[i], withStep(opts, coarse))
+      var s = scoreOf(r)
+      if (s < bestScore) { bestScore = s; best = r; bestOrder = cands[i] }
+    }
+    var fine = Math.max(1, coarse >> 1)
+    if (fine < coarse && bestOrder) {
+      var r2 = nestOnce(bestOrder, withStep(opts, fine))
+      if (scoreOf(r2) < bestScore) best = r2
+    }
+    return best
+  }
+
+  function withStep(opts, step) {
+    var o = {}
+    for (var k in opts) if (Object.prototype.hasOwnProperty.call(opts, k)) o[k] = opts[k]
+    o.step = step
+    return o
+  }
+
+  /** 투입 순서 후보 — 결정적 4종 + 나머지는 셔플. 셔플은 시드 고정(재현 가능해야 하네스가 성립한다). */
+  function buildOrders(pieces, tries) {
+    var byInk = function (p, q) { return inkOf(q) - inkOf(p) }
+    var byH = function (p, q) { return (q.H - p.H) || (q.W - p.W) }
+    var byW = function (p, q) { return (q.W - p.W) || (q.H - p.H) }
+    var out = [
+      pieces.slice(),                    // 입력 순서 — 맞물리게 배치된 원본을 존중
+      pieces.slice().sort(byInk),        // 면적 큰 것 먼저(정석)
+      pieces.slice().sort(byH),          // 키 큰 것 먼저
+      pieces.slice().sort(byW),          // 폭 넓은 것 먼저
+    ]
+    var seed = 12345
+    var rnd = function () { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff }
+    while (out.length < tries) {
+      var a = pieces.slice()
+      for (var i = a.length - 1; i > 0; i--) {
+        var j = Math.floor(rnd() * (i + 1))
+        var t = a[i]; a[i] = a[j]; a[j] = t
+      }
+      out.push(a)
+    }
+    return out.slice(0, Math.max(1, tries))
+  }
+
+  /** 낮을수록 좋다: 미배치 최우선 → 시트 수 → 사용 길이 */
+  function scoreOf(r) {
+    var used = 0
+    for (var i = 0; i < r.sheets.length; i++) used += r.sheets[i].usedH
+    return r.unplaced.length * 1e9 + r.sheets.length * 1e6 + used
+  }
+
+  function nestOnce(order, opts) {
+    var SW = opts.sheetW
+    var roll = !opts.sheetH
+    var SH = roll ? (opts.rollMaxH || 100000) : opts.sheetH
+    var step = opts.step || 4
+    var rots = opts.rotations || [0]
+    var maxSheets = opts.maxSheets || (roll ? 1 : 50)
+
+    var sheets = []
+    var unplaced = []
+    var remain = order.slice()
+
+    while (remain.length && sheets.length < maxSheets) {
+      var sheet = new Uint8Array(SW * SH)
+      var sky = new Int32Array(SW)
+      var placements = []
+      var next = []
+      var usedH = 0
+
+      for (var i = 0; i < remain.length; i++) {
+        var src = remain[i]
+        var best = null
+        for (var r = 0; r < rots.length; r++) {
+          var cand = trim(rotate(src, rots[r]))
+          if (!cand.W || cand.W > SW || cand.H > SH) continue
+          var pos = placeOne(sheet, SW, SH, sky, cand, step)
+          if (!pos) continue
+          // 회전 후보들 사이에서도 같은 기준(최고점 최소)으로 고른다
+          if (!best || pos.top < best.pos.top || (pos.top === best.pos.top && pos.x < best.pos.x)) {
+            best = { pos: pos, piece: cand, rot: rots[r] }
+          }
+        }
+        if (!best) { next.push(src); continue }
+        stamp(sheet, SW, best.piece, best.pos.x, best.pos.y)
+        updateSky(sky, best.piece, best.pos.x, best.pos.y)
+        placements.push({
+          id: src.id, x: best.pos.x, y: best.pos.y, rot: best.rot,
+          W: best.piece.W, H: best.piece.H,
+        })
+        if (best.pos.y + best.piece.H > usedH) usedH = best.pos.y + best.piece.H
+      }
+
+      if (!placements.length) { unplaced = remain.slice(); break }   // 아무것도 못 놓으면 무한루프 방지
+      var inkPx = 0
+      for (var s = 0; s < sheet.length; s++) inkPx += sheet[s]
+      sheets.push({ placements: placements, usedH: usedH, inkPx: inkPx })
+      remain = next
+    }
+    if (remain.length) for (var u = 0; u < remain.length; u++) unplaced.push(remain[u].id)
+
+    var totalArea = 0, totalInk = 0
+    for (var t = 0; t < sheets.length; t++) {
+      totalArea += SW * (roll ? sheets[t].usedH : SH)
+      totalInk += sheets[t].inkPx
+    }
+    return {
+      sheets: sheets,
+      unplaced: unplaced,
+      efficiency: totalArea ? (totalInk / totalArea) : 0,
+      roll: roll,
+    }
+  }
+
+  return { nest: nest, rotate: rotate, trim: trim, fits: fits, rot90: rot90 }
+})

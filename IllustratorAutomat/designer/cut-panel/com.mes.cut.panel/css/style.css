@@ -1,0 +1,66 @@
+/* MES 재단 CEP panel — A0 패널과 동일한 다크 테마(일러 UI 정합).
+   병합 시 스타일 충돌이 없도록 A0 의 규칙을 그대로 따른다(클래스명 동일). */
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0; width: 100%; height: 100%;
+  background: #323232; color: #d0d0d0;
+  font-family: "Malgun Gothic", "Segoe UI", -apple-system, sans-serif;
+  font-size: 12px; overflow: auto;
+}
+
+.panel { padding: 10px 12px; display: flex; flex-direction: column; gap: 7px; }
+.hidden { display: none; }
+
+.topbar { margin: 0; }
+.title { margin: 0; font-size: 13px; font-weight: 600; color: #ededed; }
+.title .ver { font-size: 10px; font-weight: 400; color: #7a7a7a; }
+
+.common { display: flex; flex-direction: column; gap: 7px; padding-bottom: 7px; border-bottom: 1px solid #454545; }
+
+.row { display: flex; align-items: center; gap: 8px; }
+.row label { color: #b0b0b0; }
+.row > label:first-child { min-width: 46px; }
+.rad { display: inline-flex; align-items: center; gap: 4px; color: #c8c8c8; }
+.unit { color: #8a8a8a; }
+.cfg { color: #7a7a7a; font-size: 11px; }
+.meas { color: #c8c8c8; flex: 1; }
+.hint { color: #7a7a7a; font-size: 11px; line-height: 1.45; }
+
+.sep { height: 1px; background: #454545; margin: 2px 0; }
+
+select, input[type="text"], input[type="number"] {
+  background: #444; color: #d8d8d8; border: 1px solid #565656;
+  border-radius: 3px; padding: 3px 6px; font-size: 12px;
+}
+input[type="number"] { width: 62px; }
+input:disabled { background: #3a3a3a; color: #777; border-color: #4a4a4a; }
+select:focus, input:focus { outline: none; border-color: #6e9fd8; }
+
+button {
+  background: #4a4a4a; color: #e0e0e0; border: 1px solid #5a5a5a;
+  border-radius: 3px; padding: 5px 10px; font-size: 12px; cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: #6e9fd8; }
+button:disabled { opacity: .45; cursor: default; }
+button.mini { padding: 3px 8px; font-size: 11px; }
+button.danger { border-color: #7a4a4a; color: #e0b0b0; }
+button.primary { background: #3d6ea8; border-color: #4d7fb8; color: #fff; font-weight: 600; padding: 7px 10px; }
+
+.diag { border: 1px solid #444; border-radius: 3px; padding: 4px 8px; background: #2b2b2b; }
+.diag summary { color: #9a9a9a; cursor: pointer; font-size: 11px; }
+.diag .row { margin-top: 6px; }
+
+.out {
+  background: #262626; border: 1px solid #444; border-radius: 3px;
+  padding: 6px 8px; min-height: 46px; max-height: 160px; overflow: auto;
+  color: #c0c0c0; font-size: 11px; line-height: 1.5; white-space: pre-wrap;
+}
+.out.err { color: #e0a0a0; border-color: #7a4a4a; }
+.out.ok { color: #a8d8a8; }
+
+/* 작업 그룹(단품 칼선 / 모아찍기) — 버튼이 어느 흐름에 속하는지 눈에 보이게 */
+.grp, .nest { border: 1px solid #444; border-radius: 3px; padding: 6px 8px; background: #2b2b2b; }
+.grp > summary, .nest > summary { color: #cfcfcf; cursor: pointer; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.grp[open] > summary, .nest[open] > summary { border-bottom: 1px solid #454545; padding-bottom: 5px; }
+.grp .row, .nest .row { margin-top: 6px; }

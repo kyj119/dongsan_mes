@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- CDP 원격 디버깅 포트. ⚠️ A0 패널이 8888 을 쓰므로 **겹치면 둘 중 하나가 디버깅 불가**가 된다.
+     손이 닿지 않는 디자이너 PC 진단의 유일 수단이라 삭제하지 않고 감사 대상으로 추적한다
+     (ia-jsx-audit.cjs PANEL_FILES · [[reference-cep-hotswap]]). -->
+<ExtensionList>
+  <Extension Id="com.mes.cut.panel.dock">
+    <HostList>
+      <Host Name="ILST" Port="8889" />
+    </HostList>
+  </Extension>
+</ExtensionList>

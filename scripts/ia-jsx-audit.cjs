@@ -51,7 +51,10 @@ const AS_JSON = args.includes('--json')
 // 에이전트가 BaseDirectory 에서 읽는 JSX (Program.cs Path.Combine(BaseDirectory, ...) 전수)
 const AGENT_JSX = ['SheetLayout.jsx', 'ProcessOrderItem.jsx', 'ExtractGroups.jsx', 'PackGroups.jsx']
 // 스텁이 $.evalFile 로 실행하는 Z: 정본 (디자이너 PC엔 스텁만 설치돼 있다)
-const DESIGNER_JSX = ['mes-core.jsx', 'mes-sheet.jsx', 'mes-a0-host.jsx']
+//   repo 에 실재하는 것만 감사한다 — 새 호스트(mes-cut-host.jsx 등)를 만들면 **자동으로 편입**된다.
+//   mes-lock.jsx = 두 호스트가 공유하는 잠금 모듈. 이게 낡으면 패널들이 서로의 작업을 못 본다.
+const DESIGNER_JSX = ['mes-core.jsx', 'mes-sheet.jsx', 'mes-a0-host.jsx', 'mes-cut-host.jsx', 'mes-lock.jsx']
+  .filter((f) => fs.existsSync(path.join(IA, 'designer', f)))
 // CEP 패널 배포 산출물.
 //   ⚠️ `.debug` 는 여태 "로컬 디버그 플래그"라며 제외돼 있었지만 **전제가 틀렸다**(2026-07-30 실측):
 //      install-a0-panel.ps1 이 폴더째 복사하므로 Z: 배포본과 각 PC 설치본에 **실제로 들어가 있다**.
@@ -67,12 +70,29 @@ const PANEL_FILES = [
   'jsx/host.jsx',
   '.debug',
 ]
-const PANEL_REPO = path.join(IA, 'designer', 'poc-a0-cep', 'com.mes.a0.panel')
-const PANEL_RUNTIME = path.join(Z_SCRIPTS, 'a0-panel', 'com.mes.a0.panel')
-// 축4: 이 PC에 실제로 설치돼 일러가 읽는 패널. install-a0-panel.ps1 의 설치 위치와 동일.
-const PANEL_INSTALLED = process.env.APPDATA
-  ? path.join(process.env.APPDATA, 'Adobe', 'CEP', 'extensions', 'com.mes.a0.panel')
-  : ''
+// 패널별 추가 파일 — 모든 패널이 같은 구성을 갖지는 않는다.
+//   재단 패널의 geometry.js 는 **칼선 기하 정본**이자 Node 하네스(cut:bench)의 검증 대상이다.
+//   여기 없으면 이 파일만 조용히 낡아 "하네스는 통과하는데 패널은 옛 코드"가 된다.
+//   A0 패널도 geometry.js 를 쓴다(묶음분리·자동감지의 잉크 실루엣, 2026-07-31) — **재단 패널의 사본**이다.
+const PANEL_EXTRA = { cut: ['js/geometry.js', 'js/nesting.js'], a0: ['js/geometry.js'] }
+// geometry.js 정본 = 재단 패널 것. Node 하네스(cut:bench·cut:nest)가 **그 파일을** 로드해 검증하므로
+// "검증한 코드 = 배포된 코드"가 성립한다. A0 사본이 갈라지면 그 등식이 조용히 깨진다(A0 쪽은
+// 검증된 적 없는 코드가 도는데 하네스는 계속 통과한다) → 바이트 동일을 강제한다.
+const GEOM_CANON = { panel: 'cut', rel: 'js/geometry.js', copies: ['a0'] }
+// ── 패널 레지스트리 ────────────────────────────────────────────────
+// 패널은 **여러 개**다(2026-07-31~): A0 패널 + 재단 패널(분리 개발 → 병합 예정).
+// 하드코딩 1개였을 때는 새 패널이 감사망 밖이라 조용히 드리프트했다 — 여기에 등록하면 축3·축4가 함께 붙는다.
+//   repo 폴더가 없으면 자동 skip(미착수 패널을 '없음'으로 실패시키지 않는다).
+// 정본 spec = docs/superpowers/specs/2026-07-31-cut-file-panel.md §5.2-③
+const PANELS = [
+  { id: 'a0', ext: 'com.mes.a0.panel', repo: path.join(IA, 'designer', 'poc-a0-cep', 'com.mes.a0.panel'), zSub: 'a0-panel', install: 'install-a0-panel.ps1' },
+  { id: 'cut', ext: 'com.mes.cut.panel', repo: path.join(IA, 'designer', 'cut-panel', 'com.mes.cut.panel'), zSub: 'cut-panel', install: 'install-cut-panel.ps1' },
+].filter((p) => fs.existsSync(p.repo))
+
+// 축4: 이 PC에 실제로 설치돼 일러가 읽는 패널. install-*.ps1 의 설치 위치와 동일.
+const installedDir = (ext) => (process.env.APPDATA
+  ? path.join(process.env.APPDATA, 'Adobe', 'CEP', 'extensions', ext)
+  : '')
 
 // CRLF·BOM 정규화 후 해시 — 수동 복사(robocopy·탐색기)와 git 체크아웃이 줄끝을 바꾸므로
 // 파일 크기·바이트 비교는 오판한다(memory feedback-ia-jsx-runtime-path).
@@ -100,9 +120,10 @@ function detectAgentDir() {
 }
 
 // 한 축 비교. 런타임 루트가 없으면(NAS 미연결 등) 'unreachable'.
-function compare(axis, label, files, repoRoot, runRoot) {
+//   panel = 패널 축일 때의 레지스트리 항목(조치 안내에 설치 스크립트명을 실어 보내기 위함).
+function compare(axis, label, files, repoRoot, runRoot, panel = null) {
   const rows = []
-  if (!fs.existsSync(runRoot)) return { axis, label, repoRoot, runRoot, unreachable: true, rows }
+  if (!fs.existsSync(runRoot)) return { axis, label, repoRoot, runRoot, panel, unreachable: true, rows }
   for (const rel of files) {
     const a = path.join(repoRoot, rel)
     const b = path.join(runRoot, rel.replace(/\//g, path.sep))
@@ -111,22 +132,73 @@ function compare(axis, label, files, repoRoot, runRoot) {
     const ha = hashOf(a), hb = hashOf(b)
     rows.push({ rel, state: ha === hb ? '동일' : '드리프트', repo: ha, run: hb, mtime: stamp(b) })
   }
-  return { axis, label, repoRoot, runRoot, unreachable: false, rows }
+  return { axis, label, repoRoot, runRoot, panel, unreachable: false, rows }
 }
 
 const agent = detectAgentDir()
 const axes = [
   compare('agent', `축1 에이전트 JSX ${agent.live ? '(실행 중 프로세스 실측)' : '(미실행 — 기본 빌드 경로 추정)'}`, AGENT_JSX, IA, agent.dir),
   compare('designer', '축2 디자이너 JSX (Z: 정본)', DESIGNER_JSX, path.join(IA, 'designer'), Z_SCRIPTS),
-  compare('panel', '축3 CEP 패널 배포본 (Z: 정본)', PANEL_FILES, PANEL_REPO, PANEL_RUNTIME),
-  compare('installed', '축4 CEP 패널 설치본 (이 PC · 일러가 실제로 읽는 것)', PANEL_FILES, PANEL_REPO, PANEL_INSTALLED || path.join(REPO, '__no_appdata__')),
+  ...PANELS.flatMap((p) => {
+    const files = PANEL_FILES.concat(PANEL_EXTRA[p.id] || [])
+    return [
+      compare('panel', `축3 CEP 패널 배포본 [${p.ext}] (Z: 정본)`, files, p.repo, path.join(Z_SCRIPTS, p.zSub, p.ext), p),
+      compare('installed', `축4 CEP 패널 설치본 [${p.ext}] (이 PC · 일러가 실제로 읽는 것)`, files, p.repo, installedDir(p.ext) || path.join(REPO, '__no_appdata__'), p),
+    ]
+  }),
 ]
 
-const drifted = axes.flatMap((ax) => ax.rows.filter((r) => r.state !== '동일').map((r) => ({ axis: ax.axis, ...r })))
+const drifted = axes.flatMap((ax) => ax.rows.filter((r) => r.state !== '동일').map((r) => ({ axis: ax.axis, panel: ax.panel, ...r })))
+
+// ── 사본 일치(repo 내부) — 축 비교와는 별개 문제다 ────────────────────────
+// 축1~4 는 "repo ↔ 런타임" 만 본다. 두 패널이 **repo 안에서** 같이 들고 있는 파일이
+// 갈라지는 것은 그 그물에 안 걸린다(양쪽 다 자기 런타임과는 일치하므로 전 축 ✅).
+const twins = (() => {
+  const canon = PANELS.find((p) => p.id === GEOM_CANON.panel)
+  if (!canon) return []
+  const src = path.join(canon.repo, GEOM_CANON.rel)
+  if (!fs.existsSync(src)) return []
+  const h = hashOf(src)
+  return GEOM_CANON.copies.map((id) => {
+    const p = PANELS.find((x) => x.id === id)
+    if (!p) return null
+    const f = path.join(p.repo, GEOM_CANON.rel)
+    if (!fs.existsSync(f)) return { from: canon.id, to: id, rel: GEOM_CANON.rel, state: '사본없음', canon: h, copy: '-' }
+    const hc = hashOf(f)
+    return { from: canon.id, to: id, rel: GEOM_CANON.rel, state: hc === h ? '동일' : '사본갈림', canon: h, copy: hc }
+  }).filter(Boolean)
+})()
+const twinBad = twins.filter((t) => t.state !== '동일')
+
+// ── ★같은 Extension ID 중복 등록 (2026-07-31 실측) ──────────────────────
+// CEP 는 extensions 아래에서 `CSXS/manifest.xml` 이 있는 폴더를 **전부** 확장으로 등록한다.
+// 설치 스크립트가 남긴 `.bak-*` 백업도 manifest·ExtensionBundleId 가 원본과 똑같아서
+// **같은 ID 가 여러 개**가 되고, CEP 가 그중 백업(구버전)을 고르는 일이 실제로 일어났다.
+//   증상 = 호스트만 새 버전(Z: 에서 evalFile 하므로)이고 **shell 만 옛 버전**으로 뜬다.
+//   (실측: host CUT-CEP-0.5.0 / shell 0.7.2 = `.bak-20260731-165851` 폴더의 값)
+// 축4 는 정식 폴더만 보므로 **드리프트 0 인데 화면은 구버전**이 된다 → 이 그물이 따로 필요하다.
+const dupExts = (() => {
+  const root = process.env.APPDATA && path.join(process.env.APPDATA, 'Adobe', 'CEP', 'extensions')
+  if (!root || !fs.existsSync(root)) return []
+  const byId = new Map()
+  for (const name of fs.readdirSync(root)) {
+    const mf = path.join(root, name, 'CSXS', 'manifest.xml')
+    if (!fs.existsSync(mf)) continue
+    let id = null
+    try { id = (/ExtensionBundleId="([^"]+)"/.exec(fs.readFileSync(mf, 'utf8')) || [])[1] || null } catch { /* 읽기 실패는 건너뛴다 */ }
+    if (!id) continue
+    if (!byId.has(id)) byId.set(id, [])
+    byId.get(id).push(name)
+  }
+  const known = new Set(PANELS.map((p) => p.ext))
+  return [...byId.entries()]
+    .filter(([id, dirs]) => known.has(id) && dirs.length > 1)
+    .map(([id, dirs]) => ({ id, dirs, extras: dirs.filter((d) => d !== id) }))
+})()
 
 if (AS_JSON) {
-  console.log(JSON.stringify({ agentDir: agent.dir, agentLive: agent.live, axes, drifted }, null, 2))
-  process.exit(drifted.length ? 1 : 0)
+  console.log(JSON.stringify({ agentDir: agent.dir, agentLive: agent.live, axes, drifted, twins, twinBad, dupExts }, null, 2))
+  process.exit(drifted.length || twinBad.length || dupExts.length ? 1 : 0)
 }
 
 console.log('\nIA 스크립트 런타임 드리프트 감사\n' + '='.repeat(60))
@@ -140,10 +212,39 @@ for (const ax of axes) {
   }
 }
 
-if (!drifted.length) {
+// 사본 갈림은 축 드리프트와 **독립적으로** 보고한다 — 전 축 ✅ 여도 이건 살아있을 수 있다.
+if (twinBad.length) {
+  console.log(`\n❌ repo 사본 불일치 ${twinBad.length}건 — 같은 파일을 둘이 들고 있는데 내용이 다릅니다.`)
+  for (const t of twinBad) {
+    console.log(`  ${t.rel}  정본[${t.from}] ${t.canon}  사본[${t.to}] ${t.copy}  (${t.state})`)
+  }
+  const cP = PANELS.find((p) => p.id === GEOM_CANON.panel)
+  const dP = PANELS.find((p) => p.id === GEOM_CANON.copies[0])
+  if (cP && dP) {
+    console.log('  조치 — 정본을 사본으로 덮어쓴 뒤 축3·축4를 다시 배포:')
+    console.log(`    cp "${path.join(cP.repo, GEOM_CANON.rel)}" "${path.join(dP.repo, GEOM_CANON.rel)}"`)
+  }
+}
+
+// ★중복 확장은 축 드리프트와 **독립**이다 — 정식 폴더가 최신이어도(전 축 ✅) 일러는 백업을 읽을 수 있다.
+if (dupExts.length) {
+  console.log(`\n❌ CEP 확장 ID 중복 ${dupExts.length}건 — 일러가 **어느 폴더를 읽을지 알 수 없습니다.**`)
+  console.log('  CEP 는 manifest 가 있는 폴더를 전부 등록하는데, `.bak-*` 백업도 ID 가 같습니다.')
+  console.log('  증상 = 호스트만 새 버전이고 **shell 만 옛 버전**으로 뜬다(2026-07-31 실측: host 0.5.0 / shell 0.7.2).')
+  for (const d of dupExts) {
+    console.log(`  ${d.id}  →  폴더 ${d.dirs.length}개`)
+    for (const x of d.extras) console.log(`      군더더기: ${x}`)
+  }
+  console.log('  조치 — extensions **밖으로** 옮기고 일러 재시작:')
+  console.log('    powershell -Command "$e=Join-Path $env:APPDATA \'Adobe\\CEP\\extensions\'; $b=Join-Path $env:APPDATA \'Adobe\\CEP\\_panel_backups\'; New-Item -ItemType Directory -Force $b | Out-Null; Get-ChildItem $e -Directory -Filter \'*.bak-*\' | Move-Item -Destination $b -Force"')
+  console.log('  (설치 스크립트는 2026-07-31 부터 백업을 extensions 밖에 만든다 — 옛 백업만 남아 있는 상태다)')
+}
+
+if (!drifted.length && !twinBad.length && !dupExts.length) {
   console.log('\n✅ 드리프트 없음 — repo와 런타임이 일치합니다.\n')
   process.exit(0)
 }
+if (!drifted.length) process.exit(1)
 
 console.log(`\n❌ 드리프트 ${drifted.length}건`)
 const agentDrift = drifted.filter((d) => d.axis === 'agent')
@@ -162,14 +263,23 @@ if (zDrift.length) {
   if (zOnly.length) {
     console.log('\n[축2·축3 조치] Z: 교체. 축2(로직)는 스텁 evalFile 이라 전 PC 즉시 반영 — 자동 동기화하지 않는다.')
     console.log('  백업 → 복사 → 재감사 순서로 수동 진행:')
-    for (const d of zOnly) console.log(`    ${d.rel}  (${d.state})`)
+    for (const d of zOnly) console.log(`    ${d.panel ? `[${d.panel.ext}] ` : ''}${d.rel}  (${d.state})`)
   }
   if (inst.length) {
     console.log('\n[축4 조치] 이 PC 패널 설치본이 낡았다 = 껍데기 수정이 일러에 반영되지 않는다.')
     console.log('  설치 스크립트 재실행(관리자 권한 불요, 기존은 자동 백업):')
-    console.log('    powershell -ExecutionPolicy Bypass -File "Z:\\DESIGNS\\IA-등록\\_scripts\\install-a0-panel.ps1"')
+    // 패널이 여러 개이므로 드리프트가 난 패널의 설치 스크립트만 안내한다.
+    const byPanel = new Map()
+    for (const d of inst) {
+      const key = d.panel ? d.panel.ext : '(unknown)'
+      if (!byPanel.has(key)) byPanel.set(key, { install: d.panel ? d.panel.install : 'install-a0-panel.ps1', rows: [] })
+      byPanel.get(key).rows.push(d)
+    }
+    for (const [ext, g] of byPanel) {
+      console.log(`    [${ext}] powershell -ExecutionPolicy Bypass -File "${Z_SCRIPTS}\\${g.install}"`)
+      for (const d of g.rows) console.log(`        ${d.rel}  (${d.state})`)
+    }
     console.log('  → 실행 후 일러스트레이터 재시작(패널 재로드) 필요.')
-    for (const d of inst) console.log(`    ${d.rel}  (${d.state})`)
   }
 }
 

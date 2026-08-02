@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- MES 재단 패널 — 칼선(재단 파일) 제작.
+     A0 패널(com.mes.a0.panel)과 **번들 ID가 다르므로 동시 설치·동시 표시된다**(충돌 0).
+     분리 개발 후 A0 탭으로 병합 예정 — spec docs/superpowers/specs/2026-07-31-cut-file-panel.md §5 -->
+<ExtensionManifest Version="8.0" ExtensionBundleId="com.mes.cut.panel" ExtensionBundleVersion="1.0.0"
+  ExtensionBundleName="MES Cut Panel" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <ExtensionList>
+    <Extension Id="com.mes.cut.panel.dock" Version="1.0.0" />
+  </ExtensionList>
+  <ExecutionEnvironment>
+    <HostList>
+      <Host Name="ILST" Version="[23.0,99.9]" />
+    </HostList>
+    <LocaleList>
+      <Locale Code="All" />
+    </LocaleList>
+    <RequiredRuntimeList>
+      <RequiredRuntime Name="CSXS" Version="8.0" />
+    </RequiredRuntimeList>
+  </ExecutionEnvironment>
+  <DispatchInfoList>
+    <Extension Id="com.mes.cut.panel.dock">
+      <DispatchInfo>
+        <Resources>
+          <MainPath>./index.html</MainPath>
+          <ScriptPath>./jsx/host.jsx</ScriptPath>
+          <CEFCommandLine>
+            <Parameter>--allow-file-access</Parameter>
+            <Parameter>--allow-file-access-from-files</Parameter>
+          </CEFCommandLine>
+        </Resources>
+        <Lifecycle>
+          <AutoVisible>true</AutoVisible>
+        </Lifecycle>
+        <UI>
+          <Type>Panel</Type>
+          <Menu>MES Cut Panel</Menu>
+          <!-- A0 의 교훈(2026-07-30): 기본 크기가 콘텐츠보다 작으면 실행 버튼과 결과창이 화면 밖으로
+               밀려 성공 여부조차 알 수 없다. 처음부터 콘텐츠가 들어가는 크기로 시작한다. -->
+          <Geometry>
+            <Size>
+              <Height>560</Height>
+              <Width>340</Width>
+            </Size>
+            <MinSize>
+              <Height>320</Height>
+              <Width>300</Width>
+            </MinSize>
+            <MaxSize>
+              <Height>1200</Height>
+              <Width>800</Width>
+            </MaxSize>
+          </Geometry>
+        </UI>
+      </DispatchInfo>
+    </Extension>
+  </DispatchInfoList>
+</ExtensionManifest>
