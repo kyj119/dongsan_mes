@@ -610,6 +610,38 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     !/mesCut_vecSilhouette[\s\S]*?(simplify|fitCurves)\s*\(/.test(hostSrc))
 }
 
+// ── 3m ★도련 — 칼선 바깥까지 인쇄 (spec §2.11) ────────────────────────
+// 실측: 인쇄 − 칼선 = **3mm/변**(806−800 · 1066−1060 · ~3.4). 10mm 는 돔보 자리다(중심7+반지름3).
+{
+  const p = await openPanel({ ping: 'CUT-CEP-0.7.0', vecCut: 'ok;paths=1;anchors=8;bleed=clip' })
+  ok('3m UI 도련 칸·기본 3mm', await p.evaluate(() => {
+    const el = document.getElementById('bleed')
+    return !!el && el.value === '3'
+  }))
+  await p.click('#btnMakeCut'); await p.waitForTimeout(300)
+  const calls = await p.evaluate(() => window.__calls.join('\n'))
+  ok('3m vecCut 에 도련을 넘긴다', /mesCut_vecCut\(3,\s*(true|false),\s*3\)/.test(calls), calls.split('\n').filter((l) => l.includes('vecCut')).join(' | '))
+  // ★두 방식은 품질이 다르다(clip=무손실 / scale=근사) — 어느 쪽인지 반드시 말해야 한다
+  ok('3m 클립 방식을 알린다', /클립을 넓혀/.test(await txt(p, '#out')), await txt(p, '#out'))
+  await p.close()
+}
+{
+  const p = await openPanel({ ping: 'CUT-CEP-0.7.0', vecCut: 'ok;paths=1;anchors=8;bleed=scale' })
+  await p.click('#btnMakeCut'); await p.waitForTimeout(300)
+  ok('3m 확대 폴백이면 빌 수 있다고 경고', /링 일부가 빌 수 있습니다/.test(await txt(p, '#out')), await txt(p, '#out'))
+  await p.close()
+}
+{
+  const hostSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
+  ok('3m 호스트에 도련 2경로', /function mesCut_vecBleed\(/.test(hostSrc) && /function mesCut_vecGrowClips\(/.test(hostSrc))
+  // ★클립 확장을 **먼저** 시도해야 한다 — 실물이 하는 방식이고 왜곡·빈 곳이 없다
+  ok('3m 클립 확장을 먼저 시도', /mesCut_vecGrowClips\(items[\s\S]{0,80}\n\s*if \(grown > 0\) return/.test(hostSrc))
+  // ★넓히는 양 = 여백 + 도련. 도련만 쓰면 인쇄 끝이 칼선과 겹쳐 도련이 0 이 된다(실측에서 걸림)
+  ok('3m 클립은 여백+도련 만큼 넓힌다', /mesCut_vecGrowClips\(items, offsetMm \+ bleedMm\)/.test(hostSrc))
+  // ★사각 클립만 — 임의 형상 클립을 건드리면 clipping 플래그가 깨질 수 있다
+  ok('3m 사각 클립만 넓힌다', /pathPoints\.length !== 4\) continue/.test(hostSrc))
+}
+
 // ── 3l ★작업 폴더 산출 — EPS + DXF 같은 이름 쌍 (spec §2.7) ──────────
 // 실물 작업 폴더는 판마다 `(자재+후가공)품목(<W>x<H>-<N>장)` 로 EPS·DXF 를 쌍으로 둔다.
 // 규격은 **판 전체 크기이고 단위는 cm** — 파일명 `103x206` ↔ EPS 1030×2060mm 로 확인했다.

@@ -57,6 +57,17 @@
       <span class="cfg">그림 바깥으로 벌릴 거리</span>
     </div>
     <div class="row">
+      <label for="bleed">도련</label>
+      <input id="bleed" type="number" value="3" min="0" max="30" step="0.5" />
+      <span class="unit">mm</span>
+      <span class="cfg">칼선 <b>바깥</b>까지 더 인쇄</span>
+    </div>
+    <div class="hint" id="bleedHint">
+      재단 오차를 흡수하려고 <b>칼선보다 더 크게 인쇄</b>하는 영역입니다 — 실물 실측 <b>3mm</b>.
+      아트가 <b>클립 그룹</b>이면 클립을 넓혀 원본을 더 드러냅니다(왜곡·빈 곳 없음).
+      클립이 없으면 사본을 늘려 채우는데, <b>뾰족한 형상은 링의 일부가 빌 수 있습니다</b>. 0 이면 만들지 않습니다.
+    </div>
+    <div class="row">
       <label>방식</label>
       <label class="rad"><input type="radio" name="mode" value="bbox" checked /> 사각(bbox)</label>
       <label class="rad"><input type="radio" name="mode" value="silhouette" /> 실루엣</label>

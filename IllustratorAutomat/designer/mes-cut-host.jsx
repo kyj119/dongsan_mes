@@ -735,7 +735,7 @@ function mesCut_vecCropClip(doc, item) {
  * @param fillClosed 선 도안(면 0·닫힌 선)이면 true — **사본에만** 채우기를 켠다
  * @returns {n, anchors, err}
  */
-function mesCut_vecSilhouette(doc, items, cutLayer, offsetMm, fillClosed) {
+function mesCut_vecSilhouette(doc, items, cutLayer, offsetMm, fillClosed, styleMode) {
     var i, s;
     var dups = [];
     for (i = 0; i < items.length; i++) {
@@ -808,9 +808,124 @@ function mesCut_vecSilhouette(doc, items, cutLayer, offsetMm, fillClosed) {
             try { for (var g = 0; g < it.pageItems.length; g++) style(it.pageItems[g]); } catch (e4) {}
         }
     }
-    for (i = 0; i < flat.length; i++) style(flat[i]);
-    if (!out.n) out.err = '실루엣 생성 실패';
+    if (styleMode !== 'none') for (i = 0; i < flat.length; i++) style(flat[i]);
+    out.items = flat;
+    if (!flat.length) out.err = '실루엣 생성 실패';
     return out;
+}
+
+/**
+ * ★도련 — 칼선 **바깥**까지 그림이 차게 만든다 (2026-08-02 실측 기반).
+ *
+ * **왜 이 방식인가**: 사내 기존 도련 자산 둘 다 **색을 고르지 않는다**. 그림을 늘려서 채운다.
+ *     `SheetLayout` 도련 v5      = Design 그룹의 **클립 사각을 밖으로 밀어** 원본이 더 드러나게
+ *     `ProcessOrderItem` edge_strip = 가장자리 **1mm 띠를 복제해 늘려** 바깥에 붙임
+ *   둘 다 **사각 전용**이라 이형 실루엣에는 못 쓴다. 여기서는 같은 원리를 이형으로 옮긴다 —
+ *   **아트 사본을 도련 경계까지 늘리고 그 경계로 클리핑해 원본 뒤에 깐다.**
+ *   (SheetLayout 도 클립을 못 찾으면 스케일 확대로 폴백한다 = 같은 수단)
+ *
+ * **수치**: 실물 3건 실측에서 인쇄 − 칼선 = **3mm/변**(806−800, 1066−1060, ~3.4).
+ *   ⚠️ 인쇄물이 칼선보다 **10mm** 크다는 값은 **돔보 자리**다(중심 7 + 반지름 3). 도련이 아니다.
+ *
+ * @param bleedMm 칼선 바깥으로 더 채울 거리 · @param offsetMm 칼선 위치(디자인→칼선)
+ * @returns {ok:bool, err}
+ */
+/**
+ * 클립된 그룹의 **사각 클립을 바깥으로 밀어** 원본이 더 드러나게 한다(도련).
+ * `SheetLayout.jsx:259~` `expandClipInGroup` 과 같은 방식 — 사내에서 검증된 수단이다.
+ * ⚠️ **사각 4점 클립만** 다룬다. 임의 형상 클립에 효과를 걸면 clipping 플래그가 깨질 수 있어
+ *    건드리지 않고 호출자가 확대 폴백으로 내려간다.
+ * @returns 넓힌 클립 개수
+ */
+function mesCut_vecGrowClips(items, bleedMm) {
+    var n = 0, PT = MESCUT_PT_PER_MM, b = bleedMm * PT;
+    function walk(it) {
+        var t;
+        try { t = it.typename; } catch (e) { return; }
+        if (t !== 'GroupItem') return;
+        var clipped = false;
+        try { clipped = !!it.clipped; } catch (e0) {}
+        if (clipped) {
+            for (var c = 0; c < it.pageItems.length; c++) {
+                var ch = it.pageItems[c], isC = false;
+                try { isC = ch.clipping; } catch (e1) {}
+                if (!isC || ch.typename !== 'PathItem') continue;
+                try {
+                    if (!ch.closed || ch.pathPoints.length !== 4) continue;   // 사각만
+                    var g = ch.geometricBounds;   // [L,T,R,B]
+                    ch.setEntirePath([[g[0] - b, g[1] + b], [g[2] + b, g[1] + b],
+                        [g[2] + b, g[3] - b], [g[0] - b, g[3] - b]]);
+                    n++;
+                } catch (e2) {}
+            }
+        }
+        try { for (var k = 0; k < it.pageItems.length; k++) walk(it.pageItems[k]); } catch (e3) {}
+    }
+    for (var i = 0; i < items.length; i++) walk(items[i]);
+    return n;
+}
+
+function mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed) {
+    if (!(bleedMm > 0)) return { ok: false, err: '도련 0' };
+    var i;
+    // ★①먼저 **클립 확장**을 시도한다 — 실물이 하는 방식이다.
+    //   실측(음악사랑 82x132): 클립 806×1306 안에 3134×2056 짜리 원본이 들어 있었다.
+    //   즉 도련은 **합성한 것이 아니라 원래 있던 그림을 3mm 더 드러낸 것**이다.
+    //   클립을 넓히면 왜곡도 빈 곳도 없다(SheetLayout 도련 v5 와 같은 수단).
+    // ★넓히는 양은 **여백 + 도련**이다 — 인쇄는 칼선(=잉크+여백)보다 도련만큼 더 나가야 한다.
+    //   여기서 bleedMm 만 쓰면 인쇄 끝이 칼선과 겹쳐 **도련이 0** 이 된다(2026-08-02 실측에서 걸림).
+    var grown = mesCut_vecGrowClips(items, offsetMm + bleedMm);
+    if (grown > 0) return { ok: true, mode: 'clip', grown: grown, err: null };
+    // ① 도련 경계 = 실루엣 + (여백 + 도련). 칼선과 **같은 엔진**이라 모양이 정확히 겹친다.
+    var layer = null;
+    try { layer = items[0].layer; } catch (e0) {}
+    if (!layer) layer = doc.activeLayer;
+    var sil = mesCut_vecSilhouette(doc, items, layer, offsetMm + bleedMm, fillClosed, 'none');
+    if (!sil || !sil.items || !sil.items.length) return { ok: false, err: '도련 경계 생성 실패' };
+
+    // ② 경계가 여러 개면 **하나의 compound** 로 묶는다 — 클리핑 마스크는 한 개체만 쓸 수 있다
+    doc.selection = null;
+    for (i = 0; i < sil.items.length; i++) { try { sil.items[i].selected = true; } catch (e1) {} }
+    if (sil.items.length > 1) app.executeMenuCommand('compoundPath');
+    var clipShape = null;
+    try { clipShape = doc.selection[0]; } catch (e2) {}
+    if (!clipShape) return { ok: false, err: '도련 경계 선택 실패' };
+    var cb = clipShape.geometricBounds;
+
+    // ③ 아트 사본을 도련 경계까지 늘린다(비균일) — 링 바깥만 보이므로 왜곡은 그 안에서만 생긴다
+    var dups = [];
+    for (i = 0; i < items.length; i++) {
+        try { dups.push(items[i].duplicate(layer, ElementPlacement.PLACEATEND)); } catch (e3) {}
+    }
+    if (!dups.length) { try { clipShape.remove(); } catch (e4) {} return { ok: false, err: '아트 복제 실패' }; }
+    doc.selection = null;
+    for (i = 0; i < dups.length; i++) { try { dups[i].selected = true; } catch (e5) {} }
+    if (dups.length > 1) app.executeMenuCommand('group');
+    var artCopy = null;
+    try { artCopy = doc.selection[0]; } catch (e6) {}
+    if (!artCopy) return { ok: false, err: '사본 그룹 실패' };
+    var ab = artCopy.geometricBounds;
+    var aw = ab[2] - ab[0], ah = ab[1] - ab[3];
+    if (aw > 0 && ah > 0) {
+        var sx = ((cb[2] - cb[0]) / aw) * 100, sy = ((cb[1] - cb[3]) / ah) * 100;
+        // 중심을 맞춘 뒤 늘린다 — 안 맞추면 한쪽으로 쏠려 반대쪽 링이 빈다
+        try { artCopy.resize(sx, sy, true, true, true, true, 100, Transformation.CENTER); } catch (e7) {}
+        var nb = artCopy.geometricBounds;
+        try {
+            artCopy.translate(((cb[0] + cb[2]) / 2) - ((nb[0] + nb[2]) / 2),
+                ((cb[1] + cb[3]) / 2) - ((nb[1] + nb[3]) / 2));
+        } catch (e8) {}
+    }
+    // ④ 경계로 클리핑 — 마스크는 **맨 위** 개체가 된다
+    doc.selection = null;
+    try { clipShape.selected = true; artCopy.selected = true; } catch (e9) {}
+    try { clipShape.zOrder(ZOrderMethod.BRINGTOFRONT); } catch (e10) {}
+    app.executeMenuCommand('makeMask');
+    var bleedGroup = null;
+    try { bleedGroup = doc.selection[0]; } catch (e11) {}
+    // ⑤ 원본 **뒤**로 — 도련은 원본에 가려야 한다(원본이 위)
+    try { if (bleedGroup) bleedGroup.zOrder(ZOrderMethod.SENDTOBACK); } catch (e12) {}
+    return { ok: !!bleedGroup, mode: 'scale', err: bleedGroup ? null : '클리핑 실패' };
 }
 
 /** 선택이 벡터 칼선으로 갈 수 있는가 — 'ok' | 'fallback;reason=..' | 'ERROR ..' */
@@ -830,7 +945,7 @@ function mesCut_vecProbe() {
  * 반환 'ok;paths=<n>;anchors=<n>' | 'fallback;reason=<사유>' | 'ERROR ..'
  * ⚠️ 기존 '재단선' 레이어 내용은 지우지 않는다(수동 선 보호) — 재실행 누적은 패널이 알린다.
  */
-function mesCut_vecCut(offsetMm, fillClosed) {
+function mesCut_vecCut(offsetMm, fillClosed, bleedMm) {
     if (app.documents.length === 0) return 'ERROR 문서 없음';
     var doc = app.activeDocument;
     var sel = doc.selection;
@@ -852,10 +967,16 @@ function mesCut_vecCut(offsetMm, fillClosed) {
     try { r = mesCut_vecSilhouette(doc, items, cutLayer, offsetMm, fillClosed); }
     catch (e) { return 'ERROR vecCut: ' + e; }
     if (r.err) return 'ERROR ' + r.err;
+    // ★도련 — 칼선을 만든 **뒤**에 한다(칼선 레이어가 이미 정리된 상태여야 실루엣이 안 섞인다)
+    var bl = null;
+    if (bleedMm > 0) {
+        try { doc.selection = null; for (i = 0; i < items.length; i++) items[i].selected = true; } catch (eB0) {}
+        try { bl = mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed); } catch (eB) { bl = { ok: false, err: '' + eB }; }
+    }
     // 원래 선택을 되돌린다 — 연속 실행이 자연스럽도록
     try { doc.selection = null; for (i = 0; i < items.length; i++) items[i].selected = true; } catch (eR) {}
     try { if (prevLayer && prevLayer !== cutLayer) doc.activeLayer = prevLayer; } catch (eR2) {}
-    return 'ok;paths=' + r.n + ';anchors=' + r.anchors;
+    return 'ok;paths=' + r.n + ';anchors=' + r.anchors + ';bleed=' + (bl ? (bl.ok ? (bl.mode || '1') : '0') : '-');
 }
 
 /**
