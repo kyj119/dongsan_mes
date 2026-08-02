@@ -771,6 +771,28 @@ function mesCut_vecSilhouette(doc, items, cutLayer, offsetMm, fillClosed) {
         app.executeMenuCommand('Live Pathfinder Add');
         app.executeMenuCommand('expandStyle');
     }
+    // ★그룹을 풀어 레이어 직속으로 옮긴다 — **DXF 때문이다.**
+    //   그룹인 채로 내보내면 일러가 `BLOCK` + `INSERT` 로 감싸고 `ENTITIES` 섹션이 사실상 빈다
+    //   (실측 2026-08-02: 벡터 칼선 9개 → ENTITIES 22줄 · SPLINE 은 전부 BLOCKS 안.
+    //    같은 파일을 래스터로 뽑았을 땐 SPLINE 이 ENTITIES 에 직접 있었다 = 2082줄).
+    //   블록을 못 읽는 재단기에서는 **칼선이 하나도 없는 파일**로 보인다.
+    //   compound path 는 풀지 않는다(구멍이 사라진다) — 그룹만 벗긴다.
+    function unwrap(it, depth) {
+        var t;
+        try { t = it.typename; } catch (e) { return; }
+        if (t !== 'GroupItem' || depth > 8) { flat.push(it); return; }
+        var kids = [];
+        try { for (var c = 0; c < it.pageItems.length; c++) kids.push(it.pageItems[c]); } catch (e1) {}
+        for (var q = kids.length - 1; q >= 0; q--) {
+            try { kids[q].move(cutLayer, ElementPlacement.PLACEATEND); } catch (e2) {}
+            unwrap(kids[q], depth + 1);
+        }
+        try { it.remove(); } catch (e3) {}
+    }
+    var flat = [];
+    var sel2 = doc.selection;
+    for (i = 0; sel2 && i < sel2.length; i++) unwrap(sel2[i], 0);
+
     var mag = mesCut_magenta();
     var out = { n: 0, anchors: 0, err: null };
     function style(it) {
@@ -786,8 +808,7 @@ function mesCut_vecSilhouette(doc, items, cutLayer, offsetMm, fillClosed) {
             try { for (var g = 0; g < it.pageItems.length; g++) style(it.pageItems[g]); } catch (e4) {}
         }
     }
-    var res = doc.selection;
-    for (i = 0; res && i < res.length; i++) style(res[i]);
+    for (i = 0; i < flat.length; i++) style(flat[i]);
     if (!out.n) out.err = '실루엣 생성 실패';
     return out;
 }
