@@ -1153,7 +1153,18 @@ var MESCUT_DOMBO_DIR_MM = 60;
 var MESCUT_DOMBO_MAXGAP_MM = 500;
 
 /** 조각이 피해야 할 사방 여백(mm) — 패널이 이 값만큼 배치 영역을 줄인다. */
-function mesCut_domboMargin() { return MESCUT_DOMBO_CORNER_MM + MESCUT_DOMBO_DIAM_MM; }
+/**
+ * 조각이 피해야 할 사방 여백(mm) = 돔보 **원이 실제로 차지하는 만큼**.
+ *
+ * ★`코너 + 지름`(23mm)이 아니라 `코너 + 반지름`(20mm)이다 — 돔보 중심은 코너에서 17mm 바깥이고
+ *   원은 거기서 **반지름 3mm** 만 더 뻗는다. 지름을 더하면 아무것도 없는 **3mm 를 매 변마다 버린다**.
+ *   실물 생산 파일도 원 바깥끝이 판 가장자리에 **정확히 접한다**(2026-08-02 실측 30쌍:
+ *   돔보 중심 = 칼선 + 7 · 판 = 칼선 + 10 = 중심 + 반지름).
+ *   변당 3mm · 양변 6mm 절감이고 돔보는 그대로 판 안에 완전히 들어간다(위험 0).
+ *
+ * ⚠️ 패널 `DOMBO_MARGIN_MM` 과 **같은 값이어야 한다** — 어긋나면 조각이 돔보를 덮거나 시트를 넘는다.
+ */
+function mesCut_domboMargin() { return MESCUT_DOMBO_CORNER_MM + MESCUT_DOMBO_DIAM_MM / 2; }
 
 /**
  * 시트 문서에 재단선(둘레) + 돔보를 그린다. 디자인 영역 = 아트보드에서 margin 만큼 안쪽.

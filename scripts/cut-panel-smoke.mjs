@@ -610,6 +610,20 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     !/mesCut_vecSilhouette[\s\S]*?(simplify|fitCurves)\s*\(/.test(hostSrc))
 }
 
+// ── 3n ★돔보 여백 = 코너 + 반지름 (2026-08-03) ────────────────────────
+// 지름을 더하면 아무것도 없는 3mm 를 매 변마다 버린다. 실물도 원이 판 끝에 접한다.
+{
+  const hostSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
+  const panelSrc = fs.readFileSync(path.join(PANEL_DIR, 'js/main.js'), 'utf8')
+  ok('3n 호스트 여백 = 코너 + 반지름', /MESCUT_DOMBO_CORNER_MM \+ MESCUT_DOMBO_DIAM_MM \/ 2/.test(hostSrc))
+  // ★둘이 어긋나면 조각이 돔보를 덮거나 시트를 넘는다 — 값을 직접 대조한다
+  const corner = +(/MESCUT_DOMBO_CORNER_MM = (\d+)/.exec(hostSrc) || [])[1]
+  const diam = +(/MESCUT_DOMBO_DIAM_MM = (\d+)/.exec(hostSrc) || [])[1]
+  const panelMargin = +(/DOMBO_MARGIN_MM = (\d+)/.exec(panelSrc) || [])[1]
+  ok('3n 패널·호스트 여백 값 일치', corner + diam / 2 === panelMargin, `host ${corner}+${diam}/2=${corner + diam / 2} vs panel ${panelMargin}`)
+  ok('3n 여백이 20mm', panelMargin === 20, String(panelMargin))
+}
+
 // ── 3m ★도련 — 칼선 바깥까지 인쇄 (spec §2.11) ────────────────────────
 // 실측: 인쇄 − 칼선 = **3mm/변**(806−800 · 1066−1060 · ~3.4). 10mm 는 돔보 자리다(중심7+반지름3).
 {
