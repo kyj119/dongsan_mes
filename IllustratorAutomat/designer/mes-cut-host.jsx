@@ -886,10 +886,16 @@ function mesCut_exportDxf(outPath) {
         if (!u0) return 'ERROR 재단선 범위 계산 실패';
         tmp = app.documents.add(DocumentColorSpace.CMYK, u0[2] - u0[0], u0[1] - u0[3]);
         var lay = tmp.layers[0];
-        lay.name = MESCUT_CUT_LAYER;              // DXF 레이어명을 규약대로 유지
+        lay.name = MESCUT_DXF_CUT_LAYER;
+        // ★칼선과 마크(돔보)를 **다른 레이어**로 나눈다 — 실물 생산 DXF 12/12 가 그렇다(§2.5):
+        //   `Layer 2`/`Layer 3` · `재단파일`/`재단마크` · `cut`/`레이어 3`.
+        //   이름 규약은 없고(색·선종·선폭도 전부 동일) **분리 자체가 규약**이다.
+        //   문서 안에서는 계속 `재단선` 하나로 둔다 — 작업자에게 레이어를 늘리지 않기 위해서다.
+        var markLay = tmp.layers.add();
+        markLay.name = MESCUT_DXF_MARK_LAYER;
         app.activeDocument = doc;                  // ★복제는 원본이 active 일 때만 동작한다(rasterize 와 같은 함정)
         for (var d2 = 0; d2 < items.length; d2++) {
-            try { items[d2].duplicate(lay, ElementPlacement.PLACEATBEGINNING); } catch (eD) {}
+            try { items[d2].duplicate(mesCut_isMarkItem(items[d2]) ? markLay : lay, ElementPlacement.PLACEATBEGINNING); } catch (eD) {}
         }
         app.activeDocument = tmp;
         var u1 = mesCut_unionOf(mesCut_topItems(tmp));
@@ -898,7 +904,10 @@ function mesCut_exportDxf(outPath) {
 
         var opts = new ExportOptionsAutoCAD();
         opts.exportFileFormat = AutoCADExportFileFormat.DXF;
-        opts.version = AutoCADCompatibility.AutoCADRelease21;
+        // ★AC1015(AutoCAD 2000) — 실물 생산 DXF **12/12 가 전부 AC1015** 다(2026-08-02 전수 실측).
+        //   Release21 은 AC1021 로 나가 사내 파일 중 유일하게 다른 버전이 된다. 재단 소프트웨어가
+        //   구형이면 못 읽을 수 있고, 낮춰서 잃는 것은 없다(13/14/15 셋 다 AC1015·내용 동일 확인).
+        opts.version = AutoCADCompatibility.AutoCADRelease15;
         opts.unit = AutoCADUnit.Millimeters;
         opts.scaleLineweights = false;
         try { opts.exportOption = AutoCADExportOption.MaximumEditability; } catch (eOpt) {}
@@ -988,6 +997,28 @@ function mesCut_rasterizeItem(idx, mmPerPx, padMm, fillClosed) {
 // ⚠️ A0 는 돔보를 넣으며 **아트보드를 23mm 확장**한다. 네스팅은 그러면 안 된다 —
 //    롤/평판은 폭이 고정이라 확장하는 순간 규격을 넘는다. 대신 **조각 배치 영역을 안쪽으로 줄인다**
 //    (패널이 usable 폭으로 배치하고 좌표에 margin 을 더해 보낸다).
+/**
+ * DXF 에서 **마크(돔보) 레이어**로 보낼 것인가 — 지름 6mm 원.
+ * 실물 파일은 마크를 칼선과 다른 레이어에 둔다(§2.5). 판정은 **크기**로 한다 —
+ * 돔보는 우리가 만든 것이라 크기가 고정이고, 타입(ellipse)은 일러가 PathItem 으로만 돌려준다.
+ * ⚠️ 여유 2mm 는 선폭·부동소수 오차용이다. 이보다 크게 잡으면 작은 조각 칼선이 마크로 새어 나간다.
+ */
+function mesCut_isMarkItem(it) {
+    try {
+        if (it.typename !== 'PathItem') return false;
+        var b = it.geometricBounds;
+        var w = (b[2] - b[0]) / MESCUT_PT_PER_MM, h = (b[1] - b[3]) / MESCUT_PT_PER_MM;
+        var lim = MESCUT_DOMBO_DIAM_MM + 2;
+        return (w <= lim && h <= lim && Math.abs(w - h) < 1);
+    } catch (e) { return false; }
+}
+
+// ★DXF 안에서만 쓰는 레이어명. **ASCII 로 둔다** — 일러 문서는 사내 규약대로 `재단선` 그대로다.
+//   실물 생산 DXF 12건 중 9건이 순수 ASCII(`Layer 2`/`Layer 3`)고, 한글 이름이 든 3건은 `_U+XXXX`
+//   이스케이프로 들어 있었다(우리 export 는 `$DWGCODEPAGE=ANSI_949` 로 원시 바이트를 쓴다).
+//   이름 자체엔 규약이 없으므로(§2.5) 인코딩 변수를 아예 없애는 쪽을 고른다.
+var MESCUT_DXF_CUT_LAYER = 'CUT';
+var MESCUT_DXF_MARK_LAYER = 'MARK';
 var MESCUT_DOMBO_DIAM_MM = 6;
 var MESCUT_DOMBO_CORNER_MM = 17;
 var MESCUT_DOMBO_DIR_MM = 60;
