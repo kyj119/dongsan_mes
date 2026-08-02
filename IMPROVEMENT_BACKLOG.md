@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-08-02T21:24:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-08-03T03:11:57+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -22,6 +22,17 @@
 > 가리는데 빈 상태 문구는 "없습니다"라고 안내) → 별도 커밋. Phase 7b-2의 교훈이 그대로 재현됐다.
 > ⚠️ **발송 계열은 실호출 미검증** — 테스트 호출이 곧 실발송이라 `/send-bulk`·`/ad/send`는 부르지 않고
 > 모의 응답·단위 로직으로 대체([[design-ad-compliance-guard]] 함정). 소량 1건 자연검증 필요.
+
+> **Area 5 보안 (2026-08-03T03:11):**
+> - **방법**: `git fetch origin main`(HEAD `83faddd` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 5 **49회차** — 직전 Area5(`605cf54`, 08-01T15:15, 48회차) 이후 `git log 605cf54..HEAD`는 41커밋이나, 웹 렌즈 대상(`src/routes`/`src/scripts`/`migrations`/`index.tsx`/`src/layout`/`src/pages`) 한정 diff는 **7커밋뿐**(간판 BOM P2/P3 `product_materials` 소요량+표준BOM+LED밀도보정, 계량비례 산정 확정, 작업지시서 역추적 신규프레임, 교체그룹 전수 신규승격 스윕, 동산 매입원장 5곳 적재 — 전부 순수 데이터 INSERT/UPDATE 마이그레이션). 나머지 34커밋은 IA cut-panel 벡터 컷라인 CEP 플러그인 신규 구축(`IllustratorAutomat/designer/**` — CLAUDE.md 명시 IA 축2, 독립 배포경로·웹 SPA 밖) + 세션문서/원장조사 docs뿐 — 보안(IDOR·XSS·인증·인젝션) 렌즈로 볼 신선 코드 경로가 사실상 전무.
+> - **정적 SQL 마이그레이션 자체는 인젝션 표면 아님**: 0507~0512 전부 리터럴 값 INSERT/UPDATE(사용자 입력 경유 0), 파라미터 바인딩 대상 자체가 아니라 Area 5 검토 범위 밖(컬럼정합성은 Area2 56회차·Area4 50회차·Area6 54회차가 이미 clean 확인).
+> - **필수 grep 2종(매 사이클)**: `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43 BAROBILL_FTP_PASSWORD || ''`(빈 문자열 폴백, 기존 FP) 1건 외 없음. `grep -rnE "password.*\|\| *'[^']+'" src` + CI yml `secrets\.[A-Z_]+ *\|\| *'` → 0건. net-new 하드코딩 시크릿/기본비밀번호 없음.
+> - **형제-비대칭 IDOR·XSS 스캔**: 이번 델타에 `src/routes`·`src/scripts` 변경이 0건이라 신규 mutate 핸들러·innerHTML sink 자체가 없음 — 재검토 대상 없음(스캔 스킵이 아니라 대상 부재).
+> - **open≠unfixed 재확인**: `search_issues(is:open,label:auto-improve)` 실측 **8건**(#585·#586·#587·#589·#590·#591·#592·#593) — 이번 델타 7커밋(전부 마이그레이션)이 그 이슈들의 대상 파일(`messagesAd.ts`·`messages.ts`·`orders.js`/`orderForm/parent.js`·`orders/core.ts`)을 전혀 안 건드려 재grep 없이 unchanged 캐시 신뢰(Area4 50회차가 직전에 직접 재grep 완료). #592·#593(간판 BOM 데이터 오참조)은 보안 라벨 아님(bug), 코드 취약점과 무관.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **8**(변동없음) · `reason:completed` **511**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음). 완전 일치, 드리프트 0.
+> - **🧬 SKILL 강화 없음** — 순수 확인 사이클(웹 코드 churn 0, 데이터 마이그는 인젝션 표면 아님, 필수 grep net-new 0), 신규 코드화 패턴 없음.
+> - 신규 이슈 0건, 자동수정 0건(검토 대상 코드 churn 자체가 없음), done-sync: new 8(변동없음)·done 511·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-08-02T21:24):**
 > - **방법**: `git fetch origin main`(HEAD `90373c1` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean(코드 변경 없어 예상대로 0). Area 4 **50회차** — 직전 Area4(`efe8b36`, 08-01T09:17, 49회차) 이후 `git log efe8b36..HEAD -- src/routes migrations src/scripts`는 **7커밋 전부 순수 데이터 마이그레이션**(0507 정운교역 깃발원단 19종+생지 3종·0508 간판 BOM P2 product_materials 소요량 컬럼+간판 8품목+표준BOM 24행·0509 P3 LED밀도 실측보정+단가0 자재+오분류 3라인 재분류·0510 바류 비례산정 확정(notes만)·0511 작업지시서 역추적 9라인+까치발 BOM 신설·0512 교체그룹 전수 신규승격 스윕 91라인). `src/routes`·`src/scripts` 코드 변경 0 — 데이터 마이그 자체의 참조 무결성 전수 검증으로 전환(과다위임 억제, 6개 파일 정독이 위임보다 빠름).
