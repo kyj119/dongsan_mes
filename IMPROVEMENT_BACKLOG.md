@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-08-02T03:13:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-08-02T09:14:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,10 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **6** (#585·#586·#587·#589·#590·#591, GitHub OPEN 실측 — Area1 55회차 재확인, 변동 없음) |
+| 🆕 new | **6** (#585·#586·#587·#589·#590·#591, GitHub OPEN 실측 — Area2 56회차 재확인, 변동 없음) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **511** (`reason:completed` 절대값 — Area1 55회차 재조회, 변동 없음) |
+| ✔️ done | **511** (`reason:completed` 절대값 — Area2 56회차 재조회, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > **2026-07-29 백로그 소진 세션** (main `9686bf69`, deploy success): 11건을 심각도순으로 전건 처리.
@@ -22,6 +22,19 @@
 > 가리는데 빈 상태 문구는 "없습니다"라고 안내) → 별도 커밋. Phase 7b-2의 교훈이 그대로 재현됐다.
 > ⚠️ **발송 계열은 실호출 미검증** — 테스트 호출이 곧 실발송이라 `/send-bulk`·`/ad/send`는 부르지 않고
 > 모의 응답·단위 로직으로 대체([[design-ad-compliance-guard]] 함정). 소량 1건 자연검증 필요.
+
+> **Area 2 코드 품질 심층 분석 (2026-08-02T09:14):**
+> - **방법**: `git fetch origin main`(HEAD `37d6242` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 2 **56회차** — 직전 Area2(`f0383ef`, 07-31T17:15, 55회차) 이후 `git log f0383ef..HEAD -- src/routes src/scripts migrations`는 **3커밋 전부 순수 데이터 마이그레이션뿐**(`c16071c` 0507 정운교역 깃발원단 22종 등록·`6cb72fb` 0508 간판 BOM P2 product_materials 소요량 컬럼+간판 8품목+표준BOM 24행·`c555deb` 0509 간판 BOM P3 LED밀도 실측보정+단가0 자재 실단가). **`src/routes`·`src/scripts` 코드 변경 0** — 코드품질 렌즈(entity_id·N+1·authMiddleware·dead code·SELECT *)로 diff할 신선 churn이 없어, 데이터 마이그레이션 자체의 컬럼정합성 검증 + 코드베이스 전수 standing scan으로 전환.
+> - **신규 마이그 0507~0509 컬럼존재성 검증**: `product_materials`(0089 CREATE: `product_item_id`/`material_item_id`/`is_default` 원본 확인) + 0508 ADD COLUMN(`quantity`/`usage_type`/`usage_param`/`notes`) 전부 실재, `UNIQUE(product_item_id, material_item_id)` 제약이 INSERT OR IGNORE 멱등성 주장과 정합. `items.base_price`(0001 원본 컬럼)·`order_items.item_id` 0509 UPDATE 타깃도 실재. 3파일 전부 `INSERT OR IGNORE`/재실행 안전 가드(`WHERE usage_param=35`류) 명시 — 컬럼오타·NOT NULL 누락 0. Area6 54회차의 "컬럼-diff bridge clean" 판정과 합치, 코드 소비처 없음(`grep -rn "usage_type\|usage_param" src` = 0)도 재확인.
+> - **authMiddleware recursive 재스캔**: `for f in $(find src/routes -name '*.ts')...` → 후보 7건 동일(`publicUnsubscribe.ts`·`orders/helpers.ts`·`payroll/shared.ts`·`cron.ts`·`messagesAd.ts`·`hrSelf.ts`·`taxInvoices/helpers.ts`) — 전부 기존 FP 카탈로그(Map.get 오탐·정보통신망법 무인증·agentKeyMiddleware·barrel·scoped-token)와 일치, net-new 0.
+> - **동적 IN절 D1 바인드한도(100) 재점검**: `grep -rnE "IN \(\$\{" src/routes` 150+ 매치 전수 스캔 — 신규 파일/패턴 없음(전부 26~29회차 #458/#478 standing scan이 이미 분류한 per-entity bounded류이거나 80청크 처리 완료 사이트). `shipments.ts:239/423/465`의 `consolidate_with_order_id IN` 계열은 #589(합배송 정리 누락) 대상 파일과 겹치나 그 자체는 chunk된 안전 read/write이고 IN절 바인드 한도 문제 아님(청크 크기가 소규모 그룹 한정). net-new 없음.
+> - **`SELECT *` 사용처**: `grep -rn "SELECT \*" src/routes | grep -v "COUNT(\*)"` = 14건, 전부 과거 사이클(A-027류)에서 명시 컬럼 전환 검토·FP 판정 완료된 기존 사이트로 재확인(신규 사이트 0) — 개별 재점검은 다음 유의미 churn 시점으로 이연(반복 재검증 낭비 방지, line 296 close-pending 캐시 원칙 적용).
+> - **표준 게이트**: `npx tsc --noEmit` 0 · `node scripts/entity-audit.mjs` = 검사 127파일·SELECT 60·통과 60·누락 0.
+> - **open≠unfixed 재확인**: `search_issues(is:open,label:auto-improve)` 실측 **6건**(#585·#586·#587·#589·#590·#591) — 이번 델타 3커밋이 그 이슈 대상 파일(`messagesAd.ts`·`messages.ts`·`orders.js`/`orderForm/parent.js`·`orders/core.ts`·`docs/dongsan-import`)을 전혀 안 건드려 재grep 없이 unchanged 캐시 신뢰(Area6 54회차가 직전에 직접 재grep 완료).
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **6**(변동없음) · `reason:completed` **511**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음). 완전 일치, 드리프트 0.
+> - **🧬 SKILL 강화 없음** — 순수 확인 사이클(코드 churn 0, 데이터 마이그 컬럼정합성 clean, standing scan 재확인 net-new 0), 신규 코드화 패턴 없음.
+> - 신규 이슈 0건, 자동수정 0건(코드 변경 없음, 검토 대상 자체가 데이터 마이그레이션 뿐), done-sync: new 6(변동없음)·done 511·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-08-02T03:13):**
 > - **방법**: `git fetch origin main`(HEAD `9dee203` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). 프록시가 이번 세션도 prod 호스트 직접 접근 차단(`SMOKE_URL=https://webapp-9i0.pages.dev npm run smoke` → 로그인 단계에서 `403 Host not in allowlist` — 기존 인지된 egress 제약 재확인, 변동 없음) — 직접 prod API 헬스체크 불가, GitHub Actions CI 기록으로 대체. Area 1 **55회차** — 직전 Area1(`1237056a`, 07-31T16:26, 54회차) 이후 `git log 1237056a..HEAD` = **15커밋**(취소주문 하드삭제/트레이/묶음프리필 후속 Area2~6 사이클 로그 + 동산 매입원장·LED4U/SK 사인자재 ecount 이관·간판 BOM P1~P3 신규 데이터 트랙 — 전부 Area2~6가 각자 렌즈로 이미 다룸, Area1은 헬스만 확인).
