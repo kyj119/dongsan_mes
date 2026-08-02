@@ -998,14 +998,21 @@ function mesCut_rasterizeItem(idx, mmPerPx, padMm, fillClosed) {
 //    롤/평판은 폭이 고정이라 확장하는 순간 규격을 넘는다. 대신 **조각 배치 영역을 안쪽으로 줄인다**
 //    (패널이 usable 폭으로 배치하고 좌표에 margin 을 더해 보낸다).
 /**
- * DXF 에서 **마크(돔보) 레이어**로 보낼 것인가 — 지름 6mm 원.
- * 실물 파일은 마크를 칼선과 다른 레이어에 둔다(§2.5). 판정은 **크기**로 한다 —
- * 돔보는 우리가 만든 것이라 크기가 고정이고, 타입(ellipse)은 일러가 PathItem 으로만 돌려준다.
- * ⚠️ 여유 2mm 는 선폭·부동소수 오차용이다. 이보다 크게 잡으면 작은 조각 칼선이 마크로 새어 나간다.
+ * DXF 에서 **마크(돔보) 레이어**로 보낼 것인가.
+ *
+ * ★판정은 **채움**으로 한다 — 크기로 하면 안 된다.
+ *   실물 파일에서 **타공도 원**이고 칼선 레이어에 있다(2026-08-02 실측, 경고판 2건:
+ *   CIRCLE ⌀10mm · 칼선 레이어 · 색 230 / 돔보 CIRCLE ⌀6mm · 마크 레이어 · BYLAYER).
+ *   크기로 가르면 6mm 이하 타공이 마크로 새어 나가 **재단기가 안 자른다**.
+ *   우리 산출물에서 둘은 스타일이 정반대다:
+ *       돔보 = 채움(K100) · 획 없음     ← mesCut_addDombo
+ *       타공·칼선 = 획(M100 0.6) · 채움 없음
+ *   크기 조건은 보조 가드로만 남긴다(채워진 큰 도형이 섞여 들어오는 경우).
  */
 function mesCut_isMarkItem(it) {
     try {
         if (it.typename !== 'PathItem') return false;
+        if (!it.filled || it.stroked) return false;
         var b = it.geometricBounds;
         var w = (b[2] - b[0]) / MESCUT_PT_PER_MM, h = (b[1] - b[3]) / MESCUT_PT_PER_MM;
         var lim = MESCUT_DOMBO_DIAM_MM + 2;
