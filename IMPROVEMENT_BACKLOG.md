@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-08-02T15:22:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-08-02T21:24:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **6** (#585·#586·#587·#589·#590·#591, GitHub OPEN 실측 — Area3 49회차 재확인, 변동 없음) |
+| 🆕 new | **8** (#585·#586·#587·#589·#590·#591·#592·#593, GitHub OPEN 실측 — Area4 50회차, #592·#593 신규) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **511** (`reason:completed` 절대값 — Area3 49회차 재조회, 변동 없음) |
@@ -22,6 +22,19 @@
 > 가리는데 빈 상태 문구는 "없습니다"라고 안내) → 별도 커밋. Phase 7b-2의 교훈이 그대로 재현됐다.
 > ⚠️ **발송 계열은 실호출 미검증** — 테스트 호출이 곧 실발송이라 `/send-bulk`·`/ad/send`는 부르지 않고
 > 모의 응답·단위 로직으로 대체([[design-ad-compliance-guard]] 함정). 소량 1건 자연검증 필요.
+
+> **Area 4 데이터 정합성 (2026-08-02T21:24):**
+> - **방법**: `git fetch origin main`(HEAD `90373c1` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean(코드 변경 없어 예상대로 0). Area 4 **50회차** — 직전 Area4(`efe8b36`, 08-01T09:17, 49회차) 이후 `git log efe8b36..HEAD -- src/routes migrations src/scripts`는 **7커밋 전부 순수 데이터 마이그레이션**(0507 정운교역 깃발원단 19종+생지 3종·0508 간판 BOM P2 product_materials 소요량 컬럼+간판 8품목+표준BOM 24행·0509 P3 LED밀도 실측보정+단가0 자재+오분류 3라인 재분류·0510 바류 비례산정 확정(notes만)·0511 작업지시서 역추적 9라인+까치발 BOM 신설·0512 교체그룹 전수 신규승격 스윕 91라인). `src/routes`·`src/scripts` 코드 변경 0 — 데이터 마이그 자체의 참조 무결성 전수 검증으로 전환(과다위임 억제, 6개 파일 정독이 위임보다 빠름).
+> - **🔴 net-new 발견: #592 간판 BOM(0508) 핵심 자재 3종 item_code 오참조 — SELECT 매치 0행으로 INSERT/UPDATE 전량 silent no-op** — `product_materials`를 `INSERT OR IGNORE ... SELECT p.id, m.id FROM items p, items m WHERE p.item_code=? AND m.item_code=?` 형태로 채우는 0508이 참조한 자재코드 `ALM-2T-WH-48`(백판)·`PC-1.8T-M-48`(광확산판)·`SGM-LED3-2835`(LED)가 **512개 마이그레이션 전수(node 스크립트 + 타겟 grep 교차검증)에 어디에도 정의되지 않음** — SELECT 조인 매치 0행이라 INSERT가 조용히 0행 삽입(존재X 컬럼 클래스의 "존재X 값" 변종, throw 없음). SIGN-CH·SIGN-PRT 두 플래그십 제품 BOM에서 가장 핵심적인 자재(LED·광확산판·백판)가 통째로 누락됐고, 0509가 성환농협 실측사진 기반으로 공들여 계산한 LED 밀도(62개/㎡) 보정 UPDATE도 대상 행이 없어 0행 갱신(실측 작업이 DB에 전혀 반영 안 됨). 근접 후보 카탈로그 존재 확인(`ALM-2T-S-48`=은색뿐·`PC-2T-M-48`=1.8T 자체가 카탈로그에 없음·`SGM-LED3-WH`=명명체계 다른 기존 LED) — 오타 정정 vs 신규 자재 등록 여부는 owner 판단 필요. product_materials 소비 코드가 아직 없어(Area6 54회차 확인) 라이브 버그는 아니나, 향후 원가계산 기능이 이 BOM을 소비하는 순간 조용히 불완전한 원가가 산출됨. issue-only(S).
+> - **🔴 net-new 발견: #593 order_item 7282 — 마이그 0509↔0512 반대 방향 재분류 충돌** — 512개 마이그레이션 전수를 order_items 재분류 UPDATE의 id 집합으로 파싱·대조(node 스크립트, `WHERE id=`/`WHERE id IN (...)` + `item_id=(SELECT...)` 가드 패턴 추출) 결과 **id=7282 단 1건이 두 마이그에서 정반대로 재분류**됨: 0509가 규격 단위 오파싱(cm→mm 오독으로 판가/㎡ 100배 과대산정) 구체 증거(실제 16.9㎡·45k/㎡)로 `SIGN-FRL→SIGN-FRL-R`(신규→교체) 정정했으나, 후속 0512의 블랭킷 스윕 규칙("-R & 금액≥300,000 & 품명에 재단/천갈이/교체 없음 → 신규 승격")이 CSV 스냅샷 시점의 현재 분류·금액·품명만 보고 7282를 포함시켜 `SIGN-FRL-R→SIGN-FRL`로 재반전(0509의 근거 있는 정정이 조용히 원복, 마이그 순서상 0512가 최종 승자). 0509의 나머지 2건(5747·17291)은 0512 목록에 없어 무충돌 — 이 클래스는 7282 단건. 원가리포트(`gen_sign_cost_report.py`)가 이 분류로 BOM 세트(FRL=풀세트 vs FRL-R=원단만)를 갈라 계산하므로 실물 재확인 필요. issue-only(S).
+> - **product_materials 컬럼-diff 재확인**: 0508 ADD COLUMN(`quantity`/`usage_type`/`usage_param`/`notes`) 전부 실재, `UNIQUE(product_item_id, material_item_id)` 제약이 INSERT OR IGNORE 멱등성과 정합(Area2 56회차 재확인과 합치). 0510(notes만 UPDATE, 데이터 무변경)·0511 까치발 BOM 신설(`ACC-029` 참조는 0429 비활성화→0434 DELETE→0471 재생성 체인으로 이 시점엔 실재 확인, 오탐 아님)·0512 SELECT 검증쿼리 전부 컬럼 존재성 clean.
+> - **마이그 번호 중복 재확인**: `ls migrations | sed ... | sort | uniq -d` → 기존 5쌍(0327·0412·0416·0420·0453)만, 신규 0507~0512 전부 유일 번호. net-new 0.
+> - **표준 스캔**: `npx tsc --noEmit` 0(코드 변경 없음, 예상대로). 라우트/스크립트 변경이 없어 entity-audit·sort-audit·branch:clean은 이번 델타 대상 없음(직전 Area2/Area1 회차 결과 신뢰).
+> - **open≠unfixed 재확인**: `search_issues(is:open,label:auto-improve)` 실측 **6건**(#585·#586·#587·#589·#590·#591) — 이번 델타 7커밋이 그 이슈 대상 파일(`messagesAd.ts`·`messages.ts`·`orders.js`/`orderForm/parent.js`·`orders/core.ts`)을 전혀 안 건드려 재grep 없이 unchanged 캐시 신뢰(Area3 49회차가 직전에 직접 재grep 완료).
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **8**(#592·#593 신규 반영) · `reason:completed` **511**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 이번 사이클의 두 발견은 기존 "존재X 컬럼" 클래스(line 148)의 **"존재X 참조값"** 변종(컬럼이 아니라 SELECT 조인의 lookup 값 자체가 없어 INSERT/UPDATE가 0행으로 조용히 no-op)과, "다중 재분류 마이그 간 대상 id 충돌"이라는 신규 축(빠르게 반복되는 소규모 데이터 정정 마이그레이션 시퀀스에서 후행 블랭킷 규칙이 선행 구체-증거 정정을 인지 없이 덮어씀) — 둘 다 이번 간판 BOM처럼 **하루 안에 5~6개 마이그가 연쇄 착륙하는 고속 반복 데이터 정비 세션**에서 발생 가능성이 높은 클래스로, 향후 유사 세션(자재/가격 대량 정비)마다 "SELECT 기반 INSERT의 lookup 값 존재성 전수 + 같은 대상행에 대한 재분류 UPDATE id 집합 교차중복" 2종 점검을 Area4 standing scan에 추가할 가치 있음(1회성 발견이라 이번엔 SKILL.md 파일 직접 수정은 보류, 다음 유사 사례 재현 시 codify).
+> - 신규 이슈 2건(#592·#593), 자동수정 0건(데이터 정정 판단+egress 검증불가라 issue-only), done-sync: new 8(+2)·done 511·rejected 6. 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-08-02T15:22):**
 > - **방법**: `git fetch origin main`(HEAD `a3d8527` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npm run build` 정상(6,277KB worker). Area 3 **49회차** — 직전 Area3(`e5ba1ad`, 07-31T18:10, 48회차) 이후 `git log e5ba1ad..HEAD -- src/scripts src/pages src/layout index.tsx src/routes`는 **0건**. 이번 델타 24커밋 전량이 (a) IA 디자이너 CEP `cut-panel` 플러그인 신규 구축(벡터 컷라인, `IllustratorAutomat/designer/**` + `docs/CUT_PANEL_USAGE.md` — CLAUDE.md 명시 IA 축 2/독립 배포 경로, 웹 SPA 밖) (b) 간판 BOM P1~P3(`product_materials` 데이터 정비, Area2 56회차/Area6 54회차가 이미 컬럼-diff clean 확인, 코드 소비처 0) (c) 동산 매입원장/사인자재 이관(`docs/dongsan-import/*.py`, 오프라인 스크립트) 뿐 — 웹 UX 렌즈로 볼 신선 churn이 전무.
@@ -158,7 +171,7 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 6건** — #591 누락 발견·보충, Area 3 49회차, 2026-08-02.)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 8건** — #592·#593 신규, Area 4 50회차, 2026-08-02.)
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
@@ -168,6 +181,8 @@
 | #589 | 취소주문 2단계 하드삭제(a621cdd)가 처음 도달 가능해진 consolidate_with_order_id 정리 누락 — 자식 주문에 죽은 링크/유령 ID 잔존 | Area 2 | bug,S | issue-only, 신규(#589) |
 | #590 | 주문 수정 재진입 시 기존 행 에누리(line_discount) 미복원 → 다음 저장에서 소멸 | Area 3 | bug,M | issue-only, 신규(#590) |
 | #591 | 공군사관학교(id=3763) business_registration_number에 내부코드 '00017'이 실 BRN처럼 저장 — 세금계산서 발행 시 유효성 거부 위험 | Area 4 | bug,S | issue-only, 신규(#591) |
+| #592 | 간판 BOM(0508) 핵심 자재 3종 item_code 오참조 — SELECT 매치 0행으로 INSERT/UPDATE 전량 silent no-op(LED·광확산판·백판 BOM 누락) | Area 4 | bug,S | issue-only, 신규(#592) |
+| #593 | order_item 7282 — 마이그 0509(단위오파싱 정정)와 0512(전수 신규승격 스윕)가 반대 방향 재분류, 0509의 실측 근거 보정이 조용히 원복 | Area 4 | bug,S | issue-only, 신규(#593) |
 
 > 직전 사이클(45회차) 표에 있던 #559·#558·#557·#556·#555·#554는 2026-07-29 백로그 소진 세션에서 owner가 심각도순 전건 처리(코드 픽스+배포+close, 상세는 상단 "2026-07-29 백로그 소진 세션" 노트 참조) → Done 이관.
 
