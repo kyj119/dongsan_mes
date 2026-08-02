@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-08-02T09:14:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-08-02T15:22:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,10 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **6** (#585·#586·#587·#589·#590·#591, GitHub OPEN 실측 — Area2 56회차 재확인, 변동 없음) |
+| 🆕 new | **6** (#585·#586·#587·#589·#590·#591, GitHub OPEN 실측 — Area3 49회차 재확인, 변동 없음) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **511** (`reason:completed` 절대값 — Area2 56회차 재조회, 변동 없음) |
+| ✔️ done | **511** (`reason:completed` 절대값 — Area3 49회차 재조회, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
 
 > **2026-07-29 백로그 소진 세션** (main `9686bf69`, deploy success): 11건을 심각도순으로 전건 처리.
@@ -22,6 +22,18 @@
 > 가리는데 빈 상태 문구는 "없습니다"라고 안내) → 별도 커밋. Phase 7b-2의 교훈이 그대로 재현됐다.
 > ⚠️ **발송 계열은 실호출 미검증** — 테스트 호출이 곧 실발송이라 `/send-bulk`·`/ad/send`는 부르지 않고
 > 모의 응답·단위 로직으로 대체([[design-ad-compliance-guard]] 함정). 소량 1건 자연검증 필요.
+
+> **Area 3 UX/기능 감사 (2026-08-02T15:22):**
+> - **방법**: `git fetch origin main`(HEAD `a3d8527` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npm run build` 정상(6,277KB worker). Area 3 **49회차** — 직전 Area3(`e5ba1ad`, 07-31T18:10, 48회차) 이후 `git log e5ba1ad..HEAD -- src/scripts src/pages src/layout index.tsx src/routes`는 **0건**. 이번 델타 24커밋 전량이 (a) IA 디자이너 CEP `cut-panel` 플러그인 신규 구축(벡터 컷라인, `IllustratorAutomat/designer/**` + `docs/CUT_PANEL_USAGE.md` — CLAUDE.md 명시 IA 축 2/독립 배포 경로, 웹 SPA 밖) (b) 간판 BOM P1~P3(`product_materials` 데이터 정비, Area2 56회차/Area6 54회차가 이미 컬럼-diff clean 확인, 코드 소비처 0) (c) 동산 매입원장/사인자재 이관(`docs/dongsan-import/*.py`, 오프라인 스크립트) 뿐 — 웹 UX 렌즈로 볼 신선 churn이 전무.
+> - **로컬 브라우저 실감사 시도 및 포기**: "가장 중요" 영역 원칙에 따라 실제 Playwright 조작을 시도 — `npm run build` 성공 후 로컬 D1 재현을 위해 `npx wrangler d1 migrations apply webapp-production --local` 실행, **`0344_aqueous_pat.sql`에서 `FOREIGN KEY constraint failed`로 중단**(빈 로컬 DB에 처음부터 500+ 마이그레이션을 순서대로 적용하면 중간 마이그가 실제 prod에만 존재하는 시드행을 전제해 실패 — 코드 결함 아닌 "로컬 처음부터 재현" 자체의 구조적 한계, prod 스냅샷 없이는 해결 불가). `dev:d1`류 스크립트도 PowerShell 전제(Windows 전용)라 이 Linux 세션에서 대체 경로(`wrangler pages dev dist --d1=... --local`) 자체는 가능했으나 마이그 실패로 선행 불가 → 이번 사이클은 정적 분석으로 대체(과거 정규 사이클 관행과 동일선상, 07-29 백로그 소진 세션 같은 별도 전수 브라우저 감사와는 성격이 다름을 명시).
+> - **신선 standing scan 1 — 서버 cap+미사용 count 무음 검색누락(#497 클래스) 전수 재스캔**: `grep -rn "\.slice(0, *[0-9]\+)" src/routes` 150+ 매치 전수 분류 — **CSV export truncation류(`inspections.ts`·`po-queries.ts`·`po-receipts.ts`·`purchaseRequests.ts`·`cashSchedule.ts`)는 전부 `truncated` 플래그 + `CSV_TRUNCATION_NOTE` 푸터로 이미 방어**(#372 패턴, clean) — 기존 유일 confirmed 사이트는 `ar-ledger.ts:506`(#497, 이미 이슈화·open 아님 fixed 여부 미확인이나 별건) 뿐, **net-new 0**. `migration.ts`/`caps.ts`/`cards/queries.ts` 등 나머지는 관리자 전용 툴·샘플 필드로 검색 UX 무관.
+> - **신선 standing scan 2 — `showConfirm` 콜백 오용(#426 클래스) 전수 재스캔**: `grep -rn "showConfirm(" src/scripts`에서 `await`/`.then()` 정상 패턴이 아닌 3건(`bank.js:800`·`iaEditor.js:2465`·`shipmentsDashboard.js:117`) 개별 확인 — `bank.js:800`은 `resolve(showConfirm(...))`(Promise 그대로 전달, 정상) · `iaEditor.js:2465`는 `.then(function(ok){ if(ok) ... })`(정상) · `shipmentsDashboard.js:117`은 `await` 직접(정상) — **net-new 콜백오용 0**.
+> - **open≠unfixed 재확인(Area 3 관련 4건 직접 재grep, 캐시 아닌 실측)**: `messagesAd.ts:381-382` `success_count`/`fail_count`만(#585 잔존) · `messages.ts:246/261` `#adSubject`/`#adContent`에 `oninput` 부재(#586 잔존) · `messagesAd.js:329 adLoadOptOuts()`가 여전히 파라미터 없이 호출(#587 잔존) · `orderForm/parent.js:985-1146 loadOrderForEdit()`가 `calcItem(id)`(:1146) 호출 전까지 `line_discount`/`discount_reason`/`discount_by`/`amount` 어느 것도 복원 안 함(#590 잔존, `set()` 헬퍼가 width/height/unit_price/quantity 등만 채움) — fixed-in-tree 0건.
+> - **🩹 백로그 자체 드리프트 발견·보충(문서 정합)**: `## 🆕 New` 표가 #591(Area 4 49회차 신규 등록)을 누락한 채 5행만 유지 중이었음(통계 카운터는 6으로 이미 정확했으나 표만 미갱신) — Area 4/6 원칙("open≠unfixed"·done-sync 정합)을 확장해 표에 #591 행 보충, "실측 5건" 안내문을 "실측 6건"으로 정정. 코드 변경 아닌 백로그 자체 북키핑 수정.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **6**(변동없음) · `reason:completed` **511**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음). 완전 일치, 드리프트 0(표 누락 1건 제외 — 위에서 보충).
+> - **🧬 SKILL 강화 없음** — 이번 사이클은 순수 확인(신선 프론트 churn 0·두 standing scan net-new 0·open 재확인 unchanged) + 백로그 표 드리프트 1건 보정, 신규 코드화 패턴 없음.
+> - 신규 이슈 0건, 자동수정 0건(검토 대상 코드 churn 자체가 없음), done-sync: new 6(변동없음)·done 511·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-08-02T09:14):**
 > - **방법**: `git fetch origin main`(HEAD `37d6242` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 2 **56회차** — 직전 Area2(`f0383ef`, 07-31T17:15, 55회차) 이후 `git log f0383ef..HEAD -- src/routes src/scripts migrations`는 **3커밋 전부 순수 데이터 마이그레이션뿐**(`c16071c` 0507 정운교역 깃발원단 22종 등록·`6cb72fb` 0508 간판 BOM P2 product_materials 소요량 컬럼+간판 8품목+표준BOM 24행·`c555deb` 0509 간판 BOM P3 LED밀도 실측보정+단가0 자재 실단가). **`src/routes`·`src/scripts` 코드 변경 0** — 코드품질 렌즈(entity_id·N+1·authMiddleware·dead code·SELECT *)로 diff할 신선 churn이 없어, 데이터 마이그레이션 자체의 컬럼정합성 검증 + 코드베이스 전수 standing scan으로 전환.
@@ -146,7 +158,7 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 5건** — #590은 2026-07-31T18:10 Area 3 48회차 신규 등록.)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 6건** — #591 누락 발견·보충, Area 3 49회차, 2026-08-02.)
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
@@ -155,6 +167,7 @@
 | #587 | 광고문자 수신거부 명단 — 서버 search 파라미터 미사용, 300건 상한 초과 시 과거건 조회 불가 | Area 3 | improvement,S | issue-only, 신규(#587) |
 | #589 | 취소주문 2단계 하드삭제(a621cdd)가 처음 도달 가능해진 consolidate_with_order_id 정리 누락 — 자식 주문에 죽은 링크/유령 ID 잔존 | Area 2 | bug,S | issue-only, 신규(#589) |
 | #590 | 주문 수정 재진입 시 기존 행 에누리(line_discount) 미복원 → 다음 저장에서 소멸 | Area 3 | bug,M | issue-only, 신규(#590) |
+| #591 | 공군사관학교(id=3763) business_registration_number에 내부코드 '00017'이 실 BRN처럼 저장 — 세금계산서 발행 시 유효성 거부 위험 | Area 4 | bug,S | issue-only, 신규(#591) |
 
 > 직전 사이클(45회차) 표에 있던 #559·#558·#557·#556·#555·#554는 2026-07-29 백로그 소진 세션에서 owner가 심각도순 전건 처리(코드 픽스+배포+close, 상세는 상단 "2026-07-29 백로그 소진 세션" 노트 참조) → Done 이관.
 
