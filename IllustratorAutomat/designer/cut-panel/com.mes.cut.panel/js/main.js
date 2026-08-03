@@ -325,7 +325,7 @@
           + (fv0.note || '');
         // ★도련을 어떤 방식으로 만들었는지 반드시 말한다 — 둘의 품질이 다르다(clip=무손실 / scale=근사)
         if (d.bleed === 'clip') msg += '\n도련 ' + bleedMm + 'mm — 클립을 넓혀 원본을 더 드러냈습니다(왜곡·빈 곳 없음).';
-        else if (d.bleed === 'color') msg += '\n도련 ' + bleedMm + 'mm — 가장자리 색으로 채웠습니다(원본에서 읽은 색 · 빈 곳 없음).';
+        else if (d.bleed === 'region') msg += '\n도련 ' + bleedMm + 'mm — 도형마다 제 색 그대로 구역별로 벌렸습니다(빈 곳 없음).';
         else if (d.bleed === 'scale') msg += '\n도련 ' + bleedMm + 'mm — 사본을 늘려 채웠습니다. ⚠ 뾰족한 형상은 링 일부가 빌 수 있습니다.';
         else if (d.bleed === '0') msg += '\n⚠ 도련을 만들지 못했습니다.';
         if (mode === 'bbox') msg += '\n⚠ 벡터는 실루엣만 만듭니다 — 사각(bbox) 칼선이 필요하면 방식을 래스터로 바꾸세요.';
@@ -830,6 +830,11 @@
     var cvN = resolveCurve();
     var wantCurve = cvN.curve;
     var nestBleedMm = num('nestBleed', 3);   // 조각마다 칼선 바깥으로 더 인쇄
+    // ★도련은 칼선 **바깥**으로 나간다 → 간격이 도련×2 보다 좁으면 옆 조각 도련과 겹치고,
+    //   재단 오차가 나면 **옆 디자인 색이 넘어온다**. 재료보다 재단 사고가 비싸므로 간격을 올린다.
+    //   (도련을 깎는 쪽은 택하지 않았다 — 도련 3mm 는 실물 규약이고 품질 쪽이다)
+    var gapWanted = gapMm;
+    if (nestBleedMm > 0 && gapMm < nestBleedMm * 2) gapMm = nestBleedMm * 2;
     var nestBleedModeEl = document.getElementById('bleedMode');
     var nestBleedMode = nestBleedModeEl ? nestBleedModeEl.value : 'auto';
     var lmN = resolveLineMode();
@@ -920,9 +925,9 @@
               + (allowRot ? ' · 회전 허용' : '')
               + '\n돔보 ' + (a.dombo || 0) + '판 — 별도 레이어(인쇄 ON) · 재단선 레이어는 인쇄 OFF'
               + (wantPieceCut ? (' · 조각별 칼선' + (useVec ? '(벡터)' : (wantCurve ? '(곡선)' : '(직선)'))) : '')
-              + (useVec && nestBleedMm > 0 ? ('\n도련 ' + nestBleedMm + 'mm (조각마다)'
-                  // ★간격이 도련의 2배보다 좁으면 인접 도련이 겹친다 — 조용히 두면 남의 색이 링에 남는다
-                  + (gapMm < nestBleedMm * 2 ? ' ⚠ 간격이 도련×2 보다 좁아 인접 도련이 겹칩니다(간격 ≥ ' + (nestBleedMm * 2) + 'mm 권장)' : '')) : '')
+              + (useVec && nestBleedMm > 0 ? ('\n도련 ' + nestBleedMm + 'mm (조각마다·구역별)'
+                  // ★조용히 바꾸지 않는다 — 간격을 올렸으면 올렸다고 말한다
+                  + (gapWanted < gapMm ? ' · 간격을 ' + gapWanted + ' → ' + gapMm + 'mm 로 올렸습니다(도련×2)' : '')) : '')
               + (res.unplaced.length ? ('\n⚠ 배치 못한 조각 ' + res.unplaced.length + '개 — 시트를 키우거나 간격을 줄이세요.') : '')
               + (useVec ? '' : cvN.note) + vecNote,
               res.unplaced.length ? 'err' : 'ok');

@@ -68,15 +68,15 @@
       <label for="bleedMode" class="l2">방식</label>
       <select id="bleedMode">
         <option value="auto" selected>자동(권장)</option>
-        <option value="color">가장자리 색</option>
+        <option value="region">구역별 색</option>
         <option value="scale">사본 확대</option>
       </select>
     </div>
     <div class="hint" id="bleedHint">
       재단 오차를 흡수하려고 <b>칼선보다 더 크게 인쇄</b>하는 영역입니다 — 실물 실측 <b>3mm</b>. 0 이면 만들지 않습니다.
       <br><b>자동</b> = 아트가 클립 그룹이면 <b>클립을 넓혀</b> 원본을 더 드러내고(왜곡·빈 곳 없음), 아니면 <b>가장자리 색</b>으로 채웁니다.
-      <br><b>가장자리 색</b> = 링을 원본에서 읽은 <b>가장 큰 면의 색</b>으로 채웁니다(조각마다 제 색). 색을 지어내지 않습니다.
-      <br><b>사본 확대</b> = 옛 방식. 사진에는 그림이 이어지지만 <b>뾰족한 형상은 링의 20%까지 빕니다</b>.
+      <br><b>구역별 색</b> = 아트의 <b>도형 하나하나를 제 색 그대로</b> 벌립니다 — 색이 여러 구역이면 각 구역의 색이 그대로 이어집니다.
+      <br><b>사본 확대</b> = 사진처럼 오프셋이 안 먹는 아트용. <b>뾰족한 형상은 링의 20%까지 빕니다</b>.
     </div>
     <div class="row">
       <label>방식</label>
@@ -172,6 +172,10 @@
         <input id="nestBleed" type="number" value="3" min="0" max="30" step="0.5" />
         <span class="unit">mm</span>
         <span class="cfg">조각마다 칼선 <b>바깥</b>까지 더 인쇄</span>
+      </div>
+      <div class="hint" id="nestBleedHint">
+        도련은 칼선 <b>바깥</b>으로 나가므로 <b>간격 ≥ 도련×2</b> 라야 옆 조각 도련과 안 겹칩니다.
+        모자라면 <b>간격을 자동으로 올리고</b> 결과에 알립니다 — 겹치면 재단 오차 때 <b>옆 디자인 색이 넘어옵니다</b>.
       </div>
       <div class="hint">
         <b>재단선 = 디자인 + 여백</b>, 조각 사이는 <b>칼선끼리</b> 간격만큼 벌립니다.
