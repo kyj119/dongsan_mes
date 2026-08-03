@@ -867,7 +867,81 @@ function mesCut_vecGrowClips(items, bleedMm) {
     return n;
 }
 
-function mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed) {
+/**
+ * 도련 링에 쓸 색 — **고르는 게 아니라 원본에서 읽는다**(사내 원칙: 도련에 색을 지어내지 않는다).
+ *
+ * 대상 영역과 겹치는 **채워진 도형 중 가장 큰 것**의 색을 쓴다. 배경이 있는 디자인이면 배경색이고,
+ * 글자만 있는 도안이면 **그 글자 색**이 잡힌다(조각마다 따로 부르므로 색이 다른 글자도 각자 제 색).
+ * @param bbox [L,T,R,B] 이 영역과 겹치는 것만 후보
+ */
+function mesCut_dominantFill(items, bbox) {
+    var best = null, bestArea = -1, anyBest = null, anyArea = -1;
+    function hit(b) {
+        if (!bbox) return true;
+        return !(b[2] < bbox[0] || b[0] > bbox[2] || b[3] > bbox[1] || b[1] < bbox[3]);
+    }
+    function walk(it) {
+        var t;
+        try { t = it.typename; } catch (e) { return; }
+        try { if (it.hidden) return; } catch (e0) {}
+        if (t === 'GroupItem') {
+            try { for (var g = 0; g < it.pageItems.length; g++) walk(it.pageItems[g]); } catch (e1) {}
+            return;
+        }
+        if (t !== 'PathItem' && t !== 'CompoundPathItem') return;
+        var f = false, col = null, b = null;
+        try {
+            f = it.filled; col = it.fillColor; b = it.geometricBounds;
+        } catch (e2) { return; }
+        if (!f || !col || !b) return;
+        var area = (b[2] - b[0]) * (b[1] - b[3]);
+        if (area > anyArea) { anyArea = area; anyBest = col; }
+        if (hit(b) && area > bestArea) { bestArea = area; best = col; }
+    }
+    for (var i = 0; i < items.length; i++) walk(items[i]);
+    if (best) return best;
+    if (anyBest) return anyBest;
+    var w = new CMYKColor(); w.cyan = 0; w.magenta = 0; w.yellow = 0; w.black = 0;
+    return w;   // 채워진 게 하나도 없으면 흰색 — 최소한 빈 링보다는 낫다
+}
+
+/** 도련 도형에 색을 입힌다(compound 는 자신+자식 둘 다 — 일부 버전은 자식을 봐야 반영된다). */
+function mesCut_paintBleed(it, col) {
+    var t;
+    try { t = it.typename; } catch (e) { return; }
+    try { it.filled = true; it.fillColor = col; it.stroked = false; } catch (e1) {}
+    if (t === 'CompoundPathItem') {
+        try {
+            for (var c = 0; c < it.pathItems.length; c++) {
+                it.pathItems[c].filled = true; it.pathItems[c].fillColor = col; it.pathItems[c].stroked = false;
+            }
+        } catch (e2) {}
+    }
+}
+
+/**
+ * 도련 — **가장자리 색 채우기**. 클립 확장이 안 될 때의 기본 폴백(2026-08-03 지시, A안).
+ *
+ * 확대 폴백은 이형에서 링이 빈다(실측: 별 19.8% · L자 7.7%). 링이 비면 재단 오차가 **흰 틈**으로
+ * 그대로 드러난다. 색으로 채우면 최소한 틈이 없다 — 단색 배경 디자인(시트컷 6건 중 5건이 면 위주)에서는
+ * 사실상 정확하고, 사진 디자인에서만 근사다.
+ */
+function mesCut_vecBleedColor(doc, items, offsetMm, bleedMm, fillClosed) {
+    var layer = null;
+    try { layer = items[0].layer; } catch (e0) {}
+    if (!layer) layer = doc.activeLayer;
+    var sil = mesCut_vecSilhouette(doc, items, layer, offsetMm + bleedMm, fillClosed, 'none');
+    if (!sil || !sil.items || !sil.items.length) return { ok: false, err: '도련 경계 생성 실패' };
+    for (var i = 0; i < sil.items.length; i++) {
+        var b = null;
+        try { b = sil.items[i].geometricBounds; } catch (e1) {}
+        mesCut_paintBleed(sil.items[i], mesCut_dominantFill(items, b));
+        try { sil.items[i].zOrder(ZOrderMethod.SENDTOBACK); } catch (e2) {}   // 원본이 위에 와야 한다
+    }
+    return { ok: true, mode: 'color', n: sil.items.length, err: null };
+}
+
+function mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed, bleedMode) {
     if (!(bleedMm > 0)) return { ok: false, err: '도련 0' };
     var i;
     // ★①먼저 **클립 확장**을 시도한다 — 실물이 하는 방식이다.
@@ -876,8 +950,16 @@ function mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed) {
     //   클립을 넓히면 왜곡도 빈 곳도 없다(SheetLayout 도련 v5 와 같은 수단).
     // ★넓히는 양은 **여백 + 도련**이다 — 인쇄는 칼선(=잉크+여백)보다 도련만큼 더 나가야 한다.
     //   여기서 bleedMm 만 쓰면 인쇄 끝이 칼선과 겹쳐 **도련이 0** 이 된다(2026-08-02 실측에서 걸림).
-    var grown = mesCut_vecGrowClips(items, offsetMm + bleedMm);
-    if (grown > 0) return { ok: true, mode: 'clip', grown: grown, err: null };
+    bleedMode = bleedMode || 'auto';
+    // 방식 3가지 — 품질이 다르므로 호출자가 **어느 것을 썼는지 반드시 알린다**:
+    //   auto  = 클립 확장(무손실) → 안 되면 가장자리 색      ← 기본
+    //   color = 가장자리 색 강제(클립이 있어도)
+    //   scale = 사본 확대(옛 방식) — 이형에서 링이 빈다(별 19.8% 실측)
+    if (bleedMode === 'auto') {
+        var grown = mesCut_vecGrowClips(items, offsetMm + bleedMm);
+        if (grown > 0) return { ok: true, mode: 'clip', grown: grown, err: null };
+    }
+    if (bleedMode !== 'scale') return mesCut_vecBleedColor(doc, items, offsetMm, bleedMm, fillClosed);
     // ① 도련 경계 = 실루엣 + (여백 + 도련). 칼선과 **같은 엔진**이라 모양이 정확히 겹친다.
     var layer = null;
     try { layer = items[0].layer; } catch (e0) {}
@@ -947,7 +1029,7 @@ function mesCut_vecProbe() {
  * 반환 'ok;paths=<n>;anchors=<n>' | 'fallback;reason=<사유>' | 'ERROR ..'
  * ⚠️ 기존 '재단선' 레이어 내용은 지우지 않는다(수동 선 보호) — 재실행 누적은 패널이 알린다.
  */
-function mesCut_vecCut(offsetMm, fillClosed, bleedMm) {
+function mesCut_vecCut(offsetMm, fillClosed, bleedMm, bleedMode) {
     if (app.documents.length === 0) return 'ERROR 문서 없음';
     var doc = app.activeDocument;
     var sel = doc.selection;
@@ -973,7 +1055,7 @@ function mesCut_vecCut(offsetMm, fillClosed, bleedMm) {
     var bl = null;
     if (bleedMm > 0) {
         try { doc.selection = null; for (i = 0; i < items.length; i++) items[i].selected = true; } catch (eB0) {}
-        try { bl = mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed); } catch (eB) { bl = { ok: false, err: '' + eB }; }
+        try { bl = mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed, bleedMode); } catch (eB) { bl = { ok: false, err: '' + eB }; }
     }
     // 원래 선택을 되돌린다 — 연속 실행이 자연스럽도록
     try { doc.selection = null; for (i = 0; i < items.length; i++) items[i].selected = true; } catch (eR) {}

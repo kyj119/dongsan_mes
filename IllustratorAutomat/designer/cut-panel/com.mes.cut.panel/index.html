@@ -61,11 +61,18 @@
       <input id="bleed" type="number" value="3" min="0" max="30" step="0.5" />
       <span class="unit">mm</span>
       <span class="cfg">칼선 <b>바깥</b>까지 더 인쇄</span>
+      <label for="bleedMode" class="l2">방식</label>
+      <select id="bleedMode">
+        <option value="auto" selected>자동(권장)</option>
+        <option value="color">가장자리 색</option>
+        <option value="scale">사본 확대</option>
+      </select>
     </div>
     <div class="hint" id="bleedHint">
-      재단 오차를 흡수하려고 <b>칼선보다 더 크게 인쇄</b>하는 영역입니다 — 실물 실측 <b>3mm</b>.
-      아트가 <b>클립 그룹</b>이면 클립을 넓혀 원본을 더 드러냅니다(왜곡·빈 곳 없음).
-      클립이 없으면 사본을 늘려 채우는데, <b>뾰족한 형상은 링의 일부가 빌 수 있습니다</b>. 0 이면 만들지 않습니다.
+      재단 오차를 흡수하려고 <b>칼선보다 더 크게 인쇄</b>하는 영역입니다 — 실물 실측 <b>3mm</b>. 0 이면 만들지 않습니다.
+      <br><b>자동</b> = 아트가 클립 그룹이면 <b>클립을 넓혀</b> 원본을 더 드러내고(왜곡·빈 곳 없음), 아니면 <b>가장자리 색</b>으로 채웁니다.
+      <br><b>가장자리 색</b> = 링을 원본에서 읽은 <b>가장 큰 면의 색</b>으로 채웁니다(조각마다 제 색). 색을 지어내지 않습니다.
+      <br><b>사본 확대</b> = 옛 방식. 사진에는 그림이 이어지지만 <b>뾰족한 형상은 링의 20%까지 빕니다</b>.
     </div>
     <div class="row">
       <label>방식</label>

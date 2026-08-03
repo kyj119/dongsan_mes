@@ -256,6 +256,9 @@
 
     var offsetMm = num('offset', 3);
     var bleedMm = num('bleed', 3);   // 칼선 **바깥**으로 더 인쇄 — 실물 실측 3mm
+    // auto = 클립 확장(무손실) → 안 되면 가장자리 색 · color = 색 강제 · scale = 사본 확대(옛 방식)
+    var bleedModeEl = document.getElementById('bleedMode');
+    var bleedMode = bleedModeEl ? bleedModeEl.value : 'auto';
     var mode = currentMode();
     var bgEl = document.getElementById('bg');
     var bg = bgEl ? bgEl.value : 'auto';
@@ -306,7 +309,7 @@
     }
     function runVectorCutWith(fv0) {
       out('벡터 칼선 만드는 중...');
-      host('mesCut_vecCut(' + offsetMm + ',' + (fv0.fill ? 'true' : 'false') + ',' + bleedMm + ')', function (vc, badV) {
+      host('mesCut_vecCut(' + offsetMm + ',' + (fv0.fill ? 'true' : 'false') + ',' + bleedMm + ',"' + bleedMode + '")', function (vc, badV) {
         if (!badV && vc.indexOf('fallback;') === 0) {
           fallbackNote = '\n※ 벡터로는 안 되는 요소가 있어 래스터로 만들었습니다 — ' + (kv(vc.substring(9)).reason || '?');
           runRasterCut();
@@ -320,7 +323,8 @@
           + (fv0.note || '');
         // ★도련을 어떤 방식으로 만들었는지 반드시 말한다 — 둘의 품질이 다르다(clip=무손실 / scale=근사)
         if (d.bleed === 'clip') msg += '\n도련 ' + bleedMm + 'mm — 클립을 넓혀 원본을 더 드러냈습니다(왜곡·빈 곳 없음).';
-        else if (d.bleed === 'scale') msg += '\n도련 ' + bleedMm + 'mm — 클립이 없어 사본을 늘려 채웠습니다. ⚠ 뾰족한 형상은 링 일부가 빌 수 있습니다.';
+        else if (d.bleed === 'color') msg += '\n도련 ' + bleedMm + 'mm — 가장자리 색으로 채웠습니다(원본에서 읽은 색 · 빈 곳 없음).';
+        else if (d.bleed === 'scale') msg += '\n도련 ' + bleedMm + 'mm — 사본을 늘려 채웠습니다. ⚠ 뾰족한 형상은 링 일부가 빌 수 있습니다.';
         else if (d.bleed === '0') msg += '\n⚠ 도련을 만들지 못했습니다.';
         if (mode === 'bbox') msg += '\n⚠ 벡터는 실루엣만 만듭니다 — 사각(bbox) 칼선이 필요하면 방식을 래스터로 바꾸세요.';
         if (punchOn) msg += '\n⚠ 타공은 래스터 방식에서만 만들어집니다.';

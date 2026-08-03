@@ -652,9 +652,23 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   }))
   await p.click('#btnMakeCut'); await p.waitForTimeout(300)
   const calls = await p.evaluate(() => window.__calls.join('\n'))
-  ok('3m vecCut 에 도련을 넘긴다', /mesCut_vecCut\(3,\s*(true|false),\s*3\)/.test(calls), calls.split('\n').filter((l) => l.includes('vecCut')).join(' | '))
+  ok('3m vecCut 에 도련을 넘긴다', /mesCut_vecCut\(3,\s*(true|false),\s*3,/.test(calls), calls.split('\n').filter((l) => l.includes('vecCut')).join(' | '))
   // ★두 방식은 품질이 다르다(clip=무손실 / scale=근사) — 어느 쪽인지 반드시 말해야 한다
   ok('3m 클립 방식을 알린다', /클립을 넓혀/.test(await txt(p, '#out')), await txt(p, '#out'))
+  ok('3m 방식 선택칸·기본 자동', await p.evaluate(() => {
+    const el = document.getElementById('bleedMode')
+    return !!el && el.value === 'auto' && [...el.options].map((o) => o.value).join(',') === 'auto,color,scale'
+  }))
+  await p.close()
+}
+{
+  // ★A안 — 클립이 없으면 **가장자리 색**이 기본 폴백이다(확대는 이형에서 링이 빈다)
+  const p = await openPanel({ ping: 'CUT-CEP-0.7.0', vecCut: 'ok;paths=1;anchors=8;bleed=color' })
+  await p.click('#btnMakeCut'); await p.waitForTimeout(300)
+  ok('3m 색 방식을 알린다', /가장자리 색으로 채웠습니다/.test(await txt(p, '#out')), await txt(p, '#out'))
+  const calls = await p.evaluate(() => window.__calls.join(' ~ '))
+  ok('3m vecCut 에 방식을 넘긴다', /mesCut_vecCut\(3,\s*(true|false),\s*3,"auto"\)/.test(calls),
+    calls.split(' ~ ').filter((l) => l.includes('vecCut')).join(' | '))
   await p.close()
 }
 {
@@ -672,6 +686,10 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3m 클립은 여백+도련 만큼 넓힌다', /mesCut_vecGrowClips\(items, offsetMm \+ bleedMm\)/.test(hostSrc))
   // ★사각 클립만 — 임의 형상 클립을 건드리면 clipping 플래그가 깨질 수 있다
   ok('3m 사각 클립만 넓힌다', /pathPoints\.length !== 4\) continue/.test(hostSrc))
+  // ★A안 — 색은 **고르지 않고 원본에서 읽는다**(겹치는 채워진 도형 중 가장 큰 것)
+  ok('3m 가장자리 색 경로', /function mesCut_vecBleedColor\(/.test(hostSrc) && /function mesCut_dominantFill\(/.test(hostSrc))
+  ok('3m 색 폴백이 기본(확대는 명시해야)', /if \(bleedMode !== 'scale'\) return mesCut_vecBleedColor/.test(hostSrc))
+  ok('3m 도련은 원본 뒤로', /mesCut_vecBleedColor[\s\S]{0,900}ZOrderMethod\.SENDTOBACK/.test(hostSrc))
 }
 
 // ── 3l ★작업 폴더 산출 — EPS + DXF 같은 이름 쌍 (spec §2.7) ──────────
