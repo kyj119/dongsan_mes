@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-08-03T09:16:56+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-08-03T15:26:14+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -22,6 +22,17 @@
 > 가리는데 빈 상태 문구는 "없습니다"라고 안내) → 별도 커밋. Phase 7b-2의 교훈이 그대로 재현됐다.
 > ⚠️ **발송 계열은 실호출 미검증** — 테스트 호출이 곧 실발송이라 `/send-bulk`·`/ad/send`는 부르지 않고
 > 모의 응답·단위 로직으로 대체([[design-ad-compliance-guard]] 함정). 소량 1건 자연검증 필요.
+
+> **Area 1 프로덕션 헬스 (2026-08-03T15:26):**
+> - **방법**: `git fetch origin main`(HEAD `c21a63a` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). `SMOKE_URL=https://webapp-9i0.pages.dev npm run smoke` → 로그인 단계에서 `403 Host not in allowlist` — 프록시가 이번 세션도 prod 호스트 직접 접근 차단(기존 인지된 egress 제약 재확인, 변동 없음), GitHub Actions 기록으로 대체. Area 1 **56회차** — 직전 Area1(`9dee203`, 08-01T12:17, 55회차) 이후 `git log 9dee203..HEAD` = 36커밋이나 웹 렌즈 대상(`src/routes`/`src/scripts`/`migrations`/`index.tsx`/`src/layout`/`src/pages`) 한정 diff는 **0건** — 전량 auto-improve 사이클 로그(Area2~6)·간판 BOM 데이터 마이그(0508~0512, Area2/4/6 기검증)·IA cut-panel CEP 플러그인 신규 구축(`IllustratorAutomat/designer/**`, 독립 배포경로)뿐. Area1은 헬스 확인이라 코드 diff 무관하게 CI 전수 확인 진행.
+> - **deploy.yml 전수 확인**: `9dee203` 이후 발생한 런(2026-08-01T12:17Z~2026-08-03T00:18Z, `id 30699403113`~`30774189792`) 전부 `Deploy to Cloudflare Pages` 스텝까지 **success**(Typecheck/Build/Deploy 전 스텝) — 신규 failure 0건. 직전에 codify된 유일 failure(`e5ba1ad`, docs-only CF-internal transient, 즉시 다음 런 회복)는 이 윈도 이전 사건이라 재보고 아님.
+> - **backup.yml 신선도**: 최신 run(`83faddd`, 2026-08-02T17:55:00Z) success — 직전(`9dee203`, 08-01T17:54:07Z) 대비 ~24h 간격으로 일일 스케줄 정상 유지. 07-28 `cancelled` 1건은 기존 인지된 "연속 트리거 supersede" 패턴(변동 없음).
+> - **e2e.yml / verify.yml**: e2e.yml 최신 run은 여전히 2026-06-22(`disabled_manually` 상태 지속, 신규 실행 0 — 기존 인지 상태와 동일, 변동 없음). verify.yml은 열린 PR 0건(`list_pull_requests(state:open)` 직접 확인)이라 이번 사이클도 실행 대상 없음.
+> - **open≠unfixed 재확인**: `search_issues(is:open,label:auto-improve)` 실측 **8건**(#585·#586·#587·#589·#590·#591·#592·#593, Area6 54회차 캐시와 일치) — 이번 윈도 웹 렌즈 코드 churn이 0이라 그 이슈들의 대상 파일(`messagesAd.ts`·`messages.ts`·`orders.js`/`orderForm/parent.js`·`orders/core.ts`·간판 BOM 마이그)을 전혀 안 건드림 → 직전 사이클(Area5 49회차·Area4 50회차)이 직접 재grep 완료한 verified-once 캐시 그대로 신뢰(line 296 원칙), 재검증 스킵. fixed-in-tree 0건.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **8**(변동없음) · `reason:completed` **511**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음). 전부 기재값과 정확히 일치, 드리프트 0.
+> - **🧬 SKILL 강화 없음** — 순수 CI/헬스 확인 사이클(deploy·backup·e2e·verify 전부 기존 인지 상태와 동일, 웹 코드 churn 0), 신규 클래스 없음.
+> - 신규 이슈 0건, 자동수정 0건(순수 CI/인프라 헬스 확인), done-sync: new 8(변동없음)·done 511(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-08-03T09:16):**
 > - **방법**: `git fetch origin main`(HEAD `92e97e6` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 6 **54회차** — 직전 Area5(`92e97e6`, 08-03T03:11, 49회차) 이후 `git log 92e97e6..HEAD` = **0커밋**(원격·로컬 완전 동기, 이번 사이클 사이 코드/데이터 변경 전무) → 컬럼-diff bridge·XSS bridge 둘 다 검토할 신선 churn 자체가 없음(브리지 스킵이 아니라 대상 부재, Area5 로그와 동일 사유).
