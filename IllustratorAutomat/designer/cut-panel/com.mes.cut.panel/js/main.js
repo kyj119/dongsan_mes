@@ -1199,6 +1199,27 @@
   var btnReg = $('btnRegister');
   if (btnReg) btnReg.addEventListener('click', registerNest);
 
+  // ── ★설명 접기 (2026-08-03 용준님: "실사용시에는 설명이 너무 많다") ──────
+  // 지우지 않고 접는다 — 함정 설명이 사라지면 같은 질문이 반복된다. 기본은 **접힘**이고
+  // 선택은 기억한다(패널을 다시 열 때마다 다시 접는 건 그것대로 성가시다).
+  var HINT_KEY = 'mesCutHints';
+  function applyHints(show) {
+    var root = document.querySelector('.panel');
+    if (root) root.className = show ? 'panel' : 'panel no-hints';
+    var b = document.getElementById('btnHelp');
+    if (b) b.title = show ? '설명 숨기기' : '설명 보기';
+  }
+  function hintsOn() {
+    try { return window.localStorage.getItem(HINT_KEY) === '1'; } catch (e) { return false; }
+  }
+  applyHints(hintsOn());
+  var btnHelp = $('btnHelp');
+  if (btnHelp) btnHelp.addEventListener('click', function () {
+    var next = !hintsOn();
+    try { window.localStorage.setItem(HINT_KEY, next ? '1' : '0'); } catch (e) {}
+    applyHints(next);
+  });
+
   var btnPair = $('btnExportPair');
   if (btnPair) btnPair.addEventListener('click', exportPair);
   // 자재·후가공·품목을 고칠 때마다 파일명 미리보기를 갱신한다 — 저장 직전에야 이름을 알면 늦다

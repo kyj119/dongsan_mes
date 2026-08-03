@@ -610,6 +610,26 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     !/mesCut_vecSilhouette[\s\S]*?(simplify|fitCurves)\s*\(/.test(hostSrc))
 }
 
+// ── 3p ★설명 접기 (2026-08-03: "실사용시에는 설명이 너무 많다") ──────────
+{
+  const p = await openPanel({ ping: 'CUT-CEP-0.7.0' })
+  ok('3p 기본은 설명 접힘', await p.evaluate(() => document.querySelector('.panel').className.includes('no-hints')))
+  ok('3p 접히면 hint 가 안 보인다', await p.evaluate(() => {
+    const h = document.querySelector('.hint')
+    return h && getComputedStyle(h).display === 'none'
+  }))
+  await p.click('#btnHelp'); await p.waitForTimeout(60)
+  ok('3p ? 로 펼쳐진다', await p.evaluate(() => {
+    const h = document.querySelector('.hint')
+    return !document.querySelector('.panel').className.includes('no-hints') && getComputedStyle(h).display !== 'none'
+  }))
+  // ★설명을 **지우지 않았는지** — 접는 것과 없애는 것은 다르다
+  ok('3p 설명이 그대로 남아 있다', await p.evaluate(() => document.querySelectorAll('.hint').length >= 10))
+  await p.click('#btnHelp'); await p.waitForTimeout(60)
+  ok('3p 다시 누르면 접힌다', await p.evaluate(() => document.querySelector('.panel').className.includes('no-hints')))
+  await p.close()
+}
+
 // ── 3o ★레이어 분리 + 인쇄 플래그 + 시트 테두리 제거 (2026-08-03 지시) ──
 // 규약(SheetLayout.jsx:19~22): CutLine = print OFF · Dombo = print ON.
 {

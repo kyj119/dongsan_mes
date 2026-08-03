@@ -26,6 +26,10 @@ html, body {
 .cfg { color: #7a7a7a; font-size: 11px; }
 .meas { color: #c8c8c8; flex: 1; }
 .hint { color: #7a7a7a; font-size: 11px; line-height: 1.45; }
+/* ★설명은 기본으로 접는다 — 매일 쓰는 패널이라 평소엔 입력칸만 보이는 게 낫다(2026-08-03 용준님).
+   지우지는 않는다: 처음 쓰는 사람과 함정 설명이 사라지면 같은 질문이 반복된다. `?` 로 켠다. */
+.panel.no-hints .hint { display: none; }
+.title-btn { margin-left: 6px; }
 
 .sep { height: 1px; background: #454545; margin: 2px 0; }
 
