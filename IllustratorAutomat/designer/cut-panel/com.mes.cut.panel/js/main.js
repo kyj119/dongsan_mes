@@ -786,6 +786,9 @@
     var wantPieceCut = !!(document.getElementById('nestCut') && document.getElementById('nestCut').checked);
     var cvN = resolveCurve();
     var wantCurve = cvN.curve;
+    var nestBleedMm = num('nestBleed', 3);   // 조각마다 칼선 바깥으로 더 인쇄
+    var nestBleedModeEl = document.getElementById('bleedMode');
+    var nestBleedMode = nestBleedModeEl ? nestBleedModeEl.value : 'auto';
     var lmN = resolveLineMode();
     var useVec = false;                 // 판정 후 확정 — 배치 마스크는 어느 쪽이든 래스터다
     var vecNote = lmN.vector ? '' : lmN.note;
@@ -842,7 +845,7 @@
           var w = window.cep.fs.writeFile(pp, lines.join('\n'), window.cep.encoding.UTF8);
           if (!w || w.err !== 0) { done('params 쓰기 실패', 'err'); return; }
           out('새 문서에 배치 중...');
-          host('mesCut_nestApply(' + (useVec ? (offsetMm + ',' + (prep.fill ? 'true' : 'false')) : '') + ')', function (ap, bad3) {
+          host('mesCut_nestApply(' + (useVec ? (offsetMm + ',' + (prep.fill ? 'true' : 'false') + ',' + nestBleedMm + ',"' + nestBleedMode + '"') : '') + ')', function (ap, bad3) {
             if (bad3 || ap.indexOf('ok;') !== 0) { done('배치 적용 실패: ' + ap, 'err'); return; }
             var a = kv(ap.substring(3));
             var lenTxt = isRoll
@@ -874,6 +877,9 @@
               + (allowRot ? ' · 회전 허용' : '')
               + '\n돔보 ' + (a.dombo || 0) + '판 — 별도 레이어(인쇄 ON) · 재단선 레이어는 인쇄 OFF'
               + (wantPieceCut ? (' · 조각별 칼선' + (useVec ? '(벡터)' : (wantCurve ? '(곡선)' : '(직선)'))) : '')
+              + (useVec && nestBleedMm > 0 ? ('\n도련 ' + nestBleedMm + 'mm (조각마다)'
+                  // ★간격이 도련의 2배보다 좁으면 인접 도련이 겹친다 — 조용히 두면 남의 색이 링에 남는다
+                  + (gapMm < nestBleedMm * 2 ? ' ⚠ 간격이 도련×2 보다 좁아 인접 도련이 겹칩니다(간격 ≥ ' + (nestBleedMm * 2) + 'mm 권장)' : '')) : '')
               + (res.unplaced.length ? ('\n⚠ 배치 못한 조각 ' + res.unplaced.length + '개 — 시트를 키우거나 간격을 줄이세요.') : '')
               + (useVec ? '' : cvN.note) + vecNote,
               res.unplaced.length ? 'err' : 'ok');

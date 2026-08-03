@@ -1360,7 +1360,7 @@ function mesCut_addDombo(doc) {
  *   ★이 모드에선 좌표 정렬 문제가 원리적으로 없다 — 이미 회전·이동이 끝난 사본을 그대로 쓰므로
  *     패널의 `baseX`/trim 오프셋 수식도, 미세·거친 두 마스크를 함께 들고 다니는 것도 필요 없다.
  */
-function mesCut_nestApply(vecOffsetMm, vecFillClosed) {
+function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode) {
     if (!MESCUT_NEST_ITEMS || !MESCUT_NEST_ITEMS.length) return 'ERROR 대상 없음 (nestBegin 먼저)';
     var raw = mesCut_readParams();
     if (!raw) return 'ERROR params 없음';
@@ -1439,6 +1439,12 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed) {
                     if (!copies[vi]) continue;
                     // 조각마다 따로 부른다 — 한꺼번에 합집합하면 **조각끼리 이어질 수 있다**(오프셋 ≥ 간격/2).
                     try { mesCut_vecSilhouette(doc, [copies[vi]], vcl, vecOffsetMm, vecFillClosed); } catch (eVS) {}
+                    // ★도련도 조각마다 — 인쇄가 칼선보다 도련만큼 더 나가야 재단 오차를 흡수한다.
+                    //   ⚠️ 간격 < 도련×2 면 인접 조각의 도련이 겹친다(패널이 경고한다). 겹쳐도 각자
+                    //      제 경계로 클리핑돼 있고 잘라내는 자리라 치명적이지 않지만, 위에 놓인 쪽 색이 이긴다.
+                    if (vecBleedMm > 0) {
+                        try { mesCut_vecBleed(doc, [copies[vi]], vecOffsetMm, vecBleedMm, vecFillClosed, vecBleedMode); } catch (eVB) {}
+                    }
                 }
                 try { doc.selection = null; } catch (eSel) {}
             } else if (sh.cuts.length) {

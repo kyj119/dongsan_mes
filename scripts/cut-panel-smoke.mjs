@@ -593,7 +593,7 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   const hostSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
   ok('3k 호스트에 벡터 API 3종', /function mesCut_vecCut\(/.test(hostSrc)
     && /function mesCut_vecProbe\(/.test(hostSrc) && /function mesCut_vecSilhouette\(/.test(hostSrc))
-  ok('3k nestApply 가 벡터 여백을 받는다', /function mesCut_nestApply\(vecOffsetMm, vecFillClosed\)/.test(hostSrc))
+  ok('3k nestApply 가 벡터 여백을 받는다', /function mesCut_nestApply\(vecOffsetMm, vecFillClosed/.test(hostSrc))
   // ★선 도안을 채우지 않으면 실루엣이 아니라 **고리**가 나온다(실측: 70×50 → 76.35 고리 + 63.65 구멍)
   ok('3k 선 도안은 사본에 채우기를 켠다', /mesCut_vecSilhouette[\s\S]{0,900}fillClosed[\s\S]{0,200}mesCut_fillClosedItem/.test(hostSrc))
   // ★조인은 실측으로 정했다 — 사각·원으로는 구별되지 않아 뾰족 도형에서만 잡힌다
@@ -608,6 +608,26 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // ★★벡터 결과를 다듬지 않는가 — 후처리는 실측에서 전부 악화됐다(앵커 병합 최대편차 2.117mm)
   ok('3k 벡터 결과를 단순화·재피팅하지 않음',
     !/mesCut_vecSilhouette[\s\S]*?(simplify|fitCurves)\s*\(/.test(hostSrc))
+}
+
+// ── 3q ★모아찍기 도련 (2026-08-03 지시) ──────────────────────────────
+{
+  const p = await openPanel({ ping: 'CUT-CEP-0.7.0' })
+  ok('3q 모아찍기 도련 칸·기본 3mm', await p.evaluate(() => {
+    const el = document.getElementById('nestBleed')
+    return !!el && el.value === '3'
+  }))
+  await p.close()
+}
+{
+  const hostSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
+  const panelSrc = fs.readFileSync(path.join(PANEL_DIR, 'js/main.js'), 'utf8')
+  ok('3q nestApply 가 도련을 받는다', /function mesCut_nestApply\(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode\)/.test(hostSrc))
+  // ★조각마다 따로 불러야 한다 — 한꺼번에 하면 조각끼리 이어진다
+  ok('3q 배치된 사본마다 도련', /mesCut_vecBleed\(doc, \[copies\[vi\]\]/.test(hostSrc))
+  ok('3q 패널이 도련을 넘긴다', /nestApply\([\s\S]{0,120}nestBleedMm/.test(panelSrc))
+  // ★간격 < 도련×2 면 인접 도련이 겹친다 — 조용히 두면 남의 색이 링에 남는다
+  ok('3q 간격이 좁으면 경고', /gapMm < nestBleedMm \* 2/.test(panelSrc))
 }
 
 // ── 3p ★설명 접기 (2026-08-03: "실사용시에는 설명이 너무 많다") ──────────
