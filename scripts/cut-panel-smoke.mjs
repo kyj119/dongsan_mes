@@ -610,6 +610,28 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     !/mesCut_vecSilhouette[\s\S]*?(simplify|fitCurves)\s*\(/.test(hostSrc))
 }
 
+// ── 3r ★일괄 굽기 + 단품 경로 정리 (2026-08-03 지시) ──────────────────
+// 조각마다 임시 문서를 만들면 조각당 4.07초인데 실제 굽기는 78ms 뿐이다(실측).
+{
+  const hostSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
+  const panelSrc = fs.readFileSync(path.join(PANEL_DIR, 'js/main.js'), 'utf8')
+  ok('3r 호스트에 일괄 굽기', /function mesCut_nestBakeAll\(/.test(hostSrc))
+  // ★활성 전환은 총 2회여야 한다 — 조각 수에 비례하면 개선이 없다
+  const bake = hostSrc.slice(hostSrc.indexOf('function mesCut_nestBakeAll('), hostSrc.indexOf('function mesCut_rasterizeItem('))
+  ok('3r 활성 전환이 조각 수와 무관', (bake.match(/app\.activeDocument = /g) || []).length <= 4,
+    String((bake.match(/app\.activeDocument = /g) || []).length))
+  ok('3r 임시 문서는 하나', (bake.match(/documents\.add\(/g) || []).length === 1)
+  // ★복제본이 겹치면 다른 조각이 캔버스에 들어온다 → 벌려 놓아야 한다
+  ok('3r 복제본을 벌려 놓는다', /translate\(dx, dy\)/.test(bake))
+  ok('3r 패널이 버전 게이트로 고른다', /hostSupportsBakeAll\(\)\) bakeAll\(\); else next\(\)/.test(panelSrc))
+  // ★두 경로가 같은 마스크 코드를 써야 한다 — 갈라지면 한쪽만 조용히 달라진다
+  ok('3r 마스크 처리는 공용', /function addPiece\(id, img\)/.test(panelSrc))
+  // ★1장짜리도 모아찍기로 — 재단은 돔보가 있어야 하므로 단품 칼선만으로는 못 자른다
+  ok('3r 모아찍기가 1장도 받는다', /if \(n < 1\)/.test(panelSrc))
+  ok('3r 단품 칼선은 기본 접힘',
+    /<details class="grp">/.test(fs.readFileSync(path.join(PANEL_DIR, 'index.html'), 'utf8')))
+}
+
 // ── 3q ★모아찍기 도련 (2026-08-03 지시) ──────────────────────────────
 {
   const p = await openPanel({ ping: 'CUT-CEP-0.7.0' })

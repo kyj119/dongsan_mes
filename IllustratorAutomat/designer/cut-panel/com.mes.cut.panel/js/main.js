@@ -16,7 +16,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.12.0';
+  var SHELL_VERSION = '0.13.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -42,6 +42,7 @@
   //   사라진다. 조용히 사라지는 실패가 가장 나쁘므로, 호스트가 못 받으면 **직선으로 낮추고 알린다**.
   var CURVE_MIN_HOST = [0, 5, 0];
   var VEC_MIN_HOST = [0, 7, 0];      // 벡터 칼선(mesCut_vecCut / nestApply(offset))
+  var BAKEALL_MIN_HOST = [0, 8, 0]; // 일괄 굽기(mesCut_nestBakeAll)
   var hostVersion = null;
 
   function setHostVersion(s) { hostVersion = String(s || ''); }
@@ -56,6 +57,7 @@
   }
   function hostSupportsCurve() { return hostAtLeast(CURVE_MIN_HOST); }
   function hostSupportsVector() { return hostAtLeast(VEC_MIN_HOST); }
+  function hostSupportsBakeAll() { return hostAtLeast(BAKEALL_MIN_HOST); }
 
   // ── ★칼선 방식 (2026-08-01) ──────────────────────────────────────
   // 벡터 = 일러가 실루엣을 직접 오프셋한다. 래스터 왕복(굽기→임계→픽셀 계단→곡선 복원)이 없으므로
@@ -672,7 +674,9 @@
     host('mesCut_nestBegin()', function (bg, bad) {
       if (bad || bg.indexOf('ok;') !== 0) { fail('대상 확정 실패: ' + bg); return; }
       var n = parseInt(kv(bg.substring(3)).n, 10) || 0;
-      if (n < 2) { fail('조각이 ' + n + '개입니다 — 2개 이상 선택하세요.'); return; }
+      // ★1개도 받는다 — 실물 작업 파일 다수가 `-1장` 짜리다. 단품도 돔보가 있어야 자를 수 있으므로
+      //   모아찍기(돔보·도련·EPS/DXF 포함)로 보내는 게 맞다(2026-08-03 용준님 판단).
+      if (n < 1) { fail('조각이 없습니다 — 대상을 선택하세요.'); return; }
       // ★선 도안 판정은 **선택 전체에 대해 한 번** — 조각마다 다르게 굽으면 마스크 규칙이 섞인다
       host('mesCut_artKind()', function (kindStr) { prepareWith(resolveFill(kindStr, fillMode || 'auto')); });
       return;
@@ -689,40 +693,79 @@
       // 미세 마스크 보관 예산 — 조각이 크고 많으면 메모리를 다 먹는다. 넘치면 그 조각만
       // 거친 마스크로 칼선을 뽑는다(정확도만 조금 떨어지고 결과는 나온다).
       var fineBudget = FINE_MASK_BUDGET_PX;
-      (function next() {
-        if (i >= n) {
-          cb({
-            n: n, pieces: pieces, rawInkPx: rawInkPx, mmpp: rez.mmPerPx,
-            rPx: rez.rPx, exact: rez.exact, sub: sub, fineMmpp: fineMmpp, softened: softened, safetyMm: rez.safetyMm,
-            offsetMm: offsetMm, cutFinePx: cutFinePx, fillNote: fv.note, lineArt: fv.lineArt, fill: fv.fill,
-          });
-          return;
-        }
+      /** 두 경로(순차·일괄)가 **같은 결과 묶음**을 넘긴다 — 갈라지면 한쪽만 조용히 달라진다. */
+      function finishPrep() {
+        cb({
+          n: n, pieces: pieces, rawInkPx: rawInkPx, mmpp: rez.mmPerPx,
+          rPx: rez.rPx, exact: rez.exact, sub: sub, fineMmpp: fineMmpp, softened: softened, safetyMm: rez.safetyMm,
+          offsetMm: offsetMm, cutFinePx: cutFinePx, fillNote: fv.note, lineArt: fv.lineArt, fill: fv.fill,
+        });
+      }
+
+      /** 구 호스트 폴백 — 조각마다 임시 문서를 만든다(조각당 4.07초, 2026-08-03 실측). */
+      function next() {
+        if (i >= n) { finishPrep(); return; }
         out('조각 굽는 중... ' + (i + 1) + '/' + n);
         host('mesCut_rasterizeItem(' + i + ',' + fineMmpp + ',' + padMm + ',' + (fv.fill ? 'true' : 'false') + ')', function (rz, bad2) {
           if (bad2 || rz.indexOf('ok;') !== 0) { fail('조각 ' + i + ' 실패: ' + rz); return; }
           readPng(kv(rz.substring(3)).path, function (err, img) {
             if (err) { fail(err); return; }
-            var em = edgeMask(G, img, 'alpha', sub);
-            if (em.downgraded) softened++;
-            // ★효율%를 정직하게 내려면 **팽창 전** 잉크를 세 둬야 한다 —
-            //   팽창된 마스크로 세면 조각이 작고 gap 이 클수록 크게 부풀려진다.
-            for (var k = 0; k < em.m.length; k++) rawInkPx += em.m[k];
-            // ★배치 마스크 = **여백 + 간격/2** 팽창 — 겹치지 않으면 칼선끼리 간격이 보장된다.
-            //   반경은 **정수 px** 이어야 한다(소수부는 버려진다) → 스냅이 계산한 rPx 를 그대로 쓴다.
-            var piece = {
-              id: i, W: em.W, H: em.H, m: growMask(G, em.m, em.W, em.H, rez.rPx),
-              base: { W: em.W, H: em.H, m: em.m },   // 팽창 전 — 칼선은 여기서 여백만큼만 벌린다
-            };
-            if (sub > 1 && em.fine) {
-              var px = em.fine.W * em.fine.H;
-              if (px <= fineBudget) { piece.fine = em.fine; fineBudget -= px; }
-            }
-            pieces.push(piece);
+            addPiece(i, img);
             i++; next();
           });
         });
-      })();
+      }
+
+      /** 마스크 처리 — 순차·일괄 두 경로가 **같은 코드**를 쓴다(갈라지면 한쪽만 조용히 달라진다). */
+      function addPiece(id, img) {
+        var em = edgeMask(G, img, 'alpha', sub);
+        if (em.downgraded) softened++;
+        // ★효율%를 정직하게 내려면 **팽창 전** 잉크를 세 둬야 한다 —
+        //   팽창된 마스크로 세면 조각이 작고 gap 이 클수록 크게 부풀려진다.
+        for (var k = 0; k < em.m.length; k++) rawInkPx += em.m[k];
+        // ★배치 마스크 = **여백 + 간격/2** 팽창 — 겹치지 않으면 칼선끼리 간격이 보장된다.
+        //   반경은 **정수 px** 이어야 한다(소수부는 버려진다) → 스냅이 계산한 rPx 를 그대로 쓴다.
+        var piece = {
+          id: id, W: em.W, H: em.H, m: growMask(G, em.m, em.W, em.H, rez.rPx),
+          base: { W: em.W, H: em.H, m: em.m },   // 팽창 전 — 칼선은 여기서 여백만큼만 벌린다
+        };
+        if (sub > 1 && em.fine) {
+          var px = em.fine.W * em.fine.H;
+          if (px <= fineBudget) { piece.fine = em.fine; fineBudget -= px; }
+        }
+        pieces.push(piece);
+      }
+
+      /**
+       * ★일괄 굽기 — 호스트가 조각 전부를 한 번에 굽는다(문서 왕복 2회).
+       * 순차 경로는 조각당 4.07초였고 그중 굽기는 78ms 뿐이었다(2026-08-03 실측).
+       */
+      function bakeAll() {
+        out('조각 ' + n + '개 굽는 중...');
+        host('mesCut_nestBakeAll(' + fineMmpp + ',' + padMm + ',' + (fv.fill ? 'true' : 'false') + ')', function (rz, badB) {
+          if (badB || rz.indexOf('ok;') !== 0) { fail('일괄 굽기 실패: ' + rz); return; }
+          var rows = String(rz).split(/[\r\n]+/), list = [];
+          for (var r = 1; r < rows.length; r++) {
+            var t = rows[r].split(' ');
+            if (t[0] !== 'P') continue;
+            // P <idx> <w> <h> <ox> <oy> <path…>  — 경로에 공백이 있을 수 있어 뒤를 전부 붙인다
+            list.push({ id: parseInt(t[1], 10), path: t.slice(6).join(' ') });
+          }
+          if (!list.length) { fail('구운 조각이 없습니다: ' + rows[0]); return; }
+          var q = 0;
+          (function step() {
+            if (q >= list.length) { finishPrep(); return; }
+            out('마스크 ' + (q + 1) + '/' + list.length);
+            readPng(list[q].path, function (err, img) {
+              if (err) { fail(err); return; }
+              addPiece(list[q].id, img);
+              q++; step();
+            });
+          })();
+        });
+      }
+
+      if (hostSupportsBakeAll()) bakeAll(); else next();
       }
     });
   }

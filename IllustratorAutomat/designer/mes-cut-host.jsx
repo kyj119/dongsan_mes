@@ -17,7 +17,9 @@
 //   0.4.3 = 테두리·돔보를 **실제 배치 bbox** 기준으로(시트 크기 아님) · DXF 를 등록 폴더에 저장
 //           · 복제 시 활성문서 왕복을 조각당 2회 → 시트당 2회 (2026-07-31)
 //   0.7.0 = ★벡터 칼선 — 래스터 왕복을 건너뛰고 일러가 직접 오프셋한다 (2026-08-01)
-var MESCUT_VERSION = 'CUT-CEP-0.7.0';
+//   0.8.0 = 도련(클립확장·가장자리색) · 레이어 분리(재단선 print OFF·돔보) · 시트 테두리 제거
+//           · ★일괄 굽기 nestBakeAll — 조각당 4.07초 → 문서 왕복 2회로 (2026-08-03)
+var MESCUT_VERSION = 'CUT-CEP-0.8.0';
 var MESCUT_PT_PER_MM = 72 / 25.4;
 
 // ── 크로스 패널 잠금 (spec §5.2-① · P0 핵심) ────────────────────────
@@ -1158,7 +1160,109 @@ function mesCut_nestBegin() {
 }
 
 /**
+ * ★조각 **전부를 한 번에** 굽는다 — 문서 왕복을 조각 수에 비례하지 않게 만든다 (2026-08-03).
+ *
+ * **왜**: `mesCut_rasterizeItem` 은 조각마다 임시 문서를 만들고 닫는다. 실측(2026-08-03)해 보면
+ * 조각당 4.07초인데 그중 **실제 굽기는 78ms** 뿐이고 나머지가 전부 문서 관리다:
+ *     문서 생성+닫기 **2,000ms** · 활성 전환 338ms ×3 · 복제 183ms · 굽기 78ms
+ * 8조각이면 32.5초가 걸렸다(측정값).
+ *
+ * 여기서는 임시 문서를 **하나만** 만들고 활성 전환도 **총 2회**로 끝낸다:
+ *   ① 원본 active 상태에서 조각을 **전부** 복제(전환 1회 — 문서 간 복제는 원본이 active 여야 한다)
+ *   ② 임시 문서로 한 번 전환한 뒤, 조각마다 **아트보드만 옮기며** 굽는다(굽기 78ms 만 남는다)
+ * ⚠️ 복제본은 원본 좌표를 유지하므로 원본에서 조각이 겹치면 서로가 캔버스에 들어온다 →
+ *    복제 직후 **가로로 벌려 놓는다**. 반환하는 ox/oy 는 **원본 잉크 경계** 기준이라 배치 계산은 그대로다.
+ *
+ * 반환(여러 줄):
+ *   ok;n=<개수>;mmpp=<..>;filled=<..>
+ *   P <idx> <w>px <h>px <oxMm> <oyMm> <path>
+ * 실패한 조각은 그 줄이 빠진다 — 호출자가 idx 로 대조한다.
+ */
+function mesCut_nestBakeAll(mmPerPx, padMm, fillClosed) {
+    if (!MESCUT_NEST_ITEMS || !MESCUT_NEST_ITEMS.length) return 'ERROR 대상 없음 (nestBegin 먼저)';
+    if (!mmPerPx || mmPerPx <= 0) mmPerPx = 0.5;
+    if (!padMm || padMm < 0) padMm = 0;
+    var srcDoc = app.activeDocument;
+    var PT = MESCUT_PT_PER_MM;
+    var padPt = padMm * PT;
+    var n = MESCUT_NEST_ITEMS.length;
+    var i;
+
+    // ① 원본 기준 잉크 경계를 먼저 모은다 — ox/oy 는 **원본** 기준이어야 배치 수식이 안 바뀐다
+    var srcBB = [];
+    for (i = 0; i < n; i++) srcBB.push(mesCut_inkBounds(MESCUT_NEST_ITEMS[i]));
+
+    var tmp = null, nFill = 0;
+    var lines = [];
+    try {
+        // 캔버스는 넉넉히 — 조각을 가로로 벌려 놓을 것이라 폭이 커야 한다
+        var totW = 0, maxH = 0;
+        for (i = 0; i < n; i++) {
+            if (!srcBB[i]) continue;
+            totW += (srcBB[i][2] - srcBB[i][0]) + padPt * 2 + 20 * PT;
+            var hh = (srcBB[i][1] - srcBB[i][3]) + padPt * 2;
+            if (hh > maxH) maxH = hh;
+        }
+        if (totW <= 0 || maxH <= 0) return 'ERROR 크기 0';
+        tmp = app.documents.add(DocumentColorSpace.CMYK, totW, maxH);
+        var lay = tmp.layers[0];
+
+        app.activeDocument = srcDoc;                 // ★전환 1 — 복제는 원본이 active 일 때만 동작한다
+        var copies = [];
+        for (i = 0; i < n; i++) {
+            var cp = null;
+            try { cp = MESCUT_NEST_ITEMS[i].duplicate(lay, ElementPlacement.PLACEATEND); } catch (eD) {}
+            copies.push(cp);
+        }
+        app.activeDocument = tmp;                    // ★전환 2 — 이후로는 임시 문서 안에서만 논다
+        if (fillClosed) nFill = mesCut_fillClosedIn(tmp);
+
+        // ② 가로로 벌려 놓는다 — 서로 캔버스에 들어오지 않게
+        var cursor = 0;
+        var boxes = [];
+        for (i = 0; i < n; i++) {
+            if (!copies[i]) { boxes.push(null); continue; }
+            var b = mesCut_inkBounds(copies[i]);
+            if (!b) { boxes.push(null); continue; }
+            var dx = cursor - b[0], dy = -b[1];
+            try { copies[i].translate(dx, dy); } catch (eT) {}
+            var nb = mesCut_inkBounds(copies[i]) || [b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy];
+            boxes.push(nb);
+            cursor = nb[2] + padPt * 2 + 20 * PT;
+        }
+
+        // ③ 아트보드만 옮기며 굽는다 — 남는 비용은 export 뿐이다
+        var opts = new ExportOptionsPNG24();
+        opts.antiAliasing = true; opts.transparency = true; opts.artBoardClipping = true;
+        var sc = (1 / mmPerPx) * (25.4 / 72) * 100;
+        opts.horizontalScale = sc; opts.verticalScale = sc;
+        var f = function (pt) { return Math.round((pt / PT) * 100) / 100; };
+        for (i = 0; i < n; i++) {
+            if (!boxes[i] || !srcBB[i]) continue;
+            var bx = boxes[i];
+            tmp.artboards[0].artboardRect = [bx[0] - padPt, bx[1] + padPt, bx[2] + padPt, bx[3] - padPt];
+            var outPath = Folder.temp.fsName.replace(/\\/g, '/') + '/mes_cut_nest_' + i + '.png';
+            try { tmp.exportFile(new File(outPath), ExportType.PNG24, opts); } catch (eE) { continue; }
+            var wPx = Math.round(((bx[2] - bx[0]) + padPt * 2) * sc / 100);
+            var hPx = Math.round(((bx[1] - bx[3]) + padPt * 2) * sc / 100);
+            lines.push('P ' + i + ' ' + wPx + ' ' + hPx
+                + ' ' + f(srcBB[i][0] - padPt) + ' ' + f(srcBB[i][1] + padPt) + ' ' + outPath);
+        }
+        tmp.close(SaveOptions.DONOTSAVECHANGES); tmp = null;
+        app.activeDocument = srcDoc;
+    } catch (e) {
+        if (tmp) { try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) {} }
+        try { app.activeDocument = srcDoc; } catch (e3) {}
+        return 'ERROR nestBakeAll: ' + e;
+    }
+    if (!lines.length) return 'ERROR 구운 조각 0개';
+    return 'ok;n=' + lines.length + ';mmpp=' + mmPerPx + ';filled=' + nFill + '\n' + lines.join('\n');
+}
+
+/**
  * i 번째 조각만 PNG 로 굽는다(칼선의 rasterize 와 같은 방식·같은 함정 회피).
+ * ⚠️ 구 경로다 — 조각마다 임시 문서를 만들어 **조각당 4초**가 든다(2026-08-03 실측).
+ *    새 경로는 `mesCut_nestBakeAll`. 이건 구 패널 호환용으로 남긴다.
  * 반환 'ok;path=..;w=..;h=..;ox=..;oy=..;mmpp=..'
  */
 function mesCut_rasterizeItem(idx, mmPerPx, padMm, fillClosed) {
