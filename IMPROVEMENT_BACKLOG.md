@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-08-03T21:31:17+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-08-04T03:13:55+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -22,6 +22,14 @@
 > 가리는데 빈 상태 문구는 "없습니다"라고 안내) → 별도 커밋. Phase 7b-2의 교훈이 그대로 재현됐다.
 > ⚠️ **발송 계열은 실호출 미검증** — 테스트 호출이 곧 실발송이라 `/send-bulk`·`/ad/send`는 부르지 않고
 > 모의 응답·단위 로직으로 대체([[design-ad-compliance-guard]] 함정). 소량 1건 자연검증 필요.
+
+> **Area 3 UX/기능 감사 (2026-08-04T03:13):**
+> - **방법**: `git fetch origin main`(HEAD `2a14e3f` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 3 **50회차** — 직전 Area3(`a3d8527`, 08-02T15:22, 49회차) 이후 `git log a3d8527..HEAD -- src/scripts src/pages src/layout index.tsx src/routes`는 **0건**(35커밋 전량 IA cut-panel CEP 플러그인 신규 구축[`IllustratorAutomat/designer/**`, CLAUDE.md 명시 IA 축2·독립 배포경로]·간판 BOM 데이터 마이그[0508~0512, Area2/4/6이 이미 컬럼정합성 검증]·오프라인 매입원장 이관 스크립트뿐) — 웹 UX 렌즈로 볼 신선 churn이 **4사이클 연속** 전무.
+> - **open≠unfixed 재확인(대표 2건 직접 재grep, 캐시 아닌 실측)**: `orderForm/parent.js` `loadOrderForEdit()` 여전히 존재 + `grep -n line_discount|discount_reason|discount_by src/scripts/orderForm/parent.js` = 0매치(#590 잔존, load 경로 미복원 그대로) · `messagesAd.js:329 adLoadOptOuts()` 여전히 파라미터 없이 정의·호출(:29/:357/:368, #587 잔존) — fixed-in-tree 0건, 나머지 6건(#585·#586·#589·#591·#592·#593)은 해당 파일 churn 0이라 직전 사이클 verified-once 캐시 그대로 신뢰(line 296 원칙).
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **8**(#585·#586·#587·#589·#590·#591·#592·#593, 변동없음) · `reason:completed` **511**(변동없음) · rejected **6**(변동없음, not_planned 4+duplicate 2). 완전 일치, 드리프트 0.
+> - **🧬 SKILL 강화 없음** — 순수 확인 사이클(프론트 코드 churn 0, open 이슈 대표 재확인 2건 모두 잔존), 신규 코드화 패턴 없음.
+> - 신규 이슈 0건, 자동수정 0건(검토 대상 프론트 churn 자체가 없음), done-sync: new 8(변동없음)·done 511(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-08-03T21:31):**
 > - **방법**: `git fetch origin main`(HEAD `9f59a8a` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 2 **57회차** — 직전 Area2(`37d6242`, 08-02T09:14, 56회차) 이후 `git log 37d6242..HEAD -- src/routes src/scripts migrations index.tsx src/layout` 확인 → `src/routes`·`src/scripts`·`index.tsx`·`src/layout` 변경 **0건**, 유일 diff는 `migrations/0510~0512`(간판 BOM 대손충당 안분/작업지시서 역추적/신규승격 스윕 데이터 3파일, Area4 50회차·#592·#593이 이미 컬럼정합성 다룸) — 코드품질 렌즈로 diff할 신선 churn이 3사이클 연속 없음.
