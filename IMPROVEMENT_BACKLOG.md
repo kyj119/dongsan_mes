@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-08-02T21:24:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-08-03T09:16:56+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -22,6 +22,26 @@
 > 가리는데 빈 상태 문구는 "없습니다"라고 안내) → 별도 커밋. Phase 7b-2의 교훈이 그대로 재현됐다.
 > ⚠️ **발송 계열은 실호출 미검증** — 테스트 호출이 곧 실발송이라 `/send-bulk`·`/ad/send`는 부르지 않고
 > 모의 응답·단위 로직으로 대체([[design-ad-compliance-guard]] 함정). 소량 1건 자연검증 필요.
+
+> **Area 6 자기 진화 (2026-08-03T09:16):**
+> - **방법**: `git fetch origin main`(HEAD `92e97e6` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 6 **54회차** — 직전 Area5(`92e97e6`, 08-03T03:11, 49회차) 이후 `git log 92e97e6..HEAD` = **0커밋**(원격·로컬 완전 동기, 이번 사이클 사이 코드/데이터 변경 전무) → 컬럼-diff bridge·XSS bridge 둘 다 검토할 신선 churn 자체가 없음(브리지 스킵이 아니라 대상 부재, Area5 로그와 동일 사유).
+> - **branch:clean(읽기전용)**: `npm run branch:clean` → SAFE-remote 0·SAFE-absorbed 1(`main` 대비 고유커밋 0)·REVIEW 0·SKIP 1(`main`) — 삭제대상 1건은 30건 미만 임계 미달이라 백로그 등록 불요, `--apply` 미실행(정책대로 읽기전용).
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **8**(#585·#586·#587·#589·#590·#591·#592·#593, 변동없음) · `reason:completed` **511**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음). 완전 일치, 드리프트 0.
+> - **open≠unfixed / close-pending 캐시 재확인**: 코드 churn 0이므로 8건 전부 직전 사이클(Area5 49회차·Area4 50회차)이 직접 재grep 완료한 verified-once 캐시 그대로 신뢰(파일 unchanged, line 296 원칙) — 재검증 스킵.
+> - **🧬 SKILL 강화 없음** — 순수 확인 사이클(코드/데이터 churn 0, 브랜치위생 임계 미달, 카운터 드리프트 0), 신규 코드화 패턴 없음.
+> - 신규 이슈 0건, 자동수정 0건(검토 대상 churn 자체가 없음), done-sync: new 8(변동없음)·done 511(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
+
+> **Area 5 보안 (2026-08-03T03:11):**
+> - **방법**: `git fetch origin main`(HEAD `83faddd` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 5 **49회차** — 직전 Area5(`605cf54`, 08-01T15:15, 48회차) 이후 `git log 605cf54..HEAD`는 41커밋이나, 웹 렌즈 대상(`src/routes`/`src/scripts`/`migrations`/`index.tsx`/`src/layout`/`src/pages`) 한정 diff는 **7커밋뿐**(간판 BOM P2/P3 `product_materials` 소요량+표준BOM+LED밀도보정, 계량비례 산정 확정, 작업지시서 역추적 신규프레임, 교체그룹 전수 신규승격 스윕, 동산 매입원장 5곳 적재 — 전부 순수 데이터 INSERT/UPDATE 마이그레이션). 나머지 34커밋은 IA cut-panel 벡터 컷라인 CEP 플러그인 신규 구축(`IllustratorAutomat/designer/**` — CLAUDE.md 명시 IA 축2, 독립 배포경로·웹 SPA 밖) + 세션문서/원장조사 docs뿐 — 보안(IDOR·XSS·인증·인젝션) 렌즈로 볼 신선 코드 경로가 사실상 전무.
+> - **정적 SQL 마이그레이션 자체는 인젝션 표면 아님**: 0507~0512 전부 리터럴 값 INSERT/UPDATE(사용자 입력 경유 0), 파라미터 바인딩 대상 자체가 아니라 Area 5 검토 범위 밖(컬럼정합성은 Area2 56회차·Area4 50회차·Area6 54회차가 이미 clean 확인).
+> - **필수 grep 2종(매 사이클)**: `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43 BAROBILL_FTP_PASSWORD || ''`(빈 문자열 폴백, 기존 FP) 1건 외 없음. `grep -rnE "password.*\|\| *'[^']+'" src` + CI yml `secrets\.[A-Z_]+ *\|\| *'` → 0건. net-new 하드코딩 시크릿/기본비밀번호 없음.
+> - **형제-비대칭 IDOR·XSS 스캔**: 이번 델타에 `src/routes`·`src/scripts` 변경이 0건이라 신규 mutate 핸들러·innerHTML sink 자체가 없음 — 재검토 대상 없음(스캔 스킵이 아니라 대상 부재).
+> - **open≠unfixed 재확인**: `search_issues(is:open,label:auto-improve)` 실측 **8건**(#585·#586·#587·#589·#590·#591·#592·#593) — 이번 델타 7커밋(전부 마이그레이션)이 그 이슈들의 대상 파일(`messagesAd.ts`·`messages.ts`·`orders.js`/`orderForm/parent.js`·`orders/core.ts`)을 전혀 안 건드려 재grep 없이 unchanged 캐시 신뢰(Area4 50회차가 직전에 직접 재grep 완료). #592·#593(간판 BOM 데이터 오참조)은 보안 라벨 아님(bug), 코드 취약점과 무관.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **8**(변동없음) · `reason:completed` **511**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음). 완전 일치, 드리프트 0.
+> - **🧬 SKILL 강화 없음** — 순수 확인 사이클(웹 코드 churn 0, 데이터 마이그는 인젝션 표면 아님, 필수 grep net-new 0), 신규 코드화 패턴 없음.
+> - 신규 이슈 0건, 자동수정 0건(검토 대상 코드 churn 자체가 없음), done-sync: new 8(변동없음)·done 511·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-08-02T21:24):**
 > - **방법**: `git fetch origin main`(HEAD `90373c1` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean(코드 변경 없어 예상대로 0). Area 4 **50회차** — 직전 Area4(`efe8b36`, 08-01T09:17, 49회차) 이후 `git log efe8b36..HEAD -- src/routes migrations src/scripts`는 **7커밋 전부 순수 데이터 마이그레이션**(0507 정운교역 깃발원단 19종+생지 3종·0508 간판 BOM P2 product_materials 소요량 컬럼+간판 8품목+표준BOM 24행·0509 P3 LED밀도 실측보정+단가0 자재+오분류 3라인 재분류·0510 바류 비례산정 확정(notes만)·0511 작업지시서 역추적 9라인+까치발 BOM 신설·0512 교체그룹 전수 신규승격 스윕 91라인). `src/routes`·`src/scripts` 코드 변경 0 — 데이터 마이그 자체의 참조 무결성 전수 검증으로 전환(과다위임 억제, 6개 파일 정독이 위임보다 빠름).
@@ -97,72 +117,6 @@
 > - **backlog↔GitHub 절대값 재동기화**: open **6**(#591 신규 추가) · done/rejected는 이번 사이클 close 0건이라 재조회 값 그대로(511/6, Area3 48회차 캐시와 일치 재확인 완료).
 > - **🧬 SKILL 강화 없음** — #591은 "감사문서가 스스로 진단한 정정 항목이 실행 추적 없이 방치"라는 변종이나, 단발성 마스터데이터 1건이라 아직 반복 클래스로 codify할 근거 부족(다음 대량이관 시 재현되면 standing scan 후보).
 > - 신규 이슈 1건(#591), 자동수정 0건(financial-master 단일행 수정 + egress 검증불가라 issue-only), done-sync: new 6(+1)·done 511·rejected 6. 다음 순번 **Area 5**.
->
-
-> **Area 5 보안 (2026-08-01T15:15):**
-> - **방법**: `git fetch origin main`(HEAD `605cf54` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 5 **48회차** — 직전 Area5(`d41699b`, 07-30T?, 47회차) 이후 `git log d41699b..HEAD -- src/routes src/scripts migrations index.tsx src/layout`는 **3커밋**: 취소주문 완전삭제 2단계 복원(`a621cdd`)·트레이 관리+파일명 정보우선형(`1a66d92`)·가공대기함 자동 묶음 프리필(`737ecbb`). 전부 Area2 55회차·Area3 48회차·Area4 49회차가 각자 렌즈(entity_id/N+1/UX/고아참조/컬럼존재성)로 이미 리뷰했으나 보안 렌즈(IDOR·XSS·인증·인젝션)는 이번이 최초 — 3커밋 인라인 직접 diff Read(과다위임 억제, 신선 churn 작아 정독이 빠름).
-> - **`a621cdd`(취소주문 하드삭제 재활성화) IDOR·권한 재확인**: `DELETE /:id`가 `entityFilter(c)`로 주문 조회를 이미 격리(`efOrd`, #333) — CANCELLED 하드삭제 신규 게이트(`user.role !== 'ADMIN' → 403`)는 기존 `requireRole('ADMIN','MANAGER')` 라우터 가드 안에서 ADMIN만 하드삭제 통과·MANAGER는 403으로 명확히 차단, 권한 상승 경로 없음. 하드삭제 batch(662-711행) 전체 파라미터라이즈 확인(문자열 결합 SQL 0건) — 인젝션 없음. clean.
-> - **`1a66d92`(트레이 restore·void-bulk) IDOR·TOCTOU 재확인**: `POST /intakes/:id/restore`·기존 `/void-bulk` 둘 다 `entityFilter(c,'designer_intakes')`로 조회 격리 + `canVoidIntake()`(등록 본인 또는 ADMIN/MANAGER) 소유자 검증 + UPDATE에 상태조건 재명시(`WHERE id=? AND status IN(...)`)로 TOCTOU 안전(#534 absorb 패턴과 동일). `GET /intakes` status 콤마다중 파라미터는 `split(',').map(trim)` 후 전량 파라미터 바인드(IN절 플레이스홀더) — SQL 인젝션 경로 없음, entityFilter도 그대로 유지. `printEvents.ts` resolveCard 정규식 anchored→비anchored 변경은 read-only 파일명 파싱 + 파라미터 바인드된 후속 조회라 보안 영향 없음(정규식 자체도 ReDoS 취약 패턴 아님 — 중첩 quantifier 없음).
-> - **`737ecbb`(자동 묶음 프리필) XSS 재확인**: `intake.js`/`parent.js` 신규 innerHTML 삽입 지점(`ofTrayRowHtml`·`stBadge`·`sizeLabel`) 전수 확인 — 자유입력 소스(`r.keyword`)는 기존과 동일하게 `escapeHtml()` 적용 유지, 신규 `group.label` 필드는 이 커밋에서 유일하게 하드코딩 리터럴(`'완성본'`)로만 세팅되고 `ai_groups_json`/`groups_json`(IA 에이전트 응답) 스키마엔 `label` 키 자체가 없음(`grep -rn "\"label\"" IllustratorAutomat/*.cs` 0건) — 즉 free-text 유입 경로 없음, dormant sink 아님(FP, 향후 다른 caller가 `.label`에 실제 자유입력을 넣으면 재오픈 대상). `group.content`/`group.qty`는 커밋 메시지가 명시한 대로 `.value =` DOM 프로퍼티 직접 대입(HTML 문자열 조립 아님)이라 attr 이스케이프 문제 자체가 발생 안 함 — 올바른 패턴. `helpers.ts` 카드수량 반영은 read-only 산식이라 보안 영향 없음.
-> - **필수 grep 2종(매 사이클)**: `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43 BAROBILL_FTP_PASSWORD || ''`(빈 문자열 폴백, 시크릿 리터럴 아님·인증 실패로 이어질 뿐 백도어 아님 = FP) 1건 외 없음. `grep -rnE "password.*\|\| *'[^']+'" src` + CI yml `secrets\.[A-Z_]+ *\|\| *'` → 0건. net-new 하드코딩 시크릿/기본비밀번호 없음(기존 #314/#338 판정과 동형 유지).
-> - **형제-비대칭 IDOR 스팟체크**: 이번 델타가 건드린 3파일(`orders/core.ts`·`workbench.ts`·`printEvents.ts`) 모두 단건/벌크 mutate 핸들러가 형제 read 핸들러와 동일하게 entityFilter를 적용 — #452/#455/#481 클래스의 "일부만 격리" 비대칭 재발 없음.
-> - **open≠unfixed 재확인**: `search_issues(is:open,label:auto-improve)` 실측 **6건**(#585·#586·#587·#589·#590·#591) 전부 보안 라벨 아님(bug/improvement)이고 이번 델타 3커밋이 그 이슈 대상 파일(`messagesAd.ts`·`messages.ts`·`orders.js` edit-load·`docs/dongsan-import`)을 안 건드려 재grep 없이 unchanged 캐시 신뢰(Area4 49회차 직전 재grep 완료).
-> - **backlog↔GitHub 절대값 재동기화**: open **6**(변동 없음, 이번 사이클 신규 이슈·close 0건) · done/rejected 511/6(Area4 49회차 캐시 신뢰).
-> - **🧬 SKILL 강화 없음** — 이번 사이클은 기존 표준 레시피(entityFilter 형제대조·TOCTOU 재명시·DOM 프로퍼티 vs innerHTML 구분)로 전부 판정 가능, 신규 클래스 없음.
-> - 신규 이슈 0건, 자동수정 0건(net-new 보안 이슈 없음), done-sync: new 6(변동없음)·done 511·rejected 6. 다음 순번 **Area 6**.
->
-
-> **Area 6 자기 진화 (2026-08-01T21:16):**
-> - **방법**: `git fetch origin main`(HEAD `c555deb` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 6 **54회차** — 직전 Area5(`b87aa4b`, 08-01T15:15, 48회차) 이후 `git log b87aa4b..HEAD`는 11커밋, 웹 렌즈 대상(`src/routes`/`src/scripts`/`migrations`/`index.tsx`/`src/layout`/`src/pages`) 한정 diff는 **마이그레이션 3개뿐**(`0507_jungwoon_flag_fabric_items`·`0508_sign_bom_products`·`0509_sign_bom_calibration` — 정운교역/간판 BOM 데이터 정비, 병렬 worktree 세션). 나머지 8커밋은 `docs/dongsan-import/*.py`(일회성 데이터 생성 스크립트, 웹앱 밖) + `memory/session-context.md`/`PROJECT_STATUS.md` 문서뿐.
-> - **컬럼-diff bridge**: 0508이 `product_materials`에 `quantity`/`usage_type`/`usage_param`/`notes` 4컬럼을 신규 ADD COLUMN + INSERT하나, `grep -rn "usage_type\|usage_param" src/routes src/scripts` = **0건** — 이 데이터를 소비하는 라우트/스크립트 코드가 아직 없는 순수 데이터 준비 단계(Python 리포트 생성기 `gen_sign_cost_report.py`가 오프라인 소비, 웹 스택 밖). `bom.ts`는 `product_materials`를 여전히 기존 방식(quantity 미참조)으로만 읽어 회귀 없음. 컬럼 존재성 위험 0(소비 코드 자체가 없어 no-such-column throw 불가능한 상태).
-> - **브랜치 위생**: `npm run branch:clean` — SAFE-remote 0·SAFE-absorbed 1(임계 30 미달, 백로그 미등록)·REVIEW 0·SKIP 1(main).
-> - **open≠unfixed 재확인**: `search_issues(is:open,label:auto-improve)` 실측 **6건**(#585·#586·#587·#589·#590·#591) — 이번 델타 11커밋이 그 이슈들의 대상 파일(`messagesAd.ts`·`messagesAd.js`·`orders/core.ts`·`orders.js`/`orderForm/parent.js`·`docs/dongsan-import` 이관감사)을 전혀 안 건드려, 6건 전부 직접 재grep으로 안티패턴 잔존 재확인(캐시 아닌 실측): `messagesAd.ts:381-382` success_count/fail_count만 · `messagesAd.js:329` adLoadOptOuts 파라미터 미전달 패턴 유지 · `orders/core.ts:711` 하드삭제 batch에 `UPDATE orders SET consolidate_with_order_id=NULL` 정리문 여전히 부재(#589) · `orderForm/parent.js` loadOrderForEdit류가 여전히 amount/line_discount 미복원(#590). fixed-in-tree 0건.
-> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **6**(변동없음) · `reason:completed` **511**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음). 백로그 기재값과 완전 일치, 드리프트 0.
-> - **사이클 로그 트림 체크**: `grep -c "^> \*\*Area" IMPROVEMENT_BACKLOG.md` = 12건(임계 13 미달) → 트림 스킵.
-> - **🧬 SKILL 강화 없음** — 이번 사이클은 순수 확인(신선 churn이 데이터전용 마이그 3건뿐·done-sync 정합·브랜치 clean)이라 신규 코드화 패턴 없음.
-> - 신규 이슈 0건, 자동수정 0건(검토 대상 자체가 데이터 전용), done-sync: new 6(변동없음)·done 511·rejected 6(변동없음). 다음 순번 **Area 1**.
->
-
-> 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, 2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그 이관: 306KB→80KB, **2026-07-27T23:00 7차 트림 — 사이클 로그 39건 중 31건 이관(최근 8건=전 Area 1바퀴+2만 유지): 196KB→63KB**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 **최근 8사이클 로그**(전 Area 1바퀴 커버 = 직전 사이클 diff 판단에 필요한 최소분) + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
-> ↳ **12차 트림 (2026-08-01, 자동)**: 사이클 로그 14건 → 8건 유지, 6건 이관 (88KB → 트림 후 아래 참조).
-> ↳ **11차 트림 (2026-07-31, 자동)**: 사이클 로그 13건 → 8건 유지, 5건 이관 (79KB → 트림 후 아래 참조).
-> ↳ **10차 트림 (2026-07-30, 자동)**: 사이클 로그 13건 → 8건 유지, 5건 이관 (83KB → 트림 후 아래 참조).
-> ↳ **9차 트림 (2026-07-28, 자동)**: 사이클 로그 13건 → 8건 유지, 5건 이관 (82KB → 트림 후 아래 참조).
-> ↳ **8차 트림 (2026-07-27, 자동)**: 사이클 로그 9건 → 8건 유지, 1건 이관 (66KB → 트림 후 아래 참조).
-
-> **Area 2 코드 품질 심층 분석 (2026-07-31T17:15):**
-> - **방법**: `git fetch origin main`(HEAD `f0383ef` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 2 **55회차** — 직전 Area2(`1d7e67d`, 07-30T09:17, 54회차) 이후 `git log 1d7e67d..HEAD -- src/routes src/scripts migrations`는 **11커밋**: 취소주문 완전삭제 2단계 복원(`a621cdd`)·트레이 관리+파일명 정보우선형(`1a66d92`)·가공대기함 자동 묶음 프리필(`737ecbb`)·AR정책 SSOT(`d41699b`, Area5 47회차 기검증)·이카운트 매출 적재(`f10a8fa`)·실사 SQL주석 문법오류(`8819705`, Area4 48회차가 이미 #588로 발견·자동수정·close)·자녀행 합계 dead분기 제거(`e0c8c60`)·행 에누리 확정(`e744bc4`, Area4/5 기검증)·대기함 썸네일/검색(`54287e6`)·후가공 실패사유 문구(`67ecf26`)·마감재단선+후가공코드(`c8f255d`, Area3/5 기검증). 코드품질 렌즈(entity_id·N+1·authMiddleware·dead code·SELECT *)로 아직 안 본 3건(`a621cdd`·`1a66d92`·`737ecbb`)을 인라인 직접 diff Read로 심층 분석(과다위임 억제, 신선 churn 작아 정독이 빠름).
-> - **🔴 net-new 발견(issue-only): #589 취소주문 2단계 하드삭제(`a621cdd`)가 처음 도달 가능해진 consolidate_with_order_id 정리 누락** — `a621cdd`가 "CANCELLED=무조건 400" 화석 가드를 풀어 ADMIN이 취소주문을 실제 하드삭제할 수 있게 함(도입 이래 최초로 이 경로가 살아있는 데이터에 도달). 같은 하드삭제 batch가 #454/#464/#477/#570로 비-FK 참조(`shipments.merged_into_id`·`print_file_map`·`designer_intakes.order_item_id` 등)를 꼼꼼히 정리하는데, **`orders.consolidate_with_order_id`(0438, 합배송 예약 포인터)만 빠짐**. 대표 주문이 취소→하드삭제되면 자식 주문은 존재하지 않는 id를 계속 들고 있어 `orders.js:463-464`(목록 배지)가 `#<죽은id>`를 그대로 노출하며 클릭 시 `viewOrder(<죽은id>)`로 존재하지 않는 주문을 열려 시도(죽은 링크), 상세 모달(`:1037-1038`)도 "대표 주문 #<죽은id>"로 영구 표시. 기존 #483(07-04, 닫힘)이 "하드삭제 dangling은 read-path 무해(FP)"로 판정했으나 그건 쿼리 레벨(status 필터로 자연배제)만 본 것 — 이번 발견은 **표시 레이어**(raw-id fallback + 클릭 이동)라 #483 범위 밖. 파괴적 삭제 batch 수정 + "그룹에서 조용히 이탈 vs 대표 재선출" 정책 판단 필요해 issue-only(#589).
-> - **`1a66d92`(트레이 관리 restore 엔드포인트) 검증**: entityFilter 적용·소유자 검증(`canVoidIntake`)·TOCTOU 가드(UPDATE WHERE status IN 재명시, absorb 패턴과 동일) 전부 정상. `printEvents.ts` resolveCard 정규식 변경(anchored→비anchored)은 read-only 파일명 파싱이라 회귀 위험 낮음, `(?!\d)` 오매칭 가드 확인.
-> - **`737ecbb`(자동 묶음 프리필) 검증**: `helpers.ts` 자식카드 수량 하드코딩(1)→`child.quantity` 실제 반영 — read-only 산식 수정, N+1/entity_id 영향 없음. 프론트(intake.js/parent.js/calc.js) 신규 루프에 N+1급 DB 호출 없음(프론트 전용).
-> - **authMiddleware 전체 recursive 재스캔(25회차 이후 첫 전면 재확인)**: `for f in $(find src/routes -name '*.ts'); do grep -q authMiddleware "$f" || (grep -qE "\.(get|post|put|delete|patch)\(" "$f" && echo "$f"); done` → 후보 7건(`publicUnsubscribe.ts`·`orders/helpers.ts`·`payroll/shared.ts`·`cron.ts`·`messagesAd.ts`·`hrSelf.ts`·`taxInvoices/helpers.ts`) 전수 확인 — `orders/helpers.ts`·`payroll/shared.ts`·`taxInvoices/helpers.ts`는 `Map.get(` FP(라우터 아님), `publicUnsubscribe.ts`는 정보통신망법 §50⑧ 명시 무인증+rate-limit(기존 FP), `cron.ts`는 `agentKeyMiddleware`(에이전트 키 게이트, 기존 FP), `hrSelf.ts`는 scoped-token(기존 FP), `messagesAd.ts`는 barrel 패턴(`messages.ts:120` 부모가 `authMiddleware+requireRole` 선적용 후 `:123 .route('/ad', ...)`로 마운트, 자체 `:40 requireRole('ADMIN')`은 추가 강화) — **net-new 0**, 전부 기존 FP 카탈로그로 판정 가능.
-> - **SELECT * / N+1 / dead code**: 이번 델타 신규 INSERT 0건(entity_id 점검 대상 없음), 신규 `for/forEach`+`await prepare` N+1 패턴 0건, `e0c8c60`의 `isChild` 분기 제거는 이미 dead-code 정리(안전, 커밋 자체가 정리).
-> - **표준 스캔**: `npx tsc --noEmit` 0.
-> - **open≠unfixed 재확인**: `list_issues(OPEN,auto-improve)` 실측 신규발견 전 3건(#585·#586·#587) 잔존(Area1 54회차 재확인과 동일) — fixed-in-tree 없음.
-> - **backlog↔GitHub 절대값 재동기화**: open **4**(#589 신규 추가) · done/rejected는 이번 사이클 close 0건이라 재조회 생략, Area1 54회차 캐시(511/6) 신뢰.
-> - **🧬 SKILL 강화 없음** — #589는 기존 #454/#477/#570 형제완전성 레시피 그대로 적용 가능, 신규 클래스 아님(다만 #483이 "쿼리레벨 FP"로 이미 닫은 컬럼을 "표시레이어"에서 재발견한 사례로 — 향후 "#483급 dangling-FP 판정"은 쿼리뿐 아니라 그 값을 그대로 노출/클릭이동에 쓰는 프론트 소비처까지 재확인 필요라는 교훈만 メモ, 별도 codify 불필요 수준).
-> - 신규 이슈 1건(#589), 자동수정 0건(파괴적 삭제 batch 수정 + 정책판단 필요라 issue-only), done-sync: new 4(+1)·done 511·rejected 6. 다음 순번 **Area 3**.
->
-
-> **Area 1 프로덕션 헬스 (2026-07-31T16:26):**
-> - **방법**: `git fetch origin main`(HEAD `1237056` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). 프록시가 이번 세션도 prod 호스트 직접 curl 차단(`webapp-9i0.pages.dev` CONNECT exit 56 — #453 기존 인지 상태 재확인, 변동 없음) — 직접 prod API 헬스체크 불가, GitHub Actions CI 기록으로 대체. Area 1 **54회차** — 직전 Area6(53회차, `7ae8c81`) 이후 `git log 7ae8c81..HEAD`는 **10커밋**(취소주문 완전삭제 2단계 복원·트레이 관리+파일명 정보우선형·가공대기함 자동 묶음 프리필·이카운트 상반기 통장매칭 적재 등 신규 feature churn — 다음 Area2/3/4/5 사이클이 각자 렌즈로 다룰 대상, Area1은 헬스만 확인).
-> - **deploy.yml 전수 확인**: 최근 30개 run(2026-07-29T23:26~2026-07-31T04:09Z, `bd69a0b8`~`1237056a`) **전부 `success`** — CF-internal transient·cold-start 재발 0. 취소주문 삭제 2단계 복원(`a621cdd`)·트레이 관리(`1a66d92`)·대기함 자동 묶음 프리필(`737ecbb`)·이카운트 통장 매칭 적재(`f2eb3d4`) 등 신규기능 churn을 관통하며도 배포 전량 green.
-> - **backup.yml 신선도**: 최신 run(`d41699b5`, 2026-07-30T18:09:39Z) success — 다음 일일 백업(~18:00Z)까지 약 10시간 남은 정상 주기 내(미실행 아님). 직전 6회 전부 success, 07-28 `cancelled` 1건(`da70faae`)은 기존 인지된 "연속 트리거 supersede" 패턴으로 무해(변동 없음).
-> - **e2e.yml**: 최신 run 여전히 2026-06-22(failure/cancelled) — `disabled_manually` 기존 인지 상태 재확인, 변동 없음. **verify.yml**: 열린 PR 0건(`list_pull_requests(open)`=[] 직접 확인) → 이번 사이클도 실행 0건, 정상.
-> - **open≠unfixed 재확인**: `list_issues(state:OPEN)` 실측 auto-improve 라벨 **3건**(#585·#586·#587, Area6 53회차 캐시와 일치) — 10건 신선 churn 이후에도 세 이슈의 원 안티패턴을 직접 재grep(`messagesAd.ts:381-382` success_count/fail_count만·`messages.ts:246/261` adSubject/adContent oninput 부재·`messagesAd.js` adLoadOptOuts 파라미터 미전달) 전부 잔존 확인 — fixed-in-tree 없음. 별도 라벨(`auto-scan`/`infra`) #453(egress 차단 인프라 갭)도 OPEN 유지, 이번 사이클이 그 한계를 직접 재현(curl exit 56)해 현재도 유효함 재확인.
-> - **backlog↔GitHub 절대값 재동기화**: open auto-improve **3**(재확인) · done/rejected는 이번 사이클 close 0건이라 재조회 생략, Area6 53회차 캐시(511/6) 신뢰.
-> - **🧬 SKILL 강화 없음** — 순수 CI/헬스 확인 사이클, 신규 클래스 없음.
-> - 신규 이슈 0건, 자동수정 0건(순수 CI/인프라 헬스 확인), done-sync: new 3·done 511·rejected 6. 다음 순번 **Area 2**.
->
-
-> **Area 6 자기 진화 (2026-07-31T09:15):**
-> - **방법**: `git fetch origin main`(HEAD `7368054` = origin/main 일치, 워킹트리 clean) 후 `npm ci`(node_modules 0→81). Area 6 **53회차** — 직전 Area6(`87b5023`, 07-29T21:25, 52회차) 이후 `git log 87b5023..HEAD`는 39커밋, 웹 렌즈 대상(`src/routes`/`src/scripts`/`migrations`) 한정 **11커밋**(bd69a0b·5b70c58·2fe74b9·c8f255d·67ecf26·54287e6·e744bc4·e0c8c60·8819705·f10a8fa·d41699b). **핵심 관찰 = 이번 사이클은 신선 churn이 사실상 0** — Area1(53회차)~Area5(47회차)가 직전 24시간 내 연속 실행되며 위 11커밋을 전부 각자 렌즈로 이미 커버했고(코드품질=Area2 54회차, UX=Area3 47회차, 데이터정합성=Area4 48회차, 보안=Area5 47회차), **현재 HEAD(`7368054`)가 정확히 Area5 47회차 자신의 커밋 마커** — 즉 Area5 종료 이후 신규 커밋이 0건이라 Area6의 표준 브릿지(직전 Area4 이후 컬럼-diff, 직전 Area5 이후 XSS 재감사)가 검토할 신선 대상 자체가 없음.
-> - **브랜치 위생**: `npm run branch:clean` — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0·SKIP 1(main). 정리 대상 0건.
-> - **open≠unfixed 재확인**: `search_issues(is:open,label:auto-improve)` 실측 **3건**(#585·#586·#587) — Area3 47회차·Area5 47회차가 같은 HEAD에서 이미 안티패턴 잔존을 직접 재grep 확인했고(§messagesAd.ts success_count/fail_count만·messages.ts oninput 부재·messagesAd.js search 파라미터 미전달) 그 이후 churn이 0이므로 verified-once+unchanged 캐시를 신뢰(스팟체크: `success_count`/`fail_count` 필드만 존재 재확인, 잔존).
-> - **close-pending 적체 해소 확인**: 이전 사이클들이 close-pending으로 추적하던 #479(showPrompt options 오전달 자동수정)를 직접 조회 — `state:closed, reason:completed`로 정상 종결 확인(#480·#481도 open 3건에 미포함 = 종결). close-pending 잔류 0건.
-> - **backlog↔GitHub 절대값 재동기화**: open **3**(재확인) · `search_issues(reason:completed)` **511**(재확인, 변동 없음) · `not_planned`(4)+`duplicate`(2) **6**(재확인, 변동 없음) — 전부 백로그 기재값과 정확히 일치, 드리프트 0.
-> - **🧬 SKILL 강화 없음**: 이번 사이클은 순수 확인(신선 churn 0·done-sync 정합·브랜치 clean)이라 신규 코드화 패턴 없음. 백로그 사이클 로그 11건(트림 임계 13건 미달) → 트림 스킵.
-> - 신규 이슈 0건, 자동수정 0건(검토 대상 자체 없음), done-sync: new 3·done 511·rejected 6(전부 변동 없음). 다음 순번 **Area 1**.
 >
 
 ## ✅ Approved / 👀 Reviewed (owner 피드백 수신)
