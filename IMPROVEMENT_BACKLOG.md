@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-08-03T15:26:14+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-08-03T21:31:17+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -22,6 +22,17 @@
 > 가리는데 빈 상태 문구는 "없습니다"라고 안내) → 별도 커밋. Phase 7b-2의 교훈이 그대로 재현됐다.
 > ⚠️ **발송 계열은 실호출 미검증** — 테스트 호출이 곧 실발송이라 `/send-bulk`·`/ad/send`는 부르지 않고
 > 모의 응답·단위 로직으로 대체([[design-ad-compliance-guard]] 함정). 소량 1건 자연검증 필요.
+
+> **Area 2 코드 품질 심층 분석 (2026-08-03T21:31):**
+> - **방법**: `git fetch origin main`(HEAD `9f59a8a` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 2 **57회차** — 직전 Area2(`37d6242`, 08-02T09:14, 56회차) 이후 `git log 37d6242..HEAD -- src/routes src/scripts migrations index.tsx src/layout` 확인 → `src/routes`·`src/scripts`·`index.tsx`·`src/layout` 변경 **0건**, 유일 diff는 `migrations/0510~0512`(간판 BOM 대손충당 안분/작업지시서 역추적/신규승격 스윕 데이터 3파일, Area4 50회차·#592·#593이 이미 컬럼정합성 다룸) — 코드품질 렌즈로 diff할 신선 churn이 3사이클 연속 없음.
+> - **표준 게이트**: `npx tsc --noEmit` 0 · `node scripts/entity-audit.mjs` = 검사 127파일·entity테이블 SELECT 60·통과 60·누락 0.
+> - **authMiddleware recursive 재스캔**: `for f in $(find src/routes -name '*.ts')...` → 후보 7건 동일(`publicUnsubscribe.ts`·`orders/helpers.ts`·`payroll/shared.ts`·`cron.ts`·`messagesAd.ts`·`hrSelf.ts`·`taxInvoices/helpers.ts`) — 직접 재확인: `orders/helpers.ts`·`payroll/shared.ts`·`taxInvoices/helpers.ts`는 `Map.get(` FP(라우트 아님), `cron.ts`는 `agentKeyMiddleware`(에이전트 트리거 경로, 정당), `publicUnsubscribe.ts`는 정보통신망법 §50⑧ 무인증 설계(토큰 128bit+rate-limit+마스킹, 코드 주석 명시), `hrSelf.ts`는 scoped-token(self-auth), `messagesAd.ts`는 barrel 서브라우터(`messages.ts:120` `messagesRouter.use('/*', authMiddleware, requireRole('ADMIN','MANAGER'))`가 부모에서 이미 적용 + 자체 `requireRole('ADMIN')` 추가 게이트) — 7건 전부 기존 FP 카탈로그와 일치, net-new 0.
+> - **N+1 패턴 신규 스윕**: `for/forEach` 루프 내부 `await ...prepare(` 자동추출 63건 중 상위 10건(`aiAnalysis.ts`·`bank.ts`·`cardExpenses.ts`·`departments.ts`·`printEvents.ts`·`po-receive.ts`·`purchaseRequests.ts`·`users.ts`·`workbench.ts`) 직접 Read 확인 — 전부 기존 최적화 완료 패턴: 80청크 IN절(bank.ts), `LIMIT 3` 상한(workbench.ts), 루프불변 1회조회로 이미 리팩터됨(purchaseRequests.ts 주석 "루프 불변 1회 조회 → 매 품목 재조회 제거"), 파일 배열 개수만큼 불가피한 개별 INSERT(aiAnalysis.ts 배치생성, 데이터규모 아닌 업로드건수 bounded). 신규 N+1 없음 — 전 코드베이스가 2026-05~07 대규모 N+1 정리(I-018~I-040 등 backlog 하단 done 이력) 이후 안정화된 상태로 재확인.
+> - **open≠unfixed 재확인**: `search_issues(is:open,label:auto-improve)` 실측 **8건**(#585·#586·#587·#589·#590·#591·#592·#593, 변동없음) — 이번 델타(BOM 마이그 3건)가 그 이슈 대상 파일을 전혀 안 건드려 재grep 없이 unchanged 캐시 신뢰(Area1 56회차가 직전에 직접 확인).
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **8**(변동없음) · `reason:completed` **511**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음). 완전 일치, 드리프트 0.
+> - **🧬 SKILL 강화 없음** — 순수 확인 사이클(코드 churn 0, N+1/authMiddleware 재스캔 net-new 0), 신규 코드화 패턴 없음.
+> - 신규 이슈 0건, 자동수정 0건(코드 변경 없음, 검토 대상 자체가 데이터 마이그레이션 뿐), done-sync: new 8(변동없음)·done 511(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-08-03T15:26):**
 > - **방법**: `git fetch origin main`(HEAD `c21a63a` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). `SMOKE_URL=https://webapp-9i0.pages.dev npm run smoke` → 로그인 단계에서 `403 Host not in allowlist` — 프록시가 이번 세션도 prod 호스트 직접 접근 차단(기존 인지된 egress 제약 재확인, 변동 없음), GitHub Actions 기록으로 대체. Area 1 **56회차** — 직전 Area1(`9dee203`, 08-01T12:17, 55회차) 이후 `git log 9dee203..HEAD` = 36커밋이나 웹 렌즈 대상(`src/routes`/`src/scripts`/`migrations`/`index.tsx`/`src/layout`/`src/pages`) 한정 diff는 **0건** — 전량 auto-improve 사이클 로그(Area2~6)·간판 BOM 데이터 마이그(0508~0512, Area2/4/6 기검증)·IA cut-panel CEP 플러그인 신규 구축(`IllustratorAutomat/designer/**`, 독립 배포경로)뿐. Area1은 헬스 확인이라 코드 diff 무관하게 CI 전수 확인 진행.
