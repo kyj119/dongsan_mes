@@ -868,7 +868,7 @@
               + (prep.fillNote || '')
               + (prep.exact ? '' : ' ⚠ 해상도 한계로 올림 적용')
               + (allowRot ? ' · 회전 허용' : '')
-              + '\n돔보 ' + (a.dombo || 0) + '판 · 시트 재단선'
+              + '\n돔보 ' + (a.dombo || 0) + '판 — 별도 레이어(인쇄 ON) · 재단선 레이어는 인쇄 OFF'
               + (wantPieceCut ? (' · 조각별 칼선' + (useVec ? '(벡터)' : (wantCurve ? '(곡선)' : '(직선)'))) : '')
               + (res.unplaced.length ? ('\n⚠ 배치 못한 조각 ' + res.unplaced.length + '개 — 시트를 키우거나 간격을 줄이세요.') : '')
               + (useVec ? '' : cvN.note) + vecNote,

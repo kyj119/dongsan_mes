@@ -610,6 +610,24 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     !/mesCut_vecSilhouette[\s\S]*?(simplify|fitCurves)\s*\(/.test(hostSrc))
 }
 
+// ── 3o ★레이어 분리 + 인쇄 플래그 + 시트 테두리 제거 (2026-08-03 지시) ──
+// 규약(SheetLayout.jsx:19~22): CutLine = print OFF · Dombo = print ON.
+{
+  const hostSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
+  ok('3o 돔보 레이어 분리', /var MESCUT_MARK_LAYER = '돔보'/.test(hostSrc) && /function mesCut_ensureMarkLayer\(/.test(hostSrc))
+  ok('3o 재단선 레이어 인쇄 OFF', /mesCut_ensureCutLayer[\s\S]{0,400}printable = false/.test(hostSrc))
+  ok('3o 돔보 레이어 인쇄 ON', /mesCut_ensureMarkLayer[\s\S]{0,400}printable = true/.test(hostSrc))
+  ok('3o 돔보를 돔보 레이어에 그린다', /var layer = mesCut_ensureMarkLayer\(doc\)/.test(hostSrc))
+  // ★시트 전체를 두르는 사각 재단선은 만들지 않는다
+  ok('3o 시트 테두리 사각을 만들지 않음', !/layer\.pathItems\.rectangle\(oT, oL/.test(hostSrc))
+  // ★돔보 레이어를 입력에서 빼지 않으면 돔보가 아트로 잡혀 조각이 된다
+  ok('3o 돔보도 입력에서 제외', /MESCUT_CUT_LAYER \|\| it\.layer\.name === MESCUT_MARK_LAYER/.test(hostSrc))
+  // ★DXF 는 두 레이어를 함께 담아야 한다 — 칼선만 담으면 돔보가 빠진다
+  ok('3o DXF 가 돔보 레이어도 모은다', /markLayer\.pageItems\[k\]\); srcLayerOf\.push\('mark'\)/.test(hostSrc))
+  // ★비인쇄 레이어는 DXF 에서 누락·변형된다 → 내보내는 동안만 켰다가 되돌린다
+  ok('3o DXF 중 인쇄 플래그 임시 복원', /restore\.push\(cutLayer\)/.test(hostSrc) && /restore\[rr\]\.printable = false/.test(hostSrc))
+}
+
 // ── 3n ★돔보 여백 = 코너 + 반지름 (2026-08-03) ────────────────────────
 // 지름을 더하면 아무것도 없는 3mm 를 매 변마다 버린다. 실물도 원이 판 끝에 접한다.
 {

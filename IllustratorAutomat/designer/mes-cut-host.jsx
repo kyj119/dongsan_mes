@@ -112,7 +112,9 @@ function mesCut_readParams() {
 
 /** 재단선 레이어에 속하는가 — 입력에서 걸러야 할 대상(이전 칼선). */
 function mesCut_isCutItem(it) {
-    try { return !!(it.layer && it.layer.name === MESCUT_CUT_LAYER); } catch (e) { return false; }
+    // ★돔보 레이어도 제외한다 — 레이어를 나눈 뒤 이걸 빠뜨리면 돔보가 **아트로 잡혀**
+    //   네스팅 조각이 되거나 실루엣에 섞인다.
+    try { return !!(it.layer && (it.layer.name === MESCUT_CUT_LAYER || it.layer.name === MESCUT_MARK_LAYER)); } catch (e) { return false; }
 }
 
 // ── ★클리핑 마스크 존중 경계 (A0 `mesA0_getClipRespecting` 계열 이식 · 2026-08-01) ────
@@ -992,14 +994,22 @@ function mesCut_exportDxf(outPath) {
     //   재단기는 그림을 읽을 필요가 없다(있으면 경로가 섞인다).
     //   ⚠️ 레이어를 숨기는 방법은 **안 통한다** — 일러 DXF export 는 숨긴 레이어도 내보낸다
     //      (2026-07-31 실측: 숨겨도 INSERT 6개가 그대로 남았다). 임시 문서로 옮겨서 굽는다.
-    var cutLayer = null;
+    // ★칼선 레이어와 **돔보 레이어를 함께** 모은다 — 문서에서 둘을 나눈 뒤(2026-08-03)
+    //   칼선 레이어만 보면 **DXF 에 돔보가 빠져 재단기가 위치를 못 잡는다.**
+    var cutLayer = null, markLayer = null, restore = [];
     for (var i = 0; i < doc.layers.length; i++) {
-        if (doc.layers[i].name === MESCUT_CUT_LAYER) { cutLayer = doc.layers[i]; break; }
+        if (doc.layers[i].name === MESCUT_CUT_LAYER) cutLayer = doc.layers[i];
+        else if (doc.layers[i].name === MESCUT_MARK_LAYER) markLayer = doc.layers[i];
     }
     if (!cutLayer) return 'ERROR 재단선 레이어 없음 — 칼선을 먼저 만드세요';
-    var items = [];
-    for (var k = 0; k < cutLayer.pageItems.length; k++) items.push(cutLayer.pageItems[k]);
+    var items = [], srcLayerOf = [];
+    var k;
+    for (k = 0; k < cutLayer.pageItems.length; k++) { items.push(cutLayer.pageItems[k]); srcLayerOf.push('cut'); }
+    if (markLayer) for (k = 0; k < markLayer.pageItems.length; k++) { items.push(markLayer.pageItems[k]); srcLayerOf.push('mark'); }
     if (!items.length) return 'ERROR 재단선이 비어 있음';
+    // ⚠️ **비인쇄 레이어는 DXF 내보내기에서 누락·변형된다** — 사내에서 이미 겪은 함정이라
+    //    내보내는 동안만 print 를 켜고 끝나면 되돌린다(`SheetLayout.jsx:541~542` 와 같은 조치).
+    try { if (cutLayer.printable === false) { cutLayer.printable = true; restore.push(cutLayer); } } catch (ePr) {}
 
     var tmp = null;
     try {
@@ -1011,12 +1021,14 @@ function mesCut_exportDxf(outPath) {
         // ★칼선과 마크(돔보)를 **다른 레이어**로 나눈다 — 실물 생산 DXF 12/12 가 그렇다(§2.5):
         //   `Layer 2`/`Layer 3` · `재단파일`/`재단마크` · `cut`/`레이어 3`.
         //   이름 규약은 없고(색·선종·선폭도 전부 동일) **분리 자체가 규약**이다.
-        //   문서 안에서는 계속 `재단선` 하나로 둔다 — 작업자에게 레이어를 늘리지 않기 위해서다.
+        //   문서 안에서도 2026-08-03 부터 `재단선`(print OFF) / `돔보`(print ON) 로 나뉜다.
         var markLay = tmp.layers.add();
         markLay.name = MESCUT_DXF_MARK_LAYER;
         app.activeDocument = doc;                  // ★복제는 원본이 active 일 때만 동작한다(rasterize 와 같은 함정)
         for (var d2 = 0; d2 < items.length; d2++) {
-            try { items[d2].duplicate(mesCut_isMarkItem(items[d2]) ? markLay : lay, ElementPlacement.PLACEATBEGINNING); } catch (eD) {}
+            // 분류는 **원본 레이어**가 1순위다(문서에서 이미 나뉘어 있다). 레이어가 없던 옛 문서는 채움으로 가른다.
+            var toMark = (srcLayerOf[d2] === 'mark') || (srcLayerOf[d2] !== 'cut' && mesCut_isMarkItem(items[d2]));
+            try { items[d2].duplicate(toMark ? markLay : lay, ElementPlacement.PLACEATBEGINNING); } catch (eD) {}
         }
         app.activeDocument = tmp;
         var u1 = mesCut_unionOf(mesCut_topItems(tmp));
@@ -1036,10 +1048,12 @@ function mesCut_exportDxf(outPath) {
         var n = tmp.pageItems.length;
         tmp.close(SaveOptions.DONOTSAVECHANGES); tmp = null;
         app.activeDocument = doc;
+        for (var rr = 0; rr < restore.length; rr++) { try { restore[rr].printable = false; } catch (eR1) {} }
         return 'ok;path=' + outPath + ';items=' + n;
     } catch (e) {
         if (tmp) { try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) {} }
         try { app.activeDocument = doc; } catch (e3) {}
+        for (var rr2 = 0; rr2 < restore.length; rr2++) { try { restore[rr2].printable = false; } catch (eR2) {} }
         return 'ERROR dxf: ' + e;
     }
 }
@@ -1145,6 +1159,10 @@ function mesCut_isMarkItem(it) {
 //   실물 생산 DXF 12건 중 9건이 순수 ASCII(`Layer 2`/`Layer 3`)고, 한글 이름이 든 3건은 `_U+XXXX`
 //   이스케이프로 들어 있었다(우리 export 는 `$DWGCODEPAGE=ANSI_949` 로 원시 바이트를 쓴다).
 //   이름 자체엔 규약이 없으므로(§2.5) 인코딩 변수를 아예 없애는 쪽을 고른다.
+// 문서 안의 레이어 규약 — `SheetLayout.jsx:19~22` 와 같다:
+//   재단선(CutLine) = **print OFF** · 돔보(Dombo) = print ON
+//   칼선은 인쇄물에 나오면 안 되고, 돔보는 인쇄돼야 재단기가 읽는다.
+var MESCUT_MARK_LAYER = '돔보';
 var MESCUT_DXF_CUT_LAYER = 'CUT';
 var MESCUT_DXF_MARK_LAYER = 'MARK';
 var MESCUT_DOMBO_DIAM_MM = 6;
@@ -1182,6 +1200,19 @@ function mesCut_ensureCutLayer(doc) {
     var prev = null;
     try { prev = doc.activeLayer; } catch (e0) {}
     var l = doc.layers.add(); l.name = MESCUT_CUT_LAYER;
+    // ★칼선은 **인쇄에서 뺀다**(규약: CutLine = print OFF). 인쇄물에 칼선이 찍히면 안 된다.
+    try { l.printable = false; } catch (eP) {}
+    try { if (prev) doc.activeLayer = prev; } catch (e1) {}
+    return l;
+}
+
+/** 돔보 레이어 — 칼선과 **분리**하고 **인쇄는 켠다**(재단기가 읽어야 한다). */
+function mesCut_ensureMarkLayer(doc) {
+    for (var i = 0; i < doc.layers.length; i++) if (doc.layers[i].name === MESCUT_MARK_LAYER) return doc.layers[i];
+    var prev = null;
+    try { prev = doc.activeLayer; } catch (e0) {}
+    var l = doc.layers.add(); l.name = MESCUT_MARK_LAYER;
+    try { l.printable = true; } catch (eP) {}
     try { if (prev) doc.activeLayer = prev; } catch (e1) {}
     return l;
 }
@@ -1194,16 +1225,12 @@ function mesCut_addDombo(doc) {
     var oL = ar[0] + m, oT = ar[1] - m, oR = ar[2] - m, oB = ar[3] + m;   // 디자인 영역
     if (oR - oL <= 0 || oT - oB <= 0) return 'skip:too-small';
 
-    var layer = null;
-    for (var i = 0; i < doc.layers.length; i++) if (doc.layers[i].name === MESCUT_CUT_LAYER) { layer = doc.layers[i]; break; }
-    if (!layer) { layer = doc.layers.add(); layer.name = MESCUT_CUT_LAYER; }
+    // ★돔보는 **칼선과 다른 레이어**에 둔다(2026-08-03 지시 · 규약 = SheetLayout.jsx:19~22).
+    //   칼선 레이어는 print OFF 라 돔보를 같이 두면 **돔보가 인쇄에서 빠져 재단기가 못 읽는다.**
+    var layer = mesCut_ensureMarkLayer(doc);
 
-    // 재단선 = 디자인 영역 둘레(돔보와 한 쌍 — 돔보만 있으면 어디를 자를지 모른다)
-    try {
-        var mag = new CMYKColor(); mag.cyan = 0; mag.magenta = 100; mag.yellow = 0; mag.black = 0;
-        var rect = layer.pathItems.rectangle(oT, oL, oR - oL, oT - oB);
-        rect.stroked = true; rect.filled = false; rect.strokeColor = mag; rect.strokeWidth = 0.6;
-    } catch (eR) {}
+    // ⚠️ 시트 전체를 두르는 사각 재단선은 **만들지 않는다**(2026-08-03 지시).
+    //   조각별 칼선이 이미 있어 어디를 자를지 정해지고, 판 둘레를 도는 경로는 재료·시간만 쓴다.
 
     var D = MESCUT_DOMBO_DIAM_MM * PT;
     var C = MESCUT_DOMBO_CORNER_MM * PT;
