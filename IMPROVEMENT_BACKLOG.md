@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-08-04T21:25:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-08-04T23:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,22 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **8** (#585·#586·#587·#589·#590·#591·#592·#593, GitHub OPEN 실측 — Area6 55회차, 변동 없음) |
+| 🆕 new | **8** (#585·#586·#587·#589·#590·#591·#592·#593, GitHub OPEN 실측 — Area1 57회차, 변동 없음) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **511** (`reason:completed` 절대값 — Area6 55회차 재조회, 변동 없음) |
+| ✔️ done | **511** (`reason:completed` 절대값 — Area1 57회차 재조회, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+
+> **Area 1 프로덕션 헬스 (2026-08-04T23:20):**
+> - **방법**: `git fetch origin main`(force-updated, HEAD `069a39f` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. `SMOKE_URL=https://webapp-9i0.pages.dev npm run smoke` → 로그인 단계에서 `403 Host not in allowlist` — 프록시가 이번 세션도 prod 호스트 직접 접근 차단(기존 인지된 egress 제약 재확인, 변동 없음), GitHub Actions 기록으로 대체. Area 1 **57회차** — 직전 Area1(`c21a63a`, 08-03T15:26, 56회차) 이후 `git log c21a63a..HEAD -- src/routes src/scripts migrations index.tsx src/layout src/pages`는 **6커밋**(회계 고정자산 감가상각 확장 4건[`053069e`·`46693ab`·`f1c85a3`·`1fd0d2e`, G1 자산-대출 연결·세무상 정률법 정합화+법인 33건 등록·부문별 손익 fixed_expenses entity 격리] + Area6 55회차가 이미 검토한 `ee0faa7`·`19e8a34`) — 나머지 30여 커밋은 IA cut-panel CEP 벡터(`IllustratorAutomat/designer/**`, bleed 엔진)·SmartA(WEHAGO) 매입원장 수동대사(`docs/dongsan-import/**`)·auto-improve 사이클 로그로 웹 SPA/DB 스키마 밖.
+> - **deploy.yml 전수 확인**: `c21a63a` 이후 발생한 런(2026-08-03T18:14Z~2026-08-04T14:11Z, `id 30840386196`~`30917688085`, 총 19런) 전부 `Deploy to Cloudflare Pages`(Typecheck→Build→Deploy→Smoke) **success** — 신규 failure 0건. 최신 커밋(`069a39f`, 4건의 신규 자산 커밋을 포함한 전체 트리) 배포 런(`30917688085`)이 success라 이 사이클의 신규 웹 churn 4건도 이미 prod에서 typecheck+build+smoke green 확인됨.
+> - **backup.yml 신선도**: 최신 run(`30842540907`, 2026-08-03T18:43:23Z) success — 직전(08-02T17:55) 대비 ~24h 간격 정상 유지. 08-04 런은 일일 스케줄 창(~18:00 UTC) 전이라 아직 미발생(정상, 지연 아님).
+> - **e2e.yml / verify.yml**: e2e.yml 최신 run은 여전히 2026-06-22(`disabled_manually` 상태 지속, 신규 실행 0 — 변동 없음). verify.yml은 열린 PR 0건(`list_pull_requests(state:open)` 직접 확인)이라 이번 사이클도 실행 대상 없음.
+> - **open≠unfixed 재확인**: 신규 웹 churn 6커밋의 변경파일(`migrations/0513~0514`·`src/pages/accounting.ts`·`src/pages/settings.ts`·`src/routes/caps.ts`·`src/routes/cashFlow.ts`·`src/routes/departments.ts`·`src/routes/fixedAssets.ts`·`src/scripts/accounting.js`·`src/scripts/capsSettings.js`)가 8개 OPEN 이슈 대상 파일(`orderForm/parent.js`·`messagesAd.js`·`messages.ts`·`orders/core.ts`·`migrations/0508~0512`)과 **전혀 안 겹침** → fixed-in-tree 전환 0건, 직전 사이클(Area3 50회차·Area4 51회차) verified-once 캐시 그대로 신뢰.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **8**(변동없음) · `reason:completed` **511**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음). 완전 일치, 드리프트 0.
+> - **🧬 SKILL 강화 없음** — 순수 CI/헬스 확인 사이클(deploy·backup·e2e·verify 전부 green/기존 인지 상태, 신규 웹 churn 6건은 이미 prod smoke green 확인됨), 신규 클래스 없음. 신규 자산 감가상각 확장 4커밋은 코드품질/데이터정합 렌즈로 다음 Area 2/4/6이 심층 검토 대상(Area1은 CI 헬스만).
+> - 신규 이슈 0건, 자동수정 0건(순수 CI/인프라 헬스 확인), done-sync: new 8(변동없음)·done 511(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-08-04T21:25):**
 > - **방법**: `git fetch origin main`(force-updated, HEAD `283ae76` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 6 **55회차** — 직전 Area6(`b9e7fa9`, 08-03T09:16, 54회차) 이후 `git log b9e7fa9..HEAD`는 **37커밋**(직전 4사이클과 달리 이번엔 웹 churn 0이 아님) → `git log b9e7fa9..HEAD -- src/routes src/scripts src/pages migrations index.tsx src/layout`로 좁히면 **2커밋만 웹 SPA 범위**(`ee0faa7` 회계 고정자산 탭 신설, `19e8a34` CAPS 갭복구+기간지정 동기화) — 나머지 35커밋은 IA cut-panel CEP 벡터(`IllustratorAutomat/designer/**`)·SmartA(WEHAGO) 매입원장 수동대사(`docs/dongsan-import/**`, 프로덕션 DB에 스크립트로 직접 반영되는 별도 축)·auto-improve 사이클 로그로 웹 SPA/DB 스키마 밖.
