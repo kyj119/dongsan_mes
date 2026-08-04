@@ -50,9 +50,12 @@
 //   0.9.6 = ★도형별 오프셋 복귀 + **안쪽 도형 제거**(pruneInterior). 오프셋만 쓰면 내부 선이
 //           링 밖으로 나오던 것이 근본 원인이었고, grow 만큼 안쪽에 완전히 든 도형을 미리
 //           지우면 그 원인이 사라진다. 링 색은 아트에서 나온다 — 흰색 하드코딩 없음
+//   0.9.7 = 가장자리에 **닿는 열린 획**의 끝이 반원으로 부풀던 것 수정 — 획을 먼저 면으로
+//           바꾸고(Outline Stroke) 도련 오프셋만 **마이터 조인**을 쓴다(칼선은 라운드 유지).
+//           실측 면적 676.0 = 이론 사각과 일치(라운드 552.0/604.0 은 곡면)
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.9.6';
+var MESCUT_VERSION = 'CUT-CEP-0.9.7';
 var MESCUT_PT_PER_MM = 72 / 25.4;
 
 // ── 크로스 패널 잠금 (spec §5.2-① · P0 핵심) ────────────────────────
@@ -724,6 +727,13 @@ function mesCut_drawCut() {
 //   ⚠️ 사각·원으로는 셋을 구별할 수 없다(90° 코너는 어느 조인이든 bbox 가 같다) — **뾰족한 도형으로만** 잡힌다.
 //   재단에서 라운드가 정상이다(뾰족 끝은 찢어지고, 거리변환 오프셋도 항상 라운드였다 §4.6).
 var MESCUT_VEC_JOIN = 0;
+// ★도련 전용 조인 = **마이터**. 칼선(라운드)과 다르다.
+//   칼선은 물리적 칼날/비트가 둥글게 도는 것을 그대로 반영해야 하지만, 도련은 "가장자리 색을
+//   바깥으로 잇는" 것이라 **끝이 볼록해지면 안 된다**(라운드는 반원 캡을 만든다).
+//   mlim 2 = 90° 코너까지는 뾰족하게, 그보다 예각이면 베벨로 떨어져 긴 창이 생기지 않는다.
+//   실측 근거는 mesCut_vecBleedRegions 안의 주석(면적 676.0 = 이론 사각과 일치) 참조.
+var MESCUT_BLEED_JOIN = 2;
+var MESCUT_BLEED_MLIM = 2;
 
 /** 벡터로 실루엣을 낼 수 있는가. '' = 가능, 아니면 사유(패널이 래스터로 폴백하고 **사유를 표시**한다). */
 function mesCut_vecReason(items) {
@@ -1268,6 +1278,20 @@ function mesCut_vecBleedRegions(doc, items, offsetMm, bleedMm, fillClosed) {
         var keepRect = [ab0[0] + growPt, ab0[1] - growPt, ab0[2] - growPt, ab0[3] + growPt];
         for (i = 0; i < dups.length; i++) pruned += mesCut_pruneInterior(dups[i], keepRect);
     }
+    // ★★열린 획을 **먼저 면으로** 바꾼다 — 안 하면 끝이 볼록한 **반원**이 되어 링에 튀어나온다.
+    //   가장자리에 닿는 선은 프루닝에서 살아남으므로(닿으니까) 이 처리가 없으면 그 선만 남아
+    //   여전히 반원이 보인다(2026-08-04 용준님 지적 · 파란 남자아이에서 실제로 나왔던 증상).
+    //   열린 패스에 Offset Path 를 바로 걸면 조인 종류와 무관하게 **캡**이 생긴다 —
+    //   닫힌 면으로 바꿔야 조인 규칙이 적용된다.
+    //   실측(길이40·획1·오프셋6 · 면적 mm²): 이론 사각 676.0
+    //     획 그대로+라운드 552.0(곡면) · 아웃라인+라운드 604.0 · 아웃라인+베벨 604.0
+    //     **아웃라인+마이터(mlim2) 676.0 = 이론값과 정확히 일치(평평)**
+    doc.selection = null;
+    for (i = 0; i < dups.length; i++) { try { dups[i].selected = true; } catch (eS0) {} }
+    app.executeMenuCommand('OffsetPath v22');   // = Object > Path > Outline Stroke
+    dups = [];
+    try { for (i = 0; i < doc.selection.length; i++) dups.push(doc.selection[i]); } catch (eS1) {}
+    if (!dups.length) return { ok: false, code: 'outline', err: '획 아웃라인 실패' };
     if (fillClosed) {
         var kf = mesCut_blackFill();
         for (i = 0; i < dups.length; i++) mesCut_fillClosedItem(dups[i], kf);
@@ -1300,8 +1324,8 @@ function mesCut_vecBleedRegions(doc, items, offsetMm, bleedMm, fillClosed) {
     var pre = null;
     try { pre = copy.visibleBounds; } catch (e3b) {}
     // 벌리는 양 = 여백 + 도련 (인쇄가 칼선보다 도련만큼 더 나가야 한다)
-    var xml = '<LiveEffect name="Adobe Offset Path"><Dict data="R mlim 4 R ofst '
-        + ((offsetMm + bleedMm) * MESCUT_PT_PER_MM) + ' I jntp ' + MESCUT_VEC_JOIN + ' "/></LiveEffect>';
+    var xml = '<LiveEffect name="Adobe Offset Path"><Dict data="R mlim ' + MESCUT_BLEED_MLIM + ' R ofst '
+        + ((offsetMm + bleedMm) * MESCUT_PT_PER_MM) + ' I jntp ' + MESCUT_BLEED_JOIN + ' "/></LiveEffect>';
     try { copy.applyEffect(xml); } catch (e4) { return bail('effect', '오프셋 효과 실패: ' + e4); }
     // ★여기서부터 도련은 **이미 존재한다**(라이브 효과). expand 는 굳히기일 뿐이다.
     //   그래서 expand 가 실패해도 **되돌리지 않는다** — 라이브 효과인 채로도 EPS·PDF·RIP 는

@@ -772,6 +772,15 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3m 오프셋 전에 걸러낸다', /mesCut_pruneInterior\(dups\[i\], keepRect\)/.test(hostSrc))
   ok('3m 기준은 여백+도련', /var growPt = \(offsetMm \+ bleedMm\) \* MESCUT_PT_PER_MM;/.test(hostSrc))
   ok('3m 클리핑 패스는 안 지운다', /if \(t === 'PathItem' && it\.clipping\) return 0;/.test(hostSrc))
+  // ★가장자리에 **닿는** 열린 획은 프루닝에서 살아남는다 → 끝이 반원으로 부푸는 것을 따로 막아야 한다.
+  //   ①획을 먼저 면으로(Outline Stroke) ②도련 오프셋만 마이터 조인(칼선은 라운드 유지)
+  //   실측(길이40·획1·오프셋6, 면적 mm²): 이론 사각 676.0 · 아웃라인+마이터 676.0 정확히 일치.
+  //   라운드는 552.0(획 그대로)·604.0(아웃라인 후) 로 곡면이 남는다.
+  ok('3m 도련은 획을 먼저 면으로', /app\.executeMenuCommand\('OffsetPath v22'\);\s*\/\/ = Object > Path > Outline Stroke/.test(hostSrc))
+  ok('3m 도련 조인은 마이터', /var MESCUT_BLEED_JOIN = 2;/.test(hostSrc))
+  ok('3m 칼선 조인은 라운드 유지', /var MESCUT_VEC_JOIN = 0;/.test(hostSrc))
+  ok('3m 도련 오프셋이 도련 조인을 쓴다', /jntp ' \+ MESCUT_BLEED_JOIN/.test(hostSrc))
+  ok('3m 마이터 한계로 긴 창 방지', /var MESCUT_BLEED_MLIM = 2;/.test(hostSrc))
   // ★색을 못 칠하면 **지운다** — 안 지우면 실루엣 원래 색(검정)이 도련처럼 남는다(실사용 보고)
   ok('3m 색 못 칠하면 도형 제거', /if \(!n\) \{ try \{ shp\.remove\(\)/.test(hostSrc))
   ok('3m 색은 깊이 칠한다(group·compound)', /function mesCut_setFillDeep\(/.test(hostSrc))
