@@ -42,7 +42,17 @@
 //           멈추는 것이 색이 덜 맞는 것보다 나쁘다. 여백<=0 은 solid-nomargin 으로 알린다
 //   0.9.2 = 단색 링이 **검정으로 나오던 것** 수정 — 경계가 group/compound 면 겉면 filled 가
 //           안 먹어 실루엣 원래 색이 남았다. 깊이 칠하고, 못 칠하면 도형을 지운다
-var MESCUT_VERSION = 'CUT-CEP-0.9.2';
+//   0.9.3 = 여백<=0 이면 단색이 아니라 **사본 확대로 색을 이어붙인다**. 아트가 칼선까지 차 있는데
+//           흰 링을 깔면 재단이 밀렸을 때 흰 테두리가 보인다 = 도련이 막아야 할 바로 그 현상
+//   0.9.5 = ★★정정 — 도련에 **흰색 하드코딩 제거**. 여백 값과 무관하게 항상 아트 테두리 색을
+//           바깥으로 잇는다(사본 확대). 단색은 아트에서 색을 못 얻을 때의 마지막 안전망만.
+//           + 사본 확대의 makeMask 를 검증(거부돼도 선택이 남아 성공으로 오판했다)
+//   0.9.6 = ★도형별 오프셋 복귀 + **안쪽 도형 제거**(pruneInterior). 오프셋만 쓰면 내부 선이
+//           링 밖으로 나오던 것이 근본 원인이었고, grow 만큼 안쪽에 완전히 든 도형을 미리
+//           지우면 그 원인이 사라진다. 링 색은 아트에서 나온다 — 흰색 하드코딩 없음
+//   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
+//           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
+var MESCUT_VERSION = 'CUT-CEP-0.9.6';
 var MESCUT_PT_PER_MM = 72 / 25.4;
 
 // ── 크로스 패널 잠금 (spec §5.2-① · P0 핵심) ────────────────────────
@@ -1184,6 +1194,47 @@ function mesCut_vecBleedEdge(doc, items, layer, growMm, fillClosed) {
     return masked;
 }
 
+/**
+ * ★링에 닿을 수 없는 **안쪽 도형**을 사본에서 버린다. 도련의 핵심 장치다.
+ *
+ * 문제(2026-08-04 실사용 3건): 도형별 오프셋은 아트의 **모든 도형**을 키운다.
+ *   가장자리에서 d 안쪽에 있던 선이 (여백+도련) − d 만큼 실루엣 밖으로 나와
+ *   내부 선이 뭉치고(분홍 여자) · 열린 선 끝이 반원이 되고(파란 남자아이) ·
+ *   검정 선이 윤곽 밖으로 삐져나왔다(토끼). 클리핑은 바깥만 막을 뿐 링 **안으로**
+ *   들어오는 것은 못 막는다.
+ *
+ * 해법: 오프셋 **전에** "아무리 커져도 링에 못 닿는" 도형을 지운다.
+ *   기준 = 아트 bbox 를 grow 만큼 안쪽으로 줄인 사각(keepRect). 여기 **완전히** 들어간
+ *   리프 패스는 grow 만큼 커져도 바깥 경계에 닿지 못한다.
+ *
+ * ⚠️ 오목한 부분에서는 이 판정이 헐거워, 실제로 가장자리를 만드는 도형이 지워질 수 있다.
+ *    그때 링의 그 자리 색은 **구멍이 나는 게 아니라** 더 바깥에 있는 도형(대개 배경)의 색이 된다.
+ *    색이 조금 덜 맞는 것이지 없어지는 것이 아니라서 감수한다 — 반대(내부 선이 튀어나옴)는 못 쓴다.
+ * ⚠️ 클리핑 패스는 건드리지 않는다(지우면 잘린 그림이 드러난다).
+ * @param keepRect [L,T,R,B] pt · y-up
+ * @returns 지운 개수
+ */
+function mesCut_pruneInterior(it, keepRect) {
+    var t;
+    try { t = it.typename; } catch (e) { return 0; }
+    if (t === 'GroupItem') {
+        var kids = [], c, n = 0;
+        try { for (c = 0; c < it.pageItems.length; c++) kids.push(it.pageItems[c]); } catch (e1) {}
+        for (c = kids.length - 1; c >= 0; c--) n += mesCut_pruneInterior(kids[c], keepRect);
+        // 자식이 다 비면 빈 그룹도 치운다(빈 그룹은 오프셋·확장에서 잡음이 된다)
+        try { if (it.pageItems.length === 0) it.remove(); } catch (e2) {}
+        return n;
+    }
+    if (t !== 'PathItem' && t !== 'CompoundPathItem') return 0;
+    try { if (t === 'PathItem' && it.clipping) return 0; } catch (e3) {}
+    var b;
+    try { b = it.visibleBounds; } catch (e4) { return 0; }   // [L,T,R,B] y-up
+    if (b[0] >= keepRect[0] && b[2] <= keepRect[2] && b[1] <= keepRect[1] && b[3] >= keepRect[3]) {
+        try { it.remove(); return 1; } catch (e5) {}
+    }
+    return 0;
+}
+
 function mesCut_vecBleedRegions(doc, items, offsetMm, bleedMm, fillClosed) {
     var i, layer = null;
     try { layer = items[0].layer; } catch (e0) {}
@@ -1196,6 +1247,27 @@ function mesCut_vecBleedRegions(doc, items, offsetMm, bleedMm, fillClosed) {
     // ★칼선과 **같은 정규화**를 거쳐야 한다 — 잠긴 도형이 남으면 선택이 거부(9063)돼
     //   도련도 실루엣과 같은 방식으로 조용히 틀린다(2026-08-04 실측).
     for (i = 0; i < dups.length; i++) mesCut_normalizeCopy(dups[i]);
+    // ★★안쪽 도형 제거 — 이게 없으면 내부 선이 링 밖으로 튀어나온다(실사용 3건의 원인).
+    //   grow = 여백 + 도련. 아트 bbox 를 그만큼 줄인 사각 안에 완전히 든 도형은 링에 못 닿는다.
+    var growPt = (offsetMm + bleedMm) * MESCUT_PT_PER_MM;
+    var ab0 = null;
+    for (i = 0; i < dups.length; i++) {
+        var vb = null;
+        try { vb = dups[i].visibleBounds; } catch (eB) {}
+        if (!vb) continue;
+        if (!ab0) ab0 = [vb[0], vb[1], vb[2], vb[3]];
+        else {
+            if (vb[0] < ab0[0]) ab0[0] = vb[0];
+            if (vb[1] > ab0[1]) ab0[1] = vb[1];
+            if (vb[2] > ab0[2]) ab0[2] = vb[2];
+            if (vb[3] < ab0[3]) ab0[3] = vb[3];
+        }
+    }
+    var pruned = 0;
+    if (ab0 && (ab0[2] - ab0[0]) > growPt * 2 && (ab0[1] - ab0[3]) > growPt * 2) {
+        var keepRect = [ab0[0] + growPt, ab0[1] - growPt, ab0[2] - growPt, ab0[3] + growPt];
+        for (i = 0; i < dups.length; i++) pruned += mesCut_pruneInterior(dups[i], keepRect);
+    }
     if (fillClosed) {
         var kf = mesCut_blackFill();
         for (i = 0; i < dups.length; i++) mesCut_fillClosedItem(dups[i], kf);
@@ -1307,7 +1379,7 @@ function mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed, bleedMode, r
     //   auto   = ①클립 확장(무손실) → 안 되면 ②아래 규칙                ← 기본
     //   region = ①을 건너뛰고 곧장 ② (클립이 있어도)
     //     ② 여백 > 0 → `solid`  : 링 전체를 단색으로(기본 흰색 · ringSpec 으로 지정)
-    //        여백 ≤ 0 → `edge`  : 가장자리 띠에서 색을 뽑아 바깥으로 연장 → 실패 시 solid 로 하강
+    //        여백 ≤ 0 → 사본 확대로 **색을 이어붙인다**(아래) → 실패해야 solid
     //   scale  = 사본 확대(옛 방식) — 래스터(사진)처럼 오프셋이 안 먹는 아트용.
     //            ⚠️ 이형에서 링이 빈다(별 19.8% 실측)
     // ⚠️ 옛 `vecBleedRegions`(도형별 오프셋)는 **더 쓰지 않는다** — 원리상 내부 선이 밖으로 나온다.
@@ -1321,30 +1393,31 @@ function mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed, bleedMode, r
     try { layer = items[0].layer; } catch (e0) {}
     if (!layer) layer = doc.activeLayer;
     if (bleedMode !== 'scale') {
-        // ★2026-08-04 재설계 — 도형별 오프셋(vecBleedRegions)은 **원리상** 내부 선을 밖으로 내보낸다.
-        //   여백이 있으면 그 구간은 어차피 아트가 없는 합성 자리라 **단색**이 맞고(용준님 결정),
-        //   여백이 없으면 아트가 칼선까지 차 있으므로 **가장자리 색을 연장**해야 한다.
-        //   두 경로 모두 아트 전체를 오프셋하지 않으므로 내부 선이 링에 들어오지 않는다.
+        // ★★2026-08-04 정정 — **도련에 흰색을 넣으면 안 된다.**
+        //
+        //   앞서 "여백 구간은 아트가 없는 합성 자리니 단색이 맞다"는 결정을 **도련까지** 확대 적용해
+        //   링 전체를 흰색으로 칠했다. 그건 도련이 아니다 — 재단이 밀리면 **흰 줄이 그대로 보인다**.
+        //   도련의 존재 이유가 그 흰 줄을 없애는 것이므로 정확히 반대로 동작한 셈이다.
+        //   (용준님: "흰색 도련이 어디있냐 · 도련 = 테두리 색상에 맞춰서")
+        //
+        //   규칙은 하나다: **칼선 자리에 있는 색을 바깥으로 잇는다.**
+        //     · 아트 테두리가 흰색이면 결과가 흰색인 것은 맞다 — 그건 **아트에서 나온** 흰색이다.
+        //     · 하드코딩한 흰색은 테두리가 무슨 색이든 흰색이라 틀린다. 그래서 없앴다.
+        //   단색(mesCut_vecBleedSolid)은 **아트에서 색을 못 얻을 때의 마지막 안전망**으로만 남긴다.
         var grow = offsetMm + bleedMm;
-        if (offsetMm > 0) {
-            var solid = mesCut_vecBleedSolid(doc, items, layer, grow, fillClosed, mesCut_ringFill(ringSpec));
-            if (solid) return { ok: true, mode: 'solid', err: null };
-            return { ok: false, code: 'sil', err: '도련 경계 생성 실패' };
-        }
-        // ⚠️ 띠 방식(`edge`)은 **기본 경로에서 뺐다**(2026-08-04 실측). 실사용 조각에서
+        // ⚠️ 띠 방식(`edge`)이 원리상 가장 정확하지만 기본에서 뺐다(2026-08-04 실측): 실사용 조각에서
         //    `Live Pathfinder Subtract`/`Crop` 이 3분을 넘겨도 안 끝나고 일러가 통째로 멎었다.
-        //    도형 수가 많은 아트에서 Pathfinder 를 두 번 더 도는 비용이 감당이 안 된다.
         //    **멈추는 것이 색이 덜 맞는 것보다 나쁘다** → 부르려면 방식을 명시(`edge`)해야 한다.
-        //    개선(띠를 bbox 로 잘라 조각 수를 줄이는 등) 뒤에 기본으로 되돌릴 것.
         if (bleedMode === 'edge') {
             var edge = mesCut_vecBleedEdge(doc, items, layer, grow, fillClosed);
             if (edge) return { ok: true, mode: 'edge', err: null };
         }
-        // 여백 ≤ 0 = 아트가 칼선까지 차 있는 경우. 단색 링은 **색이 이어지지 않으므로**
-        // 호출자가 그 사실을 알려야 한다(mode 로 구분).
-        var fb = mesCut_vecBleedSolid(doc, items, layer, grow, fillClosed, mesCut_ringFill(ringSpec));
-        if (fb) return { ok: true, mode: (offsetMm > 0 ? 'solid' : 'solid-nomargin'), err: null };
-        return { ok: false, code: 'sil', err: '도련 생성 실패' };
+        // ★기본 경로 = 도형별 오프셋 + **안쪽 도형 제거**(mesCut_pruneInterior).
+        //   오프셋만 쓰면 내부 선이 링 밖으로 나오고, 안쪽을 미리 지우면 그 원인이 사라진다.
+        //   링 색은 **아트에서 나온다** — 흰색을 넣지 않는다.
+        var rg = mesCut_vecBleedRegions(doc, items, offsetMm, bleedMm, fillClosed);
+        if (rg && rg.ok) return rg;
+        // → 실패하면 아래 사본 확대로, 그것도 안 되면 마지막에 단색.
     }
     var sil = mesCut_vecSilhouette(doc, items, layer, offsetMm + bleedMm, fillClosed, 'none');
     if (!sil || !sil.items || !sil.items.length) return { ok: false, code: 'sil', err: '도련 경계 생성 실패' };
@@ -1382,16 +1455,24 @@ function mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed, bleedMode, r
                 ((cb[1] + cb[3]) / 2) - ((nb[1] + nb[3]) / 2));
         } catch (e8) {}
     }
-    // ④ 경계로 클리핑 — 마스크는 **맨 위** 개체가 된다
-    doc.selection = null;
-    try { clipShape.selected = true; artCopy.selected = true; } catch (e9) {}
-    try { clipShape.zOrder(ZOrderMethod.BRINGTOFRONT); } catch (e10) {}
-    app.executeMenuCommand('makeMask');
-    var bleedGroup = null;
-    try { bleedGroup = doc.selection[0]; } catch (e11) {}
+    // ④ 경계로 클리핑 — 마스크는 **맨 위** 개체가 된다.
+    //   ★검증하는 helper 를 쓴다. 예전엔 `doc.selection[0]` 이 비었는지만 봤는데, makeMask 가 거부되면
+    //     **선택이 그대로 남아** 성공으로 오판했다(2026-08-04 실측: 클리핑 안 된 사본 + 경계 도형이
+    //     둘 다 아트 레이어에 남았다). 진짜 증거는 결과가 clipped 그룹이라는 것뿐이다.
+    var bleedGroup = mesCut_maskWith(doc, clipShape, [artCopy]);
+    if (!bleedGroup) {
+        // 잔여물을 남기지 않는다 — 경계 도형은 실루엣 색(대개 검정)이라 그대로 두면 도련처럼 보인다
+        try { clipShape.remove(); } catch (e9) {}
+        try { artCopy.remove(); } catch (e10) {}
+    }
     // ⑤ 원본 **뒤**로 — 도련은 원본에 가려야 한다(원본이 위)
     try { if (bleedGroup) bleedGroup.zOrder(ZOrderMethod.SENDTOBACK); } catch (e12) {}
-    return { ok: !!bleedGroup, mode: 'scale', err: bleedGroup ? null : '클리핑 실패' };
+    if (bleedGroup) return { ok: true, mode: 'scale', err: null };
+    // 마지막 안전망 — 아트에서 색을 못 얻은 경우다. 인쇄 영역만이라도 넓혀 두되 **반드시 알린다**
+    // (이 링은 아트 색이 아니라 지정색이므로 재단이 밀리면 그 색이 보인다).
+    var lastFb = mesCut_vecBleedSolid(doc, items, layer, offsetMm + bleedMm, fillClosed, mesCut_ringFill(ringSpec));
+    if (lastFb) return { ok: true, mode: 'solid-fallback', err: null };
+    return { ok: false, code: 'mask', err: '클리핑 실패' };
 }
 
 /** 선택이 벡터 칼선으로 갈 수 있는가 — 'ok' | 'fallback;reason=..' | 'ERROR ..' */

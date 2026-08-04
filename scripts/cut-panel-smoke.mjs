@@ -734,9 +734,10 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
 {
   // ★0.9.0 재설계 — 클립이 없으면 **여백 구간 단색**이 기본이다.
   //   도형별 오프셋(region)은 원리상 내부 선을 링 밖으로 내보내서 뺐다(2026-08-04 실사용 3건).
-  const p = await openPanel({ ping: 'CUT-CEP-0.9.2', vecCut: 'ok;paths=1;anchors=8;bleed=solid' })
+  const p = await openPanel({ ping: 'CUT-CEP-0.9.6', vecCut: 'ok;paths=1;anchors=8;bleed=region' })
   await p.click('#btnMakeCut'); await p.waitForTimeout(300)
-  ok('3m 단색 방식을 알린다', /한 색으로 채웠습니다/.test(await txt(p, '#cutOut')), await txt(p, '#cutOut'))
+  ok('3m 가장자리 색을 잇는다고 알린다', /제 색 그대로 밖으로 벌렸습니다/.test(await txt(p, '#cutOut')), await txt(p, '#cutOut'))
+  ok('3m 지정색 폴백은 경고로 알린다', /지정색/.test(fs.readFileSync(CUT_MAIN, 'utf8')))
   const calls = await p.evaluate(() => window.__calls.join(' ~ '))
   ok('3m vecCut 에 방식을 넘긴다', /mesCut_vecCut\(3,\s*(true|false),\s*3,"auto"\)/.test(calls),
     calls.split(' ~ ').filter((l) => l.includes('vecCut')).join(' | '))
@@ -762,9 +763,15 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3m 구역별 오프셋 경로', /function mesCut_vecBleedRegions\(/.test(hostSrc))
   ok('3m 단색 링 방식은 없앴다', !/mesCut_dominantFill/.test(hostSrc))
   // ★0.9.x — 여백>0 은 단색, 여백<=0 은 가장자리 띠. 도형별 오프셋은 **기본 경로에서 뺐다**.
-  ok('3m 여백 있으면 단색', /if \(offsetMm > 0\) \{[\s\S]{0,200}mesCut_vecBleedSolid/.test(hostSrc))
-  ok('3m 도형별 오프셋은 기본에서 제외', !/if \(bleedMode !== 'scale'\) return mesCut_vecBleedRegions/.test(hostSrc))
+  // 도련 색은 **아트에서 나온다**. 흰색 하드코딩은 테두리가 무슨 색이든 흰색이라 틀린다(2026-08-04 정정).
+  ok('3m 기본 경로가 도형별 오프셋', /var rg = mesCut_vecBleedRegions\(doc, items, offsetMm, bleedMm, fillClosed\);/.test(hostSrc))
+  ok('3m 단색은 마지막 안전망만', /mode: 'solid-fallback'/.test(hostSrc))
   ok('3m 링은 원본 뒤로', /mesCut_vecBleedSolid[\s\S]{0,900}ZOrderMethod\.SENDTOBACK/.test(hostSrc))
+  // 안쪽 도형 제거 — 내부 선이 링 밖으로 나오던 근본 원인의 해결책
+  ok('3m 안쪽 도형 제거', /function mesCut_pruneInterior\(/.test(hostSrc))
+  ok('3m 오프셋 전에 걸러낸다', /mesCut_pruneInterior\(dups\[i\], keepRect\)/.test(hostSrc))
+  ok('3m 기준은 여백+도련', /var growPt = \(offsetMm \+ bleedMm\) \* MESCUT_PT_PER_MM;/.test(hostSrc))
+  ok('3m 클리핑 패스는 안 지운다', /if \(t === 'PathItem' && it\.clipping\) return 0;/.test(hostSrc))
   // ★색을 못 칠하면 **지운다** — 안 지우면 실루엣 원래 색(검정)이 도련처럼 남는다(실사용 보고)
   ok('3m 색 못 칠하면 도형 제거', /if \(!n\) \{ try \{ shp\.remove\(\)/.test(hostSrc))
   ok('3m 색은 깊이 칠한다(group·compound)', /function mesCut_setFillDeep\(/.test(hostSrc))

@@ -357,10 +357,9 @@
           + (fv0.note || '');
         // ★도련을 어떤 방식으로 만들었는지 반드시 말한다 — 둘의 품질이 다르다(clip=무손실 / scale=근사)
         if (d.bleed === 'clip') msg += '\n도련 ' + bleedMm + 'mm — 클립을 넓혀 원본을 더 드러냈습니다(왜곡·빈 곳 없음).';
-        else if (d.bleed === 'solid') msg += '\n도련 ' + bleedMm + 'mm — 여백까지 한 색으로 채웠습니다(기본 흰색).';
-        else if (d.bleed === 'solid-nomargin') msg += '\n도련 ' + bleedMm + 'mm — 한 색으로 채웠습니다. ⚠ 여백이 0 이라 아트가 칼선까지 차 있는데 **색이 이어지지 않습니다** — 여백을 주거나 아트에 도련을 넣어 주세요.';
+        else if (d.bleed === 'solid' || d.bleed === 'solid-fallback') msg += '\n⚠ 도련 ' + bleedMm + 'mm — 아트에서 색을 얻지 못해 지정색(기본 흰색)으로 채웠습니다. 재단이 밀리면 그 색이 보입니다.';
         else if (d.bleed === 'edge') msg += '\n도련 ' + bleedMm + 'mm — 가장자리 색을 위치별로 이어 붙였습니다.';
-        else if (d.bleed === 'region') msg += '\n도련 ' + bleedMm + 'mm — 도형마다 제 색 그대로 구역별로 벌렸습니다(빈 곳 없음).';
+        else if (d.bleed === 'region') msg += '\n도련 ' + bleedMm + 'mm — 가장자리 도형을 제 색 그대로 밖으로 벌렸습니다. 링에 못 닿는 안쪽 도형은 미리 걸러 내부 선이 칼선 밖으로 나오지 않습니다.';
         else if (d.bleed === 'region-live') msg += '\n도련 ' + bleedMm + 'mm — 구역별로 벌렸습니다(라이브 효과 유지). 출력·RIP 는 정상이며, 일러에서 편집하면 값이 따라 변합니다.';
         else if (d.bleed === 'scale') msg += '\n도련 ' + bleedMm + 'mm — 사본을 늘려 채웠습니다. ⚠ 뾰족한 형상은 링 일부가 빌 수 있습니다.';
         else if (d.bleed === '0') msg += '\n⚠ 도련을 만들지 못했습니다 — ' + bleedFailWhy(d.bleedcode);
