@@ -767,10 +767,14 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3m 기본 경로가 도형별 오프셋', /var rg = mesCut_vecBleedRegions\(doc, items, offsetMm, bleedMm, fillClosed\);/.test(hostSrc))
   ok('3m 단색은 마지막 안전망만', /mode: 'solid-fallback'/.test(hostSrc))
   ok('3m 링은 원본 뒤로', /mesCut_vecBleedSolid[\s\S]{0,900}ZOrderMethod\.SENDTOBACK/.test(hostSrc))
-  // 안쪽 도형 제거 — 내부 선이 링 밖으로 나오던 근본 원인의 해결책
-  ok('3m 안쪽 도형 제거', /function mesCut_pruneInterior\(/.test(hostSrc))
-  ok('3m 오프셋 전에 걸러낸다', /mesCut_pruneInterior\(dups\[i\], keepRect\)/.test(hostSrc))
+  // ★척도는 **실루엣 윤곽까지의 거리**여야 한다. bbox 로 재면 오목부에서 가장자리 도형까지 지워
+  //   링에 구멍이 나고(도련 없는 부분), 동시에 윤곽에서 먼 도형은 살아남아 내부 선이 링을 방해한다.
+  //   하나의 잘못된 척도가 정반대 두 증상을 동시에 만들었다(2026-08-04 실사용).
+  ok('3m 윤곽 거리로 걸러낸다', /function mesCut_pruneFarFrom\(/.test(hostSrc))
+  ok('3m 오프셋 전에 걸러낸다', /mesCut_pruneFarFrom\(dups\[i\], pts, growPt\)/.test(hostSrc))
   ok('3m 기준은 여백+도련', /var growPt = \(offsetMm \+ bleedMm\) \* MESCUT_PT_PER_MM;/.test(hostSrc))
+  ok('3m 판정용 실루엣을 따로 뜬다', /mesCut_vecBleedBoundary\(doc, items, layer, 0, fillClosed\)/.test(hostSrc))
+  ok('3m 가까우면 남긴다(구멍 방지)', /if \(dx \* dx \+ dy \* dy <= lim2\) return 0;/.test(hostSrc))
   ok('3m 클리핑 패스는 안 지운다', /if \(t === 'PathItem' && it\.clipping\) return 0;/.test(hostSrc))
   // ★가장자리에 **닿는** 열린 획은 프루닝에서 살아남는다 → 끝이 반원으로 부푸는 것을 따로 막아야 한다.
   //   ①획을 먼저 면으로(Outline Stroke) ②도련 오프셋만 마이터 조인(칼선은 라운드 유지)

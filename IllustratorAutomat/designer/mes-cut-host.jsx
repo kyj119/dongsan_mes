@@ -53,9 +53,12 @@
 //   0.9.7 = 가장자리에 **닿는 열린 획**의 끝이 반원으로 부풀던 것 수정 — 획을 먼저 면으로
 //           바꾸고(Outline Stroke) 도련 오프셋만 **마이터 조인**을 쓴다(칼선은 라운드 유지).
 //           실측 면적 676.0 = 이론 사각과 일치(라운드 552.0/604.0 은 곡면)
+//   0.9.8 = 프루닝 척도를 bbox → **실루엣 윤곽까지의 실제 거리**로. bbox 기준은 오목부에서
+//           가장자리 도형까지 지워 링에 구멍을 냈고(도련 없는 부분), 동시에 bbox 근처지만
+//           윤곽에서 먼 도형은 살려 내부 선 침입을 못 막았다 — 한 원인, 두 증상
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.9.7';
+var MESCUT_VERSION = 'CUT-CEP-0.9.8';
 var MESCUT_PT_PER_MM = 72 / 25.4;
 
 // ── 크로스 패널 잠금 (spec §5.2-① · P0 핵심) ────────────────────────
@@ -1224,6 +1227,65 @@ function mesCut_vecBleedEdge(doc, items, layer, growMm, fillClosed) {
  * @param keepRect [L,T,R,B] pt · y-up
  * @returns 지운 개수
  */
+/** 도형(트리)의 앵커 좌표를 모은다. stride 로 솎아 개수를 제한한다. */
+function mesCut_collectAnchors(it, out, stride) {
+    var t;
+    try { t = it.typename; } catch (e) { return; }
+    if (t === 'PathItem') {
+        try {
+            var pp = it.pathPoints;
+            for (var i = 0; i < pp.length; i += stride) out.push(pp[i].anchor);
+        } catch (e1) {}
+        return;
+    }
+    if (t === 'CompoundPathItem') {
+        try { for (var c = 0; c < it.pathItems.length; c++) mesCut_collectAnchors(it.pathItems[c], out, stride); } catch (e2) {}
+        return;
+    }
+    if (t === 'GroupItem') {
+        try { for (var g = 0; g < it.pageItems.length; g++) mesCut_collectAnchors(it.pageItems[g], out, stride); } catch (e3) {}
+    }
+}
+
+/**
+ * ★실루엣 윤곽에서 **멀리 떨어진** 도형을 버린다 — 도련 링을 오염시키는 것은 그것들뿐이다.
+ *
+ * bbox 기준(옛 mesCut_pruneInterior)의 실패(2026-08-04 실사용): 아트 bbox 를 줄인 사각으로
+ * 판정하면 **오목한 부분**에서 실제로 가장자리를 만드는 도형까지 지워져 **링에 구멍이 뚫렸고**,
+ * 반대로 bbox 가장자리 근처지만 실루엣에서는 먼 도형은 살아남아 **내부 선이 계속 링을 방해했다**.
+ * 두 증상이 같은 원인(잘못된 거리 척도)에서 나왔다.
+ *
+ * 이제 실루엣 윤곽의 **앵커까지의 실제 거리**로 잰다:
+ *   · 윤곽에서 maxDist(=여백+도련) 안에 있으면 → 링에 닿을 수 있다 → 남긴다(구멍 방지)
+ *   · 그보다 멀면 아무리 커져도 링에 못 닿는다 → 버린다(내부 선 침입 방지)
+ * 오목·볼록에 무관하게 성립한다. 판정은 bbox↔점 거리라 도형이 커도 **남기는 쪽**으로 기운다.
+ * @param pts 실루엣 앵커 배열 · @param maxDistPt 허용 거리(pt)
+ */
+function mesCut_pruneFarFrom(it, pts, maxDistPt) {
+    var t;
+    try { t = it.typename; } catch (e) { return 0; }
+    if (t === 'GroupItem') {
+        var kids = [], c, n = 0;
+        try { for (c = 0; c < it.pageItems.length; c++) kids.push(it.pageItems[c]); } catch (e1) {}
+        for (c = kids.length - 1; c >= 0; c--) n += mesCut_pruneFarFrom(kids[c], pts, maxDistPt);
+        try { if (it.pageItems.length === 0) it.remove(); } catch (e2) {}
+        return n;
+    }
+    if (t !== 'PathItem' && t !== 'CompoundPathItem') return 0;
+    try { if (t === 'PathItem' && it.clipping) return 0; } catch (e3) {}
+    var b;
+    try { b = it.visibleBounds; } catch (e4) { return 0; }   // [L,T,R,B] y-up
+    var lim2 = maxDistPt * maxDistPt;
+    for (var i = 0; i < pts.length; i++) {
+        var px = pts[i][0], py = pts[i][1];
+        var dx = (b[0] - px > 0) ? (b[0] - px) : ((px - b[2] > 0) ? (px - b[2]) : 0);
+        var dy = (b[3] - py > 0) ? (b[3] - py) : ((py - b[1] > 0) ? (py - b[1]) : 0);
+        if (dx * dx + dy * dy <= lim2) return 0;   // 윤곽 근처 → 남긴다
+    }
+    try { it.remove(); return 1; } catch (e5) {}
+    return 0;
+}
+
 function mesCut_pruneInterior(it, keepRect) {
     var t;
     try { t = it.typename; } catch (e) { return 0; }
@@ -1273,10 +1335,23 @@ function mesCut_vecBleedRegions(doc, items, offsetMm, bleedMm, fillClosed) {
             if (vb[3] < ab0[3]) ab0[3] = vb[3];
         }
     }
+    // ★기준 = **실루엣 윤곽까지의 실제 거리**. bbox 로 재던 옛 방식은 오목부에서 링에 구멍을 냈고
+    //   동시에 내부 선 침입도 못 막았다(2026-08-04 실사용). 실루엣을 한 번 더 뜨는 비용(~2초)을 낸다.
     var pruned = 0;
-    if (ab0 && (ab0[2] - ab0[0]) > growPt * 2 && (ab0[1] - ab0[3]) > growPt * 2) {
-        var keepRect = [ab0[0] + growPt, ab0[1] - growPt, ab0[2] - growPt, ab0[3] + growPt];
-        for (i = 0; i < dups.length; i++) pruned += mesCut_pruneInterior(dups[i], keepRect);
+    var silRef = mesCut_vecBleedBoundary(doc, items, layer, 0, fillClosed);
+    if (silRef) {
+        var pts = [];
+        mesCut_collectAnchors(silRef, pts, 1);
+        // 앵커가 너무 많으면 솎는다 — 판정은 "가까우면 남긴다"라 솎아도 남기는 쪽으로만 기운다
+        if (pts.length > 1200) {
+            var st = Math.ceil(pts.length / 1200), thin = [];
+            for (i = 0; i < pts.length; i += st) thin.push(pts[i]);
+            pts = thin;
+        }
+        if (pts.length) {
+            for (i = 0; i < dups.length; i++) pruned += mesCut_pruneFarFrom(dups[i], pts, growPt);
+        }
+        try { silRef.remove(); } catch (eSR) {}
     }
     // ★★열린 획을 **먼저 면으로** 바꾼다 — 안 하면 끝이 볼록한 **반원**이 되어 링에 튀어나온다.
     //   가장자리에 닿는 선은 프루닝에서 살아남으므로(닿으니까) 이 처리가 없으면 그 선만 남아
