@@ -20,9 +20,12 @@ fixedAssets.get('/', async (c) => {
   if (status) { where += ' AND fa.status = ?'; binds.push(status) }
 
   const { results } = await c.env.DB.prepare(`
-    SELECT fa.*, e.name as equipment_name
+    SELECT fa.*, e.name as equipment_name,
+      l.creditor as loan_creditor, l.current_balance as loan_balance,
+      l.maturity_date as loan_maturity, l.is_active as loan_active
     FROM fixed_assets fa
     LEFT JOIN equipment e ON fa.equipment_id = e.id
+    LEFT JOIN loans l ON fa.loan_id = l.id
     ${where}
     ORDER BY fa.acquisition_date DESC, fa.id DESC
   `).bind(...binds).all()
@@ -35,7 +38,7 @@ fixedAssets.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
   const body = await c.req.json()
   const userId = c.get('user')?.id
   const { asset_code, name, category, equipment_id, acquisition_date, acquisition_cost,
-    useful_life_months, depreciation_method, salvage_value, location, serial_number, notes } = body
+    useful_life_months, depreciation_method, salvage_value, location, serial_number, notes, loan_id } = body
 
   if (!asset_code || !name || !category || !acquisition_date || !acquisition_cost || !useful_life_months) {
     return c.json({ success: false, error: 'asset_code, name, category, acquisition_date, acquisition_cost, useful_life_months 필수' }, 400)
@@ -43,12 +46,13 @@ fixedAssets.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
   const result = await c.env.DB.prepare(`
     INSERT INTO fixed_assets (asset_code, name, category, equipment_id, acquisition_date, acquisition_cost,
-      useful_life_months, depreciation_method, salvage_value, current_book_value, location, serial_number, notes, entity_id, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      useful_life_months, depreciation_method, salvage_value, current_book_value, location, serial_number, notes, loan_id, entity_id, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     asset_code, name, category, equipment_id || null, acquisition_date, acquisition_cost,
     useful_life_months, depreciation_method || 'STRAIGHT_LINE', salvage_value || 0,
-    acquisition_cost, location || null, serial_number || null, notes || null, getEntityId(c), userId
+    acquisition_cost, location || null, serial_number || null, notes || null,
+    loan_id ? Number(loan_id) : null, getEntityId(c), userId
   ).run()
 
   return c.json({ success: true, data: { id: result.meta.last_row_id } })
@@ -59,8 +63,13 @@ fixedAssets.get('/:id', async (c) => {
   const id = Number(c.req.param('id'))
   const eFilter = entityFilter(c, 'fa')
   const asset = await c.env.DB.prepare(`
-    SELECT fa.*, e.name as equipment_name
-    FROM fixed_assets fa LEFT JOIN equipment e ON fa.equipment_id = e.id
+    SELECT fa.*, e.name as equipment_name,
+      l.creditor as loan_creditor, l.loan_number, l.description as loan_description,
+      l.current_balance as loan_balance, l.current_rate as loan_rate,
+      l.start_date as loan_start, l.maturity_date as loan_maturity, l.is_active as loan_active
+    FROM fixed_assets fa
+    LEFT JOIN equipment e ON fa.equipment_id = e.id
+    LEFT JOIN loans l ON fa.loan_id = l.id
     WHERE fa.id = ? ${eFilter.clause}
   `).bind(id, ...eFilter.params).first()
 
@@ -69,6 +78,37 @@ fixedAssets.get('/:id', async (c) => {
   `).bind(id).all()
 
   return c.json({ success: true, data: { ...asset, depreciations } })
+})
+
+// ─── 부채(대출·리스) 연결 / 해제 ────────────────────────────────────────────
+// loan_id = null 이면 해제. 처분(:151)과 같은 소유 검증을 선행한다 —
+//   선행 조회 없이 UPDATE 하면 타법인 자산에도 부채가 붙는다.
+fixedAssets.patch('/:id/loan', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  const id = Number(c.req.param('id'))
+  const { loan_id } = await c.req.json()
+
+  const ef = entityFilter(c, 'fa')
+  const owned = await c.env.DB.prepare(
+    `SELECT fa.id FROM fixed_assets fa WHERE fa.id = ?${ef.clause}`
+  ).bind(id, ...ef.params).first()
+  if (!owned) return c.json({ success: false, error: '자산을 찾을 수 없습니다.' }, 404)
+
+  let linkId: number | null = null
+  if (loan_id !== null && loan_id !== undefined && loan_id !== '') {
+    linkId = Number(loan_id)
+    // 대출도 같은 법인 것만 — 자산은 동산기획인데 부채는 선명 것을 붙이는 교차연결 차단
+    const efl = entityFilter(c, 'l')
+    const loan = await c.env.DB.prepare(
+      `SELECT l.id FROM loans l WHERE l.id = ?${efl.clause}`
+    ).bind(linkId, ...efl.params).first()
+    if (!loan) return c.json({ success: false, error: '대출을 찾을 수 없습니다.' }, 404)
+  }
+
+  await c.env.DB.prepare(
+    `UPDATE fixed_assets SET loan_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+  ).bind(linkId, id).run()
+
+  return c.json({ success: true, data: { id, loan_id: linkId } })
 })
 
 // ─── 감가상각 계산 (월별 일괄) ──────────────────────────────────────────────

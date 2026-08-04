@@ -104,11 +104,12 @@ export function accountingPage(c: Context<HonoEnv>) {
                   <th class="col-money">장부가</th>
                   <th class="col-money">누적상각</th>
                   <th class="col-num">내용연수</th>
+                  <th>연결 부채</th>
                   <th class="col-badge">상태</th>
                   <th class="col-actions">관리</th>
                 </tr>
               </thead>
-              <tbody id="faTbody"><tr><td colspan="10" class="text-center text-gray-400 py-6">불러오는 중...</td></tr></tbody>
+              <tbody id="faTbody"><tr><td colspan="11" class="text-center text-gray-400 py-6">불러오는 중...</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -134,6 +135,7 @@ export function accountingPage(c: Context<HonoEnv>) {
               </select>
             </div>
             <div><label class="ds-label">연결 장비</label><select id="faFEquipment" class="ds-input w-full"><option value="">(선택 안 함)</option></select></div>
+            <div class="col-span-2"><label class="ds-label">연결 부채 <span class="text-xs font-normal text-gray-400">— 이 자산을 취득한 대출·리스</span></label><select id="faFLoan" class="ds-input w-full"><option value="">(선택 안 함)</option></select></div>
             <div><label class="ds-label">취득일 <span class="text-red-500">*</span></label><input type="date" id="faFDate" class="ds-input w-full"></div>
             <div><label class="ds-label">취득가액 <span class="text-red-500">*</span></label><input type="text" inputmode="numeric" data-money id="faFCost" class="ds-input w-full" placeholder="53,096,000"></div>
             <div><label class="ds-label">내용연수(개월) <span class="text-red-500">*</span></label><input type="number" id="faFLife" class="ds-input w-full" value="60" placeholder="60"></div>

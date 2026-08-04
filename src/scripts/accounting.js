@@ -998,6 +998,53 @@ function faBadge(s) {
 }
 function faNum(v) { return (Number(v) || 0).toLocaleString(); }
 
+// G1 — 자산에 붙일 부채(대출·리스) 목록. 행마다 부르면 N+1 이라 1회만 받아 캐시한다.
+var faLoansCache = null;
+function faEnsureLoans() {
+  if (faLoansCache) return Promise.resolve(faLoansCache);
+  return axios.get('/api/cash-flow/loans?active=1').then(function (r) {
+    faLoansCache = (r.data && r.data.data) || [];
+    return faLoansCache;
+  }).catch(function (e) {
+    console.warn('[accounting] 대출 목록 로드 실패 — 연결 UI 비활성', e);
+    faLoansCache = [];
+    return faLoansCache;
+  });
+}
+
+function faLoanCell(a) {
+  // 처분·매각 자산은 이력이므로 읽기 전용
+  if (a.status === 'DISPOSED' || a.status === 'SOLD') return a.loan_creditor ? escapeHtml(a.loan_creditor) : '-';
+  var list = faLoansCache || [];
+  var opts = '<option value="">(없음)</option>';
+  var found = false;
+  list.forEach(function (l) {
+    var on = Number(a.loan_id) === Number(l.id);
+    if (on) found = true;
+    opts += '<option value="' + l.id + '"' + (on ? ' selected' : '') + '>'
+      + escapeHtml(l.creditor + (l.loan_number ? ' / ' + l.loan_number : '')) + '</option>';
+  });
+  // 연결된 부채가 비활성(is_active=0)이면 active=1 목록에 없다. 선택지를 보강하지 않으면
+  //   select 가 '(없음)'으로 렌더돼 사용자가 만지는 순간 조용히 연결이 끊긴다.
+  if (a.loan_id && !found) {
+    opts += '<option value="' + a.loan_id + '" selected>' + escapeHtml((a.loan_creditor || ('대출 #' + a.loan_id)) + ' (비활성)') + '</option>';
+  }
+  var sel = '<select class="ds-input" style="font-size:11px;width:100%;max-width:190px" onchange="faLinkLoan(' + a.id + ', this.value)">' + opts + '</select>';
+  var sub = a.loan_id
+    ? '<div class="text-xs text-gray-400 mt-0.5">잔액 ' + faNum(a.loan_balance) + (a.loan_maturity ? ' · 만기 ' + escapeHtml(a.loan_maturity) : '') + '</div>'
+    : '';
+  return sel + sub;
+}
+
+function faLinkLoan(id, loanId) {
+  axios.patch('/api/fixed-assets/' + id + '/loan', { loan_id: loanId || null })
+    .then(function () { faLoad(); })
+    .catch(function (e) {
+      alert('부채 연결 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message));
+      faLoad();
+    });
+}
+
 function faLoad() {
   var tb = document.getElementById('faTbody');
   if (!tb) { console.warn('[accounting] #faTbody not found'); return; }
@@ -1006,13 +1053,15 @@ function faLoad() {
   var qs = [];
   if (cat) qs.push('category=' + encodeURIComponent(cat));
   if (st) qs.push('status=' + encodeURIComponent(st));
-  tb.innerHTML = '<tr><td colspan="10" class="text-center text-gray-400 py-6">불러오는 중...</td></tr>';
+  tb.innerHTML = '<tr><td colspan="11" class="text-center text-gray-400 py-6">불러오는 중...</td></tr>';
 
+  // 대출 목록이 먼저 있어야 '연결 부채' 셀의 select 가 현재값을 선택된 상태로 그린다
+  faEnsureLoans().then(function () {
   axios.get('/api/fixed-assets' + (qs.length ? '?' + qs.join('&') : '')).then(function (r) {
     var rows = (r.data && r.data.data) || [];
     accState.loaded.asset = true;
     if (!rows.length) {
-      tb.innerHTML = '<tr><td colspan="10" class="text-center text-gray-400 py-6">등록된 고정자산이 없습니다.</td></tr>';
+      tb.innerHTML = '<tr><td colspan="11" class="text-center text-gray-400 py-6">등록된 고정자산이 없습니다.</td></tr>';
     } else {
       tb.innerHTML = rows.map(function (a) {
         var acq = Number(a.acquisition_cost) || 0;
@@ -1029,6 +1078,7 @@ function faLoad() {
           + '<td class="text-right tabular-nums font-semibold">' + faNum(bv) + '</td>'
           + '<td class="text-right tabular-nums text-gray-500">' + faNum(accum) + '</td>'
           + '<td class="text-right text-xs">' + years + '년</td>'
+          + '<td class="text-xs">' + faLoanCell(a) + '</td>'
           + '<td>' + faBadge(a.status) + '</td>'
           + '<td>' + (canDispose ? '<button onclick="faDispose(' + a.id + ')" class="text-xs text-red-600 hover:underline">처분</button>' : '-') + '</td>'
           + '</tr>';
@@ -1036,7 +1086,8 @@ function faLoad() {
     }
   }).catch(function (e) {
     console.error('[accounting] faLoad', e);
-    tb.innerHTML = '<tr><td colspan="10" class="text-center text-red-500 py-6">불러오지 못했습니다.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="11" class="text-center text-red-500 py-6">불러오지 못했습니다.</td></tr>';
+  });
   });
 
   axios.get('/api/fixed-assets/report/summary').then(function (r) {
@@ -1074,6 +1125,20 @@ function faOpenForm() {
       });
     }).catch(function () { /* 장비 목록 실패해도 등록은 가능 */ });
   }
+  var ln = document.getElementById('faFLoan');
+  if (ln) {
+    ln.value = '';
+    if (ln.options.length <= 1) {
+      faEnsureLoans().then(function (list) {
+        list.forEach(function (l) {
+          var o = document.createElement('option');
+          o.value = l.id;
+          o.textContent = l.creditor + (l.loan_number ? ' / ' + l.loan_number : '') + ' — 잔액 ' + faNum(l.current_balance);
+          ln.appendChild(o);
+        });
+      });
+    }
+  }
   m.classList.remove('hidden'); m.classList.add('flex');
 }
 function faCloseForm() {
@@ -1088,6 +1153,7 @@ function faSave() {
   var body = {
     asset_code: val('faFCode'), name: val('faFName'), category: val('faFCategory'),
     equipment_id: val('faFEquipment') || null,
+    loan_id: val('faFLoan') || null,
     acquisition_date: val('faFDate'), acquisition_cost: money('faFCost'),
     useful_life_months: Number(val('faFLife')) || 0,
     depreciation_method: val('faFMethod'), salvage_value: money('faFSalvage'),

@@ -146,7 +146,10 @@ cashFlowRouter.get('/loans', requireAccessOrRole('/cash-schedule', 'MANAGER'), a
       SELECT l.*,
         u.name as created_by_name,
         (SELECT COUNT(*) FROM loan_payments lp WHERE lp.loan_id = l.id AND lp.status = 'SCHEDULED') as pending_payments,
-        (SELECT COUNT(*) FROM loan_payments lp WHERE lp.loan_id = l.id AND lp.status = 'OVERDUE') as overdue_payments
+        (SELECT COUNT(*) FROM loan_payments lp WHERE lp.loan_id = l.id AND lp.status = 'OVERDUE') as overdue_payments,
+        -- G1 역참조: 이 부채로 취득한 자산(담보/리스 대상). 만기 도래 시 함께 점검하기 위한 것
+        (SELECT GROUP_CONCAT(fa.name, ' · ') FROM fixed_assets fa WHERE fa.loan_id = l.id AND fa.status <> 'DISPOSED') as linked_assets,
+        (SELECT COALESCE(SUM(fa.current_book_value), 0) FROM fixed_assets fa WHERE fa.loan_id = l.id AND fa.status <> 'DISPOSED') as linked_book_value
       FROM loans l
       LEFT JOIN users u ON l.created_by = u.id
       ${where}
