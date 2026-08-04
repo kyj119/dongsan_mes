@@ -23,6 +23,7 @@ var ACC_TABS = {
   purchase: { btn: 'accTabPurchase', content: 'accPurchaseTab', load: function () { accLoadPurchase(); } },
   timeline: { btn: 'accTabTimeline', content: 'accTimelineTab', load: function () { accLoadTimeline(); } },
   inter: { btn: 'accTabInter', content: 'accInterTab', load: function () { accLoadInter(); } },
+  asset: { btn: 'accTabAsset', content: 'accAssetTab', load: function () { faLoad(); } },
 };
 function accSwitchTab(tab) {
   if (!ACC_TABS[tab]) return;
@@ -980,6 +981,154 @@ async function accDeletePayment(id, clientName) {
     console.error('[accounting] delete error', e);
     showToast(e.response?.data?.error || '삭제 실패 (삭제는 관리자 권한 필요)', 'error');
   }
+}
+
+// ===== 고정자산 (fixed_assets) =====
+// 백엔드는 이미 완비(routes/fixedAssets.ts) — 등록·감가상각·처분·요약. 화면만 없던 것을 붙인다.
+var FA_CAT_LABEL = { EQUIPMENT: '기계장치', VEHICLE: '차량운반구', FURNITURE: '비품', IT: '전산장비', OTHER: '기타' };
+var FA_ST = {
+  IN_USE: { t: '사용중', c: 'bg-green-50 text-green-700' },
+  IDLE: { t: '유휴', c: 'bg-gray-100 text-gray-600' },
+  DISPOSED: { t: '처분', c: 'bg-red-50 text-red-700' },
+  SOLD: { t: '매각', c: 'bg-blue-50 text-blue-700' },
+};
+function faBadge(s) {
+  var m = FA_ST[s] || { t: s || '-', c: 'bg-gray-100 text-gray-600' };
+  return '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ' + m.c + '">' + m.t + '</span>';
+}
+function faNum(v) { return (Number(v) || 0).toLocaleString(); }
+
+function faLoad() {
+  var tb = document.getElementById('faTbody');
+  if (!tb) { console.warn('[accounting] #faTbody not found'); return; }
+  var cat = (document.getElementById('faCategory') || {}).value || '';
+  var st = (document.getElementById('faStatus') || {}).value || '';
+  var qs = [];
+  if (cat) qs.push('category=' + encodeURIComponent(cat));
+  if (st) qs.push('status=' + encodeURIComponent(st));
+  tb.innerHTML = '<tr><td colspan="10" class="text-center text-gray-400 py-6">불러오는 중...</td></tr>';
+
+  axios.get('/api/fixed-assets' + (qs.length ? '?' + qs.join('&') : '')).then(function (r) {
+    var rows = (r.data && r.data.data) || [];
+    accState.loaded.asset = true;
+    if (!rows.length) {
+      tb.innerHTML = '<tr><td colspan="10" class="text-center text-gray-400 py-6">등록된 고정자산이 없습니다.</td></tr>';
+    } else {
+      tb.innerHTML = rows.map(function (a) {
+        var acq = Number(a.acquisition_cost) || 0;
+        var bv = a.current_book_value == null ? acq : Number(a.current_book_value);
+        var accum = acq - bv;
+        var years = Math.round((Number(a.useful_life_months) || 0) / 12 * 10) / 10;
+        var canDispose = a.status === 'IN_USE' || a.status === 'IDLE';
+        return '<tr>'
+          + '<td class="font-mono text-xs">' + escapeHtml(a.asset_code || '') + '</td>'
+          + '<td>' + escapeHtml(a.name || '') + (a.equipment_name ? '<div class="text-xs text-gray-400">' + escapeHtml(a.equipment_name) + '</div>' : '') + '</td>'
+          + '<td>' + (FA_CAT_LABEL[a.category] || a.category || '-') + '</td>'
+          + '<td class="text-xs">' + escapeHtml(a.acquisition_date || '') + '</td>'
+          + '<td class="text-right tabular-nums">' + faNum(acq) + '</td>'
+          + '<td class="text-right tabular-nums font-semibold">' + faNum(bv) + '</td>'
+          + '<td class="text-right tabular-nums text-gray-500">' + faNum(accum) + '</td>'
+          + '<td class="text-right text-xs">' + years + '년</td>'
+          + '<td>' + faBadge(a.status) + '</td>'
+          + '<td>' + (canDispose ? '<button onclick="faDispose(' + a.id + ')" class="text-xs text-red-600 hover:underline">처분</button>' : '-') + '</td>'
+          + '</tr>';
+      }).join('');
+    }
+  }).catch(function (e) {
+    console.error('[accounting] faLoad', e);
+    tb.innerHTML = '<tr><td colspan="10" class="text-center text-red-500 py-6">불러오지 못했습니다.</td></tr>';
+  });
+
+  axios.get('/api/fixed-assets/report/summary').then(function (r) {
+    var el = document.getElementById('faSummary');
+    if (!el) return;
+    var rows = (r.data && r.data.data) || [];
+    var tAcq = 0, tBv = 0;
+    rows.forEach(function (x) { tAcq += Number(x.total_acquisition) || 0; tBv += Number(x.total_book_value) || 0; });
+    var card = function (label, val, cls) {
+      return '<div class="ds-card ds-card-compact"><div class="text-xs text-gray-500 mb-1">' + label + '</div>'
+        + '<div class="text-2xl font-bold tabular-nums text-right ' + cls + '">' + faNum(val) + '</div></div>';
+    };
+    el.innerHTML = card('취득가액 합계', tAcq, 'text-gray-800') + card('장부가액 합계', tBv, 'text-blue-700') + card('누적 감가상각', tAcq - tBv, 'text-red-600');
+  }).catch(function (e) { console.error('[accounting] faSummary', e); });
+}
+
+function faOpenForm() {
+  var m = document.getElementById('faModal');
+  if (!m) { console.warn('[accounting] #faModal not found'); return; }
+  ['faFCode', 'faFName', 'faFCost', 'faFSalvage', 'faFLocation', 'faFSerial', 'faFNotes'].forEach(function (id) {
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+  var d = document.getElementById('faFDate');
+  if (d) d.value = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+  var life = document.getElementById('faFLife'); if (life) life.value = 60;
+  var eq = document.getElementById('faFEquipment');
+  if (eq && eq.options.length <= 1) {
+    // 장비 목록 전용 API 가 없다 — 가동 장비를 주는 workload 를 재사용(ACTIVE 만 나옴)
+    axios.get('/api/equipment-queue/workload').then(function (r) {
+      var list = (r.data && r.data.data) || [];
+      list.forEach(function (e) {
+        var o = document.createElement('option');
+        o.value = e.id; o.textContent = e.name || e.id;
+        eq.appendChild(o);
+      });
+    }).catch(function () { /* 장비 목록 실패해도 등록은 가능 */ });
+  }
+  m.classList.remove('hidden'); m.classList.add('flex');
+}
+function faCloseForm() {
+  var m = document.getElementById('faModal');
+  if (!m) return;
+  m.classList.add('hidden'); m.classList.remove('flex');
+}
+
+function faSave() {
+  var val = function (id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  var money = function (id) { return Number(val(id).replace(/,/g, '')) || 0; };
+  var body = {
+    asset_code: val('faFCode'), name: val('faFName'), category: val('faFCategory'),
+    equipment_id: val('faFEquipment') || null,
+    acquisition_date: val('faFDate'), acquisition_cost: money('faFCost'),
+    useful_life_months: Number(val('faFLife')) || 0,
+    depreciation_method: val('faFMethod'), salvage_value: money('faFSalvage'),
+    location: val('faFLocation') || null, serial_number: val('faFSerial') || null,
+    notes: val('faFNotes') || null,
+  };
+  if (!body.asset_code || !body.name || !body.acquisition_date || !body.acquisition_cost || !body.useful_life_months) {
+    alert('자산코드·자산명·취득일·취득가액·내용연수는 필수입니다.');
+    return;
+  }
+  axios.post('/api/fixed-assets', body).then(function () {
+    faCloseForm();
+    faLoad();
+  }).catch(function (e) {
+    alert('등록 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message));
+  });
+}
+
+function faRunDepreciation() {
+  var p = (document.getElementById('faPeriod') || {}).value || '';
+  if (!/^\d{4}-\d{2}$/.test(p)) { alert('감가상각을 실행할 월을 선택하세요.'); return; }
+  if (!confirm(p + ' 감가상각을 실행합니다.\n사용중(IN_USE) 자산이 대상이며, 이미 처리된 자산은 건너뜁니다.')) return;
+  axios.post('/api/fixed-assets/depreciate', { period: p }).then(function (r) {
+    var n = (r.data && r.data.data && r.data.data.processed) || 0;
+    alert(p + ' 감가상각 완료 — ' + n + '건 처리');
+    faLoad();
+  }).catch(function (e) {
+    alert('실행 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message));
+  });
+}
+
+function faDispose(id) {
+  var amt = prompt('처분 금액을 입력하세요 (매각대금이 없으면 0)');
+  if (amt === null) return;
+  var reason = prompt('처분 사유');
+  if (reason === null) return;
+  axios.patch('/api/fixed-assets/' + id + '/dispose', {
+    disposal_amount: Number(String(amt).replace(/,/g, '')) || 0,
+    disposal_reason: reason || null,
+  }).then(function () { faLoad(); })
+    .catch(function (e) { alert('처분 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message)); });
 }
 
 // ===== Init =====

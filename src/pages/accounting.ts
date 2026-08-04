@@ -58,6 +58,101 @@ export function accountingPage(c: Context<HonoEnv>) {
         <button id="accTabPurchase" onclick="accSwitchTab('purchase')" class="acc-tab"><i class="fas fa-file-invoice-dollar mr-1"></i>매입</button>
         <button id="accTabTimeline" onclick="accSwitchTab('timeline')" class="acc-tab"><i class="fas fa-stream mr-1"></i>타임라인</button>
         <button id="accTabInter" onclick="accSwitchTab('inter')" class="acc-tab"><i class="fas fa-exchange-alt mr-1"></i>법인간 거래</button>
+        <button id="accTabAsset" onclick="accSwitchTab('asset')" class="acc-tab"><i class="fas fa-building mr-1"></i>고정자산</button>
+      </div>
+
+      <!-- ===== 고정자산 탭 ===== -->
+      <div id="accAssetTab" style="display:none">
+        <div class="ds-card ds-card-compact mb-3">
+          <div class="flex flex-wrap items-center gap-3">
+            <select id="faCategory" class="ds-input" style="width:130px;font-size:12px" onchange="faLoad()">
+              <option value="">전체 분류</option>
+              <option value="EQUIPMENT">기계장치</option>
+              <option value="VEHICLE">차량운반구</option>
+              <option value="FURNITURE">비품</option>
+              <option value="IT">전산장비</option>
+              <option value="OTHER">기타</option>
+            </select>
+            <select id="faStatus" class="ds-input" style="width:120px;font-size:12px" onchange="faLoad()">
+              <option value="IN_USE">사용중</option>
+              <option value="">전체 상태</option>
+              <option value="IDLE">유휴</option>
+              <option value="DISPOSED">처분</option>
+              <option value="SOLD">매각</option>
+            </select>
+            <button onclick="faOpenForm()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-plus mr-1"></i>자산 등록</button>
+            <div class="flex items-center gap-1 ml-auto">
+              <span class="text-xs text-gray-400">감가상각</span>
+              <input type="month" id="faPeriod" class="ds-input" style="width:130px;font-size:12px">
+              <button onclick="faRunDepreciation()" class="ds-btn ds-btn-secondary ds-btn-sm" title="선택 월의 감가상각을 일괄 실행합니다(이미 처리된 자산은 건너뜁니다)"><i class="fas fa-calculator mr-1"></i>실행</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3" id="faSummary"></div>
+
+        <div class="ds-card ds-card-compact">
+          <div class="overflow-x-auto">
+            <table class="ds-table">
+              <thead>
+                <tr>
+                  <th class="col-code">자산코드</th>
+                  <th>자산명</th>
+                  <th class="col-badge">분류</th>
+                  <th class="col-date">취득일</th>
+                  <th class="col-money">취득가</th>
+                  <th class="col-money">장부가</th>
+                  <th class="col-money">누적상각</th>
+                  <th class="col-num">내용연수</th>
+                  <th class="col-badge">상태</th>
+                  <th class="col-actions">관리</th>
+                </tr>
+              </thead>
+              <tbody id="faTbody"><tr><td colspan="10" class="text-center text-gray-400 py-6">불러오는 중...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 자산 등록 모달 -->
+      <div id="faModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50" data-esc-close onclick="if(event.target===this)faCloseForm()">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+          <div class="px-5 py-3 border-b flex items-center justify-between">
+            <h3 class="font-semibold text-gray-800"><i class="fas fa-building mr-2 text-blue-500"></i>고정자산 등록</h3>
+            <button onclick="faCloseForm()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+          </div>
+          <div class="p-5 grid grid-cols-2 gap-3">
+            <div><label class="ds-label">자산코드 <span class="text-red-500">*</span></label><input id="faFCode" class="ds-input w-full" placeholder="FA-2026-001"></div>
+            <div><label class="ds-label">자산명 <span class="text-red-500">*</span></label><input id="faFName" class="ds-input w-full" placeholder="OPTIMUM-EP3208"></div>
+            <div><label class="ds-label">분류 <span class="text-red-500">*</span></label>
+              <select id="faFCategory" class="ds-input w-full">
+                <option value="EQUIPMENT">기계장치</option>
+                <option value="VEHICLE">차량운반구</option>
+                <option value="FURNITURE">비품</option>
+                <option value="IT">전산장비</option>
+                <option value="OTHER">기타</option>
+              </select>
+            </div>
+            <div><label class="ds-label">연결 장비</label><select id="faFEquipment" class="ds-input w-full"><option value="">(선택 안 함)</option></select></div>
+            <div><label class="ds-label">취득일 <span class="text-red-500">*</span></label><input type="date" id="faFDate" class="ds-input w-full"></div>
+            <div><label class="ds-label">취득가액 <span class="text-red-500">*</span></label><input type="text" inputmode="numeric" data-money id="faFCost" class="ds-input w-full" placeholder="53,096,000"></div>
+            <div><label class="ds-label">내용연수(개월) <span class="text-red-500">*</span></label><input type="number" id="faFLife" class="ds-input w-full" value="60" placeholder="60"></div>
+            <div><label class="ds-label">상각방법</label>
+              <select id="faFMethod" class="ds-input w-full">
+                <option value="STRAIGHT_LINE">정액법</option>
+                <option value="DECLINING_BALANCE">정률법</option>
+              </select>
+            </div>
+            <div><label class="ds-label">잔존가액</label><input type="text" inputmode="numeric" data-money id="faFSalvage" class="ds-input w-full" placeholder="0"></div>
+            <div><label class="ds-label">설치 위치</label><input id="faFLocation" class="ds-input w-full" placeholder="본사 1공장"></div>
+            <div><label class="ds-label">시리얼번호</label><input id="faFSerial" class="ds-input w-full"></div>
+            <div class="col-span-2"><label class="ds-label">비고</label><input id="faFNotes" class="ds-input w-full" placeholder="취득 경로·연결 부채 등"></div>
+          </div>
+          <div class="px-5 py-3 border-t flex justify-end gap-2">
+            <button onclick="faCloseForm()" class="ds-btn ds-btn-secondary">취소</button>
+            <button onclick="faSave()" class="ds-btn ds-btn-primary"><i class="fas fa-save mr-1"></i>등록</button>
+          </div>
+        </div>
       </div>
 
       <!-- ===== 입금 탭 ===== -->
