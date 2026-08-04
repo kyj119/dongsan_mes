@@ -47,18 +47,29 @@ net view  \\192.168.0.107      →  System error 53 (네트워크 경로를 찾�
 > 참고: 호스트명이 필요하면 `nbtstat -A <IP>` (검증됨: `192.168.0.107` → `DESKTOP-9R7B2DD`).
 > 다만 이 절차에는 필요 없다.
 
-### 1-1. Z: 에 배포본 올리기 (개발 PC에서 1회)
+### 1-1. Z: 배포본 — **배치 완료** (2026-08-04)
+
+정본 위치 = **`Z:\Designs\caps-worker\`** (워커를 처음 보급한 그 폴더. 2026-05 이후 방치돼 있던 것을 갱신)
+
+```
+Z:\Designs\caps-worker\
+  ├ src\                          ← v1.1.0 (range.js·test-range.js 포함)
+  ├ install-caps-worker.ps1       ← 대상 PC에서 실행할 것
+  ├ README-먼저읽으세요.txt
+  ├ .env                          ← ★ 동산(DJ) 설정. 복사 금지 (아래 경고)
+  ├ src.bak-20260804-171720\      ← 갱신 전 백업
+  └ package.json.bak-20260804-171720
+```
+
+> ### ⛔ 이 폴더를 **통째로 복사하지 말 것**
+> 여기 `.env`는 **`SITE_ID=DJ`(동산)** 설정에 실제 API 키가 들어 있다.
+> 선명 PC에 그대로 복사하면 선명 근태가 동산 소속으로 올라가 **직원 매칭이 전부 실패**한다(미매핑).
+> → 반드시 `install-caps-worker.ps1`을 쓸 것. 이 스크립트는 `src`만 교체하고 `.env`는 절대 건드리지 않는다.
+
+이후 코드가 바뀌면 개발 PC에서 이것만 다시 실행:
 ```powershell
-$dst = 'Z:\<배포폴더>\caps-worker-deploy'      # 예: Z:\DESIGNS\IA-등록\_scripts\caps-worker-deploy
-New-Item -ItemType Directory $dst -Force | Out-Null
-Copy-Item C:\Users\user\dongsan_mes\caps-worker\src              $dst -Recurse -Force
-Copy-Item C:\Users\user\dongsan_mes\scripts\install-caps-worker.ps1 $dst -Force
-```
-결과 구조 — 설치 스크립트가 `src`를 **자기 옆에서 자동으로 찾는다**:
-```
-caps-worker-deploy\
-  ├ src\                       (index.js·range.js·test-range.js …)
-  └ install-caps-worker.ps1
+Copy-Item C:\Users\user\dongsan_mes\caps-worker\src\*              Z:\Designs\caps-worker\src\ -Recurse -Force
+Copy-Item C:\Users\user\dongsan_mes\scripts\install-caps-worker.ps1 Z:\Designs\caps-worker\ -Force
 ```
 
 ---
@@ -67,7 +78,7 @@ caps-worker-deploy\
 
 선명 PC에서 PowerShell을 열고:
 ```powershell
-Z:\<배포폴더>\caps-worker-deploy\install-caps-worker.ps1
+Z:\Designs\caps-worker\install-caps-worker.ps1
 ```
 관리자 권한 불요. 스크립트가 전부 처리한다:
 
@@ -95,13 +106,13 @@ Z:\<배포폴더>\caps-worker-deploy\install-caps-worker.ps1
 
 ### 워커 폴더가 `C:\caps-worker`가 아니면
 ```powershell
-Z:\<배포폴더>\caps-worker-deploy\install-caps-worker.ps1 -WorkerDir D:\caps-worker
+Z:\Designs\caps-worker\install-caps-worker.ps1 -WorkerDir D:\caps-worker
 ```
 (자동 탐색: `C:\caps-worker` → `D:\caps-worker` → `%USERPROFILE%\caps-worker`)
 
 ### 재시작 없이 교체만
 ```powershell
-... \install-caps-worker.ps1 -NoRestart
+Z:\Designs\caps-worker\install-caps-worker.ps1 -NoRestart
 ```
 
 > ⚠️ 워커 로그(`logs\caps-worker-YYYYMMDD.log`) 시각은 **UTC**다(KST−9h).
