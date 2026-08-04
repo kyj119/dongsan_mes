@@ -32,6 +32,7 @@ PowerShell 빌드/검증 명령 + 다음 세션 TODO + `memory/session-context.m
   - 표·불릿 우선, 산문 최소화. 정상·통과·문제없는 부분은 "이상 없음" 한 줄로 압축, 나열 금지.
   - 리뷰/검증/감사 결과: 조치 필요한 항목만 심각도·우선순위순으로. 근거는 `file:line` + 1줄.
   - 도구 실행 전 의도 설명은 1줄 이내. 완료 보고는 "무엇을·결과" 위주, 과정 생략.
+  - **코드 수정 보고 = 코드 붙여넣기 금지**: 변경 요지 1줄 + `file:line` 참조로 끝낸다. 수정한 코드 블록 재출력·before/after 나열·줄단위 해설 금지. 코드 블록은 사용자가 직접 요청했거나, 사용자가 손으로 실행해야 하는 명령어일 때만.
 - OS: Windows, PowerShell | IDE: VS Code + Claude Code | 경로: `C:\Users\user\dongsan_mes`
 - 세션 시작 시 `.claude/PROJECT_STATUS.md` 읽기 (MEMORY.md는 auto-memory 자동 로드)
 - 작업 시작/완료/차단 시 PROJECT_STATUS.md 업데이트
@@ -95,6 +96,12 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 | 2 디자이너 JSX | `IllustratorAutomat/designer/*.jsx` | `Z:\DESIGNS\IA-등록\_scripts\` |
 | 3 CEP 패널 배포본 | `.../com.mes.a0.panel/**` | `Z:\...\_scripts\a0-panel\com.mes.a0.panel\` |
 | 4 CEP 패널 설치본 | 같은 repo 원본 | `%APPDATA%\Adobe\CEP\extensions\com.mes.a0.panel` (**일러가 실제 읽는 것**) |
+
+> **패널은 1개다**(2026-08-04 병합). 재단 패널은 A0 패널의 **「재단」 탭**으로 흡수 — 축3·축4가 각각 하나뿐이다.
+> 단 **호스트(축2)는 2파일 유지**: `mes-a0-host.jsx` · `mes-cut-host.jsx`. 로직이 자주 바뀌는 축이라
+> 파일이 나뉘어 있어야 재단만 되돌리는 롤백이 **Z: 파일 1개 교체**로 끝난다(가공은 안 건드린다).
+> 껍데기는 `main.js`(가공) + `cut-main.js`(재단) + `tabs.js`(최상위 탭) 로 나뉘어 있고 **각각 IIFE**다 —
+> 벗기거나 DOM id 를 겹치게 만들면 조용히 서로를 덮어쓴다(겹쳤던 `out`·`ver` → `cutOut`·`cutVer`).
 
 - **감사 = `npm run audit:ia-jsx`** (드리프트 시 exit 1). JSX 수정 후 이걸 안 돌리면 조용히 구버전이 돈다.
 - 축1은 `.csproj CopyToOutputDirectory=Always` → **빌드하면 자동 복사**(빌드를 안 돌리면 미반영). 급하면 `--sync-agent`. JSX만 바뀌면 에이전트 재시작 불필요(잡마다 새로 읽음).

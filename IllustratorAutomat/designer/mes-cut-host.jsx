@@ -19,7 +19,30 @@
 //   0.7.0 = ★벡터 칼선 — 래스터 왕복을 건너뛰고 일러가 직접 오프셋한다 (2026-08-01)
 //   0.8.0 = 도련(클립확장·가장자리색) · 레이어 분리(재단선 print OFF·돔보) · 시트 테두리 제거
 //           · ★일괄 굽기 nestBakeAll — 조각당 4.07초 → 문서 왕복 2회로 (2026-08-03)
-var MESCUT_VERSION = 'CUT-CEP-0.8.0';
+//   0.8.1 = ★모달 대화상자로 배치가 멈추던 결함 수정 (2026-08-04 실사용 보고)
+//           "다른 그룹에 속해있는 오브젝트들을 그룹으로 만들 수 없습니다" + 도련 미생성.
+//           ①대화상자 억제(DONTDISPLAYALERTS) ②부모가 갈린 선택은 DOM 그룹으로 ③도련 실패를 보고
+//   0.8.2 = ★도련 무음 실패 3종 — 무제-2 문서 실측으로 확인 (2026-08-04)
+//           ④`selected=true` 가 9063 으로 거부돼도 삼키던 것 → 전용 사유로 보고
+//           ⑤확장 실패 시 **라이브 효과를 남겨 도련을 살린다**(EPS·RIP 는 정상 출력)
+//           ⑥진짜 커졌는지 visibleBounds 로 검산 · ⑦실패한 사본을 제거(인쇄 레이어 그림 2벌 방지)
+//   0.8.3 = ★★구역별 도련에 **경계 클리핑**을 넣었다 (2026-08-04 실사용 3건)
+//           오프셋만 걸면 아트의 **모든 도형이** 굵어진다 — 내부 선 뭉갬(분홍 여자) · 열린 선 끝
+//           반원(파란 남자아이) · 내부 검정선이 윤곽 밖으로 삐져나옴(토끼). 셋 다 같은 원인.
+//           도련 경계(실루엣+여백+도련)로 잘라내 **링만 남긴다** — 링은 제 색, 내부는 원본이 가린다.
+//   0.8.4 = ★잉크 0 패스(0x0 점 패스 등) 제거 — 하나만 섞여도 실루엣이 0개가 됐다(A/B 재현)
+//   0.8.5 = ★★사본 정규화 — **잠긴 하위 개체**가 실루엣을 조용히 틀리게 하던 근본 원인.
+//           실사용 조각(125.78x113.52)에 locked 패스 4개(49.00x73.82 등 최대 도형) → 그룹 선택이
+//           9063 으로 거부되고 일러가 선택 가능한 25개만 골라 실루엣이 114.75x89.89 로 나왔다.
+//           사본에서 잠금 해제 + 숨김 제거 + 잉크 0 제거 후 처리한다(원본 무손상)
+//   0.9.0 = ★★도련 재설계 — 도형별 오프셋은 **원리상** 내부 선을 링 밖으로 내보낸다
+//           (가장자리에서 d 안쪽 선이 (여백+도련)-d 만큼 튀어나온다. 클리핑은 바깥만 막는다).
+//           여백>0 = 링 전체 단색(기본 흰색) · 여백<=0 = 가장자리 띠에서 색 추출해 연장
+//   0.9.1 = 띠 방식(edge)을 기본에서 제외 — 실사용 조각에서 Pathfinder 가 3분+ 멎었다.
+//           멈추는 것이 색이 덜 맞는 것보다 나쁘다. 여백<=0 은 solid-nomargin 으로 알린다
+//   0.9.2 = 단색 링이 **검정으로 나오던 것** 수정 — 경계가 group/compound 면 겉면 filled 가
+//           안 먹어 실루엣 원래 색이 남았다. 깊이 칠하고, 못 칠하면 도형을 지운다
+var MESCUT_VERSION = 'CUT-CEP-0.9.2';
 var MESCUT_PT_PER_MM = 72 / 25.4;
 
 // ── 크로스 패널 잠금 (spec §5.2-① · P0 핵심) ────────────────────────
@@ -411,6 +434,17 @@ function mesCut_fillClosedItem(it, k) {
 function mesCut_blackFill() {
     var k = new CMYKColor(); k.cyan = 0; k.magenta = 0; k.yellow = 0; k.black = 100; return k;
 }
+/** 여백 링 기본색. `C,M,Y,K`(0~100) 문자열을 주면 그 색 — 패널이 고르게 한다. */
+function mesCut_ringFill(spec) {
+    var k = new CMYKColor();
+    k.cyan = 0; k.magenta = 0; k.yellow = 0; k.black = 0;   // 기본 = 흰색
+    if (!spec) return k;
+    var p = String(spec).split(',');
+    if (p.length !== 4) return k;
+    k.cyan = parseFloat(p[0]) || 0; k.magenta = parseFloat(p[1]) || 0;
+    k.yellow = parseFloat(p[2]) || 0; k.black = parseFloat(p[3]) || 0;
+    return k;
+}
 function mesCut_fillClosedIn(doc) {
     var k = mesCut_blackFill();
     var n = 0;
@@ -719,6 +753,68 @@ function mesCut_vecOutlineText(item) {
 }
 
 /** 클립된 그룹 → Crop 으로 클립을 **실제로 반영**. 클립이 아니면 그대로 돌려준다. */
+/**
+ * ★대화상자 억제 — 긴 작업(칼선·네스팅)을 감싼다.
+ *
+ * 왜 필요한가(2026-08-04 실사용 보고): 네스팅 중 일러가
+ *   "다른 그룹에 속해있는 오브젝트들을 그룹으로 만들 수 없습니다"
+ * **모달**을 띄웠다. 모달은 ExtendScript 를 그 자리에서 멈추므로
+ *   · 남은 조각의 칼선·도련이 통째로 안 만들어지고
+ *   · 패널은 응답이 없어 "왜 멈췄는지"조차 알 수 없다(evalScript 콜백이 안 온다).
+ * `executeMenuCommand` 는 실패해도 **예외를 던지지 않는다** — try/catch 로는 막을 수 없고
+ * 오직 userInteractionLevel 만이 모달을 막는다.
+ *
+ * ⚠️ 반드시 짝으로 되돌린다. 안 되돌리면 이후 **사용자가 직접 하는 작업의 경고까지 사라진다**
+ *    (덮어쓰기 확인 등). 호출부는 예외 경로에서도 mesCut_silentEnd 를 타야 한다.
+ */
+function mesCut_silentBegin() {
+    var prev = null;
+    try {
+        prev = app.userInteractionLevel;
+        app.userInteractionLevel = UserInteractionLevel.DONTDISPLAYALERTS;
+    } catch (e) { prev = null; }
+    return prev;
+}
+function mesCut_silentEnd(prev) {
+    if (prev === null || prev === undefined) return;
+    try { app.userInteractionLevel = prev; } catch (e) {}
+}
+
+/**
+ * ★선택을 하나로 묶는다 — 메뉴 `group` 이 실패하는 경우를 우회한다.
+ *
+ * 메뉴 group 은 **선택이 서로 다른 부모(그룹)에 걸쳐 있으면 거부**한다. 파이프라인 중간의
+ * `expandStyle` 은 결과를 원래 그룹 **안쪽에** 남길 수 있어서, 중첩 그룹이 있는 아트에서
+ * 선택이 여러 부모로 갈린다 — 사내 실사용 아트에서 실제로 발생했다.
+ *   그때 group 이 막히면 뒤따르는 `Live Pathfinder Add` 가 합집합을 못 만들어
+ *   **칼선이 한 겹이 아니라 조각마다 여러 겹**으로 남는다.
+ *
+ * DOM 의 `groupItems.add()` + `move()` 는 부모가 달라도 된다 → 갈렸을 때만 그 경로를 쓴다.
+ * 1개짜리 선택은 애초에 묶을 필요가 없다(메뉴도 무의미하게 실패한다).
+ * @returns 묶은 개수(0 = 아무것도 안 함)
+ */
+function mesCut_groupSel(doc) {
+    var sel = doc.selection, arr = [], i;
+    for (i = 0; sel && i < sel.length; i++) arr.push(sel[i]);
+    if (arr.length < 2) return arr.length;
+    var same = true, p0 = null;
+    try { p0 = arr[0].parent; } catch (e0) { same = false; }
+    for (i = 1; i < arr.length && same; i++) {
+        try { same = (arr[i].parent === p0); } catch (e1) { same = false; }
+    }
+    if (same) { app.executeMenuCommand('group'); return arr.length; }
+    // 부모가 갈렸다 — DOM 으로 새 그룹을 만들어 옮긴다.
+    //   ⚠️ 새 그룹은 **첫 항목의 부모**에 만든다. doc/activeLayer 에 만들면 클립 그룹 안에 있던
+    //      조각이 밖으로 나와 잘려 있던 부분까지 드러난다(실루엣이 커진다).
+    var g = null;
+    try { g = p0 ? p0.groupItems.add() : doc.activeLayer.groupItems.add(); }
+    catch (e2) { try { g = doc.activeLayer.groupItems.add(); } catch (e3) { return arr.length; } }
+    for (i = arr.length - 1; i >= 0; i--) { try { arr[i].move(g, ElementPlacement.PLACEATEND); } catch (e4) {} }
+    doc.selection = null;
+    try { g.selected = true; } catch (e5) {}
+    return arr.length;
+}
+
 function mesCut_vecCropClip(doc, item) {
     var clipped = false;
     try { clipped = (item.typename === 'GroupItem' && item.clipped); } catch (e) { return item; }
@@ -755,12 +851,13 @@ function mesCut_vecSilhouette(doc, items, cutLayer, offsetMm, fillClosed, styleM
     for (i = 0; i < dups.length; i++) {
         mesCut_vecOutlineText(dups[i]);
         dups[i] = mesCut_vecCropClip(doc, dups[i]);
+        mesCut_normalizeCopy(dups[i]);   // ★잠금 해제·숨김 제거·잉크 0 제거 — 안 하면 실루엣이 조용히 틀린다
     }
     doc.selection = null;
     for (i = 0; i < dups.length; i++) { try { dups[i].selected = true; } catch (eS) {} }
     // 선 → 면. 획만 있는 도안(시트컷 실도안)도 이 한 단계로 실루엣이 된다.
     app.executeMenuCommand('OffsetPath v22');
-    app.executeMenuCommand('group');
+    mesCut_groupSel(doc);
     app.executeMenuCommand('Live Pathfinder Add');
     app.executeMenuCommand('expandStyle');
     if (offsetMm) {
@@ -771,7 +868,7 @@ function mesCut_vecSilhouette(doc, items, cutLayer, offsetMm, fillClosed, styleM
         doc.selection = null;                                  // ★재지정 없이는 expandStyle 이 조용히 안 먹는다
         for (s = 0; s < keep.length; s++) { try { keep[s].selected = true; } catch (eK) {} }
         app.executeMenuCommand('expandStyle');
-        app.executeMenuCommand('group');                       // ★자기교차 정리
+        mesCut_groupSel(doc);                                  // ★자기교차 정리
         app.executeMenuCommand('Live Pathfinder Add');
         app.executeMenuCommand('expandStyle');
     }
@@ -883,6 +980,210 @@ function mesCut_vecGrowClips(items, bleedMm) {
  *
  * ⚠️ 래스터(사진)에는 Offset Path 가 안 먹는다 — 그 경우 사용자가 `scale`(사본 확대)을 골라야 한다.
  */
+/**
+ * ★사본을 "실루엣을 뜰 수 있는 상태"로 정규화한다. **이게 없으면 실루엣이 조용히 틀린다.**
+ *
+ * 실측 3건(2026-08-04) 전부 여기서 났다:
+ *
+ * ① **잠긴 하위 개체** — 실사용 조각(125.78×113.52) 안에 `locked` PathItem 이 4개 있었다
+ *    (49.00×73.82 등 **가장 큰 도형들**). 그러면 `dup.selected = true` 가
+ *    `Error 9063: Trying to select locked or hidden art` 로 거부되고, 일러는 대신
+ *    **선택 가능한 자식 25개만** 고른다 → 잠긴 도형이 빠진 채로 실루엣이 떠서
+ *    125.78×113.52 여야 할 것이 **114.75×89.89** 로 작게 나왔다.
+ *    예외를 던지지도, 0개를 내지도 않고 **그럴듯한 오답**을 낸다 — 가장 나쁜 실패 방식이다.
+ *
+ * ② **숨긴 개체** — 같은 이유로 선택을 막는다. 안 보이는 것은 인쇄되지 않으므로
+ *    실루엣에도 들어가면 안 된다 → **지운다**(잠금은 풀고, 숨김은 뺀다. 반대로 하면 틀린다).
+ *
+ * ③ **잉크 0 패스** — `PathItem 0.0x0.0`(점 패스) 하나만 섞여도
+ *    `OffsetPath v22 → Live Pathfinder Add` 가 아무 결과도 못 내고 실루엣이 **0개**가 된다
+ *    (A/B 재현 확인). 무제-2 실물에도 있었다.
+ *
+ * ⚠️ `clipping` 패스는 절대 지우지 않는다 — 클립이 풀려 **잘려 있던 그림이 드러난다**.
+ * ⚠️ CompoundPathItem 안으로는 안 들어간다 — 자식이 하나의 도형(구멍)이라 빼면 모양이 바뀐다.
+ * ⚠️ 잠금 해제는 **위에서 아래로** — 잠긴 부모 안의 자식은 손댈 수 없다.
+ * 사본에만 적용한다(원본 무손상).
+ * @returns 지운 개수
+ */
+function mesCut_normalizeCopy(it) {
+    var t;
+    try { t = it.typename; } catch (e) { return 0; }
+    try { if (it.locked) it.locked = false; } catch (e1) {}
+    var hid = false;
+    try { hid = it.hidden; } catch (e2) {}
+    if (hid) { try { it.remove(); return 1; } catch (e3) { return 0; } }
+    if (t === 'GroupItem') {
+        var kids = [], c, removed = 0;
+        try { for (c = 0; c < it.pageItems.length; c++) kids.push(it.pageItems[c]); } catch (e4) {}
+        for (c = kids.length - 1; c >= 0; c--) removed += mesCut_normalizeCopy(kids[c]);
+        return removed;
+    }
+    if (t !== 'PathItem') return 0;
+    try { if (it.clipping) return 0; } catch (e5) {}
+    var drop = false;
+    try { drop = (!it.filled && !it.stroked); } catch (e6) {}
+    if (!drop) {
+        try {
+            var b = it.geometricBounds;
+            drop = ((b[2] - b[0]) < 0.01 && (b[1] - b[3]) < 0.01);
+        } catch (e7) {}
+    }
+    if (drop) { try { it.remove(); return 1; } catch (e8) {} }
+    return 0;
+}
+
+/** 도련 경계 = 실루엣 + growMm. 칼선과 **같은 엔진**이라 모양이 정확히 겹친다(동심). */
+function mesCut_vecBleedBoundary(doc, items, layer, growMm, fillClosed) {
+    var sil = mesCut_vecSilhouette(doc, items, layer, growMm, fillClosed, 'none');
+    if (!sil || !sil.items || !sil.items.length) return null;
+    doc.selection = null;
+    for (var i = 0; i < sil.items.length; i++) { try { sil.items[i].selected = true; } catch (e) {} }
+    // 경계가 여러 개면 하나의 compound 로 — 클리핑 마스크는 **한 개체**만 쓸 수 있다
+    if (sil.items.length > 1) app.executeMenuCommand('compoundPath');
+    var shp = null;
+    try { shp = doc.selection[0]; } catch (e2) {}
+    return shp;
+}
+
+/** clipShape 를 마스크로 targets 를 클리핑한다. 마스크는 **맨 위** 개체여야 한다. */
+function mesCut_maskWith(doc, clipShape, targets) {
+    doc.selection = null;
+    for (var i = 0; i < targets.length; i++) { try { targets[i].selected = true; } catch (e) {} }
+    try { clipShape.selected = true; } catch (e1) {}
+    try { clipShape.zOrder(ZOrderMethod.BRINGTOFRONT); } catch (e2) {}
+    app.executeMenuCommand('makeMask');
+    var g = null;
+    try { g = doc.selection[0]; } catch (e3) {}
+    // ★"선택이 남아 있다" 를 성공으로 보면 안 된다 — makeMask 가 거부되면 **선택이 그대로** 남는다.
+    //   진짜 성공의 증거는 결과가 **clipped 그룹**이라는 것뿐이다. 아니면 실패로 본다.
+    try { if (!(g && g.typename === 'GroupItem' && g.clipped)) return null; } catch (e4) { return null; }
+    return g;
+}
+
+/**
+ * ★도련 ①: **여백 구간 단색** — 여백이 있으면 링 전체를 고른 한 색으로 채운다.
+ *
+ * 왜(2026-08-04 용준님 결정): 여백은 칼선을 잉크보다 바깥에 두는 **의도된 테두리**다.
+ * 그 자리에 아트는 아무것도 없으므로 무엇을 넣든 합성이고, 스티커 테두리는 실무상 균일한 색이다.
+ * 도형별 오프셋을 아예 안 쓰므로 **내부 선이 밖으로 나오는 문제가 원천적으로 없다**.
+ * @returns 성공 시 도련 도형
+ */
+function mesCut_vecBleedSolid(doc, items, layer, growMm, fillClosed, ringColor) {
+    var shp = mesCut_vecBleedBoundary(doc, items, layer, growMm, fillClosed);
+    if (!shp) return null;
+    // ★색은 **깊이 들어가 칠한다**. 경계가 GroupItem·CompoundPathItem 이면 겉면에 `filled` 를
+    //   세워도 안 먹거나 예외가 난다 — 그러면 실루엣 파이프라인이 만든 **원래 색(대개 검정)**이
+    //   그대로 남는다. 2026-08-04 실사용에서 "도련이 검정 단색으로 나온다"가 정확히 이것이었다.
+    var n = mesCut_setFillDeep(shp, ringColor || mesCut_ringFill(null));
+    if (!n) { try { shp.remove(); } catch (e) {} return null; }   // 못 칠했으면 **반드시 지운다**
+    try { shp.zOrder(ZOrderMethod.SENDTOBACK); } catch (e1) {}
+    return shp;
+}
+
+/** 도형(그룹·compound 포함) 전체를 한 색 면으로 만든다. @returns 칠한 패스 수 */
+function mesCut_setFillDeep(it, color) {
+    var t;
+    try { t = it.typename; } catch (e) { return 0; }
+    if (t === 'PathItem') {
+        try { it.filled = true; it.fillColor = color; it.stroked = false; return 1; } catch (e1) { return 0; }
+    }
+    if (t === 'CompoundPathItem') {
+        // compound 는 **자식 전부**를 같은 색으로 — 하나만 다르면 구멍이 색으로 메워진다
+        var m = 0;
+        try { for (var c = 0; c < it.pathItems.length; c++) m += mesCut_setFillDeep(it.pathItems[c], color); } catch (e2) {}
+        return m;
+    }
+    if (t === 'GroupItem') {
+        var g = 0;
+        try { for (var k = 0; k < it.pageItems.length; k++) g += mesCut_setFillDeep(it.pageItems[k], color); } catch (e3) {}
+        return g;
+    }
+    return 0;
+}
+
+/**
+ * ★도련 ②: **가장자리 띠에서 색을 뽑아 바깥으로 연장** (여백 ≤ 0 · 아트가 칼선까지 차는 경우)
+ *
+ * 왜 도형별 오프셋을 못 쓰는가(2026-08-04 용준님 지적): 사본의 **모든 도형**이 커지므로
+ * 가장자리에서 d 만큼 안쪽에 있던 선이 (여백+도련) − d 만큼 실루엣 밖으로 튀어나온다.
+ * 클리핑은 바깥 경계만 막을 뿐 **링 안으로 들어오는 것은 못 막는다**. 원리상 한계다.
+ *
+ * 그래서 색을 **가장자리에서만** 뽑는다:
+ *   S      = 실루엣(오프셋 0)
+ *   Sin    = S 를 안쪽으로 bandMm
+ *   band   = S − Sin                 ← 가장자리 bandMm 폭의 띠
+ *   edge   = 아트 ∩ band             ← 그 자리에 **실제로 보이는 색**만, 위치별로
+ *   결과   = edge 를 (grow + bandMm) 만큼 바깥으로 오프셋 → Sout 으로 클리핑
+ * 내부 선은 띠에 안 들어오므로 밖으로 못 나간다. 가장자리 키라인은 띠에 들어와 정상적으로 이어진다.
+ */
+function mesCut_vecBleedEdge(doc, items, layer, growMm, fillClosed) {
+    var i, bandMm = 0.5, PT = MESCUT_PT_PER_MM;
+    var trash = [];
+    function junk(x) { if (x) trash.push(x); }
+    function cleanup() { for (var t = 0; t < trash.length; t++) { try { trash[t].remove(); } catch (e) {} } }
+    function selArr() {
+        var a = [];
+        try { for (var s = 0; s < doc.selection.length; s++) a.push(doc.selection[s]); } catch (e) {}
+        return a;
+    }
+    function pick(arr) { doc.selection = null; for (var s = 0; s < arr.length; s++) { try { arr[s].selected = true; } catch (e) {} } }
+
+    var Sout = mesCut_vecBleedBoundary(doc, items, layer, growMm, fillClosed);
+    if (!Sout) return null;
+    junk(Sout);
+    var S = mesCut_vecBleedBoundary(doc, items, layer, 0, fillClosed);
+    if (!S) { cleanup(); return null; }
+    junk(S);
+    // Sin = S 안쪽 bandMm
+    var Sin = null;
+    try { Sin = S.duplicate(layer, ElementPlacement.PLACEATEND); } catch (e0) {}
+    if (!Sin) { cleanup(); return null; }
+    var inXml = '<LiveEffect name="Adobe Offset Path"><Dict data="R mlim 4 R ofst '
+        + (-bandMm * PT) + ' I jntp ' + MESCUT_VEC_JOIN + ' "/></LiveEffect>';
+    try { Sin.applyEffect(inXml); } catch (e1) { junk(Sin); cleanup(); return null; }
+    pick([Sin]); app.executeMenuCommand('expandStyle');
+    var sinArr = selArr();
+    // band = S − Sin  (Minus Front → 빼는 쪽이 **앞**에 있어야 한다)
+    var sDup = null;
+    try { sDup = S.duplicate(layer, ElementPlacement.PLACEATEND); } catch (e2) {}
+    if (!sDup) { for (i = 0; i < sinArr.length; i++) junk(sinArr[i]); cleanup(); return null; }
+    pick(sinArr.concat([sDup]));
+    for (i = 0; i < sinArr.length; i++) { try { sinArr[i].zOrder(ZOrderMethod.BRINGTOFRONT); } catch (e3) {} }
+    app.executeMenuCommand('Live Pathfinder Subtract');
+    app.executeMenuCommand('expandStyle');
+    var band = selArr();
+    if (!band.length) { cleanup(); return null; }
+    // edge = 아트 ∩ band  (Crop → 남길 범위가 **맨 위**)
+    var dups = [];
+    for (i = 0; i < items.length; i++) {
+        try { dups.push(items[i].duplicate(layer, ElementPlacement.PLACEATEND)); } catch (e4) {}
+    }
+    if (!dups.length) { for (i = 0; i < band.length; i++) junk(band[i]); cleanup(); return null; }
+    for (i = 0; i < dups.length; i++) mesCut_normalizeCopy(dups[i]);
+    if (fillClosed) { var kf = mesCut_blackFill(); for (i = 0; i < dups.length; i++) mesCut_fillClosedItem(dups[i], kf); }
+    pick(dups.concat(band));
+    for (i = 0; i < band.length; i++) { try { band[i].zOrder(ZOrderMethod.BRINGTOFRONT); } catch (e5) {} }
+    app.executeMenuCommand('Live Pathfinder Crop');
+    app.executeMenuCommand('expandStyle');
+    var edge = selArr();
+    if (!edge.length) { cleanup(); return null; }
+    // 띠를 바깥으로 — 띠 자체 폭(bandMm)까지 더해야 링 끝까지 찬다
+    var outXml = '<LiveEffect name="Adobe Offset Path"><Dict data="R mlim 4 R ofst '
+        + ((growMm + bandMm) * PT) + ' I jntp ' + MESCUT_VEC_JOIN + ' "/></LiveEffect>';
+    for (i = 0; i < edge.length; i++) { try { edge[i].applyEffect(outXml); } catch (e6) {} }
+    pick(edge);
+    app.executeMenuCommand('expandStyle');
+    var grown = selArr();
+    if (!grown.length) grown = edge;
+    // Sout 으로 클리핑 — 여기서 trash 에서 Sout 을 뺀다(마스크로 소비된다)
+    for (i = 0; i < trash.length; i++) { if (trash[i] === Sout) { trash.splice(i, 1); break; } }
+    var masked = mesCut_maskWith(doc, Sout, grown);
+    cleanup();
+    if (!masked) return null;
+    try { masked.zOrder(ZOrderMethod.SENDTOBACK); } catch (e7) {}
+    return masked;
+}
+
 function mesCut_vecBleedRegions(doc, items, offsetMm, bleedMm, fillClosed) {
     var i, layer = null;
     try { layer = items[0].layer; } catch (e0) {}
@@ -891,34 +1192,109 @@ function mesCut_vecBleedRegions(doc, items, offsetMm, bleedMm, fillClosed) {
     for (i = 0; i < items.length; i++) {
         try { dups.push(items[i].duplicate(layer, ElementPlacement.PLACEATEND)); } catch (e1) {}
     }
-    if (!dups.length) return { ok: false, err: '아트 복제 실패' };
+    if (!dups.length) return { ok: false, code: 'dup', err: '아트 복제 실패' };
+    // ★칼선과 **같은 정규화**를 거쳐야 한다 — 잠긴 도형이 남으면 선택이 거부(9063)돼
+    //   도련도 실루엣과 같은 방식으로 조용히 틀린다(2026-08-04 실측).
+    for (i = 0; i < dups.length; i++) mesCut_normalizeCopy(dups[i]);
     if (fillClosed) {
         var kf = mesCut_blackFill();
         for (i = 0; i < dups.length; i++) mesCut_fillClosedItem(dups[i], kf);
     }
+    // 실패하면 사본을 반드시 지운다 — 안 지우면 **원본과 똑같은 그림이 인쇄 레이어에 한 벌 더** 남는다.
+    //   실측(2026-08-04 무제-2): art 레이어에 125.78×113.52 그룹이 2개였고 둘 다 같은 크기였다.
+    //   눈에 안 보여서(정확히 겹침) 아무도 모르고, 파일만 두 배가 되며 RIP 에서 겹침 인쇄가 된다.
+    //   `extra` = 확장으로 새로 생긴 것들(원래 사본 참조는 그때 죽는다). 둘 다 치운다.
+    function bail(code, err, extra) {
+        var b;
+        for (b = 0; extra && b < extra.length; b++) { try { extra[b].remove(); } catch (eX0) {} }
+        for (b = 0; b < dups.length; b++) { try { dups[b].remove(); } catch (eX) {} }
+        return { ok: false, code: code, err: err };
+    }
     doc.selection = null;
     for (i = 0; i < dups.length; i++) { try { dups[i].selected = true; } catch (e2) {} }
-    if (dups.length > 1) app.executeMenuCommand('group');
+    // ★선택이 **실제로 됐는지** 본다. `selected = true` 는 잠금·숨김이 아니어도 실패한다 —
+    //   실측(2026-08-04 무제-2): 중첩 그룹 아트에서 `Error 9063: Trying to select locked or hidden art`.
+    //   여태 이 줄이 try/catch 로 삼켜져서 선택이 빈 채로 진행됐고, 뒤에서 '사본 그룹 실패'라는
+    //   **엉뚱한 사유**가 나왔다. 진짜 사유를 따로 알린다.
+    var selN = 0;
+    try { selN = doc.selection ? doc.selection.length : 0; } catch (e2b) {}
+    if (!selN) return bail('select', '사본 선택 실패(잠금·숨김 아님 — 일러 9063)');
+    mesCut_groupSel(doc);
     var copy = null;
     try { copy = doc.selection[0]; } catch (e3) {}
-    if (!copy) return { ok: false, err: '사본 그룹 실패' };
+    if (!copy) return bail('group', '사본 그룹 실패');
+    // ★visibleBounds 로 잰다 — geometricBounds 는 **라이브 효과를 안 센다**.
+    //   확장에 실패해 효과가 라이브로 남는 정상 경로를 geometricBounds 로 재면 "안 커졌다"고 오판한다.
+    var pre = null;
+    try { pre = copy.visibleBounds; } catch (e3b) {}
     // 벌리는 양 = 여백 + 도련 (인쇄가 칼선보다 도련만큼 더 나가야 한다)
     var xml = '<LiveEffect name="Adobe Offset Path"><Dict data="R mlim 4 R ofst '
         + ((offsetMm + bleedMm) * MESCUT_PT_PER_MM) + ' I jntp ' + MESCUT_VEC_JOIN + ' "/></LiveEffect>';
-    try { copy.applyEffect(xml); } catch (e4) { return { ok: false, err: '오프셋 효과 실패: ' + e4 }; }
+    try { copy.applyEffect(xml); } catch (e4) { return bail('effect', '오프셋 효과 실패: ' + e4); }
+    // ★여기서부터 도련은 **이미 존재한다**(라이브 효과). expand 는 굳히기일 뿐이다.
+    //   그래서 expand 가 실패해도 **되돌리지 않는다** — 라이브 효과인 채로도 EPS·PDF·RIP 는
+    //   정확히 출력한다. 예전엔 expand 실패를 곧 도련 실패로 보고 아무것도 안 남겼다.
     doc.selection = null;
-    try { copy.selected = true; } catch (e5) {}
-    app.executeMenuCommand('expandStyle');
-    var res = doc.selection;
-    var n = 0;
-    for (i = 0; res && i < res.length; i++) {
-        try { res[i].zOrder(ZOrderMethod.SENDTOBACK); n++; } catch (e6) {}   // 원본이 위에 와야 한다
+    var expanded = false;
+    try { copy.selected = true; expanded = !!(doc.selection && doc.selection.length); } catch (e5) {}
+    if (expanded) app.executeMenuCommand('expandStyle');
+    // ★확장 결과는 **여기서 뒤로 보내지 않는다**. 하나씩 SENDTOBACK 하면 서로의 순서가 뒤집혀
+    //   겹친 구역의 위아래가 원본과 달라진다. 클리핑까지 끝낸 **그룹 하나**를 마지막에 보낸다.
+    var res = null;
+    if (expanded) { res = []; try { for (i = 0; i < doc.selection.length; i++) res.push(doc.selection[i]); } catch (e6) { res = null; } }
+    var n = (res && res.length) ? res.length : 1;
+    // ★진짜로 커졌는지 **재본다**. 효과만 걸리고 아무 일도 안 일어나면 폭은 그대로다 —
+    //   그걸 성공으로 보고하면 "도련 있다"는 말만 남고 실물엔 없다(2026-08-04 무제-2 가 그 상태였다).
+    //   확장하면 `copy` 참조가 죽으므로 확장 결과(res)에서 재고, 그게 없을 때만 copy 를 본다.
+    var post = null;
+    if (res && res.length) {
+        var x0 = null, x1 = null;
+        for (i = 0; i < res.length; i++) {
+            try {
+                var rb = res[i].visibleBounds;
+                if (x0 === null || rb[0] < x0) x0 = rb[0];
+                if (x1 === null || rb[2] > x1) x1 = rb[2];
+            } catch (e8) {}
+        }
+        if (x0 !== null) post = [x0, 0, x1, 0];
     }
-    return { ok: n > 0, mode: 'region', n: n, err: n > 0 ? null : '도련 생성 실패' };
+    if (!post) { try { post = copy.visibleBounds; } catch (e9) {} }
+    var want = (offsetMm + bleedMm) * 2;
+    if (pre && post && want > 0) {
+        var grew = ((post[2] - post[0]) - (pre[2] - pre[0])) / MESCUT_PT_PER_MM;
+        if (grew < want * 0.5) return bail('noexpand', '오프셋이 먹지 않았습니다(커진 폭 ' + grew.toFixed(2) + 'mm)', res);
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // ★★ 도련 경계로 **반드시 잘라낸다** (2026-08-04 실사용 3건으로 확인)
+    //
+    // 오프셋만 걸고 끝내면 아트의 **모든 도형이** 커진다 — 바깥 윤곽만 커지는 게 아니다.
+    // 실사용에서 나온 증상이 전부 이 한 가지 원인이었다:
+    //   · 분홍 여자  = 내부 선들이 (여백+도련)만큼 굵어져 서로 먹으며 그림이 뭉갬
+    //   · 파란 남자아이 = 열린 선의 끝이 라운드 조인으로 **반원**이 되어 튀어나옴
+    //   · 토끼       = 내부 검정 선이 굵어져 **바깥 윤곽을 넘어** 삐져나옴
+    // 도련은 "바깥으로 3mm 더 인쇄"지 "그림을 굵게"가 아니다. 경계 밖은 존재하면 안 된다.
+    //
+    // 경계 = 실루엣 + (여백+도련) — 칼선과 같은 엔진이라 **정확히 동심**이다.
+    // 잘라내고 나면:
+    //   · 링에는 그 자리 도형의 **제 색**이 그대로 온다(구역별의 목적은 유지)
+    //   · 내부의 뭉갠 부분·반원은 **원본 뒤에 가려** 보이지 않는다
+    //   · 경계 밖으로는 아무것도 안 나간다
+    // ⚠️ 비용 = 조각당 실루엣 1회 추가. 정확성이 우선이라 감수한다(spec §6.31).
+    var bnd = mesCut_vecBleedBoundary(doc, items, layer, offsetMm + bleedMm, fillClosed);
+    if (!bnd) return bail('sil', '도련 경계 생성 실패', res);
+    var targets = (res && res.length) ? res : [copy];
+    var masked = mesCut_maskWith(doc, bnd, targets);
+    // 클리핑에 실패하면 **지운다**. 안 지우고 두면 굵어진 도형이 칼선 밖으로 나가
+    // 옆 조각을 침범한다 — 그게 이번에 보고된 증상 그대로다. 없는 편이 낫고, 사유를 알린다.
+    if (!masked) { try { bnd.remove(); } catch (eM) {} return bail('mask', '도련 클리핑 실패', res); }
+    // 원본 **뒤**로 — 도련은 원본에 가려야 한다(원본이 위)
+    try { masked.zOrder(ZOrderMethod.SENDTOBACK); } catch (e10) {}
+    return { ok: true, mode: expanded ? 'region' : 'region-live', n: n, code: null, err: null };
 }
 
-function mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed, bleedMode) {
-    if (!(bleedMm > 0)) return { ok: false, err: '도련 0' };
+function mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed, bleedMode, ringSpec) {
+    if (!(bleedMm > 0)) return { ok: false, code: 'zero', err: '도련 0' };
     var i;
     // ★①먼저 **클립 확장**을 시도한다 — 실물이 하는 방식이다.
     //   실측(음악사랑 82x132): 클립 806×1306 안에 3134×2056 짜리 원본이 들어 있었다.
@@ -927,22 +1303,51 @@ function mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed, bleedMode) {
     // ★넓히는 양은 **여백 + 도련**이다 — 인쇄는 칼선(=잉크+여백)보다 도련만큼 더 나가야 한다.
     //   여기서 bleedMm 만 쓰면 인쇄 끝이 칼선과 겹쳐 **도련이 0** 이 된다(2026-08-02 실측에서 걸림).
     bleedMode = bleedMode || 'auto';
-    // 방식 3가지 — 품질이 다르므로 호출자가 **어느 것을 썼는지 반드시 알린다**:
-    //   auto   = 클립 확장(무손실) → 안 되면 **구역별 오프셋**      ← 기본
-    //   region = 구역별 오프셋 강제(클립이 있어도) — 각 도형이 제 색으로 벌어진다
+    // 방식 — 품질이 다르므로 호출자가 **어느 것을 썼는지 반드시 알린다**:
+    //   auto   = ①클립 확장(무손실) → 안 되면 ②아래 규칙                ← 기본
+    //   region = ①을 건너뛰고 곧장 ② (클립이 있어도)
+    //     ② 여백 > 0 → `solid`  : 링 전체를 단색으로(기본 흰색 · ringSpec 으로 지정)
+    //        여백 ≤ 0 → `edge`  : 가장자리 띠에서 색을 뽑아 바깥으로 연장 → 실패 시 solid 로 하강
     //   scale  = 사본 확대(옛 방식) — 래스터(사진)처럼 오프셋이 안 먹는 아트용.
     //            ⚠️ 이형에서 링이 빈다(별 19.8% 실측)
+    // ⚠️ 옛 `vecBleedRegions`(도형별 오프셋)는 **더 쓰지 않는다** — 원리상 내부 선이 밖으로 나온다.
+    //    함수는 남겨 뒀다(비교·회귀 확인용). 되살리려면 왜 안 되는지부터 다시 읽을 것.
     if (bleedMode === 'auto') {
         var grown = mesCut_vecGrowClips(items, offsetMm + bleedMm);
         if (grown > 0) return { ok: true, mode: 'clip', grown: grown, err: null };
     }
-    if (bleedMode !== 'scale') return mesCut_vecBleedRegions(doc, items, offsetMm, bleedMm, fillClosed);
     // ① 도련 경계 = 실루엣 + (여백 + 도련). 칼선과 **같은 엔진**이라 모양이 정확히 겹친다.
     var layer = null;
     try { layer = items[0].layer; } catch (e0) {}
     if (!layer) layer = doc.activeLayer;
+    if (bleedMode !== 'scale') {
+        // ★2026-08-04 재설계 — 도형별 오프셋(vecBleedRegions)은 **원리상** 내부 선을 밖으로 내보낸다.
+        //   여백이 있으면 그 구간은 어차피 아트가 없는 합성 자리라 **단색**이 맞고(용준님 결정),
+        //   여백이 없으면 아트가 칼선까지 차 있으므로 **가장자리 색을 연장**해야 한다.
+        //   두 경로 모두 아트 전체를 오프셋하지 않으므로 내부 선이 링에 들어오지 않는다.
+        var grow = offsetMm + bleedMm;
+        if (offsetMm > 0) {
+            var solid = mesCut_vecBleedSolid(doc, items, layer, grow, fillClosed, mesCut_ringFill(ringSpec));
+            if (solid) return { ok: true, mode: 'solid', err: null };
+            return { ok: false, code: 'sil', err: '도련 경계 생성 실패' };
+        }
+        // ⚠️ 띠 방식(`edge`)은 **기본 경로에서 뺐다**(2026-08-04 실측). 실사용 조각에서
+        //    `Live Pathfinder Subtract`/`Crop` 이 3분을 넘겨도 안 끝나고 일러가 통째로 멎었다.
+        //    도형 수가 많은 아트에서 Pathfinder 를 두 번 더 도는 비용이 감당이 안 된다.
+        //    **멈추는 것이 색이 덜 맞는 것보다 나쁘다** → 부르려면 방식을 명시(`edge`)해야 한다.
+        //    개선(띠를 bbox 로 잘라 조각 수를 줄이는 등) 뒤에 기본으로 되돌릴 것.
+        if (bleedMode === 'edge') {
+            var edge = mesCut_vecBleedEdge(doc, items, layer, grow, fillClosed);
+            if (edge) return { ok: true, mode: 'edge', err: null };
+        }
+        // 여백 ≤ 0 = 아트가 칼선까지 차 있는 경우. 단색 링은 **색이 이어지지 않으므로**
+        // 호출자가 그 사실을 알려야 한다(mode 로 구분).
+        var fb = mesCut_vecBleedSolid(doc, items, layer, grow, fillClosed, mesCut_ringFill(ringSpec));
+        if (fb) return { ok: true, mode: (offsetMm > 0 ? 'solid' : 'solid-nomargin'), err: null };
+        return { ok: false, code: 'sil', err: '도련 생성 실패' };
+    }
     var sil = mesCut_vecSilhouette(doc, items, layer, offsetMm + bleedMm, fillClosed, 'none');
-    if (!sil || !sil.items || !sil.items.length) return { ok: false, err: '도련 경계 생성 실패' };
+    if (!sil || !sil.items || !sil.items.length) return { ok: false, code: 'sil', err: '도련 경계 생성 실패' };
 
     // ② 경계가 여러 개면 **하나의 compound** 로 묶는다 — 클리핑 마스크는 한 개체만 쓸 수 있다
     doc.selection = null;
@@ -950,7 +1355,7 @@ function mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed, bleedMode) {
     if (sil.items.length > 1) app.executeMenuCommand('compoundPath');
     var clipShape = null;
     try { clipShape = doc.selection[0]; } catch (e2) {}
-    if (!clipShape) return { ok: false, err: '도련 경계 선택 실패' };
+    if (!clipShape) return { ok: false, code: 'silsel', err: '도련 경계 선택 실패' };
     var cb = clipShape.geometricBounds;
 
     // ③ 아트 사본을 도련 경계까지 늘린다(비균일) — 링 바깥만 보이므로 왜곡은 그 안에서만 생긴다
@@ -958,13 +1363,13 @@ function mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed, bleedMode) {
     for (i = 0; i < items.length; i++) {
         try { dups.push(items[i].duplicate(layer, ElementPlacement.PLACEATEND)); } catch (e3) {}
     }
-    if (!dups.length) { try { clipShape.remove(); } catch (e4) {} return { ok: false, err: '아트 복제 실패' }; }
+    if (!dups.length) { try { clipShape.remove(); } catch (e4) {} return { ok: false, code: 'dup', err: '아트 복제 실패' }; }
     doc.selection = null;
     for (i = 0; i < dups.length; i++) { try { dups[i].selected = true; } catch (e5) {} }
-    if (dups.length > 1) app.executeMenuCommand('group');
+    mesCut_groupSel(doc);
     var artCopy = null;
     try { artCopy = doc.selection[0]; } catch (e6) {}
-    if (!artCopy) return { ok: false, err: '사본 그룹 실패' };
+    if (!artCopy) return { ok: false, code: 'group', err: '사본 그룹 실패' };
     var ab = artCopy.geometricBounds;
     var aw = ab[2] - ab[0], ah = ab[1] - ab[3];
     if (aw > 0 && ah > 0) {
@@ -1024,10 +1429,12 @@ function mesCut_vecCut(offsetMm, fillClosed, bleedMm, bleedMode) {
     var cutLayer = mesCut_ensureCutLayer(doc);
     try { if (cutLayer.locked) cutLayer.locked = false; } catch (eL) {}
     try { if (!cutLayer.visible) cutLayer.visible = true; } catch (eV) {}
+    // ★메뉴 명령이 모달을 띄우면 여기서 멈춘다 — 억제하고 **끝에서 반드시 되돌린다**(0.8.1)
+    var silent = mesCut_silentBegin();
     var r;
     try { r = mesCut_vecSilhouette(doc, items, cutLayer, offsetMm, fillClosed); }
-    catch (e) { return 'ERROR vecCut: ' + e; }
-    if (r.err) return 'ERROR ' + r.err;
+    catch (e) { mesCut_silentEnd(silent); return 'ERROR vecCut: ' + e; }
+    if (r.err) { mesCut_silentEnd(silent); return 'ERROR ' + r.err; }
     // ★도련 — 칼선을 만든 **뒤**에 한다(칼선 레이어가 이미 정리된 상태여야 실루엣이 안 섞인다)
     var bl = null;
     if (bleedMm > 0) {
@@ -1037,7 +1444,15 @@ function mesCut_vecCut(offsetMm, fillClosed, bleedMm, bleedMode) {
     // 원래 선택을 되돌린다 — 연속 실행이 자연스럽도록
     try { doc.selection = null; for (i = 0; i < items.length; i++) items[i].selected = true; } catch (eR) {}
     try { if (prevLayer && prevLayer !== cutLayer) doc.activeLayer = prevLayer; } catch (eR2) {}
-    return 'ok;paths=' + r.n + ';anchors=' + r.anchors + ';bleed=' + (bl ? (bl.ok ? (bl.mode || '1') : '0') : '-');
+    mesCut_silentEnd(silent);
+    // 도련 실패는 **사유 코드까지** 실어 보낸다 — '0' 만 보내면 패널이 "왜 안 됐는지"를 말할 수 없다.
+    //   ⚠️ 한글은 못 싣는다(evalScript 브릿지 = ASCII). 코드로 보내고 **패널이 번역**한다.
+    //   ⚠️ `bleed=0` 은 **그대로 두고** 코드는 별도 키로 붙인다 — 축2(호스트)는 축3·축4(껍데기)보다
+    //      먼저 배포되므로, 형식을 바꾸면 구 껍데기가 실패를 아예 못 알아본다(조용히 사라진다).
+    var blTxt = '-';
+    if (bl) blTxt = bl.ok ? (bl.mode || '1') : '0';
+    return 'ok;paths=' + r.n + ';anchors=' + r.anchors + ';bleed=' + blTxt
+        + (bl && !bl.ok ? (';bleedcode=' + (bl.code || 'fail')) : '');
 }
 
 /**
@@ -1471,8 +1886,14 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode) 
     if (!sheets.length) return 'ERROR 배치 결과 없음';
 
     var made = 0, items = 0, dombo = 0;
+    // 도련 실패 집계 — 조각마다 도는 자리라 **조용히 넘기면 판이 다 깔린 뒤에야** 없는 걸 안다.
+    var blFail = 0, blCode = '';
     MESCUT_NEST_DOCS = [];
     MESCUT_LAST_SHEET_W = 0; MESCUT_LAST_SHEET_H = 0;
+    // ★대화상자 억제(0.8.1) — 조각 하나에서 메뉴 명령이 모달을 띄우면 **남은 조각 전부**가 멈춘다.
+    //   2026-08-04 실사용: "다른 그룹에 속해있는 오브젝트들을 그룹으로 만들 수 없습니다" 모달로
+    //   배치가 중단되고 도련이 안 만들어졌다. finally 에서 반드시 되돌린다.
+    var silent = mesCut_silentBegin();
     try {
         for (var s = 0; s < sheets.length; s++) {
             var sh = sheets[s];
@@ -1522,7 +1943,10 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode) 
                     //   ⚠️ 간격 < 도련×2 면 인접 조각의 도련이 겹친다(패널이 경고한다). 겹쳐도 각자
                     //      제 경계로 클리핑돼 있고 잘라내는 자리라 치명적이지 않지만, 위에 놓인 쪽 색이 이긴다.
                     if (vecBleedMm > 0) {
-                        try { mesCut_vecBleed(doc, [copies[vi]], vecOffsetMm, vecBleedMm, vecFillClosed, vecBleedMode); } catch (eVB) {}
+                        var blr = null;
+                        try { blr = mesCut_vecBleed(doc, [copies[vi]], vecOffsetMm, vecBleedMm, vecFillClosed, vecBleedMode); }
+                        catch (eVB) { blr = { ok: false, code: 'throw' }; }
+                        if (!blr || !blr.ok) { blFail++; if (!blCode) blCode = (blr && blr.code) || 'fail'; }
                     }
                 }
                 try { doc.selection = null; } catch (eSel) {}
@@ -1574,10 +1998,13 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode) 
         //   실물은 EPS 바운딩박스와 정확히 일치한다(1030×2060mm). 우리 아트보드는 배치 bbox +
         //   돔보 여백으로 줄어들므로 시트 프리셋(예 1370)을 쓰면 이름과 파일이 어긋난다.
         return 'ok;sheets=' + made + ';items=' + items + ';dombo=' + dombo
-            + ';sheetw=' + MESCUT_LAST_SHEET_W + ';sheeth=' + MESCUT_LAST_SHEET_H;
+            + ';sheetw=' + MESCUT_LAST_SHEET_W + ';sheeth=' + MESCUT_LAST_SHEET_H
+            + ';bleedfail=' + blFail + (blFail ? (';bleedcode=' + blCode) : '');
     } catch (e) {
         try { app.activeDocument = srcDoc; } catch (e2) {}
         return 'ERROR nestApply: ' + e;
+    } finally {
+        mesCut_silentEnd(silent);   // ★반드시 되돌린다 — 안 되돌리면 사용자 작업의 경고까지 사라진다
     }
 }
 

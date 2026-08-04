@@ -2,7 +2,7 @@
  * 재단 패널 기하 엔진 — **Node 래퍼**
  *
  * ★기하 정본은 패널 파일이다:
- *     IllustratorAutomat/designer/cut-panel/com.mes.cut.panel/js/geometry.js
+ *     IllustratorAutomat/designer/poc-a0-cep/com.mes.a0.panel/js/geometry.js
  *   여기서는 그것을 그대로 재수출하고, Node 에만 필요한 PNG 디코더를 더한다.
  *   이렇게 해야 **하네스가 검증하는 코드 = 패널이 실행하는 코드** 가 된다
  *   (복제하면 하네스는 통과하는데 패널은 다른 코드를 도는 상태가 만들어진다).
@@ -12,7 +12,7 @@ import path from 'node:path'
 import { inflateSync } from 'node:zlib'
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
-const GEOM_PATH = path.join(REPO, 'IllustratorAutomat', 'designer', 'cut-panel', 'com.mes.cut.panel', 'js', 'geometry.js')
+const GEOM_PATH = path.join(REPO, 'IllustratorAutomat', 'designer', 'poc-a0-cep', 'com.mes.a0.panel', 'js', 'geometry.js')
 
 // ⚠️ 이 리포는 package.json "type":"module" 이라 `.js` 도 **ESM 으로 해석**된다 → `require()` 도,
 //    UMD 의 `module.exports` 분기도 잡히지 않는다(빈 객체가 나온다). 대신 UMD 가 전역에 붙이는

@@ -16,7 +16,10 @@ import path from 'path'
 import { pathToFileURL, fileURLToPath } from 'url'
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const PANEL_DIR = path.join(REPO, 'IllustratorAutomat', 'designer', 'cut-panel', 'com.mes.cut.panel')
+// 2026-08-04 병합: 재단 껍데기는 A0 패널의 '재단' 탭으로 흡수됐다.
+// 검사 대상은 같은 파일들이고 위치만 바뀌었다 — main.js 만 cut-main.js 로 나뉘어 있다.
+const PANEL_DIR = path.join(REPO, 'IllustratorAutomat', 'designer', 'poc-a0-cep', 'com.mes.a0.panel')
+const CUT_MAIN = path.join(PANEL_DIR, 'js/cut-main.js')
 const PANEL = path.join(PANEL_DIR, 'index.html')
 const A0_DIR = path.join(REPO, 'IllustratorAutomat', 'designer', 'poc-a0-cep', 'com.mes.a0.panel')
 
@@ -40,7 +43,7 @@ window.__vecCut = ${JSON.stringify(opts.vecCut ?? 'ok;paths=1;anchors=24')};
 window.__sel = ${JSON.stringify(opts.sel ?? 'n=2;w=300.5;h=180;x=10;y=20')};
 window.cep = { fs: { readFile: () => ({ err: 1 }), writeFile: () => ({ err: 0 }) } };
 window.__adobe_cep__ = {
-  getExtensionID: function () { return 'com.mes.cut.panel'; },
+  getExtensionID: function () { return 'com.mes.a0.panel'; },
   getSystemPath: function () { return 'C:/tmp'; },
   getHostEnvironment: function () { return JSON.stringify({ appName: 'ILST', appVersion: '29.0' }); },
   evalScript: function (script, cb) {
@@ -84,6 +87,11 @@ async function openPanel(opts = {}) {
   await p.addInitScript(mkStub(opts))
   await p.goto(pathToFileURL(PANEL).href)
   await p.waitForTimeout(200)
+  // ★2026-08-04 병합 — 패널이 열리면 '가공' 탭이 보이므로 재단 화면은 display:none 이다.
+  //   그 상태로 클릭하면 Playwright 가 "element is not visible" 로 타임아웃한다.
+  //   localStorage 로 마지막 탭이 복원될 수도 있으니 **매번 명시적으로** 재단으로 옮긴다.
+  await p.evaluate(() => { if (window.MesMainTab) window.MesMainTab.set('cut') })
+  await p.waitForTimeout(50)
   // 진단 섹션은 <details> 라 기본이 접힘이다(사용자에겐 그게 맞다). 클릭하려면 열어야 한다.
   await p.$$eval('details', (ds) => ds.forEach((d) => { d.open = true }))
   p.__errs = errs
@@ -95,7 +103,7 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
 {
   const p = await openPanel()
   ok('1 콘솔/페이지 에러 0', p.__errs.length === 0, p.__errs.join(' | '))
-  const ver = await txt(p, '#ver')
+  const ver = await txt(p, '#cutVer')
   ok('1 shell·host 버전 동시 표기', /shell \d+\.\d+\.\d+ · host CUT-CEP-\d+\.\d+\.\d+/.test(ver), ver)
   ok('1 문서 정보 표시(mm 환산)', (await txt(p, '#docInfo')).includes('1220×2070mm'), await txt(p, '#docInfo'))
   ok('1 선택 정보 표시', (await txt(p, '#selInfo')).includes('2개 · 300.5×180mm'), await txt(p, '#selInfo'))
@@ -105,9 +113,9 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
 // ── 2 호스트 미로드(=Z: 미배포)를 사용자에게 알리는가 ────────────────
 {
   const p = await openPanel({ hostLoaded: false })
-  const out = await txt(p, '#out')
+  const out = await txt(p, '#cutOut')
   ok('2 host 미로드 시 원인 표시', out.includes('ERROR') && out.includes('Z:'), out.slice(0, 60))
-  ok('2 오류 스타일 적용', (await p.$eval('#out', (e) => e.className)).includes('err'))
+  ok('2 오류 스타일 적용', (await p.$eval('#cutOut', (e) => e.className)).includes('err'))
   ok('2 그래도 예외는 안 남', p.__errs.length === 0, p.__errs.join(' | '))
   await p.close()
 }
@@ -271,10 +279,10 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   const p = await openPanel({ preLock: { owner: 'a0', label: 'batch' } })
   ok('5 타 패널 잠금이 보임(파일 매개)', (await txt(p, '#lockState')).includes('seen:a0'), await txt(p, '#lockState'))
   await p.click('#btnLockTest'); await p.waitForTimeout(80)
-  const out = await txt(p, '#out')
+  const out = await txt(p, '#cutOut')
   ok('5 점유 중이면 획득 실패를 알림', out.includes('점유 중') && out.includes('a0'), out.slice(0, 60))
   await p.click('#btnUnlock'); await p.waitForTimeout(80)
-  ok('5 남의 잠금은 풀지 않음', (await txt(p, '#out')).includes('남의 잠금'), await txt(p, '#out'))
+  ok('5 남의 잠금은 풀지 않음', (await txt(p, '#cutOut')).includes('남의 잠금'), await txt(p, '#cutOut'))
   await p.close()
 }
 {
@@ -282,7 +290,7 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // 사용자가 직접 확인할 수 있어야 한다(다른 PC 지원 시 이게 1차 단서다).
   const p = await openPanel()
   await p.click('#btnLockProbe'); await p.waitForTimeout(120)
-  const out = await txt(p, '#out')
+  const out = await txt(p, '#cutOut')
   ok('5 잠금 없을 때 잠금 파일 경로 노출', out.includes('mes_host_lock.txt'), out.slice(0, 80))
   await p.close()
 }
@@ -438,7 +446,7 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   const p2 = await openPanel({ ping: 'CUT-CEP-0.4.3' })
   await p2.waitForTimeout(150)
   ok('3h 구 호스트면 시작 메시지로 알림',
-    /곡선 칼선을 끕니다/.test(await p2.evaluate(() => document.getElementById('out').textContent)))
+    /곡선 칼선을 끕니다/.test(await p2.evaluate(() => document.getElementById('cutOut').textContent)))
   await p2.close()
 }
 
@@ -577,7 +585,7 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   const calls = await p.evaluate(() => window.__calls.join('\n'))
   ok('3k 벡터면 mesCut_vecCut 호출', /mesCut_vecCut\(/.test(calls), calls.split('\n').slice(-4).join(' | '))
   ok('3k 벡터면 래스터화 안 함', !/mesCut_rasterize\(/.test(calls))
-  ok('3k 결과에 벡터라고 표시', /벡터/.test(await txt(p, '#out')), await txt(p, '#out'))
+  ok('3k 결과에 벡터라고 표시', /벡터/.test(await txt(p, '#cutOut')), await txt(p, '#cutOut'))
   await p.close()
 }
 {
@@ -586,7 +594,7 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   await p.click('#btnMakeCut'); await p.waitForTimeout(400)
   const calls = await p.evaluate(() => window.__calls.join('\n'))
   ok('3k 폴백이면 래스터화로 내려감', /mesCut_rasterize\(/.test(calls) || /mesCut_selectionInfo/.test(calls))
-  ok('3k 폴백이면 사유를 표시', /사진\/임베드 이미지 2개/.test(await txt(p, '#out')), await txt(p, '#out'))
+  ok('3k 폴백이면 사유를 표시', /사진\/임베드 이미지 2개/.test(await txt(p, '#cutOut')), await txt(p, '#cutOut'))
   await p.close()
 }
 {
@@ -614,7 +622,7 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
 // 조각마다 임시 문서를 만들면 조각당 4.07초인데 실제 굽기는 78ms 뿐이다(실측).
 {
   const hostSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
-  const panelSrc = fs.readFileSync(path.join(PANEL_DIR, 'js/main.js'), 'utf8')
+  const panelSrc = fs.readFileSync(CUT_MAIN, 'utf8')
   ok('3r 호스트에 일괄 굽기', /function mesCut_nestBakeAll\(/.test(hostSrc))
   // ★활성 전환은 총 2회여야 한다 — 조각 수에 비례하면 개선이 없다
   const bake = hostSrc.slice(hostSrc.indexOf('function mesCut_nestBakeAll('), hostSrc.indexOf('function mesCut_rasterizeItem('))
@@ -643,7 +651,7 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
 }
 {
   const hostSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
-  const panelSrc = fs.readFileSync(path.join(PANEL_DIR, 'js/main.js'), 'utf8')
+  const panelSrc = fs.readFileSync(CUT_MAIN, 'utf8')
   ok('3q nestApply 가 도련을 받는다', /function mesCut_nestApply\(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode\)/.test(hostSrc))
   // ★조각마다 따로 불러야 한다 — 한꺼번에 하면 조각끼리 이어진다
   ok('3q 배치된 사본마다 도련', /mesCut_vecBleed\(doc, \[copies\[vi\]\]/.test(hostSrc))
@@ -694,7 +702,7 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
 // 지름을 더하면 아무것도 없는 3mm 를 매 변마다 버린다. 실물도 원이 판 끝에 접한다.
 {
   const hostSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
-  const panelSrc = fs.readFileSync(path.join(PANEL_DIR, 'js/main.js'), 'utf8')
+  const panelSrc = fs.readFileSync(CUT_MAIN, 'utf8')
   ok('3n 호스트 여백 = 코너 + 반지름', /MESCUT_DOMBO_CORNER_MM \+ MESCUT_DOMBO_DIAM_MM \/ 2/.test(hostSrc))
   // ★둘이 어긋나면 조각이 돔보를 덮거나 시트를 넘는다 — 값을 직접 대조한다
   const corner = +(/MESCUT_DOMBO_CORNER_MM = (\d+)/.exec(hostSrc) || [])[1]
@@ -716,7 +724,7 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   const calls = await p.evaluate(() => window.__calls.join('\n'))
   ok('3m vecCut 에 도련을 넘긴다', /mesCut_vecCut\(3,\s*(true|false),\s*3,/.test(calls), calls.split('\n').filter((l) => l.includes('vecCut')).join(' | '))
   // ★두 방식은 품질이 다르다(clip=무손실 / scale=근사) — 어느 쪽인지 반드시 말해야 한다
-  ok('3m 클립 방식을 알린다', /클립을 넓혀/.test(await txt(p, '#out')), await txt(p, '#out'))
+  ok('3m 클립 방식을 알린다', /클립을 넓혀/.test(await txt(p, '#cutOut')), await txt(p, '#cutOut'))
   ok('3m 방식 선택칸·기본 자동', await p.evaluate(() => {
     const el = document.getElementById('bleedMode')
     return !!el && el.value === 'auto' && [...el.options].map((o) => o.value).join(',') === 'auto,region,scale'
@@ -724,10 +732,11 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   await p.close()
 }
 {
-  // ★A안 — 클립이 없으면 **가장자리 색**이 기본 폴백이다(확대는 이형에서 링이 빈다)
-  const p = await openPanel({ ping: 'CUT-CEP-0.8.0', vecCut: 'ok;paths=1;anchors=8;bleed=region' })
+  // ★0.9.0 재설계 — 클립이 없으면 **여백 구간 단색**이 기본이다.
+  //   도형별 오프셋(region)은 원리상 내부 선을 링 밖으로 내보내서 뺐다(2026-08-04 실사용 3건).
+  const p = await openPanel({ ping: 'CUT-CEP-0.9.2', vecCut: 'ok;paths=1;anchors=8;bleed=solid' })
   await p.click('#btnMakeCut'); await p.waitForTimeout(300)
-  ok('3m 구역별 방식을 알린다', /구역별로 벌렸습니다/.test(await txt(p, '#out')), await txt(p, '#out'))
+  ok('3m 단색 방식을 알린다', /한 색으로 채웠습니다/.test(await txt(p, '#cutOut')), await txt(p, '#cutOut'))
   const calls = await p.evaluate(() => window.__calls.join(' ~ '))
   ok('3m vecCut 에 방식을 넘긴다', /mesCut_vecCut\(3,\s*(true|false),\s*3,"auto"\)/.test(calls),
     calls.split(' ~ ').filter((l) => l.includes('vecCut')).join(' | '))
@@ -736,7 +745,7 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
 {
   const p = await openPanel({ ping: 'CUT-CEP-0.7.0', vecCut: 'ok;paths=1;anchors=8;bleed=scale' })
   await p.click('#btnMakeCut'); await p.waitForTimeout(300)
-  ok('3m 확대 폴백이면 빌 수 있다고 경고', /링 일부가 빌 수 있습니다/.test(await txt(p, '#out')), await txt(p, '#out'))
+  ok('3m 확대 폴백이면 빌 수 있다고 경고', /링 일부가 빌 수 있습니다/.test(await txt(p, '#cutOut')), await txt(p, '#cutOut'))
   await p.close()
 }
 {
@@ -752,10 +761,25 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // ★구역별 — 도형 하나하나가 **제 색 그대로** 벌어진다(단색 링은 여러 색 구역에서 구조적으로 틀린다)
   ok('3m 구역별 오프셋 경로', /function mesCut_vecBleedRegions\(/.test(hostSrc))
   ok('3m 단색 링 방식은 없앴다', !/mesCut_dominantFill/.test(hostSrc))
-  ok('3m 구역별이 기본(확대는 명시해야)', /if \(bleedMode !== 'scale'\) return mesCut_vecBleedRegions/.test(hostSrc))
-  ok('3m 도련은 원본 뒤로', /mesCut_vecBleedRegions[\s\S]{0,1600}ZOrderMethod\.SENDTOBACK/.test(hostSrc))
+  // ★0.9.x — 여백>0 은 단색, 여백<=0 은 가장자리 띠. 도형별 오프셋은 **기본 경로에서 뺐다**.
+  ok('3m 여백 있으면 단색', /if \(offsetMm > 0\) \{[\s\S]{0,200}mesCut_vecBleedSolid/.test(hostSrc))
+  ok('3m 도형별 오프셋은 기본에서 제외', !/if \(bleedMode !== 'scale'\) return mesCut_vecBleedRegions/.test(hostSrc))
+  ok('3m 링은 원본 뒤로', /mesCut_vecBleedSolid[\s\S]{0,900}ZOrderMethod\.SENDTOBACK/.test(hostSrc))
+  // ★색을 못 칠하면 **지운다** — 안 지우면 실루엣 원래 색(검정)이 도련처럼 남는다(실사용 보고)
+  ok('3m 색 못 칠하면 도형 제거', /if \(!n\) \{ try \{ shp\.remove\(\)/.test(hostSrc))
+  ok('3m 색은 깊이 칠한다(group·compound)', /function mesCut_setFillDeep\(/.test(hostSrc))
+  // ★잠긴 하위 개체 = 실루엣이 조용히 작아지던 근본 원인(2026-08-04)
+  ok('3m 사본 잠금 해제·숨김 제거', /function mesCut_normalizeCopy\(/.test(hostSrc)
+    && /if \(it\.locked\) it\.locked = false/.test(hostSrc))
+  ok('3m 실루엣도 정규화를 거친다', /mesCut_normalizeCopy\(dups\[i\]\);\s*\/\/ ★잠금 해제/.test(hostSrc))
+  // ★대화상자 억제 — 모달 하나가 배치 전체를 멈춘다
+  ok('3m 대화상자 억제', /DONTDISPLAYALERTS/.test(hostSrc) && /function mesCut_silentBegin\(/.test(hostSrc))
+  ok('3m 억제는 반드시 복원', /finally \{[\s\S]{0,120}mesCut_silentEnd/.test(hostSrc))
+  // ★부모가 갈린 선택은 메뉴 group 이 거부한다 → DOM 그룹으로 우회
+  ok('3m 부모 갈린 선택은 DOM 그룹', /function mesCut_groupSel\(/.test(hostSrc)
+    && /groupItems\.add\(\)/.test(hostSrc))
   // ★간격 < 도련×2 면 옆 조각 도련이 넘어온다 → 간격을 올리고 **알린다**
-  const panelSrc2 = fs.readFileSync(path.join(PANEL_DIR, 'js/main.js'), 'utf8')
+  const panelSrc2 = fs.readFileSync(CUT_MAIN, 'utf8')
   ok('3m 간격을 도련×2 로 올린다', /if \(nestBleedMm > 0 && gapMm < nestBleedMm \* 2\) gapMm = nestBleedMm \* 2/.test(panelSrc2))
   ok('3m 올렸으면 결과에 알린다', /간격을 ' \+ gapWanted \+ ' → ' \+ gapMm/.test(panelSrc2))
 }
@@ -809,14 +833,14 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   const opts = (src) => ['cmykPostScript = true', 'Compatibility.ILLUSTRATOR10', 'EPSPreview.COLORTIFF', 'embedAllFonts = true']
     .filter((k) => src.includes(k)).join('|')
   ok('3l EPS 옵션이 A0 와 동일', opts(hostSrc) === opts(a0) && opts(hostSrc).split('|').length === 4, opts(hostSrc))
-  ok('3l BUSY_IDS 에 btnExportPair', fs.readFileSync(path.join(PANEL_DIR, 'js/main.js'), 'utf8').includes("'btnExportPair'"))
+  ok('3l BUSY_IDS 에 btnExportPair', fs.readFileSync(CUT_MAIN, 'utf8').includes("'btnExportPair'"))
   // ★파일명 규격 = 실제 아트보드여야 한다. 시트 프리셋을 쓰면 이름과 파일이 어긋난다
   //   (nestApply 가 아트보드를 배치 bbox + 돔보 여백으로 줄이기 때문)
   ok('3l 판 크기를 nestApply 가 돌려준다', /sheetw=' \+ MESCUT_LAST_SHEET_W/.test(hostSrc))
   // ★비활성 문서의 artboardRect 는 **활성 문서 값**을 돌려준다(실측: 312×273 인데 600×400)
   ok('3l 비활성 문서 아트보드를 읽지 않는다', !/MESCUT_NEST_DOCS\[0\]\.artboards/.test(hostSrc))
   ok('3l 패널이 시트 프리셋으로 이름을 만들지 않는다',
-    !/wCm: Math\.round\(sheetWmm/.test(fs.readFileSync(path.join(PANEL_DIR, 'js/main.js'), 'utf8')))
+    !/wCm: Math\.round\(sheetWmm/.test(fs.readFileSync(CUT_MAIN, 'utf8')))
 }
 
 // ── 5b P3 네스팅 UI ────────────────────────────────────────────────
@@ -840,33 +864,41 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('5b 곡선 칼선 체크박스 존재', await p.evaluate(() => !!document.getElementById('curveCut')))
   // 새 진입점이 잠금에서 새면 두 파이프라인이 겹친다 — A0 가 실제로 겪은 결함이다
   ok('5b BUSY_IDS 에 btnWidth 포함', /BUSY_IDS\s*=\s*\[[^\]]*'btnWidth'/.test(
-    fs.readFileSync(path.join(PANEL_DIR, 'js/main.js'), 'utf8')))
+    fs.readFileSync(CUT_MAIN, 'utf8')))
   await p.click('#btnUnlock'); await p.waitForTimeout(80)
   await p.close()
 }
 {
   // BUSY_IDS 누락은 소스로 잡는다(A0 에서 "새 진입점이 계속 새어 나간" 실패 모드)
-  const src = fs.readFileSync(path.join(PANEL_DIR, 'js/main.js'), 'utf8')
+  const src = fs.readFileSync(CUT_MAIN, 'utf8')
   const m = src.match(/var BUSY_IDS = \[([^\]]+)\]/)
   ok('5b BUSY_IDS 에 btnNest 포함', !!m && m[1].includes('btnNest'), m ? m[1] : '(못 찾음)')
   ok('5b index.html 이 nesting.js 를 로드', fs.readFileSync(path.join(PANEL_DIR, 'index.html'), 'utf8').includes('js/nesting.js'))
 }
 
-// ── 6 manifest·포트가 A0 와 충돌하지 않는가 ─────────────────────────
+// ── 6 manifest — 병합된 단일 패널 (2026-08-04) ──────────────────────
+// 예전엔 "A0 와 ID·포트가 겹치지 않는가"를 봤다. 이제 **하나**이므로 그 검사는 의미가 없다.
+// 대신 병합이 실제로 성립하는 조건을 본다: 껍데기 파일이 다 있고, 구 확장 흔적이 남지 않았는가.
 {
   const xml = fs.readFileSync(path.join(PANEL_DIR, 'CSXS/manifest.xml'), 'utf8')
-  const a0xml = fs.readFileSync(path.join(A0_DIR, 'CSXS/manifest.xml'), 'utf8')
   const bundleOf = (s) => (s.match(/ExtensionBundleId="([^"]+)"/) || [])[1]
-  const extOf = (s) => (s.match(/<Extension Id="([^"]+)"/) || [])[1]
-  ok('6 번들 ID = com.mes.cut.panel', bundleOf(xml) === 'com.mes.cut.panel', bundleOf(xml))
-  ok('6 A0 와 번들 ID 다름(동시 설치 가능)', bundleOf(xml) !== bundleOf(a0xml))
-  ok('6 A0 와 Extension Id 다름', extOf(xml) !== extOf(a0xml), extOf(xml) + ' vs ' + extOf(a0xml))
+  ok('6 번들 ID = com.mes.a0.panel', bundleOf(xml) === 'com.mes.a0.panel', bundleOf(xml))
+  ok('6 메뉴 이름이 두 기능을 담는다', /<Menu>.*재단.*<\/Menu>/.test(xml), (xml.match(/<Menu>([^<]*)<\/Menu>/) || [])[1])
+
+  // 껍데기 4파일이 전부 로드돼야 재단 탭이 산다(하나만 빠져도 조용히 반쪽이 된다)
+  const html = fs.readFileSync(path.join(PANEL_DIR, 'index.html'), 'utf8')
+  for (const f of ['js/geometry.js', 'js/nesting.js', 'js/tabs.js', 'js/main.js', 'js/cut-main.js']) {
+    ok(`6 index.html 이 ${f} 로드`, html.includes(f))
+  }
+  ok('6 구 재단 확장 폴더가 repo 에 없다', !fs.existsSync(path.join(REPO, 'IllustratorAutomat/designer/cut-panel')))
+  // 설치 스크립트가 각 PC 의 구 확장을 걷어내야 같은 기능이 두 개 뜨지 않는다
+  const inst = fs.readFileSync(path.join(REPO, 'scripts/install-a0-panel.ps1'), 'utf8')
+  ok('6 설치 스크립트가 구 재단 확장 제거', inst.includes('com.mes.cut.panel'))
+  ok('6 설치 전에 백업', /retired-/.test(inst))
 
   const dbg = fs.readFileSync(path.join(PANEL_DIR, '.debug'), 'utf8')
-  const a0dbg = fs.readFileSync(path.join(A0_DIR, '.debug'), 'utf8')
   const portOf = (s) => (s.match(/Port="(\d+)"/) || [])[1]
-  ok('6 CDP 포트 8889', portOf(dbg) === '8889', portOf(dbg))
-  ok('6 A0(8888) 와 포트 충돌 없음', portOf(dbg) !== portOf(a0dbg), portOf(dbg) + ' vs ' + portOf(a0dbg))
+  ok('6 CDP 포트 8888', portOf(dbg) === '8888', portOf(dbg))
 
   // A0 의 교훈: 기본 크기가 콘텐츠보다 작으면 실행 버튼·결과창이 화면 밖으로 밀린다.
   const h = +(xml.match(/<Height>(\d+)<\/Height>/) || [])[1]

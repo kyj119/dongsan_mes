@@ -10,7 +10,7 @@
   //   우상단 표시는 여태 host(mesA0_ping = MESA0_VERSION, 축2 = Z: 1곳)만 보여줬다. 껍데기는 PC 별
   //   복사 설치라서 재설치를 안 한 PC 도 최신 번호로 보였다(2026-07-30 점검에서 확인).
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다.
-  var SHELL_VERSION = '0.1.10';
+  var SHELL_VERSION = '0.2.0';
   var STORE_WORKER = 'mes_a0_worker';
   var STORE_SETTINGS = 'mes_a0_settings';
   var CONFIG_PATH = 'Z:/DESIGNS/IA-등록/_config/config.json';
@@ -740,6 +740,14 @@
       'btnMeasure'                                     // 실측(호스트 호출)
     ];
     var elBtnCancel = $('btnCancel');
+    // 잠금 라벨 = 다른 패널 사용자가 "지금 A0 가 뭘 하는 중인지" 읽는 문자열. ASCII 고정.
+    var LOCK_LABELS = { '단건 가공': 'single', '검토문서': 'review', '분리': 'split', '진행 중': 'batch' };
+    function lockLabel(label) {
+      var s = LOCK_LABELS[label];
+      if (s) return s;
+      s = String(label || 'work').replace(/[^\x20-\x7e]/g, '').replace(/^\s+|\s+$/g, '');
+      return s || 'work';
+    }
     function setHostBusy(on, label) {
       hostBusy = !!on;
       if (!on) cancelRequested = false;
@@ -755,6 +763,176 @@
       }
       // 끝난 뒤에는 각 버튼의 고유 게이트(큐 비었는지·용도 섞였는지)를 다시 적용해야 한다
       if (!on && queue) { updateGate(); updateImposeBar(); updateApplyBar(); }
+
+      // ── 크로스 패널 잠금 (2026-07-31 신설) ──
+      // 이 잠금은 **패널 밖**을 향한다. 위의 disabled 처리는 이 패널 버튼만 막을 뿐,
+      // 재단 패널(com.mes.cut.panel)이 같은 일러를 동시에 때리는 것은 못 막는다.
+      // 그래서 작업 시작·종료를 파일(%TEMP%\mes_host_lock.txt)로 알린다 — 정본 = mes-lock.jsx.
+      //   ⚠️ 전역($.global)으로는 불가능하다. CEP 는 확장마다 ExtendScript 엔진이 따로다(실측).
+      //   ⚠️ 잠금 실패로 A0 를 멈추지 않는다 — 잠금은 부가 기능이고, Z: 미연결로 A0 가 서면 그게 더 큰 사고다.
+      //
+      //   ★지금은 **publish 만** 한다(작업 중임을 알리기). 재단 패널이 이것을 보고 물러난다.
+      //     반대 방향(A0 가 재단 잠금을 보고 경고/차단)은 **P1 에서 UI 와 함께** 붙인다:
+      //     여기서 out() 으로 경고를 띄워 봐야 곧이어 도착하는 작업 결과 메시지가 덮어써서 사용자가 못 본다.
+      //     경고를 제대로 보여주려면 전용 표시 자리가 필요하고, 그건 재단 패널이 실제로 일러를 조작하기
+      //     시작하는 P1 의 일이다(현재 재단 패널은 골격이라 일러를 건드리지 않는다).
+      try {
+        if (on) {
+          // evalScript 인자는 ASCII 만 안전하다(브릿지 한글 깨짐). label 은 한글이므로 코드로 바꾼다 —
+          // 그냥 non-ASCII 를 지우면 '단건 가공' 이 공백만 남아 "누가 뭘 하는 중인지" 를 잃는다.
+          csi.evalScript('mesA0_lockAcquire("' + lockLabel(label) + '")', function (r) {
+            if (r && String(r).indexOf('busy:') === 0) console.warn('[mes-a0] host lock busy: ' + r);
+          });
+        } else {
+          csi.evalScript('mesA0_lockRelease()', function () {});
+        }
+      } catch (eLock) { /* 잠금은 부가 기능 — 실패해도 A0 진행을 막지 않는다 */ }
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // 실루엣 시드 (2026-07-31, shell 0.1.12) — 묶음분리·자동감지의 **정본**
+    //   호스트(mesA0_seedBegin)가 구운 PNG 1장을 받아 **잉크 연결성분**으로 디자인을 나눈다.
+    //   옛 사각 겹침(mesA0_cluster)은 도형을 몰라 비스듬히 놓인 디자인을 거짓 병합했다 → 완전 대체.
+    //   계산이 여기(JS)에 있는 이유 = 헤드리스로 검증 가능하기 때문이다(재단 패널과 같은 구조).
+    //   geometry.js 는 재단 패널과 **바이트 동일한 사본** — audit:ia-jsx 가 일치를 강제한다.
+    // ══════════════════════════════════════════════════════════════
+    var SEED_ERR = {
+      nodoc: '열린 문서 없음', nosel: '객체를 선택하세요', noitems: '감지할 개체 없음(잠금·숨김 제외)',
+      nobounds: '크기 측정 불가', allnoise: '전부 50mm 미만(노이즈)', scan: '문서 스캔 실패',
+      noseed: '분리 후보가 사라졌습니다 — 다시 실행하세요',
+    };
+
+    /** PNG 파일 → {W,H,ch:4,data}. cep.fs Base64 경유 — file:// 직접 로드는 canvas taint 위험. */
+    function seedReadPng(path, cb) {
+      var b64 = null;
+      try {
+        var enc = (window.cep && window.cep.encoding && window.cep.encoding.Base64) ? window.cep.encoding.Base64 : 'Base64';
+        var rf = window.cep.fs.readFile(path, enc);
+        if (rf && rf.err === 0) b64 = rf.data;
+      } catch (e) { /* 아래 file:// 폴백 */ }
+      var img = new Image();
+      img.onload = function () {
+        var cv = document.createElement('canvas');
+        cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+        cv.getContext('2d').drawImage(img, 0, 0);
+        try {
+          var d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height);
+          cb(null, { W: cv.width, H: cv.height, ch: 4, data: d.data });
+        } catch (eTaint) { cb('canvas 읽기 실패(보안): ' + eTaint, null); }
+      };
+      img.onerror = function () { cb('PNG 로드 실패: ' + path, null); };
+      img.src = b64 ? ('data:image/png;base64,' + b64) : ('file:///' + String(path).replace(/\\/g, '/'));
+    }
+
+    /** 아이템 bbox 안에서 잉크가 가장 많은 성분 id(최다중첩 배정). 잉크 0이면 -1. */
+    function seedArgmaxLabel(lab, r, bb) {
+      // bb=[L,T,R,B] mm(원본 문서 좌표·y-up) · 마스크는 (ox,oy) 좌상단 기준 y-down
+      var x0 = Math.floor((bb[0] - r.ox) / r.mmpp), x1 = Math.ceil((bb[2] - r.ox) / r.mmpp);
+      var y0 = Math.floor((r.oy - bb[1]) / r.mmpp), y1 = Math.ceil((r.oy - bb[3]) / r.mmpp);
+      if (x0 < 0) x0 = 0;
+      if (y0 < 0) y0 = 0;
+      if (x1 > r.w) x1 = r.w;
+      if (y1 > r.h) y1 = r.h;
+      var cnt = {}, bestId = -1, bestN = 0;
+      for (var y = y0; y < y1; y++) {
+        var row = y * r.w;
+        for (var x = x0; x < x1; x++) {
+          var L = lab[row + x];
+          if (L < 0) continue;
+          var n = (cnt[L] || 0) + 1;
+          cnt[L] = n;
+          if (n > bestN) { bestN = n; bestId = L; }
+        }
+      }
+      return bestId;
+    }
+
+    /** 마스크 → 성분 → 아이템 배정. 순수 계산부(부작용 없음) — 스모크가 이 경로를 그대로 탄다. */
+    function seedSplit(G, r, img, gap) {
+      // ★ 'alpha' 이지 'white' 가 아니다 (2026-07-31 용준님 지적).
+      //   재단 패널은 'white'(흰 픽셀=배경) 를 쓴다 — 흰 바탕 위 그림의 **외곽을 따는** 용도라 맞다.
+      //   여기는 "디자인이 어디에 있나" 를 보는 것이므로 **흰색도 그림**이다. 'white' 로 두면
+      //   흰 글씨·흰 바탕 배너가 배경으로 사라져, 한 디자인이 여러 덩어리로 쪼개지고
+      //   흰 요소로만 된 개체는 잉크 0(noink)이 되어 제 디자인과 못 합쳐진다.
+      //   임시문서는 배경이 투명(transparency=true)이라 alpha>0 = 아트가 있다 = 정확한 판정.
+      //   ⚠️ 대신 **전면을 덮는 배경 판**(흰 판 등)이 선택에 섞이면 전부 그것을 통해 이어져
+      //      1건으로 뭉친다 — 조용히 틀리지 않도록 아래에서 경고한다.
+      //   ★임계 = **50% 피복**(2026-08-01, 재단 패널에서 이식 · spec §6.23).
+      //     기본 임계(alpha≥16 = 6% 피복)는 안티에일리어싱 **테두리 한 겹까지 잉크로 센다**.
+      //     분리에서는 그게 곧 **가짜 다리**다 — 1mm/px 에서 사방 1px 이면 두 디자인 사이에
+      //     최대 2mm 의 없는 잉크가 생겨 **실제보다 쉽게 한 덩어리로 붙는다**.
+      //   ⚠️ 임계를 올리면 **반투명 아트가 통째로 사라질** 수 있다(흰 불투명 요소는 alpha 255 라 안전).
+      //     성분 수가 줄면 반투명이 있다는 뜻이므로 **낮은 임계로 되돌리고 알린다** — 조용히 잃는 게 최악.
+      var mHi = G.inkMask(img, 'alpha', 128);
+      var mLo = G.inkMask(img, 'alpha', 16);
+      var minPx = Math.max(16, Math.round(r.w * r.h * 0.0005));
+      var bigOf = function (mm) {
+        var c = G.components(mm, r.w, r.h, 1), n = 0;
+        for (var z = 0; z < c.sizes.length; z++) if (c.sizes[z] >= minPx) n++;
+        return n;
+      };
+      var m = mHi, softened = false;
+      if (bigOf(mHi) < bigOf(mLo)) { m = mLo; softened = true; }
+      var rpx = Math.round(Math.abs(gap) / 2 / r.mmpp);
+      // gap 의미는 옛 방식 그대로: 양수=이 거리 이내면 한 디자인(팽창) · 0=닿을 때만 · 음수=더 잘게(침식)
+      if (rpx > 0) m = (gap > 0) ? G.offsetMask(m, r.w, r.h, rpx) : G.insetMask(m, r.w, r.h, rpx);
+      var cc = G.components(m, r.w, r.h, 1);
+      var byLab = {}, order = [], noink = 0;
+      for (var i = 0; i < r.bounds.length; i++) {
+        var lab = r.bounds[i] ? seedArgmaxLabel(cc.lab, r, r.bounds[i]) : -1;
+        // 잉크 0 = 배정 불가. 조용히 버리면 조각이 통째로 누락되므로 **단독 행**으로 남긴다.
+        var key = (lab < 0) ? ('x' + i) : ('c' + lab);
+        if (lab < 0) noink++;
+        if (!byLab[key]) { byLab[key] = []; order.push(key); }
+        byLab[key].push(i);
+      }
+      var parts = [];
+      for (var o = 0; o < order.length; o++) parts.push(byLab[order[o]].join(','));
+      var note = '';
+      if (softened) note += '※ 반투명 요소가 있어 잉크 기준을 느슨하게 잡았습니다 — 디자인이 실제보다 쉽게 붙을 수 있습니다.\n';
+      if (r.mmpp > 1) note += '⚠ 분리 해상도 ' + r.mmpp + 'mm/px — 이보다 가깝게 붙은 디자인은 한 덩어리가 됩니다.\n';
+      if (noink) note += '⚠ 잉크를 못 찾은 조각 ' + noink + '건은 단독 행으로 넣었습니다.\n';
+      if (r.dup !== r.n) note += '⚠ 마스크 복제 ' + r.dup + '/' + r.n + ' — 일부 조각이 빠졌습니다.\n';
+      return { spec: parts.join(';'), note: note, comps: cc.sizes.length, noink: noink };
+    }
+
+    /** source='sel'|'auto'. done(errMsg) 또는 done(null, r, note) — r = {added,total,sizes}. */
+    function seedSilhouette(source, gap, done) {
+      var G = window.MesCutGeom;
+      if (!G) { done('geometry.js 미로드 — 이 PC 에 패널을 다시 설치하세요(install-a0-panel.ps1)'); return; }
+      if (hostBusy) return;
+      setHostBusy(true, '분리');
+      var src = (source === 'auto') ? 'auto' : 'sel';
+      csi.evalScript('mesA0_seedBegin("' + src + '",' + gap + ')', function (res) {
+        var r = null; try { r = JSON.parse(res); } catch (e) {}
+        if (!r || !r.ok) {
+          setHostBusy(false);
+          done('분리 실패: ' + (r ? (SEED_ERR[r.err] || r.err) : '호스트 연결 안 됨'));
+          return;
+        }
+        if (r.mode !== 'mask') {
+          // 굽기 실패 → 호스트가 옛 사각 방식으로 **이미 큐를 채웠다**. 조용히 넘어가면 안 된다.
+          setHostBusy(false);
+          done(null, r, '⚠ 실루엣 굽기 실패 — 사각(bbox) 방식으로 나눴습니다. 비스듬한 배치는 뭉칠 수 있습니다.\n');
+          return;
+        }
+        seedReadPng(r.path, function (err, img) {
+          if (err) { setHostBusy(false); done('마스크 읽기 실패: ' + err); return; }
+          var sp = null;
+          try { sp = seedSplit(G, r, img, gap); }
+          catch (eG) { setHostBusy(false); done('성분 분리 실패: ' + eG); return; }
+          csi.evalScript('mesA0_seedApply("' + sp.spec + '")', function (res2) {
+            setHostBusy(false);
+            var r2 = null; try { r2 = JSON.parse(res2); } catch (e2) {}
+            if (!r2 || !r2.ok) { done('큐 적재 실패: ' + (r2 ? (SEED_ERR[r2.err] || r2.err) : '호스트 연결 안 됨')); return; }
+            r2.mmpp = r.mmpp;
+            r2.comps = sp.comps;   // 잉크 덩어리 수 — 참고용(흰 요소·간격 때문에 과대계상될 수 있다)
+            r2.cands = r.n;        // 후보 개체 수
+            r2.grp = r.grp;        // 그 중 그룹 개수 ← "그룹을 푸세요" 진단의 **사실 근거**
+            done(null, r2, sp.note);
+          });
+        });
+      });
     }
     if (elBtnCancel) elBtnCancel.addEventListener('click', function () {
       // ★2단 동작 = 정상 취소 + **영구 잠김 탈출구**(2026-07-30 배포 전 점검).
@@ -1113,13 +1291,8 @@
     if (elBtnQBatch) elBtnQBatch.addEventListener('click', function () {
       var gapEl = $('splitGap');
       var gap = gapEl ? parseFloat(gapEl.value) : 0; if (isNaN(gap)) gap = 0;
-      csi.evalScript('mesA0_queueAddBatch(' + gap + ')', function (res) { // 분리 간격(mm): 0=겹칠때만·음수=더 잘게
-        var r = null; try { r = JSON.parse(res); } catch (e) {}
-        if (!r || !r.ok) {
-          var em = { nodoc: '열린 문서 없음', nosel: '객체를 선택하세요', nobounds: '크기 측정 불가', allnoise: '전부 50mm 미만(노이즈)' };
-          out('묶음 분리 실패: ' + (r ? (em[r.err] || r.err) : '호스트 연결 안 됨'), 'err');
-          return;
-        }
+      seedSilhouette('sel', gap, function (errMsg, r, note) { // 분리 간격(mm): 0=닿을때만·음수=더 잘게
+        if (errMsg) { out(errMsg, 'err'); return; }
         var qtyN = seedQtyValue(); // 묶음: 새 행 기본수량(#seedQty). 확정 수량은 각 행에서.
         var client = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
         var keyword = seedKeyword(); // 보이는 칸만 시드(숨은 값 주입 차단)
@@ -1130,7 +1303,9 @@
         }
         bumpRev();
         renderQueue();
-        out('묶음 분리: ' + r.added + '개로 나눔 (분리간격 ' + gap + 'mm·클립존중·50mm↓ 제외). 틀리면 [✕] 삭제 후 개별 추가로 교정', 'okmsg');
+        out((note || '') + '묶음 분리: ' + r.added + '개로 나눔 (잉크 실루엣 · 분리간격 ' + gap + 'mm · 50mm↓ 제외'
+          + (r.mmpp ? ' · 해상도 ' + r.mmpp + 'mm/px' : '') + ')\n틀리면 [✕] 삭제 후 개별 추가로 교정',
+          note ? 'err' : 'okmsg');
       });
     });
 
@@ -1144,13 +1319,8 @@
     if (elBtnAutoDetect) elBtnAutoDetect.addEventListener('click', function () {
       var gapEl = $('splitGap');
       var gap = gapEl ? parseFloat(gapEl.value) : 0; if (isNaN(gap)) gap = 0;
-      csi.evalScript('mesA0_autoDetect(' + gap + ')', function (res) {
-        var r = null; try { r = JSON.parse(res); } catch (e) {}
-        if (!r || !r.ok) {
-          var em = { nodoc: '열린 문서 없음', noitems: '감지할 개체 없음(잠금·숨김 제외)', allnoise: '전부 50mm 미만(노이즈)', nobounds: '크기 측정 불가', scan: '문서 스캔 실패' };
-          out('자동감지 실패: ' + (r ? (em[r.err] || r.err) : '호스트 연결 안 됨'), 'err');
-          return;
-        }
+      seedSilhouette('auto', gap, function (errMsg, r, note) {
+        if (errMsg) { out(errMsg, 'err'); return; }
         var qtyN = seedQtyValue(); // 묶음: 새 행 기본수량(#seedQty). 확정 수량은 각 행에서.
         var client = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
         var keyword = seedKeyword(); // 보이는 칸만 시드(숨은 값 주입 차단)
@@ -1161,7 +1331,9 @@
         }
         bumpRev();
         renderQueue();
-        out('자동감지 시드: ' + r.added + '개 제안 (문서 전체·클립존중·50mm↓ 제외·분리간격 ' + gap + 'mm)\n틀리면 [✕] 삭제·선택 후 [＋ 개별]로 교정', 'okmsg');
+        out((note || '') + '자동감지 시드: ' + r.added + '개 제안 (문서 전체 · 잉크 실루엣 · 50mm↓ 제외 · 분리간격 ' + gap + 'mm'
+          + (r.mmpp ? ' · 해상도 ' + r.mmpp + 'mm/px' : '') + ')\n틀리면 [✕] 삭제·선택 후 [＋ 개별]로 교정',
+          note ? 'err' : 'okmsg');
       });
     });
 
@@ -1321,25 +1493,16 @@
     }
 
     // ── 모아찍기 탭 — 분리 → 목록 → 등록(자체 완결) ──────────────────────────
-    //   분리는 `mesA0_queueAddBatch`/`mesA0_autoDetect`(호스트), 등록은 `runBatchConfirm`
+    //   분리는 `seedSilhouette`(잉크 실루엣), 등록은 `runBatchConfirm`
     //   (= [일괄 확정])을 **그대로 재사용**한다. 산출 구조가 묶음 확정과 동일하다.
     //   결과는 항상 목록으로 보인 뒤 별도 버튼으로 등록한다 — 1덩어리로 뭉쳐도 눈에 먼저 띈다.
-    function imposeSeed(hostCall, gap) {
+    function imposeSeed(source, gap) {
       if (queue.length) { // 남은 큐를 휩쓸어 등록하는 사고 차단
         out('목록에 ' + queue.length + '건이 남아 있습니다 — [등록]하거나 [비우기] 후 다시 분리하세요.', 'err');
         return;
       }
-      if (hostBusy) return;
-      setHostBusy(true, '분리');
-      csi.evalScript(hostCall + '(' + gap + ')', function (res) {
-        setHostBusy(false);
-        var r = null; try { r = JSON.parse(res); } catch (e) {}
-        if (!r || !r.ok) {
-          var em = { nodoc: '열린 문서 없음', nosel: '객체를 선택하세요', noitems: '감지할 개체 없음(잠금·숨김 제외)',
-            nobounds: '크기 측정 불가', allnoise: '전부 50mm 미만(노이즈)', scan: '문서 스캔 실패' };
-          out('분리 실패: ' + (r ? (em[r.err] || r.err) : '호스트 연결 안 됨'), 'err');
-          return;
-        }
+      seedSilhouette(source, gap, function (errMsg, r, note) {
+        if (errMsg) { out(errMsg, 'err'); return; }
         // 모아찍기는 수량을 받지 않는다 — 판에 몇 개 앉힐지는 ia-editor 판짜기가 조각별로 정한다
         //   (iaEditor.js:1892 는 intake.qty 를 쓰지 않고 qty:1 로 담는다). 여기서 받아봐야 표시용 메모다.
         var qtyN = 1;
@@ -1357,23 +1520,36 @@
         renderQueue();
         // ★ 1덩어리 경고 — 여러 디자인인데 하나로 뭉치는 전형적 원인이 "선택이 그룹 1개"다.
         //   이 경고가 없어서 전체(539×243.3cm·work.ai 110MB)가 조각 1건으로 등록된 적이 있다.
+        //   ⚠️ 실루엣으로 바꿔도 이 경고는 그대로 필요하다 — 배정 단위가 **개체**이기 때문이다.
+        //      원인 판정은 **개체 사실**로 한다. 잉크 덩어리 수(comps)로 추정하면 틀린다 —
+        //      흰 요소·투명 간격 때문에 한 디자인도 여러 덩어리로 보이기 때문(2026-07-31 용준님 지적).
         if (r.added === 1) {
-          out('⚠ 1개로만 인식됐습니다 — ' + lines[0] +
-            '\n여러 디자인이라면: ①선택이 그룹 하나로 묶여 있는지 확인(Ctrl+Shift+G로 풀기)' +
-            '\n②분리 간격을 음수로 낮춰 더 잘게 나누기 ③[◎ 자동감지]로 문서 전체 스캔' +
+          var why;
+          if (r.cands === 1 && r.grp === 1) {
+            why = '\n원인 = **선택이 그룹 1개**입니다. Ctrl+Shift+G 로 푼 뒤 다시 분리하세요.';
+          } else if (r.cands > 1) {
+            // 개체는 여럿인데 1건 = 잉크가 전부 이어졌다. 전면을 덮는 배경 판이 섞인 것이 전형적이다.
+            why = '\n개체는 ' + r.cands + '개인데 잉크가 전부 이어져 1건이 됐습니다.'
+              + '\n→ 전체를 덮는 **배경 판**(흰 판·테두리 등)이 선택에 섞였는지 확인하고 빼주세요.';
+          } else {
+            why = '\n여러 디자인이라면: ①분리 간격을 음수로 낮춰 더 잘게 나누기 ②[◎ 자동감지]로 문서 전체 스캔';
+          }
+          out((note || '') + '⚠ 1개로만 인식됐습니다 — ' + lines[0] + why +
             '\n진짜 1개 디자인이면 그대로 [등록]하세요.', 'err');
           return;
         }
-        out('분리됨: ' + r.added + '개 (분리간격 ' + gap + 'mm · 클립존중 · 50mm↓ 제외)\n' + lines.join(' · ') +
-          '\n→ 행 클릭 = 일러에서 그 조각 선택 · 수량은 행에서 직접 수정 · [등록]으로 조각별 등록', 'okmsg');
+        out((note || '') + '분리됨: ' + r.added + '개 (잉크 실루엣 · 분리간격 ' + gap + 'mm · 50mm↓ 제외'
+          + (r.mmpp ? ' · 해상도 ' + r.mmpp + 'mm/px' : '') + ')\n' + lines.join(' · ') +
+          '\n→ 행 클릭 = 일러에서 그 조각 선택 · 수량은 행에서 직접 수정 · [등록]으로 조각별 등록',
+          note ? 'err' : 'okmsg');
       });
     }
     function imposeGapValue() {
       var g = elImposeGap ? parseFloat(elImposeGap.value) : 0;
       return isNaN(g) ? 0 : g;
     }
-    if (elBtnImposeSplit) elBtnImposeSplit.addEventListener('click', function () { imposeSeed('mesA0_queueAddBatch', imposeGapValue()); });
-    if (elBtnImposeDetect) elBtnImposeDetect.addEventListener('click', function () { imposeSeed('mesA0_autoDetect', imposeGapValue()); });
+    if (elBtnImposeSplit) elBtnImposeSplit.addEventListener('click', function () { imposeSeed('sel', imposeGapValue()); });
+    if (elBtnImposeDetect) elBtnImposeDetect.addEventListener('click', function () { imposeSeed('auto', imposeGapValue()); });
     if (elBtnImposeClear) elBtnImposeClear.addEventListener('click', function () {
       csi.evalScript('mesA0_queueClear()', function () {});
       queue = []; bound = -1; bumpRev(); renderQueue(); out('목록 비움');

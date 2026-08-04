@@ -3,9 +3,21 @@
 import { chromium } from 'playwright'
 import fs from 'fs'
 import path from 'path'
-import { pathToFileURL } from 'url'
+import { pathToFileURL, fileURLToPath } from 'url'
 
-const PANEL = 'C:/Users/user/dongsan_mes/IllustratorAutomat/designer/poc-a0-cep/com.mes.a0.panel/index.html'
+// 패널 레지스트리 — 패널은 여러 개다(A0 + 재단). 경로 하드코딩이던 동안은 이 PC 밖에서 깨졌고,
+// 새 패널은 아예 스모크 사각지대였다(spec 2026-07-31-cut-file-panel §5.2-③).
+//   node scripts/panel-smoke.mjs [--panel=a0|cut]
+// ⚠️ 이 파일의 검증 항목은 **A0 전용**이다(탭·후가공·큐·연동). 재단 패널은 자체 스위트를 갖는다.
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const PANEL_DIRS = {
+  a0: path.join(REPO, 'IllustratorAutomat', 'designer', 'poc-a0-cep', 'com.mes.a0.panel'),
+
+}
+const PANEL_ID = (process.argv.find((a) => a.startsWith('--panel=')) || '--panel=a0').split('=')[1]
+if (!PANEL_DIRS[PANEL_ID]) { console.error(`알 수 없는 패널: ${PANEL_ID} (가능: ${Object.keys(PANEL_DIRS).join(', ')})`); process.exit(2) }
+if (!fs.existsSync(PANEL_DIRS[PANEL_ID])) { console.error(`패널 폴더 없음: ${PANEL_DIRS[PANEL_ID]}`); process.exit(2) }
+const PANEL = path.join(PANEL_DIRS[PANEL_ID], 'index.html')
 const results = []
 const ok = (n, c, extra = '') => results.push({ n, c, extra })
 
@@ -38,8 +50,69 @@ const mkStub = (cfg) => `
 window.__calls = [];
 window.__splitCount = 3;
 window.__failProcess = false;
+window.__lockBusy = false;   // true = 재단 패널이 일러를 점유 중인 상황 재현
 window.__processDelay = 0;   // 느린 호스트 재현 — 진행 중 잠금·취소를 관찰하려면 필요
-window.cep = { fs: { readFile: () => ({ err: 1 }), writeFile: () => ({ err: 0 }) } };
+// ── 실루엣 시드(2026-07-31) ────────────────────────────────────────────
+// 호스트가 구운 PNG 를 **캔버스로 실제 생성**한다. 마스크를 흉내내지 않고 진짜 픽셀을 주므로
+// inkMask→offsetMask→components→배정 경로가 스모크에서 그대로 돈다(계산부를 JS 에 둔 이유).
+window.__seedMode = 'mask';   // 'mask'=실루엣 · 'bbox'=굽기 실패 폴백 재현
+window.__seedCase = 'grid';   // grid=분리된 __splitCount 개 · diag=bbox 겹침·잉크 분리 · group=잉크 2덩어리·개체 1개
+window.__seedPngB64 = '';
+window.__lastSeedSpec = '';
+window.__mkSeed = function (kind, n) {
+  // rects=[x,y,w,h,색?](px) · bounds=[L,T,R,B](mm, y-up). mmpp=1·ox=0·oy=0 이므로 px y → mm T=-y.
+  var rects, bounds;
+  if (kind === 'white') {
+    // ★ 흰색도 그림이다 — 검정 조각과 흰 조각이 맞닿은 **한 디자인**(개체 2개).
+    //   inkMask 가 'white' 모드면 흰 조각이 배경으로 사라져 2건으로 갈린다 = 이 어서션이 잡는다.
+    rects = [[0, 0, 30, 20, '#000'], [28, 0, 30, 20, '#fff']];
+    bounds = [[0, 0, 30, -20], [28, 0, 58, -20]];
+  } else if (kind === 'fringe') {
+    // ★안티에일리어싱 **가짜 다리** — 두 디자인 사이를 옅은 알파(10%)가 잇는다.
+    //   기본 임계(alpha≥16 = 6% 피복)면 이걸 잉크로 세어 **1덩어리로 붙는다**.
+    //   50% 피복 임계면 배경으로 보고 2건으로 갈린다 = 이 어서션이 그 차이를 잡는다.
+    //   ⚠️ 다리는 **양쪽 조각에 닿아야** 한다 — 한 픽셀이라도 뜨면 임계와 무관하게 안 붙어
+    //      테스트가 통과만 하고 아무것도 못 잡는다(2026-08-01 실제로 그랬다).
+    rects = [[0, 0, 20, 20, '#000'], [20, 8, 10, 4, 'rgba(0,0,0,0.10)'], [30, 0, 20, 20, '#000']];
+    bounds = [[0, 0, 20, -20], [30, 0, 50, -20]];
+  } else if (kind === 'translucent') {
+    // 반투명 조각 — 50% 임계면 통째로 사라진다. 그때는 낮은 임계로 되돌리고 **알려야** 한다.
+    rects = [[0, 0, 20, 20, '#000'], [40, 0, 20, 20, 'rgba(0,0,0,0.10)']];
+    bounds = [[0, 0, 20, -20], [40, 0, 60, -20]];
+  } else if (kind === 'diag') {
+    // ★ 이 케이스가 이번 변경의 핵심 회귀 테스트다.
+    //   'ㄴ'자 디자인 A 의 bbox 안에 디자인 B 가 들어앉는다 → 옛 사각 겹침이면 1덩어리로 뭉쳤다.
+    //   잉크는 서로 닿지 않으므로 연결성분은 2개여야 하고, 각 개체는 자기 잉크로 배정돼야 한다.
+    rects = [[0, 0, 60, 8], [0, 0, 8, 40], [40, 24, 30, 14]];
+    bounds = [[0, 0, 60, -40], [40, -24, 70, -38]];
+  } else if (kind === 'group') {
+    // 잉크는 2덩어리인데 **개체가 1개** — 실루엣이어도 1행밖에 못 만든다(배정 단위가 개체라서).
+    rects = [[0, 0, 20, 20], [40, 0, 20, 20]];
+    bounds = [[0, 0, 60, -20]];
+  } else {
+    rects = []; bounds = [];
+    for (var i = 0; i < n; i++) { var x = i * 30; rects.push([x, 0, 20, 20]); bounds.push([x, 0, x + 20, -20]); }
+  }
+  var W = 0, H = 0;
+  for (var a = 0; a < rects.length; a++) { W = Math.max(W, rects[a][0] + rects[a][2]); H = Math.max(H, rects[a][1] + rects[a][3]); }
+  W += 4; H += 4;
+  var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  var cx = cv.getContext('2d');
+  for (var b = 0; b < rects.length; b++) {
+    cx.fillStyle = rects[b][4] || '#000';
+    cx.fillRect(rects[b][0], rects[b][1], rects[b][2], rects[b][3]);
+  }
+  window.__seedPngB64 = cv.toDataURL('image/png').split(',')[1];
+  // grp = 후보 중 그룹 개체 수. "1건으로 나온 원인" 판정의 사실 근거(잉크 덩어리 수로 추정하지 않는다).
+  return { w: W, h: H, bounds: bounds, grp: (kind === 'group') ? 1 : 0 };
+};
+window.cep = { fs: {
+  readFile: function (p) {
+    if (window.__seedPngB64 && String(p).indexOf('mes_a0_seed') >= 0) return { err: 0, data: window.__seedPngB64 };
+    return { err: 1 };
+  },
+  writeFile: function () { return { err: 0 }; },
+} };
 window.__adobe_cep__ = {
   getExtensionID: function () { return 'com.mes.a0.panel'; },
   getSystemPath: function () { return 'C:/tmp'; },
@@ -50,13 +123,33 @@ window.__adobe_cep__ = {
     if (/^mesA0_ping/.test(script)) res = 'A0-CEP-TEST';
     else if (/^mesA0_config/.test(script)) res = ${JSON.stringify(cfg)};
     else if (/^mesA0_measure/.test(script)) res = JSON.stringify({ ok: true, w: 8.7, h: 19.7 });
-    else if (/^mesA0_queueAddBatch|^mesA0_autoDetect/.test(script)) {
-      var sizes = [];
-      for (var i = 0; i < window.__splitCount; i++) sizes.push({ w: 87 + i, h: 197, items: 1 });
-      res = JSON.stringify({ ok: true, added: sizes.length, total: sizes.length, sizes: sizes });
+    else if (/^mesA0_seedBegin/.test(script)) {
+      if (window.__seedMode === 'bbox') {   // 굽기 실패 → 호스트가 옛 사각 방식으로 이미 큐를 채운 상태
+        var sizes = [];
+        for (var i = 0; i < window.__splitCount; i++) sizes.push({ w: 87 + i, h: 197, items: 1 });
+        res = JSON.stringify({ ok: true, mode: 'bbox', added: sizes.length, total: sizes.length, sizes: sizes });
+      } else {
+        var sd = window.__mkSeed(window.__seedCase || 'grid', window.__splitCount);
+        res = JSON.stringify({ ok: true, mode: 'mask', path: 'C:/tmp/mes_a0_seed.png',
+          w: sd.w, h: sd.h, ox: 0, oy: 0, mmpp: 1, n: sd.bounds.length, grp: sd.grp,
+          dup: sd.bounds.length, dx: 0, dy: 0, bounds: sd.bounds });
+      }
+    }
+    else if (/^mesA0_seedApply/.test(script)) {
+      // 패널이 계산한 배정(그룹 스펙)을 그대로 되받는다 — 그룹 수·구성이 어서션 대상이다.
+      var spec = String(script).replace(/^mesA0_seedApply\\("/, '').replace(/"\\)$/, '');
+      window.__lastSeedSpec = spec;
+      var gs = spec ? spec.split(';') : [];
+      var sz2 = [];
+      for (var g = 0; g < gs.length; g++) sz2.push({ w: 87 + g, h: 197, items: gs[g].split(',').length });
+      res = JSON.stringify({ ok: true, added: sz2.length, total: sz2.length, sizes: sz2 });
     }
     else if (/^mesA0_queueSelect/.test(script)) res = JSON.stringify({ ok: true, n: 2 });
     else if (/^mesA0_paramsPath/.test(script)) res = 'C:/tmp/ia_params.json';
+    // 크로스 패널 잠금(mes-lock.jsx 위임). window.__lockBusy 로 "재단이 점유 중" 상황을 재현한다.
+    else if (/^mesA0_lockAcquire/.test(script)) res = window.__lockBusy ? 'busy:cut:make-cut' : 'ok';
+    else if (/^mesA0_lock(Release|Touch)/.test(script)) res = 'ok';
+    else if (/^mesA0_lockProbe/.test(script)) res = window.__lockBusy ? 'seen:cut:make-cut:age=10ms' : 'none';
     else if (/^mesA0_batchBegin/.test(script)) res = JSON.stringify({ ok: true, folder: 'Z:/test/batch1' });
     // bytes·oversize·warn'E' = 용량 근본원인 계측(host 0.1.4). 51.2MB + 여분 래스터 2개 상태를 재현한다.
     else if (/^mesA0_process/.test(script)) res = window.__failProcess
@@ -126,14 +219,15 @@ ok('출력 경계선 끔', !(await page.isChecked('#borderLine')))
 
 // 3) 모아찍기 탭 → 후가공 자동 초기화(P1의 핵심)
 await page.click('.tab[data-tab="impose"]')
-ok('탭 전환됨', await page.locator('.tab.active').innerText() === '모아찍기')
+// 라벨은 '웹 모아찍기 등록' — 병합 후 재단 탭에도 판을 짜는 기능이 있어 이름을 갈랐다(2026-08-04)
+ok('탭 전환됨', await page.locator('.tab.active').innerText() === '웹 모아찍기 등록')
 ok('마감 초기화됨', await page.inputValue('#pTop') === '0')
 ok('마감 방식 초기화됨', await page.locator('select.finM[data-side="left"]').inputValue() === '')
 ok('출력 경계선도 기본값(ON)으로 복귀', await page.isChecked('#borderLine'))
 
 // 4) 분리 → 목록 3건 → 등록 버튼 활성
 await page.click('#btnImposeSplit')
-await page.waitForTimeout(200)
+await page.waitForTimeout(400)
 const rows = await page.locator('#imposeBox .qrow').count()
 ok('분리 결과 3행', rows === 3, 'rows=' + rows)
 ok('등록 버튼 라벨', await page.locator('#btnImposeRegister').innerText() === '조각 3건 등록')
@@ -147,7 +241,7 @@ ok('기본수량은 묶음 탭 소속', (await page.locator('[data-page="bundle"
 
 // 6) 큐 잔여 상태에서 재분리 거부
 await page.click('#btnImposeSplit')
-await page.waitForTimeout(150)
+await page.waitForTimeout(400)
 ok('잔여 목록 있으면 재분리 거부', (await page.locator('#out').innerText()).includes('남아 있습니다'))
 
 // 7) 비우기 → 1덩어리 경고
@@ -155,7 +249,7 @@ await page.click('#btnImposeClear')
 await page.waitForTimeout(100)
 await page.evaluate(() => { window.__splitCount = 1 })
 await page.click('#btnImposeSplit')
-await page.waitForTimeout(200)
+await page.waitForTimeout(400)
 const warn = await page.locator('#out').innerText()
 ok('1덩어리 경고 표시', warn.includes('1개로만 인식'), warn.slice(0, 60))
 ok('1건이어도 자동등록 안 함(목록에 남음)', (await page.locator('#imposeBox .qrow').count()) === 1)
@@ -166,7 +260,7 @@ await page.click('.tab[data-tab="bundle"]')
 await page.evaluate(() => { window.__splitCount = 3 }) // 7)에서 1로 낮췄던 것 복구
 await page.fill('#seedQty', '4')
 await page.click('#btnQueueBatch')
-await page.waitForTimeout(200)
+await page.waitForTimeout(400)
 
 // 묶음: seedQty 가 새 행에 채워지고, 행에서 고친 값이 정본으로 남는다
 ok('새 행에 기본수량 채워짐', (await page.inputValue('#queueBox .qqty[data-i="0"]')) === '4')
@@ -241,6 +335,17 @@ ok('등록 결과에 work.ai 용량 표시', doneMsg.includes('work.ai 51.2MB'),
 ok('임베드 여분 경고 표시', doneMsg.includes('임베드 이미지가 디자인 밖까지 큼'), doneMsg.slice(0, 200))
 ok('돔보 등록분 DXF 표시', doneMsg.includes('DXF: a.dxf'), doneMsg.slice(0, 220))
 
+// 10b) ★크로스 패널 잠금 (2026-07-31) — 패널이 둘이 됐다(A0 + 재단 com.mes.cut.panel).
+//   setHostBusy 의 disabled 처리는 **이 패널 버튼만** 막는다. 재단 패널이 같은 일러를 동시에 때리는 것은
+//   파일 잠금(%TEMP%\mes_host_lock.txt · 정본 mes-lock.jsx)으로만 막히므로, 작업 시작·종료에서
+//   실제로 잡고 놓는지 회귀로 고정한다. 라벨은 ASCII 여야 한다 — 한글은 evalScript 브릿지에서 깨진다.
+{
+  const lockCalls = await page.evaluate(() => window.__calls.filter((c) => /mesA0_lock/.test(c)))
+  ok('작업 시작 시 잠금 획득 호출', lockCalls.some((c) => /mesA0_lockAcquire\("single"\)/.test(c)), lockCalls.join(' | '))
+  ok('잠금 라벨이 ASCII(한글 미포함)', lockCalls.every((c) => !/[^\x00-\x7f]/.test(c)), lockCalls.join(' | '))
+  ok('작업 종료 시 잠금 해제 호출', lockCalls.some((c) => /mesA0_lockRelease\(\)/.test(c)), lockCalls.join(' | '))
+}
+
 ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
 
 // ── 11) 버전 = 로직(축2) + 화면(축3/축4) 두 축 (2026-07-30 점검 ⑤) ──
@@ -279,7 +384,7 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   const p3 = await openPanel(CONFIG)
   await p3.click('.tab[data-tab="bundle"]')
   await p3.click('#btnQueueBatch')
-  await p3.waitForTimeout(200)
+  await p3.waitForTimeout(400)
   await p3.click('#queueBox .qrow[data-i="0"] .qmeta')
   await p3.waitForTimeout(150)
   ok('행 연동 표시(sel)', (await p3.locator('#queueBox .qrow.sel').count()) === 1)
@@ -298,7 +403,7 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   const p4 = await openPanel(CONFIG)
   await p4.click('.tab[data-tab="impose"]')
   await p4.click('#btnImposeSplit')
-  await p4.waitForTimeout(200)
+  await p4.waitForTimeout(400)
   await p4.click('#imposeBox .qrow[data-i="0"] .qmeta')
   await p4.waitForTimeout(150)
   await p4.click('.tab[data-tab="single"]')
@@ -319,7 +424,7 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   const p5 = await openPanel(CONFIG)
   await p5.click('.tab[data-tab="bundle"]')
   await p5.click('#btnQueueBatch')
-  await p5.waitForTimeout(200)
+  await p5.waitForTimeout(400)
   await p5.evaluate(() => { window.__failProcess = true })
   await p5.click('#btnConfirm')
   await p5.waitForTimeout(700)
@@ -345,7 +450,7 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   const p7 = await openPanel(CONFIG)
   await p7.click('.tab[data-tab="bundle"]')
   await p7.click('#btnQueueBatch')
-  await p7.waitForTimeout(200)
+  await p7.waitForTimeout(400)
   await p7.evaluate(() => { window.__processDelay = 500 }) // 느린 호스트 재현
   await p7.click('#btnConfirm')
   await p7.waitForTimeout(250)
@@ -419,7 +524,7 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   const p10 = await openPanel(CONFIG)
   await p10.click('.tab[data-tab="bundle"]')
   await p10.click('#btnQueueBatch')
-  await p10.waitForTimeout(200)
+  await p10.waitForTimeout(400)
   await p10.evaluate(() => { window.__processDelay = 600 })
   await p10.click('#btnConfirm')
   await p10.waitForTimeout(250)
@@ -452,7 +557,7 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   const p8 = await openPanel(CONFIG)
   await p8.click('.tab[data-tab="bundle"]')
   await p8.click('#btnQueueBatch')
-  await p8.waitForTimeout(200)
+  await p8.waitForTimeout(400)
   await p8.check('#queueBox .qsel[data-i="0"]')
   ok('묶음 탭에선 전체 적용 활성', !(await p8.locator('#btnApplyAll').isDisabled()))
   await p8.click('.tab[data-tab="single"]')
@@ -469,7 +574,7 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   const p9 = await openPanel(CONFIG)
   await p9.click('.tab[data-tab="bundle"]')
   await p9.click('#btnQueueBatch')
-  await p9.waitForTimeout(200)
+  await p9.waitForTimeout(400)
   await p9.click('#queueBox .qrow[data-i="0"] .qmeta')   // 행0 연동
   await p9.waitForTimeout(150)
   await p9.click('#finToggle')
@@ -515,6 +620,90 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   ok('최소 폭에서도 마감 드롭다운 ≥90px', selW >= 90, 'selW=' + selW + 'px @' + min[2] + 'px')
   ok('16 콘솔 에러 0', p6.__errs.length === 0, p6.__errs.join(' | '))
   await p6.close()
+}
+
+// ── 20) 실루엣 분리 (2026-07-31) — 사각 겹침 폐기의 회귀 방지 ──────────────
+//   왜 이 3건인가: ①이 변경이 실제로 고치려던 것 ②실루엣이어도 못 고치는 것 ③굽기가 죽었을 때.
+{
+  // ①-가 대각/포개짐: 'ㄴ'자 A 의 bbox 안에 B 가 들어앉는다. 옛 사각 겹침이면 1덩어리였다.
+  const pa = await openPanel(CONFIG)
+  await pa.evaluate(() => { window.__seedCase = 'diag' })
+  await pa.click('.tab[data-tab="impose"]')
+  await pa.click('#btnImposeSplit')
+  await pa.waitForTimeout(500)
+  ok('bbox 겹쳐도 잉크가 떨어져 있으면 2건으로 분리',
+    (await pa.locator('#imposeBox .qrow').count()) === 2,
+    await pa.locator('#out').innerText())
+  ok('개체가 자기 잉크로 배정됨(0;1)', (await pa.evaluate(() => window.__lastSeedSpec)) === '0;1',
+    await pa.evaluate(() => window.__lastSeedSpec))
+  ok('20a 콘솔 에러 0', pa.__errs.length === 0, pa.__errs.join(' | '))
+  await pa.close()
+
+  // ②-나 배정 단위는 **개체**다 — 잉크가 2덩어리여도 개체가 1개면 1행. 그 사실을 근거로 말해야 한다.
+  const pb = await openPanel(CONFIG)
+  await pb.evaluate(() => { window.__seedCase = 'group' })
+  await pb.click('.tab[data-tab="impose"]')
+  await pb.click('#btnImposeSplit')
+  await pb.waitForTimeout(500)
+  const gtxt = await pb.locator('#out').innerText()
+  ok('개체 1개면 잉크가 갈려도 1건', (await pb.locator('#imposeBox .qrow').count()) === 1, gtxt)
+  // 원인 판정은 **개체 사실(grp)** 로 한다 — 잉크 덩어리 수로 추정하면 흰 요소 때문에 틀린다.
+  ok('원인을 사실로 지목(선택이 그룹 1개)', gtxt.includes('선택이 그룹 1개'), gtxt.slice(0, 90))
+  ok('20b 콘솔 에러 0', pb.__errs.length === 0, pb.__errs.join(' | '))
+  await pb.close()
+
+  // ②-라 ★흰색도 그림이다 — 검정+흰 조각이 맞닿은 한 디자인(개체 2개)이 **1건**으로 묶여야 한다.
+  //   'white' 모드였다면 흰 조각이 배경으로 사라져 2건으로 갈린다.
+  const pw = await openPanel(CONFIG)
+  await pw.evaluate(() => { window.__seedCase = 'white' })
+  await pw.click('.tab[data-tab="impose"]')
+  await pw.click('#btnImposeSplit')
+  await pw.waitForTimeout(500)
+  ok('흰 조각도 잉크로 세어 한 디자인으로 묶임',
+    (await pw.evaluate(() => window.__lastSeedSpec)) === '0,1',
+    await pw.evaluate(() => window.__lastSeedSpec))
+  ok('20d 콘솔 에러 0', pw.__errs.length === 0, pw.__errs.join(' | '))
+  await pw.close()
+
+  // ②-마 ★안티에일리어싱 가짜 다리 (2026-08-01, 재단 패널에서 임계 이식)
+  //   기본 임계(6% 피복)는 테두리 한 겹을 잉크로 세어 **없는 다리**를 만든다 —
+  //   1mm/px 에서 사방 1px 이면 두 디자인 사이에 최대 2mm 의 가짜 잉크가 생긴다.
+  const pf = await openPanel(CONFIG)
+  await pf.evaluate(() => { window.__seedCase = 'fringe' })
+  await pf.click('.tab[data-tab="impose"]')
+  await pf.click('#btnImposeSplit')
+  await pf.waitForTimeout(500)
+  ok('옅은 알파 다리로는 붙지 않음(2건 분리)',
+    (await pf.evaluate(() => window.__lastSeedSpec)) === '0;1',
+    await pf.evaluate(() => window.__lastSeedSpec))
+  ok('20e 콘솔 에러 0', pf.__errs.length === 0, pf.__errs.join(' | '))
+  await pf.close()
+
+  // ②-바 반투명 조각 — 임계를 올리면 통째로 사라진다. 되돌리되 **조용히 하지 않는다**.
+  const pt = await openPanel(CONFIG)
+  await pt.evaluate(() => { window.__seedCase = 'translucent' })
+  await pt.click('.tab[data-tab="impose"]')
+  await pt.click('#btnImposeSplit')
+  await pt.waitForTimeout(500)
+  const ttxt = await pt.locator('#out').innerText()
+  ok('반투명 조각이 사라지지 않음(2건 유지)',
+    (await pt.evaluate(() => window.__lastSeedSpec)) === '0;1',
+    await pt.evaluate(() => window.__lastSeedSpec))
+  ok('반투명 폴백을 사용자에게 알림', ttxt.includes('반투명'), ttxt.slice(0, 120))
+  ok('20f 콘솔 에러 0', pt.__errs.length === 0, pt.__errs.join(' | '))
+  await pt.close()
+
+  // ③-다 굽기 실패 폴백 — 조용히 옛 방식으로 돌아가면 안 된다. 반드시 눈에 보여야 한다.
+  const pc = await openPanel(CONFIG)
+  await pc.evaluate(() => { window.__seedMode = 'bbox' })
+  await pc.click('.tab[data-tab="impose"]')
+  await pc.click('#btnImposeSplit')
+  await pc.waitForTimeout(500)
+  const ftxt = await pc.locator('#out').innerText()
+  ok('굽기 실패 시에도 큐는 채워짐', (await pc.locator('#imposeBox .qrow').count()) === 3, ftxt)
+  ok('폴백을 사용자에게 알림', ftxt.includes('사각(bbox) 방식'), ftxt.slice(0, 90))
+  ok('20c 콘솔 에러 0', pc.__errs.length === 0, pc.__errs.join(' | '))
+  await pc.close()
 }
 
 await browser.close()

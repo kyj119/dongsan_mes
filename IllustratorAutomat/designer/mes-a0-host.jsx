@@ -18,7 +18,8 @@
 //           캔버스를 벗어나 "붙일 수 없습니다" 모달을 띄우던 것 수정 (2026-07-30)
 //   0.1.8 = 마감재단선(여백 위치 검정 실선·4변 한 그룹) + 주석 구조에 후가공 추가
 //           (키워드-식별번호-후가공-수량) (2026-07-30)
-var MESA0_VERSION = 'A0-CEP-0.1.8';
+//   0.1.9 = 크로스 패널 잠금 위임 추가(mes-lock.jsx) (2026-07-31)
+var MESA0_VERSION = 'A0-CEP-0.1.10'; // 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
 var MESA0_REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
 var MESA0_PT_PER_MM = 72 / 25.4;
 var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];
@@ -209,6 +210,29 @@ function mesA0_clipUnion(items) {
   }
   return (L === null) ? null : [L, T, R, B];
 }
+
+// ── 크로스 패널 잠금 (2026-07-31 신설) ──────────────────────────────
+// 패널이 둘이 됐다(A0 + 재단). `setHostBusy()` 는 **패널 내부 JS 상태**라 다른 패널을 모르므로,
+// 두 패널이 일러 하나를 동시에 때릴 수 있다. 그래서 잠금을 **파일**로 올려 서로 보이게 한다.
+//   ⚠️ 전역($.global)으로는 불가능하다 — CEP 는 **확장마다 별도 ExtendScript 엔진**을 쓴다(실측 확인).
+//   구현 정본 = mes-lock.jsx (재단 호스트도 같은 파일을 로드한다). 아래는 얇은 위임일 뿐이다.
+//   ★기존 A0 로직은 일절 건드리지 않았다 — 추가만 했다.
+var MESA0_LOCK_PATH = 'Z:/DESIGNS/IA-등록/_scripts/mes-lock.jsx';
+var MESA0_LOCK_ERROR = '';
+try {
+    var _mesA0LockFile = new File(MESA0_LOCK_PATH);
+    if (_mesA0LockFile.exists) $.evalFile(_mesA0LockFile); // 전역 — 감싸지 말 것
+    else MESA0_LOCK_ERROR = 'lock 모듈 없음: ' + MESA0_LOCK_PATH;
+} catch (_eA0Lock) { MESA0_LOCK_ERROR = 'lock 로드 실패: ' + _eA0Lock; }
+
+// 모듈이 없어도 A0 는 평소대로 동작해야 한다 — 잠금은 **부가 기능**이지 A0 의 전제조건이 아니다.
+// (Z: 미연결 상태에서 A0 가 멈추면 그게 더 큰 사고다)
+function mesA0_lockReady() { return (typeof mesLock_acquire === 'function'); }
+function mesA0_lockAcquire(label) { return mesA0_lockReady() ? mesLock_acquire('a0', label) : 'nolock'; }
+function mesA0_lockTouch() { return mesA0_lockReady() ? mesLock_touch('a0') : 'nolock'; }
+function mesA0_lockRelease() { return mesA0_lockReady() ? mesLock_release('a0') : 'ok'; }
+function mesA0_lockProbe() { return mesA0_lockReady() ? mesLock_probe() : 'none'; }
+function mesA0_lockPath() { return mesA0_lockReady() ? mesLock_path() : ('(미로드) ' + MESA0_LOCK_PATH); }
 
 // ── 브릿지 API (ASCII in/out) ──
 function mesA0_ping() { return MESA0_VERSION; }
@@ -741,6 +765,11 @@ function mesA0_queueAdd() {
   return '{"ok":true,"n":' + q.length + ',"w":' + (Math.round(w * 10) / 10) + ',"h":' + (Math.round(h * 10) / 10) + ',"items":' + items.length + '}';
 }
 
+// ⚠️ 폐지된 기본 경로 — **굽기 실패 시 폴백으로만** 남는다 (2026-07-31, host 0.1.10).
+//    사각(bbox) 겹침으로 묶기 때문에 **도형을 모른다**. 비스듬히 놓인 디자인은 잉크가 떨어져
+//    있어도 bbox 가 겹쳐 한 덩어리가 됐고, 완화책이 두 번(클립 존중 경계·음수 gap) 들어갔지만
+//    근본 원인은 "사각으로 본다" 하나였다. 정본 = mesA0_seedBegin(잉크 연결성분).
+//    여기를 고쳐 정확도를 올리려 하지 말 것 — 사각인 한 같은 종류의 오분리가 계속 나온다.
 // 선택 다중 개체를 공간 근접/겹침으로 클러스터(각 클러스터=1디자인). gapPt 이내면 병합.
 // 경계=클립 존중(mesA0_itemBounds) — 클립 밖 블리드로 부풀린 visibleBounds가 이웃과 거짓 겹침 →
 // 나열된 디자인이 거짓 병합되던 문제 방지(실측과 동일 기준).
@@ -781,9 +810,10 @@ function mesA0_cluster(items, gapPt) {
   return out;
 }
 
-// 공용 시드(묶음분리·자동감지): 후보를 노이즈 제거→클러스터→큐 행 추가. 응답 계약 동일(added/total/sizes).
-function mesA0_seedQueueJson(d, cands, gapMm) {
-  // 50mm 노이즈 제외 — 클립 존중 경계 기준(블리드로 부풀린 겉보기 대신 실제 디자인 크기)
+// 50mm 노이즈 제외 — 클립 존중 경계 기준(블리드로 부풀린 겉보기 대신 실제 디자인 크기).
+// 실루엣 경로(mesA0_seedBegin)와 폴백 경로(mesA0_seedQueueJson)가 **같은 후보 집합**을 봐야
+// 굽기 실패로 폴백했을 때 행 개수가 튀지 않는다 → 두 곳이 이 함수 하나를 공유한다.
+function mesA0_seedKeep(cands) {
   var MIN = 50 * MESA0_PT_PER_MM;
   var kept = [];
   for (var i = 0; i < cands.length; i++) {
@@ -793,22 +823,34 @@ function mesA0_seedQueueJson(d, cands, gapMm) {
     if (!b) continue;
     if (Math.abs(b[2] - b[0]) >= MIN || Math.abs(b[1] - b[3]) >= MIN) kept.push(it);
   }
+  return kept;
+}
+
+// 폴백 전용(굽기 실패 시) — 사각 겹침 클러스터링. 정본은 mesA0_seedBegin/mesA0_seedApply.
+function mesA0_seedQueueJson(d, cands, gapMm) {
+  var kept = mesA0_seedKeep(cands);
   if (!kept.length) return '{"ok":false,"err":"allnoise"}';
   var gap = parseFloat(gapMm); if (isNaN(gap)) gap = 0; // 0=겹칠때만 · 음수=더 잘게 분리(겹침 깊이 요구)
   var clusters = mesA0_cluster(kept, gap * MESA0_PT_PER_MM);
   if (!clusters.length) return '{"ok":false,"err":"nobounds"}';
-  // ── 공간 정렬: 위→아래, 같은 줄에서는 좌→우 (2026-07-30 지시) ──
-  // 클러스터 순서는 선택·순회 순서(사실상 z-order)라 화면에 보이는 순서와 무관했다.
-  // 행 번호가 눈에 보이는 순서와 어긋나면 행 다중선택이 헷갈려 쓸 수 없다.
-  // ⚠️ 정렬은 **반드시 여기서** 한다. 패널이 표시만 바꾸면 mesA0_queueSelect(i)·확정 루프의
-  //    인덱스가 어긋나 "고른 것과 다른 조각이 등록되는" 사고가 된다(인덱스 단일 소스 = 이 배열).
   var entries = [];
   for (var c = 0; c < clusters.length; c++) {
     var ub0 = mesA0_clipUnion(clusters[c]) || mesA0_unionBounds(clusters[c]);
     if (!ub0) continue;
     entries.push({ items: clusters[c], b: ub0 });
   }
+  return mesA0_seedFlush(d, entries);
+}
+
+// entries(=[{items,b}]) 를 공간 정렬해 큐에 적재. 응답 계약 = {ok,added,total,sizes}.
+function mesA0_seedFlush(d, entries) {
   if (!entries.length) return '{"ok":false,"err":"nobounds"}';
+  // ── 공간 정렬: 위→아래, 같은 줄에서는 좌→우 (2026-07-30 지시) ──
+  // 클러스터 순서는 선택·순회 순서(사실상 z-order)라 화면에 보이는 순서와 무관했다.
+  // 행 번호가 눈에 보이는 순서와 어긋나면 행 다중선택이 헷갈려 쓸 수 없다.
+  // ⚠️ 정렬은 **반드시 여기서** 한다. 패널이 표시만 바꾸면 mesA0_queueSelect(i)·확정 루프의
+  //    인덱스가 어긋나 "고른 것과 다른 조각이 등록되는" 사고가 된다(인덱스 단일 소스 = 이 배열).
+  //    실루엣 경로도 **성분 배정만** 패널이 하고 정렬은 여기로 되돌아온다 — 같은 이유다.
   // BAND = 같은 줄 판정 허용오차. 조금 어긋나게 놓인 조각이 다른 줄로 튀는 것을 막는다.
   var BAND = 20 * MESA0_PT_PER_MM;
   entries.sort(function (p1, p2) {
@@ -828,36 +870,198 @@ function mesA0_seedQueueJson(d, cands, gapMm) {
   return '{"ok":true,"added":' + sizes.length + ',"total":' + q.length + ',"sizes":[' + sizes.join(',') + ']}';
 }
 
-// 묶음 추가 — 선택 전체를 클러스터로 분리해 각각 큐 행으로. gapMm 이내는 한 디자인.
-function mesA0_queueAddBatch(gapMm) {
-  if (app.documents.length === 0) return '{"ok":false,"err":"nodoc"}';
-  var d = app.activeDocument;
-  if (!d.selection || d.selection.length === 0) return '{"ok":false,"err":"nosel"}';
+// 후보 수집. source='sel'=선택 전체 · 'auto'=문서 top-level 스캔(잠금·숨김 레이어 제외).
+// read-only(원본 불가침 — 변형은 확정 시 복제문서에서만). 실패는 err 문자열, 성공은 배열.
+function mesA0_seedCands(d, source) {
+  if (String(source) === 'auto') {
+    var tops = [];
+    // 블록 안 함수 '선언' 은 ES3 규격 밖 — ExtendScript 가 봐주더라도 var 표현식으로 못박는다.
+    var collectLayer = function (ly) {
+      try {
+        if (ly.locked || !ly.visible) return;
+        for (var i = 0; i < ly.pageItems.length; i++) {
+          var it = ly.pageItems[i];
+          try { if (!it.locked && !it.hidden) tops.push(it); } catch (eIt) {}
+        }
+        for (var s = 0; s < ly.layers.length; s++) collectLayer(ly.layers[s]);
+      } catch (eLy) {}
+    };
+    try { for (var l = 0; l < d.layers.length; l++) collectLayer(d.layers[l]); }
+    catch (eScan) { return 'scan'; }
+    if (!tops.length) return 'noitems';
+    return tops;
+  }
+  if (!d.selection || d.selection.length === 0) return 'nosel';
   var cands = [];
-  for (var i = 0; i < d.selection.length; i++) cands.push(d.selection[i]);
-  return mesA0_seedQueueJson(d, cands, gapMm);
+  for (var k = 0; k < d.selection.length; k++) cands.push(d.selection[k]);
+  return cands;
 }
 
-// 자동감지 시드(A3, spec D2) — 선택 불필요: 라이브 문서 top-level 아이템(잠금·숨김 레이어 제외) 전체에서
-// 디자인 후보 감지. read-only(원본 불가침 — 변형은 확정 시 복제문서에서만). 시드 오류는 큐에서 삭제·개별추가로 교정.
+// ── 구버전 패널 호환 (지우지 말 것) ────────────────────────────────
+// 축2(이 파일)는 Z: 1개 교체 = **전 디자이너 PC 즉시 반영**인데, 축3·축4(패널 껍데기)는
+// PC 별 수동 설치라 반영이 늦다. 그 사이 구버전 main.js 는 여기를 부른다 —
+// 없애면 설치가 안 끝난 PC 에서 묶음분리·자동감지가 통째로 죽는다(호스트 연결 안 됨).
+// 신버전 패널은 mesA0_seedBegin 을 부르므로 여기로 오지 않는다. 전 PC 설치 확인 후 제거.
+function mesA0_queueAddBatch(gapMm) {
+  if (app.documents.length === 0) return '{"ok":false,"err":"nodoc"}';
+  var d0 = app.activeDocument;
+  var c0 = mesA0_seedCands(d0, 'sel');
+  if (typeof c0 === 'string') return '{"ok":false,"err":"' + c0 + '"}';
+  return mesA0_seedQueueJson(d0, c0, gapMm);
+}
 function mesA0_autoDetect(gapMm) {
   if (app.documents.length === 0) return '{"ok":false,"err":"nodoc"}';
-  var d = app.activeDocument;
-  var tops = [];
-  function collectLayer(ly) {
-    try {
-      if (ly.locked || !ly.visible) return;
-      for (var i = 0; i < ly.pageItems.length; i++) {
-        var it = ly.pageItems[i];
-        try { if (!it.locked && !it.hidden) tops.push(it); } catch (eIt) {}
-      }
-      for (var s = 0; s < ly.layers.length; s++) collectLayer(ly.layers[s]);
-    } catch (eLy) {}
+  var d1 = app.activeDocument;
+  var c1 = mesA0_seedCands(d1, 'auto');
+  if (typeof c1 === 'string') return '{"ok":false,"err":"' + c1 + '"}';
+  return mesA0_seedQueueJson(d1, c1, gapMm);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 실루엣 시드 (2026-07-31, host 0.1.10) — 묶음분리·자동감지의 **정본**
+//   무엇: 후보 전체를 PNG 1장으로 구워 **잉크 연결성분**으로 디자인을 나눈다.
+//   왜: 옛 사각 겹침(mesA0_cluster)은 도형을 몰라 비스듬한 배치를 거짓 병합했다.
+//   구조: [호스트] 굽기 1회 → [패널] geometry.js 성분 라벨링·아이템 배정 → [호스트] 큐 확정.
+//     계산이 패널(JS)에 있는 이유 = ExtendScript 는 테스트가 사실상 불가능하기 때문이다.
+//     재단 패널(mes-cut-host.jsx)이 같은 구조이고, 그쪽 geometry.js 를 **그대로** 쓴다.
+//   ⚠️ 분리 해상도 = mmPerPx. 문서가 클수록 거칠어져(상한 MESA0_SEED_MAX_PX) 그 이하로 붙은
+//      디자인은 여전히 붙는다. 실제 mmpp 를 응답에 실어 패널이 눈에 보이게 알린다.
+// ══════════════════════════════════════════════════════════════════
+var MESA0_SEED_MAX_PX = 12000000;  // 마스크 픽셀 상한(재단 패널 pickResolution 기본과 동일)
+var MESA0_SEED_PAD_MM = 2;         // 굽기 여백 — 가장자리 잉크가 잘리면 성분이 갈린다
+
+function mesA0_r2(v) { return Math.round(v * 100) / 100; }
+
+function mesA0_seedPickMmPerPx(wMm, hMm) {
+  var c = [0.25, 0.5, 1, 2, 4];
+  for (var i = 0; i < c.length; i++) {
+    if (Math.ceil(wMm / c[i]) * Math.ceil(hMm / c[i]) <= MESA0_SEED_MAX_PX) return c[i];
   }
-  try { for (var l = 0; l < d.layers.length; l++) collectLayer(d.layers[l]); }
-  catch (eScan) { return '{"ok":false,"err":"scan"}'; }
-  if (!tops.length) return '{"ok":false,"err":"noitems"}';
-  return mesA0_seedQueueJson(d, tops, gapMm);
+  return c[c.length - 1];
+}
+
+// 후보 전체를 임시 문서로 복제해 PNG 1장으로 굽는다. 반환 = 결과객체 또는 null(폴백 신호).
+function mesA0_seedRaster(srcDoc, items) {
+  var uSrc = mesA0_unionBounds(items);
+  if (!uSrc) return null;
+  var wPtS = uSrc[2] - uSrc[0], hPtS = uSrc[1] - uSrc[3];
+  if (wPtS <= 0 || hPtS <= 0) return null;
+  var pad = MESA0_SEED_PAD_MM, padPt = pad * MESA0_PT_PER_MM;
+  var mmpp = mesA0_seedPickMmPerPx(wPtS / MESA0_PT_PER_MM + pad * 2, hPtS / MESA0_PT_PER_MM + pad * 2);
+  var outPath = Folder.temp.fsName.replace(/\\/g, '/') + '/mes_a0_seed.png';
+  var tmp = null;
+  try {
+    // 초기 크기는 아무래도 좋다(아래에서 artboardRect 로 다시 잡는다). 일러 캔버스 한도(16383pt) 클램프.
+    tmp = app.documents.add(DocumentColorSpace.CMYK,
+      Math.min(16000, Math.max(10, wPtS)), Math.min(16000, Math.max(10, hPtS)));
+    var lay = tmp.layers[0];
+    // ★★ 문서 간 duplicate 는 **원본 문서가 active 일 때만** 동작한다. documents.add() 가
+    //    새 문서를 active 로 만들어 버리므로 여기서 되돌린다. 실패해도 **예외를 던지지 않아**
+    //    try/catch 로는 못 잡는다 — 복제 개수로 검증할 것. (재단 패널 2026-07-31 실측: 0개 vs 99개)
+    app.activeDocument = srcDoc;
+    var n = 0;
+    for (var i = 0; i < items.length; i++) {
+      try { items[i].duplicate(lay, ElementPlacement.PLACEATBEGINNING); n++; } catch (eD) {}
+    }
+    app.activeDocument = tmp;
+    var u = n ? mesA0_unionBounds(tmp.pageItems) : null;
+    if (!u) { tmp.close(SaveOptions.DONOTSAVECHANGES); app.activeDocument = srcDoc; return null; }
+    // 아트보드는 **복제본 실측(u)** 으로 잡고(안 잘리게), 원점은 **원본 좌표(uSrc)** 로 돌려준다.
+    //   아이템 bbox 도 원본 좌표로 주므로 둘이 같은 자에 놓인다. 복제가 좌표를 보존하므로 u≈uSrc 이고,
+    //   설령 통째로 밀렸더라도 원본 좌표계 기준으로는 uSrc 쪽이 맞다. 어긋난 양은 dx/dy 로 보고한다.
+    tmp.artboards[0].artboardRect = [u[0] - padPt, u[1] + padPt, u[2] + padPt, u[3] - padPt];
+    var wPt = (u[2] - u[0]) + padPt * 2, hPt = (u[1] - u[3]) + padPt * 2;
+    var opts = new ExportOptionsPNG24();
+    opts.antiAliasing = true;
+    opts.transparency = true;          // ★배경 투명 — 흰 잉크와 배경을 구분하기 위해
+    opts.artBoardClipping = true;
+    var sc = (1 / mmpp) * (25.4 / 72) * 100;   // 1pt = 25.4/72 mm
+    opts.horizontalScale = sc;
+    opts.verticalScale = sc;
+    tmp.exportFile(new File(outPath), ExportType.PNG24, opts);
+    var res = {
+      path: outPath,
+      w: Math.round(wPt * sc / 100), h: Math.round(hPt * sc / 100),
+      ox: (uSrc[0] - padPt) / MESA0_PT_PER_MM,   // 마스크 (0,0) 픽셀의 원본 문서 mm 좌표
+      oy: (uSrc[1] + padPt) / MESA0_PT_PER_MM,
+      mmpp: mmpp, dup: n,
+      dx: (u[0] - uSrc[0]) / MESA0_PT_PER_MM, dy: (u[1] - uSrc[1]) / MESA0_PT_PER_MM
+    };
+    tmp.close(SaveOptions.DONOTSAVECHANGES); tmp = null;
+    app.activeDocument = srcDoc;
+    return res;
+  } catch (e) {
+    if (tmp) { try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) {} }
+    try { app.activeDocument = srcDoc; } catch (e3) {}
+    return null;
+  }
+}
+
+// Phase 1 — 후보 수집 + 굽기. 후보는 $.global.mesA0Seed 에 남겨 패널의 배정 결과를 기다린다.
+//   응답 mode='mask' = 패널이 성분 배정 후 mesA0_seedApply 를 불러야 큐가 채워진다.
+//         mode='bbox' = 굽기 실패 → 옛 사각 방식으로 **이미 큐를 채웠다**(추가 호출 불필요).
+function mesA0_seedBegin(source, gapMm) {
+  if (app.documents.length === 0) return '{"ok":false,"err":"nodoc"}';
+  var d = app.activeDocument;
+  var cands = mesA0_seedCands(d, source);
+  if (typeof cands === 'string') return '{"ok":false,"err":"' + cands + '"}';
+  var kept = mesA0_seedKeep(cands);
+  if (!kept.length) return '{"ok":false,"err":"allnoise"}';
+
+  var rz = mesA0_seedRaster(d, kept);
+  if (!rz) {
+    // 굽기 실패(캔버스 한도·export 오류 등) — 조용히 틀리느니 옛 방식으로라도 큐를 만들고 알린다.
+    var fb = mesA0_seedQueueJson(d, kept, gapMm);
+    return fb.replace('{"ok":true,', '{"ok":true,"mode":"bbox",');
+  }
+
+  $.global.mesA0Seed = { doc: d, items: kept };
+  // 그룹 개수 — "여러 디자인인데 1건으로 나왔다" 의 원인을 **추측이 아니라 사실로** 말하기 위한 것.
+  //   잉크 덩어리 수로 추정하면 틀린다: 흰 요소·투명 간격 때문에 한 디자인도 여러 덩어리로 보인다.
+  //   개체가 그룹인지는 파일이 아는 사실이므로 이걸 그대로 올려보낸다.
+  var grp = 0;
+  for (var gi = 0; gi < kept.length; gi++) {
+    try { if (kept[gi].typename === 'GroupItem') grp++; } catch (eT) {}
+  }
+  var bs = [];
+  for (var k = 0; k < kept.length; k++) {
+    var b = null;
+    try { b = mesA0_itemBounds(kept[k]); } catch (eB) {}
+    if (!b) { try { b = kept[k].visibleBounds; } catch (eB2) { b = null; } }
+    if (!b) { bs.push('null'); continue; }
+    bs.push('[' + mesA0_r2(b[0] / MESA0_PT_PER_MM) + ',' + mesA0_r2(b[1] / MESA0_PT_PER_MM)
+      + ',' + mesA0_r2(b[2] / MESA0_PT_PER_MM) + ',' + mesA0_r2(b[3] / MESA0_PT_PER_MM) + ']');
+  }
+  return '{"ok":true,"mode":"mask","path":"' + rz.path + '","w":' + rz.w + ',"h":' + rz.h
+    + ',"ox":' + mesA0_r2(rz.ox) + ',"oy":' + mesA0_r2(rz.oy) + ',"mmpp":' + rz.mmpp
+    + ',"n":' + kept.length + ',"grp":' + grp + ',"dup":' + rz.dup
+    + ',"dx":' + mesA0_r2(rz.dx) + ',"dy":' + mesA0_r2(rz.dy)
+    + ',"bounds":[' + bs.join(',') + ']}';
+}
+
+// Phase 2 결과 적용 — groups = "0,3,5;1,2;4" (아이템 인덱스. evalScript 인자는 ASCII 만).
+//   정렬·큐 적재는 mesA0_seedFlush 로 되돌아온다(인덱스 단일 소스 유지).
+function mesA0_seedApply(groups) {
+  var S = $.global.mesA0Seed;
+  if (!S || !S.items || !S.items.length) return '{"ok":false,"err":"noseed"}';
+  var items = S.items;
+  var gs = String(groups).split(';');
+  var entries = [];
+  for (var g = 0; g < gs.length; g++) {
+    var parts = gs[g].split(',');
+    var arr = [];
+    for (var p = 0; p < parts.length; p++) {
+      var ix = parseInt(parts[p], 10);
+      if (!isNaN(ix) && ix >= 0 && ix < items.length) arr.push(items[ix]);
+    }
+    if (!arr.length) continue;
+    var ub0 = mesA0_clipUnion(arr) || mesA0_unionBounds(arr);
+    if (!ub0) continue;
+    entries.push({ items: arr, b: ub0 });
+  }
+  var out = mesA0_seedFlush(S.doc, entries);
+  $.global.mesA0Seed = null;   // 1회용 — 남겨 두면 다음 분리가 옛 후보를 집는다
+  return out;
 }
 
 function mesA0_queueCount() { return '' + mesA0_queueEnsure().length; }

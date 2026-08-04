@@ -1,6 +1,18 @@
 /**
- * MES 재단 CEP panel — main.js
+ * MES 재단 — 병합 패널의 「재단」 탭 (구 com.mes.cut.panel/js/main.js)
  * spec = docs/superpowers/specs/2026-07-31-cut-file-panel.md
+ *
+ * ★2026-08-04 병합: 패널 2개(A0·재단)를 `com.mes.a0.panel` **하나**로 합쳤다.
+ *   합친 이유 = 설치 2번이 아니라 **패널을 오가는 비용**이었다(용준님). 한 작업에서 가공↔재단을
+ *   왔다갔다 하는데 창이 둘이면 매번 찾아 열어야 한다.
+ *   합친 범위 = **껍데기만**. 호스트는 `mes-a0-host.jsx` · `mes-cut-host.jsx` **2파일 그대로**다
+ *   (축2 = 자주 바뀌는 축 → Z: 파일 1개 교체로 독립 롤백이 유지된다).
+ *
+ *   이 파일이 지켜야 할 병합 제약 3가지:
+ *     1. **IIFE 유지** — main.js 와 같은 전역을 공유한다. 벗기면 이름이 조용히 겹친다.
+ *     2. **DOM id 는 재단 전용**이어야 한다. A0 와 겹친 `out`·`ver` 는 `cutOut`·`cutVer` 로 개명했다.
+ *        새 id 를 만들 때 A0 index.html 에 같은 이름이 없는지 확인할 것.
+ *     3. **호스트 호출은 mesCut_* 만** — mesA0_* 를 부르지 않는다(잠금은 양쪽 다 mesLock_* 로 수렴).
  *
  * P0(현재) = 골격 + **크로스 패널 잠금**. 문서·선택 조회와 잠금 API 만 실제로 동작한다.
  * P1        = 오프셋 엔진(bbox/실루엣) + 타공 + DXF. [칼선 만들기] 는 그때 켠다.
@@ -16,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.13.0';
+  var SHELL_VERSION = '0.14.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -115,8 +127,28 @@
     return el;
   }
 
-  var elOut = $('out');
-  var elVer = $('ver');
+  // 도련 실패 사유 — 호스트는 **ASCII 코드만** 보낸다(evalScript 브릿지). 번역은 여기서 한다.
+  //   "도련을 만들지 못했습니다"만 띄우면 사용자가 할 수 있는 일이 없다 → **다음 수를 함께** 말한다.
+  function bleedFailWhy(code) {
+    switch (code) {
+      case 'dup': return '아트를 복제하지 못했습니다. 레이어가 잠겨 있거나 숨겨져 있는지 보세요.';
+      case 'select': return '일러가 사본 선택을 거부했습니다(9063). 조각을 한 번 그룹 해제했다가 다시 묶어 보세요.';
+      case 'group': return '사본을 묶지 못했습니다. 선택에 잠긴 개체가 섞여 있는지 보세요.';
+      case 'effect': return '오프셋 효과가 먹지 않는 아트입니다(사진·임베드 이미지). 방식을 「사본 확대」로 바꾸세요.';
+      case 'noexpand': return '오프셋이 아트에 먹지 않았습니다(크기가 그대로). 방식을 「사본 확대」로 바꾸세요.';
+      case 'expand': return '오프셋을 확장하지 못했습니다. 방식을 「사본 확대」로 바꾸면 대개 됩니다.';
+      case 'sil': case 'silsel': return '도련 경계를 만들지 못했습니다. 여백·도련 값을 줄여 보세요.';
+      case 'mask': return '도련을 경계로 잘라내지 못했습니다. 잘리지 않은 도련은 칼선 밖으로 나가 옆 조각을 침범하므로 만들지 않았습니다.';
+      case 'zero': return '도련 값이 0입니다.';
+      case 'throw': return '일러 내부 오류입니다. 같은 조각을 단품 칼선으로 시험해 보세요.';
+      default: return '사유 미상(' + (code || '-') + ').';
+    }
+  }
+
+  // ★`out`·`ver` 는 A0 와 겹치는 단 2개의 id 였다(2026-08-04 병합 실측: A0 55개 · 재단 50개 중 2개).
+  //   같은 id 가 둘이면 getElementById 가 **먼저 나온 A0 쪽**을 집어 재단 결과가 가공 탭에 찍힌다.
+  var elOut = $('cutOut');
+  var elVer = $('cutVer');
   var elDoc = $('docInfo');
   var elSel = $('selInfo');
   var elLock = $('lockState');
@@ -325,9 +357,13 @@
           + (fv0.note || '');
         // ★도련을 어떤 방식으로 만들었는지 반드시 말한다 — 둘의 품질이 다르다(clip=무손실 / scale=근사)
         if (d.bleed === 'clip') msg += '\n도련 ' + bleedMm + 'mm — 클립을 넓혀 원본을 더 드러냈습니다(왜곡·빈 곳 없음).';
+        else if (d.bleed === 'solid') msg += '\n도련 ' + bleedMm + 'mm — 여백까지 한 색으로 채웠습니다(기본 흰색).';
+        else if (d.bleed === 'solid-nomargin') msg += '\n도련 ' + bleedMm + 'mm — 한 색으로 채웠습니다. ⚠ 여백이 0 이라 아트가 칼선까지 차 있는데 **색이 이어지지 않습니다** — 여백을 주거나 아트에 도련을 넣어 주세요.';
+        else if (d.bleed === 'edge') msg += '\n도련 ' + bleedMm + 'mm — 가장자리 색을 위치별로 이어 붙였습니다.';
         else if (d.bleed === 'region') msg += '\n도련 ' + bleedMm + 'mm — 도형마다 제 색 그대로 구역별로 벌렸습니다(빈 곳 없음).';
+        else if (d.bleed === 'region-live') msg += '\n도련 ' + bleedMm + 'mm — 구역별로 벌렸습니다(라이브 효과 유지). 출력·RIP 는 정상이며, 일러에서 편집하면 값이 따라 변합니다.';
         else if (d.bleed === 'scale') msg += '\n도련 ' + bleedMm + 'mm — 사본을 늘려 채웠습니다. ⚠ 뾰족한 형상은 링 일부가 빌 수 있습니다.';
-        else if (d.bleed === '0') msg += '\n⚠ 도련을 만들지 못했습니다.';
+        else if (d.bleed === '0') msg += '\n⚠ 도련을 만들지 못했습니다 — ' + bleedFailWhy(d.bleedcode);
         if (mode === 'bbox') msg += '\n⚠ 벡터는 실루엣만 만듭니다 — 사각(bbox) 칼선이 필요하면 방식을 래스터로 바꾸세요.';
         if (punchOn) msg += '\n⚠ 타공은 래스터 방식에서만 만들어집니다.';
         if (!wantDxf) { finish(msg, 'ok'); return; }
@@ -925,12 +961,15 @@
               + (allowRot ? ' · 회전 허용' : '')
               + '\n돔보 ' + (a.dombo || 0) + '판 — 별도 레이어(인쇄 ON) · 재단선 레이어는 인쇄 OFF'
               + (wantPieceCut ? (' · 조각별 칼선' + (useVec ? '(벡터)' : (wantCurve ? '(곡선)' : '(직선)'))) : '')
-              + (useVec && nestBleedMm > 0 ? ('\n도련 ' + nestBleedMm + 'mm (조각마다·구역별)'
+              + (useVec && nestBleedMm > 0 ? ('\n도련 ' + nestBleedMm + 'mm (조각마다 · 여백 구간은 단색)'
                   // ★조용히 바꾸지 않는다 — 간격을 올렸으면 올렸다고 말한다
-                  + (gapWanted < gapMm ? ' · 간격을 ' + gapWanted + ' → ' + gapMm + 'mm 로 올렸습니다(도련×2)' : '')) : '')
+                  + (gapWanted < gapMm ? ' · 간격을 ' + gapWanted + ' → ' + gapMm + 'mm 로 올렸습니다(도련×2)' : '')
+                  // ★도련이 조각별로 실패해도 판은 그려진다 — 조용히 넘기면 인쇄 뒤에야 안다(2026-08-04)
+                  + (parseInt(a.bleedfail, 10) > 0
+                    ? ('\n⚠ 도련 ' + a.bleedfail + '개 조각 실패 — ' + bleedFailWhy(a.bleedcode)) : '')) : '')
               + (res.unplaced.length ? ('\n⚠ 배치 못한 조각 ' + res.unplaced.length + '개 — 시트를 키우거나 간격을 줄이세요.') : '')
               + (useVec ? '' : cvN.note) + vecNote,
-              res.unplaced.length ? 'err' : 'ok');
+              (res.unplaced.length || parseInt(a.bleedfail, 10) > 0) ? 'err' : 'ok');
           });
         });
       });
@@ -1354,5 +1393,20 @@
 
   // 패널로 포커스가 돌아올 때 1회 갱신. 폴링하지 않는다 —
   // 무거운 문서에서 COM wedge 를 되살릴 수 있다(A0 2026-07-30 판단).
-  window.addEventListener('focus', function () { if (!hostBusy) refresh(); });
+  //
+  // ★병합 후 추가 조건 = **재단 탭이 보일 때만**(2026-08-04). 합치기 전에는 창이 뜨면 곧 재단 작업이었지만
+  //   이제는 가공 탭을 쓰는 동안에도 이 핸들러가 돈다. 그러면 포커스가 돌아올 때마다 A0 와 재단이
+  //   **동시에** 호스트를 찔러 무거운 문서에서 COM 이 밀린다. 안 보이는 탭은 갱신할 이유도 없다.
+  window.addEventListener('focus', function () {
+    if (hostBusy) return;
+    if (document.body.getAttribute('data-main') !== 'cut') return;
+    refresh();
+  });
+
+  // 재단 탭으로 처음 들어올 때 1회 갱신 — 패널을 열자마자 재단으로 가면 문서 정보가 비어 있다.
+  // (부팅 시의 refresh() 는 그대로 두었다. 가공 탭에서 시작해도 첫 진입 때 최신값이 필요하다.)
+  document.addEventListener('mes:mainTab', function (e) {
+    if (!e || !e.detail || e.detail.tab !== 'cut') return;
+    if (!hostBusy) refresh();
+  });
 })();

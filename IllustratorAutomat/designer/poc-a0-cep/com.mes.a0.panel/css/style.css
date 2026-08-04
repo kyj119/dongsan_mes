@@ -1,4 +1,6 @@
-/* MES A0 CEP panel — dark theme matching Illustrator UI (A1 form) */
+/* MES 가공·재단 CEP panel — dark theme matching Illustrator UI
+   ★2026-08-04 병합: A0 스타일이 **기본**이고, 재단 전용·충돌 규칙만 파일 끝에서
+     `[data-main="cut"]` 로 한정한다. 공용 규칙(색·입력칸·버튼 뼈대)은 원래 두 파일이 같았다. */
 * { box-sizing: border-box; }
 
 html, body {
@@ -115,3 +117,49 @@ button.mini { flex: none; padding: 2px 8px; font-size: 12px; }
 .sgi:hover { background: #2c3a49; color: #fff; }
 .achit { flex: none; font-size: 10px; color: #777; min-width: 44px; text-align: right; }
 .achit.ok { color: #8fd08a; }
+
+/* ══════════ 최상위 탭 (가공 ↔ 재단) — 2026-08-04 병합 ══════════
+   안쪽 탭(.tab)과 **다른 클래스**를 쓴다. 같으면 main.js 의 위임 핸들러가 이것까지 집는다. */
+.mainbar { display: flex; gap: 3px; }
+.mtab { flex: 1; background: #2b2b2b; border: 1px solid #444; border-radius: 3px; color: #9a9a9a; padding: 6px 4px; font-size: 12px; font-weight: 600; }
+.mtab.active { background: #3d4d5e; color: #ffffff; border-color: #6e9fd8; }
+.mtab:hover { color: #ededed; }
+.mainpage { display: flex; flex-direction: column; gap: 7px; }
+.mainpage.hidden { display: none; }
+
+/* ══════════ 재단 탭 전용 ══════════
+   ① A0 에 없는 것 = 전역으로 둬도 안전하다(선택자가 재단 마크업에만 붙는다) */
+.hint { color: #7a7a7a; font-size: 11px; line-height: 1.45; }
+/* ★설명은 기본으로 접는다 — 매일 쓰는 패널이라 평소엔 입력칸만 보이는 게 낫다(2026-08-03 용준님).
+   지우지는 않는다: 처음 쓰는 사람과 함정 설명이 사라지면 같은 질문이 반복된다. `?` 로 켠다. */
+.panel.no-hints .hint { display: none; }
+.title-btn { margin-left: 6px; }
+input[type="number"] {
+  background: #444; color: #d8d8d8; border: 1px solid #565656;
+  border-radius: 3px; padding: 3px 6px; font-size: 12px; width: 62px;
+}
+input:disabled { background: #3a3a3a; color: #777; border-color: #4a4a4a; }
+input:focus { outline: none; border-color: #6e9fd8; }
+button.danger { border-color: #7a4a4a; color: #e0b0b0; }
+.diag { border: 1px solid #444; border-radius: 3px; padding: 4px 8px; background: #2b2b2b; }
+.diag summary { color: #9a9a9a; cursor: pointer; font-size: 11px; }
+.diag .row { margin-top: 6px; }
+/* 작업 그룹(단품 칼선 / 판짜기) — 버튼이 어느 흐름에 속하는지 눈에 보이게 */
+.grp, .nest { border: 1px solid #444; border-radius: 3px; padding: 6px 8px; background: #2b2b2b; }
+.grp > summary, .nest > summary { color: #cfcfcf; cursor: pointer; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.grp[open] > summary, .nest[open] > summary { border-bottom: 1px solid #454545; padding-bottom: 5px; }
+.grp .row, .nest .row { margin-top: 6px; }
+/* 재단 결과창은 성공을 `ok` 로 표시한다(A0 는 `okmsg`). 둘 다 남긴다 — 어느 쪽도 상대를 안 건드린다. */
+.out.ok { color: #a8d8a8; border-color: #3f6b32; }
+
+/* ② A0 와 값이 **다른** 것 = 반드시 한정한다. 안 하면 가공 탭 글자 크기·여백이 같이 바뀐다. */
+[data-main="cut"] .cfg { font-size: 11px; }
+[data-main="cut"] .meas { color: #c8c8c8; font-size: 12px; }
+[data-main="cut"] .rad { gap: 4px; }
+[data-main="cut"] .unit { color: #8a8a8a; font-size: 11px; }
+[data-main="cut"] button { padding: 5px 10px; }
+[data-main="cut"] button.mini { padding: 3px 8px; font-size: 11px; }
+[data-main="cut"] button.primary { background: #3d6ea8; border-color: #4d7fb8; color: #fff; font-weight: 600; padding: 7px 10px; }
+[data-main="cut"] button:hover:not(:disabled) { border-color: #6e9fd8; }
+[data-main="cut"] button:disabled { opacity: .45; }
+#cutOut { min-height: 46px; max-height: 160px; overflow: auto; line-height: 1.5; }

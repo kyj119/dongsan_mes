@@ -74,11 +74,13 @@ const PANEL_FILES = [
 //   재단 패널의 geometry.js 는 **칼선 기하 정본**이자 Node 하네스(cut:bench)의 검증 대상이다.
 //   여기 없으면 이 파일만 조용히 낡아 "하네스는 통과하는데 패널은 옛 코드"가 된다.
 //   A0 패널도 geometry.js 를 쓴다(묶음분리·자동감지의 잉크 실루엣, 2026-07-31) — **재단 패널의 사본**이다.
-const PANEL_EXTRA = { cut: ['js/geometry.js', 'js/nesting.js'], a0: ['js/geometry.js'] }
+const PANEL_EXTRA = { a0: ['js/geometry.js', 'js/nesting.js', 'js/cut-main.js', 'js/tabs.js'] }
 // geometry.js 정본 = 재단 패널 것. Node 하네스(cut:bench·cut:nest)가 **그 파일을** 로드해 검증하므로
 // "검증한 코드 = 배포된 코드"가 성립한다. A0 사본이 갈라지면 그 등식이 조용히 깨진다(A0 쪽은
 // 검증된 적 없는 코드가 도는데 하네스는 계속 통과한다) → 바이트 동일을 강제한다.
-const GEOM_CANON = { panel: 'cut', rel: 'js/geometry.js', copies: ['a0'] }
+// 2026-08-04 병합으로 geometry.js **사본이 사라졌다** — 패널이 하나뿐이라 갈릴 대상이 없다.
+// Node 하네스(cut:bench·cut:nest)도 이 한 파일을 읽는다 = '검증한 코드 = 배포된 코드'가 자동 성립.
+const GEOM_CANON = { panel: 'a0', rel: 'js/geometry.js', copies: [] }
 // ── 패널 레지스트리 ────────────────────────────────────────────────
 // 패널은 **여러 개**다(2026-07-31~): A0 패널 + 재단 패널(분리 개발 → 병합 예정).
 // 하드코딩 1개였을 때는 새 패널이 감사망 밖이라 조용히 드리프트했다 — 여기에 등록하면 축3·축4가 함께 붙는다.
@@ -86,8 +88,9 @@ const GEOM_CANON = { panel: 'cut', rel: 'js/geometry.js', copies: ['a0'] }
 // 정본 spec = docs/superpowers/specs/2026-07-31-cut-file-panel.md §5.2-③
 const PANELS = [
   { id: 'a0', ext: 'com.mes.a0.panel', repo: path.join(IA, 'designer', 'poc-a0-cep', 'com.mes.a0.panel'), zSub: 'a0-panel', install: 'install-a0-panel.ps1' },
-  { id: 'cut', ext: 'com.mes.cut.panel', repo: path.join(IA, 'designer', 'cut-panel', 'com.mes.cut.panel'), zSub: 'cut-panel', install: 'install-cut-panel.ps1' },
 ].filter((p) => fs.existsSync(p.repo))
+// 2026-08-04 병합: 재단 패널(com.mes.cut.panel)은 이 패널의 '재단' 탭으로 흡수됐다.
+// 각 PC 에 남아 있는 구 확장은 install-a0-panel.ps1 이 백업 후 지운다(같은 기능이 두 개면 헷갈린다).
 
 // 축4: 이 PC에 실제로 설치돼 일러가 읽는 패널. install-*.ps1 의 설치 위치와 동일.
 const installedDir = (ext) => (process.env.APPDATA

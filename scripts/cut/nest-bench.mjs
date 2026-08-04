@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 import G from './geometry.mjs'
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
-const NEST_PATH = path.join(REPO, 'IllustratorAutomat', 'designer', 'cut-panel', 'com.mes.cut.panel', 'js', 'nesting.js')
+const NEST_PATH = path.join(REPO, 'IllustratorAutomat', 'designer', 'poc-a0-cep', 'com.mes.a0.panel', 'js', 'nesting.js')
 await import(pathToFileURL(NEST_PATH).href)
 const N = globalThis.MesCutNest
 if (!N) throw new Error('네스팅 엔진 로드 실패: ' + NEST_PATH)
