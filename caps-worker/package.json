@@ -7,6 +7,7 @@
     "start": "node src/index.js",
     "test-conn": "node src/test-connection.js",
     "test-query": "node src/test-query.js",
+    "test-range": "node src/test-range.js",
     "deploy": "powershell -Command \"xcopy src \\\\DESKTOP-9R7B2DD\\c$\\caps-worker\\src /E /Y /I && echo Deploy complete!\"",
     "install-service": "node src/service-install.js",
     "uninstall-service": "node src/service-uninstall.js"

@@ -398,10 +398,23 @@ ${capsSettingsScript}
                 </span>
                 <span class="text-xs text-gray-400 ml-2">마지막 성공: <span id="capsLastOk" class="tabular-nums">—</span></span>
               </div>
-              <button onclick="triggerCapsSync()" id="capsSyncBtn" class="ds-btn ds-btn-primary">
-                <i class="fas fa-sync-alt mr-1"></i>지금 동기화
-              </button>
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-xs text-gray-500">기간</span>
+                <input type="date" id="capsSyncFrom" class="px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                <span class="text-xs text-gray-400">~</span>
+                <input type="date" id="capsSyncTo" class="px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                <button onclick="clearCapsSyncRange()" class="px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50" title="기간 지우기">
+                  <i class="fas fa-eraser"></i>
+                </button>
+                <button onclick="triggerCapsSync()" id="capsSyncBtn" class="ds-btn ds-btn-primary">
+                  <i class="fas fa-sync-alt mr-1"></i>지금 동기화
+                </button>
+              </div>
             </div>
+            <p class="text-xs text-gray-400 mt-2">
+              <i class="fas fa-info-circle mr-1"></i>기간을 비워두면 최근 며칠 + <b>마지막 성공일 이후 공백을 자동 복구</b>합니다.
+              PC가 며칠 꺼져 있었다면 켜기만 해도 자동으로 메워집니다. 기간 지정은 최대 60일.
+            </p>
           </div>
 
           <!-- 미매핑 배너 -->

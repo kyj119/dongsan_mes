@@ -6,7 +6,7 @@
 
 var capsSitesCache = [];
 var capsCurrentSiteId = null;
-var capsTriggerLabel = { SCHEDULED: '예약', MANUAL: '수동' };
+var capsTriggerLabel = { SCHEDULED: '예약', MANUAL: '수동', STARTUP: '기동' };
 
 // ───────── 초기화 ─────────
 async function initCapsTab() {
@@ -326,6 +326,9 @@ function showCapsSyncLogDetail(logId) {
       '<div><span class="text-gray-500">종료</span><div class="mt-1 tabular-nums text-xs">' + escapeHtml(r.finished_at || '-') + '</div></div>' +
       '<div><span class="text-gray-500">트리거</span><div class="mt-1">' + escapeHtml(capsTriggerLabel[r.trigger_type] || r.trigger_type || '-') + '</div></div>' +
       '<div><span class="text-gray-500">범위</span><div class="mt-1 tabular-nums text-xs">' + escapeHtml(range) + '</div></div>' +
+      // notes = 워커가 보고한 버전. 비어 있으면 기간 지정/자동 갭 복구 미지원 구버전.
+      '<div><span class="text-gray-500">워커 버전</span><div class="mt-1 text-xs">' +
+        (r.notes ? escapeHtml(r.notes) : '<span class="text-amber-600">미보고(구버전)</span>') + '</div></div>' +
     '</div>' +
     '<div class="mt-4 border-t border-gray-200 pt-4">' +
       '<div class="grid grid-cols-5 gap-2 text-center">' +
@@ -351,13 +354,47 @@ function closeCapsSyncLogModal() {
 }
 
 // ───────── 4) 수동 동기화 트리거 ─────────
+
+/** 'YYYY-MM-DD' → 'YYYYMMDD' (빈 값이면 빈 문자열) */
+function capsYmdCompact(v) {
+  var s = String(v || '').replace(/[^0-9]/g, '');
+  return s.length === 8 ? s : '';
+}
+
+function clearCapsSyncRange() {
+  var f = document.getElementById('capsSyncFrom');
+  var t = document.getElementById('capsSyncTo');
+  if (!f || !t) { console.warn('[capsSettings] #capsSyncFrom/#capsSyncTo not found'); return; }
+  f.value = '';
+  t.value = '';
+}
+
 async function triggerCapsSync() {
   var btn = document.getElementById('capsSyncBtn');
+  var fromEl = document.getElementById('capsSyncFrom');
+  var toEl = document.getElementById('capsSyncTo');
+  if (!fromEl || !toEl) console.warn('[capsSettings] #capsSyncFrom/#capsSyncTo not found — 기간 없이 요청');
+
+  var from = capsYmdCompact(fromEl && fromEl.value);
+  var to = capsYmdCompact(toEl && toEl.value);
+
+  // 한쪽만 입력된 경우는 서버에서도 막지만, 왕복 전에 즉시 안내
+  if ((from && !to) || (!from && to)) {
+    if (typeof showToast === 'function') showToast('기간은 시작일과 종료일을 모두 입력해 주세요', 'error');
+    return;
+  }
+
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>요청 중...'; }
   try {
-    var res = await axios.post('/api/caps/sync/trigger', { site_id: capsCurrentSiteId || 'DJ' });
+    var payload = { site_id: capsCurrentSiteId || 'DJ' };
+    if (from && to) { payload.from_date = from; payload.to_date = to; }
+    var res = await axios.post('/api/caps/sync/trigger', payload);
     if (res.data.success) {
-      if (typeof showToast === 'function') showToast('동기화 요청 완료 — 워커가 30초 내 실행합니다', 'success');
+      if (typeof showToast === 'function') {
+        showToast(from && to
+          ? from + ' ~ ' + to + ' 기간 동기화 요청 완료 — 워커가 30초 내 실행합니다'
+          : '동기화 요청 완료 — 워커가 30초 내 실행합니다', 'success');
+      }
       setTimeout(async function() {
         await loadCapsSyncLog();
         await loadCapsSites();

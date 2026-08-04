@@ -9,8 +9,25 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import type { HonoEnv } from '../types/env'
 import { LEAVE_ATTENDANCE_TYPES } from '../utils/leaveAttendance'
 import { entityFilter } from '../utils/entityFilter'
+import { kstYmd } from '../utils/kstDate'
 
 const capsRouter = new Hono<HonoEnv>()
+
+// 워커가 한 번에 백필할 수 있는 최대 일수. Access 조회량·D1 batch·Worker CPU 한도를 함께 보호한다.
+// 워커(caps-worker/src/config.js maxBackfillDays)와 같은 값을 유지할 것.
+export const CAPS_MAX_BACKFILL_DAYS = 60
+
+/** 'YYYYMMDD' 정규화 — 8자리가 아니면 null */
+function normYmd(v: any): string | null {
+  const s = String(v ?? '').replace(/[^0-9]/g, '')
+  return s.length === 8 ? s : null
+}
+
+/** 'YYYYMMDD' 두 날짜의 일수 차 (to - from) */
+function ymdSpanDays(from: string, to: string): number {
+  const toMs = (s: string) => Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8))
+  return Math.round((toMs(to) - toMs(from)) / 86400000)
+}
 
 // 큐06: CAPS 동기화가 보존해야 할 휴가/특수 근태유형 — 출퇴근 시각은 갱신하되 유형/상태는 덮어쓰지 않음.
 const CAPS_PRESERVE_TYPES = [...LEAVE_ATTENDANCE_TYPES, 'SICK', 'FAMILY_EVENT', 'HOLIDAY']
@@ -64,6 +81,8 @@ capsRouter.post('/ingest', async (c) => {
     const fromDate = body.from_date || null
     const toDate = body.to_date || null
     const triggerType = body.trigger_type || 'SCHEDULED'
+    // 워커 버전 — 기간 지정/자동 갭 복구 지원 여부를 UI에서 확인하기 위해 sync_log.notes에 남긴다.
+    const workerVersion = String(body.worker_version || '').trim().slice(0, 40) || null
 
     // 인증
     const auth = await verifyAgentKey(c.env.DB, providedKey, siteId)
@@ -75,9 +94,9 @@ capsRouter.post('/ingest', async (c) => {
 
     // sync log 시작
     const logResult = await c.env.DB.prepare(
-      `INSERT INTO caps_sync_log (status, fetched_count, from_date, to_date, trigger_type, site_id)
-       VALUES ('RUNNING', ?, ?, ?, ?, ?)`
-    ).bind(records.length, fromDate, toDate, triggerType, resolvedSiteId).run()
+      `INSERT INTO caps_sync_log (status, fetched_count, from_date, to_date, trigger_type, site_id, notes)
+       VALUES ('RUNNING', ?, ?, ?, ?, ?, ?)`
+    ).bind(records.length, fromDate, toDate, triggerType, resolvedSiteId, workerVersion).run()
     const logId = logResult.meta.last_row_id as number
 
     let inserted = 0, updated = 0, skipped = 0, errors = 0
@@ -191,16 +210,23 @@ capsRouter.post('/ingest', async (c) => {
       // 고유 employee_id 목록 추출하여 해당 기간 attendance 일괄 조회
       const uniqueEmpIds = [...new Set(parsed.map(p => p.employeeId))]
       const workDates = [...new Set(parsed.map(p => p.workDate))]
-      // 청크 단위로 조회 (SQL 파라미터 제한 대응)
-      for (let i = 0; i < uniqueEmpIds.length; i += 50) {
-        const empChunk = uniqueEmpIds.slice(i, i + 50)
+      // 청크 단위로 조회 (D1 바인드 ~100개 한도 대응).
+      // ⚠️ 직원만 청킹하면 바인드 수 = 직원청크 + 날짜전량 → 장기간 백필(기간 지정 동기화)에서 한도 초과.
+      //    양쪽 모두 청킹해 최대 EMP_CHUNK + DATE_CHUNK(=80)로 고정한다.
+      const EMP_CHUNK = 40
+      const DATE_CHUNK = 40
+      for (let i = 0; i < uniqueEmpIds.length; i += EMP_CHUNK) {
+        const empChunk = uniqueEmpIds.slice(i, i + EMP_CHUNK)
         const empPh = empChunk.map(() => '?').join(',')
-        const datePh = workDates.map(() => '?').join(',')
-        const { results: existingRows } = await c.env.DB.prepare(
-          `SELECT id, employee_id, work_date, source FROM attendance WHERE employee_id IN (${empPh}) AND work_date IN (${datePh})`
-        ).bind(...empChunk, ...workDates).all<{ id: number; employee_id: number; work_date: string; source: string }>()
-        for (const row of existingRows) {
-          existingMap.set(`${row.employee_id}:${row.work_date}`, { id: row.id, source: row.source })
+        for (let j = 0; j < workDates.length; j += DATE_CHUNK) {
+          const dateChunk = workDates.slice(j, j + DATE_CHUNK)
+          const datePh = dateChunk.map(() => '?').join(',')
+          const { results: existingRows } = await c.env.DB.prepare(
+            `SELECT id, employee_id, work_date, source FROM attendance WHERE employee_id IN (${empPh}) AND work_date IN (${datePh})`
+          ).bind(...empChunk, ...dateChunk).all<{ id: number; employee_id: number; work_date: string; source: string }>()
+          for (const row of existingRows) {
+            existingMap.set(`${row.employee_id}:${row.work_date}`, { id: row.id, source: row.source })
+          }
         }
       }
     }
@@ -418,19 +444,76 @@ capsRouter.get('/sync/pending', async (c) => {
     const row = await c.env.DB.prepare(
       `SELECT setting_value FROM settings WHERE setting_key = ?`
     ).bind(`caps_sync_requested_${resolvedSiteId}`).first<{ setting_value: string | null }>()
-    const requestedAt = row?.setting_value || null
+    const raw = row?.setting_value || null
 
-    if (!requestedAt) {
+    if (!raw) {
       return c.json({ success: true, pending: false })
+    }
+
+    // 값 포맷: JSON `{"at":..,"from":"YYYYMMDD","to":"YYYYMMDD"}` (기간 지정) 또는 구버전 datetime 문자열.
+    let requestedAt = raw
+    let fromDate: string | null = null
+    let toDate: string | null = null
+    if (raw.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(raw)
+        requestedAt = parsed.at || raw
+        fromDate = normYmd(parsed.from)
+        toDate = normYmd(parsed.to)
+      } catch (_) { /* 파싱 실패 시 기간 없는 일반 요청으로 처리 */ }
     }
 
     await c.env.DB.prepare(
       `UPDATE settings SET setting_value = '' WHERE setting_key = ?`
     ).bind(`caps_sync_requested_${resolvedSiteId}`).run()
 
-    return c.json({ success: true, pending: true, requested_at: requestedAt, site_id: resolvedSiteId })
+    return c.json({
+      success: true,
+      pending: true,
+      requested_at: requestedAt,
+      site_id: resolvedSiteId,
+      // 구버전 워커는 아래 두 필드를 무시하고 기본 lookback으로 동기화한다(하위호환).
+      from_date: fromDate,
+      to_date: toDate,
+    })
   } catch (err) {
     console.error('CAPS sync/pending error:', err)
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
+// ============================================================================
+// GET /api/caps/sync/state — 워커가 동기화 시작 전에 조회 (Agent Key 인증)
+// 자동 갭 복구용: 마지막으로 성공한 동기화의 to_date를 알려주면 워커가 그 날짜부터 다시 긁는다.
+// (PC가 며칠 꺼져 있어도 켜기만 하면 공백이 자동으로 메워진다)
+// ============================================================================
+capsRouter.get('/sync/state', async (c) => {
+  try {
+    const providedKey = c.req.header('X-Agent-Key') || ''
+    const siteId = c.req.query('site_id') || null
+
+    const auth = await verifyAgentKey(c.env.DB, providedKey, siteId || undefined)
+    if (!auth.valid) {
+      return c.json({ success: false, error: 'Invalid agent key' }, 401)
+    }
+    const resolvedSiteId = auth.site?.id || 'DJ'
+
+    // 실제로 데이터가 적재된 마지막 날짜 = 성공/부분성공 동기화의 to_date 최대값.
+    // to_date는 'YYYYMMDD' 문자열이라 MAX()의 사전순 비교가 날짜순과 일치한다.
+    const row = await c.env.DB.prepare(
+      `SELECT MAX(to_date) AS last_to_date FROM caps_sync_log
+       WHERE site_id = ? AND status IN ('SUCCESS','PARTIAL') AND to_date IS NOT NULL AND to_date != ''`
+    ).bind(resolvedSiteId).first<{ last_to_date: string | null }>()
+
+    return c.json({
+      success: true,
+      site_id: resolvedSiteId,
+      last_ok_to_date: normYmd(row?.last_to_date),
+      last_sync_ok_at: auth.site?.last_sync_ok_at || null,
+      max_backfill_days: CAPS_MAX_BACKFILL_DAYS,
+    })
+  } catch (err) {
+    console.error('CAPS sync/state error:', err)
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -717,16 +800,56 @@ capsRouter.get('/sync-log', async (c) => {
 })
 
 // POST /api/caps/sync/trigger — 수동 동기화 (사이트별)
-// body: { site_id?: 'DJ' }
+// body: { site_id?: 'DJ', from_date?: 'YYYYMMDD', to_date?: 'YYYYMMDD' }
+// 기간을 주면 워커가 그 범위를 조회한다(장기 결번 백필). 생략 시 워커 기본 lookback + 자동 갭 복구.
 capsRouter.post('/sync/trigger', async (c) => {
   try {
-    const body = await c.req.json().catch(() => ({})) as { site_id?: string }
+    const body = await c.req.json().catch(() => ({})) as { site_id?: string; from_date?: string; to_date?: string }
     const siteId = body.site_id || 'DJ'
+
+    const fromDate = normYmd(body.from_date)
+    const toDate = normYmd(body.to_date)
+    const rawFrom = String(body.from_date ?? '').trim()
+    const rawTo = String(body.to_date ?? '').trim()
+
+    // 기간은 둘 다 주거나 둘 다 비워야 한다 (한쪽만 = 의도 불명확)
+    if ((rawFrom || rawTo) && (!fromDate || !toDate)) {
+      return c.json({ success: false, error: '시작일과 종료일을 모두 YYYY-MM-DD 형식으로 지정해 주세요' }, 400)
+    }
+    if (fromDate && toDate) {
+      if (fromDate > toDate) {
+        return c.json({ success: false, error: '시작일이 종료일보다 늦습니다' }, 400)
+      }
+      const span = ymdSpanDays(fromDate, toDate) + 1
+      if (span > CAPS_MAX_BACKFILL_DAYS) {
+        return c.json({ success: false, error: `한 번에 조회할 수 있는 기간은 최대 ${CAPS_MAX_BACKFILL_DAYS}일입니다 (요청: ${span}일)` }, 400)
+      }
+      const todayYmd = kstYmd().replace(/-/g, '')
+      if (fromDate > todayYmd) {
+        return c.json({ success: false, error: '미래 날짜는 지정할 수 없습니다' }, 400)
+      }
+    }
+
+    // 값 포맷: JSON — 구버전 워커는 pending 플래그 존재 여부만 보므로 하위호환된다.
+    const payload = JSON.stringify({
+      at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      from: fromDate,
+      to: toDate,
+    })
+
     await c.env.DB.prepare(
-      `INSERT INTO settings (setting_key, setting_value) VALUES (?, datetime('now'))
-       ON CONFLICT(setting_key) DO UPDATE SET setting_value = datetime('now')`
-    ).bind(`caps_sync_requested_${siteId}`).run()
-    return c.json({ success: true, message: '동기화 요청이 등록되었습니다. 워커가 곧 실행합니다.' })
+      `INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
+       ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value`
+    ).bind(`caps_sync_requested_${siteId}`, payload).run()
+
+    return c.json({
+      success: true,
+      message: fromDate
+        ? `${fromDate} ~ ${toDate} 기간 동기화 요청이 등록되었습니다. 워커가 곧 실행합니다.`
+        : '동기화 요청이 등록되었습니다. 워커가 곧 실행합니다.',
+      from_date: fromDate,
+      to_date: toDate,
+    })
   } catch (err) {
     console.error('CAPS sync trigger error:', err)
     return c.json({ success: false, error: '서버 오류' }, 500)

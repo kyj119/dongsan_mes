@@ -96,6 +96,7 @@ async function pushRecords(records, fromDate, toDate, triggerType) {
     from_date: fromDate,
     to_date: toDate,
     trigger_type: triggerType,
+    worker_version: config.workerVersion,
     records: mapped,
   };
 
@@ -130,4 +131,23 @@ async function pushRecords(records, fromDate, toDate, triggerType) {
   }
 }
 
-module.exports = { pushRecords };
+/**
+ * MES에서 동기화 상태 조회 (자동 갭 복구용)
+ * @returns {Object|null} { last_ok_to_date: 'YYYYMMDD'|null, max_backfill_days } — 실패 시 null
+ */
+async function getSyncState() {
+  try {
+    var res = await client.get('/api/caps/sync/state', {
+      params: { site_id: config.siteId },
+      timeout: 10000,
+    });
+    return res.data && res.data.success ? res.data : null;
+  } catch (err) {
+    // 구버전 MES(엔드포인트 없음=404)이거나 네트워크 오류 — 자동 갭 복구만 건너뛰고 기본 lookback으로 진행
+    var status = (err.response && err.response.status) || 'N/A';
+    logger.debug('동기화 상태 조회 실패 [' + status + '] — 기본 lookback 사용');
+    return null;
+  }
+}
+
+module.exports = { pushRecords, getSyncState };

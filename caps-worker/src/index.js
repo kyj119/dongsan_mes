@@ -8,27 +8,32 @@ const logger = require('./logger');
 const db = require('./dbAdapter');
 const mes = require('./mesClient');
 
-// ---------- 날짜 유틸 ----------
+// ---------- 조회 기간 결정 ----------
+// 날짜 계산·자동 갭 복구 로직은 range.js(외부 의존성 0)에 있다 → `npm run test-range`로 단독 검증 가능.
 
-/** 오늘 기준 N일 전 날짜를 YYYYMMDD로 반환 */
-function daysAgo(n) {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10).replace(/-/g, '');
-}
+const { normYmd, resolveRange } = require('./range');
 
-/** 오늘 날짜 YYYYMMDD */
-function today() {
-  return new Date().toISOString().slice(0, 10).replace(/-/g, '');
+/** resolveRange에 넘길 실행 옵션 */
+function rangeOpts() {
+  return {
+    lookbackDays: config.lookbackDays,
+    maxBackfillDays: config.maxBackfillDays,
+    autoGapRecovery: config.autoGapRecovery,
+    getState: mes.getSyncState,
+    logger: logger,
+  };
 }
 
 // ---------- 동기화 실행 ----------
 
-async function runSync(triggerType = 'SCHEDULED') {
-  const fromDate = daysAgo(config.lookbackDays);
-  const toDate = today();
+async function runSync(triggerType, explicitFrom, explicitTo) {
+  triggerType = triggerType || 'SCHEDULED';
 
-  logger.info(`=== 동기화 시작 [${triggerType}] ${fromDate} ~ ${toDate} ===`);
+  const range = await resolveRange(rangeOpts(), explicitFrom, explicitTo);
+  const fromDate = range.fromDate;
+  const toDate = range.toDate;
+
+  logger.info(`=== 동기화 시작 [${triggerType}] ${fromDate} ~ ${toDate} (${range.reason}) ===`);
 
   try {
     // 1. CAPS DB 조회
@@ -51,6 +56,24 @@ async function runSync(triggerType = 'SCHEDULED') {
 // ---------- HTTP 트리거 서버 ----------
 
 const http = require('http');
+
+/** 요청 본문을 JSON으로 파싱 (없거나 깨졌으면 빈 객체) */
+function readJsonBody(req) {
+  return new Promise(function (resolve) {
+    var chunks = [];
+    var size = 0;
+    req.on('data', function (c) {
+      size += c.length;
+      if (size > 64 * 1024) { req.destroy(); return resolve({}); } // 과대 본문 차단
+      chunks.push(c);
+    });
+    req.on('end', function () {
+      try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')); }
+      catch (_) { resolve({}); }
+    });
+    req.on('error', function () { resolve({}); });
+  });
+}
 
 function startTriggerServer() {
   const port = parseInt(process.env.TRIGGER_PORT || '9100', 10);
@@ -75,8 +98,12 @@ function startTriggerServer() {
     }
 
     try {
-      logger.info('HTTP 수동 트리거 수신');
-      await runSync('MANUAL');
+      // body: { from_date?: 'YYYYMMDD', to_date?: 'YYYYMMDD' } — 없으면 기본 lookback + 자동 갭 복구
+      const body = await readJsonBody(req);
+      const bFrom = normYmd(body.from_date);
+      const bTo = normYmd(body.to_date);
+      logger.info('HTTP 수동 트리거 수신' + (bFrom && bTo ? ' (기간 ' + bFrom + '~' + bTo + ')' : ''));
+      await runSync('MANUAL', bFrom, bTo);
       res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
       res.end(JSON.stringify({ success: true, message: 'Sync completed' }));
     } catch (err) {
@@ -105,13 +132,14 @@ function startTriggerServer() {
 
 async function main() {
   logger.info('==================================');
-  logger.info('CAPS Worker 시작');
+  logger.info(`CAPS Worker 시작 (v${config.workerVersion})`);
   logger.info(`MES: ${config.mesUrl}`);
   logger.info(`DB: ${config.capsDbPath}`);
   logger.info(`PW: ${config.capsDbPassword ? '****' : '(없음)'}`);
   logger.info(`주기: ${config.syncCron}`);
   logger.info(`Site ID: ${config.siteId}`);
-  logger.info(`Lookback: ${config.lookbackDays}일`);
+  logger.info(`Lookback: ${config.lookbackDays}일 (상한 ${config.maxBackfillDays}일)`);
+  logger.info(`자동 갭 복구: ${config.autoGapRecovery ? 'ON' : 'OFF'}`);
   logger.info('==================================');
 
   // 시작 시 1회 즉시 실행
@@ -153,8 +181,11 @@ function startPendingPoller() {
         timeout: 10000,
       });
       if (res.data && res.data.pending) {
-        logger.info('수동 동기화 요청 감지 (requested_at: ' + res.data.requested_at + ')');
-        await runSync('MANUAL');
+        var pFrom = normYmd(res.data.from_date);
+        var pTo = normYmd(res.data.to_date);
+        logger.info('수동 동기화 요청 감지 (requested_at: ' + res.data.requested_at + ')' +
+          (pFrom && pTo ? ' 기간 ' + pFrom + '~' + pTo : ''));
+        await runSync('MANUAL', pFrom, pTo);
       }
     } catch (err) {
       // 네트워크 오류 시 무시 (다음 폴링에서 재시도)
