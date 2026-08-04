@@ -38,7 +38,8 @@ fixedAssets.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
   const body = await c.req.json()
   const userId = c.get('user')?.id
   const { asset_code, name, category, equipment_id, acquisition_date, acquisition_cost,
-    useful_life_months, depreciation_method, salvage_value, location, serial_number, notes, loan_id } = body
+    useful_life_months, depreciation_method, salvage_value, location, serial_number, notes, loan_id,
+    depreciation_rate, current_book_value } = body
 
   if (!asset_code || !name || !category || !acquisition_date || !acquisition_cost || !useful_life_months) {
     return c.json({ success: false, error: 'asset_code, name, category, acquisition_date, acquisition_cost, useful_life_months 필수' }, 400)
@@ -46,13 +47,16 @@ fixedAssets.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
   const result = await c.env.DB.prepare(`
     INSERT INTO fixed_assets (asset_code, name, category, equipment_id, acquisition_date, acquisition_cost,
-      useful_life_months, depreciation_method, salvage_value, current_book_value, location, serial_number, notes, loan_id, entity_id, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      useful_life_months, depreciation_method, salvage_value, current_book_value, location, serial_number, notes, loan_id, depreciation_rate, entity_id, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     asset_code, name, category, equipment_id || null, acquisition_date, acquisition_cost,
     useful_life_months, depreciation_method || 'STRAIGHT_LINE', salvage_value || 0,
-    acquisition_cost, location || null, serial_number || null, notes || null,
-    loan_id ? Number(loan_id) : null, getEntityId(c), userId
+    // 기존 자산을 이관할 땐 전기말 상각누계를 반영한 장부가로 시작한다. 미지정이면 신규 취득 = 취득가
+    current_book_value != null ? Number(current_book_value) : acquisition_cost,
+    location || null, serial_number || null, notes || null,
+    loan_id ? Number(loan_id) : null, depreciation_rate != null ? Number(depreciation_rate) : null,
+    getEntityId(c), userId
   ).run()
 
   return c.json({ success: true, data: { id: result.meta.last_row_id } })
@@ -140,6 +144,21 @@ fixedAssets.post('/depreciate', requireRole('ADMIN'), async (c) => {
   `).bind(eid, eid).all<{ asset_id: number; accumulated_depreciation: number; book_value: number }>()
   const latestMap = new Map(latestRecords.map(r => [r.asset_id, r]))
 
+  // 정률법 기준액 = **연초 미상각잔액**. 세법은 사업연도 단위로
+  //   상각액 = 연초 미상각잔액 × 상각률 × (보유월수/12) 를 계산하므로,
+  //   같은 해 안에서는 월 상각액이 일정하다. 매월 장부가에 곱하면(월복리) 세무장부와 어긋난다.
+  const yearStart = `${period.slice(0, 4)}-01`
+  const { results: prevYearEnd } = await c.env.DB.prepare(`
+    SELECT dr.asset_id, dr.accumulated_depreciation
+    FROM depreciation_records dr
+    INNER JOIN (
+      SELECT asset_id, MAX(period) as max_period FROM depreciation_records
+      WHERE entity_id = ? AND period < ? GROUP BY asset_id
+    ) prev ON dr.asset_id = prev.asset_id AND dr.period = prev.max_period
+    WHERE dr.entity_id = ?
+  `).bind(eid, yearStart, eid).all<{ asset_id: number; accumulated_depreciation: number }>()
+  const prevYearMap = new Map(prevYearEnd.map(r => [r.asset_id, r.accumulated_depreciation]))
+
   const stmts: any[] = []
 
   for (const asset of assets) {
@@ -161,9 +180,17 @@ fixedAssets.post('/depreciate', requireRole('ADMIN'), async (c) => {
     // 월별 감가상각액 계산
     let monthlyDepreciation: number
     if (asset.depreciation_method === 'DECLINING_BALANCE') {
-      // 정률법: 장부가 * (2 / 내용연수)
-      const rate = 2 / asset.useful_life_months
-      monthlyDepreciation = Math.round(bookValue * rate)
+      // 세법 정률법: 연초 미상각잔액 × 연 상각률 ÷ 12 (같은 해 안에서는 정액)
+      //   depreciation_rate 는 세무장부 rt_depre(연율, 5년 0.451 · 10년 0.259).
+      //   미설정 자산은 종전 이중체감(2/내용연수)으로 폴백 — 세법과 다르니 rate 를 채우는 게 정답이다.
+      const rate = asset.depreciation_rate
+      if (rate && rate > 0) {
+        const openingAcc = prevYearMap.get(asset.id) || 0
+        const openingBase = asset.acquisition_cost - openingAcc
+        monthlyDepreciation = Math.round(openingBase * rate / 12)
+      } else {
+        monthlyDepreciation = Math.round(bookValue * (2 / asset.useful_life_months))
+      }
     } else {
       // 정액법: (취득가 - 잔존) / 내용연수
       monthlyDepreciation = Math.round((asset.acquisition_cost - (asset.salvage_value || 0)) / asset.useful_life_months)
