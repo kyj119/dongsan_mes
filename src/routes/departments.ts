@@ -254,10 +254,14 @@ departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
     // #554: is_active(현재상태)로 필터하면 조회기간 당시엔 유효했으나 지금 비활성인 고정비가 과거조회에서 누락됨.
     //   기간중첩(start<=to AND (end IS NULL OR end>=from))이 시간적 유효성의 정본. (비활성화는 이제 end_date를 마감 →
     //   현재/미래 기간엔 자동 제외되고, 과거 기간엔 정상 포함. 0470 마이그가 기존 비활성행 end_date backfill.)
+    // 법인 스코프 — #521 이 인건비·인원수엔 걸었는데 고정비만 빠져 있었다.
+    //   필터 없이는 선명(월 12,681,300)이 동산기획(월 3,471,250) 부문 손익의 공통비 풀에
+    //   통째로 얹혀 배부된다(반대 방향도 마찬가지). 2026-08-04 실측·수정.
+    const efFix = entityFilter(c)
     const fixedRow = await c.env.DB.prepare(
       `SELECT COALESCE(SUM(amount),0) AS total FROM fixed_expenses
-       WHERE frequency='MONTHLY' AND start_date <= ? AND (end_date IS NULL OR end_date >= ?)`
-    ).bind(to, from).first<{ total: number }>().catch(() => ({ total: 0 }))
+       WHERE frequency='MONTHLY' AND start_date <= ? AND (end_date IS NULL OR end_date >= ?)${efFix.clause}`
+    ).bind(to, from, ...efFix.params).first<{ total: number }>().catch(() => ({ total: 0 }))
     const fixedCommon = num(fixedRow?.total) * months
 
     const basis = ['revenue', 'headcount', 'labor'].includes(c.req.query('basis') || '') ? (c.req.query('basis') as string) : 'revenue'
