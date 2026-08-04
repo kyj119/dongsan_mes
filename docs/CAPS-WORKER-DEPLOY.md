@@ -34,71 +34,81 @@ prod 동기화 이력 기준 **2026-08-03 19:00 KST부터 정상 재개**됐고,
 
 ---
 
-## 1. 사전 확인 (개발 PC에서)
+## 1. 배포 경로 = Z: 공유 (호스트명 불필요)
 
-```powershell
-# 선명 워커가 아직 구버전인지 확인 — "미보고"면 구버전
-# MES → /settings → CAPS 탭 → 선명 선택 → 동기화 이력 행 클릭 → "워커 버전"
+### 관리공유(`\\호스트\c$`) 직접 복사는 안 된다 — 실측 확인
 ```
+Test-Path \\192.168.0.107\c$   →  False
+net view  \\192.168.0.107      →  System error 53 (네트워크 경로를 찾을 수 없음)
+```
+동산 CAPS PC조차 SMB가 막혀 있다. **`package.json`의 `npm run deploy`(xcopy `\\DESKTOP-9R7B2DD\c$\...`)는 현재 동작하지 않는다.**
+→ IA 스크립트와 동일하게 **Z: 공유를 경유**한다. 호스트명·IP를 몰라도 된다.
 
-필요한 정보 **1가지**: 선명 PC의 호스트명 또는 IP.
-MES `caps_sites.worker_endpoint`가 선명은 비어 있어 시스템이 모른다(동산은 `192.168.0.107`).
-→ 경리 담당자에게 확인하거나, 선명 PC에서 `hostname` / `ipconfig` 실행.
+> 참고: 호스트명이 필요하면 `nbtstat -A <IP>` (검증됨: `192.168.0.107` → `DESKTOP-9R7B2DD`).
+> 다만 이 절차에는 필요 없다.
+
+### 1-1. Z: 에 배포본 올리기 (개발 PC에서 1회)
+```powershell
+$dst = 'Z:\<배포폴더>\caps-worker-deploy'      # 예: Z:\DESIGNS\IA-등록\_scripts\caps-worker-deploy
+New-Item -ItemType Directory $dst -Force | Out-Null
+Copy-Item C:\Users\user\dongsan_mes\caps-worker\src              $dst -Recurse -Force
+Copy-Item C:\Users\user\dongsan_mes\scripts\install-caps-worker.ps1 $dst -Force
+```
+결과 구조 — 설치 스크립트가 `src`를 **자기 옆에서 자동으로 찾는다**:
+```
+caps-worker-deploy\
+  ├ src\                       (index.js·range.js·test-range.js …)
+  └ install-caps-worker.ps1
+```
 
 ---
 
-## 2. 워커 파일 교체 (선명 PC)
+## 2. 워커 갱신 (선명 PC에서 1줄)
 
-### 2-1. 워커 중지
+선명 PC에서 PowerShell을 열고:
 ```powershell
-schtasks /End /TN "CapsWorker"
-# 자식 node 프로세스가 남을 수 있으므로 확인 후 정리
-Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
-  Where-Object { $_.CommandLine -like '*caps-worker*' } |
-  ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+Z:\<배포폴더>\caps-worker-deploy\install-caps-worker.ps1
 ```
+관리자 권한 불요. 스크립트가 전부 처리한다:
 
-### 2-2. 백업 (필수)
-```powershell
-$stamp = Get-Date -Format 'yyyyMMdd-HHmm'
-Copy-Item C:\caps-worker\src "C:\caps-worker\src.bak-$stamp" -Recurse
-```
+| 단계 | 내용 |
+|---|---|
+| 1/5 | 예약작업 `CapsWorker` 정지 + 남은 `node.exe` 정리 |
+| 2/5 | 기존 `src` → `src.bak-<날짜시각>` 백업 |
+| 3/5 | 새 `src` **통째 교체** (병합 아님 — 구버전 잔존 파일 제거) |
+| 4/5 | 자체검사 `test-range` 30건 → **실패하면 자동 롤백 후 중단** |
+| 5/5 | 재시작 + 기동 로그 출력 |
 
-### 2-3. 파일 복사
-개발 PC에서 (`<선명PC>`를 실제 호스트명/IP로):
-```powershell
-xcopy C:\Users\user\dongsan_mes\caps-worker\src \\<선명PC>\c$\caps-worker\src /E /Y /I
-```
-> `package.json`의 `npm run deploy`는 **동산 PC(`DESKTOP-9R7B2DD`) 전용 하드코딩**이라 선명에는 쓰면 안 된다.
-
-**`.env`는 복사 대상이 아니다** — `src`만 덮으므로 사이트별 설정(`SITE_ID=SM`·API 키·`LOOKBACK_DAYS=3`)은 그대로 유지된다.
+`.env`·`logs`·`node_modules`는 건드리지 않는다 → `SITE_ID=SM`·API 키·`LOOKBACK_DAYS=3` 그대로 유지.
 새 설정 키(`MAX_BACKFILL_DAYS`·`AUTO_GAP_RECOVERY`)는 `config.js`에 기본값이 있어 **`.env` 수정 불필요**.
+새 의존성이 없으므로 **`npm install` 불필요**.
 
-**`npm install` 불필요** — 새 의존성이 없다(`range.js`·`test-range.js` 모두 외부 의존성 0).
+### 정상 출력
+```
+[3/5] 새 src 복사
+  복사 완료 (.env·logs·node_modules 미변경)
+[4/5] 자체검사 (test-range)
+  전체 통과 (30건)
+[5/5] 워커 재시작
+[OK] CAPS Worker 시작 (v1.1.0)
+```
 
-### 2-4. 교체 검증 (재시작 전)
+### 워커 폴더가 `C:\caps-worker`가 아니면
 ```powershell
-cd C:\caps-worker
-npm run test-range      # ODBC·MES 없이 로직만 검사
+Z:\<배포폴더>\caps-worker-deploy\install-caps-worker.ps1 -WorkerDir D:\caps-worker
 ```
-**`전체 통과 (30건)`** 이 나와야 한다. 하나라도 실패하면 재시작하지 말고 5단계(롤백)로.
+(자동 탐색: `C:\caps-worker` → `D:\caps-worker` → `%USERPROFILE%\caps-worker`)
 
-### 2-5. 재시작
+### 재시작 없이 교체만
 ```powershell
-schtasks /Run /TN "CapsWorker"
+... \install-caps-worker.ps1 -NoRestart
 ```
 
-### 2-6. 기동 확인
-```powershell
-Get-Content "C:\caps-worker\logs\caps-worker-$(Get-Date -Format 'yyyyMMdd').log" -Tail 20
-```
-다음 3줄이 보여야 한다:
-```
-CAPS Worker 시작 (v1.1.0)
-Lookback: 3일 (상한 60일)
-자동 갭 복구: ON
-```
-> ⚠️ 로그 시각은 **UTC**다(KST−9h). 09:00 KST 동기화는 로그에 `00:00`으로 찍힌다.
+> ⚠️ 워커 로그(`logs\caps-worker-YYYYMMDD.log`) 시각은 **UTC**다(KST−9h).
+> 09:00 KST 동기화는 로그에 `00:00`으로 찍힌다.
+
+> ⚠️ 예약작업이 등록돼 있지 않다면 스크립트가 알려준다 →
+> `cd C:\caps-worker ; npm run install-service` (로그온 시 자동 시작으로 등록)
 
 ---
 
@@ -137,6 +147,7 @@ Lookback: 3일 (상한 60일)
 
 ## 5. 롤백 (필요 시)
 
+자체검사 실패는 스크립트가 **자동 롤백**하므로 손댈 일이 없다. 수동 롤백이 필요하면:
 ```powershell
 schtasks /End /TN "CapsWorker"
 Remove-Item C:\caps-worker\src -Recurse -Force
@@ -150,6 +161,20 @@ schtasks /Run /TN "CapsWorker"
 ## 6. 동산(DJ) PC는?
 
 동산은 공백이 없어 급하지 않다. 다만 같은 갱신을 해두면 **다음에 어느 PC가 며칠 꺼져도 자동 복구**된다.
-동산은 `npm run deploy`(하드코딩 경로)가 그대로 쓸 수 있고, 나머지 절차는 동일하다.
+절차는 완전히 동일하다(같은 Z: 경로에서 `install-caps-worker.ps1` 실행).
+`npm run deploy`는 SMB가 막혀 있어 쓰지 말 것.
+
+---
+
+## 부록: 설치 스크립트를 고칠 때 걸린 함정 2가지
+
+실제 테스트로 잡은 것들이라 다시 밟지 않도록 남긴다.
+
+1. **PS 5.1은 BOM 없는 `.ps1`을 CP949로 읽는다.** 한글이 든 스크립트를 UTF-8(BOM 없음)으로 저장하면
+   따옴표가 깨져 파싱이 통째로 실패한다. → `.ps1`은 **반드시 UTF-8 BOM**으로 저장
+   (`scripts/install-a0-panel.ps1`도 BOM 있음).
+2. **`$ErrorActionPreference='Stop'` + 네이티브 exe `2>&1`** → stderr 각 줄이 ErrorRecord로 바뀌며
+   그 자리에서 예외가 터진다. 자체검사가 실패했을 때 **롤백 코드가 통째로 건너뛰어졌다.**
+   → 검사 구간에서만 `Continue`로 낮추고 `$LASTEXITCODE`로 판정.
 
 관련 메모리: `design-caps-sync-gap-recovery`
