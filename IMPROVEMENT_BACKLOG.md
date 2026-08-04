@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-08-04T15:21:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-08-04T21:25:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **8** (#585·#586·#587·#589·#590·#591·#592·#593, GitHub OPEN 실측 — Area5 50회차, 변동 없음) |
+| 🆕 new | **8** (#585·#586·#587·#589·#590·#591·#592·#593, GitHub OPEN 실측 — Area6 55회차, 변동 없음) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **511** (`reason:completed` 절대값 — Area5 50회차 재조회, 변동 없음) |
+| ✔️ done | **511** (`reason:completed` 절대값 — Area6 55회차 재조회, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+
+> **Area 6 자기 진화 (2026-08-04T21:25):**
+> - **방법**: `git fetch origin main`(force-updated, HEAD `283ae76` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 6 **55회차** — 직전 Area6(`b9e7fa9`, 08-03T09:16, 54회차) 이후 `git log b9e7fa9..HEAD`는 **37커밋**(직전 4사이클과 달리 이번엔 웹 churn 0이 아님) → `git log b9e7fa9..HEAD -- src/routes src/scripts src/pages migrations index.tsx src/layout`로 좁히면 **2커밋만 웹 SPA 범위**(`ee0faa7` 회계 고정자산 탭 신설, `19e8a34` CAPS 갭복구+기간지정 동기화) — 나머지 35커밋은 IA cut-panel CEP 벡터(`IllustratorAutomat/designer/**`)·SmartA(WEHAGO) 매입원장 수동대사(`docs/dongsan-import/**`, 프로덕션 DB에 스크립트로 직접 반영되는 별도 축)·auto-improve 사이클 로그로 웹 SPA/DB 스키마 밖.
+> - **컬럼-diff bridge + XSS bridge(2커밋 직접 검토)**:
+>   - `ee0faa7`(회계 고정자산): `routes/fixedAssets.ts`(#77 이래 존재, 프론트 연결 0이라 지금까지 **orphan-dead-code로 미감사**)가 이번에 처음 `/accounting`에 탭으로 연결되어 **도달성이 0→라이브로 전환** — 이 프로젝트 자신의 FP 규칙("도달성 0 = dead code, 보고 금지")이 뒤집히는 시점이라 그 라우터를 신규 라우터처럼 재감사: 목록/상세/처분/감가상각/요약 5핸들러 전부 `entityFilter` 적용 + 처분(PATCH)은 소유검증 선행 조회(404 게이트) — 코드 주석에 "2026-07-29 구조감사"로 **이미 선제적으로 격리 완료**된 상태였음(이번 커밋 대상 아님, `src/routes/fixedAssets.ts` 자체는 diff에 없음). 신규 프론트(`accounting.js` faLoad/faSave/faDispose)는 free-text(asset_code/name/equipment_name/acquisition_date) 전부 `escapeHtml` 적용, 숫자/enum 필드는 무해 → XSS·IDOR 둘 다 clean.
+>   - `19e8a34`(CAPS 갭복구): 커밋 설명 자체가 "D1 바인드 ~100 한도 초과(장기 백필 시 직원청크만 하고 날짜는 전량 바인드)"를 **prod 사전예방으로 40×40 청킹 수정**했다고 명시 — 이 SKILL이 여러 차례 codify한 #458/#478류 IN절 미청크 클래스와 정확히 같은 패턴을 owner가 선제 발견·수정(auto-improve가 발견하기 전에 owner 세션이 이미 처리). `capsSettings.js`의 신규 렌더(`r.notes` 워커버전)도 `escapeHtml` 적용. 커밋 자체가 typecheck+build+smoke 104/104+entity audit 0+sort audit P1 0 로컬검증 명시 → 재검증 불요, clean.
+>   - 신규 마이그레이션 0건(`git log b9e7fa9..HEAD -- migrations` = 0) → 마이그 번호 중복 재확인 스킵(대상 없음, 기존 5쌍만 유지).
+> - **브랜치 위생**(읽기전용): `npm run branch:clean` → SAFE-absorbed 1건, REVIEW 0건, 삭제대상 1건(임계 30 미달) — 백로그 등록 불요.
+> - **open≠unfixed 재확인**: 8개 OPEN 이슈의 대상 파일(`orderForm/parent.js`·`messagesAd.js`·`orders/core.ts`·`migrations/0508~0512`)이 이번 웹 churn 2커밋(accounting.ts/js, caps.ts, capsSettings.js, settings.ts) 어디와도 안 겹침 → fixed-in-tree 전환 0건, 직전 Area3(50회차)·Area4(51회차) verified-once 캐시 그대로 신뢰.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **8**(변동없음) · `reason:completed` **511**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음). 완전 일치, 드리프트 0.
+> - **🧬 SKILL 강화 없음** — 이번 사이클의 두 웹 커밋(고정자산 탭 신설·CAPS 갭복구)이 각각 "orphan-dead-code 도달성 전환"과 "D1 바인드 한도 선제방어"라는 **이미 SKILL에 codify된 두 클래스의 실전 사례**였고 둘 다 owner/개발 세션이 이미 정석대로 처리(사전 격리·사전 청킹)해 net-new 발견 0 — 기존 규칙이 정확히 작동함을 재확인한 것으로 충분, 신규 패턴 추가 불요.
+> - 신규 이슈 0건, 자동수정 0건(검토한 2커밋 모두 사전 clean), done-sync: new 8(변동없음)·done 511(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 (2026-08-04T15:21):**
 > - **방법**: `git fetch origin main`(HEAD `813531d` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 5 **50회차** — 직전 Area5(`92e97e6`, 08-03T03:11, 49회차) 이후 `git log 92e97e6..HEAD -- src/routes src/scripts migrations index.tsx src/layout src/pages`는 **0건**(17커밋 전량 IA cut-panel CEP 벡터 컷라인 플러그인 작업[`IllustratorAutomat/designer/**`+`scripts/cut-panel-smoke.mjs`+`scripts/install-cut-panel.bat`, CLAUDE.md 명시 IA 축2·독립 배포경로, 웹 SPA/DB 밖] + auto-improve 사이클 로그 4건뿐) — 보안(IDOR·XSS·인증·인젝션) 렌즈로 볼 신선 코드 경로가 **6사이클 연속** 전무.
