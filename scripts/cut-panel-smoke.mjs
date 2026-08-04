@@ -771,7 +771,8 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   //   링에 구멍이 나고(도련 없는 부분), 동시에 윤곽에서 먼 도형은 살아남아 내부 선이 링을 방해한다.
   //   하나의 잘못된 척도가 정반대 두 증상을 동시에 만들었다(2026-08-04 실사용).
   ok('3m 윤곽 거리로 걸러낸다', /function mesCut_pruneFarFrom\(/.test(hostSrc))
-  ok('3m 오프셋 전에 걸러낸다', /mesCut_pruneFarFrom\(dups\[i\], pts, growPt\)/.test(hostSrc))
+  ok('3m 오프셋 전에 걸러낸다', /mesCut_pruneFarFrom\(dups\[i\], pts, touchPt\)/.test(hostSrc))
+  ok('3m 접촉 기준 상수', /var MESCUT_BLEED_TOUCH_MM = /.test(hostSrc))
   ok('3m 기준은 여백+도련', /var growPt = \(offsetMm \+ bleedMm\) \* MESCUT_PT_PER_MM;/.test(hostSrc))
   ok('3m 판정용 실루엣을 따로 뜬다', /mesCut_vecBleedBoundary\(doc, items, layer, 0, fillClosed\)/.test(hostSrc))
   ok('3m 가까우면 남긴다(구멍 방지)', /if \(dx \* dx \+ dy \* dy <= lim2\) return 0;/.test(hostSrc))

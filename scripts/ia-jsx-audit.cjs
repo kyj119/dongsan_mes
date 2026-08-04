@@ -74,7 +74,7 @@ const PANEL_FILES = [
 //   재단 패널의 geometry.js 는 **칼선 기하 정본**이자 Node 하네스(cut:bench)의 검증 대상이다.
 //   여기 없으면 이 파일만 조용히 낡아 "하네스는 통과하는데 패널은 옛 코드"가 된다.
 //   A0 패널도 geometry.js 를 쓴다(묶음분리·자동감지의 잉크 실루엣, 2026-07-31) — **재단 패널의 사본**이다.
-const PANEL_EXTRA = { a0: ['js/geometry.js', 'js/nesting.js', 'js/cut-main.js', 'js/tabs.js'] }
+const PANEL_EXTRA = { a0: ['js/geometry.js', 'js/nesting.js', 'js/bleed.js', 'js/cut-main.js', 'js/tabs.js'] }
 // geometry.js 정본 = 재단 패널 것. Node 하네스(cut:bench·cut:nest)가 **그 파일을** 로드해 검증하므로
 // "검증한 코드 = 배포된 코드"가 성립한다. A0 사본이 갈라지면 그 등식이 조용히 깨진다(A0 쪽은
 // 검증된 적 없는 코드가 도는데 하네스는 계속 통과한다) → 바이트 동일을 강제한다.

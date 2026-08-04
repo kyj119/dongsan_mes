@@ -33,6 +33,7 @@
     "panel:smoke": "node scripts/panel-smoke.mjs",
     "cut:smoke": "node scripts/cut-panel-smoke.mjs",
     "cut:bench": "node scripts/cut/bench.mjs",
+    "cut:bleed": "node scripts/cut/bleed-bench.mjs",
     "cut:nest": "node scripts/cut/nest-bench.mjs",
     "cut:benchmark": "node scripts/cut/nest-benchmark.mjs",
     "cut:probe": "node scripts/cut/probe-cut-file.mjs",
