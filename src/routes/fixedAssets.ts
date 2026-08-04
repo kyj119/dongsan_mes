@@ -105,9 +105,15 @@ fixedAssets.post('/depreciate', requireRole('ADMIN'), async (c) => {
   for (const asset of assets) {
     if (alreadyProcessed.has(asset.id)) continue
 
+    // 취득월 이전 기간은 상각하지 않는다. 이 가드가 없으면 4월 취득 자산에 1월분을
+    //   태울 수 있어(소급 실행 시 실제 발생) 장부가가 취득가보다 과소계상된다.
+    //   세법도 월할상각(취득한 달 포함) 기준. (2026-08-04)
+    if (String(asset.acquisition_date).slice(0, 7) > period) continue
+
     const lastRecord = latestMap.get(asset.id)
-    const accumulated = lastRecord?.accumulated_depreciation || 0
-    const bookValue = lastRecord?.book_value || asset.current_book_value || asset.acquisition_cost
+    const accumulated = lastRecord?.accumulated_depreciation ?? 0
+    // ?? 필수 — `||` 면 상각완료(장부가 0) 자산이 취득가로 되살아나 무한 상각된다.
+    const bookValue = lastRecord?.book_value ?? asset.current_book_value ?? asset.acquisition_cost
 
     // 잔존가치 도달 시 스킵
     if (bookValue <= (asset.salvage_value || 0)) continue
