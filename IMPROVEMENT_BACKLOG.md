@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-08-04T03:13:55+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-08-04T09:15:08+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,20 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **8** (#585·#586·#587·#589·#590·#591·#592·#593, GitHub OPEN 실측 — Area4 50회차, #592·#593 신규) |
+| 🆕 new | **8** (#585·#586·#587·#589·#590·#591·#592·#593, GitHub OPEN 실측 — Area4 51회차, 변동 없음) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **511** (`reason:completed` 절대값 — Area3 49회차 재조회, 변동 없음) |
+| ✔️ done | **511** (`reason:completed` 절대값 — Area4 51회차 재조회, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+
+> **Area 4 데이터 정합성 (2026-08-04T09:15):**
+> - **방법**: `git fetch origin main`(force-updated, HEAD `ec87745` = origin/main 일치) → `git checkout ec87745`(detached) → `npm ci`(node_modules 0→81). Area 4 **51회차** — 직전 Area4(`8da0c64`, 08-02T21:24, 50회차) 이후 `git log 8da0c64..HEAD -- src/routes migrations src/scripts`는 **0건**(21커밋 전량 IA cut-panel CEP 벡터 컷라인 플러그인 작업[`IllustratorAutomat/designer/**`+`docs/CUT_PANEL_USAGE.md`, CLAUDE.md 명시 IA 축2·독립 배포경로, 웹 SPA/DB 밖] + auto-improve 사이클 로그 4건뿐) — 데이터 정합성 렌즈로 diff할 신선 라우트/마이그/스크립트 churn이 **5사이클 연속** 전무.
+> - **표준 게이트**: `npx tsc --noEmit` clean. `ls migrations | sed -E 's|.*/?([0-9]{4})_.*|\1|' | sort | uniq -d` → 기존 5쌍(0327·0412·0416·0420·0453)만 재확인, net-new 0.
+> - **open≠unfixed 재확인**: `search_issues(is:open,label:auto-improve)` 실측 **8건**(#585·#586·#587·#589·#590·#591·#592·#593, 변동없음) — 이번 윈도(21커밋) 전부 `src/routes`/`migrations`/`src/scripts` 밖이라 Area4 관련 이슈(#589 consolidate_with_order_id·#592 간판BOM item_code 오참조·#593 order_item 7282 재분류 충돌)의 대상 파일(`orders/core.ts`·`migrations/0508~0512`) 자체가 이번 churn에 없음 → 직전 Area4 50회차가 직접 발견·재grep 완료한 verified-once 캐시 그대로 신뢰(line 296 원칙), 재검증 스킵. fixed-in-tree 0건.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **8**(변동없음) · `reason:completed` **511**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음). 완전 일치, 드리프트 0.
+> - **🧬 SKILL 강화 없음** — 순수 확인 사이클(데이터/코드 churn 0, 마이그 번호중복 재확인 net-new 0), 신규 코드화 패턴 없음.
+> - 신규 이슈 0건, 자동수정 0건(검토 대상 라우트/마이그 churn 자체가 없음), done-sync: new 8(변동없음)·done 511(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **2026-07-29 백로그 소진 세션** (main `9686bf69`, deploy success): 11건을 심각도순으로 전건 처리.
 > 사전에 **11건 전부 코드 대조**해 오탐 0건·실존 10건 + fixed-in-tree 1건(#580)임을 확인하고 착수했다
