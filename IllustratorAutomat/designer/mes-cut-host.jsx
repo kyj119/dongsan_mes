@@ -56,9 +56,19 @@
 //   0.9.8 = 프루닝 척도를 bbox → **실루엣 윤곽까지의 실제 거리**로. bbox 기준은 오목부에서
 //           가장자리 도형까지 지워 링에 구멍을 냈고(도련 없는 부분), 동시에 bbox 근처지만
 //           윤곽에서 먼 도형은 살려 내부 선 침입을 못 막았다 — 한 원인, 두 증상
+//   0.9.9 = 판정을 '링에 닿을 수 있나' → '**윤곽을 만드나**'로. grow(=여백+도련) 안이면
+//           남기는 규칙은 가장자리 근처 내부 선까지 전부 살려 도련이 지저분했다.
+//           허용 거리 1mm + 윤곽 촘촘 샘플링(긴 변 한가운데가 비어 구멍 나는 것 방지)
+//  0.10.0 = ★도형별 오프셋을 기본에서 내림. 도형들이 서로 안 겹치면 각자가 제 윤곽을 가져
+//           어떤 거리 기준으로도 '윤곽 도형 vs 내부 선'이 안 갈린다(링에 30/35/14개 잔존).
+//           기본 = 사본을 통째로 경계까지 늘려 클리핑 → 개별 오프셋 자국이 원천적으로 없다.
+//           옛 동작은 방식=region 으로 명시해야 나온다
+//  0.10.1 = 사본 확대 되돌림 — bbox 는 사방 6.00mm 로 맞지만 아트를 1.14x/1.09x **늘려서**
+//           안쪽 그림이 전부 밀린다(실측). 도련은 원본과 겹쳐 보여야 한다.
+//           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.9.8';
+var MESCUT_VERSION = 'CUT-CEP-0.10.1';
 var MESCUT_PT_PER_MM = 72 / 25.4;
 
 // ── 크로스 패널 잠금 (spec §5.2-① · P0 핵심) ────────────────────────
@@ -737,6 +747,10 @@ var MESCUT_VEC_JOIN = 0;
 //   실측 근거는 mesCut_vecBleedRegions 안의 주석(면적 676.0 = 이론 사각과 일치) 참조.
 var MESCUT_BLEED_JOIN = 2;
 var MESCUT_BLEED_MLIM = 2;
+// ★도련 링에 색을 줄 자격 = **윤곽에 닿아 있는 도형**. 이 거리 안이면 윤곽을 만든다고 본다.
+//   너무 크면(예전 = 여백+도련) 가장자리 근처 **내부 선까지** 살아나 저마다 오프셋되어 도련이
+//   지저분해지고, 너무 작으면 윤곽 도형을 놓쳐 링에 구멍이 난다. 윤곽 샘플 간격도 이 값을 쓴다.
+var MESCUT_BLEED_TOUCH_MM = 1.0;
 
 /** 벡터로 실루엣을 낼 수 있는가. '' = 가능, 아니면 사유(패널이 래스터로 폴백하고 **사유를 표시**한다). */
 function mesCut_vecReason(items) {
@@ -1227,6 +1241,39 @@ function mesCut_vecBleedEdge(doc, items, layer, growMm, fillClosed) {
  * @param keepRect [L,T,R,B] pt · y-up
  * @returns 지운 개수
  */
+/**
+ * 윤곽선을 **촘촘한 점열**로 만든다 — 앵커만 쓰면 긴 직선 구간의 한가운데가 비어
+ * 거기 닿아 있는 도형이 "멀다"고 오판된다(윤곽 도형이 지워져 링에 구멍).
+ * 세그먼트를 stepPt 간격으로 쪼갠다. 베지어는 직선 근사로 충분하다(판정용 거리라 오차가 안전 방향).
+ */
+function mesCut_densifyOutline(it, out, stepPt, cap) {
+    var t;
+    try { t = it.typename; } catch (e) { return; }
+    if (t === 'CompoundPathItem') {
+        try { for (var c = 0; c < it.pathItems.length; c++) mesCut_densifyOutline(it.pathItems[c], out, stepPt, cap); } catch (e1) {}
+        return;
+    }
+    if (t === 'GroupItem') {
+        try { for (var g = 0; g < it.pageItems.length; g++) mesCut_densifyOutline(it.pageItems[g], out, stepPt, cap); } catch (e2) {}
+        return;
+    }
+    if (t !== 'PathItem') return;
+    try {
+        var pp = it.pathPoints, n = pp.length;
+        for (var i = 0; i < n && out.length < cap; i++) {
+            var a = pp[i].anchor, b = pp[(i + 1) % n].anchor;
+            out.push(a);
+            var dx = b[0] - a[0], dy = b[1] - a[1];
+            var len = Math.sqrt(dx * dx + dy * dy);
+            var k = Math.floor(len / stepPt);
+            if (k > 200) k = 200;                       // 병적으로 긴 변 방어
+            for (var s = 1; s < k && out.length < cap; s++) {
+                out.push([a[0] + dx * (s / k), a[1] + dy * (s / k)]);
+            }
+        }
+    } catch (e3) {}
+}
+
 /** 도형(트리)의 앵커 좌표를 모은다. stride 로 솎아 개수를 제한한다. */
 function mesCut_collectAnchors(it, out, stride) {
     var t;
@@ -1337,22 +1384,29 @@ function mesCut_vecBleedRegions(doc, items, offsetMm, bleedMm, fillClosed) {
     }
     // ★기준 = **실루엣 윤곽까지의 실제 거리**. bbox 로 재던 옛 방식은 오목부에서 링에 구멍을 냈고
     //   동시에 내부 선 침입도 못 막았다(2026-08-04 실사용). 실루엣을 한 번 더 뜨는 비용(~2초)을 낸다.
+    // ★★기준 = "링에 **닿을 수 있나**"가 아니라 "실제로 **윤곽을 만드나**"다 (2026-08-04 3차 수정).
+    //   `grow` 안이면 남기는 규칙은 가장자리 근처의 **내부 선까지 전부** 살려서, 그것들이 저마다
+    //   오프셋되어 도련이 지저분해졌다. 링에 색을 줄 자격이 있는 것은 **윤곽에 닿아 있는 도형**뿐이다.
+    //   → 허용 거리를 윤곽 접촉 수준(MESCUT_BLEED_TOUCH_MM)으로 좁힌다.
+    //   구멍이 안 나려면 윤곽을 **촘촘히 샘플링**해야 한다(앵커만 쓰면 긴 변 한가운데가 비어
+    //   거기 닿은 도형이 지워진다) → densify.
     var pruned = 0;
     var silRef = mesCut_vecBleedBoundary(doc, items, layer, 0, fillClosed);
     if (silRef) {
         var pts = [];
-        mesCut_collectAnchors(silRef, pts, 1);
-        // 앵커가 너무 많으면 솎는다 — 판정은 "가까우면 남긴다"라 솎아도 남기는 쪽으로만 기운다
-        if (pts.length > 1200) {
-            var st = Math.ceil(pts.length / 1200), thin = [];
-            for (i = 0; i < pts.length; i += st) thin.push(pts[i]);
-            pts = thin;
-        }
+        var stepPt = MESCUT_BLEED_TOUCH_MM * MESCUT_PT_PER_MM;
+        mesCut_densifyOutline(silRef, pts, stepPt, 6000);
+        if (!pts.length) mesCut_collectAnchors(silRef, pts, 1);
         if (pts.length) {
-            for (i = 0; i < dups.length; i++) pruned += mesCut_pruneFarFrom(dups[i], pts, growPt);
+            var touchPt = MESCUT_BLEED_TOUCH_MM * MESCUT_PT_PER_MM;
+            for (i = 0; i < dups.length; i++) pruned += mesCut_pruneFarFrom(dups[i], pts, touchPt);
         }
         try { silRef.remove(); } catch (eSR) {}
     }
+    // 남은 것이 하나도 없으면 도련을 만들 수 없다 — 조용히 빈 링을 두지 않는다
+    var alive = 0;
+    for (i = 0; i < dups.length; i++) { try { if (dups[i].typename) alive++; } catch (eA) {} }
+    if (!alive) return { ok: false, code: 'noedge', err: '윤곽에 닿는 도형이 없습니다' };
     // ★★열린 획을 **먼저 면으로** 바꾼다 — 안 하면 끝이 볼록한 **반원**이 되어 링에 튀어나온다.
     //   가장자리에 닿는 선은 프루닝에서 살아남으므로(닿으니까) 이 처리가 없으면 그 선만 남아
     //   여전히 반원이 보인다(2026-08-04 용준님 지적 · 파란 남자아이에서 실제로 나왔던 증상).
@@ -1511,12 +1565,27 @@ function mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed, bleedMode, r
             var edge = mesCut_vecBleedEdge(doc, items, layer, grow, fillClosed);
             if (edge) return { ok: true, mode: 'edge', err: null };
         }
-        // ★기본 경로 = 도형별 오프셋 + **안쪽 도형 제거**(mesCut_pruneInterior).
-        //   오프셋만 쓰면 내부 선이 링 밖으로 나오고, 안쪽을 미리 지우면 그 원인이 사라진다.
-        //   링 색은 **아트에서 나온다** — 흰색을 넣지 않는다.
+        // ★★2026-08-04 4차 — **도형별 오프셋을 기본에서 내린다.**
+        //
+        //   도형마다 따로 벌리는 방식은 원리상 "각 도형이 저마다 부푼 자국"을 링에 남긴다.
+        //   그걸 걸러내려고 세 번 시도했고(bbox 거리 → 윤곽 거리 → 윤곽 접촉) 전부 실패했다.
+        //   마지막 실측이 이유를 보여 준다: 아트의 도형들이 서로 겹치지 않으면 **각자가 제 윤곽을
+        //   가지므로** 어떤 거리 기준으로도 "윤곽 도형"과 "내부 선"이 구분되지 않는다
+        //   (조각당 링에 30/35/14 개가 남았다 = 사실상 안 걸러진다).
+        //   → 걸러내는 문제가 아니라 **방식의 문제**다.
+        //
+        //   사본 확대는 아트를 **통째로** 도련 경계까지 늘려 클리핑한다. 개별 오프셋이 아예 없으니
+        //   부푼 자국이 생길 수 없고, 색은 아트에서 그대로 따라온다.
+        //   ⚠️ 대신 뾰족한 형상에서 링 일부가 빌 수 있다(별 19.8% 실측). 지저분한 것보다 낫다는
+        //      판단이고, 필요하면 방식을 `region` 으로 명시해 옛 동작을 쓸 수 있다.
+        //   ★그런데 사본 확대는 **위치가 안 맞는다**(2026-08-04 실측). bbox 는 사방 6.00mm 로 정확하지만
+        //     아트를 가로 1.14배·세로 1.09배로 **늘리기** 때문에 bbox 가장자리만 맞고 안쪽 그림은 전부
+        //     밀린다. 도련은 원본과 **겹쳐 보여야** 하므로 이건 쓸 수 없다.
+        //   → 정본 해법은 픽셀 방식(`js/bleed.js` Repeat Last Pixel, 하네스 `npm run cut:bleed` 통과)이고
+        //     배선 전까지는 **위치가 맞는** 도형별 오프셋을 기본으로 둔다(링이 지저분한 건 남는 문제).
+        //     지저분한 것 < 위치가 틀린 것. 배선이 끝나면 이 분기는 통째로 사라진다.
         var rg = mesCut_vecBleedRegions(doc, items, offsetMm, bleedMm, fillClosed);
         if (rg && rg.ok) return rg;
-        // → 실패하면 아래 사본 확대로, 그것도 안 되면 마지막에 단색.
     }
     var sil = mesCut_vecSilhouette(doc, items, layer, offsetMm + bleedMm, fillClosed, 'none');
     if (!sil || !sil.items || !sil.items.length) return { ok: false, code: 'sil', err: '도련 경계 생성 실패' };
