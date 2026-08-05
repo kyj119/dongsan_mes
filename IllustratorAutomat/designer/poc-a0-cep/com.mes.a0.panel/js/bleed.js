@@ -20,16 +20,47 @@
   'use strict';
 
   var INF = 1e9;
+  // ★**완전** 불투명만 잉크로 본다. 250 으로 뒀더니 알파 250~254 구간이 그대로 남았다
+  //   (2026-08-05 실측: 조각 27개 중 2개에서 274·6px 잔존 → 거기만 여전히 틈이 보인다).
+  //   "거의 불투명"은 눈에 안 보일 것 같지만 겹치면 합성되므로 결국 같은 증상을 만든다.
+  var SOLID = 255;
+
+  /**
+   * 불투명 판정 임계를 정한다.
+   *
+   * ★2026-08-05 실사용에서 잡힌 결함 — 기본을 낮게(8) 두면 **굽기 안티앨리어싱으로 생긴
+   *   반투명 가장자리**가 "원본 잉크"로 분류돼 그대로 남는다. 그 픽셀은
+   *     · 배경 위에서는 연하게 비쳐 **윤곽을 따라 틈**처럼 보이고,
+   *     · 다른 도련과 겹치면 **알파 합성으로 누적돼 진하게** 보인다(코너에서 특히 — 대각선
+   *       경계라 안티앨리어싱 픽셀이 더 많다).
+   *   실측(도련 PNG 27개 전량): 잉크의 **1.95%**(20,569px)가 알파 1~249 였고 250~254 는 거의 0,
+   *   즉 알파가 중간값에 몰려 있었다. 두 증상이 같은 원인에서 나온다.
+   *   → 거의 불투명한 픽셀만 잉크로 보고, 반투명 가장자리는 **채움 대상**으로 넘겨 불투명하게 만든다.
+   *     결과적으로 잉크가 1~2px 바깥으로 선명하게 확장돼 원본 벡터와 틈 없이 만난다
+   *     (배치 반올림 0.5px 도 여기에 흡수된다).
+   *
+   * 단 아트가 통째로 반투명이면(투명도를 쓴 디자인) 임계를 올리는 순간 **공급원이 사라져 도련이 0**
+   * 이 된다 → 불투명 픽셀이 잉크의 과반일 때만 올린다.
+   */
+  function pickAlphaMin(out, n) {
+    var solid = 0, any = 0;
+    for (var i = 0; i < n; i++) {
+      var a = out[i * 4 + 3];
+      if (a >= SOLID) solid++;
+      if (a >= 8) any++;
+    }
+    return (any > 0 && solid * 2 >= any) ? SOLID : 8;
+  }
 
   /**
    * @param src {W,H,data:Uint8ClampedArray|Array}  RGBA · 투명 배경으로 래스터한 조각
    * @param growPx 바깥으로 넓힐 픽셀 수 (= (여백+도련)/mmPerPx)
-   * @param opt.alphaMin 불투명 판정 임계(기본 8) — 반투명 가장자리를 색 공급원으로 볼지
+   * @param opt.alphaMin 불투명 판정 임계. **생략 = 적응형**(`pickAlphaMin`) — 넘기면 그 값으로 고정한다
    * @returns {W,H,data,pad} pad = 사방으로 늘어난 픽셀 수(=growPx). 원본은 (pad,pad) 위치에 그대로 있다.
    */
   function repeatLastPixel(src, growPx, opt) {
     opt = opt || {};
-    var aMin = (typeof opt.alphaMin === 'number') ? opt.alphaMin : 8;
+    var aMin = opt.alphaMin;
     var pad = Math.max(0, Math.ceil(growPx));
     var W = src.W, H = src.H, s = src.data;
     var NW = W + pad * 2, NH = H + pad * 2;
@@ -41,6 +72,9 @@
       var so = y * W * 4, to = ((y + pad) * NW + pad) * 4;
       for (var x = 0; x < W * 4; x++) out[to + x] = s[so + x];
     }
+
+    // ★임계는 원본을 얹은 **뒤에** 정한다 — 실제 알파 분포를 봐야 적응형이 성립한다
+    if (typeof aMin !== 'number') aMin = pickAlphaMin(out, n);
 
     // ② 8SSEDT — 각 픽셀에서 가장 가까운 불투명 픽셀까지의 (dx,dy)
     var dx = new Int32Array(n), dy = new Int32Array(n);

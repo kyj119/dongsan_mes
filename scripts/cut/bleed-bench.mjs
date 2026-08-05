@@ -107,6 +107,45 @@ console.log('\n── 5 성능 — 실사용 크기(0.25mm/px 로 130mm ≈ 520p
   console.log(`  (${W}x${H} · grow ${g}px → ${r.W}x${r.H} · 채운 픽셀 ${r.filled} · ${ms}ms)`)
 }
 
+console.log('\n── 6 ★안티앨리어싱 가장자리 — 반투명이 남으면 원본과의 경계에 틈이 보인다 ──')
+// 2026-08-05 실사용 결함 재현. 굽기(`antiAliasing=true`)는 잉크 가장자리 1~2px 를 반투명으로 만든다.
+// 그 픽셀을 "잉크"로 보고 그대로 두면 배경 위에서는 **비어 보이고**(틈) 다른 도련과 겹치면
+// **알파 합성으로 진해진다**. 실측: 도련 PNG 27개 전량, 잉크의 1.95%가 알파 1~249.
+{
+  const g = 5
+  const src = make(30, 20, (x, y) => {
+    const core = x >= 6 && x < 24 && y >= 5 && y < 15
+    const edge = x >= 5 && x < 25 && y >= 4 && y < 16
+    if (core) {
+      // ★알파 250~254 = "거의 불투명" 구간. 임계를 250 으로 뒀을 때 여기만 살아남아
+      //   조각 27개 중 2개에서 틈이 그대로 보였다(274px·6px). 눈에 안 보일 것 같아도 겹치면 합성된다.
+      if (x === 6 || x === 23) return [200, 30, 40, 252]
+      return [200, 30, 40, 255]
+    }
+    if (edge) return [200, 30, 40, 128]        // 안티앨리어싱 테두리 1px
+    return null
+  })
+  const r = repeatLastPixel(src, g)
+  // 반투명 테두리 자리가 **불투명**해져야 원본 벡터 바로 바깥에 틈이 없다
+  ok('반투명 가장자리가 불투명해진다', px(r, 5 + g, 10 + g)[3] === 255, px(r, 5 + g, 10 + g).join())
+  ok('그 자리가 아트 색', px(r, 5 + g, 10 + g).slice(0, 3).join() === '200,30,40', px(r, 5 + g, 10 + g).join())
+  // 결과에 반투명이 하나라도 남으면 겹칠 때 다시 진해진다
+  let semi = 0
+  for (let i = 3; i < r.data.length; i += 4) { const a = r.data[i]; if (a > 0 && a < 255) semi++ }
+  ok('반투명 픽셀 0개', semi === 0, `${semi}개 남음`)
+  ok('원본 불투명부 색 보존', px(r, 6 + g, 10 + g).join() === '200,30,40,255', px(r, 6 + g, 10 + g).join())
+}
+
+console.log('\n── 7 반투명이 지배적인 아트에서는 공급원을 잃지 않는다 ──')
+// 임계를 무조건 올리면 투명도를 쓴 디자인에서 **불투명 픽셀이 0개** 가 돼 도련이 통째로 안 만들어진다.
+{
+  const g = 4
+  const src = make(20, 20, (x, y) => (x >= 5 && x < 15 && y >= 5 && y < 15) ? [0, 120, 255, 100] : null)
+  const r = repeatLastPixel(src, g)
+  ok('도련이 만들어진다(공급원 상실 없음)', r.filled > 0, `filled=${r.filled}`)
+  ok('링 색이 아트 색', px(r, 5 + g - 2, 10 + g).slice(0, 3).join() === '0,120,255', px(r, 5 + g - 2, 10 + g).join())
+}
+
 console.log(`\n── 판정 ──`)
 if (fails) { console.log(`  ❌ ${fails}건 실패`); process.exit(1) }
-console.log('  ✅ 전 항목 통과 (링 색 보존·내부 선 차단·위치별 색·오목 홈·성능)')
+console.log('  ✅ 전 항목 통과 (링 색 보존·내부 선 차단·위치별 색·오목 홈·성능·반투명 가장자리)')
