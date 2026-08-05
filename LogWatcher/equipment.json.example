@@ -42,12 +42,26 @@
       }
     },
     {
-      "_comment": "전사 8색(Longyin Q2000) neoStampa — 리핑 로그 전용. 실제 출력·취소는 하류 Topaz 가 정본이므로",
-      "_comment2": "이 파서가 보내는 이벤트는 event_kind='RIP' 로 적재되어 PRINT_DONE·실적집계에서 제외된다.",
-      "_comment3": "합판(오퍼레이터가 RIP에서 배치)의 멤버 도안 목록은 이 로그에만 있다 → 카드 N건 동시 귀속의 유일한 근거.",
+      "_comment": "전사 8색(Longyin Q2000) — 리핑(neoStampa)과 출력(PrintExp_X64)이 같은 PC 에 있다.",
+      "_comment2": "따로 watcher 2개로 두면 물리 출력 1건이 print_events 2행이 되어 실적이 이중계상된다.",
+      "_comment3": "리핑만 보면 실제 출력 여부를 모르고(취소는 PrintExp), 출력만 보면 도안이 뭔지 모른다.",
+      "_comment4": "조인 키 = PrintExp temp 폴더 타임스탬프 == neoStampa StartTime (실측 133/133, ±2초).",
       "equipment_id": "TRANS-8C-01",
       "name": "전사 8색 1호기 (Longyin Q2000)",
       "enabled": true,
+      "parser_type": "neostampa_printexp",
+      "config": {
+        "rip_log_root": "C:\\Users\\Public\\Documents\\neoStampa 10\\Log",
+        "print_log_dir": "C:\\PrintExp_X64\\log\\main",
+        "join_tolerance_seconds": 5,
+        "emit_rip_only_after_hours": 0
+      }
+    },
+    {
+      "_comment": "리핑 로그만 있는 PC(제어 SW 가 다른 PC) 라면 이 형태를 쓴다 — event_kind='RIP' 로 적재된다.",
+      "equipment_id": "TRANS-8C-RIPONLY",
+      "name": "전사 8색 (리핑 전용)",
+      "enabled": false,
       "parser_type": "neostampa",
       "config": {
         "log_root": "C:\\Users\\Public\\Documents\\neoStampa 10\\Log",

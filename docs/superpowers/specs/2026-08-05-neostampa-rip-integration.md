@@ -296,14 +296,48 @@ setup.bat
 - ⚠️ **기존 `printexp` 파서로는 못 읽는다.** 그 파서는 UTF-16LE + `作业【파일명】打印完成` 을 기대하는데
   이 로그엔 그 패턴이 **0줄**. 같은 제품군의 다른 버전/설정이다. → 신규 파서 필요.
 
-### 남은 결정 — 조인을 어디서 하나
+### 결정 — B안(에이전트 로컬 조인) 채택, 구현완료
 
-| 안 | 방식 | 장점 | 단점 |
-|---|---|---|---|
-| **A. 서버 조인** | PrintExp 이벤트의 키를 temp 타임스탬프로 보내고, 서버가 같은 시각의 RIP 이벤트에서 도안·카드를 승계 | PC 가 달라도 됨 | 서버에 조인 로직 + 순서 의존(RIP 이벤트가 먼저 와야) |
-| **B. 에이전트 로컬 조인** | 두 로그가 같은 PC 면 LogWatcher 가 합쳐 **완성된 이벤트 1건만** 전송 | `event_kind` 이중계상 문제 자체가 사라짐 | 두 로그가 같은 PC 여야 함 (미확인) |
+용준님 확인: **두 SW 가 같은 PC 에 있다.** → LogWatcher 가 로컬에서 합쳐 **완성된 이벤트 1건**만 보낸다.
+서버 조인(A안)이 필요 없고, 이 장비에 한해 **이중계상 문제 자체가 사라진다**(RIP 이벤트를 안 보내므로).
 
-**선결 사실**: PrintExp 가 neoStampa 와 같은 PC 인가 → `--probe` 한 번이면 판정된다.
+구현: `LogWatcher/Parsers/TransferPressParser.cs` (`parser_type: "neostampa_printexp"`)
++ 공용 파싱부 분리 `NeoStampaJobFile.cs` (단독 `neostampa` 파서도 이걸 쓴다 — 멤버 판정·미리핑 제외 규칙이 갈리지 않도록)
+
+| 이벤트 필드 | 출처 |
+|---|---|
+| `file_name`·`nest_members` | neoStampa (도안명·합판 구성) |
+| `print_status`(OK/CANCEL) | **PrintExp** (실제 출력 결과) |
+| 시작·종료 시각 | **PrintExp** (진짜 출력 시간) |
+| `output_size`·`dpi` | PrintExp (실제 출력분) |
+| `event_kind` | `PRINT` — 실적 정본 |
+
+config:
+```
+rip_log_root              (required)
+print_log_dir             (required)  Log[yyyy_MM_dd].txt 가 있는 폴더
+join_tolerance_seconds    (default 5)
+emit_rip_only_after_hours (default 0=끄기)  리핑만 하고 출력 안 한 잡을 RIP 이벤트로 낼지
+```
+
+**실측 검증** (`--test`, 실로그 전량):
+
+| | |
+|---|---|
+| 이벤트 | **113건** (OK 59 · CANCEL 54) |
+| 리핑 잡 미발견 | **0** |
+| UNMATCHED | **0** |
+| 결과 미확정 건너뜀 | 20 (완료/취소 기록이 없는 블록) |
+
+독립 검사 스크립트(`printexp-join-check.mjs`)와 **수치가 정확히 일치**한다.
+
+방어 장치:
+- temp 폴더 없는 블록(캘리브레이션 246건) 자동 제외
+- 결과 미확정 블록은 이벤트를 내지 않는다(출력 중일 수 있다)
+- 리핑 인덱스는 `[General]` 선별 검사 후 파싱 — 로그 루트에 다른 SW 로그가 섞여도 폴이 느려지지 않는다
+- 최초 실행은 오늘 로그의 **EOF** 에서 시작(과거분 미전송)
+
+⚠️ **`neostampa` 단독 파서는 계속 필요하다** — 제어 SW 가 다른 PC 인 장비를 만나면 그쪽을 쓴다.
 
 ## 8. 미확정 리스크
 

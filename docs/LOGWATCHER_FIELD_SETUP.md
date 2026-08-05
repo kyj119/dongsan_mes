@@ -5,19 +5,24 @@
 
 ---
 
-## 0. 전사 8색은 PC가 3대다 (헷갈리기 쉬운 부분)
+## 0. 전사 8색은 한 PC에 프로그램이 2개다 (헷갈리기 쉬운 부분)
 
-전사는 **리핑 PC와 출력 제어 PC가 다르다.** 둘 다 붙여야 완결된다.
+**PC 1대 = 호기 1대**이고, 그 안에 리핑 SW 와 출력 제어 SW 가 **같이** 있다.
 
-| # | PC | SW | 무엇을 아는가 | 파서 |
-|---|---|---|---|---|
-| 1 | `DESKTOP-5C9D04J` | neoStampa | **합판에 어떤 도안들이 들어갔나** | `neostampa` |
-| 2 | `PC-202605141926` | neoStampa | 〃 (2호기) | `neostampa` |
-| 3 | **미확인** | PrintExp_X64 | **실제로 출력됐나·취소됐나** | 신규 필요 |
+| PC | 리핑 | 출력 제어 |
+|---|---|---|
+| `DESKTOP-5C9D04J` (1호기) | neoStampa 10.2.4 | PrintExp_X64 |
+| `PC-202605141926` (2호기) | 〃 | 〃 |
 
-- **출력 제어 PC(PrintExp)를 먼저 붙인다.** neoStampa 로그만 붙이면 "리핑됨"이 출력 실적처럼 보인다.
-- neoStampa 는 취소를 기록하지 않는다. 취소는 PrintExp 에서 일어난다.
-- PrintExp 는 **도안명을 아예 모른다**. temp 폴더 타임스탬프로만 neoStampa 와 이어진다(실측 133/133 일치).
+| SW | 무엇을 아는가 | 무엇을 모르는가 |
+|---|---|---|
+| neoStampa | 도안명 · **합판에 어떤 도안들이 들어갔나** · 판 치수 | 실제로 출력됐는지 (취소를 기록하지 않는다) |
+| PrintExp_X64 | 실제 출력·취소 · **진짜 소요시간** | **도안이 뭔지조차 모른다** |
+
+→ **watcher 를 2개 만들지 않는다.** 하나(`neostampa_printexp`)가 두 로그를 읽어 합친 뒤
+**완성된 이벤트 1건**만 보낸다. 따로 보내면 물리 출력 1건이 2행이 되어 실적이 2배가 된다.
+
+두 로그는 **temp 폴더 타임스탬프**로 이어진다 (실측 133/133, ±2초, 1:1).
 
 ---
 
@@ -68,7 +73,7 @@ node scripts/printexp-join-check.mjs          # 언제든 다시 검사 가능
 
 **③ `equipment.json` 을 만든다** — `equipment.json.example` 을 복사해 쓴다.
 
-전사 8색(neoStampa) 예시:
+전사 8색 예시 — **watcher 1개가 두 로그를 다 본다**:
 
 ```json
 {
@@ -79,16 +84,19 @@ node scripts/printexp-join-check.mjs          # 언제든 다시 검사 가능
       "equipment_id": "TRANS-8C-01",
       "name": "전사 8색 1호기 (Longyin Q2000)",
       "enabled": true,
-      "parser_type": "neostampa",
+      "parser_type": "neostampa_printexp",
       "config": {
-        "log_root": "C:\\Users\\Public\\Documents\\neoStampa 10\\Log",
-        "settle_seconds": 5,
-        "backfill_days": 0
+        "rip_log_root": "C:\\Users\\Public\\Documents\\neoStampa 10\\Log",
+        "print_log_dir": "C:\\PrintExp_X64\\log\\main",
+        "join_tolerance_seconds": 5
       }
     }
   ]
 }
 ```
+
+> ⬜ `print_log_dir` 은 `Log[2026_08_04].txt` 같은 파일이 들어 있는 폴더다. 실제 경로는 PC 마다
+> 다를 수 있으니 탐색기로 확인하거나 `--probe` 결과를 쓴다.
 
 > `equipment_id` 는 **서버에 등록된 id 와 글자 하나까지 같아야 한다.**
 > 경로의 백슬래시는 JSON 이라 `\\` 로 두 번 쓴다.
@@ -99,9 +107,11 @@ node scripts/printexp-join-check.mjs          # 언제든 다시 검사 가능
 C:\Logwatcher\LogWatcher.exe --test TRANS-8C-01
 ```
 
-- 최근 출력한 파일 이름들이 목록에 뜨면 성공이다. (`--test` 는 서버로 아무것도 보내지 않는다)
+- `[OK] 도안명` / `[CANCEL] 도안명` 이 뜨면 성공이다. (`--test` 는 서버로 아무것도 보내지 않는다)
+- 앞의 `[TRANS-8C-01] OK 55분 도안명` 줄에서 **실제 출력 소요시간**을 확인할 수 있다.
 - 합판을 출력한 적이 있으면 `[NEST] 선언 3 / 복원 3 → OK` 처럼 멤버가 펼쳐진다.
-- `RIP 중단 감지` 줄은 **정상이다** — 리핑을 중간에 멈춘 잡이며, 불량으로 올라가지 않는다.
+- `결과 미확정 블록 건너뜀` 은 **정상**이다 — 완료/취소 기록이 없는 잡(로그가 중간에 끊긴 경우).
+- `⚠ 리핑 잡을 못 찾음` 이 많이 나오면 `rip_log_root` 가 틀렸거나 `join_tolerance_seconds` 를 늘려야 한다.
 
 **⑤ 서비스로 등록한다** (관리자 권한 명령 프롬프트)
 

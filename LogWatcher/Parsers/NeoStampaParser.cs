@@ -169,219 +169,63 @@ namespace LogWatcher.Parsers
         }
 
         // ── INI 파싱 ────────────────────────────────────────────────────────
-
-        private sealed class Item
-        {
-            public string Name = "";
-            public double WidthMM;
-            public double HeightMM;
-            public double VPositionMM;
-            public int Copies = 1;
-            public long KDotsSum;
-        }
+        // 파싱 본문은 NeoStampaJobFile 로 공용화했다 — 전사 2축 조인 파서(TransferPressParser)와
+        // 같은 규칙을 써야 멤버 판정·미리핑 제외가 갈리지 않는다.
 
         private PrintEvent? ParseJobFile(string path)
         {
-            var text = ReadText(path);
-            if (string.IsNullOrWhiteSpace(text)) return null;
-
-            var general = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            var costs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            var printSettings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            var items = new List<Item>();
-
-            string section = "";
-            Item? cur = null;
-
-            foreach (var rawLine in text.Split('\n'))
+            var job = NeoStampaJobFile.Parse(path);
+            if (job == null)
             {
-                var line = rawLine.Trim('\r', ' ', '\t');
-                if (line.Length == 0) continue;
-
-                if (line[0] == '[' && line[line.Length - 1] == ']')
-                {
-                    section = line.Substring(1, line.Length - 2).Trim();
-                    if (int.TryParse(section, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
-                    {
-                        cur = new Item();
-                        items.Add(cur);
-                    }
-                    else cur = null;
-                    continue;
-                }
-
-                var eq = line.IndexOf('=');
-                if (eq <= 0) continue;
-                var key = line.Substring(0, eq).Trim();
-                var val = line.Substring(eq + 1).Trim();
-
-                if (cur != null)
-                {
-                    switch (key)
-                    {
-                        case "Name": cur.Name = val; break;
-                        case "WidthMM": cur.WidthMM = ParseDouble(val); break;
-                        case "HeightMM": cur.HeightMM = ParseDouble(val); break;
-                        case "VPositionMM": cur.VPositionMM = ParseDouble(val); break;
-                        case "Copies": cur.Copies = Math.Max(1, (int)ParseDouble(val)); break;
-                        default:
-                            if (key.StartsWith("KDots", StringComparison.Ordinal) && KDotsRegex.IsMatch(line))
-                                cur.KDotsSum += ParseLong(val);
-                            break;
-                    }
-                    continue;
-                }
-
-                if (section.Equals("General", StringComparison.OrdinalIgnoreCase)) general[key] = val;
-                else if (section.Equals("Costs", StringComparison.OrdinalIgnoreCase)) costs[key] = val;
-                else if (section.Equals("PrintSettings", StringComparison.OrdinalIgnoreCase)) printSettings[key] = val;
-            }
-
-            if (items.Count == 0) return null;
-
-            var document = general.GetValueOrDefault("Document", "").Trim();
-            if (string.IsNullOrEmpty(document)) document = Path.GetFileNameWithoutExtension(path);
-
-            var start = ParseTimestamp(general.GetValueOrDefault("StartTime", ""));
-            var end = ParseTimestamp(general.GetValueOrDefault("EndTime", ""));
-            if (end == null) return null;   // 완료시각 없으면 멱등키가 안 서므로 버린다
-
-            var printW = ParseDouble(costs.GetValueOrDefault("PrintWidthMM", "0"));
-            var printH = ParseDouble(costs.GetValueOrDefault("PrintHeightMM", "0"));
-
-            // ── RIP 완료 판정: 실제 리핑 길이 vs 배치 의도 총높이 ──
-            //    neoStampa 에는 상태 필드가 없다. 중간에 끊긴 잡은 PrintHeightMM 이 배치보다 짧게 남는다.
-            double extent = 0;
-            foreach (var it in items)
-            {
-                var e = it.VPositionMM + it.HeightMM;
-                if (e > extent) extent = e;
-            }
-            var ripComplete = extent <= 0 || printH >= extent * 0.995;
-
-            // ── 멤버 집계: 정본은 [N] 섹션의 Name (Document 의 " + " 를 파싱하지 않는다 —
-            //    도안명 자체에 " + " 가 들어갈 수 있다) ──
-            //    KDots 합이 0 인 아이템은 리핑되지 않았다 → 판에 안 들어갔으므로 제외한다.
-            //    (제외하지 않으면 출력되지도 않은 주문에 실적이 찍힌다)
-            var byName = new Dictionary<string, NestMember>(StringComparer.OrdinalIgnoreCase);
-            var order = new List<string>();
-            int skipped = 0;
-            foreach (var it in items)
-            {
-                if (string.IsNullOrEmpty(it.Name)) continue;
-                if (it.KDotsSum <= 0) { skipped++; continue; }
-
-                if (!byName.TryGetValue(it.Name, out var m))
-                {
-                    m = new NestMember { file = it.Name, w = it.WidthMM, h = it.HeightMM, qty = 0 };
-                    byName[it.Name] = m;
-                    order.Add(it.Name);
-                }
-                m.qty += it.Copies;
-            }
-
-            if (byName.Count == 0)
-            {
-                Console.WriteLine($"[{EquipmentId}] 전량 미리핑 — 이벤트 생략: {document}");
+                Console.WriteLine($"[{EquipmentId}] 전량 미리핑/해석불가 — 이벤트 생략: {Path.GetFileName(path)}");
                 return null;
             }
+            if (job.End == null) return null;   // 완료시각 없으면 멱등키가 안 서므로 버린다
 
             var evt = new PrintEvent
             {
                 EquipmentId = EquipmentId,
                 EventKind = "RIP",
-                PrinterName = general.GetValueOrDefault("Driver", ""),
+                PrinterName = "",
                 // 로그 파일 경로 = 잡별 고유(같은 도안 재RIP 은 " - N" 으로 갈린다) → 서버 멱등키로 안전
-                FilePath = path,
-                FileName = document,
-                PrintStatus = ripComplete ? "OK" : "CANCEL",
-                OutputSize = printW > 0 && printH > 0
-                    ? $"{printW.ToString("0.#", CultureInfo.InvariantCulture)} X {printH.ToString("0.#", CultureInfo.InvariantCulture)}"
+                FilePath = SafeFullPath(path),
+                FileName = job.PrimaryName,
+                PrintStatus = job.RipComplete ? "OK" : "CANCEL",
+                OutputSize = job.PrintWidthMM > 0 && job.PrintHeightMM > 0
+                    ? $"{job.PrintWidthMM.ToString("0.#", CultureInfo.InvariantCulture)} X {job.PrintHeightMM.ToString("0.#", CultureInfo.InvariantCulture)}"
                     : "",
-                Dpi = ExtractDpi(printSettings.GetValueOrDefault("PrintMode", "")),
+                Dpi = NeoStampaJobFile.ExtractDpi(job.PrintMode),
             };
-
-            if (start != null)
+            if (job.Start != null)
             {
-                evt.StartDate = start.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-                evt.StartTime = start.Value.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+                evt.StartDate = job.Start.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+                evt.StartTime = job.Start.Value.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
             }
-            evt.EndDate = end.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-            evt.EndTime = end.Value.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+            evt.EndDate = job.End.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            evt.EndTime = job.End.Value.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
 
-            var members = order.Select(n => byName[n]).ToList();
-            if (members.Count >= 2)
+            if (job.IsNest)
             {
-                // 서로 다른 도안 ≥2 = 합판. 같은 이름 반복/Copies 는 스텝앤리피트이므로 네스트가 아니다.
                 evt.IsNest = true;
-                evt.NestDeclaredCount = members.Count;
-                evt.NestMembers = members;
-                evt.CopyColumns = 1;
-                evt.CopyRows = 1;
+                evt.NestDeclaredCount = job.Members.Count;
+                evt.NestMembers = job.Members;
+                evt.CopyColumns = 1; evt.CopyRows = 1;
             }
             else
             {
                 evt.CopyColumns = 1;
-                evt.CopyRows = Math.Max(1, members[0].qty);   // 스텝앤리피트 매수
-                // 합판이 중간에 끊겨 한 도안만 리핑된 경우, Document 는 "A + B + C" 결합 문자열이라
-                // 어디에도 매칭되지 않는다. 실제로 리핑된 도안명을 file_name 으로 보낸다.
-                evt.FileName = members[0].file;
+                evt.CopyRows = Math.Max(1, job.TotalCopies);
             }
 
-            if (!ripComplete || skipped > 0)
-            {
-                var pct = extent > 0 ? (printH / extent * 100) : 100;
-                Console.WriteLine($"[{EquipmentId}] RIP 중단 감지: {document} — {pct:0.#}% ({printH:0.#}/{extent:0.#}mm), 미리핑 아이템 {skipped}개 제외");
-            }
+            if (!job.RipComplete || job.SkippedItems > 0)
+                Console.WriteLine($"[{EquipmentId}] RIP 중단 감지: {job.Document} — {job.PrintHeightMM:0.#}mm, 미리핑 아이템 {job.SkippedItems}개 제외");
 
             return evt;
         }
 
-        private static string ReadText(string path)
+        private static string SafeFullPath(string p)
         {
-            // 잡 로그는 UTF-8. BOM 없는 cp949 대비로 폴백을 둔다.
-            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            using var ms = new MemoryStream();
-            fs.CopyTo(ms);
-            var bytes = ms.ToArray();
-            if (bytes.Length == 0) return "";
-
-            if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
-                return Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);
-
-            try { return new UTF8Encoding(false, true).GetString(bytes); }
-            catch (DecoderFallbackException)
-            {
-                try { return Encoding.GetEncoding(949).GetString(bytes); }
-                catch { return Encoding.UTF8.GetString(bytes); }
-            }
+            try { return Path.GetFullPath(p); } catch { return p; }
         }
-
-        /// <summary>neoStampa 시각: "04/08/2026 9:17:14" (dd/MM/yyyy H:mm:ss, 현장 로컬시각=KST)</summary>
-        private static DateTime? ParseTimestamp(string raw)
-        {
-            raw = (raw ?? "").Trim();
-            if (raw.Length == 0) return null;
-
-            string[] formats = { "dd/MM/yyyy H:mm:ss", "dd/MM/yyyy HH:mm:ss", "d/M/yyyy H:mm:ss" };
-            if (DateTime.TryParseExact(raw, formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
-                return dt;
-            if (DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.None, out dt))
-                return dt;
-            return null;
-        }
-
-        /// <summary>"720x2400 8pass" → "720x2400 DPI"</summary>
-        private static string ExtractDpi(string printMode)
-        {
-            var m = Regex.Match(printMode ?? "", @"(\d+x\d+)");
-            return m.Success ? $"{m.Groups[1].Value} DPI" : "";
-        }
-
-        private static double ParseDouble(string s)
-            => double.TryParse((s ?? "").Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : 0;
-
-        private static long ParseLong(string s)
-            => long.TryParse((s ?? "").Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var l) ? l : 0;
     }
 }

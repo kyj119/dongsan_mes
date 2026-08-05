@@ -222,10 +222,13 @@ namespace LogWatcher.Tools
 
             if (hits.Count >= 2)
             {
-                Console.WriteLine("  ⚠ 로그가 2개 이상 걸렸습니다 = 이 장비는 **RIP SW 와 제어 SW 가 분리된 구조**입니다.");
-                Console.WriteLine("    (전사 8색이 이 경우 — neoStampa 가 리핑하고 Topaz 가 실제 출력·취소를 담당)");
-                Console.WriteLine("    둘 다 watcher 로 넣되, **실적 정본은 제어 SW 쪽**입니다.");
-                Console.WriteLine("    리핑 로그는 event_kind='RIP' 로 들어가 실적 집계에서 빠집니다.");
+                Console.WriteLine("  ⚠ 로그가 2개 이상 = 이 PC 에 **리핑 SW 와 출력 제어 SW 가 같이** 있습니다.");
+                Console.WriteLine("    (전사 8색이 이 경우 — neoStampa 가 리핑, PrintExp_X64 가 실제 출력·취소)");
+                Console.WriteLine();
+                Console.WriteLine("    → watcher 를 2개 만들지 말고 **합쳐서 1개**로 두세요:");
+                Console.WriteLine("       parser_type: \"neostampa_printexp\"  (rip_log_root + print_log_dir)");
+                Console.WriteLine("       리핑 로그만으로는 출력 여부를 모르고(취소는 제어 SW 에서 발생),");
+                Console.WriteLine("       제어 로그만으로는 도안이 뭔지 모릅니다. 따로 보내면 실적이 2배가 됩니다.");
                 Console.WriteLine();
             }
 
