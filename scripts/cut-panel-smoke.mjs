@@ -883,6 +883,10 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     // ★사람이 보는 값은 실물로 되돌린다 — 파일 좌표를 그대로 띄우면 자기 입력을 못 알아본다
     ok('3u 판 규격은 실물 cm', /Math\.round\(R\(swMm\) \/ 10\)/.test(panelSrc2))
     ok('3u 축소본은 파일명에 _1-N', /'_1-' \+ sN/.test(panelSrc2))
+    // ★[폭 추천]도 같은 규칙이어야 한다 — 여기만 빠지면 추천 폭이 실제 배치와 다른 조건으로
+    //   계산돼, 추천대로 골라도 결과가 안 맞는다(2026-08-05 실사용에서 걸림).
+    ok('3u 폭 추천도 배율을 반영',
+      /var widest = toFileMm\(ROLL_WIDTHS_MM/.test(panelSrc2) && /var wFile = toFileMm\(wReal\)/.test(panelSrc2))
     // ★돔보 상수는 호스트 안에 있으므로 호스트가 배율을 받아야 한다
     ok('3u 호스트가 배율을 받는다', /p\[0\] === 'N'/.test(nestSrc2) && /MESCUT_SCALE_N = 1/.test(nestSrc2))
     ok('3u 돔보를 파일 좌표로 환산', /mesCut_sc\(MESCUT_DOMBO_DIAM_MM\)/.test(nestSrc2))

@@ -1276,8 +1276,13 @@
     var G = window.MesCutGeom, NST = window.MesCutNest;
     if (!G || !NST) { out('엔진 미로드(geometry.js·nesting.js) — 패널 설치본을 확인하세요', 'err'); return; }
 
-    var gapMm = num('nestGap', 3);
-    var offsetMm = num('nestOffset', 3);
+    // ★배율 환산은 [네스팅 실행]과 **같은 규칙**이어야 한다 — 여기만 빠지면 추천 폭이 실제 배치와
+    //   다른 조건으로 계산돼, 추천대로 골라도 결과가 안 맞는다(2026-08-05 용준님 지적).
+    //   롤 폭(재료)도 실물이므로 배치에는 ÷N 한 값을 쓰고, 화면에는 실물 그대로 보여준다.
+    var scaleN = cutScaleN();
+    var gapMm = toFileMm(num('nestGap', 3));
+    var offsetMm = toFileMm(num('nestOffset', 3));
+    var offsetShow = num('nestOffset', 3), gapShow = num('nestGap', 3);   // 표시는 사용자가 넣은 실물 값
     var fillMode = (document.getElementById('fillClosed') || {}).value || 'auto';
     var allowRot = !!(document.getElementById('nestRotate') && document.getElementById('nestRotate').checked);
 
@@ -1286,22 +1291,25 @@
     host('mesCut_acquireLock("' + PANEL_OWNER + '","nest-scan")', function (lk) {
       if (lk.indexOf('busy:') === 0) { setBusy(false); out('다른 쪽이 일러를 점유 중입니다: ' + lk.substring(5), 'err'); return; }
       // 해상도는 **가장 넓은 후보 기준으로 한 번** 정한다 — 폭마다 다르면 비교가 성립하지 않는다.
-      var widest = ROLL_WIDTHS_MM[ROLL_WIDTHS_MM.length - 1];
+      var widest = toFileMm(ROLL_WIDTHS_MM[ROLL_WIDTHS_MM.length - 1]);
       var rez = nestResolution(G, offsetMm, gapMm, widest, 0);
       nestPrepare(G, rez, gapMm, offsetMm, fillMode, function (m) { done(m, 'err'); }, function (prep) {
         var rows = [], best = null;
         for (var i = 0; i < ROLL_WIDTHS_MM.length; i++) {
-          var wMm = ROLL_WIDTHS_MM[i];
-          out('폭 비교 중... ' + (i + 1) + '/' + ROLL_WIDTHS_MM.length + ' (' + wMm + 'mm)');
+          var wReal = ROLL_WIDTHS_MM[i];           // 재료 폭 = 실물(화면·재료비용)
+          var wFile = toFileMm(wReal);             // 배치는 파일 좌표에서
+          out('폭 비교 중... ' + (i + 1) + '/' + ROLL_WIDTHS_MM.length + ' (' + wReal + 'mm)');
           // 성근 스캔 — 순서 후보를 줄여 폭당 비용을 낮춘다(정밀 재실행은 [네스팅 실행]이 한다)
-          var r = nestPlace(NST, prep, wMm, 0, allowRot, { tries: 2, maxSheets: 1 });
+          var r = nestPlace(NST, prep, wFile, 0, allowRot, { tries: 2, maxSheets: 1 });
           var okAll = r.sheets.length && !r.unplaced.length;
-          var lenMm = r.sheets.length ? (Math.ceil(r.sheets[0].usedH * prep.mmpp) + domboMm() * 2) : 0;
-          var areaCm2 = okAll ? (wMm * lenMm / 100) : Infinity;
-          rows.push({ w: wMm, len: lenMm, area: areaCm2, ok: okAll, unplaced: r.unplaced.length });
+          var lenFile = r.sheets.length ? (Math.ceil(r.sheets[0].usedH * prep.mmpp) + domboMm() * 2) : 0;
+          var lenMm = Math.round(toRealMm(lenFile));   // 소요 길이도 실물로 — 재료비 기준이다
+          var areaCm2 = okAll ? (wReal * lenMm / 100) : Infinity;
+          rows.push({ w: wReal, len: lenMm, area: areaCm2, ok: okAll, unplaced: r.unplaced.length });
           if (okAll && (!best || areaCm2 < best.area)) best = rows[rows.length - 1];
         }
-        var txt = '폭 추천 (조각 ' + prep.n + '개 · 여백 ' + offsetMm + 'mm · 간격 ' + gapMm + 'mm'
+        var txt = '폭 추천 (조각 ' + prep.n + '개 · 여백 ' + offsetShow + 'mm · 간격 ' + gapShow + 'mm'
+          + (scaleN > 1 ? (' · 배율 1/' + scaleN + ' 반영') : '')
           + (allowRot ? ' · 회전 허용' : '') + ' · ' + prep.mmpp + 'mm/px)\n';
         for (var j = 0; j < rows.length; j++) {
           var rw = rows[j];
