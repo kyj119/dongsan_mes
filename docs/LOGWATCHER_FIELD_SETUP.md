@@ -13,47 +13,34 @@
 |---|---|---|---|---|
 | 1 | `DESKTOP-5C9D04J` | neoStampa | **합판에 어떤 도안들이 들어갔나** | `neostampa` |
 | 2 | `PC-202605141926` | neoStampa | 〃 (2호기) | `neostampa` |
-| 3 | **미확인** | Topaz-RIP | **실제로 출력됐나·취소됐나** | `tns` |
+| 3 | **미확인** | PrintExp_X64 | **실제로 출력됐나·취소됐나** | 신규 필요 |
 
-- **Topaz PC를 먼저 붙인다.** neoStampa 로그만 붙이면 "리핑됨"이 출력 실적처럼 보인다.
-- neoStampa 는 취소를 기록하지 않는다. 취소는 Topaz 에서 일어난다.
-- Topaz 는 판 1장을 잡 1건으로만 본다. 합판에 주문이 3건 들어 있어도 이름은 하나다.
+- **출력 제어 PC(PrintExp)를 먼저 붙인다.** neoStampa 로그만 붙이면 "리핑됨"이 출력 실적처럼 보인다.
+- neoStampa 는 취소를 기록하지 않는다. 취소는 PrintExp 에서 일어난다.
+- PrintExp 는 **도안명을 아예 모른다**. temp 폴더 타임스탬프로만 neoStampa 와 이어진다(실측 133/133 일치).
 
 ---
 
-## 1. Topaz PC 찾기 + 로그 수집 (지금 필요한 것)
+## 1. 두 로그가 이어지는 방식 (규명 완료)
 
-전사 8색에 붙은 Topaz PC가 어느 것인지 아직 확정되지 않았다.
-
-**① 후보 PC에서 로그 위치 확인** — TopazRip 설치 폴더 안에 `Print.log` 가 있다.
-
-```powershell
-# 드라이브 전체에서 TNSRip 폴더 찾기
-Get-ChildItem C:\, D:\, E:\ -Directory -Filter "TNSRip*" -Recurse -ErrorAction SilentlyContinue |
-  Select-Object FullName
-```
-
-**② 로그를 Z: 로 복사** (분석용, 원본은 건드리지 않는다)
-
-```powershell
-$dst = "Z:\Designs\Log-Topaz"
-New-Item -ItemType Directory -Path $dst -Force | Out-Null
-Copy-Item "E:\TNSRip-X1\Print.log" "$dst\Print-$env:COMPUTERNAME.log"
-```
-
-**③ 확인해야 할 것 (★핵심)**
-
-Topaz 가 기록하는 **잡 이름이 neoStampa 의 `Document` 와 같은 문자열인지**. 이게 두 로그를 잇는
-유일한 키다. 예를 들어 neoStampa 에 이렇게 남았다면:
+PrintExp 는 도안명을 **전혀 모른다.** neoStampa 가 넘긴 `~sectionN.prn` 을 이렇게 받을 뿐이다:
 
 ```
-Document = 하우사인 원청교섭2(51-122-2장).eps + 6.SLC(30-20-2벌).eps + 5.솔로몬(30-20-1벌).eps
+作业ID:1587814906, 删除TCP文件:C:\PrintExp_X64\temp\20260804091715\~section0.prn
+                                                   └─ = neoStampa 잡의 StartTime
 ```
 
-Topaz 쪽에도 같은 문자열(또는 최소한 앞부분)이 남아야 한다.
-**다르면 시각 근접(neoStampa 종료 직후 Topaz 시작)으로 잇는 폴백이 필요하다.**
+**폴더 이름의 타임스탬프가 조인 키**다. 2026-08-05 실측으로 **133건 전부 ±2초 이내, 1:N 중복 0**.
 
-> `Print.log` 는 바이너리라 메모장으로 열면 깨진다. 그대로 복사만 하면 된다 — 분석은 이쪽에서 한다.
+```
+node scripts/printexp-join-check.mjs          # 언제든 다시 검사 가능
+```
+
+### 남은 확인 — PrintExp 가 neoStampa 와 같은 PC 인가
+
+같으면 `equipment.json` 에 watcher 2개만 넣으면 되고, 다르면 PC 2곳에 설치해야 한다.
+**`LogWatcher.exe --probe` 를 전사 8색 PC 에서 한 번 돌리면 판정된다** — 마커 출력 시
+로그가 2개 걸리면 같은 PC, 1개면 다른 PC다 (§4 참조).
 
 ---
 
