@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.19.0';
+  var SHELL_VERSION = '0.20.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -720,7 +720,14 @@
     //   (2026-08-01 실측: 여백3/간격5 요청에 칼선 간격 4.33mm = 5 − mmpp 0.92 와 일치)
     //   부족한 간격은 재단 사고, 남는 간격은 재료만 조금 더 씀 → **넉넉한 쪽**을 고른다.
     //   칼선 반경은 따로 내림하므로(cutFinePx) 미세 격자분은 이미 안전 방향이다.
-    var safety = base / 2;
+    // ★여백·간격을 **둘 다 0** 으로 준 것은 "조각을 붙여 칼선을 포개겠다"는 의도다.
+    //   재단선이 정확히 겹치면 재단기가 두 번 지나가도 **물리적으로는 한 번 자른 것과 같다**
+    //   (2026-08-05 용준님). 이때 안전 여유를 넣으면 조각이 떨어져 칼선이 2줄이 되고 의도가 깨진다.
+    //   여유의 목적은 "요청한 간격이 격자 양자화로 깎이는 것"을 메우는 것인데, 간격이 0이면 깎일 게 없다.
+    //   ⚠️ 0 이 아닌 값에서는 그대로 둔다 — 그 경우엔 여유가 없으면 간격이 조용히 좁아진다
+    //      (2026-08-01 실측: 요청 5mm 가 4.33mm 로 나갔다).
+    var butt = (offsetMm <= 0 && gapMm <= 0);
+    var safety = butt ? 0 : base / 2;
     var half = offsetMm + gapMm / 2 + safety;
     // 여백이 크게 음수(도련 적용분 안쪽)면 팽창이 0 이하가 된다 — 스냅할 대상이 없으니 그대로 쓴다.
     if (!(half > 0)) {
@@ -1034,7 +1041,13 @@
     //   재단 오차가 나면 **옆 디자인 색이 넘어온다**. 재료보다 재단 사고가 비싸므로 간격을 올린다.
     //   (도련을 깎는 쪽은 택하지 않았다 — 도련 3mm 는 실물 규약이고 품질 쪽이다)
     var gapWanted = gapMm;
-    if (nestBleedMm > 0 && gapMm < nestBleedMm * 2) gapMm = nestBleedMm * 2;
+    // ★맞붙임(여백 0 · 간격 0)은 이 규칙에서 **뺀다**.
+    //   간격을 올리는 이유는 "옆 조각 도련이 넘어와 남의 색이 보이는 것"인데, 맞붙임에서는
+    //   도련이 넘어가도 **옆 조각 원본이 그 위를 덮는다**(도련은 SENDTOBACK 으로 조각 뒤에 깔린다).
+    //   그래서 안쪽 경계에는 도련이 보이지 않고 **판 바깥 테두리에만** 남는다 — 명함 8up 이 하는 방식이다.
+    //   여기서 간격을 올려 버리면 조각이 떨어져 칼선이 2줄이 되고 맞붙임 자체가 성립하지 않는다.
+    var buttMode = (offsetMm <= 0 && gapMm <= 0);
+    if (!buttMode && nestBleedMm > 0 && gapMm < nestBleedMm * 2) gapMm = nestBleedMm * 2;
     var nestBleedModeEl = document.getElementById('bleedMode');
     var nestBleedMode = nestBleedModeEl ? nestBleedModeEl.value : 'auto';
     var lmN = resolveLineMode();
@@ -1188,6 +1201,13 @@
               + ' + 안전 ' + R(2 * (prep.safetyMm || 0)).toFixed(2) + ') · 배치 ' + mmpp.toFixed(3) + 'mm/px'
               + (prep.sub > 1 ? (' · 굽기 ' + prep.fineMmpp.toFixed(3) + 'mm/px') : '')
               + (scaleN > 1 ? ('\n배율 1/' + scaleN + ' — 위 치수는 **실물** 기준입니다(파일은 1/' + scaleN + ').') : '')
+              // ★맞붙임 — 조각을 붙여 칼선을 포갠다. 안전 여유를 뺐다는 사실과 그 대가를 함께 말한다.
+              + (buttMode
+                ? ('\n맞붙임 모드 — 여백·간격 0 이라 안전 여유를 빼고 조각을 붙였습니다(칼선이 포개져 같은 자리를 두 번 자르지 않습니다).'
+                  + (nestBleedMm > 0
+                    ? ('\n도련 ' + R(nestBleedMm) + 'mm 는 **판 바깥 테두리에만** 남습니다 — 안쪽 경계는 옆 조각이 덮습니다(간격을 올리지 않았습니다).')
+                    : '\n⚠ 도련이 0 입니다 — 재단이 밀리면 옆 디자인이 바로 들어옵니다.')
+                  + (mmpp > 0.3 ? ('\n⚠ 배치 격자가 ' + mmpp.toFixed(2) + 'mm 라 조각이 최대 그만큼 어긋날 수 있습니다 — 더 붙이려면 시트를 작게 잡으세요.') : '')) : '')
               + (prep.softened ? ('\n※ 반투명 조각 ' + prep.softened + '개는 경계를 느슨하게 잡았습니다.') : '')
               + (prep.fillNote || '') + (prep.bakeNote || '')
               + (prep.exact ? '' : ' ⚠ 해상도 한계로 올림 적용')

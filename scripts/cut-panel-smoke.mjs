@@ -389,6 +389,19 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3f 스냅 격자가 기준보다 거칠지 않음', rows.every((r) => r.mmpp <= 1.0 + 1e-9),
     rows.map((r) => r.mmpp.toFixed(3)).join(','))
   // 최종 격자의 반 칸 이상이어야 보장이 서고(충분), 한 칸을 넘으면 재료만 낭비한다(과하지 않음)
+  // ★맞붙임 — 여백·간격이 **둘 다 0** 이면 안전 여유를 뺀다. 칼선이 정확히 포개져야
+  //   재단기가 같은 자리를 두 번 자르지 않는다(2026-08-05 용준님). 여유가 남으면 조각이 떨어져
+  //   칼선이 2줄이 되고 의도가 깨진다. 0 이 아닌 값에서는 여유가 그대로여야 한다(간격이 깎인다).
+  {
+    const zr = await p.evaluate(() => {
+      return [[0, 0, 1370, 0], [0, 0, 914, 0], [0, 0, 1200, 2400], [0, 0, 600, 400]].map(([off, gap, w, h]) => {
+        const r = window.__mesCutNest.resolution(off, gap, w, h)
+        return { w, rPx: r.rPx, safety: r.safetyMm || 0, design: 2 * r.rPx * r.mmPerPx }
+      })
+    })
+    ok('3f 여백0·간격0 이면 조각이 붙는다', zr.every((r) => r.rPx === 0 && r.safety === 0 && r.design === 0),
+      zr.map((r) => `${r.w}:${r.rPx}px/안전${r.safety}/사이${r.design}`).join(' '))
+  }
   ok('3f 안전 여유가 격자 반 칸~한 칸',
     rows.every((r) => r.safety >= r.mmpp / 2 - 1e-9 && r.safety <= r.mmpp + 1e-9),
     rows.map((r) => `${r.safety.toFixed(3)}/${r.mmpp.toFixed(3)}`).join(' '))
@@ -866,7 +879,13 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     && /groupItems\.add\(\)/.test(hostSrc))
   // ★간격 < 도련×2 면 옆 조각 도련이 넘어온다 → 간격을 올리고 **알린다**
   const panelSrc2 = fs.readFileSync(CUT_MAIN, 'utf8')
-  ok('3m 간격을 도련×2 로 올린다', /if \(nestBleedMm > 0 && gapMm < nestBleedMm \* 2\) gapMm = nestBleedMm \* 2/.test(panelSrc2))
+  ok('3m 간격을 도련×2 로 올린다', /if \(!buttMode && nestBleedMm > 0 && gapMm < nestBleedMm \* 2\) gapMm = nestBleedMm \* 2/.test(panelSrc2))
+  // ★맞붙임은 예외 — 도련이 넘어가도 옆 조각 원본이 덮으므로(도련은 SENDTOBACK) 간격을 올릴 이유가 없다.
+  //   올려 버리면 조각이 떨어져 칼선이 2줄이 되고 맞붙임 자체가 깨진다.
+  ok('3m 맞붙임은 간격 상향에서 뺀다', /var buttMode = \(offsetMm <= 0 && gapMm <= 0\)/.test(panelSrc2))
+  // ★도련이 조각 뒤에 깔려야 안쪽 경계가 덮인다 — 앞으로 오면 남의 디자인 위에 도련이 보인다
+  ok('3m 도련은 조각 뒤에 깔린다', /zOrder\(ZOrderMethod\.SENDTOBACK\)/.test(
+    fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')))
   // 표시 형식(실물 환산 등)이 바뀌어도 **알린다는 사실**은 유지돼야 한다 → 의도로 검사한다
   ok('3m 올렸으면 결과에 알린다', /gapWanted < gapMm \?[\s\S]{0,120}간격을/.test(panelSrc2))
 
