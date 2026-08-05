@@ -45,7 +45,8 @@
 | 라우트 | 처분 | 이유 |
 |---|---|---|
 | `POST /sheets` · `GET /sheets` · `GET /sheets/:id` | **제거** | ia-editor 가 짠 판의 저장소 |
-| `POST /sheets/:id/render` · `GET /render-queue` · `POST /render-asset` | **제거** | 모아찍기 판 렌더 큐 |
+| `POST /sheets/:id/render` · `PATCH /sheets/:id/render` · `GET /render-queue` | **제거** | 모아찍기 판 렌더 큐 |
+| `POST /render-asset` | **유지** | ★조사 정정 — `job_type` 이 `sheet` **와 `process`** 둘 다다(`Program.cs:1756`·`1987`). 단건 가공이 공유한다 |
 | `GET /orders` · `GET /analyses/:orderId` · `GET /archives` · `POST /archive` · `GET /files` · `POST /files/analyze` | **제거** | 검수 뷰 전용 |
 | `POST /intakes` | **유지** | 에이전트 등록 경로(단건 포함) |
 | `GET /intake-config` | **유지** | 패널이 매번 읽는다(가공자·거래처·프리셋) |
