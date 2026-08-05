@@ -28,6 +28,11 @@ export const ORDER_STATUS_LABELS: Record<string, string> = {
   CANCELLED: '취소',
 }
 
+// 합배송 후보 자격 상태 (SSOT) — 진행 중 주문만. 블랙리스트로 두면 SHIPPED/COMPLETED가
+// 조건에 안 걸려 과거 주문이 후보로 새어 나온다(이관 8,653건 사고). 소비처 =
+// orders/queries.ts unshipped-by-client · shipments.ts consolidation-candidates.
+export const CONSOLIDATABLE_ORDER_STATUSES = ['CONFIRMED', 'PRINTING', 'PRINT_DONE', 'HOLD'] as const
+
 // equipment.equipment_status (장비 상태)
 // MAINTENANCE 라벨은 '정비중'으로 통일 (기존 '점검중' 혼용 정리, 2026-07-22)
 export const EQUIP_STATUS_LABELS: Record<string, string> = {

@@ -9,7 +9,8 @@ import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { autoDeductPostProcessingMaterials } from '../utils/autoDeductPostProcessingMaterials'
 import { deductStockLinesOnShip } from '../utils/stockShip'
 import { ensureShipmentForOrder } from '../utils/shipmentHelper'
-import { kstYmd, kstYmdCompact } from '../utils/kstDate'
+import { kstYmd, kstYmdCompact, kstDate } from '../utils/kstDate'
+import { CONSOLIDATABLE_ORDER_STATUSES } from '../utils/statusLabels'
 import { getEntityCompanyInfo } from '../utils/entitySettings'
 import { escapeCsvField } from '../utils/csv'
 
@@ -282,6 +283,8 @@ shipmentsRouter.get('/consolidation-candidates', requireAccessOrRole('/shipments
     }
     // v2 확장: 당일 출고 거래처(anchor)의 "미출고 전체" 주문을 함께 조회 —
     // 같은 법인 복수 주문·납품일 다른 주문도 합배송 후보로 (기존: 같은 날 + 복수 법인만)
+    // ⚠️ 딸림(미출고) 절만 진행중 상태 화이트리스트 + 30일 제한. anchor(당일 납품일) 절은
+    //    상태 무관 유지 — 당일 이미 출고한 건이 빠지면 묶음(merged_into_id) 표시가 깨진다.
     const { results } = await c.env.DB.prepare(`
       SELECT o.id, o.order_number, o.entity_id, en.short_name as entity_name,
              o.delivery_method, o.delivery_time, o.delivery_info, o.shipping_payment,
@@ -299,12 +302,15 @@ shipmentsRouter.get('/consolidation-candidates', requireAccessOrRole('/shipments
       )
       WHERE o.status NOT IN ('CANCELLED', 'DELETED', 'DRAFT', 'QUOTATION')
         AND (o.delivery_date = ?
-             OR (o.shipped_at IS NULL AND o.client_id IN (
+             OR (o.shipped_at IS NULL
+                  AND o.status IN (${CONSOLIDATABLE_ORDER_STATUSES.map(() => '?').join(', ')})
+                  AND o.order_date >= ${kstDate("'-30 days'")}
+                  AND o.client_id IN (
                   SELECT o3.client_id FROM orders o3
                   WHERE o3.delivery_date = ? AND o3.status NOT IN ('CANCELLED', 'DELETED', 'DRAFT', 'QUOTATION')
                 )))
       ORDER BY cl.client_name ASC, o.delivery_date ASC, o.entity_id ASC
-    `).bind(targetDate, targetDate).all<ConsolidationRow>()
+    `).bind(targetDate, ...CONSOLIDATABLE_ORDER_STATUSES, targetDate).all<ConsolidationRow>()
 
     for (const r of results) {
       r.is_today = r.delivery_date === targetDate

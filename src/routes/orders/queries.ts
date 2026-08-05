@@ -8,7 +8,8 @@ import { notifyRoles } from '../../utils/notify'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { sendEmail } from '../../services/emailProvider'
 import { getEntityId, entityFilter, orderVisibilityFilter } from '../../utils/entityFilter'
-import { kstYmd } from '../../utils/kstDate'
+import { kstYmd, kstDate } from '../../utils/kstDate'
+import { CONSOLIDATABLE_ORDER_STATUSES } from '../../utils/statusLabels'
 import { deductStockLinesOnShip } from '../../utils/stockShip'
 import { ensureShipmentForOrder } from '../../utils/shipmentHelper'
 
@@ -47,6 +48,10 @@ ordersQueriesRouter.get('/quotations/expired', async (c) => {
 // ⚠️ entityFilter 의도적 미적용(최소 필드 cross-entity): 같은 거래처 타법인 주문과의
 //    합배송 판단이 목적 (shipments consolidation-candidates와 동일 취지의 명시적 예외).
 //    게이트 = 주문 접수 권한(라우터 공통 requireAnyPagePermission('/orders','/cards')).
+// ⚠️ 상태 조건은 **화이트리스트**여야 한다. 블랙리스트(NOT IN)였을 때 이관 주문
+//    (status='SHIPPED' + shipped_at NULL) 8,653건이 전건 후보로 떠 접수 화면을 덮었다.
+//    출고/완료 주문은 합배송 대상이 아니므로 진행 중 상태만 명시적으로 허용한다.
+//    기간 제한(30일): 방치된 옛 미출고건이 후보 목록에 무한 누적되는 것 방지.
 ordersQueriesRouter.get('/unshipped-by-client', async (c) => {
   try {
     const clientId = parseInt(c.req.query('client_id') || '')
@@ -63,12 +68,13 @@ ordersQueriesRouter.get('/unshipped-by-client', async (c) => {
       FROM orders o
       LEFT JOIN entities en ON en.id = o.entity_id
       WHERE o.client_id = ?
-        AND o.status NOT IN ('CANCELLED', 'DELETED', 'DRAFT', 'QUOTATION', 'COMPLETED')
+        AND o.status IN (${CONSOLIDATABLE_ORDER_STATUSES.map(() => '?').join(', ')})
         AND o.shipped_at IS NULL
+        AND o.order_date >= ${kstDate("'-30 days'")}
         AND o.id != ?
       ORDER BY o.delivery_date ASC, o.id DESC
       LIMIT 20
-    `).bind(clientId, excludeOrderId).all()
+    `).bind(clientId, ...CONSOLIDATABLE_ORDER_STATUSES, excludeOrderId).all()
     return c.json({ success: true, data: results })
   } catch (error) {
     console.error('orders unshipped-by-client error:', error)
