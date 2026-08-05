@@ -142,6 +142,16 @@ async function resolveCard(db: D1Database, extractedName: string, entityId?: num
 
 type ResolvedCard = { cardId: number | null, cardNumber: string | null, orderNumber: string | null, orderItemId: number | null }
 
+/**
+ * LogWatcher `--probe` 가 로그 경로를 확정하려고 출력시키는 마커 잡 판별.
+ * 파일명이 `MESPROBE-<PC>-<타임스탬프>` 로 시작한다. 실제 생산이 아니므로 적재하지 않는다.
+ * (RIP 이 접두/접미를 붙일 수 있어 위치 무관으로 본다 — resolveCard 의 비anchored 매칭과 같은 이유)
+ */
+function isProbeMarker(fileName?: string | null, filePath?: string | null): boolean {
+  const hay = `${fileName || ''} ${filePath || ''}`
+  return /MESPROBE-[\w.-]+-\d{8,}/i.test(hay)
+}
+
 /** 경로·확장자 제거 — resolveCard 에 넘기는 이름 정규화 (LogWatcher 추출명과 동일 규칙) */
 function baseFileName(raw: string): string {
   return String(raw || '').replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '').trim()
@@ -343,6 +353,12 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
     const validStatuses = ['OK', 'CANCEL', 'ERROR']
     if (!validStatuses.includes(print_status)) {
       return c.json({ success: false, error: 'print_status must be OK, CANCEL, or ERROR' }, 400)
+    }
+
+    // LogWatcher --probe 의 마커 출력은 로그 경로를 찾으려고 일부러 낸 것이지 생산이 아니다.
+    // 적재하면 장비를 세팅할 때마다 가짜 출력이 실적·가동률에 쌓인다 → 아예 넣지 않는다.
+    if (isProbeMarker(file_name, file_path)) {
+      return c.json({ success: true, data: { skipped: 'probe_marker', duplicate: false } })
     }
 
     // equipment_id 폴백: 누락 시 agent_id→heartbeat 매핑으로 복구
@@ -575,6 +591,9 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
 
     for (const evt of events) {
       try {
+        // --probe 마커 잡은 생산이 아니다 (단일 핸들러와 동일). 오프라인 큐로 늦게 올라와도 막는다.
+        if (isProbeMarker(evt.file_name, evt.file_path)) { duplicates++; continue }
+
         // 수신 시각 UTC 정규화 (단일 핸들러와 동일)
         const evtNormStartedAt = kstNaiveToUtc(evt.print_started_at)
         const evtNormCompletedAt = kstNaiveToUtc(evt.print_completed_at)

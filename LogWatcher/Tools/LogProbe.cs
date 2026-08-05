@@ -46,6 +46,7 @@ namespace LogWatcher.Tools
                 case "--learn": Learn(rest); break;
                 case "--analyze": Analyze(rest); break;
                 case "--init": Init(rest); break;
+                case "--probe": MarkerProbe.Run(rest); break;
                 default: Console.WriteLine($"[LogProbe] unknown mode: {mode}"); break;
             }
         }

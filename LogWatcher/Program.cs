@@ -43,7 +43,7 @@ namespace LogWatcher
             DisableQuickEdit();
 
             // Standalone discovery/analysis tools — run without equipment.json (used before config exists)
-            if (args.Length > 0 && (args[0] == "--discover" || args[0] == "--learn" || args[0] == "--analyze" || args[0] == "--init"))
+            if (args.Length > 0 && (args[0] == "--discover" || args[0] == "--learn" || args[0] == "--analyze" || args[0] == "--init" || args[0] == "--probe"))
             {
                 Tools.LogProbe.Run(args);
                 return;
