@@ -887,6 +887,19 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     //   계산돼, 추천대로 골라도 결과가 안 맞는다(2026-08-05 실사용에서 걸림).
     ok('3u 폭 추천도 배율을 반영',
       /var widest = toFileMm\(ROLL_WIDTHS_MM/.test(panelSrc2) && /var wFile = toFileMm\(wReal\)/.test(panelSrc2))
+    // ★격자 후보·하한도 실물 기준이다 — 안 나누면 축소본에서 실질 해상도가 N배 거칠어져
+    //   컨투어가 계단이 되고 **직선 재단선이 휘어 보인다**(2026-08-05 실사용에서 걸림).
+    ok('3u 격자 후보도 배율을 반영',
+      /cands\.push\(toFileMm\(NEST_MMPP_CANDS/.test(panelSrc2) && /Math\.max\(pick\.mmPerPx, toFileMm\(0\.5\)\)/.test(panelSrc2))
+
+    // ── 판 여러 개 내보내기 (2026-08-05) ────────────────────────────
+    // ★여태 첫 판만 저장했다 — 판이 2개면 둘째가 조용히 빠져 실물이 모자란다.
+    ok('3v 내보내기가 판 전부를 돈다', /for \(var dz = 0; dz < docs\.length; dz\+\+\)/.test(nestSrc2))
+    // ★이름이 겹치면 뒤 판이 앞 판을 덮어써 한 판이 사라진다 → 판 수만큼 이름을 받는다
+    ok('3v 이름을 판 수만큼 받는다', /names\.push\(nm\)/.test(nestSrc2) && /nameLines\.push\('NAME ' \+ pairBaseName/.test(panelSrc2))
+    // ★판마다 크기가 다르다 — 첫 판 규격을 돌려쓰면 파일명이 실물과 어긋난다
+    ok('3v 판별 실제 크기를 돌려준다', /';wh=' \+ sheetWH\.join\('_'\)/.test(nestSrc2))
+    ok('3v 판별 규격으로 이름을 만든다', /lastNest\.wh\[idx\]/.test(panelSrc2))
     // ★돔보 상수는 호스트 안에 있으므로 호스트가 배율을 받아야 한다
     ok('3u 호스트가 배율을 받는다', /p\[0\] === 'N'/.test(nestSrc2) && /MESCUT_SCALE_N = 1/.test(nestSrc2))
     ok('3u 돔보를 파일 좌표로 환산', /mesCut_sc\(MESCUT_DOMBO_DIAM_MM\)/.test(nestSrc2))

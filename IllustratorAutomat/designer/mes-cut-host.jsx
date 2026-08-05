@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.12.0';
+var MESCUT_VERSION = 'CUT-CEP-0.13.0';
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -2252,6 +2252,7 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode) 
     if (!sheets.length) return 'ERROR 배치 결과 없음';
 
     var made = 0, items = 0, dombo = 0;
+    var sheetWH = [];   // 판별 실제 아트보드 크기 'WxH'(mm) — 판마다 다르므로 전부 모은다
     // 도련 실패 집계 — 조각마다 도는 자리라 **조용히 넘기면 판이 다 깔린 뒤에야** 없는 걸 안다.
     var blFail = 0, blCode = '', blClip = 0, blPix = 0, blSolid = 0, blLegacy = 0;
     // ★도련 PNG 를 하나라도 받았는가 = **새 패널인가**. 구 패널이면 옛 경로를 그대로 태운다(아래 참조).
@@ -2389,9 +2390,16 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode) 
                 var m = mesCut_domboMargin() * MESCUT_PT_PER_MM;
                 doc.artboards[0].artboardRect = [u[0] - m, u[1] + m, u[2] + m, u[3] - m];
             }
-            // ★첫 판 크기를 **여기서** 읽는다 — 이 시트가 활성일 때다.
+            // ★판 크기는 **여기서** 읽는다 — 이 시트가 활성일 때다.
             //   ⚠️ 비활성 문서의 `artboards[0].artboardRect` 는 **활성 문서 값**을 돌려준다
             //      (2026-08-02 실측: 시트 312×273 인데 원본 크기 600×400 이 나왔다).
+            //   ★판마다 크기가 **다르다** — 첫 판 규격으로 2판 이름을 지으면 파일명이 실물과 어긋난다.
+            //     그래서 전부 모아 돌려준다(패널이 판별 이름을 만든다).
+            try {
+                var arS = doc.artboards[0].artboardRect;
+                sheetWH.push(Math.round((arS[2] - arS[0]) / MESCUT_PT_PER_MM)
+                    + 'x' + Math.round((arS[1] - arS[3]) / MESCUT_PT_PER_MM));
+            } catch (eWH) { sheetWH.push('0x0'); }
             if (s === 0) {
                 try {
                     var ar1 = doc.artboards[0].artboardRect;
@@ -2408,7 +2416,9 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode) 
         return 'ok;sheets=' + made + ';items=' + items + ';dombo=' + dombo
             + ';sheetw=' + MESCUT_LAST_SHEET_W + ';sheeth=' + MESCUT_LAST_SHEET_H
             + ';bleedfail=' + blFail + ';bleedclip=' + blClip + ';bleedpx=' + blPix + ';bleedsolid=' + blSolid
-            + ';bleedlegacy=' + blLegacy + (blFail ? (';bleedcode=' + blCode) : '');
+            + ';bleedlegacy=' + blLegacy + (blFail ? (';bleedcode=' + blCode) : '')
+            // 판별 크기 — 구분자는 `_` 다(`;` 는 이 반환 문자열의 구분자라 못 쓴다)
+            + ';wh=' + sheetWH.join('_');
     } catch (e) {
         try { app.activeDocument = srcDoc; } catch (e2) {}
         return 'ERROR nestApply: ' + e;
@@ -2455,21 +2465,27 @@ function mesCut_exportPair() {
     if (app.documents.length === 0) return 'ERROR 문서 없음';
     var raw = mesCut_readParams();
     if (!raw) return 'ERROR params 없음';
-    var base = '';
+    // ★`NAME` 은 **판 수만큼** 온다(판마다 크기가 달라 이름도 다르다). 순서 = 판 순서.
+    var names = [];
     var lines = String(raw).split(/[\r\n]+/);
     for (var i = 0; i < lines.length; i++) {
         var sp = lines[i].indexOf(' ');
-        if (sp > 0 && lines[i].substring(0, sp) === 'NAME') base = lines[i].substring(sp + 1);
+        if (sp > 0 && lines[i].substring(0, sp) === 'NAME') {
+            var nm = lines[i].substring(sp + 1).replace(/^\s+|\s+$/g, '');
+            if (nm) names.push(nm);
+        }
     }
-    base = String(base).replace(/^\s+|\s+$/g, '');
-    if (!base) return 'ERROR 파일명 없음';
+    if (!names.length) return 'ERROR 파일명 없음';
 
-    // 대상 = 네스팅이 만든 시트 문서(없으면 활성 문서)
-    var doc = null;
+    // 대상 = 네스팅이 만든 시트 문서 **전부**(없으면 활성 문서 하나).
+    //   ★여태 첫 판만 저장했다 — 판이 2개면 둘째 판이 조용히 빠져 실물이 모자란다(2026-08-05).
+    var docs = [];
     if (MESCUT_NEST_DOCS && MESCUT_NEST_DOCS.length) {
-        try { if (MESCUT_NEST_DOCS[0].name) doc = MESCUT_NEST_DOCS[0]; } catch (eD) { doc = null; }
+        for (var dq = 0; dq < MESCUT_NEST_DOCS.length; dq++) {
+            try { if (MESCUT_NEST_DOCS[dq].name) docs.push(MESCUT_NEST_DOCS[dq]); } catch (eD) {}
+        }
     }
-    if (!doc) doc = app.activeDocument;
+    if (!docs.length) docs.push(app.activeDocument);
 
     // ★ExtendScript 의 폴더 고르기는 **정적/인스턴스가 다른 이름**이다(2026-08-05 실사용에서 걸림).
     //     · `Folder.selectDialog(prompt)`  = 정적 — 시작 위치를 못 정한다
@@ -2491,25 +2507,32 @@ function mesCut_exportPair() {
     var prev = app.activeDocument;
     var okEps = 0, okDxf = 0, nDxf = 0;
     try {
-        app.activeDocument = doc;
-        var stem = dir.fsName.replace(/\\/g, '/') + '/' + base;
-        // ① DXF 먼저 — 실패해도 EPS 는 남기려면 순서가 중요하지 않지만, DXF 는 칼선이 없으면 못 만든다
-        var dr = mesCut_exportDxf(stem + '.dxf');
-        if (dr.indexOf('ok;') === 0) { okDxf = 1; nDxf = parseInt(mesCut_kvGet(dr, 'items'), 10) || 0; }
-        // ② EPS — A0 와 같은 옵션(실물 EPS 와 같은 형식)
+        // ★판마다 저장한다. 이름은 판별로 오고(names), 모자라면 마지막 이름에 순번을 붙인다 —
+        //   이름이 겹치면 뒤 판이 앞 판을 **덮어써** 조용히 한 판이 사라진다.
         var epsOpts = new EPSSaveOptions();
         epsOpts.cmykPostScript = true;
         epsOpts.compatibility = Compatibility.ILLUSTRATOR10;
         epsOpts.preview = EPSPreview.COLORTIFF;
         epsOpts.embedAllFonts = true;
-        doc.saveAs(new File(stem + '.eps'), epsOpts);
-        okEps = 1;
+        for (var dz = 0; dz < docs.length; dz++) {
+            var doc = docs[dz];
+            app.activeDocument = doc;
+            var nmZ = (dz < names.length) ? names[dz] : (names[names.length - 1] + '-' + (dz + 1));
+            var stem = dir.fsName.replace(/\\/g, '/') + '/' + nmZ;
+            // ① DXF 먼저 — 칼선이 없으면 못 만든다
+            var dr = mesCut_exportDxf(stem + '.dxf');
+            if (dr.indexOf('ok;') === 0) { okDxf++; nDxf += parseInt(mesCut_kvGet(dr, 'items'), 10) || 0; }
+            // ② EPS — A0 와 같은 옵션(실물 EPS 와 같은 형식)
+            doc.saveAs(new File(stem + '.eps'), epsOpts);
+            okEps++;
+        }
     } catch (e) {
         try { app.activeDocument = prev; } catch (e2) {}
         return 'ERROR exportPair: ' + e + ';eps=' + okEps + ';dxf=' + okDxf;
     }
     try { app.activeDocument = prev; } catch (e3) {}
-    return 'ok;eps=' + okEps + ';dxf=' + okDxf + ';dxfitems=' + nDxf;
+    // eps/dxf 는 이제 **저장한 판 수**다(과거엔 0|1). plates 로 기대치를 함께 준다.
+    return 'ok;eps=' + okEps + ';dxf=' + okDxf + ';dxfitems=' + nDxf + ';plates=' + docs.length;
 }
 
 /** 'ok;a=1;b=2' 에서 값 하나 — 반환 문자열을 파싱할 곳이 늘어 공용으로 뺀다. */

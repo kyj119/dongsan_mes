@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.18.0';
+  var SHELL_VERSION = '0.19.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -633,6 +633,8 @@
 
   // 롤 1장의 최대 길이. 배치 버퍼 크기와 해상도 예산이 **같은 값을 봐야** 한다.
   var NEST_ROLL_MAX_MM = 6000;
+  // 배치 격자 후보(실물 mm/px). geometry.pickResolution 의 기본값과 같되, 배율에 따라 ÷N 해서 넘긴다.
+  var NEST_MMPP_CANDS = [0.25, 0.5, 1.0, 2.0];
   // ★네스팅 시트 버퍼는 `Uint8Array`(1바이트/칸)다 — `pickResolution` 의 12M 상한은
   //   EDT(Float32 4바이트) 비용에서 나온 값이라 여기 그대로 쓰면 해상도가 필요 이상으로 거칠어진다
   //   (실측: 1370롤 3mm 가 0.75 대신 1.5mm/px 로 떨어져 칼선이 더 각져졌다).
@@ -701,8 +703,17 @@
     // ★배치용 팽창량 = 여백 + 간격/2.
     //   재단선은 디자인에서 `여백` 만큼 떨어져 있고, 조각 사이는 **칼선끼리** `간격` 이어야 하므로
     //   디자인↔디자인 = 여백×2 + 간격 → 한쪽 팽창은 그 절반이다.
-    var pick = G.pickResolution(sheetWmm, sheetHmm || 3000);
-    var base = Math.max(pick.mmPerPx, 0.5);   // 네스팅은 정밀도보다 속도 — 0.5mm/px 이상
+    // ★격자 후보·하한은 **실물 기준 정밀도**다 → 파일 좌표로 ÷N 해야 배율이 바뀌어도 품질이 같다.
+    //   안 나누면 1/10 축소본에서 조각이 1/10 크기인데 격자는 그대로라 픽셀 수가 1/10 이 되고,
+    //   실질 해상도가 0.5 → **5mm/px** 로 떨어진다. 컨투어가 계단이 되어 **직선 재단선이 휘어 보인다**
+    //   (2026-08-05 용준님 지적). 조각과 격자가 같이 줄면 픽셀 수는 그대로라 비용도 안 는다.
+    var cands = [];
+    for (var ci = 0; ci < NEST_MMPP_CANDS.length; ci++) cands.push(toFileMm(NEST_MMPP_CANDS[ci]));
+    // ⚠️ maxPx 는 **기본값(12e6)을 그대로 둔다**. NEST_MAX_PX(24e6)를 넘겼더니 더 고운 격자가 뽑혀
+    //    base 가 1.0 → 0.5 로 바뀌고 안전 여유가 격자 반 칸 밑으로 떨어졌다(게이트 3f 가 잡았다).
+    //    배율만 반영하는 변경이므로 배율 1 에서는 기존과 **완전히 같아야** 한다.
+    var pick = G.pickResolution(sheetWmm, sheetHmm || toFileMm(3000), undefined, cands);
+    var base = Math.max(pick.mmPerPx, toFileMm(0.5));   // 네스팅은 정밀도보다 속도 — 실물 0.5mm/px 이상
     // ★안전 여유 = **격자 반 칸**.
     //   배치는 거친 격자 마스크로 겹침을 막고, 칼선은 미세 격자 마스크에서 뽑는다 —
     //   두 마스크가 최대 mmpp/2 어긋나므로 그만큼이 칼선 간격에서 깎인다.
@@ -1156,8 +1167,17 @@
             for (var ps = 0; ps < res.sheets.length; ps++) placed += res.sheets[ps].placements.length;
             var swMm = parseFloat(a.sheetw), shMm = parseFloat(a.sheeth);
             // 판 규격은 **실물 cm** 다 — 파일명 규약(`103x206`)이 실물 기준이고 EPS 바운딩박스와 맞아야 한다
+            // 판별 실제 크기(호스트 `wh=W1xH1_W2xH2`) — 판마다 이름이 달라야 하므로 그대로 들고 간다
+            var whList = [];
+            if (a.wh) {
+              var whRaw = String(a.wh).split('_');
+              for (var wi = 0; wi < whRaw.length; wi++) {
+                var wp = whRaw[wi].split('x');
+                if (wp.length === 2) whList.push(Math.round(R(parseFloat(wp[0])) / 10) + 'x' + Math.round(R(parseFloat(wp[1])) / 10));
+              }
+            }
             lastNest = (swMm > 0 && shMm > 0)
-              ? { wCm: Math.round(R(swMm) / 10), hCm: Math.round(R(shMm) / 10), n: placed, sheets: res.sheets.length }
+              ? { wCm: Math.round(R(swMm) / 10), hCm: Math.round(R(shMm) / 10), n: placed, sheets: res.sheets.length, wh: whList }
               : null;
             refreshPairName();
             setNestReady(true);
@@ -1407,7 +1427,8 @@
   }
 
   /** `(자재+후가공)품목(WxH-N장)` — 빠진 값은 건너뛴다(부분 입력에서도 쓸 수 있게). */
-  function pairBaseName() {
+  /** @param idx 판 번호(0부터). 생략하면 대표 이름(첫 판 규격·순번 없음) — 화면 미리보기용. */
+  function pairBaseName(idx) {
     if (!lastNest) return '';
     var mat = safeName((document.getElementById('regMaterial') || {}).value);
     var fin = safeName((document.getElementById('regFinish') || {}).value);
@@ -1417,8 +1438,13 @@
     // ★규격은 **실물 cm**(lastNest 가 이미 실물). 축소본이면 A0 와 같은 `_1-N` 접미를 붙인다
     //   (mes-a0-host.jsx: `epsName = ... + (sN > 1 ? '_1-' + sN : '')`) — 파일만 보고 축소본임을 알아야 한다.
     var sN = cutScaleN();
-    return head + item + '(' + lastNest.wCm + 'x' + lastNest.hCm + '-' + lastNest.n + '장)'
-      + (sN > 1 ? ('_1-' + sN) : '');
+    // ★판이 여러 개면 **판마다 크기가 다르다** — 첫 판 규격을 돌려쓰면 파일명이 실물과 어긋난다.
+    //   idx 를 주면 그 판의 실제 아트보드 크기로 규격을 만든다(호스트가 판별로 돌려준 값).
+    var spec;
+    if (idx != null && lastNest.wh && lastNest.wh[idx]) spec = lastNest.wh[idx];
+    else spec = lastNest.wCm + 'x' + lastNest.hCm;
+    var seq = (lastNest.sheets > 1 && idx != null) ? ('-' + (idx + 1) + 'p') : '';
+    return head + item + '(' + spec + '-' + lastNest.n + '장)' + seq + (sN > 1 ? ('_1-' + sN) : '');
   }
 
   function refreshPairName() {
@@ -1427,8 +1453,8 @@
     var base = pairBaseName();
     if (el) {
       el.textContent = base || '— 네스팅 후 자동으로 만들어집니다';
-      // 실물은 판마다 파일이 따로다 — 여러 판이면 지금은 **첫 판만** 나간다는 걸 숨기지 않는다
-      if (base && lastNest && lastNest.sheets > 1) el.textContent = base + '  ⚠ 판 ' + lastNest.sheets + '개 중 첫 판만';
+      // 실물은 판마다 파일이 따로다 — 판이 여러 개면 이름 뒤에 -1p·-2p 가 붙고 규격도 판마다 다르다
+      if (base && lastNest && lastNest.sheets > 1) el.textContent = base + '  (판 ' + lastNest.sheets + '개 · -1p/-2p)';
     }
     if (btn) {
       btn.disabled = !base || hostBusy;
@@ -1446,18 +1472,27 @@
       if (lk.indexOf('busy:') === 0) { setBusy(false); out('다른 쪽이 일러를 점유 중입니다: ' + lk.substring(5), 'err'); return; }
       // ★이름·경로가 한글이라 evalScript 인자로 못 넘긴다 → params 파일(UTF-8) 경유(등록과 같은 방식)
       host('mesCut_paramsPath()', function (pp) {
-        var w = window.cep.fs.writeFile(pp, 'NAME ' + base, window.cep.encoding.UTF8);
+        // ★판 수만큼 이름을 보낸다 — 판마다 크기가 달라 이름이 다르고, 같으면 뒤 판이 앞 판을 덮어쓴다
+        var nSheets = (lastNest && lastNest.sheets > 1) ? lastNest.sheets : 1;
+        var nameLines = [];
+        for (var pi = 0; pi < nSheets; pi++) nameLines.push('NAME ' + pairBaseName(nSheets > 1 ? pi : null));
+        var w = window.cep.fs.writeFile(pp, nameLines.join('\n'), window.cep.encoding.UTF8);
         if (!w || w.err !== 0) { fin2('params 쓰기 실패', 'err'); return; }
-        out('작업 폴더를 고르세요...');
+        out(nSheets > 1 ? ('작업 폴더를 고르세요 (판 ' + nSheets + '개 저장)...') : '작업 폴더를 고르세요...');
         host('mesCut_exportPair()', function (r, bad) {
           if (!bad && r.indexOf('cancel') === 0) { fin2('취소했습니다.', null); return; }
           if (bad || r.indexOf('ok;') !== 0) { fin2('내보내기 실패: ' + r, 'err'); return; }
           var d = kv(r.substring(3));
-          fin2('작업 폴더에 저장했습니다 — ' + base
-            + '\nEPS ' + (d.eps === '1' ? '✔' : '✘') + ' · DXF ' + (d.dxf === '1' ? '✔' : '✘')
+          var plates = parseInt(d.plates, 10) || 1;
+          var nEps = parseInt(d.eps, 10) || 0, nDxf = parseInt(d.dxf, 10) || 0;
+          var allOk = (nEps >= plates && nDxf >= plates);
+          fin2('작업 폴더에 저장했습니다 — ' + (plates > 1 ? ('판 ' + plates + '개') : base)
+            + '\nEPS ' + nEps + '/' + plates + ' · DXF ' + nDxf + '/' + plates
             + (d.dxfitems ? (' (칼선 ' + d.dxfitems + '개)') : '')
+            + (plates > 1 ? ('\n판마다 이름 뒤에 -1p·-2p 가 붙습니다(크기가 서로 달라 규격도 각각입니다).') : '')
+            + (allOk ? '' : '\n⚠ 일부 판이 저장되지 않았습니다 — 폴더 권한·이름 중복을 확인하세요.')
             + '\n※ 폴더 경로는 패널이 읽지 못합니다(한글) — 고른 폴더를 확인하세요.',
-            (d.eps === '1' && d.dxf === '1') ? 'ok' : 'err');
+            allOk ? 'ok' : 'err');
         });
       });
     });
