@@ -122,7 +122,6 @@ import { usersPage } from './pages/users'
 import { postProcessingPage } from './pages/postProcessing'
 import { equipmentPage } from './pages/equipment'
 import { maintenancePage } from './pages/maintenance'
-import { iaEditorPage } from './pages/iaEditor'
 import { iaScanPage } from './pages/iaScan'
 import { iaAutoProcessPage } from './pages/iaAutoProcess'
 import { iaBatchTestPage } from './pages/iaBatchTest'
@@ -439,7 +438,9 @@ app.get('/equipment', pageAuthMiddleware, requirePagePermission('/equipment'), e
 app.get('/maintenance', pageAuthMiddleware, requirePagePermission('/maintenance'), maintenancePage)
 // /workbench(시안 검수)는 2026-07-28 Phase 7b 에서 /ia-editor 의 '시안 검수' 뷰로 흡수·제거됨.
 //   API(/api/workbench/*)는 그대로 유지 — 검수·대기함·네스팅이 전부 이 라우터를 쓴다.
-app.get('/ia-editor', pageAuthMiddleware, requirePagePermission('/ia-editor'), iaEditorPage)
+// ★S4(2026-08-05) — /ia-editor 폐기. spec docs/superpowers/specs/2026-08-05-ia-editor-sunset.md
+//   웹 모아찍기·시안 검수 모두 폐기 결정. 재단 CEP 패널이 판을 완성한다.
+//   permission_pages 행은 마이그레이션 0521 로 제거.
 app.get('/ia-scan', pageAuthMiddleware, requireAdminPage(), iaScanPage)
 app.get('/ia-auto', pageAuthMiddleware, requireAdminPage(), iaAutoProcessPage)
 app.get('/ia-batch-test', pageAuthMiddleware, requireAdminPage(), iaBatchTestPage)
