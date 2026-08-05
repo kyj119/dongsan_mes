@@ -113,5 +113,12 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 
 (2026-07-29: SheetLayout 폴백 수정이 exe 폴더에 미복사 → 모아찍기 판 렌더 6일간 실패. 상세 = memory `feedback-ia-jsx-runtime-path`)
 
+### 재작업 = MES 기능 아님, 운영 규칙 (`docs/REWORK_RULES.md`)
+재작업은 **개발하지 않기로 확정**(2026-08-05). 절차서 정본 = `docs/REWORK_RULES.md` — 기능을 새로 만들자는 제안 전에 이걸 읽을 것.
+사고 지점은 **파일명**이다: 출력완료 매칭이 파일명 꼬리 `주문번호-순번`으로 `print_file_map` 을 찾는데(`printEvents.ts` `resolveCard`),
+그 등록 행은 **에이전트가 파일을 만들 때만** 생긴다. 그래서 경로별로 파일명 처리가 **정반대**다 —
+새 주문을 만들면 꼬리를 **새 주문번호로 교체**해야 하고(안 하면 원 주문 카드에 출력완료가 찍혀 실적 오염),
+기존 주문을 유지한 재출력은 **건드리면 안 된다**(그대로여야 매칭이 맞는다).
+
 > 사업 도메인·역할·아키텍처·에이전트 팀·참조 문서 → `.claude/references/project-context.md`
 > **단일 소스 원칙**: 참조 파일에 코드 값 복사 금지. 구조 변경 시 참조 파일도 동기 업데이트.

@@ -890,6 +890,30 @@ function buildBillingGroupsSection(order) {
     + '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
 }
 
+// 라인 부가 파일 경로 복사(0516) — 파일 실물은 Z:·주문폴더에 있고 현장 PC가 직접 연다.
+//   비보안 컨텍스트(사내 http)에서는 navigator.clipboard 가 없으므로 execCommand 폴백을 둔다.
+window.copyLineFilePath = function(el) {
+  var path = (el && el.getAttribute) ? (el.getAttribute('data-line-file') || '') : '';
+  if (!path) { if (typeof showToast === 'function') showToast('파일 경로가 없습니다.', 'warning'); return; }
+  function done() { if (typeof showToast === 'function') showToast('파일 경로를 복사했습니다.', 'info'); }
+  function fallback() {
+    var ta = document.createElement('textarea');
+    ta.value = path;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); done(); }
+    catch (e) { if (typeof showToast === 'function') showToast('복사 실패 — 경로: ' + path, 'warning'); }
+    document.body.removeChild(ta);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(path).then(done).catch(fallback);
+  } else {
+    fallback();
+  }
+};
+
 function showOrderModal(order, cards, autoJobs) {
   cards = cards || [];
   autoJobs = autoJobs || [];
@@ -902,6 +926,23 @@ function showOrderModal(order, cards, autoJobs) {
     const rowClass = isChild ? 'bg-green-50' : '';
     const namePrefix = isChild ? '└ ' : '';
     const sizeStr = item.specification ? escapeHtml(item.specification) : ((item.width && item.height) ? `${item.width}×${item.height}cm` : '-');
+    // 라인 부가 파일(0516) — 재단 완성 시트의 칼선 DXF. "kind|이름|경로" 줄 단위(core.ts GROUP_CONCAT).
+    //   웹에서 내려받지 않고 **경로만** 준다(파일은 Z:·주문폴더에 있고 현장 PC가 직접 연다) → 클릭=경로 복사.
+    let lineFileHtml = '';
+    if (item.line_files) {
+      lineFileHtml = String(item.line_files).split('\n').map((ln) => {
+        const p = ln.split('|');
+        if (p.length < 3) return '';
+        const kind = p[0], path = p.slice(2).join('|');
+        if (kind !== 'dxf') return '';   // source(AI 원본)는 기존 표시 경로가 따로 있다
+        // ⚠️ 경로를 onclick 인자 문자열로 넣지 말 것 — Windows 경로의 백슬래시가 JS 이스케이프로
+        //    먹혀 사라진다(`Z:\DESIGNS\2026` → `Z:DESIGNS2026`). data 속성으로 넘긴다.
+        return `<span class="ml-1 px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-[11px] cursor-pointer align-middle"
+                      title="칼선 파일 — 클릭하면 경로가 복사됩니다&#10;${escapeHtml(path)}"
+                      data-line-file="${escapeHtml(path)}"
+                      onclick="copyLineFilePath(this)"><i class="fas fa-scissors mr-0.5"></i>DXF</span>`;
+      }).join('');
+    }
     let ppText = '-';
     if (item.post_processing) {
       try {
@@ -912,7 +953,7 @@ function showOrderModal(order, cards, autoJobs) {
     return `
       <tr class="border-b ${rowClass}">
         <td class="px-4 py-2 text-center">${rowNum}</td>
-        <td class="px-4 py-2" title="${escapeHtml(item.item_name || '')}">${namePrefix}${escapeHtml(item.item_name || '-')}</td>
+        <td class="px-4 py-2" title="${escapeHtml(item.item_name || '')}">${namePrefix}${escapeHtml(item.item_name || '-')}${lineFileHtml}</td>
         <td class="px-4 py-2 text-center">${sizeStr}</td>
         <td class="px-4 py-2 text-center tabular-nums">${item.quantity || 1} ${item.unit || 'EA'}</td>
         <td class="px-4 py-2 text-right tabular-nums">${isChild ? '-' : (item.unit_price?.toLocaleString() || 0) + '원'}</td>

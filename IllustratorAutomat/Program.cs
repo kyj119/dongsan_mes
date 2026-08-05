@@ -3040,6 +3040,23 @@ namespace IllustratorAutomation
                     string ptDest = Path.Combine(orderFolder, baseName + ptExt);
                     File.Copy(aiFilePath, ptDest, overwrite: true);
                     Console.WriteLine($"      📋 완성본 passthrough 복사: {Path.GetFileName(ptDest)}");
+
+                    // ★재단 칼선(DXF) 동반 복사 — 재단 패널은 EPS 와 **같은 폴더·같은 이름**으로 DXF 를 만든다
+                    //   (mes-cut-host.jsx nestRegister: epsName.replace(.eps → .dxf)). 여태 EPS 한 장만 복사돼
+                    //   칼선이 주문에서 사라졌고, 재단 담당자는 Z:\IA-등록 폴더를 손으로 찾아가야 했다.
+                    //   경로를 라인에도 붙인다(order_ai_files kind='dxf', 0516) — ai_file_id 는 1:1 이라 두 번째 파일을 못 실었다.
+                    try
+                    {
+                        string ptDxfSrc = Path.ChangeExtension(aiFilePath, ".dxf");
+                        if (File.Exists(ptDxfSrc))
+                        {
+                            string ptDxfDest = Path.Combine(orderFolder, baseName + ".dxf");
+                            File.Copy(ptDxfSrc, ptDxfDest, overwrite: true);
+                            Console.WriteLine($"      ✂️  칼선 DXF 동반 복사: {Path.GetFileName(ptDxfDest)}");
+                            await RegisterLineFileAsync(item, ptDxfDest, "dxf");
+                        }
+                    }
+                    catch (Exception dxEx) { Console.WriteLine($"      ⚠️ 칼선 DXF 복사 실패(계속 진행): {dxEx.Message}"); }
                     // 썸네일 PNG만 생성 (가공 없이) — ProcessOrderItem.jsx passthroughThumb 모드
                     try
                     {
@@ -3306,6 +3323,43 @@ namespace IllustratorAutomation
             catch (Exception ex)
             {
                 Console.WriteLine($"      ⚠️  file-map 등록 실패 (계속 진행): {ex.Message}");
+            }
+        }
+
+        // ── 라인 부가 파일 등록 (order_ai_files kind='dxf', 0516) ──────────
+        // print_file_map 에 넣으면 안 된다 — 그건 RIP 출력완료 매칭용(UNIQUE order_number+file_seq)이라
+        //   DXF 를 끼우면 seq 가 밀려 카드 매칭이 오염된다. 라인↔파일은 order_ai_files 가 정본.
+        private static async Task RegisterLineFileAsync(JsonElement item, string filePath, string kind)
+        {
+            try
+            {
+                int orderItemId = (item.TryGetProperty("id", out var oiEl) && oiEl.TryGetInt32(out int oiVal)) ? oiVal : 0;
+                if (orderItemId <= 0) { Console.WriteLine($"      ⚠️ 라인 파일 등록 스킵: order_item_id 없음"); return; }
+
+                var payload = new Dictionary<string, object?>
+                {
+                    ["file_path"] = filePath,
+                    ["file_name"] = Path.GetFileName(filePath),
+                    ["kind"] = kind
+                };
+                var req = new HttpRequestMessage(HttpMethod.Post, $"{ERP_API_URL}/api/orders/items/{orderItemId}/files")
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(payload), System.Text.Encoding.UTF8, "application/json")
+                };
+                var resp = await httpClient.SendAsync(req);
+                if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized && await LoginAsync())
+                {
+                    var retry = new HttpRequestMessage(HttpMethod.Post, $"{ERP_API_URL}/api/orders/items/{orderItemId}/files")
+                    {
+                        Content = new StringContent(JsonSerializer.Serialize(payload), System.Text.Encoding.UTF8, "application/json")
+                    };
+                    resp = await httpClient.SendAsync(retry);
+                }
+                Console.WriteLine($"      🔗 라인 파일 등록({kind}): item={orderItemId}, status={resp.StatusCode}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"      ⚠️ 라인 파일 등록 실패(계속 진행): {ex.Message}");
             }
         }
 

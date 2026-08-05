@@ -354,8 +354,13 @@ ordersCoreRouter.get('/:id/invoice', async (c) => {
       : null
 
     // Get order items (부모행/단독행만 반환 - 자식행 제외)
+    // line_files = 라인에 붙은 부가 파일(0516). 재단 완성 시트의 칼선 DXF 가 여기로 온다 —
+    //   ai_file_id 는 1:1 이라 EPS 말고 두 번째 파일을 실을 곳이 없었다.
     const { results: items } = await c.env.DB.prepare(`
-      SELECT oi.*, ar.file_path AS ai_file_path
+      SELECT oi.*, ar.file_path AS ai_file_path,
+             (SELECT GROUP_CONCAT(f.kind || '|' || COALESCE(f.file_name, '') || '|' || f.file_path, CHAR(10))
+                FROM order_ai_files f
+               WHERE f.order_item_id = oi.id) AS line_files
       FROM order_items oi
       LEFT JOIN ai_analysis_requests ar ON ar.id = oi.ai_analysis_id
       WHERE oi.order_id = ? AND oi.parent_item_id IS NULL

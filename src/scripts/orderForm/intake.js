@@ -690,6 +690,14 @@
             //   규격 미상(width/height null)은 묶음 불가 → null 반환(개별 라인).
             function ofTrayBundleKey(r) {
                 if (r.width_cm == null || r.height_cm == null) return null;
+                // ★재단 패널 네스팅 시트는 절대 묶지 않는다(2026-08-05).
+                //   묶음 키가 '규격'을 보는데 재단 시트의 규격은 **시트(롤/평판) 크기**라 폭이 고정이다
+                //   → 내용이 전혀 다른 시트 2장이 같은 부모(=단일 품목·단가 1행)로 합쳐지고,
+                //     시트별 단가를 못 실어 청구가 조용히 틀어진다. 시트 단가 청구가 확정 방침이므로
+                //     시트는 언제나 자기 라인 1개를 갖는다.
+                //   판별 = script_version 접두(mes-cut-host.jsx MESCUT_VERSION = 'CUT-CEP-*').
+                //   lite 목록이 designer_intakes.* 를 그대로 주므로(workbench.ts) 추가 조회가 필요 없다.
+                if (String(r.script_version || '').indexOf('CUT-CEP') === 0) return null;
                 var fin = '';
                 try {
                     var fj = r.finishing_json ? JSON.parse(r.finishing_json) : null;

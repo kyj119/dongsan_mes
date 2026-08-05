@@ -40,6 +40,7 @@
 | `kakao-alimtalk-templates.md` | 🟢 | 알림톡 템플릿 문안 — 실발송 전환 완료(2026-06) |
 | `WORKTREE_WORKFLOW.md` | 🟢 | 멀티세션 git worktree 표준 (CLAUDE.md가 참조) |
 | `IA_EDITOR_USAGE.md` | 🟢 | /ia-editor 사용 설명서 |
+| `REWORK_RULES.md` | 🟢 | **재작업 처리 규칙**(오퍼레이터·디자이너) — 재작업은 기능화하지 않고 규칙으로 처리 확정(2026-08-05). CLAUDE.md가 참조 |
 | `LOGWATCHER_EQUIPMENT_INVENTORY.md` | 🟡 | 장비 인벤토리 매핑표 — 현장 확인 채움 대기 |
 | `BARCODE_INVENTORY_SPEC_PENDING.md` | 🟡 | 바코드 입출고 재고 — 구체화 대기(#412, owner 결정) |
 | `HANDOFF-flexi-nest-tracking.md` | 🟡 | Flexi 네스팅 추적 — 코드 완료·**prod 미배포** 인계 |

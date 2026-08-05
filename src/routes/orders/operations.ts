@@ -54,6 +54,61 @@ interface SettingValueRow { setting_value: string | null }
 const ordersOpsRouter = new Hono<HonoEnv>()
 ordersOpsRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
 
+// POST /items/:itemId/files — 라인에 부가 파일을 붙인다(현재 소비자 = 에이전트가 복사한 재단 칼선 DXF).
+//   여태 라인→파일은 order_items.ai_file_id 하나뿐이라 "EPS + DXF" 두 개를 못 실었다(0516).
+//   ⚠️ 세그먼트 3개라 /:id/copy(2개)·GET /:id(1개)와 매칭 충돌 없음. ops 라우터가 core 보다 먼저 마운트된다.
+ordersOpsRouter.post('/items/:itemId/files', requireEditOrRole('/orders', 'MANAGER', 'DESIGNER'), async (c) => {
+  try {
+    const itemId = parseInt(c.req.param('itemId'), 10)
+    if (!itemId) return c.json({ success: false, error: '잘못된 라인 ID입니다.' }, 400)
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null)
+    if (!body) return c.json({ success: false, error: 'JSON 본문이 필요합니다.' }, 400)
+
+    const filePath = String(body.file_path || '').trim()
+    if (!filePath) return c.json({ success: false, error: 'file_path 가 필요합니다.' }, 400)
+    const kind = String(body.kind || 'dxf').trim().toLowerCase()
+    if (!['dxf', 'source'].includes(kind)) {
+      return c.json({ success: false, error: "kind 는 dxf|source 여야 합니다." }, 400)
+    }
+
+    // 라인 소유 법인 검증 — 없으면 타법인 주문 라인에 남의 파일을 물릴 수 있다(workbench absorb #582와 같은 IDOR).
+    const ovf = orderVisibilityFilter(c, 'o')
+    const line = await c.env.DB.prepare(
+      `SELECT oi.id, oi.order_id, o.entity_id
+         FROM order_items oi JOIN orders o ON o.id = oi.order_id
+        WHERE oi.id = ?${ovf.clause}`
+    ).bind(itemId, ...ovf.params).first<{ id: number; order_id: number; entity_id: number | null }>()
+    if (!line) return c.json({ success: false, error: '주문 라인을 찾을 수 없습니다.' }, 404)
+
+    // 멱등 — 에이전트는 잡을 재시도할 수 있고, 같은 파일이 라인에 여러 번 붙으면 화면에 중복으로 뜬다.
+    const dup = await c.env.DB.prepare(
+      `SELECT id FROM order_ai_files WHERE order_item_id = ? AND kind = ? AND file_path = ? LIMIT 1`
+    ).bind(itemId, kind, filePath).first<{ id: number }>()
+    if (dup) return c.json({ success: true, data: { id: dup.id, duplicated: true } })
+
+    const fileName = body.file_name != null && String(body.file_name).trim() !== ''
+      ? String(body.file_name).trim()
+      : (filePath.split(/[/\\]/).pop() || null)
+    const maxSort = await c.env.DB.prepare(
+      `SELECT COALESCE(MAX(sort_order), -1) AS m FROM order_ai_files WHERE order_id = ?`
+    ).bind(line.order_id).first<{ m: number }>()
+
+    const created = await c.env.DB.prepare(
+      `INSERT INTO order_ai_files (order_id, order_item_id, kind, file_path, file_name, sort_order, entity_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`
+    ).bind(
+      line.order_id, itemId, kind, filePath, fileName,
+      (maxSort?.m ?? -1) + 1,
+      line.entity_id ?? getEntityId(c)   // 라인이 속한 주문의 법인 상속(세션≠청구 법인 대비)
+    ).first<{ id: number }>()
+
+    return c.json({ success: true, data: { id: created?.id ?? null, order_item_id: itemId, kind } })
+  } catch (error) {
+    console.error('order item file register error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
 ordersOpsRouter.post('/:id/copy', requireEditOrRole('/orders', 'MANAGER', 'DESIGNER'), async (c) => {
   try {
     const id = c.req.param('id')

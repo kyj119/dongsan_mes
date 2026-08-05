@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.15.0';
+  var SHELL_VERSION = '0.16.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -1389,12 +1389,19 @@
     host('mesCut_acquireLock("' + PANEL_OWNER + '","register")', function (lk) {
       if (lk.indexOf('busy:') === 0) { setBusy(false); out('다른 쪽이 일러를 점유 중입니다: ' + lk.substring(5), 'err'); return; }
       // 등록 정보는 한글이라 evalScript 인자로 못 넘긴다 → params 파일(UTF-8) 경유(A0 와 같은 방식)
+      // ★KEYWORD = [품목] 입력(2026-08-05). 여태 안 보내서 대기물 keyword 가 **항상 비어 있었고**,
+      //   주문서 라인의 '내용'도 비어 카드·출력 파일명에 식별 정보가 하나도 안 실렸다
+      //   (파일명 규약에서 이미 품목이 내용 자리를 쓴다 — [거래처]-[규격]-[내용]-…).
+      //   host 는 예전부터 R.KEYWORD 를 읽고 있었다(mes-cut-host.jsx manifest keyword) — 보내는 쪽만 없었다.
+      var keyword = (document.getElementById('regItem') || {}).value || '';
+      keyword = String(keyword).replace(/^\s+|\s+$/g, '');
       var lines = [
         'CLIENT ' + name,
         'CLIENTID ' + (clientIdOf(name) == null ? '' : clientIdOf(name)),
         'QTY ' + Math.max(1, Math.round(qty)),
         'WORKER ' + workerName,
         'WORKERID ' + workerId,
+        'KEYWORD ' + keyword,
       ];
       host('mesCut_regPath()', function (rp) {
         var w = window.cep.fs.writeFile(rp, lines.join('\n'), window.cep.encoding.UTF8);
