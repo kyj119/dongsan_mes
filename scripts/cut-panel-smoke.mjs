@@ -654,10 +654,40 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   const panelSrc = fs.readFileSync(CUT_MAIN, 'utf8')
   ok('3q nestApply 가 도련을 받는다', /function mesCut_nestApply\(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode\)/.test(hostSrc))
   // ★조각마다 따로 불러야 한다 — 한꺼번에 하면 조각끼리 이어진다
-  ok('3q 배치된 사본마다 도련', /mesCut_vecBleed\(doc, \[copies\[vi\]\]/.test(hostSrc))
+  ok('3q 배치된 사본마다 도련', /mesCut_bleedPlaceItem\(doc, artLayer, copies\[vi\]/.test(hostSrc))
   ok('3q 패널이 도련을 넘긴다', /nestApply\([\s\S]{0,120}nestBleedMm/.test(panelSrc))
   // ★간격 < 도련×2 면 인접 도련이 겹친다 — 조용히 두면 남의 색이 링에 남는다
   ok('3q 간격이 좁으면 경고', /gapMm < nestBleedMm \* 2/.test(panelSrc))
+
+  // ── 도련 = Repeat Last Pixel 배선 (2026-08-05) ─────────────────
+  // 아래 넷은 전부 **조용히 틀리는** 실패다. 화면엔 "도련 완료"가 뜨고 인쇄 뒤에야 안다.
+
+  // ★도련용 굽기는 **원색**(fillClosed=false)·**pad 0** 이어야 한다.
+  //   검게 칠한 마스크를 쓰면 도련이 통째로 검정이 되고, pad 가 남으면 grow 와 중복 패딩돼
+  //   PNG 중심과 조각 잉크 중심이 어긋나 배치가 그만큼 밀린다.
+  ok('3q 도련 굽기는 원색·pad 0', /mesCut_nestBakeAll\(' \+ mmpp \+ ',0,false,"ink"\)/.test(panelSrc))
+  // ★굽기 tag 가 없으면 마스크용 PNG 를 덮어써 배치 마스크나 도련 한쪽이 조용히 틀린다
+  ok('3q 굽기가 용도별 이름표를 쓴다', /mes_cut_' \+ tag \+ '_/.test(hostSrc))
+  // ★크기는 패널이 준 값(`L` 줄)을 쓴다 — 호스트가 px→mm 을 재계산하면 반올림만큼 어긋난다
+  ok('3q 패널이 L 줄을 쓴다', /lines\.push\('L ' \+ bid/.test(panelSrc))
+  ok('3q 호스트가 L 줄을 읽는다', /p\[0\] === 'L'/.test(hostSrc))
+  // ★★구 패널 하위호환 — 축2(Z: 호스트)는 전 PC 즉시 반영이고 패널은 PC 별 수동 설치라
+  //   "새 호스트 + 구 패널" 조합이 배포 사이에 반드시 생긴다. 그 PC 를 새 계층에 태우면
+  //   도련 PNG 가 없으니 곧장 단색으로 떨어진다 = 회귀. 옛 경로를 그대로 태워야 한다.
+  ok('3q 구 패널이면 옛 경로로 폴백', /if \(!hasBleedPng\) \{[\s\S]{0,900}?mesCut_vecBleed\(doc, \[copies\[vi\]\]/.test(hostSrc))
+  ok('3q 옛 경로 사용을 집계해 알린다', /bleedlegacy=/.test(hostSrc) && /a\.bleedlegacy/.test(panelSrc))
+  // ★계층 순서 = 클립 확장(무손실) → 픽셀 → 단색. 뒤집히면 무손실 경로를 영영 안 타게 된다.
+  ok('3q 클립 확장이 픽셀보다 먼저',
+    hostSrc.indexOf('mesCut_vecGrowClips([copies[vi]]') > 0 &&
+    hostSrc.indexOf('mesCut_vecGrowClips([copies[vi]]') < hostSrc.indexOf('mesCut_bleedPlaceItem(doc, artLayer'))
+  // ★게이트 최소버전이 실제 호스트 버전보다 높으면 **아무도 새 경로를 못 쓴다**(전원이 조용히 옛 방식)
+  {
+    const hv = /MESCUT_VERSION = 'CUT-CEP-(\d+)\.(\d+)\.(\d+)'/.exec(hostSrc)
+    const gv = /BLEEDPNG_MIN_HOST = \[(\d+), (\d+), (\d+)\]/.exec(panelSrc)
+    const n = (m) => Number(m[1]) * 1e6 + Number(m[2]) * 1e3 + Number(m[3])
+    ok('3q 도련 게이트 ≤ 호스트 버전', !!hv && !!gv && n(hv) >= n(gv),
+      `host=${hv && hv[0]} gate=${gv && gv[0]}`)
+  }
 }
 
 // ── 3p ★설명 접기 (2026-08-03: "실사용시에는 설명이 너무 많다") ──────────

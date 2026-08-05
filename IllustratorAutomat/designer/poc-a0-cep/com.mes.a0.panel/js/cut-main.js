@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.14.0';
+  var SHELL_VERSION = '0.15.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -55,6 +55,10 @@
   var CURVE_MIN_HOST = [0, 5, 0];
   var VEC_MIN_HOST = [0, 7, 0];      // 벡터 칼선(mesCut_vecCut / nestApply(offset))
   var BAKEALL_MIN_HOST = [0, 8, 0]; // 일괄 굽기(mesCut_nestBakeAll)
+  // 도련 PNG(Repeat Last Pixel) — 호스트에 `mesCut_bleedPlaceItem` + params `L` 줄 + 굽기 tag 인자가 있어야 한다.
+  //   구 호스트는 `L` 줄을 **조용히 무시**하고 도련은 옛 도형별 오프셋으로 떨어진다(링이 지저분해진다).
+  //   조용히 달라지는 것이 가장 나쁘므로 게이트를 두고, 못 받으면 만들지 않고 **알린다**.
+  var BLEEDPNG_MIN_HOST = [0, 11, 0];
   var hostVersion = null;
 
   function setHostVersion(s) { hostVersion = String(s || ''); }
@@ -70,6 +74,7 @@
   function hostSupportsCurve() { return hostAtLeast(CURVE_MIN_HOST); }
   function hostSupportsVector() { return hostAtLeast(VEC_MIN_HOST); }
   function hostSupportsBakeAll() { return hostAtLeast(BAKEALL_MIN_HOST); }
+  function hostSupportsBleedPng() { return hostAtLeast(BLEEDPNG_MIN_HOST); }
 
   // ── ★칼선 방식 (2026-08-01) ──────────────────────────────────────
   // 벡터 = 일러가 실루엣을 직접 오프셋한다. 래스터 왕복(굽기→임계→픽셀 계단→곡선 복원)이 없으므로
@@ -140,6 +145,7 @@
       case 'sil': case 'silsel': return '도련 경계를 만들지 못했습니다. 여백·도련 값을 줄여 보세요.';
       case 'mask': return '도련을 경계로 잘라내지 못했습니다. 잘리지 않은 도련은 칼선 밖으로 나가 옆 조각을 침범하므로 만들지 않았습니다.';
       case 'zero': return '도련 값이 0입니다.';
+      case 'nopng': return '도련 그림을 만들지 못했습니다(조각이 너무 크거나 굽기 실패). 도련·여백을 줄이거나 조각을 나눠 보세요.';
       case 'throw': return '일러 내부 오류입니다. 같은 조각을 단품 칼선으로 시험해 보세요.';
       default: return '사유 미상(' + (code || '-') + ').';
     }
@@ -805,6 +811,100 @@
     });
   }
 
+  // ── ★도련 = Repeat Last Pixel (2026-08-05 배선) ──────────────────
+  //
+  // 계산이 일러 밖(여기)에 있는 이유 = **하네스로 검증되기 때문**이다(`npm run cut:bleed`,
+  // geometry.js 와 같은 원칙). ExtendScript 는 픽셀에 접근할 수도, 테스트할 수도 없다.
+  // 엔진과 왜 이 방식인지는 `js/bleed.js` 와 호스트 `mesCut_bleedPlaceItem` 주석에 있다.
+
+  // 조각 하나가 만드는 확장 캔버스 상한. 8SSEDT 는 Int32Array 2벌을 더 쓰므로 픽셀당 ~12바이트다
+  // (12M px ≈ 144MB). 넘으면 그 조각만 건너뛰고 호스트가 단색으로 떨어진다 — **넘겼다고 알린다**.
+  var BLEED_MAX_PX = 12e6;
+
+  /** RGBA → temp 의 PNG 파일. canvas → dataURL → cep.fs(Base64). 호스트가 이 이름으로 찾는다. */
+  function writeBleedPng(dir, id, r) {
+    try {
+      var cv = document.createElement('canvas');
+      cv.width = r.W; cv.height = r.H;
+      var ctx = cv.getContext('2d');
+      var im = ctx.createImageData(r.W, r.H);
+      im.data.set(r.data);
+      ctx.putImageData(im, 0, 0);
+      var b64 = cv.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
+      var enc = (window.cep && window.cep.encoding && window.cep.encoding.Base64) ? window.cep.encoding.Base64 : 'Base64';
+      var w = window.cep.fs.writeFile(dir + 'mes_cut_bleed_' + id + '.png', b64, enc);
+      return !!(w && w.err === 0);
+    } catch (e) { return false; }
+  }
+
+  /**
+   * 조각마다 도련 PNG 를 만들어 temp 에 둔다.
+   *
+   * ★굽기를 **다시** 한다(`tag="ink"`). 이유 두 가지 — 둘 다 안 지키면 조용히 틀린다:
+   *   ① 배치 마스크용 굽기는 선 도안이면 **검게 칠해져** 있다(`fillClosed`). 도련은 원색이 필요하다.
+   *   ② `padMm=0` 으로 굽는다. 마스크 굽기의 pad 가 남아 있으면 도련 grow 와 **중복 패딩**돼
+   *      PNG 중심과 조각 잉크 중심이 어긋나고, 호스트의 중심 정렬이 그만큼 밀린다.
+   *
+   * @param cb(map, note) map = { idx: {w,h} } **실제** PNG 크기(mm). 실패한 조각은 빠진다(호스트가 단색으로).
+   */
+  function buildBleedPngs(prep, growMm, cb) {
+    var B = window.MesCutBleed;
+    if (!B) { cb({}, '엔진(js/bleed.js) 미로드 — 패널 설치본을 확인하세요.'); return; }
+    var mmpp = prep.fineMmpp;
+    var growPx = growMm / mmpp;
+    var padPx = Math.ceil(growPx);
+    out('도련용 원색 굽는 중...');
+    host('mesCut_nestBakeAll(' + mmpp + ',0,false,"ink")', function (rz, bad) {
+      if (bad || String(rz).indexOf('ok;') !== 0) { cb({}, '원색 굽기 실패: ' + rz); return; }
+      var rows = String(rz).split(/[\r\n]+/), list = [];
+      for (var r = 1; r < rows.length; r++) {
+        var t = rows[r].split(' ');
+        if (t[0] !== 'P') continue;
+        // P <idx> <w> <h> <ox> <oy> <path…> — 경로에 공백이 있을 수 있어 뒤를 전부 붙인다
+        list.push({ id: parseInt(t[1], 10), path: t.slice(6).join(' ') });
+      }
+      if (!list.length) { cb({}, '구운 조각이 없습니다.'); return; }
+      // temp 경로는 호스트만 안다 — 굽기 결과 경로에서 폴더를 떼어 쓴다(경로가 브릿지를 안 탄다)
+      var dir = String(list[0].path).replace(/[^\/\\]+$/, '');
+      var map = {}, skipped = 0, tooBig = 0, q = 0;
+      (function step() {
+        if (q >= list.length) {
+          var note = '';
+          if (tooBig) note = tooBig + '개 조각은 너무 커서 만들지 않았습니다(단색으로 대체).';
+          else if (skipped) note = skipped + '개 조각을 만들지 못했습니다(단색으로 대체).';
+          cb(map, note);
+          return;
+        }
+        var it = list[q];
+        out('도련 ' + (q + 1) + '/' + list.length);
+        readPng(it.path, function (err, img) {
+          if (err) { skipped++; q++; step(); return; }
+          if ((img.W + 2 * padPx) * (img.H + 2 * padPx) > BLEED_MAX_PX) { tooBig++; q++; step(); return; }
+          var res = null;
+          try { res = B.repeatLastPixel(img, growPx); } catch (e) { res = null; }
+          if (res && writeBleedPng(dir, it.id, res)) map[it.id] = { w: res.W * mmpp, h: res.H * mmpp };
+          else skipped++;
+          q++; step();
+        });
+      })();
+    });
+  }
+
+  /** 도련을 **어느 방식으로** 만들었는지 — 품질이 다르므로 조각 수까지 밝힌다. */
+  function bleedHow(a) {
+    var clip = parseInt(a.bleedclip, 10) || 0;
+    var px = parseInt(a.bleedpx, 10) || 0;
+    var sol = parseInt(a.bleedsolid, 10) || 0;
+    var leg = parseInt(a.bleedlegacy, 10) || 0;
+    var parts = [];
+    if (clip) parts.push('클립 확장 ' + clip + '개(무손실)');
+    if (px) parts.push('가장자리 색 잇기 ' + px + '개');
+    if (sol) parts.push('⚠ 단색 ' + sol + '개 — 아트에서 색을 못 얻었습니다. 재단이 밀리면 그 색이 보입니다');
+    // ★새 호스트인데 옛 경로가 돌았다 = 이 패널이 도련 PNG 를 못 보냈다는 뜻이다(설치본이 낡음).
+    if (leg) parts.push('옛 방식 ' + leg + '개 — 패널 설치본이 낡았습니다. install-a0-panel.ps1 을 다시 실행하세요');
+    return parts.length ? (' — ' + parts.join(' · ')) : '';
+  }
+
   /** 공통 배치 호출 — [네스팅 실행]과 [폭 추천]이 같은 규칙으로 돌아야 비교가 성립한다. */
   function nestPlace(NST, prep, sheetWmm, sheetHmm, allowRot, opts) {
     opts = opts || {};
@@ -924,6 +1024,28 @@
             if (wantPieceCut && !useVec) pieceCutLines(lines, res, prep, pl, mmpp, wantCurve);
           }
         }
+        // ★도련 PNG 는 params 를 쓰기 **전에** 만든다 — 실제 크기(mm)를 `L` 줄로 실어야 하기 때문이다.
+        //   호스트가 픽셀에서 mm 를 다시 계산하면 반올림만큼 어긋나고, 그 오차가 조각마다 다르게 나온다.
+        var growMm = offsetMm + nestBleedMm;          // 인쇄는 칼선(=잉크+여백)보다 도련만큼 더 나가야 한다
+        var wantBleedPng = useVec && nestBleedMm > 0 && growMm > 0;
+        var bleedNote = '';
+        if (wantBleedPng && !hostSupportsBleedPng()) {
+          // ★조용히 옛 방식으로 떨어지지 않는다 — 링이 지저분해진 것을 인쇄 뒤에야 알게 된다.
+          wantBleedPng = false;
+          bleedNote = '\n※ 도련을 옛 방식(도형별 오프셋)으로 만들었습니다 — 호스트가 구버전입니다('
+            + (hostVersion || '?') + '). Z: 의 mes-cut-host.jsx 를 갱신하세요.';
+        }
+
+        function afterBleed(bmap, note) {
+          if (note) bleedNote += '\n※ 도련 — ' + note;
+          for (var bid in bmap) {
+            if (!bmap.hasOwnProperty(bid)) continue;
+            lines.push('L ' + bid + ' ' + bmap[bid].w.toFixed(3) + ' ' + bmap[bid].h.toFixed(3));
+          }
+          writeParamsAndApply();
+        }
+
+        function writeParamsAndApply() {
         host('mesCut_paramsPath()', function (pp) {
           var w = window.cep.fs.writeFile(pp, lines.join('\n'), window.cep.encoding.UTF8);
           if (!w || w.err !== 0) { done('params 쓰기 실패', 'err'); return; }
@@ -960,17 +1082,24 @@
               + (allowRot ? ' · 회전 허용' : '')
               + '\n돔보 ' + (a.dombo || 0) + '판 — 별도 레이어(인쇄 ON) · 재단선 레이어는 인쇄 OFF'
               + (wantPieceCut ? (' · 조각별 칼선' + (useVec ? '(벡터)' : (wantCurve ? '(곡선)' : '(직선)'))) : '')
-              + (useVec && nestBleedMm > 0 ? ('\n도련 ' + nestBleedMm + 'mm (조각마다 · 여백 구간은 단색)'
+              + (useVec && nestBleedMm > 0 ? ('\n도련 ' + nestBleedMm + 'mm (조각마다)'
+                  // ★어느 방식으로 만들었는지 밝힌다 — 클립 확장·색 잇기·단색은 품질이 서로 다르다
+                  + bleedHow(a)
                   // ★조용히 바꾸지 않는다 — 간격을 올렸으면 올렸다고 말한다
                   + (gapWanted < gapMm ? ' · 간격을 ' + gapWanted + ' → ' + gapMm + 'mm 로 올렸습니다(도련×2)' : '')
                   // ★도련이 조각별로 실패해도 판은 그려진다 — 조용히 넘기면 인쇄 뒤에야 안다(2026-08-04)
                   + (parseInt(a.bleedfail, 10) > 0
-                    ? ('\n⚠ 도련 ' + a.bleedfail + '개 조각 실패 — ' + bleedFailWhy(a.bleedcode)) : '')) : '')
+                    ? ('\n⚠ 도련 ' + a.bleedfail + '개 조각 실패 — ' + bleedFailWhy(a.bleedcode)) : '')
+                  + bleedNote) : '')
               + (res.unplaced.length ? ('\n⚠ 배치 못한 조각 ' + res.unplaced.length + '개 — 시트를 키우거나 간격을 줄이세요.') : '')
               + (useVec ? '' : cvN.note) + vecNote,
               (res.unplaced.length || parseInt(a.bleedfail, 10) > 0) ? 'err' : 'ok');
           });
         });
+        }
+
+        if (wantBleedPng) buildBleedPngs(prep, growMm, afterBleed);
+        else afterBleed({}, '');
       });
     }
 

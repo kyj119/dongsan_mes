@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.10.1';
+var MESCUT_VERSION = 'CUT-CEP-0.11.0';
 var MESCUT_PT_PER_MM = 72 / 25.4;
 
 // ── 크로스 패널 잠금 (spec §5.2-① · P0 핵심) ────────────────────────
@@ -1518,6 +1518,13 @@ function mesCut_vecBleedRegions(doc, items, offsetMm, bleedMm, fillClosed) {
     return { ok: true, mode: expanded ? 'region' : 'region-live', n: n, code: null, err: null };
 }
 
+/**
+ * ⚠️ **레거시 — 네스팅(`mesCut_nestApply`)은 더 이상 이 함수를 쓰지 않는다**(2026-08-05 배선).
+ *    정본은 `mesCut_bleedPlaceItem`(Repeat Last Pixel PNG)이고, 계층은 클립 확장 → 픽셀 → 단색이다.
+ *    여기 남은 `region`/`scale`/`edge` 분기는 **전부 실패로 판명된 방식**이며, P1(`mesCut_vecCut`)
+ *    단일 경로가 아직 이 함수를 부르기 때문에만 살아 있다. P1 을 전환하면 통째로 지운다.
+ *    되살리려는 사람은 `mesCut_bleedPlaceItem` 의 주석(1차 출처 4건)을 먼저 반박할 것.
+ */
 function mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed, bleedMode, ringSpec) {
     if (!(bleedMm > 0)) return { ok: false, code: 'zero', err: '도련 0' };
     var i;
@@ -1641,6 +1648,59 @@ function mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed, bleedMode, r
     var lastFb = mesCut_vecBleedSolid(doc, items, layer, offsetMm + bleedMm, fillClosed, mesCut_ringFill(ringSpec));
     if (lastFb) return { ok: true, mode: 'solid-fallback', err: null };
     return { ok: false, code: 'mask', err: '클리핑 실패' };
+}
+
+/**
+ * ★도련 정본 — 패널 `js/bleed.js`(Repeat Last Pixel)가 만든 PNG 를 조각 **뒤**에 배치한다.
+ *
+ * 왜 픽셀인가 (2026-08-05 업계 조사로 확정 · 근거는 추정이 아니라 1차 문서다):
+ *   전문 도구는 도련을 **두 가지로만** 만든다 — 가장자리 픽셀 복제(래스터) / 라인아트 패스 연장(벡터).
+ *     · callas pdfToolbox `Repeat Last Pixel` = 얇은 띠를 **렌더**해 그 색을 바깥으로 문지른다.
+ *       업계도 이 지점에서 벡터를 포기하고 래스터로 간다 — 우리 `edge` 모드가 Live Pathfinder 에서
+ *       3분 넘게 멎은 것은 구현 실수가 아니라 **방식 선택 오류**였다.
+ *     · Esko i-cut `Create Bleed` = contone 은 **Clone**(가장자리 색 복제). Mirror 는 직사각 컷패스 전용.
+ *     · Enfocus PitStop 만 벡터 연장에 성공하는데, 아트가 **컷 윤곽으로 클립돼 있다**는 전제가 붙는다.
+ *       클립이 있으면 아래 ①(클립 확장)이 이미 그 역할을 한다. 클립이 없으면 "윤곽 도형 vs 내부 선"이
+ *       원리상 구분되지 않는다 — 우리가 세 번 실패한 이유가 정확히 이것이다.
+ *   공개된 유일한 일러 스크립트(Mars Premedia `Cut and Bleed`)도 bbox 접촉 프루닝을 쓰는데, 저자가
+ *   **"구멍이 있는 디자인 · 트림 경계에서 다른 색이 인접"** 하면 실패한다고 명시했다. 우리 증상 그대로다.
+ *   → 도형별 오프셋으로 되돌아가려는 사람은 위 네 줄을 먼저 반박해야 한다.
+ *
+ * 계약:
+ *   PNG = 조각 **잉크 경계**를 사방 grow 만큼 넓힌 것. 패널이 `padMm=0` 으로 구워 만든다(패딩 중복 금지).
+ *   따라서 PNG 중심 = 조각 잉크 중심이고, 회전해도 중심은 보존된다 → 정렬은 **중심 맞추기 하나**면 끝난다.
+ *   크기(mm)는 패널이 params `L` 줄로 준다. 여기서 px→mm 을 다시 계산하면 반올림만큼 어긋난다.
+ *
+ * @param sizeMm {w,h} 회전 **전** 기준 도련 PNG 실제 크기(mm)
+ * @param rotDeg  조각에 적용된 회전(Konva CW) — 조각과 **같은 방향**으로 돌린다
+ * @returns true = 배치 성공
+ */
+function mesCut_bleedPlaceItem(doc, layer, copy, idx, sizeMm, rotDeg) {
+    if (!copy || !sizeMm || !(sizeMm.w > 0) || !(sizeMm.h > 0)) return false;
+    var f = new File(Folder.temp.fsName.replace(/\\/g, '/') + '/mes_cut_bleed_' + idx + '.png');
+    if (!f.exists) return false;
+    // ★기준은 **잉크 경계** — 조각 배치가 잉크 기준이라 여기서만 visibleBounds 를 쓰면 밀린다(0.4.3 에서 겪음)
+    var bb = mesCut_inkBounds(copy);
+    if (!bb) { try { bb = copy.visibleBounds; } catch (eB) { return false; } }
+    var pi = null;
+    try {
+        pi = layer.placedItems.add();
+        pi.file = f;
+    } catch (e1) { try { if (pi) pi.remove(); } catch (e2) {} return false; }
+    try {
+        // ★크기는 **회전 전**에 정한다 — 회전 후 bbox 는 외접 사각이라 거기 맞춰 늘리면 찌그러진다
+        pi.width = sizeMm.w * MESCUT_PT_PER_MM;
+        pi.height = sizeMm.h * MESCUT_PT_PER_MM;
+        if (rotDeg) pi.rotate(-rotDeg);            // Konva CW → 일러 CCW (조각과 같은 규칙)
+        var pb = pi.visibleBounds;
+        pi.translate(((bb[0] + bb[2]) / 2) - ((pb[0] + pb[2]) / 2),
+                     ((bb[1] + bb[3]) / 2) - ((pb[1] + pb[3]) / 2));
+        pi.zOrder(ZOrderMethod.SENDTOBACK);        // 도련은 원본에 가려야 한다
+    } catch (e3) { try { pi.remove(); } catch (e4) {} return false; }
+    // ★링크를 끊는다 — temp 의 PNG 는 지워진다. embed 는 참조를 무효화하므로 **여기가 마지막**이다.
+    //   실패해도 배치 자체는 성공으로 본다(EPS 저장이 링크를 품는 경로가 있다).
+    try { pi.embed(); } catch (e5) {}
+    return true;
 }
 
 /** 선택이 벡터 칼선으로 갈 수 있는가 — 'ok' | 'fallback;reason=..' | 'ERROR ..' */
@@ -1817,10 +1877,16 @@ function mesCut_nestBegin() {
  *   P <idx> <w>px <h>px <oxMm> <oyMm> <path>
  * 실패한 조각은 그 줄이 빠진다 — 호출자가 idx 로 대조한다.
  */
-function mesCut_nestBakeAll(mmPerPx, padMm, fillClosed) {
+function mesCut_nestBakeAll(mmPerPx, padMm, fillClosed, tag) {
     if (!MESCUT_NEST_ITEMS || !MESCUT_NEST_ITEMS.length) return 'ERROR 대상 없음 (nestBegin 먼저)';
     if (!mmPerPx || mmPerPx <= 0) mmPerPx = 0.5;
     if (!padMm || padMm < 0) padMm = 0;
+    // ★파일 이름표 — 같은 조각을 **용도가 다르게** 두 번 구울 수 있어야 한다(2026-08-05).
+    //   배치 마스크는 선 도안이면 검게 칠하고(`fillClosed`), 도련은 **원색**이 필요하다.
+    //   같은 이름으로 구우면 뒤에 구운 쪽이 앞의 것을 덮어써 마스크나 도련 한쪽이 조용히 틀린다.
+    //   ASCII 로 강제한다 — 경로가 evalScript 브릿지를 타지는 않지만 파일명이 깨지면 못 찾는다.
+    tag = String(tag == null ? 'nest' : tag).replace(/[^A-Za-z0-9_]/g, '');
+    if (!tag) tag = 'nest';
     var srcDoc = app.activeDocument;
     var PT = MESCUT_PT_PER_MM;
     var padPt = padMm * PT;
@@ -1880,7 +1946,7 @@ function mesCut_nestBakeAll(mmPerPx, padMm, fillClosed) {
             if (!boxes[i] || !srcBB[i]) continue;
             var bx = boxes[i];
             tmp.artboards[0].artboardRect = [bx[0] - padPt, bx[1] + padPt, bx[2] + padPt, bx[3] - padPt];
-            var outPath = Folder.temp.fsName.replace(/\\/g, '/') + '/mes_cut_nest_' + i + '.png';
+            var outPath = Folder.temp.fsName.replace(/\\/g, '/') + '/mes_cut_' + tag + '_' + i + '.png';
             try { tmp.exportFile(new File(outPath), ExportType.PNG24, opts); } catch (eE) { continue; }
             var wPx = Math.round(((bx[2] - bx[0]) + padPt * 2) * sc / 100);
             var hPx = Math.round(((bx[1] - bx[3]) + padPt * 2) * sc / 100);
@@ -2114,11 +2180,15 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode) 
     // 파싱과 문서 조작을 섞지 않는 이유 = **조각마다 activeDocument 를 왕복하지 않기 위해서**다.
     // 문서 활성화는 화면 갱신을 동반해 조각 수에 비례해 눈에 띄게 느려진다.
     //   이전: 조각당 2회(원본↔시트) → 20조각이면 40회 · 지금: **시트당 2회** (2026-07-31)
-    var sheets = [], cur = null;
+    var sheets = [], cur = null, bleedSz = {};
     for (var i = 0; i < lines.length; i++) {
         var ln = lines[i].replace(/^\s+|\s+$/g, '');
         if (!ln) continue;
         var p = ln.split(/\s+/);
+        // ★L = 도련 PNG 실제 크기(mm). 조각 단위라 시트와 무관하므로 `S` 보다 **앞에서** 처리한다
+        //   (그래야 params 안에서 줄 위치에 매이지 않는다). 패널이 만든 픽셀 크기에서 나온 값이라
+        //   호스트가 px→mm 을 다시 계산하면 반올림만큼 어긋난다 — 받은 값을 그대로 쓴다.
+        if (p[0] === 'L') { bleedSz[parseInt(p[1], 10)] = { w: parseFloat(p[2]), h: parseFloat(p[3]) }; continue; }
         if (p[0] === 'S') { cur = { w: parseFloat(p[2]), h: parseFloat(p[3]), items: [], cuts: [] }; sheets.push(cur); continue; }
         if (!cur) continue;
         if (p[0] === 'I') {
@@ -2136,7 +2206,10 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode) 
 
     var made = 0, items = 0, dombo = 0;
     // 도련 실패 집계 — 조각마다 도는 자리라 **조용히 넘기면 판이 다 깔린 뒤에야** 없는 걸 안다.
-    var blFail = 0, blCode = '';
+    var blFail = 0, blCode = '', blClip = 0, blPix = 0, blSolid = 0, blLegacy = 0;
+    // ★도련 PNG 를 하나라도 받았는가 = **새 패널인가**. 구 패널이면 옛 경로를 그대로 태운다(아래 참조).
+    var hasBleedPng = false;
+    for (var bk in bleedSz) { if (bleedSz.hasOwnProperty(bk)) { hasBleedPng = true; break; } }
     MESCUT_NEST_DOCS = [];
     MESCUT_LAST_SHEET_W = 0; MESCUT_LAST_SHEET_H = 0;
     // ★대화상자 억제(0.8.1) — 조각 하나에서 메뉴 명령이 모달을 띄우면 **남은 조각 전부**가 멈춘다.
@@ -2192,10 +2265,49 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode) 
                     //   ⚠️ 간격 < 도련×2 면 인접 조각의 도련이 겹친다(패널이 경고한다). 겹쳐도 각자
                     //      제 경계로 클리핑돼 있고 잘라내는 자리라 치명적이지 않지만, 위에 놓인 쪽 색이 이긴다.
                     if (vecBleedMm > 0) {
-                        var blr = null;
-                        try { blr = mesCut_vecBleed(doc, [copies[vi]], vecOffsetMm, vecBleedMm, vecFillClosed, vecBleedMode); }
-                        catch (eVB) { blr = { ok: false, code: 'throw' }; }
-                        if (!blr || !blr.ok) { blFail++; if (!blCode) blCode = (blr && blr.code) || 'fail'; }
+                        // ★넓히는 양은 **여백 + 도련**이다. bleedMm 만 쓰면 인쇄 끝이 칼선과 겹쳐
+                        //   도련이 0 이 된다(2026-08-02 실측에서 걸림). 여백이 음수(잉크 안쪽)면 그만큼 준다.
+                        var grow = vecOffsetMm + vecBleedMm;
+                        var bMode = '';
+                        if (!hasBleedPng) {
+                            // ★★구 패널 하위호환 — 도련 PNG 를 **아예 안 보냈다** = 구 패널이다.
+                            //   축2(이 파일)는 Z: 교체 즉시 **전 PC** 에 먹지만 패널(축3·축4)은 PC 별 수동 설치다.
+                            //   그래서 "새 호스트 + 구 패널" 조합이 배포 사이에 **반드시** 생긴다.
+                            //   그 PC 를 새 계층에 태우면 ②가 없으니 곧장 ③단색으로 떨어진다 = 명백한 회귀다.
+                            //   → 구 패널은 옛 경로를 **그대로** 태운다. 품질은 종전과 같고 나빠지지 않는다.
+                            var lg = null;
+                            try { lg = mesCut_vecBleed(doc, [copies[vi]], vecOffsetMm, vecBleedMm, vecFillClosed, vecBleedMode); }
+                            catch (eLG) { lg = null; }
+                            if (lg && lg.ok) bMode = 'legacy';
+                            else if (!blCode) blCode = (lg && lg.code) || 'fail';
+                        } else {
+                            // ① 클립 확장 — **무손실**이라 언제나 최선이다. 원본에 클립 밖 데이터가 있으면
+                            //    도련은 합성이 아니라 원래 있던 그림을 더 드러내는 것이 된다(PitStop 과 같은 전제).
+                            if (grow > 0 && vecBleedMode === 'auto') {
+                                var gr = 0;
+                                try { gr = mesCut_vecGrowClips([copies[vi]], grow); } catch (eGC) {}
+                                if (gr > 0) bMode = 'clip';
+                            }
+                            // ② Repeat Last Pixel — 패널이 미리 구운 도련 PNG. **정본 경로**다.
+                            if (!bMode && grow > 0) {
+                                try {
+                                    if (mesCut_bleedPlaceItem(doc, artLayer, copies[vi], sh.items[vi].idx,
+                                            bleedSz[sh.items[vi].idx], sh.items[vi].rot)) bMode = 'pixel';
+                                } catch (eBP) {}
+                            }
+                            // ③ 최후 안전망 — 아트에서 색을 못 얻었다. 아트 색이 아닌 **지정색**이라
+                            //    재단이 밀리면 그 색이 보인다 → 조용히 넘기지 않고 반드시 집계해 알린다.
+                            if (!bMode && grow > 0) {
+                                try {
+                                    if (mesCut_vecBleedSolid(doc, [copies[vi]], artLayer, grow, vecFillClosed, mesCut_ringFill(null))) bMode = 'solid';
+                                } catch (eBS) {}
+                            }
+                        }
+                        if (bMode === 'clip') blClip++;
+                        else if (bMode === 'pixel') blPix++;
+                        else if (bMode === 'solid') blSolid++;
+                        else if (bMode === 'legacy') blLegacy++;
+                        else { blFail++; if (!blCode) blCode = (grow > 0 ? 'nopng' : 'zero'); }
                     }
                 }
                 try { doc.selection = null; } catch (eSel) {}
@@ -2248,7 +2360,8 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode) 
         //   돔보 여백으로 줄어들므로 시트 프리셋(예 1370)을 쓰면 이름과 파일이 어긋난다.
         return 'ok;sheets=' + made + ';items=' + items + ';dombo=' + dombo
             + ';sheetw=' + MESCUT_LAST_SHEET_W + ';sheeth=' + MESCUT_LAST_SHEET_H
-            + ';bleedfail=' + blFail + (blFail ? (';bleedcode=' + blCode) : '');
+            + ';bleedfail=' + blFail + ';bleedclip=' + blClip + ';bleedpx=' + blPix + ';bleedsolid=' + blSolid
+            + ';bleedlegacy=' + blLegacy + (blFail ? (';bleedcode=' + blCode) : '');
     } catch (e) {
         try { app.activeDocument = srcDoc; } catch (e2) {}
         return 'ERROR nestApply: ' + e;
