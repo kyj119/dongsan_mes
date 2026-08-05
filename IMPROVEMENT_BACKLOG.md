@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-08-05T21:29:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-08-06T03:19:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **11** (#585·#586·#587·#589·#590·#591·#592·#593·#596·#597·#598, GitHub OPEN 실측 — Area4 52회차. #597·#598 신규) |
+| 🆕 new | **12** (#585·#586·#587·#589·#590·#591·#592·#593·#596·#597·#598·#599, GitHub OPEN 실측 — Area5 51회차. #599 신규) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **513** (변동없음, Area3 51회차 실측 유지 — Area4 52회차는 재동기화 스킵 대상 아님이나 완료전환 0건) |
+| ✔️ done | **513** (변동없음, Area3 51회차 실측 유지 — 이번 사이클 완료전환 0건) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+
+> **Area 5 보안 (2026-08-06T03:19):**
+> - **방법**: `git fetch origin main`(force-updated, HEAD `50eb5ef` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 5 **51회차** — 직전 Area5(`813531d`, 08-04T15:21, 50회차)가 웹 churn 0으로 스킵한 이후, Area5 **자신의 마지막 실행 시각 기준**으로 churn을 다시 잡으면(다른 Area들은 각자 렌즈로 이 윈도를 이미 봤지만 보안 렌즈로는 전무) `git log --since 2026-08-04T15:21`이 웹 관련 파일 기준 **17커밋**(고정자산 감가상각 4건[Area2 58회차가 코드품질 렌즈로 이미 #594·#595 발견]·부문/차입금/합배송 fix 4건·재단 DXF 라인첨부(826baef)·ia-editor 폐기 S1/S4/S5 3건·반복지출 탐지(84ee297, Area3가 UX 렌즈로 #596 발견)·CAPS/logwatcher 2건·print-events IN절 청크 수정(edfd374, 이미 자체 픽스됨)·**카드=작업지시서 승격 신기능(`50eb5ef`, 직전 Area4 52회차 HEAD 이후 유일 신규 커밋)**).
+> - **신규 기능(`50eb5ef`) 보안 전수 검토**: `cards/lifecycle.ts` `PATCH /:id/checklist/:itemId`·`PATCH /:id/reissue-ack`는 `cardEntityScope(c)`로 소유 카드 선검증 후 mutate = clean. `cards/queries.ts GET /issue-status`(3개 서브쿼리)도 `entityFilter`/`cardEntityFilter` 전부 적용 = clean. 프론트(`issueStatus.js`·`cardDetail.js`)는 free-text(client_name/item_name/label/checked_by_name) 전부 `escapeHtml`/`esc()` 일관 적용 = XSS clean. `orders/update.ts`의 라인교체 하드삭제 경로도 신규 FK 자식(`card_checklist_items`)을 `cards` 삭제 전에 정리 — #480 교훈(FK 자식 정리 누락) 재확인, 이번엔 clean.
+> - **🔴 net-new #599(형제-비대칭 IDOR)**: 같은 파일의 `GET /:id/checklist`(오늘 신규, `:1186`)가 `card_checklist_items`를 `cardEntityFilter` 없이 `WHERE card_id=?`만으로 조회 — 형제 `GET /:id`(#414로 이미 격리 완료, 커밋 코멘트가 "cross-tenant PII 유출 차단" 명시)·오늘 신설된 `GET /issue-status`·`PATCH /:id/checklist/:itemId` 전부 격리하는데 이 엔드포인트만 누락. **직접 Read로 같은 파일의 기존 형제 2개(`GET /:id/history`·`GET /:id/defects`)도 동일하게 bare임을 확인** — pre-existing 잔존분까지 포함해 3개 엔드포인트를 한 이슈로 묶어 등록(#599). 카드 ID는 순차 정수라 열거 용이 + `/cards`·`/orders` 페이지 권한만 있으면 도달(대부분 role 포함) → 타법인 작업이력/불량이력/체크리스트 진행상황(+담당자 성명)이 cross-tenant로 열람 가능. 프론트가 `Promise.all`로 4개 엔드포인트를 동시 호출하므로 메인 `/:id`가 404여도 나머지 3개는 API 직접 호출로 100% 재현. 자동수정 대상 제외(IDOR=owner 워크플로, egress로 재현검증 불가) — 단 형제 패턴이 byte-명확해 승인 시 즉시 처리 가능하다고 이슈에 명시.
+> - **필수 grep 2종(매 사이클)**: 시크릿 폴백 `fax.ts:43 BAROBILL_FTP_PASSWORD || ''`(빈 문자열, 기존 FP) 1건 외 net-new 0. 기본비밀번호/CI secrets 폴백 0건.
+> - **마이그 번호 중복 재확인**: 기존 5쌍(0327·0412·0416·0420·0453) net-new 0. 신규 마이그(0516~0522) 전부 고유 번호.
+> - **ia-editor 폐기 3단계(S1/S4/S5) purge 완전성**: ① `/ia-editor` 페이지 라우트 index.tsx에서 완전 제거(주석만 남김, 실제 `app.get` 삭제 확인) ② `permission_pages`/`role_page_permissions` 행 마이그 0521로 정리 ③ 프론트 axios 호출처 재확인 — 제거된 workbench 서브라우터(`/orders`·`/analyses/:orderId`·`/match`·`/archives`·`/files`·`/sheets*`·`/render-queue`) 호출처 `grep -rn "api/workbench" src/scripts` = 잔존 6건 전부 **생존 라우트만**(`/intakes`·`/intakes/:id/thumb`·`/void-bulk`·`/restore`·`/absorb`) 참조, 제거된 경로 0매치 — SKILL #429/#477 purge-완전성 3축 전부 clean. `workbenchRouter.use('/*', authMiddleware, requireRole(...))` 라우터 전역 게이트도 S5 이후 유지 확인.
+> - **open≠unfixed 재확인**: 기존 8건(#585~#593·#596~#598) 대상 파일이 이번 신규 churn(`50eb5ef` cards/lifecycle·queries·orders/helpers·update)과 안 겹침(보안 라벨 대상 자체가 없었음) → verified-once 캐시 유지, 재검증 불요.
+> - **backlog↔GitHub 절대값 재동기화**: `list_issues(OPEN,auto-improve)` 실측 **12**(#585·#586·#587·#589·#590·#591·#592·#593·#596·#597·#598·#599) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음) · done은 Area3 51회차 직접확인값 513 유지(`reason:completed` 텍스트 인덱스 511은 기존에 문서화된 지연 캐시, 재확인 불요).
+> - **🧬 SKILL 강화**: 없음 — #599는 기존 codify된 #437/#452(형제-비대칭 IDOR) 클래스의 신선 사례(신규기능이 기존 파일의 확립된 엔티티격리 컨벤션을 부분 누락 + pre-existing 잔존분 동반 발견), 새 탐지 규칙 불요. 다만 "Area 자신의 마지막 실행 시각 기준으로 churn을 재확정"(line 92 원칙)이 이번에 실제로 순수-CI-확인 사이클 5연속 뒤 첫 실질적 net-new를 잡아낸 사례로 유효성 재확인.
+> - 신규 이슈 1건(#599, issue-only), 자동수정 0건, done-sync: new 12(+1)·done 513(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-08-05T21:29):**
 > - **방법**: `git fetch origin main`(force-updated, HEAD `6888d70` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 4 **52회차** — 직전 Area4(51회차, HEAD `ec87745`)가 이번 fetch에서 `git cat-file -t`로 조회 불가(force-updated 히스토리, Area3 51회차가 이미 관찰한 현상 재확인) → 앵커를 직전 사이클 타임스탬프(2026-08-04T09:15)로 바꿔 `git log --since -- src/routes migrations src/scripts`로 churn 범위 확정(19커밋: 전사 8색 RIP 연동·재단 칼선 라인파일·자산-부채 연결/부문귀속·차입금 만기미확인·합배송 상태 화이트리스트·반복지출 탐지 등). 5사이클 연속 churn 0이던 직전과 달리 이번엔 신선 데이터 write-path가 다수 착륙.
@@ -120,10 +133,13 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 9건** — #596 신규, Area 3 51회차, 2026-08-05. #594·#595는 같은 사이클 내 owner가 픽스+close 완료돼 표에서 제외.)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 12건** — #599 신규, Area 5 51회차, 2026-08-06. #594·#595는 같은 사이클 내 owner가 픽스+close 완료돼 표에서 제외.)
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
+| #599 | cards /:id/history, /:id/defects, /:id/checklist 형제-비대칭 IDOR — 타법인 카드 ID로 내부 이력·불량·체크리스트 열람 가능 | Area 5 | bug,S | issue-only, 신규(#599) |
+| #598 | print_events event_kind 필터 부분 롤아웃 — rip.ts GET /equipment/:id/stats만 이중집계 누락 | Area 4 | bug,M | issue-only, 신규(#598) |
+| #597 | orders/update.ts 라인교체 경로가 order_ai_files.order_item_id(RESTRICT FK) 정리 누락 — 칼선 DXF 첨부 주문 수정 시 100% 500 | Area 4 | bug,HIGH | issue-only, 신규(#597) |
 | #596 | 반복지출 탐지 API(/bank/recurring-candidates)에 화면이 없음 — 월 15,872,480원 발견에 실제 쓰였는데 매번 API 직접 호출해야 함 | Area 3 | improvement,M | issue-only, 신규(#596) |
 | #585 | messagesAd.ts POST /send 실패 수신자 식별 불가 — #574 형제 라우트(messages.ts /send-bulk) 미반영 | Area 3 | bug,M | issue-only, 신규(#585) |
 | #586 | 광고문자 제목/본문 수정 시 "대상 확인" 미리보기 게이트 미무효화 | Area 3 | bug,S | issue-only, 신규(#586) |
