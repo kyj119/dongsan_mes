@@ -71,6 +71,9 @@ const ENDPOINTS = [
   { path: '/api/production/stats', name: 'production.stats' },
   { path: '/api/shipments?limit=10', name: 'shipments.list' },
   { path: '/api/print-events?limit=10', name: 'printEvents.list' },
+  // 출력파일↔카드 연결 (전사 등 파일명에 주문번호가 없는 공정)
+  { path: '/api/print-events/unmatched?days=30', name: 'printEvents.unmatched' },
+  { path: '/api/print-events/link-candidates?file_name=smoke(10-10).eps', name: 'printEvents.linkCandidates' },
 
   // 견적서
   { path: '/api/quotations?limit=5', name: 'quotations.list' },

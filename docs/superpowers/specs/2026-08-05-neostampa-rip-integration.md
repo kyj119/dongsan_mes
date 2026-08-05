@@ -1,0 +1,193 @@
+# neoStampa RIP 로그 연동 — 전사 8색 합판 해체 + 출력 실적 확보
+
+- 작성: 2026-08-05
+- 대상 장비: 전사 8색 (Longyin Q2000), RIP SW = neoStampa 10.2.4
+- 관련: `docs/LOGWATCHER_EQUIPMENT_INVENTORY.md`(전사 행 `?` 미확인 상태 해소), memory `project-logwatcher-rollout`
+
+## 0. 배경
+
+전사(TRANSFER_FLAG) 공정은 LogWatcher 미개척 상태로, 카드 상태 전환이 전부 수동이다.
+2026-08-05 neoStampa 로그 위치가 확인되어(`C:\Users\Public\Documents\neoStampa 10\Log`, 사본 `Z:\Designs\Log`)
+145건을 전수 분석했다.
+
+### 파이프라인 (확정)
+
+```
+디자이너/IA → 개별 EPS ─┐
+                        ├→ neoStampa(RIP·합판 배치) → Topaz-RIP(송출·취소) → Q2000
+오퍼레이터 합판 배치 ───┘
+```
+
+- **합판은 오퍼레이터가 neoStampa에서 배치한다** → MES는 판 구성을 사전에 알 수 없다.
+  RIP 로그가 합판 구성의 **유일한 정보원**이다.
+- **실제 취소는 Topaz에서 발생**한다. neoStampa 로그에는 취소 상태 필드가 없다.
+- neoStampa `StartTime`~`EndTime` = **리핑 시간**이며 출력 시간이 아니다.
+  이 로그로 낸 m²/h 는 RIP 스루풋이지 생산성 지표가 아니다.
+
+## 1. 로그 구조 (실측)
+
+| 항목 | 내용 |
+|---|---|
+| 경로 | `Log\YYYY-MM-DD\<Document>.txt`, 같은 문서 재RIP 시 ` - N` 증가 |
+| 형식 | INI. 섹션 = `General`/`UserData`/`Costs`/`PrintSettings`/`ColorManagement`/`[1..N]` |
+| 기록 시점 | 잡 종료 시 **1회 생성**(append 없음). 파일 mtime ≈ `EndTime` |
+| 인코딩 | UTF-8. 단 `ICC` 값만 neoStampa가 한글을 `?`로 치환해 기록 |
+| PC | 2대 확인 — `DESKTOP-5C9D04J`, `PC-202605141926` |
+
+### 주요 키
+
+- `[General]` — `ComputerName` `SoftwareVersion` `JobID` `Document` `FileCount` `StartTime` `EndTime` `Driver`
+- `[Costs]` — `PageWidthMM`(세팅 원단폭, **운영상 무의미**) `PrintWidthMM` `PrintHeightMM` `KDots[채널][드롭]`
+- `[PrintSettings]` — `PrintMode`(예 `720x2400 8pass`)
+- `[ColorManagement]` — `Inkset`(`KCMYOBRk` = 8색) `InkLimit` `InkUsage` `Linearization` `ICC`
+- `[N]` (배치 아이템, N = `FileCount`) — `Name` `HPositionMM` `VPositionMM` `WidthMM` `HeightMM`
+  `Rotation` `OutputScaleX/Y` `Copies`(스텝앤리피트, 없으면 1) + 멤버별 `KDots`
+
+### 함정
+
+- **`JobID`를 고유키로 쓰면 안 된다.** 날짜 넘어가며 리셋(07-31 `74` → 08-03 `43`), 같은 날 중복(`36` 2회),
+  빈 값 12건. 고유키는 `ComputerName + StartTime + Document`(또는 파일 경로).
+- **`Document`의 ` + ` 문자열을 파싱해 멤버를 구하지 말 것.** 도안명 자체에 ` + `가 들어갈 수 있다.
+  멤버 정본은 **`[N]` 섹션의 `Name`**이다. `Document`는 표시용 결합 문자열일 뿐이다.
+- `PageWidthMM`(3300 / 1550)은 세팅값이라 폭 활용률 계산에 쓰면 잘못된 결론이 나온다.
+
+## 2. 이 로그로만 알 수 있는 것
+
+### 2-1. 합판 구성 (최대 가치)
+
+`[N]` 섹션에 좌표·회전·배율이 전부 있어 판 배치를 그대로 복원할 수 있다.
+
+- 서로 다른 `Name` ≥ 2 → **혼합 네스팅**(여러 주문 합판)
+- 같은 `Name` 반복 또는 `Copies` > 1 → 스텝앤리피트(단일 주문)
+
+Topaz는 판 1개 = 잡 1개로만 인식하므로, **합판 3건 중 어느 주문에 실적을 찍을지 Topaz 로그만으로는 알 수 없다.**
+
+### 2-2. RIP 중단 판정
+
+상태 필드가 없어도 **길이 대조로 판정 가능**하다.
+
+```
+ripComplete  =  PrintHeightMM  >=  max(VPositionMM + HeightMM) * 0.995
+미리핑 멤버   =  해당 [N] 섹션의 KDots 합 == 0
+```
+
+실측: 145건 중 **52건(36%)이 중단**. 07-20은 9건 중 8건, 07-21은 41건 중 17건으로,
+같은 도안 ` - N` 연속 패턴과 겹친다 → 주문 취소가 아니라 **RIP 시행착오/재RIP**.
+
+미리핑 멤버를 `nest_members`에서 제외하지 않으면 **판에 들어가지도 않은 주문에 실적이 찍힌다.**
+
+### 2-3. 잉크 소모
+
+`KDots[K/C/M/Y/O/B/R/k][1~3]` = 8색 × 3드롭사이즈 도트수. 드롭 볼륨(pL)을 곱하면 잡별 실 소모량.
+단 **중단 잡 36%는 실제 출력되지 않았으므로** 완료율 보정이 필요하다. (본 spec 범위 밖 — 별도 트랙)
+
+## 3. ★ 이중계상 위험 (설계 필수 제약)
+
+Topaz(P4)와 neoStampa(P1)가 **같은 물리 출력 1건을 각각 1행씩** `print_events`에 적재하면
+`productionReports.ts` 집계가 2배가 된다.
+
+**대응**: `print_events.event_kind` 도입.
+
+| kind | 발생원 | 카드 상태 영향 | 리포트 집계 |
+|---|---|---|---|
+| `RIP` | neoStampa | `PRINT_PENDING`/`RIP_WAITING` → `PRINTING` 까지만. **`PRINT_DONE` 금지** | 제외 |
+| `PRINT` | Topaz(TNS) 등 기존 파서 | 기존 동작 유지(`PRINT_DONE`·`quality_issues`) | 포함 |
+
+기존 행은 `DEFAULT 'PRINT'` 로 회귀 없음.
+
+## 4. Phase 구성
+
+사용자 결정: **P4(Topaz)를 먼저** 배치한다. 코드 트랙(P1~P3)과 현장 트랙(P0/P4)은 병렬로 가되,
+실적 확정(`PRINT_DONE`)은 Topaz가 붙은 뒤에 켠다.
+
+| Phase | 트랙 | 내용 |
+|---|---|---|
+| **P0** | 현장 | 장비 등록(`equipment`) + neoStampa PC 2대 LogWatcher 세팅. 인벤토리 `?` 해소 |
+| **P4'** | 현장 | **Topaz-RIP LogWatcher 세팅**(TNS 파서는 이미 존재 — 코드 작업 거의 없음). 실적 정본 확보 |
+| **P1** | 코드 | `NeoStampaParser` 신규 (폴더 감시형 INI 파서) |
+| **P2** | 코드 | `resolveCard` 멤버별 확장 + `event_kind` (합판 N건 동시 귀속) |
+| **P3** | 코드 | 웹 출력파일↔카드 연결 UI (`print_file_map` 학습) |
+
+### P1 — NeoStampaParser
+
+기존 4버킷(바이너리/SQLite/HTML/텍스트)과 다른 **폴더 감시형**. tail 파싱이 아니라
+파일 생성 감지라 오히려 단순하다.
+
+- 상태 저장: 바이트 오프셋이 아니라 **처리 완료 시각(max `LastWriteTimeUtc`)**. 서버가
+  `file_path + print_completed_at` 로 멱등 처리하므로 중복 전송은 무해 → overlap 여유를 둔다.
+- **최초 실행은 과거분을 보내지 않는다**(`PrintLogParser` 의 position -1 → EOF 스킵과 동일 방침).
+  의도적 소급은 config `backfill_days`.
+- 쓰기 중 파일 방어: mtime 이 `settle_seconds`(기본 5) 이내면 다음 폴에서 처리.
+- 멤버 = `[N]` 섹션 `Name` 의 distinct. `qty` = 같은 이름 섹션 수 × `Copies`.
+  distinct ≥ 2 일 때만 `IsNest = true`.
+- 미리핑 멤버(KDots 합 0) 제외. 전량 미리핑이면 이벤트 자체를 버린다.
+- `PrintStatus` = RIP 완료 `OK` / 중단 `CANCEL`.
+
+config 키:
+```
+log_root        (required) 예 "C:\\Users\\Public\\Documents\\neoStampa 10\\Log"
+settle_seconds  (default 5)
+backfill_days   (default 0 = 과거분 무시)
+```
+
+### P2 — resolveCard 멤버별 확장
+
+현재 `resolveCard`(`src/routes/printEvents.ts:106`)는 이름 1개 → 카드 1개다.
+`nest_members` 는 이미 존재하지만 **`production.js:389` 표시 전용**이고 매칭에는 안 쓰인다
+→ **Flexi 네스팅도 지금 같은 구멍**(합판 N건 중 1건만 매칭)을 갖고 있다. 함께 고친다.
+
+- `nest_members` 가 있으면 멤버별 `resolveCard` → 카드 배열 → 상태 전환 루프
+- 멤버 매칭 0건이면 기존 단건 경로로 폴백 (회귀 방지)
+- `event_kind='RIP'` 이면 `PRINT_DONE`·`quality_issues` 경로를 타지 않는다
+
+### P3 — 웹 출력파일↔카드 연결
+
+파일명 145건 실측상 **규격과 수량이 거의 항상 들어 있다**:
+
+| 파일명 | 추출 |
+|---|---|
+| `해양호-빨강(75-60-300장).eps` | 해양호 · 75×60 · 300장 |
+| `제75보병사단-탁상기붙임(135-90-1벌).eps` | 135×90 · 1벌 |
+| `민방위(120-80).eps` | 120×80 |
+
+→ 파일명 파싱으로 **카드 후보 자동 추천 → 1클릭 확정 → `print_file_map` 등록(학습)**.
+같은 파일명 재출력은 이후 완전 자동. 디자이너 명명 습관을 바꾸지 않아도 된다(A안 취지).
+
+## 5. 구현 현황 (2026-08-05, 미배포)
+
+P1~P3 코드 완료 + 로컬 검증. **prod 미배포** — P4(Topaz) 선행 방침.
+
+| 항목 | 파일 |
+|---|---|
+| neoStampa 파서 | `LogWatcher/Parsers/NeoStampaParser.cs` (신규), `ParserFactory.cs` `"neostampa"` |
+| RIP/PRINT 구분 | `LogWatcher/PrintLogParser.cs` `PrintEvent.EventKind`, `MesApiClient.cs` `event_kind` |
+| 마이그레이션 | `migrations/0518_print_events_event_kind.sql` |
+| 멤버별 매칭 | `src/routes/printEvents.ts` `nestMatchNames` · `applyEventToCard` (단건·batch 양쪽) |
+| 실적 집계 격리 | dashboard(5)·equipmentQueue(1)·forecast(3)·oee(2)·productionReports(15)·printEvents stats(3) |
+| 연결 API | `printEvents.ts` `/unmatched` · `/link-candidates` · `/link` + `parseDesignFileName` |
+| 연결 UI | `src/pages/production.ts` 탭4, `src/scripts/production.js` `loadUnmatchedFiles` 외 |
+
+### 검증 결과
+
+- **P1**: 실로그 145건 파싱 → 이벤트 142건(전량 미리핑 3건 제외), OK 93 / RIP중단 49.
+  합성 완전합판으로 NEST 3/3 복원 확인. 부분합판은 실제 리핑된 도안명을 `file_name` 으로 전송.
+- **P2**: 합판 3멤버 → **카드 3장 모두 PRINTING 전환**(기존엔 1장). RIP CANCEL 은 `rip_status`·불량 미등록,
+  PRINT CANCEL 은 기존대로 ERROR+불량 등록(회귀 없음). 집계 쿼리는 RIP 제외 확인.
+- **P3**: 파일명 파싱(거래처·규격·수량) → 후보 점수 랭킹(8/6/5) → 연결 → 목록 즉시 제거 →
+  **동일 합판 재출력 시 두 멤버 자동 매칭**까지 브라우저 E2E 확인(콘솔 0).
+
+### 남은 것
+
+- P0/P4 현장 작업(장비 등록, LogWatcher 배포) — 코드 밖
+- prod 배포 + 마이그 0518 적용
+- 합판 이벤트는 `print_events` 1행에 대표 카드만 기록(멤버 귀속은 `nest_members` JSON).
+  카드별 실적 집계가 필요해지면 별도 설계 필요 — Flexi 도 동일 구조.
+
+## 6. 미확정 리스크
+
+1. **Topaz 잡명 ↔ neoStampa `Document` 조인 키 미검증.** Topaz 실물 로그를 보지 못했다.
+   합판 구성은 RIP 이벤트에만 있고 실적은 PRINT 이벤트에만 있으므로, 둘을 잇지 못하면
+   합판 해체 실적이 완성되지 않는다. **P4에서 실물 로그로 확정할 것.**
+   조인 실패 시 보조 수단 = 시간 근접(neoStampa `EndTime` < Topaz 시작, 수 분 이내).
+2. 전사 EPS 저장 폴더 경로 미확인 (P3 후보 추천의 파일 목록 소스로 쓸지 여부).
+3. 전사 디자이너가 A0 CEP 패널을 쓰는지 미확인 (P3 접점을 웹으로 정했으므로 당장은 무관).

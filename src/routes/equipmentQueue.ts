@@ -142,6 +142,7 @@ equipmentQueue.post('/update-avg-speed', requireRole('ADMIN', 'MANAGER'), async 
       SUM((julianday(print_completed_at) - julianday(print_started_at)) * 24 * 60) as total_minutes
     FROM print_events
     WHERE print_status = 'OK'
+      AND event_kind = 'PRINT'
       AND print_started_at >= date('now', '-30 days')
       AND equipment_id IS NOT NULL
     GROUP BY equipment_id

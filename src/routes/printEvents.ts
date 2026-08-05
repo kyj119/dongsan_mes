@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, agentKeyMiddleware } from '../middleware/auth'
 import { autoDeductInventory } from '../utils/autoDeductInventory'
-import { entityFilter } from '../utils/entityFilter'
+import { entityFilter, cardEntityFilter } from '../utils/entityFilter'
 import { kstDate, kstDateOf } from '../utils/kstDate'
 
 const printEventsRouter = new Hono<HonoEnv>()
@@ -140,12 +140,72 @@ async function resolveCard(db: D1Database, extractedName: string, entityId?: num
   return { cardId: null, cardNumber: null, orderNumber: orderMatch?.[1] || null, orderItemId: null }
 }
 
+type ResolvedCard = { cardId: number | null, cardNumber: string | null, orderNumber: string | null, orderItemId: number | null }
+
+/** 경로·확장자 제거 — resolveCard 에 넘기는 이름 정규화 (LogWatcher 추출명과 동일 규칙) */
+function baseFileName(raw: string): string {
+  return String(raw || '').replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '').trim()
+}
+
+// ─── 합판(네스트) 멤버 → 매칭 대상 이름 목록 ───
+// 판 1개에 서로 다른 주문 N건이 들어가는데(오퍼레이터가 RIP에서 배치) 단일 이름으로만 매칭하면
+// N건 중 1건에만 실적이 찍히고 나머지는 영구 미완료로 남는다. Flexi·neoStampa 공통 결함.
+// nest_members 가 없으면 기존 단건 동작 그대로.
+function nestMatchNames(extractedName: string, nestMembers: unknown): string[] {
+  const names: string[] = []
+  if (Array.isArray(nestMembers)) {
+    for (const m of nestMembers as any[]) {
+      const raw = typeof m === 'string' ? m : (m && typeof m.file === 'string' ? m.file : '')
+      const base = baseFileName(raw)
+      if (base) names.push(base)
+    }
+  }
+  if (names.length === 0 && extractedName) names.push(extractedName)
+  return Array.from(new Set(names))
+}
+
+// ─── 매칭된 카드 1건에 이벤트 반영 ───
+// eventKind='RIP'(리핑 전용 로그 = neoStampa)는 카드를 PRINT_DONE 시키지 않고 불량도 등록하지 않는다.
+// 리핑은 실제 출력이 아니며 하류 제어 SW에서 취소될 수 있다. 실측상 재RIP(시행착오)이 36%라
+// RIP 중단을 불량으로 올리면 노이즈만 쌓인다. 실적 정본은 PRINT 이벤트다.
+async function applyEventToCard(
+  db: D1Database, resolved: ResolvedCard, printStatus: string, eventKind: string,
+  equipLabel: string, filePath: string, copyTotal: number
+): Promise<number | null> {
+  if (!resolved.cardId && !resolved.cardNumber) return null
+  const card = resolved.cardId
+    ? await db.prepare('SELECT id, status FROM cards WHERE id = ?').bind(resolved.cardId).first<CardRow>()
+    : await db.prepare('SELECT id, status FROM cards WHERE card_number = ?').bind(resolved.cardNumber).first<CardRow>()
+  if (!card) return resolved.cardId
+
+  // 실제 인쇄/리핑 감지 → 대기 카드를 출력중으로 전환.
+  // PRINTING 진입 트리거는 이 LogWatcher 경로(및 수동 scan)로만 단일화 (#3).
+  if (printStatus === 'OK' && card.status !== 'PRINT_DONE') {
+    if (card.status === 'PRINT_PENDING' || card.status === 'RIP_WAITING') {
+      await db.prepare(
+        "UPDATE cards SET status = 'PRINTING', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+      ).bind(card.id).run()
+    }
+  }
+  if (eventKind !== 'RIP') {
+    if (printStatus === 'CANCEL') {
+      await db.prepare(
+        `UPDATE cards SET rip_status = 'ERROR', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+      ).bind(card.id).run()
+    }
+    if (printStatus === 'ERROR' || printStatus === 'CANCEL') {
+      await autoCreateQualityIssue(db, card.id, printStatus, equipLabel, filePath, copyTotal)
+    }
+  }
+  return card.id
+}
+
 // ─── 타일 완료 판단: 같은 파일의 고유 tile_index 기준 ───
 async function checkAllTilesComplete(db: D1Database, filePath: string, tileCount: number): Promise<boolean> {
   if (!tileCount || tileCount <= 1) return true // 타일 분할 없으면 즉시 완료
   // 같은 file_path에서 OK인 고유 tile_index 개수 카운트
   const result = await db.prepare(
-    "SELECT COUNT(DISTINCT tile_index) as done_tiles FROM print_events WHERE file_path = ? AND print_status = 'OK' AND tile_index > 0"
+    "SELECT COUNT(DISTINCT tile_index) as done_tiles FROM print_events WHERE file_path = ? AND print_status = 'OK' AND event_kind = 'PRINT' AND tile_index > 0"
   ).bind(filePath).first<DoneTilesRow>()
   return (result?.done_tiles || 0) >= tileCount
 }
@@ -268,10 +328,9 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
             file_name, printer_name, print_started_at,
             output_width, output_height, dpi,
             copy_columns, copy_rows, copy_total, tile_count, tile_index,
-            nest_members } = body
-    // Flexi 자체 RIP 네스팅: 멤버 파일명 배열 → JSON 저장 (네스트가 아니면 null)
-    const nestMembersJson = Array.isArray(nest_members) && nest_members.length > 0
-      ? JSON.stringify(nest_members) : null
+            nest_members, event_kind } = body
+    // 리핑 전용 이벤트(neoStampa) 구분 — 미지정은 기존 파서들이므로 실제 출력(PRINT)
+    const eventKind = String(event_kind || 'PRINT').toUpperCase() === 'RIP' ? 'RIP' : 'PRINT'
 
     // 수신 시각 UTC 정규화 (KST naive → UTC naive). 멱등성/소요시간/INSERT 모두 동일 정규화값 사용.
     const normStartedAt = kstNaiveToUtc(print_started_at)
@@ -311,49 +370,44 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
 
     // Extract card/order from file-map or regex fallback
     const extractedName = file_name || file_path.replace(/^.*[\\\/]/, '').replace(/\.[^.]+$/, '')
-    const resolved = await resolveCard(c.env.DB, extractedName)
-    const cardNumber = resolved.cardNumber
-    const orderNumber = resolved.orderNumber
-    let cardId = resolved.cardId
 
-    // file_map에서 cardId를 찾았으면 카드 상태 조회, 못 찾았으면 cardNumber로 직접 조회
-    if (cardId || cardNumber) {
-      const card = cardId
-        ? await c.env.DB.prepare('SELECT id, status FROM cards WHERE id = ?').bind(cardId).first<CardRow>()
-        : cardNumber
-          ? await c.env.DB.prepare('SELECT id, status FROM cards WHERE card_number = ?').bind(cardNumber).first<CardRow>()
-          : null
-      if (card) {
-        cardId = card.id
-        // Auto-update card status for OK — 타일 인식 방식
-        if (print_status === 'OK' && card.status !== 'PRINT_DONE') {
-          // 실제 인쇄 감지(LogWatcher OK) → 대기 카드를 출력중으로 전환.
-          // 단일 상태축: PRINT_PENDING(표준) 및 레거시 RIP_WAITING 모두 포함.
-          // PRINTING 진입 트리거는 이 LogWatcher 경로(및 수동 scan)로만 단일화 (#3).
-          if (card.status === 'PRINT_PENDING' || card.status === 'RIP_WAITING') {
-            await c.env.DB.prepare(
-              "UPDATE cards SET status = 'PRINTING', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-            ).bind(card.id).run()
-          }
-          // 타일 전체 완료 여부 확인 (이벤트 INSERT 전이므로 현재 건 포함 위해 +1 또는 INSERT 후 체크)
-          // → INSERT 후에 체크하도록 아래 afterInsert 플래그 설정
-        }
-        // Cancel 시 카드 상태를 ERROR로 변경
-        if (print_status === 'CANCEL') {
-          const copyTotalVal = copy_total || 1
-          const reason = copyTotalVal > 1
-            ? `Print cancelled (${copyTotalVal}매 배열출력 중 취소) on ${equipLabel}`
-            : `Print cancelled on ${equipLabel}`
-          await c.env.DB.prepare(
-            `UPDATE cards SET rip_status = 'ERROR', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-          ).bind(card.id).run()
-        }
-        // ERROR/CANCEL → quality_issues 자동 등록
-        if (print_status === 'ERROR' || print_status === 'CANCEL') {
-          await autoCreateQualityIssue(c.env.DB, card.id, print_status, equipLabel, file_path, copy_total || 1)
-        }
-      }
+    // 합판이면 멤버별로 전부 매칭 (단건이면 목록 길이 1 → 기존 동작 그대로)
+    const matchNames = nestMatchNames(extractedName, nest_members)
+    const resolvedByName = new Map<string, ResolvedCard>()
+    for (const nm of matchNames) resolvedByName.set(nm, await resolveCard(c.env.DB, nm))
+    const resolvedList = matchNames.map((nm) => resolvedByName.get(nm)!)
+
+    // 매칭된 카드 전부에 반영 — 합판 N건이 함께 전환된다
+    const appliedIds: (number | null)[] = []
+    for (const r of resolvedList) {
+      appliedIds.push(await applyEventToCard(c.env.DB, r, print_status, eventKind, equipLabel, file_path, copy_total || 1))
     }
+    const appliedCards = resolvedList
+      .map((r, i) => ({ cardId: appliedIds[i], orderItemId: r.orderItemId }))
+      .filter((a): a is { cardId: number, orderItemId: number | null } => a.cardId != null)
+
+    // 대표 매칭 = print_events 행의 card_id/card_number/order_number 컬럼용 (기존 스키마 유지).
+    // 대표와 cardId 를 같은 인덱스에서 뽑아야 카드번호/ID 가 어긋나지 않는다.
+    const primaryIdxRaw = resolvedList.findIndex((r) => r.cardId || r.cardNumber)
+    const primaryIdx = primaryIdxRaw >= 0 ? primaryIdxRaw : 0
+    const primary = resolvedList[primaryIdx] || { cardId: null, cardNumber: null, orderNumber: null, orderItemId: null }
+    const cardNumber = primary.cardNumber
+    const orderNumber = primary.orderNumber
+    const cardId = appliedIds[primaryIdx] ?? primary.cardId ?? null
+
+    // 멤버별 매칭 결과를 nest_members 에 실어 저장 — 미매칭 멤버를 웹에서 집어낼 수 있어야
+    // "판에 들어갔는데 주문에 안 붙은 건"을 회수할 수 있다 (P3 연결 UI 의 입력).
+    const nestMembersJson = Array.isArray(nest_members) && nest_members.length > 0
+      ? JSON.stringify((nest_members as any[]).map((m) => {
+          const raw = typeof m === 'string' ? m : (m?.file || '')
+          const r = resolvedByName.get(baseFileName(raw))
+          const obj: any = typeof m === 'string' ? { file: raw } : { ...m }
+          obj.card_id = r?.cardId ?? null
+          obj.card_number = r?.cardNumber ?? null
+          obj.order_number = r?.orderNumber ?? null
+          return obj
+        }))
+      : null
 
     // 인쇄 소요시간 계산 (정규화된 UTC 값 기준 — 차이는 동일하므로 안전)
     const durationSec = calcPrintDuration(normStartedAt, normCompletedAt)
@@ -368,8 +422,8 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
         agent_id, equipment_id, card_number, card_id, order_number, file_path, file_name,
         printer_name, print_status, print_started_at, print_completed_at, print_duration_sec,
         output_width, output_height, dpi,
-        copy_columns, copy_rows, copy_total, tile_count, tile_index, entity_id, nest_members
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        copy_columns, copy_rows, copy_total, tile_count, tile_index, entity_id, nest_members, event_kind
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       agent_id, resolvedEquipmentId, cardNumber, cardId, orderNumber, file_path, extractedName,
       printer_name || null, print_status, normStartedAt,
@@ -377,17 +431,20 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
       output_width || null, output_height || null,
       dpi || null,
       copy_columns || 1, copy_rows || 1, copy_total || 1,
-      tile_count || 0, tile_index || 0, eventEntityId, nestMembersJson
+      tile_count || 0, tile_index || 0, eventEntityId, nestMembersJson, eventKind
     ).run()
 
     const printEventId = result.meta.last_row_id as number
 
     // 타일 완료 체크 → card_item 자동 체크 → 전체 완료 시 PRINT_DONE 전환
-    if (print_status === 'OK' && cardId) {
+    // RIP 이벤트는 실제 출력이 아니므로 PRINT_DONE 경로를 타지 않는다.
+    if (print_status === 'OK' && eventKind !== 'RIP' && appliedCards.length > 0) {
       try {
         const tileComplete = await checkAllTilesComplete(c.env.DB, file_path, tile_count || 0)
         if (tileComplete) {
-          await autoCheckCardItem(c.env.DB, cardId, resolved.orderItemId, equipLabel)
+          for (const a of appliedCards) {
+            await autoCheckCardItem(c.env.DB, a.cardId, a.orderItemId, equipLabel)
+          }
         }
       } catch (tileError) {
         console.error('Tile completion check error:', tileError)
@@ -395,8 +452,9 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
     }
 
     // Auto-deduct inventory if print_status === 'OK'
+    // RIP 이벤트는 자재를 쓰지 않는다 — 차감하면 실제 출력(PRINT) 때 이중 차감된다.
     let deductionResult = null
-    if (print_status === 'OK' && printEventId) {
+    if (print_status === 'OK' && eventKind !== 'RIP' && printEventId) {
       try {
         deductionResult = await autoDeductInventory(c.env.DB, printEventId)
       } catch (deductError) {
@@ -529,21 +587,40 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
         if (existing) { duplicates++; continue }
 
         const extractedName = evt.file_name || evt.file_path.replace(/^.*[\\\/]/, '').replace(/\.[^.]+$/, '')
-        const resolved = await resolveCard(c.env.DB, extractedName)
-        const cardNumber = resolved.cardNumber
-        const orderNumber = resolved.orderNumber
-        let cardId = resolved.cardId
+        const evtKind = String(evt.event_kind || 'PRINT').toUpperCase() === 'RIP' ? 'RIP' : 'PRINT'
+
+        // 합판이면 멤버별로 전부 매칭 (단건이면 길이 1 → 기존 동작 그대로)
+        const evtMatchNames = nestMatchNames(extractedName, evt.nest_members)
+        const evtResolvedByName = new Map<string, ResolvedCard>()
+        for (const nm of evtMatchNames) evtResolvedByName.set(nm, await resolveCard(c.env.DB, nm))
+        const evtResolvedList = evtMatchNames.map((nm) => evtResolvedByName.get(nm)!)
+
+        const evtPrimaryIdxRaw = evtResolvedList.findIndex((r) => r.cardId || r.cardNumber)
+        const evtPrimaryIdx = evtPrimaryIdxRaw >= 0 ? evtPrimaryIdxRaw : 0
+        const evtPrimary = evtResolvedList[evtPrimaryIdx] || { cardId: null, cardNumber: null, orderNumber: null, orderItemId: null }
+        const cardNumber = evtPrimary.cardNumber
+        const orderNumber = evtPrimary.orderNumber
+        const evtAppliedIds: (number | null)[] = []
 
         // file_map 또는 fallback으로 카드 매칭 (status + post_processing 1쿼리로 조회)
-        if (cardId || cardNumber) {
-          const card = cardId
-            ? await c.env.DB.prepare('SELECT id, status, post_processing FROM cards WHERE id = ?').bind(cardId).first<CardRow>()
-            : cardNumber
-              ? await c.env.DB.prepare('SELECT id, status, post_processing FROM cards WHERE card_number = ?').bind(cardNumber).first<CardRow>()
+        for (const resolved of evtResolvedList) {
+          let memberCardId = resolved.cardId
+          const card = memberCardId
+            ? await c.env.DB.prepare('SELECT id, status, post_processing FROM cards WHERE id = ?').bind(memberCardId).first<CardRow>()
+            : resolved.cardNumber
+              ? await c.env.DB.prepare('SELECT id, status, post_processing FROM cards WHERE card_number = ?').bind(resolved.cardNumber).first<CardRow>()
               : null
           if (card) {
-            cardId = card.id
-            if (evt.print_status === 'OK' && card.status !== 'PRINT_DONE') {
+            memberCardId = card.id
+            // RIP 이벤트는 실제 출력이 아니다 → PRINT_DONE·ERROR·불량등록을 하지 않는다
+            if (evtKind === 'RIP') {
+              if (evt.print_status === 'OK' && (card.status === 'PRINT_PENDING' || card.status === 'RIP_WAITING')) {
+                await c.env.DB.prepare(
+                  "UPDATE cards SET status = 'PRINTING', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+                ).bind(card.id).run()
+              }
+            }
+            else if (evt.print_status === 'OK' && card.status !== 'PRINT_DONE') {
               const bHasPP = card.post_processing && card.post_processing !== '[]' && card.post_processing !== ''
               const bPpStatus = bHasPP ? 'PENDING' : 'N/A'
 
@@ -558,7 +635,7 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
                 ).bind(card.id, card.status, `Print completed on ${equipLabel}`)
               ])
             }
-            if (evt.print_status === 'CANCEL') {
+            if (evtKind !== 'RIP' && evt.print_status === 'CANCEL') {
               const evtCopyTotal = evt.copy_total || 1
               const reason = evtCopyTotal > 1
                 ? `Print cancelled (${evtCopyTotal}매 배열출력 중 취소) on ${equipLabel}`
@@ -573,27 +650,39 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
                 ).bind(card.id, card.status, card.status, reason)
               ])
             }
-            if (evt.print_status === 'ERROR' || evt.print_status === 'CANCEL') {
+            if (evtKind !== 'RIP' && (evt.print_status === 'ERROR' || evt.print_status === 'CANCEL')) {
               await autoCreateQualityIssue(c.env.DB, card.id, evt.print_status, equipLabel, evt.file_path, evt.copy_total || 1)
             }
           }
+          evtAppliedIds.push(card ? memberCardId : null)
         }
 
+        const cardId = evtAppliedIds[evtPrimaryIdx] ?? evtPrimary.cardId ?? null
         const evtDuration = calcPrintDuration(evtNormStartedAt, evtNormCompletedAt)
 
         // entity_id: 카드에서 유도 (#384: requesting_entity_id, NULL이면 order entity)
         const batchEntityId = await deriveCardEntityId(c.env.DB, { cardId })
 
+        // 멤버별 매칭 결과 동봉 (단건 핸들러와 동일) — 미매칭 멤버 회수용
         const evtNestMembersJson = Array.isArray(evt.nest_members) && evt.nest_members.length > 0
-          ? JSON.stringify(evt.nest_members) : null
+          ? JSON.stringify((evt.nest_members as any[]).map((m) => {
+              const raw = typeof m === 'string' ? m : (m?.file || '')
+              const r = evtResolvedByName.get(baseFileName(raw))
+              const obj: any = typeof m === 'string' ? { file: raw } : { ...m }
+              obj.card_id = r?.cardId ?? null
+              obj.card_number = r?.cardNumber ?? null
+              obj.order_number = r?.orderNumber ?? null
+              return obj
+            }))
+          : null
 
         const batchResult = await c.env.DB.prepare(`
           INSERT INTO print_events (
             agent_id, equipment_id, card_number, card_id, order_number, file_path, file_name,
             printer_name, print_status, print_started_at, print_completed_at, print_duration_sec,
             output_width, output_height, dpi,
-            copy_columns, copy_rows, copy_total, tile_count, tile_index, entity_id, nest_members
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            copy_columns, copy_rows, copy_total, tile_count, tile_index, entity_id, nest_members, event_kind
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
           agent_id, resolvedEquipmentId, cardNumber, cardId, orderNumber,
           evt.file_path, extractedName, evt.printer_name || null,
@@ -601,13 +690,13 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
           evtNormCompletedAt, evtDuration, evt.output_width || null,
           evt.output_height || null, evt.dpi || null,
           evt.copy_columns || 1, evt.copy_rows || 1, evt.copy_total || 1,
-          evt.tile_count || 0, evt.tile_index || 0, batchEntityId, evtNestMembersJson
+          evt.tile_count || 0, evt.tile_index || 0, batchEntityId, evtNestMembersJson, evtKind
         ).run()
 
         const batchPrintEventId = batchResult.meta.last_row_id as number
 
-        // Auto-deduct inventory if print_status === 'OK'
-        if (evt.print_status === 'OK' && batchPrintEventId) {
+        // Auto-deduct inventory if print_status === 'OK' (RIP 은 자재 미사용 → 이중차감 방지)
+        if (evt.print_status === 'OK' && evtKind !== 'RIP' && batchPrintEventId) {
           try {
             await autoDeductInventory(c.env.DB, batchPrintEventId)
           } catch {
@@ -835,6 +924,7 @@ printEventsRouter.get('/stats', authMiddleware, async (c) => {
         COUNT(*) as total_count
       FROM print_events
       WHERE ${kstDateOf('created_at')} = ${kstDate()}${ef.clause}
+        AND event_kind = 'PRINT'
     `).bind(...ef.params).first<TodaySummaryRow>()
 
     // Daily breakdown
@@ -847,6 +937,7 @@ printEventsRouter.get('/stats', authMiddleware, async (c) => {
         COUNT(*) as total_count
       FROM print_events
       WHERE date(created_at) >= date('now', ? || ' days')${ef.clause}
+        AND event_kind = 'PRINT'
       GROUP BY date(created_at)
       ORDER BY date DESC
     `).bind(`-${days}`, ...ef.params).all()
@@ -857,6 +948,7 @@ printEventsRouter.get('/stats', authMiddleware, async (c) => {
         COUNT(CASE WHEN print_status = 'OK' THEN 1 END) as ok_count
       FROM print_events
       WHERE ${kstDateOf('created_at')} = ${kstDate()}${ef.clause}
+        AND event_kind = 'PRINT'
       GROUP BY agent_id
       ORDER BY count DESC
       LIMIT 10
@@ -884,6 +976,240 @@ printEventsRouter.get('/stats', authMiddleware, async (c) => {
       success: false,
       error: '서버 오류가 발생했습니다.'
     }, 500)
+  }
+})
+
+// ═══════════════════════════════════════════════════════════════════════
+//  출력파일 ↔ 카드 연결 (P3)
+//
+//  전사 등 일부 공정은 디자이너가 파일명을 자유 명명한다(주문번호 미포함) → resolveCard 전멸.
+//  파일명 규칙을 강제하는 대신, RIP 로그에 실제로 등장한 파일명을 모아
+//  "규격·수량·거래처를 파싱해 카드 후보를 추천 → 1클릭 확정 → print_file_map 학습" 시킨다.
+//  같은 파일명 재출력은 이후 자동 매칭된다.
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * 도안 파일명에서 규격/수량/거래처 추출.
+ * 실측 예: `해양호-빨강(75-60-300장).eps` · `제75보병사단-탁상기붙임(135-90-1벌).eps` · `민방위(120-80).eps`
+ * 규격 단위는 cm (order_items.width/height 와 동일 — apScale(widthCm) 참조).
+ */
+export function parseDesignFileName(rawName: string): {
+  client: string | null, width: number | null, height: number | null, qty: number | null
+} {
+  const name = String(rawName || '').replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '')
+  // (가로-세로[-수량단위]) — 구분자는 -, x, ×, * 허용
+  const m = name.match(/\((\d+(?:\.\d+)?)\s*[-x×*]\s*(\d+(?:\.\d+)?)(?:\s*[-x×*]\s*(\d+)\s*(?:장|벌|개|매|ea|EA)?)?\s*\)/)
+  const width = m ? Number(m[1]) : null
+  const height = m ? Number(m[2]) : null
+  const qty = m && m[3] ? Number(m[3]) : null
+
+  // 거래처 추정: 선두 "N." 순번(판 내 배치 순서)을 떼고 첫 구분자 앞 토큰
+  const head = name.replace(/^\s*\d+\s*\.\s*/, '').split(/[-(（]/)[0].trim()
+  const client = head.length >= 2 ? head : null
+
+  return { client, width, height, qty }
+}
+
+/** 확장자 유무 양쪽을 허용하는 비교키 (resolveCard 2차와 동일 기준) */
+function fileKey(s: string): string {
+  return String(s || '').replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '').trim().toLowerCase()
+}
+
+// GET /api/print-events/unmatched — 카드에 안 붙은 출력파일 목록 (단건 + 합판 멤버)
+printEventsRouter.get('/unmatched', authMiddleware, async (c) => {
+  try {
+    const { days = '90', limit = '100' } = c.req.query()
+    const dayNum = Math.min(365, Math.max(1, parseInt(days as string) || 90))
+    const limitNum = Math.min(300, Math.max(1, parseInt(limit as string) || 100))
+    const ef = entityFilter(c, 'pe')
+
+    // 단건 이벤트 + 합판 멤버를 한 목록으로. 멤버는 구형식(문자열 배열)과 신형식(객체) 모두 지원.
+    const { results } = await c.env.DB.prepare(`
+      SELECT file_name, SUM(cnt) AS cnt, MAX(last_at) AS last_at,
+             MAX(w) AS w, MAX(h) AS h, MAX(equipment_id) AS equipment_id, MAX(is_nest) AS is_nest
+      FROM (
+        SELECT pe.file_name AS file_name, COUNT(*) AS cnt,
+               MAX(COALESCE(pe.print_completed_at, pe.created_at)) AS last_at,
+               MAX(pe.output_width) AS w, MAX(pe.output_height) AS h,
+               MAX(pe.equipment_id) AS equipment_id, 0 AS is_nest
+        FROM print_events pe
+        WHERE pe.card_id IS NULL
+          AND (pe.nest_members IS NULL OR pe.nest_members = '')
+          AND pe.file_name IS NOT NULL AND pe.file_name != ''
+          AND COALESCE(pe.print_completed_at, pe.created_at) >= date('now', '-' || ? || ' days')
+          ${ef.clause}
+        GROUP BY pe.file_name
+        UNION ALL
+        -- ⚠️ GROUP BY 에 별칭(file_name)을 쓰면 SQLite가 스코프에 있는 pe.file_name 컬럼으로 해석해
+        --    합판 전체가 한 그룹으로 뭉개진다. 반드시 표현식을 그대로 반복할 것.
+        SELECT COALESCE(json_extract(m.value, '$.file'), m.value) AS file_name, COUNT(*) AS cnt,
+               MAX(COALESCE(pe.print_completed_at, pe.created_at)) AS last_at,
+               MAX(json_extract(m.value, '$.w')) AS w, MAX(json_extract(m.value, '$.h')) AS h,
+               MAX(pe.equipment_id) AS equipment_id, 1 AS is_nest
+        FROM print_events pe, json_each(pe.nest_members) m
+        WHERE pe.nest_members IS NOT NULL AND pe.nest_members != ''
+          AND json_extract(m.value, '$.card_id') IS NULL
+          AND COALESCE(pe.print_completed_at, pe.created_at) >= date('now', '-' || ? || ' days')
+          ${ef.clause}
+        GROUP BY COALESCE(json_extract(m.value, '$.file'), m.value)
+      )
+      WHERE file_name IS NOT NULL AND file_name != ''
+      GROUP BY file_name
+      ORDER BY last_at DESC, file_name ASC
+      LIMIT ?
+    `).bind(dayNum, ...ef.params, dayNum, ...ef.params, limitNum).all<{
+      file_name: string; cnt: number; last_at: string; w: number | null; h: number | null;
+      equipment_id: string | null; is_nest: number
+    }>()
+
+    const rows = results || []
+    // 이미 file_map 에 등록된 이름 제외 — 연결 직후 목록에서 바로 빠지도록 저장값이 아닌 실시간 대조.
+    // D1 바인드 한도(~100) 회피: 80개씩 청크.
+    const linked = new Set<string>()
+    const keys = Array.from(new Set(rows.map((r) => fileKey(r.file_name))))
+    for (let i = 0; i < keys.length; i += 80) {
+      const chunk = keys.slice(i, i + 80)
+      if (chunk.length === 0) continue
+      const ph = chunk.map(() => '?').join(',')
+      const { results: fm } = await c.env.DB.prepare(
+        `SELECT file_name FROM print_file_map WHERE lower(file_name) IN (${ph})
+         OR lower(replace(replace(file_name, '.eps', ''), '.EPS', '')) IN (${ph})`
+      ).bind(...chunk, ...chunk).all<{ file_name: string }>()
+      for (const r of (fm || [])) linked.add(fileKey(r.file_name))
+    }
+
+    const data = rows
+      .filter((r) => !linked.has(fileKey(r.file_name)))
+      .map((r) => ({ ...r, parsed: parseDesignFileName(r.file_name) }))
+
+    return c.json({ success: true, data })
+  } catch (error) {
+    console.error('src/routes/printEvents.ts error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// GET /api/print-events/link-candidates?file_name=... — 파일명 파싱 → 카드 후보 추천
+printEventsRouter.get('/link-candidates', authMiddleware, async (c) => {
+  try {
+    const fileName = c.req.query('file_name') || ''
+    if (!fileName) return c.json({ success: false, error: 'file_name required' }, 400)
+
+    const parsed = parseDesignFileName(fileName)
+    const ef = cardEntityFilter(c, 'c')
+
+    // 후보 축소: 규격(정/역방향) 또는 거래처/품목명 부분일치. 신호가 없으면 최근 카드로 폴백.
+    const conds: string[] = []
+    const params: any[] = []
+    if (parsed.width && parsed.height) {
+      conds.push('(ABS(c.width - ?) <= 1 AND ABS(c.height - ?) <= 1)')
+      params.push(parsed.width, parsed.height)
+      conds.push('(ABS(c.width - ?) <= 1 AND ABS(c.height - ?) <= 1)')
+      params.push(parsed.height, parsed.width)
+    }
+    if (parsed.client) {
+      conds.push('c.client_name LIKE ?'); params.push(`%${parsed.client}%`)
+      conds.push('c.item_name LIKE ?'); params.push(`%${parsed.client}%`)
+    }
+    const signalClause = conds.length > 0 ? ` AND (${conds.join(' OR ')})` : ''
+
+    const { results } = await c.env.DB.prepare(`
+      SELECT c.id, c.card_number, c.item_name, c.client_name, c.width, c.height,
+             c.quantity, c.status, o.order_number, o.order_date
+      FROM cards c
+      LEFT JOIN orders o ON c.order_id = o.id
+      WHERE c.status IN ('PRINT_PENDING', 'RIP_WAITING', 'PRINTING')${ef.clause}${signalClause}
+      ORDER BY c.id DESC
+      LIMIT 200
+    `).bind(...ef.params, ...params).all<{
+      id: number; card_number: string; item_name: string | null; client_name: string | null;
+      width: number | null; height: number | null; quantity: number | null; status: string;
+      order_number: string | null; order_date: string | null
+    }>()
+
+    const scored = (results || []).map((row) => {
+      let score = 0
+      const reasons: string[] = []
+      if (parsed.width && parsed.height && row.width && row.height) {
+        const fit = Math.abs(row.width - parsed.width) <= 1 && Math.abs(row.height - parsed.height) <= 1
+        const swap = Math.abs(row.width - parsed.height) <= 1 && Math.abs(row.height - parsed.width) <= 1
+        if (fit || swap) { score += 3; reasons.push(swap ? '규격(가로세로 반전)' : '규격') }
+      }
+      if (parsed.qty && row.quantity && parsed.qty === row.quantity) { score += 2; reasons.push('수량') }
+      if (parsed.client && row.client_name && row.client_name.includes(parsed.client)) { score += 3; reasons.push('거래처') }
+      if (parsed.client && row.item_name && row.item_name.includes(parsed.client)) { score += 1; reasons.push('품목명') }
+      return { ...row, score, reasons }
+    })
+      .filter((r) => r.score > 0 || conds.length === 0)
+      .sort((a, b) => b.score - a.score || b.id - a.id)
+      .slice(0, 20)
+
+    return c.json({ success: true, data: { parsed, candidates: scored } })
+  } catch (error) {
+    console.error('src/routes/printEvents.ts error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// POST /api/print-events/link — 파일명 ↔ 카드 연결 (print_file_map 학습 + 과거 이벤트 소급)
+printEventsRouter.post('/link', authMiddleware, async (c) => {
+  try {
+    const { file_name, card_id } = await c.req.json()
+    if (!file_name || !card_id) {
+      return c.json({ success: false, error: 'file_name, card_id required' }, 400)
+    }
+
+    const card = await c.env.DB.prepare(`
+      SELECT c.id, c.card_number, c.order_item_id, o.order_number
+      FROM cards c LEFT JOIN orders o ON c.order_id = o.id WHERE c.id = ?
+    `).bind(card_id).first<{ id: number; card_number: string; order_item_id: number | null; order_number: string | null }>()
+    if (!card) return c.json({ success: false, error: '카드를 찾을 수 없습니다.' }, 404)
+    if (!card.order_number) return c.json({ success: false, error: '카드에 주문번호가 없습니다.' }, 400)
+
+    const mapEntityId = await deriveCardEntityId(c.env.DB, { cardId: card.id })
+
+    // file_seq: 같은 파일명이 이미 있으면 그 자리에 덮어쓰고, 없으면 다음 번호를 딴다.
+    // (UNIQUE(order_number, file_seq) — IA 자동등록분과 충돌하지 않도록 max+1)
+    const existing = await c.env.DB.prepare(
+      'SELECT file_seq FROM print_file_map WHERE order_number = ? AND file_name = ?'
+    ).bind(card.order_number, file_name).first<{ file_seq: number }>()
+    let fileSeq = existing?.file_seq
+    if (!fileSeq) {
+      const maxRow = await c.env.DB.prepare(
+        'SELECT COALESCE(MAX(file_seq), 0) AS m FROM print_file_map WHERE order_number = ?'
+      ).bind(card.order_number).first<{ m: number }>()
+      fileSeq = (maxRow?.m || 0) + 1
+    }
+
+    await c.env.DB.prepare(`
+      INSERT INTO print_file_map (order_number, file_seq, card_id, card_number, order_item_id, file_name, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(order_number, file_seq) DO UPDATE SET
+        card_id = excluded.card_id, card_number = excluded.card_number,
+        order_item_id = excluded.order_item_id, file_name = excluded.file_name,
+        entity_id = excluded.entity_id
+    `).bind(card.order_number, fileSeq, card.id, card.card_number, card.order_item_id || null, file_name, mapEntityId).run()
+
+    // 소급: 이 파일명으로 이미 들어온 단건 미매칭 이벤트에 카드를 붙인다.
+    // (합판 멤버는 nest_members JSON 이라 갱신하지 않는다 — /unmatched 가 file_map 과 실시간 대조하므로
+    //  연결 즉시 목록에서 빠지고, JSON 은 당시 기록으로 남긴다)
+    const noExt = String(file_name).replace(/\.[^.]+$/, '')
+    const back = await c.env.DB.prepare(`
+      UPDATE print_events SET card_id = ?, card_number = ?, order_number = ?
+      WHERE card_id IS NULL AND (file_name = ? OR file_name = ?)
+    `).bind(card.id, card.card_number, card.order_number, file_name, noExt).run()
+
+    return c.json({
+      success: true,
+      data: {
+        file_name, card_id: card.id, card_number: card.card_number,
+        order_number: card.order_number, file_seq: fileSeq,
+        backfilled_events: back.meta.changes || 0
+      }
+    })
+  } catch (error) {
+    console.error('src/routes/printEvents.ts error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
 

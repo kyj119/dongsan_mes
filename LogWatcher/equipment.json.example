@@ -40,6 +40,20 @@
         "status_error": ["14"],
         "read_only": true
       }
+    },
+    {
+      "_comment": "전사 8색(Longyin Q2000) neoStampa — 리핑 로그 전용. 실제 출력·취소는 하류 Topaz 가 정본이므로",
+      "_comment2": "이 파서가 보내는 이벤트는 event_kind='RIP' 로 적재되어 PRINT_DONE·실적집계에서 제외된다.",
+      "_comment3": "합판(오퍼레이터가 RIP에서 배치)의 멤버 도안 목록은 이 로그에만 있다 → 카드 N건 동시 귀속의 유일한 근거.",
+      "equipment_id": "TRANS-8C-01",
+      "name": "전사 8색 1호기 (Longyin Q2000)",
+      "enabled": true,
+      "parser_type": "neostampa",
+      "config": {
+        "log_root": "C:\\Users\\Public\\Documents\\neoStampa 10\\Log",
+        "settle_seconds": 5,
+        "backfill_days": 0
+      }
     }
   ]
 }

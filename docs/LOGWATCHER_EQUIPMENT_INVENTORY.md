@@ -17,13 +17,32 @@ card_group 분류는 `src/routes/orders/helpers.ts:18-21` 기준.
 | UV | PM-3xxx | OUTPUT | 동산 | PrintExp (추정) | UTF-16LE 텍스트 | `printexp` | ✅ |
 | 평판 | PM-4xxx | OUTPUT | 동산 | **?** | ? | **?** | ⬜ 확인 |
 | 에코솔벤트 | (솔벤 계열) | OUTPUT | 동산 | Epson Edge Print | SQLite DB | `epson` | ✅ |
-| 전사 | PM-5xxx | TRANSFER_FLAG | 동산 | **?** | ? | **?** | ⬜ 확인 |
-| 태극기 | PM-6xxx | TRANSFER_FLAG | 동산 | **?** | ? | **?** | ⬜ 확인 |
+| 전사 | PM-5xxx | TRANSFER_FLAG | 동산 | **neoStampa 10.2.4 → Topaz** (2축) | INI 잡파일 / 바이너리 | `neostampa` + `tns` | ✅ (2026-08-05) |
+| 태극기 | PM-6xxx | TRANSFER_FLAG | 동산 | 전사와 동일 장비 사용 | 〃 | 〃 | ✅ |
 | 간판 | PM-7xxx | SIGN | 선명 | **?** | ? | **?** | ⬜ 확인 |
 | (FlexiPRINT 쓰는 장비?) | — | — | — | SAi FlexiPRINT | RIPLOG.HTML | `flexi` | ✅ |
 
-**구현된 파서 4종**: `tns` · `printexp` · `epson` · `flexi` (`LogWatcher/Core/ParserFactory.cs`)
-**미구현**: `text_log` · `csv_log` · `jdf_folder` — 위 `?` 장비가 일반 텍스트/CSV 로그면 **코드 구현 선행 필요**.
+**구현된 파서 6종**: `tns` · `printexp` · `epson` · `flexi` · `text_log` · `neostampa` (`LogWatcher/Core/ParserFactory.cs`)
+**미구현**: `csv_log` · `jdf_folder` — 위 `?` 장비가 CSV 로그면 코드 구현 선행 필요(일반 텍스트는 `text_log` 로 흡수).
+
+### ⚠️ 전사는 RIP SW 와 제어 SW 가 분리된 2축 구조
+
+```
+디자이너/IA → 개별 EPS ─┐
+                        ├→ neoStampa (리핑·합판 배치) → Topaz-RIP (송출·취소) → Q2000
+오퍼레이터 합판 배치 ───┘
+```
+
+| 축 | 파서 | event_kind | 담는 것 |
+|---|---|---|---|
+| neoStampa | `neostampa` | `RIP` | **합판 멤버 구성**·판 치수·잉크 도트·RIP 중단 |
+| Topaz | `tns` | `PRINT` | 실제 출력·취소·완료 (**실적 정본**) |
+
+- 둘 다 붙여야 완결된다. neoStampa 만으로는 실제 출력 여부를 알 수 없고(취소는 Topaz에서 발생),
+  Topaz 만으로는 합판 N건 중 어느 주문인지 알 수 없다(판 1개 = 잡 1개로만 보임).
+- **구분 없이 둘 다 적재하면 실적이 이중계상된다** → `print_events.event_kind`(마이그 `0518`)로 분리.
+  `RIP` 은 카드를 `PRINTING` 까지만 올리고 `PRINT_DONE`·불량등록·재고차감·실적집계에서 빠진다.
+- 상세 = `docs/superpowers/specs/2026-08-05-neostampa-rip-integration.md`
 
 ---
 
@@ -39,9 +58,15 @@ card_group 분류는 `src/routes/orders/helpers.ts:18-21` 기준.
 | ? | ? 수성 | 수성 | ⬜ | ? | ? | ? | ⬜ | ⬜ |
 | ? | ? UV | UV | ⬜ | ? | ? | ? | ⬜ | ⬜ |
 | ? | ? 평판 | 평판 | ⬜ | ? | ? | ? | ⬜ | ⬜ |
-| ? | ? 전사 | 전사 | ⬜ | ? | ? | ? | ⬜ | ⬜ |
-| ? | ? 태극기 | 태극기 | ⬜ | ? | ? | ? | ⬜ | ⬜ |
+| TRANS-8C-01 | 전사 8색 1호기 (Longyin Q2000) | 전사/태극기 | DESKTOP-5C9D04J | neoStampa 10.2.4 | `C:\Users\Public\Documents\neoStampa 10\Log` | neostampa | ✅ 실로그 145건 | ⬜ |
+| TRANS-8C-02 | 전사 8색 2호기 (Longyin Q2000) | 전사/태극기 | PC-202605141926 | neoStampa 10.2.4 | 〃 | neostampa | ✅ | ⬜ |
+| ? | ? 전사 Topaz (출력 정본) | 전사 | ⬜ **확인 필요** | TopazRip | ⬜ `...\Print.log` | tns | ⬜ | ⬜ |
 | ? | ? 간판(선명) | 간판 | ⬜ | ? | ? | ? | ⬜ | ⬜ |
+
+> **전사 배포 순서 = Topaz(`tns`) 먼저 → neoStampa(`neostampa`) 나중.**
+> RIP 로그만 먼저 붙이면 "리핑됨"을 출력 실적으로 오해할 여지가 남는다.
+> Topaz 세팅 시 **잡 이름이 neoStampa `Document` 와 같은 문자열인지 반드시 실물 확인** —
+> 두 축을 잇는 조인 키이고, 아직 검증되지 않았다.
 
 ---
 
@@ -63,8 +88,12 @@ card_group 분류는 `src/routes/orders/helpers.ts:18-21` 기준.
    | UTF-16LE 텍스트 `Log[날짜].txt` (PrintExp) | `printexp` | ✅ |
    | SQLite `.db` 파일 | `epson`(쿼리 작성) | ✅ |
    | append HTML (FlexiPRINT RIPLOG.HTML) | `flexi` | ✅ |
-   | 일반 텍스트 (한 줄=1이벤트) | `text_log` | ❌ 구현필요 |
+   | 일반 텍스트 (한 줄=1이벤트) | `text_log` | ✅ (정규식 config) |
+   | **잡마다 파일 1개 생성** (neoStampa INI) | `neostampa` | ✅ |
    | CSV/TSV | `csv_log` | ❌ 구현필요 |
+
+   > append 로그가 아니라 **잡별로 파일이 새로 생기는** 형식이면 tail 파싱이 아니라 폴더 감시다.
+   > `neostampa` 파서가 그 패턴(상태 저장 = 처리한 파일의 최대 mtime)의 참조 구현이다.
 
 ---
 
@@ -92,5 +121,9 @@ VALUES ('TPM-01', 'TopazRip 1호기(솔벤)', 'Super Color ...', 'ACTIVE');
 3. `equipment.json` watchers에 1행 추가
 4. `LogWatcher.exe --test {equipment_id}` → 파싱 결과 눈으로 확인 (API 전송 없음)
 5. `LogWatcher.exe --list` → 상태 OK
-6. `install-service.bat` (관리자) → `/rip` 대시보드에서 온라인 확인
+6. `install-service.bat` (관리자) → **`/equipment`** 에서 온라인 확인
+   (⚠️ `/rip` 페이지는 폐기됨 — 접속하면 빈 화면. 출력 이벤트는 `/production`)
 7. 실제 출력 1건 → 카드 자동 PRINT_DONE 확인 → **다음 장비**
+
+> `neostampa` 파서는 **최초 실행 시 과거 로그를 보내지 않는다**(`backfill_days: 0` 기본).
+> `--test` 는 전량 재파싱하지만 API 전송이 없어 안전하다. 의도적 소급이 필요할 때만 `backfill_days` 를 올린다.

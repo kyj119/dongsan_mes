@@ -39,7 +39,7 @@ oee.post('/calculate', requireRole('ADMIN', 'MANAGER'), async (c) => {
           ), 0) as run_hours,
           COUNT(CASE WHEN print_status = 'OK' THEN 1 END) as completed_count
         FROM print_events
-        WHERE DATE(print_started_at) = ?
+        WHERE DATE(print_started_at) = ? AND event_kind = 'PRINT'
         GROUP BY equipment_id
       `).bind(targetDate),
       c.env.DB.prepare(`
@@ -56,7 +56,7 @@ oee.post('/calculate', requireRole('ADMIN', 'MANAGER'), async (c) => {
             CAST(COALESCE(output_width, '0') AS REAL) * CAST(COALESCE(output_height, '0') AS REAL) / 1000000.0
           ), 0) as actual_sqm
         FROM print_events
-        WHERE DATE(print_started_at) = ? AND print_status = 'OK'
+        WHERE DATE(print_started_at) = ? AND print_status = 'OK' AND event_kind = 'PRINT'
         GROUP BY equipment_id
       `).bind(targetDate),
       c.env.DB.prepare(`

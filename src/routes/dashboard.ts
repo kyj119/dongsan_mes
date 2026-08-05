@@ -611,6 +611,7 @@ dashboardRouter.get('/stats/production-today', async (c) => {
         SUM(CASE WHEN pe.print_status = 'ERROR' THEN 1 ELSE 0 END) as error_count
       FROM print_events pe
       WHERE ${kstDateOf('pe.created_at')} = ${kstDate()}
+        AND pe.event_kind = 'PRINT'
     `).first()
 
     const { results: byEquipment } = await c.env.DB.prepare(`
@@ -620,6 +621,7 @@ dashboardRouter.get('/stats/production-today', async (c) => {
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
       WHERE ${kstDateOf('pe.created_at')} = ${kstDate()}
+        AND pe.event_kind = 'PRINT'
       GROUP BY pe.equipment_id
       ORDER BY total DESC
     `).all()
@@ -654,6 +656,7 @@ dashboardRouter.get('/stats/uptime-weekly', async (c) => {
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
       WHERE pe.created_at >= date('now', '-6 days')
+        AND pe.event_kind = 'PRINT'
       GROUP BY pe.equipment_id
       ORDER BY total_events DESC
     `).all()
@@ -694,6 +697,7 @@ dashboardRouter.get('/stats/equipment-utilization', async (c) => {
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
       WHERE ${kstDateOf('pe.print_started_at')} = ${kstDate()}
+        AND pe.event_kind = 'PRINT'
       GROUP BY pe.equipment_id
       ORDER BY total_sec DESC
     `).all()
@@ -707,6 +711,7 @@ dashboardRouter.get('/stats/equipment-utilization', async (c) => {
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
       WHERE date(pe.print_started_at) >= date('now', '-6 days')
+        AND pe.event_kind = 'PRINT'
       GROUP BY pe.equipment_id
       ORDER BY total_sec DESC
     `).all()

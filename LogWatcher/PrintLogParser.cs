@@ -76,6 +76,12 @@ namespace LogWatcher
         public int NestDeclaredCount { get; set; } = 0;        // 로그가 선언한 작업 수 N
         public List<NestMember> NestMembers { get; set; } = new(); // 네스트 멤버: 파일·규격(mm)·수량
         public string? EquipmentId { get; set; }                // 이벤트 귀속 장비(universal 모드 전송용)
+
+        /// <summary>
+        /// 이벤트 종류. "PRINT" = 실제 출력(기존 파서 전부), "RIP" = 리핑만(neoStampa).
+        /// 한 물리 출력이 RIP SW 와 제어 SW 양쪽에 로그를 남기므로, 구분하지 않으면 실적이 이중계상된다.
+        /// </summary>
+        public string EventKind { get; set; } = "PRINT";
     }
 
     /// <summary>네스트 멤버 1개: 파일 + 규격(mm, in→mm 정규화) + 수량(인쇄매수). JSON 키=속성명 소문자.</summary>
