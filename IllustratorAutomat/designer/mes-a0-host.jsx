@@ -80,13 +80,22 @@ function mesA0_sanitize(s) {
 // 주석 = 키워드-식별번호-후가공-수량 (2026-07-30 지시로 후가공 세그먼트 추가).
 //   후가공이 없으면 그 칸만 빠진다(빈 세그먼트로 '--' 가 생기지 않게).
 //   키워드가 없으면 주석 자체를 그리지 않는다 = 기존 규칙 유지.
+/**
+ * 주석 문구 = 키워드-식별번호-후가공-수량.
+ * ★키워드가 없어도 만든다(2026-08-05 용준님 · 재요청).
+ *   여태 `if (!keyword) return ''` 로 **빈 문자열**을 돌려줬고, 그러면 주석 블록이 통째로
+ *   건너뛰어져 상/하/좌/우를 다 체크해도 아무것도 안 그려졌다. 게다가 **왜 안 나오는지**
+ *   아무 데도 안 알려준다 — 실제로 "기능이 안 된다"로 보고됐다(키워드 칸 한글 입력 문제와 겹쳐서).
+ *   수량은 언제나 있으므로 이 함수는 이제 **빈 문자열을 돌려주지 않는다**.
+ *   (주석을 그릴지 말지는 위치 체크박스 `annot_pos` 가 정한다 — 여기서 막을 일이 아니다)
+ */
 function mesA0_annotText(keyword, seqNo, postDesc, qty) {
-  if (!keyword) return '';
-  var s = keyword;
-  if (seqNo != null && seqNo !== '') s += '-' + seqNo;
-  if (postDesc) s += '-' + postDesc;
-  s += '-' + qty + 'ea';
-  return s;
+  var parts = [];
+  if (keyword) parts.push(keyword);
+  if (seqNo != null && seqNo !== '') parts.push(String(seqNo));
+  if (postDesc) parts.push(postDesc);
+  parts.push(qty + 'ea');
+  return parts.join('-');
 }
 function mesA0_unionBounds(items) {
   var L = null, T = null, R = null, B = null;

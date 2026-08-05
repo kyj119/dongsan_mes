@@ -331,7 +331,17 @@ await page.waitForTimeout(300)
 const doneMsg = await page.locator('#out').innerText()
 ok('단건 복귀 시 후가공 폼도 단건으로', await page.evaluate(() => !!document.querySelector('[data-page="single"] #finToggleRow')))
 ok('단건에선 주석 키워드칸 표시', await page.locator('#annotKwRow').isVisible())
-ok('등록 결과에 work.ai 용량 표시', doneMsg.includes('work.ai 51.2MB'), doneMsg.slice(0, 140))
+
+
+// ★키워드가 없어도 주석은 만들어져야 한다(2026-08-05 용준님 재요청).
+//   여태 `if (!keyword) return ''` 라 4방향을 다 체크해도 아무것도 안 그려졌고, 이유도 안 알려줬다.
+//   수량은 언제나 있으므로 이 함수는 **빈 문자열을 돌려주면 안 된다**.
+{
+  const a0 = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-a0-host.jsx'), 'utf8')
+  const fn = /function mesA0_annotText\([\s\S]*?\n\}/.exec(a0)
+  ok('주석: 키워드 없어도 생성', !!fn && !/if \(!keyword\) return ''/.test(fn[0]))
+  ok('주석: 수량은 항상 붙는다', !!fn && /parts\.push\(qty \+ 'ea'\)/.test(fn[0]))
+}ok('등록 결과에 work.ai 용량 표시', doneMsg.includes('work.ai 51.2MB'), doneMsg.slice(0, 140))
 ok('임베드 여분 경고 표시', doneMsg.includes('임베드 이미지가 디자인 밖까지 큼'), doneMsg.slice(0, 200))
 ok('돔보 등록분 DXF 표시', doneMsg.includes('DXF: a.dxf'), doneMsg.slice(0, 220))
 
