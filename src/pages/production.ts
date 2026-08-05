@@ -53,6 +53,11 @@ export function productionPage(c: Context<HonoEnv>) {
           class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 -mb-px transition-colors">
           <i class="fas fa-user-clock mr-1.5"></i>작업실적
         </button>
+        <button id="tabBtnLink" onclick="switchProdTab('link')"
+          class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 -mb-px transition-colors">
+          <i class="fas fa-link mr-1.5"></i>출력파일 연결
+          <span id="linkBadge" class="ml-1 hidden text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full">0</span>
+        </button>
       </div>
 
       <!-- ══════════ 탭 1: 현황 ══════════ -->
@@ -424,6 +429,51 @@ export function productionPage(c: Context<HonoEnv>) {
 
         </div>
       </div><!-- /tabWork -->
+
+      <!-- ══════════ 탭 4: 출력파일 연결 ══════════ -->
+      <!-- RIP 로그에 뜬 파일명 중 카드에 안 붙은 것 → 파일명 파싱으로 후보 추천 → 1클릭 확정.
+           확정분은 print_file_map 에 학습되어 같은 파일명 재출력부터 자동 매칭된다. -->
+      <div id="tabLink" class="hidden">
+        <div class="ds-card p-4 mb-4">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h3 class="text-sm font-semibold" style="color:var(--c-text);">
+                <i class="fas fa-unlink mr-1.5 text-orange-500"></i>카드에 연결되지 않은 출력파일
+              </h3>
+              <p class="text-xs text-gray-500 mt-1">
+                파일명에 주문번호가 없어 자동 매칭되지 않은 건입니다. 한 번 연결하면 이후 같은 파일명은 자동으로 붙습니다.
+              </p>
+            </div>
+            <div class="flex items-center gap-2">
+              <select id="linkDays" class="ds-input text-xs py-1">
+                <option value="30">최근 30일</option>
+                <option value="90" selected>최근 90일</option>
+                <option value="365">최근 1년</option>
+              </select>
+              <button onclick="loadUnmatchedFiles()" class="ds-btn ds-btn-sm">
+                <i class="fas fa-rotate mr-1"></i>새로고침
+              </button>
+            </div>
+          </div>
+          <div class="ds-table-wrap" style="max-height:520px;overflow-y:auto;">
+            <table class="w-full text-sm ds-table ds-table-striped">
+              <thead>
+                <tr>
+                  <th class="text-left">파일명</th>
+                  <th class="col-num">규격</th>
+                  <th class="col-num">수량</th>
+                  <th class="col-num">출력</th>
+                  <th class="col-date">최근</th>
+                  <th class="col-action">연결</th>
+                </tr>
+              </thead>
+              <tbody id="unmatchedBody">
+                <tr><td colspan="6" class="text-center text-gray-400 py-6">불러오는 중…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div><!-- /tabLink -->
       </div><!-- /prodHubCurrent -->
 
       <!-- ══ 생산 분석 모드 (productionReports 단일소스 이식, ADMIN/MANAGER·lazy) ══ -->

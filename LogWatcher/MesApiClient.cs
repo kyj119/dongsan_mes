@@ -54,7 +54,9 @@ namespace LogWatcher
                     file_seq = evt.FileSeq,
                     // 네스팅 분해 (Flexi 자체 RIP 네스팅) — 멤버 파일명 목록
                     nest_members = evt.IsNest ? evt.NestMembers : null,
-                    nest_declared_count = evt.IsNest ? evt.NestDeclaredCount : (int?)null
+                    nest_declared_count = evt.IsNest ? evt.NestDeclaredCount : (int?)null,
+                    // RIP 전용 이벤트 구분 — 서버가 PRINT_DONE·리포트 집계에서 제외한다(이중계상 방지)
+                    event_kind = evt.EventKind
                 };
 
                 var response = await _http.PostAsJsonAsync($"{_baseUrl}/api/print-events", payload);

@@ -74,7 +74,8 @@ function switchProdTab(tab) {
   var TABS = {
     status:   { panel: 'tabStatus',   btn: 'tabBtnStatus' },
     schedule: { panel: 'tabSchedule', btn: 'tabBtnSchedule' },
-    work:     { panel: 'tabWork',     btn: 'tabBtnWork' }
+    work:     { panel: 'tabWork',     btn: 'tabBtnWork' },
+    link:     { panel: 'tabLink',     btn: 'tabBtnLink' }
   };
 
   Object.keys(TABS).forEach(function(key) {
@@ -102,6 +103,8 @@ function switchProdTab(tab) {
   } else if (tab === 'work') {
     // 작업실적 탭 (지연 초기화 — window.wrInit 는 하단 IIFE 에서 노출)
     if (window.wrInit) window.wrInit();
+  } else if (tab === 'link') {
+    loadUnmatchedFiles();
   }
 }
 
@@ -431,7 +434,12 @@ async function loadRecentEvents() {
           if (isObj) {
             var dim = (m.w && m.h) ? ' <span class="text-gray-400">' + (m.w / 10).toFixed(1) + '×' + (m.h / 10).toFixed(1) + 'cm</span>' : '';
             var q = (m.qty && m.qty > 1) ? ' <span class="text-purple-600 font-medium">×' + m.qty + '</span>' : '';
-            meta = dim + q;
+            // 멤버별 카드 귀속 — 합판은 판 1개에 주문 N건이라 어느 멤버가 안 붙었는지 보여야
+            // '출력파일 연결' 탭에서 회수할 수 있다 (card_number 는 이벤트 수신 시점 기록)
+            var link = m.card_number
+              ? ' <span class="text-[10px] bg-green-50 text-green-700 px-1 py-0.5 rounded">' + escapeHtml(m.card_number) + '</span>'
+              : ' <span class="text-[10px] bg-orange-50 text-orange-700 px-1 py-0.5 rounded">미연결</span>';
+            meta = dim + q + link;
           }
           return '<li class="truncate" title="' + escapeHtml(full) + '">' + escapeHtml(base) + meta + '</li>';
         }).join('');
@@ -1105,5 +1113,136 @@ loadRecentEvents();
     if (dateEl && !dateEl.value) dateEl.value = (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10));
     wrLoadEmployees();
     window.wrLoadRecords();
+  };
+})();
+
+// ════════════════════════════════════════════════════════════════
+// 탭 4: 출력파일 연결
+//
+// 디자이너가 자유 명명한 도안(주문번호 없음)은 resolveCard 가 못 잡는다.
+// 파일명 규칙을 강제하는 대신, RIP 로그에 실제로 뜬 파일명을 모아
+// 규격·수량·거래처를 파싱해 카드 후보를 추천하고 1클릭으로 확정한다.
+// 확정분은 print_file_map 에 학습되어 같은 파일명 재출력부터 자동 매칭된다.
+// ?raw 전역 스코프 충돌 회피 위해 헬퍼는 pl* 접두.
+// ════════════════════════════════════════════════════════════════
+(function () {
+  var plEsc = function (s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    });
+  };
+  var plToast = function (m, t) { if (window.showToast) window.showToast(m, t); else console.log('[production/link]', m); };
+
+  window.loadUnmatchedFiles = async function () {
+    var body = document.getElementById('unmatchedBody');
+    if (!body) { console.warn('[production/link] #unmatchedBody not found'); return; }
+    var daysEl = document.getElementById('linkDays');
+    var days = daysEl ? daysEl.value : '90';
+    body.innerHTML = '<tr><td colspan="6" class="text-center text-gray-400 py-6">불러오는 중…</td></tr>';
+    try {
+      var res = await axios.get('/api/print-events/unmatched?days=' + encodeURIComponent(days));
+      if (!res.data.success) throw new Error(res.data.error || '조회 실패');
+      var rows = res.data.data || [];
+
+      var badge = document.getElementById('linkBadge');
+      if (badge) {
+        badge.textContent = rows.length;
+        badge.classList.toggle('hidden', rows.length === 0);
+      }
+
+      if (rows.length === 0) {
+        body.innerHTML = '<tr><td colspan="6" class="text-center text-gray-400 py-8">'
+          + '<i class="fas fa-circle-check text-green-500 mr-1"></i>연결되지 않은 출력파일이 없습니다.</td></tr>';
+        return;
+      }
+
+      body.innerHTML = rows.map(function (r, i) {
+        var p = r.parsed || {};
+        var size = (p.width && p.height) ? (p.width + '×' + p.height + 'cm') : '-';
+        var qty = p.qty != null ? p.qty : '-';
+        var nestTag = r.is_nest
+          ? ' <span class="text-[10px] bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded"><i class="fas fa-layer-group mr-0.5"></i>합판</span>'
+          : '';
+        // DB는 UTC naive 저장 → 페이지 공용 fmtTime(KST 변환)을 그대로 쓴다
+        var last = fmtTime(r.last_at);
+        return '<tr id="plRow' + i + '">'
+          + '<td class="max-w-[420px] truncate" title="' + plEsc(r.file_name) + '">'
+          + plEsc(r.file_name) + nestTag + '</td>'
+          + '<td class="text-right tabular-nums">' + plEsc(size) + '</td>'
+          + '<td class="text-right tabular-nums">' + plEsc(qty) + '</td>'
+          + '<td class="text-right tabular-nums">' + (r.cnt || 0) + '</td>'
+          + '<td class="text-xs text-gray-500">' + plEsc(last) + '</td>'
+          + '<td class="text-center">'
+          + '<button class="ds-btn ds-btn-sm" onclick="plToggleCandidates(' + i + ')">'
+          + '<i class="fas fa-magnifying-glass mr-1"></i>후보</button></td>'
+          + '</tr>'
+          + '<tr id="plCand' + i + '" class="hidden" data-file="' + plEsc(r.file_name) + '">'
+          + '<td colspan="6" class="bg-gray-50 p-0"></td></tr>';
+      }).join('');
+    } catch (e) {
+      console.error('[production/link] loadUnmatchedFiles', e);
+      body.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-red-400">로드 실패</td></tr>';
+    }
+  };
+
+  window.plToggleCandidates = async function (idx) {
+    var tr = document.getElementById('plCand' + idx);
+    if (!tr) { console.warn('[production/link] #plCand' + idx + ' not found'); return; }
+    if (!tr.classList.contains('hidden')) { tr.classList.add('hidden'); return; }
+    tr.classList.remove('hidden');
+
+    var cell = tr.querySelector('td');
+    var fileName = tr.getAttribute('data-file') || '';
+    cell.innerHTML = '<div class="p-3 text-xs text-gray-400">후보 조회 중…</div>';
+
+    try {
+      var res = await axios.get('/api/print-events/link-candidates?file_name=' + encodeURIComponent(fileName));
+      if (!res.data.success) throw new Error(res.data.error || '조회 실패');
+      var list = res.data.data.candidates || [];
+      if (list.length === 0) {
+        cell.innerHTML = '<div class="p-3 text-xs text-gray-500">'
+          + '일치하는 대기 카드가 없습니다. 카드가 아직 생성되지 않았거나 이미 출력완료 상태일 수 있습니다.</div>';
+        return;
+      }
+      cell.innerHTML = '<div class="p-3">'
+        + '<div class="text-[11px] text-gray-500 mb-2">규격·수량·거래처 일치도 순입니다. 확정하면 이후 같은 파일명은 자동 연결됩니다.</div>'
+        + '<table class="w-full text-xs"><tbody>'
+        + list.map(function (x) {
+            return '<tr class="border-t border-gray-200">'
+              + '<td class="py-1.5 font-medium">' + plEsc(x.card_number || '') + '</td>'
+              + '<td class="py-1.5">' + plEsc(x.client_name || '-') + '</td>'
+              + '<td class="py-1.5">' + plEsc(x.item_name || '-') + '</td>'
+              + '<td class="py-1.5 text-right tabular-nums">'
+              + (x.width != null && x.height != null ? x.width + '×' + x.height : '-') + '</td>'
+              + '<td class="py-1.5 text-right tabular-nums">' + (x.quantity != null ? x.quantity : '-') + '</td>'
+              + '<td class="py-1.5"><span class="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">'
+              + plEsc((x.reasons || []).join(' · ') || '기타') + '</span></td>'
+              + '<td class="py-1.5 text-right">'
+              + '<button class="ds-btn ds-btn-sm ds-btn-primary" onclick="plLinkFile(' + idx + ', ' + x.id + ')">'
+              + '연결</button></td></tr>';
+          }).join('')
+        + '</tbody></table></div>';
+    } catch (e) {
+      console.error('[production/link] plToggleCandidates', e);
+      cell.innerHTML = '<div class="p-3 text-xs text-red-400">후보 조회 실패</div>';
+    }
+  };
+
+  window.plLinkFile = async function (idx, cardId) {
+    var tr = document.getElementById('plCand' + idx);
+    if (!tr) { console.warn('[production/link] #plCand' + idx + ' not found'); return; }
+    var fileName = tr.getAttribute('data-file') || '';
+    if (!confirm('이 파일명을 선택한 카드에 연결할까요?\n\n' + fileName)) return;
+    try {
+      var res = await axios.post('/api/print-events/link', { file_name: fileName, card_id: cardId });
+      if (!res.data.success) throw new Error(res.data.error || '연결 실패');
+      var d = res.data.data;
+      plToast('연결 완료 · ' + d.card_number
+        + (d.backfilled_events ? ' (과거 이벤트 ' + d.backfilled_events + '건 소급)' : ''), 'success');
+      window.loadUnmatchedFiles();
+    } catch (e) {
+      console.error('[production/link] plLinkFile', e);
+      plToast((e.response && e.response.data && e.response.data.error) || '연결 실패', 'error');
+    }
   };
 })();

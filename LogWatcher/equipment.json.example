@@ -40,6 +40,34 @@
         "status_error": ["14"],
         "read_only": true
       }
+    },
+    {
+      "_comment": "전사 8색(Longyin Q2000) — 리핑(neoStampa)과 출력(PrintExp_X64)이 같은 PC 에 있다.",
+      "_comment2": "따로 watcher 2개로 두면 물리 출력 1건이 print_events 2행이 되어 실적이 이중계상된다.",
+      "_comment3": "리핑만 보면 실제 출력 여부를 모르고(취소는 PrintExp), 출력만 보면 도안이 뭔지 모른다.",
+      "_comment4": "조인 키 = PrintExp temp 폴더 타임스탬프 == neoStampa StartTime (실측 133/133, ±2초).",
+      "equipment_id": "TRANS-8C-01",
+      "name": "전사 8색 1호기 (Longyin Q2000)",
+      "enabled": true,
+      "parser_type": "neostampa_printexp",
+      "config": {
+        "rip_log_root": "C:\\Users\\Public\\Documents\\neoStampa 10\\Log",
+        "print_log_dir": "C:\\PrintExp_X64\\Log\\main",
+        "join_tolerance_seconds": 5,
+        "emit_rip_only_after_hours": 0
+      }
+    },
+    {
+      "_comment": "리핑 로그만 있는 PC(제어 SW 가 다른 PC) 라면 이 형태를 쓴다 — event_kind='RIP' 로 적재된다.",
+      "equipment_id": "TRANS-8C-RIPONLY",
+      "name": "전사 8색 (리핑 전용)",
+      "enabled": false,
+      "parser_type": "neostampa",
+      "config": {
+        "log_root": "C:\\Users\\Public\\Documents\\neoStampa 10\\Log",
+        "settle_seconds": 5,
+        "backfill_days": 0
+      }
     }
   ]
 }

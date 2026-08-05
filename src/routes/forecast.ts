@@ -145,6 +145,7 @@ forecastRouter.get('/capacity-analysis', async (c) => {
         COUNT(CASE WHEN print_status = 'OK' THEN 1 END) as ok_count
       FROM print_events
       WHERE created_at >= date('now', '-' || ? || ' months')
+        AND event_kind = 'PRINT'
         AND printer_name IS NOT NULL AND printer_name != ''
       GROUP BY printer_name, date(created_at)
       ORDER BY printer_name, print_date
@@ -193,6 +194,7 @@ forecastRouter.get('/capacity-analysis', async (c) => {
         COUNT(DISTINCT printer_name) as active_equipment
       FROM print_events
       WHERE created_at >= date('now', '-3 months')
+        AND event_kind = 'PRINT'
         AND printer_name IS NOT NULL AND printer_name != ''
       GROUP BY strftime('%Y-W%W', created_at)
       ORDER BY week ASC
@@ -205,6 +207,7 @@ forecastRouter.get('/capacity-analysis', async (c) => {
         COUNT(*) as count
       FROM print_events
       WHERE created_at >= date('now', '-' || ? || ' months')
+        AND event_kind = 'PRINT'
       GROUP BY strftime('%H', created_at)
       ORDER BY hour
     `).bind(monthCount).all()

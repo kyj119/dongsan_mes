@@ -26,6 +26,7 @@ productionReportsRouter.get('/daily-summary', async (c) => {
         AVG(CASE WHEN print_status = 'OK' AND print_duration_sec > 0 THEN print_duration_sec END) as avg_duration
       FROM print_events
       WHERE date(print_completed_at) = ?
+        AND event_kind = 'PRINT'
     `).bind(targetDate).first<{ ok_count: number; error_count: number; cancel_count: number; total_count: number; total_sqm: number; avg_duration: number }>()
 
     // 장비별 통계
@@ -38,6 +39,7 @@ productionReportsRouter.get('/daily-summary', async (c) => {
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
       WHERE date(pe.print_completed_at) = ?
+        AND pe.event_kind = 'PRINT'
       GROUP BY COALESCE(e.name, pe.agent_id)
       ORDER BY ok_count DESC
     `).bind(targetDate).all()
@@ -50,6 +52,7 @@ productionReportsRouter.get('/daily-summary', async (c) => {
         COUNT(CASE WHEN print_status != 'OK' THEN 1 END) as error_count
       FROM print_events
       WHERE date(print_completed_at) = ?
+        AND event_kind = 'PRINT'
       GROUP BY hour
       ORDER BY hour
     `).bind(targetDate).all()
@@ -113,6 +116,7 @@ productionReportsRouter.get('/production', async (c) => {
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
       WHERE pe.equipment_id IS NOT NULL
+        AND pe.event_kind = 'PRINT'
         AND date(pe.print_completed_at) >= ? AND date(pe.print_completed_at) <= ?
       GROUP BY pe.equipment_id
       ORDER BY ok_count DESC
@@ -127,6 +131,7 @@ productionReportsRouter.get('/production', async (c) => {
         COUNT(DISTINCT card_number) as card_count
       FROM print_events
       WHERE equipment_id IS NOT NULL
+        AND event_kind = 'PRINT'
         AND date(print_completed_at) >= ? AND date(print_completed_at) <= ?
       GROUP BY date(print_completed_at)
       ORDER BY date ASC
@@ -142,6 +147,7 @@ productionReportsRouter.get('/production', async (c) => {
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
       WHERE pe.equipment_id IS NOT NULL
+        AND pe.event_kind = 'PRINT'
         AND date(pe.print_completed_at) >= ? AND date(pe.print_completed_at) <= ?
       GROUP BY COALESCE(e.location_zone, '미지정')
       ORDER BY ok_count DESC
@@ -157,6 +163,7 @@ productionReportsRouter.get('/production', async (c) => {
         COUNT(DISTINCT card_number) as card_count
       FROM print_events
       WHERE equipment_id IS NOT NULL
+        AND event_kind = 'PRINT'
         AND date(print_completed_at) >= ? AND date(print_completed_at) <= ?
     `).bind(dateFrom, dateTo).first()
 
@@ -254,6 +261,7 @@ productionReportsRouter.get('/uptime', async (c) => {
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
       WHERE pe.equipment_id IS NOT NULL
+        AND pe.event_kind = 'PRINT'
         AND pe.print_status = 'OK'
         AND pe.print_completed_at >= date('now', '-' || ? || ' months')
       GROUP BY pe.equipment_id, strftime('%Y-%m', pe.print_completed_at)
@@ -306,6 +314,7 @@ productionReportsRouter.get('/defects', async (c) => {
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
       WHERE pe.equipment_id IS NOT NULL
+        AND pe.event_kind = 'PRINT'
         AND date(pe.print_completed_at) >= ? AND date(pe.print_completed_at) <= ?
       GROUP BY pe.equipment_id
       ORDER BY defect_rate DESC
@@ -321,6 +330,7 @@ productionReportsRouter.get('/defects', async (c) => {
         ROUND(CAST(COUNT(CASE WHEN print_status != 'OK' THEN 1 END) AS REAL) / MAX(COUNT(*), 1) * 100, 1) as defect_rate
       FROM print_events
       WHERE equipment_id IS NOT NULL
+        AND event_kind = 'PRINT'
         AND date(print_completed_at) >= ? AND date(print_completed_at) <= ?
       GROUP BY strftime('%Y-%m', print_completed_at)
       ORDER BY month ASC
@@ -512,6 +522,7 @@ productionReportsRouter.get('/print-duration', async (c) => {
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
       WHERE pe.print_status = 'OK' AND pe.print_duration_sec IS NOT NULL AND pe.print_duration_sec > 0
+        AND pe.event_kind = 'PRINT'
         AND date(pe.print_completed_at) >= ? AND date(pe.print_completed_at) <= ?
       GROUP BY pe.equipment_id
       ORDER BY avg_sec DESC
@@ -526,6 +537,7 @@ productionReportsRouter.get('/print-duration', async (c) => {
         ROUND(SUM(print_duration_sec) / 3600.0, 1) as total_hours
       FROM print_events
       WHERE print_status = 'OK' AND print_duration_sec IS NOT NULL AND print_duration_sec > 0
+        AND event_kind = 'PRINT'
         AND date(print_completed_at) >= ? AND date(print_completed_at) <= ?
       GROUP BY date(print_completed_at)
       ORDER BY date ASC
@@ -551,6 +563,7 @@ productionReportsRouter.get('/print-duration', async (c) => {
         ROUND(AVG(CAST(output_width AS REAL) * CAST(output_height AS REAL) / 1000000 / (print_duration_sec / 3600.0)), 2) as avg_sqm_per_hour
       FROM print_events
       WHERE print_status = 'OK'
+        AND event_kind = 'PRINT'
         AND print_duration_sec IS NOT NULL AND print_duration_sec > 0
         AND output_width IS NOT NULL AND output_height IS NOT NULL
         AND date(print_completed_at) >= ? AND date(print_completed_at) <= ?
@@ -596,6 +609,7 @@ productionReportsRouter.get('/export/csv', async (c) => {
         FROM print_events pe
         LEFT JOIN equipment e ON pe.equipment_id = e.id
         WHERE pe.equipment_id IS NOT NULL
+          AND pe.event_kind = 'PRINT'
           AND date(pe.print_completed_at) >= ? AND date(pe.print_completed_at) <= ?
         GROUP BY pe.equipment_id
         ORDER BY ok_count DESC
@@ -621,6 +635,7 @@ productionReportsRouter.get('/export/csv', async (c) => {
           COUNT(DISTINCT equipment_id) as equipment_count
         FROM print_events
         WHERE equipment_id IS NOT NULL
+          AND event_kind = 'PRINT'
           AND date(print_completed_at) >= ? AND date(print_completed_at) <= ?
         GROUP BY date(print_completed_at)
         ORDER BY date ASC

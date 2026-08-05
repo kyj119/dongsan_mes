@@ -18,6 +18,9 @@ namespace LogWatcher.Core
                 "epson" => new SqliteDbParser(config, positionsDir),
                 "flexi" => new FlexiHtmlParser(config, positionsDir),
                 "text_log" => new TextLogParser(config, positionsDir),
+                "neostampa" => new NeoStampaParser(config, positionsDir),
+                // 전사 8색: 리핑(neoStampa) + 출력(PrintExp)이 같은 PC → 합쳐서 이벤트 1건만 보낸다
+                "neostampa_printexp" => new TransferPressParser(config, positionsDir),
                 _ => throw new ArgumentException($"Unknown parser type: '{config.ParserType}' for equipment '{config.EquipmentId}'")
             };
         }

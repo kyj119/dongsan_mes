@@ -186,3 +186,6 @@ migrations/0505_dongsan_import_clients2.sql
 migrations/0506_dongsan_import_clients3.sql
 # 매출 적재 생성 SQL — 담당자명·배송처주소 등 PII 포함. 생성기(gen_sales_sql.py)만 추적.
 docs/dongsan-import/load/
+
+# LogWatcher 전사 8색 배포 산출물 (Z: 로 복사, 저장소에는 두지 않는다)
+publish-8c/

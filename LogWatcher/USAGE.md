@@ -146,7 +146,13 @@ POST /api/print-events → MES
 config를 작성하기 **전** 단계에서 쓰는 도구. RIP 구조를 몰라도 로그를 찾고 완료패턴을 자동 도출. 결과는 콘솔 + 로컬 JSON으로만 출력하며 **자동 반영하지 않음**(사람이 검토 후 `equipment.json`에 붙임).
 
 ```bash
-# 1) 이 PC의 로그 파일을 찾아 형식 자동판별 + 추천 파서 제시
+# 0) ★권장 — 마커 파일을 1건 출력해 로그를 "증명"으로 확정 (추정 아님)
+LogWatcher.exe --probe [--template "C:\test.eps"] [--path "D:\어딘가"] [--marker 이름]
+#    출력 전/후 스냅샷 diff → 변화한 파일에서만 마커 검색(수 초) → equipment.json 초안
+#    같이 판별: 인코딩(utf-8/utf-16le/cp949) · append형 vs 잡별 파일 생성형 · 로그가 2개면 RIP/제어 분리 구조
+#    ⚠️ 실제 출력 1건이 필요(원단·잉크). 마커 잡은 서버가 무시하므로 실적에 안 잡힘
+
+# 1) 이 PC의 로그 파일을 찾아 형식 자동판별 + 추천 파서 제시 (--probe 가 실패할 때)
 LogWatcher.exe --discover [경로...] [--days 60] [--depth 4] [--all]
 #    → discover-<PC명>.json 저장. 카드패턴(YYYYMMDD-NNN) 있는 로그를 상단 정렬
 
@@ -158,7 +164,11 @@ LogWatcher.exe --learn "<로그경로>" [--id UV-01] [--name "UV 평판"] [--tim
 LogWatcher.exe --analyze "<로그경로>" [--top 5]
 ```
 
-**권장 흐름**: `--discover`로 로그 위치·형식 파악 → 텍스트 로그면 `--learn`(출력 1건) 또는 `--analyze`로 패턴 도출 → 생성된 블록을 검토 후 `equipment.json`에 추가 → `--test <id>`로 파싱 검증 → 가동.
+**권장 흐름**: `--probe`(출력 1건으로 로그 확정) → 초안 검토 후 `equipment.json`에 추가 → `--test <id>`로 파싱 검증 → 가동.
+마커가 안 걸리면(RIP이 잡 이름을 자체 부여) `--discover`로 후보 파악 → `--learn`/`--analyze`로 패턴 도출.
+
+> `--discover`는 **최근 수정 시각** 기반 추정이라 무관한 로그가 걸릴 수 있고, `--learn`은 **로그 경로를 이미 알아야** 쓴다.
+> `--probe`는 마커 문자열이 로그 안에 있다는 **증거**로 확정하며, `--learn`이 못 다루는 잡별 파일 생성형도 판별한다.
 
 > 형식별 분기: `sqlite`→`epson`(+SELECT 쿼리), `html`→`flexi`, `binary`→`tns`, 일반 텍스트→`text_log`(패턴 학습).
 
