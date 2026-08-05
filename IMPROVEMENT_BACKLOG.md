@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-08-05T00:10:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-08-05T13:55:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,21 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **10** (#585·#586·#587·#589·#590·#591·#592·#593·#594·#595, GitHub OPEN 실측 — Area2 58회차, +2) |
+| 🆕 new | **9** (#585·#586·#587·#589·#590·#591·#592·#593·#596, GitHub OPEN 실측 — Area3 51회차. #594·#595는 같은 사이클 내 owner가 `3d62b07`로 픽스+close, 신규 #596 +1) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **511** (`reason:completed` 절대값 — Area2 58회차 재조회, 변동 없음) |
+| ✔️ done | **513** (`issue_read` 직접 확인 — #594·#595 `state_reason:completed` 개별 확인, `search_issues reason:completed`는 511로 색인 지연 중. Area3 51회차) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+
+> **Area 3 UX/기능 감사 (2026-08-05T13:55):**
+> - **방법**: `git fetch origin main`(force-updated, HEAD `fb5a882` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. ⚠️ 과거 로그가 인용한 이전 회차 커밋 SHA(`a3d8527` 등)는 이번 fetch에서 `git cat-file -t`로 조회 불가(반복적으로 관찰된 "force-updated" 히스토리 재작성 — 과거 커밋이 로컬에서 재조회 불가해질 수 있음, 신규 관찰이라 SKILL에 참고만). 대신 직전 사이클 타임스탬프(2026-08-04T03:13) 기준 `git log --since`로 프론트 churn 범위를 잡고, 실제 diff는 그 범위 내 최상위 코드 커밋(`ee0faa7^`)을 앵커로 `git diff --stat ee0faa7^..HEAD`로 확정(총 55커밋 중 프론트/라우트/마이그 한정 diff는 7파일 스크립트/페이지 + 6파일 라우트/마이그 — 나머지는 IA cut-panel CEP·회계 백엔드 전용·문서).
+> - **신규 churn 전수 검토**: 고정자산(fixedAssets) 탭 신설(`ee0faa7`)·G1 부채연결/G3 부문배부/세무장부 정률법(`46693ab`·`f1c85a3`·`1fd0d2e`) — `accounting.js`(+256줄) 직접 Read: 로딩 상태("불러오는 중...")·빈 상태("등록된 고정자산이 없습니다.")·에러 상태("불러오지 못했습니다.") 3종 모두 구현, 분류/상태/상각진행중 필터 존재, `hr.ts` 부문별 손익에 `/accounting` 고정자산 탭 크로스링크 추가 — Area 3 체크리스트 전 항목 clean. 대출 상환스케줄(`cashFlow.js`) "만기 미확인" 배지+안내문구 신규, 부문 손익(`departments.js`) 감가상각 컬럼+공통풀 안내 신규 — 전부 사용자 이해를 돕는 tooltip/안내 동반, UX 결함 없음. 재단 라인 파일 첨부(`orders/operations.ts`+`orders.js` `copyLineFilePath`)도 Windows 경로 이스케이프 함정을 주석으로 명시하고 data-속성 경유로 올바르게 회피.
+> - **🟢 net-new 발견: #596 반복지출 탐지 API `/api/bank/recurring-candidates`(`84ee297`, 오늘 신설)에 화면이 없음** — 커밋 메시지가 "이 방식으로 월 15,872,480원 미등록 정기지출을 찾았다"고 명시할 만큼 실증된 기능인데 `grep -rn "recurring-candidates" src/scripts src/pages` = 0건(호출처 전무). #334 도달성 규칙(프론트 호출처 0건=dead code)은 **Area 2/5의 보안 갭 재분류 전용**이라 이 건엔 적용 안 됨 — Area 3는 반대로 "가치 있는 기능에 화면이 없다"를 적극적으로 찾는 게 목적. 자연스러운 통합 지점(`bank.ts:120` "이번 달 고정비 출금 현황" 카드 옆) 명시 + 기존 `POST /api/cash-flow/fixed-expenses` 등록 플로우 재사용 제안까지 포함해 이슈화. 선례 = `routes/fixedAssets.ts`가 #77 이래 화면 없이 방치되다 오늘 `ee0faa7`로 처음 연결된 것과 동일 패턴(백엔드 먼저, 화면 나중) — 재현되는 클래스라 다음 Area 6에서 codify 검토 가치 있음(1회 추가 관찰이라 이번엔 SKILL 미수정, 보류).
+> - **open≠unfixed 재확인(대표 재grep)**: `orderForm/parent.js`의 `loadOrderForEdit()`에 `line_discount|discount_reason|discount_by` 여전히 0매치(#590 잔존) · `messagesAd.js:329 adLoadOptOuts()` 여전히 파라미터 없이 정의(#587 잔존, 이번 churn이 `messagesAd.ts`/`messages.ts`/`orderForm/parent.js`를 전혀 안 건드림) — fixed-in-tree 0건. #594·#595는 Area 2 58회차가 발견한 당일 owner가 `3d62b07`로 즉시 픽스+close 확인(코드 직접 대조: `fixedAssets.ts:61` `getWriteEntityId(c)` 사용 중, `|| 1` 폴백이 아닌 400-게이트 방식으로 제안보다 강화된 수정 — done 반영, close-pending 아님).
+> - **backlog↔GitHub 실측 동기화**: `list_issues(state:OPEN,label:auto-improve)` 실측 **9건**(#585·#586·#587·#589·#590·#591·#592·#593·#596, GraphQL 실시간 — #594·#595 정상 제외) · done은 `issue_read`로 #594·#595 개별 `state_reason:completed` 직접 확인해 511→**513**(`search_issues reason:completed` 텍스트 인덱스는 511로 수 분 지연 관찰, 다음 사이클 재조회 시 511 그대로면 지연 아닌 이상 신호로 재확인 필요) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화 없음** — #596은 기존 codify된 "백엔드 먼저·화면 나중" 패턴(fixedAssets.ts 선례)의 2번째 사례이나 1회 추가 관찰만으로는 standing scan화 근거 부족, 다음 유사 사례 시 codify 재검토.
+> - 신규 이슈 1건(#596, issue-only), 자동수정 0건(신규 UI 추가는 정책상 issue-only), done-sync: new 9(#594·#595 제외+#596 신규)·done 513(+2, #594·#595 직접확인 반영)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-08-05T00:10):**
 > - **방법**: `git fetch origin main`(HEAD `ab509fc` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 2 **58회차** — 직전 Area2(`9f59a8a`, 08-03T21:31, 57회차) 이후 `git log 9f59a8a..HEAD -- src/routes src/scripts migrations index.tsx src/layout`는 **6커밋** — `ee0faa7`/`19e8a34`(Area6 55회차가 이미 검토, 재대상 아님) + **신규 자산 감가상각 확장 4커밋**(`053069e`·`46693ab`·`f1c85a3`·`1fd0d2e`, Area1 57회차 로그가 "다음 Area 2/4/6 심층 검토 대상"으로 명시 위임)만 코드품질 렌즈로 신선.
@@ -149,10 +159,11 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 8건** — #592·#593 신규, Area 4 50회차, 2026-08-02.)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 9건** — #596 신규, Area 3 51회차, 2026-08-05. #594·#595는 같은 사이클 내 owner가 픽스+close 완료돼 표에서 제외.)
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
+| #596 | 반복지출 탐지 API(/bank/recurring-candidates)에 화면이 없음 — 월 15,872,480원 발견에 실제 쓰였는데 매번 API 직접 호출해야 함 | Area 3 | improvement,M | issue-only, 신규(#596) |
 | #585 | messagesAd.ts POST /send 실패 수신자 식별 불가 — #574 형제 라우트(messages.ts /send-bulk) 미반영 | Area 3 | bug,M | issue-only, 신규(#585) |
 | #586 | 광고문자 제목/본문 수정 시 "대상 확인" 미리보기 게이트 미무효화 | Area 3 | bug,S | issue-only, 신규(#586) |
 | #587 | 광고문자 수신거부 명단 — 서버 search 파라미터 미사용, 300건 상한 초과 시 과거건 조회 불가 | Area 3 | improvement,S | issue-only, 신규(#587) |
