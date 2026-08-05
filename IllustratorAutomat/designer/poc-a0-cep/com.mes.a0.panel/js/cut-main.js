@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.21.0';
+  var SHELL_VERSION = '0.22.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -51,11 +51,22 @@
   // 반대로 사람에게 보이는 크기(판 규격·파일명)는 **×N** 으로 되돌린다.
   //   ⚠️ 환산은 **입력을 받는 자리에서 한 번만** 한다. 중간 계산에서 또 나누면 두 번 줄어들고,
   //      그런 실수는 판을 뽑기 전까지 드러나지 않는다.
-  function cutScaleN() {
-    var el = document.getElementById('cutScale');
+  // ★축척은 **두 개**다(2026-08-05 용준님).
+  //   F = 파일 배율 : 지금 열려 있는 아트가 실물의 1/F
+  //   S = 저장 배율 : 결과를 실물의 1/S 로 저장 (파일명은 언제나 **실물** 규격)
+  //   배치·칼선·도련·돔보는 전부 **S 좌표계**에서 그린다(실물 ÷S). 조각만 F→S 로 리사이즈한다.
+  //   F=S 면 리사이즈가 1배라 종전과 완전히 같다.
+  //   ⚠️ 하나로 합치면 안 된다: 1:1 원본(F=1)에 배율 1/2 를 주면 종전 코드는 여백 3mm 를
+  //      1.5mm 로 그렸다 — "파일이 이미 축소본"이라는 전제가 깨지기 때문이다.
+  function selN(id) {
+    var el = document.getElementById(id);
     var n = el ? parseInt(el.value, 10) : 1;
     return (n > 0 && !isNaN(n)) ? n : 1;
   }
+  function cutScaleFile() { return selN('cutScaleFile'); }   // F
+  function cutScaleN() { return selN('cutScale'); }          // S — 좌표계의 기준
+  /** 파일 좌표 → 저장 좌표 배율(조각 리사이즈량). F=S 면 1. */
+  function fileToSave() { return cutScaleN() / cutScaleFile(); }
   /** 실물 mm → 파일 좌표 mm */
   function toFileMm(mm) { return mm / cutScaleN(); }
   /** 파일 좌표 mm → 실물 mm (표시·파일명) */
@@ -773,6 +784,10 @@
       var fineMmpp = rez.mmPerPx / sub;
       // ★칼선 반경(미세 px)은 **내림** — 칼선이 잉크 쪽으로 조금 더 붙어야 칼선끼리 간격이 부족해지지 않는다
       var cutFinePx = Math.floor(offsetMm / fineMmpp);
+      // ★굽기는 **파일 좌표(F)** 아트를 대상으로 하는데, 마스크는 **저장 좌표(S)** 픽셀 수여야 한다.
+      //   그래서 굽기 해상도·패딩에 S/F 를 곱한다. F=S 면 1 이라 종전과 같다.
+      //   (안 곱하면 F≠S 에서 마스크만 F 크기로 나와 배치가 통째로 어긋난다)
+      var bakeK = fileToSave();
       var pieces = [], rawInkPx = 0, i = 0, softened = 0;
       // 굽기 경로가 바뀐 사유 — 조용히 느려지거나 조용히 달라지지 않게 결과에 싣는다.
       //   (makeCut 의 fallbackNote 는 **다른 함수의 지역 변수**다. 여기서 건드리면 안 된다)
@@ -794,7 +809,7 @@
       function next() {
         if (i >= n) { finishPrep(); return; }
         out('조각 굽는 중... ' + (i + 1) + '/' + n);
-        host('mesCut_rasterizeItem(' + i + ',' + fineMmpp + ',' + padMm + ',' + (fv.fill ? 'true' : 'false') + ')', function (rz, bad2) {
+        host('mesCut_rasterizeItem(' + i + ',' + (fineMmpp * bakeK) + ',' + (padMm * bakeK) + ',' + (fv.fill ? 'true' : 'false') + ')', function (rz, bad2) {
           if (bad2 || rz.indexOf('ok;') !== 0) { fail('조각 ' + i + ' 실패: ' + rz); return; }
           readPng(kv(rz.substring(3)).path, function (err, img) {
             if (err) { fail(err); return; }
@@ -830,7 +845,7 @@
        */
       function bakeAll() {
         out('조각 ' + n + '개 굽는 중...');
-        host('mesCut_nestBakeAll(' + fineMmpp + ',' + padMm + ',' + (fv.fill ? 'true' : 'false') + ')', function (rz, badB) {
+        host('mesCut_nestBakeAll(' + (fineMmpp * bakeK) + ',' + (padMm * bakeK) + ',' + (fv.fill ? 'true' : 'false') + ')', function (rz, badB) {
           if (badB || rz.indexOf('ok;') !== 0) {
             // ★포기하지 않는다 — 조각당 임시 문서를 쓰는 구 경로가 있다(조각당 4초지만 동작한다).
             //   일괄 굽기는 조각을 한 문서에 모으므로 큰 조각·많은 조각에서 캔버스 한계에 걸릴 수 있다.
@@ -909,7 +924,7 @@
     var growPx = growMm / mmpp;
     var padPx = Math.ceil(growPx);
     out('도련용 원색 굽는 중...');
-    host('mesCut_nestBakeAll(' + mmpp + ',0,false,"ink")', function (rz, bad) {
+    host('mesCut_nestBakeAll(' + (mmpp * fileToSave()) + ',0,false,"ink")', function (rz, bad) {
       if (bad || String(rz).indexOf('ok;') !== 0) { cb({}, '원색 굽기 실패: ' + rz); return; }
       var rows = String(rz).split(/[\r\n]+/), list = [];
       for (var r = 1; r < rows.length; r++) {
@@ -1124,6 +1139,9 @@
         // ★배율을 호스트에 알린다 — 돔보 상수(6·17·60·500mm)가 호스트 안에 있어 거기서 ÷N 해야 한다.
         //   여백·간격·도련은 여기서 이미 환산했으므로 호스트가 또 나누면 두 번 줄어든다(호스트 주석 참조).
         if (scaleN > 1) lines.push('N ' + scaleN);
+        // ★조각 리사이즈 % — 파일 좌표(F) 아트를 저장 좌표(S) 크기로 줄이거나 늘린다.
+        //   호스트가 복제본에만 적용한다(원본 무손상). F=S 면 100 이라 아무 일도 일어나지 않는다.
+        if (fileToSave() !== 1) lines.push('RS ' + (100 / fileToSave()).toFixed(4));
         for (var s = 0; s < res.sheets.length; s++) {
           var sh = res.sheets[s];
           // ★롤 길이에도 돔보 여백을 더한다 — 배치 좌표를 margin 만큼 밀었으므로

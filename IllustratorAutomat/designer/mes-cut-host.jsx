@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.13.0';
+var MESCUT_VERSION = 'CUT-CEP-0.14.0';
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -2224,6 +2224,7 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode) 
     //   이전: 조각당 2회(원본↔시트) → 20조각이면 40회 · 지금: **시트당 2회** (2026-07-31)
     // ★배율은 **매 호출 초기화**한다. 지난 실행 값이 남으면 다음 판의 돔보가 조용히 작아진다.
     MESCUT_SCALE_N = 1;
+    var resizePct = 100;   // 파일 좌표(F) → 저장 좌표(S) 조각 리사이즈. 100 = 그대로
     var sheets = [], cur = null, bleedSz = {};
     for (var i = 0; i < lines.length; i++) {
         var ln = lines[i].replace(/^\s+|\s+$/g, '');
@@ -2235,6 +2236,8 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode) 
         // ★N = 배율(파일이 실물의 1/N). 돔보 상수를 파일 좌표로 줄이는 데만 쓴다 —
         //   여백·간격·도련은 패널이 이미 환산해 보내므로 여기서 또 나누면 두 번 줄어든다.
         if (p[0] === 'N') { var sn = parseInt(p[1], 10); MESCUT_SCALE_N = (sn > 0) ? sn : 1; continue; }
+        // ★RS = 조각 리사이즈 %(파일 좌표 → 저장 좌표). 아트는 **복제본만** 줄인다 — 원본은 손대지 않는다.
+        if (p[0] === 'RS') { var rs = parseFloat(p[1]); if (rs > 0) resizePct = rs; continue; }
         if (p[0] === 'L') { bleedSz[parseInt(p[1], 10)] = { w: parseFloat(p[2]), h: parseFloat(p[3]) }; continue; }
         if (p[0] === 'S') { cur = { w: parseFloat(p[2]), h: parseFloat(p[3]), items: [], cuts: [] }; sheets.push(cur); continue; }
         if (!cur) continue;
@@ -2292,6 +2295,9 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode) 
                 var copy = copies[b];
                 if (!copy) continue;
                 var it2 = sh.items[b];
+                // ★파일 좌표(F) 아트를 저장 좌표(S) 크기로 — **회전·이동보다 먼저** 해야 한다.
+                //   나중에 하면 이미 잡아 둔 잉크 경계가 어긋나 배치가 밀린다.
+                if (resizePct !== 100) { try { copy.resize(resizePct, resizePct); } catch (eRS) {} }
                 if (it2.rot) { try { copy.rotate(-it2.rot); } catch (eR) {} }   // Konva CW → 일러 CCW
                 // ★배치 기준도 **잉크 경계** — 패널이 계산한 아트 원점이 잉크 기준이라 여기서만 visibleBounds 를
                 //    쓰면 클립이 잉크보다 큰 아트에서 그 차이만큼 조각이 밀린다.

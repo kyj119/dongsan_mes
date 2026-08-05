@@ -678,7 +678,7 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // ★도련용 굽기는 **원색**(fillClosed=false)·**pad 0** 이어야 한다.
   //   검게 칠한 마스크를 쓰면 도련이 통째로 검정이 되고, pad 가 남으면 grow 와 중복 패딩돼
   //   PNG 중심과 조각 잉크 중심이 어긋나 배치가 그만큼 밀린다.
-  ok('3q 도련 굽기는 원색·pad 0', /mesCut_nestBakeAll\(' \+ mmpp \+ ',0,false,"ink"\)/.test(panelSrc))
+  ok('3q 도련 굽기는 원색·pad 0', /mesCut_nestBakeAll\(' \+ \(mmpp \* fileToSave\(\)\) \+ ',0,false,"ink"\)/.test(panelSrc))
   // ★굽기 tag 가 없으면 마스크용 PNG 를 덮어써 배치 마스크나 도련 한쪽이 조용히 틀린다
   ok('3q 굽기가 용도별 이름표를 쓴다', /mes_cut_' \+ tag \+ '_/.test(hostSrc))
   // ★크기는 패널이 준 값(`L` 줄)을 쓴다 — 호스트가 px→mm 을 재계산하면 반올림만큼 어긋난다
@@ -896,6 +896,15 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     const htmlSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'poc-a0-cep', 'com.mes.a0.panel', 'index.html'), 'utf8')
     // ★id 가 가공 탭의 `scale` 과 겹치면 두 페이지가 한 문서에 있어 값이 섞인다(tabs.js 주석)
     ok('3u 재단 배율 id 가 가공과 다르다', /id="cutScale"/.test(htmlSrc) && /id="scale"/.test(htmlSrc))
+    // ★축척은 둘이다 — F(현재 아트) 와 S(저장). 하나로 합치면 1:1 원본에 배율을 줬을 때
+    //   여백·간격이 배율만큼 줄어든다("파일이 이미 축소본"이라는 전제가 깨진다).
+    ok('3u 파일 배율과 저장 배율이 따로', /id="cutScaleFile"/.test(htmlSrc)
+      && /function cutScaleFile/.test(panelSrc2) && /function fileToSave/.test(panelSrc2))
+    // ★굽기는 파일 좌표 아트를 대상으로 하므로 마스크를 저장 좌표 픽셀 수로 맞춰야 한다
+    ok('3u 굽기 해상도가 저장 좌표에 맞춰진다', /fineMmpp \* bakeK/.test(panelSrc2) && /var bakeK = fileToSave\(\)/.test(panelSrc2))
+    // ★리사이즈는 복제본에만 — 원본 아트를 건드리면 되돌릴 수 없다
+    ok('3u 조각 리사이즈는 복제본에만', /copy\.resize\(resizePct, resizePct\)/.test(nestSrc2)
+      && /lines\.push\('RS ' \+/.test(panelSrc2))
     // ★환산은 입구에서 한 번만 — 중간에서 또 나누면 두 번 줄어들고 판을 뽑기 전엔 안 보인다
     ok('3u 배치 입력을 파일 좌표로 환산', /var gapMm = toFileMm\(/.test(panelSrc2) && /var offsetMm = toFileMm\(/.test(panelSrc2))
     ok('3u 도련·재료도 환산', /var nestBleedMm = toFileMm\(/.test(panelSrc2) && /toFileMm\(sp0\.wMm\)/.test(panelSrc2))
@@ -927,7 +936,7 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     // ★돔보 상수는 호스트 안에 있으므로 호스트가 배율을 받아야 한다
     ok('3u 호스트가 배율을 받는다', /p\[0\] === 'N'/.test(nestSrc2) && /MESCUT_SCALE_N = 1/.test(nestSrc2))
     ok('3u 돔보를 파일 좌표로 환산', /mesCut_sc\(MESCUT_DOMBO_DIAM_MM\)/.test(nestSrc2))
-    ok('3u 배율은 매 호출 초기화', /MESCUT_SCALE_N = 1;\s*\n\s*var sheets = \[\]/.test(nestSrc2))
+    ok('3u 배율은 매 호출 초기화', /MESCUT_SCALE_N = 1;\s*\n\s*var resizePct = 100;/.test(nestSrc2))
   }
 }
 

@@ -381,7 +381,18 @@
            여백·간격·도련·돔보 같은 **실물 mm 를 파일 좌표로 ÷N** 해서 실물 치수를 맞춘다.
            ⚠️ id 를 가공 탭의 `scale` 과 겹치지 말 것 — 두 페이지가 한 문서에 있어 값이 섞인다. -->
       <div class="row">
-        <label for="cutScale">배율</label>
+        <label for="cutScaleFile">파일 배율</label>
+        <select id="cutScaleFile">
+          <option value="1">1/1 (원본)</option>
+          <option value="2">1/2</option>
+          <option value="4">1/4</option>
+          <option value="5">1/5</option>
+          <option value="10">1/10</option>
+        </select>
+        <span class="cfg">지금 아트가 실물의 1/F</span>
+      </div>
+      <div class="row">
+        <label for="cutScale">저장 배율</label>
         <select id="cutScale">
           <option value="1">1/1 (원본)</option>
           <option value="2">1/2</option>
@@ -389,7 +400,15 @@
           <option value="5">1/5</option>
           <option value="10">1/10</option>
         </select>
-        <span class="cfg">파일이 실물의 1/N 축소본일 때</span>
+        <span class="cfg">1/S 로 저장 — 파일명은 <b>실물</b> 규격</span>
+      </div>
+      <div class="hint">
+        <b>파일 배율</b>은 지금 열려 있는 아트의 축척, <b>저장 배율</b>은 결과를 몇 분의 1로 저장할지입니다.
+        둘이 다르면 조각을 그만큼 <b>리사이즈해서</b> 판을 짭니다(원본은 건드리지 않습니다).
+        <br>예) 1:1 원본을 <b>저장 1/2</b> 로 두면 실물 6m 짜리도 한 대지에 담깁니다 —
+        파일명은 <b>실물 규격</b>이고 RIP 에서 그 크기로 출력하면 됩니다.
+        <br>⚠️ 저장 배율을 낮추면 돔보·칼선도 같이 작아집니다. <b>반드시 파일명 규격대로 확대 출력</b>해야
+        재단기가 돔보를 읽습니다.
       </div>
       <div class="row">
         <label for="nestGap">간격</label>
