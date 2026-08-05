@@ -87,7 +87,7 @@ node scripts/printexp-join-check.mjs          # 언제든 다시 검사 가능
       "parser_type": "neostampa_printexp",
       "config": {
         "rip_log_root": "C:\\Users\\Public\\Documents\\neoStampa 10\\Log",
-        "print_log_dir": "C:\\PrintExp_X64\\log\\main",
+        "print_log_dir": "C:\\PrintExp_X64\\Log\\main",
         "join_tolerance_seconds": 5
       }
     }
@@ -95,8 +95,8 @@ node scripts/printexp-join-check.mjs          # 언제든 다시 검사 가능
 }
 ```
 
-> ⬜ `print_log_dir` 은 `Log[2026_08_04].txt` 같은 파일이 들어 있는 폴더다. 실제 경로는 PC 마다
-> 다를 수 있으니 탐색기로 확인하거나 `--probe` 결과를 쓴다.
+> ✅ 두 경로 모두 실물로 확인됨(2026-08-05). `print_log_dir` 은 `Log[2026_08_04].txt` 같은 파일이
+> 들어 있는 폴더다 — 다른 PC 에서 다르면 탐색기로 확인하거나 `--probe` 결과를 쓴다.
 
 > `equipment_id` 는 **서버에 등록된 id 와 글자 하나까지 같아야 한다.**
 > 경로의 백슬래시는 JSON 이라 `\\` 로 두 번 쓴다.

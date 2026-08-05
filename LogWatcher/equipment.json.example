@@ -52,7 +52,7 @@
       "parser_type": "neostampa_printexp",
       "config": {
         "rip_log_root": "C:\\Users\\Public\\Documents\\neoStampa 10\\Log",
-        "print_log_dir": "C:\\PrintExp_X64\\log\\main",
+        "print_log_dir": "C:\\PrintExp_X64\\Log\\main",
         "join_tolerance_seconds": 5,
         "emit_rip_only_after_hours": 0
       }
