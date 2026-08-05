@@ -1083,11 +1083,13 @@ printEventsRouter.get('/unmatched', authMiddleware, async (c) => {
 
     const rows = results || []
     // 이미 file_map 에 등록된 이름 제외 — 연결 직후 목록에서 바로 빠지도록 저장값이 아닌 실시간 대조.
-    // D1 바인드 한도(~100) 회피: 80개씩 청크.
+    // ⚠️ D1 바인드 한도(~100). 아래 쿼리는 **같은 청크를 IN 절 2개에 바인드**하므로 실제 바인드 수는 청크×2 다.
+    //    통상 쓰는 80 청크를 그대로 쓰면 160개가 되어 결정적 500 (실제로 그렇게 터졌다) → 40 으로 잡는다.
+    const CHUNK = 40
     const linked = new Set<string>()
     const keys = Array.from(new Set(rows.map((r) => fileKey(r.file_name))))
-    for (let i = 0; i < keys.length; i += 80) {
-      const chunk = keys.slice(i, i + 80)
+    for (let i = 0; i < keys.length; i += CHUNK) {
+      const chunk = keys.slice(i, i + CHUNK)
       if (chunk.length === 0) continue
       const ph = chunk.map(() => '?').join(',')
       const { results: fm } = await c.env.DB.prepare(
