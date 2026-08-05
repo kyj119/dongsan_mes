@@ -104,6 +104,7 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 > 벗기거나 DOM id 를 겹치게 만들면 조용히 서로를 덮어쓴다(겹쳤던 `out`·`ver` → `cutOut`·`cutVer`).
 
 - **감사 = `npm run audit:ia-jsx`** (드리프트 시 exit 1). JSX 수정 후 이걸 안 돌리면 조용히 구버전이 돈다.
+- **배포 = `npm run ia:deploy`** — 미커밋 IA 변경 경고 → 게이트 → 나갈 파일 확인(y/n) → 백업 → 복사 → 재감사. 대상 목록은 감사 도구(`--json`)를 그대로 쓴다(따로 적으면 둘이 갈린다). 축2가 섞이면 `--yes` 여도 한 번 더 묻고, 축1은 빌드가 반영하므로 복사하지 않는다. `--dry-run`·`--install`(축4까지)·`--skip-gates`(비상).
 - 축1은 `.csproj CopyToOutputDirectory=Always` → **빌드하면 자동 복사**(빌드를 안 돌리면 미반영). 급하면 `--sync-agent`. JSX만 바뀌면 에이전트 재시작 불필요(잡마다 새로 읽음).
 - **축2(로직)만 즉시 반영**: 패널 `jsx/host.jsx`가 스텁이라 실행 때마다 Z: 정본을 `$.evalFile` → Z: 1개 교체 = 전 PC. 백업·실기기 확인 선행, 자동 동기화 금지.
 - **축3(껍데기 `index.html`·`js/main.js`·`css/style.css`)는 Z: 갱신만으론 반영 안 된다** → PC별 `install-a0-panel.ps1` 재실행(축4). 배포 순서 = ①축3 Z: → ②각 PC 설치(뒤집으면 구버전이 깔린다).

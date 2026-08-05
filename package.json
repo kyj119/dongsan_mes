@@ -59,7 +59,8 @@
     "e2e": "npx playwright test",
     "e2e:headed": "npx playwright test --headed",
     "e2e:ui": "npx playwright test --ui",
-    "e2e:report": "npx playwright show-report"
+    "e2e:report": "npx playwright show-report",
+    "ia:deploy": "node scripts/ia-deploy.cjs"
   },
   "dependencies": {
     "hono": "^4.7.9"
