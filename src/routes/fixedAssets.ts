@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { getWriteEntityId, entityFilter } from '../utils/entityFilter'
 
 const fixedAssets = new Hono<HonoEnv>()
 fixedAssets.use('*', authMiddleware)
@@ -54,6 +54,34 @@ fixedAssets.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
     return c.json({ success: false, error: 'asset_code, name, category, acquisition_date, acquisition_cost, useful_life_months 필수' }, 400)
   }
 
+  // #595: 명시 바인드가 `NOT NULL DEFAULT 1` 을 덮으므로 전체모드(0)를 그대로 넣으면
+  //   entity_id=0 자산이 생겨 특정법인 세션에서 **영구히 안 보인다**(0-sentinel, #487 동종).
+  //   `getEntityId(c) || 1` 은 전체모드 쓰기를 조용히 동산(1)에 귀속시키는 함정이라
+  //   utils/entityFilter.ts 가 이미 경고해 둔 패턴 → 전용 헬퍼로 400 처리한다.
+  const eid = getWriteEntityId(c)
+  if (eid == null) {
+    return c.json({ success: false, error: '법인을 선택한 뒤 등록하세요. 전체모드에서는 자산의 소속 법인을 결정할 수 없습니다.' }, 400)
+  }
+
+  // #595: 생성 시점에도 PATCH /:id/loan 과 같은 교차법인 검증을 건다.
+  //   등록 모달의 '연결 부채' select 가 loan_id 를 body 로 실어 보내는 정상 경로이므로,
+  //   여기가 뚫려 있으면 PATCH 가 막으려던 교차연결이 생성 한 번으로 그대로 성립한다.
+  if (loan_id) {
+    const efl = entityFilter(c, 'l')
+    const loan = await c.env.DB.prepare(
+      `SELECT l.id FROM loans l WHERE l.id = ?${efl.clause}`
+    ).bind(Number(loan_id), ...efl.params).first()
+    if (!loan) return c.json({ success: false, error: '대출을 찾을 수 없습니다.' }, 404)
+  }
+  // 같은 클래스의 형제 — 장비도 법인 소속이 있다(equipment.entity_id)
+  if (equipment_id) {
+    const efe = entityFilter(c, 'e')
+    const eq = await c.env.DB.prepare(
+      `SELECT e.id FROM equipment e WHERE e.id = ?${efe.clause}`
+    ).bind(equipment_id, ...efe.params).first()
+    if (!eq) return c.json({ success: false, error: '장비를 찾을 수 없습니다.' }, 404)
+  }
+
   const result = await c.env.DB.prepare(`
     INSERT INTO fixed_assets (asset_code, name, category, equipment_id, acquisition_date, acquisition_cost,
       useful_life_months, depreciation_method, salvage_value, current_book_value, location, serial_number, notes, loan_id, depreciation_rate, entity_id, created_by)
@@ -65,7 +93,7 @@ fixedAssets.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
     current_book_value != null ? Number(current_book_value) : acquisition_cost,
     location || null, serial_number || null, notes || null,
     loan_id ? Number(loan_id) : null, depreciation_rate != null ? Number(depreciation_rate) : null,
-    getEntityId(c), userId
+    eid, userId
   ).run()
 
   return c.json({ success: true, data: { id: result.meta.last_row_id } })
@@ -163,21 +191,23 @@ fixedAssets.post('/depreciate', requireRole('ADMIN'), async (c) => {
     SELECT * FROM fixed_assets WHERE status = 'IN_USE' ${eFilter.clause}
   `).bind(...eFilter.params).all<any>()
 
-  // #131: entity_id 필터 추가
-  const eid = getEntityId(c) || 1
+  // #594: 이력 조회는 asset_id 만으로 매칭한다.
+  //   asset_id 가 이미 자산(=법인)을 유일하게 결정하므로 entity_id 재필터는 불필요하고,
+  //   ADMIN 전체모드에서는 **유해**하다 — 위 SELECT 가 전 법인 자산을 가져오는데
+  //   이력만 세션 법인(=전체모드면 1)으로 필터하면 타법인 자산의 지난달 누계를 못 찾아
+  //   accumulated_depreciation 이 0 에서 재시작되고 감사추적이 끊긴다.
   const { results: existingPeriods } = await c.env.DB.prepare(
-    `SELECT asset_id FROM depreciation_records WHERE period = ? AND entity_id = ?`
-  ).bind(period, eid).all<{ asset_id: number }>()
+    `SELECT asset_id FROM depreciation_records WHERE period = ?`
+  ).bind(period).all<{ asset_id: number }>()
   const alreadyProcessed = new Set(existingPeriods.map(r => r.asset_id))
 
   const { results: latestRecords } = await c.env.DB.prepare(`
     SELECT dr.asset_id, dr.accumulated_depreciation, dr.book_value
     FROM depreciation_records dr
     INNER JOIN (
-      SELECT asset_id, MAX(period) as max_period FROM depreciation_records WHERE entity_id = ? GROUP BY asset_id
+      SELECT asset_id, MAX(period) as max_period FROM depreciation_records GROUP BY asset_id
     ) latest ON dr.asset_id = latest.asset_id AND dr.period = latest.max_period
-    WHERE dr.entity_id = ?
-  `).bind(eid, eid).all<{ asset_id: number; accumulated_depreciation: number; book_value: number }>()
+  `).all<{ asset_id: number; accumulated_depreciation: number; book_value: number }>()
   const latestMap = new Map(latestRecords.map(r => [r.asset_id, r]))
 
   // 정률법 기준액 = **연초 미상각잔액**. 세법은 사업연도 단위로
@@ -189,10 +219,9 @@ fixedAssets.post('/depreciate', requireRole('ADMIN'), async (c) => {
     FROM depreciation_records dr
     INNER JOIN (
       SELECT asset_id, MAX(period) as max_period FROM depreciation_records
-      WHERE entity_id = ? AND period < ? GROUP BY asset_id
+      WHERE period < ? GROUP BY asset_id
     ) prev ON dr.asset_id = prev.asset_id AND dr.period = prev.max_period
-    WHERE dr.entity_id = ?
-  `).bind(eid, yearStart, eid).all<{ asset_id: number; accumulated_depreciation: number }>()
+  `).bind(yearStart).all<{ asset_id: number; accumulated_depreciation: number }>()
   const prevYearMap = new Map(prevYearEnd.map(r => [r.asset_id, r.accumulated_depreciation]))
 
   const stmts: any[] = []
@@ -243,7 +272,10 @@ fixedAssets.post('/depreciate', requireRole('ADMIN'), async (c) => {
       c.env.DB.prepare(`
         INSERT INTO depreciation_records (asset_id, period, depreciation_amount, accumulated_depreciation, book_value, entity_id)
         VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(asset.id, period, monthlyDepreciation, newAccumulated, newBookValue, eid)
+      `).bind(asset.id, period, monthlyDepreciation, newAccumulated, newBookValue,
+        // #594: 세션 법인이 아니라 **자산이 속한 법인**으로 기록한다.
+        //   전체모드에서 세션값(0→1)을 쓰면 선명 자산의 상각이 동산 원장에 섞인다.
+        asset.entity_id || 1)
     )
     stmts.push(
       c.env.DB.prepare(`UPDATE fixed_assets SET current_book_value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
