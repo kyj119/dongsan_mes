@@ -15,7 +15,8 @@ import { loadProvision, agingCategoryToBucket, effectiveLossRate } from '../util
 import { buildOldestUnpaidJoin, agingDaysFromOldest, getAgingCategory } from './ledger/ar-helpers'
 import { computeExpectedPaymentDate } from '../utils/paymentSchedule'
 import { escapeCsvField } from '../utils/csv'
-import { kstYmd, kstYmdCompact } from '../utils/kstDate'
+import { kstYmd, kstYmdCompact, kstYear } from '../utils/kstDate'
+import { counterpartKey, unescapeCounterpart } from '../utils/counterpart'
 import { LATEST_BALANCE_SUBQUERY } from '../utils/bankBalance'
 
 const bankRouter = new Hono<HonoEnv>()
@@ -160,6 +161,75 @@ bankRouter.get('/fixed-expense-status', requireRole('ADMIN'), async (c) => {
 })
 
 // POST /api/bank/accounts — 계좌 등록
+// 반복 출금에서 **미등록 정기지출**을 찾는다. 2026-08-05 에 이 방식으로 월 15,872,480 을 찾았다.
+//   통장이 먼저고 세무장부가 확인이다 — 판관비 계정만 훑으면 비정기 거래에 묻혀 정기분이 안 보인다.
+bankRouter.get('/recurring-candidates', requireRole('ADMIN'), async (c) => {
+  try {
+    const minMonths = Math.max(2, Number(c.req.query('min_months') || 5))
+    const minAmount = Math.max(0, Number(c.req.query('min_amount') || 30000))
+    const from = c.req.query('from') || `${kstYear() - 1}0101`
+    const ef = entityFilter(c)
+
+    const { results } = await c.env.DB.prepare(`
+      SELECT counterpart_name AS cp, transaction_date AS d, amount
+      FROM bank_transactions
+      WHERE transaction_type = 'WITHDRAWAL' AND transaction_date >= ?
+        AND counterpart_name IS NOT NULL AND counterpart_name <> ''${ef.clause}
+    `).bind(from, ...ef.params).all<{ cp: string; d: string; amount: number }>()
+
+    // 정규화 키로 묶는다 — 같은 상대가 채널·경유은행 표기 때문에 갈리면 반복이 안 보인다.
+    const groups = new Map<string, { names: Set<string>; months: Set<string>; amts: number[] }>()
+    for (const r of results) {
+      const key = counterpartKey(r.cp)
+      if (!key) continue
+      let g = groups.get(key)
+      if (!g) { g = { names: new Set(), months: new Set(), amts: [] }; groups.set(key, g) }
+      g.names.add(r.cp); g.months.add(String(r.d).slice(0, 6)); g.amts.push(r.amount)
+    }
+
+    // 이미 고정비·차입금으로 추적 중인 상대는 후보에서 뺀다(중복 등록 방지).
+    //   차입금 상환도 매월 정액이라 빼지 않으면 후보 목록이 계속 시끄럽다.
+    const efFe = entityFilter(c)
+    const { results: known } = await c.env.DB.prepare(
+      `SELECT counterpart_name AS cp, name FROM fixed_expenses WHERE 1=1${efFe.clause}`
+    ).bind(...efFe.params).all<{ cp: string | null; name: string }>()
+    const efLoan = entityFilter(c)
+    const { results: knownLoans } = await c.env.DB.prepare(
+      `SELECT creditor, loan_number FROM loans WHERE is_active = 1${efLoan.clause}`
+    ).bind(...efLoan.params).all<{ creditor: string; loan_number: string | null }>()
+    const knownKeys = new Set<string>()
+    for (const k of known || []) {
+      if (k.cp) knownKeys.add(counterpartKey(k.cp))
+      if (k.name) knownKeys.add(counterpartKey(k.name))
+    }
+    for (const l of knownLoans || []) {
+      if (l.creditor) knownKeys.add(counterpartKey(l.creditor))
+      if (l.loan_number) knownKeys.add(counterpartKey(l.loan_number))
+    }
+
+    const items = [...groups.entries()]
+      .map(([key, g]) => {
+        const avg = Math.round(g.amts.reduce((s, n) => s + n, 0) / g.amts.length)
+        const mn = Math.min(...g.amts), mx = Math.max(...g.amts)
+        return {
+          key, months: g.months.size, count: g.amts.length,
+          avg_amount: avg, min_amount: mn, max_amount: mx,
+          // 편차가 크면 사용량 변동비(전기·수도)일 가능성이 높다 → 고정비가 아니라 변동비 트랙.
+          variable: mn > 0 && mx / mn >= 2,
+          aliases: [...g.names],
+          registered: knownKeys.has(key),
+        }
+      })
+      .filter(i => i.months >= minMonths && i.avg_amount >= minAmount && !i.registered)
+      .sort((a, b) => b.avg_amount - a.avg_amount)
+
+    return c.json({ success: true, data: { from, min_months: minMonths, min_amount: minAmount, items } })
+  } catch (error) {
+    console.error('Recurring candidates error:', error)
+    return c.json({ success: false, error: '반복 지출 탐지 오류' }, 500)
+  }
+})
+
 bankRouter.post('/accounts', requireRole('ADMIN'), async (c) => {
   try {
     const body = await c.req.json()
@@ -537,7 +607,7 @@ bankRouter.post('/transactions/import', requireRole('ADMIN'), async (c) => {
       const txDate = row.transaction_date.replace(/-/g, '')
       const txTime = row.transaction_time || null
       const amount = Math.abs(row.amount)
-      const counterpart = (row.counterpart_name || '').trim()
+      const counterpart = unescapeCounterpart((row.counterpart_name || '').trim())
       const key = `${txDate}|${amount}|${counterpart}|${txTime || ''}`
 
       if (existingSet.has(key)) { skipped++; continue }
@@ -692,8 +762,10 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
             `).bind(
               bankAcc.id, txDate, txTime, txType, amount,
               balanceAfter,
-              item.TransRemark1 || null,
-              item.TransRemark2 || null,
+              // 바로빌 응답에 HTML 이스케이프가 그대로 실려오는 경우가 있다(`타행농협&gt; 성낙선` 실측).
+              //   그대로 적재하면 같은 상대가 표기만 달라져 반복지출 탐지·매칭에서 갈린다.
+              item.TransRemark1 ? unescapeCounterpart(String(item.TransRemark1)) : null,
+              item.TransRemark2 ? unescapeCounterpart(String(item.TransRemark2)) : null,
               refKey || null,
               entityId
             ).run()

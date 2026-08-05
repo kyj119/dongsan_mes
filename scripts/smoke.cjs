@@ -176,6 +176,7 @@ const ENDPOINTS = [
 
   // 은행
   { path: '/api/bank/accounts', name: 'bank.accounts' },
+  { path: '/api/bank/recurring-candidates?from=20260101', name: 'bank.recurringCandidates' },
 
   // 출고 대시보드
   { path: '/api/shipments/dashboard/counts', name: 'shipments.dashboardCounts' },
