@@ -95,8 +95,11 @@ export const MENU_ITEMS: MenuGroup[] = [
       { path: '/bom', icon: 'fa-sitemap', label: '자재명세(BOM)', roles: ['ADMIN', 'MANAGER'] },
       { path: '/tasks', icon: 'fa-tasks', label: '작업 큐', roles: ['ADMIN', 'MANAGER'], badgeId: 'nav-badge-tasks' },
       { path: '/scan', icon: 'fa-qrcode', label: 'QR 스캔', roles: ['ADMIN', 'MANAGER', 'OPERATOR'] },
-      // 시안 검수는 /ia-editor 의 '시안 검수' 뷰로 흡수(2026-07-28 Phase 7b) — 메뉴 항목 제거.
-      { path: '/ia-editor', icon: 'fa-layer-group', label: 'IA 편집기', roles: ['ADMIN', 'MANAGER', 'DESIGNER'] },
+      // ★/ia-editor 폐기 S1 (2026-08-05) — spec `2026-08-05-ia-editor-sunset.md`.
+      //   웹 모아찍기가 하던 일을 재단 CEP 패널이 더 정확히 한다(true-shape·칼선·도련·맞붙임).
+      //   S1 은 **메뉴만 숨긴다** — 라우트·코드는 그대로라 주소를 직접 치면 아직 열린다.
+      //   되돌리려면 이 줄만 살리면 된다.
+      //   (시안 검수 뷰도 함께 폐기 결정 — 2026-08-05)
     ],
   },
   {
