@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.11.0';
+var MESCUT_VERSION = 'CUT-CEP-0.11.1';
 var MESCUT_PT_PER_MM = 72 / 25.4;
 
 // ── 크로스 패널 잠금 (spec §5.2-① · P0 핵심) ────────────────────────
@@ -2424,8 +2424,19 @@ function mesCut_exportPair() {
     }
     if (!doc) doc = app.activeDocument;
 
+    // ★ExtendScript 의 폴더 고르기는 **정적/인스턴스가 다른 이름**이다(2026-08-05 실사용에서 걸림).
+    //     · `Folder.selectDialog(prompt)`  = 정적 — 시작 위치를 못 정한다
+    //     · `folder.selectDlg(prompt)`     = 인스턴스 — **그 폴더에서 시작**한다
+    //   `selectDlg` 를 Folder 에서 **정적으로** 부르면 "함수가 아닙니다" 로 죽는다. 도입(2026-08-02)
+    //   이래 이 경로는 한 번도 성공한 적이 없다 — 타입 검사로는 안 잡히는 종류다.
+    //   지난 폴더가 살아 있으면 거기서 시작하고, 없으면 정적 다이얼로그로 떨어진다.
     var dir = null;
-    try { dir = Folder.selectDlg('작업 폴더를 고르세요 — EPS + DXF 를 같은 이름으로 저장합니다', mesCut_readLastDir()); }
+    var PROMPT = '작업 폴더를 고르세요 — EPS + DXF 를 같은 이름으로 저장합니다';
+    try {
+        var lastDir = mesCut_readLastDir();
+        var preset = lastDir ? new Folder(lastDir) : null;
+        dir = (preset && preset.exists) ? preset.selectDlg(PROMPT) : Folder.selectDialog(PROMPT);
+    }
     catch (eS) { return 'ERROR 폴더 선택 실패: ' + eS; }
     if (!dir) return 'cancel';
     mesCut_writeLastDir(dir.fsName);

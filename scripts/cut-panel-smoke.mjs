@@ -671,6 +671,14 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // ★크기는 패널이 준 값(`L` 줄)을 쓴다 — 호스트가 px→mm 을 재계산하면 반올림만큼 어긋난다
   ok('3q 패널이 L 줄을 쓴다', /lines\.push\('L ' \+ bid/.test(panelSrc))
   ok('3q 호스트가 L 줄을 읽는다', /p\[0\] === 'L'/.test(hostSrc))
+  // ★ExtendScript 폴더/파일 고르기는 정적과 인스턴스의 **이름이 다르다**.
+  //   정적 = `Folder.selectDialog` / 인스턴스 = `folder.selectDlg`.
+  //   `Folder.selectDlg(...)` 로 부르면 "함수가 아닙니다" 로 죽는데, 타입 검사도 문법 검사도 못 잡고
+  //   그 버튼을 누르기 전엔 드러나지 않는다 — 실제로 도입(2026-08-02)부터 3일간 아무도 몰랐다.
+  //   주석/예시까지 걸리도록 일부러 소스 전체를 본다. 틀린 형태는 예시로도 남기지 않는다.
+  ok('3r 폴더 고르기를 정적으로 부르지 않는다', !/\bFolder\.(selectDlg|openDlg|saveDlg)\s*\(/.test(hostSrc))
+  ok('3r 파일 고르기를 정적으로 부르지 않는다', !/\bFile\.(selectDlg|openDlg|saveDlg)\s*\(/.test(hostSrc))
+
   // ★★구 패널 하위호환 — 축2(Z: 호스트)는 전 PC 즉시 반영이고 패널은 PC 별 수동 설치라
   //   "새 호스트 + 구 패널" 조합이 배포 사이에 반드시 생긴다. 그 PC 를 새 계층에 태우면
   //   도련 PNG 가 없으니 곧장 단색으로 떨어진다 = 회귀. 옛 경로를 그대로 태워야 한다.
@@ -878,7 +886,11 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3l 호스트에 exportPair', /function mesCut_exportPair\(\)/.test(hostSrc))
   // ★이름·경로가 한글이라 인자로 받으면 브릿지에서 깨진다 → params 파일 경유여야 한다
   ok('3l 이름은 params 파일로 받는다', /mesCut_exportPair[\s\S]{0,900}mesCut_readParams\(\)/.test(hostSrc))
-  ok('3l 폴더는 다이얼로그로 고른다', /Folder\.selectDlg/.test(hostSrc))
+  // ⚠️ 이 어서션은 원래 `/Folder\.selectDlg/` 였다 — **버그 있는 형태를 정답으로 고정**하고 있었다.
+  //   존재 여부만 보고 호출 형태를 안 봤기 때문에, 정적 호출로 죽는 코드를 3일간 통과시켰다.
+  //   "무언가 부르긴 한다"가 아니라 **부를 수 있는 형태인가**를 본다.
+  ok('3l 폴더는 다이얼로그로 고른다',
+    /\.selectDlg\s*\(/.test(hostSrc) || /Folder\.selectDialog\s*\(/.test(hostSrc))
   // ★EPS 옵션은 A0 와 같아야 한다 — 실물 EPS 가 전부 그 형식이다
   const a0 = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-a0-host.jsx'), 'utf8')
   const opts = (src) => ['cmykPostScript = true', 'Compatibility.ILLUSTRATOR10', 'EPSPreview.COLORTIFF', 'embedAllFonts = true']
