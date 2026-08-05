@@ -197,7 +197,13 @@ namespace IllustratorAutomation
                     await PollAIAnalysisAsync();
                     await Task.Delay(500);
                     await PollAILayoutAsync();
-                    await PollSheetRenderAsync();
+                    // ★S6(2026-08-05) — 시트 렌더잡 폴링 중단. /ia-editor 폐기로 잡을 만드는 쪽이 없어졌고
+                    //   서버의 GET /api/workbench/render-queue 도 제거됐다(S5).
+                    //   spec: docs/superpowers/specs/2026-08-05-ia-editor-sunset.md
+                    //   ⚠️ PollSheetRenderAsync·ProcessSheetRenderAsync 본체는 **남겨 둔다** — SheetLayout.jsx 를
+                    //      쓰는 코드 경로가 사라지면 그 스크립트가 "안 쓰는 파일"로 오인돼 지워질 수 있다.
+                    //      SheetLayout.jsx 는 단건 가공(process-queue)의 sheet_layout 잡도 실행한다.
+                    //   await PollSheetRenderAsync();
                     await PollProcessJobsAsync();
                     await PollTestWatchAsync();
                     // W1: 주기 상태 로그(약 1분마다) — 콘솔 미표시 환경에서 '도는지' 확인.
