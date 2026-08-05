@@ -1077,7 +1077,8 @@ function iaeCanContentBottomMm() {
 // 자동 bbox 네스팅(iaeCanNestPlace)이 시작점. 사용자가 조각을 드래그·회전(겹침 허용=이형 절감)해
 // 끼워맞추면 주문 시 라이브 조각 위치에서 placements 재계산(시트상대 bbox + 회전), 롤은 길이 자동 단축.
 // 시트 멤버십 = 조각 bbox 중심의 시트 포함관계(드래그 인/아웃·복제 대응). 출력 = SHEET pp → SheetLayout.jsx.
-// 조각 회전 0/90 = 현 에이전트 즉시 동작, 180/270 = placement.rotation + 에이전트 패스스루 필요.
+// 조각 회전 0/90/180/270 전부 즉시 동작 — placement.rotation 패스스루 구현 완료(2026-07-30 실측):
+//   에이전트 Program.cs:1644·2375·3219(rotation 파싱, 없으면 rotated→90 폴백) → SheetLayout.jsx:346(rotate(-각도)).
 function iaeCanRotBBox(o) {
   var W = o.w_mm || 0, H = o.h_mm || 0, px = o.x_mm || 0, py = o.y_mm || 0;
   var rot = ((Math.round((o.rotation || 0) / 90) * 90) % 360 + 360) % 360; // 90° 스냅·정규화
