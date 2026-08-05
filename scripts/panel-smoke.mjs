@@ -217,45 +217,18 @@ ok('출력 경계선 기본 ON', await page.isChecked('#borderLine'))
 await page.uncheck('#borderLine')
 ok('출력 경계선 끔', !(await page.isChecked('#borderLine')))
 
-// 3) 모아찍기 탭 → 후가공 자동 초기화(P1의 핵심)
-await page.click('.tab[data-tab="impose"]')
-// 라벨은 '웹 모아찍기 등록' — 병합 후 재단 탭에도 판을 짜는 기능이 있어 이름을 갈랐다(2026-08-04)
-ok('탭 전환됨', await page.locator('.tab.active').innerText() === '웹 모아찍기 등록')
-ok('마감 초기화됨', await page.inputValue('#pTop') === '0')
-ok('마감 방식 초기화됨', await page.locator('select.finM[data-side="left"]').inputValue() === '')
-ok('출력 경계선도 기본값(ON)으로 복귀', await page.isChecked('#borderLine'))
-
-// 4) 분리 → 목록 3건 → 등록 버튼 활성
-await page.click('#btnImposeSplit')
-await page.waitForTimeout(400)
-const rows = await page.locator('#imposeBox .qrow').count()
-ok('분리 결과 3행', rows === 3, 'rows=' + rows)
-ok('등록 버튼 라벨', await page.locator('#btnImposeRegister').innerText() === '조각 3건 등록')
-ok('등록 버튼 활성', !(await page.locator('#btnImposeRegister').isDisabled()))
-
-// 5) 수량 3분화 — 모아찍기는 수량을 받지 않는다(행 수량칸 자체가 없어야 한다)
-ok('모아찍기 행에 수량칸 없음', (await page.locator('#imposeBox .qqty').count()) === 0)
-ok('모아찍기 탭에 수량 입력 없음', (await page.locator('[data-page="impose"] #qty, [data-page="impose"] #seedQty').count()) === 0)
+// ── ★S2(2026-08-05) 「웹 모아찍기 등록」 탭 폐기 — spec 2026-08-05-ia-editor-sunset.md
+//   재단 탭이 같은 일을 더 정확히 한다. 여기 있던 3~7)(탭 전환·분리·수량·재분리 거부·비우기)은
+//   대상이 사라져 함께 지웠다. 대신 **폐기가 유지되는지**를 검증한다 —
+//   버튼만 지우고 화면(data-page)을 남기면 저장된 탭 상태로 복원될 때 되살아난다.
+ok('S2 모아찍기 탭 버튼 없음', (await page.locator('.tab[data-tab="impose"]').count()) === 0)
+ok('S2 모아찍기 화면 없음', (await page.locator('[data-page="impose"]').count()) === 0)
+ok('S2 남은 탭 = 단건·묶음', (await page.locator('.tabbar .tab').count()) === 2)
+// 수량 소속은 그대로 검증(탭 폐기와 무관하게 지켜져야 한다)
 ok('수량은 단건 탭 소속', (await page.locator('[data-page="single"] #qty').count()) === 1)
 ok('기본수량은 묶음 탭 소속', (await page.locator('[data-page="bundle"] #seedQty').count()) === 1)
 
-// 6) 큐 잔여 상태에서 재분리 거부
-await page.click('#btnImposeSplit')
-await page.waitForTimeout(400)
-ok('잔여 목록 있으면 재분리 거부', (await page.locator('#out').innerText()).includes('남아 있습니다'))
-
-// 7) 비우기 → 1덩어리 경고
-await page.click('#btnImposeClear')
-await page.waitForTimeout(100)
-await page.evaluate(() => { window.__splitCount = 1 })
-await page.click('#btnImposeSplit')
-await page.waitForTimeout(400)
-const warn = await page.locator('#out').innerText()
-ok('1덩어리 경고 표시', warn.includes('1개로만 인식'), warn.slice(0, 60))
-ok('1건이어도 자동등록 안 함(목록에 남음)', (await page.locator('#imposeBox .qrow').count()) === 1)
-
 // 8) 묶음 탭에서 행 클릭 → 단건 탭으로 튕기지 않음
-await page.click('#btnImposeClear')
 await page.click('.tab[data-tab="bundle"]')
 await page.evaluate(() => { window.__splitCount = 3 }) // 7)에서 1로 낮췄던 것 복구
 await page.fill('#seedQty', '4')
@@ -289,7 +262,6 @@ ok('하단 확정줄에 적용 버튼 없음', await page.evaluate(() => {
 
 // 9-3) 행 다중선택 → 선택 적용 (2026-07-30 ①) — 5+5 를 2회로 줄이는 경로
 ok('묶음 행에 체크박스', (await page.locator('#queueBox .qsel').count()) === 3)
-ok('모아찍기 행엔 체크박스 없음', await page.evaluate(() => document.querySelectorAll('#imposeBox .qsel').length === 0))
 ok('체크 0개면 선택 적용 비활성', await page.locator('#btnApplySel').isDisabled())
 await page.check('#queueBox .qsel[data-i="0"]')
 await page.check('#queueBox .qsel[data-i="2"]')
@@ -406,28 +378,9 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   await p3.close()
 }
 
-// ── 14) 모아찍기 행이 단건 탭 왕복 후에도 impose 를 유지 (H1 회귀 방지, 점검 ②-나) ──
-//    전엔 행 연동 상태로 단건 탭에 가서 입력 하나만 해도 그 행이 single 로 변질돼
-//    [등록]이 잠기고 "단건 용도 행이 섞여 있습니다"가 떴다(복구 = 비우고 재분리뿐).
-{
-  const p4 = await openPanel(CONFIG)
-  await p4.click('.tab[data-tab="impose"]')
-  await p4.click('#btnImposeSplit')
-  await p4.waitForTimeout(400)
-  await p4.click('#imposeBox .qrow[data-i="0"] .qmeta')
-  await p4.waitForTimeout(150)
-  await p4.click('.tab[data-tab="single"]')
-  await p4.fill('#qty', '5')
-  await p4.dispatchEvent('#qty', 'change')
-  await p4.waitForTimeout(120)
-  await p4.click('.tab[data-tab="impose"]')
-  await p4.waitForTimeout(120)
-  ok('단건 탭 왕복 후에도 등록 활성', !(await p4.locator('#btnImposeRegister').isDisabled()),
-    'title=' + (await p4.getAttribute('#btnImposeRegister', 'title')))
-  ok('용도 혼합 경고 없음', !(await p4.getAttribute('#btnImposeRegister', 'title') || '').includes('섞여'))
-  ok('14 콘솔 에러 0', p4.__errs.length === 0, p4.__errs.join(' | '))
-  await p4.close()
-}
+// ── 14) (삭제) 모아찍기 행 유지 — S2(2026-08-05) 로 탭 자체가 없어져 대상이 사라졌다.
+//    spec 2026-08-05-ia-editor-sunset.md. 폐기 검증은 위 S2 어서션이 맡는다.
+
 
 // ── 15) 일괄 확정 실패분은 큐에 남는다 (H5 회귀 방지, 점검 ③) ──
 {
@@ -469,14 +422,12 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
     queueBatch: document.getElementById('btnQueueBatch').disabled,
     queueClear: document.getElementById('btnQueueClear').disabled,
     autoDetect: document.getElementById('btnAutoDetect').disabled,
-    imposeSplit: document.getElementById('btnImposeSplit').disabled,
-    imposeRegister: document.getElementById('btnImposeRegister').disabled,
     measure: document.getElementById('btnMeasure').disabled,
     review: document.getElementById('btnReview').disabled,
     cancelShown: document.getElementById('btnCancel').style.display !== 'none',
   }))
   const allLocked = mid.process && mid.queueBatch && mid.queueClear && mid.autoDetect &&
-    mid.imposeSplit && mid.imposeRegister && mid.measure && mid.review
+    mid.measure && mid.review
   ok('배치 중 모든 호스트 진입점 잠김', allLocked, JSON.stringify(mid))
   ok('배치 중 취소 버튼 노출', mid.cancelShown)
   // 취소 → 남은 건은 큐에 남고 잠금이 풀려야 한다
@@ -591,7 +542,7 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   await p9.selectOption('select.finM[data-side="left"]', '접어미싱')
   await p9.waitForTimeout(200)
   const withFin = await p9.evaluate(() => document.querySelector('#queueBox .qmeta').textContent)
-  // 폼만 비운 뒤(행에는 남아 있다) seedQty·imposeGap 을 건드린다 → 행이 덮이면 결함
+  // 폼만 비운 뒤(행에는 남아 있다) seedQty·splitGap 을 건드린다 → 행이 덮이면 결함
   await p9.evaluate(() => { document.querySelector('select.finM[data-side="left"]').value = '' })
   await p9.fill('#seedQty', '9')
   await p9.dispatchEvent('#seedQty', 'change')
@@ -638,11 +589,11 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   // ①-가 대각/포개짐: 'ㄴ'자 A 의 bbox 안에 B 가 들어앉는다. 옛 사각 겹침이면 1덩어리였다.
   const pa = await openPanel(CONFIG)
   await pa.evaluate(() => { window.__seedCase = 'diag' })
-  await pa.click('.tab[data-tab="impose"]')
-  await pa.click('#btnImposeSplit')
+  await pa.click('.tab[data-tab="bundle"]')
+  await pa.click('#btnQueueBatch')
   await pa.waitForTimeout(500)
   ok('bbox 겹쳐도 잉크가 떨어져 있으면 2건으로 분리',
-    (await pa.locator('#imposeBox .qrow').count()) === 2,
+    (await pa.locator('#queueBox .qrow').count()) === 2,
     await pa.locator('#out').innerText())
   ok('개체가 자기 잉크로 배정됨(0;1)', (await pa.evaluate(() => window.__lastSeedSpec)) === '0;1',
     await pa.evaluate(() => window.__lastSeedSpec))
@@ -652,11 +603,11 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   // ②-나 배정 단위는 **개체**다 — 잉크가 2덩어리여도 개체가 1개면 1행. 그 사실을 근거로 말해야 한다.
   const pb = await openPanel(CONFIG)
   await pb.evaluate(() => { window.__seedCase = 'group' })
-  await pb.click('.tab[data-tab="impose"]')
-  await pb.click('#btnImposeSplit')
+  await pb.click('.tab[data-tab="bundle"]')
+  await pb.click('#btnQueueBatch')
   await pb.waitForTimeout(500)
   const gtxt = await pb.locator('#out').innerText()
-  ok('개체 1개면 잉크가 갈려도 1건', (await pb.locator('#imposeBox .qrow').count()) === 1, gtxt)
+  ok('개체 1개면 잉크가 갈려도 1건', (await pb.locator('#queueBox .qrow').count()) === 1, gtxt)
   // 원인 판정은 **개체 사실(grp)** 로 한다 — 잉크 덩어리 수로 추정하면 흰 요소 때문에 틀린다.
   ok('원인을 사실로 지목(선택이 그룹 1개)', gtxt.includes('선택이 그룹 1개'), gtxt.slice(0, 90))
   ok('20b 콘솔 에러 0', pb.__errs.length === 0, pb.__errs.join(' | '))
@@ -666,8 +617,8 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   //   'white' 모드였다면 흰 조각이 배경으로 사라져 2건으로 갈린다.
   const pw = await openPanel(CONFIG)
   await pw.evaluate(() => { window.__seedCase = 'white' })
-  await pw.click('.tab[data-tab="impose"]')
-  await pw.click('#btnImposeSplit')
+  await pw.click('.tab[data-tab="bundle"]')
+  await pw.click('#btnQueueBatch')
   await pw.waitForTimeout(500)
   ok('흰 조각도 잉크로 세어 한 디자인으로 묶임',
     (await pw.evaluate(() => window.__lastSeedSpec)) === '0,1',
@@ -680,8 +631,8 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   //   1mm/px 에서 사방 1px 이면 두 디자인 사이에 최대 2mm 의 가짜 잉크가 생긴다.
   const pf = await openPanel(CONFIG)
   await pf.evaluate(() => { window.__seedCase = 'fringe' })
-  await pf.click('.tab[data-tab="impose"]')
-  await pf.click('#btnImposeSplit')
+  await pf.click('.tab[data-tab="bundle"]')
+  await pf.click('#btnQueueBatch')
   await pf.waitForTimeout(500)
   ok('옅은 알파 다리로는 붙지 않음(2건 분리)',
     (await pf.evaluate(() => window.__lastSeedSpec)) === '0;1',
@@ -692,8 +643,8 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   // ②-바 반투명 조각 — 임계를 올리면 통째로 사라진다. 되돌리되 **조용히 하지 않는다**.
   const pt = await openPanel(CONFIG)
   await pt.evaluate(() => { window.__seedCase = 'translucent' })
-  await pt.click('.tab[data-tab="impose"]')
-  await pt.click('#btnImposeSplit')
+  await pt.click('.tab[data-tab="bundle"]')
+  await pt.click('#btnQueueBatch')
   await pt.waitForTimeout(500)
   const ttxt = await pt.locator('#out').innerText()
   ok('반투명 조각이 사라지지 않음(2건 유지)',
@@ -706,11 +657,11 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   // ③-다 굽기 실패 폴백 — 조용히 옛 방식으로 돌아가면 안 된다. 반드시 눈에 보여야 한다.
   const pc = await openPanel(CONFIG)
   await pc.evaluate(() => { window.__seedMode = 'bbox' })
-  await pc.click('.tab[data-tab="impose"]')
-  await pc.click('#btnImposeSplit')
+  await pc.click('.tab[data-tab="bundle"]')
+  await pc.click('#btnQueueBatch')
   await pc.waitForTimeout(500)
   const ftxt = await pc.locator('#out').innerText()
-  ok('굽기 실패 시에도 큐는 채워짐', (await pc.locator('#imposeBox .qrow').count()) === 3, ftxt)
+  ok('굽기 실패 시에도 큐는 채워짐', (await pc.locator('#queueBox .qrow').count()) === 3, ftxt)
   ok('폴백을 사용자에게 알림', ftxt.includes('사각(bbox) 방식'), ftxt.slice(0, 90))
   ok('20c 콘솔 에러 0', pc.__errs.length === 0, pc.__errs.join(' | '))
   await pc.close()
