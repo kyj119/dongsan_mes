@@ -224,6 +224,22 @@ fixedAssets.post('/depreciate', requireRole('ADMIN'), async (c) => {
   `).bind(yearStart).all<{ asset_id: number; accumulated_depreciation: number }>()
   const prevYearMap = new Map(prevYearEnd.map(r => [r.asset_id, r.accumulated_depreciation]))
 
+  // 전년도 기록이 아예 없는 자산의 연초 누계 폴백.
+  //   이관 자산은 2026-01 부터 적재돼 `period < '2026-01'` 이 0건이라 위 맵이 통째로 비고,
+  //   openingAcc=0 → 상각 기준액이 **미상각잔액이 아니라 취득가**가 된다(월 1,020만 과대).
+  //   당해연도 첫 기록의 (누계 - 당월액) = 연초 누계 이므로 여기서 정확히 복원한다.
+  const { results: yearOpen } = await c.env.DB.prepare(`
+    SELECT dr.asset_id, dr.accumulated_depreciation - dr.depreciation_amount AS opening
+    FROM depreciation_records dr
+    INNER JOIN (
+      SELECT asset_id, MIN(period) as min_period FROM depreciation_records
+      WHERE period >= ? AND period <= ? GROUP BY asset_id
+    ) f ON dr.asset_id = f.asset_id AND dr.period = f.min_period
+  `).bind(yearStart, period).all<{ asset_id: number; opening: number }>()
+  for (const r of yearOpen) {
+    if (!prevYearMap.has(r.asset_id)) prevYearMap.set(r.asset_id, r.opening)
+  }
+
   const stmts: any[] = []
 
   for (const asset of assets) {
@@ -239,8 +255,17 @@ fixedAssets.post('/depreciate', requireRole('ADMIN'), async (c) => {
     // ?? 필수 — `||` 면 상각완료(장부가 0) 자산이 취득가로 되살아나 무한 상각된다.
     const bookValue = lastRecord?.book_value ?? asset.current_book_value ?? asset.acquisition_cost
 
+    const salvage = asset.salvage_value || 0
     // 잔존가치 도달 시 스킵
-    if (bookValue <= (asset.salvage_value || 0)) continue
+    if (bookValue <= salvage) continue
+
+    // 내용연수 만료 사업연도인가. 취득월 포함으로 세므로 마지막 달 = 취득월 + 내용연수 - 1.
+    //   Date 파싱은 UTC 로 밀려 월이 어긋나므로 문자열 산술로 계산한다.
+    const acqY = Number(String(asset.acquisition_date).slice(0, 4))
+    const acqM = Number(String(asset.acquisition_date).slice(5, 7))
+    const expiryYear = Math.floor((acqY * 12 + (acqM - 1) + asset.useful_life_months - 1) / 12)
+    // `>=` 다 — 임의상각으로 만료 연도를 넘겨 잔액이 남은 자산도 그 다음 해에 털어야 한다.
+    const expired = Number(period.slice(0, 4)) >= expiryYear
 
     // 월별 감가상각액 계산
     let monthlyDepreciation: number
@@ -252,17 +277,26 @@ fixedAssets.post('/depreciate', requireRole('ADMIN'), async (c) => {
       if (rate && rate > 0) {
         const openingAcc = prevYearMap.get(asset.id) || 0
         const openingBase = asset.acquisition_cost - openingAcc
-        monthlyDepreciation = Math.round(openingBase * rate / 12)
+        monthlyDepreciation = expired
+          // 내용연수가 끝나는 사업연도엔 미상각잔액을 비망가액만 남기고 **전액** 턴다(세법).
+          //   정률법은 원리상 0 에 도달하지 않으므로 이 규칙이 없으면 영원히 상각이 끝나지 않는다.
+          //   연 합계를 세무장부와 맞추되 특정 달에 몰아 손익이 튀지 않도록 **남은 달로 균등 배분**한다.
+          //   (당해연도 기계상액을 빼므로 규칙이 연중에 켜져도 연 합계는 정확히 일치한다)
+          ? Math.round(
+              Math.max(0, (openingBase - salvage) - (accumulated - openingAcc)) /
+              Math.max(1, 12 - Number(period.slice(5, 7)) + 1)
+            )
+          : Math.round(openingBase * rate / 12)
       } else {
         monthlyDepreciation = Math.round(bookValue * (2 / asset.useful_life_months))
       }
     } else {
       // 정액법: (취득가 - 잔존) / 내용연수
-      monthlyDepreciation = Math.round((asset.acquisition_cost - (asset.salvage_value || 0)) / asset.useful_life_months)
+      monthlyDepreciation = Math.round((asset.acquisition_cost - salvage) / asset.useful_life_months)
     }
 
     // 잔존가치 이하로 내려가지 않도록
-    monthlyDepreciation = Math.min(monthlyDepreciation, bookValue - (asset.salvage_value || 0))
+    monthlyDepreciation = Math.min(monthlyDepreciation, bookValue - salvage)
     if (monthlyDepreciation <= 0) continue
 
     const newAccumulated = accumulated + monthlyDepreciation
