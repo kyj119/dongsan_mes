@@ -1,6 +1,33 @@
 > **파일 구조**: 최신 세션이 맨 위. 아래로 갈수록 과거 세션(각각 durable 메모리에 정본 있음).
 > **다음 세션은 이 문서 상단의 "이월 TODO 통합"만 읽으면 된다** — 그 아래 상세 핸드오프는 판단 근거가 필요할 때만.
 
+# 세션 핸드오프 — 작업지시서 자동 발행·관리 (2026-08-05 #51)
+
+> durable 메모리 = [[design-work-order-system]] (자동 발행 섹션 추가) · spec = `docs/superpowers/specs/2026-08-05-work-order-auto-issue.md`
+> **코드 완료·커밋됨·prod 미배포** — 배포는 명시 요청 대기
+
+## 결과
+
+- **카드=작업지시서 승격** (신규 문서 엔티티 없음). 결정 6건 전부 용준님 확정: 전 카드 공통·하이브리드(화면+브라우저PDF)·진행체크+현황판·별도 테이블·/cards 탭 흡수·**NAS 배치 보류**
+- 마이그 `0522` = `card_checklist_items`(체크 행=감사 로그) + `cards.needs_reissue`
+- 카드 생성 시 스텝 자동 파생(`orders/helpers.ts`): 출력/제작→봉제(면수)→후가공(PP+params)→검수
+- `PATCH /api/cards/:id/checklist/:itemId` — 전 스텝 완료+PRINTING → PRINT_DONE 자동 전이(pp_status=DONE)
+- 주문 수정 카드 보존 경로 → `needs_reissue=1` → `/cards` 「지시 현황」 탭(누락·진행·개정필요) → reissue-ack
+- 검증: 로컬 E2E 전 구간 + smoke 108/108(issue-status 추가) + sort-audit P1 0 + check:dom 기준선 5
+
+## 다음 세션 TODO
+
+1. **prod 배포 시 `0522` 마이그 선행 필수** (`wrangler d1 execute webapp-production --remote --file=./migrations/0522_work_order_checklist.sql` → `npm run deploy:prod`) — 배포는 명시 요청에만
+2. 배포 후 실측: /cards 지시 현황 탭 + 카드 상세 체크 UI + 주문수정→개정 배너
+3. 후속(운영 피드백 후): category별 settings 템플릿 · MANUAL 스텝 UI · `POST /generate/:orderId` 레거시 경로 체크리스트 미파생(0스텝=UI 숨김) 통합 검토
+
+## 판단 기준
+
+- **기존 카드 파이프라인이 이미 "자동 제작"** — 새 엔티티를 만들지 않고 승격하는 것이 정답이었다 (2026-05-26 결정 계승)
+- 누락 탐지는 **shipment_ready 불변식**(카드 비대상 라인=생성 시 1) + 상태 화이트리스트(이관 SHIPPED 범람 방지)
+- PRINT_DONE 자동 전이는 **PRINTING에서만** (기존 상태머신 준수) · 체크리스트가 후가공 포함 → 전체완료=pp_status DONE
+- 로컬 E2E는 시드 client 최소 id=9101 (id=1 없음 → FK 500)
+
 # 세션 핸드오프 — WEHAGO 3트랙: 감가상각·차입금·고정비 (2026-08-05 #48)
 
 > durable 메모리 = [[design-fixed-asset-depreciation]] · [[design-loan-liability-model]] · [[feedback-recurring-expense-detection]]

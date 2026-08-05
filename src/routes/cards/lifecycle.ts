@@ -946,6 +946,79 @@ cardsLifecycleRouter.patch('/:id/unship', requireRole('ADMIN', 'MANAGER'), async
 
 
 // Generate cards from order
+// ── 작업지시서 체크리스트 (2026-08-05 work-order-auto-issue) ──
+// PATCH /:id/checklist/:itemId — 현장 공정 체크/해제. 체크 행 자체가 감사 로그(checked_by/checked_at).
+// 전 스텝 완료 && status=PRINTING → PRINT_DONE 자동 전이 (기존 상태머신 준수).
+cardsLifecycleRouter.patch('/:id/checklist/:itemId', requireEditOrRole('/cards', 'MANAGER', 'OPERATOR'), async (c) => {
+  try {
+    const cardId = parseInt(c.req.param('id'))
+    const itemId = parseInt(c.req.param('itemId'))
+    if (isNaN(cardId) || isNaN(itemId)) return c.json({ success: false, error: '잘못된 ID' }, 400)
+    const { checked } = await c.req.json()
+    const user = c.get('user')
+
+    const scope = cardEntityScope(c)
+    const card = await c.env.DB.prepare(
+      `SELECT id, status, order_id, post_processing FROM cards WHERE id = ?${scope.clause}`
+    ).bind(cardId, ...scope.params).first<{ id: number; status: string; order_id: number; post_processing: string | null }>()
+    if (!card) return c.json({ success: false, error: '카드를 찾을 수 없습니다.' }, 404)
+
+    const upd = checked
+      ? c.env.DB.prepare(`UPDATE card_checklist_items SET checked_by = ?, checked_at = CURRENT_TIMESTAMP WHERE id = ? AND card_id = ?`)
+          .bind(user?.id || null, itemId, cardId)
+      : c.env.DB.prepare(`UPDATE card_checklist_items SET checked_by = NULL, checked_at = NULL WHERE id = ? AND card_id = ?`)
+          .bind(itemId, cardId)
+    const updRes = await upd.run()
+    if (!updRes.meta.changes) return c.json({ success: false, error: '체크 항목을 찾을 수 없습니다.' }, 404)
+
+    const agg = await c.env.DB.prepare(
+      `SELECT COUNT(*) as total, SUM(CASE WHEN checked_at IS NOT NULL THEN 1 ELSE 0 END) as done
+       FROM card_checklist_items WHERE card_id = ?`
+    ).bind(cardId).first<{ total: number; done: number }>()
+
+    let autoDone = false
+    if (checked && agg && agg.total > 0 && agg.done === agg.total && card.status === 'PRINTING') {
+      // 체크리스트가 후가공 스텝을 포함하므로 전체 완료 = 후가공도 완료 → pp_status DONE
+      const hasPP = card.post_processing && card.post_processing !== '[]' && card.post_processing !== ''
+      const tr = await c.env.DB.prepare(`
+        UPDATE cards SET status = 'PRINT_DONE', pp_status = ?,${hasPP ? ' pp_completed_at = CURRENT_TIMESTAMP,' : ''}
+          hold_reason = NULL, hold_at = NULL, hold_by = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND status = 'PRINTING'
+      `).bind(hasPP ? 'DONE' : 'N/A', cardId).run()
+      if (tr.meta.changes > 0) {
+        autoDone = true
+        await c.env.DB.prepare(`
+          INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason)
+          VALUES (?, 'PRINTING', 'PRINT_DONE', ?, '체크리스트 전체 완료 자동 전이')
+        `).bind(cardId, user?.id || null).run()
+        await syncOrderStatusFromCards(c.env.DB, card.order_id)
+      }
+    }
+
+    return c.json({ success: true, data: { step_total: agg?.total || 0, step_done: agg?.done || 0, auto_done: autoDone } })
+  } catch (error) {
+    console.error('cards checklist toggle error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// PATCH /:id/reissue-ack — 개정필요(needs_reissue) 확인 처리. 주문 수정 시 카드 보존 경로가 1로 세팅한다.
+cardsLifecycleRouter.patch('/:id/reissue-ack', requireEditOrRole('/cards', 'MANAGER', 'OPERATOR'), async (c) => {
+  try {
+    const cardId = parseInt(c.req.param('id'))
+    if (isNaN(cardId)) return c.json({ success: false, error: '잘못된 ID' }, 400)
+    const scope = cardEntityScope(c)
+    const res = await c.env.DB.prepare(
+      `UPDATE cards SET needs_reissue = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?${scope.clause}`
+    ).bind(cardId, ...scope.params).run()
+    if (!res.meta.changes) return c.json({ success: false, error: '카드를 찾을 수 없습니다.' }, 404)
+    return c.json({ success: true })
+  } catch (error) {
+    console.error('cards reissue-ack error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
   try {
     const orderId = c.req.param('orderId')

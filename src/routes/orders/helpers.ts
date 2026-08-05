@@ -269,7 +269,11 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
 
   // D1 batch로 원자적 카드 생성
   const cardStatements: D1PreparedStatement[] = []
-  const cardGroupEntries: Array<{ cardNumber: string; entries: Array<{ item: OIRow; ppJson: string | null; qty: number }> }> = []
+  const cardGroupEntries: Array<{
+    cardNumber: string
+    entries: Array<{ item: OIRow; ppJson: string | null; qty: number }>
+    checklistSteps: Array<{ code: string; label: string; sort: number }>
+  }> = []
 
   // append 모드: 카드번호 접미 인덱스를 기존 최대값 뒤로 이어붙여 충돌 방지(${orderNumber}-NN).
   let cardIndex = 0
@@ -357,7 +361,32 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
     const totalML = mL + finL, totalMR = mR + finR
     const totalMT = mT + finT, totalMB = mB + finB
 
-    cardGroupEntries.push({ cardNumber, entries })
+    // 작업지시서 체크리스트 스텝 파생 — 물리 공정 순서: 출력 → 봉제(마감) → 후가공 → 검수
+    // (2026-08-05 work-order-auto-issue. 체크 행 자체가 감사 로그 — checked_by/checked_at)
+    const checklistSteps: Array<{ code: string; label: string; sort: number }> = []
+    checklistSteps.push({ code: 'PRINT', label: cardGroup === 'SIGN' ? '제작' : '출력', sort: 10 })
+    if (cardFinishing) {
+      const dirCounts = new Map<string, number>()
+      for (const d of ['top', 'bottom', 'left', 'right']) {
+        const m = cardFinishing[d]
+        if (m && typeof m === 'string') dirCounts.set(m, (dirCounts.get(m) || 0) + 1)
+      }
+      const sewSummary = [...dirCounts.entries()].map(([m, n]) => `${n}면${m}`).join(' ')
+      checklistSteps.push({ code: 'SEW', label: sewSummary ? `봉제(${sewSummary})` : '봉제', sort: 20 })
+    }
+    uniquePP.forEach((pp: any, ppIdx: number) => {
+      const paramStr = pp.params && typeof pp.params === 'object'
+        ? Object.values(pp.params).filter((v: any) => v && v !== '없음').join(' ')
+        : ''
+      checklistSteps.push({
+        code: String(pp.code || pp.name || 'PP'),
+        label: `${pp.name || pp.code}${paramStr ? ' ' + paramStr : ''}`,
+        sort: 30 + ppIdx,
+      })
+    })
+    checklistSteps.push({ code: 'INSPECT', label: '검수', sort: 90 })
+
+    cardGroupEntries.push({ cardNumber, entries, checklistSteps })
     cardStatements.push(
       db.prepare(`
         INSERT INTO cards (
@@ -390,7 +419,7 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
   // D1 batch: 카드 INSERT 원자적 실행
   const batchResults = await db.batch(cardStatements)
 
-  // card_items INSERT (카드 ID 기반)
+  // card_items + 체크리스트 INSERT (카드 ID 기반)
   const itemStatements: D1PreparedStatement[] = []
   for (let i = 0; i < batchResults.length; i++) {
     const cardId = batchResults[i].meta.last_row_id
@@ -400,9 +429,16 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
           .bind(cardId, entry.item.id as number, entry.qty)
       )
     }
+    for (const step of cardGroupEntries[i].checklistSteps) {
+      itemStatements.push(
+        db.prepare(`INSERT INTO card_checklist_items (card_id, step_code, label, sort_order) VALUES (?, ?, ?, ?)`)
+          .bind(cardId, step.code, step.label, step.sort)
+      )
+    }
   }
-  if (itemStatements.length > 0) {
-    await db.batch(itemStatements)
+  // D1 batch 문 수 제한 대비 80청크 (다품목 주문에서 card_items+체크리스트 합산 초과 방지)
+  for (let i = 0; i < itemStatements.length; i += 80) {
+    await db.batch(itemStatements.slice(i, i + 80))
   }
 
   return cardStatements.length

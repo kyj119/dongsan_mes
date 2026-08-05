@@ -179,11 +179,13 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
         UPDATE cards SET order_item_id = NULL WHERE order_id = ?
       `).bind(id).run()
       // 카드 메타데이터 동기화 (재생성 없이도 납기/우선순위/비고 반영)
+      // needs_reissue=1: 라인 교체가 일어나는데 카드는 보존 → 작업지시서 개정필요 표시 (지시 현황판 큐, reissue-ack로 해제)
       await c.env.DB.prepare(`
         UPDATE cards SET
           delivery_date = ?,
           priority = ?,
           notes = ?,
+          needs_reissue = 1,
           updated_at = CURRENT_TIMESTAMP
         WHERE order_id = ?
       `).bind(
@@ -203,6 +205,7 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
         c.env.DB.prepare('DELETE FROM work_records WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
         c.env.DB.prepare('UPDATE print_events SET card_id = NULL WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
         c.env.DB.prepare('DELETE FROM card_items WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
+        c.env.DB.prepare('DELETE FROM card_checklist_items WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
         c.env.DB.prepare('DELETE FROM cards WHERE order_id = ?').bind(id),
         c.env.DB.prepare("DELETE FROM auto_process_jobs WHERE order_id = ? AND status IN ('pending','processing','failed')").bind(id),
         // #480: 검수 기록(shipment_checks, 0439)이 order_item_id FK로 물려 있으면 order_items 삭제가 FK throw

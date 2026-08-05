@@ -67,6 +67,8 @@ const ENDPOINTS = [
   { path: '/api/orders?limit=10', name: 'orders.list' },
   { path: '/api/quotations?limit=5', name: 'quotations.list' },
   { path: '/api/cards', name: 'cards.list' },
+  // 작업지시서 발행 현황판 (2026-08-05 work-order-auto-issue)
+  { path: '/api/cards/issue-status', name: 'cards.issueStatus' },
   { path: '/api/production/logs?limit=10', name: 'production.logs' },
   { path: '/api/production/stats', name: 'production.stats' },
   { path: '/api/shipments?limit=10', name: 'shipments.list' },

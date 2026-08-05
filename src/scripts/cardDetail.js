@@ -9,19 +9,20 @@
 
     async function load() {
         try {
-            var [cardRes, histRes, defRes] = await Promise.all([
+            var [cardRes, histRes, defRes, cclRes] = await Promise.all([
                 axios.get('/api/cards/' + cardId),
                 axios.get('/api/cards/' + cardId + '/history'),
-                axios.get('/api/cards/' + cardId + '/defects')
+                axios.get('/api/cards/' + cardId + '/defects'),
+                axios.get('/api/cards/' + cardId + '/checklist')
             ]);
             if (!cardRes.data.success) throw new Error('카드 조회 실패');
-            render(cardRes.data.data, histRes.data.data || [], defRes.data.data || []);
+            render(cardRes.data.data, histRes.data.data || [], defRes.data.data || [], cclRes.data.data || []);
         } catch(e) {
             document.getElementById('cdRoot').innerHTML = '<p class="text-center py-20 text-red-500">' + esc(e.message) + '</p>';
         }
     }
 
-    function render(card, history, defects) {
+    function render(card, history, defects, checklist) {
         var items = card.items || card._items || [];
         var accessories = card.accessories || [];
         var totalQty = items.reduce(function(s, i) { return s + (i.quantity || 1); }, 0);
@@ -107,9 +108,17 @@
         html += '<span class="px-2 py-0.5 rounded text-xs font-bold ' + urgClass + '">' + esc(dateStr) + '</span>';
         html += '</div>';
         html += '<div class="flex items-center gap-2">';
-        html += '<button onclick="window.print()" class="px-3 py-1.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm"><i class="fas fa-print mr-1"></i>인쇄</button>';
+        html += '<button onclick="window.print()" class="px-3 py-1.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm"><i class="fas fa-print mr-1"></i>인쇄/PDF</button>';
         html += '</div>';
         html += '</div>';
+
+        // ── 개정 필요 배너 (주문 수정 시 카드 보존 경로가 needs_reissue=1 세팅) ──
+        if (card.needs_reissue === 1) {
+            html += '<div class="no-print mb-3 p-3 rounded-lg border-2 border-amber-400 bg-amber-50 flex items-center justify-between gap-3 flex-wrap">';
+            html += '<span class="text-sm font-bold text-amber-700"><i class="fas fa-triangle-exclamation mr-2"></i>주문이 수정되었습니다 — 지시 내용을 다시 확인하세요</span>';
+            html += '<button onclick="cclAckReissue()" class="px-3 py-1.5 bg-amber-500 text-white rounded text-sm font-bold">확인 처리</button>';
+            html += '</div>';
+        }
 
         // ── 인쇄 전용 헤더 ──
         html += '<div class="print-only cd-print-header">';
@@ -186,6 +195,28 @@
         }
 
         html += '</div>'; // end cd-work-order
+
+        // ── 공정 체크리스트 (작업지시서 진행 체크, 현장 터치 입력) ──
+        if (checklist.length > 0) {
+            var ckDone = checklist.filter(function(s) { return s.checked_at; }).length;
+            html += '<div class="cd-section cd-checklist no-print">';
+            html += '<div class="cd-section-header" onclick="this.parentElement.classList.toggle(\'collapsed\')">';
+            html += '<span class="font-bold text-gray-700"><i class="fas fa-list-check mr-2"></i>공정 체크리스트 <span class="text-xs text-gray-400 ml-1">' + ckDone + '/' + checklist.length + '</span></span>';
+            html += '<i class="fas fa-chevron-up cd-collapse-icon"></i>';
+            html += '</div>';
+            html += '<div class="cd-section-body">';
+            checklist.forEach(function(s) {
+                var on = !!s.checked_at;
+                html += '<button onclick="cclToggle(' + s.id + ',' + (on ? 'false' : 'true') + ')" class="w-full flex items-center gap-3 py-3 px-2 border-b border-gray-100 text-left" style="min-height:52px;background:none">';
+                html += '<span class="text-2xl">' + (on ? '<i class="fas fa-square-check text-green-600"></i>' : '<i class="far fa-square text-gray-400"></i>') + '</span>';
+                html += '<span class="flex-1 text-base ' + (on ? 'line-through text-gray-400' : 'text-gray-800 font-semibold') + '">' + esc(s.label || '') + '</span>';
+                if (on) {
+                    html += '<span class="text-xs text-gray-400 whitespace-nowrap">' + esc(s.checked_by_name || '') + ' ' + formatKST(s.checked_at, null, {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}) + '</span>';
+                }
+                html += '</button>';
+            });
+            html += '</div></div>';
+        }
 
         // ── 생산 현황 (접이식) ──
         html += '<div class="cd-section cd-production no-print">';
@@ -264,6 +295,24 @@
             showToast('출고 처리됨', 'success');
             load();
         } catch(e) { showToast('출고 실패: ' + (e.response?.data?.error || e.message), 'error'); }
+    };
+
+    // 공정 체크리스트 토글 — 전 스텝 완료 && PRINTING이면 서버가 PRINT_DONE 자동 전이
+    window.cclToggle = async function(itemId, checked) {
+        try {
+            var r = await axios.patch('/api/cards/' + cardId + '/checklist/' + itemId, { checked: checked });
+            if (r.data.data && r.data.data.auto_done) showToast('전 공정 완료 — 출력완료 처리됨', 'success');
+            load();
+        } catch(e) { showToast('체크 실패: ' + (e.response?.data?.error || e.message), 'error'); }
+    };
+
+    // 개정필요 확인 처리
+    window.cclAckReissue = async function() {
+        try {
+            await axios.patch('/api/cards/' + cardId + '/reissue-ack');
+            showToast('개정 확인 처리됨', 'success');
+            load();
+        } catch(e) { showToast('실패: ' + (e.response?.data?.error || e.message), 'error'); }
     };
 
     load();

@@ -931,6 +931,62 @@ cardsQueriesRouter.get('/thumbnails', async (c) => {
   }
 })
 
+// ── 지시 현황판 (2026-08-05 work-order-auto-issue): 누락·진행·개정필요 3개 큐 ──
+// ⚠️ /:id 라우트보다 앞에 등록 (정적 경로 우선이지만 코드 관례대로 명시 배치)
+cardsQueriesRouter.get('/issue-status', async (c) => {
+  try {
+    // 1) 누락: 제작 라인(shipment_ready=0)이 있는데 활성 카드가 0건인 주문.
+    //    shipment_ready 불변식 활용 — 카드 비대상 라인은 generateCardsForOrder가 생성 시 1로 세팅.
+    //    상태는 화이트리스트만 (이관 SHIPPED 범람 방지 — feedback-imported-orders-status-timestamp)
+    const efO = entityFilter(c, 'o')
+    const { results: missing } = await c.env.DB.prepare(`
+      SELECT o.id, o.order_number, cl.client_name, o.delivery_date, o.status, o.created_at
+      FROM orders o
+      LEFT JOIN clients cl ON o.client_id = cl.id
+      WHERE o.status IN ('CONFIRMED', 'PRINTING')${efO.clause}
+        AND EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND COALESCE(oi.shipment_ready, 0) = 0)
+        AND NOT EXISTS (SELECT 1 FROM cards c2 WHERE c2.order_id = o.id AND c2.status != 'CANCELLED')
+      ORDER BY (o.delivery_date IS NULL), o.delivery_date ASC, o.id ASC
+      LIMIT 100
+    `).bind(...efO.params).all()
+
+    // 2) 진행: 활성 카드 × 체크 진행률. PRINT_DONE은 미체크 스텝이 남은 경우만 (후가공 체크 잔여).
+    //    체크리스트 없는 레거시 PRINT_DONE 카드는 제외 (범람 방지).
+    const efC = cardEntityFilter(c, 'c')
+    const { results: progress } = await c.env.DB.prepare(`
+      SELECT c.id, c.card_number, c.client_name, c.item_name, c.category_name, c.status,
+        c.delivery_date, c.quantity, c.needs_reissue, o.order_number,
+        COUNT(ccl.id) as step_total,
+        SUM(CASE WHEN ccl.checked_at IS NOT NULL THEN 1 ELSE 0 END) as step_done
+      FROM cards c
+      JOIN orders o ON c.order_id = o.id
+      LEFT JOIN card_checklist_items ccl ON ccl.card_id = c.id
+      WHERE c.status IN ('PRINT_PENDING', 'PRINTING', 'HOLD', 'PRINT_DONE')${efC.clause}
+      GROUP BY c.id
+      HAVING c.status != 'PRINT_DONE'
+          OR (COUNT(ccl.id) > 0 AND SUM(CASE WHEN ccl.checked_at IS NOT NULL THEN 1 ELSE 0 END) < COUNT(ccl.id))
+      ORDER BY (c.delivery_date IS NULL), c.delivery_date ASC, c.id ASC
+      LIMIT 200
+    `).bind(...efC.params).all()
+
+    // 3) 개정 필요: 주문 수정 시 카드 보존 경로가 세팅 (reissue-ack로 해제)
+    const efR = cardEntityFilter(c, 'c')
+    const { results: reissue } = await c.env.DB.prepare(`
+      SELECT c.id, c.card_number, c.client_name, c.item_name, c.status, c.delivery_date, o.order_number
+      FROM cards c
+      JOIN orders o ON c.order_id = o.id
+      WHERE c.needs_reissue = 1${efR.clause}
+      ORDER BY (c.delivery_date IS NULL), c.delivery_date ASC, c.id ASC
+      LIMIT 100
+    `).bind(...efR.params).all()
+
+    return c.json({ success: true, data: { missing, progress, reissue } })
+  } catch (error) {
+    console.error('cards issue-status error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // Get card by ID
 cardsQueriesRouter.get('/:id', async (c) => {
   try {
@@ -1126,6 +1182,24 @@ cardsQueriesRouter.get('/:id/history', async (c) => {
   }
 })
 
+
+// GET /:id/checklist — 작업지시서 공정 체크리스트 (2026-08-05 work-order-auto-issue)
+cardsQueriesRouter.get('/:id/checklist', async (c) => {
+  try {
+    const id = c.req.param('id')
+    const { results } = await c.env.DB.prepare(`
+      SELECT ccl.*, u.name as checked_by_name
+      FROM card_checklist_items ccl
+      LEFT JOIN users u ON ccl.checked_by = u.id
+      WHERE ccl.card_id = ?
+      ORDER BY ccl.sort_order ASC, ccl.id ASC
+    `).bind(id).all()
+    return c.json({ success: true, data: results })
+  } catch (error) {
+    console.error('cards checklist get error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
 
 // ── 불량 관리 (quality_issues) ──
 

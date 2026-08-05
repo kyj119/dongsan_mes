@@ -7,8 +7,9 @@ import cardsCore from '../scripts/cards/core.js?raw'
 import cardsActions from '../scripts/cards/actions.js?raw'
 import cardsRip from '../scripts/cards/rip.js?raw'
 import cardsDetail from '../scripts/cards/detail.js?raw'
+import cardsIssueStatus from '../scripts/cards/issueStatus.js?raw'
 import cardsMisc from '../scripts/cards/misc.js?raw'
-const pageScript = [cardsCore, cardsActions, cardsRip, cardsDetail, cardsMisc].join('\n')
+const pageScript = [cardsCore, cardsActions, cardsRip, cardsDetail, cardsIssueStatus, cardsMisc].join('\n')
 
 export function cardsPage(c: Context<HonoEnv>) {
   return renderPage(c, {
@@ -286,6 +287,13 @@ export function cardsPage(c: Context<HonoEnv>) {
             </div>
         </div>
 
+        <!-- 탭: 현장 칸반 | 지시 현황 (작업지시서 발행 현황판, 2026-08-05) -->
+        <div class="flex gap-1 mb-3" id="cardsTabBar" style="max-width:420px">
+            <button id="cardsTabKanban" class="mobile-tab active" onclick="switchCardsTab('kanban')">현장 칸반</button>
+            <button id="cardsTabIssue" class="mobile-tab" onclick="switchCardsTab('issue')">지시 현황<span id="issueTabBadge" style="display:none;background:var(--c-danger);color:#fff;border-radius:9999px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></button>
+        </div>
+
+        <div id="kanbanView">
         <!-- 상태 배너 -->
         <div id="kanbanStatus" class="ds-alert ds-alert-info mb-2" style="text-align:center">
             <i class="fas fa-spinner fa-spin" style="margin-right:4px"></i> 칸반 로딩 준비중...
@@ -412,6 +420,23 @@ export function cardsPage(c: Context<HonoEnv>) {
                 <button class="mobile-tab" data-tab="done" onclick="switchMobileTab('done')">출력완료</button>
             </div>
             <div id="mobileContent"></div>
+        </div>
+        </div><!-- end kanbanView -->
+
+        <!-- 지시 현황 탭 (작업지시서 발행 현황판) -->
+        <div id="issueStatusView" style="display:none">
+            <div class="ds-card mb-3">
+                <div class="ds-card-title mb-2"><i class="fas fa-circle-exclamation" style="color:var(--c-danger);margin-right:6px"></i>카드 누락 주문 <span id="isMissingCnt" class="col-count">0</span></div>
+                <div id="isMissingList"></div>
+            </div>
+            <div class="ds-card mb-3">
+                <div class="ds-card-title mb-2"><i class="fas fa-rotate" style="color:var(--c-warning);margin-right:6px"></i>개정 필요 <span id="isReissueCnt" class="col-count">0</span></div>
+                <div id="isReissueList"></div>
+            </div>
+            <div class="ds-card mb-3">
+                <div class="ds-card-title mb-2"><i class="fas fa-list-check" style="color:var(--c-info);margin-right:6px"></i>진행 중 지시 <span id="isProgressCnt" class="col-count">0</span></div>
+                <div id="isProgressList"></div>
+            </div>
         </div>
 
         <!-- HOLD 불량유형 모달 -->
