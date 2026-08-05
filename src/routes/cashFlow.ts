@@ -217,7 +217,7 @@ cashFlowRouter.put('/loans/:id', requireRole('ADMIN'), async (c) => {
     const allowedFields = [
       'loan_number', 'creditor', 'description', 'original_amount', 'current_balance',
       'rate_type', 'current_rate', 'repayment_type', 'start_date', 'maturity_date',
-      'monthly_payment_day', 'monthly_payment_amount', 'notes', 'is_active'
+      'monthly_payment_day', 'monthly_payment_amount', 'notes', 'is_active', 'maturity_confirmed'
     ]
     const fields: string[] = []
     const params: any[] = []
@@ -313,7 +313,7 @@ cashFlowRouter.get('/loans/:id/schedule', requireAccessOrRole('/cash-schedule', 
     `).bind(id, ...ef.params).all()
 
     // 대출 정보도 함께
-    const loan = await c.env.DB.prepare(`SELECT id, loan_number, creditor, description, original_amount, current_balance, rate_type, current_rate, repayment_type, start_date, maturity_date, monthly_payment_day, monthly_payment_amount, notes, is_active, created_at FROM loans WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first()
+    const loan = await c.env.DB.prepare(`SELECT id, loan_number, creditor, description, original_amount, current_balance, rate_type, current_rate, repayment_type, start_date, maturity_date, monthly_payment_day, monthly_payment_amount, notes, is_active, maturity_confirmed, created_at FROM loans WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first()
 
     return c.json({ success: true, data: { loan, payments: results } })
   } catch (error) {
@@ -327,12 +327,23 @@ cashFlowRouter.post('/loans/:id/generate-schedule', requireRole('ADMIN'), async 
   try {
     const id = c.req.param('id')
     const ef = entityFilter(c)
-    const loan = await c.env.DB.prepare(`SELECT id, start_date, maturity_date, current_rate, current_balance, monthly_payment_day, repayment_type FROM loans WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<{
+    const loan = await c.env.DB.prepare(`SELECT id, start_date, maturity_date, current_rate, current_balance, monthly_payment_day, repayment_type, maturity_confirmed, entity_id FROM loans WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<{
       start_date: string; maturity_date: string; current_rate: number;
       current_balance: number; monthly_payment_day: number | null;
-      repayment_type: string
+      repayment_type: string; maturity_confirmed: number; entity_id: number
     }>()
     if (!loan) return c.json({ success: false, error: '대출을 찾을 수 없습니다.' }, 404)
+
+    // 만기 미확인이면 **원금 회차를 만들지 않는다**. maturity_date 가 NOT NULL 이라
+    //   만기를 모르는 차입금엔 placeholder 가 들어가는데, 아래 INTEREST_ONLY/BULLET 분기가
+    //   마지막 회차에 원금 전액을 넣어 그 달에 없는 현금유출을 만든다(이관분 12.6억).
+    const bulletLike = loan.repayment_type === 'INTEREST_ONLY' || loan.repayment_type === 'BULLET'
+    const openEnded = loan.maturity_confirmed === 0 && bulletLike
+    // 분할상환은 만기 없이는 회차수 자체가 정해지지 않는다. 조용히 12개월로 털면
+    //   원금이 실제보다 훨씬 빨리 상환되는 스케줄이 나오므로 여기서 막는다.
+    if (loan.maturity_confirmed === 0 && !bulletLike) {
+      return c.json({ success: false, error: '만기가 확인되지 않아 원리금 스케줄을 만들 수 없습니다. 만기일을 입력한 뒤 다시 시도하세요.' }, 400)
+    }
 
     // 기존 SCHEDULED 스케줄 삭제 (PAID는 유지)
     await c.env.DB.prepare(
@@ -354,13 +365,16 @@ cashFlowRouter.post('/loans/:id/generate-schedule', requireRole('ADMIN'), async 
     // 남은 개월 수 계산
     const totalMonths = (endDate.getFullYear() - startDate.getFullYear()) * 12 +
       (endDate.getMonth() - startDate.getMonth())
-    const remainingMonths = totalMonths - (paymentNumber - 1)
+    // 만기 미확인 = 회차수를 만기에서 못 구한다. 당월부터 고정 지평(12개월)만큼 이자만 굴린다.
+    const OPEN_HORIZON_MONTHS = 12
+    const openBase = new Date(`${kstYm()}-01T00:00:00Z`)
+    const remainingMonths = openEnded ? OPEN_HORIZON_MONTHS : totalMonths - (paymentNumber - 1)
     if (remainingMonths <= 0) return c.json({ success: true, data: { generated: 0 } })
 
     const stmts = []
     for (let i = 0; i < remainingMonths && balance > 0; i++) {
-      const payDate = new Date(startDate)
-      payDate.setMonth(payDate.getMonth() + paymentNumber - 1 + i)
+      const payDate = openEnded ? new Date(openBase) : new Date(startDate)
+      payDate.setMonth(payDate.getMonth() + (openEnded ? i : paymentNumber - 1 + i))
       payDate.setDate(Math.min(payDay, new Date(payDate.getFullYear(), payDate.getMonth() + 1, 0).getDate()))
       const dateStr = payDate.toISOString().slice(0, 10)
 
@@ -379,13 +393,11 @@ cashFlowRouter.post('/loans/:id/generate-schedule', requireRole('ADMIN'), async 
         }
         interest = Math.round(balance * monthlyRate)
         principal = total - interest
-      } else if (loan.repayment_type === 'INTEREST_ONLY') {
+      } else { // INTEREST_ONLY · BULLET — 만기에 원금 일시상환
         interest = Math.round(balance * monthlyRate)
-        principal = (i === remainingMonths - 1) ? balance : 0
-        total = principal + interest
-      } else { // BULLET
-        interest = Math.round(balance * monthlyRate)
-        principal = (i === remainingMonths - 1) ? balance : 0
+        // 만기 미확인이면 원금 회차를 만들지 않는다. placeholder 만기에 원금을 태우면
+        //   있지도 않은 현금유출이 자금예측에 잡힌다.
+        principal = (!openEnded && i === remainingMonths - 1) ? balance : 0
         total = principal + interest
       }
 
@@ -396,7 +408,10 @@ cashFlowRouter.post('/loans/:id/generate-schedule', requireRole('ADMIN'), async 
         c.env.DB.prepare(`
           INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, entity_id)
           VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).bind(id, paymentNumber + i, dateStr, principal, interest, total, getEntityId(c) || 1)
+        `).bind(id, paymentNumber + i, dateStr, principal, interest, total,
+          // 세션 법인이 아니라 **대출이 속한 법인**으로 기록한다(#594 와 같은 함정 —
+          //   전체모드에서 getEntityId 는 0 이라 `|| 1` 이 타법인 스케줄을 동산에 귀속시킨다).
+          loan.entity_id || 1)
       )
 
       balance -= principal
@@ -404,7 +419,7 @@ cashFlowRouter.post('/loans/:id/generate-schedule', requireRole('ADMIN'), async 
 
     if (stmts.length > 0) await c.env.DB.batch(stmts)
 
-    return c.json({ success: true, data: { generated: stmts.length } })
+    return c.json({ success: true, data: { generated: stmts.length, open_ended: openEnded } })
   } catch (error) {
     console.error('src/routes/cashFlow.ts error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

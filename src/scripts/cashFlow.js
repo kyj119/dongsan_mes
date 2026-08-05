@@ -203,7 +203,9 @@
           + '<div class="w-full h-1.5 bg-gray-200 rounded-full mt-1"><div class="h-full bg-purple-500 rounded-full" style="width:' + progress + '%"></div></div></td>'
           + '<td class="px-3 py-2 text-center">' + l.current_rate + '%' + (l.rate_type === 'VARIABLE' ? ' <span class="text-xs text-orange-500">변동</span>' : '') + '</td>'
           + '<td class="px-3 py-2 text-center text-xs">' + (REPAY_MAP[l.repayment_type] || l.repayment_type) + '</td>'
-          + '<td class="px-3 py-2">' + l.maturity_date + '</td>'
+          + '<td class="px-3 py-2">' + l.maturity_date
+          + (l.maturity_confirmed === 0 ? ' <span class="text-xs text-orange-600 font-medium" title="여신거래약정서로 만기를 확인하기 전까지는 원금 상환 회차를 만들지 않습니다. 표시된 날짜는 임시값입니다.">만기 미확인</span>' : '')
+          + '</td>'
           + '<td class="px-3 py-2 text-center">'
           + '<button onclick="event.stopPropagation();editLoan(' + l.id + ')" class="text-blue-500 hover:text-blue-700 mr-1"><i class="fas fa-edit"></i></button>'
           + (l.overdue_payments > 0 ? '<span class="text-xs text-red-600 font-bold">연체 ' + l.overdue_payments + '</span>' : '')
@@ -242,11 +244,15 @@
       var el = document.getElementById('scheduleTable');
       if (!el || !res.data.success) return;
       var payments = res.data.data.payments;
+      var loanInfo = res.data.data.loan || {};
+      var openNote = loanInfo.maturity_confirmed === 0
+        ? '<div class="mb-2 px-2 py-1 bg-orange-50 border border-orange-200 rounded text-xs text-orange-700">만기 미확인 — 이자만 12개월치를 표시합니다. 만기일을 입력하면 원금 상환 회차가 생성됩니다.</div>'
+        : '';
       if (payments.length === 0) {
-        el.innerHTML = '<p class="text-gray-400 text-sm">상환 스케줄이 없습니다. "스케줄 생성" 버튼을 클릭하세요.</p>';
+        el.innerHTML = openNote + '<p class="text-gray-400 text-sm">상환 스케줄이 없습니다. "스케줄 생성" 버튼을 클릭하세요.</p>';
         return;
       }
-      el.innerHTML = '<table class="w-full text-xs" style="table-layout:fixed"><colgroup><col style="width:40px"><col style="width:84px"><col><col><col><col style="width:48px"><col style="width:36px"></colgroup><thead><tr class="bg-gray-50"><th class="px-2 py-1">회차</th><th class="px-2 py-1">날짜</th><th class="px-2 py-1 text-right">원금</th><th class="px-2 py-1 text-right">이자</th><th class="px-2 py-1 text-right">합계</th><th class="px-2 py-1 text-center">상태</th><th class="px-2 py-1"></th></tr></thead><tbody>'
+      el.innerHTML = openNote + '<table class="w-full text-xs" style="table-layout:fixed"><colgroup><col style="width:40px"><col style="width:84px"><col><col><col><col style="width:48px"><col style="width:36px"></colgroup><thead><tr class="bg-gray-50"><th class="px-2 py-1">회차</th><th class="px-2 py-1">날짜</th><th class="px-2 py-1 text-right">원금</th><th class="px-2 py-1 text-right">이자</th><th class="px-2 py-1 text-right">합계</th><th class="px-2 py-1 text-center">상태</th><th class="px-2 py-1"></th></tr></thead><tbody>'
         + payments.map(function (p) {
           var statusBadge = p.status === 'PAID' ? '<span class="text-green-600">납부</span>'
             : p.status === 'OVERDUE' ? '<span class="text-red-600 font-bold">연체</span>'
@@ -263,7 +269,8 @@
     try {
       var res = await axios.post('/api/cash-flow/loans/' + selectedLoanId + '/generate-schedule');
       if (res.data.success) {
-        showToast(res.data.data.generated + '개 스케줄이 생성되었습니다.', 'success');
+        showToast(res.data.data.generated + '개 스케줄이 생성되었습니다.'
+          + (res.data.data.open_ended ? ' (만기 미확인 — 이자만)' : ''), 'success');
         loadLoanSchedule(selectedLoanId);
       }
     } catch (err) { showToast('스케줄 생성 실패: ' + (err.response?.data?.error || err.message), 'error'); }
