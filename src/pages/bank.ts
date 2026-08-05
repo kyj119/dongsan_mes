@@ -143,6 +143,36 @@ export const bankPageContent = `
               </table>
             </div>
           </div>
+
+          <!-- 미등록 반복 지출 후보 — 통장 반복 출금에서 고정비 누락을 찾는다 -->
+          <div class="flex items-center justify-between mb-2 mt-5">
+            <h2 class="text-sm font-semibold text-gray-700">미등록 반복 지출 <span id="fundRecurNote" class="text-xs font-normal text-gray-400"></span></h2>
+            <button onclick="loadRecurringCandidates()" class="text-xs text-gray-500 hover:text-blue-600 border border-gray-200 rounded px-2 py-1">
+              <i class="fas fa-rotate mr-1"></i>다시 탐지
+            </button>
+          </div>
+          <div class="ds-card overflow-hidden">
+            <div class="px-3 py-2 text-[11px] text-gray-500 border-b border-gray-100">
+              통장에서 <b>5개월 이상 반복</b>되는 출금 중 고정비·차입금으로 <b>등록되지 않은</b> 것. 상대명은 이체 채널·경유 은행 표기를 벗겨 묶는다.
+            </div>
+            <div class="overflow-x-auto" style="max-height: 42vh; min-height: 120px; overflow-y: auto;">
+              <table class="w-full border-collapse ds-table">
+                <thead>
+                  <tr class="bg-gray-50 border-b border-gray-200">
+                    <th class="col-name px-3 py-2 text-left text-[11px] font-medium text-gray-500 uppercase">상대</th>
+                    <th class="col-amount px-3 py-2 text-right text-[11px] font-medium text-gray-500 uppercase">월 평균</th>
+                    <th class="col-amount px-3 py-2 text-right text-[11px] font-medium text-gray-500 uppercase">최소~최대</th>
+                    <th class="col-status px-3 py-2 text-center text-[11px] font-medium text-gray-500 uppercase">개월</th>
+                    <th class="col-status px-3 py-2 text-center text-[11px] font-medium text-gray-500 uppercase">성격</th>
+                    <th class="col-name px-3 py-2 text-left text-[11px] font-medium text-gray-500 uppercase">통장 표기</th>
+                  </tr>
+                </thead>
+                <tbody id="fundRecurBody">
+                  <tr><td colspan="6" class="text-center py-8 text-gray-400">로딩 중...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
         <!-- Tab 1: 거래내역 매칭 -->

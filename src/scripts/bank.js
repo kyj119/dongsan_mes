@@ -1127,6 +1127,7 @@
       if (body) body.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-red-400">자금현황 로딩 실패</td></tr>';
     });
     loadFixedExpenseStatus();
+    loadRecurringCandidates();
   };
 
   function renderFundSummary(d) {
@@ -1188,6 +1189,48 @@
     }).catch(function() {
       if (body) body.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-red-400">고정비 현황 로딩 실패</td></tr>';
     });
+  }
+
+  // 미등록 반복 지출 탐지. 고정비를 사람이 기억해 등록하는 구조라 빠진 게 조용히 쌓인다
+  //   — 2026-08-05 실측으로 월 15,872,480(연 1.90억)이 미등록이었다.
+  window.loadRecurringCandidates = function () {
+    var body = document.getElementById('fundRecurBody');
+    if (!body) { console.warn('[bank] #fundRecurBody not found'); return; }
+    body.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>탐지 중...</td></tr>';
+    axios.get('/api/bank/recurring-candidates').then(function (r) {
+      var d = (r.data && r.data.data) || {};
+      var note = document.getElementById('fundRecurNote');
+      if (note) note.textContent = (d.items || []).length + '건 · ' + (d.min_months || 5) + '개월↑ · ' + fmtWon(d.min_amount || 0) + ' 이상';
+      renderRecurringCandidates(d.items || []);
+    }).catch(function () {
+      body.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-red-400">반복 지출 탐지 실패</td></tr>';
+    });
+  };
+
+  function renderRecurringCandidates(items) {
+    var body = document.getElementById('fundRecurBody');
+    if (!body) return;
+    if (!items.length) {
+      body.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-gray-400">미등록 반복 지출이 없습니다.</td></tr>';
+      return;
+    }
+    var html = '';
+    items.forEach(function (it) {
+      // 금액 편차가 크면 사용량 변동비(전기·수도)라 고정비가 아니라 변동비 트랙이다
+      var kind = it.variable
+        ? '<span class="status-badge badge-suggested">변동</span>'
+        : '<span class="status-badge badge-applied">정액</span>';
+      var alias = (it.aliases || []).join(' / ');
+      html += '<tr class="border-b border-gray-50">';
+      html += '<td class="px-3 py-2 font-medium text-gray-800">' + escHtml(it.key || '') + '</td>';
+      html += '<td class="px-3 py-2 text-right tabular-nums font-semibold text-gray-800">' + fmtWon(it.avg_amount) + '</td>';
+      html += '<td class="px-3 py-2 text-right tabular-nums text-xs text-gray-500">' + fmtWon(it.min_amount) + ' ~ ' + fmtWon(it.max_amount) + '</td>';
+      html += '<td class="px-3 py-2 text-center text-xs text-gray-500">' + (it.months || 0) + '</td>';
+      html += '<td class="px-3 py-2 text-center">' + kind + '</td>';
+      html += '<td class="px-3 py-2 text-xs text-gray-400" title="' + escHtml(alias) + '">' + escHtml(alias.length > 40 ? alias.slice(0, 40) + '…' : alias) + '</td>';
+      html += '</tr>';
+    });
+    body.innerHTML = html;
   }
 
   function renderFixedStatus(items) {
