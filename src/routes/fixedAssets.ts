@@ -291,8 +291,12 @@ fixedAssets.post('/depreciate', requireRole('ADMIN'), async (c) => {
         monthlyDepreciation = Math.round(bookValue * (2 / asset.useful_life_months))
       }
     } else {
-      // 정액법: (취득가 - 잔존) / 내용연수
-      monthlyDepreciation = Math.round((asset.acquisition_cost - salvage) / asset.useful_life_months)
+      // 정액법. 세무장부 상각률이 있으면 **취득가 × 율 ÷ 12** — 세법의 정액법 상각대상금액은
+      //   잔존가액을 빼지 않은 취득가 전액이다(비망 1,000 은 마지막에 아래 clamp 로만 남는다).
+      //   `(취득가 - 잔존) / 내용연수` 로 계산하면 세무장부와 월 몇 원씩 어긋난다.
+      monthlyDepreciation = (asset.depreciation_rate && asset.depreciation_rate > 0)
+        ? Math.round(asset.acquisition_cost * asset.depreciation_rate / 12)
+        : Math.round((asset.acquisition_cost - salvage) / asset.useful_life_months)
     }
 
     // 잔존가치 이하로 내려가지 않도록
