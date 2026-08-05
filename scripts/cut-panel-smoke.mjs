@@ -689,6 +689,15 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     ok('3s 나빠지면 채택하지 않는다', /alt\.unplaced\.length <= res\.unplaced\.length && a1 < a0/.test(panelSrc))
   }
 
+  // ★굽기용 임시 문서는 조각을 **격자**로 벌린다. 한 줄로만 늘어놓으면 1:1(원본 크기) 조각에서
+  //   총 폭이 일러 캔버스 한계(16383pt)를 넘고, 그 자리로 아트보드를 옮기는 순간
+  //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다(2026-08-05 실사용).
+  ok('3t 굽기 배치가 캔버스 한계를 지킨다',
+    /MESCUT_CANVAS_MAX_PT/.test(hostSrc) && /curX \+ cw > MESCUT_CANVAS_MAX_PT/.test(hostSrc))
+  ok('3t 조각이 한계를 넘으면 사유를 알린다', /캔버스 한계/.test(hostSrc))
+  // ★일괄 굽기가 막혀도 조각별 경로가 남아 있다 — 막다른 골목을 만들지 않는다
+  ok('3t 일괄 굽기 실패 시 조각별로 폴백', /일괄 굽기 실패 — 조각별로 다시 굽습니다/.test(panelSrc))
+
   // ★ExtendScript 폴더/파일 고르기는 정적과 인스턴스의 **이름이 다르다**.
   //   정적 = `Folder.selectDialog` / 인스턴스 = `folder.selectDlg`.
   //   `Folder.selectDlg(...)` 로 부르면 "함수가 아닙니다" 로 죽는데, 타입 검사도 문법 검사도 못 잡고

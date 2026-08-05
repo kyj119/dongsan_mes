@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.17.0';
+  var SHELL_VERSION = '0.17.1';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -731,6 +731,9 @@
       // ★칼선 반경(미세 px)은 **내림** — 칼선이 잉크 쪽으로 조금 더 붙어야 칼선끼리 간격이 부족해지지 않는다
       var cutFinePx = Math.floor(offsetMm / fineMmpp);
       var pieces = [], rawInkPx = 0, i = 0, softened = 0;
+      // 굽기 경로가 바뀐 사유 — 조용히 느려지거나 조용히 달라지지 않게 결과에 싣는다.
+      //   (makeCut 의 fallbackNote 는 **다른 함수의 지역 변수**다. 여기서 건드리면 안 된다)
+      var bakeNote = '';
       // 미세 마스크 보관 예산 — 조각이 크고 많으면 메모리를 다 먹는다. 넘치면 그 조각만
       // 거친 마스크로 칼선을 뽑는다(정확도만 조금 떨어지고 결과는 나온다).
       var fineBudget = FINE_MASK_BUDGET_PX;
@@ -740,6 +743,7 @@
           n: n, pieces: pieces, rawInkPx: rawInkPx, mmpp: rez.mmPerPx,
           rPx: rez.rPx, exact: rez.exact, sub: sub, fineMmpp: fineMmpp, softened: softened, safetyMm: rez.safetyMm,
           offsetMm: offsetMm, cutFinePx: cutFinePx, fillNote: fv.note, lineArt: fv.lineArt, fill: fv.fill,
+          bakeNote: bakeNote,
         });
       }
 
@@ -784,7 +788,15 @@
       function bakeAll() {
         out('조각 ' + n + '개 굽는 중...');
         host('mesCut_nestBakeAll(' + fineMmpp + ',' + padMm + ',' + (fv.fill ? 'true' : 'false') + ')', function (rz, badB) {
-          if (badB || rz.indexOf('ok;') !== 0) { fail('일괄 굽기 실패: ' + rz); return; }
+          if (badB || rz.indexOf('ok;') !== 0) {
+            // ★포기하지 않는다 — 조각당 임시 문서를 쓰는 구 경로가 있다(조각당 4초지만 동작한다).
+            //   일괄 굽기는 조각을 한 문서에 모으므로 큰 조각·많은 조각에서 캔버스 한계에 걸릴 수 있다.
+            //   여기서 중단하면 사용자는 원인도 대안도 없이 막힌다 → 느린 길로라도 끝까지 간다.
+            out('일괄 굽기 실패 — 조각별로 다시 굽습니다(느립니다)...');
+            bakeNote = '\n※ 일괄 굽기가 실패해 조각별로 구웠습니다(느린 경로): ' + String(rz).replace(/^ERROR\s*/, '');
+            i = 0; next();
+            return;
+          }
           var rows = String(rz).split(/[\r\n]+/), list = [];
           for (var r = 1; r < rows.length; r++) {
             var t = rows[r].split(' ');
@@ -1125,7 +1137,7 @@
               + ' + 안전 ' + (2 * (prep.safetyMm || 0)).toFixed(2) + ') · 배치 ' + mmpp.toFixed(3) + 'mm/px'
               + (prep.sub > 1 ? (' · 굽기 ' + prep.fineMmpp.toFixed(3) + 'mm/px') : '')
               + (prep.softened ? ('\n※ 반투명 조각 ' + prep.softened + '개는 경계를 느슨하게 잡았습니다.') : '')
-              + (prep.fillNote || '')
+              + (prep.fillNote || '') + (prep.bakeNote || '')
               + (prep.exact ? '' : ' ⚠ 해상도 한계로 올림 적용')
               + (allowRot ? ' · 회전 허용' : '')
               + '\n돔보 ' + (a.dombo || 0) + '판 — 별도 레이어(인쇄 ON) · 재단선 레이어는 인쇄 OFF'

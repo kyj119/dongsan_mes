@@ -68,8 +68,12 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.11.1';
+var MESCUT_VERSION = 'CUT-CEP-0.11.2';
 var MESCUT_PT_PER_MM = 72 / 25.4;
+// ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
+//   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
+//   굽기용 임시 문서에서 조각을 **가로 한 줄로만** 벌리다가 1:1(원본 크기) 조각에서 실제로 터졌다(2026-08-05).
+var MESCUT_CANVAS_MAX_PT = 16000;   // 여유를 둔 실사용 상한
 
 // ── 크로스 패널 잠금 (spec §5.2-① · P0 핵심) ────────────────────────
 // 왜: A0 의 잠금(setHostBusy)은 **패널 내부 JS 상태**라 다른 패널을 모른다. 패널이 둘이 되면
@@ -1900,16 +1904,38 @@ function mesCut_nestBakeAll(mmPerPx, padMm, fillClosed, tag) {
     var tmp = null, nFill = 0;
     var lines = [];
     try {
-        // 캔버스는 넉넉히 — 조각을 가로로 벌려 놓을 것이라 폭이 커야 한다
-        var totW = 0, maxH = 0;
+        // ★조각을 **격자**로 벌린다. 가로 한 줄로만 늘어놓으면 1:1(원본 크기) 조각에서 총 폭이
+        //   일러 캔버스 한계를 넘어 아트보드 이동이 'AOoC' 로 죽는다(2026-08-05 실사용).
+        //   행 폭이 한계에 닿으면 다음 줄로 내린다 — 굽기는 아트보드를 옮겨 다니므로 줄이 나뉘어도 무관하다.
+        var cellW = [], cellH = [];
         for (i = 0; i < n; i++) {
-            if (!srcBB[i]) continue;
-            totW += (srcBB[i][2] - srcBB[i][0]) + padPt * 2 + 20 * PT;
-            var hh = (srcBB[i][1] - srcBB[i][3]) + padPt * 2;
-            if (hh > maxH) maxH = hh;
+            if (!srcBB[i]) { cellW.push(0); cellH.push(0); continue; }
+            cellW.push((srcBB[i][2] - srcBB[i][0]) + padPt * 2 + 20 * PT);
+            cellH.push((srcBB[i][1] - srcBB[i][3]) + padPt * 2 + 20 * PT);
+            // 조각 하나가 혼자 한계를 넘으면 어떻게 배치해도 못 굽는다 → 원인을 정확히 알린다
+            if (cellW[i] > MESCUT_CANVAS_MAX_PT || cellH[i] > MESCUT_CANVAS_MAX_PT) {
+                return 'ERROR 조각 ' + i + ' 가 일러 캔버스 한계('
+                    + Math.round(MESCUT_CANVAS_MAX_PT / PT) + 'mm)를 넘습니다 — 배율을 줄이거나 조각을 나누세요';
+            }
         }
-        if (totW <= 0 || maxH <= 0) return 'ERROR 크기 0';
-        tmp = app.documents.add(DocumentColorSpace.CMYK, totW, maxH);
+        var totW = 0, totH = 0, rowW = 0, rowH = 0;
+        for (i = 0; i < n; i++) {
+            if (!cellW[i]) continue;
+            if (rowW > 0 && rowW + cellW[i] > MESCUT_CANVAS_MAX_PT) {
+                if (rowW > totW) totW = rowW;
+                totH += rowH; rowW = 0; rowH = 0;
+            }
+            rowW += cellW[i];
+            if (cellH[i] > rowH) rowH = cellH[i];
+        }
+        if (rowW > totW) totW = rowW;
+        totH += rowH;
+        if (totW <= 0 || totH <= 0) return 'ERROR 크기 0';
+        if (totH > MESCUT_CANVAS_MAX_PT) {
+            return 'ERROR 조각이 너무 많거나 커서 한 문서에 못 담습니다(필요 '
+                + Math.round(totH / PT) + 'mm > 한계 ' + Math.round(MESCUT_CANVAS_MAX_PT / PT) + 'mm)';
+        }
+        tmp = app.documents.add(DocumentColorSpace.CMYK, totW, totH);
         var lay = tmp.layers[0];
 
         app.activeDocument = srcDoc;                 // ★전환 1 — 복제는 원본이 active 일 때만 동작한다
@@ -1922,18 +1948,23 @@ function mesCut_nestBakeAll(mmPerPx, padMm, fillClosed, tag) {
         app.activeDocument = tmp;                    // ★전환 2 — 이후로는 임시 문서 안에서만 논다
         if (fillClosed) nFill = mesCut_fillClosedIn(tmp);
 
-        // ② 가로로 벌려 놓는다 — 서로 캔버스에 들어오지 않게
-        var cursor = 0;
+        // ② 격자로 벌려 놓는다 — 서로 캔버스에 들어오지 않게 하되, 한 줄이 한계에 닿으면 다음 줄로.
+        //    y 는 아래로 내려가므로 감소시킨다(일러는 y-up).
+        var curX = 0, curY = 0, rowMax = 0;
         var boxes = [];
         for (i = 0; i < n; i++) {
             if (!copies[i]) { boxes.push(null); continue; }
             var b = mesCut_inkBounds(copies[i]);
             if (!b) { boxes.push(null); continue; }
-            var dx = cursor - b[0], dy = -b[1];
+            var cw = (b[2] - b[0]) + padPt * 2 + 20 * PT;
+            var ch = (b[1] - b[3]) + padPt * 2 + 20 * PT;
+            if (curX > 0 && curX + cw > MESCUT_CANVAS_MAX_PT) { curX = 0; curY -= rowMax; rowMax = 0; }
+            var dx = curX - b[0], dy = curY - b[1];
             try { copies[i].translate(dx, dy); } catch (eT) {}
             var nb = mesCut_inkBounds(copies[i]) || [b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy];
             boxes.push(nb);
-            cursor = nb[2] + padPt * 2 + 20 * PT;
+            curX += cw;
+            if (ch > rowMax) rowMax = ch;
         }
 
         // ③ 아트보드만 옮기며 굽는다 — 남는 비용은 export 뿐이다
