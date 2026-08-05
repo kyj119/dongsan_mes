@@ -271,11 +271,25 @@ departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
     //   필터 없이는 선명(월 12,681,300)이 동산기획(월 3,471,250) 부문 손익의 공통비 풀에
     //   통째로 얹혀 배부된다(반대 방향도 마찬가지). 2026-08-04 실측·수정.
     const efFix = entityFilter(c)
-    const fixedRow = await c.env.DB.prepare(
-      `SELECT COALESCE(SUM(amount),0) AS total FROM fixed_expenses
+    const { results: fixedRows } = await c.env.DB.prepare(
+      `SELECT amount, start_date, end_date FROM fixed_expenses
        WHERE frequency='MONTHLY' AND start_date <= ? AND (end_date IS NULL OR end_date >= ?)${efFix.clause}`
-    ).bind(to, from, ...efFix.params).first<{ total: number }>().catch(() => ({ total: 0 }))
-    const fixedCommon = num(fixedRow?.total) * months
+    ).bind(to, from, ...efFix.params).all<{ amount: number; start_date: string; end_date: string | null }>()
+      .catch(() => ({ results: [] as { amount: number; start_date: string; end_date: string | null }[] }))
+    // 기간에 **일부만 걸친** 고정비를 전 기간으로 곱하면 안 된다 — 월별 중첩만 더한다.
+    //   종전 `SUM(amount) * months` 는 위 WHERE 가 기간중첩(하루라도 겹치면 통과)이라
+    //   8월에 시작한 고정비가 1~7월에도 계상됐다(2026-08-05 실측: 월 15,872,480 이 8배로 잡힘).
+    let fixedCommon = 0
+    for (let cur = from.slice(0, 7); cur <= to.slice(0, 7);) {
+      const mStart = `${cur}-01`
+      const [cy, cm] = cur.split('-').map(Number)
+      const mEnd = `${cur}-${String(new Date(Date.UTC(cy, cm, 0)).getUTCDate()).padStart(2, '0')}`
+      for (const r of fixedRows || []) {
+        if (r.start_date <= mEnd && (!r.end_date || r.end_date >= mStart)) fixedCommon += num(r.amount)
+      }
+      const nx = new Date(Date.UTC(cy, cm, 1))
+      cur = `${nx.getUTCFullYear()}-${String(nx.getUTCMonth() + 1).padStart(2, '0')}`
+    }
 
     const basis = ['revenue', 'headcount', 'labor'].includes(c.req.query('basis') || '') ? (c.req.query('basis') as string) : 'revenue'
     const nameById = new Map<number, string>(); for (const d of depts || []) nameById.set(d.id, d.name)
