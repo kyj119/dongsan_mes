@@ -985,7 +985,9 @@ async function accDeletePayment(id, clientName) {
 
 // ===== 고정자산 (fixed_assets) =====
 // 백엔드는 이미 완비(routes/fixedAssets.ts) — 등록·감가상각·처분·요약. 화면만 없던 것을 붙인다.
-var FA_CAT_LABEL = { EQUIPMENT: '기계장치', VEHICLE: '차량운반구', FURNITURE: '비품', IT: '전산장비', OTHER: '기타' };
+// 세무장부 계정과목과 1:1 — STRUCTURE=204 구축물, FACILITY=221 시설장치.
+//   OTHER 로 뭉치면 둘을 구분 못 해 세무장부 대사가 안 된다.
+var FA_CAT_LABEL = { EQUIPMENT: '기계장치', VEHICLE: '차량운반구', STRUCTURE: '구축물', FACILITY: '시설장치', FURNITURE: '비품', IT: '전산장비', OTHER: '기타' };
 var FA_ST = {
   IN_USE: { t: '사용중', c: 'bg-green-50 text-green-700' },
   IDLE: { t: '유휴', c: 'bg-gray-100 text-gray-600' },

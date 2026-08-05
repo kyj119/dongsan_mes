@@ -69,6 +69,8 @@ export function accountingPage(c: Context<HonoEnv>) {
               <option value="">전체 분류</option>
               <option value="EQUIPMENT">기계장치</option>
               <option value="VEHICLE">차량운반구</option>
+              <option value="STRUCTURE">구축물</option>
+              <option value="FACILITY">시설장치</option>
               <option value="FURNITURE">비품</option>
               <option value="IT">전산장비</option>
               <option value="OTHER">기타</option>
@@ -133,6 +135,8 @@ export function accountingPage(c: Context<HonoEnv>) {
               <select id="faFCategory" class="ds-input w-full">
                 <option value="EQUIPMENT">기계장치</option>
                 <option value="VEHICLE">차량운반구</option>
+                <option value="STRUCTURE">구축물</option>
+                <option value="FACILITY">시설장치</option>
                 <option value="FURNITURE">비품</option>
                 <option value="IT">전산장비</option>
                 <option value="OTHER">기타</option>
