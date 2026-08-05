@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-08-04T23:20:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-08-05T00:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,25 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **8** (#585·#586·#587·#589·#590·#591·#592·#593, GitHub OPEN 실측 — Area1 57회차, 변동 없음) |
+| 🆕 new | **10** (#585·#586·#587·#589·#590·#591·#592·#593·#594·#595, GitHub OPEN 실측 — Area2 58회차, +2) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **511** (`reason:completed` 절대값 — Area1 57회차 재조회, 변동 없음) |
+| ✔️ done | **511** (`reason:completed` 절대값 — Area2 58회차 재조회, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-08-05T00:10):**
+> - **방법**: `git fetch origin main`(HEAD `ab509fc` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 2 **58회차** — 직전 Area2(`9f59a8a`, 08-03T21:31, 57회차) 이후 `git log 9f59a8a..HEAD -- src/routes src/scripts migrations index.tsx src/layout`는 **6커밋** — `ee0faa7`/`19e8a34`(Area6 55회차가 이미 검토, 재대상 아님) + **신규 자산 감가상각 확장 4커밋**(`053069e`·`46693ab`·`f1c85a3`·`1fd0d2e`, Area1 57회차 로그가 "다음 Area 2/4/6 심층 검토 대상"으로 명시 위임)만 코드품질 렌즈로 신선.
+> - **`src/routes/fixedAssets.ts` 전문 정독 + 4커밋 diff 대조**로 entity_id 오귀속 2건 발견·이슈화:
+>   - **#594(HIGH)**: `POST /depreciate`(월별 감가상각 배치, requireRole ADMIN)가 ADMIN 전체모드(entityId=0)에서 실행되면 `eid = getEntityId(c) || 1`로 세션을 1(동산기획)에 고정한 채 **전 법인 자산을 처리**(`entityFilter(c)` 빈 절 → 전체 조회) → 타법인(entity_id=2 등) 자산의 신규 `depreciation_records`가 `entity_id=1`로 오기록되고, 기존 누계 조회(`WHERE entity_id=eid`)도 타법인 이력을 못 찾아 `accumulated_depreciation`이 과소계상 재시작 — 다법인 원장 오염. SKILL #487(entity 오기록 3번째 축) 클래스와 동일 패턴이나, 수정이 쿼리 3개+INSERT 1개를 `asset.entity_id` 기준으로 재구성해야 해 자동수정 대상 제외(재무 write-path).
+>   - **#595(MEDIUM)**: 같은 파일 `POST /`(자산 생성)가 (a) `entity_id` 컬럼에 `getEntityId(c)`를 그대로 바인딩 — 전체모드 생성 시 `NOT NULL DEFAULT 1`을 명시값 `0`이 덮어써 0-sentinel 저장(같은 파일 `/depreciate`:131은 이미 `\|\| 1`로 회피, 생성만 형제 누락) (b) `loan_id`를 검증 없이 바로 INSERT — 형제 `PATCH /:id/loan`(:99-104)은 "대출도 같은 법인 것만" 명시 주석과 함께 교차법인 차단을 하는데, 생성 시점(`accounting.js` `faFLoan` select로 loan_id를 실어 보내는 정상 경로)에는 그 가드가 없어 자산-대출 교차연결이 그대로 가능. 둘 다 재무 데이터 write-path라 자동수정 제외, 30분~1시간 공수로 이슈 등록.
+> - **`departments.ts`(1fd0d2e) 재확인**: 부문별 P&L의 `fixed_expenses` 공통비 풀에 `entityFilter(c)` 추가 — owner가 이미 sibling-omission(#521 인건비만 격리, 고정비 누락)을 직접 발견·수정한 클린 패치, 회귀 없음(clause/binds 정합 확인).
+> - **`cashFlow.ts`/`accounting.ts`(46693ab) 나머지 diff**: `loans` 목록의 `linked_assets`/`linked_book_value` 역참조 서브쿼리는 `fa.loan_id = l.id`로 이미 entity-scoped된 `loans` 행에 종속되어 안전(단 #595의 loan_id 교차연결이 방치되면 이 집계에 타법인 자산이 새어듦 — #595에 이미 반영). 프론트 폼 필드 추가만, 신규 sink 없음.
+> - **`migrations/0513`·`0514`**: `ALTER TABLE fixed_assets ADD COLUMN loan_id/depreciation_rate`(REFERENCES loans(id), nullable) — NOT NULL 갭·컬럼존재성 이상 없음, INSERT/SELECT 컬럼셋과 positional 일치 확인.
+> - **open≠unfixed 재확인**: 기존 8건 OPEN 이슈의 대상 파일(`orderForm/parent.js`·`messagesAd.js`·`orders/core.ts`·`migrations/0508~0512`)이 이번 6커밋과 안 겹침 → 직전 사이클 verified-once 캐시 신뢰, 재검증 스킵.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **10**(기존 8 + 신규 #594·#595) · `reason:completed` **511**(변동없음) · rejected **6**(변동없음). 신규 2건만 반영, 드리프트 0.
+> - **🧬 SKILL 강화**: 없음 — 이번 발견은 기존 codify된 #487(entity 오기록 3번째 축) 클래스의 새 실례(신규 기능에서 재발), 새 탐지 규칙 불요.
+> - 신규 이슈 2건(#594·#595, 둘 다 issue-only), 자동수정 0건(둘 다 재무 write-path 다중쿼리 변경이라 정책상 제외), done-sync: new 10(+2)·done 511(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-08-04T23:20):**
 > - **방법**: `git fetch origin main`(force-updated, HEAD `069a39f` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. `SMOKE_URL=https://webapp-9i0.pages.dev npm run smoke` → 로그인 단계에서 `403 Host not in allowlist` — 프록시가 이번 세션도 prod 호스트 직접 접근 차단(기존 인지된 egress 제약 재확인, 변동 없음), GitHub Actions 기록으로 대체. Area 1 **57회차** — 직전 Area1(`c21a63a`, 08-03T15:26, 56회차) 이후 `git log c21a63a..HEAD -- src/routes src/scripts migrations index.tsx src/layout src/pages`는 **6커밋**(회계 고정자산 감가상각 확장 4건[`053069e`·`46693ab`·`f1c85a3`·`1fd0d2e`, G1 자산-대출 연결·세무상 정률법 정합화+법인 33건 등록·부문별 손익 fixed_expenses entity 격리] + Area6 55회차가 이미 검토한 `ee0faa7`·`19e8a34`) — 나머지 30여 커밋은 IA cut-panel CEP 벡터(`IllustratorAutomat/designer/**`, bleed 엔진)·SmartA(WEHAGO) 매입원장 수동대사(`docs/dongsan-import/**`)·auto-improve 사이클 로그로 웹 SPA/DB 스키마 밖.
