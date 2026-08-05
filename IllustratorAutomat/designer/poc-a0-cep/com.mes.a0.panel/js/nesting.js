@@ -62,6 +62,80 @@
 
   function inkOf(p) { var n = 0; for (var i = 0; i < p.m.length; i++) n += p.m[i]; return n }
 
+  // ── ★비트마스크 (2026-08-05) ──────────────────────────────────────
+  // 겹침 검사가 전체 시간의 대부분이었다. 픽셀을 하나씩 비교하는 대신 **행을 32비트씩 AND** 한다.
+  //   문헌(BLF 계열)이 "적절한 자료구조면 수 ms"라고 하는 그 자료구조다.
+  // ⚠️ 결과는 **완전히 동일**하다 — 같은 판정을 다른 표현으로 할 뿐이다.
+  //    그래서 공개 `fits`(픽셀 버전)는 그대로 남긴다: 하네스가 **독립 구현으로** 배치를 검증한다.
+  //    둘이 어긋나면 그건 이 최적화의 버그이므로, 이중 구현이 오히려 안전장치다.
+
+  function popcnt(v) {
+    v = v - ((v >>> 1) & 0x55555555)
+    v = (v & 0x33333333) + ((v >>> 2) & 0x33333333)
+    return (((v + (v >>> 4)) & 0x0F0F0F0F) * 0x01010101) >>> 24
+  }
+
+  /** 마스크를 행별 32비트 워드로 팩. `lastY` = 열마다 가장 아래 잉크(스카이라인 갱신용, O(W)로 줄인다). */
+  function packMask(p) {
+    var words = (p.W + 31) >>> 5
+    var bits = new Uint32Array(words * p.H)
+    var lastY = new Int32Array(p.W)
+    for (var x = 0; x < p.W; x++) lastY[x] = -1
+    for (var y = 0; y < p.H; y++) {
+      var row = y * p.W, brow = y * words
+      for (var x2 = 0; x2 < p.W; x2++) {
+        if (!p.m[row + x2]) continue
+        bits[brow + (x2 >>> 5)] |= (1 << (x2 & 31))
+        lastY[x2] = y            // y 오름차순이라 마지막에 남는 값이 최하단이다
+      }
+    }
+    return { W: p.W, H: p.H, m: p.m, words: words, bits: bits, lastY: lastY }
+  }
+
+  // 조각이 임의 x 에 놓이므로 워드 경계를 걸친다 → bitOff 만큼 시프트해 두 워드에 나눠 본다.
+  //   범위를 넘는 인덱스는 TypedArray 가 undefined 를 주고 `undefined & n === 0` 이라 자연히 안전하다.
+  function fitsBits(bits, SWW, p, ox, oy) {
+    var bitOff = ox & 31, wordOff = ox >>> 5, pw = p.words
+    for (var y = 0; y < p.H; y++) {
+      var srow = (oy + y) * SWW + wordOff, prow = y * pw
+      for (var w = 0; w < pw; w++) {
+        var v = p.bits[prow + w]
+        if (!v) continue
+        if (bits[srow + w] & (v << bitOff)) return false
+        if (bitOff && (bits[srow + w + 1] & (v >>> (32 - bitOff)))) return false
+      }
+    }
+    return true
+  }
+
+  function stampBits(bits, SWW, p, ox, oy) {
+    var bitOff = ox & 31, wordOff = ox >>> 5, pw = p.words
+    for (var y = 0; y < p.H; y++) {
+      var srow = (oy + y) * SWW + wordOff, prow = y * pw
+      for (var w = 0; w < pw; w++) {
+        var v = p.bits[prow + w]
+        if (!v) continue
+        bits[srow + w] |= (v << bitOff)
+        if (bitOff) bits[srow + w + 1] |= (v >>> (32 - bitOff))
+      }
+    }
+  }
+
+  /**
+   * 회전·트림·팩 결과 캐시.
+   * 같은 (조각, 회전)을 **투입 순서마다 다시** 만들고 있었다 — 순서 8종 × 2패스면 16번씩이다.
+   * 회전 결과는 순서·격자와 무관하므로 한 번만 만들면 된다.
+   */
+  function getCand(cache, src, rot) {
+    var byRot = cache.get(src)
+    if (!byRot) { byRot = {}; cache.set(src, byRot) }
+    if (rot in byRot) return byRot[rot]
+    var t = trim(rotate(src, rot))
+    var packed = t.W ? packMask(t) : null
+    byRot[rot] = packed
+    return packed
+  }
+
   /**
    * 시트에 조각을 놓을 수 있는가 (픽셀 AND).
    * 조각 마스크는 이미 gap/2 만큼 팽창돼 있다고 가정한다 → 겹치지 않으면 gap 이 보장된다.
@@ -78,12 +152,6 @@
     return true
   }
 
-  function stamp(sheet, SW, p, ox, oy) {
-    for (var y = 0; y < p.H; y++) {
-      var row = (oy + y) * SW + ox, prow = y * p.W
-      for (var x = 0; x < p.W; x++) if (p.m[prow + x]) sheet[row + x] = 1
-    }
-  }
 
   /**
    * bottom-left 배치. **스카이라인으로 후보를 줄인다** — 전 픽셀 스캔은 큰 시트에서 못 쓴다.
@@ -99,23 +167,22 @@
    *
    * 유일한 최적화 = `minSky` 아래는 건너뛴다(모든 열이 그보다 높으면 그 위로만 놓인다).
    */
-  function placeOne(sheet, SW, SH, sky, p, step) {
+  function placeOne(bits, SWW, SW, SH, sky, p, step) {
     var minSky = Infinity
     for (var k = 0; k < SW; k++) if (sky[k] < minSky) minSky = sky[k]
     var y0 = Math.max(0, Math.floor((minSky - p.H) / step) * step)
     for (var y = y0; y + p.H <= SH; y += step) {
       for (var x = 0; x + p.W <= SW; x += step) {
-        if (fits(sheet, SW, SH, p, x, y)) return { x: x, y: y, top: y + p.H }
+        if (fitsBits(bits, SWW, p, x, y)) return { x: x, y: y, top: y + p.H }
       }
     }
     return null
   }
 
   function updateSky(sky, p, ox, oy) {
+    // 열별 최하단 잉크는 팩할 때 이미 구해 뒀다(`lastY`) — 여기서 매번 훑던 O(W·H) 가 O(W) 가 된다.
     for (var x = 0; x < p.W; x++) {
-      // 이 열에서 조각의 가장 아래(=큰 y) 잉크
-      var last = -1
-      for (var y = p.H - 1; y >= 0; y--) { if (p.m[y * p.W + x]) { last = y; break } }
+      var last = p.lastY[x]
       if (last < 0) continue
       var top = oy + last + 1
       if (top > sky[ox + x]) sky[ox + x] = top
@@ -149,16 +216,18 @@
     // ★2단계: ①성근 격자로 여러 투입 순서를 훑고 ②이긴 순서만 촘촘한 격자로 다시 돈다.
     //   step 이 품질을 좌우하는데(벤치마크 평균격차 step3 18.0 → step1 16.4%p) 전부 촘촘히 돌면
     //   느리다. 순서 선택은 성글어도 대체로 같은 결론이 나오므로 마무리에만 정밀도를 쓴다.
+    // ★회전·트림·팩 캐시를 **전 순서가 공유**한다 — 순서마다 다시 만들 이유가 없다(격자와도 무관).
+    var cache = new Map()
     var cands = buildOrders(pieces, tries)
     var best = null, bestScore = Infinity, bestOrder = null
     for (var i = 0; i < cands.length; i++) {
-      var r = nestOnce(cands[i], withStep(opts, coarse))
+      var r = nestOnce(cands[i], withStep(opts, coarse), cache)
       var s = scoreOf(r)
       if (s < bestScore) { bestScore = s; best = r; bestOrder = cands[i] }
     }
     var fine = Math.max(1, coarse >> 1)
     if (fine < coarse && bestOrder) {
-      var r2 = nestOnce(bestOrder, withStep(opts, fine))
+      var r2 = nestOnce(bestOrder, withStep(opts, fine), cache)
       if (scoreOf(r2) < bestScore) best = r2
     }
     return best
@@ -202,20 +271,22 @@
     return r.unplaced.length * 1e9 + r.sheets.length * 1e6 + used
   }
 
-  function nestOnce(order, opts) {
+  function nestOnce(order, opts, cache) {
     var SW = opts.sheetW
     var roll = !opts.sheetH
     var SH = roll ? (opts.rollMaxH || 100000) : opts.sheetH
     var step = opts.step || 4
     var rots = opts.rotations || [0]
     var maxSheets = opts.maxSheets || (roll ? 1 : 50)
+    var SWW = (SW + 31) >>> 5            // 행당 32비트 워드 수 — 시트 메모리도 1/8 이 된다
+    if (!cache) cache = new Map()        // 단독 호출(하네스 등)에서도 동작해야 한다
 
     var sheets = []
     var unplaced = []
     var remain = order.slice()
 
     while (remain.length && sheets.length < maxSheets) {
-      var sheet = new Uint8Array(SW * SH)
+      var bits = new Uint32Array(SWW * SH)
       var sky = new Int32Array(SW)
       var placements = []
       var next = []
@@ -225,9 +296,9 @@
         var src = remain[i]
         var best = null
         for (var r = 0; r < rots.length; r++) {
-          var cand = trim(rotate(src, rots[r]))
-          if (!cand.W || cand.W > SW || cand.H > SH) continue
-          var pos = placeOne(sheet, SW, SH, sky, cand, step)
+          var cand = getCand(cache, src, rots[r])
+          if (!cand || cand.W > SW || cand.H > SH) continue
+          var pos = placeOne(bits, SWW, SW, SH, sky, cand, step)
           if (!pos) continue
           // 회전 후보들 사이에서도 같은 기준(최고점 최소)으로 고른다
           if (!best || pos.top < best.pos.top || (pos.top === best.pos.top && pos.x < best.pos.x)) {
@@ -235,7 +306,7 @@
           }
         }
         if (!best) { next.push(src); continue }
-        stamp(sheet, SW, best.piece, best.pos.x, best.pos.y)
+        stampBits(bits, SWW, best.piece, best.pos.x, best.pos.y)
         updateSky(sky, best.piece, best.pos.x, best.pos.y)
         placements.push({
           id: src.id, x: best.pos.x, y: best.pos.y, rot: best.rot,
@@ -246,7 +317,7 @@
 
       if (!placements.length) { unplaced = remain.slice(); break }   // 아무것도 못 놓으면 무한루프 방지
       var inkPx = 0
-      for (var s = 0; s < sheet.length; s++) inkPx += sheet[s]
+      for (var s = 0; s < bits.length; s++) { var bv = bits[s]; if (bv) inkPx += popcnt(bv) }
       sheets.push({ placements: placements, usedH: usedH, inkPx: inkPx })
       remain = next
     }
