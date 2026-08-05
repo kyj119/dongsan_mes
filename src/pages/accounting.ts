@@ -80,6 +80,9 @@ export function accountingPage(c: Context<HonoEnv>) {
               <option value="DISPOSED">처분</option>
               <option value="SOLD">매각</option>
             </select>
+            <label class="flex items-center gap-1 text-xs text-gray-600 cursor-pointer" title="장부가가 잔존가액(비망가액)까지 내려간 자산을 숨깁니다. 세무장부는 신고 목적상 끝까지 보유하지만 관리회계에서는 손익 기여가 0입니다.">
+              <input type="checkbox" id="faDepreciating" checked onchange="faLoad()"> 상각 진행중만
+            </label>
             <button onclick="faOpenForm()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-plus mr-1"></i>자산 등록</button>
             <div class="flex items-center gap-1 ml-auto">
               <span class="text-xs text-gray-400">감가상각</span>
@@ -103,13 +106,14 @@ export function accountingPage(c: Context<HonoEnv>) {
                   <th class="col-money">취득가</th>
                   <th class="col-money">장부가</th>
                   <th class="col-money">누적상각</th>
-                  <th class="col-num">내용연수</th>
+                  <th class="col-money">월 상각</th>
+                  <th>부문</th>
                   <th>연결 부채</th>
                   <th class="col-badge">상태</th>
                   <th class="col-actions">관리</th>
                 </tr>
               </thead>
-              <tbody id="faTbody"><tr><td colspan="11" class="text-center text-gray-400 py-6">불러오는 중...</td></tr></tbody>
+              <tbody id="faTbody"><tr><td colspan="12" class="text-center text-gray-400 py-6">불러오는 중...</td></tr></tbody>
             </table>
           </div>
         </div>

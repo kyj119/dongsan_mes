@@ -1036,6 +1036,40 @@ function faLoanCell(a) {
   return sel + sub;
 }
 
+// G3 배부 기준 — 자산에 부문을 직접 붙인다(장비 경유 불가: 세무장부 자산명이 묶음 단위)
+var faDeptsCache = null;
+function faEnsureDepts() {
+  if (faDeptsCache) return Promise.resolve(faDeptsCache);
+  return axios.get('/api/departments').then(function (r) {
+    var d = (r.data && r.data.data) || [];
+    faDeptsCache = Array.isArray(d) ? d : (d.rows || []);
+    return faDeptsCache;
+  }).catch(function (e) {
+    console.warn('[accounting] 부문 목록 로드 실패 — 부문 지정 UI 비활성', e);
+    faDeptsCache = [];
+    return faDeptsCache;
+  });
+}
+
+function faDeptCell(a) {
+  if (a.status === 'DISPOSED' || a.status === 'SOLD') return a.department_name ? escapeHtml(a.department_name) : '-';
+  var opts = '<option value="">(공통배부)</option>';
+  (faDeptsCache || []).forEach(function (d) {
+    opts += '<option value="' + d.id + '"' + (Number(a.department_id) === Number(d.id) ? ' selected' : '') + '>'
+      + escapeHtml(d.name) + '</option>';
+  });
+  return '<select class="ds-input" style="font-size:11px;width:100%;max-width:130px" onchange="faSetDept(' + a.id + ', this.value)">' + opts + '</select>';
+}
+
+function faSetDept(id, deptId) {
+  axios.patch('/api/fixed-assets/' + id + '/department', { department_id: deptId || null })
+    .then(function () { faLoad(); })
+    .catch(function (e) {
+      alert('부문 지정 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message));
+      faLoad();
+    });
+}
+
 function faLinkLoan(id, loanId) {
   axios.patch('/api/fixed-assets/' + id + '/loan', { loan_id: loanId || null })
     .then(function () { faLoad(); })
@@ -1050,18 +1084,20 @@ function faLoad() {
   if (!tb) { console.warn('[accounting] #faTbody not found'); return; }
   var cat = (document.getElementById('faCategory') || {}).value || '';
   var st = (document.getElementById('faStatus') || {}).value || '';
+  var dep = document.getElementById('faDepreciating');
   var qs = [];
   if (cat) qs.push('category=' + encodeURIComponent(cat));
   if (st) qs.push('status=' + encodeURIComponent(st));
-  tb.innerHTML = '<tr><td colspan="11" class="text-center text-gray-400 py-6">불러오는 중...</td></tr>';
+  if (!dep || dep.checked) qs.push('depreciating=1');
+  tb.innerHTML = '<tr><td colspan="12" class="text-center text-gray-400 py-6">불러오는 중...</td></tr>';
 
-  // 대출 목록이 먼저 있어야 '연결 부채' 셀의 select 가 현재값을 선택된 상태로 그린다
-  faEnsureLoans().then(function () {
+  // 대출·부문 목록이 먼저 있어야 각 셀의 select 가 현재값을 선택된 상태로 그린다
+  Promise.all([faEnsureLoans(), faEnsureDepts()]).then(function () {
   axios.get('/api/fixed-assets' + (qs.length ? '?' + qs.join('&') : '')).then(function (r) {
     var rows = (r.data && r.data.data) || [];
     accState.loaded.asset = true;
     if (!rows.length) {
-      tb.innerHTML = '<tr><td colspan="11" class="text-center text-gray-400 py-6">등록된 고정자산이 없습니다.</td></tr>';
+      tb.innerHTML = '<tr><td colspan="12" class="text-center text-gray-400 py-6">등록된 고정자산이 없습니다.</td></tr>';
     } else {
       tb.innerHTML = rows.map(function (a) {
         var acq = Number(a.acquisition_cost) || 0;
@@ -1077,7 +1113,10 @@ function faLoad() {
           + '<td class="text-right tabular-nums">' + faNum(acq) + '</td>'
           + '<td class="text-right tabular-nums font-semibold">' + faNum(bv) + '</td>'
           + '<td class="text-right tabular-nums text-gray-500">' + faNum(accum) + '</td>'
-          + '<td class="text-right text-xs">' + years + '년</td>'
+          + '<td class="text-right tabular-nums text-xs">' + (Number(a.last_depreciation) ? faNum(a.last_depreciation) : '<span class="text-gray-300">-</span>')
+            + '<div class="text-xs text-gray-400">' + years + '년'
+            + (a.depreciation_method === 'DECLINING_BALANCE' ? ' 정률' + (a.depreciation_rate ? ' ' + a.depreciation_rate : '') : ' 정액') + '</div></td>'
+          + '<td class="text-xs">' + faDeptCell(a) + '</td>'
           + '<td class="text-xs">' + faLoanCell(a) + '</td>'
           + '<td>' + faBadge(a.status) + '</td>'
           + '<td>' + (canDispose ? '<button onclick="faDispose(' + a.id + ')" class="text-xs text-red-600 hover:underline">처분</button>' : '-') + '</td>'
@@ -1086,7 +1125,7 @@ function faLoad() {
     }
   }).catch(function (e) {
     console.error('[accounting] faLoad', e);
-    tb.innerHTML = '<tr><td colspan="11" class="text-center text-red-500 py-6">불러오지 못했습니다.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="12" class="text-center text-red-500 py-6">불러오지 못했습니다.</td></tr>';
   });
   });
 

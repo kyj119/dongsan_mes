@@ -232,6 +232,18 @@ departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
       GROUP BY e.department_id
     `).bind(fromMonth, toMonth, ...efP.params).all<any>()
 
+    // 3-b) G3 감가상각비 — depreciation_records(월별) × fixed_assets.department_id
+    //   부문 미지정 자산은 dept_id NULL 로 떨어져 공통비 풀로 간다(사라지지 않는다).
+    //   equipment 경유가 아니라 자산 직접 지정인 이유 → migrations/0515 주석
+    const efD = entityFilter(c, 'fa')
+    const { results: dep } = await c.env.DB.prepare(`
+      SELECT fa.department_id AS dept_id, COALESCE(SUM(dr.depreciation_amount), 0) AS depreciation
+      FROM depreciation_records dr
+      JOIN fixed_assets fa ON fa.id = dr.asset_id
+      WHERE dr.period BETWEEN ? AND ?${efD.clause}
+      GROUP BY fa.department_id
+    `).bind(fromMonth, toMonth, ...efD.params).all<any>()
+
     const num = (v: any) => Number(v) || 0
     const revMap = new Map<any, number>(); for (const r of rev || []) revMap.set(r.dept_id, num(r.revenue))
     const matMap = new Map<any, number>(); for (const r of mat || []) matMap.set(r.dept_id, num(r.material))
@@ -239,6 +251,7 @@ departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const cogsTotal = num((cogs || [])[0]?.cogs)
     if (cogsTotal > 0) matMap.set(distDeptId, (matMap.get(distDeptId) || 0) + cogsTotal)
     const labMap = new Map<any, number>(); for (const r of lab || []) labMap.set(r.dept_id, num(r.labor))
+    const depMap = new Map<any, number>(); for (const r of dep || []) depMap.set(r.dept_id, num(r.depreciation))
 
     // ── P5 배부: serves 재배분(지원 하위→생산부문) + 공통풀(잔여 지원인건비 + 고정비) 안분 ──
     // 4) 배부 기준 데이터 — 활성 직원수(인원) + 고정 공통비(임대·통신·전기)
@@ -283,7 +296,19 @@ departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
         supportDetail.push({ name: d.name, labor: Math.round(l), target: '공통배부' })
       }
     }
-    const commonPool = supportCommonLabor + fixedCommon
+    // 감가상각도 인건비와 같은 규칙으로 흘린다 — 생산부문=직접귀속, 지원부문(serves 있음)=대상 부문,
+    //   지원부문(serves 없음)·미지정=공통풀. 세 갈래 합이 항상 전체와 같아 상각비가 소실되지 않는다.
+    let supportCommonDep = 0
+    for (const d of depts || []) {
+      if (d.dept_type !== 'SUPPORT') continue
+      const dv = depMap.get(d.id) || 0
+      if (dv <= 0) continue
+      if (d.serves_department_id) servesIn.set(d.serves_department_id, (servesIn.get(d.serves_department_id) || 0) + dv)
+      else supportCommonDep += dv
+      supportDetail.push({ name: d.name + ' 감가상각', labor: Math.round(dv), target: d.serves_department_id ? (nameById.get(d.serves_department_id) || '?') + ' 직접귀속' : '공통배부' })
+    }
+    const unassignedDep = depMap.get(null) || 0
+    const commonPool = supportCommonLabor + fixedCommon + supportCommonDep + unassignedDep
 
     const production = (depts || []).filter((d: any) => d.dept_type === 'PRODUCTION')
     const weightOf = (d: any) => basis === 'headcount' ? (hcMap.get(d.id) || 0) : basis === 'labor' ? (labMap.get(d.id) || 0) : (revMap.get(d.id) || 0)
@@ -303,12 +328,15 @@ departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
       const material = matMap.get(d.id) || 0
       const labor = labMap.get(d.id) || 0
       const contribution = revenue - material - labor
+      // 감가상각은 고정비다 — 공헌이익(매출-변동비) 아래에서 뺀다
+      const depreciation = depMap.get(d.id) || 0
       const serves_alloc = servesIn.get(d.id) || 0
       const common_alloc = commonPool * allocShareOf(d)
-      const operating_profit = contribution - serves_alloc - common_alloc
+      const operating_profit = contribution - depreciation - serves_alloc - common_alloc
       return {
         id: d.id, name: d.name, dept_type: d.dept_type,
         revenue, material, labor, contribution,
+        depreciation: Math.round(depreciation),
         serves_alloc: Math.round(serves_alloc), common_alloc: Math.round(common_alloc),
         operating_profit: Math.round(operating_profit),
         op_margin: revenue > 0 ? +((operating_profit / revenue) * 100).toFixed(1) : null,
@@ -329,12 +357,20 @@ departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
       data: {
         period: { from, to, months }, basis,
         rows,
-        pool: { support_common_labor: Math.round(supportCommonLabor), fixed_common: Math.round(fixedCommon), total: Math.round(commonPool) },
+        pool: {
+          support_common_labor: Math.round(supportCommonLabor), fixed_common: Math.round(fixedCommon),
+          // 공통풀에 섞인 감가상각(지원부문 무배정 + 자산 부문 미지정) — 부문 지정이 진행될수록 줄어든다
+          common_depreciation: Math.round(supportCommonDep + unassignedDep),
+          unassigned_depreciation: Math.round(unassignedDep),
+          total: Math.round(commonPool),
+        },
         support_detail: supportDetail,
         unclassified,
         totals: {
           revenue: totalRevenue, material: totalMaterial, labor: totalProdLabor,
           contribution: totalRevenue - totalMaterial - totalProdLabor,
+          // 전체 감가상각(직접귀속+serves+공통) — 어디로 갔든 총액은 보존된다
+          depreciation: Math.round((dep || []).reduce((s: number, r: any) => s + num(r.depreciation), 0)),
           operating_profit: totalOperating,
         },
       },

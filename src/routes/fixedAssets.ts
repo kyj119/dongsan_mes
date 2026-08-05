@@ -10,6 +10,10 @@ fixedAssets.use('*', authMiddleware)
 fixedAssets.get('/', async (c) => {
   const category = c.req.query('category')
   const status = c.req.query('status')
+  // 상각완료(장부가=잔존가액) 자산을 걸러내는 필터. 세무장부는 신고 목적상 끝까지 끌고 가지만,
+  //   MES 는 관리회계용이라 상각이 끝난 자산은 부문 손익 기여가 0 이다 — 목록에서 노이즈만 된다.
+  //   삭제가 아니라 필터인 이유: 지우면 자산 총계(취득가)가 줄어 보유 현황 파악이 어긋난다.
+  const depreciating = c.req.query('depreciating')
   // alias 필수 — equipment JOIN에도 entity_id가 있어 bare `entity_id`는
   //   "ambiguous column name: entity_id"(SQLITE_ERROR)로 목록 전체가 500이었다.
   //   상세(:57)는 이미 'fa'를 쓰고 있어 정상이었다 — 형제 비대칭 (2026-07-29 실측)
@@ -18,14 +22,19 @@ fixedAssets.get('/', async (c) => {
   const binds: any[] = [...eFilter.params]
   if (category) { where += ' AND fa.category = ?'; binds.push(category) }
   if (status) { where += ' AND fa.status = ?'; binds.push(status) }
+  if (depreciating === '1') where += ' AND fa.current_book_value > COALESCE(fa.salvage_value, 0)'
 
   const { results } = await c.env.DB.prepare(`
     SELECT fa.*, e.name as equipment_name,
       l.creditor as loan_creditor, l.current_balance as loan_balance,
-      l.maturity_date as loan_maturity, l.is_active as loan_active
+      l.maturity_date as loan_maturity, l.is_active as loan_active,
+      dp.name as department_name,
+      (SELECT d.depreciation_amount FROM depreciation_records d
+        WHERE d.asset_id = fa.id ORDER BY d.period DESC, d.id DESC LIMIT 1) as last_depreciation
     FROM fixed_assets fa
     LEFT JOIN equipment e ON fa.equipment_id = e.id
     LEFT JOIN loans l ON fa.loan_id = l.id
+    LEFT JOIN departments dp ON fa.department_id = dp.id
     ${where}
     ORDER BY fa.acquisition_date DESC, fa.id DESC
   `).bind(...binds).all()
@@ -113,6 +122,33 @@ fixedAssets.patch('/:id/loan', requireRole('ADMIN', 'MANAGER'), async (c) => {
   ).bind(linkId, id).run()
 
   return c.json({ success: true, data: { id, loan_id: linkId } })
+})
+
+// ─── 부문 지정 / 해제 (G3 배부 기준) ────────────────────────────────────────
+// 미지정이면 감가상각비가 공통비 풀로 간다 — 부문 손익에서 사라지는 게 아니라 안분된다.
+fixedAssets.patch('/:id/department', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  const id = Number(c.req.param('id'))
+  const { department_id } = await c.req.json()
+
+  const ef = entityFilter(c, 'fa')
+  const owned = await c.env.DB.prepare(
+    `SELECT fa.id FROM fixed_assets fa WHERE fa.id = ?${ef.clause}`
+  ).bind(id, ...ef.params).first()
+  if (!owned) return c.json({ success: false, error: '자산을 찾을 수 없습니다.' }, 404)
+
+  let deptId: number | null = null
+  if (department_id !== null && department_id !== undefined && department_id !== '') {
+    deptId = Number(department_id)
+    // departments 에는 entity_id 가 없다(전사 공용) — 존재 여부만 검증한다
+    const dept = await c.env.DB.prepare(`SELECT id FROM departments WHERE id = ?`).bind(deptId).first()
+    if (!dept) return c.json({ success: false, error: '부문을 찾을 수 없습니다.' }, 404)
+  }
+
+  await c.env.DB.prepare(
+    `UPDATE fixed_assets SET department_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+  ).bind(deptId, id).run()
+
+  return c.json({ success: true, data: { id, department_id: deptId } })
 })
 
 // ─── 감가상각 계산 (월별 일괄) ──────────────────────────────────────────────

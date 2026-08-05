@@ -310,6 +310,7 @@ function renderDeptPnl(data) {
       + '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + deptFmtWon(r.material) + '</td>'
       + '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + deptFmtWon(r.labor) + '</td>'
       + '<td class="px-3 py-2 text-right tabular-nums ' + contribCls + '">' + deptFmtWon(r.contribution) + '</td>'
+      + '<td class="px-3 py-2 text-right tabular-nums text-gray-500" title="이 부문에 지정된 고정자산의 감가상각비">' + deptFmtWon(r.depreciation) + '</td>'
       + '<td class="px-3 py-2 text-right tabular-nums text-gray-500" title="' + allocTitle + '">' + deptFmtWon(alloc) + '</td>'
       + '<td class="px-3 py-2 text-right tabular-nums font-semibold ' + opCls + '">' + deptFmtWon(r.operating_profit) + '</td>'
       + '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + opm + '</td>'
@@ -321,10 +322,10 @@ function renderDeptPnl(data) {
       + '<td class="px-3 py-2">(미분류)</td>'
       + '<td class="px-3 py-2 text-right tabular-nums">' + deptFmtWon(u.revenue) + '</td>'
       + '<td class="px-3 py-2 text-right tabular-nums">' + deptFmtWon(u.material) + '</td>'
-      + '<td class="px-3 py-2 text-gray-400" colspan="5">배부 제외(미매핑)</td>'
+      + '<td class="px-3 py-2 text-gray-400" colspan="6">배부 제외(미매핑)</td>'
       + '</tr>';
   }
-  body.innerHTML = html || '<tr><td colspan="8" class="text-center py-6 text-gray-400">데이터 없음</td></tr>';
+  body.innerHTML = html || '<tr><td colspan="9" class="text-center py-6 text-gray-400">데이터 없음</td></tr>';
   if (foot) {
     var t = (data && data.totals) || {};
     foot.innerHTML = '<tr>'
@@ -333,6 +334,7 @@ function renderDeptPnl(data) {
       + '<td class="px-3 py-2 text-right tabular-nums">' + deptFmtWon(t.material) + '</td>'
       + '<td class="px-3 py-2 text-right tabular-nums">' + deptFmtWon(t.labor) + '</td>'
       + '<td class="px-3 py-2 text-right tabular-nums">' + deptFmtWon(t.contribution) + '</td>'
+      + '<td class="px-3 py-2 text-right tabular-nums" title="직접귀속+serves+공통 전부 포함한 전체 감가상각">' + deptFmtWon(t.depreciation) + '</td>'
       + '<td class="px-3 py-2"></td>'
       + '<td class="px-3 py-2 text-right tabular-nums ' + ((t.operating_profit < 0) ? 'text-red-600' : '') + '">' + deptFmtWon(t.operating_profit) + '</td>'
       + '<td class="px-3 py-2"></td>'
@@ -356,6 +358,7 @@ function renderDeptPnl(data) {
       + '<div class="space-y-0.5">'
       + '<div class="flex justify-between"><span class="text-gray-600">공통 안분 인건비(봉제·관리 등)</span><span class="tabular-nums">' + deptFmtWon(pool.support_common_labor) + '</span></div>'
       + '<div class="flex justify-between"><span class="text-gray-600">고정비(임대·통신·전기 등)</span><span class="tabular-nums">' + deptFmtWon(pool.fixed_common) + '</span></div>'
+      + '<div class="flex justify-between"><span class="text-gray-600">감가상각(부문 미지정)<span class="text-xs text-gray-400 ml-1">← 자산에 부문 지정 시 줄어듦</span></span><span class="tabular-nums">' + deptFmtWon(pool.common_depreciation) + '</span></div>'
       + '<div class="flex justify-between border-t border-gray-200 pt-1 mt-1 font-semibold"><span>공통풀 합계(생산부문 안분)</span><span class="tabular-nums">' + deptFmtWon(pool.total) + '</span></div>'
       + '</div></div>';
   }

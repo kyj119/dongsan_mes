@@ -191,9 +191,10 @@ export function hrPage(c: Context<HonoEnv>) {
                   <th class="text-right" style="width:14%">매출</th>
                   <th class="text-right" style="width:12%">자재비</th>
                   <th class="text-right" style="width:12%">인건비</th>
-                  <th class="text-right" style="width:13%">공헌이익</th>
-                  <th class="text-right" style="width:13%" title="지원부문 직접귀속 + 공통비 안분">배분원가</th>
-                  <th class="text-right" style="width:12%">영업이익</th>
+                  <th class="text-right" style="width:12%">공헌이익</th>
+                  <th class="text-right" style="width:11%" title="이 부문에 직접 지정된 고정자산의 월별 감가상각비. 부문 미지정 자산은 공통풀로 들어가 배분원가에 섞입니다.">감가상각</th>
+                  <th class="text-right" style="width:12%" title="지원부문 직접귀속 + 공통비 안분">배분원가</th>
+                  <th class="text-right" style="width:11%">영업이익</th>
                   <th class="text-right" style="width:8%">이익률</th>
                 </tr></thead>
                 <tbody id="deptPnlBody"></tbody>
@@ -207,7 +208,7 @@ export function hrPage(c: Context<HonoEnv>) {
           <div id="deptPnlPool" class="ds-card p-4 hidden"></div>
 
           <p class="text-xs text-gray-400">
-            <i class="fas fa-info-circle mr-1"></i>영업이익 = 공헌이익(매출−자재비−직접인건비) − 배분원가. <b>배분원가</b> = 지원 하위부문(디자인-출력/전사/간판) 인건비 직접귀속 + 공통풀(봉제·관리 인건비 + 고정비 임대·통신·전기) 안분(배부기준 선택). 배부는 리포트 계산 단계만 — 원장 불변. 자재비=0은 소진 자동차감 미가동 구간.
+            <i class="fas fa-info-circle mr-1"></i>영업이익 = 공헌이익(매출−자재비−직접인건비) − <b>감가상각</b> − 배분원가. <b>감가상각</b> = 고정자산에 지정된 부문으로 직접 귀속(<a href="/accounting" class="text-blue-600 hover:underline">/accounting 고정자산 탭</a>에서 지정) — 미지정 자산은 공통풀로 들어가 배분원가에 섞인다. <b>배분원가</b> = 지원 하위부문(디자인-출력/전사/간판) 인건비 직접귀속 + 공통풀(봉제·관리 인건비 + 고정비 임대·통신·전기 + 미지정 감가상각) 안분(배부기준 선택). 배부는 리포트 계산 단계만 — 원장 불변. 자재비=0은 소진 자동차감 미가동 구간.
           </p>
         </div>
       </div>
