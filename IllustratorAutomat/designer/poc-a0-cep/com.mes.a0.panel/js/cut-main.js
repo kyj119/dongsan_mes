@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.20.0';
+  var SHELL_VERSION = '0.21.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -631,8 +631,13 @@
   // [폭 추천] 이 훑는 롤 후보. index.html 의 프리셋과 같은 값이어야 한다.
   var ROLL_WIDTHS_MM = [914, 1050, 1270, 1370, 1520];
 
-  // 롤 1장의 최대 길이. 배치 버퍼 크기와 해상도 예산이 **같은 값을 봐야** 한다.
-  var NEST_ROLL_MAX_MM = 6000;
+  // 롤 1장의 최대 길이 — **파일 좌표** 기준이다(배치 버퍼·해상도 예산, 그리고 일러 아트보드 한계).
+  //   일러는 16383pt = **5780mm** 를 넘는 아트보드를 못 만든다. 6000 은 그 한계를 넘어서,
+  //   배치는 6000 까지 허용하는데 문서는 못 만드는 구간이 있었다 → 한계 안쪽으로 내린다.
+  // ★여기에 toFileMm 을 씌우면 안 된다. 씌우면 실물 상한이 배율과 무관하게 고정돼
+  //   "배율을 낮춰 한 대지에 담는다"가 성립하지 않는다(2026-08-05 용준님 제안).
+  //   파일 좌표 상한을 고정해 두면 배율 1/2 = 실물 11200mm, 1/4 = 22400mm 가 한 대지에 들어간다.
+  var NEST_ROLL_MAX_MM = 5600;
   // 배치 격자 후보(실물 mm/px). geometry.pickResolution 의 기본값과 같되, 배율에 따라 ÷N 해서 넘긴다.
   var NEST_MMPP_CANDS = [0.25, 0.5, 1.0, 2.0];
   // ★네스팅 시트 버퍼는 `Uint8Array`(1바이트/칸)다 — `pickResolution` 의 12M 상한은
@@ -733,7 +738,7 @@
     if (!(half > 0)) {
       return { mmPerPx: base, rPx: Math.round(half / base), exact: false, halfMm: half, safetyMm: safety };
     }
-    var s = G.snapResolution(base, 2 * half, sheetWmm, sheetHmm || toFileMm(NEST_ROLL_MAX_MM), NEST_MAX_PX);
+    var s = G.snapResolution(base, 2 * half, sheetWmm, sheetHmm || NEST_ROLL_MAX_MM, NEST_MAX_PX);
     return { mmPerPx: s.mmPerPx, rPx: s.rPx, exact: s.exact, halfMm: half, safetyMm: safety };
   }
 
@@ -965,7 +970,7 @@
     return NST.nest(prep.pieces, {
       sheetW: Math.floor(usableWmm / prep.mmpp),
       sheetH: sheetHmm ? Math.floor(Math.max(10, sheetHmm - domboMm() * 2) / prep.mmpp) : 0,
-      rollMaxH: Math.floor(toFileMm(NEST_ROLL_MAX_MM) / prep.mmpp),
+      rollMaxH: Math.floor(NEST_ROLL_MAX_MM / prep.mmpp),
       step: opts.step || 4,
       tries: opts.tries,
       rotations: allowRot ? [0, 90, 180, 270] : [0],

@@ -908,6 +908,11 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
       /var widest = toFileMm\(ROLL_WIDTHS_MM/.test(panelSrc2) && /var wFile = toFileMm\(wReal\)/.test(panelSrc2))
     // ★격자 후보·하한도 실물 기준이다 — 안 나누면 축소본에서 실질 해상도가 N배 거칠어져
     //   컨투어가 계단이 되고 **직선 재단선이 휘어 보인다**(2026-08-05 실사용에서 걸림).
+    // ★롤 상한은 **파일 좌표** 제약(일러 아트보드 한계 5780mm)이다. toFileMm 을 씌우면 실물 상한이
+    //   배율과 무관하게 고정돼 "배율을 낮춰 한 대지에 담기"가 성립하지 않는다(2026-08-05).
+    ok('3u 롤 상한은 파일 좌표 제약', /rollMaxH: Math\.floor\(NEST_ROLL_MAX_MM \/ prep\.mmpp\)/.test(panelSrc2))
+    ok('3u 롤 상한이 일러 한계 안', /var NEST_ROLL_MAX_MM = (\d+)/.test(panelSrc2)
+      && Number(/var NEST_ROLL_MAX_MM = (\d+)/.exec(panelSrc2)[1]) <= 5780)
     ok('3u 격자 후보도 배율을 반영',
       /cands\.push\(toFileMm\(NEST_MMPP_CANDS/.test(panelSrc2) && /Math\.max\(pick\.mmPerPx, toFileMm\(0\.5\)\)/.test(panelSrc2))
 
