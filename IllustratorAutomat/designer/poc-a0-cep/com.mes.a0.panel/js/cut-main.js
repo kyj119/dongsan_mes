@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.16.0';
+  var SHELL_VERSION = '0.17.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -923,6 +923,25 @@
     });
   }
 
+  /**
+   * 판(아트보드) 면적 — **재료 면적과 다르다**.
+   * 호스트가 아트보드를 `배치 bbox + 돔보 여백`으로 줄이므로(mes-cut-host.jsx 의 nestApply),
+   * 실제로 인쇄·재단되는 판은 시트 규격이 아니라 이 크기다. 재단기는 이 테두리를 따라 돈다.
+   */
+  function plateAreaMm2(res, prep) {
+    if (!res || !res.sheets.length) return Infinity;
+    var mm = prep.mmpp, tot = 0;
+    for (var s = 0; s < res.sheets.length; s++) {
+      var sh = res.sheets[s], w = 0;
+      for (var k = 0; k < sh.placements.length; k++) {
+        var e = sh.placements[k].x + sh.placements[k].W;
+        if (e > w) w = e;
+      }
+      tot += (w * mm + DOMBO_MARGIN_MM * 2) * (sh.usedH * mm + DOMBO_MARGIN_MM * 2);
+    }
+    return tot;
+  }
+
   /** 실제 소요 재료 면적(mm²) — 폭 전체 × (사용 길이 + 돔보 여백). 재료비 기준이라 여백을 뺄 수 없다. */
   function sheetAreaMm2(res, prep, sheetWmm, sheetHmm) {
     var tot = 0;
@@ -1000,6 +1019,35 @@
         out('배치 계산 중...');
         var res = nestPlace(NST, prep, sheetWmm, sheetHmm, allowRot);
         if (!res.sheets.length) { done('배치 실패 — 조각이 시트보다 큽니다.', 'err'); return; }
+
+        // ★시트 모드에서 판이 **가로로 길쭉해지는** 것을 막는다 (2026-08-05 실측: 판 면적 −22%).
+        //   엔진 점수(nesting.js scoreOf)는 usedH(세로)만 본다. 그런데 아트보드는 배치 bbox 로
+        //   줄어들므로 실제 재료·재단기 이동은 **가로×세로**다. 시트 폭이 남으면 세로가 안 늘어나는
+        //   쪽이 늘 이겨서 조각을 옆으로만 늘어놓는다(실사용 8조각이 전부 같은 y 에 한 줄로 섰다).
+        //   → 팽창 포함 잉크 면적에서 **정사각형에 가까운 폭**을 역산해 한 번 더 돌린다.
+        //     점수 함수를 면적으로 바꾸는 것만으로는 안 된다(실측 −0.2%) — bottom-left 탐색이
+        //     애초에 조밀한 후보를 만들지 못하므로, 폭을 좁혀 **탐색 공간 자체**를 바꿔야 한다.
+        //   ⚠️ 롤은 폭이 곧 재료다. 세로만 줄이는 현행이 맞으므로 건드리지 않는다.
+        var widthNote = '';
+        if (!isRoll) {
+          var grownPx = 0;
+          for (var gi = 0; gi < prep.pieces.length; gi++) {
+            var gm = prep.pieces[gi].m;
+            for (var gj = 0; gj < gm.length; gj++) grownPx += gm[gj];
+          }
+          // 가정효율 55% — 실측에서 전체 폭 스윕(10회)의 최적과 1cm² 차이였다. 한 번이면 충분하다.
+          var guessW = Math.round(Math.sqrt(grownPx * prep.mmpp * prep.mmpp / 0.55)) + DOMBO_MARGIN_MM * 2;
+          if (guessW > DOMBO_MARGIN_MM * 2 + 10 && guessW < sheetWmm) {
+            var alt = nestPlace(NST, prep, guessW, sheetHmm, allowRot);
+            var a0 = plateAreaMm2(res, prep), a1 = plateAreaMm2(alt, prep);
+            // 조용히 나빠지지 않게 — 미배치가 늘거나 면적이 안 줄면 원래 배치를 그대로 쓴다
+            if (alt.sheets.length && alt.unplaced.length <= res.unplaced.length && a1 < a0) {
+              widthNote = '\n판 폭을 ' + guessW + 'mm 로 좁혀 판 면적 ' + (100 * (1 - a1 / a0)).toFixed(0)
+                + '% 절감 — 재단기가 도는 테두리도 그만큼 줄어듭니다.';
+              res = alt;
+            }
+          }
+        }
 
         var mmpp = prep.mmpp;
         // 조각 위치는 **실제 팽창분(rPx)을 되돌려** 원본 기준으로 준다.
@@ -1091,6 +1139,7 @@
                   + (parseInt(a.bleedfail, 10) > 0
                     ? ('\n⚠ 도련 ' + a.bleedfail + '개 조각 실패 — ' + bleedFailWhy(a.bleedcode)) : '')
                   + bleedNote) : '')
+              + widthNote
               + (res.unplaced.length ? ('\n⚠ 배치 못한 조각 ' + res.unplaced.length + '개 — 시트를 키우거나 간격을 줄이세요.') : '')
               + (useVec ? '' : cvN.note) + vecNote,
               (res.unplaced.length || parseInt(a.bleedfail, 10) > 0) ? 'err' : 'ok');

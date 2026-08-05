@@ -671,6 +671,24 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // ★크기는 패널이 준 값(`L` 줄)을 쓴다 — 호스트가 px→mm 을 재계산하면 반올림만큼 어긋난다
   ok('3q 패널이 L 줄을 쓴다', /lines\.push\('L ' \+ bid/.test(panelSrc))
   ok('3q 호스트가 L 줄을 읽는다', /p\[0\] === 'L'/.test(hostSrc))
+  // ── 네스팅 성능·판 크기 (2026-08-05) ───────────────────────────
+  {
+    const nestSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'poc-a0-cep', 'com.mes.a0.panel', 'js', 'nesting.js'), 'utf8')
+    // ★비트마스크는 **표현만** 바꾼 최적화다. 픽셀 fits 를 지우면 하네스가 같은 코드로 자기 자신을
+    //   검증하게 되어 겹침 버그를 못 잡는다 — 이중 구현이 안전장치이므로 반드시 남긴다.
+    ok('3s 겹침 검사는 비트마스크', /function fitsBits/.test(nestSrc) && /function stampBits/.test(nestSrc))
+    ok('3s 픽셀 fits 는 독립 검증용으로 남는다',
+      /function fits\(sheet, SW, SH, p, ox, oy\)/.test(nestSrc) && /fits: fits/.test(nestSrc))
+    // ★같은 (조각,회전)을 순서마다 다시 만들면 8순서×2패스 = 16배 낭비다
+    ok('3s 회전·트림 결과를 캐시한다', /function getCand/.test(nestSrc) && /new Map\(\)/.test(nestSrc))
+
+    // ★판 폭 최적화 — 아트보드가 배치 bbox 로 줄어드는데 점수는 세로만 봐서 판이 길쭉해졌다.
+    ok('3s 판 면적은 배치 bbox+돔보 기준', /function plateAreaMm2/.test(panelSrc))
+    ok('3s 판 폭 최적화는 시트 모드만', /if \(!isRoll\) \{[\s\S]{0,1600}?nestPlace\(NST, prep, guessW/.test(panelSrc))
+    // ★조용히 나빠지지 않는다 — 미배치가 늘거나 면적이 안 줄면 원래 배치를 쓴다
+    ok('3s 나빠지면 채택하지 않는다', /alt\.unplaced\.length <= res\.unplaced\.length && a1 < a0/.test(panelSrc))
+  }
+
   // ★ExtendScript 폴더/파일 고르기는 정적과 인스턴스의 **이름이 다르다**.
   //   정적 = `Folder.selectDialog` / 인스턴스 = `folder.selectDlg`.
   //   `Folder.selectDlg(...)` 로 부르면 "함수가 아닙니다" 로 죽는데, 타입 검사도 문법 검사도 못 잡고
