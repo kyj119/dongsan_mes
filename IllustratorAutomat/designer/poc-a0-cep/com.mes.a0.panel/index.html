@@ -377,6 +377,20 @@
         <span class="unit">mm</span>
         <span class="cfg">디자인 → 칼선</span>
       </div>
+      <!-- 배율 = 가공 탭과 **같은 의미**(파일이 실물의 1/N 축소본). 아트를 확대하지 않고,
+           여백·간격·도련·돔보 같은 **실물 mm 를 파일 좌표로 ÷N** 해서 실물 치수를 맞춘다.
+           ⚠️ id 를 가공 탭의 `scale` 과 겹치지 말 것 — 두 페이지가 한 문서에 있어 값이 섞인다. -->
+      <div class="row">
+        <label for="cutScale">배율</label>
+        <select id="cutScale">
+          <option value="1">1/1 (원본)</option>
+          <option value="2">1/2</option>
+          <option value="4">1/4</option>
+          <option value="5">1/5</option>
+          <option value="10">1/10</option>
+        </select>
+        <span class="cfg">파일이 실물의 1/N 축소본일 때</span>
+      </div>
       <div class="row">
         <label for="nestGap">간격</label>
         <input id="nestGap" type="number" value="3" min="0" max="50" step="0.5" />

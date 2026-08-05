@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.17.1';
+  var SHELL_VERSION = '0.18.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -43,6 +43,25 @@
   //   돔보 중심은 코너에서 17mm 이고 원은 반지름만큼만 더 뻗기 때문이다.
   //   실물 30쌍도 원 바깥끝이 판 가장자리에 정확히 접한다(2026-08-02 실측). 변당 3mm 절감·위험 0.
   var DOMBO_MARGIN_MM = 20;
+
+  // ── ★배율 (2026-08-05) — 가공(A0) 탭과 **같은 규칙** ──────────────
+  // 파일이 실물의 1/N 축소본일 때 쓴다. **아트를 확대하지 않는다.**
+  // 파일 좌표에서 작업하되 실물 mm(여백·간격·도련·돔보·최소구멍·재료 폭)를 **÷N** 해서 그리면
+  // 실물에서 정확한 치수가 나온다 — A0 호스트가 `DOMBO_DIAM = 6 * PT / sN` 로 하는 것과 같다.
+  // 반대로 사람에게 보이는 크기(판 규격·파일명)는 **×N** 으로 되돌린다.
+  //   ⚠️ 환산은 **입력을 받는 자리에서 한 번만** 한다. 중간 계산에서 또 나누면 두 번 줄어들고,
+  //      그런 실수는 판을 뽑기 전까지 드러나지 않는다.
+  function cutScaleN() {
+    var el = document.getElementById('cutScale');
+    var n = el ? parseInt(el.value, 10) : 1;
+    return (n > 0 && !isNaN(n)) ? n : 1;
+  }
+  /** 실물 mm → 파일 좌표 mm */
+  function toFileMm(mm) { return mm / cutScaleN(); }
+  /** 파일 좌표 mm → 실물 mm (표시·파일명) */
+  function toRealMm(mm) { return mm * cutScaleN(); }
+  /** 돔보 여백(파일 좌표) — 호스트 `mesCut_domboMargin()` 과 **같은 값이어야 한다** */
+  function domboMm() { return toFileMm(DOMBO_MARGIN_MM); }
 
   var cs = new CSInterface();
   var hostBusy = false;
@@ -294,8 +313,9 @@
     var G = window.MesCutGeom;
     if (!G) { out('geometry.js 미로드 — 패널 설치본을 확인하세요', 'err'); return; }
 
-    var offsetMm = num('offset', 3);
-    var bleedMm = num('bleed', 3);   // 칼선 **바깥**으로 더 인쇄 — 실물 실측 3mm
+    // ★실물 mm → 파일 좌표(÷N). 네스팅과 **같은 규칙**이어야 단건과 판이 어긋나지 않는다.
+    var offsetMm = toFileMm(num('offset', 3));
+    var bleedMm = toFileMm(num('bleed', 3));   // 칼선 **바깥**으로 더 인쇄 — 실물 실측 3mm
     // auto = 클립 확장(무손실) → 안 되면 가장자리 색 · color = 색 강제 · scale = 사본 확대(옛 방식)
     var bleedModeEl = document.getElementById('bleedMode');
     var bleedMode = bleedModeEl ? bleedModeEl.value : 'auto';
@@ -518,7 +538,7 @@
     // ⚠️ **최소 구멍 크기로 걸러야 한다** — 글자 사이 좁은 틈이 오프셋으로 막히면 갇힌 배경이
     //    미세 구멍으로 잡힌다(2026-07-31 실측: 한글 6줄에서 구멍 144개가 나왔다).
     //    칼날이 들어갈 수 없는 크기는 재단선이 아니라 노이즈다.
-    var minHoleMm = MIN_HOLE_MM;
+    var minHoleMm = toFileMm(MIN_HOLE_MM);
     var minHolePx = Math.max(4, Math.PI * Math.pow((minHoleMm / 2) / o.mmpp, 2));
     var holes = G.findHoles(off, W, H, minHolePx);
     var groups = G.assignHoles(polys, holes);
@@ -695,7 +715,7 @@
     if (!(half > 0)) {
       return { mmPerPx: base, rPx: Math.round(half / base), exact: false, halfMm: half, safetyMm: safety };
     }
-    var s = G.snapResolution(base, 2 * half, sheetWmm, sheetHmm || NEST_ROLL_MAX_MM, NEST_MAX_PX);
+    var s = G.snapResolution(base, 2 * half, sheetWmm, sheetHmm || toFileMm(NEST_ROLL_MAX_MM), NEST_MAX_PX);
     return { mmPerPx: s.mmPerPx, rPx: s.rPx, exact: s.exact, halfMm: half, safetyMm: safety };
   }
 
@@ -923,11 +943,11 @@
     // ★돔보 여백을 빼고 배치한다 — 돔보는 디자인 영역 바깥 17mm 에 놓이므로
     //   그만큼 안쪽으로 줄이지 않으면 조각이 돔보를 덮거나 시트 규격을 넘는다.
     //   (A0 는 아트보드를 확장하지만 롤/평판은 폭이 고정이라 그 방법을 못 쓴다)
-    var usableWmm = Math.max(10, sheetWmm - DOMBO_MARGIN_MM * 2);
+    var usableWmm = Math.max(10, sheetWmm - domboMm() * 2);
     return NST.nest(prep.pieces, {
       sheetW: Math.floor(usableWmm / prep.mmpp),
-      sheetH: sheetHmm ? Math.floor(Math.max(10, sheetHmm - DOMBO_MARGIN_MM * 2) / prep.mmpp) : 0,
-      rollMaxH: Math.floor(NEST_ROLL_MAX_MM / prep.mmpp),
+      sheetH: sheetHmm ? Math.floor(Math.max(10, sheetHmm - domboMm() * 2) / prep.mmpp) : 0,
+      rollMaxH: Math.floor(toFileMm(NEST_ROLL_MAX_MM) / prep.mmpp),
       step: opts.step || 4,
       tries: opts.tries,
       rotations: allowRot ? [0, 90, 180, 270] : [0],
@@ -949,7 +969,7 @@
         var e = sh.placements[k].x + sh.placements[k].W;
         if (e > w) w = e;
       }
-      tot += (w * mm + DOMBO_MARGIN_MM * 2) * (sh.usedH * mm + DOMBO_MARGIN_MM * 2);
+      tot += (w * mm + domboMm() * 2) * (sh.usedH * mm + domboMm() * 2);
     }
     return tot;
   }
@@ -958,7 +978,7 @@
   function sheetAreaMm2(res, prep, sheetWmm, sheetHmm) {
     var tot = 0;
     for (var i = 0; i < res.sheets.length; i++) {
-      tot += sheetWmm * (sheetHmm || (Math.ceil(res.sheets[i].usedH * prep.mmpp) + DOMBO_MARGIN_MM * 2));
+      tot += sheetWmm * (sheetHmm || (Math.ceil(res.sheets[i].usedH * prep.mmpp) + domboMm() * 2));
     }
     return tot;
   }
@@ -977,7 +997,7 @@
     areaMm2: sheetAreaMm2,
     pieceCutLines: pieceCutLines,
     rollWidths: ROLL_WIDTHS_MM,
-    dombo: DOMBO_MARGIN_MM,
+    dombo: domboMm(),
   };
 
   function runNest() {
@@ -987,15 +1007,18 @@
 
     var presetEl = document.getElementById('sheetPreset');
     var sp0 = parsePreset(presetEl ? presetEl.value : 'roll:1370');
-    var sheetWmm = sp0.wMm, sheetHmm = sp0.hMm, isRoll = sp0.roll;
-    var gapMm = num('nestGap', 3);
-    var offsetMm = num('nestOffset', 3);   // 디자인 → 칼선 (음수 = 잉크 안쪽 · 도련 적용분)
+    // ★여기가 실물↔파일 환산의 **유일한 입구**다. 아래 계산은 전부 파일 좌표로 돈다.
+    //   재료(시트·롤 폭)도 실물이므로 같이 줄인다 — 안 줄이면 1/10 파일에서 시트가 10배로 보인다.
+    var scaleN = cutScaleN();
+    var sheetWmm = toFileMm(sp0.wMm), sheetHmm = sp0.hMm ? toFileMm(sp0.hMm) : 0, isRoll = sp0.roll;
+    var gapMm = toFileMm(num('nestGap', 3));
+    var offsetMm = toFileMm(num('nestOffset', 3));   // 디자인 → 칼선 (음수 = 잉크 안쪽 · 도련 적용분)
     var fillMode = (document.getElementById('fillClosed') || {}).value || 'auto';
     var allowRot = !!(document.getElementById('nestRotate') && document.getElementById('nestRotate').checked);
     var wantPieceCut = !!(document.getElementById('nestCut') && document.getElementById('nestCut').checked);
     var cvN = resolveCurve();
     var wantCurve = cvN.curve;
-    var nestBleedMm = num('nestBleed', 3);   // 조각마다 칼선 바깥으로 더 인쇄
+    var nestBleedMm = toFileMm(num('nestBleed', 3));   // 조각마다 칼선 바깥으로 더 인쇄
     // ★도련은 칼선 **바깥**으로 나간다 → 간격이 도련×2 보다 좁으면 옆 조각 도련과 겹치고,
     //   재단 오차가 나면 **옆 디자인 색이 넘어온다**. 재료보다 재단 사고가 비싸므로 간격을 올린다.
     //   (도련을 깎는 쪽은 택하지 않았다 — 도련 3mm 는 실물 규약이고 품질 쪽이다)
@@ -1048,13 +1071,13 @@
             for (var gj = 0; gj < gm.length; gj++) grownPx += gm[gj];
           }
           // 가정효율 55% — 실측에서 전체 폭 스윕(10회)의 최적과 1cm² 차이였다. 한 번이면 충분하다.
-          var guessW = Math.round(Math.sqrt(grownPx * prep.mmpp * prep.mmpp / 0.55)) + DOMBO_MARGIN_MM * 2;
-          if (guessW > DOMBO_MARGIN_MM * 2 + 10 && guessW < sheetWmm) {
+          var guessW = Math.round(Math.sqrt(grownPx * prep.mmpp * prep.mmpp / 0.55)) + domboMm() * 2;
+          if (guessW > domboMm() * 2 + 10 && guessW < sheetWmm) {
             var alt = nestPlace(NST, prep, guessW, sheetHmm, allowRot);
             var a0 = plateAreaMm2(res, prep), a1 = plateAreaMm2(alt, prep);
             // 조용히 나빠지지 않게 — 미배치가 늘거나 면적이 안 줄면 원래 배치를 그대로 쓴다
             if (alt.sheets.length && alt.unplaced.length <= res.unplaced.length && a1 < a0) {
-              widthNote = '\n판 폭을 ' + guessW + 'mm 로 좁혀 판 면적 ' + (100 * (1 - a1 / a0)).toFixed(0)
+              widthNote = '\n판 폭을 ' + Math.round(toRealMm(guessW)) + 'mm 로 좁혀 판 면적 ' + (100 * (1 - a1 / a0)).toFixed(0)
                 + '% 절감 — 재단기가 도는 테두리도 그만큼 줄어듭니다.';
               res = alt;
             }
@@ -1069,16 +1092,19 @@
         var cutOffMm = prep.cutFinePx * prep.fineMmpp;
         var guaranteedMm = 2 * half - 2 * cutOffMm;
         var lines = [];
+        // ★배율을 호스트에 알린다 — 돔보 상수(6·17·60·500mm)가 호스트 안에 있어 거기서 ÷N 해야 한다.
+        //   여백·간격·도련은 여기서 이미 환산했으므로 호스트가 또 나누면 두 번 줄어든다(호스트 주석 참조).
+        if (scaleN > 1) lines.push('N ' + scaleN);
         for (var s = 0; s < res.sheets.length; s++) {
           var sh = res.sheets[s];
           // ★롤 길이에도 돔보 여백을 더한다 — 배치 좌표를 margin 만큼 밀었으므로
           //   시트 높이를 그대로 두면 조각이 아래로 삐져나간다(2026-07-31 실측: 하 -22.1mm).
-          var hMm = sheetHmm || (Math.ceil(sh.usedH * mmpp) + DOMBO_MARGIN_MM * 2);
+          var hMm = sheetHmm || (Math.ceil(sh.usedH * mmpp) + domboMm() * 2);
           lines.push('S ' + s + ' ' + sheetWmm + ' ' + hMm);
           for (var k = 0; k < sh.placements.length; k++) {
             var pl = sh.placements[k];
             // 배치 좌표는 usable 영역 기준이므로 **돔보 여백만큼 밀어서** 시트 좌표로 바꾼다
-            lines.push('I ' + pl.id + ' ' + (pl.x * mmpp + half + DOMBO_MARGIN_MM).toFixed(2) + ' ' + (pl.y * mmpp + half + DOMBO_MARGIN_MM).toFixed(2) + ' ' + pl.rot);
+            lines.push('I ' + pl.id + ' ' + (pl.x * mmpp + half + domboMm()).toFixed(2) + ' ' + (pl.y * mmpp + half + domboMm()).toFixed(2) + ' ' + pl.rot);
             // ★벡터 모드면 좌표를 보내지 않는다 — 호스트가 **배치가 끝난 사본**에서 직접 실루엣을 뽑는다.
             //   회전·이동이 이미 적용된 것을 쓰므로 정렬 수식(baseX·trim 오프셋)이 아예 필요 없다.
             if (wantPieceCut && !useVec) pieceCutLines(lines, res, prep, pl, mmpp, wantCurve);
@@ -1113,8 +1139,12 @@
           host('mesCut_nestApply(' + (useVec ? (offsetMm + ',' + (prep.fill ? 'true' : 'false') + ',' + nestBleedMm + ',"' + nestBleedMode + '"') : '') + ')', function (ap, bad3) {
             if (bad3 || ap.indexOf('ok;') !== 0) { done('배치 적용 실패: ' + ap, 'err'); return; }
             var a = kv(ap.substring(3));
+            // ★여기부터는 **사람이 보는 값**이라 실물로 되돌린다(×N). 배율 1이면 그대로다.
+            //   내부 계산은 전부 파일 좌표였고, 화면에 파일 좌표를 그대로 띄우면
+            //   1/10 파일에서 "여백 0.3mm"처럼 보여 사용자가 자기 입력을 못 알아본다.
+            var R = toRealMm;
             var lenTxt = isRoll
-              ? ('롤 길이 ' + (Math.ceil(res.sheets[0].usedH * mmpp) + DOMBO_MARGIN_MM * 2) + 'mm')
+              ? ('롤 길이 ' + Math.round(R(Math.ceil(res.sheets[0].usedH * mmpp) + domboMm() * 2)) + 'mm')
               : (res.sheets.length + '장');
             // ★효율% = 팽창 전 실면적 / 실제 소요 재료. 예전 값(팽창 잉크 / usable)은 1.7배 부풀려졌다.
             var areaMm2 = sheetAreaMm2(res, prep, sheetWmm, sheetHmm);
@@ -1125,28 +1155,30 @@
             var placed = 0;
             for (var ps = 0; ps < res.sheets.length; ps++) placed += res.sheets[ps].placements.length;
             var swMm = parseFloat(a.sheetw), shMm = parseFloat(a.sheeth);
+            // 판 규격은 **실물 cm** 다 — 파일명 규약(`103x206`)이 실물 기준이고 EPS 바운딩박스와 맞아야 한다
             lastNest = (swMm > 0 && shMm > 0)
-              ? { wCm: Math.round(swMm / 10), hCm: Math.round(shMm / 10), n: placed, sheets: res.sheets.length }
+              ? { wCm: Math.round(R(swMm) / 10), hCm: Math.round(R(shMm) / 10), n: placed, sheets: res.sheets.length }
               : null;
             refreshPairName();
             setNestReady(true);
             done('네스팅 완료 — 시트 ' + a.sheets + '개 · 조각 ' + a.items + '/' + prep.n
               + '\n' + lenTxt + ' · 효율 ' + (100 * eff).toFixed(1) + '% (재료 기준)'
-              + '\n여백 ' + offsetMm + 'mm (실제 ' + cutOffMm.toFixed(2) + 'mm) · 칼선 간격 ' + gapMm + 'mm (실보장 ' + guaranteedMm.toFixed(2) + 'mm)'
-              + '\n디자인 사이 ' + (2 * half).toFixed(2) + 'mm (모델 ' + (2 * offsetMm + gapMm).toFixed(2)
-              + ' + 안전 ' + (2 * (prep.safetyMm || 0)).toFixed(2) + ') · 배치 ' + mmpp.toFixed(3) + 'mm/px'
+              + '\n여백 ' + R(offsetMm) + 'mm (실제 ' + R(cutOffMm).toFixed(2) + 'mm) · 칼선 간격 ' + R(gapMm) + 'mm (실보장 ' + R(guaranteedMm).toFixed(2) + 'mm)'
+              + '\n디자인 사이 ' + R(2 * half).toFixed(2) + 'mm (모델 ' + R(2 * offsetMm + gapMm).toFixed(2)
+              + ' + 안전 ' + R(2 * (prep.safetyMm || 0)).toFixed(2) + ') · 배치 ' + mmpp.toFixed(3) + 'mm/px'
               + (prep.sub > 1 ? (' · 굽기 ' + prep.fineMmpp.toFixed(3) + 'mm/px') : '')
+              + (scaleN > 1 ? ('\n배율 1/' + scaleN + ' — 위 치수는 **실물** 기준입니다(파일은 1/' + scaleN + ').') : '')
               + (prep.softened ? ('\n※ 반투명 조각 ' + prep.softened + '개는 경계를 느슨하게 잡았습니다.') : '')
               + (prep.fillNote || '') + (prep.bakeNote || '')
               + (prep.exact ? '' : ' ⚠ 해상도 한계로 올림 적용')
               + (allowRot ? ' · 회전 허용' : '')
               + '\n돔보 ' + (a.dombo || 0) + '판 — 별도 레이어(인쇄 ON) · 재단선 레이어는 인쇄 OFF'
               + (wantPieceCut ? (' · 조각별 칼선' + (useVec ? '(벡터)' : (wantCurve ? '(곡선)' : '(직선)'))) : '')
-              + (useVec && nestBleedMm > 0 ? ('\n도련 ' + nestBleedMm + 'mm (조각마다)'
+              + (useVec && nestBleedMm > 0 ? ('\n도련 ' + R(nestBleedMm) + 'mm (조각마다)'
                   // ★어느 방식으로 만들었는지 밝힌다 — 클립 확장·색 잇기·단색은 품질이 서로 다르다
                   + bleedHow(a)
                   // ★조용히 바꾸지 않는다 — 간격을 올렸으면 올렸다고 말한다
-                  + (gapWanted < gapMm ? ' · 간격을 ' + gapWanted + ' → ' + gapMm + 'mm 로 올렸습니다(도련×2)' : '')
+                  + (gapWanted < gapMm ? ' · 간격을 ' + R(gapWanted) + ' → ' + R(gapMm) + 'mm 로 올렸습니다(도련×2)' : '')
                   // ★도련이 조각별로 실패해도 판은 그려진다 — 조용히 넘기면 인쇄 뒤에야 안다(2026-08-04)
                   + (parseInt(a.bleedfail, 10) > 0
                     ? ('\n⚠ 도련 ' + a.bleedfail + '개 조각 실패 — ' + bleedFailWhy(a.bleedcode)) : '')
@@ -1199,8 +1231,8 @@
     var ax = placed.offX - art.offX;
     var ay = placed.offY - art.offY;
     // 아트가 실제로 놓이는 좌표 = `I` 줄과 **같은 식**이어야 한다(격자 오차가 함께 움직여 상쇄된다)
-    var baseX = pl.x * mmpp + prep.rPx * mmpp + DOMBO_MARGIN_MM;
-    var baseY = pl.y * mmpp + prep.rPx * mmpp + DOMBO_MARGIN_MM;
+    var baseX = pl.x * mmpp + prep.rPx * mmpp + domboMm();
+    var baseY = pl.y * mmpp + prep.rPx * mmpp + domboMm();
     // ⚠️ 파편 제거 — 삼각형처럼 **얇은 꼭짓점**은 회전·trim 과정에서 픽셀이 끊겨 작은 조각으로
     //    갈라진다(실측: 조각 6개인데 칼선 11개). 그 부스러기를 내보내면 재단기가 허공을 자른다.
     var minCutPx = Math.max(16, Math.round(placed.W * placed.H * 0.01));
@@ -1264,7 +1296,7 @@
           // 성근 스캔 — 순서 후보를 줄여 폭당 비용을 낮춘다(정밀 재실행은 [네스팅 실행]이 한다)
           var r = nestPlace(NST, prep, wMm, 0, allowRot, { tries: 2, maxSheets: 1 });
           var okAll = r.sheets.length && !r.unplaced.length;
-          var lenMm = r.sheets.length ? (Math.ceil(r.sheets[0].usedH * prep.mmpp) + DOMBO_MARGIN_MM * 2) : 0;
+          var lenMm = r.sheets.length ? (Math.ceil(r.sheets[0].usedH * prep.mmpp) + domboMm() * 2) : 0;
           var areaCm2 = okAll ? (wMm * lenMm / 100) : Infinity;
           rows.push({ w: wMm, len: lenMm, area: areaCm2, ok: okAll, unplaced: r.unplaced.length });
           if (okAll && (!best || areaCm2 < best.area)) best = rows[rows.length - 1];
@@ -1374,7 +1406,11 @@
     var item = safeName((document.getElementById('regItem') || {}).value);
     var head = '';
     if (mat || fin) head = '(' + mat + (mat && fin ? '+' : '') + fin + ')';
-    return head + item + '(' + lastNest.wCm + 'x' + lastNest.hCm + '-' + lastNest.n + '장)';
+    // ★규격은 **실물 cm**(lastNest 가 이미 실물). 축소본이면 A0 와 같은 `_1-N` 접미를 붙인다
+    //   (mes-a0-host.jsx: `epsName = ... + (sN > 1 ? '_1-' + sN : '')`) — 파일만 보고 축소본임을 알아야 한다.
+    var sN = cutScaleN();
+    return head + item + '(' + lastNest.wCm + 'x' + lastNest.hCm + '-' + lastNest.n + '장)'
+      + (sN > 1 ? ('_1-' + sN) : '');
   }
 
   function refreshPairName() {

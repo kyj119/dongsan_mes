@@ -867,7 +867,27 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // ★간격 < 도련×2 면 옆 조각 도련이 넘어온다 → 간격을 올리고 **알린다**
   const panelSrc2 = fs.readFileSync(CUT_MAIN, 'utf8')
   ok('3m 간격을 도련×2 로 올린다', /if \(nestBleedMm > 0 && gapMm < nestBleedMm \* 2\) gapMm = nestBleedMm \* 2/.test(panelSrc2))
-  ok('3m 올렸으면 결과에 알린다', /간격을 ' \+ gapWanted \+ ' → ' \+ gapMm/.test(panelSrc2))
+  // 표시 형식(실물 환산 등)이 바뀌어도 **알린다는 사실**은 유지돼야 한다 → 의도로 검사한다
+  ok('3m 올렸으면 결과에 알린다', /gapWanted < gapMm \?[\s\S]{0,120}간격을/.test(panelSrc2))
+
+  // ── 배율 = 가공(A0) 탭과 같은 규칙 (2026-08-05) ─────────────────
+  // A0: realW = 파일 × N · 실물 mm 상수는 ÷N · 파일명 `_1-N`. 재단도 같아야 한다.
+  {
+    const nestSrc2 = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
+    const htmlSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'poc-a0-cep', 'com.mes.a0.panel', 'index.html'), 'utf8')
+    // ★id 가 가공 탭의 `scale` 과 겹치면 두 페이지가 한 문서에 있어 값이 섞인다(tabs.js 주석)
+    ok('3u 재단 배율 id 가 가공과 다르다', /id="cutScale"/.test(htmlSrc) && /id="scale"/.test(htmlSrc))
+    // ★환산은 입구에서 한 번만 — 중간에서 또 나누면 두 번 줄어들고 판을 뽑기 전엔 안 보인다
+    ok('3u 배치 입력을 파일 좌표로 환산', /var gapMm = toFileMm\(/.test(panelSrc2) && /var offsetMm = toFileMm\(/.test(panelSrc2))
+    ok('3u 도련·재료도 환산', /var nestBleedMm = toFileMm\(/.test(panelSrc2) && /toFileMm\(sp0\.wMm\)/.test(panelSrc2))
+    // ★사람이 보는 값은 실물로 되돌린다 — 파일 좌표를 그대로 띄우면 자기 입력을 못 알아본다
+    ok('3u 판 규격은 실물 cm', /Math\.round\(R\(swMm\) \/ 10\)/.test(panelSrc2))
+    ok('3u 축소본은 파일명에 _1-N', /'_1-' \+ sN/.test(panelSrc2))
+    // ★돔보 상수는 호스트 안에 있으므로 호스트가 배율을 받아야 한다
+    ok('3u 호스트가 배율을 받는다', /p\[0\] === 'N'/.test(nestSrc2) && /MESCUT_SCALE_N = 1/.test(nestSrc2))
+    ok('3u 돔보를 파일 좌표로 환산', /mesCut_sc\(MESCUT_DOMBO_DIAM_MM\)/.test(nestSrc2))
+    ok('3u 배율은 매 호출 초기화', /MESCUT_SCALE_N = 1;\s*\n\s*var sheets = \[\]/.test(nestSrc2))
+  }
 }
 
 // ── 3l ★작업 폴더 산출 — EPS + DXF 같은 이름 쌍 (spec §2.7) ──────────

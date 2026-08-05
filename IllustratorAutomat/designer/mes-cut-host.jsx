@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.11.2';
+var MESCUT_VERSION = 'CUT-CEP-0.12.0';
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -2104,7 +2104,17 @@ var MESCUT_DOMBO_MAXGAP_MM = 500;
  *
  * ⚠️ 패널 `DOMBO_MARGIN_MM` 과 **같은 값이어야 한다** — 어긋나면 조각이 돔보를 덮거나 시트를 넘는다.
  */
-function mesCut_domboMargin() { return MESCUT_DOMBO_CORNER_MM + MESCUT_DOMBO_DIAM_MM / 2; }
+/**
+ * ★배율(1/N 축소본) — A0(`mes-a0-host.jsx` 의 `sN`)와 **같은 규칙**이다.
+ *   아트를 확대하지 않는다. 파일 좌표에서 작업하되 **실물 mm 상수를 ÷N 로 그려서**
+ *   실물에서 정확한 치수가 나오게 한다(A0: `DOMBO_DIAM = 6 * PT / sN`).
+ *   여백·간격·도련은 패널이 이미 환산해 넘기므로 여기서 또 나누면 **두 번 줄어든다** — 하지 말 것.
+ *   돔보만 호스트 안에 상수가 있어서 여기서 환산한다.
+ */
+var MESCUT_SCALE_N = 1;
+function mesCut_sc(mm) { return mm / (MESCUT_SCALE_N > 0 ? MESCUT_SCALE_N : 1); }
+
+function mesCut_domboMargin() { return mesCut_sc(MESCUT_DOMBO_CORNER_MM + MESCUT_DOMBO_DIAM_MM / 2); }
 
 /**
  * 시트 문서에 재단선(둘레) + 돔보를 그린다. 디자인 영역 = 아트보드에서 margin 만큼 안쪽.
@@ -2154,10 +2164,11 @@ function mesCut_addDombo(doc) {
     // ⚠️ 시트 전체를 두르는 사각 재단선은 **만들지 않는다**(2026-08-03 지시).
     //   조각별 칼선이 이미 있어 어디를 자를지 정해지고, 판 둘레를 도는 경로는 재료·시간만 쓴다.
 
-    var D = MESCUT_DOMBO_DIAM_MM * PT;
-    var C = MESCUT_DOMBO_CORNER_MM * PT;
-    var DIR = MESCUT_DOMBO_DIR_MM * PT;
-    var MAXG = MESCUT_DOMBO_MAXGAP_MM * PT;
+    // ★실물 mm → 파일 좌표(÷N). 배율이 1이면 그대로다(A0 와 같은 규칙).
+    var D = mesCut_sc(MESCUT_DOMBO_DIAM_MM) * PT;
+    var C = mesCut_sc(MESCUT_DOMBO_CORNER_MM) * PT;
+    var DIR = mesCut_sc(MESCUT_DOMBO_DIR_MM) * PT;
+    var MAXG = mesCut_sc(MESCUT_DOMBO_MAXGAP_MM) * PT;
     var kCol = new CMYKColor(); kCol.cyan = 0; kCol.magenta = 0; kCol.yellow = 0; kCol.black = 100;
     var n = 0;
     function mk(cx, cy) {
@@ -2211,6 +2222,8 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode) 
     // 파싱과 문서 조작을 섞지 않는 이유 = **조각마다 activeDocument 를 왕복하지 않기 위해서**다.
     // 문서 활성화는 화면 갱신을 동반해 조각 수에 비례해 눈에 띄게 느려진다.
     //   이전: 조각당 2회(원본↔시트) → 20조각이면 40회 · 지금: **시트당 2회** (2026-07-31)
+    // ★배율은 **매 호출 초기화**한다. 지난 실행 값이 남으면 다음 판의 돔보가 조용히 작아진다.
+    MESCUT_SCALE_N = 1;
     var sheets = [], cur = null, bleedSz = {};
     for (var i = 0; i < lines.length; i++) {
         var ln = lines[i].replace(/^\s+|\s+$/g, '');
@@ -2219,6 +2232,9 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode) 
         // ★L = 도련 PNG 실제 크기(mm). 조각 단위라 시트와 무관하므로 `S` 보다 **앞에서** 처리한다
         //   (그래야 params 안에서 줄 위치에 매이지 않는다). 패널이 만든 픽셀 크기에서 나온 값이라
         //   호스트가 px→mm 을 다시 계산하면 반올림만큼 어긋난다 — 받은 값을 그대로 쓴다.
+        // ★N = 배율(파일이 실물의 1/N). 돔보 상수를 파일 좌표로 줄이는 데만 쓴다 —
+        //   여백·간격·도련은 패널이 이미 환산해 보내므로 여기서 또 나누면 두 번 줄어든다.
+        if (p[0] === 'N') { var sn = parseInt(p[1], 10); MESCUT_SCALE_N = (sn > 0) ? sn : 1; continue; }
         if (p[0] === 'L') { bleedSz[parseInt(p[1], 10)] = { w: parseFloat(p[2]), h: parseFloat(p[3]) }; continue; }
         if (p[0] === 'S') { cur = { w: parseFloat(p[2]), h: parseFloat(p[3]), items: [], cuts: [] }; sheets.push(cur); continue; }
         if (!cur) continue;
