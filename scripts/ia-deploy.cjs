@@ -57,7 +57,16 @@ const C = {
 const die = (msg, code = 1) => { console.error(`\n${C.r('✖')} ${msg}`); process.exit(code) }
 
 function ask(q) {
-  if (!process.stdin.isTTY) return Promise.resolve('n')   // 비대화 실행에서 조용히 진행되면 안 된다
+  // 비대화 실행(파이프·에디터 터미널·Claude Code `!`)에서는 조용히 진행하면 안 되므로 'n' 이다.
+  // ★단 **왜 취소됐는지 말해야 한다.** 그러지 않으면 화면에는 배포 대상까지 멀쩡히 뜬 뒤
+  //   "취소했습니다." 한 줄만 남아, 사용자는 자기가 뭘 잘못했는지 알 수 없다(2026-08-06 실제 발생).
+  if (!process.stdin.isTTY) {
+    console.log(C.y('\n⚠ 대화형 입력을 쓸 수 없어 확인 질문을 받지 못했습니다(비대화 실행).'))
+    console.log(C.dim(`  질문: ${q.trim()}`))
+    console.log(C.dim('  → 위 "배포 대상" 을 확인했다면 --yes 를 붙여 다시 실행하세요:  npm run ia:deploy -- --yes'))
+    console.log(C.dim('     (축2 호스트 로직이 포함되면 --yes 여도 한 번 더 묻습니다 — 그때는 실제 터미널에서 실행할 것)'))
+    return Promise.resolve('n')
+  }
   return new Promise((res) => {
     const rl = require('readline').createInterface({ input: process.stdin, output: process.stdout })
     rl.question(q, (a) => { rl.close(); res(String(a).trim().toLowerCase()) })
