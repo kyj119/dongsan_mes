@@ -3,11 +3,12 @@
 
 # 세션 핸드오프 — auto-improve open 이슈 11건 전량 처리 (2026-08-06 #54)
 
-> **커밋 6건 미push·미배포** — `ff2f2d2f`(#597) · `d72ac2e3`(#598) · `ab902b04`(#593 문서) · `0e871bc5`(#590) · `93d3fe60`(#589) · `0d531656`(#585·586·587). 검증 = verify·smoke 108/108·Playwright 실측 2건.
+> **push `be1f328b` · prod 배포 `6534be84` 완료(2026-08-06)** — 커밋 `ff2f2d2f`(#597) · `d72ac2e3`(#598) · `ab902b04`(#593 문서) · `0e871bc5`(#590) · `93d3fe60`(#589) · `0d531656`(#585·586·587). Closes # 발동으로 **GitHub open 잔여 = #453 단 1건**.
+> 배포 검증 = entity 감사 61/61 · prod smoke 108/108 · 페이지 8종 200(SPA 인증 fetch = `X-SPA-Request: 1`+Bearer로 페이지 HTML 마커 실측 가능) · 변경 마커 7/7 · 변경 API 3종 200 · Playwright 콘솔 0.
 
 ## 이월 TODO 통합 (2026-08-06 #54 갱신 — 다음 세션은 여기부터)
 
-1. **push + 배포 (용준님 명시 요청 시)** — `git push origin main`(GitHub Closes # 발동으로 open 7건 자동 close) → `/deploy-verify`. 현재 GitHub open 8건 중 7건은 코드로 종결됐고 push만 남음. 잔여 open = **#453**(infra: 스케줄 auto-scan prod egress 차단 — 코드 아님, 별도 판단).
+1. **#453** (infra: 스케줄 auto-scan prod egress 차단 — 코드 아님, 별도 판단만 남음)
 2. **B. 작업지시서 실주문 자연검증** — 신규 주문 → 카드 체크리스트 파생 → 현장 체크 실사용 관찰 (기존 카드는 체크리스트 없음=섹션 숨김이 정상)
 3. **C. 재단 세션(#42) 이월분** — ①실주문 주문폴더 EPS+DXF 쌍 자연검증 ②디자이너 PC 4대 `install-a0-panel.ps1` ③이 PC 일러 재시작(shell 0.16.0)
 4. **D. 후속(운영 피드백 후)** — category별 체크리스트 settings 템플릿 · MANUAL 스텝 UI · generateCardsForOrder 통합 검토
