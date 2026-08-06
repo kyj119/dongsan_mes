@@ -34,6 +34,16 @@
 - **파생 데이터 복원은 "저장 시 판정과 같은 축"으로** — #590 비교 기준을 저장된 auto_amount가 아니라 **재계산 auto**로 (산식이 바뀌어도 서버 hasManual 판정과 일치).
 - **광고 발송 경로는 어떤 검증도 /send 실호출 금지** — preview(발송·과금 없음)·DOM 시뮬레이션으로 충분했다.
 - 로컬 E2E: orders 생성 API는 `delivery_date` 필수·client 9101·curl 한글 body는 cp949 오염되니 확인용으로만.
+- **prod 페이지 마커 실측 = SPA 인증 fetch** — `X-SPA-Request: 1` + Bearer로 페이지 HTML을 받으면 브라우저 없이 ?raw 스크립트 마커까지 검사된다 → [[reference-spa-auth-page-fetch]].
+
+## 검증 명령 (PowerShell)
+
+```powershell
+npm run verify                 # tsc + build
+npm run audit:entity           # 61/61
+$env:SMOKE_URL='https://webapp-9i0.pages.dev'; npm run smoke   # 108/108
+# 이번 배포분 재검(읽기전용): 광고탭 마커·에누리 복원 마커·rip stats 200
+```
 
 ---
 

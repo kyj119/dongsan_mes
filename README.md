@@ -218,7 +218,7 @@ PollTestWatchAsync()       → 테스트 감시 폴더    → (개발용)       
 
 ---
 
-## DB 마이그레이션 (0001~0506, 507개 · 아래는 핵심 테이블 발췌)
+## DB 마이그레이션 (0001~0522, 523개 · 아래는 핵심 테이블 발췌)
 
 > 신규/로컬 D1 초기화는 마이그레이션 풀리플레이가 아니라 `npm run db:reset`(=`schema/baseline_*.sql` 베이스라인).
 
@@ -257,13 +257,13 @@ dongsan_mes/
 │   ├── index.tsx              # 메인 앱 (라우트 등록 + 페이지 스크립트)
 │   ├── layout.ts + layout/    # 공통 레이아웃 (menu·shared-styles·sidebar·topbar)
 │   ├── routes/                # API 라우트 (89 top-level + 36 서브파일)
-│   ├── pages/                 # 프론트엔드 페이지 (88개, 포털 7개 포함)
+│   ├── pages/                 # 프론트엔드 페이지 (87개, 포털 7개 포함)
 │   ├── services/              # 외부 연동 (barobill* 6종, taxProvider, email*, ftpUpload)
 │   ├── lib/                   # 유틸리티 (payments)
 │   ├── utils/                 # 헬퍼 함수
 │   ├── middleware/auth.ts     # JWT 인증 미들웨어
 │   └── types/                 # TypeScript 타입 정의
-├── migrations/                # D1 마이그레이션 (0001~0506, 507개)
+├── migrations/                # D1 마이그레이션 (0001~0522, 523개)
 ├── schema/                    # DB 부트스트랩 베이스라인 (db:reset 소스)
 ├── IllustratorAutomat/        # C# .NET 8 자동화
 │   ├── Program.cs             # 메인 폴링 로직

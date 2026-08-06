@@ -2,14 +2,14 @@
 
 > 코드 수정 시 영향 범위를 빠르게 파악하기 위한 참조 문서.
 
-## 프로젝트 규모 (기준일: 2026-07-31 / 이전: 2026-07-27)
+## 프로젝트 규모 (기준일: 2026-08-06 / 이전: 2026-07-31)
 
 | 항목 | 수량 | 위치 |
 |------|------|------|
 | API 라우터 | 91 top-level + 36 서브파일 (6개 도메인 분할) | `src/routes/*.ts` + `src/routes/{ledger,orders,cards,taxInvoices,purchaseOrders,payroll}/*.ts` |
-| 페이지 | 88개 (일반 81 + 포털 7) | `src/pages/*.ts` + `src/pages/portal/*.ts` |
-| 스크립트 | 88 top-level + 18 서브파일 (5개 디렉토리 분할) | `src/scripts/*.js` + `src/scripts/{cards,equipment,items,orderForm,layout}/*.js` |
-| DB 마이그레이션 | 507개 파일 (최신 0506) | `migrations/` |
+| 페이지 | 87개 (일반 80 + 포털 7) | `src/pages/*.ts` + `src/pages/portal/*.ts` |
+| 스크립트 | 86 top-level + 19 서브파일 (5개 디렉토리 분할) | `src/scripts/*.js` + `src/scripts/{cards,equipment,items,orderForm,layout}/*.js` |
+| DB 마이그레이션 | 523개 파일 (최신 0522) | `migrations/` |
 | DB 부트스트랩 | `schema/baseline_{schema,reference,applied_migrations}.sql` | 루트 `seed_*.sql`은 폐기 → `npm run db:reset`=베이스라인 |
 | 외부 연동 | IllustratorAutomat(C#), LogWatcher(C#), EdgeAgent | 프로젝트 루트 |
 

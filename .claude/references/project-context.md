@@ -19,7 +19,7 @@
 - **엔트리**: `src/index.tsx` — API 라우터 + 페이지 라우트 등록
 - **API**: `src/routes/*.ts` (125개, 하위폴더 포함, 2026-07-27 기준)
 - **미들웨어**: `src/middleware/auth.ts` — authMiddleware, requireRole, pageAuthMiddleware, agentKeyMiddleware
-- **페이지**: `src/pages/*.ts` (81개 최상위) → `renderPage(c, { pageScript })`
+- **페이지**: `src/pages/*.ts` (80개 최상위) → `renderPage(c, { pageScript })`
 - **스크립트**: `src/scripts` (105개, 하위폴더 포함, `?raw` import)
 - **레이아웃**: `src/layout.ts` + `src/layout/`(menu·shared-styles·sidebar·topbar) — 사이드바, SHARED_AUTH_JS, SPA 네비게이션
 - **포털**: `src/pages/portal/` (7개) — 별도 인증, 자체 레이아웃
