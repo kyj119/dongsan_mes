@@ -29,6 +29,8 @@
 
 review-checklist 4건 전량 수정·배포: ①#599 IDOR(자식 read 3종 `cardEntityFilter`+404, prod 404 마커 실측) ②needs_reissue 활성 카드 한정 ③changed_by 리터럴 1 → NULL 6곳 ④상태 enum 런타임 정합. **교훈 = 자식 read 라우트 신설 시 형제 격리 여부부터 확인** — 미격리 형제 패턴을 따르면 IDOR을 복제한다(checklist가 history/defects를 따라 만들어져 #599 유발).
 
+**#600도 같은 패턴 종결**(커밋 `132c9f1a`·배포 `37555b17`): printEvents `POST /link` 카드 조회 `cardEntityFilter` 게이트. ⚠️소급 UPDATE(print_events)는 일부러 안 조임 — 법인협업 시 이벤트 entity≠카드 entity 정당(타법인 장비가 담당 공정 수행). auto-improve open 13→11.
+
 ## 판단 기준
 
 - **기존 카드 파이프라인이 이미 "자동 제작"** — 새 엔티티를 만들지 않고 승격하는 것이 정답이었다 (2026-05-26 결정 계승)
