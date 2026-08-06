@@ -19,14 +19,17 @@ export enum OrderStatus {
   CONFIRMED = 'CONFIRMED',
   PRINTING = 'PRINTING',
   PRINT_DONE = 'PRINT_DONE',
+  HOLD = 'HOLD',
   SHIPPED = 'SHIPPED',
   CANCELLED = 'CANCELLED'
 }
 
 export enum CardStatus {
+  PRINT_PENDING = 'PRINT_PENDING',
   PRINTING = 'PRINTING',
   PRINT_DONE = 'PRINT_DONE',
-  HOLD = 'HOLD'
+  HOLD = 'HOLD',
+  CANCELLED = 'CANCELLED'
 }
 
 // NotificationType enum removed — 인앱 알림은 자유 텍스트 title/message 사용

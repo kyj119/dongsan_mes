@@ -970,12 +970,14 @@ cardsQueriesRouter.get('/issue-status', async (c) => {
     `).bind(...efC.params).all()
 
     // 3) 개정 필요: 주문 수정 시 카드 보존 경로가 세팅 (reissue-ack로 해제)
+    //    활성 카드만 — 플래그 후 출고/취소된 카드는 조치 대상이 아님 (세팅 시점 필터와 이중 방어)
     const efR = cardEntityFilter(c, 'c')
     const { results: reissue } = await c.env.DB.prepare(`
       SELECT c.id, c.card_number, c.client_name, c.item_name, c.status, c.delivery_date, o.order_number
       FROM cards c
       JOIN orders o ON c.order_id = o.id
-      WHERE c.needs_reissue = 1${efR.clause}
+      WHERE c.needs_reissue = 1
+        AND c.status IN ('PRINT_PENDING', 'PRINTING', 'HOLD', 'PRINT_DONE')${efR.clause}
       ORDER BY (c.delivery_date IS NULL), c.delivery_date ASC, c.id ASC
       LIMIT 100
     `).bind(...efR.params).all()
@@ -1163,6 +1165,12 @@ cardsQueriesRouter.get('/:id', async (c) => {
 cardsQueriesRouter.get('/:id/history', async (c) => {
   try {
     const id = c.req.param('id')
+    // #599: 형제 GET /:id(#414)와 동일하게 카드 소유 법인 검증 — 자식 read 3종(history/defects/checklist)
+    // bare WHERE card_id=? 는 순차 정수 열거로 타법인 이력·성명이 노출되는 IDOR
+    const efHist = cardEntityFilter(c)
+    const owned = await c.env.DB.prepare(`SELECT id FROM cards WHERE id = ?${efHist.clause}`)
+      .bind(id, ...efHist.params).first()
+    if (!owned) return c.json({ success: false, error: '카드를 찾을 수 없습니다.' }, 404)
     const { results } = await c.env.DB.prepare(`
       SELECT
         csh.*,
@@ -1187,6 +1195,11 @@ cardsQueriesRouter.get('/:id/history', async (c) => {
 cardsQueriesRouter.get('/:id/checklist', async (c) => {
   try {
     const id = c.req.param('id')
+    // #599: 카드 소유 법인 검증 (형제 GET /:id 패턴)
+    const efCcl = cardEntityFilter(c)
+    const owned = await c.env.DB.prepare(`SELECT id FROM cards WHERE id = ?${efCcl.clause}`)
+      .bind(id, ...efCcl.params).first()
+    if (!owned) return c.json({ success: false, error: '카드를 찾을 수 없습니다.' }, 404)
     const { results } = await c.env.DB.prepare(`
       SELECT ccl.*, u.name as checked_by_name
       FROM card_checklist_items ccl
@@ -1207,6 +1220,11 @@ cardsQueriesRouter.get('/:id/checklist', async (c) => {
 cardsQueriesRouter.get('/:id/defects', async (c) => {
   try {
     const cardId = c.req.param('id')
+    // #599: 카드 소유 법인 검증 (형제 GET /:id 패턴)
+    const efDef = cardEntityFilter(c)
+    const owned = await c.env.DB.prepare(`SELECT id FROM cards WHERE id = ?${efDef.clause}`)
+      .bind(cardId, ...efDef.params).first()
+    if (!owned) return c.json({ success: false, error: '카드를 찾을 수 없습니다.' }, 404)
     const { results } = await c.env.DB.prepare(`
       SELECT qi.*,
         e1.name as reporter_name,

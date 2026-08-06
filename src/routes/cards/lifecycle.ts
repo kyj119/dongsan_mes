@@ -92,9 +92,10 @@ async function syncOrderStatusFromCards(db: D1Database, orderId: number) {
 
     // 실제로 UPDATE된 경우에만 이력 기록
     if (result.meta.changes > 0) {
+      // 시스템 자동 전이 = changed_by NULL (user FK 리터럴 금지 — prod user id=1 부재 시 INSERT 전멸 전례)
       await db.prepare(`
         INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
-        VALUES (?, ?, ?, 1, ?)
+        VALUES (?, ?, ?, NULL, ?)
       `).bind(orderId, snapshot.order_status, newStatus, '카드 상태 자동 동기화').run()
     }
   }
@@ -386,7 +387,7 @@ cardsLifecycleRouter.post('/bulk-ship', async (c) => {
             c.env.DB.prepare(`
               INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
               VALUES (?, ?, 'SHIPPED', ?, '카드 전체 출고 완료 자동 처리')
-            `).bind(orderId, order.status, user?.id || 1)
+            `).bind(orderId, order.status, user?.id ?? null)
           ])
           orderShippedCount++
         }
@@ -477,7 +478,7 @@ cardsLifecycleRouter.post('/:id/ship', async (c) => {
           c.env.DB.prepare(`
             INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
             VALUES (?, ?, 'SHIPPED', ?, '카드 전체 출고 완료 자동 처리')
-          `).bind(card.order_id, order.status, user?.id || 1),
+          `).bind(card.order_id, order.status, user?.id ?? null),
         ])
 
         orderShipped = true
@@ -847,7 +848,7 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
           c.env.DB.prepare(`
             INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
             VALUES (?, ?, 'SHIPPED', ?, '카드 전체 출고 완료 자동 처리')
-          `).bind(card.order_id, order.status, user?.id || 1),
+          `).bind(card.order_id, order.status, user?.id ?? null),
         ])
 
         orderShipped = true
@@ -871,7 +872,7 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
           undo.push(c.env.DB.prepare(`
             INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
             VALUES (?, 'SHIPPED', ?, ?, '출고 기록 생성 실패로 롤백')
-          `).bind(card.order_id, prevOrderStatus, user?.id || 1))
+          `).bind(card.order_id, prevOrderStatus, user?.id ?? null))
         }
         await c.env.DB.batch(undo)
       } catch (undoErr) {
@@ -930,7 +931,7 @@ cardsLifecycleRouter.patch('/:id/unship', requireRole('ADMIN', 'MANAGER'), async
         c.env.DB.prepare(`
           INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
           VALUES (?, 'SHIPPED', 'PRINT_DONE', ?, '카드 출고 취소로 주문 상태 복원')
-        `).bind(card.order_id, user?.id || 1),
+        `).bind(card.order_id, user?.id ?? null),
       ])
     }
 

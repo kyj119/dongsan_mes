@@ -179,13 +179,11 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
         UPDATE cards SET order_item_id = NULL WHERE order_id = ?
       `).bind(id).run()
       // 카드 메타데이터 동기화 (재생성 없이도 납기/우선순위/비고 반영)
-      // needs_reissue=1: 라인 교체가 일어나는데 카드는 보존 → 작업지시서 개정필요 표시 (지시 현황판 큐, reissue-ack로 해제)
       await c.env.DB.prepare(`
         UPDATE cards SET
           delivery_date = ?,
           priority = ?,
           notes = ?,
-          needs_reissue = 1,
           updated_at = CURRENT_TIMESTAMP
         WHERE order_id = ?
       `).bind(
@@ -194,6 +192,12 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
         orderData.notes || null,
         id
       ).run()
+      // needs_reissue=1: 라인 교체가 일어나는데 카드는 보존 → 작업지시서 개정필요 표시 (지시 현황판 큐, reissue-ack로 해제)
+      // 활성 카드만 — CANCELLED/SHIPPED에 찍으면 개정필요 큐·배너에 노이즈 (리뷰 2026-08-06)
+      await c.env.DB.prepare(`
+        UPDATE cards SET needs_reissue = 1
+        WHERE order_id = ? AND status IN ('PRINT_PENDING', 'PRINTING', 'HOLD', 'PRINT_DONE')
+      `).bind(id).run()
       cardsPreserved = true
     } else {
       // #87 + #122: 카드 자식 테이블 + 카드 + order_items 원자적 삭제 (재생성 전)
