@@ -1,4 +1,7 @@
 @echo off
+:: 이 파일은 UTF-8 로 저장돼 있다. chcp 를 안 하면 콘솔 기본 코드페이지(949/936)로 읽혀
+:: 안내문이 전부 깨진다 — 전사 8색 PC(중국어 SW)에서 오류문이 중국어로 보인 원인.
+chcp 65001 >nul 2>&1
 :: ================================================================
 :: LogWatcher Windows 서비스 설치 스크립트
 :: 관리자 권한으로 실행 필요
@@ -31,7 +34,10 @@ if not exist "%NSSM%" (
     pause
     exit /b 1
 )
-if not exist "%APP_DIR%appsettings.json" (
+:: ⚠️ APP_DIR 은 위에서 뒤 백슬래시를 뗐다 → 파일 경로를 붙일 땐 %~dp0 를 쓸 것.
+::    "%APP_DIR%appsettings.json" 이라고 쓰면 C:\Logwatcherappsettings.json 이 되어
+::    파일이 있어도 항상 "없음"으로 판정, 설치가 여기서 멈춘다(실제 발생).
+if not exist "%~dp0appsettings.json" (
     echo [오류] appsettings.json을 찾을 수 없습니다.
     echo        appsettings.json의 EquipmentId를 설정했는지 확인하세요.
     pause
@@ -66,8 +72,8 @@ echo [3/6] 자동 시작 설정...
 %NSSM% set %SERVICE_NAME% Start SERVICE_AUTO_START
 
 echo [4/6] 로그 파일 설정...
-%NSSM% set %SERVICE_NAME% AppStdout "%APP_DIR%service.log"
-%NSSM% set %SERVICE_NAME% AppStderr "%APP_DIR%service.log"
+%NSSM% set %SERVICE_NAME% AppStdout "%~dp0service.log"
+%NSSM% set %SERVICE_NAME% AppStderr "%~dp0service.log"
 %NSSM% set %SERVICE_NAME% AppStdoutCreationDisposition 4
 %NSSM% set %SERVICE_NAME% AppStderrCreationDisposition 4
 %NSSM% set %SERVICE_NAME% AppRotateFiles 1
@@ -88,7 +94,7 @@ echo  서비스 상태 확인: sc query LogWatcher
 echo  서비스 중지:      nssm stop LogWatcher
 echo  서비스 시작:      nssm start LogWatcher
 echo  서비스 제거:      nssm remove LogWatcher confirm
-echo  로그 확인:        type "%APP_DIR%service.log"
+echo  로그 확인:        type "%~dp0service.log"
 echo.
 echo  [중요] appsettings.json의 EquipmentId가
 echo         이 PC에 맞게 설정되어 있는지 확인하세요.
