@@ -408,6 +408,19 @@
         <span class="cfg">칼선 ↔ 칼선</span>
         <label class="rad"><input id="nestRotate" type="checkbox" checked /> 회전 허용</label>
       </div>
+      <!-- ★조각 수량 (2026-08-06) — 같은 그림을 여러 장 뽑을 때 파일에서 손으로 복사하지 않는다.
+           복사는 조각마다 다시 굽고(느림) 사본이 미세하게 어긋날 수 있고 원본 파일이 더러워진다.
+           수량은 **같은 마스크를 재사용**하므로 굽기 1회로 끝나고 조각이 완전히 동일하다. -->
+      <div class="row">
+        <label>조각 수량</label>
+        <button id="btnPieceQty" type="button" class="mini">↻ 불러오기</button>
+        <span class="cfg">일러에서 조각을 고른 뒤 — 조각마다 몇 장씩 배치할지</span>
+      </div>
+      <div id="pieceQtyBox" class="queuebox hidden"></div>
+      <div class="hint" id="pieceQtyHint">
+        불러온 뒤 선택을 바꾸면 목록과 어긋납니다 — 그때는 <b>수량을 버리고 전부 1개</b>로 배치하고 알려줍니다.
+        <br>등록 수량(주문)은 이것과 <b>별개</b>입니다. 판 1장 = 1건이고, 조각 수는 면적으로만 반영됩니다.
+      </div>
       <div class="row">
         <label for="nestBleed">도련</label>
         <input id="nestBleed" type="number" value="3" min="0" max="30" step="0.5" />

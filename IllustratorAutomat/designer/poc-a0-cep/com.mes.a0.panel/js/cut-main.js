@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.24.0';
+  var SHELL_VERSION = '0.25.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -825,11 +825,13 @@
         if (em.downgraded) softened++;
         // ★효율%를 정직하게 내려면 **팽창 전** 잉크를 세 둬야 한다 —
         //   팽창된 마스크로 세면 조각이 작고 gap 이 클수록 크게 부풀려진다.
-        for (var k = 0; k < em.m.length; k++) rawInkPx += em.m[k];
+        var pInk = 0;
+        for (var k = 0; k < em.m.length; k++) pInk += em.m[k];
+        rawInkPx += pInk;
         // ★배치 마스크 = **여백 + 간격/2** 팽창 — 겹치지 않으면 칼선끼리 간격이 보장된다.
         //   반경은 **정수 px** 이어야 한다(소수부는 버려진다) → 스냅이 계산한 rPx 를 그대로 쓴다.
         var piece = {
-          id: id, W: em.W, H: em.H, m: growMask(G, em.m, em.W, em.H, rez.rPx),
+          id: id, ink: pInk, W: em.W, H: em.H, m: growMask(G, em.m, em.W, em.H, rez.rPx),
           base: { W: em.W, H: em.H, m: em.m },   // 팽창 전 — 칼선은 여기서 여백만큼만 벌린다
         };
         if (sub > 1 && em.fine) {
@@ -1095,6 +1097,8 @@
     function go() {
       var rez = nestResolution(G, offsetMm, gapMm, sheetWmm, sheetHmm);
       nestPrepare(G, rez, gapMm, offsetMm, fillMode, function (m) { done(m, 'err'); }, function (prep) {
+        // ★수량 확장은 **배치 전**이어야 한다 — 이 뒤의 grownPx·효율%·판 폭 추정이 전부 이 목록을 센다.
+        var qtyNote = expandByQty(prep);
         out('배치 계산 중...');
         var res = nestPlace(NST, prep, sheetWmm, sheetHmm, allowRot);
         if (!res.sheets.length) { done('배치 실패 — 조각이 시트보다 큽니다.', 'err'); return; }
@@ -1237,7 +1241,7 @@
                     : '\n⚠ 도련이 0 입니다 — 재단이 밀리면 옆 디자인이 바로 들어옵니다.')
                   + (mmpp > 0.3 ? ('\n⚠ 배치 격자가 ' + mmpp.toFixed(2) + 'mm 라 조각이 최대 그만큼 어긋날 수 있습니다 — 더 붙이려면 시트를 작게 잡으세요.') : '')) : '')
               + (prep.softened ? ('\n※ 반투명 조각 ' + prep.softened + '개는 경계를 느슨하게 잡았습니다.') : '')
-              + (prep.fillNote || '') + (prep.bakeNote || '')
+              + (prep.fillNote || '') + (prep.bakeNote || '') + qtyNote
               + (prep.exact ? '' : ' ⚠ 해상도 한계로 올림 적용')
               + (allowRot ? ' · 회전 허용' : '')
               + '\n돔보 ' + (a.dombo || 0) + '판 — 별도 레이어(인쇄 ON) · 재단선 레이어는 인쇄 OFF'
@@ -1653,6 +1657,85 @@
     try { window.localStorage.setItem(HINT_KEY, next ? '1' : '0'); } catch (e) {}
     applyHints(next);
   });
+
+  // ── 조각 수량 (2026-08-06) ────────────────────────────────────────────
+  // 같은 그림 N장을 파일에서 손으로 복사하는 대신 수량으로 지시한다.
+  //   ★핵심 = 배치에 **같은 조각 객체를 N번 넣는다**. nesting.js 의 회전·팩 캐시가 객체 참조를
+  //     키로 쓰므로(getCand: cache.get(src)) 굽기도 캐시도 1회분이다. 복사는 N회 굽는다.
+  //   ★params 의 `I` 줄은 조각 id 를 싣고 호스트는 그 원본을 배치마다 duplicate 한다 —
+  //     같은 id 가 여러 번 나와도 이미 성립한다(구조 변경 불요).
+  //   ⚠️ 목록은 **불러온 시점의 선택**이다. 네스팅 실행은 nestBegin 을 다시 부르므로 그 사이
+  //      선택이 바뀌면 개수가 어긋난다 → 그때는 수량을 버리고 전부 1개로 가고 **알린다**.
+  var pieceQty = null;   // { sizes:[], qty:[] } · null = 안 불러옴(전부 1개)
+  function renderPieceQty() {
+    var box = $('pieceQtyBox');
+    if (!box) return;
+    if (!pieceQty) { box.className = 'queuebox hidden'; box.innerHTML = ''; return; }
+    box.className = 'queuebox';
+    box.innerHTML = '';
+    for (var i = 0; i < pieceQty.sizes.length; i++) {
+      var row = document.createElement('div');
+      row.className = 'qrow';
+      var n = document.createElement('span'); n.className = 'qn'; n.textContent = '#' + (i + 1);
+      var meta = document.createElement('span'); meta.className = 'qmeta';
+      meta.textContent = String(pieceQty.sizes[i]).replace('x', ' × ') + ' mm';
+      var q = document.createElement('input');
+      q.className = 'qqty'; q.type = 'text'; q.value = String(pieceQty.qty[i]);
+      q.setAttribute('data-i', String(i));
+      q.addEventListener('input', function () {
+        var k = parseInt(this.getAttribute('data-i'), 10);
+        var v = parseInt(this.value, 10);
+        pieceQty.qty[k] = (isNaN(v) || v < 1) ? 1 : Math.min(999, v);
+      });
+      row.appendChild(n); row.appendChild(meta); row.appendChild(q);
+      box.appendChild(row);
+    }
+  }
+  function loadPieceQty() {
+    if (hostBusy) return;
+    setBusy(true);
+    out('조각 확인 중...');
+    host('mesCut_nestBegin()', function (bg, bad) {
+      if (bad || bg.indexOf('ok;') !== 0) { setBusy(false); out('조각 확인 실패: ' + bg, 'err'); return; }
+      host('mesCut_nestSizes()', function (sz, bad2) {
+        setBusy(false);
+        if (bad2 || sz.indexOf('ok;') !== 0) { out('조각 크기 조회 실패: ' + sz, 'err'); return; }
+        var list = sz.substring(3).split(',');
+        var prev = pieceQty && pieceQty.qty;
+        pieceQty = { sizes: list, qty: [] };
+        for (var i = 0; i < list.length; i++) {
+          // 같은 개수면 이전 수량을 지킨다 — 크기만 다시 재려고 눌렀을 때 입력이 날아가면 성가시다
+          pieceQty.qty.push((prev && prev.length === list.length) ? prev[i] : 1);
+        }
+        renderPieceQty();
+        out('조각 ' + list.length + '개 — 수량을 넣고 [네스팅 실행]을 누르세요.', 'ok');
+      });
+    });
+  }
+  var btnPieceQty = $('btnPieceQty');
+  if (btnPieceQty) btnPieceQty.addEventListener('click', loadPieceQty);
+
+  /** prep.pieces 를 수량만큼 늘린다. 반환 = 사용자에게 알릴 메모(빈 문자열이면 알릴 것 없음). */
+  function expandByQty(prep) {
+    if (!pieceQty) return '';
+    if (pieceQty.qty.length !== prep.pieces.length) {
+      // 조용히 1개로 떨어지면 "수량을 넣었는데 1장만 나왔다"가 된다 — 반드시 말한다.
+      var msg = '\n⚠ 조각 수량 목록(' + pieceQty.qty.length + '개)이 지금 선택(' + prep.pieces.length
+        + '개)과 달라 **전부 1개**로 배치했습니다 — [↻ 불러오기]를 다시 누르세요.';
+      pieceQty = null; renderPieceQty();
+      return msg;
+    }
+    var total = 0, expanded = [], ink = 0;
+    for (var i = 0; i < prep.pieces.length; i++) {
+      var q = pieceQty.qty[i] || 1;
+      total += q;
+      for (var k = 0; k < q; k++) { expanded.push(prep.pieces[i]); ink += (prep.pieces[i].ink || 0); }
+    }
+    if (total === prep.pieces.length) return '';   // 전부 1개 = 종전과 동일
+    prep.pieces = expanded;
+    prep.rawInkPx = ink;                            // 효율%는 늘어난 잉크 기준이어야 한다
+    return '\n조각 수량 반영 — 원본 ' + pieceQty.qty.length + '종 → 배치 ' + total + '장';
+  }
 
   var btnPair = $('btnExportPair');
   if (btnPair) btnPair.addEventListener('click', exportPair);

@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.15.0';  // 0.15.0 = 도련을 칼선 방식과 분리(래스터에서도 생성)
+var MESCUT_VERSION = 'CUT-CEP-0.16.0';  // 0.15.0 = 도련을 칼선 방식과 분리(래스터에서도 생성)
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -1860,6 +1860,26 @@ function mesCut_nestBegin() {
     for (var i = 0; i < sel.length; i++) if (!mesCut_isCutItem(sel[i])) MESCUT_NEST_ITEMS.push(sel[i]);
     if (!MESCUT_NEST_ITEMS.length) return 'ERROR 선택이 재단선뿐입니다';
     return 'ok;n=' + MESCUT_NEST_ITEMS.length;
+}
+
+/**
+ * 조각별 실측 크기(mm) — 패널의 '조각 수량' 목록 라벨용. **nestBegin 다음에** 부른다.
+ *   같은 그림을 여러 장 뽑을 때 파일에서 손으로 복사하는 대신 수량으로 지시하기 위한 것이고,
+ *   목록에서 어느 행이 어느 조각인지 알아보려면 크기가 필요하다.
+ *   ⚠️ 선택을 바꾸지 않는다 — 여기서 선택을 건드리면 이어지는 nestBegin 이 그 하나만 잡는다.
+ * 반환 = 'ok;<W>x<H>,<W>x<H>,...' (소수 1자리 mm)
+ */
+function mesCut_nestSizes() {
+    if (!MESCUT_NEST_ITEMS || !MESCUT_NEST_ITEMS.length) return 'ERROR 대상 없음 (nestBegin 먼저)';
+    var out = [];
+    for (var i = 0; i < MESCUT_NEST_ITEMS.length; i++) {
+        var b = null;
+        try { b = mesCut_inkBounds(MESCUT_NEST_ITEMS[i]); } catch (eB) {}
+        if (!b) { out.push('0x0'); continue; }
+        var w = (b[2] - b[0]) / MESCUT_PT_PER_MM, h = (b[1] - b[3]) / MESCUT_PT_PER_MM;
+        out.push((Math.round(w * 10) / 10) + 'x' + (Math.round(h * 10) / 10));
+    }
+    return 'ok;' + out.join(',');
 }
 
 /**

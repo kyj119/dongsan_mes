@@ -676,6 +676,20 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3q 래스터에서도 도련 PNG 를 굽는다', /var wantBleedPng = nestBleedMm > 0 && growMm > 0;/.test(panelSrc))
   ok('3q 래스터면 cutMode 를 알린다', /useVec \? '' : ',"raster"/.test(panelSrc))
   ok('3q 도련 0 을 조용히 넘기지 않는다', /도련 0mm — 만들지 않았습니다/.test(panelSrc))
+
+  // ── 조각 수량 (2026-08-06) ─────────────────────────────────────
+  // ★같은 **객체 참조**를 반복해야 한다. 복사본을 넣으면 nesting.js 의 캐시(cache.get(src))가
+  //   조각마다 새로 생겨 굽기 1회의 이점이 사라지고, 메모리도 배수로 든다.
+  ok('3r 수량은 같은 객체를 반복', /expanded\.push\(prep\.pieces\[i\]\)/.test(panelSrc))
+  // ★확장은 배치 **전**이어야 한다 — 뒤에 오는 grownPx·효율%·폭 추정이 이 목록을 센다.
+  ok('3r 확장이 배치보다 먼저', /expandByQty\(prep\)[\s\S]{0,200}?nestPlace\(NST, prep/.test(panelSrc))
+  // ★효율%는 늘어난 잉크 기준 — 안 고치면 8장을 깔아도 1장치 잉크로 계산돼 효율이 1/8 로 보인다
+  ok('3r 효율 기준 잉크도 늘린다', /prep\.rawInkPx = ink;/.test(panelSrc))
+  // ★목록과 선택이 어긋나면 조용히 1개로 떨어지지 않는다
+  ok('3r 목록 불일치를 알린다', /전부 1개\*\*로 배치했습니다/.test(panelSrc))
+  ok('3r 호스트가 조각 크기를 준다', /function mesCut_nestSizes\(\)/.test(hostSrc))
+  // ★크기 조회가 선택을 바꾸면 이어지는 nestBegin 이 그 하나만 잡는다
+  ok('3r 크기 조회는 선택을 안 건드린다', !/mesCut_nestSizes[\s\S]{0,600}?\.selection\s*=/.test(hostSrc))
   // ★조각마다 따로 불러야 한다 — 한꺼번에 하면 조각끼리 이어진다
   ok('3q 배치된 사본마다 도련', /mesCut_bleedPlaceItem\(doc, artLayer, copies\[vi\]/.test(hostSrc))
   ok('3q 패널이 도련을 넘긴다', /nestApply\([\s\S]{0,120}nestBleedMm/.test(panelSrc))
