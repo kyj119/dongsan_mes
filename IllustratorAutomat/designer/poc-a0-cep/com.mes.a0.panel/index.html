@@ -115,25 +115,25 @@
              ⚠️ id·class·data-side 는 **그대로 유지**한다. main.js 는 getElementsByClassName('finM'…)
                 + data-side 로만 찾으므로 표 구조에는 의존하지 않는다(스모크도 같은 선택자를 쓴다). -->
         <table class="fin">
-          <tr><td class="fl"></td><td class="fhdr">방식</td><td class="fhdr">여백cm</td><td class="fhdr">마크</td><td class="fhdr">펀칭</td><td class="fhdr">주석</td></tr>
+          <tr><td class="fl"></td><td class="fhdr">방식</td><td class="fhdr">여백cm</td><td class="fhdr">재단선</td><td class="fhdr">펀칭</td><td class="fhdr">주석</td></tr>
           <tr><td class="fl">상</td><td><select class="finM" data-side="top"></select></td>
               <td><input class="finCm" data-side="top" type="text" /></td>
-              <td><select class="finMark" data-side="top"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td>
+              <td><input class="finMark" data-side="top" type="checkbox" /></td>
               <td><input id="pTop" type="text" value="0" class="tiny" /></td>
               <td class="fc"><input id="aTop" type="checkbox" /></td></tr>
           <tr><td class="fl">하</td><td><select class="finM" data-side="bottom"></select></td>
               <td><input class="finCm" data-side="bottom" type="text" /></td>
-              <td><select class="finMark" data-side="bottom"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td>
+              <td><input class="finMark" data-side="bottom" type="checkbox" /></td>
               <td><input id="pBottom" type="text" value="0" class="tiny" /></td>
               <td class="fc"><input id="aBottom" type="checkbox" /></td></tr>
           <tr><td class="fl">좌</td><td><select class="finM" data-side="left"></select></td>
               <td><input class="finCm" data-side="left" type="text" /></td>
-              <td><select class="finMark" data-side="left"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td>
+              <td><input class="finMark" data-side="left" type="checkbox" /></td>
               <td><input id="pLeft" type="text" value="0" class="tiny" /></td>
               <td class="fc"><input id="aLeft" type="checkbox" /></td></tr>
           <tr><td class="fl">우</td><td><select class="finM" data-side="right"></select></td>
               <td><input class="finCm" data-side="right" type="text" /></td>
-              <td><select class="finMark" data-side="right"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td>
+              <td><input class="finMark" data-side="right" type="checkbox" /></td>
               <td><input id="pRight" type="text" value="0" class="tiny" /></td>
               <td class="fc"><input id="aRight" type="checkbox" /></td></tr>
         </table>
@@ -150,7 +150,7 @@
           <label class="rad"><input id="borderLine" type="checkbox" /> 출력 경계선</label>
         </div>
         <div class="hint">
-          <b>마크</b> 접는선=검정 실선 · 재단선=검정 점선 (재단 필요한 변에만).
+          <b>재단선</b> 체크한 변의 <b>디자인 경계</b>에 검정 실선을 그립니다(재단 필요한 변에만).<br>돔보를 켰거나 그 변에 마감 여백이 있으면 <b>같은 자리에 선이 겹칠 수 있습니다</b> — 체크가 곧 지시라 자동으로 빼지 않습니다.
           <br><b>주석</b> 은 그 변 마감 여백이 <b>3cm 이상</b>일 때만 들어갑니다.
           <br><b>출력 경계선</b> = 마감 여백 바깥을 두르는 백색 0.5pt 선(RIP 가 여백까지 출력영역에 포함하도록).
           원본에 이미 테두리가 있으면 선이 두 줄로 보입니다 → 끄세요.

@@ -19,7 +19,7 @@
 //   0.1.8 = 마감재단선(여백 위치 검정 실선·4변 한 그룹) + 주석 구조에 후가공 추가
 //           (키워드-식별번호-후가공-수량) (2026-07-30)
 //   0.1.9 = 크로스 패널 잠금 위임 추가(mes-lock.jsx) (2026-07-31)
-var MESA0_VERSION = 'A0-CEP-0.1.11'; // 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
+var MESA0_VERSION = 'A0-CEP-0.1.12'; // 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
 var MESA0_REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
 var MESA0_PT_PER_MM = 72 / 25.4;
 var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];
@@ -432,34 +432,26 @@ function mesA0_process() {
       var oL = db[0], oT = db[1], oR = db[2], oB = db[3];
       newDoc.artboards[0].artboardRect = [oL - finMargins.left, oT + finMargins.top, oR + finMargins.right, oB - finMargins.bottom];
 
-      // 재단/접는선: 변별 마크(fold=접는선 검정실선, cut=재단선 검정점선). 위치=디자인 경계선.
-      // 마감 방식·여백과 독립 — 재단 필요한 변에만 그림(줄미싱 등은 '없음'으로 미선택).
+      // ★재단선 — 변별 on/off (2026-08-06 용준님). 위치 = 디자인 경계선, **검정 실선**.
+      //   전에는 fold(접는선·실선) / cut(재단선·점선) 두 종류였다. 점선은 실사용에서 쓰이지
+      //   않아 없앴고, 남은 하나를 '재단선'으로 부르고 **실선**으로 그린다.
+      //   ⚠️ 전달 포맷(`<side>_mark`)은 그대로다 — 옛 행·프리셋·manifest 에 'fold'/'cut' 이
+      //      들어 있고, 둘 다 "이 변에 선을 그린다"로 읽는다. 값의 종류가 아니라 유무만 본다.
+      //   ⚠️ 예전엔 돔보 ON 이거나 마감 여백이 있으면 'cut' 을 **말없이 건너뛰었다**(이중선 방지).
+      //      이제는 체크가 곧 지시이므로 건너뛰지 않는다 — 조용한 무동작을 만들지 않는다.
+      //      같은 자리에 겹칠 수 있다는 안내는 패널 쪽 설명에 있다.
       if (hasMark) {
         var mCol = new CMYKColor(); mCol.cyan = 0; mCol.magenta = 0; mCol.yellow = 0; mCol.black = 100; // K100
-        var MDASH = 3 * MESA0_PT_PER_MM / sN; // 점선 3mm
-        function markLine(x1, y1, x2, y2, dashed) {
+        function markLine(x1, y1, x2, y2) {
           var ln = newDoc.pathItems.add();
           ln.setEntirePath([[x1, y1], [x2, y2]]);
           ln.stroked = true; ln.filled = false;
           ln.strokeColor = mCol; ln.strokeWidth = 0.6;
-          if (dashed) ln.strokeDashes = [MDASH, MDASH]; // 재단선=점선
         }
-        // 변별 'cut'(재단선 점선)을 생략하는 두 경우 — 둘 다 이미 재단 자리를 알려주는 선이 있다:
-        //   ⓐ돔보 ON = 디자인 테두리 사방에 재단선 사각(레이어 '재단선'). 같은 자리 이중선이 된다.
-        //   ⓑ그 변에 마감 여백 있음 = 위에서 여백 위치에 '마감재단선'을 그렸다. 진짜 자르는 자리는
-        //     디자인 경계가 아니라 여백 바깥이므로, 경계의 점선은 오히려 오독을 부른다(2026-07-30 지적).
-        // 'fold'(접는선)는 목적이 달라(접는 위치=디자인 경계) 항상 그린다.
-        function wantMark(side) {
-          var m = finMark[side];
-          if (!m) return false;
-          if (m !== 'cut') return true;
-          if (trim) return false;
-          return !(finMargins[side] > 0);
-        }
-        if (wantMark('top')) markLine(oL, oT, oR, oT, finMark.top === 'cut');
-        if (wantMark('bottom')) markLine(oL, oB, oR, oB, finMark.bottom === 'cut');
-        if (wantMark('left')) markLine(oL, oT, oL, oB, finMark.left === 'cut');
-        if (wantMark('right')) markLine(oR, oT, oR, oB, finMark.right === 'cut');
+        if (finMark.top) markLine(oL, oT, oR, oT);
+        if (finMark.bottom) markLine(oL, oB, oR, oB);
+        if (finMark.left) markLine(oL, oT, oL, oB);
+        if (finMark.right) markLine(oR, oT, oR, oB);
       }
 
       // 여백 포함 바깥 테두리 백색 선 (도련 대신 — RIP가 여백까지 출력영역으로 포함하도록)

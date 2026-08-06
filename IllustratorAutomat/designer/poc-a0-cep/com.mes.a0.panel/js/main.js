@@ -10,7 +10,7 @@
   //   우상단 표시는 여태 host(mesA0_ping = MESA0_VERSION, 축2 = Z: 1곳)만 보여줬다. 껍데기는 PC 별
   //   복사 설치라서 재설치를 안 한 PC 도 최신 번호로 보였다(2026-07-30 점검에서 확인).
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다.
-  var SHELL_VERSION = '0.3.0';
+  var SHELL_VERSION = '0.4.0';
   var STORE_WORKER = 'mes_a0_worker';
   var STORE_SETTINGS = 'mes_a0_settings';
   var CONFIG_PATH = 'Z:/DESIGNS/IA-등록/_config/config.json';
@@ -380,7 +380,7 @@
           var sel = methodSelect(side), cmEl = cmInput(side), mkEl = markSelect(side);
           if (sel) sel.value = mName;
           if (cmEl) cmEl.value = mName ? String(marginOf(mName)) : '';
-          if (mkEl) mkEl.value = pr.config[side + '_mark'] || ''; // 프리셋별 마크 프리필
+          if (mkEl) mkEl.checked = !!pr.config[side + '_mark']; // 프리셋별 재단선 프리필(값의 종류가 아니라 유무)
         }
         updateAnnotGates();
       };
@@ -515,7 +515,7 @@
         var cside = SIDES[ci];
         var cms = methodSelect(cside); if (cms) cms.value = '';
         var ccm = cmInput(cside); if (ccm) ccm.value = '';
-        var cmk = markSelect(cside); if (cmk) cmk.value = '';
+        var cmk = markSelect(cside); if (cmk) cmk.checked = false;
       }
       if (elPTop) elPTop.value = '0';
       if (elPBottom) elPBottom.value = '0';
@@ -577,8 +577,10 @@
           if (isNaN(cm)) cm = marginOf(m);
           finishing[side] = m; finishing[side + '_cm'] = cm;
         }
-        var mkEl = markSelect(side); // 변별 마크(fold/cut) — 방식·여백과 독립
-        if (mkEl && mkEl.value) finishing[side + '_mark'] = mkEl.value;
+        // 변별 재단선 on/off. ★전달 포맷은 'cut' 고정 — host 는 'fold'|'cut' 만 마크로 인정하고,
+        //   옛 행·프리셋·manifest 에도 그 값이 들어 있다. 바뀐 것은 UI 뿐이다.
+        var mkEl = markSelect(side);
+        if (mkEl && mkEl.checked) finishing[side + '_mark'] = 'cut';
       }
       var pInt = function (el) { var n = parseInt(el ? el.value : '0', 10); return (isNaN(n) || n < 0) ? 0 : n; };
       // ⚠️ 여기서는 가시성을 따지지 않고 칸 값을 그대로 읽는다 — gatherParams 는 단건 전송에도 쓰이고,
@@ -1204,7 +1206,7 @@
         setSelectValue(methodSelect(side), fin[side] || '');
         var cmEl = cmInput(side);
         if (cmEl) cmEl.value = fin[side] ? String(fin[side + '_cm'] != null ? fin[side + '_cm'] : marginOf(fin[side])) : '';
-        setSelectValue(markSelect(side), fin[side + '_mark'] || '');
+        { var mkR = markSelect(side); if (mkR) mkR.checked = !!fin[side + '_mark']; }  // 옛 행의 'fold' 도 켜짐
       }
       if (elPreset) elPreset.value = ''; // 프리셋 표기는 (직접 지정)으로 — 실값은 위에서 로드됨
       updateClientHit();

@@ -208,6 +208,11 @@ ok('실행 버튼 = 1건 등록', await page.locator('#btnProcess').innerText() 
 // 2) 후가공 펼치기 → 값 입력
 await page.click('#finToggle')
 ok('후가공 펼침', await page.locator('#finBody').isVisible())
+// ★재단선 = 변별 on/off 체크박스 (2026-08-06). 점선(fold/cut 2종)은 실사용에서 안 써 없앴다.
+//   전달 포맷은 'cut' 그대로 — host 가 'fold'|'cut' 만 마크로 인정하고 옛 행에도 그 값이 있다.
+ok('재단선은 체크박스', (await page.locator('input.finMark[data-side="top"]').count()) === 1)
+ok('마크 드롭다운 없음', (await page.locator('select.finMark').count()) === 0)
+ok('재단선 기본 해제', !(await page.isChecked('input.finMark[data-side="top"]')))
 await page.selectOption('select.finM[data-side="left"]', '접어미싱')
 await page.fill('#pTop', '3')
 ok('후가공 값 입력됨', await page.inputValue('#pTop') === '3')
