@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.28.0';
+  var SHELL_VERSION = '0.30.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -1152,6 +1152,22 @@
         //     점수 함수를 면적으로 바꾸는 것만으로는 안 된다(실측 −0.2%) — bottom-left 탐색이
         //     애초에 조밀한 후보를 만들지 못하므로, 폭을 좁혀 **탐색 공간 자체**를 바꿔야 한다.
         //   ⚠️ 롤은 폭이 곧 재료다. 세로만 줄이는 현행이 맞으므로 건드리지 않는다.
+        // ★맞붙임 진단 (2026-08-06) — "간격 0인데 조금 떨어진다"의 원인을 **사실로** 가른다.
+        //   마스크 폭이 아트보다 넓으면 굽기·임계 문제이고, 같은데 자리가 벌어져 있으면 배치 문제다.
+        //   추측으로 고치다 두 번 헛짚어서, 맞붙임일 때는 판정에 필요한 수치를 그대로 싣는다.
+        var buttDiag = '';
+        if (buttMode && res.sheets.length) {
+          var pls = res.sheets[0].placements.slice(0, 12);
+          var lines2 = [];
+          for (var di = 0; di < pls.length; di++) {
+            var pd = pls[di];
+            lines2.push('#' + pd.id + ' ' + pd.W + '×' + pd.H + 'px('
+              + (pd.W * mmpp).toFixed(1) + '×' + (pd.H * mmpp).toFixed(1) + 'mm) @'
+              + (pd.x * mmpp).toFixed(1) + ',' + (pd.y * mmpp).toFixed(1)
+              + (pd.rot ? ('·' + pd.rot + '°') : ''));
+          }
+          buttDiag = '\n진단(맞붙임) ' + mmpp.toFixed(3) + 'mm/px · ' + lines2.join(' | ');
+        }
         var widthNote = '';
         if (!isRoll) {
           var grownPx = 0;
@@ -1296,7 +1312,7 @@
                   + (parseInt(a.bleedfail, 10) > 0
                     ? ('\n⚠ 도련 ' + a.bleedfail + '개 조각 실패 — ' + bleedFailWhy(a.bleedcode)) : '')
                   + bleedNote) : '\n⚠ 도련 0mm — 만들지 않았습니다. 재단이 밀리면 흰 테두리가 남습니다.')
-              + widthNote
+              + widthNote + buttDiag
               + (res.unplaced.length ? ('\n⚠ 배치 못한 조각 ' + res.unplaced.length + '개 — 시트를 키우거나 간격을 줄이세요.') : '')
               + (useVec ? '' : cvN.note) + vecNote,
               (res.unplaced.length || parseInt(a.bleedfail, 10) > 0) ? 'err' : 'ok');
@@ -1769,8 +1785,8 @@
       });
     });
   }
-  var btnPieceQty = $('btnPieceQty');
-  if (btnPieceQty) btnPieceQty.addEventListener('click', loadPieceQty);
+  // ★버튼을 따로 두지 않는다 (2026-08-06 용준님 지적) — [문서 ↻] 가 '지금 고른 것을 다시
+  //   읽는다'는 같은 일을 이미 한다. ↻ 가 두 개면 무엇이 다른지 알 수 없다. refresh 가 목록까지 만든다.
 
   /** prep.pieces 를 수량만큼 늘린다. 반환 = 사용자에게 알릴 메모(빈 문자열이면 알릴 것 없음). */
   function expandByQty(prep) {
@@ -1818,7 +1834,13 @@
   if (btnMake) btnMake.addEventListener('click', makeCut);
 
   var btnRefresh = $('btnRefresh');
-  if (btnRefresh) btnRefresh.addEventListener('click', refresh);
+  if (btnRefresh) btnRefresh.addEventListener('click', function () {
+    refresh();
+    // 선택이 있으면 조각 목록까지 만든다. 없으면 조용히 넘어간다 — 문서 정보만 보려고 누를 때가 많다.
+    host('mesCut_selectionInfo()', function (si) {
+      if (si && si !== 'none' && si !== 'nodoc') loadPieceQty();
+    });
+  });
 
   var btnProbe = $('btnLockProbe');
   if (btnProbe) btnProbe.addEventListener('click', function () {

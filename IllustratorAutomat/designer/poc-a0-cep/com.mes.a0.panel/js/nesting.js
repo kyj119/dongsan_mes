@@ -312,12 +312,18 @@
         //   찾기는 성글게 하되(빠르다) **놓기 직전에 1px 씩 왼쪽·위로 붙인다** — 탐색량은 그대로고
         //   충돌 판정은 이미 있는 비트 연산(fitsBits)이라 조각당 몇 번의 비교로 끝난다.
         //   ⚠️ 간격은 마스크 팽창으로 이미 들어가 있다 — 여기서 붙여도 칼선 간격은 보장된다.
-        if (opts.compact !== false) {
-          var cx = best.pos.x, cy = best.pos.y, guard = 0
-          while (cx > 0 && guard++ < 4096 && fitsBits(bits, SWW, best.piece, cx - 1, cy)) cx--
-          while (cy > 0 && guard++ < 4096 && fitsBits(bits, SWW, best.piece, cx, cy - 1)) cy--
-          // 왼쪽으로 붙인 뒤 위가 더 열릴 수 있다(계단 모양) — 한 번 더 왕복하면 대개 수렴한다
-          while (cx > 0 && guard++ < 4096 && fitsBits(bits, SWW, best.piece, cx - 1, cy)) cx--
+        // ★미끄러지는 거리는 **step 미만으로 충분하다.** placeOne 은 step 격자의 모든 자리를
+        //   이미 검사했으므로, 지금 자리보다 step 이상 왼쪽에 들어갈 곳이 있었다면 거기서 잡혔다.
+        //   남는 것은 격자 사이에 낀 나머지(< step)뿐이다.
+        //   ⚠️ 이 상한이 없으면 조각이 수천 px 를 미끄러지며 매번 마스크 전체 충돌검사를 돌려
+        //      "배치 계산 중..." 에서 멈춘 것처럼 보인다(2026-08-06 실사용에서 발생).
+        //      비용 = 조각당 최대 3·(step-1) 회. step 2 면 3회다.
+        if (opts.compact !== false && step > 1) {
+          var cx = best.pos.x, cy = best.pos.y, lim = step - 1, k2
+          for (k2 = 0; k2 < lim && cx > 0 && fitsBits(bits, SWW, best.piece, cx - 1, cy); k2++) cx--
+          for (k2 = 0; k2 < lim && cy > 0 && fitsBits(bits, SWW, best.piece, cx, cy - 1); k2++) cy--
+          // 위로 붙인 뒤 왼쪽이 더 열릴 수 있다(계단 모양) — 한 번 더 훑는다
+          for (k2 = 0; k2 < lim && cx > 0 && fitsBits(bits, SWW, best.piece, cx - 1, cy); k2++) cx--
           best.pos.x = cx; best.pos.y = cy
         }
         stampBits(bits, SWW, best.piece, best.pos.x, best.pos.y)

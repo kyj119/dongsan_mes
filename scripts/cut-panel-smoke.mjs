@@ -727,8 +727,13 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   //   맞붙임(여백·간격 0)에서는 그게 그대로 벌어진 틈이다. 놓기 직전에 1px 씩 붙인다.
   {
     const nestSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'poc-a0-cep', 'com.mes.a0.panel', 'js', 'nesting.js'), 'utf8')
-    ok('3v 놓기 전에 붙인다', /opts\.compact !== false[\s\S]{0,500}?fitsBits\(bits, SWW, best\.piece, cx - 1, cy\)/.test(nestSrc))
-    ok('3v 무한루프 가드', /guard\+\+ < 4096/.test(nestSrc))
+    ok('3v 놓기 전에 붙인다', /opts\.compact !== false[\s\S]{0,600}?fitsBits\(bits, SWW, best\.piece, cx - 1, cy\)/.test(nestSrc))
+    // ★거리 상한이 **step 미만**이어야 한다. 상한 없이 미끄러지면 조각당 수천 번 마스크 전체를
+    //   대조해 "배치 계산 중..." 에서 멈춘 것처럼 보인다(2026-08-06 실사용 정지).
+    //   placeOne 이 step 격자를 이미 다 봤으므로 step 이상 미끄러질 이유도 없다.
+    ok('3v 미끄러짐은 step 미만', /lim = step - 1/.test(nestSrc))
+    ok('3v step 1 이면 건너뛴다', /opts\.compact !== false && step > 1/.test(nestSrc))
+    ok('3v 무한 while 이 없다', !/while \([^)]*fitsBits\(bits, SWW, best\.piece/.test(nestSrc))
   }
   // ★조각마다 따로 불러야 한다 — 한꺼번에 하면 조각끼리 이어진다
   ok('3q 배치된 사본마다 도련', /mesCut_bleedPlaceItem\(doc, artLayer, copies\[vi\]/.test(hostSrc))
