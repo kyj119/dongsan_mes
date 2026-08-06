@@ -63,8 +63,18 @@ function ask(q) {
   if (!process.stdin.isTTY) {
     console.log(C.y('\n⚠ 대화형 입력을 쓸 수 없어 확인 질문을 받지 못했습니다(비대화 실행).'))
     console.log(C.dim(`  질문: ${q.trim()}`))
-    console.log(C.dim('  → 위 "배포 대상" 을 확인했다면 --yes 를 붙여 다시 실행하세요:  npm run ia:deploy -- --yes'))
-    console.log(C.dim('     (축2 호스트 로직이 포함되면 --yes 여도 한 번 더 묻습니다 — 그때는 실제 터미널에서 실행할 것)'))
+    // ★안내는 **막고 있는 게 무엇인지**에 따라 달라야 한다 (2026-08-06).
+    //   전에는 무조건 "--yes 를 붙이세요" 였는데, 축2 질문은 --yes 로 안 열린다.
+    //   시킨 대로 했는데 같은 자리에서 또 멈추면 안내가 아니라 함정이다(실제로 발생).
+    if (YES) {
+      console.log(C.y('  → 이 질문은 --yes 로 넘어가지 않습니다. 축2(호스트)는 Z: 파일 교체 즉시'))
+      console.log(C.y('     **전 디자이너 PC** 에 반영돼서, 실기 확인을 사람이 답해야 합니다.'))
+      console.log(C.dim('     실제 터미널에서:  Win+R → powershell → cd "' + REPO + '" → npm run ia:deploy'))
+      console.log(C.dim('     (축2를 빼고 화면만 먼저 내보내려면 호스트 변경을 되돌린 뒤 다시 실행하세요)'))
+    } else {
+      console.log(C.dim('  → 위 "배포 대상" 을 확인했다면 --yes 를 붙여 다시 실행하세요:  npm run ia:deploy -- --yes'))
+      console.log(C.dim('     (축2 호스트 로직이 포함되면 --yes 여도 한 번 더 묻습니다 — 그때는 실제 터미널에서)'))
+    }
     return Promise.resolve('n')
   }
   return new Promise((res) => {
