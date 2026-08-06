@@ -306,6 +306,20 @@
           }
         }
         if (!best) { next.push(src); continue }
+        // ★밀어붙이기 (2026-08-06) — 후보 자리는 `step` 격자에서만 찾는다. step 2 · 0.5mm/px 면
+        //   가로로 최대 1mm 가 남고, 맞붙임(여백·간격 0)에서는 그게 그대로 **벌어진 틈**이 된다.
+        //   실사용 보고: 간격 0 인데 조각 하나가 살짝 떨어졌다.
+        //   찾기는 성글게 하되(빠르다) **놓기 직전에 1px 씩 왼쪽·위로 붙인다** — 탐색량은 그대로고
+        //   충돌 판정은 이미 있는 비트 연산(fitsBits)이라 조각당 몇 번의 비교로 끝난다.
+        //   ⚠️ 간격은 마스크 팽창으로 이미 들어가 있다 — 여기서 붙여도 칼선 간격은 보장된다.
+        if (opts.compact !== false) {
+          var cx = best.pos.x, cy = best.pos.y, guard = 0
+          while (cx > 0 && guard++ < 4096 && fitsBits(bits, SWW, best.piece, cx - 1, cy)) cx--
+          while (cy > 0 && guard++ < 4096 && fitsBits(bits, SWW, best.piece, cx, cy - 1)) cy--
+          // 왼쪽으로 붙인 뒤 위가 더 열릴 수 있다(계단 모양) — 한 번 더 왕복하면 대개 수렴한다
+          while (cx > 0 && guard++ < 4096 && fitsBits(bits, SWW, best.piece, cx - 1, cy)) cx--
+          best.pos.x = cx; best.pos.y = cy
+        }
         stampBits(bits, SWW, best.piece, best.pos.x, best.pos.y)
         updateSky(sky, best.piece, best.pos.x, best.pos.y)
         placements.push({

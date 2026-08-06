@@ -362,11 +362,54 @@
           <option value="flat:1200x2400">평판 1200×2400</option>
         </select>
       </div>
+      <!-- ★조각 수량 (2026-08-06) — 같은 그림을 여러 장 뽑을 때 파일에서 손으로 복사하지 않는다.
+           복사는 조각마다 다시 굽고(느림) 사본이 미세하게 어긋날 수 있고 원본 파일이 더러워진다.
+           수량은 **같은 마스크를 재사용**하므로 굽기 1회로 끝나고 조각이 완전히 동일하다. -->
+      <div class="row">
+        <label>조각 수량</label>
+        <button id="btnPieceQty" type="button" class="mini">↻ 불러오기</button>
+        <span class="cfg">일러에서 조각을 고른 뒤 — 조각마다 몇 장씩 배치할지</span>
+      </div>
+      <div id="pieceQtyBox" class="queuebox hidden"></div>
+      <div class="hint" id="pieceQtyHint">
+        불러온 뒤 선택을 바꾸면 목록과 어긋납니다 — 그때는 <b>수량을 버리고 전부 1개</b>로 배치하고 알려줍니다.
+        <br>등록 수량(주문)은 이것과 <b>별개</b>입니다. 판 1장 = 1건이고, 조각 수는 면적으로만 반영됩니다.
+      </div>
       <div class="row">
         <label for="nestOffset">여백</label>
         <input id="nestOffset" type="number" value="3" min="-20" max="50" step="0.5" />
         <span class="unit">mm</span>
         <span class="cfg">디자인 → 칼선</span>
+      </div>
+      <div class="row">
+        <label for="nestGap">간격</label>
+        <input id="nestGap" type="number" value="3" min="0" max="50" step="0.5" />
+        <span class="unit">mm</span>
+        <span class="cfg">칼선 ↔ 칼선</span>
+        <label class="rad"><input id="nestRotate" type="checkbox" checked /> 회전 허용</label>
+      </div>
+      <div class="row">
+        <label for="nestBleed">도련</label>
+        <input id="nestBleed" type="number" value="3" min="0" max="30" step="0.5" />
+        <span class="unit">mm</span>
+        <span class="cfg">조각마다 칼선 <b>바깥</b>까지 더 인쇄</span>
+      </div>
+      <div class="hint" id="nestBleedHint">
+        도련은 칼선 <b>바깥</b>으로 나가므로 <b>간격 ≥ 도련×2</b> 라야 옆 조각 도련과 안 겹칩니다.
+        모자라면 <b>간격을 자동으로 올리고</b> 결과에 알립니다 — 겹치면 재단 오차 때 <b>옆 디자인 색이 넘어옵니다</b>.
+      </div>
+      <div class="hint">
+        <b>재단선 = 디자인 + 여백</b>, 조각 사이는 <b>칼선끼리</b> 간격만큼 벌립니다.
+        디자인끼리는 <b>여백×2 + 간격</b>만큼 떨어집니다.
+        <br>도련이 이미 들어간 아트는 여백을 <b>음수</b>로 주세요 — 칼선이 잉크 안쪽에 놓입니다(예: 도련 2mm → 여백 −2).
+      </div>
+      <div class="row">
+        <label class="rad"><input id="nestCut" type="checkbox" checked /> 조각별 칼선</label>
+        <span class="cfg">돔보·시트 재단선은 항상 포함</span>
+      </div>
+      <div class="hint">
+        선택한 조각들을 <b>실제 외곽(이형)</b>으로 맞물려 배치합니다. 결과는 <b>새 문서</b>로 만들어지고 원본은 그대로입니다.
+        간격은 <b>가장 가까운 지점 기준</b>이며 실제 보장값을 결과에 표시합니다.
       </div>
       <!-- 배율 = 가공 탭과 **같은 의미**(파일이 실물의 1/N 축소본). 아트를 확대하지 않고,
            여백·간격·도련·돔보 같은 **실물 mm 를 파일 좌표로 ÷N** 해서 실물 치수를 맞춘다.
@@ -400,49 +443,6 @@
         파일명은 <b>실물 규격</b>이고 RIP 에서 그 크기로 출력하면 됩니다.
         <br>⚠️ 저장 배율을 낮추면 돔보·칼선도 같이 작아집니다. <b>반드시 파일명 규격대로 확대 출력</b>해야
         재단기가 돔보를 읽습니다.
-      </div>
-      <div class="row">
-        <label for="nestGap">간격</label>
-        <input id="nestGap" type="number" value="3" min="0" max="50" step="0.5" />
-        <span class="unit">mm</span>
-        <span class="cfg">칼선 ↔ 칼선</span>
-        <label class="rad"><input id="nestRotate" type="checkbox" checked /> 회전 허용</label>
-      </div>
-      <!-- ★조각 수량 (2026-08-06) — 같은 그림을 여러 장 뽑을 때 파일에서 손으로 복사하지 않는다.
-           복사는 조각마다 다시 굽고(느림) 사본이 미세하게 어긋날 수 있고 원본 파일이 더러워진다.
-           수량은 **같은 마스크를 재사용**하므로 굽기 1회로 끝나고 조각이 완전히 동일하다. -->
-      <div class="row">
-        <label>조각 수량</label>
-        <button id="btnPieceQty" type="button" class="mini">↻ 불러오기</button>
-        <span class="cfg">일러에서 조각을 고른 뒤 — 조각마다 몇 장씩 배치할지</span>
-      </div>
-      <div id="pieceQtyBox" class="queuebox hidden"></div>
-      <div class="hint" id="pieceQtyHint">
-        불러온 뒤 선택을 바꾸면 목록과 어긋납니다 — 그때는 <b>수량을 버리고 전부 1개</b>로 배치하고 알려줍니다.
-        <br>등록 수량(주문)은 이것과 <b>별개</b>입니다. 판 1장 = 1건이고, 조각 수는 면적으로만 반영됩니다.
-      </div>
-      <div class="row">
-        <label for="nestBleed">도련</label>
-        <input id="nestBleed" type="number" value="3" min="0" max="30" step="0.5" />
-        <span class="unit">mm</span>
-        <span class="cfg">조각마다 칼선 <b>바깥</b>까지 더 인쇄</span>
-      </div>
-      <div class="hint" id="nestBleedHint">
-        도련은 칼선 <b>바깥</b>으로 나가므로 <b>간격 ≥ 도련×2</b> 라야 옆 조각 도련과 안 겹칩니다.
-        모자라면 <b>간격을 자동으로 올리고</b> 결과에 알립니다 — 겹치면 재단 오차 때 <b>옆 디자인 색이 넘어옵니다</b>.
-      </div>
-      <div class="hint">
-        <b>재단선 = 디자인 + 여백</b>, 조각 사이는 <b>칼선끼리</b> 간격만큼 벌립니다.
-        디자인끼리는 <b>여백×2 + 간격</b>만큼 떨어집니다.
-        <br>도련이 이미 들어간 아트는 여백을 <b>음수</b>로 주세요 — 칼선이 잉크 안쪽에 놓입니다(예: 도련 2mm → 여백 −2).
-      </div>
-      <div class="row">
-        <label class="rad"><input id="nestCut" type="checkbox" checked /> 조각별 칼선</label>
-        <span class="cfg">돔보·시트 재단선은 항상 포함</span>
-      </div>
-      <div class="hint">
-        선택한 조각들을 <b>실제 외곽(이형)</b>으로 맞물려 배치합니다. 결과는 <b>새 문서</b>로 만들어지고 원본은 그대로입니다.
-        간격은 <b>가장 가까운 지점 기준</b>이며 실제 보장값을 결과에 표시합니다.
       </div>
       <button id="btnNest" type="button" class="primary">네스팅 실행</button>
       <button id="btnWidth" type="button" title="롤 5종을 훑어 재료를 가장 적게 쓰는 폭을 찾습니다(배치만 다시 계산 — 조각은 한 번만 굽습니다)">폭 추천</button>

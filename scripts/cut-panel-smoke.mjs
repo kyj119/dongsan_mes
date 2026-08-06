@@ -711,6 +711,15 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3t 실행은 잡아 둔 목록 재사용', /mesCut_nestBegin\(' \+ \(pieceQty \? '1' : ''\)/.test(panelSrc))
   ok('3t keep 은 호스트가 지원', /String\(keep\) === '1'/.test(hostSrc))
   ok('3t 목록 사용 사실을 늘 알린다', /조각 수량 목록 사용/.test(panelSrc))
+
+  // ── 밀어붙이기 (2026-08-06 실사용) ─────────────────────────────
+  // ★후보 자리는 step 격자에서만 찾는다 — step 2 · 0.5mm/px 면 가로로 최대 1mm 가 남고,
+  //   맞붙임(여백·간격 0)에서는 그게 그대로 벌어진 틈이다. 놓기 직전에 1px 씩 붙인다.
+  {
+    const nestSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'poc-a0-cep', 'com.mes.a0.panel', 'js', 'nesting.js'), 'utf8')
+    ok('3v 놓기 전에 붙인다', /opts\.compact !== false[\s\S]{0,500}?fitsBits\(bits, SWW, best\.piece, cx - 1, cy\)/.test(nestSrc))
+    ok('3v 무한루프 가드', /guard\+\+ < 4096/.test(nestSrc))
+  }
   // ★조각마다 따로 불러야 한다 — 한꺼번에 하면 조각끼리 이어진다
   ok('3q 배치된 사본마다 도련', /mesCut_bleedPlaceItem\(doc, artLayer, copies\[vi\]/.test(hostSrc))
   ok('3q 패널이 도련을 넘긴다', /nestApply\([\s\S]{0,120}nestBleedMm/.test(panelSrc))
