@@ -64,14 +64,31 @@ button.cancel:hover { background: #5a4c33; border-color: #d9a84a; }
 .rad { display: inline-flex; align-items: center; gap: 3px; color: #c4c4c4; }
 .rad input { margin: 0 2px 0 0; }
 
-table.fin { width: 100%; border-collapse: collapse; }
-table.fin td { padding: 2px 3px; vertical-align: middle; }
-table.fin td.fl { color: #b0b0b0; width: 20px; text-align: center; }
+/* ★table-layout:fixed — 자동 레이아웃에서는 **헤더 글자**가 열 폭을 밀어 올린다.
+   '펀칭'·'주석'(10px 2글자 ≈ 20px)이 20px 로 못박은 셀보다 넓어 방식 셀렉트를 89px 까지
+   눌렀다(스모크 게이트 90px). 고정 레이아웃이면 선언 폭이 이기고 남는 폭은 전부 방식이 먹는다.
+   ⚠️ 폭은 **첫 행(헤더)** 에서만 읽힌다 — 본문 td 에 width 를 줘도 무시된다. */
+table.fin { width: 100%; border-collapse: collapse; table-layout: fixed; }
+table.fin tr:first-child td:nth-child(1) { width: 13px; }   /* 변 이름 */
+table.fin tr:first-child td:nth-child(3) { width: 32px; }   /* 여백cm */
+table.fin tr:first-child td:nth-child(4) { width: 56px; }   /* 마크 */
+table.fin tr:first-child td:nth-child(5) { width: 24px; }   /* 펀칭 */
+table.fin tr:first-child td:nth-child(6) { width: 20px; }   /* 주석 */
+/* 2열(방식)은 폭을 주지 않는다 = 남는 폭을 전부 가져간다 */
+table.fin td { padding: 2px 2px; vertical-align: middle; }
+table.fin td.fl { color: #b0b0b0; width: 13px; text-align: center; }
 table.fin td.fu { color: #888; width: 22px; }
 table.fin td.fhdr { color: #7a7a7a; font-size: 10px; text-align: center; padding: 1px 3px; }
 table.fin select.finM { width: 100%; }
-table.fin input.finCm { width: 38px; }
-table.fin select.finMark { width: 100%; min-width: 58px; }
+table.fin input.finCm { width: 28px; }
+table.fin select.finMark { width: 100%; min-width: 54px; }
+/* 펀칭·주석 열 (2026-08-06 통합). 좁은 CEP 폭이라 새 두 열은 **최소폭으로 못박아**
+   방식/마크 셀렉트가 먼저 줄어들지 않게 한다 — 셀렉트가 좁아지면 '접어미싱'이 잘린다.
+   ⚠️ 스모크가 300px 폭에서 마감 드롭다운 ≥90px 를 강제한다(추가 직후 59px 로 떨어져 걸렸다).
+      이 표에 열을 더 붙이려면 그 게이트를 먼저 통과시킬 것. */
+table.fin td.fc { width: 16px; text-align: center; padding: 2px 0; }
+table.fin input.tiny { width: 20px; }
+table.fin td.fc input[type="checkbox"] { margin: 0; }
 
 button {
   background: #4a4a4a; color: #e0e0e0; border: 1px solid #5a5a5a;

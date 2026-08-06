@@ -1064,6 +1064,12 @@
       //   폼이 탭 사이를 이동하므로 버튼도 함께 따라가는데, 단건 탭에서는 잠그고 이유를 남긴다.
       var onBundle = (activeTab() === 'bundle');
       var n = selectedRows().length;
+      // ★단건 탭에서는 **숨긴다** (2026-08-06 단순화). 잠긴 채로 남겨 두면 영원히 누를 수 없는
+      //   버튼 2개가 폼 머리에 상주해 자리만 먹는다. DOM 에는 남기므로(display 만 조작)
+      //   잠금·title 계약과 스모크의 isDisabled 판정은 그대로 성립한다.
+      //   ⚠️ class 'hidden' 을 쓰지 않는 이유는 :548 주석 참조(명시도 충돌).
+      if (elBtnApplySel) elBtnApplySel.style.display = onBundle ? '' : 'none';
+      if (elBtnApplyAll) elBtnApplyAll.style.display = onBundle ? '' : 'none';
       if (elBtnApplySel) {
         elBtnApplySel.textContent = n ? ('체크한 행 적용 (' + n + ')') : '체크한 행 적용';
         elBtnApplySel.disabled = !onBundle || n === 0;

@@ -109,49 +109,51 @@
           <label for="preset">마감</label>
           <select id="preset"><option value="">(직접 지정)</option></select>
         </div>
+        <!-- ★변별 설정 = 한 표 (2026-08-06 단순화)
+             전에는 같은 '상하좌우' 개념이 **4벌**로 흩어져 있었다 — 마감 표 + 펀칭 행 + 꼭짓점 행 + 주석 행.
+             한 변에 무엇을 걸었는지 보려면 화면 네 군데를 오가야 했고, 세로도 그만큼 먹었다.
+             ⚠️ id·class·data-side 는 **그대로 유지**한다. main.js 는 getElementsByClassName('finM'…)
+                + data-side 로만 찾으므로 표 구조에는 의존하지 않는다(스모크도 같은 선택자를 쓴다). -->
         <table class="fin">
-          <tr><td class="fl"></td><td class="fhdr">방식</td><td class="fhdr" colspan="2">여백</td><td class="fhdr">마크</td></tr>
+          <tr><td class="fl"></td><td class="fhdr">방식</td><td class="fhdr">여백cm</td><td class="fhdr">마크</td><td class="fhdr">펀칭</td><td class="fhdr">주석</td></tr>
           <tr><td class="fl">상</td><td><select class="finM" data-side="top"></select></td>
-              <td><input class="finCm" data-side="top" type="text" /></td><td class="fu">cm</td>
-              <td><select class="finMark" data-side="top"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td></tr>
+              <td><input class="finCm" data-side="top" type="text" /></td>
+              <td><select class="finMark" data-side="top"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td>
+              <td><input id="pTop" type="text" value="0" class="tiny" /></td>
+              <td class="fc"><input id="aTop" type="checkbox" /></td></tr>
           <tr><td class="fl">하</td><td><select class="finM" data-side="bottom"></select></td>
-              <td><input class="finCm" data-side="bottom" type="text" /></td><td class="fu">cm</td>
-              <td><select class="finMark" data-side="bottom"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td></tr>
+              <td><input class="finCm" data-side="bottom" type="text" /></td>
+              <td><select class="finMark" data-side="bottom"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td>
+              <td><input id="pBottom" type="text" value="0" class="tiny" /></td>
+              <td class="fc"><input id="aBottom" type="checkbox" /></td></tr>
           <tr><td class="fl">좌</td><td><select class="finM" data-side="left"></select></td>
-              <td><input class="finCm" data-side="left" type="text" /></td><td class="fu">cm</td>
-              <td><select class="finMark" data-side="left"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td></tr>
+              <td><input class="finCm" data-side="left" type="text" /></td>
+              <td><select class="finMark" data-side="left"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td>
+              <td><input id="pLeft" type="text" value="0" class="tiny" /></td>
+              <td class="fc"><input id="aLeft" type="checkbox" /></td></tr>
           <tr><td class="fl">우</td><td><select class="finM" data-side="right"></select></td>
-              <td><input class="finCm" data-side="right" type="text" /></td><td class="fu">cm</td>
-              <td><select class="finMark" data-side="right"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td></tr>
+              <td><input class="finCm" data-side="right" type="text" /></td>
+              <td><select class="finMark" data-side="right"><option value="">없음</option><option value="fold">접는선</option><option value="cut">재단선</option></select></td>
+              <td><input id="pRight" type="text" value="0" class="tiny" /></td>
+              <td class="fc"><input id="aRight" type="checkbox" /></td></tr>
         </table>
-        <div class="row"><span class="cfg">마크: 접는선=검정 실선 · 재단선=검정 점선 (변별 지정, 재단 필요한 변에만)</span></div>
-        <div class="row">
-          <label class="rad"><input id="trim" type="checkbox" /> 돔보(재단마크)</label>
-          <label class="rad"><input id="borderLine" type="checkbox" checked /> 출력 경계선</label>
-        </div>
-        <div class="row"><span class="cfg">출력 경계선 = 마감 여백 바깥을 두르는 백색 0.5pt 선(RIP가 여백까지 출력영역에 포함하도록). 원본에 테두리가 있으면 선이 두 줄로 보인다 → 끄기</span></div>
-        <div class="sep"></div>
-        <div class="row punchrow">
-          <label>펀칭</label>
-          <span class="unit">상</span><input id="pTop" type="text" value="0" class="tiny" />
-          <span class="unit">하</span><input id="pBottom" type="text" value="0" class="tiny" />
-          <span class="unit">좌</span><input id="pLeft" type="text" value="0" class="tiny" />
-          <span class="unit">우</span><input id="pRight" type="text" value="0" class="tiny" />
-        </div>
         <div class="row punchrow">
           <label>꼭짓점</label>
           <label class="rad"><input id="pcTL" type="checkbox" /> 좌상</label>
           <label class="rad"><input id="pcTR" type="checkbox" /> 우상</label>
           <label class="rad"><input id="pcBL" type="checkbox" /> 좌하</label>
           <label class="rad"><input id="pcBR" type="checkbox" /> 우하</label>
+          <span class="cfg">펀칭 = 변마다 개수</span>
         </div>
-        <div class="sep"></div>
-        <div class="row punchrow">
-          <label>주석</label>
-          <label class="rad"><input id="aTop" type="checkbox" /> 상</label>
-          <label class="rad"><input id="aBottom" type="checkbox" /> 하</label>
-          <label class="rad"><input id="aLeft" type="checkbox" /> 좌</label>
-          <label class="rad"><input id="aRight" type="checkbox" /> 우</label>
+        <div class="row">
+          <label class="rad"><input id="trim" type="checkbox" /> 돔보(재단마크)</label>
+          <label class="rad"><input id="borderLine" type="checkbox" checked /> 출력 경계선</label>
+        </div>
+        <div class="hint">
+          <b>마크</b> 접는선=검정 실선 · 재단선=검정 점선 (재단 필요한 변에만).
+          <br><b>주석</b> 은 그 변 마감 여백이 <b>3cm 이상</b>일 때만 들어갑니다.
+          <br><b>출력 경계선</b> = 마감 여백 바깥을 두르는 백색 0.5pt 선(RIP 가 여백까지 출력영역에 포함하도록).
+          원본에 이미 테두리가 있으면 선이 두 줄로 보입니다 → 끄세요.
         </div>
         <!-- 묶음 탭에선 숨긴다 — 거기선 행별 키워드 칸이 정본이고 이 칸은 중복이다(2026-07-30 지적).
              단건 탭에선 행이 없어 이 칸이 유일한 입력 경로라 남긴다. main.js applyTabUi() -->

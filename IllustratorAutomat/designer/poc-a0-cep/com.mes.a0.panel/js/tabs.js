@@ -37,9 +37,12 @@
     var v = document.getElementById('ver'), cv = document.getElementById('cutVer');
     if (v) v.className = (want === 'a0') ? 'ver' : 'ver hidden';
     if (cv) cv.className = (want === 'cut') ? 'ver' : 'ver hidden';
-    // 설명 토글(?)은 재단 쪽에만 있는 기능이다
+    // 설명 토글(?)은 **두 탭 공용**이다 (2026-08-06).
+    //   CSS 가 `.panel.no-hints .hint` 로 패널 전체에 걸리므로 접힘 상태는 원래 공용이었는데,
+    //   버튼만 재단 쪽에 있어서 **가공 탭에서는 설명을 켤 수단이 없었다** — 접힌 줄도 모른 채
+    //   "설명이 어디 갔냐"가 되는 구조다. 버튼을 항상 띄운다.
     var help = document.getElementById('btnHelp');
-    if (help) help.className = (want === 'cut') ? 'mini title-btn' : 'mini title-btn hidden';
+    if (help) help.className = 'mini title-btn';
     try { window.localStorage.setItem(KEY, want); } catch (e) {}
     if (fire) {
       // cut-main.js 가 이걸 듣고 첫 진입 때만 문서 정보를 갱신한다(안 보이는 탭은 호스트를 안 찌른다)

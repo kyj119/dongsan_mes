@@ -1687,12 +1687,22 @@
   });
 
   // 타공 입력은 체크했을 때만 — 꺼진 값이 조용히 반영되는 경로를 만들지 않는다(A0 '숨은 키워드' 교훈).
-  if (elPunch) elPunch.addEventListener('change', function () {
-    var on = !!elPunch.checked;
+  //   2026-08-06: 잠그는 데 더해 **숨긴다**. 꺼져 있을 때 못 쓰는 칸 2개와 단위 2개가 계속 자리를
+  //   차지했다. 잠금(disabled)은 그대로 유지한다 — 숨김만으로는 값이 그대로 실려 나간다.
+  function punchUi() {
+    var on = !!(elPunch && elPunch.checked);
     var c = document.getElementById('punchCount'), i = document.getElementById('punchInset');
-    if (c) c.disabled = !on;
-    if (i) i.disabled = !on;
-  });
+    if (c) { c.disabled = !on; c.style.display = on ? '' : 'none'; }
+    if (i) { i.disabled = !on; i.style.display = on ? '' : 'none'; }
+    // 단위 라벨(개·mm 안쪽)도 같이 — 입력만 숨기면 단위만 떠서 더 이상해진다.
+    var row = elPunch && elPunch.closest ? elPunch.closest('.row') : null;
+    if (row) {
+      var units = row.getElementsByClassName('unit');
+      for (var u = 0; u < units.length; u++) units[u].style.display = on ? '' : 'none';
+    }
+  }
+  if (elPunch) elPunch.addEventListener('change', punchUi);
+  punchUi();
 
   // ── 초기화 ───────────────────────────────────────────────────────
   applyGates();
