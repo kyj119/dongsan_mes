@@ -817,10 +817,13 @@
         var cv = document.createElement('canvas');
         cv.width = img.naturalWidth; cv.height = img.naturalHeight;
         cv.getContext('2d').drawImage(img, 0, 0);
+        // ★try 는 getImageData **만** 감싼다 — cb 까지 넣으면 콜백 안의 예외가
+        //   "canvas 읽기 실패(보안)" 으로 둔갑해 엉뚱한 곳을 가리킨다(재단 쪽 실제 사례).
+        var d = null;
         try {
-          var d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height);
-          cb(null, { W: cv.width, H: cv.height, ch: 4, data: d.data });
-        } catch (eTaint) { cb('canvas 읽기 실패(보안): ' + eTaint, null); }
+          d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height);
+        } catch (eTaint) { cb('canvas 읽기 실패(보안): ' + eTaint, null); return; }
+        cb(null, { W: cv.width, H: cv.height, ch: 4, data: d.data });
       };
       img.onerror = function () { cb('PNG 로드 실패: ' + path, null); };
       img.src = b64 ? ('data:image/png;base64,' + b64) : ('file:///' + String(path).replace(/\\/g, '/'));

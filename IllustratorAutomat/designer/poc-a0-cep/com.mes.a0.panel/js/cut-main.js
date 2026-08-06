@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.27.0';
+  var SHELL_VERSION = '0.28.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -300,10 +300,15 @@
       cv.width = img.naturalWidth; cv.height = img.naturalHeight;
       var ctx = cv.getContext('2d');
       ctx.drawImage(img, 0, 0);
+      // ★try 는 getImageData **만** 감싼다 (2026-08-06).
+      //   전에는 cb(...) 까지 안에 있어서, 콜백 안에서 난 예외(실제 사례: ReferenceError)가
+      //   "canvas 읽기 실패(보안)" 으로 둔갑했다. 원인과 전혀 다른 곳을 가리키는 오진이라
+      //   찾는 데 시간이 걸린다 — 잡을 것만 잡는다.
+      var d = null;
       try {
-        var d = ctx.getImageData(0, 0, cv.width, cv.height);
-        cb(null, { W: cv.width, H: cv.height, ch: 4, data: d.data });
-      } catch (eTaint) { cb('canvas 읽기 실패(보안): ' + eTaint, null); }
+        d = ctx.getImageData(0, 0, cv.width, cv.height);
+      } catch (eTaint) { cb('canvas 읽기 실패(보안): ' + eTaint, null); return; }
+      cb(null, { W: cv.width, H: cv.height, ch: 4, data: d.data });
     };
     img.onerror = function () { cb('PNG 로드 실패: ' + path, null); };
     img.src = b64 ? ('data:image/png;base64,' + b64) : ('file:///' + String(path).replace(/\\/g, '/'));
@@ -1402,6 +1407,10 @@
       var widest = toFileMm(ROLL_WIDTHS_MM[ROLL_WIDTHS_MM.length - 1]);
       var rez = nestResolution(G, offsetMm, gapMm, widest, 0);
       nestPrepare(G, rez, gapMm, offsetMm, fillMode, function (m) { done(m, 'err'); }, function (prep) {
+        // ★수량을 [네스팅 실행]과 **똑같이** 반영한다 (2026-08-06).
+        //   빠뜨리면 1장씩 기준으로 폭을 추천하고 실제로는 N장을 깔게 돼, 추천대로 골라도
+        //   결과가 안 맞는다 — 배율을 빠뜨렸던 2026-08-05 건과 같은 종류의 어긋남이다.
+        var qtyNote = expandByQty(prep);
         var rows = [], best = null;
         for (var i = 0; i < ROLL_WIDTHS_MM.length; i++) {
           var wReal = ROLL_WIDTHS_MM[i];           // 재료 폭 = 실물(화면·재료비용)

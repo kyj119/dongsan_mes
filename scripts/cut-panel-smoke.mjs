@@ -692,6 +692,16 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3r 크기 조회는 선택을 안 건드린다', !/mesCut_nestSizes[\s\S]{0,600}?\.selection\s*=/.test(hostSrc))
   // ★폭 추천은 [네스팅 실행]과 **같은 조건**이어야 비교가 성립한다 — 수량도 포함이다.
   ok('3r 폭 추천도 수량 반영', (panelSrc.match(/expandByQty\(prep\)/g) || []).length >= 2)
+  // ★선언과 사용이 **짝**이어야 한다. 한쪽만 들어가면 그 경로에서만 ReferenceError 가 난다 —
+  //   실제로 그렇게 났고(2026-08-06 폭 추천), canvas catch 가 그것을 '보안 실패'로 둔갑시켜
+  //   원인이 전혀 다른 곳을 가리켰다.
+  {
+    const decl = (panelSrc.match(/var qtyNote = expandByQty\(prep\)/g) || []).length
+    ok('3r qtyNote 선언이 사용처만큼', decl === 2, 'decl=' + decl)
+  }
+  // ★try 는 getImageData 만 감싼다 — cb 까지 넣으면 콜백 안의 예외가 '보안 실패'로 오진된다.
+  //   catch 가 return 으로 끝난다는 것이 곧 "성공 경로 cb 는 try 밖"이라는 뜻이다.
+  ok('3r canvas catch 가 cb 를 안 삼킨다', /catch \(eTaint\) \{ cb\('canvas[^}]*return; \}/.test(panelSrc))
 
   // ── 도련 상한 (2026-08-06 실사용) ──────────────────────────────
   // ★상한 초과를 **건너뛰면 단색 링**이 된다 — 아트 색이 아니라 지정색이라 재단이 밀리면 보인다.
