@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-08-06T04:05:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-08-06T15:21:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,23 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **13** (#585·#586·#587·#589·#590·#591·#592·#593·#596·#597·#598·#599·#600, GitHub OPEN 실측 — Area6 56회차. #600 신규 · #596은 fixed-in-tree/close-pending — 코드는 이미 해소, GitHub만 open) |
+| 🆕 new | **0** (`list_issues(OPEN,label:auto-improve)` 실측 — Area1 58회차. 직전 13건[#585~#600] 전부 owner가 이번 윈도에서 close, 남은 OPEN 이슈는 auto-improve 라벨 없는 #453뿐[기존 인지된 egress 인프라 이슈, 무관]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **513** (변동없음, Area3 51회차 실측 유지 — 이번 사이클 완료전환 0건) |
+| ✔️ done | **524** (+11, `reason:completed` 실측 — session #54 백로그 소진: 11건 완료 처리 + #599/#600 2건은 별도 close 상태 확인 필요, 아래 참조) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+
+> **Area 1 프로덕션 헬스 (2026-08-06T15:21):**
+> - **방법**: `git fetch origin main`(force-updated, HEAD `fbbb5a4` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). `curl https://webapp-9i0.pages.dev/api/notifications/nav-badges` → 연결 실패(exit 56, 기존 인지된 egress 프록시 차단 재확인, #453과 동일 제약) → GitHub Actions 기록으로 대체. Area 1 **58회차** — 직전 Area1(`069a39f`, 08-04T23:20, 57회차) 이후 `git log --since 2026-08-04T23:20 -- src/routes src/scripts migrations index.tsx src/layout src/pages`는 **20커밋**(합배송 하드삭제 정리·주문폼 라인할인 복원·광고문자 실패수신자 표시 등 session #54 백로그 소진분 다수 + 카드=작업지시서 신기능`50eb5ef`+후속 IDOR 픽스 2건`3e29fe6`/`132c9f1` + neoStampa RIP 연동 + ia-editor 폐기 S1/S4/S5).
+> - **deploy.yml 전수 확인(30런, `c21a63a`~최신)**: 이번 윈도에 **실패 2건** 발견 — `31017423416`(14:52, `50eb5ef` 최초 배포)·`31034273450`(18:20, 그 직후 docs 커밋). 둘 다 Typecheck→Build→Deploy 전부 success, **Smoke만 실패**(`cards.issueStatus /api/cards/issue-status` 500) — 커밋 메시지 자신이 "Prod deploy requires 0522 migration first (not deployed)"로 원인을 명시(SKILL #484급 (b)-risk: 신규 `ADD COLUMN`을 detail SELECT가 참조하는데 마이그 미적용). 이후 `31059416764`(00:21, "record work-order auto-issue prod deploy c1003" 커밋)부터 **9런 연속 success**로 자동회복 확인 — 코드 회귀 아님(회귀 불가: docs-only 커밋도 같은 실패를 보였다가 마이그 적용 후 즉시 초록) → 비보고 대상, 현재 prod 완전 정상.
+> - **backup.yml 신선도**: 최신 run(`31033823439`, 2026-08-05T18:14:51Z) success — 직전(08-04T18:22) 대비 ~24h 간격 정상. 다음 예정(~08-06T18:xx UTC)은 아직 미도래(정상, 지연 아님).
+> - **e2e.yml**: 최신 run 여전히 2026-06-22(`disabled_manually` 상태 지속, 변동 없음). **verify.yml**: 열린 PR 0건(`list_pull_requests(state:open)` 직접 확인) → 실행 대상 없음.
+> - **🎉 GitHub 백로그 대량 소진 감지**: `list_issues(state:OPEN,label:auto-improve)` 실측 **0건**(직전 13건 전부 close) — git log에 `session #54: all 11 auto-improve issues resolved` 커밋이 실증. `reason:completed` 실측 524(+11, 513→524) — 직전 13건 중 11건은 completed로, **2건(#599·#600)은 델타 불일치**(13 open → 11 done 증가, 2건 행방 확인 필요, `not_planned`/`duplicate`는 변동 없음이라 그쪽도 아님). `issue_read`로 #600 직접 확인 = `state:closed, state_reason:completed`(정상 카운트됨) → **`reason:completed` 검색 인덱스 지연**(SKILL line 66 기존 관찰 패턴, "수 분 지연 후 재조회 시 반영")으로 판단, 다음 사이클 재확인 대상으로 남김(코드 자체는 owner가 `3e29fe6`/`132c9f1`로 #599/#600 모두 픽스 확인 — 아래 참조).
+> - **#599/#600 픽스 실재 확인(open→closed 전환의 정확성 검증)**: `git log`에 `132c9f1 fix(print-events): close #600 entity gate on POST /link card lookup`·`3e3e473 fix(cards): close #599 sibling-asymmetry IDOR on card child reads + review fixes` 확인 — 두 이슈 모두 커밋 메시지에 번호 인용 + 해당 deploy run(`31059677193`·`31060820444`) success. **#473/line 281 "open≠unfixed" 원칙 적용**: 코드 자체가 이미 정합(deploy green)이므로 이슈 카운트 인덱스 지연과 무관하게 실질적으로 해소됨.
+> - **📌 owner 액션 불요**: 신규 이슈 0건, 백로그가 사실상 비어있음(auto-improve OPEN 0). 다음 사이클(Area 2)부터 코드베이스 재탐색 필요.
+> - **🧬 SKILL 강화**: 없음 — deploy 실패 2건은 기존 codify된 "#484급 (b)-risk detail-SELECT 마이그 지연" 패턴의 실전 재현(신규 규칙 불요), done 카운트 인덱스 지연도 기존 관찰 패턴 재확인.
+> - 신규 이슈 0건, 자동수정 0건(순수 CI/인프라 헬스 확인 + 백로그 상태 동기화), done-sync: new 0(-13, 전건 close)·done 524(+11)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-08-06T04:05):**
 > - **방법**: `git fetch origin main`(force-updated, HEAD `f43879d` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 6 **56회차** — 직전 Area6(`283ae76`, 08-04T21:25, 55회차)는 이번 fetch에서 `git cat-file -t` 조회 불가(반복 관찰된 force-updated 히스토리) → 타임스탬프 앵커(2026-08-04T21:25)로 `git log --since -- src/routes src/scripts src/pages migrations index.tsx src/layout`를 잡으면 **18커밋**(고정자산 감가상각 마무리 3건·부문/차입금/합배송 fix 4건·재단 DXF 라인첨부·ia-editor 폐기 S1/S4/S5·CAPS/logwatcher 2건[`990afc6`·`18857d6`]·print-events IN절 청크 수정·반복지출 UI 신설[`e27cd7f`]·카드=작업지시서 승격[`50eb5ef`]) — Area1~5가 각자 사이클에서 이 윈도를 이미 커버해 net-new 여지가 좁음.
