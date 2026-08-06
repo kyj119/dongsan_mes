@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.25.0';
+  var SHELL_VERSION = '0.26.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -766,7 +766,9 @@
    * @param fail(msg) 실패 콜백  @param cb({n, pieces, rawInkPx, mmpp, rPx, exact})
    */
   function nestPrepare(G, rez, gapMm, offsetMm, fillMode, fail, cb) {
-    host('mesCut_nestBegin()', function (bg, bad) {
+    // ★수량 목록을 불러왔으면 그 스냅샷을 **재사용**한다 — 행을 눌러 조각을 확인하면
+    //   선택이 하나로 바뀌는데, 여기서 선택을 다시 읽으면 수량이 통째로 날아간다.
+    host('mesCut_nestBegin(' + (pieceQty ? '1' : '') + ')', function (bg, bad) {
       if (bad || bg.indexOf('ok;') !== 0) { fail('대상 확정 실패: ' + bg); return; }
       var n = parseInt(kv(bg.substring(3)).n, 10) || 0;
       // ★1개도 받는다 — 실물 작업 파일 다수가 `-1장` 짜리다. 단품도 돔보가 있어야 자를 수 있으므로
@@ -893,6 +895,24 @@
   // (12M px ≈ 144MB). 넘으면 그 조각만 건너뛰고 호스트가 단색으로 떨어진다 — **넘겼다고 알린다**.
   var BLEED_MAX_PX = 12e6;
 
+  /** RGBA 를 1/f 로 줄인다(도련 상한 초과 조각용). 실패하면 null — 호출부가 종전 경로로 간다. */
+  function downscaleRgba(img, f) {
+    try {
+      var w = Math.max(1, Math.round(img.W / f)), h = Math.max(1, Math.round(img.H / f));
+      var a = document.createElement('canvas'); a.width = img.W; a.height = img.H;
+      var actx = a.getContext('2d');
+      var id = actx.createImageData(img.W, img.H);
+      id.data.set(img.data);
+      actx.putImageData(id, 0, 0);
+      var b = document.createElement('canvas'); b.width = w; b.height = h;
+      var bctx = b.getContext('2d');
+      bctx.imageSmoothingEnabled = true;
+      bctx.drawImage(a, 0, 0, w, h);
+      var out2 = bctx.getImageData(0, 0, w, h);
+      return { W: w, H: h, ch: 4, data: out2.data };
+    } catch (e) { return null; }
+  }
+
   /** RGBA → temp 의 PNG 파일. canvas → dataURL → cep.fs(Base64). 호스트가 이 이름으로 찾는다. */
   function writeBleedPng(dir, id, r) {
     try {
@@ -938,12 +958,14 @@
       if (!list.length) { cb({}, '구운 조각이 없습니다.'); return; }
       // temp 경로는 호스트만 안다 — 굽기 결과 경로에서 폴더를 떼어 쓴다(경로가 브릿지를 안 탄다)
       var dir = String(list[0].path).replace(/[^\/\\]+$/, '');
-      var map = {}, skipped = 0, tooBig = 0, q = 0;
+      var map = {}, skipped = 0, tooBig = 0, coarse = 0, q = 0;
       (function step() {
         if (q >= list.length) {
           var note = '';
           if (tooBig) note = tooBig + '개 조각은 너무 커서 만들지 않았습니다(단색으로 대체).';
           else if (skipped) note = skipped + '개 조각을 만들지 못했습니다(단색으로 대체).';
+          // 낮춘 해상도로라도 **만들었다**는 사실은 알린다 — 조용히 품질만 달라지지 않게.
+          if (coarse) note += (note ? ' ' : '') + coarse + '개 조각은 커서 도련만 거칠게 만들었습니다(단색 아님).';
           cb(map, note);
           return;
         }
@@ -951,10 +973,24 @@
         out('도련 ' + (q + 1) + '/' + list.length);
         readPng(it.path, function (err, img) {
           if (err) { skipped++; q++; step(); return; }
-          if ((img.W + 2 * padPx) * (img.H + 2 * padPx) > BLEED_MAX_PX) { tooBig++; q++; step(); return; }
+          // ★상한을 넘으면 **건너뛰지 않고 해상도를 낮춘다** (2026-08-06 실사용).
+          //   전에는 그 조각만 도련을 안 만들고 호스트가 단색 링으로 떨어뜨렸다. 실측 보고:
+          //   조각 5장 중 2장이 "너무 커서" 단색이 됐다 — 아트 색이 아니라 지정색 테두리라
+          //   재단이 밀리면 그 색이 그대로 보인다. **거친 도련이 단색보다 언제나 낫다.**
+          //   도련은 가장자리 색을 3mm 늘리는 일이라 0.5~1mm/px 로도 눈에 차이가 없다.
+          var f = 1, pxAt = function (k) { return ((img.W / k) + 2 * padPx / k) * ((img.H / k) + 2 * padPx / k); };
+          while (pxAt(f) > BLEED_MAX_PX && f < 8) f++;
+          var src = img, gpx = growPx, mpp = mmpp;
+          if (f > 1) {
+            var ds = downscaleRgba(img, f);
+            if (ds) { src = ds; gpx = Math.max(1, Math.round(growPx / f)); mpp = mmpp * f; coarse++; }
+            else { tooBig++; q++; step(); return; }   // 축소마저 실패하면 종전대로
+          }
           var res = null;
-          try { res = B.repeatLastPixel(img, growPx); } catch (e) { res = null; }
-          if (res && writeBleedPng(dir, it.id, res)) map[it.id] = { w: res.W * mmpp, h: res.H * mmpp };
+          try { res = B.repeatLastPixel(src, gpx); } catch (e) { res = null; }
+          // ★크기(mm)는 **그 조각을 실제로 만든 해상도**로 환산해야 한다 — 원본 mmpp 를 쓰면
+          //   축소한 조각만 배치가 f 배로 어긋난다(조용히 틀리는 자리).
+          if (res && writeBleedPng(dir, it.id, res)) map[it.id] = { w: res.W * mpp, h: res.H * mpp };
           else skipped++;
           q++; step();
         });
@@ -1408,6 +1444,7 @@
             if (applied) { try { selSheet.dispatchEvent(new Event('change')); } catch (eEv) {} }
           }
         }
+        txt += qtyNote;
         txt += best
           ? ('\n→ ' + best.w + 'mm 롤이 재료를 가장 적게 씁니다.'
             + (applied ? ' **시트를 이 폭으로 바꿔 놨습니다** — [네스팅 실행]만 누르세요.'
@@ -1687,6 +1724,17 @@
         var v = parseInt(this.value, 10);
         pieceQty.qty[k] = (isNaN(v) || v < 1) ? 1 : Math.min(999, v);
       });
+      row.setAttribute('data-i', String(i));
+      row.addEventListener('click', function (ev) {
+        if (ev.target && ev.target.className === 'qqty') return;   // 수량 칸 클릭은 편집이다
+        var k = parseInt(this.getAttribute('data-i'), 10);
+        var rows = this.parentNode.getElementsByClassName('qrow');
+        for (var z = 0; z < rows.length; z++) rows[z].className = 'qrow';
+        this.className = 'qrow sel';
+        // ★목록은 그대로 두고 **보여주기만** 한다. 선택이 1개로 바뀌지만 실행 때
+        //   nestBegin(1) 로 잡아 둔 목록을 재사용하므로 수량이 날아가지 않는다.
+        host('mesCut_nestSelect(' + k + ')', function () {});
+      });
       row.appendChild(n); row.appendChild(meta); row.appendChild(q);
       box.appendChild(row);
     }
@@ -1731,10 +1779,15 @@
       total += q;
       for (var k = 0; k < q; k++) { expanded.push(prep.pieces[i]); ink += (prep.pieces[i].ink || 0); }
     }
-    if (total === prep.pieces.length) return '';   // 전부 1개 = 종전과 동일
+    // ★목록을 불러온 상태면 **전부 1장이어도 그 사실을 말한다.** 불러온 뒤에는 일러에서 선택을
+    //   바꿔도 이 목록이 쓰이므로(nestBegin(1)), 조용히 두면 "선택을 바꿨는데 왜 그대로냐"가 된다.
+    if (total === prep.pieces.length) {
+      return '\n조각 수량 목록 사용 — ' + total + '종 각 1장 (선택을 바꿨다면 [↻ 불러오기])';
+    }
     prep.pieces = expanded;
     prep.rawInkPx = ink;                            // 효율%는 늘어난 잉크 기준이어야 한다
-    return '\n조각 수량 반영 — 원본 ' + pieceQty.qty.length + '종 → 배치 ' + total + '장';
+    return '\n조각 수량 반영 — 원본 ' + pieceQty.qty.length + '종 → 배치 ' + total + '장'
+      + ' (선택을 바꿨다면 [↻ 불러오기])';
   }
 
   var btnPair = $('btnExportPair');

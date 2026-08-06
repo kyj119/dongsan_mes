@@ -690,6 +690,27 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3r 호스트가 조각 크기를 준다', /function mesCut_nestSizes\(\)/.test(hostSrc))
   // ★크기 조회가 선택을 바꾸면 이어지는 nestBegin 이 그 하나만 잡는다
   ok('3r 크기 조회는 선택을 안 건드린다', !/mesCut_nestSizes[\s\S]{0,600}?\.selection\s*=/.test(hostSrc))
+  // ★폭 추천은 [네스팅 실행]과 **같은 조건**이어야 비교가 성립한다 — 수량도 포함이다.
+  ok('3r 폭 추천도 수량 반영', (panelSrc.match(/expandByQty\(prep\)/g) || []).length >= 2)
+
+  // ── 도련 상한 (2026-08-06 실사용) ──────────────────────────────
+  // ★상한 초과를 **건너뛰면 단색 링**이 된다 — 아트 색이 아니라 지정색이라 재단이 밀리면 보인다.
+  //   실측: 5장 중 2장이 단색으로 떨어졌다. 거친 도련이 단색보다 언제나 낫다.
+  ok('3s 큰 조각은 축소해서라도 도련', /downscaleRgba\(img, f\)/.test(panelSrc))
+  // ★축소했으면 mm 환산도 그 해상도로 — 원본 mmpp 를 쓰면 그 조각만 f 배로 어긋난다
+  ok('3s 축소분 mm 환산이 따로', /map\[it\.id\] = \{ w: res\.W \* mpp, h: res\.H \* mpp \}/.test(panelSrc))
+  ok('3s 거칠게 만든 사실을 알린다', /도련만 거칠게 만들었습니다/.test(panelSrc))
+
+  // ── 조각 목록 순서·확인 (2026-08-06) ───────────────────────────
+  // ★번호가 눈에 보이는 순서와 어긋나면 어느 행이 어느 조각인지 알 수 없어 수량을 못 넣는다.
+  //   정렬은 **호스트에서** 한다 — 배치·도련·params 가 전부 이 배열 인덱스를 쓰므로,
+  //   패널이 표시만 바꾸면 "고른 것과 다른 조각의 수량"이 된다(A0 seedFlush 와 같은 이유).
+  ok('3t 조각 순서는 호스트가 공간정렬', /MESCUT_NEST_ITEMS = \[\];[\s\S]{0,900}?withBB\.sort/.test(hostSrc))
+  ok('3t 행 클릭으로 조각 확인', /mesCut_nestSelect\(/.test(panelSrc) && /function mesCut_nestSelect/.test(hostSrc))
+  // ★행을 누르면 선택이 1개로 바뀐다 — 실행이 선택을 다시 읽으면 수량이 통째로 날아간다
+  ok('3t 실행은 잡아 둔 목록 재사용', /mesCut_nestBegin\(' \+ \(pieceQty \? '1' : ''\)/.test(panelSrc))
+  ok('3t keep 은 호스트가 지원', /String\(keep\) === '1'/.test(hostSrc))
+  ok('3t 목록 사용 사실을 늘 알린다', /조각 수량 목록 사용/.test(panelSrc))
   // ★조각마다 따로 불러야 한다 — 한꺼번에 하면 조각끼리 이어진다
   ok('3q 배치된 사본마다 도련', /mesCut_bleedPlaceItem\(doc, artLayer, copies\[vi\]/.test(hostSrc))
   ok('3q 패널이 도련을 넘긴다', /nestApply\([\s\S]{0,120}nestBleedMm/.test(panelSrc))

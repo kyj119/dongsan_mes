@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.16.0';  // 0.15.0 = 도련을 칼선 방식과 분리(래스터에서도 생성)
+var MESCUT_VERSION = 'CUT-CEP-0.17.0';  // 0.15.0 = 도련을 칼선 방식과 분리(래스터에서도 생성)
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -1852,14 +1852,59 @@ function mesCut_exportDxf(outPath) {
 var MESCUT_NEST_ITEMS = null;   // rasterizeItem 이 쓰는 대상 목록(선택 시점에 고정)
 
 /** 네스팅 대상 확정 — 재단선 제외한 선택 아이템 수를 반환하고 목록을 고정한다. */
-function mesCut_nestBegin() {
+/**
+ * @param keep 1 이면 이미 잡아 둔 목록을 **그대로 쓴다**(선택을 다시 읽지 않는다).
+ *   패널의 '조각 수량' 목록은 불러온 시점의 순서·개수에 수량을 매단다. 그런데 행을 눌러
+ *   조각을 확인하면 선택이 그 하나로 바뀌고, 그 상태로 실행하면 여기서 1개만 다시 잡혀
+ *   **수량이 통째로 날아간다**. keep 은 그 경로를 막는다.
+ */
+function mesCut_nestBegin(keep) {
     if (app.documents.length === 0) return 'ERROR 문서 없음';
+    if (String(keep) === '1' && MESCUT_NEST_ITEMS && MESCUT_NEST_ITEMS.length) {
+        // 지워진 개체가 섞였는지만 확인한다 — 남아 있으면 그대로 재사용.
+        var alive = [];
+        for (var k = 0; k < MESCUT_NEST_ITEMS.length; k++) {
+            try { var t = MESCUT_NEST_ITEMS[k].typename; if (t) alive.push(MESCUT_NEST_ITEMS[k]); } catch (eK) {}
+        }
+        if (alive.length === MESCUT_NEST_ITEMS.length) return 'ok;n=' + MESCUT_NEST_ITEMS.length + ';kept=1';
+        // 하나라도 사라졌으면 낡은 목록이다 — 아래로 내려가 선택에서 다시 잡는다.
+    }
     var sel = app.activeDocument.selection;
     if (!sel || !sel.length) return 'ERROR 선택 없음';
     MESCUT_NEST_ITEMS = [];
     for (var i = 0; i < sel.length; i++) if (!mesCut_isCutItem(sel[i])) MESCUT_NEST_ITEMS.push(sel[i]);
     if (!MESCUT_NEST_ITEMS.length) return 'ERROR 선택이 재단선뿐입니다';
+    // ★공간 정렬: 위→아래, 같은 줄에서는 좌→우 (A0 묶음분리와 같은 규칙·같은 이유).
+    //   선택 순서는 사실상 z-order 라 눈에 보이는 순서와 무관하다. 목록 번호가 화면과 어긋나면
+    //   "몇 번이 어느 조각인지"를 알 수 없어 수량을 제대로 넣을 수 없다.
+    //   ⚠️ 정렬은 **반드시 여기서** 한다 — 배치·도련·params 가 전부 이 배열의 인덱스를 쓴다.
+    //      패널이 표시만 바꾸면 인덱스가 어긋나 "고른 것과 다른 조각의 수량"이 된다.
+    var BAND = 20 * MESCUT_PT_PER_MM;   // 같은 줄 허용오차
+    var withBB = [];
+    for (var b = 0; b < MESCUT_NEST_ITEMS.length; b++) {
+        var bb = null;
+        try { bb = mesCut_inkBounds(MESCUT_NEST_ITEMS[b]); } catch (eB) {}
+        withBB.push({ it: MESCUT_NEST_ITEMS[b], t: bb ? bb[1] : 0, l: bb ? bb[0] : 0 });
+    }
+    withBB.sort(function (p, q) {
+        var dt = q.t - p.t;                    // top 이 큰(위) 것이 먼저
+        if (Math.abs(dt) > BAND) return dt;
+        return p.l - q.l;                      // 같은 줄 → 왼쪽 먼저
+    });
+    MESCUT_NEST_ITEMS = [];
+    for (var s2 = 0; s2 < withBB.length; s2++) MESCUT_NEST_ITEMS.push(withBB[s2].it);
     return 'ok;n=' + MESCUT_NEST_ITEMS.length;
+}
+
+/** 목록 i번 조각을 일러에서 선택해 보여준다(어느 디자인인지 확인용). 목록 자체는 안 바꾼다. */
+function mesCut_nestSelect(idx) {
+    var i = parseInt(idx, 10);
+    if (!MESCUT_NEST_ITEMS || isNaN(i) || i < 0 || i >= MESCUT_NEST_ITEMS.length) return 'ERROR 범위';
+    try {
+        app.activeDocument.selection = null;
+        MESCUT_NEST_ITEMS[i].selected = true;
+    } catch (e) { return 'ERROR ' + e; }
+    return 'ok';
 }
 
 /**
