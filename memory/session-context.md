@@ -25,6 +25,10 @@
 
 - **`d1 execute --remote --file` 1차 시도가 조용히 무적용** — 출력을 `tail`로 잘라 확인 프롬프트/결과를 놓쳤다. **적용 후 `pragma_table_info` 검증으로 잡음.** remote 마이그는 실행→pragma 검증을 한 세트로.
 
+## 리뷰 후속 (2026-08-06, 커밋 `3e3e473e`·배포 `a74d9628`)
+
+review-checklist 4건 전량 수정·배포: ①#599 IDOR(자식 read 3종 `cardEntityFilter`+404, prod 404 마커 실측) ②needs_reissue 활성 카드 한정 ③changed_by 리터럴 1 → NULL 6곳 ④상태 enum 런타임 정합. **교훈 = 자식 read 라우트 신설 시 형제 격리 여부부터 확인** — 미격리 형제 패턴을 따르면 IDOR을 복제한다(checklist가 history/defects를 따라 만들어져 #599 유발).
+
 ## 판단 기준
 
 - **기존 카드 파이프라인이 이미 "자동 제작"** — 새 엔티티를 만들지 않고 승격하는 것이 정답이었다 (2026-05-26 결정 계승)
