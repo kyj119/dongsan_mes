@@ -87,7 +87,7 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 
 (발주 계열 2026-07-27, 전역 P0~P2 전량 2026-07-29. 상세 = `docs/audits/2026-07-27-list-sort-tiebreak.md`)
 
-### IA 스크립트 = 웹과 분리된 수동 배포 축 4개 (`npm run audit:ia-jsx`)
+### IA 스크립트 = 웹과 분리된 수동 배포 축 5개 (`npm run audit:ia-jsx`)
 `git push`·`npm run deploy` 로는 **절대 반영되지 않는다**. main에 있어도 런타임은 옛날 파일일 수 있다 — 브랜치·커밋 기록으로 배포 여부를 추론하면 틀린다.
 
 | 축 | repo | 런타임(정본) |
@@ -96,6 +96,12 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 | 2 디자이너 JSX | `IllustratorAutomat/designer/*.jsx` | `Z:\DESIGNS\IA-등록\_scripts\` |
 | 3 CEP 패널 배포본 | `.../com.mes.a0.panel/**` | `Z:\...\_scripts\a0-panel\com.mes.a0.panel\` |
 | 4 CEP 패널 설치본 | 같은 repo 원본 | `%APPDATA%\Adobe\CEP\extensions\com.mes.a0.panel` (**일러가 실제 읽는 것**) |
+| 5 배포 도구 | `scripts/install-*.ps1` | `Z:\...\_scripts\` · `Z:\Designs\caps-worker\` (**디자이너가 실행하는 설치기**) |
+
+> **배포 대상을 하드코딩하지 않는다**(2026-08-06 근본수정). 축3은 repo 패널 폴더를 **열거**해 새 파일이 자동 편입되고,
+> 역방향(**런타임 잔재**)과 **정본 없는 설치 스크립트**도 함께 잡는다. 손목록 때문에 같은 사고를 세 번 냈다:
+> `.debug` 오제외 → 재단 패널 미등록 → **배포 도구 자신이 감사망 밖**(Z: 설치기가 병합 전 버전인데 "드리프트 없음").
+> 전체 절차 정본 = `docs/DEPLOY_MANUAL.md` (**§3-A = 가공·재단 패널 배포**).
 
 > **패널은 1개다**(2026-08-04 병합). 재단 패널은 A0 패널의 **「재단」 탭**으로 흡수 — 축3·축4가 각각 하나뿐이다.
 > 단 **호스트(축2)는 2파일 유지**: `mes-a0-host.jsx` · `mes-cut-host.jsx`. 로직이 자주 바뀌는 축이라

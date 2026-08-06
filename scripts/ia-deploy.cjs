@@ -108,7 +108,7 @@ function audit() {
   }
 }
 
-const AXIS_LABEL = { agent: '축1 에이전트', designer: '축2 호스트(Z:)', panel: '축3 패널(Z:)', installed: '축4 설치본(이 PC)' }
+const AXIS_LABEL = { agent: '축1 에이전트', designer: '축2 호스트(Z:)', panel: '축3 패널(Z:)', installed: '축4 설치본(이 PC)', tool: '축5 배포 도구(Z:)' }
 
 // ── ④ 백업 → 복사 ───────────────────────────────────────────────────
 function copyOne(repoRoot, runRoot, rel, backupRoot) {
@@ -251,6 +251,9 @@ async function main() {
   } else {
     console.log(C.g('  드리프트 없음 — repo와 런타임이 일치합니다.'))
   }
+  // 파일 복사로는 해소되지 않는 것들 — 조용히 넘어가면 "배포 완료"가 거짓말이 된다.
+  for (const o of (after.orphanBad || [])) console.log(C.r(`  ✖ 런타임 잔재(정본 없음): ${o.runRoot}\\${o.rel}`))
+  for (const n of (after.retired || [])) console.log(C.y(`  ⚠ 정본 없는 설치 스크립트: ${n} — Z: 에서 치울 것`))
   console.log(`\n${C.g('배포 완료')}  롤백 = ${backupRoot} 의 파일을 되돌린 뒤 재감사`)
 }
 

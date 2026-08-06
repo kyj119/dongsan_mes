@@ -76,14 +76,22 @@ Cloudflare Pages 대시보드에서 이전 배포 **Rollback**. DB 변경이 섞
 
 ---
 
-## 3. IA 4축 — 축 지도
+## 3. IA 5축 — 축 지도
 
 | 축 | repo | 런타임 정본 | 반영 |
 |---|---|---|---|
 | 1 에이전트 JSX | `IllustratorAutomat/*.jsx` | **실행 중 exe 폴더** (`Get-Process IllustratorAutomat`) | 빌드가 복사 |
 | 2 디자이너 호스트 | `IllustratorAutomat/designer/*.jsx` | `Z:\DESIGNS\IA-등록\_scripts\` | **Z: 1개 = 전 PC 즉시** |
-| 3 패널 배포본 | `.../com.mes.a0.panel/**` | `Z:\...\_scripts\a0-panel\com.mes.a0.panel\` | 설치 원본만 |
+| 3 패널 배포본 | `.../com.mes.a0.panel/**` (폴더 전체) | `Z:\...\_scripts\a0-panel\com.mes.a0.panel\` | 설치 원본만 |
 | 4 패널 설치본 | 같은 repo 원본 | `%APPDATA%\Adobe\CEP\extensions\com.mes.a0.panel` | **일러가 실제로 읽는 것** |
+| 5 배포 도구 | `scripts/install-*.ps1` | `Z:\...\_scripts\` · `Z:\Designs\caps-worker\` | **디자이너가 실제로 실행하는 설치기** |
+
+> **축3 은 파일 목록이 아니라 폴더 전체다.** 감사가 repo 패널 폴더를 **열거**하므로 새 파일(`js/*.js` 추가 등)이
+> 자동으로 편입된다 — 등록을 잊어서 감사망 밖에 놓이는 일이 없다(2026-08-06 근본수정).
+>
+> **축5 가 왜 따로 있나**: 배포를 *수행하는* 스크립트도 repo→Z: 수동 축이다. 축2도 축3도 아니라 여태
+> 무주공산이었고, 실제로 Z: 사본이 병합(08-04) 전 버전인 채 남았는데 감사는 통과했다.
+> 낡은 설치기는 **껍데기가 아니라 배포 절차 자체를 구버전으로 만든다**(은퇴한 재단 확장을 못 지운다).
 
 ### 3.1 도구 2개
 ```powershell
@@ -174,10 +182,8 @@ powershell -ExecutionPolicy Bypass -File "Z:\DESIGNS\IA-등록\_scripts\install-
 `PlayerDebugMode=1`(HKCU CSXS 10/11/12 — 미서명 확장 허용) · Z: 정본 존재 확인 · `host.jsx` 가 스텁인지 검증 ·
 **구 재단 확장(`com.mes.cut.panel`) 백업 후 제거**(`$OLD_CUT_EXT`).
 
-> ⚠️ **설치 스크립트 자체는 감사 대상이 아니다.** `audit:ia-jsx` 의 `PANEL_FILES` 에 없어서
-> Z: 의 `install-a0-panel.ps1` 이 낡아도 **드리프트 0 으로 나온다.**
-> 정본 = repo `scripts/install-a0-panel.ps1`. Z: 갱신은 지금 **수동**이다.
-> (2026-08-05 실측: Z: 사본이 07-31 자 = 병합 전 버전이라 구 재단 확장을 지우지 못한다)
+> 설치 스크립트 정본 = repo `scripts/install-a0-panel.ps1`. **축5 로 감사·배포된다**(2026-08-06 신설).
+> 그전에는 감사망 밖이라 Z: 사본이 07-31 자(병합 전)인 채 방치됐는데 감사는 "드리프트 없음"을 냈다.
 
 **④ 확인**
 ```powershell
