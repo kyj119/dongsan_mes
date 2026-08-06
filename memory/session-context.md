@@ -1,6 +1,41 @@
 > **파일 구조**: 최신 세션이 맨 위. 아래로 갈수록 과거 세션(각각 durable 메모리에 정본 있음).
 > **다음 세션은 이 문서 상단의 "이월 TODO 통합"만 읽으면 된다** — 그 아래 상세 핸드오프는 판단 근거가 필요할 때만.
 
+# 세션 핸드오프 — auto-improve open 이슈 11건 전량 처리 (2026-08-06 #54)
+
+> **커밋 6건 미push·미배포** — `ff2f2d2f`(#597) · `d72ac2e3`(#598) · `ab902b04`(#593 문서) · `0e871bc5`(#590) · `93d3fe60`(#589) · `0d531656`(#585·586·587). 검증 = verify·smoke 108/108·Playwright 실측 2건.
+
+## 이월 TODO 통합 (2026-08-06 #54 갱신 — 다음 세션은 여기부터)
+
+1. **push + 배포 (용준님 명시 요청 시)** — `git push origin main`(GitHub Closes # 발동으로 open 7건 자동 close) → `/deploy-verify`. 현재 GitHub open 8건 중 7건은 코드로 종결됐고 push만 남음. 잔여 open = **#453**(infra: 스케줄 auto-scan prod egress 차단 — 코드 아님, 별도 판단).
+2. **B. 작업지시서 실주문 자연검증** — 신규 주문 → 카드 체크리스트 파생 → 현장 체크 실사용 관찰 (기존 카드는 체크리스트 없음=섹션 숨김이 정상)
+3. **C. 재단 세션(#42) 이월분** — ①실주문 주문폴더 EPS+DXF 쌍 자연검증 ②디자이너 PC 4대 `install-a0-panel.ps1` ③이 PC 일러 재시작(shell 0.16.0)
+4. **D. 후속(운영 피드백 후)** — category별 체크리스트 settings 템플릿 · MANUAL 스텝 UI · generateCardsForOrder 통합 검토
+
+## 이번 세션 결과 (이슈별)
+
+| 이슈 | 처리 | 핵심 |
+|---|---|---|
+| #597 | fix `ff2f2d2f` | order_ai_files RESTRICT FK 500. **DELETE가 아니라 재연결**(#124 card_items 패턴) — PUT은 라인 전량 재작성이라 DELETE면 무관 수정에도 칼선 기록 소멸. 매핑 저장→SET NULL(양 경로)→item_id+sort_order 재연결, 라인 삭제분만 DELETE. 로컬 D1로 FK 재현→통과 실측 |
+| #598 | fix `d72ac2e3` | rip.ts 4곳 + **형제 스윕 추가 3파일**: reports.ts 집계 3곳·waste.ts 산출면적·autoDeductPostProcessingMaterials(**RIP 행도 card_id+OK라 후가공 자재 이중차감**). 인쇄측 autoDeductInventory는 호출부 게이트 기존재. 0518 DEFAULT 'PRINT'라 직접 비교 안전 |
+| #592 | close 오탐 | ALM-2T-WH-48(1072)·PC-1.8T-M-48(1441)·SGM-LED3-2835(1462) **전부 prod 존재**, BOM 5행·보정 62/124 반영. 자재는 마이그 밖 직접 SQL 등록(load/=gitignore)이라 마이그 grep에 안 잡혔을 뿐 |
+| #593 | close+주석 `ab902b04` | 7282는 **0512가 의도된 최종**(FRL 신규). 0509의 판가 90k/㎡ 임계가 0511 실물 역추적으로 반증됐고 0512 표본 10거래처에 세이광고기획 실물 확인 포함. 0509의 cm 단위 보정 자체는 유효 — 분류 결론만 교체. 0512·생성기 주석에 명시 |
+| #590 | fix `0e871bc5` | loadOrderForEdit가 item.amount 미복원→재수정 저장 시 에누리 소멸. calcItem 후 재계산 auto와 비교(서버 hasManual과 같은 축)해 amber 상태 재현. **auto=0 이관라인(prod 9건)은 onAmountManualEdit 가드에 걸려 직접 마킹**. Playwright 왕복 E2E 실측(복원→무관필드 수정 저장→보존). loadOrderForCopy는 의도적 미적용(복사=자동가 재계산이 맞음) |
+| #589 | fix `93d3fe60` | 하드삭제 batch에 consolidate_with_order_id SET NULL(#477 동형). 새 대표 자동 승격 안 함(운영자 몫) |
+| #591 | close 기정정 | prod 실측 brn=NULL(이미 정정됨)·형식위반 전수 재스캔 0건 |
+| #585·586·587 | fix `0d531656` | 광고 3건: /send `failed[]`+`failed_identifiable`(#574 미러, perItem↔sendable 1:1일 때만)·결과모달+실패건만 재선택(**게이트 재통과 강제**)·제목/본문/예약시각 adResetPreview·수신거부 서버검색(300ms 디바운스). **실발송 0** — preview·DOM 시뮬레이션·요청 배선만으로 검증 |
+| #596 | close fixed-in-tree | `e27cd7f3` /bank 자금탭 반복지출 패널이 이미 충족. "고정비로 등록" 원클릭만 미구현(인접 편집 진입으로 흐름 닫힘) |
+
+## 판단 기준 (반복 방지)
+
+- **auto-improve 이슈는 prod 실측부터** — #592(마이그 밖 등록 데이터)·#591(이미 정정)이 오탐/기해결. 봇은 repo만 보고 prod DB·gitignore 적재분을 못 본다([[feedback-autoscan-false-positives]] 그대로).
+- **비-FK/자식 정리 수정은 형제 스윕 필수** — #598에서 이슈 명시 4곳 외 3파일(후가공 이중차감 포함)을 스윕으로 발견. `grep "FROM print_events"` 전수 대조.
+- **파생 데이터 복원은 "저장 시 판정과 같은 축"으로** — #590 비교 기준을 저장된 auto_amount가 아니라 **재계산 auto**로 (산식이 바뀌어도 서버 hasManual 판정과 일치).
+- **광고 발송 경로는 어떤 검증도 /send 실호출 금지** — preview(발송·과금 없음)·DOM 시뮬레이션으로 충분했다.
+- 로컬 E2E: orders 생성 API는 `delivery_date` 필수·client 9101·curl 한글 body는 cp949 오염되니 확인용으로만.
+
+---
+
 # 세션 핸드오프 — 작업지시서 자동 발행·관리 (2026-08-05 #51)
 
 > durable 메모리 = [[design-work-order-system]] (자동 발행 섹션 추가) · spec = `docs/superpowers/specs/2026-08-05-work-order-auto-issue.md`
@@ -15,7 +50,7 @@
 - 주문 수정 카드 보존 경로 → `needs_reissue=1` → `/cards` 「지시 현황」 탭(누락·진행·개정필요) → reissue-ack
 - 검증: 로컬 E2E 전 구간 + smoke 108/108(issue-status 추가) + sort-audit P1 0 + check:dom 기준선 5
 
-## 이월 TODO 통합 (2026-08-06 갱신 — 다음 세션은 여기부터)
+## 이월 TODO 통합 (2026-08-06 갱신 — ✅A 트랙은 #54에서 전량 처리됨, 최신 TODO는 상단 #54 섹션)
 
 **A. auto-improve open 이슈 11건 처리** (이번 세션에서 #599·#600 종결, triage 완료. 관례 = 이슈 코멘트 필독 → 형제 패턴 대조 → 수정 → verify → 배포는 명시 요청 → 커밋에 `Closes #`):
 
