@@ -173,6 +173,17 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
 
     let cardsPreserved = false
 
+    // #597: 라인 부가 파일(order_ai_files.order_item_id, 0516 RESTRICT FK) — 라인 교체 전 매핑 저장.
+    //   PUT은 라인 전량 재작성이라 DELETE로 정리하면 무관한 필드 수정에도 칼선(DXF) 기록이 소멸한다
+    //   → 신규 라인에 재연결(#124 card_items 재매핑과 동일 규칙), 라인 자체가 삭제된 파일만 정리.
+    const { results: savedLineFiles } = await c.env.DB.prepare(`
+      SELECT f.id AS file_id, f.order_item_id AS old_item_id, oi.item_id, oi.sort_order
+      FROM order_ai_files f
+      JOIN order_items oi ON oi.id = f.order_item_id
+      WHERE oi.order_id = ?
+      ORDER BY oi.sort_order ASC, oi.id ASC, f.id ASC
+    `).bind(id).all()
+
     if (!canRegenerateCards) {
       // 생산 중 카드 보존 — order_item_id FK를 NULL로 해제하여 CASCADE 삭제 방지
       await c.env.DB.prepare(`
@@ -217,6 +228,8 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
         c.env.DB.prepare('DELETE FROM shipment_checks WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').bind(id),
         // #570: designer_intakes.order_item_id RESTRICT(0463) — 라인 통째 교체 시 흡수 이력은 존치(SET NULL)하고 order_item_id만 끊음 (order_items 삭제 전 FK throw 방지)
         c.env.DB.prepare('UPDATE designer_intakes SET order_item_id = NULL WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').bind(id),
+        // #597: order_ai_files.order_item_id RESTRICT(0516) 해제 — 행 보존, 신규 라인 삽입 후 재연결
+        c.env.DB.prepare('UPDATE order_ai_files SET order_item_id = NULL WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').bind(id),
         c.env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(id),
       ])
     }
@@ -244,6 +257,8 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
       await c.env.DB.prepare('DELETE FROM shipment_checks WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').bind(id).run()
       // #570: designer_intakes.order_item_id RESTRICT(0463) 정리 — 흡수 이력 존치(SET NULL), order_items 삭제 전 필수
       await c.env.DB.prepare('UPDATE designer_intakes SET order_item_id = NULL WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').bind(id).run()
+      // #597: order_ai_files.order_item_id RESTRICT(0516) 해제 — 행 보존, 신규 라인 삽입 후 재연결
+      await c.env.DB.prepare('UPDATE order_ai_files SET order_item_id = NULL WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').bind(id).run()
       await c.env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(id).run()
     }
 
@@ -424,6 +439,39 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
       }
       if (remapStmts.length > 0) {
         await c.env.DB.batch(remapStmts)
+      }
+    }
+
+    // #597: 라인 부가 파일(칼선 DXF 등, 0516) 재연결 — #124와 동일한 item_id+sort_order 매칭.
+    //   같은 old 라인의 파일들은 같은 신규 라인으로. 매칭 실패(라인 자체 삭제)면 행 삭제 —
+    //   order_item_id NULL 로 남기면 어느 화면에도 안 잡히는 유령 행이 된다.
+    if ((savedLineFiles || []).length > 0) {
+      const { results: newItemsForFiles } = await c.env.DB.prepare(`
+        SELECT id, item_id, sort_order FROM order_items WHERE order_id = ? ORDER BY sort_order, id
+      `).bind(id).all()
+      const fileClaimedIds = new Set<number>()
+      const fileResolvedByOldItem = new Map<number, number | null>()
+      const fileStmts: any[] = []
+      for (const f of (savedLineFiles as any[])) {
+        if (!fileResolvedByOldItem.has(f.old_item_id)) {
+          let matched = (newItemsForFiles || []).find(
+            (oi: any) => !fileClaimedIds.has(oi.id) && oi.item_id === f.item_id && oi.sort_order === f.sort_order
+          )
+          if (!matched) {
+            matched = (newItemsForFiles || []).find((oi: any) => !fileClaimedIds.has(oi.id) && oi.item_id === f.item_id)
+          }
+          if (matched) fileClaimedIds.add((matched as any).id as number)
+          fileResolvedByOldItem.set(f.old_item_id, matched ? ((matched as any).id as number) : null)
+        }
+        const newItemId = fileResolvedByOldItem.get(f.old_item_id)
+        if (newItemId != null) {
+          fileStmts.push(c.env.DB.prepare('UPDATE order_ai_files SET order_item_id = ? WHERE id = ?').bind(newItemId, f.file_id))
+        } else {
+          fileStmts.push(c.env.DB.prepare('DELETE FROM order_ai_files WHERE id = ?').bind(f.file_id))
+        }
+      }
+      if (fileStmts.length > 0) {
+        await c.env.DB.batch(fileStmts)
       }
     }
 
