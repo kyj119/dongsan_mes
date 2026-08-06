@@ -8,6 +8,7 @@ import { LATEST_BALANCE_SUBQUERY } from '../utils/bankBalance'
 import { excludeInternalClientsSql } from '../constants/intercompany'
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
 import { kstYear } from '../utils/kstDate'
+import { deriveArSplit } from './ledger/ar-helpers'
 
 // ── Row types for D1 queries ──
 interface SalesRow { order_count: number; total_billed: number; total_final: number }
@@ -19,7 +20,6 @@ interface FixedRow { total_fixed: number }
 interface MonthlyRevenueRow { month: string; revenue: number }
 interface MonthlyExpenseRow { month: string; expense: number }
 interface MonthlyPayrollRow { month: string; payroll: number }
-interface ArRow { total_ar: number }
 interface ApRow { total_ap: number }
 interface InventoryRow { total_inventory: number }
 interface BankRow { total_bank: number }
@@ -248,13 +248,10 @@ financialReportsRouter.get('/pnl/monthly', async (c) => {
 financialReportsRouter.get('/balance-snapshot', async (c) => {
   try {
     // split billing P3: clients.balance 캐시 폐기 → 전체 미수금 파생(order_billing_groups[BILLED] − payments − adjustments)
-    const arRow = await c.env.DB.prepare(`
-      SELECT (
-        (SELECT COALESCE(SUM(g.billed_amount), 0) FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${excludeArExcludedClientsSql('o.client_id')})
-        - (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE 1=1${excludeArExcludedClientsSql('client_id')})
-        - (SELECT COALESCE(SUM(amount), 0) FROM adjustments WHERE 1=1${excludeArExcludedClientsSql('client_id')})
-      ) as total_ar
-    `).first<ArRow>()
+    // ★ 2026-08-06: 거래처별 부호 분리 — 잔액이 음수인 거래처는 **선수금(부채)** 이라 자산에 마이너스로 섞으면 안 된다.
+    //   종전엔 뭉쳐 SUM 해서 매출채권이 선수금만큼 과소, 부채는 과소로 **양변이 동시에 축소**됐다(순자산은 동일).
+    //   allEntities = 이 엔드포인트는 설계상 전사 기준(entity 무필터)이라 헬퍼도 같은 기준으로 부른다.
+    const arSplit = await deriveArSplit(c, { allEntities: true })
 
     // 매입 미지급 — purchase_balance 캐시 폐기 → 파생(POs[NOT IN DRAFT/CANCELLED] − payments − adjustments). AR과 동일 전사 기준(entity 무필터), 단 내부법인(그룹 3사)은 제외(법인간거래 탭 이관)
     const apRow = await c.env.DB.prepare(`
@@ -289,7 +286,8 @@ financialReportsRouter.get('/balance-snapshot', async (c) => {
     `).first<LoanRow>().catch((): LoanRow => ({ total_loan: 0 }))
 
     const cash = Number(bankRow?.total_bank) || 0
-    const ar = Number(arRow?.total_ar) || 0
+    const ar = arSplit.receivable          // 매출채권 = 양수 잔액만
+    const advance = arSplit.advance        // 선수금 = 음수 잔액 절대값(부채)
     const inventory = Number(inventoryRow?.total_inventory) || 0
     const ap = Number(apRow?.total_ap) || 0
     const loans = Number(loanRow?.total_loan) || 0
@@ -306,10 +304,12 @@ financialReportsRouter.get('/balance-snapshot', async (c) => {
         },
         liabilities: {
           accounts_payable: ap,
+          advance_received: advance,
           loans,
-          total: ap + loans,
+          total: ap + advance + loans,
         },
-        net_assets: (cash + ar + inventory) - (ap + loans),
+        // 순자산은 분리 전후 불변 — (ar − advance) 가 종전 total_ar 과 같다
+        net_assets: (cash + ar + inventory) - (ap + advance + loans),
       }
     })
   } catch (error) {

@@ -113,6 +113,13 @@ async function accLoadSummary() {
     document.getElementById('accKpiExpenseBreak').textContent =
       '카드 ' + accWon(d.expense_card) + ' · 매입 ' + accWon(d.expense_purchase);
     document.getElementById('accKpiReceivable').textContent = accWon(d.receivable);
+    // 선수금 = 잔액이 음수인 거래처 합(회계상 부채). 종전엔 매출채권과 상계돼 미수금이 과소 표시됐다.
+    var adv = document.getElementById('accKpiAdvance');
+    if (!adv) { console.warn('[accounting] #accKpiAdvance not found'); }
+    else if (d.advance_received > 0) {
+      adv.innerHTML = '<span class="text-blue-600">선수금 ' + accWon(d.advance_received) +
+        '</span> <span class="text-gray-400">(' + (d.advance_clients || 0) + '곳) · 순액 ' + accWon(d.receivable_net) + '</span>';
+    } else { adv.textContent = ''; }
   } catch (e) {
     console.error('[accounting] summary error', e);
     showToast('요약 로드 실패', 'error');

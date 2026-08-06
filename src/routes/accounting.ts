@@ -22,6 +22,7 @@ import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { kstDateOf } from '../utils/kstDate'
 import { INTERCOMPANY_ENTITIES } from '../constants/intercompany'
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
+import { deriveArSplit } from './ledger/ar-helpers'
 
 const accountingRouter = new Hono<HonoEnv>()
 // ACCOUNTANT(경리) 등 신규 역할은 /accounting 매트릭스 열람권으로 통과(회귀 0: ADMIN·MANAGER 종전 유지)
@@ -77,25 +78,13 @@ accountingRouter.get('/summary', async (c) => {
     `).bind(start, end, ...efPi.params).first<{ v: number }>()
 
     // ── 미수금: 전체 파생 (deriveClientBalance 집계와 동일 정의) ── 내부법인은 제외(법인간거래 탭으로 분리)
-    const efGall = entityFilter(c, 'g')
-    const billedAll = await c.env.DB.prepare(`
-      SELECT COALESCE(SUM(g.billed_amount), 0) AS v
-      FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
-      WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${efGall.clause}${excludeArExcludedClientsSql('o.client_id')}
-    `).bind(...efGall.params).first<{ v: number }>()
-    const efP = entityFilter(c, 'p')
-    const paidAll = await c.env.DB.prepare(
-      `SELECT COALESCE(SUM(p.amount), 0) AS v FROM payments p WHERE 1=1${efP.clause}${excludeArExcludedClientsSql('p.client_id')}`
-    ).bind(...efP.params).first<{ v: number }>()
-    const efA = entityFilter(c, 'a')
-    const adjAll = await c.env.DB.prepare(
-      `SELECT COALESCE(SUM(a.amount), 0) AS v FROM adjustments a WHERE 1=1${efA.clause}${excludeArExcludedClientsSql('a.client_id')}`
-    ).bind(...efA.params).first<{ v: number }>()
+    // ★ 거래처별로 먼저 잔액을 낸 뒤 부호별 합산 — 뭉쳐서 SUM 하면 선수금이 매출채권을 상쇄해 과소 표시된다.
+    //   종전 단일값은 arSplit.net 으로 그대로 보존(하위호환).
+    const arSplit = await deriveArSplit(c)
 
     const revenue = Number(revenueRow?.v) || 0
     const expenseCard = Number(cardRow?.v) || 0
     const expensePurchase = Number(purchaseRow?.v) || 0
-    const receivable = (Number(billedAll?.v) || 0) - (Number(paidAll?.v) || 0) - (Number(adjAll?.v) || 0)
 
     return c.json({
       success: true,
@@ -105,7 +94,10 @@ accountingRouter.get('/summary', async (c) => {
         expense_total: expenseCard + expensePurchase,
         expense_card: expenseCard,
         expense_purchase: expensePurchase,
-        receivable,
+        receivable: arSplit.receivable,             // 매출채권(양수 잔액 합) — 진짜 받을 돈
+        advance_received: arSplit.advance,          // 선수금(음수 잔액 합의 절대값) — 회계상 부채
+        advance_clients: arSplit.advanceClients,
+        receivable_net: arSplit.net,                // 종전 값(상계 후) — 하위호환
       },
     })
   } catch (error) {

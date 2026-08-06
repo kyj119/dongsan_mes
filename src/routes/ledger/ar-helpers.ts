@@ -75,6 +75,52 @@ export async function deriveClientBalancesBulk(
   return out
 }
 
+/**
+ * AR 총액을 **매출채권(양수)** 과 **선수금(음수)** 으로 분리 집계.
+ *
+ * ★ 왜 필요한가 — 단순 `SUM(billed) − SUM(paid) − SUM(adj)` 는 거래처를 뭉개서 합산하기 때문에
+ *   **선수금이 매출채권을 상쇄해 미수금이 과소 표시**된다. 2026-08-06 실측: 동산기획 e1 에서
+ *   음수 잔액 34곳 −314,789,819 이 양수 잔액을 깎아먹고 있었다(그 중 −269,518,210 은
+ *   2025년말 기초채권 자체가 음수인 선수금 28건 — 이카운트 원본 채권파일과 원 단위로 일치하는 정상 데이터다).
+ *   선수금은 회계상 **부채**라 매출채권과 상계해 한 숫자로 보여주면 안 된다.
+ *
+ * 계산 = 거래처별로 먼저 잔액을 구한 뒤 부호별로 합산(그래서 UNION ALL + GROUP BY 가 필요하다).
+ * 정의는 deriveClientBalance 와 동일: order_billing_groups[BILLED] − payments − adjustments.
+ * 제외도 동일: 내부법인 + 현금소매 더미(excludeArExcludedClientsSql).
+ *
+ * 반환 receivable(양수합) · advance(음수합의 절대값) · net(= receivable − advance, 종전 단일값과 동일).
+ */
+export async function deriveArSplit(
+  c: Context<HonoEnv>,
+  opts: { allEntities?: boolean } = {}
+): Promise<{ receivable: number; advance: number; net: number; advanceClients: number }> {
+  // allEntities = 전사 기준(entity 무필터). /financial/balance-snapshot 이 설계상 전사라 필요하다.
+  const NO_EF = { clause: '', params: [] as unknown[] }
+  const g = opts.allEntities ? NO_EF : entityFilter(c, 'g')
+  const p = opts.allEntities ? NO_EF : entityFilter(c, 'p')
+  const a = opts.allEntities ? NO_EF : entityFilter(c, 'a')
+  const row = await c.env.DB.prepare(
+    `WITH bal AS (
+       SELECT cid, SUM(v) AS b FROM (
+         SELECT o.client_id AS cid, g.billed_amount AS v
+           FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+          WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${g.clause}${excludeArExcludedClientsSql('o.client_id')}
+         UNION ALL
+         SELECT p.client_id, -p.amount FROM payments p WHERE 1=1${p.clause}${excludeArExcludedClientsSql('p.client_id')}
+         UNION ALL
+         SELECT a.client_id, -a.amount FROM adjustments a WHERE 1=1${a.clause}${excludeArExcludedClientsSql('a.client_id')}
+       ) GROUP BY cid
+     )
+     SELECT COALESCE(SUM(CASE WHEN b > 0 THEN b ELSE 0 END), 0) AS receivable,
+            COALESCE(SUM(CASE WHEN b < 0 THEN -b ELSE 0 END), 0) AS advance,
+            COALESCE(SUM(CASE WHEN b < 0 THEN 1 ELSE 0 END), 0) AS advance_clients
+       FROM bal`
+  ).bind(...g.params, ...p.params, ...a.params).first<{ receivable: number; advance: number; advance_clients: number }>()
+  const receivable = Number(row?.receivable) || 0
+  const advance = Number(row?.advance) || 0
+  return { receivable, advance, net: receivable - advance, advanceClients: Number(row?.advance_clients) || 0 }
+}
+
 // ── #567: 클레임/반품 해결금액 → AR(adjustments) 자동조정 멱등 동기화 ──
 // 출처(source_type/source_id)당 자동조정 1건. 재해결·금액수정·처리방식 변경 시 DELETE→(조건충족)INSERT로 재동기화.
 // amount<=0 이거나 비-환불/할인이면 기존 자동조정만 제거(INSERT 없음). 수동 조정(source_type NULL)은 불간섭.

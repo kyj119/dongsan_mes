@@ -24,11 +24,18 @@ from normalize_client_code import normalize  # noqa
 
 CLIENTS_JSON = sys.argv[1]
 ITEMS_JSON = sys.argv[2]
+# 처리 월 — 기본은 상반기 6개월(원 동작 유지). 3번째 인자로 부분 실행 가능: `... 07`
+DEFAULT_MONTHS = ['01', '02', '03', '04', '05', '06']
+MONTHS = sys.argv[3].split(',') if len(sys.argv) > 3 else DEFAULT_MONTHS
+# 부분 실행이면 rollback·SUMMARY 를 접미사로 분리한다 — 상반기 산출물을 덮어쓰면 안 된다
+SFX = '' if MONTHS == DEFAULT_MONTHS else '_' + ''.join(MONTHS)
 
 LINE = re.compile(r'^\d{4}/\d\d/\d\d\s+-\d+$')
 EXCL = {'342-86-03531', '314-81-84311'}   # 선명(결정1) · 자기거래(R15)
 RRN = re.compile(r'^\d{6}-\d{7}$')
-MARKER = '동산 이카운트 이관 2026-07-30 판매'
+# ⚠️ 롤백이 `notes LIKE '{MARKER}%'` 로 지운다 — 부분 실행이 같은 마커를 쓰면 **기존 적재분까지 삭제된다**.
+#    그래서 월 부분 실행은 마커를 반드시 분리한다.
+MARKER = '동산 이카운트 이관 2026-07-30 판매' if not SFX else f'동산 이카운트 이관 판매 26{"".join(MONTHS)}'
 CASH_CLIENT = '000-00-00000'              # 기타거래처 = 현금·카드 소매(§⑧-5) — 적재는 정상, AR 제외는 별도 코드
 
 # ── 거래처 해석 ────────────────────────────────────────────────────────
@@ -527,7 +534,7 @@ def num(v):
 
 slips = {}          # (date, no) → dict(client_code, lines[])
 month_stats = defaultdict(lambda: [0, 0, 0])   # mm → [lines, supply, vat]
-for mm in ['01', '02', '03', '04', '05', '06']:
+for mm in MONTHS:
     wb = openpyxl.load_workbook(os.path.join(SRC, f'동산_판매현황_26{mm}.xlsx'), data_only=True)
     ws = wb.worksheets[0]
     rr = list(ws.iter_rows(max_col=20, values_only=True))
@@ -564,8 +571,17 @@ total_lines = sum(v[0] for v in month_stats.values())
 total_sup = sum(v[1] for v in month_stats.values())
 total_vat = sum(v[2] for v in month_stats.values())
 print(f'원천(제외 후): 전표 {len(slips):,} · 라인 {total_lines:,} · 공급가 {total_sup:,} · 부가세 {total_vat:,}')
-assert total_lines == 16873, f'라인수 불일치: {total_lines} (기대 16,873)'
-assert total_sup == 2885353724, f'공급가 불일치: {total_sup} (기대 2,885,353,724)'
+# 총계 assert 는 상반기 전량 실행일 때만 — 부분 실행은 기대값이 다르다(월별 기대값은 EXPECT 로 확인)
+EXPECT = {'07': (2469, 308730852)}   # 2026-07: 선명·자기거래 제외 후 실측(2026-08-06 최초 산출)
+if not SFX:
+    assert total_lines == 16873, f'라인수 불일치: {total_lines} (기대 16,873)'
+    assert total_sup == 2885353724, f'공급가 불일치: {total_sup} (기대 2,885,353,724)'
+else:
+    for mm in MONTHS:
+        if mm in EXPECT:
+            e = EXPECT[mm]
+            assert month_stats[mm][0] == e[0], f'26{mm} 라인수 불일치: {month_stats[mm][0]} (기대 {e[0]:,})'
+            assert month_stats[mm][1] == e[1], f'26{mm} 공급가 불일치: {month_stats[mm][1]} (기대 {e[1]:,})'
 
 # 거래처 해석 100% 확인
 unresolved = set()
@@ -743,7 +759,7 @@ for mm, buf in files.items():
     with open(os.path.join(OUT, f'sales_26{mm}.sql'), 'w', encoding='utf-8') as f:
         f.write('\n'.join(buf) + '\n')
 
-with open(os.path.join(OUT, 'rollback_sales.sql'), 'w', encoding='utf-8') as f:
+with open(os.path.join(OUT, f'rollback_sales{SFX}.sql'), 'w', encoding='utf-8') as f:
     f.write(f"""-- 동산 이카운트 판매 이관 롤백 (마커 기준 — 이관분만 정확히 제거)
 DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE entity_id=1 AND notes LIKE '{MARKER}%');
 DELETE FROM order_billing_groups WHERE order_id IN (SELECT id FROM orders WHERE entity_id=1 AND notes LIKE '{MARKER}%');
@@ -756,7 +772,7 @@ rep.append(f'전표(주문) {order_count:,} · 라인 {total_lines:,}(+분해 �
            f'{sum(1 for s in slips.values() for ln in s["lines"] if ln["extra"]):,}) · '
            f'공급가 {total_sup:,} · 부가세 {total_vat:,}')
 rep.append('\n월별 (원천 제외 후 실측 → SQL 반영값):')
-for mm in ['01', '02', '03', '04', '05', '06']:
+for mm in MONTHS:
     v = month_stats[mm]
     rep.append(f'  26{mm}: {v[0]:>6,}L · 공급가 {v[1]:>13,} · 부가세 {v[2]:>12,}')
 rep.append(f'\n품목 매칭 {matched_l:,}L ({matched_l/total_lines*100:.1f}%) · {matched_s:,.0f}원 ({matched_s/total_sup*100:.1f}%)')
@@ -768,6 +784,6 @@ for nm, v in sorted(unmatched.items(), key=lambda x: -x[1][1])[:30]:
     rep.append(f'  {nm[:34]:<36}{v[0]:>5}L {v[1]:>13,.0f}원')
 report = '\n'.join(rep)
 print('\n' + report)
-with open(os.path.join(OUT, 'SUMMARY.md'), 'w', encoding='utf-8') as f:
+with open(os.path.join(OUT, f'SUMMARY{SFX}.md'), 'w', encoding='utf-8') as f:
     f.write(f'# 매출 적재 SQL 생성 요약 (2026-07-30)\n\n```\n{report}\n```\n')
 print('\nSQL →', OUT)

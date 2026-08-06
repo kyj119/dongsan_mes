@@ -44,7 +44,8 @@ export function accountingPage(c: Context<HonoEnv>) {
           <div class="acc-kpi ds-card-compact bg-amber-50/40" style="border-color:var(--c-warning);padding:12px 14px">
             <div class="ds-label mb-1"><i class="fas fa-hand-holding-usd text-amber-500 mr-1"></i>미수금 (현재 전체)</div>
             <div class="text-2xl font-bold text-amber-600 tabular-nums text-right" id="accKpiReceivable">-</div>
-            <div class="text-[11px] text-gray-400 text-right mt-0.5">기간 무관 현재 잔액</div>
+            <div class="text-[11px] text-gray-400 text-right mt-0.5">기간 무관 현재 잔액 · 양수 잔액만</div>
+            <div class="text-[11px] tabular-nums text-right mt-0.5" id="accKpiAdvance"></div>
           </div>
         </div>
       </div>
