@@ -1180,10 +1180,13 @@ printEventsRouter.post('/link', authMiddleware, async (c) => {
       return c.json({ success: false, error: 'file_name, card_id required' }, 400)
     }
 
+    // #600: 형제 GET /link-candidates와 동일하게 카드 소유 법인 검증 — 후보 목록은 격리되는데
+    // 쓰기 본체가 body card_id를 무검증 신뢰하면 타법인 카드에 파일 연결(실적 오염) 가능
+    const efCard = cardEntityFilter(c, 'c')
     const card = await c.env.DB.prepare(`
       SELECT c.id, c.card_number, c.order_item_id, o.order_number
-      FROM cards c LEFT JOIN orders o ON c.order_id = o.id WHERE c.id = ?
-    `).bind(card_id).first<{ id: number; card_number: string; order_item_id: number | null; order_number: string | null }>()
+      FROM cards c LEFT JOIN orders o ON c.order_id = o.id WHERE c.id = ?${efCard.clause}
+    `).bind(card_id, ...efCard.params).first<{ id: number; card_number: string; order_item_id: number | null; order_number: string | null }>()
     if (!card) return c.json({ success: false, error: '카드를 찾을 수 없습니다.' }, 404)
     if (!card.order_number) return c.json({ success: false, error: '카드에 주문번호가 없습니다.' }, 400)
 
