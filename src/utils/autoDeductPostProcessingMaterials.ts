@@ -61,7 +61,7 @@ export async function autoDeductPostProcessingMaterials(
       const { results: pes } = await db
         .prepare(
           `SELECT id, output_width, output_height, copy_total
-           FROM print_events WHERE card_id = ? AND print_status = 'OK'`
+           FROM print_events WHERE card_id = ? AND print_status = 'OK' AND event_kind = 'PRINT'`
         )
         .bind(cardId)
         .all() as any

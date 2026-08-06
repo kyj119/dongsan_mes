@@ -585,6 +585,7 @@ reportsRouter.get('/production-analysis', async (c) => {
         COUNT(*) as total_count
       FROM print_events
       WHERE created_at >= date('now', '-' || ? || ' months')
+        AND event_kind = 'PRINT'
     `).bind(monthCount).all<PrintSummaryRow>()
 
     const { results: qualityRows } = await c.env.DB.prepare(`
@@ -617,6 +618,7 @@ reportsRouter.get('/production-analysis', async (c) => {
         COUNT(DISTINCT date(pe.created_at)) as active_days
       FROM print_events pe
       WHERE pe.created_at >= date('now', '-' || ? || ' months')
+        AND pe.event_kind = 'PRINT'
         AND pe.printer_name IS NOT NULL AND pe.printer_name != ''
       GROUP BY pe.printer_name
       ORDER BY total DESC
@@ -630,6 +632,7 @@ reportsRouter.get('/production-analysis', async (c) => {
         COUNT(CASE WHEN print_status = 'OK' THEN 1 END) as ok_count
       FROM print_events
       WHERE created_at >= date('now', '-' || ? || ' months')
+        AND event_kind = 'PRINT'
       GROUP BY strftime('%Y-%m', created_at)
       ORDER BY month DESC
     `).bind(monthCount).all()

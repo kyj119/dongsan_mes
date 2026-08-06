@@ -114,7 +114,7 @@ waste.get('/analytics', async (c) => {
   // 로스율 (최근 30일): waste / (output + waste)
   const outputRow = await c.env.DB.prepare(`
     SELECT COALESCE(SUM(CAST(COALESCE(output_width,'0') AS REAL) * CAST(COALESCE(output_height,'0') AS REAL) / 1000000.0), 0) as output_sqm
-    FROM print_events WHERE print_status = 'COMPLETED' AND print_started_at >= date('now', '-30 days')${eFilter.clause}
+    FROM print_events WHERE print_status = 'COMPLETED' AND event_kind = 'PRINT' AND print_started_at >= date('now', '-30 days')${eFilter.clause}
   `).bind(...eFilter.params).first<{ output_sqm: number }>()
   const wasteRow = await c.env.DB.prepare(`
     SELECT COALESCE(SUM(quantity), 0) as waste_sqm

@@ -1264,6 +1264,7 @@ ripRouter.get('/equipment/:id/stats', authMiddleware, async (c) => {
       FROM print_events pe
       WHERE pe.equipment_id = ?
         AND pe.print_status = 'OK'
+        AND pe.event_kind = 'PRINT'
         AND pe.print_completed_at >= date('now', '-30 days')
       GROUP BY date(pe.print_completed_at)
       ORDER BY date DESC
@@ -1278,6 +1279,7 @@ ripRouter.get('/equipment/:id/stats', authMiddleware, async (c) => {
       FROM print_events pe
       WHERE pe.equipment_id = ?
         AND pe.print_status = 'OK'
+        AND pe.event_kind = 'PRINT'
         AND pe.print_completed_at >= date('now', '-180 days')
       GROUP BY strftime('%Y-%m', pe.print_completed_at)
       ORDER BY month DESC
@@ -1291,6 +1293,7 @@ ripRouter.get('/equipment/:id/stats', authMiddleware, async (c) => {
       FROM print_events
       WHERE equipment_id = ?
         AND print_status = 'OK'
+        AND event_kind = 'PRINT'
         AND ${kstDateOf('print_completed_at')} = ${kstDate()}
     `).bind(equipId).first()
 
@@ -1301,6 +1304,7 @@ ripRouter.get('/equipment/:id/stats', authMiddleware, async (c) => {
       FROM print_events
       WHERE equipment_id = ?
         AND print_status = 'OK'
+        AND event_kind = 'PRINT'
         AND print_completed_at >= date('now', '-7 days')
     `).bind(equipId).first<UptimeRow>()
 
