@@ -1145,6 +1145,36 @@
 
                         calcItem(id);
 
+                        // #590: 행 에누리 복원 — calcItem이 dataset.autoAmount를 채운 뒤에 실행해야 한다.
+                        //   저장된 최종액(item.amount)이 재계산 자동값과 다르면 수동수정 상태(주황 테두리·
+                        //   에누리 문구·사유칸)를 재현한다. 이걸 안 하면 저장 시 payload가 amount를 안 보내
+                        //   서버가 자동값으로 재계산 → line_discount·discount_reason이 조용히 소멸.
+                        //   비교 기준은 저장된 auto_amount가 아니라 재계산값 — 서버 hasManual 판정과 같은 축.
+                        (function() {
+                            var amtRestoreEl = document.querySelector('[name="amount_' + id + '"]');
+                            if (!amtRestoreEl || amtRestoreEl.disabled || item.amount == null) return;
+                            var autoRestoreAmt = parseInt(amtRestoreEl.dataset.autoAmount) || 0;
+                            var savedAmt = Math.round(item.amount);
+                            if (savedAmt === autoRestoreAmt) return;
+                            amtRestoreEl.value = savedAmt.toLocaleString() + '원';
+                            if (autoRestoreAmt > 0) {
+                                onAmountManualEdit(id);
+                            } else {
+                                // 자동값 0(단가 없이 금액만 있는 이관 라인 — prod 9건)은
+                                // onAmountManualEdit의 autoAmt>0 가드에 걸려 마킹이 안 되므로 직접 마킹.
+                                // 마킹 없이는 저장 payload가 amount를 안 보내 금액이 0으로 소멸한다.
+                                amtRestoreEl.classList.add('border-amber-400');
+                                amtRestoreEl.title = '자동 계산: 0원 (수동 수정됨)';
+                                var discBoxR = document.getElementById('line_disc_' + id);
+                                if (discBoxR) discBoxR.classList.remove('hidden');
+                                calculateTotal();
+                            }
+                            if (item.discount_reason) {
+                                var reasonEl = document.querySelector('[name="discount_reason_' + id + '"]');
+                                if (reasonEl) reasonEl.value = item.discount_reason;
+                            }
+                        })();
+
                         // 썸네일 복원: ai_groups_json에서 해당 그룹의 thumbnail_base64 추출
                         if (item.ai_groups_json && item.ai_group_index != null) {
                             try {
