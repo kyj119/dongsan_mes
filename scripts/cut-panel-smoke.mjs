@@ -665,7 +665,17 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
 {
   const hostSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
   const panelSrc = fs.readFileSync(CUT_MAIN, 'utf8')
-  ok('3q nestApply 가 도련을 받는다', /function mesCut_nestApply\(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode\)/.test(hostSrc))
+  // ★인자 목록을 **글자 그대로** 고정하지 않는다 — 의도는 "도련을 받는다"이지 "인자가 4개"가 아니다.
+  //   전엔 정확히 4개로 못박혀 있어서, 인자를 하나 더한 정당한 수정이 게이트에 걸렸다.
+  //   같은 함정이 `Folder.selectDlg` 에서는 반대로 작동해 **깨진 형태를 정답으로 고정**했다(2026-08-05).
+  ok('3q nestApply 가 도련을 받는다', /function mesCut_nestApply\([^)]*\bvecBleedMm\b[^)]*\)/.test(hostSrc))
+  // ★도련은 칼선 방식과 **독립**이어야 한다 (2026-08-06 실사용 버그).
+  //   전에는 도련 전체가 `if (useVec)` 안에 있어, 벡터가 안 되는 아트에서 래스터로 폴백하면
+  //   도련이 통째로 사라졌다. 화면 보고도 같은 게이트라 아무 말이 없었다.
+  ok('3q 도련이 벡터 전용이 아니다(호스트)', /if \(hasGeom\) \{[\s\S]{0,400}?vecBleedMm > 0/.test(hostSrc))
+  ok('3q 래스터에서도 도련 PNG 를 굽는다', /var wantBleedPng = nestBleedMm > 0 && growMm > 0;/.test(panelSrc))
+  ok('3q 래스터면 cutMode 를 알린다', /useVec \? '' : ',"raster"/.test(panelSrc))
+  ok('3q 도련 0 을 조용히 넘기지 않는다', /도련 0mm — 만들지 않았습니다/.test(panelSrc))
   // ★조각마다 따로 불러야 한다 — 한꺼번에 하면 조각끼리 이어진다
   ok('3q 배치된 사본마다 도련', /mesCut_bleedPlaceItem\(doc, artLayer, copies\[vi\]/.test(hostSrc))
   ok('3q 패널이 도련을 넘긴다', /nestApply\([\s\S]{0,120}nestBleedMm/.test(panelSrc))

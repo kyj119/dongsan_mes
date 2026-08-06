@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.22.0';
+  var SHELL_VERSION = '0.23.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -1160,7 +1160,10 @@
         // ★도련 PNG 는 params 를 쓰기 **전에** 만든다 — 실제 크기(mm)를 `L` 줄로 실어야 하기 때문이다.
         //   호스트가 픽셀에서 mm 를 다시 계산하면 반올림만큼 어긋나고, 그 오차가 조각마다 다르게 나온다.
         var growMm = offsetMm + nestBleedMm;          // 인쇄는 칼선(=잉크+여백)보다 도련만큼 더 나가야 한다
-        var wantBleedPng = useVec && nestBleedMm > 0 && growMm > 0;
+        // ★useVec 게이트 제거 (2026-08-06). 도련은 배치된 **사본**에 작용하므로 칼선을 무엇으로
+        //   뽑았든 만들 수 있다. 묶어 뒀더니 벡터가 안 되는 아트(사진·중첩 클립)에서 래스터로
+        //   폴백하는 순간 도련이 통째로 사라졌고, 아래 보고까지 같은 게이트라 화면도 침묵했다.
+        var wantBleedPng = nestBleedMm > 0 && growMm > 0;
         var bleedNote = '';
         if (wantBleedPng && !hostSupportsBleedPng()) {
           // ★조용히 옛 방식으로 떨어지지 않는다 — 링이 지저분해진 것을 인쇄 뒤에야 알게 된다.
@@ -1183,7 +1186,9 @@
           var w = window.cep.fs.writeFile(pp, lines.join('\n'), window.cep.encoding.UTF8);
           if (!w || w.err !== 0) { done('params 쓰기 실패', 'err'); return; }
           out('새 문서에 배치 중...');
-          host('mesCut_nestApply(' + (useVec ? (offsetMm + ',' + (prep.fill ? 'true' : 'false') + ',' + nestBleedMm + ',"' + nestBleedMode + '"') : '') + ')', function (ap, bad3) {
+          // 기하는 **항상** 보낸다 — 도련이 필요하기 때문이다. 칼선을 래스터로 뽑았으면 cutMode='raster'
+          //   를 덧붙여 호스트가 벡터 실루엣을 다시 만들지 않게 한다(구 호스트는 5번째 인자를 무시한다).
+          host('mesCut_nestApply(' + offsetMm + ',' + (prep.fill ? 'true' : 'false') + ',' + nestBleedMm + ',"' + nestBleedMode + '"' + (useVec ? '' : ',"raster"') + ')', function (ap, bad3) {
             if (bad3 || ap.indexOf('ok;') !== 0) { done('배치 적용 실패: ' + ap, 'err'); return; }
             var a = kv(ap.substring(3));
             // ★여기부터는 **사람이 보는 값**이라 실물로 되돌린다(×N). 배율 1이면 그대로다.
@@ -1237,7 +1242,7 @@
               + (allowRot ? ' · 회전 허용' : '')
               + '\n돔보 ' + (a.dombo || 0) + '판 — 별도 레이어(인쇄 ON) · 재단선 레이어는 인쇄 OFF'
               + (wantPieceCut ? (' · 조각별 칼선' + (useVec ? '(벡터)' : (wantCurve ? '(곡선)' : '(직선)'))) : '')
-              + (useVec && nestBleedMm > 0 ? ('\n도련 ' + R(nestBleedMm) + 'mm (조각마다)'
+              + (nestBleedMm > 0 ? ('\n도련 ' + R(nestBleedMm) + 'mm (조각마다)'
                   // ★어느 방식으로 만들었는지 밝힌다 — 클립 확장·색 잇기·단색은 품질이 서로 다르다
                   + bleedHow(a)
                   // ★조용히 바꾸지 않는다 — 간격을 올렸으면 올렸다고 말한다
@@ -1245,7 +1250,7 @@
                   // ★도련이 조각별로 실패해도 판은 그려진다 — 조용히 넘기면 인쇄 뒤에야 안다(2026-08-04)
                   + (parseInt(a.bleedfail, 10) > 0
                     ? ('\n⚠ 도련 ' + a.bleedfail + '개 조각 실패 — ' + bleedFailWhy(a.bleedcode)) : '')
-                  + bleedNote) : '')
+                  + bleedNote) : '\n⚠ 도련 0mm — 만들지 않았습니다. 재단이 밀리면 흰 테두리가 남습니다.')
               + widthNote
               + (res.unplaced.length ? ('\n⚠ 배치 못한 조각 ' + res.unplaced.length + '개 — 시트를 키우거나 간격을 줄이세요.') : '')
               + (useVec ? '' : cvN.note) + vecNote,

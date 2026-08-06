@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.14.0';
+var MESCUT_VERSION = 'CUT-CEP-0.15.0';  // 0.15.0 = 도련을 칼선 방식과 분리(래스터에서도 생성)
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -2211,7 +2211,7 @@ function mesCut_addDombo(doc) {
  *   ★이 모드에선 좌표 정렬 문제가 원리적으로 없다 — 이미 회전·이동이 끝난 사본을 그대로 쓰므로
  *     패널의 `baseX`/trim 오프셋 수식도, 미세·거친 두 마스크를 함께 들고 다니는 것도 필요 없다.
  */
-function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode) {
+function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, cutMode) {
     if (!MESCUT_NEST_ITEMS || !MESCUT_NEST_ITEMS.length) return 'ERROR 대상 없음 (nestBegin 먼저)';
     var raw = mesCut_readParams();
     if (!raw) return 'ERROR params 없음';
@@ -2308,16 +2308,50 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode) 
             }
 
             // 조각별 칼선 — 재단은 시트가 아니라 **조각 단위**라 이게 없으면 떼어낼 수 없다.
-            var useVec = (typeof vecOffsetMm === 'number' && !isNaN(vecOffsetMm));
+            // ★칼선 방식과 도련은 **독립**이다 (2026-08-06 근본수정).
+            //   전에는 도련 전체가 `if (useVec)` 안에 있었다. 그래서 벡터가 안 되는 아트
+            //   (사진·중첩 클립 등)에서 래스터로 폴백하는 순간 **도련이 통째로 사라졌고**,
+            //   패널의 도련 보고도 같은 게이트에 묶여 있어 화면에 아무 말도 안 나왔다.
+            //   실사용에서 "도련이 안 생긴다"로 드러났다(2026-08-06 용준님, 중첩 클립 1개).
+            //   도련 3단 계층은 배치된 **사본**에만 작용하므로 칼선을 무엇으로 뽑았든 그대로 된다.
+            var hasGeom = (typeof vecOffsetMm === 'number' && !isNaN(vecOffsetMm));
+            //   구 패널 하위호환 = "인자를 줬다"가 곧 벡터 모드였다. 신 패널은 래스터일 때도
+            //   기하를 보내되 cutMode='raster' 를 함께 준다. 인자가 없으면 종전대로 판단한다.
+            var useVec = hasGeom && (String(cutMode) !== 'raster');
             if (useVec) {
                 var vcl = mesCut_ensureCutLayer(doc);
                 for (var vi = 0; vi < copies.length; vi++) {
                     if (!copies[vi]) continue;
                     // 조각마다 따로 부른다 — 한꺼번에 합집합하면 **조각끼리 이어질 수 있다**(오프셋 ≥ 간격/2).
                     try { mesCut_vecSilhouette(doc, [copies[vi]], vcl, vecOffsetMm, vecFillClosed); } catch (eVS) {}
-                    // ★도련도 조각마다 — 인쇄가 칼선보다 도련만큼 더 나가야 재단 오차를 흡수한다.
-                    //   ⚠️ 간격 < 도련×2 면 인접 조각의 도련이 겹친다(패널이 경고한다). 겹쳐도 각자
-                    //      제 경계로 클리핑돼 있고 잘라내는 자리라 치명적이지 않지만, 위에 놓인 쪽 색이 이긴다.
+                }
+                try { doc.selection = null; } catch (eSel) {}
+            } else if (sh.cuts.length) {
+                var cl = mesCut_ensureCutLayer(doc);
+                for (var c = 0; c < sh.cuts.length; c++) {
+                    var src2 = sh.cuts[c];
+                    var pts = [];
+                    for (var q = 0; q < src2.pts.length; q++) {
+                        pts.push([src2.pts[q][0] * MESCUT_PT_PER_MM, sheetH - src2.pts[q][1] * MESCUT_PT_PER_MM]);
+                    }
+                    try {
+                        var pp = null;
+                        if (src2.bez) { pp = mesCut_bezPath(cl, pts); }
+                        else { pp = cl.pathItems.add(); pp.setEntirePath(pts); pp.closed = true; }
+                        if (pp) {
+                            pp.filled = false; pp.stroked = true;
+                            pp.strokeColor = mesCut_magenta(); pp.strokeWidth = 0.6;
+                        }
+                    } catch (ePp) {}
+                }
+            }
+
+            // ── 도련 — 칼선 방식과 무관하게 조각마다 ──────────────────────────
+            //   ⚠️ 간격 < 도련×2 면 인접 조각의 도련이 겹친다(패널이 경고한다). 겹쳐도 각자
+            //      제 경계로 클리핑돼 있고 잘라내는 자리라 치명적이지 않지만, 위에 놓인 쪽 색이 이긴다.
+            if (hasGeom) {
+                for (var vi = 0; vi < copies.length; vi++) {
+                    if (!copies[vi]) continue;
                     if (vecBleedMm > 0) {
                         // ★넓히는 양은 **여백 + 도련**이다. bleedMm 만 쓰면 인쇄 끝이 칼선과 겹쳐
                         //   도련이 0 이 된다(2026-08-02 실측에서 걸림). 여백이 음수(잉크 안쪽)면 그만큼 준다.
@@ -2365,24 +2399,6 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode) 
                     }
                 }
                 try { doc.selection = null; } catch (eSel) {}
-            } else if (sh.cuts.length) {
-                var cl = mesCut_ensureCutLayer(doc);
-                for (var c = 0; c < sh.cuts.length; c++) {
-                    var src2 = sh.cuts[c];
-                    var pts = [];
-                    for (var q = 0; q < src2.pts.length; q++) {
-                        pts.push([src2.pts[q][0] * MESCUT_PT_PER_MM, sheetH - src2.pts[q][1] * MESCUT_PT_PER_MM]);
-                    }
-                    try {
-                        var pp = null;
-                        if (src2.bez) { pp = mesCut_bezPath(cl, pts); }
-                        else { pp = cl.pathItems.add(); pp.setEntirePath(pts); pp.closed = true; }
-                        if (pp) {
-                            pp.filled = false; pp.stroked = true;
-                            pp.strokeColor = mesCut_magenta(); pp.strokeWidth = 0.6;
-                        }
-                    } catch (ePp) {}
-                }
             }
 
             // ★아트보드를 **실제 배치 결과**에 맞춘다 (2026-07-31 용준님 지시).
