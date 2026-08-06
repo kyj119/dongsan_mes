@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-08-06T03:19:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-08-06T04:05:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,26 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **12** (#585·#586·#587·#589·#590·#591·#592·#593·#596·#597·#598·#599, GitHub OPEN 실측 — Area5 51회차. #599 신규) |
+| 🆕 new | **13** (#585·#586·#587·#589·#590·#591·#592·#593·#596·#597·#598·#599·#600, GitHub OPEN 실측 — Area6 56회차. #600 신규 · #596은 fixed-in-tree/close-pending — 코드는 이미 해소, GitHub만 open) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **513** (변동없음, Area3 51회차 실측 유지 — 이번 사이클 완료전환 0건) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+
+> **Area 6 자기 진화 (2026-08-06T04:05):**
+> - **방법**: `git fetch origin main`(force-updated, HEAD `f43879d` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 6 **56회차** — 직전 Area6(`283ae76`, 08-04T21:25, 55회차)는 이번 fetch에서 `git cat-file -t` 조회 불가(반복 관찰된 force-updated 히스토리) → 타임스탬프 앵커(2026-08-04T21:25)로 `git log --since -- src/routes src/scripts src/pages migrations index.tsx src/layout`를 잡으면 **18커밋**(고정자산 감가상각 마무리 3건·부문/차입금/합배송 fix 4건·재단 DXF 라인첨부·ia-editor 폐기 S1/S4/S5·CAPS/logwatcher 2건[`990afc6`·`18857d6`]·print-events IN절 청크 수정·반복지출 UI 신설[`e27cd7f`]·카드=작업지시서 승격[`50eb5ef`]) — Area1~5가 각자 사이클에서 이 윈도를 이미 커버해 net-new 여지가 좁음.
+> - **🔴 net-new #600(형제-비대칭 IDOR)**: line 305 신규 SKILL 원칙("churn 목록에 나열됨 ≠ 개별 diff 검토됨")을 적용해, Area5 51회차 로그가 churn 목록엔 포함했으나 본문에서 구체 언급 없이 지나간 `18857d6`(neoStampa RIP 연동, `printEvents.ts` 472줄 변경)을 직접 Read — 신규 `POST /api/print-events/link`(:1176, `authMiddleware`만)의 카드 조회(:1183 `WHERE c.id = ?`)와 소급 UPDATE(:1218)가 entity 격리 0. 같은 파일의 형제 `GET /unmatched`(:1038 `entityFilter`)·`GET /link-candidates`(:1114 `cardEntityFilter`)는 전부 격리 — 프론트(`production.js:1237`)는 격리된 후보 목록에서만 card_id를 고르지만 API 직접 호출로 임의 card_id(순차 정수)를 넘기면 타법인 카드정보 노출 + 그 카드에 자기 법인 print_events를 소급 연결(생산실적 오염) 가능. #437/#452급 형제-비대칭, 같은 파일에 정답 패턴 2곳 있어 byte-명확 — 자동수정 대상 제외(IDOR=owner 워크플로), 이슈로 등록(#600).
+> - **`990afc6`(--probe 마커) 검토**: `printEventsRouter.post('/', agentKeyMiddleware, ...)` 단일/배치 양쪽에 마커잡 스킵 로직만 추가, entity/인증 변경 없음 — clean.
+> - **`826baef`(재단 DXF 라인첨부) 신규 엔드포인트 재확인**: `orders/operations.ts POST /items/:itemId/files`가 `orderVisibilityFilter(c,'o')`로 라인 소유 법인을 선검증 + 코드 주석이 "#582 workbench absorb와 같은 IDOR" 위험을 명시 인지하고 회피 — clean(Area4가 데이터정합 렌즈로 이미 커버한 파일이나 보안 렌즈로도 문제 없음 재확인).
+> - **open≠unfixed — #596 fixed-in-tree 확정**: `e27cd7f`(오늘 20:28, Area3 51회차의 #596 발견 이후 착륙)가 `bank.ts:120` 옆에 정확히 이슈가 제안한 "미등록 반복 지출" 패널을 추가(`bank.js loadRecurringCandidates`/`renderRecurringCandidates`, free-text `escHtml` 적용 확인 = XSS도 clean) — 이슈 본문 요구사항(표시 화면) 충족. `POST /api/cash-flow/fixed-expenses` 연결(원 제안의 "고정비로 등록" 버튼)은 미포함이나 핵심 갭(화면 부재)은 해소됨 → **close-pending으로 표시, 백로그에서 재보고 안 함**(line 292 캐시 원칙, HEAD `e27cd7f` 기록).
+> - **#594·#595 재확인**: `3d62b07`이 `getWriteEntityId` 400-게이트(제안한 `\|\|1` 폴백보다 강화) + loan/equipment 소유검증까지 반영 확인, closed/completed 유지.
+> - **마이그 번호 중복 재확인**: 기존 5쌍(0327·0412·0416·0420·0453) net-new 0(신규 0516~0521 전부 고유).
+> - **필수 grep 2종**: 시크릿 폴백 `fax.ts:43` 1건(기존 FP) 외 net-new 0.
+> - **브랜치 위생**(읽기전용): `npm run branch:clean` → SAFE-absorbed 1건, REVIEW 0건 — 삭제대상 1건(임계 30 미달), 백로그 등록 불요.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **13**(#585·#586·#587·#589·#590·#591·#592·#593·#596·#597·#598·#599·#600, #600 신규 + #596 fixed-in-tree/close-pending) · `reason:completed` **511**(검색 인덱스 지연 유지, Area3 51회차 직접확인값 513 신뢰) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: line 305에 "churn 목록 나열 ≠ 개별 diff 검토" 신규 원칙 codify — #600이 이 원칙을 적용해 발견한 첫 사례(Area5가 목록엔 포함했으나 본문 미언급했던 472줄 커밋을 Area6가 직접 Read해 형제-비대칭 IDOR 격리). "백엔드 먼저·화면 나중" 패턴(#596)은 이번에 fixed-in-tree로 빠르게 해소돼 3번째 관찰 없이 종결 — codify 보류 유지.
+> - 신규 이슈 1건(#600, issue-only), 자동수정 0건, done-sync: new 13(#600 신규, #596 close-pending 표시)·done 513(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 (2026-08-06T03:19):**
 > - **방법**: `git fetch origin main`(force-updated, HEAD `50eb5ef` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 5 **51회차** — 직전 Area5(`813531d`, 08-04T15:21, 50회차)가 웹 churn 0으로 스킵한 이후, Area5 **자신의 마지막 실행 시각 기준**으로 churn을 다시 잡으면(다른 Area들은 각자 렌즈로 이 윈도를 이미 봤지만 보안 렌즈로는 전무) `git log --since 2026-08-04T15:21`이 웹 관련 파일 기준 **17커밋**(고정자산 감가상각 4건[Area2 58회차가 코드품질 렌즈로 이미 #594·#595 발견]·부문/차입금/합배송 fix 4건·재단 DXF 라인첨부(826baef)·ia-editor 폐기 S1/S4/S5 3건·반복지출 탐지(84ee297, Area3가 UX 렌즈로 #596 발견)·CAPS/logwatcher 2건·print-events IN절 청크 수정(edfd374, 이미 자체 픽스됨)·**카드=작업지시서 승격 신기능(`50eb5ef`, 직전 Area4 52회차 HEAD 이후 유일 신규 커밋)**).
