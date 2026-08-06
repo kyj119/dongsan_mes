@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-08-06T15:21:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-08-06T21:33:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,23 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **0** (`list_issues(OPEN,label:auto-improve)` 실측 — Area1 58회차. 직전 13건[#585~#600] 전부 owner가 이번 윈도에서 close, 남은 OPEN 이슈는 auto-improve 라벨 없는 #453뿐[기존 인지된 egress 인프라 이슈, 무관]) |
+| 🆕 new | **1** (`search_issues(is:open,label:auto-improve)` 실측 — Area2 59회차. #601 신규[order_items 라인재작성 시 return_items RESTRICT FK 미정리]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **524** (+11, `reason:completed` 실측 — session #54 백로그 소진: 11건 완료 처리 + #599/#600 2건은 별도 close 상태 확인 필요, 아래 참조) |
+| ✔️ done | **524** (`reason:completed` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-08-06T21:33):**
+> - **방법**: `git fetch origin main`(force-updated, HEAD `7670e39` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 2 **59회차** — 직전 Area2(`ab509fc`, 08-05T00:10, 58회차)가 force-updated 히스토리로 `git cat-file -t` 불가 → 타임스탬프 앵커(2026-08-05T00:10)로 `git log --since -- src/routes src/scripts migrations index.tsx src/layout src/pages`를 잡으면 **18커밋**(합배송/order_ai_files/print-stats/messages-ad 등 session #54 반응형 픽스 다수 + neoStampa RIP 연동`18857d6`+후속 IDOR 픽스`132c9f1`/`3e3e473` + 카드=작업지시서`50eb5ef` + bank 반복지출 UX`e27cd7f` + ia-editor 폐기 S1/S4/S5) — Area1/5/6이 각자 렌즈(CI헬스/보안/자기진화)로 이미 훑었으나 코드품질(entity_id·N+1·authMiddleware·SELECT*·dead code) 렌즈로는 전무.
+> - **`18857d6`(neoStampa RIP, printEvents.ts +472줄) 전문 정독**: 합판 멤버별 매칭 루프(`nestMatchNames`)는 물리적 판 크기에 bounded(N+1 FP, SKILL 학습패턴 기준) — 데이터스케일 아님. `/unmatched`의 file_map 대조는 이미 80청크 적용(clean). `POST /link`의 entity 격리 누락(#600)은 Area6가 발견·`132c9f1`로 이미 픽스 확인(재확인 완료, 형제 GET 2개와 정합).
+> - **`50eb5ef`(카드=작업지시서) 코드품질 재확인**: `card_checklist_items`(0522)는 entity_id 부재가 정상(부모 cards 귀속, `ON DELETE CASCADE`) + `checked_by`는 FK 아님(`user?.id \|\| null` 안전). `GET /:id/checklist`의 IDOR(#599)는 Area5가 발견·`3e3e473`으로 이미 픽스 확인(cardEntityFilter 선검증 게이트 정상 작동). `generateCardsForOrder`의 체크리스트 INSERT가 80청크로 D1 batch 한도 방어(신규 코드, clean).
+> - **`d72ac2e`(print-stats event_kind 스윕) 완전성 재검증**: `grep -rn "FROM print_events" src/routes src/utils` 전수 재확인(oee.ts·productionReports.ts 15곳·forecast.ts·dashboard.ts·equipmentQueue.ts) — **전부 이미 `event_kind = 'PRINT'` 필터 보유**(18857d6 자신이 이미 커버, d72ac2e는 그 스윕이 놓친 4곳[rip.ts/reports.ts/waste.ts/autoDeductPostProcessingMaterials.ts]만 추가로 메움) → 현재 시점 sibling-completeness net-new 0(스윕 완결 확인).
+> - **🔴 net-new #601(MEDIUM, sibling-completeness)**: `orders/update.ts PUT /:id`(라인 전량 재작성)가 `order_items` 삭제 전 형제 RESTRICT-FK 테이블 3종(`shipment_checks` #480·`designer_intakes` #570·`order_ai_files` #597, 전부 이번 윈도 직전 사이클들이 하나씩 메운 것)은 정리하는데 **`return_items.order_item_id`(0214, `NOT NULL REFERENCES order_items(id)`, ON DELETE 절 없음=RESTRICT)만 누락**. 반품(RMA) 등록된 라인이 있는 주문을 편집하면(`quality.js:300` 실사용 기능, SHIPPED 상태도 도달 가능 — 편집 차단 조건은 delivery_date 필수·BILLED role게이트뿐) `DELETE FROM order_items` FK throw로 그 주문 전체 편집이 500. NOT NULL이라 형제 3종과 달리 단순 SET NULL 불가(재연결 vs 편집차단 정책 판단 필요) → issue-only(#454/#464/#477/#480/#570/#597과 동일 분류).
+> - **나머지 커밋 훑음**: `e27cd7f`(bank 반복지출) 탐지 쿼리 3개 전부 entityFilter+in-memory Map 집계(N+1 없음, clean). `f4a29f2`(합배송 상태 화이트리스트) SSOT 상수 바인드 패턴 정상(clean). `0d53165`(messages-ad) 신규 `failed[]` 매핑·opt-outs search 파라미터 모두 기존 컨벤션 준수, `message_opt_outs`는 entity_id 부재가 정상(전사 공용 수신거부 명단, SKILL FP클래스⑤). `93d3fe6`(합배송 포인터 정리) `#477` 패턴 정확 이식, 완결. ia-editor 폐기 3종은 dead-code 제거 자체(Area5가 purge 완전성 이미 검증) — Area2 렌즈로 재확인해도 잔존 참조 0.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **1**(#601 신규) · `reason:completed` **524**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — #601은 기존 codify된 "CASCADE-부모 비대칭/재작성-경로 RESTRICT-FK 형제완전성"(#480/#597) 클래스의 새 실례(신규 규칙 불요, 다만 NOT NULL이라 SET NULL 불가한 변종 = 정책판단이 더 필요하다는 점은 기존 클래스 설명과 일치).
+> - 신규 이슈 1건(#601, issue-only), 자동수정 0건(재작성-경로 FK 정리는 정책판단+destructive write-path), done-sync: new 1(+1)·done 524(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-08-06T15:21):**
 > - **방법**: `git fetch origin main`(force-updated, HEAD `fbbb5a4` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). `curl https://webapp-9i0.pages.dev/api/notifications/nav-badges` → 연결 실패(exit 56, 기존 인지된 egress 프록시 차단 재확인, #453과 동일 제약) → GitHub Actions 기록으로 대체. Area 1 **58회차** — 직전 Area1(`069a39f`, 08-04T23:20, 57회차) 이후 `git log --since 2026-08-04T23:20 -- src/routes src/scripts migrations index.tsx src/layout src/pages`는 **20커밋**(합배송 하드삭제 정리·주문폼 라인할인 복원·광고문자 실패수신자 표시 등 session #54 백로그 소진분 다수 + 카드=작업지시서 신기능`50eb5ef`+후속 IDOR 픽스 2건`3e29fe6`/`132c9f1` + neoStampa RIP 연동 + ia-editor 폐기 S1/S4/S5).
