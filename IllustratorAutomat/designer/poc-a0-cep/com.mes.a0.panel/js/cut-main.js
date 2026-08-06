@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.23.0';
+  var SHELL_VERSION = '0.24.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -1388,8 +1388,26 @@
             : ('배치 실패 — 못 놓은 조각 ' + rw.unplaced + '개');
           txt += '\n';
         }
+        // ★추천했으면 **바로 적용한다** (2026-08-06 용준님). 전에는 사람이 시트 드롭다운을
+        //   다시 찾아 고쳐야 했는데, 추천을 받고 안 바꾸면 추천이 무의미하고 잘못 고르면
+        //   추천과 다른 조건으로 배치된다 — 손으로 옮겨 적는 단계는 사고만 만든다.
+        //   되돌리기는 시트 드롭다운을 다시 고르면 되므로 확인을 묻지 않는다.
+        var applied = false;
+        if (best) {
+          var selSheet = document.getElementById('sheetPreset');
+          if (selSheet) {
+            var want = 'roll:' + best.w;
+            for (var si = 0; si < selSheet.options.length; si++) {
+              if (selSheet.options[si].value === want) { selSheet.selectedIndex = si; applied = true; break; }
+            }
+            // change 리스너(폭 표시·프리셋 연동)가 붙어 있을 수 있어 알린다
+            if (applied) { try { selSheet.dispatchEvent(new Event('change')); } catch (eEv) {} }
+          }
+        }
         txt += best
-          ? ('\n→ ' + best.w + 'mm 롤이 재료를 가장 적게 씁니다. 시트를 바꾼 뒤 [네스팅 실행]을 누르세요.')
+          ? ('\n→ ' + best.w + 'mm 롤이 재료를 가장 적게 씁니다.'
+            + (applied ? ' **시트를 이 폭으로 바꿔 놨습니다** — [네스팅 실행]만 누르세요.'
+                       : ' 시트 목록에 없는 폭이라 직접 골라야 합니다.'))
           : '\n⚠ 어느 폭에도 전부 배치하지 못했습니다 — 간격을 줄이거나 조각을 나누세요.';
         done(txt, best ? 'ok' : 'err');
       });

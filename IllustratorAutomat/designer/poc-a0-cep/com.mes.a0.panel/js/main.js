@@ -10,7 +10,7 @@
   //   우상단 표시는 여태 host(mesA0_ping = MESA0_VERSION, 축2 = Z: 1곳)만 보여줬다. 껍데기는 PC 별
   //   복사 설치라서 재설치를 안 한 PC 도 최신 번호로 보였다(2026-07-30 점검에서 확인).
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다.
-  var SHELL_VERSION = '0.2.0';
+  var SHELL_VERSION = '0.3.0';
   var STORE_WORKER = 'mes_a0_worker';
   var STORE_SETTINGS = 'mes_a0_settings';
   var CONFIG_PATH = 'Z:/DESIGNS/IA-등록/_config/config.json';
@@ -141,7 +141,7 @@
     var elMeas = $('meas'), elBtnMeasure = $('btnMeasure');
     var elQty = $('qty'), elScale = $('scale'), elPreset = $('preset');
     var elTrim = $('trim'), elTrimInk = $('trimInk'), elClient = $('client');
-    var elBorderLine = $('borderLine'); // 출력 경계선(백색 테두리) on/off — 기본 ON(기존 동작)
+    var elBorderLine = $('borderLine'); // 출력 경계선(백색 테두리) on/off — 기본 OFF(2026-08-06 용준님)
     var elPTop = $('pTop'), elPBottom = $('pBottom'), elPLeft = $('pLeft'), elPRight = $('pRight');
     var elPcTL = $('pcTL'), elPcTR = $('pcTR'), elPcBL = $('pcBL'), elPcBR = $('pcBR');
     var elAnnot = $('annot'), elAnnotKwRow = $('annotKwRow'), elAnnotHint = $('annotHint');
@@ -530,7 +530,7 @@
       if (elALeft) elALeft.checked = false;
       if (elARight) elARight.checked = false;
       if (elPreset) elPreset.value = '';
-      if (elBorderLine) elBorderLine.checked = true; // 기본 ON 으로 복귀(끈 상태가 다음 건에 상속되지 않게)
+      if (elBorderLine) elBorderLine.checked = false; // 기본 OFF 로 복귀(켠 상태가 다음 건에 상속되지 않게)
       updateAnnotGates();
     }
 
@@ -601,7 +601,7 @@
         qty: qty, scale_n: scaleN, mode: modeValue(),
         trim: elTrim ? !!elTrim.checked : false,
         // 출력 경계선(백색 테두리). host 는 `!== false` 로 읽으므로 구 패널(키 없음)은 기존대로 ON.
-        border_line: elBorderLine ? !!elBorderLine.checked : true,
+        border_line: elBorderLine ? !!elBorderLine.checked : false,
         trim_ink: elTrimInk ? !!elTrimInk.checked : false, // 보이는 잉크로 축소(클립∩콘텐츠)
         punch: punchObj,
         keyword: keyword, // 주석·파일명. 식별번호(seq_no)는 단건 null, 배치는 키워드별 순번

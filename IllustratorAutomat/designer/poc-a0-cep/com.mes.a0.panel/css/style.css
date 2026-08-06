@@ -72,7 +72,7 @@ table.fin { width: 100%; border-collapse: collapse; table-layout: fixed; }
 table.fin tr:first-child td:nth-child(1) { width: 13px; }   /* 변 이름 */
 table.fin tr:first-child td:nth-child(3) { width: 32px; }   /* 여백cm */
 table.fin tr:first-child td:nth-child(4) { width: 56px; }   /* 마크 */
-table.fin tr:first-child td:nth-child(5) { width: 24px; }   /* 펀칭 */
+table.fin tr:first-child td:nth-child(5) { width: 38px; }   /* 펀칭 — 숫자를 눌러 고르는 칸이라 좁으면 못 쓴다 */
 table.fin tr:first-child td:nth-child(6) { width: 20px; }   /* 주석 */
 /* 2열(방식)은 폭을 주지 않는다 = 남는 폭을 전부 가져간다 */
 table.fin td { padding: 2px 2px; vertical-align: middle; }
@@ -87,7 +87,7 @@ table.fin select.finMark { width: 100%; min-width: 54px; }
    ⚠️ 스모크가 300px 폭에서 마감 드롭다운 ≥90px 를 강제한다(추가 직후 59px 로 떨어져 걸렸다).
       이 표에 열을 더 붙이려면 그 게이트를 먼저 통과시킬 것. */
 table.fin td.fc { width: 16px; text-align: center; padding: 2px 0; }
-table.fin input.tiny { width: 20px; }
+table.fin input.tiny { width: 34px; }   /* 펀칭 개수 — 손가락으로 고를 수 있는 최소치 */
 table.fin td.fc input[type="checkbox"] { margin: 0; }
 
 button {

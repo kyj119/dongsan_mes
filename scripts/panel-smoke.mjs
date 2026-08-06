@@ -212,10 +212,13 @@ await page.selectOption('select.finM[data-side="left"]', '접어미싱')
 await page.fill('#pTop', '3')
 ok('후가공 값 입력됨', await page.inputValue('#pTop') === '3')
 
-// 출력 경계선 토글 — 기본 ON, 끄면 params 로 false 가 나가야 한다
-ok('출력 경계선 기본 ON', await page.isChecked('#borderLine'))
+// 출력 경계선 토글 — **기본 OFF**(2026-08-06 용준님 지시).
+//   원본에 테두리가 있는 디자인에서 선이 두 줄로 보이는 게 흔해, 켜는 쪽을 선택으로 돌렸다.
+//   host 는 `P.border_line !== false` 로 읽으므로 **구 패널(키 없음)은 계속 ON** 이다 — 의도된 비대칭.
+ok('출력 경계선 기본 OFF', !(await page.isChecked('#borderLine')))
+await page.check('#borderLine')
+ok('출력 경계선 켬', await page.isChecked('#borderLine'))
 await page.uncheck('#borderLine')
-ok('출력 경계선 끔', !(await page.isChecked('#borderLine')))
 
 // ── ★S2(2026-08-05) 「웹 모아찍기 등록」 탭 폐기 — spec 2026-08-05-ia-editor-sunset.md
 //   재단 탭이 같은 일을 더 정확히 한다. 여기 있던 3~7)(탭 전환·분리·수량·재분리 거부·비우기)은
@@ -577,8 +580,26 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   await p6.setViewportSize({ width: Number(min[2]), height: Number(min[1]) })
   await p6.click('#finToggle')
   await p6.waitForTimeout(150)
-  const selW = await p6.evaluate(() => Math.round(document.querySelector('select.finM[data-side="top"]').getBoundingClientRect().width))
-  ok('최소 폭에서도 마감 드롭다운 ≥90px', selW >= 90, 'selW=' + selW + 'px @' + min[2] + 'px')
+  // ★기준은 매직넘버가 아니라 **가장 긴 방식 이름이 잘리지 않는가** 다 (2026-08-06).
+  //   전엔 ≥90px 로 못박혀 있었는데 그 숫자의 근거가 어디에도 없었다. 그래서 ⓐ 폭을 조금
+  //   줄이는 정당한 변경이 걸리고 ⓑ config 에 더 긴 이름이 생겨도 못 잡는다.
+  //   방식 목록은 config 에서 온다(현재 최장 '게시대미싱') → 실제 글자폭을 재서 판정한다.
+  const selFit = await p6.evaluate(() => {
+    const sel = document.querySelector('select.finM[data-side="top"]')
+    const opts = Array.from(sel.options).map((o) => o.textContent || '')
+    const cs = window.getComputedStyle(sel)
+    const cv = document.createElement('canvas').getContext('2d')
+    cv.font = cs.fontSize + ' ' + cs.fontFamily
+    const textPx = Math.max(0, ...opts.map((t) => cv.measureText(t).width))
+    const chrome = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + 18  // 화살표 + 패딩
+    return {
+      w: Math.round(sel.getBoundingClientRect().width),
+      need: Math.ceil(textPx + chrome),
+      longest: opts.slice().sort((a, b) => b.length - a.length)[0] || '',
+    }
+  })
+  ok('최소 폭에서 가장 긴 방식이 안 잘림', selFit.w >= selFit.need,
+    `'${selFit.longest}' 필요 ${selFit.need}px · 실제 ${selFit.w}px @${min[2]}px`)
   ok('16 콘솔 에러 0', p6.__errs.length === 0, p6.__errs.join(' | '))
   await p6.close()
 }

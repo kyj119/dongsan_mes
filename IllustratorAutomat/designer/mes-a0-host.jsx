@@ -19,7 +19,7 @@
 //   0.1.8 = 마감재단선(여백 위치 검정 실선·4변 한 그룹) + 주석 구조에 후가공 추가
 //           (키워드-식별번호-후가공-수량) (2026-07-30)
 //   0.1.9 = 크로스 패널 잠금 위임 추가(mes-lock.jsx) (2026-07-31)
-var MESA0_VERSION = 'A0-CEP-0.1.10'; // 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
+var MESA0_VERSION = 'A0-CEP-0.1.11'; // 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
 var MESA0_REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
 var MESA0_PT_PER_MM = 72 / 25.4;
 var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];
@@ -519,6 +519,21 @@ function mesA0_process() {
         if (pcn.tr) holes.push([oR - PIN, oT - PIN]);
         if (pcn.bl) holes.push([oL + PIN, oB + PIN]);
         if (pcn.br) holes.push([oR - PIN, oB + PIN]);
+        // ★같은 자리 중복 제거 (2026-08-06 용준님 질문에서 드러남).
+        //   변 개수는 **양 끝을 포함해** 균등 분배한다 — 상=2 면 좌상·우상 **자리에 정확히** 놓인다.
+        //   그 상태에서 꼭짓점을 또 체크하면 같은 좌표에 원이 2개 생기고, 겹쳐서 눈에 안 보이는데
+        //   타공은 **두 번 뚫린다**. 어느 쪽을 골랐든 한 자리엔 하나여야 한다.
+        //   허용오차 = 0.1mm(부동소수 오차만 흡수 · 실제로 다른 구멍은 최소 수 mm 떨어져 있다).
+        var TOLP = 0.1 * MESA0_PT_PER_MM / sN;
+        var uniq = [];
+        for (hi = 0; hi < holes.length; hi++) {
+          var dup = false;
+          for (var uj = 0; uj < uniq.length; uj++) {
+            if (Math.abs(uniq[uj][0] - holes[hi][0]) <= TOLP && Math.abs(uniq[uj][1] - holes[hi][1]) <= TOLP) { dup = true; break; }
+          }
+          if (!dup) uniq.push(holes[hi]);
+        }
+        holes = uniq;
         for (hi = 0; hi < holes.length; hi++) {
           var pel = newDoc.pathItems.ellipse(holes[hi][1] + pr, holes[hi][0] - pr, PDIA, PDIA);
           pel.stroked = false; pel.filled = true; pel.fillColor = kColP; // 검정 꽉찬 원
