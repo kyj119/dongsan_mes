@@ -4,7 +4,7 @@
 # 세션 핸드오프 — 작업지시서 자동 발행·관리 (2026-08-05 #51)
 
 > durable 메모리 = [[design-work-order-system]] (자동 발행 섹션 추가) · spec = `docs/superpowers/specs/2026-08-05-work-order-auto-issue.md`
-> **코드 완료·커밋됨·prod 미배포** — 배포는 명시 요청 대기
+> **prod 배포완료 (2026-08-06)** — 커밋 `50eb5efd`·배포 `c10031a7`·마이그 `0522` prod 적용·prod smoke 108/108·Playwright 콘솔 0
 
 ## 결과
 
@@ -17,9 +17,13 @@
 
 ## 다음 세션 TODO
 
-1. **prod 배포 시 `0522` 마이그 선행 필수** (`wrangler d1 execute webapp-production --remote --file=./migrations/0522_work_order_checklist.sql` → `npm run deploy:prod`) — 배포는 명시 요청에만
-2. 배포 후 실측: /cards 지시 현황 탭 + 카드 상세 체크 UI + 주문수정→개정 배너
+1. ~~prod 배포~~ → **완료(2026-08-06)**: 0522 prod 적용(pragma 검증) → deploy `c10031a7` → prod smoke 108/108 → 페이지 6종 200 + 마커 10종 + Playwright 탭·3큐·콘솔 0
+2. 실주문 자연검증: 신규 주문 → 카드 체크리스트 파생 → 현장 체크 사용 관찰 (prod 기존 카드는 체크리스트 없음=섹션 숨김, 신규 생성분부터 파생)
 3. 후속(운영 피드백 후): category별 settings 템플릿 · MANUAL 스텝 UI · `POST /generate/:orderId` 레거시 경로 체크리스트 미파생(0스텝=UI 숨김) 통합 검토
+
+## 배포 시 걸린 것 (반복 방지)
+
+- **`d1 execute --remote --file` 1차 시도가 조용히 무적용** — 출력을 `tail`로 잘라 확인 프롬프트/결과를 놓쳤다. **적용 후 `pragma_table_info` 검증으로 잡음.** remote 마이그는 실행→pragma 검증을 한 세트로.
 
 ## 판단 기준
 
