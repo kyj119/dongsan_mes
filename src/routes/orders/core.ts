@@ -713,6 +713,9 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       c.env.DB.prepare('UPDATE portal_reorder_requests SET reference_order_id = NULL WHERE reference_order_id = ?').bind(id),     // 포털 재주문 원주문 참조
       c.env.DB.prepare('UPDATE cash_receipts SET order_id = NULL WHERE order_id = ?').bind(id),                                  // 발행분은 pre-guard 차단, 잔여(DRAFT/취소/실패) unlink
       c.env.DB.prepare("UPDATE tax_invoices SET order_id = NULL WHERE order_id = ? AND status = 'CANCELLED'").bind(id),          // pre-guard는 비취소만 차단 → 취소분 잔여 unlink
+      // #589: 합배송 예약 포인터(0438, 비-FK) — 대표 주문 삭제 시 자식의 죽은 링크 정리(#477 merged_into_id와 동형).
+      //   자식은 단독 배송으로 복귀. 새 대표 자동 승격은 하지 않는다(그룹 재구성은 운영자가 화면에서).
+      c.env.DB.prepare('UPDATE orders SET consolidate_with_order_id = NULL WHERE consolidate_with_order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM orders WHERE id = ?').bind(id),
     ])
 
