@@ -119,6 +119,9 @@ const installedDir = (ext) => (process.env.APPDATA
 const Z_CAPS = 'Z:\\Designs\\caps-worker'
 const TOOLS = [
   { rel: 'install-a0-panel.ps1', repoRoot: path.join(REPO, 'scripts'), runRoot: Z_SCRIPTS },
+  // ★.bat = 디자이너가 **실제로 더블클릭하는 파일**. Z: 의 .ps1 은 "원격 스크립트"라 실행 정책에
+  //   막히고 연결 프로그램도 없어 더블클릭이 무반응이다 → 래퍼 없이는 절차가 실행 불가능하다.
+  { rel: 'install-a0-panel.bat', repoRoot: path.join(REPO, 'scripts'), runRoot: Z_SCRIPTS },
   { rel: 'install-caps-worker.ps1', repoRoot: path.join(REPO, 'scripts'), runRoot: Z_CAPS },
 ].filter((t) => fs.existsSync(path.join(t.repoRoot, t.rel)))
 

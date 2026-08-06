@@ -1,0 +1,15 @@
+# ── 배치 파일은 CRLF 여야 한다 (2026-08-06 실측) ────────────────────────────
+# cmd.exe 는 .bat 을 CRLF 기준으로 읽는다. LF 로 저장되면 각 줄의 앞부분이 잘려
+# `'erShell'`·`'anel.ps1'` 같은 조각이 명령으로 실행된다 — 파일 내용은 멀쩡한데
+# 실행만 깨지므로 원인을 찾기 매우 어렵다.
+# 체크아웃하는 사람의 core.autocrlf 설정에 맡기지 않고 여기서 못박는다.
+#
+# ⚠️ scripts/install-a0-panel.bat 은 **CP949(한글 Windows ANSI)** 로 저장돼 있다.
+#    UTF-8 로 바꾸면 cmd 가 다른 바이트로 읽어 괄호·따옴표 구조가 깨진다.
+#    git 은 EOL 만 건드리므로 CP949 바이트는 보존된다(0x0D/0x0A 는 CP949 트레일 바이트 범위 밖).
+#    편집 시 에디터 인코딩을 CP949 로 맞출 것. UTF-8 로 저장하면 조용히 깨진다.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# PowerShell 스크립트도 Windows 전용 — CRLF 고정.
+*.ps1 text eol=crlf
