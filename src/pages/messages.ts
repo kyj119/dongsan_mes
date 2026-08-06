@@ -243,7 +243,7 @@ export function messagesPage(c: Context<HonoEnv>) {
         <div class="text-sm font-bold text-gray-700 mb-3">3. 내용</div>
         <div class="mb-3">
           <label class="text-xs font-semibold text-gray-600 mb-1 block">제목</label>
-          <input type="text" id="adSubject" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="예: 7월 단가 안내">
+          <input type="text" id="adSubject" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="예: 7월 단가 안내" oninput="adResetPreview()">
           <div class="text-xs text-gray-400 mt-1">발송 시 제목 앞에도 (광고)가 자동으로 붙습니다.</div>
         </div>
         <div id="adImageArea" class="mb-3 hidden">
@@ -258,7 +258,7 @@ export function messagesPage(c: Context<HonoEnv>) {
         </div>
         <div>
           <label class="text-xs font-semibold text-gray-600 mb-1 block">본문</label>
-          <textarea id="adContent" rows="6" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="메시지 내용을 입력하세요"></textarea>
+          <textarea id="adContent" rows="6" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="메시지 내용을 입력하세요" oninput="adResetPreview()"></textarea>
           <div class="mt-2 p-2.5 bg-gray-50 rounded-lg">
             <span class="text-xs font-semibold text-gray-600">수신자별 변수 <span class="font-normal text-gray-400">(클릭하면 본문에 삽입)</span></span>
             <div id="adVarChips" class="flex flex-wrap gap-1 mt-1.5"></div>
@@ -272,7 +272,7 @@ export function messagesPage(c: Context<HonoEnv>) {
           <span class="text-sm font-semibold text-gray-700">예약 발송</span>
         </label>
         <div id="adScheduleInput" class="hidden mt-2">
-          <input type="datetime-local" id="adScheduleAt" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm max-w-xs">
+          <input type="datetime-local" id="adScheduleAt" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm max-w-xs" onchange="adResetPreview()">
           <div class="text-xs text-gray-400 mt-1">21시~08시는 발송할 수 없습니다.</div>
         </div>
       </div>
@@ -308,6 +308,7 @@ export function messagesPage(c: Context<HonoEnv>) {
           <button onclick="adAddOptOut()" class="text-xs text-blue-600 hover:text-blue-800"><i class="fas fa-plus mr-1"></i>직접 등록</button>
         </div>
         <div class="text-xs text-gray-400 mb-2">전화로 거부 의사를 밝힌 경우 여기에 등록하세요.</div>
+        <input type="text" id="adOptOutSearch" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs mb-2" placeholder="전화번호/거래처명 검색 (최근 300건 밖도 서버에서 검색)" oninput="adSearchOptOuts()">
         <div id="adOptOutList" class="space-y-1 max-h-64 overflow-y-auto"></div>
       </div>
       <div class="ds-card p-4">
@@ -458,6 +459,23 @@ export function messagesPage(c: Context<HonoEnv>) {
 </div>
 
 <!-- #574 대량 발송 부분실패 — 실패 대상 목록 + 실패건만 재선택 -->
+<!-- #585: 광고 발송 결과 (부분 실패 시 실패자 식별 + 재발송) — msgBulkResultModal 미러 -->
+<div id="adSendResultModal" class="ds-modal-overlay hidden flex items-center justify-center">
+  <div class="ds-modal w-[520px] max-h-[80vh] flex flex-col p-6">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-triangle-exclamation text-amber-500 mr-2"></i>광고 발송 결과</h3>
+      <button onclick="adCloseSendResult()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+    </div>
+    <div id="adSendResultBody" class="overflow-y-auto" style="max-height:56vh"></div>
+    <div class="flex gap-2 justify-end mt-4">
+      <button onclick="adCloseSendResult()" class="ds-btn ds-btn-secondary text-sm">닫기</button>
+      <button id="adSendRetryBtn" onclick="adRetryFailed()" class="ds-btn ds-btn-primary text-sm hidden">
+        <i class="fas fa-rotate-right mr-1"></i>실패건만 다시 선택
+      </button>
+    </div>
+  </div>
+</div>
+
 <div id="msgBulkResultModal" class="ds-modal-overlay hidden flex items-center justify-center">
   <div class="ds-modal w-[520px] max-h-[80vh] flex flex-col p-6">
     <div class="flex items-center justify-between mb-3">

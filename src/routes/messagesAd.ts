@@ -21,7 +21,7 @@ import { requireRole } from '../middleware/auth'
 import { getKakaoProvider, getKakaoSettings } from './kakao'
 import { getEntityId } from '../utils/entityFilter'
 import { insertSendLog, applyVars, unresolvedVars, buildBulkVarContext, BULK_VAR_NAMES, type BulkReceiver } from './messages'
-import { MMS_IMAGE } from '../constants/barobillCodes'
+import { MMS_IMAGE, barobillErrorMessage } from '../constants/barobillCodes'
 import { stripDataUri } from '../utils/thumbnailStore'
 import {
   normalizePhone, getOptedOutSet, getOrCreateUnsubToken, buildUnsubscribeUrl,
@@ -369,6 +369,17 @@ messagesAdRouter.post('/send', async (c) => {
     const perItem = sendResult.results || []
     const successCount = perItem.length > 0 ? perItem.filter(r => r.ok).length : (sendResult.receiptNum ? messages.length : 0)
 
+    // #585: 실패 수신자 식별(#574 send-bulk 미러) — messages[]는 audience.sendable과 1:1 순서라
+    //   perItem 길이가 일치할 때만 매핑한다. 단일 접수번호 폴백 응답은 건별 판정 불가.
+    const failedReceivers = perItem.length === messages.length
+      ? perItem.map((r, i) => ({ r, i })).filter(x => !x.r.ok).map(x => ({
+          name: audience.sendable[x.i].name || '',
+          phone: audience.sendable[x.i].phone || '',
+          client_id: audience.sendable[x.i].client_id,
+          error: barobillErrorMessage(x.r.code),
+        }))
+      : []
+
     return c.json({
       success: true,
       data: {
@@ -380,6 +391,8 @@ messagesAdRouter.post('/send', async (c) => {
         receiver_count: messages.length,
         success_count: successCount,
         fail_count: messages.length - successCount,
+        failed: failedReceivers,
+        failed_identifiable: perItem.length === messages.length,
         excluded: {
           opt_out: audience.excluded.optOut.length,
           stale: audience.excluded.stale.length,

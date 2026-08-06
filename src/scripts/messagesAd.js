@@ -316,8 +316,13 @@ async function adSendExec() {
   try {
     var res = await axios.post('/api/messages/ad/send', payload);
     var d = res.data.data;
-    showToast('광고 발송 완료 — 성공 ' + d.success_count + '건'
-      + (d.fail_count ? ' / 실패 ' + d.fail_count + '건' : ''), d.fail_count ? 'warning' : 'success');
+    if (d.fail_count > 0) {
+      // #585: 실패자를 식별 가능하게 보여준다(#574 send-bulk 미러). 수신자 목록은 지우지
+      //   않는다 — [실패건만 다시 선택]이 그 목록을 실패자만으로 좁힌다.
+      adShowSendResult(d, d.success_count || 0, d.fail_count || 0);
+    } else {
+      showToast('광고 발송 완료 — 성공 ' + d.success_count + '건', 'success');
+    }
     adResetPreview();
     if (typeof loadLogs === 'function') loadLogs();
   } catch (e) {
@@ -325,12 +330,78 @@ async function adSendExec() {
   }
 }
 
+// === #585 광고 발송 부분실패 결과 (messages.js msgShowBulkResult/msgRetryFailed 미러) ===
+var adLastFailed = [];   // [{ name, phone, client_id, error }]
+
+function adShowSendResult(d, okCnt, failCnt) {
+  adLastFailed = d.failed || [];
+  var modal = document.getElementById('adSendResultModal');
+  var body = document.getElementById('adSendResultBody');
+  var retryBtn = document.getElementById('adSendRetryBtn');
+  if (!modal || !body) {
+    showToast('일부 발송 (' + okCnt + '건 접수 / ' + failCnt + '건 실패)', 'warning');
+    return;
+  }
+
+  var html = '<div class="text-sm mb-2"><span class="font-semibold text-green-700">' + okCnt + '건 접수</span>'
+    + ' · <span class="font-semibold text-red-600">' + failCnt + '건 실패</span></div>';
+
+  if (adLastFailed.length > 0) {
+    // 같은 오류끼리 묶는다(원인은 대개 소수 종류다)
+    var byErr = {};
+    adLastFailed.forEach(function(f) { (byErr[f.error] = byErr[f.error] || []).push(f); });
+    html += '<div class="text-xs font-semibold text-gray-600 mb-1">실패 대상</div>';
+    Object.keys(byErr).forEach(function(err) {
+      html += '<div class="mb-2"><div class="text-xs text-red-600 mb-0.5">' + escapeHtml(err)
+        + ' <span class="text-gray-400">' + byErr[err].length + '건</span></div>'
+        + '<div class="text-xs text-gray-700 pl-2">'
+        + byErr[err].map(function(f) {
+            return escapeHtml(f.name || '(이름없음)') + ' <span class="text-gray-400">' + escapeHtml(f.phone || '') + '</span>';
+          }).join(', ')
+        + '</div></div>';
+    });
+  } else if (d.failed_identifiable === false) {
+    html += '<div class="text-xs text-gray-500">이 발송은 제공사가 건별 결과를 돌려주지 않아 '
+      + '실패한 수신자를 특정할 수 없습니다. 발송 이력에서 접수번호로 확인해 주세요.</div>';
+  }
+
+  if (retryBtn) {
+    if (adLastFailed.length > 0) retryBtn.classList.remove('hidden');
+    else retryBtn.classList.add('hidden');
+  }
+  body.innerHTML = html;
+  modal.classList.remove('hidden');
+}
+
+function adRetryFailed() {
+  if (adLastFailed.length === 0) return;
+  var phones = {};
+  adLastFailed.forEach(function(f) { if (f.phone) phones[String(f.phone)] = 1; });
+  adReceivers = adReceivers.filter(function(r) { return phones[String(r.phone)]; });
+  adRenderTargetInfo();   // adResetPreview 포함 — 재발송도 [대상 확인] 게이트를 다시 지난다
+  adCloseSendResult();
+  showToast('실패한 ' + adLastFailed.length + '건만 남겼습니다. [대상 확인] 후 다시 발송하세요.', 'info');
+}
+
+function adCloseSendResult() {
+  var m = document.getElementById('adSendResultModal');
+  if (m) m.classList.add('hidden');
+}
+
 // ── 수신거부 명단 ──
+// #587: 서버가 search 파라미터를 이미 지원(LIMIT 300) — 300건 넘는 오래된 등록도 검색으로 도달.
+var adOptOutSearchTimer = null;
+function adSearchOptOuts() {
+  clearTimeout(adOptOutSearchTimer);
+  adOptOutSearchTimer = setTimeout(adLoadOptOuts, 300);
+}
+
 async function adLoadOptOuts() {
   var el = document.getElementById('adOptOutList');
   if (!el) { console.warn('[messagesAd] #adOptOutList not found'); return; }
   try {
-    var res = await axios.get('/api/messages/ad/opt-outs');
+    var q = (document.getElementById('adOptOutSearch') || {}).value || '';
+    var res = await axios.get('/api/messages/ad/opt-outs', { params: q.trim() ? { search: q.trim() } : {} });
     var rows = (res.data && res.data.data) || [];
     el.innerHTML = rows.length
       ? rows.map(function(r) {
@@ -342,7 +413,7 @@ async function adLoadOptOuts() {
             + '<button onclick="adRemoveOptOut(' + r.id + ')" class="text-gray-300 hover:text-red-600"><i class="fas fa-times"></i></button>'
             + '</div>';
         }).join('')
-      : '<div class="text-xs text-gray-400 py-2">등록된 수신거부가 없습니다.</div>';
+      : '<div class="text-xs text-gray-400 py-2">' + (q.trim() ? '검색 결과가 없습니다.' : '등록된 수신거부가 없습니다.') + '</div>';
   } catch (e) {
     console.warn('[messagesAd] 수신거부 명단 로드 실패', e);
   }
