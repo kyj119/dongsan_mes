@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.36.0';
+  var SHELL_VERSION = '0.37.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -103,7 +103,13 @@
   }
   function hostSupportsCurve() { return hostAtLeast(CURVE_MIN_HOST); }
   function hostSupportsVector() { return hostAtLeast(VEC_MIN_HOST); }
+  // 맞붙임 — 호스트에 params `C`(열린 선분) 파서가 있어야 한다.
+  //   구 호스트는 `C` 줄을 **조용히 무시**한다 → 조각별 닫힌 경로도 안 보냈으므로 **칼선이 통째로 없는 판**이 나온다.
+  //   축2(호스트)는 Z: 1개 교체로 전 PC 에 퍼지지만 축3(화면)은 PC별 설치라 **역방향 스큐가 반드시 생긴다**.
+  //   못 받으면 맞붙임을 쓰지 않고 기존 래스터 경로로 간다(도련 게이트와 같은 규칙).
+  var BUTT_MIN_HOST = [0, 18, 0];
   function hostSupportsBakeAll() { return hostAtLeast(BAKEALL_MIN_HOST); }
+  function hostSupportsButt() { return hostAtLeast(BUTT_MIN_HOST); }
   function hostSupportsBleedPng() { return hostAtLeast(BLEEDPNG_MIN_HOST); }
 
   // ── ★칼선 방식 (2026-08-01) ──────────────────────────────────────
@@ -1227,7 +1233,7 @@
         //     넷 중 하나라도 걸리면 **기존 래스터 경로 그대로**(회귀 0).
         var BT = window.MesCutButt;
         var buttExact = false;
-        if (BT && buttMode && offsetMm === 0 && gapMm === 0 && !useVec && prep.sizes.length) {
+        if (BT && hostSupportsButt() && buttMode && offsetMm === 0 && gapMm === 0 && !useVec && prep.sizes.length) {
           buttExact = true;
           for (var bi = 0; bi < prep.pieces.length; bi++) {
             if (!BT.isRectish(prep.pieces[bi].base)) { buttExact = false; break; }

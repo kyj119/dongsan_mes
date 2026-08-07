@@ -740,6 +740,11 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3y 맞붙임은 여백·간격 정확히 0 일 때만',
     /buttMode && offsetMm === 0 && gapMm === 0 && !useVec && prep\.sizes\.length/.test(panelSrc))
   ok('3y 전 조각이 직사각일 때만', /BT\.isRectish\(prep\.pieces\[bi\]\.base\)/.test(panelSrc))
+  // ★구 호스트는 C 줄을 조용히 무시한다 → 조각별 칼선도 안 보냈으니 **칼선 없는 판**이 나온다.
+  //   축2는 Z: 파일 1개로 전 PC 에 퍼지고 축3은 PC별 설치라, 역방향 스큐가 반드시 생긴다
+  //   (도련 PNG 때와 같은 함정 — 그때도 구 패널/새 호스트 조합을 따로 막아야 했다).
+  ok('3y 구 호스트면 맞붙임을 쓰지 않는다', /hostSupportsButt\(\) && buttMode/.test(panelSrc))
+  ok('3y 맞붙임 최소 호스트 명시', /var BUTT_MIN_HOST = \[0, 18, 0\]/.test(panelSrc))
   // ★실패하면 조용히 이상한 판을 내지 말고 기존 경로로 되돌아가야 한다
   ok('3y 실패 시 래스터로 폴백', /buttExact = false;\s*\n\s*res = nestPlace\(NST, prep/.test(panelSrc))
   // ★맞붙임에서는 조각별 닫힌 경로를 만들지 않는다 — 그게 두 줄의 원인이다
