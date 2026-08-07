@@ -28,10 +28,16 @@ console.log('\n맞붙임 (js/butt.js)\n' + '='.repeat(52))
 // ── ① 직사각 판정 ────────────────────────────────────────────────
 {
   const full = { W: 10, H: 10, m: new Uint8Array(100).fill(1) }
-  const half = { W: 10, H: 10, m: new Uint8Array(100) }
-  for (let i = 0; i < 50; i++) half.m[i] = 1
   ok('꽉 찬 마스크 = 직사각', B.isRectish(full))
-  ok('반만 찬 마스크 = 직사각 아님', !B.isRectish(half))
+  // ⚠️ 예전 픽스처는 "위 절반만 찬 10×10" 이었는데, **잉크 bbox 로 보면 그건 진짜 10×5 직사각**이다
+  //    (2026-08-07 bbox 판정으로 바꾸면서 드러났다). 반례가 되려면 **bbox 안이 안 채워져야** 한다.
+  const el = { W: 10, H: 10, m: new Uint8Array(100) }
+  for (let y = 0; y < 10; y++) for (let x = 0; x < 10; x++) if (y >= 5 || x < 5) el.m[y * 10 + x] = 1
+  ok('ㄴ자 = 직사각 아님 (bbox 는 꽉 차 보여도)', !B.isRectish(el))
+  // 조각이 판 위에 놓인 자리와 무관해야 한다 — 같은 도형을 캔버스 구석으로 밀어도 판정이 같다
+  const shifted = { W: 30, H: 30, m: new Uint8Array(900) }
+  for (let y = 0; y < 10; y++) for (let x = 0; x < 10; x++) shifted.m[(y + 18) * 30 + (x + 19)] = el.m[y * 10 + x]
+  ok('구석으로 민 ㄴ자도 직사각 아님', !B.isRectish(shifted))
   // 안티앨리어싱은 **최외곽 1px 링**을 비운다 — 그건 직사각으로 봐야 한다.
   //   (모서리 판정을 1px 안쪽에서 하는 이유가 이것이다)
   const aa = { W: 100, H: 100, m: new Uint8Array(10000).fill(1) }
@@ -60,6 +66,28 @@ console.log('\n맞붙임 (js/butt.js)\n' + '='.repeat(52))
     }
     return { W, H, m }
   }
+  // ★★굽기는 pad(≥1mm)를 두른다 — 캔버스 귀퉁이는 **직사각이어도 늘 비어 있다.**
+  //   판정을 잉크 bbox 안에서 안 하면 전 조각이 이형으로 떨어져 맞붙임이 한 번도 안 켜진다
+  //   (2026-08-07 실사용: 화면에 "조각 #0 가 직사각이 아님"이라는 틀린 사유가 떴다).
+  const padded = (iw, ih, pad, mk) => {
+    const W = iw + pad * 2, H = ih + pad * 2
+    const m = new Uint8Array(W * H)
+    const inner = mk ? mk(iw, ih) : { W: iw, H: ih, m: new Uint8Array(iw * ih).fill(1) }
+    for (let y = 0; y < ih; y++) for (let x = 0; x < iw; x++) m[(y + pad) * W + (x + pad)] = inner.m[y * iw + x]
+    return { W, H, m }
+  }
+  ok('패딩 두른 직사각도 직사각', B.isRectish(padded(120, 60, 4)))
+  ok('패딩이 커도 판정이 같다', B.isRectish(padded(120, 60, 40)))
+  ok('잉크 bbox 를 정확히 잡는다', (() => {
+    const bb = B.inkBBox(padded(120, 60, 4))
+    return bb && bb.L === 4 && bb.T === 4 && bb.W === 120 && bb.H === 60
+  })())
+  ok('빈 마스크는 직사각 아님', !B.isRectish({ W: 10, H: 10, m: new Uint8Array(100) }))
+
+  // 패딩을 걷어낸 뒤에도 라운드는 여전히 걸러져야 한다 — bbox 자르기가 판정을 무디게 하면 안 된다
+  ok('패딩 두른 라운드 사각은 여전히 거른다',
+    !B.isRectish(padded(200, 100, 6, (w, h) => round(w, h, 10))))
+
   const r5 = round(200, 100, 10)
   const fill = r5.m.reduce((a, b) => a + b, 0) / (200 * 100)
   ok('라운드 사각은 채움비율로는 안 걸린다(전제 확인)', fill >= 0.98, `채움 ${(fill * 100).toFixed(2)}%`)

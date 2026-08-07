@@ -27,9 +27,46 @@
    * 이형끼리는 붙여도 칼선이 애초에 안 맞으므로, 하나라도 아니면 맞붙임을 쓰지 않는다.
    * @param mask {W,H,m} 팽창 전 마스크  @param minFill 기본 0.98
    */
+  /**
+   * 잉크가 실제로 차지하는 사각 범위. **패딩을 걷어내는 것이 목적**이다.
+   * 굽기는 `padMm`(≥1mm) 만큼 투명 여백을 두르므로, 캔버스 귀퉁이는 직사각이라도 늘 비어 있다.
+   * @returns {L,T,R,B,W,H} 또는 잉크가 없으면 null
+   */
+  function inkBBox(mask) {
+    var W = mask.W, H = mask.H, m = mask.m
+    var L = W, T = H, R = -1, B = -1
+    for (var y = 0; y < H; y++) {
+      var row = y * W
+      for (var x = 0; x < W; x++) {
+        if (!m[row + x]) continue
+        if (x < L) L = x
+        if (x > R) R = x
+        if (y < T) T = y
+        if (y > B) B = y
+      }
+    }
+    if (R < L || B < T) return null
+    return { L: L, T: T, R: R, B: B, W: R - L + 1, H: B - T + 1 }
+  }
+
   function isRectish(mask, minFill) {
     if (!mask || !mask.W || !mask.H) return false
-    var W = mask.W, H = mask.H, m = mask.m
+    // ★★판정은 **잉크 bbox 안에서** 한다 (2026-08-07 실사용 — 이걸 빼먹어 전부 이형으로 떨어졌다).
+    //   굽기가 pad(≥1mm)를 두르므로 캔버스 귀퉁이는 **직사각이어도 항상 비어 있다.**
+    //   그대로 모서리를 보면 모든 조각이 "라운드/이형"으로 판정돼 맞붙임이 **한 번도 안 켜진다**
+    //   — 실제로 그렇게 한 세션을 날렸고, 화면에는 "조각 #0 가 직사각이 아님"이라는 **틀린 사유**가 떴다.
+    var bb = inkBBox(mask)
+    if (!bb) return false
+    var src = mask
+    if (bb.L !== 0 || bb.T !== 0 || bb.W !== mask.W || bb.H !== mask.H) {
+      var cm = new Uint8Array(bb.W * bb.H)
+      for (var yy = 0; yy < bb.H; yy++) {
+        var sr = (bb.T + yy) * mask.W + bb.L, dr = yy * bb.W
+        for (var xx = 0; xx < bb.W; xx++) cm[dr + xx] = mask.m[sr + xx]
+      }
+      src = { W: bb.W, H: bb.H, m: cm }
+    }
+    var W = src.W, H = src.H, m = src.m
     // ★★ 모서리 4곳에 잉크가 있어야 한다 (2026-08-06 용준님 지적).
     //   채움 비율만으로는 **라운드 사각을 못 거른다** — 100×50 에 반경 5mm 면 잃는 면적이
     //   r²(4−π) ≈ 21.5mm² = 0.43% 뿐이라 98% 기준을 그냥 통과한다.
@@ -153,5 +190,8 @@
     return false
   }
 
-  return { isRectish: isRectish, packRects: packRects, cutSegments: cutSegments, anyOverlap: anyOverlap }
+  return {
+    isRectish: isRectish, inkBBox: inkBBox,
+    packRects: packRects, cutSegments: cutSegments, anyOverlap: anyOverlap,
+  }
 })
