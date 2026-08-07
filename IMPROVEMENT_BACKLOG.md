@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-08-07T03:35:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-08-07T09:22:41+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,23 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **2** (`search_issues(is:open,label:auto-improve)` 실측 — Area3 51회차. #601[order_items 라인재작성 시 return_items RESTRICT FK 미정리] + #602 신규[cards 지시현황탭 silent-catch]) |
+| 🆕 new | **3** (`search_issues(is:open,label:auto-improve)` 실측 — Area4 53회차. #601[order_items 라인재작성 시 return_items RESTRICT FK 미정리] + #602[cards 지시현황탭 silent-catch] + #603 신규[cards 개정필요 큐 출고후 영구잔류]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **524** (`reason:completed` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+
+> **Area 4 데이터 정합성 (2026-08-07T09:22):**
+> - **방법**: `git fetch origin main`(HEAD `020133c` = origin/main 일치, 워킹트리 clean) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 4 **53회차** — 직전 Area4(`6888d70`, 08-05T21:29, 52회차)가 이번 fetch에서 정상 조회 가능(force-update 아님) → `git log 6888d70..HEAD -- src/routes migrations src/scripts index.tsx src/layout src/pages` = **10커밋**(합배송 포인터정리·messages-ad 실패수신자·라인할인 복원·print-stats event_kind 보강·order_ai_files 재연결·#599/#600 IDOR 픽스 2건 + **카드=작업지시서 신기능** `50eb5ef`).
+> - **`82b9e3e`(AR 선수금 분리, 별도 시각 이후 착륙분 포함 검토)**: `ar-helpers.ts` `deriveArSplit` 신설 — 거래처별 잔액을 먼저 구한 뒤 부호별 합산(뭉쳐서 SUM하면 선수금이 매출채권을 상쇄해 과소표시되던 결함 수정). `accounting.ts`/`financialReports.ts` 양쪽 다 `net_assets = (cash+ar+inventory)-(ap+advance+loans)`로 분리 전후 불변식 보존 확인 — 자체 검증 완료된 픽스, net-new 없음(오히려 기존 데이터 결함의 올바른 교정).
+> - **`50eb5ef`(카드=작업지시서) 데이터정합 전수 재검토**: `card_checklist_items`(0522)는 `card_id ON DELETE CASCADE`만 있고 `checked_by`는 FK 미선언(리터럴 아닌 `user?.id \|\| null` 안전 바인딩, #436류 아님) — clean. `orders/update.ts` 라인재작성 경로(하드삭제+카드보존 양쪽)가 `card_checklist_items`를 order_items 삭제 전 정리하는지 확인 — **card_checklist_items는 order_item_id 컬럼 자체가 없고 card_id만 참조**하므로 order_items 삭제와 무관, FK 위험 없음(하드삭제 경로는 CASCADE로 자동 정리, 명시 DELETE도 안전 이중화). `generateCardsForOrder`의 체크리스트 INSERT는 80청크 적용(신규 코드, D1 batch 한도 방어 clean).
+> - **🔴 net-new #603(S, 상태-불일치)**: 같은 신기능의 "지시 현황" 3개 큐 중 "개정 필요"(reissue, `cards/queries.ts:975-982`)만 카드 상태 필터가 전혀 없음 — 형제 "진행"(progress, `:955-969`)은 `WHERE c.status IN (...)` + `HAVING` 완료건 제외로 활성 카드만 남기는 컨벤션을 확립했는데 reissue만 빠뜨림(A-024/A-025급 "부분 롤아웃" 클래스). `needs_reissue`를 1로 세팅하는 유일 경로(`orders/update.ts:206-210`)와 0으로 해제하는 유일 경로(`cards/lifecycle.ts PATCH /:id/reissue-ack`, 사용자 수동) 사이에 **카드 출고(`PATCH /:id/ship`, `shipped_at`만 세팅·`needs_reissue` 미터치)가 끼면 영구 잔류** — cards.status는 'SHIPPED' 리터럴을 실제로 쓰는 코드가 코드베이스에 없어(`grep` 0건) `shipped_at`이 진짜 출고 마커인데 이 쿼리가 그걸 안 봄. 탭 배지(`missing+reissue`)가 출고완료 카드로 상시 비영(非零)이 되어 #602(조치필요를 숨김)의 반대 방향("조치불요를 계속 보여줌")으로 같은 탭의 신뢰도를 깎음. 쿼리 필터 1줄 추가(`AND c.shipped_at IS NULL`)로 해소 가능하나 큐 정책 판단이라 issue-only(#603).
+> - **나머지 8커밋 재확인**: `0d53165`(messages-ad)·`93d3fe6`(합배송 포인터, #477 패턴 정확 이식)·`0e871bc`(라인할인 복원)·`d72ac2e`(print-stats event_kind, Area2가 완결 확인한 스윕의 잔여 4곳 메움)·`132c9f1`/`3e3e473`(#599/#600 IDOR 픽스)·`ff2f2d2`(order_ai_files 재연결, #597 정확히 해소 — item_id+sort_order 매칭 후 미매칭분만 DELETE, `#124` 패턴 그대로 이식) 전부 Area2/3/5/6이 이미 각자 렌즈로 검증 + 이번 데이터정합 렌즈로도 재확인해 이상 없음. `ff2f2d2`가 고친 order_ai_files와 정확히 같은 클래스인 `return_items`(#601)는 여전히 미픽스로 grep 재확인(`grep -n return_items src/routes/orders/update.ts` = 0건) — open 유지 정상.
+> - **마이그레이션 번호 중복 재확인**: 기존 5쌍(0327·0412·0416·0420·0453) net-new 0. `0512`(교체그룹 분류 재보정, 실물 근거 기반 UPDATE·문서화된 롤백 포함)·`0522`(card_checklist_items) 둘 다 컬럼존재성/NOT NULL/포지셔널 정합 clean.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **3**(#601·#602 + 신규 #603) · `reason:completed` **524**(변동없음) · `reason:not_planned` **4**(변동없음, `reason:duplicate` 2는 기존 유지 가정 — 변동 신호 없음).
+> - **🧬 SKILL 강화**: 없음 — #603은 기존 codify된 A-024/A-025(같은 파일 부분 롤아웃) + Area4 "상태-불일치" 클래스의 새 실례(신규 규칙 불요, 다만 대상이 DB 상태값이 아니라 "터미널 액션(출고)이 플래그를 안 지움" 변종이라는 점은 기존 클래스 설명과 일치).
+> - 신규 이슈 1건(#603, issue-only — 큐 필터 정책판단), 자동수정 0건, done-sync: new 3(+1)·done 524(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-08-07T03:35):**
 > - **방법**: `git fetch origin main`(HEAD `fb9127f` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Playwright MCP가 세션 내내 connect/disconnect를 반복(egress 프록시 불안정 — 과거 Area1 로그의 prod 직접 curl 차단[exit 56/403]과 동일 계열 제약)해 라이브 브라우저 접근을 확보하지 못함 → 정적 코드 감사로 대체(과거 Playwright 불가 사이클의 표준 폴백). Area 3 **51회차** — 직전 Area3(`fb5a882`, 08-05T13:55, 50회차) 이후 `git log --since 2026-08-05T13:55 -- src/scripts src/pages src/layout index.tsx src/routes` = **17커밋** — Area2 59회차(08-06T21:33)가 코드품질 렌즈로 같은 윈도 대부분을 이미 훑었으나, UX 렌즈(빈 상태·로딩·에러 메시지·기존 컨벤션 대조)로는 전무.
@@ -124,10 +136,11 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 2건** — Area 3 51회차, 2026-08-07. 08-06 session #54에서 #585~#599 등 11건이 일괄 픽스+close됨 → 이 표를 그 실측 기준으로 갱신.)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 3건** — Area 4 53회차, 2026-08-07.)
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
+| #603 | cards "지시 현황" 개정필요 큐 — 출고 완료된 카드도 needs_reissue=1이면 영구 잔류(자기-클리어 없음) | Area 4 | bug,S | issue-only, 신규(#603) |
 | #602 | cards "지시 현황" 탭 — API 실패 시 "누락/개정 없음"으로 오표시(silent catch), 조치필요 배지도 숨겨짐 | Area 3 | bug,S | issue-only, 신규(#602) |
 | #601 | orders/update.ts 라인재작성 경로가 return_items.order_item_id(NOT NULL RESTRICT FK) 정리 누락 — 반품 등록된 주문 편집 시 100% 500 | Area 2 | bug,medium | issue-only, 신규(#601) |
 
