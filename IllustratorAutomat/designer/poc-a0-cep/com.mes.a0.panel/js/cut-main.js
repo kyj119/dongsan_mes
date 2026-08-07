@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.34.0';
+  var SHELL_VERSION = '0.35.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -817,7 +817,12 @@
       //   예산은 그대로 통과하고 마스크만 1억 픽셀대가 되어 몇 분씩 멈춘다
       //   (실측: 선택 392×212mm 파일 · 굽기 0.025mm/px).
       //   → **굽기 좌표에서 다시 재고** 넘으면 격자를 성글게 한다. 조용히 느려지지 않게 알린다.
-      var BAKE_MAX_PX = 60e6;
+      //   상한은 **실측으로** 정했다(Node, 이 PC). 마스크 처리(edgeMask = inkMask×2 + components×2
+      //   + downsample)만 재면: 10M 0.68초 · 20M 1.08 · 40M 2.43 · 60M **4.87초**. components 가 지배적이고
+      //   초선형이다. 여기에 일러의 굽기(호스트)가 더 붙는다.
+      //   32M = 마스크 약 1.8초 → 굽기까지 합쳐 실사용에서 견딜 만한 선. 더 곱게 하려면 선택을 나누거나
+      //   파일배율을 낮추면 된다(같은 실물 크기를 더 적은 픽셀로 표현하게 된다).
+      var BAKE_MAX_PX = 32e6;
       if (selAreaMm2 > 0) {
         var bakeMmpp = fineMmpp * bakeK;
         var estPx = selAreaMm2 / (bakeMmpp * bakeMmpp);
