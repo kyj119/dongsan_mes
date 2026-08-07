@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-08-07T09:22:41+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-08-07T15:27:01+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **3** (`search_issues(is:open,label:auto-improve)` 실측 — Area4 53회차. #601[order_items 라인재작성 시 return_items RESTRICT FK 미정리] + #602[cards 지시현황탭 silent-catch] + #603 신규[cards 개정필요 큐 출고후 영구잔류]) |
+| 🆕 new | **3** (`search_issues(is:open,label:auto-improve)` 실측 — Area5 52회차, 변동 없음. #601[order_items 라인재작성 시 return_items RESTRICT FK 미정리] + #602[cards 지시현황탭 silent-catch] + #603[cards 개정필요 큐 출고후 영구잔류]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **524** (`reason:completed` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+
+> **Area 5 보안 (2026-08-07T15:27):**
+> - **방법**: `git fetch origin main`(HEAD `f66d99b`) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 5 **52회차**.
+> - **⚠️ git 히스토리 재작성 확인**: 직전 Area5(`50eb5ef`, 08-06T03:19, 51회차)가 `git merge-base --is-ancestor 50eb5ef HEAD` = **NOT ANCESTOR** — 이번 fetch에서 히스토리가 통째로 재작성됨(`git log`가 총 53커밋뿐, `778d0d1`이 부모 없는 root 커밋으로 전체 웹앱 트리 1381파일을 한번에 포함 = squash). 최근 10커밋은 전부 `feat(cost)`/`fix(cut)`류(재단 패널 bleed·MAXRECTS 패킹·깃발 원가) — `git show --stat`로 개별 확인한 결과 **`src/routes`·`src/scripts`·`migrations` 무터치**(전부 `docs/dongsan-import/*` 데이터스크립트 또는 `IllustratorAutomat/designer/.../cut-main.js` = CLAUDE.md 명시 별도 배포축, 웹앱 보안 범위 밖). 파일 트리 자체는 정상(routes 97·scripts 91·migrations 520·최신 `0522_work_order_checklist.sql` = Area4 53회차가 본 것과 일치) — 데이터 유실 아님, 세션 컨테이너의 git 이력 재구성 아티팩트로 판단(기존 로그에 반복 기록된 "force-updated" 현상의 극단형). 타임스탬프 앵커(2026-08-06T03:19)로 재확인해도 웹앱 관련 신규 커밋은 `82b9e3e` 1건뿐.
+> - **`82b9e3e`(AR 선수금 분리) 보안 렌즈 재검토**: `deriveArSplit`(신설) — 파라미터 전부 `.bind(...)` 바인딩(SQL 문자열 삽입 0), `entityFilter(c,'g'|'p'|'a')` 표준 헬휼 사용(직접 `getEntityId` 삽입 아님), `/financial/balance-snapshot`만 `allEntities:true`로 무필터인데 이 엔드포인트는 기존부터 "설계상 전사 기준"이 주석으로 명시된 기존 컨벤션(신규 격리누락 아님, 기존 무필터 쿼리를 헬퍼로 대체한 것뿐). 프론트(`accounting.js` `accKpiAdvance`)에 새로 노출된 `advance_received`/`advance_clients`/`receivable_net`은 전부 서버 SQL 집계 숫자(`accWon()` 포맷)라 innerHTML XSS 싱크 아님(FP클래스: 숫자 강제). net-new 0.
+> - **#599·#600 fixed-in-tree 재검증(직전 51회차가 "clean, 형제 패턴 명확" 명시한 항목의 close 이후 실물 확인)**: `cards/queries.ts` `GET /:id/history`(:1164)·`GET /:id/checklist`(:1195)·`GET /:id/defects`(:1220) 3곳 전부 `cardEntityFilter`로 소유 카드 선검증 후 404 게이트 확인(#599 완결). `printEvents.ts` `POST /link`(:1176)도 `cardEntityFilter(c,'c')`로 body의 `card_id`를 신뢰 전 재검증 확인(#600 완결). 두 이슈 모두 `list_issues(OPEN,auto-improve)`에 미등장 = close 정합.
+> - **필수 grep 2종(매 사이클)**: 시크릿 폴백 `fax.ts:43 BAROBILL_FTP_PASSWORD || ''`(빈 문자열, 기존 FP) 1건 외 net-new 0. 기본비밀번호/CI secrets 폴백 0건.
+> - **마이그 번호 중복 재확인**: `ls migrations/*.sql`로 추출한 4자리 번호 중복 = 기존 5쌍(0327·0412·0416·0420·0453) 그대로, net-new 0.
+> - **open 이슈 3건(#601/#602/#603) 성격 확인**: 셋 다 라벨상 bug/medium·S이며 IDOR·인증누락·시크릿 노출 등 보안 카테고리 아님(FK 정리·silent-catch·상태필터 누락 = Area2/3/4 소관) — Area5 재분류 대상 아님.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **3**(변동없음, #601·#602·#603) · `reason:completed` **524**(변동없음) · `reason:not_planned` **4** + `reason:duplicate` **2** = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — 이번 사이클은 net-new 보안 발견 0(신규 웹앱 churn이 사실상 1커밋뿐이었고 그마저 clean). 신규 규칙 불요.
+> - 신규 이슈 0건, 자동수정 0건, done-sync: new 3(변동없음)·done 524(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-08-07T09:22):**
 > - **방법**: `git fetch origin main`(HEAD `020133c` = origin/main 일치, 워킹트리 clean) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 4 **53회차** — 직전 Area4(`6888d70`, 08-05T21:29, 52회차)가 이번 fetch에서 정상 조회 가능(force-update 아님) → `git log 6888d70..HEAD -- src/routes migrations src/scripts index.tsx src/layout src/pages` = **10커밋**(합배송 포인터정리·messages-ad 실패수신자·라인할인 복원·print-stats event_kind 보강·order_ai_files 재연결·#599/#600 IDOR 픽스 2건 + **카드=작업지시서 신기능** `50eb5ef`).
