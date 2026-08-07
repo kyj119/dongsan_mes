@@ -303,21 +303,50 @@
       acc.push([pts[0], vAdd(pts[0], vMul(t1, d)), vAdd(pts[1], vMul(t2, d)), pts[1]])
       return
     }
+    // ★★"원본 bbox 밖으로 튀어나갔는가" 도 **분할 사유**다 (2026-08-07 실사용).
+    //
+    //   거리 오차(maxErr)는 곡선이 표본점에 얼마나 가까운지만 본다. 그런데 직선 구간과 호가
+    //   **한 베지어를 공유**하면, 표본점 근처는 다 지나가면서도 전환부에서 **바깥으로 부푼다.**
+    //   화면에서는 직선이 호로 넘어가는 자리에 **갈고리처럼 튀어나온 모양**이 된다
+    //   (실측 500×350 라운드 사각: 윗변 앵커는 전부 y=980 인데 패스 bbox 상단이 980.16).
+    //   3차 베지어는 제어점 껍질을 못 벗어나므로, **껍질이 이 구간 표본의 bbox 안**이면 튐이 없다.
+    //   구간 자기 bbox 로 재는 것이 핵심이다 — 전체 bbox 로 재면 정상적인 호까지 걸려 곡선이 꺼진다.
+    var lo0 = pts[0][0], hi0 = pts[0][0], lo1 = pts[0][1], hi1 = pts[0][1]
+    for (var z = 1; z < pts.length; z++) {
+      if (pts[z][0] < lo0) lo0 = pts[z][0]
+      if (pts[z][0] > hi0) hi0 = pts[z][0]
+      if (pts[z][1] < lo1) lo1 = pts[z][1]
+      if (pts[z][1] > hi1) hi1 = pts[z][1]
+    }
+    var bulge = function (cc) {
+      var d = 0, j, p
+      for (j = 1; j <= 2; j++) {
+        p = cc[j]
+        if (lo0 - p[0] > d) d = lo0 - p[0]
+        if (lo1 - p[1] > d) d = lo1 - p[1]
+        if (p[0] - hi0 > d) d = p[0] - hi0
+        if (p[1] - hi1 > d) d = p[1] - hi1
+      }
+      return d
+    }
     var u = chordParams(pts)
     var c = genBezier(pts, u, t1, t2)
     var e = maxErr(pts, u, c)
-    if (e.err < tol) { acc.push(c); return }
+    if (e.err < tol && bulge(c) <= tol) { acc.push(c); return }
     // 오차가 조금 넘는 정도면 매개변수만 손봐도 들어온다(분할보다 점 수가 적게 나온다)
     if (e.err < tol * tol) {
       for (var k = 0; k < 4; k++) {
         u = reparam(pts, u, c)
         c = genBezier(pts, u, t1, t2)
         e = maxErr(pts, u, c)
-        if (e.err < tol) { acc.push(c); return }
+        if (e.err < tol && bulge(c) <= tol) { acc.push(c); return }
       }
     }
     if (depth <= 0) { acc.push(c); return }   // 재귀 폭주 방지 — 정확도보다 종료가 우선
-    var i = Math.min(pts.length - 2, Math.max(1, e.idx))
+    // ★튐 때문에 쪼개는 경우엔 `e.idx` 가 의미 없다(거리 오차는 이미 통과했다) → 가운데서 자른다.
+    //   그대로 e.idx(=0 부근)를 쓰면 2점짜리 조각이 반복 생성돼 재귀만 돌고 튐은 안 없어진다.
+    var i = (e.err < tol) ? (pts.length >> 1) : e.idx
+    i = Math.min(pts.length - 2, Math.max(1, i))
     var center = vUnit(vSub(pts[i - 1], pts[i + 1]))
     fitCubic(pts.slice(0, i + 1), t1, center, tol, depth - 1, acc)
     fitCubic(pts.slice(i), [-center[0], -center[1]], t2, tol, depth - 1, acc)
@@ -446,6 +475,59 @@
       if (corners.length && corners[corners.length - 1] === at) continue
       corners.push(at)
       scan = at
+    }
+    corners.sort(function (a, b) { return a - b })
+    // ★★직선 구간의 **양 끝에도 매듭을 넣는다** (2026-08-07 실사용 — 라운드 사각 재단선).
+    //
+    //   코너 판정은 **꺾임 각도**만 본다. 그런데 직선↔호 전환은 **접선이 연속(0°)** 이라
+    //   코너로 안 잡히고, 하나의 베지어가 *직선 끝 + 호 시작* 을 함께 근사한다. 그 베지어는
+    //   허용오차 안에서 바깥으로 부풀 수 있고, 화면에서는 **직선이 호로 넘어가는 자리에 갈고리처럼
+    //   튀어나온 모양**이 된다(실측 500×350 라운드 사각: 윗변 앵커는 전부 y=980 인데 패스 bbox 상단이
+    //   980.16 — 전환부에서 0.16mm 솟구쳤다. 조각마다 같은 자리에 생긴다).
+    //   → 직선 구간을 **자기 구간으로 분리**하면 호와 베지어를 공유하지 않으므로 원리적으로 안 부푼다.
+    //
+    //   ⚠️ 곡선 도형은 영향이 없다 — 직선 구간이 없으면 매듭이 하나도 안 늘어난다(원·타원 = 종전과 동일).
+    //   ⚠️⚠️ 후보는 `simplify`(DP) 로 고르되, **직선인지는 편차를 직접 잰다.** DP 간격만 보면
+    //      완만한 호까지 직선으로 오인한다 — 하네스가 즉시 잡았다(원 r=380 에서 코너 70개·세그 154개).
+    //      호는 현 길이 L 에 대해 새그 ≈ L²/(8R) 로 **길수록 급격히 커진다.** 그래서 조건은 두 개다:
+    //        ① 현이 충분히 길 것(LONG)  ② 그 구간의 최대 편차가 **아주 작을 것**(EPS)
+    //      r=380 원은 80px 현에서 새그 2.1px, 타원(곡률반경 722)은 1.11px → EPS 0.6px 에 전부 걸러진다.
+    //      실제 직선 변은 래스터 계단이라도 편차가 0.5px 안쪽이라 그대로 통과한다.
+    var LONG = Math.max(80, tol * 25)
+    var EPS = Math.max(0.6, tol * 0.3)
+    var fine = simplify(poly, Math.max(tol * 0.5, 0.5))
+    var fIdx = [], fscan = 0
+    for (var g = 0; g < fine.length; g++) {
+      var ft = fine[g], fat = -1
+      for (var s2 = 0; s2 < n; s2++) {
+        var k2 = (fscan + s2) % n
+        if (q[k2][0] === ft[0] && q[k2][1] === ft[1]) { fat = k2; break }
+      }
+      if (fat < 0) continue
+      fIdx.push(fat); fscan = fat
+    }
+    for (var g2 = 0; g2 + 1 < fIdx.length; g2++) {
+      var ia = fIdx[g2], ib = fIdx[g2 + 1]
+      var ddx = q[ib][0] - q[ia][0], ddy = q[ib][1] - q[ia][1]
+      var chord = Math.sqrt(ddx * ddx + ddy * ddy)
+      if (chord < LONG) continue
+      var dev = 0
+      for (var m2 = ia + 1; m2 < ib; m2++) {
+        var dv = Math.abs((q[m2][0] - q[ia][0]) * ddy - (q[m2][1] - q[ia][1]) * ddx) / chord
+        if (dv > dev) { dev = dv; if (dev > EPS) break }
+      }
+      if (dev > EPS) continue                 // 완만한 호다 — 쪼개면 안 된다
+      addKnot(ia); addKnot(ib)
+    }
+    // ★기존 코너 **바로 옆**은 같은 꼭짓점이다 — 코너 검출(성근 폴리라인)과 DP 가 고른 점이
+    //   한두 픽셀 어긋날 수 있는데, 그걸 따로 세면 매듭이 하나 더 생긴다(하네스: L자 코너 7≠6).
+    function addKnot(at) {
+      var NEAR = Math.max(2, tol * 2)
+      for (var z = 0; z < corners.length; z++) {
+        var e = q[corners[z]]
+        if (Math.abs(e[0] - q[at][0]) <= NEAR && Math.abs(e[1] - q[at][1]) <= NEAR) return
+      }
+      corners.push(at)
     }
     corners.sort(function (a, b) { return a - b })
     // 코너가 없으면(원·타원) 아무 지점에서나 한 번 끊어 닫힌 고리를 연 구간으로 만든다

@@ -299,6 +299,32 @@ console.log('\n── ⑧ 곡선 피팅 (베지어) ──')
     // tol=1px 로 맞췄으니 픽셀 계단(±0.5px)을 감안해도 2px 를 넘으면 안 된다
     ok(dev <= 2, 'R8', `${name}: 곡선이 원본에서 ${dev.toFixed(2)}px 벗어났다 (한계 2px) — 부풀거나 꺼진 것`)
   }
+
+  // ★★직선↔호 전환에서 **바깥으로 튀지 않는가** (2026-08-07 실사용).
+  //   코너 판정은 꺾임 각도만 본다. 직선↔호는 접선이 연속(0°)이라 코너로 안 잡혀,
+  //   하나의 베지어가 직선 끝과 호 시작을 함께 근사하며 바깥으로 부푼다 —
+  //   화면에서는 **직선이 호로 넘어가는 자리에 갈고리처럼 튀어나온 모양**이 된다.
+  //   실측(500×350 라운드 사각, 조각 10장 전부): 윗변 앵커는 전부 y=980 인데 패스 bbox 상단이 980.16.
+  //   편차 평균으로는 안 잡힌다 — **bbox 초과**로 재야 잡힌다.
+  console.log('\n  직선↔호 전환 (bbox 초과 = 튐)')
+  for (const [name, m] of [['라운드사각 r=40', rr(40)], ['라운드사각 r=110', rr(110)], ['정사각 400', mk((x, y) => x > 250 && x < 650 && y > 250 && y < 650)]]) {
+    const poly = traceAll(m, W, H)[0].poly
+    const segs = fitCurves(poly, 1)
+    let pl = Infinity, pt = Infinity, pr = -Infinity, pb = -Infinity
+    for (const p of poly) {
+      if (p[0] < pl) pl = p[0]; if (p[0] > pr) pr = p[0]
+      if (p[1] < pt) pt = p[1]; if (p[1] > pb) pb = p[1]
+    }
+    // 베지어 껍질(앵커+제어점)의 극값 — 곡선은 껍질 밖으로 못 나가므로 이게 상한이다
+    let bl = Infinity, bt = Infinity, br = -Infinity, bb = -Infinity
+    for (const s of segs) for (const p of s) {
+      if (p[0] < bl) bl = p[0]; if (p[0] > br) br = p[0]
+      if (p[1] < bt) bt = p[1]; if (p[1] > bb) bb = p[1]
+    }
+    const over = Math.max(pl - bl, pt - bt, br - pr, bb - pb)
+    console.log(`  ${name.padEnd(14)} bbox 초과 ${over.toFixed(2)}px`)
+    ok(over <= 1.5, 'R8', `${name}: 곡선이 원본 bbox 밖으로 ${over.toFixed(2)}px 튀어나왔다 (한계 1.5px)`)
+  }
 }
 
 // ── ⑨ 마스크 축소 = 경계 정확도 (spec §6.23) ───────────────────────
