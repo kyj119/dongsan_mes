@@ -737,16 +737,21 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   //   여백>0 이면 칼선이 이웃과 겹치고, 여백<0 이면 떨어져 공유할 변이 없다.
   //   간격>0 은 애초에 붙이지 않겠다는 뜻이고, 이형은 붙여도 칼선이 안 맞는다.
   //   넷 중 하나라도 걸리면 기존 래스터 경로여야 한다(회귀 0).
-  ok('3y 맞붙임은 여백·간격 정확히 0 일 때만',
-    /buttMode && offsetMm === 0 && gapMm === 0 && !useVec && prep\.sizes\.length/.test(panelSrc))
+  // ⚠️ 조건은 **왜 안 켜졌는지 말하는** if/else 사슬로 바뀌었다(2026-08-07). 조용히 폴백하면
+  //    사용자는 기능이 고장난 줄 안다 — 실제로 한 번 그렇게 헛돌았다. 항목별로 나눠 본다.
+  ok('3y 맞붙임은 여백·간격 정확히 0 일 때만', /offsetMm !== 0 \|\| gapMm !== 0/.test(panelSrc))
+  ok('3y 벡터 경로에서는 안 쓴다', /else if \(useVec\)/.test(panelSrc))
+  ok('3y 조각 크기를 못 받으면 안 쓴다', /!prep\.sizes\.length/.test(panelSrc))
+  ok('3y 안 켜지면 이유를 결과에 싣는다',
+    /buttWhy/.test(panelSrc) && /맞붙임 정확 배치 OFF/.test(panelSrc) && /buttDiag \+= buttExact/.test(panelSrc))
   ok('3y 전 조각이 직사각일 때만', /BT\.isRectish\(prep\.pieces\[bi\]\.base\)/.test(panelSrc))
   // ★구 호스트는 C 줄을 조용히 무시한다 → 조각별 칼선도 안 보냈으니 **칼선 없는 판**이 나온다.
   //   축2는 Z: 파일 1개로 전 PC 에 퍼지고 축3은 PC별 설치라, 역방향 스큐가 반드시 생긴다
   //   (도련 PNG 때와 같은 함정 — 그때도 구 패널/새 호스트 조합을 따로 막아야 했다).
-  ok('3y 구 호스트면 맞붙임을 쓰지 않는다', /hostSupportsButt\(\) && buttMode/.test(panelSrc))
+  ok('3y 구 호스트면 맞붙임을 쓰지 않는다', /else if \(!hostSupportsButt\(\)\)/.test(panelSrc))
   ok('3y 맞붙임 최소 호스트 명시', /var BUTT_MIN_HOST = \[0, 18, 0\]/.test(panelSrc))
   // ★실패하면 조용히 이상한 판을 내지 말고 기존 경로로 되돌아가야 한다
-  ok('3y 실패 시 래스터로 폴백', /buttExact = false;\s*\n\s*res = nestPlace\(NST, prep/.test(panelSrc))
+  ok('3y 실패 시 래스터로 폴백', /buttExact = false;[\s\S]{0,180}?res = nestPlace\(NST, prep/.test(panelSrc))
   // ★맞붙임에서는 조각별 닫힌 경로를 만들지 않는다 — 그게 두 줄의 원인이다
   ok('3y 맞붙임이면 조각별 칼선 생략', /!useVec && !res\.butt\) pieceCutLines/.test(panelSrc))
   ok('3y 공유 변은 C 줄로', /lines\.push\('C ' \+ \(sg\.x1 \+ domboMm\(\)\)/.test(panelSrc))

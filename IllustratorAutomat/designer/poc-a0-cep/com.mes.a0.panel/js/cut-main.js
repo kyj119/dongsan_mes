@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.40.0';
+  var SHELL_VERSION = '0.41.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -1257,12 +1257,26 @@
         //     · 간격 > 0  → 애초에 붙이지 않겠다는 뜻이다
         //     · 이형      → 붙여도 칼선이 안 맞는다
         //     넷 중 하나라도 걸리면 **기존 래스터 경로 그대로**(회귀 0).
+        // ★★안 켜졌으면 **왜 안 켜졌는지 말한다** (2026-08-07 용준님: "여백 0·간격 0 인데 그대로다").
+        //   조건이 5개라 조용히 폴백하면 사용자는 기능이 고장난 줄 안다 — 실제로 그렇게 한 번 헛돌았다.
+        //   호스트 구버전이 가장 흔한 원인인데, 그건 **패널이 아니라 Z: 배포** 문제라 화면에 안 쓰면 알 수 없다.
         var BT = window.MesCutButt;
-        var buttExact = false;
-        if (BT && hostSupportsButt() && buttMode && offsetMm === 0 && gapMm === 0 && !useVec && prep.sizes.length) {
-          buttExact = true;
-          for (var bi = 0; bi < prep.pieces.length; bi++) {
-            if (!BT.isRectish(prep.pieces[bi].base)) { buttExact = false; break; }
+        var buttExact = false, buttWhy = '';
+        if (buttMode) {
+          if (!BT) buttWhy = 'butt.js 미설치 — 패널 설치본을 갱신하세요';
+          else if (!hostSupportsButt()) buttWhy = '호스트 구버전(' + (hostVersion || '?') + ' < CUT-CEP-0.18.0) — Z: 의 mes-cut-host.jsx 를 배포하세요';
+          else if (offsetMm !== 0 || gapMm !== 0) buttWhy = '여백/간격이 0이 아님(' + offsetMm + '/' + gapMm + ')';
+          else if (useVec) buttWhy = '칼선 방식이 벡터 — 맞붙임은 래스터 경로에서만 됩니다';
+          else if (!prep.sizes.length) buttWhy = '조각 크기를 못 받았습니다';
+          else {
+            buttExact = true;
+            for (var bi = 0; bi < prep.pieces.length; bi++) {
+              if (!BT.isRectish(prep.pieces[bi].base)) {
+                buttExact = false;
+                buttWhy = '조각 #' + prep.pieces[bi].id + ' 가 직사각이 아님(라운드·이형) — 맞붙임은 직각 사각만';
+                break;
+              }
+            }
           }
         }
         // ★mmpp 는 여기서 잡는다 — 아래 진단·좌표 변환이 전부 이 값을 쓴다.
@@ -1275,6 +1289,7 @@
           : nestPlace(NST, prep, sheetWmm, sheetHmm, allowRot);
         if (buttExact && (!res || !res.sheets.length)) {   // 폭 초과 등 — 조용히 틀리지 말고 되돌린다
           buttExact = false;
+          buttWhy = '맞붙임 배치가 시트 폭/높이에 안 들어가 래스터로 되돌렸습니다';
           res = nestPlace(NST, prep, sheetWmm, sheetHmm, allowRot);
         }
         T.place = Date.now();
@@ -1292,6 +1307,11 @@
         //   마스크 폭이 아트보다 넓으면 굽기·임계 문제이고, 같은데 자리가 벌어져 있으면 배치 문제다.
         //   추측으로 고치다 두 번 헛짚어서, 맞붙임일 때는 판정에 필요한 수치를 그대로 싣는다.
         var buttDiag = '';
+        if (buttMode) {
+          buttDiag += buttExact
+            ? '\n맞붙임 정확 배치 ON — 맞닿은 재단선은 **한 줄만** 나갑니다.'
+            : ('\n⚠ 맞붙임 정확 배치 OFF — ' + (buttWhy || '조건 미충족') + '. 조각마다 칼선이 따로 나가 겹치는 변은 두 번 잘립니다.');
+        }
         if (buttMode && res.sheets.length) {
           var pls = res.sheets[0].placements.slice(0, 12);
           var lines2 = [];
