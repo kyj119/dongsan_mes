@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.49.0';
+  var SHELL_VERSION = '0.50.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -1460,7 +1460,15 @@
           // 가정효율 55% — 실측에서 전체 폭 스윕(10회)의 최적과 1cm² 차이였다. 한 번이면 충분하다.
           var guessW = Math.round(Math.sqrt(grownPx * prep.mmpp * prep.mmpp / 0.55)) + domboMm() * 2;
           if (guessW > domboMm() * 2 + 10 && guessW < sheetWmm) {
-            var alt = nestPlace(NST, prep, guessW, sheetHmm, allowRot);
+            // ★★맞붙임이면 **맞붙임으로 다시 돌린다** (2026-08-07 검토에서 발견).
+            //   여기서 래스터 배치로 갈아치우면 `res.butt` 와 `segs` 가 사라져 공유 변(`C` 줄)이
+            //   안 나가고 조각별 칼선이 나간다 — 그런데 화면 문구·진단은 이미 만들어져 있어
+            //   **"맞닿은 재단선은 한 줄만 나갑니다" 라고 써 놓고 두 줄을 내보낸다.**
+            //   조용히 달라지는 것이 가장 나쁘다. 좁힌 폭에서 맞붙임이 안 되면 최적화를 포기한다.
+            var alt = buttExact
+              ? buttPlace(BT, prep, guessW, sheetHmm, allowRot)
+              : nestPlace(NST, prep, guessW, sheetHmm, allowRot);
+            if (!alt || !alt.sheets.length) alt = { sheets: [], unplaced: res.unplaced, placements: [] };
             var a0 = plateAreaMm2(res, prep), a1 = plateAreaMm2(alt, prep);
             // 조용히 나빠지지 않게 — 미배치가 늘거나 면적이 안 줄면 원래 배치를 그대로 쓴다
             if (alt.sheets.length && alt.unplaced.length <= res.unplaced.length && a1 < a0) {

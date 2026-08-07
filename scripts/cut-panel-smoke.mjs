@@ -770,10 +770,16 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   //   깔려 **전부 겹친 판**이 나간다(2026-08-07 실사용). anyOverlap 은 포장 공간만 보므로 못 잡는다
   //   — 축척이 통째로 틀리면 포장 공간에서는 아무 문제가 없다. **다른 출처(마스크)와 대조**해야 한다.
   ok('3y 맞붙임이 파일→저장 좌표로 환산',
-    /var k = fileToSave\(\) \|\| 1/.test(panelSrc) && /w = sz\.w \/ k, h = sz\.h \/ k/.test(panelSrc))
+    /var k = fileToSave\(\) \|\| 1/.test(panelSrc) && /w: sz\.w \/ k, h: sz\.h \/ k/.test(panelSrc))
   ok('3y 배치 크기를 마스크와 대조(검산)', /BT\.inkBBox\(pc\.base\)/.test(panelSrc) && /pls\[s\]\.rot === 90 \? bb\.H : bb\.W/.test(panelSrc))
   ok('3y 못 넣은 조각이 있으면 되돌린다', /if \(r\.unplaced\.length\) return null/.test(panelSrc))
-  ok('3y 폭 초과는 세워서 넣는다', /rot = 90/.test(panelSrc) && /rotOf\[p\.id\] \|\| 0/.test(panelSrc))
+  // 회전은 패커가 정한다(폭 맞춤뿐 아니라 틈 메우기에도 쓰인다) — 패널은 허용 여부만 넘기고
+  //   결과의 rot 를 그대로 호스트에 전달한다.
+  ok('3y 회전 허용을 패커에 넘긴다', /BT\.packRects\(rects, usableW, allowRot !== false\)/.test(panelSrc))
+  ok('3y 패커가 정한 회전을 그대로 쓴다', /rot: p\.rot \|\| 0/.test(panelSrc))
+  // ★평판 폭 좁히기 재시도가 맞붙임 결과를 갈아치우면 segs 가 사라진다 → 화면은 "한 줄" 이라고
+  //   써 놓고 조각별 칼선이 나간다. 좁힌 폭에서도 맞붙임으로 돌려야 한다.
+  ok('3y 폭 좁히기가 맞붙임을 유지', /alt = buttExact[\s\S]{0,120}?buttPlace\(BT, prep, guessW/.test(panelSrc))
   // ★구 호스트는 C 줄을 조용히 무시한다 → 조각별 칼선도 안 보냈으니 **칼선 없는 판**이 나온다.
   //   축2는 Z: 파일 1개로 전 PC 에 퍼지고 축3은 PC별 설치라, 역방향 스큐가 반드시 생긴다
   //   (도련 PNG 때와 같은 함정 — 그때도 구 패널/새 호스트 조합을 따로 막아야 했다).
