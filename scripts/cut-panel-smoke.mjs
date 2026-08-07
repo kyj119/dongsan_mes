@@ -758,7 +758,14 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   //   맞붙임은 bbox 의 변만 그으므로 여분에는 칼선이 안 생긴다 → 거절이 아니라 **알림**이 맞다.
   ok('3y 전 조각의 본체가 직사각일 때만', /BT\.isRectish\(mp\.mask\)/.test(panelSrc))
   ok('3y 본체 = 가장 큰 연결요소', /function mainPart\(G, base\)/.test(panelSrc) && /c\.lab\[i\] === best/.test(panelSrc))
-  ok('3y 여분은 거절이 아니라 알림', /buttStray/.test(panelSrc) && /인쇄에는 남습니다/.test(panelSrc))
+  ok('3y 여분은 거절이 아니라 알림', /buttStray/.test(panelSrc) && /인쇄에는 그대로 나갑니다/.test(panelSrc))
+  // ★굽기 캔버스 테두리에 닿은 덩어리는 **아티팩트**다 — pad(≥1mm) 덕에 진짜 아트는 못 닿는다.
+  //   실물 3조각의 PNG 맨 아래 1~4행이 전폭으로 칠해져 나왔고, 그 하나가 세 증상을 다 만들었다
+  //   (bbox 부풀림 · 맞붙임 거절 · 래스터 칼선에 테두리 하나 더). 축소 **전에** 걷어내야 한다.
+  ok('3y 테두리 아티팩트를 걷어낸다', /function dropBorderTouching/.test(panelSrc)
+    && /dropBorderTouching\(G, use, img\.W, img\.H\)/.test(panelSrc))
+  ok('3y 가장 큰 덩어리는 안 지운다', /id !== keep/.test(panelSrc))
+  ok('3y 걷어냈으면 알린다', /edgeNote/.test(panelSrc) && /래스터화 아티팩트/.test(panelSrc))
   // ★구 호스트는 C 줄을 조용히 무시한다 → 조각별 칼선도 안 보냈으니 **칼선 없는 판**이 나온다.
   //   축2는 Z: 파일 1개로 전 PC 에 퍼지고 축3은 PC별 설치라, 역방향 스큐가 반드시 생긴다
   //   (도련 PNG 때와 같은 함정 — 그때도 구 패널/새 호스트 조합을 따로 막아야 했다).

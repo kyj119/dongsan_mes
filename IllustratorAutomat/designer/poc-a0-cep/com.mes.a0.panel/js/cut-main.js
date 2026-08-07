@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.46.0';
+  var SHELL_VERSION = '0.47.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -718,6 +718,42 @@
    *    낮은 임계로 되돌리고 그 사실을 호출자에게 알린다(조용히 잃는 것이 가장 나쁘다).
    * @returns {m, W, H, downgraded}
    */
+  /**
+   * ★굽기 캔버스 **테두리에 닿은** 연결요소를 지운다 (2026-08-07 실사용 근본수정).
+   *
+   * 굽기는 항상 `padMm ≥ 1mm` 만큼 투명 여백을 두른다 → **진짜 아트는 테두리에 절대 안 닿는다.**
+   * 그런데 실물 4조각 중 3조각의 PNG **맨 아래 1~4행**이 전폭으로 칠해져 나왔다
+   * (#0 1046행 중 1042~1045 · #1 3405 중 3403~3404 · #2 7249 중 7248). 일러 문서에는 그런
+   * 오브젝트가 없다 — 래스터화 가장자리 아티팩트다.
+   * 그대로 두면 ① 마스크 bbox 가 ~1mm 부풀고 ② 조각이 "덩어리 2개"가 되어 맞붙임이 거절되고
+   * ③ 래스터 칼선 경로에서 **그 선이 자기 칼선을 갖는다**(= 테두리가 하나 더 생긴다).
+   * 세 증상이 전부 이것 하나에서 나왔다.
+   *
+   * ⚠️ 가장 큰 덩어리는 **절대 지우지 않는다** — 판정이 틀렸을 때 조각을 통째로 날리면 안 된다.
+   * @returns {m, dropped} dropped = 지운 픽셀 수
+   */
+  function dropBorderTouching(G, m, W, H) {
+    var c = G.components(m, W, H, 1);
+    if (c.sizes.length < 2) return { m: m, dropped: 0 };
+    var keep = 0, i;
+    for (i = 1; i < c.sizes.length; i++) if (c.sizes[i] > c.sizes[keep]) keep = i;
+    var bad = {}, x, y, id;
+    for (x = 0; x < W; x++) {
+      id = c.lab[x]; if (id >= 0 && id !== keep) bad[id] = 1;
+      id = c.lab[(H - 1) * W + x]; if (id >= 0 && id !== keep) bad[id] = 1;
+    }
+    for (y = 0; y < H; y++) {
+      id = c.lab[y * W]; if (id >= 0 && id !== keep) bad[id] = 1;
+      id = c.lab[y * W + (W - 1)]; if (id >= 0 && id !== keep) bad[id] = 1;
+    }
+    var n = 0;
+    for (i = 0; i < m.length; i++) {
+      id = c.lab[i];
+      if (id >= 0 && bad[id]) { m[i] = 0; n++; }
+    }
+    return { m: m, dropped: n };
+  }
+
   function edgeMask(G, img, mode, factor) {
     var minPx = Math.max(16, Math.round(img.W * img.H * 0.0005));
     var cnt = function (m) {
@@ -729,10 +765,14 @@
     var lo = G.inkMask(img, mode, PRESENCE_ALPHA_THR);
     var use = hi, downgraded = false;
     if (cnt(hi) < cnt(lo)) { use = lo; downgraded = true; }
+    // ★테두리 아티팩트 제거는 **축소 전에** 한다 — 미세 격자에서는 pad 가 3px 이상이라
+    //   "테두리에 닿았으면 아티팩트"라는 판정이 성립한다. 축소 후(1.16mm/px)엔 pad 가 1px 미만이라
+    //   진짜 아트가 테두리에 닿아 보일 수 있어 같은 판정을 쓰면 위험하다.
+    var cleaned = dropBorderTouching(G, use, img.W, img.H);
     var ds = G.downsampleMask(use, img.W, img.H, factor, DOWNSAMPLE_COVER);
     // 축소 전 마스크도 돌려준다 — 조각 칼선은 이쪽에서 뽑아야 격자 한 칸만큼 뭉툭해지지 않는다
     return {
-      m: ds.m, W: ds.W, H: ds.H, downgraded: downgraded,
+      m: ds.m, W: ds.W, H: ds.H, downgraded: downgraded, edgeDropped: cleaned.dropped,
       fine: { m: use, W: img.W, H: img.H },
     };
   }
@@ -870,7 +910,7 @@
       //   그래서 굽기 해상도·패딩에 S/F 를 곱한다. F=S 면 1 이라 종전과 같다.
       //   (안 곱하면 F≠S 에서 마스크만 F 크기로 나와 배치가 통째로 어긋난다)
       var bakeK = fileToSave();
-      var pieces = [], rawInkPx = 0, i = 0, softened = 0;
+      var pieces = [], rawInkPx = 0, i = 0, softened = 0, edgeDropped = 0;
       // 굽기 경로가 바뀐 사유 — 조용히 느려지거나 조용히 달라지지 않게 결과에 싣는다.
       //   (makeCut 의 fallbackNote 는 **다른 함수의 지역 변수**다. 여기서 건드리면 안 된다)
       var bakeNote = '';
@@ -908,6 +948,9 @@
         cb({
           n: n, pieces: pieces, rawInkPx: rawInkPx, mmpp: rez.mmPerPx, sizes: sizeList || [],
           rPx: rez.rPx, exact: rez.exact, sub: sub, fineMmpp: fineMmpp, softened: softened, safetyMm: rez.safetyMm,
+          // ★조용히 지우지 않는다 — 굽기 아티팩트를 걷어냈으면 걷어냈다고 말한다.
+          edgeNote: edgeDropped ? ('\n※ 굽기 캔버스 테두리에 붙은 픽셀 ' + edgeDropped
+            + '개를 걷어냈습니다(래스터화 아티팩트 — pad 덕에 진짜 아트는 테두리에 닿지 않습니다).') : '',
           offsetMm: offsetMm, cutFinePx: cutFinePx, fillNote: fv.note, lineArt: fv.lineArt, fill: fv.fill,
           bakeNote: bakeNote,
         });
@@ -931,6 +974,7 @@
       function addPiece(id, img) {
         var em = edgeMask(G, img, 'alpha', sub);
         if (em.downgraded) softened++;
+        if (em.edgeDropped) edgeDropped += em.edgeDropped;
         // ★효율%를 정직하게 내려면 **팽창 전** 잉크를 세 둬야 한다 —
         //   팽창된 마스크로 세면 조각이 작고 gap 이 클수록 크게 부풀려진다.
         var pInk = 0;
@@ -1359,8 +1403,11 @@
                + (buttOverVec ? '\n  (칼선 방식은 벡터로 두셨지만 맞붙임을 씁니다 — 벡터는 조각마다 실루엣을 따로 그려 맞닿은 변이 반드시 두 줄이 됩니다)' : '')
                // ★여분은 **거절 사유가 아니라 알림**이다 — 맞붙임은 bbox 의 변만 그으므로 여분에
                //   칼선이 안 생긴다. 다만 인쇄에는 남으므로 파일을 볼지 말지는 사람이 정한다.
-               + (buttStray ? ('\n  ⚠ 본체와 떨어진 오브젝트가 있는 조각: ' + buttStray
-                   + ' — 맞붙임에서는 칼선이 안 생기지만 **인쇄에는 남습니다**. 파일의 여분 선·점을 확인하세요') : ''))
+               // ⚠️ 문구를 조심한다 — 이전 판은 이걸 "파일에 여분 선이 있다"고 단정했는데
+               //    실제로는 **우리 굽기의 테두리 아티팩트**였다(2026-08-07). 남의 파일을 잘못 지목했다.
+               //    테두리분은 이제 굽기 단계에서 걷어내므로, 여기 남은 것은 진짜 떨어진 개체다.
+               + (buttStray ? ('\n  · 본체와 떨어진 개체가 있는 조각: ' + buttStray
+                   + ' — 맞붙임에서는 칼선이 안 생깁니다(인쇄에는 그대로 나갑니다)') : ''))
             : ('\n⚠ 맞붙임 정확 배치 OFF — ' + (buttWhy || '조건 미충족') + '. 조각마다 칼선이 따로 나가 겹치는 변은 두 번 잘립니다.');
         }
         if (buttMode && res.sheets.length) {
@@ -1517,7 +1564,7 @@
                     : '\n⚠ 도련이 0 입니다 — 재단이 밀리면 옆 디자인이 바로 들어옵니다.')
                   + (mmpp > 0.3 ? ('\n⚠ 배치 격자가 ' + mmpp.toFixed(2) + 'mm 라 조각이 최대 그만큼 어긋날 수 있습니다 — 더 붙이려면 시트를 작게 잡으세요.') : '')) : '')
               + (prep.softened ? ('\n※ 반투명 조각 ' + prep.softened + '개는 경계를 느슨하게 잡았습니다.') : '')
-              + (prep.fillNote || '') + (prep.bakeNote || '') + qtyNote
+              + (prep.fillNote || '') + (prep.bakeNote || '') + (prep.edgeNote || '') + qtyNote
               + (prep.exact ? '' : ' ⚠ 해상도 한계로 올림 적용')
               + (allowRot ? ' · 회전 허용' : '')
               + '\n돔보 ' + (a.dombo || 0) + '판 — 별도 레이어(인쇄 ON) · 재단선 레이어는 인쇄 OFF'
