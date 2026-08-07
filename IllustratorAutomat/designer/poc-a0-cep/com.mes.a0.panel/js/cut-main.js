@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.45.0';
+  var SHELL_VERSION = '0.46.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -791,27 +791,33 @@
   }
 
   /**
-   * 직사각 판정이 왜 떨어졌는지 **사실로** 가른다 (2026-08-07).
+   * ★직사각 판정은 **본체(가장 큰 연결요소)** 로 한다 (2026-08-07 실사용).
    *
-   * 그냥 "라운드·이형"이라고만 쓰면 **틀린 진단**이 된다 — 실사용 4조각 중 3조각이
-   * 본체와 **떨어진 여분 오브젝트**(전폭 1~4px 짜리 가는 선) 때문에 떨어졌는데,
-   * 화면에는 라운드라고 떴다. 원인이 파일에 있는데 패널을 의심하게 만든다.
-   * 여분이 있으면 그건 맞붙임만의 문제가 아니다 — **어느 경로로 가든 칼선이 하나 더 생긴다.**
+   * 실물 파일 4조각 중 3조각에 본체와 떨어진 **전폭 1~4px 짜리 가는 선**이 붙어 있었다
+   * (본체에서 2mm 아래). 마스크 전체로 판정하면 그 선 때문에 전부 "이형"이 되어 맞붙임이
+   * 한 번도 안 켜졌다 — 그런데 **맞붙임은 윤곽을 따지 않는다.** 조각 bbox 의 변만 긋기 때문에
+   * 여분이 안에 있어도 칼선을 만들지 않는다. 오히려 래스터·벡터 경로에서 나던
+   * "여분 선이 자기 칼선을 갖는" 문제가 맞붙임에서는 사라진다.
+   * → 여분을 이유로 **거절하지 않는다.** 본체로 판정하고, 여분이 있으면 **알린다**.
+   *
+   * @returns {mask, strays, mainPx, nextPx} — mask 는 본체만 남기고 bbox 로 자른 것
    */
-  function rectFailWhy(G, BT, piece) {
-    var id = piece.id, base = piece.base;
-    try {
-      var c = G.components(base.m, base.W, base.H, 1);
-      var big = [];
-      for (var i = 0; i < c.sizes.length; i++) if (c.sizes[i] >= 4) big.push(c.sizes[i]);
-      big.sort(function (a, b) { return b - a; });
-      if (big.length >= 2) {
-        return '조각 #' + id + ' 에 본체와 **떨어진 오브젝트**가 ' + (big.length - 1) + '개 있습니다'
-          + '(본체 ' + big[0] + 'px · 다음 ' + big[1] + 'px). 파일에 여분 선·점이 있는지 보세요'
-          + ' — 이건 맞붙임만의 문제가 아니라 **칼선이 하나 더 생기는** 원인입니다';
-      }
-    } catch (e) { /* 성분 분석 실패 — 아래 일반 사유로 */ }
-    return '조각 #' + id + ' 가 직사각이 아님(라운드·이형) — 맞붙임은 직각 사각만';
+  function mainPart(G, base) {
+    var c = G.components(base.m, base.W, base.H, 1);
+    if (!c.sizes.length) return { mask: base, strays: 0, mainPx: 0, nextPx: 0 };
+    var best = 0, i;
+    for (i = 1; i < c.sizes.length; i++) if (c.sizes[i] > c.sizes[best]) best = i;
+    var sorted = c.sizes.slice(0).sort(function (a, b) { return b - a; });
+    var strays = 0;
+    for (i = 1; i < sorted.length; i++) if (sorted[i] >= 4) strays++;
+    if (c.sizes.length === 1) return { mask: base, strays: 0, mainPx: sorted[0], nextPx: 0 };
+    // 본체만 남긴 마스크 — isRectish 가 bbox 로 다시 자르므로 여기서는 걸러내기만 한다
+    var m2 = new Uint8Array(base.W * base.H);
+    for (i = 0; i < m2.length; i++) if (c.lab[i] === best) m2[i] = 1;
+    return {
+      mask: { W: base.W, H: base.H, m: m2 },
+      strays: strays, mainPx: sorted[0], nextPx: sorted.length > 1 ? sorted[1] : 0,
+    };
   }
 
   /** 부호 있는 팽창 — 양수=바깥(offsetMask) · 0=그대로 · 음수=안쪽(insetMask) */
@@ -1293,7 +1299,7 @@
         //   조건이 5개라 조용히 폴백하면 사용자는 기능이 고장난 줄 안다 — 실제로 그렇게 한 번 헛돌았다.
         //   호스트 구버전이 가장 흔한 원인인데, 그건 **패널이 아니라 Z: 배포** 문제라 화면에 안 쓰면 알 수 없다.
         var BT = window.MesCutButt;
-        var buttExact = false, buttWhy = '';
+        var buttExact = false, buttWhy = '', buttStray = '';
         if (buttMode) {
           if (!BT) buttWhy = 'butt.js 미설치 — 패널 설치본을 갱신하세요';
           else if (!hostSupportsButt()) buttWhy = '호스트 구버전(' + (hostVersion || '?') + ' < CUT-CEP-0.18.0) — Z: 의 mes-cut-host.jsx 를 배포하세요';
@@ -1302,9 +1308,11 @@
           else {
             buttExact = true;
             for (var bi = 0; bi < prep.pieces.length; bi++) {
-              if (!BT.isRectish(prep.pieces[bi].base)) {
+              var mp = mainPart(G, prep.pieces[bi].base);
+              if (mp.strays) buttStray += (buttStray ? ', ' : '') + '#' + prep.pieces[bi].id + '(' + mp.strays + '개)';
+              if (!BT.isRectish(mp.mask)) {
                 buttExact = false;
-                buttWhy = rectFailWhy(G, BT, prep.pieces[bi]);
+                buttWhy = '조각 #' + prep.pieces[bi].id + ' 의 본체가 직사각이 아님(라운드·이형) — 맞붙임은 직각 사각만';
                 break;
               }
             }
@@ -1348,7 +1356,11 @@
         if (buttMode) {
           buttDiag += buttExact
             ? ('\n맞붙임 정확 배치 ON — 맞닿은 재단선은 **한 줄만** 나갑니다.'
-               + (buttOverVec ? '\n  (칼선 방식은 벡터로 두셨지만 맞붙임을 씁니다 — 벡터는 조각마다 실루엣을 따로 그려 맞닿은 변이 반드시 두 줄이 됩니다)' : ''))
+               + (buttOverVec ? '\n  (칼선 방식은 벡터로 두셨지만 맞붙임을 씁니다 — 벡터는 조각마다 실루엣을 따로 그려 맞닿은 변이 반드시 두 줄이 됩니다)' : '')
+               // ★여분은 **거절 사유가 아니라 알림**이다 — 맞붙임은 bbox 의 변만 그으므로 여분에
+               //   칼선이 안 생긴다. 다만 인쇄에는 남으므로 파일을 볼지 말지는 사람이 정한다.
+               + (buttStray ? ('\n  ⚠ 본체와 떨어진 오브젝트가 있는 조각: ' + buttStray
+                   + ' — 맞붙임에서는 칼선이 안 생기지만 **인쇄에는 남습니다**. 파일의 여분 선·점을 확인하세요') : ''))
             : ('\n⚠ 맞붙임 정확 배치 OFF — ' + (buttWhy || '조건 미충족') + '. 조각마다 칼선이 따로 나가 겹치는 변은 두 번 잘립니다.');
         }
         if (buttMode && res.sheets.length) {

@@ -753,7 +753,12 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3y 조각 크기를 못 받으면 안 쓴다', /!prep\.sizes\.length/.test(panelSrc))
   ok('3y 안 켜지면 이유를 결과에 싣는다',
     /buttWhy/.test(panelSrc) && /맞붙임 정확 배치 OFF/.test(panelSrc) && /buttDiag \+= buttExact/.test(panelSrc))
-  ok('3y 전 조각이 직사각일 때만', /BT\.isRectish\(prep\.pieces\[bi\]\.base\)/.test(panelSrc))
+  // ★판정 대상은 **본체(가장 큰 연결요소)** 다. 마스크 전체로 보면 본체와 떨어진 가는 선
+  //   하나에 전부 '이형'으로 떨어진다 — 실물 4조각 중 3조각이 그랬고 맞붙임이 한 번도 안 켜졌다.
+  //   맞붙임은 bbox 의 변만 그으므로 여분에는 칼선이 안 생긴다 → 거절이 아니라 **알림**이 맞다.
+  ok('3y 전 조각의 본체가 직사각일 때만', /BT\.isRectish\(mp\.mask\)/.test(panelSrc))
+  ok('3y 본체 = 가장 큰 연결요소', /function mainPart\(G, base\)/.test(panelSrc) && /c\.lab\[i\] === best/.test(panelSrc))
+  ok('3y 여분은 거절이 아니라 알림', /buttStray/.test(panelSrc) && /인쇄에는 남습니다/.test(panelSrc))
   // ★구 호스트는 C 줄을 조용히 무시한다 → 조각별 칼선도 안 보냈으니 **칼선 없는 판**이 나온다.
   //   축2는 Z: 파일 1개로 전 PC 에 퍼지고 축3은 PC별 설치라, 역방향 스큐가 반드시 생긴다
   //   (도련 PNG 때와 같은 함정 — 그때도 구 패널/새 호스트 조합을 따로 막아야 했다).
