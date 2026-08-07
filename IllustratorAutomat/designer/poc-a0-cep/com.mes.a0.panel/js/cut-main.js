@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.32.0';
+  var SHELL_VERSION = '0.33.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -1142,10 +1142,12 @@
     function go() {
       var rez = nestResolution(G, offsetMm, gapMm, sheetWmm, sheetHmm);
       nestPrepare(G, rez, gapMm, offsetMm, fillMode, function (m) { done(m, 'err'); }, function (prep) {
+        T.prep = Date.now();
         // ★수량 확장은 **배치 전**이어야 한다 — 이 뒤의 grownPx·효율%·판 폭 추정이 전부 이 목록을 센다.
         var qtyNote = expandByQty(prep);
         out('배치 계산 중...');
         var res = nestPlace(NST, prep, sheetWmm, sheetHmm, allowRot);
+        T.place = Date.now();
         if (!res.sheets.length) { done('배치 실패 — 조각이 시트보다 큽니다.', 'err'); return; }
 
         // ★시트 모드에서 판이 **가로로 길쭉해지는** 것을 막는다 (2026-08-05 실측: 판 면적 −22%).
@@ -1238,6 +1240,7 @@
         }
 
         function afterBleed(bmap, note) {
+          T.bleed = Date.now();
           if (note) bleedNote += '\n※ 도련 — ' + note;
           for (var bid in bmap) {
             if (!bmap.hasOwnProperty(bid)) continue;
@@ -1250,6 +1253,7 @@
         host('mesCut_paramsPath()', function (pp) {
           var w = window.cep.fs.writeFile(pp, lines.join('\n'), window.cep.encoding.UTF8);
           if (!w || w.err !== 0) { done('params 쓰기 실패', 'err'); return; }
+          T.apply = Date.now();
           out('새 문서에 배치 중...');
           // 기하는 **항상** 보낸다 — 도련이 필요하기 때문이다. 칼선을 래스터로 뽑았으면 cutMode='raster'
           //   를 덧붙여 호스트가 벡터 실루엣을 다시 만들지 않게 한다(구 호스트는 5번째 인자를 무시한다).
@@ -1317,6 +1321,9 @@
                     ? ('\n⚠ 도련 ' + a.bleedfail + '개 조각 실패 — ' + bleedFailWhy(a.bleedcode)) : '')
                   + bleedNote) : '\n⚠ 도련 0mm — 만들지 않았습니다. 재단이 밀리면 흰 테두리가 남습니다.')
               + widthNote + buttDiag
+              + ('\n소요 ' + tms(T.t0, Date.now()) + '초 — 굽기 ' + tms(T.t0, T.prep)
+                 + ' · 배치 ' + tms(T.prep, T.place) + ' · 도련 ' + tms(T.place, T.bleed || T.place)
+                 + ' · 적용 ' + tms(T.apply || T.place, Date.now()) + '초')
               + (res.unplaced.length ? ('\n⚠ 배치 못한 조각 ' + res.unplaced.length + '개 — 시트를 키우거나 간격을 줄이세요.') : '')
               + (useVec ? '' : cvN.note) + vecNote,
               (res.unplaced.length || parseInt(a.bleedfail, 10) > 0) ? 'err' : 'ok');
@@ -1602,6 +1609,10 @@
     if (hostBusy) return;
     var base = pairBaseName();
     if (!base) { out('네스팅을 먼저 실행하세요.', 'err'); return; }
+    // ★단계별 소요시간 — '오래 걸린다'를 추측이 아니라 사실로 가른다(2026-08-06).
+    //   굽기·배치·도련·적용 중 어디인지 모르면 엉뚱한 곳을 최적화하게 된다(실제로 두 번 그랬다).
+    var T = { t0: Date.now(), prep: 0, place: 0, bleed: 0, apply: 0 };
+    var tms = function (a, b) { return Math.round((b - a) / 100) / 10; };
     setBusy(true);
     out('잠금 확인 중...');
     host('mesCut_acquireLock("' + PANEL_OWNER + '","export-pair")', function (lk) {
