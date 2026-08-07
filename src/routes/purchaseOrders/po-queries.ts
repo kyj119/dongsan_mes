@@ -9,7 +9,7 @@ import type { HonoEnv } from '../../types/env'
 import { authMiddleware } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
-import { excludeInternalClientsSql } from '../../constants/intercompany'
+import { excludePurchaseNonCounterpartiesSql } from '../../constants/intercompany'
 import { getEntityCompanyInfo } from '../../utils/entitySettings'
 import { kstYmd } from '../../utils/kstDate'
 
@@ -25,7 +25,7 @@ poQueriesRouter.get('/stats', async (c) => {
     const efWhere = ef.params.length > 0 ? ' WHERE entity_id = ?' : ''
     const efAnd = ef.params.length > 0 ? ' AND entity_id = ?' : ''
     // 목록(core.ts GET /)과 동일 규칙: 법인간거래 기본 제외(총계·금액이 목록과 어긋나지 않게)
-    const icAnd = c.req.query('include_intercompany') === '1' ? '' : excludeInternalClientsSql('supplier_id')
+    const icAnd = c.req.query('include_intercompany') === '1' ? '' : excludePurchaseNonCounterpartiesSql('supplier_id')
 
     const { results } = ef.params.length > 0
       ? await c.env.DB.prepare(`SELECT status, COUNT(*) as count FROM purchase_orders WHERE entity_id = ?${icAnd} GROUP BY status`).bind(...ef.params).all()
@@ -86,8 +86,9 @@ poQueriesRouter.get('/stats', async (c) => {
       ) ac ON ac.supplier_id = c.id
       -- ⚠️ client_type 필터 금지: prod 매입처는 대부분 'SALES'로 등록돼 있어(PURCHASE/BOTH 4곳뿐)
       --    타입 필터를 걸면 실질 매입처가 전멸함. 잔액>0 실질기준만 사용 (2026-07-16 client_type 수정 전례).
-      -- 내부법인(그룹 3사)만 supplier_id NOT IN 제외 — 법인간거래는 회계허브 법인간거래 탭으로 이관 (client_type 필터 아님)
-      WHERE (COALESCE(bpo.v, 0) - COALESCE(bpp.v, 0) - COALESCE(bpa.v, 0)) > 0${excludeInternalClientsSql('c.id')}
+      -- 내부법인(그룹 3사) + 관계 사업자만 c.id NOT IN 제외 — 법인간거래는 회계허브 탭으로 이관,
+      --   관계 사업자는 자금이동이라 매입이 아니다 (client_type 필터 아님) (2026-08-07)
+      WHERE (COALESCE(bpo.v, 0) - COALESCE(bpp.v, 0) - COALESCE(bpa.v, 0)) > 0${excludePurchaseNonCounterpartiesSql('c.id')}
       GROUP BY c.id
       ORDER BY balance DESC, c.id ASC
       LIMIT 5
@@ -143,9 +144,9 @@ poQueriesRouter.get('/export/csv', async (c) => {
     if (overdue === '1') {
       whereClauses.push("po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED') AND po.expected_date IS NOT NULL AND po.expected_date < date('now', '+9 hours')")
     }
-    // 목록(core.ts GET /)과 동일 규칙: 법인간거래 기본 제외 — 화면에 없는 행이 CSV에 섞이지 않게
+    // 목록(core.ts GET /)과 동일 규칙: 법인간거래·관계사 기본 제외 — 화면에 없는 행이 CSV에 섞이지 않게
     if (include_intercompany !== '1') {
-      whereClauses.push(excludeInternalClientsSql('po.supplier_id').replace(' AND ', ''))
+      whereClauses.push(excludePurchaseNonCounterpartiesSql('po.supplier_id').replace(' AND ', ''))
     }
     if (whereClauses.length > 0) query += ' WHERE ' + whereClauses.join(' AND ')
     // 목록(GET /) 기본 정렬과 정합: 발주일 최신순 + id tie-break (이관 배치 데이터 동일 created_at 대응)

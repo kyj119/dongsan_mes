@@ -55,7 +55,7 @@ export function purchaseOrdersPage(c: Context<HonoEnv>) {
         <label class="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer whitespace-nowrap"
           title="내부 법인(동산기획·선명·청주) 간 거래 발주. 기본은 숨김 — 미지급(AP) 집계에서도 제외되며 회계허브 > 법인간거래 탭에서 확인합니다.">
           <input type="checkbox" id="poIncludeIntercompany" class="h-4 w-4 rounded" onchange="loadPOs(1); loadStats()">
-          법인간거래 포함
+          법인간거래·관계사 포함
         </label>
         <button onclick="exportPoCsv()" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm font-medium">
           <i class="fas fa-file-csv mr-1"></i>CSV

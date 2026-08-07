@@ -57,3 +57,52 @@ export function isInternalEntityClient(clientId: number | string | null | undefi
   if (clientId == null) return false
   return INTERNAL_ENTITY_CLIENT_IDS.includes(Number(clientId))
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 관계 사업자(affiliate) — 2026-08-07
+//
+// ⚠️ 위 INTERCOMPANY_ENTITIES 와 **성격이 다르다.** 재사용하면 안 된다.
+//   · 내부법인 3사 : entity_id 가 있고 매출·매입 **양쪽**이 미러링된다 → AR·AP 양쪽 제외 + 회계허브 탭이 흡수
+//   · 관계 사업자  : entity_id 가 **없고** AR 도 0건이다. 나간 돈이 매입이 아니라 **자금이동**이라
+//                    **매입·원가·AP 에서만** 제외한다. 흡수할 미러 상대가 없으니 회계허브 탭 대상도 아니다.
+//
+// 오다플래그(client 1655 · 889-16-02571 · 대표 안혜옥): 2026년 발주 9건 129,466,420(공급가 117,696,745).
+//   전부 통장 출금 역산으로 만든 PO 라 품목 라인이 없다(`E1-PO-BK-1655-*` · internal_notes 에 마커).
+//   용준님 확정(2026-08-07) — 「사실상 내부 업체여서 매입거래처가 아니야 … 관계사 자금이동으로 보는 게 맞다」.
+//   제외 시 Top-down 매입/매출 49.5% → 45.8%. 근거 = docs/analysis/2026-08-07-sales-cost-analysis.md §5-7-e
+export interface AffiliateClient {
+  clientId: number
+  name: string
+  reason: string
+}
+
+export const AFFILIATE_CLIENTS: AffiliateClient[] = [
+  { clientId: 1655, name: '오다플래그', reason: '관계사 자금이동 — 매입거래처 아님(2026-08-07 확정)' },
+]
+
+/** 관계 사업자 거래처 id 집합 — 매입·원가·AP 집계에서 제외 대상. */
+export const AFFILIATE_CLIENT_IDS: number[] = AFFILIATE_CLIENTS.map(a => a.clientId)
+
+/**
+ * SQL 조각: 관계 사업자를 집계에서 제외한다. `AND <col> NOT IN (1655)`
+ * 값이 신뢰된 정수 상수라 bind 없이 리터럴로 인라인(bind 한도·순서 영향 없음). 집합이 비면 빈 문자열.
+ */
+export function excludeAffiliateClientsSql(clientIdColumn = 'c.id'): string {
+  if (AFFILIATE_CLIENT_IDS.length === 0) return ''
+  return ` AND ${clientIdColumn} NOT IN (${AFFILIATE_CLIENT_IDS.join(',')})`
+}
+
+/**
+ * **매입 계열 집계 전용** 제외 조각 = 내부법인 3사 + 관계 사업자.
+ * AP 잔액·발주 목록·매입 통계·재무제표 매입미지급이 전부 이걸 쓴다(기준 불일치 방지).
+ * ⚠️ AR 집계에는 쓰지 말 것 — 관계 사업자는 매출 쪽 제외 대상이 아니다(AR 정책 = constants/arPolicy.ts).
+ */
+export function excludePurchaseNonCounterpartiesSql(clientIdColumn = 'c.id'): string {
+  return excludeInternalClientsSql(clientIdColumn) + excludeAffiliateClientsSql(clientIdColumn)
+}
+
+/** 해당 거래처가 관계 사업자인지(매입거래처 아님). */
+export function isAffiliateClient(clientId: number | string | null | undefined): boolean {
+  if (clientId == null) return false
+  return AFFILIATE_CLIENT_IDS.includes(Number(clientId))
+}

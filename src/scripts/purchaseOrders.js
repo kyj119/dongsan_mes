@@ -87,7 +87,7 @@ async function loadSupplierFilter() {
   } catch(e) { console.warn('loadSupplierFilter:', e); }
 }
 
-// 법인간거래 포함 여부 — 목록·통계·CSV가 같은 값을 써야 총계가 어긋나지 않음
+// 법인간거래(내부 3사)·관계사(자금이동) 포함 여부 — 목록·통계·CSV가 같은 값을 써야 총계가 어긋나지 않음
 function poIncludeIcParam() {
   var el = document.getElementById('poIncludeIntercompany');
   return (el && el.checked) ? '1' : '';

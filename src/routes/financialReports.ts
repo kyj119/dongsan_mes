@@ -5,7 +5,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter } from '../utils/entityFilter'
 import { LATEST_BALANCE_SUBQUERY } from '../utils/bankBalance'
-import { excludeInternalClientsSql } from '../constants/intercompany'
+import { excludePurchaseNonCounterpartiesSql } from '../constants/intercompany'
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
 import { kstYear } from '../utils/kstDate'
 import { deriveArSplit } from './ledger/ar-helpers'
@@ -256,9 +256,9 @@ financialReportsRouter.get('/balance-snapshot', async (c) => {
     // 매입 미지급 — purchase_balance 캐시 폐기 → 파생(POs[NOT IN DRAFT/CANCELLED] − payments − adjustments). AR과 동일 전사 기준(entity 무필터), 단 내부법인(그룹 3사)은 제외(법인간거래 탭 이관)
     const apRow = await c.env.DB.prepare(`
       SELECT (
-        (SELECT COALESCE(SUM(final_amount), 0) FROM purchase_orders WHERE status NOT IN ('DRAFT', 'CANCELLED')${excludeInternalClientsSql('supplier_id')})
-        - (SELECT COALESCE(SUM(amount), 0) FROM purchase_payments WHERE 1=1${excludeInternalClientsSql('supplier_id')})
-        - (SELECT COALESCE(SUM(amount), 0) FROM purchase_adjustments WHERE 1=1${excludeInternalClientsSql('supplier_id')})
+        (SELECT COALESCE(SUM(final_amount), 0) FROM purchase_orders WHERE status NOT IN ('DRAFT', 'CANCELLED')${excludePurchaseNonCounterpartiesSql('supplier_id')})
+        - (SELECT COALESCE(SUM(amount), 0) FROM purchase_payments WHERE 1=1${excludePurchaseNonCounterpartiesSql('supplier_id')})
+        - (SELECT COALESCE(SUM(amount), 0) FROM purchase_adjustments WHERE 1=1${excludePurchaseNonCounterpartiesSql('supplier_id')})
       ) as total_ap
     `).first<ApRow>()
 
