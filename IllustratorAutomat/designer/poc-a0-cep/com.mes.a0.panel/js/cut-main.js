@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.41.0';
+  var SHELL_VERSION = '0.42.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -1266,7 +1266,6 @@
           if (!BT) buttWhy = 'butt.js 미설치 — 패널 설치본을 갱신하세요';
           else if (!hostSupportsButt()) buttWhy = '호스트 구버전(' + (hostVersion || '?') + ' < CUT-CEP-0.18.0) — Z: 의 mes-cut-host.jsx 를 배포하세요';
           else if (offsetMm !== 0 || gapMm !== 0) buttWhy = '여백/간격이 0이 아님(' + offsetMm + '/' + gapMm + ')';
-          else if (useVec) buttWhy = '칼선 방식이 벡터 — 맞붙임은 래스터 경로에서만 됩니다';
           else if (!prep.sizes.length) buttWhy = '조각 크기를 못 받았습니다';
           else {
             buttExact = true;
@@ -1279,6 +1278,13 @@
             }
           }
         }
+        // ★★맞붙임이 벡터보다 **우선한다** (2026-08-07 실사용 — 이것 때문에 계속 두 줄이 나왔다).
+        //   벡터 칼선은 조각마다 실루엣을 따로 그린다 → 맞닿은 변은 **원리상 반드시 두 줄**이다.
+        //   여백 0·간격 0 은 "붙여서 한 번만 자르겠다"는 뜻이므로 벡터로는 그 요청을 만족시킬 수 없다.
+        //   직사각에서는 맞붙임 쪽이 벡터보다 오히려 정확하다 — 실루엣 추적이 아니라 **치수 산수**다.
+        //   호스트는 cutMode='raster' 를 받으면 벡터 실루엣 대신 `C` 선분을 긋는다(배타적 분기).
+        var buttOverVec = false;
+        if (buttExact && useVec) { useVec = false; buttOverVec = true; }
         // ★mmpp 는 여기서 잡는다 — 아래 진단·좌표 변환이 전부 이 값을 쓴다.
         //   전에는 선언이 200줄쯤 아래에 있어서, 그 위에 붙인 진단 블록이 **호이스팅된 undefined**
         //   를 읽고 `.toFixed` 로 터졌다(2026-08-07). 쓰는 곳보다 위에 둬야 같은 사고가 안 난다.
@@ -1309,7 +1315,8 @@
         var buttDiag = '';
         if (buttMode) {
           buttDiag += buttExact
-            ? '\n맞붙임 정확 배치 ON — 맞닿은 재단선은 **한 줄만** 나갑니다.'
+            ? ('\n맞붙임 정확 배치 ON — 맞닿은 재단선은 **한 줄만** 나갑니다.'
+               + (buttOverVec ? '\n  (칼선 방식은 벡터로 두셨지만 맞붙임을 씁니다 — 벡터는 조각마다 실루엣을 따로 그려 맞닿은 변이 반드시 두 줄이 됩니다)' : ''))
             : ('\n⚠ 맞붙임 정확 배치 OFF — ' + (buttWhy || '조건 미충족') + '. 조각마다 칼선이 따로 나가 겹치는 변은 두 번 잘립니다.');
         }
         if (buttMode && res.sheets.length) {
@@ -1322,7 +1329,9 @@
               + (pd.x * mmpp).toFixed(1) + ',' + (pd.y * mmpp).toFixed(1)
               + (pd.rot ? ('·' + pd.rot + '°') : ''));
           }
-          buttDiag = '\n진단(맞붙임) ' + mmpp.toFixed(3) + 'mm/px · ' + lines2.join(' | ');
+          // ⚠️ `+=` 다. `=` 로 두면 바로 위에서 만든 ON/OFF 사유 줄을 **덮어써서 사라진다** —
+          //    실제로 그래서 "왜 안 켜졌는지"가 화면에 안 나왔고 원인을 한 번 더 헤맸다(2026-08-07).
+          buttDiag += '\n진단(맞붙임) ' + mmpp.toFixed(3) + 'mm/px · ' + lines2.join(' | ');
         }
         var widthNote = '';
         if (!isRoll) {

@@ -740,7 +740,11 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // ⚠️ 조건은 **왜 안 켜졌는지 말하는** if/else 사슬로 바뀌었다(2026-08-07). 조용히 폴백하면
   //    사용자는 기능이 고장난 줄 안다 — 실제로 한 번 그렇게 헛돌았다. 항목별로 나눠 본다.
   ok('3y 맞붙임은 여백·간격 정확히 0 일 때만', /offsetMm !== 0 \|\| gapMm !== 0/.test(panelSrc))
-  ok('3y 벡터 경로에서는 안 쓴다', /else if \(useVec\)/.test(panelSrc))
+  // ★맞붙임은 벡터보다 우선한다(2026-08-07 실사용). 벡터는 조각마다 실루엣을 따로 그려
+  //   맞닿은 변이 **원리상 반드시 두 줄**이라, 여백 0·간격 0 요청 자체를 만족시킬 수 없다.
+  //   호스트 분기가 `if (useVec) … else if (segs)` 이므로 패널이 useVec 를 내려야 선분이 그려진다.
+  ok('3y 맞붙임이 벡터보다 우선', /if \(buttExact && useVec\) \{ useVec = false/.test(panelSrc))
+  ok('3y 맞붙임이면 호스트에 raster 로 알린다', /useVec \? '' : ',"raster"'/.test(panelSrc))
   ok('3y 조각 크기를 못 받으면 안 쓴다', /!prep\.sizes\.length/.test(panelSrc))
   ok('3y 안 켜지면 이유를 결과에 싣는다',
     /buttWhy/.test(panelSrc) && /맞붙임 정확 배치 OFF/.test(panelSrc) && /buttDiag \+= buttExact/.test(panelSrc))
