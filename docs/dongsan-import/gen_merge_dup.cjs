@@ -6,20 +6,21 @@
  *   실체는 각각 AQ2 수성 현수막원단 2코팅 · SPM011G-127 이다.
  *   이관이 돌 때마다 같은 자재가 새 품목으로 갈렸다(샤틴 포함 3번째).
  *
- * 사용: node docs/dongsan-import/gen_merge_dup.cjs <poiids.json> <costsnap.json>
+ * 사용: node docs/dongsan-import/gen_merge_dup.cjs <poiids.json> <costsnap.json> [pairs.json] [출력접미사]
+ *   pairs.json 미지정 시 아래 PAIRS(1차 22쌍)를 쓴다. 2차분은 [[dup_id,canon_id,dup_code,canon_code],...] 로 넘긴다.
  *   poiids.json  = SELECT id poi_id, item_id did FROM purchase_order_items WHERE item_id IN (<dup ids>)
  *   costsnap.json= SELECT id, item_code, COALESCE(avg_unit_cost,0) c FROM items WHERE id IN (<dup+canon ids>)
  */
 const fs = require('fs')
 
-const [, , poiPath, snapPath] = process.argv
+const [, , poiPath, snapPath, pairsPath, sfxArg] = process.argv
 if (!poiPath || !snapPath) {
   console.error('usage: gen_merge_dup.cjs <poiids.json> <costsnap.json>')
   process.exit(1)
 }
 
 // [dup_id, canon_id, dup_code, canon_code]
-const PAIRS = [
+const PAIRS_DEFAULT = [
   [1233, 200, 'TROPICAL-070', 'AQ2-070'],
   [1234, 202, 'TROPICAL-090', 'AQ2-090'],
   [1257, 299, 'SK-1555', 'SPM011G-127'],
@@ -45,7 +46,7 @@ const PAIRS = [
 ]
 
 const HEAD = [
-  '-- 공급처 품명 중복 품목 병합 22쌍 (2026-08-07, 용준님 승인)',
+  '-- 공급처 품명 중복 품목 병합 (2026-08-07, 용준님 승인)',
   '-- 생성기 = docs/dongsan-import/gen_merge_dup.cjs',
   '--',
   '-- 근본 원인: 매입 적재가 **공급처 전표 품명**으로 품목을 찾고 못 찾으면 새로 만든다.',
@@ -69,6 +70,8 @@ const HEAD = [
   '',
 ]
 
+const PAIRS = pairsPath ? JSON.parse(fs.readFileSync(pairsPath, 'utf8')) : PAIRS_DEFAULT
+const SFX = sfxArg || ''
 const poi = JSON.parse(fs.readFileSync(poiPath, 'utf8'))
 const snap = JSON.parse(fs.readFileSync(snapPath, 'utf8'))
 
@@ -107,7 +110,7 @@ for (const [did, , dcode, ccode] of PAIRS) {
 const cs = ['-- 병합 전 avg_unit_cost 스냅샷 (2026-08-07) — merge 롤백 시 함께 실행', '']
 for (const x of snap) cs.push('UPDATE items SET avg_unit_cost = ' + x.c + ' WHERE id = ' + x.id + ';  -- ' + x.item_code)
 
-fs.writeFileSync('docs/dongsan-import/load/merge_dup_items.sql', out.join('\n') + '\n')
-fs.writeFileSync('docs/dongsan-import/load/rollback_merge_dup_items.sql', rb.join('\n') + '\n')
-fs.writeFileSync('docs/price/rollback_avg_cost_2026-08-07_merge.sql', cs.join('\n') + '\n')
+fs.writeFileSync('docs/dongsan-import/load/merge_dup_items' + SFX + '.sql', out.join('\n') + '\n')
+fs.writeFileSync('docs/dongsan-import/load/rollback_merge_dup_items' + SFX + '.sql', rb.join('\n') + '\n')
+fs.writeFileSync('docs/price/rollback_avg_cost_2026-08-07_merge' + SFX + '.sql', cs.join('\n') + '\n')
 console.log('매입 라인 재지정 ' + lines + '행 · 비활성 ' + PAIRS.length + '품목 · 단가 스냅샷 ' + snap.length + '품목')

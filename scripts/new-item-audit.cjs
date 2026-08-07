@@ -82,7 +82,9 @@ if (fresh.length === 0) {
   process.exit(0)
 }
 const older = d1(
-  `SELECT ${ITEM_COLS} FROM items WHERE created_at < date('now', '-${DAYS} day') AND is_active = 1`
+  `SELECT ${ITEM_COLS},
+     (SELECT COUNT(*) FROM purchase_order_items p WHERE p.item_id = items.id) po_n
+   FROM items WHERE created_at < date('now', '-${DAYS} day') AND is_active = 1`
 )
 
 // ── 규칙 ──
@@ -155,8 +157,14 @@ for (const f of fresh) {
     //   판별선 = 코드 앞 토큰(첫 '-' 앞)이 서로 다른가.
     const base = (c) => String(c || '').toUpperCase().split('-')[0]
     const diffScheme = base(f.item_code) !== base(o.item_code)
+    // ★ 양쪽 다 매입 이력이 0이면 자재 중복이 아니다.
+    //   이 감사의 표적은 「매입이 엉뚱한 품목으로 새는 것」이므로 최소 한쪽엔 매입이 있어야 한다.
+    //   빼면 「태극기 정기자수 깃발」↔「정기 자수 깃발」, 「민방위기 깃대조립 SET」↔「태극기 깃대조립 SET」
+    //   처럼 **판매 제품끼리**가 6건 걸린다 — 서로 다른 제품이지 중복이 아니다(실측).
+    //   (샤틴은 한쪽이 0이고 다른 쪽에 매입이 있어 이 조건을 통과한다 — 진짜 중복은 안 놓친다.)
+    const anyPurchase = (Number(f.po_n) || 0) > 0 || (Number(o.po_n) || 0) > 0
     const rules = []
-    if (sameCat && diffScheme) {
+    if (sameCat && diffScheme && anyPurchase) {
       for (const t of fCodeTok) if (codeTok.has(t) && rareCode(t)) { rules.push('R1:' + t); break }
       for (const t of fNameTok) if (String(o.item_code).toUpperCase().includes(t)) { rules.push('R2:' + t); break }
     }
