@@ -785,8 +785,8 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   //   맞붙임과 무관하게 **모든** 직사각 조각에 적용된다(여백·간격이 있어도).
   // ★여백이 있으면 팽창 결과가 **라운드 사각**이다(반경 = 여백) → 사각 단축을 쓰면 라운드가
   //   조용히 각지게 된다. 판정은 팽창 전 마스크, 컨투어는 팽창 후라 이 조건이 없으면 어긋난다.
-  ok('3y 직사각 칼선은 추적하지 않는다(여백 0 일 때만)',
-    /var rectOnly = !!\(BTr && cps\.length === 1 && rCut <= 0 && BTr\.isRectish\(src\)\)/.test(panelSrc))
+  ok('3y 직사각 칼선은 추적하지 않는다(여백 0·구멍 없을 때만)',
+    /var rectOnly = !!\(BTr && cps\.length === 1 && !holes\.length && rCut <= 0 && BTr\.isRectish\(src\)\)/.test(panelSrc))
   ok('3y 직사각 칼선은 4점 P 줄', /if \(rectOnly\)[\s\S]{0,700}?lines\.push\('P ' \+ parts\.join\(' '\)\);\s*\n\s*continue;/.test(panelSrc))
   // ★구 호스트는 C 줄을 조용히 무시한다 → 조각별 칼선도 안 보냈으니 **칼선 없는 판**이 나온다.
   //   축2는 Z: 파일 1개로 전 PC 에 퍼지고 축3은 PC별 설치라, 역방향 스큐가 반드시 생긴다
@@ -796,7 +796,19 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // ★실패하면 조용히 이상한 판을 내지 말고 기존 경로로 되돌아가야 한다
   ok('3y 실패 시 래스터로 폴백', /buttExact = false;[\s\S]{0,180}?res = nestPlace\(NST, prep/.test(panelSrc))
   // ★맞붙임에서는 조각별 닫힌 경로를 만들지 않는다 — 그게 두 줄의 원인이다
-  ok('3y 맞붙임이면 조각별 칼선 생략', /!useVec && !res\.butt\) pieceCutLines/.test(panelSrc))
+  ok('3y 맞붙임이면 조각별 칼선 생략', /!useVec && !res\.butt\) holeOut \+= \(pieceCutLines/.test(panelSrc))
+  // ── 구멍(2026-08-07) — 시트컷 글자는 속이 뚫려야 한다. 단품에만 있던 것을 판짜기로 옮겼다.
+  ok('3z 구멍을 팽창 후 마스크에서 뽑는다', /G\.findHoles\(placed\.m, placed\.W, placed\.H, minHolePx\)/.test(panelSrc))
+  ok('3z 최소 구멍 크기로 거른다(미세 구멍 방지)', /MIN_HOLE_MM\) \/ 2\) \/ stepMm/.test(panelSrc))
+  ok('3z 구멍을 외곽에 배정', /G\.assignHoles\(cps, holes\)/.test(panelSrc))
+  ok('3z H\/HB 줄로 내보낸다', /wantCurve \? 'HB ' : 'H '/.test(panelSrc))
+  ok('3z 구 호스트면 구멍을 안 보내고 알린다',
+    /var HOLE_MIN_HOST = \[0, 19, 0\]/.test(panelSrc) && /holesOk \? G\.findHoles/.test(panelSrc)
+    && /구멍을 만들지 않았습니다/.test(panelSrc))
+  ok('3z 호스트가 H\/HB 를 읽는다', /p\[0\] === 'H' \|\| p\[0\] === 'HB'/.test(hostSrc))
+  ok('3z 호스트가 직전 외곽에 매단다', /cur\.cuts\[cur\.cuts\.length - 1\]/.test(hostSrc))
+  ok('3z 호스트가 compound path 로 묶는다', /cl\.compoundPathItems\.add\(\)/.test(hostSrc))
+  ok('3z 호스트 버전이 0.19.0 이상', /CUT-CEP-0\.(19|[2-9]\d)\./.test(hostSrc))
   ok('3y 공유 변은 C 줄로', /lines\.push\('C ' \+ \(sg\.x1 \+ domboMm\(\)\)/.test(panelSrc))
   ok('3y 호스트가 C 줄을 읽는다', /p\[0\] === 'C'/.test(hostSrc))
   ok('3y 호스트가 열린 선분으로 긋는다', /sp\.closed = false;/.test(hostSrc))

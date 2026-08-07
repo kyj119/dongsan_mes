@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.53.0';
+  var SHELL_VERSION = '0.54.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -109,6 +109,10 @@
   //   못 받으면 맞붙임을 쓰지 않고 기존 래스터 경로로 간다(도련 게이트와 같은 규칙).
   var BUTT_MIN_HOST = [0, 18, 0];
   function hostSupportsBakeAll() { return hostAtLeast(BAKEALL_MIN_HOST); }
+  // 판짜기 조각별 칼선의 **구멍**(`H`/`HB` 줄 + compound path). 구 호스트는 그 줄을 **조용히 무시**해
+  //   ㅇ·ㅁ·0·8 속이 안 뚫린 칼선이 나간다 — 조용히 틀리는 것이 가장 나쁘므로 보내지 않고 알린다.
+  var HOLE_MIN_HOST = [0, 19, 0];
+  function hostSupportsHoles() { return hostAtLeast(HOLE_MIN_HOST); }
   function hostSupportsButt() { return hostAtLeast(BUTT_MIN_HOST); }
   function hostSupportsBleedPng() { return hostAtLeast(BLEEDPNG_MIN_HOST); }
 
@@ -1486,6 +1490,7 @@
         var cutOffMm = prep.cutFinePx * prep.fineMmpp;
         var guaranteedMm = 2 * half - 2 * cutOffMm;
         var lines = [];
+        var holeOut = 0;      // 조각별 칼선에 실린 구멍 수(ㅇ·ㅁ·0·8 속) — 결과에 싣는다
         // ★배율을 호스트에 알린다 — 돔보 상수(6·17·60·500mm)가 호스트 안에 있어 거기서 ÷N 해야 한다.
         //   여백·간격·도련은 여기서 이미 환산했으므로 호스트가 또 나누면 두 번 줄어든다(호스트 주석 참조).
         if (scaleN > 1) lines.push('N ' + scaleN);
@@ -1505,7 +1510,7 @@
             // ★벡터 모드면 좌표를 보내지 않는다 — 호스트가 **배치가 끝난 사본**에서 직접 실루엣을 뽑는다.
             //   회전·이동이 이미 적용된 것을 쓰므로 정렬 수식(baseX·trim 오프셋)이 아예 필요 없다.
             // 맞붙임은 조각별 닫힌 경로를 만들지 않는다 — 공유 변을 아래에서 한 번씩만 내보낸다.
-            if (wantPieceCut && !useVec && !res.butt) pieceCutLines(lines, res, prep, pl, mmpp, wantCurve);
+            if (wantPieceCut && !useVec && !res.butt) holeOut += (pieceCutLines(lines, res, prep, pl, mmpp, wantCurve) || 0);
           }
           // ★맞붙임 칼선 = `C` 줄(열린 선분). 맞닿은 변이 하나로 합쳐져 있어 재단기가 한 번만 지난다.
           if (res.butt && wantPieceCut && sh.segs) {
@@ -1606,7 +1611,12 @@
               //   이 한 줄이 사용자가 결과를 신뢰할 수 있는 유일한 근거다. 맞붙임이면 조각별이 아니라
               //   **공유 변**이므로 이름부터 다르게 쓴다(그래야 "왜 조각 수보다 선이 적지?"가 안 생긴다).
               + (buttExact ? ' · 재단선=맞붙임 공유 변(치수 산수)'
-                 : (wantPieceCut ? (' · 조각별 칼선' + (useVec ? '(벡터)' : (wantCurve ? '(곡선)' : '(직선)'))) : ''))
+                 : (wantPieceCut ? (' · 조각별 칼선' + (useVec ? '(벡터)' : (wantCurve ? '(곡선)' : '(직선)'))
+                     // ★구멍은 **있으면 있다고 말한다** — ㅇ·ㅁ·0·8 속이 뚫렸는지는 눈으로 세기 어렵다.
+                     //   구 호스트면 `H` 줄을 조용히 무시하므로 그 사실도 여기서만 알 수 있다.
+                     + (holeOut ? (' · 구멍 ' + holeOut + '개') : '')
+                     + ((!useVec && !hostSupportsHoles())
+                        ? ('\n⚠ 호스트 구버전(' + (hostVersion || '?') + ' < CUT-CEP-0.19.0) — 조각별 칼선의 **구멍을 만들지 않았습니다**(ㅇ·ㅁ·0·8 속이 안 뚫립니다). mes-cut-host.jsx 를 배포하세요.') : '')) : ''))
               + (nestBleedMm > 0 ? ('\n도련 ' + R(nestBleedMm) + 'mm (조각마다)'
                   // ★어느 방식으로 만들었는지 밝힌다 — 클립 확장·색 잇기·단색은 품질이 서로 다르다
                   + bleedHow(a)
@@ -1646,9 +1656,10 @@
    */
   function pieceCutLines(lines, res, prep, pl, mmpp, wantCurve) {
     var G = window.MesCutGeom, NST = window.MesCutNest;
+    var nHoleOut = 0;                       // 이 조각에서 내보낸 구멍 수 — 호출부가 합계를 화면에 싣는다
     var srcPiece = null;
     for (var pf = 0; pf < prep.pieces.length; pf++) if (prep.pieces[pf].id === pl.id) { srcPiece = prep.pieces[pf]; break; }
-    if (!srcPiece) return;
+    if (!srcPiece) return 0;
 
     // ★칼선은 **미세 마스크**에서 뽑는다 — 배치 격자(거친)로 뽑으면 윤곽이 격자 한 칸(0.75mm)
     //   단위로 뭉툭해진다. 배치 좌표의 격자 오차는 **아트와 칼선이 함께 움직이므로 상쇄**된다
@@ -1658,7 +1669,7 @@
     //   음수면 잉크 안쪽 = 도련이 이미 들어간 아트에서 칼선을 제자리에 놓는 경로.
     var useFine = !!(srcPiece.fine && prep.sub > 1);
     var src = useFine ? srcPiece.fine : srcPiece.base;
-    if (!src) return;
+    if (!src) return 0;
     var stepMm = useFine ? prep.fineMmpp : mmpp;
     var rCut = useFine ? prep.cutFinePx : Math.floor(prep.offsetMm / mmpp);
     var grown = growMask(G, src.m, src.W, src.H, rCut);
@@ -1691,12 +1702,51 @@
     //   여백 12px·30px 에서 모서리 픽셀이 비었다. 그 상태로 bbox 를 사각으로 내보내면
     //   **여백만큼의 라운드가 조용히 각지게** 되고 모서리 대각으로 r(√2−1) 만큼 더 나간다.
     //   여백 0(또는 음수=안쪽)일 때만 칼선이 실제로 사각이다.
+    // ★★구멍 — 시트컷 글자(ㅇ·ㅁ·ㅂ·0·8)는 속이 뚫려야 한다 (2026-08-07 용준님).
+    //   단품 칼선(makeCut)에만 있던 것을 판짜기로 옮긴다. 규칙은 **단품과 같아야** 한다:
+    //     ① 구멍은 **팽창 후 마스크**(placed)에서 뽑는다 → 여백만큼 작아지고, 여백이 구멍 반지름을
+    //        넘으면 사라진다(칼날이 못 들어가는 크기 = 재단선이 아니다 — 물리와 일치).
+    //     ② 최소 구멍 크기로 거른다 — 안 하면 글자 사이 좁은 틈이 미세 구멍으로 잡힌다
+    //        (2026-07-31 실측: 한글 6줄에서 구멍 144개).
+    //   ⚠️ 도련은 손댈 게 없다 — 엔진이 구멍 **안쪽으로도** 채운다(실측: 도넛 구멍 경계에서 안으로 20px).
+    //      그래서 구멍 칼선은 인쇄된 색 위를 지나간다.
+    var minHolePx = Math.max(4, Math.PI * Math.pow((toFileMm(MIN_HOLE_MM) / 2) / stepMm, 2));
+    var holesOk = hostSupportsHoles();
+    var holes = holesOk ? G.findHoles(placed.m, placed.W, placed.H, minHolePx) : [];
+    var groups = G.assignHoles(cps, holes);
+
+    /** 폴리곤 → 좌표 문자열. 외곽·구멍이 **같은 코드**를 써야 스타일·닫힘이 어긋나지 않는다. */
+    var fmtPoly = function (poly) {
+      var parts = [], j, q;
+      if (wantCurve) {
+        var segs = G.fitCurves(poly, ctol);
+        if (!segs.length) return null;
+        var a0 = toMm(segs[0][0][0], segs[0][0][1]);
+        parts.push(a0[0].toFixed(2) + ',' + a0[1].toFixed(2));
+        for (j = 0; j < segs.length; j++) {
+          for (q = 1; q <= 3; q++) {
+            var p = toMm(segs[j][q][0], segs[j][q][1]);
+            parts.push(p[0].toFixed(2) + ',' + p[1].toFixed(2));
+          }
+        }
+        return parts.join(' ');
+      }
+      var sp = G.simplify(poly, ctol);
+      if (sp.length < 3) return null;
+      for (j = 0; j < sp.length; j++) {
+        var pt = toMm(sp[j][0], sp[j][1]);
+        parts.push(pt[0].toFixed(2) + ',' + pt[1].toFixed(2));
+      }
+      return parts.join(' ');
+    };
+
     var BTr = window.MesCutButt;
-    var rectOnly = !!(BTr && cps.length === 1 && rCut <= 0 && BTr.isRectish(src));
-    for (var ci = 0; ci < cps.length; ci++) {
-      var parts = [], j;
+    // 구멍이 있으면 사각 단축을 쓸 수 없다 — bbox 하나로는 속을 못 뚫는다
+    var rectOnly = !!(BTr && cps.length === 1 && !holes.length && rCut <= 0 && BTr.isRectish(src));
+    for (var ci = 0; ci < groups.length; ci++) {
       if (rectOnly) {
-        var poly = cps[ci].poly, rx0 = Infinity, ry0 = Infinity, rx1 = -Infinity, ry1 = -Infinity;
+        var poly = groups[ci].outer.poly, parts = [], j;
+        var rx0 = Infinity, ry0 = Infinity, rx1 = -Infinity, ry1 = -Infinity;
         for (j = 0; j < poly.length; j++) {
           if (poly[j][0] < rx0) rx0 = poly[j][0];
           if (poly[j][0] > rx1) rx1 = poly[j][0];
@@ -1711,28 +1761,18 @@
         lines.push('P ' + parts.join(' '));
         continue;
       }
-      if (wantCurve) {
-        var segs = G.fitCurves(cps[ci].poly, ctol);
-        if (!segs.length) continue;
-        var a0 = toMm(segs[0][0][0], segs[0][0][1]);
-        parts.push(a0[0].toFixed(2) + ',' + a0[1].toFixed(2));
-        for (j = 0; j < segs.length; j++) {
-          for (var q = 1; q <= 3; q++) {
-            var p = toMm(segs[j][q][0], segs[j][q][1]);
-            parts.push(p[0].toFixed(2) + ',' + p[1].toFixed(2));
-          }
-        }
-        lines.push('B ' + parts.join(' '));
-      } else {
-        var sp = G.simplify(cps[ci].poly, ctol);
-        if (sp.length < 3) continue;
-        for (j = 0; j < sp.length; j++) {
-          var pt = toMm(sp[j][0], sp[j][1]);
-          parts.push(pt[0].toFixed(2) + ',' + pt[1].toFixed(2));
-        }
-        lines.push('P ' + parts.join(' '));
+      var outerStr = fmtPoly(groups[ci].outer.poly);
+      if (!outerStr) continue;
+      lines.push((wantCurve ? 'B ' : 'P ') + outerStr);
+      // ★구멍은 **바로 뒤에** 붙인다 — 호스트가 직전 외곽에 매다는 규약이다(단품과 동일)
+      for (var hh = 0; hh < groups[ci].holes.length; hh++) {
+        var hStr = fmtPoly(groups[ci].holes[hh].poly);
+        if (!hStr) continue;
+        lines.push((wantCurve ? 'HB ' : 'H ') + hStr);
+        nHoleOut++;
       }
     }
+    return nHoleOut;
   }
 
   // ── P3: 폭 추천 ──────────────────────────────────────────────────

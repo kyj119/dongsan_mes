@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.18.0';  // 0.15.0 = 도련을 칼선 방식과 분리(래스터에서도 생성)
+var MESCUT_VERSION = 'CUT-CEP-0.19.0';  // 0.15.0 = 도련을 칼선 방식과 분리(래스터에서도 생성)
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -2313,13 +2313,23 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
             //   같은 자리를 두 번 긋지 않는다 → DXF 에 선이 한 줄만 남고 재단기가 한 번만 지난다.
             //   (조각별 닫힌 경로와 배타적이다 — 맞붙임이면 패널이 그것을 안 보낸다)
             cur.segs.push([parseFloat(p[1]), parseFloat(p[2]), parseFloat(p[3]), parseFloat(p[4])]);
-        } else if (p[0] === 'P' || p[0] === 'B') {
+        } else if (p[0] === 'P' || p[0] === 'B' || p[0] === 'H' || p[0] === 'HB') {
             var arr = [];
             for (var pi = 1; pi < p.length; pi++) {
                 var xy = p[pi].split(',');
                 if (xy.length === 2) arr.push([parseFloat(xy[0]), parseFloat(xy[1])]);
             }
-            if (arr.length >= 3) cur.cuts.push({ bez: p[0] === 'B', pts: arr });
+            if (arr.length < 3) continue;
+            // ★구멍은 **직전 외곽에 붙인다** — 단품 칼선의 pendOuter/pendHoles 와 같은 규약이다.
+            //   외곽 없이 구멍만 온 줄은 버린다(붙일 데가 없으면 재단기가 허공을 자른다).
+            if (p[0] === 'H' || p[0] === 'HB') {
+                if (!cur.cuts.length) continue;
+                var own = cur.cuts[cur.cuts.length - 1];
+                if (!own.holes) own.holes = [];
+                own.holes.push({ bez: p[0] === 'HB', pts: arr });
+            } else {
+                cur.cuts.push({ bez: p[0] === 'B', pts: arr, holes: [] });
+            }
         }
     }
     if (!sheets.length) return 'ERROR 배치 결과 없음';
@@ -2414,21 +2424,38 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                 }
             } else if (sh.cuts.length) {
                 var cl = mesCut_ensureCutLayer(doc);
+                // ★구멍(`H`/`HB`)이 있으면 **compound path** 로 묶는다 — 단품 칼선(mesCut_drawCut)과
+                //   같은 규칙이다. 재단 자체는 닫힌 경로만 있으면 되지만, 작업자가 화면에서
+                //   "속이 뚫렸다"를 확인할 수 있어야 한다(ㅇ·ㅁ·0·8 은 안 뚫리면 그냥 틀린 칼선이다).
+                var mkCutPath = function (container, spec) {
+                    var pl2 = [];
+                    for (var q2 = 0; q2 < spec.pts.length; q2++) {
+                        pl2.push([spec.pts[q2][0] * MESCUT_PT_PER_MM, sheetH - spec.pts[q2][1] * MESCUT_PT_PER_MM]);
+                    }
+                    var pi2 = null;
+                    if (spec.bez) { pi2 = mesCut_bezPath(container, pl2); }
+                    else { pi2 = container.pathItems.add(); pi2.setEntirePath(pl2); pi2.closed = true; }
+                    if (pi2) {
+                        pi2.filled = false; pi2.stroked = true;
+                        pi2.strokeColor = mesCut_magenta(); pi2.strokeWidth = 0.6;
+                    }
+                    return pi2;
+                };
                 for (var c = 0; c < sh.cuts.length; c++) {
                     var src2 = sh.cuts[c];
-                    var pts = [];
-                    for (var q = 0; q < src2.pts.length; q++) {
-                        pts.push([src2.pts[q][0] * MESCUT_PT_PER_MM, sheetH - src2.pts[q][1] * MESCUT_PT_PER_MM]);
-                    }
+                    var hn = (src2.holes && src2.holes.length) ? src2.holes.length : 0;
                     try {
-                        var pp = null;
-                        if (src2.bez) { pp = mesCut_bezPath(cl, pts); }
-                        else { pp = cl.pathItems.add(); pp.setEntirePath(pts); pp.closed = true; }
-                        if (pp) {
-                            pp.filled = false; pp.stroked = true;
-                            pp.strokeColor = mesCut_magenta(); pp.strokeWidth = 0.6;
-                        }
-                    } catch (ePp) {}
+                        if (hn === 0) { mkCutPath(cl, src2); continue; }
+                        var cpn = cl.compoundPathItems.add();
+                        mkCutPath(cpn, src2);
+                        for (var hq = 0; hq < hn; hq++) mkCutPath(cpn, src2.holes[hq]);
+                    } catch (ePp) {
+                        // compound 실패 시 개별 경로로라도 남긴다 — 재단은 닫힌 경로만 있으면 된다
+                        try {
+                            mkCutPath(cl, src2);
+                            for (var hw = 0; hw < hn; hw++) mkCutPath(cl, src2.holes[hw]);
+                        } catch (ePp2) {}
+                    }
                 }
             }
 
