@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-08-07T15:27:01+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-08-08T03:17:18+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **3** (`search_issues(is:open,label:auto-improve)` 실측 — Area5 52회차, 변동 없음. #601[order_items 라인재작성 시 return_items RESTRICT FK 미정리] + #602[cards 지시현황탭 silent-catch] + #603[cards 개정필요 큐 출고후 영구잔류]) |
+| 🆕 new | **4** (`search_issues(is:open,label:auto-improve)` 실측 — Area6 57회차. #601[order_items 라인재작성 시 return_items RESTRICT FK 미정리] + #602[cards 지시현황탭 silent-catch] + #603[cards 개정필요 큐 출고후 영구잔류] + #604[신규, orders.sales_rep_id 백엔드먼저·화면나중]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **524** (`reason:completed` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+
+> **Area 6 자기 진화 (2026-08-08T03:17):**
+> - **방법**: `git fetch origin main`(HEAD `6ef00a7` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 6 **57회차** — 직전 Area6(`878200f`, 08-06T04:05, 56회차는 아님·이번 anchor는 Area5 52회차 마커 `878200f`, 08-07T06:28 UTC=15:28 JST) 이후 `git log --since 2026-08-07T15:27 -- src/routes src/scripts migrations index.tsx src/layout src/pages` = **2커밋**(`7fd1334` 관계사 매입제외·`451f611` 주문 담당자 필드) — Area5가 이미 리뷰한 `82b9e3e` 이후 착륙분으로, 어느 Area도 아직 못 본 최신 churn.
+> - **line 307 원칙("churn 나열≠개별 검토") 적용 — 두 신선 커밋을 직접 Read**: 다음 Area(1)가 오기 전에 Area6가 교차 렌즈로 먼저 검토.
+> - **`7fd1334`(관계사 매입제외) 전문 검토**: `excludeInternalClientsSql`→`excludePurchaseNonCounterpartiesSql`로 전환한 매입계열 집계 6개 라우트(`financialReports.ts`·`accounts-payable.ts` 4곳·`purchaseOrders/core.ts` 2곳·`po-queries.ts` 3곳) `grep -rn "excludeInternalClientsSql\|excludePurchaseNonCounterpartiesSql" src/routes src/pages src/scripts` 전수 재확인 — **구 함수명 잔존 0건**(형제-비대칭 없이 전면 전환, A-024급 부분롤아웃 패턴 아님). `clientIdColumn` 인터폴레이션은 전부 개발자 리터럴(`'c.id'`/`'supplier_id'`)이라 SQL 인젝션 경로 아님(값도 상수 배열 `[1655]`, bind 아닌 리터럴 인라인이나 요청 입력 무관). AR 쪽(`arPolicy.ts`)에 신 함수가 섞여들지 않았는지 별도 확인 — 0건, 주석 경고("AR엔 쓰지 말 것")대로 격리됨. **clean, net-new 0**.
+> - **`451f611`(주문 담당자 sales_rep_id) 전문 검토**: 마이그 0523 컬럼존재성/포지셔널 INSERT 정합 확인(`orders/create.ts` 30→31 바인드 1:1). entity 격리 관점 — `employees.entity_id`(0148) 존재하나 `sales_rep_id`는 body 신뢰로 cross-entity 지정 가능함이 **의도**(마이그 코멘트 자체가 "같은 담당이 시기별로 다른 법인 소속" 사례를 배경으로 명시 — entity 종속 아님이 기능 목적). `PUT /:id`는 기존 `requireEditOrRole('/orders','MANAGER')` 게이트 그대로라 권한 회귀 없음. **🔴 net-new #604(S, feature, 백엔드먼저·화면나중)**: `orders/core.ts` 목록·상세·인보이스 3개 엔드포인트가 `sales_rep_name`/`sales_rep_dept`를 신규 JOIN 응답 필드로 노출했는데 `grep -rln sales_rep src/scripts src/pages` = 0 — 프론트 소비처 전무. 동일 클래스 3회 누적(fixedAssets.ts #77·recurring-candidates #596·이번 #604)이라 SKILL Area 3 절에 standing scan으로 codify(아래 참조). issue-only(신규 UI=정책상 자동수정 금지).
+> - **마이그 번호 중복 재확인**: 기존 5쌍(0327·0412·0416·0420·0453) net-new 0. 신규 `0523` 고유.
+> - **브랜치 위생**(읽기전용): `npm run branch:clean` → SAFE-absorbed 1건, REVIEW 0건 — 삭제대상 1건(임계 30 미달), 백로그 등록 불요.
+> - **open≠unfixed 재확인**: #601 대상 파일(`orders/update.ts`)이 `451f611`에 포함(sales_rep_id COALESCE 라인만 추가, `DELETE FROM order_items`/`return_items` 정리 섹션은 무변경) — `grep -n return_items src/routes/orders/update.ts`=0 재확인, 잔존 그대로. #602·#603 대상 파일(`cards/queries.ts`·`issueStatus.js`)은 이번 churn과 무관, verified-once 캐시 유지.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **4**(#601·#602·#603 + 신규 #604) · `reason:completed` **524**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: Area 3 절에 "백엔드 먼저·화면 나중" standing scan 신규 codify(3회 누적 관찰 — fixedAssets.ts·recurring-candidates #596·sales_rep_id #604) — 신규 마이그+API 응답필드 노출 churn마다 프론트 소비처 0건 여부를 명시 점검하도록 레시피 추가.
+> - 신규 이슈 1건(#604, issue-only), 자동수정 0건, done-sync: new 4(+1)·done 524(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 (2026-08-07T15:27):**
 > - **방법**: `git fetch origin main`(HEAD `f66d99b`) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 5 **52회차**.
@@ -149,10 +162,11 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 3건** — Area 4 53회차, 2026-08-07.)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 4건** — Area 6 57회차, 2026-08-08.)
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
+| #604 | orders.sales_rep_id(0523) — API가 노출하는데 프론트 소비처 0건, "백엔드 먼저·화면 나중" 3번째 사례 | Area 6 | feature,S | issue-only, 신규(#604) |
 | #603 | cards "지시 현황" 개정필요 큐 — 출고 완료된 카드도 needs_reissue=1이면 영구 잔류(자기-클리어 없음) | Area 4 | bug,S | issue-only, 신규(#603) |
 | #602 | cards "지시 현황" 탭 — API 실패 시 "누락/개정 없음"으로 오표시(silent catch), 조치필요 배지도 숨겨짐 | Area 3 | bug,S | issue-only, 신규(#602) |
 | #601 | orders/update.ts 라인재작성 경로가 return_items.order_item_id(NOT NULL RESTRICT FK) 정리 누락 — 반품 등록된 주문 편집 시 100% 500 | Area 2 | bug,medium | issue-only, 신규(#601) |
