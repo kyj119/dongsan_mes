@@ -780,6 +780,12 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // ★평판 폭 좁히기 재시도가 맞붙임 결과를 갈아치우면 segs 가 사라진다 → 화면은 "한 줄" 이라고
   //   써 놓고 조각별 칼선이 나간다. 좁힌 폭에서도 맞붙임으로 돌려야 한다.
   ok('3y 폭 좁히기가 맞붙임을 유지', /alt = buttExact[\s\S]{0,120}?buttPlace\(BT, prep, guessW/.test(panelSrc))
+  // ★직사각 조각은 추적·피팅을 건너뛰고 폴리곤 bbox 를 그대로 쓴다. 실측(500×350): 곡선 피팅이
+  //   90° 모서리를 0.88~2.17mm 씩 깎아 둥글렸고 그 양이 모서리마다 달라 사각이 비뚤어 보였다.
+  //   맞붙임과 무관하게 **모든** 직사각 조각에 적용된다(여백·간격이 있어도).
+  ok('3y 직사각 칼선은 추적하지 않는다',
+    /var rectOnly = !!\(BTr && cps\.length === 1 && BTr\.isRectish\(src\)\)/.test(panelSrc))
+  ok('3y 직사각 칼선은 4점 P 줄', /if \(rectOnly\)[\s\S]{0,700}?lines\.push\('P ' \+ parts\.join\(' '\)\);\s*\n\s*continue;/.test(panelSrc))
   // ★구 호스트는 C 줄을 조용히 무시한다 → 조각별 칼선도 안 보냈으니 **칼선 없는 판**이 나온다.
   //   축2는 Z: 파일 1개로 전 PC 에 퍼지고 축3은 PC별 설치라, 역방향 스큐가 반드시 생긴다
   //   (도련 PNG 때와 같은 함정 — 그때도 구 패널/새 호스트 조합을 따로 막아야 했다).

@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.50.0';
+  var SHELL_VERSION = '0.51.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -1677,8 +1677,34 @@
     var toMm = function (px, py) {
       return [baseX + (ax + px) * stepMm, baseY + (ay + py) * stepMm];
     };
+    // ★★직사각은 **추적하지 않는다** (2026-08-07 실사용 — "재단선이 삐뚤게 나온다").
+    //   실측(500×350 조각): 변 위의 앵커는 전부 일직선인데 **모서리 앵커가 변에서 0.88·1.22·1.40·2.17mm
+    //   안쪽**에 찍혔다. 래스터 추적의 계단을 곡선으로 피팅하면서 90° 모서리를 깎아 둥글린 것이고,
+    //   깎인 양이 모서리마다 달라 사각이 비뚤어져 보인다. 네 변의 위치도 0.034~0.362mm 씩 제각각이었다.
+    //   → 사각인 줄 아는 조각을 굳이 추적할 이유가 없다. **폴리곤의 축 정렬 bbox** 를 그대로 쓴다:
+    //     좌표 규약(px→mm 사상)이 추적 경로와 완전히 같으므로 새로운 치우침이 생기지 않고,
+    //     bbox 는 각 변의 **가장 바깥** 값이라 칼선이 잉크 쪽으로 파고들지도 않는다.
+    //   ⚠️ 조각이 하나의 덩어리일 때만 — 여러 덩어리면 bbox 하나로 뭉뚱그릴 수 없다.
+    var BTr = window.MesCutButt;
+    var rectOnly = !!(BTr && cps.length === 1 && BTr.isRectish(src));
     for (var ci = 0; ci < cps.length; ci++) {
       var parts = [], j;
+      if (rectOnly) {
+        var poly = cps[ci].poly, rx0 = Infinity, ry0 = Infinity, rx1 = -Infinity, ry1 = -Infinity;
+        for (j = 0; j < poly.length; j++) {
+          if (poly[j][0] < rx0) rx0 = poly[j][0];
+          if (poly[j][0] > rx1) rx1 = poly[j][0];
+          if (poly[j][1] < ry0) ry0 = poly[j][1];
+          if (poly[j][1] > ry1) ry1 = poly[j][1];
+        }
+        var corners = [[rx0, ry0], [rx1, ry0], [rx1, ry1], [rx0, ry1]];
+        for (j = 0; j < 4; j++) {
+          var cpt = toMm(corners[j][0], corners[j][1]);
+          parts.push(cpt[0].toFixed(2) + ',' + cpt[1].toFixed(2));
+        }
+        lines.push('P ' + parts.join(' '));
+        continue;
+      }
       if (wantCurve) {
         var segs = G.fitCurves(cps[ci].poly, ctol);
         if (!segs.length) continue;
