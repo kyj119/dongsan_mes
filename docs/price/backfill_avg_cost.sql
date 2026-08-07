@@ -32,3 +32,18 @@ WHERE id IN (
   SELECT DISTINCT item_id FROM purchase_order_items
   WHERE item_id IS NOT NULL AND COALESCE(unit_price, 0) > 0 AND COALESCE(quantity, 0) > 0
 );
+
+-- ★ 전표 뭉치 품목 제외 (2026-08-07)
+--   아래 품목들은 매입이 **월별 세금계산서 1줄**(적요=대표품명 「… 외 1」 · 수량 1)로 적재돼 있다.
+--   금액은 맞지만 수량이 전표 단위라 SUM(amount)/SUM(quantity) 가 **전표 총액**이 된다
+--   (`GDS-FB1-CASE` 7,261,100원/개 → 국기함세트 BOM 롤업이 원가율 157,312% 로 튀었다).
+--   어떤 값이든 틀리므로 **모른다(0)** 로 두는 게 맞다. 실수량이 확보되면 이 목록에서 빼면 된다.
+--   판별 = avg_unit_cost > 500,000 인 품목을 훑어 매입 라인이 전표 대표품명인지 확인(정상 고가 롤·장비와 구분).
+UPDATE items SET avg_unit_cost = 0, updated_at = CURRENT_TIMESTAMP
+WHERE item_code IN (
+  'ACC-036',        -- 수기대(깃대) — 유진프라스틱 12,840,000 수량 1
+  'GDS-FB1-CASE',   -- 국기함 보급형 케이스 — 에코컴퍼니 「태극기 보관함 외 1」 2건
+  'RM-I0040',       -- R50 UV 잉크-C — 적요 「5 X 184,000」 인데 전표는 1,840,000
+  'RM-I0045',       -- 평판잉크 C — 적요 「2 X 92,000」 인데 전표는 942,000
+  'RM-I0046'        -- 평판잉크 M — 전표 1줄
+);
