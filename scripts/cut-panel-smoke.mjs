@@ -682,7 +682,7 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   //   조각마다 새로 생겨 굽기 1회의 이점이 사라지고, 메모리도 배수로 든다.
   ok('3r 수량은 같은 객체를 반복', /expanded\.push\(prep\.pieces\[i\]\)/.test(panelSrc))
   // ★확장은 배치 **전**이어야 한다 — 뒤에 오는 grownPx·효율%·폭 추정이 이 목록을 센다.
-  ok('3r 확장이 배치보다 먼저', /expandByQty\(prep\)[\s\S]{0,200}?nestPlace\(NST, prep/.test(panelSrc))
+  ok('3r 확장이 배치보다 먼저', /expandByQty\(prep\)[\s\S]{0,1800}?nestPlace\(NST, prep/.test(panelSrc))
   // ★효율%는 늘어난 잉크 기준 — 안 고치면 8장을 깔아도 1장치 잉크로 계산돼 효율이 1/8 로 보인다
   ok('3r 효율 기준 잉크도 늘린다', /prep\.rawInkPx = ink;/.test(panelSrc))
   // ★목록과 선택이 어긋나면 조용히 1개로 떨어지지 않는다
@@ -730,7 +730,33 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3x 넘으면 격자를 성글게', /rez\.mmPerPx \*= kUp;/.test(panelSrc))
   ok('3x 성글게 잡았다고 알린다', /격자를 ' \+ oldFine/.test(panelSrc))
   // ★조각 크기는 호스트가 이미 아는 값 — 굽기 **전에** 받아야 예산을 세울 수 있다
-  ok('3x 굽기 전에 크기를 받는다', /mesCut_nestSizes\(\)'[\s\S]{0,500}?prepareWith\(resolveFill/.test(panelSrc))
+  ok('3x 굽기 전에 크기를 받는다', /mesCut_nestSizes\(\)'[\s\S]{0,900}?prepareWith\(resolveFill/.test(panelSrc))
+
+  // ── 맞붙임 정확 배치 (2026-08-06) ────────────────────────────────
+  // ★조건을 **좁게** 유지하는 것이 이 기능의 안전장치다.
+  //   여백>0 이면 칼선이 이웃과 겹치고, 여백<0 이면 떨어져 공유할 변이 없다.
+  //   간격>0 은 애초에 붙이지 않겠다는 뜻이고, 이형은 붙여도 칼선이 안 맞는다.
+  //   넷 중 하나라도 걸리면 기존 래스터 경로여야 한다(회귀 0).
+  ok('3y 맞붙임은 여백·간격 정확히 0 일 때만',
+    /buttMode && offsetMm === 0 && gapMm === 0 && !useVec && prep\.sizes\.length/.test(panelSrc))
+  ok('3y 전 조각이 직사각일 때만', /BT\.isRectish\(prep\.pieces\[bi\]\.base\)/.test(panelSrc))
+  // ★실패하면 조용히 이상한 판을 내지 말고 기존 경로로 되돌아가야 한다
+  ok('3y 실패 시 래스터로 폴백', /buttExact = false;\s*\n\s*res = nestPlace\(NST, prep/.test(panelSrc))
+  // ★맞붙임에서는 조각별 닫힌 경로를 만들지 않는다 — 그게 두 줄의 원인이다
+  ok('3y 맞붙임이면 조각별 칼선 생략', /!useVec && !res\.butt\) pieceCutLines/.test(panelSrc))
+  ok('3y 공유 변은 C 줄로', /lines\.push\('C ' \+ \(sg\.x1 \+ domboMm\(\)\)/.test(panelSrc))
+  ok('3y 호스트가 C 줄을 읽는다', /p\[0\] === 'C'/.test(hostSrc))
+  ok('3y 호스트가 열린 선분으로 긋는다', /sp\.closed = false;/.test(hostSrc))
+  {
+    const buttSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'poc-a0-cep', 'com.mes.a0.panel', 'js', 'butt.js'), 'utf8')
+    // ★허용오차가 없어야 한다 — 있으면 안 붙은 선까지 합쳐 재단 위치가 옮겨진다
+    ok('3y 맞붙임 엔진에 허용오차가 없다', !/toler|epsilon|EPS|1e-|0\.0[0-9]* *\)/i.test(buttSrc))
+    ok('3y 맞붙임 엔진은 mm 전용(픽셀 없음)', !/\bpx\b|mmpp|pixel/i.test(buttSrc))
+  }
+  {
+    const idxSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'poc-a0-cep', 'com.mes.a0.panel', 'index.html'), 'utf8')
+    ok('3y index.html 이 butt.js 를 싣는다', /<script src="js\/butt\.js"><\/script>/.test(idxSrc))
+  }
 
   // ── 조각 목록 순서·확인 (2026-08-06) ───────────────────────────
   // ★번호가 눈에 보이는 순서와 어긋나면 어느 행이 어느 조각인지 알 수 없어 수량을 못 넣는다.

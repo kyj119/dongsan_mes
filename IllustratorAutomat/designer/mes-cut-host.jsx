@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.17.0';  // 0.15.0 = 도련을 칼선 방식과 분리(래스터에서도 생성)
+var MESCUT_VERSION = 'CUT-CEP-0.18.0';  // 0.15.0 = 도련을 칼선 방식과 분리(래스터에서도 생성)
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -2304,10 +2304,15 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
         // ★RS = 조각 리사이즈 %(파일 좌표 → 저장 좌표). 아트는 **복제본만** 줄인다 — 원본은 손대지 않는다.
         if (p[0] === 'RS') { var rs = parseFloat(p[1]); if (rs > 0) resizePct = rs; continue; }
         if (p[0] === 'L') { bleedSz[parseInt(p[1], 10)] = { w: parseFloat(p[2]), h: parseFloat(p[3]) }; continue; }
-        if (p[0] === 'S') { cur = { w: parseFloat(p[2]), h: parseFloat(p[3]), items: [], cuts: [] }; sheets.push(cur); continue; }
+        if (p[0] === 'S') { cur = { w: parseFloat(p[2]), h: parseFloat(p[3]), items: [], cuts: [], segs: [] }; sheets.push(cur); continue; }
         if (!cur) continue;
         if (p[0] === 'I') {
             cur.items.push({ idx: parseInt(p[1], 10), x: parseFloat(p[2]), y: parseFloat(p[3]), rot: parseFloat(p[4]) || 0 });
+        } else if (p[0] === 'C') {
+            // ★맞붙임 칼선 = **열린 선분**(mm). 맞닿은 변이 패널에서 이미 하나로 합쳐져 있어
+            //   같은 자리를 두 번 긋지 않는다 → DXF 에 선이 한 줄만 남고 재단기가 한 번만 지난다.
+            //   (조각별 닫힌 경로와 배타적이다 — 맞붙임이면 패널이 그것을 안 보낸다)
+            cur.segs.push([parseFloat(p[1]), parseFloat(p[2]), parseFloat(p[3]), parseFloat(p[4])]);
         } else if (p[0] === 'P' || p[0] === 'B') {
             var arr = [];
             for (var pi = 1; pi < p.length; pi++) {
@@ -2391,6 +2396,22 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                     try { mesCut_vecSilhouette(doc, [copies[vi]], vcl, vecOffsetMm, vecFillClosed); } catch (eVS) {}
                 }
                 try { doc.selection = null; } catch (eSel) {}
+            } else if (sh.segs && sh.segs.length) {
+                // ★맞붙임 — 열린 선분을 그대로 긋는다. 맞닿은 변은 패널에서 이미 하나로 합쳐졌다.
+                var scl = mesCut_ensureCutLayer(doc);
+                for (var sgi = 0; sgi < sh.segs.length; sgi++) {
+                    var sg = sh.segs[sgi];
+                    try {
+                        var sp = scl.pathItems.add();
+                        sp.setEntirePath([
+                            [sg[0] * MESCUT_PT_PER_MM, sheetH - sg[1] * MESCUT_PT_PER_MM],
+                            [sg[2] * MESCUT_PT_PER_MM, sheetH - sg[3] * MESCUT_PT_PER_MM],
+                        ]);
+                        sp.closed = false;
+                        sp.filled = false; sp.stroked = true;
+                        sp.strokeColor = mesCut_magenta(); sp.strokeWidth = 0.6;
+                    } catch (eSg) {}
+                }
             } else if (sh.cuts.length) {
                 var cl = mesCut_ensureCutLayer(doc);
                 for (var c = 0; c < sh.cuts.length; c++) {

@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.35.0';
+  var SHELL_VERSION = '0.36.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -782,20 +782,21 @@
       // ★선 도안 판정은 **선택 전체에 대해 한 번** — 조각마다 다르게 굽으면 마스크 규칙이 섞인다
       // 굽기 픽셀 예산에 쓸 **실제 조각 크기**를 먼저 받는다(호스트가 이미 아는 값이라 추가 비용 없음)
       host('mesCut_nestSizes()', function (szStr) {
-        var areaMm2 = 0;
+        var areaMm2 = 0, sizeList = [];
         if (String(szStr).indexOf('ok;') === 0) {
           var parts = szStr.substring(3).split(',');
           for (var pz = 0; pz < parts.length; pz++) {
             var wh = parts[pz].split('x');
             var pw = parseFloat(wh[0]), ph = parseFloat(wh[1]);
+            sizeList.push({ w: pw > 0 ? pw : 0, h: ph > 0 ? ph : 0 });
             if (pw > 0 && ph > 0) areaMm2 += pw * ph;
           }
         }
-        host('mesCut_artKind()', function (kindStr) { prepareWith(resolveFill(kindStr, fillMode || 'auto'), areaMm2); });
+        host('mesCut_artKind()', function (kindStr) { prepareWith(resolveFill(kindStr, fillMode || 'auto'), areaMm2, sizeList); });
       });
       return;
 
-      function prepareWith(fv, selAreaMm2) {
+      function prepareWith(fv, selAreaMm2, sizeList) {
       // 여백이 팽창이면 그만큼 캔버스가 더 필요하다 — 부족하면 팽창분이 잘려 칼선이 조용히 틀린다
       var padMm = Math.max(offsetMm, 0) + gapMm + 1;
       // ★배치 격자보다 곱게 굽는다 — 거친 격자에서 바로 뜨면 경계가 최대 2mm 부푼다(실측).
@@ -843,7 +844,7 @@
       /** 두 경로(순차·일괄)가 **같은 결과 묶음**을 넘긴다 — 갈라지면 한쪽만 조용히 달라진다. */
       function finishPrep() {
         cb({
-          n: n, pieces: pieces, rawInkPx: rawInkPx, mmpp: rez.mmPerPx,
+          n: n, pieces: pieces, rawInkPx: rawInkPx, mmpp: rez.mmPerPx, sizes: sizeList || [],
           rPx: rez.rPx, exact: rez.exact, sub: sub, fineMmpp: fineMmpp, softened: softened, safetyMm: rez.safetyMm,
           offsetMm: offsetMm, cutFinePx: cutFinePx, fillNote: fv.note, lineArt: fv.lineArt, fill: fv.fill,
           bakeNote: bakeNote,
@@ -1060,6 +1061,38 @@
     return parts.length ? (' — ' + parts.join(' · ')) : '';
   }
 
+  /**
+   * 맞붙임 배치 — mm 산수. 결과는 `nestPlace` 와 **같은 모양**으로 돌려준다.
+   *
+   * ★좌표를 **px 환산값**(mm / mmpp)으로 담는 이유: 아래 배선이 전부 `x * mmpp` 로 mm 를 되찾는다.
+   *   같은 그릇에 담아야 효율%·판 크기·메시지 계산을 하나도 안 건드린다(회귀 0).
+   *   되찾은 값의 부동소수 오차는 1e-13mm 수준이고, 내보낼 때 0.01mm 로 반올림되므로
+   *   맞닿은 변은 **같은 값으로 반올림**된다 = 공유가 유지된다.
+   * ★`segs` 에 공유 변을 한 번씩만 담아 보낸다 — 조각별 닫힌 경로를 만들지 않는다.
+   */
+  function buttPlace(BT, prep, sheetWmm, sheetHmm) {
+    var usableW = Math.max(1, sheetWmm - domboMm() * 2);
+    var rects = [];
+    for (var i = 0; i < prep.pieces.length; i++) {
+      var sz = prep.sizes[prep.pieces[i].id];
+      if (!sz || !(sz.w > 0) || !(sz.h > 0)) return null;    // 크기를 모르면 산수를 못 한다
+      rects.push({ id: prep.pieces[i].id, w: sz.w, h: sz.h });
+    }
+    var r = BT.packRects(rects, usableW);
+    if (!r.placements.length || BT.anyOverlap(r.placements)) return null;
+    if (sheetHmm && r.usedH > Math.max(1, sheetHmm - domboMm() * 2)) return null;   // 평판 높이 초과
+    var mmpp = prep.mmpp, inkPx = 0, pls = [];
+    for (var k = 0; k < r.placements.length; k++) {
+      var p = r.placements[k];
+      inkPx += (p.w / mmpp) * (p.h / mmpp);
+      pls.push({ id: p.id, x: p.x / mmpp, y: p.y / mmpp, rot: 0, W: p.w / mmpp, H: p.h / mmpp });
+    }
+    return {
+      sheets: [{ placements: pls, usedH: r.usedH / mmpp, inkPx: inkPx, segs: BT.cutSegments(r.placements) }],
+      unplaced: r.unplaced, butt: true,
+    };
+  }
+
   /** 공통 배치 호출 — [네스팅 실행]과 [폭 추천]이 같은 규칙으로 돌아야 비교가 성립한다. */
   function nestPlace(NST, prep, sheetWmm, sheetHmm, allowRot, opts) {
     opts = opts || {};
@@ -1183,8 +1216,31 @@
         T.prep = Date.now();
         // ★수량 확장은 **배치 전**이어야 한다 — 이 뒤의 grownPx·효율%·판 폭 추정이 전부 이 목록을 센다.
         var qtyNote = expandByQty(prep);
+        // ★맞붙임 정확 배치 (2026-08-06 · spec 2026-08-06-butt-exact-and-cutline-weld)
+        //   래스터 네스터는 좌표를 픽셀 격자로 양자화한다 → 최대 한 칸 어긋나고, 어긋나면 칼선이 두 줄이다.
+        //   맞붙임은 탐색이 아니라 산수라서 **네스터를 안 거치면** 오차가 애초에 생기지 않는다.
+        //   ⚠️ 조건을 좁게 잡는다 — 여백·간격이 **정확히 0** 이고 전 조각이 직사각일 때만.
+        //     · 여백 > 0  → 칼선이 조각 바깥으로 나가 이웃 칼선과 **겹친다**(공유가 성립 안 함)
+        //     · 여백 < 0  → 칼선이 안쪽으로 들어와 이웃과 **떨어진다**(공유할 변이 없다)
+        //     · 간격 > 0  → 애초에 붙이지 않겠다는 뜻이다
+        //     · 이형      → 붙여도 칼선이 안 맞는다
+        //     넷 중 하나라도 걸리면 **기존 래스터 경로 그대로**(회귀 0).
+        var BT = window.MesCutButt;
+        var buttExact = false;
+        if (BT && buttMode && offsetMm === 0 && gapMm === 0 && !useVec && prep.sizes.length) {
+          buttExact = true;
+          for (var bi = 0; bi < prep.pieces.length; bi++) {
+            if (!BT.isRectish(prep.pieces[bi].base)) { buttExact = false; break; }
+          }
+        }
         out('배치 계산 중...');
-        var res = nestPlace(NST, prep, sheetWmm, sheetHmm, allowRot);
+        var res = buttExact
+          ? buttPlace(BT, prep, sheetWmm, sheetHmm)
+          : nestPlace(NST, prep, sheetWmm, sheetHmm, allowRot);
+        if (buttExact && (!res || !res.sheets.length)) {   // 폭 초과 등 — 조용히 틀리지 말고 되돌린다
+          buttExact = false;
+          res = nestPlace(NST, prep, sheetWmm, sheetHmm, allowRot);
+        }
         T.place = Date.now();
         if (!res.sheets.length) { done('배치 실패 — 조각이 시트보다 큽니다.', 'err'); return; }
 
@@ -1259,7 +1315,16 @@
             lines.push('I ' + pl.id + ' ' + (pl.x * mmpp + half + domboMm()).toFixed(2) + ' ' + (pl.y * mmpp + half + domboMm()).toFixed(2) + ' ' + pl.rot);
             // ★벡터 모드면 좌표를 보내지 않는다 — 호스트가 **배치가 끝난 사본**에서 직접 실루엣을 뽑는다.
             //   회전·이동이 이미 적용된 것을 쓰므로 정렬 수식(baseX·trim 오프셋)이 아예 필요 없다.
-            if (wantPieceCut && !useVec) pieceCutLines(lines, res, prep, pl, mmpp, wantCurve);
+            // 맞붙임은 조각별 닫힌 경로를 만들지 않는다 — 공유 변을 아래에서 한 번씩만 내보낸다.
+            if (wantPieceCut && !useVec && !res.butt) pieceCutLines(lines, res, prep, pl, mmpp, wantCurve);
+          }
+          // ★맞붙임 칼선 = `C` 줄(열린 선분). 맞닿은 변이 하나로 합쳐져 있어 재단기가 한 번만 지난다.
+          if (res.butt && wantPieceCut && sh.segs) {
+            for (var cs = 0; cs < sh.segs.length; cs++) {
+              var sg = sh.segs[cs];
+              lines.push('C ' + (sg.x1 + domboMm()).toFixed(2) + ' ' + (sg.y1 + domboMm()).toFixed(2)
+                + ' ' + (sg.x2 + domboMm()).toFixed(2) + ' ' + (sg.y2 + domboMm()).toFixed(2));
+            }
           }
         }
         // ★도련 PNG 는 params 를 쓰기 **전에** 만든다 — 실제 크기(mm)를 `L` 줄로 실어야 하기 때문이다.
