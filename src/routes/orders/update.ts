@@ -126,6 +126,9 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
         contact_mobile = ?,
         shipping_payment = ?,
         consolidate_with_order_id = ?,
+        -- 담당자는 바뀐다(재현시스템: 강지영 → 최인호). 미전달이면 COALESCE 로 기존 값을 유지한다 —
+        --   그냥 대입하면 폼이 이 필드를 안 보낼 때 기존 담당이 조용히 지워진다.
+        sales_rep_id = COALESCE(?, sales_rep_id),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).bind(
@@ -146,6 +149,7 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
       orderData.contact_mobile || null,
       orderData.shipping_payment || null,
       consolidateWithOrderId,
+      orderData.sales_rep_id ? Number(orderData.sales_rep_id) : null,
       id
     ).run()
 

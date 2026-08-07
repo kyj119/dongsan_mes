@@ -38,6 +38,8 @@ ordersCoreRouter.get('/', async (c) => {
         c.email as client_email,
         c.fax as client_fax,
         u.name as created_by_name,
+        sr.name as sales_rep_name,
+        sr.department as sales_rep_dept,
         (SELECT COUNT(*) FROM cards WHERE order_id = o.id) as total_cards,
         (SELECT COUNT(*) FROM cards WHERE order_id = o.id AND shipped_at IS NOT NULL) as shipped_cards,
         (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM order_items WHERE order_id = o.id AND price_status = 'PENDING') as has_pending_prices,
@@ -50,6 +52,7 @@ ordersCoreRouter.get('/', async (c) => {
       FROM orders o
       LEFT JOIN clients c ON o.client_id = c.id
       LEFT JOIN users u ON o.created_by = u.id
+      LEFT JOIN employees sr ON sr.id = o.sales_rep_id
       LEFT JOIN entities e ON e.id = o.entity_id
     `
     const params: any[] = []
@@ -325,10 +328,13 @@ ordersCoreRouter.get('/:id/invoice', async (c) => {
       SELECT
         o.*,
         c.client_name,
-        u.name as created_by_name
+        u.name as created_by_name,
+        sr.name as sales_rep_name,
+        sr.department as sales_rep_dept
       FROM orders o
       LEFT JOIN clients c ON o.client_id = c.id
       LEFT JOIN users u ON o.created_by = u.id
+      LEFT JOIN employees sr ON sr.id = o.sales_rep_id
       WHERE o.id = ?
     `).bind(id).first()
 
@@ -431,10 +437,13 @@ ordersCoreRouter.get('/:id', async (c) => {
         o.*,
         c.client_name,
         u.name as created_by_name,
+        sr.name as sales_rep_name,
+        sr.department as sales_rep_dept,
         q.quotation_number as quotation_number
       FROM orders o
       LEFT JOIN clients c ON o.client_id = c.id
       LEFT JOIN users u ON o.created_by = u.id
+      LEFT JOIN employees sr ON sr.id = o.sales_rep_id
       LEFT JOIN quotations q ON o.quotation_id = q.id
       WHERE o.id = ?
     `).bind(id).first()

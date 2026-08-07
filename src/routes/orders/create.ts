@@ -131,6 +131,15 @@ ordersCreateRouter.post('/', async (c) => {
     // Phase 3.2: source_quotation_id 받으면 orders.quotation_id에 저장 (견적서 → 주문 prefill 흐름)
     const sourceQuotationId = orderData.source_quotation_id || orderData.quotation_id || null
     // billingEntityId는 위(채번 전)에서 계산됨 — 번호 접두와 entity_id 일치 보장
+    // 담당자(sales_rep) — 본문에 오면 그대로, 없으면 **로그인 사용자**로 기본값(2026-08-07).
+    //   `employees.user_id` 로 users→employees 를 잇는다(마이그레이션 0523 에서 실계정 7명 연결).
+    //   ⚠️ `created_by` 와 초기값이 같아도 **컬럼은 따로 둔다** — 담당자는 바뀌고 등록자는 안 바뀐다.
+    //      합쳐 두면 담당이 한 번이라도 바뀐 뒤 과거 데이터에서 둘을 구분할 수 없다.
+    //   미연결 계정(designer/admin 등)이면 NULL — 잘못 붙이느니 비워 둔다.
+    const salesRepId = orderData.sales_rep_id
+      ? Number(orderData.sales_rep_id)
+      : (await c.env.DB.prepare('SELECT id FROM employees WHERE user_id = ? LIMIT 1')
+          .bind(user.id).first<{ id: number }>())?.id ?? null
     const orderResult = await c.env.DB.prepare(`
       INSERT INTO orders (
         order_number, client_id, status, order_year, order_month,
@@ -139,8 +148,8 @@ ordersCreateRouter.post('/', async (c) => {
         notes, internal_notes, created_by,
         ai_file_path, ai_analysis_id, layout_id, priority, delivery_method, delivery_time,
         contact_phone, contact_mobile, shipping_payment, valid_until, entity_id,
-        sheet_layout_params, order_type, quotation_id, consolidate_with_order_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        sheet_layout_params, order_type, quotation_id, consolidate_with_order_id, sales_rep_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       orderNumber,
       orderData.client_id,
