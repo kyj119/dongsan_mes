@@ -29,10 +29,35 @@
    */
   function isRectish(mask, minFill) {
     if (!mask || !mask.W || !mask.H) return false
+    var W = mask.W, H = mask.H, m = mask.m
+    // ★★ 모서리 4곳에 잉크가 있어야 한다 (2026-08-06 용준님 지적).
+    //   채움 비율만으로는 **라운드 사각을 못 거른다** — 100×50 에 반경 5mm 면 잃는 면적이
+    //   r²(4−π) ≈ 21.5mm² = 0.43% 뿐이라 98% 기준을 그냥 통과한다.
+    //   그대로 두면 직사각으로 보고 **직선 공유 변**을 그어 **라운드가 조용히 각지게 된다**
+    //   — 제품이 달라지는 사고다. 모서리는 라운드 여부를 곧바로 가르므로 이걸 먼저 본다.
+    //   ⚠️ 안티앨리어싱이 맨 끝 1px 을 비울 수 있어 **1px 안쪽**을 본다. 2px 로 하면 반경 6px 짜리
+    //      모서리 안쪽에 들어가 버려 라운드를 직사각으로 오판한다(하네스가 잡았다).
+    //      역으로 반경이 1~2px(해상도에 따라 0.25~0.5mm)면 통과하는데, 그 정도는 사실상 각진 모서리다.
+    var d = (W > 3 && H > 3) ? 1 : 0
+    var corners = [
+      m[d * W + d], m[d * W + (W - 1 - d)],
+      m[(H - 1 - d) * W + d], m[(H - 1 - d) * W + (W - 1 - d)],
+    ]
+    for (var c = 0; c < 4; c++) if (!corners[c]) return false
+    // 채움 비율은 **경계 1px 을 빼고** 잰다 — 그 링은 안티앨리어싱 산물이라 조각이 작을수록
+    //   비율을 크게 왜곡한다(100×100 이면 4%, 2000×1000 이면 0.3%). 빼지 않으면 같은 직사각이
+    //   **크기에 따라** 통과/탈락이 갈린다 — 작은 스티커가 맞붙임에서 빠지는 게 정확히 그 경우다.
+    //   모서리 라운드는 위에서 이미 걸렀으므로, 여기 남은 역할은 "변 중간이 파인" 도형 배제다.
+    var x0 = (W > 2) ? 1 : 0, x1 = (W > 2) ? W - 1 : W
+    var y0 = (H > 2) ? 1 : 0, y1 = (H > 2) ? H - 1 : H
     var need = (minFill === undefined) ? 0.98 : minFill
     var n = 0
-    for (var i = 0; i < mask.m.length; i++) if (mask.m[i]) n++
-    return n / (mask.W * mask.H) >= need
+    for (var y = y0; y < y1; y++) {
+      var row = y * W
+      for (var x = x0; x < x1; x++) if (m[row + x]) n++
+    }
+    var area = (x1 - x0) * (y1 - y0)
+    return area > 0 && n / area >= need
   }
 
   /**

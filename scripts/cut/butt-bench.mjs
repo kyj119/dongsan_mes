@@ -32,10 +32,39 @@ console.log('\n맞붙임 (js/butt.js)\n' + '='.repeat(52))
   for (let i = 0; i < 50; i++) half.m[i] = 1
   ok('꽉 찬 마스크 = 직사각', B.isRectish(full))
   ok('반만 찬 마스크 = 직사각 아님', !B.isRectish(half))
-  // 안티앨리어싱으로 가장자리가 조금 비는 것은 직사각으로 봐야 한다
-  const almost = { W: 100, H: 100, m: new Uint8Array(10000).fill(1) }
-  for (let i = 0; i < 150; i++) almost.m[i] = 0        // 1.5% 결손
-  ok('1.5% 결손도 직사각', B.isRectish(almost))
+  // 안티앨리어싱은 **최외곽 1px 링**을 비운다 — 그건 직사각으로 봐야 한다.
+  //   (모서리 판정을 1px 안쪽에서 하는 이유가 이것이다)
+  const aa = { W: 100, H: 100, m: new Uint8Array(10000).fill(1) }
+  for (let x = 0; x < 100; x++) { aa.m[x] = 0; aa.m[99 * 100 + x] = 0 }
+  for (let y = 0; y < 100; y++) { aa.m[y * 100] = 0; aa.m[y * 100 + 99] = 0 }
+  ok('안티앨리어싱 1px 링은 직사각', B.isRectish(aa))
+  // ★크기에 따라 판정이 갈리면 안 된다 — 작은 스티커가 맞붙임에서 빠지는 게 그 증상이다
+  const aaSmall = { W: 40, H: 24, m: new Uint8Array(40 * 24).fill(1) }
+  for (let x = 0; x < 40; x++) { aaSmall.m[x] = 0; aaSmall.m[23 * 40 + x] = 0 }
+  for (let y = 0; y < 24; y++) { aaSmall.m[y * 40] = 0; aaSmall.m[y * 40 + 39] = 0 }
+  ok('작은 조각의 1px 링도 직사각', B.isRectish(aaSmall))
+  // ★변 중간이 파인 도형은 여전히 걸러야 한다(모서리는 멀쩡하므로 채움 비율이 잡는다)
+  const notch = { W: 100, H: 100, m: new Uint8Array(10000).fill(1) }
+  for (let y = 40; y < 60; y++) for (let x = 60; x < 100; x++) notch.m[y * 100 + x] = 0
+  ok('변이 파인 도형은 직사각 아님', !B.isRectish(notch))
+
+  // ★★라운드 사각 — 채움 비율만 보면 통과해 버린다. 통과시키면 라운드가 각지게 잘린다.
+  const round = (W, H, r) => {
+    const m = new Uint8Array(W * H).fill(1)
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const cx = x < r ? r : (x >= W - r ? W - 1 - r : x)
+        const cy = y < r ? r : (y >= H - r ? H - 1 - r : y)
+        if ((x - cx) ** 2 + (y - cy) ** 2 > r * r) m[y * W + x] = 0
+      }
+    }
+    return { W, H, m }
+  }
+  const r5 = round(200, 100, 10)
+  const fill = r5.m.reduce((a, b) => a + b, 0) / (200 * 100)
+  ok('라운드 사각은 채움비율로는 안 걸린다(전제 확인)', fill >= 0.98, `채움 ${(fill * 100).toFixed(2)}%`)
+  ok('라운드 사각 = 직사각 아님 (모서리 판정)', !B.isRectish(r5))
+  ok('반경이 작아도 걸러진다', !B.isRectish(round(400, 200, 6)))
 }
 
 // ── ② 2×2 동일 조각 → 선분 6개 ────────────────────────────────────
