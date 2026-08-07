@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.48.0';
+  var SHELL_VERSION = '0.49.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -1184,18 +1184,15 @@
     //   파일배율 10 이면 10배 차이라, 변환을 안 하면 조각이 1/10 크기로 깔려 서로 포개진다.
     //   k = S/F = fileToSave() — 굽기 해상도에 곱하는 그 값과 **같은 상수**다(bakeK).
     var k = fileToSave() || 1;
-    var rects = [], rotOf = {};
+    var rects = [];
     for (var i = 0; i < prep.pieces.length; i++) {
       var sz = prep.sizes[prep.pieces[i].id];
       if (!sz || !(sz.w > 0) || !(sz.h > 0)) return null;    // 크기를 모르면 산수를 못 한다
-      var id = prep.pieces[i].id, w = sz.w / k, h = sz.h / k, rot = 0;
-      // ★폭을 넘으면 세워 본다 — 직사각은 돌려도 직사각이라 맞붙임 산수가 그대로 성립한다.
-      //   래스터 네스터는 회전을 쓰는데 여기만 안 쓰면, 긴 조각이 있을 때 맞붙임이 통째로 못 쓰인다.
-      if (w > usableW && h <= usableW && allowRot !== false) { var t = w; w = h; h = t; rot = 90; }
-      rotOf[id] = rot;
-      rects.push({ id: id, w: w, h: h });
+      rects.push({ id: prep.pieces[i].id, w: sz.w / k, h: sz.h / k });
     }
-    var r = BT.packRects(rects, usableW);
+    // ★회전은 패커가 정한다 — 직사각은 돌려도 직사각이라 맞붙임 산수가 그대로 성립하고,
+    //   폭에 맞추는 것뿐 아니라 **틈을 메우는 데도** 회전이 필요하다(실물 5장 3725 → 2585mm).
+    var r = BT.packRects(rects, usableW, allowRot !== false);
     if (!r.placements.length || BT.anyOverlap(r.placements)) return null;
     // ★하나라도 못 넣었으면 **조용히 빠뜨리지 말고** 되돌린다 — 래스터 경로가 회전·탐색으로 넣을 수 있다.
     if (r.unplaced.length) return null;
@@ -1204,7 +1201,7 @@
     for (var q = 0; q < r.placements.length; q++) {
       var p = r.placements[q];
       inkPx += (p.w / mmpp) * (p.h / mmpp);
-      pls.push({ id: p.id, x: p.x / mmpp, y: p.y / mmpp, rot: rotOf[p.id] || 0, W: p.w / mmpp, H: p.h / mmpp });
+      pls.push({ id: p.id, x: p.x / mmpp, y: p.y / mmpp, rot: p.rot || 0, W: p.w / mmpp, H: p.h / mmpp });
     }
     // ★★검산 — 배치가 **실제 마스크와 같은 크기**인가 (2026-08-07).
     //   좌표계를 잘못 쓰면(파일↔저장) 조각이 1/10 로 깔려 **전부 겹친 판**이 그대로 나간다.

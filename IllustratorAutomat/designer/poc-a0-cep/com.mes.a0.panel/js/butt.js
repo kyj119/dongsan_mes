@@ -98,33 +98,120 @@
   }
 
   /**
-   * 선반(shelf) 배치 — 간격 0 이라 조각도 행도 서로 맞닿는다.
+   * MAXRECTS 배치 — 자유 사각 목록을 유지하며 **가장 낮게 끝나는 자리**에 넣는다.
    *
-   * 높이 내림차순으로 넣는다: 행 높이는 그 행에서 가장 높은 조각이 정하므로,
-   * 큰 것부터 넣어야 행 안의 낭비가 줄어든다(고전 shelf 휴리스틱, NFH).
-   * ★정렬은 **안정적**이어야 한다 — 같은 크기 조각의 순서가 실행마다 바뀌면 하네스가 성립하지 않는다.
+   * 왜 바꿨나 (2026-08-07 실사용): 처음엔 선반(shelf)이었다. "공유 변 계산이 단순해야 정확하다"고
+   * 봤는데 **그건 근거가 없었다** — 공유 변 병합은 배치가 축 정렬 사각이기만 하면 성립하고,
+   * 패커가 무엇이든 상관없다. 선반은 행을 한 번 내리면 위로 못 돌아가서, 실물 5장에서
+   * **롤 3,725mm·효율 59.6%** 가 나왔다(같은 조각을 래스터 네스터는 2,628mm 에 넣었다).
+   * 1행 오른쪽에 421mm 폭이 2.1m 높이로 통째로 비는데 아무것도 못 넣는 게 원인이었다.
+   *
+   * ★정확도는 그대로다. 배치 x 는 항상 `0` 또는 **먼저 놓인 조각의 `x + w`** 이고,
+   *   y 도 마찬가지다 → 맞닿은 변의 좌표가 **비트 단위로 같다**. 허용오차가 필요 없는 이유가 유지된다.
+   * ★정렬·선택 규칙은 전부 결정적이다(같은 입력 → 같은 배치). 하네스가 그걸 확인한다.
    *
    * @param rects [{id, w, h}] mm
    * @param sheetWmm 배치 가능 폭(돔보 여백은 호출자가 이미 뺀 값)
-   * @returns {placements:[{id,x,y,w,h}], usedW, usedH, unplaced:[id]}
+   * @param allowRot true 면 90° 세워서도 시도한다(직사각은 돌려도 직사각이라 산수가 그대로 성립)
+   * @returns {placements:[{id,x,y,w,h,rot}], usedW, usedH, unplaced:[id]}
    */
-  function packRects(rects, sheetWmm) {
-    var list = []
-    for (var i = 0; i < rects.length; i++) list.push({ id: rects[i].id, w: rects[i].w, h: rects[i].h, i: i })
-    list.sort(function (a, b) { return (b.h - a.h) || (b.w - a.w) || (a.i - b.i) })
+  // 넣는 순서 — 어느 하나가 늘 이기지 않는다(고전 결과). 순서 자체가 결과를 크게 바꾼다.
+  var SORTS = [
+    function (a, b) {                                   // ⓪ 긴 변 큰 것부터 (기본)
+      var am = (a.w > a.h ? a.w : a.h), bm = (b.w > b.h ? b.w : b.h)
+      return (bm - am) || ((b.w * b.h) - (a.w * a.h)) || (a.i - b.i)
+    },
+    function (a, b) { return ((b.w * b.h) - (a.w * a.h)) || (a.i - b.i) },       // ① 넓이
+    function (a, b) { return (b.h - a.h) || (b.w - a.w) || (a.i - b.i) },        // ② 높이
+    function (a, b) { return (b.w - a.w) || (b.h - a.h) || (a.i - b.i) },        // ③ 폭
+  ]
+  // 어느 자유 사각을 고를까 — 전부 **결정적**이어야 한다(같은 입력 → 같은 배치).
+  var SCORES = [
+    function (c) { return [c.top, c.x, c.short] },      // ⓪ 가장 낮게 끝나는 자리 (기본)
+    function (c) { return [c.short, c.top, c.x] },      // ① 짧은 변이 덜 남는 자리 (BSSF)
+    function (c) { return [c.area, c.top, c.x] },       // ② 넓이가 덜 남는 자리 (BAF)
+  ]
 
-    var placements = [], unplaced = []
-    var x = 0, y = 0, rowH = 0, usedW = 0
-    for (var k = 0; k < list.length; k++) {
-      var p = list[k]
-      if (p.w > sheetWmm) { unplaced.push(p.id); continue }   // 폭보다 넓으면 어떤 행에도 못 넣는다
-      if (x > 0 && x + p.w > sheetWmm) { y += rowH; x = 0; rowH = 0 }   // 행 바꿈
-      placements.push({ id: p.id, x: x, y: y, w: p.w, h: p.h })
-      x += p.w
-      if (x > usedW) usedW = x
-      if (p.h > rowH) rowH = p.h
+  function packRects(rects, sheetWmm, allowRot) {
+    var best = null
+    for (var s = 0; s < SORTS.length; s++) {
+      for (var c = 0; c < SCORES.length; c++) {
+        var r = run(rects, sheetWmm, allowRot === true, SORTS[s], SCORES[c])
+        // ★먼저 나온 쪽이 이긴다(엄격한 부등호) — 동점이면 ⓪·⓪ 조합이 유지되므로
+        //   기존 배치가 조용히 달라지지 않는다.
+        if (!best
+          || r.unplaced.length < best.unplaced.length
+          || (r.unplaced.length === best.unplaced.length && r.usedH < best.usedH)) best = r
+      }
     }
-    return { placements: placements, usedW: usedW, usedH: y + rowH, unplaced: unplaced }
+    return best
+  }
+
+  function run(rects, sheetWmm, ROT, sortFn, scoreFn) {
+    var BIG = 1e9                    // 롤 = 길이 무제한. 평판 높이 확인은 호출자가 usedH 로 한다.
+    var free = [{ x: 0, y: 0, w: sheetWmm, h: BIG }]
+    var list = [], i
+    for (i = 0; i < rects.length; i++) list.push({ id: rects[i].id, w: rects[i].w, h: rects[i].h, i: i })
+    list.sort(sortFn)
+
+    var placements = [], unplaced = [], usedW = 0, usedH = 0
+    for (var k = 0; k < list.length; k++) {
+      var p = list[k], best = null
+      for (var f = 0; f < free.length; f++) {
+        best = pick(best, tryFit(free[f], p.w, p.h, 0))
+        if (ROT) best = pick(best, tryFit(free[f], p.h, p.w, 90))
+      }
+      if (!best) { unplaced.push(p.id); continue }
+      var pl = { id: p.id, x: best.x, y: best.y, w: best.w, h: best.h, rot: best.rot }
+      placements.push(pl)
+      split(pl)
+      prune()
+      if (pl.x + pl.w > usedW) usedW = pl.x + pl.w
+      if (pl.y + pl.h > usedH) usedH = pl.y + pl.h
+    }
+    return { placements: placements, usedW: usedW, usedH: usedH, unplaced: unplaced }
+
+    /** 자유 사각의 **좌상단**에 놓아 본다 — 좌표가 기존 변에서 그대로 오므로 정확도가 유지된다. */
+    function tryFit(fr, w, h, rot) {
+      if (w > fr.w || h > fr.h) return null
+      var lw = fr.w - w, lh = fr.h - h
+      return {
+        x: fr.x, y: fr.y, w: w, h: h, rot: rot,
+        top: fr.y + h, short: (lw < lh ? lw : lh), area: (fr.w * fr.h) - (w * h),
+      }
+    }
+    function pick(a, b) {
+      if (!b) return a
+      if (!a) return b
+      var ka = scoreFn(a), kb = scoreFn(b)
+      for (var z = 0; z < ka.length; z++) if (kb[z] !== ka[z]) return kb[z] < ka[z] ? b : a
+      return a
+    }
+    function split(r) {
+      var out = []
+      for (var j = 0; j < free.length; j++) {
+        var fr = free[j]
+        if (r.x >= fr.x + fr.w || r.x + r.w <= fr.x || r.y >= fr.y + fr.h || r.y + r.h <= fr.y) { out.push(fr); continue }
+        if (r.x > fr.x) out.push({ x: fr.x, y: fr.y, w: r.x - fr.x, h: fr.h })
+        if (r.x + r.w < fr.x + fr.w) out.push({ x: r.x + r.w, y: fr.y, w: (fr.x + fr.w) - (r.x + r.w), h: fr.h })
+        if (r.y > fr.y) out.push({ x: fr.x, y: fr.y, w: fr.w, h: r.y - fr.y })
+        if (r.y + r.h < fr.y + fr.h) out.push({ x: fr.x, y: r.y + r.h, w: fr.w, h: (fr.y + fr.h) - (r.y + r.h) })
+      }
+      free = out
+    }
+    /** 다른 자유 사각에 완전히 들어가는 것은 지운다 — 안 지우면 목록이 기하급수로 는다. */
+    function prune() {
+      for (var a = 0; a < free.length; a++) {
+        for (var b = a + 1; b < free.length; b++) {
+          if (inside(free[a], free[b])) { free.splice(a, 1); a--; break }
+          if (inside(free[b], free[a])) { free.splice(b, 1); b-- }
+        }
+      }
+    }
+    function inside(inner, outer) {
+      return inner.x >= outer.x && inner.y >= outer.y
+        && inner.x + inner.w <= outer.x + outer.w && inner.y + inner.h <= outer.y + outer.h
+    }
   }
 
   /**

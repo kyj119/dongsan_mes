@@ -165,6 +165,37 @@ console.log('\n맞붙임 (js/butt.js)\n' + '='.repeat(52))
   ok('같은 입력 → 같은 배치', a === b)
 }
 
+// ── ⑦ 실물 회귀 — 선반 배치가 낭비하던 그 조각들 ──────────────────
+// 2026-08-07 실사용 5장(롤 1370, 돔보 17×2 → 폭 1336). 선반은 **3,725mm·효율 59.6%** 였다.
+// 같은 조각을 래스터 네스터는 2,628mm 에 넣었다 — 즉 손실은 원리가 아니라 **패커 선택**이었다.
+// 이 게이트는 그 회귀를 막는다. 숫자를 낮추는 개선은 환영이고, 올리는 변경은 여기서 걸린다.
+{
+  const W = 1336
+  const real = () => [
+    { id: 2, w: 420, h: 2100 },
+    { id: 3, w: 1995, h: 495 },
+    { id: 1, w: 485, h: 985 },
+    { id: 0, w: 1150, h: 300 },
+    { id: 4, w: 1150, h: 300 },
+  ]
+  const r = B.packRects(real(), W, true)
+  ok('실물 5장 전부 배치', r.placements.length === 5 && r.unplaced.length === 0, `미배치 ${r.unplaced}`)
+  ok('실물 5장 겹침 없음', !B.anyOverlap(r.placements))
+  ok('실물 5장 폭 안 넘음', r.usedW <= W, `${r.usedW} > ${W}`)
+  ok('실물 5장 선반(3725mm)보다 낫다', r.usedH < 3725, `${Math.round(r.usedH)}mm`)
+  ok('실물 5장 래스터(2628mm) 수준', r.usedH <= 2700, `${Math.round(r.usedH)}mm`)
+  console.log(`        └ 실측 ${Math.round(r.usedH)}mm (선반 3725 · 래스터 2628)`)
+  // ★맞닿은 변이 실제로 합쳐지는가 — 조각 5장이면 사각 5개 = 선분 20개가 아니어야 한다
+  const s = B.cutSegments(r.placements)
+  ok('실물 5장 공유 변이 합쳐짐(<20)', s.length < 20, `${s.length}개`)
+  // ★회전을 써도 결정적이어야 한다
+  ok('회전 포함해도 같은 입력 → 같은 배치',
+    JSON.stringify(B.packRects(real(), W, true).placements) === JSON.stringify(r.placements))
+  // ★회전은 **명시할 때만** — 기존 호출부(회전 금지)가 조용히 달라지면 안 된다
+  const noRot = B.packRects([{ id: 'wide', w: 300, h: 10 }], 200)
+  ok('회전 미지정이면 세우지 않는다', noRot.unplaced.length === 1, JSON.stringify(noRot.placements))
+}
+
 console.log('\n── 판정 ──')
 if (fail === 0) console.log(`  ✅ 전 항목 통과 (${pass}건)`)
 else console.log(`  ❌ 실패 ${fail}건 / 통과 ${pass}건`)
