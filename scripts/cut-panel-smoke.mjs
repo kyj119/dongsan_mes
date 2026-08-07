@@ -734,6 +734,16 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     ok('3v 미끄러짐은 step 미만', /lim = step - 1/.test(nestSrc))
     ok('3v step 1 이면 건너뛴다', /opts\.compact !== false && step > 1/.test(nestSrc))
     ok('3v 무한 while 이 없다', !/while \([^)]*fitsBits\(bits, SWW, best\.piece/.test(nestSrc))
+
+    // ── 배치 시간 상한 (2026-08-06 실사용 정지 2회) ─────────────────
+    // ★안 들어가는 조각이 시트 전체를 훑으면 롤(11200px)에서 사실상 멈춘다.
+    //   점유 최고선 아래는 비어 있으므로 거기까지만 보면 되고, 못 찾으면 그 아래에 놓으면 된다.
+    ok('3w y 훑기를 점유선까지만', /var yCap = Math\.min\(SH - p\.H, maxSky\)/.test(nestSrc))
+    ok('3w 점유선 아래는 바로 배치', /if \(maxSky \+ p\.H <= SH\) return \{ x: 0, y: maxSky/.test(nestSrc))
+    // ★비용은 개수가 아니라 **면적**에 비례한다 — 큰 조각은 겹침검사 한 번이 수백 배 비싸다.
+    //   실측: 20조각·5,400만px 에서 12.0s → 2.6s, 결과 길이는 9950px 로 동일.
+    ok('3w 시도 횟수는 면적 예산', /TRY_BUDGET_PX \/ Math\.max\(1, totalPx\)/.test(nestSrc))
+    ok('3w 무거우면 정밀 재실행 생략', /&& !heavy\)/.test(nestSrc))
   }
   // ★조각마다 따로 불러야 한다 — 한꺼번에 하면 조각끼리 이어진다
   ok('3q 배치된 사본마다 도련', /mesCut_bleedPlaceItem\(doc, artLayer, copies\[vi\]/.test(hostSrc))

@@ -168,15 +168,26 @@
    * 유일한 최적화 = `minSky` 아래는 건너뛴다(모든 열이 그보다 높으면 그 위로만 놓인다).
    */
   function placeOne(bits, SWW, SW, SH, sky, p, step) {
-    var minSky = Infinity
-    for (var k = 0; k < SW; k++) if (sky[k] < minSky) minSky = sky[k]
+    var minSky = Infinity, maxSky = 0
+    for (var k = 0; k < SW; k++) {
+      if (sky[k] < minSky) minSky = sky[k]
+      if (sky[k] > maxSky) maxSky = sky[k]
+    }
     var y0 = Math.max(0, Math.floor((minSky - p.H) / step) * step)
-    for (var y = y0; y + p.H <= SH; y += step) {
+    // ★★ y 는 **점유 최고선(maxSky)까지만** 훑는다 (2026-08-06).
+    //   그 아래는 아무것도 없으므로 x=0 이 반드시 비어 있다 — 굳이 찾을 필요가 없고, 찾아도 답은 같다.
+    //   상한이 없으면 "안 들어가는 조각"이 **시트 전체**를 훑는다: 롤이면 SH 가 11200px 이라
+    //   조각 하나가 수천×수백 번의 마스크 전체 대조를 돌려 화면이 "배치 계산 중..." 에서 멈춘다.
+    //   조각 수량으로 조각이 많아지면서 이 경로에 쉽게 들어가게 됐다(2026-08-06 실사용 정지 2회).
+    var yCap = Math.min(SH - p.H, maxSky)
+    for (var y = y0; y <= yCap; y += step) {
       for (var x = 0; x + p.W <= SW; x += step) {
         if (fitsBits(bits, SWW, p, x, y)) return { x: x, y: y, top: y + p.H }
       }
     }
-    return null
+    // 점유선 아래 = 빈 영역. 폭만 맞으면 반드시 들어간다(위에서 cand.W > SW 를 이미 걸렀다).
+    if (maxSky + p.H <= SH) return { x: 0, y: maxSky, top: maxSky + p.H }
+    return null   // 시트 높이가 모자란다 → 다음 시트로
   }
 
   function updateSky(sky, p, ox, oy) {
@@ -211,7 +222,17 @@
     // 조각이 적으면 정밀하게, 많으면 성글게 — 사용자가 초 단위로 기다리는 도구다.
     var n = pieces.length
     var coarse = opts.step || (n <= 20 ? 2 : n <= 60 ? 3 : 4)
-    var tries = opts.tries || (n <= 20 ? 8 : n <= 60 ? 6 : 4)
+    // ★비용은 **개수가 아니라 면적**에 비례한다 (2026-08-06).
+    //   겹침 검사 한 번이 O(조각높이 × 폭워드) 라, 큰 조각은 작은 조각보다 수백 배 비싸다.
+    //   개수로만 시도 횟수를 정하니 실사용(20조각·5,400만 px)에서 12초가 걸려 화면이 멈춘 것처럼 보였다.
+    //   실측: 그 입력에서 시도 8 → 1 로 줄여도 **결과 길이가 9950px 로 동일**했고 시간만 12.1s → 4.1s.
+    //   작은 조각(하네스 수준 20만 px)은 예산에 여유가 있어 종전대로 8회를 다 돈다 = 품질 불변.
+    var totalPx = 0
+    for (var z = 0; z < n; z++) totalPx += pieces[z].W * pieces[z].H
+    var TRY_BUDGET_PX = 40e6
+    var byCount = (n <= 20 ? 8 : n <= 60 ? 6 : 4)
+    var tries = opts.tries || Math.max(1, Math.min(byCount, Math.floor(TRY_BUDGET_PX / Math.max(1, totalPx))))
+    var heavy = totalPx > TRY_BUDGET_PX
 
     // ★2단계: ①성근 격자로 여러 투입 순서를 훑고 ②이긴 순서만 촘촘한 격자로 다시 돈다.
     //   step 이 품질을 좌우하는데(벤치마크 평균격차 step3 18.0 → step1 16.4%p) 전부 촘촘히 돌면
@@ -225,8 +246,9 @@
       var s = scoreOf(r)
       if (s < bestScore) { bestScore = s; best = r; bestOrder = cands[i] }
     }
+    // 정밀 재실행도 같은 예산에 걸린다 — 격자를 반으로 줄이면 후보 자리가 4배가 된다.
     var fine = Math.max(1, coarse >> 1)
-    if (fine < coarse && bestOrder) {
+    if (fine < coarse && bestOrder && !heavy) {
       var r2 = nestOnce(bestOrder, withStep(opts, fine), cache)
       if (scoreOf(r2) < bestScore) best = r2
     }
