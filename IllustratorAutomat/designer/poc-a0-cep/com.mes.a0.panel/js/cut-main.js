@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.39.0';
+  var SHELL_VERSION = '0.40.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -1265,6 +1265,10 @@
             if (!BT.isRectish(prep.pieces[bi].base)) { buttExact = false; break; }
           }
         }
+        // ★mmpp 는 여기서 잡는다 — 아래 진단·좌표 변환이 전부 이 값을 쓴다.
+        //   전에는 선언이 200줄쯤 아래에 있어서, 그 위에 붙인 진단 블록이 **호이스팅된 undefined**
+        //   를 읽고 `.toFixed` 로 터졌다(2026-08-07). 쓰는 곳보다 위에 둬야 같은 사고가 안 난다.
+        var mmpp = prep.mmpp;
         out('배치 계산 중...');
         var res = buttExact
           ? buttPlace(BT, prep, sheetWmm, sheetHmm)
@@ -1321,7 +1325,6 @@
           }
         }
 
-        var mmpp = prep.mmpp;
         // 조각 위치는 **실제 팽창분(rPx)을 되돌려** 원본 기준으로 준다.
         //   ⚠️ gap/2 를 그냥 쓰면 안 된다 — 팽창은 정수 px 이라 둘이 다를 수 있다.
         var half = prep.rPx * mmpp;

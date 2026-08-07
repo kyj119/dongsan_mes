@@ -1216,12 +1216,17 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
 // 2026-08-07: 계측 블록(`var T`)이 편집 중 **다른 함수로 들어가** `runNest()` 가 통째로 죽었다.
 //   예외가 `img.onload` 안이라 아무 메시지 없이 '마스크 4/4' 에 얼어붙었고 **성능 문제로 두 번 오진**했다.
 //   `node --check` 는 문법만 본다 — 스코프는 이 게이트가 본다.
+// 같은 날 두 번째 사고는 `var mmpp` 를 **선언보다 200줄 위**에서 읽은 것이었다 —
+//   선언은 있으므로 미선언 검사로는 안 잡힌다. 호이스팅된 undefined 라 `.toFixed` 에서 터졌다.
 {
-  const { findUndeclared } = await import(pathToFileURL(path.join(REPO, 'scripts/cut/undeclared.mjs')).href)
+  const U = await import(pathToFileURL(path.join(REPO, 'scripts/cut/undeclared.mjs')).href)
   const jsDir = path.join(PANEL_DIR, 'js')
   for (const f of fs.readdirSync(jsDir).filter((x) => x.endsWith('.js'))) {
-    const bad = findUndeclared(fs.readFileSync(path.join(jsDir, f), 'utf8'))
+    const src = fs.readFileSync(path.join(jsDir, f), 'utf8')
+    const bad = U.findUndeclared(src)
     ok(`8 미선언 식별자 없음 (${f})`, bad.length === 0, bad.map((b) => `${b.fn}() → ${b.name}`).join(', '))
+    const ub = U.findUseBeforeVar(src)
+    ok(`8 var 선언 전 사용 없음 (${f})`, ub.length === 0, ub.map((b) => `${b.fn}() → ${b.name}`).join(', '))
   }
 }
 
