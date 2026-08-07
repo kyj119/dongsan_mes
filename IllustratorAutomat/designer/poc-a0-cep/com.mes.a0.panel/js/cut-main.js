@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.38.0';
+  var SHELL_VERSION = '0.39.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -208,6 +208,24 @@
     // 잠금 해제 후에는 각 버튼의 고유 게이트를 다시 적용한다(P1 에서 늘어난다).
     if (!on) applyGates();
   }
+
+  // ── ★예외 안전망 (2026-08-07) ────────────────────────────────────
+  // 재단 파이프라인은 대부분 **`img.onload` 와 `evalScript` 콜백 안**에서 돈다. 거기서 난 예외는
+  // 호출 스택이 이미 끊겨 있어 아무 데도 안 잡히고 **조용히 사라진다** — 화면에는 마지막 상태 문구가
+  // 그대로 남고 버튼은 잠긴 채라, 증상이 "느리다 / 멈췄다" 로만 보인다.
+  //   실제 사례 ①`T` 미선언 ReferenceError → '마스크 4/4' 에서 동결(성능 문제로 두 번 오진)
+  //           ②콜백 안 예외가 "canvas 읽기 실패(보안)" 으로 둔갑
+  // → **원인을 화면에 띄우고 잠금을 푼다.** 고장은 나더라도 고장난 줄은 알아야 한다.
+  window.addEventListener('error', function (ev) {
+    if (!hostBusy) return;                     // 이 모듈이 작업 중일 때만 관여한다
+    var e = ev && ev.error;
+    var where = (ev && ev.filename ? String(ev.filename).replace(/^.*\//, '') + ':' + ev.lineno : '?');
+    out('내부 오류로 중단됐습니다 — ' + (ev && ev.message ? ev.message : '?') + ' (' + where + ')'
+      + (e && e.stack ? '\n' + String(e.stack).split('\n').slice(0, 4).join('\n') : ''), 'err');
+    try {
+      host('mesCut_releaseLock("' + PANEL_OWNER + '")', function () { setBusy(false); refreshLock(); });
+    } catch (e2) { setBusy(false); }
+  });
 
   // 버튼별 고유 활성 조건. 기하 엔진(geometry.js)이 없으면 칼선을 만들 수 없다 —
   // 눌러도 아무 일이 없는 버튼을 열어 두면 "고장난 것"으로 읽히므로 이유를 title 에 남긴다.
@@ -1167,6 +1185,14 @@
     var G = window.MesCutGeom, NST = window.MesCutNest;
     if (!G || !NST) { out('엔진 미로드(geometry.js·nesting.js) — 패널 설치본을 확인하세요', 'err'); return; }
 
+    // ★단계별 소요시간 — '오래 걸린다'를 추측이 아니라 사실로 가른다(2026-08-06).
+    //   굽기·배치·도련·적용 중 어디인지 모르면 엉뚱한 곳을 최적화하게 된다(실제로 두 번 그랬다).
+    // ⚠️ 이 선언이 **이 함수 안에** 있어야 한다. 2026-08-07 에 블록이 `exportPair()` 로 잘못 들어가
+    //    `T.prep` 이 미선언 참조가 됐고, 굽기 직후 ReferenceError 로 파이프라인이 통째로 죽었다.
+    //    예외가 `img.onload` 안에서 나 **아무 메시지 없이 '마스크 n/n' 에 얼어붙었다** — 느린 것으로 오진했다.
+    var T = { t0: Date.now(), prep: 0, place: 0, bleed: 0, apply: 0 };
+    var tms = function (a, b) { return Math.round((b - a) / 100) / 10; };
+
     var presetEl = document.getElementById('sheetPreset');
     var sp0 = parsePreset(presetEl ? presetEl.value : 'roll:1370');
     // ★여기가 실물↔파일 환산의 **유일한 입구**다. 아래 계산은 전부 파일 좌표로 돈다.
@@ -1718,10 +1744,6 @@
     if (hostBusy) return;
     var base = pairBaseName();
     if (!base) { out('네스팅을 먼저 실행하세요.', 'err'); return; }
-    // ★단계별 소요시간 — '오래 걸린다'를 추측이 아니라 사실로 가른다(2026-08-06).
-    //   굽기·배치·도련·적용 중 어디인지 모르면 엉뚱한 곳을 최적화하게 된다(실제로 두 번 그랬다).
-    var T = { t0: Date.now(), prep: 0, place: 0, bleed: 0, apply: 0 };
-    var tms = function (a, b) { return Math.round((b - a) / 100) / 10; };
     setBusy(true);
     out('잠금 확인 중...');
     host('mesCut_acquireLock("' + PANEL_OWNER + '","export-pair")', function (lk) {

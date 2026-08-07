@@ -1212,6 +1212,19 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('7 스텁이 A0 가 아닌 재단 정본을 가리킴', /mes-cut-host\.jsx/.test(stub))
 }
 
+// ── 8 미선언 식별자 — 콜백 안에서 조용히 죽는 사고 방지 ─────────────
+// 2026-08-07: 계측 블록(`var T`)이 편집 중 **다른 함수로 들어가** `runNest()` 가 통째로 죽었다.
+//   예외가 `img.onload` 안이라 아무 메시지 없이 '마스크 4/4' 에 얼어붙었고 **성능 문제로 두 번 오진**했다.
+//   `node --check` 는 문법만 본다 — 스코프는 이 게이트가 본다.
+{
+  const { findUndeclared } = await import(pathToFileURL(path.join(REPO, 'scripts/cut/undeclared.mjs')).href)
+  const jsDir = path.join(PANEL_DIR, 'js')
+  for (const f of fs.readdirSync(jsDir).filter((x) => x.endsWith('.js'))) {
+    const bad = findUndeclared(fs.readFileSync(path.join(jsDir, f), 'utf8'))
+    ok(`8 미선언 식별자 없음 (${f})`, bad.length === 0, bad.map((b) => `${b.fn}() → ${b.name}`).join(', '))
+  }
+}
+
 // ── 결과 ────────────────────────────────────────────────────────────
 await browser.close()
 let pass = 0
