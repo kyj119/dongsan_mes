@@ -1,0 +1,6 @@
+-- 롤백 (2026-08-07) — 6건을 다시 청주(e3)로
+UPDATE orders SET entity_id = 3 WHERE order_number IN
+  ('E3-20260630-015','E3-20260629-002','E3-20260626-011','E3-20260616-014','E3-20260610-005','E3-20260605-013');
+UPDATE order_billing_groups SET entity_id = 3 WHERE order_id IN (
+  SELECT id FROM orders WHERE order_number IN
+  ('E3-20260630-015','E3-20260629-002','E3-20260626-011','E3-20260616-014','E3-20260610-005','E3-20260605-013'));
