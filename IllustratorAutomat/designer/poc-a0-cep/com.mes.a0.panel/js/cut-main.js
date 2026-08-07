@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.31.0';
+  var SHELL_VERSION = '0.32.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -896,9 +896,10 @@
   // geometry.js 와 같은 원칙). ExtendScript 는 픽셀에 접근할 수도, 테스트할 수도 없다.
   // 엔진과 왜 이 방식인지는 `js/bleed.js` 와 호스트 `mesCut_bleedPlaceItem` 주석에 있다.
 
-  // 조각 하나가 만드는 확장 캔버스 상한. 8SSEDT 는 Int32Array 2벌을 더 쓰므로 픽셀당 ~12바이트다
-  // (12M px ≈ 144MB). 넘으면 그 조각만 건너뛰고 호스트가 단색으로 떨어진다 — **넘겼다고 알린다**.
-  var BLEED_MAX_PX = 12e6;
+  // 조각 하나가 만드는 확장 캔버스 상한. 8SSEDT 거리배열을 Int16 로 바꿔(2026-08-06)
+  // 픽셀당 12바이트 → **8바이트**가 됐다: RGBA 4 + dx/dy 각 2. 같은 메모리(≈144MB)로 상한을 올린다.
+  // 상한을 올리는 이유 = 넘으면 해상도를 낮춰 굽는데, 그게 **도련 외곽선 계단**의 원인이기 때문이다.
+  var BLEED_MAX_PX = 18e6;
 
   /** RGBA 를 1/f 로 줄인다(도련 상한 초과 조각용). 실패하면 null — 호출부가 종전 경로로 간다. */
   function downscaleRgba(img, f) {
@@ -983,8 +984,11 @@
           //   조각 5장 중 2장이 "너무 커서" 단색이 됐다 — 아트 색이 아니라 지정색 테두리라
           //   재단이 밀리면 그 색이 그대로 보인다. **거친 도련이 단색보다 언제나 낫다.**
           //   도련은 가장자리 색을 3mm 늘리는 일이라 0.5~1mm/px 로도 눈에 차이가 없다.
-          var f = 1, pxAt = function (k) { return ((img.W / k) + 2 * padPx / k) * ((img.H / k) + 2 * padPx / k); };
-          while (pxAt(f) > BLEED_MAX_PX && f < 8) f++;
+          // ★필요한 만큼만 줄인다 — 정수 배(2,3,4…)로 줄이면 상한을 10%만 넘겨도 해상도가 절반이 돼
+          //   외곽선 계단이 불필요하게 커진다. 연속 배율로 딱 상한에 맞춘다.
+          var pxAt = function (k) { return ((img.W + 2 * padPx) / k) * ((img.H + 2 * padPx) / k); };
+          var f = 1;
+          if (pxAt(1) > BLEED_MAX_PX) f = Math.min(8, Math.sqrt(pxAt(1) / BLEED_MAX_PX) * 1.01);
           var src = img, gpx = growPx, mpp = mmpp;
           if (f > 1) {
             var ds = downscaleRgba(img, f);

@@ -19,7 +19,9 @@
 (function (root) {
   'use strict';
 
-  var INF = 1e9;
+  // 거리변환 미설정 센티널 — Int16 배열에 들어가야 하므로 1e9 를 쓸 수 없다.
+  //   비교는 값이 아니라 **동치**로 한다: 실제 거리(예: 200px)가 센티널보다 커져 오판하는 일을 막는다.
+  var SENT = 32767;
   // ★**완전** 불투명만 잉크로 본다. 250 으로 뒀더니 알파 250~254 구간이 그대로 남았다
   //   (2026-08-05 실측: 조각 27개 중 2개에서 274·6px 잔존 → 거기만 여전히 틈이 보인다).
   //   "거의 불투명"은 눈에 안 보일 것 같지만 겹치면 합성되므로 결국 같은 증상을 만든다.
@@ -77,15 +79,19 @@
     if (typeof aMin !== 'number') aMin = pickAlphaMin(out, n);
 
     // ② 8SSEDT — 각 픽셀에서 가장 가까운 불투명 픽셀까지의 (dx,dy)
-    var dx = new Int32Array(n), dy = new Int32Array(n);
+    // ★Int16 로 충분하다 — dx/dy 는 "가장 가까운 잉크까지의 픽셀 오프셋"이고 한 변이 32767px 를
+    //   넘는 마스크는 애초에 만들지 않는다(픽셀 상한에서 먼저 걸린다). 픽셀당 12바이트 → 8바이트로
+    //   줄어 같은 메모리로 상한을 올릴 수 있고, 그만큼 **큰 조각이 저해상도로 안 떨어진다**
+    //   (저해상도 = 도련 외곽선 계단이 커지는 원인, 2026-08-06 용준님 지적).
+    var dx = new Int16Array(n), dy = new Int16Array(n);
     var i, px, py;
     for (i = 0; i < n; i++) {
       if (out[i * 4 + 3] >= aMin) { dx[i] = 0; dy[i] = 0; }
-      else { dx[i] = INF; dy[i] = INF; }
+      else { dx[i] = SENT; dy[i] = SENT; }
     }
-    function d2(i) { var a = dx[i], b = dy[i]; return (a >= INF || b >= INF) ? INF : (a * a + b * b); }
+    function d2(i) { var a = dx[i], b = dy[i]; return (a === SENT || b === SENT) ? Infinity : (a * a + b * b); }
     function put(i, j, ox, oy) {          // j 의 값을 (ox,oy) 만큼 옮겨 i 에 후보로 넣는다
-      if (dx[j] >= INF) return;
+      if (dx[j] === SENT) return;
       var nx = dx[j] + ox, ny = dy[j] + oy;
       if (nx * nx + ny * ny < d2(i)) { dx[i] = nx; dy[i] = ny; }
     }
@@ -117,7 +123,7 @@
         i = py * NW + px;
         if (out[i * 4 + 3] >= aMin) continue;      // 원본 잉크는 그대로
         var a = dx[i], b = dy[i];
-        if (a >= INF) continue;                    // 공급원 없음
+        if (a === SENT) continue;                   // 공급원 없음
         if (a * a + b * b > lim2) continue;        // 도련 범위 밖
         var sx = px - a, sy = py - b;              // (dx,dy) 는 "나 → 공급원" 의 반대 방향 누적
         if (sx < 0 || sy < 0 || sx >= NW || sy >= NH) continue;

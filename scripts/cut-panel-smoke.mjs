@@ -710,6 +710,17 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // ★축소했으면 mm 환산도 그 해상도로 — 원본 mmpp 를 쓰면 그 조각만 f 배로 어긋난다
   ok('3s 축소분 mm 환산이 따로', /map\[it\.id\] = \{ w: res\.W \* mpp, h: res\.H \* mpp \}/.test(panelSrc))
   ok('3s 거칠게 만든 사실을 알린다', /도련만 거칠게 만들었습니다/.test(panelSrc))
+  // ★외곽선 품질 = 도련을 **얼마나 안 줄이느냐**로 결정된다 (2026-08-06 용준님).
+  //   ⓐ 거리배열 Int16 → 픽셀당 12→8바이트 → 같은 메모리로 상한을 올린다
+  //   ⓑ 정수 배 축소는 상한을 10% 넘겨도 해상도를 절반으로 떨어뜨린다 → 연속 배율로 딱 맞춘다
+  {
+    const bleedSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'poc-a0-cep', 'com.mes.a0.panel', 'js', 'bleed.js'), 'utf8')
+    ok('3s 거리배열이 Int16', /new Int16Array\(n\), dy = new Int16Array\(n\)/.test(bleedSrc))
+    // ★센티널은 Int16 에 들어가야 하고, 비교는 동치여야 한다 — 크기 비교면 먼 거리(200px)가 오판된다
+    ok('3s 센티널이 Int16 범위', /var SENT = 32767;/.test(bleedSrc))
+    ok('3s 센티널 비교는 동치', !/[><]=? *SENT|SENT *[><]=?/.test(bleedSrc))
+  }
+  ok('3s 축소는 연속 배율', /Math\.sqrt\(pxAt\(1\) \/ BLEED_MAX_PX\)/.test(panelSrc))
 
   // ── 조각 목록 순서·확인 (2026-08-06) ───────────────────────────
   // ★번호가 눈에 보이는 순서와 어긋나면 어느 행이 어느 조각인지 알 수 없어 수량을 못 넣는다.
