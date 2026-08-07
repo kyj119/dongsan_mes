@@ -722,6 +722,16 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   }
   ok('3s 축소는 연속 배율', /Math\.sqrt\(pxAt\(1\) \/ BLEED_MAX_PX\)/.test(panelSrc))
 
+  // ── 굽기 픽셀 상한 (2026-08-06 실사용 정지) ──────────────────────
+  // ★배치 격자 예산(pickResolution)은 **굽기 해상도를 모른다**. 굽기는 fineMmpp×bakeK 라
+  //   파일배율 10·저장배율 1 에서 10배 곱고 픽셀은 100배 — 예산을 통과한 채 1억 px 가 되어
+  //   '마스크 n/n' 에서 몇 분씩 멈춘다.
+  ok('3x 굽기 좌표에서 예산을 다시 잰다', /var bakeMmpp = fineMmpp \* bakeK;[\s\S]{0,150}?estPx = selAreaMm2/.test(panelSrc))
+  ok('3x 넘으면 격자를 성글게', /rez\.mmPerPx \*= kUp;/.test(panelSrc))
+  ok('3x 성글게 잡았다고 알린다', /격자를 ' \+ oldFine/.test(panelSrc))
+  // ★조각 크기는 호스트가 이미 아는 값 — 굽기 **전에** 받아야 예산을 세울 수 있다
+  ok('3x 굽기 전에 크기를 받는다', /mesCut_nestSizes\(\)'[\s\S]{0,500}?prepareWith\(resolveFill/.test(panelSrc))
+
   // ── 조각 목록 순서·확인 (2026-08-06) ───────────────────────────
   // ★번호가 눈에 보이는 순서와 어긋나면 어느 행이 어느 조각인지 알 수 없어 수량을 못 넣는다.
   //   정렬은 **호스트에서** 한다 — 배치·도련·params 가 전부 이 배열 인덱스를 쓰므로,

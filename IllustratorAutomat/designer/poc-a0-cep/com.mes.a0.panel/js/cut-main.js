@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.33.0';
+  var SHELL_VERSION = '0.34.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -780,10 +780,22 @@
       //   모아찍기(돔보·도련·EPS/DXF 포함)로 보내는 게 맞다(2026-08-03 용준님 판단).
       if (n < 1) { fail('조각이 없습니다 — 대상을 선택하세요.'); return; }
       // ★선 도안 판정은 **선택 전체에 대해 한 번** — 조각마다 다르게 굽으면 마스크 규칙이 섞인다
-      host('mesCut_artKind()', function (kindStr) { prepareWith(resolveFill(kindStr, fillMode || 'auto')); });
+      // 굽기 픽셀 예산에 쓸 **실제 조각 크기**를 먼저 받는다(호스트가 이미 아는 값이라 추가 비용 없음)
+      host('mesCut_nestSizes()', function (szStr) {
+        var areaMm2 = 0;
+        if (String(szStr).indexOf('ok;') === 0) {
+          var parts = szStr.substring(3).split(',');
+          for (var pz = 0; pz < parts.length; pz++) {
+            var wh = parts[pz].split('x');
+            var pw = parseFloat(wh[0]), ph = parseFloat(wh[1]);
+            if (pw > 0 && ph > 0) areaMm2 += pw * ph;
+          }
+        }
+        host('mesCut_artKind()', function (kindStr) { prepareWith(resolveFill(kindStr, fillMode || 'auto'), areaMm2); });
+      });
       return;
 
-      function prepareWith(fv) {
+      function prepareWith(fv, selAreaMm2) {
       // 여백이 팽창이면 그만큼 캔버스가 더 필요하다 — 부족하면 팽창분이 잘려 칼선이 조용히 틀린다
       var padMm = Math.max(offsetMm, 0) + gapMm + 1;
       // ★배치 격자보다 곱게 굽는다 — 거친 격자에서 바로 뜨면 경계가 최대 2mm 부푼다(실측).
@@ -799,6 +811,27 @@
       // 굽기 경로가 바뀐 사유 — 조용히 느려지거나 조용히 달라지지 않게 결과에 싣는다.
       //   (makeCut 의 fallbackNote 는 **다른 함수의 지역 변수**다. 여기서 건드리면 안 된다)
       var bakeNote = '';
+      // ★★ 굽기 픽셀 상한 (2026-08-06 실사용 정지 — '마스크 n/n' 에서 수 분).
+      //   위 예산(pickResolution·NEST_MAX_PX)은 **배치 격자** 기준이다. 그런데 실제로 굽는 해상도는
+      //   `fineMmpp × bakeK` 라, 파일배율 10·저장배율 1 이면 격자보다 10배 곱다 → 픽셀은 **100배**.
+      //   예산은 그대로 통과하고 마스크만 1억 픽셀대가 되어 몇 분씩 멈춘다
+      //   (실측: 선택 392×212mm 파일 · 굽기 0.025mm/px).
+      //   → **굽기 좌표에서 다시 재고** 넘으면 격자를 성글게 한다. 조용히 느려지지 않게 알린다.
+      var BAKE_MAX_PX = 60e6;
+      if (selAreaMm2 > 0) {
+        var bakeMmpp = fineMmpp * bakeK;
+        var estPx = selAreaMm2 / (bakeMmpp * bakeMmpp);
+        if (estPx > BAKE_MAX_PX) {
+          var kUp = Math.sqrt(estPx / BAKE_MAX_PX);
+          var oldFine = fineMmpp;
+          fineMmpp *= kUp;
+          rez.mmPerPx *= kUp;
+          cutFinePx = Math.floor(offsetMm / fineMmpp);
+          bakeNote += '\n※ 선택이 커서 격자를 ' + oldFine.toFixed(3) + ' → ' + fineMmpp.toFixed(3)
+            + 'mm/px 로 성글게 잡았습니다(굽기 ' + Math.round(estPx / 1e6) + 'M px 예상 · 상한 '
+            + (BAKE_MAX_PX / 1e6) + 'M).';
+        }
+      }
       // 미세 마스크 보관 예산 — 조각이 크고 많으면 메모리를 다 먹는다. 넘치면 그 조각만
       // 거친 마스크로 칼선을 뽑는다(정확도만 조금 떨어지고 결과는 나온다).
       var fineBudget = FINE_MASK_BUDGET_PX;
