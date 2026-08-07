@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.47.0';
+  var SHELL_VERSION = '0.48.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -1176,22 +1176,51 @@
    *   맞닿은 변은 **같은 값으로 반올림**된다 = 공유가 유지된다.
    * ★`segs` 에 공유 변을 한 번씩만 담아 보낸다 — 조각별 닫힌 경로를 만들지 않는다.
    */
-  function buttPlace(BT, prep, sheetWmm, sheetHmm) {
+  function buttPlace(BT, prep, sheetWmm, sheetHmm, allowRot) {
     var usableW = Math.max(1, sheetWmm - domboMm() * 2);
-    var rects = [];
+    // ★★단위 변환 (2026-08-07 실사용 — 이걸 빠뜨려 **조각이 전부 겹쳤다**).
+    //   `mesCut_nestSizes()` 는 일러 문서에서 잰 값이라 **파일 좌표(F)** 다(예: 42×210mm).
+    //   반면 배치·마스크는 **저장 좌표(S)** 다 — 마스크 px × mmpp = 저장 mm(예: 420×2100mm).
+    //   파일배율 10 이면 10배 차이라, 변환을 안 하면 조각이 1/10 크기로 깔려 서로 포개진다.
+    //   k = S/F = fileToSave() — 굽기 해상도에 곱하는 그 값과 **같은 상수**다(bakeK).
+    var k = fileToSave() || 1;
+    var rects = [], rotOf = {};
     for (var i = 0; i < prep.pieces.length; i++) {
       var sz = prep.sizes[prep.pieces[i].id];
       if (!sz || !(sz.w > 0) || !(sz.h > 0)) return null;    // 크기를 모르면 산수를 못 한다
-      rects.push({ id: prep.pieces[i].id, w: sz.w, h: sz.h });
+      var id = prep.pieces[i].id, w = sz.w / k, h = sz.h / k, rot = 0;
+      // ★폭을 넘으면 세워 본다 — 직사각은 돌려도 직사각이라 맞붙임 산수가 그대로 성립한다.
+      //   래스터 네스터는 회전을 쓰는데 여기만 안 쓰면, 긴 조각이 있을 때 맞붙임이 통째로 못 쓰인다.
+      if (w > usableW && h <= usableW && allowRot !== false) { var t = w; w = h; h = t; rot = 90; }
+      rotOf[id] = rot;
+      rects.push({ id: id, w: w, h: h });
     }
     var r = BT.packRects(rects, usableW);
     if (!r.placements.length || BT.anyOverlap(r.placements)) return null;
+    // ★하나라도 못 넣었으면 **조용히 빠뜨리지 말고** 되돌린다 — 래스터 경로가 회전·탐색으로 넣을 수 있다.
+    if (r.unplaced.length) return null;
     if (sheetHmm && r.usedH > Math.max(1, sheetHmm - domboMm() * 2)) return null;   // 평판 높이 초과
     var mmpp = prep.mmpp, inkPx = 0, pls = [];
-    for (var k = 0; k < r.placements.length; k++) {
-      var p = r.placements[k];
+    for (var q = 0; q < r.placements.length; q++) {
+      var p = r.placements[q];
       inkPx += (p.w / mmpp) * (p.h / mmpp);
-      pls.push({ id: p.id, x: p.x / mmpp, y: p.y / mmpp, rot: 0, W: p.w / mmpp, H: p.h / mmpp });
+      pls.push({ id: p.id, x: p.x / mmpp, y: p.y / mmpp, rot: rotOf[p.id] || 0, W: p.w / mmpp, H: p.h / mmpp });
+    }
+    // ★★검산 — 배치가 **실제 마스크와 같은 크기**인가 (2026-08-07).
+    //   좌표계를 잘못 쓰면(파일↔저장) 조각이 1/10 로 깔려 **전부 겹친 판**이 그대로 나간다.
+    //   `anyOverlap` 은 포장 공간 안에서만 보므로 이 사고를 못 잡는다 — 축척이 통째로 틀리면
+    //   포장 공간에서는 아무 문제가 없기 때문이다. 그래서 **다른 출처**(굽은 마스크)와 대조한다.
+    //   어긋나면 조용히 내보내지 말고 null → 호출부가 래스터로 되돌린다.
+    for (var s = 0; s < pls.length; s++) {
+      var pc = null;
+      for (var t2 = 0; t2 < prep.pieces.length; t2++) if (prep.pieces[t2].id === pls[s].id) { pc = prep.pieces[t2]; break; }
+      if (!pc || !pc.base) continue;
+      var bb = BT.inkBBox(pc.base);
+      if (!bb) continue;
+      var expW = pls[s].rot === 90 ? bb.H : bb.W;
+      var expH = pls[s].rot === 90 ? bb.W : bb.H;
+      var tol = function (a, b) { return Math.abs(a - b) <= Math.max(4, b * 0.05); };
+      if (!tol(pls[s].W, expW) || !tol(pls[s].H, expH)) return null;
     }
     return {
       sheets: [{ placements: pls, usedH: r.usedH / mmpp, inkPx: inkPx, segs: BT.cutSegments(r.placements) }],
@@ -1375,7 +1404,7 @@
         var mmpp = prep.mmpp;
         out('배치 계산 중...');
         var res = buttExact
-          ? buttPlace(BT, prep, sheetWmm, sheetHmm)
+          ? buttPlace(BT, prep, sheetWmm, sheetHmm, allowRot)
           : nestPlace(NST, prep, sheetWmm, sheetHmm, allowRot);
         if (buttExact && (!res || !res.sheets.length)) {   // 폭 초과 등 — 조용히 틀리지 말고 되돌린다
           buttExact = false;

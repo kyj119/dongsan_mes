@@ -766,6 +766,14 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     && /dropBorderTouching\(G, use, img\.W, img\.H\)/.test(panelSrc))
   ok('3y 가장 큰 덩어리는 안 지운다', /id !== keep/.test(panelSrc))
   ok('3y 걷어냈으면 알린다', /edgeNote/.test(panelSrc) && /래스터화 아티팩트/.test(panelSrc))
+  // ★★단위: nestSizes 는 **파일 좌표**, 배치·마스크는 **저장 좌표**다. 안 나누면 조각이 1/10 로
+  //   깔려 **전부 겹친 판**이 나간다(2026-08-07 실사용). anyOverlap 은 포장 공간만 보므로 못 잡는다
+  //   — 축척이 통째로 틀리면 포장 공간에서는 아무 문제가 없다. **다른 출처(마스크)와 대조**해야 한다.
+  ok('3y 맞붙임이 파일→저장 좌표로 환산',
+    /var k = fileToSave\(\) \|\| 1/.test(panelSrc) && /w = sz\.w \/ k, h = sz\.h \/ k/.test(panelSrc))
+  ok('3y 배치 크기를 마스크와 대조(검산)', /BT\.inkBBox\(pc\.base\)/.test(panelSrc) && /pls\[s\]\.rot === 90 \? bb\.H : bb\.W/.test(panelSrc))
+  ok('3y 못 넣은 조각이 있으면 되돌린다', /if \(r\.unplaced\.length\) return null/.test(panelSrc))
+  ok('3y 폭 초과는 세워서 넣는다', /rot = 90/.test(panelSrc) && /rotOf\[p\.id\] \|\| 0/.test(panelSrc))
   // ★구 호스트는 C 줄을 조용히 무시한다 → 조각별 칼선도 안 보냈으니 **칼선 없는 판**이 나온다.
   //   축2는 Z: 파일 1개로 전 PC 에 퍼지고 축3은 PC별 설치라, 역방향 스큐가 반드시 생긴다
   //   (도련 PNG 때와 같은 함정 — 그때도 구 패널/새 호스트 조합을 따로 막아야 했다).
