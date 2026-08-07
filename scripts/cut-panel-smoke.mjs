@@ -783,8 +783,10 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // ★직사각 조각은 추적·피팅을 건너뛰고 폴리곤 bbox 를 그대로 쓴다. 실측(500×350): 곡선 피팅이
   //   90° 모서리를 0.88~2.17mm 씩 깎아 둥글렸고 그 양이 모서리마다 달라 사각이 비뚤어 보였다.
   //   맞붙임과 무관하게 **모든** 직사각 조각에 적용된다(여백·간격이 있어도).
-  ok('3y 직사각 칼선은 추적하지 않는다',
-    /var rectOnly = !!\(BTr && cps\.length === 1 && BTr\.isRectish\(src\)\)/.test(panelSrc))
+  // ★여백이 있으면 팽창 결과가 **라운드 사각**이다(반경 = 여백) → 사각 단축을 쓰면 라운드가
+  //   조용히 각지게 된다. 판정은 팽창 전 마스크, 컨투어는 팽창 후라 이 조건이 없으면 어긋난다.
+  ok('3y 직사각 칼선은 추적하지 않는다(여백 0 일 때만)',
+    /var rectOnly = !!\(BTr && cps\.length === 1 && rCut <= 0 && BTr\.isRectish\(src\)\)/.test(panelSrc))
   ok('3y 직사각 칼선은 4점 P 줄', /if \(rectOnly\)[\s\S]{0,700}?lines\.push\('P ' \+ parts\.join\(' '\)\);\s*\n\s*continue;/.test(panelSrc))
   // ★구 호스트는 C 줄을 조용히 무시한다 → 조각별 칼선도 안 보냈으니 **칼선 없는 판**이 나온다.
   //   축2는 Z: 파일 1개로 전 PC 에 퍼지고 축3은 PC별 설치라, 역방향 스큐가 반드시 생긴다
