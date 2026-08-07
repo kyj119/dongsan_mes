@@ -30,6 +30,7 @@
     "audit:structure:gate": "node scripts/structure-audit.mjs --fail-on-regress",
     "audit:ia-jsx": "node scripts/ia-jsx-audit.cjs",
     "audit:ia-storage": "node scripts/ia-storage-audit.cjs",
+    "audit:new-items": "node scripts/new-item-audit.cjs",
     "panel:smoke": "node scripts/panel-smoke.mjs",
     "cut:smoke": "node scripts/cut-panel-smoke.mjs",
     "cut:bench": "node scripts/cut/bench.mjs",
