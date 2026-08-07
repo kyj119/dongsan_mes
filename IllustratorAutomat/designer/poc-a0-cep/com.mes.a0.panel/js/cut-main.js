@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.42.0';
+  var SHELL_VERSION = '0.43.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -119,10 +119,18 @@
   //   면적차는 0.2~0.7% 뿐이라 **면적·bbox 게이트로는 안 잡히고** 눈에만 보인다.
   // ⚠️ 벡터 결과를 단순화·재피팅으로 다듬지 않는다 — 실측에서 전부 악화됐다(spec §6.29).
   /** 반환 {vector, note} — 요청을 호스트 능력으로 깎는다 */
+  /**
+   * ★칼선 방식은 **고르는 것이 아니라 맡기는 것**이다 (2026-08-07 용준님: "그냥 추천으로 할 수 없나").
+   *   원래 벡터/래스터를 직접 고르게 했는데, 벡터는 이미 사진·임베드가 있으면 알아서 래스터로
+   *   내려가므로 실질적인 선택지가 아니었다. 그러면서 **맞붙임을 막는 부작용**만 있었다
+   *   (여백 0·간격 0 으로 붙여도 벡터가 조각마다 실루엣을 그려 칼선이 두 줄로 나갔다).
+   *   → 기본은 `auto`. 남긴 선택지는 **래스터 고정**뿐이고, 그건 벡터가 말썽일 때의 우회로다.
+   * ⚠️ 옛 값 `vector` 도 그대로 받는다 — 저장된 설정이나 구 화면에서 넘어와도 auto 와 같이 돈다.
+   */
   function resolveLineMode() {
     var el = document.getElementById('lineMode');
-    var want = el ? el.value : 'vector';
-    if (want !== 'vector') return { vector: false, note: '' };
+    var want = el ? el.value : 'auto';
+    if (want === 'raster') return { vector: false, note: '' };
     if (hostSupportsVector()) return { vector: true, note: '' };
     return { vector: false, note: '\n⚠ 호스트 구버전(' + (hostVersion || '?') + ') — 래스터로 만들었습니다. mes-cut-host.jsx 를 배포하세요.' };
   }
@@ -241,7 +249,7 @@
     var lmSel = document.getElementById('lineMode');
     if (lmSel) {
       lmSel.title = hostSupportsVector()
-        ? '벡터 = 일러가 실루엣을 직접 오프셋합니다 (근사 오차 없음 · 물결 없음)'
+        ? '자동 = 맞붙임(치수 산수) → 벡터 오프셋 → 래스터 순으로 되는 것을 씁니다. 무엇을 썼는지는 결과에 적힙니다'
         : '호스트가 구버전(' + (hostVersion || '?') + ')이라 래스터로 만들어집니다 (mes-cut-host.jsx 배포 필요)';
     }
     refreshPairName();
@@ -1477,7 +1485,11 @@
               + (prep.exact ? '' : ' ⚠ 해상도 한계로 올림 적용')
               + (allowRot ? ' · 회전 허용' : '')
               + '\n돔보 ' + (a.dombo || 0) + '판 — 별도 레이어(인쇄 ON) · 재단선 레이어는 인쇄 OFF'
-              + (wantPieceCut ? (' · 조각별 칼선' + (useVec ? '(벡터)' : (wantCurve ? '(곡선)' : '(직선)'))) : '')
+              // ★무엇으로 만들었는지 **반드시** 적는다 — 방식을 자동으로 고르게 한 이상(2026-08-07),
+              //   이 한 줄이 사용자가 결과를 신뢰할 수 있는 유일한 근거다. 맞붙임이면 조각별이 아니라
+              //   **공유 변**이므로 이름부터 다르게 쓴다(그래야 "왜 조각 수보다 선이 적지?"가 안 생긴다).
+              + (buttExact ? ' · 재단선=맞붙임 공유 변(치수 산수)'
+                 : (wantPieceCut ? (' · 조각별 칼선' + (useVec ? '(벡터)' : (wantCurve ? '(곡선)' : '(직선)'))) : ''))
               + (nestBleedMm > 0 ? ('\n도련 ' + R(nestBleedMm) + 'mm (조각마다)'
                   // ★어느 방식으로 만들었는지 밝힌다 — 클립 확장·색 잇기·단색은 품질이 서로 다르다
                   + bleedHow(a)

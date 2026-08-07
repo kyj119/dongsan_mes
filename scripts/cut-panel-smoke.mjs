@@ -575,10 +575,15 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
 // 안 잡히고 눈에만 보인다. 벡터는 일러가 직접 오프셋하므로 근사 오차 자체가 없다.
 {
   const p = await openPanel()
-  ok('3k UI 선택칸 존재·기본 벡터', await p.evaluate(() => {
+  // 2026-08-07: 방식은 **고르는 것이 아니라 맡기는 것**으로 바꿨다. 벡터는 어차피 사진·임베드에서
+  //   알아서 래스터로 내려가 실질 선택지가 아니었고, 그러면서 맞붙임만 막았다.
+  //   남긴 것은 **래스터 고정**(벡터가 말썽일 때의 우회로) 하나뿐이다.
+  ok('3k UI 기본 자동 · 래스터 고정만 남김', await p.evaluate(() => {
     const el = document.getElementById('lineMode')
-    return !!el && el.value === 'vector' && [...el.options].map((o) => o.value).join(',') === 'vector,raster'
+    return !!el && el.value === 'auto' && [...el.options].map((o) => o.value).join(',') === 'auto,raster'
   }))
+  // ★옛 값 'vector' 가 들어와도 auto 와 같이 돌아야 한다 — 저장된 설정·구 화면 대비
+  ok('3k 옛 값 vector 는 자동과 같이 동작', /want === 'raster'/.test(fs.readFileSync(CUT_MAIN, 'utf8')))
   // 구 호스트(0.5.0)에서는 **조용히 벡터인 척하면 안 된다** — 래스터로 낮추고 이유를 말한다
   const old = await p.evaluate(() => window.__mesCutLineMode())
   ok('3k 구 호스트면 래스터로 낮추고 알림', old.vector === false && /구버전/.test(old.note), JSON.stringify(old))

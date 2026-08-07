@@ -239,15 +239,17 @@
       <div class="row">
         <label for="lineMode">칼선 방식</label>
         <select id="lineMode">
-          <option value="vector" selected>벡터(권장)</option>
-          <option value="raster">래스터(기존)</option>
+          <option value="auto" selected>자동 (권장)</option>
+          <option value="raster">래스터로 고정</option>
         </select>
         <span class="cfg">단품·조각별 칼선 공통</span>
       </div>
       <div class="hint" id="lineModeHint">
-        <b>벡터</b>는 일러가 실루엣을 <b>직접 오프셋</b>합니다 — 굽기·임계·곡선 복원을 거치지 않아 선이 물결치지 않습니다
-        (실측: 래스터 칼선은 실루엣 안팎을 <b>100mm당 7~11회 · ±0.5mm</b>로 넘나듭니다).
-        사진·임베드 이미지·중첩 클리핑이 있으면 <b>자동으로 래스터로 내려가고 사유를 알립니다</b>.
+        <b>자동</b>은 매번 가장 정확한 방법을 고르고 <b>무엇으로 만들었는지 결과에 적습니다</b> —
+        맞붙임(여백 0·간격 0·직사각)이면 <b>치수 산수</b>, 아니면 일러의 <b>벡터 오프셋</b>,
+        사진·임베드 이미지·중첩 클리핑이 있으면 <b>래스터</b>로 내려갑니다(사유 표시).
+        <br><b>래스터로 고정</b>은 벡터 경로에 문제가 있을 때만 쓰는 우회로입니다 —
+        칼선이 실루엣 안팎을 <b>100mm당 7~11회 · ±0.5mm</b>로 넘나듭니다(실측).
       </div>
     </div>
 
