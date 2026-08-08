@@ -199,7 +199,8 @@ ordersCreateRouter.post('/', async (c) => {
       })(),
       orderType,
       sourceQuotationId,
-      consolidateWithOrderId
+      consolidateWithOrderId,
+      salesRepId
     ).run()
 
     // Phase 3.2: 견적서로부터 생성된 주문이면 quotations 카운트 갱신
