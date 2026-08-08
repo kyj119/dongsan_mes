@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-08-08T03:17:18+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-08-08T09:16:42+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,23 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **4** (`search_issues(is:open,label:auto-improve)` 실측 — Area6 57회차. #601[order_items 라인재작성 시 return_items RESTRICT FK 미정리] + #602[cards 지시현황탭 silent-catch] + #603[cards 개정필요 큐 출고후 영구잔류] + #604[신규, orders.sales_rep_id 백엔드먼저·화면나중]) |
+| 🆕 new | **5** (`search_issues(is:open,label:auto-improve)` 실측 — Area1 58회차. #601[order_items 라인재작성 시 return_items RESTRICT FK 미정리] + #602[cards 지시현황탭 silent-catch] + #603[cards 개정필요 큐 출고후 영구잔류] + #604[orders.sales_rep_id 백엔드먼저·화면나중] + #605[신규, Daily D1 Backup 워크플로우 타임아웃 재시도 부재]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **524** (`reason:completed` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+
+> **Area 1 프로덕션 헬스 (2026-08-08T09:16):**
+> - **방법**: `git fetch origin main`(HEAD `f2d8281` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. prod 직접 curl(`/api/notifications/nav-badges`) → `exit 56`(egress 프록시 CONNECT tunnel 403, 기존 인지된 제약, #453과 동일)이라 GitHub Actions 기록으로 대체. Area 1 **58회차** — 직전 Area1(`fbbb5a4`, 08-06T15:21, 57회차) 이후 `git log --since 2026-08-06T15:21 -- src/routes src/scripts migrations index.tsx src/layout src/pages` = **2커밋**(`7fd1334` 관계사 매입제외·`451f611` 주문 담당자 필드) — 둘 다 Area6 57회차가 이미 코드 렌즈로 전문 검토 완료(clean + #604 issue-only), Area1은 프로덕션 헬스 렌즈(배포·CI·백업)만 신선.
+> - **deploy.yml 전수 확인(창 내 25런, `31077072581`~`31206362525`)**: 전부 `completed success`(Typecheck→Build→Deploy→Smoke 전 구간, HEAD `f2d8281`까지 포함) — 배포 실패 0건.
+> - **🔴 net-new #605(S, improvement, 인프라 신뢰성)**: `backup.yml`(Daily D1 Backup, `timeout-minutes: 10`, 재시도 없음) 최근 30일 run 30건 전수 확인 — 정상 실행은 26~48초인데 **2건만 타임아웃까지 채우고 cancelled**(`2026-08-06T18:20:07Z` 15분3초·`2026-07-28T18:06:53Z` 10분25초, 약 6.7% 빈도). 둘 다 다음날은 정상 success로 자동회복(코드 회귀 아님, CF API 지연 추정 — CLAUDE.md 기존 "CF-internal transient" 계열과 동일 성격)이나 **daily 파일이라 그날치 백업 자체가 R2에 미존재**로 남음(다음날 성공이 그 공백을 메꾸지 않음) — 재해복구 시 특정 일자 타겟팅이 필요한 상황에서 대응 불가 리스크. 수정 방향 = `wrangler d1 export`/`r2 object put` 단계에 재시도 루프(3회·backoff) 추가. `.github/workflows/*.yml` 변경은 안전 자동수정 화이트리스트 밖 → issue-only.
+> - **backup.yml 최신 상태**: 마지막 run(`31203429471`, 2026-08-07T17:40:59Z) success, ~24h 간격 정상 재개.
+> - **e2e.yml**: 최신 run 여전히 2026-06-22(`disabled_manually` 상태 지속, 변동 없음). **verify.yml**: 열린 PR 0건(`list_pull_requests(state:open)` 직접 확인) → 실행 대상 없음.
+> - **open 이슈 4건(#601~#604) 재확인**: `list_issues(OPEN,auto-improve)` 실측 그대로 4건, Area6 57회차 이후 변동 없음(owner 리뷰 대기 중).
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **5**(#601·#602·#603·#604 + 신규 #605) · `reason:completed` **524**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — #605는 기존 codify된 "CF-internal transient 배포실패"(Area1 라인 근처) 패턴과 유사 계열이나 **cron 백업 워크플로우의 재시도 부재**라는 새 각도라 별도 이슈로 등록, SKILL 신규 규칙은 다음 재발 시 codify 검토(1회차 관찰이라 보류).
+> - 신규 이슈 1건(#605, issue-only), 자동수정 0건, done-sync: new 5(+1)·done 524(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-08-08T03:17):**
 > - **방법**: `git fetch origin main`(HEAD `6ef00a7` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 6 **57회차** — 직전 Area6(`878200f`, 08-06T04:05, 56회차는 아님·이번 anchor는 Area5 52회차 마커 `878200f`, 08-07T06:28 UTC=15:28 JST) 이후 `git log --since 2026-08-07T15:27 -- src/routes src/scripts migrations index.tsx src/layout src/pages` = **2커밋**(`7fd1334` 관계사 매입제외·`451f611` 주문 담당자 필드) — Area5가 이미 리뷰한 `82b9e3e` 이후 착륙분으로, 어느 Area도 아직 못 본 최신 churn.
