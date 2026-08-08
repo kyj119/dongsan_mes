@@ -41,6 +41,20 @@ if (/deploy:prod|pages\s+deploy/i.test(cmd)) {
   console.log('[HOOK] 프로덕션 배포 감지 — deploy:prod는 --branch main 내장(apex 반영). 배포 후 smoke + Playwright 프로덕션 검증 필수.');
 }
 
+// 3-b) 품목 INSERT 감지 → 중복·규약 감사 리마인더
+//   ★ 2026-08-08 에 하루 동안 같은 중복을 **네 번** 만들었다(SGM-TRBW-* · AQT-090 · BJP-* · 후판/스카시).
+//     `audit:new-items` 는 그전부터 있었는데 **한 번도 안 돌렸다.** 도구가 없어서가 아니라
+//     돌릴 자리가 없어서 난 사고라, 품목을 만드는 순간에 붙인다.
+//   차단하지 않는다 — 이관 중엔 신설이 정상이고, 막으면 우회하게 된다. 상기시키기만 한다.
+if (/INSERT\s+INTO\s+items\b/i.test(cmd) || /[\w-]*item[\w-]*\.sql/i.test(cmd)) {
+  console.log(
+    '[HOOK] 품목 신설 감지 — 적재 후 두 감사를 돌릴 것:\n' +
+      '  npm run audit:new-items   (중복. R0 이름동일 = 신설 직후 원가 0 에서도 잡는다)\n' +
+      '  npm run audit:items       (규격 규약 C·D 게이트 + 건강 지표)\n' +
+      '  ※ 신설 전이라면 계열 접두를 열거해 형제를 먼저 볼 것 — 품명 LIKE 검색은 접두가 다르면 못 찾는다.'
+  );
+}
+
 // 4) 커밋 전 타입체크 게이트 (실패 시 차단)
 if (/(^|&&|;|\s)git(\s+-[cC]\s+\S+)*\s+commit/i.test(cmd)) {
   try {

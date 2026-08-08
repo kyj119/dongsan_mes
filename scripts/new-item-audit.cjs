@@ -18,10 +18,19 @@
  *   (같은 이유로 ROLL 선택 tie-break 도 하지 않았다 — 한 제품에 동폭 자재가 2개 이상 걸린 경우 0건.)
  *
  * 판정 규칙 — 위 세 사례를 그대로 규칙화했다.
+ *   R0 이름동일   정규화 품목명이 **완전히 같다** + 코드 체계가 다르다      (부직포 BJP-127 ↔ BUJIK-127)
  *   R1 코드토큰   신규·기존 item_code 가 4자 이상 영숫자 토큰을 공유    (SATIN300-155 ↔ SATIN-155)
  *   R2 품명→코드  신규 품목명 안의 코드형 토큰이 기존 item_code 에 있다 (LG-DPM1270mm**SPM011G** ↔ **SPM011G**-127)
  *   R3 동폭·동가  같은 width_mm·같은 unit·단가 차 25% 이내             (TROPICAL-070 700/412 ↔ AQ2-070 700/432)
- *   R1/R2 = 강한 신호(exit 1) · R3 = 참고(exit 0). 셋 다 아래 전제를 통과해야 성립한다.
+ *   R0/R1/R2 = 강한 신호(exit 1) · R3 = 참고(exit 0). 전부 아래 전제를 통과해야 성립한다.
+ *
+ * ★ R0 를 뒤늦게 붙인 이유 (2026-08-08, 하루에 네 번 당하고 나서)
+ *   그날 만든 중복 3건이 R1~R3 를 **전부 빠져나갔다**:
+ *     BJP-127 ↔ BUJIK-127   동가 규칙이 **단위가 다르면 무력**하다(yd 1,020 vs 롤 63,750)
+ *     AQT-090 ↔ TENT-090    상대 원가가 0 이라 동가 비교 대상 밖
+ *     SGM-TRBW-WH ↔ SGM-TRW-WH  코드 토큰(TRBW/TRW)이 안 겹친다
+ *   그런데 셋 다 **품목명이 글자 하나까지 같았다**. 코드·단가만 보고 이름을 안 본 게 구멍이었다.
+ *   R0 는 단가·실적에 의존하지 않아 **신설 직후 원가 0 상태에서도** 작동한다 — 가장 이른 시점에 잡는다.
  *
  * 규칙만으로는 못 쓴다 — 전제 3개가 오탐의 90%를 걷어낸다 (전부 실측으로 붙인 것):
  *   ① 같은 분류        「솔벤 텐트천」(제품)↔「수성 텐트천」(자재) 류 차단
@@ -104,6 +113,9 @@ const codeish = (s) => {
   return out
 }
 const near = (a, b) => a > 0 && b > 0 && Math.abs(a - b) / Math.max(a, b) <= 0.25
+// R0 용 이름 정규화 — 공백·괄호·하이픈만 걷어낸다. **평량(g)·길이(m)는 남긴다**:
+//   「무광코팅지 120g」과 「무광코팅지 180g」은 다른 물건이고 둘 다 단가를 가르는 축이다.
+const nameKey = (s) => String(s || '').replace(/[\s()\[\]\-_/·,.]/g, '').toUpperCase()
 
 // ★ R3 를 폭·단가만으로 두면 「고무자석시트 ↔ 솔벤 매쉬」 같은 오탐이 쏟아진다(실측).
 //   그래서 **희소 단어 공유**를 함께 요구한다. 희소도는 전체 품목에서의 등장 빈도로 자동 판정하므로
@@ -135,7 +147,7 @@ const rareCode = (t) => (cdf.get(t) || 0) <= CODE_RARE_MAX
 //   한 번의 이관이 같은 자재를 두 품목으로 동시에 만들면 신규↔기존 비교로는 절대 안 걸린다.
 //   (실측: LX-LT4510 ↔ LT4510 이 둘 다 이관 생성분이라 1차 버전에서 통째로 새어나갔다.)
 //   같은 쌍을 두 번 보고하지 않도록 id 가 큰 쪽(나중에 생긴 쪽)만 신규로 취급한다.
-const oldIdx = older.concat(fresh).map((o) => ({ o, codeTok: tokens(o.item_code), wordSet: words(o) }))
+const oldIdx = older.concat(fresh).map((o) => ({ o, codeTok: tokens(o.item_code), wordSet: words(o), nk: nameKey(o.item_name) }))
 
 const strong = []
 const weak = []
@@ -143,8 +155,9 @@ for (const f of fresh) {
   const fCodeTok = tokens(f.item_code)
   const fNameTok = codeish(f.item_name + ' ' + f.sp)
   const fWords = words(f)
+  const fNameKey = nameKey(f.item_name)
   const hits = []
-  for (const { o, codeTok, wordSet } of oldIdx) {
+  for (const { o, codeTok, wordSet, nk } of oldIdx) {
     if (o.id >= f.id) continue   // 자기 자신 + 신규끼리의 역방향 중복 보고 차단
     // ★ 분류가 다르면 코드토큰만으로는 못 믿는다 — 「솔벤 텐트천」(제품, 분류=솔벤)이
     //   「수성 텐트천」(자재, 분류=원자재)과 TENT 토큰으로 걸리는 식의 오탐이 실측으로 나왔다.
@@ -164,6 +177,22 @@ for (const f of fresh) {
     //   (샤틴은 한쪽이 0이고 다른 쪽에 매입이 있어 이 조건을 통과한다 — 진짜 중복은 안 놓친다.)
     const anyPurchase = (Number(f.po_n) || 0) > 0 || (Number(o.po_n) || 0) > 0
     const rules = []
+    // ★ R0 는 `diffScheme`·`anyPurchase` 를 **쓰지 않는다.**
+    //   · diffScheme 을 요구하면 `SGM-TRBW-WH ↔ SGM-TRW-WH` 를 놓친다(둘 다 SGM 체계다).
+    //   · anyPurchase 를 요구하면 매입이 붙기 전에 못 잡는데, **그 전에 잡는 게 목적**이다.
+    //
+    //   판별축은 **규격**이다. 이름이 같은 정상 변종은 예외 없이 **규격이 실질을 담아 갈린다**:
+    //     「포맥스」 5T 백색 4x8 ↔ 2T 백색 4x8 · 「스카시」 50T 백색 3x6 ↔ 10T 백색 3x6
+    //   반대로 진짜 중복은 규격이 **같거나 · 한쪽이 비었거나 · 한쪽이 다른 쪽의 접두**다:
+    //     AQT-090「90cm」↔ TENT-090「90cm」        (같음)
+    //     SGM-TRBW-WH「백색」↔ SGM-TRW-WH「」       (한쪽 빔 — 색은 품명에 있으니 규격은 비는 게 맞다)
+    //     BJP-127「127cm」↔ BUJIK-127「127cm 50m」  (접두 — 같은 폭에 길이만 더 적었다)
+    //   ⚠️ 코드 꼬리로 판별하면 안 된다. `FMX-3T-W-48` 의 꼬리 `48` 은 **판 크기**라
+    //      두께가 다른 형제끼리 전부 같다(첫 판에서 실제로 오탐 4계열이 나왔다).
+    const spKey = (v) => String(v || '').replace(/[\s()\[\]\-_/·,.]/g, '').toUpperCase()
+    const fSp = spKey(f.sp), oSp = spKey(o.sp)
+    const specDup = fSp === oSp || !fSp || !oSp || fSp.startsWith(oSp) || oSp.startsWith(fSp)
+    if (sameCat && fNameKey && fNameKey === nk && specDup) rules.push('R0:이름동일')
     if (sameCat && diffScheme && anyPurchase) {
       for (const t of fCodeTok) if (codeTok.has(t) && rareCode(t)) { rules.push('R1:' + t); break }
       for (const t of fNameTok) if (String(o.item_code).toUpperCase().includes(t)) { rules.push('R2:' + t); break }
@@ -173,7 +202,7 @@ for (const f of fresh) {
       const shared = [...fWords].filter((w) => wordSet.has(w) && (df.get(w) || 0) <= RARE_MAX)
       if (shared.length) rules.push('R3:동폭·동가+' + shared[0])
     }
-    if (rules.length) hits.push({ o, rules, hard: rules.some((r) => r.startsWith('R1') || r.startsWith('R2')) })
+    if (rules.length) hits.push({ o, rules, hard: rules.some((r) => r.startsWith('R0') || r.startsWith('R1') || r.startsWith('R2')) })
   }
   if (!hits.length) continue
   hits.sort((a, b) => (b.hard - a.hard) || (b.rules.length - a.rules.length))
@@ -202,7 +231,7 @@ const show = (list, title) => {
     console.log('')
   }
 }
-show(strong, `⚠️  중복 의심(강) ${strong.length}품목 — 코드·품명이 직접 겹친다`)
+show(strong, `⚠️  중복 의심(강) ${strong.length}품목 — 품명이 같거나 코드가 직접 겹친다`)
 show(weak, `· 참고(약) ${weak.length}품목 — 폭·단가가 같고 식별어를 공유한다. 오탐 가능`)
 
 console.log('판정이 서면 병합은 docs/dongsan-import/gen_merge_dup.cjs 패턴을 따른다:')
