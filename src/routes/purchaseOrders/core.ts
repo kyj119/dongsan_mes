@@ -13,6 +13,7 @@ import { getEntityCompanyInfo } from '../../utils/entitySettings'
 import { kstYmd, kstYmdCompact } from '../../utils/kstDate'
 import { excludePurchaseNonCounterpartiesSql } from '../../constants/intercompany'
 import { validateUpload } from '../../utils/uploadValidation'
+import { buildPoListFilter, resolvePoSort, PO_SORT_DEFAULT } from './listFilter'
 
 const poCoreRouter = new Hono<HonoEnv>()
 // 데이터 권한: /purchase-orders 또는 /receiving 페이지 권한이 있어야 진입.
@@ -46,76 +47,13 @@ poCoreRouter.get('/', async (c) => {
       LEFT JOIN clients c ON po.supplier_id = c.id
       LEFT JOIN users u ON po.created_by = u.id
     `
-    const params: any[] = []
-    const whereClauses: string[] = []
-    const ef = entityFilter(c, 'po')
+    // 조회조건 = listFilter.ts SSOT (목록·카운트·통계·CSV 공유). 여기에 조건을 직접 붙이지 말 것.
+    const listFilter = buildPoListFilter(c)
+    const params: any[] = [...listFilter.params]
+    query += listFilter.where
 
-    if (receiving === '1') {
-      whereClauses.push("po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED')")
-    } else if (status) {
-      whereClauses.push('po.status = ?')
-      params.push(status)
-    }
-
-    if (search) {
-      whereClauses.push('(po.po_number LIKE ? OR c.client_name LIKE ?)')
-      const searchPattern = `%${search}%`
-      params.push(searchPattern, searchPattern)
-    }
-
-    if (date_from) {
-      whereClauses.push('po.order_date >= ?')
-      params.push(date_from)
-    }
-    if (date_to) {
-      whereClauses.push('po.order_date <= ?')
-      params.push(date_to)
-    }
-
-    if (supplier_id) {
-      whereClauses.push('po.supplier_id = ?')
-      params.push(parseInt(supplier_id))
-    }
-
-    if (overdue === '1') {
-      whereClauses.push("po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED') AND po.expected_date IS NOT NULL AND po.expected_date < date('now', '+9 hours')")
-    }
-
-    // 법인간거래(내부법인 3사) + 관계 사업자 기본 제외 — 미지급(AP) 집계가 이미 전수 제외하고 있어
-    //   목록에만 보이면 기준 불일치(accounts-payable.ts와 동일 SSOT = excludePurchaseNonCounterpartiesSql).
-    //   관계 사업자(오다플래그)는 나간 돈이 매입이 아니라 자금이동이다 (2026-08-07).
-    //   include_intercompany=1 이면 포함(화면 체크박스 '법인간거래 포함'). po_number 접두 필터 금지 —
-    //   명명 규칙 의존은 이관 규칙 변경에 깨짐. 정본 식별 = supplier_id ∈ 내부법인 clients.
-    //   ⚠️ receiving=1(입고 페이지)은 제외 대상 아님 — 입고는 실물 업무라 숨기면 입고 누락. (2026-07-27)
-    if (include_intercompany !== '1' && receiving !== '1') {
-      whereClauses.push(excludePurchaseNonCounterpartiesSql('po.supplier_id').replace(' AND ', ''))
-    }
-
-    if (ef.clause) {
-      whereClauses.push(ef.clause.replace(' AND ', ''))
-      params.push(...ef.params)
-    }
-
-    if (whereClauses.length > 0) {
-      query += ' WHERE ' + whereClauses.join(' AND ')
-    }
-
-    // ⚠️ 정렬 규약: 모든 옵션에 고유키(po.id) tie-break 필수.
-    //   이관/배치 INSERT 데이터는 created_at이 초 단위까지 동일(prod 발주 258건 중 241건이 동일값).
-    //   tie-break 없이 created_at DESC만 걸면 SQLite가 동값 구간을 rowid ASC(=오래된 순)로 반환 →
-    //   화면 첫 줄이 가장 오래된 발주(SMP-0001)로 뒤집히고, LIMIT/OFFSET 페이징도 불안정해짐.
-    //   기본 정렬은 등록시각(created_at)이 아니라 업무일자(order_date) 기준 — 이관 데이터의 created_at은
-    //   실제 발주 시점이 아니라 이관 실행 시각이므로 업무상 의미가 없음. (2026-07-27)
-    const sortOptions: Record<string, string> = {
-      'order_date_desc': 'po.order_date DESC, po.id DESC',
-      'order_date_asc': 'po.order_date ASC, po.id ASC',
-      'created_at_desc': 'po.created_at DESC, po.id DESC',
-      'created_at_asc': 'po.created_at ASC, po.id ASC',
-      'expected_date_asc': 'po.expected_date IS NULL, po.expected_date ASC, po.id DESC',
-      'final_amount_desc': 'po.final_amount DESC, po.id DESC',
-      'po_number_asc': 'po.po_number ASC, po.id ASC'
-    }
-    const orderBy = sortOptions[sort] || sortOptions['order_date_desc']
+    // 정렬 = listFilter.ts SSOT (목록·CSV 공유)
+    const orderBy = resolvePoSort(sort)
 
     query += ` ORDER BY ${orderBy} LIMIT ? OFFSET ?`
     params.push(safeLimit, offset)
@@ -147,54 +85,31 @@ poCoreRouter.get('/', async (c) => {
       for (const r of results as any[]) r.items = itemsByPo.get(r.id as number) || []
     }
 
-    // COUNT 쿼리
-    let countQuery = `SELECT COUNT(*) as count
+    // 총 건수 + 금액 합계 — 목록과 동일한 조회조건(listFilter SSOT)
+    // ⚠️ 합계는 '현재 페이지'가 아니라 '조회조건 전체' 기준이다.
+    const countQuery = `SELECT COUNT(*) as count,
+        COALESCE(SUM(po.total_amount), 0) as sum_supply,
+        COALESCE(SUM(po.vat_amount), 0) as sum_vat,
+        COALESCE(SUM(po.final_amount), 0) as sum_final
       FROM purchase_orders po
-      LEFT JOIN clients c ON po.supplier_id = c.id`
-    const countParams: any[] = []
-    const countWhereClauses: string[] = []
-
-    if (receiving === '1') {
-      countWhereClauses.push("po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED')")
-    } else if (status) {
-      countWhereClauses.push('po.status = ?')
-      countParams.push(status)
-    }
-    if (search) {
-      countWhereClauses.push('(po.po_number LIKE ? OR c.client_name LIKE ?)')
-      const searchPattern = `%${search}%`
-      countParams.push(searchPattern, searchPattern)
-    }
-    if (date_from) {
-      countWhereClauses.push('po.order_date >= ?')
-      countParams.push(date_from)
-    }
-    if (date_to) {
-      countWhereClauses.push('po.order_date <= ?')
-      countParams.push(date_to)
-    }
-    if (supplier_id) {
-      countWhereClauses.push('po.supplier_id = ?')
-      countParams.push(parseInt(supplier_id))
-    }
-    if (overdue === '1') {
-      countWhereClauses.push("po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED') AND po.expected_date IS NOT NULL AND po.expected_date < date('now', '+9 hours')")
-    }
-    if (include_intercompany !== '1' && receiving !== '1') {   // 목록과 동일 규칙(페이지네이션 총계 정합)
-      countWhereClauses.push(excludePurchaseNonCounterpartiesSql('po.supplier_id').replace(' AND ', ''))
-    }
-    if (ef.clause) {
-      countWhereClauses.push(ef.clause.replace(' AND ', ''))
-      countParams.push(...ef.params)
-    }
-    if (countWhereClauses.length > 0) {
-      countQuery += ' WHERE ' + countWhereClauses.join(' AND ')
-    }
-
-    const countRow = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ count: number }>()
+      LEFT JOIN clients c ON po.supplier_id = c.id${listFilter.where}`
+    const countRow = await c.env.DB.prepare(countQuery).bind(...listFilter.params).first<{
+      count: number; sum_supply: number; sum_vat: number; sum_final: number
+    }>()
     const count = countRow?.count ?? 0
 
-    const response: PaginatedResponse<PurchaseOrder> = {
+    // 수량 합계 — 발주:품목이 1:N 이라 목록 쿼리에 JOIN 하면 발주 행이 불어나 금액이 중복 합산된다.
+    let sumQty = 0
+    try {
+      const qtyRow = await c.env.DB.prepare(
+        `SELECT COALESCE(SUM(poi.quantity), 0) as qty
+         FROM purchase_order_items poi
+         WHERE poi.po_id IN (SELECT po.id FROM purchase_orders po LEFT JOIN clients c ON po.supplier_id = c.id${listFilter.where})`
+      ).bind(...listFilter.params).first<{ qty: number }>()
+      sumQty = Number(qtyRow?.qty) || 0
+    } catch (_qtyErr) { /* 수량 집계 실패는 목록을 막지 않음 */ }
+
+    const response: PaginatedResponse<PurchaseOrder> & { summary: Record<string, number> } = {
       success: true,
       data: results as unknown as PurchaseOrder[],
       pagination: {
@@ -202,6 +117,13 @@ poCoreRouter.get('/', async (c) => {
         limit: safeLimit,
         total: count,
         total_pages: Math.ceil(count / safeLimit)
+      },
+      summary: {
+        count,
+        quantity: sumQty,
+        supply_amount: Number(countRow?.sum_supply) || 0,
+        vat_amount: Number(countRow?.sum_vat) || 0,
+        final_amount: Number(countRow?.sum_final) || 0,
       }
     }
 

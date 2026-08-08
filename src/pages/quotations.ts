@@ -8,25 +8,26 @@ export function quotationsPage(c: Context<HonoEnv>) {
     title: '견적서 관리',
     activePage: '/quotations',
     pageContent: `
-      <!-- 통계 카드 4개 -->
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div class="ds-card ds-card-compact cursor-pointer" style="text-align:center" onclick="filterByQuotStatus('')">
-          <div class="text-sm" style="color:var(--c-text-secondary)">총 견적수</div>
+      <!-- 통계 카드 4개 — 현재 조회조건 기준 집계(상태 제외), 클릭 시 드릴다운 -->
+      <div id="quotStatsArea" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <button type="button" class="ds-card ds-card-compact ds-stat" data-stat-status="" onclick="filterByQuotStatus('')" title="상태 조건 해제">
+          <div class="text-sm ds-stat-label" style="color:var(--c-text-secondary)">총 견적수</div>
           <div class="text-3xl font-bold" style="color:var(--c-text)" id="statTotal">-</div>
-        </div>
-        <div class="ds-card ds-card-compact cursor-pointer" style="text-align:center" onclick="filterByQuotStatus('valid')">
-          <div class="text-sm" style="color:var(--c-text-secondary)">유효 견적</div>
+        </button>
+        <button type="button" class="ds-card ds-card-compact ds-stat" data-stat-status="valid" onclick="filterByQuotStatus('valid')" title="유효 견적만 조회">
+          <div class="text-sm ds-stat-label" style="color:var(--c-text-secondary)">유효 견적</div>
           <div class="text-3xl font-bold" style="color:var(--c-text)" id="statValid">-</div>
-        </div>
-        <div class="ds-card ds-card-compact cursor-pointer" style="text-align:center" onclick="filterByQuotStatus('expired')">
-          <div class="text-sm" style="color:var(--c-text-secondary)">만료 견적</div>
+        </button>
+        <button type="button" class="ds-card ds-card-compact ds-stat" data-stat-status="expired" onclick="filterByQuotStatus('expired')" title="만료 견적만 조회">
+          <div class="text-sm ds-stat-label" style="color:var(--c-text-secondary)">만료 견적</div>
           <div class="text-3xl font-bold" style="color:var(--c-danger)" id="statExpired">-</div>
-        </div>
-        <div class="ds-card ds-card-compact" style="text-align:center">
+        </button>
+        <div class="ds-card ds-card-compact" style="text-align:center" title="조회조건 기준 견적금액 합계입니다.">
           <div class="text-sm" style="color:var(--c-text-secondary)">총 견적금액</div>
           <div class="text-2xl font-bold" style="color:var(--c-primary)" id="statAmount">-</div>
         </div>
       </div>
+      <div id="quotFilterChips" class="ds-conds mb-6"></div>
 
       <!-- 필터 바 -->
       <div class="ds-filter-bar">
@@ -91,6 +92,8 @@ export function quotationsPage(c: Context<HonoEnv>) {
             </tbody>
           </table>
         </div>
+        <!-- 합계 바 — 조회조건 전체 기준(현재 페이지 아님) -->
+        <div id="quotSummaryBar" class="ds-summary"></div>
         <div id="quotPagination" class="px-6 py-3 flex items-center gap-2 flex-wrap" style="border-top:1px solid var(--c-border)"></div>
       </div>
 

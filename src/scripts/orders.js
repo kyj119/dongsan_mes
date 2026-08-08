@@ -281,22 +281,14 @@ function getStatusColor(status) {
 // 합계 바 — 조회조건 전체 기준(현재 페이지 아님). 건수·수량·공급가·부가세·합계
 // 이카운트는 조회 즉시 하단 합계를 보여주는데 여기엔 없어서 CSV 로 내려 엑셀에서 더해야 했다(감사 G2).
 function ordRenderSummary(summary, pagination) {
-  var el = document.getElementById('ordersSummaryBar');
-  if (!el) { console.warn('[orders] #ordersSummaryBar not found'); return; }
-  if (!summary) { el.innerHTML = ''; return; }
-  var n = function(v) { return Number(v || 0).toLocaleString(); };
-  var won = function(v) { return Number(v || 0).toLocaleString() + '원'; };
-  // 여러 페이지일 때 "이 숫자가 페이지 합이 아니다"를 명시 — 오해하면 금액을 잘못 읽는다
-  var scope = (pagination && pagination.total_pages > 1)
-    ? '조회조건 전체 합계 (현재 페이지 아님)'
-    : '조회조건 합계';
-  el.innerHTML =
-      '<span class="ord-summary-scope">' + scope + '</span>'
-    + '<span class="ord-summary-item">건수<b>' + n(summary.count) + '</b></span>'
-    + '<span class="ord-summary-item">수량<b>' + n(summary.quantity) + '</b></span>'
-    + '<span class="ord-summary-item">공급가<b>' + won(summary.supply_amount) + '</b></span>'
-    + '<span class="ord-summary-item">부가세<b>' + won(summary.vat_amount) + '</b></span>'
-    + '<span class="ord-summary-item ord-summary-total">합계<b>' + won(summary.final_amount) + '</b></span>';
+  if (!summary) { window.dsListUx.renderSummary('ordersSummaryBar', null); return; }
+  window.dsListUx.renderSummary('ordersSummaryBar', [
+    { label: '건수', value: summary.count },
+    { label: '수량', value: summary.quantity },
+    { label: '공급가', value: summary.supply_amount, format: 'won' },
+    { label: '부가세', value: summary.vat_amount, format: 'won' },
+    { label: '합계', value: summary.final_amount, format: 'won', strong: true }
+  ], { multiPage: !!(pagination && pagination.total_pages > 1) });
 }
 
 // 페이지네이션 렌더링 — 총 건수는 합계 바가 담당하므로 여기선 페이지 위치만
@@ -430,51 +422,40 @@ async function loadOrderStats() {
 
 // 현재 선택된 상태에 해당하는 카드 강조 (없으면 강조 없음 — 예: '취소' 선택)
 function ordMarkActiveStat(status) {
-  var cards = document.querySelectorAll('.ord-stat');
-  if (!cards.length) { console.warn('[orders] .ord-stat not found'); return; }
-  for (var i = 0; i < cards.length; i++) {
-    var own = cards[i].getAttribute('data-stat-status') || '';
-    cards[i].classList.toggle('ord-stat-active', own === (status || ''));
-  }
+  window.dsListUx.markActiveStat(status, '#orderStatsArea ');
 }
 
 // 활성 조회조건 칩 (감사 G1 산정기준 불명 + G3 기본 기간이 '더보기' 안에 숨어 있던 문제)
 // 조건을 항상 보이게 하고, ✕ 하나로 그 조건만 해제한다. 카드·목록이 같은 조건을 쓰므로 표기는 여기 한 곳뿐.
 function ordRenderFilterChips(f) {
-  var el = document.getElementById('orderFilterChips');
-  if (!el) { console.warn('[orders] #orderFilterChips not found'); return; }
-  var chips = [];
-  var chip = function(key, text, cls) {
-    var c = cls || 'ord-chip';
-    var x = key ? '<button type="button" class="ord-chip-x" title="이 조건만 해제" onclick="ordClearFilter(\'' + key + '\')">&times;</button>' : '';
-    return '<span class="' + c + '">' + escapeHtml(text) + x + '</span>';
-  };
+  var items = [];
+  var clear = function(key) { return function() { ordClearFilter(key); }; };
 
   // 기간 — 기본값(최근 1개월)도 사용자가 고른 조건과 똑같이 노출해야 "왜 지난달이 안 보이지"가 사라진다
   if (f.dateFrom || f.dateTo) {
     var label = f.dateFrom && f.dateTo ? ('주문일 ' + f.dateFrom + ' ~ ' + f.dateTo)
               : f.dateFrom ? ('주문일 ' + f.dateFrom + ' 이후')
               : ('주문일 ' + f.dateTo + ' 이전');
-    chips.push(chip('date', label));
+    items.push({ label: label, onClear: clear('date') });
   } else {
-    chips.push(chip('', '전체 기간', 'ord-chip ord-chip-static'));
+    items.push({ label: '전체 기간', tone: 'static' });
   }
 
-  if (f.search) chips.push(chip('search', '검색 "' + f.search + '"'));
-  if (f.status) chips.push(chip('status', '상태 ' + ordStatusFilterLabel(f.status)));
-  if (f.deliveryMethod) chips.push(chip('deliveryMethod', '배송 ' + f.deliveryMethod));
-  if (f.billingStatus) chips.push(chip('billingStatus', '회계 ' + (f.billingStatus === 'NONE' ? '미확인' : getBillingStatusText(f.billingStatus))));
-  if (f.priority) chips.push(chip('priority', f.priority === 'URGENT' ? '긴급만' : '일반만'));
-  if (f.overdue) chips.push(chip('overdue', '지연만'));
-  if (!f.status) chips.push(chip('', '취소·견적 제외', 'ord-chip ord-chip-static'));
+  if (f.search) items.push({ label: '검색 "' + f.search + '"', onClear: clear('search') });
+  if (f.status) items.push({ label: '상태 ' + ordStatusFilterLabel(f.status), onClear: clear('status') });
+  if (f.deliveryMethod) items.push({ label: '배송 ' + f.deliveryMethod, onClear: clear('deliveryMethod') });
+  if (f.billingStatus) items.push({ label: '회계 ' + (f.billingStatus === 'NONE' ? '미확인' : getBillingStatusText(f.billingStatus)), onClear: clear('billingStatus') });
+  if (f.priority) items.push({ label: f.priority === 'URGENT' ? '긴급만' : '일반만', onClear: clear('priority') });
+  if (f.overdue) items.push({ label: '지연만', onClear: clear('overdue') });
+  if (!f.status) items.push({ label: '취소·견적 제외', tone: 'static' });
 
   // 카드에 없는 상태(취소 등)를 고르면 카드와 목록이 다른 것을 센다 — 숨기지 않고 경고로 드러낸다
   var CARD_STATUSES = ['CONFIRMED', 'PRINTING,PRINT_DONE', 'SHIPPED'];
   if (f.status && CARD_STATUSES.indexOf(f.status) === -1) {
-    chips.push(chip('', '위 카드는 이 상태를 포함하지 않음', 'ord-chip ord-chip-warn'));
+    items.push({ label: '위 카드는 이 상태를 포함하지 않음', tone: 'warn' });
   }
 
-  el.innerHTML = '<span class="ord-chips-label">조회 조건</span>' + chips.join('');
+  window.dsListUx.renderChips('orderFilterChips', items);
 }
 
 // 상태 값 → 화면 라벨 (셀렉트 옵션 텍스트를 정본으로 삼아 라벨이 두 벌 생기지 않게 한다)

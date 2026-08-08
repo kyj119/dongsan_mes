@@ -84,6 +84,8 @@ export function receivingPage(c: Context<HonoEnv>) {
             <i class="fas fa-file-csv mr-1"></i>CSV
           </button>
         </div>
+        <!-- 활성 조회조건 칩 — 어떤 조건으로 걸러진 이력인지 항상 보이게 -->
+        <div id="rcvFilterChips" class="ds-conds mb-3"></div>
 
         <!-- 입고이력 테이블 -->
         <div class="ds-card overflow-hidden">
@@ -105,6 +107,8 @@ export function receivingPage(c: Context<HonoEnv>) {
               <tr><td colspan="9" class="px-4 py-8 text-center text-gray-500">탭을 선택하면 이력을 조회합니다.</td></tr>
             </tbody>
           </table>
+          <!-- 합계 바 — 조회조건 전체 기준(현재 페이지 아님) -->
+          <div id="rcvSummaryBar" class="ds-summary"></div>
         </div>
         <div id="historyPagination" class="mt-4 flex justify-center"></div>
       </div>

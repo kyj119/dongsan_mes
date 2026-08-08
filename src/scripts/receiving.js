@@ -111,24 +111,72 @@ function rcvRenderPagination(containerId, currentPage, totalPages, loadFn) {
 // #328: dead loadPendingPOs 제거 — pendingTableBody/pendingPagination 부재(페이지는 카드형 poCardList), 실경로는 loadReceivingQueue
 
 // ── 입고이력 ──
+// ── 입고이력 조회조건 SSOT (클라) ────────────────────────────────────
+// 서버측 정본 = src/routes/purchaseOrders/po-receipts.ts buildReceiptFilter
+function rcvReadFilters() {
+  var g = function(id) { var el = document.getElementById(id); return el ? el.value : ''; };
+  return { dateFrom: g('historyDateFrom'), dateTo: g('historyDateTo'), status: g('historyStatus'), search: g('historySearch') };
+}
+
+function rcvBuildParams(f) {
+  var p = new URLSearchParams();
+  if (f.dateFrom) p.append('date_from', f.dateFrom);
+  if (f.dateTo) p.append('date_to', f.dateTo);
+  if (f.status) p.append('inspection_status', f.status);
+  if (f.search) p.append('search', f.search);
+  return p;
+}
+
+function rcvStatusLabel(v) {
+  var sel = document.getElementById('historyStatus');
+  if (sel) for (var i = 0; i < sel.options.length; i++) if (sel.options[i].value === v) return sel.options[i].textContent;
+  return v;
+}
+
+function rcvRenderChips(f) {
+  var items = [];
+  var reload = function(fn) { return function() { fn(); loadReceiptHistory(1); }; };
+  if (f.dateFrom || f.dateTo) {
+    var label = f.dateFrom && f.dateTo ? ('입고일 ' + f.dateFrom + ' ~ ' + f.dateTo)
+              : f.dateFrom ? ('입고일 ' + f.dateFrom + ' 이후')
+              : ('입고일 ' + f.dateTo + ' 이전');
+    items.push({ label: label, onClear: reload(function() {
+      document.getElementById('historyDateFrom').value = '';
+      document.getElementById('historyDateTo').value = '';
+    }) });
+  } else {
+    items.push({ label: '전체 기간', tone: 'static' });
+  }
+  if (f.status) items.push({ label: '검수 ' + rcvStatusLabel(f.status), onClear: reload(function() { document.getElementById('historyStatus').value = ''; }) });
+  if (f.search) items.push({ label: '검색 "' + f.search + '"', onClear: reload(function() { document.getElementById('historySearch').value = ''; }) });
+  window.dsListUx.renderChips('rcvFilterChips', items);
+}
+
+function rcvRenderSummary(summary, pagination) {
+  if (!summary) { window.dsListUx.renderSummary('rcvSummaryBar', null); return; }
+  window.dsListUx.renderSummary('rcvSummaryBar', [
+    { label: '건수', value: summary.count },
+    { label: '합격수량', value: summary.accepted },
+    { label: '불합격수량', value: summary.rejected },
+    { label: '입고금액', value: summary.amount, format: 'won', strong: true }
+  ], { multiPage: !!(pagination && pagination.total_pages > 1) });
+}
+
 async function loadReceiptHistory(page) {
   historyPage = page || 1;
   var tbody = document.getElementById('historyTableBody');
   if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-gray-500">로딩 중...</td></tr>';
+  var f = rcvReadFilters();
+  rcvRenderChips(f);   // 조건 표시는 응답을 기다리지 않는다
   try {
-    var dateFrom = document.getElementById('historyDateFrom').value;
-    var dateTo = document.getElementById('historyDateTo').value;
-    var status = document.getElementById('historyStatus').value;
-    var search = document.getElementById('historySearch').value;
-    var url = '/api/purchase-orders/receipts?page=' + historyPage + '&limit=20';
-    if (dateFrom) url += '&date_from=' + encodeURIComponent(dateFrom);
-    if (dateTo) url += '&date_to=' + encodeURIComponent(dateTo);
-    if (status) url += '&inspection_status=' + encodeURIComponent(status);
-    if (search) url += '&search=' + encodeURIComponent(search);
-    var res = await axios.get(url);
+    var params = rcvBuildParams(f);
+    params.append('page', String(historyPage));
+    params.append('limit', '20');
+    var res = await axios.get('/api/purchase-orders/receipts?' + params.toString());
     if (!res.data.success) { throw new Error(res.data.error || '조회 실패'); }
     var items = res.data.data || [];
     var pagination = res.data.pagination || {};
+    rcvRenderSummary(res.data.summary, pagination);
     if (!tbody) return;
     if (items.length === 0) {
       tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-gray-500">입고 이력이 없습니다.</td></tr>';
@@ -164,19 +212,8 @@ async function loadReceiptHistory(page) {
 // ── 입고이력 CSV 내보내기 (현재 화면 필터 반영) ──
 async function exportReceivingCsv() {
   try {
-    var params = new URLSearchParams();
-    var dateFromEl = document.getElementById('historyDateFrom');
-    var dateToEl = document.getElementById('historyDateTo');
-    var statusEl = document.getElementById('historyStatus');
-    var searchEl = document.getElementById('historySearch');
-    var dateFrom = dateFromEl ? dateFromEl.value : '';
-    var dateTo = dateToEl ? dateToEl.value : '';
-    var status = statusEl ? statusEl.value : '';
-    var search = searchEl ? searchEl.value : '';
-    if (dateFrom) params.set('date_from', dateFrom);
-    if (dateTo) params.set('date_to', dateTo);
-    if (status) params.set('inspection_status', status);
-    if (search) params.set('search', search);
+    // 조회조건 = 화면과 동일 (rcvBuildParams SSOT)
+    var params = rcvBuildParams(rcvReadFilters());
     var res = await authFetch('/api/purchase-orders/receipts/export/csv?' + params.toString());
     if (!res.ok) throw new Error('서버 오류');
     var blob = await res.blob();

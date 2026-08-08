@@ -27,8 +27,9 @@ function filterByQuotStatus(s) {
 
 async function loadStats() {
   try {
-    // 서버 집계 사용 (limit=500 fetch 후 클라 합산 → 상한 초과 시 수치 조용히 축소 제거)
-    var res = await axios.get('/api/quotations/stats');
+    // 서버 집계 + 목록과 같은 조회조건 (상태만 제외 — 카드가 상태 선택 수단이라)
+    var sp = quotBuildParams(quotReadFilters(), { omitStatus: true });
+    var res = await axios.get('/api/quotations/stats' + (sp.toString() ? '?' + sp.toString() : ''));
     if (!res.data.success) return;
     var d = res.data.data || {};
     var elT = document.getElementById('statTotal');
@@ -42,32 +43,97 @@ async function loadStats() {
   } catch(e) { console.error('loadStats error:', e); }
 }
 
+// ── 조회조건 SSOT (클라) ─────────────────────────────────────────────
+// 서버측 정본 = src/routes/quotationsListFilter.ts
+function quotReadFilters() {
+  var g = function(id) { var el = document.getElementById(id); return el ? el.value : ''; };
+  return {
+    search: g('quotClientSearch'),
+    statusUI: g('quotStatusFilter'),
+    dateFrom: g('quotDateFrom'),
+    dateTo: g('quotDateTo')
+  };
+}
+
+// 화면 상태값(UI) → 서버 파라미터. '주문전환'은 상태 컬럼이 아니라 주문 존재 여부(has_orders)다.
+function quotBuildParams(f, opts) {
+  opts = opts || {};
+  var p = new URLSearchParams();
+  if (f.search) p.append('search', f.search);
+  if (!opts.omitStatus) {
+    if (f.statusUI === 'expired') p.append('status', 'EXPIRED');
+    else if (f.statusUI === 'cancelled') p.append('status', 'CANCELLED');
+    else if (f.statusUI === 'valid') p.append('status', 'ACTIVE');
+    else if (f.statusUI === 'converted') p.append('has_orders', '1');
+  }
+  if (f.dateFrom) p.append('date_from', f.dateFrom);
+  if (f.dateTo) p.append('date_to', f.dateTo);
+  return p;
+}
+
+function quotStatusLabel(v) {
+  var sel = document.getElementById('quotStatusFilter');
+  if (sel) for (var i = 0; i < sel.options.length; i++) if (sel.options[i].value === v) return sel.options[i].textContent;
+  return v;
+}
+
+function quotRenderChips(f) {
+  var items = [];
+  var clear = function(id) { return function() { document.getElementById(id).value = ''; loadQuotations(1); }; };
+  if (f.dateFrom || f.dateTo) {
+    var label = f.dateFrom && f.dateTo ? ('작성일 ' + f.dateFrom + ' ~ ' + f.dateTo)
+              : f.dateFrom ? ('작성일 ' + f.dateFrom + ' 이후')
+              : ('작성일 ' + f.dateTo + ' 이전');
+    items.push({ label: label, onClear: function() {
+      document.getElementById('quotDateFrom').value = '';
+      document.getElementById('quotDateTo').value = '';
+      loadQuotations(1);
+    } });
+  } else {
+    items.push({ label: '전체 기간', tone: 'static' });
+  }
+  if (f.search) items.push({ label: '거래처 "' + f.search + '"', onClear: clear('quotClientSearch') });
+  if (f.statusUI) items.push({ label: '상태 ' + quotStatusLabel(f.statusUI), onClear: function() {
+    quotCurrentStatusFilter = '';
+    document.getElementById('quotStatusFilter').value = '';
+    loadQuotations(1);
+  } });
+  window.dsListUx.renderChips('quotFilterChips', items);
+}
+
+function quotRenderSummary(summary, pagination) {
+  if (!summary) { window.dsListUx.renderSummary('quotSummaryBar', null); return; }
+  window.dsListUx.renderSummary('quotSummaryBar', [
+    { label: '건수', value: summary.count },
+    { label: '수량', value: summary.quantity },
+    { label: '공급가', value: summary.supply_amount, format: 'won' },
+    { label: '부가세', value: summary.vat_amount, format: 'won' },
+    { label: '합계', value: summary.final_amount, format: 'won', strong: true }
+  ], { multiPage: !!(pagination && pagination.total_pages > 1) });
+}
+
 async function loadQuotations(page) {
   quotCurrentPage = page || 1;
-  var client = document.getElementById('quotClientSearch').value;
-  var statusUI = document.getElementById('quotStatusFilter').value;
+  var f = quotReadFilters();
+  var params = quotBuildParams(f);
+  params.append('page', String(quotCurrentPage));
+  params.append('limit', '20');
 
-  var url = '/api/quotations?page=' + quotCurrentPage + '&limit=20';
-  if (client) url += '&search=' + encodeURIComponent(client);
-  if (statusUI === 'expired') url += '&status=EXPIRED';
-  else if (statusUI === 'cancelled') url += '&status=CANCELLED';
-  else if (statusUI === 'valid') url += '&status=ACTIVE';
+  // 조건 표시는 응답을 기다리지 않는다
+  quotRenderChips(f);
+  window.dsListUx.markActiveStat(f.statusUI, '#quotStatsArea ');
+  loadStats();   // 통계 카드도 같은 조건으로
 
   try {
     // #421: 로딩 표시(일관 포맷)
     var _quotTb = document.getElementById('quotTableBody');
     if (_quotTb && window.dsSkeleton) _quotTb.innerHTML = window.dsSkeleton.loadingRow(8);
-    var res = await axios.get(url);
+    var res = await axios.get('/api/quotations?' + params.toString());
     if (res.data.success) {
       var quotations = res.data.data || [];
-
-      // 추가 클라이언트 필터: partial (주문 생성됨) — 별도 API 파라미터 없음
-      if (statusUI === 'partial') {
-        quotations = quotations.filter(function(q) { return getQuotStatus(q) === 'partial'; });
-      }
-
       renderQuotationTable(quotations);
       renderQuotPagination(res.data.pagination);
+      quotRenderSummary(res.data.summary, res.data.pagination);
     }
   } catch(e) {
     console.error('loadQuotations error:', e);
@@ -244,7 +310,6 @@ async function deleteQuotation(id) {
     var res = await axios.delete('/api/quotations/' + id);
     if (res.data.success) {
       showToast('견적서가 삭제되었습니다.', 'success');
-      loadStats();
       loadQuotations(quotCurrentPage);
     } else {
       showToast('삭제 실패: ' + (res.data.error || ''), 'error');
@@ -267,5 +332,4 @@ document.getElementById('quotDetailModal').addEventListener('click', function(e)
 });
 
 // 초기 로드
-loadStats();
 loadQuotations(1);

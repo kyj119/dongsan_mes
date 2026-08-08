@@ -95,8 +95,9 @@ function poIncludeIcParam() {
 
 async function loadStats() {
   try {
-    var ic = poIncludeIcParam();
-    var res = await axios.get('/api/purchase-orders/stats' + (ic ? '?include_intercompany=1' : ''));
+    // 목록과 같은 조건으로 집계 (상태는 카드가 담당하므로 제외) — 카드와 목록이 다른 걸 세지 않게
+    var sp = poBuildParams(poReadFilters(), { omitStatus: true });
+    var res = await axios.get('/api/purchase-orders/stats' + (sp.toString() ? '?' + sp.toString() : ''));
     if (res.data.success) {
       var d = res.data.data;
       var confirmedEl = document.getElementById('statConfirmed');
@@ -142,30 +143,90 @@ async function checkStockAlerts() {
   }
 }
 
+// ── 조회조건 SSOT (클라) ─────────────────────────────────────────────
+// 목록·통계·CSV 가 같은 조건을 쓰도록 한 곳에서 수집한다.
+// 서버측 정본 = src/routes/purchaseOrders/listFilter.ts (파라미터 이름을 바꾸면 양쪽을 같이 고칠 것)
+function poReadFilters() {
+  var g = function(id) { var el = document.getElementById(id); return el ? el.value : ''; };
+  return {
+    search: g('searchInput'),
+    // '납기 지연' 카드는 상태가 아니라 파생 조건이라 status 를 비우고 overdue 로 건다
+    status: currentStatus === 'OVERDUE' ? '' : g('statusFilter'),
+    overdue: currentStatus === 'OVERDUE',
+    supplierId: g('supplierFilter'),
+    sort: g('sortSelect') || 'order_date_desc',
+    includeIc: !!poIncludeIcParam()
+  };
+}
+
+function poBuildParams(f, opts) {
+  opts = opts || {};
+  var p = new URLSearchParams();
+  if (f.search) p.append('search', f.search);
+  if (f.status && !opts.omitStatus) p.append('status', f.status);
+  if (f.overdue && !opts.omitStatus) p.append('overdue', '1');
+  if (f.supplierId) p.append('supplier_id', f.supplierId);
+  if (f.includeIc) p.append('include_intercompany', '1');
+  return p;
+}
+
+// 활성 조회조건 칩 — 어떤 조건으로 걸러진 목록인지 항상 보이게 한다
+function poRenderChips(f) {
+  var items = [];
+  var clear = function(fn) { return function() { fn(); loadPOs(1); }; };
+  if (f.search) items.push({ label: '검색 "' + f.search + '"', onClear: clear(function() { document.getElementById('searchInput').value = ''; }) });
+  if (f.overdue) items.push({ label: '납기 지연만', onClear: clear(function() { currentStatus = ''; }) });
+  else if (f.status) items.push({ label: '상태 ' + poStatusLabel(f.status), onClear: clear(function() { currentStatus = ''; document.getElementById('statusFilter').value = ''; }) });
+  if (f.supplierId) {
+    var sel = document.getElementById('supplierFilter');
+    var name = (sel && sel.selectedOptions[0]) ? sel.selectedOptions[0].textContent : f.supplierId;
+    items.push({ label: '공급업체 ' + name, onClear: clear(function() { document.getElementById('supplierFilter').value = ''; }) });
+  }
+  items.push(f.includeIc
+    ? { label: '법인간거래·관계사 포함', tone: 'static' }
+    : { label: '법인간거래·관계사 제외', tone: 'static' });
+  window.dsListUx.renderChips('poFilterChips', items);
+}
+
+function poStatusLabel(status) {
+  var sel = document.getElementById('statusFilter');
+  if (sel) for (var i = 0; i < sel.options.length; i++) if (sel.options[i].value === status) return sel.options[i].textContent;
+  return status;
+}
+
+function poRenderSummary(summary, pagination) {
+  if (!summary) { window.dsListUx.renderSummary('poSummaryBar', null); return; }
+  window.dsListUx.renderSummary('poSummaryBar', [
+    { label: '건수', value: summary.count },
+    { label: '수량', value: summary.quantity },
+    { label: '공급가', value: summary.supply_amount, format: 'won' },
+    { label: '부가세', value: summary.vat_amount, format: 'won' },
+    { label: '합계', value: summary.final_amount, format: 'won', strong: true }
+  ], { multiPage: !!(pagination && pagination.total_pages > 1) });
+}
+
 async function loadPOs(page) {
   currentPage = page || 1;
-  var search = document.getElementById('searchInput').value;
-  var status = document.getElementById('statusFilter').value;
-  var sort = document.getElementById('sortSelect').value;
-  var overdue = '';
-  if (currentStatus === 'OVERDUE') {
-    status = '';
-    overdue = '1';
-  }
-  var supplierId = document.getElementById('supplierFilter') ? document.getElementById('supplierFilter').value : '';
-  var includeIc = poIncludeIcParam();
-  var url = '/api/purchase-orders?page=' + currentPage + '&limit=20&search=' + encodeURIComponent(search)
-    + '&status=' + status + '&sort=' + sort + (overdue ? '&overdue=1' : '')
-    + (supplierId ? '&supplier_id=' + supplierId : '')
-    + (includeIc ? '&include_intercompany=1' : '');
+  var f = poReadFilters();
+  var params = poBuildParams(f);
+  params.append('sort', f.sort);
+  params.append('page', String(currentPage));
+  params.append('limit', '20');
+
+  // 조건 표시는 응답을 기다리지 않는다 — 조회가 실패해도 무슨 조건이 걸렸는지는 보여야 한다
+  poRenderChips(f);
+  window.dsListUx.markActiveStat(f.overdue ? 'OVERDUE' : f.status, '#poStatsArea ');
+  loadStats();   // 통계 카드도 같은 조건으로 갱신
+
   try {
     // #421: 로딩 표시(일관 포맷)
     var _poTb = document.getElementById('poTableBody');
     if (_poTb && window.dsSkeleton) _poTb.innerHTML = window.dsSkeleton.loadingRow(7);
-    var res = await axios.get(url);
+    var res = await axios.get('/api/purchase-orders?' + params.toString());
     if (res.data.success) {
       displayPOs(res.data.data);
       poRenderPagination(res.data.pagination);
+      poRenderSummary(res.data.summary, res.data.pagination);
     }
   } catch(e) { console.error('loadPOs error:', e); }
 }
@@ -362,7 +423,6 @@ async function changeStatus(id, newStatus) {
     var res = await axios.patch('/api/purchase-orders/' + id + '/status', { status: newStatus });
     if (res.data.success) {
       showToast('상태가 변경되었습니다.', 'success');
-      loadStats();
       loadPOs(currentPage);
     } else {
       showToast('변경 실패: ' + (res.data.error || ''), 'error');
@@ -445,7 +505,6 @@ async function submitReceive(id) {
     if (res.data.success) {
       showToast('입고 처리가 완료되었습니다.', 'success');
       document.getElementById('receiveModal').classList.add('hidden');
-      loadStats();
       loadPOs(currentPage);
     } else {
       showToast('입고 처리 실패: ' + (res.data.error || ''), 'error');
@@ -462,7 +521,6 @@ async function deletePO(id, status) {
     var res = await axios.delete('/api/purchase-orders/' + id);
     if (res.data.success) {
       showToast('발주가 삭제되었습니다.', 'success');
-      loadStats();
       loadPOs(currentPage);
     } else {
       showToast('삭제 실패: ' + (res.data.error || ''), 'error');
@@ -478,7 +536,6 @@ async function copyPO(id) {
     var res = await axios.post('/api/purchase-orders/' + id + '/copy');
     if (res.data.success) {
       showToast('발주가 복사되었습니다.', 'success');
-      loadStats();
       loadPOs(1);
     } else {
       showToast('복사 실패: ' + (res.data.error || ''), 'error');
@@ -594,12 +651,10 @@ document.getElementById('receiveModal').addEventListener('click', function(e) {
 // CSV 내보내기
 async function exportPoCsv() {
   try {
-    var params = new URLSearchParams();
-    var status = document.getElementById('statusFilter').value;
-    var search = document.getElementById('searchInput').value;
-    if (status) params.set('status', status);
-    if (search) params.set('search', search);
-    if (poIncludeIcParam()) params.set('include_intercompany', '1');
+    // 조회조건 = 화면과 동일 (poBuildParams SSOT). 이전에는 공급업체·지연·정렬이 빠져 CSV 가 화면과 달랐다.
+    var f = poReadFilters();
+    var params = poBuildParams(f);
+    params.append('sort', f.sort);
     var res = await authFetch('/api/purchase-orders/export/csv?' + params.toString());
     if (!res.ok) throw new Error('서버 오류');
     var blob = await res.blob();
@@ -699,7 +754,6 @@ async function createFromTemplate() {
     if (res.data.success) {
       showToast(res.data.message || '발주가 생성되었습니다.', 'success');
       closeTemplateModal();
-      loadStats();
       loadPOs(1);
     }
   } catch(e) {
@@ -728,5 +782,4 @@ function sendPurchaseOrderNotice(id, supplierName, poNumber) {
 
 // 초기 로드
 loadSupplierFilter();
-loadStats();
 loadPOs(1);

@@ -22,6 +22,7 @@ import { logActivity } from '../utils/activityLog'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { kstYmdCompact, kstYmd } from '../utils/kstDate'
+import { buildQuotListFilter, resolveQuotSort, QUOT_SORT_DEFAULT } from './quotationsListFilter'
 
 const quotationsRouter = new Hono<HonoEnv>()
 quotationsRouter.use('/*', authMiddleware, requireAnyPagePermission('/quotations', '/orders'))
@@ -70,37 +71,12 @@ quotationsRouter.get('/', async (c) => {
       FROM quotations q
       LEFT JOIN clients c ON q.client_id = c.id
       LEFT JOIN users u ON q.created_by = u.id
-      WHERE 1=1
     `
-    const params: any[] = []
-
-    if (status) {
-      query += ' AND q.status = ?'
-      params.push(status)
-    }
-    if (client_id) {
-      query += ' AND q.client_id = ?'
-      params.push(Number(client_id))
-    }
-    if (search) {
-      query += ' AND (q.quotation_number LIKE ? OR c.client_name LIKE ?)'
-      const pat = `%${search}%`
-      params.push(pat, pat)
-    }
-
-    const ef = entityFilter(c, 'q')
-    query += ef.clause
-    params.push(...ef.params)
-
-    // 정렬 규약: 모든 옵션에 고유키(q.id) tie-break 필수 (CLAUDE.md)
-    const sortOptions: Record<string, string> = {
-      'created_desc': 'q.created_at DESC, q.id DESC',
-      'created_asc': 'q.created_at ASC, q.id ASC',
-      'valid_asc': 'q.valid_until IS NULL, q.valid_until ASC, q.id DESC',
-      'amount_desc': 'q.final_amount DESC, q.id DESC',
-    }
-    const orderBy = sortOptions[sort] || sortOptions['created_desc']
-    query += ` ORDER BY ${orderBy} LIMIT ? OFFSET ?`
+    // 조회조건·정렬 = quotationsListFilter.ts SSOT (목록·카운트·통계 공유)
+    const listFilter = buildQuotListFilter(c)
+    const params: any[] = [...listFilter.params]
+    query += listFilter.where
+    query += ` ORDER BY ${resolveQuotSort(sort)} LIMIT ? OFFSET ?`
     params.push(safeLimit, offset)
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all<Record<string, unknown>>()
@@ -116,20 +92,27 @@ quotationsRouter.get('/', async (c) => {
       }
     }
 
-    // 카운트
-    let countQuery = `SELECT COUNT(*) as count FROM quotations q LEFT JOIN clients c ON q.client_id = c.id WHERE 1=1`
-    const countParams: any[] = []
-    if (status) { countQuery += ' AND q.status = ?'; countParams.push(status) }
-    if (client_id) { countQuery += ' AND q.client_id = ?'; countParams.push(Number(client_id)) }
-    if (search) {
-      countQuery += ' AND (q.quotation_number LIKE ? OR c.client_name LIKE ?)'
-      const pat = `%${search}%`
-      countParams.push(pat, pat)
-    }
-    const efCount = entityFilter(c, 'q')
-    countQuery += efCount.clause
-    countParams.push(...efCount.params)
-    const { count } = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ count: number }>() ?? { count: 0 }
+    // 카운트 + 금액 합계 — 목록과 동일 조건. ⚠️ '조회조건 전체' 기준이며 현재 페이지 합이 아니다.
+    const countRow = await c.env.DB.prepare(
+      `SELECT COUNT(*) as count,
+          COALESCE(SUM(q.total_amount), 0) as sum_supply,
+          COALESCE(SUM(q.vat_amount), 0) as sum_vat,
+          COALESCE(SUM(q.final_amount), 0) as sum_final
+       FROM quotations q LEFT JOIN clients c ON q.client_id = c.id${listFilter.where}`
+    ).bind(...listFilter.params).first<{ count: number; sum_supply: number; sum_vat: number; sum_final: number }>()
+    const count = countRow?.count ?? 0
+
+    // 수량 합계 — 견적:품목이 1:N 이라 목록 쿼리에 JOIN 하면 견적 행이 불어나 금액이 중복 합산된다.
+    let sumQty = 0
+    try {
+      const qtyRow = await c.env.DB.prepare(
+        `SELECT COALESCE(SUM(qi.quantity), 0) as qty
+         FROM quotation_items qi
+         WHERE (qi.parent_id IS NULL OR qi.parent_id = 0)
+           AND qi.quotation_id IN (SELECT q.id FROM quotations q LEFT JOIN clients c ON q.client_id = c.id${listFilter.where})`
+      ).bind(...listFilter.params).first<{ qty: number }>()
+      sumQty = Number(qtyRow?.qty) || 0
+    } catch (_qtyErr) { /* 수량 집계 실패는 목록을 막지 않음 */ }
 
     return c.json({
       success: true,
@@ -139,6 +122,13 @@ quotationsRouter.get('/', async (c) => {
         limit: safeLimit,
         total: count,
         total_pages: Math.ceil(count / safeLimit)
+      },
+      summary: {
+        count,
+        quantity: sumQty,
+        supply_amount: Number(countRow?.sum_supply) || 0,
+        vat_amount: Number(countRow?.sum_vat) || 0,
+        final_amount: Number(countRow?.sum_final) || 0,
       }
     })
   } catch (error) {
@@ -153,28 +143,20 @@ quotationsRouter.get('/', async (c) => {
 // ⚠️ '/:id'보다 먼저 등록 (id='stats' 섀도잉 방지).
 quotationsRouter.get('/stats', async (c) => {
   try {
-    const { search = '', client_id = '' } = c.req.query()
     const today = kstYmd()
-    let query = `
+    // 목록과 동일한 조회조건(SSOT), 단 status 만 제외 — 카드가 곧 상태 선택 수단(드릴다운)이라
+    // 자기 자신으로 걸러지면 나머지 카드가 전부 0이 된다. 이전에는 기간 조건을 통째로 무시했다(감사 G1).
+    const f = buildQuotListFilter(c, { skipStatus: true })
+    const query = `
       SELECT
         COUNT(*) AS total,
         COALESCE(SUM(q.final_amount), 0) AS amount,
         COALESCE(SUM(CASE WHEN q.status = 'ACTIVE' AND (q.valid_until IS NULL OR q.valid_until >= ?) THEN 1 ELSE 0 END), 0) AS valid,
         COALESCE(SUM(CASE WHEN q.status = 'EXPIRED' OR (q.status = 'ACTIVE' AND q.valid_until IS NOT NULL AND q.valid_until < ?) THEN 1 ELSE 0 END), 0) AS expired
       FROM quotations q
-      LEFT JOIN clients c ON q.client_id = c.id
-      WHERE 1=1
+      LEFT JOIN clients c ON q.client_id = c.id${f.where}
     `
-    const params: any[] = [today, today]
-    if (client_id) { query += ' AND q.client_id = ?'; params.push(Number(client_id)) }
-    if (search) {
-      query += ' AND (q.quotation_number LIKE ? OR c.client_name LIKE ?)'
-      const pat = `%${search}%`
-      params.push(pat, pat)
-    }
-    const ef = entityFilter(c, 'q')
-    query += ef.clause
-    params.push(...ef.params)
+    const params: any[] = [today, today, ...f.params]
 
     const row = await c.env.DB.prepare(query).bind(...params).first<{ total: number; amount: number; valid: number; expired: number }>()
     return c.json({

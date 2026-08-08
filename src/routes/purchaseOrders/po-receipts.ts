@@ -5,6 +5,7 @@
  * 검수내역(/:id/inspections) · 입고 대기 큐(receiving-queue). 배럴에서 core 앞 마운트. ⚠️ 이동만, 로직 수정 0.
  */
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
@@ -15,14 +16,37 @@ import { kstYmd } from '../../utils/kstDate'
 const poReceiptsRouter = new Hono<HonoEnv>()
 poReceiptsRouter.use('/*', authMiddleware, requireAnyPagePermission('/purchase-orders', '/receiving'))
 
+
+/**
+ * 입고이력 조회조건 SSOT — 목록·카운트·CSV 공유 (2026-08-08)
+ * 세 곳에 같은 WHERE 가 복사돼 있어 한쪽만 고치면 화면과 CSV 가 갈렸다.
+ * ⚠️ FROM 절에 `inventory_receipts ir LEFT JOIN purchase_orders po LEFT JOIN clients c` 필요(search 참조).
+ */
+function buildReceiptFilter(c: Context<HonoEnv>): { where: string; params: unknown[] } {
+  const { inspection_status = '', date_from = '', date_to = '', search = '' } = c.req.query()
+  const clauses: string[] = []
+  const params: unknown[] = []
+
+  // #363/IDOR: 입고이력 법인 격리 (entity_id 컬럼 0232 존재)
+  const ef = entityFilter(c, 'ir')
+  if (ef.clause) { clauses.push(ef.clause.replace(' AND ', '')); params.push(...ef.params) }
+
+  if (inspection_status) { clauses.push('ir.inspection_status = ?'); params.push(inspection_status) }
+  if (date_from) { clauses.push('ir.receipt_date >= ?'); params.push(date_from) }
+  if (date_to) { clauses.push('ir.receipt_date <= ?'); params.push(date_to) }
+  if (search) {
+    clauses.push('(ir.receipt_number LIKE ? OR po.po_number LIKE ? OR c.client_name LIKE ?)')
+    const p = `%${search}%`
+    params.push(p, p, p)
+  }
+  return { where: clauses.length ? ' WHERE ' + clauses.join(' AND ') : '', params }
+}
+
 // ============================================================================
 // GET /receipts/export/csv - 입고이력 CSV (현재 필터 기준, /receipts/:receiptId 보다 먼저 등록)
 // ============================================================================
 poReceiptsRouter.get('/receipts/export/csv', async (c) => {
   try {
-    const { inspection_status = '', date_from = '', date_to = '', search = '' } = c.req.query()
-
-    const ef = entityFilter(c, 'ir')
     let query = `
       SELECT
         ir.receipt_number, ir.receipt_date, ir.inspection_status, ir.notes,
@@ -37,18 +61,10 @@ poReceiptsRouter.get('/receipts/export/csv', async (c) => {
       LEFT JOIN clients c ON ir.supplier_id = c.id
       LEFT JOIN users u ON ir.received_by = u.id
     `
-    const params: any[] = []
-    const whereClauses: string[] = []
-    if (ef.clause) { whereClauses.push(ef.clause.replace(' AND ', '')); params.push(...ef.params) }
-    if (inspection_status) { whereClauses.push('ir.inspection_status = ?'); params.push(inspection_status) }
-    if (date_from) { whereClauses.push('ir.receipt_date >= ?'); params.push(date_from) }
-    if (date_to) { whereClauses.push('ir.receipt_date <= ?'); params.push(date_to) }
-    if (search) {
-      whereClauses.push('(ir.receipt_number LIKE ? OR po.po_number LIKE ? OR c.client_name LIKE ?)')
-      const p = `%${search}%`
-      params.push(p, p, p)
-    }
-    if (whereClauses.length > 0) query += ' WHERE ' + whereClauses.join(' AND ')
+    // 조회조건 = buildReceiptFilter SSOT (화면 목록과 동일)
+    const fc = buildReceiptFilter(c)
+    const params: any[] = [...fc.params]
+    query += fc.where
     query += ' ORDER BY ir.receipt_date DESC, ir.id DESC LIMIT 5001'  // #372: 캡+1 조회로 잘림 감지
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
@@ -165,76 +181,41 @@ poReceiptsRouter.get('/receipts', async (c) => {
       LEFT JOIN clients c ON ir.supplier_id = c.id
       LEFT JOIN users u ON ir.received_by = u.id
     `
-    const params: any[] = []
-    const whereClauses: string[] = []
-
-    // #363/IDOR: 입고이력 목록 법인 격리 (신규 /receipts/export/csv와 정합. entity_id 컬럼 0232 존재)
-    const ef = entityFilter(c, 'ir')
-    if (ef.clause) { whereClauses.push(ef.clause.replace(' AND ', '')); params.push(...ef.params) }
-
-    if (inspection_status) {
-      whereClauses.push('ir.inspection_status = ?')
-      params.push(inspection_status)
-    }
-    if (date_from) {
-      whereClauses.push('ir.receipt_date >= ?')
-      params.push(date_from)
-    }
-    if (date_to) {
-      whereClauses.push('ir.receipt_date <= ?')
-      params.push(date_to)
-    }
-    if (search) {
-      whereClauses.push('(ir.receipt_number LIKE ? OR po.po_number LIKE ? OR c.client_name LIKE ?)')
-      const p = `%${search}%`
-      params.push(p, p, p)
-    }
-
-    if (whereClauses.length > 0) {
-      query += ' WHERE ' + whereClauses.join(' AND ')
-    }
+    // 조회조건 = buildReceiptFilter SSOT (목록·카운트·CSV 공유)
+    const fr = buildReceiptFilter(c)
+    const params: any[] = [...fr.params]
+    query += fr.where
     // 정렬 규약: 페이징 목록은 고유키 tie-break 필수 (동일 created_at 배치 데이터에서 페이지 간 중복/누락 방지)
     query += ' ORDER BY ir.receipt_date DESC, ir.id DESC LIMIT ? OFFSET ?'
     params.push(safeLimit, offset)
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
-    // COUNT
-    let countQuery = `
-      SELECT COUNT(*) as count
+    // 카운트 + 합계 — 목록과 동일 조건. ⚠️ '조회조건 전체' 기준이며 현재 페이지 합이 아니다.
+    const countRow2 = await c.env.DB.prepare(`
+      SELECT COUNT(*) as count, COALESCE(SUM(ir.total_amount), 0) as sum_amount
       FROM inventory_receipts ir
       LEFT JOIN purchase_orders po ON ir.po_id = po.id
-      LEFT JOIN clients c ON ir.supplier_id = c.id
-    `
-    const countParams: any[] = []
-    const countWhereClauses: string[] = []
-
-    if (ef.clause) { countWhereClauses.push(ef.clause.replace(' AND ', '')); countParams.push(...ef.params) }
-
-    if (inspection_status) {
-      countWhereClauses.push('ir.inspection_status = ?')
-      countParams.push(inspection_status)
-    }
-    if (date_from) {
-      countWhereClauses.push('ir.receipt_date >= ?')
-      countParams.push(date_from)
-    }
-    if (date_to) {
-      countWhereClauses.push('ir.receipt_date <= ?')
-      countParams.push(date_to)
-    }
-    if (search) {
-      countWhereClauses.push('(ir.receipt_number LIKE ? OR po.po_number LIKE ? OR c.client_name LIKE ?)')
-      const p = `%${search}%`
-      countParams.push(p, p, p)
-    }
-
-    if (countWhereClauses.length > 0) {
-      countQuery += ' WHERE ' + countWhereClauses.join(' AND ')
-    }
-
-    const countRow2 = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ count: number }>()
+      LEFT JOIN clients c ON ir.supplier_id = c.id${fr.where}
+    `).bind(...fr.params).first<{ count: number; sum_amount: number }>()
     const count2 = countRow2?.count ?? 0
+
+    // 합격·불합격 수량 — 입고:품목이 1:N 이라 목록에 JOIN 하면 입고 행이 불어나 금액이 중복 합산된다.
+    let sumAccepted = 0, sumRejected = 0
+    try {
+      const qtyRow = await c.env.DB.prepare(`
+        SELECT COALESCE(SUM(iri.accepted_quantity), 0) as acc,
+               COALESCE(SUM(iri.rejected_quantity), 0) as rej
+        FROM inventory_receipt_items iri
+        WHERE iri.receipt_id IN (
+          SELECT ir.id FROM inventory_receipts ir
+          LEFT JOIN purchase_orders po ON ir.po_id = po.id
+          LEFT JOIN clients c ON ir.supplier_id = c.id${fr.where}
+        )
+      `).bind(...fr.params).first<{ acc: number; rej: number }>()
+      sumAccepted = Number(qtyRow?.acc) || 0
+      sumRejected = Number(qtyRow?.rej) || 0
+    } catch (_qtyErr) { /* 수량 집계 실패는 목록을 막지 않음 */ }
 
     return c.json({
       success: true,
@@ -244,6 +225,12 @@ poReceiptsRouter.get('/receipts', async (c) => {
         limit: safeLimit,
         total: count2,
         total_pages: Math.ceil(count2 / safeLimit)
+      },
+      summary: {
+        count: count2,
+        accepted: sumAccepted,
+        rejected: sumRejected,
+        amount: Number(countRow2?.sum_amount) || 0,
       }
     })
   } catch (error) {

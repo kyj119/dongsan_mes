@@ -2455,3 +2455,96 @@ function _doItemSearch(q) {
     lastEl = el;
   });
 })();
+
+/* ── 목록 화면 공통 UX: 조회조건 칩 · 합계 바 · 통계카드 드릴다운 ─────────────
+ * 마크업·클래스를 페이지마다 다시 적지 않기 위한 렌더러. 스타일 정본 = shared-styles.ts (ds-cond · ds-summary · ds-stat 계열).
+ * ⚠️ 조회조건 칩은 ds-cond 다 — ds-chip 은 이미 '클릭하는 필터 토글 칩'으로 쓰이고 있어(출고 택배사 배지 등) 이름을 나눴다.
+ * 설계 근거 = docs/audits/2026-08-08-list-ux-ecount-gap.md
+ *
+ * "무엇을 보여줄지"(어떤 조건이 있고 무엇을 합산하는지)는 페이지가 정하고,
+ * "어떻게 그릴지"만 여기서 담당한다. 페이지별 필터 종류가 제각각이라 그 이상은 공통화하면 오히려 엉킨다.
+ */
+window.dsListUx = (function() {
+  function resolve(target, who) {
+    var el = (typeof target === 'string') ? document.getElementById(target) : target;
+    if (!el) console.warn('[dsListUx] ' + who + ': 컨테이너를 찾을 수 없음 → ' + target);
+    return el;
+  }
+  function num(v) { return Number(v || 0).toLocaleString(); }
+
+  /**
+   * 활성 조회조건 칩.
+   * items = [{ label, onClear?, tone? }]  tone: 'static'(해제 불가 안내) | 'warn'(경고)
+   * onClear 가 있으면 ✕ 가 붙는다. innerHTML 대신 DOM 으로 만들어 라벨의 따옴표·꺾쇠가 사고를 내지 않는다.
+   */
+  function renderChips(target, items, labelText) {
+    var el = resolve(target, 'renderChips');
+    if (!el) return;
+    el.textContent = '';
+    if (!items || !items.length) return;
+    if (!el.classList.contains('ds-conds')) el.classList.add('ds-conds');
+    if (labelText !== '') {
+      var lb = document.createElement('span');
+      lb.className = 'ds-conds-label';
+      lb.textContent = labelText || '조회 조건';
+      el.appendChild(lb);
+    }
+    items.forEach(function(it) {
+      if (!it) return;
+      var chip = document.createElement('span');
+      chip.className = 'ds-cond' + (it.tone === 'static' ? ' ds-cond-static' : it.tone === 'warn' ? ' ds-cond-warn' : '');
+      chip.appendChild(document.createTextNode(it.label));
+      if (typeof it.onClear === 'function') {
+        var x = document.createElement('button');
+        x.type = 'button';
+        x.className = 'ds-cond-x';
+        x.title = '이 조건만 해제';
+        x.innerHTML = '&times;';
+        x.addEventListener('click', it.onClear);
+        chip.appendChild(x);
+      }
+      el.appendChild(chip);
+    });
+  }
+
+  /**
+   * 합계 바. cols = [{ label, value, format?: 'number'|'won'|'text', strong? }]
+   * ⚠️ 합계는 '조회조건 전체' 기준이어야 한다(현재 페이지 합이 아님). 여러 페이지일 때 문구로 명시한다.
+   */
+  function renderSummary(target, cols, opts) {
+    var el = resolve(target, 'renderSummary');
+    if (!el) return;
+    opts = opts || {};
+    el.textContent = '';
+    if (!cols) return;
+    if (!el.classList.contains('ds-summary')) el.classList.add('ds-summary');
+    var scope = document.createElement('span');
+    scope.className = 'ds-summary-scope';
+    scope.textContent = opts.scopeText || (opts.multiPage ? '조회조건 전체 합계 (현재 페이지 아님)' : '조회조건 합계');
+    el.appendChild(scope);
+    cols.forEach(function(c) {
+      if (!c) return;
+      var item = document.createElement('span');
+      item.className = 'ds-summary-item' + (c.strong ? ' ds-summary-total' : '');
+      item.appendChild(document.createTextNode(c.label));
+      var b = document.createElement('b');
+      b.textContent = c.format === 'text' ? String(c.value == null ? '-' : c.value)
+                    : c.format === 'won' ? num(c.value) + '원'
+                    : num(c.value);
+      item.appendChild(b);
+      el.appendChild(item);
+    });
+  }
+
+  /** 통계 카드 강조 — data-stat-status 가 현재 선택값과 같은 카드에 .ds-stat-active */
+  function markActiveStat(status, scopeSelector) {
+    var cards = document.querySelectorAll((scopeSelector || '') + '.ds-stat');
+    if (!cards.length) { console.warn('[dsListUx] markActiveStat: .ds-stat 없음'); return; }
+    for (var i = 0; i < cards.length; i++) {
+      var own = cards[i].getAttribute('data-stat-status') || '';
+      cards[i].classList.toggle('ds-stat-active', own === (status || ''));
+    }
+  }
+
+  return { renderChips: renderChips, renderSummary: renderSummary, markActiveStat: markActiveStat };
+})();

@@ -8,25 +8,27 @@ export function purchaseOrdersPage(c: Context<HonoEnv>) {
     title: '발주 관리',
     activePage: '/purchase-orders',
     pageContent: `
-      <!-- 통계 카드 (핵심 4개) -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div class="ds-card hover:shadow-md transition-shadow p-4 cursor-pointer" onclick="filterByStatus('CONFIRMED')">
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider">입고 대기</div>
+      <!-- 통계 카드 (핵심 4개) — 앞 3개는 현재 조회조건 기준 집계 + 드릴다운.
+           '이번달 발주 금액'만 기간 고정 지표라 라벨에 기준을 명시하고 클릭 대상에서 뺀다. -->
+      <div id="poStatsArea" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <button type="button" class="ds-card ds-stat p-4" data-stat-status="CONFIRMED" onclick="filterByStatus('CONFIRMED')">
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider ds-stat-label">입고 대기</div>
           <div class="text-3xl font-bold text-blue-600 mt-1 tabular-nums" id="statConfirmed">-</div>
-        </div>
-        <div class="ds-card hover:shadow-md transition-shadow p-4 cursor-pointer" onclick="filterByStatus('PARTIAL_RECEIVED')">
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider">부분 입고</div>
+        </button>
+        <button type="button" class="ds-card ds-stat p-4" data-stat-status="PARTIAL_RECEIVED" onclick="filterByStatus('PARTIAL_RECEIVED')">
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider ds-stat-label">부분 입고</div>
           <div class="text-3xl font-bold text-amber-500 mt-1 tabular-nums" id="statPartial">-</div>
-        </div>
-        <div class="ds-card border-red-200 hover:shadow-md transition-shadow p-4 cursor-pointer" onclick="filterByStatus('OVERDUE')">
-          <div class="text-xs font-semibold text-red-500 uppercase tracking-wider">납기 지연</div>
+        </button>
+        <button type="button" class="ds-card ds-stat p-4 border-red-200" data-stat-status="OVERDUE" onclick="filterByStatus('OVERDUE')">
+          <div class="text-xs font-semibold text-red-500 uppercase tracking-wider ds-stat-label">납기 지연</div>
           <div class="text-3xl font-bold text-red-600 mt-1 tabular-nums" id="statOverdue">-</div>
-        </div>
-        <div class="ds-card hover:shadow-md transition-shadow p-4">
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider">이번달 발주 금액</div>
+        </button>
+        <div class="ds-card p-4" title="조회조건과 무관한 고정 지표입니다. 조회조건 기준 금액은 목록 하단 합계 바를 보세요.">
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider">이번달 발주 금액 <span class="normal-case font-normal">(조회조건 무관)</span></div>
           <div class="text-2xl font-bold text-gray-900 mt-1 tabular-nums" id="statMonthlyAmount">-</div>
         </div>
       </div>
+      <div id="poFilterChips" class="ds-conds mb-6"></div>
 
       <!-- 검색/필터 바 -->
       <div class="ds-card p-4 mb-4 flex items-center gap-3 flex-wrap">
@@ -50,11 +52,13 @@ export function purchaseOrdersPage(c: Context<HonoEnv>) {
           <option value="created_at_desc">등록 최신순</option>
           <option value="expected_date_asc">납기 임박순</option>
           <option value="final_amount_desc">금액 큰순</option>
+          <option value="final_amount_asc">금액 작은순</option>
+          <option value="supplier_name_asc">공급업체명 가나다순</option>
           <option value="po_number_asc">발주번호순</option>
         </select>
         <label class="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer whitespace-nowrap"
           title="내부 법인(동산기획·선명·청주) 간 거래 발주. 기본은 숨김 — 미지급(AP) 집계에서도 제외되며 회계허브 > 법인간거래 탭에서 확인합니다.">
-          <input type="checkbox" id="poIncludeIntercompany" class="h-4 w-4 rounded" onchange="loadPOs(1); loadStats()">
+          <input type="checkbox" id="poIncludeIntercompany" class="h-4 w-4 rounded" onchange="loadPOs(1)">
           법인간거래·관계사 포함
         </label>
         <button onclick="exportPoCsv()" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm font-medium">
@@ -92,6 +96,8 @@ export function purchaseOrdersPage(c: Context<HonoEnv>) {
           </tbody>
         </table>
         </div>
+        <!-- 합계 바 — 조회조건 전체 기준(현재 페이지 아님). 표 스크롤 영역 밖이라 항상 보인다 -->
+        <div id="poSummaryBar" class="ds-summary"></div>
       </div>
       <div id="pagination" class="mt-4 flex justify-center"></div>
 

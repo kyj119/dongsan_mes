@@ -8,49 +8,28 @@ export function ordersPage(c: Context<HonoEnv>) {
     title: '주문 관리',
     activePage: '/orders',
     pageContent: `
-      <!-- 통계 카드 — 목록과 같은 조회조건으로 집계(상태 제외), 클릭 시 해당 상태로 드릴다운 -->
-      <style>
-        .ord-stat { width:100%; text-align:center; cursor:pointer; border:1px solid var(--c-border); background:var(--c-surface); transition:border-color .12s, box-shadow .12s; }
-        .ord-stat:hover { border-color:var(--c-primary); box-shadow:0 2px 8px rgba(0,0,0,.06); }
-        .ord-stat-active { border-color:var(--c-primary); box-shadow:0 0 0 2px rgba(37,99,235,.18); }
-        .ord-stat-active .ord-stat-label::after { content:' · 조회중'; font-size:11px; color:var(--c-primary); font-weight:600; }
-        /* 활성 조회조건 칩 — 접힌 '더보기' 안의 조건(기본 최근 1개월 포함)을 항상 보이게 하고 원클릭 해제 */
-        .ord-chips { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:8px; }
-        .ord-chips-label { font-size:12px; color:var(--c-text-secondary); margin-right:2px; }
-        .ord-chip { display:inline-flex; align-items:center; gap:5px; padding:3px 8px; border-radius:999px; font-size:12px; line-height:1.5;
-                    background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe; }
-        .ord-chip-static { background:var(--c-surface-secondary); color:var(--c-text-secondary); border-color:var(--c-border); }
-        .ord-chip-warn { background:#fef2f2; color:#b91c1c; border-color:#fecaca; }
-        .ord-chip-x { cursor:pointer; border:none; background:none; padding:0 0 0 1px; margin:0; color:inherit; opacity:.65; font-size:12px; line-height:1; }
-        .ord-chip-x:hover { opacity:1; }
-        /* 합계 바 — 이카운트 목록 하단 합계행 대응 */
-        .ord-summary { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:flex-end; gap:4px 18px;
-                       padding:9px 16px; border-top:2px solid var(--c-border); background:var(--c-surface-secondary); font-size:13px; }
-        .ord-summary-scope { margin-right:auto; color:var(--c-text-secondary); font-size:12px; }
-        .ord-summary-item { color:var(--c-text-secondary); }
-        .ord-summary-item b { margin-left:5px; color:var(--c-text); font-variant-numeric:tabular-nums; }
-        .ord-summary-total b { color:var(--c-primary); font-size:15px; }
-      </style>
+      <!-- 통계 카드 — 목록과 같은 조회조건으로 집계(상태 제외), 클릭 시 해당 상태로 드릴다운.
+           스타일 정본 = shared-styles.ts 의 ds-stat / ds-conds 계열 (페이지 로컬 CSS 금지) -->
       <div class="mb-6">
         <div id="orderStatsArea" class="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <button type="button" class="ds-card ds-card-compact ord-stat" data-stat-status="" onclick="ordStatDrilldown('')" title="상태 조건을 해제하고 전체 조회">
-            <div class="text-sm ord-stat-label" style="color:var(--c-text-secondary)">전체 주문</div>
+          <button type="button" class="ds-card ds-card-compact ds-stat" data-stat-status="" onclick="ordStatDrilldown('')" title="상태 조건을 해제하고 전체 조회">
+            <div class="text-sm ds-stat-label" style="color:var(--c-text-secondary)">전체 주문</div>
             <div class="text-3xl font-bold" style="color:var(--c-primary)" id="statTotal">-</div>
           </button>
-          <button type="button" class="ds-card ds-card-compact ord-stat" data-stat-status="CONFIRMED" onclick="ordStatDrilldown('CONFIRMED')" title="확정 주문만 조회">
-            <div class="text-sm ord-stat-label" style="color:var(--c-text-secondary)">확정</div>
+          <button type="button" class="ds-card ds-card-compact ds-stat" data-stat-status="CONFIRMED" onclick="ordStatDrilldown('CONFIRMED')" title="확정 주문만 조회">
+            <div class="text-sm ds-stat-label" style="color:var(--c-text-secondary)">확정</div>
             <div class="text-3xl font-bold" style="color:var(--c-warning)" id="statConfirmed">-</div>
           </button>
-          <button type="button" class="ds-card ds-card-compact ord-stat" data-stat-status="PRINTING,PRINT_DONE" onclick="ordStatDrilldown('PRINTING,PRINT_DONE')" title="출력중 + 출력완료 주문만 조회">
-            <div class="text-sm ord-stat-label" style="color:var(--c-text-secondary)">생산중</div>
+          <button type="button" class="ds-card ds-card-compact ds-stat" data-stat-status="PRINTING,PRINT_DONE" onclick="ordStatDrilldown('PRINTING,PRINT_DONE')" title="출력중 + 출력완료 주문만 조회">
+            <div class="text-sm ds-stat-label" style="color:var(--c-text-secondary)">생산중</div>
             <div class="text-3xl font-bold" style="color:var(--c-orange)" id="statProduction">-</div>
           </button>
-          <button type="button" class="ds-card ds-card-compact ord-stat" data-stat-status="SHIPPED" onclick="ordStatDrilldown('SHIPPED')" title="출고완료 주문만 조회">
-            <div class="text-sm ord-stat-label" style="color:var(--c-text-secondary)">출고완료</div>
+          <button type="button" class="ds-card ds-card-compact ds-stat" data-stat-status="SHIPPED" onclick="ordStatDrilldown('SHIPPED')" title="출고완료 주문만 조회">
+            <div class="text-sm ds-stat-label" style="color:var(--c-text-secondary)">출고완료</div>
             <div class="text-3xl font-bold" style="color:var(--c-success)" id="statShipped">-</div>
           </button>
         </div>
-        <div id="orderFilterChips" class="ord-chips"></div>
+        <div id="orderFilterChips" class="ds-conds"></div>
       </div>
 
       <!-- 검색/필터 -->
@@ -229,7 +208,7 @@ export function ordersPage(c: Context<HonoEnv>) {
           </table>
         </div>
         <!-- 합계 바 — 조회조건 전체 기준(현재 페이지 아님). 스크롤 영역 밖이라 항상 보인다 -->
-        <div id="ordersSummaryBar" class="ord-summary"></div>
+        <div id="ordersSummaryBar" class="ds-summary"></div>
         <!-- 페이지네이션 -->
         <div id="ordersPagination" class="px-6 py-3 flex items-center gap-2 flex-wrap" style="border-top:1px solid var(--c-border)"></div>
       </div>

@@ -821,6 +821,39 @@ export const SHARED_CSS = `
   }
   html.dark .ds-bulk-bar { box-shadow: 0 -4px 12px rgba(0,0,0,0.3); }
 
+  /* === DS List UX: 통계카드 드릴다운 · 조회조건 칩 · 합계 바 ===
+     목록 화면 공통 3종. 렌더러는 shell.js 의 window.dsListUx (마크업·클래스를 페이지마다 다시 적지 않는다).
+     설계 근거 = docs/audits/2026-08-08-list-ux-ecount-gap.md */
+  /* 클릭 가능한 통계 카드 — 누르면 해당 조건으로 목록을 좁힌다 */
+  .ds-stat { width: 100%; text-align: center; cursor: pointer; border: 1px solid var(--c-border); background: var(--c-surface);
+             transition: border-color var(--transition-fast), box-shadow var(--transition-fast); }
+  .ds-stat:hover { border-color: var(--c-primary); box-shadow: var(--shadow-md); }
+  .ds-stat-active { border-color: var(--c-primary); box-shadow: 0 0 0 2px rgba(37,99,235,.18); }
+  .ds-stat-active .ds-stat-label::after { content: ' · 조회중'; font-size: 11px; color: var(--c-primary); font-weight: 600; }
+
+  /* 활성 조회조건 칩 — 접힌 필터 안의 조건(기본 기간 포함)을 항상 보이게 하고 원클릭 해제.
+     ⚠️ 이름이 ds-cond 인 이유: ds-chip 은 이미 위에서 '클릭하는 필터 토글 칩'으로 정의돼 쓰이고 있다
+     (출고 페이지의 택배사 배지 등). 같은 이름을 쓰면 뒤에 온 정의가 그것들을 덮어쓴다.
+     (이 파일은 템플릿 리터럴이라 주석에도 백틱을 쓰면 안 된다 — 문자열이 끊긴다) */
+  .ds-conds { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+  .ds-conds-label { font-size: var(--fs-xs); color: var(--c-text-secondary); margin-right: 2px; }
+  .ds-cond { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px;
+             font-size: var(--fs-xs); line-height: 1.5; background: #eef2ff; color: #3730a3; border: 1px solid #c7d2fe; }
+  .ds-cond-static { background: var(--c-surface-secondary); color: var(--c-text-secondary); border-color: var(--c-border); }
+  .ds-cond-warn { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+  .ds-cond-x { cursor: pointer; border: none; background: none; padding: 0 0 0 1px; margin: 0; color: inherit; opacity: .65; font-size: var(--fs-xs); line-height: 1; }
+  .ds-cond-x:hover { opacity: 1; }
+  html.dark .ds-cond { background: #312e81; color: #c7d2fe; border-color: #4338ca; }
+  html.dark .ds-cond-warn { background: #450a0a; color: #fecaca; border-color: #991b1b; }
+
+  /* 합계 바 — 조회조건 전체 기준(현재 페이지 아님). 표 스크롤 영역 밖에 둬 항상 보이게 한다 */
+  .ds-summary { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: 4px 18px;
+                padding: 9px 16px; border-top: 2px solid var(--c-border); background: var(--c-surface-secondary); font-size: var(--fs-sm); }
+  .ds-summary-scope { margin-right: auto; color: var(--c-text-secondary); font-size: var(--fs-xs); }
+  .ds-summary-item { color: var(--c-text-secondary); }
+  .ds-summary-item b { margin-left: 5px; color: var(--c-text); font-variant-numeric: tabular-nums; }
+  .ds-summary-total b { color: var(--c-primary); font-size: var(--fs-lg); }
+
   /* === DS Sheet (Right Drawer) === */
   .ds-sheet-overlay {
     position: fixed; inset: 0; background: rgba(0,0,0,0.3); backdrop-filter: blur(2px);

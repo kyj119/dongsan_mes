@@ -12,6 +12,7 @@ import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { excludePurchaseNonCounterpartiesSql } from '../../constants/intercompany'
 import { getEntityCompanyInfo } from '../../utils/entitySettings'
 import { kstYmd } from '../../utils/kstDate'
+import { buildPoListFilter, resolvePoSort, PO_SORT_DEFAULT } from './listFilter'
 
 const poQueriesRouter = new Hono<HonoEnv>()
 poQueriesRouter.use('/*', authMiddleware, requireAnyPagePermission('/purchase-orders', '/receiving'))
@@ -22,14 +23,17 @@ poQueriesRouter.use('/*', authMiddleware, requireAnyPagePermission('/purchase-or
 poQueriesRouter.get('/stats', async (c) => {
   try {
     const ef = entityFilter(c)
-    const efWhere = ef.params.length > 0 ? ' WHERE entity_id = ?' : ''
     const efAnd = ef.params.length > 0 ? ' AND entity_id = ?' : ''
-    // 목록(core.ts GET /)과 동일 규칙: 법인간거래 기본 제외(총계·금액이 목록과 어긋나지 않게)
     const icAnd = c.req.query('include_intercompany') === '1' ? '' : excludePurchaseNonCounterpartiesSql('supplier_id')
 
-    const { results } = ef.params.length > 0
-      ? await c.env.DB.prepare(`SELECT status, COUNT(*) as count FROM purchase_orders WHERE entity_id = ?${icAnd} GROUP BY status`).bind(...ef.params).all()
-      : await c.env.DB.prepare(`SELECT status, COUNT(*) as count FROM purchase_orders${icAnd ? ' WHERE 1=1' + icAnd : ''} GROUP BY status`).all()
+    // 상태 분포 = 목록과 동일한 조회조건(listFilter SSOT), 단 status 만 제외.
+    // 카드가 곧 상태 선택 수단(드릴다운)이라 자기 자신으로 걸러지면 나머지가 전부 0이 된다.
+    const f = buildPoListFilter(c, { skipStatus: true })
+    const { results } = await c.env.DB.prepare(
+      `SELECT po.status AS status, COUNT(*) as count
+       FROM purchase_orders po LEFT JOIN clients c ON po.supplier_id = c.id${f.where}
+       GROUP BY po.status`
+    ).bind(...f.params).all()
 
     const stats: Record<string, number> = { total: 0 }
     for (const row of results as Record<string, unknown>[]) {
@@ -37,22 +41,23 @@ poQueriesRouter.get('/stats', async (c) => {
       stats.total += row.count as number
     }
 
-    // 납기 지연 카운트
-    const overdue = await c.env.DB.prepare(`
-      SELECT COUNT(*) as count FROM purchase_orders
-      WHERE status IN ('CONFIRMED', 'PARTIAL_RECEIVED')
-        AND expected_date IS NOT NULL AND expected_date < date('now', '+9 hours')${efAnd}${icAnd}
-    `).bind(...ef.params).first<{ count: number }>()
+    // 납기 지연 — 상태 분포와 같은 스코프. 지연은 상태가 아니라 파생 조건이라 별도로 센다.
+    const today = kstYmd()
+    const overdue = await c.env.DB.prepare(
+      `SELECT COUNT(*) as count
+       FROM purchase_orders po LEFT JOIN clients c ON po.supplier_id = c.id${f.where}
+         ${f.where ? 'AND' : 'WHERE'} po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED')
+         AND po.expected_date IS NOT NULL AND po.expected_date < ?`
+    ).bind(...f.params, today).first<{ count: number }>()
     stats.overdue = overdue?.count || 0
 
-    // 납기 임박 (D-3 이내)
-    const upcoming = await c.env.DB.prepare(`
-      SELECT COUNT(*) as count FROM purchase_orders
-      WHERE status IN ('CONFIRMED', 'PARTIAL_RECEIVED')
-        AND expected_date IS NOT NULL
-        AND expected_date >= date('now', '+9 hours')
-        AND expected_date <= date('now', '+9 hours', '+3 days')${efAnd}${icAnd}
-    `).bind(...ef.params).first<{ count: number }>()
+    // 납기 임박 (D-3 이내) — 같은 스코프
+    const upcoming = await c.env.DB.prepare(
+      `SELECT COUNT(*) as count
+       FROM purchase_orders po LEFT JOIN clients c ON po.supplier_id = c.id${f.where}
+         ${f.where ? 'AND' : 'WHERE'} po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED')
+         AND po.expected_date IS NOT NULL AND po.expected_date >= ? AND po.expected_date <= date(?, '+3 days')`
+    ).bind(...f.params, today, today).first<{ count: number }>()
     stats.upcoming = upcoming?.count || 0
 
     // 이번 달 발주 금액 합계
@@ -118,39 +123,17 @@ poQueriesRouter.get('/stats', async (c) => {
 // ============================================================================
 poQueriesRouter.get('/export/csv', async (c) => {
   try {
-    const { status = '', search = '', date_from = '', date_to = '', supplier_id = '', overdue = '', include_intercompany = '' } = c.req.query()
-
     let query = `
       SELECT po.*, c.client_name as supplier_name, u.name as created_by_name
       FROM purchase_orders po
       LEFT JOIN clients c ON po.supplier_id = c.id
       LEFT JOIN users u ON po.created_by = u.id
     `
-    const params: any[] = []
-    const whereClauses: string[] = []
-
-    // #358계열: 발주목록 CSV 법인 격리 — GET / 목록(entityFilter po)과 정합, 타법인 발주 export 차단
-    const ef = entityFilter(c, 'po')
-    if (ef.clause) { whereClauses.push(ef.clause.replace(' AND ', '')); params.push(...ef.params) }
-
-    if (status) { whereClauses.push('po.status = ?'); params.push(status) }
-    if (search) {
-      whereClauses.push('(po.po_number LIKE ? OR c.client_name LIKE ?)')
-      params.push(`%${search}%`, `%${search}%`)
-    }
-    if (date_from) { whereClauses.push('po.order_date >= ?'); params.push(date_from) }
-    if (date_to) { whereClauses.push('po.order_date <= ?'); params.push(date_to) }
-    if (supplier_id) { whereClauses.push('po.supplier_id = ?'); params.push(parseInt(supplier_id)) }
-    if (overdue === '1') {
-      whereClauses.push("po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED') AND po.expected_date IS NOT NULL AND po.expected_date < date('now', '+9 hours')")
-    }
-    // 목록(core.ts GET /)과 동일 규칙: 법인간거래·관계사 기본 제외 — 화면에 없는 행이 CSV에 섞이지 않게
-    if (include_intercompany !== '1') {
-      whereClauses.push(excludePurchaseNonCounterpartiesSql('po.supplier_id').replace(' AND ', ''))
-    }
-    if (whereClauses.length > 0) query += ' WHERE ' + whereClauses.join(' AND ')
-    // 목록(GET /) 기본 정렬과 정합: 발주일 최신순 + id tie-break (이관 배치 데이터 동일 created_at 대응)
-    query += ' ORDER BY po.order_date DESC, po.id DESC LIMIT 5001'  // #372: 캡+1 조회로 잘림 감지
+    // 조회조건·정렬 = listFilter.ts SSOT (목록과 동일). 사본을 두면 화면과 CSV 가 갈린다.
+    const f = buildPoListFilter(c)
+    const params: any[] = [...f.params]
+    query += f.where
+    query += ` ORDER BY ${resolvePoSort(c.req.query('sort'))} LIMIT 5001`  // #372: 캡+1 조회로 잘림 감지
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
     const truncated = (results || []).length > 5000
