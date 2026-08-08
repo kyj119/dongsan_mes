@@ -75,23 +75,30 @@ def resolve_client(code):
     return None
 
 
-# ── 헤더에서 컬럼 위치를 **읽는다**. 판매현황과 열 순서가 같다는 보장이 없다.
-#    위치를 상수로 박으면 열이 하나 밀렸을 때 조용히 다른 값이 들어간다.
-COLS = {'일자': None, '거래처코드': None, '거래처명': None, '사원': None, '품목명': None,
-        '규격': None, '내용': None, '수량': None, '단가': None, '공급가': None, '부가세': None}
-ALIAS = {'일자-No.': '일자', '거래처코드': '거래처코드', '거래처명': '거래처명',
-         '사원(담당)명': '사원', '담당자명': '사원', '품목명': '품목명', '규격': '규격',
-         '내용': '내용', '수량': '수량', '단가': '단가', '공급가액': '공급가', '부가세': '부가세'}
+# ── 헤더에서 컬럼 위치를 **읽는다**. 실측 결과 구매현황은 판매현황과 **열 구성이 다르다**:
+#     판매현황  일자-No. | 거래처코드 | 거래처명 | 사원(담당)명 | 품목명 | 규격 | 품목코드 | 내용 | ...
+#     구매현황  일자-No. | **품목명(규격)** | 수량 | 단가 | 공급가액 | 부가세 | 합계 | 거래처명 | 거래처코드
+#   차이가 셋이다 — ① 품목명과 규격이 **한 칸에 합쳐져** 있고(「현수막 2코팅-S [90폭]」),
+#   ② **담당자 컬럼이 없고**, ③ 내용 컬럼이 없다. 위치를 상수로 박았으면 수량 자리에 품명이 들어갔을 것이다.
+#
+# ★ 품명을 쪼개지 않는다. 기존 이관분(SMP-0001~0248)도 `item_name` 에 「품명 [규격]」을 통째로 넣었고
+#   `category_name` 은 비어 있다. 여기서 굳이 쪼개면 **같은 물건이 형식만 달라 매칭에서 갈린다**.
+#   품목맵 380조합의 키도 전부 「품명 [규격]|」 형태다.
+COLS = {'일자': None, '품목명': None, '수량': None, '단가': None, '공급가': None,
+        '부가세': None, '거래처명': None, '거래처코드': None}
+ALIAS = {'일자-No.': '일자', '품목명(규격)': '품목명', '품목명': '품목명', '수량': '수량',
+         '단가': '단가', '공급가액': '공급가', '부가세': '부가세',
+         '거래처명': '거래처명', '거래처코드': '거래처코드', '사원(담당)명': '사원'}
 
 wb = openpyxl.load_workbook(XLSX)
 ws = wb.active
 hdr_row = None
 for ri, row in enumerate(ws.iter_rows(min_row=1, max_row=8, values_only=True), 1):
     hits = {}
-    for ci, cell in enumerate(row):
-        key = ALIAS.get(str(cell or '').strip())
-        if key:
-            hits[key] = ci
+    for ci, c in enumerate(row):
+        k = ALIAS.get(str(c or '').strip())
+        if k:
+            hits[k] = ci
     if '일자' in hits and '품목명' in hits:
         COLS.update(hits)
         hdr_row = ri
@@ -102,23 +109,23 @@ assert not missing, '헤더에 없는 컬럼: %s' % missing
 
 
 def cell(r, key):
-    return r[COLS[key]]
+    i = COLS.get(key)
+    return r[i] if i is not None else None
 
 
 vouchers = defaultdict(lambda: {'lines': [], 'rep': '', 'cli': None, 'name': ''})
 for r in ws.iter_rows(min_row=hdr_row + 1, values_only=True):
     m = LINE.match(str(cell(r, '일자') or '').strip())
     if not m:
-        continue
+        continue          # 「2026/07 계」·「총합계」·타임스탬프 행은 여기서 걸러진다
     key = ('%s-%s-%s' % (m.group(1), m.group(2), m.group(3)), int(m.group(4)))
     v = vouchers[key]
-    v['rep'] = v['rep'] or str(cell(r, '사원') or '').strip()
+    v['rep'] = v['rep'] or str(cell(r, '사원') or '').strip()   # 구매현황엔 없다 → 빈값 → entity 2
     v['cli'] = v['cli'] or resolve_client(cell(r, '거래처코드'))
     v['name'] = v['name'] or str(cell(r, '거래처명') or '')
-    v['lines'].append({'nm': str(cell(r, '품목명') or ''), 'sp': str(cell(r, '규격') or ''),
-                       'ct': str(cell(r, '내용') or ''), 'qty': num(cell(r, '수량')),
-                       'up': num(cell(r, '단가')), 'sup': num(cell(r, '공급가')),
-                       'vat': num(cell(r, '부가세'))})
+    v['lines'].append({'nm': str(cell(r, '품목명') or ''), 'sp': '', 'ct': '',
+                       'qty': num(cell(r, '수량')), 'up': num(cell(r, '단가')),
+                       'sup': num(cell(r, '공급가')), 'vat': num(cell(r, '부가세'))})
 wb.close()
 
 bad = [(k, v['name']) for k, v in vouchers.items() if not v['cli']]
