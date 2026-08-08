@@ -146,15 +146,18 @@ def score(e, m):
     base = max(jt, jb)
     s = base
     why = ['이름 %.2f(단어 %.2f·자소 %.2f)' % (base, jt, jb)]
+    hits = misses = 0
     for key, up, dn, label in (('w', 0.10, 0.35, '폭'), ('t', 0.08, 0.30, '두께'), ('c', 0.06, 0.20, '색')):
         ev, mv = e[key], m[key]
         if ev is None or mv is None:
             continue
         if ev == mv:
             s += up
+            hits += 1
             why.append('%s일치' % label)
         else:
             s -= dn
+            misses += 1
             why.append('%s불일치(%s≠%s)' % (label, ev, mv))
     # 규격 없는 대표 코드인데 **이카운트 쪽엔 규격이 있다** → 규격별 형제가 정본이다
     if m['bare'] and (e['w'] or e['t'] or e['sz'] or e['c']):
@@ -163,8 +166,20 @@ def score(e, m):
     if e['sz'] and m['sz']:
         # 치수 불일치는 폭과 같은 급으로 깎는다 — 「보강대 150mm」가 `SGM-TRF-R250`(250mm)에
         #   0.85 로 붙어 「기존연결 유력」으로 나왔다. MES 에 150 이 없으면 **신설 후보가 정답**이다.
-        s += 0.08 if e['sz'] == m['sz'] else -0.35
-        why.append('치수' + ('일치' if e['sz'] == m['sz'] else '불일치')) 
+        if e['sz'] == m['sz']:
+            s += 0.08
+            hits += 1
+        else:
+            s -= 0.35
+            misses += 1
+        why.append('치수' + ('일치' if e['sz'] == m['sz'] else '불일치'))
+    # ★ 속성이 **둘 이상 일치하고 하나도 어긋나지 않으면** 이름 점수가 낮아도 사실상 확정이다.
+    #   「채널용 입체바 진회색/100mm*3m」과 「입체바 1.0T 100mm 진회색」은 글자가 많이 달라
+    #   이름 0.60 에 그치는데, **색과 치수가 둘 다 맞는데 다른 물건일 확률**은 낮다.
+    #   이름은 표기 습관이고 색·치수·폭·두께는 **물건을 가르는 축**이다 — 후자를 더 믿는다.
+    if hits >= 2 and misses == 0:
+        s += 0.15
+        why.append('속성 %d개 일치·불일치 없음' % hits)
     return max(0.0, min(1.0, s)), ' · '.join(why)
 
 
