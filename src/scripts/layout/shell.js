@@ -2521,6 +2521,14 @@ window.dsListUx = (function() {
     var scope = document.createElement('span');
     scope.className = 'ds-summary-scope';
     scope.textContent = opts.scopeText || (opts.multiPage ? '조회조건 전체 합계 (현재 페이지 아님)' : '조회조건 합계');
+    // 숫자가 서로 안 맞아 보이는 데이터 사정(예: 공급가 미기재)을 숨기지 않고 알린다
+    if (opts.note) {
+      var note = document.createElement('span');
+      note.className = 'ds-cond ds-cond-warn';
+      note.style.marginLeft = '8px';
+      note.textContent = opts.note;
+      scope.appendChild(note);
+    }
     el.appendChild(scope);
     cols.forEach(function(c) {
       if (!c) return;
@@ -2548,3 +2556,12 @@ window.dsListUx = (function() {
 
   return { renderChips: renderChips, renderSummary: renderSummary, markActiveStat: markActiveStat };
 })();
+
+/** 공급가+부가세 != 합계 인지 판정 — 이관분에 금액 분해가 없는 건이 섞였다는 뜻이다. */
+window.dsAmountBreakdownNote = function(summary) {
+  if (!summary) return '';
+  var parts = (Number(summary.supply_amount) || 0) + (Number(summary.vat_amount) || 0);
+  var total = Number(summary.final_amount) || 0;
+  if (!total || Math.abs(parts - total) < 1) return '';
+  return '공급가·부가세 미기재 건 포함 — 합계 기준으로 보세요';
+};

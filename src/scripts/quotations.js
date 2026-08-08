@@ -109,7 +109,12 @@ function quotRenderSummary(summary, pagination) {
     { label: '공급가', value: summary.supply_amount, format: 'won' },
     { label: '부가세', value: summary.vat_amount, format: 'won' },
     { label: '합계', value: summary.final_amount, format: 'won', strong: true }
-  ], { multiPage: !!(pagination && pagination.total_pages > 1) });
+  ], {
+    multiPage: !!(pagination && pagination.total_pages > 1),
+    // 이관분 중 공급가·부가세가 비어 있고 합계만 있는 건이 섞이면 세 숫자가 안 맞는다.
+    // 계산 오류로 오해하지 않도록 사유를 밝힌다 (prod 발주 627건 중 84건이 이 경우, 2026-08-08).
+    note: dsAmountBreakdownNote(summary)
+  });
 }
 
 async function loadQuotations(page) {
