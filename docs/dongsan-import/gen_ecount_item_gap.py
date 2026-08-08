@@ -108,6 +108,16 @@ def color_of(*parts):
     return None
 
 
+# 같은 이름에 **규격 있는 형제**가 있는지 미리 센다.
+#   `SGM-TRB`(규격 없음)와 `SGM-TRB-R200-DG`(200mm/진회색)가 공존하는데, 이카운트가
+#   「트러스바 200mm*7m/진회색」으로 오면 이름이 같은 규격없는 대표 코드가 1.00 으로 1위가 된다.
+#   대표 코드는 대개 **제품**(출력물)이고 규격별이 **자재**라, 그대로 붙이면 물건이 바뀐다.
+from collections import defaultdict as _dd
+_spec_sibs = _dd(int)
+for _m in mes:
+    if str(_m['sp']).strip():
+        _spec_sibs[_m['item_name'].strip()] += 1
+
 MES_IDX = []
 for m in mes:
     MES_IDX.append({
@@ -116,6 +126,7 @@ for m in mes:
         'w': width_of(m['sp'], m['item_name']),
         't': thick_of(m['item_name'], m['sp']), 'sz': size_of(m['sp'], m['item_name']),
         'c': color_of(m['item_name'], m['sp']),
+        'bare': not str(m['sp']).strip() and _spec_sibs.get(m['item_name'].strip(), 0) > 0,
     })
 
 
@@ -145,8 +156,14 @@ def score(e, m):
         else:
             s -= dn
             why.append('%s불일치(%s≠%s)' % (label, ev, mv))
+    # 규격 없는 대표 코드인데 **이카운트 쪽엔 규격이 있다** → 규격별 형제가 정본이다
+    if m['bare'] and (e['w'] or e['t'] or e['sz'] or e['c']):
+        s -= 0.30
+        why.append('대표코드(규격없음)·형제有')
     if e['sz'] and m['sz']:
-        s += 0.08 if e['sz'] == m['sz'] else -0.15
+        # 치수 불일치는 폭과 같은 급으로 깎는다 — 「보강대 150mm」가 `SGM-TRF-R250`(250mm)에
+        #   0.85 로 붙어 「기존연결 유력」으로 나왔다. MES 에 150 이 없으면 **신설 후보가 정답**이다.
+        s += 0.08 if e['sz'] == m['sz'] else -0.35
         why.append('치수' + ('일치' if e['sz'] == m['sz'] else '불일치')) 
     return max(0.0, min(1.0, s)), ' · '.join(why)
 
@@ -200,7 +217,14 @@ for col, w in zip('ABCDEFGHIJKLMNOPQRSTU',
     ws.column_dimensions[col].width = w
 ws.freeze_panes = 'C2'
 ws.auto_filter.ref = ws.dimensions
-wb.save(OUT)
+# 엑셀이 열려 있으면 잠겨서 저장이 막힌다 — 조용히 실패시키지 않고 **옆 파일로 낸다**.
+#   (검토 중에 재생성하는 게 정상 흐름이라, 닫으라고 요구하는 것보다 이쪽이 낫다.)
+try:
+    wb.save(OUT)
+except PermissionError:
+    OUT = OUT.replace('.xlsx', '-v2.xlsx')
+    wb.save(OUT)
+    print('⚠️ 원본이 열려 있어 %s 로 저장' % os.path.basename(OUT))
 
 print('%d행 → %s' % (len(rows), OUT))
 print('자동판단:', dict(stat))
