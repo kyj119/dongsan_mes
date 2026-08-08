@@ -216,7 +216,7 @@ async function loadPOs(page) {
   var params = poBuildParams(f);
   params.append('sort', f.sort);
   params.append('page', String(currentPage));
-  params.append('limit', '20');
+  params.append('limit', String(window.dsListToolbar ? window.dsListToolbar.pageSize('purchase-orders', 20) : 20));
 
   // 조건 표시는 응답을 기다리지 않는다 — 조회가 실패해도 무슨 조건이 걸렸는지는 보여야 한다
   poRenderChips(f);
@@ -785,6 +785,33 @@ function sendPurchaseOrderNotice(id, supplierName, poNumber) {
   });
 }
 
+// 프리셋 적용 — 저장된 스냅샷(poReadFilters 형태)을 화면 컨트롤에 되돌려 넣고 재조회
+var poPresetApplied = false;
+function poApplyFilters(f) {
+  if (!f) return;
+  var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = (v == null ? '' : v); };
+  setVal('searchInput', f.search);
+  setVal('statusFilter', f.status);
+  setVal('supplierFilter', f.supplierId);
+  setVal('sortSelect', f.sort || 'order_date_desc');
+  currentStatus = f.overdue ? 'OVERDUE' : (f.status || '');
+  var ic = document.getElementById('poIncludeIntercompany');
+  if (ic) ic.checked = !!f.includeIc;
+  poPresetApplied = true;
+  loadPOs(1);
+}
+
 // 초기 로드
 loadSupplierFilter();
-loadPOs(1);
+// 도구모음을 먼저 붙이고 그 결과로 첫 조회 (설정을 모른 채 조회하면 두 번 조회하게 된다)
+var _poTb = window.dsListToolbar && window.dsListToolbar.mount({
+  pageKey: 'purchase-orders',
+  container: 'poListToolbar',
+  tableSelector: '.po-tbl',
+  defaultPageSize: 20,
+  getFilters: function() { return poReadFilters(); },
+  applyFilters: function(f) { poApplyFilters(f); },
+  onChange: function() { loadPOs(1); }
+});
+if (_poTb && _poTb.then) _poTb.then(function() { if (!poPresetApplied) loadPOs(1); });
+else loadPOs(1);

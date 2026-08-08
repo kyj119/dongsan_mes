@@ -29,6 +29,9 @@ export function quotationsPage(c: Context<HonoEnv>) {
       </div>
       <div id="quotFilterChips" class="ds-conds mb-6"></div>
 
+      <!-- 목록 도구모음: 프리셋 · 열 선택 · 페이지당 건수 -->
+      <div id="quotListToolbar"></div>
+
       <!-- 필터 바 -->
       <div class="ds-filter-bar">
         <div class="ds-filter-field" style="min-width:100px">
@@ -77,13 +80,14 @@ export function quotationsPage(c: Context<HonoEnv>) {
           <table class="ds-table ds-table-striped quot-tbl">
             <thead>
               <tr>
-                <th style="width:140px">견적번호</th>
-                <th style="width:150px">거래처</th>
-                <th>품목</th>
-                <th style="width:110px;text-align:right">금액</th>
-                <th style="width:95px;text-align:center">유효기한</th>
-                <th style="width:85px;text-align:center">상태</th>
-                <th style="width:90px;text-align:center">작성일</th>
+                <!-- data-col = '열 선택'(dsListToolbar) 대상. 액션 열은 숨김 대상에서 제외 -->
+                <th style="width:140px" data-col="quot_number">견적번호</th>
+                <th style="width:150px" data-col="client">거래처</th>
+                <th data-col="item">품목</th>
+                <th style="width:110px;text-align:right" data-col="amount">금액</th>
+                <th style="width:95px;text-align:center" data-col="valid_until">유효기한</th>
+                <th style="width:85px;text-align:center" data-col="status">상태</th>
+                <th style="width:90px;text-align:center" data-col="created">작성일</th>
                 <th style="width:118px;text-align:center">액션</th>
               </tr>
             </thead>

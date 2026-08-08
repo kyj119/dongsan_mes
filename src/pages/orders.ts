@@ -151,6 +151,9 @@ export function ordersPage(c: Context<HonoEnv>) {
         </div>
       </div>
 
+      <!-- 목록 도구모음: 조회조건 프리셋 · 열 선택 · 페이지당 건수 (렌더 = shell.js dsListToolbar) -->
+      <div id="ordListToolbar"></div>
+
       <!-- 일괄 액션 바 (체크박스 선택 시 하단 고정 표시) -->
       <div id="bulkActionBar" class="ds-bulk-bar">
         <div class="ds-bulk-bar-count">
@@ -191,15 +194,16 @@ export function ordersPage(c: Context<HonoEnv>) {
           <table class="ds-table ds-table-striped ord-tbl">
             <thead>
               <tr>
+                <!-- data-col = '열 선택'(dsListToolbar) 대상. 체크박스·액션 열은 숨김 대상에서 제외 -->
                 <th style="text-align:center;width:36px"><input type="checkbox" id="selectAllOrders" onchange="toggleSelectAll(this)" class="rounded border-gray-300"></th>
-                <th style="width:108px">주문번호</th>
-                <th style="width:150px">거래처</th>
-                <th>품목</th>
-                <th style="width:100px">납기일</th>
-                <th style="width:96px;text-align:right">금액</th>
-                <th style="width:86px">상태</th>
-                <th style="width:82px;text-align:center">회계반영</th>
-                <th style="width:78px">등록일</th>
+                <th style="width:108px" data-col="order_number">주문번호</th>
+                <th style="width:150px" data-col="client">거래처</th>
+                <th data-col="item">품목</th>
+                <th style="width:100px" data-col="delivery_date">납기일</th>
+                <th style="width:96px;text-align:right" data-col="amount">금액</th>
+                <th style="width:86px" data-col="status">상태</th>
+                <th style="width:82px;text-align:center" data-col="billing">회계반영</th>
+                <th style="width:78px" data-col="created">등록일</th>
                 <th style="width:130px;text-align:center">액션</th>
               </tr>
             </thead>

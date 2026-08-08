@@ -122,7 +122,7 @@ async function loadQuotations(page) {
   var f = quotReadFilters();
   var params = quotBuildParams(f);
   params.append('page', String(quotCurrentPage));
-  params.append('limit', '20');
+  params.append('limit', String(window.dsListToolbar ? window.dsListToolbar.pageSize('quotations', 20) : 20));
 
   // 조건 표시는 응답을 기다리지 않는다
   quotRenderChips(f);
@@ -336,5 +336,29 @@ document.getElementById('quotDetailModal').addEventListener('click', function(e)
   if (e.target === this) this.classList.add('hidden');
 });
 
-// 초기 로드
-loadQuotations(1);
+// 프리셋 적용
+var quotPresetApplied = false;
+function quotApplyFilters(f) {
+  if (!f) return;
+  var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = (v == null ? '' : v); };
+  setVal('quotClientSearch', f.search);
+  setVal('quotStatusFilter', f.statusUI);
+  setVal('quotDateFrom', f.dateFrom);
+  setVal('quotDateTo', f.dateTo);
+  quotCurrentStatusFilter = f.statusUI || '';
+  quotPresetApplied = true;
+  loadQuotations(1);
+}
+
+// 초기 로드 — 도구모음 설정을 반영한 뒤 첫 조회
+var _quotTb = window.dsListToolbar && window.dsListToolbar.mount({
+  pageKey: 'quotations',
+  container: 'quotListToolbar',
+  tableSelector: '.quot-tbl',
+  defaultPageSize: 20,
+  getFilters: function() { return quotReadFilters(); },
+  applyFilters: function(f) { quotApplyFilters(f); },
+  onChange: function() { loadQuotations(1); }
+});
+if (_quotTb && _quotTb.then) _quotTb.then(function() { if (!quotPresetApplied) loadQuotations(1); });
+else loadQuotations(1);

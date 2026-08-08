@@ -35,6 +35,21 @@ var inspStatusColors = {
   'FAILED': 'bg-red-50 text-red-700'
 };
 
+var rcvToolbarMounted = false;
+var rcvPresetApplied = false;
+
+// 프리셋 적용 — 저장된 스냅샷(rcvReadFilters 형태)을 화면 컨트롤에 되돌려 넣고 재조회
+function rcvApplyFilters(f) {
+  if (!f) return;
+  var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = (v == null ? '' : v); };
+  setVal('historyDateFrom', f.dateFrom);
+  setVal('historyDateTo', f.dateTo);
+  setVal('historyStatus', f.status);
+  setVal('historySearch', f.search);
+  rcvPresetApplied = true;
+  loadReceiptHistory(1);
+}
+
 // ── 탭 전환 ──
 function rcvSwitchTab(tab) {
   currentTab = tab;
@@ -57,6 +72,20 @@ function rcvSwitchTab(tab) {
     history.classList.remove('hidden');
     tabPending.className = inactiveClass;
     tabHistory.className = activeClass;
+    // 이력 탭은 탭 전환 때 처음 뜬다 — 도구모음도 이때 한 번만 붙인다(표가 hidden 이면 마운트가 안 된다)
+    if (!rcvToolbarMounted && window.dsListToolbar) {
+      rcvToolbarMounted = true;
+      var m = window.dsListToolbar.mount({
+        pageKey: 'receiving',
+        container: 'rcvListToolbar',
+        tableSelector: '.rcv-tbl',
+        defaultPageSize: 20,
+        getFilters: function() { return rcvReadFilters(); },
+        applyFilters: function(f) { rcvApplyFilters(f); },
+        onChange: function() { loadReceiptHistory(1); }
+      });
+      if (m && m.then) { m.then(function() { if (!rcvPresetApplied) loadReceiptHistory(1); }); return; }
+    }
     loadReceiptHistory(1);
   }
 }
@@ -171,7 +200,7 @@ async function loadReceiptHistory(page) {
   try {
     var params = rcvBuildParams(f);
     params.append('page', String(historyPage));
-    params.append('limit', '20');
+    params.append('limit', String(window.dsListToolbar ? window.dsListToolbar.pageSize('receiving', 20) : 20));
     var res = await axios.get('/api/purchase-orders/receipts?' + params.toString());
     if (!res.data.success) { throw new Error(res.data.error || '조회 실패'); }
     var items = res.data.data || [];

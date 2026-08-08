@@ -854,6 +854,22 @@ export const SHARED_CSS = `
   .ds-summary-item b { margin-left: 5px; color: var(--c-text); font-variant-numeric: tabular-nums; }
   .ds-summary-total b { color: var(--c-primary); font-size: var(--fs-lg); }
 
+  /* 목록 도구모음 — 조회조건 프리셋 · 열 선택 · 페이지당 건수 (렌더러 = shell.js window.dsListToolbar) */
+  .ds-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-bottom: var(--space-md); }
+  .ds-toolbar-group { display: flex; align-items: center; gap: 4px; }
+  .ds-toolbar-label { font-size: var(--fs-xs); color: var(--c-text-secondary); }
+  .ds-toolbar-select { width: auto; min-width: 120px; min-height: 30px; padding: 3px 8px; font-size: var(--fs-xs); }
+  .ds-colmenu-wrap { position: relative; }
+  .ds-colmenu {
+    display: none; position: absolute; z-index: 40; top: calc(100% + 4px); left: 0; min-width: 180px;
+    max-height: 320px; overflow-y: auto; padding: 6px;
+    background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius-md); box-shadow: var(--shadow-lg);
+  }
+  .ds-colmenu.open { display: block; }
+  .ds-colmenu-item { display: flex; align-items: center; gap: 6px; padding: 4px 6px; font-size: var(--fs-sm); cursor: pointer; border-radius: var(--radius-sm); }
+  .ds-colmenu-item:hover { background: var(--c-surface-secondary); }
+  .ds-colmenu-reset { width: 100%; margin-top: 4px; }
+
   /* === DS Sheet (Right Drawer) === */
   .ds-sheet-overlay {
     position: fixed; inset: 0; background: rgba(0,0,0,0.3); backdrop-filter: blur(2px);

@@ -2565,3 +2565,292 @@ window.dsAmountBreakdownNote = function(summary) {
   if (!total || Math.abs(parts - total) < 1) return '';
   return '공급가·부가세 미기재 건 포함 — 합계 기준으로 보세요';
 };
+
+/* ── 목록 도구모음: 조회조건 프리셋 · 열 선택 · 페이지당 건수 ────────────────
+ * 감사 docs/audits/2026-08-08-list-ux-ecount-gap.md 의 G8·G9·G12.
+ * 저장은 서버(사용자별) — /api/user-prefs. 같은 사람이 사무실·디자인실 PC 를 오가기 때문.
+ *
+ * ★열 숨김을 nth-child CSS 로 하는 이유: 각 페이지의 행 빌더(거대한 템플릿 문자열)를
+ *   컬럼 정의 배열로 바꾸지 않고도 같은 결과를 낸다. 4개 목록의 렌더링을 동시에 갈아엎는 것보다
+ *   회귀면이 훨씬 작다. 전제 = thead 의 th 순서와 tbody 의 td 순서가 같다(4개 목록 모두 그렇다).
+ */
+window.dsListPrefs = (function() {
+  var cache = null;          // { key: value } — 페이지당 한 번만 읽는다
+  var loading = null;
+
+  function load() {
+    if (cache) return Promise.resolve(cache);
+    if (loading) return loading;
+    loading = axios.get('/api/user-prefs')
+      .then(function(res) { cache = (res.data && res.data.data) || {}; return cache; })
+      .catch(function(e) { console.warn('[dsListPrefs] 설정 로드 실패 — 기본값 사용', e); cache = {}; return cache; });
+    return loading;
+  }
+
+  function get(key, fallback) {
+    if (!cache) return fallback;
+    var v = cache[key];
+    return (v === undefined || v === null || v === '') ? fallback : v;
+  }
+
+  function set(key, value) {
+    if (!cache) cache = {};
+    if (value === null || value === undefined || value === '') delete cache[key]; else cache[key] = String(value);
+    return axios.put('/api/user-prefs/' + encodeURIComponent(key), { value: value })
+      .catch(function(e) { console.warn('[dsListPrefs] 설정 저장 실패', key, e); });
+  }
+
+  return { load: load, get: get, set: set };
+})();
+
+window.dsListToolbar = (function() {
+  var PAGE_SIZES = [20, 50, 100, 200];
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  /** thead 의 th[data-col] 을 읽어 컬럼 목록을 만든다 (인덱스 = nth-child 위치) */
+  function readColumns(table) {
+    var ths = table.querySelectorAll('thead th');
+    var cols = [];
+    for (var i = 0; i < ths.length; i++) {
+      var key = ths[i].getAttribute('data-col');
+      if (!key) continue;   // data-col 없는 열(체크박스·액션)은 숨김 대상 아님
+      var label = ths[i].getAttribute('data-col-label') || ths[i].textContent || key;
+      cols.push({ key: key, index: i + 1, label: label.trim() });
+    }
+    return cols;
+  }
+
+  /** 숨긴 열을 CSS 로 적용 — 행 빌더를 건드리지 않는다 */
+  function applyHidden(styleEl, tableSelector, cols, hiddenKeys) {
+    var rules = [];
+    cols.forEach(function(c) {
+      if (hiddenKeys.indexOf(c.key) === -1) return;
+      rules.push(tableSelector + ' thead th:nth-child(' + c.index + ')');
+      rules.push(tableSelector + ' tbody td:nth-child(' + c.index + ')');
+    });
+    // 빈 상태 행은 colspan 이라 nth-child 로 잘리지 않는다(의도).
+    styleEl.textContent = rules.length ? rules.join(',') + '{display:none}' : '';
+  }
+
+  /**
+   * opts = {
+   *   pageKey, tableSelector, container(=id|el),
+   *   pageSizes?, defaultPageSize,
+   *   getFilters(): object,        // 프리셋 저장 스냅샷
+   *   applyFilters(params): void,  // 프리셋 적용 (호출부가 화면 반영 + 재조회)
+   *   onChange(): void             // 열/건수 변경 후 재조회
+   * }
+   */
+  function mount(opts) {
+    var host = (typeof opts.container === 'string') ? document.getElementById(opts.container) : opts.container;
+    if (!host) { console.warn('[dsListToolbar] 컨테이너 없음: ' + opts.container); return Promise.resolve(); }
+    var table = document.querySelector(opts.tableSelector);
+    if (!table) { console.warn('[dsListToolbar] 표 없음: ' + opts.tableSelector); return Promise.resolve(); }
+
+    var cols = readColumns(table);
+    var styleEl = document.getElementById('dsColStyle_' + opts.pageKey);
+    if (!styleEl) {
+      styleEl = document.createElement('style');
+      styleEl.id = 'dsColStyle_' + opts.pageKey;
+      document.head.appendChild(styleEl);
+    }
+
+    var colKey = opts.pageKey + '.columns';
+    var sizeKey = opts.pageKey + '.pageSize';
+
+    host.textContent = '';
+    host.className = 'ds-toolbar';
+
+    // ── 프리셋 ──
+    var presetWrap = el('div', 'ds-toolbar-group');
+    var presetSel = el('select', 'ds-input ds-toolbar-select');
+    presetSel.title = '저장한 조회조건 불러오기';
+    presetWrap.appendChild(presetSel);
+    var saveBtn = el('button', 'ds-btn ds-btn-secondary ds-btn-sm', '조건 저장');
+    saveBtn.type = 'button';
+    var defBtn = el('button', 'ds-btn ds-btn-secondary ds-btn-sm', '기본으로');
+    defBtn.type = 'button';
+    defBtn.title = '이 페이지에 들어올 때 자동으로 적용';
+    var delBtn = el('button', 'ds-btn ds-btn-secondary ds-btn-sm', '삭제');
+    delBtn.type = 'button';
+    presetWrap.appendChild(saveBtn);
+    presetWrap.appendChild(defBtn);
+    presetWrap.appendChild(delBtn);
+    host.appendChild(presetWrap);
+
+    var presets = [];
+    function renderPresets() {
+      presetSel.textContent = '';
+      var ph = el('option', null, presets.length ? '저장한 조건 선택...' : '저장한 조건 없음');
+      ph.value = '';
+      presetSel.appendChild(ph);
+      presets.forEach(function(p) {
+        var o = el('option', null, p.name + (p.is_default ? ' (기본)' : ''));
+        o.value = String(p.id);
+        presetSel.appendChild(o);
+      });
+    }
+    function loadPresets(applyDefault) {
+      return axios.get('/api/user-prefs/presets/' + encodeURIComponent(opts.pageKey))
+        .then(function(res) {
+          presets = (res.data && res.data.data) || [];
+          renderPresets();
+          if (!applyDefault) return;
+          var d = presets.filter(function(p) { return p.is_default; })[0];
+          if (!d) return;
+          presetSel.value = String(d.id);
+          try { opts.applyFilters(JSON.parse(d.params_json)); }
+          catch (e) { console.warn('[dsListToolbar] 기본 프리셋 적용 실패', e); }
+        })
+        .catch(function(e) { console.warn('[dsListToolbar] 프리셋 로드 실패', e); });
+    }
+
+    presetSel.addEventListener('change', function() {
+      var p = presets.filter(function(x) { return String(x.id) === presetSel.value; })[0];
+      if (!p) return;
+      try { opts.applyFilters(JSON.parse(p.params_json)); }
+      catch (e) {
+        console.warn('[dsListToolbar] 프리셋 적용 실패', e);
+        showToast('조회조건을 적용하지 못했습니다.', 'error');
+      }
+    });
+
+    function errMsg(e) {
+      return (e.response && e.response.data && e.response.data.error) || e.message || '오류';
+    }
+
+    saveBtn.addEventListener('click', function() {
+      var current = presets.filter(function(x) { return String(x.id) === presetSel.value; })[0];
+      var name = window.prompt('조회조건 이름', current ? current.name : '');
+      if (name == null) return;
+      name = name.trim();
+      if (!name) { showToast('이름을 입력해주세요.', 'warning'); return; }
+      axios.post('/api/user-prefs/presets', { page_key: opts.pageKey, name: name, params: opts.getFilters() })
+        .then(function() { showToast('조회조건 "' + name + '" 저장', 'success'); return loadPresets(false); })
+        .then(function() {
+          var saved = presets.filter(function(x) { return x.name === name; })[0];
+          if (saved) presetSel.value = String(saved.id);
+        })
+        .catch(function(e) { showToast('저장 실패: ' + errMsg(e), 'error'); });
+    });
+
+    defBtn.addEventListener('click', function() {
+      if (!presetSel.value) { showToast('먼저 조회조건을 선택해주세요.', 'warning'); return; }
+      var keep = presetSel.value;
+      axios.patch('/api/user-prefs/presets/' + keep + '/default')
+        .then(function(res) {
+          var on = res.data && res.data.data && res.data.data.is_default;
+          showToast(on ? '기본 조회조건으로 지정했습니다.' : '기본 지정을 해제했습니다.', 'success');
+          return loadPresets(false);
+        })
+        .then(function() { presetSel.value = keep; })
+        .catch(function(e) { showToast('변경 실패: ' + errMsg(e), 'error'); });
+    });
+
+    delBtn.addEventListener('click', function() {
+      var p = presets.filter(function(x) { return String(x.id) === presetSel.value; })[0];
+      if (!p) { showToast('삭제할 조회조건을 선택해주세요.', 'warning'); return; }
+      if (!window.confirm('조회조건 "' + p.name + '" 을(를) 삭제할까요?')) return;
+      axios.delete('/api/user-prefs/presets/' + p.id)
+        .then(function() { showToast('삭제했습니다.', 'success'); return loadPresets(false); })
+        .catch(function(e) { showToast('삭제 실패: ' + errMsg(e), 'error'); });
+    });
+
+    // ── 열 선택 ──
+    var colWrap = el('div', 'ds-toolbar-group ds-colmenu-wrap');
+    var colBtn = el('button', 'ds-btn ds-btn-secondary ds-btn-sm', '열 선택');
+    colBtn.type = 'button';
+    var menu = el('div', 'ds-colmenu');
+    colWrap.appendChild(colBtn);
+    colWrap.appendChild(menu);
+    host.appendChild(colWrap);
+
+    var hidden = [];
+    function readHidden() {
+      var raw = window.dsListPrefs.get(colKey, '');
+      if (!raw) return [];
+      try { var a = JSON.parse(raw); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+    }
+    function syncColBtn() {
+      colBtn.textContent = hidden.length ? ('열 선택 (' + (cols.length - hidden.length) + '/' + cols.length + ')') : '열 선택';
+    }
+    function renderMenu() {
+      menu.textContent = '';
+      cols.forEach(function(c) {
+        var row = el('label', 'ds-colmenu-item');
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = hidden.indexOf(c.key) === -1;
+        cb.addEventListener('change', function() {
+          if (cb.checked) {
+            hidden = hidden.filter(function(k) { return k !== c.key; });
+          } else if (hidden.length + 1 >= cols.length) {
+            cb.checked = true;   // 전부 숨기면 빈 표가 된다
+            showToast('열을 최소 1개는 남겨야 합니다.', 'warning');
+            return;
+          } else if (hidden.indexOf(c.key) === -1) {
+            hidden.push(c.key);
+          }
+          applyHidden(styleEl, opts.tableSelector, cols, hidden);
+          syncColBtn();
+          window.dsListPrefs.set(colKey, JSON.stringify(hidden));
+        });
+        row.appendChild(cb);
+        row.appendChild(document.createTextNode(' ' + c.label));
+        menu.appendChild(row);
+      });
+      var reset = el('button', 'ds-btn ds-btn-secondary ds-btn-sm ds-colmenu-reset', '모두 표시');
+      reset.type = 'button';
+      reset.addEventListener('click', function() {
+        hidden = [];
+        applyHidden(styleEl, opts.tableSelector, cols, hidden);
+        syncColBtn();
+        renderMenu();
+        window.dsListPrefs.set(colKey, '');
+      });
+      menu.appendChild(reset);
+    }
+    colBtn.addEventListener('click', function(e) { e.stopPropagation(); menu.classList.toggle('open'); });
+    document.addEventListener('click', function(e) { if (!colWrap.contains(e.target)) menu.classList.remove('open'); });
+
+    // ── 페이지당 건수 ──
+    var sizeWrap = el('div', 'ds-toolbar-group');
+    sizeWrap.appendChild(el('span', 'ds-toolbar-label', '페이지당'));
+    var sizeSel = el('select', 'ds-input ds-toolbar-select');
+    (opts.pageSizes || PAGE_SIZES).forEach(function(n) {
+      var o = el('option', null, n + '건');
+      o.value = String(n);
+      sizeSel.appendChild(o);
+    });
+    sizeWrap.appendChild(sizeSel);
+    host.appendChild(sizeWrap);
+    sizeSel.addEventListener('change', function() {
+      window.dsListPrefs.set(sizeKey, sizeSel.value);
+      if (opts.onChange) opts.onChange();
+    });
+
+    // 저장된 설정을 반영한 뒤 기본 프리셋을 적용한다 — 순서가 중요하다.
+    // (설정을 모르는 채로 먼저 조회하면 건수/열이 틀린 화면을 한 번 보여주고 다시 조회하게 된다)
+    return window.dsListPrefs.load().then(function() {
+      hidden = readHidden();
+      applyHidden(styleEl, opts.tableSelector, cols, hidden);
+      syncColBtn();
+      renderMenu();
+      sizeSel.value = String(window.dsListPrefs.get(sizeKey, opts.defaultPageSize || 50));
+      return loadPresets(true);
+    });
+  }
+
+  /** 페이지 로더가 쓸 현재 페이지당 건수 */
+  function pageSize(pageKey, fallback) {
+    return parseInt(window.dsListPrefs.get(pageKey + '.pageSize', fallback), 10) || fallback;
+  }
+
+  return { mount: mount, pageSize: pageSize };
+})();

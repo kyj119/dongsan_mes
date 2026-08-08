@@ -538,7 +538,7 @@ async function loadOrders() {
     const params = ordBuildParams(f);
     params.append('sort', f.sort);
     params.append('page', String(currentPage));
-    params.append('limit', '50');
+    params.append('limit', String(window.dsListToolbar ? window.dsListToolbar.pageSize('orders', 50) : 50));
 
     // 조건 표시(칩·카드 강조)는 필터 값만 있으면 되므로 통계 응답을 기다리지 않는다 — 통계가 실패해도 조건은 보여야 한다.
     ordRenderFilterChips(f);
@@ -1654,8 +1654,41 @@ async function exportOrdersCsv() {
   if (_qStatus) { var _sf = document.getElementById('statusFilter'); if (_sf) _sf.value = _qStatus; }
   var _qSearch = _up.get('search');
   if (_qSearch) { var _sq = document.getElementById('searchQuery'); if (_sq) _sq.value = _qSearch; }
-  loadOrders();   // 통계 카드는 loadOrders() 안에서 같은 조건으로 함께 갱신된다
+  // 도구모음(프리셋·열 선택·페이지당 건수)을 먼저 붙이고 그 결과로 첫 조회를 한다.
+  // 설정을 모른 채 조회하면 틀린 건수로 한 번 그린 뒤 다시 조회하게 된다.
+  var _tb = window.dsListToolbar && window.dsListToolbar.mount({
+    pageKey: 'orders',
+    container: 'ordListToolbar',
+    tableSelector: '.ord-tbl',
+    defaultPageSize: 50,
+    getFilters: function() { return ordReadFilters(); },
+    applyFilters: function(f) { ordApplyFilters(f); },
+    onChange: function() { currentPage = 1; loadOrders(); }
+  });
+  if (_tb && _tb.then) _tb.then(function() { if (!ordPresetApplied) loadOrders(); });
+  else loadOrders();
 })();
+
+// 프리셋 적용 — 저장된 스냅샷(ordReadFilters 형태)을 화면 컨트롤에 되돌려 넣고 재조회
+var ordPresetApplied = false;
+function ordApplyFilters(f) {
+  if (!f) return;
+  var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = (v == null ? '' : v); };
+  setVal('searchQuery', f.search);
+  var sf = document.getElementById('statusFilter');
+  if (sf) { ordEnsureStatusOption(sf, f.status); sf.value = f.status || ''; }
+  setVal('sortBy', f.sort || 'order_date_desc');
+  setVal('orderDateFrom', f.dateFrom);
+  setVal('orderDateTo', f.dateTo);
+  setVal('priorityFilter', f.priority);
+  setVal('deliveryMethodFilter', f.deliveryMethod);
+  setVal('billingStatusFilter', f.billingStatus);
+  var ov = document.getElementById('overdueFilter');
+  if (ov) ov.checked = !!f.overdue;
+  ordPresetApplied = true;
+  currentPage = 1;
+  loadOrders();
+}
 
 // 거래명세서/견적서 iframe 모달
 function openInvoicePanel(url, title, orderId) {

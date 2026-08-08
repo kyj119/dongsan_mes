@@ -91,6 +91,7 @@ import { insuranceReportsRouter } from './routes/insuranceReports'
 import messageTemplatesRouter from './routes/messageTemplates'
 import faxRouter from './routes/fax'
 import finishingRouter from './routes/finishing'
+import userPrefsRouter from './routes/userPrefs'
 import filesRouter from './routes/files'
 import priceListRouter from './routes/priceList'
 import { priceSheetsRouter } from './routes/priceSheets'
@@ -353,6 +354,7 @@ app.route('/api/insurance-reports', insuranceReportsRouter)
 app.route('/api/message-templates', messageTemplatesRouter)
 app.route('/api/fax', faxRouter)
 app.route('/api/finishing', finishingRouter)
+app.route('/api/user-prefs', userPrefsRouter)
 
 // Utility API endpoints
 app.get('/api/health', (c) => {

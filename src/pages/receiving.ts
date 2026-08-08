@@ -86,21 +86,24 @@ export function receivingPage(c: Context<HonoEnv>) {
         </div>
         <!-- 활성 조회조건 칩 — 어떤 조건으로 걸러진 이력인지 항상 보이게 -->
         <div id="rcvFilterChips" class="ds-conds mb-3"></div>
+        <!-- 목록 도구모음: 프리셋 · 열 선택 · 페이지당 건수 -->
+        <div id="rcvListToolbar"></div>
 
         <!-- 입고이력 테이블 -->
         <div class="ds-card overflow-hidden">
-          <table class="w-full text-sm ds-table ds-table-striped ds-table-fixed">
+          <table class="w-full text-sm ds-table ds-table-striped ds-table-fixed rcv-tbl">
             <thead>
               <tr>
-                <th class="col-code">입고번호</th>
-                <th class="col-date text-center">입고일</th>
-                <th class="col-code">발주번호</th>
-                <th class="col-name">공급업체</th>
-                <th class="col-status text-center">검수상태</th>
-                <th class="col-qty text-right">합격수량</th>
-                <th class="col-qty text-right">불합격수량</th>
-                <th class="col-tag text-center">검수자</th>
-                <th class="col-tag text-center">거래명세서</th>
+                <!-- data-col = '열 선택'(dsListToolbar) 대상 -->
+                <th class="col-code" data-col="receipt_number">입고번호</th>
+                <th class="col-date text-center" data-col="receipt_date">입고일</th>
+                <th class="col-code" data-col="po_number">발주번호</th>
+                <th class="col-name" data-col="supplier">공급업체</th>
+                <th class="col-status text-center" data-col="inspection">검수상태</th>
+                <th class="col-qty text-right" data-col="accepted">합격수량</th>
+                <th class="col-qty text-right" data-col="rejected">불합격수량</th>
+                <th class="col-tag text-center" data-col="inspector">검수자</th>
+                <th class="col-tag text-center" data-col="statement">거래명세서</th>
               </tr>
             </thead>
             <tbody id="historyTableBody">

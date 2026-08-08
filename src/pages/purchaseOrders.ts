@@ -72,18 +72,22 @@ export function purchaseOrdersPage(c: Context<HonoEnv>) {
         </a>
       </div>
 
+      <!-- 목록 도구모음: 프리셋 · 열 선택 · 페이지당 건수 -->
+      <div id="poListToolbar"></div>
+
       <!-- 발주 목록 테이블 -->
       <div class="ds-card overflow-hidden">
         <div style="max-height: calc(100vh - 280px); overflow-y: auto;">
-          <table class="w-full text-sm ds-table ds-table-striped">
+          <table class="w-full text-sm ds-table ds-table-striped po-tbl">
           <thead class="bg-gray-50">
             <tr>
-              <th class="col-code px-4 py-3 text-left">발주번호</th>
-              <th class="col-name px-4 py-3 text-left">공급업체</th>
-              <th class="col-date px-4 py-3 text-center">발주일</th>
-              <th class="col-date px-4 py-3 text-center">납기예정</th>
-              <th class="col-amount px-4 py-3 text-right">금액</th>
-              <th class="col-status px-4 py-3 text-center">상태</th>
+              <!-- data-col = '열 선택'(dsListToolbar) 대상. 작업 열은 숨김 대상에서 제외 -->
+              <th class="col-code px-4 py-3 text-left" data-col="po_number">발주번호</th>
+              <th class="col-name px-4 py-3 text-left" data-col="supplier">공급업체</th>
+              <th class="col-date px-4 py-3 text-center" data-col="order_date">발주일</th>
+              <th class="col-date px-4 py-3 text-center" data-col="expected">납기예정</th>
+              <th class="col-amount px-4 py-3 text-right" data-col="amount">금액</th>
+              <th class="col-status px-4 py-3 text-center" data-col="status">상태</th>
               <th class="col-action px-4 py-3 text-center">작업</th>
             </tr>
           </thead>
