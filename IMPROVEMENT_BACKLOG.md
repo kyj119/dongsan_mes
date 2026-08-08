@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-08-08T15:16:56+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-08-08T21:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **5** (`search_issues(is:open,label:auto-improve)` 실측, Area2 60회차 재확인 — 변동 없음. #601[order_items 라인재작성 시 return_items RESTRICT FK 미정리] + #602[cards 지시현황탭 silent-catch] + #603[cards 개정필요 큐 출고후 영구잔류] + #604[orders.sales_rep_id 백엔드먼저·화면나중] + #605[Daily D1 Backup 타임아웃 재시도 부재]) |
+| 🆕 new | **6** (`search_issues(is:open,label:auto-improve)` 실측, Area3 52회차. #601[order_items 라인재작성 시 return_items RESTRICT FK 미정리] + #602[cards 지시현황탭 silent-catch] + #603[cards 개정필요 큐 출고후 영구잔류] + #604[orders.sales_rep_id 백엔드먼저·화면나중, 부분진행 코멘트 남김] + #605[Daily D1 Backup 타임아웃 재시도 부재] + #606[신규, entity-attribution-audit 백엔드먼저·화면나중 4번째]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **524** (`reason:completed` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+
+> **Area 3 UX/기능 감사 (2026-08-08T21:20):**
+> - **방법**: `git fetch origin main`(HEAD `3de87f3` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. prod 직접 curl(`https://webapp-9i0.pages.dev/`) → `exit 56`(egress 프록시 CONNECT tunnel 403, 기존 인지된 제약) → Playwright도 동일 제약 예상되어 정적 코드 감사로 대체(과거 Area1/Area3 표준 폴백). Area 3 **52회차** — 직전 Area3(`fb9127f`, 08-07T03:35, 51회차) 이후 `git log fb9127f..HEAD -- src/scripts src/pages src/layout index.tsx src/routes` = **7커밋**(주문 목록 SSOT+필터칩+합계바+드릴다운·담당자 P4/P5 시리즈 4개·관계사 매입제외·EP1852 원가정정). **⚠️ 컨테이너 git 이력 재구성 아티팩트 재관찰**(Area5 52회차 line 53과 동일 계열): `git merge-base --is-ancestor fb9127f HEAD` = NOT-ANCESTOR, `ae703eb`가 부모 없는 root(전체 1401파일 스쿼시) — 파일트리 자체는 정상(tsc clean·routes/scripts 정상 존재), `git log fb9127f..HEAD`의 7커밋 나열 자체는 유효(정상 순차 커밋 그래프 위에서 계산됨).
+> - **`39f16b5`(주문목록 SSOT+칩+드릴다운+합계바, 475줄) UX 체크리스트 전수**: 빈 상태("주문이 없습니다" 유지)·로딩표시(#421 기존 포맷 재사용)·에러 메시지·칩 escapeHtml(`chip()` 헬퍼 내 적용 확인)·모바일 반응형(flex-wrap 전부) 전부 clean. 정렬 라벨이 CLAUDE.md 규약("최신순만 쓰면 기준 불명확") 그대로 "주문일 최신순"/"등록 최신순"으로 기준 명시 — 모범사례. **자체 검증 커밋**(tsc/build/smoke 110/110/entity감사/sort-audit/browser 확인 명시) net-new UX 결함 0.
+> - **🔴 net-new XSS 2건, 즉시 수정 완료(escapeHtml 추가 = 안전 자동수정 화이트리스트)**: ① `a6b8e1b`(#604 담당자 셀렉트)의 `orderForm/intake.js:135-136 ofLoadSalesReps()` — `<option>` 텍스트에 `e.name`/`e.department`(employees 자유입력 마스터, HR ADMIN/MANAGER 편집 가능)를 escapeHtml 없이 innerHTML 삽입. 같은 파일군의 형제 컨벤션(`orderForm/client.js`·`finishing.js`가 전부 escapeHtml로 `<option>` 채움)과 대조해 부분누락 확정(A-024/A-025급 패턴) — `escapeHtml()` 래핑 적용. ② `5b42896`(담당자별 실적 리포트)의 `reports.js:261-262 loadSalesRepStats()` — `r.rep_name`/`r.department`를 escapeHtml 없이 innerHTML 삽입. **같은 파일 바로 위 `loadDesignerStats()`(:204)가 로컬 `esc()` 별칭으로 `designer_name`을 이미 escape**하는 확립된 컨벤션인데 새로 추가된 형제 함수만 누락(전형적 "같은 파일 부분 롤아웃" A-024/A-025 클래스) — `esc()` 래핑 적용. 둘 다 `node -c` 문법 검증 + `npm run verify`(tsc+build) PASS + `npm run check:dom`(기존 baseline 5건 무관, 회귀 0).
+> - **`a6b8e1b`(담당자 폼) 나머지 검토**: edit-mode 복원과 옵션로드 레이스를 `dataset.pending`으로 해소한 설계 확인(주석에 명시, 실증 코드 정합) — 안전. 미지정 허용(서버가 로그인유저로 채움)도 UX상 강제선택 회피로 적절.
+> - **🔴 net-new #606(S, feature, "백엔드 먼저·화면 나중" 4번째 관찰)**: `5963719`가 신설한 `GET /api/reports/entity-attribution-audit`(담당자 소속≠주문 청구법인 불일치를 담당자별로 접어 반환하는 완성된 리포트, `by_rep`+`capped` 플래그 포함)이 `grep -rln entity-attribution-audit src/scripts src/pages`=0 — 프론트 소비처 없음. 같은 커밋군이 바로 옆에 "담당자별 실적" 패널을 붙였으므로 패널 하나 추가하는 비용이 낮다는 점을 이슈에 명시. 커밋 자체가 "막지 않고 보여만 준다"(모니터링 목적)라 순수 내부진단 도구일 가능성도 코멘트에 남김 — owner가 close/구현 결정.
+> - **#604 부분진행 확인 + 코멘트**: 이슈가 제안한 3항목(폼드롭다운/집계뷰/목록컬럼+필터) 중 **폼드롭다운(`a6b8e1b`)·집계뷰(`5b42896`) 2항목은 이번 churn으로 이미 반영**, 목록컬럼+필터만 잔존(`grep sales_rep src/scripts/orders.js`=0 재확인) — 이슈에 진행상황 코멘트 남김(원 증상 "담당자 변경해도 화면에서 확인 불가"는 아직 유효, 남은 범위만으로 재정의하거나 close 여부 owner 판단 요청).
+> - **`5963719`/`7fd1334`/`ae703eb` 나머지**: 5963719는 위 #606 외 프론트 신규 UI 없음(create.ts 폴백 로직만, UX 영향 없음). 7fd1334(관계사 매입제외)는 체크박스 라벨만 "법인간거래 포함"→"법인간거래·관계사 포함"으로 갱신, tooltip 텍스트는 미갱신이나 사소(코드스타일급, 이슈화 안 함). ae703eb는 squash 경계에 걸려 개별 diff 확인 불가하나 커밋 메시지상 데이터 정정(원가) — 프론트 영향 없음(cost 페이지는 이번 churn 목록에 없음).
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **6**(#601~#605 + 신규 #606) · `reason:completed` **524**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — 이번 사이클은 기존 codify된 두 standing scan(SPA innerHTML free-text XSS 자동스캔·백엔드먼저·화면나중)의 실전 재현만(신규 규칙 불요, #606이 4번째 관찰로 그 패턴의 신뢰도를 강화).
+> - 신규 이슈 1건(#606, issue-only) + 코멘트 1건(#604 부분진행), 자동수정 2건(XSS escapeHtml 추가, verify PASS), done-sync: new 6(+1)·done 524(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-08-08T15:16):**
 > - **방법**: `git fetch origin main`(HEAD `d3debaa` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 2 **60회차** — 직전 Area2(`7670e39`, 08-06T21:33, 59회차) 이후 `git log 7670e39..HEAD -- src/routes src/scripts migrations index.tsx src/layout src/pages` = **3커밋**(`451f611` 주문 담당자·`7fd1334` 관계사 매입제외 — 둘 다 Area1 58회차/Area6 57회차가 코드 렌즈로 이미 전문 검토 완료 + `ef57bf6` 단가 백필은 `docs/`·`.ai-sync/changelog.jsonl`만 변경해 라우트/스크립트 무터치) — 코드품질 렌즈로 신선한 신규 churn이 사실상 0.
@@ -115,14 +128,16 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 4건** — Area 6 57회차, 2026-08-08.)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 6건** — Area 3 52회차, 2026-08-08.)
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
-| #604 | orders.sales_rep_id(0523) — API가 노출하는데 프론트 소비처 0건, "백엔드 먼저·화면 나중" 3번째 사례 | Area 6 | feature,S | issue-only, 신규(#604) |
-| #603 | cards "지시 현황" 개정필요 큐 — 출고 완료된 카드도 needs_reissue=1이면 영구 잔류(자기-클리어 없음) | Area 4 | bug,S | issue-only, 신규(#603) |
-| #602 | cards "지시 현황" 탭 — API 실패 시 "누락/개정 없음"으로 오표시(silent catch), 조치필요 배지도 숨겨짐 | Area 3 | bug,S | issue-only, 신규(#602) |
-| #601 | orders/update.ts 라인재작성 경로가 return_items.order_item_id(NOT NULL RESTRICT FK) 정리 누락 — 반품 등록된 주문 편집 시 100% 500 | Area 2 | bug,medium | issue-only, 신규(#601) |
+| #606 | GET /api/reports/entity-attribution-audit(0524) — 프론트 소비처 0건, "백엔드 먼저·화면 나중" 4번째 사례 | Area 3 | feature,S | issue-only, 신규(#606) |
+| #605 | Daily D1 Backup 워크플로우 — CF API 지연 시 10분 타임아웃으로 해당일 백업 누락(재시도 없음) | Area 1 | improvement,S | issue-only |
+| #604 | orders.sales_rep_id(0523) — 폼드롭다운·집계뷰는 후속커밋으로 반영됨(코멘트 참조), 목록컬럼+필터만 잔존 | Area 6 | feature,S | issue-only, 부분진행(Area 3 코멘트) |
+| #603 | cards "지시 현황" 개정필요 큐 — 출고 완료된 카드도 needs_reissue=1이면 영구 잔류(자기-클리어 없음) | Area 4 | bug,S | issue-only |
+| #602 | cards "지시 현황" 탭 — API 실패 시 "누락/개정 없음"으로 오표시(silent catch), 조치필요 배지도 숨겨짐 | Area 3 | bug,S | issue-only |
+| #601 | orders/update.ts 라인재작성 경로가 return_items.order_item_id(NOT NULL RESTRICT FK) 정리 누락 — 반품 등록된 주문 편집 시 100% 500 | Area 2 | bug,medium | issue-only |
 
 > 직전 사이클(45회차) 표에 있던 #559·#558·#557·#556·#555·#554는 2026-07-29 백로그 소진 세션에서 owner가 심각도순 전건 처리(코드 픽스+배포+close, 상세는 상단 "2026-07-29 백로그 소진 세션" 노트 참조) → Done 이관.
 
@@ -132,6 +147,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-023 | XSS escapeHtml 누락 2곳 (신규기능 부분누락) — `orderForm/intake.js:135-136 ofLoadSalesReps()`(#604 담당자 셀렉트, employees 자유입력 `name`/`department`를 escapeHtml 없이 `<option>` innerHTML — 형제 `client.js`/`finishing.js`는 이미 escapeHtml 컨벤션 확립) + `reports.js:261-262 loadSalesRepStats()`(담당자별 실적, `rep_name`/`department` 미escape — 같은 파일 바로 위 `loadDesignerStats()`는 로컬 `esc()` 별칭으로 이미 escape하는 확립된 패턴을 새 형제 함수만 누락). A-024/A-025급 "같은 파일 부분 롤아웃" 클래스. Area 3 52회차 직접 발견. verify PASS(tsc clean+build), check:dom baseline 무변(회귀 0) | (이번 커밋) | 2026-08-08 |
 | A-022 | branch-cleanup.cjs 셸 인용 버그 + 저재고 알림 단위라벨 불일치 — ①`git branch --format=%(refname:short)` 미인용이 POSIX 셸(bash/dash)에서 괄호 메타문자로 파싱돼 즉시 크래시(Windows cmd.exe에서만 우연히 동작, 순수 셸 이식성 버그) → 큰따옴표 인용. ②`utils/inventoryAlert.ts` 저재고 알림이 base_unit(미터) 저장값에 입고단위(`items.unit`='롤') 라벨을 그대로 붙여 "45롤"(실제 45m)로 오표시 — 0496(롤→미터 단위체계) 형제완전성 사각, `resolveStockUnit()`로 교체(오늘자 inventoryCount.ts 수정과 동일 패턴). Area 6 52회차. verify PASS(tsc clean+build+entity 60/60) | 87b5023 | 2026-07-29 |
 | A-021 | iaEditor.js dead code 2건 제거 — `iaeCanUpdateMembership`(드래그/회전/복제 후 시트 멤버십 재배정용, 문서화된 의도는 있었으나 실제 드래그 이벤트 핸들러 자체가 미구현 — 캔버스가 Konva 대신 정적 SVG 미리보기로 방향전환돼 호출부 0) + 유일 의존 헬퍼 `iaeCanSheetByUid`. 코드베이스 전수 grep으로 호출처 0건 확인(동적 dispatch 패턴 없음) 후 제거. Area 2 53회차. verify PASS(tsc clean+build), check:dom 9(회귀 0) | (이번 커밋) | 2026-07-28 |
 | A-020c | XSS escapeHtml 누락 3곳 + bank.ts 배치 상한 2곳 — `messages.js` 발송이력/통계 `receiver_num`(형제 `receiver_name`은 escape인데 누락) + `receiving.js` 검수템플릿 드롭다운 `template_name`/`category_name`(관리화면 `inspections.js`는 escape인데 소비화면만 raw) + `bank.ts` batch-apply/batch-match 서버측 1000건 상한(#583, UI Shift범위선택 1000건 캡이 클라이언트 전용이던 것 보완). Area 5 45회차. verify PASS(tsc clean+build) | 040d882, 59330b5 | 2026-07-28 |

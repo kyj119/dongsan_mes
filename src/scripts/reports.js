@@ -258,8 +258,8 @@ async function loadSalesRepStats() {
       var tag = r.status === 'RESIGNED'
         ? '<span class="ml-1 text-xs px-1.5 py-0.5 rounded bg-gray-200 text-gray-600">퇴사</span>'
         : (r.dropped_off ? '<span class="ml-1 text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">' + mLabel(r.last_month) + ' 이후 없음</span>' : '');
-      return '<tr><td class="px-4 py-2">' + r.rep_name
-        + (r.department ? '<span class="text-xs text-gray-400 ml-1">' + r.department + '</span>' : '')
+      return '<tr><td class="px-4 py-2">' + esc(r.rep_name || '')
+        + (r.department ? '<span class="text-xs text-gray-400 ml-1">' + esc(r.department) + '</span>' : '')
         + tag + '</td>' + cells
         + '<td class="px-4 py-2 text-right font-medium">' + (r.revenue || 0).toLocaleString() + '</td>'
         + '<td class="px-3 py-2 text-right text-gray-500">' + (r.share || 0) + '%</td></tr>';
