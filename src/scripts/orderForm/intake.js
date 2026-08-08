@@ -132,8 +132,8 @@
                     var want = el.dataset.pending || el.value;
                     el.innerHTML = '<option value="">(미지정 — 저장 시 로그인 사용자)</option>'
                         + list.map(function(e) {
-                            return '<option value="' + e.id + '">' + e.name
-                                + (e.department ? ' · ' + e.department : '') + '</option>';
+                            return '<option value="' + e.id + '">' + escapeHtml(e.name || '')
+                                + (e.department ? ' · ' + escapeHtml(e.department) : '') + '</option>';
                         }).join('');
                     if (want) el.value = want;
                 } catch (err) {
