@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.19.0';  // 0.15.0 = 도련을 칼선 방식과 분리(래스터에서도 생성)
+var MESCUT_VERSION = 'CUT-CEP-0.20.0';  // 0.15.0 = 도련을 칼선 방식과 분리(래스터에서도 생성)
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -154,6 +154,42 @@ function mesCut_dxfPath() {
     base = base.replace(/[^A-Za-z0-9_\-]/g, '_');   // ASCII 브릿지 안전
     if (!base) base = 'cut';
     return Folder.temp.fsName.replace(/\\/g, '/') + '/' + base + '_cut.dxf';
+}
+
+/**
+ * ★★단품 DXF — **경로를 호스트가 정하고 내보내기까지 한다** (2026-08-08, spec §6.29·§9-7 해소).
+ *
+ * 종전에는 패널이 `mesCut_dxfPath()` 로 경로를 **받아서 다시 인자로 넘겼다.** evalScript 인자는
+ * ASCII 라 한글이 `_` 로 죽었고, 실제 산출물이 이랬다:
+ *     `___260723_________________________cut.dxf`  ← 어느 작업인지 식별 불가
+ * 게다가 저장 위치가 `%TEMP%` 라 작업 폴더에도 없었다. **왕복을 없애면 두 제약이 같이 사라진다** —
+ * 인자로 안 받으니 ASCII 제약이 없고, 위치도 여기서 정할 수 있다.
+ * ⚠️ 반환 방향은 한글이 살아남는다(레이어명 실측 확인) → 표시용 경로는 그대로 돌려준다.
+ *    단, `path=` 를 **맨 뒤**에 둔다 — 경로에 `;` 는 없지만 `:`·`\` 는 있으므로 뒤를 통째로 읽게 한다.
+ *
+ * 저장 위치 = **`.ai` 옆**(EPS 와 쌍이 되는 자리, §2.1). 저장 안 된 문서(무제-N)면 temp 로 떨어진다.
+ * @returns 'ok;items=<n>;where=<doc|temp>;path=<전체 경로>' | 'ERROR ...'
+ */
+function mesCut_exportDxfAuto() {
+    if (app.documents.length === 0) return 'ERROR 문서 없음';
+    var doc = app.activeDocument;
+    var base = 'cut', dir = null, where = 'temp';
+    try {
+        var nm = String(doc.name).replace(/\.[^.]+$/, '');
+        if (nm) base = nm;
+    } catch (eN) {}
+    try { if (doc.path && doc.path.fsName) { dir = doc.path.fsName; where = 'doc'; } } catch (eP) {}
+    if (!dir) dir = Folder.temp.fsName;
+    // 파일명에 쓸 수 없는 문자만 막는다 — **한글은 그대로 둔다**(그게 이 함수의 목적이다)
+    base = base.replace(/[\\\/:*?"<>|]/g, '_');
+    if (!base) base = 'cut';
+    var out = dir.replace(/\\/g, '/') + '/' + base + '_cut.dxf';
+    var r = mesCut_exportDxf(out);
+    if (String(r).indexOf('ok') !== 0) return r;
+    var items = '';
+    var mI = String(r).match(/items=(\d+)/);
+    if (mI) items = mI[1];
+    return 'ok;items=' + items + ';where=' + where + ';path=' + out;
 }
 
 function mesCut_readParams() {

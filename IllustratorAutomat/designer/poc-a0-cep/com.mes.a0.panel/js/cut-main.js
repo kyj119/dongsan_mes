@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.54.0';
+  var SHELL_VERSION = '0.55.0';
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -113,6 +113,36 @@
   //   ㅇ·ㅁ·0·8 속이 안 뚫린 칼선이 나간다 — 조용히 틀리는 것이 가장 나쁘므로 보내지 않고 알린다.
   var HOLE_MIN_HOST = [0, 19, 0];
   function hostSupportsHoles() { return hostAtLeast(HOLE_MIN_HOST); }
+  // DXF 경로를 **호스트가 정하고 내보내기까지** 한다(`mesCut_exportDxfAuto`). 구 호스트는 경로를
+  //   돌려주고 다시 받는 왕복이라 한글이 `_` 로 죽고 %TEMP% 에 떨어진다 — 그 경로도 남겨 둔다.
+  var DXFAUTO_MIN_HOST = [0, 20, 0];
+  function hostSupportsDxfAuto() { return hostAtLeast(DXFAUTO_MIN_HOST); }
+
+  /**
+   * 단품 DXF 저장 — 새 호스트면 **경로 왕복 없이** 한 번에, 구 호스트면 종전 2단계.
+   * @param cb(okBool, msgLine)
+   */
+  function exportDxfSmart(cb) {
+    if (hostSupportsDxfAuto()) {
+      host('mesCut_exportDxfAuto()', function (dx) {
+        if (String(dx).indexOf('ok') !== 0) { cb(false, 'DXF 실패: ' + dx); return; }
+        // ⚠️ 경로에 `:`·`\` 가 있어 kv() 로 못 자른다 — `path=` 뒤를 통째로 읽는다
+        var at = String(dx).indexOf(';path=');
+        var p = at >= 0 ? String(dx).substring(at + 6) : '(경로 미상)';
+        var whereDoc = /;where=doc/.test(String(dx));
+        cb(true, 'DXF: ' + p + (whereDoc ? '  (원본 .ai 옆)' : '  ⚠ 문서를 저장하면 .ai 옆에 만듭니다'));
+      });
+      return;
+    }
+    host('mesCut_dxfPath()', function (dp) {
+      host('mesCut_exportDxf("' + dp + '")', function (dx) {
+        var ok2 = String(dx).indexOf('ok;') === 0;
+        cb(ok2, ok2
+          ? ('DXF: ' + dp + '\n⚠ 호스트 구버전(' + (hostVersion || '?') + ' < CUT-CEP-0.20.0) — 파일명의 한글이 `_` 로 바뀌고 임시폴더에 저장됩니다. mes-cut-host.jsx 를 배포하세요.')
+          : ('DXF 실패: ' + dx));
+      });
+    });
+  }
   function hostSupportsButt() { return hostAtLeast(BUTT_MIN_HOST); }
   function hostSupportsBleedPng() { return hostAtLeast(BLEEDPNG_MIN_HOST); }
 
@@ -444,12 +474,7 @@
         if (mode === 'bbox') msg += '\n⚠ 벡터는 실루엣만 만듭니다 — 사각(bbox) 칼선이 필요하면 방식을 래스터로 바꾸세요.';
         if (punchOn) msg += '\n⚠ 타공은 래스터 방식에서만 만들어집니다.';
         if (!wantDxf) { finish(msg, 'ok'); return; }
-        host('mesCut_dxfPath()', function (dp) {
-          host('mesCut_exportDxf("' + dp + '")', function (dx) {
-            finish(msg + '\n' + (dx.indexOf('ok;') === 0 ? ('DXF: ' + dp) : ('DXF 실패: ' + dx)),
-              dx.indexOf('ok;') === 0 ? 'ok' : 'err');
-          });
-        });
+        exportDxfSmart(function (okD, line) { finish(msg + '\n' + line, okD ? 'ok' : 'err'); });
       });
     }
 
@@ -526,13 +551,9 @@
             + (res.fillNote || '')
             + cv.note;
           if (!dxf) { finish(msg, 'ok'); return; }
-          // 저장 경로는 호스트가 정한다 — 작업 폴더 규칙이 확정되면 mesCut_dxfPath() 한 곳만 고치면 된다.
-          host('mesCut_dxfPath()', function (dp) {
-            host('mesCut_exportDxf("' + dp + '")', function (dx) {
-              finish(msg + '\n' + (dx.indexOf('ok;') === 0 ? ('DXF: ' + dp) : ('DXF 실패: ' + dx)),
-                dx.indexOf('ok;') === 0 ? 'ok' : 'err');
-            });
-          });
+          // ★경로는 **호스트가 정하고 내보내기까지** 한다 — 패널이 받아서 다시 인자로 넘기면
+          //   evalScript 가 ASCII 라 한글 파일명이 `_` 로 죽는다(§6.29 실측).
+          exportDxfSmart(function (okD, line) { finish(msg + '\n' + line, okD ? 'ok' : 'err'); });
         });
       });
     }

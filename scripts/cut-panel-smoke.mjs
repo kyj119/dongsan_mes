@@ -809,6 +809,24 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3z 호스트가 직전 외곽에 매단다', /cur\.cuts\[cur\.cuts\.length - 1\]/.test(hostSrc))
   ok('3z 호스트가 compound path 로 묶는다', /cl\.compoundPathItems\.add\(\)/.test(hostSrc))
   ok('3z 호스트 버전이 0.19.0 이상', /CUT-CEP-0\.(19|[2-9]\d)\./.test(hostSrc))
+  // ── DXF 경로 (2026-08-08, spec §6.29·§9-7) ─────────────────────────
+  // 종전엔 패널이 경로를 받아 **다시 인자로 넘겼다** → evalScript 가 ASCII 라 한글이 `_` 로 죽고
+  //   `%TEMP%` 에 떨어졌다(실측: `___260723_____________cut.dxf` = 식별 불가).
+  //   왕복을 없애면 두 제약이 같이 사라진다 — 인자로 안 받으니 ASCII 제약이 없다.
+  ok('3d 호스트가 경로를 정하고 내보낸다', /function mesCut_exportDxfAuto\(\)/.test(hostSrc))
+  ok('3d 저장 위치는 .ai 옆(미저장이면 temp)', /doc\.path && doc\.path\.fsName/.test(hostSrc)
+    && /where = 'doc'/.test(hostSrc) && /Folder\.temp\.fsName/.test(hostSrc))
+  ok('3d 한글 파일명을 죽이지 않는다',
+    hostSrc.includes('base = base.replace(/[\\\\\\/:*?"<>|]/g, \'_\')')
+    && !/base\.replace\(\/\[\^A-Za-z0-9_\\-\]\/g, '_'\)[\s\S]{0,400}?exportDxfAuto/.test(hostSrc))
+  ok('3d 경로는 path= 로 맨 뒤에 반환', /'ok;items=' \+ items \+ ';where=' \+ where \+ ';path=' \+ out/.test(hostSrc))
+  ok('3d 패널이 경로를 되넘기지 않는다',
+    /hostSupportsDxfAuto\(\)/.test(panelSrc) && /indexOf\(';path='\)/.test(panelSrc))
+  ok('3d 구 호스트 폴백 + 사유 표시', /DXFAUTO_MIN_HOST = \[0, 20, 0\]/.test(panelSrc)
+    && /한글이 `_` 로 바뀌고 임시폴더에 저장됩니다/.test(panelSrc))
+  ok('3d 호출부가 하나로 모였다',
+    (panelSrc.match(/exportDxfSmart\(function/g) || []).length === 2
+    && (panelSrc.match(/host\('mesCut_exportDxf\("/g) || []).length === 1)
   ok('3y 공유 변은 C 줄로', /lines\.push\('C ' \+ \(sg\.x1 \+ domboMm\(\)\)/.test(panelSrc))
   ok('3y 호스트가 C 줄을 읽는다', /p\[0\] === 'C'/.test(hostSrc))
   ok('3y 호스트가 열린 선분으로 긋는다', /sp\.closed = false;/.test(hostSrc))
