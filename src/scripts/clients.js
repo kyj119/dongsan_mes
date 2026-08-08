@@ -84,6 +84,67 @@ function getFilters() {
     };
 }
 
+
+// ── 활성 조회조건 칩 + 도구모음 (표가 JS 로 그려지므로 첫 렌더 뒤에 마운트) ──
+var cliToolbarMounted = false;
+var cliPresetApplied = false;
+
+function cliLabelOf(selId, v) {
+    var sel = document.getElementById(selId);
+    if (sel) for (var i = 0; i < sel.options.length; i++) if (sel.options[i].value === v) return sel.options[i].textContent;
+    return v;
+}
+
+function cliRenderChips() {
+    var f = getFilters();
+    var items = [];
+    var clear = function(id, val) { return function() { document.getElementById(id).value = (val || ''); loadClients(1); }; };
+    if (f.search) items.push({ label: '검색 "' + f.search + '"', onClear: clear('searchInput') });
+    if (f.client_type) items.push({ label: '유형 ' + cliLabelOf('clientTypeFilter', f.client_type), onClear: clear('clientTypeFilter') });
+    if (f.invoice_method) items.push({ label: '계산서 ' + cliLabelOf('invoiceMethodFilter', f.invoice_method), onClear: clear('invoiceMethodFilter') });
+    if (f.delivery_method) items.push({ label: '배송 ' + cliLabelOf('deliveryMethodFilter', f.delivery_method), onClear: clear('deliveryMethodFilter') });
+    if (f.dormant) items.push({ label: '휴면 ' + cliLabelOf('dormantFilter', f.dormant), onClear: clear('dormantFilter') });
+    if (f.has_balance) items.push({ label: '잔액 ' + cliLabelOf('balanceFilter', f.has_balance), onClear: clear('balanceFilter') });
+    if (f.credit_hold) items.push({ label: '여신보류 ' + cliLabelOf('creditHoldFilter', f.credit_hold), onClear: clear('creditHoldFilter') });
+    // 활성 여부는 기본이 '1'(활성만) — 기본값도 보이게 해야 "왜 폐업처가 안 보이지"가 사라진다
+    items.push(f.active === '1'
+        ? { label: '활성 거래처만', onClear: function() { document.getElementById('activeFilter').value = ''; loadClients(1); } }
+        : { label: '활성 ' + (cliLabelOf('activeFilter', f.active) || '전체'), tone: 'static' });
+    window.dsListUx.renderChips('cliFilterChips', items);
+}
+
+function cliApplyFilters(f) {
+    if (!f) return;
+    var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = (v == null ? '' : v); };
+    setVal('searchInput', f.search);
+    setVal('clientTypeFilter', f.client_type);
+    setVal('invoiceMethodFilter', f.invoice_method);
+    setVal('deliveryMethodFilter', f.delivery_method);
+    setVal('activeFilter', f.active);
+    setVal('sortBy', f.sort);
+    setVal('dormantFilter', f.dormant);
+    setVal('balanceFilter', f.has_balance);
+    setVal('creditHoldFilter', f.credit_hold);
+    cliPresetApplied = true;
+    loadClients(1);
+}
+
+// 표가 그려진 뒤에 호출 — 열 선택은 thead 를 읽어야 하므로 표가 존재해야 한다
+function cliMountToolbar() {
+    if (cliToolbarMounted || !window.dsListToolbar) return;
+    if (!document.querySelector('.cli-tbl')) return;
+    cliToolbarMounted = true;
+    window.dsListToolbar.mount({
+        pageKey: 'clients',
+        container: 'cliListToolbar',
+        tableSelector: '.cli-tbl',
+        showPageSize: false,   // 이 페이지엔 이미 자체 '페이지당' 선택이 있다
+        getFilters: function() { return getFilters(); },
+        applyFilters: function(f) { cliApplyFilters(f); },
+        onChange: function() { loadClients(1); }
+    });
+}
+
 function resetFilters() {
     document.getElementById('searchInput').value = '';
     document.getElementById('clientTypeFilter').value = '';
@@ -219,22 +280,26 @@ function displayClients(clients, pagination) {
     }).join('');
 
     document.getElementById('clientsList').innerHTML =
-        '<table class="w-full ds-table ds-table-striped">'
+        // data-col = '열 선택'(dsListToolbar) 대상. 액션 열은 제외
+        '<table class="w-full ds-table ds-table-striped cli-tbl">'
         + '<thead class="bg-gray-50 sticky top-0 z-[5]">'
             + '<tr>'
-            + '<th class="col-code px-3 py-2.5 text-left text-xs font-semibold text-gray-600">사업자번호</th>'
-            + '<th class="col-name px-3 py-2.5 text-left text-xs font-semibold text-gray-600">거래처명</th>'
-            + '<th class="col-tag px-3 py-2.5 text-left text-xs font-semibold text-gray-600">유형</th>'
-            + '<th class="col-tag px-3 py-2.5 text-left text-xs font-semibold text-gray-600">대표자</th>'
-            + '<th class="col-phone px-3 py-2.5 text-left text-xs font-semibold text-gray-600">연락처</th>'
-            + '<th class="col-tag px-3 py-2.5 text-left text-xs font-semibold text-gray-600">계산서</th>'
-            + '<th class="col-status px-3 py-2.5 text-left text-xs font-semibold text-gray-600">상태</th>'
-            + '<th class="col-date px-3 py-2.5 text-left text-xs font-semibold text-gray-600">최근 주문</th>'
+            + '<th class="col-code px-3 py-2.5 text-left text-xs font-semibold text-gray-600" data-col="brn">사업자번호</th>'
+            + '<th class="col-name px-3 py-2.5 text-left text-xs font-semibold text-gray-600" data-col="client_name">거래처명</th>'
+            + '<th class="col-tag px-3 py-2.5 text-left text-xs font-semibold text-gray-600" data-col="type">유형</th>'
+            + '<th class="col-tag px-3 py-2.5 text-left text-xs font-semibold text-gray-600" data-col="ceo">대표자</th>'
+            + '<th class="col-phone px-3 py-2.5 text-left text-xs font-semibold text-gray-600" data-col="phone">연락처</th>'
+            + '<th class="col-tag px-3 py-2.5 text-left text-xs font-semibold text-gray-600" data-col="invoice">계산서</th>'
+            + '<th class="col-status px-3 py-2.5 text-left text-xs font-semibold text-gray-600" data-col="status">상태</th>'
+            + '<th class="col-date px-3 py-2.5 text-left text-xs font-semibold text-gray-600" data-col="last_order">최근 주문</th>'
             + '<th class="col-action px-3 py-2.5"></th>'
             + '</tr>'
         + '</thead>'
         + '<tbody>' + rows + '</tbody>'
         + '</table>';
+
+    cliRenderChips();
+    cliMountToolbar();
 
     var p = pagination;
     var pageNums = '';

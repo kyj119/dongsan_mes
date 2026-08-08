@@ -113,6 +113,9 @@ export function clientsPage(c: Context<HonoEnv>) {
           </div>
         </div>
 
+        <div id="cliFilterChips" class="ds-conds mb-2"></div>
+        <div id="cliListToolbar"></div>
+
         <div id="clientsList" class="overflow-x-auto">
           <div class="text-center py-12">
             <div class="ds-skeleton ds-skeleton-row" style="width:90%;margin:0 auto 4px;"></div>

@@ -49,6 +49,7 @@ function fmt(n) {
 
 // ==================== 탭 전환 ====================
 
+var tiToolbarMounted = false;
 function switchMainTab(tab) {
   var tabs = ['billing', 'list', 'unbilled', 'monthly'];
   tabs.forEach(function(t) {
@@ -66,7 +67,23 @@ function switchMainTab(tab) {
   if (tab !== 'unbilled' && batchBar) { batchBar.classList.remove('visible'); batchSpacer.classList.remove('visible'); }
   if (tab !== 'billing' && billingBar) { billingBar.classList.remove('visible'); billingSpacer.classList.remove('visible'); }
   if (tab === 'billing') loadBillingPendingOrders();
-  if (tab === 'list') loadInvoices(1);
+  if (tab === 'list') {
+    // 목록 탭은 여기서 처음 보인다 — 도구모음도 이때 한 번만 붙인다(표가 hidden 이면 마운트가 안 된다)
+    if (!tiToolbarMounted && window.dsListToolbar) {
+      tiToolbarMounted = true;
+      var m = window.dsListToolbar.mount({
+        pageKey: 'tax-invoices',
+        container: 'tiListToolbar',
+        tableSelector: '.ti-tbl',
+        defaultPageSize: 50,
+        getFilters: function() { return tiReadFilters(); },
+        applyFilters: function(f) { tiApplyFilters(f); },
+        onChange: function() { loadInvoices(1); }
+      });
+      if (m && m.then) { m.then(function() { if (!tiPresetApplied) loadInvoices(1); }); return; }
+    }
+    loadInvoices(1);
+  }
   if (tab === 'monthly') {
     var periodEl = document.getElementById('monthlyPeriod');
     if (!periodEl.value) {
@@ -78,17 +95,71 @@ function switchMainTab(tab) {
 
 // ==================== 발행 목록 ====================
 
+// ── 조회조건 SSOT (클라) — 서버 정본 = routes/taxInvoices/queries.ts buildTaxInvoiceFilter ──
+function tiReadFilters() {
+  var g = function(id) { var el = document.getElementById(id); return el ? el.value : ''; };
+  return { status: g('statusFilter'), search: g('searchInput'), dateFrom: g('dateFrom'), dateTo: g('dateTo') };
+}
+function tiBuildParams(f) {
+  var p = new URLSearchParams();
+  if (f.status) p.append('status', f.status);
+  if (f.search) p.append('search', f.search);
+  if (f.dateFrom) p.append('date_from', f.dateFrom);
+  if (f.dateTo) p.append('date_to', f.dateTo);
+  return p;
+}
+function tiRenderChips(f) {
+  var items = [];
+  var clear = function(id) { return function() { document.getElementById(id).value = ''; loadInvoices(1); }; };
+  if (f.dateFrom || f.dateTo) {
+    var label = f.dateFrom && f.dateTo ? ('작성일 ' + f.dateFrom + ' ~ ' + f.dateTo)
+              : f.dateFrom ? ('작성일 ' + f.dateFrom + ' 이후') : ('작성일 ' + f.dateTo + ' 이전');
+    items.push({ label: label, onClear: function() {
+      document.getElementById('dateFrom').value = '';
+      document.getElementById('dateTo').value = '';
+      loadInvoices(1);
+    } });
+  } else {
+    items.push({ label: '전체 기간', tone: 'static' });
+  }
+  if (f.status) {
+    var sel = document.getElementById('statusFilter');
+    var label2 = f.status;
+    if (sel) for (var i = 0; i < sel.options.length; i++) if (sel.options[i].value === f.status) label2 = sel.options[i].textContent;
+    items.push({ label: '상태 ' + label2, onClear: clear('statusFilter') });
+  }
+  if (f.search) items.push({ label: '검색 "' + f.search + '"', onClear: clear('searchInput') });
+  window.dsListUx.renderChips('tiFilterChips', items);
+}
+function tiRenderSummary(summary, pagination) {
+  if (!summary) { window.dsListUx.renderSummary('tiSummaryBar', null); return; }
+  window.dsListUx.renderSummary('tiSummaryBar', [
+    { label: '건수', value: summary.count },
+    { label: '공급가액', value: summary.supply_amount, format: 'won' },
+    { label: '세액', value: summary.tax_amount, format: 'won' },
+    { label: '합계', value: summary.total_amount, format: 'won', strong: true }
+  ], { multiPage: !!(pagination && pagination.total_pages > 1) });
+}
+var tiPresetApplied = false;
+function tiApplyFilters(f) {
+  if (!f) return;
+  var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = (v == null ? '' : v); };
+  setVal('statusFilter', f.status);
+  setVal('searchInput', f.search);
+  setVal('dateFrom', f.dateFrom);
+  setVal('dateTo', f.dateTo);
+  tiPresetApplied = true;
+  loadInvoices(1);
+}
+
 async function loadInvoices(page) {
   currentPage = page || 1;
-  var status = document.getElementById('statusFilter').value;
-  var search = document.getElementById('searchInput').value;
-  var dateFrom = document.getElementById('dateFrom').value;
-  var dateTo = document.getElementById('dateTo').value;
-  var url = '/api/tax-invoices?page=' + currentPage + '&limit=50'
-    + '&status=' + encodeURIComponent(status)
-    + '&search=' + encodeURIComponent(search)
-    + '&date_from=' + encodeURIComponent(dateFrom)
-    + '&date_to=' + encodeURIComponent(dateTo);
+  var f = tiReadFilters();
+  var params = tiBuildParams(f);
+  params.append('page', String(currentPage));
+  params.append('limit', String(window.dsListToolbar ? window.dsListToolbar.pageSize('tax-invoices', 50) : 50));
+  var url = '/api/tax-invoices?' + params.toString();
+  tiRenderChips(f);   // 조건 표시는 응답을 기다리지 않는다
   var tbody = document.getElementById('invoiceTableBody');
   tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>로딩 중...</td></tr>';
   try {
@@ -96,6 +167,7 @@ async function loadInvoices(page) {
     if (res.data.success) {
       displayInvoices(res.data.data);
       tiRenderPagination(res.data.pagination);
+      tiRenderSummary(res.data.summary, res.data.pagination);
     } else {
       tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-red-400">불러오기 실패: ' + (res.data.error || '') + '</td></tr>';
     }

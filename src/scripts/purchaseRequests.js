@@ -24,7 +24,9 @@ function filterPRByStatus(s) {
 
 async function loadPRStats() {
   try {
-    var res = await axios.get('/api/purchase-requests/stats');
+    // 목록과 같은 조건으로 집계 (상태는 카드가 담당하므로 제외)
+    var sp = prBuildParams(prReadFilters(), { omitStatus: true });
+    var res = await axios.get('/api/purchase-requests/stats' + (sp.toString() ? '?' + sp.toString() : ''));
     if (res.data.success) {
       var d = res.data.data;
       document.getElementById('prStatPending').textContent = d.pending || 0;
@@ -34,22 +36,72 @@ async function loadPRStats() {
   } catch(e) { console.error('loadPRStats error:', e); }
 }
 
+// ── 조회조건 SSOT (클라) — 서버 정본 = routes/purchaseRequests.ts buildPrFilter ──
+function prReadFilters() {
+  var g = function(id) { var el = document.getElementById(id); return el ? el.value : ''; };
+  return { search: g('prSearchInput'), status: g('prStatusFilter'), urgency: g('prUrgencyFilter') };
+}
+function prBuildParams(f, opts) {
+  opts = opts || {};
+  var p = new URLSearchParams();
+  if (f.search) p.append('search', f.search);
+  if (f.status && !opts.omitStatus) p.append('status', f.status);
+  if (f.urgency) p.append('urgency', f.urgency);
+  return p;
+}
+function prLabelOf(selId, v) {
+  var sel = document.getElementById(selId);
+  if (sel) for (var i = 0; i < sel.options.length; i++) if (sel.options[i].value === v) return sel.options[i].textContent;
+  return v;
+}
+function prRenderChips(f) {
+  var items = [];
+  var clear = function(id, extra) { return function() { document.getElementById(id).value = ''; if (extra) extra(); loadPurchaseRequests(1); }; };
+  if (f.search) items.push({ label: '검색 "' + f.search + '"', onClear: clear('prSearchInput') });
+  if (f.status) items.push({ label: '상태 ' + prLabelOf('prStatusFilter', f.status), onClear: clear('prStatusFilter', function() { prCurrentStatus = ''; }) });
+  if (f.urgency) items.push({ label: '긴급도 ' + prLabelOf('prUrgencyFilter', f.urgency), onClear: clear('prUrgencyFilter') });
+  if (!items.length) items.push({ label: '전체 조회', tone: 'static' });
+  window.dsListUx.renderChips('prFilterChips', items);
+}
+function prRenderSummary(summary, pagination) {
+  if (!summary) { window.dsListUx.renderSummary('prSummaryBar', null); return; }
+  window.dsListUx.renderSummary('prSummaryBar', [
+    { label: '건수', value: summary.count },
+    { label: '요청수량', value: summary.quantity },
+    { label: '예상금액', value: summary.estimated_amount, format: 'won', strong: true }
+  ], { multiPage: !!(pagination && pagination.total_pages > 1) });
+}
+// 프리셋 적용
+var prPresetApplied = false;
+function prApplyFilters(f) {
+  if (!f) return;
+  var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = (v == null ? '' : v); };
+  setVal('prSearchInput', f.search);
+  setVal('prStatusFilter', f.status);
+  setVal('prUrgencyFilter', f.urgency);
+  prCurrentStatus = f.status || '';
+  prPresetApplied = true;
+  loadPurchaseRequests(1);
+}
+
 async function loadPurchaseRequests(page) {
   prCurrentPage = page || 1;
   var tbody = document.getElementById('prTableBody');
   if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><br>로딩 중...</td></tr>';
-  var search = document.getElementById('prSearchInput').value;
-  var status = document.getElementById('prStatusFilter').value;
-  var urgency = document.getElementById('prUrgencyFilter').value;
-  var url = '/api/purchase-requests?page=' + prCurrentPage + '&limit=20'
-    + '&search=' + encodeURIComponent(search)
-    + '&status=' + status
-    + '&urgency=' + urgency;
+  var f = prReadFilters();
+  var params = prBuildParams(f);
+  params.append('page', String(prCurrentPage));
+  params.append('limit', String(window.dsListToolbar ? window.dsListToolbar.pageSize('purchase-requests', 20) : 20));
+
+  prRenderChips(f);          // 조건 표시는 응답을 기다리지 않는다
+  loadPRStats();             // 통계 카드도 같은 조건으로
+
   try {
-    var res = await axios.get(url);
+    var res = await axios.get('/api/purchase-requests?' + params.toString());
     if (res.data.success) {
       renderPRTable(res.data.requests);
       renderPRPagination(res.data.pagination);
+      prRenderSummary(res.data.summary, res.data.pagination);
     }
   } catch(e) { console.error('loadPurchaseRequests error:', e); }
 }
@@ -403,7 +455,6 @@ async function submitApprove(prId, itemIds) {
     if (res.data.success) {
       showToast('승인 완료되었습니다.', 'success');
       document.getElementById('prApproveModal').classList.add('hidden');
-      loadPRStats();
       loadPurchaseRequests(prCurrentPage);
     } else {
       showToast('승인 실패: ' + (res.data.error || ''), 'error');
@@ -427,7 +478,6 @@ async function submitReject(id) {
     if (res.data.success) {
       showToast('반려 처리되었습니다.', 'success');
       document.getElementById('prRejectModal').classList.add('hidden');
-      loadPRStats();
       loadPurchaseRequests(prCurrentPage);
     } else {
       showToast('반려 실패: ' + (res.data.error || ''), 'error');
@@ -444,7 +494,6 @@ async function convertToPO(id) {
     if (res.data.success) {
       var poId = res.data.po_id;
       showToast('발주서가 생성되었습니다.', 'success');
-      loadPRStats();
       loadPurchaseRequests(prCurrentPage);
       if (poId) {
         setTimeout(function() {
@@ -465,7 +514,6 @@ async function deletePR(id) {
     var res = await axios.delete('/api/purchase-requests/' + id);
     if (res.data.success) {
       showToast('삭제되었습니다.', 'success');
-      loadPRStats();
       loadPurchaseRequests(prCurrentPage);
     } else {
       showToast('삭제 실패: ' + (res.data.error || ''), 'error');
@@ -511,7 +559,6 @@ async function autoConvertToPO(id) {
         msg += '\n\n미매핑 품목:\n• ' + unassigned.join('\n• ');
       }
       showToast(msg, 'warning');
-      loadPRStats();
       loadPurchaseRequests(prCurrentPage);
     } else {
       showToast('자동 변환 실패: ' + (res.data.error || ''), 'error');
@@ -560,5 +607,15 @@ document.getElementById('prRejectModal').addEventListener('click', function(e) {
 });
 
 // 초기 로드
-loadPRStats();
-loadPurchaseRequests(1);
+// 도구모음을 먼저 붙이고 그 결과로 첫 조회 (설정을 모른 채 조회하면 두 번 조회하게 된다)
+var _prTb = window.dsListToolbar && window.dsListToolbar.mount({
+  pageKey: 'purchase-requests',
+  container: 'prListToolbar',
+  tableSelector: '.pr-tbl',
+  defaultPageSize: 20,
+  getFilters: function() { return prReadFilters(); },
+  applyFilters: function(f) { prApplyFilters(f); },
+  onChange: function() { loadPurchaseRequests(1); }
+});
+if (_prTb && _prTb.then) _prTb.then(function() { if (!prPresetApplied) loadPurchaseRequests(1); });
+else loadPurchaseRequests(1);

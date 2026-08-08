@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import type { PurchaseRequest, PurchaseRequestItem, ApiResponse, PaginatedResponse } from '../types/models'
 import { authMiddleware, requireRole } from '../middleware/auth'
@@ -14,6 +15,42 @@ prRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER', 'DESIGNER'))
 // ============================================================================
 // GET / - 발주 요청 목록
 // ============================================================================
+
+/**
+ * 발주요청 조회조건 SSOT — 목록·카운트·통계 공유 (2026-08-09)
+ * 감사 docs/audits/2026-08-08-list-ux-ecount-gap.md G1. 같은 WHERE 가 세 곳에 복사돼 있었고
+ * 통계는 기간·검색·긴급도를 무시해 카드와 목록이 다른 모집단을 셌다.
+ * ⚠️ FROM 절에 `purchase_requests pr JOIN users u LEFT JOIN clients c` 필요(search 가 u.name·c.client_name 참조).
+ * ⚠️ MANAGER 는 본인 요청만 본다 — 이 규칙이 빠지면 권한 경계가 무너지므로 반드시 여기 포함.
+ */
+function buildPrFilter(c: Context<HonoEnv>, opts: { skipStatus?: boolean } = {}): { where: string; params: unknown[] } {
+  const { status = '', urgency = '', search = '', date_from = '', date_to = '' } = c.req.query()
+  const user = c.get('user') as { id?: number; role?: string } | undefined
+  const clauses: string[] = []
+  const params: unknown[] = []
+
+  const ef = entityFilter(c, 'pr')
+  if (ef.clause) { clauses.push(ef.clause.replace(' AND ', '')); params.push(...ef.params) }
+
+  if (user?.role === 'MANAGER') { clauses.push('pr.requester_id = ?'); params.push(user.id) }
+
+  if (status && !opts.skipStatus) {
+    const wanted = status.split(',').map(v => v.trim()).filter(Boolean)
+    if (wanted.length === 1) { clauses.push('pr.status = ?'); params.push(wanted[0]) }
+    else if (wanted.length > 1) { clauses.push(`pr.status IN (${wanted.map(() => '?').join(',')})`); params.push(...wanted) }
+  }
+  if (urgency) { clauses.push('pr.urgency = ?'); params.push(urgency) }
+  if (search) {
+    clauses.push('(pr.request_number LIKE ? OR u.name LIKE ? OR c.client_name LIKE ?)')
+    const p = `%${search}%`
+    params.push(p, p, p)
+  }
+  if (date_from) { clauses.push('pr.created_at >= ?'); params.push(date_from) }
+  if (date_to) { clauses.push('pr.created_at <= ?'); params.push(date_to + ' 23:59:59') }
+
+  return { where: clauses.length ? ' WHERE ' + clauses.join(' AND ') : '', params }
+}
+
 prRouter.get('/', async (c) => {
   try {
     const user = c.get('user')
@@ -38,97 +75,41 @@ prRouter.get('/', async (c) => {
       JOIN users u ON pr.requester_id = u.id
       LEFT JOIN clients c ON pr.supplier_id = c.id
     `
-    const params: any[] = []
-    const whereClauses: string[] = []
+    // 조회조건 = buildPrFilter SSOT (목록·카운트·통계 공유)
+    const listFilter = buildPrFilter(c)
+    const params: any[] = [...listFilter.params]
+    query += listFilter.where
 
-    // entity 필터 적용
-    const ef = entityFilter(c, 'pr')
-    if (ef.clause) {
-      whereClauses.push(ef.clause.replace(' AND ', ''))
-      params.push(...ef.params)
-    }
-
-    if (user?.role === 'MANAGER') {
-      whereClauses.push('pr.requester_id = ?')
-      params.push(user.id)
-    }
-    if (status) {
-      whereClauses.push('pr.status = ?')
-      params.push(status)
-    }
-    if (urgency) {
-      whereClauses.push('pr.urgency = ?')
-      params.push(urgency)
-    }
-    if (search) {
-      whereClauses.push('(pr.request_number LIKE ? OR u.name LIKE ? OR c.client_name LIKE ?)')
-      const searchPattern = `%${search}%`
-      params.push(searchPattern, searchPattern, searchPattern)
-    }
-    if (date_from) {
-      whereClauses.push('pr.created_at >= ?')
-      params.push(date_from)
-    }
-    if (date_to) {
-      whereClauses.push('pr.created_at <= ?')
-      params.push(date_to + ' 23:59:59')
-    }
-
-    if (whereClauses.length > 0) {
-      query += ' WHERE ' + whereClauses.join(' AND ')
-    }
     // 정렬 규약: 페이징 목록은 고유키 tie-break 필수 (동일 created_at 다건 → OFFSET 페이징 중복/누락 방지)
     query += ' ORDER BY pr.created_at DESC, pr.id DESC LIMIT ? OFFSET ?'
     params.push(safeLimit, offset)
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
-    let countQuery = `
-      SELECT COUNT(*) as count
-      FROM purchase_requests pr
-      JOIN users u ON pr.requester_id = u.id
-      LEFT JOIN clients c ON pr.supplier_id = c.id
-    `
-    const countParams: any[] = []
-    const countWhereClauses: string[] = []
-
-    // entity 필터 적용
-    if (ef.clause) {
-      countWhereClauses.push(ef.clause.replace(' AND ', ''))
-      countParams.push(...ef.params)
-    }
-
-    if (user?.role === 'MANAGER') {
-      countWhereClauses.push('pr.requester_id = ?')
-      countParams.push(user.id)
-    }
-    if (status) {
-      countWhereClauses.push('pr.status = ?')
-      countParams.push(status)
-    }
-    if (urgency) {
-      countWhereClauses.push('pr.urgency = ?')
-      countParams.push(urgency)
-    }
-    if (search) {
-      countWhereClauses.push('(pr.request_number LIKE ? OR u.name LIKE ? OR c.client_name LIKE ?)')
-      const searchPattern = `%${search}%`
-      countParams.push(searchPattern, searchPattern, searchPattern)
-    }
-    if (date_from) {
-      countWhereClauses.push('pr.created_at >= ?')
-      countParams.push(date_from)
-    }
-    if (date_to) {
-      countWhereClauses.push('pr.created_at <= ?')
-      countParams.push(date_to + ' 23:59:59')
-    }
-    if (countWhereClauses.length > 0) {
-      countQuery += ' WHERE ' + countWhereClauses.join(' AND ')
-    }
-
-    const countRow = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ count: number }>()
+    const countRow = await c.env.DB.prepare(
+      `SELECT COUNT(*) as count
+       FROM purchase_requests pr
+       JOIN users u ON pr.requester_id = u.id
+       LEFT JOIN clients c ON pr.supplier_id = c.id${listFilter.where}`
+    ).bind(...listFilter.params).first<{ count: number }>()
     const count = countRow?.count ?? 0
+
+    // 품목수·예상금액 합계 — 요청:품목이 1:N 이라 목록 쿼리에 JOIN 하면 요청 행이 불어난다.
+    let sumQty = 0, sumEst = 0
+    try {
+      const aggRow = await c.env.DB.prepare(
+        `SELECT COALESCE(SUM(pri.quantity), 0) as qty,
+                COALESCE(SUM(pri.quantity * COALESCE(pri.admin_unit_price, pri.estimated_unit_price, 0)), 0) as est
+         FROM purchase_request_items pri
+         WHERE pri.request_id IN (
+           SELECT pr.id FROM purchase_requests pr
+           JOIN users u ON pr.requester_id = u.id
+           LEFT JOIN clients c ON pr.supplier_id = c.id${listFilter.where}
+         )`
+      ).bind(...listFilter.params).first<{ qty: number; est: number }>()
+      sumQty = Number(aggRow?.qty) || 0
+      sumEst = Number(aggRow?.est) || 0
+    } catch (_aggErr) { /* 합계 실패는 목록을 막지 않음 */ }
 
     return c.json({
       success: true,
@@ -138,7 +119,8 @@ prRouter.get('/', async (c) => {
         limit: safeLimit,
         total: count,
         total_pages: Math.ceil(count / safeLimit)
-      }
+      },
+      summary: { count: count, quantity: sumQty, estimated_amount: sumEst }
     })
   } catch (error) {
     console.error('src/routes/purchaseRequests.ts error:', error)
@@ -151,28 +133,14 @@ prRouter.get('/', async (c) => {
 // ============================================================================
 prRouter.get('/stats', async (c) => {
   try {
-    const user = c.get('user')
-    let query = `SELECT status, COUNT(*) as count FROM purchase_requests`
-    const params: any[] = []
-    const conditions: string[] = []
-
-    // entity 필터 적용
-    const ef = entityFilter(c, '')
-    if (ef.clause) {
-      conditions.push(ef.clause.replace(' AND ', ''))
-      params.push(...ef.params)
-    }
-
-    if (user?.role === 'MANAGER') {
-      conditions.push('requester_id = ?')
-      params.push(user.id)
-    }
-    if (conditions.length > 0) {
-      query += ' WHERE ' + conditions.join(' AND ')
-    }
-    query += ' GROUP BY status'
-
-    const { results } = await c.env.DB.prepare(query).bind(...params).all<{ status: string; count: number }>()
+    // 목록과 같은 조회조건(SSOT), 단 status 만 제외 — 카드가 곧 상태 선택 수단(드릴다운)이다
+    const f = buildPrFilter(c, { skipStatus: true })
+    const query = `SELECT pr.status AS status, COUNT(*) as count
+      FROM purchase_requests pr
+      JOIN users u ON pr.requester_id = u.id
+      LEFT JOIN clients c ON pr.supplier_id = c.id${f.where}
+      GROUP BY pr.status`
+    const { results } = await c.env.DB.prepare(query).bind(...f.params).all<{ status: string; count: number }>()
     const stats: Record<string, number> = { total: 0, pending: 0, approved: 0, rejected: 0, converted: 0 }
     for (const row of results) {
       const key = row.status.toLowerCase()

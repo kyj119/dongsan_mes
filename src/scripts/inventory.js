@@ -111,16 +111,56 @@ async function loadCategories() {
 }
 
 // Load inventory items
+// ── 조회조건 SSOT (클라) ──
+function invReadFilters() {
+    var g = function(id) { var el = document.getElementById(id); return el ? el.value : ''; };
+    return { category: g('categoryFilter'), search: g('searchInput'), stock: g('stockFilter') };
+}
+function invBuildParams(f) {
+    var p = new URLSearchParams();
+    if (f.category) p.append('category', f.category);
+    if (f.search) p.append('search', f.search);
+    if (f.stock === 'low') p.append('low_stock', 'true');
+    return p;
+}
+function invRenderChips(f) {
+    var items = [];
+    var clear = function(id) { return function() { document.getElementById(id).value = ''; currentPage = 1; loadInventory(); }; };
+    if (f.category) items.push({ label: '분류 ' + f.category, onClear: clear('categoryFilter') });
+    if (f.search) items.push({ label: '검색 "' + f.search + '"', onClear: clear('searchInput') });
+    if (f.stock === 'low') items.push({ label: '안전재고 미만만', onClear: clear('stockFilter') });
+    if (!items.length) items.push({ label: '전체 조회', tone: 'static' });
+    items.push({ label: '매입품목·활성만', tone: 'static' });
+    window.dsListUx.renderChips('invFilterChips', items);
+}
+function invRenderSummary(summary, pagination) {
+    if (!summary) { window.dsListUx.renderSummary('invSummaryBar', null); return; }
+    window.dsListUx.renderSummary('invSummaryBar', [
+        { label: '품목수', value: summary.count },
+        { label: '총수량', value: summary.quantity },
+        { label: '재고금액', value: summary.value, format: 'won', strong: true }
+    ], { multiPage: !!(pagination && pagination.total_pages > 1) });
+}
+var invPresetApplied = false;
+function invApplyFilters(f) {
+    if (!f) return;
+    var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = (v == null ? '' : v); };
+    setVal('categoryFilter', f.category);
+    setVal('searchInput', f.search);
+    setVal('stockFilter', f.stock);
+    invPresetApplied = true;
+    currentPage = 1;
+    loadInventory();
+}
+
 async function loadInventory() {
     try {
-        var category = document.getElementById('categoryFilter').value;
-        var search = document.getElementById('searchInput').value;
-        var stockFilter = document.getElementById('stockFilter').value;
-
-        var url = '/api/inventory?page=' + currentPage + '&limit=20';
-        if (category) url += '&category=' + encodeURIComponent(category);
-        if (search) url += '&search=' + encodeURIComponent(search);
-        if (stockFilter === 'low') url += '&low_stock=true';
+        var f = invReadFilters();
+        var params = invBuildParams(f);
+        params.append('page', String(currentPage));
+        params.append('limit', String(window.dsListToolbar ? window.dsListToolbar.pageSize('inventory', 20) : 20));
+        var url = '/api/inventory?' + params.toString();
+        invRenderChips(f);   // 조건 표시는 응답을 기다리지 않는다
 
         // #421: 로딩 표시(일관 포맷) — 대용량 재고 조회 중 빈 화면 방지
         var _invTb = document.getElementById('inventoryTableBody');
@@ -134,6 +174,7 @@ async function loadInventory() {
 
             renderInventoryTable(data.items, data.pagination.total);
             updatePagination(data.pagination);
+            invRenderSummary(data.summary, data.pagination);
             updateAdjustSelect(data.items);
         }
     } catch (error) {
@@ -643,4 +684,15 @@ if (invTrUnitSel) invTrUnitSel.addEventListener('change', function() {
 // Initial load
 loadStats();
 loadCategories();
-loadInventory();
+// 도구모음을 먼저 붙이고 그 결과로 첫 조회 (설정을 모른 채 조회하면 두 번 조회하게 된다)
+var _invTb = window.dsListToolbar && window.dsListToolbar.mount({
+  pageKey: 'inventory',
+  container: 'invListToolbar',
+  tableSelector: '.inv-tbl',
+  defaultPageSize: 20,
+  getFilters: function() { return invReadFilters(); },
+  applyFilters: function(f) { invApplyFilters(f); },
+  onChange: function() { currentPage = 1; loadInventory(); }
+});
+if (_invTb && _invTb.then) _invTb.then(function() { if (!invPresetApplied) loadInventory(); });
+else loadInventory();

@@ -65,19 +65,25 @@ export function purchaseRequestsPage(c: Context<HonoEnv>) {
         </button>
       </div>
 
+      <!-- 활성 조회조건 칩 -->
+      <div id="prFilterChips" class="ds-conds mb-3"></div>
+      <!-- 목록 도구모음: 프리셋 · 열 선택 · 페이지당 건수 -->
+      <div id="prListToolbar"></div>
+
       <!-- 목록 테이블 -->
       <div class="ds-card overflow-hidden">
         <div style="max-height: calc(100vh - 280px); overflow-y: auto;">
-          <table class="w-full text-sm ds-table ds-table-striped ds-table-fixed">
+          <table class="w-full text-sm ds-table ds-table-striped ds-table-fixed pr-tbl">
           <thead>
             <tr>
-              <th class="col-code">요청번호</th>
-              <th class="col-tag">요청자</th>
-              <th class="col-name">공급업체(추천)</th>
-              <th class="col-tag text-center">긴급도</th>
-              <th class="col-date text-center">요청일</th>
-              <th class="col-qty text-right">품목수</th>
-              <th class="col-status text-center">상태</th>
+              <!-- data-col = '열 선택'(dsListToolbar) 대상. 작업 열은 제외 -->
+              <th class="col-code" data-col="request_number">요청번호</th>
+              <th class="col-tag" data-col="requester">요청자</th>
+              <th class="col-name" data-col="supplier">공급업체(추천)</th>
+              <th class="col-tag text-center" data-col="urgency">긴급도</th>
+              <th class="col-date text-center" data-col="created">요청일</th>
+              <th class="col-qty text-right" data-col="item_count">품목수</th>
+              <th class="col-status text-center" data-col="status">상태</th>
               <th class="col-action text-center">작업</th>
             </tr>
           </thead>
@@ -91,6 +97,7 @@ export function purchaseRequestsPage(c: Context<HonoEnv>) {
         </table>
         </div>
       </div>
+      <div id="prSummaryBar" class="ds-summary"></div>
       <div id="prPagination" class="mt-4 flex justify-center"></div>
 
       <!-- 상세 모달 -->

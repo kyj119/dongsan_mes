@@ -151,17 +151,20 @@ export function inventoryPage(c: Context<HonoEnv>) {
                 <h2 class="text-xl font-bold mb-4">
                     <i class="fas fa-list text-blue-600 mr-2"></i>재고 현황
                 </h2>
+                <div id="invFilterChips" class="ds-conds mb-2"></div>
+                <div id="invListToolbar"></div>
                 <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-                    <table class="w-full text-sm ds-table ds-table-striped">
+                    <table class="w-full text-sm ds-table ds-table-striped inv-tbl">
                         <thead class="bg-gray-50">
                             <tr>
-                                <th class="col-name px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">품목명</th>
-                                <th class="col-tag px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">카테고리</th>
-                                <th class="col-qty px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">현재고</th>
-                                <th class="col-qty px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">안전재고</th>
-                                <th class="col-qty px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">재주문점</th>
-                                <th class="col-amount px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">단가</th>
-                                <th class="col-tag px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">보관위치</th>
+                                <!-- data-col = '열 선택'(dsListToolbar) 대상. 액션 열은 제외 -->
+                                <th class="col-name px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" data-col="item_name">품목명</th>
+                                <th class="col-tag px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" data-col="category">카테고리</th>
+                                <th class="col-qty px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase" data-col="stock">현재고</th>
+                                <th class="col-qty px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase" data-col="safety">안전재고</th>
+                                <th class="col-qty px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase" data-col="reorder">재주문점</th>
+                                <th class="col-amount px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase" data-col="unit_price">단가</th>
+                                <th class="col-tag px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" data-col="zone">보관위치</th>
                                 <th class="col-action px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">액션</th>
                             </tr>
                         </thead>
@@ -169,6 +172,8 @@ export function inventoryPage(c: Context<HonoEnv>) {
                         </tbody>
                     </table>
                 </div>
+
+                <div id="invSummaryBar" class="ds-summary"></div>
 
                 <!-- Pagination -->
                 <div class="mt-4 flex justify-between items-center">

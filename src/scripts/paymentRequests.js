@@ -11,31 +11,89 @@ var prEditingId = null;
 var prCurrentPage = 1;
 // 초기화는 파일 맨 아래에서 실행 (window.* 함수 정의 이후)
 
+// ── 조회조건 SSOT (클라) — 서버 정본 = routes/paymentRequests.ts buildPayReqFilter ──
+function payreqReadFilters() {
+  var g = function(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  return { status: g('prFilterStatus'), type: g('prFilterType'), from: g('prFilterFrom'), to: g('prFilterTo'), search: g('prFilterSearch') };
+}
+function payreqBuildParams(f, opts) {
+  opts = opts || {};
+  var p = new URLSearchParams();
+  if (f.status && !opts.omitStatus) p.append('status', f.status);
+  if (f.type) p.append('type', f.type);
+  if (f.from) p.append('from', f.from);
+  if (f.to) p.append('to', f.to);
+  if (f.search) p.append('search', f.search);
+  return p;
+}
+function payreqLabel(selId, v) {
+  var sel = document.getElementById(selId);
+  if (sel) for (var i = 0; i < sel.options.length; i++) if (sel.options[i].value === v) return sel.options[i].textContent;
+  return v;
+}
+function payreqRenderChips(f) {
+  var items = [];
+  var clear = function(id) { return function() { document.getElementById(id).value = ''; window.loadPaymentRequests(1); }; };
+  if (f.from || f.to) {
+    var label = f.from && f.to ? ('청구일 ' + f.from + ' ~ ' + f.to) : f.from ? ('청구일 ' + f.from + ' 이후') : ('청구일 ' + f.to + ' 이전');
+    items.push({ label: label, onClear: function() {
+      document.getElementById('prFilterFrom').value = '';
+      document.getElementById('prFilterTo').value = '';
+      window.loadPaymentRequests(1);
+    } });
+  } else {
+    items.push({ label: '전체 기간', tone: 'static' });
+  }
+  if (f.status) items.push({ label: '상태 ' + payreqLabel('prFilterStatus', f.status), onClear: clear('prFilterStatus') });
+  if (f.type) items.push({ label: '유형 ' + payreqLabel('prFilterType', f.type), onClear: clear('prFilterType') });
+  if (f.search) items.push({ label: '검색 "' + f.search + '"', onClear: clear('prFilterSearch') });
+  window.dsListUx.renderChips('payreqFilterChips', items);
+}
+function payreqRenderSummary(summary, pagination) {
+  if (!summary) { window.dsListUx.renderSummary('payreqSummaryBar', null); return; }
+  window.dsListUx.renderSummary('payreqSummaryBar', [
+    { label: '건수', value: summary.count },
+    { label: '금액', value: summary.amount, format: 'won', strong: true }
+  ], { multiPage: !!(pagination && pagination.total_pages > 1) });
+}
+// 카드 드릴다운 — 같은 카드를 다시 누르면 해제
+window.prFilterByStatus = function(status) {
+  var sel = document.getElementById('prFilterStatus');
+  if (!sel) { console.warn('[paymentRequests] #prFilterStatus not found'); return; }
+  sel.value = (sel.value === status) ? '' : status;
+  window.loadPaymentRequests(1);
+};
+// 프리셋 적용
+var payreqPresetApplied = false;
+function payreqApplyFilters(f) {
+  if (!f) return;
+  var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = (v == null ? '' : v); };
+  setVal('prFilterStatus', f.status);
+  setVal('prFilterType', f.type);
+  setVal('prFilterFrom', f.from);
+  setVal('prFilterTo', f.to);
+  setVal('prFilterSearch', f.search);
+  payreqPresetApplied = true;
+  window.loadPaymentRequests(1);
+}
+
 window.loadPaymentRequests = async function(page) {
   prCurrentPage = page || 1;
   try {
-    var status = document.getElementById('prFilterStatus').value;
-    var type = document.getElementById('prFilterType').value;
-    var fromEl = document.getElementById('prFilterFrom');
-    var toEl = document.getElementById('prFilterTo');
-    var from = fromEl ? fromEl.value : '';
-    var to = toEl ? toEl.value : '';
-    var searchEl = document.getElementById('prFilterSearch');
-    var search = searchEl ? searchEl.value.trim() : '';
-    var qs = [];
-    if (status) qs.push('status=' + status);
-    if (type) qs.push('type=' + type);
-    // #343: 라우트가 from/to로 request_date 범위 필터 기구현
-    if (from) qs.push('from=' + from);
-    if (to) qs.push('to=' + to);
-    // #345: 지급처/사유 키워드 검색
-    if (search) qs.push('search=' + encodeURIComponent(search));
-    // #359: 페이지네이션
-    qs.push('page=' + prCurrentPage);
-    var res = await axios.get('/api/payment-requests' + (qs.length ? '?' + qs.join('&') : ''));
+    var f = payreqReadFilters();
+    var params = payreqBuildParams(f);
+    params.append('page', String(prCurrentPage));
+    params.append('limit', String(window.dsListToolbar ? window.dsListToolbar.pageSize('payment-requests', 50) : 50));
+
+    payreqRenderChips(f);                                        // 조건 표시는 응답을 기다리지 않는다
+    window.dsListUx.markActiveStat(f.status, '#payreqStatsArea ');
+    loadPrStats();                                                // KPI 도 같은 조건으로
+
+    var res = await axios.get('/api/payment-requests?' + params.toString());
     if (!res.data.success) return;
     renderPrTable(res.data.data || []);
     renderPrPagination(res.data.pagination);
+    payreqRenderSummary(res.data.summary, res.data.pagination);
   } catch (e) {
     console.error('load pr error:', e);
     // #362: 로드 실패 시 스켈레톤 잔류 방지 — 에러 행 + 재시도 버튼
@@ -46,7 +104,9 @@ window.loadPaymentRequests = async function(page) {
 
 async function loadPrStats() {
   try {
-    var res = await axios.get('/api/payment-requests/stats/summary');
+    // 목록과 같은 조건 (상태는 카드가 담당하므로 제외)
+    var sp = payreqBuildParams(payreqReadFilters(), { omitStatus: true });
+    var res = await axios.get('/api/payment-requests/stats/summary' + (sp.toString() ? '?' + sp.toString() : ''));
     if (!res.data.success) return;
     var s = res.data.data || {};
     document.getElementById('prKpiDraft').textContent = s.draft_count || 0;
@@ -148,7 +208,6 @@ window.prSave = async function() {
     await axios.post('/api/payment-requests', data);
     prCloseModal();
     loadPaymentRequests();
-    loadPrStats();
   } catch (e) {
     showToast('저장 실패: ' + (e.response?.data?.error || e.message), 'error');
   }
@@ -159,7 +218,6 @@ window.prSubmit = async function(id) {
   try {
     await axios.patch('/api/payment-requests/' + id + '/submit');
     loadPaymentRequests();
-    loadPrStats();
   } catch (e) { showToast('실패: ' + (e.response?.data?.error || e.message), 'error'); }
 };
 
@@ -168,7 +226,6 @@ window.prDelete = async function(id) {
   try {
     await axios.delete('/api/payment-requests/' + id);
     loadPaymentRequests();
-    loadPrStats();
   } catch (e) { showToast('실패: ' + (e.response?.data?.error || e.message), 'error'); }
 };
 
@@ -177,7 +234,6 @@ window.prApprove = async function(id) {
   try {
     await axios.patch('/api/payment-requests/' + id + '/approve');
     loadPaymentRequests();
-    loadPrStats();
   } catch (e) { showToast('실패: ' + (e.response?.data?.error || e.message), 'error'); }
 };
 
@@ -187,7 +243,6 @@ window.prReject = async function(id) {
   try {
     await axios.patch('/api/payment-requests/' + id + '/reject', { reject_reason: reason });
     loadPaymentRequests();
-    loadPrStats();
   } catch (e) { showToast('실패: ' + (e.response?.data?.error || e.message), 'error'); }
 };
 
@@ -198,7 +253,6 @@ window.prPay = async function(id) {
       paid_at: (window.kstToday ? window.kstToday() : new Date().toISOString().substring(0, 10))
     });
     loadPaymentRequests();
-    loadPrStats();
   } catch (e) { showToast('실패: ' + (e.response?.data?.error || e.message), 'error'); }
 };
 
@@ -206,6 +260,16 @@ window.prPay = async function(id) {
 // 초기화 (모든 window.* 함수 정의 이후 실행)
 // ============================================================
 (function init() {
-  window.loadPaymentRequests();
-  loadPrStats();
+  // 도구모음을 먼저 붙이고 그 결과로 첫 조회 (설정을 모른 채 조회하면 두 번 조회하게 된다)
+  var tb = window.dsListToolbar && window.dsListToolbar.mount({
+    pageKey: 'payment-requests',
+    container: 'payreqListToolbar',
+    tableSelector: '.payreq-tbl',
+    defaultPageSize: 50,
+    getFilters: function() { return payreqReadFilters(); },
+    applyFilters: function(f) { payreqApplyFilters(f); },
+    onChange: function() { window.loadPaymentRequests(1); }
+  });
+  if (tb && tb.then) tb.then(function() { if (!payreqPresetApplied) window.loadPaymentRequests(1); });
+  else window.loadPaymentRequests();
 })();

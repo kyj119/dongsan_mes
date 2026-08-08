@@ -150,19 +150,23 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
         </div>
       </div>
 
+      <div id="tiFilterChips" class="ds-conds mb-2"></div>
+      <div id="tiListToolbar"></div>
+
       <!-- 목록 테이블 -->
       <div class="ds-card overflow-hidden">
-        <table class="w-full text-sm ds-table-striped ds-table-fixed">
+        <table class="w-full text-sm ds-table-striped ds-table-fixed ti-tbl">
           <thead>
             <tr>
-              <th class="text-left" style="width:120px">관리번호</th>
-              <th class="text-left" style="width:110px">주문번호</th>
-              <th class="text-left">거래처</th>
-              <th class="text-center" style="width:100px">작성일</th>
-              <th class="text-right" style="width:110px">공급가액</th>
-              <th class="text-right" style="width:100px">세액</th>
-              <th class="text-right" style="width:110px">합계</th>
-              <th class="text-center" style="width:90px">상태</th>
+              <!-- data-col = '열 선택'(dsListToolbar) 대상. 액션 열은 제외 -->
+              <th class="text-left" style="width:120px" data-col="invoice_number">관리번호</th>
+              <th class="text-left" style="width:110px" data-col="order_number">주문번호</th>
+              <th class="text-left" data-col="buyer">거래처</th>
+              <th class="text-center" style="width:100px" data-col="issue_date">작성일</th>
+              <th class="text-right" style="width:110px" data-col="supply">공급가액</th>
+              <th class="text-right" style="width:100px" data-col="tax">세액</th>
+              <th class="text-right" style="width:110px" data-col="total">합계</th>
+              <th class="text-center" style="width:90px" data-col="status">상태</th>
               <th class="text-center" style="width:80px">액션</th>
             </tr>
           </thead>
@@ -171,6 +175,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
           </tbody>
         </table>
       </div>
+      <div id="tiSummaryBar" class="ds-summary"></div>
       <div id="pagination" class="mt-4 flex justify-center gap-1"></div>
     </div>
 

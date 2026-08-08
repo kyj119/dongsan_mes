@@ -20,8 +20,8 @@ purchaseInvoices.get('/', async (c) => {
   if (status) { where += ' AND pi.match_status = ?'; binds.push(status) }
 
   const countRow = await c.env.DB.prepare(
-    `SELECT COUNT(*) as count FROM purchase_invoices pi ${where}`
-  ).bind(...binds).first<{ count: number }>()
+    `SELECT COUNT(*) as count, COALESCE(SUM(pi.total_amount), 0) as sum_amount FROM purchase_invoices pi ${where}`
+  ).bind(...binds).first<{ count: number; sum_amount: number }>()
   const total = countRow?.count ?? 0
 
   const { results } = await c.env.DB.prepare(`
@@ -36,7 +36,9 @@ purchaseInvoices.get('/', async (c) => {
   return c.json({
     success: true,
     data: results,
-    pagination: { page, limit, total, total_pages: Math.ceil(total / limit) }
+    pagination: { page, limit, total, total_pages: Math.ceil(total / limit) },
+    // 합계는 '조회조건 전체' 기준이며 현재 페이지 합이 아니다
+    summary: { count: total, amount: Number(countRow?.sum_amount) || 0 }
   })
 })
 

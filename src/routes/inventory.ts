@@ -69,7 +69,10 @@ inventoryRouter.get('/', async (c) => {
 
     // Count total (집계/HAVING 후 품목 수 → 서브쿼리로 그룹 개수 카운트)
     let countInner = `
-      SELECT i.id FROM items i
+      SELECT i.id,
+        COALESCE(SUM(inv.quantity), 0) as qty,
+        i.base_price as unit_price
+      FROM items i
       ${inv.join}
       WHERE i.is_purchase_item = 1 AND i.is_active = 1
     `
@@ -87,16 +90,22 @@ inventoryRouter.get('/', async (c) => {
     if (low_stock === 'true') {
       countInner += ` HAVING COALESCE(SUM(inv.quantity), 0) <= COALESCE(MAX(inv.safe_stock), 0) AND COALESCE(MAX(inv.safe_stock), 0) > 0`
     }
-    const countQuery = `SELECT COUNT(*) as total FROM (${countInner})`
+    // 건수 + 합계(총수량·재고금액) — GROUP BY/HAVING 결과를 감싸서 집계한다.
+    // ⚠️ 합계는 '조회조건 전체' 기준이며 현재 페이지 합이 아니다.
+    const countQuery = `SELECT COUNT(*) as total,
+        COALESCE(SUM(g.qty), 0) as sum_qty,
+        COALESCE(SUM(g.qty * COALESCE(g.unit_price, 0)), 0) as sum_value
+      FROM (${countInner}) g`
 
-    const countRow = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ total: number }>()
+    const countRow = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ total: number; sum_qty: number; sum_value: number }>()
     const total = countRow?.total || 0
 
     return c.json({
       success: true,
       data: {
         items: results,
-        pagination: { page: Number(page), limit: Number(limit), total, total_pages: Math.ceil(total / Number(limit)) }
+        pagination: { page: Number(page), limit: Number(limit), total, total_pages: Math.ceil(total / Number(limit)) },
+        summary: { count: total, quantity: Number(countRow?.sum_qty) || 0, value: Number(countRow?.sum_value) || 0 }
       }
     })
   } catch (error: any) {

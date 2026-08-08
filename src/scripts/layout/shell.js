@@ -2820,9 +2820,12 @@ window.dsListToolbar = (function() {
     document.addEventListener('click', function(e) { if (!colWrap.contains(e.target)) menu.classList.remove('open'); });
 
     // ── 페이지당 건수 ──
+    // opts.showPageSize === false → 페이지가 이미 자체 건수 선택을 갖고 있다(거래처). 두 개 두면 어느 쪽이 정본인지 모호해진다.
+    var sizeSel = null;
+    if (opts.showPageSize !== false) {
     var sizeWrap = el('div', 'ds-toolbar-group');
     sizeWrap.appendChild(el('span', 'ds-toolbar-label', '페이지당'));
-    var sizeSel = el('select', 'ds-input ds-toolbar-select');
+    sizeSel = el('select', 'ds-input ds-toolbar-select');
     (opts.pageSizes || PAGE_SIZES).forEach(function(n) {
       var o = el('option', null, n + '건');
       o.value = String(n);
@@ -2834,6 +2837,7 @@ window.dsListToolbar = (function() {
       window.dsListPrefs.set(sizeKey, sizeSel.value);
       if (opts.onChange) opts.onChange();
     });
+    }
 
     // 저장된 설정을 반영한 뒤 기본 프리셋을 적용한다 — 순서가 중요하다.
     // (설정을 모르는 채로 먼저 조회하면 건수/열이 틀린 화면을 한 번 보여주고 다시 조회하게 된다)
@@ -2842,7 +2846,7 @@ window.dsListToolbar = (function() {
       applyHidden(styleEl, opts.tableSelector, cols, hidden);
       syncColBtn();
       renderMenu();
-      sizeSel.value = String(window.dsListPrefs.get(sizeKey, opts.defaultPageSize || 50));
+      if (sizeSel) sizeSel.value = String(window.dsListPrefs.get(sizeKey, opts.defaultPageSize || 50));
       return loadPresets(true);
     });
   }

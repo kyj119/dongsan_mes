@@ -5,6 +5,7 @@
  * 배럴(taxInvoices.ts)에서 동일 prefix 마운트. ⚠️ 이동만, 로직 수정 0.
  */
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import { authMiddleware } from '../../middleware/auth'
 import { requireAccessOrRole } from '../../middleware/permissions'
@@ -58,6 +59,29 @@ taxInvoicesQueriesRouter.get('/test-connection', async (c) => {
 })
 
 // GET / — List tax invoices (paginated)
+
+/**
+ * 세금계산서 목록 조회조건 SSOT — 목록·카운트 공유 (2026-08-09)
+ * 같은 WHERE 가 두 벌 복사돼 있어 한쪽만 고치면 총건수·합계가 목록과 갈린다(감사 G1 동형).
+ * ⚠️ FROM 절에 `tax_invoices ti LEFT JOIN orders o LEFT JOIN clients c` 필요(search 가 o.order_number 참조).
+ */
+function buildTaxInvoiceFilter(c: Context<HonoEnv>, opts: { skipStatus?: boolean } = {}): { where: string; params: unknown[] } {
+  const { status = '', search = '', date_from = '', date_to = '' } = c.req.query()
+  const clauses: string[] = []
+  const params: unknown[] = []
+  if (status && !opts.skipStatus) { clauses.push('ti.status = ?'); params.push(status) }
+  if (search) {
+    clauses.push('(ti.invoice_number LIKE ? OR o.order_number LIKE ? OR ti.buyer_name LIKE ?)')
+    const p = `%${search}%`
+    params.push(p, p, p)
+  }
+  if (date_from) { clauses.push('ti.issue_date >= ?'); params.push(date_from) }
+  if (date_to) { clauses.push('ti.issue_date <= ?'); params.push(date_to) }
+  const ef = entityFilter(c, 'ti')
+  if (ef.clause) { clauses.push(ef.clause.replace(' AND ', '')); params.push(...ef.params) }
+  return { where: clauses.length ? ' WHERE ' + clauses.join(' AND ') : '', params }
+}
+
 taxInvoicesQueriesRouter.get('/', async (c) => {
   try {
     const { page = '1', limit = '50', status = '', search = '', date_from = '', date_to = '' } = c.req.query()
@@ -75,77 +99,26 @@ taxInvoicesQueriesRouter.get('/', async (c) => {
       LEFT JOIN orders o ON ti.order_id = o.id
       LEFT JOIN clients c ON ti.buyer_client_id = c.id
     `
-    const params: any[] = []
-    const whereClauses: string[] = []
-    const ef = entityFilter(c, 'ti')
-
-    if (status) {
-      whereClauses.push('ti.status = ?')
-      params.push(status)
-    }
-    if (search) {
-      whereClauses.push('(ti.invoice_number LIKE ? OR o.order_number LIKE ? OR ti.buyer_name LIKE ?)')
-      const p = `%${search}%`
-      params.push(p, p, p)
-    }
-    if (date_from) {
-      whereClauses.push('ti.issue_date >= ?')
-      params.push(date_from)
-    }
-    if (date_to) {
-      whereClauses.push('ti.issue_date <= ?')
-      params.push(date_to)
-    }
-    if (ef.clause) {
-      whereClauses.push(ef.clause.replace(' AND ', ''))
-      params.push(...ef.params)
-    }
-
-    if (whereClauses.length > 0) {
-      query += ' WHERE ' + whereClauses.join(' AND ')
-    }
+    // 조회조건 = buildTaxInvoiceFilter SSOT (목록·카운트 공유)
+    const f = buildTaxInvoiceFilter(c)
+    const params: any[] = [...f.params]
+    query += f.where
     query += ' ORDER BY ti.created_at DESC, ti.id DESC LIMIT ? OFFSET ?'  // 정렬 규약: 고유키 tie-break
     params.push(safeLimit, offset)
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
-    let countQuery = `
-      SELECT COUNT(*) as count
+    // 카운트 + 금액 합계 — 조회조건 전체 기준(현재 페이지 아님)
+    const countRow = await c.env.DB.prepare(`
+      SELECT COUNT(*) as count,
+        COALESCE(SUM(ti.supply_amount), 0) as sum_supply,
+        COALESCE(SUM(ti.tax_amount), 0) as sum_tax,
+        COALESCE(SUM(ti.total_amount), 0) as sum_total
       FROM tax_invoices ti
       LEFT JOIN orders o ON ti.order_id = o.id
-      LEFT JOIN clients c ON ti.buyer_client_id = c.id
-    `
-    const countParams: any[] = []
-    const countWhereClauses: string[] = []
-
-    if (status) {
-      countWhereClauses.push('ti.status = ?')
-      countParams.push(status)
-    }
-    if (search) {
-      countWhereClauses.push('(ti.invoice_number LIKE ? OR o.order_number LIKE ? OR ti.buyer_name LIKE ?)')
-      const p = `%${search}%`
-      countParams.push(p, p, p)
-    }
-    if (date_from) {
-      countWhereClauses.push('ti.issue_date >= ?')
-      countParams.push(date_from)
-    }
-    if (date_to) {
-      countWhereClauses.push('ti.issue_date <= ?')
-      countParams.push(date_to)
-    }
-    if (ef.clause) {
-      countWhereClauses.push(ef.clause.replace(' AND ', ''))
-      countParams.push(...ef.params)
-    }
-
-    if (countWhereClauses.length > 0) {
-      countQuery += ' WHERE ' + countWhereClauses.join(' AND ')
-    }
-
-    const countRow = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ count: number }>()
-    const count = countRow?.count ?? 0
+      LEFT JOIN clients c ON ti.buyer_client_id = c.id${f.where}
+    `).bind(...f.params).first<{ count: number; sum_supply: number; sum_tax: number; sum_total: number }>()
+    const count = countRow?.count || 0
 
     return c.json({
       success: true,
@@ -155,6 +128,12 @@ taxInvoicesQueriesRouter.get('/', async (c) => {
         limit: safeLimit,
         total: count,
         total_pages: Math.ceil(count / safeLimit)
+      },
+      summary: {
+        count,
+        supply_amount: Number(countRow?.sum_supply) || 0,
+        tax_amount: Number(countRow?.sum_tax) || 0,
+        total_amount: Number(countRow?.sum_total) || 0,
       }
     })
   } catch (error) {

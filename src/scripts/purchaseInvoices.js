@@ -1,6 +1,7 @@
 // 매입확정 페이지 — 확정 대기(단가 미정) + 매입 인보이스 목록
 (function() {
   var _confirmPoId = null;
+  var pinvToolbarMounted = false;
 
   function fmt(n) { return (Number(n) || 0).toLocaleString('ko-KR'); }
 
@@ -14,7 +15,22 @@
     var off = 'px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700';
     if (tab === 'invoices') {
       pending.classList.add('hidden'); invoices.classList.remove('hidden');
-      ti.className = on; tp.className = off; loadInvoices();
+      ti.className = on; tp.className = off;
+      // 인보이스 탭은 여기서 처음 보인다 — 도구모음도 이때 한 번만 붙인다
+      if (!pinvToolbarMounted && window.dsListToolbar) {
+        pinvToolbarMounted = true;
+        var m = window.dsListToolbar.mount({
+          pageKey: 'purchase-invoices',
+          container: 'pinvListToolbar',
+          tableSelector: '.pinv-tbl',
+          defaultPageSize: 50,
+          getFilters: function() { return pinvReadFilters(); },
+          applyFilters: function(f) { pinvApplyFilters(f); },
+          onChange: function() { loadInvoices(1); }
+        });
+        if (m && m.then) { m.then(function() { if (!pinvPresetApplied) loadInvoices(); }); return; }
+      }
+      loadInvoices();
     } else {
       invoices.classList.add('hidden'); pending.classList.remove('hidden');
       tp.className = on; ti.className = off; loadPending();
@@ -116,18 +132,53 @@
   };
 
   var invPage = 1;
+  // 조회조건 SSOT (클라) — 서버는 match_status 하나만 받는다
+  function pinvReadFilters() {
+    var mf = document.getElementById('invMatchFilter');
+    return { matchStatus: mf ? mf.value : '' };
+  }
+  function pinvRenderChips(f) {
+    var items = [];
+    if (f.matchStatus) {
+      var sel = document.getElementById('invMatchFilter');
+      var label = f.matchStatus;
+      if (sel) for (var i = 0; i < sel.options.length; i++) if (sel.options[i].value === f.matchStatus) label = sel.options[i].textContent;
+      items.push({ label: '매칭 ' + label, onClear: function() { sel.value = ''; loadInvoices(1); } });
+    } else {
+      items.push({ label: '전체 매칭상태', tone: 'static' });
+    }
+    window.dsListUx.renderChips('pinvFilterChips', items);
+  }
+  function pinvRenderSummary(summary, pagination) {
+    if (!summary) { window.dsListUx.renderSummary('pinvSummaryBar', null); return; }
+    window.dsListUx.renderSummary('pinvSummaryBar', [
+      { label: '건수', value: summary.count },
+      { label: '금액', value: summary.amount, format: 'won', strong: true }
+    ], { multiPage: !!(pagination && pagination.total_pages > 1) });
+  }
+  var pinvPresetApplied = false;
+  function pinvApplyFilters(f) {
+    if (!f) return;
+    var mf = document.getElementById('invMatchFilter');
+    if (mf) mf.value = f.matchStatus || '';
+    pinvPresetApplied = true;
+    loadInvoices(1);
+  }
+
   async function loadInvoices(page) {
     invPage = page || invPage || 1;
     var tb = document.getElementById('invoicesBody');
     if (tb) tb.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">로딩 중...</td></tr>';
+    var f = pinvReadFilters();
+    pinvRenderChips(f);   // 조건 표시는 응답을 기다리지 않는다
     try {
       // #353: 매칭상태 필터 + 페이지네이션 (라우트 match_status/page/limit 기구현)
-      var params = { page: invPage, limit: 50 };
-      var mf = document.getElementById('invMatchFilter');
-      if (mf && mf.value) params.match_status = mf.value;
+      var params = { page: invPage, limit: (window.dsListToolbar ? window.dsListToolbar.pageSize('purchase-invoices', 50) : 50) };
+      if (f.matchStatus) params.match_status = f.matchStatus;
       var res = await axios.get('/api/purchase-invoices', { params: params });
       var rows = res.data.data || [];
       renderInvoicesPagination(res.data.pagination);
+      pinvRenderSummary(res.data.summary, res.data.pagination);
       if (!tb) return;
       if (rows.length === 0) { tb.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">매입 인보이스가 없습니다.</td></tr>'; return; }
       tb.innerHTML = rows.map(function(r) {

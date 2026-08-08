@@ -1,5 +1,6 @@
 // 지출결의서
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
 import { requirePagePermission, requireEditOrRole } from '../middleware/permissions'
@@ -11,37 +12,49 @@ const paymentRequestsRouter = new Hono<HonoEnv>()
 paymentRequestsRouter.use('/*', authMiddleware, requirePagePermission('/payment-requests'))
 
 // 목록
+
+/**
+ * 지출결의서 조회조건 SSOT — 목록·카운트·KPI 공유 (2026-08-09)
+ * KPI 카드가 '최근 90일' 고정이라 목록과 다른 모집단을 세고 있었다(감사 G1 동형).
+ * ⚠️ FROM 절에 `payment_requests pr LEFT JOIN clients c` 필요(search 가 c.client_name 참조).
+ */
+function buildPayReqFilter(c: Context<HonoEnv>, opts: { skipStatus?: boolean } = {}): { where: string; params: unknown[] } {
+  const { status = '', from = '', to = '', type = '', search = '' } = c.req.query()
+  const clauses: string[] = []
+  const params: unknown[] = []
+  const ef = entityFilter(c, 'pr')
+  if (status && !opts.skipStatus) { clauses.push('pr.status = ?'); params.push(status) }
+  if (type) { clauses.push('pr.request_type = ?'); params.push(type) }
+  if (from) { clauses.push('pr.request_date >= ?'); params.push(from) }
+  if (to) { clauses.push('pr.request_date <= ?'); params.push(to) }
+  if (search) {
+    clauses.push('(pr.recipient_name LIKE ? OR pr.description LIKE ? OR c.client_name LIKE ?)')
+    const kw = `%${search}%`
+    params.push(kw, kw, kw)
+  }
+  if (ef.clause) { clauses.push(ef.clause.replace(' AND ', '')); params.push(...ef.params) }
+  return { where: clauses.length ? 'WHERE ' + clauses.join(' AND ') : '', params }
+}
+
 paymentRequestsRouter.get('/', async (c) => {
   try {
-    const { status, from, to, type, search } = c.req.query()
-    const clauses: string[] = []
-    const params: any[] = []
-    const ef = entityFilter(c, 'pr')
-    if (status) { clauses.push('pr.status = ?'); params.push(status) }
-    if (type) { clauses.push('pr.request_type = ?'); params.push(type) }
-    if (from) { clauses.push('pr.request_date >= ?'); params.push(from) }
-    if (to) { clauses.push('pr.request_date <= ?'); params.push(to) }
-    // #345: 지급처/사유/거래처명 키워드 검색
-    if (search) {
-      clauses.push('(pr.recipient_name LIKE ? OR pr.description LIKE ? OR c.client_name LIKE ?)')
-      const kw = `%${search}%`
-      params.push(kw, kw, kw)
-    }
-    if (ef.clause) { clauses.push(ef.clause.replace(' AND ', '')); params.push(...ef.params) }
-
-    const where = clauses.length ? 'WHERE ' + clauses.join(' AND ') : ''
+    // 조회조건 = buildPayReqFilter SSOT (목록·카운트·KPI 공유)
+    const f = buildPayReqFilter(c)
+    const where = f.where
+    const params: any[] = [...f.params]
 
     // #359: 200 하드캡 → page/limit 페이지네이션 + 총건수 (silent truncation 제거)
     const page = Math.max(1, parseInt(c.req.query('page') || '1'))
     const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '50'), 1), 200)
     const offset = (page - 1) * limit
 
+    // 카운트 + 금액 합계 — 조회조건 전체 기준(현재 페이지 아님)
     const countRow = await c.env.DB.prepare(`
-      SELECT COUNT(*) as cnt
+      SELECT COUNT(*) as cnt, COALESCE(SUM(pr.amount), 0) as sum_amount
       FROM payment_requests pr
       LEFT JOIN clients c ON c.id = pr.recipient_client_id
       ${where}
-    `).bind(...params).first<{ cnt: number }>()
+    `).bind(...params).first<{ cnt: number; sum_amount: number }>()
     const total = countRow?.cnt ?? 0
 
     const { results } = await c.env.DB.prepare(`
@@ -63,7 +76,8 @@ paymentRequestsRouter.get('/', async (c) => {
     return c.json({
       success: true,
       data: results,
-      pagination: { page, limit, total, total_pages: Math.ceil(total / limit) }
+      pagination: { page, limit, total, total_pages: Math.ceil(total / limit) },
+      summary: { count: total, amount: Number(countRow?.sum_amount) || 0 }
     })
   } catch (error) {
     console.error('payment-requests list error:', error)
@@ -347,18 +361,21 @@ paymentRequestsRouter.patch('/:id/pay', requireEditOrRole('/payment-requests', '
 // 통계
 paymentRequestsRouter.get('/stats/summary', async (c) => {
   try {
-    const ef = entityFilter(c)
+    // 목록과 같은 조회조건(SSOT), 단 status 만 제외 — 카드가 곧 상태 선택 수단(드릴다운).
+    // 이전에는 '최근 90일' 고정이라 라벨에 그 사실도 없이 목록과 다른 모집단을 셌다.
+    const f = buildPayReqFilter(c, { skipStatus: true })
     const stats = await c.env.DB.prepare(`
       SELECT
-        SUM(CASE WHEN status = 'DRAFT' THEN 1 ELSE 0 END) as draft_count,
-        SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END) as pending_count,
-        SUM(CASE WHEN status = 'APPROVED' THEN 1 ELSE 0 END) as approved_count,
-        SUM(CASE WHEN status = 'PAID' THEN 1 ELSE 0 END) as paid_count,
-        SUM(CASE WHEN status = 'PENDING' THEN amount ELSE 0 END) as pending_amount,
-        SUM(CASE WHEN status = 'APPROVED' THEN amount ELSE 0 END) as approved_amount
-      FROM payment_requests
-      WHERE request_date >= date('now', '-90 days')${ef.clause}
-    `).bind(...ef.params).first()
+        SUM(CASE WHEN pr.status = 'DRAFT' THEN 1 ELSE 0 END) as draft_count,
+        SUM(CASE WHEN pr.status = 'PENDING' THEN 1 ELSE 0 END) as pending_count,
+        SUM(CASE WHEN pr.status = 'APPROVED' THEN 1 ELSE 0 END) as approved_count,
+        SUM(CASE WHEN pr.status = 'PAID' THEN 1 ELSE 0 END) as paid_count,
+        SUM(CASE WHEN pr.status = 'PENDING' THEN pr.amount ELSE 0 END) as pending_amount,
+        SUM(CASE WHEN pr.status = 'APPROVED' THEN pr.amount ELSE 0 END) as approved_amount
+      FROM payment_requests pr
+      LEFT JOIN clients c ON c.id = pr.recipient_client_id
+      ${f.where}
+    `).bind(...f.params).first()
     return c.json({ success: true, data: stats })
   } catch (error) {
     console.error('payment-requests stats error:', error)

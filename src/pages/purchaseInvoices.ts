@@ -43,15 +43,19 @@ export function purchaseInvoicesPage(c: Context<HonoEnv>) {
             <option value="DISPUTED">분쟁</option>
           </select>
         </div>
+        <div id="pinvFilterChips" class="ds-conds mb-2"></div>
+        <div id="pinvListToolbar"></div>
         <div class="ds-card overflow-hidden">
-          <table class="ds-table w-full">
+          <table class="ds-table w-full pinv-tbl">
             <thead><tr>
-              <th class="col-code">인보이스번호</th><th class="col-name">거래처</th><th class="col-code">발주</th><th class="col-date text-center">일자</th>
-              <th class="col-amount text-right">금액</th><th class="col-status text-center">매칭</th><th class="col-status text-center">지급</th>
+              <!-- data-col = '열 선택'(dsListToolbar) 대상 -->
+              <th class="col-code" data-col="invoice_number">인보이스번호</th><th class="col-name" data-col="supplier">거래처</th><th class="col-code" data-col="po">발주</th><th class="col-date text-center" data-col="invoice_date">일자</th>
+              <th class="col-amount text-right" data-col="amount">금액</th><th class="col-status text-center" data-col="match">매칭</th><th class="col-status text-center" data-col="payment">지급</th>
             </tr></thead>
             <tbody id="invoicesBody"></tbody>
           </table>
         </div>
+        <div id="pinvSummaryBar" class="ds-summary"></div>
         <div id="invoicesPagination" class="flex items-center justify-end gap-2 mt-3"></div>
       </div>
 

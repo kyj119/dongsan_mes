@@ -10,24 +10,27 @@ export function paymentRequestsPage(c: Context<HonoEnv>) {
     pageContent: `
       <div class="space-y-4">
         <!-- KPI -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-          <div class="ds-card p-2.5 text-center">
+        <!-- KPI — 현재 조회조건 기준 상태별 분포. 클릭 시 그 상태로 드릴다운 -->
+        <div id="payreqStatsArea" class="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <button type="button" class="ds-card ds-stat p-2.5" data-stat-status="DRAFT" onclick="prFilterByStatus('DRAFT')">
             <div class="text-xl font-bold text-gray-900" style="font-variant-numeric:tabular-nums;" id="prKpiDraft">-</div>
-            <div class="text-[10px] text-gray-400">작성중</div>
-          </div>
-          <div class="ds-card p-2.5 text-center">
+            <div class="text-[10px] text-gray-400 ds-stat-label">작성중</div>
+          </button>
+          <button type="button" class="ds-card ds-stat p-2.5" data-stat-status="PENDING" onclick="prFilterByStatus('PENDING')">
             <div class="text-xl font-bold text-amber-600" style="font-variant-numeric:tabular-nums;" id="prKpiPending">-</div>
-            <div class="text-[10px] text-gray-400">결재대기</div>
-          </div>
-          <div class="ds-card p-2.5 text-center">
+            <div class="text-[10px] text-gray-400 ds-stat-label">결재대기</div>
+          </button>
+          <button type="button" class="ds-card ds-stat p-2.5" data-stat-status="APPROVED" onclick="prFilterByStatus('APPROVED')">
             <div class="text-xl font-bold text-blue-600" style="font-variant-numeric:tabular-nums;" id="prKpiApproved">-</div>
-            <div class="text-[10px] text-gray-400">승인완료(이체대기)</div>
-          </div>
-          <div class="ds-card p-2.5 text-center">
+            <div class="text-[10px] text-gray-400 ds-stat-label">승인완료(이체대기)</div>
+          </button>
+          <button type="button" class="ds-card ds-stat p-2.5" data-stat-status="PAID" onclick="prFilterByStatus('PAID')">
             <div class="text-xl font-bold text-green-600" style="font-variant-numeric:tabular-nums;" id="prKpiPaid">-</div>
-            <div class="text-[10px] text-gray-400">이체완료</div>
-          </div>
+            <div class="text-[10px] text-gray-400 ds-stat-label">이체완료</div>
+          </button>
         </div>
+        <div id="payreqFilterChips" class="ds-conds"></div>
+        <div id="payreqListToolbar"></div>
 
         <!-- 필터 + 액션 -->
         <div class="ds-card p-3 flex items-center gap-2">
@@ -62,17 +65,18 @@ export function paymentRequestsPage(c: Context<HonoEnv>) {
         <!-- 목록 -->
         <div class="ds-card" style="padding:0;overflow:hidden">
           <div class="overflow-x-auto">
-            <table class="w-full text-xs ds-table ds-table-striped ds-table-fixed">
+            <table class="w-full text-xs ds-table ds-table-striped ds-table-fixed payreq-tbl">
               <thead>
                 <tr class="sticky top-0">
-                  <th class="col-code text-left">결의서번호</th>
-                  <th class="col-date text-left">신청일</th>
-                  <th class="col-tag text-left">유형</th>
-                  <th class="col-name text-left">지급처</th>
-                  <th class="col-amount text-right">금액</th>
-                  <th class="col-flex text-left">사유</th>
-                  <th class="col-status text-center">상태</th>
-                  <th class="col-tag text-center">작성자</th>
+                  <!-- data-col = '열 선택'(dsListToolbar) 대상. 조치 열은 제외 -->
+                  <th class="col-code text-left" data-col="request_number">결의서번호</th>
+                  <th class="col-date text-left" data-col="request_date">신청일</th>
+                  <th class="col-tag text-left" data-col="type">유형</th>
+                  <th class="col-name text-left" data-col="recipient">지급처</th>
+                  <th class="col-amount text-right" data-col="amount">금액</th>
+                  <th class="col-flex text-left" data-col="reason">사유</th>
+                  <th class="col-status text-center" data-col="status">상태</th>
+                  <th class="col-tag text-center" data-col="creator">작성자</th>
                   <th class="col-action text-center">조치</th>
                 </tr>
               </thead>
@@ -82,6 +86,7 @@ export function paymentRequestsPage(c: Context<HonoEnv>) {
             </table>
           </div>
         </div>
+        <div id="payreqSummaryBar" class="ds-summary"></div>
         <div id="prPagination" class="flex items-center justify-center gap-1 py-3"></div>
       </div>
 
