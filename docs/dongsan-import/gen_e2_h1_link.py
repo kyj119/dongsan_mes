@@ -94,7 +94,7 @@ def resolve(nm, sp):
         if c and c.upper() in by_code:
             return by_code[c.upper()]['id'], c, 'R3.5 아일렛 호수·색'
     if '포맥스' in nm:
-        m = re.search(r'(\d+(?:\.\d+)?)\s*T', sp)
+        m = re.search(r'(\d+(?:\.\d+)?)\s*T', sp) or re.search(r'(\d+(?:\.\d+)?)\s*T', nm)
         size = '36' if '3*6' in sp or '3X6' in sp.upper() else '48'
         col = 'B' if ('검정' in nm or '검정' in sp or '흑' in nm) else 'W'
         c = 'FMX-%sT-%s-%s' % (m.group(1).rstrip('.0') or m.group(1), col, size) if m else None
@@ -116,9 +116,28 @@ def resolve(nm, sp):
             return by_code['TRW-PO-S']['id'], 'TRW-PO-S', 'R3.7 전사 윈드배너'
         if nm.startswith('UV출력'):
             return by_code['UV-SHEET']['id'], 'UV-SHEET', 'R3.7 UV 시트'
+        if nm.startswith('전사출력'):
+            return by_code['TRG-PO']['id'], 'TRG-PO', 'R3.7 전사 깃발 폰지'
+        if '현수막' in nm or nm.strip() == '출력':
+            return by_code['AQ-BANNER']['id'], 'AQ-BANNER', 'R3.7 현수막 출력(수성 기본)'
         if nm.startswith('솔벤출력'):
             c = 'SV-SHEET' if ('시트' in sp or '랩핑' in sp) else 'SV-BANNER'
             return by_code[c]['id'], c, 'R3.7 솔벤출력(소재 단서 없으면 현수막)'
+
+    # R3.8 가공 서비스 · 조정 — 물건이 아니라 **작업**이거나 **금액 조정**이다.
+    #   「포맥스 재단 114*229」는 완성 크기로 오는 재단 가공이다. 소재(FMX-*)에 붙이면
+    #   팔린 적 없는 포맥스 재고가 줄어든다(매입 이관에서 세운 원칙과 같다).
+    if '재단' in nm:
+        return by_code['ETC-CUT']['id'], 'ETC-CUT', 'R3.8 재단 가공'
+    if nm.strip() in ('기타', 'SPM011G') or '단가 조정' in nm or (not sp and '아일렛' in nm):
+        return by_code['ETC-DISC']['id'], 'ETC-DISC', 'R3.8 조정 라인'
+
+    # R3.9 와트로 갈리는 계열 — 규격이 `150wt` 라 폭 정규식이 못 읽는다
+    if nm.strip().upper() == 'SMPS':
+        m = re.search(r'(\d+)\s*wt', sp, re.I)
+        c = 'SGM-SMPS-W%s' % m.group(1) if m else None
+        if c and c.upper() in by_code:
+            return by_code[c.upper()]['id'], c, 'R3.9 SMPS 와트'
 
     # R4 폭 없는 품목 — 이름 정확일치 또는 별칭
     if not ws:
