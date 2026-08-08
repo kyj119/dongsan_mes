@@ -32,6 +32,7 @@ async function loadAllReports() {
   loadClientRevenue();
   loadItemAnalysis();
   loadDesignerStats();
+  loadSalesRepStats();
   loadMarginAnalysis();
   loadReceivablesAnalysis();
 }
@@ -216,6 +217,63 @@ async function loadDesignerStats() {
     }
   } catch(e) {
     console.error('Designer stats error:', e);
+  }
+}
+
+// 4-b. 담당자별 실적 (2026-08-08) — orders.sales_rep_id 기반
+//   위 loadDesignerStats() 와 **묻는 게 다르다**: 그건 등록자(누가 입력했나)로 처리량을 보고,
+//   이건 담당자(누가 책임지나)로 실적을 본다. 정해선처럼 MES 계정이 없는 담당은 저기엔 안 나온다.
+//   ★월별로 보여준다 — 담당 이탈은 총계가 아니라 **월별로 0 이 되는 지점**에서 보인다
+//     (신은주 5월·최상호 6월 이탈이 매출 추세 해석의 전제였다).
+async function loadSalesRepStats() {
+  var head = document.getElementById('repStatsHead');
+  var body = document.getElementById('repStatsBody');
+  var foot = document.getElementById('repStatsFoot');
+  if (!head || !body || !foot) { console.warn('[reports] #repStats* not found'); return; }
+  try {
+    var res = await axios.get('/api/reports/sales-rep-stats?months=' + getMonths());
+    if (!res.data.success) return;
+    var d = res.data.data || {};
+    var months = d.months || [];
+    var reps = d.reps || [];
+    if (!reps.length) {
+      head.innerHTML = '';
+      body.innerHTML = '<tr><td class="px-4 py-6 text-center text-gray-400">담당자가 지정된 주문이 없습니다</td></tr>';
+      foot.innerHTML = '';
+      return;
+    }
+    var mLabel = function(m) { return m.slice(2).replace('-', '/'); };
+    head.innerHTML = '<th class="col-name px-4 py-3 text-left">담당자</th>'
+      + months.map(function(m) { return '<th class="col-amount px-3 py-3 text-right">' + mLabel(m) + '</th>'; }).join('')
+      + '<th class="col-amount px-4 py-3 text-right">합계</th><th class="col-qty px-3 py-3 text-right">비중</th>';
+
+    body.innerHTML = reps.map(function(r) {
+      var cells = months.map(function(m) {
+        var v = r.monthly[m];
+        return '<td class="px-3 py-2 text-right ' + (v ? '' : 'text-gray-300') + '">'
+          + (v ? Math.round(v.revenue / 10000).toLocaleString() : '-') + '</td>';
+      }).join('');
+      // 이탈 표시 — 마지막 실적 월이 최근월보다 앞서면 그 시점에 끊긴 것.
+      //   status='RESIGNED' 만 보면 **재직 중 담당 이동**은 못 잡는다.
+      var tag = r.status === 'RESIGNED'
+        ? '<span class="ml-1 text-xs px-1.5 py-0.5 rounded bg-gray-200 text-gray-600">퇴사</span>'
+        : (r.dropped_off ? '<span class="ml-1 text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">' + mLabel(r.last_month) + ' 이후 없음</span>' : '');
+      return '<tr><td class="px-4 py-2">' + r.rep_name
+        + (r.department ? '<span class="text-xs text-gray-400 ml-1">' + r.department + '</span>' : '')
+        + tag + '</td>' + cells
+        + '<td class="px-4 py-2 text-right font-medium">' + (r.revenue || 0).toLocaleString() + '</td>'
+        + '<td class="px-3 py-2 text-right text-gray-500">' + (r.share || 0) + '%</td></tr>';
+    }).join('');
+
+    var mTot = months.map(function(m) {
+      var v = reps.reduce(function(a, r) { return a + ((r.monthly[m] || {}).revenue || 0); }, 0);
+      return '<td class="px-3 py-2 text-right">' + Math.round(v / 10000).toLocaleString() + '</td>';
+    }).join('');
+    foot.innerHTML = '<td class="px-4 py-2">계 <span class="text-xs font-normal text-gray-400">(월별 만원)</span></td>'
+      + mTot + '<td class="px-4 py-2 text-right">' + (d.total || 0).toLocaleString() + '</td><td></td>';
+  } catch (e) {
+    console.warn('[reports] 담당자별 실적 로드 실패', e);
+    body.innerHTML = '<tr><td class="px-4 py-6 text-center text-gray-400">불러오지 못했습니다</td></tr>';
   }
 }
 

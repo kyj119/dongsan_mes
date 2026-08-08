@@ -189,8 +189,25 @@ export function reportsPage(c: Context<HonoEnv>) {
 
       <!-- Designers Tab -->
       <div id="designersPanel" class="hidden">
+        <!-- 담당자별 실적 (2026-08-08) — orders.sales_rep_id 기반. 아래 「디자이너별」과 묻는 게 다르다. -->
+        <div class="ds-card overflow-hidden mb-6">
+          <div class="p-4 flex items-baseline justify-between flex-wrap gap-2">
+            <h3 class="text-lg font-bold"><i class="fas fa-user-tie text-emerald-600 mr-2"></i>담당자별 실적
+              <span class="text-xs font-normal text-gray-400 ml-1">(주문서 담당자 · 공급가 기준)</span></h3>
+            <span class="text-xs text-gray-500">퇴사자 포함 — 과거 실적의 주인이라 빼면 월별 합이 전사와 어긋납니다</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm ds-table ds-table-striped">
+              <thead class="bg-gray-50"><tr id="repStatsHead"></tr></thead>
+              <tbody id="repStatsBody"></tbody>
+              <tfoot class="bg-gray-50 font-semibold"><tr id="repStatsFoot"></tr></tfoot>
+            </table>
+          </div>
+        </div>
+
         <div class="ds-card overflow-hidden">
-          <div class="p-4"><h3 class="text-lg font-bold"><i class="fas fa-user-edit text-blue-500 mr-2"></i>디자이너별 주문 처리</h3></div>
+          <div class="p-4"><h3 class="text-lg font-bold"><i class="fas fa-user-edit text-blue-500 mr-2"></i>디자이너별 주문 처리
+            <span class="text-xs font-normal text-gray-400 ml-1">(등록자 기준 · 처리량)</span></h3></div>
           <table class="w-full text-sm ds-table ds-table-striped">
             <thead class="bg-gray-50">
               <tr>

@@ -13,6 +13,7 @@ interface ClientSummaryRow { id: number; client_name: string; balance: number; t
 interface ItemAnalysisRow { item_id: number; item_name: string; category: string; order_count: number; total_quantity: number; total_revenue: number; avg_unit_price: number }
 interface CategoryRevenueRow { category: string; order_count: number; total_revenue: number }
 interface DesignerStatsRow { user_id: number; designer_name: string; order_count: number; total_revenue: number; avg_amount: number; completed_count: number; in_progress_count: number }
+interface SalesRepMonthRow { emp_id: number; rep_name: string; department: string | null; status: string; month: string; order_count: number; revenue: number }
 interface MonthlySummaryRow { month: string; order_count: number; revenue: number; unique_clients: number }
 interface MonthlyPaymentRow { month: string; payment_count: number; payments: number }
 interface MarginSummaryRow { total_revenue: number; total_cost: number; avg_margin_rate: number }
@@ -182,6 +183,72 @@ reportsRouter.get('/designer-stats', async (c) => {
     `).bind(monthCount, ...ef.params).all()
 
     return c.json({ success: true, data: results })
+  } catch (error) {
+    console.error('src/routes/reports.ts error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// 3-b. 담당자별 실적 (2026-08-08) — `orders.sales_rep_id` 기반
+//
+// ★ 위 `designer-stats` 와 **묻는 게 다르다.** 그건 `created_by`(누가 **입력**했나)를 users 로 세고
+//   `role IN (DESIGNER, ADMIN, MANAGER)` 로 거른다. 그래서 **정해선(매출 52.9% 담당)이 통째로 빠진다** —
+//   MES 계정이 없기 때문이다. 실적은 담당자(누가 **책임**지나)로 세야 하고, 그건 employees 에 있다.
+//
+// ★ **월별로 낸다.** 담당 이탈은 총계가 아니라 **월별로 0 이 되는 지점**에서 보인다
+//   (신은주 5월·최상호 6월 이탈 = 매출 추세 해석의 전제). 총계만 내면 그 신호가 사라진다.
+// ★ **퇴사자를 빼지 않는다.** 과거 실적의 주인이고, 빼면 월별 합이 전사 매출과 안 맞는다.
+reportsRouter.get('/sales-rep-stats', async (c) => {
+  try {
+    const { months = '7' } = c.req.query()
+    const monthCount = Math.min(Math.max(Number(months) || 7, 1), 36)
+    const ef = entityFilter(c, 'o')
+
+    // 월별 × 담당자. 담당 미지정(기초채권·회계전표 등)은 제외 — 실적이 아니다.
+    const { results } = await c.env.DB.prepare(`
+      SELECT
+        e.id as emp_id, e.name as rep_name, e.department, e.status,
+        substr(o.order_date, 1, 7) as month,
+        COUNT(o.id) as order_count,
+        COALESCE(SUM(o.total_amount), 0) as revenue
+      FROM orders o
+      JOIN employees e ON e.id = o.sales_rep_id
+      WHERE o.status != 'CANCELLED'
+        AND o.order_date >= date('now', '-' || ? || ' months')${ef.clause}
+      GROUP BY e.id, month
+      ORDER BY e.name, month
+    `).bind(monthCount, ...ef.params).all<SalesRepMonthRow>()
+
+    // 담당자 축 · 월 축으로 접어 프론트가 표를 바로 그리게 한다(월 목록을 클라가 다시 유도하지 않게).
+    const months_: string[] = [...new Set(results.map(r => r.month))].sort()
+    const byRep = new Map<number, { emp_id: number; rep_name: string; department: string | null; status: string;
+                                    monthly: Record<string, { order_count: number; revenue: number }>;
+                                    order_count: number; revenue: number }>()
+    for (const r of results) {
+      let e = byRep.get(r.emp_id)
+      if (!e) {
+        e = { emp_id: r.emp_id, rep_name: r.rep_name, department: r.department, status: r.status,
+              monthly: {}, order_count: 0, revenue: 0 }
+        byRep.set(r.emp_id, e)
+      }
+      e.monthly[r.month] = { order_count: r.order_count, revenue: r.revenue }
+      e.order_count += r.order_count
+      e.revenue += r.revenue
+    }
+    const reps = [...byRep.values()].sort((a, b) => b.revenue - a.revenue)
+    const total = reps.reduce((s, r) => s + r.revenue, 0)
+
+    // 이탈 감지 — 마지막 실적 월이 최근월보다 앞서면 그 시점에 끊긴 것으로 본다.
+    //   `status='RESIGNED'` 만 보면 재직 중 담당 이동은 못 잡는다.
+    const last = months_[months_.length - 1]
+    for (const r of reps as any[]) {
+      const active = Object.keys(r.monthly).sort()
+      r.last_month = active[active.length - 1] || null
+      r.dropped_off = !!(r.last_month && last && r.last_month < last)
+      r.share = total > 0 ? Math.round((r.revenue / total) * 1000) / 10 : 0
+    }
+
+    return c.json({ success: true, data: { months: months_, reps, total } })
   } catch (error) {
     console.error('src/routes/reports.ts error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
