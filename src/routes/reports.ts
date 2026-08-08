@@ -255,6 +255,56 @@ reportsRouter.get('/sales-rep-stats', async (c) => {
   }
 })
 
+// 3-c. 법인 귀속 감사 (P5, 2026-08-08) — 담당자 소속 법인과 주문 법인이 어긋난 건
+//
+// 청주 분리가 **거래처 화이트리스트**였을 때 재현시스템 6건이 잘못 갔다. 담당자 필드(0523)와
+// `employees.default_entity_id`(0524)가 생겨 이제 **데이터로 잡아낼 수 있다.**
+//
+// ★ 막지 않고 **보여만 준다.** 법인협업 접수·청구 법인분할이 지원되는 흐름이라
+//   담당자 소속과 청구 법인이 다른 게 정상인 경우가 있다(임선미·김용준은 두 법인에 걸친다).
+//   그래서 default 가 NULL 인 담당은 애초에 대상이 아니고, 걸린 건도 「확인 대상」이지 오류가 아니다.
+reportsRouter.get('/entity-attribution-audit', async (c) => {
+  try {
+    const { months = '12' } = c.req.query()
+    const monthCount = Math.min(Math.max(Number(months) || 12, 1), 60)
+
+    const { results } = await c.env.DB.prepare(`
+      SELECT o.id, o.order_number, o.order_date, o.entity_id, o.total_amount,
+             e.id as rep_id, e.name as rep_name, e.default_entity_id,
+             c.client_name
+      FROM orders o
+      JOIN employees e ON e.id = o.sales_rep_id
+      LEFT JOIN clients c ON c.id = o.client_id
+      WHERE o.status != 'CANCELLED'
+        AND e.default_entity_id IS NOT NULL
+        AND o.entity_id != e.default_entity_id
+        AND o.order_date >= date('now', '-' || ? || ' months')
+      ORDER BY o.order_date DESC, o.id DESC
+      LIMIT 500
+    `).bind(monthCount).all()
+
+    // 담당자별로 접어서 준다 — 한 사람이 통째로 어긋나면 그건 default 값이 틀린 것이다(주문이 아니라).
+    const byRep = new Map<number, { rep_name: string; default_entity_id: number; count: number; amount: number; entities: Record<number, number> }>()
+    for (const r of results as any[]) {
+      let g = byRep.get(r.rep_id)
+      if (!g) { g = { rep_name: r.rep_name, default_entity_id: r.default_entity_id, count: 0, amount: 0, entities: {} }; byRep.set(r.rep_id, g) }
+      g.count++
+      g.amount += r.total_amount || 0
+      g.entities[r.entity_id] = (g.entities[r.entity_id] || 0) + 1
+    }
+
+    return c.json({ success: true, data: {
+      total: results.length,
+      capped: results.length >= 500,     // 상한에 걸리면 더 있다는 뜻 — 조용히 자르지 않는다
+      by_rep: [...byRep.values()].sort((a, b) => b.count - a.count),
+      orders: results.slice(0, 100),
+    } })
+  } catch (error) {
+    console.error('src/routes/reports.ts error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // 4. 월간 매출 종합 리포트
 // NOTE: D1/SQLite에는 재귀 CTE 기반 날짜 시리즈 생성이 불안정하므로
 // 실제 데이터 기반 집계로 단순화 (대시보드 패턴과 동일)

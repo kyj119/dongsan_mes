@@ -62,9 +62,32 @@ ordersCreateRouter.post('/', async (c) => {
     // 청구(매출) 법인: 명시값 우선, 없으면 로그인 법인 (코디네이터가 타법인 주문 접수 시 명시 선택)
     // ⚠️ 불변식 "번호 E{eid} = 행 entity_id" → 채번도 billingEntityId 기준이어야 함(세션 법인 X).
     //    billing_entity_id ≠ 세션 법인일 때(코디 타법인 접수) 번호 접두와 entity_id 불일치 버그 방지.
-    const billingEntityId = (orderData.billing_entity_id && Number(orderData.billing_entity_id) > 0)
+    // 담당자(sales_rep) — 본문에 오면 그대로, 없으면 **로그인 사용자**로 기본값(2026-08-07).
+    //   `employees.user_id` 로 users→employees 를 잇는다(마이그레이션 0523 에서 실계정 7명 연결).
+    //   ⚠️ `created_by` 와 초기값이 같아도 **컬럼은 따로 둔다** — 담당자는 바뀌고 등록자는 안 바뀐다.
+    //   ★채번보다 **먼저** 구한다 — 아래 청구 법인 폴백이 이 값을 쓴다.
+    const salesRepHintId: number | null = orderData.sales_rep_id
+      ? Number(orderData.sales_rep_id)
+      : (await c.env.DB.prepare('SELECT id FROM employees WHERE user_id = ? LIMIT 1')
+          .bind(user.id).first<{ id: number }>())?.id ?? null
+
+    // 청구 법인 결정 (P5, 2026-08-08 담당자 폴백 추가)
+    //   순서 = ① 명시 billing_entity_id  ② 세션 법인  ③ 담당자 소속(default_entity_id)
+    //   ⚠️ ①②를 **덮지 않는다.** 주문번호 채번이 이 값을 쓰고 「번호 E{eid} = 행 entity_id」
+    //      불변식이 걸려 있으며, 법인협업 접수는 세션≠청구 법인이 정상이다.
+    //      담당자 소속은 **둘 다 없을 때만** 쓰는 폴백이다.
+    //   ⚠️ 강제 규칙이 아니다 — 담당 12명 중 임선미·김용준은 두 법인에 걸친다(591·106건).
+    //      어긋난 건은 막지 않고 `/api/reports/entity-attribution-audit` 로 잡는다.
+    const sessionEntityId = getEntityId(c)
+    let billingEntityId = (orderData.billing_entity_id && Number(orderData.billing_entity_id) > 0)
       ? Number(orderData.billing_entity_id)
-      : (getEntityId(c) || 1)
+      : (sessionEntityId || 0)
+    if (!billingEntityId && salesRepHintId) {
+      const rep = await c.env.DB.prepare('SELECT default_entity_id FROM employees WHERE id = ?')
+        .bind(salesRepHintId).first<{ default_entity_id: number | null }>()
+      if (rep?.default_entity_id) billingEntityId = rep.default_entity_id
+    }
+    if (!billingEntityId) billingEntityId = 1
 
     // Generate order number (without ORD- prefix)
     const dateStr = kstYmdCompact()
@@ -131,15 +154,7 @@ ordersCreateRouter.post('/', async (c) => {
     // Phase 3.2: source_quotation_id 받으면 orders.quotation_id에 저장 (견적서 → 주문 prefill 흐름)
     const sourceQuotationId = orderData.source_quotation_id || orderData.quotation_id || null
     // billingEntityId는 위(채번 전)에서 계산됨 — 번호 접두와 entity_id 일치 보장
-    // 담당자(sales_rep) — 본문에 오면 그대로, 없으면 **로그인 사용자**로 기본값(2026-08-07).
-    //   `employees.user_id` 로 users→employees 를 잇는다(마이그레이션 0523 에서 실계정 7명 연결).
-    //   ⚠️ `created_by` 와 초기값이 같아도 **컬럼은 따로 둔다** — 담당자는 바뀌고 등록자는 안 바뀐다.
-    //      합쳐 두면 담당이 한 번이라도 바뀐 뒤 과거 데이터에서 둘을 구분할 수 없다.
-    //   미연결 계정(designer/admin 등)이면 NULL — 잘못 붙이느니 비워 둔다.
-    const salesRepId = orderData.sales_rep_id
-      ? Number(orderData.sales_rep_id)
-      : (await c.env.DB.prepare('SELECT id FROM employees WHERE user_id = ? LIMIT 1')
-          .bind(user.id).first<{ id: number }>())?.id ?? null
+    const salesRepId = salesRepHintId
     const orderResult = await c.env.DB.prepare(`
       INSERT INTO orders (
         order_number, client_id, status, order_year, order_month,

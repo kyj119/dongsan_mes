@@ -137,6 +137,8 @@ const ENDPOINTS = [
   // 리포트/분석
   { path: `/api/reports/monthly-summary?month=${THIS_MONTH}`, name: 'reports.monthly' },
   { path: '/api/reports/client-revenue', name: 'reports.clientRevenue' },
+  { path: '/api/reports/sales-rep-stats?months=6', name: 'reports.salesRepStats' },
+  { path: '/api/reports/entity-attribution-audit?months=12', name: 'reports.entityAttributionAudit' },
   { path: `/api/production-reports/production?from=${FIRST_OF_MONTH}&to=${TODAY}`, name: 'productionReports.production' },
   { path: `/api/production-reports/uptime?from=${FIRST_OF_MONTH}&to=${TODAY}`, name: 'productionReports.uptime' },
   { path: `/api/production-reports/daily-summary?from=${FIRST_OF_MONTH}&to=${TODAY}`, name: 'productionReports.daily' },
