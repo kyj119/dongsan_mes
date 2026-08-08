@@ -8,6 +8,7 @@ import { notifyRoles } from '../../utils/notify'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { sendEmail } from '../../services/emailProvider'
 import { getEntityId, entityFilter, orderVisibilityFilter } from '../../utils/entityFilter'
+import { buildOrderListFilter, resolveOrderSort, ORDER_SORT_DEFAULT } from './listFilter'
 import { kstYmd, kstDate } from '../../utils/kstDate'
 import { CONSOLIDATABLE_ORDER_STATUSES } from '../../utils/statusLabels'
 import { deductStockLinesOnShip } from '../../utils/stockShip'
@@ -83,16 +84,22 @@ ordersQueriesRouter.get('/unshipped-by-client', async (c) => {
 })
 
 // Get order statistics (must be before /:id to avoid route conflict)
+/**
+ * GET /api/orders/stats — 통계 카드 (목록과 같은 모집단)
+ *
+ * 목록과 동일한 조회조건(listFilter SSOT)을 적용하되 **status 만 제외**한다.
+ * 카드 자체가 상태 선택 수단(드릴다운)이므로, 상태로 걸러버리면 선택한 카드 외 전부 0이 되어
+ * 네비게이션이 불가능해진다. 따라서 카드 = "현재 검색·기간 스코프의 상태별 분포",
+ * total = 그 분포의 합(= 상태 미선택 시 목록의 '총 N건'과 일치).
+ * (이전에는 조건 없이 orders 전량을 세어 목록과 구조적으로 불일치했다 — 감사 G1)
+ */
 ordersQueriesRouter.get('/stats', async (c) => {
   try {
-    // 주문 가시성 필터 (목록과 일치): 소유(청구) + 담당 품목 보유 법인. EXISTS 상관 위해 alias 'o' 필수.
-    const ef = orderVisibilityFilter(c, 'o')
-    const statsQuery = ef.params.length > 0
-      ? `SELECT o.status AS status, COUNT(*) as count FROM orders o WHERE 1=1${ef.clause} GROUP BY o.status`
-      : `SELECT status, COUNT(*) as count FROM orders GROUP BY status`
-    const { results } = ef.params.length > 0
-      ? await c.env.DB.prepare(statsQuery).bind(...ef.params).all()
-      : await c.env.DB.prepare(statsQuery).all()
+    const f = buildOrderListFilter(c, { skipStatus: true })
+    const statsQuery = `SELECT o.status AS status, COUNT(*) as count
+      FROM orders o LEFT JOIN clients c ON o.client_id = c.id${f.where}
+      GROUP BY o.status`
+    const { results } = await c.env.DB.prepare(statsQuery).bind(...f.params).all()
 
     const stats: Record<string, number> = { total: 0 }
     for (const row of results as Array<{ status: string; count: number }>) {
@@ -374,7 +381,7 @@ ordersQueriesRouter.patch('/bulk-ship', requireRole('ADMIN', 'MANAGER'), async (
 // GET /api/orders/export/csv - CSV 다운로드
 ordersQueriesRouter.get('/export/csv', async (c) => {
   try {
-    const { status = '', search = '', sort = 'created_at_desc', date_from = '', date_to = '', exclude_status = '', priority = '' } = c.req.query()
+    const { sort = ORDER_SORT_DEFAULT } = c.req.query()
 
     let query = `
       SELECT o.order_number, c.client_name, o.order_date, o.delivery_date,
@@ -385,37 +392,17 @@ ordersQueriesRouter.get('/export/csv', async (c) => {
       LEFT JOIN clients c ON o.client_id = c.id
       LEFT JOIN users u ON o.created_by = u.id
     `
-    const params: any[] = []
-    const whereClauses: string[] = []
+    // 조회조건 = 목록과 동일한 listFilter SSOT.
+    // 이전에는 이 경로에만 조건이 따로 적혀 있어 (a) 배송방법·회계상태·지연 필터가 무시되고
+    // (b) 주문 가시성(법인) 필터가 통째로 빠져 타 법인 주문이 함께 내려갔다.
+    const f = buildOrderListFilter(c)
+    const params: any[] = [...f.params]
+    query += f.where
 
-    if (status) { whereClauses.push('o.status = ?'); params.push(status) }
-    if (search) {
-      // 목록 검색과 동일: 주문번호·거래처명·품목명 (CSV export 정합)
-      whereClauses.push('(o.order_number LIKE ? OR c.client_name LIKE ? OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND oi.item_name LIKE ?))')
-      const p = `%${search}%`
-      params.push(p, p, p)
-    }
-    if (date_from) { whereClauses.push('o.order_date >= ?'); params.push(date_from) }
-    if (date_to) { whereClauses.push('o.order_date <= ?'); params.push(date_to) }
-    if (exclude_status) {
-      const excludes = exclude_status.split(',').map(s => s.trim()).filter(Boolean)
-      if (excludes.length === 1) { whereClauses.push('o.status != ?'); params.push(excludes[0]) }
-      else if (excludes.length > 1) { whereClauses.push(`o.status NOT IN (${excludes.map(() => '?').join(',')})`); params.push(...excludes) }
-    }
-    if (priority) { whereClauses.push('o.priority = ?'); params.push(priority) }
-
-    if (whereClauses.length > 0) query += ' WHERE ' + whereClauses.join(' AND ')
-
-    // 정렬 규약: 고유키 tie-break 필수 + NULLS LAST(D1 방언) 회피 — orders/core.ts 목록과 동일 규칙
-    const sortOptions: Record<string, string> = {
-      'created_at_desc': 'o.created_at DESC, o.id DESC',
-      'created_at_asc': 'o.created_at ASC, o.id ASC',
-      'delivery_date_asc': 'o.delivery_date IS NULL, o.delivery_date ASC, o.id DESC',
-      'final_amount_desc': 'o.final_amount DESC, o.id DESC',
-    }
     // LIMIT: 최대 5000, 기본 3000 — 메모리/타임아웃 방지
     const maxRows = Math.min(parseInt(c.req.query('limit') || '3000') || 3000, 5000)
-    const orderBy = sortOptions[sort] || sortOptions['created_at_desc']
+    // 정렬 = listFilter.ts SSOT. 사본을 두면 목록에서 고른 정렬이 CSV 에서 조용히 기본값으로 떨어진다.
+    const orderBy = resolveOrderSort(sort)
     query += ` ORDER BY ${orderBy} LIMIT ?`
     params.push(maxRows)
 

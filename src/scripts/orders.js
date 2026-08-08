@@ -113,7 +113,6 @@ async function bulkShipSelected() {
       if (failCount > 0) msg += ', ' + failCount + '건 실패';
       showToast(msg, remainingCards.length > 0 ? 'warning' : (failCount > 0 ? 'warning' : 'success'));
       clearBulkSelection();
-      loadOrderStats();
       loadOrders();
     } else {
       showToast('일괄 출고 실패: ' + (res.data.error || ''), 'error');
@@ -151,7 +150,6 @@ async function bulkBillingConfirm() {
     } catch(e) { skipped.push({ label: t.label, reason: (e.response && e.response.data && e.response.data.error) || e.message || '오류' }); }
   }
   clearBulkSelection();
-  loadOrderStats();
   loadOrders();
   showBulkResultModal('회계반영 결과', changed, skipped);
 }
@@ -191,7 +189,6 @@ async function bulkChangeStatus() {
     } catch(e) { skipped.push({ label: t.label, reason: (e.response && e.response.data && e.response.data.error) || e.message || '오류' }); }
   }
   clearBulkSelection();
-  loadOrderStats();
   loadOrders();
   showBulkResultModal('상태변경 결과', changed, skipped, getStatusText(newStatus));
 }
@@ -281,11 +278,32 @@ function getStatusColor(status) {
 }
 
 
-// 페이지네이션 렌더링
+// 합계 바 — 조회조건 전체 기준(현재 페이지 아님). 건수·수량·공급가·부가세·합계
+// 이카운트는 조회 즉시 하단 합계를 보여주는데 여기엔 없어서 CSV 로 내려 엑셀에서 더해야 했다(감사 G2).
+function ordRenderSummary(summary, pagination) {
+  var el = document.getElementById('ordersSummaryBar');
+  if (!el) { console.warn('[orders] #ordersSummaryBar not found'); return; }
+  if (!summary) { el.innerHTML = ''; return; }
+  var n = function(v) { return Number(v || 0).toLocaleString(); };
+  var won = function(v) { return Number(v || 0).toLocaleString() + '원'; };
+  // 여러 페이지일 때 "이 숫자가 페이지 합이 아니다"를 명시 — 오해하면 금액을 잘못 읽는다
+  var scope = (pagination && pagination.total_pages > 1)
+    ? '조회조건 전체 합계 (현재 페이지 아님)'
+    : '조회조건 합계';
+  el.innerHTML =
+      '<span class="ord-summary-scope">' + scope + '</span>'
+    + '<span class="ord-summary-item">건수<b>' + n(summary.count) + '</b></span>'
+    + '<span class="ord-summary-item">수량<b>' + n(summary.quantity) + '</b></span>'
+    + '<span class="ord-summary-item">공급가<b>' + won(summary.supply_amount) + '</b></span>'
+    + '<span class="ord-summary-item">부가세<b>' + won(summary.vat_amount) + '</b></span>'
+    + '<span class="ord-summary-item ord-summary-total">합계<b>' + won(summary.final_amount) + '</b></span>';
+}
+
+// 페이지네이션 렌더링 — 총 건수는 합계 바가 담당하므로 여기선 페이지 위치만
 function ordRenderPagination(pagination) {
   const container = document.getElementById('ordersPagination');
   if (!pagination || pagination.total_pages <= 1) {
-    container.innerHTML = pagination ? `<span style="font-size:13px;color:#6b7280;">총 ${pagination.total}건</span>` : '';
+    container.innerHTML = '';
     return;
   }
   const { page, total_pages, total } = pagination;
@@ -306,7 +324,7 @@ function ordRenderPagination(pagination) {
     ${pageButtons}
     <button onclick="goToPage(${page + 1})" ${page >= total_pages ? 'disabled' : ''}
       style="${page >= total_pages ? btnDisabledStyle : btnStyle}">다음</button>
-    <span style="font-size:13px;color:#6b7280;margin-left:8px;">${page} / ${total_pages} 페이지 (총 ${total}건)</span>
+    <span style="font-size:13px;color:#6b7280;margin-left:8px;">${page} / ${total_pages} 페이지</span>
   `;
 }
 
@@ -341,7 +359,7 @@ function resetAllFilters() {
   document.getElementById('billingStatusFilter').value = '';
   var _ov = document.getElementById('overdueFilter'); if (_ov) _ov.checked = false;
   document.getElementById('priorityFilter').value = '';
-  document.getElementById('sortBy').value = 'created_at_desc';
+  document.getElementById('sortBy').value = 'order_date_desc';
   document.getElementById('orderDateFrom').value = ordersDefaultDateFrom();
   document.getElementById('orderDateTo').value = '';
   localStorage.removeItem('orders_filter_search');
@@ -357,58 +375,190 @@ function resetAllFilters() {
   loadOrders();
 }
 
-// 통계
+// ── 조회조건 SSOT (클라) ───────────────────────────────────────────────
+// 목록·통계·CSV 세 경로가 같은 조건을 쓰도록 한 곳에서 수집한다.
+// 서버측 정본은 src/routes/orders/listFilter.ts — 파라미터 이름을 바꾸면 양쪽을 같이 고칠 것.
+function ordReadFilters() {
+  var g = function(id) { var el = document.getElementById(id); return el ? el.value : ''; };
+  var ov = document.getElementById('overdueFilter');
+  return {
+    search: g('searchQuery'),
+    status: g('statusFilter'),
+    sort: g('sortBy') || 'order_date_desc',   // 기본 정렬 = 업무일자(주문일). created_at 은 이관분에서 무의미
+    dateFrom: g('orderDateFrom'),
+    dateTo: g('orderDateTo'),
+    priority: g('priorityFilter'),
+    deliveryMethod: g('deliveryMethodFilter'),
+    billingStatus: g('billingStatusFilter'),
+    overdue: !!(ov && ov.checked)
+  };
+}
+
+// opts.omitStatus=true → 통계용(상태는 카드가 담당하므로 제외)
+// opts.forceExclude=true → 통계용(취소·견적은 항상 카드 집계에서 제외)
+function ordBuildParams(f, opts) {
+  opts = opts || {};
+  var params = new URLSearchParams();
+  if (f.search) params.append('search', f.search);
+  if (f.status && !opts.omitStatus) params.append('status', f.status);
+  if (!f.status || opts.forceExclude) params.append('exclude_status', 'CANCELLED,QUOTATION');
+  if (f.priority) params.append('priority', f.priority);
+  if (f.deliveryMethod) params.append('delivery_method', f.deliveryMethod);
+  if (f.billingStatus) params.append('billing_status', f.billingStatus);
+  if (f.overdue) params.append('overdue', '1');
+  if (f.dateFrom) params.append('date_from', f.dateFrom);
+  if (f.dateTo) params.append('date_to', f.dateTo);
+  return params;
+}
+
+// 통계 카드 = 현재 조회조건의 상태별 분포 (상태 필터만 제외)
 async function loadOrderStats() {
   try {
-    const res = await authFetch('/api/orders/stats');
+    var f = ordReadFilters();
+    var params = ordBuildParams(f, { omitStatus: true, forceExclude: true });
+    const res = await authFetch('/api/orders/stats?' + params.toString());
     const data = await res.json();
-    if (data.success) {
-      document.getElementById('statTotal').textContent = data.data.total || 0;
-      document.getElementById('statConfirmed').textContent = data.data.CONFIRMED || 0;
-      document.getElementById('statProduction').textContent = (data.data.PRINTING || 0) + (data.data.PRINT_DONE || 0);
-      document.getElementById('statShipped').textContent = data.data.SHIPPED || 0;
-    }
+    if (!data.success) return;
+    var d = data.data || {};
+    var set = function(id, v) { var el = document.getElementById(id); if (el) el.textContent = Number(v || 0).toLocaleString(); };
+    set('statTotal', d.total);
+    set('statConfirmed', d.CONFIRMED);
+    set('statProduction', (d.PRINTING || 0) + (d.PRINT_DONE || 0));
+    set('statShipped', d.SHIPPED);
   } catch(e) { console.error('Load stats error:', e); }
+}
+
+// 현재 선택된 상태에 해당하는 카드 강조 (없으면 강조 없음 — 예: '취소' 선택)
+function ordMarkActiveStat(status) {
+  var cards = document.querySelectorAll('.ord-stat');
+  if (!cards.length) { console.warn('[orders] .ord-stat not found'); return; }
+  for (var i = 0; i < cards.length; i++) {
+    var own = cards[i].getAttribute('data-stat-status') || '';
+    cards[i].classList.toggle('ord-stat-active', own === (status || ''));
+  }
+}
+
+// 활성 조회조건 칩 (감사 G1 산정기준 불명 + G3 기본 기간이 '더보기' 안에 숨어 있던 문제)
+// 조건을 항상 보이게 하고, ✕ 하나로 그 조건만 해제한다. 카드·목록이 같은 조건을 쓰므로 표기는 여기 한 곳뿐.
+function ordRenderFilterChips(f) {
+  var el = document.getElementById('orderFilterChips');
+  if (!el) { console.warn('[orders] #orderFilterChips not found'); return; }
+  var chips = [];
+  var chip = function(key, text, cls) {
+    var c = cls || 'ord-chip';
+    var x = key ? '<button type="button" class="ord-chip-x" title="이 조건만 해제" onclick="ordClearFilter(\'' + key + '\')">&times;</button>' : '';
+    return '<span class="' + c + '">' + escapeHtml(text) + x + '</span>';
+  };
+
+  // 기간 — 기본값(최근 1개월)도 사용자가 고른 조건과 똑같이 노출해야 "왜 지난달이 안 보이지"가 사라진다
+  if (f.dateFrom || f.dateTo) {
+    var label = f.dateFrom && f.dateTo ? ('주문일 ' + f.dateFrom + ' ~ ' + f.dateTo)
+              : f.dateFrom ? ('주문일 ' + f.dateFrom + ' 이후')
+              : ('주문일 ' + f.dateTo + ' 이전');
+    chips.push(chip('date', label));
+  } else {
+    chips.push(chip('', '전체 기간', 'ord-chip ord-chip-static'));
+  }
+
+  if (f.search) chips.push(chip('search', '검색 "' + f.search + '"'));
+  if (f.status) chips.push(chip('status', '상태 ' + ordStatusFilterLabel(f.status)));
+  if (f.deliveryMethod) chips.push(chip('deliveryMethod', '배송 ' + f.deliveryMethod));
+  if (f.billingStatus) chips.push(chip('billingStatus', '회계 ' + (f.billingStatus === 'NONE' ? '미확인' : getBillingStatusText(f.billingStatus))));
+  if (f.priority) chips.push(chip('priority', f.priority === 'URGENT' ? '긴급만' : '일반만'));
+  if (f.overdue) chips.push(chip('overdue', '지연만'));
+  if (!f.status) chips.push(chip('', '취소·견적 제외', 'ord-chip ord-chip-static'));
+
+  // 카드에 없는 상태(취소 등)를 고르면 카드와 목록이 다른 것을 센다 — 숨기지 않고 경고로 드러낸다
+  var CARD_STATUSES = ['CONFIRMED', 'PRINTING,PRINT_DONE', 'SHIPPED'];
+  if (f.status && CARD_STATUSES.indexOf(f.status) === -1) {
+    chips.push(chip('', '위 카드는 이 상태를 포함하지 않음', 'ord-chip ord-chip-warn'));
+  }
+
+  el.innerHTML = '<span class="ord-chips-label">조회 조건</span>' + chips.join('');
+}
+
+// 상태 값 → 화면 라벨 (셀렉트 옵션 텍스트를 정본으로 삼아 라벨이 두 벌 생기지 않게 한다)
+function ordStatusFilterLabel(status) {
+  var sel = document.getElementById('statusFilter');
+  if (sel) {
+    for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === status) return sel.options[i].textContent;
+    }
+  }
+  return status;
+}
+
+// 칩 ✕ — 해당 조건만 해제하고 재조회 (localStorage 는 loadOrders 가 현재 값으로 다시 쓴다)
+function ordClearFilter(key) {
+  var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = v; else console.warn('[orders] #' + id + ' not found'); };
+  if (key === 'date') {
+    setVal('orderDateFrom', '');
+    setVal('orderDateTo', '');
+    localStorage.removeItem('orders_filter_date_from');
+    localStorage.removeItem('orders_filter_date_to');
+  }
+  else if (key === 'search') setVal('searchQuery', '');
+  else if (key === 'status') setVal('statusFilter', '');
+  else if (key === 'deliveryMethod') setVal('deliveryMethodFilter', '');
+  else if (key === 'billingStatus') setVal('billingStatusFilter', '');
+  else if (key === 'priority') setVal('priorityFilter', '');
+  else if (key === 'overdue') { var ov = document.getElementById('overdueFilter'); if (ov) ov.checked = false; }
+  else { console.warn('[orders] unknown filter key: ' + key); return; }
+  currentPage = 1;
+  loadOrders();
+}
+
+// '생산중'(PRINTING,PRINT_DONE)처럼 셀렉트에 없는 복수 상태 값을 옵션으로 보강.
+// 없으면 sel.value 대입이 조용히 무시돼 상태 표시와 실제 조회가 어긋난다.
+function ordEnsureStatusOption(sel, value) {
+  if (!value || !sel) return;
+  var exists = Array.prototype.some.call(sel.options, function(o) { return o.value === value; });
+  if (exists) return;
+  var labels = { 'PRINTING,PRINT_DONE': '생산중 (출력중+출력완료)' };
+  var opt = document.createElement('option');
+  opt.value = value;
+  opt.textContent = labels[value] || value;
+  sel.appendChild(opt);
+}
+
+// 카드 클릭 드릴다운 — 같은 카드를 다시 누르면 해제
+function ordStatDrilldown(status) {
+  var sel = document.getElementById('statusFilter');
+  if (!sel) { console.warn('[orders] #statusFilter not found'); return; }
+  var next = (sel.value === status) ? '' : status;
+  ordEnsureStatusOption(sel, next);
+  sel.value = next;
+  currentPage = 1;
+  loadOrders();
 }
 
 // 주문 목록
 async function loadOrders() {
   try {
-    const searchQuery = document.getElementById('searchQuery')?.value || '';
-    const statusFilter = document.getElementById('statusFilter')?.value || '';
-    const sortBy = document.getElementById('sortBy')?.value || 'created_at_desc';
-    const dateFrom = document.getElementById('orderDateFrom')?.value || '';
-    const dateTo = document.getElementById('orderDateTo')?.value || '';
-    const priorityFilter = document.getElementById('priorityFilter')?.value || '';
-    const deliveryMethodFilter = document.getElementById('deliveryMethodFilter')?.value || '';
-    const billingStatusFilter = document.getElementById('billingStatusFilter')?.value || '';
-    const overdueFilter = document.getElementById('overdueFilter')?.checked || false;
+    const f = ordReadFilters();
 
-    localStorage.setItem('orders_filter_search', searchQuery);
-    localStorage.setItem('orders_filter_status', statusFilter);
-    localStorage.setItem('orders_filter_sort', sortBy);
+    localStorage.setItem('orders_filter_search', f.search);
+    localStorage.setItem('orders_filter_status', f.status);
+    localStorage.setItem('orders_filter_sort', f.sort);
     localStorage.setItem('orders_filter_page', String(currentPage));
-    localStorage.setItem('orders_filter_delivery_method', deliveryMethodFilter);
-    localStorage.setItem('orders_filter_billing_status', billingStatusFilter);
-    localStorage.setItem('orders_filter_priority', priorityFilter);
-    if (dateFrom) localStorage.setItem('orders_filter_date_from', dateFrom);
+    localStorage.setItem('orders_filter_delivery_method', f.deliveryMethod);
+    localStorage.setItem('orders_filter_billing_status', f.billingStatus);
+    localStorage.setItem('orders_filter_priority', f.priority);
+    if (f.dateFrom) localStorage.setItem('orders_filter_date_from', f.dateFrom);
     else localStorage.removeItem('orders_filter_date_from');
-    if (dateTo) localStorage.setItem('orders_filter_date_to', dateTo);
+    if (f.dateTo) localStorage.setItem('orders_filter_date_to', f.dateTo);
     else localStorage.removeItem('orders_filter_date_to');
 
-    const params = new URLSearchParams();
-    if (searchQuery) params.append('search', searchQuery);
-    if (statusFilter) params.append('status', statusFilter);
-    if (!statusFilter) params.append('exclude_status', 'CANCELLED,QUOTATION');
-    if (priorityFilter) params.append('priority', priorityFilter);
-    if (deliveryMethodFilter) params.append('delivery_method', deliveryMethodFilter);
-    if (billingStatusFilter) params.append('billing_status', billingStatusFilter);
-    if (overdueFilter) params.append('overdue', '1');
-    params.append('sort', sortBy);
+    const params = ordBuildParams(f);
+    params.append('sort', f.sort);
     params.append('page', String(currentPage));
     params.append('limit', '50');
-    if (dateFrom) params.append('date_from', dateFrom);
-    if (dateTo) params.append('date_to', dateTo);
+
+    // 조건 표시(칩·카드 강조)는 필터 값만 있으면 되므로 통계 응답을 기다리지 않는다 — 통계가 실패해도 조건은 보여야 한다.
+    ordRenderFilterChips(f);
+    ordMarkActiveStat(f.status);
+    // 통계 카드도 같은 조건으로 갱신 (목록과 모집단 일치 — 감사 G1). 목록 조회를 막지 않도록 await 하지 않는다.
+    loadOrderStats();
 
     // #421: 로딩 표시(일관 포맷) — 대용량 주문 조회 중 빈 화면 방지
     const _ordTb = document.getElementById('ordersTable');
@@ -419,11 +569,13 @@ async function loadOrders() {
     if (response.data.success) {
       const orders = response.data.data;
       const pagination = response.data.pagination;
+      const summary = response.data.summary;
       const tbody = document.getElementById('ordersTable');
 
       if (orders.length === 0) {
         tbody.innerHTML = '<tr><td colspan="10" class="text-center py-12"><i class="fas fa-inbox text-3xl mb-3 block text-gray-300"></i><div class="text-sm text-gray-500 mb-1">주문이 없습니다.</div></td></tr>';
         ordRenderPagination(pagination || null);
+        ordRenderSummary(summary || null, pagination);
         return;
       }
 
@@ -505,6 +657,7 @@ async function loadOrders() {
         `;
       }).join('');
       ordRenderPagination(pagination || null);
+      ordRenderSummary(summary || null, pagination);
       // selectAll 체크박스 상태 동기화
       var allCb = document.getElementById('selectAllOrders');
       if (allCb) allCb.checked = false;
@@ -565,7 +718,6 @@ async function confirmStatusChange() {
         var _sc = _row.querySelector('td:nth-child(7)');
         if (_sc) _sc.innerHTML = '<span class="px-2 inline-flex items-center text-xs leading-5 font-semibold rounded-full ' + getStatusColor(newStatus) + '"><i class="' + getStatusIcon(newStatus) + ' text-[9px] mr-1"></i>' + getStatusText(newStatus) + '</span>';
       }
-      loadOrderStats();
       loadOrders();
       // Phase 5: 자재 부족 경고
       if (response.data.material_warnings && response.data.material_warnings.length > 0) {
@@ -711,7 +863,6 @@ async function submitCardConfirm() {
     if (response.data.success) {
       closeModal();
       showToast('출고 처리 완료 (확정 ' + confirmedIds.length + '건, 취소 ' + cancelledIds.length + '건)', 'success');
-      loadOrderStats();
       loadOrders();
     } else {
       showToast('출고 처리 실패: ' + response.data.error, 'error');
@@ -831,7 +982,6 @@ async function bulkShipOrder(orderId) {
       else if (remaining > 0) msg += ' (' + remaining + '건 미출고)';
       showToast(msg, 'success');
       document.getElementById('orderModal').remove();
-      loadOrderStats();
       loadOrders();
     } else {
       showToast('출고 처리 실패: ' + (res.data.error || ''), 'error');
@@ -1458,27 +1608,10 @@ async function restoreOrder(orderId, orderNumber) {
 
 async function exportOrdersCsv() {
   try {
-    var params = new URLSearchParams();
-    var searchQuery = document.getElementById('searchQuery')?.value || '';
-    var statusFilter = document.getElementById('statusFilter')?.value || '';
-    var sortBy = document.getElementById('sortBy')?.value || 'created_at_desc';
-    var dateFrom = document.getElementById('orderDateFrom')?.value || '';
-    var dateTo = document.getElementById('orderDateTo')?.value || '';
-    var priorityFilter = document.getElementById('priorityFilter')?.value || '';
-    var deliveryMethodFilter = document.getElementById('deliveryMethodFilter')?.value || '';
-    var billingStatusFilter = document.getElementById('billingStatusFilter')?.value || '';
-    var overdueFilter = document.getElementById('overdueFilter')?.checked || false;
-
-    if (searchQuery) params.append('search', searchQuery);
-    if (statusFilter) params.append('status', statusFilter);
-    if (!statusFilter) params.append('exclude_status', 'CANCELLED,QUOTATION');
-    if (priorityFilter) params.append('priority', priorityFilter);
-    if (deliveryMethodFilter) params.append('delivery_method', deliveryMethodFilter);
-    if (billingStatusFilter) params.append('billing_status', billingStatusFilter);
-    if (overdueFilter) params.append('overdue', '1');
-    params.append('sort', sortBy);
-    if (dateFrom) params.append('date_from', dateFrom);
-    if (dateTo) params.append('date_to', dateTo);
+    // 조회조건 = 화면과 동일 (ordBuildParams SSOT). CSV가 목록과 다른 모집단을 내려받지 않도록 공유한다.
+    var f = ordReadFilters();
+    var params = ordBuildParams(f);
+    params.append('sort', f.sort);
 
     var res = await authFetch('/api/orders/export/csv?' + params.toString());
     if (!res.ok) throw new Error('Export failed');
@@ -1514,7 +1647,11 @@ async function exportOrdersCsv() {
   const savedPriority = localStorage.getItem('orders_filter_priority');
   if (savedSearch) document.getElementById('searchQuery').value = savedSearch;
   var TRANSIENT_STATUSES = ['CANCELLED', 'QUOTATION'];
-  if (savedStatus && TRANSIENT_STATUSES.indexOf(savedStatus) === -1) document.getElementById('statusFilter').value = savedStatus;
+  if (savedStatus && TRANSIENT_STATUSES.indexOf(savedStatus) === -1) {
+    var _sfEl = document.getElementById('statusFilter');
+    ordEnsureStatusOption(_sfEl, savedStatus);  // 저장값이 '생산중'(복수 상태)일 수 있다
+    _sfEl.value = savedStatus;
+  }
   if (savedSort) document.getElementById('sortBy').value = savedSort;
   if (savedPage) currentPage = parseInt(savedPage) || 1;
   // 기본 기간 = 최근 한달 (저장된 필터 없을 때). 과거 데이터는 '날짜 초기화' 후 조회.
@@ -1531,8 +1668,7 @@ async function exportOrdersCsv() {
   if (_qStatus) { var _sf = document.getElementById('statusFilter'); if (_sf) _sf.value = _qStatus; }
   var _qSearch = _up.get('search');
   if (_qSearch) { var _sq = document.getElementById('searchQuery'); if (_sq) _sq.value = _qSearch; }
-  loadOrderStats();
-  loadOrders();
+  loadOrders();   // 통계 카드는 loadOrders() 안에서 같은 조건으로 함께 갱신된다
 })();
 
 // 거래명세서/견적서 iframe 모달

@@ -19,13 +19,15 @@ import {
   setOrderBillingStatus,
   generateCardsForOrder,
 } from './helpers'
+import { buildOrderListFilter, resolveOrderSort, ORDER_SORT_DEFAULT } from './listFilter'
 
 const ordersCoreRouter = new Hono<HonoEnv>()
 ordersCoreRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
 
 ordersCoreRouter.get('/', async (c) => {
   try {
-    const { page = '1', limit = '50', status = '', search = '', sort = 'created_at_desc', date_from = '', date_to = '', exclude_status = '', priority = '', amount_min = '', amount_max = '', delivery_method = '', billing_status = '', overdue = '' } = c.req.query()
+    // 조회조건(status·search·date_from…)은 buildOrderListFilter 가 c.req.query() 에서 직접 읽는다.
+    const { page = '1', limit = '50', sort = ORDER_SORT_DEFAULT } = c.req.query()
     const safeLimit = Math.min(parseInt(limit) || 50, 200)
     const offset = (parseInt(page) - 1) * safeLimit
 
@@ -55,106 +57,14 @@ ordersCoreRouter.get('/', async (c) => {
       LEFT JOIN employees sr ON sr.id = o.sales_rep_id
       LEFT JOIN entities e ON e.id = o.entity_id
     `
-    const params: any[] = []
-    const whereClauses: string[] = []
+    // 조회조건 = listFilter.ts SSOT (목록·카운트·통계·CSV 공유). 여기에 조건을 직접 붙이지 말 것.
+    const listFilter = buildOrderListFilter(c)
+    const params: any[] = [...listFilter.params]
+    query += listFilter.where
 
-    // 주문 가시성 필터 (멀티법인 협업): 소유(청구) 법인 + 담당 품목 보유 법인. ADMIN/코디네이터는 전체.
-    const ef = orderVisibilityFilter(c, 'o')
-    if (ef.params.length > 0) {
-      whereClauses.push(ef.clause.replace(' AND ', ''))
-      params.push(...ef.params)
-    }
+    // 정렬 = listFilter.ts SSOT (목록·CSV 공유)
+    const orderBy = resolveOrderSort(sort)
 
-    // Status filter
-    if (status) {
-      whereClauses.push('o.status = ?')
-      params.push(status)
-    }
-
-    // Search filter (주문번호 · 거래처명 · 품목명) — #4 재주문 재검색 편의: 품목명으로도 과거주문 탐색
-    if (search) {
-      whereClauses.push('(o.order_number LIKE ? OR c.client_name LIKE ? OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND oi.item_name LIKE ?))')
-      const searchPattern = `%${search}%`
-      params.push(searchPattern, searchPattern, searchPattern)
-    }
-
-    // Date range filter
-    if (date_from) {
-      whereClauses.push('o.order_date >= ?')
-      params.push(date_from)
-    }
-    if (date_to) {
-      whereClauses.push('o.order_date <= ?')
-      params.push(date_to)
-    }
-
-    if (exclude_status) {
-      const excludes = exclude_status.split(',').map(s => s.trim()).filter(Boolean)
-      if (excludes.length === 1) {
-        whereClauses.push('o.status != ?')
-        params.push(excludes[0])
-      } else if (excludes.length > 1) {
-        whereClauses.push(`o.status NOT IN (${excludes.map(() => '?').join(',')})`)
-        params.push(...excludes)
-      }
-    }
-
-    // Priority filter
-    if (priority) {
-      whereClauses.push('o.priority = ?')
-      params.push(priority)
-    }
-
-    // Amount range filter
-    if (amount_min) {
-      const min = parseFloat(amount_min)
-      if (!isNaN(min)) { whereClauses.push('o.final_amount >= ?'); params.push(min) }
-    }
-    if (amount_max) {
-      const max = parseFloat(amount_max)
-      if (!isNaN(max)) { whereClauses.push('o.final_amount <= ?'); params.push(max) }
-    }
-
-    // Delivery method filter
-    if (delivery_method) {
-      whereClauses.push('o.delivery_method = ?')
-      params.push(delivery_method)
-    }
-
-    // Billing status filter
-    if (billing_status) {
-      if (billing_status === 'NONE') {
-        whereClauses.push("(o.billing_status IS NULL OR o.billing_status = '')")
-      } else {
-        whereClauses.push('o.billing_status = ?')
-        params.push(billing_status)
-      }
-    }
-
-    // 출고지연: 납기일 경과 + 미출고(SHIPPED/COMPLETED/취소/견적 제외)
-    if (overdue === '1') {
-      whereClauses.push("o.delivery_date IS NOT NULL AND o.delivery_date != '' AND o.delivery_date < date('now', '+9 hours') AND o.status NOT IN ('SHIPPED','COMPLETED','CANCELLED','QUOTATION')")
-    }
-
-    if (whereClauses.length > 0) {
-      query += ' WHERE ' + whereClauses.join(' AND ')
-    }
-
-    // Sorting
-    // ⚠️ 정렬 규약(CLAUDE.md): 모든 옵션에 고유키(o.id) tie-break 필수.
-    //   이관 주문은 created_at이 'order_date 09:00:00'로 고정돼 동값 군집이 최대 29건 →
-    //   tie-break 없으면 필터·인덱스 경로에 따라 군집 내부가 id ASC↔DESC로 반전되고
-    //   LIMIT/OFFSET 페이징에서 행 중복·누락이 발생. NULL 처리는 D1 방언(NULLS LAST) 대신 IS NULL.
-    const sortOptions: Record<string, string> = {
-      'created_at_desc': 'o.created_at DESC, o.id DESC',
-      'created_at_asc': 'o.created_at ASC, o.id ASC',
-      'delivery_date_asc': 'o.delivery_date IS NULL, o.delivery_date ASC, o.id DESC',
-      'delivery_date_desc': 'o.delivery_date IS NULL, o.delivery_date DESC, o.id DESC',
-      'final_amount_desc': 'o.final_amount DESC, o.id DESC',
-      'priority_desc': "CASE WHEN o.priority = 'URGENT' THEN 0 ELSE 1 END, o.delivery_date IS NULL, o.delivery_date ASC, o.id DESC"
-    }
-    const orderBy = sortOptions[sort] || sortOptions['created_at_desc']
-    
     query += ` ORDER BY ${orderBy} LIMIT ? OFFSET ?`
     params.push(safeLimit, offset)
 
@@ -199,87 +109,33 @@ ordersCoreRouter.get('/', async (c) => {
       }
     } catch (_consErr) { /* 배지 파생 실패는 목록을 막지 않음 */ }
 
-    // Get total count
-    let countQuery = 'SELECT COUNT(*) as count FROM orders o LEFT JOIN clients c ON o.client_id = c.id'
-    const countParams: any[] = []
-    const countWhereClauses: string[] = []
-
-    // 주문 가시성 필터 (목록과 일치)
-    const efCount = orderVisibilityFilter(c, 'o')
-    if (efCount.params.length > 0) {
-      countWhereClauses.push(efCount.clause.replace(' AND ', ''))
-      countParams.push(...efCount.params)
-    }
-
-    if (status) {
-      countWhereClauses.push('o.status = ?')
-      countParams.push(status)
-    }
-
-    if (search) {
-      countWhereClauses.push('(o.order_number LIKE ? OR c.client_name LIKE ? OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND oi.item_name LIKE ?))')
-      const searchPattern = `%${search}%`
-      countParams.push(searchPattern, searchPattern, searchPattern)
-    }
-
-    // Date range filter (count query)
-    if (date_from) {
-      countWhereClauses.push('o.order_date >= ?')
-      countParams.push(date_from)
-    }
-    if (date_to) {
-      countWhereClauses.push('o.order_date <= ?')
-      countParams.push(date_to)
-    }
-
-    if (exclude_status) {
-      const excludes = exclude_status.split(',').map(s => s.trim()).filter(Boolean)
-      if (excludes.length === 1) {
-        countWhereClauses.push('o.status != ?')
-        countParams.push(excludes[0])
-      } else if (excludes.length > 1) {
-        countWhereClauses.push(`o.status NOT IN (${excludes.map(() => '?').join(',')})`)
-        countParams.push(...excludes)
-      }
-    }
-
-    if (priority) {
-      countWhereClauses.push('o.priority = ?')
-      countParams.push(priority)
-    }
-    if (amount_min) {
-      countWhereClauses.push('o.final_amount >= ?')
-      countParams.push(parseFloat(amount_min))
-    }
-    if (amount_max) {
-      countWhereClauses.push('o.final_amount <= ?')
-      countParams.push(parseFloat(amount_max))
-    }
-    if (delivery_method) {
-      countWhereClauses.push('o.delivery_method = ?')
-      countParams.push(delivery_method)
-    }
-    if (billing_status) {
-      if (billing_status === 'NONE') {
-        countWhereClauses.push("(o.billing_status IS NULL OR o.billing_status = '')")
-      } else {
-        countWhereClauses.push('o.billing_status = ?')
-        countParams.push(billing_status)
-      }
-    }
-
-    if (overdue === '1') {
-      countWhereClauses.push("o.delivery_date IS NOT NULL AND o.delivery_date != '' AND o.delivery_date < date('now', '+9 hours') AND o.status NOT IN ('SHIPPED','COMPLETED','CANCELLED','QUOTATION')")
-    }
-
-    if (countWhereClauses.length > 0) {
-      countQuery += ' WHERE ' + countWhereClauses.join(' AND ')
-    }
-
-    const countRow = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ count: number }>()
+    // 총 건수 + 금액 합계 — 목록과 동일한 조회조건(listFilter SSOT)이라 화면의 "총 N건"과 통계 카드가 갈리지 않는다.
+    // ⚠️ 합계는 '현재 페이지 50건'이 아니라 '조회조건 전체' 기준이다(이카운트 합계행과 같은 의미).
+    const countQuery = `SELECT COUNT(*) as count,
+        COALESCE(SUM(o.total_amount), 0) as sum_supply,
+        COALESCE(SUM(o.vat_amount), 0) as sum_vat,
+        COALESCE(SUM(o.final_amount), 0) as sum_final
+      FROM orders o LEFT JOIN clients c ON o.client_id = c.id${listFilter.where}`
+    const countRow = await c.env.DB.prepare(countQuery).bind(...listFilter.params).first<{
+      count: number; sum_supply: number; sum_vat: number; sum_final: number
+    }>()
     const count = countRow?.count || 0
 
-    const response: PaginatedResponse<Order> = {
+    // 수량 합계 — 주문:품목이 1:N 이라 목록 쿼리에 JOIN 하면 주문 행이 불어나 금액이 중복 합산된다.
+    // 그래서 별도 조회 + 최상위 라인만(자식 라인은 부모 수량에 이미 포함).
+    let sumQty = 0
+    try {
+      const qtyRow = await c.env.DB.prepare(
+        `SELECT COALESCE(SUM(oi.quantity), 0) as qty
+         FROM order_items oi
+         WHERE (oi.parent_item_id IS NULL OR oi.parent_item_id = 0)
+           AND oi.order_id IN (SELECT o.id FROM orders o LEFT JOIN clients c ON o.client_id = c.id${listFilter.where})`
+      ).bind(...listFilter.params).first<{ qty: number }>()
+      sumQty = Number(qtyRow?.qty) || 0
+    } catch (_qtyErr) { /* 수량 집계 실패는 목록을 막지 않음 (합계 바에서 '-' 표시) */ }
+
+    // summary = 조회조건 전체의 합계 바 (건수·수량·공급가·부가세·합계)
+    const response: PaginatedResponse<Order> & { summary: Record<string, number> } = {
       success: true,
       data: results as unknown as Order[],
       pagination: {
@@ -287,6 +143,13 @@ ordersCoreRouter.get('/', async (c) => {
         limit: safeLimit,
         total: count,
         total_pages: Math.ceil(count / safeLimit)
+      },
+      summary: {
+        count,
+        quantity: sumQty,
+        supply_amount: Number(countRow?.sum_supply) || 0,
+        vat_amount: Number(countRow?.sum_vat) || 0,
+        final_amount: Number(countRow?.sum_final) || 0,
       }
     }
 
