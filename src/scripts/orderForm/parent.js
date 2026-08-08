@@ -1032,6 +1032,16 @@
                     var spEl = document.getElementById('shippingPayment');
                     if (spEl) spEl.value = order.shipping_payment || '';
                     document.getElementById('notes').value = order.notes || '';
+                    // 담당자 복원 — ⚠️ 옵션 로드(ofLoadSalesReps)와 **순서가 보장되지 않는다.**
+                    //   옵션이 없을 때 .value 에 넣으면 select 는 조용히 '' 가 된다(담당자 소실).
+                    //   그래서 의도값을 dataset 에 남기고, 로더가 채운 뒤 그 값을 적용한다.
+                    const salesRepEl = document.getElementById('salesRepId');
+                    if (!salesRepEl) console.warn('[orderForm] #salesRepId not found');
+                    else {
+                        const want = order.sales_rep_id ? String(order.sales_rep_id) : '';
+                        salesRepEl.dataset.pending = want;
+                        salesRepEl.value = want;              // 옵션이 이미 있으면 즉시 반영
+                    }
                     const contactPhoneEl = document.getElementById('contactPhone');
                     if (contactPhoneEl) contactPhoneEl.value = order.contact_phone || '';
                     const contactMobileEl = document.getElementById('contactMobile');

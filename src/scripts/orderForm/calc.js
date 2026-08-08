@@ -699,6 +699,14 @@
                     delivery_time: (function() { var h = document.getElementById('deliveryTimeHour').value; var m = document.getElementById('deliveryTimeMinute').value; return h ? (h + ':' + (m || '00')) : null; })(),
                     discount_amount: parseMoney(document.getElementById('discountAmount').value),
                     notes: document.getElementById('notes').value,
+                    // 담당자 — 비우면 서버가 로그인 사용자로 채운다(employees.user_id 경유).
+                    //   ⚠️ ID 를 못 찾으면 undefined 가 아니라 **null** 을 보내야 한다 — 수정 API 가
+                    //      COALESCE 로 기존 값을 지키므로 null 이 「미변경」 신호다.
+                    sales_rep_id: (function () {
+                        var el = document.getElementById('salesRepId');
+                        if (!el) { console.warn('[orderForm] #salesRepId not found'); return null; }
+                        return el.value ? Number(el.value) : null;
+                    })(),
                     contact_phone: document.getElementById('contactPhone').value.trim() || null,
                     contact_mobile: document.getElementById('contactMobile').value.trim() || null,
                     shipping_payment: document.getElementById('shippingPayment').value || null,

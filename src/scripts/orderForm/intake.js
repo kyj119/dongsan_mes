@@ -115,11 +115,38 @@
             };
             // client.js selectClient() 훅 — 거래처 변경 시 재조회(주문선행 자동필터는 트레이 오픈 시 반영)
             window.ofIntakeOnClientSelected = function() { ofIntakeRefreshBadge(); };
+            // ── 담당자 셀렉트 채우기 (#604) ───────────────────────────────────────
+            // 담당자는 `employees` 를 가리킨다 — MES 계정이 없는 영업(정해선 등)도 골라야 하기 때문.
+            //   재직자만 담고 부서를 같이 보여준다(동명이인 구분).
+            //   비워 두면 서버가 로그인 사용자로 채운다(create.ts). 그래서 여기서 강제 선택하지 않는다.
+            async function ofLoadSalesReps() {
+                var el = document.getElementById('salesRepId');
+                if (!el) { console.warn('[orderForm] #salesRepId not found'); return; }
+                try {
+                    var res = await axios.get('/api/hr/employees?limit=300&status=ACTIVE');
+                    var list = (res.data && (res.data.data || res.data.employees || res.data)) || [];
+                    if (!Array.isArray(list)) list = list.employees || [];
+                    list.sort(function(a, b) { return String(a.name).localeCompare(String(b.name), 'ko'); });
+                    // 수정 진입이 먼저 끝났으면 dataset.pending 에 의도값이 있다(parent.js 참조).
+                    //   옵션을 갈아끼우면 현재 선택이 날아가므로 **둘 다** 본다.
+                    var want = el.dataset.pending || el.value;
+                    el.innerHTML = '<option value="">(미지정 — 저장 시 로그인 사용자)</option>'
+                        + list.map(function(e) {
+                            return '<option value="' + e.id + '">' + e.name
+                                + (e.department ? ' · ' + e.department : '') + '</option>';
+                        }).join('');
+                    if (want) el.value = want;
+                } catch (err) {
+                    console.warn('[orderForm] 담당자 목록 로드 실패', err);
+                }
+            }
+
             // 폼 로드 시 1회 노출 (거래처 선택 전에도 대기물 보이게)
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', function() { ofIntakeRefreshBadge(); });
+                document.addEventListener('DOMContentLoaded', function() { ofIntakeRefreshBadge(); ofLoadSalesReps(); });
             } else {
                 ofIntakeRefreshBadge();
+                ofLoadSalesReps();
             }
 
             // ── 트레이 렌더 ──────────────────────────────────────────────
