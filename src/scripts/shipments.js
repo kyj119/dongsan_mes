@@ -626,7 +626,7 @@ function updateBadges() {
   document.getElementById('badgeHanjin').textContent = '한진택배 ' + hc + '건';
   document.getElementById('badgeQuick').textContent = '퀵·용차 ' + qc + '건';
   var jb = document.getElementById('badgeJikbae');
-  if (jb) jb.textContent = '직배 ' + jc + '건';
+  if (jb) jb.textContent = '직접배송 ' + jc + '건';
 }
 
 // ========== 저장 함수 ==========

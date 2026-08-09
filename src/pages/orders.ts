@@ -91,7 +91,7 @@ export function ordersPage(c: Context<HonoEnv>) {
               <option value="대신택배">대신택배</option>
               <option value="대신화물">대신화물</option>
               <option value="한진택배">한진택배</option>
-              <option value="직배">직배</option>
+              <option value="직접배송">직접배송</option>
               <option value="용차">용차</option>
               <option value="퀵">퀵</option>
               <option value="방문수령">방문수령</option>

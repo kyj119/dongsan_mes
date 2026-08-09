@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { OWN_DELIVERY_METHODS } from '../constants/deliveryMethod'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
 import { requireAnyPagePermission, requireEditOrRole, requireAccessOrRole } from '../middleware/permissions'
@@ -343,7 +344,7 @@ shipmentsRouter.get('/consolidation-candidates', requireAccessOrRole('/shipments
 
     // ② 같은 권역(우편번호 앞 3자리) × 자가배송(직배/용차/퀵) → 동선 묶음 후보 (당일 건만)
     //    ①에 이미 잡힌 거래처는 제외. 복수 법인 겹침 또는 단일 법인이라도 3건+ 묶음.
-    const OWN_DELIVERY = new Set(['직배', '용차', '퀵'])
+    const OWN_DELIVERY = new Set<string>(OWN_DELIVERY_METHODS)   // constants/deliveryMethod.ts SSOT (과거 표기 '직배' 포함)
     const sameClientIds = new Set(sameClient.map(g => g.client_id))
     const byRegion = new Map<string, ConsolidationRow[]>()
     for (const r of results) {

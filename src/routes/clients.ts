@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { DELIVERY_METHODS, isValidDeliveryMethod } from '../constants/deliveryMethod'
 import type { HonoEnv } from '../types/env'
 import type { Client, ApiResponse, PaginatedResponse } from '../types/models'
 import { authMiddleware, requireRole } from '../middleware/auth'
@@ -960,8 +961,9 @@ clientsRouter.patch('/:id', requireEditOrRole('/clients', 'MANAGER'), async (c) 
       params.push(clientData.is_active)
     }
     if (clientData.delivery_method !== undefined) {
-      if (!['대신택배', '대신화물', '한진택배', '직배', '용차', '퀵', '방문수령'].includes(clientData.delivery_method)) {
-        return c.json({ success: false, error: 'delivery_method must be one of: 대신택배, 대신화물, 한진택배, 직배, 용차, 퀵, 방문수령' }, 400)
+      // 검증 = constants/deliveryMethod.ts SSOT (과거 표기 '직배' 도 하위호환으로 통과)
+      if (!isValidDeliveryMethod(clientData.delivery_method)) {
+        return c.json({ success: false, error: 'delivery_method must be one of: ' + DELIVERY_METHODS.join(', ') }, 400)
       }
       updates.push('delivery_method = ?')
       params.push(clientData.delivery_method)

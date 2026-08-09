@@ -73,7 +73,7 @@
                         // 거래처 기본 배송방법 → 출고방법 자동선택 (한글 1:1, 구 enum 호환)
                         var dmEl = document.getElementById('distDeliveryMethod');
                         if (dmEl && cl.delivery_method) {
-                            var DM_MAP = { 'SAME': '대신택배', 'FREIGHT': '대신화물', 'DIRECT': '직배', 'PICKUP': '방문수령' };
+                            var DM_MAP = { 'SAME': '대신택배', 'FREIGHT': '대신화물', 'DIRECT': '직접배송', 'PICKUP': '방문수령' };
                             var mapped = DM_MAP[cl.delivery_method] || cl.delivery_method;
                             var hasOpt = Array.prototype.some.call(dmEl.options, function(o) { return o.value === mapped; });
                             if (hasOpt) dmEl.value = mapped;

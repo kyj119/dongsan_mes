@@ -138,7 +138,7 @@ export function shipmentsPage(c: Context<HonoEnv>) {
           <span id="badgeDaesintaekbae" class="ds-chip" onclick="scrollToSection('sectionDaesintaekbae')"><i class="fas fa-box" style="margin-right:4px"></i>대신택배 0건</span>
           <span id="badgeHanjin" class="ds-chip" onclick="scrollToSection('sectionHanjin')"><i class="fas fa-box" style="margin-right:4px"></i>한진택배 0건</span>
           <span id="badgeQuick" class="ds-chip" onclick="scrollToSection('sectionQuick')"><i class="fas fa-bolt" style="margin-right:4px"></i>퀵·용차 0건</span>
-          <span id="badgeJikbae" class="ds-chip" onclick="scrollToSection('sectionJikbae')"><i class="fas fa-truck-pickup" style="margin-right:4px"></i>직배 0건</span>
+          <span id="badgeJikbae" class="ds-chip" onclick="scrollToSection('sectionJikbae')"><i class="fas fa-truck-pickup" style="margin-right:4px"></i>직접배송 0건</span>
         </div>
         <div class="ds-filter-actions">
           <button onclick="printShipmentList('daeshin')" class="ds-btn ds-btn-secondary ds-btn-sm" title="대신(화물+택배) 출고 리스트 A4 인쇄">
@@ -285,10 +285,10 @@ export function shipmentsPage(c: Context<HonoEnv>) {
         </table>
       </div>
 
-      <!-- 직배 섹션 (자사 기사 배송, 배송 후속 P2) -->
+      <!-- 직접배송 섹션 (자사 기사 배송, 배송 후속 P2). 내부 키 jikbae 는 그대로 — 식별자라 바꿀 이유가 없다 -->
       <div id="sectionJikbae" class="mb-6 ds-card overflow-hidden">
         <div class="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-          <h3 class="text-sm font-semibold text-gray-700"><i class="fas fa-truck-pickup mr-1"></i>직배</h3>
+          <h3 class="text-sm font-semibold text-gray-700"><i class="fas fa-truck-pickup mr-1"></i>직접배송</h3>
           <div class="flex items-center gap-2">
             <button id="btnSendJikbae" onclick="openShipmentSendModal('jikbae')" class="px-2 py-1 text-xs border border-gray-300 text-gray-600 rounded hover:bg-gray-50 hidden">
               <i class="fas fa-paper-plane mr-1"></i>선택 발송
@@ -468,7 +468,6 @@ export function shipmentsPage(c: Context<HonoEnv>) {
               <option value="대신택배">대신택배</option>
               <option value="대신화물">대신화물</option>
               <option value="한진택배">한진택배</option>
-              <option value="직배">직배</option>
               <option value="직접배송">직접배송</option>
               <option value="용차">용차</option>
               <option value="퀵">퀵</option>
