@@ -19,7 +19,7 @@ import {
   setOrderBillingStatus,
   generateCardsForOrder,
 } from './helpers'
-import { buildOrderListFilter, resolveOrderSort, ORDER_SORT_DEFAULT, VOUCHER_ORDER_SQL } from './listFilter'
+import { buildOrderListFilter, resolveOrderSort, ORDER_SORT_DEFAULT, VOUCHER_ORDER_SQL, SHIP_DATE_ESTIMATED_SQL } from './listFilter'
 
 const ordersCoreRouter = new Hono<HonoEnv>()
 ordersCoreRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
@@ -115,10 +115,10 @@ ordersCoreRouter.get('/', async (c) => {
         COALESCE(SUM(o.total_amount), 0) as sum_supply,
         COALESCE(SUM(o.vat_amount), 0) as sum_vat,
         COALESCE(SUM(o.final_amount), 0) as sum_final,
-        SUM(CASE WHEN o.shipped_at IS NULL THEN 1 ELSE 0 END) as ship_date_missing
+        SUM(CASE WHEN ${SHIP_DATE_ESTIMATED_SQL} THEN 1 ELSE 0 END) as ship_date_estimated
       FROM orders o LEFT JOIN clients c ON o.client_id = c.id${listFilter.where}`
     const countRow = await c.env.DB.prepare(countQuery).bind(...listFilter.params).first<{
-      count: number; sum_supply: number; sum_vat: number; sum_final: number; ship_date_missing: number
+      count: number; sum_supply: number; sum_vat: number; sum_final: number; ship_date_estimated: number
     }>()
     const count = countRow?.count || 0
 
@@ -166,7 +166,9 @@ ordersCoreRouter.get('/', async (c) => {
         supply_amount: Number(countRow?.sum_supply) || 0,
         vat_amount: Number(countRow?.sum_vat) || 0,
         final_amount: Number(countRow?.sum_final) || 0,
-        ship_date_missing: Number(countRow?.ship_date_missing) || 0,
+        // 출고일이 추정치(거래일)인 건수 — 화면에서 「추정」 배지·칩으로 드러낸다.
+        // 실제 출고시각이 기록되기 시작하면 자동으로 0 이 된다.
+        ship_date_estimated: Number(countRow?.ship_date_estimated) || 0,
         voucher_excluded: voucherExcluded,
       }
     }

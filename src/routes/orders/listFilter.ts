@@ -32,6 +32,15 @@ import { kstYmd } from '../../utils/kstDate'
 export const SHIP_DATE_EXPR = 'COALESCE(o.shipped_at, o.order_date)'
 
 /**
+ * 출고일이 **추정치**인지 판별하는 지문.
+ * 이 시스템에 실제 출고시각은 (2026-08-09 실측) **0건**이다 — 이카운트 원본에 출고일 항목 자체가 없어
+ * 이관 백필(0520·0527)이 `order_date 00:00:00` 을 넣었다. NULL 이거나 이 패턴이면 추정치다.
+ * 실제 출고 시각이 기록되기 시작하면 시분초가 00:00:00 이 아니게 되어 자동으로 빠진다.
+ */
+export const SHIP_DATE_ESTIMATED_SQL =
+  "(o.shipped_at IS NULL OR o.shipped_at = o.order_date || ' 00:00:00')"
+
+/**
  * 회계 전표성 주문 — 기초채권 이월(`*OPEN*`)·법인간 미러(`ICM-*`). prod 195건(5.4억)이 status=SHIPPED 다.
  * 실제 출고가 아니므로 출고 이력에서 제외한다(안 하면 "2025-12-31 출고 5.3억"이 뜬다).
  * ⚠️ 명명 규칙 의존은 이관 규칙이 바뀌면 깨진다 — `orders.is_voucher` 플래그 신설이 후속 과제(§7).

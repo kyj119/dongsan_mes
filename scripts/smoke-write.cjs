@@ -11,12 +11,12 @@
  *   실사용 주문이 아직 0건이라 피해가 없었을 뿐, 잡아낸 게 아니라 운이었다.
  *
  * ★ 안전 설계 — 흔적을 남기지 않는다
- *   ① **세션 법인에 만들고 즉시 지운다.** 처음엔 entity 99 로 만들려 했는데 **삭제가 404** 였다 —
- *      `DELETE /api/orders/:id` 가 `entityFilter` 로 타 법인 삭제를 막기 때문이다(IDOR 방지 #333, 정상 동작).
- *      `entityId` 는 JWT 에서 오고 헤더로 못 바꾸므로 99 로 지우려면 99 소속 계정이 따로 있어야 한다 —
- *      **삭제 경로를 검증하는 게 이 스모크의 절반**이라, 계정을 늘리기보다 세션 법인에 만들고 지우는 쪽을 택했다.
- *   ①-b ⚠️ 그래서 **번호 시퀀스를 하나 소진한다**(E1-20260809-001 을 스모크가 쓰면 실주문은 002 부터).
- *      결번이 아니라 순번이 밀리는 것뿐이지만, **쓰기 라우트를 건드린 배포에서만 돌릴 것.**
+ *   ① **entity 99(E2E 테스트)로 전환해서 만들고 지운다.**
+ *      `entityId` 는 JWT 에 박혀 있어 헤더로 못 바꾸지만 **`POST /api/auth/switch-entity` 가 새 JWT 를 준다.**
+ *      99 세션이면 `entityFilter` 도 99 라 **삭제까지 통과**한다(첫 판은 세션 법인 1 로 만들어
+ *      실법인 번호 시퀀스를 소진했다 — E1-...-001 을 스모크가 먹으면 실주문이 002 부터 시작한다).
+ *      99 는 집계·원장·리포트에서 실법인(1·2·3)과 섞이지 않는다.
+ *   ①-b 전환에 실패하면 **중단한다.** 실법인에 만들 바에는 안 도는 게 낫다.
  *   ② 만든 것은 **반드시 지운다.** 실패해도 `finally` 로 정리하고, 정리 실패는 별도로 보고한다
  *      (조용히 남기면 다음 실행이 그 잔재를 실데이터로 착각한다).
  *   ③ 식별자에 `SMOKEW` 마커를 넣어 **잔재가 남아도 즉시 판별**된다.
@@ -37,6 +37,7 @@ const USER = process.env.SMOKE_USER || 'admin'
 const PASS = process.env.SMOKE_PASS || 'password'
 const KEEP = process.argv.includes('--keep')
 const MARK = 'SMOKEW'
+const E2E_ENTITY = 99      // entities 에 「E2E 테스트」로 등록돼 있다
 
 let TOKEN = ''
 const created = []   // { label, path, id } — 역순으로 정리한다
@@ -61,6 +62,12 @@ async function login() {
   // ★ 토큰은 `data.token` 중첩이다 — 최상위 `token` 으로 읽으면 조용히 undefined 가 된다.
   TOKEN = r.json && r.json.data && r.json.data.token
   if (!TOKEN) throw new Error(`로그인 실패 (${r.status}) ${r.text.slice(0, 200)}`)
+
+  // ★ E2E 법인으로 전환 — 새 JWT 를 받는다. 실패하면 **중단**한다(실법인에 만들지 않는다).
+  const sw = await api('POST', '/api/auth/switch-entity', { entity_id: E2E_ENTITY })
+  const t2 = sw.json && sw.json.data && sw.json.data.token
+  if (!t2) throw new Error(`법인 전환 실패 (${sw.status}) ${sw.text.slice(0, 200)} — 실법인 오염 방지를 위해 중단`)
+  TOKEN = t2
 }
 
 const results = []
@@ -78,6 +85,7 @@ async function scenarioOrder() {
   const r = await api('POST', '/api/orders', {
     client_id: 1,
     delivery_date: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10),
+    billing_entity_id: E2E_ENTITY,
     notes: `${MARK} 쓰기 스모크`,
     items: [{ item_name: `${MARK}-품목`, quantity: 1, unit_price: 1000 }],
   })
@@ -92,8 +100,8 @@ async function scenarioOrder() {
   if (!o) return record(label, false, `조회 ${g.status}`)
   // ★ 값 검증까지 한다 — 생성이 200 이어도 필드가 엉뚱하게 들어갔으면 읽어야 안다.
   //   (`sales_rep_id` 바인드 누락은 INSERT 자체를 던졌지만, 자리만 밀린 버그는 200 을 주고 값이 틀린다.)
-  if (!o.order_number || !String(o.order_number).includes('-')) {
-    return record(label, false, `주문번호가 이상하다: ${o.order_number}`)
+  if (Number(o.entity_id) !== E2E_ENTITY) {
+    return record(label, false, `entity_id 가 ${o.entity_id} — ${E2E_ENTITY} 로 안 갔다(실법인 오염)`)
   }
   record(label, true, `#${id} ${o.order_number}`)
 }
@@ -103,6 +111,7 @@ async function scenarioPurchaseOrder() {
   const r = await api('POST', '/api/purchase-orders', {
     supplier_id: 1,
     order_date: new Date().toISOString().slice(0, 10),
+    entity_id: E2E_ENTITY,
     notes: `${MARK} 쓰기 스모크`,
     items: [{ item_name: `${MARK}-자재`, quantity: 1, unit_price: 1000, amount: 1000 }],
   })
@@ -120,6 +129,10 @@ async function scenarioPurchaseOrder() {
   const g = await api('GET', `/api/purchase-orders/${id}`)
   const po = g.json && g.json.data
   if (!po) return record(label, false, `조회 ${g.status}`)
+  // ★ 이 검증이 본체 버그를 잡았다 — 발주가 body 의 `entity_id` 를 무시하고 세션 법인에 만들었다.
+  if (Number(po.entity_id) !== E2E_ENTITY) {
+    return record(label, false, `entity_id 가 ${po.entity_id} — ${E2E_ENTITY} 로 안 갔다(실법인 오염)`)
+  }
   record(label, true, `#${id} ${po.po_number || d.po_number}`)
 }
 
@@ -141,7 +154,7 @@ async function scenarioClient() {
 
 // ── 실행 ────────────────────────────────────────────────────────────────
 ;(async () => {
-  console.log(`▶ 쓰기 스모크: ${BASE} (세션 법인에 생성 후 즉시 삭제 · 마커 ${MARK})\n`)
+  console.log(`▶ 쓰기 스모크: ${BASE} (entity ${E2E_ENTITY} 로 전환 후 생성·삭제 · 마커 ${MARK})\n`)
   try {
     await login()
   } catch (e) {

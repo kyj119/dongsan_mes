@@ -232,10 +232,19 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       }, 400)
     }
 
+    // 귀속 법인: 명시값 우선, 없으면 세션 법인 (주문 생성과 동형 — `orders/create.ts`)
+    // ⚠️ 불변식 "번호 E{eid} = 행 entity_id" → **채번도 이 값을 써야 한다**(세션 법인 X).
+    //    이걸 안 지키면 번호 접두와 행 entity_id 가 갈린다 — 주문에서 겪은 그 버그다.
+    // ★ 이전엔 body 의 `entity_id` 를 아예 안 봤다. `entity_id: 99` 를 보내도 세션 법인(E1)에
+    //   생성돼 **E2E 가 실법인을 오염**시켰다(쓰기 스모크가 잡았다, 2026-08-09).
+    const poEntityId = (data.entity_id && Number(data.entity_id) > 0)
+      ? Number(data.entity_id)
+      : (getEntityId(c) || 1)
+
     // 발주번호 자동생성: YYYYMMDD-P001
     const dateStr = kstYmdCompact()
 
-    const poNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_orders', 'po_number', getEntityId(c) || 1, dateStr, { suffix: 'P' })
+    const poNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_orders', 'po_number', poEntityId, dateStr, { suffix: 'P' })
 
     // 금액 계산
     let totalAmount = 0
@@ -283,7 +292,7 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       initialStatus === 'CONFIRMED' ? (user?.id || 1) : null,
       data.delivery_date || null,
       data.delivery_location || null,
-      getEntityId(c) || 1
+      poEntityId          // ★ 채번(poNumber)과 **같은 값**이어야 한다 — 갈리면 번호 접두와 행이 어긋난다
     ).run()
 
     const poId = poResult.meta.last_row_id

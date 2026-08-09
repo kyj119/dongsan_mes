@@ -1855,8 +1855,10 @@ function histRenderChips(f, summary) {
   if (summary && summary.voucher_excluded > 0) {
     items.push({ label: '회계 전표 ' + Number(summary.voucher_excluded).toLocaleString() + '건 제외', tone: 'static' });
   }
-  if (summary && summary.ship_date_missing > 0) {
-    items.push({ label: '출고일 미기록 ' + Number(summary.ship_date_missing).toLocaleString() + '건 포함 (주문일로 대체)', tone: 'warn' });
+  if (summary && summary.ship_date_estimated > 0) {
+    // 실제 출고시각이 있는 행은 (2026-08-09 실측) 0건 — 전부 이관 백필의 거래일 추정치다.
+    // "미기록"이 아니라 "추정"으로 적는 이유: 값은 채워져 있지만 실제 출고 시각이 아니다.
+    items.push({ label: '출고일 추정 ' + Number(summary.ship_date_estimated).toLocaleString() + '건 (거래일 사용)', tone: 'warn' });
   }
   window.dsListUx.renderChips('histFilterChips', items);
 }
@@ -1907,11 +1909,13 @@ function histRenderRows(rows) {
     return;
   }
   tbody.innerHTML = rows.map(function(o) {
-    // 출고일: shipped_at 이 정본. 없으면 주문일로 대체하되 그 사실을 배지로 드러낸다.
-    var shipped = o.shipped_at ? String(o.shipped_at).slice(0, 10) : '';
-    var shipCell = shipped
-      ? shipped
-      : ((o.order_date || '-') + ' <span class="ds-cond ds-cond-warn" style="padding:1px 5px;font-size:10px">주문일 대체</span>');
+    // 출고일: shipped_at 이 정본. 다만 이관분은 백필(0520·0527)이 넣은 **거래일 추정치**라
+    //   값이 있다고 실제 출고일인 게 아니다 → 지문(order_date 00:00:00)으로 판별해 「추정」을 붙인다.
+    //   실제 출고시각이 기록되기 시작하면 시분초가 달라져 배지가 자동으로 빠진다.
+    var shipDate = o.shipped_at ? String(o.shipped_at).slice(0, 10) : (o.order_date || '');
+    var isEstimated = !o.shipped_at || String(o.shipped_at) === (o.order_date + ' 00:00:00');
+    var shipCell = (shipDate || '-')
+      + (isEstimated ? ' <span class="ds-cond ds-cond-warn" style="padding:1px 5px;font-size:10px" title="이관 백필값 — 실제 출고 시각이 아니라 거래일입니다">추정</span>' : '');
 
     var spec = (o.main_item_width && o.main_item_height)
       ? ' <span class="text-xs text-gray-500">[' + o.main_item_width + '×' + o.main_item_height + ']</span>' : '';
