@@ -94,10 +94,9 @@ window.onCategoryChange = function() {
 };
 
 // ── 소재(print_media) 폐기 — no-op (단순 구조 모델은 원단=품목, product_materials 연결) ──
-function loadLinkedMediaDisplay(itemId) {
-    var container = document.getElementById('linkedMediaDisplay');
-    if (container) container.innerHTML = '<span class="text-xs text-gray-400">—</span>';
-}
+// DOM(#linkedMediaDisplay·#parentMediaArea·#parentMediaId)은 폐기와 함께 사라졌다.
+// 남아 있던 조회 5건이 check:dom 을 상시 경고 상태로 만들어 진짜 회귀를 가렸다 → 조회만 제거(2026-08-09).
+function loadLinkedMediaDisplay() { /* 소재 폐기 — no-op */ }
 function loadParentMediaOptions() { /* 소재 폐기 — no-op */ }
 
 function selectItemType(type) {
@@ -161,8 +160,6 @@ function updateFieldVisibility(type) {
     // 원자재 분류, 소재 연결, 판매 토글: 원자재만
     var rmSubArea = document.getElementById('rmSubCategoryArea');
     if (rmSubArea) rmSubArea.classList.toggle('hidden', type !== 'MATERIAL');
-    var parentMediaArea = document.getElementById('parentMediaArea');
-    if (parentMediaArea) parentMediaArea.classList.toggle('hidden', type !== 'MATERIAL');
     var rmSalesArea = document.getElementById('rmSalesToggleArea');
     if (rmSalesArea) rmSalesArea.classList.toggle('hidden', type !== 'MATERIAL');
     // #435: 자동차감 방식 — 원자재만

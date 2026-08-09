@@ -117,6 +117,25 @@ function quotRenderSummary(summary, pagination) {
   });
 }
 
+// CSV 내보내기 — 조회조건은 목록과 동일(quotBuildParams SSOT).
+// 인증이 헤더 전용이라 <a href> 로는 401 이 난다 → axios blob (memory feedback-auth-header-only-download)
+async function exportQuotationsCsv() {
+  try {
+    var params = quotBuildParams(quotReadFilters());
+    var res = await axios.get('/api/quotations/export/csv?' + params.toString(), { responseType: 'blob' });
+    var url = URL.createObjectURL(res.data);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = '견적목록_' + (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10)) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    showToast('CSV 내보내기 실패: ' + (e.message || ''), 'error');
+  }
+}
+
 async function loadQuotations(page) {
   quotCurrentPage = page || 1;
   var f = quotReadFilters();

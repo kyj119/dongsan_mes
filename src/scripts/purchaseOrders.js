@@ -278,7 +278,9 @@ function displayPOs(items) {
         + '</div>';
     }
     return '<tr class="' + rowClass + '" ondblclick="viewDetail(' + po.id + ')">'
-      + '<td class="px-4 py-3 font-medium">' + (po.po_number || '-') + '</td>'
+      // 이관분에 34자짜리 발주번호(E1-PO-BK-PENDING-...)가 섞여 있어 열 폭으로는 못 담는다 → title 로 전체를 남긴다.
+      // escapeHtml 은 옆 열들과 맞춘 것(여기만 원문 삽입이었다).
+      + '<td class="px-4 py-3 font-medium" title="' + escapeHtml(po.po_number || '') + '">' + escapeHtml(po.po_number || '-') + '</td>'
       + '<td class="px-4 py-3" title="' + escapeHtml(po.supplier_name || '') + '">' + escapeHtml(po.supplier_name || '-') + '</td>'
       + '<td class="px-4 py-3 text-center">' + (po.order_date || '-') + '</td>'
       + '<td class="px-4 py-3 text-center">' + (po.expected_date || '-') + getDueBadge(po.expected_date, po.status) + '</td>'

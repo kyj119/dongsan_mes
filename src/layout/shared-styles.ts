@@ -610,7 +610,9 @@ export const SHARED_CSS = `
   .ds-table .col-amount, .ds-table-striped .col-amount, .ds-table-fixed .col-amount { width: 120px; }
   .ds-table .col-qty, .ds-table-striped .col-qty, .ds-table-fixed .col-qty { width: 76px; }
   .ds-table .col-status, .ds-table-striped .col-status, .ds-table-fixed .col-status { width: 96px; }
-  .ds-table .col-code, .ds-table-striped .col-code, .ds-table-fixed .col-code { width: 132px; }
+  /* 132px 였으나 표준 15자 코드(E1-PO-1613-2608)가 ~140px 라 발주 목록 전 행이 잘렸다(2026-08-09 실측).
+     번호 체계가 법인 접두(E1-)로 길어진 결과 — 규격이 데이터를 못 따라간 것이라 규격을 고친다. */
+  .ds-table .col-code, .ds-table-striped .col-code, .ds-table-fixed .col-code { width: 148px; }
   .ds-table .col-tag, .ds-table-striped .col-tag, .ds-table-fixed .col-tag { width: 92px; }
   .ds-table .col-phone, .ds-table-striped .col-phone, .ds-table-fixed .col-phone { width: 124px; }
   .ds-table .col-action, .ds-table-striped .col-action, .ds-table-fixed .col-action { width: 100px; }

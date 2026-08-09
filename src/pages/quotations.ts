@@ -66,6 +66,9 @@ export function quotationsPage(c: Context<HonoEnv>) {
           <a href="/quotation-form" class="ds-btn ds-btn-primary ds-btn-sm" style="text-decoration:none;">
             <i class="fas fa-plus" style="margin-right:4px"></i>새 견적서
           </a>
+          <button onclick="exportQuotationsCsv()" class="ds-btn ds-btn-secondary ds-btn-sm">
+            <i class="fas fa-file-csv" style="margin-right:4px"></i>CSV
+          </button>
         </div>
       </div>
 

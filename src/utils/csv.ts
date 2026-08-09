@@ -29,7 +29,12 @@ export function csvResponse(c: any, filename: string, csvContent: string) {
  * 스트리밍 CSV 응답 — 대량 데이터 시 메모리 2배 사용 방지
  * rows를 100건씩 청크로 인코딩하여 ReadableStream으로 전송
  */
-export function csvStreamResponse(filename: string, headers: string[], rows: (string | number | null | undefined)[][]) {
+export function csvStreamResponse(
+  filename: string,
+  headers: string[],
+  rows: (string | number | null | undefined)[][],
+  opts?: { footerNote?: string }
+) {
   const encoder = new TextEncoder()
   const CHUNK_SIZE = 100
 
@@ -47,6 +52,9 @@ export function csvStreamResponse(filename: string, headers: string[], rows: (st
         }
         controller.enqueue(encoder.encode(chunk))
       }
+      // 잘림 안내 — generateCsv 의 footerNote 와 같은 의미. 스트리밍 경로에 이게 없어서
+      // 주문 CSV 만 무고지로 잘려 나가고 있었다(#372 스윕에서 빠진 한 곳).
+      if (opts?.footerNote) controller.enqueue(encoder.encode(escapeCsvField(opts.footerNote) + '\r\n'))
       controller.close()
     }
   })

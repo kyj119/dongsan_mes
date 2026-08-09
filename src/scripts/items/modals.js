@@ -75,14 +75,9 @@ async function showCreateModal() {
     // 원자재 관련 필드 초기화
     var rmSubSel = document.getElementById('rmSubCategory');
     if (rmSubSel) rmSubSel.value = '';
-    var parentMediaSel = document.getElementById('parentMediaId');
-    if (parentMediaSel) parentMediaSel.value = '';
-    var linkedMediaDisp = document.getElementById('linkedMediaDisplay');
-    if (linkedMediaDisp) linkedMediaDisp.innerHTML = '<span class="text-xs text-gray-400">저장 후 표시됩니다</span>';
     var rmSubArea = document.getElementById('rmSubCategoryArea');
     if (rmSubArea) rmSubArea.classList.add('hidden');
-    var parentMediaArea = document.getElementById('parentMediaArea');
-    if (parentMediaArea) parentMediaArea.classList.add('hidden');
+    // 소재(print_media) 폐기분 초기화 3건 제거 — 대상 DOM 이 없어 항상 no-op 이었다(2026-08-09)
 
     // 기본 타입: 제품
     selectItemType('PRODUCT');

@@ -1818,7 +1818,7 @@ function histReadFilters() {
     dateTo: g('histDateTo'),
     search: g('histSearch'),
     method: g('histMethod'),
-    sort: 'ship_date_desc'
+    sort: g('histSort') || 'ship_date_desc'
   };
 }
 
@@ -1982,6 +1982,7 @@ function resetShipHistoryFilters() {
   setVal('histDateTo', '');
   setVal('histSearch', '');
   setVal('histMethod', '');
+  setVal('histSort', 'ship_date_desc');
   loadShipHistory(1);
 }
 
@@ -1992,6 +1993,7 @@ function histApplyFilters(f) {
   setVal('histDateTo', f.dateTo);
   setVal('histSearch', f.search);
   setVal('histMethod', f.method);
+  setVal('histSort', f.sort || 'ship_date_desc');
   histPresetApplied = true;
   loadShipHistory(1);
 }

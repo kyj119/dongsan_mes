@@ -330,7 +330,15 @@ function ledMountClientToolbar() {
         applyFilters: function(f) {
             var el = document.getElementById('clientSearch');
             if (el) el.value = f.search || '';
+            // ★기간까지 되돌린다. getFilters 는 startDate/endDate 를 저장하는데 여기서 search 만 복원해
+            //   "프리셋을 불러도 기간이 그대로"인 상태였다(13개 목록 중 유일한 저장/복원 비대칭, 2026-08-09).
+            currentDateFilter.startDate = f.startDate || '';
+            currentDateFilter.endDate = f.endDate || '';
+            var sd = document.getElementById('startDate'), ed = document.getElementById('endDate');
+            if (sd) sd.value = currentDateFilter.startDate;
+            if (ed) ed.value = currentDateFilter.endDate;
             loadSettlement();
+            loadMonthlySummary();
         },
         onChange: function() { loadSettlement(); }
     });

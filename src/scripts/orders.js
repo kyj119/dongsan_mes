@@ -596,6 +596,8 @@ async function loadOrders() {
           : '';
         // 합배송 배지 (배송 UX P1): 자식=대표 링크 / 대표=묶인 건수. 주문서·청구는 별도, 배송만 한 박스.
         // 주문번호 열이 고정폭(col-*)이라 인라인 풀넘버는 잘림 → 번호 아래 줄 + 짧은 라벨, 상세는 title 호버.
+        // ★긴급·타법인 배지도 같은 이유로 아래 줄로 내렸다(2026-08-09). 인라인이면 번호(135px)와 합쳐
+        //   열 폭을 넘겨 배지가 ellipsis 로 잘렸다 — 여기 적힌 판단을 그 둘에는 적용하지 않았던 것.
         let consBadge = '';
         if (order.consolidate_with_order_id) {
           const rootNo = order.consolidate_root_number || ('#' + order.consolidate_with_order_id);
@@ -609,7 +611,8 @@ async function loadOrders() {
               <input type="checkbox" class="order-checkbox rounded border-gray-300" data-order-id="${order.id}" onchange="toggleOrderSelect(this)" ${selectedOrderIds.has(order.id) ? 'checked' : ''}>
             </td>
             <td class="px-2 py-2.5 whitespace-nowrap">
-              <div class="text-sm font-medium text-gray-900">${escapeHtml(order.order_number)}${priorityBadge}${crossBadge}${consBadge}</div>
+              <div class="text-sm font-medium text-gray-900 truncate" title="${escapeHtml(order.order_number || '')}">${escapeHtml(order.order_number)}</div>
+              ${(priorityBadge || crossBadge) ? `<div class="mt-0.5">${priorityBadge}${crossBadge}</div>` : ''}${consBadge}
             </td>
             <td class="px-2 py-2.5">
               <div class="text-sm text-gray-900 truncate" title="${escapeHtml(order.client_name || '')}">${escapeHtml(order.client_name || '-')}</div>

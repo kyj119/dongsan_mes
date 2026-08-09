@@ -55,7 +55,10 @@ quotationsRouter.get('/', async (c) => {
       limit = '50',
       status = '',
       search = '',
-      sort = 'created_desc',
+      // ★ 기본값은 SSOT(QUOT_SORT_DEFAULT = 견적일 최신순)를 쓴다.
+      //   여기에 'created_desc' 를 적어둬서 SSOT 가 선언한 기본 정렬이 무력화돼 있었다 —
+      //   이관 견적은 created_at 이 '이관 실행 시각'이라 업무상 무의미하다(CLAUDE.md 정렬 규약).
+      sort = QUOT_SORT_DEFAULT,
       client_id = '',
     } = c.req.query()
     const safeLimit = Math.min(Number(limit) || 50, 200)
@@ -170,6 +173,45 @@ quotationsRouter.get('/stats', async (c) => {
     })
   } catch (error) {
     console.error('quotations.stats error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ===== GET /export/csv — 목록 CSV =====
+// ⚠️ '/:id' 보다 먼저 등록해야 한다(아니면 id='export' 로 잡힌다).
+// 조회조건·정렬 = 목록과 같은 SSOT. 캡·잘림 안내도 발주/입고와 같은 규칙(utils/csv.ts).
+quotationsRouter.get('/export/csv', async (c) => {
+  try {
+    const { sort = QUOT_SORT_DEFAULT } = c.req.query()
+    const f = buildQuotListFilter(c)
+    const query = `
+      SELECT q.quotation_number, c.client_name, q.quotation_date, q.valid_until,
+             q.total_amount, q.vat_amount, q.final_amount, q.status,
+             q.notes, u.name as created_by_name, q.created_at,
+             (SELECT COUNT(*) FROM orders o WHERE o.quotation_id = q.id) as order_count
+      FROM quotations q
+      LEFT JOIN clients c ON q.client_id = c.id
+      LEFT JOIN users u ON q.created_by = u.id${f.where}
+      ORDER BY ${resolveQuotSort(sort)} LIMIT ?
+    `
+    const { generateCsv, csvResponse, CSV_EXPORT_CAP, CSV_TRUNCATION_NOTE } = await import('../utils/csv')
+    const { results } = await c.env.DB.prepare(query).bind(...f.params, CSV_EXPORT_CAP + 1).all<Record<string, unknown>>()
+    const truncated = (results || []).length > CSV_EXPORT_CAP
+    const exportRows = truncated ? (results || []).slice(0, CSV_EXPORT_CAP) : (results || [])
+
+    const statusLabels: Record<string, string> = { ACTIVE: '유효', EXPIRED: '만료', CONVERTED: '주문전환', CANCELLED: '취소' }
+    const headers = ['견적번호', '거래처', '견적일', '유효기한', '공급가', '부가세', '합계', '상태', '전환주문수', '비고', '작성자', '등록일']
+    const rows = exportRows.map((q: any) => [
+      q.quotation_number, q.client_name, q.quotation_date, q.valid_until,
+      q.total_amount, q.vat_amount, q.final_amount,
+      statusLabels[q.status] || q.status, q.order_count,
+      q.notes, q.created_by_name,
+      q.created_at ? String(q.created_at).slice(0, 10) : '',
+    ])
+    return csvResponse(c, `견적목록_${kstYmd()}.csv`,
+      generateCsv(headers, rows, { footerNote: truncated ? CSV_TRUNCATION_NOTE : undefined }))
+  } catch (error) {
+    console.error('quotations.exportCsv error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })

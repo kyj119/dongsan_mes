@@ -399,14 +399,19 @@ ordersQueriesRouter.get('/export/csv', async (c) => {
     const params: any[] = [...f.params]
     query += f.where
 
-    // LIMIT: 최대 5000, 기본 3000 — 메모리/타임아웃 방지
-    const maxRows = Math.min(parseInt(c.req.query('limit') || '3000') || 3000, 5000)
+    // #372: 캡 + 잘림 안내 — 발주·입고·발주요청과 같은 규칙(utils/csv.ts 단일 소스).
+    //   이 경로만 스윕에서 빠져 기본 3,000건으로 **무고지 절단**하고 있었다.
+    //   실측(2026-08-09): 전체 기간 주문 8,778건 → CSV 3,000건, 안내 없음, 5,778건 유실.
+    //   캡+1 로 조회해 초과를 감지하고 마지막 줄에 안내를 넣는다.
+    const { csvStreamResponse, CSV_EXPORT_CAP, CSV_TRUNCATION_NOTE } = await import('../../utils/csv')
     // 정렬 = listFilter.ts SSOT. 사본을 두면 목록에서 고른 정렬이 CSV 에서 조용히 기본값으로 떨어진다.
     const orderBy = resolveOrderSort(sort)
     query += ` ORDER BY ${orderBy} LIMIT ?`
-    params.push(maxRows)
+    params.push(CSV_EXPORT_CAP + 1)
 
-    const { results } = await c.env.DB.prepare(query).bind(...params).all<Record<string, unknown>>()
+    const { results: fetched } = await c.env.DB.prepare(query).bind(...params).all<Record<string, unknown>>()
+    const truncated = (fetched || []).length > CSV_EXPORT_CAP
+    const results = truncated ? (fetched || []).slice(0, CSV_EXPORT_CAP) : (fetched || [])
 
     const statusLabels: Record<string, string> = { CONFIRMED: '확정', PRINTING: '출력중', PRINT_DONE: '출력완료', SHIPPED: '출고완료', HOLD: '보류', CANCELLED: '취소' }
     const billingLabels: Record<string, string> = { BILLED: '회계반영', PAID: '수금완료' }
@@ -422,9 +427,10 @@ ordersQueriesRouter.get('/export/csv', async (c) => {
     ])
 
     // 스트리밍 CSV 응답 — 대량 데이터 시 메모리 2배 사용 방지
-    const { csvStreamResponse } = await import('../../utils/csv')
     const today = kstYmd()
-    return csvStreamResponse(`주문목록_${today}.csv`, headers, rows)
+    return csvStreamResponse(`주문목록_${today}.csv`, headers, rows, {
+      footerNote: truncated ? CSV_TRUNCATION_NOTE : undefined,
+    })
   } catch (error) {
     console.error('src/routes/orders.ts error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

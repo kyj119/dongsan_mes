@@ -474,6 +474,19 @@ export function shipmentsPage(c: Context<HonoEnv>) {
               <option value="방문수령">방문수령</option>
             </select>
           </div>
+          <!-- 정렬은 13개 목록 중 여기만 없었다(서버는 지원하는데 클라가 ship_date_desc 로 고정 전송).
+               옵션은 ORDER_SORT_OPTIONS 에 이미 있는 키만 쓴다 — 없는 키를 보내면 조용히 기본 정렬로 떨어진다. -->
+          <div class="ds-filter-field" style="min-width:150px">
+            <label class="ds-label">정렬</label>
+            <select id="histSort" class="ds-input" onchange="loadShipHistory(1)">
+              <option value="ship_date_desc">출고일 최신순</option>
+              <option value="ship_date_asc">출고일 오래된순</option>
+              <option value="final_amount_desc">금액 큰순</option>
+              <option value="final_amount_asc">금액 작은순</option>
+              <option value="client_name_asc">거래처명 가나다순</option>
+              <option value="order_date_desc">주문일 최신순</option>
+            </select>
+          </div>
           <div class="ds-filter-actions">
             <button onclick="resetShipHistoryFilters()" class="ds-btn ds-btn-secondary ds-btn-sm"><i class="fas fa-undo" style="margin-right:4px"></i>초기화</button>
             <button onclick="loadShipHistory(1)" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-search" style="margin-right:4px"></i>검색</button>

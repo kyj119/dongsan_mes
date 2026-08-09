@@ -52,6 +52,39 @@ export function ordersPage(c: Context<HonoEnv>) {
             <option value="CANCELLED">취소</option>
           </select>
         </div>
+        <!-- 기간·정렬은 기본 노출한다(2026-08-09). 기본값이 '최근 1개월'인데 컨트롤이 「더보기」 안에 있어
+             바꾸려면 두 번 클릭해야 했고, 정렬은 있는 줄도 몰랐다. 자주 쓰는 축을 접어두면 없는 기능이 된다. -->
+        <div class="ds-filter-field">
+          <label class="ds-label">주문일 from</label>
+          <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="orderDateFrom" class="js-fp ds-input"
+            onchange="currentPage=1;loadOrders();">
+        </div>
+        <div class="ds-filter-field">
+          <label class="ds-label">~ to</label>
+          <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="orderDateTo" class="js-fp ds-input"
+            onchange="currentPage=1;loadOrders();">
+        </div>
+        <div class="ds-filter-field" style="align-self:flex-end">
+          <button type="button" onclick="clearDateFilter()" class="ds-btn ds-btn-secondary ds-btn-sm" title="기간 제한 없이 전체 조회">
+            <i class="fas fa-eraser" style="margin-right:4px"></i>날짜 초기화
+          </button>
+        </div>
+        <div class="ds-filter-field" style="min-width:140px">
+          <label class="ds-label">정렬</label>
+          <!-- 정렬 라벨은 기준을 명시한다("최신순"만 쓰면 어느 날짜 기준인지 불명확 — CLAUDE.md 정렬 규약) -->
+          <select id="sortBy" class="ds-input"
+            onchange="currentPage=1;loadOrders();">
+            <option value="order_date_desc">주문일 최신순</option>
+            <option value="order_date_asc">주문일 오래된순</option>
+            <option value="delivery_date_asc">납기일 빠른순</option>
+            <option value="delivery_date_desc">납기일 늦은순</option>
+            <option value="final_amount_desc">금액 큰순</option>
+            <option value="final_amount_asc">금액 작은순</option>
+            <option value="client_name_asc">거래처명 가나다순</option>
+            <option value="created_at_desc">등록 최신순</option>
+            <option value="created_at_asc">등록 오래된순</option>
+          </select>
+        </div>
         <div class="ds-filter-field" style="min-width:auto">
           <label class="ds-label">출고지연</label>
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;height:36px" title="납기일이 지났는데 아직 출고완료되지 않은 주문만 보기">
@@ -116,38 +149,6 @@ export function ordersPage(c: Context<HonoEnv>) {
               <option value="NORMAL">일반</option>
             </select>
           </div>
-          <div class="ds-filter-field" style="min-width:140px">
-            <label class="ds-label">정렬</label>
-            <!-- 정렬 라벨은 기준을 명시한다("최신순"만 쓰면 어느 날짜 기준인지 불명확 — CLAUDE.md 정렬 규약) -->
-            <select id="sortBy" class="ds-input"
-              onchange="currentPage=1;loadOrders();">
-              <option value="order_date_desc">주문일 최신순</option>
-              <option value="order_date_asc">주문일 오래된순</option>
-              <option value="delivery_date_asc">납기일 빠른순</option>
-              <option value="delivery_date_desc">납기일 늦은순</option>
-              <option value="final_amount_desc">금액 큰순</option>
-              <option value="final_amount_asc">금액 작은순</option>
-              <option value="client_name_asc">거래처명 가나다순</option>
-              <option value="created_at_desc">등록 최신순</option>
-              <option value="created_at_asc">등록 오래된순</option>
-            </select>
-          </div>
-          <div class="ds-filter-divider"></div>
-          <div class="ds-filter-field">
-            <label class="ds-label">등록일 from</label>
-            <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="orderDateFrom" class="js-fp ds-input"
-              onchange="currentPage=1;loadOrders();">
-          </div>
-          <div class="ds-filter-field">
-            <label class="ds-label">~ to</label>
-            <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="orderDateTo" class="js-fp ds-input"
-              onchange="currentPage=1;loadOrders();">
-          </div>
-          <div class="ds-filter-field" style="align-self:flex-end">
-            <button type="button" onclick="clearDateFilter()" class="ds-btn ds-btn-secondary ds-btn-sm">
-              <i class="fas fa-eraser" style="margin-right:4px"></i>날짜 초기화
-            </button>
-          </div>
         </div>
       </div>
 
@@ -196,13 +197,15 @@ export function ordersPage(c: Context<HonoEnv>) {
               <tr>
                 <!-- data-col = '열 선택'(dsListToolbar) 대상. 체크박스·액션 열은 숨김 대상에서 제외 -->
                 <th style="text-align:center;width:36px"><input type="checkbox" id="selectAllOrders" onchange="toggleSelectAll(this)" class="rounded border-gray-300"></th>
-                <th style="width:108px" data-col="order_number">주문번호</th>
+                <!-- 폭은 실측 기준(2026-08-09): 주문번호 135px·상태 101px·회계반영 101px 이 필요한데
+                     108/86/82 라 50행 전부 잘렸다. 남는 폭은 품목 열(912px)이 흡수하므로 여유를 준다. -->
+                <th style="width:140px" data-col="order_number">주문번호</th>
                 <th style="width:150px" data-col="client">거래처</th>
                 <th data-col="item">품목</th>
                 <th style="width:100px" data-col="delivery_date">납기일</th>
                 <th style="width:96px;text-align:right" data-col="amount">금액</th>
-                <th style="width:86px" data-col="status">상태</th>
-                <th style="width:82px;text-align:center" data-col="billing">회계반영</th>
+                <th style="width:104px" data-col="status">상태</th>
+                <th style="width:104px;text-align:center" data-col="billing">회계반영</th>
                 <th style="width:78px" data-col="created">등록일</th>
                 <th style="width:130px;text-align:center">액션</th>
               </tr>
