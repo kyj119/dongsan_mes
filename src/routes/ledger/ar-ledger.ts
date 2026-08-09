@@ -497,12 +497,25 @@ arLedgerRouter.get('/settlement', async (c) => {
           (r.client_code || '').toLowerCase().includes(search))
       : clientRows
 
+    // 검색 매칭분 합계 — 검색 뷰의 합계 행이 '표시된 행 합산'이면 cap(1000) 너머 매칭분이 빠져 과소집계된다.
+    //   전체 조회는 summary(전체 clientRows)를 쓰므로 정확하고, 검색 조회는 이 matchedSummary 를 쓴다.
+    const matchedSummary = search
+      ? matched.reduce((acc, cl) => ({
+          total_clients: acc.total_clients + 1,
+          total_orders: acc.total_orders + (cl.order_count || 0),
+          total_sales: acc.total_sales + cl.total_sales,
+          total_payments: acc.total_payments + cl.total_payments,
+          total_balance: acc.total_balance + cl.balance
+        }), { total_clients: 0, total_orders: 0, total_sales: 0, total_payments: 0, total_balance: 0 })
+      : null
+
     // 목록 방어적 cap(1000) — 합계는 summary(전체 clientRows) 사용하므로 KPI는 잘려도 정확.
     //   count=검색 매칭 수, totalCount=전체(검색 무관) 거래처 수 → 프론트가 cap 여부 판단(로컬필터 vs 서버검색).
     return c.json({
       success: true,
       data: {
         summary,
+        matchedSummary,
         clients: matched.slice(0, 1000),
         count: matched.length,
         totalCount: clientRows.length,

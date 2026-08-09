@@ -80,7 +80,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
                         <i class="fas fa-search" style="margin-right:4px"></i>조회
                     </button>
                     <div class="ml-auto flex gap-2">
-                        <input type="text" id="clientSearch" placeholder="거래처명 검색..." class="px-3 py-1 border rounded text-sm w-40" oninput="filterClientTable()">
+                        <input type="text" id="clientSearch" placeholder="거래처명 검색..." class="px-3 py-1 border rounded text-sm w-40" oninput="filterClientTable()" onkeydown="if(event.key==='Enter')filterClientTable(true)">
                         <button onclick="refreshAll()" class="ds-btn ds-btn-secondary ds-btn-sm">
                             <i class="fas fa-sync-alt"></i>
                         </button>
@@ -172,18 +172,21 @@ export function ledgerPage(c: Context<HonoEnv>) {
                         </button>
                     </div>
                 </div>
+                <div id="ledClientChips" class="ds-conds mx-3 mb-2"></div>
+                <div id="ledClientToolbar" class="mx-3"></div>
                 <div id="clientsCapNote" class="hidden mx-3 mb-2 px-3 py-2 rounded text-xs" style="background:var(--c-warning-light);color:var(--c-warning);border:1px solid var(--c-warning);"></div>
                 <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
                     <table class="ds-table ds-table-compact ds-table-striped led-tbl">
                         <thead>
                             <tr>
-                                <th class="text-left">코드</th>
-                                <th class="text-left">거래처명</th>
-                                <th class="text-right">주문수</th>
-                                <th class="text-right" style="min-width:100px">매출</th>
-                                <th class="text-right" style="min-width:100px">입금</th>
-                                <th class="text-right" style="min-width:100px">잔액</th>
-                                <th class="text-center">연체</th>
+                                <!-- data-col = '열 선택'(dsListToolbar) 대상. 마지막 액션 열은 제외 -->
+                                <th class="text-left" data-col="code">코드</th>
+                                <th class="text-left" data-col="client">거래처명</th>
+                                <th class="text-right" data-col="orders">주문수</th>
+                                <th class="text-right" style="min-width:100px" data-col="sales">매출</th>
+                                <th class="text-right" style="min-width:100px" data-col="payments">입금</th>
+                                <th class="text-right" style="min-width:100px" data-col="balance">잔액</th>
+                                <th class="text-center" data-col="overdue">연체</th>
                                 <th class="text-center w-10"></th>
                             </tr>
                         </thead>
@@ -267,15 +270,18 @@ export function ledgerPage(c: Context<HonoEnv>) {
                         </button>
                     </div>
                 </div>
+                <div id="ledSupplierChips" class="ds-conds mx-3 mb-2"></div>
+                <div id="ledSupplierToolbar" class="mx-3"></div>
                 <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-                    <table class="ds-table ds-table-compact ds-table-striped">
+                    <table class="ds-table ds-table-compact ds-table-striped led-sup-tbl">
                         <thead>
                             <tr>
-                                <th class="text-left">공급업체명</th>
-                                <th class="text-right">발주수</th>
-                                <th class="text-right">총매입</th>
-                                <th class="text-right">총지급</th>
-                                <th class="text-right">잔액</th>
+                                <!-- data-col = '열 선택'(dsListToolbar) 대상 -->
+                                <th class="text-left" data-col="supplier">공급업체명</th>
+                                <th class="text-right" data-col="orders">발주수</th>
+                                <th class="text-right" data-col="purchase">총매입</th>
+                                <th class="text-right" data-col="paid">총지급</th>
+                                <th class="text-right" data-col="balance">잔액</th>
                             </tr>
                         </thead>
                         <tbody id="supplierTableBody" class="divide-y">

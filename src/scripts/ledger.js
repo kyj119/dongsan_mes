@@ -8,6 +8,11 @@
 var selectedClientId = null;
 var selectedClientName = '';
 var allClients = [];
+var ledClientCapped = false;
+var ledClientMatchCount = null;
+var ledClientTotalCount = null;
+var ledClientToolbarMounted = false;
+var ledSupplierToolbarMounted = false;
 var settlementTotals = null; // 서버 집계 합계(전체 clientRows) — 합계 행이 목록 cap로 잘려도 정확
 var currentDateFilter = { startDate: '', endDate: '' };
 var _adjustmentOrderList = [];
@@ -121,7 +126,11 @@ function fmtLocalDate(dt) {
 // Load settlement + clients
 async function loadSettlement() {
     try {
-        var url = '/api/ledger/settlement?' + getDateParams().substring(1);
+        // 검색은 서버로 보낸다. 로컬 필터는 cap(1000)된 배열만 봐서 그 너머 거래처가 **무음 누락**된다
+        // (서버가 #497 로 검색을 지원하는데 클라가 안 쓰고 있었다 — prod 854/1000 이라 아직 안 물렸을 뿐).
+        var _q = (document.getElementById('clientSearch') || {}).value || '';
+        var url = '/api/ledger/settlement?' + getDateParams().substring(1)
+                + (_q ? '&search=' + encodeURIComponent(_q) : '');
         var res = await axios.get(url);
         if (res.data.success) {
             var s = res.data.data.summary;
@@ -132,6 +141,18 @@ async function loadSettlement() {
             var ratio = s.total_sales > 0 ? Math.round(s.total_balance / s.total_sales * 100) : 0;
             document.getElementById('balanceRatio').textContent = '미수금율 ' + ratio + '%';
 
+            // 검색 중이면 매칭분 합계(matchedSummary)가 정본 — 표시행 합산은 cap 너머를 놓친다
+            var _ms = res.data.data.matchedSummary;
+            ledClientCapped = !!res.data.data.capped;
+            ledClientMatchCount = (res.data.data.count != null) ? res.data.data.count : null;
+            ledClientTotalCount = (res.data.data.totalCount != null) ? res.data.data.totalCount : null;
+            if (_ms) {
+                settlementTotals = {
+                    total_orders: _ms.total_orders, total_sales: _ms.total_sales,
+                    total_payments: _ms.total_payments, total_balance: _ms.total_balance,
+                    client_count: _ms.total_clients
+                };
+            } else
             // 합계 행용 서버 집계(전체 거래처 기준) 저장 — total_orders는 추가된 키(없으면 클라 합산 폴백)
             settlementTotals = {
                 total_orders: (s.total_orders != null) ? s.total_orders : null,
@@ -142,7 +163,10 @@ async function loadSettlement() {
             };
 
             allClients = res.data.data.clients || [];
-            renderClientTable(allClients, true);
+            renderClientTable(allClients, true);   // 서버가 이미 걸러줬으므로 항상 '전체'(=서버 합계 사용)
+            ledRenderClientChips();
+            ledRenderCapNote();
+            ledMountClientToolbar();   // 표가 그려진 뒤라야 열 선택이 thead 를 읽는다
             applyLedgerDrilldown();  // #402: 드릴다운 진입 파라미터 최초 1회 적용
         }
     } catch (e) {
@@ -243,13 +267,73 @@ function applyLedgerDrilldown() {
     }
 }
 
-function filterClientTable() {
-    var q = document.getElementById('clientSearch').value.toLowerCase();
-    var filtered = allClients.filter(function(cl) {
-        return cl.client_name.toLowerCase().indexOf(q) >= 0 ||
-               (cl.client_code || '').toLowerCase().indexOf(q) >= 0;
+// 검색 = 서버 재조회. 로컬 필터를 쓰면 cap(1000) 너머 거래처가 조용히 빠지고
+// 합계 행도 '표시행 합산'이라 과소집계된다. 입력 중 과다호출을 막으려 디바운스한다.
+var _ledSearchTimer = null;
+function filterClientTable(immediate) {
+    if (_ledSearchTimer) clearTimeout(_ledSearchTimer);
+    if (immediate) { loadSettlement(); return; }
+    _ledSearchTimer = setTimeout(function() { loadSettlement(); }, 350);
+}
+
+// 활성 조회조건 칩 — 지금 무엇을 보고 있는지 화면에 남긴다
+function ledRenderClientChips() {
+    var items = [];
+    var d = currentDateFilter || {};
+    if (d.startDate || d.endDate) {
+        var label = d.startDate && d.endDate ? ('기간 ' + d.startDate + ' ~ ' + d.endDate)
+                  : d.startDate ? ('기간 ' + d.startDate + ' 이후') : ('기간 ' + d.endDate + ' 이전');
+        items.push({ label: label, tone: 'static' });
+    } else {
+        items.push({ label: '전체 기간', tone: 'static' });
+    }
+    var q = (document.getElementById('clientSearch') || {}).value || '';
+    if (q) {
+        items.push({ label: '검색 "' + q + '"', onClear: function() {
+            document.getElementById('clientSearch').value = '';
+            loadSettlement();
+        } });
+        if (ledClientMatchCount != null && ledClientTotalCount != null) {
+            items.push({ label: ledClientMatchCount.toLocaleString() + ' / ' + ledClientTotalCount.toLocaleString() + '개 거래처', tone: 'static' });
+        }
+    }
+    if (ledClientCapped) {
+        items.push({ label: '표시 1,000개로 제한 — 합계는 전체 기준', tone: 'warn' });
+    }
+    window.dsListUx.renderChips('ledClientChips', items);
+}
+
+// cap 경고 — 페이지에 엘리먼트만 있고 쓰이지 않던 것을 이제 채운다
+function ledRenderCapNote() {
+    var el = document.getElementById('clientsCapNote');
+    if (!el) { console.warn('[ledger] #clientsCapNote not found'); return; }
+    if (!ledClientCapped) { el.classList.add('hidden'); el.textContent = ''; return; }
+    el.classList.remove('hidden');
+    el.textContent = '거래처가 많아 목록은 1,000개까지만 표시합니다. 합계 행은 전체 기준이라 정확합니다 — 특정 거래처는 검색으로 찾으세요.';
+}
+
+// 도구모음(프리셋·열 선택) — 이 표는 페이징이 없어 '페이지당 건수'는 뺀다
+function ledMountClientToolbar() {
+    if (ledClientToolbarMounted || !window.dsListToolbar) return;
+    if (!document.querySelector('.led-tbl')) return;
+    ledClientToolbarMounted = true;
+    window.dsListToolbar.mount({
+        pageKey: 'ledger-clients',
+        container: 'ledClientToolbar',
+        tableSelector: '.led-tbl',
+        showPageSize: false,
+        getFilters: function() {
+            return { search: (document.getElementById('clientSearch') || {}).value || '',
+                     startDate: (currentDateFilter || {}).startDate || '',
+                     endDate: (currentDateFilter || {}).endDate || '' };
+        },
+        applyFilters: function(f) {
+            var el = document.getElementById('clientSearch');
+            if (el) el.value = f.search || '';
+            loadSettlement();
+        },
+        onChange: function() { loadSettlement(); }
     });
-    renderClientTable(filtered, false);
 }
 
 // ===== Modal Open/Close =====
@@ -1048,6 +1132,8 @@ async function loadPurchaseSettlement() {
             document.getElementById('pTotalSuppliers').textContent = s.total_suppliers || 0;
             allSuppliers = d.suppliers || [];
             renderSupplierTable(allSuppliers);
+            ledRenderSupplierChips(allSuppliers.length);
+            ledMountSupplierToolbar();   // 표가 그려진 뒤라야 열 선택이 thead 를 읽는다
         }
     } catch (e) {
         console.error('Purchase settlement error:', e);
@@ -1095,6 +1181,53 @@ function filterSupplierTable() {
         return (sp.client_name || sp.supplier_name || '').toLowerCase().indexOf(q) >= 0;
     });
     renderSupplierTable(filtered);
+    ledRenderSupplierChips(filtered.length);
+}
+
+// 매입은 공급처가 38곳이라 cap 문제가 없다 — 로컬 필터를 그대로 두고 칩만 붙인다
+// (매출은 854/1000 이라 서버 검색으로 바꿨다. 규모가 다르면 답도 다르다)
+function ledRenderSupplierChips(shownCount) {
+    var items = [];
+    var d = currentDateFilter || {};
+    if (d.startDate || d.endDate) {
+        var label = d.startDate && d.endDate ? ('기간 ' + d.startDate + ' ~ ' + d.endDate)
+                  : d.startDate ? ('기간 ' + d.startDate + ' 이후') : ('기간 ' + d.endDate + ' 이전');
+        items.push({ label: label, tone: 'static' });
+    } else {
+        items.push({ label: '전체 기간', tone: 'static' });
+    }
+    var q = (document.getElementById('supplierSearch') || {}).value || '';
+    if (q) {
+        items.push({ label: '검색 "' + q + '"', onClear: function() {
+            document.getElementById('supplierSearch').value = '';
+            filterSupplierTable();
+        } });
+        if (shownCount != null && allSuppliers) {
+            items.push({ label: shownCount.toLocaleString() + ' / ' + allSuppliers.length.toLocaleString() + '개 공급처', tone: 'static' });
+        }
+    }
+    // AP 는 실질기준(purchase_balance>0)이 정본 — client_type 으로 거르면 전멸한다(2회 재발 이력)
+    items.push({ label: '미지급 실질기준', tone: 'static' });
+    window.dsListUx.renderChips('ledSupplierChips', items);
+}
+
+function ledMountSupplierToolbar() {
+    if (ledSupplierToolbarMounted || !window.dsListToolbar) return;
+    if (!document.querySelector('.led-sup-tbl')) return;
+    ledSupplierToolbarMounted = true;
+    window.dsListToolbar.mount({
+        pageKey: 'ledger-suppliers',
+        container: 'ledSupplierToolbar',
+        tableSelector: '.led-sup-tbl',
+        showPageSize: false,   // 페이징 없음
+        getFilters: function() { return { search: (document.getElementById('supplierSearch') || {}).value || '' }; },
+        applyFilters: function(f) {
+            var el = document.getElementById('supplierSearch');
+            if (el) el.value = f.search || '';
+            filterSupplierTable();
+        },
+        onChange: function() { filterSupplierTable(); }
+    });
 }
 
 function selectSupplier(supplierId, supplierName) {
