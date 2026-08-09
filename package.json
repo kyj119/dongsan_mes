@@ -64,7 +64,8 @@
     "ia:deploy": "node scripts/ia-deploy.cjs",
     "cut:butt": "node scripts/cut/butt-bench.mjs",
     "audit:items": "node scripts/item-master-audit.cjs",
-    "audit:items:selftest": "node scripts/r0-selftest.cjs"
+    "audit:items:selftest": "node scripts/r0-selftest.cjs",
+    "smoke:write": "node scripts/smoke-write.cjs"
   },
   "dependencies": {
     "hono": "^4.7.9"
