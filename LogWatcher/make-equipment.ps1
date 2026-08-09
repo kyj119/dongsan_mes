@@ -25,9 +25,17 @@ Write-Host "=== $eqId 설정 생성 ===" -ForegroundColor Cyan
 # --- PrintExp 로그 폴더 실측 -------------------------------------------------
 # 설치 폴더 이름에 버전이 붙는 PC 가 있고(2호기), 로그가 Log\ 바로 아래인 PC 와
 # Log\main\ 인 PC 가 갈린다. 이름을 가정하지 말고 Log[날짜].txt 가 실제로 있는 곳을 찾는다.
+# 설치 폴더를 통째로 복사해둔 PC 가 있어(…(1)\…\Log) 한 단계 아래까지 본다.
+# 후보가 여럿이면 **로그가 가장 최근에 쓰인 곳**을 고른다 = 실제로 돌고 있는 설치본.
+$bases = @(Get-ChildItem -LiteralPath $SearchRoot -Directory -ErrorAction SilentlyContinue |
+           Where-Object { $_.Name -like 'PrintExp*' })
+$bases += @($bases | ForEach-Object {
+    Get-ChildItem -LiteralPath $_.FullName -Directory -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -like 'PrintExp*' }
+})
+
 $candidates = @()
-foreach ($base in (Get-ChildItem -LiteralPath $SearchRoot -Directory -ErrorAction SilentlyContinue |
-                   Where-Object { $_.Name -like 'PrintExp*' })) {
+foreach ($base in $bases) {
     foreach ($sub in @('Log', 'Log\main')) {
         $dir = Join-Path $base.FullName $sub
         if (-not (Test-Path -LiteralPath $dir)) { continue }
