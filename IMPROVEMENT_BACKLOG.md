@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-08-09T21:24:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-08-10T03:16:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,20 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **8** (`search_issues(is:open,label:auto-improve)` 실측, Area1 59회차. 기존 7건(#601~#607) + 신규 #608[write-path 회귀방지 3중장치가 전부 실제 배포경로 밖·verify.yml 카나리 0회 실행]) |
+| 🆕 new | **9** (`search_issues(is:open,label:auto-improve)` 실측, Area2 61회차. 기존 8건(#601~#608) + 신규 #609[unitConvert.ts toBase/formatStock 0호출·write-path 3곳 인라인 재구현, #462 재발위험]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **524** (`reason:completed` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-08-10T03:16):**
+> - **방법**: `git fetch origin main`(HEAD `8947255` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 2 **61회차** — 직전 Area2(08-08T15:16, 60회차) 이후 `src/routes`/`src/scripts`/`index.tsx`/`src/layout`/`src/pages`/migrations 변경 = **3커밋**(`5eb43d1`·`72112df`·`66e16d8`, 전부 `bank.ts`/`hr.ts` 테이블 컬럼폭 CSS 조정) — 셋 다 diff 직접 확인, `style="width:Npx"` 수치 조정 + 설명주석뿐(SQL·entity_id·auth 무관) = 코드품질 렌즈 신선 churn 사실상 0.
+> - **전수 standing scan 재실행(churn 부재라 코드베이스 전체 재확인으로 대체)**: ① `npm run audit:entity` — 검사 131파일·entity테이블 SELECT 61·**누락 0**. ② dead-code 스캔(`src/routes`·`src/utils`의 `export function`/`export const` 중 코드베이스 전체 참조 ≤1건) → 후보 3건: `orders/listFilter.ts:hasActiveOrderFilter`(정의 외 0참조, 08-08 신설 SSOT 파일의 일부·같은 파일 나머지 export는 전부 사용중이라 단일 함수만 미배선 — 진행 중인 목록UX 리팩터의 후속 배선 미완일 가능성 높아 보고 보류, 트리비얼) / `utils/unitConvert.ts:toBase,formatStock`(+내부전용 `packSize`/`isMultiUom`) — **net-new #609(S, improvement)**: 실제 재고 write-path 3곳(`scan.ts`·`inventory.ts`·`po-receive.ts`)이 이 유틸을 안 쓰고 pack_size 환산을 각자 인라인 재구현 중 — 지금은 3곳 다 정합(라이브 버그 아님)이나, 바로 이 패턴(같은 컬럼 write 경로가 변환계수를 각자 구현)에서 **#462**(po-receive.ts 환산 누락 → 재고 음수추락)가 실제로 터진 전례가 있어 새 write-path 추가 시 재발 구조 위험 — write-path 재고수량 로직 변경이라 issue-only.
+> - **open 9건 재확인(open≠unfixed)**: #601(`orders/update.ts` `return_items` grep 0 — 여전히 미픽스) 외 #602~#608은 이번 churn(CSS폭 조정 3건)과 무관한 파일이라 직전 Area(1, 21:24)의 verified-once 캐시 유지.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **9**(#601~#608 + 신규 #609) · `reason:completed` **524**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — #609는 기존 codify된 "#462 형제-완전성" 클래스(Area2 line 근처)의 변형(공용유틸 미채택형)이라 신규 규칙 불요, 재발 관찰로 기존 항목에 흡수 가능.
+> - 신규 이슈 1건(#609, issue-only), 자동수정 0건, done-sync: new 9(+1)·done 524(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-08-09T21:24):**
 > - **방법**: `git fetch origin main`(HEAD `e120325` = origin/main 일치, 워킹트리 clean, detached). prod 직접 curl/WebFetch(`/api/health`) → `EGRESS_BLOCKED`(기존 인지된 제약, #453/58회차와 동일)라 GitHub Actions 기록으로 대체. Area 1 **59회차** — 직전 Area1(`f2d8281`, 08-08T09:16, 58회차) 이후 웹앱 관련 16커밋 착륙, 그중 8개 핵심 churn은 방금 Area6(15:16)가 코드품질/보안 렌즈로 이미 전수 검토 완료 → Area1은 프로덕션 헬스 렌즈(배포·CI·백업·스모크 파이프라인 구조)만 신선하게 점검.
@@ -126,10 +135,12 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 7건** — Area 4 54회차, 2026-08-09.)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 9건** — Area 2 61회차, 2026-08-10.)
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
+| #609 | unitConvert.ts toBase/formatStock 0호출 — write-path 3곳(scan/inventory/po-receive) pack_size 환산 각자 인라인 재구현, #462 재발위험 | Area 2 | improvement,S | issue-only, 신규(#609) |
+| #608 | 쓰기경로 회귀 방지 3중 장치 중 실제 배포경로엔 전무 — verify.yml 카나리는 생성 이래 0회 실행 | Area 1 | improvement,medium | issue-only, 신규(#608) |
 | #607 | purchase-requests CSV export가 buildPrFilter SSOT 미채택 — 다중상태 필터 드리프트(latent, 프론트 미도달) | Area 4 | bug,S | issue-only, 신규(#607) |
 | #606 | GET /api/reports/entity-attribution-audit(0524) — 프론트 소비처 0건, "백엔드 먼저·화면 나중" 4번째 사례 | Area 3 | feature,S | issue-only, 신규(#606) |
 | #605 | Daily D1 Backup 워크플로우 — CF API 지연 시 10분 타임아웃으로 해당일 백업 누락(재시도 없음) | Area 1 | improvement,S | issue-only |
