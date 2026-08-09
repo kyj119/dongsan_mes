@@ -10,6 +10,12 @@
   일괄 등록하면 **까치발 이중등록·황금봉 혼재를 대규모로 재생산**한다 —
   그 둘을 되돌리는 데 든 품이 정확히 이런 중복 때문이었다.
 
+★ **비활성 품목도 후보에 올린다** (2026-08-09 추가)
+  아누코 계열 16종이 MES 에 **이미 있었는데 전부 `is_active=0`** 이라, 활성만 보던 이 표가
+  「미등록」으로 잡고 **엉뚱한 브랜드(프라임)를 후보로 냈다.** 사람이 그걸 보고 판단하면
+  「단종된 자기 브랜드」가 아니라 「남의 브랜드」로 붙는다 — 표가 오답을 유도한 것이다.
+  이제 비활성도 후보에 넣고 `[중단]` 을 붙여 **되살릴지 대체할지를 사람이 고르게** 한다.
+
 ★ 점수는 **추천이지 판정이 아니다.** 자동 채택 임계값을 두지 않는다.
   매입은 재고가 움직여서 오연결이 나중에 흔적을 안 남긴다(선명 7월 이관에서 세운 원칙).
   그래서 이 표는 **사람이 채우는 열**(`★확정코드`)을 비워 둔 채로 나간다.
@@ -127,6 +133,7 @@ for m in mes:
         't': thick_of(m['item_name'], m['sp']), 'sz': size_of(m['sp'], m['item_name']),
         'c': color_of(m['item_name'], m['sp']),
         'bare': not str(m['sp']).strip() and _spec_sibs.get(m['item_name'].strip(), 0) > 0,
+        'off': not int(m.get('is_active', 1) or 0),
     })
 
 
@@ -198,7 +205,9 @@ for x in miss:
            x['out'] or '', x['inp'] or '', x['sup'],
            '실적단가 있음' if has_price else '단가 없음']
     for (sc, why), m in cands:
-        row += [m['code'], m['name'] + ((' / ' + m['sp']) if m['sp'] else ''), round(sc, 2)]
+        # ★ 비활성이면 이름 앞에 [중단] — 「등록돼 있었는데 껐다」와 「아예 없다」는 판단이 다르다
+        label = ('[중단] ' if m['off'] else '') + m['name'] + ((' / ' + m['sp']) if m['sp'] else '')
+        row += [m['code'], label, round(sc, 2)]
     while len(row) < 9 + 9:
         row.append('')
     row += [cands[0][0][1] if cands else '', verdict, '']
@@ -228,7 +237,7 @@ for i in range(2, ws.max_row + 1):
         for j in range(1, len(HDR) + 1):
             ws.cell(i, j).fill = PatternFill('solid', fgColor=FILL[v])
 for col, w in zip('ABCDEFGHIJKLMNOPQRSTU',
-                  [13, 34, 16, 9, 8, 10, 10, 16, 12, 15, 30, 7, 15, 30, 7, 15, 30, 7, 40, 13, 18]):
+                  [13, 34, 16, 9, 8, 10, 10, 16, 12, 15, 34, 7, 15, 34, 7, 15, 34, 7, 40, 13, 18]):
     ws.column_dimensions[col].width = w
 ws.freeze_panes = 'C2'
 ws.auto_filter.ref = ws.dimensions
