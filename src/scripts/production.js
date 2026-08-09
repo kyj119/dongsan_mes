@@ -75,6 +75,7 @@ function switchProdTab(tab) {
     status:   { panel: 'tabStatus',   btn: 'tabBtnStatus' },
     schedule: { panel: 'tabSchedule', btn: 'tabBtnSchedule' },
     work:     { panel: 'tabWork',     btn: 'tabBtnWork' },
+    output:   { panel: 'tabOutput',   btn: 'tabBtnOutput' },
     link:     { panel: 'tabLink',     btn: 'tabBtnLink' }
   };
 
@@ -100,6 +101,9 @@ function switchProdTab(tab) {
   } else if (tab === 'schedule') {
     // 스케줄 탭 데이터 로드
     loadSchedule();
+  } else if (tab === 'output') {
+    // 출력실적 탭 — 표가 hidden 이면 열 선택이 thead 를 못 읽으므로 진입 시 1회만 마운트
+    if (window.initOutputHistory) window.initOutputHistory();
   } else if (tab === 'work') {
     // 작업실적 탭 (지연 초기화 — window.wrInit 는 하단 IIFE 에서 노출)
     if (window.wrInit) window.wrInit();
@@ -1246,3 +1250,227 @@ loadRecentEvents();
     }
   };
 })();
+
+/* ── 출력실적 탭 ────────────────────────────────────────────────────────────
+ * 설계 = docs/specs/2026-08-09-production-history-list.md
+ *
+ * 정본 = print_events(장비 출력 로그). cards·production_logs 는 prod 0건이라 쓸 수 없다.
+ * card_id 연결이 1건뿐이라 거래처·금액은 못 붙인다 — 이건 **장비 실적**이지 매출 실적이 아니다.
+ */
+var poPage = 1;
+var poToolbarMounted = false;
+var poPresetApplied = false;
+
+function poDefaultFrom() {
+  var t = (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10)).split('-');
+  var d = new Date(parseInt(t[0]), parseInt(t[1]) - 1, parseInt(t[2]));
+  d.setMonth(d.getMonth() - 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function poReadFilters() {
+  var g = function(id) { var el = document.getElementById(id); return el ? el.value : ''; };
+  return { from: g('poFrom'), to: g('poTo'), equipmentId: g('poEquipment'), status: g('poStatus'), search: g('poSearch') };
+}
+
+function poBuildParams(f) {
+  var p = new URLSearchParams();
+  if (f.from) p.append('from', f.from);
+  if (f.to) p.append('to', f.to);
+  if (f.equipmentId) p.append('equipment_id', f.equipmentId);
+  if (f.status) p.append('status', f.status);
+  if (f.search) p.append('q', f.search);
+  return p;
+}
+
+function poStatusLabel(v) {
+  return { OK: '정상', CANCEL: '취소', ERROR: '오류' }[v] || v;
+}
+
+function poRenderChips(f, summary) {
+  var items = [];
+  var reload = function(fn) { return function() { fn(); loadOutputHistory(1); }; };
+  if (f.from || f.to) {
+    var label = f.from && f.to ? ('완료일 ' + f.from + ' ~ ' + f.to)
+              : f.from ? ('완료일 ' + f.from + ' 이후') : ('완료일 ' + f.to + ' 이전');
+    items.push({ label: label, onClear: reload(function() {
+      document.getElementById('poFrom').value = '';
+      document.getElementById('poTo').value = '';
+    }) });
+  } else {
+    items.push({ label: '전체 기간', tone: 'static' });
+  }
+  if (f.equipmentId) {
+    var sel = document.getElementById('poEquipment');
+    var name = (sel && sel.selectedOptions[0]) ? sel.selectedOptions[0].textContent : f.equipmentId;
+    items.push({ label: '장비 ' + name, onClear: reload(function() { document.getElementById('poEquipment').value = ''; }) });
+  }
+  if (f.status) {
+    items.push({ label: '상태 ' + poStatusLabel(f.status), onClear: reload(function() { document.getElementById('poStatus').value = ''; }) });
+  } else {
+    items.push({ label: '취소·오류 포함', tone: 'warn' });   // 전체 조회는 실적이 부풀려진다는 뜻이다
+  }
+  // 기본(정상만) 조회일 때 무엇이 빠졌는지 밝힌다 — 조용히 빼면 총계 차이를 설명 못 한다
+  if (f.status === 'OK' && summary) {
+    items.push({ label: '취소·오류는 별도 집계', tone: 'static' });
+  }
+  items.push({ label: '장비 로그 기준 (거래처·금액 없음)', tone: 'static' });
+  window.dsListUx.renderChips('poFilterChips', items);
+}
+
+function poRenderSummary(summary, pagination) {
+  if (!summary) { window.dsListUx.renderSummary('poSummaryBar', null); return; }
+  var cols = [
+    { label: '건수', value: summary.count },
+    { label: '면적', value: Math.round(summary.area_m2).toLocaleString() + '㎡', format: 'text', strong: true },
+    { label: '장비', value: summary.equipment_count }
+  ];
+  // 취소·오류는 실적에서 빼되 숨기지 않는다 (합계에 섞지 않고 별도 항목으로)
+  if (summary.cancel_count > 0) cols.push({ label: '취소', value: summary.cancel_count });
+  if (summary.error_count > 0) cols.push({ label: '오류', value: summary.error_count });
+  window.dsListUx.renderSummary('poSummaryBar', cols, {
+    multiPage: !!(pagination && pagination.total_pages > 1)
+  });
+}
+
+function poRenderPagination(p) {
+  var el = document.getElementById('poPagination');
+  if (!el) { console.warn('[outputHistory] #poPagination not found'); return; }
+  if (!p || p.total_pages <= 1) { el.innerHTML = ''; return; }
+  var btn = 'padding:6px 14px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;cursor:pointer;background:#fff;';
+  var dis = 'padding:6px 14px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;cursor:not-allowed;background:#f9fafb;color:#9ca3af;';
+  var nums = '';
+  var start = Math.max(1, p.page - 2);
+  var end = Math.min(p.total_pages, start + 4);
+  for (var i = start; i <= end; i++) {
+    var active = i === p.page
+      ? 'padding:6px 12px;border:1px solid #2563eb;border-radius:6px;font-size:13px;cursor:pointer;background:#2563eb;color:#fff;font-weight:600;'
+      : btn;
+    nums += '<button onclick="loadOutputHistory(' + i + ')" style="' + active + '">' + i + '</button>';
+  }
+  el.innerHTML =
+      '<button onclick="loadOutputHistory(' + (p.page - 1) + ')" ' + (p.page <= 1 ? 'disabled' : '') + ' style="' + (p.page <= 1 ? dis : btn) + '">이전</button>'
+    + nums
+    + '<button onclick="loadOutputHistory(' + (p.page + 1) + ')" ' + (p.page >= p.total_pages ? 'disabled' : '') + ' style="' + (p.page >= p.total_pages ? dis : btn) + '">다음</button>'
+    + '<span style="font-size:13px;color:#6b7280;margin-left:8px;">' + p.page + ' / ' + p.total_pages + ' 페이지</span>';
+}
+
+function poRenderRows(rows) {
+  var tbody = document.getElementById('poTableBody');
+  if (!tbody) { console.warn('[outputHistory] #poTableBody not found'); return; }
+  if (!rows || rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center py-12">'
+      + '<i class="fas fa-print text-3xl mb-3 block text-gray-300"></i>'
+      + '<div class="text-sm text-gray-500">해당 조건의 출력 실적이 없습니다.</div></td></tr>';
+    return;
+  }
+  var badge = { OK: 'ds-badge ds-badge-green', CANCEL: 'ds-badge ds-badge-gray', ERROR: 'ds-badge ds-badge-red' };
+  tbody.innerHTML = rows.map(function(e) {
+    // 면적 = 폭 × 높이 × 매수. 치수는 TEXT 컬럼이라 Number() 로 변환한다(단위 mm).
+    var w = Number(e.output_width) || 0;
+    var h = Number(e.output_height) || 0;
+    var copies = Number(e.copy_total) || 1;
+    var area = (w * h * copies) / 1000000;
+    var completed = e.print_completed_at || e.created_at || '';
+    var completedKst = window.formatKST ? window.formatKST(completed, 'datetime') : String(completed).slice(0, 16);
+    return '<tr>'
+      + '<td>' + escapeHtml(completedKst || '-') + '</td>'
+      + '<td>' + escapeHtml(e.printer_name || '-') + '</td>'
+      + '<td class="truncate" title="' + escapeHtml(e.file_name || '') + '">' + escapeHtml(e.file_name || '-') + '</td>'
+      + '<td>' + escapeHtml(e.order_number || '-') + '</td>'
+      + '<td style="text-align:right">' + (w ? Math.round(w) + '×' + Math.round(h) : '-') + '</td>'
+      + '<td style="text-align:right">' + copies.toLocaleString() + '</td>'
+      + '<td style="text-align:right">' + (area ? area.toFixed(1) : '-') + '</td>'
+      + '<td style="text-align:right">' + (e.print_duration_sec != null ? Number(e.print_duration_sec).toLocaleString() : '-') + '</td>'
+      + '<td style="text-align:center"><span class="' + (badge[e.print_status] || 'ds-badge ds-badge-gray') + '">' + poStatusLabel(e.print_status) + '</span></td>'
+      + '</tr>';
+  }).join('');
+}
+
+async function loadOutputHistory(page) {
+  poPage = page || 1;
+  var f = poReadFilters();
+  var params = poBuildParams(f);
+  params.append('page', String(poPage));
+  params.append('limit', String(window.dsListToolbar ? window.dsListToolbar.pageSize('production-output', 50) : 50));
+
+  poRenderChips(f, null);   // 조건 표시는 응답을 기다리지 않는다
+
+  var tbody = document.getElementById('poTableBody');
+  if (tbody && window.dsSkeleton) tbody.innerHTML = window.dsSkeleton.loadingRow(9);
+
+  try {
+    var res = await axios.get('/api/print-events?' + params.toString());
+    if (!res.data.success) throw new Error(res.data.error || '조회 실패');
+    poRenderRows(res.data.data || []);
+    poRenderPagination(res.data.pagination);
+    poRenderSummary(res.data.summary, res.data.pagination);
+    poRenderChips(f, res.data.summary);
+  } catch (e) {
+    console.error('loadOutputHistory error:', e);
+    if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-red-500">불러오기 실패: ' + escapeHtml(e.message || '') + '</td></tr>';
+  }
+}
+
+function resetOutputFilters() {
+  var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = v; };
+  setVal('poFrom', poDefaultFrom());
+  setVal('poTo', '');
+  setVal('poEquipment', '');
+  setVal('poStatus', 'OK');
+  setVal('poSearch', '');
+  loadOutputHistory(1);
+}
+
+function poApplyFilters(f) {
+  if (!f) return;
+  var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = (v == null ? '' : v); };
+  setVal('poFrom', f.from);
+  setVal('poTo', f.to);
+  setVal('poEquipment', f.equipmentId);
+  setVal('poStatus', f.status);
+  setVal('poSearch', f.search);
+  poPresetApplied = true;
+  loadOutputHistory(1);
+}
+
+// 장비 셀렉트 채우기 — 목록이 26대라 전량으로 둔다.
+// ⚠️ `/api/equipment` 는 **존재하지 않는다**(404). 정본은 `/api/rip/equipment` 다.
+//    (production.js 의 기존 호출 한 곳도 404 를 조용히 삼키고 있었다 — 그쪽은 별건)
+async function poLoadEquipment() {
+  try {
+    var res = await axios.get('/api/rip/equipment');
+    var list = (res.data && res.data.data) || [];
+    var sel = document.getElementById('poEquipment');
+    if (!sel) { console.warn('[outputHistory] #poEquipment not found'); return; }
+    list.forEach(function(eq) {
+      var o = document.createElement('option');
+      o.value = eq.id;
+      o.textContent = eq.name || eq.equipment_name || ('장비 ' + eq.id);
+      sel.appendChild(o);
+    });
+  } catch (e) { console.warn('[outputHistory] 장비 목록 로드 실패', e); }
+}
+
+// 탭 최초 진입 시 1회 — 표가 hidden 이면 열 선택이 thead 를 못 읽는다
+window.initOutputHistory = function() {
+  if (poToolbarMounted) return;
+  poToolbarMounted = true;
+
+  var from = document.getElementById('poFrom');
+  if (from && !from.value) from.value = poDefaultFrom();
+
+  poLoadEquipment();
+
+  var m = window.dsListToolbar && window.dsListToolbar.mount({
+    pageKey: 'production-output',
+    container: 'poListToolbar',
+    tableSelector: '.po-tbl',
+    defaultPageSize: 50,
+    getFilters: function() { return poReadFilters(); },
+    applyFilters: function(f) { poApplyFilters(f); },
+    onChange: function() { loadOutputHistory(1); }
+  });
+  if (m && m.then) m.then(function() { if (!poPresetApplied) loadOutputHistory(1); });
+  else loadOutputHistory(1);
+};

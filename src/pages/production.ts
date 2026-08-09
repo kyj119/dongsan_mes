@@ -53,6 +53,10 @@ export function productionPage(c: Context<HonoEnv>) {
           class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 -mb-px transition-colors">
           <i class="fas fa-user-clock mr-1.5"></i>작업실적
         </button>
+        <button id="tabBtnOutput" onclick="switchProdTab('output')"
+          class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 -mb-px transition-colors">
+          <i class="fas fa-print mr-1.5"></i>출력실적
+        </button>
         <button id="tabBtnLink" onclick="switchProdTab('link')"
           class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 -mb-px transition-colors">
           <i class="fas fa-link mr-1.5"></i>출력파일 연결
@@ -433,6 +437,75 @@ export function productionPage(c: Context<HonoEnv>) {
       <!-- ══════════ 탭 4: 출력파일 연결 ══════════ -->
       <!-- RIP 로그에 뜬 파일명 중 카드에 안 붙은 것 → 파일명 파싱으로 후보 추천 → 1클릭 확정.
            확정분은 print_file_map 에 학습되어 같은 파일명 재출력부터 자동 매칭된다. -->
+      <!-- ══════════ 탭: 출력실적 (설계 = docs/specs/2026-08-09-production-history-list.md) ══════════
+           정본 = print_events(장비 출력 로그). cards·production_logs 는 prod 0건이라 쓰지 않는다.
+           card_id 연결이 1건뿐이라 거래처·금액은 붙일 수 없다 — 이건 '장비 실적'이지 매출 실적이 아니다. -->
+      <div id="tabOutput" class="hidden">
+        <div class="ds-filter-bar">
+          <div class="ds-filter-field">
+            <label class="ds-label">완료일 from</label>
+            <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="poFrom" class="js-fp ds-input" onchange="loadOutputHistory(1)">
+          </div>
+          <div class="ds-filter-field">
+            <label class="ds-label">~ to</label>
+            <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="poTo" class="js-fp ds-input" onchange="loadOutputHistory(1)">
+          </div>
+          <div class="ds-filter-field" style="min-width:150px">
+            <label class="ds-label">장비</label>
+            <select id="poEquipment" class="ds-input" onchange="loadOutputHistory(1)">
+              <option value="">전체</option>
+            </select>
+          </div>
+          <div class="ds-filter-field" style="min-width:110px">
+            <label class="ds-label">상태</label>
+            <select id="poStatus" class="ds-input" onchange="loadOutputHistory(1)">
+              <option value="OK">정상만</option>
+              <option value="">전체</option>
+              <option value="CANCEL">취소</option>
+              <option value="ERROR">오류</option>
+            </select>
+          </div>
+          <div class="ds-filter-field" style="flex:1;min-width:180px">
+            <label class="ds-label">검색</label>
+            <input type="text" id="poSearch" placeholder="파일명, 주문번호, 장비명..." class="ds-input"
+              onkeydown="if(event.key==='Enter')loadOutputHistory(1)">
+          </div>
+          <div class="ds-filter-actions">
+            <button onclick="resetOutputFilters()" class="ds-btn ds-btn-secondary ds-btn-sm"><i class="fas fa-undo" style="margin-right:4px"></i>초기화</button>
+            <button onclick="loadOutputHistory(1)" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-search" style="margin-right:4px"></i>검색</button>
+          </div>
+        </div>
+
+        <div id="poFilterChips" class="ds-conds mb-2"></div>
+        <div id="poListToolbar"></div>
+
+        <div class="ds-card" style="padding:0;overflow:hidden;">
+          <div class="ds-table-wrap" style="max-height: calc(100vh - 340px); overflow-y: auto;">
+            <table class="ds-table ds-table-striped po-tbl">
+              <thead>
+                <tr>
+                  <!-- data-col = '열 선택'(dsListToolbar) 대상 -->
+                  <th style="width:132px" data-col="completed">출력완료</th>
+                  <th style="width:130px" data-col="equipment">장비</th>
+                  <th data-col="file">파일명</th>
+                  <th style="width:104px" data-col="order">주문번호</th>
+                  <th style="width:120px;text-align:right" data-col="size">규격(mm)</th>
+                  <th style="width:64px;text-align:right" data-col="copies">매수</th>
+                  <th style="width:88px;text-align:right" data-col="area">면적(㎡)</th>
+                  <th style="width:74px;text-align:right" data-col="duration">소요(초)</th>
+                  <th style="width:72px;text-align:center" data-col="status">상태</th>
+                </tr>
+              </thead>
+              <tbody id="poTableBody">
+                <tr><td colspan="9" class="px-4 py-8 text-center" style="color:var(--c-text-muted)">탭을 열면 조회합니다.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="poSummaryBar" class="ds-summary"></div>
+          <div id="poPagination" class="px-6 py-3 flex items-center gap-2 flex-wrap" style="border-top:1px solid var(--c-border)"></div>
+        </div>
+      </div>
+
       <div id="tabLink" class="hidden">
         <div class="ds-card p-4 mb-4">
           <div class="flex items-center justify-between mb-3">

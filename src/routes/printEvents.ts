@@ -867,8 +867,24 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
     }
 
     // Count
-    const countQuery = `SELECT COUNT(*) as count FROM print_events pe ${where}`
-    const countRow = await c.env.DB.prepare(countQuery).bind(...params).first<CountRow>()
+    // 건수 + 실적 합계 — 조회조건 전체 기준(현재 페이지 아님)
+    //
+    // ★면적이 실적이다. 건수만으로는 A4 한 장과 10m 현수막이 같은 1건이 된다.
+    //   `output_width/height` 는 **TEXT 컬럼**이라 CAST 필수(안 하면 문자열 비교로 엉킨다). 단위는 mm(실측 40mm~27.8m).
+    //   `copy_total`(모아찍기 매수)을 곱한다. ⚠️`tile_count` 는 곱하지 않는다 —
+    //   타일 행은 타일마다 폭이 달라(2473mm/1807mm) 이미 행 단위로 분리돼 있어 곱하면 중복이다.
+    //
+    // ⚠️`print_duration_sec` 은 합계에 넣지 않는다. 파서별로 의미가 다르고(memory reference-logwatcher-duration-semantics)
+    //   실측이 1초~14,293초에 100장 작업이 45초인 행까지 있어 합산이 무의미하다. 열로만 원본을 보여준다.
+    const countQuery = `SELECT COUNT(*) as count,
+        COALESCE(SUM(CAST(pe.output_width AS REAL) * CAST(pe.output_height AS REAL) * COALESCE(pe.copy_total, 1)), 0) / 1000000.0 as area_m2,
+        COUNT(DISTINCT pe.equipment_id) as equipment_count,
+        SUM(CASE WHEN pe.print_status = 'CANCEL' THEN 1 ELSE 0 END) as cancel_count,
+        SUM(CASE WHEN pe.print_status = 'ERROR' THEN 1 ELSE 0 END) as error_count
+      FROM print_events pe ${where}`
+    const countRow = await c.env.DB.prepare(countQuery).bind(...params).first<{
+      count: number; area_m2: number; equipment_count: number; cancel_count: number; error_count: number
+    }>()
     const count = countRow?.count ?? 0
 
     // 장비명 표시 통일: 사용자가 /장비관리에서 정한 equipment.name 우선, 없으면 RIPLOG 원본(printer_name)
@@ -884,6 +900,13 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
         limit: limitNum,
         total: count,
         total_pages: Math.ceil(count / limitNum)
+      },
+      summary: {
+        count,
+        area_m2: Number(countRow?.area_m2) || 0,
+        equipment_count: Number(countRow?.equipment_count) || 0,
+        cancel_count: Number(countRow?.cancel_count) || 0,
+        error_count: Number(countRow?.error_count) || 0,
       }
     })
   } catch (error) {
