@@ -1,7 +1,7 @@
 # 출고 이력목록 설계 (2026-08-09)
 
 > 배경: 목록 UX 감사(`docs/audits/2026-08-08-list-ux-ecount-gap.md`)에서 출고를 "하루치 작업 보드라 이식 대상이 아님"으로 분류하며 남긴 별도 설계 건.
-> 상태: **설계만. 구현 미착수.**
+> 상태: **1단계 구현 완료(2026-08-09).** 배송방법 통일(§4-2)·반품 2단계(§2-6)는 미착수.
 
 ## 0. 조사로 드러난 사실 (설계 전제를 바꾼 것)
 
@@ -208,7 +208,29 @@ sort: ship_date_desc / ship_date_asc
 2. **2026년 산발 `배송` 17건** — 실주문으로 보이나 개별 확인 후 전환할지, 일괄 전환할지.
 3. **반품 2단계 착수 시점** — 실제 반품이 발생해 `returns` 에 행이 쌓인 뒤.
 
-## 8. 결정 이력
+## 8. 구현 기록 (1단계, 2026-08-09)
+
+설계대로 **새 테이블·새 엔드포인트·마이그레이션 없이** 끝났다.
+
+| 파일 | 변경 |
+|---|---|
+| `src/routes/orders/listFilter.ts` | `SHIP_DATE_EXPR`·`VOUCHER_ORDER_SQL` 상수, `ship_date_from/to` 조건, `exclude_vouchers` 옵트인, `ship_date_desc/asc` 정렬 |
+| `src/routes/orders/core.ts` | `summary.ship_date_missing`(카운트 쿼리에 합산) · `summary.voucher_excluded`(옵트인일 때만 별도 조회) |
+| `src/pages/shipments.ts` | 「이력」 탭 + 필터바 + 표(`data-col` 8열) + 칩·도구모음·합계 컨테이너, 탭 전환기 확장 |
+| `src/scripts/shipments.js` | 이력 로더·칩·합계·페이지네이션·탭 진입 1회 마운트 |
+
+구현 중 조정한 것:
+
+- **`exclude_vouchers` 를 옵트인으로** 했다. 기본 주문 목록의 동작을 바꾸지 않기 위해서다. `voucher_excluded` 카운트 조회도 이 플래그가 있을 때만 돈다 — 다른 페이지가 왕복 비용을 내지 않는다.
+- **`ship_date_to` 는 `+ ' 23:59:59'`** 로 건다. `shipped_at` 은 DATETIME 이라 `<= '2026-06-30'` 으로 걸면 `2026-06-30 14:00` 이 조회에서 빠진다.
+- **`getBillingStatusColor/Text` 는 orders.js 전용**이라 shipments 에서 부르면 ReferenceError 다 → 로컬 맵으로 대체.
+- **「주문일 대체」 배지가 열 폭에 잘려 안 보였다.** 대체 사실을 드러내는 게 이 설계의 핵심인데 무의미해지므로 열을 158px 로 넓히고 그 셀만 `overflow: visible`.
+
+검증: tsc·build·smoke 110/110·`sort-audit` P1 0·`audit:entity` 0·`check:dom` 기준선.
+API — 기간 필터(결측분이 주문일로 잡힘)·정렬 양방향 정확히 역순·전표 2건 제외 시 합계에서 1.5억 빠짐·`voucher_excluded=2`.
+화면 — 탭 진입 1회 마운트, 탭 왕복 시 중복 없음, 칩 4종(기간·출고완료만·전표 제외·결측 경고), 대체 배지 표시.
+
+## 9. 결정 이력
 
 | 날짜 | 항목 | 결정 |
 |---|---|---|

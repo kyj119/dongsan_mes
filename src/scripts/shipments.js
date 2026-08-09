@@ -1790,3 +1790,225 @@ function printShipDeliveryNote() {
 initDatePicker();
 loadShipmentsByDate();
 loadInTransitOrders();
+
+/* ── 출고 이력 탭 ───────────────────────────────────────────────────────────
+ * 설계 = docs/specs/2026-08-09-shipment-history-list.md
+ *
+ * 정본은 주문 출고완료(orders.status='SHIPPED')다. shipments 테이블은 prod 0건이라 쓰지 않는다.
+ * 조회도 /api/orders 를 그대로 쓴다 — 전용 엔드포인트를 만들면 조회조건이 또 두 벌이 되고,
+ * 목록 UX 감사에서 계속 잡아온 그 문제(카드≠목록, CSV≠화면)를 새로 만드는 셈이다.
+ */
+var histCurrentPage = 1;
+var histToolbarMounted = false;
+var histPresetApplied = false;
+
+// 기본 조회 기간 = 최근 1개월 (주문 목록과 동일 규칙)
+function shipHistDefaultFrom() {
+  var t = (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10)).split('-');
+  var d = new Date(parseInt(t[0]), parseInt(t[1]) - 1, parseInt(t[2]));
+  d.setMonth(d.getMonth() - 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+// ── 조회조건 SSOT (클라) — 서버 정본 = routes/orders/listFilter.ts ──
+function histReadFilters() {
+  var g = function(id) { var el = document.getElementById(id); return el ? el.value : ''; };
+  return {
+    dateFrom: g('histDateFrom'),
+    dateTo: g('histDateTo'),
+    search: g('histSearch'),
+    method: g('histMethod'),
+    sort: 'ship_date_desc'
+  };
+}
+
+function histBuildParams(f) {
+  var p = new URLSearchParams();
+  p.append('status', 'SHIPPED');          // 이력 = 출고완료 주문
+  p.append('exclude_vouchers', '1');      // 기초채권·법인간미러 전표는 출고가 아니다
+  if (f.dateFrom) p.append('ship_date_from', f.dateFrom);
+  if (f.dateTo) p.append('ship_date_to', f.dateTo);
+  if (f.search) p.append('search', f.search);
+  if (f.method) p.append('delivery_method', f.method);
+  return p;
+}
+
+function histRenderChips(f, summary) {
+  var items = [];
+  if (f.dateFrom || f.dateTo) {
+    var label = f.dateFrom && f.dateTo ? ('출고일 ' + f.dateFrom + ' ~ ' + f.dateTo)
+              : f.dateFrom ? ('출고일 ' + f.dateFrom + ' 이후')
+              : ('출고일 ' + f.dateTo + ' 이전');
+    items.push({ label: label, onClear: function() {
+      document.getElementById('histDateFrom').value = '';
+      document.getElementById('histDateTo').value = '';
+      loadShipHistory(1);
+    } });
+  } else {
+    items.push({ label: '전체 기간', tone: 'static' });
+  }
+  if (f.search) items.push({ label: '검색 "' + f.search + '"', onClear: function() { document.getElementById('histSearch').value = ''; loadShipHistory(1); } });
+  if (f.method) items.push({ label: '배송 ' + f.method, onClear: function() { document.getElementById('histMethod').value = ''; loadShipHistory(1); } });
+  items.push({ label: '출고완료만', tone: 'static' });
+
+  // 숫자가 이상해 보이는 이유를 화면이 스스로 말하게 한다 (합계 바의 '공급가 미기재' 알림과 같은 방식)
+  if (summary && summary.voucher_excluded > 0) {
+    items.push({ label: '회계 전표 ' + Number(summary.voucher_excluded).toLocaleString() + '건 제외', tone: 'static' });
+  }
+  if (summary && summary.ship_date_missing > 0) {
+    items.push({ label: '출고일 미기록 ' + Number(summary.ship_date_missing).toLocaleString() + '건 포함 (주문일로 대체)', tone: 'warn' });
+  }
+  window.dsListUx.renderChips('histFilterChips', items);
+}
+
+function histRenderSummary(summary, pagination) {
+  if (!summary) { window.dsListUx.renderSummary('histSummaryBar', null); return; }
+  window.dsListUx.renderSummary('histSummaryBar', [
+    { label: '건수', value: summary.count },
+    { label: '수량', value: summary.quantity },
+    { label: '공급가', value: summary.supply_amount, format: 'won' },
+    { label: '부가세', value: summary.vat_amount, format: 'won' },
+    { label: '합계', value: summary.final_amount, format: 'won', strong: true }
+  ], {
+    multiPage: !!(pagination && pagination.total_pages > 1),
+    note: window.dsAmountBreakdownNote ? window.dsAmountBreakdownNote(summary) : ''
+  });
+}
+
+function histRenderPagination(p) {
+  var el = document.getElementById('histPagination');
+  if (!el) { console.warn('[shipHistory] #histPagination not found'); return; }
+  if (!p || p.total_pages <= 1) { el.innerHTML = ''; return; }
+  var btn = 'padding:6px 14px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;cursor:pointer;background:#fff;';
+  var dis = 'padding:6px 14px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;cursor:not-allowed;background:#f9fafb;color:#9ca3af;';
+  var nums = '';
+  var start = Math.max(1, p.page - 2);
+  var end = Math.min(p.total_pages, start + 4);
+  for (var i = start; i <= end; i++) {
+    var active = i === p.page
+      ? 'padding:6px 12px;border:1px solid #2563eb;border-radius:6px;font-size:13px;cursor:pointer;background:#2563eb;color:#fff;font-weight:600;'
+      : btn;
+    nums += '<button onclick="loadShipHistory(' + i + ')" style="' + active + '">' + i + '</button>';
+  }
+  el.innerHTML =
+      '<button onclick="loadShipHistory(' + (p.page - 1) + ')" ' + (p.page <= 1 ? 'disabled' : '') + ' style="' + (p.page <= 1 ? dis : btn) + '">이전</button>'
+    + nums
+    + '<button onclick="loadShipHistory(' + (p.page + 1) + ')" ' + (p.page >= p.total_pages ? 'disabled' : '') + ' style="' + (p.page >= p.total_pages ? dis : btn) + '">다음</button>'
+    + '<span style="font-size:13px;color:#6b7280;margin-left:8px;">' + p.page + ' / ' + p.total_pages + ' 페이지</span>';
+}
+
+function histRenderRows(rows) {
+  var tbody = document.getElementById('histTableBody');
+  if (!tbody) { console.warn('[shipHistory] #histTableBody not found'); return; }
+  if (!rows || rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-12">'
+      + '<i class="fas fa-inbox text-3xl mb-3 block text-gray-300"></i>'
+      + '<div class="text-sm text-gray-500">해당 기간의 출고 이력이 없습니다.</div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(function(o) {
+    // 출고일: shipped_at 이 정본. 없으면 주문일로 대체하되 그 사실을 배지로 드러낸다.
+    var shipped = o.shipped_at ? String(o.shipped_at).slice(0, 10) : '';
+    var shipCell = shipped
+      ? shipped
+      : ((o.order_date || '-') + ' <span class="ds-cond ds-cond-warn" style="padding:1px 5px;font-size:10px">주문일 대체</span>');
+
+    var spec = (o.main_item_width && o.main_item_height)
+      ? ' <span class="text-xs text-gray-500">[' + o.main_item_width + '×' + o.main_item_height + ']</span>' : '';
+    var more = o.item_count > 1 ? ' <span class="text-xs text-gray-400">외 ' + (o.item_count - 1) + '건</span>' : '';
+    var itemCell = (o.main_item_name ? escapeHtml(o.main_item_name) : '<span class="text-gray-400">-</span>') + spec + more;
+
+    // 합배송 배지 — 주문 목록과 같은 규칙(대표/자식). 이력에서 묶음을 한 줄로 합치지 않는다.
+    var consBadge = '';
+    if (o.consolidation_child_count > 0) {
+      consBadge = ' <span class="px-1.5 py-0.5 text-[10px] rounded font-bold" style="background:#ecfeff;color:#0e7490" title="' + escapeHtml(o.consolidation_child_numbers || '') + '">합배송 +' + o.consolidation_child_count + '</span>';
+    } else if (o.consolidate_root_number) {
+      consBadge = ' <span class="px-1.5 py-0.5 text-[10px] rounded" style="background:#f1f5f9;color:#475569" title="대표 주문 ' + escapeHtml(o.consolidate_root_number) + '">합배송 자식</span>';
+    }
+
+    // ⚠️ getBillingStatus* 는 orders.js 전용이라 여기서 부르면 ReferenceError 다 — 로컬 맵을 쓴다
+    var billLabel = { BILLED: '회계반영', PAID: '수금완료' }[o.billing_status] || o.billing_status;
+    var billClass = o.billing_status === 'PAID' ? 'ds-badge ds-badge-green' : 'ds-badge ds-badge-gray';
+    var billing = o.billing_status
+      ? '<span class="px-2 py-0.5 text-xs rounded-full ' + billClass + '">' + escapeHtml(billLabel) + '</span>'
+      : '<span class="text-xs text-gray-400">-</span>';
+
+    return '<tr class="cursor-pointer" ondblclick="window.location.href=\'/orders?search=' + encodeURIComponent(o.order_number || '') + '\'">'
+      + '<td class="hist-date">' + shipCell + '</td>'
+      + '<td class="font-medium">' + escapeHtml(o.order_number || '-') + consBadge + '</td>'
+      + '<td>' + escapeHtml(o.client_name || '-') + '</td>'
+      + '<td>' + itemCell + '</td>'
+      + '<td>' + escapeHtml(o.delivery_method || '-') + '</td>'
+      + '<td>' + (o.delivery_date || '-') + '</td>'
+      + '<td style="text-align:right">' + (Number(o.final_amount) || 0).toLocaleString() + '원</td>'
+      + '<td style="text-align:center">' + billing + '</td>'
+      + '</tr>';
+  }).join('');
+}
+
+async function loadShipHistory(page) {
+  histCurrentPage = page || 1;
+  var f = histReadFilters();
+  var params = histBuildParams(f);
+  params.append('sort', f.sort);
+  params.append('page', String(histCurrentPage));
+  params.append('limit', String(window.dsListToolbar ? window.dsListToolbar.pageSize('ship-history', 50) : 50));
+
+  histRenderChips(f, null);   // 조건 표시는 응답을 기다리지 않는다
+
+  var tbody = document.getElementById('histTableBody');
+  if (tbody && window.dsSkeleton) tbody.innerHTML = window.dsSkeleton.loadingRow(8);
+
+  try {
+    var res = await axios.get('/api/orders?' + params.toString());
+    if (!res.data.success) throw new Error(res.data.error || '조회 실패');
+    histRenderRows(res.data.data || []);
+    histRenderPagination(res.data.pagination);
+    histRenderSummary(res.data.summary, res.data.pagination);
+    histRenderChips(f, res.data.summary);   // 결측·제외 건수는 응답을 받아야 알 수 있다
+  } catch (e) {
+    console.error('loadShipHistory error:', e);
+    if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-red-500">불러오기 실패: ' + escapeHtml(e.message || '') + '</td></tr>';
+  }
+}
+
+function resetShipHistoryFilters() {
+  var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = v; };
+  setVal('histDateFrom', shipHistDefaultFrom());
+  setVal('histDateTo', '');
+  setVal('histSearch', '');
+  setVal('histMethod', '');
+  loadShipHistory(1);
+}
+
+function histApplyFilters(f) {
+  if (!f) return;
+  var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = (v == null ? '' : v); };
+  setVal('histDateFrom', f.dateFrom);
+  setVal('histDateTo', f.dateTo);
+  setVal('histSearch', f.search);
+  setVal('histMethod', f.method);
+  histPresetApplied = true;
+  loadShipHistory(1);
+}
+
+// 탭 최초 진입 시 1회 — 표가 hidden 이면 열 선택이 thead 를 읽지 못한다(입고·세금계산서에서 겪은 함정)
+window.initShipHistory = function() {
+  if (histToolbarMounted) return;
+  histToolbarMounted = true;
+
+  var from = document.getElementById('histDateFrom');
+  if (from && !from.value) from.value = shipHistDefaultFrom();
+
+  var m = window.dsListToolbar && window.dsListToolbar.mount({
+    pageKey: 'ship-history',
+    container: 'histListToolbar',
+    tableSelector: '.hist-tbl',
+    defaultPageSize: 50,
+    getFilters: function() { return histReadFilters(); },
+    applyFilters: function(f) { histApplyFilters(f); },
+    onChange: function() { loadShipHistory(1); }
+  });
+  if (m && m.then) m.then(function() { if (!histPresetApplied) loadShipHistory(1); });
+  else loadShipHistory(1);
+};

@@ -11,7 +11,7 @@ export function shipmentsPage(c: Context<HonoEnv>) {
       var __shipRole = ''; try { __shipRole = (JSON.parse(localStorage.getItem('user')||'{}').role) || ''; } catch(e){}
       window.__shipPrepLoaded = false;
       window.switchShipTab = function(tab){
-        var defs = [ {k:'exec',btn:'shipExecTab',c:'shipExecContent'}, {k:'prep',btn:'shipPrepTab',c:'shipPrepContent'} ];
+        var defs = [ {k:'exec',btn:'shipExecTab',c:'shipExecContent'}, {k:'prep',btn:'shipPrepTab',c:'shipPrepContent'}, {k:'hist',btn:'shipHistTab',c:'shipHistContent'} ];
         defs.forEach(function(d){
           var b = document.getElementById(d.btn), ct = document.getElementById(d.c);
           if(!b || !ct){ console.warn('[shipments] tab not found: ' + d.k); return; }
@@ -25,6 +25,8 @@ export function shipmentsPage(c: Context<HonoEnv>) {
         if(tab === 'prep' && typeof window.loadDashboard === 'function' && !window.__shipPrepLoaded){
           window.__shipPrepLoaded = true; window.loadDashboard();
         }
+        // 이력 탭도 최초 진입 시 1회 — 표가 hidden 이면 도구모음(열 선택)이 붙지 않는다
+        if(tab === 'hist' && typeof window.initShipHistory === 'function'){ window.initShipHistory(); }
       };
       document.addEventListener('DOMContentLoaded', function(){
         // OPERATOR(현장): 사무실 라벨 '실행' 탭 숨기고 '준비상태' 전용
@@ -115,6 +117,7 @@ export function shipmentsPage(c: Context<HonoEnv>) {
       <div class="flex border-b mb-4" id="shipTabNav">
         <button id="shipExecTab" onclick="switchShipTab('exec')" class="px-5 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600"><i class="fas fa-truck mr-1"></i>택배사별 실행</button>
         <button id="shipPrepTab" onclick="switchShipTab('prep')" class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700"><i class="fas fa-clipboard-check mr-1"></i>준비상태</button>
+        <button id="shipHistTab" onclick="switchShipTab('hist')" class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700"><i class="fas fa-clock-rotate-left mr-1"></i>이력</button>
       </div>
 
       <div id="shipExecContent">
@@ -440,6 +443,77 @@ export function shipmentsPage(c: Context<HonoEnv>) {
       </div><!-- /shipExecContent -->
 
       <!-- 준비상태 탭 (구 /shipments-dashboard 흡수) -->
+      <!-- ===== 이력 탭 (설계: docs/specs/2026-08-09-shipment-history-list.md) =====
+           정본 = 주문 출고완료(orders.status=SHIPPED). shipments 테이블은 prod 0건이라 쓰지 않는다.
+           조회는 /api/orders 를 그대로 쓴다 — 전용 엔드포인트를 만들면 조회조건이 또 두 벌이 된다. -->
+      <div id="shipHistContent" class="hidden">
+        <div class="ds-filter-bar">
+          <div class="ds-filter-field">
+            <label class="ds-label">출고일 from</label>
+            <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="histDateFrom" class="js-fp ds-input" onchange="loadShipHistory(1)">
+          </div>
+          <div class="ds-filter-field">
+            <label class="ds-label">~ to</label>
+            <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="histDateTo" class="js-fp ds-input" onchange="loadShipHistory(1)">
+          </div>
+          <div class="ds-filter-field" style="flex:1;min-width:180px">
+            <label class="ds-label">검색</label>
+            <input type="text" id="histSearch" placeholder="주문번호, 거래처명, 품목명..." class="ds-input"
+              onkeydown="if(event.key==='Enter')loadShipHistory(1)">
+          </div>
+          <div class="ds-filter-field" style="min-width:120px">
+            <label class="ds-label">배송방법</label>
+            <select id="histMethod" class="ds-input" onchange="loadShipHistory(1)">
+              <option value="">전체</option>
+              <option value="대신택배">대신택배</option>
+              <option value="대신화물">대신화물</option>
+              <option value="한진택배">한진택배</option>
+              <option value="직배">직배</option>
+              <option value="직접배송">직접배송</option>
+              <option value="용차">용차</option>
+              <option value="퀵">퀵</option>
+              <option value="방문수령">방문수령</option>
+            </select>
+          </div>
+          <div class="ds-filter-actions">
+            <button onclick="resetShipHistoryFilters()" class="ds-btn ds-btn-secondary ds-btn-sm"><i class="fas fa-undo" style="margin-right:4px"></i>초기화</button>
+            <button onclick="loadShipHistory(1)" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-search" style="margin-right:4px"></i>검색</button>
+          </div>
+        </div>
+
+        <div id="histFilterChips" class="ds-conds mb-2"></div>
+        <div id="histListToolbar"></div>
+
+        <style>
+          /* 「주문일 대체」 배지가 좁은 셀에서 '...' 로 잘리면 대체 사실이 안 보인다 — 이 열만 넘침 허용 */
+          .ds-table.hist-tbl td.hist-date { overflow: visible; white-space: nowrap; }
+        </style>
+        <div class="ds-card" style="padding:0;overflow:hidden;">
+          <div class="ds-table-wrap" style="max-height: calc(100vh - 340px); overflow-y: auto;">
+            <table class="ds-table ds-table-striped hist-tbl">
+              <thead>
+                <tr>
+                  <!-- data-col = '열 선택'(dsListToolbar) 대상 -->
+                  <th style="width:158px" data-col="ship_date">출고일</th>
+                  <th style="width:108px" data-col="order_number">주문번호</th>
+                  <th style="width:150px" data-col="client">거래처</th>
+                  <th data-col="item">품목</th>
+                  <th style="width:100px" data-col="method">배송방법</th>
+                  <th style="width:96px" data-col="delivery_date">납기일</th>
+                  <th style="width:104px;text-align:right" data-col="amount">금액</th>
+                  <th style="width:82px;text-align:center" data-col="billing">회계반영</th>
+                </tr>
+              </thead>
+              <tbody id="histTableBody">
+                <tr><td colspan="8" class="px-4 py-8 text-center" style="color:var(--c-text-muted)">이력 탭을 열면 조회합니다.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="histSummaryBar" class="ds-summary"></div>
+          <div id="histPagination" class="px-6 py-3 flex items-center gap-2 flex-wrap" style="border-top:1px solid var(--c-border)"></div>
+        </div>
+      </div>
+
       <div id="shipPrepContent" class="hidden">
         <div class="ds-container space-y-4">
           <!-- 필터 영역 -->

@@ -23,6 +23,21 @@ import { kstYmd } from '../../utils/kstDate'
  *   tie-break 없으면 군집 내부가 id ASC↔DESC 로 반전되고 LIMIT/OFFSET 페이징에서 행 중복·누락이 발생.
  *   NULL 처리는 D1 방언(NULLS LAST) 대신 `col IS NULL` 선행 정렬.
  */
+/**
+ * 출고 기준일 — `shipped_at` 이 정본이나 2026-07 이관분 1,420건이 비어 있어(전량 7월) 주문일로 대체한다.
+ * ⚠️ 대체 사실은 화면에서 숨기지 않는다: 행에 「주문일 대체」 배지 + 결측 건수를 summary 로 내려 경고 칩에 띄운다.
+ *   조용히 메우면 「출고일」 열의 14%가 실제로는 주문일이 되어 집계가 말없이 왜곡된다.
+ *   설계 = docs/specs/2026-08-09-shipment-history-list.md §2-2
+ */
+export const SHIP_DATE_EXPR = 'COALESCE(o.shipped_at, o.order_date)'
+
+/**
+ * 회계 전표성 주문 — 기초채권 이월(`*OPEN*`)·법인간 미러(`ICM-*`). prod 195건(5.4억)이 status=SHIPPED 다.
+ * 실제 출고가 아니므로 출고 이력에서 제외한다(안 하면 "2025-12-31 출고 5.3억"이 뜬다).
+ * ⚠️ 명명 규칙 의존은 이관 규칙이 바뀌면 깨진다 — `orders.is_voucher` 플래그 신설이 후속 과제(§7).
+ */
+export const VOUCHER_ORDER_SQL = "(o.order_number LIKE 'ICM-%' OR o.order_number LIKE '%OPEN%')"
+
 export const ORDER_SORT_OPTIONS: Record<string, string> = {
   // 업무일자(주문일) 기준 — 기본값. created_at 은 이관분에서 '이관 실행 시각'이라 업무상 무의미하다.
   'order_date_desc': 'o.order_date IS NULL, o.order_date DESC, o.id DESC',
@@ -34,6 +49,9 @@ export const ORDER_SORT_OPTIONS: Record<string, string> = {
   'final_amount_desc': 'o.final_amount DESC, o.id DESC',
   'final_amount_asc': 'o.final_amount ASC, o.id ASC',
   'client_name_asc': 'c.client_name IS NULL, c.client_name ASC, o.id DESC',
+  // 출고 이력용 — 출고일(미기록분은 주문일) 기준
+  'ship_date_desc': `${SHIP_DATE_EXPR} IS NULL, ${SHIP_DATE_EXPR} DESC, o.id DESC`,
+  'ship_date_asc': `${SHIP_DATE_EXPR} IS NULL, ${SHIP_DATE_EXPR} ASC, o.id ASC`,
   'priority_desc': "CASE WHEN o.priority = 'URGENT' THEN 0 ELSE 1 END, o.delivery_date IS NULL, o.delivery_date ASC, o.id DESC",
 }
 export const ORDER_SORT_DEFAULT = 'order_date_desc'
@@ -68,6 +86,7 @@ export function buildOrderListFilter(c: Context<HonoEnv>, opts: OrderListFilterO
     status = '', search = '', date_from = '', date_to = '', exclude_status = '',
     priority = '', amount_min = '', amount_max = '', delivery_method = '',
     billing_status = '', overdue = '',
+    ship_date_from = '', ship_date_to = '', exclude_vouchers = '',
   } = c.req.query()
 
   const clauses: string[] = []
@@ -101,6 +120,14 @@ export function buildOrderListFilter(c: Context<HonoEnv>, opts: OrderListFilterO
 
   if (date_from) { clauses.push('o.order_date >= ?'); params.push(date_from) }
   if (date_to) { clauses.push('o.order_date <= ?'); params.push(date_to) }
+
+  // 출고 기준일 범위 (출고 이력 탭). shipped_at 은 DATETIME 이라 to 는 하루 끝까지 열어야
+  //   '2026-06-30 14:00' 이 '2026-06-30' 조회에서 빠지지 않는다.
+  if (ship_date_from) { clauses.push(`${SHIP_DATE_EXPR} >= ?`); params.push(ship_date_from) }
+  if (ship_date_to) { clauses.push(`${SHIP_DATE_EXPR} <= ?`); params.push(ship_date_to + ' 23:59:59') }
+
+  // 회계 전표성 주문 제외 — 옵트인. 기본 주문 목록의 동작은 바꾸지 않는다.
+  if (exclude_vouchers === '1') clauses.push(`NOT ${VOUCHER_ORDER_SQL}`)
 
   if (exclude_status) {
     const excludes = exclude_status.split(',').map(s => s.trim()).filter(Boolean)

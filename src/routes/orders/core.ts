@@ -19,7 +19,7 @@ import {
   setOrderBillingStatus,
   generateCardsForOrder,
 } from './helpers'
-import { buildOrderListFilter, resolveOrderSort, ORDER_SORT_DEFAULT } from './listFilter'
+import { buildOrderListFilter, resolveOrderSort, ORDER_SORT_DEFAULT, VOUCHER_ORDER_SQL } from './listFilter'
 
 const ordersCoreRouter = new Hono<HonoEnv>()
 ordersCoreRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
@@ -114,10 +114,11 @@ ordersCoreRouter.get('/', async (c) => {
     const countQuery = `SELECT COUNT(*) as count,
         COALESCE(SUM(o.total_amount), 0) as sum_supply,
         COALESCE(SUM(o.vat_amount), 0) as sum_vat,
-        COALESCE(SUM(o.final_amount), 0) as sum_final
+        COALESCE(SUM(o.final_amount), 0) as sum_final,
+        SUM(CASE WHEN o.shipped_at IS NULL THEN 1 ELSE 0 END) as ship_date_missing
       FROM orders o LEFT JOIN clients c ON o.client_id = c.id${listFilter.where}`
     const countRow = await c.env.DB.prepare(countQuery).bind(...listFilter.params).first<{
-      count: number; sum_supply: number; sum_vat: number; sum_final: number
+      count: number; sum_supply: number; sum_vat: number; sum_final: number; ship_date_missing: number
     }>()
     const count = countRow?.count || 0
 
@@ -133,6 +134,21 @@ ordersCoreRouter.get('/', async (c) => {
       ).bind(...listFilter.params).first<{ qty: number }>()
       sumQty = Number(qtyRow?.qty) || 0
     } catch (_qtyErr) { /* 수량 집계 실패는 목록을 막지 않음 (합계 바에서 '-' 표시) */ }
+
+    // 제외된 회계 전표 건수 — 화면 칩에 "회계 전표 N건 제외"로 띄운다(조용히 빼면 총계 차이를 설명 못 한다).
+    // exclude_vouchers=1 일 때만 조회 — 다른 페이지는 이 왕복을 내지 않는다.
+    let voucherExcluded = 0
+    if (c.req.query('exclude_vouchers') === '1') {
+      try {
+        const vf = buildOrderListFilter(c)   // 같은 조건(전표 제외 포함)
+        // 제외 조건을 뒤집어 '제외된 것'만 센다
+        const invertedWhere = vf.where.replace(`NOT ${VOUCHER_ORDER_SQL}`, VOUCHER_ORDER_SQL)
+        const vRow = await c.env.DB.prepare(
+          `SELECT COUNT(*) as n FROM orders o LEFT JOIN clients c ON o.client_id = c.id${invertedWhere}`
+        ).bind(...vf.params).first<{ n: number }>()
+        voucherExcluded = Number(vRow?.n) || 0
+      } catch (_vErr) { /* 제외 건수 집계 실패는 목록을 막지 않음 */ }
+    }
 
     // summary = 조회조건 전체의 합계 바 (건수·수량·공급가·부가세·합계)
     const response: PaginatedResponse<Order> & { summary: Record<string, number> } = {
@@ -150,6 +166,8 @@ ordersCoreRouter.get('/', async (c) => {
         supply_amount: Number(countRow?.sum_supply) || 0,
         vat_amount: Number(countRow?.sum_vat) || 0,
         final_amount: Number(countRow?.sum_final) || 0,
+        ship_date_missing: Number(countRow?.ship_date_missing) || 0,
+        voucher_excluded: voucherExcluded,
       }
     }
 
