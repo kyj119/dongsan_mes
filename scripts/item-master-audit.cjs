@@ -158,10 +158,32 @@ const met = d1(`SELECT COUNT(*) total,
     SUM(CASE WHEN is_sales_item=0 AND EXISTS(SELECT 1 FROM order_items o WHERE o.item_id=i.id) THEN 1 ELSE 0 END) flag_sale,
     SUM(CASE WHEN is_purchase_item=0 AND EXISTS(SELECT 1 FROM purchase_order_items p WHERE p.item_id=i.id) THEN 1 ELSE 0 END) flag_buy
   FROM items i WHERE i.is_active=1`)[0]
+
+// ★ 「원가 없음」을 뭉뚱그리면 겁만 준다 — 570 중 대부분이 **원가가 없는 게 정상**이다.
+//   출력 제품은 원단을 사서 만들어 파는 것이라 `avg_unit_cost` 가 아니라 **BOM 롤업**이 원가다.
+//   무실적 품목은 매트릭스를 채운 것이라 애초에 살 일이 없었다.
+//   조치가 필요한 건 **매입도 BOM 도 없는데 팔린 것**뿐이다 — 그것만 따로 센다.
+const cost = d1(`SELECT
+    SUM(CASE WHEN pn > 0 THEN 1 ELSE 0 END) buy_zero,
+    SUM(CASE WHEN pn = 0 AND sn > 0 AND bom > 0 THEN 1 ELSE 0 END) bom_ok,
+    SUM(CASE WHEN pn = 0 AND sn > 0 AND bom = 0 THEN 1 ELSE 0 END) actionable,
+    CAST(SUM(CASE WHEN pn = 0 AND sn > 0 AND bom = 0 THEN sales_amt ELSE 0 END) AS INT) actionable_amt,
+    SUM(CASE WHEN pn = 0 AND sn = 0 THEN 1 ELSE 0 END) idle
+  FROM (SELECT i.id,
+      (SELECT COUNT(*) FROM purchase_order_items p WHERE p.item_id=i.id) pn,
+      (SELECT COUNT(*) FROM order_items o WHERE o.item_id=i.id) sn,
+      (SELECT COUNT(*) FROM product_materials m WHERE m.product_item_id=i.id) bom,
+      (SELECT COALESCE(SUM(o.amount),0) FROM order_items o WHERE o.item_id=i.id) sales_amt
+    FROM items i WHERE i.is_active=1 AND COALESCE(i.avg_unit_cost,0)=0)`)[0]
+
 const pct = (n) => `${n} (${Math.round((n / met.total) * 100)}%)`
 console.log('\n■ 건강 지표 — 추세용. 절대값 0 이 목표가 아니다')
 console.log(`   활성 품목        ${met.total}`)
-console.log(`   원가 없음        ${pct(met.no_cost)}   원가 분석에서 빠진다`)
+console.log(`   원가 없음        ${pct(met.no_cost)}`)
+console.log(`     ├ 매입 있는데 0   ${cost.buy_zero}        backfill 미반영이거나 전표뭉치(수량이 실수량 아님)`)
+console.log(`     ├ BOM 으로 냄     ${cost.bom_ok}        출력 제품 — avg_unit_cost 가 아니라 **BOM 롤업**이 원가다. 정상`)
+console.log(`     ├ ★조치 필요      ${cost.actionable}        매입도 BOM 도 없는데 팔렸다 (판매 ${Number(cost.actionable_amt).toLocaleString()}원)`)
+console.log(`     └ 무실적          ${cost.idle}        살 일이 없었다. 정상`)
 console.log(`   규격 없음        ${pct(met.no_spec)}   매칭·필터가 갈린다`)
 console.log(`   무실적           ${pct(met.no_tx)}   매입·판매 둘 다 0 — 선택기만 어지럽힌다`)
 console.log(`   판매플래그 불일치 ${met.flag_sale}        팔렸는데 판매품목이 아니다`)
