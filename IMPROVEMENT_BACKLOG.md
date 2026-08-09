@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-08-09T04:10:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-08-09T15:16:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,21 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **524** (`reason:completed` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+
+> **Area 6 자기 진화 (2026-08-09T15:16):**
+> - **방법**: `git fetch origin main`(HEAD `a720d37`, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 6 — 직전 Area5(`21552f6`, 08-09T04:10) 이후 `src/routes`/`src/scripts`/`index.tsx`/`src/layout`/`src/pages`/migrations 변경 = **8개 핵심 churn**(f1cc4d8 발주 entity_id body신뢰+쓰기스모크·8e50541 출고이력탭·e65167c 배송방법 표기통일[0526]·14936b7 7월 출고일 백필[0527]·d4e3865 생산실적탭(print_events 요약)·3d1300d 생산 타임스탬프 축약·15d7bb6 원장 서버검색+칩+컬럼선택·2536d33 CSV무고지잘림/ID컬럼클립 후속감사) — 전부 병렬 세션이 자체 검증(tsc/build/smoke 110/110/sort-audit/entity-audit/check:dom)까지 마친 상태로 착륙. 어느 Area도 아직 못 본 최신 churn이라 line 307 원칙대로 교차 렌즈로 직접 diff Read.
+> - **🔍 `f1cc4d8`(발주 생성이 body의 `entity_id`를 신뢰) 중점 검토**: `poCoreRouter.post('/')`가 기존 `getEntityId(c)||1` 고정값을 `(data.entity_id>0) ? data.entity_id : getEntityId(c)||1`로 바꿔 MANAGER가 자기 세션과 다른 법인으로 발주를 생성할 수 있게 됨 — 처음엔 body-entity_id 신뢰 IDOR 패턴(#417 mass-assignment 계열)으로 의심했으나, `orders/create.ts:81-88`가 **이미 같은 패턴**(`billing_entity_id` 명시값 우선 → 세션 → 담당자 소속, "코디 타법인 접수" 업무 사유로 기존 감사에서 승인된 설계)을 쓰고 있고 커밋 메시지가 "mirrors the order route"로 명시 인용 + `8ef917f`(직전 커밋)가 "Same trap orders have"로 기존 패턴과의 동형성을 스스로 기록 — **기존에 이미 검토·승인된 cross-entity 코디네이터 기능의 형제 확장이지 net-new 취약점 아님**. 채번(`getNextEntitySeqNumber`)도 같은 `poEntityId`를 써서 "번호 E{eid}=행 entity_id" 불변식 유지 확인. `requireRole('ADMIN','MANAGER')` 게이트 불변.
+> - **`d4e3865`/`8e50541`/`15d7bb6`(printEvents.ts·orders/core.ts·ar-ledger.ts 신규 SELECT 집계) 재검증**: 전부 기존 WHERE/entityFilter 조립부에 순수 집계 컬럼(area_m2·ship_date_estimated·matchedSummary)만 추가, 필터 조건 자체는 무변경 — entity 격리 회귀 0. `ar-ledger.ts` matchedSummary는 #497 cap-aware search가 스스로 지적했던 "로컬 필터가 cap 밖을 누락" 결함(latent, prod 854/1000이라 미발현)을 서버검색 전환으로 해소 — 이번 사이클이 발견 즉시 고친 사례.
+> - **XSS 표면 전수**: `ledger.js`(15d7bb6)는 신규 렌더가 전부 `textContent`(innerHTML 0곳). `shipments.js`(8e50541)·`production.js`(d4e3865) 신규 테이블 렌더는 `client_name`/`order_number`/`printer_name`/`file_name`/`delivery_method` 전부 `escapeHtml()` 일관 적용(부분누락 A-024/A-025급 패턴 0). `2536d33`가 오히려 기존 누락 1건(PO번호 title 속성)을 발견해 즉시 escapeHtml 추가 — net-new XSS 0, 기존 결함 1건 자체 픽스됨.
+> - **마이그레이션 재검증**: `0526`(배송방법 통일)·`0527`(7월 출고일 백필) 둘 다 CHECK/NOT NULL 위반 없음(단순 UPDATE, 컬럼 존재성 이상 없음), 멱등성 커밋 메시지에 명시 확인. 마이그 번호 중복 전수(`ls migrations | sed... | uniq -d`) — 기존 5쌍(0327·0412·0416·0420·0453) net-new 0.
+> - **`src/scripts/items/core.js`/`modals.js` dead-code 제거(2536d33 P3)**: 폐기된 `#linkedMediaDisplay`/`#parentMediaArea`/`#parentMediaId` DOM 조회 5건 제거 — 대상 요소가 이미 없어 상시 no-op이던 것을 `check:dom` 상시경고 해소 목적으로 정리. 회귀 없음(안전 dead-code 제거, 이미 셀프 검증 완료).
+> - **write-smoke 신규 추가(`scripts/smoke-write.cjs`, `f83bbc3`/`8ef917f`) 확인**: create→verify→delete→confirm-removal 패턴의 쓰기 경로 E2E — 기존 Area1 codify("read-only smoke가 write-path 회귀를 못 잡음", #430)가 지목한 구조적 사각을 메우는 방향의 자산. 이번 사이클이 자체적으로 이 결함(발주 entity_id)을 그 스모크로 실제 발견해 고쳤음 — SKILL이 codify한 맹점이 실전에서 유효했고 병렬 세션이 그 격차를 스스로 좁힌 사례.
+> - **open 7건 재확인(open≠unfixed)**: #601(`orders/update.ts` `return_items` grep 0, `order_ai_files`/`shipment_checks`/`designer_intakes`만 정리됨 — 여전히 미픽스) · #603(`cards/lifecycle.ts:1006` `PATCH /:id/reissue-ack`는 수동 확인만 있고 출고완료 시 자동 클리어 로직 없음 — 미픽스) · #607(`purchaseRequests.ts:211` CSV export가 여전히 자체 `whereClauses` 사본, `buildPrFilter` 미사용 — 미픽스) 직접 grep 재확인. #602·#604·#605·#606은 이번 churn과 무관한 파일이라 verified-once 캐시 유지(2026-08-08/09 직전 Area 로그 기준 unchanged).
+> - **branch:clean**(읽기전용): SAFE-absorbed 1건, 삭제대상 1건(임계 30 미달) — 등록 불요.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **7**(변동없음, #601~#607) · `reason:completed` **524**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — 이번 사이클은 신규 오탐/탐지 클래스 발견 없음. `f1cc4d8` 검토는 기존 FP클래스("문서화된 cross-entity 기능", line 227/230)의 실전 재확인일 뿐 신규 codify 불요.
+> - 신규 이슈 0건, 자동수정 0건(코드 렌즈 전수 재검토 결과 net-new 0 — 병렬 세션이 이미 자체 검증까지 마치고 착륙), done-sync: new 7(변동없음)·done 524(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 (2026-08-09T04:10):**
 > - **방법**: `git fetch origin main`(HEAD `21552f6`, 워킹트리 clean) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 5 **53회차** — 직전 Area5(`f66d99b`, 08-07T15:27, 52회차; 컨테이너 히스토리에 해당 커밋 없음 — 타임스탬프 경계로 대체) 이후 `2026-08-07 15:27` 이후 `src/routes`/`src/scripts`/`index.tsx`/migrations 변경 커밋 = **9개 핵심 churn**(451f611 담당자 필드 신설[0523]·a6b8e1b 담당자 셀렉트 폼·5963719 P5 entity귀속 소스전환[0524]+감사리포트·5b42896 담당자 실적리포트·39f16b5 주문목록 SSOT+칩+합계바·4a94013 PO/견적/입고 SSOT 확산·7b7842a 사용자별 프리셋/열선택/페이지크기[0525, 신규 라우터 userPrefs.ts]·080df2b 나머지 6목록[발주요청·지급요청·매입인보이스·재고·세금계산서·거래처] SSOT 확산·557cc95 공급가+VAT 불일치 배지) — Area3(52회차, 08-08T21:20)·Area4(54회차, 08-09T03:20)가 각각 UX/데이터정합 렌즈로 이미 diff Read했으나 보안 렌즈(entity 격리·SQL 파라미터화·XSS sink·auth 게이트) 재검토는 전무했음(line 307 원칙 — "churn 목록 나열"≠"그 렌즈로 개별 검토").
