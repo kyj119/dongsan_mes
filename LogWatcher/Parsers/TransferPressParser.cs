@@ -58,7 +58,12 @@ namespace LogWatcher.Parsers
         private static readonly Regex DoneRe = new(@"_PrintWait---打印完成", RegexOptions.Compiled);
         private static readonly Regex CancelRe = new(@"打印控制线程---被取消", RegexOptions.Compiled);
         private static readonly Regex TempRe = new(@"作业ID:(-?\d+),\s*删除TCP文件:.*?temp\\(\d{14})\\", RegexOptions.Compiled);
+        // 같은 PrintExp 라도 버전에 따라 줄머리 시각 형식이 다르다 (둘 다 실측):
+        //   1호기 5.x  [软件][信息][13:29:44][001006] ...        → 시각만, 날짜는 파일명에서
+        //   2호기 5.7.6 [SM][1][2026/08/06 00:00:00][000000] ... → 날짜+시각이 줄에 들어있음
+        // 짧은 형식만 보면 2호기는 전부 매치 실패 → 모든 이벤트가 그 날 00:00 으로 찍힌다.
         private static readonly Regex TimeRe = new(@"\[(\d{2}):(\d{2}):(\d{2})\]", RegexOptions.Compiled);
+        private static readonly Regex DateTimeRe = new(@"\[(\d{4})[/-](\d{2})[/-](\d{2})[ T](\d{2}):(\d{2}):(\d{2})\]", RegexOptions.Compiled);
         private static readonly Regex LogDateRe = new(@"Log\[(\d{4})[_-](\d{2})[_-](\d{2})\]", RegexOptions.Compiled);
 
         static TransferPressParser()
@@ -377,6 +382,19 @@ namespace LogWatcher.Parsers
 
         private static DateTime? TimeOf(string line, DateTime date)
         {
+            // 줄에 날짜가 같이 있으면 그쪽이 정본이다 — 자정 직후 줄이 전날 파일에 남는 경우까지 맞는다.
+            var dm = DateTimeRe.Match(line);
+            if (dm.Success)
+            {
+                var g = dm.Groups;
+                try
+                {
+                    return new DateTime(int.Parse(g[1].Value), int.Parse(g[2].Value), int.Parse(g[3].Value),
+                                        int.Parse(g[4].Value), int.Parse(g[5].Value), int.Parse(g[6].Value));
+                }
+                catch (ArgumentOutOfRangeException) { /* 손상된 줄 — 짧은 형식으로 폴백 */ }
+            }
+
             var m = TimeRe.Match(line);
             if (!m.Success) return null;
             return date.Date.AddHours(int.Parse(m.Groups[1].Value))
