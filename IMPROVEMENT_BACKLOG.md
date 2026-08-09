@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-08-09T03:20:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-08-09T04:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,28 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **7** (`search_issues(is:open,label:auto-improve)` 실측, Area4 54회차. #601[order_items 라인재작성 시 return_items RESTRICT FK 미정리] + #602[cards 지시현황탭 silent-catch] + #603[cards 개정필요 큐 출고후 영구잔류] + #604[orders.sales_rep_id 백엔드먼저·화면나중, 부분진행 코멘트 남김] + #605[Daily D1 Backup 타임아웃 재시도 부재] + #606[entity-attribution-audit 백엔드먼저·화면나중 4번째] + #607[신규, purchase-requests CSV export가 buildPrFilter SSOT 미채택·다중상태 드리프트]) |
+| 🆕 new | **7** (`search_issues(is:open,label:auto-improve)` 실측, Area5 53회차, 변동 없음. #601[order_items 라인재작성 시 return_items RESTRICT FK 미정리] + #602[cards 지시현황탭 silent-catch] + #603[cards 개정필요 큐 출고후 영구잔류] + #604[orders.sales_rep_id 백엔드먼저·화면나중, 부분진행 코멘트 남김] + #605[Daily D1 Backup 타임아웃 재시도 부재] + #606[entity-attribution-audit 백엔드먼저·화면나중 4번째] + #607[purchase-requests CSV export가 buildPrFilter SSOT 미채택·다중상태 드리프트]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **524** (`reason:completed` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+
+> **Area 5 보안 (2026-08-09T04:10):**
+> - **방법**: `git fetch origin main`(HEAD `21552f6`, 워킹트리 clean) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 5 **53회차** — 직전 Area5(`f66d99b`, 08-07T15:27, 52회차; 컨테이너 히스토리에 해당 커밋 없음 — 타임스탬프 경계로 대체) 이후 `2026-08-07 15:27` 이후 `src/routes`/`src/scripts`/`index.tsx`/migrations 변경 커밋 = **9개 핵심 churn**(451f611 담당자 필드 신설[0523]·a6b8e1b 담당자 셀렉트 폼·5963719 P5 entity귀속 소스전환[0524]+감사리포트·5b42896 담당자 실적리포트·39f16b5 주문목록 SSOT+칩+합계바·4a94013 PO/견적/입고 SSOT 확산·7b7842a 사용자별 프리셋/열선택/페이지크기[0525, 신규 라우터 userPrefs.ts]·080df2b 나머지 6목록[발주요청·지급요청·매입인보이스·재고·세금계산서·거래처] SSOT 확산·557cc95 공급가+VAT 불일치 배지) — Area3(52회차, 08-08T21:20)·Area4(54회차, 08-09T03:20)가 각각 UX/데이터정합 렌즈로 이미 diff Read했으나 보안 렌즈(entity 격리·SQL 파라미터화·XSS sink·auth 게이트) 재검토는 전무했음(line 307 원칙 — "churn 목록 나열"≠"그 렌즈로 개별 검토").
+> - **신규 라우터 `userPrefs.ts`(0525) 전수 검증**: `authMiddleware` 라우터 전체 적용 + `currentUserId()`가 토큰에서만 취득(body 미신뢰, 헤더 주석에 명시) + PUT/PATCH/DELETE 전부 `WHERE ... AND user_id = ?`로 소유확인 후 변경(남의 프리셋 조작 불가) + 값 길이 상한(8000B)·프리셋 개수 상한(30/페이지) 서버측 강제. IDOR 0.
+> - **신규 `reports.ts` 엔드포인트 2개**: `/sales-rep-stats`·`/entity-attribution-audit` 둘 다 라우터 레벨 `requireRole('ADMIN','MANAGER')` 게이트 하위. `entity-attribution-audit`는 설계상 entityFilter 미적용(담당자 소속≠주문 법인 불일치를 전사 단위로 봐야 하는 감사 도구, 주석에 "막지 않고 보여만 준다" 명시) — ADMIN/MANAGER 전용이라 cross-entity 노출이 정책 위반 아님(기존 FP클래스 "문서화된 cross-entity 기능"과 동형).
+> - **`orders/listFilter.ts`·`purchaseOrders/listFilter.ts`·`quotationsListFilter.ts`(신설 SSOT 3개) SQL 파라미터화 전수**: search/status/date/amount 등 전 조건이 `?` 바인드, 정렬은 화이트리스트 맵(`resolveXxxSort`, 미상 키는 기본값 폴백 — SQL 주입 경로 없음), entity 가시성은 `orderVisibilityFilter`/`entityFilter`를 헬퍼 최상단에서 호출. SQL 인젝션·엔티티 격리 우회 0.
+> - **🟢 net-new 발견 — 이번 리팩터가 기존 취약점 1건을 부수효과로 픽스**: `orders/queries.ts` CSV export(`/export/csv`)가 리팩터 전에는 entity 가시성 필터가 아예 없어(커밋 메시지 자백: "CSV export had no entity visibility filter (other entities' orders leaked)") 타 법인 주문이 CSV로 유출되던 상태였음 — `buildOrderListFilter` SSOT 도입으로 목록·카운트·CSV·통계 4경로가 전부 같은 `orderVisibilityFilter`를 공유하게 되어 현재는 clean. 별도 이슈화 불요(이미 같은 커밋에서 해소, 재발 방지 = SSOT 구조 자체).
+> - **`orders/core.ts`·`purchaseOrders/core.ts`·`po-queries.ts`·`po-receipts.ts`·`quotations.ts` 대규모 리팩터(수백 줄 치환) 권한 게이트 회귀 점검**: 각 라우터의 `.use('/*', authMiddleware, requireAnyPagePermission(...)/requireRole(...))` 선언부 불변 확인 + 단건/변경 핸들러의 `entityFilter(c, alias)` 호출부(`// #358계열`/`// #360` 주석 달린 것들)가 리팩터 전후 개수·위치 동일(diff에 `-entityFilter`/`+entityFilter` 순변경 없음, 조건 조립부만 listFilter.ts로 이관). 회귀 0.
+> - **080df2b(6개 목록 SSOT 확산) 신규 SQL 6곳(`inventory.ts`·`paymentRequests.ts`·`purchaseInvoices.ts`·`purchaseRequests.ts`·`taxInvoices/queries.ts`) entityFilter 재검증**: 전부 헬퍼 함수 내부에서 `entityFilter(c, alias)` 호출 유지. `purchaseRequests.ts`는 추가로 `user?.role === 'MANAGER'`일 때 `requester_id = ?` 자기-스코프를 헬퍼(`buildPrFilter`) 안에 포함(주석 "이 규칙이 빠지면 권한 경계가 무너지므로 반드시 여기 포함") — list·stats·CSV export(`/export/csv`) 3곳 모두 이 스코프 보유 확인(#607이 지목한 CSV 드리프트는 필터 로직 값 불일치일 뿐, entityFilter·MANAGER 스코프 자체는 3곳 다 존재 — 보안 영향 없음, #607 issue-only 분류 유지가 맞음).
+> - **XSS — 7b7842a(`dsListPrefs`/`dsListToolbar`)·080df2b(6페이지 칩/합계바) 신규 innerHTML 표면 전수**: 프리셋명·열 라벨·검색어 등 자유입력이 들어가는 모든 렌더 경로가 `document.createElement`+`textContent`/`createTextNode`만 사용(innerHTML 문자열조합 0곳, 유일한 innerHTML 사용처는 `&times;` 리터럴 1곳뿐 — 사용자 입력 무관). 6개 페이지(`clients.js`·`inventory.js`·`paymentRequests.js`·`purchaseInvoices.js`·`purchaseRequests.js`·`taxInvoices.js`)의 칩/합계바는 전부 공용 `window.dsListUx.renderChips`/`renderSummary`(shell.js) 경유 — 이 헬퍼 자체가 DOM API로만 구성돼 있어 호출부가 이스케이프를 신경 쓸 필요 없이 구조적으로 안전(A-024/A-025급 "부분 escape" 클래스가 아키텍처로 원천 차단됨). Area3(52회차)가 확인한 `39f16b5`/`4a94013`과 같은 결론 — net-new XSS 0.
+> - **필수 grep(Area5 #338)**: `c.env.[A-Z_]+ *|| *'` — `fax.ts:43`의 `BAROBILL_FTP_PASSWORD || ''`(빈 문자열 폴백, 리터럴 시크릿 아님) 외 net-new 0. `body.password || '<literal>'` 0건. 시크릿 하드코딩·기본 비밀번호 net-new 0.
+> - **c4320c5(item-master-audit 도구) 훅 변경 검토**: `pretooluse-bash.cjs`에 `INSERT INTO items` 감지 시 리마인더 출력만 추가(비차단) — 기존 위험명령 차단/커밋 게이트 로직 변경 없음, 보안 영향 없음.
+> - **open≠unfixed 재확인**: #601·#602·#603 대상 코드 grep 재확인 — 여전히 미픽스, open 유지 정상. #604·#606은 Area3(52회차)가 부분진행 코멘트 남김(폼드롭다운·집계뷰 반영됨, 목록컬럼·프론트 소비처는 잔존) — 재확인 결과 동일.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **7**(변동없음) · `reason:completed` **524**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음(net-new 발견 0, 기존 FP클래스로 전부 설명됨) — "대형 SSOT 리팩터가 진행 중인 IDOR 취약점을 부수효과로 픽스"(orders CSV) 사례는 흥미롭지만 1회 관찰이라 별도 codify 보류.
+> - 신규 이슈 0건, 자동수정 0건, done-sync: new 7(변동없음)·done 524(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-08-09T03:20):**
 > - **방법**: `git fetch origin main`(HEAD `c4320c5`, 워킹트리 clean) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 4 **54회차** — 직전 Area4(`020133c`, 08-07T09:22, 53회차) 이후 `git log --since 2026-08-07T09:22 -- src/routes migrations src/scripts index.tsx src/layout src/pages` = **13커밋**(목록UX SSOT 대확산: 주문/PO/견적/입고 4종 → 나머지 6종[발주요청·지급요청·매입인보이스·재고·세금계산서·거래처]까지, 신규 마이그 3개[0523 sales_rep·0524 employees.default_entity_id·0525 user_filter_presets/user_ui_prefs], 담당자 P4/P5, 관계사 매입제외).
