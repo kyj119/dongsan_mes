@@ -130,16 +130,27 @@ C:\Logwatcher\LogWatcher.exe --test TRANS-8C-01
 프로그램만 바꾸면 됩니다. **`equipment.json` 과 `appsettings.json` 은 덮어쓰지 마세요** —
 그 PC에 맞춰 고쳐둔 경로·호기번호가 날아갑니다.
 
-관리자 권한 명령 프롬프트에서:
+**두 창을 씁니다.** 관리자 창에서는 `Z:` 가 안 보이기 때문입니다(§3 참조).
 
+**① 일반 명령 프롬프트** — Z: 에서 C: 로 받아만 둡니다
 ```
-nssm stop LogWatcher
-robocopy "Z:\Designs\LogWatcher-transfer-8c" "C:\Logwatcher" /E /XF equipment.json appsettings.json
-nssm start LogWatcher
+robocopy "Z:\Designs\LogWatcher-transfer-8c" "C:\LW-new" /E /R:2 /W:2 /XF equipment.json appsettings.json
+```
+
+**② 관리자 명령 프롬프트** — 로컬끼리만 복사
+```
+sc stop LogWatcher
+timeout /t 5
+robocopy "C:\LW-new" "C:\LogWatcher" /E /R:2 /W:2
+sc start LogWatcher
 sc query LogWatcher
 ```
 
 `STATE : 4  RUNNING` 이면 끝입니다. 쌓인 데이터·설정은 그대로입니다.
+①에서 설정 2개를 이미 제외했으므로 ②에는 `/XF` 가 필요 없습니다 — 원본에 아예 없습니다.
+
+**갱신됐는지 확인**: `dir C:\LogWatcher\LogWatcher.dll` 날짜가 오늘이면 성공.
+웹에서는 `/equipment` 의 로그경로 칸이 채워지면 신빌드입니다.
 
 > **왜 갱신해야 하나** — 2026-08-09 이전 빌드는 **자정을 넘길 때 전날 로그를 처음부터 다시 읽습니다.**
 > 설치한 날 밤에도 일어나서, **설치 전에 출력한 그날 오전 작업까지 뒤늦게 올라옵니다.**
@@ -166,6 +177,9 @@ sc query LogWatcher
 | 서비스만 실패, 콘솔은 정상 | 설치 스크립트 경로 문제 | 이벤트 뷰어에서 **nssm EventID 1010** 확인 |
 | 웹에 장비가 오프라인 | 서버에 `equipment_id` 미등록 | 관리자에게 id 확인 요청 |
 | 한글이 깨져 보임 | 콘솔 코드페이지 | 파싱은 정상. 판단에만 영향 |
+| **관리자 창에서 `Z:` 를 못 찾음**<br>(`오류 3 ... 지정된 경로를 찾을 수 없습니다`) | UAC 가 별도 로그온 세션을 만들어 **사용자가 연결한 네트워크 드라이브를 물려받지 않는다** | §1-B 처럼 **일반 창에서 C: 로 먼저 받고**, 관리자 창은 로컬끼리만 복사 |
+| `오류 32 ... 파일을 사용 중` | 서비스가 안 멈춤 (`nssm`/`sc stop` 은 관리자 권한 필요) | `sc stop` 후 `STATE : 1 STOPPED` 확인하고 복사 |
+| robocopy 가 `30초 대기 중...` 반복 | 기본 재시도가 **100만 회** | `/R:2 /W:2` 를 항상 붙인다 |
 
 ### 되돌리기
 

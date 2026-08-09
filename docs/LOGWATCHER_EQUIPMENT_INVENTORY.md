@@ -84,16 +84,27 @@ PrintExp 는 도안명을 **전혀 모른다.** neoStampa 가 넘긴 `~sectionN.
 | ? | ? 수성 | 수성 | ⬜ | ? | ? | ? | ⬜ | ⬜ |
 | ? | ? UV | UV | ⬜ | ? | ? | ? | ⬜ | ⬜ |
 | ? | ? 평판 | 평판 | ⬜ | ? | ? | ? | ⬜ | ⬜ |
-| TRANS-8C-01 | 전사 8색 1호기 (Longyin Q2000) | 전사/태극기 | DESKTOP-5C9D04J | neoStampa 10.2.4 | `C:\Users\Public\Documents\neoStampa 10\Log` | neostampa | ✅ 실로그 145건 | ⬜ |
-| TRANS-8C-02 | 전사 8색 2호기 (Longyin Q2000) | 전사/태극기 | PC-202605141926 | neoStampa 10.2.4 | 〃 | neostampa | ✅ | ⬜ |
-| ? | ? 전사 출력 (실적 정본) | 전사 | ⬜ **PC 확인 필요** | PrintExp_X64 | `C:\PrintExp_X64\...\main\Log[날짜].txt` | **신규 필요** | ⬜ | ⬜ |
+| TRANS-8C-01 | 전사 8색 1호기 (Longyin Q2000) | 전사/태극기 | DESKTOP-5C9D04J | neoStampa 10.2.4 **+ PrintExp 5.x (같은 PC)** | rip `C:\Users\Public\Documents\neoStampa 10\Log`<br>print `C:\PrintExp_X64\Log\main` | `neostampa_printexp` | ✅ 59 OK / 54 CANCEL | ✅ 2026-08-09 |
+| TRANS-8C-02 | 전사 8색 2호기 (Longyin Q2000) | 전사/태극기 | PC-202605141926 | 〃 **+ PrintExp 5.7.6.5.103** | rip 〃<br>print `C:\PrintExp_X64_V5.7.6.5.103.BS_20220530(1)\PrintExp_X64_V5.7.6.5.103.BS_20220530\Log` | 〃 | ✅ 90 OK / 51 CANCEL | ✅ 2026-08-09 |
 | ? | ? 간판(선명) | 간판 | ⬜ | ? | ? | ? | ⬜ | ⬜ |
 
-> **전사 배포 순서 = PrintExp(출력) 먼저 → neoStampa(리핑) 나중.**
-> RIP 로그만 먼저 붙이면 "리핑됨"을 출력 실적으로 오해할 여지가 남는다.
-> ⬜ **남은 확인**: PrintExp 가 neoStampa 와 **같은 PC 인지**. 같으면 watcher 2개로 끝나고,
-> 다르면 PC 2곳에 설치해야 한다. `LogWatcher.exe --probe` 한 번이면 판정된다
-> (마커 출력 시 로그가 2개 걸리면 같은 PC).
+> **전사는 두 SW 가 같은 PC 라 watcher 1개(`neostampa_printexp`)가 두 로그를 합쳐 완성 이벤트 1건만 보낸다**
+> — 이 장비는 이중계상 문제 자체가 없다. (2026-08-09 현장 설치로 확정)
+>
+> ⚠️ **같은 "PrintExp" 라도 호기마다 다르다** — 가정하지 말고 실측할 것. 실제로 갈렸다:
+>
+> | | 1호기 | 2호기 |
+> |---|---|---|
+> | 로그 위치 | `<설치폴더>\Log\`**`main`**`\` | `<설치폴더>\Log\` (main 없음) |
+> | 설치 폴더 | `C:\PrintExp_X64` | 버전명 + **복사본 안에 중첩** |
+> | 줄 시각 | `[13:29:44]` (시각만) | `[2026/08/06 00:00:00]` (날짜+시각) |
+>
+> 마커(`启动任务`·`打印完成`·`被取消`)는 **같아서 블록 인식은 양쪽 다 된다** → 시각 형식 차이를 놓치면
+> "잘 되는 것처럼" 보이면서 전 이벤트가 그 날 00:00 으로 찍힌다(멱등키가 뭉개져 재출력분 유실).
+> 파서가 두 형식을 모두 받도록 되어 있다. **새 전사 장비를 붙일 땐 `--test` 의 소요시간이 전부 0분인지 먼저 본다.**
+>
+> 설정 생성은 손편집 대신 `make-equipment.ps1 -Unit N` — 경로를 `/` 로 써서
+> JSON 역슬래시 이스케이프 사고(`'P' is an invalid escapable character`)를 원천 차단한다.
 
 ---
 
