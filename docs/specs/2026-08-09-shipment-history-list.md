@@ -27,7 +27,7 @@
 | D2 | 화면 위치 | **`/shipments` 에 「이력」 탭 추가** | 흡수-탭 패턴 — 사이드바·권한 등록 불요. 오늘 작업하다 과거를 볼 때 페이지 이동이 없다 |
 | D3 | 기본 기간 | **최근 1개월** | 주문 목록과 동일. 칩으로 상시 노출해 원클릭 해제 |
 | D4 | 배송방법 정본 | **`직접배송`** 으로 통일 | §2-3 |
-| D5 | 반품 표시 | **1단계에서는 넣지 않는다.** 2단계(반품 데이터 발생 후) 배지+별도 합계 | §2-5 |
+| D5 | 반품 표시 | **1단계에서는 넣지 않는다.** 2단계(반품 데이터 발생 후) 배지+별도 합계 | §2-6 |
 
 ## 2. 핵심 설계 판단
 
@@ -97,11 +97,11 @@ sort: ship_date_desc / ship_date_asc
 - 현재 플래그가 없으므로 1단계는 접두 패턴으로 제외하되, **`orders` 에 `is_voucher`(회계 전표) 플래그를 두는 것을 후속 과제로** 남긴다. 이 플래그는 출고 이력뿐 아니라 실적·생산 집계 전반에 필요하다.
 - 제외 건수를 조건 칩에 표기한다 — "회계 전표 195건 제외".
 
-### 2-4. 합배송
+### 2-5. 합배송
 
 `orders.consolidate_with_order_id` 로 묶인 건은 주문 목록과 **동일한 배지 로직을 재사용**한다(대표/자식 표기). 이력에서 묶음을 한 줄로 합치지 않는다 — 청구·실적은 주문 단위가 정본이고, 합치면 금액 합계가 주문 목록과 어긋난다.
 
-### 2-5. 반품 (D5)
+### 2-6. 반품 (D5)
 
 **원칙: 출고 행은 그대로 두고, 반품 사실을 드러내되 상계하지 않는다.**
 
@@ -158,15 +158,31 @@ sort: ship_date_desc / ship_date_asc
 
 `ds-cond` 칩 · `ds-summary` 합계 바 · `dsListToolbar`(프리셋·열 선택·페이지당 건수) · `ordRenderSummary` 계열 렌더러.
 
-## 4. 서버 변경 범위
+## 4. 변경 범위
+
+### 4-1. 이력목록 (기능)
 
 | 파일 | 변경 | 크기 |
 |---|---|---|
-| `src/routes/orders/listFilter.ts` | `ship_date_from/to` 조건 + `ship_date_*` 정렬 2종 추가 | 小 |
-| `src/routes/orders/core.ts` | `summary.ship_date_missing` 카운트 추가 | 小 |
-| `src/constants/deliveryMethod.ts` | 배송방법 정규화 맵 신설 | 小 |
+| `src/routes/orders/listFilter.ts` | `ship_date_from/to` 조건 + `ship_date_*` 정렬 2종 + 전표 제외 조건 | 小 |
+| `src/routes/orders/core.ts` | `summary.ship_date_missing` · `summary.voucher_excluded` 카운트 | 小 |
+| `src/pages/shipments.ts` | 「이력」 탭 + 표(`data-col`) + 칩·합계·도구모음 컨테이너 | 中 |
+| `src/scripts/shipments.js` | 이력 탭 로더·칩·합계·탭 진입 시 1회 마운트 | 中 |
 
-**마이그레이션 없음. 새 테이블·새 엔드포인트 없음.**
+**새 테이블·새 엔드포인트 없음.**
+
+### 4-2. 배송방법 통일 (데이터 정리 — 별도 커밋 권장)
+
+| 파일 | 변경 |
+|---|---|
+| `migrations/05XX_unify_delivery_method.sql` | `직배`→`직접배송` · 전표 189건 `배송`→NULL · 산발 17건→`직접배송` |
+| `src/constants/deliveryMethod.ts` | 정본 목록 + 정규화 맵 SSOT 신설 |
+| `src/routes/clients.ts:963` | 검증 화이트리스트를 SSOT 참조로 |
+| `src/routes/shipments.ts:346` | `OWN_DELIVERY` 집합 |
+| `src/scripts/orderFormDist.js:76` | `DM_MAP.DIRECT` |
+| `src/pages/orders.ts` · `shipments.ts` | `<option>` · 섹션 라벨 |
+
+⚠️ **이력목록과 분리해 커밋한다.** 데이터 정리는 되돌리기 어렵고 영향 범위(합배송 후보 탐지·거래처 검증)가 이력목록과 무관하다. 섞으면 문제가 생겼을 때 어느 쪽인지 못 가린다.
 
 ## 5. 검증 계획
 
