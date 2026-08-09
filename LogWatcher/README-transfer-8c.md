@@ -36,28 +36,38 @@
 { "MesApiUrl": "https://webapp-9i0.pages.dev", "ApiKey": "..." }
 ```
 
-### ③ `equipment.json` 확인 — **호기 번호만 맞추세요**
+### ③ `equipment.json` — 호기별로 파일이 다릅니다
 
-패키지에는 **1호기(`TRANS-8C-01`)** 로 들어 있습니다.
+**두 대의 PrintExp 설치 폴더 이름과 로그 위치가 서로 다릅니다.** 호기 번호만 바꾸면 안 됩니다.
 
-| PC | 넣을 `equipment_id` |
-|---|---|
-| `DESKTOP-5C9D04J` | `TRANS-8C-01` (기본값, 수정 불필요) |
-| `PC-202605141926` | `TRANS-8C-02` **로 바꿔야 함** |
+| PC | 쓸 파일 | `print_log_dir` |
+|---|---|---|
+| `DESKTOP-5C9D04J` (1호기) | `equipment.json` 그대로 | `C:\PrintExp_X64\Log\main` |
+| `PC-202605141926` (2호기) | `equipment.TRANS-8C-02.json` → **`equipment.json` 으로 이름 변경** | `C:\PrintExp_X64_V5.7.6.5.103.BS_20220530\Log` |
 
-`name` 도 같이 바꾸세요 (`... 1호기` → `... 2호기`).
+2호기는 로그가 `Log\` **바로 아래** 있습니다 — `main` 하위폴더가 없습니다.
 
 > ⚠️ 서버에 등록된 id 와 **글자 하나까지** 같아야 합니다. 다르면 이벤트는 쌓이는데
 > 장비 온라인 표시만 조용히 안 됩니다.
 
-### ④ 두 경로가 실제로 있는지 확인
+### ④ 두 경로가 실제로 있는지 확인 — **추정값이므로 반드시**
+
+PrintExp 폴더 이름은 PC마다 다릅니다. 먼저 실제 이름을 찾습니다:
 
 ```
-C:\Users\Public\Documents\neoStampa 10\Log      ← 날짜 폴더들이 보여야 함
-C:\PrintExp_X64\Log\main                        ← Log[2026_08_05].txt 같은 파일이 보여야 함
+dir C:\ /b | findstr /i PrintExp
 ```
 
-탐색기 주소창에 붙여넣어 확인하세요. **다르면 `equipment.json` 을 실제 경로로 고칩니다.**
+나온 이름으로 두 경로를 확인합니다:
+
+```
+dir "C:\Users\Public\Documents\neoStampa 10\Log"    ← 날짜 폴더들이 보여야 함
+dir "C:\<나온이름>\Log"                              ← Log[2026_08_09].txt 가 여기 있으면 이 경로
+dir "C:\<나온이름>\Log\main"                         ← 여기 있으면 이 경로
+```
+
+`Log[날짜].txt` 가 **실제로 있는 쪽**을 `equipment.json` 의 `print_log_dir` 에 적습니다.
+**역슬래시는 두 개(`\\`)** 로 씁니다.
 
 ### ⑤ 파싱 확인 — 서버로 아무것도 안 보냅니다
 

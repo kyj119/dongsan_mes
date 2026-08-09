@@ -1,0 +1,18 @@
+{
+  "poll_interval_seconds": 5,
+  "heartbeat_interval_seconds": 60,
+  "watchers": [
+    {
+      "equipment_id": "TRANS-8C-02",
+      "name": "전사 8색 2호기 (Longyin Q2000)",
+      "enabled": true,
+      "parser_type": "neostampa_printexp",
+      "config": {
+        "rip_log_root": "C:\\Users\\Public\\Documents\\neoStampa 10\\Log",
+        "print_log_dir": "C:\\PrintExp_X64_V5.7.6.5.103.BS_20220530\\Log",
+        "join_tolerance_seconds": 5,
+        "emit_rip_only_after_hours": 0
+      }
+    }
+  ]
+}
