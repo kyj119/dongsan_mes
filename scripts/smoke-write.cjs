@@ -21,6 +21,15 @@
  *      (조용히 남기면 다음 실행이 그 잔재를 실데이터로 착각한다).
  *   ③ 식별자에 `SMOKEW` 마커를 넣어 **잔재가 남아도 즉시 판별**된다.
  *   ④ 삭제까지 성공해야 PASS. 「만들어졌으니 됐다」로 끝내면 삭제 경로가 깨진 걸 못 본다.
+ *   ⑤ **되돌릴 수 없는 쓰기는 넣지 않는다.**
+ *      출고·입고에는 DELETE 라우트가 **없다**(`shipments` 는 PATCH 만, 입고는 POST 만).
+ *      · 출고는 넣었다 — **주문 하드삭제가 `shipments`·`shipment_items` 까지 지운다**(`orders/core.ts` batch).
+ *        주문 체인으로 만들면 주문 하나 지우는 것으로 정리가 끝난다.
+ *      · **입고는 prod 에서 안 돌린다.** 입고는 12개 테이블을 건드리는데 그중
+ *        **`UPDATE items SET base_price`** 가 있고, 같은 `item_group` **전체에 전파**한다.
+ *        품목은 법인 공유라 entity 99 로 해도 **실품목 판매가가 스모크 단가(1,000원)로 덮인다.**
+ *        `inventory`·`inventory_transactions`·`client_item_prices`·`price_change_history` 도 남는다.
+ *        → **로컬(localhost)일 때만** 돈다. 원격 URL 이면 자동으로 건너뛴다.
  *
  * ⚠️ 프로덕션에 그대로 돌려도 되지만(위 ①~④), **매번 돌릴 필요는 없다.**
  *   쓰기 라우트를 건드린 배포에서만 돌리는 게 맞다 — 실행 자체가 데이터를 만들기 때문이다.
@@ -38,6 +47,8 @@ const PASS = process.env.SMOKE_PASS || 'password'
 const KEEP = process.argv.includes('--keep')
 const MARK = 'SMOKEW'
 const E2E_ENTITY = 99      // entities 에 「E2E 테스트」로 등록돼 있다
+// ★ 입고는 `items.base_price` 를 품목그룹 전체에 전파한다 → **로컬에서만** 돌린다.
+const IS_LOCAL = /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.)/.test(BASE)
 
 let TOKEN = ''
 const created = []   // { label, path, id } — 역순으로 정리한다
@@ -152,6 +163,81 @@ async function scenarioClient() {
   record(label, true, `#${id} ${code}`)
 }
 
+async function scenarioShipment() {
+  const label = '출고 생성/조회 (주문 체인)'
+  // ★ 출고는 주문에 종속된다 — 전용 주문을 하나 더 만들어 체인으로 검증한다.
+  //   정리는 **주문 하드삭제가 `shipments`·`shipment_items` 까지 지운다**(orders/core.ts batch)는 데 기댄다.
+  //   출고 자체엔 DELETE 라우트가 없다.
+  const o = await api('POST', '/api/orders', {
+    client_id: 1,
+    delivery_date: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10),
+    billing_entity_id: E2E_ENTITY,
+    notes: `${MARK} 출고체인`,
+    items: [{ item_name: `${MARK}-출고품목`, quantity: 1, unit_price: 1000 }],
+  })
+  if (o.status !== 200 || !o.json || !o.json.success) {
+    return record(label, false, `체인 주문 생성 ${o.status} ${(o.json && o.json.error) || o.text.slice(0, 140)}`)
+  }
+  const orderId = o.json.data.id
+  created.push({ label: label + '(체인 주문)', path: `/api/orders/${orderId}`, id: orderId })
+
+  const r = await api('POST', '/api/shipments', {
+    order_id: orderId,
+    delivery_type: 'DELIVERY',
+    notes: `${MARK} 쓰기 스모크`,
+  })
+  if (r.status !== 200 && r.status !== 201) {
+    // ★ 카드가 PRINT_DONE 이 아니면 「전량 출고 원칙」으로 400 이 난다 — 그건 **정상 가드**다.
+    //   스모크는 라우트가 살아 있는지를 보므로, 가드에 걸린 400 은 PASS 로 본다(500/404 는 FAIL).
+    const guard = r.status === 400 && /출고|카드/.test((r.json && r.json.error) || '')
+    return record(label, guard, guard ? `가드 정상 동작: ${(r.json.error || '').slice(0, 60)}` :
+      `생성 ${r.status} ${(r.json && r.json.error) || r.text.slice(0, 140)}`)
+  }
+  const d = (r.json && r.json.data) || {}
+  const sid = d.id || d.shipment_id
+  const g = await api('GET', `/api/shipments/${sid}`)
+  if (!(g.json && g.json.data)) return record(label, false, `조회 ${g.status}`)
+  record(label, true, `#${sid} (주문 #${orderId})`)
+}
+
+async function scenarioReceiving() {
+  const label = '입고 처리 (발주 체인)'
+  if (!IS_LOCAL) {
+    return record(label, true, 'SKIP — 원격에서는 안 돈다(입고가 items.base_price 를 품목그룹 전체에 전파)')
+  }
+  const po = await api('POST', '/api/purchase-orders', {
+    supplier_id: 1,
+    order_date: new Date().toISOString().slice(0, 10),
+    entity_id: E2E_ENTITY,
+    status: 'CONFIRMED',              // 입고는 CONFIRMED/PARTIAL_RECEIVED 만 가능
+    notes: `${MARK} 입고체인`,
+    items: [{ item_name: `${MARK}-입고자재`, quantity: 2, unit_price: 1000, amount: 2000 }],
+  })
+  if (po.status !== 200 && po.status !== 201) {
+    return record(label, false, `체인 발주 생성 ${po.status} ${(po.json && po.json.error) || ''}`)
+  }
+  const pd = (po.json && po.json.data) || {}
+  const poId = pd.po_id || pd.id
+  // ★ 입고를 하면 발주가 `PARTIAL_RECEIVED` 가 되고 **삭제가 400 으로 막힌다**(정상 가드).
+  //   입고는 재고를 움직이는 되돌릴 수 없는 작업이라 그게 맞다 — 정리 실패로 치지 않고 `optional` 로 둔다.
+  //   로컬에서만 도는 시나리오이므로 잔재는 감수한다(마커 SMOKEW 로 판별된다).
+  created.push({ label: label + '(체인 발주)', path: `/api/purchase-orders/${poId}`, id: poId, optional: true })
+
+  // po_item_id 는 발주 상세에서 얻는다
+  const det = await api('GET', `/api/purchase-orders/${poId}`)
+  const line = det.json && det.json.data && (det.json.data.items || [])[0]
+  if (!line) return record(label, false, '발주 상세에 라인이 없다')
+
+  const r = await api('POST', `/api/purchase-orders/${poId}/receive`, {
+    items: [{ po_item_id: line.id, quantity: 1 }],
+    notes: `${MARK} 쓰기 스모크`,
+  })
+  if (r.status !== 200 && r.status !== 201) {
+    return record(label, false, `입고 ${r.status} ${(r.json && r.json.error) || r.text.slice(0, 140)}`)
+  }
+  record(label, true, `발주 #${poId} 부분입고 1/2`)
+}
+
 // ── 실행 ────────────────────────────────────────────────────────────────
 ;(async () => {
   console.log(`▶ 쓰기 스모크: ${BASE} (entity ${E2E_ENTITY} 로 전환 후 생성·삭제 · 마커 ${MARK})\n`)
@@ -162,7 +248,7 @@ async function scenarioClient() {
     process.exit(1)
   }
 
-  for (const fn of [scenarioOrder, scenarioPurchaseOrder, scenarioClient]) {
+  for (const fn of [scenarioOrder, scenarioPurchaseOrder, scenarioClient, scenarioShipment, scenarioReceiving]) {
     try { await fn() } catch (e) { record(fn.name, false, '예외: ' + e.message) }
   }
 
@@ -187,10 +273,13 @@ async function scenarioClient() {
       const gone = g.status === 404 || !row
       const soft = !gone && (row.status === 'CANCELLED' || row.is_active === 0)
       const ok = gone || soft
-      if (!ok) cleanupFail++
-      const how = gone ? '제거' : soft ? '소프트삭제(설계상 정상)' : '★남아 있음'
-      console.log(`  ${ok ? 'PASS' : 'FAIL'}  정리 ${c.path} — ${how}` +
-        (ok ? '' : `  ${last.status} ${(last.json && last.json.error) || ''}`))
+      // ★ `optional` = 설계상 되돌릴 수 없는 것(입고된 발주). 남아도 실패로 치지 않는다 —
+      //   실패로 치면 「정상 가드가 작동했다」는 사실이 매번 빨간불로 나와 감사가 무뎌진다.
+      if (!ok && !c.optional) cleanupFail++
+      const how = gone ? '제거' : soft ? '소프트삭제(설계상 정상)'
+        : c.optional ? '남김(되돌릴 수 없는 작업 — 설계상 정상)' : '★남아 있음'
+      console.log(`  ${ok || c.optional ? 'PASS' : 'FAIL'}  정리 ${c.path} — ${how}` +
+        (ok || c.optional ? '' : `  ${last.status} ${(last.json && last.json.error) || ''}`))
     }
   }
 
