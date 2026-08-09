@@ -485,7 +485,7 @@ export function productionPage(c: Context<HonoEnv>) {
               <thead>
                 <tr>
                   <!-- data-col = '열 선택'(dsListToolbar) 대상 -->
-                  <th style="width:132px" data-col="completed">출력완료</th>
+                  <th style="width:104px" data-col="completed">출력완료</th>
                   <th style="width:130px" data-col="equipment">장비</th>
                   <th data-col="file">파일명</th>
                   <th style="width:104px" data-col="order">주문번호</th>

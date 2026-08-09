@@ -1371,10 +1371,23 @@ function poRenderRows(rows) {
     var h = Number(e.output_height) || 0;
     var copies = Number(e.copy_total) || 1;
     var area = (w * h * copies) / 1000000;
+    // 저장값은 UTC — KST(+9h)로 환산해 'MM-DD HH:mm' 로 짧게. 로케일 전체 표기는 열 폭에 잘린다.
+    // (연도는 기본 조회가 최근 1개월이라 대개 군더더기다. 전체 값은 title 로 남긴다)
     var completed = e.print_completed_at || e.created_at || '';
-    var completedKst = window.formatKST ? window.formatKST(completed, 'datetime') : String(completed).slice(0, 16);
+    var completedKst = '-', completedFull = '';
+    if (completed) {
+      var dt = new Date(String(completed).replace(' ', 'T') + (String(completed).endsWith('Z') ? '' : 'Z'));
+      if (!isNaN(dt.getTime())) {
+        var k = new Date(dt.getTime() + 9 * 3600 * 1000);
+        var p2 = function(n) { return String(n).padStart(2, '0'); };
+        completedKst = p2(k.getUTCMonth() + 1) + '-' + p2(k.getUTCDate()) + ' ' + p2(k.getUTCHours()) + ':' + p2(k.getUTCMinutes());
+        completedFull = k.getUTCFullYear() + '-' + completedKst + ' (KST)';
+      } else {
+        completedKst = String(completed).slice(0, 16);
+      }
+    }
     return '<tr>'
-      + '<td>' + escapeHtml(completedKst || '-') + '</td>'
+      + '<td title="' + escapeHtml(completedFull) + '">' + escapeHtml(completedKst) + '</td>'
       + '<td>' + escapeHtml(e.printer_name || '-') + '</td>'
       + '<td class="truncate" title="' + escapeHtml(e.file_name || '') + '">' + escapeHtml(e.file_name || '-') + '</td>'
       + '<td>' + escapeHtml(e.order_number || '-') + '</td>'
