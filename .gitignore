@@ -189,3 +189,6 @@ docs/dongsan-import/load/
 
 # LogWatcher 전사 8색 배포 산출물 (Z: 로 복사, 저장소에는 두지 않는다)
 publish-8c/
+
+# 엑셀 lock 파일 — 검토 중 열어 두면 생긴다. 커밋에 섞이면 rebase 가 막힌다(2026-08-09)
+~$*
