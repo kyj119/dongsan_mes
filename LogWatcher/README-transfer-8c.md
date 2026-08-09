@@ -36,7 +36,26 @@
 { "MesApiUrl": "https://webapp-9i0.pages.dev", "ApiKey": "..." }
 ```
 
-### ③ `equipment.json` — 호기별로 파일이 다릅니다
+### ③ `equipment.json` 만들기 — **스크립트로 (권장)**
+
+```
+powershell -ExecutionPolicy Bypass -File C:\Logwatcher\make-equipment.ps1 -Unit 2
+```
+
+(1호기는 `-Unit 1`)
+
+PrintExp 폴더를 훑어 `Log[날짜].txt` 가 **실제로 있는 곳**을 찾아 채웁니다. 찾은 경로를 화면에 보여주고 씁니다.
+
+> **손으로 고치지 마세요.** JSON 에서 역슬래시 하나는 이스케이프라
+> `"C:\PrintExp..."` 는 `'P' is an invalid escapable character` 로 죽습니다(실제 발생).
+> 스크립트는 경로를 `/` 로 써서 이 함정을 없앱니다 — 윈도우에서 정상 동작합니다.
+
+폴더를 못 찾으면 이름을 직접 넘깁니다:
+```
+powershell -ExecutionPolicy Bypass -File C:\Logwatcher\make-equipment.ps1 -Unit 2 -RipRoot "D:\neoStampa 10\Log"
+```
+
+### ③-B 수동으로 할 때 — 호기별로 파일이 다릅니다
 
 **두 대의 PrintExp 설치 폴더 이름과 로그 위치가 서로 다릅니다.** 호기 번호만 바꾸면 안 됩니다.
 
