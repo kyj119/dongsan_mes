@@ -96,6 +96,28 @@ C:\Logwatcher\LogWatcher.exe --test TRANS-8C-01
 
 ---
 
+## 1-B. 이미 설치된 PC 갱신 (2026-08-09 이후 필수)
+
+프로그램만 바꾸면 됩니다. **`equipment.json` 과 `appsettings.json` 은 덮어쓰지 마세요** —
+그 PC에 맞춰 고쳐둔 경로·호기번호가 날아갑니다.
+
+관리자 권한 명령 프롬프트에서:
+
+```
+nssm stop LogWatcher
+robocopy "Z:\Designs\LogWatcher-transfer-8c" "C:\Logwatcher" /E /XF equipment.json appsettings.json
+nssm start LogWatcher
+sc query LogWatcher
+```
+
+`STATE : 4  RUNNING` 이면 끝입니다. 쌓인 데이터·설정은 그대로입니다.
+
+> **왜 갱신해야 하나** — 2026-08-09 이전 빌드는 **자정을 넘길 때 전날 로그를 처음부터 다시 읽습니다.**
+> 설치한 날 밤에도 일어나서, **설치 전에 출력한 그날 오전 작업까지 뒤늦게 올라옵니다.**
+> "처음 켠 시점부터 기록" 이라는 동작과 어긋나므로 그 전에 갱신하는 게 좋습니다.
+
+---
+
 ## 2. 처음 켠 뒤 알아둘 것
 
 - **과거 출력은 올라오지 않습니다.** 서비스를 켠 시점부터 기록합니다. (정상 동작)
