@@ -164,7 +164,9 @@ export const bankPageContent = `
                   <tr class="bg-gray-50 border-b border-gray-200">
                     <th class="col-name px-3 py-2 text-left text-[11px] font-medium text-gray-500 uppercase">상대</th>
                     <th class="col-amount px-3 py-2 text-right text-[11px] font-medium text-gray-500 uppercase">월 평균</th>
-                    <th class="col-amount px-3 py-2 text-right text-[11px] font-medium text-gray-500 uppercase">최소~최대</th>
+                    <!-- 금액 2개 + 물결표를 한 칸에 담는 열이라 col-amount(120px)로는 못 담는다 — 실측 186px 필요라
+                         35/35행 전부 잘려 범위를 읽을 수 없었다. 옆 '상대'(여유 143px)·'개월'(62px)에서 가져온다. -->
+                    <th class="col-amount px-3 py-2 text-right text-[11px] font-medium text-gray-500 uppercase" style="width:192px">최소~최대</th>
                     <th class="col-status px-3 py-2 text-center text-[11px] font-medium text-gray-500 uppercase">개월</th>
                     <th class="col-status px-3 py-2 text-center text-[11px] font-medium text-gray-500 uppercase">성격</th>
                     <th class="col-name px-3 py-2 text-left text-[11px] font-medium text-gray-500 uppercase">통장 표기</th>
