@@ -73,7 +73,10 @@ export function hrPage(c: Context<HonoEnv>) {
             <table class="w-full text-sm ds-table ds-table-striped">
               <thead class="bg-gray-50 text-xs text-gray-600 uppercase tracking-wider">
                 <tr>
-                  <th class="col-code px-4 py-3 text-left">사번</th>
+                  <!-- 사번은 '코드'가 아니라 6~8자 ID(DS-044) — 실측 필요폭 80px 인데 col-code(148px)를 쓰고 있었다.
+                       고정폭 총합이 컨테이너를 넘겨 이름 열이 min-width(140px) 아래인 130px 로 눌렸고
+                       (table-layout:fixed 에선 min-width 가 무시된다) 외국인 이름이 잘렸다. 60px 를 이름에 넘긴다. -->
+                  <th class="col-code px-4 py-3 text-left" style="width:88px">사번</th>
                   <th class="col-name px-4 py-3 text-left">이름</th>
                   <th class="col-tag px-4 py-3 text-left">소속법인</th>
                   <th class="col-tag px-4 py-3 text-left">부서</th>

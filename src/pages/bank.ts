@@ -104,8 +104,11 @@ export const bankPageContent = `
                 <thead>
                   <tr class="bg-gray-50 border-b">
                     <th class="col-name px-3 py-2 text-left text-[11px] font-medium text-gray-500 uppercase">계좌</th>
-                    <th class="col-tag px-3 py-2 text-left text-[11px] font-medium text-gray-500 uppercase">계좌번호</th>
-                    <th class="col-amount px-3 py-2 text-right text-[11px] font-medium text-gray-500 uppercase">현재 잔액</th>
+                    <!-- 계좌번호는 태그가 아니다 — col-tag(92px)인데 실측 179px 필요라 10/10행이 잘렸고 title 도 없어
+                         계좌번호를 아예 읽을 수 없었다. 잔액도 음수 9자리(-493,787,326원)가 col-amount(120px)를 넘긴다.
+                         옆 '계좌' 열이 671px 라 여기서 가져와도 여유가 충분하다. (2026-08-09 실측) -->
+                    <th class="col-tag px-3 py-2 text-left text-[11px] font-medium text-gray-500 uppercase" style="width:188px">계좌번호</th>
+                    <th class="col-amount px-3 py-2 text-right text-[11px] font-medium text-gray-500 uppercase" style="width:134px">현재 잔액</th>
                     <th class="col-date px-3 py-2 text-center text-[11px] font-medium text-gray-500 uppercase">최근 거래일</th>
                     <th class="col-status px-3 py-2 text-center text-[11px] font-medium text-gray-500 uppercase">연동</th>
                   </tr>
