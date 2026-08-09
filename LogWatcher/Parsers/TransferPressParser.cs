@@ -110,33 +110,38 @@ namespace LogWatcher.Parsers
             LoadState();
 
             // 오늘자 PrintExp 로그 (일별 로테이션). --test 는 있는 파일 전부.
-            var files = _forceAll
-                ? Directory.GetFiles(_printDir, "Log[*].txt").OrderBy(f => f).ToList()
-                : new List<string>();
+            // (경로, 시작오프셋, 위치추적대상) — 자정 넘김 때 어제 파일을 0 부터 다시 읽지 않으려면
+            // 오프셋을 파일별로 들고 가야 한다. 파일명에 _posDate 가 들어있는지로 판정하면
+            // 이미 today 로 바뀐 뒤라 어제 파일이 항상 "미추적=0부터"가 되어 하루치를 통째로 재전송한다.
+            var files = new List<(string Path, long Start, bool Tracked)>();
 
-            if (!_forceAll)
+            if (_forceAll)
+            {
+                foreach (var f in Directory.GetFiles(_printDir, "Log[*].txt").OrderBy(f => f))
+                    files.Add((f, 0, false));
+            }
+            else
             {
                 var today = DateTime.Now.ToString("yyyy_MM_dd", CultureInfo.InvariantCulture);
                 var todayPath = Path.Combine(_printDir, $"Log[{today}].txt");
-                // 날짜가 바뀌었으면 어제 파일의 남은 꼬리를 먼저 훑고 새 파일로 넘어간다
+                // 날짜가 바뀌었으면 어제 파일의 **남은 꼬리만** 먼저 훑고 새 파일로 넘어간다.
+                // _cur 는 여기서 비우되 어제 파일을 먼저 읽으므로 자정을 걸친 잡 블록은 이어진다.
                 if (_posDate.Length > 0 && _posDate != today)
                 {
                     var prev = Path.Combine(_printDir, $"Log[{_posDate}].txt");
-                    if (File.Exists(prev)) files.Add(prev);
+                    if (File.Exists(prev)) files.Add((prev, _lastPosition, false));
                     _posDate = today; _lastPosition = 0; _cur = null;
                 }
                 if (_posDate.Length == 0) _posDate = today;
-                if (File.Exists(todayPath)) files.Add(todayPath);
+                if (File.Exists(todayPath)) files.Add((todayPath, _lastPosition, true));
             }
 
-            foreach (var f in files)
+            foreach (var (path, start, tracked) in files)
             {
-                var isTracked = !_forceAll && Path.GetFileName(f).Contains(_posDate);
-                var startAt = isTracked ? _lastPosition : 0;
-                var (lines, newPos) = ReadFrom(f, startAt);
-                if (isTracked) _lastPosition = newPos;
+                var (lines, newPos) = ReadFrom(path, start);
+                if (tracked) _lastPosition = newPos;
 
-                var logDate = LogDateOf(f);
+                var logDate = LogDateOf(path);
                 foreach (var line in lines) ConsumeLine(line, logDate, events);
             }
 

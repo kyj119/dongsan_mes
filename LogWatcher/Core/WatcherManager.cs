@@ -138,8 +138,13 @@ namespace LogWatcher.Core
             {
                 var isPrinting = events.Count > 0;
                 var cfg = _configs.GetValueOrDefault(eqId);
+                // 파서마다 config 키 이름이 다르다. 없는 키만 보면 /equipment 의 로그경로가 빈칸이 되어
+                // "경로 설정이 안 됐나" 로 오독된다 → 폴더감시형 파서의 키도 폴백에 넣는다.
                 var logPath = cfg?.GetConfigString("log_path") ?? "";
                 if (string.IsNullOrEmpty(logPath)) logPath = cfg?.GetConfigString("db_path") ?? "";
+                if (string.IsNullOrEmpty(logPath)) logPath = cfg?.GetConfigString("print_log_dir") ?? "";
+                if (string.IsNullOrEmpty(logPath)) logPath = cfg?.GetConfigString("log_root") ?? "";
+                if (string.IsNullOrEmpty(logPath)) logPath = cfg?.GetConfigString("rip_log_root") ?? "";
                 var hbOk = await _apiClient.SendHeartbeatForEquipmentAsync(eqId, parser.Name, logPath, isPrinting);
                 if (hbOk) _lastHeartbeats[eqId] = DateTime.Now;
             }
