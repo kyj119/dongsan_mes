@@ -87,6 +87,13 @@ PrintExp 는 도안명을 **전혀 모른다.** neoStampa 가 넘긴 `~sectionN.
 | TRANS-8C-01 | 전사 8색 1호기 (Longyin Q2000) | 전사/태극기 | DESKTOP-5C9D04J | neoStampa 10.2.4 **+ PrintExp 5.x (같은 PC)** | rip `C:\Users\Public\Documents\neoStampa 10\Log`<br>print `C:\PrintExp_X64\Log\main` | `neostampa_printexp` | ✅ 59 OK / 54 CANCEL | ✅ 2026-08-09 |
 | TRANS-8C-02 | 전사 8색 2호기 (Longyin Q2000) | 전사/태극기 | PC-202605141926 | 〃 **+ PrintExp 5.7.6.5.103** | rip 〃<br>print `C:\PrintExp_X64_V5.7.6.5.103.BS_20220530(1)\PrintExp_X64_V5.7.6.5.103.BS_20220530\Log` | 〃 | ✅ 90 OK / 51 CANCEL | ✅ 2026-08-09 |
 | ? | ? 간판(선명) | 간판 | ⬜ | ? | ? | ? | ⬜ | ⬜ |
+| ? | 솔벤 3200 | 솔벤 | ⬜ | **제어SW만 확인**(중국계, UDP 모션 — 아래 참조) | 제어로그 `...\LogFile\YYYYMMDD.txt` (사본=`Z:\Designs\LogFile(솔벤3200)`) | **RIP측 로그 미발견 → --probe 필요** | ⬜ | ⬜ |
+
+> **솔벤 3200 사전 분석 (2026-08-10)**: 수거된 `LogFile` 폴더는 **제어SW 모션/명령 로그**다 —
+> 전사 8색의 `rp.log` 격. `toolbarOpenFile` 에 파일명 미기록, 4일치 전수에서 경로·확장자 언급 0건,
+> 자연 완료 마커 없음(사람이 누른 Start/Pause/Stop 만 기록). **잡 정체성이 없어 이 로그만으론 카드 매칭 불가.**
+> 인코딩 = 중국 SW 가 한국 Windows ANSI(**cp949**)로 기록, 중문 일부 `?` 소실. PrintStart/Stop 시각만
+> 유효(가동률 축). → 같은 PC 에 잡명을 아는 RIP측 로그가 따로 있을 것 — **현장 키트 [1] 진단(--probe)** 대상 1순위.
 
 > **전사는 두 SW 가 같은 PC 라 watcher 1개(`neostampa_printexp`)가 두 로그를 합쳐 완성 이벤트 1건만 보낸다**
 > — 이 장비는 이중계상 문제 자체가 없다. (2026-08-09 현장 설치로 확정)
@@ -109,6 +116,11 @@ PrintExp 는 도안명을 **전혀 모른다.** neoStampa 가 넘긴 `~sectionN.
 ---
 
 ## C. `?` 칸 채우는 방법 (각 장비 PC에서)
+
+> ★ **2026-08-10 부터는 현장 키트가 정본**: `Z:\Designs\LogWatcher-kit\START.bat` 더블클릭 →
+> [1] 진단(--probe/--discover + 로그·PC정보 자동 수거) / [2] 설치·업데이트(재시도 수정 빌드 교체·신규 설치) /
+> [3] EPSON 취소코드 수거. 현장 판단 불필요 — 수거물만 개발자에게 전달하면 된다.
+> 키트 소스 = `LogWatcher/kit/` (재조립: `make-kit.ps1`). 아래 수동 절차는 키트가 안 될 때의 폴백.
 
 1. **RIP/제어 SW 확인** — 바탕화면·작업표시줄·`C:\Program Files`에서 어떤 출력 프로그램을 쓰는지.
 2. **로그 파일 찾기** — 출력 1건 실행 직후 최근 수정된 로그 탐색:

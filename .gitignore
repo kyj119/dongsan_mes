@@ -192,3 +192,4 @@ publish-8c/
 
 # 엑셀 lock 파일 — 검토 중 열어 두면 생긴다. 커밋에 섞이면 rebase 가 막힌다(2026-08-09)
 ~$*
+LogWatcher/kit/out/
