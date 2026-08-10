@@ -341,7 +341,32 @@ function ordPeriodDateFrom(months) {
 }
 
 // 주문서 기본 조회 기간 시작 = 최근 한달 전 (KST 기준). 전체/과거 조회는 '날짜 초기화'로 해제.
-function ordersDefaultDateFrom() { return ordPeriodDateFrom(1); }
+var ORD_DEFAULT_PERIOD = '1';
+// 「날짜 초기화」로 기간 제한을 푼 상태. 저장값 없음(=신규 진입)과 구분하려고 명시적 값으로 남긴다.
+var ORD_PERIOD_ALL = 'all';
+function ordersDefaultDateFrom() { return ordPeriodDateFrom(parseInt(ORD_DEFAULT_PERIOD)); }
+
+// 기간 상태 정규화 **SSOT** — 저장된 값(localStorage·프리셋)을 화면 상태로 옮기는 규칙은 여기 한 곳.
+//   ⚠️ 예전엔 초기 복원과 프리셋 복원이 각자 규칙을 갖고 있었고, 프리셋이 나중에 적용되며 초기값을
+//      덮었다. 「기간」 도입 전에 저장된 스냅샷엔 datePeriod 가 없어 셀렉트가 「직접입력」으로 떨어지고
+//      날짜만 옛 고정값으로 되돌아왔다(오늘 기준 33일 전 = 최근 1개월도 아닌 어중간한 창).
+//   판정: ①datePeriod 있으면 그대로(오늘 기준 재계산) ②없는데 to 도 없으면 = 기능 이전에 **자동으로**
+//        채워졌던 기본 기간이 굳은 것 → 기본 기간으로 승격 ③from+to 둘 다 있으면 사용자가 고른
+//        범위이므로 직접입력 유지.
+function ordNormalizeDatePeriod(period, from, to) {
+  if (period === ORD_PERIOD_ALL) return { period: '', from: '', to: '' };   // 사용자가 기간 제한을 푼 상태
+  if (period) return { period: String(period), from: ordPeriodDateFrom(parseInt(period) || 1), to: '' };
+  if (!to) return { period: ORD_DEFAULT_PERIOD, from: ordersDefaultDateFrom(), to: '' };
+  return { period: '', from: from || '', to: to || '' };
+}
+
+// 정규화 결과를 화면 컨트롤에 반영 (복원 경로 공용)
+function ordApplyDateState(st) {
+  var set = function(id, v) { var el = document.getElementById(id); if (el) el.value = v; else console.warn('[orders] #' + id + ' not found'); };
+  set('ordDatePeriod', st.period);
+  set('orderDateFrom', st.from);
+  set('orderDateTo', st.to);
+}
 
 // 「기간」 셀렉트 — 오늘 기준 최근 N개월로 주문일을 설정. 끝은 비워둬 오늘 이후(선주문)도 포함.
 // 프리셋·localStorage 에는 상대 기간으로 저장되어 언제 적용해도 그날 기준으로 재계산된다.
@@ -381,7 +406,9 @@ function clearDateFilter() {
   if (_pd) _pd.value = '';
   localStorage.removeItem('orders_filter_date_from');
   localStorage.removeItem('orders_filter_date_to');
-  localStorage.removeItem('orders_filter_date_period');
+  // ⚠️ 지우기만 하면 다음 진입 때 「저장값 없음」과 구분이 안 돼 기본 기간(1개월)으로 되살아난다
+  //    → 「기간 제한 없음」을 **명시적 값**으로 남긴다(ordNormalizeDatePeriod 가 그대로 존중).
+  localStorage.setItem('orders_filter_date_period', ORD_PERIOD_ALL);
   currentPage = 1;
   loadOrders();
 }
@@ -395,7 +422,7 @@ function resetAllFilters() {
   document.getElementById('priorityFilter').value = '';
   document.getElementById('sortBy').value = 'order_date_desc';
   var _pdR = document.getElementById('ordDatePeriod');
-  if (_pdR) _pdR.value = '1';   // 기본 기간 = 최근 1개월 (loadOrders 가 다시 저장)
+  if (_pdR) _pdR.value = ORD_DEFAULT_PERIOD;   // 기본 기간 (loadOrders 가 다시 저장)
   document.getElementById('orderDateFrom').value = ordersDefaultDateFrom();
   document.getElementById('orderDateTo').value = '';
   localStorage.removeItem('orders_filter_date_period');
@@ -526,7 +553,8 @@ function ordClearFilter(key) {
     setVal('orderDateTo', '');
     localStorage.removeItem('orders_filter_date_from');
     localStorage.removeItem('orders_filter_date_to');
-    localStorage.removeItem('orders_filter_date_period');
+    // 칩 ✕ 로 기간을 뗀 것도 「제한 없음」이다 (clearDateFilter 와 같은 규약)
+    localStorage.setItem('orders_filter_date_period', ORD_PERIOD_ALL);
   }
   else if (key === 'search') setVal('searchQuery', '');
   else if (key === 'status') setVal('statusFilter', '');
@@ -579,7 +607,12 @@ async function loadOrders() {
     else localStorage.removeItem('orders_filter_date_from');
     if (f.dateTo) localStorage.setItem('orders_filter_date_to', f.dateTo);
     else localStorage.removeItem('orders_filter_date_to');
+    // 기간 상태 저장 — 세 상태를 구분해 남긴다(복원 규칙 = ordNormalizeDatePeriod).
+    //   개월 수 / 기간 제한 없음('all') / 직접입력(고정 날짜). 마지막은 date_from·to 가 정본이라 키를 지운다.
+    //   ⚠️ 「날짜 초기화」 직후에도 loadOrders 가 곧바로 여기를 지나므로, 빈 날짜를 그냥 removeItem 하면
+    //      방금 남긴 'all' 마커가 지워져 다음 진입 때 기본 기간으로 되살아난다.
     if (f.datePeriod) localStorage.setItem('orders_filter_date_period', f.datePeriod);
+    else if (!f.dateFrom && !f.dateTo) localStorage.setItem('orders_filter_date_period', ORD_PERIOD_ALL);
     else localStorage.removeItem('orders_filter_date_period');
 
     const params = ordBuildParams(f);
@@ -1698,20 +1731,8 @@ async function exportOrdersCsv() {
   if (savedPage) currentPage = parseInt(savedPage) || 1;
   // 기간 복원 — 상대 기간이 저장돼 있으면 고정 날짜 대신 오늘 기준으로 재계산(어제 고른 "최근 1개월"은 오늘도 최근 1개월)
   const savedDatePeriod = localStorage.getItem('orders_filter_date_period');
-  var _pdEl = document.getElementById('ordDatePeriod');
-  if (!_pdEl) console.warn('[orders] #ordDatePeriod not found');
-  if (savedDatePeriod && _pdEl) {
-    _pdEl.value = savedDatePeriod;
-    document.getElementById('orderDateFrom').value = ordPeriodDateFrom(parseInt(savedDatePeriod) || 1);
-  } else if (savedDateFrom || savedDateTo) {
-    // 직접입력으로 저장된 고정 날짜
-    if (savedDateFrom) document.getElementById('orderDateFrom').value = savedDateFrom;
-    if (savedDateTo) document.getElementById('orderDateTo').value = savedDateTo;
-  } else {
-    // 기본 기간 = 최근 한달 (저장된 필터 없을 때). 과거 데이터는 '날짜 초기화' 후 조회.
-    if (_pdEl) _pdEl.value = '1';
-    document.getElementById('orderDateFrom').value = ordersDefaultDateFrom();
-  }
+  if (!document.getElementById('ordDatePeriod')) console.warn('[orders] #ordDatePeriod not found');
+  ordApplyDateState(ordNormalizeDatePeriod(savedDatePeriod, savedDateFrom, savedDateTo));
   if (savedDeliveryMethod) document.getElementById('deliveryMethodFilter').value = savedDeliveryMethod;
   if (savedBillingStatus) document.getElementById('billingStatusFilter').value = savedBillingStatus;
   if (savedPriority) document.getElementById('priorityFilter').value = savedPriority;
@@ -1755,15 +1776,8 @@ function ordApplyFilters(f) {
   var sf = document.getElementById('statusFilter');
   if (sf) { ordEnsureStatusOption(sf, f.status); sf.value = f.status || ''; }
   setVal('sortBy', f.sort || 'order_date_desc');
-  setVal('ordDatePeriod', f.datePeriod || '');
-  if (f.datePeriod) {
-    // 상대 기간 프리셋 — 저장 시점이 아니라 적용하는 날 기준으로 계산
-    setVal('orderDateFrom', ordPeriodDateFrom(parseInt(f.datePeriod) || 1));
-    setVal('orderDateTo', '');
-  } else {
-    setVal('orderDateFrom', f.dateFrom);
-    setVal('orderDateTo', f.dateTo);
-  }
+  // 기간 규칙은 ordNormalizeDatePeriod 한 곳 (초기 복원과 동일) — 상대 기간은 적용하는 날 기준으로 계산
+  ordApplyDateState(ordNormalizeDatePeriod(f.datePeriod, f.dateFrom, f.dateTo));
   setVal('priorityFilter', f.priority);
   setVal('deliveryMethodFilter', f.deliveryMethod);
   setVal('billingStatusFilter', f.billingStatus);
