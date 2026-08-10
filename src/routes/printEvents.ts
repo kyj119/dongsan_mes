@@ -126,23 +126,21 @@ async function resolveCard(db: D1Database, extractedName: string, entityId?: num
   }
   // 2차: 파일명 직접 매칭 (entity 한정 시 교차 매칭 방지)
   // file_map에는 확장자 포함(.eps 등) 저장, LogWatcher 추출명은 확장자 제거본일 수 있어 양쪽 허용
-  // ⚠️ 매칭 실패가 이벤트 적재를 죽이면 안 된다 — LIKE 가 "pattern too complex" 로 던지면
-  //    단건 POST 가 500 → LogWatcher 가 무한 재시도(2026-08-10 prod 초당 수십 건 홍수 실사례).
-  //    비정상적으로 긴 이름은 LIKE 를 건너뛰고, 예외는 삼키고 3차로 넘어간다.
+  // ⚠️ D1 은 LIKE 패턴을 50바이트로 제한한다(2026-08-10 실측: 51바이트부터 "pattern too complex").
+  //    한글 파일명은 필연적으로 초과해 LIKE 가 던지고, 단건 POST 500 → LogWatcher 무한 재시도 홍수가 났다.
+  //    → LIKE 대신 substr 접두 일치("이름" + "." + 확장자)로 동일 의미를 한도 없이 매칭한다.
+  //    매칭 실패가 이벤트 적재를 죽이면 안 되므로 예외는 삼키고 3차로 넘어간다.
   const nameNoExt = extractedName.replace(/\.[^.]+$/, '')
   try {
-    if (nameNoExt.length <= 300) {
-      const likeNoExt = nameNoExt.replace(/[\\%_]/g, (ch) => '\\' + ch) + '.%'
-      const fnBinds: any[] = [extractedName, nameNoExt, likeNoExt]
-      if (entityId != null) fnBinds.push(entityId)
-      const fnMap = await db.prepare(
-        `SELECT card_id, card_number, order_number, order_item_id FROM print_file_map
-         WHERE (file_name = ? OR file_name = ? OR file_name LIKE ? ESCAPE '\\')${entClause}`
-      ).bind(...fnBinds).first<FileMapRow>()
-      if (fnMap) return { cardId: fnMap.card_id, cardNumber: fnMap.card_number, orderNumber: fnMap.order_number, orderItemId: fnMap.order_item_id || null }
-    } else {
-      console.warn('[printEvents] resolveCard: name too long for LIKE, skipping 2nd pass. len=%d head=%s', nameNoExt.length, nameNoExt.slice(0, 80))
-    }
+    const charLen = [...nameNoExt].length
+    const fnBinds: any[] = [extractedName, nameNoExt, charLen, nameNoExt, charLen]
+    if (entityId != null) fnBinds.push(entityId)
+    const fnMap = await db.prepare(
+      `SELECT card_id, card_number, order_number, order_item_id FROM print_file_map
+       WHERE (file_name = ? OR file_name = ?
+              OR (substr(file_name, 1, ?) = ? AND substr(file_name, ? + 1, 1) = '.'))${entClause}`
+    ).bind(...fnBinds).first<FileMapRow>()
+    if (fnMap) return { cardId: fnMap.card_id, cardNumber: fnMap.card_number, orderNumber: fnMap.order_number, orderItemId: fnMap.order_item_id || null }
   } catch (e: any) {
     console.warn('[printEvents] resolveCard 2nd-pass failed (continuing): %s | len=%d head=%s', e?.message || e, nameNoExt.length, nameNoExt.slice(0, 80))
   }
