@@ -17,6 +17,50 @@ import { ensureShipmentForOrder } from '../../utils/shipmentHelper'
 const ordersQueriesRouter = new Hono<HonoEnv>()
 ordersQueriesRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
 
+// ── 주문서 담당자 후보 (2026-08-10) ──────────────────────────────────────────
+// 담당자 컬럼은 `orders.sales_rep_id → employees.id` 지만, **고를 수 있는 사람**은
+// 사용자 관리(users)의 역할로 정한다 — 주문을 치는 사람이 곧 담당이기 때문(용준님 결정).
+//   ⚠️ employees 전원(재직 30여 명)을 뿌리던 것을 좁히는 변경이다. 좁히면 **과거 담당자**
+//      (이관분의 정해선 등 MES 계정이 없는 영업)가 후보에서 빠지는데, 옵션에 없는 값을
+//      select 에 넣으면 조용히 '' 가 되어 **수정 저장마다 담당자가 지워진다.**
+//      → `include` 로 현재 담당자를 항상 합류시킨다(`is_current` 로 표시만 구분).
+const ORDER_SALES_REP_ROLES = ['DESIGNER', 'ADMIN'] as const
+
+ordersQueriesRouter.get('/sales-rep-options', async (c) => {
+  try {
+    const includeRaw = c.req.query('include')
+    const includeId = includeRaw && !isNaN(parseInt(includeRaw)) ? parseInt(includeRaw) : null
+    const rolePh = ORDER_SALES_REP_ROLES.map(() => '?').join(',')
+
+    // 역할은 job_role 우선(확장 역할은 users.role CHECK 재빌드 불가라 job_role 에 저장 — types/roles.ts)
+    const { results } = await c.env.DB.prepare(`
+      SELECT e.id, e.name, e.department, e.position,
+             COALESCE(u.job_role, u.role) AS role,
+             0 AS is_current
+      FROM employees e
+      JOIN users u ON u.id = e.user_id
+      WHERE e.is_deleted = 0 AND e.status = 'ACTIVE'
+        AND u.is_active = 1
+        AND COALESCE(u.job_role, u.role) IN (${rolePh})
+      ORDER BY e.name COLLATE NOCASE ASC, e.id ASC
+    `).bind(...ORDER_SALES_REP_ROLES).all<{ id: number; name: string; department: string | null; position: string | null; role: string; is_current: number }>()
+
+    const options = results || []
+    if (includeId && !options.some((o) => o.id === includeId)) {
+      const cur = await c.env.DB.prepare(
+        `SELECT id, name, department, position, NULL AS role, 1 AS is_current
+         FROM employees WHERE id = ? AND is_deleted = 0`
+      ).bind(includeId).first<{ id: number; name: string; department: string | null; position: string | null; role: string | null; is_current: number }>()
+      if (cur) options.unshift(cur as typeof options[number])
+    }
+
+    return c.json({ success: true, data: options })
+  } catch (error) {
+    console.error('orders sales-rep-options error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 ordersQueriesRouter.get('/quotations/expired', async (c) => {
   try {
     const today = kstYmd()

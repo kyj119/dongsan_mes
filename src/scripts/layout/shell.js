@@ -1249,7 +1249,8 @@ async function doGlobalSearch() {
     if (d.cards.length > 0) {
       html += '<div style="padding:8px 12px;font-size:11px;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">카드</div>';
       html += d.cards.map(function(ca) {
-        return '<a href="/cards" style="display:flex;justify-content:space-between;padding:8px 12px;text-decoration:none;color:#1e293b;font-size:13px;border-bottom:1px solid #f8fafc;cursor:pointer;" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'\'">'
+        // 카드번호로 검색은 이미 되는데 결과가 목록으로만 가서 도달이 안 됐다 → 그 카드로 직행.
+        return '<a href="/cards/' + encodeURIComponent(ca.id) + '" style="display:flex;justify-content:space-between;padding:8px 12px;text-decoration:none;color:#1e293b;font-size:13px;border-bottom:1px solid #f8fafc;cursor:pointer;" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'\'">'
           + '<span style="font-weight:500;">' + window.escapeHtml(ca.card_number || 'Card #' + ca.id) + '</span>'
           + '<span style="font-size:11px;color:#94a3b8;">' + window.escapeHtml(statusLabels[ca.status] || ca.status || '') + '</span></a>';
       }).join('');

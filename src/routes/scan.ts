@@ -37,9 +37,14 @@ scanRouter.get('/:code', async (c) => {
   try {
     let result: ScanResult | null = null
 
-    // 1) CARD prefix 또는 CARD- 패턴
-    if (prefix === 'CARD' || value.startsWith('CARD-')) {
-      const cardNum = prefix === 'CARD' ? value : value
+    // 1) CARD prefix 또는 접두 없는 코드 → card_number 직접 조회
+    // ⚠️ 예전엔 `CARD-` 로 시작하는 값만 카드로 봤는데, 카드번호는 이미 `{주문번호}-NN`
+    //    (예: E1-20260810-001-01) 체계다(generateCardsForOrder). 그래서 현장에서 카드 QR 을 찍으면
+    //    어느 분기에도 안 걸려 UNKNOWN 이 떴다 — 레거시 `CARD-{날짜}-{seq}` 는 이제 생성되지도 않는다.
+    //    패턴을 또 추측하지 않고 **card_number 동등 조회**로 판정한다(유일키라 이게 정본이다).
+    //    접두 없는 품목·장비 코드는 여기서 null 이 되어 아래 분기로 그대로 흘러간다.
+    if (prefix === 'CARD' || !prefix || value.startsWith('CARD-')) {
+      const cardNum = value
       // #170: entity 필터 추가
       // ⚠️ cards에는 entity_id 컬럼이 없다(requesting_entity_id만) — entityFilter를 쓰면
       //    ` AND c.entity_id = ?`가 생성돼 법인 선택 사용자(entityId≠0)의 카드 스캔이 SQLITE_ERROR로

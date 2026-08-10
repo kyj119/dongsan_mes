@@ -227,7 +227,9 @@ window.executeScanAction = function(actionKey) {
 
 function getDetailUrl(type, id, detail) {
   switch (type) {
-    case 'CARD': return '/cards';
+    // 카드 QR 을 찍는 사람은 **그 카드의 작업지시서**를 보려는 것이다. 목록으로 보내면
+    // 현장이 다시 스크롤·검색해서 같은 카드를 찾아야 했다(설계는 처음부터 /cards/:id 였다).
+    case 'CARD': return id ? '/cards/' + id : '/cards';
     case 'ITEM': return '/items';
     case 'EQUIPMENT': return '/equipment';
     case 'ORDER': return '/orders';

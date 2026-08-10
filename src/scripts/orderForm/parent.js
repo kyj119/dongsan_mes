@@ -1041,6 +1041,9 @@
                         const want = order.sales_rep_id ? String(order.sales_rep_id) : '';
                         salesRepEl.dataset.pending = want;
                         salesRepEl.value = want;              // 옵션이 이미 있으면 즉시 반영
+                        // 후보가 디자이너·관리자로 좁혀졌으므로(2026-08-10) 과거 담당자는 목록에 없을 수 있다.
+                        //   include 를 붙여 다시 불러야 그 사람이 옵션으로 합류한다 — 안 하면 저장 시 담당자 소실.
+                        if (want && window.ofReloadSalesReps) window.ofReloadSalesReps();
                     }
                     const contactPhoneEl = document.getElementById('contactPhone');
                     if (contactPhoneEl) contactPhoneEl.value = order.contact_phone || '';

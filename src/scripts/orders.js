@@ -1195,7 +1195,13 @@ function showOrderModal(order, cards, autoJobs) {
             ${canEdit && order.status !== 'CANCELLED' && order.status !== 'SHIPPED' ? `<button onclick="showCancelModal(${order.id}, '${order.order_number}')" class="px-4 py-2 bg-amber-500 text-white rounded text-sm hover:bg-amber-600"><i class="fas fa-ban mr-1"></i>취소</button>` : ''}
             ${canEdit && order.status === 'CANCELLED' ? `<button onclick="restoreOrder(${order.id}, '${order.order_number}')" class="px-4 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700"><i class="fas fa-undo mr-1"></i>복구</button>` : ''}
             ${canEdit && (order.status === 'QUOTATION' || order.status === 'CANCELLED') ? `<button onclick="deleteOrder(${order.id}, '${order.order_number}', '${order.status}')" class="px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700"><i class="fas fa-trash-alt mr-1"></i>삭제</button>` : ''}
-            ${['CONFIRMED','PRINTING','PRINT_DONE','SHIPPED'].includes(order.status) ? '<button onclick="location.href=\'/cards?search=' + order.order_number + '\'" class="px-4 py-2 border border-gray-300 text-gray-700 bg-white rounded-lg text-sm hover:bg-gray-50"><i class="fas fa-layer-group mr-1"></i>카드 현황</button>' : ''}
+            ${['CONFIRMED','PRINTING','PRINT_DONE','SHIPPED'].includes(order.status) ? (
+              // 카드가 딱 1장이면 목록을 거치지 않고 그 작업지시서로 바로 보낸다
+              // (대부분의 주문이 카드 1장이라 "목록 → 다시 그 카드 찾기"가 불필요한 한 단계였다).
+              (cards && cards.length === 1)
+                ? '<button onclick="location.href=\'/cards/' + cards[0].id + '\'" class="px-4 py-2 border border-gray-300 text-gray-700 bg-white rounded-lg text-sm hover:bg-gray-50"><i class="fas fa-clipboard-list mr-1"></i>작업지시서</button>'
+                : '<button onclick="location.href=\'/cards?search=' + order.order_number + '\'" class="px-4 py-2 border border-gray-300 text-gray-700 bg-white rounded-lg text-sm hover:bg-gray-50"><i class="fas fa-layer-group mr-1"></i>카드 현황' + (cards && cards.length > 1 ? ' (' + cards.length + ')' : '') + '</button>'
+            ) : ''}
             <button onclick="document.getElementById('orderModal').remove()" class="px-4 py-2 border border-gray-300 text-gray-700 bg-white rounded text-sm hover:bg-gray-50">닫기</button>
           </div>
         </div>

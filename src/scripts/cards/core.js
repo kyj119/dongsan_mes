@@ -725,6 +725,11 @@ function buildKanbanCard(card, columnType) {
 
     // 액션 버튼 (이벤트 전파 차단)
     html += '<div class="flex gap-1">';
+    // 작업지시서 직행 — 예전엔 카드 클릭 → 슬라이드 패널 → 「상세 ↗」 로 3클릭이었다.
+    // 출력·봉제·후가공이 지시 내용을 확인하려고 매번 모달을 거치던 자리라 여기서 끊는다.
+    html += '<a href="/cards/' + card.id + '" class="spa-link action-btn text-xs" title="작업지시서"'
+         + ' style="min-height:36px;padding:4px 8px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:8px;display:inline-flex;align-items:center"'
+         + ' onclick="event.stopPropagation()"><i class="fas fa-clipboard-list"></i></a>';
     if (columnType === 'progress') {
         // 진행중: RIP 전송 (미전송 시) + 보류
         if (!ripStatus) {

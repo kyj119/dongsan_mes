@@ -23,17 +23,20 @@ export function cardDetailPage(c: Context<HonoEnv>) {
       .cd-design-thumb { width: 160px; height: 160px; object-fit: contain; border: 1px solid var(--c-border); border-radius: 8px; background: var(--c-surface-secondary); cursor: pointer; }
       .cd-design-placeholder { display: flex; align-items: center; justify-content: center; }
 
-      /* 원단+규격 */
-      .cd-spec-row { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; margin: 8px 0; }
-      .cd-fabric { font-size: 22px; font-weight: 700; color: var(--c-info); }
-      .cd-size { font-size: 28px; font-weight: 900; color: var(--c-text); }
+      /* 규격 = 시안 바로 아래 한 곳(2026-08-10 단일화). 우측 대표 규격(.cd-spec-row)은 제거 —
+         첫 품목 기준이라 다품목에서 무엇의 치수인지 모호했다. 현장 가독성 위해 크게 둔다. */
+      .cd-item-size { font-size: 18px; font-weight: 800; color: var(--c-text); margin-top: 6px; letter-spacing: -0.5px; }
+      .cd-item-size .cd-unit { font-size: 12px; font-weight: 600; color: var(--c-text-muted); margin-left: 2px; }
 
       /* 부속품 */
       .cd-accessories { text-align: center; padding: 8px 12px; margin: 8px 0; border: 2px solid var(--c-danger); border-radius: 8px; color: var(--c-danger); font-weight: 700; font-size: 14px; }
 
       /* 다품목(규격·마감 상이) 카드 — 품목별 지시표. 첫 품목 기준 요약은 오작업을 부른다. */
       .cd-mixed-note { padding: 8px 12px; margin: 8px 0; border: 2px solid var(--c-warning); border-radius: 8px; background: var(--c-warning-light); color: var(--c-warning); font-size: 13px; font-weight: 700; }
-      .cd-multi { width: 100%; border-collapse: collapse; margin: 8px 0; border: 1px solid var(--c-text); }
+      /* 전사 라인은 7열이라 현장 태블릿(768px)에서 넘친다 → 표만 가로 스크롤(본문은 안 밀리게).
+         인쇄에선 스크롤 컨테이너가 내용을 자르므로 해제한다. */
+      .cd-multi-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .cd-multi { width: 100%; min-width: 520px; border-collapse: collapse; margin: 8px 0; border: 1px solid var(--c-text); }
       .cd-multi th, .cd-multi td { border: 1px solid var(--c-border); padding: 6px 8px; font-size: 12px; text-align: center; }
       .cd-multi th { background: var(--c-border-light); font-weight: 700; }
       .cd-multi td.name { text-align: left; font-weight: 600; }
@@ -58,11 +61,17 @@ export function cardDetailPage(c: Context<HonoEnv>) {
 
       /* ── 인쇄 스타일 ── */
       .print-only { display: none; }
-      .cd-print-header { text-align: center; }
+      .cd-print-header { text-align: center; position: relative; }
+      /* 종이 → 화면 복귀용 QR (이 카드의 /cards/:id). 우상단 고정. */
+      .cd-print-qr { position: absolute; right: 0; top: 0; text-align: center; }
+      .cd-print-qr img { width: 66px; height: 66px; display: block; }
+      .cd-print-qr-no { font-size: 8px; font-family: ui-monospace, monospace; color: #374151; margin-top: 1px; }
       .cd-print-title { font-size: 24px; font-weight: 900; letter-spacing: 10px; margin-bottom: 8px; }
       .cd-print-meta { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 10px; }
 
       @media print {
+        .cd-multi-wrap { overflow: visible !important; }
+        .cd-multi { min-width: 0 !important; }
         .no-print { display: none !important; }
         .print-only { display: block !important; }
         .cd-section { border: none; padding: 0; margin-bottom: 8px; box-shadow: none; }

@@ -16,7 +16,16 @@
                 axios.get('/api/cards/' + cardId + '/checklist')
             ]);
             if (!cardRes.data.success) throw new Error('카드 조회 실패');
-            render(cardRes.data.data, histRes.data.data || [], defRes.data.data || [], cclRes.data.data || []);
+            // 인쇄물에 실을 QR — **이 카드**를 가리킨다(종이를 든 사람이 화면으로 돌아오는 길).
+            //   주문 단위 QR(printWorkOrder)은 목록으로 보내서 현장이 다시 찾아야 했다.
+            var qrDataUrl = '';
+            if (typeof QRCode !== 'undefined') {
+                try { qrDataUrl = await QRCode.toDataURL(window.location.origin + '/cards/' + cardId, { width: 140, margin: 0 }); }
+                catch(e) { console.warn('[cardDetail] QR 생성 실패', e); }
+            } else {
+                console.warn('[cardDetail] QRCode 미로드 — 인쇄 QR 생략 (layout.ts CDN 확인)');
+            }
+            render(cardRes.data.data, histRes.data.data || [], defRes.data.data || [], cclRes.data.data || [], qrDataUrl);
         } catch(e) {
             // 봉제실이 오래된 QR·북마크로 들어오는 화면이 정확히 여기다 — axios 원문
             // ("Request failed with status code 404")을 그대로 띄우면 현장이 무엇을 해야 할지 모른다.
@@ -33,7 +42,7 @@
         }
     }
 
-    function render(card, history, defects, checklist) {
+    function render(card, history, defects, checklist, qrDataUrl) {
         var items = cardItems(card);
         var accessories = card.accessories || [];
         var totalQty = items.reduce(function(s, i) { return s + (i.quantity || 1); }, 0);
@@ -65,10 +74,12 @@
         var fabric = '';
         for (var fi = 0; fi < items.length; fi++) { if (items[fi].print_media_name) { fabric = items[fi].print_media_name; break; } }
 
-        // 규격
-        var specW = Math.round(items[0]?.width || card.width || 0);
-        var specH = Math.round(items[0]?.height || card.height || 0);
-        var multiSpecNote = '';
+        // ★생산 라인별 지시 항목 (2026-08-10) — 이 화면은 봉제실 양식 하나로 출발해서
+        //   출력(솔벤·수성·UV·평판)·간판 카드에도 봉제방법/하도매/부직포/수술이 그대로 찍혔다.
+        //   그 넷은 **전사·태극기 전용**이다. 카드 생성 시 category_name 이 곧 생산 라인이다
+        //   (helpers.ts: OUTPUT→'출력' · TRANSFER_FLAG→'전사/태극기' · SIGN→'간판').
+        var cdCat = String(card.category_name || '');
+        var isSewingLine = cdCat.indexOf('전사') >= 0 || cdCat.indexOf('태극기') >= 0;
 
         // 봉제/후가공 파라미터 추출
         function extractPP(item) {
@@ -79,7 +90,8 @@
                 if (!Array.isArray(arr)) return r;
                 arr.forEach(function(pp) {
                     var p = pp.params || {};
-                    if (pp.code === 'PP-GROMMET') r.grommet = (p.size || '') + (p.holes || '');
+                    // 체크리스트 라벨(「하도매 5호 2구」)과 같은 표기 — 붙여 쓰면 같은 값이 달라 보인다
+                    if (pp.code === 'PP-GROMMET') r.grommet = [p.size, p.holes].filter(Boolean).join(' ');
                     else if (pp.code === 'PP-NONWOVEN') r.nonwoven = (p.type || '') + (p.size ? ' ' + p.size + 'cm' : '');
                     else if (pp.code === 'PP-TASSEL') r.tassel = (p.color === '없음' ? '' : p.color || '');
                 });
@@ -100,6 +112,28 @@
             } catch(e) { return ''; }
         }
 
+        // 출력·간판용 범용 후가공 목록 — 코팅·아일렛 등 봉제 3종(PP-GROMMET/NONWOVEN/TASSEL) 밖의
+        //   후가공은 예전엔 이 화면 어디에도 안 나왔다(봉제 파라미터만 뽑았기 때문).
+        function extractPPList(item) {
+            if (!item.post_processing) return '';
+            try {
+                var arr = typeof item.post_processing === 'string' ? JSON.parse(item.post_processing) : item.post_processing;
+                if (!Array.isArray(arr)) return '';
+                return arr.map(function(pp) {
+                    var nm = pp && (pp.name || pp.code) ? String(pp.name || pp.code) : String(pp || '');
+                    var p = (pp && pp.params && typeof pp.params === 'object') ? pp.params : null;
+                    var ps = p ? Object.keys(p).map(function(k) { return String(p[k] == null ? '' : p[k]).trim(); })
+                        .filter(function(v) { return v && v !== '없음' && v !== nm; })
+                        .map(function(v) { return /^\d+(\.\d+)?$/.test(v) ? v + 'cm' : v; }).join(' ') : '';
+                    return nm + (ps ? ' ' + ps : '');
+                }).filter(Boolean).join(', ');
+            } catch(e) { return ''; }
+        }
+        function scaleLabel(it) {
+            var sf = Number(it.scale_factor) || 1;
+            return sf > 1 ? '1/' + sf : '';
+        }
+
         var firstItem = items[0] || {};
         var ppInfo = extractPP(firstItem);
         var sewMethod = extractFinishing(firstItem);
@@ -112,12 +146,17 @@
             return {
                 name: it.item_name || '', w: Math.round(it.width || 0), h: Math.round(it.height || 0),
                 qty: it.quantity || 1, fabric: it.print_media_name || '', sew: extractFinishing(it),
-                grommet: p.grommet, nonwoven: p.nonwoven, tassel: p.tassel
+                grommet: p.grommet, nonwoven: p.nonwoven, tassel: p.tassel,
+                pp: extractPPList(it), scale: scaleLabel(it)
             };
         });
-        function cdRowKey(r) { return [r.w, r.h, r.fabric, r.sew, r.grommet, r.nonwoven, r.tassel].join('|'); }
+        // 균일 판정도 라인별로 — 출력 카드에서 봉제 3종이 다 비어 있는 건 차이가 아니다.
+        function cdRowKey(r) {
+            return isSewingLine
+                ? [r.w, r.h, r.fabric, r.sew, r.grommet, r.nonwoven, r.tassel].join('|')
+                : [r.w, r.h, r.fabric, r.sew, r.pp, r.scale].join('|');
+        }
         var uniformSpec = perItem.length <= 1 || perItem.every(function(r) { return cdRowKey(r) === cdRowKey(perItem[0]); });
-        if (!uniformSpec) multiSpecNote = '품목별 상이';
 
         // 진행률
         var doneCount = 0;
@@ -149,6 +188,10 @@
 
         // ── 인쇄 전용 헤더 ──
         html += '<div class="print-only cd-print-header">';
+        if (qrDataUrl) {
+            html += '<div class="cd-print-qr"><img src="' + qrDataUrl + '" alt="">'
+                 + '<div class="cd-print-qr-no">' + esc(card.card_number || '') + '</div></div>';
+        }
         html += '<div class="cd-print-title">● 작 업 지 시 서 ●</div>';
         html += '<div class="cd-print-meta">';
         html += '<span>출고날짜 : <b>' + esc(dateStr) + '</b></span>';
@@ -178,21 +221,22 @@
             } else {
                 html += '<div class="cd-design-thumb cd-design-placeholder"><i class="fas fa-image text-3xl text-gray-300"></i></div>';
             }
-            if (it.width && it.height) html += '<div class="text-xs text-gray-500 mt-1">' + Math.round(it.width) + '×' + Math.round(it.height) + '</div>';
+            // ★규격은 **여기 한 곳**에만 둔다(2026-08-10). 예전엔 우측에 첫 품목 기준 큰 규격이
+            //   따로 있어 "35×50 이 뭐냐"가 됐다 — 시안 바로 아래가 그림↔치수를 잇는 자리다.
+            if (it.width && it.height) {
+                html += '<div class="cd-item-size">' + Math.round(it.width) + '×' + Math.round(it.height) + '<span class="cd-unit">cm</span></div>';
+            }
+            var cdSf = scaleLabel(it);
+            if (cdSf) html += '<div class="text-xs text-amber-700 font-bold">축척 ' + cdSf + '</div>';
             html += '<div class="text-base font-bold text-red-600 mt-0.5">' + (it.quantity || 1) + '장</div>';
             if (it.content) html += '<div class="text-xs text-blue-600 mt-0.5 truncate max-w-[180px]">' + esc(it.content) + '</div>';
             html += '</div>';
         });
         html += '</div>';
 
-        // 원단 + 규격 — 균일 카드만 큰 글씨 요약. 갈리는 카드는 아래 품목별 표가 정본이다.
-        if (uniformSpec) {
-            html += '<div class="cd-spec-row">';
-            html += '<span class="cd-fabric">' + esc(fabric || '-') + '</span>';
-            html += '<span class="cd-size">' + (specW && specH ? specW + '×' + specH : '-') + '</span>';
-            html += '</div>';
-        } else {
-            html += '<div class="cd-mixed-note"><i class="fas fa-triangle-exclamation mr-1"></i>품목마다 규격·마감이 다릅니다 — 아래 표를 <b>품목별로</b> 확인하세요</div>';
+        // 규격은 위(시안 아래)로 단일화했다 — 여기엔 라인 표시만 둔다.
+        if (!uniformSpec) {
+            html += '<div class="cd-mixed-note"><i class="fas fa-triangle-exclamation mr-1"></i>품목마다 규격·마감이 다릅니다 — 위 규격과 아래 표를 <b>품목별로</b> 확인하세요</div>';
         }
 
         // 부속품
@@ -202,31 +246,49 @@
             html += ' 동봉</div>';
         }
 
-        // 봉제/후가공 — 균일하면 요약 2행, 갈리면 품목별 표
+        // 생산 지시 — 라인별로 항목이 다르다. 균일하면 요약 2행, 갈리면 품목별 표.
+        //   전사·태극기 = 봉제방법·하도매·부직포·수술 / 출력·간판 = 마감·후가공·축척
+        //   원단은 양쪽 공통(예전엔 큰 글씨로 따로 떠 있었다 → 표로 흡수).
+        //   ⚠️ 규격 열은 두지 않는다 — 규격의 자리는 시안 아래 한 곳(용준님 「둘 중 하나로 통일」).
         if (uniformSpec) {
             html += '<div class="cd-production-table">';
-            html += '<div class="cd-prod-row"><span class="cd-prod-label">봉제방법</span><span class="cd-prod-value">' + esc(sewMethod || '-') + '</span>';
-            html += '<span class="cd-prod-label">하도매</span><span class="cd-prod-value">' + esc(ppInfo.grommet || '-') + '</span></div>';
-            html += '<div class="cd-prod-row"><span class="cd-prod-label">부직포</span><span class="cd-prod-value">' + esc(ppInfo.nonwoven || '-') + '</span>';
-            html += '<span class="cd-prod-label">수술</span><span class="cd-prod-value">' + esc(ppInfo.tassel || '-') + '</span></div>';
+            if (isSewingLine) {
+                html += '<div class="cd-prod-row"><span class="cd-prod-label">원단</span><span class="cd-prod-value">' + esc(fabric || '-') + '</span>';
+                html += '<span class="cd-prod-label">봉제방법</span><span class="cd-prod-value">' + esc(sewMethod || '-') + '</span></div>';
+                html += '<div class="cd-prod-row"><span class="cd-prod-label">하도매</span><span class="cd-prod-value">' + esc(ppInfo.grommet || '-') + '</span>';
+                html += '<span class="cd-prod-label">부직포</span><span class="cd-prod-value">' + esc(ppInfo.nonwoven || '-') + '</span></div>';
+                // 빈 라벨/값 칸이 남지 않게 전폭으로 (4열 그리드에서 마지막 항목이 홀수)
+                html += '<div class="cd-prod-row"><span class="cd-prod-label">수술</span>';
+                html += '<span class="cd-prod-value" style="grid-column:span 3">' + esc(ppInfo.tassel || '-') + '</span></div>';
+            } else {
+                html += '<div class="cd-prod-row"><span class="cd-prod-label">원단</span><span class="cd-prod-value">' + esc(fabric || '-') + '</span>';
+                html += '<span class="cd-prod-label">마감</span><span class="cd-prod-value">' + esc(sewMethod || '-') + '</span></div>';
+                html += '<div class="cd-prod-row"><span class="cd-prod-label">후가공</span><span class="cd-prod-value">' + esc(perItem[0] && perItem[0].pp || '-') + '</span>';
+                html += '<span class="cd-prod-label">축척</span><span class="cd-prod-value">' + esc(perItem[0] && perItem[0].scale || '1:1') + '</span></div>';
+            }
             html += '</div>';
         } else {
-            html += '<table class="cd-multi"><thead><tr>'
-                 + '<th>품목</th><th>규격</th><th>수량</th><th>원단</th><th>봉제방법</th><th>하도매</th><th>부직포</th><th>수술</th>'
+            var cdCols = isSewingLine
+                ? ['품목', '수량', '원단', '봉제방법', '하도매', '부직포', '수술']
+                : ['품목', '수량', '원단', '마감', '후가공', '축척'];
+            html += '<div class="cd-multi-wrap"><table class="cd-multi"><thead><tr>'
+                 + cdCols.map(function(h) { return '<th>' + h + '</th>'; }).join('')
                  + '</tr></thead><tbody>';
             perItem.forEach(function(r) {
                 html += '<tr>'
                      + '<td class="name">' + esc(r.name) + '</td>'
-                     + '<td>' + (r.w && r.h ? r.w + '×' + r.h : '-') + '</td>'
                      + '<td class="qty">' + r.qty + '</td>'
                      + '<td>' + esc(r.fabric || '-') + '</td>'
                      + '<td>' + esc(r.sew || '-') + '</td>'
-                     + '<td>' + esc(r.grommet || '-') + '</td>'
-                     + '<td>' + esc(r.nonwoven || '-') + '</td>'
-                     + '<td>' + esc(r.tassel || '-') + '</td>'
+                     + (isSewingLine
+                        ? '<td>' + esc(r.grommet || '-') + '</td>'
+                        + '<td>' + esc(r.nonwoven || '-') + '</td>'
+                        + '<td>' + esc(r.tassel || '-') + '</td>'
+                        : '<td>' + esc(r.pp || '-') + '</td>'
+                        + '<td>' + esc(r.scale || '1:1') + '</td>')
                      + '</tr>';
             });
-            html += '</tbody></table>';
+            html += '</tbody></table></div>';
         }
 
         // 배송 정보

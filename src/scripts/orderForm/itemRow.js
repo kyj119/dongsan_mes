@@ -328,6 +328,53 @@
                 renumberDisplay();
             };
 
+            // ── 빈 라인 판정 / 재사용 (2026-08-10) ────────────────────────────────
+            // 주문서는 열자마자 라인 1개가 이미 있다. 가공 대기함에서 불러올 때 무조건 새 라인을
+            // 붙이면 **빈 라인1이 남아** 매번 손으로 지워야 했다 → 비어 있으면 그 라인을 채운다.
+            //   "비었다" = 품목 미선택 + 검색어 없음 + 내용 없음 + 대기물(ai/파일) 미연결.
+            //   규격·수량은 기본값이 들어가 있을 수 있어 판정에 넣지 않는다.
+            window.isItemRowEmpty = function(id) {
+                var val = function(prefix) {
+                    var el = document.querySelector('[name="' + prefix + '_' + id + '"]');
+                    return el ? String(el.value || '').trim() : '';
+                };
+                if (val('item_id')) return false;
+                if (val('item_search')) return false;
+                if (val('content')) return false;
+                if (val('ai_analysis_id')) return false;
+                if (val('direct_file_path')) return false;
+                return true;
+            };
+
+            // 프리필이 쓸 라인 id 확보 — 빈 라인이 있으면 재사용, 없으면 새로 만든다.
+            //   묶음 부모/자식 행(data-parent-row)은 구조가 달라 재사용 대상에서 제외한다.
+            window.claimItemRow = function() {
+                var rows = document.querySelectorAll('#itemsContainer > [id^="item-"]');
+                for (var i = 0; i < rows.length; i++) {
+                    if (rows[i].hasAttribute('data-parent-row')) continue;
+                    var rid = parseInt(rows[i].id.replace('item-', ''));
+                    if (isNaN(rid)) continue;
+                    if (document.querySelector('[data-parent-row="' + rid + '"]')) continue; // 묶음 부모행
+                    if (window.isItemRowEmpty(rid)) return rid;
+                }
+                addItemRow();
+                return itemCount;
+            };
+
+            // 묶음(부모+자식) 프리필처럼 라인을 재사용할 수 없는 경로용 — 남아 있는 빈 라인 1개를 걷어낸다.
+            window.dropOneEmptyItemRow = function() {
+                var rows = document.querySelectorAll('#itemsContainer > [id^="item-"]');
+                if (rows.length <= 1) return false;   // 마지막 한 줄은 남긴다(폼이 텅 비면 혼란)
+                for (var i = 0; i < rows.length; i++) {
+                    if (rows[i].hasAttribute('data-parent-row')) continue;
+                    var rid = parseInt(rows[i].id.replace('item-', ''));
+                    if (isNaN(rid)) continue;
+                    if (document.querySelector('[data-parent-row="' + rid + '"]')) continue;
+                    if (window.isItemRowEmpty(rid)) { removeItem(rid); return true; }
+                }
+                return false;
+            };
+
             window.addAccessoryRow = async function() {
                 try {
                     var res = await axios.get('/api/items?category=ACCESSORY&is_active=1&limit=50');
