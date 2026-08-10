@@ -202,8 +202,10 @@ arReceivablesRouter.get('/overdue', async (c) => {
         AND date(COALESCE(g.accounting_date, g.billed_at), '+' || COALESCE(c.overdue_alert_days, 30) || ' days') < date('now', '+9 hours')
         ${overdueEf}${excludeArExcludedClientsSql('c.id')}
       GROUP BY c.id, c.client_name, c.overdue_alert_days, bg.billed_sum, pay.paid_sum, adj.adj_sum
-      HAVING balance > 0
+      HAVING (COALESCE(bg.billed_sum, 0) - COALESCE(pay.paid_sum, 0) - COALESCE(adj.adj_sum, 0)) > 0
     `).bind(...efOdBg.params, ...efOdPay.params, ...efOdAdj.params, ...overdueEfParams).all<OverdueAlertRow>()
+    // ⚠️ HAVING에 별칭 balance 를 쓰면 안 된다 — SQLite 는 실컬럼 우선이라 폐기 캐시 clients.balance 에
+    // 바인딩되어(전부 0) 연체가 통째로 사라진다(2026-08-10 실측: e1 201·e2 50 → 0). 식을 풀어 쓸 것.
 
     const rows = (results || []).map(r => ({
       client_id: r.client_id,
@@ -465,7 +467,8 @@ arReceivablesRouter.post('/receivables/check-overdue', requireEditOrRole('/ledge
         AND o.status != 'CANCELLED'
         AND g.billing_status = 'BILLED'${checkOverdueEf}
       GROUP BY c.id, c.client_name, c.overdue_alert_days
-      HAVING balance > 0 AND overdue_days > COALESCE(c.overdue_alert_days, 30)
+      HAVING (COALESCE(SUM(g.billed_amount), 0) - COALESCE(pay.paid_sum, 0) - COALESCE(adj.adj_sum, 0)) > 0
+        AND overdue_days > COALESCE(c.overdue_alert_days, 30)
       ORDER BY overdue_days DESC
     `).bind(...efCoPay.params, ...efCoAdj.params, ...checkOverdueEfParams).all<OverdueClientRow>()
 

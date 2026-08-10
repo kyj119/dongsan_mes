@@ -662,7 +662,9 @@ async function pollNavBadges() {
   } catch(e) {}
 }
 pollNavBadges();
-setInterval(pollNavBadges, 60000); // 1분
+// 숨은 탭은 폴링 스킵 — 밤새 켜둔 PC·현황판 탭이 D1 과금을 쌓는 것을 차단 (2026-08 과금 사고).
+// 탭 복귀 시 visibilitychange 리스너(알림 폴링 옆)가 즉시 갱신한다.
+setInterval(function() { if (!document.hidden) pollNavBadges(); }, 60000); // 1분
 
 // 401 interceptor — delegates to handleAuthExpired
 axios.interceptors.response.use(
@@ -1406,8 +1408,12 @@ async function generateAndPoll() {
 // Initial generate + poll, then every 5 minutes for count, every 10 minutes for generate
 // (기존 60초/300초에서 변경 — 45명 동시접속 시 D1 부하 80% 감소)
 generateAndPoll();
-setInterval(pollNotifCount, 300000);
-setInterval(generateAndPoll, 600000);
+// 숨은 탭은 폴링·알림생성 스킵 (nav-badges와 동일 사유 — 방치 탭의 D1 과금 차단)
+setInterval(function() { if (!document.hidden) pollNotifCount(); }, 300000);
+setInterval(function() { if (!document.hidden) generateAndPoll(); }, 600000);
+document.addEventListener('visibilitychange', function() {
+  if (!document.hidden) { pollNavBadges(); pollNotifCount(); }
+});
 
 // === Command Palette (Ctrl+K) ===
 var _cmdActive = -1;

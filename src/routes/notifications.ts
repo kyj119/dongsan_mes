@@ -9,6 +9,13 @@ import { kstYmd, kstDate, kstDateOf } from '../utils/kstDate'
 const notificationsRouter = new Hono<HonoEnv>()
 notificationsRouter.use('/*', authMiddleware)
 
+// ── nav-badges TTL 캐시 ──
+// 미수금 카운트가 무거운 집계라 열린 탭 수 × 60초 폴링과 곱해지면 D1 읽기가 과금 지배 항목이 된다
+// (2026-08 실측: 이 엔드포인트 하나가 일 28.5B행 = D1 읽기의 98% → 월 $99 과금). 재계산 자체를 TTL로 묶는다.
+// key = entity:user (my-receiving이 user별, supervisorClause가 role 파생이라 user 단위면 충분)
+const NAV_BADGE_TTL_MS = 5 * 60 * 1000
+const navBadgeCache = new Map<string, { at: number, data: Record<string, number> }>()
+
 // ── Helper: 중복 방지 알림 생성 (당일 동일 title 스킵) ──
 async function createIfNotExists(db: D1Database, targetRole: string, title: string, message: string, link: string, entityId: number = 1) {
   const existing = await db.prepare(
@@ -80,6 +87,12 @@ notificationsRouter.get('/nav-badges', async (c) => {
 
     // entity 필터
     const entityId = c.get('entityId') as number
+
+    const cacheKey = `${entityId || 0}:${user?.id || 0}`
+    const cached = navBadgeCache.get(cacheKey)
+    if (cached && Date.now() - cached.at < NAV_BADGE_TTL_MS) {
+      return c.json({ success: true, data: cached.data })
+    }
     const efOrders = (entityId && entityId > 0) ? ' AND entity_id = ?' : ''
     const efOrdersParams = (entityId && entityId > 0) ? [entityId] : []
     const efPO = (entityId && entityId > 0) ? ' AND po.entity_id = ?' : ''
@@ -94,37 +107,45 @@ notificationsRouter.get('/nav-badges', async (c) => {
 
     const [orders, receivables, pr, inspPr, inspOverdue, myReceiving, tasksPending] = await Promise.all([
       db.prepare(`SELECT COUNT(*) as cnt FROM orders WHERE status = 'CONFIRMED'${efOrders}`).bind(...efOrdersParams).first<{ cnt: number }>(),
+      // ⚠️ 성능 형태 주의: 구 형태(연체 그룹 행마다 GROUP BY 서브쿼리 3개를 LEFT JOIN)는 D1이
+      // 자동 인덱스를 안 만들어 O(그룹행×거래처) = 실행당 690만 행을 읽었다(2026-08 과금 사고).
+      // 거래처 단위로 먼저 접고(od/bg/pay/adj) 소집합끼리 조인하는 현재 형태를 유지할 것.
+      // 판정 기준은 /api/ledger/overdue 와 동일(#546): 청구그룹 BILLED · 거래처별 overdue_alert_days · 잔액>0
       db.prepare(`
-        SELECT COUNT(*) as cnt FROM (
-          SELECT c.id,
-                 (COALESCE(bg.billed_sum, 0) - COALESCE(pay.paid_sum, 0) - COALESCE(adj.adj_sum, 0)) as balance
+        WITH od AS (
+          SELECT o.client_id AS cid
           FROM order_billing_groups g
           JOIN orders o ON o.id = g.order_id
           JOIN clients c ON o.client_id = c.id
-          LEFT JOIN (
-            SELECT o.client_id AS client_id, COALESCE(SUM(g.billed_amount), 0) AS billed_sum
-            FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
-            WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${efNbBg.clause}
-            GROUP BY o.client_id
-          ) bg ON bg.client_id = c.id
-          LEFT JOIN (
-            SELECT p.client_id AS client_id, COALESCE(SUM(p.amount), 0) AS paid_sum
-            FROM payments p WHERE 1=1${efNbPay.clause}
-            GROUP BY p.client_id
-          ) pay ON pay.client_id = c.id
-          LEFT JOIN (
-            SELECT a.client_id AS client_id, COALESCE(SUM(a.amount), 0) AS adj_sum
-            FROM adjustments a WHERE 1=1${efNbAdj.clause}
-            GROUP BY a.client_id
-          ) adj ON adj.client_id = c.id
           WHERE g.billing_status = 'BILLED'
             AND o.status != 'CANCELLED'
             AND date(COALESCE(g.accounting_date, g.billed_at), '+' || COALESCE(c.overdue_alert_days, 30) || ' days') < date('now', '+9 hours')
             ${efNbMain.clause}${excludeArExcludedClientsSql('c.id')}
-          GROUP BY c.id, bg.billed_sum, pay.paid_sum, adj.adj_sum
-          HAVING balance > 0
+          GROUP BY o.client_id
+        ),
+        bg AS (
+          SELECT o.client_id AS cid, SUM(g.billed_amount) AS amt
+          FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+          WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${efNbBg.clause}
+          GROUP BY o.client_id
+        ),
+        pay AS (
+          SELECT p.client_id AS cid, SUM(p.amount) AS amt
+          FROM payments p WHERE 1=1${efNbPay.clause}
+          GROUP BY p.client_id
+        ),
+        adj AS (
+          SELECT a.client_id AS cid, SUM(a.amount) AS amt
+          FROM adjustments a WHERE 1=1${efNbAdj.clause}
+          GROUP BY a.client_id
         )
-      `).bind(...efNbBg.params, ...efNbPay.params, ...efNbAdj.params, ...efNbMain.params).first<{ cnt: number }>(),
+        SELECT COUNT(*) as cnt
+        FROM od
+        LEFT JOIN bg ON bg.cid = od.cid
+        LEFT JOIN pay ON pay.cid = od.cid
+        LEFT JOIN adj ON adj.cid = od.cid
+        WHERE (COALESCE(bg.amt, 0) - COALESCE(pay.amt, 0) - COALESCE(adj.amt, 0)) > 0
+      `).bind(...efNbMain.params, ...efNbBg.params, ...efNbPay.params, ...efNbAdj.params).first<{ cnt: number }>(),
       db.prepare(`SELECT COUNT(*) as cnt FROM purchase_requests WHERE status = 'PENDING'${efOrders}`).bind(...efOrdersParams).first<{ cnt: number }>(),
       db.prepare(`SELECT COUNT(*) as cnt FROM inventory_receipts WHERE inspection_status = 'PENDING_REVIEW'${efOrders}`).bind(...efOrdersParams).first<{ cnt: number }>(),
       db.prepare(`SELECT COUNT(*) as cnt FROM inventory_receipts WHERE inspection_status IS NULL AND status != 'CANCELLED' AND created_at <= datetime('now', '-24 hours')${efOrders}`).bind(...efOrdersParams).first<{ cnt: number }>(),
@@ -142,17 +163,20 @@ notificationsRouter.get('/nav-badges', async (c) => {
       db.prepare(`SELECT COUNT(*) as cnt FROM tasks WHERE status IN ('PENDING','PROCESSING','FAILED')${efOrders}`).bind(...efOrdersParams).first<{ cnt: number }>(),
     ])
     const inspTotal = (inspPr?.cnt || 0) + (inspOverdue?.cnt || 0)
-    return c.json({
-      success: true,
-      data: {
-        'nav-badge-orders': orders?.cnt || 0,
-        'nav-badge-receivables': receivables?.cnt || 0,
-        'nav-badge-pr': pr?.cnt || 0,
-        'nav-badge-insp': inspTotal,
-        'nav-badge-my-receiving': myReceiving?.cnt || 0,
-        'nav-badge-tasks': tasksPending?.cnt || 0,
-      }
-    })
+    const data = {
+      'nav-badge-orders': orders?.cnt || 0,
+      'nav-badge-receivables': receivables?.cnt || 0,
+      'nav-badge-pr': pr?.cnt || 0,
+      'nav-badge-insp': inspTotal,
+      'nav-badge-my-receiving': myReceiving?.cnt || 0,
+      'nav-badge-tasks': tasksPending?.cnt || 0,
+    }
+    if (navBadgeCache.size > 100) {
+      const cutoff = Date.now() - NAV_BADGE_TTL_MS
+      for (const [k, v] of navBadgeCache) { if (v.at < cutoff) navBadgeCache.delete(k) }
+    }
+    navBadgeCache.set(cacheKey, { at: Date.now(), data })
+    return c.json({ success: true, data })
   } catch (error: any) {
     console.error('nav-badges error:', error?.message || error)
     return c.json({ success: true, data: {} })
