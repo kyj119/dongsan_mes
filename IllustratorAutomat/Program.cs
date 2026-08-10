@@ -3015,6 +3015,28 @@ namespace IllustratorAutomation
                 Directory.CreateDirectory(previewFolder);
                 string pngOutputPath = Path.Combine(previewFolder, baseName + ".png");
 
+                // ── 라인 칼선 DXF 동반 복사 (주문서 직접 첨부, order_ai_files kind='dxf') ──
+                // EPS와 같은 baseName.dxf 로 주문 폴더에 복사 = 파일명·폴더 통일(오퍼레이터가 한 폴더에서 관리).
+                // dxf_analysis_id 는 GET /api/orders/:id items 서브셀렉트로 온다. 실패해도 EPS 출력은 계속.
+                int? dxfAid = (item.TryGetProperty("dxf_analysis_id", out var dxAidEl)
+                               && dxAidEl.ValueKind != JsonValueKind.Null
+                               && dxAidEl.TryGetInt32(out int dxAidVal)) ? dxAidVal : (int?)null;
+                if (dxfAid.HasValue)
+                {
+                    try
+                    {
+                        string dxfLocal = await DownloadAnalysisFileAsync(dxfAid.Value);
+                        if (!string.IsNullOrEmpty(dxfLocal) && File.Exists(dxfLocal))
+                        {
+                            string dxfDest = Path.Combine(orderFolder, baseName + ".dxf");
+                            File.Copy(dxfLocal, dxfDest, overwrite: true);
+                            Console.WriteLine($"      🔪 칼선 DXF 복사: {Path.GetFileName(dxfDest)}");
+                        }
+                        else Console.WriteLine($"      ⚠️ 칼선 DXF 다운로드 실패(분석#{dxfAid}) — 계속 진행");
+                    }
+                    catch (Exception exDxf) { Console.WriteLine($"      ⚠️ 칼선 DXF 복사 실패(계속 진행): {exDxf.Message}"); }
+                }
+
                 // ── N4 다중시트 네스팅: SHEET 파라미터가 있으면 SheetLayout.jsx로 시트 렌더(per-item) ──
                 if (sheetParamsEl.HasValue)
                 {

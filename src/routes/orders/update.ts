@@ -28,8 +28,8 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
     // #381: 멀티법인 IDOR 차단 — 소유 법인 주문만 수정 (전체 품목/금액 재작성·청구그룹 재계산)
     const efPut = entityFilter(c, 'orders')
     const existingOrder = await c.env.DB.prepare(`
-      SELECT id, status, client_id, final_amount, order_number, billing_status, consolidate_with_order_id FROM orders WHERE id = ?${efPut.clause}
-    `).bind(id, ...efPut.params).first<{ id: number; status: string; client_id: number; final_amount: number; order_number: string; billing_status: string | null; consolidate_with_order_id: number | null }>()
+      SELECT id, status, client_id, final_amount, order_number, billing_status, consolidate_with_order_id, entity_id FROM orders WHERE id = ?${efPut.clause}
+    `).bind(id, ...efPut.params).first<{ id: number; status: string; client_id: number; final_amount: number; order_number: string; billing_status: string | null; consolidate_with_order_id: number | null; entity_id: number | null }>()
 
     if (!existingOrder) {
       return c.json({
@@ -295,6 +295,7 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
 
     const putParentStmts: D1PreparedStatement[] = []
     const putParentClientGroupIds: (string | null)[] = []
+    const putParentItems: any[] = []
     for (let i = 0; i < orderData.items.length; i++) {
       const item = orderData.items[i]
       if (item.parent_client_id) continue  // 자식 행은 2단계에서 처리
@@ -361,12 +362,33 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
         putAmt.manual ? (user?.id ?? null) : null
       ))
       putParentClientGroupIds.push(item.client_group_id || null)
+      putParentItems.push(item)
     }
     if (putParentStmts.length > 0) {
       const putParentResults = await c.env.DB.batch(putParentStmts)
       for (let i = 0; i < putParentClientGroupIds.length; i++) {
         const cg = putParentClientGroupIds[i]
         if (cg) putClientIdMap.set(cg, putParentResults[i].meta.last_row_id as number)
+      }
+      // 라인 칼선 DXF (주문서 직접 첨부, kind='dxf') — 기존 첨부 행은 아래 #597 재연결이 살리므로
+      //   '수정 중 새로 첨부된' 것만 INSERT. 판정 = 같은 주문에 같은 analysis_id 의 dxf 행 부재.
+      for (let i = 0; i < putParentItems.length; i++) {
+        const pItem = putParentItems[i]
+        if (!pItem?.dxf_analysis_id || !pItem?.dxf_file_path) continue
+        const dupDxf = await c.env.DB.prepare(
+          `SELECT id FROM order_ai_files WHERE order_id = ? AND kind = 'dxf' AND analysis_id = ? LIMIT 1`
+        ).bind(id, parseInt(pItem.dxf_analysis_id) || 0).first<{ id: number }>()
+        if (dupDxf) continue
+        await c.env.DB.prepare(
+          `INSERT INTO order_ai_files (order_id, order_item_id, kind, file_path, file_name, analysis_id, sort_order, entity_id)
+           VALUES (?, ?, 'dxf', ?, ?, ?, 0, ?)`
+        ).bind(
+          id, putParentResults[i].meta.last_row_id as number,
+          String(pItem.dxf_file_path),
+          pItem.dxf_file_name ? String(pItem.dxf_file_name) : (String(pItem.dxf_file_path).split(/[/\\]/).pop() || null),
+          parseInt(pItem.dxf_analysis_id) || null,
+          existingOrder.entity_id ?? (getEntityId(c) || 1)
+        ).run()
       }
     }
 

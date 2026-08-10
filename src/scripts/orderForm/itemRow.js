@@ -16,6 +16,9 @@
                     <input type="hidden" name="ai_group_index_${id}" value="">
                     <input type="hidden" name="ai_analysis_id_${id}" value="">
                     <input type="hidden" name="direct_file_path_${id}" value="">
+                    <input type="hidden" name="dxf_analysis_id_${id}" value="">
+                    <input type="hidden" name="dxf_file_path_${id}" value="">
+                    <input type="hidden" name="dxf_file_name_${id}" value="">
                     <input type="hidden" name="pricing_method_${id}" value="FIXED">
                     <div class="flex justify-between items-center mb-2">
                         <div class="flex items-center gap-2 flex-wrap">
@@ -32,11 +35,19 @@
                                 </label>
                                 <button type="button" onclick="clearDirectFile(${id})" class="text-purple-400 hover:text-purple-700" title="연결 해제"><i class="fas fa-times"></i></button>
                             </span>
+                            <span id="dxf_file_chip_${id}" class="hidden inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200">
+                                <i class="fas fa-cut"></i><span id="dxf_file_name_chip_${id}" class="max-w-[140px] truncate"></span>
+                                <button type="button" onclick="clearLineDxf(${id})" class="text-teal-400 hover:text-teal-700" title="칼선 연결 해제"><i class="fas fa-times"></i></button>
+                            </span>
                         </div>
                         <div class="flex items-center gap-1">
                             <label class="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-purple-100 cursor-pointer whitespace-nowrap" title="그룹추출 없이 완성 EPS/AI를 이 라인에 직접 연결">
                                 <i class="fas fa-paperclip mr-1"></i>파일 연결
                                 <input type="file" accept=".ai,.eps" class="hidden" onchange="onLineFileSelected(${id}, this)">
+                            </label>
+                            <label class="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-teal-100 cursor-pointer whitespace-nowrap" title="재단 칼선 DXF를 이 라인에 연결 — 출력 시 EPS와 같은 이름으로 주문 폴더에 저장됩니다">
+                                <i class="fas fa-cut mr-1"></i>DXF
+                                <input type="file" accept=".dxf" class="hidden" onchange="onLineDxfSelected(${id}, this)">
                             </label>
                             <button type="button" onclick="removeItem(${id})" class="text-red-400 hover:text-red-600 text-xs px-2 py-1 rounded hover:bg-red-50">
                                 <i class="fas fa-trash mr-1"></i>삭제
@@ -613,6 +624,60 @@
                 giEl.value = (pt && pt.checked) ? -3 : -1;
                 var scaleDiv = document.getElementById('scale_div_' + id);
                 if (scaleDiv) scaleDiv.classList.toggle('hidden', !!(pt && pt.checked));
+            };
+
+            // ── 칼선 DXF 연결: 라인별 재단 칼선 첨부 (EPS와 별개 축) ──────────────
+            // 같은 업로드 체계(ai_analysis_requests, skip_analysis)를 쓰되 라인에는 dxf_* 히든필드로
+            // 귀속 → 저장 시 order_ai_files kind='dxf' → 에이전트가 출력 EPS와 같은 baseName.dxf 로
+            // 주문 폴더에 복사한다(파일명·폴더 통일).
+            window.onLineDxfSelected = async function(id, input) {
+                var file = (input.files || [])[0];
+                if (!file) return;
+                var nm = (file.name || '').toLowerCase();
+                if (!nm.endsWith('.dxf')) {
+                    showToast('DXF 파일만 연결할 수 있습니다.', 'warning');
+                    input.value = '';
+                    return;
+                }
+                var chip = document.getElementById('dxf_file_chip_' + id);
+                var nameEl = document.getElementById('dxf_file_name_chip_' + id);
+                if (nameEl) nameEl.textContent = file.name + ' 업로드 중...';
+                if (chip) chip.classList.remove('hidden');
+                try {
+                    var fd = new FormData();
+                    fd.append('file', file);
+                    fd.append('skip_analysis', '1');
+                    var res = await axios.post('/api/ai-analysis/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+                    if (!res.data || !res.data.success) throw new Error((res.data && res.data.error) || '업로드 실패');
+                    var d = res.data.data;
+                    var setV = function(pfx, v) {
+                        var el = document.querySelector('[name="' + pfx + id + '"]');
+                        if (el) el.value = v;
+                    };
+                    setV('dxf_analysis_id_', d.id);
+                    setV('dxf_file_path_', d.file_path || '');
+                    setV('dxf_file_name_', file.name);
+                    if (nameEl) nameEl.textContent = file.name;
+                    showToast('칼선 DXF 연결됨: ' + file.name, 'success');
+                } catch(e) {
+                    if (nameEl) nameEl.textContent = '';
+                    if (chip) chip.classList.add('hidden');
+                    showToast('칼선 DXF 연결 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message), 'error');
+                } finally {
+                    input.value = '';
+                }
+            };
+
+            window.clearLineDxf = function(id) {
+                var chip = document.getElementById('dxf_file_chip_' + id);
+                if (chip) chip.classList.add('hidden');
+                var nameEl = document.getElementById('dxf_file_name_chip_' + id);
+                if (nameEl) nameEl.textContent = '';
+                ['dxf_analysis_id_', 'dxf_file_path_', 'dxf_file_name_'].forEach(function(pfx) {
+                    var el = document.querySelector('[name="' + pfx + id + '"]');
+                    if (el) el.value = '';
+                });
+                showToast('칼선 DXF 연결이 해제되었습니다.', 'info');
             };
 
             window.clearDirectFile = function(id) {

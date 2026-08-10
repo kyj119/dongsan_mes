@@ -605,6 +605,13 @@
                         sort_order: idx + 1,
                         ai_group_index: (aiGroupIdxVal !== '' && aiGroupIdxVal !== undefined) ? parseInt(aiGroupIdxVal) : null,
                         ai_analysis_id: (aiAnalysisIdVal !== '' && aiAnalysisIdVal !== undefined) ? parseInt(aiAnalysisIdVal) : null,
+                        // 라인 칼선 DXF (order_ai_files kind='dxf') — EPS와 별개 축
+                        dxf_analysis_id: (function() {
+                            var v = document.querySelector('[name="dxf_analysis_id_' + id + '"]');
+                            return (v && v.value) ? parseInt(v.value) : null;
+                        })(),
+                        dxf_file_path: (document.querySelector('[name="dxf_file_path_' + id + '"]') || {}).value || null,
+                        dxf_file_name: (document.querySelector('[name="dxf_file_name_' + id + '"]') || {}).value || null,
                         sheet_layout_params: (function() {
                             var el = document.querySelector('[name="sheet_layout_params_' + id + '"]');
                             return el ? el.value : null;

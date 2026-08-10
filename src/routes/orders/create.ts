@@ -313,14 +313,33 @@ ordersCreateRouter.post('/', async (c) => {
     })
 
     const clientIdMap = new Map<string, number>()
+    const dxfStmts: ReturnType<ReturnType<typeof c.env.DB.prepare>['bind']>[] = []
     if (pass1Stmts.length > 0) {
       const pass1Results = await c.env.DB.batch(pass1Stmts)
       for (let k = 0; k < pass1Results.length; k++) {
         const item = parentItems[k].item
+        const newItemId = pass1Results[k].meta.last_row_id as number
         if (item.client_group_id) {
-          clientIdMap.set(item.client_group_id, pass1Results[k].meta.last_row_id as number)
+          clientIdMap.set(item.client_group_id, newItemId)
+        }
+        // 라인 칼선 DXF (주문서 직접 첨부): order_ai_files kind='dxf' 로 라인에 귀속.
+        //   EPS(ai_analysis_id)와 별개 축 — 에이전트가 출력 시 같은 baseName.dxf 로 주문폴더에 복사한다.
+        if (item.dxf_analysis_id && item.dxf_file_path) {
+          dxfStmts.push(
+            c.env.DB.prepare(
+              `INSERT INTO order_ai_files (order_id, order_item_id, kind, file_path, file_name, analysis_id, sort_order, entity_id)
+               VALUES (?, ?, 'dxf', ?, ?, ?, 0, ?)`
+            ).bind(
+              orderId, newItemId,
+              String(item.dxf_file_path),
+              item.dxf_file_name ? String(item.dxf_file_name) : (String(item.dxf_file_path).split(/[/\\]/).pop() || null),
+              parseInt(item.dxf_analysis_id) || null,
+              billingEntityId
+            )
+          )
         }
       }
+      if (dxfStmts.length > 0) await c.env.DB.batch(dxfStmts)
     }
 
     // Pass 2: batch insert child rows (has parent_client_id)

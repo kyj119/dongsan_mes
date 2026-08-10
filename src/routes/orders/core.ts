@@ -249,7 +249,18 @@ ordersCoreRouter.get('/:id/invoice', async (c) => {
       SELECT oi.*, ar.file_path AS ai_file_path,
              (SELECT GROUP_CONCAT(f.kind || '|' || COALESCE(f.file_name, '') || '|' || f.file_path, CHAR(10))
                 FROM order_ai_files f
-               WHERE f.order_item_id = oi.id) AS line_files
+               WHERE f.order_item_id = oi.id) AS line_files,
+             -- 주문서 직접 첨부 칼선(analysis_id 有) 최신 1건 — 에이전트가 baseName.dxf 복사, 수정화면이 칩 복원.
+             --   재단 패널이 등록한 Z: 사본 행은 analysis_id NULL 이라 자연 제외.
+             (SELECT f.analysis_id FROM order_ai_files f
+               WHERE f.order_item_id = oi.id AND f.kind = 'dxf' AND f.analysis_id IS NOT NULL
+               ORDER BY f.id DESC LIMIT 1) AS dxf_analysis_id,
+             (SELECT COALESCE(f.file_name, f.file_path) FROM order_ai_files f
+               WHERE f.order_item_id = oi.id AND f.kind = 'dxf' AND f.analysis_id IS NOT NULL
+               ORDER BY f.id DESC LIMIT 1) AS dxf_file_name,
+             (SELECT f.file_path FROM order_ai_files f
+               WHERE f.order_item_id = oi.id AND f.kind = 'dxf' AND f.analysis_id IS NOT NULL
+               ORDER BY f.id DESC LIMIT 1) AS dxf_file_path
       FROM order_items oi
       LEFT JOIN ai_analysis_requests ar ON ar.id = oi.ai_analysis_id
       WHERE oi.order_id = ? AND oi.parent_item_id IS NULL
@@ -345,7 +356,18 @@ ordersCoreRouter.get('/:id', async (c) => {
              ar.groups_json AS ai_groups_json,
              i.pricing_method AS pricing_method,
              ci.card_id AS card_id,
-             ca.card_number AS card_number
+             ca.card_number AS card_number,
+             -- 주문서 직접 첨부 칼선(analysis_id 有) 최신 1건 — 에이전트가 출력 시 baseName.dxf 복사,
+             --   수정화면이 칩 복원. 재단 패널이 등록한 Z: 사본 행은 analysis_id NULL 이라 자연 제외.
+             (SELECT f.analysis_id FROM order_ai_files f
+               WHERE f.order_item_id = oi.id AND f.kind = 'dxf' AND f.analysis_id IS NOT NULL
+               ORDER BY f.id DESC LIMIT 1) AS dxf_analysis_id,
+             (SELECT COALESCE(f.file_name, f.file_path) FROM order_ai_files f
+               WHERE f.order_item_id = oi.id AND f.kind = 'dxf' AND f.analysis_id IS NOT NULL
+               ORDER BY f.id DESC LIMIT 1) AS dxf_file_name,
+             (SELECT f.file_path FROM order_ai_files f
+               WHERE f.order_item_id = oi.id AND f.kind = 'dxf' AND f.analysis_id IS NOT NULL
+               ORDER BY f.id DESC LIMIT 1) AS dxf_file_path
       FROM order_items oi
       LEFT JOIN ai_analysis_requests ar ON ar.id = oi.ai_analysis_id
       LEFT JOIN items i ON i.id = oi.item_id

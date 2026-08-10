@@ -1124,6 +1124,17 @@
                         set('ai_group_index', item.ai_group_index != null ? item.ai_group_index : '');
                         set('ai_analysis_id', item.ai_analysis_id || '');
 
+                        // 칼선 DXF 복원 (core.ts kind='dxf' 서브셀렉트) — 복원 없이는 재저장 시 재연결만 되고 칩이 안 보인다
+                        if (item.dxf_analysis_id) {
+                            set('dxf_analysis_id', item.dxf_analysis_id);
+                            set('dxf_file_path', item.dxf_file_path || '');
+                            set('dxf_file_name', item.dxf_file_name || '');
+                            var dxfChipE = document.getElementById('dxf_file_chip_' + id);
+                            var dxfNameE = document.getElementById('dxf_file_name_chip_' + id);
+                            if (dxfNameE) dxfNameE.textContent = item.dxf_file_name || 'DXF';
+                            if (dxfChipE) dxfChipE.classList.remove('hidden');
+                        }
+
                         // 유통품목 규격 복원: specification이 있으면 규격칸 표시 + 인쇄 전용칸 비활성 (수정 시 규격 손실 방지)
                         if (item.specification) {
                             applyDistRowMode(id, true);
@@ -1407,6 +1418,16 @@
                     // 재주문: ai_group_index, ai_analysis_id 복사 (같은 디자인 파일 재사용)
                     set('ai_group_index', item.ai_group_index != null ? item.ai_group_index : '');
                     set('ai_analysis_id', item.ai_analysis_id || '');
+                    // 재주문: 칼선 DXF 도 같은 소스 재사용
+                    if (item.dxf_analysis_id) {
+                        set('dxf_analysis_id', item.dxf_analysis_id);
+                        set('dxf_file_path', item.dxf_file_path || '');
+                        set('dxf_file_name', item.dxf_file_name || '');
+                        var cDxfChip = document.getElementById('dxf_file_chip_' + id);
+                        var cDxfName = document.getElementById('dxf_file_name_chip_' + id);
+                        if (cDxfName) cDxfName.textContent = item.dxf_file_name || 'DXF';
+                        if (cDxfChip) cDxfChip.classList.remove('hidden');
+                    }
 
                     const vatEl = document.querySelector('[name="vat_' + id + '"]');
                     if (vatEl) vatEl.checked = (item.vat_included == 1);

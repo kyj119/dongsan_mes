@@ -43,6 +43,17 @@
                     if (sel) sel.innerHTML = opts;
                 });
 
+                // 전사(봉제)는 여백 개념이 없다(방식 margin 전부 0·프리셋=방향 조합) → cm(길이) 칸을 숨기고
+                // 방식 셀렉트만 표기·선택한다 (2026-08-10 용준님). 품목 변경으로 output 그룹이 되면 원복.
+                var isTransferGrp = group === 'transfer';
+                ['top','bottom','left','right'].forEach(function(dir) {
+                    var cmEl = document.querySelector('[name="fin_cm_' + dir + '_' + id + '"]');
+                    if (cmEl) {
+                        cmEl.classList.toggle('hidden', isTransferGrp);
+                        if (isTransferGrp) cmEl.value = '';
+                    }
+                });
+
                 // 프리셋 버튼
                 try {
                     var presetsRes = await axios.get('/api/finishing/presets?group=' + group);
