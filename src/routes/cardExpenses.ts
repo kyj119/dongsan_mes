@@ -134,14 +134,19 @@ cardExpRouter.post('/cards', requireRole('ADMIN'), async (c) => {
     let last4 = card_number_last4
     if (barobill_sync && card_number) last4 = String(card_number).replace(/[^0-9]/g, '').slice(-4)
 
-    // 카드번호 중복 체크 (#190) — 활성 카드만. 삭제(is_active=0)된 카드가 재등록을 막으면 안 된다.
+    // 카드번호 중복 체크 (#190) — 활성이면 409. 비활성(삭제)이면 그 행을 재활성 갱신한다.
+    //   DB 에 UNIQUE(card_number_last4, entity_id) 인덱스(0249)가 있어 비활성 행이 남은 채로
+    //   INSERT 하면 UNIQUE 위반 500 이 난다(2026-08-10 전북카드 재등록 실사례 — 로그로 확인).
+    //   재활성 방식이면 기존 card_transactions 이력도 같은 카드에 그대로 이어진다.
+    let reuseId: number | null = null
     if (last4) {
       const existing = await c.env.DB.prepare(
-        'SELECT id FROM corporate_cards WHERE card_number_last4 = ? AND entity_id = ? AND is_active = 1'
-      ).bind(last4, entityId).first()
-      if (existing) {
+        'SELECT id, is_active FROM corporate_cards WHERE card_number_last4 = ? AND entity_id = ?'
+      ).bind(last4, entityId).first<{ id: number; is_active: number }>()
+      if (existing?.is_active) {
         return c.json({ success: false, error: '동일한 카드번호(끝 4자리)가 이미 등록되어 있습니다' }, 409)
       }
+      if (existing) reuseId = existing.id
     }
 
     let barobillRegistered = 0
@@ -199,6 +204,17 @@ cardExpRouter.post('/cards', requireRole('ADMIN'), async (c) => {
       barobillRegistered = 1
     }
 
+    if (reuseId) {
+      await c.env.DB.prepare(`
+        UPDATE corporate_cards
+        SET card_name = ?, card_company = ?, holder_name = ?, monthly_limit = ?, cutoff_day = ?, payment_day = ?,
+            assigned_user_id = ?, is_active = 1, barobill_registered = ?, collect_cycle = ?,
+            barobill_registered_at = ${barobillRegistered ? 'CURRENT_TIMESTAMP' : 'barobill_registered_at'},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).bind(card_name, card_company, holder_name || null, monthly_limit || 0, cutoff_day || 15, payment_day || 15, assigned_user_id || null, barobillRegistered, cycle, reuseId).run()
+      return c.json({ success: true, data: { id: reuseId }, message: barobillRegistered ? '카드 재등록 + 바로빌 수집연동 완료' : '카드 재등록 완료(기존 이력 유지)' })
+    }
     const result = await c.env.DB.prepare(`
       INSERT INTO corporate_cards (card_name, card_company, card_number_last4, holder_name, monthly_limit, cutoff_day, payment_day, assigned_user_id, entity_id, barobill_registered, collect_cycle, barobill_registered_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${barobillRegistered ? 'CURRENT_TIMESTAMP' : 'NULL'})
