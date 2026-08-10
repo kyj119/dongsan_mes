@@ -41,9 +41,9 @@
                             </span>
                         </div>
                         <div class="flex items-center gap-1">
-                            <label class="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-purple-100 cursor-pointer whitespace-nowrap" title="그룹추출 없이 완성 EPS/AI를 이 라인에 직접 연결">
+                            <label class="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-purple-100 cursor-pointer whitespace-nowrap" title="그룹추출 없이 완성 파일(AI/EPS/PDF/JPG/PNG)을 이 라인에 직접 연결">
                                 <i class="fas fa-paperclip mr-1"></i>파일 연결
-                                <input type="file" accept=".ai,.eps" class="hidden" onchange="onLineFileSelected(${id}, this)">
+                                <input type="file" accept=".ai,.eps,.pdf,.jpg,.jpeg,.png" class="hidden" onchange="onLineFileSelected(${id}, this)">
                             </label>
                             <label class="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-teal-100 cursor-pointer whitespace-nowrap" title="재단 칼선 DXF를 이 라인에 연결 — 출력 시 EPS와 같은 이름으로 주문 폴더에 저장됩니다">
                                 <i class="fas fa-cut mr-1"></i>DXF
@@ -576,8 +576,11 @@
                 var file = (input.files || [])[0];
                 if (!file) return;
                 var nm = (file.name || '').toLowerCase();
-                if (!(nm.endsWith('.ai') || nm.endsWith('.eps'))) {
-                    showToast('AI 또는 EPS 파일만 연결할 수 있습니다.', 'warning');
+                // 사용자 지정 완성 파일 확장 (2026-08-10): PDF/JPG/PNG 추가 — 전부 완성본(복사) 기본값.
+                // 에이전트 passthrough(-3)는 확장자 그대로 복사하고 썸네일은 Illustrator가 열어 생성(전 형식 지원).
+                var allowedExts = ['.ai', '.eps', '.pdf', '.jpg', '.jpeg', '.png'];
+                if (!allowedExts.some(function(ext) { return nm.endsWith(ext); })) {
+                    showToast('AI/EPS/PDF/JPG/PNG 파일만 연결할 수 있습니다.', 'warning');
                     input.value = '';
                     return;
                 }
@@ -596,16 +599,16 @@
                     if (aiIdEl) aiIdEl.value = d.id;
                     var fpEl = document.querySelector('[name="direct_file_path_' + id + '"]');
                     if (fpEl) fpEl.value = d.file_path || '';
-                    // 완성본/가공 기본값: EPS=완성본(복사), AI=가공
+                    // 완성본/가공 기본값: AI(디자인 원본)만 가공, 나머지(EPS/PDF/JPG/PNG)=완성본(복사)
                     var pt = document.getElementById('direct_passthrough_' + id);
-                    var isEps = nm.endsWith('.eps');
-                    if (pt) pt.checked = isEps;
+                    var isFinished = !nm.endsWith('.ai');
+                    if (pt) pt.checked = isFinished;
                     onDirectModeToggle(id);
                     if (nameEl) nameEl.textContent = file.name;
                     // 가공 라인은 파일 스케일 입력 표시
                     var scaleDiv = document.getElementById('scale_div_' + id);
-                    if (scaleDiv) scaleDiv.classList.toggle('hidden', isEps);
-                    showToast('파일 연결됨: ' + file.name + (isEps ? ' (완성본=복사)' : ' (가공)'), 'success');
+                    if (scaleDiv) scaleDiv.classList.toggle('hidden', isFinished);
+                    showToast('파일 연결됨: ' + file.name + (isFinished ? ' (완성본=복사)' : ' (가공)'), 'success');
                 } catch(e) {
                     if (nameEl) nameEl.textContent = '';
                     if (chip) chip.classList.add('hidden');
