@@ -58,7 +58,7 @@ bankRouter.get('/accounts', requireRole('ADMIN'), async (c) => {
   try {
     const ef = entityFilter(c, 'bank_accounts')
     const { results } = await c.env.DB.prepare(
-      `SELECT id, bank_code, bank_name, account_number, account_holder, account_alias, connected_id, is_active, last_synced_at, last_synced_date, entity_id, created_at, barobill_registered, collect_cycle, barobill_registered_at FROM bank_accounts WHERE is_active = 1${ef.clause} ORDER BY created_at DESC, id DESC`
+      `SELECT id, bank_code, bank_name, account_number, account_holder, account_alias, is_overdraft, connected_id, is_active, last_synced_at, last_synced_date, entity_id, created_at, barobill_registered, collect_cycle, barobill_registered_at FROM bank_accounts WHERE is_active = 1${ef.clause} ORDER BY created_at DESC, id DESC`
     ).bind(...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -67,41 +67,53 @@ bankRouter.get('/accounts', requireRole('ADMIN'), async (c) => {
   }
 })
 
-// GET /api/bank/fund-summary — 계좌별 현재잔액 + 총자금/순자금
-//   현재잔액 = 계좌별 최신 거래의 balance_after(파생). 순자금 = 총자금 − Σ대출잔액.
+// GET /api/bank/fund-summary — 계좌별 현재잔액 + 총자금/순자금 + 대출 목록
+//   현재잔액 = 계좌별 최신 거래의 balance_after(파생).
+//   마이너스통장(is_overdraft=1)은 예금이 아니라 한도대출 사용액이라 총 계좌잔액에서 분리한다.
+//   순자금 = (예금 + 마이너스통장 잔액) − Σ대출잔액 — 기존 정의 그대로(마통은 잔액이 음수로 이미 반영).
 bankRouter.get('/fund-summary', requireRole('ADMIN'), async (c) => {
   try {
     const ef = entityFilter(c, 'ba')
     const { results } = await c.env.DB.prepare(
       `SELECT
         ba.id, ba.bank_name, ba.account_number, ba.account_holder, ba.account_alias,
-        ba.barobill_registered, ba.last_synced_at,
+        ba.is_overdraft, ba.barobill_registered, ba.last_synced_at,
         ${LATEST_BALANCE_SUBQUERY} AS current_balance,
         (SELECT MAX(bt.transaction_date) FROM bank_transactions bt
           WHERE bt.bank_account_id = ba.id) AS last_tx_date
       FROM bank_accounts ba
       WHERE ba.is_active = 1${ef.clause}
       ORDER BY ba.created_at DESC, ba.id DESC`
-    ).bind(...ef.params).all<{ current_balance: number | null }>()
+    ).bind(...ef.params).all<{ current_balance: number | null; is_overdraft: number }>()
 
     const totalBalance = results.reduce((s, a) => s + (Number(a.current_balance) || 0), 0)
+    const depositBalance = results.filter(a => !a.is_overdraft)
+      .reduce((s, a) => s + (Number(a.current_balance) || 0), 0)
+    const overdraftAccounts = results.filter(a => !!a.is_overdraft)
+    const overdraftBalance = overdraftAccounts.reduce((s, a) => s + (Number(a.current_balance) || 0), 0)
 
-    // 대출잔액 합계 (loans, entity 필터)
+    // 대출 목록 + 합계 (loans, entity 필터) — 자금현황에서 대출을 분리해 상세 확인
     const loanEf = entityFilter(c, 'loans')
-    const loanRow = await c.env.DB.prepare(
-      `SELECT COALESCE(SUM(current_balance), 0) AS loan_total, COUNT(*) AS loan_count
-       FROM loans WHERE is_active = 1${loanEf.clause}`
-    ).bind(...loanEf.params).first<{ loan_total: number; loan_count: number }>()
-    const loanTotal = Number(loanRow?.loan_total) || 0
+    const { results: loans } = await c.env.DB.prepare(
+      `SELECT id, creditor, loan_number, original_amount, current_balance, current_rate, rate_type,
+              repayment_type, monthly_payment_day, monthly_payment_amount, maturity_date, maturity_confirmed
+       FROM loans WHERE is_active = 1${loanEf.clause}
+       ORDER BY current_balance DESC, id DESC`
+    ).bind(...loanEf.params).all<{ current_balance: number }>()
+    const loanTotal = loans.reduce((s, l) => s + (Number(l.current_balance) || 0), 0)
 
     return c.json({
       success: true,
       data: {
         accounts: results,
-        total_balance: totalBalance,
+        total_balance: totalBalance,          // 마통 포함 전체 합 (하위호환)
+        deposit_balance: depositBalance,      // 마이너스통장 제외 예금 합
+        overdraft_balance: overdraftBalance,  // 마이너스통장 잔액 합 (통상 음수 = 사용액)
+        overdraft_count: overdraftAccounts.length,
         loan_total: loanTotal,
-        loan_count: Number(loanRow?.loan_count) || 0,
+        loan_count: loans.length,
         net_funds: totalBalance - loanTotal,
+        loans,
       },
     })
   } catch (error) {
@@ -234,7 +246,7 @@ bankRouter.post('/accounts', requireRole('ADMIN'), async (c) => {
   try {
     const body = await c.req.json()
     const {
-      bank_code, bank_name, account_number, account_holder, account_alias,
+      bank_code, bank_name, account_number, account_holder, account_alias, is_overdraft,
       barobill_sync, account_password, web_id, web_pwd, identity_num,
       collect_cycle, account_type,
     } = body
@@ -302,14 +314,15 @@ bankRouter.post('/accounts', requireRole('ADMIN'), async (c) => {
     }
 
     const result = await c.env.DB.prepare(`
-      INSERT INTO bank_accounts (bank_code, bank_name, account_number, account_holder, account_alias, entity_id, barobill_registered, collect_cycle, barobill_registered_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${barobillRegistered ? 'CURRENT_TIMESTAMP' : 'NULL'})
+      INSERT INTO bank_accounts (bank_code, bank_name, account_number, account_holder, account_alias, is_overdraft, entity_id, barobill_registered, collect_cycle, barobill_registered_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ${barobillRegistered ? 'CURRENT_TIMESTAMP' : 'NULL'})
     `).bind(
       bank_code,
       bank_name,
       String(account_number).replace(/-/g, ''),
       account_holder ?? null,
       (account_alias && String(account_alias).trim()) || null,
+      is_overdraft ? 1 : 0,
       entityId,
       barobillRegistered,
       cycle,
@@ -336,7 +349,7 @@ bankRouter.put('/accounts/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json()
-    const { bank_code, bank_name, account_number, account_holder, account_alias } = body
+    const { bank_code, bank_name, account_number, account_holder, account_alias, is_overdraft } = body
 
     // #437: entity 격리 — 형제 DELETE/refresh와 동일. 미적용 시 타 법인 계좌 master(계좌번호 등) cross-tenant 덮어쓰기(IDOR)
     const ef = entityFilter(c, 'bank_accounts')
@@ -357,7 +370,8 @@ bankRouter.put('/accounts/:id', requireRole('ADMIN'), async (c) => {
           bank_name = COALESCE(?, bank_name),
           account_number = COALESCE(?, account_number),
           account_holder = COALESCE(?, account_holder),
-          account_alias = CASE WHEN ? = 1 THEN ? ELSE account_alias END
+          account_alias = CASE WHEN ? = 1 THEN ? ELSE account_alias END,
+          is_overdraft = COALESCE(?, is_overdraft)
       WHERE id = ?${ef.clause}
     `).bind(
       bank_code ?? null,
@@ -366,6 +380,7 @@ bankRouter.put('/accounts/:id', requireRole('ADMIN'), async (c) => {
       account_holder ?? null,
       aliasProvided ? 1 : 0,
       aliasValue,
+      is_overdraft != null ? (is_overdraft ? 1 : 0) : null,
       id,
       ...ef.params
     ).run()

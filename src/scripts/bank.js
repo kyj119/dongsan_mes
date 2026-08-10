@@ -1134,21 +1134,32 @@
     var tb = document.getElementById('fundTotalBalance');
     var nf = document.getElementById('fundNetFunds');
     var lt = document.getElementById('fundLoanTotal');
-    if (tb) tb.textContent = fmtWon(d.total_balance);
+    // 총 계좌잔액 = 예금성 계좌만(deposit_balance). 구버전 응답이면 total_balance 폴백.
+    if (tb) tb.textContent = fmtWon(d.deposit_balance != null ? d.deposit_balance : d.total_balance);
     if (nf) nf.textContent = fmtWon(d.net_funds);
     if (lt) lt.textContent = fmtWon(d.loan_total);
     var ac = document.getElementById('fundAccountCount');
-    if (ac) ac.textContent = (d.accounts ? d.accounts.length : 0) + '개 계좌';
-    var ln = document.getElementById('fundLoanNote');
-    if (ln) {
-      var lc = (d.loan_count || 0) + '건';
-      // 허브(자금 관리)에서는 계획>대출 탭으로 크로스링크, 단독 /bank는 plain 텍스트
-      if (typeof window.hubGoto === 'function') {
-        ln.innerHTML = lc + ' · <a href="#" onclick="hubGoto(\'plan\',\'loans\');return false;" class="text-blue-500 hover:underline">대출 관리 →</a>';
-      } else {
-        ln.textContent = lc + ' · 자금예측에서 관리';
-      }
+    if (ac) {
+      var odCnt = d.overdraft_count || 0;
+      ac.textContent = (d.accounts ? d.accounts.length : 0) + '개 계좌'
+        + (odCnt ? ' · 마이너스통장 ' + odCnt + '건 제외' : '');
     }
+    var ob = document.getElementById('fundOverdraftBalance');
+    if (ob) ob.textContent = (d.overdraft_count ? fmtWon(d.overdraft_balance) : '-');
+    var on = document.getElementById('fundOverdraftNote');
+    if (on) {
+      on.textContent = d.overdraft_count
+        ? d.overdraft_count + '건 · 잔액 음수 = 한도대출 사용액'
+        : '계좌 수정에서 마이너스통장으로 표시하면 분리됩니다';
+    }
+    var ln = document.getElementById('fundLoanNote');
+    var manageLink = (typeof window.hubGoto === 'function')
+      ? '<a href="#" onclick="hubGoto(\'plan\',\'loans\');return false;" class="text-blue-500 hover:underline">대출 관리 →</a>'
+      : '<a href="/cash-schedule" class="text-blue-500 hover:underline">대출 관리 →</a>';
+    if (ln) ln.innerHTML = (d.loan_count || 0) + '건 · ' + manageLink;
+    var lml = document.getElementById('fundLoansManageLink');
+    if (lml) lml.innerHTML = manageLink;
+    renderFundLoans(d.loans || []);
 
     var body = document.getElementById('fundAccountsBody');
     if (!body) return;
@@ -1162,7 +1173,12 @@
       var label = a.account_alias
         ? escHtml(a.account_alias) + (a.bank_name ? ' · ' + escHtml(a.bank_name) : '')
         : escHtml(a.bank_name || '');
-      var bal = a.current_balance != null ? fmtWon(a.current_balance) : '<span class="text-gray-400">미동기화</span>';
+      if (a.is_overdraft) {
+        label += ' <span class="text-[10px] px-1.5 py-0.5 rounded font-medium" style="background:#ffedd5;color:#9a3412;" title="마이너스통장(한도대출) — 총 계좌잔액(예금) 집계에서 제외">마통</span>';
+      }
+      var bal = a.current_balance != null
+        ? (Number(a.current_balance) < 0 ? '<span class="text-red-500">' + fmtWon(a.current_balance) + '</span>' : fmtWon(a.current_balance))
+        : '<span class="text-gray-400">미동기화</span>';
       var lastTx = a.last_tx_date ? fmtDate8(a.last_tx_date) : '-';
       var conn = a.barobill_registered
         ? '<span class="text-xs px-2 py-0.5 rounded" style="background:#d1fae5;color:#065f46;">바로빌</span>'
@@ -1173,6 +1189,38 @@
       html += '<td class="px-3 py-2 text-right font-semibold tabular-nums text-gray-800">' + bal + '</td>';
       html += '<td class="px-3 py-2 text-center text-xs text-gray-500">' + lastTx + '</td>';
       html += '<td class="px-3 py-2 text-center">' + conn + '</td>';
+      html += '</tr>';
+    });
+    body.innerHTML = html;
+  }
+
+  // 대출 현황 표 — 자금현황에서 건별 확인(읽기 전용). 수정·상환은 대출 관리(자금예측)에서.
+  function renderFundLoans(loans) {
+    var body = document.getElementById('fundLoansBody');
+    if (!body) { console.warn('[bank] #fundLoansBody not found'); return; }
+    if (!loans.length) {
+      body.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">등록된 대출이 없습니다.</td></tr>';
+      return;
+    }
+    var html = '';
+    loans.forEach(function(l) {
+      var rate = (l.current_rate || 0) + '%'
+        + (l.rate_type === 'VARIABLE' ? ' <span class="text-[10px] text-orange-500">변동</span>' : '');
+      var maturity = escHtml(l.maturity_date || '-');
+      if (l.maturity_confirmed === 0) {
+        maturity += ' <span class="text-[10px] text-orange-600 font-medium" title="여신거래약정서로 만기를 확인하기 전까지 임시값입니다.">미확인</span>';
+      }
+      var pay = l.monthly_payment_amount
+        ? fmtWon(l.monthly_payment_amount) + (l.monthly_payment_day ? ' <span class="text-[10px] text-gray-400">' + l.monthly_payment_day + '일</span>' : '')
+        : '-';
+      html += '<tr class="border-b border-gray-50">';
+      html += '<td class="px-3 py-2 font-medium text-gray-800">' + escHtml(l.creditor || '') + '</td>';
+      html += '<td class="px-3 py-2 text-xs text-gray-500" title="' + escHtml(l.loan_number || '') + '">' + escHtml(l.loan_number || '-') + '</td>';
+      html += '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + fmtWon(l.original_amount) + '</td>';
+      html += '<td class="px-3 py-2 text-right font-semibold tabular-nums text-gray-800">' + fmtWon(l.current_balance) + '</td>';
+      html += '<td class="px-3 py-2 text-right tabular-nums text-gray-600">' + pay + '</td>';
+      html += '<td class="px-3 py-2 text-center text-xs">' + rate + '</td>';
+      html += '<td class="px-3 py-2 text-center text-xs text-gray-600">' + maturity + '</td>';
       html += '</tr>';
     });
     body.innerHTML = html;
@@ -1283,6 +1331,9 @@
       var connBadge = a.barobill_registered
         ? ' <span class="ml-1 inline-block px-2 py-0.5 rounded text-xs font-medium" style="background:#d1fae5;color:#065f46;"><i class="fas fa-link mr-1"></i>바로빌 연동</span>'
         : '';
+      if (a.is_overdraft) {
+        connBadge += ' <span class="ml-1 inline-block px-2 py-0.5 rounded text-xs font-medium" style="background:#ffedd5;color:#9a3412;" title="총 계좌잔액(예금) 집계에서 제외됩니다">마이너스통장</span>';
+      }
       html += '<div class="account-card">';
       html += '<div class="flex items-center gap-4">';
       html += '<div class="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center"><i class="fas fa-university text-blue-600"></i></div>';
@@ -1406,6 +1457,8 @@
       var el = document.getElementById(id);
       if (el) el.value = '';
     });
+    var odNew = document.getElementById('accOverdraft');
+    if (odNew) odNew.checked = false;
     resetAccBarobill();
     var sec = document.getElementById('accBarobillSection');
     if (sec) sec.classList.remove('hidden'); // 신규 등록 시에만 바로빌 연동 노출
@@ -1423,6 +1476,8 @@
     document.getElementById('accHolder').value = acc.account_holder || '';
     var aliasEl = document.getElementById('accAlias');
     if (aliasEl) aliasEl.value = acc.account_alias || '';
+    var odEl = document.getElementById('accOverdraft');
+    if (odEl) odEl.checked = !!acc.is_overdraft;
     resetAccBarobill();
     var sec = document.getElementById('accBarobillSection');
     if (sec) sec.classList.add('hidden'); // 수정 시 바로빌 재등록 미지원
@@ -1444,12 +1499,14 @@
     var alias = aliasInput ? aliasInput.value.trim() : '';
     if (!bankCode) { showToast('은행을 선택하세요.', 'warning'); return; }
     if (!number) { showToast('계좌번호를 입력하세요.', 'warning'); return; }
+    var odChk = document.getElementById('accOverdraft');
     var body = {
       bank_code: bankCode,
       bank_name: bankName,
       account_number: number,
       account_holder: holder || null,
-      account_alias: alias  // 빈 문자열 전송 = 별칭 해제
+      account_alias: alias,  // 빈 문자열 전송 = 별칭 해제
+      is_overdraft: (odChk && odChk.checked) ? 1 : 0
     };
     // 바로빌 자동 연동 (신규 등록 시에만)
     var syncEl = document.getElementById('accBarobillSync');

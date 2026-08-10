@@ -75,12 +75,17 @@ export const bankPageContent = `
 
         <!-- Tab 0: 자금 현황 -->
         <div id="tabContentFund" class="tab-content active">
-          <!-- 총자금 KPI -->
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+          <!-- 총자금 KPI — 예금(마이너스통장 제외)·마통 사용액·대출을 분리해 현실 잔액을 보인다 -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
             <div class="kpi-card bg-white border border-gray-200 rounded-lg">
-              <div class="text-xs font-medium text-gray-500"><i class="fas fa-university mr-1"></i>총 계좌잔액</div>
+              <div class="text-xs font-medium text-gray-500"><i class="fas fa-university mr-1"></i>총 계좌잔액 <span class="text-[10px] text-gray-400">(마이너스통장 제외)</span></div>
               <div class="text-2xl font-bold text-blue-600" id="fundTotalBalance">-</div>
               <div class="text-[11px] text-gray-400" id="fundAccountCount"></div>
+            </div>
+            <div class="kpi-card bg-white border border-gray-200 rounded-lg">
+              <div class="text-xs font-medium text-gray-500"><i class="fas fa-minus-circle mr-1"></i>마이너스통장</div>
+              <div class="text-2xl font-bold text-orange-500" id="fundOverdraftBalance">-</div>
+              <div class="text-[11px] text-gray-400" id="fundOverdraftNote"></div>
             </div>
             <div class="kpi-card bg-white border border-gray-200 rounded-lg">
               <div class="text-xs font-medium text-gray-500"><i class="fas fa-hand-holding-usd mr-1"></i>대출 잔액</div>
@@ -88,8 +93,9 @@ export const bankPageContent = `
               <div class="text-[11px] text-gray-400" id="fundLoanNote"></div>
             </div>
             <div class="kpi-card bg-blue-50 border border-blue-200 rounded-lg">
-              <div class="text-xs font-medium text-blue-700"><i class="fas fa-wallet mr-1"></i>순자금 (잔액−대출)</div>
+              <div class="text-xs font-medium text-blue-700"><i class="fas fa-wallet mr-1"></i>순자금</div>
               <div class="text-2xl font-bold text-blue-700" id="fundNetFunds">-</div>
+              <div class="text-[11px] text-blue-400">예금+마이너스통장−대출</div>
             </div>
           </div>
 
@@ -115,6 +121,32 @@ export const bankPageContent = `
                 </thead>
                 <tbody id="fundAccountsBody">
                   <tr><td colspan="5" class="text-center py-10 text-gray-400">로딩 중...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- 대출 현황 — 자금현황에서 대출을 분리해 건별 확인 (관리·상환은 대출 관리에서) -->
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-sm font-semibold text-gray-700">대출 현황</h2>
+            <span id="fundLoansManageLink" class="text-xs text-gray-500"></span>
+          </div>
+          <div class="ds-card overflow-hidden mb-6">
+            <div class="overflow-x-auto" style="max-height: 38vh; min-height: 100px; overflow-y: auto;">
+              <table class="w-full border-collapse ds-table">
+                <thead>
+                  <tr class="bg-gray-50 border-b">
+                    <th class="col-name px-3 py-2 text-left text-[11px] font-medium text-gray-500 uppercase">대출기관</th>
+                    <th class="col-tag px-3 py-2 text-left text-[11px] font-medium text-gray-500 uppercase" style="width:168px">대출번호</th>
+                    <th class="col-amount px-3 py-2 text-right text-[11px] font-medium text-gray-500 uppercase" style="width:120px" title="등록 시점 기준 원금입니다. 계약 원금과 다를 수 있습니다.">원금</th>
+                    <th class="col-amount px-3 py-2 text-right text-[11px] font-medium text-gray-500 uppercase" style="width:134px">남은 잔액</th>
+                    <th class="col-amount px-3 py-2 text-right text-[11px] font-medium text-gray-500 uppercase" style="width:110px">월 납입</th>
+                    <th class="col-status px-3 py-2 text-center text-[11px] font-medium text-gray-500 uppercase">금리</th>
+                    <th class="col-date px-3 py-2 text-center text-[11px] font-medium text-gray-500 uppercase">만기</th>
+                  </tr>
+                </thead>
+                <tbody id="fundLoansBody">
+                  <tr><td colspan="7" class="text-center py-8 text-gray-400">로딩 중...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -444,6 +476,13 @@ export const bankPageContent = `
               <label class="form-label">계좌 이름(별칭)</label>
               <input type="text" id="accAlias" class="form-input" placeholder="예: 주거래-국민, 급여계좌 (거래내역 매칭에 표시)">
               <p class="text-xs text-gray-400 mt-1">거래내역 매칭·계좌 필터에 이 이름으로 표시됩니다. 비우면 은행명·예금주로 표시.</p>
+            </div>
+            <div>
+              <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                <input type="checkbox" id="accOverdraft" class="w-4 h-4">
+                마이너스통장(한도대출) 계좌
+              </label>
+              <p class="text-xs text-gray-400 mt-1">체크하면 자금현황의 총 계좌잔액(예금)에서 제외되고 마이너스통장 사용액으로 따로 집계됩니다.</p>
             </div>
             <!-- 바로빌 자동 수집 연동 (신규 등록 시) -->
             <div id="accBarobillSection" class="border-t pt-3 mt-1">
