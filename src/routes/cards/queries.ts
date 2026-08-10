@@ -935,7 +935,8 @@ cardsQueriesRouter.get('/thumbnails', async (c) => {
 // ⚠️ /:id 라우트보다 앞에 등록 (정적 경로 우선이지만 코드 관례대로 명시 배치)
 cardsQueriesRouter.get('/issue-status', async (c) => {
   try {
-    // 1) 누락: 제작 라인(shipment_ready=0)이 있는데 활성 카드가 0건인 주문.
+    // 1) 누락: **카드가 안 붙은 제작 라인(shipment_ready=0)** 이 하나라도 있는 주문.
+    //    ⚠️ 예전엔 "주문에 카드 0건"이 조건이라 **부분 누락(기존 카드는 있고 새 라인만 없음)** 을 못 봤다.
     //    shipment_ready 불변식 활용 — 카드 비대상 라인은 generateCardsForOrder가 생성 시 1로 세팅.
     //    상태는 화이트리스트만 (이관 SHIPPED 범람 방지 — feedback-imported-orders-status-timestamp)
     const efO = entityFilter(c, 'o')
@@ -944,8 +945,14 @@ cardsQueriesRouter.get('/issue-status', async (c) => {
       FROM orders o
       LEFT JOIN clients cl ON o.client_id = cl.id
       WHERE o.status IN ('CONFIRMED', 'PRINTING')${efO.clause}
-        AND EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND COALESCE(oi.shipment_ready, 0) = 0)
-        AND NOT EXISTS (SELECT 1 FROM cards c2 WHERE c2.order_id = o.id AND c2.status != 'CANCELLED')
+        AND EXISTS (
+          SELECT 1 FROM order_items oi
+          WHERE oi.order_id = o.id AND COALESCE(oi.shipment_ready, 0) = 0
+            AND NOT EXISTS (
+              SELECT 1 FROM card_items ci JOIN cards c2 ON c2.id = ci.card_id
+              WHERE ci.order_item_id = oi.id AND c2.status != 'CANCELLED'
+            )
+        )
       ORDER BY (o.delivery_date IS NULL), o.delivery_date ASC, o.id ASC
       LIMIT 100
     `).bind(...efO.params).all()
@@ -1091,20 +1098,21 @@ cardsQueriesRouter.get('/:id', async (c) => {
       }
     }
 
-    for (const item of cardItems || []) {
-      if (item.ai_analysis_id && item.ai_group_index !== null && item.ai_group_index !== undefined) {
-        const groups = analysisCache.get(item.ai_analysis_id) || []
-        // 음수 인덱스(-1 전체문서 · -3 완성본 passthrough)는 첫 그룹 — resolveGroupByAiIndex가 정본
-        const matched = resolveGroupByAiIndex(groups, item.ai_group_index)
-        if (matched?.thumbnail_base64) {
-          item.thumbnail_url = `data:image/png;base64,${matched.thumbnail_base64}`
-        } else if (matched?.thumbnail_r2_key) {
-          // R2 이관: 썸네일이 R2에 있으면 읽어 data URI로 복원(프론트 무수정)
-          const uri = await getThumbnailDataUri(c.env, matched.thumbnail_r2_key)
-          if (uri) item.thumbnail_url = uri
-        }
+    // 품목별 썸네일 복원. R2 GET 은 **병렬**로 — 직렬 await 면 다품목 카드에서 왕복이 그대로 쌓인다
+    // (현장 태블릿에서 카드 상세가 눈에 띄게 느려지는 지점).
+    await Promise.all((cardItems || []).map(async (item) => {
+      if (!item.ai_analysis_id || item.ai_group_index === null || item.ai_group_index === undefined) return
+      const groups = analysisCache.get(item.ai_analysis_id) || []
+      // 음수 인덱스(-1 전체문서 · -3 완성본 passthrough)는 첫 그룹 — resolveGroupByAiIndex가 정본
+      const matched = resolveGroupByAiIndex(groups, item.ai_group_index)
+      if (matched?.thumbnail_base64) {
+        item.thumbnail_url = `data:image/png;base64,${matched.thumbnail_base64}`
+      } else if (matched?.thumbnail_r2_key) {
+        // R2 이관: 썸네일이 R2에 있으면 읽어 data URI로 복원(프론트 무수정)
+        const uri = await getThumbnailDataUri(c.env, matched.thumbnail_r2_key)
+        if (uri) item.thumbnail_url = uri
       }
-    }
+    }))
 
     const typedCard = card as Record<string, unknown>
 

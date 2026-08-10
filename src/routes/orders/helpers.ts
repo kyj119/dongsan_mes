@@ -12,6 +12,10 @@ function getCardGroup(item: any): string | null {
   //    태극기 호수별 등 "생산 카테고리"라도 기성품이면 여기서 즉시 제외 → shipment_ready로 즉시 출고
   if (item.production_required === 0) return null
   // 1. print_method_id가 있으면 → print_methods.card_group 사용
+  // ⚠️ 현재 **항상 미발동**이다. prod `print_methods` 는 `(id INTEGER PRIMARY KEY)` 스텁(0행)이라
+  //    card_group 컬럼이 없고, `items.print_method_id` 도 전 행 NULL이며, 아래 카드 생성 쿼리도
+  //    print_methods 를 조인하지 않는다(=이 필드가 채워질 경로가 없다). 인쇄방식 모델을 실제로
+  //    도입할 때 **컬럼 신설 → 조인 추가**를 같이 해야 한다 — 조인만 먼저 넣으면 없는 컬럼 참조로 500.
   if (item.print_method_card_group) return item.print_method_card_group
   // 2. category 기반 판단 (기존 품목 호환)
   const cat = (item.category_name || item.category || '').toLowerCase()
@@ -375,12 +379,21 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
       checklistSteps.push({ code: 'SEW', label: sewSummary ? `봉제(${sewSummary})` : '봉제', sort: 20 })
     }
     uniquePP.forEach((pp: any, ppIdx: number) => {
+      // 라벨 = 후가공명 + 의미 있는 파라미터.
+      //   ⚠️ 값을 그대로 이어붙이면 「부직포 **부직포** 7」 처럼 이름이 겹치고 단위가 빠진다
+      //      (부직포는 params.type 이 곧 이름). 겹치는 값은 빼고, 숫자만인 값엔 cm 를 붙인다
+      //      — 봉제 지시표의 `부직포 7cm` 표기와 같아진다.
+      const ppName = String(pp.name || pp.code || 'PP')
       const paramStr = pp.params && typeof pp.params === 'object'
-        ? Object.values(pp.params).filter((v: any) => v && v !== '없음').join(' ')
+        ? Object.values(pp.params)
+            .map((v: any) => (v == null ? '' : String(v).trim()))
+            .filter((v) => v && v !== '없음' && v !== ppName)
+            .map((v) => (/^\d+(\.\d+)?$/.test(v) ? `${v}cm` : v))
+            .join(' ')
         : ''
       checklistSteps.push({
         code: String(pp.code || pp.name || 'PP'),
-        label: `${pp.name || pp.code}${paramStr ? ' ' + paramStr : ''}`,
+        label: `${ppName}${paramStr ? ' ' + paramStr : ''}`,
         sort: 30 + ppIdx,
       })
     })

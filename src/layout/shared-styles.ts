@@ -953,8 +953,18 @@ export const SHARED_CSS = `
   html.dark .hover\\:bg-gray-50:hover { background-color: #1e293b !important; }
   html.dark .hover\\:bg-blue-50\\/30:hover { background-color: rgba(96,165,250,0.1) !important; }
 
-  /* === 인쇄 = 항상 라이트 팔레트 (다크모드 중 인쇄 시 흰 종이·검정 글자 보장) === */
+  /* === 인쇄 공통 = 셸 제거 + 라이트 팔레트 === */
   @media print {
+    /* 네비게이션 셸은 종이에 나가지 않는다.
+       ⚠️ 페이지별 CSS의 .no-print 규약만으로는 전역 셸을 못 잡아, 작업지시서를 인쇄하면
+          왼쪽에 남색 사이드바가 통째로 찍히고 본문이 그만큼 눌려 나왔다(2026-08-10).
+          페이지마다 패치하지 않고 여기서 한 번에 끝낸다 — 전 페이지 인쇄에 공통 적용. */
+    .sidebar, .sidebar-overlay, .top-bar, #toast-container, #msgSendModal, .mobile-menu-btn { display: none !important; }
+    .main-content { margin-left: 0 !important; min-height: 0 !important; background: #fff !important; }
+    .page-body { padding: 0 !important; animation: none !important; }
+    body { background: #fff !important; }
+
+
     html.dark {
       color-scheme: light;
       --c-bg: #F0F1F3; --c-surface: #ffffff; --c-surface-secondary: #f9fafb; --c-surface-stripe: #f8fafc;

@@ -331,6 +331,7 @@ function loadCardThumbnails(scope) {
 
 // ===== 그리드 카드 빌더 (출력중/출력완료 전용) =====
 function buildGridCard(card, columnType) {
+    var cItems = cardItems(card);  // 목록/단건 API 필드명 차이 흡수 (shell.js SSOT)
     var urg = getUrgency(card.delivery_date);
     var isHold = card.status === 'HOLD';
     var ripStatus = card.rip_status || '';
@@ -354,8 +355,8 @@ function buildGridCard(card, columnType) {
         html += '<div class="grid-card-thumb">';
         // 규격 정보 (오버레이용)
         var specText = '';
-        if (card._items && card._items.length > 0) {
-            var fi = card._items[0];
+        if (cItems && cItems.length > 0) {
+            var fi = cItems[0];
             if (fi.width && fi.height) specText = Math.round(fi.width) + ' x ' + Math.round(fi.height) + 'cm';
         } else if (card.width && card.height) {
             specText = Math.round(card.width) + ' x ' + Math.round(card.height) + 'cm';
@@ -389,10 +390,10 @@ function buildGridCard(card, columnType) {
     // 품목 + 수량
     var itemName = '';
     var qty = 1;
-    if (card._items && card._items.length > 0) {
-        itemName = card._items[0].item_name || '품목';
-        qty = card._items[0].quantity || 1;
-        if (card._items.length > 1) itemName += ' 외 ' + (card._items.length - 1) + '건';
+    if (cItems && cItems.length > 0) {
+        itemName = cItems[0].item_name || '품목';
+        qty = cItems[0].quantity || 1;
+        if (cItems.length > 1) itemName += ' 외 ' + (cItems.length - 1) + '건';
     } else {
         itemName = card.item_name || '품목';
         qty = card.quantity || 1;
@@ -401,8 +402,8 @@ function buildGridCard(card, columnType) {
 
     // 후가공 뱃지
     var allPP = [];
-    if (card._items && card._items.length > 0) {
-        card._items.forEach(function(item) {
+    if (cItems && cItems.length > 0) {
+        cItems.forEach(function(item) {
             if (item.post_processing) {
                 try {
                     var ppArr = typeof item.post_processing === 'string' ? JSON.parse(item.post_processing) : item.post_processing;
@@ -542,6 +543,7 @@ function getPPBadge(ppName) {
 
 // ===== 카드 빌더 =====
 function buildKanbanCard(card, columnType) {
+    var cItems = cardItems(card);  // 목록/단건 API 필드명 차이 흡수 (shell.js SSOT)
     var urg = getUrgency(card.delivery_date);
     var isHold = card.status === 'HOLD';
     var ripStatus = card.rip_status || '';
@@ -580,7 +582,7 @@ function buildKanbanCard(card, columnType) {
         html += '<span style="font-size:11px;color:#6b7280;flex-shrink:0" title="메모 있음">&#128221;</span>';
     }
     // 진행률 원형 뱃지 (다건 카드만)
-    var _progData = card.print_progress || (card._items ? { total: card._items.length, done: card._items.filter(function(it) { return it.print_completed; }).length } : null);
+    var _progData = card.print_progress || (cItems ? { total: cItems.length, done: cItems.filter(function(it) { return it.print_completed; }).length } : null);
     if (_progData && _progData.total > 1) {
         var _allDone = _progData.done >= _progData.total;
         html += '<span style="display:inline-flex;align-items:center;justify-content:center;min-width:28px;padding:0 5px;height:18px;border-radius:9px;font-size:10px;font-weight:700;flex-shrink:0;'
@@ -590,8 +592,8 @@ function buildKanbanCard(card, columnType) {
     html += '</div>';
 
     // ── 주문번호 + 진행률 바 (인라인) ──
-    var hasProg = columnType === 'progress' && card._items && card._items.length > 0;
-    var prog = hasProg ? (card.print_progress || { total: card._items.length, done: 0 }) : null;
+    var hasProg = columnType === 'progress' && cItems && cItems.length > 0;
+    var prog = hasProg ? (card.print_progress || { total: cItems.length, done: 0 }) : null;
     var pct = prog ? (prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0) : 0;
 
     html += '<div class="flex items-center gap-1.5 mb-2">';
@@ -631,8 +633,8 @@ function buildKanbanCard(card, columnType) {
 
     // 통합 아이템 리스트 (품목+규격+수량+후가공을 한 줄씩, 읽기 전용)
     html += '<div class="flex-1 min-w-0">';
-    if (card._items && card._items.length > 0) {
-        card._items.forEach(function(item, idx) {
+    if (cItems && cItems.length > 0) {
+        cItems.forEach(function(item, idx) {
             var isDone = item.print_completed === 1;
             var ispec = '';
             if (item.width && item.height) ispec = Math.round(item.width) + 'x' + Math.round(item.height);

@@ -29,7 +29,7 @@ async function sendCardProofMms(cardId) {
         if (!card) { showToast('카드 정보를 불러오지 못했습니다', 'error'); return; }
 
         var thumb = (card.thumbnail_url && card.thumbnail_url.length > 10) ? card.thumbnail_url : '';
-        var items = card.items || card._items || [];
+        var items = cardItems(card);
         if (!thumb) {
             for (var i = 0; i < items.length; i++) {
                 if (items[i].thumbnail_url && items[i].thumbnail_url.length > 10) { thumb = items[i].thumbnail_url; break; }
@@ -110,7 +110,7 @@ function showCardModal(card, history, defects, siblingCards) {
         : 'background:#eff6ff;color:#1d4ed8';
     var deliveryMethod = card.delivery_method || '';
     var deliveryTime = card.delivery_time || '';
-    var itemsArr = card.items || card._items || [];
+    var itemsArr = cardItems(card);
 
     // ── 진행률 계산 ──
     var totalItems = itemsArr.length || 1;
@@ -361,33 +361,29 @@ async function printWorkOrder(orderId) {
         allItems.forEach(function(it) { if (it.parent_item_id) childIds.add(it.parent_item_id); });
         var items = allItems.filter(function(it) { return !childIds.has(it.id); });
 
-        // 카드 썸네일 조회 (주문의 카드들). R2 이관 후 목록은 thumbnail_url=null+has_thumbnail 플래그만
-        // 주므로, 인라인 url 없는 카드는 /api/cards/thumbnails 로 data URI 선조회(인쇄=동기 렌더라 미리 주입).
-        var thumbMap = {};
+        // 라인별 시안 썸네일 — **키는 order_item_id**, 값은 그 라인의 시안.
+        //   ⚠️ 예전엔 카드 1장짜리 대표 썸네일을 `thumbMap[item_name]` 에 넣어 ①다품목 카드의 전 품목이
+        //      같은 그림으로 인쇄되고 ②같은 품명 라인이 둘이면 서로 덮어썼다.
+        //   단건 카드 API 가 ai_analysis 그룹을 라인별로 해석하고 R2 마커도 data URI 로 복원해 주므로
+        //   그걸 정본으로 쓴다(인쇄는 동기 렌더라 미리 주입해야 한다).
+        var thumbByItemId = {};
         try {
             var cardsRes = await axios.get('/api/cards?order_id=' + orderId + '&limit=50');
             if (cardsRes.data.success) {
                 var cardsList = cardsRes.data.data?.cards || cardsRes.data.data || [];
-                var needIds = cardsList.filter(function(c) { return c.has_thumbnail && !c.thumbnail_url; }).map(function(c) { return c.id; });
-                var uriById = {};
-                for (var s = 0; s < needIds.length; s += 20) { // 엔드포인트 ids 20개 slice → 20개씩 청크
-                    var chunk = needIds.slice(s, s + 20);
-                    try {
-                        var tr = await axios.get('/api/cards/thumbnails?ids=' + chunk.join(','));
-                        if (tr.data && tr.data.success) {
-                            var mm = tr.data.data || {};
-                            Object.keys(mm).forEach(function(k) { uriById[k] = mm[k]; });
-                        }
-                    } catch(e) {}
-                }
-                cardsList.forEach(function(c) {
-                    var uri = c.thumbnail_url || uriById[c.id] || '';
-                    if (!uri) return;
-                    if (c._items && c._items.length) {
-                        c._items.forEach(function(ci) { thumbMap[ci.item_name] = uri; });
-                    } else if (c.item_name) {
-                        thumbMap[c.item_name] = uri;
-                    }
+                var details = await Promise.all(cardsList.map(function(c) {
+                    return axios.get('/api/cards/' + c.id)
+                        .then(function(r) { return r.data && r.data.data; })
+                        .catch(function() { return null; });
+                }));
+                details.filter(Boolean).forEach(function(cd) {
+                    var cdItems = cardItems(cd);
+                    // 단품 카드에서만 카드 썸네일 폴백 (다품목은 어느 라인 것인지 모호 → 폴백 금지)
+                    var fallback = (cdItems.length === 1 && cd.thumbnail_url && cd.thumbnail_url.length > 10) ? cd.thumbnail_url : '';
+                    cdItems.forEach(function(ci) {
+                        var uri = ci.thumbnail_url || fallback;
+                        if (uri && ci.id) thumbByItemId[ci.id] = uri;
+                    });
                 });
             }
         } catch(e) {}
@@ -397,6 +393,8 @@ async function printWorkOrder(orderId) {
         var qrDataUrl = '';
         if (typeof QRCode !== 'undefined') {
             try { qrDataUrl = await QRCode.toDataURL(qrUrl, { width: 120, margin: 1 }); } catch(e) {}
+        } else {
+            console.warn('[cards] QRCode 미로드 — 작업지시서 QR 생략 (layout.ts CDN 확인)');
         }
 
         // XSS 방지 래퍼 (document.write 컨텍스트)
@@ -477,7 +475,7 @@ async function printWorkOrder(orderId) {
         items.forEach(function(item, idx) {
             var spec = '';
             if (item.width && item.height) spec = Math.round(item.width) + 'x' + Math.round(item.height) + 'cm';
-            var thumb = thumbMap[item.item_name] || '';
+            var thumb = thumbByItemId[item.id] || '';
 
             html += '<div class="item-card">';
             html += '<div class="item-header">';
@@ -546,13 +544,16 @@ async function printSewingWorkOrder(cardId) {
         var order = orderRes.data.data;
         var allItems = order.items || [];
 
-        // 카드에 연결된 품목들 (card_items 기준)
-        var cardItems = (card._items || []).map(function(ci) {
-            return allItems.find(function(oi) { return oi.id === ci.order_item_id; }) || ci;
-        }).filter(Boolean);
+        // 카드에 연결된 품목들 = 단건 카드 API가 정본(card_items 조인 + 원단명·품목별 썸네일까지 해석해 준다).
+        //   ⚠️ 지역변수명을 cardItems 로 두면 전역 접근자 window.cardItems 를 가려 호출이 깨진다 → sewItems.
+        var sewItems = cardItems(card).map(function(ci) {
+            // 주문 라인에만 있는 필드(부속 판별용 parent_item_id 등)를 보강. id = order_item id.
+            var oi = allItems.find(function(o) { return o.id === ci.id; });
+            return oi ? Object.assign({}, oi, ci) : ci;
+        });
 
         // 부속품 찾기 (parent_item_id가 카드 품목 중 하나를 가리키는 GOODS 품목)
-        var mainItemIds = new Set(cardItems.map(function(i) { return i.id; }));
+        var mainItemIds = new Set(sewItems.map(function(i) { return i.id; }));
         var accessories = allItems.filter(function(i) {
             return i.parent_item_id && mainItemIds.has(i.parent_item_id) && (i.category_name === '부속품' || i.item_type === 'GOODS');
         });
@@ -595,7 +596,7 @@ async function printSewingWorkOrder(cardId) {
         }
 
         // 총 수량 계산
-        var totalQty = cardItems.reduce(function(sum, i) { return sum + (i.quantity || 1); }, 0);
+        var totalQty = sewItems.reduce(function(sum, i) { return sum + (i.quantity || 1); }, 0);
         var deliveryDate = order.delivery_date || '-';
         var deliveryDay = '';
         try {
@@ -605,7 +606,7 @@ async function printSewingWorkOrder(cardId) {
         } catch(e) {}
 
         // 규격 (첫 번째 품목 기준)
-        var firstItem = cardItems[0] || {};
+        var firstItem = sewItems[0] || {};
         var specW = Math.round(firstItem.width || 0);
         var specH = Math.round(firstItem.height || 0);
 
@@ -657,13 +658,16 @@ async function printSewingWorkOrder(cardId) {
         } catch(e) {}
         html += '<div class="header-row">';
         html += '<span>출고날짜 : <b>' + esc(dateStr) + '</b></span>';
-        html += '<span>작업수량 : <b>' + totalQty + (cardItems.length > 1 ? '장' : (firstItem.unit || 'EA')) + '</b></span>';
+        html += '<span>작업수량 : <b>' + totalQty + (sewItems.length > 1 ? '장' : (firstItem.unit || 'EA')) + '</b></span>';
         html += '</div>';
 
         // 디자인 영역
         html += '<div class="design-area">';
-        cardItems.forEach(function(item) {
-            var thumb = card.thumbnail_url || '';
+        // 단품 카드에서만 카드 썸네일 폴백 — 예전엔 전 품목에 card.thumbnail_url 를 그대로 써서
+        // 다품목 봉제작지가 같은 그림만 반복 인쇄됐다.
+        var sewFallback = (sewItems.length === 1 && card.thumbnail_url && card.thumbnail_url.length > 10) ? card.thumbnail_url : '';
+        sewItems.forEach(function(item) {
+            var thumb = item.thumbnail_url || sewFallback;
             html += '<div class="design-item">';
             if (thumb) {
                 html += '<img src="' + thumb + '">';
@@ -673,7 +677,7 @@ async function printSewingWorkOrder(cardId) {
             if (item.width && item.height) {
                 html += '<div class="spec">' + Math.round(item.width) + '×' + Math.round(item.height) + '</div>';
             }
-            html += '<div class="qty">' + (item.quantity || 1) + (cardItems.length > 1 ? '장' : '') + '</div>';
+            html += '<div class="qty">' + (item.quantity || 1) + (sewItems.length > 1 ? '장' : '') + '</div>';
             html += '</div>';
         });
         html += '</div>';

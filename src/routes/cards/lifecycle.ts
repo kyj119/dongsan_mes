@@ -32,6 +32,50 @@ function cardEntityScope(c: Context<HonoEnv>): { clause: string; params: number[
   return { clause: ' AND order_id IN (SELECT id FROM orders WHERE entity_id = ?)', params: [entityId] }
 }
 
+/**
+ * 「체크리스트 전 공정 완료 && 출력중」 → 출력완료 자동 전이. **불변식 정의는 여기 한 곳.**
+ *
+ * ⚠️ 체크 토글에서만 평가하면 구멍이 난다 — 출력대기 카드에 전 스텝을 먼저 체크해 두면
+ *    그 뒤 출력중으로 올려도 전이가 **영영 오지 않는다**(체크를 풀었다 다시 걸어야만 동작).
+ *    그래서 상태 변경 직후에도 같은 불변식을 다시 본다.
+ * ⚠️ card_items.print_completed 를 함께 세팅한다 — PATCH /:id/complete 와 맞추지 않으면
+ *    카드는 '출력완료'인데 같은 화면 생산현황이 0/N 0% 로 남아 진행률 두 개가 서로 어긋난다.
+ * 반환 = 이번 호출로 실제 전이가 일어났는지.
+ */
+async function maybeAutoCompleteCard(db: D1Database, cardId: number, userId: number | null): Promise<boolean> {
+  const card = await db.prepare(
+    `SELECT id, status, order_id, post_processing FROM cards WHERE id = ?`
+  ).bind(cardId).first<{ id: number; status: string; order_id: number; post_processing: string | null }>()
+  if (!card || card.status !== 'PRINTING') return false
+
+  const agg = await db.prepare(
+    `SELECT COUNT(*) as total, SUM(CASE WHEN checked_at IS NOT NULL THEN 1 ELSE 0 END) as done
+     FROM card_checklist_items WHERE card_id = ?`
+  ).bind(cardId).first<{ total: number; done: number }>()
+  if (!agg || !agg.total || agg.done !== agg.total) return false
+
+  // 체크리스트가 후가공 스텝을 포함하므로 전체 완료 = 후가공도 완료 → pp_status DONE
+  const hasPP = card.post_processing && card.post_processing !== '[]' && card.post_processing !== ''
+  const tr = await db.prepare(`
+    UPDATE cards SET status = 'PRINT_DONE', pp_status = ?,${hasPP ? ' pp_completed_at = CURRENT_TIMESTAMP,' : ''}
+      print_done_at = CURRENT_TIMESTAMP, hold_reason = NULL, hold_at = NULL, hold_by = NULL,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND status = 'PRINTING'
+  `).bind(hasPP ? 'DONE' : 'N/A', cardId).run()
+  if (!tr.meta.changes) return false
+
+  await db.prepare(
+    `UPDATE card_items SET print_completed = 1, print_completed_at = CURRENT_TIMESTAMP, print_completed_by = ?
+     WHERE card_id = ? AND print_completed = 0`
+  ).bind(userId, cardId).run()
+  await db.prepare(`
+    INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason)
+    VALUES (?, 'PRINTING', 'PRINT_DONE', ?, '체크리스트 전체 완료 자동 전이')
+  `).bind(cardId, userId).run()
+  await syncOrderStatusFromCards(db, card.order_id)
+  return true
+}
+
 async function syncOrderStatusFromCards(db: D1Database, orderId: number) {
   // Option B: 단일 SELECT로 카드+주문 상태를 원자적 스냅샷으로 조회
   const snapshot = await db.prepare(`
@@ -144,7 +188,11 @@ cardsLifecycleRouter.patch('/bulk/status', requireEditOrRole('/cards', 'MANAGER'
     const cardMap = new Map(existingCards.map(c => [c.id, c]))
 
     // #282: 카드 상태 전이 규칙 (완료 카드가 출력중으로 역행 방지)
+    // ⚠️ PRINT_PENDING 키가 없으면 `(undefined || []).includes(...)` 가 false 라 **출력대기 카드의
+    //    일괄 출력시작이 400 으로 막힌다**(단건 /:id/status 는 전이표를 안 보므로 되고, 일괄만 안 되는
+    //    비대칭이었다). 역행 차단(PRINT_DONE→PRINTING)은 그대로 유지.
     const VALID_TRANSITIONS: Record<string, string[]> = {
+      PRINT_PENDING: ['PRINTING', 'PRINT_DONE', 'HOLD'],
       PRINTING: ['PRINT_DONE', 'HOLD'],
       PRINT_DONE: ['HOLD'],
       HOLD: ['PRINTING', 'PRINT_DONE'],
@@ -241,6 +289,14 @@ cardsLifecycleRouter.patch('/bulk/status', requireEditOrRole('/cards', 'MANAGER'
       if (chunk.length > 0) await c.env.DB.batch(chunk)
     }
 
+    // 출력중으로 올린 카드 중 **이미 전 스텝 체크 완료**인 것은 곧바로 출력완료로 (단건 경로와 동일 불변식)
+    let autoDone = 0
+    if (status === 'PRINTING') {
+      for (const cardId of card_ids) {
+        if (await maybeAutoCompleteCard(c.env.DB, Number(cardId), user?.id || null)) autoDone++
+      }
+    }
+
     // 영향받은 주문들의 상태 자동 동기화 (병렬 실행)
     await Promise.all([...affectedOrderIds].map(orderId =>
       syncOrderStatusFromCards(c.env.DB, orderId).catch((err) => {
@@ -248,7 +304,11 @@ cardsLifecycleRouter.patch('/bulk/status', requireEditOrRole('/cards', 'MANAGER'
       })
     ))
 
-    return c.json({ success: true, data: { updated }, message: `${updated}장 상태 변경 완료` })
+    return c.json({
+      success: true,
+      data: { updated, auto_done: autoDone },
+      message: `${updated}장 상태 변경 완료${autoDone > 0 ? ` (전 공정 완료 ${autoDone}장 출력완료 처리)` : ''}`
+    })
   } catch (error) {
     console.error('src/routes/cards.ts error:', error)
     return c.json({
@@ -685,8 +745,15 @@ cardsLifecycleRouter.patch('/:id/status', async (c) => {
       VALUES (?, ?, ?, ?, ?)
     `).bind(id, card.status, status, user?.id || null, reason || null).run()
 
-    // 주문 상태 자동 동기화
-    if (card.order_id) {
+    // 출력중으로 올라온 카드가 **이미 전 스텝 체크 완료**면 여기서 곧바로 출력완료로 넘긴다.
+    // (체크 토글에서만 평가하면 이 카드는 영영 전이되지 않는다 — maybeAutoCompleteCard 주석 참조)
+    let autoDone = false
+    if (status === 'PRINTING') {
+      autoDone = await maybeAutoCompleteCard(c.env.DB, parseInt(id), user?.id || null)
+    }
+
+    // 주문 상태 자동 동기화 (자동 전이가 일어났으면 그 안에서 이미 동기화됨)
+    if (card.order_id && !autoDone) {
       await syncOrderStatusFromCards(c.env.DB, card.order_id)
     }
 
@@ -700,7 +767,8 @@ cardsLifecycleRouter.patch('/:id/status', async (c) => {
 
     return c.json({
       success: true,
-      message: 'Card status updated successfully'
+      message: 'Card status updated successfully',
+      data: { auto_done: autoDone }
     })
   } catch (error) {
     console.error('src/routes/cards.ts error:', error)
@@ -977,26 +1045,20 @@ cardsLifecycleRouter.patch('/:id/checklist/:itemId', requireEditOrRole('/cards',
        FROM card_checklist_items WHERE card_id = ?`
     ).bind(cardId).first<{ total: number; done: number }>()
 
-    let autoDone = false
-    if (checked && agg && agg.total > 0 && agg.done === agg.total && card.status === 'PRINTING') {
-      // 체크리스트가 후가공 스텝을 포함하므로 전체 완료 = 후가공도 완료 → pp_status DONE
-      const hasPP = card.post_processing && card.post_processing !== '[]' && card.post_processing !== ''
-      const tr = await c.env.DB.prepare(`
-        UPDATE cards SET status = 'PRINT_DONE', pp_status = ?,${hasPP ? ' pp_completed_at = CURRENT_TIMESTAMP,' : ''}
-          hold_reason = NULL, hold_at = NULL, hold_by = NULL, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND status = 'PRINTING'
-      `).bind(hasPP ? 'DONE' : 'N/A', cardId).run()
-      if (tr.meta.changes > 0) {
-        autoDone = true
-        await c.env.DB.prepare(`
-          INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason)
-          VALUES (?, 'PRINTING', 'PRINT_DONE', ?, '체크리스트 전체 완료 자동 전이')
-        `).bind(cardId, user?.id || null).run()
-        await syncOrderStatusFromCards(c.env.DB, card.order_id)
-      }
-    }
+    // 자동 전이 불변식은 maybeAutoCompleteCard 한 곳에만 있다 (상태 변경 경로와 공유)
+    const autoDone = checked ? await maybeAutoCompleteCard(c.env.DB, cardId, user?.id || null) : false
 
-    return c.json({ success: true, data: { step_total: agg?.total || 0, step_done: agg?.done || 0, auto_done: autoDone } })
+    // 출력대기 카드에 전 스텝을 체크해도 상태는 안 움직인다(상태머신 준수). 화면이 그 사실을
+    // 알 수 있게 신호를 준다 — 아무 반응이 없으면 "완료 처리했는데 왜 대기중?" 이 된다.
+    const allCheckedButPending = !!agg && agg.total > 0 && agg.done === agg.total && card.status === 'PRINT_PENDING'
+
+    return c.json({
+      success: true,
+      data: {
+        step_total: agg?.total || 0, step_done: agg?.done || 0,
+        auto_done: autoDone, card_status: card.status, all_checked_but_pending: allCheckedButPending
+      }
+    })
   } catch (error) {
     console.error('cards checklist toggle error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
@@ -1020,181 +1082,60 @@ cardsLifecycleRouter.patch('/:id/reissue-ack', requireEditOrRole('/cards', 'MANA
   }
 })
 
+// POST /generate/:orderId — 주문의 카드 수동 생성.
+// ★정규 생성기(generateCardsForOrder)에 **위임**한다. 예전엔 여기 별도 구현이 있었는데
+//   ①card_items 를 아예 안 만들고(카드 상세·목록이 card_items 조인이라 품목 0개·이미지 0개 유령 카드)
+//   ②체크리스트를 파생하지 않고 ③존재하지도 않는 `ai_analysis` 테이블을 참조해 썸네일 연결이
+//   try/catch 로 조용히 실패했다. 생성 규칙이 두 벌이면 반드시 한쪽이 썩는다 → 한 벌로 합친다.
 cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
   try {
-    const orderId = c.req.param('orderId')
+    const orderId = parseInt(c.req.param('orderId'))
+    if (isNaN(orderId)) return c.json({ success: false, error: '잘못된 주문 ID' }, 400)
     const user = c.get('user')
 
-    // Get order details
-    interface OrderGenRow { order_number: string; client_name: string | null; delivery_date: string | null; priority: string | null; entity_id: number | null }
-    const order = await c.env.DB.prepare(`
-      SELECT o.order_number, o.delivery_date, o.priority, o.entity_id, c.client_name
-      FROM orders o
-      LEFT JOIN clients c ON o.client_id = c.id
-      WHERE o.id = ?
-    `).bind(orderId).first<OrderGenRow>()
+    const order = await c.env.DB.prepare(
+      'SELECT id, order_number, client_id, delivery_date, priority, notes, entity_id FROM orders WHERE id = ?'
+    ).bind(orderId).first<{ id: number; order_number: string; client_id: number; delivery_date: string | null; priority: string | null; notes: string | null; entity_id: number | null }>()
+    if (!order) return c.json({ success: false, error: 'Order not found' }, 404)
 
-    if (!order) {
-      return c.json({
-        success: false,
-        error: 'Order not found'
-      }, 404)
+    const existing = await c.env.DB.prepare(
+      "SELECT COUNT(*) as cnt FROM cards WHERE order_id = ? AND status != 'CANCELLED'"
+    ).bind(orderId).first<{ cnt: number }>()
+    if (existing && existing.cnt > 0) {
+      return c.json({ success: false, error: '이미 카드가 있는 주문입니다. 주문 수정으로 반영하세요.' }, 400)
     }
 
-    // Get order items
-    interface OrderItemRow { id: number; item_name: string; category_name: string | null; width: number | null; height: number | null; quantity: number; unit: string | null; post_processing: string | null; ai_analysis_id: number | null; assigned_entity_id: number | null }
-    const { results: orderItems } = await c.env.DB.prepare(`
-      SELECT id, item_name, category_name, width, height, quantity, unit, post_processing, ai_analysis_id, assigned_entity_id FROM order_items WHERE order_id = ? ORDER BY sort_order ASC, id ASC
-    `).bind(orderId).all<OrderItemRow>()
-
-    if (orderItems.length === 0) {
-      return c.json({
-        success: false,
-        error: 'No order items found'
-      }, 400)
-    }
-
-    // Get post-processing options for margin calculation
-    interface PostProcRow { option_code: string; margin_left: number; margin_right: number; margin_top: number; margin_bottom: number }
-    const { results: postProcOptions } = await c.env.DB.prepare(`
-      SELECT option_code, margin_left, margin_right, margin_top, margin_bottom FROM post_processing_options WHERE is_active = 1
-    `).all<PostProcRow>()
-
-    const postProcMap = new Map<string, PostProcRow>()
-    postProcOptions.forEach((opt) => {
-      postProcMap.set(opt.option_code, opt)
+    const { generateCardsForOrder } = await import('../orders/helpers')
+    const created = await generateCardsForOrder({
+      db: c.env.DB,
+      orderId,
+      orderNumber: order.order_number,
+      clientId: order.client_id,
+      deliveryDate: order.delivery_date || null,
+      priority: order.priority || 'NORMAL',
+      notes: order.notes || null,
+      // 카드 귀속 = 주문 법인 기준 (세션 법인 아님 — 전체모드/타법인 세션 오귀속 방지)
+      entityId: Number(order.entity_id) || getEntityId(c) || 1
     })
 
-    const dateStr = kstYmdCompact()
-
-    // MAX 기반 카드 번호 시작점 조회 (entity별 분리)
-    // 카드 귀속 = 주문 법인 기준 (세션 법인 아님 — 전체모드 0/타법인 세션 오귀속 방지, 2026-07-06 감사 #4)
-    const cardEntityId = Number(order.entity_id) || getEntityId(c) || 1
-    const cardSeqRow = await c.env.DB.prepare(`
-      SELECT COALESCE(MAX(CAST(SUBSTR(card_number, ${`CARD-${dateStr}-`.length + 1}) AS INTEGER)), 0) as max_seq
-      FROM cards WHERE card_number LIKE ? AND requesting_entity_id = ?
-    `).bind(`CARD-${dateStr}-%`, cardEntityId).first<{ max_seq: number }>()
-
-    let cardCount = cardSeqRow?.max_seq ?? 0
-    const createdCards: Array<{ id: number; card_number: string; order_item_id: number; rip_filename: string }> = []
-
-    // Prepare all card INSERT statements for batch (atomicity)
-    const cardStmts: any[] = []
-    const cardMeta: Array<{ cardNumber: string; orderItemId: number; ripFilename: string }> = []
-
-    for (const item of orderItems) {
-      cardCount++
-      const cardNumber = `CARD-${dateStr}-${String(cardCount).padStart(3, '0')}`
-
-      // Calculate final dimensions with post-processing margins
-      let finalWidth = item.width || 0
-      let finalHeight = item.height || 0
-
-      if (item.post_processing) {
-        const postProcs = JSON.parse(item.post_processing)
-        postProcs.forEach((procCode: string) => {
-          const proc = postProcMap.get(procCode)
-          if (proc) {
-            finalWidth += (proc.margin_left + proc.margin_right)
-            finalHeight += (proc.margin_top + proc.margin_bottom)
-          }
-        })
-      }
-
-      // Generate RIP filename
-      const specs = item.width && item.height ? `${item.width}x${item.height}` : '규격미정'
-      const postProcStr = item.post_processing ? JSON.parse(item.post_processing).join('+') : ''
-      const ripFilename = `${cardCount}-${order.client_name} ${item.item_name}(${specs}-${item.quantity}${item.unit})${postProcStr}_${order.delivery_date || '미정'}`
-
-      cardStmts.push(
-        c.env.DB.prepare(`
-          INSERT INTO cards (
-            card_number, order_id, order_item_id, status,
-            client_name, item_name, category_name,
-            width, height, quantity, unit,
-            rip_filename, post_processing,
-            final_width, final_height,
-            delivery_date, priority,
-            requesting_entity_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).bind(
-          cardNumber, orderId, item.id, 'PRINT_PENDING',
-          order.client_name || 'Unknown', item.item_name, item.category_name,
-          item.width || 0, item.height || 0, item.quantity, item.unit || 'EA',
-          ripFilename, item.post_processing,
-          finalWidth, finalHeight,
-          order.delivery_date || null, order.priority || 'NORMAL',
-          // 협업주문: 품목 담당법인(assigned) 우선 — 정규 generateCardsForOrder(helpers.ts)와 동일 귀속 규칙
-          item.assigned_entity_id ?? cardEntityId
-        )
-      )
-      cardMeta.push({ cardNumber, orderItemId: item.id, ripFilename })
-    }
-
-    // Batch insert — 전체 성공 또는 전체 롤백 (원자성 보장)
-    const batchResults = await c.env.DB.batch(cardStmts)
-
-    for (let i = 0; i < batchResults.length; i++) {
-      createdCards.push({
-        id: batchResults[i].meta.last_row_id as number,
-        card_number: cardMeta[i].cardNumber,
-        order_item_id: cardMeta[i].orderItemId,
-        rip_filename: cardMeta[i].ripFilename
+    if (created > 0) {
+      await logActivity({
+        db: c.env.DB, userId: user?.id, userName: user?.username,
+        action: 'CREATE', entityType: 'CARD', entityId: orderId,
+        entityLabel: order.order_number,
+        details: JSON.stringify({ card_count: created }),
+        actorEntityId: getEntityId(c)
       })
-    }
-
-    // Try to set thumbnail from ai_analysis if available (단일 UPDATE 서브쿼리, N+1 제거)
-    try {
-      await c.env.DB.prepare(`
-        UPDATE cards SET thumbnail_url = (
-          SELECT aa.thumbnail_url FROM ai_analysis aa
-          JOIN order_items oi ON oi.ai_analysis_id = aa.id
-          WHERE oi.id = cards.order_item_id AND aa.thumbnail_url IS NOT NULL
-        )
-        WHERE order_id = ? AND thumbnail_url IS NULL
-          AND order_item_id IN (SELECT id FROM order_items WHERE ai_analysis_id IS NOT NULL)
-      `).bind(orderId).run()
-    } catch (thumbErr) {
-      console.error('Thumbnail sync failed (non-blocking):', thumbErr)
-    }
-
-    // Log activity
-    try {
-      // #405: activity_logs 실제 컬럼은 entity_type/entity_id (resource_* 부재 → INSERT throw로 감사로그 영구 누락)
-      // #515: actor_entity_id를 행위 법인(0=전체모드면 행위자 기본법인 폴백)으로 채워 법인 격리.
-      await c.env.DB.prepare(`
-        INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details, actor_entity_id)
-        VALUES (?, ?, ?, ?, ?, COALESCE(?, (SELECT default_entity_id FROM users WHERE id = ?)))
-      `).bind(
-        user.id,
-        'CREATE',
-        'CARD',
-        orderId,
-        JSON.stringify({
-          card_count: createdCards.length,
-          card_numbers: createdCards.map((c) => c.card_number)
-        }),
-        (() => { const e = getEntityId(c); return e === 0 ? null : e })(),
-        user.id
-      ).run()
-    } catch (logErr) {
-      console.error('Activity log failed (non-blocking):', logErr)
     }
 
     return c.json({
       success: true,
-      data: {
-        id: orderId,
-        order_number: order.order_number
-      },
-      message: `${createdCards.length}장의 카드가 생성되었습니다.`
+      data: { id: orderId, order_number: order.order_number, card_count: created },
+      message: `${created}장의 카드가 생성되었습니다.`
     })
   } catch (error) {
     console.error('Card generation error:', error)
-    return c.json({
-      success: false,
-      error: '서버 오류가 발생했습니다.'
-    }, 500)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
 

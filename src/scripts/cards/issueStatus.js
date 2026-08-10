@@ -50,11 +50,14 @@
             elM.innerHTML = missing.length === 0
                 ? '<p class="text-xs text-gray-400 py-2">누락 없음</p>'
                 : missing.map(function(o) {
-                    return '<div class="flex items-center gap-2 py-2 px-2 border-b border-gray-100 text-sm">'
+                    // 조치가 가장 급한 큐인데 예전엔 이 행만 <div> 라 갈 곳이 없었다(개정·진행 행은 링크).
+                    // 주문 상세 전용 URL은 없고 /orders 가 ?search 를 로드 시 적용하므로 주문번호로 건다.
+                    var href = '/orders?search=' + encodeURIComponent(o.order_number || '');
+                    return '<a href="' + href + '" class="spa-link flex items-center gap-2 py-2 px-2 rounded hover:bg-gray-50 border-b border-gray-100 text-sm" title="주문 열기">'
                         + '<span class="font-mono text-xs text-gray-500">' + isEsc(o.order_number || '') + '</span>'
                         + '<span class="font-semibold flex-1 truncate">' + isEsc(o.client_name || '') + '</span>'
                         + '<span class="text-xs text-gray-400 whitespace-nowrap">납기 ' + isFmtDate(o.delivery_date) + '</span>'
-                        + '</div>';
+                        + '</a>';
                 }).join('');
 
             elR.innerHTML = reissue.length === 0

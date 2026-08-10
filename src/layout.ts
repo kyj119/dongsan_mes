@@ -49,7 +49,11 @@ export function appLayout(opts: AppLayoutOptions): string {
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+    <!-- ⚠️ qrcode 는 1.5.2+ 부터 npm 패키지에 build/ 가 없다 → 1.5.4 경로는 404 였고 QRCode 전역이
+         영영 undefined 라 작업지시서 QR 이 조용히 빠져 있었다(2026-08-10). 브라우저 UMD 번들이
+         실제로 존재하는 마지막 버전 = 1.5.1. 버전을 올릴 땐 build/qrcode.min.js 존재를 먼저 확인할 것. -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"
+            onerror="console.error('[layout] QRCode CDN 로드 실패 — 작업지시서 QR 이 생략됩니다')"></script>
     <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>

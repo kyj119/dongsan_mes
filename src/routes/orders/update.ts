@@ -160,17 +160,25 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
     // ── 카드 보존 판단을 order_items 삭제 전에 수행 ──
     // CONFIRMED 상태에서만 카드 삭제+재생성
     // 단, 카드가 생산에 진입했으면 보존
+    // 재생성은 **아무도 손대지 않은 카드**에서만 허용한다(=흔적이 하나라도 있으면 보존).
+    // ★상태 열거 방식이 사고를 냈다(2026-08-10) — 화이트리스트에 PRINTING 이 빠져 있어
+    //   출력중 카드가 「비고 한 줄 수정」에 삭제·재생성되며 체크리스트 이력(=감사 로그 정본)·
+    //   상태(PRINTING→PRINT_PENDING 역행)·`/cards/:id` URL(봉제실 QR/열어둔 탭)이 통째로 소실됐다.
+    //   RIP 를 거치지 않는 봉제·간판 라인은 rip_status 로도 안 걸리므로,
+    //   "어떤 상태인가"가 아니라 **"사람이 손댔는가"** 를 직접 본다.
     let canRegenerateCards = existingOrder.status === 'CONFIRMED'
-    if (canRegenerateCards && existingOrder.status === 'CONFIRMED') {
-      const activeCards = await c.env.DB.prepare(`
-        SELECT COUNT(*) as cnt FROM cards
-        WHERE order_id = ? AND (
-          status IN ('PRINT_DONE', 'HOLD')
-          OR rip_status IN ('QUEUED', 'SENT')
-          OR id IN (SELECT DISTINCT card_id FROM print_events WHERE card_id IS NOT NULL)
+    if (canRegenerateCards) {
+      const touched = await c.env.DB.prepare(`
+        SELECT COUNT(*) as cnt FROM cards c
+        WHERE c.order_id = ? AND (
+          c.status != 'PRINT_PENDING'
+          OR c.rip_status IN ('QUEUED', 'SENT')
+          OR EXISTS (SELECT 1 FROM print_events pe WHERE pe.card_id = c.id)
+          OR EXISTS (SELECT 1 FROM card_checklist_items ck WHERE ck.card_id = c.id AND ck.checked_at IS NOT NULL)
+          OR EXISTS (SELECT 1 FROM card_items ci WHERE ci.card_id = c.id AND ci.print_completed = 1)
         )
       `).bind(id).first<{ cnt: number }>()
-      if (activeCards && activeCards.cnt > 0) {
+      if (touched && touched.cnt > 0) {
         canRegenerateCards = false
       }
     }
@@ -493,6 +501,31 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
         notes: orderData.notes || null,
         entityId: getEntityId(c) || 1
       })
+    } else if (cardsPreserved) {
+      // 보존 경로에서 **카드가 안 붙은 라인**(신규 추가분 + 재매핑 실패분)만 append 로 카드 생성.
+      // 보존 판정을 넓힌 대가로 생기는 구멍을 여기서 막는다 — 안 하면 출력중 주문에 품목을 추가해도
+      // 카드가 영영 안 생기고, 지시 현황판의 '누락'은 카드 0건 주문만 보므로 **부분 누락은 안 잡힌다**.
+      // 카드 대상 여부(getCardGroup)·shipment_ready 세팅은 generateCardsForOrder 가 판단한다.
+      const { results: orphanLines } = await c.env.DB.prepare(`
+        SELECT oi.id FROM order_items oi
+        WHERE oi.order_id = ?
+          AND NOT EXISTS (SELECT 1 FROM card_items ci WHERE ci.order_item_id = oi.id)
+        ORDER BY oi.sort_order ASC, oi.id ASC
+      `).bind(id).all<{ id: number }>()
+      const orphanIds = (orphanLines || []).map((r) => r.id as number)
+      if (orphanIds.length > 0) {
+        cardsGenerated = await generateCardsForOrder({
+          db: c.env.DB,
+          orderId: parseInt(id),
+          orderNumber: existingOrder.order_number,
+          clientId: orderData.client_id,
+          deliveryDate: orderData.delivery_date || null,
+          priority: orderData.priority || 'NORMAL',
+          notes: orderData.notes || null,
+          entityId: getEntityId(c) || 1,
+          itemIdsFilter: orphanIds
+        })
+      }
     } // end if (canRegenerateCards)
 
     // 주문 수정 시 원가 자동 재계산 (CONFIRMED 이상 상태에서)

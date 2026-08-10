@@ -149,6 +149,69 @@ window.fmtDateOnly = function(v) {
   return v ? String(v).slice(0, 10) : '';
 };
 
+// 카드 품목 배열 접근 SSOT — 목록 API(`_items`)와 단건 API(`items`)의 필드명이 갈려 있다.
+// 소비처가 한쪽만 읽으면 **조용히 빈 배열**이 되어 화면·인쇄물이 통째로 비어 나간다
+// (봉제작지가 `card._items`만 읽어 디자인·수량·규격이 전부 공백으로 출력된 전례, 2026-08-10).
+// 새 코드는 반드시 이 함수를 쓸 것 — `card.items`/`card._items` 직접 접근 금지.
+window.cardItems = function(card) {
+  if (!card) return [];
+  if (Array.isArray(card.items) && card.items.length) return card.items;
+  if (Array.isArray(card._items) && card._items.length) return card._items;
+  return Array.isArray(card.items) ? card.items : (Array.isArray(card._items) ? card._items : []);
+};
+
+// === 썸네일 줌 (전역) ===
+// 카드 목록·카드 상세·주문서 등 여러 페이지에서 쓴다. 페이지 번들(cards/misc.js)에 있던 시절
+// /cards/:id 에서 onclick 이 ReferenceError 로 죽어 시안 확대가 조용히 안 됐다(2026-08-10).
+function zoomThumb(src) {
+    var existing = document.getElementById('zoomModal');
+    if (existing) existing.remove();
+    var modal = document.createElement('div');
+    modal.id = 'zoomModal';
+    modal.className = 'fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center ds-z-stack';
+    modal.style.cursor = 'grab';
+    var safeSrc = src.replace(/[<>"']/g, '');
+    modal.innerHTML = '<img src="' + safeSrc + '" id="zoomImg" style="max-width:95vw;max-height:90vh;object-fit:contain;transform-origin:center;transition:transform 0.1s">'
+        + '<div style="position:absolute;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:1">'
+        + '<button onclick="event.stopPropagation();zoomChange(1)" style="background:rgba(255,255,255,0.9);border:none;border-radius:8px;width:40px;height:40px;font-size:20px;cursor:pointer">+</button>'
+        + '<button onclick="event.stopPropagation();zoomChange(-1)" style="background:rgba(255,255,255,0.9);border:none;border-radius:8px;width:40px;height:40px;font-size:20px;cursor:pointer">&#8722;</button>'
+        + '<button onclick="event.stopPropagation();zoomReset()" style="background:rgba(255,255,255,0.9);border:none;border-radius:8px;width:40px;height:40px;font-size:14px;cursor:pointer">1:1</button>'
+        + '</div>';
+    var scale = 1, posX = 0, posY = 0, dragging = false, startX = 0, startY = 0;
+    modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+    modal.onwheel = function(e) { e.preventDefault(); zoomChange(e.deltaY < 0 ? 1 : -1); };
+    window.zoomChange = function(dir) {
+        scale = Math.max(0.5, Math.min(5, scale + dir * 0.3));
+        var img = document.getElementById('zoomImg');
+        if (img) img.style.transform = 'scale(' + scale + ') translate(' + posX + 'px,' + posY + 'px)';
+    };
+    window.zoomReset = function() {
+        scale = 1; posX = 0; posY = 0;
+        var img = document.getElementById('zoomImg');
+        if (img) img.style.transform = 'scale(1)';
+    };
+    modal.onmousedown = function(e) {
+        if (e.target.tagName === 'IMG') {
+            dragging = true;
+            startX = e.clientX - posX;
+            startY = e.clientY - posY;
+            modal.style.cursor = 'grabbing';
+            e.preventDefault();
+        }
+    };
+    modal.onmousemove = function(e) {
+        if (dragging) {
+            posX = e.clientX - startX;
+            posY = e.clientY - startY;
+            var img = document.getElementById('zoomImg');
+            if (img) img.style.transform = 'scale(' + scale + ') translate(' + posX + 'px,' + posY + 'px)';
+        }
+    };
+    modal.onmouseup = function() { dragging = false; modal.style.cursor = 'grab'; };
+    document.body.appendChild(modal);
+}
+window.zoomThumb = zoomThumb;
+
 // === 표준 모달 열기/닫기 SSOT (hidden 클래스 계통 단일화) ===
 // 인라인 style.display 토글 금지 — 전역 ESC closer(hidden)와 충돌 (quality/users 모달 사망 전례).
 // 마크업 규약: 기본 hidden 클래스 + (flex 레이아웃이면 flex 클래스 병기 — Tailwind에서 hidden이 후순위라 우선).

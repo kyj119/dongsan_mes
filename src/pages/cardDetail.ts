@@ -31,6 +31,14 @@ export function cardDetailPage(c: Context<HonoEnv>) {
       /* 부속품 */
       .cd-accessories { text-align: center; padding: 8px 12px; margin: 8px 0; border: 2px solid var(--c-danger); border-radius: 8px; color: var(--c-danger); font-weight: 700; font-size: 14px; }
 
+      /* 다품목(규격·마감 상이) 카드 — 품목별 지시표. 첫 품목 기준 요약은 오작업을 부른다. */
+      .cd-mixed-note { padding: 8px 12px; margin: 8px 0; border: 2px solid var(--c-warning); border-radius: 8px; background: var(--c-warning-light); color: var(--c-warning); font-size: 13px; font-weight: 700; }
+      .cd-multi { width: 100%; border-collapse: collapse; margin: 8px 0; border: 1px solid var(--c-text); }
+      .cd-multi th, .cd-multi td { border: 1px solid var(--c-border); padding: 6px 8px; font-size: 12px; text-align: center; }
+      .cd-multi th { background: var(--c-border-light); font-weight: 700; }
+      .cd-multi td.name { text-align: left; font-weight: 600; }
+      .cd-multi td.qty { color: var(--c-danger); font-weight: 700; }
+
       /* 생산 상세 테이블 */
       .cd-production-table { border: 1px solid var(--c-text); border-radius: 4px; margin: 12px 0; }
       .cd-prod-row { display: grid; grid-template-columns: 80px 1fr 80px 1fr; border-bottom: 1px solid var(--c-border); }

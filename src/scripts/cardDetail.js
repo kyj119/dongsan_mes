@@ -23,7 +23,7 @@
     }
 
     function render(card, history, defects, checklist) {
-        var items = card.items || card._items || [];
+        var items = cardItems(card);
         var accessories = card.accessories || [];
         var totalQty = items.reduce(function(s, i) { return s + (i.quantity || 1); }, 0);
 
@@ -57,6 +57,7 @@
         // 규격
         var specW = Math.round(items[0]?.width || card.width || 0);
         var specH = Math.round(items[0]?.height || card.height || 0);
+        var multiSpecNote = '';
 
         // 봉제/후가공 파라미터 추출
         function extractPP(item) {
@@ -91,6 +92,21 @@
         var firstItem = items[0] || {};
         var ppInfo = extractPP(firstItem);
         var sewMethod = extractFinishing(firstItem);
+
+        // ★다품목 카드: 규격·원단·봉제·후가공을 **첫 품목 기준으로만** 보여 주던 것이 오작업 위험이었다
+        //   (100×50 / 60×40 카드가 "100×50 · 3면쌍침 · 5호2구" 한 줄로 나가 봉제실이 전량 같은 규격으로 재단).
+        //   품목별로 뽑아 두고, 값이 하나로 모이면(균일) 기존 큰 글씨, 갈리면 품목별 표로 낸다.
+        var perItem = items.map(function(it) {
+            var p = extractPP(it);
+            return {
+                name: it.item_name || '', w: Math.round(it.width || 0), h: Math.round(it.height || 0),
+                qty: it.quantity || 1, fabric: it.print_media_name || '', sew: extractFinishing(it),
+                grommet: p.grommet, nonwoven: p.nonwoven, tassel: p.tassel
+            };
+        });
+        function cdRowKey(r) { return [r.w, r.h, r.fabric, r.sew, r.grommet, r.nonwoven, r.tassel].join('|'); }
+        var uniformSpec = perItem.length <= 1 || perItem.every(function(r) { return cdRowKey(r) === cdRowKey(perItem[0]); });
+        if (!uniformSpec) multiSpecNote = '품목별 상이';
 
         // 진행률
         var doneCount = 0;
@@ -158,11 +174,15 @@
         });
         html += '</div>';
 
-        // 원단 + 규격
-        html += '<div class="cd-spec-row">';
-        html += '<span class="cd-fabric">' + esc(fabric || '-') + '</span>';
-        html += '<span class="cd-size">' + (specW && specH ? specW + '×' + specH : '-') + '</span>';
-        html += '</div>';
+        // 원단 + 규격 — 균일 카드만 큰 글씨 요약. 갈리는 카드는 아래 품목별 표가 정본이다.
+        if (uniformSpec) {
+            html += '<div class="cd-spec-row">';
+            html += '<span class="cd-fabric">' + esc(fabric || '-') + '</span>';
+            html += '<span class="cd-size">' + (specW && specH ? specW + '×' + specH : '-') + '</span>';
+            html += '</div>';
+        } else {
+            html += '<div class="cd-mixed-note"><i class="fas fa-triangle-exclamation mr-1"></i>품목마다 규격·마감이 다릅니다 — 아래 표를 <b>품목별로</b> 확인하세요</div>';
+        }
 
         // 부속품
         if (accessories.length > 0) {
@@ -171,13 +191,32 @@
             html += ' 동봉</div>';
         }
 
-        // 봉제/후가공 테이블
-        html += '<div class="cd-production-table">';
-        html += '<div class="cd-prod-row"><span class="cd-prod-label">봉제방법</span><span class="cd-prod-value">' + esc(sewMethod || '-') + '</span>';
-        html += '<span class="cd-prod-label">하도매</span><span class="cd-prod-value">' + esc(ppInfo.grommet || '-') + '</span></div>';
-        html += '<div class="cd-prod-row"><span class="cd-prod-label">부직포</span><span class="cd-prod-value">' + esc(ppInfo.nonwoven || '-') + '</span>';
-        html += '<span class="cd-prod-label">' + (ppInfo.tassel ? '수술' : '') + '</span><span class="cd-prod-value">' + esc(ppInfo.tassel || '') + '</span></div>';
-        html += '</div>';
+        // 봉제/후가공 — 균일하면 요약 2행, 갈리면 품목별 표
+        if (uniformSpec) {
+            html += '<div class="cd-production-table">';
+            html += '<div class="cd-prod-row"><span class="cd-prod-label">봉제방법</span><span class="cd-prod-value">' + esc(sewMethod || '-') + '</span>';
+            html += '<span class="cd-prod-label">하도매</span><span class="cd-prod-value">' + esc(ppInfo.grommet || '-') + '</span></div>';
+            html += '<div class="cd-prod-row"><span class="cd-prod-label">부직포</span><span class="cd-prod-value">' + esc(ppInfo.nonwoven || '-') + '</span>';
+            html += '<span class="cd-prod-label">수술</span><span class="cd-prod-value">' + esc(ppInfo.tassel || '-') + '</span></div>';
+            html += '</div>';
+        } else {
+            html += '<table class="cd-multi"><thead><tr>'
+                 + '<th>품목</th><th>규격</th><th>수량</th><th>원단</th><th>봉제방법</th><th>하도매</th><th>부직포</th><th>수술</th>'
+                 + '</tr></thead><tbody>';
+            perItem.forEach(function(r) {
+                html += '<tr>'
+                     + '<td class="name">' + esc(r.name) + '</td>'
+                     + '<td>' + (r.w && r.h ? r.w + '×' + r.h : '-') + '</td>'
+                     + '<td class="qty">' + r.qty + '</td>'
+                     + '<td>' + esc(r.fabric || '-') + '</td>'
+                     + '<td>' + esc(r.sew || '-') + '</td>'
+                     + '<td>' + esc(r.grommet || '-') + '</td>'
+                     + '<td>' + esc(r.nonwoven || '-') + '</td>'
+                     + '<td>' + esc(r.tassel || '-') + '</td>'
+                     + '</tr>';
+            });
+            html += '</tbody></table>';
+        }
 
         // 배송 정보
         html += '<div class="cd-shipping">';
@@ -199,6 +238,13 @@
         // ── 공정 체크리스트 (작업지시서 진행 체크, 현장 터치 입력) ──
         if (checklist.length > 0) {
             var ckDone = checklist.filter(function(s) { return s.checked_at; }).length;
+            // 전 스텝 완료인데 출력대기면 상태가 안 움직인다(상태머신 준수) — 왜 그대로인지 알려준다.
+            if (ckDone === checklist.length && card.status === 'PRINT_PENDING') {
+                html += '<div class="no-print mb-3 p-3 rounded-lg border-2 border-blue-300 bg-blue-50 flex items-center justify-between gap-3 flex-wrap">';
+                html += '<span class="text-sm font-bold text-blue-700"><i class="fas fa-circle-info mr-2"></i>전 공정이 체크됐지만 카드가 <b>출력대기</b>입니다 — 출력 시작을 눌러야 출력완료로 넘어갑니다</span>';
+                html += '<button onclick="quickAction(\'PRINTING\')" class="px-3 py-1.5 bg-blue-600 text-white rounded text-sm font-bold">출력 시작</button>';
+                html += '</div>';
+            }
             html += '<div class="cd-section cd-checklist no-print">';
             html += '<div class="cd-section-header" onclick="this.parentElement.classList.toggle(\'collapsed\')">';
             html += '<span class="font-bold text-gray-700"><i class="fas fa-list-check mr-2"></i>공정 체크리스트 <span class="text-xs text-gray-400 ml-1">' + ckDone + '/' + checklist.length + '</span></span>';
@@ -234,20 +280,27 @@
             html += '</div>';
         }
 
-        // 품목별 체크리스트
+        // 품목별 출력완료 토글 — 체크박스처럼 생겼는데 클릭이 안 되면 "눌러도 안 된다"는 오해를 부른다.
+        // 카드 모달과 같은 엔드포인트(print-toggle)를 쓴다.
         items.forEach(function(it) {
             var isDone = it.print_completed === 1;
-            html += '<div class="flex items-center gap-3 py-2 border-b border-gray-100 ' + (isDone ? 'opacity-50' : '') + '">';
+            var ciId = it.card_item_id || 0;
+            html += '<button ' + (ciId ? 'onclick="cdItemToggle(' + ciId + ')"' : 'disabled') + ' class="w-full flex items-center gap-3 py-2 border-b border-gray-100 text-left ' + (isDone ? 'opacity-50' : '') + '" style="background:none">';
             html += '<span class="text-lg">' + (isDone ? '<i class="fas fa-square-check text-green-600"></i>' : '<i class="far fa-square text-gray-400"></i>') + '</span>';
             html += '<span class="flex-1 text-sm ' + (isDone ? 'line-through text-gray-400' : 'text-gray-700') + '">' + esc(it.item_name || '') + '</span>';
             html += '<span class="text-xs text-gray-400">' + Math.round(it.width || 0) + '×' + Math.round(it.height || 0) + '</span>';
             html += '<span class="text-sm font-bold text-blue-600">' + (it.quantity || 1) + '장</span>';
-            html += '</div>';
+            html += '</button>';
         });
 
         // 액션 버튼
+        // ⚠️ PRINT_PENDING 분기가 없어 출력대기 카드엔 버튼이 하나도 없었다 → 이 화면만 보는
+        //    현장이 진행시킬 방법이 없는 데드엔드(칸반으로 돌아가야 했다).
         html += '<div class="flex gap-2 mt-4 flex-wrap">';
-        if (card.status === 'PRINTING') {
+        if (card.status === 'PRINT_PENDING') {
+            html += '<button onclick="quickAction(\'PRINTING\')" class="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"><i class="fas fa-play mr-1"></i>출력 시작</button>';
+            html += '<button onclick="quickAction(\'HOLD\')" class="px-4 py-2 bg-amber-500 text-white rounded text-sm hover:bg-amber-600"><i class="fas fa-pause mr-1"></i>보류</button>';
+        } else if (card.status === 'PRINTING') {
             html += '<button onclick="quickAction(\'PRINT_DONE\')" class="px-4 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700"><i class="fas fa-check mr-1"></i>출력완료</button>';
             html += '<button onclick="quickAction(\'HOLD\')" class="px-4 py-2 bg-amber-500 text-white rounded text-sm hover:bg-amber-600"><i class="fas fa-pause mr-1"></i>보류</button>';
         } else if (card.status === 'HOLD') {
@@ -283,8 +336,10 @@
     // 액션 함수
     window.quickAction = async function(status) {
         try {
-            await axios.patch('/api/cards/' + cardId + '/status', { status: status });
-            showToast((statusLabels[status] || status) + ' 처리됨', 'success');
+            var r = await axios.patch('/api/cards/' + cardId + '/status', { status: status });
+            // 출력 시작과 동시에 전 공정이 이미 체크돼 있으면 서버가 곧바로 출력완료로 넘긴다.
+            if (r.data.data && r.data.data.auto_done) showToast('전 공정 완료 — 출력완료까지 처리됨', 'success');
+            else showToast((statusLabels[status] || status) + ' 처리됨', 'success');
             load();
         } catch(e) { showToast('실패: ' + (e.response?.data?.error || e.message), 'error'); }
     };
@@ -297,11 +352,21 @@
         } catch(e) { showToast('출고 실패: ' + (e.response?.data?.error || e.message), 'error'); }
     };
 
+    // 품목 출력완료 토글 (카드 모달과 동일 엔드포인트)
+    window.cdItemToggle = async function(cardItemId) {
+        try {
+            await axios.patch('/api/cards/' + cardId + '/items/' + cardItemId + '/print-toggle');
+            load();
+        } catch(e) { showToast('출력완료 토글 실패: ' + (e.response?.data?.error || e.message), 'error'); }
+    };
+
     // 공정 체크리스트 토글 — 전 스텝 완료 && PRINTING이면 서버가 PRINT_DONE 자동 전이
     window.cclToggle = async function(itemId, checked) {
         try {
             var r = await axios.patch('/api/cards/' + cardId + '/checklist/' + itemId, { checked: checked });
-            if (r.data.data && r.data.data.auto_done) showToast('전 공정 완료 — 출력완료 처리됨', 'success');
+            var d = r.data.data || {};
+            if (d.auto_done) showToast('전 공정 완료 — 출력완료 처리됨', 'success');
+            else if (d.all_checked_but_pending) showToast('전 공정 체크됨 — 「출력 시작」을 눌러야 출력완료로 넘어갑니다', 'info');
             load();
         } catch(e) { showToast('체크 실패: ' + (e.response?.data?.error || e.message), 'error'); }
     };
