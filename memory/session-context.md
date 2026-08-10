@@ -147,6 +147,11 @@ npx wrangler d1 execute webapp-production --remote --command "SELECT COUNT(*) FR
 - **B2B 구조화(나) 점검 결과 = 기술적으로 가능하나 채택 안 함 → (가) 확정**: purchase_payments 에 payment_method 컬럼이 이미 있어 'B2B대출'+loans 링크 개발은 반나절감. 그러나 **실행 이벤트 데이터 소스가 없다** — 실행은 통장에 안 찍히고, 바로빌은 여신계좌를 못 보고, 세무장부 기표는 월 지연 → 결국 은행 화면 보고 건건이 수동 입력 = (가)의 월 1회 갱신보다 손이 더 감. **(가) 루틴 = 월 1회 WEHAGO 거래처원장 293 실측으로 73142 잔액 갱신**(2026-08-10 갱신 완료, 다음 ~09월 초).
 - UNMATCHED 2건(e1 텍스젯 4월분 2,252,800·e2 가온솔루션 156,200)은 **함부로 매칭 금지** — 이관 지급과 이중차감 위험(#47 케이엠테크·운산직물 보류와 같은 유형). 다음 AP 대사 때 세무장부와 건별 대조 후 처리.
 
+## 6차 (2026-08-10, 카드 재등록 버그 수정 + 직원용 잔액 갱신 — prod 배포 `d4ac7898`, commit `062714dd`)
+- **★카드 재등록 차단 버그 수정**: DELETE 는 soft-delete(is_active=0)인데 POST /cards 중복 체크(#190)가 **비활성 카드까지 포함**해 삭제 후 재등록이 409 로 막혔다(용준님이 전북카드 바로빌 연동 재등록 시도 중 발견) → `AND is_active = 1`. 계좌 쪽(POST /accounts)은 중복 체크 자체가 없어 무관.
+- **직원용 대출 잔액 갱신 경로**: 대출 탭 행에 🪙 「잔액 갱신」 버튼(prompt→PUT current_balance) + 잔액 밑에 **「기준 날짜」**(updated_at)를 /bank·대출 탭 양쪽에 표시 — 클로드 없이 경리가 세무장부/은행 조회값으로 직접 갱신 가능. ⚠️PUT /loans = ADMIN 권한.
+- 검증 = verify·check:dom·audit:entity·로컬/prod smoke 110/110·마커 3종(quickLoanBalance·기준일 /cash-schedule·/bank) 별칭 실측 OK.
+
 ## 이번 세션 결정 + 이유
 - **/bank 자금현황 개편** (commit `c001936d`, **미배포**): 총 계좌잔액에 마이너스통장 −4.96억이 섞여 예금 실측이 왜곡 → `bank_accounts.is_overdraft`(마이그 0528)로 분리. KPI 4분할(예금·마통·대출·순자금) + 대출 현황 표(fund-summary 가 loans 목록 반환). **순자금 정의는 안 바꿈** — 마통은 잔액 음수로 이미 반영이라 전체합−대출 그대로.
 - 커밋 `2405fe35`: spec `specs/2026-08-10-entity-expense-management.md`(양법인 통장+카드 지출 관리 P1~P4) + PROJECT_STATUS #67.
