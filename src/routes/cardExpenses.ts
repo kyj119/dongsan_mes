@@ -161,32 +161,42 @@ cardExpRouter.post('/cards', requireRole('ADMIN'), async (c) => {
       const config = await getBarobillConfig(c)
       const cyc: string = collect_cycle || BAROBILL_COLLECT_CYCLE.DEFAULT
       cycle = cyc
-      // 통신·SOAP 예외를 '서버 오류'로 뭉개지 않는다 — 재시도 판단에 실제 원인이 필요하다 (2026-08-10 전북카드 등록 실패)
-      let code = 0
+      const cardDigits = String(card_number).replace(/[^0-9]/g, '')
+      // 이미 바로빌에 등록된 카드면 재등록하지 않고 흡수 — 앞선 시도가 바로빌 등록까지 성공하고
+      // 응답만 유실되면 MES 행이 없는 채로 남는다(2026-08-10 전북카드 실사례, -50118 반복).
+      let adopted = false
       try {
-        code = await registCard(config, {
-          collectCycle: cyc,
-          cardCompany: bbCardCompany,
-          cardType: card_type || BAROBILL_CARD_TYPE.CORPORATE,
-          cardNum: String(card_number).replace(/[^0-9]/g, ''),
-          webId: web_id,
-          webPwd: web_pwd,
-          alias: card_name,
-        })
+        const { getCardList } = await import('../services/barobillCard')
+        const bbCards = await getCardList(config)
+        adopted = bbCards.some((bc: any) => String(bc.CardNum || '').replace(/[^0-9]/g, '') === cardDigits)
       } catch (e: any) {
-        console.error('Card regist call error:', e?.message || 'unknown')
-        return c.json({ success: false, error: '바로빌 통신 오류(카드 수집등록): ' + (e?.message || '알 수 없는 오류') + ' — 카드는 등록되지 않았습니다. 잠시 후 재시도해주세요.' }, 502)
+        console.error('Card list check error (continuing to regist):', e?.message || 'unknown')
       }
-      if (code === -50118) {
-        // 이미 바로빌에 등록된 카드 — 앞선 시도가 바로빌 등록까지 성공하고 응답만 유실된 경우
-        // (2026-08-10 전북카드 실사례). 수집은 이미 살아있으므로 성공으로 흡수하고 MES 행만 만든다.
-        console.log('[card-regist] -50118 already registered at barobill, adopting. last4=%s', last4)
-        barobillRegistered = 1
-      } else if (code <= 0) {
-        return c.json({ success: false, error: '바로빌 카드 수집등록 실패: ' + barobillErrorMessage(code) }, 400)
-      } else {
-        barobillRegistered = 1
+      if (!adopted) {
+        // 통신·SOAP 예외를 '서버 오류'로 뭉개지 않는다 — 재시도 판단에 실제 원인이 필요하다.
+        // 502 대신 400: 프록시가 5xx 를 자체 오류 페이지로 바꾸면 메시지가 사라진다.
+        let code = 0
+        try {
+          code = await registCard(config, {
+            collectCycle: cyc,
+            cardCompany: bbCardCompany,
+            cardType: card_type || BAROBILL_CARD_TYPE.CORPORATE,
+            cardNum: cardDigits,
+            webId: web_id,
+            webPwd: web_pwd,
+            alias: card_name,
+          })
+        } catch (e: any) {
+          console.error('Card regist call error:', e?.message || 'unknown')
+          return c.json({ success: false, error: '바로빌 통신 오류(카드 수집등록): ' + (e?.message || '알 수 없는 오류') + ' — 카드는 등록되지 않았습니다. 잠시 후 재시도해주세요.' }, 400)
+        }
+        if (code === -50118) {
+          adopted = true // 목록조회가 놓쳐도 바로빌이 이미 등록됐다고 답하면 성공으로 흡수
+        } else if (code <= 0) {
+          return c.json({ success: false, error: '바로빌 카드 수집등록 실패: ' + barobillErrorMessage(code) }, 400)
+        }
       }
+      barobillRegistered = 1
     }
 
     const result = await c.env.DB.prepare(`
