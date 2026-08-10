@@ -196,6 +196,32 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
       ORDER BY oi.sort_order ASC, oi.id ASC, f.id ASC
     `).bind(id).all()
 
+    // #601: 반품(RMA) 라인 — return_items.order_item_id 는 NOT NULL + RESTRICT(NO ACTION)라
+    //   #597식 NULL 해제가 불가 → 전량 백업→삭제 후 신규 라인에 재삽입(#124/#597과 같은
+    //   item_id+sort_order 매칭). 안 하면 라인 재작성 DELETE가 FK로 500(반품 걸린 주문 수정 불가).
+    //   대응 라인이 페이로드에서 사라지는 수정은 반품 이력이 근거를 잃으므로 400으로 차단.
+    const { results: savedReturnItems } = await c.env.DB.prepare(`
+      SELECT ri.id AS ri_id, ri.return_id, ri.order_item_id AS old_item_id, ri.quantity,
+             ri.condition, ri.disposition, ri.notes, ri.created_at, ri.entity_id,
+             oi.item_id, oi.sort_order
+      FROM return_items ri
+      JOIN order_items oi ON oi.id = ri.order_item_id
+      WHERE oi.order_id = ?
+      ORDER BY oi.sort_order ASC, oi.id ASC, ri.id ASC
+    `).bind(id).all()
+    if ((savedReturnItems || []).length > 0) {
+      const payloadItemIds = new Set(
+        (orderData.items as any[]).filter((it: any) => !it.parent_client_id).map((it: any) => it.item_id)
+      )
+      const riMissing = (savedReturnItems as any[]).find((r) => !payloadItemIds.has(r.item_id))
+      if (riMissing) {
+        return c.json({ success: false, error: '반품(RMA)이 등록된 품목 라인은 삭제할 수 없습니다. 해당 라인을 유지한 채 수정해 주세요.' }, 400)
+      }
+      const riPh = (savedReturnItems as any[]).map(() => '?').join(',')
+      await c.env.DB.prepare(`DELETE FROM return_items WHERE id IN (${riPh})`)
+        .bind(...(savedReturnItems as any[]).map((r) => r.ri_id)).run()
+    }
+
     if (!canRegenerateCards) {
       // 생산 중 카드 보존 — order_item_id FK를 NULL로 해제하여 CASCADE 삭제 방지
       await c.env.DB.prepare(`
@@ -507,6 +533,39 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
       if (fileStmts.length > 0) {
         await c.env.DB.batch(fileStmts)
       }
+    }
+
+    // #601: 반품(RMA) 재삽입 — 신규 라인 매칭(item_id+sort_order → item_id 폴백, #124/#597 규칙)
+    if ((savedReturnItems || []).length > 0) {
+      const { results: newItemsForReturns } = await c.env.DB.prepare(`
+        SELECT id, item_id, sort_order FROM order_items WHERE order_id = ? ORDER BY sort_order, id
+      `).bind(id).all()
+      const riClaimed = new Set<number>()
+      const riResolved = new Map<number, number | null>()
+      const riStmts: D1PreparedStatement[] = []
+      for (const r of (savedReturnItems as any[])) {
+        if (!riResolved.has(r.old_item_id)) {
+          let riMatched = (newItemsForReturns || []).find(
+            (oi: any) => !riClaimed.has(oi.id) && oi.item_id === r.item_id && oi.sort_order === r.sort_order
+          )
+          if (!riMatched) {
+            riMatched = (newItemsForReturns || []).find((oi: any) => !riClaimed.has(oi.id) && oi.item_id === r.item_id)
+          }
+          if (riMatched) riClaimed.add((riMatched as any).id as number)
+          riResolved.set(r.old_item_id, riMatched ? ((riMatched as any).id as number) : null)
+        }
+        const riNewId = riResolved.get(r.old_item_id)
+        if (riNewId == null) {
+          // 선검증 통과 후엔 이론상 불가 — 고아를 만들지 않도록 기록만 남긴다
+          console.error('#601 return_items 재연결 실패(백업분 미복원):', r.ri_id)
+          continue
+        }
+        riStmts.push(c.env.DB.prepare(
+          `INSERT INTO return_items (return_id, order_item_id, quantity, condition, disposition, notes, created_at, entity_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(r.return_id, riNewId, r.quantity, r.condition, r.disposition, r.notes, r.created_at, r.entity_id))
+      }
+      if (riStmts.length > 0) await c.env.DB.batch(riStmts)
     }
 
     // 카드 보존/삭제 로직은 order_items 삭제 전에 이미 처리됨

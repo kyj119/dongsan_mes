@@ -9,7 +9,8 @@ on:
 jobs:
   backup:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # #605: CF API 지연 시 10분 타임아웃으로 해당일 백업이 통째로 누락(30일 중 2회) → 여유 + 재시도
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -33,7 +34,15 @@ jobs:
           DAY=$(date +%d)
 
           echo "📦 Exporting D1 database..."
-          wrangler d1 export webapp-production --remote --output=backup.sql
+          # #605: CF API 일시 지연이 그날 백업 누락으로 직결 — 3회 재시도(간격 60초)
+          for i in 1 2 3; do
+            if wrangler d1 export webapp-production --remote --output=backup.sql; then
+              break
+            fi
+            echo "⚠️ export failed (attempt ${i}/3)"
+            if [ "$i" = "3" ]; then exit 1; fi
+            sleep 60
+          done
 
           FILE_SIZE=$(stat --format=%s backup.sql)
           echo "✅ Export complete: backup.sql (${FILE_SIZE} bytes)"

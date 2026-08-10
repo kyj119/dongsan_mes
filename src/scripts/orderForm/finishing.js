@@ -211,7 +211,9 @@
                     // --- Section 1: Finish PP — per-direction rows ---
                     if (finishOpts.length > 0) {
                         html += '<div class="pp-finish-section mb-3">';
-                        html += '<label class="block text-xs font-medium text-gray-600 mb-1">\ub9c8\uac10 \ubc29\uc2dd</label>';
+                        // \ub77c\ubca8 \uad6c\ubd84(2026-08-10): \uc544\ub798 \ubcc4\ub3c4 \u300c\ub9c8\uac10 \ubc29\uc2dd\u300d \uc139\uc158\uacfc \uac19\uc740 \uc774\ub984\uc774\ub77c \ud63c\ub3d9 \u2014
+                        // \uc774\ucabd\uc740 \ud6c4\uac00\uacf5 \uc635\uc158(\ube44\uc6a9 \uacc4\uc0b0 + \ubc29\ud5a5\ubcc4 \uc5ec\ubc31\uc774 \ud30c\uc77c \ube14\ub9ac\ub4dc\uc5d0 \ubc18\uc601)\uc774\ub2e4.
+                        html += '<label class="block text-xs font-medium text-gray-600 mb-1">\ub9c8\uac10 \ud6c4\uac00\uacf5 <span class="text-gray-400 font-normal">(\ube44\uc6a9\u00b7\uc5ec\ubc31 \ubc18\uc601)</span></label>';
 
                         // 전체 동일 적용 빠른 선택
                         html += '<div class="pp-finish-all flex items-center gap-2 mb-2 pb-2 border-b border-gray-100">';

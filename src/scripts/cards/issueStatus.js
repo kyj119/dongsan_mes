@@ -87,6 +87,18 @@
             }
         } catch(e) {
             console.warn('[cards] issue-status load fail', e);
+            // #602: 조용히 삼키면 "누락/개정 없음"으로 오표시(조치필요 배지도 숨음) — 실패를 화면에 드러낸다
+            var isErrHtml = '<p class="text-xs text-red-500 py-2"><i class="fas fa-triangle-exclamation mr-1"></i>지시 현황을 불러오지 못했습니다 — 새로고침 후에도 반복되면 관리자에게 알려주세요.</p>';
+            ['isMissingList', 'isReissueList', 'isProgressList'].forEach(function(cid) {
+                var lel = document.getElementById(cid);
+                if (lel) lel.innerHTML = isErrHtml;
+            });
+            ['isMissingCnt', 'isReissueCnt', 'isProgressCnt'].forEach(function(cid) {
+                var cel = document.getElementById(cid);
+                if (cel) cel.textContent = '?';
+            });
+            var isErrBadge = document.getElementById('issueTabBadge');
+            if (isErrBadge) { isErrBadge.textContent = '!'; isErrBadge.style.display = ''; }
         }
     };
 

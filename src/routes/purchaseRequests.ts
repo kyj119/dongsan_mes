@@ -210,10 +210,10 @@ prRouter.post('/:id/comments', async (c) => {
 // ============================================================================
 prRouter.get('/export/csv', async (c) => {
   try {
-    const user = c.get('user')
-    const { status = '', urgency = '', search = '', date_from = '', date_to = '' } = c.req.query()
-
-    let query = `
+    // #607: 조회조건 = buildPrFilter SSOT — 자체 WHERE 사본은 목록과 갈린다
+    //   (multi-status 'PENDING,APPROVED'를 단일 등호로 비교해 0건 CSV가 나가던 실결함).
+    const f = buildPrFilter(c)
+    const query = `
       SELECT
         pr.request_number, pr.created_at, pr.urgency, pr.status,
         u.name as requester_name,
@@ -223,33 +223,10 @@ prRouter.get('/export/csv', async (c) => {
       FROM purchase_requests pr
       JOIN users u ON pr.requester_id = u.id
       LEFT JOIN clients c ON pr.supplier_id = c.id
-    `
-    const params: any[] = []
-    const whereClauses: string[] = []
+      ${f.where}
+      ORDER BY pr.created_at DESC, pr.id DESC LIMIT 5001`  // #372: 캡+1 조회로 잘림 감지
 
-    const ef = entityFilter(c, 'pr')
-    if (ef.clause) {
-      whereClauses.push(ef.clause.replace(' AND ', ''))
-      params.push(...ef.params)
-    }
-    if (user?.role === 'MANAGER') {
-      whereClauses.push('pr.requester_id = ?')
-      params.push(user.id)
-    }
-    if (status) { whereClauses.push('pr.status = ?'); params.push(status) }
-    if (urgency) { whereClauses.push('pr.urgency = ?'); params.push(urgency) }
-    if (search) {
-      whereClauses.push('(pr.request_number LIKE ? OR u.name LIKE ? OR c.client_name LIKE ?)')
-      const searchPattern = `%${search}%`
-      params.push(searchPattern, searchPattern, searchPattern)
-    }
-    if (date_from) { whereClauses.push('pr.created_at >= ?'); params.push(date_from) }
-    if (date_to) { whereClauses.push('pr.created_at <= ?'); params.push(date_to + ' 23:59:59') }
-
-    if (whereClauses.length > 0) query += ' WHERE ' + whereClauses.join(' AND ')
-    query += ' ORDER BY pr.created_at DESC, pr.id DESC LIMIT 5001'  // #372: 캡+1 조회로 잘림 감지
-
-    const { results } = await c.env.DB.prepare(query).bind(...params).all()
+    const { results } = await c.env.DB.prepare(query).bind(...f.params).all()
     const truncated = (results || []).length > 5000
     const exportRows = truncated ? (results || []).slice(0, 5000) : (results || [])
 

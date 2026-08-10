@@ -1014,12 +1014,20 @@
                     const dmEl = document.getElementById('deliveryMethod');
                     if (dmEl && order.delivery_method) {
                         var dmOptions = Array.from(dmEl.options).map(function(o) { return o.value; });
-                        if (dmOptions.indexOf(order.delivery_method) >= 0) {
-                            dmEl.value = order.delivery_method;
-                        } else {
-                            dmEl.value = '';
+                        // 옵션에 없는 과거값은 동적 옵션으로 유지 — ''로 두면 저장 시 서버 기본값('배송')으로
+                        // 조용히 치환된다(왕복감사 실증). 담당자 셀렉트(#64)와 같은 규칙.
+                        if (dmOptions.indexOf(order.delivery_method) < 0) {
+                            var dmLegacy = document.createElement('option');
+                            dmLegacy.value = order.delivery_method;
+                            dmLegacy.textContent = order.delivery_method + ' (이전값)';
+                            dmEl.appendChild(dmLegacy);
                         }
+                        dmEl.value = order.delivery_method;
                     }
+                    // ★순서 중요: 방법 변경 훅을 시간 복원 **전에** 호출한다 — 뒤에 호출하면
+                    //   "이전에 고정이었던 경우 미정으로 리셋" 로직이 방금 복원한 시간을 지운다
+                    //   (택배류가 아닌 전 주문에서 수정 저장마다 delivery_time 소실 — 왕복감사 실증).
+                    onDeliveryMethodChange();
                     if (order.delivery_time) {
                         var dtParts = order.delivery_time.split(':');
                         var dtHourEl = document.getElementById('deliveryTimeHour');
@@ -1028,7 +1036,6 @@
                         var dtMinEl = document.getElementById('deliveryTimeMinute');
                         if (dtMinEl) dtMinEl.value = dtParts[1] || '00';
                     }
-                    onDeliveryMethodChange();
                     var spEl = document.getElementById('shippingPayment');
                     if (spEl) spEl.value = order.shipping_payment || '';
                     document.getElementById('notes').value = order.notes || '';
@@ -1124,6 +1131,18 @@
                         set('ai_group_index', item.ai_group_index != null ? item.ai_group_index : '');
                         set('ai_analysis_id', item.ai_analysis_id || '');
 
+                        // 직접연결 파일 칩 복원 (ai_group_index -1/-3 = 직접연결 약속값) — 없으면 수정화면에서
+                        //   연결 여부가 안 보이고 완성본↔가공 전환도 불가(값은 유지되나 표시·조작 불능).
+                        if (item.ai_analysis_id && (item.ai_group_index === -1 || item.ai_group_index === -3)) {
+                            set('direct_file_path', item.ai_file_path || '');
+                            var dfChipE = document.getElementById('direct_file_chip_' + id);
+                            var dfNameE = document.getElementById('direct_file_name_' + id);
+                            if (dfNameE) dfNameE.textContent = (item.ai_file_path || '').split(/[/\\]/).pop() || ('분석#' + item.ai_analysis_id);
+                            if (dfChipE) dfChipE.classList.remove('hidden');
+                            var dfPtE = document.getElementById('direct_passthrough_' + id);
+                            if (dfPtE) dfPtE.checked = (item.ai_group_index === -3);
+                        }
+
                         // 칼선 DXF 복원 (core.ts kind='dxf' 서브셀렉트) — 복원 없이는 재저장 시 재연결만 되고 칩이 안 보인다
                         if (item.dxf_analysis_id) {
                             set('dxf_analysis_id', item.dxf_analysis_id);
@@ -1215,8 +1234,19 @@
                             } catch(e) { /* groups_json 파싱 실패 무시 */ }
                         }
 
-                        if (item.post_processing && item.item_id) {
-                            setTimeout(() => restorePostProcessing(id, item.post_processing), 600);
+                        // 후가공 복원 — ★수정모드는 applyItemSelection을 안 타 loadItemPP가 영영 안 불렸다.
+                        //   pp_options가 placeholder인 채 복원이 no-op → 저장 시 calc.js가 빈 '[]'를 보내
+                        //   후가공이 통째로 소실(왕복감사 실증). 옵션을 먼저 로드하고 값을 적용한다.
+                        //   (600ms setTimeout 지연 방식 폐기 — 타이밍이 아니라 로드 자체가 없던 게 원인)
+                        // 스태시: 컨트롤이 안 그려지는 행(소분류 미지정 등)은 calc.js가 이 원본을 보존한다.
+                        if (item.post_processing) {
+                            var ppStashRow = document.getElementById('item-' + id);
+                            if (ppStashRow) ppStashRow.dataset.origPp = item.post_processing;
+                        }
+                        if (item.item_id) {
+                            set('item_subcat', item.item_subcategory || '');
+                            await loadItemPP(id, item.item_subcategory || '');
+                            if (item.post_processing) restorePostProcessing(id, item.post_processing);
                         }
 
                         // 마감방식 복원 — 없으면 수정 화면의 fin 셀렉트가 빈 채로 남고, 저장 시
@@ -1341,12 +1371,17 @@
                 const dmEl = document.getElementById('deliveryMethod');
                 if (dmEl && order.delivery_method) {
                     var dmOptionsCopy = Array.from(dmEl.options).map(function(o) { return o.value; });
-                    if (dmOptionsCopy.indexOf(order.delivery_method) >= 0) {
-                        dmEl.value = order.delivery_method;
-                    } else {
-                        dmEl.value = '';
+                    // 수정모드와 동일 규칙: 과거값은 동적 옵션으로 유지(치환 금지)
+                    if (dmOptionsCopy.indexOf(order.delivery_method) < 0) {
+                        var dmLegacyCopy = document.createElement('option');
+                        dmLegacyCopy.value = order.delivery_method;
+                        dmLegacyCopy.textContent = order.delivery_method + ' (이전값)';
+                        dmEl.appendChild(dmLegacyCopy);
                     }
+                    dmEl.value = order.delivery_method;
                 }
+                // 방법 변경 훅은 시간 복원 전에 — 수정모드와 같은 소실 방지 (리셋 로직이 시간을 지움)
+                onDeliveryMethodChange();
                 if (order.delivery_time) {
                     var dtPartsCopy = order.delivery_time.split(':');
                     var dtHourCopy = document.getElementById('deliveryTimeHour');
@@ -1355,7 +1390,6 @@
                     var dtMinCopy = document.getElementById('deliveryTimeMinute');
                     if (dtMinCopy) dtMinCopy.value = dtPartsCopy[1] || '00';
                 }
-                onDeliveryMethodChange();
                 var spElCopy = document.getElementById('shippingPayment');
                 if (spElCopy) spElCopy.value = order.shipping_payment || '';
                 document.getElementById('notes').value = order.order_number + '-재주문건';
@@ -1418,6 +1452,16 @@
                     // 재주문: ai_group_index, ai_analysis_id 복사 (같은 디자인 파일 재사용)
                     set('ai_group_index', item.ai_group_index != null ? item.ai_group_index : '');
                     set('ai_analysis_id', item.ai_analysis_id || '');
+                    // 직접연결 파일 칩 복원 (수정모드와 동일 — 재주문도 연결 상태가 보여야 전환·해제 가능)
+                    if (item.ai_analysis_id && (item.ai_group_index === -1 || item.ai_group_index === -3)) {
+                        set('direct_file_path', item.ai_file_path || '');
+                        var cDfChip = document.getElementById('direct_file_chip_' + id);
+                        var cDfName = document.getElementById('direct_file_name_' + id);
+                        if (cDfName) cDfName.textContent = (item.ai_file_path || '').split(/[/\\]/).pop() || ('분석#' + item.ai_analysis_id);
+                        if (cDfChip) cDfChip.classList.remove('hidden');
+                        var cDfPt = document.getElementById('direct_passthrough_' + id);
+                        if (cDfPt) cDfPt.checked = (item.ai_group_index === -3);
+                    }
                     // 재주문: 칼선 DXF 도 같은 소스 재사용
                     if (item.dxf_analysis_id) {
                         set('dxf_analysis_id', item.dxf_analysis_id);
@@ -1455,8 +1499,15 @@
                         } catch(e) {}
                     }
 
-                    if (item.post_processing && item.item_id) {
-                        setTimeout(() => restorePostProcessing(id, item.post_processing), 600);
+                    // 후가공 승계 — 수정모드와 동일: loadItemPP 없이는 복원이 no-op라 재주문에서 후가공이 소실됐다
+                    if (item.post_processing) {
+                        var cPpStashRow = document.getElementById('item-' + id);
+                        if (cPpStashRow) cPpStashRow.dataset.origPp = item.post_processing;
+                    }
+                    if (item.item_id) {
+                        set('item_subcat', item.item_subcategory || '');
+                        await loadItemPP(id, item.item_subcategory || '');
+                        if (item.post_processing) restorePostProcessing(id, item.post_processing);
                     }
 
                     // 재주문도 마감방식 승계 (수정모드와 동일 — 없으면 섹션이 placeholder로 남는다)
@@ -1655,9 +1706,10 @@
                         window.addItemRow();
                     }
                     // 채우기 (간단: 첫 N개 행)
-                    setTimeout(function() {
-                        nonParentItems.forEach(function(it, idx) {
-                            var id = idx + 1;
+                    setTimeout(async function() {
+                        for (var qIdx = 0; qIdx < nonParentItems.length; qIdx++) {
+                            var it = nonParentItems[qIdx];
+                            var id = qIdx + 1;
                             var setVal = function(sel, v) {
                                 var el = document.querySelector(sel);
                                 if (el && v != null) {
@@ -1666,7 +1718,10 @@
                                     el.dispatchEvent(new Event('change', { bubbles: true }));
                                 }
                             };
-                            setVal('[name="item_search_' + id + '"]', it.item_name);
+                            // 품목명은 이벤트 없이 채운다 — input 이벤트가 자동완성을 깨워 300ms 뒤
+                            // applyItemSelection이 견적 단가·복원된 후가공을 기본값으로 덮는 경쟁을 만든다.
+                            var qSearchEl = document.querySelector('[name="item_search_' + id + '"]');
+                            if (qSearchEl && it.item_name != null) qSearchEl.value = it.item_name;
                             setVal('[name="item_id_' + id + '"]', it.item_id);
                             setVal('[name="width_' + id + '"]', it.width);
                             setVal('[name="height_' + id + '"]', it.height);
@@ -1674,9 +1729,26 @@
                             setVal('[name="unit_price_' + id + '"]', it.unit_price);
                             setVal('[name="content_' + id + '"]', it.content);
                             if (typeof window.calcItem === 'function') window.calcItem(id);
-                            // 품목이 채워진 행이니 마감 섹션도 열어준다 (견적 items엔 finishing이 없어 값 복원은 없음)
-                            window.restoreFinishingForRow(id, it.finishing);
-                        });
+                            // 후가공·마감 승계 — 견적 items에 post_processing/finishing이 저장돼 있다.
+                            //   소분류·카테고리는 품목 마스터에서 보충(후가공 옵션 로드·마감 그룹 판별용).
+                            if (it.post_processing) {
+                                var qPpStashRow = document.getElementById('item-' + id);
+                                if (qPpStashRow) qPpStashRow.dataset.origPp = it.post_processing;
+                            }
+                            if (it.item_id) {
+                                try {
+                                    var qiRes = await axios.get('/api/items/' + it.item_id);
+                                    var qiData = (qiRes.data && qiRes.data.data) || {};
+                                    var qSubEl = document.querySelector('[name="item_subcat_' + id + '"]');
+                                    if (qSubEl) qSubEl.value = qiData.sub_category || '';
+                                    var qCatEl = document.querySelector('[name="category_name_' + id + '"]');
+                                    if (qCatEl && !qCatEl.value) qCatEl.value = qiData.category || '';
+                                    await loadItemPP(id, qiData.sub_category || '');
+                                    if (it.post_processing) restorePostProcessing(id, it.post_processing);
+                                } catch(eQi) { console.warn('[orderForm] 견적 후가공 승계 실패', eQi); }
+                            }
+                            await window.restoreFinishingForRow(id, it.finishing);
+                        }
                     }, 200);
 
                     // 견적서 ID를 hidden 필드에 (제출 시 함께 보내기)

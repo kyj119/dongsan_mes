@@ -968,7 +968,8 @@ cardsQueriesRouter.get('/issue-status', async (c) => {
       FROM cards c
       JOIN orders o ON c.order_id = o.id
       LEFT JOIN card_checklist_items ccl ON ccl.card_id = c.id
-      WHERE c.status IN ('PRINT_PENDING', 'PRINTING', 'HOLD', 'PRINT_DONE')${efC.clause}
+      WHERE c.status IN ('PRINT_PENDING', 'PRINTING', 'HOLD', 'PRINT_DONE')
+        AND o.status NOT IN ('SHIPPED', 'COMPLETED', 'CANCELLED', 'DELETED')${efC.clause}
       GROUP BY c.id
       HAVING c.status != 'PRINT_DONE'
           OR (COUNT(ccl.id) > 0 AND SUM(CASE WHEN ccl.checked_at IS NOT NULL THEN 1 ELSE 0 END) < COUNT(ccl.id))
@@ -984,7 +985,9 @@ cardsQueriesRouter.get('/issue-status', async (c) => {
       FROM cards c
       JOIN orders o ON c.order_id = o.id
       WHERE c.needs_reissue = 1
-        AND c.status IN ('PRINT_PENDING', 'PRINTING', 'HOLD', 'PRINT_DONE')${efR.clause}
+        AND c.status IN ('PRINT_PENDING', 'PRINTING', 'HOLD', 'PRINT_DONE')
+        -- #603: 출고 이후 주문의 카드는 개정할 지시서가 더 없다 — 큐 영구 잔류 차단
+        AND o.status NOT IN ('SHIPPED', 'COMPLETED', 'CANCELLED', 'DELETED')${efR.clause}
       ORDER BY (c.delivery_date IS NULL), c.delivery_date ASC, c.id ASC
       LIMIT 100
     `).bind(...efR.params).all()

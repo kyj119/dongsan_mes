@@ -32,6 +32,7 @@
     "audit:ia-storage": "node scripts/ia-storage-audit.cjs",
     "audit:new-items": "node scripts/new-item-audit.cjs",
     "audit:migration-drift": "node scripts/migration-drift-audit.cjs",
+    "audit:orderform-roundtrip": "node scripts/orderform-roundtrip.cjs",
     "panel:smoke": "node scripts/panel-smoke.mjs",
     "cut:smoke": "node scripts/cut-panel-smoke.mjs",
     "cut:bench": "node scripts/cut/bench.mjs",

@@ -586,7 +586,16 @@
                         })(),
                         vat_included: document.querySelector(`[name="vat_${id}"]`)?.checked ? 1 : 0,
                         assigned_entity_id: (document.querySelector(`[name="assigned_entity_${id}"]`)?.value ? parseInt(document.querySelector(`[name="assigned_entity_${id}"]`).value) : undefined),
-                        post_processing: JSON.stringify(pp),
+                        post_processing: (function() {
+                            // 후가공 컨트롤이 아예 안 그려진 행(소분류 미지정·옵션 부재)에서 빈 []를
+                            // 보내면 수정 저장(delete+reinsert)이 후가공을 소실시킨다 → 복원 때 스태시한
+                            // 원본(data-orig-pp)을 그대로 보존. 컨트롤이 있으면 사용자가 비운 것이므로 [] 유지.
+                            if (pp.length === 0) {
+                                var ppCtl = ppContainer && ppContainer.querySelector('.pp-finish-dir, .pp-punching-check, .pp-offset-check, .pp-annotation-check, .pp-transfer-check, .pp-coating-select, .pp-printlayer-select');
+                                if (!ppCtl && row.dataset.origPp) return row.dataset.origPp;
+                            }
+                            return JSON.stringify(pp);
+                        })(),
                         finishing: (function() {
                             var finObj = {
                                 top: document.querySelector('[name="fin_top_' + id + '"]')?.value || '',

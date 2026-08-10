@@ -355,6 +355,7 @@ ordersCoreRouter.get('/:id', async (c) => {
       SELECT oi.*, ar.file_path AS ai_file_path,
              ar.groups_json AS ai_groups_json,
              i.pricing_method AS pricing_method,
+             i.sub_category AS item_subcategory,
              ci.card_id AS card_id,
              ca.card_number AS card_number,
              -- 주문서 직접 첨부 칼선(analysis_id 有) 최신 1건 — 에이전트가 출력 시 baseName.dxf 복사,

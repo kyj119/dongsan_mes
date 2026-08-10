@@ -2509,8 +2509,17 @@ namespace IllustratorAutomation
 
                 bool hasLayout = layoutId.HasValue;
                 bool hasAiFile = !string.IsNullOrEmpty(aiFilePath) && File.Exists(aiFilePath);
+                // 칼선 DXF만 첨부된 주문(EPS/AI 소스 없음)도 라인 순회에 들어와야 DXF 폴더 복사가 된다
+                bool hasDxfItems = false;
+                try
+                {
+                    if (itemsElement.ValueKind == JsonValueKind.Array)
+                        hasDxfItems = itemsElement.EnumerateArray().Any(it =>
+                            it.TryGetProperty("dxf_analysis_id", out var dxProbe) && dxProbe.ValueKind != JsonValueKind.Null);
+                }
+                catch { /* items 형태 이상 시 기존 게이트 유지 */ }
 
-                if (hasLayout || hasAiFile)
+                if (hasLayout || hasAiFile || hasDxfItems)
                 {
                     // 묶음 모드(layout_id 있음): AI 파일 없어도 처리 (이미 생성된 EPS 복사)
                     // 개별 모드(aiFilePath 있음): ProcessOrderItem.jsx 실행
@@ -2657,8 +2666,12 @@ namespace IllustratorAutomation
         {
             try
             {
-                // AI 파일 없는 품목은 처리 건너뜀 (수동 주문 등)
-                if (string.IsNullOrEmpty(aiFilePath) || !File.Exists(aiFilePath))
+                // AI 파일 없는 품목은 처리 건너뜀 (수동 주문 등) — 단, 칼선 DXF가 붙어 있으면
+                // 폴더·파일명 산출까지는 진행해 DXF 복사만 하고 종료한다(아래 소스 게이트).
+                bool itemHasDxf = item.TryGetProperty("dxf_analysis_id", out var dxProbeEl)
+                                  && dxProbeEl.ValueKind != JsonValueKind.Null;
+                bool hasSrcFile = !string.IsNullOrEmpty(aiFilePath) && File.Exists(aiFilePath);
+                if (!hasSrcFile && !itemHasDxf)
                 {
                     Console.WriteLine($"      ⏭️ AI 파일 없음 — 건너뜀");
                     return;
@@ -3035,6 +3048,13 @@ namespace IllustratorAutomation
                         else Console.WriteLine($"      ⚠️ 칼선 DXF 다운로드 실패(분석#{dxfAid}) — 계속 진행");
                     }
                     catch (Exception exDxf) { Console.WriteLine($"      ⚠️ 칼선 DXF 복사 실패(계속 진행): {exDxf.Message}"); }
+                }
+
+                // 칼선 DXF만 있는 라인(EPS/AI 소스 없음): 복사까지가 전부 — 이후 단계는 소스가 필요하다
+                if (!hasSrcFile)
+                {
+                    Console.WriteLine($"      ⏭️ 소스(EPS/AI) 없음 — 칼선 DXF만 복사하고 종료");
+                    return;
                 }
 
                 // ── N4 다중시트 네스팅: SHEET 파라미터가 있으면 SheetLayout.jsx로 시트 렌더(per-item) ──
