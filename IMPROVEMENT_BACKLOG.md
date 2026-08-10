@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-08-10T15:34:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-08-10T21:15:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **10** (`search_issues(is:open,label:auto-improve)` 실측, Area4, 변동 없음. #601~#609 + #611) |
+| 🆕 new | **9** (`search_issues(is:open,label:auto-improve)` 실측, Area5. #601~#603+#605~#609+신규#612, #604·#611은 owner가 completed로 close) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **524** (`reason:completed` 실측, 변동 없음) |
+| ✔️ done | **526** (`reason:completed` 실측, +2: #604·#611) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+
+> **Area 5 보안 + 인프라 (2026-08-10T21:15):**
+> - **방법**: `git fetch origin main`(HEAD `1793f6a`) — 컨테이너 git 이력이 이번 사이클도 재구성됨(Area4가 15:34에 이미 기록한 것과 같은 계열이나 root가 다시 바뀜: 이번 root=`36feabc` 08-10T14:08, 전체 50커밋 모두 오늘). `npm ci`(0→81), `npx tsc --noEmit` clean. Area4가 채택한 대응(재구성 히스토리에서 `src/routes`/`migrations`/`src/scripts`/`index.tsx`/`src/layout` 변경 커밋 전수를 churn으로 간주)을 그대로 적용 — root 이후 11커밋(카드등록 체인 5·print-events LIKE→substr 체인 2·주문서 폼 4) 전부 보안 렌즈(entity 격리·SQL 파라미터화·XSS·auth 게이트)로 diff Read(Area4는 데이터정합 렌즈로 이미 봤으나 보안 렌즈는 미실시).
+> - **카드등록 체인(062714d→65e52e5)**: `entityFilter`/`getEntityId(c)` 일관 적용 확인 — 재활성(UPDATE) 경로도 dup-check SELECT가 이미 entity_id로 스코프된 뒤의 id만 재사용해 IDOR 없음. 바로빌 통신에러 노출(`e93fa62`)은 `barobillCall`의 에러 텍스트가 바로빌 응답(요청 에코 아님)이라 CERTKEY/WebPwd 등 비밀 유출 없음 — 요청자 본인이 이미 아는 카드정보뿐.
+> - **print-events LIKE→substr 체인(d0ab0fc/9e44f4f)**: 전부 `?` 파라미터 바인드, SQL 인젝션 없음. `POST /link`가 `#600`(이전 사이클 발견)에서 지적된 `cardEntityFilter` 누락을 이미 자체 수정 완료(`efCard = cardEntityFilter(c,'c')` 주석에 "#600" 명시) — 재확인만, net-new 아님.
+> - **🟡 net-new #612(M, bug) — `ai_analysis_id`/`dxf_analysis_id` 크로스 법인 IDOR**: `orders/create.ts`·`orders/update.ts`가 라인의 `ai_analysis_id`(기존)·`dxf_analysis_id`(오늘 `ee16ae6` 신설)를 entity 소유권 검증 없이 `order_ai_files.analysis_id`에 그대로 저장. 이 ID는 `GET /api/ai-analysis/:id/download`(`entityFilter(c)`, entityId=0=전체 계정이면 빈 절 — `aiAnalysis.ts:162` 주석에 명시)로 실파일을 내려받는 데 쓰이는데, IllustratorAutomat 에이전트가 여러 법인 주문을 단일 계정으로 순회 처리(`GET /api/orders?status=CONFIRMED` — entity 파라미터 없음)해 그 계정이 entityId=0일 가능성이 높음. 신규 DXF 경로는 사람 확인 없이 에이전트가 자동으로 그 파일을 다운로드해 주문 폴더에 복사(`Program.cs:3028`). 법인 A의 ADMIN/MANAGER가 순차 ID를 추측해 법인 B의 디자인 파일을 자기 주문에 끼워 넣으면 크로스 법인 IP 유출 가능. IDOR + egress로 에이전트 계정 entity_id 실측 불가 → issue-only.
+> - **나머지 4커밋(0798a37 품목검색 제외·1bfaf7f PDF/JPG/PNG 첨부·7f40097 nav-badges·bank.js 잔액표시)**: 7f40097은 전부 `?` 파라미터화 + entity 필터 보존(CTE 재작성이 alias 순서까지 정합), 신규 in-memory TTL 캐시(`navBadgeCache`)는 키가 `entityId:userId` 조합이라 크로스테넌트 누출 없음(기존 rate-limiter Map과 동급 아키텍처, FP). 1bfaf7f는 서버측 업로드가 애초 확장자 화이트리스트를 강제한 적이 없어(파일명만 sanitize) 클라 accept 목록 확대가 공격면을 넓히지 않음(기존 갭 그대로, net-new 아님). bank.js 잔액 기준일은 시스템 타임스탬프(`updated_at`)라 XSS sink 아님.
+> - **필수 grep**: 시크릿 폴백 1건(`fax.ts:43` `c.env.BAROBILL_FTP_PASSWORD || ''`)는 빈 문자열 폴백이라 하드코딩 시크릿 아님(FP). `body.password||'literal'` 0건.
+> - **open≠unfixed 재확인**: #601(`return_items` grep 0, 여전히 미픽스) — 이번 churn과 무관, 캐시 유지.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **9**(#601~#603+#605~#609 + 신규#612, #604·#611은 owner가 오늘 completed로 close) · `reason:completed` **526**(+2: #604·#611) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — #612는 기존 codify된 "#365 범용 서빙 프록시 예외"(클라 제공 키로 raw 리소스 서빙 = 도달성 무관 공격표면) 클래스의 신규 인스턴스라 규칙 자체는 이미 있음, 재발 관찰로 흡수 가능.
+> - 신규 이슈 1건(#612, issue-only), 자동수정 0건, done-sync: new 9(-1, 순증가 아님 — #604·#611 close 2건 반영 후 신규 1건 추가)·done 526(+2)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-08-10T15:34):**
 > - **⚠️ 컨테이너 git 이력 재구성 아티팩트 — 이번엔 종전보다 심함(단순 ancestor 불일치가 아니라 전체 히스토리 대체)**: `git fetch origin main`은 정상(origin/main=HEAD `9e44f4f`, 워킹트리 clean) 이나, 백로그가 참조하는 직전 Area4 HEAD(`c4320c5`)를 포함해 **모든 과거 커밋 SHA가 `Not a valid object`** — `git log`는 총 **50커밋**뿐이고 전부 오늘(08-10 11:23~15:26) 안에 있으며, 그마저 root 커밋(`7546426`, 부모 없음, 전체 트리 스쿼시)이 08-10 11:23 스냅샷. 기존 codify된 "부모 없는 root 스쿼시"(Area3/5 52회차)와 같은 계열이나, 이번엔 **스쿼시 이후 이어진 실제 작업 내용(카드 바로빌 등록/매입 정산/은행 대출)이 백로그가 서술한 직전 사이클들의 작업 내용(주문목록 SSOT·담당자 필드 등)과 전혀 안 겹침** — 파일트리엔 그 SSOT 산출물(`listFilter.ts`·`userPrefs.ts`·`reports.ts`)이 실재해(`ls` 확인) 작업 자체는 유실이 아니지만, **커밋 그래프로 "직전 Area 사이클 이후 churn"을 계산하는 모든 표준 레시피가 이번 사이클엔 무효**. 대응: root 커밋 이후 전 커밋(49개)에서 `src/routes`/`migrations`/`src/scripts` 변경분(**11커밋**)을 churn 전수로 간주해 전부 diff Read.
