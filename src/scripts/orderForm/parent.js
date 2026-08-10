@@ -1207,6 +1207,11 @@
                         if (item.post_processing && item.item_id) {
                             setTimeout(() => restorePostProcessing(id, item.post_processing), 600);
                         }
+
+                        // 마감방식 복원 — 없으면 수정 화면의 fin 셀렉트가 빈 채로 남고, 저장 시
+                        //   calc.js가 빈 finishing을 보내 기존 마감이 조용히 소실된다(update.ts는
+                        //   delete+reinsert). 유통 라인(specification)은 마감 섹션 자체가 숨김이라 제외.
+                        if (!item.specification) await window.restoreFinishingForRow(id, item.finishing);
                     }
 
                     // Pass 2: 자식 행 (묶음)
@@ -1432,6 +1437,9 @@
                     if (item.post_processing && item.item_id) {
                         setTimeout(() => restorePostProcessing(id, item.post_processing), 600);
                     }
+
+                    // 재주문도 마감방식 승계 (수정모드와 동일 — 없으면 섹션이 placeholder로 남는다)
+                    if (!item.specification) await window.restoreFinishingForRow(id, item.finishing);
                 }
 
                 // Pass 2: 자식 행
@@ -1645,6 +1653,8 @@
                             setVal('[name="unit_price_' + id + '"]', it.unit_price);
                             setVal('[name="content_' + id + '"]', it.content);
                             if (typeof window.calcItem === 'function') window.calcItem(id);
+                            // 품목이 채워진 행이니 마감 섹션도 열어준다 (견적 items엔 finishing이 없어 값 복원은 없음)
+                            window.restoreFinishingForRow(id, it.finishing);
                         });
                     }, 200);
 

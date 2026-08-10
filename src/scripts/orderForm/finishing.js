@@ -28,6 +28,13 @@
                 var group = forceGroup || getFinishingGroup(id);
                 var methods = await loadFinishingMethodsForOrder(group);
 
+                // 품목 선택 전엔 placeholder만 — 옵션 없는 빈 셀렉트·cm칸이 입력 가능해 보이는 문제(2026-08-10).
+                // 이 함수는 품목 선택·프리필·수정모드 복원에서만 불리므로 여기가 노출 스위치.
+                var finPh = document.getElementById('finishing_placeholder_' + id);
+                if (finPh) finPh.classList.add('hidden');
+                var finBody = document.getElementById('finishing_body_' + id);
+                if (finBody) finBody.classList.remove('hidden');
+
                 var opts = '<option value="">없음</option>' + methods.map(function(m) {
                     return '<option value="' + escapeHtml(m.name || '') + '">' + escapeHtml(m.name || '') + (m.margin > 0 ? ' (' + m.margin + 'cm)' : '') + '</option>';
                 }).join('');
@@ -50,6 +57,29 @@
                     }
                 } catch(e) {}
             }
+
+            // 저장된 finishing JSON을 행에 복원 — 수정·복사 프리필 공용.
+            //   옵션을 먼저 채우고(loadFinishingForOrder) 값을 적용해야 셀렉트가 잡힌다.
+            //   복원이 없으면 fin 셀렉트가 빈 채로 남아 저장 시 기존 마감이 빈값으로 덮여 소실된다.
+            window.restoreFinishingForRow = async function(id, finishingStr) {
+                await loadFinishingForOrder(id);
+                if (!finishingStr) return;
+                try {
+                    var finSaved = JSON.parse(finishingStr);
+                    var finAny = false;
+                    ['top','bottom','left','right'].forEach(function(dir) {
+                        var finSel = document.querySelector('[name="fin_' + dir + '_' + id + '"]');
+                        if (finSel && finSaved[dir]) { finSel.value = finSaved[dir]; finAny = true; }
+                        var finCm = document.querySelector('[name="fin_cm_' + dir + '_' + id + '"]');
+                        if (finCm && finSaved[dir + '_cm'] != null) finCm.value = finSaved[dir + '_cm'];
+                    });
+                    if (finAny) {
+                        var finSides = document.getElementById('finishing_sides_' + id);
+                        if (finSides) finSides.classList.remove('hidden');
+                        calcFinishing(id);
+                    }
+                } catch(eFin) { console.warn('[orderForm] finishing 복원 실패', eFin); }
+            };
 
             window.applyFinPresetToOrder = function(itemId, configStr, btnEl) {
                 try {

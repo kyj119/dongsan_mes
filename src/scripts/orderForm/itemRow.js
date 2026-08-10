@@ -124,7 +124,9 @@
                         <div id="pp_subtotal_${id}" class="text-right text-sm font-medium text-amber-600 mt-1"></div>
                     </div>
                     <div class="pt-2 border-t border-gray-200" id="finishing_section_${id}">
-                        <label class="block text-xs font-medium text-gray-600 mb-1">마감 방식</label>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">마감 방식 <span class="text-gray-400 font-normal">(품목 선택 시 자동 로드)</span></label>
+                        <div id="finishing_placeholder_${id}" class="text-sm text-gray-400">품목을 선택하면 마감 방식 옵션이 표시됩니다.</div>
+                        <div class="hidden" id="finishing_body_${id}">
                         <div class="flex items-center gap-1 mb-1" id="finishing_presets_${id}"></div>
                         <div class="flex items-center gap-2" id="finishing_simple_${id}">
                             <button type="button" onclick="toggleFinishingDetail(${id})" class="text-[10px] text-gray-400 hover:text-blue-600 whitespace-nowrap">개별 설정 <i class="fas fa-caret-down"></i></button>
@@ -136,6 +138,7 @@
                             <div><label class="text-[10px] text-gray-400">우</label><select name="fin_right_${id}" class="w-full border rounded px-1 py-0.5 text-xs fin-select" onchange="onFinMethodChange(${id},'right')"></select><input name="fin_cm_right_${id}" type="number" step="0.5" min="0" class="w-full border rounded px-1 py-0.5 text-xs mt-0.5" placeholder="cm" onchange="calcFinishing(${id})"></div>
                         </div>
                         <div id="finishing_calc_${id}" class="text-xs text-gray-500 mt-1"></div>
+                        </div>
                     </div>
                 </div>`;
             }
@@ -266,8 +269,10 @@
                     if (!q) return;
                     try {
                         // 기본: 판매품(제품·상품)만. '원자재 포함' 체크 시 순수 원자재까지 검색.
+                        // 겹업물건(dual 플래그)은 MATERIAL이어도 is_sales_item=1이라 type=sales만으론
+                        // 원단 302건이 딸려온다 → exclude_type으로 분류 라벨 축 제외.
                         var incMat = document.getElementById('includeMaterials');
-                        var typeQ = (incMat && incMat.checked) ? '' : '&type=sales';
+                        var typeQ = (incMat && incMat.checked) ? '' : '&type=sales&exclude_type=MATERIAL';
                         // C2: 사용자별 사용품목 분리 (허용 그룹만; 규칙 없으면 전체)
                         var res = await axios.get('/api/items?search=' + encodeURIComponent(q) + typeQ + '&for_user=1&limit=50');
                         var items = res.data.data || [];
@@ -283,7 +288,7 @@
                                 item_type: it.item_type || ''
                             });
                         } else if (items.length > 1 && openModal) {
-                            window.openItemSearchModal({ type: (incMat && incMat.checked) ? '' : 'sales', search: q, forUser: true, onSelect: applyItemSelection });
+                            window.openItemSearchModal({ type: (incMat && incMat.checked) ? '' : 'sales', excludeType: (incMat && incMat.checked) ? '' : 'MATERIAL', search: q, forUser: true, onSelect: applyItemSelection });
                         }
                     } catch(e) { console.error('Search error', e); }
                 }

@@ -140,6 +140,14 @@ itemsRouter.get('/', async (c) => {
       params.push(item_type)
     }
 
+    // exclude_type: 겹업물건은 dual 플래그가 정본(B-1)이라 MATERIAL 302건이 is_sales_item=1 로
+    // type=sales 를 통과한다 — 주문서 '원자재 포함' 미체크 검색은 분류 라벨 축으로 제외한다.
+    const exclude_type = c.req.query('exclude_type') || ''
+    if (['PRODUCT', 'GOODS', 'MATERIAL'].includes(exclude_type)) {
+      query += " AND COALESCE(i.item_type,'') != ?"
+      params.push(exclude_type)
+    }
+
     if (type === 'sales') {
       query += ' AND i.is_sales_item = 1'
     } else if (type === 'purchase') {
@@ -193,6 +201,11 @@ itemsRouter.get('/', async (c) => {
     if (item_type && ['PRODUCT', 'GOODS', 'MATERIAL'].includes(item_type)) {
       countQuery += ' AND i.item_type = ?'
       countParams.push(item_type)
+    }
+
+    if (['PRODUCT', 'GOODS', 'MATERIAL'].includes(exclude_type)) {
+      countQuery += " AND COALESCE(i.item_type,'') != ?"
+      countParams.push(exclude_type)
     }
 
     if (type === 'sales') {
