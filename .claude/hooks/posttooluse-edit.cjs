@@ -26,6 +26,15 @@ if (/IllustratorAutomat\/.*\.(jsx|js|html|css|xml)$/i.test(file)) {
     + '        축1(에이전트 JSX)=실행 중 exe 폴더 · 축2(디자이너 JSX)/축3(CEP 패널)=Z:\\DESIGNS\\IA-등록\\_scripts.');
 }
 
+// 문서 다이어트 게이트 — 현황판/메모리 인덱스 비대화 즉시 경고 (2026-08-10, 90K자 사고 재발 방지)
+if (/(PROJECT_STATUS|memory\/MEMORY)\.md$/.test(file)) {
+  try {
+    execSync('node scripts/doc-diet-audit.cjs', { cwd: ROOT, stdio: 'pipe' });
+  } catch (e) {
+    msgs.push('[HOOK] 문서 비대화 감지 — 완료(✅) 상세는 ARCHIVE 로:\n' + ((e.stderr || e.stdout || '').toString().slice(0, 800)));
+  }
+}
+
 // JS 문법 게이트 (src/scripts/*.js) — silent-fail 방지, 실패 시 차단
 if (/src\/scripts\/.*\.js$/.test(file)) {
   try {
