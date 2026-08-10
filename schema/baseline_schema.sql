@@ -728,7 +728,7 @@ CREATE TABLE orders (
   billed_at DATETIME DEFAULT NULL,
   billed_by INTEGER DEFAULT NULL,
   billed_amount INTEGER DEFAULT NULL,
-  valid_until TEXT, external_order_number TEXT, entity_id INTEGER DEFAULT 1, sheet_layout_params TEXT, output_folder TEXT, billable_after TEXT, order_type TEXT NOT NULL DEFAULT 'PRODUCTION', auto_complete_date TEXT, cancel_reason TEXT, quotation_id INTEGER DEFAULT NULL REFERENCES quotations(id) ON DELETE SET NULL, credit_status TEXT, has_pending_prices INTEGER NOT NULL DEFAULT 0, accounting_date DATE, shipped_at DATETIME, consolidate_with_order_id INTEGER,
+  valid_until TEXT, external_order_number TEXT, entity_id INTEGER DEFAULT 1, sheet_layout_params TEXT, output_folder TEXT, billable_after TEXT, order_type TEXT NOT NULL DEFAULT 'PRODUCTION', auto_complete_date TEXT, cancel_reason TEXT, quotation_id INTEGER DEFAULT NULL REFERENCES quotations(id) ON DELETE SET NULL, credit_status TEXT, has_pending_prices INTEGER NOT NULL DEFAULT 0, accounting_date DATE, shipped_at DATETIME, consolidate_with_order_id INTEGER, receipt_type TEXT,
   FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE RESTRICT,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
   FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT,
@@ -3374,6 +3374,7 @@ CREATE INDEX idx_shipment_checks_shipment ON shipment_checks(shipment_id);
 CREATE INDEX idx_inventory_transactions_entity_item ON inventory_transactions(entity_id, item_id);
 CREATE INDEX idx_print_events_started ON print_events(print_started_at);
 CREATE INDEX idx_orders_consolidate_with ON orders(consolidate_with_order_id);
+CREATE INDEX idx_orders_receipt_type ON orders(receipt_type);
 CREATE INDEX idx_storage_zones_active ON storage_zones(is_active);
 CREATE INDEX idx_storage_zones_manager ON storage_zones(manager_id);
 CREATE UNIQUE INDEX idx_sz_entity_name ON storage_zones(entity_id, zone_name);
