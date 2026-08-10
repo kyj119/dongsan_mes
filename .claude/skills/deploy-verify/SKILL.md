@@ -22,6 +22,18 @@ npm run build       # 빌드
 2. `bank_transactions`, `card_transactions`, `corporate_cards`, `bank_accounts`, `bank_match_rules`, `card_fee_rates`, `expense_auto_rules` 테이블 참조 시 entityFilter 호출 여부 검사
 3. 누락 건이 있으면 배포 전에 수정
 
+### Phase 2-B: 마이그레이션 드리프트 감사 (스키마를 건드린 배포면 필수)
+```bash
+npm run audit:migration-drift    # 드리프트 시 exit 1
+```
+새 코드가 참조하는 컬럼·테이블이 **prod 에 실제로 있는지**를 본다. `d1_migrations` 추적이 0313 에서
+끊겨 있어 목록으로는 적용 여부를 알 수 없으므로, 마이그레이션이 만들 객체를 시뮬레이션해 실제
+스키마와 대조한다. 타입체크·빌드·스모크는 SQL 스키마를 모르므로 셋 다 통과시킨다 — 이 축은 여기서만 잡힌다.
+
+> 2026-08-10: 0528 미적용 상태로 `bank_accounts.is_overdraft` 참조 코드가 나가 `/api/bank/accounts` 가
+> 500. 이 감사를 먼저 돌렸으면 배포 전에 걸렸다. 드리프트가 뜨면 **배포를 멈추고** 해당 마이그레이션을
+> 먼저 적용한다(추적이 끊겨 있으니 `migrations apply` 가 아니라 `execute --file`).
+
 ### Phase 3: 프로덕션 배포
 ```bash
 npm run deploy:prod
