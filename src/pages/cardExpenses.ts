@@ -263,7 +263,7 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
                 <option value="현대">현대</option><option value="KB국민">KB국민</option>
                 <option value="롯데">롯데</option><option value="하나">하나</option>
                 <option value="우리">우리</option><option value="NH농협">NH농협</option>
-                <option value="BC">BC</option><option value="기타">기타</option>
+                <option value="BC">BC</option><option value="전북">전북</option><option value="기타">기타</option>
               </select>
             </div>
             <div class="grid grid-cols-2 gap-3">

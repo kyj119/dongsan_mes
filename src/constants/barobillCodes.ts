@@ -53,6 +53,7 @@ export const BAROBILL_CARD_COMPANY_CODES: Record<string, string> = {
   '우리': 'WOORI',
   'NH농협': 'NH',
   'BC': 'BC',
+  '전북': 'JBBANK',
 }
 
 /** 카드사 한글명 → 바로빌 코드. 미지원 시 null. */
