@@ -161,15 +161,22 @@ cardExpRouter.post('/cards', requireRole('ADMIN'), async (c) => {
       const config = await getBarobillConfig(c)
       const cyc: string = collect_cycle || BAROBILL_COLLECT_CYCLE.DEFAULT
       cycle = cyc
-      const code = await registCard(config, {
-        collectCycle: cyc,
-        cardCompany: bbCardCompany,
-        cardType: card_type || BAROBILL_CARD_TYPE.CORPORATE,
-        cardNum: String(card_number).replace(/[^0-9]/g, ''),
-        webId: web_id,
-        webPwd: web_pwd,
-        alias: card_name,
-      })
+      // 통신·SOAP 예외를 '서버 오류'로 뭉개지 않는다 — 재시도 판단에 실제 원인이 필요하다 (2026-08-10 전북카드 등록 실패)
+      let code = 0
+      try {
+        code = await registCard(config, {
+          collectCycle: cyc,
+          cardCompany: bbCardCompany,
+          cardType: card_type || BAROBILL_CARD_TYPE.CORPORATE,
+          cardNum: String(card_number).replace(/[^0-9]/g, ''),
+          webId: web_id,
+          webPwd: web_pwd,
+          alias: card_name,
+        })
+      } catch (e: any) {
+        console.error('Card regist call error:', e?.message || 'unknown')
+        return c.json({ success: false, error: '바로빌 통신 오류(카드 수집등록): ' + (e?.message || '알 수 없는 오류') + ' — 카드는 등록되지 않았습니다. 잠시 후 재시도해주세요.' }, 502)
+      }
       if (code <= 0) {
         return c.json({ success: false, error: '바로빌 카드 수집등록 실패: ' + barobillErrorMessage(code) }, 400)
       }
