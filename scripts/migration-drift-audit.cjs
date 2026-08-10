@@ -18,8 +18,10 @@
  *   (SQLite 실제 동작과 같게). ⚠️ 반대로 **테이블 재빌드가 인덱스를 다시 안 만들면 잡힌다** —
  *   0448 이 storage_zones 를 재빌드하며 0391 의 인덱스를 빠뜨린 게 이 방식으로 발견됐다.
  *
- * 창(window): 기본은 `d1_migrations` 마지막 추적분 **다음 번호부터**. 추적이 정상화되면 창이
- *   저절로 좁아진다(날짜·번호를 상수로 박지 않는다). 전수 점검은 `--from=1`.
+ * 창(window): **기본은 전수(0001~)**. 한때 "추적 밖만 보면 된다"고 좁혔다가 `orders.receipt_type` 을
+ *   놓칠 뻔했다 — 0189 는 `d1_migrations` 에 **적용됨으로 기록돼 있는데** 0262 의 orders 재빌드가 그 컬럼을
+ *   빠뜨려 실제로는 없다. 즉 **추적은 신뢰할 수 없고**, 추적 여부와 무관하게 결과물을 봐야 한다.
+ *   비용도 같다(원격 질의 1회 · 파싱만 늘어남). 좁히려면 `--from=NNNN`.
  *
  * 한계: 정규식 파싱이라 문자열 리터럴 안의 `--` 나 DDL 처럼 보이는 텍스트는 구분 못 한다.
  *   `UPDATE`/`INSERT` 같은 데이터 변경은 애초에 대상이 아니다(스키마 객체만 본다).
@@ -232,14 +234,10 @@ function sqlBody(sql) {
 function main() {
   const all = fs.readdirSync(MIG_DIR).filter((f) => /^\d{4}.*\.sql$/i.test(f)).sort()
 
-  let from = FROM_OPT ? parseInt(FROM_OPT, 10) : null
-  let tracked = null
-  if (from === null) {
-    const t = d1('SELECT COUNT(*) AS n, MAX(name) AS last FROM d1_migrations', { optional: true })
-    tracked = t && t[0] ? t[0] : null
-    const lastNum = tracked && tracked.last ? parseInt(String(tracked.last).slice(0, 4), 10) : 0
-    from = (Number.isFinite(lastNum) ? lastNum : 0) + 1
-  }
+  // 기본 전수. 추적은 판정에 쓰지 않고 정보로만 보여준다(추적 자체가 틀릴 수 있다 — 헤더 참고)
+  const from = FROM_OPT ? parseInt(FROM_OPT, 10) : 1
+  const t = d1('SELECT COUNT(*) AS n, MAX(name) AS last FROM d1_migrations', { optional: true })
+  const tracked = t && t[0] ? t[0] : null
 
   const files = all.filter((f) => parseInt(f.slice(0, 4), 10) >= from)
   simulate(files)
@@ -277,12 +275,8 @@ function main() {
   }
 
   console.log(`대상: ${dbName()} (${LOCAL ? 'local' : 'remote'})`)
-  if (tracked) {
-    console.log(`d1_migrations 추적: ${tracked.n}건 · 마지막 ${tracked.last}`)
-    if (from <= all.length) console.log(`  → 추적 밖 ${files.length}개 파일(${String(from).padStart(4, '0')}~)을 결과물로 대조한다`)
-  } else {
-    console.log(`창: ${String(from).padStart(4, '0')}~ (파일 ${files.length}개)`)
-  }
+  if (tracked) console.log(`d1_migrations 추적: ${tracked.n}건 · 마지막 ${tracked.last} (판정에는 쓰지 않음 — 추적도 틀릴 수 있다)`)
+  console.log(`창: ${String(from).padStart(4, '0')}~ · 파일 ${files.length}개`)
   console.log(`객체 ${checked}개 대조 (테이블 ${reqTables.size} · 컬럼 ${[...reqCols.values()].reduce((a, m) => a + m.size, 0)} · 인덱스 ${reqIndexes.size} · 뷰 ${reqViews.size} · 트리거 ${reqTriggers.size})`)
   console.log('')
 
