@@ -166,6 +166,7 @@ npx wrangler d1 execute webapp-production --remote --command "SELECT COUNT(*) FR
 - **★카드 재등록 차단 버그 수정**: DELETE 는 soft-delete(is_active=0)인데 POST /cards 중복 체크(#190)가 **비활성 카드까지 포함**해 삭제 후 재등록이 409 로 막혔다(용준님이 전북카드 바로빌 연동 재등록 시도 중 발견) → `AND is_active = 1`. 계좌 쪽(POST /accounts)은 중복 체크 자체가 없어 무관.
 - **직원용 대출 잔액 갱신 경로**: 대출 탭 행에 🪙 「잔액 갱신」 버튼(prompt→PUT current_balance) + 잔액 밑에 **「기준 날짜」**(updated_at)를 /bank·대출 탭 양쪽에 표시 — 클로드 없이 경리가 세무장부/은행 조회값으로 직접 갱신 가능. ⚠️PUT /loans = ADMIN 권한.
 - 검증 = verify·check:dom·audit:entity·로컬/prod smoke 110/110·마커 3종(quickLoanBalance·기준일 /cash-schedule·/bank) 별칭 실측 OK.
+- **7차(배포 `e57faf28`)**: 용준님 재시도에서 「1차 서버오류 → 2차 이미 등록」 — DB 실측 = **아무것도 안 들어감**(전북 신규 행 0·13~15 비활성 그대로). 1차=바로빌 SOAP 통신 예외가 '서버 오류'로 뭉개진 것, 2차 409=배포 전환 창(구코드 엣지). → **registCard 예외를 502+실제 메시지로 노출**(카드 미등록 명시). 재시도 시 진짜 원인이 보인다.
 
 ## 이번 세션 결정 + 이유
 - **/bank 자금현황 개편** (commit `c001936d`, **미배포**): 총 계좌잔액에 마이너스통장 −4.96억이 섞여 예금 실측이 왜곡 → `bank_accounts.is_overdraft`(마이그 0528)로 분리. KPI 4분할(예금·마통·대출·순자금) + 대출 현황 표(fund-summary 가 loans 목록 반환). **순자금 정의는 안 바꿈** — 마통은 잔액 음수로 이미 반영이라 전체합−대출 그대로.
