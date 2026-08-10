@@ -1217,7 +1217,10 @@
       html += '<td class="px-3 py-2 font-medium text-gray-800">' + escHtml(l.creditor || '') + '</td>';
       html += '<td class="px-3 py-2 text-xs text-gray-500" title="' + escHtml(l.loan_number || '') + '">' + escHtml(l.loan_number || '-') + '</td>';
       html += '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + fmtWon(l.original_amount) + '</td>';
-      html += '<td class="px-3 py-2 text-right font-semibold tabular-nums text-gray-800">' + fmtWon(l.current_balance) + '</td>';
+      // 잔액 기준일 — 회전형(구매자금대출 등)은 세무장부 잔액을 수동 갱신하므로 언제 값인지가 중요하다
+      var basis = l.updated_at ? String(l.updated_at).slice(0, 10) : '';
+      html += '<td class="px-3 py-2 text-right font-semibold tabular-nums text-gray-800">' + fmtWon(l.current_balance)
+        + (basis ? '<div class="text-[10px] font-normal text-gray-400">기준 ' + basis + '</div>' : '') + '</td>';
       html += '<td class="px-3 py-2 text-right tabular-nums text-gray-600">' + pay + '</td>';
       html += '<td class="px-3 py-2 text-center text-xs">' + rate + '</td>';
       html += '<td class="px-3 py-2 text-center text-xs text-gray-600">' + maturity + '</td>';

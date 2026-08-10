@@ -96,7 +96,8 @@ bankRouter.get('/fund-summary', requireRole('ADMIN'), async (c) => {
     const loanEf = entityFilter(c, 'loans')
     const { results: loans } = await c.env.DB.prepare(
       `SELECT id, creditor, loan_number, original_amount, current_balance, current_rate, rate_type,
-              repayment_type, monthly_payment_day, monthly_payment_amount, maturity_date, maturity_confirmed
+              repayment_type, monthly_payment_day, monthly_payment_amount, maturity_date, maturity_confirmed,
+              updated_at
        FROM loans WHERE is_active = 1${loanEf.clause}
        ORDER BY current_balance DESC, id DESC`
     ).bind(...loanEf.params).all<{ current_balance: number }>()

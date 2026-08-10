@@ -200,6 +200,7 @@
           + '<td class="px-3 py-2 text-gray-500" title="' + esc(l.loan_number || '') + '">' + esc(l.loan_number || '-') + '</td>'
           + '<td class="px-3 py-2 text-right">' + fmt(l.original_amount) + '</td>'
           + '<td class="px-3 py-2 text-right font-medium">' + fmt(l.current_balance)
+          + (l.updated_at ? '<div class="text-[10px] font-normal text-gray-400">기준 ' + String(l.updated_at).slice(0, 10) + '</div>' : '')
           + '<div class="w-full h-1.5 bg-gray-200 rounded-full mt-1"><div class="h-full bg-purple-500 rounded-full" style="width:' + progress + '%"></div></div></td>'
           + '<td class="px-3 py-2 text-center">' + l.current_rate + '%' + (l.rate_type === 'VARIABLE' ? ' <span class="text-xs text-orange-500">변동</span>' : '') + '</td>'
           + '<td class="px-3 py-2 text-center text-xs">' + (REPAY_MAP[l.repayment_type] || l.repayment_type) + '</td>'
@@ -207,13 +208,32 @@
           + (l.maturity_confirmed === 0 ? ' <span class="text-xs text-orange-600 font-medium" title="여신거래약정서로 만기를 확인하기 전까지는 원금 상환 회차를 만들지 않습니다. 표시된 날짜는 임시값입니다.">만기 미확인</span>' : '')
           + '</td>'
           + '<td class="px-3 py-2 text-center">'
-          + '<button onclick="event.stopPropagation();editLoan(' + l.id + ')" class="text-blue-500 hover:text-blue-700 mr-1"><i class="fas fa-edit"></i></button>'
+          + '<button onclick="event.stopPropagation();editLoan(' + l.id + ')" class="text-blue-500 hover:text-blue-700 mr-1" title="대출 정보 수정"><i class="fas fa-edit"></i></button>'
+          + '<button onclick="event.stopPropagation();quickLoanBalance(' + l.id + ',' + l.current_balance + ',\'' + esc(l.creditor).replace(/'/g, '&#39;') + '\')" class="text-purple-500 hover:text-purple-700 mr-1" title="잔액만 빠르게 갱신 (세무장부·은행 조회값 입력)"><i class="fas fa-coins"></i></button>'
           + (l.overdue_payments > 0 ? '<span class="text-xs text-red-600 font-bold">연체 ' + l.overdue_payments + '</span>' : '')
           + '</td></tr>';
       }).join('');
     } catch (err) { console.error('Loans load failed:', err); }
   }
   window.loadLoans = loadLoans;
+
+  // 잔액만 빠르게 갱신 — 회전형(구매자금대출)처럼 상환 스케줄 없이 잔액이 변하는 대출을
+  // 경리가 세무장부(293)·은행 조회값으로 직접 맞추는 경로. 수정 모달을 열 필요가 없다.
+  window.quickLoanBalance = async function (id, curBal, creditor) {
+    var input = window.prompt(
+      '[' + creditor + '] 새 잔액을 입력하세요.\n(세무장부 차입금 원장 또는 은행 대출조회의 현재 잔액)\n현재 등록값: ' + fmt(curBal) + '원',
+      String(curBal)
+    );
+    if (input === null) return;
+    var n = parseInt(String(input).replace(/[^0-9]/g, ''), 10);
+    if (!isFinite(n) || n < 0) { showToast('숫자를 입력해주세요.', 'warning'); return; }
+    if (n === curBal) { showToast('잔액이 동일합니다.', 'info'); return; }
+    try {
+      await axios.put('/api/cash-flow/loans/' + id, { current_balance: n });
+      showToast('잔액 갱신: ' + fmt(curBal) + ' → ' + fmt(n), 'success');
+      loadLoans();
+    } catch (err) { showToast('갱신 실패: ' + (err.response?.data?.error || err.message), 'error'); }
+  };
 
   window.selectLoan = async function (id) {
     selectedLoanId = id;

@@ -134,10 +134,10 @@ cardExpRouter.post('/cards', requireRole('ADMIN'), async (c) => {
     let last4 = card_number_last4
     if (barobill_sync && card_number) last4 = String(card_number).replace(/[^0-9]/g, '').slice(-4)
 
-    // 카드번호 중복 체크 (#190)
+    // 카드번호 중복 체크 (#190) — 활성 카드만. 삭제(is_active=0)된 카드가 재등록을 막으면 안 된다.
     if (last4) {
       const existing = await c.env.DB.prepare(
-        'SELECT id FROM corporate_cards WHERE card_number_last4 = ? AND entity_id = ?'
+        'SELECT id FROM corporate_cards WHERE card_number_last4 = ? AND entity_id = ? AND is_active = 1'
       ).bind(last4, entityId).first()
       if (existing) {
         return c.json({ success: false, error: '동일한 카드번호(끝 4자리)가 이미 등록되어 있습니다' }, 409)
