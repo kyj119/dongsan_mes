@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-08-10T03:16:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-08-10T09:40:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,22 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **9** (`search_issues(is:open,label:auto-improve)` 실측, Area2 61회차. 기존 8건(#601~#608) + 신규 #609[unitConvert.ts toBase/formatStock 0호출·write-path 3곳 인라인 재구현, #462 재발위험]) |
+| 🆕 new | **10** (`search_issues(is:open,label:auto-improve)` 실측, Area3 53회차. 기존 9건(#601~#609) + 신규 #611[카드상세 다품목표 overflow-x-auto 래퍼 없음, 모바일 잘림]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **524** (`reason:completed` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+
+> **Area 3 UX/기능 감사 (2026-08-10T09:40):**
+> - **방법**: `git fetch origin main`(HEAD `b88f1a7` = origin/main 일치, 워킹트리 clean, detached, force-update로 재기록) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 3 **53회차** — 직전 Area3(`3de87f3`, 08-08T21:20, 52회차) 이후 `src/scripts`/`src/pages`/`src/layout`/`index.tsx`/`src/routes` 변경 = **14커밋**, 그중 가장 신선하고 Area3 렌즈로 아직 아무도 안 본 것은 `b88f1a7`(카드 작업지시서 12건 근본수정, +439/-331줄, 방금 08-10T09:15 착륙) — line 307 원칙(목록 나열≠개별 검토) 적용해 이 커밋에 집중.
+> - **`b88f1a7` 전수 diff Read**: 셀프 검증(tsc/build/smoke 110/110/sort-audit/entity-audit/check:dom + 결함별 E2E 재현)까지 마치고 착륙한 대형 UX 수정 — `card.items||card._items` 산재 가드를 `window.cardItems()` 단일 접근자로 통합, 진행중 카드 편집 시 삭제·재생성으로 체크리스트 이력·상태·QR URL이 소실되던 버그를 "사람이 손댔는가" 판정으로 교체, 출력대기 카드에 액션 버튼이 하나도 없던 데드엔드 수정, 다품목(규격상이) 카드를 첫 품목 기준 요약 대신 품목별 표로 전환(오작업 방지) 등. innerHTML 신규 sink 전수(`esc()`/`isEsc()` 일관 적용) 확인 — XSS net-new 0. `orders/update.ts` 카드보존 판정 로직도 재확인 — 정상.
+> - **🟡 net-new #611(S, bug) — 신규 다품목 표에 overflow-x-auto 래퍼 누락**: `cardDetail.js:203`가 이 커밋에서 갓 추가한 8열 `.cd-multi` 표(품목/규격/수량/원단/봉제방법/하도매/부직포/수술)를 `#cdRoot`(`max-w-3xl`)에 스크롤 래퍼 없이 직접 삽입 — 이 코드베이스는 테이블을 `overflow-x-auto` div로 감싸는 컨벤션이 42개 페이지에 정착돼 있는데(`cashSchedule.ts`·`production.ts`·`users.ts` 등) 이번 신규 표만 누락. `body`/`.main-content` 레벨 전역 overflow 방지도 없어(사이드바 전용뿐) 좁은 화면(현장 QR 스캔 시나리오)에서 표가 잘리거나 페이지가 가로로 밀림 — 정작 이 표는 "규격 섞인 카드를 잘못 재단하는 사고"를 막으려 도입된 것이라 모바일에서 못 읽으면 같은 실패모드가 재발할 위험. 순수 CSS 래핑(1줄)이라 저위험이나 Area3 정책상(UI 변경) issue-only.
+> - **open≠unfixed 재확인**: #602(issue-status API 실패 시 catch가 `console.warn`만 하고 UI 에러표시 없음 — `issueStatus.js:87` 그대로, 여전히 미픽스) · #603(needs_reissue 자기-클리어 없음 — `grep needs_reissue src/routes`에 출고완료 시 clear 로직 부재 확인, 여전히 미픽스) 직접 재확인. `b88f1a7`이 `cards/issueStatus.js`를 건드려(누락 행 링크 추가) 혹시 #602/#603을 부수적으로 고쳤는지 의심했으나 둘 다 미해당(링크 추가만, catch/자기클리어 로직 무변경).
+> - **`d4e3865`(생산실적 탭)·`8e50541`(출고이력 탭) UX 체크리스트**: 둘 다 빈 상태 문구("해당 조건의 출력 실적이 없습니다"/"해당 기간의 출고 이력이 없습니다")·로딩 스켈레톤(`window.dsSkeleton.loadingRow`) 보유 확인 — clean. `15d7bb6`(원장 서버검색)·`2536d33`(CSV/컬럼폭)는 커밋 자체가 "measurement-first post-implementation audit"를 자칭하며 스스로 결함을 찾아 고친 이력이 있어(latent cap 검색 버그·CSV 5,778행 무경고 절단 등) 이미 높은 자기검증 수준 — 이번 사이클은 시간 배분상 얕은 확인만(빈 상태/로딩 존재 확인) 하고 심층 재감사는 생략.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **10**(#601~#609 + 신규 #611) · `reason:completed` **524**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — #611은 기존 codify된 "로딩표시 커버리지" 계열(Area3 line 근처, "패턴 확립 vs 부분적용")과 유사한 신규 클래스("테이블 overflow-x-auto 컨벤션 확립 vs 신규 기능 부분누락")이나 1회 관찰이라 즉시 codify 보류.
+> - 신규 이슈 1건(#611, issue-only), 자동수정 0건, done-sync: new 10(+1)·done 524(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-08-10T03:16):**
 > - **방법**: `git fetch origin main`(HEAD `8947255` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 2 **61회차** — 직전 Area2(08-08T15:16, 60회차) 이후 `src/routes`/`src/scripts`/`index.tsx`/`src/layout`/`src/pages`/migrations 변경 = **3커밋**(`5eb43d1`·`72112df`·`66e16d8`, 전부 `bank.ts`/`hr.ts` 테이블 컬럼폭 CSS 조정) — 셋 다 diff 직접 확인, `style="width:Npx"` 수치 조정 + 설명주석뿐(SQL·entity_id·auth 무관) = 코드품질 렌즈 신선 churn 사실상 0.
