@@ -15,8 +15,8 @@ const TARGETS = [
   {
     file: path.join(ROOT, '.claude', 'PROJECT_STATUS.md'),
     label: '.claude/PROJECT_STATUS.md',
-    maxTotal: 40000,
-    maxLine: 6000,
+    maxTotal: 25000,
+    maxLine: 3000,
     // 완료 항목(줄 머리 ✅)은 요약 1줄만 — 장문 경위는 ARCHIVE 로
     doneLine: { re: /^[\s>*-]{0,8}\*{0,2}✅/, max: 800, hint: '완료(✅) 항목 장문 — 상세는 PROJECT_STATUS_ARCHIVE.md 로 옮기고 「1줄 요약+남은 것」만 남길 것' },
     hint: '완료 항목을 .claude/PROJECT_STATUS_ARCHIVE.md 로 이관할 것 (2026-08-10 다이어트 규칙)',
