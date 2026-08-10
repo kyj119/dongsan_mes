@@ -381,3 +381,12 @@ var _quotTb = window.dsListToolbar && window.dsListToolbar.mount({
 });
 if (_quotTb && _quotTb.then) _quotTb.then(function() { if (!quotPresetApplied) loadQuotations(1); });
 else loadQuotations(1);
+
+// ?view=<id> → 견적 상세 모달 직행 (주문 목록과 같은 규약). 전역검색 결과가 목록이 아니라
+//   해당 견적에 도달하게 하는 진입점 — 없으면 검색해 놓고 다시 표에서 찾아야 한다.
+(function() {
+  var qv = new URLSearchParams(window.location.search).get('view');
+  if (qv && !isNaN(parseInt(qv))) {
+    setTimeout(function() { if (window.viewQuotation) window.viewQuotation(parseInt(qv)); }, 0);
+  }
+})();

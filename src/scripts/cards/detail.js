@@ -247,7 +247,10 @@ function showCardModal(card, history, defects, siblingCards) {
         actionBtns += '<button class="action-btn flex-1" style="background:#f0fdfa;color:#0f766e;border:1px solid #99f6e4;border-radius:8px" onclick="closeCardModal();sendCardProofMms(' + card.id + ')"><i class="fas fa-image"></i> 시안 발송</button>';
     }
     actionBtns += '<button class="action-btn flex-1" style="background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:8px" onclick="printWorkOrder(' + card.order_id + ')"><i class="fas fa-print"></i> 작업지시서</button>';
-    if (card.category_name === 'TRANSFER_FLAG' || card.category_name === '전사') {
+    // ⚠️ 저장되는 값은 **'전사/태극기'** 다(helpers.ts 의 category). 'TRANSFER_FLAG'·'전사' 와 완전일치로
+    //    비교하던 탓에 **봉제작지 버튼이 영구 미노출**이었다 — 정작 그 양식이 필요한 라인에서만 안 떴다.
+    var cdCatName = String(card.category_name || '');
+    if (cdCatName.indexOf('전사') >= 0 || cdCatName.indexOf('태극기') >= 0 || cdCatName === 'TRANSFER_FLAG') {
         actionBtns += '<button class="action-btn flex-1" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:8px" onclick="printSewingWorkOrder(' + card.id + ')"><i class="fas fa-cut"></i> 봉제작지</button>';
     }
 
@@ -367,6 +370,10 @@ async function printWorkOrder(orderId) {
         //   단건 카드 API 가 ai_analysis 그룹을 라인별로 해석하고 R2 마커도 data URI 로 복원해 주므로
         //   그걸 정본으로 쓴다(인쇄는 동기 렌더라 미리 주입해야 한다).
         var thumbByItemId = {};
+        // 라인(생산 그룹) 귀속 — **카드에서 역으로** 읽는다. 카드 그룹 판정은 서버(getCardGroup)가 정본이고
+        //   품목 카테고리·기성품 여부·item_type 이 다 필요해서 프론트에서 재구현하면 반드시 갈린다.
+        //   카드에 안 담긴 라인 = 제작 대상이 아닌 것(상품·부자재) → 「출고만」 섹션으로 간다.
+        var lineByItemId = {};
         try {
             var cardsRes = await axios.get('/api/cards?order_id=' + orderId + '&limit=50');
             if (cardsRes.data.success) {
@@ -383,6 +390,7 @@ async function printWorkOrder(orderId) {
                     cdItems.forEach(function(ci) {
                         var uri = ci.thumbnail_url || fallback;
                         if (uri && ci.id) thumbByItemId[ci.id] = uri;
+                        if (ci.id) lineByItemId[ci.id] = cd.category_name || '제작';
                     });
                 });
             }
@@ -450,7 +458,10 @@ async function printWorkOrder(orderId) {
             + '.item-spec { font-size: 12px; color: #6b7280; margin-top: 2px; }'
             + '.item-detail { display: flex; gap: 16px; align-items: flex-start; margin-top: 8px; }'
             + '.pp-badge { display: inline-block; padding: 1px 8px; font-size: 11px; border-radius: 12px; background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; margin-right: 4px; }'
-            + '.fin-badge { display: inline-block; padding: 1px 8px; font-size: 11px; border-radius: 12px; background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }'
+            + '.fin-badge { display: inline-block; padding: 1px 8px; font-size: 11px; border-radius: 12px; background: #fef3c7; color: #92400e; border: 1px solid #fde68a; margin-right: 4px; }'
+            + '.line-section { margin: 14px 0 4px; font-size: 13px; font-weight: 800; color: #111; border-bottom: 2px solid #111; padding-bottom: 3px; page-break-after: avoid; break-after: avoid; }'
+            + '.line-section .line-count { float: right; font-size: 11px; font-weight: 600; color: #6b7280; }'
+            + '.line-section-ship { border-bottom-color: #9ca3af; color: #4b5563; }'
             + '@media print { body { padding: 10px; } @page { size: A5; margin: 8mm; } .item-card { break-inside: avoid; } }'
             + '</style></head><body>';
 
@@ -472,7 +483,29 @@ async function printWorkOrder(orderId) {
         }
 
         // 품목별 카드 형태로 표시 (Q8: 시각적 작업지시서)
-        items.forEach(function(item, idx) {
+        // ── 라인(생산 그룹)별 섹션 ─────────────────────────────────────────────
+        // 혼재 주문(출력+전사+간판+상품)이 한 덩어리로 찍혀 어느 공정 것인지 종이에서 구분이 안 됐다.
+        //   섹션으로 나누고, 섹션마다 그 라인에서만 의미 있는 지시를 보여 준다
+        //   (봉제방법·하도매·부직포·수술은 전사·태극기 전용 — 출력엔 마감·후가공).
+        var SHIP_ONLY = '상품(제작없음 · 출고만)';
+        var sections = [];
+        var sectionIndex = {};
+        items.forEach(function(item) {
+            var line = lineByItemId[item.id] || SHIP_ONLY;
+            if (sectionIndex[line] === undefined) { sectionIndex[line] = sections.length; sections.push({ line: line, rows: [] }); }
+            sections[sectionIndex[line]].rows.push(item);
+        });
+        // 출고만 섹션은 항상 마지막(제작 지시가 아니라 동봉 안내다)
+        sections.sort(function(a, b) { return (a.line === SHIP_ONLY ? 1 : 0) - (b.line === SHIP_ONLY ? 1 : 0); });
+
+        var itemNo = 0;
+        sections.forEach(function(sec) {
+          var isSew = sec.line.indexOf('전사') >= 0 || sec.line.indexOf('태극기') >= 0;
+          var isShipOnly = sec.line === SHIP_ONLY;
+          html += '<div class="line-section' + (isShipOnly ? ' line-section-ship' : '') + '">■ ' + esc(sec.line)
+               + '<span class="line-count">' + sec.rows.length + '건</span></div>';
+          sec.rows.forEach(function(item) {
+            var idx = itemNo++;
             var spec = '';
             if (item.width && item.height) spec = Math.round(item.width) + 'x' + Math.round(item.height) + 'cm';
             var thumb = thumbByItemId[item.id] || '';
@@ -493,30 +526,42 @@ async function printWorkOrder(orderId) {
             html += '</div>';
             html += '</div>';
 
-            // 후가공 + 마감 다이어그램
-            html += '<div class="item-detail">';
-            // 좌: 후가공 뱃지
-            var ppHtml = '';
-            if (item.post_processing) {
-                try {
-                    var ppArr = typeof item.post_processing === 'string' ? JSON.parse(item.post_processing) : item.post_processing;
-                    if (Array.isArray(ppArr)) {
-                        ppArr.filter(function(pp) { return !isPPHidden(pp.name || pp.code || pp); })
-                            .forEach(function(pp) { ppHtml += '<span class="pp-badge">' + esc(pp.name || pp.code || pp) + '</span>'; });
-                    }
-                } catch(e) {}
-            }
-            var finText = fmtFinishing(item.finishing);
-            if (finText) ppHtml += '<span class="fin-badge">✂ ' + finText + '</span>';
-            if (ppHtml) html += '<div>' + ppHtml + '</div>';
+            // 지시 상세 — 출고만 라인은 제작 지시가 없다(동봉 대상)
+            if (!isShipOnly) {
+                html += '<div class="item-detail">';
+                var ppHtml = '';
+                if (item.post_processing) {
+                    try {
+                        var ppArr = typeof item.post_processing === 'string' ? JSON.parse(item.post_processing) : item.post_processing;
+                        if (Array.isArray(ppArr)) {
+                            ppArr.filter(function(pp) { return !isPPHidden(pp.name || pp.code || pp); })
+                                .forEach(function(pp) {
+                                    var p = (pp && pp.params && typeof pp.params === 'object') ? pp.params : null;
+                                    var ps = p ? Object.keys(p).map(function(k) { return String(p[k] == null ? '' : p[k]).trim(); })
+                                        .filter(function(v) { return v && v !== '없음' && v !== (pp.name || pp.code); })
+                                        .map(function(v) { return /^\d+(\.\d+)?$/.test(v) ? v + 'cm' : v; }).join(' ') : '';
+                                    ppHtml += '<span class="pp-badge">' + esc((pp.name || pp.code || pp) + (ps ? ' ' + ps : '')) + '</span>';
+                                });
+                        }
+                    } catch(e) {}
+                }
+                var finText = fmtFinishing(item.finishing);
+                if (finText) ppHtml += '<span class="fin-badge">' + (isSew ? '✂ 봉제 ' : '✂ 마감 ') + finText + '</span>';
+                var sfv = Number(item.scale_factor) || 1;
+                if (!isSew && sfv > 1) ppHtml += '<span class="fin-badge">축척 1/' + sfv + '</span>';
+                if (ppHtml) html += '<div>' + ppHtml + '</div>';
 
-            // 우: 마감 다이어그램
-            var diagram = finishingDiagram(item.finishing);
-            if (diagram) html += '<div>' + diagram + '</div>';
-            html += '</div>'; // end item-detail
+                // 마감 다이어그램은 4변 지시가 실제 의미를 갖는 봉제 라인에서만
+                if (isSew) {
+                    var diagram = finishingDiagram(item.finishing);
+                    if (diagram) html += '<div>' + diagram + '</div>';
+                }
+                html += '</div>'; // end item-detail
+            }
 
             html += '</div>'; // end item-card
-        });
+          });   // end sec.rows.forEach
+        });     // end sections.forEach
 
         html += '<div style="margin-top:20px;border-top:1px solid #d1d5db;padding-top:10px;font-size:11px;color:#6b7280">';
         html += '출력일: ' + new Date().toLocaleDateString('ko-KR') + ' | 담당: __________ | 확인: __________';

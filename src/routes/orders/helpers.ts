@@ -376,7 +376,10 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
         if (m && typeof m === 'string') dirCounts.set(m, (dirCounts.get(m) || 0) + 1)
       }
       const sewSummary = [...dirCounts.entries()].map(([m, n]) => `${n}면${m}`).join(' ')
-      checklistSteps.push({ code: 'SEW', label: sewSummary ? `봉제(${sewSummary})` : '봉제', sort: 20 })
+      // 라인마다 이 공정의 이름이 다르다 — 전사·태극기는 '봉제'(쌍침·오바), 출력·간판은 '마감'
+      // (열재단·접어미싱 등). 예전엔 전부 '봉제'라 출력 카드에 「봉제(2면열재단)」가 떴다.
+      const sewLabel = cardGroup === 'TRANSFER_FLAG' ? '봉제' : '마감'
+      checklistSteps.push({ code: 'SEW', label: sewSummary ? `${sewLabel}(${sewSummary})` : sewLabel, sort: 20 })
     }
     uniquePP.forEach((pp: any, ppIdx: number) => {
       // 라벨 = 후가공명 + 의미 있는 파라미터.

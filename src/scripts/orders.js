@@ -1736,6 +1736,14 @@ async function exportOrdersCsv() {
   });
   if (_tb && _tb.then) _tb.then(function() { if (!ordPresetApplied) loadOrders(); });
   else loadOrders();
+
+  // ?view=<id> → 주문 상세 모달 직행. 코드 안에 이미 `?view` 를 읽는 곳이 둘 있었는데(승인·재가공
+  //   후 모달 새로고침) **초기 진입 처리기가 없어** 링크로 들어오면 목록만 떴다. 전역검색·외부
+  //   링크가 주문 한 건에 도달하는 유일한 수단이라 여기서 연다(목록 조회와 독립).
+  var _qView = _up.get('view');
+  if (_qView && !isNaN(parseInt(_qView))) {
+    setTimeout(function() { if (window.viewOrder) window.viewOrder(parseInt(_qView)); }, 0);
+  }
 })();
 
 // 프리셋 적용 — 저장된 스냅샷(ordReadFilters 형태)을 화면 컨트롤에 되돌려 넣고 재조회
