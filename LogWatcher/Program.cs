@@ -328,17 +328,34 @@ namespace LogWatcher
                         }
                     }
 
-                    // Send new events
+                    // 전송 결과 공통 처리 — 4xx 폐기 · 5xx 상한부 재큐 · 네트워크 무상한 재큐.
+                    // bool 시절엔 4xx/5xx 이벤트가 큐를 영구 회전시켰다(2026-08 과금 사고). WatcherManager와 동일 규칙.
                     bool anyFailed = false;
-                    foreach (var evt in events)
+                    void handleResult(PrintEvent evt, SendResult result)
                     {
-                        var sent = await apiClient.SendEventAsync(evt);
-                        if (!sent)
+                        switch (result)
                         {
-                            queue.Enqueue(evt);
-                            anyFailed = true;
+                            case SendResult.Sent:
+                                break;
+                            case SendResult.Rejected:
+                                Console.WriteLine($"[QUEUE] Dropped (server rejected): {evt.FileName}");
+                                break;
+                            case SendResult.RetryServerError:
+                                evt.RetryCount++;
+                                if (evt.RetryCount > 300)
+                                    Console.WriteLine($"[QUEUE] Dropped (poison, {evt.RetryCount} server errors): {evt.FileName}");
+                                else { queue.Enqueue(evt); anyFailed = true; }
+                                break;
+                            default: // RetryNetwork
+                                queue.Enqueue(evt);
+                                anyFailed = true;
+                                break;
                         }
                     }
+
+                    // Send new events
+                    foreach (var evt in events)
+                        handleResult(evt, await apiClient.SendEventAsync(evt));
 
                     // Retry queued events
                     if (queue.Count > 0)
@@ -346,14 +363,7 @@ namespace LogWatcher
                         Console.WriteLine($"[QUEUE] Retrying {queue.Count} queued events...");
                         var queued = queue.DequeueAll();
                         foreach (var evt in queued)
-                        {
-                            var sent = await apiClient.SendEventAsync(evt);
-                            if (!sent)
-                            {
-                                queue.Enqueue(evt);
-                                anyFailed = true;
-                            }
-                        }
+                            handleResult(evt, await apiClient.SendEventAsync(evt));
                     }
 
                     // Backoff

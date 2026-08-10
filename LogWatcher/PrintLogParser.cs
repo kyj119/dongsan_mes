@@ -77,6 +77,10 @@ namespace LogWatcher
         public List<NestMember> NestMembers { get; set; } = new(); // 네스트 멤버: 파일·규격(mm)·수량
         public string? EquipmentId { get; set; }                // 이벤트 귀속 장비(universal 모드 전송용)
 
+        // 서버 5xx 재시도 횟수 — 상한 초과 시 독성 이벤트로 판정해 폐기(영구 재시도 루프 차단).
+        // 오프라인 큐 JSON에 함께 저장되며, 구버전 큐 파일엔 없어 0으로 역직렬화된다.
+        public int RetryCount { get; set; } = 0;
+
         /// <summary>
         /// 이벤트 종류. "PRINT" = 실제 출력(기존 파서 전부), "RIP" = 리핑만(neoStampa).
         /// 한 물리 출력이 RIP SW 와 제어 SW 양쪽에 로그를 남기므로, 구분하지 않으면 실적이 이중계상된다.

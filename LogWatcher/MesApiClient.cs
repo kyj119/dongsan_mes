@@ -7,6 +7,19 @@ using System.Threading.Tasks;
 
 namespace LogWatcher
 {
+    /// <summary>
+    /// 이벤트 전송 결과. bool(성공/실패)로는 "영영 안 될 실패(4xx)"와 "나중에 될 실패(서버다운)"를
+    /// 구분 못 해 4xx/5xx 이벤트가 5초 큐 루프를 영구 회전시켰다(2026-08 Cloudflare 과금 사고:
+    /// 서버의 D1 LIKE 50바이트 한도 500 응답 × 재시도 큐 = 일 270만 요청). 반드시 구분해 처리할 것.
+    /// </summary>
+    public enum SendResult
+    {
+        Sent,             // 2xx — 완료
+        Rejected,         // 4xx(429 제외) — 재시도해도 영영 안 됨 → 폐기
+        RetryServerError, // 5xx·429 — 재시도하되 독성 이벤트 상한(RetryCount) 적용
+        RetryNetwork      // 네트워크/타임아웃 — 서버 다운은 이벤트 잘못이 아님 → 상한 미적용
+    }
+
     public class MesApiClient
     {
         private readonly HttpClient _http;
@@ -27,7 +40,7 @@ namespace LogWatcher
         /// <summary>
         /// Send a single print event to MES.
         /// </summary>
-        public async Task<bool> SendEventAsync(PrintEvent evt)
+        public async Task<SendResult> SendEventAsync(PrintEvent evt)
         {
             try
             {
@@ -64,19 +77,24 @@ namespace LogWatcher
                 if (response.IsSuccessStatusCode)
                 {
                     Console.WriteLine($"[API] Sent: {evt.FileName} ({evt.PrintStatus})");
-                    return true;
+                    return SendResult.Sent;
                 }
-                else
+
+                var body = await response.Content.ReadAsStringAsync();
+                var code = (int)response.StatusCode;
+                if (code >= 400 && code < 500 && code != 429)
                 {
-                    var body = await response.Content.ReadAsStringAsync();
-                    Console.WriteLine($"[API] Failed ({response.StatusCode}): {body}");
-                    return false;
+                    // 유효성 거부 — 몇 번을 다시 보내도 결과가 같다. 큐에 넣으면 영구 루프.
+                    Console.WriteLine($"[API] Rejected ({response.StatusCode}) — dropping: {evt.FileName} / {body}");
+                    return SendResult.Rejected;
                 }
+                Console.WriteLine($"[API] Server error ({response.StatusCode}), will retry: {evt.FileName} / {body}");
+                return SendResult.RetryServerError;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[API] Error: {ex.Message}");
-                return false;
+                Console.WriteLine($"[API] Network error, will retry: {ex.Message}");
+                return SendResult.RetryNetwork;
             }
         }
 
