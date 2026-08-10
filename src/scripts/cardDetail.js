@@ -18,7 +18,18 @@
             if (!cardRes.data.success) throw new Error('카드 조회 실패');
             render(cardRes.data.data, histRes.data.data || [], defRes.data.data || [], cclRes.data.data || []);
         } catch(e) {
-            document.getElementById('cdRoot').innerHTML = '<p class="text-center py-20 text-red-500">' + esc(e.message) + '</p>';
+            // 봉제실이 오래된 QR·북마크로 들어오는 화면이 정확히 여기다 — axios 원문
+            // ("Request failed with status code 404")을 그대로 띄우면 현장이 무엇을 해야 할지 모른다.
+            var st = e.response && e.response.status;
+            var srv = e.response && e.response.data && e.response.data.error;
+            var msg = st === 404
+                ? '이 카드를 찾을 수 없습니다. 주문이 수정되며 카드가 다시 발행됐거나 취소된 카드일 수 있습니다.'
+                : (srv || '카드 정보를 불러오지 못했습니다.');
+            document.getElementById('cdRoot').innerHTML =
+                '<div class="text-center py-20">'
+                + '<p class="text-red-500 mb-3">' + esc(msg) + '</p>'
+                + '<a href="/cards" class="spa-link px-4 py-2 bg-gray-100 text-gray-700 rounded text-sm hover:bg-gray-200"><i class="fas fa-arrow-left mr-1"></i>현장 대시보드로</a>'
+                + '</div>';
         }
     }
 
