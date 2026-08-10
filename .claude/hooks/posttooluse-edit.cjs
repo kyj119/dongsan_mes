@@ -35,6 +35,17 @@ if (/(PROJECT_STATUS|memory\/MEMORY)\.md$/.test(file)) {
   }
 }
 
+// 스킬·서브에이전트 정의 게이트 (2026-08-11) — 긴 SKILL.md 는 자동압축 때 앞 5,000토큰만 남고
+// 뒷부분이 경고 없이 사라진다. auto-improve 가 8KB→197KB(24배)로 자란 걸 아무도 못 잡은 이유 = 감사망 밖.
+if (/\.claude\/(skills\/.*\/SKILL\.md|agents\/.*\.md)$/.test(file)) {
+  try {
+    execSync('node scripts/skill-audit.cjs', { cwd: ROOT, stdio: 'pipe' });
+  } catch (e) {
+    msgs.push('[HOOK] 스킬 정의 문제 — 본문은 목차·분기만, 누적 지식은 references/ 로:\n'
+      + ((e.stderr || e.stdout || '').toString().slice(0, 800)));
+  }
+}
+
 // JS 문법 게이트 (src/scripts/*.js) — silent-fail 방지, 실패 시 차단
 if (/src\/scripts\/.*\.js$/.test(file)) {
   try {

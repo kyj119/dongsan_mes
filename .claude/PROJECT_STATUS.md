@@ -4,6 +4,7 @@
 
 ## ✅ 최근 완료 — 후속 대기 인덱스 (경위·상세 전문 = `PROJECT_STATUS_ARCHIVE.md`)
 
+- **08-11 스킬·위임 구성 점검 + `auto-improve` 분해(57K→3.3K토큰, 유실 0)** — 게이트 `npm run audit:skills` 신설+편집 훅 연동, 가이드 §스킬 설계 규칙 신설, Area 6개를 `references/area-N-*.md` 축자 이관. 남은: **Area 파일 내 `line N` 상호참조 29건이 분할 전부터 깨져 있음**(대상 23개 중 5개가 빈 줄 — 파일이 자라며 번호 밀림). 원문 보존해 두고 각 파일 머리에 경고만 달아둔 상태 → 서술 기반 참조로 교체 필요(Area별 순회 시 그 파일만 손보면 됨)
 - **08-11 문서 다이어트·브랜치 대청소(원격 129·로컬 10 삭제, SHA=ARCHIVE 말미)** — 남은: 로컬 feat 3종(dept-pnl·neostampa-rip·price-sheet) 처분 판단 — EPSON 커밋 `89097982`·RIP 코드 보존 목적, main 흡수 확인 후 삭제
 - **08-10 #77 주문서 왕복 소실 3종+이슈 7건**(`c3969236`) — 남은: 왕복감사(`audit:orderform-roundtrip`) /deploy-verify 편입 검토 · DXF 첨부 실물 1건 자연검증 · 판단대기 #606·#608·#609(재고 환산=별도 세션 권고)
 - **08-10 #74 Cloudflare $125 과금 근본수정+HAVING 오바인딩 복구**(`d940d5ae`) — 남은: LogWatcher SendResult PC 롤아웃(다음 현장) · 예산 알림 임계 하향 검토 · 월말 청구 재확인
