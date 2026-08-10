@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-08-10T09:40:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-08-10T15:34:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **10** (`search_issues(is:open,label:auto-improve)` 실측, Area3 53회차. 기존 9건(#601~#609) + 신규 #611[카드상세 다품목표 overflow-x-auto 래퍼 없음, 모바일 잘림]) |
+| 🆕 new | **10** (`search_issues(is:open,label:auto-improve)` 실측, Area4, 변동 없음. #601~#609 + #611) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **524** (`reason:completed` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+
+> **Area 4 데이터 정합성 (2026-08-10T15:34):**
+> - **⚠️ 컨테이너 git 이력 재구성 아티팩트 — 이번엔 종전보다 심함(단순 ancestor 불일치가 아니라 전체 히스토리 대체)**: `git fetch origin main`은 정상(origin/main=HEAD `9e44f4f`, 워킹트리 clean) 이나, 백로그가 참조하는 직전 Area4 HEAD(`c4320c5`)를 포함해 **모든 과거 커밋 SHA가 `Not a valid object`** — `git log`는 총 **50커밋**뿐이고 전부 오늘(08-10 11:23~15:26) 안에 있으며, 그마저 root 커밋(`7546426`, 부모 없음, 전체 트리 스쿼시)이 08-10 11:23 스냅샷. 기존 codify된 "부모 없는 root 스쿼시"(Area3/5 52회차)와 같은 계열이나, 이번엔 **스쿼시 이후 이어진 실제 작업 내용(카드 바로빌 등록/매입 정산/은행 대출)이 백로그가 서술한 직전 사이클들의 작업 내용(주문목록 SSOT·담당자 필드 등)과 전혀 안 겹침** — 파일트리엔 그 SSOT 산출물(`listFilter.ts`·`userPrefs.ts`·`reports.ts`)이 실재해(`ls` 확인) 작업 자체는 유실이 아니지만, **커밋 그래프로 "직전 Area 사이클 이후 churn"을 계산하는 모든 표준 레시피가 이번 사이클엔 무효**. 대응: root 커밋 이후 전 커밋(49개)에서 `src/routes`/`migrations`/`src/scripts` 변경분(**11커밋**)을 churn 전수로 간주해 전부 diff Read.
+> - **card 등록 UNIQUE 위반 체인(062714d→138859a→8372be3→e93fa62→65e52e5, 30분내 5커밋) 최종상태 검증**: `POST /api/cards`가 비활성(소프트삭제) 카드 재등록 시 `UNIQUE(card_number_last4,entity_id)`(0249) 위반으로 500 나던 실プロд 버그(전북카드 재등록 실사례)를 세션이 스스로 발견·반복수정 끝에 해결 — 최종본(`65e52e5`)은 기존 행을 `UPDATE ... SET is_active=1`로 재활성(INSERT 아님)해 UNIQUE 충돌 자체를 회피하고 기존 `card_transactions` 이력도 보존. INSERT/UPDATE 포지셔널 바인드 개수 직접 대조(플레이스홀더=바인드 인자 수 일치, #607류 컬럼-바인드 불일치 클래스 재확인) — 정합. 바로빌 -50118(이미등록) 흡수 로직도 `getCardList` 사전조회 → 실패 시 `registCard` → 그래도 -50118이면 흡수, 세 경로 전부 `barobillRegistered=1`로 수렴 확인 — **net-new 버그 없음(이미 세션 내에서 자가 발견·자가 수정 완료)**.
+> - **print-events LIKE→substr 체인(d0ab0fc→9e44f4f) 최종상태 검증**: D1이 LIKE 패턴을 50바이트로 제한한다는 사실을 이 세션이 처음 실측(51바이트부터 "pattern too complex" → 단건 POST 500 → LogWatcher 무한재시도로 초당 수십 건 홍수, prod 실사례)해 `substr(file_name,1,N)=nameNoExt AND substr(file_name,N+1,1)='.'` 방식으로 치환 — JS `[...str].length`와 SQLite `substr`가 둘 다 유니코드 문자 단위로 카운트해 정합(바이트 아님), 기존 LIKE의 `%`/`_` 이스케이프 필요성도 함께 제거돼 오히려 더 견고해짐. **부작용 1건(경미)**: `idx_file_map_filename` 인덱스(0079)가 `substr()` 래핑으로 이 3번째 OR 분기에서 사용 불가해져(함수 결과는 인덱싱 불가) 이전 `LIKE 'prefix%'`(SQLite가 종종 인덱스 seek로 최적화 가능한 형태) 대비 풀스캔로 후퇴 — 정확성엔 영향 없고 `print_file_map`이 초당 수십 건 유입 시나리오까지 봤던 테이블이라 스케일에 따라 지연 요인이 될 수 있음. 코드 검색 결과 **파일명-LIKE 매칭 패턴이 코드베이스에서 이 한 곳뿐**이라(다른 60개 `LIKE ?` 사용처는 전부 사람이 타이핑하는 짧은 검색어 바인드) 당장 확산 위험은 없음 — Area6가 "D1 LIKE 50바이트 캡"을 신규 발견 제약으로 codify할지 판단하도록 남겨둠(이슈화는 보류: 성능뿐이고 현재 유일 인스턴스는 이미 정확성 우선으로 고쳐짐).
+> - **나머지 8커밋(0528 마이너스통장 분리·전북카드사 옵션·작업지시서 라인 섹션·주문 기간필터 SSOT) 개별 diff Read**: `0528_bank_account_overdraft.sql`(단순 `ADD COLUMN is_overdraft INTEGER NOT NULL DEFAULT 0`) — CHECK/NOT NULL 위반 없음, `bank.ts` INSERT/UPDATE 포지셔널 바인드 재계산 일치. 나머지는 CHECK 제약 없는 enum 추가(카드사 전북) 또는 순수 프론트(작업지시서 라벨·기간필터 localStorage SSOT)라 데이터정합 영향 0.
+> - **마이그 번호 중복 재확인**: 기존 5쌍(0327·0412·0416·0420·0453) net-new 0, 신규 0528 유일.
+> - **`npm run audit:entity`**: 검사 131파일·entity테이블 SELECT 61·누락 0.
+> - **open≠unfixed 재확인**: #601(`orders/update.ts` `return_items` grep 0)·#603(`cards/lifecycle.ts:1075`는 수동 `PATCH .../reissue-ack` 클리어만 있고 출고완료 자동클리어 없음)·#607(`purchaseRequests.ts:228` CSV export 여전히 자체 `whereClauses`, `buildPrFilter` 미사용) 전부 이번 churn(bank/card/orders 프론트)과 무관한 파일이라 코드 직접 grep 재확인만으로 캐시 유지 — 여전히 미픽스.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 실측 — open **10**(변동없음, #601~#609+#611) · `reason:completed` **524**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 직접 등재는 보류 — "D1 LIKE 패턴 50바이트 캡"은 이번 사이클 실증된 신규 제약이라 향후 Area2/4/6 standing scan 후보(LIKE 바인드값이 사람 타이핑이 아니라 시스템 조합 문자열인 경우 위험)로 가치 있으나, 현재 코드베이스에 이 패턴의 인스턴스가 하나뿐(이미 수정됨)이라 codify는 재발 시로 유보하고 이번 로그에 근거만 남김.
+> - 신규 이슈 0건(세션이 자체 발견·자체 수정까지 마친 버그 2건 확인 — 추가 조치 불요), 자동수정 0건, done-sync: new 10(변동없음)·done 524(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-08-10T09:40):**
 > - **방법**: `git fetch origin main`(HEAD `b88f1a7` = origin/main 일치, 워킹트리 clean, detached, force-update로 재기록) 후 `npm ci`(node_modules 0→81), `npx tsc --noEmit` clean. Area 3 **53회차** — 직전 Area3(`3de87f3`, 08-08T21:20, 52회차) 이후 `src/scripts`/`src/pages`/`src/layout`/`index.tsx`/`src/routes` 변경 = **14커밋**, 그중 가장 신선하고 Area3 렌즈로 아직 아무도 안 본 것은 `b88f1a7`(카드 작업지시서 12건 근본수정, +439/-331줄, 방금 08-10T09:15 착륙) — line 307 원칙(목록 나열≠개별 검토) 적용해 이 커밋에 집중.
