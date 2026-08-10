@@ -12,7 +12,7 @@
 - **★디자이너 PC 4대 공통 잔여** — `install-a0-panel.ps1` 미실행(인호동14·김보연8·김영주15·정소은16, 원격 수단 없음·사람이 실행) → 실행 전까지 해당 PC는 구 껍데기(고장 아님) · 전 PC 설치 확인 후 shim 제거 · A0 리모델(0.1.3)·work.ai 축2 반영분 포함
 - **08-09 전사 8색 LogWatcher 2대 현장 설치**(`4d242c87`) — 남은: 실출력 1건 자연검증 · 첫 건 카드 미연결=정상 → `/production` 「출력파일 연결」 1회 후 학습
 - **08-08 목록 UX 이카운트 갭 P1-1~4**(`39f16b50`) — 남은: 반품 2단계(등록 UI=/quality 기존) · `orders.is_voucher` · 분석탭 명세 칩 · CSV 없는 목록 5개(조회조건 SSOT 빌더 선행 — WHERE 사본 5벌 금지) · `entity-attribution-audit` UI(제품 결정)
-- **07-30 work.ai 용량 근본 조치(pdfCompatible=false)** — 남은: 기존 981MB 재저장 여부 · ia-editor 브랜치 미머지
+- **07-30 work.ai 용량 근본 조치(pdfCompatible=false)** — 남은: 기존 981MB 재저장 여부(ia-editor 브랜치 건은 S4 페이지 삭제로 무효)
 
 > 이전 배포 이력 전량 → `.claude/PROJECT_STATUS_ARCHIVE.md` (매 세션 읽을 필요 없음)
 
@@ -21,10 +21,10 @@
 ## 🔴 진행 중
 
 - **동산 이카운트 이관 — Phase 0 완료(3중 교차검증 오차 0·코드 커버리지 100%), Phase 1 대기**: 다음=세부점검 4종(①거래처 미등록 ②품목 매칭률 ③월별 금액 대사 ④법인간거래 중복)→승인→적재. 정본=`docs/dongsan-import/EXPORT-SPEC.md`(확보 파일 9개·매입은 ⏸보류 중)
-- **IA 멀티소스 임포지션 — P1 배관 prod 완결**: 다음=P4(에이전트 EPS 실저장·preview_only publish)·브랜치→main 머지(봇 커밋 위 rebase). spec=`2026-07-08-ia-editor-multisource-imposition.md`
+- **IA 멀티소스 임포지션(모아찍기)**: ★S4(08-05)가 /ia-editor 페이지·스크립트를 삭제 — 웹 축은 `routes/workbench.ts`로 이관 생존. 남은=P4(에이전트 EPS 실저장·preview_only publish)만 유효(브랜치 머지 항목은 무효·잔재 정리 완료 08-10). spec=`2026-07-08-ia-editor-multisource-imposition.md`
 - **분할청구(split billing) — P1~P4+◐P5 prod**: 다음=P5-continued(잔여 ~6파일 그룹화)→전량검증 후 레거시 컬럼 제거→P6 내부정산(다법인 실거래 발생 후). 핸드오프=`2026-06-10-split-billing-IMPLEMENTATION-PLAN.md`
-- **품목 미등록 갭 — 즉시등록 영역 소진(0398~0422), 잔여 갭 6.4억=간판 사업부 전체**: 다음=간판 구성요소 BOM·조립견적(아래 설계 대기와 동일 건, 설계 선행)
-- **LogWatcher 후속**: EPSON status-aware 파서=실코드 JobStatus 확인 대기(EPSON PC `Data.db` 쿼리→enum 확정→equipment.json+2대 재배포) · 이희섭 6/8 펀치 1건 · 6월 선명 급여 재계산 필요
+- **품목 미등록 갭 — 즉시등록 영역 소진(0398~0422), 잔여 갭 6.4억=간판 사업부 전체**: 간판 BOM 1차(자재·원가)=08-01 완결 — 다음=2차 조립견적(아래 설계 대기와 동일 건)
+- **LogWatcher 후속**: EPSON status-aware 파서=실코드 JobStatus 확인 대기(커밋 89097982는 main 미포함·feat 브랜치에만, EPSON PC `Data.db` 쿼리→enum 확정→equipment.json+2대 재배포) · 이희섭 6/8 펀치 1건 · 6월 선명 급여 재계산 필요
 
 ## 🟡 결정·확인 대기 (사용자)
 
@@ -32,7 +32,6 @@
 - **급여 신현서 케이스 = 입력차이(코드 정상)**: 부양가족·차량유지비 비과세 입력 필요 → [[payroll-calc-ecount-diff]]
 - **실검증 대기**: 수신번호 1개 확정 → 알림톡+MMS 실발송 검증 동시 해제(~400원)
 - **자연검증(실사용 시 자동 소화)**: #310 직접발행 첫 건 · RIP 전송 현장 테스트 · 휴가→근태 첫 실휴가
-- **빠른 처리 대상**: 선명2 CAPS Worker 설치(PC 세팅 소요 소) · LogWatcher PrintExp 현장 배포 · `feat/ia-multisource-imposition` 잔재 브랜치 삭제
 
 ## 🆕 설계 확정 — 구현 대기
 
@@ -48,7 +47,7 @@
 
 ## 🔒 편집 중 (충돌 방지)
 
-- `src/scripts/iaEditor.js` — worktree `session/iae-tray-search`(커밋 `2fe74b91`, **main 미머지·미배포**). 같은 파일 수정 시 조율 필요.
+- (없음) — iaEditor.js 잠금 해제: `2fe74b91` main 포함 + S4(08-05)에서 파일 자체 삭제, 2026-08-10 실측
 
 ## ⚠️ 잠복·블로커
 
