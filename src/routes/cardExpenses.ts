@@ -177,10 +177,16 @@ cardExpRouter.post('/cards', requireRole('ADMIN'), async (c) => {
         console.error('Card regist call error:', e?.message || 'unknown')
         return c.json({ success: false, error: '바로빌 통신 오류(카드 수집등록): ' + (e?.message || '알 수 없는 오류') + ' — 카드는 등록되지 않았습니다. 잠시 후 재시도해주세요.' }, 502)
       }
-      if (code <= 0) {
+      if (code === -50118) {
+        // 이미 바로빌에 등록된 카드 — 앞선 시도가 바로빌 등록까지 성공하고 응답만 유실된 경우
+        // (2026-08-10 전북카드 실사례). 수집은 이미 살아있으므로 성공으로 흡수하고 MES 행만 만든다.
+        console.log('[card-regist] -50118 already registered at barobill, adopting. last4=%s', last4)
+        barobillRegistered = 1
+      } else if (code <= 0) {
         return c.json({ success: false, error: '바로빌 카드 수집등록 실패: ' + barobillErrorMessage(code) }, 400)
+      } else {
+        barobillRegistered = 1
       }
-      barobillRegistered = 1
     }
 
     const result = await c.env.DB.prepare(`
