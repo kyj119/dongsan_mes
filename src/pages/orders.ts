@@ -54,15 +54,26 @@ export function ordersPage(c: Context<HonoEnv>) {
         </div>
         <!-- 기간·정렬은 기본 노출한다(2026-08-09). 기본값이 '최근 1개월'인데 컨트롤이 「더보기」 안에 있어
              바꾸려면 두 번 클릭해야 했고, 정렬은 있는 줄도 몰랐다. 자주 쓰는 축을 접어두면 없는 기능이 된다. -->
+        <div class="ds-filter-field" style="min-width:130px">
+          <label class="ds-label">기간</label>
+          <select id="ordDatePeriod" class="ds-input" onchange="ordApplyDatePeriod(this.value)"
+            title="오늘 기준 최근 기간으로 주문일을 설정. '조건 저장' 프리셋에는 상대 기간으로 저장되어 언제 적용해도 그날 기준으로 계산">
+            <option value="">직접입력</option>
+            <option value="1">최근 1개월</option>
+            <option value="3">최근 3개월</option>
+            <option value="6">최근 6개월(반기)</option>
+            <option value="12">최근 1년</option>
+          </select>
+        </div>
         <div class="ds-filter-field">
           <label class="ds-label">주문일 from</label>
           <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="orderDateFrom" class="js-fp ds-input"
-            onchange="currentPage=1;loadOrders();">
+            onchange="ordDateManualChange()">
         </div>
         <div class="ds-filter-field">
           <label class="ds-label">~ to</label>
           <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="orderDateTo" class="js-fp ds-input"
-            onchange="currentPage=1;loadOrders();">
+            onchange="ordDateManualChange()">
         </div>
         <div class="ds-filter-field" style="align-self:flex-end">
           <button type="button" onclick="clearDateFilter()" class="ds-btn ds-btn-secondary ds-btn-sm" title="기간 제한 없이 전체 조회">

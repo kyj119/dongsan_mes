@@ -332,19 +332,56 @@ function goToPage(n) {
   loadOrders();
 }
 
-// 주문서 기본 조회 기간 시작 = 최근 한달 전 (KST 기준). 전체/과거 조회는 '날짜 초기화'로 해제.
-function ordersDefaultDateFrom() {
+// 오늘(KST) 기준 최근 N개월 시작일 — 「기간」 셀렉트·기본 기간 공용
+function ordPeriodDateFrom(months) {
   var t = (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10)).split('-');
   var d = new Date(parseInt(t[0]), parseInt(t[1]) - 1, parseInt(t[2]));
-  d.setMonth(d.getMonth() - 1);
+  d.setMonth(d.getMonth() - months);
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+// 주문서 기본 조회 기간 시작 = 최근 한달 전 (KST 기준). 전체/과거 조회는 '날짜 초기화'로 해제.
+function ordersDefaultDateFrom() { return ordPeriodDateFrom(1); }
+
+// 「기간」 셀렉트 — 오늘 기준 최근 N개월로 주문일을 설정. 끝은 비워둬 오늘 이후(선주문)도 포함.
+// 프리셋·localStorage 에는 상대 기간으로 저장되어 언제 적용해도 그날 기준으로 재계산된다.
+function ordApplyDatePeriod(v) {
+  if (v) {
+    var setVal = function(id, val) { var el = document.getElementById(id); if (el) el.value = val; else console.warn('[orders] #' + id + ' not found'); };
+    setVal('orderDateFrom', ordPeriodDateFrom(parseInt(v) || 1));
+    setVal('orderDateTo', '');
+  }
+  currentPage = 1;
+  loadOrders();
+}
+
+// 날짜 직접 수정 = 상대 기간 해제(고정 날짜 모드) — 안 풀면 다음 방문 때 재계산 값이 손수정을 덮는다
+function ordDateManualChange() {
+  var pd = document.getElementById('ordDatePeriod');
+  if (pd) pd.value = '';
+  currentPage = 1;
+  loadOrders();
+}
+
+// 기간 값 → 화면 라벨 (셀렉트 옵션 텍스트가 정본)
+function ordPeriodLabel(v) {
+  var sel = document.getElementById('ordDatePeriod');
+  if (sel) {
+    for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === v) return sel.options[i].textContent;
+    }
+  }
+  return '최근 ' + v + '개월';
 }
 
 function clearDateFilter() {
   document.getElementById('orderDateFrom').value = '';
   document.getElementById('orderDateTo').value = '';
+  var _pd = document.getElementById('ordDatePeriod');
+  if (_pd) _pd.value = '';
   localStorage.removeItem('orders_filter_date_from');
   localStorage.removeItem('orders_filter_date_to');
+  localStorage.removeItem('orders_filter_date_period');
   currentPage = 1;
   loadOrders();
 }
@@ -357,8 +394,11 @@ function resetAllFilters() {
   var _ov = document.getElementById('overdueFilter'); if (_ov) _ov.checked = false;
   document.getElementById('priorityFilter').value = '';
   document.getElementById('sortBy').value = 'order_date_desc';
+  var _pdR = document.getElementById('ordDatePeriod');
+  if (_pdR) _pdR.value = '1';   // 기본 기간 = 최근 1개월 (loadOrders 가 다시 저장)
   document.getElementById('orderDateFrom').value = ordersDefaultDateFrom();
   document.getElementById('orderDateTo').value = '';
+  localStorage.removeItem('orders_filter_date_period');
   localStorage.removeItem('orders_filter_search');
   localStorage.removeItem('orders_filter_status');
   localStorage.removeItem('orders_filter_sort');
@@ -382,6 +422,7 @@ function ordReadFilters() {
     search: g('searchQuery'),
     status: g('statusFilter'),
     sort: g('sortBy') || 'order_date_desc',   // 기본 정렬 = 업무일자(주문일). created_at 은 이관분에서 무의미
+    datePeriod: g('ordDatePeriod'),           // 상대 기간(개월 수). 있으면 dateFrom 은 그 파생값
     dateFrom: g('orderDateFrom'),
     dateTo: g('orderDateTo'),
     priority: g('priorityFilter'),
@@ -437,7 +478,9 @@ function ordRenderFilterChips(f) {
   var clear = function(key) { return function() { ordClearFilter(key); }; };
 
   // 기간 — 기본값(최근 1개월)도 사용자가 고른 조건과 똑같이 노출해야 "왜 지난달이 안 보이지"가 사라진다
-  if (f.dateFrom || f.dateTo) {
+  if (f.datePeriod && f.dateFrom) {
+    items.push({ label: '주문일 ' + ordPeriodLabel(f.datePeriod) + ' (' + f.dateFrom + ' ~)', onClear: clear('date') });
+  } else if (f.dateFrom || f.dateTo) {
     var label = f.dateFrom && f.dateTo ? ('주문일 ' + f.dateFrom + ' ~ ' + f.dateTo)
               : f.dateFrom ? ('주문일 ' + f.dateFrom + ' 이후')
               : ('주문일 ' + f.dateTo + ' 이전');
@@ -478,10 +521,12 @@ function ordStatusFilterLabel(status) {
 function ordClearFilter(key) {
   var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = v; else console.warn('[orders] #' + id + ' not found'); };
   if (key === 'date') {
+    setVal('ordDatePeriod', '');
     setVal('orderDateFrom', '');
     setVal('orderDateTo', '');
     localStorage.removeItem('orders_filter_date_from');
     localStorage.removeItem('orders_filter_date_to');
+    localStorage.removeItem('orders_filter_date_period');
   }
   else if (key === 'search') setVal('searchQuery', '');
   else if (key === 'status') setVal('statusFilter', '');
@@ -534,6 +579,8 @@ async function loadOrders() {
     else localStorage.removeItem('orders_filter_date_from');
     if (f.dateTo) localStorage.setItem('orders_filter_date_to', f.dateTo);
     else localStorage.removeItem('orders_filter_date_to');
+    if (f.datePeriod) localStorage.setItem('orders_filter_date_period', f.datePeriod);
+    else localStorage.removeItem('orders_filter_date_period');
 
     const params = ordBuildParams(f);
     params.append('sort', f.sort);
@@ -1649,9 +1696,22 @@ async function exportOrdersCsv() {
   }
   if (savedSort) document.getElementById('sortBy').value = savedSort;
   if (savedPage) currentPage = parseInt(savedPage) || 1;
-  // 기본 기간 = 최근 한달 (저장된 필터 없을 때). 과거 데이터는 '날짜 초기화' 후 조회.
-  document.getElementById('orderDateFrom').value = savedDateFrom || ordersDefaultDateFrom();
-  if (savedDateTo) document.getElementById('orderDateTo').value = savedDateTo;
+  // 기간 복원 — 상대 기간이 저장돼 있으면 고정 날짜 대신 오늘 기준으로 재계산(어제 고른 "최근 1개월"은 오늘도 최근 1개월)
+  const savedDatePeriod = localStorage.getItem('orders_filter_date_period');
+  var _pdEl = document.getElementById('ordDatePeriod');
+  if (!_pdEl) console.warn('[orders] #ordDatePeriod not found');
+  if (savedDatePeriod && _pdEl) {
+    _pdEl.value = savedDatePeriod;
+    document.getElementById('orderDateFrom').value = ordPeriodDateFrom(parseInt(savedDatePeriod) || 1);
+  } else if (savedDateFrom || savedDateTo) {
+    // 직접입력으로 저장된 고정 날짜
+    if (savedDateFrom) document.getElementById('orderDateFrom').value = savedDateFrom;
+    if (savedDateTo) document.getElementById('orderDateTo').value = savedDateTo;
+  } else {
+    // 기본 기간 = 최근 한달 (저장된 필터 없을 때). 과거 데이터는 '날짜 초기화' 후 조회.
+    if (_pdEl) _pdEl.value = '1';
+    document.getElementById('orderDateFrom').value = ordersDefaultDateFrom();
+  }
   if (savedDeliveryMethod) document.getElementById('deliveryMethodFilter').value = savedDeliveryMethod;
   if (savedBillingStatus) document.getElementById('billingStatusFilter').value = savedBillingStatus;
   if (savedPriority) document.getElementById('priorityFilter').value = savedPriority;
@@ -1687,8 +1747,15 @@ function ordApplyFilters(f) {
   var sf = document.getElementById('statusFilter');
   if (sf) { ordEnsureStatusOption(sf, f.status); sf.value = f.status || ''; }
   setVal('sortBy', f.sort || 'order_date_desc');
-  setVal('orderDateFrom', f.dateFrom);
-  setVal('orderDateTo', f.dateTo);
+  setVal('ordDatePeriod', f.datePeriod || '');
+  if (f.datePeriod) {
+    // 상대 기간 프리셋 — 저장 시점이 아니라 적용하는 날 기준으로 계산
+    setVal('orderDateFrom', ordPeriodDateFrom(parseInt(f.datePeriod) || 1));
+    setVal('orderDateTo', '');
+  } else {
+    setVal('orderDateFrom', f.dateFrom);
+    setVal('orderDateTo', f.dateTo);
+  }
   setVal('priorityFilter', f.priority);
   setVal('deliveryMethodFilter', f.deliveryMethod);
   setVal('billingStatusFilter', f.billingStatus);

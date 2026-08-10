@@ -756,11 +756,13 @@ if (!__userStr && token) {
 // .js-fp 클래스가 붙은 input에 flatpickr 적용. 년/월 헤더로 빠른 이동(생년월일처럼 오래된 날짜에 유용).
 // allowInput:true → 텍스트 직접 입력도 허용(자동하이픈과 병행). CDN 미로드 시 안전하게 무시.
 window.hrInitDatePickers = function(rootSel) {
-    if (typeof flatpickr === 'undefined') return;
     var root = rootSel ? document.querySelector(rootSel) : document;
     if (!root) return;
     var els = root.querySelectorAll('.js-fp');
     for (var i = 0; i < els.length; i++) {
+        // 브라우저 자동채우기(과거 입력값) 드롭다운이 flatpickr 달력을 가린다 — text 타입이라 명시 억제 필수
+        els[i].setAttribute('autocomplete', 'off');
+        if (typeof flatpickr === 'undefined') continue;
         if (els[i]._flatpickr) els[i]._flatpickr.destroy();
         flatpickr(els[i], {
             dateFormat: 'Y-m-d',
