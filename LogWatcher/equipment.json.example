@@ -22,13 +22,17 @@
       }
     },
     {
+      "_comment": "★JobStatus 실측 (2026-08-11, Data.db 취소 테스트): 완료=12 · 취소=2 (13/14 추정 폐기).",
+      "_comment2": "상태 2는 '출력 진행 중'과 구분이 안 될 수 있어 — 뒤에 완료(12) 잡이 생긴 2만 수집한다(정착 규칙).",
+      "_comment3": "정착 전 잡은 last_id 아래로 남았다가 다음 완료와 같은 배치에 들어오므로 유실 없음(직렬 큐 전제).",
+      "_comment4": "취소 잡은 FinishPrintTime 이 '0001-01-01' 센티널 → 시작/접수시각으로 대체해 내보낸다.",
       "equipment_id": "EPSON-01",
       "name": "Epson 에코솔벤트 (SC-S9100)",
       "enabled": true,
       "parser_type": "epson",
       "config": {
         "db_path": "C:\\ProgramData\\Epson\\Epson Edge Print\\DB\\Data.db",
-        "query": "SELECT j.JobID, j.JobName, j.JobStatus, l.FinishPrintTime, p.OriginalSizeWidth, p.OriginalSizeHeight FROM Job j LEFT JOIN Log l ON j.JobID = l.JobID LEFT JOIN Page p ON j.JobID = p.JobID AND p.PageID = 1 WHERE j.JobStatus IN (12, 13, 14) AND j.JobID > @last_id ORDER BY j.JobID",
+        "query": "SELECT j.JobID, j.JobName, j.JobStatus, CASE WHEN l.FinishPrintTime IS NULL OR l.FinishPrintTime LIKE '0001%' THEN (CASE WHEN l.StartPrintTime IS NULL OR l.StartPrintTime LIKE '0001%' THEN l.EntryTime ELSE l.StartPrintTime END) ELSE l.FinishPrintTime END AS FinishPrintTime, p.OriginalSizeWidth, p.OriginalSizeHeight FROM Job j LEFT JOIN Log l ON j.JobID = l.JobID LEFT JOIN Page p ON j.JobID = p.JobID AND p.PageID = 1 WHERE j.JobID > @last_id AND (j.JobStatus = 12 OR (j.JobStatus = 2 AND j.JobID < (SELECT COALESCE(MAX(j2.JobID), 0) FROM Job j2 WHERE j2.JobStatus = 12))) ORDER BY j.JobID",
         "id_column": "JobID",
         "filename_column": "JobName",
         "timestamp_column": "FinishPrintTime",
@@ -36,8 +40,8 @@
         "size_unit": "pt",
         "status_column": "JobStatus",
         "status_ok": ["12"],
-        "status_cancel": ["13"],
-        "status_error": ["14"],
+        "status_cancel": ["2"],
+        "status_error": [],
         "read_only": true
       }
     },
