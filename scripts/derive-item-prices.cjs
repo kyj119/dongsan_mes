@@ -8,7 +8,10 @@
  * 구조는 완비돼 있고 데이터만 비어 있다.
  *
  * 원천 = 이카운트 이관분 order_items 22,036라인(실거래 단가).
- *   - AREA  품목: unit_price 는 **장당 금액**이므로 규격으로 나눠 ㎡ 단가를 역산한다.
+ *   - AREA  품목: **`amount` 에서 역산한다** — `amount ÷ (청구면적 × 수량)`.
+ *                 `unit_price` 를 면적으로 나누면 안 된다: 그 컬럼의 의미가 시점에 따라 다르다
+ *                 (마이그 0530 이전 이관분 = 장당금액 / 이후 = ㎡단가). 나누는 식을 쓰면 0530 적용 후
+ *                 **이중 나눗셈**이 된다(겪음: AQ-BANNER 1,800 → 300원/㎡). 금액 기준은 양쪽 다 맞는다.
  *                 ⚠️ width·height 단위는 **cm** (실측: 600×80=4.8㎡ → 9,000원 = ㎡당 1,875원).
  *                 mm 로 잘못 보면 ㎡ 단가가 100배로 나온다(133,000원/㎡ 같은 값이 나오면 이 착오다).
  *   - FIXED 품목: unit_price 를 그대로 쓴다.
@@ -20,17 +23,21 @@
  *   실측 근거 = 0.24㎡(60×40)도 0.48㎡(60×80)도 단가가 3,000~4,500원으로 같았다. 면적 비례가 아니다.
  *   ⚠️ 이 규칙은 주문서 계산(calc.js·orderLineAmount.ts)에도 들어가야 한다 — 현재는 10cm 올림만 있다.
  *
- * 분류(판정은 사람이 한다 — 이 스크립트는 후보를 고를 뿐):
- *   A 자동확정   변동 작음(IQR/median < 0.15) → 중앙값을 그대로 base_price 로 써도 안전
- *   B 배율필요   변동 중간(< 0.60)            → 기준단가 + 거래처별 배율(client_item_prices) 구조가 맞다
- *   C 판단필요   변동 큼                       → 품목 정의 자체를 의심(규격 변종이 한 코드에 뭉쳐 있을 수 있다)
- *   N 표본부족   n < 5
+ * 분류(판정은 사람이 한다 — 이 스크립트는 후보를 고를 뿐). 상세 기준 = classify() 주석:
+ *   A 자동확정     변동 작음(IQR/median < 0.15) → 중앙값을 그대로 base_price 로 써도 안전
+ *   B 배율필요     변동 중간(< 0.60)            → 기준단가 + 거래처별 배율(client_item_prices) 구조가 맞다
+ *   C적용_면적흡수  변동 크지만 AREA — 단가에 면적이 곱해져 규격이 오차를 흡수한다
+ *   C적용_소액     변동 크지만 FIXED 1만원 미만 — 틀려도 금액 영향이 작다
+ *   C보류_무질서   변동 >= 2.0 — 대표값 자체가 성립하지 않는다(할인·조정 라인 등)
+ *   C보류_표본편향  거래처 3곳 미만 — 그 몇 곳 사정이 전체값이 된다
+ *   C보류_주문제작  FIXED 고액(간판·운임) — 그 값이 곧 청구액이라 위험. BOM 조립견적으로 풀 문제
+ *   N 표본부족     n < 5
  *
  * 사용법:
  *   node scripts/derive-item-prices.cjs              # 요약 + CSV 생성
  *   node scripts/derive-item-prices.cjs --local      # 로컬 D1 (기본 --remote)
  *   node scripts/derive-item-prices.cjs --out <path> # CSV 경로 지정
- *   node scripts/derive-item-prices.cjs --sql <path> # 적재 마이그레이션 생성(A·B 등급만)
+ *   node scripts/derive-item-prices.cjs --sql <path> # 적재 마이그레이션 생성(A·B·C적용_*)
  *
  * 산출 = docs/pricing/derived-prices.csv (품목별 1행, 검토용)
  *
@@ -58,8 +65,12 @@ const OUT = outIdx >= 0 && args[outIdx + 1]
   : path.join('docs', 'pricing', 'derived-prices.csv')
 const sqlIdx = args.indexOf('--sql')
 const SQL_OUT = sqlIdx >= 0 ? (args[sqlIdx + 1] || path.join('migrations', '0529_backfill_item_base_price.sql')) : null
-/** 마이그레이션에 담을 등급 — C(변동 큼)·N(표본부족)은 사람이 정한다. */
-const SQL_GRADES = new Set(['A_자동확정', 'B_배율필요'])
+/**
+ * 마이그레이션에 담을 등급. `C적용_*` 은 classify() 가 해로움 기준으로 걸러낸 것들이다.
+ * 전 등급을 담아도 안전하다 — 생성되는 SQL 이 `base_price = 0` 인 행만 건드리므로
+ * 앞선 마이그레이션이 이미 채운 품목은 자동으로 no-op 이 된다.
+ */
+const SQL_GRADES = new Set(['A_자동확정', 'B_배율필요', 'C적용_면적흡수', 'C적용_소액'])
 
 const DB = 'webapp-production'
 
@@ -74,11 +85,14 @@ const NO_PRICE = `i.is_sales_item = 1
 const BILL_W = 'MAX(CAST((oi.width  + 9) / 10 AS INT) * 10, 100) / 100.0'
 const BILL_H = 'MAX(CAST((oi.height + 9) / 10 AS INT) * 10, 100) / 100.0'
 
-// ㎡ 단가는 100원 단위로 버킷팅해 GROUP BY 로 접는다.
-// 라인 22,036건을 그대로 받으면 응답이 커서 wrangler 가 버거워한다.
+// ★㎡ 단가는 **금액에서 역산한다**(`unit_price` 를 면적으로 나누지 않는다).
+//   `unit_price` 의 의미는 시점에 따라 다르다 — 마이그 0530 이전 이관분은 장당금액, 이후는 ㎡단가.
+//   면적으로 나누는 식을 쓰면 0530 적용 후 **이중 나눗셈**이 되어 값이 면적배만큼 작아진다
+//   (실제로 겪음: AQ-BANNER 1,800 → 300원/㎡). `amount ÷ (청구면적 × 수량)` 은 양쪽 다 맞는다.
+// 100원 단위로 버킷팅해 GROUP BY 로 접는다 — 라인 22,036건을 그대로 받으면 응답이 커서 wrangler 가 버거워한다.
 const Q_AREA = `
 SELECT i.item_code AS code, i.item_name AS name, 'AREA' AS method,
-       CAST(ROUND(oi.unit_price / (${BILL_W} * ${BILL_H}) / 100) * 100 AS INT) AS price,
+       CAST(ROUND(oi.amount / (${BILL_W} * ${BILL_H} * oi.quantity) / 100) * 100 AS INT) AS price,
        COUNT(*) AS n,
        COUNT(DISTINCT o.client_id) AS clients
   FROM order_items oi
@@ -89,7 +103,19 @@ SELECT i.item_code AS code, i.item_name AS name, 'AREA' AS method,
    AND oi.unit_price > 0
    AND COALESCE(oi.width, 0)  > 0
    AND COALESCE(oi.height, 0) > 0
+   AND COALESCE(oi.quantity, 0) > 0
+   AND oi.amount <> 0
  GROUP BY 1, 2, 3, 4`
+
+// 품목별 실제 거래처 수. 버킷 배열에서 MAX 를 취하면 **버킷 하나의 거래처 수**라 크게 과소평가된다
+// (AQ-BANNER 실제 318곳인데 버킷 최대는 130곳). 표본편향 판정에 쓰이므로 따로 정확히 센다.
+const Q_CLIENTS = `
+SELECT i.item_code AS code, COUNT(DISTINCT o.client_id) AS clients
+  FROM order_items oi
+  JOIN items i  ON i.id = oi.item_id
+  JOIN orders o ON o.id = oi.order_id
+ WHERE ${NO_PRICE} AND oi.unit_price > 0
+ GROUP BY 1`
 
 const Q_FIXED = `
 SELECT i.item_code AS code, i.item_name AS name, 'FIXED' AS method,
@@ -147,11 +173,28 @@ function weightedQuantile(buckets, q) {
   return buckets[buckets.length - 1].price
 }
 
+/**
+ * 등급 판정. C(변동 큼)는 다시 가른다 — 기준은 "정확한가"가 아니라 **틀렸을 때 얼마나 해로운가**다.
+ * base_price 는 폴백이라 실제로 쓰이는 건 신규 거래처의 첫 주문뿐이고, 경리가 화면에서 고칠 수 있다.
+ * 그러니 "완벽한 값"이 아니라 "합리적 시작값"이면 채우는 편이 0원보다 낫다. 단 다음은 예외:
+ *   - 표본편향: 거래처가 3곳 미만이면 그 몇 곳의 사정이 전체값이 된다. 신규 거래처에 쓸 근거가 없다.
+ *   - 주문제작: FIXED 고액은 **그 값이 곧 청구액**이다. 간판(SIGN-*·SGM-*)은 건마다 사양이 달라
+ *     대표값 자체가 성립하지 않고, 애초에 BOM 조립견적으로 풀 문제다(현황판 「간판 조립견적」 설계 대기).
+ *     운임(ETC-EXP 변동 3.68)도 거리별이라 단가 개념이 없다.
+ * 반대로 AREA 는 단가에 면적이 곱해져 규격이 오차를 흡수하고, FIXED 라도 소액이면 영향이 작다.
+ */
 function classify(stats) {
   if (stats.lines < 5) return 'N_표본부족'
   if (stats.spread < 0.15) return 'A_자동확정'
   if (stats.spread < 0.60) return 'B_배율필요'
-  return 'C_판단필요'
+  // 변동이 중앙값의 2배를 넘으면 대표값 자체가 성립하지 않는다. 금액대·방식과 무관하게 뺀다.
+  //   실제로 이 상한이 없을 때 `ETC-DISC 할인`(변동 6.05)·`WDR-25-090`(21.89)이 딸려 들어왔다.
+  //   할인·조정 라인은 건마다 액수가 다른 게 정상이라 기본값을 두는 것 자체가 틀렸다.
+  if (stats.spread >= 2.0) return 'C보류_무질서'
+  if (stats.clients < 3) return 'C보류_표본편향'
+  if (stats.method === 'AREA') return 'C적용_면적흡수'
+  if (stats.median < 10000) return 'C적용_소액'
+  return 'C보류_주문제작'
 }
 
 function csvCell(v) {
@@ -160,12 +203,14 @@ function csvCell(v) {
 }
 
 function main() {
-  process.stdout.write(`[1/3] AREA 품목 단가 역산 (${REMOTE ? 'prod' : 'local'})...\n`)
+  process.stdout.write(`[1/4] AREA 품목 단가 역산 (${REMOTE ? 'prod' : 'local'})...\n`)
   const areaRows = d1(Q_AREA)
-  process.stdout.write(`[2/3] FIXED 품목 단가 수집...\n`)
+  process.stdout.write(`[2/4] FIXED 품목 단가 수집...\n`)
   const fixedRows = d1(Q_FIXED)
-  process.stdout.write(`[3/3] 이력 없는 품목 조회...\n`)
+  process.stdout.write(`[3/4] 이력 없는 품목 조회...\n`)
   const orphans = d1(Q_ORPHAN)
+  process.stdout.write(`[4/4] 품목별 거래처 수 집계...\n`)
+  const clientCount = new Map(d1(Q_CLIENTS).map((r) => [r.code, r.clients]))
 
   // 품목별로 버킷을 모은다.
   const byItem = new Map()
@@ -183,7 +228,7 @@ function main() {
   for (const e of byItem.values()) {
     e.buckets.sort((a, b) => a.price - b.price)
     const lines = e.buckets.reduce((s, b) => s + b.n, 0)
-    const clients = Math.max(...e.buckets.map((b) => b.clients))
+    const clients = clientCount.get(e.code) || 0
     const median = weightedQuantile(e.buckets, 0.5)
     const q1 = weightedQuantile(e.buckets, 0.25)
     const q3 = weightedQuantile(e.buckets, 0.75)
@@ -227,7 +272,7 @@ function main() {
     t.items++; t.lines += r.lines
     tally.set(r.grade, t)
   }
-  const order = ['A_자동확정', 'B_배율필요', 'C_판단필요', 'N_표본부족']
+  const order = ['A_자동확정', 'B_배율필요', 'C적용_면적흡수', 'C적용_소액', 'C보류_표본편향', 'C보류_주문제작', 'C보류_무질서', 'N_표본부족']
 
   process.stdout.write('\n분류               품목    라인\n')
   process.stdout.write('─────────────────────────────────\n')
@@ -260,8 +305,11 @@ function writeMigration(rows) {
   const lines = [
     '-- 품목 기본단가 백필 — 이카운트 이관 실거래 이력에서 역산한 중앙값',
     '--',
-    '-- 생성 = node scripts/derive-item-prices.cjs --sql   (재생성하면 같은 결과가 나온다)',
-    '-- 대상 = A(변동<0.15)·B(<0.60) 등급만. C·N·X 는 사람이 정한다(근거 = docs/pricing/derived-prices.csv).',
+    '-- 생성 = node scripts/derive-item-prices.cjs --sql <이 경로>   (재생성하면 같은 결과가 나온다)',
+    '-- 대상 = A·B 등급 + C 중 "틀려도 해가 작은" 것(C적용_면적흡수·C적용_소액). 판정 기준 = 그 스크립트의 classify().',
+    '--        빠진 것 = C보류_무질서(변동>=2.0, 할인·조정 라인)·C보류_표본편향(거래처<3곳)',
+    '--                 ·C보류_주문제작(FIXED 고액 — 간판은 BOM 조립견적, 운임은 거리별)·N(표본<5)·X(이력없음).',
+    '--        근거표 = docs/pricing/derived-prices.csv (등급 컬럼에 사유가 그대로 들어 있다).',
     '-- AREA 품목은 원/㎡, FIXED 품목은 원/개. 청구면적 = 10cm 올림 + 최소 1m.',
     '--',
     '-- 멱등 = base_price 가 0 인 행만 건드린다. 재실행하면 조건이 안 맞아 no-op.',
