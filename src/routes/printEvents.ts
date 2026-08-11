@@ -821,7 +821,7 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
   try {
     const {
       page = '1', limit = '50', agent_id = '', equipment_id = '', status = '', date = '',
-      q = '', from = '', to = '', equipment_ids = ''
+      q = '', from = '', to = '', equipment_ids = '', tiled = ''
     } = c.req.query()
     const pageNum = Number(page)
     const limitNum = Number(limit)
@@ -850,6 +850,10 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
     if (status) {
       where += ' AND pe.print_status = ?'
       params.push(status)
+    }
+    // 분할출력(타일)만 — tile_count>0 행은 타일 1장 = 1행으로 이미 분리 저장돼 있다
+    if (tiled === '1') {
+      where += ' AND pe.tile_count > 0'
     }
     // 통합 검색어 q: 파일명/경로/카드/주문/장비명 LIKE OR (COLLATE NOCASE)
     if (q) {
@@ -893,10 +897,13 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
         COALESCE(SUM(CAST(pe.output_width AS REAL) * CAST(pe.output_height AS REAL) * COALESCE(pe.copy_total, 1)), 0) / 1000000.0 as area_m2,
         COUNT(DISTINCT pe.equipment_id) as equipment_count,
         SUM(CASE WHEN pe.print_status = 'CANCEL' THEN 1 ELSE 0 END) as cancel_count,
-        SUM(CASE WHEN pe.print_status = 'ERROR' THEN 1 ELSE 0 END) as error_count
+        SUM(CASE WHEN pe.print_status = 'ERROR' THEN 1 ELSE 0 END) as error_count,
+        SUM(CASE WHEN pe.tile_count > 0 THEN 1 ELSE 0 END) as tile_rows,
+        COUNT(DISTINCT CASE WHEN pe.tile_count > 0 THEN pe.file_path END) as tile_files
       FROM print_events pe ${where}`
     const countRow = await c.env.DB.prepare(countQuery).bind(...params).first<{
       count: number; area_m2: number; equipment_count: number; cancel_count: number; error_count: number
+      tile_rows: number; tile_files: number
     }>()
     const count = countRow?.count ?? 0
 
@@ -920,6 +927,8 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
         equipment_count: Number(countRow?.equipment_count) || 0,
         cancel_count: Number(countRow?.cancel_count) || 0,
         error_count: Number(countRow?.error_count) || 0,
+        tile_rows: Number(countRow?.tile_rows) || 0,
+        tile_files: Number(countRow?.tile_files) || 0,
       }
     })
   } catch (error) {

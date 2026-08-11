@@ -478,6 +478,13 @@ export function productionPage(c: Context<HonoEnv>) {
               <option value="ERROR">오류</option>
             </select>
           </div>
+          <div class="ds-filter-field" style="min-width:96px">
+            <label class="ds-label">분할출력</label>
+            <label class="ds-input flex items-center gap-1.5" style="cursor:pointer">
+              <input type="checkbox" id="poTiled" onchange="loadOutputHistory(1)">
+              <span style="font-size:12px">분할만</span>
+            </label>
+          </div>
           <div class="ds-filter-field" style="flex:1;min-width:180px">
             <label class="ds-label">검색</label>
             <input type="text" id="poSearch" placeholder="파일명, 주문번호, 장비명..." class="ds-input"

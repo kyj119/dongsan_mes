@@ -1271,7 +1271,9 @@ function poDefaultFrom() {
 function poReadFilters() {
   var g = function(id) { var el = document.getElementById(id); return el ? el.value : ''; };
   var eqIds = Object.keys(poEqSelected).filter(function(id) { return poEqSelected[id]; });
-  return { from: g('poFrom'), to: g('poTo'), equipmentIds: eqIds, status: g('poStatus'), search: g('poSearch') };
+  var tiledEl = document.getElementById('poTiled');
+  return { from: g('poFrom'), to: g('poTo'), equipmentIds: eqIds, status: g('poStatus'), search: g('poSearch'),
+    tiled: !!(tiledEl && tiledEl.checked) };
 }
 
 function poBuildParams(f) {
@@ -1281,6 +1283,7 @@ function poBuildParams(f) {
   // 다중 장비 = equipment_ids(콤마 구분) — 서버가 단일 equipment_id 보다 우선 처리
   if (f.equipmentIds && f.equipmentIds.length > 0) p.append('equipment_ids', f.equipmentIds.join(','));
   if (f.status) p.append('status', f.status);
+  if (f.tiled) p.append('tiled', '1');
   if (f.search) p.append('q', f.search);
   return p;
 }
@@ -1312,6 +1315,9 @@ function poRenderChips(f, summary) {
   } else {
     items.push({ label: '취소·오류 포함', tone: 'warn' });   // 전체 조회는 실적이 부풀려진다는 뜻이다
   }
+  if (f.tiled) {
+    items.push({ label: '분할출력만', onClear: reload(function() { var el = document.getElementById('poTiled'); if (el) el.checked = false; }) });
+  }
   // 기본(정상만) 조회일 때 무엇이 빠졌는지 밝힌다 — 조용히 빼면 총계 차이를 설명 못 한다
   if (f.status === 'OK' && summary) {
     items.push({ label: '취소·오류는 별도 집계', tone: 'static' });
@@ -1327,6 +1333,10 @@ function poRenderSummary(summary, pagination) {
     { label: '면적', value: Math.round(summary.area_m2).toLocaleString() + '㎡', format: 'text', strong: true },
     { label: '장비', value: summary.equipment_count }
   ];
+  // 분할출력 = 타일 1장이 1행이라 건수가 파일 수보다 부풀어 보인다 — 파일 수를 함께 밝힌다
+  if (summary.tile_rows > 0) {
+    cols.push({ label: '분할출력', value: summary.tile_rows + '건·' + summary.tile_files + '파일', format: 'text' });
+  }
   // 취소·오류는 실적에서 빼되 숨기지 않는다 (합계에 섞지 않고 별도 항목으로)
   if (summary.cancel_count > 0) cols.push({ label: '취소', value: summary.cancel_count });
   if (summary.error_count > 0) cols.push({ label: '오류', value: summary.error_count });
@@ -1388,10 +1398,17 @@ function poRenderRows(rows) {
         completedKst = String(completed).slice(0, 16);
       }
     }
+    // 분할출력(타일)은 타일 1장 = 1행 — 어느 타일인지 배지로 밝힌다 (현황 탭과 같은 표기)
+    var tileBadge = '';
+    if (Number(e.tile_count) > 0) {
+      tileBadge = '<span class="text-[10px] bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded" style="flex:none">'
+        + (Number(e.tile_index) || 0) + '/' + Number(e.tile_count) + ' 타일</span>';
+    }
     return '<tr>'
       + '<td title="' + escapeHtml(completedFull) + '">' + escapeHtml(completedKst) + '</td>'
       + '<td>' + escapeHtml(e.printer_name || '-') + '</td>'
-      + '<td class="truncate" title="' + escapeHtml(e.file_name || '') + '">' + escapeHtml(e.file_name || '-') + '</td>'
+      + '<td title="' + escapeHtml(e.file_name || '') + '"><div class="flex items-center gap-1.5">'
+      + '<span class="truncate" style="min-width:0">' + escapeHtml(e.file_name || '-') + '</span>' + tileBadge + '</div></td>'
       + '<td>' + escapeHtml(e.order_number || '-') + '</td>'
       + '<td style="text-align:right">' + (w ? Math.round(w) + '×' + Math.round(h) : '-') + '</td>'
       + '<td style="text-align:right">' + copies.toLocaleString() + '</td>'
@@ -1435,6 +1452,8 @@ function resetOutputFilters() {
   poSyncEqCheckboxes();
   setVal('poStatus', 'OK');
   setVal('poSearch', '');
+  var tiledEl = document.getElementById('poTiled');
+  if (tiledEl) tiledEl.checked = false;
   loadOutputHistory(1);
 }
 
