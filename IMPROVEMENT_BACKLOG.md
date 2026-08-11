@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-08-11T00:20:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-08-11T09:19:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **4** (`search_issues(is:open,label:auto-improve)` 실측, Area6. #601~#603·#605·#607은 owner가 오늘 완료로 close, 나머지 #606·#608·#609·#612만 잔존) |
+| 🆕 new | **4** (`search_issues(is:open,label:auto-improve)` 실측, Area1 재확인. #606·#608·#609·#612, 변동 없음) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **531** (`reason:completed` 실측, +5: #601·#602·#603·#605·#607) |
+| ✔️ done | **531** (`reason:completed` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+
+> **Area 1 프로덕션 헬스 (2026-08-11T09:19):**
+> - **방법**: `git fetch origin main`(HEAD `16296f1`, origin과 완전 일치, 워킹트리 clean). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area6 앵커(`5d76d65`) 이후 `git diff --stat -- src/routes migrations src/scripts index.tsx src/layout` = **0줄**(신규 5커밋은 전부 docs/status board 정리, 코드 변경 없음) — 이번 사이클은 정적 코드 리뷰 대상 자체가 없음.
+> - **배포 CI**: `deploy.yml` 최근 10런(08-10 09:54~23:57) **전부 success**, 최신런(`16296f1`, 23:59:00 완료)의 "Smoke test (production)" 단계도 success — GET 프로브 102개 기준 prod 정상(단, #430 codify대로 write-path는 이 프로브로 확인 불가, 별도 회귀 없음 전제).
+> - **backup.yml**: 최근 30런 중 08-06 1건만 failure, 08-07~08-10 4런 연속 success — 08-10 Area6가 검증한 #605 픽스(`timeout-minutes 10→25`+3회 재시도)가 실제로 재발을 막고 있음을 CI 실측으로 재확인.
+> - **verify.yml**: `total_count: 0`(생성 이래 0회 실행) — #608이 이미 보고한 사실과 일치, net-new 아님. `e2e.yml`은 `disabled_manually` 상태(기존 정책, 회귀 아님).
+> - **egress 제약(재확인)**: 이 세션은 `webapp-9i0.pages.dev`(prod host)가 프록시 allowlist 밖(`curl` 403 "Host not in allowlist")이고 `CLOUDFLARE_API_TOKEN` 미설정이라 `wrangler d1 execute --remote`도 불가 — LogWatcher heartbeat·CAPS sync 신선도를 이 세션에서 직접 조회 불가. 대안으로 CI(자체 네트워크 보유)의 deploy.yml 성공 이력을 prod 헬스 대리 지표로 사용.
+> - **open 4건 재확인(open≠unfixed)**: `search_issues(is:open,label:auto-improve)` = #606·#608·#609·#612, backlog 캐시와 완전 일치(드리프트 없음).
+> - **backlog↔GitHub 절대값 재동기화**: open **4**(변동없음) · `reason:completed` **531**(변동없음) · rejected **6**(변동없음).
+> - 신규 이슈 0건(코드 churn 없음 + prod CI 전부 green), 자동수정 0건, done-sync: 변동 없음. 다음 순번 **Area 2**.
+>
+> **Area 6 자기 진화 (2026-08-11T00:20):**
 
 > **Area 6 자기 진화 (2026-08-11T00:20):**
 > - **방법**: `git fetch origin main`(HEAD `5d76d65`, 워킹트리 clean, detached) — 컨테이너 git 이력이 이번엔 재구성 없이 직전 Area5 앵커(`1793f6a`)와 조상관계 유지(`git log 1793f6a..HEAD` 정상 6커밋). `npm ci`(0→81), `npx tsc --noEmit` clean, `doc-diet-audit.cjs` OK. 직전 Area5(21:15) 이후 코드 churn = `c396923`(주문서 편집 라운드트립 손실 클래스 + 이슈배치 #601/602/603/605/607) 1건 — 나머지 3커밋(`f2740dd` 재무진단 스크립트·`3b84c13` 문서다이어트·`5d76d65` 세션핸드오프)은 docs/scripts뿐이거나 read-only 진단도구.
