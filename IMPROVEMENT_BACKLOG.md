@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-08-11T09:19:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-08-11T15:25:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,19 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`reason:completed` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-08-11T15:25):**
+> - **방법**: `git fetch origin main`(HEAD `ca38708`, origin과 완전 일치) — 컨테이너 git 이력이 이번 사이클도 force-update로 재기록(57커밋 전부 최근, root `740b8cd`). `npm ci`(0→81), `npx tsc --noEmit` clean. 직전 Area2(`8947255`, 08-10T03:16, 61회차) 이후 `src/routes`/`src/scripts`/`index.tsx`/`src/layout`/`src/pages`/migrations 변경 = **12커밋**(ca38708 print-events entity공유·90b0c36 cron 주석·379a7b7 장비 entity공유+다중선택 필터·93c9927 예산알림 신설·4f077a0 등급C 단가백필[0531]·0b87962 AREA 단가정정[0530]·4605227 최소청구면적+가격제안·c396923 주문서 편집 라운드트립 5건 배치·1bfaf7f PDF/JPG/PNG 첨부·7f40097 nav-badges D1폭증+HAVING별칭버그·ee16ae6 라인DXF첨부·0798a37 품목검색/마감섹션) — c396923(5건)은 Area6(00:20)가 이미 코드품질 렌즈로 전수 재검증 완료, 나머지 11커밋은 신선 churn.
+> - **entity_id 격리 제거 2건(ca38708·379a7b7) 바인드 정합 검증**: `printEvents.ts`(list/stats×4/unmatched)·`dashboard.ts`/`equipmentQueue.ts`/`facility.ts`(×2)/`rip.ts`(×2) 총 10개 쿼리에서 `entityFilter`/`ef.clause`/`ef.params` 제거 지점을 각각 대조 — 플레이스홀더(`?`) 개수와 `.bind()` 인자 개수가 전부 일치(예: `facility.ts:layout-data`는 `cardEf`만 남기고 `equipEf` 제거 후 바인드 배열도 동일 축소). 커밋 메시지가 "장비/출력이벤트=전 법인 공유 인프라, 쓰기 경로는 격리 유지"로 설계 근거를 명시 + 실제로 write 핸들러(`POST/PATCH /equipment`, 카드 발급 등)는 diff에 미포함 — 의도된 설계 변경, entity_id INSERT 누락류 버그 아님.
+> - **`ee16ae6`(라인 DXF 첨부) INSERT 컬럼셋 대조**: `orders/create.ts`(신규)·`orders/update.ts`(신규만 삽입, dup-check 후) 양쪽 `INSERT INTO order_ai_files (..., entity_id)` 8컬럼/8바인드 일치, entity_id는 `billingEntityId`/`existingOrder.entity_id ?? getEntityId(c)||1`로 정상 공급. update.ts의 `for (putParentItems)` 루프 안 `await ... .first()`+`.run()`은 order.items 길이로 bounded(#458 FP배제 "per-entity 품목 IN"과 동일 계열, LIMIT-less 데이터스케일 아님) — N+1 보고 대상 아님.
+> - **신규 `budgetAlert.ts`/`cron.ts POST /budget-check` 검토**: `agentKeyMiddleware` 게이트 확인(기존 cron 라우트와 동일 패턴), settings 조회 SQL 파라미터화·Cloudflare 미설정 시 그 축만 스킵 + "설정했는데 조회실패"는 별도 알림(감시가 조용히 꺼지는 것 방지) — 설계 결함 없음. `checkBudgets` 호출처 1곳(cron.ts)뿐이나 서비스 함수 성격상 정상(dead code 아님).
+> - **migrations 0530/0531 재검토**: 둘 다 멱등 가드(`WHERE` 조건에 "이미 목표값" 배제 포함)·롤백 SQL·근거 스크립트(`derive-item-prices.cjs`) 명시, CHECK/NOT NULL 위반 없음(단순 UPDATE/INSERT). 마이그 번호 중복 재확인 — 기존 5쌍(0327·0412·0416·0420·0453) net-new 0.
+> - **standing scan 재실행**: ① `npm run audit:entity` — 검사 131파일·entity테이블 SELECT 61·**누락 0**. ② `grep -rnE "IN \(\$\{" src/routes` (#458 미청크 동적 IN절) — **0건**(기존 발견 전부 청크 픽스 유지). ③ "헬퍼-루프" N+1 하위클래스(#478, `for...of` 바디에 `await <추출헬퍼>` + LIMIT없는 데이터스케일 집합) grep — **0건**.
+> - **open 4건 재확인(open≠unfixed)**: #606(`grep -rln entity-attribution-audit src/scripts src/pages`=0)·#608(`verify.yml` 여전히 `pull_request` 트리거뿐)·#609(`toBase`/`formatStock` 호출처 0, 이번 churn이 재고 write-path 3곳을 안 건드려 무관)·#612(`ai_analysis_id`/`dxf_analysis_id` IDOR — 오늘 `ee16ae6`가 `dxf_analysis_id` 저장 로직을 추가했으나 소유권 검증 로직 자체는 무변경이라 #612 상태 그대로) 전부 코드 직접 재확인, 캐시 유지.
+> - **backlog↔GitHub 절대값 재동기화**: `list_issues(OPEN,auto-improve)` open **4**(#606·#608·#609·#612, 변동없음) · `search_issues(reason:completed)` **531**(변동없음) · rejected **6**(변동없음, 재확인 생략 — 직전 사이클과 무변동 근거 충분).
+> - **🧬 SKILL 강화**: 없음 — 이번 사이클 신규 오탐/탐지 클래스 없음. entity_id 격리 제거 2건은 기존 FP클래스("문서화된 cross-entity 기능")의 변형(공유 인프라 성격)이라 신규 규칙 불요, 자동 바인드 개수 대조 레시피는 기존 #607류 점검과 동일해 재사용.
+> - 신규 이슈 0건(churn 12건 전부 clean — 병렬 세션들이 이미 자체 gate 통과 후 착륙), 자동수정 0건, done-sync: new 4(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-08-11T09:19):**
 > - **방법**: `git fetch origin main`(HEAD `16296f1`, origin과 완전 일치, 워킹트리 clean). `npm ci`(0→81), `npx tsc --noEmit` clean.
