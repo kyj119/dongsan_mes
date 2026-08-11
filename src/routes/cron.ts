@@ -244,4 +244,37 @@ cronRouter.post('/daily-maintenance', agentKeyMiddleware, async (c) => {
   return c.json({ success: true, summary, results: out, leaves, retention, integrity, intercompany })
 })
 
+/**
+ * POST /api/cron/budget-check — 바로빌 잔액 + Cloudflare 사용량 예산 점검.
+ *
+ * 둘을 묶은 이유는 성격이 같아서다: 쓰는 만큼 빠져나가는데 화면 어디에도 안 보이고, 사고 뒤에야 안다.
+ * 바로빌은 잔액이 마르면 수집 cron 이 조용히 실패하고, Cloudflare 는 **지출 하드 상한 자체가 없다**
+ * (2026-08-07 $125.70 청구를 청구서에서 처음 알았다).
+ *
+ * 임계 = settings(`budget_barobill_min_balance`·`budget_cf_rows_read_daily`·`budget_cf_requests_daily`).
+ * 알림 = ADMIN, **당일 같은 제목 1회**(매일 도는 cron 이라 dedup 없으면 같은 경고가 쌓인다).
+ * Cloudflare 축은 `CF_ANALYTICS_TOKEN`·`CF_ACCOUNT_ID` 가 있을 때만 — 없으면 그 축만 건너뛰고
+ * 바로빌 점검은 그대로 한다(한쪽 미설정이 전체를 막지 않는다).
+ *
+ * 인증: X-Agent-Key. 응답에 실측값을 담으므로 수동 호출로 현재 상태 조회에도 쓸 수 있다.
+ */
+cronRouter.post('/budget-check', agentKeyMiddleware, async (c) => {
+  // 바로빌 잔액은 통합(파트너) 지갑 = CERTKEY 단위 공통이라 법인 루프가 필요 없다(entity 1 로 1회).
+  const balance: { value: number | null; error?: string } = { value: null }
+  try {
+    const { getBarobillConfig } = await import('./barobill')
+    const { getPartnerBalance } = await import('../services/barobillClient')
+    const config = await getBarobillConfig(c)
+    balance.value = await getPartnerBalance(config)
+  } catch (err: any) {
+    balance.error = String(err?.message || err).slice(0, 200)
+  }
+
+  const { checkBudgets } = await import('../services/budgetAlert')
+  const result = await checkBudgets(c.env as any, balance)
+
+  console.log('[cron/budget-check]', JSON.stringify(result))
+  return c.json({ success: true, ...result })
+})
+
 export default cronRouter

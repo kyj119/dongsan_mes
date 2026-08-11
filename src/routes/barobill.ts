@@ -18,6 +18,10 @@ const barobillRouter = new Hono<HonoEnv>()
 barobillRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 
 /** 설정에서 바로빌 config 생성 */
+// cron 의 예산 점검(`/api/cron/budget-check`)이 잔액 조회에 같은 설정을 써야 해서 export 한다.
+// 별칭을 둔 이유 = 파일 안 호출부 40여 곳을 건드리지 않으려고(이름이 짧아 충돌 위험도 있다).
+export { getConfig as getBarobillConfig }
+
 async function getConfig(c: any): Promise<BarobillConfig> {
   // 테스트모드 설정 확인
   const testModeRow = await c.env.DB.prepare(

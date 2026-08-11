@@ -29,6 +29,18 @@ async function triggerDaily(env: Env): Promise<{ status: number; body: string }>
   return { status: res.status, body: (await res.text()).slice(0, 1000) }
 }
 
+// 예산 점검(바로빌 잔액 + Cloudflare 사용량). 임계 초과 시 ADMIN 알림, 당일 1회 dedup.
+//   ★수집(barobill-sync) **뒤에** 돌린다 — 그날 조회 요금이 빠져나간 뒤의 잔액을 봐야
+//   "내일 수집이 돌아갈 수 있나"를 판정할 수 있다. 먼저 보면 이미 쓴 돈이 잔액에 안 잡힌다.
+async function triggerBudget(env: Env): Promise<{ status: number; body: string }> {
+  const res = await fetch(`${env.MES_URL}/api/cron/budget-check`, {
+    method: 'POST',
+    headers: { 'X-Agent-Key': env.AGENT_API_KEY, 'Content-Type': 'application/json' },
+    body: '{}',
+  })
+  return { status: res.status, body: (await res.text()).slice(0, 1000) }
+}
+
 export default {
   // 정기 스케줄 — wrangler.jsonc triggers.crons
   async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
@@ -43,6 +55,12 @@ export default {
       console.log(`[barobill-cron] daily-maintenance ${d.status} ${d.body}`)
     } catch (err) {
       console.error('[barobill-cron] daily-maintenance failed', err instanceof Error ? err.message : String(err))
+    }
+    try {
+      const b = await triggerBudget(env)
+      console.log(`[barobill-cron] budget-check ${b.status} ${b.body}`)
+    } catch (err) {
+      console.error('[barobill-cron] budget-check failed', err instanceof Error ? err.message : String(err))
     }
   },
 

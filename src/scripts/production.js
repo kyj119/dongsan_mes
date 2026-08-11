@@ -1270,14 +1270,16 @@ function poDefaultFrom() {
 
 function poReadFilters() {
   var g = function(id) { var el = document.getElementById(id); return el ? el.value : ''; };
-  return { from: g('poFrom'), to: g('poTo'), equipmentId: g('poEquipment'), status: g('poStatus'), search: g('poSearch') };
+  var eqIds = Object.keys(poEqSelected).filter(function(id) { return poEqSelected[id]; });
+  return { from: g('poFrom'), to: g('poTo'), equipmentIds: eqIds, status: g('poStatus'), search: g('poSearch') };
 }
 
 function poBuildParams(f) {
   var p = new URLSearchParams();
   if (f.from) p.append('from', f.from);
   if (f.to) p.append('to', f.to);
-  if (f.equipmentId) p.append('equipment_id', f.equipmentId);
+  // 다중 장비 = equipment_ids(콤마 구분) — 서버가 단일 equipment_id 보다 우선 처리
+  if (f.equipmentIds && f.equipmentIds.length > 0) p.append('equipment_ids', f.equipmentIds.join(','));
   if (f.status) p.append('status', f.status);
   if (f.search) p.append('q', f.search);
   return p;
@@ -1300,10 +1302,10 @@ function poRenderChips(f, summary) {
   } else {
     items.push({ label: '전체 기간', tone: 'static' });
   }
-  if (f.equipmentId) {
-    var sel = document.getElementById('poEquipment');
-    var name = (sel && sel.selectedOptions[0]) ? sel.selectedOptions[0].textContent : f.equipmentId;
-    items.push({ label: '장비 ' + name, onClear: reload(function() { document.getElementById('poEquipment').value = ''; }) });
+  var chipEqIds = f.equipmentIds || [];
+  if (chipEqIds.length > 0) {
+    var label1 = chipEqIds.length === 1 ? ('장비 ' + poEqName(chipEqIds[0])) : ('장비 ' + chipEqIds.length + '대');
+    items.push({ label: label1, onClear: reload(function() { poEqSelected = {}; poSyncEqCheckboxes(); }) });
   }
   if (f.status) {
     items.push({ label: '상태 ' + poStatusLabel(f.status), onClear: reload(function() { document.getElementById('poStatus').value = ''; }) });
@@ -1429,7 +1431,8 @@ function resetOutputFilters() {
   var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = v; };
   setVal('poFrom', poDefaultFrom());
   setVal('poTo', '');
-  setVal('poEquipment', '');
+  poEqSelected = {};
+  poSyncEqCheckboxes();
   setVal('poStatus', 'OK');
   setVal('poSearch', '');
   loadOutputHistory(1);
@@ -1440,30 +1443,109 @@ function poApplyFilters(f) {
   var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = (v == null ? '' : v); };
   setVal('poFrom', f.from);
   setVal('poTo', f.to);
-  setVal('poEquipment', f.equipmentId);
+  poEqSelected = {};
+  if (f.equipmentIds && f.equipmentIds.forEach) {
+    f.equipmentIds.forEach(function(id) { if (id) poEqSelected[id] = true; });
+  } else if (f.equipmentId) {
+    poEqSelected[f.equipmentId] = true;   // 다중선택 이전에 저장된 프리셋 호환
+  }
+  poSyncEqCheckboxes();   // 장비 목록이 아직 안 왔으면 no-op — poRenderEqCheckboxes 가 상태를 반영해 그린다
   setVal('poStatus', f.status);
   setVal('poSearch', f.search);
   poPresetApplied = true;
   loadOutputHistory(1);
 }
 
-// 장비 셀렉트 채우기 — 목록이 26대라 전량으로 둔다.
+// 장비 다중선택 드롭다운 — 목록이 26대라 전량으로 둔다. (탭2 evAgent 패턴과 동일 구조)
 // ⚠️ `/api/equipment` 는 **존재하지 않는다**(404). 정본은 `/api/rip/equipment` 다.
 //    (production.js 의 기존 호출 한 곳도 404 를 조용히 삼키고 있었다 — 그쪽은 별건)
+var poEqSelected = {};   // { equipmentId: true } — 선택 상태 정본 (체크박스 DOM 은 표시일 뿐)
+var poEqList = [];
+
 async function poLoadEquipment() {
   try {
     var res = await axios.get('/api/rip/equipment');
-    var list = (res.data && res.data.data) || [];
-    var sel = document.getElementById('poEquipment');
-    if (!sel) { console.warn('[outputHistory] #poEquipment not found'); return; }
-    list.forEach(function(eq) {
-      var o = document.createElement('option');
-      o.value = eq.id;
-      o.textContent = eq.name || eq.equipment_name || ('장비 ' + eq.id);
-      sel.appendChild(o);
-    });
+    poEqList = (res.data && res.data.data) || [];
+    poRenderEqCheckboxes();
   } catch (e) { console.warn('[outputHistory] 장비 목록 로드 실패', e); }
 }
+
+function poEqName(id) {
+  for (var i = 0; i < poEqList.length; i++) {
+    if (poEqList[i] && poEqList[i].id === id) return poEqList[i].name || id;
+  }
+  return id;
+}
+
+function poRenderEqCheckboxes() {
+  var box = document.getElementById('poEqCheckboxes');
+  if (!box) { console.warn('[outputHistory] #poEqCheckboxes not found'); return; }
+  // 더 이상 없는 장비의 선택상태 정리
+  var validIds = {};
+  poEqList.forEach(function(eq) { if (eq && eq.id) validIds[eq.id] = true; });
+  Object.keys(poEqSelected).forEach(function(id) { if (!validIds[id]) delete poEqSelected[id]; });
+  var groups = productionGroupEquipment(poEqList);
+  box.innerHTML = groups.map(function(g) {
+    var rows = g.items.map(function(eq) {
+      var checked = poEqSelected[eq.id] ? ' checked' : '';
+      var name = eq.name || eq.id;
+      return '<label class="flex items-center gap-1.5 py-0.5 pl-3 cursor-pointer hover:bg-gray-50 rounded" title="' + escapeHtml(name) + ' (' + escapeHtml(eq.id) + ')">'
+        + '<input type="checkbox" class="po-eq-cb" value="' + escapeHtml(eq.id) + '"' + checked
+        + ' onchange="poOnEqCheck(this.value, this.checked)">'
+        + '<span class="truncate">' + escapeHtml(name) + '</span></label>';
+    }).join('');
+    return '<div class="mb-1">'
+      + '<div class="text-[10px] font-semibold text-gray-400 uppercase tracking-wide px-1 mt-1">' + escapeHtml(g.key) + '</div>'
+      + rows + '</div>';
+  }).join('');
+  poSyncEqLabel();
+}
+
+function poOnEqCheck(id, checked) {
+  if (checked) poEqSelected[id] = true; else delete poEqSelected[id];
+  poSyncEqLabel();
+  loadOutputHistory(1);
+}
+
+function poToggleAllEquipment(checked) {
+  if (checked) { poEqList.forEach(function(eq) { if (eq && eq.id) poEqSelected[eq.id] = true; }); }
+  else { poEqSelected = {}; }
+  document.querySelectorAll('.po-eq-cb').forEach(function(cb) { cb.checked = checked; });
+  poSyncEqLabel();
+  loadOutputHistory(1);
+}
+
+// 체크박스 DOM 을 선택상태(poEqSelected)에 맞춘다 — 프리셋 복원·칩 해제 공용
+function poSyncEqCheckboxes() {
+  document.querySelectorAll('.po-eq-cb').forEach(function(cb) { cb.checked = !!poEqSelected[cb.value]; });
+  poSyncEqLabel();
+}
+
+function poSyncEqLabel() {
+  var picked = Object.keys(poEqSelected).filter(function(id) { return poEqSelected[id]; });
+  var labelEl = document.getElementById('poEqDropdownLabel');
+  if (labelEl) {
+    labelEl.textContent = picked.length === 0 ? '전체 장비'
+      : picked.length === 1 ? poEqName(picked[0])
+      : '장비 ' + picked.length + '대';
+  }
+  var allEl = document.getElementById('poEqSelectAll');
+  if (allEl) allEl.checked = poEqList.length > 0 && picked.length === poEqList.length;
+}
+
+function poToggleEqDropdown() {
+  var panel = document.getElementById('poEqDropdownPanel');
+  if (!panel) { console.warn('[outputHistory] #poEqDropdownPanel not found'); return; }
+  panel.classList.toggle('hidden');
+}
+
+// 패널 바깥 클릭 시 닫기
+document.addEventListener('click', function(e) {
+  var wrap = document.getElementById('poEqDropdownWrap');
+  var panel = document.getElementById('poEqDropdownPanel');
+  if (!wrap || !panel || panel.classList.contains('hidden')) return;
+  if (!wrap.contains(e.target)) panel.classList.add('hidden');
+});
 
 // 탭 최초 진입 시 1회 — 표가 hidden 이면 열 선택이 thead 를 못 읽는다
 window.initOutputHistory = function() {

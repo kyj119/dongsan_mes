@@ -450,11 +450,24 @@ export function productionPage(c: Context<HonoEnv>) {
             <label class="ds-label">~ to</label>
             <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="poTo" class="js-fp ds-input" onchange="loadOutputHistory(1)">
           </div>
-          <div class="ds-filter-field" style="min-width:150px">
+          <div class="ds-filter-field" style="min-width:170px">
             <label class="ds-label">장비</label>
-            <select id="poEquipment" class="ds-input" onchange="loadOutputHistory(1)">
-              <option value="">전체</option>
-            </select>
+            <!-- 다중 장비 선택 드롭다운 (탭2 evAgent 패턴과 동일 구조) -->
+            <div class="relative" id="poEqDropdownWrap">
+              <button type="button" id="poEqDropdownBtn" onclick="poToggleEqDropdown()"
+                class="ds-input flex items-center justify-between gap-1" style="cursor:pointer;text-align:left;width:100%">
+                <span id="poEqDropdownLabel" class="truncate">전체 장비</span>
+                <i class="fas fa-chevron-down text-gray-300 text-[9px]"></i>
+              </button>
+              <div id="poEqDropdownPanel"
+                class="hidden absolute z-30 mt-1 left-0 bg-white border rounded shadow-lg p-2 text-xs"
+                style="min-width:220px;max-height:300px;overflow-y:auto;">
+                <label class="flex items-center gap-1.5 py-1 border-b border-gray-100 mb-1 font-medium text-gray-700">
+                  <input type="checkbox" id="poEqSelectAll" onchange="poToggleAllEquipment(this.checked)">전체
+                </label>
+                <div id="poEqCheckboxes"></div>
+              </div>
+            </div>
           </div>
           <div class="ds-filter-field" style="min-width:110px">
             <label class="ds-label">상태</label>
