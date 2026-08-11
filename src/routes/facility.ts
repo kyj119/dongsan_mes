@@ -20,14 +20,14 @@ facilityRouter.use('/*', authMiddleware)
 
 facilityRouter.get('/zones', async (c) => {
   try {
-    const ef = entityFilter(c, 'e')  // equipment 격리 (구역별 설비 수)
+    // 장비 조회 = 전 법인 공유 (2026-08-11: 전 장비가 동산(1) 소유라 격리 시 타법인 세션은 빈 화면 — 쓰기 경로만 #342 유지)
     const { results } = await c.env.DB.prepare(`
       SELECT fz.*,
-        (SELECT COUNT(*) FROM equipment e WHERE e.zone_id = fz.id${ef.clause}) as equipment_count
+        (SELECT COUNT(*) FROM equipment e WHERE e.zone_id = fz.id) as equipment_count
       FROM facility_zones fz
       WHERE fz.is_active = 1
       ORDER BY fz.sort_order, fz.id
-    `).bind(...ef.params).all()
+    `).all()
     return c.json({ success: true, data: results })
   } catch (error) {
     console.error('src/routes/facility.ts error:', error)
@@ -106,14 +106,13 @@ facilityRouter.delete('/zones/:id', requireRole('ADMIN'), async (c) => {
 
 facilityRouter.get('/layout-data', async (c) => {
   try {
-    const equipEf = entityFilter(c, 'e')       // equipment 격리 (entity_id)
+    // 장비 조회 = 전 법인 공유, 카드 수치만 법인 격리 유지 (2026-08-11 — 쓰기 경로만 #342)
     const cardEf = cardEntityFilter(c, 'c')    // cards 격리 (requesting_entity_id)
     const [zonesRes, equipRes, cardsRes] = await Promise.all([
       // facility_zones: entity_id 없음 = 전사 공용(물리 구역)
       c.env.DB.prepare(`
         SELECT id, name, description, color, sort_order, bounds, is_active, created_at, updated_at FROM facility_zones WHERE is_active = 1 ORDER BY sort_order, id
       `).all(),
-      // 바인드 순서: cards 서브쿼리(SELECT절)가 equipment WHERE보다 앞 → cardEf, equipEf 순
       c.env.DB.prepare(`
         SELECT e.id, e.name, e.printer_name, e.equipment_status, e.location_x, e.location_y,
           e.location_zone, e.zone_id, e.status,
@@ -124,8 +123,8 @@ facilityRouter.get('/layout-data', async (c) => {
           SELECT equipment_id, MAX(last_seen_at) as last_heartbeat, is_printing
           FROM agent_heartbeats GROUP BY equipment_id
         ) ah ON ah.equipment_id = e.id
-        WHERE e.status = 'ACTIVE'${equipEf.clause}
-      `).bind(...cardEf.params, ...equipEf.params).all(),
+        WHERE e.status = 'ACTIVE'
+      `).bind(...cardEf.params).all(),
       // 구역별 오늘 작업 수 (cards 격리)
       c.env.DB.prepare(`
         SELECT e.zone_id, COUNT(c.id) as card_count

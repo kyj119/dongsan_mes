@@ -574,7 +574,7 @@ dashboardRouter.get('/stats/card-distribution', async (c) => {
 // 장비별 부하 현황 (대시보드 위젯)
 dashboardRouter.get('/equipment-load', async (c) => {
   try {
-    const efEq = entityFilter(c, 'e')        // equipment(entity_id, 0302 #342)
+    // 장비 조회 = 전 법인 공유, 큐 카운트만 법인 격리 유지 (2026-08-11 — 쓰기 경로만 #342)
     const efCnt = cardEntityFilter(c, 'c')   // queue_count 카드(requesting_entity_id)
     const { results } = await c.env.DB.prepare(`
       SELECT e.id, e.name, e.equipment_status, COALESCE(e.daily_capacity, 0) as daily_capacity,
@@ -586,9 +586,9 @@ dashboardRouter.get('/equipment-load', async (c) => {
           ELSE 'ONLINE'
         END as agent_status
       FROM equipment e
-      WHERE e.status = 'ACTIVE'${efEq.clause}
+      WHERE e.status = 'ACTIVE'
       ORDER BY e.name
-    `).bind(...efCnt.params, ...efEq.params).all()
+    `).bind(...efCnt.params).all()
 
     return c.json({ success: true, data: results })
   } catch (error) {

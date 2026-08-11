@@ -233,7 +233,8 @@ ripRouter.get('/status', authMiddleware, async (c) => {
 
 ripRouter.get('/equipment', authMiddleware, async (c) => {
   try {
-    const ef = entityFilter(c, 'e')  // #342 설비 법인 격리
+    // 장비 조회 = 전 법인 공유 (2026-08-11: 전 장비가 동산(1) 소유라 격리 시 타법인 세션은
+    // 장비 목록·출력실적 선택지가 전부 빈다. #342 격리는 쓰기 경로에만 유지)
     const { results: equipmentList } = await c.env.DB.prepare(`
       SELECT e.id, e.name, e.printer_name, e.ip_address, e.status,
         e.head_count, e.location_zone, e.zone_id, e.location_x, e.location_y, e.layout_rotation,
@@ -249,9 +250,9 @@ ripRouter.get('/equipment', authMiddleware, async (c) => {
         END as agent_status
       FROM equipment e
       LEFT JOIN agent_heartbeats ah ON ah.agent_id = e.agent_id
-      WHERE e.status = 'ACTIVE'${ef.clause}
+      WHERE e.status = 'ACTIVE'
       ORDER BY e.id
-    `).bind(...ef.params).all<EquipmentRow>()
+    `).all<EquipmentRow>()
 
     // 프리셋 일괄 조회 (N+1 → 단일 쿼리)
     const eqIds = equipmentList.map((eq) => eq.id)
@@ -528,8 +529,8 @@ ripRouter.get('/equipment/:id', authMiddleware, async (c) => {
         END as agent_status
       FROM equipment e
       LEFT JOIN agent_heartbeats ah ON ah.equipment_id = e.id
-      WHERE e.id = ?${entityFilter(c, 'e').clause}
-    `).bind(equipId, ...entityFilter(c, 'e').params).first<EquipmentRow>()
+      WHERE e.id = ?
+    `).bind(equipId).first<EquipmentRow>()   /* 장비 조회 = 전 법인 공유 (목록 GET 과 동일 사유) */
 
     if (!equipment) {
       return c.json({ success: false, error: 'Equipment not found' }, 404)
