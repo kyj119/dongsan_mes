@@ -104,11 +104,31 @@ const Q_D1 = `query($tag:String!,$d:Date!){
   } }
 }`
 
-const Q_WORKERS = `query($tag:String!,$dt:Time!){
-  viewer{ accounts(filter:{accountTag:$tag}){
-    workersInvocationsAdaptive(limit:100, filter:{datetime_geq:$dt}){ sum{ requests } }
-  } }
-}`
+/**
+ * 요청 수 데이터셋은 **Pages 와 Workers 가 다르다**. MES 는 Pages 라 `workersInvocationsAdaptive`
+ * 로는 0 이 나온다(실측: D1 읽기 5,132만인데 요청 0). $125 사고의 요청 $19.80 은 Pages Functions 분이었다.
+ * 문서에서 Pages 데이터셋 이름이 확정되지 않아 **후보를 순서대로 시도**하고 처음 성공하는 것을 쓴다.
+ */
+const Q_REQUESTS: { name: string; query: string; arg: 'date' | 'datetime' }[] = [
+  {
+    name: 'pagesFunctionsInvocationsAdaptiveGroups',
+    arg: 'date',
+    query: `query($tag:String!,$d:Date!){
+      viewer{ accounts(filter:{accountTag:$tag}){
+        pagesFunctionsInvocationsAdaptiveGroups(limit:100, filter:{date_geq:$d}){ sum{ requests } }
+      } }
+    }`,
+  },
+  {
+    name: 'workersInvocationsAdaptive',
+    arg: 'datetime',
+    query: `query($tag:String!,$dt:Time!){
+      viewer{ accounts(filter:{accountTag:$tag}){
+        workersInvocationsAdaptive(limit:100, filter:{datetime_geq:$dt}){ sum{ requests } }
+      } }
+    }`,
+  },
+]
 
 export async function checkBudgets(env: {
   DB: D1Database
@@ -167,17 +187,30 @@ export async function checkBudgets(env: {
       cfRowsRead = empty(`D1 조회 실패: ${String(e?.message || e).slice(0, 120)}`)
     }
 
-    try {
-      const d = await cfGraphQL(env.CF_ANALYTICS_TOKEN, Q_WORKERS, { tag: env.CF_ACCOUNT_ID, dt: sinceUtc })
-      const groups = d?.viewer?.accounts?.[0]?.workersInvocationsAdaptive || []
-      const requests = groups.reduce((s: number, g: any) => s + (Number(g?.sum?.requests) || 0), 0)
-      cfRequests = {
-        value: requests,
-        threshold: th.budget_cf_requests_daily,
-        breached: requests > th.budget_cf_requests_daily,
+    cfRequests = empty('요청 데이터셋 후보 전부 실패')
+    for (const cand of Q_REQUESTS) {
+      try {
+        const vars = cand.arg === 'date'
+          ? { tag: env.CF_ACCOUNT_ID, d: todayUtc }
+          : { tag: env.CF_ACCOUNT_ID, dt: sinceUtc }
+        const d = await cfGraphQL(env.CF_ANALYTICS_TOKEN, cand.query, vars)
+        const groups = d?.viewer?.accounts?.[0]?.[cand.name] || []
+        const requests = groups.reduce((s: number, g: any) => s + (Number(g?.sum?.requests) || 0), 0)
+        // ★교차 검증: D1 을 5천만 행 읽었는데 요청이 0 일 수는 없다 — 데이터셋이 우리 트래픽을
+        //   안 보고 있다는 뜻이다. 0 을 "정상"으로 통과시키면 감시하는 척만 하게 된다.
+        if (requests === 0 && (cfRowsRead.value ?? 0) > 0) {
+          cfRequests = empty(`${cand.name} 이 0 반환 — D1 읽기 ${(cfRowsRead.value ?? 0).toLocaleString()}행과 모순(데이터셋 불일치)`)
+          continue  // 다음 후보 시도
+        }
+        cfRequests = {
+          value: requests,
+          threshold: th.budget_cf_requests_daily,
+          breached: requests > th.budget_cf_requests_daily,
+        }
+        break
+      } catch (e: any) {
+        cfRequests = empty(`${cand.name} 조회 실패: ${String(e?.message || e).slice(0, 100)}`)
       }
-    } catch (e: any) {
-      cfRequests = empty(`Workers 조회 실패: ${String(e?.message || e).slice(0, 120)}`)
     }
   }
 
