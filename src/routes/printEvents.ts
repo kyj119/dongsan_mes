@@ -827,9 +827,10 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
     const limitNum = Number(limit)
     const offset = (pageNum - 1) * limitNum
 
-    const ef = entityFilter(c, 'pe')
-    let where = 'WHERE 1=1' + ef.clause
-    const params: (string | number)[] = [...ef.params]
+    // 출력 이벤트 = 장비 로그(장비는 전 법인 공유 인프라, 매출 실적 아님) → 조회는 격리 안 함
+    // (2026-08-11: 전 이벤트가 entity 1이라 타법인 세션은 현황 KPI·이벤트가 전부 0이었다. 쓰기 경로는 격리 유지)
+    let where = 'WHERE 1=1'
+    const params: (string | number)[] = []
 
     if (agent_id) {
       where += ' AND pe.agent_id = ?'
@@ -967,7 +968,7 @@ printEventsRouter.get('/agents', authMiddleware, async (c) => {
 printEventsRouter.get('/stats', authMiddleware, async (c) => {
   try {
     const { days = '7' } = c.req.query()
-    const ef = entityFilter(c)
+    // 출력 이벤트 조회 = 격리 안 함 (목록 GET 과 동일 사유, 2026-08-11)
 
     // Today summary
     const todaySummary = await c.env.DB.prepare(`
@@ -977,9 +978,9 @@ printEventsRouter.get('/stats', authMiddleware, async (c) => {
         COUNT(CASE WHEN print_status = 'CANCEL' THEN 1 END) as cancel_count,
         COUNT(*) as total_count
       FROM print_events
-      WHERE ${kstDateOf('created_at')} = ${kstDate()}${ef.clause}
+      WHERE ${kstDateOf('created_at')} = ${kstDate()}
         AND event_kind = 'PRINT'
-    `).bind(...ef.params).first<TodaySummaryRow>()
+    `).first<TodaySummaryRow>()
 
     // Daily breakdown
     const { results: daily } = await c.env.DB.prepare(`
@@ -990,30 +991,30 @@ printEventsRouter.get('/stats', authMiddleware, async (c) => {
         COUNT(CASE WHEN print_status = 'CANCEL' THEN 1 END) as cancel_count,
         COUNT(*) as total_count
       FROM print_events
-      WHERE date(created_at) >= date('now', ? || ' days')${ef.clause}
+      WHERE date(created_at) >= date('now', ? || ' days')
         AND event_kind = 'PRINT'
       GROUP BY date(created_at)
       ORDER BY date DESC
-    `).bind(`-${days}`, ...ef.params).all()
+    `).bind(`-${days}`).all()
 
     // Top agents today
     const { results: topAgents } = await c.env.DB.prepare(`
       SELECT agent_id, COUNT(*) as count,
         COUNT(CASE WHEN print_status = 'OK' THEN 1 END) as ok_count
       FROM print_events
-      WHERE ${kstDateOf('created_at')} = ${kstDate()}${ef.clause}
+      WHERE ${kstDateOf('created_at')} = ${kstDate()}
         AND event_kind = 'PRINT'
       GROUP BY agent_id
       ORDER BY count DESC
       LIMIT 10
-    `).bind(...ef.params).all()
+    `).all()
 
     // Recent events (last 20)
     const { results: recent } = await c.env.DB.prepare(`
       SELECT id, agent_id, card_number, card_id, order_number, file_path, file_name, printer_name, print_status, print_started_at, print_completed_at, output_width, output_height, dpi, equipment_id, copy_total, print_duration_sec, created_at FROM print_events
-      WHERE 1=1${ef.clause}
+      WHERE 1=1
       ORDER BY created_at DESC, id DESC LIMIT 20
-    `).bind(...ef.params).all()
+    `).all()
 
     return c.json({
       success: true,
@@ -1075,7 +1076,7 @@ printEventsRouter.get('/unmatched', authMiddleware, async (c) => {
     const { days = '90', limit = '100' } = c.req.query()
     const dayNum = Math.min(365, Math.max(1, parseInt(days as string) || 90))
     const limitNum = Math.min(300, Math.max(1, parseInt(limit as string) || 100))
-    const ef = entityFilter(c, 'pe')
+    // 출력 이벤트 조회 = 격리 안 함 (목록 GET 과 동일 사유, 2026-08-11)
 
     // 단건 이벤트 + 합판 멤버를 한 목록으로. 멤버는 구형식(문자열 배열)과 신형식(객체) 모두 지원.
     const { results } = await c.env.DB.prepare(`
@@ -1091,7 +1092,6 @@ printEventsRouter.get('/unmatched', authMiddleware, async (c) => {
           AND (pe.nest_members IS NULL OR pe.nest_members = '')
           AND pe.file_name IS NOT NULL AND pe.file_name != ''
           AND COALESCE(pe.print_completed_at, pe.created_at) >= date('now', '-' || ? || ' days')
-          ${ef.clause}
         GROUP BY pe.file_name
         UNION ALL
         -- ⚠️ GROUP BY 에 별칭(file_name)을 쓰면 SQLite가 스코프에 있는 pe.file_name 컬럼으로 해석해
@@ -1104,14 +1104,13 @@ printEventsRouter.get('/unmatched', authMiddleware, async (c) => {
         WHERE pe.nest_members IS NOT NULL AND pe.nest_members != ''
           AND json_extract(m.value, '$.card_id') IS NULL
           AND COALESCE(pe.print_completed_at, pe.created_at) >= date('now', '-' || ? || ' days')
-          ${ef.clause}
         GROUP BY COALESCE(json_extract(m.value, '$.file'), m.value)
       )
       WHERE file_name IS NOT NULL AND file_name != ''
       GROUP BY file_name
       ORDER BY last_at DESC, file_name ASC
       LIMIT ?
-    `).bind(dayNum, ...ef.params, dayNum, ...ef.params, limitNum).all<{
+    `).bind(dayNum, dayNum, limitNum).all<{
       file_name: string; cnt: number; last_at: string; w: number | null; h: number | null;
       equipment_id: string | null; is_nest: number
     }>()
