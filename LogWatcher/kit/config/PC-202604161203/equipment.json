@@ -1,0 +1,16 @@
+{
+  "poll_interval_seconds": 5,
+  "heartbeat_interval_seconds": 60,
+  "watchers": [
+    {
+      "_comment": "코스테크 전사 — TopazRip(TNSRip-X1). 2026-08-11 키트 [1] 진단으로 발견, tns 기존 파서.",
+      "equipment_id": "KOSTECH-TRANS-01",
+      "name": "코스테크-전사-01",
+      "enabled": true,
+      "parser_type": "tns",
+      "config": {
+        "log_path": "C:\\TNSRip-X1\\Print.log"
+      }
+    }
+  ]
+}

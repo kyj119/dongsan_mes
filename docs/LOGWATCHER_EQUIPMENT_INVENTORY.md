@@ -88,7 +88,7 @@ PrintExp 는 도안명을 **전혀 모른다.** neoStampa 가 넘긴 `~sectionN.
 | TRANS-8C-02 | 전사 8색 2호기 (Longyin Q2000) | 전사/태극기 | PC-202605141926 | 〃 **+ PrintExp 5.7.6.5.103** | rip 〃<br>print `C:\PrintExp_X64_V5.7.6.5.103.BS_20220530(1)\PrintExp_X64_V5.7.6.5.103.BS_20220530\Log` | 〃 | ✅ 90 OK / 51 CANCEL | ✅ 2026-08-09 |
 | ? | ? 간판(선명) | 간판 | ⬜ | ? | ? | ? | ⬜ | ⬜ |
 | ? | 솔벤 3200 | 솔벤 | ⬜ | **제어SW만 확인**(중국계, UDP 모션 — 아래 참조) | 제어로그 `...\LogFile\YYYYMMDD.txt` (사본=`Z:\Designs\LogFile(솔벤3200)`) | **RIP측 로그 미발견 → --probe 필요** | ⬜ | ⬜ |
-| (안)TRANS-01 | ? 전사 (키트 진단 2026-08-11) | 전사 | PC-202604161203 / 192.168.0.18 | **TopazRip** (TNSRip-X1, 당일 출력 확인) | `C:\TNSRip-X1\Print.log` | `tns` ✅ 기존 파서 | ⬜ | ⬜ config 대기 |
+| KOSTECH-TRANS-01 | 코스테크-전사-01 | 전사 | PC-202604161203 / 192.168.0.18 | **TopazRip** (TNSRip-X1, 키트 진단 2026-08-11) | `C:\TNSRip-X1\Print.log` | `tns` ✅ | ⬜ | ⬜ **config 준비됨** — 현장 [2] 실행만 남음 (equipment 행 사전등록 완료) |
 
 > **솔벤 3200 사전 분석 (2026-08-10)**: 수거된 `LogFile` 폴더는 **제어SW 모션/명령 로그**다 —
 > 전사 8색의 `rp.log` 격. `toolbarOpenFile` 에 파일명 미기록, 4일치 전수에서 경로·확장자 언급 0건,

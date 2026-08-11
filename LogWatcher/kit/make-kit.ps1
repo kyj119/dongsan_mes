@@ -59,6 +59,11 @@ $cfgDir = Join-Path $OutDir "config"
 if (-not (Test-Path $cfgDir)) { New-Item -ItemType Directory -Force -Path $cfgDir | Out-Null }
 $cfgReadme = [IO.File]::ReadAllText((Join-Path $KitSrc "config-README.txt"))
 [IO.File]::WriteAllText((Join-Path $cfgDir "README.txt"), $cfgReadme, $utf8bom)
+# PC 별 설정 정본 = repo kit\config\ — 추가 복사(미러 아님: Z: 에서 손으로 넣은 것도 보존)
+if (Test-Path (Join-Path $KitSrc "config")) {
+    robocopy (Join-Path $KitSrc "config") $cfgDir /E /R:2 /W:2 /NFL /NDL /NJH | Out-Null
+    if ($LASTEXITCODE -ge 8) { throw "robocopy config 실패 ($LASTEXITCODE)" }
+}
 
 # ── 5. 마커 템플릿 (JPG — 대부분의 RIP 이 바로 연다. --probe 가 바탕화면에 복사해 쓴다) ──
 Add-Type -AssemblyName System.Drawing
