@@ -115,7 +115,8 @@ function auditDefinition(file, label, kind) {
     add('P2', label, 'description 에 「언제 쓰는지」 신호 없음', '「무엇을 한다 + 언제 쓴다」 2요소가 자동 호출 정확도를 만든다');
   }
 
-  rows.push({ label, kind, name, descLen: desc.length, bodyLines, tokens, keys: Object.keys(keys),
+  rows.push({ label, kind, name, desc, descLen: desc.length, bodyLines, tokens, autoInvocable,
+    dir: kind === 'skill' ? path.basename(path.dirname(file)) : null, keys: Object.keys(keys),
     portableViolations: kind === 'skill' ? Object.keys(keys).filter((k) => !PORTABLE_KEYS.has(k)) : [] });
 }
 
@@ -155,27 +156,65 @@ console.log(`[skill-audit] 스킬 ${rows.filter((r) => r.kind === 'skill').lengt
 for (const f of p1) { console.error(`  P1 ${f.label}: ${f.msg}`); if (f.hint) console.error(`       → ${f.hint}`); }
 for (const f of p2) { console.log(`  P2 ${f.label}: ${f.msg}`); if (f.hint) console.log(`       → ${f.hint}`); }
 
-const listing = rows.filter((r) => r.kind === 'skill').reduce((a, r) => a + r.descLen, 0);
-console.log(`[skill-audit] 스킬 목록 상주 비용 ~${listing.toLocaleString()}자 (description 합계)`);
+// 상주 비용 = 「자동 호출 가능한」 스킬의 description 합계.
+// disable-model-invocation:true 스킬은 목록에서 description 이 빠지고 이름만 남는다(공식 문서 §Control who invokes).
+const routed = rows.filter((r) => r.kind === 'skill' && r.autoInvocable);
+const manualOnly = rows.filter((r) => r.kind === 'skill' && !r.autoInvocable);
+const listing = routed.reduce((a, r) => a + r.descLen, 0);
+console.log(`[skill-audit] 스킬 목록 상주 비용 ~${listing.toLocaleString()}자`
+  + ` (자동호출 ${routed.length}개 description 합계 · 수동전용 ${manualOnly.length}개는 목록에서 제외됨)`);
 
 // 트리거 키워드 충돌 — 같은 낱말이 여러 description 에 있으면 자동 호출이 어느 쪽으로 갈지 불안정해진다.
-// 실패로 처리하지 않는다(중복 자체가 죄는 아님). 4개 이상 겹칠 때만 「구분 문구를 넣을 후보」로 보고.
-const skillDescs = rows.filter((r) => r.kind === 'skill');
-if (skillDescs.length) {
-  const raws = {};
-  for (const d of fs.readdirSync(SKILL_DIR, { withFileTypes: true }).filter((e) => e.isDirectory())) {
-    const f = path.join(SKILL_DIR, d.name, 'SKILL.md');
-    if (fs.existsSync(f)) raws[d.name] = unquote((parseFrontmatter(fs.readFileSync(f, 'utf8')).keys || {}).description || '');
-  }
+// ⚠️ 자동 호출이 꺼진 스킬(disable-model-invocation)은 애초에 라우팅 후보가 아니라 충돌을 만들 수 없다 →
+//    대상에서 제외한다(2026-08-11: 제외 전에는 monitor·pm-report·db-reset-seed·ia-automat 때문에
+//    「확인」5건 같은 허수 충돌이 잡혀 고칠 것이 없는 목록을 매번 출력했다).
+// ⚠️ **배제 문구는 세지 않는다**: "배포 실행은 deploy-verify" 같은 구분 문구는 그 낱말을 **남에게 넘기는** 말인데
+//    단순 substring 으로 세면 오히려 충돌로 잡힌다 → 배제 문구를 넣을수록 게이트가 시끄러워지는 역주행.
+//    그래서 **다른 스킬 이름을 언급하는 절은 통째로 제외**하고 남은 부분에서만 센다(자기 이름 언급은 유지).
+// 실패로 처리하지 않는다(중복 자체가 죄는 아님). 3개 이상 겹칠 때만 「구분 문구를 넣을 후보」로 보고.
+if (routed.length) {
+  const allDirs = rows.filter((r) => r.kind === 'skill').map((r) => r.dir);
+  const ownTriggers = (r) => r.desc
+    .split(/[·—.。|\n]/)
+    .filter((clause) => !allDirs.some((d) => d !== r.dir && clause.includes(d)))
+    .join(' ');
+  // 한정어가 앞에 붙은 형태(「배포 검증」·「entity 감사」·「보안 점검」)는 충돌이 아니다 — 이미 구분돼 있다.
+  // 맨낱말(문두·따옴표·쉼표·콜론 뒤)만 센다. 한계: 서로 다른 한정어끼리도 헷갈릴 수는 있으니 이 목록은
+  // 「실패」가 아니라 「사람이 판단할 후보」다.
+  const hasBareKeyword = (text, kw) => {
+    for (let i = text.indexOf(kw); i !== -1; i = text.indexOf(kw, i + 1)) {
+      if (!/[가-힣A-Za-z0-9]\s?$/.test(text.slice(0, i))) return true;
+    }
+    return false;
+  };
   const collide = [];
   for (const kw of ['점검', '검증', '확인', '감사', '배포', '테스트', '리뷰', '상태', '스캔', '분석']) {
-    const hit = Object.entries(raws).filter(([, v]) => v.includes(kw)).map(([k]) => k);
-    if (hit.length >= 4) collide.push(`${kw}(${hit.length}): ${hit.join(', ')}`);
+    const hit = routed.filter((r) => hasBareKeyword(ownTriggers(r), kw)).map((r) => r.dir);
+    if (hit.length >= 3) collide.push(`${kw}(${hit.length}): ${hit.join(', ')}`);
   }
   if (collide.length) {
     console.log('[skill-audit] 트리거 낱말 중복 — 겹치는 쪽 description 에 「~는 X 스킬」 같은 구분 문구 권장');
     collide.forEach((c) => console.log('  · ' + c));
   }
+}
+
+// 참조 파일의 `line N` 상호참조 잔여 — 줄번호는 파일이 자라면 조용히 밀린다(정정 불가능한 형태의 부패).
+// auto-improve 분할(2026-08-11) 시점 29건: 대상 23개 중 5개가 이미 빈 줄을 가리키고 있었다.
+// 전량 일괄 교체는 본문을 깊게 읽어야 해 비싸다 → **그 파일을 다루는 사이클이 그 파일만** 서술 참조로 바꾼다.
+// 이 카운터는 그 진행도를 보이게 하는 용도(실패 아님). 늘어나면 새 참조가 유입된 것.
+const lineRefs = [];
+for (const d of (fs.existsSync(SKILL_DIR) ? fs.readdirSync(SKILL_DIR, { withFileTypes: true }) : []).filter((e) => e.isDirectory())) {
+  const refDir = path.join(SKILL_DIR, d.name, 'references');
+  if (!fs.existsSync(refDir)) continue;
+  for (const f of fs.readdirSync(refDir).filter((n) => n.endsWith('.md'))) {
+    const n = (fs.readFileSync(path.join(refDir, f), 'utf8').match(/\bline \d+/gi) || []).length;
+    if (n) lineRefs.push({ file: `${d.name}/references/${f}`, n });
+  }
+}
+if (lineRefs.length) {
+  const total = lineRefs.reduce((a, r) => a + r.n, 0);
+  console.log(`[skill-audit] 참조 파일 \`line N\` 잔여 ${total}건 — 줄번호는 밀린다. 서술 참조로 교체(그 파일을 다루는 사이클에 그 파일만)`);
+  lineRefs.sort((a, b) => b.n - a.n).forEach((r) => console.log(`  · ${r.file}: ${r.n}`));
 }
 
 if (p1.length) { console.error(`[skill-audit] P1 ${p1.length}건 — 실패`); process.exit(1); }

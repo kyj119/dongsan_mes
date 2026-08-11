@@ -1,25 +1,14 @@
 // PreToolUse (matcher: Bash|PowerShell) — 위험명령 차단 + 배포 리마인더 + 커밋 타입체크 게이트.
 // jq 비의존. exit 2 = 차단(모델에 사유 전달). exit 0 = 통과(메시지는 stdout).
 const { ROOT, readInput } = require('./_util.cjs');
+const { HARD_BLOCK, WARN } = require('./_danger-patterns.cjs'); // 정본 = 그 파일. 여기에 사본 두지 말 것.
 const { execSync } = require('child_process');
 
 const inp = readInput();
 const cmd = (inp.tool_input && inp.tool_input.command) || '';
 if (!cmd) process.exit(0);
 
-// 1) 되돌리기 어려운 명령 = 하드 차단 (Bash + PowerShell). 마이그/일상 명령 오탐 회피하도록 타이트.
-const HARD_BLOCK = [
-  /\brm\s+-[a-z]*r/i, // 재귀 rm (-r/-rf/-fr) — 단일파일 rm -f는 허용
-  /\bgit\s+clean\s+-[a-z]*f/i,
-  /\bgit\s+branch\s+-D\b/i,
-  // 브랜치 일괄 삭제 — 스크립트 경유도 동일 게이트(우회 방지).
-  // 실행 형태(node …branch-cleanup / npm run branch:clean)만 매치 — 커밋 메시지 등 산문 오탐 방지.
-  /(?:node\s+\S*branch-cleanup(?:\.cjs)?|branch:clean)[^\n]*--apply/i,
-  /\bgit\s+checkout\s+--\s+\./i,
-  /\bgit\s+restore\s+(--staged\s+)?\.(\s|$)/i,
-  /\bgit\s+push\b.*--force(?!-with-lease)/i,
-  /\bRemove-Item\b.*-Recurse/i,
-];
+// 1) 되돌리기 어려운 명령 = 하드 차단 (Bash + PowerShell). 패턴 정본 = `_danger-patterns.cjs`.
 for (const re of HARD_BLOCK) {
   if (re.test(cmd)) {
     console.error(`[BLOCK] 되돌리기 어려운 위험 명령 감지 (/${re.source}/). 사용자 확인 필요 — 의도적이면 다시 명시 요청.`);
@@ -28,11 +17,6 @@ for (const re of HARD_BLOCK) {
 }
 
 // 2) 경고만 (local 한정·복구 가능) — 차단하지 않음
-const WARN = [
-  [/\bgit\s+reset\s+--hard/i, 'git reset --hard — 워킹트리 변경 소실. 의도 확인.'],
-  [/--force-with-lease/i, 'force-with-lease push — 원격 덮어쓰기. 다른 세션 작업 확인.'],
-  [/\bdb:reset\b/i, 'db:reset — 로컬 D1 초기화(prod 무관). 의도 확인.'],
-];
 const warns = WARN.filter(([re]) => re.test(cmd)).map(([, m]) => '[WARN] ' + m);
 if (warns.length) console.log(warns.join('\n'));
 
@@ -67,6 +51,33 @@ if (/(^|&&|;|\s)git(\s+-[cC]\s+\S+)*\s+commit/i.test(cmd)) {
     const out = (e.stdout || '').toString() + (e.stderr || '').toString();
     console.error('[BLOCK] 타입 에러 발견 — 수정 후 커밋:\n' + out.slice(0, 2000));
     process.exit(2);
+  }
+
+  // 5) 스킬·서브에이전트 정의가 변경된 커밋만 skill-audit 하드게이트 (2026-08-11)
+  //    왜 여기인가: `.claude/skills/**` 는 **배포 산출물이 아니다**(dist/ 에 들어가지 않는다) →
+  //    ship:gate 에 넣으면 prod 를 깨뜨릴 수 없는 결함으로 배포를 막는 가짜 게이트가 된다.
+  //    스킬 결함이 실제로 퍼지는 경로는 배포가 아니라 **커밋→main→다른 세션·auto-improve 봇**이다.
+  //    편집 훅(posttooluse-edit)은 경고만이라 무시하고 커밋하면 그대로 나간다 — 그 지점만 막는다.
+  // 6) 훅 자신이 변경된 커밋만 위험명령 패턴 회귀 테스트 (2026-08-11)
+  //    차단 규칙은 「막아야 할 것」만큼 「막으면 안 되는 것」도 명세돼야 한다 — 그 명세가 selftest 다.
+  let dirty = '';
+  try { dirty = execSync('git status --porcelain', { cwd: ROOT, stdio: 'pipe' }).toString(); } catch { /* git 미가용 = 게이트 생략 */ }
+
+  const gates = [
+    [/\.claude\/(skills\/.*\/SKILL\.md|agents\/.*\.md)/, 'node scripts/skill-audit.cjs',
+      '스킬 정의 P1 — 본문은 목차·분기만, 누적 지식은 references/ 로'],
+    [/\.claude\/hooks\//, 'node scripts/hook-guard-selftest.cjs',
+      '위험명령 패턴 회귀 — 오탐(막으면 안 되는 것)까지 함께 볼 것'],
+  ];
+  for (const [scope, run, why] of gates) {
+    if (!scope.test(dirty)) continue;
+    try {
+      execSync(run, { cwd: ROOT, stdio: 'pipe' });
+    } catch (e) {
+      const out = ((e.stderr || '').toString() + (e.stdout || '').toString());
+      console.error(`[BLOCK] ${why}:\n` + out.slice(0, 1500));
+      process.exit(2);
+    }
   }
 }
 

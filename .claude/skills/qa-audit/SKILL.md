@@ -1,11 +1,24 @@
 ---
 name: qa-audit
-description: Playwright MCP로 MES 전체 페이지 자동 순회 QA 감사 (콘솔 에러, 깨진 UI, API 실패 탐지). 트리거: QA 감사, 전체 감사, full audit, qa audit
+description: Playwright MCP로 MES 전체 페이지를 자동 순회하는 QA 감사 (콘솔 에러, 깨진 UI, API 실패 탐지). 트리거: QA 감사, 전체 감사, full audit, qa audit. 배포 직전 핵심경로만은 smoke-test · 방금 고친 기능만은 verify-changes.
+context: fork
+agent: general-purpose
+background: false
+argument-hint: "[quick|full]"
 ---
 
 # QA 전체 감사 (Full Audit)
 
 Playwright MCP로 MES 전체 페이지를 자동 순회하며 문제를 탐지하는 스킬.
+
+**이번 실행 모드: `$ARGUMENTS`** (비었으면 기본 = Level 1~3 / `quick` = Level 1만 / `full` = Level 1~4)
+
+> **이 스킬은 격리 컨텍스트에서 돈다**(`context: fork`, 2026-08-11). 페이지 수십 개의 스냅샷·콘솔 로그는
+> 메인 대화에 남길 가치가 없고 필요한 건 최종 표 하나다. 따라서:
+> - **대화 이력이 없다.** 이 문서 + CLAUDE.md 만 보고 판단하고, 필요한 사실은 직접 조회한다.
+> - 로그인 계정은 `C:\Users\user\.claude\projects\C--Users-user-dongsan-mes\memory\reference-test-login.md` 참조.
+> - `background: false` = 이 턴 안에서 끝낸다. **Playwright MCP 는 용준님 실제 Chrome 세션에 붙을 수 있어**
+>   백그라운드 동시 구동 금지(`localStorage.clear()` 등 세션 파괴 동작도 금지).
 
 ## 트리거
 "전체 감사", "full audit", "QA", "전체 검증", "페이지 점검" 요청 시 사용.

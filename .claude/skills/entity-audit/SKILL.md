@@ -1,6 +1,6 @@
 ---
 name: entity-audit
-description: routes/*.ts SELECT 쿼리에서 entity_id 테이블에 entityFilter 누락 건 자동 감지. 트리거: routes 수정 후, 배포 전, entity 감사, entity audit, 필터 검사
+description: routes/*.ts 쿼리에서 entity_id 테이블에 entityFilter 누락 건 자동 감지 (법인 격리). 트리거: routes 수정 직후, entity 감사, entity audit, 필터 검사. 배포 실행 자체는 deploy-verify·ship.
 ---
 
 # Entity 필터 자동 감사
@@ -8,6 +8,11 @@ description: routes/*.ts SELECT 쿼리에서 entity_id 테이블에 entityFilter
 routes/*.ts 파일의 SELECT 쿼리에서 entity_id가 있는 테이블을 사용하면서 entityFilter를 적용하지 않은 누락 건을 자동 감지한다.
 
 TRIGGERS: routes 파일 수정 후, 배포 전, "entity 감사", "entity audit", "필터 검사"
+
+> **`context: fork` 는 의도적으로 쓰지 않는다**(2026-08-11 검토 결론). ① 이 스킬의 가장 흔한 트리거가
+> "**방금** 라우트를 고쳤다"인데 포크는 **대화 이력을 못 본다** — 무엇을 왜 고쳤는지 모른 채 도는 감사가 된다.
+> ② 산출물이 코드 주장이라 메인 루프의 전수 직접 검증(§검사 실행 3번)이 안전장치인데 포크가 그걸 가린다.
+> ③ 무거운 읽기는 이미 Explore 팬아웃으로 격리돼 본문이 57줄뿐이라 추가 이득이 거의 없다.
 
 ## entity_id가 있는 테이블 목록
 

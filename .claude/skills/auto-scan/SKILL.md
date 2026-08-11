@@ -1,13 +1,22 @@
 ---
 name: auto-scan
-description: 프로덕션 MES 자동 스캔으로 비작동/오류 기능을 탐지하고 GitHub Issue로 등록 (코드 수정 없음). 트리거: 자동 스캔, auto-scan, 스캔, 문제 찾아줘, 점검
+description: 프로덕션 MES 자동 스캔으로 비작동/오류 기능을 탐지해 GitHub Issue로 등록. 트리거: 자동 스캔, auto-scan, 스캔, 문제 찾아줘. 탐지·등록만 하고 코드는 고치지 않는다 — 수정까지 가려면 auto-improve.
+context: fork
+agent: general-purpose
+background: false
 ---
 
 # MES 자동 스캔 — 비작동 기능 탐지 + GitHub Issues 등록
 
 프로덕션 MES를 체계적으로 스캔하여 비작동/오류 기능을 찾고 GitHub Issue로 등록한다.
-"자동 스캔", "auto-scan", "스캔", "문제 찾아줘", "점검" 요청 시 사용.
+"자동 스캔", "auto-scan", "스캔", "문제 찾아줘" 요청 시 사용.
 코드 수정은 절대 하지 않음. Issue 등록만.
+
+> **이 스킬은 격리 컨텍스트에서 돈다**(`context: fork`, 2026-08-11). 산출물이 **prod 런타임 사실**(HTTP 상태·콘솔
+> 에러·쿼리 결과)이고 최종 형태가 **GitHub Issue**라 메인 대화가 중간 과정을 볼 이유가 없다. 따라서:
+> - **대화 이력이 없다.** 이 문서에 적힌 것 + CLAUDE.md 만 보고 판단한다. 필요한 사실은 직접 조회할 것.
+> - prod 로그인은 `admin` 계정(비번은 `C:\Users\user\.claude\projects\C--Users-user-dongsan-mes\memory\reference-test-login.md` 참조 — 이슈 #336 owner 위험수용, **비번 변경·재시드 금지**).
+> - `background: false` = 이 턴 안에서 끝낸다. **Playwright MCP 는 용준님 실제 Chrome 세션에 붙을 수 있어** 백그라운드 동시 구동 금지(세션 파괴 동작도 금지).
 
 ## ⚡ 병렬 실행 규칙 (필수)
 

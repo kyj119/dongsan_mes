@@ -1,6 +1,6 @@
 ---
 name: smoke-test
-description: Playwright MCP로 MES 핵심 페이지 E2E 스모크 테스트. 로그인→주요 페이지 로드→권한 차단→API 응답을 자동 검증. "스모크", "smoke", "페이지 테스트", "E2E" 요청 시 사용. 배포 전/코드 수정 후 UI 깨짐과 라우트 오류를 조기 발견.
+description: Playwright MCP로 MES 핵심 페이지 E2E 스모크 테스트. 로그인→주요 페이지 로드→권한 차단→API 응답 확인으로 UI 깨짐·라우트 오류를 조기 발견. "스모크", "smoke", "페이지 테스트", "E2E" 요청 시 사용. 전체 페이지 순회는 qa-audit · 방금 고친 기능만은 verify-changes · 배포 실행은 deploy-verify.
 ---
 
 # MES 스모크 테스트 (Playwright MCP)

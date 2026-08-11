@@ -1,6 +1,6 @@
 ---
 name: sync-docs
-description: "프로젝트 문서 동기화 및 정합성 검증. CLAUDE.md, PROJECT_STATUS.md, MEMORY.md, design-decisions.md, 각종 SKILL.md 파일을 실제 코드 상태와 비교하여 불일치를 수정하고 누락된 기록을 보충. 작업 완료 후, 구조 변경 후, 세션 마무리 시, '문서 동기화', '리뷰', 'sync docs', '진행상황 정리', '현황 업데이트' 요청 시 반드시 사용. 커밋 전이나 배포 전에도 한번 돌려주면 문서가 코드와 어긋나는 것을 방지할 수 있다."
+description: "프로젝트 문서(CLAUDE.md·PROJECT_STATUS.md·MEMORY.md·design-decisions.md·각 SKILL.md)를 실제 코드 상태와 대조해 불일치를 수정하고 누락 기록을 보충. '문서 동기화', 'sync docs', '진행상황 정리', '현황 업데이트' 요청 시, 작업·구조 변경 완료 후, 세션 마무리 시 사용. 대상은 문서뿐 — 코드 리뷰는 review-checklist."
 ---
 
 # 문서 동기화 및 정합성 검증

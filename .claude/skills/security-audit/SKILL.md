@@ -1,6 +1,6 @@
 ---
 name: security-audit
-description: "동산기획 ERP+MES 보안 취약점 점검 (OWASP Top 10). TRIGGERS: 보안 점검, security audit, 취약점 분석, SQL injection, XSS, 인증 누락, 권한 검사."
+description: "동산기획 ERP+MES 보안 취약점 점검 (OWASP Top 10) — 프로젝트 전체 대상. TRIGGERS: 보안 점검, security audit, 취약점 분석, SQL injection, XSS, 인증 누락, 권한 검사. 범위 없는 일반 점검은 auto-improve · 변경분만은 review-checklist."
 ---
 
 # 보안 취약점 점검
@@ -8,6 +8,12 @@ description: "동산기획 ERP+MES 보안 취약점 점검 (OWASP Top 10). TRIGG
 > 상세 점검 항목·grep 명령·발견 패턴 → `references/security-checks.md`
 
 review-checklist과의 차이: review-checklist은 **변경 파일** 코드 리뷰, 이 스킬은 **프로젝트 전체** 보안 감사.
+
+> **`context: fork` 는 의도적으로 쓰지 않는다**(2026-08-11 검토 결론). 이 스킬의 산출물은 prod 런타임 사실이
+> 아니라 **코드에 대한 주장**이고, 이 프로젝트엔 서브에이전트 오탐 이력(배열 인덱스 오독 HIGH 2건)이 있어
+> **메인 루프가 발견을 전수 직접 검증**하는 게 아래 워크플로우의 핵심 안전장치다. 통째로 포크하면 그 검증이
+> 메인 시야 밖으로 빠지고, 어차피 수정하려면 메인이 같은 코드를 다시 읽는다. 무거운 읽기는 이미 Explore
+> 팬아웃으로 격리돼 있어 추가 이득도 작다. (fork 채택 = `auto-scan`·`qa-audit` — 산출물이 런타임 사실인 쪽)
 
 ## ⚡ 병렬 실행 규칙 (필수)
 

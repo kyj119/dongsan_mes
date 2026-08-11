@@ -70,6 +70,7 @@
     "audit:skills": "node scripts/skill-audit.cjs",
     "audit:items:selftest": "node scripts/r0-selftest.cjs",
     "test:orderline": "node scripts/orderline-selftest.cjs",
+    "test:hookguard": "node scripts/hook-guard-selftest.cjs",
     "prices:derive": "node scripts/derive-item-prices.cjs",
     "smoke:write": "node scripts/smoke-write.cjs"
   },
