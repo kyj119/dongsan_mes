@@ -105,6 +105,35 @@ export function assertBarobillQueryOk(result: string, method: string): void {
 }
 
 /**
+ * 목록 응답에 섞여 오는 **에러코드 행**을 걸러낸다.
+ *
+ * `assertBarobillQueryOk` 는 응답 **전체**가 `-10001` 같은 문자열일 때만 잡는다. 그런데 목록 API 는
+ * 오류를 XML 요소 안에 담아 보낸다 — 미등록 회원사에서 `<BankAccount><BankAccountNum>-10001</...>`
+ * 이 오고, 파싱하면 `[{ BankAccountNum: '-10001' }]` 라는 **유령 1건**이 된다.
+ * 실제로 오다플래그(바로빌 미등록) 법인으로 전환하면 화면에 카드·계좌가 1개씩 보였다(2026-08-11 실측).
+ *
+ * 미등록은 오류가 아니라 **정상적인 "등록 없음" 상태**이므로 throw 하지 않고 빈 목록으로 만든다
+ * (throw 하면 라우터가 500 을 내 화면이 통째로 깨진다). 인증·권한 실패처럼 응답 전체가 코드로 오는
+ * 경우는 위 assert 가 이미 잡는다.
+ *
+ * ⚠️ 카드·계좌 **양쪽에 같이** 적용할 것 — 한쪽만 고치면 형제버그로 남는다.
+ */
+export function stripBarobillErrorRows(
+  rows: Record<string, string>[], method: string
+): Record<string, string>[] {
+  const kept = rows.filter((r) => {
+    const vals = Object.values(r)
+    // 값이 전부 음수 코드면 데이터가 아니라 오류다(정상 행은 은행명·카드사명 같은 문자열을 반드시 갖는다).
+    return !(vals.length > 0 && vals.every((v) => /^-\d+$/.test(String(v ?? '').trim())))
+  })
+  if (kept.length !== rows.length) {
+    const codes = rows.filter((r) => !kept.includes(r)).map((r) => Object.values(r).join(','))
+    console.warn(`[barobill] ${method}: 오류코드 행 ${rows.length - kept.length}건 제외 (${codes.join(' / ')})`)
+  }
+  return kept
+}
+
+/**
  * XML에서 배열 파싱 (반복 요소)
  */
 export function parseXmlArray(xml: string, itemTag: string): Record<string, string>[] {

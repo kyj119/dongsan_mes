@@ -1,7 +1,7 @@
 /**
  * 바로빌 계좌 거래내역 조회 서비스
  */
-import { barobillCall, parseXmlArray, assertBarobillQueryOk, type BarobillConfig } from './barobillClient'
+import { barobillCall, parseXmlArray, assertBarobillQueryOk, stripBarobillErrorRows, type BarobillConfig } from './barobillClient'
 
 export interface BankTransLog {
   BankAccountNum: string
@@ -24,7 +24,8 @@ export interface BankTransLog {
 export async function getBankAccountList(config: BarobillConfig): Promise<any[]> {
   const result = await barobillCall(config, 'BANKACCOUNT', 'GetBankAccountEx', { ID: config.senderId || '', BankAccountStatus: 0 })
   assertBarobillQueryOk(result, 'GetBankAccountEx')
-  return parseXmlArray(result, 'BankAccount')
+  // 미등록 회원사는 오류코드를 목록 1건처럼 담아 보낸다 → 유령 계좌가 화면에 뜬다. 카드 쪽과 짝.
+  return stripBarobillErrorRows(parseXmlArray(result, 'BankAccount'), 'GetBankAccountEx')
 }
 
 /** 일별 계좌 거래내역 조회 */

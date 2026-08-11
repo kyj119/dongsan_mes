@@ -1,7 +1,7 @@
 /**
  * 바로빌 카드 사용내역 조회 서비스
  */
-import { barobillCall, parseXmlArray, assertBarobillQueryOk, type BarobillConfig } from './barobillClient'
+import { barobillCall, parseXmlArray, assertBarobillQueryOk, stripBarobillErrorRows, type BarobillConfig } from './barobillClient'
 
 export interface CardApprovalLog {
   CardNum: string
@@ -25,7 +25,8 @@ export interface CardApprovalLog {
 export async function getCardList(config: BarobillConfig, id: string = ''): Promise<any[]> {
   const result = await barobillCall(config, 'CARD', 'GetCardEx', { ID: id, CardStatus: 0 })
   assertBarobillQueryOk(result, 'GetCardEx')
-  return parseXmlArray(result, 'Card')
+  // 미등록 회원사는 오류코드를 목록 1건처럼 담아 보낸다 → 유령 카드가 화면에 뜬다. 계좌 쪽과 짝.
+  return stripBarobillErrorRows(parseXmlArray(result, 'Card'), 'GetCardEx')
 }
 
 /** 일별 카드 사용내역 조회 */

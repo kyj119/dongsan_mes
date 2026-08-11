@@ -20,14 +20,22 @@ function ymd(daysAgo: number): string {
 
 /**
  * POST /api/cron/barobill-sync — 전 활성 법인의 카드+계좌 바로빌 동기화.
- * body(선택): { cardDays?: number }  카드 수집 소급 일수(기본 14). 계좌는 핸들러 기본(최근 3일).
+ * body(선택):
+ *   { cardDays?: number }  카드 수집 소급 일수(기본 14). 계좌는 핸들러 기본(최근 3일).
+ *   { bankOnly?: true }    계좌만 — **시간당 호출용**.
+ *
+ * ★왜 계좌만 따로 도는가: prod 계좌 11개가 바로빌에 `HOUR1`(1시간 주기, 월 4,400원)로 등록돼 있는데
+ *   cron 은 하루 1회뿐이라 **시간당 수집료를 내고 하루치만 쓰고 있었다**(2026-08-11 실측).
+ *   바로빌 거래내역 조회(GetDaily/MonthlyBankAccountTransLog)는 **무과금**이라 자주 불러도 비용이 안 든다
+ *   ([[barobill-charge-balance]] ⑥). 카드는 전부 `DAY1` 이라 시간당 호출해 봐야 갱신이 없어 제외한다.
+ *
  * 인증: X-Agent-Key (AGENT_API_KEY). 사용자 JWT 불필요.
  */
 cronRouter.post('/barobill-sync', agentKeyMiddleware, async (c) => {
   const jwtSecret = c.env.JWT_SECRET
   if (!jwtSecret) return c.json({ success: false, error: 'JWT_SECRET 미설정' }, 500)
 
-  const body = await c.req.json().catch(() => ({})) as { cardDays?: number }
+  const body = await c.req.json().catch(() => ({})) as { cardDays?: number; bankOnly?: boolean }
   const cardDays = Math.min(Math.max(Number(body.cardDays) || 14, 1), 60)
   const dateStart = ymd(cardDays)
   const dateEnd = ymd(0)
@@ -47,15 +55,17 @@ cronRouter.post('/barobill-sync', agentKeyMiddleware, async (c) => {
     const authHdr = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
     const rec: any = { entity_id: e.id, short_name: e.short_name }
 
-    // 1) 카드
-    try {
-      const r = await fetch(`${origin}/api/card-expenses/sync`, {
-        method: 'POST', headers: authHdr,
-        body: JSON.stringify({ date_start: dateStart, date_end: dateEnd }),
-      })
-      rec.card = { status: r.status, ...(await r.json().catch(() => ({})) as any) }
-    } catch (err: any) {
-      rec.card = { error: String(err?.message || err).slice(0, 200) }
+    // 1) 카드 — bankOnly(시간당 호출)면 건너뛴다. 카드는 DAY1 이라 시간당 돌 이유가 없다.
+    if (!body.bankOnly) {
+      try {
+        const r = await fetch(`${origin}/api/card-expenses/sync`, {
+          method: 'POST', headers: authHdr,
+          body: JSON.stringify({ date_start: dateStart, date_end: dateEnd }),
+        })
+        rec.card = { status: r.status, ...(await r.json().catch(() => ({})) as any) }
+      } catch (err: any) {
+        rec.card = { error: String(err?.message || err).slice(0, 200) }
+      }
     }
 
     // 2) 계좌 (핸들러가 자체적으로 최근 3일 수집 + 자동매칭)
@@ -71,6 +81,7 @@ cronRouter.post('/barobill-sync', agentKeyMiddleware, async (c) => {
 
   const summary = {
     entities: entities.length,
+    mode: body.bankOnly ? 'bankOnly' : 'full',
     card_inserted: out.reduce((s, r) => s + (r.card?.data?.inserted || 0), 0),
     bank_inserted: out.reduce((s, r) => s + (r.bank?.data?.inserted || 0), 0),
   }

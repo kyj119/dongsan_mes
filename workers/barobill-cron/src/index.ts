@@ -19,6 +19,21 @@ async function trigger(env: Env, cardDays = 14): Promise<{ status: number; body:
   return { status: res.status, body: (await res.text()).slice(0, 1000) }
 }
 
+/**
+ * 계좌만 수집 — 매시 정각.
+ * prod 계좌 11개가 바로빌 `HOUR1`(1시간 주기·월 4,400원)로 등록돼 있는데 하루 1회만 받아가고 있었다.
+ * 거래내역 조회는 무과금이라 시간당 받아도 추가 비용이 없다(용준님 결정 2026-08-11).
+ * 카드는 전부 DAY1 이라 제외 — 시간당 불러도 갱신될 게 없다.
+ */
+async function triggerBankOnly(env: Env): Promise<{ status: number; body: string }> {
+  const res = await fetch(`${env.MES_URL}/api/cron/barobill-sync`, {
+    method: 'POST',
+    headers: { 'X-Agent-Key': env.AGENT_API_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bankOnly: true }),
+  })
+  return { status: res.status, body: (await res.text()).slice(0, 1000) }
+}
+
 // 무인 일일 정비(OEE 일배치 + 알림 생성). 멱등이라 반복 호출 안전.
 async function triggerDaily(env: Env): Promise<{ status: number; body: string }> {
   const res = await fetch(`${env.MES_URL}/api/cron/daily-maintenance`, {
@@ -43,7 +58,19 @@ async function triggerBudget(env: Env): Promise<{ status: number; body: string }
 
 export default {
   // 정기 스케줄 — wrangler.jsonc triggers.crons
-  async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+  //   "0 21 * * *"        = 06:00 KST 전체(카드+계좌 → 일일정비 → 예산점검)
+  //   "0 0-20,22-23 * * *" = 매시 정각 계좌만. 21 시를 뺀 이유는 전체 회차와 겹치지 않게 하려는 것뿐이다
+  //                          (겹쳐도 멱등이라 사고는 아니지만 로그가 두 벌 남는다).
+  async scheduled(event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    if (event.cron !== '0 21 * * *') {
+      try {
+        const b = await triggerBankOnly(env)
+        console.log(`[barobill-cron] bank-only ${b.status} ${b.body}`)
+      } catch (err) {
+        console.error('[barobill-cron] bank-only failed', err instanceof Error ? err.message : String(err))
+      }
+      return
+    }
     try {
       const r = await trigger(env)
       console.log(`[barobill-cron] barobill-sync ${r.status} ${r.body}`)
