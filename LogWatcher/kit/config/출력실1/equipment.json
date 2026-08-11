@@ -1,0 +1,16 @@
+{
+  "poll_interval_seconds": 5,
+  "heartbeat_interval_seconds": 60,
+  "watchers": [
+    {
+      "_comment": "UV 3200폭 — TOPAZRIP-X 10.6.4(RipMain 실행 확인). 키트 진단 2026-08-11.",
+      "equipment_id": "UV-3200-01",
+      "name": "UV 3200폭",
+      "enabled": true,
+      "parser_type": "tns",
+      "config": {
+        "log_path": "C:\\TNSRip-X\\Print.log"
+      }
+    }
+  ]
+}

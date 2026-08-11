@@ -87,7 +87,19 @@ PrintExp 는 도안명을 **전혀 모른다.** neoStampa 가 넘긴 `~sectionN.
 | TRANS-8C-01 | 전사 8색 1호기 (Longyin Q2000) | 전사/태극기 | DESKTOP-5C9D04J | neoStampa 10.2.4 **+ PrintExp 5.x (같은 PC)** | rip `C:\Users\Public\Documents\neoStampa 10\Log`<br>print `C:\PrintExp_X64\Log\main` | `neostampa_printexp` | ✅ 59 OK / 54 CANCEL | ✅ 2026-08-09 |
 | TRANS-8C-02 | 전사 8색 2호기 (Longyin Q2000) | 전사/태극기 | PC-202605141926 | 〃 **+ PrintExp 5.7.6.5.103** | rip 〃<br>print `C:\PrintExp_X64_V5.7.6.5.103.BS_20220530(1)\PrintExp_X64_V5.7.6.5.103.BS_20220530\Log` | 〃 | ✅ 90 OK / 51 CANCEL | ✅ 2026-08-09 |
 | ? | ? 간판(선명) | 간판 | ⬜ | ? | ? | ? | ⬜ | ⬜ |
-| ? | 솔벤 3200 | 솔벤 | ⬜ | **제어SW만 확인**(중국계, UDP 모션 — 아래 참조) | 제어로그 `...\LogFile\YYYYMMDD.txt` (사본=`Z:\Designs\LogFile(솔벤3200)`) | **RIP측 로그 미발견 → --probe 필요** | ⬜ | ⬜ |
+| UV-1800-01 | UV 1800폭 | UV | DESKTOP-P5REMND | FlexiPRINT 22 HS (+PrintExp_XSJ 제어 2축) | `C:\Program Files\SAi\FlexiPRINT 22 HS Edition\Jobs and Settings\RIPLOG.HTML` | flexi | ⬜ | ⬜ config 준비됨 |
+| SOLV-3200-01 | 솔벤 3200폭 | 솔벤 | DESKTOP-K01ONQE | FlexiPRINT 19 FY Union (+SOL-SPTalpha 제어=`LogFile(솔벤3200)` 사본의 정체, 잡정보 없음) | `C:\Program Files (x86)\SAi\FlexiPRINT 19 FY Union Edition\Jobs and Settings\RIPLOG.HTML` | flexi | ⬜ | ⬜ config 준비됨 |
+| UV-3200-01 | UV 3200폭 | UV | 출력실1 | TOPAZRIP-X 10.6.4 (RipMain 실행 확인) | `C:\TNSRip-X\Print.log` | tns | ⬜ | ⬜ config 준비됨 |
+| FLAT-4X8-01 | 평판 4x8 | 평판 | 출력실2 | TNSRip-X | `C:\TNSRip-X\Print.log` | tns | ⬜ | ⬜ config 준비됨 |
+| HYB-3200-01 | 하이브리드 3200폭 | UV/솔벤 | DESKTOP-N81IMN4 | FlexiPRINT 19 FY Union **Edition1** (22 FY 도 설치돼 있으나 App2 실행 중=19쪽) | `C:\Program Files (x86)\SAi\FlexiPRINT 19 FY Union Edition1\Jobs and Settings\RIPLOG.HTML` | flexi | ⬜ | ⬜ config 준비됨 |
+| SOLV-1800-01 | 솔벤 1800폭 | 솔벤 | DESKTOP-6L8TCVB | FlexiPRINT 22 RIPControl (+PrintExp_X64 제어 2축) | `C:\Program Files\SAi\FlexiPRINT 22 RIPControl Edition\Jobs and Settings\RIPLOG.HTML` | flexi | ⬜ | ⬜ config 준비됨 |
+
+> **키트 진단 2차 (2026-08-11 오후, 6대+EPSON)**: 위 6행 전부 equipment 사전등록 + `config\<PC명>\` 준비 완료 —
+> **현장에서 각 PC START.bat → [2] 실행만 남음**. 공통 패턴: Flexi 계열은 RIP축(RIPLOG.HTML)에 잡명이 있어
+> flexi 파서 단독으로 충분, 중국계 제어SW(PrintExp_XSJ/X64·SOL-SPTalpha)는 잡정보가 없는 모션 로그라 쓰지 않는다.
+> **★EPSON 취소코드 실측 확정 = `JobStatus 2`** (완료=12. 취소 테스트 잡: 15:04 출력 시작·Finish NULL·상태 2.
+> 대기중 취소도 2. 기존 추정 13/14 폐기) → status-aware 파서(`89097982`, main 미포함)의 `status_cancel=["2"]` 로
+> 확정 가능 — main 반영+EPSON 2대 재배포가 남은 일.
 | KOSTECH-TRANS-01 | 코스테크-전사-01 | 전사 | PC-202604161203 / 192.168.0.18 | **TopazRip** (TNSRip-X1, 키트 진단 2026-08-11) | `C:\TNSRip-X1\Print.log` | `tns` ✅ | ⬜ | ⬜ **config 준비됨** — 현장 [2] 실행만 남음 (equipment 행 사전등록 완료) |
 
 > **솔벤 3200 사전 분석 (2026-08-10)**: 수거된 `LogFile` 폴더는 **제어SW 모션/명령 로그**다 —

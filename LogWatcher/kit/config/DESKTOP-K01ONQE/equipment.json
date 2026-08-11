@@ -1,0 +1,16 @@
+{
+  "poll_interval_seconds": 5,
+  "heartbeat_interval_seconds": 60,
+  "watchers": [
+    {
+      "_comment": "솔벤 3200폭 — FlexiPRINT 19 FY Union(RIP, App2 실행 확인) + SOL-SPTalpha(제어, D: LogFile=잡정보 없음). 키트 진단 2026-08-11.",
+      "equipment_id": "SOLV-3200-01",
+      "name": "솔벤 3200폭",
+      "enabled": true,
+      "parser_type": "flexi",
+      "config": {
+        "log_path": "C:\\Program Files (x86)\\SAi\\FlexiPRINT 19 FY Union Edition\\Jobs and Settings\\RIPLOG.HTML"
+      }
+    }
+  ]
+}

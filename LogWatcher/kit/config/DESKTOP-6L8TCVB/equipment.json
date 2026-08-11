@@ -1,0 +1,16 @@
+{
+  "poll_interval_seconds": 5,
+  "heartbeat_interval_seconds": 60,
+  "watchers": [
+    {
+      "_comment": "솔벤 1800폭 — FlexiPRINT 22 RIPControl(RIP) + PrintExp_X64(제어) 2축. RIPLOG 당일 갱신 확인, 키트 진단 2026-08-11.",
+      "equipment_id": "SOLV-1800-01",
+      "name": "솔벤 1800폭",
+      "enabled": true,
+      "parser_type": "flexi",
+      "config": {
+        "log_path": "C:\\Program Files\\SAi\\FlexiPRINT 22 RIPControl Edition\\Jobs and Settings\\RIPLOG.HTML"
+      }
+    }
+  ]
+}

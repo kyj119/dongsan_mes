@@ -1,0 +1,16 @@
+{
+  "poll_interval_seconds": 5,
+  "heartbeat_interval_seconds": 60,
+  "watchers": [
+    {
+      "_comment": "평판 4x8 — TNSRip-X(당일 로그 갱신 확인). 키트 진단 2026-08-11.",
+      "equipment_id": "FLAT-4X8-01",
+      "name": "평판 4x8",
+      "enabled": true,
+      "parser_type": "tns",
+      "config": {
+        "log_path": "C:\\TNSRip-X\\Print.log"
+      }
+    }
+  ]
+}

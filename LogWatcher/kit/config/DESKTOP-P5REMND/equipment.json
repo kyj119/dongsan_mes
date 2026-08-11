@@ -1,0 +1,16 @@
+{
+  "poll_interval_seconds": 5,
+  "heartbeat_interval_seconds": 60,
+  "watchers": [
+    {
+      "_comment": "UV 1800폭 — FlexiPRINT 22 HS(RIP) + PrintExp_XSJ(제어) 2축. RIPLOG 에 잡명 있음, 키트 진단 2026-08-11.",
+      "equipment_id": "UV-1800-01",
+      "name": "UV 1800폭",
+      "enabled": true,
+      "parser_type": "flexi",
+      "config": {
+        "log_path": "C:\\Program Files\\SAi\\FlexiPRINT 22 HS Edition\\Jobs and Settings\\RIPLOG.HTML"
+      }
+    }
+  ]
+}

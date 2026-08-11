@@ -1,0 +1,16 @@
+{
+  "poll_interval_seconds": 5,
+  "heartbeat_interval_seconds": 60,
+  "watchers": [
+    {
+      "_comment": "하이브리드 3200폭 — Flexi 19 FY Union Edition1(App2 실행 중인 쪽. 22 FY Union 도 설치돼 있으나 미사용). 키트 진단 2026-08-11.",
+      "equipment_id": "HYB-3200-01",
+      "name": "하이브리드 3200폭",
+      "enabled": true,
+      "parser_type": "flexi",
+      "config": {
+        "log_path": "C:\\Program Files (x86)\\SAi\\FlexiPRINT 19 FY Union Edition1\\Jobs and Settings\\RIPLOG.HTML"
+      }
+    }
+  ]
+}
