@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-08-11T15:25:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-08-11T21:35:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,23 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **4** (`search_issues(is:open,label:auto-improve)` 실측, Area1 재확인. #606·#608·#609·#612, 변동 없음) |
+| 🆕 new | **4** (`search_issues(is:open,label:auto-improve)` 실측, Area3 재확인. #606·#608·#609·#612, 변동 없음) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`reason:completed` 실측, 변동 없음) |
-| ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음) |
+| ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 변동 없음 — 재확인 생략, 직전 사이클과 무변동 근거 충분) |
+
+> **Area 3 UX/기능 감사 (2026-08-11T21:35):**
+> - **방법**: `git fetch origin main`(HEAD `00aaa4c`, origin과 완전 일치, 워킹트리 clean) — 컨테이너 git 이력이 이번 사이클도 재기록(root `f1f9948`, 57커밋 전부 최근, 직전 Area2가 기록한 root `740b8cd`와 다름) — 단 Area2 자신의 앵커(`ca38708`)는 이번 재기록에도 유효해(`git cat-file -t ca38708`=commit) 그 지점 기준 churn 계산은 그대로 신뢰 가능. `npm ci`(0→81) 스킵(직전 사이클 검증 재사용), `git status` clean.
+> - **churn 확인**: 직전 Area2 앵커(`ca38708`) 이후 `git diff --stat -- src/scripts src/pages src/layout index.tsx src/routes` = **`src/routes/cron.ts` 1파일뿐**(`8245211` 바로빌 계좌 시간당 수집, 카드는 DAY1이라 제외하는 순수 백엔드/운영 변경 — UX 표면 무관). `src/scripts`/`src/pages`/`src/layout`/`index.tsx` 변경 **0줄** — 이번 사이클은 UX 감사 대상 신선 churn이 사실상 없음.
+> - **closed≠fixed 재검증 — #611(카드 다품목 표 overflow-x-auto 누락) 코드 대조**: `cardDetail.js:274` `html += '<div class="cd-multi-wrap"><table class="cd-multi">...'`로 래핑 확인 + `cardDetail.ts:38` `.cd-multi-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }`(인쇄용 `:73`은 `overflow: visible !important`로 별도 처리) 확인 — **실재 픽스, 재발 없음**.
+> - **standing scan 대체 실시(신선 churn 부재)**: 새 마이그레이션 0건(`migrations` 디렉터리 ca38708 이후 신규 없음) → "백엔드 먼저·화면 나중"(#606류, 3회 누적 승격 스캔) 신규 후보 자체가 발생하지 않음(전제조건인 신규 컬럼+JOIN 자체가 없음). 대시보드 KPI는 I-011/I-016/I-052/I-059/I-066/A-018/F-003으로 기존에 이미 반복 심층 검토된 영역이라(오늘 Area2도 `dashboard.ts` entity_id 바인드만 별도 대조 완료) 이번 사이클 재감사는 낮은 marginal value로 판단해 생략.
+> - **egress 제약(재확인)**: prod host(`webapp-9i0.pages.dev`) curl 403 "Host not in allowlist" — Playwright MCP로 실제 화면 탐색(체크리스트 원칙)도 이 세션에서 불가, 기존 인지된 제약과 동일.
+> - **open 4건 재확인(open≠unfixed)**: #606(feature, entity-attribution-audit 프론트 소비처 여전히 0)·#608(verify.yml 여전히 0회 실행)·#609(toBase/formatStock 호출처 여전히 0)·#612(IDOR, 소유권 검증 로직 무변경) — 이번 churn(cron.ts)과 전부 무관한 파일이라 직전 Area2 재확인 캐시 유지.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues(reason:completed)` **531**(변동없음) · open **4**(변동없음) · rejected **6**(재확인 생략, 무변동 근거 충분).
+> - **🧬 SKILL 강화**: 없음 — 이번 사이클 신규 오탐/탐지 클래스 없음.
+> - 신규 이슈 0건(신선 churn 없음 + 기존 open 4건 전부 여전히 미픽스로 캐시 유지, closed #611은 재검증 결과 실제 픽스), 자동수정 0건, done-sync: new 4(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-08-11T15:25):**
 > - **방법**: `git fetch origin main`(HEAD `ca38708`, origin과 완전 일치) — 컨테이너 git 이력이 이번 사이클도 force-update로 재기록(57커밋 전부 최근, root `740b8cd`). `npm ci`(0→81), `npx tsc --noEmit` clean. 직전 Area2(`8947255`, 08-10T03:16, 61회차) 이후 `src/routes`/`src/scripts`/`index.tsx`/`src/layout`/`src/pages`/migrations 변경 = **12커밋**(ca38708 print-events entity공유·90b0c36 cron 주석·379a7b7 장비 entity공유+다중선택 필터·93c9927 예산알림 신설·4f077a0 등급C 단가백필[0531]·0b87962 AREA 단가정정[0530]·4605227 최소청구면적+가격제안·c396923 주문서 편집 라운드트립 5건 배치·1bfaf7f PDF/JPG/PNG 첨부·7f40097 nav-badges D1폭증+HAVING별칭버그·ee16ae6 라인DXF첨부·0798a37 품목검색/마감섹션) — c396923(5건)은 Area6(00:20)가 이미 코드품질 렌즈로 전수 재검증 완료, 나머지 11커밋은 신선 churn.
