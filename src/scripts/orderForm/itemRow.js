@@ -88,6 +88,9 @@
                         <div>
                             <label id="unit_price_label_${id}" class="block text-xs font-medium text-gray-600 mb-0.5">단가</label>
                             <input type="text" inputmode="numeric" data-money name="unit_price_${id}" value="0" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" oninput="calcItem(${id})" onblur="onUnitPriceManualChange(${id})">
+                            <!-- 자동 채워진 단가의 출처(최근 거래가·특약가·기본단가). 어디서 온 값인지 안 보이면
+                                 경리가 믿을 수 없어 결국 매번 손으로 다시 친다. 미채움이면 숨긴다. -->
+                            <div id="price_src_${id}" class="hidden text-[11px] text-blue-600 mt-0.5"></div>
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-gray-600 mb-0.5">금액</label>
@@ -236,6 +239,39 @@
                     // 체크 아이콘 표시
                     var checkEl = document.getElementById('item_check_' + id);
                     if (checkEl) checkEl.classList.remove('hidden');
+
+                    // 거래처 단가 제안 — 견적서(quotationForm.js)·발주서(purchaseOrderForm.js)에는 이미 있고
+                    //   **주문서만 빠져 있었다**(2026-08-11). 품목 마스터 base_price 만 쓰면
+                    //   판매품목 880개 중 773개가 0원이라 단가칸이 늘 비어 경리가 매번 손으로 친다.
+                    //   서버가 recent(최근 거래) > matched(특약·단가표) > base 순으로 골라 준다.
+                    //   ⚠️ AREA 품목의 recent 는 서버가 금액에서 ㎡ 단가로 환산해 준다(routes/prices.ts) —
+                    //      이관분 unit_price 가 장당금액이라 원값을 쓰면 6배가 된다. 여기서 다시 만지지 말 것.
+                    var priceClientEl = document.getElementById('clientId');
+                    var clientIdVal = priceClientEl ? priceClientEl.value : '';
+                    if (clientIdVal && item.id) {
+                        // 응답이 늦게 온 사이 사용자가 손으로 고쳤으면 덮지 않는다.
+                        var priceAtRequest = priceInp.value;
+                        axios.get('/api/prices?item_id=' + encodeURIComponent(item.id) +
+                                  '&client_id=' + encodeURIComponent(clientIdVal) + '&context=sales')
+                            .then(function(r) {
+                                var d = r && r.data;
+                                if (!d || !(d.suggested_price > 0)) return;
+                                if (priceInp.value !== priceAtRequest) return;  // 사용자 입력 우선
+                                priceInp.value = fmtMoneyInput(d.suggested_price);
+                                priceInp.dataset.basePrice = d.suggested_price;  // 특약 저장 제안의 비교 기준도 갱신
+                                var srcEl = document.getElementById('price_src_' + id);
+                                if (srcEl) {
+                                    var label = d.price_source === 'recent_transaction' ? '최근 거래가'
+                                              : d.price_source === 'client_item_price' ? '거래처 특약가'
+                                              : d.price_source === 'price_list' ? '단가표'
+                                              : d.price_source === 'base_price' ? '기본 단가' : '';
+                                    srcEl.textContent = label;
+                                    srcEl.classList.toggle('hidden', !label);
+                                }
+                                calcItem(id);
+                            })
+                            .catch(function() { /* 제안 실패는 무음 — 기본 단가로 진행 */ });
+                    }
 
                     // 유통 품목(GOODS/부자재)이면 인쇄 전용 칸/섹션 단순화
                     var itType = (item.item_type || '').toUpperCase();

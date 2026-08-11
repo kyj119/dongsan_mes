@@ -69,6 +69,8 @@
     "audit:items": "node scripts/item-master-audit.cjs",
     "audit:skills": "node scripts/skill-audit.cjs",
     "audit:items:selftest": "node scripts/r0-selftest.cjs",
+    "test:orderline": "node scripts/orderline-selftest.cjs",
+    "prices:derive": "node scripts/derive-item-prices.cjs",
     "smoke:write": "node scripts/smoke-write.cjs"
   },
   "dependencies": {

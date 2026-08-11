@@ -124,15 +124,20 @@
                     var hEl = document.querySelector('[name="height_' + id + '"]');
                     var wRaw = wEl ? (parseFloat(wEl.value) || 0) : 0;
                     var hRaw = hEl ? (parseFloat(hEl.value) || 0) : 0;
-                    // 금액 계산용: 10cm 단위 올림 (표시는 원본 유지)
-                    var w = Math.ceil(wRaw / 10) * 10;
-                    var h = Math.ceil(hRaw / 10) * 10;
+                    // 금액 계산용: 10cm 단위 올림 후 최소 1m (표시는 원본 유지)
+                    //   0.5m×0.7m 는 1m×1m 로 청구한다 — 서버 orderLineAmount.ts MIN_BILLING_SIDE_CM 과 같은 값이어야 한다.
+                    var MIN_SIDE = 100;
+                    var w = Math.max(Math.ceil(wRaw / 10) * 10, MIN_SIDE);
+                    var h = Math.max(Math.ceil(hRaw / 10) * 10, MIN_SIDE);
                     amt = price * (w / 100) * (h / 100) * qty;
                     // 검산 가능화: 올림 치수가 입력 치수와 다르면 청구 기준 치수 힌트 노출 (P1-8)
+                    //   최소 규격이 걸린 경우는 사유를 따로 밝힌다 — "왜 더 비싸지?"가 여기서 갈린다.
                     var hintEl = document.getElementById('bill_dim_hint_' + id);
                     if (hintEl) {
                         if (wRaw > 0 && hRaw > 0 && (w !== wRaw || h !== hRaw)) {
-                            hintEl.textContent = '청구 ' + w + '×' + h + 'cm (10cm 올림)';
+                            var minApplied = (wRaw < MIN_SIDE || hRaw < MIN_SIDE);
+                            hintEl.textContent = '청구 ' + w + '×' + h + 'cm ('
+                                + (minApplied ? '최소 1m·10cm 올림' : '10cm 올림') + ')';
                             hintEl.classList.remove('hidden');
                         } else {
                             hintEl.classList.add('hidden');

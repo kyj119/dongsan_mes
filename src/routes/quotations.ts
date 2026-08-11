@@ -23,6 +23,11 @@ import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { kstYmdCompact, kstYmd } from '../utils/kstDate'
 import { buildQuotListFilter, resolveQuotSort, QUOT_SORT_DEFAULT } from './quotationsListFilter'
+// 견적 라인 금액도 주문과 **같은 산식**이어야 한다(견적 → 주문 전환이 있다).
+//   같은 식이 이 파일에만 4벌 복붙돼 있었고, 2026-08-11 최소 청구 규격(1m) 이 추가되면서
+//   주문만 고치면 견적·주문 금액이 갈리는 상태가 됐다 → 단일 소스로 통합.
+//   `.auto` 를 쓰는 이유 = 견적은 수동 금액(에누리) 개념이 없어 늘 자동값을 저장해 왔다. 기존 동작 유지.
+import { computeLineAmount } from '../utils/orderLineAmount'
 
 const quotationsRouter = new Hono<HonoEnv>()
 quotationsRouter.use('/*', authMiddleware, requireAnyPagePermission('/quotations', '/orders'))
@@ -280,18 +285,7 @@ quotationsRouter.post('/', async (c) => {
     let totalAmount = 0
     let vatAmount = 0
     for (const item of body.items) {
-      const w = item.width_mm || item.width || 0
-      const h = item.height_mm || item.height || 0
-      const pricingMethod = item.pricing_method || 'FIXED'
-      let itemAmount: number
-      if (pricingMethod === 'AREA' && w > 0 && h > 0) {
-        const wRound = Math.ceil(w / 10) * 10
-        const hRound = Math.ceil(h / 10) * 10
-        itemAmount = (item.unit_price || 0) * (wRound / 100) * (hRound / 100) * (item.quantity || 1)
-      } else {
-        itemAmount = (item.unit_price || 0) * (item.quantity || 1)
-      }
-      itemAmount = Math.round(itemAmount / 100) * 100
+      const itemAmount = computeLineAmount(item, item.pricing_method || 'FIXED').auto
       totalAmount += itemAmount
       if (item.vat_included !== false) {
         vatAmount += itemAmount * vatRate
@@ -345,13 +339,7 @@ quotationsRouter.post('/', async (c) => {
       const w = item.width_mm || item.width || 0
       const h = item.height_mm || item.height || 0
       const pricingMethod = item.pricing_method || 'FIXED'
-      let amount: number
-      if (pricingMethod === 'AREA' && w > 0 && h > 0) {
-        amount = (item.unit_price || 0) * (Math.ceil(w / 10) * 10 / 100) * (Math.ceil(h / 10) * 10 / 100) * (item.quantity || 1)
-      } else {
-        amount = (item.unit_price || 0) * (item.quantity || 1)
-      }
-      amount = Math.round(amount / 100) * 100
+      const amount = computeLineAmount(item, pricingMethod).auto
 
       parentInsertStmts.push(c.env.DB.prepare(`
         INSERT INTO quotation_items (
@@ -452,16 +440,7 @@ quotationsRouter.put('/:id', async (c) => {
     let totalAmount = 0
     let vatAmount = 0
     for (const item of body.items || []) {
-      const w = item.width_mm || item.width || 0
-      const h = item.height_mm || item.height || 0
-      const pricingMethod = item.pricing_method || 'FIXED'
-      let amt: number
-      if (pricingMethod === 'AREA' && w > 0 && h > 0) {
-        amt = (item.unit_price || 0) * (Math.ceil(w / 10) * 10 / 100) * (Math.ceil(h / 10) * 10 / 100) * (item.quantity || 1)
-      } else {
-        amt = (item.unit_price || 0) * (item.quantity || 1)
-      }
-      amt = Math.round(amt / 100) * 100
+      const amt = computeLineAmount(item, item.pricing_method || 'FIXED').auto
       totalAmount += amt
       if (item.vat_included !== false) vatAmount += amt * vatRate
     }
@@ -499,13 +478,7 @@ quotationsRouter.put('/:id', async (c) => {
       const w = item.width_mm || item.width || 0
       const h = item.height_mm || item.height || 0
       const pricingMethod = item.pricing_method || 'FIXED'
-      let amount: number
-      if (pricingMethod === 'AREA' && w > 0 && h > 0) {
-        amount = (item.unit_price || 0) * (Math.ceil(w / 10) * 10 / 100) * (Math.ceil(h / 10) * 10 / 100) * (item.quantity || 1)
-      } else {
-        amount = (item.unit_price || 0) * (item.quantity || 1)
-      }
-      amount = Math.round(amount / 100) * 100
+      const amount = computeLineAmount(item, pricingMethod).auto
 
       parentInsertStmts.push(c.env.DB.prepare(`
         INSERT INTO quotation_items (

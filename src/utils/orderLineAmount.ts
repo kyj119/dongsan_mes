@@ -1,7 +1,7 @@
 /**
  * 주문 라인 금액 = 단일 소스.
  *
- * 같은 산식(10cm 올림 → 면적 → 100원 반올림)이 서버 5곳(create 3 · update 2)과 클라 2곳에
+ * 같은 산식(10cm 올림 → 최소 1m → 면적 → 100원 반올림)이 서버 5곳(create 3 · update 2)과 클라 2곳에
  * 복붙돼 있었다. 규칙이 여러 곳이면 갈린다 — 이 프로젝트가 이미 확립한 정리 패턴
  * (utils/rollConsumption · services/messageBulkLimit · 패널 stripFinishing)을 그대로 적용한다.
  *
@@ -48,9 +48,24 @@ export interface LineAmount {
   manual: boolean
 }
 
-/** 10cm 올림 — 청구 기준 치수. 표시 치수는 원본을 유지한다. */
-function roundUp10(v: number): number {
-  return Math.ceil(v / 10) * 10
+/**
+ * 최소 청구 변 길이(cm) — 0.5m×0.7m 는 1m×1m 로 청구한다(용준님 2026-08-11 확인).
+ *
+ * 실측으로 전 AREA 품목 공통임을 확인했다: 1m 미만 변이 있는 라인만 모아 ㎡ 단가를 역산하면
+ * 보정 전에는 품목 중앙값의 2~3배로 튀는데(SV-SHEET 19,942 vs 중앙값 10,000),
+ * 이 보정을 넣으면 중앙값에 수렴한다(9,757). AQ-PAT 11,940→6,680(중앙값 6,700),
+ * SV-BANNER 16,417→7,280(7,100), UV-FLEXL 15,772→9,860(10,000)도 같은 양상.
+ * 품목별로 다른 최소값을 쓴 흔적은 없다.
+ */
+const MIN_BILLING_SIDE_CM = 100
+
+/**
+ * 청구 기준 치수(cm) — 10cm 올림 후 최소 변 길이 적용. 표시 치수는 원본을 유지한다.
+ * ⚠️ 입력 단위는 **cm** 다. 필드명이 `width_mm` 인 것은 과거 명명 잔재이고 값은 cm 로 들어온다
+ *    (아래 `/100` 로 m 로 환산하는 것이 그 증거).
+ */
+function billingSide(v: number): number {
+  return Math.max(Math.ceil(v / 10) * 10, MIN_BILLING_SIDE_CM)
 }
 
 /** 100원 단위 반올림 — 최종 청구 단위 */
@@ -71,7 +86,7 @@ export function computeLineAmount(item: LineAmountInput, pricingMethod: PricingM
 
   let auto: number
   if (pricingMethod === 'AREA' && w > 0 && h > 0) {
-    auto = unitPrice * (roundUp10(w) / 100) * (roundUp10(h) / 100) * qty
+    auto = unitPrice * (billingSide(w) / 100) * (billingSide(h) / 100) * qty
   } else {
     auto = unitPrice * qty
   }

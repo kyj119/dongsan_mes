@@ -77,10 +77,29 @@ pricesRouter.get('/', async (c) => {
         }
       } else if (context === 'sales') {
         const efSales = entityFilter(c, 'o')
+        // ★AREA 품목의 최근 단가는 `unit_price` 를 그대로 믿으면 안 된다 (2026-08-11 실측).
+        //   이카운트 이관분 13,461건 중 **13,452건(99.9%)이 `amount = unit_price × quantity`**,
+        //   즉 unit_price 에 ㎡ 단가가 아니라 **장당 금액**이 들어 있다(items 는 AREA 인데도).
+        //   그대로 제안하면 화면이 그 값을 ㎡ 단가로 곱해 600×90 짜리가 8,000 → 48,000원이 된다(6배).
+        //   ⇒ 금액에서 되나눈다: amount ÷ (청구면적 × 수량).
+        //      이관분은 올바른 ㎡ 단가로 환산되고, 신규분은 amount 자체가 단가×면적×수량이라 원값이 복원된다.
+        //      청구면적 = 10cm 올림 + 최소 1m — utils/orderLineAmount.ts billingSide() 와 같은 규칙.
+        const AREA_UNIT_PRICE_SQL = `
+          CASE WHEN i.pricing_method = 'AREA'
+                    AND COALESCE(oi.width, 0)  > 0
+                    AND COALESCE(oi.height, 0) > 0
+                    AND COALESCE(oi.quantity, 0) > 0
+                    AND oi.amount <> 0
+               THEN oi.amount / (
+                      (MAX(CAST((oi.width  + 9) / 10 AS INT) * 10, 100) / 100.0)
+                    * (MAX(CAST((oi.height + 9) / 10 AS INT) * 10, 100) / 100.0)
+                    * oi.quantity )
+               ELSE oi.unit_price END`
         const recentSales = await c.env.DB.prepare(`
-          SELECT oi.unit_price, o.order_date, o.order_number
+          SELECT ROUND(${AREA_UNIT_PRICE_SQL}) AS unit_price, o.order_date, o.order_number
           FROM order_items oi
           JOIN orders o ON oi.order_id = o.id
+          JOIN items i  ON i.id = oi.item_id
           WHERE oi.item_id = ? AND o.client_id = ? AND o.status != 'CANCELLED'${efSales.clause}
           ORDER BY o.order_date DESC, o.id DESC
           LIMIT 1
@@ -95,10 +114,12 @@ pricesRouter.get('/', async (c) => {
         }
 
         // #75: 3개월 평균 판매단가 (전체 거래처 대상, 원가 미노출)
+        //   AREA 환산은 위 recent 와 같은 이유로 필수 — 안 하면 평균이 장당금액과 ㎡단가의 뒤섞임이 된다.
         const avg3m = await c.env.DB.prepare(`
-          SELECT ROUND(AVG(oi.unit_price)) as avg_price, COUNT(*) as tx_count
+          SELECT ROUND(AVG(${AREA_UNIT_PRICE_SQL})) as avg_price, COUNT(*) as tx_count
           FROM order_items oi
           JOIN orders o ON oi.order_id = o.id
+          JOIN items i  ON i.id = oi.item_id
           WHERE oi.item_id = ? AND o.status NOT IN ('CANCELLED','DRAFT')
             AND o.order_date >= date('now', '-3 months')${efSales.clause}
         `).bind(item_id, ...efSales.params).first<{ avg_price: number | null; tx_count: number }>()
