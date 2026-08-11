@@ -315,15 +315,6 @@ export interface PaymentAggRow { client_id: number; total_payments: number }
 export interface MonthlyOrderRow { month: string; order_count: number; total_sales: number }
 export interface MonthlyPaymentRow { month: string; payment_count: number; total_payments: number }
 
-export interface OverdueClientRow {
-  id: number
-  client_name: string
-  overdue_alert_days: number | null
-  balance: number
-  oldest_billed_at: string | null
-  overdue_days: number
-}
-
 export interface NotifLinkRow { link: string }
 
 export interface CollectionLogRow {
@@ -363,17 +354,6 @@ export interface ReceivableOrderRow {
   billing_status: string
   billed_at: string | null
   days_since_billed: number | null
-}
-
-// /overdue SQL 행 (overdue_billed=연체 청구합 원값, 응답의 overdue_amount는 min(overdue_billed, balance) 캡)
-export interface OverdueAlertRow {
-  client_id: number
-  client_name: string
-  overdue_count: number
-  overdue_billed: number
-  balance: number
-  oldest_billed_at: string | null
-  overdue_alert_days: number | null
 }
 
 export interface UnpaidOrderRow {
