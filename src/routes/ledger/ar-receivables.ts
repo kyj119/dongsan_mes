@@ -14,8 +14,8 @@ import { entityFilter } from '../../utils/entityFilter'
 import { kstYmd } from '../../utils/kstDate'
 import { excludeArExcludedClientsSql } from '../../constants/arPolicy'
 import {
-  deriveClientBalance, buildIntegrityQuery, getAgingCategory,
-  type PaymentRow, type IntegrityRow, type OverdueClientRow, type OverdueAlertRow, type ReceivableClientRow,
+  deriveClientBalance, buildIntegrityQuery, getAgingCategory, queryFifoOverdue, agingDaysFromOldest,
+  type PaymentRow, type IntegrityRow, type ReceivableClientRow,
   type ReceivableOrderRow, type NotifLinkRow,
 } from './ar-helpers'
 
@@ -160,61 +160,19 @@ arReceivablesRouter.post('/recalculate/:clientId', requireEditOrRole('/ledger', 
 })
 
 // GET /overdue - 미수금 경고 목록
+//   판정 = FIFO 충당 SSOT(ar-helpers.queryFifoOverdue). 종전 `min(연체청구합, 잔액)`(=LIFO 가정)은
+//   거래 중인 거래처의 최근 청구분 잔액까지 연체로 계상해 경고가 과대했다(2026-08-11 정정).
 arReceivablesRouter.get('/overdue', async (c) => {
   try {
-    // split billing P3: 미수금 경고도 청구그룹(청구 법인 g) 기준
-    // 부분입금 반영: payments가 청구그룹에 미매칭(거래처 단위)이라 BILLED 합계만으로는 과대표시 →
-    //   거래처 잔액(billed−pay−adj) ≤ 0 제외 + 경고액 = min(연체 청구합, 잔액) 캡
-    const efOdBg = entityFilter(c, 'g')
-    const efOdPay = entityFilter(c, 'p')
-    const efOdAdj = entityFilter(c, 'a')
-    const { clause: overdueEf, params: overdueEfParams } = entityFilter(c, 'g')
-    const { results } = await c.env.DB.prepare(`
-      SELECT
-        c.id as client_id,
-        c.client_name,
-        c.overdue_alert_days,
-        COUNT(DISTINCT o.id) as overdue_count,
-        COALESCE(SUM(g.billed_amount), 0) as overdue_billed,
-        (COALESCE(bg.billed_sum, 0) - COALESCE(pay.paid_sum, 0) - COALESCE(adj.adj_sum, 0)) as balance,
-        MIN(COALESCE(g.accounting_date, g.billed_at)) as oldest_billed_at
-      FROM order_billing_groups g
-      JOIN orders o ON o.id = g.order_id
-      JOIN clients c ON o.client_id = c.id
-      LEFT JOIN (
-        SELECT o.client_id AS client_id, COALESCE(SUM(g.billed_amount), 0) AS billed_sum
-        FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
-        WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${efOdBg.clause}
-        GROUP BY o.client_id
-      ) bg ON bg.client_id = c.id
-      LEFT JOIN (
-        SELECT p.client_id AS client_id, COALESCE(SUM(p.amount), 0) AS paid_sum
-        FROM payments p WHERE 1=1${efOdPay.clause}
-        GROUP BY p.client_id
-      ) pay ON pay.client_id = c.id
-      LEFT JOIN (
-        SELECT a.client_id AS client_id, COALESCE(SUM(a.amount), 0) AS adj_sum
-        FROM adjustments a WHERE 1=1${efOdAdj.clause}
-        GROUP BY a.client_id
-      ) adj ON adj.client_id = c.id
-      WHERE g.billing_status = 'BILLED'
-        AND o.status != 'CANCELLED'
-        AND date(COALESCE(g.accounting_date, g.billed_at), '+' || COALESCE(c.overdue_alert_days, 30) || ' days') < date('now', '+9 hours')
-        ${overdueEf}${excludeArExcludedClientsSql('c.id')}
-      GROUP BY c.id, c.client_name, c.overdue_alert_days, bg.billed_sum, pay.paid_sum, adj.adj_sum
-      HAVING (COALESCE(bg.billed_sum, 0) - COALESCE(pay.paid_sum, 0) - COALESCE(adj.adj_sum, 0)) > 0
-    `).bind(...efOdBg.params, ...efOdPay.params, ...efOdAdj.params, ...overdueEfParams).all<OverdueAlertRow>()
-    // ⚠️ HAVING에 별칭 balance 를 쓰면 안 된다 — SQLite 는 실컬럼 우선이라 폐기 캐시 clients.balance 에
-    // 바인딩되어(전부 0) 연체가 통째로 사라진다(2026-08-10 실측: e1 201·e2 50 → 0). 식을 풀어 쓸 것.
-
-    const rows = (results || []).map(r => ({
+    const rows = (await queryFifoOverdue(c)).map(r => ({
       client_id: r.client_id,
       client_name: r.client_name,
       overdue_alert_days: r.overdue_alert_days,
       overdue_count: r.overdue_count,
-      overdue_amount: Math.min(Number(r.overdue_billed) || 0, Number(r.balance) || 0),
-      oldest_billed_at: r.oldest_billed_at,
-    })).sort((a, b) => b.overdue_amount - a.overdue_amount)
+      overdue_amount: r.overdue_amount,
+      carryover_amount: r.carryover_amount,   // 이관 기초잔액(OPEN 전표) 유래분 — UI '이월' 표기용
+      oldest_billed_at: r.oldest_unpaid_at,
+    }))
 
     return c.json({ success: true, data: rows })
   } catch (error) {
@@ -311,10 +269,12 @@ arReceivablesRouter.get('/receivables', async (c) => {
       }
     })
 
-    // overdue_only 필터 — 거래처별 overdue_alert_days 기준 (NULL=기본 30일, /overdue 배너와 동일 기준)
+    // overdue_only 필터 — /overdue 배너와 **동일한 FIFO 판정**(queryFifoOverdue)을 그대로 쓴다.
+    //   종전엔 aging_days(채권나이) > overdue_alert_days 로 자체 판정해 배너와 기준이 갈렸다
+    //   (배너엔 없는 거래처가 목록 '연체만'에는 뜨는 모순). 필터를 켤 때만 추가 쿼리 1회.
     if (overdue_only === '1') {
-      rows = rows.filter(r => r.aging_days !== null
-        && r.aging_days > (r.overdue_alert_days != null ? Number(r.overdue_alert_days) : 30))
+      const overdueIds = new Set((await queryFifoOverdue(c)).map(r => r.client_id))
+      rows = rows.filter(r => overdueIds.has(Number(r.id)))
     }
 
     // 정렬
@@ -429,48 +389,12 @@ arReceivablesRouter.get('/receivables/:clientId/orders', async (c) => {
 })
 
 // POST /receivables/check-overdue - 연체 자동 알림 생성 (ADMIN/MANAGER)
+//   판정·금액 = /overdue 배너와 **동일한 FIFO SSOT**(queryFifoOverdue). 종전엔 자체 쿼리로
+//   `잔액 전액 + 최고령 청구일 경과일`을 알렸다 → 이관 기초잔액 때문에 "미수금 3천만원, 최장 연체 223일"
+//   같은 알림이 거래 정상인 거래처에도 나갔다(2026-08-11 정정).
 arReceivablesRouter.post('/receivables/check-overdue', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
   try {
-    // 30일 초과 연체 거래처 조회
-    // split billing P3: clients.balance 캐시 폐기 → 청구그룹 파생(청구 법인 g 기준)
-    // 확장성: 거래처별 결제·감액 상관 서브쿼리 → client_id 사전집계 LEFT JOIN(1회 집계)으로 재작성. 값 동일.
-    //   pay/adj는 client당 1행이라 g 조인 팬아웃 없음 → SUM(g.billed_amount) 불변.
-    const efCoPay = entityFilter(c, 'p')
-    const efCoAdj = entityFilter(c, 'a')
-    const { clause: checkOverdueEf, params: checkOverdueEfParams } = entityFilter(c, 'g')
-    const { results: overdueClients } = await c.env.DB.prepare(`
-      SELECT
-        c.id,
-        c.client_name,
-        c.overdue_alert_days,
-        (
-          COALESCE(SUM(g.billed_amount), 0)
-          - COALESCE(pay.paid_sum, 0)
-          - COALESCE(adj.adj_sum, 0)
-        ) as balance,
-        MIN(COALESCE(g.accounting_date, g.billed_at)) as oldest_billed_at,
-        CAST(julianday('now') - julianday(MIN(COALESCE(g.accounting_date, g.billed_at))) AS INTEGER) as overdue_days
-      FROM clients c
-      JOIN orders o ON o.client_id = c.id
-      JOIN order_billing_groups g ON g.order_id = o.id
-      LEFT JOIN (
-        SELECT p.client_id AS client_id, COALESCE(SUM(p.amount), 0) AS paid_sum
-        FROM payments p WHERE 1=1${efCoPay.clause}
-        GROUP BY p.client_id
-      ) pay ON pay.client_id = c.id
-      LEFT JOIN (
-        SELECT a.client_id AS client_id, COALESCE(SUM(a.amount), 0) AS adj_sum
-        FROM adjustments a WHERE 1=1${efCoAdj.clause}
-        GROUP BY a.client_id
-      ) adj ON adj.client_id = c.id
-      WHERE c.is_active = 1${excludeArExcludedClientsSql('c.id')}
-        AND o.status != 'CANCELLED'
-        AND g.billing_status = 'BILLED'${checkOverdueEf}
-      GROUP BY c.id, c.client_name, c.overdue_alert_days
-      HAVING (COALESCE(SUM(g.billed_amount), 0) - COALESCE(pay.paid_sum, 0) - COALESCE(adj.adj_sum, 0)) > 0
-        AND overdue_days > COALESCE(c.overdue_alert_days, 30)
-      ORDER BY overdue_days DESC
-    `).bind(...efCoPay.params, ...efCoAdj.params, ...checkOverdueEfParams).all<OverdueClientRow>()
+    const overdueClients = await queryFifoOverdue(c)
 
     let alertsCreated = 0
     const checked = overdueClients.length
@@ -484,18 +408,22 @@ arReceivablesRouter.post('/receivables/check-overdue', requireEditOrRole('/ledge
     const recentLinks = new Set((recentNotifs || []).map(n => n.link))
 
     for (const client of overdueClients) {
-      const link = `/ledger?client=${client.id}`
+      const link = `/ledger?client=${client.client_id}`
       if (recentLinks.has(link)) continue
 
-      const balanceFormatted = Number(client.balance).toLocaleString()
-      const days = client.overdue_days
+      const overdueFormatted = client.overdue_amount.toLocaleString()
+      const days = agingDaysFromOldest(client.oldest_unpaid_at)
       const alertDays = client.overdue_alert_days != null ? Number(client.overdue_alert_days) : 30
+      // 이관 기초잔액(OPEN 전표) 유래분은 연체일수가 '이관 기준일 경과일'이라 오독을 부른다 → 본문에 명시.
+      const carryNote = client.carryover_amount > 0
+        ? ` · 이월분 ${client.carryover_amount.toLocaleString()}원 포함`
+        : ''
 
       await notifyRoles(
         c.env.DB,
         ['ADMIN', 'MANAGER'],
         `연체 경고: ${client.client_name}`,
-        `미수금 ${balanceFormatted}원, 최장 연체 ${days}일 (기준 ${alertDays}일)`,
+        `연체 미수금 ${overdueFormatted}원, 최장 연체 ${days ?? '-'}일 (기준 ${alertDays}일)${carryNote}`,
         link
       )
 

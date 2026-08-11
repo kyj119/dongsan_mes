@@ -771,36 +771,88 @@ async function loadOverdueWarning() {
     }
 }
 
+// 배너는 기본 상위 N곳만 — 전량(100곳+) 렌더하면 페이지가 경고로 뒤덮여 정작 큰 건이 안 보인다.
+var OVERDUE_PREVIEW_COUNT = 10;
+var _overdueWarningExpanded = false;
+var _overdueWarningData = [];
+
 function renderOverdueWarning(overdueList) {
+    _overdueWarningData = overdueList || [];
+    _overdueWarningExpanded = false;
+    drawOverdueWarning();
+}
+
+function toggleOverdueWarningAll() {
+    _overdueWarningExpanded = !_overdueWarningExpanded;
+    drawOverdueWarning();
+}
+
+function drawOverdueWarning() {
     var container = document.getElementById('overdueWarningSection');
-    if (!container) return;
-    if (!overdueList || overdueList.length === 0) {
+    if (!container) { console.warn('[ledger] #overdueWarningSection not found'); return; }
+    var list = _overdueWarningData;
+    if (!list || list.length === 0) {
         container.innerHTML = '';
         return;
     }
 
-    var cardsHtml = overdueList.map(function(item) {
+    var totalAmt = 0, totalCarry = 0;
+    list.forEach(function(it) {
+        totalAmt += Number(it.overdue_amount || 0);
+        totalCarry += Number(it.carryover_amount || 0);
+    });
+
+    var shown = _overdueWarningExpanded ? list : list.slice(0, OVERDUE_PREVIEW_COUNT);
+    var cardsHtml = shown.map(function(item) {
         var overdue = Number(item.overdue_amount || 0);
+        var carry = Number(item.carryover_amount || 0);
+        // 전액 이월 = 이관 기초잔액(2025-12-31 일괄)만 남은 건. 연체'일수'가 실제 청구 경과일이 아니라
+        // 이관 기준일 경과일이므로 당기 연체와 같은 빨강으로 보여주면 오독한다 → 앰버 + '이월' 뱃지.
+        var carryOnly = carry > 0 && overdue - carry < 1;
+        var tone = carryOnly
+            ? { border: 'border-amber-200', hover: 'hover:bg-amber-50', text: 'text-amber-700' }
+            : { border: 'border-red-200', hover: 'hover:bg-red-50', text: 'text-red-600' };
+        var badge = carryOnly
+            ? '<span class="ml-1.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[11px] align-middle">이월</span>'
+            : (carry > 0 ? '<span class="ml-1.5 px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 text-[11px] align-middle">이월 ' + carry.toLocaleString() + '원 포함</span>' : '');
+        var dateLabel = carryOnly
+            ? '이관 기초잔액 (' + (item.oldest_billed_at ? formatDate(item.oldest_billed_at) : '-') + ' 기준)'
+            : '최고령 미결제: ' + (item.oldest_billed_at ? formatDate(item.oldest_billed_at) : '-');
         return '<div onclick="selectClient(' + item.client_id + ', \'' + escapeHtml(item.client_name || '').replace(/'/g, "&#039;") + '\')" '
-            + 'class="flex items-center justify-between p-3 bg-white rounded border border-red-200 cursor-pointer hover:bg-red-50 transition-colors">'
+            + 'class="flex items-center justify-between p-3 bg-white rounded border ' + tone.border + ' cursor-pointer ' + tone.hover + ' transition-colors">'
             + '<div>'
-            + '<div class="font-medium text-gray-800 text-sm">' + escapeHtml(item.client_name || '-') + '</div>'
-            + '<div class="text-xs text-gray-500 mt-0.5">연체 ' + (item.overdue_count || 0) + '건 &nbsp;|&nbsp; 최초확인: ' + (item.oldest_billed_at ? formatDate(item.oldest_billed_at) : '-') + '</div>'
+            + '<div class="font-medium text-gray-800 text-sm">' + escapeHtml(item.client_name || '-') + badge + '</div>'
+            + '<div class="text-xs text-gray-500 mt-0.5">연체 ' + (item.overdue_count || 0) + '건 &nbsp;|&nbsp; ' + dateLabel + '</div>'
             + '</div>'
             + '<div class="text-right ml-4">'
-            + '<div class="font-bold text-red-600 text-sm">' + overdue.toLocaleString() + '원</div>'
-            + '<div class="text-xs text-gray-400">미수금</div>'
+            + '<div class="font-bold ' + tone.text + ' text-sm">' + overdue.toLocaleString() + '원</div>'
+            + '<div class="text-xs text-gray-400">연체 미수금</div>'
             + '</div>'
             + '</div>';
     }).join('');
 
+    var moreHtml = '';
+    if (list.length > OVERDUE_PREVIEW_COUNT) {
+        moreHtml = '<button onclick="toggleOverdueWarningAll()" class="w-full mt-2 py-2 text-xs text-red-700 hover:bg-red-100 rounded border border-red-200 bg-white">'
+            + (_overdueWarningExpanded
+                ? '<i class="fas fa-chevron-up mr-1"></i>접기'
+                : '<i class="fas fa-chevron-down mr-1"></i>나머지 ' + (list.length - OVERDUE_PREVIEW_COUNT) + '곳 더 보기')
+            + '</button>';
+    }
+
+    var carryNote = totalCarry > 0
+        ? '<span class="text-xs text-amber-700 ml-2">(이관 기초잔액 ' + totalCarry.toLocaleString() + '원 포함)</span>'
+        : '';
+
     container.innerHTML =
         '<div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">'
-        + '<div class="flex items-center gap-2 mb-3">'
+        + '<div class="flex items-center gap-2 mb-3 flex-wrap">'
         + '<i class="fas fa-exclamation-circle text-red-500"></i>'
-        + '<h3 class="text-sm font-bold text-red-700">미수금 경고 (' + overdueList.length + '개 거래처)</h3>'
+        + '<h3 class="text-sm font-bold text-red-700">미수금 경고 — ' + list.length + '개 거래처 · ' + totalAmt.toLocaleString() + '원</h3>'
+        + carryNote
         + '</div>'
         + '<div class="space-y-2">' + cardsHtml + '</div>'
+        + moreHtml
         + '</div>';
 }
 

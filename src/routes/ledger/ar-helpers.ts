@@ -121,6 +121,102 @@ export async function deriveArSplit(
   return { receivable, advance, net: receivable - advance, advanceClients: Number(row?.advance_clients) || 0 }
 }
 
+/**
+ * 연체(미수금 경고) 판정 SSOT — **FIFO(선입선출) 충당** 기준.
+ *
+ * ★ 왜 FIFO인가 (2026-08-11) — payments/adjustments 는 청구그룹에 매칭되지 않고 **거래처 단위 총액**이다.
+ *   종전 `/overdue` 는 `연체액 = min(연체청구합, 잔액)` 으로 계산했는데, 이는 "입금이 **최신** 청구건부터
+ *   충당된다"(LIFO)는 가정이라 실무(오래된 건부터 충당)와 반대다. 그래서 활발히 거래·입금 중인 거래처도
+ *   최근 청구분 잔액이 통째로 "223일 연체"로 표시됐다.
+ *   실측(prod E1 2026-08-11): 종전 201곳 814,929,314 → FIFO 133곳 439,533,638.
+ *
+ * 계산 = 거래처별로 청구건을 **청구일 오름차순 누적**(window)하고, 충당액(payments+adjustments)을
+ *   오래된 건부터 소진시켜 건별 미충당액 `un = min(청구액, max(0, 누적청구 − 충당액))` 을 구한다.
+ *   그중 거래처별 `overdue_alert_days`(NULL=30일)를 넘긴 건들의 합이 연체액.
+ *
+ * 제외: 비활성 거래처(`is_active=0`) + AR 정책 제외(내부법인·현금소매) — 종전 `/overdue` 는 is_active 를
+ *   안 걸러 거래중지 거래처의 옛 채권이 경고에 떴다(`/receivables` 목록은 원래 is_active=1 필터가 있어 불일치).
+ *
+ * carryover_amount = 연체액 중 **이관 기초잔액 전표**(order_number 에 'OPEN') 유래분. 이 전표들은
+ *   accounting_date 가 이관 기준일(E1=2025-12-31)로 일괄 고정돼 연체일수가 "실제 청구 후 경과일"이 아니다
+ *   → UI에서 '이월'로 구분 표기해야 오독하지 않는다. (E1 189건 / E2·E3 없음)
+ */
+export interface FifoOverdueRow {
+  client_id: number
+  client_name: string
+  overdue_alert_days: number | null
+  overdue_amount: number
+  overdue_count: number
+  carryover_amount: number
+  unpaid_total: number
+  oldest_unpaid_at: string | null
+}
+
+/** 이관 기초잔액 전표 판정 — order_number 에 'OPEN'(E1-OPEN-*, ICM-AR-E1-OPEN). */
+export const CARRYOVER_ORDER_NUMBER_LIKE = "'%OPEN%'"
+
+export async function queryFifoOverdue(c: Context<HonoEnv>): Promise<FifoOverdueRow[]> {
+  const g = entityFilter(c, 'g')
+  const p = entityFilter(c, 'p')
+  const a = entityFilter(c, 'a')
+  const { results } = await c.env.DB.prepare(
+    `WITH grp AS (
+       SELECT o.client_id AS cid,
+              COALESCE(g.accounting_date, g.billed_at) AS bdate,
+              g.billed_amount AS amt,
+              o.order_number AS onum,
+              SUM(g.billed_amount) OVER (
+                PARTITION BY o.client_id
+                ORDER BY COALESCE(g.accounting_date, g.billed_at), g.id
+              ) AS cum
+         FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+        WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${g.clause}
+     ),
+     settle AS (
+       SELECT cid, SUM(v) AS settled FROM (
+         SELECT p.client_id AS cid, p.amount AS v FROM payments p WHERE 1=1${p.clause}
+         UNION ALL
+         SELECT a.client_id, a.amount FROM adjustments a WHERE 1=1${a.clause}
+       ) GROUP BY cid
+     ),
+     unpaid AS (
+       SELECT grp.cid, grp.bdate, grp.onum,
+              MIN(grp.amt, MAX(0, grp.cum - COALESCE(s.settled, 0))) AS un
+         FROM grp LEFT JOIN settle s ON s.cid = grp.cid
+     )
+     SELECT * FROM (
+       SELECT c.id AS client_id, c.client_name, c.overdue_alert_days,
+              SUM(CASE WHEN date(u.bdate, '+' || COALESCE(c.overdue_alert_days, 30) || ' days') < date('now', '+9 hours')
+                       THEN u.un ELSE 0 END) AS overdue_amount,
+              COUNT(CASE WHEN date(u.bdate, '+' || COALESCE(c.overdue_alert_days, 30) || ' days') < date('now', '+9 hours')
+                         THEN 1 END) AS overdue_count,
+              SUM(CASE WHEN date(u.bdate, '+' || COALESCE(c.overdue_alert_days, 30) || ' days') < date('now', '+9 hours')
+                        AND u.onum LIKE ${CARRYOVER_ORDER_NUMBER_LIKE}
+                       THEN u.un ELSE 0 END) AS carryover_amount,
+              SUM(u.un) AS unpaid_total,
+              MIN(CASE WHEN date(u.bdate, '+' || COALESCE(c.overdue_alert_days, 30) || ' days') < date('now', '+9 hours')
+                       THEN u.bdate END) AS oldest_unpaid_at
+         FROM unpaid u JOIN clients c ON c.id = u.cid
+        WHERE u.un > 0 AND c.is_active = 1${excludeArExcludedClientsSql('c.id')}
+        GROUP BY c.id, c.client_name, c.overdue_alert_days
+     ) WHERE overdue_amount > 0
+     ORDER BY overdue_amount DESC, client_id DESC`
+    // ⚠️ HAVING 에 별칭(overdue_amount)을 쓰지 말 것 — SQLite 는 실컬럼 우선이라 clients 의 동명 컬럼이
+    //    있으면 조용히 그쪽에 바인딩된다(2026-08-10 clients.balance 사고). 서브쿼리로 감싸 필터한다.
+  ).bind(...g.params, ...p.params, ...a.params).all<FifoOverdueRow>()
+
+  return (results || []).map(r => ({
+    client_id: Number(r.client_id),
+    client_name: r.client_name,
+    overdue_alert_days: r.overdue_alert_days,
+    overdue_amount: Number(r.overdue_amount) || 0,
+    overdue_count: Number(r.overdue_count) || 0,
+    carryover_amount: Number(r.carryover_amount) || 0,
+    unpaid_total: Number(r.unpaid_total) || 0,
+    oldest_unpaid_at: r.oldest_unpaid_at,
+  }))
+}
+
 // ── #567: 클레임/반품 해결금액 → AR(adjustments) 자동조정 멱등 동기화 ──
 // 출처(source_type/source_id)당 자동조정 1건. 재해결·금액수정·처리방식 변경 시 DELETE→(조건충족)INSERT로 재동기화.
 // amount<=0 이거나 비-환불/할인이면 기존 자동조정만 제거(INSERT 없음). 수동 조정(source_type NULL)은 불간섭.
