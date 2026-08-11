@@ -259,7 +259,10 @@ cronRouter.post('/daily-maintenance', agentKeyMiddleware, async (c) => {
  * 인증: X-Agent-Key. 응답에 실측값을 담으므로 수동 호출로 현재 상태 조회에도 쓸 수 있다.
  */
 cronRouter.post('/budget-check', agentKeyMiddleware, async (c) => {
-  // 바로빌 잔액은 통합(파트너) 지갑 = CERTKEY 단위 공통이라 법인 루프가 필요 없다(entity 1 로 1회).
+  // 바로빌 잔액은 통합(파트너) 지갑 = CERTKEY 단위 공통이라 법인 루프가 필요 없다.
+  //   이 핸들러엔 사용자 JWT 가 없어 `getEntityId(c)` 가 기본값 1(동산)로 떨어지는데,
+  //   파트너 지갑은 어느 법인 corpNum 으로 조회해도 같은 값이라 무관하다.
+  //   (회원사 지갑 `getBarobillBalance` 였다면 법인마다 달라져 이 가정이 깨진다 — 바꾸지 말 것)
   const balance: { value: number | null; error?: string } = { value: null }
   try {
     const { getBarobillConfig } = await import('./barobill')
