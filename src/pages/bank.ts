@@ -758,7 +758,16 @@ export const bankPageContent = `
             <h3 class="text-base font-bold text-gray-800"><i class="fas fa-right-left text-indigo-500 mr-2"></i>계좌간 이체 감지</h3>
             <button onclick="closeTransferModal()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
           </div>
-          <p class="text-xs text-gray-400 mb-3">동일 금액이 한 계좌에서 출금·다른 계좌로 입금(±2일)된 후보입니다. 확정하면 손익·비용분류·미수 매칭에서 제외됩니다(잔액엔 반영).</p>
+          <p class="text-xs text-gray-400 mb-2">같은 금액이 한 계좌에서 출금·다른 계좌로 입금(±2일)된 후보입니다. 이체 수수료(500원 등)만큼 차이 나는 건도 잡습니다. 확정하면 손익·비용분류·미수 매칭에서 제외됩니다(잔액엔 반영).</p>
+          <div class="flex items-center gap-2 mb-2">
+            <label class="text-xs text-gray-500">조회 기간</label>
+            <select id="transferRange" class="form-select text-xs" style="width:120px;" onchange="detectTransfers()">
+              <option value="90">최근 90일</option>
+              <option value="365">최근 1년</option>
+              <option value="0">전체 기간</option>
+            </select>
+            <span id="transferSummary" class="text-xs text-gray-400 ml-auto"></span>
+          </div>
           <div id="transferList" class="border border-gray-100 rounded-lg overflow-y-auto" style="flex:1; min-height:180px; max-height:56vh;">
             <div class="px-3 py-8 text-center text-sm text-gray-400">감지 중...</div>
           </div>

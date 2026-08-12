@@ -28,6 +28,13 @@ bankRouter.use('/*', authMiddleware)
 const MATCH_LOOKBACK_DAYS = 90
 const MATCH_SCAN_CAP = 500
 
+/**
+ * 계좌간 이체 수수료 허용폭(원). 보내는 계좌에서 수수료가 함께 빠져나가
+ * 출금액 = 입금액 + 수수료(보통 500)가 된다. 정확일치만 보면 이 건들이 통째로 안 붙는다.
+ * (2026-08-12 실측: 동산 자기앞 송금 129건 중 정확일치 54.9% → 수수료 허용 96.5%)
+ */
+const TRANSFER_FEE_MAX = 2000
+
 /** KST 기준 (오늘 - days)를 YYYYMMDD(무구분자, transaction_date 저장형식)로 반환. */
 function lookbackYmd(days: number): string {
   const d = new Date(Date.now() + 9 * 3600000 - days * 86400000)
@@ -2243,43 +2250,96 @@ bankRouter.post('/transactions/:id/unmatch', requireRole('ADMIN'), async (c) => 
 // 계좌간 자금이체 (자동감지 → 확인)
 // ---------------------------------------------------------------------------
 
-// POST /api/bank/transactions/detect-transfers — 이체 후보쌍 감지(동일금액·W+D·다계좌·±2일)
+// POST /api/bank/transactions/detect-transfers — 이체 후보쌍 감지(동일금액±수수료·W+D·다계좌·±2일)
+//   ?days=N  조회 기간(기본 90). 0 이면 전 기간 — 과거분 소급 정리용.
 bankRouter.post('/transactions/detect-transfers', requireRole('ADMIN'), async (c) => {
   try {
     const ef = entityFilter(c, 'bt')
+    // 기본은 기존 동작(최근 90일) 유지. days=0 을 줘야 전 기간을 훑는다.
+    const daysRaw = Number(c.req.query('days'))
+    const lookbackDays = Number.isFinite(daysRaw) && daysRaw >= 0 ? daysRaw : MATCH_LOOKBACK_DAYS
+    const dateClause = lookbackDays > 0 ? ' AND bt.transaction_date >= ?' : ''
+    const dateParams = lookbackDays > 0 ? [lookbackYmd(lookbackDays)] : []
+
+    type TxRow = {
+      id: number; bank_account_id: number; transaction_date: string
+      transaction_type: string; amount: number; counterpart_name: string | null
+      match_status: string; account_label: string | null
+    }
+    // APPLIED(실제 수금·지급이 반영된 건)만 제외한다. CONFIRMED 로 잘못 확정된 건도
+    // 이체 후보로 다시 볼 수 있어야 한다 — 안 그러면 영구히 손익에 남는다.
     const { results } = await c.env.DB.prepare(`
       SELECT bt.id, bt.bank_account_id, bt.transaction_date, bt.transaction_type, bt.amount, bt.counterpart_name,
-        COALESCE(ba.account_alias, ba.bank_name) AS account_label
+        bt.match_status, COALESCE(ba.account_alias, ba.bank_name) AS account_label
       FROM bank_transactions bt
       LEFT JOIN bank_accounts ba ON ba.id = bt.bank_account_id
-      WHERE bt.match_status = 'UNMATCHED' AND bt.transfer_pair_id IS NULL${ef.clause}
-        AND bt.transaction_date >= ?
+      WHERE bt.match_status != 'APPLIED' AND bt.transfer_pair_id IS NULL${ef.clause}${dateClause}
       ORDER BY bt.transaction_date ASC, bt.id ASC
-    `).bind(...ef.params, lookbackYmd(MATCH_LOOKBACK_DAYS)).all<{
-      id: number; bank_account_id: number; transaction_date: string
-      transaction_type: string; amount: number; counterpart_name: string | null; account_label: string | null
-    }>()
+    `).bind(...ef.params, ...dateParams).all<TxRow>()
 
     const withdrawals = results.filter(r => r.transaction_type === 'WITHDRAWAL')
-    const deposits = results.filter(r => r.transaction_type === 'DEPOSIT')
     const usedDep = new Set<number>()
     const ymdEpoch = (s: string) => Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8))
 
-    const pairs: any[] = []
-    for (const w of withdrawals) {
+    // 입금을 날짜별로 묶어 ±2일 창만 훑는다(days=0 전 기간 조회에서 O(W×D) 폭발 방지)
+    const depByDay = new Map<number, TxRow[]>()
+    for (const d of results) {
+      if (d.transaction_type !== 'DEPOSIT') continue
+      const k = ymdEpoch(d.transaction_date)
+      const arr = depByDay.get(k)
+      if (arr) arr.push(d); else depByDay.set(k, [d])
+    }
+
+    // 금액이 정확히 안 맞는 쌍은 상대방명이 같아야 인정한다. 금액만 보면
+    // `호명화물-정운교역운임`(출금)에 `삼성117636309`(입금) 같은 무관한 건이 붙는다.
+    const normName = (s: string | null) => String(s || '')
+      .replace(/[（）]/g, m => (m === '（' ? '(' : ')'))
+      .replace(/(주식회사|㈜|\(주\)|\(유\)|유한회사)/g, '')
+      .replace(/[\s.·,\-_'"]/g, '')
+    const sameParty = (a: string | null, b: string | null) => {
+      const x = normName(a), y = normName(b)
+      if (x.length < 2 || y.length < 2) return false
+      return x.includes(y) || y.includes(x)
+    }
+
+    const findMatch = (w: TxRow, exact: boolean): { d: TxRow; fee: number } | null => {
       const wAmt = Math.abs(Number(w.amount) || 0)
       const wt = ymdEpoch(w.transaction_date)
-      for (const d of deposits) {
-        if (usedDep.has(d.id)) continue
-        if (d.bank_account_id === w.bank_account_id) continue
-        if (Math.abs(Number(d.amount) || 0) !== wAmt) continue
-        if (Math.abs(ymdEpoch(d.transaction_date) - wt) / 86400000 > 2) continue
-        usedDep.add(d.id)
-        pairs.push({ withdrawal: w, deposit: d, amount: wAmt })
-        break
+      for (let off = -2; off <= 2; off++) {
+        for (const d of depByDay.get(wt + off * 86400000) || []) {
+          if (usedDep.has(d.id)) continue
+          if (d.bank_account_id === w.bank_account_id) continue
+          const fee = wAmt - Math.abs(Number(d.amount) || 0)   // 출금이 수수료만큼 크다
+          if (exact) { if (fee !== 0) continue }
+          else {
+            // 소액에서 엉뚱한 쌍이 붙지 않도록 절대폭·비율(1%)·상대방명을 함께 건다
+            if (fee <= 0 || fee > TRANSFER_FEE_MAX || fee > wAmt * 0.01) continue
+            if (!sameParty(w.counterpart_name, d.counterpart_name)) continue
+          }
+          return { d, fee }
+        }
       }
+      return null
     }
-    return c.json({ success: true, data: { pairs, count: pairs.length } })
+
+    // 1차 정확일치 → 2차 수수료 허용. 정확히 맞는 쌍이 수수료 후보에 뺏기지 않게 한다.
+    const pairs: any[] = []
+    const pending: TxRow[] = []
+    for (const w of withdrawals) {
+      const m = findMatch(w, true)
+      if (m) { usedDep.add(m.d.id); pairs.push({ withdrawal: w, deposit: m.d, amount: Math.abs(Number(w.amount) || 0), fee: 0 }) }
+      else pending.push(w)
+    }
+    for (const w of pending) {
+      const m = findMatch(w, false)
+      if (m) { usedDep.add(m.d.id); pairs.push({ withdrawal: w, deposit: m.d, amount: Math.abs(Number(w.amount) || 0), fee: m.fee }) }
+    }
+    pairs.sort((a, b) => String(a.withdrawal.transaction_date).localeCompare(String(b.withdrawal.transaction_date)))
+
+    return c.json({
+      success: true,
+      data: { pairs, count: pairs.length, days: lookbackDays, feeCount: pairs.filter(p => p.fee > 0).length }
+    })
   } catch (error) {
     console.error('Detect transfers error:', error)
     return c.json({ success: false, error: '이체 감지 오류' }, 500)
@@ -2309,10 +2369,13 @@ bankRouter.post('/transactions/confirm-transfer', requireRole('ADMIN'), async (c
     if (a.bank_account_id === b.bank_account_id) {
       return c.json({ success: false, error: '같은 계좌 간에는 이체로 처리할 수 없습니다' }, 400)
     }
+    // CONFIRMED 였던 건도 이체로 전환되므로 matched_* 를 전 필드 정리한다
+    // (형제 경로 /unmatch·/cancel-apply 와 동일 집합. 하나라도 빠지면 상태가 어긋난다)
     const upd = (id: number, pair: number) => c.env.DB.prepare(`
       UPDATE bank_transactions
       SET transfer_pair_id = ?, match_status = 'IGNORED', match_reason = '계좌이체',
           matched_client_id = NULL, matched_category_id = NULL, matched_fixed_expense_id = NULL,
+          matched_payment_id = NULL, matched_purchase_payment_id = NULL, matched_link_mode = NULL,
           match_confidence = 1.0
       WHERE id = ?
     `).bind(pair, id)
@@ -2342,6 +2405,7 @@ bankRouter.post('/transactions/:id/unlink-transfer', requireRole('ADMIN'), async
       UPDATE bank_transactions
       SET transfer_pair_id = NULL, match_status = 'UNMATCHED',
           matched_client_id = NULL, matched_category_id = NULL, matched_fixed_expense_id = NULL,
+          matched_payment_id = NULL, matched_purchase_payment_id = NULL, matched_link_mode = NULL,
           matched_by = NULL, matched_at = NULL,
           match_reason = NULL, match_confidence = NULL
       WHERE id IN (${ph})

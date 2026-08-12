@@ -580,8 +580,18 @@
     var list = document.getElementById('transferList');
     document.getElementById('transferModal').classList.add('show');
     if (list) list.innerHTML = '<div class="px-3 py-8 text-center text-sm text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>감지 중...</div>';
-    axios.post('/api/bank/transactions/detect-transfers').then(function(r) {
-      transferPairs = (r.data.data && r.data.data.pairs) || [];
+    var rangeEl = document.getElementById('transferRange');
+    if (!rangeEl) console.warn('[bank] #transferRange not found — 기본 90일로 조회');
+    var days = rangeEl ? rangeEl.value : '90';
+    var sumEl = document.getElementById('transferSummary');
+    if (sumEl) sumEl.textContent = '';
+    axios.post('/api/bank/transactions/detect-transfers?days=' + encodeURIComponent(days)).then(function(r) {
+      var data = r.data.data || {};
+      transferPairs = data.pairs || [];
+      if (sumEl) {
+        var fc = data.feeCount || 0;
+        sumEl.textContent = transferPairs.length + '건' + (fc ? ' · 수수료 포함 ' + fc + '건' : '');
+      }
       renderTransferCandidates();
     }).catch(function(e) {
       var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '이체 감지 실패';
@@ -611,6 +621,7 @@
       html += '</div>';
       html += '<div class="flex items-center gap-2">';
       html += '<span class="font-semibold tabular-nums text-gray-800">' + Number(p.amount).toLocaleString() + '원</span>';
+      if (Number(p.fee) > 0) html += '<span class="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded whitespace-nowrap">수수료 ' + Number(p.fee).toLocaleString() + '</span>';
       html += '<button class="btn-sm btn-match" style="font-size:11px;padding:3px 8px;" onclick="confirmTransfer(' + i + ')">확정</button>';
       html += '</div>';
       html += '</div></div>';
