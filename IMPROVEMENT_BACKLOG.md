@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-08-12T15:38:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-08-12T16:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,21 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-08-12T16:20):**
+> - **방법**: `git fetch origin main`(HEAD `d41a1e2`, origin과 완전 일치, 워킹트리 clean) — 이번 사이클은 컨테이너 재구성 없이 직전 Area1 자신의 커밋이 HEAD(`d41a1e2`=Area1의 backlog 커밋). Area1~6가 오늘 공유해 온 앵커(`ca38708`)는 여전히 유효(`git cat-file -t`=commit, 50커밋 전체 정상 이력). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: `ca38708..HEAD` 웹앱 범위 = `bank.ts`/`bank.js`·`cron.ts`·`ledger/ar-helpers.ts`·`ledger/ar-receivables.ts`·`ledger.js`·`printEvents.ts`·`production.ts`/`production.js` 10파일, 7커밋(`8245211`·`e7d9047`·`5b6de48`·`f235d5c`·`af0e13a`·`872c0f0`·`8313bdf`) — Area1 로그대로 Area4/5/6가 데이터정합·보안·자기진화 렌즈로 이미 봤으나 **코드품질 렌즈(entity_id INSERT·N+1·authMiddleware·dead code·SELECT*)는 미실시**라 직접 diff Read 전수 수행.
+> - **`bank.ts`(8313bdf/8245211) 코드품질 검증**: `detect-transfers`가 종전 O(W×D) 전수 이중루프를 **날짜별 Map 버킷(`depByDay`, ±2일 창)**으로 교체 — `days=0`(전기간) 옵션 추가로 스케일이 커진 것을 오히려 선제적으로 N+1 방지. `confirm-transfer`/`unlink-transfer`의 신규 `matched_payment_id`/`matched_purchase_payment_id`/`matched_link_mode` NULL 정리 컬럼 3종은 `migrations/0043`(원본 CREATE)·`0466`(ADD COLUMN) 실재 확인(최초 grep이 "ADD COLUMN|CREATE TABLE" 라인 패턴에 안 걸려 오탐 직전이었음 — 컬럼 정의 라인 자체엔 그 텍스트가 없는 원본 CREATE TABLE 바디였음, 재확인으로 배제). `cron.ts`(`bankOnly` 플래그)는 `agentKeyMiddleware` 그대로, 단순 조건분기라 갭 없음.
+> - **`ar-helpers.ts`/`ar-receivables.ts`(e7d9047, FIFO 연체판정) 코드품질 재검증(Area4는 데이터정합 렌즈, 이번엔 별개 렌즈)**: 신규 `queryFifoOverdue()` 호출처 3곳(`/overdue`·`/receivables?overdue_only=1`·`/receivables/check-overdue`) 각각 요청당 1회, 루프 내부 호출 없음 — N+1 아님. `SELECT * FROM (...)` 1건은 raw 테이블이 아니라 **CTE 파생테이블 wrapping**(HAVING 별칭 버그 회피용, 원 컬럼은 전부 명시 산출) → "SELECT * 점진 전환 대상" 클래스 아님(FP 배제 확인). 제거된 `OverdueClientRow`/`OverdueAlertRow`는 Area4가 이미 dead code로 제거 완료(`5b6de48`) — 재확인만.
+> - **`printEvents.ts`(af0e13a/f235d5c/872c0f0, 분할출력+과다기록배지) 코드품질 검증**: 과다기록 의심 로직의 파일명 배치 조회는 **80개 청크 루프**(D1 바인드 100한도 준수, `d1-bind-param-limit` 패턴)로 이미 N+1 회피 구현 — per-row 쿼리 아님. `authMiddleware` 최상단 유지, `entityFilter` 기존 정책(공유 인프라 무필터, Area2 08-11 25회차 codify) 그대로.
+> - **authMiddleware recursive standing scan**: `find src/routes -name '*.ts'` 전수 → 무-auth 후보 7개(`publicUnsubscribe.ts`·`orders/helpers.ts`·`payroll/shared.ts`·`cron.ts`·`messagesAd.ts`·`hrSelf.ts`·`taxInvoices/helpers.ts`) 전부 재확인 — `orders/helpers.ts`·`payroll/shared.ts`·`taxInvoices/helpers.ts`는 `Map.get(` FP(라우트 아님, 헬퍼파일), `cron.ts`는 `agentKeyMiddleware`(기존 정당 클래스), `hrSelf.ts`는 scoped-token(기존 정당 클래스), `publicUnsubscribe.ts`는 헤더주석에 §50⑧ 법적근거 명시된 의도적 public(rate-limit+토큰128bit+마스킹). **`messagesAd.ts`는 barrel 미스매치처럼 보였으나 실제론 부모 `messages.ts:120` `messagesRouter.use('/*', authMiddleware, requireRole('ADMIN','MANAGER'))`가 `.route('/ad', messagesAdRouter)`로 마운트된 서브라우터에도 상속** — `requireRole`은 자체 JWT 검증 없이 `c.get('user')`만 확인(`middleware/auth.ts:35`)하는 구조라 부모의 authMiddleware 없이 단독 마운트되면 즉시 401(보안 갭 아니라 항상-거부)이었을 것 — 이번엔 정상 상속 확인, net-new 0.
+> - **standing scan 재실행**: ① `npm run audit:entity` — 131파일·61쿼리·**누락 0**. ② `grep -rnE "IN \(\$\{" src/routes`(#458 미청크 동적 IN절) — **0건**. ③ 신규 churn 7커밋 전부 entity_id INSERT 추가 없음(데이터 이동 아닌 판정로직/집계/필터 변경 위주).
+> - **open 4건 재확인(open≠unfixed)**: #606(`entity-attribution-audit`)·#608(`verify.yml`)·#609(`unitConvert.ts`)·#612(`orders/create.ts`·`update.ts`) — 이번 churn 10파일과 전혀 겹치지 않아 코드 재확인 없이 캐시 유지 타당.
+> - **backlog↔GitHub 절대값 재동기화**: `list_issues(OPEN,auto-improve)` **4**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음) — 전부 절대값 실측.
+> - **🧬 SKILL 강화**: area-2-code-quality.md 잔여 `line N` 참조 4건(38·41행, 「JOIN-aware 확장 시도 전량FP」·「A-027 자동화 standing scan 승격」·「A-027 명시 SELECT 존재성 sibling 컬럼-diff」·Area6 「churn-bridge」)을 서술 참조로 전환 완료(2-b 절차, 이번 사이클분). 신규 오탐/탐지 클래스는 없음 — `matched_payment_id` grep이 "ADD COLUMN|CREATE TABLE" 라인패턴에 안 걸린 건 원본 CREATE TABLE 바디 컬럼정의가 그 두 키워드를 라인에 안 담는 흔한 케이스라 별도 규칙화할 만큼 반복성 낮음(1회성 자기교정으로 충분).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 12건 → 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(churn 7커밋 전부 코드품질 렌즈로도 clean — N+1은 오히려 방지 구현, dead code 없음, authMiddleware 상속 정상, entity_id 갭 없음), 자동수정 0건(스킬 파일 서술참조 전환은 코드 아님), done-sync: new 4(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-08-12T15:38):**
 > - **방법**: `git fetch origin main`(HEAD `528a645`, origin과 완전 일치, 워킹트리 clean). 컨테이너 git 이력이 이번 사이클도 재구성됨(root `0b87962`, 50커밋 전부 최근) — 직전 Area1 앵커(`16296f1`)는 무효(`Not a valid object`), Area2~6가 오늘 공유해 온 앵커(`ca38708`)는 유효해 그대로 채택. `npm ci`(0→81), `npx tsc --noEmit` clean.
