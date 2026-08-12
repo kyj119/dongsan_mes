@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-08-12T09:18:39+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-08-12T15:24:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,22 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 6 자기 진화 (2026-08-12T15:24):**
+> - **방법**: `git fetch origin main`(HEAD `8246df5`, origin과 완전 일치, 워킹트리 clean) — 이번 사이클은 컨테이너 git 이력 재구성 없이 직전 Area5 앵커(`f235d5c`)와 조상관계 정상 유지(`git cat-file -t f235d5c`=commit, `git log f235d5c..HEAD` 정상 8커밋). `npm ci`(0→81), `npx tsc --noEmit` clean, `git status` clean.
+> - **churn 확인**: 직전 Area5(`f235d5c`) 이후 8커밋 중 웹앱 범위(`src/routes`/`src/scripts`/`migrations`/`index.tsx`/`src/layout`/`src/pages`) = 3건뿐(`af0e13a` 과다기록 의심 배지 신설·`872c0f0` 타일행 정규화 픽스·`8313bdf` 계좌이체 수수료허용 매칭) — 나머지 5커밋은 LogWatcher C#/PowerShell 에이전트(`LogWatcher/kit`, `LogWatcher/flexi_printexp`) 전용이라 이 리포의 웹앱 스캔 범위(CLAUDE.md 정본) 밖.
+> - **XSS bridge(직전 Area5 이후 프론트 churn) — `af0e13a`/`872c0f0` 재검증**: `printEvents.ts` 신규 서브쿼리가 반환하는 `over_declared`/`over_day_copies`/`over_day_rows`는 파일명 정규식 캡처(`parseInt`)·서버 `SUM`/`COUNT` 집계값으로 전부 숫자 — `production.js:1411` 신규 `title=` 속성 보간(`over_day_rows`/`over_day_copies`/`over_declared`)도 숫자만이라 XSS sink 아님(문자열 free-text 유입 경로 없음). net-new XSS 0.
+> - **컬럼-diff bridge(직전 Area4 이후 INSERT) — 해당 없음**: 3커밋 전부 신규 `ALTER`/`INSERT` 컬럼 도입 없음(`over_*` 필드는 응답 JSON 전용, DB 미영속). 검증 대상 자체가 발생하지 않음.
+> - **entity 격리 재확인 — `af0e13a` 신규 서브쿼리가 entityFilter 미적용**: `printEvents.ts GET /` 자체가 기존부터 `where`에 entityFilter를 전혀 안 씀(Area5 08-10 codify "장비/출력이벤트=전 법인 공유 인프라" 그대로 유지) — 신규 서브쿼리(파일명 기준 당일 누적 집계)도 동일 무필터가 기존 설계와 일관, net-new 격리 갭 아님.
+> - **`8313bdf`(계좌이체 수수료허용 매칭) 셀프완결 확인**: 커밋 자체가 `docs/analysis/2026-08-12-{group,entity1,entity2,entity3}-diagnosis.md` + 롤백 SQL(`rollback-bank-class.sql`)을 동반해 실측 수치(정확일치 54.9%→96.5%)와 회귀 대비책까지 자체 문서화 — `entityFilter(c,'bt')` 유지, 정확일치 우선 처리 후 수수료허용 매칭이라 정확쌍이 근사쌍에 뺏기지 않는 순서 보장, 상대방명 정규화 매칭(`sameParty`)이 무관쌍 오매칭 가드로 명시 — 기존 c396923/e7d9047류 "owner가 이미 실측+자체검증 완결" 패턴과 동일해 추가 검증 가치 낮음(A-026/자기픽스 완전성 재검증 대상은 auto-improve 자신의 자동수정에 한정, owner 직접 커밋은 해당 없음).
+> - **done-sync(GitHub↔backlog 절대값 재동기화)**: `list_issues(OPEN,auto-improve)` **4**(#606·#608·#609·#612, 변동없음) · `search_issues(reason:completed)` **531**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음) — 전부 절대값 실측, 드리프트 없음.
+> - **open≠unfixed 재확인**: 이번 churn 파일(printEvents.ts/production.js/bank.ts/bank.js) 중 #606(entity-attribution-audit)·#608(verify.yml)·#609(unitConvert.ts)·#612(orders/create·update.ts)가 참조하는 파일과 전혀 겹치지 않아 코드 재grep 없이 캐시 유지(직전 Area5가 오늘 이미 grep 재확인 완료).
+> - **closed≠fixed 재확인**: 최근 close된 다중모듈 우산 이슈 신규 발생 없음(직전 c396923/e7d9047 계열은 Area6/4가 이미 형제완전성 검증 완료, 캐시 재사용).
+> - **브랜치 위생**(읽기전용): `npm run branch:clean` → SAFE-absorbed 1건, REVIEW 0건 — 삭제대상 1건(임계 30 미달), 등록 불요.
+> - **백로그 트림 체크**: 사이클 로그 9건(트림 전) → 임계 12건 이하, 트림 불요.
+> - **🧬 SKILL 강화**: 없음 — 이번 사이클 신규 오탐/탐지 클래스 없음. 신선 churn 3건 전부 기존 codify 규칙(XSS 숫자sink FP·공유인프라 entity무필터 설계·owner 셀프검증 신뢰)로 충분히 커버됨. LogWatcher 5커밋은 웹앱 스캔 범위 밖이라는 사실 자체도 기존 CLAUDE.md "IA 스크립트=별도 배포축" 원칙과 같은 계열(리포 안에 있어도 스캔 대상 아닌 서브트리 존재) — 신규 규칙 불요, 기존 원칙의 인스턴스.
+> - 신규 이슈 0건(churn 3건 전부 clean, LogWatcher 5건은 스캔 범위 밖), 자동수정 0건, done-sync: new 4(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 + 인프라 (2026-08-12T09:18):**
 > - **방법**: `git fetch origin main`(HEAD `f235d5c`, origin과 완전 일치, 워킹트리 clean) — 컨테이너 git 이력이 이번 사이클도 force-update로 재기록됐으나, 직전 Area4가 채택한 앵커(`ca38708`)는 이번 재기록에도 유효(`git cat-file -t`=commit)해 그 지점 기준 churn 계산 그대로 신뢰 가능. 직전 Area5 자신의 앵커(`1793f6a`)는 이번엔 무효(`Not a valid object`)라 Area4 앵커로 대체.
@@ -119,7 +135,7 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 4건** — Area 5, 2026-08-12.)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 4건** — Area 6, 2026-08-12.)
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
