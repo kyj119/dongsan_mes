@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-08-12T15:24:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-08-12T15:38:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,25 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **4** (`list_issues(OPEN,auto-improve)` 실측, Area5 재확인. #606·#608·#609·#612, 변동 없음) |
+| 🆕 new | **4** (`list_issues(OPEN,auto-improve)` 실측, Area1 재확인. #606·#608·#609·#612, 변동 없음) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 1 프로덕션 헬스 (2026-08-12T15:38):**
+> - **방법**: `git fetch origin main`(HEAD `528a645`, origin과 완전 일치, 워킹트리 clean). 컨테이너 git 이력이 이번 사이클도 재구성됨(root `0b87962`, 50커밋 전부 최근) — 직전 Area1 앵커(`16296f1`)는 무효(`Not a valid object`), Area2~6가 오늘 공유해 온 앵커(`ca38708`)는 유효해 그대로 채택. `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: `ca38708..HEAD` 웹앱 범위(`src/routes`/`src/scripts`/`migrations`/`index.tsx`/`src/layout`/`src/pages`) = `bank.ts`/`bank.js`·`cron.ts`·`ledger/ar-helpers.ts`·`ledger/ar-receivables.ts`·`ledger.js`·`printEvents.ts`·`production.ts`/`production.js` 10파일 — 전부 오늘 Area4(FIFO 연체판정)·Area5/6(분할출력·과다기록 배지)가 이미 각자 렌즈로 전수 검토·clean 판정 완료. Area1 시작점(직전 Area6, `8246df5`) 이후 신규 커밋은 `528a645`(Area6 자신의 backlog 커밋)뿐, 코드 변경 없음 — 이번 사이클은 정적 코드 재검토 대상 없음.
+> - **배포 CI**: `deploy.yml` 최근 10런(08-12 00:21~06:25) **전부 success**. 최신런(`528a645`, 06:26:48 완료) job 세부 스텝 9개(Checkout→Setup→Install→**Typecheck**→**Build**→**Deploy to Cloudflare Pages**→Wait→**Smoke test (production)**) 전부 success.
+> - **backup.yml**: 최근 6런(08-07~08-12) 연속 success — 08-06 1건만 과거 failure(#605 픽스로 재발 없음, 기존 인지).
+> - **verify.yml**: 여전히 `total_count: 0`(생성 이래 0회 실행, #608 기보고와 일치, net-new 아님). **e2e.yml**: `state: disabled_manually` 재확인(기존 정책, 회귀 아님).
+> - **egress 제약(재확인)**: `curl --max-time 10 https://webapp-9i0.pages.dev/api/orders` → 연결 실패(exit 56, allowlist 밖). `CLOUDFLARE_API_TOKEN` 미설정 확인(`env | grep CLOUDFLARE` = 0건) → `wrangler d1 execute --remote` 불가. 기존 인지된 제약과 동일 — CI(자체 네트워크 보유)의 deploy.yml 성공 이력을 prod 헬스 대리 지표로 사용.
+> - **open 4건 재확인(open≠unfixed)**: `search_issues(is:open,label:auto-improve)` = #606·#608·#609·#612, backlog 캐시와 완전 일치(드리프트 없음). 각 이슈가 참조하는 파일(`orders/create.ts`·`update.ts`·`unitConvert.ts`·`entity-attribution-audit`·`verify.yml`)이 이번 churn 10파일과 전혀 겹치지 않아 재확인 생략 정당.
+> - **backlog↔GitHub 절대값 재동기화**: open **4**(변동없음) · `reason:completed` **531**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(재확인 완료, 변동없음).
+> - **🧬 SKILL 강화**: 없음 — 이번 사이클 신규 오탐/탐지 클래스 없음. 코드 churn 부재 + CI 전부 green이라 기존 codify된 판별 레시피(cold-start transient·CF finalize transient·smoke stale probe·write-path 맹점)를 적용할 신규 사례 자체가 없음.
+> - **백로그 트림 체크**: 사이클 로그 10건(트림 전) → 임계 12건 이하, 트림 불요.
+> - 신규 이슈 0건(코드 churn 없음 + CI 전부 green), 자동수정 0건, done-sync: new 4(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-08-12T15:24):**
 > - **방법**: `git fetch origin main`(HEAD `8246df5`, origin과 완전 일치, 워킹트리 clean) — 이번 사이클은 컨테이너 git 이력 재구성 없이 직전 Area5 앵커(`f235d5c`)와 조상관계 정상 유지(`git cat-file -t f235d5c`=commit, `git log f235d5c..HEAD` 정상 8커밋). `npm ci`(0→81), `npx tsc --noEmit` clean, `git status` clean.
