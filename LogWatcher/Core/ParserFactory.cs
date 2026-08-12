@@ -17,6 +17,7 @@ namespace LogWatcher.Core
                 "printexp" => new PrintExpParserAdapter(config, positionsDir),
                 "epson" => new SqliteDbParser(config, positionsDir),
                 "flexi" => new FlexiHtmlParser(config, positionsDir),
+                "flexi_printexp" => new FlexiPrintExpParser(config, positionsDir),
                 "text_log" => new TextLogParser(config, positionsDir),
                 "neostampa" => new NeoStampaParser(config, positionsDir),
                 // 전사 8색: 리핑(neoStampa) + 출력(PrintExp)이 같은 PC → 합쳐서 이벤트 1건만 보낸다

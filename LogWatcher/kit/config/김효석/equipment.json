@@ -1,0 +1,19 @@
+{
+  "poll_interval_seconds": 5,
+  "heartbeat_interval_seconds": 60,
+  "watchers": [
+    {
+      "_comment": "KM전사1 — flexi → flexi_printexp 2축 전환 (2026-08-12 취소검증 실측). RIPLOG=신원, PrintExp 본로그=실인쇄·취소. 위치파일(FLEXI-01.pos)은 보존되어 재적재 없음, PrintExp 축은 최초 실행 시 오늘 파일 EOF 부터.",
+      "equipment_id": "FLEXI-01",
+      "name": "KM 전사1",
+      "enabled": true,
+      "parser_type": "flexi_printexp",
+      "config": {
+        "log_path": "D:\\SAi\\FlexiPRINT 24 ToyoPrinter Edition\\Jobs and Settings\\RIPLOG.HTML",
+        "print_log_dir": "D:\\PrintExp_X64\\Log\\main",
+        "join_tolerance_seconds": 5,
+        "rip_fallback_hours": 6
+      }
+    }
+  ]
+}
