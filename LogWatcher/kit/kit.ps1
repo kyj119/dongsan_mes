@@ -121,7 +121,17 @@ function Invoke-LogSweep {
         $dst = Join-Path $outLogs $rel
         $dp = Split-Path -Parent $dst
         if (-not (Test-Path $dp)) { New-Item -ItemType Directory -Force -Path $dp | Out-Null }
-        try { Copy-Item $f.FullName $dst -Force; $copied += $f.FullName }
+        # ⚠️Copy-Item 금지: 파일명의 대괄호([2026-08-12])를 와일드카드로 해석해 조용히 아무것도
+        #   안 복사하고, 비종결 오류라 catch 에도 안 걸려 "복사 성공" 목록에 오른다(2026-08-12 실측
+        #   — PrintExp cld 일별 로그 전부 유실). .NET 스트림 = 리터럴 경로 + 잠긴 파일 공유읽기.
+        try {
+            $in = [IO.File]::Open($f.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+            try {
+                $out = [IO.File]::Create($dst)
+                try { $in.CopyTo($out) } finally { $out.Close() }
+            } finally { $in.Close() }
+            $copied += $f.FullName
+        }
         catch { $skipped += ($f.FullName + "  (복사실패: " + $_.Exception.Message + ")") }
     }
     # 빈 배열이어도 파일이 남아야 "수거 안 됨"과 "수거할 게 없었음"이 구분된다
