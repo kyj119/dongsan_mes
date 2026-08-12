@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-08-11T22:20:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-08-12T09:18:39+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,23 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **4** (`list_issues(OPEN,auto-improve)` 실측, Area4 재확인. #606·#608·#609·#612, 변동 없음) |
+| 🆕 new | **4** (`list_issues(OPEN,auto-improve)` 실측, Area5 재확인. #606·#608·#609·#612, 변동 없음) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **531** (`reason:completed` 실측, 변동 없음) |
+| ✔️ done | **531** (`search_issues(reason:completed)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 5 보안 + 인프라 (2026-08-12T09:18):**
+> - **방법**: `git fetch origin main`(HEAD `f235d5c`, origin과 완전 일치, 워킹트리 clean) — 컨테이너 git 이력이 이번 사이클도 force-update로 재기록됐으나, 직전 Area4가 채택한 앵커(`ca38708`)는 이번 재기록에도 유효(`git cat-file -t`=commit)해 그 지점 기준 churn 계산 그대로 신뢰 가능. 직전 Area5 자신의 앵커(`1793f6a`)는 이번엔 무효(`Not a valid object`)라 Area4 앵커로 대체.
+> - **churn 확인**: `ca38708..HEAD` 중 `src/routes`/`src/scripts`/`migrations`/`index.tsx`/`src/layout`/`src/pages` = `8245211`(바로빌 시간당 계좌수집+에러행 필터링)·`e7d9047`(FIFO 연체판정, Area4가 데이터정합 렌즈로 기완료)·`5b6de48`(Area4 자신의 dead-code 커밋)·`f235d5c`(출력이력 분할출력 배지/필터, **완전 신선**) — 보안 렌즈로는 `8245211`·`f235d5c` 2건이 미검증.
+> - **`f235d5c`(분할출력 가시성) 보안 검증**: `printEvents.ts GET /` 신규 `tiled` 쿼리파라미터는 `where += ' AND pe.tile_count > 0'`로 하드코딩 조건이라 바인드 불요(SQLi 표면 없음, 사용자 입력 미삽입) — 기존 entityFilter 등 SELECT 절 구조 무변경. `production.js` 신규 렌더 3곳(`tileBadge`의 `tile_index`/`tile_count`는 `Number()` 강제, `tile_rows`/`tile_files`는 서버 COUNT 집계값) 전부 숫자라 XSS sink 아님 — 유일 문자열 sink는 기존 `file_name` 그대로(`escapeHtml` 재사용, 변경 없음). entity_id 격리·인증 게이트 모두 기존 라우터(`authMiddleware`) 그대로 상속, net-new 취약점 없음.
+> - **`8245211`(바로빌 시간당 계좌수집) 보안 검증**: `POST /api/cron/barobill-sync`에 추가된 `bankOnly` 불리언 플래그는 기존 `agentKeyMiddleware` 게이트 그대로(신규 인증 우회 없음), 단순 조건분기(카드 동기화 skip)라 SQL/XSS 표면 없음. `stripBarobillErrorRows`(신규 헬퍼)는 바로빌 응답의 에러코드 행을 정규식(`/^-\d+$/`)으로 걸러내 빈 배열로 치환하는 순수 데이터 필터 — 시크릿 노출·인증 우회 없음. `FTP_PASSWORD` 등 신규 시크릿 참조 없음(기존 `barobillCall`이 처리).
+> - **필수 grep 재확인**: `c.env.[A-Z_]+ || '` — `fax.ts:43 BAROBILL_FTP_PASSWORD || ''`만(빈 문자열 폴백, 기존 FP, net-new 0). `body.password || '리터럴'` — 0건. CI yml `secrets.X || 'admin'`류 — 0건.
+> - **open 4건 재확인(open≠unfixed)**: #606(`entity-attribution-audit` 프론트 소비처 grep 0)·#608(`verify.yml` 여전히 0회 실행)·#609(`toBase`/`formatStock` 호출처 0)·#612(자기 자신이 발견한 IDOR, 👍/코멘트 없음 — 리액션 대기 지속) — 이번 churn(barobill/production)과 전부 무관한 파일이라 캐시 유지.
+> - **backlog↔GitHub 절대값 재동기화**: `list_issues(OPEN,auto-improve)` **4**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — 이번 사이클 신규 오탐/탐지 클래스 없음. 두 신선 커밋 모두 정적 조건문/숫자 렌더/기존 게이트 상속이라 기존 codify된 체크리스트(SQL 바인딩·XSS sink·IDOR 비대칭)로 충분히 커버됨.
+> - 신규 이슈 0건(신선 churn 2건 모두 clean), 자동수정 0건, done-sync: new 4(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-08-11T22:20):**
 > - **방법**: `git fetch origin main`(HEAD `5f5c69b`) — 컨테이너 git 이력이 이번 사이클도 force-update로 재기록됐으나 직전 Area2/3의 앵커(`ca38708`)는 이번 재기록에도 유효(`git cat-file -t`=commit)해 그 지점 기준 churn 계산 그대로 신뢰 가능. `npm ci`(0→81), `npx tsc --noEmit` clean, `git status` clean.
@@ -107,7 +119,7 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 4건** — Area 6, 2026-08-11.)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 4건** — Area 5, 2026-08-12.)
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
