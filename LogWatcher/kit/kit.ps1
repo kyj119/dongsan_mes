@@ -244,6 +244,77 @@ function Invoke-EpsonCollect {
     Write-Host "  [완료] $dir"
 }
 
+# ── [4] FLEXI 취소검증 (KM전사 등 FlexiPRINT PC) ──────────────────
+# RIPLOG 는 "전송" 로그다 — 전송 완료 후의 취소(프린터에서)가 기록에 남는지,
+# 전송 중 취소(Production Manager 에서)와 어떻게 다른지 실측하는 안내 절차.
+function Invoke-FlexiCancelTest {
+    Write-Host ""
+    Write-Host "── FLEXI 취소검증 (FlexiPRINT / Production Manager PC 전용) ──"
+    Write-Host "  ★ 목적: 전송이 끝난 뒤의 취소가 RIPLOG 에 남는지 실측합니다."
+
+    # RIPLOG 위치 — 이 PC 에 설치된 LogWatcher 설정에서 우선 확보, 없으면 SAi 폴더 검색
+    $ripLogs = @()
+    $eqJson = "C:\Logwatcher\equipment.json"
+    if (Test-Path $eqJson) {
+        try {
+            $cfg = Get-Content $eqJson -Raw | ConvertFrom-Json
+            foreach ($w in @($cfg.watchers)) {
+                if ($w.parser_type -eq "flexi" -and $w.config.log_path) { $ripLogs += $w.config.log_path }
+            }
+        } catch {}
+    }
+    if ($ripLogs.Count -eq 0) {
+        foreach ($root in @("C:\Program Files\SAi", "C:\Program Files (x86)\SAi", "C:\ProgramData\SAi")) {
+            if (Test-Path $root) {
+                $ripLogs += @(Get-ChildItem $root -Recurse -Filter "RIPLOG.HTML" -ErrorAction SilentlyContinue |
+                              ForEach-Object { $_.FullName })
+            }
+        }
+    }
+    if ($ripLogs.Count -eq 0) {
+        Write-Host "  [중단] RIPLOG.HTML 을 찾지 못했습니다 — FlexiPRINT 가 있는 PC 에서 실행하세요."
+        return
+    }
+    Write-Host ("  RIPLOG: " + ($ripLogs -join ", "))
+
+    Write-Host ""
+    Write-Host "  실험 1 — 전송이 끝난 뒤 취소 (프린터 본체에서)"
+    Write-Host "    1. 작은 테스트 작업(1~2매)을 평소처럼 출력하세요."
+    Write-Host "    2. Production Manager 에서 그 작업의 립핑/전송이 [완료] 로 바뀐 걸 확인하세요."
+    Write-Host "    3. 1분쯤 기다렸다가 (인쇄는 아직 진행 중일 때) ★프린터 본체 조작부★ 에서 취소하세요."
+    Read-Host  "    취소를 완료했으면 Enter"
+    $t1 = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+
+    Write-Host ""
+    Write-Host "  실험 2 — 전송 중 취소 (Production Manager 화면에서)"
+    Write-Host "    4. 같은 작업을 다시 출력하세요."
+    Write-Host "    5. 이번엔 시작 직후 (전송 진행 중일 때) ★Production Manager 화면★ 에서 작업을 취소하세요."
+    Read-Host  "    취소를 완료했으면 Enter"
+    $t2 = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+
+    Write-Host ""
+    Read-Host  "  기록이 로그에 쓰이도록 2분쯤 기다렸다가 Enter"
+
+    $dir = Join-Path (Ensure-Collect) "flexi-cancel"
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    $i = 0
+    foreach ($rl in $ripLogs) {
+        if (Test-Path $rl) {
+            $i++
+            try { Copy-Item $rl (Join-Path $dir ("RIPLOG-" + $i + ".HTML")) -Force; Write-Host ("    복사: " + $rl) }
+            catch { Write-Host ("    복사 실패: " + $rl + " — " + $_.Exception.Message) }
+        }
+    }
+    [IO.File]::WriteAllText((Join-Path $dir "cancel-info.txt"),
+        ("실험1(전송 후·프린터 취소): {0}`r`n실험2(전송 중·PM 취소): {1}`r`nRIPLOG: {2}`r`n" -f $t1, $t2, ($ripLogs -join "; ")), $Utf8Bom)
+
+    Write-Host "  프린터 상태/드라이버 로그가 따로 있는지 함께 수거합니다 (최근 3일)..."
+    Save-PcInfo -ProcessLabel "FLEXI 취소검증"
+    Invoke-LogSweep
+    Write-Host ""
+    Write-Host ("  [완료] 수거 폴더를 개발자에게 전달하세요: " + $Collect)
+}
+
 # ── 무인 테스트 진입점 ────────────────────────────────────────────
 if ($Action -eq "sweep") {
     if ($TestRoot) { Invoke-LogSweep -Days 3650 -Roots @($TestRoot) } else { Invoke-LogSweep }
@@ -262,6 +333,7 @@ while ($true) {
     Write-Host "  [1] 신규 장비 진단   (로그 위치 찾기 + 수거)"
     Write-Host "  [2] LogWatcher 설치/업데이트"
     Write-Host "  [3] EPSON 취소코드 수거   (EPSON PC 전용)"
+    Write-Host "  [4] FLEXI 취소검증        (KM전사 등 FlexiPRINT PC 전용)"
     Write-Host "  [0] 종료"
     $sel = Read-Host "  선택"
     if ($sel -eq "0") { break }
@@ -269,6 +341,7 @@ while ($true) {
         "1" { Invoke-Diagnose }
         "2" { Invoke-InstallUpdate }
         "3" { Invoke-EpsonCollect }
-        default { Write-Host "  1/2/3/0 중에서 선택하세요." }
+        "4" { Invoke-FlexiCancelTest }
+        default { Write-Host "  1/2/3/4/0 중에서 선택하세요." }
     }
 }
