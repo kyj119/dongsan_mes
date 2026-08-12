@@ -937,15 +937,18 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
         const dayMap = new Map<string, { copies: number; rows: number }>()
         for (let i = 0; i < names.length; i += 80) {
           const chunk = names.slice(i, i + 80)
+          // ⚠️타일 정규화: 분할출력은 타일 1장 = 1행이라 그대로 합치면 "1장 주문 3타일 = 3매"로
+          //   오탐한다(2026-08-12 prod 실측 TOPM-01). 각 행을 copy/tile_count 로 환산해 출력 1회 = 1로 센다.
           const grp = await c.env.DB.prepare(`
             SELECT file_name, date(datetime(COALESCE(print_completed_at, created_at), '+9 hours')) as kst_day,
-              SUM(COALESCE(copy_total, 1)) as day_copies, COUNT(*) as day_rows
+              SUM(COALESCE(copy_total, 1) * 1.0 / (CASE WHEN COALESCE(tile_count, 0) > 0 THEN tile_count ELSE 1 END)) as day_copies,
+              SUM(1.0 / (CASE WHEN COALESCE(tile_count, 0) > 0 THEN tile_count ELSE 1 END)) as day_prints
             FROM print_events
             WHERE event_kind = 'PRINT' AND print_status = 'OK' AND file_name IN (${chunk.map(() => '?').join(',')})
             GROUP BY file_name, kst_day
-          `).bind(...chunk).all<{ file_name: string; kst_day: string; day_copies: number; day_rows: number }>()
+          `).bind(...chunk).all<{ file_name: string; kst_day: string; day_copies: number; day_prints: number }>()
           for (const g of grp.results || []) {
-            dayMap.set(g.file_name + '|' + g.kst_day, { copies: Number(g.day_copies) || 0, rows: Number(g.day_rows) || 0 })
+            dayMap.set(g.file_name + '|' + g.kst_day, { copies: Number(g.day_copies) || 0, rows: Number(g.day_prints) || 0 })
           }
         }
         for (const r of pageRows) {
@@ -958,8 +961,8 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
           const g = dayMap.get(fn + '|' + String(r.kst_day || ''))
           if (declared >= 1 && g && g.rows >= 2 && g.copies >= declared * 2) {
             r.over_declared = declared
-            r.over_day_copies = g.copies
-            r.over_day_rows = g.rows
+            r.over_day_copies = Math.round(g.copies)
+            r.over_day_rows = Math.round(g.rows)   // 타일 정규화 후 = 출력 횟수
           }
         }
       }

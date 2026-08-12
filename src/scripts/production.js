@@ -1414,7 +1414,7 @@ function poRenderRows(rows) {
       + '<td style="text-align:right">' + copies.toLocaleString()
       // 과다 기록 의심 — 파일명 주문수량(N조/장) 대비 같은 날 누적 매수 2배 이상 (서버 계산)
       + (e.over_declared
-        ? '<div><span class="text-[10px] bg-orange-100 text-orange-700 px-1 py-0.5 rounded" style="white-space:nowrap" title="같은 날 이 파일이 ' + e.over_day_rows + '행 · 누적 ' + e.over_day_copies + '매 기록 — 파일명 주문수량(' + e.over_declared + ')의 2배 이상. FLEXI 계열은 전송 후 취소가 로그에 안 남아 취소→재전송이 그대로 실적에 쌓입니다.">과다 ' + e.over_day_copies + '/' + e.over_declared + '</span></div>'
+        ? '<div><span class="text-[10px] bg-orange-100 text-orange-700 px-1 py-0.5 rounded" style="white-space:nowrap" title="같은 날 이 파일이 ' + e.over_day_rows + '회 출력 · 누적 ' + e.over_day_copies + '매 기록 — 파일명 주문수량(' + e.over_declared + ')의 2배 이상. FLEXI 계열은 전송 후 취소가 로그에 안 남아 취소→재전송이 그대로 실적에 쌓입니다.">과다 ' + e.over_day_copies + '/' + e.over_declared + '</span></div>'
         : '')
       + '</td>'
       + '<td style="text-align:right">' + (area ? area.toFixed(1) : '-') + '</td>'
