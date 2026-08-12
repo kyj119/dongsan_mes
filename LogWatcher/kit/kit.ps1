@@ -110,17 +110,41 @@ function Invoke-LogSweep {
     foreach ($d in $driveScan) {
         $files += @(Get-ChildItem $d -Recurse -Depth 3 -File -ErrorAction SilentlyContinue |
             Where-Object { $exts -contains $_.Extension.ToLower() -and $_.LastWriteTime -gt $cut -and $_.FullName -notmatch $excludeRe })
+        # RIP 서식지가 C: 가 아닌 드라이브에 있으면(D:\PrintExp_X64 실측) 얕은 스캔(Depth 3)이
+        # 하위 로그를 놓친다 → 알려진 폴더는 드라이브마다 깊게 훑는다
+        foreach ($kr in @("PrintExp_X64", "PrintExp_XSJ", "SAi", "TNSRip-X1", "TNSRip-X11")) {
+            $krPath = Join-Path $d $kr
+            if (Test-Path $krPath) {
+                $files += @(Get-ChildItem $krPath -Recurse -Depth 6 -File -ErrorAction SilentlyContinue |
+                    Where-Object { $exts -contains $_.Extension.ToLower() -and $_.LastWriteTime -gt $cut -and $_.FullName -notmatch $excludeRe })
+            }
+        }
     }
 
     $seen = @{}; $copied = @(); $skipped = @()
     foreach ($f in $files) {
         if ($seen.ContainsKey($f.FullName)) { continue }
         $seen[$f.FullName] = 1
-        if ($f.Length -gt $maxBytes) { $skipped += ("{0}  ({1:N0} bytes - 50MB 초과, 경로만 기록)" -f $f.FullName, $f.Length); continue }
         $rel = $f.FullName -replace "^([A-Za-z]):\\", '$1\'
         $dst = Join-Path $outLogs $rel
         $dp = Split-Path -Parent $dst
         if (-not (Test-Path $dp)) { New-Item -ItemType Directory -Force -Path $dp | Out-Null }
+        if ($f.Length -gt $maxBytes) {
+            # 대용량 로그는 통째 대신 꼬리 20MB 를 뜬다 — 실구동 로그(rp.log 1.18GB)가 통째 스킵돼
+            # 취소검증 분석이 불가능했다(2026-08-12). 최근 기록은 꼬리에 있다.
+            try {
+                $tailBytes = 20MB
+                $in = [IO.File]::Open($f.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+                try {
+                    $in.Seek($f.Length - $tailBytes, [IO.SeekOrigin]::Begin) | Out-Null
+                    $out = [IO.File]::Create($dst + ".tail")
+                    try { $in.CopyTo($out) } finally { $out.Close() }
+                } finally { $in.Close() }
+                $copied += ("{0}  ({1:N0} bytes - 꼬리 20MB 만 수거)" -f $f.FullName, $f.Length)
+            }
+            catch { $skipped += ($f.FullName + "  (꼬리 수거 실패: " + $_.Exception.Message + ")") }
+            continue
+        }
         # ⚠️Copy-Item 금지: 파일명의 대괄호([2026-08-12])를 와일드카드로 해석해 조용히 아무것도
         #   안 복사하고, 비종결 오류라 catch 에도 안 걸려 "복사 성공" 목록에 오른다(2026-08-12 실측
         #   — PrintExp cld 일별 로그 전부 유실). .NET 스트림 = 리터럴 경로 + 잠긴 파일 공유읽기.
