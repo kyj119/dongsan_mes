@@ -908,9 +908,64 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
     const count = countRow?.count ?? 0
 
     // 장비명 표시 통일: 사용자가 /장비관리에서 정한 equipment.name 우선, 없으면 RIPLOG 원본(printer_name)
-    const selectQuery = `SELECT pe.*, COALESCE(eq.name, pe.printer_name) as printer_name FROM print_events pe LEFT JOIN equipment eq ON pe.equipment_id = eq.id ${where} ORDER BY COALESCE(pe.print_completed_at, pe.created_at) DESC, pe.id DESC LIMIT ? OFFSET ?`
+    const selectQuery = `SELECT pe.*, COALESCE(eq.name, pe.printer_name) as printer_name,
+        date(datetime(COALESCE(pe.print_completed_at, pe.created_at), '+9 hours')) as kst_day
+      FROM print_events pe LEFT JOIN equipment eq ON pe.equipment_id = eq.id ${where} ORDER BY COALESCE(pe.print_completed_at, pe.created_at) DESC, pe.id DESC LIMIT ? OFFSET ?`
     params.push(limitNum, offset)
     const { results } = await c.env.DB.prepare(selectQuery).bind(...params).all()
+
+    // ─── 과다 기록 의심 (파일명 주문수량 대비, 페이지 행에만 표시) ───
+    // 파일명 꼬리 "(폭-높이-N조|N장)"의 N 대비 같은 날(KST)·같은 파일의 OK 기록 매수 합이
+    // 2배 이상 && 2행 이상이면 의심. '양면'은 앞뒤 2매가 정상이라 N×2.
+    // FLEXI(RIPLOG)는 전송 로그 — 전송 완료 후 취소는 기록에 안 남아 취소→재전송이 전부 '정상'으로
+    // 쌓인다(2026-08-12 양구군 5조 주문/25매 기록). ⚠️"30분 내 동일파일 반복" 휴리스틱은 대형 조수
+    // 작업의 분할 반복 출력(예: 100조를 2~4매씩)과 구분 불가로 기각 — 백테스트 FLEXI 34.7% 오염.
+    try {
+      const declaredRe = /-(\d+)\s*(조|장)\)/
+      const pageRows = results as Array<Record<string, unknown>>
+      const names: string[] = []
+      const nameSeen = new Set<string>()
+      for (const r of pageRows) {
+        const fn = String(r.file_name || '')
+        if (!fn || r.print_status !== 'OK' || (r.event_kind || 'PRINT') !== 'PRINT') continue
+        if (!declaredRe.test(fn) || nameSeen.has(fn)) continue
+        nameSeen.add(fn)
+        names.push(fn)
+      }
+      if (names.length > 0) {
+        // 바인드 100 한도 → 80개 청크 (memory d1-bind-param-limit)
+        const dayMap = new Map<string, { copies: number; rows: number }>()
+        for (let i = 0; i < names.length; i += 80) {
+          const chunk = names.slice(i, i + 80)
+          const grp = await c.env.DB.prepare(`
+            SELECT file_name, date(datetime(COALESCE(print_completed_at, created_at), '+9 hours')) as kst_day,
+              SUM(COALESCE(copy_total, 1)) as day_copies, COUNT(*) as day_rows
+            FROM print_events
+            WHERE event_kind = 'PRINT' AND print_status = 'OK' AND file_name IN (${chunk.map(() => '?').join(',')})
+            GROUP BY file_name, kst_day
+          `).bind(...chunk).all<{ file_name: string; kst_day: string; day_copies: number; day_rows: number }>()
+          for (const g of grp.results || []) {
+            dayMap.set(g.file_name + '|' + g.kst_day, { copies: Number(g.day_copies) || 0, rows: Number(g.day_rows) || 0 })
+          }
+        }
+        for (const r of pageRows) {
+          const fn = String(r.file_name || '')
+          if (!fn || r.print_status !== 'OK' || (r.event_kind || 'PRINT') !== 'PRINT') continue
+          const m = fn.match(declaredRe)
+          if (!m) continue
+          let declared = parseInt(m[1], 10)
+          if (fn.includes('양면')) declared *= 2
+          const g = dayMap.get(fn + '|' + String(r.kst_day || ''))
+          if (declared >= 1 && g && g.rows >= 2 && g.copies >= declared * 2) {
+            r.over_declared = declared
+            r.over_day_copies = g.copies
+            r.over_day_rows = g.rows
+          }
+        }
+      }
+    } catch (overErr) {
+      console.error('overprint check error:', overErr)   // 표시용 부가정보 — 실패해도 목록은 낸다
+    }
 
     return c.json({
       success: true,
