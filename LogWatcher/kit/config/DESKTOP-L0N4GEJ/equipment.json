@@ -1,0 +1,19 @@
+{
+  "poll_interval_seconds": 5,
+  "heartbeat_interval_seconds": 60,
+  "watchers": [
+    {
+      "_comment": "KM전사2 — flexi → flexi_printexp 2축 전환 (2026-08-13 [1] 진단 실측: C:\\PrintExp_X64\\PrintExp_X64 중첩 폴더 주의·UTF-16LE·스탬프/완료/취소 마커 KM전사1과 동일). 위치파일(FLEXI-TOYO1.pos) 보존 = 재적재 없음.",
+      "equipment_id": "FLEXI-TOYO1",
+      "name": "KM 전사2",
+      "enabled": true,
+      "parser_type": "flexi_printexp",
+      "config": {
+        "log_path": "C:\\Program Files\\SAi\\FlexiPRINT 24 ToyoPrinter Edition\\Jobs and Settings\\RIPLOG.HTML",
+        "print_log_dir": "C:\\PrintExp_X64\\PrintExp_X64\\Log\\main",
+        "join_tolerance_seconds": 5,
+        "rip_fallback_hours": 6
+      }
+    }
+  ]
+}

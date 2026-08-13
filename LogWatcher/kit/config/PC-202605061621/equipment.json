@@ -1,0 +1,19 @@
+{
+  "poll_interval_seconds": 5,
+  "heartbeat_interval_seconds": 60,
+  "watchers": [
+    {
+      "_comment": "KM전사3 — flexi → flexi_printexp 2축 전환 (2026-08-13 [1] 진단 실측: D:\\PrintExp_X64 존재·UTF-16LE·스탬프/완료/취소 마커 KM전사1과 동일). 위치파일(FLEXI-03.pos) 보존 = 재적재 없음.",
+      "equipment_id": "FLEXI-03",
+      "name": "KM 전사3",
+      "enabled": true,
+      "parser_type": "flexi_printexp",
+      "config": {
+        "log_path": "D:\\SAi\\FlexiPRINT 24 ToyoPrinter Edition\\Jobs and Settings\\RIPLOG.HTML",
+        "print_log_dir": "D:\\PrintExp_X64\\Log\\main",
+        "join_tolerance_seconds": 5,
+        "rip_fallback_hours": 6
+      }
+    }
+  ]
+}
