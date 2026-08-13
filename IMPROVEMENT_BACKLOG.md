@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-08-13T09:45:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-08-13T15:47:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,19 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 4 데이터 정합성 (2026-08-13T15:47):**
+> - **방법**: `git fetch origin main`(HEAD `7b431bc`, origin과 강제업데이트 후 완전 일치, 워킹트리 clean). 직전 Area3 앵커(`a7da2a3`)는 이번 사이클에도 유효한 조상(`git merge-base --is-ancestor`=true) — 그 이후 신규 커밋은 2개뿐: Area3 자신의 backlog 커밋(`e74851b`) + LogWatcher kit 설정 파일(`7b431bc`, `LogWatcher/kit/config/**`만 변경 — 웹앱 스캔 범위 밖). Area1~6이 오늘 공유해 온 앵커(`ca38708`)도 여전히 유효해 그 지점 기준 churn 재확인. `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: `ca38708..HEAD` 웹앱 범위 = 기존 7커밋 그대로(`8245211`·`e7d9047`·`5b6de48`·`f235d5c`·`af0e13a`·`872c0f0`·`8313bdf`) — 그중 `e7d9047`(FIFO 연체판정)·`5b6de48`(Area4 자신의 dead-code 정리)은 직전 Area4(08-11) 사이클에서 이미 데이터정합성 렌즈로 검토 완료. **`f235d5c`·`af0e13a`·`872c0f0`(출력이력 분할출력/과다기록)·`8313bdf`(계좌이체 수수료허용매칭)는 다른 Area(헬스·품질·UX·보안·자기진화)는 다뤘으나 데이터정합성 렌즈는 미실시** — 4건 신선 diff Read 전수 수행.
+> - **`f235d5c`/`872c0f0`(printEvents.ts 타일 가시성+정규화)**: 신규 `tiled=1` 필터·`tile_rows`/`tile_files` 집계 전부 read-only 표시용, 저장 데이터 변형 없음. `872c0f0`은 자기발견 버그(타일 1장=1행을 안 나눠 합산하던 과다기록 오탐)를 `copy_total/tile_count` 정규화로 자체 교정 — 오히려 기존 정합성 결함을 셀프 픽스. 고아/상태불일치/중복 없음.
+> - **`af0e13a`(과다기록 의심 배지) 데이터정합성 심층 검증**: 신규 서브쿼리는 `file_name IN (...)` 80개 청크로 조회한 집계값(`day_copies`/`day_rows`)을 응답 JSON에만 얹는 read-only 파생 필드 — `print_events` 테이블에 쓰기 없음, entity_id 미적용은 기존 설계(공유 인프라, Area2/6 기확인)와 일관. 인덱스 관점: `file_name`엔 전용 인덱스가 없어(주 조회는 `id`/`created_at` 기반) 청크당 최대 80개 `file_name IN (...)` + `GROUP BY`가 테이블스캔일 가능성 있으나, `print_events`가 handled `WHERE`(entity/agent/date 등)로 페이지당 최대 50행만 이 서브쿼리에 진입해 스캔 비용이 페이지 크기에 bound(N+1 아님, 이미 Area2가 확인) — **신규 인덱스 제안 보류**(스캔 대상 자체가 작아 marginal value 낮음).
+> - **`8313bdf`(계좌이체 수수료허용 매칭) 데이터정합성 심층 검증 — 오탐 직전 자체 배제**: `confirm-transfer`가 이제 `match_status != 'APPLIED'`인 행(CONFIRMED 포함)을 이체후보로 재분류 허용 → **가설**: 이미 `matched_payment_id`로 client 입금(payments 레코드)에 연결된 거래가 이체로 재분류되면 `matched_payment_id`만 NULL 처리되고 `payments` 레코드 자체는 안 지워져 AR이 영구 과소계상될 수 있다(고아 payments). **검증 결과 = 도달 불가능(FP)**: `matched_payment_id`는 `match_status='APPLIED'`로 전이되는 시점(`bank.ts:1651/1697/1705`)에만 설정되는데, `confirm-transfer`가 이체 전환을 막는 조건이 정확히 `match_status === 'APPLIED'`(`:2364`) — 즉 `matched_payment_id`가 실제로 채워진 행은 애초에 이체 후보 전환이 차단된다. `CONFIRMED`(재전환 허용 대상)는 `matched_client_id`만 있고 `matched_payment_id`는 항상 NULL(아직 payments 미생성 상태)이라 널링해도 실질 변화 없음 — 우려한 고아 payments 시나리오는 상태전이 설계상 발생 불가. `unlink-transfer`/`confirm-transfer` 양쪽의 `matched_payment_id`/`matched_purchase_payment_id`/`matched_link_mode` 3필드 동시 정리도 형제 경로(`/unmatch`)와 집합 일치 확인. `idx_bt_matched_pp_uniq`/`idx_bt_matched_payment_uniq`(0470, partial UNIQUE) 무변경 유지로 중복 링크 자체도 DB 레벨 차단.
+> - **standing scan 재실행**: `npm run audit:entity` — 131파일·61쿼리·**누락 0**(변동없음).
+> - **open 4건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` = #606·#608·#609·#612(변동없음) — 이번 churn(printEvents/production/bank) 파일과 전혀 겹치지 않아 캐시 유지.
+> - **backlog↔GitHub 절대값 재동기화**: open **4**(변동없음, 실측) · done/rejected는 직전 사이클(Area3, 오늘 09:45) 이후 GitHub 측 변동 신호 없어 캐시 유지(done 531·rejected 6).
+> - **🧬 SKILL 강화**: area-4-data-integrity.md 잔여 `line N` 참조 2건(구 line 148 「CHECK literal-write 스캔」·구 SKILL line 33 「테이블 rebuild FP 클래스」[대상 불명])을 서술 참조로 전환 완료(2-b 절차, 이번 사이클분) — 잔여 0건. 신규 오탐/탐지 클래스는 없음: `confirm-transfer`의 APPLIED 게이트가 `matched_payment_id` 고아화를 원천 차단하는 패턴은 기존 "상태전이 선행조건 대조로 가설 배제" 방법론의 인스턴스일 뿐이라 별도 규칙 불요.
+> - 신규 이슈 0건(신선 churn 4건 전부 데이터정합성 렌즈로도 clean — 표시용 파생필드/자체교정/상태전이로 원천 차단된 가설), 자동수정 0건, done-sync: open 4(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-08-13T09:45):**
 > - **방법**: `git fetch origin main`(HEAD `a7da2a3`, origin과 완전 일치) — 컨테이너가 detached HEAD였으나 origin/main과 동일 커밋(직전 Area2 자신의 backlog 커밋). Area1~2가 오늘 공유해 온 앵커(`ca38708`)로 그대로 churn 계산.
