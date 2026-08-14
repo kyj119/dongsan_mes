@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-08-13T15:47:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-08-14T04:35:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,26 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **4** (`list_issues(OPEN,auto-improve)` 실측, Area3 재확인. #606·#608·#609·#612, 변동 없음) |
+| 🆕 new | **5** (`list_issues(OPEN,auto-improve)` 실측 4 + 이번 사이클 신규 #613. #606·#608·#609·#612·#613) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 5 보안 + 인프라 (2026-08-14T04:35):**
+> - **방법**: `git fetch origin main`(HEAD `de31dbf`, origin과 완전 일치, 워킹트리 clean) — 직전 Area4 자신의 backlog 커밋이 HEAD. Area1~4/6이 공유해 온 앵커(`ca38708`)는 여전히 유효한 조상. `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: `ca38708..HEAD` 웹앱 범위 = 기존 7커밋 그대로(`8245211`·`e7d9047`·`5b6de48`·`f235d5c`·`af0e13a`·`872c0f0`·`8313bdf`) — 직전 Area5(08-12T09:18)가 `8245211`·`f235d5c`만 보안 렌즈로 검증했던 것과 대비해, **이번엔 `e7d9047`·`5b6de48`·`af0e13a`·`872c0f0`·`8313bdf` 5건을 보안 렌즈(SQLi/XSS/IDOR/인증)로 직접 diff Read** — 다른 Area가 이미 데이터정합·UX·자기진화 렌즈로 본 동일 커밋이지만 보안 전용 검토는 미실시였음.
+> - **`bank.ts`(8313bdf) 검증**: `detect-transfers`(days 쿼리파라미터→`Number()` 강제 후 바인드, SQL 문자열 삽입 없음)·`confirm-transfer`/`unlink-transfer`(단건 UPDATE가 entityFilter 게이트된 SELECT로 사전 검증된 id만 사용 = block-내 read-gate 패턴, IDOR 아님) 전부 파라미터화 확인. `matched_payment_id` 등 3필드 NULL 정리도 형제 경로(`/unmatch`)와 집합 일치.
+> - **`ar-helpers.ts`(e7d9047, FIFO 재작성) SQL 인젝션 관점 재검증**: `CARRYOVER_ORDER_NUMBER_LIKE = "'%OPEN%'"`는 런타임 값이 아니라 **컴파일타임 상수 리터럴**이라 SQL 문자열에 직접 삽입돼도 인젝션 표면 아님. 나머지 전부 `?` 바인드 + `entityFilter(g/p/a)` 3종 적용. HAVING 별칭 미사용(서브쿼리 wrap) 주석도 유지.
+> - **`printEvents.ts`(af0e13a/872c0f0) 과다기록 서브쿼리**: `file_name IN (${chunk.map(()=>'?').join(',')})`는 정형 placeholder + DB 조회값(`r.file_name`, 사용자 직접입력 아님) 바인드라 SQLi 표면 없음(#458 청크 패턴 재확인).
+> - **`bank.js`/`ledger.js`(프론트) XSS 재확인**: `renderTransferCandidates`의 `account_label`/`counterpart_name` free-text는 `escHtml()` 적용 확인, 신규 `p.fee`/`p.amount`는 `Number()` 강제라 싱크 아님. `transferSummary`는 `textContent` 사용(innerHTML 아님).
+> - **필수 grep**: 시크릿 폴백(`c.env.[A-Z_]+ *\|\| *'`) → `fax.ts:43`(기존 FP, 변동없음) 1건뿐. 기본비밀번호 리터럴·CI yml secrets fallback·미청크 동적 IN절 = 전부 0건.
+> - **🔒 net-new 발견 — hono(프로덕션 의존성) CVE, 자동수정**: `npm ci` 후 `npm audit` = 12건(1 moderate·9 high·2 critical), 그중 **`hono`(devDep 아닌 실제 프로덕션 런타임 의존성)가 `<=4.12.33` 범위에서 high severity 다건**(CORS 미들웨어 ReDoS `GHSA-8j4g-w8fx-2239`, CORS wildcard+credentials 반사 `GHSA-88fw-hqm2-52qc` 등). CORS credentials 반사는 `index.tsx:224` cors() 설정에 `credentials:true` 자체가 없고(Bearer 인증, 쿠키 미사용 — 기존 오탐표 근거와 일치) 무해하나, **ReDoS는 `/api/*` 전체에 걸린 cors() 미들웨어가 실사용 중이라 실제 도달 가능**. `npm audit fix`(전체)는 wrangler(4.123.0)가 `@cloudflare/workers-types@^5`를 요구하는데 root가 devDep로 v4를 고정해 **ERESOLVE로 즉시 실패** — hono만 단독 `npm install hono@4.13.2`로 격리 업데이트(다른 패키지 미변경) → `npx tsc --noEmit` clean, `npm run build` clean(6,373.64 kB, 베이스라인 6,366.94 kB 대비 hono 자체 코드 증가분) → 커밋(`77a7796`) + push. 나머지 11건(vite/wrangler/esbuild/miniflare/postcss/sharp/nanoid/undici/ws/concurrently/shell-quote)은 전부 devDependency(빌드 툴체인, 프로덕션 번들 미포함) + major 버전 점프 필요(자동수정 금지 범주: 빌드/배포 설정 변경) → **Issue #613**로 보고(wrangler↔workers-types peer 충돌 상세 포함).
+> - **open 4건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` = #606·#608·#609·#612(변동없음, 각 1개 owner 코멘트는 기존과 동일 "보류 확정") — 이번 churn 파일과 무관, 캐시 유지.
+> - **backlog↔GitHub 절대값 재동기화**: open **4→5**(신규 #613 반영) · `search_issues(reason:completed)` **531**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — 이번 사이클 신규 오탐/탐지 클래스 없음. `npm audit` 기반 프로덕션-의존성 CVE 점검은 기존 "필수 grep" 목록(시크릿 폴백 등)과 동일 계열의 standing check로 편입할 가치가 있으나, 이번 1회만으로 반복성 판단 이르다고 보고 codify 보류(다음 Area5에서 재발 시 승격 검토).
+> - 신규 이슈 1건(#613, devDependency 취약점+peer충돌), 자동수정 1건(hono CVE 패치, 커밋 `77a7796`), done-sync: open 4→5·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-08-13T15:47):**
 > - **방법**: `git fetch origin main`(HEAD `7b431bc`, origin과 강제업데이트 후 완전 일치, 워킹트리 clean). 직전 Area3 앵커(`a7da2a3`)는 이번 사이클에도 유효한 조상(`git merge-base --is-ancestor`=true) — 그 이후 신규 커밋은 2개뿐: Area3 자신의 backlog 커밋(`e74851b`) + LogWatcher kit 설정 파일(`7b431bc`, `LogWatcher/kit/config/**`만 변경 — 웹앱 스캔 범위 밖). Area1~6이 오늘 공유해 온 앵커(`ca38708`)도 여전히 유효해 그 지점 기준 churn 재확인. `npm ci`(0→81), `npx tsc --noEmit` clean.
