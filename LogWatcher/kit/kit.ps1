@@ -111,13 +111,19 @@ function Invoke-LogSweep {
         $files += @(Get-ChildItem $d -Recurse -Depth 3 -File -ErrorAction SilentlyContinue |
             Where-Object { $exts -contains $_.Extension.ToLower() -and $_.LastWriteTime -gt $cut -and $_.FullName -notmatch $excludeRe })
         # RIP 서식지가 C: 가 아닌 드라이브에 있으면(D:\PrintExp_X64 실측) 얕은 스캔(Depth 3)이
-        # 하위 로그를 놓친다 → 알려진 폴더는 드라이브마다 깊게 훑는다
-        foreach ($kr in @("PrintExp_X64", "PrintExp_XSJ", "SAi", "TNSRip-X1", "TNSRip-X11")) {
+        # 하위 로그를 놓친다 → 알려진 폴더는 드라이브마다 깊게 훑는다.
+        # Flora* = UV/실사 프린터 실구동 SW(RYPC, 출력실1 실측 D:\Flora XTRA3300S_KM1024I_N) — 이름 변형이
+        # 많아(공백/언더스코어) 와일드카드로 루트 폴더를 열거한다.
+        foreach ($kr in @("PrintExp_X64", "PrintExp_XSJ", "SAi", "TNSRip-X", "TNSRip-X1", "TNSRip-X11")) {
             $krPath = Join-Path $d $kr
             if (Test-Path $krPath) {
                 $files += @(Get-ChildItem $krPath -Recurse -Depth 6 -File -ErrorAction SilentlyContinue |
                     Where-Object { $exts -contains $_.Extension.ToLower() -and $_.LastWriteTime -gt $cut -and $_.FullName -notmatch $excludeRe })
             }
+        }
+        foreach ($fd in @(Get-ChildItem $d -Directory -Filter "Flora*" -ErrorAction SilentlyContinue)) {
+            $files += @(Get-ChildItem $fd.FullName -Recurse -Depth 6 -File -ErrorAction SilentlyContinue |
+                Where-Object { $exts -contains $_.Extension.ToLower() -and $_.LastWriteTime -gt $cut -and $_.FullName -notmatch $excludeRe })
         }
     }
 
