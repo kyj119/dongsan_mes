@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-08-14T05:10:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-08-14T22:09:18+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,20 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 1 프로덕션 헬스 (2026-08-14T22:09):**
+> - **방법**: `git fetch origin main`(HEAD `5692057`, origin과 완전 일치, 워킹트리 clean). 직전 Area1 자신의 앵커(`d41a1e2`)는 이번 사이클에도 유효한 조상. `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: `d41a1e2..HEAD`(직전 Area1 자신의 마지막 커밋 이후) 웹앱 범위(`src/routes`/`src/scripts`/`migrations`/`index.tsx`/`src/layout`/`src/pages`) = **공백**(신규 커밋 8개 전부 auto-improve backlog 커밋 3개(`a7da2a3`·`e74851b`·`de31dbf`·`bb916ea`·`8927f2e`) + LogWatcher C#/kit 전용 커밋 3개(`7b431bc`·`1f454a8`·`5692057`, CLAUDE.md 정본상 웹앱 스캔 범위 밖) + `77a7796`(hono CVE 패치, `package.json`류만 변경 — 이미 오늘 Area5가 검증 완료)). 정적 코드 재검토 대상 없음.
+> - **배포 CI**: `deploy.yml` 최근 10런(08-12 12:35~08-14 08:04) **전부 success**. 최신런(`5692057`, 08:04:30~08:05:55 완료) job `Verify, Deploy & Smoke` 9스텝 전부 success — Checkout→Setup→Install→**Typecheck**→**Build**→**Deploy to Cloudflare Pages**→Wait→**Smoke test (production)** 전부 통과, `Notify on failure`는 정상 skip.
+> - **backup.yml**: 최근 10런(08-04~08-13) 중 9건 success, 08-06 1건만 기존 known failure(#605 픽스로 재발 없음, 변동없음).
+> - **verify.yml**: 여전히 `active`이나 실행 이력 미확인(#608 기보고와 일치, net-new 아님). **e2e.yml**: `state: disabled_manually` 재확인(기존 정책, 회귀 아님).
+> - **egress 제약(재확인)**: `curl --max-time 8 https://webapp-9i0.pages.dev/api/orders` → CONNECT tunnel 403(exit 56, allowlist 밖). `CLOUDFLARE_API_TOKEN` 미설정(`env | grep CLOUDFLARE` = 0건) → 직접 prod 조회 불가, 기존과 동일 제약 — CI(자체 네트워크 보유)의 deploy.yml 성공 이력(Smoke test 포함)을 prod 헬스 대리 지표로 사용.
+> - **open 5건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` = #606·#608·#609·#612·#613(변동없음, backlog 캐시와 완전 일치) — 각 이슈 참조 파일이 이번 churn(공백)과 무관해 재확인 생략 정당.
+> - **backlog↔GitHub 절대값 재동기화**: open **5**(변동없음) · `reason:completed` **531**(변동없음, 캐시 유지 — 직전 사이클 이후 GitHub 측 변동 신호 없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — 이번 사이클 신규 오탐/탐지 클래스 없음. 코드 churn 부재 + CI 전부 green이라 기존 codify된 판별 레시피(cold-start transient·CF finalize transient·smoke stale probe·write-path 맹점·prod↔main 디버전스)를 적용할 신규 사례 자체가 없음.
+> - **백로그 트림 체크**: 사이클 로그 추가 후 12건 → 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(코드 churn 없음 + CI 전부 green), 자동수정 0건, done-sync: open 5(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-08-14T05:10):**
 > - **방법**: `git fetch origin main`(HEAD `bb916ea`, origin과 완전 일치, 워킹트리 clean, detached HEAD이나 origin/main과 동일 커밋 = 직전 Area5 자신의 backlog 커밋). 직전 Area6 앵커(`8246df5`)·전역 공유 앵커(`ca38708`) 둘 다 여전히 유효한 조상(`merge-base --is-ancestor`=true). `npm ci`(0→81), `npx tsc --noEmit` clean.
