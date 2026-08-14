@@ -75,7 +75,7 @@
     "smoke:write": "node scripts/smoke-write.cjs"
   },
   "dependencies": {
-    "hono": "^4.7.9"
+    "hono": "^4.13.2"
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-x64-gnu": "^4.60.1"
