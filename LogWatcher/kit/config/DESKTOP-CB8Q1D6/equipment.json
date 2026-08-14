@@ -3,17 +3,19 @@
   "heartbeat_interval_seconds": 60,
   "watchers": [
     {
-      "_comment": "EPSON 에코솔벤 1호기 — status-aware 전환 (2026-08-11 실측: 완료=12·취소=2, 정착 규칙 쿼리. 정본 해설=equipment.json.example EPSON 블록).",
+      "_comment": "EPSON 에코솔벤 1호기 — status-aware + 시작시각 + 재출력 감지 (2026-08-14). 정착 규칙=완료 12·취소 2, 재출력=같은 JobID 상태 2→12 뒤집힘 재확인(미소약국 사고). 정본 해설=equipment.json.example EPSON 블록.",
       "equipment_id": "EPSON-01",
       "name": "EPSON-01",
       "enabled": true,
       "parser_type": "epson",
       "config": {
         "db_path": "C:\\ProgramData\\Epson\\Epson Edge Print\\DB\\Data.db",
-        "query": "SELECT j.JobID, j.JobName, j.JobStatus, CASE WHEN l.FinishPrintTime IS NULL OR l.FinishPrintTime LIKE '0001%' THEN (CASE WHEN l.StartPrintTime IS NULL OR l.StartPrintTime LIKE '0001%' THEN l.EntryTime ELSE l.StartPrintTime END) ELSE l.FinishPrintTime END AS FinishPrintTime, p.OriginalSizeWidth, p.OriginalSizeHeight FROM Job j LEFT JOIN Log l ON j.JobID = l.JobID LEFT JOIN Page p ON j.JobID = p.JobID AND p.PageID = 1 WHERE j.JobID > @last_id AND (j.JobStatus = 12 OR (j.JobStatus = 2 AND j.JobID < (SELECT COALESCE(MAX(j2.JobID), 0) FROM Job j2 WHERE j2.JobStatus = 12))) ORDER BY j.JobID",
+        "query": "SELECT j.JobID, j.JobName, j.JobStatus, CASE WHEN l.FinishPrintTime IS NULL OR l.FinishPrintTime LIKE '0001%' THEN (CASE WHEN l.StartPrintTime IS NULL OR l.StartPrintTime LIKE '0001%' THEN l.EntryTime ELSE l.StartPrintTime END) ELSE l.FinishPrintTime END AS FinishPrintTime, CASE WHEN l.StartPrintTime IS NULL OR l.StartPrintTime LIKE '0001%' THEN l.EntryTime ELSE l.StartPrintTime END AS StartPrintTime, p.OriginalSizeWidth, p.OriginalSizeHeight FROM Job j LEFT JOIN Log l ON j.JobID = l.JobID LEFT JOIN Page p ON j.JobID = p.JobID AND p.PageID = 1 WHERE j.JobID > @last_id AND (j.JobStatus = 12 OR (j.JobStatus = 2 AND j.JobID < (SELECT COALESCE(MAX(j2.JobID), 0) FROM Job j2 WHERE j2.JobStatus = 12))) ORDER BY j.JobID",
+        "recheck_query": "SELECT j.JobID, j.JobName, j.JobStatus, CASE WHEN l.FinishPrintTime IS NULL OR l.FinishPrintTime LIKE '0001%' THEN (CASE WHEN l.StartPrintTime IS NULL OR l.StartPrintTime LIKE '0001%' THEN l.EntryTime ELSE l.StartPrintTime END) ELSE l.FinishPrintTime END AS FinishPrintTime, CASE WHEN l.StartPrintTime IS NULL OR l.StartPrintTime LIKE '0001%' THEN l.EntryTime ELSE l.StartPrintTime END AS StartPrintTime, p.OriginalSizeWidth, p.OriginalSizeHeight FROM Job j LEFT JOIN Log l ON j.JobID = l.JobID LEFT JOIN Page p ON j.JobID = p.JobID AND p.PageID = 1 WHERE j.JobID IN (@cancel_ids) AND j.JobStatus = 12 ORDER BY j.JobID",
         "id_column": "JobID",
         "filename_column": "JobName",
         "timestamp_column": "FinishPrintTime",
+        "start_column": "StartPrintTime",
         "size_columns": ["OriginalSizeWidth", "OriginalSizeHeight"],
         "size_unit": "pt",
         "status_column": "JobStatus",

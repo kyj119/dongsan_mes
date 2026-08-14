@@ -26,8 +26,18 @@ namespace LogWatcher.Parsers
         private readonly string[] _statusCancel;
         private readonly string[] _statusError;
         private readonly string[] _statusOk;
+        private readonly string _startColumn;
+        private readonly string _recheckQuery;
         private readonly string _positionFile;
+        private readonly string _watchFile;
         private long _lastId;
+
+        // 취소로 정착시킨 JobID 감시 목록 — Edge Print 는 잡을 「재출력」하면 새 잡을 만들지 않고
+        // 같은 JobID 의 상태만 2→12 로 뒤집는다. 워터마크(last_id)는 이미 지나갔으므로 재확인이
+        // 없으면 재출력 완료가 영영 안 보인다(2026-08-12 미소약국 3건 실증 — 취소만 남고 완료 없음).
+        private readonly Dictionary<long, DateTime> _cancelWatch = new();
+        private const int WATCH_MAX = 200;
+        private const int WATCH_EXPIRE_DAYS = 30;
 
         // Order number extraction (YYYYMMDD-NNN pattern from IA naming)
         private static readonly Regex OrderNumberRegex = new(@"(\d{8}-\d{3})", RegexOptions.Compiled);
@@ -59,13 +69,20 @@ namespace LogWatcher.Parsers
             _statusError = config.GetConfigStringArray("status_error");
             _statusOk = config.GetConfigStringArray("status_ok");
 
+            // 시작시각 컬럼(선택) — 없으면 종전처럼 완료시각만. 쿼리 SELECT 에 같은 별칭 컬럼이 있어야 한다.
+            _startColumn = config.GetConfigString("start_column", "");
+            // 재출력 감지 쿼리(선택) — @cancel_ids 자리에 감시 중 JobID 목록이 치환된다.
+            _recheckQuery = config.GetConfigString("recheck_query", "");
+
             if (string.IsNullOrEmpty(_dbPath))
                 throw new ArgumentException($"[{EquipmentId}] config.db_path is required for epson parser");
             if (string.IsNullOrEmpty(_query))
                 throw new ArgumentException($"[{EquipmentId}] config.query is required for epson parser");
 
             _positionFile = Path.Combine(positionsDir, $"{EquipmentId}.pos");
+            _watchFile = Path.Combine(positionsDir, $"{EquipmentId}.cancelwatch.json");
             _lastId = LoadPosition();
+            LoadWatch();
         }
 
         public List<PrintEvent> ReadNewEntries()
@@ -118,117 +135,193 @@ namespace LogWatcher.Parsers
             cmd.CommandText = _query;
             cmd.Parameters.AddWithValue("@last_id", _lastId);
 
-            using var reader = cmd.ExecuteReader();
-            long maxId = _lastId;
-
-            while (reader.Read())
+            using (var reader = cmd.ExecuteReader())
             {
-                var idOrdinal = reader.GetOrdinal(_idColumn);
-                var fnOrdinal = reader.GetOrdinal(_filenameColumn);
-
-                if (reader.IsDBNull(idOrdinal) || reader.IsDBNull(fnOrdinal))
-                    continue;
-
-                var id = reader.GetInt64(idOrdinal);
-                var filename = reader.GetString(fnOrdinal);
-
-                // Parse timestamp
-                string completedAt = "";
-                if (!string.IsNullOrEmpty(_timestampColumn))
+                long maxId = _lastId;
+                while (reader.Read())
                 {
-                    var tsOrdinal = reader.GetOrdinal(_timestampColumn);
-                    if (!reader.IsDBNull(tsOrdinal))
-                    {
-                        var tsRaw = reader.GetString(tsOrdinal);
-                        completedAt = ParseTimestamp(tsRaw);
-                    }
+                    var built = BuildEvent(reader);
+                    if (built == null) continue;
+                    var (id, evt) = built.Value;
+                    events.Add(evt);
+
+                    // 취소로 정착한 잡은 감시 목록에 — 재출력(같은 JobID 상태 2→12)을 나중에 잡는다
+                    if (evt.PrintStatus == "CANCEL" && !string.IsNullOrEmpty(_recheckQuery))
+                        _cancelWatch[id] = DateTime.Now;
+
+                    if (id > maxId) maxId = id;
                 }
-
-                // Parse size
-                double widthMm = 0, heightMm = 0;
-                if (_sizeColumns.Length >= 2)
+                if (maxId > _lastId)
                 {
-                    var wOrdinal = reader.GetOrdinal(_sizeColumns[0]);
-                    var hOrdinal = reader.GetOrdinal(_sizeColumns[1]);
-                    if (!reader.IsDBNull(wOrdinal)) widthMm = ConvertToMm(reader.GetDouble(wOrdinal));
-                    if (!reader.IsDBNull(hOrdinal)) heightMm = ConvertToMm(reader.GetDouble(hOrdinal));
+                    _lastId = maxId;
+                    SavePosition();
                 }
-
-                // Extract order number from filename (if IA naming is used)
-                string? orderNumber = null;
-                int? fileSeq = null;
-                var seqMatch = FileSeqRegex.Match(filename);
-                if (seqMatch.Success)
-                {
-                    orderNumber = seqMatch.Groups[1].Value;
-                    fileSeq = int.Parse(seqMatch.Groups[2].Value);
-                }
-                else
-                {
-                    var orderMatch = OrderNumberRegex.Match(filename);
-                    if (orderMatch.Success)
-                        orderNumber = orderMatch.Groups[1].Value;
-                }
-
-                // 상태 판정: status_column 설정 시 값 매핑(미설정이면 기존대로 OK)
-                string printStatus = "OK";
-                if (!string.IsNullOrEmpty(_statusColumn))
-                {
-                    int stOrdinal = -1;
-                    try { stOrdinal = reader.GetOrdinal(_statusColumn); } catch { stOrdinal = -1; }
-                    if (stOrdinal >= 0 && !reader.IsDBNull(stOrdinal))
-                    {
-                        var stVal = reader.GetValue(stOrdinal)?.ToString() ?? "";
-                        if (System.Array.IndexOf(_statusError, stVal) >= 0) printStatus = "ERROR";
-                        else if (System.Array.IndexOf(_statusCancel, stVal) >= 0) printStatus = "CANCEL";
-                        else if (_statusOk.Length > 0 && System.Array.IndexOf(_statusOk, stVal) < 0)
-                            Console.WriteLine($"[{EquipmentId}] unknown {_statusColumn}={stVal} for '{filename}' → defaulting OK");
-                    }
-                }
-
-                var evt = new PrintEvent
-                {
-                    PrinterName = EquipmentId,
-                    FileName = filename,
-                    FilePath = filename,
-                    PrintStatus = printStatus,
-                    OutputSize = widthMm > 0 && heightMm > 0
-                        ? $"{widthMm:F0} X {heightMm:F0}"
-                        : "",
-                    OrderNumber = orderNumber,
-                    FileSeq = fileSeq
-                };
-
-                // Set timestamps
-                if (!string.IsNullOrEmpty(completedAt))
-                {
-                    var parts = completedAt.Split(' ');
-                    if (parts.Length >= 2)
-                    {
-                        evt.EndDate = parts[0];
-                        evt.EndTime = parts[1];
-                    }
-                }
-
-                events.Add(evt);
-
-                if (id > maxId) maxId = id;
             }
 
-            // Save position
-            if (maxId > _lastId)
+            // ── 재출력 감지: 감시 중 JobID 가 완료 상태로 뒤집혔는지 재확인 ──
+            if (!string.IsNullOrEmpty(_recheckQuery) && _cancelWatch.Count > 0)
             {
-                _lastId = maxId;
-                SavePosition();
+                PruneWatch();
+                if (_cancelWatch.Count > 0)
+                {
+                    var idList = string.Join(",", _cancelWatch.Keys);
+                    using var recheckCmd = conn.CreateCommand();
+                    recheckCmd.CommandText = _recheckQuery.Replace("@cancel_ids", idList);
+                    using var recheckReader = recheckCmd.ExecuteReader();
+                    while (recheckReader.Read())
+                    {
+                        var built = BuildEvent(recheckReader);
+                        if (built == null) continue;
+                        var (id, evt) = built.Value;
+                        Console.WriteLine($"[{EquipmentId}] 재출력 완료 감지 (JobID={id}): {evt.FileName}");
+                        events.Add(evt);
+                        _cancelWatch.Remove(id);
+                    }
+                }
             }
+            SaveWatch();
 
             return events;
+        }
+
+        /// <summary>리더의 현재 행을 이벤트로 변환. 본 쿼리와 재출력 재확인 쿼리가 같은 규칙을 쓴다.</summary>
+        private (long id, PrintEvent evt)? BuildEvent(SqliteDataReader reader)
+        {
+            var idOrdinal = reader.GetOrdinal(_idColumn);
+            var fnOrdinal = reader.GetOrdinal(_filenameColumn);
+
+            if (reader.IsDBNull(idOrdinal) || reader.IsDBNull(fnOrdinal))
+                return null;
+
+            var id = reader.GetInt64(idOrdinal);
+            var filename = reader.GetString(fnOrdinal);
+
+            // Parse timestamps (완료 필수 취급, 시작은 선택)
+            string completedAt = "";
+            if (!string.IsNullOrEmpty(_timestampColumn))
+            {
+                var tsOrdinal = reader.GetOrdinal(_timestampColumn);
+                if (!reader.IsDBNull(tsOrdinal))
+                    completedAt = ParseTimestamp(reader.GetString(tsOrdinal));
+            }
+            string startedAt = "";
+            if (!string.IsNullOrEmpty(_startColumn))
+            {
+                int sOrdinal = -1;
+                try { sOrdinal = reader.GetOrdinal(_startColumn); } catch { sOrdinal = -1; }
+                if (sOrdinal >= 0 && !reader.IsDBNull(sOrdinal))
+                    startedAt = ParseTimestamp(reader.GetString(sOrdinal));
+            }
+
+            // Parse size
+            double widthMm = 0, heightMm = 0;
+            if (_sizeColumns.Length >= 2)
+            {
+                var wOrdinal = reader.GetOrdinal(_sizeColumns[0]);
+                var hOrdinal = reader.GetOrdinal(_sizeColumns[1]);
+                if (!reader.IsDBNull(wOrdinal)) widthMm = ConvertToMm(reader.GetDouble(wOrdinal));
+                if (!reader.IsDBNull(hOrdinal)) heightMm = ConvertToMm(reader.GetDouble(hOrdinal));
+            }
+
+            // Extract order number from filename (if IA naming is used)
+            string? orderNumber = null;
+            int? fileSeq = null;
+            var seqMatch = FileSeqRegex.Match(filename);
+            if (seqMatch.Success)
+            {
+                orderNumber = seqMatch.Groups[1].Value;
+                fileSeq = int.Parse(seqMatch.Groups[2].Value);
+            }
+            else
+            {
+                var orderMatch = OrderNumberRegex.Match(filename);
+                if (orderMatch.Success)
+                    orderNumber = orderMatch.Groups[1].Value;
+            }
+
+            // 상태 판정: status_column 설정 시 값 매핑(미설정이면 기존대로 OK)
+            string printStatus = "OK";
+            if (!string.IsNullOrEmpty(_statusColumn))
+            {
+                int stOrdinal = -1;
+                try { stOrdinal = reader.GetOrdinal(_statusColumn); } catch { stOrdinal = -1; }
+                if (stOrdinal >= 0 && !reader.IsDBNull(stOrdinal))
+                {
+                    var stVal = reader.GetValue(stOrdinal)?.ToString() ?? "";
+                    if (System.Array.IndexOf(_statusError, stVal) >= 0) printStatus = "ERROR";
+                    else if (System.Array.IndexOf(_statusCancel, stVal) >= 0) printStatus = "CANCEL";
+                    else if (_statusOk.Length > 0 && System.Array.IndexOf(_statusOk, stVal) < 0)
+                        Console.WriteLine($"[{EquipmentId}] unknown {_statusColumn}={stVal} for '{filename}' → defaulting OK");
+                }
+            }
+
+            var evt = new PrintEvent
+            {
+                PrinterName = EquipmentId,
+                FileName = filename,
+                FilePath = filename,
+                PrintStatus = printStatus,
+                OutputSize = widthMm > 0 && heightMm > 0
+                    ? $"{widthMm:F0} X {heightMm:F0}"
+                    : "",
+                OrderNumber = orderNumber,
+                FileSeq = fileSeq
+            };
+
+            if (!string.IsNullOrEmpty(completedAt))
+            {
+                var parts = completedAt.Split(' ');
+                if (parts.Length >= 2) { evt.EndDate = parts[0]; evt.EndTime = parts[1]; }
+            }
+            if (!string.IsNullOrEmpty(startedAt))
+            {
+                var parts = startedAt.Split(' ');
+                if (parts.Length >= 2) { evt.StartDate = parts[0]; evt.StartTime = parts[1]; }
+            }
+
+            return (id, evt);
         }
 
         public void ResetPosition()
         {
             _lastId = 0;
             SavePosition();
+            _cancelWatch.Clear();
+            SaveWatch();
+        }
+
+        private void PruneWatch()
+        {
+            var expire = DateTime.Now.AddDays(-WATCH_EXPIRE_DAYS);
+            var stale = new List<long>();
+            foreach (var kv in _cancelWatch)
+                if (kv.Value < expire) stale.Add(kv.Key);
+            foreach (var k in stale) _cancelWatch.Remove(k);
+            // 상한 초과 시 오래된 것부터 정리 (IN 절 비대 방지)
+            while (_cancelWatch.Count > WATCH_MAX)
+            {
+                long oldest = 0; var oldestAt = DateTime.MaxValue;
+                foreach (var kv in _cancelWatch)
+                    if (kv.Value < oldestAt) { oldest = kv.Key; oldestAt = kv.Value; }
+                _cancelWatch.Remove(oldest);
+            }
+        }
+
+        private void LoadWatch()
+        {
+            try
+            {
+                if (!File.Exists(_watchFile)) return;
+                var map = System.Text.Json.JsonSerializer.Deserialize<Dictionary<long, DateTime>>(File.ReadAllText(_watchFile));
+                if (map != null) foreach (var kv in map) _cancelWatch[kv.Key] = kv.Value;
+            }
+            catch (Exception ex) { Console.WriteLine($"[{EquipmentId}] cancel-watch load failed: {ex.Message}"); }
+        }
+
+        private void SaveWatch()
+        {
+            try { File.WriteAllText(_watchFile, System.Text.Json.JsonSerializer.Serialize(_cancelWatch)); }
+            catch (Exception ex) { Console.WriteLine($"[{EquipmentId}] cancel-watch save failed: {ex.Message}"); }
         }
 
         public bool IsAccessible() => File.Exists(_dbPath);
