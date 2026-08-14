@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-08-14T04:35:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-08-14T05:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **5** (`list_issues(OPEN,auto-improve)` 실측 4 + 이번 사이클 신규 #613. #606·#608·#609·#612·#613) |
+| 🆕 new | **5** (`search_issues(state:open,label:auto-improve)` 실측, 변동 없음. #606·#608·#609·#612·#613) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 6 자기 진화 (2026-08-14T05:10):**
+> - **방법**: `git fetch origin main`(HEAD `bb916ea`, origin과 완전 일치, 워킹트리 clean, detached HEAD이나 origin/main과 동일 커밋 = 직전 Area5 자신의 backlog 커밋). 직전 Area6 앵커(`8246df5`)·전역 공유 앵커(`ca38708`) 둘 다 여전히 유효한 조상(`merge-base --is-ancestor`=true). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인 — 이번 사이클은 웹앱 churn 0건**: `git log 8246df5..HEAD -- src/routes src/scripts migrations index.tsx src/layout src/pages` = **공백**(직전 Area6 이후 Area1~5가 전부 backlog 커밋만 생성, 실코드 변경 無). 범위 밖 전체로는 2건뿐: `7b431bc`(LogWatcher kit 설정 파일, CLAUDE.md 정본상 웹앱 스캔 범위 밖) · `77a7796`(hono 4.7.9→4.13.2 CVE 패치, `package.json`/`package-lock.json`만 — 이미 오늘 Area5가 `tsc`/`build` 검증 완료한 자동수정이라 재검증 불요). **컬럼-diff bridge·XSS bridge 둘 다 이번 사이클 검증 대상 없음**(신선 라우트/마이그 churn 부재).
+> - **done-sync(절대값 재동기화)**: `search_issues(state:open,label:auto-improve)` **5**(#606·#608·#609·#612·#613, 변동없음) · `search_issues(reason:completed)` **531**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음) — 백로그 기재값과 완전 일치, 드리프트 0.
+> - **open≠unfixed 재확인**: 5건 전부 참조 파일이 이번 churn(공백)과 무관 + #606/#608/#609는 기존 owner 코멘트("보류 확정")·#612/#613은 리액션 대기 지속 — 캐시 유지 타당, 재grep 불요.
+> - **closed≠fixed 재확인**: 최근 close된 다중모듈 우산 이슈 신규 없음(기존 클러스터는 이미 형제완전성 검증 완료, 캐시 재사용).
+> - **마이그 번호 중복 standing scan**: `ls migrations/*.sql | sed -E 's|.*/([0-9]{4})_.*|\1|' | sort | uniq -d` → 기존 5쌍(`0327`·`0412`·`0416`·`0420`·`0453`)만, net-new 0.
+> - **브랜치 위생**(읽기전용): `npm run branch:clean` → SAFE-absorbed 1건, REVIEW 0건 — 삭제대상 1건(임계 30 미달), 등록 불요.
+> - **🧬 SKILL 강화**: area-6-self-evolution.md 잔여 `line N` 참조 전건(15건: line 208×3·214·225×2·236·253·274·281×3·288)을 서술 참조(「컬럼-diff bridge」·「XSS bridge」·「드리프트-제거 완전성 규칙」·「purge 3단 완전성 레시피」·「purge 커밋 마이그 번호 중복 부수노트」·「open≠unfixed 거울」·「data-driven 범용 렌더러 dataset round-trip FP 주의」)로 전환 완료(2-b 절차, 이번 사이클분) — 잔여 0건. 신규 오탐/탐지 클래스는 없음: 이번 사이클은 churn 자체가 0이라 bridge류를 실제 적용할 대상이 없었던 quiet cycle — 기존 codify 규칙을 새로 검증할 기회가 아니라, "churn 0일 때 Area6은 표준 standing scan(done-sync·마이그중복·브랜치위생·스킬 서술참조)만 수행하고 조기 종료"가 유일한 신규 관찰이나, 이는 기존 "매 Area마다 churn부터 확인" 절차의 자연스러운 인스턴스라 별도 규칙화 불요.
+> - **백로그 트림 체크**: 사이클 로그 추가 후 11건 → 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(churn 0), 자동수정 0건(스킬 파일 서술참조 전환은 코드 아님), done-sync: new 5(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 + 인프라 (2026-08-14T04:35):**
 > - **방법**: `git fetch origin main`(HEAD `de31dbf`, origin과 완전 일치, 워킹트리 clean) — 직전 Area4 자신의 backlog 커밋이 HEAD. Area1~4/6이 공유해 온 앵커(`ca38708`)는 여전히 유효한 조상. `npm ci`(0→81), `npx tsc --noEmit` clean.
