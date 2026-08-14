@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-08-14T22:09:18+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-08-15T03:44:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,18 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-08-15T03:44):**
+> - **방법**: `git fetch origin main`(HEAD `d0473c1`, origin과 완전 일치, 워킹트리 clean) — 직전 Area1 자신의 backlog 커밋이 HEAD. 직전 Area2 자신의 앵커(`d41a1e2`)는 이번 사이클에도 유효한 조상(`git cat-file -t`=commit). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: `d41a1e2..HEAD`(직전 Area2 자신의 마지막 커밋 이후) 웹앱 범위(`src/routes`/`src/scripts`/`migrations`/`index.tsx`/`src/layout`/`src/pages`) = **공백**(신규 커밋 9개 전부 auto-improve backlog 커밋 5개(`a7da2a3`·`e74851b`·`de31dbf`·`bb916ea`·`8927f2e`·`d0473c1`) + LogWatcher C#/kit 전용 커밋 3개(`7b431bc`·`1f454a8`·`5692057`, 웹앱 스캔 범위 밖) + `77a7796`(hono CVE 패치, `package.json`류만 — 이미 Area5가 검증 완료)). entity_id INSERT·N+1·authMiddleware·dead code·SELECT* 재검토 대상인 신선 웹앱 코드 자체가 없음.
+> - **standing scan 재실행(신선 churn 부재해도 매 사이클 필수)**: ① `npm run audit:entity` — 131파일·61쿼리·**누락 0**(변동없음). ② `grep -rnE "IN \(\$\{" src/routes`(#458 미청크 동적 IN절) — **0건**. ③ authMiddleware recursive 스캔(`find src/routes -name '*.ts'` 전수, 25회차 레시피) — 무-auth+엔드포인트보유 후보 7개(`publicUnsubscribe.ts`·`orders/helpers.ts`·`payroll/shared.ts`·`cron.ts`·`messagesAd.ts`·`hrSelf.ts`·`taxInvoices/helpers.ts`) 전부 기존 codify된 정당 클래스(barrel 5·hrSelf scoped-token·publicUnsubscribe 의도적 public·cron agentKeyMiddleware·helpers Map.get FP) 그대로, net-new 0.
+> - **npm audit 재확인**: `npm ci` 후 11건(1 moderate·8 high·2 critical) — hono 패치(Area5 `77a7796`) 반영 후 잔여, 전부 devDependency(#613 기보고와 일치, net-new 아님).
+> - **open 5건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` = #606·#608·#609·#612·#613(변동없음) — 각 이슈 참조 파일이 이번 churn(공백)과 무관해 재확인 생략 정당.
+> - **backlog↔GitHub 절대값 재동기화**: open **5**(변동없음) · `reason:completed` **531**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음, 전부 실측).
+> - **🧬 SKILL 강화**: 없음 — 이번 사이클 신규 오탐/탐지 클래스 없음. 코드 churn 부재라 기존 codify된 레시피(entity_id diff·IN절 청크·authMiddleware recursive)를 적용할 신규 대상 자체가 없음.
+> - **백로그 트림 체크**: 사이클 로그 추가 후 13건 → 임계 13건 도달, `npm run backlog:trim` 실행 예정(이 로그 저장 직후).
+> - 신규 이슈 0건(코드 churn 없음), 자동수정 0건, done-sync: open 5(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-08-14T22:09):**
 > - **방법**: `git fetch origin main`(HEAD `5692057`, origin과 완전 일치, 워킹트리 clean). 직전 Area1 자신의 앵커(`d41a1e2`)는 이번 사이클에도 유효한 조상. `npm ci`(0→81), `npx tsc --noEmit` clean.
@@ -110,70 +122,6 @@
 > - **🧬 SKILL 강화**: 없음 — 이번 사이클 신규 오탐/탐지 클래스 없음. 코드 churn 부재 + CI 전부 green이라 기존 codify된 판별 레시피(cold-start transient·CF finalize transient·smoke stale probe·write-path 맹점)를 적용할 신규 사례 자체가 없음.
 > - **백로그 트림 체크**: 사이클 로그 10건(트림 전) → 임계 12건 이하, 트림 불요.
 > - 신규 이슈 0건(코드 churn 없음 + CI 전부 green), 자동수정 0건, done-sync: new 4(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
->
-
-> **Area 6 자기 진화 (2026-08-12T15:24):**
-> - **방법**: `git fetch origin main`(HEAD `8246df5`, origin과 완전 일치, 워킹트리 clean) — 이번 사이클은 컨테이너 git 이력 재구성 없이 직전 Area5 앵커(`f235d5c`)와 조상관계 정상 유지(`git cat-file -t f235d5c`=commit, `git log f235d5c..HEAD` 정상 8커밋). `npm ci`(0→81), `npx tsc --noEmit` clean, `git status` clean.
-> - **churn 확인**: 직전 Area5(`f235d5c`) 이후 8커밋 중 웹앱 범위(`src/routes`/`src/scripts`/`migrations`/`index.tsx`/`src/layout`/`src/pages`) = 3건뿐(`af0e13a` 과다기록 의심 배지 신설·`872c0f0` 타일행 정규화 픽스·`8313bdf` 계좌이체 수수료허용 매칭) — 나머지 5커밋은 LogWatcher C#/PowerShell 에이전트(`LogWatcher/kit`, `LogWatcher/flexi_printexp`) 전용이라 이 리포의 웹앱 스캔 범위(CLAUDE.md 정본) 밖.
-> - **XSS bridge(직전 Area5 이후 프론트 churn) — `af0e13a`/`872c0f0` 재검증**: `printEvents.ts` 신규 서브쿼리가 반환하는 `over_declared`/`over_day_copies`/`over_day_rows`는 파일명 정규식 캡처(`parseInt`)·서버 `SUM`/`COUNT` 집계값으로 전부 숫자 — `production.js:1411` 신규 `title=` 속성 보간(`over_day_rows`/`over_day_copies`/`over_declared`)도 숫자만이라 XSS sink 아님(문자열 free-text 유입 경로 없음). net-new XSS 0.
-> - **컬럼-diff bridge(직전 Area4 이후 INSERT) — 해당 없음**: 3커밋 전부 신규 `ALTER`/`INSERT` 컬럼 도입 없음(`over_*` 필드는 응답 JSON 전용, DB 미영속). 검증 대상 자체가 발생하지 않음.
-> - **entity 격리 재확인 — `af0e13a` 신규 서브쿼리가 entityFilter 미적용**: `printEvents.ts GET /` 자체가 기존부터 `where`에 entityFilter를 전혀 안 씀(Area5 08-10 codify "장비/출력이벤트=전 법인 공유 인프라" 그대로 유지) — 신규 서브쿼리(파일명 기준 당일 누적 집계)도 동일 무필터가 기존 설계와 일관, net-new 격리 갭 아님.
-> - **`8313bdf`(계좌이체 수수료허용 매칭) 셀프완결 확인**: 커밋 자체가 `docs/analysis/2026-08-12-{group,entity1,entity2,entity3}-diagnosis.md` + 롤백 SQL(`rollback-bank-class.sql`)을 동반해 실측 수치(정확일치 54.9%→96.5%)와 회귀 대비책까지 자체 문서화 — `entityFilter(c,'bt')` 유지, 정확일치 우선 처리 후 수수료허용 매칭이라 정확쌍이 근사쌍에 뺏기지 않는 순서 보장, 상대방명 정규화 매칭(`sameParty`)이 무관쌍 오매칭 가드로 명시 — 기존 c396923/e7d9047류 "owner가 이미 실측+자체검증 완결" 패턴과 동일해 추가 검증 가치 낮음(A-026/자기픽스 완전성 재검증 대상은 auto-improve 자신의 자동수정에 한정, owner 직접 커밋은 해당 없음).
-> - **done-sync(GitHub↔backlog 절대값 재동기화)**: `list_issues(OPEN,auto-improve)` **4**(#606·#608·#609·#612, 변동없음) · `search_issues(reason:completed)` **531**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음) — 전부 절대값 실측, 드리프트 없음.
-> - **open≠unfixed 재확인**: 이번 churn 파일(printEvents.ts/production.js/bank.ts/bank.js) 중 #606(entity-attribution-audit)·#608(verify.yml)·#609(unitConvert.ts)·#612(orders/create·update.ts)가 참조하는 파일과 전혀 겹치지 않아 코드 재grep 없이 캐시 유지(직전 Area5가 오늘 이미 grep 재확인 완료).
-> - **closed≠fixed 재확인**: 최근 close된 다중모듈 우산 이슈 신규 발생 없음(직전 c396923/e7d9047 계열은 Area6/4가 이미 형제완전성 검증 완료, 캐시 재사용).
-> - **브랜치 위생**(읽기전용): `npm run branch:clean` → SAFE-absorbed 1건, REVIEW 0건 — 삭제대상 1건(임계 30 미달), 등록 불요.
-> - **백로그 트림 체크**: 사이클 로그 9건(트림 전) → 임계 12건 이하, 트림 불요.
-> - **🧬 SKILL 강화**: 없음 — 이번 사이클 신규 오탐/탐지 클래스 없음. 신선 churn 3건 전부 기존 codify 규칙(XSS 숫자sink FP·공유인프라 entity무필터 설계·owner 셀프검증 신뢰)로 충분히 커버됨. LogWatcher 5커밋은 웹앱 스캔 범위 밖이라는 사실 자체도 기존 CLAUDE.md "IA 스크립트=별도 배포축" 원칙과 같은 계열(리포 안에 있어도 스캔 대상 아닌 서브트리 존재) — 신규 규칙 불요, 기존 원칙의 인스턴스.
-> - 신규 이슈 0건(churn 3건 전부 clean, LogWatcher 5건은 스캔 범위 밖), 자동수정 0건, done-sync: new 4(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
->
-
-> **Area 5 보안 + 인프라 (2026-08-12T09:18):**
-> - **방법**: `git fetch origin main`(HEAD `f235d5c`, origin과 완전 일치, 워킹트리 clean) — 컨테이너 git 이력이 이번 사이클도 force-update로 재기록됐으나, 직전 Area4가 채택한 앵커(`ca38708`)는 이번 재기록에도 유효(`git cat-file -t`=commit)해 그 지점 기준 churn 계산 그대로 신뢰 가능. 직전 Area5 자신의 앵커(`1793f6a`)는 이번엔 무효(`Not a valid object`)라 Area4 앵커로 대체.
-> - **churn 확인**: `ca38708..HEAD` 중 `src/routes`/`src/scripts`/`migrations`/`index.tsx`/`src/layout`/`src/pages` = `8245211`(바로빌 시간당 계좌수집+에러행 필터링)·`e7d9047`(FIFO 연체판정, Area4가 데이터정합 렌즈로 기완료)·`5b6de48`(Area4 자신의 dead-code 커밋)·`f235d5c`(출력이력 분할출력 배지/필터, **완전 신선**) — 보안 렌즈로는 `8245211`·`f235d5c` 2건이 미검증.
-> - **`f235d5c`(분할출력 가시성) 보안 검증**: `printEvents.ts GET /` 신규 `tiled` 쿼리파라미터는 `where += ' AND pe.tile_count > 0'`로 하드코딩 조건이라 바인드 불요(SQLi 표면 없음, 사용자 입력 미삽입) — 기존 entityFilter 등 SELECT 절 구조 무변경. `production.js` 신규 렌더 3곳(`tileBadge`의 `tile_index`/`tile_count`는 `Number()` 강제, `tile_rows`/`tile_files`는 서버 COUNT 집계값) 전부 숫자라 XSS sink 아님 — 유일 문자열 sink는 기존 `file_name` 그대로(`escapeHtml` 재사용, 변경 없음). entity_id 격리·인증 게이트 모두 기존 라우터(`authMiddleware`) 그대로 상속, net-new 취약점 없음.
-> - **`8245211`(바로빌 시간당 계좌수집) 보안 검증**: `POST /api/cron/barobill-sync`에 추가된 `bankOnly` 불리언 플래그는 기존 `agentKeyMiddleware` 게이트 그대로(신규 인증 우회 없음), 단순 조건분기(카드 동기화 skip)라 SQL/XSS 표면 없음. `stripBarobillErrorRows`(신규 헬퍼)는 바로빌 응답의 에러코드 행을 정규식(`/^-\d+$/`)으로 걸러내 빈 배열로 치환하는 순수 데이터 필터 — 시크릿 노출·인증 우회 없음. `FTP_PASSWORD` 등 신규 시크릿 참조 없음(기존 `barobillCall`이 처리).
-> - **필수 grep 재확인**: `c.env.[A-Z_]+ || '` — `fax.ts:43 BAROBILL_FTP_PASSWORD || ''`만(빈 문자열 폴백, 기존 FP, net-new 0). `body.password || '리터럴'` — 0건. CI yml `secrets.X || 'admin'`류 — 0건.
-> - **open 4건 재확인(open≠unfixed)**: #606(`entity-attribution-audit` 프론트 소비처 grep 0)·#608(`verify.yml` 여전히 0회 실행)·#609(`toBase`/`formatStock` 호출처 0)·#612(자기 자신이 발견한 IDOR, 👍/코멘트 없음 — 리액션 대기 지속) — 이번 churn(barobill/production)과 전부 무관한 파일이라 캐시 유지.
-> - **backlog↔GitHub 절대값 재동기화**: `list_issues(OPEN,auto-improve)` **4**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음).
-> - **🧬 SKILL 강화**: 없음 — 이번 사이클 신규 오탐/탐지 클래스 없음. 두 신선 커밋 모두 정적 조건문/숫자 렌더/기존 게이트 상속이라 기존 codify된 체크리스트(SQL 바인딩·XSS sink·IDOR 비대칭)로 충분히 커버됨.
-> - 신규 이슈 0건(신선 churn 2건 모두 clean), 자동수정 0건, done-sync: new 4(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
->
-
-> **Area 4 데이터 정합성 (2026-08-11T22:20):**
-> - **방법**: `git fetch origin main`(HEAD `5f5c69b`) — 컨테이너 git 이력이 이번 사이클도 force-update로 재기록됐으나 직전 Area2/3의 앵커(`ca38708`)는 이번 재기록에도 유효(`git cat-file -t`=commit)해 그 지점 기준 churn 계산 그대로 신뢰 가능. `npm ci`(0→81), `npx tsc --noEmit` clean, `git status` clean.
-> - **churn 확인**: `ca38708..HEAD` 중 `src/routes`/`src/scripts`/`migrations`/`index.tsx`/`src/layout`/`src/pages` = `cron.ts`(바로빌 시간당 계좌수집 분기, 순수 운영설정, Area1/3 기확인) + **`ledger/ar-helpers.ts`·`ledger/ar-receivables.ts`·`ledger.js`**(연체 판정 로직 전면 재작성, `e7d9047`) — Area4 렌즈로 신선.
-> - **`e7d9047`(연체 판정 LIFO→FIFO 전환) 데이터정합성 심층 검증**: 종전 `/overdue`가 `min(연체청구합, 잔액)`으로 계산해 "입금이 최신 청구건부터 충당된다"(LIFO)는 잘못된 가정 하에 활발히 거래 중인 거래처의 최근 미결제분까지 2025-12-31 이관 캐리오버 전표 탓에 223일 연체로 오표시하던 실버그(prod 실측: E1 201곳/8.15억 → 133곳/4.40억) — `queryFifoOverdue()`(윈도 누적 SUM OVER + `min(청구액, max(0, 누적청구−충당액))` FIFO 워터폴)로 교체. SQL 검증: ORDER BY에 `g.id` tie-break 포함(동일 `bdate` 결정성 확보, CLAUDE.md 정렬 원칙 부합) · HAVING에 별칭 미사용(서브쿼리로 감싸 `clients.overdue_amount` 동명컬럼 오귀속 방지, 주석에 2026-08-10 사고 명시) · `entityFilter` 3파라미터(g/p/a) 전부 적용 · `agingDaysFromOldest`가 Area4 자체 KST SSOT(#366) 준수(UTC 타임스탬프 파싱 후 +9h). `/overdue`·`/receivables?overdue_only=1`·`/receivables/check-overdue` 3개 엔드포인트가 전부 동일 SSOT로 일원화(종전엔 3곳이 각자 다른 기준 — 배너엔 없는 거래처가 목록엔 뜨는 모순 픽스). 로컬 D1 시드 대조 + prod 실측 수치까지 커밋 메시지에 명시된 자기검증 완료 — **net-new 데이터정합성 결함 없음, 오히려 기존 오탐(#미보고 상태였던 LIFO 오분류)을 셀프 픽스**.
-> - **🔧 자동수정 — dead code 2건 제거**: `e7d9047`이 `OverdueClientRow`/`OverdueAlertRow`(구 `/overdue`·`/check-overdue` 쿼리 행 타입)를 `ar-receivables.ts` import에서 제거했으나 `ar-helpers.ts` 정의 자체는 잔존 — 전체 repo grep 재확인 결과 두 인터페이스 참조처 0건(정의만 존재). `ar-helpers.ts`에서 20줄 삭제 → `npx tsc --noEmit` clean, `npm run build` clean(6,366.94 kB, 이상 없음), `npm run audit:entity`(131파일·61쿼리·누락 0) 통과 → 커밋.
-> - **open 4건 재확인(open≠unfixed)**: #606(`entity-attribution-audit` 프론트 소비처 grep 0)·#608(`verify.yml` 여전히 0회 실행)·#609(`toBase`/`formatStock` 호출처 0)·#612(IDOR 소유권검증 무변경) — 이번 churn(ledger/cron/barobill)과 전부 무관한 파일이라 캐시 유지.
-> - **backlog↔GitHub 절대값 재동기화**: `list_issues(OPEN,auto-improve)` **4**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · `search_issues(reason:not_planned)` **4** + duplicate 2 = rejected **6**(재확인 완료, 변동없음).
-> - **🧬 SKILL 강화**: 없음 — 이번 사이클 신규 오탐/탐지 클래스 없음. FIFO 전환은 이미 codify된 "denormalized aggregate 증분 정합성"(area-4 line 근처)과는 다른 축(집계 caching이 아니라 판정 알고리즘 자체 교정)이나, 이미 owner 세션이 prod 실측+로컬 시드 대조까지 자체 완결해 auto-improve가 추가할 검증 가치가 낮음 — 별도 규칙화 보류.
-> - 신규 이슈 0건(신선 churn은 owner 세션이 이미 자체 검증 완료), 자동수정 1건(dead code 20줄, 커밋 예정), done-sync: new 4(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
->
-
-> **Area 3 UX/기능 감사 (2026-08-11T21:35):**
-> - **방법**: `git fetch origin main`(HEAD `00aaa4c`, origin과 완전 일치, 워킹트리 clean) — 컨테이너 git 이력이 이번 사이클도 재기록(root `f1f9948`, 57커밋 전부 최근, 직전 Area2가 기록한 root `740b8cd`와 다름) — 단 Area2 자신의 앵커(`ca38708`)는 이번 재기록에도 유효해(`git cat-file -t ca38708`=commit) 그 지점 기준 churn 계산은 그대로 신뢰 가능. `npm ci`(0→81) 스킵(직전 사이클 검증 재사용), `git status` clean.
-> - **churn 확인**: 직전 Area2 앵커(`ca38708`) 이후 `git diff --stat -- src/scripts src/pages src/layout index.tsx src/routes` = **`src/routes/cron.ts` 1파일뿐**(`8245211` 바로빌 계좌 시간당 수집, 카드는 DAY1이라 제외하는 순수 백엔드/운영 변경 — UX 표면 무관). `src/scripts`/`src/pages`/`src/layout`/`index.tsx` 변경 **0줄** — 이번 사이클은 UX 감사 대상 신선 churn이 사실상 없음.
-> - **closed≠fixed 재검증 — #611(카드 다품목 표 overflow-x-auto 누락) 코드 대조**: `cardDetail.js:274` `html += '<div class="cd-multi-wrap"><table class="cd-multi">...'`로 래핑 확인 + `cardDetail.ts:38` `.cd-multi-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }`(인쇄용 `:73`은 `overflow: visible !important`로 별도 처리) 확인 — **실재 픽스, 재발 없음**.
-> - **standing scan 대체 실시(신선 churn 부재)**: 새 마이그레이션 0건(`migrations` 디렉터리 ca38708 이후 신규 없음) → "백엔드 먼저·화면 나중"(#606류, 3회 누적 승격 스캔) 신규 후보 자체가 발생하지 않음(전제조건인 신규 컬럼+JOIN 자체가 없음). 대시보드 KPI는 I-011/I-016/I-052/I-059/I-066/A-018/F-003으로 기존에 이미 반복 심층 검토된 영역이라(오늘 Area2도 `dashboard.ts` entity_id 바인드만 별도 대조 완료) 이번 사이클 재감사는 낮은 marginal value로 판단해 생략.
-> - **egress 제약(재확인)**: prod host(`webapp-9i0.pages.dev`) curl 403 "Host not in allowlist" — Playwright MCP로 실제 화면 탐색(체크리스트 원칙)도 이 세션에서 불가, 기존 인지된 제약과 동일.
-> - **open 4건 재확인(open≠unfixed)**: #606(feature, entity-attribution-audit 프론트 소비처 여전히 0)·#608(verify.yml 여전히 0회 실행)·#609(toBase/formatStock 호출처 여전히 0)·#612(IDOR, 소유권 검증 로직 무변경) — 이번 churn(cron.ts)과 전부 무관한 파일이라 직전 Area2 재확인 캐시 유지.
-> - **backlog↔GitHub 절대값 재동기화**: `search_issues(reason:completed)` **531**(변동없음) · open **4**(변동없음) · rejected **6**(재확인 생략, 무변동 근거 충분).
-> - **🧬 SKILL 강화**: 없음 — 이번 사이클 신규 오탐/탐지 클래스 없음.
-> - 신규 이슈 0건(신선 churn 없음 + 기존 open 4건 전부 여전히 미픽스로 캐시 유지, closed #611은 재검증 결과 실제 픽스), 자동수정 0건, done-sync: new 4(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
->
-
-> **Area 2 코드 품질 심층 분석 (2026-08-11T15:25):**
-> - **방법**: `git fetch origin main`(HEAD `ca38708`, origin과 완전 일치) — 컨테이너 git 이력이 이번 사이클도 force-update로 재기록(57커밋 전부 최근, root `740b8cd`). `npm ci`(0→81), `npx tsc --noEmit` clean. 직전 Area2(`8947255`, 08-10T03:16, 61회차) 이후 `src/routes`/`src/scripts`/`index.tsx`/`src/layout`/`src/pages`/migrations 변경 = **12커밋**(ca38708 print-events entity공유·90b0c36 cron 주석·379a7b7 장비 entity공유+다중선택 필터·93c9927 예산알림 신설·4f077a0 등급C 단가백필[0531]·0b87962 AREA 단가정정[0530]·4605227 최소청구면적+가격제안·c396923 주문서 편집 라운드트립 5건 배치·1bfaf7f PDF/JPG/PNG 첨부·7f40097 nav-badges D1폭증+HAVING별칭버그·ee16ae6 라인DXF첨부·0798a37 품목검색/마감섹션) — c396923(5건)은 Area6(00:20)가 이미 코드품질 렌즈로 전수 재검증 완료, 나머지 11커밋은 신선 churn.
-> - **entity_id 격리 제거 2건(ca38708·379a7b7) 바인드 정합 검증**: `printEvents.ts`(list/stats×4/unmatched)·`dashboard.ts`/`equipmentQueue.ts`/`facility.ts`(×2)/`rip.ts`(×2) 총 10개 쿼리에서 `entityFilter`/`ef.clause`/`ef.params` 제거 지점을 각각 대조 — 플레이스홀더(`?`) 개수와 `.bind()` 인자 개수가 전부 일치(예: `facility.ts:layout-data`는 `cardEf`만 남기고 `equipEf` 제거 후 바인드 배열도 동일 축소). 커밋 메시지가 "장비/출력이벤트=전 법인 공유 인프라, 쓰기 경로는 격리 유지"로 설계 근거를 명시 + 실제로 write 핸들러(`POST/PATCH /equipment`, 카드 발급 등)는 diff에 미포함 — 의도된 설계 변경, entity_id INSERT 누락류 버그 아님.
-> - **`ee16ae6`(라인 DXF 첨부) INSERT 컬럼셋 대조**: `orders/create.ts`(신규)·`orders/update.ts`(신규만 삽입, dup-check 후) 양쪽 `INSERT INTO order_ai_files (..., entity_id)` 8컬럼/8바인드 일치, entity_id는 `billingEntityId`/`existingOrder.entity_id ?? getEntityId(c)||1`로 정상 공급. update.ts의 `for (putParentItems)` 루프 안 `await ... .first()`+`.run()`은 order.items 길이로 bounded(#458 FP배제 "per-entity 품목 IN"과 동일 계열, LIMIT-less 데이터스케일 아님) — N+1 보고 대상 아님.
-> - **신규 `budgetAlert.ts`/`cron.ts POST /budget-check` 검토**: `agentKeyMiddleware` 게이트 확인(기존 cron 라우트와 동일 패턴), settings 조회 SQL 파라미터화·Cloudflare 미설정 시 그 축만 스킵 + "설정했는데 조회실패"는 별도 알림(감시가 조용히 꺼지는 것 방지) — 설계 결함 없음. `checkBudgets` 호출처 1곳(cron.ts)뿐이나 서비스 함수 성격상 정상(dead code 아님).
-> - **migrations 0530/0531 재검토**: 둘 다 멱등 가드(`WHERE` 조건에 "이미 목표값" 배제 포함)·롤백 SQL·근거 스크립트(`derive-item-prices.cjs`) 명시, CHECK/NOT NULL 위반 없음(단순 UPDATE/INSERT). 마이그 번호 중복 재확인 — 기존 5쌍(0327·0412·0416·0420·0453) net-new 0.
-> - **standing scan 재실행**: ① `npm run audit:entity` — 검사 131파일·entity테이블 SELECT 61·**누락 0**. ② `grep -rnE "IN \(\$\{" src/routes` (#458 미청크 동적 IN절) — **0건**(기존 발견 전부 청크 픽스 유지). ③ "헬퍼-루프" N+1 하위클래스(#478, `for...of` 바디에 `await <추출헬퍼>` + LIMIT없는 데이터스케일 집합) grep — **0건**.
-> - **open 4건 재확인(open≠unfixed)**: #606(`grep -rln entity-attribution-audit src/scripts src/pages`=0)·#608(`verify.yml` 여전히 `pull_request` 트리거뿐)·#609(`toBase`/`formatStock` 호출처 0, 이번 churn이 재고 write-path 3곳을 안 건드려 무관)·#612(`ai_analysis_id`/`dxf_analysis_id` IDOR — 오늘 `ee16ae6`가 `dxf_analysis_id` 저장 로직을 추가했으나 소유권 검증 로직 자체는 무변경이라 #612 상태 그대로) 전부 코드 직접 재확인, 캐시 유지.
-> - **backlog↔GitHub 절대값 재동기화**: `list_issues(OPEN,auto-improve)` open **4**(#606·#608·#609·#612, 변동없음) · `search_issues(reason:completed)` **531**(변동없음) · rejected **6**(변동없음, 재확인 생략 — 직전 사이클과 무변동 근거 충분).
-> - **🧬 SKILL 강화**: 없음 — 이번 사이클 신규 오탐/탐지 클래스 없음. entity_id 격리 제거 2건은 기존 FP클래스("문서화된 cross-entity 기능")의 변형(공유 인프라 성격)이라 신규 규칙 불요, 자동 바인드 개수 대조 레시피는 기존 #607류 점검과 동일해 재사용.
-> - 신규 이슈 0건(churn 12건 전부 clean — 병렬 세션들이 이미 자체 gate 통과 후 착륙), 자동수정 0건, done-sync: new 4(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
 >
 
 ## ✅ Approved / 👀 Reviewed (owner 피드백 수신)
