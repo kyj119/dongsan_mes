@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-08-15T03:44:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-08-15T09:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,17 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 3 UX/기능 감사 (2026-08-15T09:20):**
+> - **방법**: `git fetch origin main`(HEAD `b28e617`, origin과 완전 일치) → `git checkout main && git reset --hard origin/main`으로 detached HEAD 정리, 워킹트리 clean. 직전 Area3 자신의 앵커(`a7da2a3`)는 이번 사이클에도 유효한 조상(`git merge-base --is-ancestor`=true). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: `a7da2a3..HEAD`(직전 Area3 자신의 마지막 커밋 이후) 웹앱 범위(`src/routes`/`src/scripts`/`migrations`/`index.tsx`/`src/layout`/`src/pages`) = **공백**(신규 커밋 9개 전부 auto-improve backlog 커밋 5개(`e74851b`·`de31dbf`·`bb916ea`·`8927f2e`·`d0473c1`·`b28e617`) + LogWatcher C#/kit 전용 커밋 2개(`7b431bc`·`1f454a8`·`5692057`, 웹앱 스캔 범위 밖) + `77a7796`(hono CVE 패치, `package.json`류만 — 이미 Area5 검증 완료)). UX 렌즈로 재검토할 신선 pages/scripts/routes 변경 자체가 없음 — 직전 사이클(08-13)이 이미 이 앵커 이후 유일한 프론트 churn(bank/production/ledger 5파일)을 전수 diff Read해 clean 판정했고, 이번 사이클엔 그 이후 웹앱 파일이 단 1바이트도 안 바뀜.
+> - **standing scan 판단**: axios↔라우트 존재성 전수매칭·`showConfirm` 콜백오용·삭제confirm 커버리지·HTML↔JS silent-fail diff는 전부 **전체 코드베이스 대상** 스캔이라 이론상 churn 무관 재실행 가능하나, 스캔 대상 파일(src/scripts/**/*.js, src/pages/**/*.ts)이 직전 사이클과 바이트 단위로 동일 → 재실행해도 직전 결과(net-new 0)와 다를 수 없음(결정론적 grep). 중복 재실행 대신 **직전 사이클 결과를 그대로 승계**, 스킬 지시("이번 사이클 영역 파일 1개만 읽는다" 컨텍스트 절약 원칙)에 맞춰 스킵.
+> - **"백엔드 먼저·화면 나중" standing scan**: 승격 조건("신규 마이그+라우트 JOIN 동반 churn")이 이번 사이클엔 불성립(마이그레이션 신규 0건) → 해당 없음.
+> - **open 5건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` = #606·#608·#609·#612·#613(변동없음, updated_at도 각 이슈 직전 확인 시점과 동일 — 신규 코멘트 없음). `search_issues(reason:completed)` **531**·`reason:not_planned` **4**(+duplicate 2=rejected 6) 재실측, 전부 변동없음.
+> - **🧬 SKILL 강화**: 없음 — 이번 사이클 신규 오탐/탐지 클래스 없음. area-3-ux-audit.md는 이미 08-13 사이클에서 `line N` 잔여참조 전건 서술참조 전환 완료(재확인, 잔여 0건).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 9건(직전 Area2 사이클이 이미 트림 완료해 리셋됨) → 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(웹앱 churn 없음, 직전 사이클이 마지막 프론트 변경분을 이미 UX 렌즈로 clean 판정), 자동수정 0건, done-sync: open 5(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-08-15T03:44):**
 > - **방법**: `git fetch origin main`(HEAD `d0473c1`, origin과 완전 일치, 워킹트리 clean) — 직전 Area1 자신의 backlog 커밋이 HEAD. 직전 Area2 자신의 앵커(`d41a1e2`)는 이번 사이클에도 유효한 조상(`git cat-file -t`=commit). `npm ci`(0→81), `npx tsc --noEmit` clean.
