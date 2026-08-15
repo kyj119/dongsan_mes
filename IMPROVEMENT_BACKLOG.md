@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-08-15T15:05:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-08-15T21:40:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,17 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 5 보안 + 인프라 (2026-08-15T21:40):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main`(HEAD `f1d1dd4`, origin과 완전 일치) → `git checkout main && git reset --hard origin/main`으로 정리. 직전 Area5 자신의 앵커(`de31dbf`)는 이번 사이클에도 유효한 조상(`merge-base --is-ancestor`=true). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: `de31dbf..HEAD`(직전 Area5 자신의 마지막 커밋 이후) = 신규 커밋 8개 전부 auto-improve backlog 커밋 4개(`8927f2e`·`d0473c1`·`b28e617`·`6b78504`·`f1d1dd4`) + LogWatcher C#/kit 전용 커밋 2개(`5692057`·`1f454a8`, 웹앱 스캔 범위 밖) — 웹앱 범위(`src/routes`/`src/scripts`/`migrations`/`index.tsx`/`src/layout`/`src/pages`) diff **공백**. 보안 렌즈로 재검토할 신선 코드 자체가 없음.
+> - **필수 grep standing scan**: 시크릿 폴백(`c.env.[A-Z_]+ *\|\| *'`) → `fax.ts:43`(기존 FP, 변동없음) 1건뿐. 기본비밀번호 리터럴·CI yml secrets fallback·미청크 동적 IN절 = 전부 0건.
+> - **npm audit 재확인**: `npm ci` 후 11건(1 moderate·8 high·2 critical), `--json` 파싱으로 패키지별 direct/transitive 분류 재확인 — `concurrently`·`vite`·`wrangler`(direct) + `esbuild`·`miniflare`·`nanoid`·`postcss`·`sharp`·`shell-quote`·`undici`·`ws`(transitive) 전부 devDependency, **hono는 목록에서 사라짐**(직전 Area5의 `77a7796` CVE 패치 유효 확인) — #613 기보고와 완전 일치, net-new 0.
+> - **open 5건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` = #606·#608·#609·#612·#613(변동없음, `updated_at`도 직전 확인 시점과 동일). `search_issues(reason:completed)` **531**·`reason:not_planned` **4**·`reason:duplicate` **2**(=rejected 6) 재실측, 전부 변동없음.
+> - **🧬 SKILL 강화**: area-5-security-infra.md 잔여 `line N` 참조 5건(「IDOR 비대칭 탐지 규칙」·「문서화된 cross-entity mutation」·「entity_id 없는 전역 마스터」·「독립 HTML 페이지 escapeHtml 부재 예외」·「agent JSON 유입 주의」)을 서술 참조로 전환 완료(2-b 절차, 이번 사이클분) — 잔여 0건(`audit:skills` 재확인). 신규 오탐/탐지 클래스는 없음: 코드 churn 부재라 IDOR/XSS 자동스캔(Area 6 승격분)을 적용할 신선 대상 자체가 없는 quiet cycle.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 10건(직전 Area2 사이클이 트림 완료해 리셋됨) → 이번 로그 추가 후 11건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(웹앱 churn 없음, npm audit 잔여는 전부 기보고 devDependency), 자동수정 0건, done-sync: open 5(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-08-15T15:05):**
 > - **방법**: `git fetch origin main`(HEAD `6b78504`, origin과 완전 일치). 컨테이너가 detached HEAD였으나 origin/main과 동일 커밋(직전 Area3 자신의 backlog 커밋) — `git checkout main && git reset --hard origin/main`으로 정리, 워킹트리 clean. 직전 Area4 자신의 앵커(`de31dbf`)는 이번 사이클에도 유효한 조상. `npm ci`(0→81), `npx tsc --noEmit` clean.
