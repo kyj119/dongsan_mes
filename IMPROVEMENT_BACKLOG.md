@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-08-15T21:40:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-08-16T09:43:57+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,18 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 6 자기 진화 (2026-08-16T09:43):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main`(HEAD `8cf764b`, origin과 완전 일치) → `git checkout main && git reset --hard origin/main`으로 정리. 직전 Area6 자신의 앵커(`8927f2e`)는 이번 사이클에도 유효한 조상. `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: `8927f2e..HEAD` 웹앱 범위(`src/routes`/`src/scripts`/`migrations`/`index.tsx`/`src/layout`/`src/pages`) = **공백**(신규 커밋 7개 전부 auto-improve backlog 커밋 5개(`d0473c1`·`b28e617`·`6b78504`·`f1d1dd4`·`8cf764b`) + LogWatcher C#/kit 전용 커밋 2개(`5692057`·`1f454a8`, 웹앱 스캔 범위 밖)) — 컬럼-diff bridge·XSS bridge 둘 다 이번 사이클 검증 대상 없음(신선 라우트/마이그 churn 부재, 6사이클 연속 quiet).
+> - **done-sync(절대값 재동기화)**: `list_issues(OPEN,auto-improve)` **5**(#606·#608·#609·#612·#613, `updated_at` 전건 직전 확인 시점과 동일 — 신규 코멘트 없음) · `search_issues(reason:completed)` **531**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음) — 백로그 기재값과 완전 일치, 드리프트 0.
+> - **open≠unfixed / closed≠fixed 재확인**: 5건 전부 참조 파일이 이번 churn(공백)과 무관, 캐시 유지 타당 — 재grep 불요. 최근 close된 다중모듈 우산 이슈 신규 없음.
+> - **마이그 번호 중복 standing scan**: 기존 5쌍(`0327`·`0412`·`0416`·`0420`·`0453`)만, net-new 0.
+> - **브랜치 위생**(읽기전용): `npm run branch:clean` → SAFE-remote 0·SAFE-absorbed 0·REVIEW 0 — 삭제대상 0건.
+> - **🧬 SKILL 강화**: 없음 — area-6-self-evolution.md 잔여 `line N` 참조는 이미 0건(전 사이클 전환 완료, `audit:skills` 재확인 — 이번 스캔은 area-1 파일에 3건 잔존을 보고했으나 그 파일은 이번 사이클 담당이 아니므로 손대지 않음). 신규 오탐/탐지 클래스 없음: churn 자체가 0이라 bridge류를 적용할 신선 대상이 없는 quiet cycle.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 11건 → 이번 로그 추가 후 12건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(churn 0), 자동수정 0건, done-sync: open 5(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 + 인프라 (2026-08-15T21:40):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main`(HEAD `f1d1dd4`, origin과 완전 일치) → `git checkout main && git reset --hard origin/main`으로 정리. 직전 Area5 자신의 앵커(`de31dbf`)는 이번 사이클에도 유효한 조상(`merge-base --is-ancestor`=true). `npm ci`(0→81), `npx tsc --noEmit` clean.
