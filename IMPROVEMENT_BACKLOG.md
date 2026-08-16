@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-08-16T15:44:44+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-08-16T21:45:01+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,18 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-08-16T21:45):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main`(HEAD `e9fa6c5`, origin과 완전 일치) → `git checkout main && git reset --hard origin/main`으로 정리. 직전 Area2 자신의 앵커(`b28e617`)는 이번 사이클에도 유효한 조상. `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: `b28e617..HEAD` 웹앱 범위(`src/routes`/`src/scripts`/`migrations`/`index.tsx`/`src/layout`/`src/pages`) = **공백**(신규 커밋 5개 전부 auto-improve backlog 커밋: `6b78504`·`f1d1dd4`·`8cf764b`·`feb5c26`·`e9fa6c5`) — entity_id INSERT·N+1·authMiddleware·dead code·SELECT* 재검토 대상인 신선 웹앱 코드 자체가 없음.
+> - **standing scan 재실행(신선 churn 부재해도 매 사이클 필수)**: ① `npm run audit:entity` — 131파일·61쿼리·**누락 0**(변동없음). ② `grep -rnE "IN \(\$\{" src/routes`(#458 미청크 동적 IN절) — **0건**. ③ authMiddleware recursive 스캔은 `find src/routes -name '*.ts'`가 131개로 직전 Area2 사이클과 동일 파일수 + churn 공백 확인되어 결과 결정론적 승계(net-new 0, 재검증 불요).
+> - **npm audit 재확인**: `npm ci` 후 11건(1 moderate·8 high·2 critical), 전부 devDependency(#613 기보고와 일치, net-new 아님).
+> - **open 5건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` = #606·#608·#609·#612·#613(변동없음, `updated_at` 전건 직전 확인 시점과 동일 — 신규 코멘트 없음).
+> - **backlog↔GitHub 절대값 재동기화**: open **5**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md는 이미 `line N` 잔여참조 0건(파일 헤더에 명시, 분할 시점부터 서술참조 전환 완료). 이번 사이클 신규 오탐/탐지 클래스 없음: 코드 churn 부재라 기존 codify된 레시피(entity_id diff·IN절 청크·authMiddleware recursive·컬럼존재성)를 적용할 신규 대상 자체가 없음.
+> - **백로그 트림 체크**: 사이클 로그 추가 후 9건 → 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(코드 churn 없음), 자동수정 0건, done-sync: open 5(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-08-16T15:44):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main`(HEAD `feb5c26`, origin과 완전 일치) → `git checkout main && git reset --hard origin/main`으로 정리. 직전 Area1 자신의 앵커(`d0473c1`)는 이번 사이클에도 유효한 조상. `npm ci`(0→81), `npx tsc --noEmit` clean.
