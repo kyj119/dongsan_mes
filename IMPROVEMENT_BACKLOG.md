@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-08-17T15:50:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-08-17T21:52:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,18 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 5 보안 + 인프라 (2026-08-17T21:52):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main`(HEAD `9728baa`, origin과 완전 일치) → `git checkout main && git reset --hard origin/main`으로 정리. 직전 Area5 자신의 앵커(`8cf764b`)는 이번 사이클에도 유효한 조상. `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: `8cf764b..HEAD`(직전 Area5 자신의 마지막 커밋 이후) 웹앱 범위(`src/routes`/`src/scripts`/`migrations`/`index.tsx`/`src/layout`/`src/pages`) = **공백**(신규 커밋 5개 전부 auto-improve backlog 커밋: `bb916ea`(hono CVE, 이미 검증완료)·`feb5c26`·`e9fa6c5`·`d142fea`·`9728baa`) — 보안 렌즈로 재검토할 신선 웹앱 코드 자체가 없음.
+> - **standing scan 재실행(신선 churn 부재해도 매 사이클 필수)**: ① 시크릿 폴백 `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43`(기존 FP, 변동없음) 1건뿐. ② 기본비밀번호 리터럴 grep → `bank.ts:302 account_password || ''`(신규 매치이나 FP — `c.env.X` 폴백 아니라 사용자 body 파라미터의 옵션 기본값, 상위에서 `req.pwd` 필수여부 사전검증됨. 시크릿 하드코딩 아님). CI yml secrets fallback·미청크 동적 IN절 = 0건.
+> - **npm audit 재확인**: `npm ci` 후 11건(1 moderate·8 high·2 critical) — `concurrently`·`vite`·`wrangler`(direct) + `esbuild`·`miniflare`·`nanoid`·`postcss`·`sharp`·`shell-quote`·`undici`·`ws`(transitive) 전부 devDependency, #613 기보고와 완전 일치, net-new 0.
+> - **open 5건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` = #606·#608·#609·#612·#613(변동없음, `updated_at` 전건 직전 확인 시점과 동일 — 신규 코멘트 없음).
+> - **backlog↔GitHub 절대값 재동기화**: open **5**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · `reason:not_planned` **4**(재실측 일치) + `reason:duplicate` 2(캐시) = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-5-security-infra.md는 이미 `line N` 잔여참조 0건(재확인). `npm run audit:skills` = area-1 파일에만 잔여 3건(이번 사이클 담당 아니므로 미수정). 이번 사이클 신규 오탐/탐지 클래스 없음(churn 0으로 codify된 레시피를 적용할 신선 대상 자체가 없음) — bank.ts:302는 FP로 확인만 하고 카탈로그 추가는 불요(이미 「기본 비밀번호 리터럴」 항목의 통상적 스캔 결과 범위 내).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 11건 → 이번 로그 추가 후 12건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(웹앱 churn 없음, npm audit 잔여는 전부 기보고 devDependency), 자동수정 0건, done-sync: open 5(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-08-17T15:50):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main`(HEAD `4932e85`, origin과 완전 일치) → `git checkout main && git reset --hard origin/main`으로 정리. 직전 Area4 자신의 앵커(`f1d1dd4`, 백로그 트림으로 로그는 빠졌으나 git 히스토리엔 존재)는 이번 사이클에도 유효한 조상. `npm ci`(0→81), `npx tsc --noEmit` clean.
