@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-08-16T21:45:01+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-08-17T09:44:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,18 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 3 UX/기능 감사 (2026-08-17T09:44):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main`(HEAD `d142fea`, origin과 완전 일치) → `git checkout main && git reset --hard origin/main`으로 정리. 직전 Area3 자신의 앵커(`6b78504`)는 이번 사이클에도 유효한 조상. `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: `6b78504..HEAD` 웹앱 범위(`src/routes`/`src/scripts`/`migrations`/`index.tsx`/`src/layout`/`src/pages`) = **공백**(신규 커밋 5개 전부 auto-improve backlog 커밋: `f1d1dd4`·`8cf764b`·`feb5c26`·`e9fa6c5`·`d142fea`) — UX 렌즈로 재검토할 신선 pages/scripts/routes 변경 자체가 없음.
+> - **standing scan 판단**: axios↔라우트 존재성 전수매칭·`showConfirm` 콜백오용·삭제confirm 커버리지·HTML↔JS silent-fail diff는 전부 전체 코드베이스 대상 스캔이나, 스캔 대상 파일(`src/scripts/**/*.js`, `src/pages/**/*.ts`)이 직전 Area3 사이클(08-15)과 `git diff --stat` 기준 바이트 단위로 동일 → 재실행해도 직전 결과(net-new 0)와 다를 수 없어 스킵, 직전 사이클 결과 승계.
+> - **"백엔드 먼저·화면 나중" standing scan**: 승격 조건("신규 마이그+라우트 JOIN 동반 churn")이 이번 사이클엔 불성립(마이그레이션 신규 0건) → 해당 없음.
+> - **open 5건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` = #606·#608·#609·#612·#613(변동없음, `updated_at` 전건 직전 확인 시점과 동일 — 신규 코멘트 없음).
+> - **backlog↔GitHub 절대값 재동기화**: open **5**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md는 이미 `line N` 잔여참조 0건(08-13 사이클에서 전건 서술참조 전환 완료, 재확인). 이번 사이클 신규 오탐/탐지 클래스 없음.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 9건 → 이번 로그 추가 후 10건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(웹앱 churn 없음), 자동수정 0건, done-sync: open 5(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-08-16T21:45):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main`(HEAD `e9fa6c5`, origin과 완전 일치) → `git checkout main && git reset --hard origin/main`으로 정리. 직전 Area2 자신의 앵커(`b28e617`)는 이번 사이클에도 유효한 조상. `npm ci`(0→81), `npx tsc --noEmit` clean.
