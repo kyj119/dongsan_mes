@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-08-18T15:44:51+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-08-18T21:45:15+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,18 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 3 UX/기능 감사 (2026-08-18T21:45):**
+> - **방법**: `git status`=워킹트리 clean(detached), `git fetch origin main` → **origin이 `de31dbf..68c2b60`로 전진** → `git checkout main && git reset --hard origin/main`(HEAD `68c2b60`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area3 자신의 앵커(`d142fea`) 기준 웹앱 범위 diff = **실질 churn 2건**: ① `a6beebe`(bank/ledger, Area 2가 이미 코드품질 렌즈로 정독·clean 판정) ② **`68c2b60` `feat(inventory): add zone selector to stock count creation modal`**(auto-improve 외부 세션 커밋, `src/scripts/inventoryCount.js` 47줄) — UX 렌즈로 신규, 직접 정독.
+> - **`68c2b60` 정독 결과**: 재고 실사 생성 모달에 **구역(zone) 선택 셀렉트를 신규 추가** — 백엔드(`inventoryCount.ts` P3 구역실사 로직, `inventory.ts:953 /dashboard/zones`)는 이미 완비돼 있었으나 모달이 `category`만 보내고 `storage_zone_id`를 안 보내 **구역별 실사가 UI로 생성 불가**하던 갭을 메움 — Area 3가 3회 누적 codify한 「백엔드 먼저·화면 나중」 표준스캔이 정확히 겨냥하는 클래스의 **해소 사례**(신규 결손 아님). 코드 품질도 양호: `escapeHtml` 전건 적용(zone_name/zone_code) · `getElementById` 신규 대상(`countZone`/`countCategory`) 가드+`console.warn` 폴백(CLAUDE.md silent-fail 컨벤션 준수) · 구역 선택 시 분류 셀렉트 비활성화로 서버측 우선순위(구역>분류)와 UI 기대값 정합 · 성공 토스트에 구역명 반영. 실사 흐름(생성→상세조회→완료) 다른 접점(`loadDetailCount`) 변경 없음 — 회귀 위험 낮음.
+> - **standing scan 재실행**: ① HTML↔JS silent-fail 전수 diff — 이번 신규 id(`countZone`/`countZoneHint`)는 같은 파일 내 자체 렌더(동적 `modalHtml`)라 (b)류 정상, cross-file 갭 아님. ② axios→라우트 존재성 — `/api/inventory/dashboard/zones`·`/api/inventory-counts`(POST) 둘 다 `inventory.ts`/`inventoryCount.ts`에 실재 확인(신규 매치 아님, 기존 엔드포인트 재사용). ③ 「백엔드 먼저·화면 나중」 표준스캔 — 이번 churn은 반대방향(화면이 뒤늦게 따라붙은 사례)이라 candidate 0.
+> - **open 5건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` = #606·#608·#609·#612·#613(변동없음, `updated_at` 전건 직전 확인 시점과 동일 — 신규 코멘트 없음).
+> - **backlog↔GitHub 절대값 재동기화**: open **5**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md는 이미 `line N` 잔여참조 0건(재확인). 이번 사이클은 실제 churn(신규 UX 기능 커밋)이 있었고 기존 codify된 「백엔드 먼저·화면 나중」 표준스캔 렌즈로 **정반대 방향(갭 해소 사례)**임을 확인 — 새 오탐/탐지 클래스 도출 없음, 기존 레시피가 정상 작동함을 재확인.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 10건 → 이번 로그 추가 후 11건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(실제 churn 2건 정독, 둘 다 정상/완결 커밋), 자동수정 0건, done-sync: open 5(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-08-18T09:44):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main`(HEAD `36ac54d`, origin과 완전 일치) → `git checkout main && git reset --hard origin/main`으로 정리. 직전 Area1 자신의 앵커(`e9fa6c5`)는 이번 사이클에도 유효한 조상. `npm ci`(0→81), `npx tsc --noEmit` clean.
