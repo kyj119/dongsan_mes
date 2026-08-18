@@ -105,12 +105,14 @@ export async function orderFormPage(c: Context<HonoEnv>) {
                             </div>
                             <div>
                                 <label id="deliveryInfoLabel" class="block text-sm font-medium text-gray-700 mb-2">배송처 주소</label>
-                                <div class="flex gap-2">
+                                <!-- 좁은 화면: [우편번호][주소검색] / [도로명] 2줄 · sm+: 한 줄.
+                                     basis-full+min-w-0 이 없으면 도로명이 축소되지 않아 버튼이 화면 밖으로 밀린다. -->
+                                <div class="flex flex-wrap gap-2">
                                     <input type="text" id="deliveryPostal" maxlength="5" inputmode="numeric" placeholder="우편번호" oninput="this.value=this.value.replace(/[^0-9]/g,'')" class="w-24 px-3 py-2 border border-gray-300 rounded-lg text-center text-sm focus:ring-2 focus:ring-blue-500">
-                                    <input type="text" id="deliveryInfo" placeholder="예: 서울시 중구 을지로 123" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                                     <button type="button" onclick="openPostcodeSearch({ postalId: 'deliveryPostal', addressId: 'deliveryInfo', detailFocusId: 'deliveryDetail' })" class="px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 whitespace-nowrap">
                                         <i class="fas fa-search mr-1"></i>주소 검색
                                     </button>
+                                    <input type="text" id="deliveryInfo" placeholder="예: 서울시 중구 을지로 123" class="basis-full sm:basis-0 sm:flex-1 min-w-0 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                                 </div>
                                 <input type="text" id="deliveryDetail" placeholder="상세주소 (예: 3층 301호, 동산인쇄 앞)" class="w-full mt-2 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                             </div>
@@ -451,12 +453,12 @@ function orderFormDistPage(c: Context<HonoEnv>) {
                             </div>
                             <div>
                                 <label id="deliveryAddressLabel" class="block text-sm font-medium text-gray-700 mb-2">배송처 주소</label>
-                                <div class="flex gap-2">
+                                <div class="flex flex-wrap gap-2">
                                     <input type="text" id="distDeliveryPostal" maxlength="5" inputmode="numeric" placeholder="우편번호" oninput="this.value=this.value.replace(/[^0-9]/g,'')" class="w-24 px-3 py-2 border border-gray-300 rounded-lg text-center text-sm focus:ring-2 focus:ring-blue-500">
-                                    <input type="text" id="deliveryAddress" placeholder="예: 서울시 중구 을지로 123" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                                     <button type="button" onclick="openPostcodeSearch({ postalId: 'distDeliveryPostal', addressId: 'deliveryAddress', detailFocusId: 'distDeliveryDetail' })" class="px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 whitespace-nowrap">
                                         <i class="fas fa-search mr-1"></i>주소 검색
                                     </button>
+                                    <input type="text" id="deliveryAddress" placeholder="예: 서울시 중구 을지로 123" class="basis-full sm:basis-0 sm:flex-1 min-w-0 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                                 </div>
                                 <input type="text" id="distDeliveryDetail" placeholder="상세주소 (예: 3층 301호, 동산인쇄 앞)" class="w-full mt-2 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                             </div>
