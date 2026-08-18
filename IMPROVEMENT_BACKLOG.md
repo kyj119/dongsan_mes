@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-08-18T03:44:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-08-18T09:44:09+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,20 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 1 프로덕션 헬스 (2026-08-18T09:44):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main`(HEAD `36ac54d`, origin과 완전 일치) → `git checkout main && git reset --hard origin/main`으로 정리. 직전 Area1 자신의 앵커(`e9fa6c5`)는 이번 사이클에도 유효한 조상. `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: `e9fa6c5..HEAD`(직전 Area1 자신의 마지막 커밋 이후) 웹앱 범위(`src/routes`/`src/scripts`/`migrations`/`index.tsx`/`src/layout`/`src/pages`) = **공백**(신규 커밋 5개 전부 auto-improve backlog 커밋: `d142fea`·`4932e85`·`9728baa`·`4386c76`·`36ac54d`) — 정적 코드 재검토 대상 없음.
+> - **배포 CI**: `deploy.yml` 최근 10런(08-15 06:44~08-17 18:45) **전부 success**. 최신런(`36ac54d`, 18:45:00 완료, 현재 HEAD와 일치) success.
+> - **backup.yml**: 최근 10런(08-08~08-17) **전부 success**(08-06 known failure는 조회 윈도 밖으로 이탈, 재발 없음).
+> - **verify.yml**: 여전히 `active`이나 실행 이력 미확인(#608 기보고와 일치, net-new 아님). **e2e.yml**: `state: disabled_manually` 재확인(기존 정책, 회귀 아님).
+> - **egress 제약(재확인)**: `curl --max-time 8 https://webapp-9i0.pages.dev/api/orders` → CONNECT tunnel 실패(exit 56, allowlist 밖). `CLOUDFLARE_API_TOKEN` 미설정(`env | grep CLOUDFLARE` = 0건) → 직접 prod 조회 불가, 기존과 동일 제약 — CI(자체 네트워크 보유)의 deploy.yml 성공 이력(Smoke test 포함)을 prod 헬스 대리 지표로 사용.
+> - **open 5건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` = #606·#608·#609·#612·#613(변동없음, `updated_at` 전건 직전 확인 시점과 동일 — 신규 코멘트 없음).
+> - **backlog↔GitHub 절대값 재동기화**: open **5**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — 이번 사이클 신규 오탐/탐지 클래스 없음. 코드 churn 부재 + CI 전부 green이라 기존 codify된 판별 레시피(cold-start transient·CF finalize transient·smoke stale probe·write-path 맹점·prod↔main 디버전스)를 적용할 신규 사례 자체가 없음.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 8건 → 이번 로그 추가 후 9건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(코드 churn 없음 + CI 전부 green), 자동수정 0건, done-sync: open 5(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-08-18T03:44):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main`(HEAD `4386c76`, origin과 완전 일치) → `git checkout main && git reset --hard origin/main`으로 정리. 직전 Area6 자신의 앵커(`8cf764b`)는 이번 사이클에도 유효한 조상(fast-forward 16커밋). `npm ci`(0→81), `npx tsc --noEmit` clean.
