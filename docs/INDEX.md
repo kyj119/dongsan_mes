@@ -51,6 +51,8 @@
 | `HANDOFF-doc-diet.md` | 🟢 | **상태판·백로그 다이어트 인계** — 복붙용 프롬프트 포함. PROJECT_STATUS가 읽기 상한 초과로 잘리는 현행 장애 해소용 |
 | `HANDOFF-sunmyung-import-execution.md` | 🟡 | 선명 매입매출 이관 실행 인계 (이관 완결) |
 | `HANDOFF-sunmyung-purchase.md` | 🟡 | 선명 매입 인계 (이관 완결) |
+| `HANDOFF-bleed-repeat-last-pixel.md` | 🟡 | 도련(Repeat Last Pixel) 배선 인계 — 배선·게이트 통과, **실기 검증·축3/축4 배포 대기**. spec = `superpowers/specs/2026-07-31-cut-file-panel.md` |
+| `EQUIPMENT_SURVEY.md` | 🟡 | 장비 전수조사 시트(entity 1, 24대) — 현장 입력 대기. 실물 정본은 `equipment` 테이블 |
 | ~~`bank-review-2026-06-24.md`~~ | 🗄️ | 완결 → `archive/` 이동 (2026-07-02) |
 | ~~`UNIVERSAL_LOGWATCHER_DESIGN.md`~~ | ❌ | **파일 없음** — 인덱스 유령 항목이었음, 2026-07-27 제거 |
 | ~~`integrations/HANJIN_INTEGRATION_ROADMAP.md`~~ | ❌ | **파일·디렉토리 없음** — 유령 항목, 2026-07-27 제거. 한진 관련 현황은 spec `2026-06-11-hanjin-courier-decision.md` |
@@ -61,6 +63,8 @@
 |---|---|---|
 | `2026-07-27-list-sort-tiebreak.md` | 🟢 | 목록 정렬 tie-break 전수 감사 정본 (CLAUDE.md 함정 항목이 참조) |
 | `2026-07-10-kst-english-audit.md` | 🟡 | KST/영문 표기 감사 |
+| `2026-07-29-structure-audit.md` | 🟡 | 코드 구조 전수 감사(src 387파일) — `npm run audit:structure` 산출. 분할 후보·entity 비대칭·tie-break 잠복 목록 |
+| `2026-08-08-list-ux-ecount-gap.md` | 🟡 | 목록 UX 이카운트 갭 감사 |
 
 ## 3-2. `docs/receivables/` — 채권 실무 산출물
 
@@ -70,6 +74,26 @@
 | `sunmyung-purchase-ledger-fund-match-diagnosis-2026-07-20.md` | 🟡 | 선명 매입원장↔자금 매칭 진단 |
 | `intercompany-mirror/` | 🟢 | 법인간거래 대사 산출물 (git 미추적 — 커밋 여부 확인 필요) |
 | `선명_*.sql` / `*.csv` 다수 | 🟡 | 일회성 반영·롤백 스크립트 + 분류표. **실행 이력물이라 삭제 전 확인** |
+
+## 3-3. `docs/analysis/` — 일회성 진단·분석 기록
+
+| 문서 | 상태 | 성격 · 비고 |
+|---|---|---|
+| `*.md` 8건 | 🟡 | 재무·원가·그룹 진단 기록(2026-08). 최신 정본 = `2026-08-12-group-diagnosis.md`. **/reports 재무 숫자 인용 금지** 규칙은 auto-memory `design-finance-diagnosis` |
+| `*-rollback.sql` | 🟡 | prod 일괄 작업 롤백 스크립트(백업 테이블 참조 — PII 리터럴 없음). **삭제 전 적용 여부 확인** |
+| `*.csv` / `*.xlsx` | ⛔ | 통장·카드·거래처 원자료 = PII → **gitignore**(2026-08-18). 로컬 산출물이며 재생성 가능 |
+
+## 3-4. 이관·분석 작업 디렉터리 (데이터 덤프는 gitignore, 문서·스크립트만 추적)
+
+| 위치 | 상태 | 성격 · 비고 |
+|---|---|---|
+| `dongsan-import/` | 🟡 | 동산 이카운트 이관 — **완결**(818곳 잔액 오차 0). md 9건 + 규칙 py. csv·`load/`·backup은 PII로 미추적 |
+| `sunmyung-import/` · `cheongju-import/` | 🟡 | 선명·청주 이관 산출물(sql/csv). 실행 이력물 — 삭제 전 확인 |
+| `order-file-matching/` | 🟢 | **파일→주문서 자동생성 백테스트** — 성립(그룹 90.7%). 정본 문서 = `HOW-IT-WORKS.md`. py 36건 = 분석 하네스, csv는 PII로 미추적 |
+| `price/` · `pricing/` | 🟡 | 단가표 작업 산출물(csv·xlsx) |
+| `mockups/` | 🟡 | 마감 스티커 A5/A6 인쇄 목업 — 프린터 구매 후 실물 테스트 대기 |
+| `design/ASSET_LIABILITY_DESIGN.md` | 🟡 | 자산·부채 설계 초안 |
+| `specs/` 3건 | 🟡 | superpowers 이전 spec 잔여분 |
 
 ## 4. `docs/superpowers/specs/` — 활성 spec **40건** (2026-07-27 실측)
 

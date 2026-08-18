@@ -193,3 +193,16 @@ publish-8c/
 # 엑셀 lock 파일 — 검토 중 열어 두면 생긴다. 커밋에 섞이면 rebase 가 막힌다(2026-08-09)
 ~$*
 LogWatcher/kit/out/
+
+# zscan 로컬 캐시(정본 아님 — 지워도 서버 멱등으로 복구)
+.zscan-ledger.json
+.zscan-cycle.lock
+zscan-cycle.log
+prune_links.sql
+sync_clients.sql
+
+# 분석 산출물 데이터 덤프 (통장·카드 거래·거래처명 = PII/금융정보 — 커밋 금지)
+# 분석 문서(.md)·롤백 SQL(백업테이블 참조라 리터럴 PII 없음)·규칙 스크립트(.py)는 추적 대상.
+docs/analysis/*.csv
+docs/analysis/*.xlsx
+docs/order-file-matching/*.csv
