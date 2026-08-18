@@ -87,15 +87,31 @@ async function createNewCount() {
     if (catRes.data.success) categories = catRes.data.data.categories || [];
   } catch(e) {}
 
+  // 구역(창고) 목록 — 주간 실사는 구역 단위가 기본이다(분류 실사는 원자재 790품목이 통째로 뜬다).
+  var zones = [];
+  try {
+    var zRes = await axios.get('/api/inventory/dashboard/zones');
+    if (zRes.data.success) zones = zRes.data.data.zones || [];
+  } catch(e) {}
+
   var opts = '<option value="">전체 실사 (모든 품목)</option>';
   categories.forEach(function(c) {
     opts += '<option value="' + c.category + '">' + c.category + ' (' + c.item_count + '건)</option>';
   });
 
+  var zoneOpts = '<option value="">(구역 지정 안 함 — 아래 분류로 실사)</option>';
+  zones.forEach(function(z) {
+    zoneOpts += '<option value="' + z.id + '">' + escapeHtml(z.zone_name || '')
+      + (z.zone_code ? ' (' + escapeHtml(z.zone_code) + ')' : '') + '</option>';
+  });
+
   var modalHtml = '<div id="countCreateModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:9999">'
-    + '<div style="background:#fff;border-radius:12px;padding:24px;width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.2)">'
+    + '<div style="background:#fff;border-radius:12px;padding:24px;width:400px;box-shadow:0 20px 60px rgba(0,0,0,0.2)">'
     + '<h3 style="font-size:16px;font-weight:700;margin-bottom:16px">새 재고 실사</h3>'
-    + '<label style="font-size:12px;color:#6b7280;margin-bottom:4px;display:block">실사 범위</label>'
+    + '<label style="font-size:12px;color:#6b7280;margin-bottom:4px;display:block">구역 (주간 실사는 여기서 고릅니다)</label>'
+    + '<select id="countZone" onchange="onCountZoneChange()" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;margin-bottom:4px">' + zoneOpts + '</select>'
+    + '<div id="countZoneHint" style="font-size:11px;color:#9ca3af;margin-bottom:12px">구역을 고르면 그 구역에 배정된 품목만 뜹니다.</div>'
+    + '<label style="font-size:12px;color:#6b7280;margin-bottom:4px;display:block">실사 범위 (구역 미지정 시)</label>'
     + '<select id="countCategory" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;margin-bottom:12px">' + opts + '</select>'
     + '<label style="font-size:12px;color:#6b7280;margin-bottom:4px;display:block">메모 (선택)</label>'
     + '<input id="countNotes" type="text" placeholder="예: 월말 정기 실사" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;margin-bottom:16px">'
@@ -107,21 +123,42 @@ async function createNewCount() {
   document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
+// 구역을 고르면 분류 선택은 의미가 없다(서버가 구역을 우선한다) — 비활성화해 오해를 막는다.
+function onCountZoneChange() {
+  var zoneEl = document.getElementById('countZone');
+  var catEl = document.getElementById('countCategory');
+  var hintEl = document.getElementById('countZoneHint');
+  if (!zoneEl || !catEl) { console.warn('[inventoryCount] #countZone/#countCategory not found'); return; }
+  var picked = !!zoneEl.value;
+  catEl.disabled = picked;
+  catEl.style.background = picked ? '#f3f4f6' : '';
+  if (hintEl) {
+    hintEl.textContent = picked
+      ? '이 구역에 배정된 품목만 실사표에 뜹니다. 분류 선택은 무시됩니다.'
+      : '구역을 고르면 그 구역에 배정된 품목만 뜹니다.';
+  }
+}
+
 async function submitNewCount() {
-  var category = document.getElementById('countCategory').value;
+  var zoneEl = document.getElementById('countZone');
+  var zoneId = zoneEl ? zoneEl.value : '';
+  var category = zoneId ? '' : document.getElementById('countCategory').value;
   var notes = document.getElementById('countNotes').value;
   var modal = document.getElementById('countCreateModal');
 
   try {
     var res = await axios.post('/api/inventory-counts', {
-      count_type: category ? 'PERIODIC' : 'FULL',
+      count_type: zoneId ? 'ZONE' : (category ? 'PERIODIC' : 'FULL'),
+      storage_zone_id: zoneId || '',
       category: category || '',
       notes: notes
     });
 
     if (res.data.success) {
       if (modal) modal.remove();
-      var label = category ? '[' + category + '] ' : '[전체] ';
+      var label = res.data.data.storage_zone_name
+        ? '[' + res.data.data.storage_zone_name + '] '
+        : (category ? '[' + category + '] ' : '[전체] ');
       showToast(label + '실사 생성됨: ' + res.data.data.count_number + ' (' + (res.data.data.item_count || '?') + '건)', 'success');
       _detailCountId = res.data.data.id;
       loadDetailCount(_detailCountId);
