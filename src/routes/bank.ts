@@ -2710,46 +2710,65 @@ bankRouter.post('/auto-sync', requireRole('ADMIN'), async (c) => {
 // ---------------------------------------------------------------------------
 bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
-    // clients 테이블에는 entity_id가 없으므로 entityFilter 미사용
+    // 사업자(법인)별 분리 (2026-08-18): clients 에는 entity_id 가 없지만 **잔액 원천**에는 전부 있다
+    //   (order_billing_groups.entity_id · payments.entity_id · adjustments.entity_id).
+    //   → 집계 단위 = 거래처 × 법인. 사이드바에서 법인을 고르면 그 법인 미수만, '전체' 모드면 전 법인 행 + 사업자 열.
+    //   기존(법인 무시·거래처 단위 합산) 대비 prod 총액 8.87억 → 8.89억(+0.28%, 236행 → 264행).
+    //   차이는 한 거래처가 A법인엔 미수(+)·B법인엔 선수(−)인 경우로, 법인 간 상계가 풀린 게 정확한 표시다.
     // 미수금 일원화(2026-07-17): aging 기준 = 채권 나이(oldest_unpaid_date). ledger/reports 와 동일 SSOT.
-    //   entityScoped=false → bank 전체합산(기존 동작 유지, clients 무 entity_id).
-    const oup = buildOldestUnpaidJoin(c, { entityScoped: false })
+    const entityId = getEntityId(c)          // 0 = ADMIN 전체 모드
+    const recent90From = kstYmd(-90)         // date('now') 금지 규약 — KST 기준일을 바인드
+    const oup = buildOldestUnpaidJoin(c, { byEntity: 'ar.eid' })
     const { results: receivables } = await c.env.DB.prepare(`
       -- 미수금 = clients.balance 캐시(폐기·split billing P3) 대신 라이브 파생.
       -- deriveClientBalance와 동일 정의: order_billing_groups[BILLED] − payments − adjustments.
-      -- /accounting·ar-* 와 일치. clients엔 entity_id 없어 엔티티 무관(거래처 전체 합산, 기존 동작 유지).
+      -- 다른 점은 집계 키뿐 — 거래처(client_id) 단독이 아니라 (거래처, 청구법인) 이다.
       SELECT
         c.id, c.client_name, c.representative,
+        ar.eid AS entity_id,
+        ar.balance AS balance,
         oup.oldest_unpaid_date as oldest_unpaid_date,
-        (COALESCE(b.amt, 0) - COALESCE(pp.amt, 0) - COALESCE(aa.amt, 0)) AS balance,
         c.credit_risk_grade,
         c.payment_cycle_type, c.payment_terms_days, c.closing_day, c.payment_month_offset, c.payment_day,
-        (SELECT MAX(p.payment_date) FROM payments p WHERE p.client_id = c.id) as last_payment_date,
-        (SELECT COUNT(*) FROM payments p WHERE p.client_id = c.id) as total_payments,
-        (SELECT SUM(p.amount) FROM payments p WHERE p.client_id = c.id
-         AND p.payment_date >= date('now', '-90 days')) as recent_90d_payments,
-        (SELECT MIN(COALESCE(o.accounting_date, o.billed_at)) FROM orders o
-         WHERE o.client_id = c.id AND o.billing_status = 'BILLED' AND o.billed_at IS NOT NULL) as earliest_billed_at
+        pm.last_payment_date as last_payment_date,
+        COALESCE(pm.total_payments, 0) as total_payments,
+        pm.recent_90d_payments as recent_90d_payments,
+        eb.earliest_billed_at as earliest_billed_at
       FROM clients c
+      JOIN (
+        SELECT cid, eid, SUM(amt) AS balance FROM (
+          SELECT o.client_id AS cid, COALESCE(g.entity_id, 1) AS eid, COALESCE(g.billed_amount, 0) AS amt
+          FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+          WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'
+          UNION ALL
+          SELECT client_id, COALESCE(entity_id, 1), -amount FROM payments
+          UNION ALL
+          SELECT client_id, COALESCE(entity_id, 1), -amount FROM adjustments
+        ) GROUP BY cid, eid
+      ) ar ON ar.cid = c.id
       LEFT JOIN (
-        SELECT o.client_id AS cid, SUM(g.billed_amount) AS amt
+        SELECT o.client_id AS cid, COALESCE(g.entity_id, 1) AS eid,
+               MIN(COALESCE(g.accounting_date, g.billed_at)) AS earliest_billed_at
         FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
         WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'
-        GROUP BY o.client_id
-      ) b ON b.cid = c.id
+          AND COALESCE(g.accounting_date, g.billed_at) IS NOT NULL
+        GROUP BY o.client_id, COALESCE(g.entity_id, 1)
+      ) eb ON eb.cid = c.id AND eb.eid = ar.eid
       LEFT JOIN (
-        SELECT client_id AS cid, SUM(amount) AS amt FROM payments GROUP BY client_id
-      ) pp ON pp.cid = c.id
-      LEFT JOIN (
-        SELECT client_id AS cid, SUM(amount) AS amt FROM adjustments GROUP BY client_id
-      ) aa ON aa.cid = c.id${oup.sql}
+        SELECT client_id AS cid, COALESCE(entity_id, 1) AS eid,
+               MAX(payment_date) AS last_payment_date,
+               COUNT(*) AS total_payments,
+               SUM(CASE WHEN payment_date >= ? THEN amount ELSE 0 END) AS recent_90d_payments
+        FROM payments GROUP BY client_id, COALESCE(entity_id, 1)
+      ) pm ON pm.cid = c.id AND pm.eid = ar.eid${oup.sql}
       WHERE c.is_active = 1${excludeArExcludedClientsSql('c.id')}
-        AND (COALESCE(b.amt, 0) - COALESCE(pp.amt, 0) - COALESCE(aa.amt, 0)) > 0
-      ORDER BY balance DESC
-    `).bind(...oup.params).all<{
+        AND ar.balance > 0${entityId ? ' AND ar.eid = ?' : ''}
+      ORDER BY ar.eid ASC, ar.balance DESC, c.id ASC
+    `).bind(recent90From, ...oup.params, ...(entityId ? [entityId] : [])).all<{
       id: number
       client_name: string
       representative: string | null
+      entity_id: number
       balance: number
       credit_risk_grade: string | null
       payment_cycle_type: string | null
@@ -2763,6 +2782,12 @@ bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER'), async (c) => {
       earliest_billed_at: string | null
       oldest_unpaid_date: string | null
     }>()
+
+    // 사업자명 — 전체 모드 '사업자' 열/소계 라벨. 3건뿐이라 전량 로드.
+    const { results: entityRows } = await c.env.DB.prepare(
+      'SELECT id, COALESCE(short_name, name) AS name FROM entities ORDER BY sort_order ASC, id ASC'
+    ).all<{ id: number; name: string }>()
+    const entityNameMap = new Map(entityRows.map(e => [e.id, e.name]))
 
     // provision matrix (회수율) 로드 — 4-3b
     const provision = await loadProvision(c.env.DB)
@@ -2779,6 +2804,11 @@ bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER'), async (c) => {
       aging_over: 0, // 90일 초과 미입금
       no_payment: 0, // 입금 이력 없음
     }
+    // 사업자별 소계 — 전체 모드 표의 법인별 소계 행
+    const byEntityMap = new Map<number, {
+      entity_id: number; entity_name: string; client_count: number
+      total_receivable: number; total_expected_collection: number
+    }>()
 
     const clients = receivables.map(r => {
       summary.total_receivable += r.balance
@@ -2804,6 +2834,16 @@ bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER'), async (c) => {
       summary.total_expected_collection += expected_collection
       summary.total_expected_loss += expected_loss
 
+      const entity_name = entityNameMap.get(r.entity_id) || `법인 ${r.entity_id}`
+      const agg = byEntityMap.get(r.entity_id) || {
+        entity_id: r.entity_id, entity_name, client_count: 0,
+        total_receivable: 0, total_expected_collection: 0,
+      }
+      agg.client_count++
+      agg.total_receivable += r.balance
+      agg.total_expected_collection += expected_collection
+      byEntityMap.set(r.entity_id, agg)
+
       // 예상 입금일: 최초 미입금 청구건(billed_at) + 거래처 결제주기. 청구건 없으면 null.
       const expected_payment_date = r.earliest_billed_at
         ? computeExpectedPaymentDate(r.earliest_billed_at, {
@@ -2812,10 +2852,15 @@ bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER'), async (c) => {
           })
         : null
 
-      return { ...r, aging_category, loss_rate, collection_rate: 1 - loss_rate, expected_collection, expected_loss, expected_payment_date }
+      return { ...r, entity_name, aging_category, loss_rate, collection_rate: 1 - loss_rate, expected_collection, expected_loss, expected_payment_date }
     })
 
-    return c.json({ success: true, data: { summary, clients } })
+    // entity_mode: 'all' = 사업자 열·소계 표시, 'single' = 선택 법인만(열 숨김)
+    const by_entity = [...byEntityMap.values()].sort((a, b) => a.entity_id - b.entity_id)
+    return c.json({
+      success: true,
+      data: { summary, by_entity, entity_mode: entityId ? 'single' : 'all', entity_id: entityId, clients },
+    })
   } catch (error) {
     console.error('Receivables error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

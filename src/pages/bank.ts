@@ -350,12 +350,15 @@ export const bankPageContent = `
               <div class="text-xl font-bold text-red-700" id="rcvCritical">-</div>
             </div>
           </div>
+          <!-- 사업자별 소계 (전체 모드에서만 표시 — 특정 법인 선택 시 그 법인만 보므로 불필요) -->
+          <div id="rcvEntityBreakdown" class="hidden flex-wrap items-center gap-2 mb-4 text-sm"></div>
           <!-- 미수금 테이블 -->
           <div class="ds-card overflow-hidden">
             <div class="overflow-x-auto" style="max-height: calc(100vh - 320px); overflow-y: auto;">
               <table class="w-full border-collapse ds-table ds-table-striped">
                 <thead>
                   <tr class="bg-gray-50 border-b">
+                    <th id="rcvEntityTh" class="col-tag px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden">사업자</th>
                     <th class="col-name px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">거래처</th>
                     <th class="col-tag px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">대표자</th>
                     <th class="col-amount px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">미수금</th>
@@ -369,7 +372,7 @@ export const bankPageContent = `
                   </tr>
                 </thead>
                 <tbody id="receivablesTableBody">
-                  <tr><td colspan="10" class="text-center py-10 text-gray-400">로딩 중...</td></tr>
+                  <tr><td colspan="11" class="text-center py-10 text-gray-400">로딩 중...</td></tr>
                 </tbody>
               </table>
             </div>

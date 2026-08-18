@@ -1677,12 +1677,16 @@
   function loadReceivables() {
     var tbody = document.getElementById('receivablesTableBody');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>로딩 중...</td></tr>';
+    var COLS = 11;   // 사업자 열 포함 (단일 법인 모드에선 열이 숨겨져도 colspan 은 그대로 두면 됨)
+    tbody.innerHTML = '<tr><td colspan="' + COLS + '" class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>로딩 중...</td></tr>';
 
     axios.get('/api/bank/receivables').then(function(r) {
       var data = r.data.data || {};
       var summary = data.summary || {};
       var clientList = data.clients || [];
+      // 사업자별 분리: 'all'(사이드바 전체 모드) = 사업자 열 + 법인별 소계, 'single' = 선택 법인만
+      var showEntity = (data.entity_mode === 'all');
+      var byEntity = data.by_entity || [];
 
       // KPI
       document.getElementById('rcvTotal').textContent = (summary.total_receivable || 0).toLocaleString() + '원';
@@ -1696,13 +1700,58 @@
       document.getElementById('rcvDanger').textContent = (summary.aging_90 || 0) + '개사';
       document.getElementById('rcvCritical').textContent = ((summary.aging_over || 0) + (summary.no_payment || 0)) + '개사';
 
+      // 사업자 열 표시 토글
+      var entTh = document.getElementById('rcvEntityTh');
+      if (entTh) entTh.classList.toggle('hidden', !showEntity);
+
+      // 사업자별 요약 칩 (전체 모드 전용)
+      var brk = document.getElementById('rcvEntityBreakdown');
+      if (brk) {
+        if (showEntity && byEntity.length) {
+          brk.className = 'flex flex-wrap items-center gap-2 mb-4 text-sm';
+          brk.innerHTML = byEntity.map(function(e) {
+            return '<span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-200">'
+              + '<span class="font-medium text-gray-700">' + escHtml(e.entity_name) + '</span>'
+              + '<span class="font-semibold text-red-600 tabular-nums">' + Number(e.total_receivable || 0).toLocaleString() + '원</span>'
+              + '<span class="text-xs text-gray-400">' + (e.client_count || 0) + '개사</span>'
+              + '</span>';
+          }).join('');
+        } else {
+          brk.className = 'hidden';
+          brk.innerHTML = '';
+        }
+      }
+
       if (!clientList.length) {
-        tbody.innerHTML = '<tr><td colspan="10" class="text-center py-10 text-gray-400">미수금이 있는 거래처가 없습니다</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + COLS + '" class="text-center py-10 text-gray-400">미수금이 있는 거래처가 없습니다</td></tr>';
         return;
       }
 
+      // 법인별 소계 행 — 서버가 (법인 ASC, 잔액 DESC) 로 정렬해 주므로 경계에서 끊어 넣는다
+      function subtotalRow(entityId, count, sumBal, sumExp) {
+        var ent = byEntity.filter(function(e) { return e.entity_id === entityId; })[0];
+        var name = ent ? ent.entity_name : ('법인 ' + entityId);
+        return '<tr class="bg-gray-50 border-t border-b font-semibold text-gray-700">'
+          + '<td colspan="3" class="px-3 py-2 text-right">' + escHtml(name) + ' 소계 <span class="text-xs font-normal text-gray-400">(' + count + '개사)</span></td>'
+          + '<td class="px-3 py-2 text-right text-red-600 tabular-nums">' + sumBal.toLocaleString() + '원</td>'
+          + '<td colspan="2"></td>'
+          + '<td class="px-3 py-2 text-right text-blue-600 tabular-nums">' + sumExp.toLocaleString() + '원</td>'
+          + '<td colspan="4"></td>'
+          + '</tr>';
+      }
+
       var html = '';
+      var grpEntity = null, grpCount = 0, grpBal = 0, grpExp = 0;
       clientList.forEach(function(cl) {
+        if (showEntity && grpEntity !== null && cl.entity_id !== grpEntity) {
+          html += subtotalRow(grpEntity, grpCount, grpBal, grpExp);
+          grpCount = 0; grpBal = 0; grpExp = 0;
+        }
+        grpEntity = cl.entity_id;
+        grpCount++;
+        grpBal += Number(cl.balance) || 0;
+        grpExp += Number(cl.expected_collection) || 0;
+
         var agingBadge = '';
         switch (cl.aging_category) {
           case 'normal':  agingBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700"><i class="fas fa-check-circle mr-1"></i>정상</span>'; break;
@@ -1713,6 +1762,7 @@
         }
 
         html += '<tr class="tx-row">';
+        if (showEntity) html += '<td class="px-3 py-2 text-sm text-gray-600 whitespace-nowrap">' + escHtml(cl.entity_name || '') + '</td>';
         html += '<td class="px-3 py-2 font-medium text-gray-800" title="' + escHtml(cl.client_name) + '">' + escHtml(cl.client_name) + '</td>';
         html += '<td class="px-3 py-2 text-sm text-gray-500" title="' + escHtml(cl.representative || '') + '">' + escHtml(cl.representative || '') + '</td>';
         html += '<td class="px-3 py-2 text-right font-semibold text-red-600 tabular-nums">' + Number(cl.balance).toLocaleString() + '원</td>';
@@ -1725,9 +1775,10 @@
         html += '<td class="px-3 py-2 text-center">' + agingBadge + '</td>';
         html += '</tr>';
       });
+      if (showEntity && grpEntity !== null) html += subtotalRow(grpEntity, grpCount, grpBal, grpExp);
       tbody.innerHTML = html;
     }).catch(function() {
-      tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8 text-red-400">미수금 현황 로딩 실패</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="' + COLS + '" class="text-center py-8 text-red-400">미수금 현황 로딩 실패</td></tr>';
     });
   }
 

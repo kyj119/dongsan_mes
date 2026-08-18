@@ -337,7 +337,10 @@ apRouter.get('/purchase-settlement', async (c) => {
       .map(s => {
         const po = poMap.get(s.id)
         const pp = ppMap.get(s.id)
-        if (!po && !pp) return null
+        // 기간 내 거래(발주·지급)가 없어도 **잔액이 남아 있으면 표시**한다 (AR settlement 과 동일 규약).
+        //   기존 `!po && !pp` 제외는 미지급 잔액만 있는 업체를 목록에서 통째로 숨겨,
+        //   합계행 '미지급금' KPI 까지 과소집계했다. 셋(발주·지급·잔액) 다 없을 때만 제외.
+        if (!po && !pp && Math.round(s.purchase_balance || 0) === 0) return null
         return {
           id: s.id,
           client_code: s.client_code,

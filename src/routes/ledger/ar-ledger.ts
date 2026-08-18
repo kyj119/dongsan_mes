@@ -14,6 +14,7 @@ import { kstYm, kstYear, kstYmd } from '../../utils/kstDate'
 import { isInternalEntityClient } from '../../constants/intercompany'
 import { excludeArExcludedClientsSql } from '../../constants/arPolicy'
 import {
+  arOrderDateExpr,
   type ClientRow, type OrderRow, type PaymentRow, type AdjustmentRow,
   type OrderAggRow, type PaymentAggRow, type MonthlyOrderRow, type MonthlyPaymentRow,
 } from './ar-helpers'
@@ -56,16 +57,17 @@ arLedgerRouter.get('/client/:clientId', async (c) => {
     `
     const ordersParams: any[] = [clientId, ...ordersEfParams]
 
+    // 기간 기준일 = 업무일자(order_date) — 매입 원장과 통일. created_at(UTC) 기준은 KST 새벽 주문이 전날로 밀렸다.
     if (startDate) {
-      ordersQuery += ' AND date(created_at) >= ?'
+      ordersQuery += ` AND ${arOrderDateExpr()} >= ?`
       ordersParams.push(startDate)
     }
     if (endDate) {
-      ordersQuery += ' AND date(created_at) <= ?'
+      ordersQuery += ` AND ${arOrderDateExpr()} <= ?`
       ordersParams.push(endDate)
     }
 
-    ordersQuery += ' ORDER BY created_at ASC, id ASC'  // 정렬 규약: 고유키 tie-break
+    ordersQuery += ` ORDER BY ${arOrderDateExpr()} ASC, id ASC`  // 정렬 규약: 고유키 tie-break
     const { results: orders } = await c.env.DB.prepare(ordersQuery).bind(...ordersParams).all<OrderRow>()
 
     // Get order items (주문 품목 라인) for all orders
@@ -146,7 +148,7 @@ arLedgerRouter.get('/client/:clientId', async (c) => {
     const ordSums = await c.env.DB.prepare(`
       SELECT
         COALESCE(SUM(CASE WHEN g.billing_status = 'BILLED' THEN COALESCE(g.billed_amount, 0) ELSE 0 END), 0) AS all_debit,
-        COALESCE(SUM(CASE WHEN g.billing_status = 'BILLED' AND date(o.created_at) < ? THEN COALESCE(g.billed_amount, 0) ELSE 0 END), 0) AS open_debit
+        COALESCE(SUM(CASE WHEN g.billing_status = 'BILLED' AND ${arOrderDateExpr('o')} < ? THEN COALESCE(g.billed_amount, 0) ELSE 0 END), 0) AS open_debit
       FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
       WHERE o.client_id = ? AND o.status != 'CANCELLED'${gOrdEf}
     `).bind(startDate, clientId, ...gOrdEfP).first<{ all_debit: number; open_debit: number }>()
@@ -193,7 +195,8 @@ arLedgerRouter.get('/client/:clientId', async (c) => {
       ...billedOrders.map(o => ({
         type: 'order' as const,
         order_id: o.id,
-        date: o.created_at,
+        // 표시·정렬 일자 = 업무일자(매입 원장과 동일). created_at 은 UTC 타임스탬프라 KST 새벽 건이 전날로 보였다.
+        date: o.order_date || (o.created_at ? o.created_at.slice(0, 10) : ''),
         description: `주문: ${o.order_number}`,
         debit: Number(o.billed_amount) || Number(o.final_amount) || 0,
         credit: 0,
@@ -297,9 +300,9 @@ arLedgerRouter.get('/client/:clientId/export/csv', async (c) => {
       WHERE client_id = ?${csvOrdersEf}
     `
     const ordersParams: any[] = [clientId, ...csvOrdersEfParams]
-    if (startDate) { ordersQuery += ' AND date(created_at) >= ?'; ordersParams.push(startDate) }
-    if (endDate) { ordersQuery += ' AND date(created_at) <= ?'; ordersParams.push(endDate) }
-    const { results: orders } = await c.env.DB.prepare(ordersQuery + ' ORDER BY created_at ASC').bind(...ordersParams).all<OrderRow>()
+    if (startDate) { ordersQuery += ` AND ${arOrderDateExpr()} >= ?`; ordersParams.push(startDate) }
+    if (endDate) { ordersQuery += ` AND ${arOrderDateExpr()} <= ?`; ordersParams.push(endDate) }
+    const { results: orders } = await c.env.DB.prepare(ordersQuery + ` ORDER BY ${arOrderDateExpr()} ASC, id ASC`).bind(...ordersParams).all<OrderRow>()
 
     // Payments (입금)
     const { clause: csvPaymentsEf, params: csvPaymentsEfParams } = entityFilter(c)
@@ -390,8 +393,9 @@ arLedgerRouter.get('/settlement', async (c) => {
     const { clause: settlOrderEf, params: settlOrderEfParams } = entityFilter(c, 'g')
     let orderFilter = settlOrderEf
     const orderParams: any[] = [...settlOrderEfParams]
-    if (startDate) { orderFilter += ' AND date(o.created_at) >= ?'; orderParams.push(startDate) }
-    if (endDate) { orderFilter += ' AND date(o.created_at) <= ?'; orderParams.push(endDate) }
+    // 기간 기준일 = 업무일자(order_date) — 매입 정산(po.order_date)과 통일
+    if (startDate) { orderFilter += ` AND ${arOrderDateExpr('o')} >= ?`; orderParams.push(startDate) }
+    if (endDate) { orderFilter += ` AND ${arOrderDateExpr('o')} <= ?`; orderParams.push(endDate) }
 
     // Build payment date filter
     const { clause: settlPaymentEf, params: settlPaymentEfParams } = entityFilter(c, 'p')
@@ -543,12 +547,12 @@ arLedgerRouter.get('/monthly-summary', async (c) => {
     const { clause: monthlyOrderEf, params: monthlyOrderEfParams } = entityFilter(c)
     const { results: ordersByMonth } = await c.env.DB.prepare(`
       SELECT
-        strftime('%Y-%m', created_at) as month,
+        strftime('%Y-%m', ${arOrderDateExpr()}) as month,
         COUNT(*) as order_count,
         COALESCE(SUM(final_amount), 0) as total_sales
       FROM orders
-      WHERE strftime('%Y', created_at) >= ? AND status NOT IN ('CANCELLED', 'DRAFT')${monthlyOrderEf}
-      GROUP BY strftime('%Y-%m', created_at)
+      WHERE strftime('%Y', ${arOrderDateExpr()}) >= ? AND status NOT IN ('CANCELLED', 'DRAFT')${monthlyOrderEf}
+      GROUP BY strftime('%Y-%m', ${arOrderDateExpr()})
       ORDER BY month DESC
       LIMIT ?
     `).bind(String(parseInt(targetYear) - 1), ...monthlyOrderEfParams, monthCount).all<MonthlyOrderRow>()
@@ -635,7 +639,7 @@ arLedgerRouter.get('/closing-summary', async (c) => {
       SELECT COALESCE(SUM(CASE WHEN billing_status='BILLED' THEN billed_amount ELSE 0 END),0) as month_sales,
              COUNT(*) as month_order_count
       FROM orders o
-      WHERE status != 'CANCELLED' AND date(o.created_at) >= ? AND date(o.created_at) <= ?${efO.clause}
+      WHERE status != 'CANCELLED' AND ${arOrderDateExpr('o')} >= ? AND ${arOrderDateExpr('o')} <= ?${efO.clause}
     `).bind(monthStart, monthEnd, ...efO.params).first<{ month_sales: number; month_order_count: number }>()
 
     // 이번달 입금
@@ -669,7 +673,7 @@ arLedgerRouter.get('/closing-summary', async (c) => {
     const prevSalesRes = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(CASE WHEN billing_status='BILLED' THEN billed_amount ELSE 0 END),0) as prev_sales
       FROM orders o
-      WHERE status != 'CANCELLED' AND date(o.created_at) >= ? AND date(o.created_at) <= ?${efO.clause}
+      WHERE status != 'CANCELLED' AND ${arOrderDateExpr('o')} >= ? AND ${arOrderDateExpr('o')} <= ?${efO.clause}
     `).bind(prevStart, prevEnd, ...efO.params).first<{ prev_sales: number }>()
 
     const prevPayRes = await c.env.DB.prepare(`
@@ -712,7 +716,7 @@ arLedgerRouter.get('/profit-summary', async (c) => {
 
     // 월별 매출 (BILLED 기준)
     const { results: monthlySales } = await c.env.DB.prepare(`
-      SELECT strftime('%Y-%m', o.created_at) as month,
+      SELECT strftime('%Y-%m', ${arOrderDateExpr('o')}) as month,
              COALESCE(SUM(CASE WHEN billing_status='BILLED' THEN billed_amount ELSE final_amount END),0) as sales
       FROM orders o
       WHERE status != 'CANCELLED'${efO.clause}
@@ -721,7 +725,7 @@ arLedgerRouter.get('/profit-summary', async (c) => {
 
     // 월별 매입
     const { results: monthlyPurchases } = await c.env.DB.prepare(`
-      SELECT strftime('%Y-%m', po.created_at) as month,
+      SELECT strftime('%Y-%m', COALESCE(po.order_date, date(po.created_at))) as month,
              COALESCE(SUM(po.final_amount),0) as purchases
       FROM purchase_orders po
       WHERE po.status != 'CANCELLED'${efPo.clause}

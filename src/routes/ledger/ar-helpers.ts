@@ -387,6 +387,21 @@ export function buildIntegrityQuery(c: Context<HonoEnv>): { query: string; param
 `
   return { query, params: [...oParams, ...pParams, ...aParams] }
 }
+/**
+ * 매출 원장 조회기간·월별 집계의 **기준일(업무일자)** SQL 식 — 매입 원장(purchase_orders.order_date)과 통일.
+ *
+ * 기존에는 orders.created_at 을 기준으로 기간을 걸었는데 두 가지가 어긋났다:
+ *   1) created_at 은 TZ 미표기 UTC 타임스탬프 → KST 00~09시 주문이 **전날**로 잡혀 월초/월말 경계에서 하루 밀림.
+ *   2) 이관 데이터의 created_at 은 '이관 실행 시각'이라 업무상 의미가 없다(CLAUDE.md §목록 정렬 규약과 동일 이유).
+ * order_date 는 DEFAULT CURRENT_DATE 라 NULL 이 없지만(prod 10,075건 중 0건), 방어적으로 COALESCE 유지.
+ *
+ * @param alias 테이블 alias(`o`). 생략하면 컬럼 직접 참조.
+ */
+export function arOrderDateExpr(alias?: string): string {
+  const p = alias ? `${alias}.` : ''
+  return `COALESCE(${p}order_date, date(${p}created_at))`
+}
+
 // Aging 카테고리 분류 헬퍼
 export function getAgingCategory(days: number | null): string {
   if (days === null || days < 0) return 'normal'
@@ -402,26 +417,34 @@ export function getAgingCategory(days: number | null): string {
 //    oldest_unpaid_date = BILLED 청구그룹 중 '해당 건 이상을 커버하는 결제가 없는'(NOT EXISTS) 건들의 MIN(청구일).
 //    outer 쿼리는 clients 를 alias `c` 로 두어야 함(oup.client_id = c.id). alias `oup` 로 조인.
 //    entityScoped=true → 청구(g)·결제(p) 서브쿼리에 현재 법인 필터(호출부의 balance 스코프와 일치시킬 것).
+//    byEntity='<외부 쿼리의 법인 컬럼 참조>' → 거래처×법인 단위로 집계·조인(미수금 현황 사업자별 분리).
+//      이때 결제 상계(NOT EXISTS)도 같은 법인 내에서만 본다 — 잔액을 법인별로 쪼개는 스코프와 일치시켜야
+//      A법인 채권이 B법인 입금으로 '결제됨' 처리되는 어긋남이 안 생긴다. entityScoped 와 병용 불필요.
 export function buildOldestUnpaidJoin(
   c: Context<HonoEnv>,
-  opts: { entityScoped?: boolean } = {}
+  opts: { entityScoped?: boolean; byEntity?: string } = {}
 ): { sql: string; params: unknown[] } {
   const g = opts.entityScoped ? entityFilter(c, 'g') : { clause: '', params: [] as unknown[] }
   const p = opts.entityScoped ? entityFilter(c, 'p') : { clause: '', params: [] as unknown[] }
+  const byEnt = !!opts.byEntity
+  const entSel = byEnt ? 'COALESCE(g.entity_id, 1) AS entity_id,\n               ' : ''
+  const entPayJoin = byEnt ? ' AND COALESCE(p.entity_id, 1) = COALESCE(g.entity_id, 1)' : ''
+  const entGroup = byEnt ? ', COALESCE(g.entity_id, 1)' : ''
+  const entOn = byEnt ? ` AND oup.entity_id = ${opts.byEntity}` : ''
   const sql = `
       LEFT JOIN (
         SELECT o.client_id AS client_id,
-               MIN(COALESCE(g.accounting_date, g.billed_at)) AS oldest_unpaid_date
+               ${entSel}MIN(COALESCE(g.accounting_date, g.billed_at)) AS oldest_unpaid_date
         FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
         WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${g.clause}
           AND NOT EXISTS (
             SELECT 1 FROM payments p
-            WHERE p.client_id = o.client_id${p.clause}
+            WHERE p.client_id = o.client_id${p.clause}${entPayJoin}
               AND p.amount >= g.billed_amount
               AND p.payment_date >= COALESCE(g.accounting_date, g.billed_at)
           )
-        GROUP BY o.client_id
-      ) oup ON oup.client_id = c.id`
+        GROUP BY o.client_id${entGroup}
+      ) oup ON oup.client_id = c.id${entOn}`
   return { sql, params: [...g.params, ...p.params] }
 }
 
