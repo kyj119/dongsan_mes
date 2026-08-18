@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-08-18T21:45:15+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-08-19T00:45:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,25 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **5** (`search_issues(state:open,label:auto-improve)` 실측, 변동 없음. #606·#608·#609·#612·#613) |
+| 🆕 new | **6** (`search_issues(state:open,label:auto-improve)` 실측, +1(#614). #606·#608·#609·#612·#613·#614) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 4 데이터 정합성 (2026-08-19T00:45):**
+> - **방법**: `git status`=clean, `git fetch origin main` → **origin이 `de31dbf..23dbe6e`로 전진** → `git checkout main && git reset --hard origin/main`(HEAD `23dbe6e`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area4 자신의 앵커(`4932e85`) 기준 웹앱 범위 diff = 신규 커밋 5개: `a6beebe`(Area2 기정독)·`68c2b60`(Area3 기정독)·**`7671499` `feat(orders): split delivery address into postal/road/detail (0535)`**(신규 마이그 0532~0535 포함, 대형)·`bb56815`/`23dbe6e`(후속 UI-only 픽스, 데이터 정합성 무관) — 데이터 정합성 렌즈로 `7671499`와 신규 마이그 4건 직접 정독.
+> - **마이그 4건(0532~0535) 정독**: 전부 additive(컬럼/인덱스 추가 또는 `WHERE NOT EXISTS` 멱등 INSERT), NOT NULL no-default 위반 없음, `0533`은 `category_id NOT NULL`에 4단 COALESCE 폴백으로 로컬시드 제약위반까지 방어. `0535`(배송지 분리)는 레거시 `delivery_info` 원문 불변 + 신규 컬럼 전부 NULL 허용 = 8,758건 기존 row 영향 0.
+> - **0535 write-path 전수(operations.ts/update.ts/create.ts) recon-status 핸들러(`orders/core.ts:31-81`) 직접 대조**: `RECON_STATUSES` 화이트리스트로 CHECK 미선언 컬럼(`recon_status`)의 literal write를 자체 검증 + `entityFilter` 적용 + D1 bind 100 한도 회피(80개 청크) — 신규 코드 자체는 clean.
+> - **🐛 발견 (신규, net-new) — items 하드삭제 참조가드에 `designer_intakes.item_id` 누락**: `0532_designer_intake_item.sql`이 `designer_intakes.item_id INTEGER REFERENCES items(id)`(items를 참조하는 20번째 FK)를 신설했으나, `items.ts:1414` 하드삭제 가드(`refCategories` 19개 카운트 서브쿼리, 주석: "items(id)를 FK로 참조하는 모든 테이블에서 사용 중이면 차단")의 sweep 목록에는 없음. 기존 codify된 「신규 FK 참조 컬럼이 큐레이션된 삭제가드에서 누락」 패턴(#454/#477/#480/#570 계열)의 새 사례 — 단 대상이 order 삭제가 아니라 **item 하드삭제**라는 신규 변종. 영향: 가공대기 매칭으로 `item_id`가 채워진 품목을 ADMIN이 하드삭제하면 가드 통과 후 FK(NO ACTION) 위반으로 throw → 의도된 409 대신 불명확 500. 데이터 손상은 아님(FK가 삭제 자체는 막음), 관리자 UX 저하. **자동수정 안 함**(삭제 차단조건 확장=비즈니스 로직) → **Issue #614** 등록(bug, S).
+> - **standing scan**: `npm run audit:entity` 131파일·61쿼리·**누락 0**(변동없음, 신규 컬럼 전부 SELECT 미대상이라 불변). `sort-audit.cjs` P1 **0건**(변동없음). `migration-drift-audit.cjs`는 `CLOUDFLARE_API_TOKEN` 미설정으로 기존과 동일하게 실행 불가(기존 제약, net-new 아님).
+> - **open 6건 재확인**: `search_issues(state:open,label:auto-improve)` = #606·#608·#609·#612·#613(전건 변동없음)+**#614 신규**.
+> - **backlog↔GitHub 절대값 재동기화**: open **6**(+1) · `search_issues(reason:completed)` **531**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md는 이미 `line N` 잔여참조 0건(재확인). 이번 사이클 신규 오탐/탐지 클래스 없음(#454/#477/#480/#570 계열 기존 레시피가 item 하드삭제 가드라는 새 대상에도 그대로 적중, 레시피 일반화 확인 — "부모 삭제 핸들러"뿐 아니라 "명시적 참조-카운트 가드"류도 같은 churn-재스캔 규율 적용 대상임을 재확인만, 신규 문서화 불요).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 11건 → 이번 로그 추가 후 12건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 1건(#614, items 하드삭제 가드 FK 누락), 자동수정 0건, done-sync: open 6(+1)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-08-18T21:45):**
 > - **방법**: `git status`=워킹트리 clean(detached), `git fetch origin main` → **origin이 `de31dbf..68c2b60`로 전진** → `git checkout main && git reset --hard origin/main`(HEAD `68c2b60`). `npm ci`(0→81), `npx tsc --noEmit` clean.
@@ -159,6 +173,7 @@
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
+| #614 | items 영구삭제 참조가드에 designer_intakes.item_id 누락(0532 신규 FK) — 하드삭제 시 친절한 409 대신 500 | Area 4 | bug,S | issue-only, 신규(#614) |
 | #612 | ai_analysis_id/dxf_analysis_id 크로스 법인 IDOR — 주문 라인에 타법인 분석파일 ID를 넣으면 에이전트가 자동 다운로드·복사 | Area 5 | bug,medium | issue-only, 신규(#612) |
 | #609 | unitConvert.ts toBase/formatStock 0호출 — write-path 3곳(scan/inventory/po-receive) pack_size 환산 각자 인라인 재구현, #462 재발위험 | Area 2 | improvement,S | issue-only |
 | #608 | 쓰기경로 회귀 방지 3중 장치 중 실제 배포경로엔 전무 — verify.yml 카나리는 생성 이래 0회 실행 | Area 1 | improvement,medium | issue-only |
