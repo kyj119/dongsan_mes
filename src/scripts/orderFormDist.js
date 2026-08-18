@@ -60,10 +60,14 @@
             }
 
             function selectClient(id, name) {
+                // 교체 판정 = 직전 clientId 와 다름 (주문서 폼 client.js 와 동일 규칙)
+                var _prevClientId = document.getElementById('clientId').value;
+                var _clientSwapped = String(_prevClientId || '') !== String(id);
                 document.getElementById('clientId').value = id;
                 document.getElementById('clientSearch').value = name;
+                // 배송처 = 거래처명. 거래처 교체 시 주소와 함께 갱신
                 var recEl = document.getElementById('receptionLocation');
-                if (recEl && !recEl.value) recEl.value = name;
+                if (recEl && (_clientSwapped || !recEl.value)) recEl.value = name;
                 axios.get('/api/clients/' + id).then(function(res) {
                     if (res.data && res.data.success && res.data.data) {
                         var cl = res.data.data;
@@ -84,8 +88,8 @@
                             var hasOpt = Array.prototype.some.call(dmEl.options, function(o) { return o.value === mapped; });
                             if (hasOpt) dmEl.value = mapped;
                         }
-                        // 라벨 전환 + 배송지 자동 채움 (거래처 변경 시 새 거래처 정보 반영)
-                        _forceDeliverySync = true;
+                        // 라벨 전환 + 배송지 자동 채움. 강제 동기화는 교체일 때만
+                        _forceDeliverySync = _clientSwapped;
                         onDistDeliveryMethodChange();
                     }
                 }).catch(function() {});

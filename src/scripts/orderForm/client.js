@@ -43,11 +43,17 @@
             }
 
             function selectClient(id, name) {
+                // 「거래처를 바꿨다」의 정확한 정의 = 직전 clientId 와 다르다.
+                //   검색 후 같은 거래처를 다시 고르는 건 교체가 아니다 — 그때까지 손입력을
+                //   날리면 오타 수정 한 번에 배송처·주소가 사라진다.
+                var _prevClientId = document.getElementById('clientId').value;
+                var _clientSwapped = String(_prevClientId || '') !== String(id);
                 document.getElementById('clientId').value = id;
                 document.getElementById('clientSearch').value = name;
-                // 배송처 기본값: 거래처명 (이미 값이 있으면 덮어쓰지 않음)
+                // 배송처 기본값 = 거래처명. 거래처를 바꾸면 주소와 **함께** 갱신한다 —
+                //   주소만 새 거래처로 바뀌고 배송처 이름은 이전 거래처로 남는 불일치를 없앤다.
                 var recEl = document.getElementById('receptionLocation');
-                if (recEl && !recEl.value) recEl.value = name;
+                if (recEl && (_clientSwapped || !recEl.value)) recEl.value = name;
                 // 거래처 연락처 + 주소 자동 채우기
                 axios.get('/api/clients/' + id).then(function(res) {
                     if (res.data && res.data.success && res.data.data) {
@@ -67,8 +73,9 @@
                             var hasOpt = Array.prototype.some.call(dmEl.options, function(o) { return o.value === cl.delivery_method; });
                             if (hasOpt) dmEl.value = cl.delivery_method;
                         }
-                        // 라벨 전환 + 배송지 자동 채움 (거래처 변경 시 새 거래처 정보 반영)
-                        _forceDeliverySync = true;
+                        // 라벨 전환 + 배송지 자동 채움. 강제 동기화는 **교체일 때만** —
+                        //   같은 거래처 재선택에서는 손입력을 지킨다(배송처 이름과 같은 규칙).
+                        _forceDeliverySync = _clientSwapped;
                         onDeliveryMethodChange();
                     }
                 }).catch(function(err) { console.error('[orderForm] 거래처 정보 자동입력 실패', err); });
