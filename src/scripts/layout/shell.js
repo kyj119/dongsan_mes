@@ -60,6 +60,53 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
+// === 데이터 완결성 안내 (이카운트 병행 기간) ===
+//
+// 병행 기간에는 주문이 MES 에 일부만 들어온다. 그런데 매출·미수금·부문손익은 그대로 계산돼
+// **에러 없이 작은 숫자가** 표시된다. 조회 구간이 병행 구간과 겹칠 때만 알린다 —
+// 늘 떠 있는 경고는 사람이 무시하게 되고, 그러면 정작 필요할 때 안 보인다.
+//
+// 쓰는 법 (집계 화면):
+//   await ensureDataCompleteness();
+//   renderCompletenessNotice('noticeBox', fromDate, toDate);
+window.__dataCompleteThrough = undefined;   // undefined=미조회 · null=병행 아님 · 'YYYY-MM-DD'=병행 중
+
+window.ensureDataCompleteness = async function() {
+  if (window.__dataCompleteThrough !== undefined) return window.__dataCompleteThrough;
+  try {
+    var r = await axios.get('/api/settings/data-completeness');
+    var d = (r && r.data && r.data.data) || {};
+    window.__dataCompleteThrough = d.complete_through || null;
+  } catch (e) {
+    window.__dataCompleteThrough = null;   // 조회 실패가 화면을 막지 않는다
+  }
+  return window.__dataCompleteThrough;
+};
+
+// 조회 구간이 병행 구간과 겹치면 안내 HTML, 아니면 ''.
+//   to 를 안 주면 오늘까지로 본다. from 을 안 주면 "전 기간 조회"로 보고 겹침으로 처리한다.
+window.completenessNoticeHtml = function(from, to) {
+  var through = window.__dataCompleteThrough;
+  if (!through) return '';
+  var end = to || new Date().toISOString().slice(0, 10);
+  if (end <= through) return '';                       // 조회 구간이 완전 구간 안이면 조용히
+  var start = from && from > through
+    ? from
+    : new Date(new Date(through + 'T00:00:00Z').getTime() + 86400000).toISOString().slice(0, 10);
+  return '<div class="mb-3 px-3 py-2 rounded border border-amber-300 bg-amber-50 text-amber-900 text-sm">'
+    + '<i class="fas fa-triangle-exclamation mr-1"></i>'
+    + '<span class="font-medium">' + window.escapeHtml(start) + ' 이후는 이카운트 병행 기간입니다.</span> '
+    + '이 구간 매출·미수금·손익은 <span class="font-medium">MES 에 입력된 분만</span> 반영된 값이라 실제보다 작습니다. '
+    + '금액 판단은 이카운트를 기준으로 하세요.'
+    + '</div>';
+};
+
+window.renderCompletenessNotice = function(containerId, from, to) {
+  var el = document.getElementById(containerId);
+  if (!el) { console.warn('[shell] #' + containerId + ' not found (완결성 안내)'); return; }
+  el.innerHTML = window.completenessNoticeHtml(from, to);
+};
+
 // === XSS Protection: Global HTML Escape Function ===
 window.escapeHtml = function(str) {
   if (str === null || str === undefined) return '';
@@ -434,6 +481,27 @@ window.collectMoneyFields = function(formEl, dataObj) {
 // 페이지 로드 시 자동 1회 바인딩
 document.addEventListener('DOMContentLoaded', function() { window.bindMoneyInputs(); });
 // SPA 네비게이션 후에도 다시 바인딩되도록 — spaNavigate에서도 호출됨
+
+// === 배송지 3축(우편번호·도로명·상세) 합성/분해 헬퍼 (0535) ===
+// 저장은 delivery_info=합본(도로명+' '+상세) 유지 — 기존 소비처 12곳 무변경.
+// 분해는 **접미 매칭**만 한다(주소 파싱 금지). 접미가 아니면 전체를 도로명으로 돌려
+// 레거시·외부수정 행에서도 손실이 0이 되게 한다.
+window.dsComposeAddress = function(road, detail) {
+  var r = (road || '').trim();
+  var d = (detail || '').trim();
+  if (!r) return d || '';
+  return d ? (r + ' ' + d) : r;
+};
+window.dsSplitAddress = function(full, detail) {
+  var f = (full || '').trim();
+  var d = (detail || '').trim();
+  if (d && f.length >= d.length && f.slice(-d.length) === d) {   // 도로명 없이 상세만 있는 경우(f===d) 포함
+    return { road: f.slice(0, f.length - d.length).trim(), detail: d };
+  }
+  // 접미가 아니면 합본이 정본 — 전체를 도로명칸에, 상세는 비운다.
+  //   (여기서 d 를 따로 채우면 재저장 시 상세가 두 번 붙는다)
+  return { road: f, detail: '' };
+};
 
 // === 다음(카카오) 우편번호 검색 헬퍼 ===
 // 사용법: openPostcodeSearch(function(result) { ... })

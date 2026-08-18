@@ -13,7 +13,7 @@ import { requireAnyPagePermission, requireEditOrRole } from '../../middleware/pe
 import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
-import { checkMaterialShortage } from '../../utils/materialShortageCheck'
+import { checkMaterialCoverage, describeGap, type CoverageGap } from '../../utils/materialShortageCheck'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { setOrderBillingStatus } from './helpers'
 import { deriveClientBalance } from '../ledger/ar-helpers'
@@ -294,12 +294,19 @@ ordersLifecycleRouter.patch('/:id/status', requireEditOrRole('/orders', 'MANAGER
     })
 
     // Phase 5: 자재 부족 경고 (CONFIRMED 전환 시, non-blocking)
+    // ⚠️ 부족 0건 ≠ 자재 이상 없음 — 판정 불가(gap)를 함께 올린다(주문 생성 경로와 동일 규칙).
     let materialWarnings: any[] = []
+    let materialGap: CoverageGap | null = null
+    let materialCheckFailed = false
     if (status === 'CONFIRMED') {
       try {
         const entityId = getEntityId(c) || 1
-        materialWarnings = await checkMaterialShortage(c.env.DB, parseInt(id), entityId)
+        const cov = await checkMaterialCoverage(c.env.DB, parseInt(id), entityId)
+        materialWarnings = cov.warnings
+        // 유통 주문은 자재 소요 개념이 없다 → gap 은 전건 오탐이 된다
+        materialGap = (order as { order_type?: string | null }).order_type === 'DISTRIBUTION' ? null : cov.gap
       } catch (mErr) {
+        materialCheckFailed = true
         console.error('Material shortage check failed (non-blocking):', mErr)
       }
 
@@ -349,6 +356,8 @@ ordersLifecycleRouter.patch('/:id/status', requireEditOrRole('/orders', 'MANAGER
         material_warnings: materialWarnings,
         warning_message: `자재 부족 ${materialWarnings.length}건: ${materialWarnings.slice(0, 3).map(w => w.material_name).join(', ')}${materialWarnings.length > 3 ? ' 외' : ''}`,
       }),
+      ...(materialGap && { material_gap: materialGap, material_gap_message: describeGap(materialGap) }),
+      ...(materialCheckFailed && { material_check_failed: true }),
     })
   } catch (error) {
     console.error('src/routes/orders.ts error:', error)

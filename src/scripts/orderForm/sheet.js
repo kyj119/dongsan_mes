@@ -59,12 +59,15 @@
                         });
                     });
 
+                    const _delivery = collectDeliveryFields();   // 0535
                     const orderData = {
                         client_id: parseInt(clientId),
                         delivery_date: document.getElementById('deliveryDate').value,
                         priority: document.getElementById('priority').value,
                         reception_location: document.getElementById('receptionLocation').value,
-                        delivery_info: document.getElementById('deliveryInfo').value,
+                        delivery_info: _delivery.delivery_info,
+                        delivery_postal: _delivery.delivery_postal,
+                        delivery_detail: _delivery.delivery_detail,
                         delivery_method: document.getElementById('deliveryMethod').value,
                         notes: document.getElementById('notes').value,
                         contact_phone: document.getElementById('contactPhone').value.trim() || null,

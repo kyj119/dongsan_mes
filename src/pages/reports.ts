@@ -69,6 +69,8 @@ export function reportsPage(c: Context<HonoEnv>) {
 
       <!-- 매출 분석 탭 -->
       <div id="anaReportsContent">
+      <!-- 이카운트 병행 기간 안내 (조회 구간이 겹칠 때만 채워진다 — shell.js) -->
+      <div id="reportsCompletenessNotice"></div>
       <!-- Period Selector -->
       <div class="ds-card p-4 mb-6 flex items-center gap-3 flex-wrap">
         <span class="text-sm font-medium text-gray-700"><i class="fas fa-chart-line mr-1"></i>분석 기간:</span>

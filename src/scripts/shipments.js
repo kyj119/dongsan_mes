@@ -150,6 +150,7 @@ async function loadShipmentsByDate() {
           delivery_method: s.delivery_method || '',
           delivery_time: s.delivery_time || '',
           delivery_info: s.delivery_info || '',
+          delivery_postal: s.delivery_postal || '',
           shipping_payment: s.shipping_payment || '',
           delivery_date: s.delivery_date || '',
           notes: s.notes || '',
@@ -496,6 +497,7 @@ function downloadHanjinExcel() {
       client_id: grp.client_id,
       client_name: grp.client_name,
       phone: grp.mobile || grp.contact_phone || '',
+      postal: grp.delivery_postal || '',
       address: grp.receiver_address || grp.delivery_address || '',
       item: getItemSummaryText(grp)
     };

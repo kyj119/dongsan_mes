@@ -710,12 +710,15 @@
                 var _firstAiPath = resolvedFilePath || (_directFiles[0] ? _directFiles[0].file_path : null);
                 var _firstAiAnalysisId = aiAnalysisId || (_directFiles[0] ? _directFiles[0].analysis_id : null);
 
+                const _delivery = collectDeliveryFields();   // 0535 (대신화물이면 상세/우편번호 제외)
                 const orderData = {
                     client_id: parseInt(clientId),
                     delivery_date: document.getElementById('deliveryDate').value,
                     priority: document.getElementById('priority').value,
                     reception_location: document.getElementById('receptionLocation').value,
-                    delivery_info: document.getElementById('deliveryInfo').value,
+                    delivery_info: _delivery.delivery_info,
+                    delivery_postal: _delivery.delivery_postal,
+                    delivery_detail: _delivery.delivery_detail,
                     delivery_method: document.getElementById('deliveryMethod').value,
                     delivery_time: (function() { var h = document.getElementById('deliveryTimeHour').value; var m = document.getElementById('deliveryTimeMinute').value; return h ? (h + ':' + (m || '00')) : null; })(),
                     discount_amount: parseMoney(document.getElementById('discountAmount').value),
@@ -759,6 +762,13 @@
                         if (res.data.material_warnings && res.data.material_warnings.length > 0) {
                             var wl = res.data.material_warnings.map(function(w) { return w.material_name + ': 부족 ' + w.shortfall + ' ' + w.unit; });
                             msg += '\n\n[자재 부족 ' + res.data.material_warnings.length + '건]\n' + wl.join('\n');
+                        }
+                        // 판정 불가 — 「부족 없음」과 구분해서 보여준다(아무 표시도 없으면 이상 없음으로 읽힌다)
+                        if (res.data.material_gap_message) {
+                            msg += '\n\n[확인 필요] ' + res.data.material_gap_message;
+                        }
+                        if (res.data.material_check_failed) {
+                            msg += '\n\n[확인 필요] 자재 점검이 실패해 부족 여부를 확인하지 못했습니다.';
                         }
                         showToast(msg, 'warning');
                         // 디자이너 가공 대기물 흡수 (intake.js — 실패해도 주문 등록에 영향 없음)

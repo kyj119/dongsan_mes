@@ -82,6 +82,8 @@ const ENDPOINTS = [
 
   // 기준정보
   { path: '/api/clients?limit=10', name: 'clients.list' },
+  // 배치(Z: 스캐너)가 이름 해소에 쓰는 경량 전량 인덱스 — 목록 라우트 15페이지 긁기를 대체.
+  { path: '/api/clients/name-index', name: 'clients.nameIndex' },
   { path: '/api/items?limit=10', name: 'items.list' },
   // items.detail — 명시 컬럼리스트 SELECT(image_key 등 신규 ADD COLUMN 참조)라 items.list(GROUP BY 집계)가 못 잡는
   // no-such-column 드리프트를 500으로 노출(#484). allow404=행 부재 허용, 컬럼 미존재 500은 FAIL로 격리.

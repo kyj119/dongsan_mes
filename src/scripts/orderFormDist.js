@@ -3,7 +3,11 @@
             var searchTimers = {};
             var isSubmitting = false;
             var _clientAddress = '';          // 거래처 사업장 주소 (택배 등 기본 배송지)
+            var _clientAddressDetail = '';    // 거래처 상세주소 (0535)
+            var _clientPostal = '';           // 거래처 우편번호 (0535)
             var _clientDeliveryAddress = '';  // 거래처 배송지/터미널 (대신화물)
+            var _deliveryAutoFilled = null;   // 자동채움 마지막 값 — 손댄 값은 덮어쓰지 않는다(0535)
+            var _forceDeliverySync = false;   // 거래처 교체 순간만 강제 동기화 (0535)
 
             // ===== 품목 담당 법인 셀렉트 (멀티법인 협업) =====
             // 유통/GOODS 품목은 카드그룹 없어 자동추천 없음 → 수동 지정용.
@@ -69,6 +73,8 @@
                         if (mobileEl && !mobileEl.value) mobileEl.value = cl.mobile || '';
                         // 거래처 배송 정보 보관 (거래처/방식 변경 시 syncDeliveryInfoDist가 사용)
                         _clientAddress = cl.address || '';
+                        _clientAddressDetail = cl.address_detail || '';
+                        _clientPostal = cl.postal_code || '';
                         _clientDeliveryAddress = cl.delivery_address || '';
                         // 거래처 기본 배송방법 → 출고방법 자동선택 (한글 1:1, 구 enum 호환)
                         var dmEl = document.getElementById('distDeliveryMethod');
@@ -79,6 +85,7 @@
                             if (hasOpt) dmEl.value = mapped;
                         }
                         // 라벨 전환 + 배송지 자동 채움 (거래처 변경 시 새 거래처 정보 반영)
+                        _forceDeliverySync = true;
                         onDistDeliveryMethodChange();
                     }
                 }).catch(function() {});
@@ -268,8 +275,11 @@
                 // 대신화물: 배송처 주소를 "화물 터미널"로 안내 (저장 시 거래처 기본 터미널 갱신)
                 var addrLabel = document.getElementById('deliveryAddressLabel');
                 var addrInput = document.getElementById('deliveryAddress');
+                var addrDetail = document.getElementById('distDeliveryDetail');
+                var addrPostal = document.getElementById('distDeliveryPostal');
+                var isFreightAddr = (method === '대신화물');
                 if (addrLabel) {
-                    if (method === '대신화물') {
+                    if (isFreightAddr) {
                         addrLabel.textContent = '화물 터미널';
                         if (addrInput) addrInput.placeholder = '예: 대전 대신화물 터미널';
                     } else {
@@ -277,6 +287,9 @@
                         if (addrInput) addrInput.placeholder = '예: 서울시 중구 을지로 123';
                     }
                 }
+                // 터미널명은 주소가 아니다 → 우편번호/상세 칸 숨김 (0535)
+                if (addrDetail) addrDetail.classList.toggle('hidden', isFreightAddr);
+                if (addrPostal) addrPostal.classList.toggle('hidden', isFreightAddr);
                 // 거래처/방식 변경 시 배송지 동기화 (대신화물=터미널, 그 외=사업장 주소)
                 syncDeliveryInfoDist();
             }
@@ -285,12 +298,42 @@
             function syncDeliveryInfoDist() {
                 if (!_clientAddress && !_clientDeliveryAddress) return; // 거래처 미선택 → 기존값 유지
                 var input = document.getElementById('deliveryAddress');
-                if (!input) return;
+                if (!input) { console.warn('[orderFormDist] #deliveryAddress not found'); return; }
+                var detEl = document.getElementById('distDeliveryDetail');
+                var postEl = document.getElementById('distDeliveryPostal');
                 var method = document.getElementById('distDeliveryMethod').value;
-                input.value = (method === '대신화물')
+                var isFreight = (method === '대신화물');
+                var road = isFreight
                     ? (_clientDeliveryAddress || _clientAddress || '')
                     : (_clientAddress || _clientDeliveryAddress || '');
+                var det = isFreight ? '' : _clientAddressDetail;
+                var post = isFreight ? '' : _clientPostal;
+                // 손댄 값 보호 — 주문서 폼(client.js)과 동일 규칙 (0535)
+                var force = _forceDeliverySync; _forceDeliverySync = false;
+                var last = _deliveryAutoFilled || { road: '', detail: '' };
+                var curRoad = (input.value || '').trim();
+                var curDet = detEl ? (detEl.value || '').trim() : '';
+                if (!force && ((curRoad && curRoad !== last.road) || (curDet && curDet !== last.detail))) return;
+                input.value = road;
+                if (detEl) detEl.value = det;
+                if (postEl) postEl.value = post;
+                _deliveryAutoFilled = { road: road, detail: det };
             }
+
+            // 저장 payload 의 배송지 3축 (0535) — 대신화물=터미널 모드에선 상세/우편번호 제외
+            function collectDeliveryFieldsDist() {
+                var road = ((document.getElementById('deliveryAddress') || {}).value || '').trim();
+                var det = ((document.getElementById('distDeliveryDetail') || {}).value || '').trim();
+                var post = ((document.getElementById('distDeliveryPostal') || {}).value || '').trim();
+                var methodEl = document.getElementById('distDeliveryMethod');
+                if (methodEl && methodEl.value === '대신화물') { det = ''; post = ''; }
+                return {
+                    delivery_info: window.dsComposeAddress(road, det) || null,
+                    delivery_postal: post || null,
+                    delivery_detail: det || null
+                };
+            }
+
 
             // ===== 폼 제출 =====
             document.getElementById('distOrderForm').addEventListener('submit', async function(e) {
@@ -345,6 +388,7 @@
                 var dtMin = (document.getElementById('distDeliveryTimeMinute') || {}).value || '00';
                 var deliveryTime = dtHour ? (dtHour + ':' + dtMin) : null;
 
+                var _delivery = collectDeliveryFieldsDist();   // 0535
                 var orderData = {
                     client_id: parseInt(clientId),
                     order_type: 'DISTRIBUTION',
@@ -354,7 +398,9 @@
                     delivery_method: document.getElementById('distDeliveryMethod').value || null,
                     shipping_payment: document.getElementById('distShippingPayment').value || null,
                     reception_location: document.getElementById('receptionLocation').value || null,
-                    delivery_info: document.getElementById('deliveryAddress').value || null,
+                    delivery_info: _delivery.delivery_info,
+                    delivery_postal: _delivery.delivery_postal,
+                    delivery_detail: _delivery.delivery_detail,
                     contact_phone: document.getElementById('contactPhone').value || null,
                     contact_mobile: document.getElementById('contactMobile').value || null,
                     discount_amount: parseMoney((document.getElementById('distDiscount') || {}).value),

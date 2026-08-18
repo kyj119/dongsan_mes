@@ -29,6 +29,13 @@ function fmtAmtShort(v) {
 
 // Load dashboard statistics
 async function loadDashboardStats() {
+    // 병행 기간 안내 — KPI 는 늘 「이번 달」이라 병행 구간과 항상 겹친다.
+    //   이 화면 매출이 실제보다 작다는 걸 모르면 "매출이 줄었다"는 오판이 나온다.
+    try {
+        await window.ensureDataCompleteness();
+        var mStart = new Date(); mStart.setDate(1);
+        window.renderCompletenessNotice('dashCompletenessNotice', mStart.toISOString().slice(0, 10), null);
+    } catch (e) { /* 안내 실패가 대시보드를 막지 않는다 */ }
     try {
         const statsResponse = await axios.get('/api/dashboard/stats');
         if (statsResponse.data.success) {

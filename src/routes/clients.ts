@@ -242,6 +242,35 @@ clientsRouter.get('/billing-groups', async (c) => {
   }
 })
 
+// ── GET /api/clients/name-index — 이름 해소 전용 경량 전체 목록 ──
+//
+// 왜 필요한가: 배치(Z: 파일 스캐너·이관 도구)는 거래처 **전량**의 「이름·별칭 → id」가 필요하다.
+//   그런데 목록 라우트(`GET /`)로 긁으면 2,845건이 15페이지고, 페이지마다
+//   `last_order_date` 를 **거래처당 상관 서브쿼리**(MAX(order_date))로 계산한다.
+//   그 조합이 연속 호출에서 5xx 로 터졌다(실측: 6~9페이지째 실패 → 스캐너가 1,000건만 받고
+//   거래처 해소율 58%→24.6%). 페이지 간 간격·재시도로도 안 풀렸다 — 라우트가 무거운 게 원인이다.
+//
+// 여기서는 ①필요한 4컬럼만 ②`last_order_date` 를 **GROUP BY 한 번**으로 ③페이지네이션 없이
+//   한 응답에 담는다. 요청 15회 → 1회, 상관 서브쿼리 2,845회 → 0회.
+//   ⚠️ `/:id` 보다 **먼저** 등록해야 한다(안 그러면 'name-index' 가 id 로 먹힌다).
+clientsRouter.get('/name-index', async (c) => {
+  try {
+    const ef = entityFilter(c)
+    const { results } = await c.env.DB.prepare(
+      `SELECT c.id, c.client_name, c.search_keywords, lo.d AS last_order_date
+         FROM clients c
+         LEFT JOIN (SELECT client_id, MAX(order_date) AS d FROM orders
+                     WHERE 1=1${ef.clause} GROUP BY client_id) lo ON lo.client_id = c.id
+        WHERE COALESCE(c.is_active, 1) = 1
+        ORDER BY c.id`
+    ).bind(...ef.params).all()
+    return c.json({ success: true, data: results, total: (results || []).length })
+  } catch (error) {
+    console.error('src/routes/clients.ts name-index GET error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // Get client by ID
 clientsRouter.get('/:id', async (c) => {
   try {

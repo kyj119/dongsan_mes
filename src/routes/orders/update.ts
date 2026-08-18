@@ -104,7 +104,10 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
       }
     }
 
-    const finalAmount = totalAmount + vatAmount - (orderData.discount_amount || 0)
+    // ★부가세 원 단위 반올림 — 생성 경로(orders/create.ts)와 **같은 규칙**이어야 한다.
+    //   여기만 안 하면 무변경 저장만으로 금액이 소수로 바뀐다(왕복감사가 잡는 종류의 어긋남).
+    vatAmount = Math.round(vatAmount)
+    const finalAmount = Math.round(totalAmount) + vatAmount - Math.round(orderData.discount_amount || 0)
 
     // Update order
     await c.env.DB.prepare(`
@@ -113,6 +116,8 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
         delivery_date = ?,
         reception_location = ?,
         delivery_info = ?,
+        delivery_postal = ?,
+        delivery_detail = ?,
         total_amount = ?,
         vat_amount = ?,
         discount_amount = ?,
@@ -136,6 +141,8 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
       orderData.delivery_date || null,
       orderData.reception_location || null,
       orderData.delivery_info || null,
+      orderData.delivery_postal || null,
+      orderData.delivery_detail || null,
       totalAmount,
       vatAmount,
       orderData.discount_amount || 0,

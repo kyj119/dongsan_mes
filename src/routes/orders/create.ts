@@ -13,12 +13,13 @@ import { getNextEntitySeqNumber } from '../../utils/sequenceGenerator'
 import { computeLineAmount, type LineAmount } from '../../utils/orderLineAmount'
 import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
-import { checkMaterialShortage } from '../../utils/materialShortageCheck'
+import { checkMaterialCoverage, describeGap, type CoverageGap } from '../../utils/materialShortageCheck'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { kstYmd, kstYmdCompact } from '../../utils/kstDate'
 import { ORDER_STATUS_LABELS } from '../../utils/statusLabels'
 import { thumbRef, resolveGroupByAiIndex, type AnalysisGroup } from '../../utils/thumbnailStore'
 import { recommendAssignedEntity, recalcOrderBillingGroups, generateCardsForOrder, enqueueAutoProcessJobsForItems } from './helpers'
+import { deriveClientBalance } from '../ledger/ar-helpers'
 
 const ordersCreateRouter = new Hono<HonoEnv>()
 ordersCreateRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
@@ -131,7 +132,12 @@ ordersCreateRouter.post('/', async (c) => {
       }
     }
 
-    const finalAmount = totalAmount + vatAmount - (orderData.discount_amount || 0)
+    // ★부가세는 **원 단위로 반올림**한다. 라인 금액(computeLineAmount.final)은 정수지만
+    //   ×0.1 은 소수를 낳는다 — 에누리 금액이 100원 배수가 아닐 때가 그렇다.
+    //   실제로 27,272,728원 라인이 final_amount 30,000,000.8 로 저장됐다(2026-08-13).
+    //   라인 추가 경로(POST /:id/items)는 이미 반올림한다 → 두 경로가 갈려 있었다.
+    vatAmount = Math.round(vatAmount)
+    const finalAmount = Math.round(totalAmount) + vatAmount - Math.round(orderData.discount_amount || 0)
 
     // QUOTATION 상태가 명시적으로 전달되면 견적서로 생성, 그 외 기본값 CONFIRMED
     const requestedStatus = orderData.status
@@ -158,13 +164,13 @@ ordersCreateRouter.post('/', async (c) => {
     const orderResult = await c.env.DB.prepare(`
       INSERT INTO orders (
         order_number, client_id, status, order_year, order_month,
-        reception_location, delivery_info, delivery_date, order_date,
+        reception_location, delivery_info, delivery_postal, delivery_detail, delivery_date, order_date,
         total_amount, vat_amount, discount_amount, final_amount,
         notes, internal_notes, created_by,
         ai_file_path, ai_analysis_id, layout_id, priority, delivery_method, delivery_time,
         contact_phone, contact_mobile, shipping_payment, valid_until, entity_id,
         sheet_layout_params, order_type, quotation_id, consolidate_with_order_id, sales_rep_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       orderNumber,
       orderData.client_id,
@@ -173,6 +179,8 @@ ordersCreateRouter.post('/', async (c) => {
       orderData.order_month || Number(kstYmd().slice(5, 7)),
       orderData.reception_location || null,
       orderData.delivery_info || null,
+      orderData.delivery_postal || null,
+      orderData.delivery_detail || null,
       orderData.delivery_date || null,
       orderData.order_date || kstYmd(),
       totalAmount,
@@ -456,22 +464,26 @@ ordersCreateRouter.post('/', async (c) => {
     // ── 여신한도 체크 (#69) ──────────────────────────────────────────────────
     // ADMIN은 무조건 통과, 그 외 역할은 여신 초과 시 결재 요청 생성 + 카드 미생성
     let creditBlocked = false
+    let creditBalance = 0   // 판정·결재 payload 공용 (한 번만 구한다)
+    let creditLimit = 0
     if (orderData.client_id && user?.role !== 'ADMIN') {
       const creditClient = await c.env.DB.prepare(
         `SELECT credit_limit, credit_hold FROM clients WHERE id = ?`
       ).bind(orderData.client_id).first<{ credit_limit: number; credit_hold: number }>()
+      creditLimit = Number(creditClient?.credit_limit) || 0
 
+      // 잔액 정본 = ledger/ar-helpers.deriveClientBalance
+      //   (order_billing_groups[BILLED] − payments − adjustments, entityFilter 적용).
+      // ⚠️ 예전엔 여기서 `SUM(orders.final_amount) − SUM(payments)` 를 직접 셌다. 원장과 세 군데가 달랐다:
+      //     ① 청구 전 주문까지 채권으로 계산  ② entity 필터가 없어 동산·선명 결제가 섞임
+      //     ③ adjustments(대손·조정) 누락
+      //    → 원장 화면과 **다른 숫자**로 결재요청이 나간다. 잔액을 세는 곳은 한 군데뿐이어야 한다.
       if (creditClient?.credit_hold === 1) {
-        // 수동 차단 — 주문 자체를 막진 않되 결재 필수
-        creditBlocked = true
-      } else if (creditClient?.credit_limit && creditClient.credit_limit > 0) {
-        const balRow = await c.env.DB.prepare(`
-          SELECT COALESCE(SUM(CASE WHEN final_amount > 0 THEN final_amount ELSE 0 END), 0)
-                 - COALESCE((SELECT SUM(amount) FROM payments WHERE client_id = ?), 0) as balance
-          FROM orders WHERE client_id = ? AND status NOT IN ('CANCELLED','DELETED','QUOTATION')
-        `).bind(orderData.client_id, orderData.client_id).first<{ balance: number }>()
-        const balance = balRow?.balance || 0
-        if (balance >= creditClient.credit_limit) {
+        creditBlocked = true   // 수동 차단 — 주문 자체를 막진 않되 결재 필수
+        creditBalance = await deriveClientBalance(c, orderData.client_id)
+      } else if (creditLimit > 0) {
+        creditBalance = await deriveClientBalance(c, orderData.client_id)
+        if (creditBalance >= creditLimit) {
           creditBlocked = true
         }
       }
@@ -486,16 +498,7 @@ ordersCreateRouter.post('/', async (c) => {
           `SELECT client_name FROM clients WHERE id = ?`
         ).bind(orderData.client_id).first<{ client_name: string }>()
 
-        const balRow2 = await c.env.DB.prepare(`
-          SELECT COALESCE(SUM(CASE WHEN final_amount > 0 THEN final_amount ELSE 0 END), 0)
-                 - COALESCE((SELECT SUM(amount) FROM payments WHERE client_id = ?), 0) as balance
-          FROM orders WHERE client_id = ? AND status NOT IN ('CANCELLED','DELETED','QUOTATION')
-        `).bind(orderData.client_id, orderData.client_id).first<{ balance: number }>()
-
-        const creditInfo = await c.env.DB.prepare(
-          `SELECT credit_limit FROM clients WHERE id = ?`
-        ).bind(orderData.client_id).first<{ credit_limit: number }>()
-
+        // 잔액·한도는 위에서 이미 구했다 — 여기서 다시 세면 두 산식이 갈릴 자리가 또 생긴다.
         const entityId = getEntityId(c) || 1 // #329: 번호 E{eid}와 행 entity_id 일치 보장
 
         // batch 1: 주문 credit_status + approval_requests 원자적 생성
@@ -513,8 +516,8 @@ ordersCreateRouter.post('/', async (c) => {
             JSON.stringify({
               client_id: orderData.client_id,
               client_name: clientName?.client_name,
-              credit_limit: creditInfo?.credit_limit || 0,
-              current_balance: balRow2?.balance || 0,
+              credit_limit: creditLimit,
+              current_balance: creditBalance,
               order_amount: finalAmount,
               order_number: orderNumber
             }),
@@ -537,7 +540,7 @@ ordersCreateRouter.post('/', async (c) => {
             VALUES (?, ?, ?, ?, ?, ?, ?)
           `).bind(
             orderId, orderData.client_id,
-            creditInfo?.credit_limit || 0, balRow2?.balance || 0,
+            creditLimit, creditBalance,
             finalAmount, aprId, entityId || 1
           )
         ])
@@ -769,11 +772,22 @@ ordersCreateRouter.post('/', async (c) => {
     })
 
     // Phase 5: 주문 생성 시 CONFIRMED이면 자재 부족 경고
+    //   ⚠️ 부족 0건 ≠ 자재 이상 없음. 품목 미연결·규격 0·자재 미링크 라인은 소요량을 못 내고
+    //      예전엔 조용히 빠졌다 → 화면엔 아무것도 안 떠서 「이상 없음」으로 읽혔다.
+    //      실측(2026-08, prod 7~8월 4,228 라인)상 33%가 판정 불가였다. 그래서 gap 을 함께 올린다.
     let materialWarnings: any[] = []
+    let materialGap: CoverageGap | null = null
+    let materialCheckFailed = false
     if (initialStatus === 'CONFIRMED') {
       try {
-        materialWarnings = await checkMaterialShortage(c.env.DB, orderId, getEntityId(c) || 1)
+        const cov = await checkMaterialCoverage(c.env.DB, orderId, getEntityId(c) || 1)
+        materialWarnings = cov.warnings
+        // 유통 주문은 자재 소요 개념이 없다(상품엔 product_materials 가 없는 게 정상) →
+        // gap 을 띄우면 전 건이 오탐이 된다. 부족 경고는 종전대로 둔다.
+        materialGap = orderType === 'DISTRIBUTION' ? null : cov.gap
       } catch (mErr) {
+        // 실패해도 주문 생성은 막지 않되, **조용히 넘어가지도 않는다**(예전엔 흔적이 없었다).
+        materialCheckFailed = true
         console.error('Material shortage check failed (non-blocking):', mErr)
       }
     }
@@ -789,6 +803,8 @@ ordersCreateRouter.post('/', async (c) => {
         material_warnings: materialWarnings,
         warning_message: `자재 부족 ${materialWarnings.length}건: ${materialWarnings.slice(0, 3).map((w: any) => w.material_name).join(', ')}${materialWarnings.length > 3 ? ' 외' : ''}`,
       }),
+      ...(materialGap && { material_gap: materialGap, material_gap_message: describeGap(materialGap) }),
+      ...(materialCheckFailed && { material_check_failed: true }),
     })
   } catch (error) {
     console.error('Order creation error:', error)

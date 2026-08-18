@@ -325,9 +325,11 @@ function ordRenderPagination(pagination) {
   `;
 }
 
+// ⚠️ 페이지 번호는 **저장하지 않는다**(필터와 성격이 다르다).
+//    필터 = "무엇을 보는가"(다시 와도 유효) · 페이지 = "어디까지 봤는가"(목록이 바뀌면 무의미).
+//    저장했더니 다른 화면 갔다 오면 3페이지에서 시작했고, 필터를 좁히면 빈 페이지에 떨어졌다.
 function goToPage(n) {
   currentPage = n;
-  localStorage.setItem('orders_filter_page', String(n));
   window.scrollTo({ top: 0, behavior: 'smooth' });
   loadOrders();
 }
@@ -592,6 +594,25 @@ function ordStatDrilldown(status) {
 }
 
 // 주문 목록
+// 이카운트 대사 배지 (0534) — 어긋난 것만 보여준다.
+//   MISMATCH  양쪽 다 있는데 값이 다름 → 어느 쪽이 맞는지 확인해야 한다
+//   NO_ECOUNT 이카운트에 대응 주문 없음 → 재출력·샘플이거나 **청구 누락 후보**
+//   NO_FILE   Z: 작업파일을 못 찾음
+function reconBadge(order) {
+  const st = order && order.recon_status;
+  if (!st || st === 'MATCHED') return '';
+  const M = {
+    MISMATCH:  ['bg-red-100 text-red-700',      '대사 불일치'],
+    NO_ECOUNT: ['bg-orange-100 text-orange-700', '이카운트 없음'],
+    NO_FILE:   ['bg-gray-200 text-gray-700',     '파일 없음'],
+  };
+  const m = M[st];
+  if (!m) return '';
+  const tip = (order.recon_note ? order.recon_note + ' · ' : '')
+    + '이카운트 대사' + (order.recon_at ? ' ' + String(order.recon_at).slice(0, 10) : '');
+  return `<div class="mt-0.5"><span class="inline-block px-1.5 py-0.5 text-[10px] rounded font-bold ${m[0]}" title="${escapeHtml(tip)}"><i class="fas fa-scale-balanced mr-0.5"></i>${m[1]}</span></div>`;
+}
+
 async function loadOrders() {
   try {
     const f = ordReadFilters();
@@ -599,7 +620,6 @@ async function loadOrders() {
     localStorage.setItem('orders_filter_search', f.search);
     localStorage.setItem('orders_filter_status', f.status);
     localStorage.setItem('orders_filter_sort', f.sort);
-    localStorage.setItem('orders_filter_page', String(currentPage));
     localStorage.setItem('orders_filter_delivery_method', f.deliveryMethod);
     localStorage.setItem('orders_filter_billing_status', f.billingStatus);
     localStorage.setItem('orders_filter_priority', f.priority);
@@ -678,6 +698,8 @@ async function loadOrders() {
         // 주문번호 열이 고정폭(col-*)이라 인라인 풀넘버는 잘림 → 번호 아래 줄 + 짧은 라벨, 상세는 title 호버.
         // ★긴급·타법인 배지도 같은 이유로 아래 줄로 내렸다(2026-08-09). 인라인이면 번호(135px)와 합쳐
         //   열 폭을 넘겨 배지가 ellipsis 로 잘렸다 — 여기 적힌 판단을 그 둘에는 적용하지 않았던 것.
+        // 이카운트 대사 결과(0534). 병행 기간에만 값이 찬다 — 평소엔 NULL 이라 아무것도 안 보인다.
+        //   MATCHED 는 굳이 표시하지 않는다(대부분이라 소음이 된다). 볼 건 어긋난 것뿐이다.
         let consBadge = '';
         if (order.consolidate_with_order_id) {
           const rootNo = order.consolidate_root_number || ('#' + order.consolidate_with_order_id);
@@ -692,7 +714,7 @@ async function loadOrders() {
             </td>
             <td class="px-2 py-2.5 whitespace-nowrap">
               <div class="text-sm font-medium text-gray-900 truncate" title="${escapeHtml(order.order_number || '')}">${escapeHtml(order.order_number)}</div>
-              ${(priorityBadge || crossBadge) ? `<div class="mt-0.5">${priorityBadge}${crossBadge}</div>` : ''}${consBadge}
+              ${(priorityBadge || crossBadge) ? `<div class="mt-0.5">${priorityBadge}${crossBadge}</div>` : ''}${consBadge}${reconBadge(order)}
             </td>
             <td class="px-2 py-2.5">
               <div class="text-sm text-gray-900 truncate" title="${escapeHtml(order.client_name || '')}">${escapeHtml(order.client_name || '-')}</div>
@@ -791,6 +813,13 @@ async function confirmStatusChange() {
       // Phase 5: 자재 부족 경고
       if (response.data.material_warnings && response.data.material_warnings.length > 0) {
         showMaterialShortageWarning(response.data.material_warnings);
+      }
+      // 판정 불가 — 부족 0건과 구분해서 알린다(아무 표시가 없으면 '이상 없음'으로 읽힌다)
+      if (response.data.material_gap_message) {
+        showToast(response.data.material_gap_message, 'warning');
+      }
+      if (response.data.material_check_failed) {
+        showToast('자재 점검이 실패해 부족 여부를 확인하지 못했습니다.', 'warning');
       }
     } else if (response.data.requires_confirmation) {
       // 미완료 카드 확인 모달 표시
@@ -1152,14 +1181,22 @@ function showOrderModal(order, cards, autoJobs) {
       lineFileHtml = String(item.line_files).split('\n').map((ln) => {
         const p = ln.split('|');
         if (p.length < 3) return '';
-        const kind = p[0], path = p.slice(2).join('|');
-        if (kind !== 'dxf') return '';   // source(AI 원본)는 기존 표시 경로가 따로 있다
+        const kind = p[0], name = p[1] || '', path = p.slice(2).join('|');
+        // source = Z: 작업파일(zscan-link-orders 가 붙인 원본 EPS). 예전엔 `ai_file_path` 한 칸으로만
+        //   보여줬는데 이카운트에서 만든 주문은 그 칸이 비어 있어 **붙여도 화면에 안 나왔다**.
+        //   묶음(1라인:N파일)이라 여러 개가 달릴 수 있으므로 칩으로 나열한다.
+        if (kind !== 'dxf' && kind !== 'source') return '';
+        const isDxf = kind === 'dxf';
+        const cls = isDxf ? 'bg-purple-100 text-purple-700' : 'bg-sky-100 text-sky-700';
+        const icon = isDxf ? 'fa-scissors' : 'fa-file-image';
+        const label = isDxf ? 'DXF' : (name || '원본');
+        const tip = isDxf ? '칼선 파일' : '작업파일(원본)';
         // ⚠️ 경로를 onclick 인자 문자열로 넣지 말 것 — Windows 경로의 백슬래시가 JS 이스케이프로
         //    먹혀 사라진다(`Z:\DESIGNS\2026` → `Z:DESIGNS2026`). data 속성으로 넘긴다.
-        return `<span class="ml-1 px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-[11px] cursor-pointer align-middle"
-                      title="칼선 파일 — 클릭하면 경로가 복사됩니다&#10;${escapeHtml(path)}"
+        return `<span class="ml-1 px-1.5 py-0.5 rounded ${cls} text-[11px] cursor-pointer align-middle"
+                      title="${tip} — 클릭하면 경로가 복사됩니다&#10;${escapeHtml(path)}"
                       data-line-file="${escapeHtml(path)}"
-                      onclick="copyLineFilePath(this)"><i class="fas fa-scissors mr-0.5"></i>DXF</span>`;
+                      onclick="copyLineFilePath(this)"><i class="fas ${icon} mr-0.5"></i>${escapeHtml(String(label).slice(0, 28))}</span>`;
       }).join('');
     }
     let ppText = '-';
@@ -1201,10 +1238,13 @@ function showOrderModal(order, cards, autoJobs) {
             <div><label class="text-sm font-medium text-gray-600">납기일</label><p class="text-lg">${escapeHtml(order.delivery_date || '-')}</p></div>
             <div><label class="text-sm font-medium text-gray-600">배송처</label><p class="text-lg">${escapeHtml(order.reception_location || '-')}</p></div>
             <div><label class="text-sm font-medium text-gray-600">출고방법</label><p class="text-lg">${escapeHtml(order.delivery_method || '-')}${order.delivery_time ? ' ' + escapeHtml(order.delivery_time) : ' (미정)'}</p></div>
-            <div><label class="text-sm font-medium text-gray-600">배송처 주소</label><p class="text-lg">${escapeHtml(order.delivery_info || '-')}</p></div>
+            <div><label class="text-sm font-medium text-gray-600">배송처 주소</label><p class="text-lg">${order.delivery_postal ? '<span class="text-gray-500 text-base mr-1">[' + escapeHtml(order.delivery_postal) + ']</span>' : ''}${escapeHtml(order.delivery_info || '-')}</p></div>
             <div><label class="text-sm font-medium text-gray-600">우선순위</label><p class="text-lg">${order.priority === 'URGENT' ? '<span class="px-2 py-1 rounded-full bg-red-50 text-red-700 font-bold text-sm">긴급</span>' : '<span class="text-gray-500">일반</span>'}</p></div>
             <div><label class="text-sm font-medium text-gray-600">등록일</label><p class="text-lg">${formatKST(order.created_at)}</p></div>
-            <div><label class="text-sm font-medium text-gray-600">등록자</label><p class="text-lg">${order.created_by_name || '-'}</p></div>
+            <!-- 담당자(sales_rep) ≠ 등록자(created_by). 이관·자동생성 주문은 등록자가 전부 '관리자'라
+                 등록자만 보이면 "누구 건인지" 알 수 없다. 담당자를 앞에 세우고 등록자는 보조로 둔다. -->
+            <div><label class="text-sm font-medium text-gray-600">담당자</label><p class="text-lg">${escapeHtml(order.sales_rep_name || '-')}${order.sales_rep_dept ? ` <span class="text-sm text-gray-400">${escapeHtml(order.sales_rep_dept)}</span>` : ''}</p></div>
+            <div><label class="text-sm font-medium text-gray-600">등록자</label><p class="text-lg text-gray-500">${escapeHtml(order.created_by_name || '-')}</p></div>
             ${order.quotation_id ? `<div class="col-span-2 bg-blue-50 border border-blue-200 rounded p-3"><label class="text-sm font-medium text-blue-700"><i class="fas fa-link mr-1"></i>견적서 연결</label><p class="text-sm mt-1">이 주문은 견적서 <a href="/quotations#${order.quotation_id}" class="font-bold text-blue-700 underline hover:text-blue-900">#${order.quotation_id}${order.quotation_number ? ' (' + escapeHtml(order.quotation_number) + ')' : ''}</a>에서 생성되었습니다.</p></div>` : ''}
             ${buildConsolidationSection(order)}
           </div>
@@ -1714,7 +1754,7 @@ async function exportOrdersCsv() {
   const savedSearch = localStorage.getItem('orders_filter_search');
   const savedStatus = localStorage.getItem('orders_filter_status');
   const savedSort = localStorage.getItem('orders_filter_sort');
-  const savedPage = localStorage.getItem('orders_filter_page');
+  localStorage.removeItem('orders_filter_page');   // 예전 버전이 남긴 값 청소 — 페이지는 이제 복원하지 않는다
   const savedDateFrom = localStorage.getItem('orders_filter_date_from');
   const savedDateTo = localStorage.getItem('orders_filter_date_to');
   const savedDeliveryMethod = localStorage.getItem('orders_filter_delivery_method');
@@ -1728,7 +1768,7 @@ async function exportOrdersCsv() {
     _sfEl.value = savedStatus;
   }
   if (savedSort) document.getElementById('sortBy').value = savedSort;
-  if (savedPage) currentPage = parseInt(savedPage) || 1;
+  currentPage = 1;   // 진입은 항상 1페이지 (필터는 복원하되 페이지 위치는 복원하지 않는다)
   // 기간 복원 — 상대 기간이 저장돼 있으면 고정 날짜 대신 오늘 기준으로 재계산(어제 고른 "최근 1개월"은 오늘도 최근 1개월)
   const savedDatePeriod = localStorage.getItem('orders_filter_date_period');
   if (!document.getElementById('ordDatePeriod')) console.warn('[orders] #ordDatePeriod not found');

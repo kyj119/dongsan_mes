@@ -8,6 +8,8 @@ export function dashboardPage(c: Context<HonoEnv>) {
     title: '대시보드',
     activePage: '/dashboard',
     pageContent: `
+            <!-- 이카운트 병행 기간 안내 (겹칠 때만 채워진다 — shell.js) -->
+            <div id="dashCompletenessNotice"></div>
             <!-- Quick Stats — Bento Grid -->
             <div id="kpiArea" class="ds-bento mb-6">
                 <!-- Hero: 이번 달 매출 (2col × 2row) -->

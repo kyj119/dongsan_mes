@@ -565,10 +565,24 @@ workbenchRouter.post('/intakes', async (c) => {
     // 멱등 2차 안전망(.ingested 마커가 1차): 같은 source_folder 재등록 시 기존 레코드 반환
     const sourceFolder = body.source_folder ? String(body.source_folder) : null
     if (sourceFolder) {
+      // 중복이면 **기존 값을 함께 돌려준다**(2026-08-12). 스캐너가 이걸로 「파일이 바뀌었나」를 판정한다.
+      //   전엔 id 만 돌려줘서, 규격을 고쳐 다시 저장해도 스캐너가 조용히 건너뛰고 MES 는 옛 값 그대로였다.
       const dup = await c.env.DB.prepare(
-        `SELECT id, ai_analysis_id FROM designer_intakes WHERE memo = ? LIMIT 1`
-      ).bind(sourceFolder).first<{ id: number; ai_analysis_id: number }>()
-      if (dup) return c.json({ success: true, data: { intake_id: dup.id, ai_analysis_id: dup.ai_analysis_id, duplicated: true } })
+        `SELECT id, ai_analysis_id, width_cm, height_cm, qty, client_id, item_id, status
+           FROM designer_intakes WHERE memo = ? LIMIT 1`
+      ).bind(sourceFolder).first<Record<string, unknown>>()
+      if (dup) {
+        return c.json({
+          success: true,
+          data: {
+            intake_id: dup.id, ai_analysis_id: dup.ai_analysis_id, duplicated: true,
+            existing: {
+              width_cm: dup.width_cm, height_cm: dup.height_cm, qty: dup.qty,
+              client_id: dup.client_id, item_id: dup.item_id, status: dup.status,
+            },
+          },
+        })
+      }
     }
 
     // 귀속 법인: body.entity_id 명시 우선, 없으면 세션 법인. 전체모드(null)는 400(조용한 동산1 오귀속 차단, #531)
@@ -595,6 +609,15 @@ workbenchRouter.post('/intakes', async (c) => {
     if (Number.isFinite(rawClientId) && rawClientId > 0) {
       const cl = await c.env.DB.prepare(`SELECT id FROM clients WHERE id = ?`).bind(rawClientId).first<{ id: number }>()
       if (cl) clientId = cl.id
+    }
+    // 품목(0532) — 파일명 제품유형 → 품목 매핑 결과. 거래처와 같은 정책:
+    //   존재 검증 통과분만 저장하고 불량 id는 NULL 폴백(FK 실패로 ingest 전체가 죽지 않게).
+    //   NULL = 미해소 → 사람이 주문서에서 고른다(자동 확정 금지).
+    let itemId: number | null = null
+    const rawItemId = Number(body.item_id)
+    if (Number.isFinite(rawItemId) && rawItemId > 0) {
+      const it = await c.env.DB.prepare(`SELECT id FROM items WHERE id = ?`).bind(rawItemId).first<{ id: number }>()
+      if (it) itemId = it.id
     }
 
     // 임포지션 팔레트 호환용 분석 레코드. file_path 소비자 규칙:
@@ -630,8 +653,8 @@ workbenchRouter.post('/intakes', async (c) => {
         entity_id, ai_analysis_id, client_name, client_id, qty, finishing_json, width_cm, height_cm,
         scale_pct, trim, mode, eps_path, work_ai_path, status,
         registered_by, pc_name, script_version, outline_failed, memo,
-        keyword, post_desc, punch_json, worker_name, worker_id, batch_key
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        keyword, post_desc, punch_json, worker_name, worker_id, batch_key, item_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING id
     `).bind(
       entityId, analysisId, clientName, clientId, qty, finishing, w, h,
@@ -641,7 +664,7 @@ workbenchRouter.post('/intakes', async (c) => {
       body.script_version != null ? String(body.script_version) : null,
       body.outline_failed ? 1 : 0,
       sourceFolder,
-      keyword, postDesc, punchJson, workerName, workerId, batchKey
+      keyword, postDesc, punchJson, workerName, workerId, batchKey, itemId
     ).first<{ id: number }>()
 
     // 판짜기(sheet) manifest: 판에 소비된 조각 대기물 absorbed 처리 (mes-sheet.jsx consumed_intake_ids)
@@ -761,11 +784,12 @@ workbenchRouter.get('/intakes', async (c) => {
     //   ⚠️ SQL 안에 이 설명을 두지 않는다 — 백틱이 템플릿 리터럴을 끊고, 주석이 매 쿼리에 실린다.
     if (lite) {
       const { results } = await c.env.DB.prepare(`
-        SELECT designer_intakes.*,
+        SELECT designer_intakes.*, it.item_name,
                CASE WHEN ar.groups_json LIKE '%thumbnail_r2_key":"%'
                       OR ar.groups_json LIKE '%thumbnail_base64":"%' THEN 1 ELSE 0 END AS has_thumbnail
         FROM designer_intakes
         LEFT JOIN ai_analysis_requests ar ON ar.id = designer_intakes.ai_analysis_id
+        LEFT JOIN items it ON it.id = designer_intakes.item_id
         WHERE ${where}
         ORDER BY designer_intakes.id DESC LIMIT ${limit}
       `).bind(...params).all<Record<string, unknown>>()
@@ -776,9 +800,10 @@ workbenchRouter.get('/intakes', async (c) => {
     }
 
     const { results } = await c.env.DB.prepare(`
-      SELECT designer_intakes.*, ar.groups_json
+      SELECT designer_intakes.*, ar.groups_json, it.item_name
       FROM designer_intakes
       LEFT JOIN ai_analysis_requests ar ON ar.id = designer_intakes.ai_analysis_id
+      LEFT JOIN items it ON it.id = designer_intakes.item_id
       WHERE ${where}
       ORDER BY designer_intakes.id DESC LIMIT ${limit}
     `).bind(...params).all<Record<string, unknown>>()
@@ -900,6 +925,39 @@ workbenchRouter.post('/intakes/:id/absorb', async (c) => {
       `UPDATE designer_intakes SET status = 'absorbed', order_item_id = ?, absorbed_at = datetime('now') WHERE id = ? AND status = 'waiting'`
     ).bind(orderItemId, id).run() // #534: TOCTOU 가드(선행 SELECT 이후 동시 흡수 차단)
     if (upd.meta.changes === 0) return c.json({ success: false, error: '이미 처리된 대기물입니다.' }, 409)
+
+    // ── 별칭 학습(2026-08-12) — 같은 일을 두 번 하지 않게 만든다 ──────────────
+    // Z: 파일명의 거래처 표기는 마스터 등록명과 자주 다르다(약칭·지점 생략·오타).
+    // 스캐너가 자동 해소하는 건 58% 뿐이고 나머지는 사람이 주문서에서 골라야 하는데,
+    // **그 선택을 버리면 다음 달에 같은 이름을 또 고르게 된다.**
+    // 흡수 시점에는 「파일 표기」와 「사람이 고른 거래처」가 둘 다 있다 — 그때 붙여 둔다.
+    //   다음 스캔부터 그 표기가 search_keywords 에 걸려 자동 해소된다(반복이 0으로 수렴).
+    // ⚠️ 이미 있는 키워드는 건드리지 않고 **덧붙이기만** 한다. 덮어쓰면 남의 별칭이 날아간다.
+    try {
+      const learned = await c.env.DB.prepare(
+        `SELECT di.client_name AS fileName, o.client_id AS clientId,
+                cl.client_name AS masterName, cl.search_keywords AS kw
+           FROM designer_intakes di
+           JOIN order_items oi ON oi.id = di.order_item_id
+           JOIN orders o ON o.id = oi.order_id
+           JOIN clients cl ON cl.id = o.client_id
+          WHERE di.id = ?`
+      ).bind(id).first<{ fileName: string; clientId: number; masterName: string; kw: string | null }>()
+      const raw = (learned?.fileName || '').trim()
+      const strip = (s: string) => s.replace(/[\s.,()\-_]/g, '').toLowerCase()
+      if (learned && raw && raw !== '미지정' && raw.length >= 2) {
+        const already = strip(raw) === strip(learned.masterName || '')
+          || (learned.kw || '').split(',').some((k) => strip(k) === strip(raw))
+        if (!already) {
+          const next = [(learned.kw || '').trim(), raw].filter(Boolean).join(',').slice(0, 900)
+          await c.env.DB.prepare(`UPDATE clients SET search_keywords = ? WHERE id = ?`)
+            .bind(next, learned.clientId).run()
+        }
+      }
+    } catch (_learnErr) {
+      // 학습 실패가 흡수를 되돌리면 안 된다 — 다음 흡수 때 다시 시도된다.
+    }
+
     return c.json({ success: true, data: { id, status: 'absorbed', order_item_id: orderItemId } })
   } catch (error) {
     console.error('Workbench intake absorb error:', error)

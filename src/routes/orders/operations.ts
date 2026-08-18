@@ -10,13 +10,15 @@ import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { sendEmail } from '../../services/emailProvider'
 import { getEntityId, orderVisibilityFilter } from '../../utils/entityFilter'
 import { kstYmdCompact, kstYmd } from '../../utils/kstDate'
-import { checkMaterialShortage } from '../../utils/materialShortageCheck'
+import { checkMaterialCoverage, describeGap, type CoverageGap } from '../../utils/materialShortageCheck'
+import { deriveClientBalance } from '../ledger/ar-helpers'
 
 // ---------- D1 row shapes ----------
 interface OrderCopyRow {
   id: number; client_id: number; order_number: string; status: string
   order_year: number; order_month: number
   reception_location: string | null; delivery_info: string | null; delivery_date: string | null
+  delivery_postal: string | null; delivery_detail: string | null
   total_amount: number; vat_amount: number; discount_amount: number; final_amount: number
   notes: string | null; internal_notes: string | null
   priority: string | null; delivery_method: string | null; delivery_time: string | null
@@ -35,14 +37,15 @@ interface MaxSeqRow { max_seq: number }
 interface QuotationRow {
   id: number; order_number: string; status: string
   valid_until: string | null; client_id: number; final_amount: number
-  delivery_date: string | null
+  delivery_date: string | null; order_type: string | null
 }
 interface OrderEmailRow {
   id: number; order_number: string; order_date: string; delivery_date: string | null
-  client_name: string; representative: string | null; client_email: string | null; client_balance: number
+  client_name: string; representative: string | null; client_email: string | null
   total_amount: number; vat_amount: number; discount_amount: number; final_amount: number
   notes: string | null; valid_until: string | null
   client_id: number; status: string
+  billing_status: string | null; billed_amount: number | null
 }
 interface EmailItemRow {
   item_name: string; width: number | null; height: number | null; specification: string | null
@@ -118,7 +121,7 @@ ordersOpsRouter.post('/:id/copy', requireEditOrRole('/orders', 'MANAGER', 'DESIG
     const ovf = orderVisibilityFilter(c, 'orders')
     const original = await c.env.DB.prepare(`
       SELECT id, client_id, order_number, status,
-             order_year, order_month, reception_location, delivery_info, delivery_date,
+             order_year, order_month, reception_location, delivery_info, delivery_postal, delivery_detail, delivery_date,
              total_amount, vat_amount, discount_amount, final_amount,
              notes, internal_notes,
              priority, delivery_method, delivery_time,
@@ -149,13 +152,13 @@ ordersOpsRouter.post('/:id/copy', requireEditOrRole('/orders', 'MANAGER', 'DESIG
     const orderResult = await c.env.DB.prepare(`
       INSERT INTO orders (
         order_number, client_id, status,
-        order_year, order_month, reception_location, delivery_info,
+        order_year, order_month, reception_location, delivery_info, delivery_postal, delivery_detail,
         delivery_date, order_date,
         total_amount, vat_amount, discount_amount, final_amount,
         notes, internal_notes, created_by,
         priority, delivery_method, delivery_time,
         contact_phone, contact_mobile, shipping_payment, entity_id
-      ) VALUES (?, ?, 'CONFIRMED', ?, ?, ?, ?, ?, date('now', '+9 hours'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, 'CONFIRMED', ?, ?, ?, ?, ?, ?, ?, date('now', '+9 hours'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       newOrderNumber,
       original.client_id,
@@ -163,6 +166,8 @@ ordersOpsRouter.post('/:id/copy', requireEditOrRole('/orders', 'MANAGER', 'DESIG
       today.getMonth() + 1,
       original.reception_location || null,
       original.delivery_info || null,
+      original.delivery_postal || null,
+      original.delivery_detail || null,
       original.delivery_date || null,
       original.total_amount || 0,
       original.vat_amount || 0,
@@ -286,7 +291,7 @@ ordersOpsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), a
     const force = body.force === true
 
     const order = await c.env.DB.prepare(`
-      SELECT id, order_number, status, valid_until, client_id, final_amount, delivery_date
+      SELECT id, order_number, status, valid_until, client_id, final_amount, delivery_date, order_type
       FROM orders WHERE id = ?
     `).bind(id).first<QuotationRow>()
 
@@ -331,11 +336,17 @@ ordersOpsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), a
     `).bind(id, user?.id || null, force && isExpired ? '만료 견적 강제 전환' : '견적서 → 주문 전환').run()
 
     // Phase 5: 자재 부족 경고 (non-blocking)
+    //   ⚠️ 부족 0건 ≠ 자재 이상 없음 — 판정 불가(gap)도 함께 올린다(생성·상태변경 경로와 동일 규칙).
     let materialWarnings: any[] = []
+    let materialGap: CoverageGap | null = null
+    let materialCheckFailed = false
     try {
       const entityId = getEntityId(c) || 1
-      materialWarnings = await checkMaterialShortage(c.env.DB, order.id, entityId)
+      const cov = await checkMaterialCoverage(c.env.DB, order.id, entityId)
+      materialWarnings = cov.warnings
+      materialGap = order.order_type === 'DISTRIBUTION' ? null : cov.gap
     } catch (mErr) {
+      materialCheckFailed = true
       console.error('Material shortage check failed (non-blocking):', mErr)
     }
 
@@ -348,6 +359,8 @@ ordersOpsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), a
         material_warnings: materialWarnings,
         warning_message: `자재 부족 ${materialWarnings.length}건: ${materialWarnings.slice(0, 3).map((w: any) => w.material_name).join(', ')}${materialWarnings.length > 3 ? ' 외' : ''}`,
       }),
+      ...(materialGap && { material_gap: materialGap, material_gap_message: describeGap(materialGap) }),
+      ...(materialCheckFailed && { material_check_failed: true }),
     })
   } catch (error) {
     console.error('src/routes/orders.ts error:', error)
@@ -378,7 +391,7 @@ ordersOpsRouter.post('/:id/send-email', requireRole('ADMIN', 'MANAGER'), async (
 
     // 주문 + 거래처 정보 조회
     const order = await c.env.DB.prepare(`
-      SELECT o.*, c.client_name, c.representative, c.email as client_email, c.balance as client_balance
+      SELECT o.*, c.client_name, c.representative, c.email as client_email
       FROM orders o
       LEFT JOIN clients c ON o.client_id = c.id
       WHERE o.id = ?
@@ -409,9 +422,21 @@ ordersOpsRouter.post('/:id/send-email', requireRole('ADMIN', 'MANAGER'), async (
     const fromEmail = company.email_from_address || company.company_email
     const fromName = company.email_from_name || companyName
 
-    // 거래처 미수금 계산 (거래명세서용)
-    const currentBalance = order.client_balance || 0
-    const previousBalance = currentBalance - (order.final_amount || 0)
+    // 거래처 미수금 (거래명세서용) — 파생값이 정본.
+    //   ⚠️ `clients.balance` 를 쓰면 안 된다. 폐기 캐시라 prod 2,845곳 중 1곳만 non-zero 다
+    //      → 메일에 「현재 미수금 0원 / 이전 미수금 −주문금액(음수)」이 찍혀 거래처로 나갔다.
+    //   인쇄용 명세서(orders/core.ts 의 X5)와 **같은 산식**을 쓴다 — 갈리면 같은 문서의
+    //   인쇄본과 메일본이 다른 금액을 말한다.
+    const derivedBalance = order.client_id ? await deriveClientBalance(c, order.client_id) : 0
+    const isBilled = order.billing_status === 'BILLED'
+    // BILLED면 이 주문은 이미 파생 잔액에 포함 → 현재=파생, 이전=파생−이번청구
+    // 미청구면 아직 미포함    → 이전=파생, 현재=파생+이번금액
+    const currentBalance = isBilled
+      ? derivedBalance
+      : derivedBalance + (order.final_amount || 0)
+    const previousBalance = isBilled
+      ? derivedBalance - (order.billed_amount || order.final_amount || 0)
+      : derivedBalance
 
     // 문서 유형별 제목 및 본문 구성
     const isQuotation = type === 'quotation'

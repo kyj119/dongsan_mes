@@ -41,20 +41,8 @@ PowerShell 빌드/검증 명령 + 다음 세션 TODO + `memory/session-context.m
 
 # 동산기획 ERP+MES 프로젝트
 
-## 기술 스택
-- **Runtime**: Cloudflare Workers (Hono 4.x) | **DB**: D1 (SQLite) `c.env.DB` | **Build**: Vite 5.x
-- **Frontend**: Vanilla JS + Tailwind CSS (CDN) + Axios | **Auth**: JWT | **TS**: 5.7
-
 ## 개발 명령어
-```bash
-npm run dev:d1            # 로컬 서버 (D1, 192.168.0.94:3000)
-npm run build             # Vite 빌드 → dist/
-npm run verify            # typecheck + build
-npm run deploy            # 스테이징 배포
-npm run deploy:prod       # 프로덕션 배포
-npm run db:migrate:local  # 로컬 D1 마이그레이션
-npm run db:reset          # DB 초기화
-```
+명령어 전체 목록 = `package.json` scripts. 로컬 서버 = `npm run dev:d1` (192.168.0.94:3000).
 > ⚠️ `dev:d1`은 `dist/`를 서빙. 코드 수정 시 반드시 `npm run build` 먼저.
 
 ## 알려진 함정 (Critical)
@@ -100,25 +88,13 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 | 4 CEP 패널 설치본 | 같은 repo 원본 | `%APPDATA%\Adobe\CEP\extensions\com.mes.a0.panel` (**일러가 실제 읽는 것**) |
 | 5 배포 도구 | `scripts/install-*.ps1` | `Z:\...\_scripts\` · `Z:\Designs\caps-worker\` (**디자이너가 실행하는 설치기**) |
 
-> **배포 대상을 하드코딩하지 않는다**(2026-08-06 근본수정). 축3은 repo 패널 폴더를 **열거**해 새 파일이 자동 편입되고,
-> 역방향(**런타임 잔재**)과 **정본 없는 설치 스크립트**도 함께 잡는다. 손목록 때문에 같은 사고를 세 번 냈다:
-> `.debug` 오제외 → 재단 패널 미등록 → **배포 도구 자신이 감사망 밖**(Z: 설치기가 병합 전 버전인데 "드리프트 없음").
-> 전체 절차 정본 = `docs/DEPLOY_MANUAL.md` (**§3-A = 가공·재단 패널 배포**).
-
-> **패널은 1개다**(2026-08-04 병합). 재단 패널은 A0 패널의 **「재단」 탭**으로 흡수 — 축3·축4가 각각 하나뿐이다.
-> 단 **호스트(축2)는 2파일 유지**: `mes-a0-host.jsx` · `mes-cut-host.jsx`. 로직이 자주 바뀌는 축이라
-> 파일이 나뉘어 있어야 재단만 되돌리는 롤백이 **Z: 파일 1개 교체**로 끝난다(가공은 안 건드린다).
-> 껍데기는 `main.js`(가공) + `cut-main.js`(재단) + `tabs.js`(최상위 탭) 로 나뉘어 있고 **각각 IIFE**다 —
-> 벗기거나 DOM id 를 겹치게 만들면 조용히 서로를 덮어쓴다(겹쳤던 `out`·`ver` → `cutOut`·`cutVer`).
-
 - **감사 = `npm run audit:ia-jsx`** (드리프트 시 exit 1). JSX 수정 후 이걸 안 돌리면 조용히 구버전이 돈다.
-- **배포 = `npm run ia:deploy`** — 미커밋 IA 변경 경고 → 게이트 → 나갈 파일 확인(y/n) → 백업 → 복사 → 재감사. 대상 목록은 감사 도구(`--json`)를 그대로 쓴다(따로 적으면 둘이 갈린다). 축2가 섞이면 `--yes` 여도 한 번 더 묻고, 축1은 빌드가 반영하므로 복사하지 않는다. `--dry-run`·`--install`(축4까지)·`--skip-gates`(비상).
-- 축1은 `.csproj CopyToOutputDirectory=Always` → **빌드하면 자동 복사**(빌드를 안 돌리면 미반영). 급하면 `--sync-agent`. JSX만 바뀌면 에이전트 재시작 불필요(잡마다 새로 읽음).
-- **축2(로직)만 즉시 반영**: 패널 `jsx/host.jsx`가 스텁이라 실행 때마다 Z: 정본을 `$.evalFile` → Z: 1개 교체 = 전 PC. 백업·실기기 확인 선행, 자동 동기화 금지.
-- **축3(껍데기 `index.html`·`js/main.js`·`css/style.css`)는 Z: 갱신만으론 반영 안 된다** → PC별 `install-a0-panel.ps1` 재실행(축4). 배포 순서 = ①축3 Z: → ②각 PC 설치(뒤집으면 구버전이 깔린다).
-- **산출물 용량 감사 = `npm run audit:ia-storage`** — Z: work.ai/판.ai 를 첫 바이트로 판정(`%PDF-` = pdfCompatible 켜짐 = 같은 그림 2벌). 배포된 로직에 `pdfCompatible=false` 가 있는지+수정시각으로 자기 교정해 **회귀만** exit 1.
-- JSX 조기 `return` 은 반드시 `_ia_status` 설정. 미설정=반환 `""` → 에이전트가 "JSX 반환 빈값(모달 의심)"이라는 **틀린 진단**을 UI에 띄운다. 실패 메시지엔 스크립트 지문(`파일@시각·해시`)이 실린다.
-- `.jsx`는 `node --check` 불가(확장자+`#target`) → `sed 's/^#/\/\/#/'` 로 `.js` 사본 만들어 검사.
+- **배포 = `npm run ia:deploy`**. **배포 대상을 하드코딩하지 않는다**(2026-08-06 근본수정) — 손목록 때문에 같은 사고를 세 번 냈다: `.debug` 오제외 → 재단 패널 미등록 → **배포 도구 자신이 감사망 밖**.
+- **축3 갱신 후엔 PC별 설치(축4)가 반드시 뒤따른다.** 순서 = ①축3 Z: → ②각 PC 설치. 뒤집으면 구버전이 깔린다.
+- **축2(호스트 JSX)는 Z: 1개 교체 = 전 PC 즉시 반영** — 백업·실기기 확인 선행, 자동 동기화 금지.
+- JSX 조기 `return` 은 반드시 `_ia_status` 설정. 미설정=에이전트가 **틀린 진단**("JSX 반환 빈값")을 UI에 띄운다.
+
+> 축별 상세·패널 구조·배포 옵션·용량 감사 = **`/ia-automat` 스킬** · 전체 절차 정본 = `docs/DEPLOY_MANUAL.md`(**§3-A = 가공·재단 패널 배포**).
 
 (2026-07-29: SheetLayout 폴백 수정이 exe 폴더에 미복사 → 모아찍기 판 렌더 6일간 실패. 상세 = memory `feedback-ia-jsx-runtime-path`)
 

@@ -141,6 +141,7 @@ shipmentsRouter.get('/daily', async (c) => {
     // (기존엔 미조인이라 저장한 송장번호가 재로딩 시 빈칸으로 보이던 버그)
     const { results } = await c.env.DB.prepare(`
       SELECT o.id, o.order_number, o.delivery_date, o.delivery_method, o.delivery_info,
+             o.delivery_postal, o.delivery_detail,
              o.delivery_time, o.status, o.final_amount, o.contact_phone, o.notes,
              o.reception_location, o.shipping_payment,
              o.entity_id, en.short_name as entity_name,
@@ -292,9 +293,14 @@ shipmentsRouter.get('/consolidation-candidates', requireAccessOrRole('/shipments
              o.delivery_date, o.shipped_at,
              cl.id as client_id, cl.client_name,
              sp.id as shipment_id, sp.merged_into_id,
-             CASE WHEN substr(o.delivery_info, 1, 1) = '[' AND substr(o.delivery_info, 7, 1) = ']'
-                       AND substr(o.delivery_info, 2, 5) GLOB '[0-9][0-9][0-9][0-9][0-9]'
-                  THEN substr(o.delivery_info, 2, 5) ELSE NULL END as postal_code
+             -- 0535: 우편번호는 orders.delivery_postal 이 정본. 레거시 '[nnnnn] 주소' 프리픽스는
+             --   폴백으로만 남긴다(prod 0건이지만 외부 유입 대비).
+             COALESCE(
+               CASE WHEN o.delivery_postal GLOB '[0-9][0-9][0-9][0-9][0-9]' THEN o.delivery_postal END,
+               CASE WHEN substr(o.delivery_info, 1, 1) = '[' AND substr(o.delivery_info, 7, 1) = ']'
+                         AND substr(o.delivery_info, 2, 5) GLOB '[0-9][0-9][0-9][0-9][0-9]'
+                    THEN substr(o.delivery_info, 2, 5) END
+             ) as postal_code
       FROM orders o
       JOIN clients cl ON o.client_id = cl.id
       LEFT JOIN entities en ON en.id = o.entity_id
@@ -1348,7 +1354,7 @@ shipmentsRouter.post('/hanjin-export', async (c) => {
   try {
     const body = await c.req.json<{
       date?: string
-      targets?: Array<{ client_id?: number; client_name?: string; phone?: string; address?: string; item?: string }>
+      targets?: Array<{ client_id?: number; client_name?: string; phone?: string; postal?: string; address?: string; item?: string }>
     }>()
     const targets = body.targets || []
     if (!targets.length) return c.json({ success: false, error: '발송 대상이 없습니다.' }, 400)
@@ -1368,7 +1374,7 @@ shipmentsRouter.post('/hanjin-export', async (c) => {
       t.client_name || '',
       (t.phone || '').replace(/[^0-9]/g, ''),     // 받는분 전화: 숫자만
       '',
-      '',
+      (t.postal || '').replace(/[^0-9]/g, ''),    // 받는분우편번호 (0535 — 이전엔 항상 공란)
       t.address || '',
       t.item || '',
     ].map(esc).join(','))

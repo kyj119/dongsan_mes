@@ -179,6 +179,8 @@
                     + stBadge
                     + (seq != null ? '<span class="inline-block px-1.5 rounded bg-gray-200 text-gray-700 text-xs mr-1">#' + seq + '</span>' : '')
                     + '<span class="font-medium">' + (r.width_cm != null ? r.width_cm : '?') + '×' + (r.height_cm != null ? r.height_cm : '?') + 'cm ×' + (r.qty || 1) + '</span>'
+                    // 품목이 해소된 대기물은 초록 배지로 구분 — 프리필하면 단가까지 채워진다(0532)
+                    + (r.item_name ? ' · <span class="text-green-700 font-medium">' + escapeHtml(r.item_name) + '</span>' : '')
                     + (r.keyword ? ' · <span class="text-blue-600">' + escapeHtml(r.keyword) + '</span>' : '')
                     + '</div>'
                     + '<div class="text-xs text-gray-500 truncate">'
@@ -604,6 +606,33 @@
                 // 내용 = 키워드(직결). 후가공(post_desc)은 힌트로만 — 구조 PP는 품목 선택 후 확정
                 var cEl = document.querySelector('[name="content_' + id + '"]');
                 if (cEl && r.keyword) cEl.value = r.keyword;
+
+                // 품목 프리필(0532) — Z: 스캔이 파일명 제품유형을 품목으로 해소해 실어 보낸 경우.
+                //   ★품목이 정해지면 단가까지 따라온다(/api/prices 최근거래가 > 특약가 > 단가표 > 기본단가).
+                //   itemRow.js 의 applyItemSelection 을 그대로 쓴다 — 재구현하면 두 벌이 갈린다.
+                //   item_id 가 없으면(미해소) 아무것도 하지 않는다. 사람이 고른다.
+                if (r.item_id && window.__ofApplyItem && window.__ofApplyItem[id]) {
+                    try {
+                        var itRes = await axios.get('/api/items/' + r.item_id);
+                        var itD = (itRes.data && itRes.data.data) || null;
+                        if (itD) {
+                            window.__ofApplyItem[id]({
+                                id: itD.id, name: itD.item_name, price: itD.base_price || 0,
+                                unit: itD.unit || 'EA',
+                                category: itD.category || itD.category_direct || '',
+                                sub_category: itD.sub_category || itD.sub_category_direct || '',
+                                pricing_method: itD.pricing_method || 'FIXED',
+                                specification: itD.specification || '',
+                                width_mm: itD.width_mm || '',
+                                item_type: itD.item_type || ''
+                            });
+                            // applyItemSelection 이 규격칸을 건드릴 수 있어 대기물 실측을 다시 얹는다
+                            if (wEl && r.width_cm != null) wEl.value = r.width_cm;
+                            if (hEl && r.height_cm != null) hEl.value = r.height_cm;
+                            if (qEl && r.qty) qEl.value = r.qty;
+                        }
+                    } catch (e) { console.warn('[orderForm] 대기물 품목 프리필 실패', e); }
+                }
 
                 // 썸네일 (lazy 캐시 → 없으면 개별 fetch)
                 try {

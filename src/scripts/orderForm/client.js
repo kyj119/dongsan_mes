@@ -5,7 +5,15 @@
             var searchTimers = {};
             var editMode = null; // 수정 모드일 때 주문 ID 저장
             var _clientAddress = '';          // 거래처 사업장 주소 (택배 등 기본 배송지)
+            var _clientAddressDetail = '';    // 거래처 상세주소 (0535 — 예전엔 버려서 990곳 동/호가 주문에 안 실렸다)
+            var _clientPostal = '';           // 거래처 우편번호 (0535)
             var _clientDeliveryAddress = '';  // 거래처 배송지/터미널 (대신화물)
+            // 자동채움이 마지막으로 써 넣은 값. 현재 입력값이 이것과 다르면 = 사용자가 손댄 것 →
+            // 거래처/출고방법을 바꿔도 덮어쓰지 않는다(예전엔 무조건 덮어써서 손입력 상세가 소실).
+            var _deliveryAutoFilled = null;
+            // 거래처를 **바꾼** 순간만 강제 동기화한다. 출고방법 변경 등 그 외 경로에서는
+            // 손입력을 지키는 게 맞다(거래처 교체는 사용자의 명시적 의도라 새 주소가 맞다).
+            var _forceDeliverySync = false;
             function handleClientEnter(e) {
                 if (e.key !== 'Enter') return;
                 e.preventDefault();
@@ -50,6 +58,8 @@
                         if (mobileEl) mobileEl.value = cl.mobile || '';
                         // 거래처 배송 정보 보관 (거래처/방식 변경 시 syncDeliveryInfo가 사용)
                         _clientAddress = cl.address || '';
+                        _clientAddressDetail = cl.address_detail || '';
+                        _clientPostal = cl.postal_code || '';
                         _clientDeliveryAddress = cl.delivery_address || '';
                         // 거래처 기본 배송방식 → 출고방법 자동선택 (한글 1:1)
                         var dmEl = document.getElementById('deliveryMethod');
@@ -58,6 +68,7 @@
                             if (hasOpt) dmEl.value = cl.delivery_method;
                         }
                         // 라벨 전환 + 배송지 자동 채움 (거래처 변경 시 새 거래처 정보 반영)
+                        _forceDeliverySync = true;
                         onDeliveryMethodChange();
                     }
                 }).catch(function(err) { console.error('[orderForm] 거래처 정보 자동입력 실패', err); });
@@ -241,8 +252,11 @@
                 // 대신화물: 배송처 주소를 "화물 터미널"로 안내 (저장 시 거래처 기본 터미널 갱신)
                 var addrLabel = document.getElementById('deliveryInfoLabel');
                 var addrInput = document.getElementById('deliveryInfo');
+                var addrDetail = document.getElementById('deliveryDetail');
+                var addrPostal = document.getElementById('deliveryPostal');
+                var isFreightAddr = (method === '대신화물');
                 if (addrLabel) {
-                    if (method === '대신화물') {
+                    if (isFreightAddr) {
                         addrLabel.textContent = '화물 터미널';
                         if (addrInput) addrInput.placeholder = '예: 대전 대신화물 터미널';
                     } else {
@@ -250,6 +264,9 @@
                         if (addrInput) addrInput.placeholder = '예: 서울시 중구 을지로 123';
                     }
                 }
+                // 터미널명은 주소가 아니다 → 우편번호/상세 칸을 감춰 오입력을 막는다
+                if (addrDetail) addrDetail.classList.toggle('hidden', isFreightAddr);
+                if (addrPostal) addrPostal.classList.toggle('hidden', isFreightAddr);
                 // 거래처/방식 변경 시 배송지 동기화 (대신화물=터미널, 그 외=사업장 주소)
                 syncDeliveryInfo();
             }
@@ -258,12 +275,48 @@
             function syncDeliveryInfo() {
                 if (!_clientAddress && !_clientDeliveryAddress) return; // 거래처 미선택(편집 등) → 기존값 유지
                 var input = document.getElementById('deliveryInfo');
-                if (!input) return;
+                if (!input) { console.warn('[orderForm] #deliveryInfo not found'); return; }
+                var detEl = document.getElementById('deliveryDetail');
+                var postEl = document.getElementById('deliveryPostal');
                 var method = document.getElementById('deliveryMethod').value;
-                input.value = (method === '대신화물')
+                var isFreight = (method === '대신화물');
+                // 대신화물 = 터미널명(주소 아님) → 우편번호/상세는 대상 아님
+                var road = isFreight
                     ? (_clientDeliveryAddress || _clientAddress || '')
                     : (_clientAddress || _clientDeliveryAddress || '');
+                var det = isFreight ? '' : _clientAddressDetail;
+                var post = isFreight ? '' : _clientPostal;
+                // 사용자가 손댄 값은 지킨다 — 도로명·상세 **둘 중 하나라도** 직전 자동채움 결과와
+                // 다르면 전체를 건드리지 않는다(상세만 손으로 친 경우가 실제로 가장 흔하다).
+                //   ⚠️ 자동채움 이력이 없을 때(null)도 보호 대상이다 — 여기서 빠지면 수정모드·
+                //      프리필 경로의 손입력이 출고방법 변경만으로 지워진다.
+                var force = _forceDeliverySync; _forceDeliverySync = false;
+                var last = _deliveryAutoFilled || { road: '', detail: '' };
+                var curRoad = (input.value || '').trim();
+                var curDet = detEl ? (detEl.value || '').trim() : '';
+                if (!force && ((curRoad && curRoad !== last.road) || (curDet && curDet !== last.detail))) return;
+                input.value = road;
+                if (detEl) detEl.value = det;
+                if (postEl) postEl.value = post;
+                _deliveryAutoFilled = { road: road, detail: det };
             }
+
+            // 저장 payload 의 배송지 3축을 한 곳에서 만든다(calc.js·sheet.js 공용).
+            //   ⚠️ 대신화물 = 「화물 터미널」 모드 — 상세/우편번호 칸은 화면에서 숨긴다. 숨긴 값이
+            //      payload 에 섞이면 터미널명 뒤에 상세주소가 붙어 저장된다(택배→화물 전환 시 재현).
+            function collectDeliveryFields() {
+                var road = ((document.getElementById('deliveryInfo') || {}).value || '').trim();
+                var det = ((document.getElementById('deliveryDetail') || {}).value || '').trim();
+                var post = ((document.getElementById('deliveryPostal') || {}).value || '').trim();
+                var methodEl = document.getElementById('deliveryMethod');
+                if (methodEl && methodEl.value === '대신화물') { det = ''; post = ''; }
+                return {
+                    delivery_info: window.dsComposeAddress(road, det),
+                    delivery_postal: post || null,
+                    delivery_detail: det || null
+                };
+            }
+
 
             async function loadData() {
                 try {

@@ -139,7 +139,7 @@ function buildPOSheet(data) {
         + '<div class="meta-row">'
         + '  <span>발주일자: ' + poDate + '</span>'
         + '  <span>낙품요청일: ' + (deliveryDate || '-') + '</span>'
-        + '  <span>낙품장소: ' + (po.delivery_location || '-') + '</span>'
+        + '  <span>납품장소: ' + (po.delivery_location || '-') + '</span>'
         + '</div>'
 
         + '<div class="total-korean">' + koreanAmount + ' (₩' + fmt(finalAmount) + ')</div>'

@@ -106,11 +106,13 @@ export async function orderFormPage(c: Context<HonoEnv>) {
                             <div>
                                 <label id="deliveryInfoLabel" class="block text-sm font-medium text-gray-700 mb-2">배송처 주소</label>
                                 <div class="flex gap-2">
+                                    <input type="text" id="deliveryPostal" maxlength="5" inputmode="numeric" placeholder="우편번호" oninput="this.value=this.value.replace(/[^0-9]/g,'')" class="w-24 px-3 py-2 border border-gray-300 rounded-lg text-center text-sm focus:ring-2 focus:ring-blue-500">
                                     <input type="text" id="deliveryInfo" placeholder="예: 서울시 중구 을지로 123" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                    <button type="button" onclick="openPostcodeSearch(function(r){ var el=document.getElementById('deliveryInfo'); el.value=(r.postal?'['+r.postal+'] ':'')+r.address; el.focus(); })" class="px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 whitespace-nowrap">
+                                    <button type="button" onclick="openPostcodeSearch({ postalId: 'deliveryPostal', addressId: 'deliveryInfo', detailFocusId: 'deliveryDetail' })" class="px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 whitespace-nowrap">
                                         <i class="fas fa-search mr-1"></i>주소 검색
                                     </button>
                                 </div>
+                                <input type="text" id="deliveryDetail" placeholder="상세주소 (예: 3층 301호, 동산인쇄 앞)" class="w-full mt-2 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">출고방법</label>
@@ -450,11 +452,13 @@ function orderFormDistPage(c: Context<HonoEnv>) {
                             <div>
                                 <label id="deliveryAddressLabel" class="block text-sm font-medium text-gray-700 mb-2">배송처 주소</label>
                                 <div class="flex gap-2">
+                                    <input type="text" id="distDeliveryPostal" maxlength="5" inputmode="numeric" placeholder="우편번호" oninput="this.value=this.value.replace(/[^0-9]/g,'')" class="w-24 px-3 py-2 border border-gray-300 rounded-lg text-center text-sm focus:ring-2 focus:ring-blue-500">
                                     <input type="text" id="deliveryAddress" placeholder="예: 서울시 중구 을지로 123" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                    <button type="button" onclick="openPostcodeSearch(function(r){ var el=document.getElementById('deliveryAddress'); el.value=(r.postal?'['+r.postal+'] ':'')+r.address; el.focus(); })" class="px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 whitespace-nowrap">
+                                    <button type="button" onclick="openPostcodeSearch({ postalId: 'distDeliveryPostal', addressId: 'deliveryAddress', detailFocusId: 'distDeliveryDetail' })" class="px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 whitespace-nowrap">
                                         <i class="fas fa-search mr-1"></i>주소 검색
                                     </button>
                                 </div>
+                                <input type="text" id="distDeliveryDetail" placeholder="상세주소 (예: 3층 301호, 동산인쇄 앞)" class="w-full mt-2 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">출고방법</label>

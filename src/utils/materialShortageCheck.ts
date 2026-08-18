@@ -2,7 +2,7 @@
 // 주문 확정 시 자재 부족 경고 (Phase 5)
 //   #465: 구 bom_items(동결) → 신모델(product_materials + 차감설정, autoDeduct 산식)로 재배선.
 // ============================================================================
-import { computeMaterialRequirements } from './materialRequirement'
+import { computeMaterialCoverage, type UnresolvedLine, type UnresolvedReason } from './materialRequirement'
 
 export interface ShortageWarning {
   material_item_id: number
@@ -15,29 +15,49 @@ export interface ShortageWarning {
   unit: string
 }
 
+/** 판정 불가 요약 — 「부족 없음」과 「자재를 모름」을 화면에서 갈라주기 위한 값 */
+export interface CoverageGap {
+  /** 소요량을 못 낸 라인 수 */
+  lines: number
+  /** 사유별 라인 수 */
+  by_reason: Record<UnresolvedReason, number>
+  /** 대표 품목명 (최대 5개, 중복 제거) */
+  sample_names: string[]
+}
+
+export interface MaterialCoverageResult {
+  warnings: ShortageWarning[]
+  gap: CoverageGap | null   // 판정 불가가 0건이면 null
+}
+
 /**
- * 단일 주문에 대해 신모델 기반 자재 부족 체크
+ * 단일 주문에 대해 신모델 기반 자재 부족 체크 + **판정 불가 라인 요약**.
  * - 주문 품목 규격 → product_materials 차감산식(ROLL/BOARD, 분할근사) → 소요량
- * - 현재고 + 발주중 대비 부족량 반환
+ * - 현재고 + 발주중 대비 부족량
+ *
+ * ⚠️ 부족 0건과 판정 불가는 전혀 다른 상태다. 예전엔 부족량만 돌려줘 둘 다 빈 배열이었고,
+ *    화면에서 「자재 이상 없음」으로 똑같이 보였다 — 실측상 최근 라인의 1/3이 판정 불가였다.
+ *    그래서 부족량만 내는 변형을 **일부러 두지 않는다**(있으면 다시 그걸 쓰게 된다).
  */
-export async function checkMaterialShortage(
+export async function checkMaterialCoverage(
   db: D1Database,
   orderId: number,
   entityId?: number
-): Promise<ShortageWarning[]> {
-  // 1. 주문 품목 조회
+): Promise<MaterialCoverageResult> {
+  // 1. 주문 품목 조회 (자녀=분할청구 라인은 부모가 실물을 갖는다 → 중복 계상 방지)
   const { results: orderItems } = await db.prepare(`
     SELECT oi.id, oi.item_id, oi.item_name,
            oi.width, oi.height, oi.quantity
     FROM order_items oi
-    WHERE oi.order_id = ?
+    WHERE oi.order_id = ? AND oi.parent_item_id IS NULL
   `).bind(orderId).all()
 
-  if (!orderItems || orderItems.length === 0) return []
+  if (!orderItems || orderItems.length === 0) return { warnings: [], gap: null }
 
-  // 2. 신모델 소요량 산정 (product_materials + 품목 차감설정)
-  const materialMap = await computeMaterialRequirements(db, orderItems as any[])
-  if (materialMap.size === 0) return []
+  // 2. 신모델 소요량 산정 (product_materials + 품목 차감설정) + 판정 불가 수집
+  const { requirements: materialMap, unresolved } = await computeMaterialCoverage(db, orderItems as any[])
+  const gap = summarizeGap(unresolved)
+  if (materialMap.size === 0) return { warnings: [], gap }
 
   // 4. 현재고 + 발주중 조회
   const materialIds = Array.from(materialMap.keys())
@@ -104,5 +124,28 @@ export async function checkMaterialShortage(
   }
 
   warnings.sort((a, b) => b.shortfall - a.shortfall)
-  return warnings
+  return { warnings, gap }
+}
+
+/** 사람이 읽는 한 줄. 서버·화면이 같은 문구를 쓰도록 여기서 만든다. */
+export function describeGap(gap: CoverageGap): string {
+  const parts: string[] = []
+  if (gap.by_reason.NO_ITEM) parts.push(`품목 미연결 ${gap.by_reason.NO_ITEM}`)
+  if (gap.by_reason.NO_SIZE) parts.push(`규격 없음 ${gap.by_reason.NO_SIZE}`)
+  if (gap.by_reason.NO_MATERIAL_LINK) parts.push(`자재 미등록 ${gap.by_reason.NO_MATERIAL_LINK}`)
+  const names = gap.sample_names.length ? ` (${gap.sample_names.join(', ')})` : ''
+  return `자재 판정 불가 ${gap.lines}건 — ${parts.join(' · ')}${names}. 부족 여부를 확인하지 못했습니다.`
+}
+
+/** 판정 불가 라인 배열 → 사유별 집계. 0건이면 null(호출부에서 조건 표시가 쉬워진다). */
+function summarizeGap(unresolved: UnresolvedLine[]): CoverageGap | null {
+  if (unresolved.length === 0) return null
+  const by_reason: Record<UnresolvedReason, number> = { NO_ITEM: 0, NO_SIZE: 0, NO_MATERIAL_LINK: 0 }
+  const names: string[] = []
+  for (const u of unresolved) {
+    by_reason[u.reason] = (by_reason[u.reason] || 0) + 1
+    const n = (u.item_name || '').trim()
+    if (n && names.length < 5 && !names.includes(n)) names.push(n)
+  }
+  return { lines: unresolved.length, by_reason, sample_names: names }
 }

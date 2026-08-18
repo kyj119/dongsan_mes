@@ -7,7 +7,6 @@ import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../../ut
 import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
-import { checkMaterialShortage } from '../../utils/materialShortageCheck'
 import { sendEmail } from '../../services/emailProvider'
 import { getEntityId, entityFilter, orderVisibilityFilter } from '../../utils/entityFilter'
 import { getEntityCompanyInfo } from '../../utils/entitySettings'
@@ -23,6 +22,63 @@ import { buildOrderListFilter, resolveOrderSort, ORDER_SORT_DEFAULT, VOUCHER_ORD
 
 const ordersCoreRouter = new Hono<HonoEnv>()
 ordersCoreRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
+
+// POST /api/orders/recon-status — 이카운트 대사 결과 일괄 기록 (0534)
+//
+// scripts/zscan-reconcile.py 가 주 1회 돌면서 결과를 여기로 되쓴다. CSV 로만 남기면 다음 주엔
+// 잊히고, 같은 불일치를 매번 새로 발견하게 된다. 주문에 붙여야 이력이 쌓인다.
+// ★대사는 **판정이 아니라 표시**다 — 주문 금액·상태를 건드리지 않는다. 사람이 보고 고친다.
+const RECON_STATUSES = ['MATCHED', 'MISMATCH', 'NO_ECOUNT', 'NO_FILE'] as const
+ordersCoreRouter.post('/recon-status', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const body = await c.req.json<{
+      items?: Array<{ order_id?: number; batch_key?: string; status?: string; note?: string }>
+    }>().catch(() => null)
+    const items = Array.isArray(body?.items) ? body!.items! : []
+    if (!items.length) return c.json({ success: false, error: 'items 가 필요합니다.' }, 400)
+
+    const ef = entityFilter(c, 'orders')
+    // 대사 도구는 이카운트 전표번호를 알지만 MES 주문 id 는 모른다. 대신 **파일 그룹 키**를 안다.
+    //   그룹키 → designer_intakes.batch_key → order_item_id → order_items.order_id → orders.id
+    //   이 해소를 서버가 맡는다(오프라인 도구가 3단 조인을 흉내내면 갈린다).
+    const byKey = new Map<string, number>()
+    const keys = items.map((x) => x.batch_key).filter((k): k is string => !!k)
+    for (let i = 0; i < keys.length; i += 60) {
+      const chunk = keys.slice(i, i + 60)
+      const ph = chunk.map(() => '?').join(',')
+      const { results } = await c.env.DB.prepare(
+        `SELECT di.batch_key, oi.order_id
+           FROM designer_intakes di
+           JOIN order_items oi ON oi.id = di.order_item_id
+          WHERE di.batch_key IN (${ph}) AND di.order_item_id IS NOT NULL`
+      ).bind(...chunk).all<{ batch_key: string; order_id: number }>()
+      for (const r of results) if (!byKey.has(r.batch_key)) byKey.set(r.batch_key, r.order_id)
+    }
+
+    const stmts: D1PreparedStatement[] = []
+    let skipped = 0, unresolved = 0
+    for (const it of items) {
+      const st = String(it.status || '')
+      if (!RECON_STATUSES.includes(st as never)) { skipped++; continue }
+      let id = Number(it.order_id)
+      if (!(Number.isFinite(id) && id > 0) && it.batch_key) {
+        id = byKey.get(it.batch_key) ?? 0
+        if (!id) { unresolved++; continue }        // 아직 주문서가 안 된 그룹 — 정상이다
+      }
+      if (!(Number.isFinite(id) && id > 0)) { skipped++; continue }
+      stmts.push(c.env.DB.prepare(
+        `UPDATE orders SET recon_status = ?, recon_note = ?, recon_at = datetime('now')
+          WHERE id = ?${ef.clause}`
+      ).bind(st, it.note != null ? String(it.note).slice(0, 500) : null, id, ...ef.params))
+    }
+    // D1 바인드 한도(100) 회피 — 80개씩 끊는다(feedback/d1-bind-param-limit)
+    for (let i = 0; i < stmts.length; i += 80) await c.env.DB.batch(stmts.slice(i, i + 80))
+    return c.json({ success: true, data: { updated: stmts.length, skipped, unresolved } })
+  } catch (error) {
+    console.error('src/routes/orders/core.ts recon-status error:', error)
+    return c.json({ success: false, error: '대사 결과 기록 실패' }, 500)
+  }
+})
 
 ordersCoreRouter.get('/', async (c) => {
   try {
@@ -358,6 +414,12 @@ ordersCoreRouter.get('/:id', async (c) => {
              i.sub_category AS item_subcategory,
              ci.card_id AS card_id,
              ca.card_number AS card_number,
+             -- 라인 부가 파일(0516) = "kind|이름|경로" 줄 단위. 화면(orders.js)이 칩으로 그린다.
+             --   ⚠️ 이 상세 라우트에는 이 칸이 **없었다** — 목록·청구 라우트에만 있어서, 붙여 놓은
+             --      source(Z: 작업파일) 연결이 DB 에는 있는데 주문 상세에서 조용히 안 보였다.
+             --   ⚠️ 이 쿼리는 백틱 템플릿 안이다. 주석에도 백틱을 쓰면 문자열이 그 자리에서 끊긴다.
+             (SELECT GROUP_CONCAT(f.kind || '|' || COALESCE(f.file_name, '') || '|' || f.file_path, CHAR(10))
+                FROM order_ai_files f WHERE f.order_item_id = oi.id) AS line_files,
              -- 주문서 직접 첨부 칼선(analysis_id 有) 최신 1건 — 에이전트가 출력 시 baseName.dxf 복사,
              --   수정화면이 칩 복원. 재단 패널이 등록한 Z: 사본 행은 analysis_id NULL 이라 자연 제외.
              (SELECT f.analysis_id FROM order_ai_files f

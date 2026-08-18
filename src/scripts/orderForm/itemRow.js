@@ -340,6 +340,12 @@
                     } catch(e) { console.error('Search error', e); }
                 }
 
+                // 대기함 프리필(intake.js)이 품목을 프로그램으로 고를 수 있게 노출한다.
+                //   ★재구현하지 않는다 — 단가 제안·후가공 로드·AREA 표시 전환이 전부 여기 묶여 있어
+                //     복사하면 두 벌이 갈린다. 행별 클로저라 id 로 레지스트리를 만든다.
+                window.__ofApplyItem = window.__ofApplyItem || {};
+                window.__ofApplyItem[id] = applyItemSelection;
+
                 // input: 자동완성 (1건 자동 적용, 모달은 열지 않음)
                 input.addEventListener('input', () => {
                     clearTimeout(searchTimers[id]);

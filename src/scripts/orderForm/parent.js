@@ -1009,8 +1009,15 @@
                     if (prioEl && order.priority) prioEl.value = order.priority;
                     const recEl = document.getElementById('receptionLocation');
                     if (recEl) recEl.value = order.reception_location || '';
+                    // 0535: 합본(delivery_info)에서 상세를 **접미 매칭**으로만 떼어낸다.
+                    //   접미가 아니면 전체를 도로명칸에 — 레거시 8,758건도 표시 손실 0.
                     const delEl = document.getElementById('deliveryInfo');
-                    if (delEl) delEl.value = order.delivery_info || '';
+                    const delDetEl = document.getElementById('deliveryDetail');
+                    const delPostEl = document.getElementById('deliveryPostal');
+                    const delSplit = window.dsSplitAddress(order.delivery_info, order.delivery_detail);
+                    if (delEl) delEl.value = delSplit.road;
+                    if (delDetEl) delDetEl.value = delSplit.detail;
+                    if (delPostEl) delPostEl.value = order.delivery_postal || '';
                     const dmEl = document.getElementById('deliveryMethod');
                     if (dmEl && order.delivery_method) {
                         var dmOptions = Array.from(dmEl.options).map(function(o) { return o.value; });
@@ -1366,8 +1373,14 @@
                 if (prioEl && order.priority) prioEl.value = order.priority;
                 const recEl = document.getElementById('receptionLocation');
                 if (recEl) recEl.value = order.reception_location || '';
+                // 0535: 수정모드와 동일 규칙(접미 매칭 분해)
                 const delEl = document.getElementById('deliveryInfo');
-                if (delEl) delEl.value = order.delivery_info || '';
+                const delDetElCopy = document.getElementById('deliveryDetail');
+                const delPostElCopy = document.getElementById('deliveryPostal');
+                const delSplitCopy = window.dsSplitAddress(order.delivery_info, order.delivery_detail);
+                if (delEl) delEl.value = delSplitCopy.road;
+                if (delDetElCopy) delDetElCopy.value = delSplitCopy.detail;
+                if (delPostElCopy) delPostElCopy.value = order.delivery_postal || '';
                 const dmEl = document.getElementById('deliveryMethod');
                 if (dmEl && order.delivery_method) {
                     var dmOptionsCopy = Array.from(dmEl.options).map(function(o) { return o.value; });

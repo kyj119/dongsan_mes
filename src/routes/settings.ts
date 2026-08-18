@@ -6,6 +6,27 @@ import { getEntityId } from '../utils/entityFilter'
 const settingsRouter = new Hono<HonoEnv>()
 settingsRouter.use('/*', authMiddleware)
 
+// GET /api/settings/data-completeness — 데이터 완결성 구간 (전 역할 조회 가능)
+//
+// 왜 있나: 이카운트 병행 기간에는 주문이 MES 에 **일부만** 들어온다. 그런데 매출·미수금·부문손익은
+//   그대로 계산돼 화면에 뜬다 — 에러 없이 **작은 숫자가 조용히** 표시된다. 그걸 보고 판단하면 사고다.
+//   `data_complete_through` 이후 구간을 조회할 때만 화면이 경고하게 한다.
+//   전환이 끝나면 이 값을 오늘 날짜로 밀면 경고가 저절로 사라진다(코드 수정 불요).
+// 역할 게이트를 두지 않는다 — 경고는 숨길수록 위험하다. 값도 날짜 하나라 민감정보가 아니다.
+settingsRouter.get('/data-completeness', async (c) => {
+  try {
+    const row = await c.env.DB.prepare(
+      `SELECT setting_value FROM settings WHERE setting_key = 'data_complete_through'`
+    ).first<{ setting_value: string }>()
+    const through = (row?.setting_value || '').trim() || null
+    return c.json({ success: true, data: { complete_through: through, in_parallel: !!through } })
+  } catch (error) {
+    console.error('src/routes/settings.ts data-completeness error:', error)
+    // 조회 실패가 화면을 막으면 안 된다 — 경고 없이 진행(설정 미도입과 같은 상태)
+    return c.json({ success: true, data: { complete_through: null, in_parallel: false } })
+  }
+})
+
 // GET /api/settings - 전체 설정 조회 (MANAGER+)
 settingsRouter.get('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {

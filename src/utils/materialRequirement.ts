@@ -13,6 +13,33 @@ export interface MaterialReq {
   base_unit: string
 }
 
+/**
+ * 소요량을 **못 낸** 이유. 「부족 없음」과 「판정 불가」를 구분하기 위한 값이다.
+ *   NO_ITEM            품목 미연결(자유입력 라인) → 자재를 알 길이 없다
+ *   NO_SIZE            규격(가로·세로) 0 → 롤 소요 길이를 못 낸다
+ *   NO_MATERIAL_LINK   품목은 있으나 product_materials 연결이 없다
+ * ⚠️ 「NONE(무차감)만 연결」은 여기 포함하지 않는다 — 그건 의도된 0이지 미상이 아니다.
+ */
+export type UnresolvedReason = 'NO_ITEM' | 'NO_SIZE' | 'NO_MATERIAL_LINK'
+
+export interface UnresolvedLine {
+  reason: UnresolvedReason
+  item_name: string | null
+}
+
+export interface MaterialCoverage {
+  requirements: Map<number, MaterialReq>
+  unresolved: UnresolvedLine[]
+}
+
+export interface MaterialLineInput {
+  item_id: number | null
+  width: number | null
+  height: number | null
+  quantity: number | null
+  item_name?: string | null
+}
+
 const BOARD_AREA_SQM: Record<string, number> = { '4x8': (1220 * 2440) / 1e6, '3x6': (915 * 1830) / 1e6 }
 
 /**
@@ -26,11 +53,27 @@ const BOARD_AREA_SQM: Record<string, number> = { '4x8': (1220 * 2440) / 1e6, '3x
  */
 export async function computeMaterialRequirements(
   db: D1Database,
-  orderItems: Array<{ item_id: number | null; width: number | null; height: number | null; quantity: number | null }>
+  orderItems: MaterialLineInput[]
 ): Promise<Map<number, MaterialReq>> {
+  return (await computeMaterialCoverage(db, orderItems)).requirements
+}
+
+/**
+ * 위와 같은 산식이되, **소요량을 못 낸 라인도 함께** 돌려준다.
+ * 소요량만 보면 「자재 충분」과 「자재 모름」이 똑같이 빈 결과라 화면에서 구분되지 않는다.
+ */
+export async function computeMaterialCoverage(
+  db: D1Database,
+  orderItems: MaterialLineInput[]
+): Promise<MaterialCoverage> {
   const requirements = new Map<number, MaterialReq>()
+  const unresolved: UnresolvedLine[] = []
   const productIds = [...new Set(orderItems.map((o) => Number(o.item_id)).filter((id) => id > 0))]
-  if (productIds.length === 0) return requirements
+  if (productIds.length === 0) {
+    // 품목이 하나도 안 붙은 주문 — 전 라인이 판정 불가다(예전엔 조용히 빈 결과였다).
+    for (const oi of orderItems) unresolved.push({ reason: 'NO_ITEM', item_name: oi.item_name ?? null })
+    return { requirements, unresolved }
+  }
 
   // product_materials + 차감설정 일괄 로드 (바인드 한도: 80 청크)
   const pmByProduct = new Map<number, any[]>()
@@ -65,14 +108,18 @@ export async function computeMaterialRequirements(
   }
 
   for (const oi of orderItems) {
+    const name = oi.item_name ?? null
     const pid = Number(oi.item_id)
-    if (!(pid > 0)) continue
+    if (!(pid > 0)) { unresolved.push({ reason: 'NO_ITEM', item_name: name }); continue }
     const widthCm = Number(oi.width) || 0
     const heightCm = Number(oi.height) || 0
     const qty = Number(oi.quantity) || 1
-    if (widthCm <= 0 || heightCm <= 0) continue
+    if (widthCm <= 0 || heightCm <= 0) { unresolved.push({ reason: 'NO_SIZE', item_name: name }); continue }
     const mats = pmByProduct.get(pid)
-    if (!mats || mats.length === 0) continue   // 미링크 제품 → 계획 제외
+    if (!mats || mats.length === 0) {         // 미링크 제품 → 계획 제외
+      unresolved.push({ reason: 'NO_MATERIAL_LINK', item_name: name })
+      continue
+    }
 
     const outWmm = widthCm * 10
     const outHmm = heightCm * 10
@@ -96,7 +143,7 @@ export async function computeMaterialRequirements(
       const boardArea = BOARD_AREA_SQM[bm.sheet_spec as string] || BOARD_AREA_SQM['4x8']
       add(bm, ((outWmm * outHmm) / 1e6) * qty * (Number(bm.waste_factor) || 1) / boardArea)
     }
-    // else: NONE만 연결 or 유효자재 없음 → 소요 없음
+    // else: NONE만 연결 or 유효자재 없음 → 의도된 무차감(판정 불가 아님)
   }
-  return requirements
+  return { requirements, unresolved }
 }

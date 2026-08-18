@@ -28,6 +28,13 @@ function getMonths() {
 function fmt(n) { return window.fmtNum(n); }
 
 async function loadAllReports() {
+  // 병행 기간 안내 — 조회 구간(최근 N개월)이 병행 구간과 겹칠 때만 뜬다(shell.js)
+  try {
+    await window.ensureDataCompleteness();
+    var m = parseInt(getMonths(), 10) || 6;
+    var d = new Date(); d.setMonth(d.getMonth() - (m - 1)); d.setDate(1);
+    window.renderCompletenessNotice('reportsCompletenessNotice', d.toISOString().slice(0, 10), null);
+  } catch (e) { /* 안내 실패가 보고서를 막지 않는다 */ }
   loadMonthlySummary();
   loadClientRevenue();
   loadItemAnalysis();

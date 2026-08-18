@@ -253,7 +253,9 @@ export interface Order {
   order_year?: number;
   order_month?: number;
   reception_location?: string;
-  delivery_info?: string;
+  delivery_info?: string;          // 합본(도로명 + ' ' + 상세) — 표시·출력의 정본
+  delivery_postal?: string;        // 우편번호 5자리 (0535)
+  delivery_detail?: string;        // 상세주소 — delivery_info 의 접미 (0535)
   delivery_date?: string;
   order_date: string;
   total_amount: number;
