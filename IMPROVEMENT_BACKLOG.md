@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-08-18T09:44:09+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-08-18T15:44:51+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -26,6 +26,19 @@
 > - **🧬 SKILL 강화**: 없음 — 이번 사이클 신규 오탐/탐지 클래스 없음. 코드 churn 부재 + CI 전부 green이라 기존 codify된 판별 레시피(cold-start transient·CF finalize transient·smoke stale probe·write-path 맹점·prod↔main 디버전스)를 적용할 신규 사례 자체가 없음.
 > - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 8건 → 이번 로그 추가 후 9건, 임계 13건 미만, 트림 불요.
 > - 신규 이슈 0건(코드 churn 없음 + CI 전부 green), 자동수정 0건, done-sync: open 5(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
+
+> **Area 2 코드 품질 심층 분석 (2026-08-18T15:44):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean. `git fetch origin main` → **origin이 `de31dbf..a6beebe`로 19커밋 전진**(직전 백로그 기재 HEAD `36ac54d`보다 최신) → `git checkout main && git reset --hard origin/main`으로 정리(HEAD `a6beebe`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area2 자신의 앵커(`e9fa6c5`)는 이번 사이클에도 유효한 조상. `e9fa6c5..HEAD` 웹앱 범위(`src/routes`/`src/scripts`/`migrations`/`index.tsx`/`src/layout`/`src/pages`) = **실질 churn 1건**(`a6beebe` `fix(ledger,bank): keep balance-only suppliers, unify AR period basis, split receivables by entity` — `src/routes/bank.ts`·`src/routes/ledger/{accounts-payable,ar-helpers,ar-ledger}.ts`·`src/scripts/bank.js`·`src/pages/bank.ts`, 나머지 신규커밋 다수는 전부 auto-improve backlog 커밋). 오랜만의 실제 웹앱 diff — 코드 품질 렌즈로 직접 정독.
+> - **커밋 diff 정독 결과**: entity_id 배선 정확(`entities` 신규 JOIN·`byEntity` 파라미터화, `ar.eid` 필터 + 소계 집계 전부 entity_id 기준) · `ORDER BY ar.eid ASC, ar.balance DESC, c.id ASC`(고유키 tie-break 준수) · 프론트 `bank.js` `escHtml()` 전건 적용(엔티티명·소계라벨 포함, XSS 갭 없음) · N+1 없음(신규 서브쿼리 전부 JOIN/GROUP BY 집계, 루프 내 쿼리 없음) · 커밋 자체가 typecheck/build/entity-audit 61/61/sort-audit/migration-drift/smoke 111/111/브라우저 확인까지 완결 — Area 2 자동수정 후보(entity_id 누락·타입불일치·dead code) net-new 0.
+> - **standing scan 재실행**: ① `npm run audit:entity` — 131파일·61쿼리·**누락 0**(변동없음, 이번 churn 포함 재검증). ② `grep -rnE "IN \(\$\{" src/routes` 전수 재확인 — 매치 전부 기존 codify된 FP 클래스(per-entity bounded IN, #458 판정 기준)이며 이번 신규 커밋 파일(bank.ts/ar-helpers.ts/ar-ledger.ts/accounts-payable.ts)에서 net-new 매치 0. ③ authMiddleware — 이번 churn이 기존 파일 내부 수정뿐(신규 라우트 파일 0) + `bank.ts` `/receivables`는 기존 `requireRole('ADMIN','MANAGER')` 유지 확인, recursive 재스캔 불요.
+> - **npm audit 재확인**: `npm ci` 후 11건(1 moderate·8 high·2 critical), 전부 devDependency(#613 기보고와 일치, net-new 아님).
+> - **open 5건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` = #606·#608·#609·#612·#613(변동없음, `updated_at` 전건 직전 확인 시점과 동일 — 신규 코멘트 없음, 이번 churn과 무관한 영역).
+> - **backlog↔GitHub 절대값 재동기화**: open **5**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md `line N` 잔여참조 재확인 0건(기존 유지). 이번 사이클은 실제 churn이 있었는데도 기존 codify된 레시피(entity_id diff·IN절 청크·sort tie-break·XSS escHtml)로 전량 clean 판정이 가능했음 — 새 오탐/탐지 클래스 도출 없음.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 9건 → 이번 로그 추가 후 10건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(실제 churn 1건을 직접 정독했으나 이미 자체 검증 완결된 정상 커밋), 자동수정 0건, done-sync: open 5(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
 >
 
 > **Area 6 자기 진화 (2026-08-18T03:44):**
