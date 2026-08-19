@@ -2,6 +2,8 @@
 
 > **운영 규칙(2026-08-10 확정)**: ①완료(✅)=아래 인덱스 1줄(제목+남은 것)만, 경위 전문은 `PROJECT_STATUS_ARCHIVE.md`에 직접 쓴다 (**「✅ 최근 완료」 항목 400자 상한** — 2026-08-19 게이트 강제, 초과 시 큰 것부터 지목) ②의미 없는 대기=보류함으로 과감히 이관 ③대기 항목=빠른 처리 우선 ④"커밋·미배포" 기록은 믿지 말고 prod 실측(deploy.yml=main push 자동배포). 게이트=`node scripts/doc-diet-audit.cjs`(훅·세션 시작 배너 연동).
 
+> **✅ prod 배포 2026-08-19 · `dc7a34e5` (배포 `c21504a6`) — /reports 경영진단 탭 삭제** — 탭 버튼·콘텐츠·import·딥링크(`?tab=mgmt`) 제거. 단독 `/management-report` 페이지는 보존(직접 URL·`mr-root` 마커 실측). 검증=타입체크·빌드·entity 61/61·드리프트 없음·prod smoke **114/114**·마커(/reports `anaTabMgmt` 부재·`anaTabForecast` 존재). 남은=없음
+
 > **✅ prod 배포 2026-08-19 · `ddf0108a` (배포 `7fe9b134`) — 작업지시서 슬라이드(#26) + 카드 상세 이원화 확정(#27)** — `/cards/:id` 헤더 ‹n/m›·스와이프·←→ 로 같은 상태컬럼×생산라인 큐 연속 열람(신설 `GET /api/cards/:id/neighbors` — 칸반 delivery_asc 동일 정렬·entity 필터). #27=모달(사무 조작)·뷰어(현장 정본) 이원화 유지. 검증=prod smoke **113/113**·페이지 6/6·마커 4/4·콘솔 JS예외 0. 경위=ARCHIVE §2026-08-19 작업지시서 슬라이드 · 정본=memory `design-work-order-system`. 후속 `3b4827a8`(배포 `c3d5b42e`) 리뷰 개선 4종=연타 레이스 가드·핀치 무효·큐 라벨 병기(「보류 3/10」)·다음 카드 프리페치(즉시 전환, 60초 창) — smoke 113/113·마커 4/4·연타 레이스 실측 통과. 남은=태블릿 실기기 스와이프 확인
 
 > **✅ prod 배포 2026-08-19 · `a22fb424` — 주문서 마감·펀칭 역할 재정의 + 출고검수 주문 찾기** — 마감/펀칭=청구+현장지시 축 확정, 사문 기하경로(auto_process_jobs producer 2곳·제2 여백정본) 은퇴(−241줄). 접수 UI=프리셋+요약(MES_FIN)·상세 접기. `/pack` 수동입력=신설 읽기전용 `pack-search` 경유(숫자 꼬리 입력이 다른 주문을 열며 shipment 를 만들던 위험 제거). 검증=prod smoke **112/112**·페이지 6/6·마커 9/9·콘솔 0. 정본=memory `design-order-finishing-role`
@@ -36,7 +38,7 @@
 
 - **✅ 08-19 법인카드 마감일·결제일 정정 — 카드사 공식 신용공여기간 적용**(마이그 `0536`→`0537`+`0538` prod·코드 0) — 경위 전문=`PROJECT_STATUS_ARCHIVE.md` §2026-08-19 법인카드 마감일·결제일 · 정본=memory `design-card-billing-cycle`. ★마감일 **데이터 추정 금지**(할부가 상관을 뒤집는다) · ★NH농협=**대표자 개인통장** 출금이라 법인카드 아님 → #16 삭제(백업 `_bak_0538_removed_cards`). 남은=미등록 정기출금 2건(하나 「비씨카드」 23일 정액 2,332,300 · 전북 「신한카드할부」 26일 745,630) · **개인통장 #17 이 활성 법인계좌라 자금·판관비에 섞임**
 
-- **✅ 08-19 TNS 2축 파서 `tns_printexp`(`592b909d`) + 키트 [2] 자동 전환(`169340e0`)·[1] 센서스** — 경위·08-19 16시 일제실행 결과=`PROJECT_STATUS_ARCHIVE.md` §2026-08-19 TNS · 정본=memory `design-tns-printexp-join`. 남은: **PrintExp 미발견 9대=[1] 대상** · HSM-07 [2] 미실행 · UV=Flora `print_rec.dat` 구조 판독→2축 파서 — 다음=출력실1·2 **[1] 재실행**(`efc3ca15`)
+- **✅ 08-19 TNS 2축 파서 `tns_printexp`(`592b909d`) + 키트 [2] 자동 전환(`169340e0`)·[1] 센서스** — 경위·08-19 16시 일제실행 결과=`PROJECT_STATUS_ARCHIVE.md` §2026-08-19 TNS · 정본=memory `design-tns-printexp-join`. 남은: 미발견 9대+HSM-07=**[2] 재실행** · ★HYB-3200·SOLV-3200=이벤트 0건→**[1]**(상세=ARCHIVE) · UV 2대 [1] 재실행(print_rec 통째 수거) · EPSON 자연검증
 
 - **✅ prod 배포 08-19 `771e8db3` (배포 ID `cf0af4f0`) — 카드 마감·후가공 표기 통일 (사본 5벌 → 정본 1벌)** — 경위 전문=`PROJECT_STATUS_ARCHIVE.md` §2026-08-19 카드 마감·후가공 표기. 게이트=`npm run test:finishing-label`. smoke **111/111** · prod 마커 실측(MES_FIN·`4방`·`4모서리`) 확인. 남은=기존 카드 체크리스트 라벨은 소급 안 됨(DB 스냅샷·prod cards 0건)
 
