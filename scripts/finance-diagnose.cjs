@@ -52,6 +52,16 @@ if (!GROUP && ![1, 2, 3].includes(E)) { console.error('--entity 는 1(동산기�
  */
 const STOCK = {
   // entity: { 'YYYY-MM-DD': 금액 }   ※ 조회 기간의 FROM/TO 와 날짜가 정확히 맞을 때만 반영한다
+  2: {
+    // 선명 — 원천 `품목마스터/재고/선명_재고수불부_2601-2606.xlsx`(이카운트, 2026-01-01~06-30).
+    //   기초 = 품목 블록의 「전일재고」 행 · 기말 = 「합계」 행. 수량 검산 77,417 → 64,590 (MES 적재분과 일치).
+    //   금액 = 양끝 모두 **MES `avg_unit_cost` 동일 단가**로 환산했다. 서로 다른 단가를 쓰면 증감이 아니라
+    //   단가차가 섞여 나온다. 산출기 = scratchpad `sm-value3.py`(코드일치 263/269·수량 100% 커버).
+    //   ★MES 는 통합 품목의 이카운트 코드를 **쉼표로 묶어** 둔다(`A004,A404`) — 분해하지 않으면 41%만 매칭된다.
+    //   ⚠️음수 재고가 실재한다(입고 미기록분). 그대로 쓴다 — 0 으로 클립하면 실제 소비가 숨는다(클립 시 −923만).
+    '2026-01-01': 61465861,
+    '2026-06-30': 47133689,   // 1~6월 재고 −1,433만 → 그만큼 매출원가 증가(적자 확대)
+  },
   3: {
     '2026-01-01': 0,          // 청주 첫 매입이 2026-05-15 · 계좌 개시 2026-04 → 연초 재고 0
     '2026-04-01': 0,          // 계좌·매입 개시 이전 = 기초 0
@@ -87,7 +97,13 @@ const CAT_ROLE = {
   NONOP: ['이자비용'],
   TAX: ['법인세'],
   // 비용이 아닌 현금흐름 — 부채 상환·예수금 정산·자금 대차·자산 취득
-  NOT_EXPENSE: ['대출상환', '대출금', '부가세', '가수금', '가지급금', '보증금(자산)', '고정자산취득'],
+  //   ★「리스료」 추가(2026-08-19) — **세무장부 실측 근거**. WEHAGO 합계잔액시산표(21기, 2026-07-31)에
+  //     **「리스부채」 계정이 아예 없고** 리스가 **장기차입금 18.49억**에 들어가 있다.
+  //     즉 세무사는 리스·할부를 **차입금**으로 잡았다 → 납입액은 원금 상환이고 비용이 아니다.
+  //     리스 장비는 이미 `fixed_assets` 로 감가상각 중이라(FA-*-L*) 리스료를 비용으로 또 넣으면 이중이다.
+  //     ⚠️이자 부분은 여기서 같이 빠진다 — 세무장부 이자비용(931) **5,696만**이 정본이고
+  //       MES 「이자비용」 계정 307만은 극히 일부만 잡은 값이다(아래 이자 표시가 과소인 이유).
+  NOT_EXPENSE: ['대출상환', '대출금', '부가세', '가수금', '가지급금', '보증금(자산)', '고정자산취득', '리스료'],
 }
 const roleOf = nm => {
   for (const [role, names] of Object.entries(CAT_ROLE)) if (names.includes(nm)) return role
@@ -142,6 +158,16 @@ const buildSQL = (E) => ({
     SELECT 'purchase' k, CAST(COALESCE(SUM(final_amount),0) AS INT) v, COUNT(*) cnt
       FROM purchase_orders WHERE entity_id=${E} AND status NOT IN ('DRAFT','CANCELLED')
        AND date(order_date) BETWEEN ${q(FROM)} AND ${q(TO)} AND po_number NOT LIKE '%-OPEN%';
+    SELECT 'purchase_equip' k, CAST(COALESCE(SUM(poi.amount),0) AS INT) v, COUNT(*) cnt
+      FROM purchase_order_items poi JOIN purchase_orders po ON po.id=poi.po_id
+      JOIN items i ON i.id=poi.item_id
+     WHERE po.entity_id=${E} AND po.status NOT IN ('DRAFT','CANCELLED')
+       AND date(po.order_date) BETWEEN ${q(FROM)} AND ${q(TO)} AND po.po_number NOT LIKE '%-OPEN%'
+       AND i.item_code LIKE 'GDS-EQ-%'
+       AND ${E} = 1;   -- ★동산만. 선명이 산 장비는 **유통 상품**(사서 판다)이라 매출원가가 맞다(용준님 확인).
+    SELECT 'depreciation' k, CAST(COALESCE(SUM(depreciation_amount),0) AS INT) v, COUNT(*) cnt
+      FROM depreciation_records WHERE entity_id=${E}
+       AND substr(period,1,7) BETWEEN substr(${q(FROM)},1,7) AND substr(${q(TO)},1,7);
     SELECT 'payroll' k, CAST(COALESCE(SUM(net_pay),0) AS INT) v, COUNT(*) cnt
       FROM payroll WHERE entity_id=${E} AND date(pay_date) BETWEEN ${q(FROM)} AND ${q(TO)};
     SELECT 'card' k, CAST(COALESCE(SUM(amount),0) AS INT) v, COUNT(*) cnt
@@ -301,6 +327,7 @@ if (GROUP) {
     return {
       e, name: ENTITY_NAME[e],
       매출: gv('sales'), 매입: gv('purchase'),
+      장비매입: gv('purchase_equip'), 감가상각비: gv('depreciation'),
       내부매출: gv('sales_internal'), 내부매입: gv('purchase_internal'),
       원가_비전표: sum('COGS'), 판관비: sum('SGA'), 영업외: sum('NONOP'), 법인세: sum('TAX'),
       기초재고: open, 기말재고: close,
@@ -316,8 +343,16 @@ if (GROUP) {
   const 재고증감 = parts.reduce((a, p) =>
     (p.기초재고 === undefined || p.기말재고 === undefined) ? a : a + (p.기말재고 - p.기초재고), 0)
   const 재고반영 = parts.filter(p => p.기초재고 !== undefined && p.기말재고 !== undefined)
-  const 매출원가 = 매입 + S('원가_비전표') - 재고증감
-  const 판관비 = S('판관비'), 영업외 = S('영업외'), 법인세 = S('법인세')
+  // ★장비는 매출원가가 아니다(2026-08-19) — `fixed_assets` 에 자산으로 등록돼 감가상각으로 비용화된다.
+  //   매입 전표에 그대로 두면 취득액이 원가에 한 번, 감가상각비가 또 한 번 = 이중계상.
+  //   식별 = `items.item_code LIKE 'GDS-EQ-%'` **이면서 동산(e1)** 인 것만.
+  //   ★같은 장비라도 **동산은 사서 쓰고(자산) 선명은 사서 판다(상품)**(용준님 2026-08-19).
+  //     품목 코드로는 못 가른다 — 법인의 업(業)이 다르다. 선명 GDS-EQ 매입 2,113만은 원가에 남는 게 맞다.
+  //   미연결 장비는 그 코드로 먼저 품목화해 둔다(_bak_0819_equip).
+  const 장비매입 = S('장비매입')
+  const 감가상각비 = S('감가상각비')
+  const 매출원가 = 매입 - 장비매입 + S('원가_비전표') - 재고증감
+  const 판관비 = S('판관비') + 감가상각비, 영업외 = S('영업외'), 법인세 = S('법인세')
   const 영업이익 = 매출 - 매출원가 - 판관비
   const pctOf = v => 매출 ? +(v / 매출 * 100).toFixed(1) : null
 
@@ -343,10 +378,11 @@ if (GROUP) {
   console.table([
     { 항목: '매출(외부)', 금액: won(매출), 비고: `합산 ${won(S('매출'))} − 내부 ${won(S('내부매출'))}` },
     { 항목: '  − 매입(외부)', 금액: won(매입), 비고: `합산 ${won(S('매입'))} − 내부 ${won(S('내부매입'))}` },
+    { 항목: '  + 장비 제외(고정자산)', 금액: won(-장비매입), 비고: 장비매입 ? 'GDS-EQ-* — 감가상각으로 비용화' : '해당 없음' },
     { 항목: '  − 원가(비전표·직불)', 금액: won(S('원가_비전표')), 비고: '원재료비·외주가공비' },
     { 항목: '  + 재고 증가(원가 차감)', 금액: won(-재고증감), 비고: 재고반영.length ? `${재고반영.map(p => p.name).join('·')} 실사 반영` : '★실사값 없음 — 미반영' },
     { 항목: '= 매출총이익', 금액: won(매출 - 매출원가), 비고: pctOf(매출 - 매출원가) + '%' },
-    { 항목: '  − 판관비', 금액: won(판관비), 비고: '통장·카드 계정분류' },
+    { 항목: '  − 판관비', 금액: won(판관비), 비고: `통장·카드 + 감가상각비 ${won(감가상각비)}` },
     { 항목: '= 영업이익', 금액: won(영업이익), 비고: pctOf(영업이익) + '%' },
     { 항목: '  − 이자비용', 금액: won(영업외), 비고: '실측분만(대출상환 혼입분 제외)' },
     { 항목: '  − 법인세', 금액: won(법인세), 비고: '' },
@@ -404,8 +440,11 @@ const 원가_비전표 = sumRole('COGS')          // 매입전표에 안 잡힌 
 const 기초재고 = openingStock(E, FROM), 기말재고 = openingStock(E, TO)
 const 재고반영 = 기초재고 !== undefined && 기말재고 !== undefined
 const 재고증감 = 재고반영 ? 기말재고 - 기초재고 : 0
-const 매출원가 = 매입 + 원가_비전표 - 재고증감
-const 판관비 = sumRole('SGA')
+// ★장비는 매출원가가 아니다(2026-08-19) — 그룹 모드 주석 참조. 취득액을 빼고 감가상각비를 넣는다.
+const 장비매입 = g(pnlB, 'purchase_equip')
+const 감가상각비 = g(pnlB, 'depreciation')
+const 매출원가 = 매입 - 장비매입 + 원가_비전표 - 재고증감
+const 판관비 = sumRole('SGA') + 감가상각비
 const 영업이익 = 매출 - 매출원가 - 판관비
 const 영업외 = sumRole('NONOP')
 const 법인세 = sumRole('TAX')
@@ -477,10 +516,11 @@ const pct = v => v === null ? '' : v + '%'
 console.table([
   { 항목: '매출', 금액: won(매출), 비고: `${gc(pnlB, 'sales')}건` },
   { 항목: '  − 매입(전표)', 금액: won(매입), 비고: `${gc(pnlB, 'purchase')}건` },
+  { 항목: '  + 장비 제외(고정자산)', 금액: won(-장비매입), 비고: 장비매입 ? `GDS-EQ-* ${gc(pnlB, 'purchase_equip')}건 — 감가상각으로 비용화` : '해당 없음' },
   { 항목: '  − 원가(비전표·직불)', 금액: won(원가_비전표), 비고: '원재료비·외주가공비' },
   { 항목: '  + 재고 증가(원가 차감)', 금액: won(-재고증감), 비고: 재고반영 ? `실사 ${won(기초재고)} → ${won(기말재고)}` : '★실사값 없음 — 미반영' },
   { 항목: '= 매출총이익', 금액: won(매출 - 매출원가), 비고: pct(result.손익_기간.매출총이익률) },
-  { 항목: '  − 판관비', 금액: won(판관비), 비고: `통장+카드 ${cats.filter(c => c.역할 === 'SGA').length}개 계정` },
+  { 항목: '  − 판관비', 금액: won(판관비), 비고: `통장+카드 ${cats.filter(c => c.역할 === 'SGA').length}개 + 감가상각 ${won(감가상각비)}` },
   { 항목: '= 영업이익', 금액: won(영업이익), 비고: pct(result.손익_기간.영업이익률) },
   { 항목: '  − 이자비용', 금액: won(영업외 || 이자추정), 비고: 영업외 ? '실측' : `★추정(잔액×${rate}%×${months}/12)` },
   { 항목: '  − 법인세', 금액: won(법인세), 비고: '' },
