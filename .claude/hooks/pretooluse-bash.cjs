@@ -66,8 +66,12 @@ if (/(^|&&|;|\s)git(\s+-[cC]\s+\S+)*\s+commit/i.test(cmd)) {
   const gates = [
     [/\.claude\/(skills\/.*\/SKILL\.md|agents\/.*\.md)/, 'node scripts/skill-audit.cjs',
       '스킬 정의 P1 — 본문은 목차·분기만, 누적 지식은 references/ 로'],
-    [/\.claude\/hooks\//, 'node scripts/hook-guard-selftest.cjs',
-      '위험명령 패턴 회귀 — 오탐(막으면 안 되는 것)까지 함께 볼 것'],
+    [/\.claude\/(hooks\/|settings\.json)/, 'node scripts/hook-guard-selftest.cjs',
+      '위험명령 패턴 + 훅 해석 회귀 — 오탐과 「게이트 자체가 안 도는」 경우까지'],
+    // 현황판 비대화 (2026-08-19) — 편집 훅은 경고뿐이라 무시하고 커밋하면 그대로 나간다.
+    //   그 결과 「✅ 최근 완료 인덱스」 섹션이 16,412자(현황판의 64%)까지 자랐다 — 그 지점만 막는다.
+    [/\.claude\/PROJECT_STATUS\.md/, 'node scripts/doc-diet-audit.cjs',
+      '현황판 비대화 — 경위는 PROJECT_STATUS_ARCHIVE.md 로, 인덱스 항목은 400자 이내'],
   ];
   for (const [scope, run, why] of gates) {
     if (!scope.test(dirty)) continue;

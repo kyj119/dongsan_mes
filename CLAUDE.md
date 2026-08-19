@@ -25,7 +25,7 @@
 
 ### 세션 종료 시 필수
 PowerShell 빌드/검증 명령 + 다음 세션 TODO + `memory/session-context.md` 덮어쓰기 (결정+이유, 판단기준, 주의사항)
-- **완료(✅) 보고 = 현황판에 「1줄 요약+남은 것」만** — 상세 경위는 `PROJECT_STATUS_ARCHIVE.md`에 직접 쓴다. MEMORY.md 훅도 1줄(장문 원본=`memory/MEMORY-ARCHIVE.md`). 게이트=`node scripts/doc-diet-audit.cjs` (훅·세션 시작 배너 연동, 2026-08-10 90K자 비대화 재발 방지)
+- **완료(✅) 보고 = 현황판에 「1줄 요약+남은 것」만** — 상세 경위는 `PROJECT_STATUS_ARCHIVE.md`에 직접 쓴다. MEMORY.md 훅도 1줄(장문 원본=`memory/MEMORY-ARCHIVE.md`). 게이트=`node scripts/doc-diet-audit.cjs` (훅·세션 시작 배너 연동, 2026-08-10 90K자 비대화 재발 방지). **「✅ 최근 완료」 섹션=항목당 400자 상한**(이름이 인덱스면 인덱스여야 한다) · 줄 1,200자 · ✅ 줄 800자. 위반은 **큰 것부터** 지목된다 — 총량만 보던 구 게이트는 방금 쓴 항목을 깎게 만들어 오래된 덩어리가 영구히 남았다(2026-08-19)
 - **스킬도 같은 병에 걸린다** — 긴 SKILL.md 는 자동압축 때 **앞 5,000토큰만 남고 뒤는 경고 없이 사라진다**(`auto-improve` 8KB→197KB). 누적 지식은 SKILL.md 본문이 아니라 `references/`로. 게이트=`npm run audit:skills`(편집 훅=경고 · **커밋 훅=차단**, 스킬 정의가 dirty 일 때만 — 배포 산출물이 아니라 `ship:gate` 에는 의도적으로 안 넣음). 설계 규칙 정본=`.claude/references/agent-team-guide.md` §스킬 설계 규칙
 
 ### 대화 스타일 & 환경

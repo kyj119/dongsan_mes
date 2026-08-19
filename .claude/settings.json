@@ -27,19 +27,56 @@
   },
   "hooks": {
     "SessionStart": [
-      { "hooks": [{ "type": "command", "command": "node .claude/hooks/sessionstart.cjs" }] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const f=require('fs'),p=require('path');const rel=p.join('.claude','hooks','sessionstart.cjs');let t=null;for(const s of [process.env.CLAUDE_PROJECT_DIR,process.cwd()].filter(Boolean)){let d=s;for(let i=0;i<12;i++){const c=p.join(d,rel);if(f.existsSync(c)){t=c;break}const u=p.dirname(d);if(u===d)break;d=u}if(t)break}if(!t)process.exit(0);require(t)\""
+          }
+        ]
+      }
     ],
     "UserPromptSubmit": [
-      { "hooks": [{ "type": "command", "command": "node .claude/hooks/userpromptsubmit.cjs" }] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const f=require('fs'),p=require('path');const rel=p.join('.claude','hooks','userpromptsubmit.cjs');let t=null;for(const s of [process.env.CLAUDE_PROJECT_DIR,process.cwd()].filter(Boolean)){let d=s;for(let i=0;i<12;i++){const c=p.join(d,rel);if(f.existsSync(c)){t=c;break}const u=p.dirname(d);if(u===d)break;d=u}if(t)break}if(!t)process.exit(0);require(t)\""
+          }
+        ]
+      }
     ],
     "PreToolUse": [
-      { "matcher": "Bash|PowerShell", "hooks": [{ "type": "command", "command": "node .claude/hooks/pretooluse-bash.cjs" }] }
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const f=require('fs'),p=require('path');const rel=p.join('.claude','hooks','pretooluse-bash.cjs');let t=null;for(const s of [process.env.CLAUDE_PROJECT_DIR,process.cwd()].filter(Boolean)){let d=s;for(let i=0;i<12;i++){const c=p.join(d,rel);if(f.existsSync(c)){t=c;break}const u=p.dirname(d);if(u===d)break;d=u}if(t)break}if(!t){console.error('[BLOCK] danger-command gate not found from cwd='+process.cwd()+' - refusing to run unguarded. Run from the project tree.');process.exit(2)}require(t)\""
+          }
+        ]
+      }
     ],
     "PostToolUse": [
-      { "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": "node .claude/hooks/posttooluse-edit.cjs" }] }
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const f=require('fs'),p=require('path');const rel=p.join('.claude','hooks','posttooluse-edit.cjs');let t=null;for(const s of [process.env.CLAUDE_PROJECT_DIR,process.cwd()].filter(Boolean)){let d=s;for(let i=0;i<12;i++){const c=p.join(d,rel);if(f.existsSync(c)){t=c;break}const u=p.dirname(d);if(u===d)break;d=u}if(t)break}if(!t)process.exit(0);require(t)\""
+          }
+        ]
+      }
     ],
     "Stop": [
-      { "hooks": [{ "type": "command", "command": "node .claude/hooks/stop.cjs" }] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const f=require('fs'),p=require('path');const rel=p.join('.claude','hooks','stop.cjs');let t=null;for(const s of [process.env.CLAUDE_PROJECT_DIR,process.cwd()].filter(Boolean)){let d=s;for(let i=0;i<12;i++){const c=p.join(d,rel);if(f.existsSync(c)){t=c;break}const u=p.dirname(d);if(u===d)break;d=u}if(t)break}if(!t)process.exit(0);require(t)\""
+          }
+        ]
+      }
     ]
   }
 }
