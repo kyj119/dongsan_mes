@@ -1,0 +1,20 @@
+{
+  "poll_interval_seconds": 5,
+  "heartbeat_interval_seconds": 60,
+  "watchers": [
+    {
+      "_comment": "HSM-03 — tns → tns_printexp 2축 전환 (2026-08-19 수거 실측). TNS=신원, PrintExp 일자로그=실인쇄·취소. 재생검증: 08-18 조인 18/18 + 립기록 없는 취소(09:37) 고아 복원·08-19 취소→재출력 쌍 복원. 레거시(appsettings)에서 멀티모드 전환이라 립 위치는 첫 실행 시 EOF 스킵(재적재 없음).",
+      "equipment_id": "HSM-03",
+      "name": "HSM-03",
+      "enabled": true,
+      "parser_type": "tns_printexp",
+      "config": {
+        "log_path": "C:\\TNSRip-X1\\Print.log",
+        "print_log_dir": "C:\\Program Files (x86)\\PrintExp_X64_V5.7.6.5.70.BS_U50\\Log",
+        "join_tolerance_seconds": 30,
+        "result_wait_seconds": 180,
+        "rip_fallback_hours": 6
+      }
+    }
+  ]
+}

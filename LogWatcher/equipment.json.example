@@ -83,6 +83,24 @@
       }
     },
     {
+      "_comment": "TNS(TopazRip) 계열 2축 — TNS 립 + PrintExp_X64(실인쇄)가 같은 PC 에 있으면 tns 대신 이걸 쓴다 (TOPM-01·HSM-03 실측 2026-08-19).",
+      "_comment2": "TNS Print.log 의 시각 2개는 립핑 구간이라, 립 완료 후 인쇄 취소가 무흔적 OK 로 쌓이고 소요시간도 왜곡된다 (TOPM-01 08-18 09:31 건 prod OK 78초 = 실제 취소).",
+      "_comment3": "조인 = FIFO 순서 + 시간창 (여기 PrintExp 는 스탬프가 없다 — 启动任务：~section0.prn). 즉시 시작 건은 립시작 +4~12초, 대기열 건은 순서로 붙는다.",
+      "_comment4": "log_path 는 tns 와 같은 키 — 기존 tns 설정에서 print_log_dir 만 더하고 parser_type 을 바꾸면 된다. 위치파일({id}.pos) 보존 시 재적재 없음.",
+      "_comment5": "print_log_dir 는 PC 마다 PrintExp 폴더명이 다르다(버전 접미) — [1] 진단 수거로 확인 후 기입.",
+      "equipment_id": "TOPM-EXAMPLE",
+      "name": "TopazRip 평판 (예시)",
+      "enabled": false,
+      "parser_type": "tns_printexp",
+      "config": {
+        "log_path": "C:\\TNSRip-X11\\Print.log",
+        "print_log_dir": "C:\\Program Files (x86)\\PrintExp_X64_V5.7.6.5.14.BS\\Log",
+        "join_tolerance_seconds": 30,
+        "result_wait_seconds": 180,
+        "rip_fallback_hours": 6
+      }
+    },
+    {
       "_comment": "리핑 로그만 있는 PC(제어 SW 가 다른 PC) 라면 이 형태를 쓴다 — event_kind='RIP' 로 적재된다.",
       "equipment_id": "TRANS-8C-RIPONLY",
       "name": "전사 8색 (리핑 전용)",
