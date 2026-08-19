@@ -170,6 +170,89 @@ function Invoke-LogSweep {
     Write-Host ("   로그 수거: {0}개 복사, {1}개 건너뜀 (skipped-files.txt 참조)" -f $copied.Count, $skipped.Count)
 }
 
+# ── 제어 SW 서식지 센서스 — 확장자 무관 전체 파일 목록 + 최근 파일 수거 ──
+# 스윕·discover 는 「로그 확장자 + 최근 3일 + AppData 제외」 필터라, 로그를 특이 확장자나
+# AppData 에 쓰는 제어 SW(Flora RYPC 실측: 서식지에서 로그 0건)를 못 본다.
+# 여기서는 ①실행 중 제어 SW 프로세스의 폴더 ②서식지 와일드카드 ③AppData/ProgramData 흔적을
+# 확장자 무관으로 전수 목록화하고, 최근 변경된 작은 파일은 내용까지 수거한다 (2026-08-19).
+function Invoke-HabitatCensus {
+    param([int]$CollectDays = 7)
+    $dir = Ensure-Collect
+    $outDir = Join-Path $dir "census"
+
+    $roots = New-Object System.Collections.Generic.List[string]
+    # ① 실행 중인 제어/립 SW 프로세스의 설치 폴더 — RYPC 처럼 중첩 폴더(D:\220304\Flora_...)에
+    #    살아도 프로세스 경로가 정확한 서식지를 알려준다
+    foreach ($pr in @(Get-Process -ErrorAction SilentlyContinue)) {
+        $pp = ""; try { $pp = $pr.Path } catch {}
+        if (-not $pp) { continue }
+        if ($pp -match '\\Windows\\|\\Microsoft') { continue }
+        if ($pr.ProcessName -match 'RYPC|RipMain|PrintExp|Flora|TNS|Topaz|Rip') { [void]$roots.Add((Split-Path -Parent $pp)) }
+    }
+    # ② 서식지 와일드카드 (드라이브 루트 + Program Files)
+    foreach ($dv in [IO.DriveInfo]::GetDrives()) {
+        if ($dv.DriveType -ne "Fixed") { continue }
+        $r = $dv.RootDirectory.FullName
+        foreach ($base in @($r, (Join-Path $r "Program Files"), (Join-Path $r "Program Files (x86)"))) {
+            if (-not (Test-Path -LiteralPath $base)) { continue }
+            foreach ($pat in @("Flora*", "PrintExp*", "TNSRip*")) {
+                try { foreach ($g in [IO.Directory]::GetDirectories($base, $pat)) { [void]$roots.Add($g) } } catch {}
+            }
+        }
+    }
+    # ③ AppData/ProgramData — 스윕이 제외하는 영역의 제어 SW 흔적
+    foreach ($base in @($env:APPDATA, $env:LOCALAPPDATA, ($env:SystemDrive + "\ProgramData"))) {
+        if (-not $base -or -not (Test-Path -LiteralPath $base)) { continue }
+        foreach ($pat in @("Flora*", "RY*", "PrintExp*", "*Rip*", "Topaz*")) {
+            try { foreach ($g in [IO.Directory]::GetDirectories($base, $pat)) { [void]$roots.Add($g) } } catch {}
+        }
+    }
+    # 중복·중첩 루트 제거 (상위 루트가 이미 있으면 하위는 뺀다)
+    $uniq = @($roots | Sort-Object -Unique)
+    $tops = @()
+    foreach ($r in $uniq) {
+        $isChild = $false
+        foreach ($t in $uniq) {
+            if ($t -ne $r -and $r.StartsWith($t.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { $isChild = $true; break }
+        }
+        if (-not $isChild) { $tops += $r }
+    }
+
+    $noiseExt = @(".exe", ".dll", ".sys", ".ocx", ".drv", ".bpl", ".chm", ".cab", ".msi", ".ttf", ".otf", ".fon",
+                  ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".ico", ".tif", ".tiff", ".pdf", ".ai", ".eps", ".psd",
+                  ".zip", ".rar", ".7z")
+    $cut = (Get-Date).AddDays(-$CollectDays)
+    $lines = New-Object System.Collections.Generic.List[string]
+    $collected = 0; $maxCollect = 200
+
+    foreach ($root in $tops) {
+        $lines.Add("== " + $root + " ==")
+        $files = @()
+        try { $files = @([IO.Directory]::GetFiles($root, "*", [IO.SearchOption]::AllDirectories) | Select-Object -First 4000) }
+        catch { $lines.Add("  (열람 실패: " + $_.Exception.Message + ")") }
+        foreach ($f in $files) {
+            $fi = $null; try { $fi = [IO.FileInfo]$f } catch { continue }
+            $lines.Add(("  {0}`t{1}`t{2:yyyy-MM-dd HH:mm:ss}" -f $fi.FullName, $fi.Length, $fi.LastWriteTime))
+            if ($collected -ge $maxCollect) { continue }
+            if ($fi.LastWriteTime -le $cut -or $fi.Length -eq 0 -or $fi.Length -ge 5MB) { continue }
+            if ($noiseExt -contains $fi.Extension.ToLower()) { continue }
+            # 확장자 무관 수거 — Copy-Item 대괄호 함정 회피(.NET 공유읽기 스트림)
+            try {
+                if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Force -Path $outDir | Out-Null }
+                $safe = ($fi.FullName -replace "[:\\]", "_")
+                $in = [IO.File]::Open($fi.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+                try {
+                    $out = [IO.File]::Create((Join-Path $outDir $safe))
+                    try { $in.CopyTo($out) } finally { $out.Close() }
+                } finally { $in.Close() }
+                $collected++
+            } catch { $lines.Add("    (수거 실패: " + $_.Exception.Message + ")") }
+        }
+    }
+    [IO.File]::WriteAllLines((Join-Path $dir ("census-" + $PcName + ".txt")), $lines, $Utf8Bom)
+    Write-Host ("   서식지 센서스: 루트 {0}곳 목록화, 최근 {1}일 파일 {2}개 수거 (census 폴더)" -f $tops.Count, $CollectDays, $collected)
+}
+
 # ── [1] 신규 장비 진단 ────────────────────────────────────────────
 function Invoke-Diagnose {
     if (-not (Test-Path $Exe)) { Write-Host " [오류] bin\LogWatcher.exe 가 없습니다 — 키트 폴더를 통째로 복사했는지 확인하세요."; return }
@@ -202,6 +285,8 @@ function Invoke-Diagnose {
 
     Write-Host "  → 최근 3일 로그 파일 수거 중... (수 분 걸릴 수 있습니다)"
     Invoke-LogSweep -Days 3
+    Write-Host "  → 제어 SW 서식지 센서스 중... (확장자 무관 목록+최근 파일)"
+    Invoke-HabitatCensus -CollectDays 7
     Write-Host ""
     Write-Host "  [완료] 수거 폴더: $Collect"
     Write-Host "         Z: 에서 실행했다면 이미 전달된 것입니다. USB 라면 USB 를 회수해 주세요."
@@ -361,6 +446,7 @@ if ($Action -eq "sweep") {
     exit 0
 }
 if ($Action -eq "info") { Save-PcInfo; exit 0 }
+if ($Action -eq "census") { Invoke-HabitatCensus; exit 0 }
 
 # ── 메인 메뉴 ─────────────────────────────────────────────────────
 while ($true) {
