@@ -69,6 +69,8 @@ const ENDPOINTS = [
   { path: '/api/cards', name: 'cards.list' },
   // 작업지시서 발행 현황판 (2026-08-05 work-order-auto-issue)
   { path: '/api/cards/issue-status', name: 'cards.issueStatus' },
+  // 작업지시서 슬라이드 이전/다음 (2026-08-19 #26) — allow404: 카드 행 부재 허용, SQL 오류 500만 FAIL
+  { path: '/api/cards/1/neighbors', name: 'cards.neighbors', allow404: true },
   { path: '/api/production/logs?limit=10', name: 'production.logs' },
   { path: '/api/production/stats', name: 'production.stats' },
   { path: '/api/shipments?limit=10', name: 'shipments.list' },

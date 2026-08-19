@@ -19,6 +19,11 @@ export function cardDetailPage(c: Context<HonoEnv>) {
       .cd-section.collapsed .cd-collapse-icon { transform: rotate(180deg); }
       .cd-collapse-icon { transition: transform 0.2s; color: var(--c-text-muted); }
 
+      /* 슬라이드 내비 (#26) — 현장 태블릿 터치 타깃 44px */
+      .cd-nav-btn { min-width: 44px; min-height: 40px; border: 1px solid var(--c-border); border-radius: 8px; background: var(--c-surface); color: var(--c-text); font-size: 14px; }
+      .cd-nav-btn:hover:not(:disabled) { background: var(--c-surface-secondary); }
+      .cd-nav-btn:disabled { opacity: 0.3; cursor: default; }
+
       /* 디자인 썸네일 영역 */
       .cd-designs { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; padding: 16px 0; }
       .cd-design-item { text-align: center; }

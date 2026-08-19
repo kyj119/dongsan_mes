@@ -7,15 +7,20 @@
     var esc = window.escapeHtml || function(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
     var statusLabels = window.MES_STATUS.cardLabels; // 단일 소스 (layout 주입)
 
+    // 이웃 카드(슬라이드 큐) — 실패해도 화면은 떠야 하므로 null 폴백
+    var neighbors = null;
+
     async function load() {
         try {
-            var [cardRes, histRes, defRes, cclRes] = await Promise.all([
+            var [cardRes, histRes, defRes, cclRes, nbRes] = await Promise.all([
                 axios.get('/api/cards/' + cardId),
                 axios.get('/api/cards/' + cardId + '/history'),
                 axios.get('/api/cards/' + cardId + '/defects'),
-                axios.get('/api/cards/' + cardId + '/checklist')
+                axios.get('/api/cards/' + cardId + '/checklist'),
+                axios.get('/api/cards/' + cardId + '/neighbors').catch(function() { return null; })
             ]);
             if (!cardRes.data.success) throw new Error('카드 조회 실패');
+            neighbors = (nbRes && nbRes.data && nbRes.data.data) || null;
             // 인쇄물에 실을 QR — **이 카드**를 가리킨다(종이를 든 사람이 화면으로 돌아오는 길).
             //   주문 단위 QR(printWorkOrder)은 목록으로 보내서 현장이 다시 찾아야 했다.
             var qrDataUrl = '';
@@ -155,6 +160,14 @@
         html += '<span class="px-2 py-0.5 rounded text-xs font-bold ' + urgClass + '">' + esc(dateStr) + '</span>';
         html += '</div>';
         html += '<div class="flex items-center gap-2">';
+        // 슬라이드 내비 — 같은 상태 컬럼×생산라인 큐(neighbors, 칸반 납기순). 큐 밖(출고된 주문 등)이면 숨김
+        if (neighbors && neighbors.position) {
+            html += '<div class="flex items-center gap-1" title="같은 상태·같은 라인 큐 (납기순)">';
+            html += '<button onclick="cdSlide(' + (neighbors.prev_id || 'null') + ')"' + (neighbors.prev_id ? '' : ' disabled') + ' class="cd-nav-btn"><i class="fas fa-chevron-left"></i></button>';
+            html += '<span class="text-sm text-gray-500 font-mono whitespace-nowrap">' + neighbors.position + '/' + neighbors.total + '</span>';
+            html += '<button onclick="cdSlide(' + (neighbors.next_id || 'null') + ')"' + (neighbors.next_id ? '' : ' disabled') + ' class="cd-nav-btn"><i class="fas fa-chevron-right"></i></button>';
+            html += '</div>';
+        }
         html += '<button onclick="window.print()" class="px-3 py-1.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm"><i class="fas fa-print mr-1"></i>인쇄/PDF</button>';
         html += '</div>';
         html += '</div>';
@@ -384,7 +397,9 @@
             html += '</div></div>';
         }
 
-        document.getElementById('cdRoot').innerHTML = html;
+        var root = document.getElementById('cdRoot');
+        root.innerHTML = html;
+        root.style.opacity = '';   // cdSlide 로딩 디밍 해제
     }
 
     // 액션 함수
@@ -433,6 +448,58 @@
             load();
         } catch(e) { showToast('실패: ' + (e.response?.data?.error || e.message), 'error'); }
     };
+
+    // ── 슬라이드 이동 (#26) — 같은 컬럼×라인 큐의 이전/다음 작업지시서 ──
+    // pushState state 에 spaUrl 을 넣어야 뒤로가기 시 shell.js popstate → spaNavigate 로 복원된다.
+    window.cdSlide = function(targetId) {
+        if (!targetId) return;
+        cardId = targetId;
+        var url = '/cards/' + targetId;
+        history.pushState({ spaUrl: url }, '', url);
+        var root = document.getElementById('cdRoot');
+        if (root) root.style.opacity = '0.4';   // 새 카드 로딩 동안 이전 화면 디밍
+        load();
+        var mc = document.querySelector('.main-content');
+        if (mc) mc.scrollTo(0, 0);
+    };
+
+    // 터치 스와이프 — cdRoot 는 렌더 간 유지되는 컨테이너라 리스너 1회 부착으로 충분.
+    // ⚠️ 다품목 표(.cd-multi-wrap)는 가로 스크롤 컨테이너 — 그 안에서 시작한 터치는 무시(스크롤과 충돌).
+    (function() {
+        var root = document.getElementById('cdRoot');
+        if (!root) return;
+        var sx = 0, sy = 0, skip = false;
+        root.addEventListener('touchstart', function(e) {
+            var t = e.touches[0]; sx = t.clientX; sy = t.clientY;
+            var wrap = e.target.closest && e.target.closest('.cd-multi-wrap');
+            skip = !!(wrap && wrap.scrollWidth > wrap.clientWidth);
+        }, { passive: true });
+        root.addEventListener('touchend', function(e) {
+            if (skip || !neighbors || !neighbors.position) return;
+            var t = e.changedTouches[0];
+            var dx = t.clientX - sx, dy = t.clientY - sy;
+            if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 2) return;
+            window.cdSlide(dx < 0 ? neighbors.next_id : neighbors.prev_id);
+        }, { passive: true });
+    })();
+
+    // 키보드 ←/→ — document 리스너는 SPA 전환 후에도 남는다(spaCleanup 은 interval 만 정리).
+    // 다른 카드 상세로 재진입하면 cdRoot 가 다시 존재해 "없으면 자가 제거" 가드가 안 통한다
+    // → window 싱글턴으로 이전 리스너를 교체(스테일 클로저의 이중 이동 방지).
+    if (window._cdKeyHandler) document.removeEventListener('keydown', window._cdKeyHandler);
+    window._cdKeyHandler = function(e) {
+        if (!document.getElementById('cdRoot')) {
+            document.removeEventListener('keydown', window._cdKeyHandler);
+            window._cdKeyHandler = null;
+            return;
+        }
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        var tag = (e.target.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
+        if (!neighbors || !neighbors.position) return;
+        window.cdSlide(e.key === 'ArrowLeft' ? neighbors.prev_id : neighbors.next_id);
+    };
+    document.addEventListener('keydown', window._cdKeyHandler);
 
     load();
 })();

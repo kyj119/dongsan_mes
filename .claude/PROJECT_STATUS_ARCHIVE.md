@@ -186,3 +186,17 @@ UI = 계좌 등록/수정 모달 체크박스 `accPersonal` + 자금현황 계�
 되돌리면 매칭 대기로 다시 뜬다 — 그대로 두는 게 안전하다. 정리할지는 별도 판단.
 
 ---
+
+## 2026-08-19 작업지시서 슬라이드(#26) + 카드 상세 구조 확정(#27)
+
+- 배경: `/cards/:id` 작업지시서 뷰어가 한 장씩 고립 — 다음 작업을 보려면 칸반 복귀 필요. 기존 현장 습관 = NAS JPG 작업지시서를 이미지 뷰어로 좌우 넘김 → 그 연속 열람 UX 복원.
+- #26: 신설 `GET /api/cards/:id/neighbors` — 순회 큐 = **칸반 컬럼과 동일 범위·동일 정렬**(같은 상태 × `category_name`, core.js delivery_asc = `delivery_date ASC, priority DESC, id DESC`). 임의의 새 순서를 정의하면 칸반 화면과 어긋나므로 컬럼 준수가 원칙. PRINT_DONE 컬럼은 칸반과 동일하게 출고 주문 제외. 큐 밖(출고·취소)이면 화살표 숨김. entity 필터 포함, smoke `cards.neighbors` allow404 편입.
+- 뷰어(cardDetail.js): 헤더 ‹ n/m ›(터치 44px) + 좌우 스와이프(`.cd-multi-wrap` 가로 스크롤과 충돌 회피 — 스크롤 가능 표 안에서 시작한 터치 무시) + 키보드 ←→ + `pushState({spaUrl})`로 shell.js popstate 뒤로가기 복원. ★keydown document 리스너는 spaCleanup 이 안 지운다(interval 만 정리) → `window._cdKeyHandler` 싱글턴 교체로 스테일 클로저 이중 이동 방지.
+- #27 결정(용준님 「판단 후 권장방안 제안」 위임): 칸반 모달(사무 조작)·`/cards/:id` 뷰어(현장 정본) **이원화 유지**. 모달에 지시서 표현을 늘리지 않고 「상세 ↗」로 위임(사본 신설 금지). 일원화는 actions.js 관리 액션 이식 비용 대비 이득 없음. 2026-05-26 역할분리 방침 재확인.
+- 발견(미조치): `GET /api/cards/board` 는 프론트 소비자 0 의 고아 엔드포인트 — 생산 현황 보드용으로 만들어졌으나 페이지가 없다. 이번 작업과 무관해 보존.
+- 검증: `npm run verify`(tsc+build) · sort-audit P1 0 · entity 61/61 · check-dom OK · 로컬 D1 실측(HOLD×출력 큐 10건 체인 prev/next 일관·404) · Playwright(버튼 이동 35→33·키보드 →로 37·뒤로가기 33 복원·콘솔 오류 0).
+- 남은: 커밋·배포(**미커밋** — 공유 체크아웃이라 타 세션 커밋에 휩쓸림 주의) · 태블릿 실기기 스와이프 확인.
+
+## 2026-08-19 TNS [2] 일제 실행 결과 (현황판 400자 한도로 이관 · 원문 그대로)
+
+남은(08-19 16시 [2] 일제 실행 후): 자동전환 ✅HSM-02·06(+기존 TOPM-01·HSM-03·KM전사·EPSON) · **PrintExp 미발견 9대=[1] 대상**(TPM-01·HSM-04/05/08~13) · HSM-07 [2] 미실행 · **UV=Flora `REC\print_rec.dat` 발견**(33~48MB·인쇄 중 갱신, 확장자 탓에 스윕 불가시였던 것) — 다음=출력실1·2 **[1] 재실행**(`efc3ca15` 대형 rec 통째 수거) → 구조 판독→UV 2축 파서

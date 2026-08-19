@@ -1172,6 +1172,64 @@ cardsQueriesRouter.get('/:id', async (c) => {
   }
 })
 
+// GET /:id/neighbors — 작업지시서 뷰어 이전/다음 카드 (2026-08-19 #26 슬라이드)
+//   순회 큐 = **칸반 컬럼과 동일 범위·동일 정렬** — 같은 상태 × 같은 생산라인(category_name),
+//   정렬은 칸반 기본(core.js delivery_asc = delivery_date ASC, priority DESC, id DESC).
+//   임의의 새 순서를 정의하면 화면(칸반)에서 보는 순서와 슬라이드 순서가 어긋난다.
+//   PRINT_DONE 컬럼은 칸반이 exclude_order_status=SHIPPED 로 조회 → 동일 적용.
+cardsQueriesRouter.get('/:id/neighbors', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    if (!id) return c.json({ success: false, error: '잘못된 카드 ID입니다.' }, 400)
+
+    const efCur = cardEntityFilter(c, 'c')
+    const cur = await c.env.DB.prepare(`
+      SELECT c.id, c.status, c.category_name FROM cards c WHERE c.id = ?${efCur.clause}
+    `).bind(id, ...efCur.params).first<{ id: number; status: string; category_name: string | null }>()
+    if (!cur) return c.json({ success: false, error: '카드를 찾을 수 없습니다.' }, 404)
+
+    // 순회 대상 상태(칸반 4컬럼) 밖이면(CANCELLED 등) 화살표 숨김
+    const queueable = ['PRINT_PENDING', 'PRINTING', 'PRINT_DONE', 'HOLD']
+    if (!queueable.includes(cur.status)) {
+      return c.json({ success: true, data: { prev_id: null, next_id: null, position: null, total: 0 } })
+    }
+
+    let where = 'c.status = ?'
+    const params: (string | number)[] = [cur.status]
+    if (cur.status === 'PRINT_DONE') where += ` AND IFNULL(o.status,'') != 'SHIPPED'`
+    if (cur.category_name === null) where += ' AND c.category_name IS NULL'
+    else { where += ' AND c.category_name = ?'; params.push(cur.category_name) }
+    const ef = cardEntityFilter(c, 'c')
+    where += ef.clause
+    params.push(...ef.params)
+
+    // id만 뽑아 위치 계산 — 컬럼×라인당 활성 카드는 수백 건 규모(칸반도 limit 500으로 소화)
+    const { results } = await c.env.DB.prepare(`
+      SELECT c.id FROM cards c
+      LEFT JOIN orders o ON c.order_id = o.id
+      WHERE ${where}
+      ORDER BY c.delivery_date ASC, c.priority DESC, c.id DESC
+    `).bind(...params).all<{ id: number }>()
+
+    const ids = (results || []).map(r => r.id)
+    const idx = ids.indexOf(id)
+    // 현재 카드가 큐 밖(출고된 주문의 PRINT_DONE 등) — 화살표 숨김
+    if (idx < 0) return c.json({ success: true, data: { prev_id: null, next_id: null, position: null, total: ids.length } })
+    return c.json({
+      success: true,
+      data: {
+        prev_id: idx > 0 ? ids[idx - 1] : null,
+        next_id: idx < ids.length - 1 ? ids[idx + 1] : null,
+        position: idx + 1,
+        total: ids.length
+      }
+    })
+  } catch (error) {
+    console.error('cards neighbors error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // Get card status history
 cardsQueriesRouter.get('/:id/history', async (c) => {
   try {
