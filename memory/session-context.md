@@ -1,65 +1,62 @@
-# 세션 핸드오프 — 2026-08-19 (주문서 마감·펀칭 역할 재정의 + 출고검수 주문 찾기)
+# 세션 핸드오프 — 2026-08-19 (작업지시서 슬라이드 #26 + 카드 상세 구조 확정 #27)
 
 > 이 파일은 **덮어쓰기**다. 지난 세션 내용은 남기지 않는다(미완 TODO만 「이월」 표시로 옮긴다).
 
-## 이번 세션에 한 것 — 용준님 질문 2건(22·23번)에서 출발, prod 배포까지
+## 이번 세션에 한 것 — 용준님 항목 26·27번에서 출발, 리뷰 후속까지 prod 배포
 
-배포 = `a22fb424`(코드) + `ad4a18cd`(현황판) · 정본 = memory `design-order-finishing-role`.
+배포 = `ddf0108a`(기능) → `3b4827a8`(리뷰 후속 4종) + docs `b0901a29`·`a07a5b24` · 배포 ID `7fe9b134`→`c3d5b42e` · 정본 = memory `design-work-order-system`.
 
-**① 주문서 마감·펀칭 (질문 22 — "그룹분석 폐기 후 의미가 퇴색")**
-조사 결과 **죽은 건 한 축뿐**이었다. 표기·과금·묶음키는 살아 있고, 사문화된 건 「여백을 파일에 자동 적용」하던 축이다.
-용준님 선택 = **가) 역할 재정의 + 사문 경로 정리** + **라) 접수 입력 간소화(기본 접기 + 요약 표기)**.
-
+**① #26 작업지시서 슬라이드** (용준님 확인 = 「카드 간 넘기기」)
 | 한 것 | 위치 |
 |---|---|
-| `auto_process_jobs` producer 2곳 은퇴 + 제2 여백정본(`AP_MARGIN_RULES`/`MARGIN_RULES`) 제거 (−241줄) | `orders/create.ts:652` · `orders/helpers.ts:453` |
-| 마감 요약 상시 표기(카드와 같은 정본 `MES_FIN`) | `orderForm/finishing.js` · `pages/orderForm.ts:5` |
-| 4변 셀렉트·펀칭 8칸 접힘 유지(프리셋 적용·수정모드 복원에서도 안 펼침) | `finishing.js` · `itemRow.js` · `parent.js` |
-| 여백 미리보기에 「참고 — 청구 규격 아님 · 실제 적용은 가공 단계」 | `finishing.js` |
-| 펀칭 요약(`4개(4모서리)`) | `calc.js` (`calculatePPCost` 안) |
+| 신설 `GET /api/cards/:id/neighbors` — prev/next/position/total | `routes/cards/queries.ts:1176` |
+| 헤더 ‹ 상태라벨 n/m › + 스와이프 + 키보드 ←→ + pushState | `scripts/cardDetail.js` |
+| 내비 버튼 CSS(터치 44px·인쇄 숨김) | `pages/cardDetail.ts:23` |
+| smoke `cards.neighbors`(allow404 — 행 부재 허용·SQL 500만 FAIL) | `scripts/smoke.cjs:73` |
 
-**② 출고검수 주문 찾기 (질문 23 — 완전일치 vs 부분포함)**
-용준님 선택 = 부분포함 후보 제시 + **숫자 입력도 검색 경유**.
-- 신설 `GET /api/shipments/pack-search`(`shipments.ts:490`) — **읽기 전용** · `entityFilter` · `instr` · 미출고 우선 · `o.id DESC` tie-break · LIMIT 10(+`has_more`).
-- `/pack` 수동입력은 검색 경유. 주문번호 **완전일치 1건이면 즉시 열기**, 그 외엔 후보 목록. QR 은 종전대로 id 직행.
-- 최소 입력은 협의한 3자가 아니라 **2자**로 했다(거래처 2글자 검색). 보고했고 이의 없었다.
+**② #27 카드 상세 보기 방법** (용준님 = 「판단 후 권장방안 제안」 위임)
+- **이원화 유지 확정**: 칸반 모달=사무 조작 · `/cards/:id`=현장 정본. 모달에 지시서 표현 늘리지 않고 「상세 ↗」 위임.
+- 일원화 기각 근거 = `cards/actions.js` 관리 액션 이식 비용 대비 이득 없음. 2026-05-26 역할분리 방침 재확인.
+
+**③ 리뷰 후속 4종** (`3b4827a8`, 셀프 리뷰에서 발견 → 용준님 1·2·3 승인)
+- 연타 레이스 = `loadSeq` 토큰으로 구식 응답 폐기 · 핀치줌 = 두 번째 손가락 닿으면 제스처 무효
+- 카운터에 상태 라벨 병기(「보류 3/10」) · **next 프리페치**(렌더 직후 다음 카드 번들 5종 선요청, 60초 창·1회 소비)
 
 ## 결정과 이유
 
-- **★주문서 마감·펀칭 = 청구 + 현장지시 + 트레이 묶음키 전용.** 기하(여백·펀칭 위치)를 파일에 넣는 일은 **A0 패널의 몫**이다.
-  근거 = prod `auto_process_jobs` **총 1건·마지막 2026-07-03**, 라이브 에이전트 큐는 `tasks(AI_PROCESS)`(`Program.cs` `/api/tasks/claim`, 33건·8/13).
-  패널이 이미 마감 여백을 적용하므로 서버가 또 적용하면 **이중 적용**이다 → 코드에 「부활 금지」 주석을 남겼다.
-- **여백 미리보기는 참고값**이다. 청구면적(10cm 올림·최소 1m)·원단 소요에 반영하자는 안(다)은 **청구 정책 변경**이라 별건으로 분리했다.
-- **`/pack` 검색은 반드시 별도 읽기전용 라우트로.** `checklist/by-order` 는 `ensureShipmentForOrder` + `shipment_checks` upsert 를 하는 **쓰기** 경로다.
-  종전엔 `001` 같은 숫자를 치면 **주문 id 1** 이 열리며 그 주문에 shipment 가 생겼다 — 이번에 제거한 실질 위험이 이것이다.
-- **미출고만 보기 필터는 만들지 않는다**(용준님 판단, 08-19). prod 에서 `001` 검색 시 이관분 `-I001` 이 상위를 채우는 걸 보고 제안했으나 불필요로 확정.
+- **★슬라이드 순회 큐 = 칸반 컬럼과 동일 범위·동일 정렬** — 같은 상태 × `category_name`, `delivery_date ASC, priority DESC, id DESC`(core.js delivery_asc).
+  임의의 새 순서를 정의하면 칸반 화면과 어긋난다. PRINT_DONE 은 칸반과 동일하게 출고 주문 제외. 큐 밖(출고·취소)=화살표 숨김.
+- **프리페치는 next 방향만** — prev 까지 하면 카드당 API 15회. 전진이 주 사용 방향. 실패는 삼키지 않고 사용 시점 404 안내로 자연 노출.
+- **`GET /api/cards/board` = 프론트 소비자 0 고아 엔드포인트** 발견 — 이번 작업 무관이라 보존만. 언젠가 정리 판단 필요.
+- 보류 확정(제안했으나 미채택): 뒤로가기 의미 변경(replaceState — 현행 back=직전 카드 유지 권장) · 칸반 사용자 정렬 연동(`?sort=` 확장 여지) · 스와이프 드래그 팔로우 애니메이션.
 
 ## 판단 기준 · 주의사항
 
-- **★"기능이 죽었다"는 코드가 아니라 prod 데이터로 판정했다.** 라우트가 남아 있어도 producer 호출이 0이면 사문이고,
-  반대로 트레이 프리필 라인은 `ai_analysis_id` 를 가지므로 코드만 보면 살아 있어 보인다. 판정 = `SELECT COUNT(*), MAX(created_at)`.
-- **★표기 문장은 새로 짜지 않는다.** 서버 `utils/finishingLabel.ts` ↔ 클라 `scripts/shared/finishingLabel.js`(`window.MES_FIN`) 쌍이 정본이고 **사본 신설 금지**.
-  `MES_FIN` 이 없으면 요약이 **조용히 빈 문자열**이 되므로 새 페이지에 카드/주문서 스크립트를 실으면 이 파일도 같이 실어야 한다.
-  현재 싣는 페이지 = `pages/cards.ts` · `pages/cardDetail.ts` · **`pages/orderForm.ts`(이번에 추가)**.
-- **접힌 입력은 값이 사라지지 않는다** — hidden 이어도 DOM 값은 남고 `calc.js` 수집이 그대로 읽는다. `npm run audit:orderform-roundtrip`(로컬 전용, ★prod 금지)로 소실 0 확인함.
-- **D1 LIKE 는 50바이트 제한** — 신규 검색은 `LIKE` 대신 `instr(col, ?) > 0` + 40자 상한으로 원천 회피했다.
-- **공유 체크아웃** — 다른 세션이 같은 워킹트리에 커밋한다. 커밋 전 `git status` 로 내 파일만 스테이징, push 전 `git fetch`.
-  이번 세션에도 다른 세션 커밋 2개(`4a3c2316`·`24fe35e8`)가 먼저 들어와 있었다. 미추적 문서 `docs/analysis/2026-08-19-장비-고정자산-대조표.md` 는 **내 것이 아니라 손대지 않았다**.
-- **로컬 `dev:d1` 서버를 이번 세션에서 띄웠다**(192.168.0.94:3000, dist 서빙). 코드 수정 시 `npm run build` 선행.
+- **★document keydown 리스너는 spaCleanup 이 안 지운다**(interval 만 정리). 카드 상세 재진입 시 cdRoot 가 다시 존재해 「없으면 자가 제거」 가드가 안 통한다
+  → `window._cdKeyHandler` 싱글턴 교체 패턴. 다른 페이지에 document 리스너를 달 때도 같은 함정.
+- **스와이프는 가로 스크롤 컨테이너와 충돌** — `.cd-multi-wrap`(다품목 표) 안에서 시작한 터치는 무시. 새 가로 스크롤 영역 추가 시 같은 처리 필요.
+- **슬라이드 URL 갱신 = `pushState({spaUrl})`** — state 에 spaUrl 이 없으면 shell.js popstate 가 무시해 뒤로가기가 죽는다.
+- **★prod 는 카드 0건** — 슬라이드 실동작 검증은 로컬 D1(HOLD×출력 큐 10건)로 완결. prod 는 페이지 로드·마커 4/4·JS 예외 0 까지.
+  `/cards/1` 의 콘솔 404 5줄은 존재하지 않는 카드 조회의 정상 로그다(오판 금지).
+- **커밋 훅이 doc-diet 게이트로 커밋을 차단한다** — 이번에 2회 걸림: ①현황판 400자(타 세션의 TNS 항목이었지만 큰 것부터 지목됨 → ARCHIVE 이관으로 해소)
+  ②MEMORY.md 총량 15,000자(36자 초과 → 헤더와 중복이던 말미 ARCHIVE 포인터 줄 제거). **MEMORY.md 는 한도 직전이라 다음 추가 시 먼저 다이어트할 것.**
+- **공유 체크아웃** — 이번에도 push 사이에 타 세션 커밋(`48d8995a` LogWatcher 키트)이 끼었다(웹 번들 무관 확인함).
+  미커밋 잔존 = `scripts/finance-diagnose.cjs`(M)·`docs/analysis/2026-08-19-장비-고정자산-대조표.md`(??) — **내 것이 아니라 손대지 않았다**.
+- prod smoke 는 `SMOKE_URL` 지정 필수(기본 localhost) — 이제 **113/113**(cards.neighbors 편입).
 
 ## 다음 세션 TODO
 
-1. **주문서 값 ↔ 패널 확정값 불일치 감지** (이번 세션에서 옵션 「나」로 제시, 미채택·보류) —
-   `designer_intakes.finishing_json`(디자이너 확정) 과 주문 라인 마감이 어긋나도 경고가 없다. 카드·청구는 주문서 값, 실물은 패널 값.
-2. **미등록 정기출금 2건 정체 확인** (이월) — 하나 `비씨카드` 매월 23일 정액 2,332,300원 · 전북 `신한카드할부` 매월 26일 745,630원.
-3. **선명 하나카드 이상 출금 2건** (이월) — `하나카드결제` 7/28~29 3건 9.2M · `하나카드기업` 8/18 4건 4.1M.
-4. **`card_transactions` 수집 결손** (이월) — 실제 출금 대비 동산 하나 −21% · 비씨 −35% · 전북 −50%. 결제예정 **금액**은 아직 못 믿는다.
-5. **prod 첫 카드 발행 때 마감·후가공 라벨 실물 확인** (이월) — prod `cards` 0건이라 서버 라벨 미확인. 체크리스트 라벨은 **생성 시 스냅샷이라 소급 안 된다**.
-6. **`postfix` 미실행** (이월) — `python scripts/ecount-order-postfix.py --from 2026-08-01 --to 2026-08-12 --apply` ⚠️8월 주문 510건이 삭제됐으니 대상 잔존부터 확인.
-7. **MES 에만 있는 8/12 전표 3건 판정** (이월) — `E1-20260812-035`·`-039`·`-044`.
-8. **감액 기간 기준 통일 여부** (이월) — `adjustments.adjustment_date` 컬럼 부재. 마이그레이션 여부 결정.
-9. **08-13 묶음 관찰** (이월) — `settings.data_complete_through` 가 비어 병행 경고가 꺼진 상태.
-10. **#17 개인통장 IGNORED 36건 정리 여부** (이월) — 그대로 둬도 무해(되돌리면 매칭 대기로 다시 뜬다).
+1. **태블릿 실기기 스와이프·핀치 확인** (신규 — 용준님 「나중에」) — 감도·`.cd-multi-wrap` 스크롤 공존·핀치 무효 실기 확인.
+2. **주문서 값 ↔ 패널 확정값 불일치 감지** (이월) — `designer_intakes.finishing_json` 과 주문 라인 마감 어긋나도 경고 없음.
+3. **미등록 정기출금 2건 정체 확인** (이월) — 하나 `비씨카드` 23일 2,332,300 · 전북 `신한카드할부` 26일 745,630.
+4. **선명 하나카드 이상 출금 2건** (이월) — 7/28~29 3건 9.2M · 8/18 4건 4.1M.
+5. **`card_transactions` 수집 결손** (이월) — 동산 하나 −21% · 비씨 −35% · 전북 −50%.
+6. **prod 첫 카드 발행 때 마감·후가공 라벨 + 슬라이드 실물 확인** (이월+확장) — 체크리스트 라벨은 생성 시 스냅샷이라 소급 안 됨.
+7. **`postfix` 미실행** (이월) — ⚠️8월 주문 510건 삭제됐으니 대상 잔존부터 확인.
+8. **MES 에만 있는 8/12 전표 3건 판정** (이월) — `E1-20260812-035`·`-039`·`-044`.
+9. **감액 기간 기준 통일 여부** (이월) — `adjustments.adjustment_date` 컬럼 부재.
+10. **08-13 묶음 관찰** (이월) — `settings.data_complete_through` 비어 병행 경고 꺼짐.
+11. **#17 개인통장 IGNORED 36건 정리 여부** (이월) — 그대로 둬도 무해.
 
 ## 검증 명령 (PowerShell)
 
@@ -67,15 +64,13 @@
 npm run verify                       # 타입체크 + 빌드
 npm run audit:entity                 # entity 필터 61/61
 npm run check:dom                    # getElementById 참조 대조
-npm run test:finishing-label         # 마감·후가공 표기 28케이스(서버 정본)
 node scripts/sort-audit.cjs          # 목록 정렬 tie-break (P1 0건이어야)
-npm run audit:orderform-roundtrip    # 주문서 무변경 저장 왕복(★로컬 전용)
-node scripts/doc-diet-audit.cjs      # 현황판·메모리 인덱스 한도
+node scripts/doc-diet-audit.cjs      # 현황판·메모리 인덱스 한도 (★MEMORY.md 한도 직전)
 
-npm run build; npm run smoke         # 로컬 스모크 112/112 (dev:d1 기동 상태)
-$env:SMOKE_URL='https://webapp-9i0.pages.dev'; npm run smoke   # prod 스모크 112/112
+npm run build; npm run smoke         # 로컬 스모크 113/113 (dev:d1 기동 상태)
+$env:SMOKE_URL='https://webapp-9i0.pages.dev'; npm run smoke   # prod 스모크 113/113
 
-# 이번 배포의 사문 판정 근거 재확인 (prod)
-npx wrangler d1 execute webapp-production --remote --command "SELECT COUNT(*) n, MAX(created_at) last FROM auto_process_jobs"
-npx wrangler d1 execute webapp-production --remote --command "SELECT COUNT(*) n, MAX(created_at) last FROM tasks WHERE type='AI_PROCESS'"
+# 슬라이드 이웃 API 재확인 (로컬 dev:d1 기동 + admin/password 로그인 후)
+# 카드 목록에서 id 하나 골라: GET /api/cards/<id>/neighbors → prev/next/position/total
+# prod 마커: curl https://webapp-9i0.pages.dev/cards/1 → cd-nav-btn·cdSlide·fetchBundle·loadSeq 존재
 ```
