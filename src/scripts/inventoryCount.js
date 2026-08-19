@@ -318,13 +318,30 @@ function icRenderItems() {
       ? ' <span style="font-size:10px;padding:1px 5px;border-radius:3px;background:#fee2e2;color:#dc2626;" title="실사 중 입출고 발생 — 현재고 ' + escapeHtml(window.uomFormatStock(Number(item.current_quantity) || 0, item)) + ' (스냅샷 ' + escapeHtml(window.uomFormatStock(systemQty, item)) + ')">⚠ 재고변동</span>'
       : '';
 
+    // 0540 두 칸 입력 — [포장 수] × [포장당]. 포장당은 품목 기본값(pack_size)이 채워져 있고,
+    //   롤마다 다른 자재(현수막 원단 112~135yd)만 그 줄에서 고친다. 곱셈은 서버가 한다.
+    var perPack = (item.per_pack_qty && item.per_pack_qty > 0) ? item.per_pack_qty
+                : ((item.pack_size && item.pack_size > 0) ? item.pack_size : 1);
+    var usePack = perPack > 1;   // 환산이 있는 자재만 두 칸. 나머지는 종전대로 한 칸.
+    var packVal = notCounted ? '' : (item.pack_count != null ? item.pack_count : (countedQty / perPack));
+    var inS = 'padding:4px;border:1px solid #ddd;border-radius:3px;font-size:12px;';
+
     var countedCell;
-    if (isEditable) {
-      countedCell = '<input type="number" value="' + (notCounted ? '' : window.uomFromBase(countedQty, item)) + '" placeholder="미입력" style="width:60px;padding:4px;border:1px solid #ddd;border-radius:3px;font-size:12px;" onchange="updateItemCount(' + item.id + ', this.value, ' + item.count_id + ', ' + ((item.pack_size && item.pack_size > 0) ? item.pack_size : 1) + ')" /> ' + escapeHtml(item.unit || '');
+    if (isEditable && usePack) {
+      countedCell = '<input type="number" step="any" value="' + packVal + '" placeholder="포장수" title="롤·통 수"'
+        + ' style="width:56px;' + inS + '" onchange="updateItemPack(' + item.id + ', this.value, null, ' + item.count_id + ')" />'
+        + ' <span style="color:#9ca3af;">×</span> '
+        + '<input type="number" step="any" value="' + perPack + '" title="포장당 수량 — 이 줄에만 적용"'
+        + ' style="width:56px;' + inS + 'background:#f8fafc;" onchange="updateItemPack(' + item.id + ', null, this.value, ' + item.count_id + ')" />'
+        + ' <span style="font-size:11px;color:#6b7280;">' + escapeHtml(item.base_unit || item.unit || '') + '</span>'
+        + '<div id="icCalc' + item.id + '" style="font-size:11px;color:#6b7280;margin-top:2px;">' + (notCounted ? '' : '= ' + countedQty + ' ' + escapeHtml(item.base_unit || item.unit || '')) + '</div>';
+    } else if (isEditable) {
+      countedCell = '<input type="number" step="any" value="' + (notCounted ? '' : window.uomFromBase(countedQty, item)) + '" placeholder="미입력" style="width:60px;' + inS + '" onchange="updateItemCount(' + item.id + ', this.value, ' + item.count_id + ', ' + ((item.pack_size && item.pack_size > 0) ? item.pack_size : 1) + ')" /> ' + escapeHtml(item.unit || '');
     } else {
       countedCell = notCounted
         ? '<span style="color:#9ca3af;">미실사 (보정 제외)</span>'
-        : '<strong>' + window.uomFormatStock(countedQty, item) + '</strong>';
+        : '<strong>' + window.uomFormatStock(countedQty, item) + '</strong>'
+          + (item.pack_count != null ? ' <span style="font-size:11px;color:#9ca3af;">(' + item.pack_count + ' × ' + (item.per_pack_qty || 1) + ')</span>' : '');
     }
 
     return '<div style="padding:10px;border:1px solid #f1f5f9;border-radius:4px;margin-bottom:8px;">'
@@ -425,6 +442,41 @@ function renderDetailActions(status) {
     actionsEl.innerHTML = '<button onclick="closeDetailPanel()" class="ds-btn ds-btn-secondary" style="grid-column:1/-1;">'
       + '<i class="fas fa-times" style="margin-right:4px"></i>닫기'
     + '</button>';
+  }
+}
+
+// 0540: 두 칸 입력 — 둘 중 바뀐 쪽만 넘기고 나머지는 캐시에서 채운다. 곱셈은 서버가 한다
+//   (클라에서 곱해 보내면 반올림·단위 판단이 두 곳으로 갈린다).
+async function updateItemPack(itemId, packCount, perPackQty, countId) {
+  try {
+    var cached = ((_icDetailData && _icDetailData.items) || []).find(function(i) { return i.id === itemId; });
+    if (!cached) { console.warn('[inventoryCount] item ' + itemId + ' not in cache'); return; }
+
+    var curPer = (cached.per_pack_qty && cached.per_pack_qty > 0) ? cached.per_pack_qty
+               : ((cached.pack_size && cached.pack_size > 0) ? cached.pack_size : 1);
+    var curPack = cached.pack_count != null ? cached.pack_count
+                : (cached.counted_quantity != null ? (Number(cached.counted_quantity) || 0) / curPer : null);
+
+    var pack = packCount === null ? curPack : (String(packCount).trim() === '' ? null : parseFloat(packCount));
+    var per  = perPackQty === null ? curPer  : (String(perPackQty).trim() === '' ? 1 : parseFloat(perPackQty));
+    if (!(per > 0)) per = 1;
+
+    var sysQty = Number(cached.system_quantity) || 0;
+    await axios.put('/api/inventory-counts/' + countId + '/items', {
+      items: [{ id: itemId, pack_count: pack, per_pack_qty: per, counted_quantity: null, system_quantity: sysQty }]
+    });
+
+    var base = pack === null || isNaN(pack) ? null : pack * per;
+    cached.pack_count = pack; cached.per_pack_qty = per; cached.counted_quantity = base;
+    cached.difference = base === null ? null : (base - sysQty);
+    cached.difference_pct = base === null ? null : (sysQty !== 0 ? ((base - sysQty) / sysQty) * 100 : 0);
+
+    var calc = document.getElementById('icCalc' + itemId);
+    if (calc) calc.textContent = base === null ? '' : ('= ' + Math.round(base * 100) / 100 + ' ' + (cached.base_unit || cached.item_unit || ''));
+    icRenderSummary();
+  } catch (e) {
+    console.error('[inventoryCount] updateItemPack', e);
+    alert('저장에 실패했습니다.');
   }
 }
 

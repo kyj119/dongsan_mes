@@ -109,7 +109,7 @@ inventoryCountRouter.post('/', async (c) => {
     if (zoneId) {
       // 구역 실사: 해당 구역·법인 재고가 있는 품목만 (INNER JOIN). 라인 창고 = 그 구역(inv.storage_zone_id=zoneId)
       const { results } = await c.env.DB.prepare(`
-        SELECT i.id, i.item_code, i.item_name, i.unit, i.base_unit, i.category, inv.storage_zone_id, inv.quantity
+        SELECT i.id, i.item_code, i.item_name, i.unit, i.base_unit, i.pack_size, i.category, inv.storage_zone_id, inv.quantity
         FROM items i
         JOIN inventory inv ON i.id = inv.item_id AND inv.entity_id = ? AND inv.storage_zone_id = ?
         WHERE i.is_active = 1 AND i.is_purchase_item = 1
@@ -120,7 +120,7 @@ inventoryCountRouter.post('/', async (c) => {
       // 0396 다중행: 라인 창고 = 법인 인식 기본창고(getItemDefaultZones) — raw items.storage_zone_id는
       //   타법인 zone 배정 품목의 실사 승인 시 entity≠zone소유 어긋난 행을 만듦 (2026-07-06 감사 #3)
       let itemQuery = `
-        SELECT i.id, i.item_code, i.item_name, i.unit, i.category
+        SELECT i.id, i.item_code, i.item_name, i.unit, i.base_unit, i.pack_size, i.category
         FROM items i
         WHERE i.is_active = 1 AND i.is_purchase_item = 1
       `
@@ -163,10 +163,13 @@ inventoryCountRouter.post('/', async (c) => {
     if (items && items.length > 0) {
       await c.env.DB.batch(
         items.map((item) =>
+          // 0540: per_pack_qty 기본값 = items.pack_size. 규격품(시트 50m·잉크 1.5L)은 이 값 그대로 쓰고
+          //   현수막 원단처럼 롤마다 다른 것만 실사 때 손으로 고친다. 없으면 NULL(=환산 없는 자재).
           c.env.DB.prepare(`
-            INSERT INTO inventory_count_items (count_id, item_id, system_quantity, unit, storage_zone_id)
-            VALUES (?, ?, ?, ?, ?)
-          `).bind(countId, item.id, item.quantity || 0, resolveStockUnit(item), item.storage_zone_id ?? null)
+            INSERT INTO inventory_count_items (count_id, item_id, system_quantity, unit, storage_zone_id, per_pack_qty)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `).bind(countId, item.id, item.quantity || 0, resolveStockUnit(item), item.storage_zone_id ?? null,
+            (item as any).pack_size && Number((item as any).pack_size) > 0 ? Number((item as any).pack_size) : null)
         )
       )
     }
@@ -212,8 +215,9 @@ inventoryCountRouter.get('/:id', async (c) => {
     const countEntityId = (count as any).entity_id || getEntityId(c) || 1
     const { results: items } = await c.env.DB.prepare(`
       SELECT ci.id, ci.count_id, ci.item_id, ci.system_quantity, ci.counted_quantity, ci.difference, ci.difference_pct, ci.unit, ci.notes,
+             ci.pack_count, ci.per_pack_qty,
              ci.storage_zone_id, sz.zone_name AS storage_zone_name,
-             i.item_code, i.item_name, i.base_unit, i.pack_size, i.stock_mode,
+             i.item_code, i.item_name, i.unit AS item_unit, i.base_unit, i.pack_size, i.stock_mode,
              (SELECT inv.quantity FROM inventory inv
                WHERE inv.item_id = ci.item_id AND inv.entity_id = ?
                  AND IFNULL(inv.storage_zone_id, 0) = IFNULL(ci.storage_zone_id, 0)) AS current_quantity
@@ -258,7 +262,7 @@ inventoryCountRouter.get('/:id', async (c) => {
 inventoryCountRouter.put('/:id/items', async (c) => {
   try {
     const countId = parseInt(c.req.param('id'))
-    const body = await c.req.json<{ items?: { id: number; system_quantity: string; counted_quantity: string | null; notes?: string }[] }>()
+    const body = await c.req.json<{ items?: { id: number; system_quantity: string; counted_quantity: string | null; notes?: string; pack_count?: string | number | null; per_pack_qty?: string | number | null }[] }>()
     const { items = [] } = body
 
     // 타법인 실사 항목 수정 차단: 부모 count가 호출자 법인 소속인지 확인
@@ -274,25 +278,43 @@ inventoryCountRouter.put('/:id/items', async (c) => {
     }
 
     // 일괄 업데이트 (batch). counted_quantity null/빈값 = 미입력(NULL) 되돌림 → 승인 시 보정 제외
+    //
+    // 0540 두 칸 입력 — pack_count(포장 수) × per_pack_qty(포장당 수량) = counted_quantity(base).
+    //   ★포장당 수량이 **롤마다 다른** 자재(현수막 원단 112~135yd)를 담기 위한 것이다.
+    //     고정 계수(items.pack_size)만으로는 못 담고, 현장에 곱셈을 시키면 오입력이 난다.
+    //   pack_count 가 오면 그걸로 계산하고, 안 오면 counted_quantity 를 그대로 쓴다(기존 경로 보존).
+    const numOrNull = (v: any) => {
+      if (v === null || v === undefined || v === '') return null
+      const n = Number(v)
+      return Number.isFinite(n) ? n : null
+    }
     if (items.length > 0) {
       await c.env.DB.batch(
         items.map((item: any) => {
-          if (item.counted_quantity === null || item.counted_quantity === undefined || item.counted_quantity === '') {
+          const packCount = numOrNull(item.pack_count)
+          const perPack = numOrNull(item.per_pack_qty)
+          // 두 칸 입력이면 곱해서 counted 를 만든다. per_pack_qty 미지정은 1 로 본다(환산 없는 자재).
+          const counted = packCount !== null
+            ? packCount * (perPack !== null && perPack > 0 ? perPack : 1)
+            : numOrNull(item.counted_quantity)
+
+          if (counted === null) {
             return c.env.DB.prepare(`
               UPDATE inventory_count_items
-              SET counted_quantity = NULL, difference = NULL, difference_pct = NULL, notes = ?
+              SET counted_quantity = NULL, difference = NULL, difference_pct = NULL,
+                  pack_count = NULL, per_pack_qty = ?, notes = ?
               WHERE id = ? AND count_id = ?
-            `).bind(item.notes || '', item.id, countId)
+            `).bind(perPack, item.notes || '', item.id, countId)
           }
           const systemQty = Number(item.system_quantity)
-          const countedQty = Number(item.counted_quantity)
-          const diff = countedQty - systemQty
+          const diff = counted - systemQty
           const diffPct = systemQty !== 0 ? (diff / systemQty) * 100 : 0
           return c.env.DB.prepare(`
             UPDATE inventory_count_items
-            SET counted_quantity = ?, difference = ?, difference_pct = ?, notes = ?
+            SET counted_quantity = ?, difference = ?, difference_pct = ?,
+                pack_count = ?, per_pack_qty = ?, notes = ?
             WHERE id = ? AND count_id = ?
-          `).bind(countedQty, diff, diffPct, item.notes || '', item.id, countId)
+          `).bind(counted, diff, diffPct, packCount, perPack, item.notes || '', item.id, countId)
         })
       )
     }
