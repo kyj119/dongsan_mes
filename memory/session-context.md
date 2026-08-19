@@ -1,83 +1,72 @@
 # 세션 핸드오프 — 2026-08-19
 
-> 이 파일은 **덮어쓰기**다. 지난 세션 내용은 남기지 않는다.
+> 이 파일은 **덮어쓰기**다. 지난 세션 내용은 남기지 않는다(미완 TODO만 「이월」 표시로 옮긴다).
 
-## 이번 세션에 한 것 — 주문 배송지 3축 분리 (prod 배포 완료)
+## 이번 세션에 한 것 — 카드 마감·후가공 표기 통일 (prod 배포·push 완료)
 
-용준님 질문 「주문서·발주서에 배송처 상세주소 칸이 있어야 하지 않나」에서 출발.
-**검토 → prod 실측으로 판정 → 구현 → 배포 → 점검 → 후속 수정 2건**까지 한 사이클.
-경위 전문 = `.claude/PROJECT_STATUS_ARCHIVE.md` §2026-08-18 배송지 · 설계 정본 = memory `design-order-delivery-address-split`.
+용준님 지적 「카드에서 후가공 설명이 제대로 안 된다 — 마감은 보통 `4방열재단`·`좌우 줄미싱+상하 봉미싱`으로 쓰고, 펀칭은 총 개수나 위치로 나오면 좋겠다」에서 출발.
+경위 전문 = `.claude/PROJECT_STATUS_ARCHIVE.md` §2026-08-19 카드 마감·후가공 표기.
 
 | 커밋 | 내용 |
 |---|---|
-| `76714997` | 배송지 3축(우편번호·도로명·상세) 분리 + 마이그 `0535`(`orders.delivery_postal`·`delivery_detail`) |
-| `bb568158` | 모바일 레이아웃 회귀 수정(390px 에서 「주소 검색」 버튼이 화면 밖) |
-| `23dbe6e5` | 배송처 이름도 거래처 **교체 시** 갱신 |
-| `1d9cfd0b` | 우편번호 일괄보정 **미진행** 결정 기록 |
+| `771e8db3` | 표기 정본 `src/utils/finishingLabel.ts` + 클라 사본 `src/scripts/shared/finishingLabel.js` 신설, 5개 호출부 위임, selftest 게이트 |
+| `3a302913` | 현황판에 커밋 해시 기록 |
 
-**판정 근거(prod 실측)** — 「칸이 필요한가」를 감이 아니라 데이터로 정했다.
+prod 배포 `cf0af4f0` · smoke **111/111** · origin/main push 완료(0/0).
 
-| 실측 | 값 |
+**근본 원인 = 표기 규칙 사본 5벌**. 같은 데이터가 화면마다 다른 문장이었다.
+
+| 위치 | 예전 출력 |
 |---|---|
-| `delivery_info` 보유 | 8,758 / 10,075 (86.9%) |
-| 그중 「층/호」를 본문에 섞어 넣음 | 3,973 (45.4%) |
-| `clients.address_detail` 보유 | 990 / 2,873 (34%) — 주문서 자동채움이 **버리고 있었다** |
-| `purchase_orders.delivery_location` | **0 / 911** → 발주서는 대상 아님 |
+| `routes/orders/helpers.ts` (체크리스트 라벨·DB 스냅샷) | `마감(2면열재단)` / `펀칭 1cm 1cm 2cm 0cm 0cm 0cm 0cm 0cm` |
+| `scripts/cardDetail.js` ×2 | `2면열재단` / params 나열 |
+| `scripts/cards/detail.js` ×2 | `열재단 사방` · `상:열재단` |
+| `scripts/cards/core.js` (칸반) | `상하:열재단` |
 
-**칸 추가와 별개로 이미 버그였던 3종**을 같이 고쳤다: ①거래처 상세주소·우편번호 유실 ②출고방법·거래처 변경이 손입력을 통째로 덮어씀 ③주소검색 전면 대입.
-**죽어 있던 기능 2개 복구**: 한진 엑셀 `받는분우편번호`(하드코딩 공란이었다)·권역 묶음(우편번호 파생이 prod 0건이라 상시 무발동).
+전부 **방식별 개수만 세어 어느 변인지가 소실**됐고, 펀칭은 params를 키 순서대로 이어붙이며 개수에 `cm`를 붙이고 0도 출력했다.
 
-## ✅ 08-13 「미배포 묶음」 해소 — 지난 핸드오프 최우선 TODO
-
-지난 세션이 「prod 에 없다」고 실측했던 `acb0431c` 묶음이 **이번 커밋(`76714997`)에 함께 실려 prod 에 올라갔다.**
-공유 체크아웃의 미커밋 src 20여개를 통째로 커밋했기 때문 — **의도한 게 아니라 부수 결과**다.
-
-| 프로브 | 08-18 | **08-19 지금** |
-|---|---|---|
-| `GET /api/clients/name-index` | 404 | **200** |
-| `GET /api/settings/data-completeness` | 404 | **200** |
-| `/orders` 번들 `이카운트 대사` | 없음 | **3** |
-| `/order-form` `material_gap_message` | 없음 | **2** |
-
-지난 핸드오프의 「로컬 smoke 가 111/111 이 안 된다」도 같이 해소 — prod smoke **111/111**.
-
-> ⚠️ **왜 통째 커밋이 불가피했나**: `deploy.yml` 이 main push 마다 재배포한다. 일부만 커밋하면 **CI 가 prod 를 되돌린다**.
-> 게다가 내 변경과 타 세션 변경이 `orders/{create,update,operations}.ts`·`shell.js`·`calc.js`·`orders.js` **6파일에서 섞여** 파일 단위 분리가 불가능했다.
-> 용준님이 「다른 세션 끝났다」고 확인해 준 뒤 진행했다. 커밋 메시지 말미에 이 사실을 명시해 뒀다.
+**확정된 표기 규칙**(용준님 승인):
+- 4변 동일 → `4방열재단`
+- 그 외 → 방향 나열 `상하좌 열재단` · `좌우 줄미싱+상하 봉미싱`(그룹 순서는 **좌우 축 먼저**, 방향 문자는 상하좌우 순)
+- 펀칭 → `펀칭 4개(상 2, 모서리 좌상·우상)` · `펀칭 8개(4모서리, 상 2, 하 2)`
+- `margin_*` 은 라벨에서 제외(여백은 카드 규격에 이미 반영)
 
 ## 결정과 이유
 
-- **저장은 `delivery_info` 합본 유지**(도로명 + ' ' + 상세) + 컬럼 2개 추가. 소비처가 12곳이라 여길 쪼개면 전부 회귀한다. → 레거시 8,758건 **파싱 마이그레이션 불필요**.
-- **복원은 접미 매칭만**(주소 파싱 금지). 접미가 아니면 전체를 도로명칸에 돌려 손실 0.
-- **거래처 「교체」의 정의 = 직전 `clientId` 와 다름.** 검색창에서 같은 거래처를 다시 고르는 건 교체가 아니다(오타 수정이 흔하다) — 그때 손입력을 지운다. 배송처 이름·주소가 같은 기준으로 움직인다.
-- **우편번호 칸은 readonly 아님** — 주소검색을 안 쓰면 영영 안 채워지는데, 실측상 그 습관이 없다.
-- **우편번호 일괄보정 = 미진행 확정(용준님)** → 자연 축적. 다시 제안하지 말 것(근거는 memory 파일에).
-- **견적서 폼 제외** — 배송 입력 자체가 없다(`quotations.delivery_info` 는 컬럼만 존재).
+- **정본은 서버(`utils/finishingLabel.ts`), 클라는 사본**(`scripts/shared/finishingLabel.js`, IIFE + `window.MES_FIN`). 체크리스트 라벨이 **DB에 박히는 스냅샷**이라 서버가 기준이어야 하고, 화면은 같은 문장을 보여야 한다. `orderLineAmount.ts ↔ calc.js` 와 같은 쌍 구조.
+- **게이트 = `npm run test:finishing-label`**(28케이스, `scripts/finishing-label-selftest.cjs`). 서버만 지킨다 — **클라 사본은 못 잡으니 두 파일을 함께 고칠 것.**
+- **칸반 목록 배지는 후가공 이름만 유지**(9~10px pill). 개수·위치는 모달·카드 상세·작업지시서에서 보여준다.
+- **기존 카드 소급 안 함** — 라벨은 카드 생성 시점 스냅샷이고 prod `cards` 0건이라 실질 영향이 없다. 필요해지면 `card_checklist_items.label` 백필 마이그레이션.
+- **`params.directions`(마감 후가공)는 방향만 표기**(`열재단 상좌`). 예전엔 객체를 String해 `열재단 [object Object]` 가 찍힐 경로였다.
 
 ## 다음 세션 TODO
 
-1. **`postfix` 미실행** (08-13 이월) — 권한 분류기가 막아 용준님 직접 실행:
+1. **prod 첫 카드 발행 때 라벨 실물 확인** — prod `cards` 0건이라 서버 라벨은 아직 실물로 못 봤다(로컬에서는 실제 발행까지 검증 완료). 첫 주문이 카드를 만들면 `card_checklist_items.label` 을 한 번 눈으로 볼 것.
+2. **마감 그룹 순서(좌우 먼저)가 현장 관행과 맞는지** — 승인받은 예시대로 구현했지만 실사용 피드백이 필요하다. 바꾸려면 `finishingLabel` 두 파일의 `sideRank` 한 줄.
+3. **`postfix` 미실행** (08-13 이월) — 권한 분류기가 막아 용준님 직접 실행:
    `python scripts/ecount-order-postfix.py --from 2026-08-01 --to 2026-08-12 --apply`
    ⚠️ 8월 주문 510건이 08-13 에 전량 삭제됐으니 **실행 전에 대상이 남아 있는지부터 확인**할 것.
-2. **MES 에만 있는 8/12 전표 3건 판정** (08-13 이월) — `E1-20260812-035`·`-039`·`-044`. 위와 같은 이유로 존재 여부 선확인.
-3. **감액 기간 기준 통일 여부** (08-18 이월) — `adjustments.adjustment_date` 컬럼이 없어 매출 원장에서 감액만 등록시각 기준. 마이그레이션할지 결정.
-4. **08-13 묶음이 이제 prod 에 있다** — 지난 세션이 「살릴지 버릴지 결정」 대상으로 남겼던 코드다. 이미 나갔으니 **역으로 문제가 없는지** 관찰이 필요하다(자재 판정 불가 노출·이카운트 대사·완결성 경고 등).
+4. **MES 에만 있는 8/12 전표 3건 판정** (08-13 이월) — `E1-20260812-035`·`-039`·`-044`. 위와 같은 이유로 존재 여부 선확인.
+5. **감액 기간 기준 통일 여부** (08-18 이월) — `adjustments.adjustment_date` 컬럼이 없어 매출 원장에서 감액만 등록시각 기준. 마이그레이션할지 결정.
+6. **08-13 묶음 관찰** (08-18 이월) — 이미 prod 에 나간 코드다. 자재 판정 불가 노출·이카운트 대사·완결성 경고가 역으로 문제를 만들지 관찰.
    ⚠️ `settings.data_complete_through` 는 **아직 비어 있어 병행 경고가 꺼진 상태**다.
-5. 나머지 잔여는 현황판 인덱스 참조 — 이 파일에 중복 기재하지 않음.
+7. 나머지 잔여는 현황판 인덱스 참조 — 이 파일에 중복 기재하지 않음.
 
 ## 판단 기준 · 주의사항
 
-- **★배포 전 prod 실상태를 직접 프로브한다.** 현황판 「✅ 배포」도, 워킹트리에 코드가 있다는 사실도 증거가 아니다. GET 라우트가 있으면 그게 가장 싸다 — **토큰 필수**(무인증은 authMiddleware 때문에 미존재 라우트도 401이라 판별 불가). 라우트가 없으면 `?raw` 인라인 JS 마커를 페이지 HTML 에서 grep. 정본 = memory `feedback-deploy-push-divergence`.
-- **★마이그레이션이 코드보다 먼저 나가야 한다.** 이번엔 0535 를 prod 에 선적용한 뒤 배포했다. 반대로 했으면 `delivery_postal` 미존재로 **주문 생성이 전부 500**이 된다. 게이트 = `npm run audit:migration-drift`(타입체크·빌드·스모크는 SQL 스키마를 모른다).
-- **★push 전 `git pull --rebase`** — 이번 세션 중 origin 이 3커밋 앞서 있었다(타 세션 auto-improve). 리베이스 후 **번들 크기로 배포본과 동일함을 확인**하고 push 했다(CRLF 차이는 `diff --strip-trailing-cr` 로 걸러야 파일이 통째로 달라 보이는 착시를 피한다).
-- **UI 를 늘렸으면 좁은 화면을 반드시 잰다.** 3칸으로 늘리며 `flex-1` 에 `min-w-0` 을 안 줘 버튼이 화면 밖으로 밀렸다. 배포 후 점검에서야 잡혔다. 측정법 = 뷰포트 390 으로 resize 후 `getBoundingClientRect().right > innerWidth` 인 요소 열거.
-- **폼 제출이 조용히 멈추면 `showConfirm` 모달을 의심한다.** Playwright 로 제출을 눌렀는데 POST 도 토스트도 없으면 대개 확인창이 떠서 응답을 기다리는 것이다(이번엔 「면적 품목 가로/세로 미입력」 — 정상 경고였다). `document.querySelector('.ds-modal-overlay')` 로 확인.
-- **prod 에 시험 주문을 만들지 않는다** — 저장 왕복 시험은 로컬에서. 읽기 전용(거래처 선택·DOM 확인)만 prod 에서 했다.
+- **★표기를 새로 찍을 땐 사본을 만들지 말 것.** 마감·후가공 문자열이 필요하면 서버는 `utils/finishingLabel`, 화면은 `window.MES_FIN`(`finishing`/`punching`/`pp`/`ppList`). 이번 건의 근본이 「같은 규칙 5벌」이었다.
+- **★카드 스크립트를 새 페이지에 실으면 `shared/finishingLabel.js` 도 함께 실어야 한다.** `MES_FIN` 이 없으면 표기가 **빈 문자열로 조용히 사라진다**(폴백이 그렇다). 현재 싣는 페이지는 `pages/cards.ts`·`pages/cardDetail.ts` 둘뿐.
+- **★로컬 카드 발행 검증 경로 = `POST /api/orders/:id/items`**(append). 새 주문을 만들 필요 없이 기존 주문(상태 `CONFIRMED`/`PRINTING`/`PRINT_DONE`/`HOLD`)에 라인을 붙이면 카드+체크리스트가 정규 생성기로 생긴다. **정리할 때 딸린 것들을 같이 지울 것** — `card_checklist_items`·`card_items`·`cards`·`order_items`·`order_billing_groups` + `orders` 금액 3개(`total_amount`/`vat_amount`/`final_amount`).
+- **인쇄물 검증은 `window.open` 스텁으로.** `printWorkOrder`/`printSewingWorkOrder` 는 새 창에 `document.write` 후 `window.print()` 를 자동 호출한다 — 그대로 누르면 인쇄 다이얼로그가 떠 브라우저 자동화가 멈춘다. `window.open` 을 `{document:{write,close}}` 스텁으로 바꿔 HTML 문자열만 캡처하면 안전하다.
+- **`npm run smoke` 는 기본이 localhost.** prod 를 재려면 `SMOKE_URL=https://webapp-9i0.pages.dev`.
+- **공유 체크아웃 — 다른 세션이 같은 워킹트리에 커밋한다.** 이번 세션 중에도 `346bfbe5`(훅 경로 수정)가 끼어들었다. 커밋 전 `git status` 로 **내 파일만** 스테이징하고, push 전 `git fetch` 로 divergence 확인.
+- **prod 에 시험 주문을 만들지 않는다** — 저장 왕복 시험은 로컬에서. prod 는 읽기 전용 확인만(이번엔 배포 번들에서 `MES_FIN` 을 직접 호출해 산출물을 실측했다).
 
 ## 검증 명령 (PowerShell)
 
 ```powershell
 npm run verify                      # 타입체크 + 빌드
+npm run test:finishing-label        # 마감·후가공 표기 28케이스 (이번 세션 신설)
 npm run build; npm run smoke        # 로컬 스모크 (dev:d1 기동 상태에서 111/111)
 npm run audit:migration-drift       # prod 스키마 대조 (스키마 건드린 배포면 필수)
 npm run audit:entity                # entity 필터 61/61
