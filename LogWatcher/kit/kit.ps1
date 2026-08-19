@@ -187,7 +187,7 @@ function Invoke-HabitatCensus {
         $pp = ""; try { $pp = $pr.Path } catch {}
         if (-not $pp) { continue }
         if ($pp -match '\\Windows\\|\\Microsoft') { continue }
-        if ($pr.ProcessName -match 'RYPC|RipMain|PrintExp|Flora|TNS|Topaz|Rip') { [void]$roots.Add((Split-Path -Parent $pp)) }
+        if ($pr.ProcessName -match 'RYPC|RipMain|PrintExp|Flora|TNS|Topaz|Rip|SOL|SPT') { [void]$roots.Add((Split-Path -Parent $pp)) }
     }
     # ② 서식지 와일드카드 (드라이브 루트 + Program Files)
     foreach ($dv in [IO.DriveInfo]::GetDrives()) {
@@ -195,7 +195,7 @@ function Invoke-HabitatCensus {
         $r = $dv.RootDirectory.FullName
         foreach ($base in @($r, (Join-Path $r "Program Files"), (Join-Path $r "Program Files (x86)"))) {
             if (-not (Test-Path -LiteralPath $base)) { continue }
-            foreach ($pat in @("Flora*", "PrintExp*", "TNSRip*")) {
+            foreach ($pat in @("Flora*", "PrintExp*", "TNSRip*", "SOL-SPT*")) {
                 try { foreach ($g in [IO.Directory]::GetDirectories($base, $pat)) { [void]$roots.Add($g) } } catch {}
             }
         }
@@ -353,6 +353,11 @@ function Invoke-InstallUpdate {
         Copy-Item $alog (Ensure-Collect) -Force
         Write-Host "  ── 설치 로그 (마지막 25줄 — 자동 전환 결과 포함) ──"
         Get-Content $alog -Tail 25 | ForEach-Object { Write-Host ("    " + $_) }
+        # PrintExp 미발견 PC = 제어 SW 정체 미상 — 별도 [1] 방문 없이 이 자리에서 센서스로 수거한다
+        if (([IO.File]::ReadAllText($alog)) -match "미발견") {
+            Write-Host "  → PrintExp 미발견 — 제어 SW 서식지 센서스 자동 수거 중..."
+            Invoke-HabitatCensus -CollectDays 7
+        }
     } else {
         Write-Host "  [경고] 설치 로그가 없습니다 — 관리자 창에서 작업이 실행되지 않았을 수 있습니다."
     }

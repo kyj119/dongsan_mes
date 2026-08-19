@@ -57,22 +57,25 @@ function Get-PrintExpCandidates {
 
     $roots = @()
     foreach ($b in $bases) {
-        try { $roots += [IO.Directory]::GetDirectories($b, "PrintExp_X64*") } catch { }
+        # "PrintExp*" = X64 외 변종(XSJ 실측 — UV-1800) 포함. 마커 검증이 오탐을 걸러준다.
+        try { $roots += [IO.Directory]::GetDirectories($b, "PrintExp*") } catch { }
     }
 
+    $script:PexRejects = @()   # 이름은 맞는데 탈락한 설치본 — 호출부가 admin-install.log 로 회수해 원인 진단
     $cands = @()
     foreach ($root in ($roots | Sort-Object -Unique)) {
         $logDirs = @()
         try { $logDirs = [IO.Directory]::GetDirectories($root, "Log", [IO.SearchOption]::AllDirectories) } catch { }
         $dirCands = @()
+        $reason = "Log 폴더 없음"
         foreach ($ld in $logDirs) {
             foreach ($d in @($ld, (Join-Path $ld "main"))) {
                 if (-not (Test-Path -LiteralPath $d)) { continue }
                 $files = @()
                 try { $files = [IO.Directory]::GetFiles($d, "Log[*].txt") } catch { }
-                if ($files.Count -eq 0) { continue }
+                if ($files.Count -eq 0) { if ($reason -eq "Log 폴더 없음") { $reason = "일자 로그(Log[날짜].txt) 없음" }; continue }
                 $infos = @($files | ForEach-Object { [IO.FileInfo]$_ } | Sort-Object LastWriteTime -Descending)
-                if ($infos[0].LastWriteTime -lt (Get-Date).AddDays(-$RecentDays)) { continue }
+                if ($infos[0].LastWriteTime -lt (Get-Date).AddDays(-$RecentDays)) { $reason = ("최근 {0}일 기록 없음 (마지막 {1:MM-dd})" -f $RecentDays, $infos[0].LastWriteTime); continue }
                 # 마커 검증 — 오늘 파일에 아직 출력이 없을 수 있어 최신 3개까지 본다
                 $hit = $false
                 foreach ($fi in ($infos | Select-Object -First 3)) {
@@ -89,12 +92,14 @@ function Get-PrintExpCandidates {
                     } catch { }
                     if ($hit) { break }
                 }
-                if (-not $hit) { continue }
+                if (-not $hit) { $reason = "마커(启动任务) 없음 — 로그 형식 상이"; continue }
                 $dirCands += [pscustomobject]@{ Dir = $d; LastWrite = $infos[0].LastWriteTime }
             }
         }
         if ($dirCands.Count -gt 0) {
             $cands += ($dirCands | Sort-Object LastWrite -Descending | Select-Object -First 1)
+        } else {
+            $script:PexRejects += [pscustomobject]@{ Root = $root; Reason = $reason }
         }
     }
     return ,@($cands | Sort-Object LastWrite -Descending)
@@ -277,7 +282,8 @@ if ($svc) {
                 L ("  ★ tns_printexp 자동 전환 적용 (" + $tw.EquipmentId + ") — 취소 감지+실소요 활성")
                 $autoApplied = $true
             } elseif ($cands.Count -eq 0) {
-                L "  PrintExp 미발견 — 기존 설정 유지 (제어 SW 가 다른 계열이면 [1] 수거 필요)"
+                L "  PrintExp 미발견 — 기존 설정 유지 (키트가 이어서 서식지 센서스를 자동 수거합니다)"
+                foreach ($rj in $script:PexRejects) { L ("    이름 일치·탈락: " + $rj.Root + " — " + $rj.Reason) }
             } else {
                 L ("  PrintExp 활성 설치본 " + $cands.Count + "개(모호) — 자동 전환 보류, 목록:")
                 foreach ($c2 in $cands) { L ("    - " + $c2.Dir) }
