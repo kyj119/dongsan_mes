@@ -224,6 +224,17 @@ function Invoke-HabitatCensus {
     $cut = (Get-Date).AddDays(-$CollectDays)
     $lines = New-Object System.Collections.Generic.List[string]
     $collected = 0; $maxCollect = 200
+    $bigCollected = 0; $maxBigCollect = 5   # 대형 기록 파일(rec/history)은 별도 소량 상한
+
+    function Copy-CensusFile([IO.FileInfo]$fi, [string]$dstPath, [long]$TailBytes = 0) {
+        # 확장자 무관 수거 — Copy-Item 대괄호 함정 회피(.NET 공유읽기 스트림). TailBytes>0 = 꼬리만.
+        $in = [IO.File]::Open($fi.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+        try {
+            if ($TailBytes -gt 0 -and $fi.Length -gt $TailBytes) { $in.Seek($fi.Length - $TailBytes, [IO.SeekOrigin]::Begin) | Out-Null }
+            $out = [IO.File]::Create($dstPath)
+            try { $in.CopyTo($out) } finally { $out.Close() }
+        } finally { $in.Close() }
+    }
 
     foreach ($root in $tops) {
         $lines.Add("== " + $root + " ==")
@@ -233,24 +244,35 @@ function Invoke-HabitatCensus {
         foreach ($f in $files) {
             $fi = $null; try { $fi = [IO.FileInfo]$f } catch { continue }
             $lines.Add(("  {0}`t{1}`t{2:yyyy-MM-dd HH:mm:ss}" -f $fi.FullName, $fi.Length, $fi.LastWriteTime))
-            if ($collected -ge $maxCollect) { continue }
-            if ($fi.LastWriteTime -le $cut -or $fi.Length -eq 0 -or $fi.Length -ge 5MB) { continue }
-            if ($noiseExt -contains $fi.Extension.ToLower()) { continue }
-            # 확장자 무관 수거 — Copy-Item 대괄호 함정 회피(.NET 공유읽기 스트림)
+            if ($fi.LastWriteTime -le $cut -or $fi.Length -eq 0) { continue }
             try {
                 if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Force -Path $outDir | Out-Null }
                 $safe = ($fi.FullName -replace "[:\\]", "_")
-                $in = [IO.File]::Open($fi.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
-                try {
-                    $out = [IO.File]::Create((Join-Path $outDir $safe))
-                    try { $in.CopyTo($out) } finally { $out.Close() }
-                } finally { $in.Close() }
-                $collected++
+                if ($fi.Length -lt 5MB) {
+                    if ($collected -ge $maxCollect) { continue }
+                    if ($noiseExt -contains $fi.Extension.ToLower()) { continue }
+                    Copy-CensusFile $fi (Join-Path $outDir $safe)
+                    $collected++
+                } elseif ($fi.Name -match "(?i)rec|history") {
+                    # 대형 기록 파일 — Flora print_rec.dat(33~48MB) 실측(2026-08-19). 60MB 까지 통째,
+                    # 그 이상은 꼬리 20MB (기록은 뒤에 쌓인다) + 구조 판독용 머리 2MB.
+                    if ($bigCollected -ge $maxBigCollect) { continue }
+                    if ($fi.Length -le 60MB) {
+                        Copy-CensusFile $fi (Join-Path $outDir $safe)
+                    } else {
+                        Copy-CensusFile $fi ((Join-Path $outDir $safe) + ".tail") 20MB
+                        $head = New-Object byte[] 2MB
+                        $in2 = [IO.File]::Open($fi.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+                        try { $n2 = $in2.Read($head, 0, $head.Length) } finally { $in2.Close() }
+                        [IO.File]::WriteAllBytes(((Join-Path $outDir $safe) + ".head"), $head[0..($n2-1)])
+                    }
+                    $bigCollected++
+                }
             } catch { $lines.Add("    (수거 실패: " + $_.Exception.Message + ")") }
         }
     }
     [IO.File]::WriteAllLines((Join-Path $dir ("census-" + $PcName + ".txt")), $lines, $Utf8Bom)
-    Write-Host ("   서식지 센서스: 루트 {0}곳 목록화, 최근 {1}일 파일 {2}개 수거 (census 폴더)" -f $tops.Count, $CollectDays, $collected)
+    Write-Host ("   서식지 센서스: 루트 {0}곳 목록화, 최근 {1}일 파일 {2}개 + 대형 기록 {3}개 수거 (census 폴더)" -f $tops.Count, $CollectDays, $collected, $bigCollected)
 }
 
 # ── [1] 신규 장비 진단 ────────────────────────────────────────────
