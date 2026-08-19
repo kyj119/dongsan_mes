@@ -26,11 +26,13 @@
 
 ## ✅ 최근 완료 — 후속 대기 인덱스 (경위·상세 전문 = `PROJECT_STATUS_ARCHIVE.md`)
 
+- **✅ 08-19 주문서 마감·펀칭 역할 재정의 + 출고검수 주문 찾기(부분일치)** — 미배포(로컬 검증 완료) · 정본=memory `design-order-finishing-role` — 마감/펀칭 = **청구+현장지시 축**으로 확정, 사문화된 기하 자동적용(auto_process_jobs producer 2곳·제2 여백정본 `AP_MARGIN_RULES`) 은퇴. 접수 UI=프리셋+요약(MES_FIN)·상세 접기. `/pack` 수동입력은 신설 **읽기전용** `GET /api/shipments/pack-search` 경유(숫자도 후보로만). 검증=smoke 112/112·entity 61/61·roundtrip 소실 0·P1 0. 남은=배포
+
 - **✅ 08-19 대표자 개인통장 분리 — `bank_accounts.is_personal` 신설**(마이그 `0539` + 코드) — 경위 전문=`PROJECT_STATUS_ARCHIVE.md` §2026-08-19 대표자 개인통장 분리 · 정본=memory `design-personal-bank-account`. 자금(총자금·순자금·자금일보 시작잔액·재무상태 현금)·판관비 추정에서 **완전 제외**, 입금→수금 연결은 **유지**(계산서 없이 들어온 입금 반영용). 대상=#17 농협 08712205285(김진수) 1개 · 청주 #10 은 사업용이라 제외. prod 실측 e1 예금 24,676,285→**23,981,438**. 남은=#17 출금 IGNORED 36건 정리 여부(그대로 둬도 무해)
 
 - **✅ 08-19 법인카드 마감일·결제일 정정 — 카드사 공식 신용공여기간 적용**(마이그 `0536`→`0537`+`0538` prod·코드 0) — 경위 전문=`PROJECT_STATUS_ARCHIVE.md` §2026-08-19 법인카드 마감일·결제일 · 정본=memory `design-card-billing-cycle`. ★마감일 **데이터 추정 금지**(할부가 상관을 뒤집는다) · ★NH농협=**대표자 개인통장** 출금이라 법인카드 아님 → #16 삭제(백업 `_bak_0538_removed_cards`). 남은=미등록 정기출금 2건(하나 「비씨카드」 23일 정액 2,332,300 · 전북 「신한카드할부」 26일 745,630) · **개인통장 #17 이 활성 법인계좌라 자금·판관비에 섞임**
 
-- **✅ 08-19 TNS 계열 2축 파서 `tns_printexp` 신설(`592b909d`·kit Z: 반영) + KM전사1~3·EPSON 2대 전환 검증 완료** — 경위 전문=`PROJECT_STATUS_ARCHIVE.md` §2026-08-19 TNS 2축 파서 · 정본=memory `design-tns-printexp-join`. ★키트 [2] 자동 전환 내장(`169340e0`) → 잔여 TNS PC ~15대는 **[2] 한 번씩이면 끝**([1] 불요). 남은: **TOPM-01·HSM-03 포함 TNS 전 PC [2]** · UV 2대 [1](출력실1=UV-3200 Flora·출력실2=FLAT-4X8 제어SW 미확인) · EPSON 시작시각은 다음 출력 1건에서 자연검증
+- **✅ 08-19 TNS 2축 파서 `tns_printexp`(`592b909d`) + 키트 [2] 자동 전환(`169340e0`)·[1] 센서스** — 경위=`PROJECT_STATUS_ARCHIVE.md` §2026-08-19 TNS 2축 파서 · 정본=memory `design-tns-printexp-join`. 남은: **HSM 잔여 PC [2] 전체**(TOPM-01 ✅·TPM-01=PrintExp 없음→[1] 대상·3대째 로그 미회수=재실행) · **UV 2대=전환 진행(용준님 결정)** — 다음=출력실1·2 **[1] 재실행**(센서스로 Flora 로그 소재 판정) · EPSON 시작시각=다음 출력 자연검증
 
 - **✅ prod 배포 08-19 `771e8db3` (배포 ID `cf0af4f0`) — 카드 마감·후가공 표기 통일 (사본 5벌 → 정본 1벌)** — 경위 전문=`PROJECT_STATUS_ARCHIVE.md` §2026-08-19 카드 마감·후가공 표기. 게이트=`npm run test:finishing-label`. smoke **111/111** · prod 마커 실측(MES_FIN·`4방`·`4모서리`) 확인. 남은=기존 카드 체크리스트 라벨은 소급 안 됨(DB 스냅샷·prod cards 0건)
 

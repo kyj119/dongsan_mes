@@ -14,13 +14,16 @@ export function packPage(c: Context<HonoEnv>) {
         <!-- 주문 열기: 번호 입력 + 카메라 스캔 -->
         <div class="ds-card p-3 mb-3">
           <div class="flex items-center gap-2">
-            <input type="text" id="packOrderInput" class="ds-input flex-1 px-3 py-2 text-base" placeholder="주문번호 또는 주문 ID" inputmode="search">
+            <input type="text" id="packOrderInput" class="ds-input flex-1 px-3 py-2 text-base" placeholder="주문번호·거래처 검색 (2자 이상)" inputmode="search">
             <button id="packOpenBtn" onclick="packOpenFromInput()" class="ds-btn ds-btn-primary" style="min-width:64px"><i class="fas fa-folder-open mr-1"></i>열기</button>
             <button id="packScanBtn" onclick="packStartScan()" class="ds-btn ds-btn-secondary" title="검수 체크지 QR 스캔" style="min-width:52px"><i class="fas fa-qrcode"></i></button>
           </div>
           <div id="pack-qr-reader" class="hidden mt-3 rounded overflow-hidden" style="max-width:400px;margin:0 auto"></div>
           <button id="packScanStopBtn" onclick="packStopScan()" class="ds-btn ds-btn-sm w-full mt-2 hidden">스캔 중지</button>
         </div>
+
+        <!-- 검색 후보 (부분일치) — 완전일치 1건이면 뜨지 않고 바로 열린다 -->
+        <div id="packResults" class="ds-card mb-3 hidden overflow-hidden"></div>
 
         <!-- 검수 카드 -->
         <div id="packCard" class="ds-card overflow-hidden hidden">
@@ -53,7 +56,7 @@ export function packPage(c: Context<HonoEnv>) {
 
         <div id="packEmpty" class="text-center text-gray-400 py-12">
           <i class="fas fa-clipboard-check text-4xl mb-3 block text-gray-300"></i>
-          <div class="text-sm">검수 체크지의 QR을 스캔하거나<br>주문번호를 입력해 검수를 시작하세요.</div>
+          <div class="text-sm">검수 체크지의 QR을 스캔하거나<br>주문번호·거래처 일부를 입력해 검수를 시작하세요.</div>
         </div>
       </div>
     `,

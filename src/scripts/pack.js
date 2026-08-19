@@ -15,11 +15,57 @@ var packSaving = false;
   document.head.appendChild(s);
 })();
 
-function packOpenFromInput() {
+// 수동 입력 = **검색 경유**(2026-08-19). 예전엔 입력값을 그대로 by-order 에 넘겼는데,
+// 그 라우트는 shipment 를 생성하는 쓰기 경로라 꼬리 3자리('001')를 치면 **주문 id 1** 에 출고가 생겼다.
+// 완전일치(주문번호) 1건이면 종전처럼 즉시 열고, 그 외에는 후보를 띄워 사람이 고른다. QR 은 id 직행 유지.
+async function packOpenFromInput() {
   var el = document.getElementById('packOrderInput');
   var v = el ? el.value.trim() : '';
-  if (!v) { showToast('주문번호를 입력하세요', 'warning'); return; }
-  packLoad(v);
+  if (v.length < 2) { showToast('2자 이상 입력하세요', 'warning'); return; }
+  try {
+    var res = await axios.get('/api/shipments/pack-search?q=' + encodeURIComponent(v));
+    var rows = (res.data && res.data.data) || [];
+    var exact = null;
+    for (var i = 0; i < rows.length; i++) {
+      if (String(rows[i].order_number || '').toUpperCase() === v.toUpperCase()) { exact = rows[i]; break; }
+    }
+    if (exact) { packRenderResults([]); packLoad(exact.id); return; }
+    if (!rows.length) { packRenderResults([]); showToast('일치하는 주문이 없습니다', 'warning'); return; }
+    packRenderResults(rows, res.data.has_more);
+  } catch (e) {
+    var msg = (e.response && e.response.data && e.response.data.error) || e.message || '';
+    showToast('검색 실패: ' + msg, 'error');
+  }
+}
+
+// 후보 목록 — 오선택 방지용으로 거래처·납품일·라인수·출고여부를 함께 보여준다.
+function packRenderResults(rows, hasMore) {
+  var box = document.getElementById('packResults');
+  if (!box) { console.warn('[pack] #packResults not found'); return; }
+  if (!rows || !rows.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+  var html = '<div class="px-4 py-2 text-xs text-gray-500 bg-gray-50 border-b">'
+    + rows.length + '건' + (hasMore ? ' 이상' : '') + ' — 열 주문을 선택하세요</div>';
+  html += rows.map(function(r) {
+    var shipped = !!r.shipped_at;
+    return '<div onclick="packChooseResult(' + r.id + ')" class="px-4 py-3 border-b last:border-b-0 active:bg-gray-100 cursor-pointer">'
+      + '<div class="flex items-center gap-2">'
+      + '<span class="text-sm font-semibold text-gray-800">' + escapeHtml(r.order_number || ('#' + r.id)) + '</span>'
+      + (r.id_match ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">주문 ID ' + r.id + '</span>' : '')
+      + (shipped ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-600">출고완료</span>'
+                 : '<span class="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700">미출고</span>')
+      + '</div>'
+      + '<div class="text-xs text-gray-500 mt-0.5">'
+      + escapeHtml(r.client_name || '-') + ' · 납품 ' + (r.delivery_date || '-') + ' · ' + (r.line_count || 0) + '라인'
+      + (r.entity_name ? ' · ' + escapeHtml(r.entity_name) : '')
+      + '</div></div>';
+  }).join('');
+  box.innerHTML = html;
+  box.classList.remove('hidden');
+}
+
+function packChooseResult(orderId) {
+  packRenderResults([]);
+  packLoad(orderId);
 }
 
 // QR 텍스트 파싱: /pack?order=N URL · PACK:N · 숫자 · 주문번호 문자열
@@ -44,6 +90,7 @@ async function packLoad(idOrNumber) {
     });
     if (empty) empty.classList.add('hidden');
     if (card) card.classList.remove('hidden');
+    packRenderResults([]);
     packRender();
     navigator.vibrate && navigator.vibrate(50);
   } catch (e) {

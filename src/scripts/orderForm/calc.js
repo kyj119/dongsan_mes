@@ -59,6 +59,22 @@
                     punchCostSpan.textContent = '';
                 }
 
+                // 펀칭 요약 — 8칸을 접어 둔 상태에서 무엇이 잡혔는지 보이게(표기 정본 = MES_FIN, 카드와 동일 문장)
+                const punchSumSpan = container.querySelector('.pp-punching-summary');
+                if (punchSumSpan) {
+                    if (!window.MES_FIN) {
+                        console.warn('[orderForm] MES_FIN 미로드 — 펀칭 요약 표기 불가 (shared/finishingLabel.js 확인)');
+                    } else if (punchCheck && punchCheck.checked) {
+                        var punchVals = {};
+                        container.querySelectorAll('.pp-punch-val').forEach(function(v) {
+                            punchVals[v.dataset.key] = parseInt(v.value) || 0;
+                        });
+                        punchSumSpan.textContent = window.MES_FIN.punching(punchVals) || '위치·개수 미지정';
+                    } else {
+                        punchSumSpan.textContent = '';
+                    }
+                }
+
                 // 3. Annotation cost
                 const annoSection = container.querySelector('.pp-annotation-section');
                 const annoCheck = container.querySelector('.pp-annotation-check');

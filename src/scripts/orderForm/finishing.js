@@ -85,8 +85,7 @@
                         if (finCm && finSaved[dir + '_cm'] != null) finCm.value = finSaved[dir + '_cm'];
                     });
                     if (finAny) {
-                        var finSides = document.getElementById('finishing_sides_' + id);
-                        if (finSides) finSides.classList.remove('hidden');
+                        // 복원해도 4변 상세는 펼치지 않는다 — 요약(finishing_summary_)이 방향·방식을 그대로 보여준다(2026-08-19 간소화).
                         calcFinishing(id);
                     }
                 } catch(eFin) { console.warn('[orderForm] finishing 복원 실패', eFin); }
@@ -99,11 +98,7 @@
                         var sel = document.querySelector('[name="fin_' + dir + '_' + itemId + '"]');
                         if (sel && config[dir]) sel.value = config[dir];
                     });
-                    var allSame = config.top && config.top === config.bottom && config.top === config.left && config.top === config.right;
-                    if (!allSame) {
-                        var sides = document.getElementById('finishing_sides_' + itemId);
-                        if (sides) sides.classList.remove('hidden');
-                    }
+                    // 비대칭 프리셋도 펼치지 않는다 — 요약이 '좌우 줄미싱+상하 봉미싱'까지 문장으로 보여준다(2026-08-19 간소화).
                     // 선택된 프리셋 강조 표시
                     document.querySelectorAll('[data-preset-id="' + itemId + '"]').forEach(function(b) {
                         b.className = 'fin-preset-btn px-2 py-0.5 text-[10px] bg-gray-100 text-gray-600 rounded border border-transparent';
@@ -174,11 +169,27 @@
                 var w = parseFloat(widthEl?.value) || 0;
                 var h = parseFloat(heightEl?.value) || 0;
 
+                // 접힘 상태에서도 무엇을 골랐는지 보이게 — 표기 규칙은 카드/체크리스트와 같은 정본(MES_FIN).
+                var sumEl = document.getElementById('finishing_summary_' + itemId);
+                if (sumEl) {
+                    if (!window.MES_FIN) {
+                        console.warn('[orderForm] MES_FIN 미로드 — 마감 요약 표기 불가 (shared/finishingLabel.js 확인)');
+                    } else {
+                        var finText = window.MES_FIN.finishing({
+                            top: getVal('fin_top_' + itemId), bottom: getVal('fin_bottom_' + itemId),
+                            left: getVal('fin_left_' + itemId), right: getVal('fin_right_' + itemId)
+                        });
+                        sumEl.textContent = finText || '';
+                    }
+                }
+
                 var calcEl = document.getElementById('finishing_calc_' + itemId);
                 if (calcEl && (mTop || mBottom || mLeft || mRight) && w && h) {
                     var finalW = w + mLeft + mRight;
                     var finalH = h + mTop + mBottom;
-                    calcEl.innerHTML = '<i class="fas fa-ruler-combined mr-1 text-blue-400"></i>여백: 상' + mTop + ' 하' + mBottom + ' 좌' + mLeft + ' 우' + mRight + 'cm → <span class="font-medium text-blue-600">' + finalW + '×' + finalH + 'cm</span>';
+                    // ★참고값이다 — 청구 면적·원단 소요에 반영되지 않고, 실제 여백은 가공(A0 패널) 단계에서 적용된다.
+                    calcEl.innerHTML = '<i class="fas fa-ruler-combined mr-1 text-blue-400"></i>여백: 상' + mTop + ' 하' + mBottom + ' 좌' + mLeft + ' 우' + mRight + 'cm → <span class="font-medium text-blue-600">' + finalW + '×' + finalH + 'cm</span>'
+                        + ' <span class="text-gray-400">(참고 — 청구 규격 아님 · 실제 적용은 가공 단계)</span>';
                 } else if (calcEl) {
                     calcEl.innerHTML = '';
                 }
@@ -287,6 +298,12 @@
                         html += '<button type="button" class="pp-punch-preset px-2 py-0.5 text-xs border rounded bg-gray-100 hover:bg-gray-200" data-preset="corners" data-row="' + rowId + '">4\ubaa8\uc11c\ub9ac</button>';
                         html += '<button type="button" class="pp-punch-preset px-2 py-0.5 text-xs border rounded bg-gray-100 hover:bg-gray-200" data-preset="reset" data-row="' + rowId + '">\ucd08\uae30\ud654</button>';
                         html += '</div>';
+                        // 접수 단계는 프리셋 + 요약까지. 위치별 개수(8칸)는 접어 둔다(2026-08-19 간소화).
+                        html += '<div class="flex items-center gap-2 mb-1 flex-wrap">';
+                        html += '<span class="pp-punching-summary text-xs font-medium text-gray-700"></span>';
+                        html += '<button type="button" class="pp-punch-grid-toggle text-[10px] text-gray-400 hover:text-blue-600 whitespace-nowrap" data-row="' + rowId + '">위치·개수 상세 <i class="fas fa-caret-down"></i></button>';
+                        html += '</div>';
+                        html += '<div id="pp_punch_grid_' + rowId + '" class="hidden">';
                         html += '<div class="grid grid-cols-3 gap-1 text-center text-xs" style="max-width:200px;">';
                         html += '<label class="flex flex-col items-center"><span>\uc88c\uc0c1</span><input type="number" min="0" max="1" value="0" class="pp-punch-val w-12 border rounded text-center py-0.5" data-key="corner_tl" data-row="' + rowId + '"></label>';
                         html += '<label class="flex flex-col items-center"><span>\uc0c1</span><input type="number" min="0" value="0" class="pp-punch-val w-12 border rounded text-center py-0.5" data-key="side_top" data-row="' + rowId + '"></label>';
@@ -297,7 +314,8 @@
                         html += '<label class="flex flex-col items-center"><span>\uc88c\ud558</span><input type="number" min="0" max="1" value="0" class="pp-punch-val w-12 border rounded text-center py-0.5" data-key="corner_bl" data-row="' + rowId + '"></label>';
                         html += '<label class="flex flex-col items-center"><span>\ud558</span><input type="number" min="0" value="0" class="pp-punch-val w-12 border rounded text-center py-0.5" data-key="side_bottom" data-row="' + rowId + '"></label>';
                         html += '<label class="flex flex-col items-center"><span>\uc6b0\ud558</span><input type="number" min="0" max="1" value="0" class="pp-punch-val w-12 border rounded text-center py-0.5" data-key="corner_br" data-row="' + rowId + '"></label>';
-                        html += '</div>';
+                        html += '</div>';   // grid
+                        html += '</div>';   // pp_punch_grid (접힘 래퍼)
                         html += '<span class="pp-punching-cost text-xs text-orange-600 font-medium mt-1 block"></span>';
                         html += '</div>';
                         html += '</div>';
@@ -532,6 +550,17 @@
                     input.addEventListener('input', function() {
                         calculatePPCost(rowId);
                         calculateTotal();
+                    });
+                });
+
+                // Punching 상세(8칸) 접기 토글 — 기본 접힘, 프리셋으로 안 되는 건만 펼친다
+                container.querySelectorAll('.pp-punch-grid-toggle').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        var grid = document.getElementById('pp_punch_grid_' + rowId);
+                        if (!grid) { console.warn('[orderForm] #pp_punch_grid_' + rowId + ' not found'); return; }
+                        var wasHidden = grid.classList.contains('hidden');
+                        grid.classList.toggle('hidden');
+                        this.innerHTML = '위치·개수 상세 <i class="fas fa-caret-' + (wasHidden ? 'up' : 'down') + '"></i>';
                     });
                 });
 

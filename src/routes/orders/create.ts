@@ -18,7 +18,7 @@ import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { kstYmd, kstYmdCompact } from '../../utils/kstDate'
 import { ORDER_STATUS_LABELS } from '../../utils/statusLabels'
 import { thumbRef, resolveGroupByAiIndex, type AnalysisGroup } from '../../utils/thumbnailStore'
-import { recommendAssignedEntity, recalcOrderBillingGroups, generateCardsForOrder, enqueueAutoProcessJobsForItems } from './helpers'
+import { recommendAssignedEntity, recalcOrderBillingGroups, generateCardsForOrder } from './helpers'
 import { deriveClientBalance } from '../ledger/ar-helpers'
 
 const ordersCreateRouter = new Hono<HonoEnv>()
@@ -649,120 +649,10 @@ ordersCreateRouter.post('/', async (c) => {
       // Thumbnail extraction failure must not break order creation
     }
 
-    // ── D. 자동가공: ai_analysis_id가 있으면 auto_process_jobs 자동 생성 ──
-    let autoProcessStarted = false
-    if (aiAnalysisId) {
-      try {
-        const analysis = await c.env.DB.prepare(
-          `SELECT id, file_path, groups_json FROM ai_analysis_requests WHERE id = ?`
-        ).bind(aiAnalysisId).first<{ id: number; file_path: string; groups_json: string | null }>()
-        if (analysis?.groups_json) {
-          const groups = JSON.parse(analysis.groups_json || '[]')
-          const { results: postOrderItems } = await c.env.DB.prepare(
-            `SELECT id, order_id, item_id, item_name, category_name,
-                    width, height, quantity, unit, unit_price, amount, vat_included,
-                    post_processing, content, sort_order, parent_item_id,
-                    scale_factor, finishing,
-                    ai_group_index, ai_analysis_id
-             FROM order_items WHERE order_id = ? AND ai_analysis_id IS NOT NULL ORDER BY sort_order ASC, id ASC`
-          ).bind(orderId).all()
-          const aiItems = postOrderItems
-
-          // sheet_layout 주문은 orders.sheet_layout_params에 저장됨
-          // → C#의 ProcessOrderAsync에서 처리 (auto_process_jobs 불필요)
-          // 여기서는 개별 자동가공 job만 생성 (기존 로직)
-          {
-          const SCALE_RULES: Record<string, number> = {
-            '현수막': 5, '게시대': 5, '게릴라': 5, '솔벤현수막': 5,
-            '패트': 1, '솔벤시트': 1, '합성지': 1, '포맥스': 1,
-            'UV': 1, '클리어필름': 1, '간판': 1,
-          }
-          const MARGIN_RULES: Record<string, { w: number; h: number }> = {
-            '미싱': { w: 83, h: 0 }, '사방접어미싱': { w: 61, h: 61 },
-            '접어미싱': { w: 34, h: 0 }, '봉미싱': { w: 0, h: 55 },
-            '밴드미싱': { w: 2, h: 0 }, '사방미싱': { w: 2, h: 0 },
-            '열재단': { w: 14, h: 0 }, '재단만': { w: 0, h: 0 },
-          }
-          function _getScale(product: string, widthCm: number): number {
-            const base = SCALE_RULES[product] ?? 5
-            if (['현수막', '게시대', '솔벤현수막', '게릴라'].includes(product)) {
-              if (widthCm > 300) return 5
-              if (widthCm > 150) return 2
-            }
-            return base
-          }
-          function _getMargins(finishing: string): { w: number; h: number } {
-            if (!finishing) return { w: 0, h: 0 }
-            if (MARGIN_RULES[finishing]) return MARGIN_RULES[finishing]
-            for (const k of Object.keys(MARGIN_RULES).sort((a, b) => b.length - a.length)) {
-              if (finishing.includes(k)) return MARGIN_RULES[k]
-            }
-            return { w: 0, h: 0 }
-          }
-
-          // N+1 제거: 품목명을 IN(...)으로 일괄 선조회 후 INSERT는 db.batch로 묶음
-          const aiItemIds = [...new Set((aiItems as any[]).map((oi) => oi.item_id as number).filter((v) => v != null))]
-          const itemNameMap = new Map<number, string>()
-          if (aiItemIds.length > 0) {
-            const iph = aiItemIds.map(() => '?').join(',')
-            const { results: nameRows } = await c.env.DB.prepare(
-              `SELECT id, item_name FROM items WHERE id IN (${iph})`
-            ).bind(...aiItemIds).all<{ id: number; item_name: string }>()
-            for (const nr of nameRows) itemNameMap.set(nr.id, nr.item_name)
-          }
-
-          const jobStmts: D1PreparedStatement[] = []
-          for (const oi of aiItems) {
-            const gIdx = (oi.ai_group_index as number) ?? 0
-            const group = groups[gIdx]
-            if (!group) continue
-
-            const finishing = (oi.finishing as string) || ''
-            const productName = itemNameMap.get(oi.item_id as number) || ''
-            const scale = (oi.scale_factor as number) || _getScale(productName, (oi.width as number) || 0)
-            const margins = _getMargins(finishing)
-            const mL = margins.w / 10.0 / scale, mR = margins.w / 10.0 / scale
-            const mT = margins.h > 0 ? margins.h / 10.0 / scale : 0
-            const mB = margins.h > 0 ? margins.h / 10.0 / scale : 0
-            const clipBounds = group.bounds_mm || null
-            const ts = Date.now()
-            const outputDir = 'Z:\\Designs\\IllustratorAutomat\\_auto_output'
-            const srcBase = (analysis.file_path || 'output').split(/[\\/]/).pop()?.replace(/\.[^.]+$/, '') || 'output'
-
-            const iaParams = {
-              mode: 'process', source: analysis.file_path, output: outputDir,
-              epsOutput: `${outputDir}\\${srcBase}_g${gIdx}_${ts}.eps`,
-              pngOutput: `${outputDir}\\${srcBase}_g${gIdx}_${ts}.png`,
-              marginL: mL, marginR: mR, marginT: mT, marginB: mB,
-              thumbSize: 300, scaleFactor: scale, clipBounds,
-            }
-
-            jobStmts.push(c.env.DB.prepare(
-              `INSERT INTO auto_process_jobs
-               (order_id, order_item_id, ai_analysis_id, ai_group_index,
-                source_path, product, width_cm, height_cm, finishing,
-                scale_factor, clip_bounds, margins, status, ia_params, entity_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
-            ).bind(
-              orderId, oi.id as number, aiAnalysisId, gIdx,
-              analysis.file_path, productName, (oi.width as number) || 0, (oi.height as number) || 0, finishing,
-              scale, JSON.stringify(clipBounds),
-              JSON.stringify({ L: mL, R: mR, T: mT, B: mB }),
-              JSON.stringify(iaParams),
-              billingEntityId // #entity정합: 주문행과 동일 법인 (코디 타법인 접수 대응)
-            ))
-          }
-          for (let i = 0; i < jobStmts.length; i += 80) {
-            await c.env.DB.batch(jobStmts.slice(i, i + 80))
-          }
-          if (aiItems.length > 0) autoProcessStarted = true
-          }
-        }
-      } catch (_autoErr) {
-        // 자동가공 실패가 주문 생성을 방해하면 안 됨
-        console.error('Auto-process job creation error:', _autoErr)
-      }
-    }
+    // ── (은퇴 2026-08-19) D. 자동가공 auto_process_jobs 생성 ──
+    // 웹 그룹분석 폐기로 사문화(prod 총 1건·마지막 2026-07-03). 라이브 큐 = tasks(AI_PROCESS).
+    // 여기 있던 MARGIN_RULES 도 finishing_methods.margin_cm 과 다른 제2 여백 정본이라 함께 제거했다.
+    // 상세 = orders/helpers.ts 동일 주석. 수동 진단은 /api/auto-process(/ia-auto, ADMIN).
 
     await logActivity({
       db: c.env.DB, userId: user?.id, userName: user?.username,
@@ -798,7 +688,7 @@ ordersCreateRouter.post('/', async (c) => {
         id: orderId,
         order_number: orderNumber
       },
-      message: `Order created successfully. ${cardsGenerated} card(s) generated.${autoProcessStarted ? ' 자동가공이 시작되었습니다.' : ''}`,
+      message: `Order created successfully. ${cardsGenerated} card(s) generated.`,
       ...(materialWarnings.length > 0 && {
         material_warnings: materialWarnings,
         warning_message: `자재 부족 ${materialWarnings.length}건: ${materialWarnings.slice(0, 3).map((w: any) => w.material_name).join(', ')}${materialWarnings.length > 3 ? ' 외' : ''}`,
@@ -984,12 +874,6 @@ ordersCreateRouter.post('/:id/items', async (c) => {
       } catch (taskErr) { console.error('append AI_PROCESS enqueue failed:', taskErr) }
     }
 
-    // auto_process_jobs (신규 라인만 — 에이전트 폴링 큐). 라인별 자기 ai_analysis_id 사용.
-    let autoProcessStarted = false
-    try {
-      const created = await enqueueAutoProcessJobsForItems(c.env.DB, orderId, newItemIds, body.ai_analysis_id || null, billingEntityId)
-      if (created > 0) autoProcessStarted = true
-    } catch (apErr) { console.error('append auto_process_jobs failed:', apErr) }
 
     await logActivity({
       db: c.env.DB, userId: user?.id, userName: user?.username,
@@ -1003,7 +887,7 @@ ordersCreateRouter.post('/:id/items', async (c) => {
     return c.json({
       success: true,
       data: { order_id: orderId, order_number: order.order_number, added: newItemIds.length, cards_generated: cardsGenerated },
-      message: `${order.order_number}에 ${newItemIds.length}개 라인 추가 (카드 ${cardsGenerated}건${autoProcessStarted ? ', 자동가공 시작' : ''}).`,
+      message: `${order.order_number}에 ${newItemIds.length}개 라인 추가 (카드 ${cardsGenerated}건).`,
       ...(warning && { warning }),
     })
   } catch (error) {

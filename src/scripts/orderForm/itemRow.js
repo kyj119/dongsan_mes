@@ -142,7 +142,8 @@
                         <div id="finishing_placeholder_${id}" class="text-sm text-gray-400">품목을 선택하면 마감 방식 옵션이 표시됩니다.</div>
                         <div class="hidden" id="finishing_body_${id}">
                         <div class="flex items-center gap-1 mb-1" id="finishing_presets_${id}"></div>
-                        <div class="flex items-center gap-2" id="finishing_simple_${id}">
+                        <div class="flex items-center gap-2 flex-wrap" id="finishing_simple_${id}">
+                            <span id="finishing_summary_${id}" class="text-xs font-medium text-gray-700"></span>
                             <button type="button" onclick="toggleFinishingDetail(${id})" class="text-[10px] text-gray-400 hover:text-blue-600 whitespace-nowrap">개별 설정 <i class="fas fa-caret-down"></i></button>
                         </div>
                         <div class="grid grid-cols-4 gap-1 mt-1 hidden" id="finishing_sides_${id}">

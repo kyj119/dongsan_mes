@@ -190,6 +190,7 @@ const ENDPOINTS = [
   // 출고 대시보드
   { path: '/api/shipments/dashboard/counts', name: 'shipments.dashboardCounts' },
   { path: '/api/shipments/dashboard', name: 'shipments.dashboard' },
+  { path: '/api/shipments/pack-search?q=001', name: 'shipments.packSearch' },   // 출고검수 주문 찾기(읽기전용)
 
   // 검수
   { path: '/api/inspections/templates', name: 'inspections.templates' },

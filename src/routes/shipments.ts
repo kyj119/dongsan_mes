@@ -487,6 +487,46 @@ shipmentsRouter.post('/unmerge', requireEditOrRole('/shipments', 'MANAGER'), asy
 })
 
 // ============================================================================
+// GET /pack-search?q= — 출고 검수(모바일) 주문 찾기. **읽기 전용**
+//   ⚠️ /checklist/by-order 는 shipment(PREPARING) 생성 + shipment_checks upsert 를 하는 **쓰기** 경로다.
+//      후보 탐색에 그걸 쓰면 엉뚱한 주문에 출고 레코드가 생긴다 → 탐색은 반드시 이 라우트로.
+//   숫자 입력도 여기로 온다. 주문번호 부분일치 + '주문 ID 정확일치' 후보를 함께 돌려주고 자동으로 열지 않는다
+//   (현장에서 주문번호 꼬리 3자리를 치면 그 숫자가 **다른 주문의 id** 로 해석돼 열리던 위험 제거, 2026-08-19).
+//   LIKE 대신 instr — D1 LIKE 패턴 50바이트 제한(한글 16자) 회피.
+// ※ /:id 보다 먼저 등록
+// ============================================================================
+shipmentsRouter.get('/pack-search', async (c) => {
+  try {
+    const raw = (c.req.query('q') || '').trim()
+    if ([...raw].length < 2) return c.json({ success: false, error: '2자 이상 입력하세요.' }, 400)
+    const q = [...raw].slice(0, 40).join('')            // 길이 상한(검색어 폭주·바인드 낭비 방지)
+    const idExact = /^\d+$/.test(q) ? parseInt(q) : 0
+    const ef = entityFilter(c, 'o')
+
+    const { results } = await c.env.DB.prepare(`
+      SELECT o.id, o.order_number, o.delivery_date, o.delivery_method, o.status, o.shipped_at,
+             cl.client_name, en.short_name AS entity_name,
+             (SELECT COUNT(*) FROM order_items oi
+               WHERE oi.order_id = o.id AND (oi.parent_item_id IS NULL OR oi.parent_item_id = 0)) AS line_count,
+             CASE WHEN o.id = ? THEN 1 ELSE 0 END AS id_match
+      FROM orders o
+      LEFT JOIN clients cl ON o.client_id = cl.id
+      LEFT JOIN entities en ON en.id = o.entity_id
+      WHERE (instr(o.order_number, ?) > 0 OR instr(COALESCE(cl.client_name, ''), ?) > 0 OR o.id = ?)${ef.clause}
+      ORDER BY id_match DESC, (o.shipped_at IS NULL) DESC,
+               o.delivery_date IS NULL, o.delivery_date DESC, o.id DESC
+      LIMIT 11
+    `).bind(idExact, q, q, idExact, ...ef.params).all()
+
+    const rows = (results || []) as unknown[]
+    return c.json({ success: true, data: rows.slice(0, 10), has_more: rows.length > 10 })
+  } catch (e) {
+    console.error('pack-search error:', e)
+    return c.json({ success: false, error: '검색 실패' }, 500)
+  }
+})
+
+// ============================================================================
 // GET /checklist/by-order/:orderId - 포장 검수 체크리스트 (출고관리 v2 P1)
 // shipment(없으면 PREPARING 생성) 확보 + 주문 라인 스냅샷(shipment_checks upsert) 후 반환.
 // 검수 단위 = top-level order_item. packed_quantity NULL = 전량.
