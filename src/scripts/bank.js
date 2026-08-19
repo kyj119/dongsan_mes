@@ -1152,8 +1152,10 @@
     var ac = document.getElementById('fundAccountCount');
     if (ac) {
       var odCnt = d.overdraft_count || 0;
+      var pCnt = d.personal_count || 0;
       ac.textContent = (d.accounts ? d.accounts.length : 0) + '개 계좌'
-        + (odCnt ? ' · 마이너스통장 ' + odCnt + '건 제외' : '');
+        + (odCnt ? ' · 마이너스통장 ' + odCnt + '건 제외' : '')
+        + (pCnt ? ' · 개인통장 ' + pCnt + '건 제외(' + fmtWon(d.personal_balance) + ')' : '');
     }
     var ob = document.getElementById('fundOverdraftBalance');
     if (ob) ob.textContent = (d.overdraft_count ? fmtWon(d.overdraft_balance) : '-');
@@ -1186,6 +1188,9 @@
         : escHtml(a.bank_name || '');
       if (a.is_overdraft) {
         label += ' <span class="text-[10px] px-1.5 py-0.5 rounded font-medium" style="background:#ffedd5;color:#9a3412;" title="마이너스통장(한도대출) — 총 계좌잔액(예금) 집계에서 제외">마통</span>';
+      }
+      if (a.is_personal) {
+        label += ' <span class="text-[10px] px-1.5 py-0.5 rounded font-medium" style="background:#ede9fe;color:#5b21b6;" title="대표자 개인통장 — 자금·판관비 집계에서 제외. 입금(수금) 반영 용도로만 사용">개인</span>';
       }
       var bal = a.current_balance != null
         ? (Number(a.current_balance) < 0 ? '<span class="text-red-500">' + fmtWon(a.current_balance) + '</span>' : fmtWon(a.current_balance))
@@ -1348,6 +1353,9 @@
       if (a.is_overdraft) {
         connBadge += ' <span class="ml-1 inline-block px-2 py-0.5 rounded text-xs font-medium" style="background:#ffedd5;color:#9a3412;" title="총 계좌잔액(예금) 집계에서 제외됩니다">마이너스통장</span>';
       }
+      if (a.is_personal) {
+        connBadge += ' <span class="ml-1 inline-block px-2 py-0.5 rounded text-xs font-medium" style="background:#ede9fe;color:#5b21b6;" title="자금·판관비 집계에서 완전히 제외됩니다. 입금(수금) 반영 용도로만 사용">대표자 개인통장</span>';
+      }
       html += '<div class="account-card">';
       html += '<div class="flex items-center gap-4">';
       html += '<div class="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center"><i class="fas fa-university text-blue-600"></i></div>';
@@ -1473,6 +1481,8 @@
     });
     var odNew = document.getElementById('accOverdraft');
     if (odNew) odNew.checked = false;
+    var psNew = document.getElementById('accPersonal');   // 수정 후 남은 체크가 신규에 딸려가면 안 된다
+    if (psNew) psNew.checked = false;
     resetAccBarobill();
     var sec = document.getElementById('accBarobillSection');
     if (sec) sec.classList.remove('hidden'); // 신규 등록 시에만 바로빌 연동 노출
@@ -1492,6 +1502,9 @@
     if (aliasEl) aliasEl.value = acc.account_alias || '';
     var odEl = document.getElementById('accOverdraft');
     if (odEl) odEl.checked = !!acc.is_overdraft;
+    var psEl = document.getElementById('accPersonal');
+    if (psEl) psEl.checked = !!acc.is_personal;
+    else console.warn('[bank] #accPersonal not found');
     resetAccBarobill();
     var sec = document.getElementById('accBarobillSection');
     if (sec) sec.classList.add('hidden'); // 수정 시 바로빌 재등록 미지원
@@ -1514,13 +1527,15 @@
     if (!bankCode) { showToast('은행을 선택하세요.', 'warning'); return; }
     if (!number) { showToast('계좌번호를 입력하세요.', 'warning'); return; }
     var odChk = document.getElementById('accOverdraft');
+    var psChk = document.getElementById('accPersonal');
     var body = {
       bank_code: bankCode,
       bank_name: bankName,
       account_number: number,
       account_holder: holder || null,
       account_alias: alias,  // 빈 문자열 전송 = 별칭 해제
-      is_overdraft: (odChk && odChk.checked) ? 1 : 0
+      is_overdraft: (odChk && odChk.checked) ? 1 : 0,
+      is_personal: (psChk && psChk.checked) ? 1 : 0
     };
     // 바로빌 자동 연동 (신규 등록 시에만)
     var syncEl = document.getElementById('accBarobillSync');

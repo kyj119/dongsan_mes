@@ -487,6 +487,13 @@ export const bankPageContent = `
               </label>
               <p class="text-xs text-gray-400 mt-1">체크하면 자금현황의 총 계좌잔액(예금)에서 제외되고 마이너스통장 사용액으로 따로 집계됩니다.</p>
             </div>
+            <div>
+              <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                <input type="checkbox" id="accPersonal" class="w-4 h-4">
+                대표자 개인통장
+              </label>
+              <p class="text-xs text-gray-400 mt-1">체크하면 <b>자금(총자금·순자금·자금일보 시작잔액·재무상태 현금)과 판관비 추정에서 완전히 제외</b>됩니다. 거래내역 조회와 입금→수금 연결은 그대로 쓸 수 있습니다(계산서 없이 들어온 입금 반영용).</p>
+            </div>
             <!-- 바로빌 자동 수집 연동 (신규 등록 시) -->
             <div id="accBarobillSection" class="border-t pt-3 mt-1">
               <label class="flex items-center gap-2 cursor-pointer">

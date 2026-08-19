@@ -5,6 +5,11 @@ import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { entityFilter } from './entityFilter'
 
+// 대표자 개인통장(is_personal=1)은 법인 자금이 아니다 — 잔액 집계에서 제외한다(0539).
+//   입금(수금) 반영 용도로만 남긴 계좌라 거래내역·매칭에는 그대로 살아 있다. 정책 = memory `design-personal-bank-account`.
+//   외부 쿼리의 bank_accounts 별칭은 `ba`.
+export const NOT_PERSONAL_ACCOUNT = `COALESCE(ba.is_personal, 0) = 0`
+
 // 계좌별 최신 거래 잔액 = 거래일·시각·id 내림차순 첫 행(balance_after 존재). 외부 쿼리의 bank_accounts 별칭은 `ba`.
 export const LATEST_BALANCE_SUBQUERY = `(
   SELECT bt.balance_after FROM bank_transactions bt
@@ -12,7 +17,8 @@ export const LATEST_BALANCE_SUBQUERY = `(
   ORDER BY bt.transaction_date DESC, bt.transaction_time DESC, bt.id DESC LIMIT 1
 )`
 
-/** 활성 계좌 실잔액 합계 + 계좌 수. bank fund-summary의 계좌별 SUM과 동일 결과를 보장. */
+/** 활성 계좌 실잔액 합계 + 계좌 수. bank fund-summary의 계좌별 SUM과 동일 결과를 보장.
+ *  대표자 개인통장은 제외한다(0539) — fund-summary·재무상태 현금과 같은 기준. */
 export async function getTotalBankBalance(
   c: Context<HonoEnv>
 ): Promise<{ total_balance: number; account_count: number }> {
@@ -21,7 +27,7 @@ export async function getTotalBankBalance(
     `SELECT COALESCE(SUM(${LATEST_BALANCE_SUBQUERY}), 0) AS total_balance,
             COUNT(ba.id) AS account_count
      FROM bank_accounts ba
-     WHERE ba.is_active = 1${ef.clause}`
+     WHERE ba.is_active = 1 AND ${NOT_PERSONAL_ACCOUNT}${ef.clause}`
   )
     .bind(...ef.params)
     .first<{ total_balance: number; account_count: number }>()

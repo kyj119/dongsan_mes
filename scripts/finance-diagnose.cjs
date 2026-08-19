@@ -81,8 +81,9 @@ const CASH_RETAIL = `(SELECT id FROM clients WHERE client_code = '000-00-00000')
 const NOT_INTERNAL = col => `${col} NOT IN (${INTERNAL}) AND ${col} NOT IN ${CASH_RETAIL}`
 
 // 대표자 개인계좌 — 수금은 법인 실적이라 계좌는 살려 두되, 출금은 법인 비용이 아니다(용준님 0813 확정).
-// 지금은 별칭으로 식별한다. 컬럼(`is_personal`)이 생기면 그걸로 바꿀 것.
-const NOT_PERSONAL = `COALESCE(ba.account_alias,'') NOT LIKE '대표자%'`
+// 2026-08-19: 마이그 `0539` 로 `bank_accounts.is_personal` 컬럼이 생겨 그걸로 판정한다(웹도 같은 컬럼을 쓴다).
+//   별칭은 사람이 언제든 바꾸는 값이라 판정 근거로 쓰면 조용히 새는 게 정상이었다.
+const NOT_PERSONAL = `COALESCE(ba.is_personal,0) = 0`
 
 const q = s => "'" + String(s).replace(/'/g, "''") + "'"
 const ymd = s => s.replace(/-/g, '')          // bank/card 의 transaction_date 는 YYYYMMDD 문자열
@@ -130,11 +131,13 @@ const buildSQL = (E) => ({
     SELECT 'deposit' k, CAST(COALESCE(SUM(x.bal),0) AS INT) v FROM (
       SELECT ba.id, (SELECT t.balance_after FROM bank_transactions t WHERE t.bank_account_id=ba.id
                       ORDER BY t.transaction_date DESC, t.id DESC LIMIT 1) bal
-      FROM bank_accounts ba WHERE ba.entity_id=${E} AND ba.is_active=1 AND COALESCE(ba.is_overdraft,0)=0) x;
+      FROM bank_accounts ba WHERE ba.entity_id=${E} AND ba.is_active=1 AND ${NOT_PERSONAL}
+                              AND COALESCE(ba.is_overdraft,0)=0) x;
     SELECT 'overdraft' k, CAST(COALESCE(SUM(x.bal),0) AS INT) v FROM (
       SELECT ba.id, (SELECT t.balance_after FROM bank_transactions t WHERE t.bank_account_id=ba.id
                       ORDER BY t.transaction_date DESC, t.id DESC LIMIT 1) bal
-      FROM bank_accounts ba WHERE ba.entity_id=${E} AND ba.is_active=1 AND ba.is_overdraft=1) x;
+      FROM bank_accounts ba WHERE ba.entity_id=${E} AND ba.is_active=1 AND ${NOT_PERSONAL}
+                              AND ba.is_overdraft=1) x;
     SELECT 'loan' k, CAST(COALESCE(SUM(current_balance),0) AS INT) v FROM loans WHERE entity_id=${E} AND is_active=1;
     SELECT 'ar' k, CAST(COALESCE(SUM(bal),0) AS INT) v FROM (
       SELECT c.id, (SELECT COALESCE(SUM(g.billed_amount),0) FROM order_billing_groups g JOIN orders o ON o.id=g.order_id
@@ -459,7 +462,7 @@ const rate = n(ln.rate)
 const 이자추정 = Math.round((n(ln.v) + Math.abs(overdraft)) * (rate / 100) * (months / 12))
 
 const result = {
-  기준: { 법인: `${E} ${ENTITY_NAME}`, 기간: `${FROM} ~ ${TO}`, 개월수: months },
+  기준: { 법인: `${E} ${ENTITY_NAME[E]}`, 기간: `${FROM} ~ ${TO}`, 개월수: months },
   스냅샷: {
     예금잔액: deposit, 마이너스통장: overdraft, 대출잔액: loan,
     순자금: deposit + overdraft - loan,
@@ -499,7 +502,7 @@ if (AS_JSON) { console.log(JSON.stringify(result, null, 2)); process.exit(0) }
 
 const line = s => console.log(s)
 line('')
-line(`■ 재무·자금 진단 — ${ENTITY_NAME}(e${E}) · ${FROM} ~ ${TO} (${months}개월)`)
+line(`■ 재무·자금 진단 — ${ENTITY_NAME[E]}(e${E}) · ${FROM} ~ ${TO} (${months}개월)`)
 line('')
 line('▸ 스냅샷 (기준일 현재)')
 console.table([
@@ -561,7 +564,7 @@ line('')
 //   판관비 0 은 「비용이 없다」가 아니라 「비용이 다른 법인 통장에서 나간다」는 뜻이다.
 if (!covBank.건수 && !covCard.건수) {
   line('')
-  line(`⛔ ${ENTITY_NAME}(e${E}) 는 통장 거래도 카드도 없다 — 위 영업이익 ${won(영업이익)} 은 손익이 아니다.`)
+  line(`⛔ ${ENTITY_NAME[E]}(e${E}) 는 통장 거래도 카드도 없다 — 위 영업이익 ${won(영업이익)} 은 손익이 아니다.`)
   line('   비용 원천이 0 이므로 판관비가 구조적으로 0 이고, 매입만 남아 적자로 보인다.')
   line('   실제 비용은 다른 법인 통장에서 나간다. 그룹 연결로만 읽을 것.')
 }

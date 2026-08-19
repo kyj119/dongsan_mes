@@ -4,7 +4,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter } from '../utils/entityFilter'
-import { LATEST_BALANCE_SUBQUERY } from '../utils/bankBalance'
+import { LATEST_BALANCE_SUBQUERY, NOT_PERSONAL_ACCOUNT } from '../utils/bankBalance'
 import { excludePurchaseNonCounterpartiesSql } from '../constants/intercompany'
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
 import { kstYear } from '../utils/kstDate'
@@ -272,11 +272,12 @@ financialReportsRouter.get('/balance-snapshot', async (c) => {
     // 은행 잔액 합계 (#433: bank_accounts엔 잔액 컬럼 없음 → 계좌별 최신 거래의 balance_after 합산)
     // #537: 현금잔액 SSOT — bankBalance.ts LATEST_BALANCE_SUBQUERY(balance_after IS NOT NULL 필터 포함)로 통일.
     //   bank fund-summary/getTotalBankBalance와 동일 판정 → 페이지 간 현금잔액 불일치 제거.
+    //   0539: 대표자 개인통장(is_personal=1)은 법인 자금이 아니라 제외 — 세 곳 모두 같은 기준이어야 한다.
     const efBank = entityFilter(c, 'ba')
     const bankRow = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(${LATEST_BALANCE_SUBQUERY}), 0) as total_bank
       FROM bank_accounts ba
-      WHERE ba.is_active = 1${efBank.clause}
+      WHERE ba.is_active = 1 AND ${NOT_PERSONAL_ACCOUNT}${efBank.clause}
     `).bind(...efBank.params).first<BankRow>().catch((): BankRow => ({ total_bank: 0 }))
 
     // 대출 잔액 (#433: loans 실제 컬럼 = current_balance / is_active. remaining_principal·status는 부재)

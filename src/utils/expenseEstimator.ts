@@ -59,14 +59,17 @@ export async function buildExpenseEstimator(
   }
 
   // 은행 출금 실적 (자동이체 통신비·전기세 등)
-  const efBank = entityFilter(c)
+  //   0539: 대표자 개인통장(bank_accounts.is_personal=1) 출금은 법인 비용이 아니라 추정 소스에서 뺀다.
+  const efBank = entityFilter(c, 'bt')
   const { results: bankRows } = await c.env.DB.prepare(`
-    SELECT matched_category_id AS cid, substr(transaction_date,1,7) AS ym, SUM(amount) AS total
-    FROM bank_transactions
-    WHERE matched_category_id IN (${ph})
-      AND transaction_type = 'WITHDRAWAL'
-      AND substr(transaction_date,1,7) BETWEEN ? AND ?${efBank.clause}
-    GROUP BY matched_category_id, ym
+    SELECT bt.matched_category_id AS cid, substr(bt.transaction_date,1,7) AS ym, SUM(bt.amount) AS total
+    FROM bank_transactions bt
+    JOIN bank_accounts ba ON ba.id = bt.bank_account_id
+    WHERE bt.matched_category_id IN (${ph})
+      AND bt.transaction_type = 'WITHDRAWAL'
+      AND COALESCE(ba.is_personal, 0) = 0
+      AND substr(bt.transaction_date,1,7) BETWEEN ? AND ?${efBank.clause}
+    GROUP BY bt.matched_category_id, ym
   `).bind(...ids, loadFrom, targetToYm, ...efBank.params).all<{ cid: number; ym: string; total: number }>()
   for (const r of bankRows) {
     const k = `${r.cid}:${r.ym}`
