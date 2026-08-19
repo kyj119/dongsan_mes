@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-08-19T15:45:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-08-19T21:50:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,25 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **6** (`search_issues(state:open,label:auto-improve)` 실측, +1(#614). #606·#608·#609·#612·#613·#614) |
+| 🆕 new | **6** (`search_issues(state:open,label:auto-improve)` 실측, 변동 없음. #606·#608·#609·#612·#613·#614) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 1 프로덕션 헬스 (2026-08-19T21:50):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → **origin이 `de31dbf..c96987d`로 전진**(shallow-fetch 경계 이동으로 `de31dbf`가 로컬에서 "forced update"로 보였으나 `git rev-parse --is-shallow-repository`=true·`.git/shallow` 확인으로 실제 force-push 아닌 shallow 아티팩트로 판정, 회귀 아님) → `git checkout main && git reset --hard origin/main`(HEAD `c96987d`). `npm ci`(0→81), `npx tsc --noEmit` clean, `npm run build` 성공.
+> - **CI 헬스**: `deploy.yml` 최근 10런(08-18 08:00~08-19 09:11) **9 success + 1 cancelled**(`a07a5b24`, 후속 푸시에 의한 동시성 취소로 판정 — 실패 아님). `backup.yml` 최근 10런(08-09~08-18) **전부 success**. `verify.yml` 여전히 `total_count:0`(#608 기보고와 일치, net-new 아님). `e2e.yml` `state:disabled_manually` 재확인(기존 정책).
+> - **🐛 발견(신규) — 0540 마이그(pack_count/per_pack_qty) (b)-risk, smoke 사각**: 직전 Area1 앵커(`36ac54d`) 이후 웹앱 churn 중 `64d236c`(재고실사 2칸입력, 오늘 owner 직접 작업)의 `migrations/0540_count_pack_columns.sql`이 `inventory_count_items`에 `pack_count`/`per_pack_qty` ADD COLUMN — 그런데 **이미 배포된 코드**(`inventoryCount.ts:169` INSERT, `:218` SELECT)가 이 컬럼을 명시 참조 = #483/#484가 정의한 "(b) 위험" 클래스(마이그 미적용 시 실사 상세조회·생성 전량 500). 기존 `smoke.cjs`는 `inventoryCount.list`(목록, 신규컬럼 미참조)만 프로브해 이 드리프트를 구조적으로 못 봄(#484와 동일 사각).
+> - **자동수정 적용 + 라이브 검증**: `scripts/smoke.cjs`에 `{ path: '/api/inventory-counts/1', name: 'inventoryCount.detail', allow404: true }` 추가(#484 선례와 동일 패턴, admin role 도달 가능·행 부재는 404 허용) → `npx tsc --noEmit`+`npm run build` PASS → 커밋 `c14296c` push → **`deploy.yml` 런 `32254495833` 전체 success, "Smoke test (production)" 스텝도 success** = 신규 프로브가 200/404로 통과, **0540이 이미 prod에 적용됐음을 실측 확인**(활성 장애 아님, 향후 유사 드리프트의 상시 디텍터로 전환 완료).
+> - **참고(Area 2 인계용, 자동수정 범위 밖)**: `inventoryCount.ts:294-298`의 `packCount * perPack` 인라인 곱셈은 `unitConvert.ts` `toBase`를 거치지 않음 — 단 이번 값은 items.pack_size 고정계수가 아니라 **실사별 가변 per_pack_qty**라 `toBase`의 전제(고정 pack_size)와 다른 계산이라 #609(write-path 3곳 인라인 재구현)와 동일 클래스인지는 판단 보류. Area 2 다음 사이클에서 #609 코멘트로 갱신 검토 권장.
+> - **egress 제약(재확인)**: `curl --max-time 8 https://webapp-9i0.pages.dev/api/orders` → CONNECT tunnel 403(exit 56), `CLOUDFLARE_API_TOKEN` 미설정 — 직접 prod 조회 불가, 기존과 동일 제약(위 스모크-프로브 우회로 대체 검증).
+> - **open 6건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` = #606·#608·#609·#612·#613·#614(전건 변동없음, 신규 코멘트 없음).
+> - **backlog↔GitHub 절대값 재동기화**: open **6**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-1-production-health.md `line N` 잔여참조는 이번 사이클 담당 파일이라 훑었으나 이미 서술 참조 전환 완료 상태 유지(재계산 없음). 이번 사이클은 실제 (b)-risk 신규 사례를 #483/#484 기존 레시피로 정확히 탐지·자동수정·라이브검증까지 완결 — 레시피가 새 마이그레이션 유형(재고실사 2칸입력)에도 정확히 적중함을 재확인, 새 오탐/탐지 클래스 도출은 없음.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 9건 → 이번 로그 추가 후 10건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(자동수정으로 해소), 자동수정 1건(smoke.cjs 0540 드리프트 디텍터, 커밋 `c14296c`, 라이브 검증 완료·현재 clean), done-sync: open 6(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-08-19T15:45):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → **origin이 `de31dbf..3bd431c`로 전진**(직전 백로그 기재 HEAD `b6d9305`보다 최신) → `git checkout main && git reset --hard origin/main`(HEAD `3bd431c`). `npm ci`(0→81), `npx tsc --noEmit` clean, `npm run build`(vite) 성공.
@@ -156,6 +170,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-025 | smoke.cjs에 0540(재고실사 pack_count/per_pack_qty) 마이그 드리프트 detail 프로브 추가 — 오늘 배포된 `inventoryCount.ts:169/218`가 신규 컬럼을 명시 참조하는데 기존 smoke는 목록만 프로브해 #483/#484 (b)-risk 사각지대였음. `/api/inventory-counts/1`(allow404) 프로브 추가 후 push → 배포런 `32254495833` smoke success로 0540이 이미 prod 적용됐음을 라이브 확인(활성 장애 아님, 상시 디텍터 신설). Area 1 직접 발견. verify PASS(tsc clean+build) | c14296c | 2026-08-19 |
 | A-024 | orders/create.ts INSERT 바인드 개수 불일치(치명, 프로덕션 크래시) — `451f611`(담당자 필드)가 `INSERT INTO orders`에 `sales_rep_id` 32번째 컬럼·플레이스홀더를 추가했는데 `.bind()`엔 31개 값만 전달(계산된 `salesRepId` 변수가 끝내 미사용). D1은 플레이스홀더=바인드 개수 엄격 일치 요구 → `POST /api/orders`(신규 주문 생성) 전량 500, 08-07 이후 라이브 추정. `scripts/smoke.cjs`가 read-only GET 위주라 CI 미탐지(SKILL 기존 codify 사각). 노드 스크립트로 32=32 확정 후 `salesRepId`를 마지막 인자로 추가, 나머지 `INSERT INTO orders` 4개소(operations/quotations/taxInvoices/migration)도 전수 재검증(전부 정상, sales_rep_id 미참조). Area 4 54회차 직접 발견. verify PASS(tsc clean+build+entity 61/61), 즉시 push 배포 | 8e19b36 | 2026-08-09 |
 | A-023 | XSS escapeHtml 누락 2곳 (신규기능 부분누락) — `orderForm/intake.js:135-136 ofLoadSalesReps()`(#604 담당자 셀렉트, employees 자유입력 `name`/`department`를 escapeHtml 없이 `<option>` innerHTML — 형제 `client.js`/`finishing.js`는 이미 escapeHtml 컨벤션 확립) + `reports.js:261-262 loadSalesRepStats()`(담당자별 실적, `rep_name`/`department` 미escape — 같은 파일 바로 위 `loadDesignerStats()`는 로컬 `esc()` 별칭으로 이미 escape하는 확립된 패턴을 새 형제 함수만 누락). A-024/A-025급 "같은 파일 부분 롤아웃" 클래스. Area 3 52회차 직접 발견. verify PASS(tsc clean+build), check:dom baseline 무변(회귀 0) | (이번 커밋) | 2026-08-08 |
 | A-022 | branch-cleanup.cjs 셸 인용 버그 + 저재고 알림 단위라벨 불일치 — ①`git branch --format=%(refname:short)` 미인용이 POSIX 셸(bash/dash)에서 괄호 메타문자로 파싱돼 즉시 크래시(Windows cmd.exe에서만 우연히 동작, 순수 셸 이식성 버그) → 큰따옴표 인용. ②`utils/inventoryAlert.ts` 저재고 알림이 base_unit(미터) 저장값에 입고단위(`items.unit`='롤') 라벨을 그대로 붙여 "45롤"(실제 45m)로 오표시 — 0496(롤→미터 단위체계) 형제완전성 사각, `resolveStockUnit()`로 교체(오늘자 inventoryCount.ts 수정과 동일 패턴). Area 6 52회차. verify PASS(tsc clean+build+entity 60/60) | 87b5023 | 2026-07-29 |
