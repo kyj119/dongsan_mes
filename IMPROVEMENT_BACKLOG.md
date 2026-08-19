@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-08-19T06:20:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-08-19T15:45:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,21 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 6 자기 진화 (2026-08-19T15:45):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → **origin이 `de31dbf..3bd431c`로 전진**(직전 백로그 기재 HEAD `b6d9305`보다 최신) → `git checkout main && git reset --hard origin/main`(HEAD `3bd431c`). `npm ci`(0→81), `npx tsc --noEmit` clean, `npm run build`(vite) 성공.
+> - **churn 확인**: 직전 Area6 자신의 앵커(`36ac54d`) 기준 웹앱 범위 diff = 신규 커밋 8개: `a6beebe`/`68c2b60`/`7671499`/`bb56815`/`23dbe6e`(Area2~5가 이미 각자 렌즈로 정독) + **미검토 3건** `771e8db`(마감/후가공 표기 5개소 단일소스 통합)·`619535b`(법인카드 마감·결제일 데이터 정정, 코드변경 0)·`3bd431c`(대표자 개인통장 자금집계 분리, 0539) — 「churn 목록 나열≠개별검토」(#600, 56회차) 원칙에 따라 3건 전부 직접 diff 정독.
+> - **`3bd431c` 정독(신규 컬럼 `is_personal` 배제목록 완전성)**: 커밋이 명시한 배제 대상 5곳(`getTotalBankBalance`·`/fund-summary`·`/balance-snapshot`·`expenseEstimator`·`finance-diagnose.cjs`) 전부 `is_personal` 필터 적용 확인 + **sibling 스캔**(`grep bank_accounts.*sum/balance/total`)으로 6번째 후보 `cashSchedule.ts:522 GET /schedule/bank-balance` 발견 → 직접 SQL 아니라 `getTotalBankBalance(c)` 재사용이라 **자동으로 배제 적용됨**(sibling 누락 아님, 완전성 확인). `expenseEstimator.ts`는 `entityFilter(c)`→`entityFilter(c,'bt')`로 별칭 정정도 동반(JOIN 추가에 맞춤, 회귀 아님). 프론트(`bank.js`) `is_personal` 배지는 정적 라벨(free-text 아님)이라 XSS 무관. `getElementById('accPersonal')` 신규 대상 `console.warn` 폴백 컨벤션 준수.
+> - **`771e8db` 정독(마감/후가공 표기 5개소 위임 완전성)**: `grep MES_FIN\|finishingLabel` 전수 = 커밋이 명시한 5개소(체크리스트 라벨 서버-`orders/helpers.ts`, 카드상세 `cardDetail.js`, 목록모달 `cards/detail.js` 4곳, 칸반 `cards/core.js`, `cards/detail.js:607` 봉제요약)가 전부 `MES_FIN`/`formatFinishing` 위임으로 전환됨 확인, 구 인라인 포맷 로직 잔존 0. `npm run test:finishing-label`(esbuild 직접 실행)은 이 샌드박스에서 `bin/esbuild`가 JS 래퍼 대신 raw ELF 바이너리로 설치돼 실행 실패(node로 ELF를 인터프리트 시도) — **CI/verify 게이트에 미포함**(package.json `verify`=typecheck+build만) + `npm run build`(vite, esbuild를 라이브러리로 별도 경로 호출)는 정상 성공 → 샌드박스 환경 아티팩트로 판정, 코드 결함 아님(net-new 이슈 아님).
+> - **`619535b` 정독**: 코드 변경 0, `migrations/0536~0538` 3개 데이터 전용(카드 마감/결제일 재보정 + 빈 카드행 삭제, 백업 테이블 동반) — 신규 마이그 번호 3개 다 unique, 이관 대상 read-path 코드 없음.
+> - **마이그 번호 중복 standing scan**: 기존 5쌍(`0327`·`0412`·`0416`·`0420`·`0453`)만, net-new 0(0536~0539 unique 확인).
+> - **브랜치 위생**(읽기전용): `npm run branch:clean` → SAFE-remote 0·SAFE-absorbed 0·REVIEW 0 — 삭제대상 0건.
+> - **done-sync(절대값 재동기화)**: `list_issues(OPEN,auto-improve)` **6**(#606·#608·#609·#612·#613·#614, 코멘트수 전건 직전과 동일 — 신규 코멘트 없음) · `search_issues(reason:completed)` **531**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음) — 백로그 기재값과 완전 일치, 드리프트 0.
+> - **open≠unfixed 재확인**: 이번 사이클 churn 3건은 open 6건이 지목한 파일(unitConvert.ts/verify.yml/entity-attribution-audit/ai_analysis_id·dxf_analysis_id/npm audit/designer_intakes)과 무관 — 캐시 유지 타당.
+> - **🧬 SKILL 강화**: 없음 — area-6-self-evolution.md `line N` 잔여참조 이미 0건(재확인). 이번 사이클은 실제 미검토 churn 3건을 전수 정독했고 컬럼-diff bridge(`is_personal` 배제 완전성 + sibling 재사용 확인)·"5개소 위임 완전성"(#377류) 렌즈 둘 다 기존 codify된 레시피로 clean 판정 가능했음 — 새 오탐/탐지 클래스 도출 없음. `test:finishing-label` 실행 실패는 샌드박스 esbuild 바이너리 설치 이슈로 확인, 코드/CI 결함 아니라 이슈 등록 불요.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 8건 → 이번 로그 추가 후 9건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(churn 3건 직접 정독, 전부 정상/완결 커밋), 자동수정 0건, done-sync: open 6(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 + 인프라 (2026-08-19T06:20):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → **origin이 `de31dbf..b6d9305`로 전진**(직전 백로그 기재 HEAD `23dbe6e`보다 최신) → `git checkout main && git reset --hard origin/main`(HEAD `b6d9305`, origin과 완전 일치). `npm ci`(0→81), `npx tsc --noEmit` clean.
