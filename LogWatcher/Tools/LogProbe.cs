@@ -67,10 +67,16 @@ namespace LogWatcher.Tools
             }
 
             bool defaultScan = paths.Count == 0;
+            var habitatRoots = new List<string>();
             if (defaultScan)
             {
                 foreach (var r in KnownRipRoots)
                     if (Directory.Exists(r)) paths.Add(r);
+                // 제어 SW 서식지 — 폴더명이 PC 마다 달라(버전 접미) 와일드카드로 푼다.
+                // Program Files 는 ExcludeDirs 라 전체 스캔에서 빠지는데, PrintExp 가 거기 사는 걸
+                // TOPM-01 수거에서 실측 (2026-08-19: discover 가 못 올리고 sweep 만 잡았다).
+                habitatRoots.AddRange(ExpandHabitatRoots());
+                paths.AddRange(habitatRoots);
                 paths.AddRange(GetFixedDriveRoots());
                 if (scanAll) maxDepth = Math.Max(maxDepth, 8);
             }
@@ -84,10 +90,13 @@ namespace LogWatcher.Tools
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var rows = new List<Candidate>();
 
+            var noExcludeRoots = new HashSet<string>(KnownRipRoots, StringComparer.OrdinalIgnoreCase);
+            foreach (var h in habitatRoots) noExcludeRoots.Add(h);
+
             foreach (var root in paths)
             {
                 if (!Directory.Exists(root)) continue;
-                bool known = KnownRipRoots.Any(k => string.Equals(k, root, StringComparison.OrdinalIgnoreCase));
+                bool known = noExcludeRoots.Contains(root);
                 foreach (var file in SafeEnumerate(root, maxDepth, applyExcludes: !known))
                 {
                     var ext = Path.GetExtension(file).ToLowerInvariant();
@@ -189,6 +198,28 @@ namespace LogWatcher.Tools
                     stack.Push((s, depth + 1));
                 }
             }
+        }
+
+        /// <summary>
+        /// 제어 SW 서식지 확장 — 드라이브 루트·Program Files(x86)의 PrintExp_X64*/Flora*/TNSRip-X* 폴더.
+        /// KnownRipRoots 처럼 제외 규칙 없이 깊게 스캔된다.
+        /// </summary>
+        private static IEnumerable<string> ExpandHabitatRoots()
+        {
+            var pats = new[] { "PrintExp_X64*", "Flora*", "TNSRip-X*" };
+            var found = new List<string>();
+            foreach (var drive in GetFixedDriveRoots())
+            {
+                foreach (var basePath in new[] { drive, Path.Combine(drive, "Program Files"), Path.Combine(drive, "Program Files (x86)") })
+                {
+                    if (!Directory.Exists(basePath)) continue;
+                    foreach (var pat in pats)
+                    {
+                        try { found.AddRange(Directory.GetDirectories(basePath, pat)); } catch { }
+                    }
+                }
+            }
+            return found.Distinct(StringComparer.OrdinalIgnoreCase);
         }
 
         private static IEnumerable<string> GetFixedDriveRoots()

@@ -244,8 +244,8 @@ function Invoke-InstallUpdate {
     $alog = Join-Path $StageDir "admin-install.log"
     if (Test-Path $alog) {
         Copy-Item $alog (Ensure-Collect) -Force
-        Write-Host "  ── 설치 로그 (마지막 12줄) ──"
-        Get-Content $alog -Tail 12 | ForEach-Object { Write-Host ("    " + $_) }
+        Write-Host "  ── 설치 로그 (마지막 25줄 — 자동 전환 결과 포함) ──"
+        Get-Content $alog -Tail 25 | ForEach-Object { Write-Host ("    " + $_) }
     } else {
         Write-Host "  [경고] 설치 로그가 없습니다 — 관리자 창에서 작업이 실행되지 않았을 수 있습니다."
     }
