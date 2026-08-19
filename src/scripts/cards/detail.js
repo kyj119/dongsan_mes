@@ -172,7 +172,10 @@ function showCardModal(card, history, defects, siblingCards) {
                         visPP.forEach(function(pp) {
                             var ppName = pp.name || pp.code || pp;
                             var badge = getPPBadge(ppName);
-                            itemsHtml += '<span style="display:inline-flex;padding:1px 6px;font-size:10px;font-weight:600;border-radius:999px;background:' + badge.bg + ';color:' + badge.color + ';border:1px solid ' + badge.border + '">' + escapeHtml(String(ppName)) + '</span>';
+                            // 모달은 지시를 읽는 자리 — 이름만이면 「펀칭」이 몇 개·어디인지 알 수 없다
+                            // (칸반 목록 배지는 좁아서 이름만 유지).
+                            var ppText = (window.MES_FIN ? window.MES_FIN.pp(pp) : '') || String(ppName);
+                            itemsHtml += '<span style="display:inline-flex;padding:1px 6px;font-size:10px;font-weight:600;border-radius:999px;background:' + badge.bg + ';color:' + badge.color + ';border:1px solid ' + badge.border + '">' + escapeHtml(ppText) + '</span>';
                         });
                         itemsHtml += '</div>';
                     }
@@ -409,18 +412,11 @@ async function printWorkOrder(orderId) {
         var esc = window.escapeHtml || function(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
 
         // 마감방식 포맷 헬퍼
+        // 표기 정본 = MES_FIN (shared/finishingLabel.js ↔ utils/finishingLabel.ts).
+        // 예전엔 이 화면만 `열재단 사방`·`상:열재단`이라 체크리스트(`2면열재단`)와 문장이 갈렸다.
+        // ⚠️ esc 는 호출부 책임 — 여기선 원문을 돌려준다.
         function fmtFinishing(fin) {
-            if (!fin) return '';
-            try {
-                var f = typeof fin === 'string' ? JSON.parse(fin) : fin;
-                var t = f.top || '', b = f.bottom || '', l = f.left || '', r = f.right || '';
-                if (!t && !b && !l && !r) return '';
-                if (t && t === b && t === l && t === r) return esc(t) + ' 사방';
-                var p = [];
-                if (t) p.push('상:' + esc(t)); if (b) p.push('하:' + esc(b));
-                if (l) p.push('좌:' + esc(l)); if (r) p.push('우:' + esc(r));
-                return p.join(' ');
-            } catch(e) { return ''; }
+            return window.MES_FIN ? window.MES_FIN.finishing(fin) : '';
         }
 
         // 마감 다이어그램 (4변 시각화)
@@ -536,17 +532,14 @@ async function printWorkOrder(orderId) {
                         if (Array.isArray(ppArr)) {
                             ppArr.filter(function(pp) { return !isPPHidden(pp.name || pp.code || pp); })
                                 .forEach(function(pp) {
-                                    var p = (pp && pp.params && typeof pp.params === 'object') ? pp.params : null;
-                                    var ps = p ? Object.keys(p).map(function(k) { return String(p[k] == null ? '' : p[k]).trim(); })
-                                        .filter(function(v) { return v && v !== '없음' && v !== (pp.name || pp.code); })
-                                        .map(function(v) { return /^\d+(\.\d+)?$/.test(v) ? v + 'cm' : v; }).join(' ') : '';
-                                    ppHtml += '<span class="pp-badge">' + esc((pp.name || pp.code || pp) + (ps ? ' ' + ps : '')) + '</span>';
+                                    var txt = window.MES_FIN ? window.MES_FIN.pp(pp) : String(pp.name || pp.code || pp);
+                                    if (txt) ppHtml += '<span class="pp-badge">' + esc(txt) + '</span>';
                                 });
                         }
                     } catch(e) {}
                 }
                 var finText = fmtFinishing(item.finishing);
-                if (finText) ppHtml += '<span class="fin-badge">' + (isSew ? '✂ 봉제 ' : '✂ 마감 ') + finText + '</span>';
+                if (finText) ppHtml += '<span class="fin-badge">' + (isSew ? '✂ 봉제 ' : '✂ 마감 ') + esc(finText) + '</span>';
                 var sfv = Number(item.scale_factor) || 1;
                 if (!isSew && sfv > 1) ppHtml += '<span class="fin-badge">축척 1/' + sfv + '</span>';
                 if (ppHtml) html += '<div>' + ppHtml + '</div>';
@@ -609,18 +602,10 @@ async function printSewingWorkOrder(cardId) {
         function getSewingInfo(item) {
             var fin = item.finishing;
             if (!fin) return { method: '', detail: '' };
-            try {
-                var f = typeof fin === 'string' ? JSON.parse(fin) : fin;
-                var methods = [];
-                ['top','bottom','left','right'].forEach(function(dir) {
-                    if (f[dir]) methods.push(f[dir]);
-                });
-                // 봉제방법 요약 (예: 3면쌍침)
-                var counts = {};
-                methods.forEach(function(m) { counts[m] = (counts[m] || 0) + 1; });
-                var parts = Object.keys(counts).map(function(m) { return counts[m] + '면' + m; });
-                return { method: parts.join(', '), detail: f };
-            } catch(e) { return { method: '', detail: '' }; }
+            var f = fin;
+            if (typeof fin === 'string') { try { f = JSON.parse(fin); } catch(e) { return { method: '', detail: '' }; } }
+            // 봉제방법 요약 — 표기 정본 MES_FIN (예: `4방쌍침` · `좌우 쌍침+상하 오바`)
+            return { method: window.MES_FIN ? window.MES_FIN.finishing(f) : '', detail: f };
         }
 
         // PP에서 하도매/부직포/수술 추출

@@ -509,28 +509,10 @@ function isPPHidden(ppNameOrCode) {
     return false;
 }
 
-// 마감방식 간략화 헬퍼: 동일 방식 그룹핑
+// 마감방식 표기 — 정본 = MES_FIN (shared/finishingLabel.js ↔ utils/finishingLabel.ts).
+// 이 화면만 `열재단 사방`·`상하:열재단`이라 체크리스트 라벨(`상하 열재단`)과 문장이 갈렸다.
 function formatFinishing(fin) {
-    if (!fin) return '';
-    try {
-        var f = typeof fin === 'string' ? JSON.parse(fin) : fin;
-        var t = f.top || '', b = f.bottom || '', l = f.left || '', r = f.right || '';
-        if (!t && !b && !l && !r) return '';
-        // 사방 동일
-        if (t && t === b && t === l && t === r) return t + ' 사방';
-        // 그룹핑: 같은 방식끼리 묶기
-        var groups = {};
-        if (t) { groups[t] = groups[t] || []; groups[t].push('상'); }
-        if (b) { groups[b] = groups[b] || []; groups[b].push('하'); }
-        if (l) { groups[l] = groups[l] || []; groups[l].push('좌'); }
-        if (r) { groups[r] = groups[r] || []; groups[r].push('우'); }
-        var parts = [];
-        for (var method in groups) {
-            var dirs = groups[method];
-            parts.push(dirs.join('') + ':' + method);
-        }
-        return parts.join(' ');
-    } catch(e) { return ''; }
+    return window.MES_FIN ? window.MES_FIN.finishing(fin) : '';
 }
 
 function getPPBadge(ppName) {

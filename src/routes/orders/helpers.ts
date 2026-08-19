@@ -6,6 +6,8 @@
  * 순수 로직 — 라우트 등록 순서와 무관. ⚠️ 이동만, 로직 수정 0.
  */
 
+import { formatFinishing, formatPP } from '../../utils/finishingLabel'
+
 // card_group 결정 함수: 품목의 카드 그룹(생산 라인)을 결정
 function getCardGroup(item: any): string | null {
   // 0. 기성품/유통(production_required=0): 제작 불필요 → 카드 미생성 (카테고리 매칭보다 우선)
@@ -370,33 +372,21 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
     const checklistSteps: Array<{ code: string; label: string; sort: number }> = []
     checklistSteps.push({ code: 'PRINT', label: cardGroup === 'SIGN' ? '제작' : '출력', sort: 10 })
     if (cardFinishing) {
-      const dirCounts = new Map<string, number>()
-      for (const d of ['top', 'bottom', 'left', 'right']) {
-        const m = cardFinishing[d]
-        if (m && typeof m === 'string') dirCounts.set(m, (dirCounts.get(m) || 0) + 1)
-      }
-      const sewSummary = [...dirCounts.entries()].map(([m, n]) => `${n}면${m}`).join(' ')
+      // 표기 정본 = utils/finishingLabel (화면 사본 = scripts/shared/finishingLabel.js).
+      // 예전엔 방식별 개수만 세어(`2면열재단`) **어느 변인지가 사라졌다** — 현장이 카드만 보고 못 잘랐다.
+      const sewSummary = formatFinishing(cardFinishing)
       // 라인마다 이 공정의 이름이 다르다 — 전사·태극기는 '봉제'(쌍침·오바), 출력·간판은 '마감'
       // (열재단·접어미싱 등). 예전엔 전부 '봉제'라 출력 카드에 「봉제(2면열재단)」가 떴다.
       const sewLabel = cardGroup === 'TRANSFER_FLAG' ? '봉제' : '마감'
       checklistSteps.push({ code: 'SEW', label: sewSummary ? `${sewLabel}(${sewSummary})` : sewLabel, sort: 20 })
     }
     uniquePP.forEach((pp: any, ppIdx: number) => {
-      // 라벨 = 후가공명 + 의미 있는 파라미터.
-      //   ⚠️ 값을 그대로 이어붙이면 「부직포 **부직포** 7」 처럼 이름이 겹치고 단위가 빠진다
-      //      (부직포는 params.type 이 곧 이름). 겹치는 값은 빼고, 숫자만인 값엔 cm 를 붙인다
-      //      — 봉제 지시표의 `부직포 7cm` 표기와 같아진다.
-      const ppName = String(pp.name || pp.code || 'PP')
-      const paramStr = pp.params && typeof pp.params === 'object'
-        ? Object.values(pp.params)
-            .map((v: any) => (v == null ? '' : String(v).trim()))
-            .filter((v) => v && v !== '없음' && v !== ppName)
-            .map((v) => (/^\d+(\.\d+)?$/.test(v) ? `${v}cm` : v))
-            .join(' ')
-        : ''
+      // 라벨 = 후가공명 + 의미 있는 파라미터 (정본 = utils/finishingLabel).
+      //   펀칭은 개수·위치가 지시 정보인데 예전엔 params 값을 순서대로 이어붙여
+      //   `펀칭 1cm 1cm 2cm 0cm 0cm 0cm 0cm 0cm` 이 나왔다(개수에 cm·0도 출력·위치 미표기).
       checklistSteps.push({
         code: String(pp.code || pp.name || 'PP'),
-        label: `${ppName}${paramStr ? ' ' + paramStr : ''}`,
+        label: formatPP(pp) || String(pp.code || 'PP'),
         sort: 30 + ppIdx,
       })
     })

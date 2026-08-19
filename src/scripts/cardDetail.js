@@ -99,35 +99,16 @@
             return r;
         }
 
-        // 마감(봉제) 방식 추출
+        // 마감(봉제) 방식 — 표기 정본 = MES_FIN (shared/finishingLabel.js ↔ utils/finishingLabel.ts)
         function extractFinishing(item) {
-            if (!item.finishing) return '';
-            try {
-                var f = typeof item.finishing === 'string' ? JSON.parse(item.finishing) : item.finishing;
-                var methods = [];
-                ['top','bottom','left','right'].forEach(function(dir) { if (f[dir]) methods.push(f[dir]); });
-                var counts = {};
-                methods.forEach(function(m) { counts[m] = (counts[m] || 0) + 1; });
-                return Object.keys(counts).map(function(m) { return counts[m] + '면' + m; }).join(', ');
-            } catch(e) { return ''; }
+            return window.MES_FIN ? window.MES_FIN.finishing(item.finishing) : '';
         }
 
         // 출력·간판용 범용 후가공 목록 — 코팅·아일렛 등 봉제 3종(PP-GROMMET/NONWOVEN/TASSEL) 밖의
         //   후가공은 예전엔 이 화면 어디에도 안 나왔다(봉제 파라미터만 뽑았기 때문).
+        //   펀칭은 params 값을 그대로 나열해 `펀칭 1cm 1cm 2cm 0cm…` 이 나왔다 — 정본(MES_FIN)으로 통일.
         function extractPPList(item) {
-            if (!item.post_processing) return '';
-            try {
-                var arr = typeof item.post_processing === 'string' ? JSON.parse(item.post_processing) : item.post_processing;
-                if (!Array.isArray(arr)) return '';
-                return arr.map(function(pp) {
-                    var nm = pp && (pp.name || pp.code) ? String(pp.name || pp.code) : String(pp || '');
-                    var p = (pp && pp.params && typeof pp.params === 'object') ? pp.params : null;
-                    var ps = p ? Object.keys(p).map(function(k) { return String(p[k] == null ? '' : p[k]).trim(); })
-                        .filter(function(v) { return v && v !== '없음' && v !== nm; })
-                        .map(function(v) { return /^\d+(\.\d+)?$/.test(v) ? v + 'cm' : v; }).join(' ') : '';
-                    return nm + (ps ? ' ' + ps : '');
-                }).filter(Boolean).join(', ');
-            } catch(e) { return ''; }
+            return window.MES_FIN ? window.MES_FIN.ppList(item.post_processing) : '';
         }
         function scaleLabel(it) {
             var sf = Number(it.scale_factor) || 1;

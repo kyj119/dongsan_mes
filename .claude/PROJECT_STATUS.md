@@ -26,7 +26,7 @@
 
 ## ✅ 최근 완료 — 후속 대기 인덱스 (경위·상세 전문 = `PROJECT_STATUS_ARCHIVE.md`)
 
-- **✅ 08-19 카드 마감·후가공 표기 통일 — 사본 5벌 → 정본 1벌 (미배포)** — 경위 전문=`PROJECT_STATUS_ARCHIVE.md` §2026-08-19 카드 마감·후가공 표기. 게이트=`npm run test:finishing-label`. 남은=**prod 배포** · 기존 카드 체크리스트 라벨은 소급 안 됨(DB 스냅샷·prod cards 0건)
+- **✅ prod 배포 08-19 (배포 ID `cf0af4f0`) — 카드 마감·후가공 표기 통일 (사본 5벌 → 정본 1벌)** — 경위 전문=`PROJECT_STATUS_ARCHIVE.md` §2026-08-19 카드 마감·후가공 표기. 게이트=`npm run test:finishing-label`. smoke **111/111** · prod 마커 실측(MES_FIN·`4방`·`4모서리`) 확인. 남은=기존 카드 체크리스트 라벨은 소급 안 됨(DB 스냅샷·prod cards 0건)
 
 - **✅ prod 배포 08-18 `68c2b601` — 주간 재고실사 구역 선택 UI + 출력실 32품목 개통** (경위 전문 = `PROJECT_STATUS_ARCHIVE.md` §2026-08-18 주간 재고실사 · 운영 정본 = memory `design-weekly-stock-count`) — ★생성 UI에 **구역 선택이 아예 없었다**(`category` 만 전송) + `inventory` 행 없으면 품목 0개(INNER JOIN) → 둘 다 해소. 7/31 실사 적재(#3 · 출력실 **2,315만** · 롤당 130yd 임시환산). smoke **110/111**(실패 1=기존 유실건). 남은=**`STOCK` 반영은 전 구역 실사 후**(출력실만 넣으면 원가 부풀려짐)
 
