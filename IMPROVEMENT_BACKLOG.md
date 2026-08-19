@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-08-19T21:50:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-08-20T03:50:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,22 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-08-20T03:50):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → **origin이 `de31dbf..c776983`로 전진**(shallow-fetch 경계 이동, 기존과 동일 아티팩트) → `git checkout main && git reset --hard origin/main`(HEAD `c776983`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area2 자신의 앵커(`a6beebe`) 이후 웹앱 범위 diff = 신규 커밋 12개 — `68c2b60`/`7671499`/`bb56815`/`23dbe6e`/`3bd431c`/`619535b`/`771e8db`(Area3~6가 각자 렌즈로 이미 정독) 제외, **미검토 5건** `64d236c`(재고실사 2칸입력, 0540)·`3b4827a`(카드 슬라이드 가드)·`ddf0108`(작업지시서 슬라이드 신규 라우트)·`a22fb42`(마감/펀칭 재정의+pack-search 신규 라우트+데드코드 제거)·`dc7a34e`(reports 탭 제거) — 5건 전부 코드품질 렌즈로 직접 diff 정독.
+> - **`ddf0108` 신규 라우트 `GET /cards/:id/neighbors`**: `cardsQueriesRouter.use('/*', authMiddleware, requireAnyPagePermission(...))` 상속 확인, `cardEntityFilter(c,'c')` 양쪽 쿼리(현재카드 조회+순회 목록) 적용, id-tie-break(`c.id DESC`) 준수, N+1 없음(단일 SELECT로 큐 전체 id 로드 후 메모리 indexOf). Clean.
+> - **`a22fb42` 신규 라우트 `GET /shipments/pack-search`**: `shipmentsRouter.use('/*', authMiddleware, ...)` 상속 + `entityFilter(c,'o')` 적용, `/:id`(라인 771)보다 먼저 등록해 라우트 섀도잉 회피(주석 명시), `LIMIT 11`+길이상한(40자)으로 바인드 폭주 방지, LIKE 대신 `instr()`(D1 LIKE 50바이트 제한 회피, 기존 컨벤션). 프론트 `pack.js`도 `order_number`/`client_name`/`entity_name` 전건 `escapeHtml()` 적용. Clean.
+> - **`a22fb42` 데드코드 제거(create.ts D블록+helpers.enqueueAutoProcessJobsForItems+AP_MARGIN_RULES)**: `grep -rn "enqueueAutoProcessJobsForItems\|AP_MARGIN_RULES\|AP_SCALE_RULES" src` = 주석 참조만 남고 호출부 0건(전수 제거 확인, #377류 "부분 픽스 잔존" 아님). 관리자 UI `reports.ts` 탭 제거(`dc7a34e`)도 standalone `/management-report` 라우트·메뉴 링크 존속 확인(orphan 아님).
+> - **🔍 Area 1 인계 사안 판정 — `inventoryCount.ts` `packCount*perPack`은 #609와 별개 클래스**: `unitConvert.ts toBase(unitQty,item)`는 **items.pack_size(품목당 고정 계수)**로 관리단위→base 환산하는 유틸인데, 신규 `PUT /:id/items`의 `per_pack_qty`는 실사 라인마다 **손으로 개별 조정 가능한 스냅샷값**(현수막 원단 롤당 112~135yd 편차를 담기 위한 설계, 마이그 주석에 명시) — `toBase()`를 썼다면 이 라인별 보정을 무시하고 매번 `items.pack_size`(고정값)로 되돌아가 **오히려 틀린 계산**이 된다. 기존 codify된 「#462 형제완전성」 FP 배제 조건인 "스냅샷 컬럼은 의도적 보존(MU5, `inventory_receipt_items.quantity`류)"과 동일 클래스 — #609(고정계수 인라인 재구현 3곳)와 무관, 조치 불요. GitHub 코멘트 갱신 불필요(판단 보류 해소만, 이슈 본문 변경 없음).
+> - **standing scan**: ① `npm run audit:entity` 131파일·61쿼리·**누락 0**(변동없음). ② `grep -rnE "IN \(\$\{" ` 신규 churn 5개 파일 전수 = 매치 0(신규 IN절 없음). ③ `node scripts/sort-audit.cjs` P1 **0건**(변동없음). ④ authMiddleware recursive 재스캔(`find src/routes -name '*.ts'`) = 무-auth 7개 파일(`publicUnsubscribe.ts`·`orders/helpers.ts`·`payroll/shared.ts`·`cron.ts`·`messagesAd.ts`·`hrSelf.ts`·`taxInvoices/helpers.ts`) 전부 기존 정당 클래스 재확인(publicUnsubscribe=법령상 의도적 무인증+토큰, cron=agentKeyMiddleware, messagesAd=상위 라우터 requireRole 상속, 나머지 3개=helpers 파일 `Map.get()` FP, 신규 매치 0).
+> - **npm audit 재확인**: `npm ci` 후 11건(1 moderate·8 high·2 critical), 전부 devDependency(#613 기보고와 일치, net-new 0).
+> - **open 6건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` = #606·#608·#609·#612·#613·#614(전건 변동없음, 신규 코멘트 없음).
+> - **backlog↔GitHub 절대값 재동기화**: open **6**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md는 이미 `line N` 잔여참조 0건(재확인, 본문에 서술식만 존재). 이번 사이클은 실제 churn 5건(신규 라우트 2개 포함)을 직접 정독했고, 기존 codify된 레시피(authMiddleware 상속·entity filter·IN절 청크·데드코드 전수 재grep·#462 스냅샷 FP 배제)로 전량 clean 판정 — Area1 인계 사안도 기존 FP 클래스로 명확히 해소. 새 오탐/탐지 클래스 도출 없음.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 10건 → 이번 로그 추가 후 11건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(churn 5건 직접 정독, 전부 clean + Area1 인계 사안 해소), 자동수정 0건, done-sync: open 6(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-08-19T21:50):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → **origin이 `de31dbf..c96987d`로 전진**(shallow-fetch 경계 이동으로 `de31dbf`가 로컬에서 "forced update"로 보였으나 `git rev-parse --is-shallow-repository`=true·`.git/shallow` 확인으로 실제 force-push 아닌 shallow 아티팩트로 판정, 회귀 아님) → `git checkout main && git reset --hard origin/main`(HEAD `c96987d`). `npm ci`(0→81), `npx tsc --noEmit` clean, `npm run build` 성공.
