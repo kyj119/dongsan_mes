@@ -122,6 +122,7 @@ const ENDPOINTS = [
   { path: '/api/purchase-requests?limit=10', name: 'purchaseRequests.list' },
   { path: '/api/inventory', name: 'inventory.list' },
   { path: '/api/inventory-counts', name: 'inventoryCount.list' },
+  { path: '/api/inventory-counts/1', name: 'inventoryCount.detail', allow404: true },
 
   // 인사/급여
   { path: '/api/hr/employees', name: 'hr.employees' },
