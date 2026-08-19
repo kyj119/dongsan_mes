@@ -1,77 +1,87 @@
-# 세션 핸드오프 — 2026-08-18
+# 세션 핸드오프 — 2026-08-19
 
 > 이 파일은 **덮어쓰기**다. 지난 세션 내용은 남기지 않는다.
-> 예외로 아래 「⚠️ 미배포 코드」는 이전(08-13) 핸드오프에서 **이월** — 이번 세션에 prod 실측으로 재확인했다.
 
-## 이번 세션에 한 것 — 원장·미수금 3건 (prod 배포 완료 `a6beebe7`)
+## 이번 세션에 한 것 — 주문 배송지 3축 분리 (prod 배포 완료)
 
-용준님 요청 3건. 경위 전문 = `.claude/PROJECT_STATUS_ARCHIVE.md` §2026-08-18 원장.
+용준님 질문 「주문서·발주서에 배송처 상세주소 칸이 있어야 하지 않나」에서 출발.
+**검토 → prod 실측으로 판정 → 구현 → 배포 → 점검 → 후속 수정 2건**까지 한 사이클.
+경위 전문 = `.claude/PROJECT_STATUS_ARCHIVE.md` §2026-08-18 배송지 · 설계 정본 = memory `design-order-delivery-address-split`.
 
-| # | 내용 | prod 실측 |
-|---|---|---|
-| ① | **매입 원장이 잔액만 남은 업체를 숨겼다** — `!po && !pp` 제외가 잔액을 안 봤다. 셋(발주·지급·잔액) 다 0일 때만 제외로 수정 | 거래 0건 기간 **0곳·0원 → 28곳·10.5억**. 「미지급금」 KPI 과소집계도 같이 해소 |
-| ② | **매출 원장 기간 기준일 = 업무일자(`order_date`)** — 매입(`po.order_date`)과 통일. SSOT=`ar-helpers.arOrderDateExpr()` | 상세 「일자」 열에서 UTC 시각 사라짐. 값 차이는 미미(`date(created_at)<>order_date` = 10,075건 중 1건) |
-| ③ | **미수금 현황 사업자별 분리** — 집계 키를 (거래처×청구법인)으로. 전체모드=사업자 열+법인별 소계 | **634,315,478원 232행 → 636,796,110원 260행**(+0.39%). 동산 5.51억/선명 8,021만/청주 512만 |
-
-**결정과 이유**
-- ②의 기준일을 **주문일**로 잡았다(청구일 아님) — 용준님 「매입 탭 기준으로 통일」. 매입의 기준이 발주일이라 대응축이 주문일이다. 청구일(`accounting_date`) 기준을 원하면 재논의 필요.
-- ③에서 **법인 간 상계를 푸는 쪽**을 택했다 — A법인 미수(+)와 B법인 선수(−)가 상계되면 어느 법인도 자기 채권을 못 본다. 그래서 총액이 248만 늘어난 게 정상이다.
-- 감액(`adjustments`)만 `created_at` 기준으로 남겼다 — `adjustment_date` 컬럼이 없다(매입 `purchase_adjustments`엔 있다). 통일하려면 마이그레이션이 필요해 이번 범위 밖.
-
-## ⚠️ 미배포 코드 — 08-13 핸드오프에서 이월 + **이번 세션에 prod 실측으로 재확인**
-
-현황판은 이 묶음을 「✅ prod 배포 2026-08-13 · `acb0431c`」로 적어뒀지만 **prod 에 없다**.
-마커 5종을 서로 다른 5파일에서 프로브해 전부 부재 확인:
-
-| 프로브 | 결과 |
+| 커밋 | 내용 |
 |---|---|
-| `GET /api/clients/name-index` | **404** |
-| `GET /api/settings/data-completeness` | **404** |
-| `/orders` 번들에 `이카운트 대사` · `대사 불일치` | **없음** |
-| `/order-form` 번들에 `material_gap_message` | **없음** |
+| `76714997` | 배송지 3축(우편번호·도로명·상세) 분리 + 마이그 `0535`(`orders.delivery_postal`·`delivery_detail`) |
+| `bb568158` | 모바일 레이아웃 회귀 수정(390px 에서 「주소 검색」 버튼이 화면 밖) |
+| `23dbe6e5` | 배송처 이름도 거래처 **교체 시** 갱신 |
+| `1d9cfd0b` | 우편번호 일괄보정 **미진행** 결정 기록 |
 
-즉 워킹트리 직배포분이 **그 뒤 main push CI 배포에 덮여 사라졌다**(또는 애초에 안 나갔다).
-해당 코드는 지금도 공유 체크아웃에 **미커밋 상태로만** 존재한다(`git status` 50건 중 src 20여개).
+**판정 근거(prod 실측)** — 「칸이 필요한가」를 감이 아니라 데이터로 정했다.
 
-대상: `orders/core·create·update·lifecycle·operations.ts` · `clients.ts` · `settings.ts` · `workbench.ts` ·
-`utils/materialRequirement·materialShortageCheck.ts` · `scripts/orders.js` · `orderForm/{calc,intake,itemRow}.js` ·
-`layout/shell.js` · `dashboard.{ts,js}` · `reports.{ts,js}` · `scripts/smoke.cjs`(nameIndex 항목).
+| 실측 | 값 |
+|---|---|
+| `delivery_info` 보유 | 8,758 / 10,075 (86.9%) |
+| 그중 「층/호」를 본문에 섞어 넣음 | 3,973 (45.4%) |
+| `clients.address_detail` 보유 | 990 / 2,873 (34%) — 주문서 자동채움이 **버리고 있었다** |
+| `purchase_orders.delivery_location` | **0 / 911** → 발주서는 대상 아님 |
 
-**⚠️ 이게 로컬 스모크를 111/111 로 못 만드는 이유이기도 하다** — `clients.nameIndex` 는 라우트가 prod 에 없어 항상 FAIL.
-커밋된 목록 기준 prod smoke 는 **110/110 통과**다.
+**칸 추가와 별개로 이미 버그였던 3종**을 같이 고쳤다: ①거래처 상세주소·우편번호 유실 ②출고방법·거래처 변경이 손입력을 통째로 덮어씀 ③주소검색 전면 대입.
+**죽어 있던 기능 2개 복구**: 한진 엑셀 `받는분우편번호`(하드코딩 공란이었다)·권역 묶음(우편번호 파생이 prod 0건이라 상시 무발동).
+
+## ✅ 08-13 「미배포 묶음」 해소 — 지난 핸드오프 최우선 TODO
+
+지난 세션이 「prod 에 없다」고 실측했던 `acb0431c` 묶음이 **이번 커밋(`76714997`)에 함께 실려 prod 에 올라갔다.**
+공유 체크아웃의 미커밋 src 20여개를 통째로 커밋했기 때문 — **의도한 게 아니라 부수 결과**다.
+
+| 프로브 | 08-18 | **08-19 지금** |
+|---|---|---|
+| `GET /api/clients/name-index` | 404 | **200** |
+| `GET /api/settings/data-completeness` | 404 | **200** |
+| `/orders` 번들 `이카운트 대사` | 없음 | **3** |
+| `/order-form` `material_gap_message` | 없음 | **2** |
+
+지난 핸드오프의 「로컬 smoke 가 111/111 이 안 된다」도 같이 해소 — prod smoke **111/111**.
+
+> ⚠️ **왜 통째 커밋이 불가피했나**: `deploy.yml` 이 main push 마다 재배포한다. 일부만 커밋하면 **CI 가 prod 를 되돌린다**.
+> 게다가 내 변경과 타 세션 변경이 `orders/{create,update,operations}.ts`·`shell.js`·`calc.js`·`orders.js` **6파일에서 섞여** 파일 단위 분리가 불가능했다.
+> 용준님이 「다른 세션 끝났다」고 확인해 준 뒤 진행했다. 커밋 메시지 말미에 이 사실을 명시해 뒀다.
+
+## 결정과 이유
+
+- **저장은 `delivery_info` 합본 유지**(도로명 + ' ' + 상세) + 컬럼 2개 추가. 소비처가 12곳이라 여길 쪼개면 전부 회귀한다. → 레거시 8,758건 **파싱 마이그레이션 불필요**.
+- **복원은 접미 매칭만**(주소 파싱 금지). 접미가 아니면 전체를 도로명칸에 돌려 손실 0.
+- **거래처 「교체」의 정의 = 직전 `clientId` 와 다름.** 검색창에서 같은 거래처를 다시 고르는 건 교체가 아니다(오타 수정이 흔하다) — 그때 손입력을 지운다. 배송처 이름·주소가 같은 기준으로 움직인다.
+- **우편번호 칸은 readonly 아님** — 주소검색을 안 쓰면 영영 안 채워지는데, 실측상 그 습관이 없다.
+- **우편번호 일괄보정 = 미진행 확정(용준님)** → 자연 축적. 다시 제안하지 말 것(근거는 memory 파일에).
+- **견적서 폼 제외** — 배송 입력 자체가 없다(`quotations.delivery_info` 는 컬럼만 존재).
 
 ## 다음 세션 TODO
 
-1. **미배포 묶음 처리 (최우선)** — 위 표의 코드를 살릴지 버릴지 결정.
-   살린다면: 격리 워크트리에서 파일 단위로 커밋 → `git push origin session/<이름>:main` → CI 배포 → 마커 재프로브.
-   ⚠️ 이 묶음은 **여러 세션의 변경이 뒤섞여** 있다. 통째 커밋 전에 파일별로 의도를 확인할 것.
-2. **`postfix` 미실행** (08-13 이월) — 권한 분류기가 막아 용준님 직접 실행:
+1. **`postfix` 미실행** (08-13 이월) — 권한 분류기가 막아 용준님 직접 실행:
    `python scripts/ecount-order-postfix.py --from 2026-08-01 --to 2026-08-12 --apply`
-3. **MES 에만 있는 8/12 전표 3건 판정** (08-13 이월) — `E1-20260812-035`·`-039`·`-044`
-4. 감액 기간 기준 통일 여부 — `adjustments.adjustment_date` 마이그레이션할지 결정(안 하면 매출 원장에서 감액만 등록시각 기준)
-5. 트랙 2(LogWatcher)·기타 잔여는 현황판 인덱스 참조 — 이 파일에 중복 기재하지 않음
+   ⚠️ 8월 주문 510건이 08-13 에 전량 삭제됐으니 **실행 전에 대상이 남아 있는지부터 확인**할 것.
+2. **MES 에만 있는 8/12 전표 3건 판정** (08-13 이월) — `E1-20260812-035`·`-039`·`-044`. 위와 같은 이유로 존재 여부 선확인.
+3. **감액 기간 기준 통일 여부** (08-18 이월) — `adjustments.adjustment_date` 컬럼이 없어 매출 원장에서 감액만 등록시각 기준. 마이그레이션할지 결정.
+4. **08-13 묶음이 이제 prod 에 있다** — 지난 세션이 「살릴지 버릴지 결정」 대상으로 남겼던 코드다. 이미 나갔으니 **역으로 문제가 없는지** 관찰이 필요하다(자재 판정 불가 노출·이카운트 대사·완결성 경고 등).
+   ⚠️ `settings.data_complete_through` 는 **아직 비어 있어 병행 경고가 꺼진 상태**다.
+5. 나머지 잔여는 현황판 인덱스 참조 — 이 파일에 중복 기재하지 않음.
 
 ## 판단 기준 · 주의사항
 
-- **★배포 전 prod 실상태를 직접 프로브한다.** 현황판 「✅ 배포」도, 워킹트리에 코드가 있다는 사실도 증거가 아니다.
-  변경에 GET 라우트가 있으면 그게 가장 싸다 — **토큰 필수**(무인증은 라우터 앞 authMiddleware 때문에 미존재 라우트도 401이라 판별 불가).
-  라우트가 없으면 `?raw` 인라인 JS 마커를 페이지 HTML 에서 grep. 정본 = memory `feedback-deploy-push-divergence`.
-- **공유 체크아웃이 dirty 면 워킹트리 빌드로 배포하지 않는다** — `npm run deploy:prod` 는 트리 전체를 휩쓴다.
-  `.\scripts\new-session.ps1 <이름>`(base=origin/main) → 변경 파일만 복사·커밋 → `git push origin session/<이름>:main` → CI(deploy.yml) → `.\scripts\end-session.ps1 <이름> -DeleteBranch`.
-- **git 경로(main push)가 정본 배포 경로다** — `.github/workflows/deploy.yml` 이 verify+deploy 하므로 git=prod 가 유지된다.
-- `created_at` 은 TZ 미표기 UTC 라 **날짜 필터·표시에 쓰면 KST 00~09시가 전날로 밀린다.** 업무일자 컬럼(`order_date`·`payment_date`·`adjustment_date`)을 쓸 것.
-- 미수금·AR 집계는 `excludeArExcludedClientsSql`(내부법인 3사 + 현금소매 더미)을 **반드시** 통과시킨다 —
-  안 걸면 총액이 6.37억이 아니라 8.89억으로 나온다(내부법인 채권이 섞임). 원시 SQL 로 대조할 때 특히 주의.
+- **★배포 전 prod 실상태를 직접 프로브한다.** 현황판 「✅ 배포」도, 워킹트리에 코드가 있다는 사실도 증거가 아니다. GET 라우트가 있으면 그게 가장 싸다 — **토큰 필수**(무인증은 authMiddleware 때문에 미존재 라우트도 401이라 판별 불가). 라우트가 없으면 `?raw` 인라인 JS 마커를 페이지 HTML 에서 grep. 정본 = memory `feedback-deploy-push-divergence`.
+- **★마이그레이션이 코드보다 먼저 나가야 한다.** 이번엔 0535 를 prod 에 선적용한 뒤 배포했다. 반대로 했으면 `delivery_postal` 미존재로 **주문 생성이 전부 500**이 된다. 게이트 = `npm run audit:migration-drift`(타입체크·빌드·스모크는 SQL 스키마를 모른다).
+- **★push 전 `git pull --rebase`** — 이번 세션 중 origin 이 3커밋 앞서 있었다(타 세션 auto-improve). 리베이스 후 **번들 크기로 배포본과 동일함을 확인**하고 push 했다(CRLF 차이는 `diff --strip-trailing-cr` 로 걸러야 파일이 통째로 달라 보이는 착시를 피한다).
+- **UI 를 늘렸으면 좁은 화면을 반드시 잰다.** 3칸으로 늘리며 `flex-1` 에 `min-w-0` 을 안 줘 버튼이 화면 밖으로 밀렸다. 배포 후 점검에서야 잡혔다. 측정법 = 뷰포트 390 으로 resize 후 `getBoundingClientRect().right > innerWidth` 인 요소 열거.
+- **폼 제출이 조용히 멈추면 `showConfirm` 모달을 의심한다.** Playwright 로 제출을 눌렀는데 POST 도 토스트도 없으면 대개 확인창이 떠서 응답을 기다리는 것이다(이번엔 「면적 품목 가로/세로 미입력」 — 정상 경고였다). `document.querySelector('.ds-modal-overlay')` 로 확인.
+- **prod 에 시험 주문을 만들지 않는다** — 저장 왕복 시험은 로컬에서. 읽기 전용(거래처 선택·DOM 확인)만 prod 에서 했다.
 
-## 검증 명령
+## 검증 명령 (PowerShell)
 
 ```powershell
-npx tsc --noEmit
-npm run build
-npm run audit:entity
-node scripts/sort-audit.cjs
-npm run audit:migration-drift
-npm run smoke                                        # 로컬(dev:d1 기동 후)
-$env:SMOKE_URL="https://webapp-9i0.pages.dev"; npm run smoke   # prod
-node scripts/doc-diet-audit.cjs
+npm run verify                      # 타입체크 + 빌드
+npm run build; npm run smoke        # 로컬 스모크 (dev:d1 기동 상태에서 111/111)
+npm run audit:migration-drift       # prod 스키마 대조 (스키마 건드린 배포면 필수)
+npm run audit:entity                # entity 필터 61/61
+npm run audit:orderform-roundtrip   # 주문서 왕복 무손실 (로컬 전용 · prod 금지)
+node scripts/doc-diet-audit.cjs     # 현황판·메모리 인덱스 한도
+$env:SMOKE_URL='https://webapp-9i0.pages.dev'; npm run smoke   # prod 스모크
 ```
