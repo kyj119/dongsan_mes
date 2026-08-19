@@ -2,6 +2,8 @@
 
 > **운영 규칙(2026-08-10 확정)**: ①완료(✅)=아래 인덱스 1줄(제목+남은 것)만, 경위 전문은 `PROJECT_STATUS_ARCHIVE.md`에 직접 쓴다 (**「✅ 최근 완료」 항목 400자 상한** — 2026-08-19 게이트 강제, 초과 시 큰 것부터 지목) ②의미 없는 대기=보류함으로 과감히 이관 ③대기 항목=빠른 처리 우선 ④"커밋·미배포" 기록은 믿지 말고 prod 실측(deploy.yml=main push 자동배포). 게이트=`node scripts/doc-diet-audit.cjs`(훅·세션 시작 배너 연동).
 
+> **✅ prod 배포 2026-08-19 · `ddf0108a` (배포 `7fe9b134`) — 작업지시서 슬라이드(#26) + 카드 상세 이원화 확정(#27)** — `/cards/:id` 헤더 ‹n/m›·스와이프·←→ 로 같은 상태컬럼×생산라인 큐 연속 열람(신설 `GET /api/cards/:id/neighbors` — 칸반 delivery_asc 동일 정렬·entity 필터). #27=모달(사무 조작)·뷰어(현장 정본) 이원화 유지. 검증=prod smoke **113/113**·페이지 6/6·마커 4/4·콘솔 JS예외 0. 경위=ARCHIVE §2026-08-19 작업지시서 슬라이드 · 정본=memory `design-work-order-system`. 남은=태블릿 실기기 스와이프 확인
+
 > **✅ prod 배포 2026-08-19 · `a22fb424` — 주문서 마감·펀칭 역할 재정의 + 출고검수 주문 찾기** — 마감/펀칭=청구+현장지시 축 확정, 사문 기하경로(auto_process_jobs producer 2곳·제2 여백정본) 은퇴(−241줄). 접수 UI=프리셋+요약(MES_FIN)·상세 접기. `/pack` 수동입력=신설 읽기전용 `pack-search` 경유(숫자 꼬리 입력이 다른 주문을 열며 shipment 를 만들던 위험 제거). 검증=prod smoke **112/112**·페이지 6/6·마커 9/9·콘솔 0. 정본=memory `design-order-finishing-role`
 
 > **✅ 2026-08-19 훅 게이트 33.7% 무작동 수정** — 경위=ARCHIVE §훅 게이트. 남은=**커밋**
@@ -27,8 +29,6 @@
 > **⛔ 08-12 8월 주문 소급 보정 + 파일 연결 582건 — 데이터는 08-13 삭제됨** (원문 = `PROJECT_STATUS_ARCHIVE.md` §2026-08-12 소급 보정). ★`POST /api/orders` 가 `created_at`·`order_number`·`status` 를 안 받아 **소급은 후처리가 유일**. 남은=정리 SQL 24건 미실행(`prune_links.sql`)
 
 ## ✅ 최근 완료 — 후속 대기 인덱스 (경위·상세 전문 = `PROJECT_STATUS_ARCHIVE.md`)
-
-- **✅ 08-19 작업지시서 슬라이드(#26) + 카드 상세 구조 확정(#27)** — 경위=ARCHIVE §2026-08-19 작업지시서 슬라이드. `/cards/:id` 헤더 ‹n/m›·스와이프·←→ 로 같은 상태컬럼×생산라인 큐 연속 열람(칸반 delivery_asc 동일 정렬 — 신설 `GET /api/cards/:id/neighbors`, smoke allow404 편입). #27=모달(사무)·뷰어(현장 정본) 이원화 유지 확정. 로컬 검증 완료. 남은=**커밋·배포**(미커밋 — 타 세션 커밋 휩쓸림 주의)·태블릿 실기기 스와이프
 
 - **✅ 08-19 주문서 마감·펀칭 역할 재정의 + 출고검수 주문 찾기(부분일치)** — prod `a22fb424` · 정본=memory `design-order-finishing-role` — 마감/펀칭 = **청구+현장지시 축**으로 확정, 사문화된 기하 자동적용(auto_process_jobs producer 2곳·제2 여백정본 `AP_MARGIN_RULES`) 은퇴. 접수 UI=프리셋+요약(MES_FIN)·상세 접기. `/pack` 수동입력은 신설 **읽기전용** `GET /api/shipments/pack-search` 경유(숫자도 후보로만). 검증=prod smoke 112/112·entity 61/61·roundtrip 소실 0·P1 0. 남은=없음(미출고 필터=불필요 확정)
 
