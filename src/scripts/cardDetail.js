@@ -9,16 +9,33 @@
 
     // 이웃 카드(슬라이드 큐) — 실패해도 화면은 떠야 하므로 null 폴백
     var neighbors = null;
+    // 슬라이드 연타 레이스 가드 — 늦게 도착한 구식 응답이 최신 화면을 덮는 것을 막는다
+    var loadSeq = 0;
+    // 다음 카드 프리페치 — next 방향(주 사용 방향)만. 소비 1회 후 폐기, 60초 지나면 무효(스테일 방지)
+    var prefetch = { id: null, ts: 0, promise: null };
+
+    function fetchBundle(id) {
+        return Promise.all([
+            axios.get('/api/cards/' + id),
+            axios.get('/api/cards/' + id + '/history'),
+            axios.get('/api/cards/' + id + '/defects'),
+            axios.get('/api/cards/' + id + '/checklist'),
+            axios.get('/api/cards/' + id + '/neighbors').catch(function() { return null; })
+        ]);
+    }
 
     async function load() {
+        var seq = ++loadSeq;
         try {
-            var [cardRes, histRes, defRes, cclRes, nbRes] = await Promise.all([
-                axios.get('/api/cards/' + cardId),
-                axios.get('/api/cards/' + cardId + '/history'),
-                axios.get('/api/cards/' + cardId + '/defects'),
-                axios.get('/api/cards/' + cardId + '/checklist'),
-                axios.get('/api/cards/' + cardId + '/neighbors').catch(function() { return null; })
-            ]);
+            var bundle;
+            if (prefetch.id === cardId && prefetch.promise && (Date.now() - prefetch.ts) < 60000) {
+                bundle = await prefetch.promise;   // 프리페치 적중 — 즉시 전환
+            } else {
+                bundle = await fetchBundle(cardId);
+            }
+            prefetch = { id: null, ts: 0, promise: null };
+            if (seq !== loadSeq) return;   // 그 사이 다른 슬라이드가 시작됨 — 이 응답은 폐기
+            var cardRes = bundle[0], histRes = bundle[1], defRes = bundle[2], cclRes = bundle[3], nbRes = bundle[4];
             if (!cardRes.data.success) throw new Error('카드 조회 실패');
             neighbors = (nbRes && nbRes.data && nbRes.data.data) || null;
             // 인쇄물에 실을 QR — **이 카드**를 가리킨다(종이를 든 사람이 화면으로 돌아오는 길).
@@ -30,8 +47,17 @@
             } else {
                 console.warn('[cardDetail] QRCode 미로드 — 인쇄 QR 생략 (layout.ts CDN 확인)');
             }
+            if (seq !== loadSeq) return;   // QR 생성 대기 중 다른 슬라이드가 시작됐으면 폐기
             render(cardRes.data.data, histRes.data.data || [], defRes.data.data || [], cclRes.data.data || [], qrDataUrl);
+            // 다음 카드 프리페치 — 도착 여부는 사용 시점에 await 로 확인(실패하면 그때 404 안내가 뜬다)
+            if (neighbors && neighbors.next_id) {
+                var pfId = neighbors.next_id;
+                var pf = fetchBundle(pfId);
+                pf.catch(function() {});   // 미소비 시 unhandled rejection 억제(분기 — 원본 promise 불변)
+                prefetch = { id: pfId, ts: Date.now(), promise: pf };
+            }
         } catch(e) {
+            if (seq !== loadSeq) return;   // 구식 요청의 에러로 최신 화면을 덮지 않는다
             // 봉제실이 오래된 QR·북마크로 들어오는 화면이 정확히 여기다 — axios 원문
             // ("Request failed with status code 404")을 그대로 띄우면 현장이 무엇을 해야 할지 모른다.
             var st = e.response && e.response.status;
@@ -39,11 +65,13 @@
             var msg = st === 404
                 ? '이 카드를 찾을 수 없습니다. 주문이 수정되며 카드가 다시 발행됐거나 취소된 카드일 수 있습니다.'
                 : (srv || '카드 정보를 불러오지 못했습니다.');
-            document.getElementById('cdRoot').innerHTML =
+            var errRoot = document.getElementById('cdRoot');
+            errRoot.innerHTML =
                 '<div class="text-center py-20">'
                 + '<p class="text-red-500 mb-3">' + esc(msg) + '</p>'
                 + '<a href="/cards" class="spa-link px-4 py-2 bg-gray-100 text-gray-700 rounded text-sm hover:bg-gray-200"><i class="fas fa-arrow-left mr-1"></i>현장 대시보드로</a>'
                 + '</div>';
+            errRoot.style.opacity = '';   // cdSlide 로딩 디밍 해제 (에러 경로에서도)
         }
     }
 
@@ -164,7 +192,8 @@
         if (neighbors && neighbors.position) {
             html += '<div class="flex items-center gap-1" title="같은 상태·같은 라인 큐 (납기순)">';
             html += '<button onclick="cdSlide(' + (neighbors.prev_id || 'null') + ')"' + (neighbors.prev_id ? '' : ' disabled') + ' class="cd-nav-btn"><i class="fas fa-chevron-left"></i></button>';
-            html += '<span class="text-sm text-gray-500 font-mono whitespace-nowrap">' + neighbors.position + '/' + neighbors.total + '</span>';
+            // 어느 큐를 넘기는 중인지 상태 라벨 병기 — 툴팁만으론 태블릿(터치)에서 안 보인다
+            html += '<span class="text-sm text-gray-500 whitespace-nowrap">' + esc(stLabel) + ' <span class="font-mono">' + neighbors.position + '/' + neighbors.total + '</span></span>';
             html += '<button onclick="cdSlide(' + (neighbors.next_id || 'null') + ')"' + (neighbors.next_id ? '' : ' disabled') + ' class="cd-nav-btn"><i class="fas fa-chevron-right"></i></button>';
             html += '</div>';
         }
@@ -470,6 +499,8 @@
         if (!root) return;
         var sx = 0, sy = 0, skip = false;
         root.addEventListener('touchstart', function(e) {
+            // 두 손가락(핀치줌)은 슬라이드가 아니다 — 두 번째 손가락이 닿는 순간 이 제스처 전체를 무효화
+            if (e.touches.length > 1) { skip = true; return; }
             var t = e.touches[0]; sx = t.clientX; sy = t.clientY;
             var wrap = e.target.closest && e.target.closest('.cd-multi-wrap');
             skip = !!(wrap && wrap.scrollWidth > wrap.clientWidth);
