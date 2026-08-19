@@ -28,7 +28,7 @@
 
 ## ✅ 최근 완료 — 후속 대기 인덱스 (경위·상세 전문 = `PROJECT_STATUS_ARCHIVE.md`)
 
-- **✅ 08-19 주문서 마감·펀칭 역할 재정의 + 출고검수 주문 찾기(부분일치)** — prod `a22fb424` · 정본=memory `design-order-finishing-role` — 마감/펀칭 = **청구+현장지시 축**으로 확정, 사문화된 기하 자동적용(auto_process_jobs producer 2곳·제2 여백정본 `AP_MARGIN_RULES`) 은퇴. 접수 UI=프리셋+요약(MES_FIN)·상세 접기. `/pack` 수동입력은 신설 **읽기전용** `GET /api/shipments/pack-search` 경유(숫자도 후보로만). 검증=prod smoke 112/112·entity 61/61·roundtrip 소실 0·P1 0. 남은=실사용 후 후보 정렬 조정
+- **✅ 08-19 주문서 마감·펀칭 역할 재정의 + 출고검수 주문 찾기(부분일치)** — prod `a22fb424` · 정본=memory `design-order-finishing-role` — 마감/펀칭 = **청구+현장지시 축**으로 확정, 사문화된 기하 자동적용(auto_process_jobs producer 2곳·제2 여백정본 `AP_MARGIN_RULES`) 은퇴. 접수 UI=프리셋+요약(MES_FIN)·상세 접기. `/pack` 수동입력은 신설 **읽기전용** `GET /api/shipments/pack-search` 경유(숫자도 후보로만). 검증=prod smoke 112/112·entity 61/61·roundtrip 소실 0·P1 0. 남은=없음(미출고 필터=불필요 확정)
 
 - **✅ 08-19 대표자 개인통장 분리 — `bank_accounts.is_personal` 신설**(마이그 `0539` + 코드) — 경위 전문=`PROJECT_STATUS_ARCHIVE.md` §2026-08-19 대표자 개인통장 분리 · 정본=memory `design-personal-bank-account`. 자금(총자금·순자금·자금일보 시작잔액·재무상태 현금)·판관비 추정에서 **완전 제외**, 입금→수금 연결은 **유지**(계산서 없이 들어온 입금 반영용). 대상=#17 농협 08712205285(김진수) 1개 · 청주 #10 은 사업용이라 제외. prod 실측 e1 예금 24,676,285→**23,981,438**. 남은=#17 출금 IGNORED 36건 정리 여부(그대로 둬도 무해)
 

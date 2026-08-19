@@ -1,104 +1,81 @@
-# 세션 핸드오프 — 2026-08-19 (법인카드 청구주기)
+# 세션 핸드오프 — 2026-08-19 (주문서 마감·펀칭 역할 재정의 + 출고검수 주문 찾기)
 
 > 이 파일은 **덮어쓰기**다. 지난 세션 내용은 남기지 않는다(미완 TODO만 「이월」 표시로 옮긴다).
 
-## 이번 세션에 한 것 — ①법인카드 마감일·결제일 정정 ②NH농협 개인카드 제거 ③대표자 개인통장 분리
+## 이번 세션에 한 것 — 용준님 질문 2건(22·23번)에서 출발, prod 배포까지
 
-용준님 요청 「카드대금 나가는 패턴을 기반으로 카드사별 법인카드 관리 마감일/결제일 수정 — 동산이랑 선명 둘 다」.
-①②는 **코드 변경 0 · prod D1 데이터만 정정**(웹은 DB를 직접 읽는다). ③만 코드 변경 + 배포가 있다.
-경위 전문 = `.claude/PROJECT_STATUS_ARCHIVE.md` §2026-08-19 법인카드 마감일·결제일 · 정본 = memory `design-card-billing-cycle`.
+배포 = `a22fb424`(코드) + `ad4a18cd`(현황판) · 정본 = memory `design-order-finishing-role`.
 
-| 마이그 | 내용 | 상태 |
-|---|---|---|
-| `0536_card_cutoff_payment_day_calibration.sql` | 결제일=은행 출금 실측 · 마감일=상관 추정 | prod 적용됨 — **마감일 추정은 틀렸다**(아래) |
-| `0537_card_cycle_official_credit_period.sql` | 마감일을 **카드사 공식 신용공여기간**으로 재정정 | prod 적용 · **이게 현재값** |
-| `0538_remove_nh_personal_card.sql` | `corporate_cards` #16(NH농협) 삭제 | prod 적용 · 고아 0 |
-| `0539_bank_account_is_personal.sql` | `bank_accounts.is_personal` 신설 + #17 지정 | prod 적용(코드보다 **먼저**) |
+**① 주문서 마감·펀칭 (질문 22 — "그룹분석 폐기 후 의미가 퇴색")**
+조사 결과 **죽은 건 한 축뿐**이었다. 표기·과금·묶음키는 살아 있고, 사문화된 건 「여백을 파일에 자동 적용」하던 축이다.
+용준님 선택 = **가) 역할 재정의 + 사문 경로 정리** + **라) 접수 입력 간소화(기본 접기 + 요약 표기)**.
 
-**③ 대표자 개인통장 분리** — 경위 전문 = ARCHIVE §2026-08-19 대표자 개인통장 분리 · 정본 = memory `design-personal-bank-account`.
-자금(총자금·순자금·자금일보 시작잔액·재무상태 현금)·판관비 추정에서 완전 제외, **입금→수금 연결은 유지**.
-대상은 #17 하나뿐이고 청주 #10 은 대표자 명의여도 사업용이라 제외했다. ★코드 변경이 있는 유일한 건이다.
+| 한 것 | 위치 |
+|---|---|
+| `auto_process_jobs` producer 2곳 은퇴 + 제2 여백정본(`AP_MARGIN_RULES`/`MARGIN_RULES`) 제거 (−241줄) | `orders/create.ts:652` · `orders/helpers.ts:453` |
+| 마감 요약 상시 표기(카드와 같은 정본 `MES_FIN`) | `orderForm/finishing.js` · `pages/orderForm.ts:5` |
+| 4변 셀렉트·펀칭 8칸 접힘 유지(프리셋 적용·수정모드 복원에서도 안 펼침) | `finishing.js` · `itemRow.js` · `parent.js` |
+| 여백 미리보기에 「참고 — 청구 규격 아님 · 실제 적용은 가공 단계」 | `finishing.js` |
+| 펀칭 요약(`4개(4모서리)`) | `calc.js` (`calculatePPCost` 안) |
 
-**현재 prod 값 (정본)**
-
-| 카드사 | 법인 | 공식 이용기간 | cutoff/payment |
-|---|---|---|---|
-| 하나카드 | 동산(#4,5,6) | 전월 3일 ~ 당월 2일 | **2 / 15** |
-| 하나카드 | 선명(#7,8,9)·청주(#25) | 전전월 28일 ~ 전월 27일 | **27 / 10** |
-| BC(IBK기업) | 동산(#3,24) | 전월 1일 ~ 전월 말일 | **31(말일) / 15** |
-| BC(IBK기업) | 선명(#10,11,12) | 전전월 26일 ~ 전월 25일 | **25 / 10** |
-| 전북은행 JB | 동산(#13,14,15,18~23) | 전월 8일 ~ 당월 7일 | **7 / 22** |
-
-출처 = bccard.com 회원사별 신용공여기간(하나 `ind0625` · 기업 `pop_credit_giving_ibk`) · jbbank.co.kr `MPST_GDNC_SETL_MTHD`.
-산출 사이클이 공식표와 정확히 일치함을 확인했다(BC 동산 8/1~8/31→9/15 · 전북 7/8~8/7→8/22 · 하나 동산 8/3~9/2→9/15 ·
-BC 선명 7/26~8/25→9/10 · 하나 선명·청주 7/28~8/27→9/10).
+**② 출고검수 주문 찾기 (질문 23 — 완전일치 vs 부분포함)**
+용준님 선택 = 부분포함 후보 제시 + **숫자 입력도 검색 경유**.
+- 신설 `GET /api/shipments/pack-search`(`shipments.ts:490`) — **읽기 전용** · `entityFilter` · `instr` · 미출고 우선 · `o.id DESC` tie-break · LIMIT 10(+`has_more`).
+- `/pack` 수동입력은 검색 경유. 주문번호 **완전일치 1건이면 즉시 열기**, 그 외엔 후보 목록. QR 은 종전대로 id 직행.
+- 최소 입력은 협의한 3자가 아니라 **2자**로 했다(거래처 2글자 검색). 보고했고 이의 없었다.
 
 ## 결정과 이유
 
-- **★마감일(`cutoff_day`)은 사용내역 데이터로 추정하지 않는다 — 카드사 공식표가 정본.**
-  0536 에서 「사이클 합계 ↔ 출금액 상관 최대점」으로 뽑았다가 전량 오설정했다. 원인은 **할부**다 —
-  큰 할부 구매가 있던 달은 그 달 결제액이 오히려 낮고 이후 달이 높아져 **정답 마감일에서 음의 상관**이 나온다
-  (전북 공식값 cut7 에서 r=−0.56, 오답 cut22 에서 +0.83). 여기에 `card_transactions` 수집 결손
-  (출금액 대비 동산 하나 −21% · 비씨 −35% · 전북 −50% · 농협 −100%)이 겹쳐 금액 정합도 성립하지 않았다.
-- **결제일(`payment_day`)은 은행 출금 실측이 정본** — `bank_transactions` WITHDRAWAL 적요
-  `하나카드기업`·`비씨카드출금`·`JB카드결제{last4}`. 실제로 틀려 있던 건 동산 비씨 5957(#24) 22→**15** 뿐이었다.
-- **★비씨는 회원사(발급은행)별로 표가 다르다.** 동산·선명 둘 다 출금계좌가 기업은행이라 IBK 표를 쓴다.
-  원래 값 중 **동산 하나 2/15 · 선명 비씨 25/10 은 처음부터 맞았고**, 0536 이 잘못 바꿨다가 0537 로 원복됐다.
-- **NH농협카드는 법인카드가 아니다 → #16 삭제.** 출금계좌가 `bank_accounts` #17
-  (농협 08712205285 · 예금주 **김진수** · 별칭 「대표자」)로 대표자 개인 통장이다. 같은 통장에 청약저축·NH손보
-  개인보험·KB오픈 개인이체가 섞여 있다. #16 은 카드번호·명의자 없음 · 한도 0 · `is_active=0` ·
-  `card_transactions` 0건 · 바로빌 미등록인 껍데기였다. 백업 = `_bak_0538_removed_cards`.
-- **마감일 31 = 말일**로 쓴다. 라우트·엔진 모두 `min(cutoff_day, 그 달 말일)` 로 클램프하므로 2월도 안전
-  (`routes/cardExpenses.ts` clampDay · `utils/cashflowEngine.ts`).
-
-## 다음 세션 TODO
-
-1. ~~대표자 개인통장 #17 처리~~ → **완료**(마이그 `0539` + 코드, 이번 세션). `bank_accounts.is_personal` 로
-   자금·판관비 전 축에서 제외하고 입금→수금 연결만 남겼다. 정본 = memory `design-personal-bank-account`.
-   남은 것 = #17 출금 38건 중 **손으로 IGNORED 처리한 36건** 정리 여부(그대로 둬도 무해 — 되돌리면 매칭 대기로 다시 뜬다).
-2. **미등록 정기출금 2건 정체 확인** (이번 세션 발생) — 하나은행 `비씨카드` 매월 23일 **정액 2,332,300원**(할부/카드론 추정) ·
-   전북은행 `신한카드할부` 매월 26일 745,630원(신한 카드는 `corporate_cards` 에 없다). 카드 명세서로 확인 후 등록 여부 결정.
-3. **선명 하나카드 이상 출금 2건** (이번 세션 발생) — `하나카드결제` 7/28~29 3건 9.2M · `하나카드기업` 8/18 4건 4.1M.
-   평소 10일 패턴 밖이라 선결제/연체 재출금 여부 확인 필요(결제일 설정에는 영향 없음).
-4. **`card_transactions` 수집 결손** (이월·확대) — 실제 출금액 대비 동산 하나 −21% · 비씨 −35% · 전북 −50%.
-   결제예정 **금액**은 아직 못 믿는다(날짜·구간은 이제 맞다). 관련 = memory `project-card-sync-collection`.
-5. **prod 첫 카드 발행 때 라벨 실물 확인** (08-19 이월) — prod `cards` 0건이라 서버 라벨은 아직 실물 미확인.
-6. **`postfix` 미실행** (08-13 이월) — `python scripts/ecount-order-postfix.py --from 2026-08-01 --to 2026-08-12 --apply`
-   ⚠️ 8월 주문 510건이 08-13 에 전량 삭제됐으니 **실행 전에 대상이 남아 있는지부터 확인**.
-7. **MES 에만 있는 8/12 전표 3건 판정** (08-13 이월) — `E1-20260812-035`·`-039`·`-044`. 존재 여부 선확인.
-8. **감액 기간 기준 통일 여부** (08-18 이월) — `adjustments.adjustment_date` 컬럼 부재. 마이그레이션할지 결정.
-9. **08-13 묶음 관찰** (08-18 이월) — ⚠️`settings.data_complete_through` 는 아직 비어 병행 경고가 꺼진 상태.
-10. ~~`scripts/finance-diagnose.cjs` 미커밋분~~ → **완료**. 이전 세션 작업(장비 이중계상 제외 + 선명 STOCK)을
-    손대지 않고 `e0088d4d` 로 따로 커밋한 뒤, 그 위에 개인통장 필터를 얹었다. 표시 버그(`${ENTITY_NAME}` → `[object Object]`)도 함께 고쳤다.
+- **★주문서 마감·펀칭 = 청구 + 현장지시 + 트레이 묶음키 전용.** 기하(여백·펀칭 위치)를 파일에 넣는 일은 **A0 패널의 몫**이다.
+  근거 = prod `auto_process_jobs` **총 1건·마지막 2026-07-03**, 라이브 에이전트 큐는 `tasks(AI_PROCESS)`(`Program.cs` `/api/tasks/claim`, 33건·8/13).
+  패널이 이미 마감 여백을 적용하므로 서버가 또 적용하면 **이중 적용**이다 → 코드에 「부활 금지」 주석을 남겼다.
+- **여백 미리보기는 참고값**이다. 청구면적(10cm 올림·최소 1m)·원단 소요에 반영하자는 안(다)은 **청구 정책 변경**이라 별건으로 분리했다.
+- **`/pack` 검색은 반드시 별도 읽기전용 라우트로.** `checklist/by-order` 는 `ensureShipmentForOrder` + `shipment_checks` upsert 를 하는 **쓰기** 경로다.
+  종전엔 `001` 같은 숫자를 치면 **주문 id 1** 이 열리며 그 주문에 shipment 가 생겼다 — 이번에 제거한 실질 위험이 이것이다.
+- **미출고만 보기 필터는 만들지 않는다**(용준님 판단, 08-19). prod 에서 `001` 검색 시 이관분 `-I001` 이 상위를 채우는 걸 보고 제안했으나 불필요로 확정.
 
 ## 판단 기준 · 주의사항
 
-- **★카드 청구주기를 다시 만질 일이 생기면 데이터로 역산하지 말고 카드사 표부터 볼 것.** 이번 세션이 그 함정에 한 번 빠졌다.
-  카드사 표는 **결제일 → 이용기간** 이므로, 우리 모델로는 「이용기간 종료일 = `cutoff_day`」로 옮기면 된다.
-  `payment_day > cutoff_day` 면 동월결제, 아니면 익월결제 — 이 규칙이 라우트와 엔진 양쪽에 같이 박혀 있다.
-- **★은행 출금일은 휴일이면 밀린다.** 2026 실측 = 2/19(설연휴) · 3/16(일→월) · 5/26(대체공휴일) · 8/18(광복절 대체).
-  밀린 날을 결제일로 읽으면 카드사 표와 안 맞는다.
-- **prod D1 직접 UPDATE 는 반드시 백업 테이블부터.** 이번 건 = `_bak_0536_card_days`(0536 이전 원본 전량) ·
-  `_bak_0538_removed_cards`(삭제 행 전체 + 사유). 롤백 SQL 은 각 마이그레이션 주석에 그대로 있다.
-- **`wrangler d1 execute --file` 은 성공해도 가짜 오류를 뱉을 수 있다**(「Not currently importing anything」).
-  재실행 전 반드시 결과를 조회할 것. 이번 마이그레이션 3개는 절대값 대입/`INSERT OR IGNORE` 라 재실행해도 안전하다.
-- **`d1_migrations` 추적은 이 3개를 모르는 상태다** — `--file` 직접 실행이라 추적 테이블에 안 남는다.
-  `npm run audit:migration-drift` 는 스키마만 보므로 통과한다(실제로 통과 확인함). 데이터 마이그레이션은 원래 이 방식이다.
-- **현황판 400자 상한** — 이번 세션에서 이전 TNS 항목(430자)도 경위를 ARCHIVE 로 옮겨 389자로 맞췄다.
-  게이트 = `node scripts/doc-diet-audit.cjs`(커밋 훅 연동).
-- **공유 체크아웃 — 다른 세션이 같은 워킹트리에 커밋한다.** 커밋 전 `git status` 로 **내 파일만** 스테이징하고,
-  push 전 `git fetch` 로 divergence 확인.
+- **★"기능이 죽었다"는 코드가 아니라 prod 데이터로 판정했다.** 라우트가 남아 있어도 producer 호출이 0이면 사문이고,
+  반대로 트레이 프리필 라인은 `ai_analysis_id` 를 가지므로 코드만 보면 살아 있어 보인다. 판정 = `SELECT COUNT(*), MAX(created_at)`.
+- **★표기 문장은 새로 짜지 않는다.** 서버 `utils/finishingLabel.ts` ↔ 클라 `scripts/shared/finishingLabel.js`(`window.MES_FIN`) 쌍이 정본이고 **사본 신설 금지**.
+  `MES_FIN` 이 없으면 요약이 **조용히 빈 문자열**이 되므로 새 페이지에 카드/주문서 스크립트를 실으면 이 파일도 같이 실어야 한다.
+  현재 싣는 페이지 = `pages/cards.ts` · `pages/cardDetail.ts` · **`pages/orderForm.ts`(이번에 추가)**.
+- **접힌 입력은 값이 사라지지 않는다** — hidden 이어도 DOM 값은 남고 `calc.js` 수집이 그대로 읽는다. `npm run audit:orderform-roundtrip`(로컬 전용, ★prod 금지)로 소실 0 확인함.
+- **D1 LIKE 는 50바이트 제한** — 신규 검색은 `LIKE` 대신 `instr(col, ?) > 0` + 40자 상한으로 원천 회피했다.
+- **공유 체크아웃** — 다른 세션이 같은 워킹트리에 커밋한다. 커밋 전 `git status` 로 내 파일만 스테이징, push 전 `git fetch`.
+  이번 세션에도 다른 세션 커밋 2개(`4a3c2316`·`24fe35e8`)가 먼저 들어와 있었다. 미추적 문서 `docs/analysis/2026-08-19-장비-고정자산-대조표.md` 는 **내 것이 아니라 손대지 않았다**.
+- **로컬 `dev:d1` 서버를 이번 세션에서 띄웠다**(192.168.0.94:3000, dist 서빙). 코드 수정 시 `npm run build` 선행.
+
+## 다음 세션 TODO
+
+1. **주문서 값 ↔ 패널 확정값 불일치 감지** (이번 세션에서 옵션 「나」로 제시, 미채택·보류) —
+   `designer_intakes.finishing_json`(디자이너 확정) 과 주문 라인 마감이 어긋나도 경고가 없다. 카드·청구는 주문서 값, 실물은 패널 값.
+2. **미등록 정기출금 2건 정체 확인** (이월) — 하나 `비씨카드` 매월 23일 정액 2,332,300원 · 전북 `신한카드할부` 매월 26일 745,630원.
+3. **선명 하나카드 이상 출금 2건** (이월) — `하나카드결제` 7/28~29 3건 9.2M · `하나카드기업` 8/18 4건 4.1M.
+4. **`card_transactions` 수집 결손** (이월) — 실제 출금 대비 동산 하나 −21% · 비씨 −35% · 전북 −50%. 결제예정 **금액**은 아직 못 믿는다.
+5. **prod 첫 카드 발행 때 마감·후가공 라벨 실물 확인** (이월) — prod `cards` 0건이라 서버 라벨 미확인. 체크리스트 라벨은 **생성 시 스냅샷이라 소급 안 된다**.
+6. **`postfix` 미실행** (이월) — `python scripts/ecount-order-postfix.py --from 2026-08-01 --to 2026-08-12 --apply` ⚠️8월 주문 510건이 삭제됐으니 대상 잔존부터 확인.
+7. **MES 에만 있는 8/12 전표 3건 판정** (이월) — `E1-20260812-035`·`-039`·`-044`.
+8. **감액 기간 기준 통일 여부** (이월) — `adjustments.adjustment_date` 컬럼 부재. 마이그레이션 여부 결정.
+9. **08-13 묶음 관찰** (이월) — `settings.data_complete_through` 가 비어 병행 경고가 꺼진 상태.
+10. **#17 개인통장 IGNORED 36건 정리 여부** (이월) — 그대로 둬도 무해(되돌리면 매칭 대기로 다시 뜬다).
 
 ## 검증 명령 (PowerShell)
 
 ```powershell
-node scripts/doc-diet-audit.cjs      # 현황판·메모리 인덱스 한도 (이번 세션 게이트)
-npm run audit:migration-drift        # prod 스키마 대조
-npm run verify                       # 타입체크 + 빌드 (이번 세션은 코드 변경 0 → 형식 확인용)
+npm run verify                       # 타입체크 + 빌드
 npm run audit:entity                 # entity 필터 61/61
-npm run build; npm run smoke         # 로컬 스모크 (dev:d1 기동 상태)
-$env:SMOKE_URL='https://webapp-9i0.pages.dev'; npm run smoke   # prod 스모크
+npm run check:dom                    # getElementById 참조 대조
+npm run test:finishing-label         # 마감·후가공 표기 28케이스(서버 정본)
+node scripts/sort-audit.cjs          # 목록 정렬 tie-break (P1 0건이어야)
+npm run audit:orderform-roundtrip    # 주문서 무변경 저장 왕복(★로컬 전용)
+node scripts/doc-diet-audit.cjs      # 현황판·메모리 인덱스 한도
 
-# 현재 카드 청구주기 확인 (prod)
-npx wrangler d1 execute webapp-production --remote --command "SELECT id, entity_id, card_company, card_number_last4, cutoff_day, payment_day, is_active FROM corporate_cards ORDER BY entity_id, card_company, id"
+npm run build; npm run smoke         # 로컬 스모크 112/112 (dev:d1 기동 상태)
+$env:SMOKE_URL='https://webapp-9i0.pages.dev'; npm run smoke   # prod 스모크 112/112
+
+# 이번 배포의 사문 판정 근거 재확인 (prod)
+npx wrangler d1 execute webapp-production --remote --command "SELECT COUNT(*) n, MAX(created_at) last FROM auto_process_jobs"
+npx wrangler d1 execute webapp-production --remote --command "SELECT COUNT(*) n, MAX(created_at) last FROM tasks WHERE type='AI_PROCESS'"
 ```
