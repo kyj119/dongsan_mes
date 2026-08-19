@@ -5,13 +5,12 @@ import reportsScript from '../scripts/reports.js?raw'
 import forecastScript from '../scripts/forecast.js?raw'
 import financialScript from '../scripts/financialReports.js?raw'
 import { financialReportsContent } from './financialReports'
-import { managementReportContent } from './managementReport'
 // demandScript 제거됨 (수요분석 탭 = 수주예측+품목분석 탭 재탕, ?raw concat 동명함수가 원본을 덮어써 해당 탭들을 깨뜨림) 2026-06-26
 
 export function reportsPage(c: Context<HonoEnv>) {
   const tabSwitchScript = `
     window.switchAnalyticsTab = function(tab) {
-      var tabs = ['reports', 'financial', 'forecast', 'mgmt'];
+      var tabs = ['reports', 'financial', 'forecast'];
       tabs.forEach(function(t) {
         var content = document.getElementById('ana' + t.charAt(0).toUpperCase() + t.slice(1) + 'Content');
         var tabBtn = document.getElementById('anaTab' + t.charAt(0).toUpperCase() + t.slice(1));
@@ -36,8 +35,6 @@ export function reportsPage(c: Context<HonoEnv>) {
         window.switchAnalyticsTab('forecast');
       } else if (tab === 'financial' || window.location.hash === '#financial') {
         window.switchAnalyticsTab('financial');
-      } else if (tab === 'mgmt' || window.location.hash === '#mgmt') {
-        window.switchAnalyticsTab('mgmt');
       }
     })();
   `;
@@ -61,9 +58,6 @@ export function reportsPage(c: Context<HonoEnv>) {
         </button>
         <button onclick="switchAnalyticsTab('forecast')" id="anaTabForecast" class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
           <i class="fas fa-chart-area mr-1"></i>수주 예측
-        </button>
-        <button onclick="switchAnalyticsTab('mgmt')" id="anaTabMgmt" class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
-          <i class="fas fa-stethoscope mr-1"></i>경영진단
         </button>
       </div>
 
@@ -513,10 +507,6 @@ export function reportsPage(c: Context<HonoEnv>) {
         ${financialReportsContent}
       </div>
 
-      <!-- 경영진단 탭 (managementReport 단일소스 이식, 정적 스냅샷·.mr-root 스코프) -->
-      <div id="anaMgmtContent" class="hidden">
-        ${managementReportContent}
-      </div>
     `,
     pageScript: combinedScript
   })
