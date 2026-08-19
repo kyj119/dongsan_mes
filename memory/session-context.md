@@ -1,76 +1,99 @@
-# 세션 핸드오프 — 2026-08-19
+# 세션 핸드오프 — 2026-08-19 (법인카드 청구주기)
 
 > 이 파일은 **덮어쓰기**다. 지난 세션 내용은 남기지 않는다(미완 TODO만 「이월」 표시로 옮긴다).
 
-## 이번 세션에 한 것 — 카드 마감·후가공 표기 통일 (prod 배포·push 완료)
+## 이번 세션에 한 것 — 법인카드 마감일·결제일 정정 + NH농협 개인카드 제거
 
-용준님 지적 「카드에서 후가공 설명이 제대로 안 된다 — 마감은 보통 `4방열재단`·`좌우 줄미싱+상하 봉미싱`으로 쓰고, 펀칭은 총 개수나 위치로 나오면 좋겠다」에서 출발.
-경위 전문 = `.claude/PROJECT_STATUS_ARCHIVE.md` §2026-08-19 카드 마감·후가공 표기.
+용준님 요청 「카드대금 나가는 패턴을 기반으로 카드사별 법인카드 관리 마감일/결제일 수정 — 동산이랑 선명 둘 다」.
+**코드 변경 0 · prod D1 데이터만 정정** → 배포 불필요(웹은 DB를 직접 읽는다).
+경위 전문 = `.claude/PROJECT_STATUS_ARCHIVE.md` §2026-08-19 법인카드 마감일·결제일 · 정본 = memory `design-card-billing-cycle`.
 
-| 커밋 | 내용 |
-|---|---|
-| `771e8db3` | 표기 정본 `src/utils/finishingLabel.ts` + 클라 사본 `src/scripts/shared/finishingLabel.js` 신설, 5개 호출부 위임, selftest 게이트 |
-| `3a302913` | 현황판에 커밋 해시 기록 |
+| 마이그 | 내용 | 상태 |
+|---|---|---|
+| `0536_card_cutoff_payment_day_calibration.sql` | 결제일=은행 출금 실측 · 마감일=상관 추정 | prod 적용됨 — **마감일 추정은 틀렸다**(아래) |
+| `0537_card_cycle_official_credit_period.sql` | 마감일을 **카드사 공식 신용공여기간**으로 재정정 | prod 적용 · **이게 현재값** |
+| `0538_remove_nh_personal_card.sql` | `corporate_cards` #16(NH농협) 삭제 | prod 적용 · 고아 0 |
 
-prod 배포 `cf0af4f0` · smoke **111/111** · origin/main push 완료(0/0).
+**현재 prod 값 (정본)**
 
-**근본 원인 = 표기 규칙 사본 5벌**. 같은 데이터가 화면마다 다른 문장이었다.
+| 카드사 | 법인 | 공식 이용기간 | cutoff/payment |
+|---|---|---|---|
+| 하나카드 | 동산(#4,5,6) | 전월 3일 ~ 당월 2일 | **2 / 15** |
+| 하나카드 | 선명(#7,8,9)·청주(#25) | 전전월 28일 ~ 전월 27일 | **27 / 10** |
+| BC(IBK기업) | 동산(#3,24) | 전월 1일 ~ 전월 말일 | **31(말일) / 15** |
+| BC(IBK기업) | 선명(#10,11,12) | 전전월 26일 ~ 전월 25일 | **25 / 10** |
+| 전북은행 JB | 동산(#13,14,15,18~23) | 전월 8일 ~ 당월 7일 | **7 / 22** |
 
-| 위치 | 예전 출력 |
-|---|---|
-| `routes/orders/helpers.ts` (체크리스트 라벨·DB 스냅샷) | `마감(2면열재단)` / `펀칭 1cm 1cm 2cm 0cm 0cm 0cm 0cm 0cm` |
-| `scripts/cardDetail.js` ×2 | `2면열재단` / params 나열 |
-| `scripts/cards/detail.js` ×2 | `열재단 사방` · `상:열재단` |
-| `scripts/cards/core.js` (칸반) | `상하:열재단` |
-
-전부 **방식별 개수만 세어 어느 변인지가 소실**됐고, 펀칭은 params를 키 순서대로 이어붙이며 개수에 `cm`를 붙이고 0도 출력했다.
-
-**확정된 표기 규칙**(용준님 승인):
-- 4변 동일 → `4방열재단`
-- 그 외 → 방향 나열 `상하좌 열재단` · `좌우 줄미싱+상하 봉미싱`(그룹 순서는 **좌우 축 먼저**, 방향 문자는 상하좌우 순)
-- 펀칭 → `펀칭 4개(상 2, 모서리 좌상·우상)` · `펀칭 8개(4모서리, 상 2, 하 2)`
-- `margin_*` 은 라벨에서 제외(여백은 카드 규격에 이미 반영)
+출처 = bccard.com 회원사별 신용공여기간(하나 `ind0625` · 기업 `pop_credit_giving_ibk`) · jbbank.co.kr `MPST_GDNC_SETL_MTHD`.
+산출 사이클이 공식표와 정확히 일치함을 확인했다(BC 동산 8/1~8/31→9/15 · 전북 7/8~8/7→8/22 · 하나 동산 8/3~9/2→9/15 ·
+BC 선명 7/26~8/25→9/10 · 하나 선명·청주 7/28~8/27→9/10).
 
 ## 결정과 이유
 
-- **정본은 서버(`utils/finishingLabel.ts`), 클라는 사본**(`scripts/shared/finishingLabel.js`, IIFE + `window.MES_FIN`). 체크리스트 라벨이 **DB에 박히는 스냅샷**이라 서버가 기준이어야 하고, 화면은 같은 문장을 보여야 한다. `orderLineAmount.ts ↔ calc.js` 와 같은 쌍 구조.
-- **게이트 = `npm run test:finishing-label`**(28케이스, `scripts/finishing-label-selftest.cjs`). 서버만 지킨다 — **클라 사본은 못 잡으니 두 파일을 함께 고칠 것.**
-- **칸반 목록 배지는 후가공 이름만 유지**(9~10px pill). 개수·위치는 모달·카드 상세·작업지시서에서 보여준다.
-- **기존 카드 소급 안 함** — 라벨은 카드 생성 시점 스냅샷이고 prod `cards` 0건이라 실질 영향이 없다. 필요해지면 `card_checklist_items.label` 백필 마이그레이션.
-- **`params.directions`(마감 후가공)는 방향만 표기**(`열재단 상좌`). 예전엔 객체를 String해 `열재단 [object Object]` 가 찍힐 경로였다.
+- **★마감일(`cutoff_day`)은 사용내역 데이터로 추정하지 않는다 — 카드사 공식표가 정본.**
+  0536 에서 「사이클 합계 ↔ 출금액 상관 최대점」으로 뽑았다가 전량 오설정했다. 원인은 **할부**다 —
+  큰 할부 구매가 있던 달은 그 달 결제액이 오히려 낮고 이후 달이 높아져 **정답 마감일에서 음의 상관**이 나온다
+  (전북 공식값 cut7 에서 r=−0.56, 오답 cut22 에서 +0.83). 여기에 `card_transactions` 수집 결손
+  (출금액 대비 동산 하나 −21% · 비씨 −35% · 전북 −50% · 농협 −100%)이 겹쳐 금액 정합도 성립하지 않았다.
+- **결제일(`payment_day`)은 은행 출금 실측이 정본** — `bank_transactions` WITHDRAWAL 적요
+  `하나카드기업`·`비씨카드출금`·`JB카드결제{last4}`. 실제로 틀려 있던 건 동산 비씨 5957(#24) 22→**15** 뿐이었다.
+- **★비씨는 회원사(발급은행)별로 표가 다르다.** 동산·선명 둘 다 출금계좌가 기업은행이라 IBK 표를 쓴다.
+  원래 값 중 **동산 하나 2/15 · 선명 비씨 25/10 은 처음부터 맞았고**, 0536 이 잘못 바꿨다가 0537 로 원복됐다.
+- **NH농협카드는 법인카드가 아니다 → #16 삭제.** 출금계좌가 `bank_accounts` #17
+  (농협 08712205285 · 예금주 **김진수** · 별칭 「대표자」)로 대표자 개인 통장이다. 같은 통장에 청약저축·NH손보
+  개인보험·KB오픈 개인이체가 섞여 있다. #16 은 카드번호·명의자 없음 · 한도 0 · `is_active=0` ·
+  `card_transactions` 0건 · 바로빌 미등록인 껍데기였다. 백업 = `_bak_0538_removed_cards`.
+- **마감일 31 = 말일**로 쓴다. 라우트·엔진 모두 `min(cutoff_day, 그 달 말일)` 로 클램프하므로 2월도 안전
+  (`routes/cardExpenses.ts` clampDay · `utils/cashflowEngine.ts`).
 
 ## 다음 세션 TODO
 
-1. **prod 첫 카드 발행 때 라벨 실물 확인** — prod `cards` 0건이라 서버 라벨은 아직 실물로 못 봤다(로컬에서는 실제 발행까지 검증 완료). 첫 주문이 카드를 만들면 `card_checklist_items.label` 을 한 번 눈으로 볼 것.
-2. **마감 그룹 순서(좌우 먼저)가 현장 관행과 맞는지** — 승인받은 예시대로 구현했지만 실사용 피드백이 필요하다. 바꾸려면 `finishingLabel` 두 파일의 `sideRank` 한 줄.
-3. **`postfix` 미실행** (08-13 이월) — 권한 분류기가 막아 용준님 직접 실행:
-   `python scripts/ecount-order-postfix.py --from 2026-08-01 --to 2026-08-12 --apply`
-   ⚠️ 8월 주문 510건이 08-13 에 전량 삭제됐으니 **실행 전에 대상이 남아 있는지부터 확인**할 것.
-4. **MES 에만 있는 8/12 전표 3건 판정** (08-13 이월) — `E1-20260812-035`·`-039`·`-044`. 위와 같은 이유로 존재 여부 선확인.
-5. **감액 기간 기준 통일 여부** (08-18 이월) — `adjustments.adjustment_date` 컬럼이 없어 매출 원장에서 감액만 등록시각 기준. 마이그레이션할지 결정.
-6. **08-13 묶음 관찰** (08-18 이월) — 이미 prod 에 나간 코드다. 자재 판정 불가 노출·이카운트 대사·완결성 경고가 역으로 문제를 만들지 관찰.
-   ⚠️ `settings.data_complete_through` 는 **아직 비어 있어 병행 경고가 꺼진 상태**다.
-7. 나머지 잔여는 현황판 인덱스 참조 — 이 파일에 중복 기재하지 않음.
+1. **대표자 개인통장 #17 처리 판단** (이번 세션 발생) — `entity_id=1` 활성 계좌로 등록돼 자금·판관비 집계에 섞인다.
+   입금 쪽엔 실거래(다울광고·서울야생화·플래그몰 등)도 있어 **단순 제외는 안 된다**. 계정분류로 개인분만 걷어낼지 결정 필요.
+   관련 = memory `design-pnl-expense-sourcing`.
+2. **미등록 정기출금 2건 정체 확인** (이번 세션 발생) — 하나은행 `비씨카드` 매월 23일 **정액 2,332,300원**(할부/카드론 추정) ·
+   전북은행 `신한카드할부` 매월 26일 745,630원(신한 카드는 `corporate_cards` 에 없다). 카드 명세서로 확인 후 등록 여부 결정.
+3. **선명 하나카드 이상 출금 2건** (이번 세션 발생) — `하나카드결제` 7/28~29 3건 9.2M · `하나카드기업` 8/18 4건 4.1M.
+   평소 10일 패턴 밖이라 선결제/연체 재출금 여부 확인 필요(결제일 설정에는 영향 없음).
+4. **`card_transactions` 수집 결손** (이월·확대) — 실제 출금액 대비 동산 하나 −21% · 비씨 −35% · 전북 −50%.
+   결제예정 **금액**은 아직 못 믿는다(날짜·구간은 이제 맞다). 관련 = memory `project-card-sync-collection`.
+5. **prod 첫 카드 발행 때 라벨 실물 확인** (08-19 이월) — prod `cards` 0건이라 서버 라벨은 아직 실물 미확인.
+6. **`postfix` 미실행** (08-13 이월) — `python scripts/ecount-order-postfix.py --from 2026-08-01 --to 2026-08-12 --apply`
+   ⚠️ 8월 주문 510건이 08-13 에 전량 삭제됐으니 **실행 전에 대상이 남아 있는지부터 확인**.
+7. **MES 에만 있는 8/12 전표 3건 판정** (08-13 이월) — `E1-20260812-035`·`-039`·`-044`. 존재 여부 선확인.
+8. **감액 기간 기준 통일 여부** (08-18 이월) — `adjustments.adjustment_date` 컬럼 부재. 마이그레이션할지 결정.
+9. **08-13 묶음 관찰** (08-18 이월) — ⚠️`settings.data_complete_through` 는 아직 비어 병행 경고가 꺼진 상태.
+10. **`scripts/finance-diagnose.cjs` 미커밋분** (이월) — 장비 이중계상 제외 + 선명 STOCK 추가. 이번 세션에서 건드리지 않았고
+    커밋도 하지 않았다. 그 작업을 한 세션이 마무리할 것(빌드 산출물이 아니라 prod 영향 없음).
 
 ## 판단 기준 · 주의사항
 
-- **★표기를 새로 찍을 땐 사본을 만들지 말 것.** 마감·후가공 문자열이 필요하면 서버는 `utils/finishingLabel`, 화면은 `window.MES_FIN`(`finishing`/`punching`/`pp`/`ppList`). 이번 건의 근본이 「같은 규칙 5벌」이었다.
-- **★카드 스크립트를 새 페이지에 실으면 `shared/finishingLabel.js` 도 함께 실어야 한다.** `MES_FIN` 이 없으면 표기가 **빈 문자열로 조용히 사라진다**(폴백이 그렇다). 현재 싣는 페이지는 `pages/cards.ts`·`pages/cardDetail.ts` 둘뿐.
-- **★로컬 카드 발행 검증 경로 = `POST /api/orders/:id/items`**(append). 새 주문을 만들 필요 없이 기존 주문(상태 `CONFIRMED`/`PRINTING`/`PRINT_DONE`/`HOLD`)에 라인을 붙이면 카드+체크리스트가 정규 생성기로 생긴다. **정리할 때 딸린 것들을 같이 지울 것** — `card_checklist_items`·`card_items`·`cards`·`order_items`·`order_billing_groups` + `orders` 금액 3개(`total_amount`/`vat_amount`/`final_amount`).
-- **인쇄물 검증은 `window.open` 스텁으로.** `printWorkOrder`/`printSewingWorkOrder` 는 새 창에 `document.write` 후 `window.print()` 를 자동 호출한다 — 그대로 누르면 인쇄 다이얼로그가 떠 브라우저 자동화가 멈춘다. `window.open` 을 `{document:{write,close}}` 스텁으로 바꿔 HTML 문자열만 캡처하면 안전하다.
-- **`npm run smoke` 는 기본이 localhost.** prod 를 재려면 `SMOKE_URL=https://webapp-9i0.pages.dev`.
-- **공유 체크아웃 — 다른 세션이 같은 워킹트리에 커밋한다.** 이번 세션 중에도 `346bfbe5`(훅 경로 수정)가 끼어들었다. 커밋 전 `git status` 로 **내 파일만** 스테이징하고, push 전 `git fetch` 로 divergence 확인.
-- **prod 에 시험 주문을 만들지 않는다** — 저장 왕복 시험은 로컬에서. prod 는 읽기 전용 확인만(이번엔 배포 번들에서 `MES_FIN` 을 직접 호출해 산출물을 실측했다).
+- **★카드 청구주기를 다시 만질 일이 생기면 데이터로 역산하지 말고 카드사 표부터 볼 것.** 이번 세션이 그 함정에 한 번 빠졌다.
+  카드사 표는 **결제일 → 이용기간** 이므로, 우리 모델로는 「이용기간 종료일 = `cutoff_day`」로 옮기면 된다.
+  `payment_day > cutoff_day` 면 동월결제, 아니면 익월결제 — 이 규칙이 라우트와 엔진 양쪽에 같이 박혀 있다.
+- **★은행 출금일은 휴일이면 밀린다.** 2026 실측 = 2/19(설연휴) · 3/16(일→월) · 5/26(대체공휴일) · 8/18(광복절 대체).
+  밀린 날을 결제일로 읽으면 카드사 표와 안 맞는다.
+- **prod D1 직접 UPDATE 는 반드시 백업 테이블부터.** 이번 건 = `_bak_0536_card_days`(0536 이전 원본 전량) ·
+  `_bak_0538_removed_cards`(삭제 행 전체 + 사유). 롤백 SQL 은 각 마이그레이션 주석에 그대로 있다.
+- **`wrangler d1 execute --file` 은 성공해도 가짜 오류를 뱉을 수 있다**(「Not currently importing anything」).
+  재실행 전 반드시 결과를 조회할 것. 이번 마이그레이션 3개는 절대값 대입/`INSERT OR IGNORE` 라 재실행해도 안전하다.
+- **`d1_migrations` 추적은 이 3개를 모르는 상태다** — `--file` 직접 실행이라 추적 테이블에 안 남는다.
+  `npm run audit:migration-drift` 는 스키마만 보므로 통과한다(실제로 통과 확인함). 데이터 마이그레이션은 원래 이 방식이다.
+- **현황판 400자 상한** — 이번 세션에서 이전 TNS 항목(430자)도 경위를 ARCHIVE 로 옮겨 389자로 맞췄다.
+  게이트 = `node scripts/doc-diet-audit.cjs`(커밋 훅 연동).
+- **공유 체크아웃 — 다른 세션이 같은 워킹트리에 커밋한다.** 커밋 전 `git status` 로 **내 파일만** 스테이징하고,
+  push 전 `git fetch` 로 divergence 확인.
 
 ## 검증 명령 (PowerShell)
 
 ```powershell
-npm run verify                      # 타입체크 + 빌드
-npm run test:finishing-label        # 마감·후가공 표기 28케이스 (이번 세션 신설)
-npm run build; npm run smoke        # 로컬 스모크 (dev:d1 기동 상태에서 111/111)
-npm run audit:migration-drift       # prod 스키마 대조 (스키마 건드린 배포면 필수)
-npm run audit:entity                # entity 필터 61/61
-npm run audit:orderform-roundtrip   # 주문서 왕복 무손실 (로컬 전용 · prod 금지)
-node scripts/doc-diet-audit.cjs     # 현황판·메모리 인덱스 한도
+node scripts/doc-diet-audit.cjs      # 현황판·메모리 인덱스 한도 (이번 세션 게이트)
+npm run audit:migration-drift        # prod 스키마 대조
+npm run verify                       # 타입체크 + 빌드 (이번 세션은 코드 변경 0 → 형식 확인용)
+npm run audit:entity                 # entity 필터 61/61
+npm run build; npm run smoke         # 로컬 스모크 (dev:d1 기동 상태)
 $env:SMOKE_URL='https://webapp-9i0.pages.dev'; npm run smoke   # prod 스모크
+
+# 현재 카드 청구주기 확인 (prod)
+npx wrangler d1 execute webapp-production --remote --command "SELECT id, entity_id, card_company, card_number_last4, cutoff_day, payment_day, is_active FROM corporate_cards ORDER BY entity_id, card_company, id"
 ```
