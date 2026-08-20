@@ -62,6 +62,198 @@ inventoryCountRouter.get('/', async (c) => {
   }
 })
 
+// GET /consumption — 실사 회차 사이의 **소모량** (기초 + 매입 − 기말)
+//
+// 왜 필요한가 (용준님 2026-08-19)
+//   주간 실사는 「그날 얼마 남았나」만 답한다. 판단에 필요한 건 「얼마를 썼나」다.
+//   두 회차 사이에 매입이 끼면 단순 차감(기초−기말)은 소모를 과소평가하고,
+//   많이 사서 많이 남은 주를 「덜 썼다」고 읽게 만든다.
+//
+//   ★반드시 `/:id` 보다 먼저 등록한다 — 뒤에 두면 'consumption' 이 :id 로 잡혀 NaN 조회가 된다.
+//
+// 산식   소모 = 기초 + 매입 − 기말      (구간 = 인접한 두 실사 회차)
+//
+// 단위 — 실사·재고는 base_unit(M·L), 발주는 unit(롤·통)이다. **매입만** pack_size 로 환산한다.
+//   base_unit 이 NULL 인 품목(현수막 원단 AQ*)은 발주도 재고도 yd 라 환산하지 않는다.
+//   그 pack_size=130 은 실사 입력 편의 계수일 뿐 환산계수가 아니다(마이그 0540).
+//   이 구분을 놓치면 현수막 매입이 130배로 잡혀 소모량이 통째로 무의미해진다.
+//
+// 알려진 한계 — 숨기지 말고 flags 로 같이 낸다. 이 수치는 「추정」이지 「실측」이 아니다.
+//   ① 매입 구역 귀속 = items.storage_zone_id.
+//      purchase_order_items.storage_zone_id 는 prod 전량 NULL 이라 쓸 수 없다.
+//      품목이 한 구역에만 속한다는 가정 위에 선다.
+//   ② 날짜 기준 = po.order_date. inventory_receipts 가 prod 0행이라 실입고일을 모른다.
+//      발주일↔입고일 시차만큼 구간이 밀린다(주 단위 실사에서 특히 크다).
+//   ③ 양끝 중 한쪽이라도 미입력(NULL)이면 그 품목은 그 구간에서 **제외**한다.
+//      0 으로 채우면 재고 전량이 소모로 잡힌다.
+//   ④ 동일 (발주,품목,수량,단가) 중복 라인이 prod 에 실재한다(2026-08-19 기준 21행).
+//      임의로 합치지 않는다 — 진짜 분할발주와 구분할 근거가 없다. 건수만 보고한다.
+inventoryCountRouter.get('/consumption', async (c) => {
+  try {
+    const zoneId = c.req.query('zone_id') ? Number(c.req.query('zone_id')) : null
+    const from = c.req.query('from') || null
+    const to = c.req.query('to') || null
+
+    // ── 회차 나열 (날짜 오름차순). DRAFT 는 제외 — 아직 실사표가 확정되지 않았다.
+    const ef = entityFilter(c, 'ic')
+    const cParams: any[] = [...ef.params]
+    let cQuery = `SELECT ic.id, ic.count_date, ic.status, ic.storage_zone_id
+                    FROM inventory_counts ic
+                   WHERE ic.status IN ('SUBMITTED', 'APPROVED')` + ef.clause
+    if (zoneId) { cQuery += ' AND ic.storage_zone_id = ?'; cParams.push(zoneId) }
+    if (from) { cQuery += ' AND ic.count_date >= ?'; cParams.push(from) }
+    if (to) { cQuery += ' AND ic.count_date <= ?'; cParams.push(to) }
+    // 정렬 규약: 같은 날 두 회차가 있으면 id 로 tie-break (구간 경계가 흔들리면 소모량이 뒤집힌다)
+    cQuery += ' ORDER BY ic.count_date ASC, ic.id ASC LIMIT 60'
+
+    const { results: counts } = await c.env.DB.prepare(cQuery).bind(...cParams)
+      .all<{ id: number; count_date: string; status: string; storage_zone_id: number | null }>()
+
+    if (!counts || counts.length < 2) {
+      return c.json({
+        success: true,
+        data: { counts: counts || [], periods: [], items: [], flags: { reason: '소모량 산출에는 실사 회차가 2개 이상 필요합니다' } }
+      })
+    }
+
+    // ── 회차별 실사 라인 (바인드 한도: 회차 수 ≤ 60 이라 IN 절 안전)
+    const ids = counts.map((r) => r.id)
+    const { results: lines } = await c.env.DB.prepare(`
+      SELECT ci.count_id, ci.item_id, ci.counted_quantity,
+             i.item_code, i.item_name, i.unit, i.base_unit, i.pack_size, i.avg_unit_cost
+        FROM inventory_count_items ci
+        JOIN items i ON i.id = ci.item_id
+       WHERE ci.count_id IN (${ids.map(() => '?').join(',')})
+    `).bind(...ids).all<{
+      count_id: number; item_id: number; counted_quantity: number | null
+      item_code: string; item_name: string; unit: string | null
+      base_unit: string | null; pack_size: number | null; avg_unit_cost: number | null
+    }>()
+
+    type Meta = { code: string; name: string; unit: string; baseUnit: string | null; pack: number; cost: number }
+    const meta = new Map<number, Meta>()
+    const counted = new Map<string, number>()   // `${countId}:${itemId}` → base 수량
+    for (const l of lines || []) {
+      if (!meta.has(l.item_id)) {
+        meta.set(l.item_id, {
+          code: l.item_code, name: l.item_name,
+          // 표시 단위는 재고 단위(base)가 정본 — 실사·소모가 그 단위다
+          unit: l.base_unit || l.unit || '',
+          baseUnit: l.base_unit,
+          pack: l.pack_size && l.pack_size > 0 ? Number(l.pack_size) : 1,
+          cost: Number(l.avg_unit_cost || 0),
+        })
+      }
+      if (l.counted_quantity != null) counted.set(`${l.count_id}:${l.item_id}`, Number(l.counted_quantity))
+    }
+
+    // ── 매입 (전 구간 한 번에 조회 후 JS 에서 구간 배분)
+    const firstDate = counts[0].count_date
+    const lastDate = counts[counts.length - 1].count_date
+    const pef = entityFilter(c, 'po')
+    const pParams: any[] = [firstDate, lastDate, ...pef.params]
+    let pQuery = `SELECT poi.po_id, poi.item_id, poi.quantity, poi.unit_price, po.order_date
+                    FROM purchase_order_items poi
+                    JOIN purchase_orders po ON po.id = poi.po_id
+                    JOIN items i ON i.id = poi.item_id
+                   WHERE po.order_date > ? AND po.order_date <= ?` + pef.clause
+    if (zoneId) { pQuery += ' AND i.storage_zone_id = ?'; pParams.push(zoneId) }
+    const { results: buys } = await c.env.DB.prepare(pQuery).bind(...pParams)
+      .all<{ po_id: number; item_id: number; quantity: number; unit_price: number; order_date: string }>()
+
+    // 중복 의심 = 동일 (발주, 품목, 수량, 단가). 합치지 않고 세기만 한다.
+    const dupSeen = new Map<string, number>()
+    let dupLines = 0
+    for (const b of buys || []) {
+      const k = `${b.po_id}:${b.item_id}:${b.quantity}:${b.unit_price}`
+      const n = (dupSeen.get(k) || 0) + 1
+      dupSeen.set(k, n)
+      if (n > 1) dupLines++
+    }
+
+    // ── 구간별 집계
+    const periods: any[] = []
+    const perItem = new Map<number, { used: number; buy: number; segs: any[] }>()
+    let skipped = 0
+    let negatives = 0
+
+    for (let i = 1; i < counts.length; i++) {
+      const t0 = counts[i - 1]
+      const t1 = counts[i]
+      const days = Math.max(1, Math.round((Date.parse(t1.count_date) - Date.parse(t0.count_date)) / 86400000))
+
+      // 이 구간의 매입을 품목별 base 수량으로 접는다
+      const buyQty = new Map<number, number>()
+      const buyAmt = new Map<number, number>()
+      for (const b of buys || []) {
+        if (b.order_date <= t0.count_date || b.order_date > t1.count_date) continue
+        const m = meta.get(b.item_id)
+        if (!m) continue                                  // 이 실사표에 없는 품목 = 다른 구역
+        // ★base_unit 이 있는 품목만 환산한다. NULL 이면 발주 단위 = 재고 단위.
+        const factor = m.baseUnit ? m.pack : 1
+        buyQty.set(b.item_id, (buyQty.get(b.item_id) || 0) + Number(b.quantity) * factor)
+        buyAmt.set(b.item_id, (buyAmt.get(b.item_id) || 0) + Number(b.quantity) * Number(b.unit_price || 0))
+      }
+
+      let pUsedAmt = 0, pBuyAmt = 0, pItems = 0, pSkipped = 0
+      for (const [itemId, m] of meta) {
+        const open = counted.get(`${t0.id}:${itemId}`)
+        const close = counted.get(`${t1.id}:${itemId}`)
+        if (open == null || close == null) { skipped++; pSkipped++; continue }   // ③ 양끝 필수
+        const buy = buyQty.get(itemId) || 0
+        const used = open + buy - close
+        if (used < 0) negatives++
+
+        const rec = perItem.get(itemId) || { used: 0, buy: 0, segs: [] }
+        rec.used += used
+        rec.buy += buy
+        rec.segs.push({ from: t0.count_date, to: t1.count_date, days, open, buy, close, used })
+        perItem.set(itemId, rec)
+
+        pUsedAmt += used * m.cost
+        pBuyAmt += buyAmt.get(itemId) || 0
+        pItems++
+      }
+      periods.push({
+        from: t0.count_date, to: t1.count_date, days,
+        items: pItems, skipped: pSkipped,
+        used_amount: Math.round(pUsedAmt), purchase_amount: Math.round(pBuyAmt),
+      })
+    }
+
+    const items = [...perItem.entries()].map(([itemId, r]) => {
+      const m = meta.get(itemId)!
+      return {
+        item_id: itemId, item_code: m.code, item_name: m.name, unit: m.unit,
+        total_used: Math.round(r.used * 1000) / 1000,
+        total_purchased: Math.round(r.buy * 1000) / 1000,
+        used_amount: Math.round(r.used * m.cost),
+        periods: r.segs,
+      }
+    }).sort((a, b) => b.used_amount - a.used_amount || a.item_code.localeCompare(b.item_code))
+
+    return c.json({
+      success: true,
+      data: {
+        counts: counts.map((r) => ({ id: r.id, date: r.count_date, status: r.status })),
+        periods,
+        items,
+        flags: {
+          // 이 수치를 어디까지 믿을지 판단할 근거. 화면에도 그대로 띄운다.
+          zone_attribution: 'items.storage_zone_id (발주 라인에 구역이 없어 품목 마스터로 귀속)',
+          date_basis: 'purchase_orders.order_date (입고 기록이 없어 발주일 기준 — 시차만큼 구간이 밀림)',
+          skipped_item_periods: skipped,
+          duplicate_purchase_lines: dupLines,
+          negative_consumption_items: negatives,
+        },
+      },
+    })
+  } catch (error) {
+    console.error('src/routes/inventoryCount.ts error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // POST / — 실사 생성 (DRAFT)
 inventoryCountRouter.post('/', async (c) => {
   try {

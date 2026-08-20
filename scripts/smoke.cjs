@@ -123,6 +123,9 @@ const ENDPOINTS = [
   { path: '/api/inventory', name: 'inventory.list' },
   { path: '/api/inventory-counts', name: 'inventoryCount.list' },
   { path: '/api/inventory-counts/1', name: 'inventoryCount.detail', allow404: true },
+  // ★`/:id` 보다 먼저 등록돼야 하는 경로 — 순서가 뒤집히면 'consumption' 이 id 로 파싱돼 조용히 빈 응답이 된다
+  { path: '/api/inventory-counts/consumption?zone_id=1', name: 'inventoryCount.consumption' },
+  { path: '/api/inventory-valuation/report', name: 'inventoryValuation.report' },
 
   // 인사/급여
   { path: '/api/hr/employees', name: 'hr.employees' },
