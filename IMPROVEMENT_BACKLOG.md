@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-08-20T15:46:13+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-08-20T20:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,22 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 5 보안 + 인프라 (2026-08-20T20:10):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → origin `23785b6`(직전 Area4 HEAD와 동일, shallow-fetch "forced update" 표기는 `git rev-parse --is-shallow-repository`=true로 재확인, 회귀 아님) → `git checkout main && git reset --hard origin/main`(HEAD `23785b6`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area5 자신의 앵커(`b6d9305`) 이후 웹앱 범위 diff = 신규 커밋 9개 — `a6beebe`/`68c2b60`/`7671499`/`bb56815`/`23dbe6e`는 이전 Area5 사이클에서 이미 보안 렌즈로 정독 완료. **미검토 5건** `8fdf76c`(재고 base-unit rebase+소모량API+평가소스 수정)·`64d236c`(재고실사 2칸입력, 0540)·`3b4827a`(카드 슬라이드 race/pinch 가드)·`ddf0108`(카드 슬라이드 내비 신규 라우트)·`a22fb42`(주문서 후가공요약+pack-search)·`3bd431c`(대표자 개인통장 분리)·`619535b`(카드 마감일 데이터정정)·`771e8db`(마감표기 통합) 중 보안 렌즈 미검토분을 직접 정독(3bd431c/771e8db/619535b은 Area6가, a22fb42/ddf0108은 Area2가 authMiddleware·entityFilter·escapeHtml을 이미 확인했으나 재확인 겸 XSS/SQLi 관점 추가 점검).
+> - **`ddf0108`+`3b4827a`(카드 슬라이드 내비, `GET /cards/:id/neighbors`) 보안 정독**: `cardEntityFilter(c,'c')` 양쪽 쿼리(현재카드+큐 목록) 적용 확인(Area2 재확인). 프론트 `onclick="cdSlide(' + neighbors.prev_id + ')"` — `prev_id`/`next_id`는 서버 `cards.id`(SQLite 정수 PK)에서 온 숫자값이라 JSON 직렬화 시 항상 number, 문자열 이스케이프 탈출 불가(XSS 무관). `esc(stLabel)` 등 신규 텍스트 노드는 escapeHtml 적용 확인. Clean.
+> - **`64d236c`(재고실사 2칸입력) 보안 정독**: `inventoryCount.ts` `POST /`·`PUT /:id/items` 신규/변경 SQL 전건 `?` 바인딩(문자열 결합 0), `numOrNull()` 헬퍼로 입력값 `Number()` 강제 후 바인드(주입 불가). `PUT /:id/items`는 mutate 직전 같은 블록에 `SELECT ... WHERE id=?${entityFilter.clause}` read-gate 확인(#481 "블록내 read-gate" 패턴 충족, IDOR 안전). 프론트 `packVal`/`perPack`은 품목 수량(숫자)이라 미이스케이프 정상(FP클래스 — 숫자/치수는 비-free-text).
+> - **`8fdf76c` 신규 `GET /inventory-counts/consumption` 보안 정독**: 라우터 상속 `authMiddleware, requireRole('ADMIN','MANAGER')` 확인, 등록 순서 `/consumption`이 `/:id`보다 먼저(주석 명시·실제 소스 순서 일치 재확인) — 섀도잉 없음. 전 쿼리(회차 목록·라인 조회·매입 조회) `?` 바인딩, `IN (${ids.map(()=>'?').join(',')})`는 파라미터 개수만큼 플레이스홀더 생성(값 삽입 아님, 안전), 회차수 `LIMIT 60` 캡으로 바인드 폭주 방지. `entityFilter(c,'ic')`+`entityFilter(c,'po')` 양쪽 적용. SQLi/IDOR 관점 추가 확인 완료, clean(Area4가 이미 데이터정합성 렌즈로 확인한 것과 別 렌즈로 재검증).
+> - **`8fdf76c` `inventoryValuation.ts /report` 보안 정독**: `entityFilter(c)` 결과(`ef.clause`/`ef.params`)를 서브쿼리(`stockSub`)에 문자열 삽입하는 형태이나, 이는 프로젝트 전역 확립된 `entityFilter()` 헬퍼 패턴(clause는 " AND entity_id = ?"류 정적 문자열, 실제 값은 별도 `?` 바인드)이라 사용자 입력 직결 아님 — 주입 불가. 라우터 전역 `authMiddleware` 상속 확인.
+> - **standing scan**: ① 시크릿 폴백 `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43` 1건뿐(기존 FP, 변동없음). ② 기본 비밀번호 리터럴 grep → 0건. ③ CI yml secrets fallback → 0건. ④ 미청크 동적 IN절(`IN \(\$\{`) → 신규 churn 포함 0건(`8fdf76c`의 IN절은 위에서 확인한 안전 패턴).
+> - **npm audit 재확인**: `npm ci` 후 11건(1 moderate·8 high·2 critical) — #613 기보고와 완전 일치, net-new 0.
+> - **open 7건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` = #606·#608·#609·#612·#613·#614·#615(전건 변동없음, 신규 코멘트 없음). 7건 전부 `+1` 리액션 0(승인 대기).
+> - **backlog↔GitHub 절대값 재동기화**: open **7**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-5-security-infra.md는 이미 `line N` 잔여참조 0건(재확인). 이번 사이클은 실제 미검토 churn 5건(신규 라우트 2개 포함)을 SQLi/IDOR/XSS 3축으로 직접 정독했고, 전부 기존 codify된 레시피(entityFilter·block내 read-gate·숫자값 비-free-text FP·`entityFilter()` 헬퍼 clause 안전패턴)로 clean 판정 — 새 오탐/탐지 클래스 도출 없음.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 8건 → 이번 로그 추가 후 9건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(churn 5건 직접 정독, 전부 clean), 자동수정 0건, done-sync: open 7(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-08-20T15:46):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → **origin이 `de31dbf..8fdf76c`로 전진**(shallow-fetch 경계 이동, `git rev-parse --is-shallow-repository`=true로 재확인, 회귀 아님) → `git checkout main && git reset --hard origin/main`(HEAD `8fdf76c`). `npm ci`(0→81), `npx tsc --noEmit` clean.
