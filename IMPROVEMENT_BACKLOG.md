@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-08-20T03:50:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-08-20T09:44:45+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,21 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 3 UX/기능 감사 (2026-08-20T09:44):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → **origin이 `de31dbf..287e460`로 전진**(shallow-fetch 경계 이동, `git rev-parse --is-shallow-repository`=true로 재확인, 회귀 아님) → `git checkout main && git reset --hard origin/main`(HEAD `287e460`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area3 자신의 앵커(`68c2b60`) 이후 웹앱 범위 diff = 신규 커밋 11개 — `7671499`/`bb56815`/`23dbe6e`/`3bd431c`/`619535b`/`771e8db`는 Area2/4/5/6가 각자 렌즈로 이미 정독, **UX 렌즈로 미검토** `dc7a34e`(reports 경영진단 탭 제거)·`64d236c`(재고실사 2칸입력)·`3b4827a`(카드 슬라이드 race/pinch 가드)·`ddf0108`(카드 슬라이드 내비 신규)·`a22fb42`(주문서 후가공요약 상시노출+pack 검색화) 5건을 UX 렌즈로 직접 정독.
+> - **`ddf0108`+`3b4827a`(카드 슬라이드 내비, #26) 정독**: neighbors fetch 실패 시 `.catch(()=>null)` 폴백으로 화면은 항상 뜸(에러로 죽지 않음) · 로딩 중 `cdRoot.style.opacity='0.4'` 디밍 표시 · 터치 스와이프가 가로스크롤 다품목 표 안에서 시작하면 무시(스크롤 충돌 방지) · 키보드 화살표가 input/textarea/select/contentEditable 포커스 중엔 무시(폼 입력 방해 안 함) · 뒤로가기 `pushState({spaUrl})`로 shell.js popstate 복원 · 후속 커밋(`3b4827a`)이 race guard(구식 응답 폐기)·pinch guard·prefetch까지 자체 보강 — UX 체크리스트(빈 상태/에러메시지/로딩표시/모바일) 전항목 충족, 발견 없음.
+> - **`64d236c`(재고실사 2칸입력) 정독**: `pack_count`/`per_pack_qty` 두 칸 입력이 같은 파일(`icRenderItems`) 내에서 자체 렌더하는 `icCalc<id>` id라 cross-file silent-fail 아님(기존 FP클래스 (b)) · 계산은 서버가 수행(클라 곱셈 없음, 반올림/단위 판단 이원화 방지 설계 명시) · `updateItemPack` 실패 시 `alert()`로 사용자에게 즉시 통지. 발견 없음.
+> - **`a22fb42`(pack 수동입력→검색 경유) 정독**: 빈 결과 시 "일치하는 주문이 없습니다" 토스트(빈 상태 처리) · 검색 실패 시 서버 에러 메시지 그대로 토스트 · 후보 목록에 거래처/납품일/라인수/출고여부 배지로 오선택 방지 · `escapeHtml` 전건 적용. 발견 없음.
+> - **🔍 조사 후 기각 — `dc7a34e`(reports 경영진단 탭 제거) 후 `/management-report` 완전 고아화**: 탭 제거로 `/reports` 진입경로가 사라졌는데, `grep -rn "management-report" src/`로 확인하니 사이드바 메뉴(`menu.ts:76-78`)도 이미 **2026-07-18에 "손익허브 통합, /reports 탭으로 흡수" 사유로 주석처리**돼 있어 이번 커밋 이후 `/management-report`는 **URL 직접 입력 외 진입경로 0**(고아 페이지). 그러나 커밋 메시지 자체가 "Standalone /management-report page kept (direct URL access)"로 **의도를 명시**(백엔드-먼저-화면-나중 실수형 갭이 아니라 owner의 명시적 유지 결정) — Area 3 기존 FP 배제 기준("커밋 메시지에 명시된 의도")에 해당, 이슈 미등록.
+> - **standing scan**: ① HTML↔JS silent-fail — 이번 churn 신규 id(`icCalc<id>`/`packResults`) 전부 동일파일 자체렌더, cross-file 갭 0. ② axios→라우트 존재성 — 신규 churn의 axios 신규호출 5건(`/cards/:id/neighbors`·`/inventory-counts/:id/items` PUT·`/settings/data-completeness`·`/items/:id`·`/shipments/pack-search`) 전부 라우터 파일에 실재 확인(뒤 2건은 `7671499` 소속, Area5가 이미 확인), dead button 0. ③ 「백엔드 먼저·화면 나중」 — 이번 churn 5건 모두 라우트+화면 동반 커밋(반대 사례 없음), candidate 0. ④ 더블클릭 중복제출 — `updateItemPack`(inventoryCount)·`packChooseResult`(pack)은 onchange/onclick 즉시 단발 액션(모달 재진입 아님, 파괴적 write 아닌 단일필드 갱신)이라 기존 판정기준(파괴적/금전/재고 write만 우선순위) 미해당, candidate 0.
+> - **open 6건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` = #606·#608·#609·#612·#613·#614(전건 변동없음, 신규 코멘트 없음).
+> - **backlog↔GitHub 절대값 재동기화**: open **6**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · `reason:not_planned` **4**(재확인) → rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md는 이미 `line N` 잔여참조 0건(재확인). 이번 사이클은 실제 churn 5건을 UX 렌즈로 직접 정독했고, 전부 기존 codify된 체크리스트(빈 상태/로딩표시/에러메시지/모바일 스와이프-스크롤 충돌 회피/키보드 접근성)를 충족하는 고품질 구현 — 유일 조사 대상(`dc7a34e` 고아화)도 기존 "커밋 메시지 명시 의도" FP 기준으로 명확히 해소. 새 오탐/탐지 클래스 도출 없음.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 11건 → 이번 로그 추가 후 12건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(churn 5건 직접 정독, 전부 clean + 고아화 조사 1건은 의도적 설계로 기각), 자동수정 0건, done-sync: open 6(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-08-20T03:50):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → **origin이 `de31dbf..c776983`로 전진**(shallow-fetch 경계 이동, 기존과 동일 아티팩트) → `git checkout main && git reset --hard origin/main`(HEAD `c776983`). `npm ci`(0→81), `npx tsc --noEmit` clean.
