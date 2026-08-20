@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-08-20T20:10:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-08-20T23:55:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **7** (`search_issues(state:open,label:auto-improve)` 실측, **+1**. #606·#608·#609·#612·#613·#614·#615) |
+| 🆕 new | **9** (`list_issues(state:open,label:auto-improve)` 실측, **+2**. #606·#608·#609·#612·#613·#614·#615·#616·#617) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 6 자기 진화 (2026-08-20T23:55):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → origin `8ad218d`(직전 Area5 HEAD, shallow-fetch "forced update" 표기는 `git rev-parse --is-shallow-repository`=true로 재확인, 회귀 아님) → `git checkout main && git reset --hard origin/main`(HEAD `8ad218d`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **🗺️ 범위-축 사각지대 발견 및 codify(#616/#617, 62회차)**: #600(깊이 축)의 앞단 = 6영역 전부의 churn 스캔이 `git log -- src migrations scripts .github`(웹앱 범위)라 **`LogWatcher/`·`IllustratorAutomat/` 등 손배포 런타임 축이 목록에조차 안 오른다**. 2026-08-19 LogWatcher 커밋 5건(`592b909` C# 파서 473줄 신규 + `169340e`·`4a3c231`·`efc3ca1`·`48d8995` 키트)을 `grep -c` 로 백로그+아카이브 전수 대조 = **어느 로그에도 해시 언급 0건**(나열조차 없음) → Area6가 직접 정독.
+> - **🐛 발견(신규, net-new) #616 — `TnsPrintExpParser.cs` 인쇄실적 이중계상**: 립 시작에서 `rip_fallback_hours`(기본 6h) 초과 후 인쇄 시작된 작업은 (a)안전망이 립 기준으로 **폴백 송출** 후 `_rips`에서 제거 → (b)뒤늦게 도착한 결과가 후보 립 없어 `MatchResults`에서 **UNMATCHED로 또 송출** = PRINT 이벤트 2건. 같은 클래스 이중계상을 **취소 경로에서는 `_lastRipCancelAt`(±5분)으로 이미 억제**하는데 OK 폴백 경로엔 대응 억제 상태 부재(형제 비대칭, `grep` 확인=억제필드는 `_lastRipCancelAt` 하나뿐). 발동 조건=대기열 길이라 바쁜 날일수록 잦음. **자동수정 안 함**(파서 비즈로직 + 샌드박스에 dotnet 빌드/리플레이 수단 없음) → **Issue #616**(bug, S).
+> - **🐛 발견(신규, net-new) #617 — `kit.ps1 Invoke-HabitatCensus` 조용한 목록 실패**: 센서스의 존재 목적이 "보이지 않는 로그 찾기"인데 `GetFiles(root,"*",AllDirectories)`가 (1) PS 5.1(.NET Framework, `START.bat`=`powershell -File`)에서 하위폴더 **접근거부 1회에 열거 전체 중단** → ACL 섞인 루트③(AppData/ProgramData)은 로그 있어도 `(열람 실패)` 1줄로 파일0건 기록 (2) `Select-Object -First 4000` **무통지 절단** + `GetFiles` 반환순=디렉터리 순(mtime 아님)이라 최신 로그가 잘릴 수 있음 → 기사가 "로그 없음" 오판·재방문(도구가 없애려던 바로 그 재방문). (3) 대형파일 분기 `rec|history` 무앵커 부분매칭+noise필터 누락으로 `.exe`/`.cab` 오수거. **자동수정 안 함**(kit=수동배포축, CI 미커버, 샌드박스에 PS 실행수단 없음, IA JSX와 동일취급) → **Issue #617**(bug, S).
+> - **🧬 SKILL 강화**: area-6-self-evolution.md에 **「churn 스캔 범위-축 사각지대」레시피 codify**(62회차) — `git log <anchor>..HEAD -- LogWatcher IllustratorAutomat caps-worker workers queue`로 비-웹앱 축 churn 별도추출 → `grep -c "<hash>"` 백로그대조로 미언급 커밋 우선정독, 축별 렌즈(C#=이벤트 중복/유실, PS키트=무통지절단, JSX=IA 5축 드리프트), 전부 issue-only(CI·샌드박스 미커버). `npm run audit:skills` OK(스킬목록 2,360자, area-6 `line N` 잔여 0). area-1의 `line N` 3건은 이번 사이클 담당 파일 아니라 미조치(규칙 준수).
+> - **브랜치 위생**(읽기전용): `npm run branch:clean` → SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **open≠unfixed 재확인**: 이번 사이클 churn(LogWatcher 5건)은 open 7건이 지목한 파일과 무관 → 캐시 유지. `list_issues(OPEN,auto-improve)` = #606·#608·#609·#612·#613·#614·#615(전건 변동없음)+**#616·#617 신규**.
+> - **backlog↔GitHub 절대값 재동기화**: open **9**(+2) · `search_issues(reason:completed)` **531**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음). 마이그 번호 중복 standing scan = 기존 5쌍(0327·0412·0416·0420·0453)만, net-new 0.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 9건 → 이번 로그 추가 후 10건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 2건(#616 파서 이중계상·#617 센서스 조용한실패), 자동수정 0건, done-sync: open 9(+2)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 + 인프라 (2026-08-20T20:10):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → origin `23785b6`(직전 Area4 HEAD와 동일, shallow-fetch "forced update" 표기는 `git rev-parse --is-shallow-repository`=true로 재확인, 회귀 아님) → `git checkout main && git reset --hard origin/main`(HEAD `23785b6`). `npm ci`(0→81), `npx tsc --noEmit` clean.
