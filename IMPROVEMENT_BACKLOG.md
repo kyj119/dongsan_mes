@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-08-21T21:46:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-08-22T03:44:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,17 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 4 데이터 정합성 (2026-08-22T03:44):**
+> - **방법**: `git status`=clean(main), `git fetch origin main` → origin `539387f..efc5d27`(직전 Area3 HEAD `efc5d27`와 동일, 이미 그 커밋 = `reset --hard` 불요). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area4 자신의 앵커(`8fdf76c`) 이후 `git log 8fdf76c..efc5d27` = 6커밋, 전부 Area1~3·5·6의 auto-improve 백로그 커밋(`23785b6`~`efc5d27`)뿐 — `-- src migrations scripts .github` 범위 diff = **0건**. `git diff --stat 8fdf76c..efc5d27`도 `IMPROVEMENT_BACKLOG.md`/`IMPROVEMENT_BACKLOG_ARCHIVE.md`/`area-6-self-evolution.md` 3개 문서파일뿐 — 데이터 정합성 렌즈로 볼 신규 코드/스키마 변경 **전무**(가장 조용한 사이클, 지난 43사이클 중 첫 "웹앱 범위 diff 0건").
+> - **standing scan 재확인**(신규 코드 없어 net-new 여부만 재검증): ① `npm run audit:entity` 131파일·61쿼리·**누락 0**(변동없음). ② `node scripts/sort-audit.cjs` P1 **0건**(변동없음, P3/P4 138건은 기존 스코프 밖). ③ `git log 8fdf76c..efc5d27 -- migrations` = 0건 → NOT NULL/CHECK/dangling-orphan/FK sweep 전부 대상 마이그 없음(재실행 무의미, 이전 사이클 net-new 0 유지).
+> - **open 11건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` = #606·#608·#609·#612·#613·#614·#615·#616·#617·#618·#619(전건 변동없음). #606·#608·#609에 코멘트 1개씩 존재하나 기존 owner "보류/별도세션" 방향 확정분(직전 사이클들과 동일, 신규 코멘트 아님). 전 11건 `+1` 리액션 0.
+> - **backlog↔GitHub 절대값 재동기화**: open **11**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md는 이번 사이클 담당 파일이라 훑었으나 이미 `line N` 잔여참조 0건(재확인, 서술식 각주만 존재). 이번 사이클은 데이터 정합성 렌즈로 볼 신규 표면이 전무한 조용한 사이클 — 새 오탐/탐지 클래스 도출 없음.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 8건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(웹앱 범위 churn 0, standing scan 전부 net-new 0), 자동수정 0건, done-sync: open 11(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-08-21T21:46):**
 > - **방법**: `git status`=clean, `git fetch origin main` → origin `1d6e32d`(직전 Area2 HEAD `539387f`에서 1커밋 전진) → `git checkout main`(이미 origin과 동일, `reset --hard` 불요). `npm ci`(0→81), `npx tsc --noEmit` clean.
