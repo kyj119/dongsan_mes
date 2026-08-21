@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-08-21T09:10:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-08-21T15:45:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **9** (`list_issues(state:open,label:auto-improve)` 실측, **+2**. #606·#608·#609·#612·#613·#614·#615·#616·#617) |
+| 🆕 new | **10** (`list_issues(state:open,label:auto-improve)` 실측, **+1**. #606·#608·#609·#612·#613·#614·#615·#616·#617·#618) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-08-21T15:45):**
+> - **방법**: `git status`=clean, `git fetch origin main` → origin `539387f`(직전 Area1 HEAD와 동일) → 이미 그 커밋에 체크아웃돼 있어 `reset --hard` 불요. `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area2 자신의 앵커(`c776983`) 이후 웹앱 범위 diff = 신규 커밋 1개 — `8fdf76c`(재고 base-unit rebase). Area4(데이터정합성)·Area5(보안)·Area6(사각지대)·Area1(라이브검증)이 각자 렌즈로 이미 정독했으나 **코드품질 렌즈(entity_id·N+1·authMiddleware·dead code·도달성)로는 미검토** → 직접 diff 정독(`inventoryCount.ts` GET /consumption 192줄, `inventoryValuation.ts` 평가 소스 교체).
+> - **`inventoryCount.ts` GET /consumption 정독**: `entityFilter(c,'ic')`/`entityFilter(c,'po')` 양쪽 적용(Area5 재확인과 일치), IN절 회차수 ≤60 캡 안전, 정렬 tie-break(`count_date ASC, id ASC`) 준수, 루프는 전부 사전 로드한 배열 위 메모리 연산(N+1 아님), dead code 없음.
+> - **🐛 발견(신규, net-new) #618 — 신규 엔드포인트 프론트 소비처 0건**: `grep -rn "inventory-counts/consumption" src/scripts src/pages` = 0건. `scripts/smoke.cjs`엔 프로브가 있어 200 응답은 확인되나(라우트 자체는 정상), 화면 배선이 없어 실사용자는 이 소모량 분석(기초+매입-기말, 구간 집계, 중복매입/음수소모 검출까지 구현된 상당히 정교한 로직)을 볼 수 없음 — #606(entity-attribution-audit)과 동일 클래스 "백엔드 먼저·화면 나중" **5번째 사례**. 커밋 메시지에 화면 미연결 의도가 명시되지 않아 owner 판단 필요(분석전용 의도라면 즉시 close 가능) → **Issue #618** 등록(improvement, S).
+> - **standing scan**: ① `npm run audit:entity` 131파일·61쿼리·**누락 0**(변동없음). ② `node scripts/sort-audit.cjs` P1 **0건**(변동없음). ③ authMiddleware recursive 재스캔 = 무-auth 7개 파일(기존과 동일 목록, 전부 기존 정당 클래스: barrel/hrSelf scoped/webhooks empty/helpers Map.get FP), 신규 매치 0. ④ `npm audit` 11건(1 moderate·8 high·2 critical) 전부 devDependency, #613 기보고와 완전 일치 net-new 0.
+> - **open 10건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` = #606·#608·#609·#612·#613·#614·#615·#616·#617(전건 변동없음, 신규 코멘트 없음)+**#618 신규**.
+> - **backlog↔GitHub 절대값 재동기화**: open **10**(+1) · `search_issues(reason:completed)` **531**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md는 이미 `line N` 잔여참조 0건(재확인, 서술식 각주만 존재). 이번 사이클은 실제 미검토 churn 1건을 코드품질 렌즈(entity_id/N+1/authMiddleware/도달성)로 직접 정독했고, 기존 codify된 도달성 레시피(#334)로 신규 엔드포인트의 dead-code 후보를 정확히 격리 — 새 오탐/탐지 클래스 도출 없음.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 11건 → 이번 로그 추가 후 12건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 1건(#618, 소모량 API 프론트 미연결), 자동수정 0건, done-sync: open 10(+1)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-08-21T09:10):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → origin `966877e`(직전 Area6 HEAD와 동일, shallow-fetch "forced update" 표기는 `git rev-parse --is-shallow-repository`=true로 재확인, 회귀 아님) → `git checkout main && git reset --hard origin/main`(HEAD `966877e`). `npm ci`(0→81), `npx tsc --noEmit` clean.
@@ -179,6 +192,7 @@
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
+| #618 | GET /api/inventory-counts/consumption(8fdf76c) — 프론트 소비처 0건, "백엔드 먼저·화면 나중" 5번째 사례 | Area 2 | improvement,S | issue-only, 신규(#618) |
 | #615 | 재고 188품목 rebase(8fdf76c) — qty×pack_size/cost÷pack_size 보정이 재현 불가능한 형태로 prod 적용됨 | Area 4 | bug,S | issue-only, 신규(#615) |
 | #614 | items 영구삭제 참조가드에 designer_intakes.item_id 누락(0532 신규 FK) — 하드삭제 시 친절한 409 대신 500 | Area 4 | bug,S | issue-only, 신규(#614) |
 | #612 | ai_analysis_id/dxf_analysis_id 크로스 법인 IDOR — 주문 라인에 타법인 분석파일 ID를 넣으면 에이전트가 자동 다운로드·복사 | Area 5 | bug,medium | issue-only, 신규(#612) |
