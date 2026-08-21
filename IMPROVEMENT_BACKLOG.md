@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-08-20T23:55:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-08-21T09:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,18 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 1 프로덕션 헬스 (2026-08-21T09:10):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → origin `966877e`(직전 Area6 HEAD와 동일, shallow-fetch "forced update" 표기는 `git rev-parse --is-shallow-repository`=true로 재확인, 회귀 아님) → `git checkout main && git reset --hard origin/main`(HEAD `966877e`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **CI 헬스**: `deploy.yml` 최근 30런 전부 `conclusion:success` 1건(`a07a5b24`)만 `cancelled`(후속 푸시 동시성 취소, 실패 아님) — 최신런(`966877e`, Area6 자체 커밋) success. `backup.yml` 최근 10런(08-11~08-20) 전부 success. `verify.yml` 여전히 `total_count:0`(#608 기보고와 일치, net-new 아님).
+> - **churn 확인**: 직전 Area1 자신의 앵커(`f3bc6bf`) 이후 웹앱 범위 diff = 신규 커밋 2개 — `dc7a34e`(reports 탭 제거, Area2/3가 이미 정독)·`8fdf76c`(재고 rebase, Area2/4/5가 이미 정독하고 #615 등록) — Area1 고유 관심사(신규 마이그레이션 유무)만 재확인: `git log f3bc6bf..HEAD -- migrations` = **0건**(0540이 직전 사이클 마지막 마이그, 이번 churn 2건 모두 스키마 변경 없음) → smoke drift 신규 (b)-risk 없음.
+> - **prod↔main 디버전스 standing scan(#422)**: `search_issues(label:auto-improve,state:closed)` **537**(=done 531+rejected 6, 절대값 일치) — 최근 close는 08-10(#601~#607/#611) 이후 신규 close 0건, 재검증 대상 없음(캐시 유지 타당).
+> - **open 9건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` = #606·#608·#609·#612·#613·#614·#615·#616·#617(전건 변동없음, 신규 코멘트 없음, 리액션 0).
+> - **backlog↔GitHub 절대값 재동기화**: open **9**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-1-production-health.md는 이번 사이클 담당 파일이라 훑었으나 이미 서술 참조 전환 완료 상태(재계산 없음). 이번 사이클은 CI 전량 green + 신규 마이그 0건의 조용한 사이클 — 새 오탐/탐지 클래스 도출 없음.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 10건 → 이번 로그 추가 후 11건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건, 자동수정 0건, done-sync: open 9(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-08-20T23:55):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → origin `8ad218d`(직전 Area5 HEAD, shallow-fetch "forced update" 표기는 `git rev-parse --is-shallow-repository`=true로 재확인, 회귀 아님) → `git checkout main && git reset --hard origin/main`(HEAD `8ad218d`). `npm ci`(0→81), `npx tsc --noEmit` clean.
