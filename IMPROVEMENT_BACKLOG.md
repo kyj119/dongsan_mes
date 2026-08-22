@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-08-22T15:44:16+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-08-22T21:45:13+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,17 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 1 프로덕션 헬스 (2026-08-22T21:45):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → HEAD가 이미 origin `e081734`(직전 Area6 HEAD)와 동일 → `git checkout main && git reset --hard origin/main`(fast-forward 0, 변화 없음). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **CI 헬스**: `deploy.yml` 최근 30런 전부 `conclusion:success` — 유일한 비-success는 `a07a5b24`(docs 커밋, 후속 푸시 동시성 취소=`cancelled`, 실패 아님). 최신런(`e081734`, Area6 자체 커밋) success. `backup.yml` 최근 24런(08-01~08-22) 전부 success(실패 1건은 08-06 데이터 진단 세션, 이미 지난 사이클들에서 코드결함 아님으로 확인된 건). `verify.yml` 여전히 `total_count:0`(#608 기보고와 일치, net-new 아님).
+> - **churn 확인**: 직전 Area1 자신의 앵커(`966877e`) 이후 `git log 966877e..HEAD --oneline` = 5커밋 전부 `chore(auto-improve)` 백로그 커밋(Area1~6, 자기 자신 포함)뿐 — 웹앱 범위(`-- src migrations scripts .github`) diff **0건**, 신규 마이그레이션도 **0건**(`git log 966877e..HEAD -- migrations` 빈 결과) → smoke drift 신규 (b)-risk 없음, prod↔main 디버전스 재검토 대상 없음.
+> - **open 11건 재확인(open≠unfixed)**: `search_issues(is:open label:auto-improve)` totalCount **11**(변동없음, #606·#608·#609·#612·#613·#614·#615·#616·#617·#618·#619 전건 일치), 전부 `+1` 리액션 0(승인 대기).
+> - **backlog↔GitHub 절대값 재동기화**: open **11**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · rejected **6**(변동없음, 직전 사이클 재확인 유지).
+> - **🧬 SKILL 강화**: area-1-production-health.md `line N` 잔여참조 2건(문단 내 자기참조, 「MIME/shell.js 프론트 실행실패」·「DROP write-path」로 이미 이름이 붙어있던 것) 발견 → 숫자 제거하고 이름만 남기는 서술 참조로 전환(재계산 없음, `npm run audit:skills` OK). 이번 사이클은 CI 전량 green + 웹앱 churn 0(백로그 커밋뿐) + 신규 마이그 0건의 조용한 사이클 — 새 오탐/탐지 클래스 도출 없음.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 11건 → 이번 로그 추가 후 12건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건, 자동수정 0건(area-1 skill 문서 서술참조 전환은 문서정비, 카운트 제외), done-sync: open 11(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-08-22T15:44):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → origin `5dcf4bf`(직전 Area5 HEAD `763a87e`에서 1커밋 전진, 자기 자신의 백로그 커밋) → `git checkout main && git reset --hard origin/main`(HEAD `5dcf4bf`). `npm ci`(0→81), `npx tsc --noEmit` clean.
