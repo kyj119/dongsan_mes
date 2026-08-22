@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-08-22T03:44:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-08-22T08:30:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,18 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 5 보안 + 인프라 (2026-08-22T08:30):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, HEAD가 이미 origin `763a87e`와 동일(직전 Area4 HEAD) → `git checkout main && git reset --hard origin/main`(변화 없음, fast-forward 0). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area5 자신의 앵커(`b6d9305`) 이후 웹앱 범위(`src migrations scripts .github`) diff = `git log b6d9305..763a87e`로 12커밋이나, 그중 8개(`8fdf76c`·`64d236c`·`3b4827a`·`ddf0108`·`a22fb42`·`3bd431c`·`619535b`·`771e8db`)는 지난 Area5 사이클(2026-08-20T20:10)에서 이미 보안 렌즈로 직접 정독 완료(SQLi/IDOR/XSS 3축 clean 판정). **미검토 4건만 신규 확인**: `dc7a34e`(reports.ts 탭 제거, `src/pages/reports.ts` -11/+1줄 — 순수 UI 탭 숨김, 라우트/인증/데이터 변경 0, standalone `/management-report`는 기존 자체 게이트 유지 → 보안 영향 없음) · `c14296c`(smoke.cjs 프로브 1줄 추가, 앱 코드 아님) · `e0088d4`(finance-diagnose.cjs, API 미노출 로컬 분석 스크립트 — 라우트 아님) · `346bfbe`(Claude Code 훅 안전게이트 강화, 앱 보안표면 아닌 개발툴 자체 하드닝). 4건 전부 보안 렌즈로 볼 신규 표면 없음.
+> - **standing scan(매 사이클 필수)**: ① 시크릿 폴백 `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43` 1건뿐(기존 FP, 변동없음). ② 하드코딩 기본 비밀번호 `body.password || '...'` → 0건. ③ CI yml `secrets.X || '...'` → 0건. ④ 미청크 동적 IN절(`IN \(\$\{`, `map(()` 안전패턴 제외) → 0건.
+> - **npm audit 재확인**: `npm ci` 후 11건(1 moderate·8 high·2 critical) — 전부 devDependency(vite/wrangler/esbuild), #613 기보고와 완전 일치, net-new 0.
+> - **open 11건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` = #606·#608·#609·#612·#613·#614·#615·#616·#617·#618·#619(전건 변동없음). 전 11건 `+1` 리액션 0(승인 대기), #606·#608·#609 코멘트 1개씩은 기존 owner 방향 확정분(신규 아님). #612(크로스법인 IDOR, ai_analysis_id/dxf_analysis_id)는 이번 churn과 무관한 기존 보고 유지.
+> - **backlog↔GitHub 절대값 재동기화**: open **11**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-5-security-infra.md는 이번 사이클 담당 파일이라 훑었으나 `line N` 잔여참조 이미 0건(서술식 각주만 존재, 재계산 없음). 이번 사이클은 실제 미검토 churn 4건 전부가 UI탭제거/smoke추가/로컬분석스크립트/개발툴훅강화로 앱 보안표면과 무관 — 새 오탐/탐지 클래스 도출 없음.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 9건 → 이번 로그 추가 후 10건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(churn 4건 전부 보안표면 무관 확인), 자동수정 0건, done-sync: open 11(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-08-22T03:44):**
 > - **방법**: `git status`=clean(main), `git fetch origin main` → origin `539387f..efc5d27`(직전 Area3 HEAD `efc5d27`와 동일, 이미 그 커밋 = `reset --hard` 불요). `npm ci`(0→81), `npx tsc --noEmit` clean.
