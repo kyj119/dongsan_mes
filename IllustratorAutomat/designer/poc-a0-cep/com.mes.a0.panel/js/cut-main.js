@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.55.0';
+  var SHELL_VERSION = '0.55.1';   // 0.55.1 = 도련 축소 스무딩 OFF(회색 오염) + 설명 다이어트
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -1082,7 +1082,10 @@
       actx.putImageData(id, 0, 0);
       var b = document.createElement('canvas'); b.width = w; b.height = h;
       var bctx = b.getContext('2d');
-      bctx.imageSmoothingEnabled = true;
+      // ★스무딩 금지 (2026-08-24 반백반흑 회색 오염) — 스무딩은 색 경계를 회색 밴드로 뭉개고
+      //   그 회색이 도련 공급원으로 복사된다(하네스 실측: 3px 밴드 = 링 회색 120px, NN = 0px).
+      //   도련은 가장자리 색을 늘리는 일이라 계단은 무해하지만 회색은 그대로 인쇄된다.
+      bctx.imageSmoothingEnabled = false;
       bctx.drawImage(a, 0, 0, w, h);
       var out2 = bctx.getImageData(0, 0, w, h);
       return { W: w, H: h, ch: 4, data: out2.data };

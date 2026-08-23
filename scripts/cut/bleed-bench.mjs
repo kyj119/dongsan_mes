@@ -146,6 +146,41 @@ console.log('\n── 7 반투명이 지배적인 아트에서는 공급원을 �
   ok('링 색이 아트 색', px(r, 5 + g - 2, 10 + g).slice(0, 3).join() === '0,120,255', px(r, 5 + g - 2, 10 + g).join())
 }
 
+console.log('\n── 8 ★소프트 에지(블렌드 밴드)는 링으로 확대되지 않는다 ──')
+// 2026-08-24 반백반흑 실사용 재현("흰 부분 도련이 회색"). 사진·스캔·축소 스무딩은 실루엣
+// 가장자리 1~2px 를 **섞인 색(불투명)**으로 만든다. 최외곽을 그대로 반복하면 그 오염이
+// 도련 전체 폭으로 확대된다 → 안정점 탐색(srcInsetPx)이 안쪽의 순색을 써야 한다.
+// ⚠️ §2(내부 선)와 한 쌍이다 — 안정점 탐색이 "무조건 안쪽"으로 바뀌면 §2 가 깨진다.
+{
+  const g = 6
+  const src = make(30, 20, (x, y) => {
+    const core = x >= 6 && x < 24 && y >= 5 && y < 15
+    const edge = x >= 5 && x < 25 && y >= 4 && y < 16
+    if (core) return [255, 255, 255, 255]      // 몸통 = 흰색
+    if (edge) return [128, 128, 128, 255]      // 소프트 에지 1px = 불투명 회색(블렌드)
+    return null
+  })
+  const r = repeatLastPixel(src, g)
+  // 판정은 **본체 구간에서 직교로 뻗는 링**만 본다 — 밴드의 모서리 기둥(예: 좌측 세로 1px)은
+  // 회색 잉크가 실제로 가장자리에 닿아 이어지는 자리라 회색이 **맞고**(§2 의 "닿아 있으면
+  // 이어지는 것이 맞다"), 실전 해상도에서 1px 헤어라인이다. 문제였던 것은 면 전체의 확대다.
+  let gray = 0
+  for (let y = 0; y < r.H; y++) for (let x = 0; x < r.W; x++) {
+    const inSrc = (x >= g + 5 && x < g + 25 && y >= g + 4 && y < g + 16)
+    if (inSrc) continue
+    const vertical = (x >= g + 6 && x < g + 24) && (y < g + 4 || y >= g + 16)   // 상하 링 × 본체 폭
+    const horizontal = (y >= g + 5 && y < g + 15) && (x < g + 5 || x >= g + 25) // 좌우 링 × 본체 높이
+    if (!vertical && !horizontal) continue
+    const c = px(r, x, y)
+    if (c[3] === 255 && c[0] > 40 && c[0] < 215) gray++
+  }
+  ok('본체 직교 링에 회색(블렌드) 픽셀 0', gray === 0, `${gray}개`)
+  ok('링은 몸통 흰색', px(r, 5 + g - 3, 10 + g).slice(0, 3).join() === '255,255,255', px(r, 5 + g - 3, 10 + g).join())
+  // 탐색을 끄면(srcInsetPx 0) 종전 동작 = 최외곽(회색)이 그대로 링이 된다 — 옵션이 실제로 작동하는지 확인
+  const r0 = repeatLastPixel(src, g, { srcInsetPx: 0 })
+  ok('탐색 OFF 면 최외곽 색(회색) 유지', px(r0, 5 + g - 3, 10 + g).slice(0, 3).join() === '128,128,128', px(r0, 5 + g - 3, 10 + g).join())
+}
+
 console.log(`\n── 판정 ──`)
 if (fails) { console.log(`  ❌ ${fails}건 실패`); process.exit(1) }
-console.log('  ✅ 전 항목 통과 (링 색 보존·내부 선 차단·위치별 색·오목 홈·성능·반투명 가장자리)')
+console.log('  ✅ 전 항목 통과 (링 색 보존·내부 선 차단·위치별 색·오목 홈·성능·반투명 가장자리·소프트 에지)')

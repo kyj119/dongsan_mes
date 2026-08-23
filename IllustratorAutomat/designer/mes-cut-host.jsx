@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.20.0';  // 0.15.0 = 도련을 칼선 방식과 분리(래스터에서도 생성)
+var MESCUT_VERSION = 'CUT-CEP-0.20.1';  // 0.20.1 = ink 굽기 AA OFF(도련 회색 오염) · 0.15.0 = 도련을 칼선 방식과 분리(래스터에서도 생성)
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -2070,7 +2070,15 @@ function mesCut_nestBakeAll(mmPerPx, padMm, fillClosed, tag) {
 
         // ③ 아트보드만 옮기며 굽는다 — 남는 비용은 export 뿐이다
         var opts = new ExportOptionsPNG24();
-        opts.antiAliasing = true; opts.transparency = true; opts.artBoardClipping = true;
+        // ★도련용 원색(tag="ink")은 AA 를 끈다 (2026-08-24 반백반흑 회색 오염 대응).
+        //   AA 가 색 경계에 만드는 불투명 회색 블렌드가 Repeat Last Pixel 공급원으로 복사될 수 있다.
+        //   ⚠️ 단 AI 30.7 실기기 실측에서는 이 플래그가 **무효**였다(on/off 픽셀 완전 동일 —
+        //   회전 경계 회색 133px 둘 다). 실효 방어선은 패널 쪽 2겹이다: ①도련 축소 NN
+        //   (cut-main.js downscaleRgba) ②공급원 안쪽 샘플링(bleed.js srcInsetPx).
+        //   플래그는 버전에 따라 유효할 수 있고 비용이 없어 의도 표명으로 유지한다.
+        //   마스크 굽기(다른 tag)는 실루엣 품질을 위해 AA 를 유지한다.
+        opts.antiAliasing = (tag === 'ink') ? false : true;
+        opts.transparency = true; opts.artBoardClipping = true;
         var sc = (1 / mmPerPx) * (25.4 / 72) * 100;
         opts.horizontalScale = sc; opts.verticalScale = sc;
         var f = function (pt) { return Math.round((pt / PT) * 100) / 100; };

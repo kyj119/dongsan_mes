@@ -31,8 +31,11 @@ html, body {
 .title { margin: 0; font-size: 13px; font-weight: 600; color: #ededed; }
 .title .ver { font-size: 10px; font-weight: 400; color: #7a7a7a; }
 
-.row { display: flex; align-items: center; gap: 8px; }
-.row label { color: #b0b0b0; }
+/* ★flex-wrap + keep-all (2026-08-20 용준님: "글자가 세로로 나열") — 한 줄에 칸이 많은 행에서
+   유일하게 줄어드는 항목이 보조설명(.cfg)이라 min-content(한글 1자 폭)까지 눌려 글자가
+   세로로 쌓였다. 줄이는 대신 **통째로 다음 줄로 내려앉게** 한다(가로로 읽힌다). */
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.row label { color: #b0b0b0; flex: none; }
 .row > label:first-child { min-width: 46px; }
 .row .l2 { min-width: 34px; text-align: right; }
 
@@ -59,9 +62,11 @@ button.cancel:hover { background: #5a4c33; border-color: #d9a84a; }
 .saved { color: #8ec5ff; font-size: 11px; }
 /* 가공자 도메인 미지정 — 전사(봉제) 방식이 통째로 안 보이는 상태를 눈에 남긴다(조용한 폴백 차단) */
 .saved.warn { color: #e8b45a; }
-.meas { flex: 1; color: #d9c68a; font-size: 11px; }
+/* keep-all = 한글은 어절 단위로만 줄바꿈(1자씩 세로 쌓임 방지) ·
+   anywhere = 파일명 같은 띄어쓰기 없는 긴 토큰만 예외로 끊는다(#pairName 이 판 파일명을 담는다) */
+.meas { flex: 1; color: #d9c68a; font-size: 11px; word-break: keep-all; overflow-wrap: anywhere; }
 
-.rad { display: inline-flex; align-items: center; gap: 3px; color: #c4c4c4; }
+.rad { display: inline-flex; align-items: center; gap: 3px; color: #c4c4c4; flex: none; }
 .rad input { margin: 0 2px 0 0; }
 
 /* ★table-layout:fixed — 자동 레이아웃에서는 **헤더 글자**가 열 폭을 밀어 올린다.
@@ -108,8 +113,8 @@ button.mini { flex: none; padding: 2px 8px; font-size: 12px; }
 .out.okmsg { color: #b8e0a0; border-color: #3f6b32; }
 .out.err { color: #f0a0a0; border-color: #6b3232; }
 
-.unit { color: #888; font-size: 10px; }
-.cfg { color: #7a7a7a; font-size: 10px; }
+.unit { color: #888; font-size: 10px; flex: none; }
+.cfg { color: #7a7a7a; font-size: 10px; word-break: keep-all; }
 
 .queuebox { display: flex; flex-direction: column; gap: 2px; max-height: 160px; overflow-y: auto; }
 .qempty { color: #777; font-size: 11px; padding: 4px 2px; }
@@ -145,7 +150,7 @@ button.mini { flex: none; padding: 2px 8px; font-size: 12px; }
 
 /* ══════════ 재단 탭 전용 ══════════
    ① A0 에 없는 것 = 전역으로 둬도 안전하다(선택자가 재단 마크업에만 붙는다) */
-.hint { color: #7a7a7a; font-size: 11px; line-height: 1.45; }
+.hint { color: #7a7a7a; font-size: 11px; line-height: 1.45; word-break: keep-all; overflow-wrap: anywhere; }
 /* ★설명은 기본으로 접는다 — 매일 쓰는 패널이라 평소엔 입력칸만 보이는 게 낫다(2026-08-03 용준님).
    지우지는 않는다: 처음 쓰는 사람과 함정 설명이 사라지면 같은 질문이 반복된다. `?` 로 켠다. */
 .panel.no-hints .hint { display: none; }

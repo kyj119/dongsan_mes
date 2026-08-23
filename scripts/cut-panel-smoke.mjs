@@ -890,6 +890,10 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3q 도련 굽기는 원색·pad 0', /mesCut_nestBakeAll\(' \+ \(mmpp \* fileToSave\(\)\) \+ ',0,false,"ink"\)/.test(panelSrc))
   // ★굽기 tag 가 없으면 마스크용 PNG 를 덮어써 배치 마스크나 도련 한쪽이 조용히 틀린다
   ok('3q 굽기가 용도별 이름표를 쓴다', /mes_cut_' \+ tag \+ '_/.test(hostSrc))
+  // ★회색 오염 차단 (2026-08-24 반백반흑 실사용 보고) — AA·스무딩이 색 경계에 만든 회색이
+  //   Repeat Last Pixel 공급원으로 복사돼 도련이 회색이 된다. 마스크 굽기의 AA 는 유지해야 한다.
+  ok('3q ink 굽기는 AA 를 끈다(회색 공급원 차단)', /antiAliasing = \(tag === 'ink'\) \? false : true/.test(hostSrc))
+  ok('3q 도련 축소는 스무딩을 끈다', /imageSmoothingEnabled = false/.test(panelSrc))
   // ★크기는 패널이 준 값(`L` 줄)을 쓴다 — 호스트가 px→mm 을 재계산하면 반올림만큼 어긋난다
   ok('3q 패널이 L 줄을 쓴다', /lines\.push\('L ' \+ bid/.test(panelSrc))
   ok('3q 호스트가 L 줄을 읽는다', /p\[0\] === 'L'/.test(hostSrc))

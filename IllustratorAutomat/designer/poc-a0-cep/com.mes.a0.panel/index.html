@@ -57,7 +57,7 @@
       </div>
       <div class="row">
         <label class="rad"><input id="trimInk" type="checkbox" /> 보이는 잉크로 축소</label>
-        <span class="cfg">클립 마스크가 실제 그림보다 클 때 여백 제거</span>
+        <span class="cfg" title="클립 마스크가 실제 그림보다 클 때 그 여백을 잘라내고 잽니다">클립이 그림보다 클 때</span>
       </div>
       <div class="row">
         <label for="client">거래처</label>
@@ -92,7 +92,7 @@
       <div class="row">
         <label for="qty">수량</label>
         <input id="qty" type="text" value="1" class="short" />
-        <span class="cfg">이 건의 최종 수량 — 주문서 라인 수량으로 프리필됩니다</span>
+        <span class="cfg" title="이 건의 최종 수량 — 주문서 라인 수량으로 프리필됩니다">주문서 라인 수량으로 프리필</span>
       </div>
       <!-- 후가공 = 단건·묶음 공용 1벌. 탭 전환 때 finHostSingle ↔ finHostBundle 로 이동한다.
            (복제하지 않는 이유 = id 중복 + 두 벌이 되면 값이 갈려 어느 쪽이 등록됐는지 알 수 없다) -->
@@ -150,17 +150,16 @@
           <label class="rad"><input id="borderLine" type="checkbox" /> 출력 경계선</label>
         </div>
         <div class="hint">
-          <b>재단선</b> 체크한 변의 <b>디자인 경계</b>에 검정 실선을 그립니다(재단 필요한 변에만).<br>돔보를 켰거나 그 변에 마감 여백이 있으면 <b>같은 자리에 선이 겹칠 수 있습니다</b> — 체크가 곧 지시라 자동으로 빼지 않습니다.
-          <br><b>주석</b> 은 그 변 마감 여백이 <b>3cm 이상</b>일 때만 들어갑니다.
-          <br><b>출력 경계선</b> = 마감 여백 바깥을 두르는 백색 0.5pt 선(RIP 가 여백까지 출력영역에 포함하도록).
-          원본에 이미 테두리가 있으면 선이 두 줄로 보입니다 → 끄세요.
+          <b>재단선</b> = 체크한 변의 디자인 경계에 검정 실선. 돔보·마감 여백과 <b>겹칠 수 있음</b>(체크가 곧 지시 — 자동으로 안 뺌).
+          <br><b>주석</b> = 마감 여백 <b>3cm 이상</b>인 변만.
+          <br><b>출력 경계선</b> = 여백 바깥 백색 0.5pt(RIP 출력영역 확보). 원본에 테두리가 있으면 두 줄 → 끄세요.
         </div>
         <!-- 묶음 탭에선 숨긴다 — 거기선 행별 키워드 칸이 정본이고 이 칸은 중복이다(2026-07-30 지적).
              단건 탭에선 행이 없어 이 칸이 유일한 입력 경로라 남긴다. main.js applyTabUi() -->
         <div class="row" id="annotKwRow">
           <input id="annot" type="text" placeholder="키워드(한글) · 식별번호·후가공·수량 자동결합" class="grow" />
         </div>
-        <div class="row"><span class="cfg" id="annotHint">주석 = 키워드-식별번호-후가공-수량 · 마감 여백 3cm 이상인 변만 선택 가능</span></div>
+        <div class="row"><span class="cfg" id="annotHint" title="주석 = 키워드-식별번호-후가공-수량 자동결합">여백 3cm 이상인 변만 선택 가능</span></div>
       </div>
 
       <!-- 액션 동사 통일(2026-07-30 P3) — 세 탭의 최종 결과가 모두 같다(Z: 등록 → 에이전트 ingest
@@ -193,14 +192,14 @@
       <div class="row punchrow">
         <label for="seedQty">기본수량</label>
         <input id="seedQty" type="text" value="1" class="tiny" />
-        <span class="cfg">새로 담는 행에 채워지는 값 — 이미 담긴 행은 안 바뀌고, 확정 수량은 각 행에서 수정</span>
+        <span class="cfg" title="이미 담긴 행은 안 바뀌고, 확정 수량은 각 행에서 수정합니다">새로 담는 행의 기본값</span>
       </div>
       <div class="row buttons">
         <button id="btnQueueAdd" type="button">＋ 개별</button>
         <button id="btnQueueBatch" type="button">＋ 묶음분리</button>
         <button id="btnAutoDetect" type="button" title="일러에서 고르지 않아도 문서 전체를 자동 감지(시드) — 틀리면 삭제·개별 추가로 교정">◎ 자동감지</button>
       </div>
-      <div class="row"><span class="cfg">행 클릭=일러에 그 조각 표시 + 폼 연동(아래 후가공 수정이 그 행에 즉시 반영, 다시 클릭=해제)</span></div>
+      <div class="row"><span class="cfg" title="폼 연동 = 아래 후가공 수정이 그 행에 즉시 반영됩니다. 다시 클릭하면 해제">행 클릭=일러 표시+폼 연동</span></div>
       <div id="queueBox" class="queuebox"></div>
       <!-- 후가공 접이식이 탭 전환 때 여기로 옮겨 온다(폼은 1벌 — id 중복·값 갈림 방지). main.js moveFinishingTo() -->
       <div id="finHostBundle"></div>
@@ -245,11 +244,8 @@
         <span class="cfg">단품·조각별 칼선 공통</span>
       </div>
       <div class="hint" id="lineModeHint">
-        <b>자동</b>은 매번 가장 정확한 방법을 고르고 <b>무엇으로 만들었는지 결과에 적습니다</b> —
-        맞붙임(여백 0·간격 0·직사각)이면 <b>치수 산수</b>, 아니면 일러의 <b>벡터 오프셋</b>,
-        사진·임베드 이미지·중첩 클리핑이 있으면 <b>래스터</b>로 내려갑니다(사유 표시).
-        <br><b>래스터로 고정</b>은 벡터 경로에 문제가 있을 때만 쓰는 우회로입니다 —
-        칼선이 실루엣 안팎을 <b>100mm당 7~11회 · ±0.5mm</b>로 넘나듭니다(실측).
+        <b>자동</b> = 치수 산수(맞붙임) → 벡터 오프셋 → 래스터(사진·임베드·중첩 클립) 순으로 고르고 <b>무엇을 썼는지 결과에 적습니다</b>.
+        <br><b>래스터로 고정</b> = 벡터 경로가 문제일 때만 — 칼선이 ±0.5mm 넘나듭니다(실측).
       </div>
     </div>
 
@@ -261,7 +257,7 @@
          두 곳에 오프셋·도련 칸이 따로 있어(여기 offset/bleed · 판짜기 nestOffset/nestBleed)
          "어느 칸을 고쳐야 하나"가 반복 질문이었다 → 제목에서 적용 범위를 못박는다. -->
     <details class="grp">
-      <summary>고급 · 단품 칼선 — <b>여기 칸은 이 버튼에만</b> 적용됩니다(판짜기와 별개 · 돔보 없음)</summary>
+      <summary>고급 · 단품 칼선 — <b>이 버튼 전용</b>(판짜기와 별개)</summary>
     <div class="row">
       <label for="offset">오프셋</label>
       <input id="offset" type="number" value="3" min="0" max="50" step="0.5" />
@@ -281,12 +277,10 @@
       </select>
     </div>
     <div class="hint" id="bleedHint">
-      재단 오차를 흡수하려고 <b>칼선보다 더 크게 인쇄</b>하는 영역입니다 — 실물 실측 <b>3mm</b>. 0 이면 만들지 않습니다.
-      <br><b>자동</b> = 아트가 클립 그룹이면 <b>클립을 넓혀</b> 원본을 더 드러내고(왜곡·빈 곳 없음), 아니면 아래 규칙을 씁니다.
-      <br><b>여백 &gt; 0</b> 이면 칼선까지의 구간에 아트가 없으므로 <b>한 색(기본 흰색)</b>으로 채웁니다.
-      <br><b>여백 0</b> 이면 아트가 칼선까지 차 있는데도 한 색으로 채웁니다 — <b>색이 이어지지 않으니</b> 여백을 주거나 아트에 도련을 넣으세요.
-      <br><b>사본 확대</b> = 사진처럼 오프셋이 안 먹는 아트용. <b>뾰족한 형상은 링의 20%까지 빕니다</b>.
-      <br>⚠️ 도형마다 벌리는 옛 방식은 뺐습니다 — <b>내부 선이 칼선 밖으로 튀어나옵니다</b>(원리상 한계).
+      칼선보다 <b>더 크게 인쇄</b>해 재단 오차를 흡수 — 실물 실측 <b>3mm</b>, 0=안 만듦.
+      <br><b>자동</b> = 클립 그룹이면 클립을 넓혀 원본을 더 드러냄(무손실). 아니면: 여백&gt;0 = 한 색(기본 흰색) 채움 ·
+      여백 0 도 한 색이라 <b>색이 안 이어짐</b> → 여백을 주거나 아트에 도련을 넣으세요.
+      <br><b>사본 확대</b> = 사진용. 뾰족한 형상은 링의 20%까지 빔. (도형별 벌림 옛 방식은 내부 선이 튀어나와 제거)
     </div>
     <div class="row">
       <label>방식</label>
@@ -294,8 +288,7 @@
       <label class="rad"><input type="radio" name="mode" value="silhouette" /> 실루엣</label>
     </div>
     <div class="hint" id="modeHint">
-      사각 = 선택 영역 기준. 실루엣 = 그림 외곽을 따라감.
-      오프셋을 주면 모서리는 자동으로 둥글어집니다(반지름 = 오프셋).
+      사각 = 선택 영역 · 실루엣 = 그림 외곽. 오프셋을 주면 모서리가 둥글어집니다(반지름=오프셋).
     </div>
     <div class="row">
       <label for="bg">배경</label>
@@ -307,8 +300,7 @@
       <span class="cfg">실루엣일 때만 적용</span>
     </div>
     <div class="hint" id="bgHint">
-      사진·이미지는 배경이 흰색이라 그대로 두면 <b>사각형</b>이 됩니다.
-      <b>자동</b>은 흰 배경이 넓으면 알아서 제거합니다 — 단 <b>흰색 그림도 함께 지워집니다</b>.
+      사진은 흰 배경 탓에 그대로 두면 <b>사각형</b>이 됩니다. <b>자동</b> = 흰 배경이 넓으면 제거 — 단 <b>흰색 그림도 함께 지워짐</b>.
     </div>
     <div class="row">
       <label class="rad"><input id="punch" type="checkbox" /> 타공</label>
@@ -323,7 +315,7 @@
     </div>
     <div class="row">
       <label class="rad"><input id="curveCut" type="checkbox" checked /> 곡선 칼선</label>
-      <span class="cfg">직선 대신 베지어 — 각진 계단이 사라집니다</span>
+      <span class="cfg" title="직선 대신 베지어 곡선으로 — 각진 계단이 사라집니다">베지어 — 계단 제거</span>
     </div>
     <div class="row">
       <label for="fillClosed">선 도안</label>
@@ -335,12 +327,11 @@
       <span class="cfg">이미 칼선인 파일 처리</span>
     </div>
     <div class="hint" id="fillHint">
-      시트컷 <b>.ai</b> 는 대개 <b>컷 라인만</b> 담고 면이 없습니다. 그대로 두면 마스크가 <b>획(선)만</b> 잡혀
-      실루엣이 아니라 가느다란 고리가 되고, 판짜기에서 <b>글자 속에 다른 조각이 들어갑니다</b>.
-      <b>자동</b>은 선택에 면이 하나도 없으면 닫힌 패스를 면으로 봅니다 — 원본은 건드리지 않고 <b>구울 때만</b> 채웁니다.
+      컷 라인만 있는 시트컷 .ai 를 그대로 두면 실루엣이 가느다란 고리가 돼 <b>글자 속에 다른 조각이 들어갑니다</b>.
+      <b>자동</b> = 면이 하나도 없으면 닫힌 패스를 면으로(원본 불변 · 구울 때만).
     </div>
     <div class="hint">
-      곡선은 <b>단품·조각별 칼선 모두</b>에 적용됩니다. 글자·로고의 <b>진짜 코너는 그대로 남습니다</b>(55° 이상 꺾임은 코너로 봅니다).
+      곡선은 단품·조각별 칼선 모두 적용 · 진짜 코너(55° 이상 꺾임)는 그대로 남습니다.
     </div>
 
     <button id="btnMakeCut" type="button" class="primary" disabled title="P1 에서 활성화됩니다">칼선 만들기</button>
@@ -369,12 +360,11 @@
            수량은 **같은 마스크를 재사용**하므로 굽기 1회로 끝나고 조각이 완전히 동일하다. -->
       <div class="row">
         <label>조각 수량</label>
-        <span class="cfg">위 [문서 ↻] 를 누르면 고른 조각이 여기 나옵니다 — 조각마다 몇 장씩 배치할지</span>
+        <span class="cfg" title="조각마다 몇 장씩 배치할지 지정합니다">[문서 ↻] 로 불러온 조각별 장수</span>
       </div>
       <div id="pieceQtyBox" class="queuebox hidden"></div>
       <div class="hint" id="pieceQtyHint">
-        불러온 뒤 선택을 바꾸면 목록과 어긋납니다 — 그때는 <b>수량을 버리고 전부 1개</b>로 배치하고 알려줍니다.
-        <br>등록 수량(주문)은 이것과 <b>별개</b>입니다. 판 1장 = 1건이고, 조각 수는 면적으로만 반영됩니다.
+        불러온 뒤 선택을 바꾸면 어긋남 → <b>전부 1개</b>로 배치하고 알림. 등록 수량(주문)과는 <b>별개</b>(판 1장=1건).
       </div>
       <div class="row">
         <label for="nestOffset">여백</label>
@@ -393,24 +383,21 @@
         <label for="nestBleed">도련</label>
         <input id="nestBleed" type="number" value="3" min="0" max="30" step="0.5" />
         <span class="unit">mm</span>
-        <span class="cfg">조각마다 칼선 <b>바깥</b>까지 더 인쇄</span>
+        <span class="cfg">칼선 <b>바깥</b>까지 더 인쇄</span>
       </div>
       <div class="hint" id="nestBleedHint">
-        도련은 칼선 <b>바깥</b>으로 나가므로 <b>간격 ≥ 도련×2</b> 라야 옆 조각 도련과 안 겹칩니다.
-        모자라면 <b>간격을 자동으로 올리고</b> 결과에 알립니다 — 겹치면 재단 오차 때 <b>옆 디자인 색이 넘어옵니다</b>.
+        <b>간격 ≥ 도련×2</b> 라야 옆 조각 도련과 안 겹침 — 모자라면 간격을 자동으로 올리고 알림.
       </div>
       <div class="hint">
-        <b>재단선 = 디자인 + 여백</b>, 조각 사이는 <b>칼선끼리</b> 간격만큼 벌립니다.
-        디자인끼리는 <b>여백×2 + 간격</b>만큼 떨어집니다.
-        <br>도련이 이미 들어간 아트는 여백을 <b>음수</b>로 주세요 — 칼선이 잉크 안쪽에 놓입니다(예: 도련 2mm → 여백 −2).
+        칼선 = 디자인+여백 · 조각 사이는 칼선끼리 간격만큼(디자인끼리 = 여백×2+간격).
+        <br>도련이 이미 든 아트는 여백을 <b>음수</b>로(예: 도련 2mm → 여백 −2).
       </div>
       <div class="row">
         <label class="rad"><input id="nestCut" type="checkbox" checked /> 조각별 칼선</label>
         <span class="cfg">돔보·시트 재단선은 항상 포함</span>
       </div>
       <div class="hint">
-        선택한 조각들을 <b>실제 외곽(이형)</b>으로 맞물려 배치합니다. 결과는 <b>새 문서</b>로 만들어지고 원본은 그대로입니다.
-        간격은 <b>가장 가까운 지점 기준</b>이며 실제 보장값을 결과에 표시합니다.
+        실제 외곽(이형)으로 맞물려 배치 · 결과는 <b>새 문서</b>(원본 불변) · 간격은 최근접 기준, 실보장값 표시.
       </div>
       <!-- 배율 = 가공 탭과 **같은 의미**(파일이 실물의 1/N 축소본). 아트를 확대하지 않고,
            여백·간격·도련·돔보 같은 **실물 mm 를 파일 좌표로 ÷N** 해서 실물 치수를 맞춘다.
@@ -438,12 +425,9 @@
         <span class="cfg">1/S 로 저장 — 파일명은 <b>실물</b> 규격</span>
       </div>
       <div class="hint">
-        <b>파일 배율</b>은 지금 열려 있는 아트의 축척, <b>저장 배율</b>은 결과를 몇 분의 1로 저장할지입니다.
-        둘이 다르면 조각을 그만큼 <b>리사이즈해서</b> 판을 짭니다(원본은 건드리지 않습니다).
-        <br>예) 1:1 원본을 <b>저장 1/2</b> 로 두면 실물 6m 짜리도 한 대지에 담깁니다 —
-        파일명은 <b>실물 규격</b>이고 RIP 에서 그 크기로 출력하면 됩니다.
-        <br>⚠️ 저장 배율을 낮추면 돔보·칼선도 같이 작아집니다. <b>반드시 파일명 규격대로 확대 출력</b>해야
-        재단기가 돔보를 읽습니다.
+        파일 배율=지금 아트의 축척 · 저장 배율=결과를 1/S 로 저장. 다르면 그만큼 리사이즈해 판을 짬(원본 불변).
+        예) 저장 1/2 = 실물 6m 도 한 대지에.
+        <br>⚠️ 저장 배율을 낮추면 돔보·칼선도 작아짐 — <b>반드시 파일명 규격대로 확대 출력</b>해야 재단기가 돔보를 읽습니다.
       </div>
       <button id="btnNest" type="button" class="primary">네스팅 실행</button>
       <button id="btnWidth" type="button" title="롤 5종을 훑어 재료를 가장 적게 쓰는 폭을 찾습니다(배치만 다시 계산 — 조각은 한 번만 굽습니다)">폭 추천</button>
@@ -475,10 +459,8 @@
         <input id="regItem" type="text" placeholder="예: 쓰레기불법투기" autocomplete="off" />
       </div>
       <div class="hint" id="regHint">
-        네스팅 시트를 <b>주문서 대기함</b>으로 보냅니다(시트 1장 = 1건).
-        저장 후 에이전트가 자동으로 올리며, 주문서에서 불러 쓰면 됩니다.
-        <b>[품목]</b> 은 파일명뿐 아니라 주문 라인의 <b>내용</b> 으로도 실립니다 —
-        비워 두면 주문서·카드·출력 파일명에 식별 정보가 남지 않습니다.
+        네스팅 시트를 <b>주문서 대기함</b>으로(시트 1장=1건 · 에이전트가 자동 업로드).
+        <b>[품목]</b> 은 주문 라인 내용으로도 실림 — 비우면 주문서·카드·파일명에 <b>식별 정보가 없음</b>.
       </div>
       <button id="btnRegister" type="button" disabled title="네스팅을 먼저 실행하세요">주문 등록</button>
 
@@ -489,8 +471,7 @@
         <span id="pairName" class="meas">— 네스팅 후 자동으로 만들어집니다</span>
       </div>
       <div class="hint">
-        작업 폴더에는 <b>EPS + DXF 를 같은 이름</b>으로 둡니다(실물 규약).
-        규격은 <b>판 전체 크기·cm</b>이고 장수는 배치한 조각 수입니다 — 예 <code>(포맥스5T+자동바니쉬)쓰레기불법투기(103x206-6장)</code>.
+        EPS+DXF <b>같은 이름 쌍</b>(실물 규약) · 규격=판 전체 cm · 장수=조각 수 — 예 <code>(포맥스5T+자동바니쉬)쓰레기불법투기(103x206-6장)</code>.
       </div>
       <button id="btnExportPair" type="button" disabled title="네스팅을 먼저 실행하세요">작업 폴더로 내보내기 (EPS+DXF)</button>
     </details>

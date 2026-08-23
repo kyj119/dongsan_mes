@@ -10,7 +10,7 @@
   //   우상단 표시는 여태 host(mesA0_ping = MESA0_VERSION, 축2 = Z: 1곳)만 보여줬다. 껍데기는 PC 별
   //   복사 설치라서 재설치를 안 한 PC 도 최신 번호로 보였다(2026-07-30 점검에서 확인).
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다.
-  var SHELL_VERSION = '0.4.0';
+  var SHELL_VERSION = '0.4.1';   // 0.4.1 = 설명 다이어트(cfg 압축·툴팁 이동) + 세로나열 CSS
   var STORE_WORKER = 'mes_a0_worker';
   var STORE_SETTINGS = 'mes_a0_settings';
   var CONFIG_PATH = 'Z:/DESIGNS/IA-등록/_config/config.json';
@@ -548,9 +548,10 @@
       // ⚠️ class 'hidden' 을 쓰지 않는다 — `.row`(display:flex)와 `.hidden` 이 같은 명시도라
       //    stylesheet 순서에 따라 .row 가 이겨 안 숨는다(#finBody 때와 같은 함정, 스모크가 잡았다).
       if (elAnnotKwRow) elAnnotKwRow.style.display = (activeTab() === 'bundle') ? 'none' : '';
+      // 상세(자동결합 구성)는 HTML title 툴팁에 있다 — 화면 문구는 짧게(2026-08-20 설명 다이어트)
       if (elAnnotHint) elAnnotHint.textContent = (activeTab() === 'bundle')
-        ? '주석 = 키워드-식별번호-후가공-수량 · 키워드는 각 행에서 입력 · 여백 3cm 이상인 변만'
-        : '주석 = 키워드-식별번호-후가공-수량 · 마감 여백 3cm 이상인 변만 선택 가능';
+        ? '키워드는 각 행에서 입력 · 여백 3cm 이상인 변만'
+        : '여백 3cm 이상인 변만 선택 가능';
       // config 로드(restoreSettings→setMode)가 큐 초기화보다 먼저 도는 경로가 있다 —
       //   그때 queue 는 아직 undefined 다. 여기서 막지 않으면 패널이 통째로 죽는다.
       //   이후 DOMContentLoaded 끝의 renderQueue() 가 게이트·버튼을 정리한다.

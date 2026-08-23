@@ -58,11 +58,21 @@
    * @param src {W,H,data:Uint8ClampedArray|Array}  RGBA · 투명 배경으로 래스터한 조각
    * @param growPx 바깥으로 넓힐 픽셀 수 (= (여백+도련)/mmPerPx)
    * @param opt.alphaMin 불투명 판정 임계. **생략 = 적응형**(`pickAlphaMin`) — 넘기면 그 값으로 고정한다
+   * @param opt.srcInsetPx 공급원 색의 **안정점 탐색 깊이**(px). 기본 2 · 0 = 최외곽 그대로.
+   *   ★2026-08-24 반백반흑 실사용 보고("흰 부분 도련이 회색") — 가장자리 최외곽 픽셀은
+   *   AA·축소 스무딩·래스터 원본(사진/스캔)의 소프트 에지 때문에 **섞인 색(회색)**일 수 있다.
+   *   최외곽을 그대로 반복하면 그 오염이 3mm 로 확대된다.
+   *   ⚠️ 고정 깊이로 무조건 안쪽을 뽑으면 안 된다 — 가장자리 2px 안쪽 **내부 선**의 색을
+   *   끌어와 벡터 오프셋 시절 결함이 되살아난다(하네스 §2가 실제로 잡았다). 그래서
+   *   **안정점 탐색**: 같은 방향으로 들어가며 "다음 픽셀과 색이 같은(±8/채널)" 첫 픽셀을
+   *   쓴다. 블렌드 밴드는 색이 계속 변하므로 통과되고, 진짜 색 경계는 그 앞의 안정된
+   *   가장자리 색에서 멈춘다. 깊이 안에 안정점이 없으면(그라데이션·헤어라인) 최외곽 유지.
    * @returns {W,H,data,pad} pad = 사방으로 늘어난 픽셀 수(=growPx). 원본은 (pad,pad) 위치에 그대로 있다.
    */
   function repeatLastPixel(src, growPx, opt) {
     opt = opt || {};
     var aMin = opt.alphaMin;
+    var inset = (typeof opt.srcInsetPx === 'number') ? Math.max(0, Math.round(opt.srcInsetPx)) : 2;
     var pad = Math.max(0, Math.ceil(growPx));
     var W = src.W, H = src.H, s = src.data;
     var NW = W + pad * 2, NH = H + pad * 2;
@@ -129,6 +139,23 @@
         if (sx < 0 || sy < 0 || sx >= NW || sy >= NH) continue;
         var j = (sy * NW + sx) * 4, k = i * 4;
         if (out[j + 3] < aMin) continue;
+        // ★공급원 안정점 탐색 — 최외곽이 블렌드(AA·스무딩·소프트 에지)면 색이 안정되는
+        //   첫 안쪽 픽셀을 쓴다(위 주석). 안정점이 없으면 최외곽 유지 = 종전 동작.
+        //   TOL2 = 채널당 ±8 (8²×3 = 192) — 사진 노이즈는 안정, 블렌드 계단은 불안정으로 갈린다.
+        if (inset > 0) {
+          var dlen = Math.sqrt(a * a + b * b) || 1;
+          var ux = a / dlen, uy = b / dlen;
+          var prev = j;
+          for (var t = 1; t <= inset + 1; t++) {
+            var cx = sx - Math.round(ux * t), cy = sy - Math.round(uy * t);
+            if (cx < 0 || cy < 0 || cx >= NW || cy >= NH) break;
+            var jj = (cy * NW + cx) * 4;
+            if (out[jj + 3] < aMin) break;
+            var dr = out[prev] - out[jj], dg = out[prev + 1] - out[jj + 1], db = out[prev + 2] - out[jj + 2];
+            if (dr * dr + dg * dg + db * db <= 192) { j = prev; break; }   // prev 가 안정점
+            prev = jj;
+          }
+        }
         out[k] = out[j]; out[k + 1] = out[j + 1]; out[k + 2] = out[j + 2]; out[k + 3] = 255;
         filled++;
       }
