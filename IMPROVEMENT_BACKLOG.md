@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-08-23T09:44:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-08-23T15:44:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,17 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 4 데이터 정합성 (2026-08-23T15:44):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → origin `e21ec81`(직전 Area3 HEAD, 자기 자신의 백로그 커밋만 반영) → `git checkout main && git reset --hard origin/main`(HEAD `e21ec81`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area4 자신의 앵커(`efc5d27`) 이후 `git log efc5d27..HEAD --oneline` = 6커밋 전부 `chore(auto-improve)` 백로그 커밋(Area4~3, 자기 자신 포함)뿐 — 웹앱 범위(`-- src migrations scripts .github`) diff **0건**(`git diff --stat`도 백로그/아카이브/area-1 문서 3개 파일뿐) → 데이터 정합성 렌즈로 볼 신규 코드/스키마 변경 전무. 직전 Area4 사이클(2026-08-22T03:44)에 이어 **2연속 웹앱범위 diff 0건**.
+> - **standing scan 재확인**(신규 코드 없어 net-new 여부만 재검증): ① `npm run audit:entity` 131파일·61쿼리·**누락 0**(변동없음). ② `node scripts/sort-audit.cjs` P1 **0건**(변동없음, P3/P4 138건은 기존 스코프 밖). ③ `git log efc5d27..HEAD -- migrations` = 0건 → NOT NULL/CHECK/dangling-orphan/FK sweep 전부 대상 마이그 없음(재실행 무의미, net-new 0 유지).
+> - **open 11건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` totalCount **11**(변동없음, #606·#608·#609·#612·#613·#614·#615·#616·#617·#618·#619 전건 일치) — `search_issues`로 개별 재확인, #606·#608·#609만 기존 코멘트 1개씩(방향 확정분, 신규 아님), 전 11건 `+1` 리액션 0(승인 대기 유지). Area4 소관 #614·#615도 무변화.
+> - **backlog↔GitHub 절대값 재동기화**: open **11**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md는 이번 사이클 담당 파일이라 훑었으나 이미 `line N` 잔여참조 0건(재확인, 서술식 각주만 존재, 재계산 없음). 이번 사이클은 데이터 정합성 렌즈로 볼 신규 표면이 전무한 조용한 사이클(2연속) — 새 오탐/탐지 클래스 도출 없음.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 9건 → 이번 로그 추가 후 10건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(웹앱 범위 churn 0, standing scan 전부 net-new 0), 자동수정 0건, done-sync: open 11(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-08-23T09:44):**
 > - **방법**: `git status`=워킹트리 clean, `git fetch origin main` → origin `a716c6c`(직전 Area2 HEAD와 동일) → `git checkout main && git reset --hard origin/main`(fast-forward 0, 이미 그 커밋). `npm ci`(0→81), `npx tsc --noEmit` clean.
