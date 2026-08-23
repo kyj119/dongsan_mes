@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-08-23T21:44:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-08-24T03:44:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,23 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **11** (`list_issues(state:open,label:auto-improve)` 실측, **+1**. #606·#608·#609·#612·#613·#614·#615·#616·#617·#618·#619) |
+| 🆕 new | **11** (`list_issues(state:open,label:auto-improve)` 실측, 변동 없음. #606·#608·#609·#612·#613·#614·#615·#616·#617·#618·#619) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 6 자기 진화 (2026-08-24T03:44):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → HEAD가 이미 origin `618195c`(직전 Area5 HEAD)와 동일 → `git checkout main && git reset --hard origin/main`(fast-forward 0, 변화 없음). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(범위 축 3종 전부)**: 직전 Area6 자신의 앵커(`e081734`) 이후 `git log e081734..HEAD --oneline` = 5커밋 전부 `chore(auto-improve)` 백로그 커밋(Area1~5)뿐 — 웹앱 범위(`-- src migrations scripts .github`) diff **0건**, 비-웹앱 범위(`-- LogWatcher IllustratorAutomat caps-worker workers queue`) diff도 **0건**. Area1~5가 이번 사이클 전부 "웹앱 churn 0"으로 로그했던 것과 정합 — 3개 축 전부 조용한 사이클(66회차, 지난 62회차와 동급).
+> - **done-sync 절대값 재동기화**: `list_issues(OPEN,label:auto-improve)` totalCount **11**(변동없음, #606·#608·#609·#612·#613·#614·#615·#616·#617·#618·#619) · `search_issues(reason:completed)` **531**(변동없음) · `reason:not_planned` 4 + `reason:duplicate` 2 = rejected **6**(변동없음).
+> - **open≠unfixed 리액션 재확인**: `search_issues(is:open label:auto-improve)`로 11건 전부 `reactions.+1=0` 확인(승인 대기 유지) — 코드 churn 0이므로 각 이슈 안티패턴 재grep은 스킵(캐시 신뢰, 「close-pending 캐시」 32회차 규칙: 대상 파일 unchanged면 재검증 불요 — 이번엔 대상 파일 자체가 전혀 안 바뀜). #606·#608·#609 코멘트 수(1개씩)도 기존과 동일, 신규 코멘트 없음.
+> - **브랜치 위생**(읽기전용): `npm run branch:clean` → SAFE-remote 0·SAFE-absorbed 1·REVIEW 0, SKIP 1(main) — 삭제대상 1건(변동없음, 30건 미만이라 백로그 등록 불요).
+> - **⏳ close-pending 장기화 관찰**: #606·#608·#609(issue-only, 08-08 등록)가 16일째, #612~#619(08-19~08-20 등록)가 4~5일째 리액션 0으로 OPEN 유지 — 5개 연속 사이클(Area1~5, 2026-08-23) 전부 웹앱 코드 churn 0이라는 정황과 맞물려 owner가 최근 리뷰 세션을 안 가진 것으로 추정(추측 판단 보류, 관찰만 기록). 이 자체는 버그·오탐이 아니라 owner 리뷰 큐 상태이므로 신규 이슈화 대상 아님.
+> - **🧬 SKILL 강화**: 없음 — area-6-self-evolution.md는 이번 사이클 담당 파일이라 훑었으나 `line N` 잔여참조 이미 0건(재확인, 서술식 각주만 존재, 재계산 없음). 3축 전부 churn 0인 조용한 사이클이 6회차 누적(62회차 최초 관측 이후 재현)이나, 기존 「범위 축」 레시피가 이미 이 상황을 정확히 커버하고 있어 새 오탐/탐지 클래스 도출 없음.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 11건 → 이번 로그 추가 후 12건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(3축 전부 churn 0), 자동수정 0건, done-sync: open 11(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 + 인프라 (2026-08-23T21:44):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → origin `665cc61`(직전 Area4 HEAD와 동일) → `git checkout main && git reset --hard origin/main`(fast-forward 0, 이미 그 커밋). `npm ci`(0→81), `npx tsc --noEmit` clean.
