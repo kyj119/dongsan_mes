@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-08-22T22:40:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-08-23T09:44:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,16 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 3 UX/기능 감사 (2026-08-23T09:44):**
+> - **방법**: `git status`=워킹트리 clean, `git fetch origin main` → origin `a716c6c`(직전 Area2 HEAD와 동일) → `git checkout main && git reset --hard origin/main`(fast-forward 0, 이미 그 커밋). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area3 자신의 앵커(`efc5d27`) 이후 `git log efc5d27..HEAD --oneline` = 5커밋 전부 `chore(auto-improve)` 백로그 커밋(Area4~2, 자기 자신 포함)뿐 — 웹앱 범위(`-- src migrations scripts .github`) diff **0건** → UX 렌즈로 볼 신규 페이지/스크립트/라우트 diff 없음(HTML↔JS silent-fail·axios→라우트 매처·showConfirm 오용·delete confirm 커버리지·더블클릭 중복제출 등 standing scan은 대상 파일 자체가 안 바뀌어 재확인 스킵, 이전 사이클 net-new 0 유지로 캐시 신뢰).
+> - **open 11건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` totalCount **11**(변동없음, #606·#608·#609·#612·#613·#614·#615·#616·#617·#618·#619 전건 일치), 11건 전부 `+1` 리액션 0(승인 대기 유지) — `search_issues`로 개별 재확인, #606·#608·#609만 기존 코멘트 1개씩(방향 확정분, 신규 아님).
+> - **backlog↔GitHub 절대값 재동기화**: open **11**(변동없음) · `search_issues(reason:completed)` **531**(변동없음, `search_issues` totalCount 재확인) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재, 재계산 없음). 이번 사이클은 웹앱 범위 churn 0 + open 이슈 상태 무변화인 조용한 사이클 — 새 오탐/탐지 클래스 도출 없음.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 8건 → 이번 로그 추가 후 9건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건, 자동수정 0건, done-sync: open 11(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-08-22T22:40):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → origin `d9441e0`(직전 Area1 HEAD와 동일) → `git checkout main && git reset --hard origin/main`(HEAD `d9441e0`). `npm ci`(0→81), `npx tsc --noEmit` clean.
