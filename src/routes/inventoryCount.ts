@@ -172,54 +172,72 @@ inventoryCountRouter.get('/consumption', async (c) => {
     }
 
     // ── 구간별 집계
-    const periods: any[] = []
+    //
+    // ★구간은 **품목마다 다르다** — 그 품목이 실제로 세어진 회차만 이어 붙인다.
+    //   전체 회차를 인접쌍으로 자르면, 한 품목만 담은 회차(예: 현수막만 센 주)가 끼는 순간
+    //   나머지 품목이 그 구간에서 통째로 빠져 **소모량이 사라진다**. 실사 회차를 추가하는 것이
+    //   기존 집계를 망가뜨리면 안 된다.
+    const buysByItem = new Map<number, typeof buys>()
+    for (const b of buys || []) {
+      const arr = buysByItem.get(b.item_id) || []
+      arr.push(b)
+      buysByItem.set(b.item_id, arr)
+    }
+
     const perItem = new Map<number, { used: number; buy: number; segs: any[] }>()
-    let skipped = 0
+    const periodAgg = new Map<string, { from: string; to: string; days: number; items: number; spanned: number; used_amount: number; purchase_amount: number }>()
+    let singleCount = 0
     let negatives = 0
+    let spannedTotal = 0
 
-    for (let i = 1; i < counts.length; i++) {
-      const t0 = counts[i - 1]
-      const t1 = counts[i]
-      const days = Math.max(1, Math.round((Date.parse(t1.count_date) - Date.parse(t0.count_date)) / 86400000))
+    for (const [itemId, m] of meta) {
+      const seq = counts.filter((cn) => counted.has(`${cn.id}:${itemId}`))
+      if (seq.length < 2) { singleCount++; continue }   // 한 번만 세었으면 소모를 알 수 없다
+      const myBuys = buysByItem.get(itemId) || []
+      // ★base_unit 이 있는 품목만 환산한다. NULL 이면 발주 단위 = 재고 단위.
+      const factor = m.baseUnit ? m.pack : 1
 
-      // 이 구간의 매입을 품목별 base 수량으로 접는다
-      const buyQty = new Map<number, number>()
-      const buyAmt = new Map<number, number>()
-      for (const b of buys || []) {
-        if (b.order_date <= t0.count_date || b.order_date > t1.count_date) continue
-        const m = meta.get(b.item_id)
-        if (!m) continue                                  // 이 실사표에 없는 품목 = 다른 구역
-        // ★base_unit 이 있는 품목만 환산한다. NULL 이면 발주 단위 = 재고 단위.
-        const factor = m.baseUnit ? m.pack : 1
-        buyQty.set(b.item_id, (buyQty.get(b.item_id) || 0) + Number(b.quantity) * factor)
-        buyAmt.set(b.item_id, (buyAmt.get(b.item_id) || 0) + Number(b.quantity) * Number(b.unit_price || 0))
-      }
+      for (let i = 1; i < seq.length; i++) {
+        const t0 = seq[i - 1], t1 = seq[i]
+        const open = counted.get(`${t0.id}:${itemId}`)!
+        const close = counted.get(`${t1.id}:${itemId}`)!
+        const days = Math.max(1, Math.round((Date.parse(t1.count_date) - Date.parse(t0.count_date)) / 86400000))
 
-      let pUsedAmt = 0, pBuyAmt = 0, pItems = 0, pSkipped = 0
-      for (const [itemId, m] of meta) {
-        const open = counted.get(`${t0.id}:${itemId}`)
-        const close = counted.get(`${t1.id}:${itemId}`)
-        if (open == null || close == null) { skipped++; pSkipped++; continue }   // ③ 양끝 필수
-        const buy = buyQty.get(itemId) || 0
+        let buy = 0, buyAmt = 0
+        for (const b of myBuys) {
+          if (b.order_date <= t0.count_date || b.order_date > t1.count_date) continue
+          buy += Number(b.quantity) * factor
+          buyAmt += Number(b.quantity) * Number(b.unit_price || 0)
+        }
         const used = open + buy - close
         if (used < 0) negatives++
+
+        // 이 품목이 중간 회차를 건너뛰었으면 구간이 여러 회차를 덮는다 — 숨기지 말고 표시한다
+        const skippedCounts = counts.filter((cn) =>
+          cn.count_date > t0.count_date && cn.count_date < t1.count_date).length
+        if (skippedCounts > 0) spannedTotal++
 
         const rec = perItem.get(itemId) || { used: 0, buy: 0, segs: [] }
         rec.used += used
         rec.buy += buy
-        rec.segs.push({ from: t0.count_date, to: t1.count_date, days, open, buy, close, used })
+        rec.segs.push({ from: t0.count_date, to: t1.count_date, days, open, buy, close, used, spans_counts: skippedCounts })
         perItem.set(itemId, rec)
 
-        pUsedAmt += used * m.cost
-        pBuyAmt += buyAmt.get(itemId) || 0
-        pItems++
+        // 전체 표는 구간이 **끝나는 날짜**에 귀속시킨다(품목별 구간 길이가 달라 시작일로는 못 묶는다)
+        const key = t1.count_date
+        const agg = periodAgg.get(key) || { from: t0.count_date, to: t1.count_date, days, items: 0, spanned: 0, used_amount: 0, purchase_amount: 0 }
+        if (t0.count_date > agg.from) { agg.from = t0.count_date; agg.days = days }  // 가장 짧은(=대표) 구간을 표기
+        agg.items++
+        if (skippedCounts > 0) agg.spanned++
+        agg.used_amount += used * m.cost
+        agg.purchase_amount += buyAmt
+        periodAgg.set(key, agg)
       }
-      periods.push({
-        from: t0.count_date, to: t1.count_date, days,
-        items: pItems, skipped: pSkipped,
-        used_amount: Math.round(pUsedAmt), purchase_amount: Math.round(pBuyAmt),
-      })
     }
+
+    const periods = [...periodAgg.values()]
+      .sort((a, b) => a.to.localeCompare(b.to))
+      .map((p) => ({ ...p, used_amount: Math.round(p.used_amount), purchase_amount: Math.round(p.purchase_amount) }))
 
     const items = [...perItem.entries()].map(([itemId, r]) => {
       const m = meta.get(itemId)!
@@ -242,7 +260,9 @@ inventoryCountRouter.get('/consumption', async (c) => {
           // 이 수치를 어디까지 믿을지 판단할 근거. 화면에도 그대로 띄운다.
           zone_attribution: 'items.storage_zone_id (발주 라인에 구역이 없어 품목 마스터로 귀속)',
           date_basis: 'purchase_orders.order_date (입고 기록이 없어 발주일 기준 — 시차만큼 구간이 밀림)',
-          skipped_item_periods: skipped,
+          period_basis: '품목별로 그 품목을 실제 센 회차끼리 이었다. spans_counts>0 = 중간 회차를 건너뛴 구간',
+          items_counted_once: singleCount,
+          spanned_segments: spannedTotal,
           duplicate_purchase_lines: dupLines,
           negative_consumption_items: negatives,
         },
