@@ -294,9 +294,23 @@ function Invoke-Diagnose {
 
     $ans = Read-Host "  지금 이 장비에서 실제 출력 1건이 가능합니까? 원단·잉크가 소모됩니다 (y/n)"
     if ($ans -match "^[yY]") {
-        Write-Host "  → 마커 진단(--probe): 화면 안내에 따라 바탕화면에 생긴 마커 파일을 평소처럼 출력하세요."
-        $probeOut = Join-Path (Ensure-Collect) "probe-output.txt"
-        & $Exe --probe --template (Join-Path $KitRoot "marker-template.jpg") | Tee-Object -FilePath $probeOut
+        # 취소는 로그만 봐서 "안 남는다"를 증명할 수 없다 — 시각을 아는 취소를 직접 만들어야
+        # (a) 취소를 아예 안 남기는 SW 인지 (b) 다른 파일에 남는지가 갈린다. 취소 2종은 서로
+        # 다른 파일에 남는 게 실측이라(전송 중=PC 화면 / 전송 후=프린터 조작부) 둘 다 재현한다.
+        Write-Host ""
+        Write-Host "  ★ 취소까지 실측하면 '취소가 어느 파일에 남는가' 를 이 자리에서 확정할 수 있습니다."
+        Write-Host "    출력 3회(정상 1 + 취소 2). 취소 2건은 시작 직후에 끊으므로 원단 소모는 거의 없습니다."
+        $ct = Read-Host "  취소 실측까지 진행할까요? (y/n)"
+        $collect   = Ensure-Collect
+        $probeOut  = Join-Path $collect "probe-output.txt"
+        $probeArgs = @("--probe", "--template", (Join-Path $KitRoot "marker-template.jpg"), "--out", $collect)
+        if ($ct -match "^[yY]") {
+            $probeArgs += "--cancel-test"
+            Write-Host "  → 마커 진단(--probe --cancel-test): 화면 안내(R1 정상 → R2 전송중 취소 → R3 전송후 취소)를 그대로 따라 하세요."
+        } else {
+            Write-Host "  → 마커 진단(--probe): 화면 안내에 따라 바탕화면에 생긴 마커 파일을 평소처럼 출력하세요."
+        }
+        & $Exe @probeArgs | Tee-Object -FilePath $probeOut
     } else {
         Write-Host "  → 최근 로그 자동 탐색(--discover)만 수행합니다."
         $discOut = Join-Path (Ensure-Collect) "discover-output.txt"
