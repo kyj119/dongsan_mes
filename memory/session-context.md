@@ -49,3 +49,27 @@ npx wrangler d1 execute webapp-production --remote --command "SELECT COUNT(*) n,
 
 $env:SMOKE_URL='https://webapp-9i0.pages.dev'; npm run smoke   # 08-24 기준 116/116
 ```
+
+---
+
+# 세션 핸드오프 — 2026-08-24 B (병행 세션: 가공·재단 패널 피드백 9·10 — 완결)
+
+> 위 A 세션(차입·자금) 핸드오프는 살아 있는 트랙이라 남긴다. 이 절은 패널 트랙.
+
+## 한 것 (완결 — 커밋 `ea773ab5` + Z:·이 PC 배포·드리프트 0)
+
+- ⑨패널 설명 다이어트+세로글자 CSS ⑩도련 색 오염 수정(bleed.js 안정점 탐색 srcInsetPx=2 + 축소 NN + ink 굽기 AA OFF).
+- 상세 경위 = `PROJECT_STATUS_ARCHIVE.md` §2026-08-24 패널 · 함정 정본 = memory `design-bleed-color-contamination`.
+
+## 판단 기준 · 주의 (이 트랙에서 배운 것)
+
+- **도련 색 신고 판별**: 검정=디자인 자체 테두리 연장(정상, 실측으로 종결) · 회색=스무딩 희석(수정됨). 진단은 `%TEMP%\mes_cut_ink_0.png`·`mes_cut_bleed_0.png` 실물 픽셀 검사부터 — 추측 금지.
+- **AI 30.7 PNG24 `antiAliasing` 플래그 무효**(on/off 동일) — AA 끄기로 뭘 고치려는 시도는 이 버전에서 무의미.
+- **bleed.js에 「무조건 안쪽 샘플링」 금지** — 내부선 색을 흡입한다(벤치 §2가 잡음). 안정점 탐색만 안전, 게이트=`npm run cut:bleed` §8.
+- **Illustrator MCP=한글 스크립트 hang·TaskStop이 서버까지 죽임** → PowerShell COM `DoJavaScript` 대체(ASCII·한글경로는 URI 인코딩).
+- `ia:deploy`는 축2 포함 시 TTY 실답 가드 — 에이전트가 우회하지 말 것(용준님 실터미널).
+
+## 남은 것 (이 트랙)
+
+1. **타 디자이너 PC 축4 설치** — 각 PC에서 `install-a0-panel.ps1` + 일러 재시작 (호스트 로직은 Z: 교체로 이미 전 PC 반영).
+2. (선택) 테두리 없는 조각으로 흰 도련 실검증 · 실물 출력 1회 확인.
