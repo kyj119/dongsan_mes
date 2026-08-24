@@ -1,76 +1,28 @@
-# 세션 핸드오프 — 2026-08-24 (그룹 경영분석 + 차입 실측 완결 · 코드 0)
+# 세션 핸드오프 — 2026-08-24 파일 규격 자동 판독 (P1~P5 완결)
 
-> 이 파일은 **덮어쓰기**다. 지난 세션 내용은 남기지 않는다(미완 TODO만 「이월」 표시로 옮긴다).
+## 상태
+- **P1~P5 전부 prod 배포 완료**: `b98c7044`(P1~P3) · `ab533dc0`(P4) · `018bf35a`(P5) — main push → CI deploy.yml 자동배포, 둘 다 success. prod smoke **116/116** · /order-form 마커 3종(applyProbedFileDims·probeSnapScale·dim_probe_) · 콘솔 0.
+- 워크트리 `file-dims` 종료·브랜치 삭제. 정본 memory = `design-file-dimension-probe`.
 
-## 이번 세션에 한 것 — 분석·prod 데이터 정비만, 코드·배포 없음
+## 결정 + 이유 (P4·P5)
+1. **P4는 스펙과 달리 CEP 패널이 아니라 zscan 스캐너에 구현** — 패널 두 경로(A0·재단)는 측정 실패 시 `nobounds`로 등록을 중단해 NULL을 만들지 않는다. NULL 생산자는 파일명에 규격 없는 zscan 건(`measured_cm:{}`). `scripts/zscan-intake.cjs`에 헤더판독(파서 정본 esbuild 트랜스파일, 사본 없음)×배율표(`scale_table.csv`, support≥85%) 폴백. **표 밖 유형·유형없음은 안 채움**(Z: 출력파일 1/5·1/10 축소 관행 — 배율 모르면 추측 금지). 채움 건은 `post_desc: 규격:파일실측×N`. IA 배포축 무접촉(audit:ia-jsx 불요).
+2. **P5 = admin 읽기전용 엔드포인트** `GET /api/ai-analysis/audit-dimensions` — R2는 Worker 바인딩으로만 접근 가능해서 로컬 스크립트 대신 엔드포인트. R2 range(머리 64KB+필요 시 꼬리) 판독 ↔ 라인 규격÷배율 ±10%·회전 허용. **`/:id`보다 먼저 등록**(리터럴 삼킴 함정). 폴링 금지(일회성 진단).
+3. **prod 소급 감사 결과 = 대상 0건이 정답** — 8/13 8월 주문 전량 삭제로 직접연결(ai_group_index -1/-3) 링크·`order_ai_files` 모두 0. 판정 로직은 로컬 fixture(match 1·mismatch 1)로 실측 검증함. 8월 재적재하면 재실행.
 
-- **「동산그룹 돈의 지도」 아티팩트** = 경영분석+비전 정본: https://claude.ai/code/artifact/57b0b452-c379-4df0-b4f2-cd2eb04f1bae
-  1~7월 손익 실체(+2.75억, 6.4%)·재무흐름 분해·리스크 스택·3지평선 비전·결정 질문 7 답변 기록.
-  전략 답변 정본 = memory `project-group-vision-2026`(선명=간판 다각화 독립·청주 27-02 흑자전환 목표·잉여현금=차입상환 검토+MES+장비유지).
-- **차입 21건 실측 완결** (정본 = memory `design-loan-liability-model`):
-  - 만기 절벽 = **2027 봄(3~5월) 18.9억** — 하나 e1 3/30 17.4억(★마통 602-910043-89904 4.98억 포함, **loans 테이블 밖**) + 선명 3건 1.5억. 구 2027-07-31은 전부 placeholder였다.
-  - **9/20 이차보전 1.5억 만기** — 연장 문의 진행 중(용준님).
-  - 원금 개시 확정: 개발기술 2.5억 = **26-12-21부터 710만/월** · 긴급경안 1억 = 28-04부터 ~278만/월.
-  - 선명 잔액 정정 **+4,807만**(id21 5,150만→9,000만·id22 443만→1,500만, 월이자 교차검증) → 그룹 차입 **23.0억**.
-  - 실행 SQL 4건 = `docs/analysis/2026-08-19-loans-*.sql`·`2026-08-24-*.sql` — **전부 실행·검증 완료**(백업 `_bak_0819_loans_maturity` 13행).
-
-## ★점검 발견 — 자금 예측(loan_payments) 갭 (✅ 해소 2026-08-24 같은 세션)
-
-- `loan_payments` 269건 전부 `status='SCHEDULED'` (**PENDING 아님** — 쿼리 시 주의).
-- ① **선명 4건(id19~22) 스케줄 0건** → 월 ~250만 유출이 예측에 없음 ② **id4 원금 710만/월(12/21~)이 스케줄에 없음**(이자 12회차뿐) — 최대 갭, 연 8,520만 ③ id6 스케줄이 만기(9/20) 후에도 이자를 생성해 둠 — 연장 결과 나오면 만기·금리·회차 갱신.
-- 처리 선택지: 가) OLS 상환계획표 기반 회차 직접 INSERT(정확) 나) generate-schedule 재실행(★INTEREST_ONLY는 이자 12개월만 생성·원금 회차 안 만듦 — memory 함정) 다) 방치·통장 실측만. **권고 = id4·id20은 가, 선명 이자는 나로 충분.**
-- **✅ 해소(08-24)**: 전부 가) 방식 — `2026-08-24-loan-payments-schedule.sql`로 87회차 재생성(백업 `_bak_0824_loan_payments` 12행·멱등). id4=OLS 실측 39회차(**원금 합계 정확히 2.5억**, 첫 4회차 실측·이후 추정 표기)·id19~22=실측 금리 12개월(id20 원금 100만/월 포함). 총 344행. **12월 대출 유출 예정 2,467만**으로 원금 개시가 예측에 처음 반영됨. 잔여=id6 연장 결과 시 스케줄 재생성(TODO 2와 동일).
-- INTEREST_ONLY 절벽 원금 17.4억은 **의도적으로 스케줄에 없다**(연장 전제) — 예측 화면에 절벽이 안 보이는 이유. 시나리오 검토 시 별도 인지 필요.
-
-## 판단 기준 · 주의사항
-
-- **prod 쓰기(wrangler --file)는 classifier 차단** → SQL 파일을 `docs/analysis/`에 준비하고 용준님이 `!`로 실행하는 패턴 확정. 멱등(백업 IF NOT EXISTS·NOT IN 가드) 유지할 것.
-- **대출 매핑 판정법 = 월납 이자 교차검증**(잔액×금리÷12 ↔ 통장 정액 출금) — 잔액·금리 중 어느 쪽이 틀렸는지 가려낸다. 선명 잔액 오류도 이걸로 잡았다.
-- 은행 xls = cp949 + openpyxl `styleId` 버그 → `PYTHONIOENCODING=utf-8` + zipfile 수동 XML 파싱(이 세션 실증).
-- **만기 갱신은 loan_payments에 자동 반영 안 됨** — loans 필드와 스케줄은 별개 축.
-- 손익 인용 시: 1~7월 +2.75억(6.4%)이 최신 정본(장비 이중계상·리스료 정정 후). 8월 포함 산출·/reports·08-12 보고서 손익 인용 금지.
+## 주의사항
+- zscan 폴백 실효 커버는 낮다(6월 미파싱 258 중 3 채움): 미파싱의 주류가 유형없음(수성축 제품유형 47%)·전사축(배율표 미학습). **커버 확장 = 전사축 learn_scale 학습이 별건 TODO**.
+- `scale_table.csv`는 gitignore — 스캐너는 메인 체크아웃(CSV 보유)에서 돌므로 기본 경로 OK. 다른 위치 실행 시 `--scale-table` 지정.
+- status-trim(`npm run status:trim`)이 **계약 절 손상으로 자가 복구만 함** — 현 PROJECT_STATUS.md 구조가 스크립트의 계약(현재 초점/블로커/다음 액션 배너 등 11항목)과 어긋남(이 세션 이전부터). 배너 13건>임계 12인데 트림 불가 — 스크립트 계약 갱신 필요(별건).
+- 로컬 D1에 검증용 ai_analysis_requests 10359~10368 잔존(무해). `Z:\Designs\filedims-test\`는 삭제함.
 
 ## 다음 세션 TODO
+1. (선택) 전사축 배율표 학습 → zscan 폴백 커버 확장.
+2. (선택) status-trim 계약 절 갱신(현황판 구조와 재정렬).
+3. 8월 주문 재적재가 결정되면 → `audit-dimensions` 재실행해 소급 리포트 확보.
 
-1. ~~★loan_payments 갭 해소~~ — **✅ 완료(08-24, 87회차 재생성·검증)**. 남은 건 id6 연장 결과 반영뿐(=TODO 2).
-2. **이차보전 연장 결과 반영** — id6 만기·금리 갱신(+스케줄 재생성).
-3. **하나은행 절벽 사전 접촉 준비(10~11월)** — 플레이북 ②③: 보증서/담보/신용 분류표 + 2026 가결산 일정 세무사 협의.
-4. 약관대출 1,254만(id9) 금리 확인 — 저위험, 보험사 앱.
-5. ~~미커밋 잔존~~ — ✅ 커밋·push 완료(`7f2da551`). 신규 미커밋 = `docs/analysis/2026-08-24-loan-payments-schedule.sql` 1건(??, docs-only).
-6. (제안 대기, 용준님 승인 필요) **품질 루프 P1**(주문 클레임 퀵버튼 + 접수화면 경고 배지 — 착수 전 사전점검 보고 먼저) · **계절성 품목×월 매트릭스** 실측 · **간판 크로스셀 거래처 리스트** 추출.
-7. (이월) 태블릿 스와이프 실기기 · intake finishing 불일치 감지 · 미등록 정기출금 2건(하나 비씨 23일 2,332,300·전북 신한할부 26일 745,630) · 선명 하나카드 이상출금(7/28~29 9.2M·8/18 4.1M) · card_transactions 수집 결손(동산 하나 −21%·비씨 −35%·전북 −50%) · 첫 카드 발행 라벨 실물 확인 · postfix · 8/12 전표 3건 판정 · adjustments 날짜 · `data_complete_through` 비어 병행경고 꺼짐 · #17 IGNORED 36건.
-
-## 검증 명령 (PowerShell)
-
-코드 변경 0 — 빌드·배포 불필요. 대출 상태 확인:
-
+## 검증 명령
 ```powershell
-npx wrangler d1 execute webapp-production --remote --command "SELECT COUNT(*) n, SUM(current_balance) bal, SUM(maturity_confirmed) ok FROM loans WHERE is_active=1"
-# 기대: n=21 · bal=2,302,028,361 · ok=20 (잔여 미확인 = id9 약관대출뿐)
-
-$env:SMOKE_URL='https://webapp-9i0.pages.dev'; npm run smoke   # 08-24 기준 116/116
+npm run test:file-dims                      # 파서 게이트 19케이스
+$env:SMOKE_URL='https://webapp-9i0.pages.dev'; npm run smoke
+node scripts/zscan-intake.cjs --from 2026-08-01 --to 2026-08-08   # dry-run(폴백 로그 포함)
 ```
-
----
-
-# 세션 핸드오프 — 2026-08-24 B (병행 세션: 가공·재단 패널 피드백 9·10 — 완결)
-
-> 위 A 세션(차입·자금) 핸드오프는 살아 있는 트랙이라 남긴다. 이 절은 패널 트랙.
-
-## 한 것 (완결 — 커밋 `ea773ab5` + Z:·이 PC 배포·드리프트 0)
-
-- ⑨패널 설명 다이어트+세로글자 CSS ⑩도련 색 오염 수정(bleed.js 안정점 탐색 srcInsetPx=2 + 축소 NN + ink 굽기 AA OFF).
-- 상세 경위 = `PROJECT_STATUS_ARCHIVE.md` §2026-08-24 패널 · 함정 정본 = memory `design-bleed-color-contamination`.
-
-## 판단 기준 · 주의 (이 트랙에서 배운 것)
-
-- **도련 색 신고 판별**: 검정=디자인 자체 테두리 연장(정상, 실측으로 종결) · 회색=스무딩 희석(수정됨). 진단은 `%TEMP%\mes_cut_ink_0.png`·`mes_cut_bleed_0.png` 실물 픽셀 검사부터 — 추측 금지.
-- **AI 30.7 PNG24 `antiAliasing` 플래그 무효**(on/off 동일) — AA 끄기로 뭘 고치려는 시도는 이 버전에서 무의미.
-- **bleed.js에 「무조건 안쪽 샘플링」 금지** — 내부선 색을 흡입한다(벤치 §2가 잡음). 안정점 탐색만 안전, 게이트=`npm run cut:bleed` §8.
-- **Illustrator MCP=한글 스크립트 hang·TaskStop이 서버까지 죽임** → PowerShell COM `DoJavaScript` 대체(ASCII·한글경로는 URI 인코딩).
-- `ia:deploy`는 축2 포함 시 TTY 실답 가드 — 에이전트가 우회하지 말 것(용준님 실터미널).
-
-## 남은 것 (이 트랙)
-
-1. **타 디자이너 PC 축4 설치** — 각 PC에서 `install-a0-panel.ps1` + 일러 재시작 (호스트 로직은 Z: 교체로 이미 전 PC 반영).
-2. (선택) 테두리 없는 조각으로 흰 도련 실검증 · 실물 출력 1회 확인.
