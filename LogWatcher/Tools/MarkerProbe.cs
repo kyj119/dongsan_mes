@@ -53,6 +53,19 @@ namespace LogWatcher.Tools
             @"C:\Users\Public\Documents", @"C:\ProgramData",
         };
 
+        /// <summary>
+        /// 스캔 루트 1개. 네트워크·이동식 드라이브는 파일 수가 폭증하므로 깊이를 따로 준다
+        /// (NAS 루트를 고정 드라이브와 같은 깊이로 훑으면 현장에서 스냅샷 1회에 몇 분씩 멈춘다).
+        /// </summary>
+        private sealed class ScanRoot
+        {
+            public string Path = "";
+            public int Depth;
+        }
+
+        /// --include-network 로 붙는 루트의 최대 깊이 상한.
+        private const int NetworkScanDepth = 4;
+
         private sealed class Snap
         {
             public long Length;
@@ -78,10 +91,11 @@ namespace LogWatcher.Tools
         {
             string? marker = null;
             string? template = null;
-            var roots = new List<string>();
+            var pathArgs = new List<string>();
             int depth = 6;
             bool noWait = false;
             bool cancelTest = false;
+            bool includeNetwork = false;
             int settleSeconds = 30;
             string? outDir = null;
 
@@ -91,9 +105,10 @@ namespace LogWatcher.Tools
                 {
                     case "--marker" when i + 1 < args.Length: marker = args[++i]; break;
                     case "--template" when i + 1 < args.Length: template = args[++i]; break;
-                    case "--path" when i + 1 < args.Length: roots.Add(args[++i]); break;
+                    case "--path" when i + 1 < args.Length: pathArgs.Add(args[++i]); break;
                     case "--depth" when i + 1 < args.Length: int.TryParse(args[++i], out depth); break;
                     case "--no-wait": noWait = true; break;
+                    case "--include-network": includeNetwork = true; break;
                     case "--cancel-test": cancelTest = true; break;
                     case "--settle" when i + 1 < args.Length: int.TryParse(args[++i], out settleSeconds); break;
                     case "--out" when i + 1 < args.Length: outDir = args[++i]; break;
@@ -109,12 +124,27 @@ namespace LogWatcher.Tools
             Console.WriteLine($"모드   : {(cancelTest ? "취소 실측 (정상 1건 + 취소 2종)" : "정상 출력 1건")}");
             Console.WriteLine();
 
+            var roots = new List<ScanRoot>();
+            foreach (var p in pathArgs) roots.Add(new ScanRoot { Path = p, Depth = depth });
             if (roots.Count == 0)
             {
-                foreach (var r in KnownRoots) if (Directory.Exists(r)) roots.Add(r);
-                roots.AddRange(GetFixedDriveRoots());
+                foreach (var r in KnownRoots) if (Directory.Exists(r)) roots.Add(new ScanRoot { Path = r, Depth = depth });
+                foreach (var d in GetFixedDriveRoots()) roots.Add(new ScanRoot { Path = d, Depth = depth });
             }
-            Console.WriteLine($"스캔 대상: {string.Join("  ", roots)}   (depth {depth})");
+            _networkIncluded = includeNetwork;
+            if (includeNetwork)
+            {
+                // 장비가 로그를 매핑 드라이브(Z: 등)나 USB 에 쓰는 경우가 있다. 기본으로 켜면
+                // NAS 전체를 훑어 느려지므로 옵션으로만 붙이고, 깊이도 따로 제한한다.
+                var netDepth = Math.Min(depth, NetworkScanDepth);
+                var nets = GetNetworkRoots().Where(n => !roots.Any(r => string.Equals(r.Path, n, StringComparison.OrdinalIgnoreCase))).ToList();
+                foreach (var n in nets) roots.Add(new ScanRoot { Path = n, Depth = netDepth });
+                if (nets.Count == 0)
+                    Console.WriteLine("[--include-network] 연결된 네트워크·이동식 드라이브가 없습니다.");
+                else
+                    Console.WriteLine($"[--include-network] {string.Join(" ", nets)} 포함 (깊이 {netDepth}) — 스냅샷이 느려집니다. 위치를 알면 --path 가 훨씬 빠릅니다.");
+            }
+            Console.WriteLine($"스캔 대상: {string.Join("  ", roots.Select(r => r.Path))}   (depth {depth})");
 
             // ── 라운드 구성 ─────────────────────────────────────────────────
             // 취소는 로그만 봐서 "기록이 없음"을 증명할 수 없다 — 시각을 아는 취소를 직접 만들어야
@@ -129,8 +159,10 @@ namespace LogWatcher.Tools
             // ── 기준선 스냅샷 ───────────────────────────────────────────────
             Console.WriteLine();
             Console.WriteLine("[스냅샷 A] 아무것도 하기 전 상태 기록...");
-            var prev = Snapshot(roots, depth);
-            Console.WriteLine($"      파일 {prev.Count}개");
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var prev = Snapshot(roots);
+            sw.Stop();
+            Console.WriteLine($"      파일 {prev.Count}개 ({sw.Elapsed.TotalSeconds:F1}초)");
 
             foreach (var round in rounds)
             {
@@ -147,7 +179,7 @@ namespace LogWatcher.Tools
 
                 Settle(settleSeconds);
 
-                var after = Snapshot(roots, depth);
+                var after = Snapshot(roots);
                 round.Changed = Diff(prev, after);
                 Console.WriteLine($"      변화한 파일 {round.Changed.Count}개");
 
@@ -175,6 +207,8 @@ namespace LogWatcher.Tools
                 Console.WriteLine("\n[주의] 정상 출력(R1)에서 변화한 파일이 없습니다.");
                 Console.WriteLine("       - 출력이 실제로 실행됐는지 확인하세요.");
                 Console.WriteLine("       - 로그가 스캔 범위 밖일 수 있습니다 → --path 옵션으로 설치 폴더를 직접 지정하세요.");
+                var hint = NetworkHintOrNull();
+                if (hint != null) Console.WriteLine("       - " + hint);
                 if (!cancelTest) return;
             }
 
@@ -390,6 +424,8 @@ namespace LogWatcher.Tools
                 Console.WriteLine("  ★ 취소 라운드에서 변화한 파일이 0개입니다.");
                 Console.WriteLine("    → 이 제어 SW 는 취소를 파일로 남기지 않습니다. 2축 파서로도 취소를 못 잡습니다.");
                 Console.WriteLine("    (스캔 범위 밖일 가능성은 남습니다 — --path 로 설치 폴더를 직접 지정해 1회 재확인 권장)");
+                var hint = NetworkHintOrNull();
+                if (hint != null) Console.WriteLine("    " + hint);
             }
             else
             {
@@ -529,14 +565,14 @@ namespace LogWatcher.Tools
 
         private static bool _snapshotCapped;
 
-        private static Dictionary<string, Snap> Snapshot(List<string> roots, int depth)
+        private static Dictionary<string, Snap> Snapshot(List<ScanRoot> roots)
         {
             var map = new Dictionary<string, Snap>(StringComparer.OrdinalIgnoreCase);
             foreach (var root in roots)
             {
-                if (!Directory.Exists(root)) continue;
-                bool known = KnownRoots.Any(k => string.Equals(k, root, StringComparison.OrdinalIgnoreCase));
-                foreach (var f in SafeEnumerate(root, depth, applyExcludes: !known))
+                if (!SafeExists(root.Path)) continue;
+                bool known = KnownRoots.Any(k => string.Equals(k, root.Path, StringComparison.OrdinalIgnoreCase));
+                foreach (var f in SafeEnumerate(root.Path, root.Depth, applyExcludes: !known))
                 {
                     if (map.Count >= MaxSnapshotFiles)
                     {
@@ -628,6 +664,43 @@ namespace LogWatcher.Tools
                     stack.Push((s, depth + 1));
                 }
             }
+        }
+
+        private static bool _networkIncluded;
+
+        /// <summary>
+        /// 네트워크 드라이브가 실제로 붙어 있을 때만 --include-network 를 권한다.
+        /// 대상도 없는 옵션을 권하면 현장에서 헛수고(=재출력 1회)를 시킨다.
+        /// </summary>
+        private static string? NetworkHintOrNull()
+        {
+            if (_networkIncluded) return null;
+            try { if (!GetNetworkRoots().Any()) return null; } catch { return null; }
+            return "매핑 드라이브·USB 에 기록하는 장비라면 --include-network 를 붙여 다시 실행하세요.";
+        }
+
+        /// <summary>
+        /// 네트워크·이동식 드라이브 루트. --include-network 로만 붙는다.
+        /// 로그를 매핑 드라이브(Z: 등)나 USB 에 쓰는 제어 SW 가 있어 탐색 수단은 남겨두되,
+        /// 기본 포함은 하지 않는다 — 라운드마다 스냅샷을 다시 뜨므로 비용이 4배로 붙는다.
+        /// </summary>
+        private static IEnumerable<string> GetNetworkRoots()
+        {
+            DriveInfo[] drives;
+            try { drives = DriveInfo.GetDrives(); } catch { yield break; }
+            foreach (var d in drives)
+            {
+                bool ok;
+                try { ok = (d.DriveType == DriveType.Network || d.DriveType == DriveType.Removable) && d.IsReady; }
+                catch { ok = false; }   // 끊긴 매핑 드라이브는 IsReady 에서 던진다
+                if (ok) yield return d.RootDirectory.FullName;
+            }
+        }
+
+        /// 끊긴 매핑 드라이브에서 Directory.Exists 가 길게 멈추거나 던지는 경우가 있다.
+        private static bool SafeExists(string path)
+        {
+            try { return Directory.Exists(path); } catch { return false; }
         }
 
         private static IEnumerable<string> GetFixedDriveRoots()
