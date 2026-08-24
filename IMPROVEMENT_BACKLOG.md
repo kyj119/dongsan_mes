@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-08-24T16:44:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-08-24T21:45:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,20 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 3 UX/기능 감사 (2026-08-24T21:45):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → origin `9f3e59d`(직전 Area2 HEAD `018bf35`에서 **49커밋 전진**, 그중 웹앱 실코드 churn 다수) → `git checkout main && git reset --hard origin/main`. `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area3 자신의 앵커(`efc5d27`) 이후 `git log efc5d27..HEAD --oneline -- src migrations scripts .github` = 13커밋 — 6+연속 조용한 사이클 이후 처음으로 UX 렌즈 필요한 실 화면 churn. 핵심 3건: ① `9d42157` 재무리포트 재설계(마진탭 = 매입평균단가×수량 추정원가 기반 재구축 + "단가점검 필요" 신규 테이블, P&L탭 = 통장·카드 계정분류 정본 이식) ② `a7f8bda` 프론트 소비처 0건 대시보드 엔드포인트 7개 삭제(정리, UX 개선) ③ `9deae34` 잔액스냅샷 선급금/선수금 서브라인 노출(이미 API엔 있었으나 화면 미표시였던 것 = "백엔드 먼저·화면 나중" 갭 해소). 나머지(`f94d416`/`ab533dc`/`b98c704`/`921558b`/`ca9b971`/`018bf35`)는 CLI 전용 스크립트이거나 Area2가 이미 코드품질 렌즈로 정독 완료.
+> - **9d42157 UX 정독(신규 화면 요소 전수)**: ① `pnlCaveats`/`mgCoverageNote`/`pnlSgaBody`/`mgAnomalyBody`/`mgLowMarginBody`/`mgTotalRevenue` 등 신규 id 전부 `pages/*.ts` 템플릿에 존재 확인(HTML↔JS silent-fail 0건, getElementById 전부 `if(!el){console.warn...return}` 가드). ② 축 3-1 XSS 렌즈: `mgLowMarginBody`/`mgAnomalyBody` 렌더 시 `item_code`/`item_name`/`category` 전부 기존 `esc()` 헬퍼로 escape(신규 `escFin()` 헬퍼도 financialReports.js에 추가돼 캐비어츠 배너 텍스트 escape). ③ 빈 상태: "데이터 없음"/"점검 필요 품목 없음"/"조회 후 표시됩니다" 전부 placeholder 존재(신규 테이블 2개 모두 커버). ④ 로딩 표시: `mgCoverageNote`가 "로딩 중..." placeholder로 초기 렌더(기존 15회차 로딩표시 갭 패턴과 반대로 이번엔 신규 요소가 처음부터 로딩상태 보유).
+> - **axios→백엔드 라우트 매칭(신규 4콜)**: `/api/financial/pnl`·`/api/financial/pnl/monthly`·`/api/financial/balance-snapshot`·`/api/reports/margin-analysis`·`/api/reports/margin-by-client` 전부 `financialReports.ts`/`reports.ts` 라우터에 exact-match 등록 확인, dead-button 0건.
+> - **`repeated_purchase_lines`/`unattributed_purchase_lines`(921558b/ca9b971) 재확인**: Area2가 이미 "프론트 소비처 0건, 신규 이슈 아님"으로 판정한 근거를 `issue_read(#618)`로 직접 검증 — #618 본문이 정확히 이 엔드포인트(`GET /api/inventory-counts/consumption`)를 "5번째 백엔드먼저·화면나중 사례"로 이미 추적 중(2026-08-21 등록, 신규 필드는 기존 갭의 확장일 뿐 별도 갭 아님) 확인, 신규 이슈화 보류 판정 재확인.
+> - **더블클릭 중복제출/삭제confirm standing scan**: 이번 churn은 전부 GET 조회 전용(재무/마진 리포트) — 해당 클래스 대상 자체 없음.
+> - **open 11건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` totalCount **11**(변동없음, #606·#608·#609·#612·#613·#614·#615·#616·#617·#618·#619 전건 일치).
+> - **backlog↔GitHub 절대값 재동기화**: open **11**(변동없음) · done **531**(변동없음, Area2 동일사이클 재확인 값 유지) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md `line N` 잔여참조 재확인(0건, 기존에 이미 서술 참조로 전환 완료). 이번 사이클은 6+연속 조용한 사이클 이후 첫 실 UX churn을 다뤘으나 escape/empty-state/loading-state/라우트매칭 전 렌즈 clean — 새 오탐/탐지 클래스 도출 없음(기존 standing scan 레시피가 전부 커버).
+> - **백로그 트림 체크**: `backlog:trim --check` 실행 예정(이 로그 저장 직후).
+> - 신규 이슈 0건(신규 화면 churn 전부 UX 렌즈 clean), 자동수정 0건, done-sync: open 11(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-08-24T16:44):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → origin `018bf35`(직전 Area1 HEAD `ea773ab`에서 **6커밋 전진, 실 웹앱 코드 churn**) → `git checkout main && git reset --hard origin/main`(HEAD `018bf35`, 27커밋 fast-forward). `npm ci`(0→81), `npx tsc --noEmit` clean.
