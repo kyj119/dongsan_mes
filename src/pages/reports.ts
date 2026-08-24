@@ -203,7 +203,7 @@ export function reportsPage(c: Context<HonoEnv>) {
 
         <div class="ds-card overflow-hidden">
           <div class="p-4"><h3 class="text-lg font-bold"><i class="fas fa-user-edit text-blue-500 mr-2"></i>디자이너별 주문 처리
-            <span class="text-xs font-normal text-gray-400 ml-1">(등록자 기준 · 처리량)</span></h3></div>
+            <span class="text-xs font-normal text-gray-400 ml-1">(등록자 기준 · 처리량 — 이관 주문은 전량 '관리자'로 집계됨. 실적은 위 담당자별 표 참조)</span></h3></div>
           <table class="w-full text-sm ds-table ds-table-striped">
             <thead class="bg-gray-50">
               <tr>

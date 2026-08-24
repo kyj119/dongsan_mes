@@ -62,13 +62,13 @@ reportsRouter.get('/client-revenue', async (c) => {
       // 특정 거래처의 월별 매출
       query = `
         SELECT
-          strftime('%Y-%m', o.created_at) as month,
+          strftime('%Y-%m', o.created_at, '+9 hours') as month,
           COUNT(*) as order_count,
           COALESCE(SUM(o.final_amount), 0) as revenue
         FROM orders o
         WHERE o.client_id = ? AND o.status != 'CANCELLED'
           AND NOT ${voucherOrderSql('o')}${ef.clause}
-        GROUP BY strftime('%Y-%m', o.created_at)
+        GROUP BY strftime('%Y-%m', o.created_at, '+9 hours')
         ORDER BY month DESC
         LIMIT ?
       `
@@ -78,15 +78,15 @@ reportsRouter.get('/client-revenue', async (c) => {
       query = `
         SELECT
           c.id as client_id, c.client_name,
-          strftime('%Y-%m', o.created_at) as month,
+          strftime('%Y-%m', o.created_at, '+9 hours') as month,
           COUNT(*) as order_count,
           COALESCE(SUM(o.final_amount), 0) as revenue
         FROM orders o
         JOIN clients c ON o.client_id = c.id
         WHERE o.status != 'CANCELLED'
           AND NOT ${voucherOrderSql('o')}
-          AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
-        GROUP BY c.id, c.client_name, strftime('%Y-%m', o.created_at)
+          AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')${ef.clause}
+        GROUP BY c.id, c.client_name, strftime('%Y-%m', o.created_at, '+9 hours')
         ORDER BY revenue DESC
       `
       params = [monthCount, ...ef.params]
@@ -124,7 +124,7 @@ reportsRouter.get('/client-revenue', async (c) => {
       ) adj ON adj.cid = c.id
       WHERE c.is_active = 1 AND o.status != 'CANCELLED'
         AND NOT ${voucherOrderSql('o')}
-        AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
+        AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')${ef.clause}
       GROUP BY c.id
       ORDER BY total_revenue DESC
       LIMIT 20
@@ -155,7 +155,7 @@ reportsRouter.get('/item-analysis', async (c) => {
       JOIN items i ON oi.item_id = i.id
       JOIN orders o ON oi.order_id = o.id
       WHERE o.status != 'CANCELLED'
-        AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
+        AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')${ef.clause}
       GROUP BY i.id, i.item_name, i.category
       ORDER BY total_revenue DESC
       LIMIT 30
@@ -171,7 +171,7 @@ reportsRouter.get('/item-analysis', async (c) => {
       JOIN items i ON oi.item_id = i.id
       JOIN orders o ON oi.order_id = o.id
       WHERE o.status != 'CANCELLED'
-        AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
+        AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')${ef.clause}
       GROUP BY i.category
       ORDER BY total_revenue DESC
     `).bind(monthCount, ...ef.params).all()
@@ -201,7 +201,7 @@ reportsRouter.get('/designer-stats', async (c) => {
       FROM users u
       LEFT JOIN orders o ON o.created_by = u.id
         AND o.status != 'CANCELLED'
-        AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
+        AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')${ef.clause}
       WHERE u.is_active = 1 AND u.role IN ('DESIGNER', 'ADMIN', 'MANAGER')
       GROUP BY u.id, u.name
       ORDER BY order_count DESC
@@ -239,7 +239,7 @@ reportsRouter.get('/sales-rep-stats', async (c) => {
       FROM orders o
       JOIN employees e ON e.id = o.sales_rep_id
       WHERE o.status != 'CANCELLED'
-        AND o.order_date >= date('now', '-' || ? || ' months')${ef.clause}
+        AND o.order_date >= date('now', '+9 hours', '-' || ? || ' months')${ef.clause}
       GROUP BY e.id, month
       ORDER BY e.name, month
     `).bind(monthCount, ...ef.params).all<SalesRepMonthRow>()
@@ -303,7 +303,7 @@ reportsRouter.get('/entity-attribution-audit', async (c) => {
       WHERE o.status != 'CANCELLED'
         AND e.default_entity_id IS NOT NULL
         AND o.entity_id != e.default_entity_id
-        AND o.order_date >= date('now', '-' || ? || ' months')
+        AND o.order_date >= date('now', '+9 hours', '-' || ? || ' months')
       ORDER BY o.order_date DESC, o.id DESC
       LIMIT 500
     `).bind(monthCount).all()
@@ -343,15 +343,15 @@ reportsRouter.get('/monthly-summary', async (c) => {
     // 월별 주문/매출
     const { results: monthly } = await c.env.DB.prepare(`
       SELECT
-        strftime('%Y-%m', o.created_at) as month,
+        strftime('%Y-%m', o.created_at, '+9 hours') as month,
         COUNT(*) as order_count,
         COALESCE(SUM(o.final_amount), 0) as revenue,
         COUNT(DISTINCT o.client_id) as unique_clients
       FROM orders o
       WHERE o.status != 'CANCELLED'
         AND NOT ${voucherOrderSql('o')}
-        AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
-      GROUP BY strftime('%Y-%m', o.created_at)
+        AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')${ef.clause}
+      GROUP BY strftime('%Y-%m', o.created_at, '+9 hours')
       ORDER BY month DESC
     `).bind(monthCount, ...ef.params).all()
 
@@ -362,7 +362,7 @@ reportsRouter.get('/monthly-summary', async (c) => {
         COUNT(*) as payment_count,
         COALESCE(SUM(amount), 0) as payments
       FROM payments
-      WHERE payment_date >= date('now', '-' || ? || ' months')${efP.clause}
+      WHERE payment_date >= date('now', '+9 hours', '-' || ? || ' months')${efP.clause}
       GROUP BY strftime('%Y-%m', payment_date)
       ORDER BY month DESC
     `).bind(monthCount, ...efP.params).all()
@@ -394,7 +394,7 @@ reportsRouter.get('/margin-analysis', async (c) => {
       WHERE o.status != 'CANCELLED'
         AND NOT ${voucherOrderSql('o')}
         AND oi.parent_item_id IS NULL
-        AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
+        AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')${ef.clause}
     `).bind(monthCount, ...ef.params).all<MarginSummaryRow>()
 
     const summaryRaw = summaryRows[0]
@@ -426,7 +426,7 @@ reportsRouter.get('/margin-analysis', async (c) => {
       WHERE o.status != 'CANCELLED'
         AND NOT ${voucherOrderSql('o')}
         AND oi.parent_item_id IS NULL
-        AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
+        AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')${ef.clause}
       GROUP BY i.category
       ORDER BY revenue DESC
     `).bind(monthCount, ...ef.params).all<MarginCategoryRow>()
@@ -443,7 +443,7 @@ reportsRouter.get('/margin-analysis', async (c) => {
     // 3. 월별 수익성 추이
     const { results: byMonth } = await c.env.DB.prepare(`
       SELECT
-        strftime('%Y-%m', o.created_at) as month,
+        strftime('%Y-%m', o.created_at, '+9 hours') as month,
         COALESCE(SUM(oi.amount), 0) as revenue,
         COALESCE(SUM(oi.total_cost), 0) as cost,
         COALESCE(SUM(oi.amount) - SUM(oi.total_cost), 0) as profit,
@@ -457,8 +457,8 @@ reportsRouter.get('/margin-analysis', async (c) => {
       WHERE o.status != 'CANCELLED'
         AND NOT ${voucherOrderSql('o')}
         AND oi.parent_item_id IS NULL
-        AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
-      GROUP BY strftime('%Y-%m', o.created_at)
+        AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')${ef.clause}
+      GROUP BY strftime('%Y-%m', o.created_at, '+9 hours')
       ORDER BY month DESC
     `).bind(monthCount, ...ef.params).all<MarginMonthRow>()
 
@@ -489,7 +489,7 @@ reportsRouter.get('/margin-analysis', async (c) => {
       WHERE o.status != 'CANCELLED'
         AND NOT ${voucherOrderSql('o')}
         AND oi.parent_item_id IS NULL
-        AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
+        AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')${ef.clause}
       GROUP BY o.id, o.order_number, c.client_name
       HAVING SUM(oi.total_cost) > 0
       ORDER BY margin_rate ASC
@@ -550,7 +550,7 @@ reportsRouter.get('/margin-by-client', async (c) => {
       ) oi_agg ON o.id = oi_agg.order_id
       WHERE o.status != 'CANCELLED'
         AND NOT ${voucherOrderSql('o')}
-        AND o.created_at >= date('now', '-' || ? || ' months')
+        AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')
         AND oi_agg.cost > 0${ef.clause}
       GROUP BY c.id, c.client_name
       HAVING total_revenue > 0
@@ -696,15 +696,15 @@ reportsRouter.get('/receivables-analysis', async (c) => {
         COALESCE(rev.revenue, 0) as revenue,
         COALESCE(pay.payments, 0) as payments
       FROM (
-        SELECT DISTINCT strftime('%Y-%m', created_at) as month
-        FROM orders WHERE created_at >= date('now', '-' || ? || ' months')
+        SELECT DISTINCT strftime('%Y-%m', created_at, '+9 hours') as month
+        FROM orders WHERE created_at >= date('now', '+9 hours', '-' || ? || ' months')
           AND NOT ${voucherOrderSql('')}${efOrders.clause}
         UNION
         SELECT DISTINCT strftime('%Y-%m', payment_date) as month
-        FROM payments WHERE payment_date >= date('now', '-' || ? || ' months')${efPayments.clause}
+        FROM payments WHERE payment_date >= date('now', '+9 hours', '-' || ? || ' months')${efPayments.clause}
       ) m
       LEFT JOIN (
-        SELECT strftime('%Y-%m', created_at) as month, SUM(final_amount) as revenue
+        SELECT strftime('%Y-%m', created_at, '+9 hours') as month, SUM(final_amount) as revenue
         FROM orders WHERE status != 'CANCELLED'
           AND NOT ${voucherOrderSql('')}${efOrders.clause} GROUP BY 1
       ) rev ON m.month = rev.month
@@ -736,20 +736,20 @@ reportsRouter.get('/production-analysis', async (c) => {
         COUNT(CASE WHEN print_status != 'OK' THEN 1 END) as error_count,
         COUNT(*) as total_count
       FROM print_events
-      WHERE created_at >= date('now', '-' || ? || ' months')
+      WHERE created_at >= date('now', '+9 hours', '-' || ? || ' months')
         AND event_kind = 'PRINT'
     `).bind(monthCount).all<PrintSummaryRow>()
 
     const { results: qualityRows } = await c.env.DB.prepare(`
       SELECT COUNT(*) as issue_count
       FROM quality_issues
-      WHERE created_at >= date('now', '-' || ? || ' months')
+      WHERE created_at >= date('now', '+9 hours', '-' || ? || ' months')
     `).bind(monthCount).all<QualityRow>()
 
     const { results: maintRows } = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(cost), 0) as maint_cost
       FROM maintenance_logs
-      WHERE performed_at >= date('now', '-' || ? || ' months')
+      WHERE performed_at >= date('now', '+9 hours', '-' || ? || ' months')
     `).bind(monthCount).all<MaintRow>()
 
     const ps = summaryRows[0]
@@ -769,7 +769,7 @@ reportsRouter.get('/production-analysis', async (c) => {
         COUNT(CASE WHEN pe.print_status = 'OK' THEN 1 END) as ok_count,
         COUNT(DISTINCT date(pe.created_at)) as active_days
       FROM print_events pe
-      WHERE pe.created_at >= date('now', '-' || ? || ' months')
+      WHERE pe.created_at >= date('now', '+9 hours', '-' || ? || ' months')
         AND pe.event_kind = 'PRINT'
         AND pe.printer_name IS NOT NULL AND pe.printer_name != ''
       GROUP BY pe.printer_name
@@ -779,13 +779,13 @@ reportsRouter.get('/production-analysis', async (c) => {
     // 3) 월별 출력 추이
     const { results: byMonth } = await c.env.DB.prepare(`
       SELECT
-        strftime('%Y-%m', created_at) as month,
+        strftime('%Y-%m', created_at, '+9 hours') as month,
         COUNT(*) as total,
         COUNT(CASE WHEN print_status = 'OK' THEN 1 END) as ok_count
       FROM print_events
-      WHERE created_at >= date('now', '-' || ? || ' months')
+      WHERE created_at >= date('now', '+9 hours', '-' || ? || ' months')
         AND event_kind = 'PRINT'
-      GROUP BY strftime('%Y-%m', created_at)
+      GROUP BY strftime('%Y-%m', created_at, '+9 hours')
       ORDER BY month DESC
     `).bind(monthCount).all()
 
@@ -796,7 +796,7 @@ reportsRouter.get('/production-analysis', async (c) => {
         COUNT(*) as count,
         COALESCE(SUM(cost_impact), 0) as cost
       FROM quality_issues
-      WHERE created_at >= date('now', '-' || ? || ' months')
+      WHERE created_at >= date('now', '+9 hours', '-' || ? || ' months')
       GROUP BY defect_category
       ORDER BY count DESC
     `).bind(monthCount).all()
@@ -843,7 +843,7 @@ reportsRouter.get('/period-comparison', async (c) => {
         FROM orders
         WHERE status != 'CANCELLED'
           AND NOT ${voucherOrderSql('')}
-          AND strftime('%Y-%m', created_at) = ?${efKPI.clause}
+          AND strftime('%Y-%m', created_at, '+9 hours') = ?${efKPI.clause}
       `).bind(month, ...efKPI.params).all<KPIOrderRow>()
 
       const { results: payRows } = await c.env.DB.prepare(`
@@ -861,7 +861,7 @@ reportsRouter.get('/period-comparison', async (c) => {
         WHERE o.status != 'CANCELLED'
           AND NOT ${voucherOrderSql('o')}
           AND oi.parent_item_id IS NULL
-          AND strftime('%Y-%m', o.created_at) = ?${efKPIo.clause}
+          AND strftime('%Y-%m', o.created_at, '+9 hours') = ?${efKPIo.clause}
       `).bind(month, ...efKPIo.params).all<KPIMarginRow>()
 
       const { results: newClientRows } = await c.env.DB.prepare(`
@@ -869,7 +869,7 @@ reportsRouter.get('/period-comparison', async (c) => {
         FROM orders
         WHERE status != 'CANCELLED'
           AND NOT ${voucherOrderSql('')}
-          AND strftime('%Y-%m', created_at) = ?${efKPI.clause}
+          AND strftime('%Y-%m', created_at, '+9 hours') = ?${efKPI.clause}
           AND client_id NOT IN (
             SELECT DISTINCT client_id FROM orders
             WHERE status != 'CANCELLED' AND NOT ${voucherOrderSql('')} AND created_at < ? || '-01'${efKPI.clause}
@@ -907,7 +907,7 @@ reportsRouter.get('/period-comparison', async (c) => {
         WHERE o.status != 'CANCELLED'
           AND NOT ${voucherOrderSql('o')}
           AND oi.parent_item_id IS NULL
-          AND strftime('%Y-%m', o.created_at) = ?${efKPIo.clause}
+          AND strftime('%Y-%m', o.created_at, '+9 hours') = ?${efKPIo.clause}
         GROUP BY i.category
       `).bind(month, ...efKPIo.params).all<PeriodCategoryRow>()
       return results
@@ -939,7 +939,7 @@ reportsRouter.get('/period-comparison', async (c) => {
         FROM orders o
         JOIN clients c ON o.client_id = c.id
         WHERE o.status != 'CANCELLED' AND NOT ${voucherOrderSql('o')}
-          AND strftime('%Y-%m', o.created_at) = ?${efKPIo.clause}
+          AND strftime('%Y-%m', o.created_at, '+9 hours') = ?${efKPIo.clause}
         GROUP BY c.id
       `).bind(month, ...efKPIo.params).all<PeriodClientRow>()
       return results
@@ -992,14 +992,14 @@ reportsRouter.get('/monthly-summary/csv', async (c) => {
 
     const { results } = await c.env.DB.prepare(`
       SELECT
-        strftime('%Y-%m', o.created_at) as month,
+        strftime('%Y-%m', o.created_at, '+9 hours') as month,
         COUNT(*) as order_count,
         COALESCE(SUM(o.final_amount), 0) as revenue
       FROM orders o
       WHERE o.status != 'CANCELLED'
         AND NOT ${voucherOrderSql('o')}
-        AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
-      GROUP BY strftime('%Y-%m', o.created_at)
+        AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')${ef.clause}
+      GROUP BY strftime('%Y-%m', o.created_at, '+9 hours')
       ORDER BY month DESC
     `).bind(monthsInt, ...ef.params).all<CSVOrderRow>()
 
@@ -1008,7 +1008,7 @@ reportsRouter.get('/monthly-summary/csv', async (c) => {
         strftime('%Y-%m', payment_date) as month,
         COALESCE(SUM(amount), 0) as total_payments
       FROM payments
-      WHERE payment_date >= date('now', '-' || ? || ' months')${efP.clause}
+      WHERE payment_date >= date('now', '+9 hours', '-' || ? || ' months')${efP.clause}
       GROUP BY strftime('%Y-%m', payment_date)
     `).bind(monthsInt, ...efP.params).all<CSVPaymentRow>()
 

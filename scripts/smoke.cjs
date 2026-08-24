@@ -53,11 +53,6 @@ const ENDPOINTS = [
 
   // 대시보드
   { path: '/api/dashboard/stats', name: 'dashboard.stats' },
-  { path: '/api/dashboard/stats/daily', name: 'dashboard.daily' },
-  { path: '/api/dashboard/stats/monthly', name: 'dashboard.monthly' },
-  { path: '/api/dashboard/stats/weekly', name: 'dashboard.weekly' },
-  { path: '/api/dashboard/stats/status-distribution', name: 'dashboard.statusDist' },
-  { path: '/api/dashboard/stats/card-progress', name: 'dashboard.cardProgress' },
   { path: '/api/dashboard/stats/receivables', name: 'dashboard.receivables' },
   { path: '/api/dashboard/stats/today-due', name: 'dashboard.todayDue' },
   { path: '/api/dashboard/overdue-pos', name: 'dashboard.overduePOs' },

@@ -263,7 +263,7 @@ productionReportsRouter.get('/uptime', async (c) => {
       WHERE pe.equipment_id IS NOT NULL
         AND pe.event_kind = 'PRINT'
         AND pe.print_status = 'OK'
-        AND pe.print_completed_at >= date('now', '-' || ? || ' months')
+        AND pe.print_completed_at >= date('now', '+9 hours', '-' || ? || ' months')
       GROUP BY pe.equipment_id, strftime('%Y-%m', pe.print_completed_at)
       ORDER BY pe.equipment_id, month
     `).bind(monthCount).all()
@@ -276,7 +276,7 @@ productionReportsRouter.get('/uptime', async (c) => {
         COALESCE(SUM(cost), 0) as total_cost,
         COUNT(*) as log_count
       FROM maintenance_logs
-      WHERE performed_at >= date('now', '-' || ? || ' months')
+      WHERE performed_at >= date('now', '+9 hours', '-' || ? || ' months')
       GROUP BY equipment_id, strftime('%Y-%m', performed_at)
     `).bind(monthCount).all()
 

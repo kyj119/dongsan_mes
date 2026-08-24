@@ -143,90 +143,6 @@ dashboardRouter.get('/stats', async (c) => {
   }
 })
 
-// Get daily statistics (last 7 days)
-dashboardRouter.get('/stats/daily', async (c) => {
-  try {
-    const ef = entityFilter(c)
-    const { results } = await c.env.DB.prepare(`
-      SELECT
-        date(created_at) as date,
-        COUNT(*) as order_count,
-        SUM(final_amount) as revenue
-      FROM orders
-      WHERE created_at >= date('now', '-7 days')${ef.clause}
-      GROUP BY date(created_at)
-      ORDER BY date(created_at) DESC
-    `).bind(...ef.params).all()
-
-    return c.json({
-      success: true,
-      data: results
-    })
-  } catch (error) {
-    console.error('Dashboard stats/daily error:', error)
-    return c.json({
-      success: false,
-      error: '서버 오류가 발생했습니다.'
-    }, 500)
-  }
-})
-
-// Get weekly statistics (last 4 weeks)
-dashboardRouter.get('/stats/weekly', async (c) => {
-  try {
-    const ef = entityFilter(c)
-    const { results } = await c.env.DB.prepare(`
-      SELECT
-        strftime('%Y-W%W', created_at) as week,
-        COUNT(*) as order_count,
-        SUM(final_amount) as revenue
-      FROM orders
-      WHERE created_at >= date('now', '-28 days')${ef.clause}
-      GROUP BY strftime('%Y-W%W', created_at)
-      ORDER BY week DESC
-    `).bind(...ef.params).all()
-
-    return c.json({
-      success: true,
-      data: results
-    })
-  } catch (error) {
-    return c.json({
-      success: false,
-
-      error: '서버 오류가 발생했습니다.'
-    }, 500)
-  }
-})
-
-// Get monthly statistics (last 6 months)
-dashboardRouter.get('/stats/monthly', async (c) => {
-  try {
-    const ef = entityFilter(c)
-    const { results } = await c.env.DB.prepare(`
-      SELECT
-        strftime('%Y-%m', created_at) as month,
-        COUNT(*) as order_count,
-        SUM(final_amount) as revenue
-      FROM orders
-      WHERE created_at >= date('now', '-180 days')${ef.clause}
-      GROUP BY strftime('%Y-%m', created_at)
-      ORDER BY month DESC
-    `).bind(...ef.params).all()
-
-    return c.json({
-      success: true,
-      data: results
-    })
-  } catch (error) {
-    console.error('src/routes/dashboard.ts error:', error)
-    return c.json({
-      success: false,
-      error: '서버 오류가 발생했습니다.'
-    }, 500)
-  }
-})
-
 // Get client-wise order summary
 dashboardRouter.get('/stats/clients', async (c) => {
   try {
@@ -249,77 +165,6 @@ dashboardRouter.get('/stats/clients', async (c) => {
       ORDER BY total_revenue DESC
       LIMIT 10
     `).bind(...ef.params).all()
-
-    return c.json({
-      success: true,
-      data: results
-    })
-  } catch (error) {
-    return c.json({
-      success: false,
-
-      error: '서버 오류가 발생했습니다.'
-    }, 500)
-  }
-})
-
-// Get status distribution
-dashboardRouter.get('/stats/status-distribution', async (c) => {
-  try {
-    const ef = entityFilter(c)
-    const cf = cardEntityFilter(c)
-    const orderStatus = await c.env.DB.prepare(`
-      SELECT
-        status,
-        COUNT(*) as count
-      FROM orders
-      WHERE 1=1${ef.clause}
-      GROUP BY status
-    `).bind(...ef.params).all()
-
-    const cardStatus = await c.env.DB.prepare(`
-      SELECT
-        status,
-        COUNT(*) as count
-      FROM cards
-      WHERE 1=1${cf.clause}
-      GROUP BY status
-    `).bind(...cf.params).all()
-
-    return c.json({
-      success: true,
-      data: {
-        orders: orderStatus.results,
-        cards: cardStatus.results
-      }
-    })
-  } catch (error) {
-    console.error('src/routes/dashboard.ts error:', error)
-    return c.json({
-      success: false,
-      error: '서버 오류가 발생했습니다.'
-    }, 500)
-  }
-})
-
-// Get card progress (delivery date based)
-dashboardRouter.get('/stats/card-progress', async (c) => {
-  try {
-    const cf = cardEntityFilter(c)
-    const { results } = await c.env.DB.prepare(`
-      SELECT
-        CASE
-          WHEN julianday(delivery_date) - julianday('now') <= 2 THEN 'urgent'
-          WHEN julianday(delivery_date) - julianday('now') <= 7 THEN 'soon'
-          ELSE 'normal'
-        END as urgency,
-        status,
-        COUNT(*) as count
-      FROM cards
-      WHERE delivery_date IS NOT NULL${cf.clause}
-      GROUP BY urgency, status
-      ORDER BY urgency, status
-    `).bind(...cf.params).all()
 
     return c.json({
       success: true,
@@ -541,32 +386,15 @@ dashboardRouter.get('/stats/weekly-trend', async (c) => {
     const ef = entityFilter(c)
     const { results } = await c.env.DB.prepare(`
       SELECT
-        date(created_at) as date,
+        ${kstDateOf('created_at')} as date,
         COUNT(*) as order_count,
         COALESCE(SUM(final_amount), 0) as revenue
       FROM orders
-      WHERE created_at >= date('now', '-6 days')
+      WHERE created_at >= ${kstDate("'-6 days'")}
         AND status NOT IN ('CANCELLED', 'QUOTATION')${ef.clause}
-      GROUP BY date(created_at)
+      GROUP BY ${kstDateOf('created_at')}
       ORDER BY date ASC
     `).bind(...ef.params).all()
-    return c.json({ success: true, data: results })
-  } catch (error) {
-    console.error('src/routes/dashboard.ts error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
-})
-
-// 카드 상태 분포
-dashboardRouter.get('/stats/card-distribution', async (c) => {
-  try {
-    const cf = cardEntityFilter(c)
-    const { results } = await c.env.DB.prepare(`
-      SELECT status, COUNT(*) as count
-      FROM cards
-      WHERE status NOT IN ('CANCELLED')${cf.clause}
-      GROUP BY status
-    `).bind(...cf.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
     console.error('src/routes/dashboard.ts error:', error)
@@ -648,42 +476,6 @@ dashboardRouter.get('/stats/production-today', async (c) => {
   }
 })
 
-// 최근 7일 장비별 가동률 (print_events 기반)
-dashboardRouter.get('/stats/uptime-weekly', async (c) => {
-  try {
-    const { results } = await c.env.DB.prepare(`
-      SELECT pe.equipment_id, e.name as equipment_name,
-        COUNT(DISTINCT date(pe.created_at)) as active_days,
-        COUNT(*) as total_events,
-        SUM(CASE WHEN pe.print_status = 'OK' THEN 1 ELSE 0 END) as ok_events
-      FROM print_events pe
-      LEFT JOIN equipment e ON pe.equipment_id = e.id
-      WHERE pe.created_at >= date('now', '-6 days')
-        AND pe.event_kind = 'PRINT'
-      GROUP BY pe.equipment_id
-      ORDER BY total_events DESC
-    `).all()
-
-    interface UptimeRow { equipment_id: number; equipment_name: string; active_days: number; total_events: number; ok_events: number }
-    const data = (results as unknown as UptimeRow[]).map((row) => ({
-      equipment_id: row.equipment_id,
-      equipment_name: row.equipment_name,
-      active_days: row.active_days,
-      total_events: row.total_events,
-      ok_events: row.ok_events,
-      uptime_ratio: Number((row.active_days / 7).toFixed(4))
-    }))
-
-    return c.json({ success: true, data })
-  } catch (error) {
-    console.error('src/routes/dashboard.ts error:', error)
-    return c.json({
-      success: false,
-      error: '서버 오류가 발생했습니다.'
-    }, 500)
-  }
-})
-
 // 장비 가동시간 (print_duration_sec 기반, 근무시간 570분 = 08:30~18:00)
 dashboardRouter.get('/stats/equipment-utilization', async (c) => {
   try {
@@ -709,11 +501,11 @@ dashboardRouter.get('/stats/equipment-utilization', async (c) => {
     const { results: weeklyRows } = await c.env.DB.prepare(`
       SELECT pe.equipment_id, e.name as equipment_name,
         SUM(pe.print_duration_sec) as total_sec,
-        COUNT(DISTINCT date(pe.print_started_at)) as active_days,
+        COUNT(DISTINCT ${kstDateOf('pe.print_started_at')}) as active_days,
         COUNT(*) as print_count
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
-      WHERE date(pe.print_started_at) >= date('now', '-6 days')
+      WHERE ${kstDateOf('pe.print_started_at')} >= ${kstDate("'-6 days'")}
         AND pe.event_kind = 'PRINT'
       GROUP BY pe.equipment_id
       ORDER BY total_sec DESC
