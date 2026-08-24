@@ -1,48 +1,51 @@
-# 세션 핸드오프 — 2026-08-19 (/reports 경영진단 탭 삭제)
+# 세션 핸드오프 — 2026-08-24 (그룹 경영분석 + 차입 실측 완결 · 코드 0)
 
 > 이 파일은 **덮어쓰기**다. 지난 세션 내용은 남기지 않는다(미완 TODO만 「이월」 표시로 옮긴다).
 
-## 이번 세션에 한 것 — 소규모 1건, prod 배포 완결
+## 이번 세션에 한 것 — 분석·prod 데이터 정비만, 코드·배포 없음
 
-- **/reports 경영진단 탭 삭제** (용준님 요청) — 커밋 `dc7a34e5` · 배포 `c21504a6`.
-  - `src/pages/reports.ts`: 탭 버튼(`anaTabMgmt`)·콘텐츠 div(`anaMgmtContent`)·`managementReportContent` import·탭 배열 `'mgmt'`·`?tab=mgmt`/`#mgmt` 딥링크 분기 제거 (−11줄/+1줄).
-  - **단독 `/management-report` 페이지는 보존**(직접 URL 접근·`mr-root` 마커 prod 실측). 되살릴 땐 이 커밋 revert + `src/layout/menu.ts:76~78` 주석 참조.
-- 검증 = 타입체크·빌드 OK · entity 61/61 · 마이그 드리프트 없음 · prod smoke **114/114** · `/reports` 200(`anaTabMgmt` 부재·`anaTabForecast` 존재) · `/management-report` 200(`mr-root` 존재).
+- **「동산그룹 돈의 지도」 아티팩트** = 경영분석+비전 정본: https://claude.ai/code/artifact/57b0b452-c379-4df0-b4f2-cd2eb04f1bae
+  1~7월 손익 실체(+2.75억, 6.4%)·재무흐름 분해·리스크 스택·3지평선 비전·결정 질문 7 답변 기록.
+  전략 답변 정본 = memory `project-group-vision-2026`(선명=간판 다각화 독립·청주 27-02 흑자전환 목표·잉여현금=차입상환 검토+MES+장비유지).
+- **차입 21건 실측 완결** (정본 = memory `design-loan-liability-model`):
+  - 만기 절벽 = **2027 봄(3~5월) 18.9억** — 하나 e1 3/30 17.4억(★마통 602-910043-89904 4.98억 포함, **loans 테이블 밖**) + 선명 3건 1.5억. 구 2027-07-31은 전부 placeholder였다.
+  - **9/20 이차보전 1.5억 만기** — 연장 문의 진행 중(용준님).
+  - 원금 개시 확정: 개발기술 2.5억 = **26-12-21부터 710만/월** · 긴급경안 1억 = 28-04부터 ~278만/월.
+  - 선명 잔액 정정 **+4,807만**(id21 5,150만→9,000만·id22 443만→1,500만, 월이자 교차검증) → 그룹 차입 **23.0억**.
+  - 실행 SQL 4건 = `docs/analysis/2026-08-19-loans-*.sql`·`2026-08-24-*.sql` — **전부 실행·검증 완료**(백업 `_bak_0819_loans_maturity` 13행).
 
-## 결정과 이유
+## ★점검 발견 — 자금 예측(loan_payments) 갭 (다음 세션 최우선)
 
-- **탭만 제거, 페이지·라우트·권한은 보존** — menu.ts의 2026-07-18 은퇴 주석과 같은 패턴(직접 URL 접근 유지). 사용자가 "탭 삭제"만 요청했고, `managementReportContent`는 단독 페이지가 계속 사용.
-- 마이그레이션 미변경이지만 드리프트 감사는 실행 — 타 세션이 0540 드리프트 감지 smoke 프로브를 방금 넣은 상태였다 → **0540은 이미 prod 적용 확인**(드리프트 0).
+- `loan_payments` 269건 전부 `status='SCHEDULED'` (**PENDING 아님** — 쿼리 시 주의).
+- ① **선명 4건(id19~22) 스케줄 0건** → 월 ~250만 유출이 예측에 없음 ② **id4 원금 710만/월(12/21~)이 스케줄에 없음**(이자 12회차뿐) — 최대 갭, 연 8,520만 ③ id6 스케줄이 만기(9/20) 후에도 이자를 생성해 둠 — 연장 결과 나오면 만기·금리·회차 갱신.
+- 처리 선택지: 가) OLS 상환계획표 기반 회차 직접 INSERT(정확) 나) generate-schedule 재실행(★INTEREST_ONLY는 이자 12개월만 생성·원금 회차 안 만듦 — memory 함정) 다) 방치·통장 실측만. **권고 = id4·id20은 가, 선명 이자는 나로 충분.**
+- INTEREST_ONLY 절벽 원금 17.4억은 **의도적으로 스케줄에 없다**(연장 전제) — 예측 화면에 절벽이 안 보이는 이유. 시나리오 검토 시 별도 인지 필요.
 
 ## 판단 기준 · 주의사항
 
-- **커밋 훅 doc-diet 게이트에 또 걸렸다** — 현황판 L39(타 세션 TNS 항목, 412자>400). 큰 것부터 지목되므로 내 커밋이 차단됨 → 상세(HYB/SOLV 진단 경위)를 ARCHIVE §2026-08-19 TNS [2] 일제 실행 결과에 이관 후 해소. **MEMORY.md는 여전히 한도 직전** — 다음 추가 시 먼저 다이어트.
-- **공유 체크아웃** — push 직전 타 세션(auto-improve) 커밋 2건(`c14296c6` smoke 프로브·`f3bc6bfb` backlog)이 원격에 먼저 들어와 rejected → stash(WIP 포함 `-u`)→rebase→pop으로 해소. 충돌 없음(backlog·smoke.cjs만).
-- 미커밋 잔존 = `scripts/finance-diagnose.cjs`(M) · `docs/analysis/2026-08-19-loans-*.sql`·`장비-고정자산-대조표.md`(??) — **타 세션(재무·대출) WIP라 손대지 않았다**. src/ 아니라 번들 무관.
-- prod smoke는 `SMOKE_URL` 지정 필수(기본 localhost) — 이제 **114/114**(inventoryCount.detail 프로브 편입, 404=정상·500=0540 미적용 신호).
+- **prod 쓰기(wrangler --file)는 classifier 차단** → SQL 파일을 `docs/analysis/`에 준비하고 용준님이 `!`로 실행하는 패턴 확정. 멱등(백업 IF NOT EXISTS·NOT IN 가드) 유지할 것.
+- **대출 매핑 판정법 = 월납 이자 교차검증**(잔액×금리÷12 ↔ 통장 정액 출금) — 잔액·금리 중 어느 쪽이 틀렸는지 가려낸다. 선명 잔액 오류도 이걸로 잡았다.
+- 은행 xls = cp949 + openpyxl `styleId` 버그 → `PYTHONIOENCODING=utf-8` + zipfile 수동 XML 파싱(이 세션 실증).
+- **만기 갱신은 loan_payments에 자동 반영 안 됨** — loans 필드와 스케줄은 별개 축.
+- 손익 인용 시: 1~7월 +2.75억(6.4%)이 최신 정본(장비 이중계상·리스료 정정 후). 8월 포함 산출·/reports·08-12 보고서 손익 인용 금지.
 
 ## 다음 세션 TODO
 
-1. **태블릿 실기기 스와이프·핀치 확인** (이월) — 카드 상세 슬라이드 감도·`.cd-multi-wrap` 스크롤 공존·핀치 무효.
-2. **주문서 값 ↔ 패널 확정값 불일치 감지** (이월) — `designer_intakes.finishing_json` 과 주문 라인 마감 어긋나도 경고 없음.
-3. **미등록 정기출금 2건 정체 확인** (이월) — 하나 `비씨카드` 23일 2,332,300 · 전북 `신한카드할부` 26일 745,630.
-4. **선명 하나카드 이상 출금 2건** (이월) — 7/28~29 3건 9.2M · 8/18 4건 4.1M.
-5. **`card_transactions` 수집 결손** (이월) — 동산 하나 −21% · 비씨 −35% · 전북 −50%.
-6. **prod 첫 카드 발행 때 마감·후가공 라벨 + 슬라이드 실물 확인** (이월) — 체크리스트 라벨은 생성 시 스냅샷이라 소급 안 됨.
-7. **`postfix` 미실행** (이월) — ⚠️8월 주문 510건 삭제됐으니 대상 잔존부터 확인.
-8. **MES 에만 있는 8/12 전표 3건 판정** (이월) — `E1-20260812-035`·`-039`·`-044`.
-9. **감액 기간 기준 통일 여부** (이월) — `adjustments.adjustment_date` 컬럼 부재.
-10. **08-13 묶음 관찰** (이월) — `settings.data_complete_through` 비어 병행 경고 꺼짐.
-11. **#17 개인통장 IGNORED 36건 정리 여부** (이월) — 그대로 둬도 무해.
+1. **★loan_payments 갭 해소** — id4 원금 회차(12/21~, 710만/월)가 최우선. 위 선택지 가/나/다 중 용준님 확인 후 진행.
+2. **이차보전 연장 결과 반영** — id6 만기·금리 갱신(+스케줄 재생성).
+3. **하나은행 절벽 사전 접촉 준비(10~11월)** — 플레이북 ②③: 보증서/담보/신용 분류표 + 2026 가결산 일정 세무사 협의.
+4. 약관대출 1,254만(id9) 금리 확인 — 저위험, 보험사 앱.
+5. **미커밋 잔존** = `.claude/PROJECT_STATUS.md`(M) + `docs/analysis/2026-08-24-*.sql` 2건(??) — docs-only라 번들 무관. ⚠️커밋·push 시 deploy.yml 자동 재배포(코드 동일이라 무해).
+6. (제안 대기, 용준님 승인 필요) **품질 루프 P1**(주문 클레임 퀵버튼 + 접수화면 경고 배지 — 착수 전 사전점검 보고 먼저) · **계절성 품목×월 매트릭스** 실측 · **간판 크로스셀 거래처 리스트** 추출.
+7. (이월) 태블릿 스와이프 실기기 · intake finishing 불일치 감지 · 미등록 정기출금 2건(하나 비씨 23일 2,332,300·전북 신한할부 26일 745,630) · 선명 하나카드 이상출금(7/28~29 9.2M·8/18 4.1M) · card_transactions 수집 결손(동산 하나 −21%·비씨 −35%·전북 −50%) · 첫 카드 발행 라벨 실물 확인 · postfix · 8/12 전표 3건 판정 · adjustments 날짜 · `data_complete_through` 비어 병행경고 꺼짐 · #17 IGNORED 36건.
 
 ## 검증 명령 (PowerShell)
 
+코드 변경 0 — 빌드·배포 불필요. 대출 상태 확인:
+
 ```powershell
-npm run verify                       # 타입체크 + 빌드
-npm run audit:entity                 # entity 필터 61/61
-node scripts/doc-diet-audit.cjs      # 현황판·메모리 인덱스 한도 (★MEMORY.md 한도 직전)
+npx wrangler d1 execute webapp-production --remote --command "SELECT COUNT(*) n, SUM(current_balance) bal, SUM(maturity_confirmed) ok FROM loans WHERE is_active=1"
+# 기대: n=21 · bal=2,302,028,361 · ok=20 (잔여 미확인 = id9 약관대출뿐)
 
-$env:SMOKE_URL='https://webapp-9i0.pages.dev'; npm run smoke   # prod 스모크 114/114
-
-# 이번 변경 마커 (로그인 후): /reports 에 anaTabMgmt 없음·anaTabForecast 있음 · /management-report 에 mr-root 있음
+$env:SMOKE_URL='https://webapp-9i0.pages.dev'; npm run smoke   # 08-24 기준 116/116
 ```
