@@ -1,26 +1,22 @@
-# 세션 핸드오프 — 2026-08-24 파일 규격 판독 후속 2건 (배율표 학습·status-trim)
+# 세션 핸드오프 — 2026-08-24 오후 3건 (AP 부호·base_price 자료·매입 미연결)
 
 ## 상태
-- **완료·main 머지**: `23ef6f38`(status-trim 계약 재정렬+트림 실행) · `f94d4169`(배율표 학습기) · `1400f370`(docs). 워크트리 `scale-trim` 종료.
-- 앞선 같은 날 작업(파일 규격 자동 판독 P1~P5 prod 배포)은 직전 핸드오프·memory `design-file-dimension-probe` 참조.
+1. **AP 부호 분리 = prod 배포 완결** (`03aac905`, CI 배포·smoke 116/116). balance-snapshot AP 를 공급처별 부호 분리 — 매입채무=양수합, `assets.prepaid_expenses`=음수 절대값(선급/과지급). prod 실측 선급금 5,382,565. UI 스냅샷 카드에 선수금·선급금 보조줄(`snapshotArAdvance`·`snapshotApPrepaid`, 0=숨김). ⚠️매입 원장 목록(`accounts-payable.ts` settlement summary.total_balance)도 음수를 상계하지만 행 단위로 부호가 보여 별건 관찰로 남김.
+2. **base_price 판단자료 = 생성·전달, 적용은 용준님 결정 대기**. `scripts/propose-costbase-prices.cjs`(신설·커밋 `7817182b`, 읽기전용) — 공백 586품목 중 원가 보유 FIXED 218건에 원가×카테고리 마진(상품 ×1.67·원자재 ×1.08·태극기 ×2.54, 참조 141건 중앙값) 제안 → `docs/pricing/costbase-proposals.csv`. 원가없음 315(GOODS 111·PRODUCT 127·MATERIAL 77)=매입이력 자체가 없어 3번 작업과 연동 · AREA 53=㎡단가표 설계 대상. ⚠️items 판매 플래그는 `is_sales_item`(is_sales 아님 — PRAGMA 실확인).
+3. **매입 미연결 = 실측 정정 + 15건 연결 + 잔여 작업목록**. 실측: 이월(OPEN·2025-12-31) 17라인 10.4억 제외 시 **343라인 2.64억**(현황판의 「112라인 1.24억」은 구 집계 — 스코프 차). 확실 15건(갈바→SGM-GALVA·각목→WDS-01·SMPS→SGM-SMPS·고무자석→MAG-060) 연결, 백업 `_bak_0824_unlink15`(롤백=poi_id 의 item_id 를 NULL 로). **아크릴 5건 보류** — ACR 계열 9종(2/3/5T×백/검/투명)이 **전부 품명 「아크릴」**이라 월합계 줄을 특정 규격에 물리면 오염. 잔여 328라인 2.5억 = 뭉친줄 37(4,455만, 원장 PDF 분해 대상 — Z:\DesignsS 방법론=ARCHIVE §2026-08-24 전사잉크) + 미매칭 286(2.05억, **시트지·각관·LED·로프·외주가공·운임 = 간판 자재 주류 → 품목화는 간판 BOM 트랙과 묶임**). 목록=`docs/analysis/2026-08-24-unlinked-purchase-lines.csv`.
 
-## 결정 + 이유
-1. **status-trim**: 계약 11항목이 2026-08-10 다이어트 이전의 구 구조(현재 초점/블로커/다음 액션 배너, 구 절명)를 봐서 **모든 트림이 검증 실패→자가 복구**만 하고 있었다(배너 13>임계 12인데 이관 불가). 계약을 현행 정본 구조(✅ 최근 완료/🔴 진행 중/🟡 결정·확인 대기/🆕 설계 확정/🗄️ 보류함/🔒 편집 중/⚠️ 잠복·블로커/📌 기존 에러)로 재정렬 — **문서를 계약에 맞추지 않고 계약이 문서를 따른다**. 절 이름 텍스트 매칭(이모지 VS16 변형 무관). 트림 실행: 배너 7건 ARCHIVE 이관(13→6·37→32KB), 무손실·계약 전항목 통과.
-2. **배율표 학습기** `zscan-learn-scale.cjs`: 파싱=zscan-intake `--json`(정본 파서 재사용)·실측=fileDimensions.ts(esbuild, 사본 금지)·스냅=[1,2,2.5,4,5,10] 5%(learn_scale.py와 동일)·게이트=합의≥85%+판독≥10. **append 전용**(기존 행 불변 — 검증된 폴백 동작 보호)·백업 선행. ⚠️norm 정규식은 zscan-intake.cjs:357 RX_NORM 원문 사본(1줄) — 바꿀 땐 두 곳 동시.
-3. **학습 결과(6/1~8/24, 9,508행·302유형)**: 기존 표 유형 **전부 동일 배율 재현**(교차검증 통과) · 신규 21종 채택(태극기 3~8호·전사 윈드배너·280/200폭 등) → `scale_table.csv` append(백업 `scale_table.csv.bak-2026-08-24`). ★「전사」 generic은 합의 38%로 기각 — 혼합 라벨이라 채우면 추측. 채움 실측은 6월 3건 그대로: **미파싱의 86%가 전사 generic(115)+유형없음(108)이라 표 확장으로 못 채우는 구조적 잔여**. 근본 해소 경로=파일명 규칙 배포(규격·유형 표기, 기존 대기 항목).
-
-## 주의사항
-- ⚠️ 메인 체크아웃에 **타 작업 미커밋 src 4건 잔존**(LogWatcher/Tools/MarkerProbe.cs·routes/dashboard.ts·orders/listFilter.ts·reports.ts — auto-improve 추정). 건드리지 않았고 pull은 `--autostash`로 우회함. **docs 커밋 시 같이 쓸려가지 않게 파일 지정 add 필수**(08-19 `acb0431c` 사고 패턴).
-- `scale_table.csv`는 gitignore(메인 체크아웃 전용 데이터). 학습 재실행: `node scripts/zscan-learn-scale.cjs --from … --to … [--commit]`.
-- status-trim은 이제 배너 12건 도달 시 정상 작동. `--check`로 미리보기.
+## 판단기준·주의
+- ⚠️연결된 1식 라인(qty 1·뭉친 금액)은 **원가 backfill 재실행 시 avg_unit_cost 를 오염**시킬 수 있다(440,000/EA 각목 등) — `backfill_avg_cost.sql` 재실행 전 1식 라인 제외 조건 검토.
+- 준석(AD) 태극기 끈 4,765,184(품목 없음)·에코컴퍼니 회전고리 18 88,280개×66원(ACC-014 가로등배너 회전고리와 동일물인지 불확실) — 용준님 질문 제출함.
+- 다른 세션이 메인 체크아웃에서 활동 중(reports·LogWatcher 키트) — docs 커밋은 파일 지정 add.
 
 ## 다음 세션 TODO
-1. 없음(이 두 건은 완결). 잔여 미파싱 해소는 「파일명 규칙 배포」(용준님, 기존 08-11~12 항목)와 묶임.
-2. 8월 주문 재적재 결정 시 `GET /api/ai-analysis/audit-dimensions` 재실행(직전 핸드오프 참조).
+1. base_price 218건 적용 결정 나오면 → 마이그레이션 생성(0529·0531 전례)·배포.
+2. 뭉친줄 37건 원장 분해(거래처별 Z:\DesignsS PDF — 케이엠테크·서울경금속 방법론 재사용).
+3. 회전고리·태극기 끈 답 나오면 연결/신설.
 
 ## 검증 명령
 ```powershell
-node scripts/status-trim.cjs --check
-node scripts/zscan-learn-scale.cjs --from 2026-06-01 --to 2026-08-24   # dry-run 리포트
-node scripts/zscan-intake.cjs --from 2026-08-01 --to 2026-08-08        # 폴백 로그 확인
+node scripts/propose-costbase-prices.cjs        # 제안가 재생성 (읽기전용)
+$env:SMOKE_URL='https://webapp-9i0.pages.dev'; npm run smoke
 ```
