@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-08-24T09:44:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-08-24T16:44:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,19 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-08-24T16:44):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → origin `018bf35`(직전 Area1 HEAD `ea773ab`에서 **6커밋 전진, 실 웹앱 코드 churn**) → `git checkout main && git reset --hard origin/main`(HEAD `018bf35`, 27커밋 fast-forward). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area2 자신의 앵커(`539387f`) 이후 `git log 539387f..HEAD --oneline -- src migrations scripts .github` = 7커밋(백로그 커밋 제외) — `085e055`·`ea773ab`(Area1 08-24 기보고, 재확인만) + 신규 4건: `ca9b971`/`921558b`(재고 `/consumption` 진단필드 정정·확장, 코드 자체는 순수 in-memory 집계·DB write 없음) · `b98c704`(P1~P3 파일규격 자동판독: `fileDimensions.ts` 신규 유틸 + `aiAnalysis.ts` `/upload` 확장 + `orderForm/itemRow.js`·`parent.js` 프론트) · `ab533dc`(P4 zscan 헤더판독 폴백, `scripts/zscan-intake.cjs`) · `018bf35`(P5 `GET /audit-dimensions` 읽기전용 소급감사 엔드포인트).
+> - **신규 엔드포인트/유틸 코드품질 정독**: ① `aiAnalysis.ts audit-dimensions`(018bf35) — `entityFilter` 적용·`ORDER BY ar.id DESC, oi.id DESC`(tie-break 기존 규약 준수)·라우터 전역 `authMiddleware+requireRole('ADMIN')`(`:11`) 적용 확인, R2 read-only + DB read-only(쓰기 없음). ② `fileDimensions.ts`(신규 유틸, export 5개) — 소비처 전수: `aiAnalysis.ts`(웹) + `scripts/zscan-intake.cjs`(esbuild 트랜스파일 재사용, 사본 없음) + `scripts/file-dims-selftest.cjs`(테스트게이트) = dead export 0건. ③ `itemRow.js` 신규 배지(`dim_probe_${id}`) — `.textContent`만 사용(innerHTML 미사용, escapeHtml 불요), `getElementById` 결과 전부 `console.warn` 가드(HTML↔JS silent-fail 컨벤션 준수).
+> - **standing scan**: ① `npm run audit:entity` 131파일·61쿼리·**누락 0**(변동없음, 신규 엔드포인트도 통과). ② `node scripts/sort-audit.cjs` P1 **0건**(변동없음). ③ authMiddleware recursive 재스캔 = 무-auth 7개 파일, 전건 기존 정당 클래스와 동일(barrel/hrSelf scoped/webhooks empty/helpers Map.get FP), net-new 0. ④ `npm audit` 11건(1 moderate·8 high·2 critical) 전부 devDependency, #613 기보고와 완전 일치 net-new 0.
+> - **`repeated_purchase_lines`/`unattributed_purchase_lines` 필드(ca9b971/921558b)**: `/api/inventory-counts/consumption` 응답필드 정정·추가 — 프론트 소비처 grep 0건(기존 #618 "백엔드 먼저·화면 나중 5번째 사례"가 정확히 이 엔드포인트를 이미 추적 중, 신규 이슈 아님).
+> - **open 11건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` totalCount **11**(변동없음, #606·#608·#609·#612·#613·#614·#615·#616·#617·#618·#619 전건 일치), `search_issues`로 전 11건 `reactions.+1=0` 재확인(승인 대기 유지).
+> - **backlog↔GitHub 절대값 재동기화**: open **11**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · rejected **6**(직전 사이클 재확인 유지).
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md `line N` 잔여참조 재확인(0건, 기존에 이미 서술 참조로 전환 완료). 이번 사이클은 6+연속 조용한 사이클 이후 실 feature 6커밋 churn을 다뤘으나(파일규격 자동판독 P1~P5 전 축) 전부 자체 검증(build+typecheck+test:file-dims 19/19+prod smoke 116/116) 완료 상태로 유입 + 코드품질 렌즈(entity/authMiddleware/dead-code/tie-break) 전수 clean — 새 오탐/탐지 클래스 도출 없음.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 8건 → 이번 로그 추가 후 9건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(신규 코드 전부 code-quality 렌즈 clean), 자동수정 0건, done-sync: open 11(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-08-24T09:44):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → origin `ea773ab`(직전 Area6 HEAD `b15090d`에서 **2커밋 전진, 처음으로 실 웹앱 코드 변경**) → `git checkout main && git reset --hard origin/main`(HEAD `ea773ab`). `npm ci`(0→81), `npx tsc --noEmit` clean.
