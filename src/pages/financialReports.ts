@@ -163,6 +163,8 @@ export const financialReportsContent = `
                 <i class="fas fa-handshake text-blue-600 text-xl mb-2 block"></i>
                 <div class="text-lg font-bold text-gray-900" style="font-variant-numeric:tabular-nums;" id="snapshotAr">-</div>
                 <div class="text-[10px] text-gray-400 mt-1">미수금</div>
+                <!-- 선수금(음수 잔액 거래처, 부채) — 상계 표시 금지라 별도 줄. 0이면 숨김 -->
+                <div class="hidden text-[10px] text-blue-600 mt-0.5" id="snapshotArAdvance"></div>
               </div>
               <div class="ds-card p-3 text-center">
                 <i class="fas fa-boxes text-amber-600 text-xl mb-2 block"></i>
@@ -173,6 +175,8 @@ export const financialReportsContent = `
                 <i class="fas fa-credit-card text-red-600 text-xl mb-2 block"></i>
                 <div class="text-lg font-bold text-gray-900" style="font-variant-numeric:tabular-nums;" id="snapshotAp">-</div>
                 <div class="text-[10px] text-gray-400 mt-1">매입미지급</div>
+                <!-- 선급금(음수 잔액 공급처, 자산) — 매입채무와 상계하면 양변 동시 과소. 0이면 숨김 -->
+                <div class="hidden text-[10px] text-blue-600 mt-0.5" id="snapshotApPrepaid"></div>
               </div>
             </div>
 

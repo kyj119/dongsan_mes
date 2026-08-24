@@ -20,7 +20,7 @@ interface FixedRow { total_fixed: number }
 interface MonthlyRevenueRow { month: string; revenue: number }
 interface MonthlyExpenseRow { month: string; expense: number }
 interface MonthlyPayrollRow { month: string; payroll: number }
-interface ApRow { total_ap: number }
+interface ApRow { payable: number; prepaid: number; prepaid_suppliers: number }
 interface InventoryRow { total_inventory: number }
 interface BankRow { total_bank: number }
 interface LoanRow { total_loan: number }
@@ -254,12 +254,24 @@ financialReportsRouter.get('/balance-snapshot', async (c) => {
     const arSplit = await deriveArSplit(c, { allEntities: true })
 
     // 매입 미지급 — purchase_balance 캐시 폐기 → 파생(POs[NOT IN DRAFT/CANCELLED] − payments − adjustments). AR과 동일 전사 기준(entity 무필터), 단 내부법인(그룹 3사)은 제외(법인간거래 탭 이관)
+    // ★ 2026-08-24: AR(deriveArSplit, 2026-08-06)과 대칭으로 **공급처별 부호 분리** — 잔액이 음수인 공급처는
+    //   선급/과지급(자산: 선급금)이라, 뭉쳐 SUM 하면 매입채무·자산이 같은 액수만큼 동시에 과소된다(순자산만 동일).
+    //   실측 2026-08-11(§8-Z-41): 음수 4곳 −5,436,465 — 전부 실제 선급/과지급이라 데이터는 손대지 않고 표시만 분리.
     const apRow = await c.env.DB.prepare(`
-      SELECT (
-        (SELECT COALESCE(SUM(final_amount), 0) FROM purchase_orders WHERE status NOT IN ('DRAFT', 'CANCELLED')${excludePurchaseNonCounterpartiesSql('supplier_id')})
-        - (SELECT COALESCE(SUM(amount), 0) FROM purchase_payments WHERE 1=1${excludePurchaseNonCounterpartiesSql('supplier_id')})
-        - (SELECT COALESCE(SUM(amount), 0) FROM purchase_adjustments WHERE 1=1${excludePurchaseNonCounterpartiesSql('supplier_id')})
-      ) as total_ap
+      WITH bal AS (
+        SELECT sid, SUM(v) AS b FROM (
+          SELECT supplier_id AS sid, final_amount AS v FROM purchase_orders
+           WHERE status NOT IN ('DRAFT', 'CANCELLED')${excludePurchaseNonCounterpartiesSql('supplier_id')}
+          UNION ALL
+          SELECT supplier_id, -amount FROM purchase_payments WHERE 1=1${excludePurchaseNonCounterpartiesSql('supplier_id')}
+          UNION ALL
+          SELECT supplier_id, -amount FROM purchase_adjustments WHERE 1=1${excludePurchaseNonCounterpartiesSql('supplier_id')}
+        ) GROUP BY sid
+      )
+      SELECT COALESCE(SUM(CASE WHEN b > 0 THEN b ELSE 0 END), 0) AS payable,
+             COALESCE(SUM(CASE WHEN b < 0 THEN -b ELSE 0 END), 0) AS prepaid,
+             COALESCE(SUM(CASE WHEN b < 0 THEN 1 ELSE 0 END), 0) AS prepaid_suppliers
+        FROM bal
     `).first<ApRow>()
 
     // 재고 평가액 (#433: 재고는 items가 아니라 inventory.quantity, 평가단가=items.avg_unit_cost 이동평균)
@@ -290,7 +302,8 @@ financialReportsRouter.get('/balance-snapshot', async (c) => {
     const ar = arSplit.receivable          // 매출채권 = 양수 잔액만
     const advance = arSplit.advance        // 선수금 = 음수 잔액 절대값(부채)
     const inventory = Number(inventoryRow?.total_inventory) || 0
-    const ap = Number(apRow?.total_ap) || 0
+    const ap = Number(apRow?.payable) || 0        // 매입채무 = 양수 잔액만
+    const prepaid = Number(apRow?.prepaid) || 0   // 선급금 = 음수 잔액 절대값(자산)
     const loans = Number(loanRow?.total_loan) || 0
 
     return c.json({
@@ -301,7 +314,8 @@ financialReportsRouter.get('/balance-snapshot', async (c) => {
           cash,
           accounts_receivable: ar,
           inventory,
-          total: cash + ar + inventory,
+          prepaid_expenses: prepaid,
+          total: cash + ar + inventory + prepaid,
         },
         liabilities: {
           accounts_payable: ap,
@@ -309,8 +323,8 @@ financialReportsRouter.get('/balance-snapshot', async (c) => {
           loans,
           total: ap + advance + loans,
         },
-        // 순자산은 분리 전후 불변 — (ar − advance) 가 종전 total_ar 과 같다
-        net_assets: (cash + ar + inventory) - (ap + advance + loans),
+        // 순자산은 분리 전후 불변 — (ar − advance)·(ap − prepaid) 가 종전 뭉친 값과 같다
+        net_assets: (cash + ar + inventory + prepaid) - (ap + advance + loans),
       }
     })
   } catch (error) {

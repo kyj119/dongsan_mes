@@ -360,10 +360,24 @@ function renderBalanceSnapshot(d) {
   elCash.textContent = fmt(cash);
   var elAr = document.getElementById('snapshotAr'); if (!elAr) { console.warn('[financialReports] #snapshotAr not found'); return; }
   elAr.textContent = fmt(ar);
+  // 선수금(부채) — 미수금과 상계 금지라 보조 줄로 별도 표기(accounting 허브와 동일 규약). 0이면 숨김
+  var elArAdv = document.getElementById('snapshotArAdvance');
+  if (elArAdv) {
+    var advVal = liabilities.advance_received || 0;
+    elArAdv.classList.toggle('hidden', !(advVal > 0));
+    if (advVal > 0) elArAdv.textContent = '선수금 ' + fmt(advVal) + ' 별도(부채)';
+  }
   var elInv = document.getElementById('snapshotInventory'); if (!elInv) { console.warn('[financialReports] #snapshotInventory not found'); return; }
   elInv.textContent = fmt(inventory);
   var elAp = document.getElementById('snapshotAp'); if (!elAp) { console.warn('[financialReports] #snapshotAp not found'); return; }
   elAp.textContent = fmt(ap);
+  // 선급금(자산) — 매입채무와 상계하면 양변 동시 과소(부호 분리 2026-08-24). 0이면 숨김
+  var elApPre = document.getElementById('snapshotApPrepaid');
+  if (elApPre) {
+    var preVal = assets.prepaid_expenses || 0;
+    elApPre.classList.toggle('hidden', !(preVal > 0));
+    if (preVal > 0) elApPre.textContent = '선급금 ' + fmt(preVal) + ' 별도(자산)';
+  }
   var elLoans = document.getElementById('snapshotLoans'); if (!elLoans) { console.warn('[financialReports] #snapshotLoans not found'); return; }
   elLoans.textContent = fmt(loans);
 
