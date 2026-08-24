@@ -45,7 +45,11 @@ export const SHIP_DATE_ESTIMATED_SQL =
  * 실제 출고가 아니므로 출고 이력에서 제외한다(안 하면 "2025-12-31 출고 5.3억"이 뜬다).
  * ⚠️ 명명 규칙 의존은 이관 규칙이 바뀌면 깨진다 — `orders.is_voucher` 플래그 신설이 후속 과제(§7).
  */
-export const VOUCHER_ORDER_SQL = "(o.order_number LIKE 'ICM-%' OR o.order_number LIKE '%OPEN%')"
+export const voucherOrderSql = (alias: string = 'o') => {
+  const p = alias ? `${alias}.` : ''
+  return `(${p}order_number LIKE 'ICM-%' OR ${p}order_number LIKE '%OPEN%')`
+}
+export const VOUCHER_ORDER_SQL = voucherOrderSql('o')
 
 export const ORDER_SORT_OPTIONS: Record<string, string> = {
   // 업무일자(주문일) 기준 — 기본값. created_at 은 이관분에서 '이관 실행 시각'이라 업무상 무의미하다.

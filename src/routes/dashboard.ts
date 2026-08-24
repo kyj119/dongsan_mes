@@ -6,6 +6,7 @@ import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
 import { kstDate, kstDateOf, kstMonth } from '../utils/kstDate'
 import { buildOldestUnpaidJoin, agingDaysFromOldest } from './ledger/ar-helpers'
+import { VOUCHER_ORDER_SQL } from './orders/listFilter'
 
 /** cards 테이블용 엔티티 필터 (requesting_entity_id 컬럼 사용) */
 function cardEntityFilter(c: any, tableAlias?: string): { clause: string; params: number[] } {
@@ -240,6 +241,8 @@ dashboardRouter.get('/stats/clients', async (c) => {
         MAX(o.created_at) as last_order_date
       FROM clients c
       LEFT JOIN orders o ON c.id = o.client_id
+        AND o.status NOT IN ('CANCELLED', 'QUOTATION')
+        AND NOT ${VOUCHER_ORDER_SQL}
       WHERE c.is_active = 1${ef.clause}
       GROUP BY c.id
       HAVING order_count > 0

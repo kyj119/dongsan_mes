@@ -5,6 +5,9 @@ import { entityFilter } from '../utils/entityFilter'
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
 import { kstMonth, kstYm, kstYmd } from '../utils/kstDate'
 import { buildOldestUnpaidJoin, agingDaysFromOldest } from './ledger/ar-helpers'
+// 회계 전표성 주문(기초채권 E1-OPEN·법인간 미러 ICM) 제외 — 2025-12-31에 189건 5.32억이 뭉쳐 있어
+// 매출·거래처 집계에 섞이면 가짜 매출월/순위 왜곡이 생긴다(2026-08-24 감사).
+import { voucherOrderSql } from './orders/listFilter'
 
 // ── Row types for D1 query results ──
 interface MonthlyRevenueRow { month: string; order_count: number; revenue: number }
@@ -63,7 +66,8 @@ reportsRouter.get('/client-revenue', async (c) => {
           COUNT(*) as order_count,
           COALESCE(SUM(o.final_amount), 0) as revenue
         FROM orders o
-        WHERE o.client_id = ? AND o.status != 'CANCELLED'${ef.clause}
+        WHERE o.client_id = ? AND o.status != 'CANCELLED'
+          AND NOT ${voucherOrderSql('o')}${ef.clause}
         GROUP BY strftime('%Y-%m', o.created_at)
         ORDER BY month DESC
         LIMIT ?
@@ -80,6 +84,7 @@ reportsRouter.get('/client-revenue', async (c) => {
         FROM orders o
         JOIN clients c ON o.client_id = c.id
         WHERE o.status != 'CANCELLED'
+          AND NOT ${voucherOrderSql('o')}
           AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
         GROUP BY c.id, c.client_name, strftime('%Y-%m', o.created_at)
         ORDER BY revenue DESC
@@ -90,20 +95,40 @@ reportsRouter.get('/client-revenue', async (c) => {
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
     // 거래처별 요약 (TOP 20)
+    //   잔액 = 폐기된 clients.balance 캐시(전부 0) 대신 라이브 파생(receivables-analysis 와 동일 SSOT:
+    //   order_billing_groups[BILLED] − payments − adjustments). 기초채권 청구는 잔액에는 포함(개시 AR),
+    //   매출 집계에서는 제외(전표이지 매출이 아님).
+    const efBalG = entityFilter(c, 'o2')
+    const efBalP = entityFilter(c, 'p')
+    const efBalA = entityFilter(c, 'a')
     const { results: clientSummary } = await c.env.DB.prepare(`
       SELECT
-        c.id, c.client_name, c.balance,
+        c.id, c.client_name,
+        (COALESCE(bal.amt, 0) - COALESCE(pay.amt, 0) - COALESCE(adj.amt, 0)) as balance,
         COUNT(o.id) as total_orders,
         COALESCE(SUM(o.final_amount), 0) as total_revenue,
         COALESCE(AVG(o.final_amount), 0) as avg_order_amount
       FROM clients c
       JOIN orders o ON c.id = o.client_id
+      LEFT JOIN (
+        SELECT o2.client_id AS cid, SUM(g.billed_amount) AS amt
+        FROM order_billing_groups g JOIN orders o2 ON o2.id = g.order_id
+        WHERE g.billing_status = 'BILLED' AND o2.status != 'CANCELLED'${efBalG.clause}
+        GROUP BY o2.client_id
+      ) bal ON bal.cid = c.id
+      LEFT JOIN (
+        SELECT client_id AS cid, SUM(amount) AS amt FROM payments p WHERE 1=1${efBalP.clause} GROUP BY client_id
+      ) pay ON pay.cid = c.id
+      LEFT JOIN (
+        SELECT client_id AS cid, SUM(amount) AS amt FROM adjustments a WHERE 1=1${efBalA.clause} GROUP BY client_id
+      ) adj ON adj.cid = c.id
       WHERE c.is_active = 1 AND o.status != 'CANCELLED'
+        AND NOT ${voucherOrderSql('o')}
         AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
       GROUP BY c.id
       ORDER BY total_revenue DESC
       LIMIT 20
-    `).bind(monthCount, ...ef.params).all()
+    `).bind(...efBalG.params, ...efBalP.params, ...efBalA.params, monthCount, ...ef.params).all()
 
     return c.json({ success: true, data: { monthly: results, clients: clientSummary } })
   } catch (error) {
@@ -324,6 +349,7 @@ reportsRouter.get('/monthly-summary', async (c) => {
         COUNT(DISTINCT o.client_id) as unique_clients
       FROM orders o
       WHERE o.status != 'CANCELLED'
+        AND NOT ${voucherOrderSql('o')}
         AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
       GROUP BY strftime('%Y-%m', o.created_at)
       ORDER BY month DESC
@@ -356,14 +382,17 @@ reportsRouter.get('/margin-analysis', async (c) => {
     const ef = entityFilter(c, 'o')
 
     // 1. 기간 전체 요약
+    //   매출 기준 = oi.amount (청구 라인금액). unit_price×quantity 는 AREA 라인(면적단가×장수)에서
+    //   실제 청구액과 달라 2026년 기준 8.8억(−21.8%) 과소였다(2026-08-24 감사). item-analysis 와 동일 기준.
     const { results: summaryRows } = await c.env.DB.prepare(`
       SELECT
-        COALESCE(SUM(oi.unit_price * oi.quantity), 0) as total_revenue,
+        COALESCE(SUM(oi.amount), 0) as total_revenue,
         COALESCE(SUM(oi.total_cost), 0) as total_cost,
         COALESCE(AVG(oi.margin_rate), 0) as avg_margin_rate
       FROM order_items oi
       JOIN orders o ON oi.order_id = o.id
       WHERE o.status != 'CANCELLED'
+        AND NOT ${voucherOrderSql('o')}
         AND oi.parent_item_id IS NULL
         AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
     `).bind(monthCount, ...ef.params).all<MarginSummaryRow>()
@@ -382,12 +411,12 @@ reportsRouter.get('/margin-analysis', async (c) => {
     const { results: byCategory } = await c.env.DB.prepare(`
       SELECT
         i.category as category_name,
-        COALESCE(SUM(oi.unit_price * oi.quantity), 0) as revenue,
+        COALESCE(SUM(oi.amount), 0) as revenue,
         COALESCE(SUM(oi.total_cost), 0) as cost,
-        COALESCE(SUM(oi.unit_price * oi.quantity) - SUM(oi.total_cost), 0) as profit,
+        COALESCE(SUM(oi.amount) - SUM(oi.total_cost), 0) as profit,
         CASE
-          WHEN SUM(oi.unit_price * oi.quantity) > 0
-          THEN ROUND((SUM(oi.unit_price * oi.quantity) - SUM(oi.total_cost)) * 100.0 / SUM(oi.unit_price * oi.quantity), 2)
+          WHEN SUM(oi.amount) > 0
+          THEN ROUND((SUM(oi.amount) - SUM(oi.total_cost)) * 100.0 / SUM(oi.amount), 2)
           ELSE 0
         END as margin_rate,
         COUNT(oi.id) as item_count
@@ -395,6 +424,7 @@ reportsRouter.get('/margin-analysis', async (c) => {
       JOIN orders o ON oi.order_id = o.id
       JOIN items i ON oi.item_id = i.id
       WHERE o.status != 'CANCELLED'
+        AND NOT ${voucherOrderSql('o')}
         AND oi.parent_item_id IS NULL
         AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
       GROUP BY i.category
@@ -414,17 +444,18 @@ reportsRouter.get('/margin-analysis', async (c) => {
     const { results: byMonth } = await c.env.DB.prepare(`
       SELECT
         strftime('%Y-%m', o.created_at) as month,
-        COALESCE(SUM(oi.unit_price * oi.quantity), 0) as revenue,
+        COALESCE(SUM(oi.amount), 0) as revenue,
         COALESCE(SUM(oi.total_cost), 0) as cost,
-        COALESCE(SUM(oi.unit_price * oi.quantity) - SUM(oi.total_cost), 0) as profit,
+        COALESCE(SUM(oi.amount) - SUM(oi.total_cost), 0) as profit,
         CASE
-          WHEN SUM(oi.unit_price * oi.quantity) > 0
-          THEN ROUND((SUM(oi.unit_price * oi.quantity) - SUM(oi.total_cost)) * 100.0 / SUM(oi.unit_price * oi.quantity), 2)
+          WHEN SUM(oi.amount) > 0
+          THEN ROUND((SUM(oi.amount) - SUM(oi.total_cost)) * 100.0 / SUM(oi.amount), 2)
           ELSE 0
         END as margin_rate
       FROM order_items oi
       JOIN orders o ON oi.order_id = o.id
       WHERE o.status != 'CANCELLED'
+        AND NOT ${voucherOrderSql('o')}
         AND oi.parent_item_id IS NULL
         AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
       GROUP BY strftime('%Y-%m', o.created_at)
@@ -445,17 +476,18 @@ reportsRouter.get('/margin-analysis', async (c) => {
         o.id as order_id,
         o.order_number,
         c.client_name,
-        COALESCE(SUM(oi.unit_price * oi.quantity), 0) as total_revenue,
+        COALESCE(SUM(oi.amount), 0) as total_revenue,
         COALESCE(SUM(oi.total_cost), 0) as total_cost,
         CASE
-          WHEN SUM(oi.unit_price * oi.quantity) > 0
-          THEN ROUND((SUM(oi.unit_price * oi.quantity) - SUM(oi.total_cost)) * 100.0 / SUM(oi.unit_price * oi.quantity), 2)
+          WHEN SUM(oi.amount) > 0
+          THEN ROUND((SUM(oi.amount) - SUM(oi.total_cost)) * 100.0 / SUM(oi.amount), 2)
           ELSE 0
         END as margin_rate
       FROM orders o
       JOIN clients c ON o.client_id = c.id
       JOIN order_items oi ON oi.order_id = o.id
       WHERE o.status != 'CANCELLED'
+        AND NOT ${voucherOrderSql('o')}
         AND oi.parent_item_id IS NULL
         AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
       GROUP BY o.id, o.order_number, c.client_name
@@ -510,13 +542,14 @@ reportsRouter.get('/margin-by-client', async (c) => {
       JOIN clients c ON o.client_id = c.id
       LEFT JOIN (
         SELECT order_id,
-          SUM(unit_price * quantity) as revenue,
+          SUM(amount) as revenue,
           SUM(total_cost) as cost
         FROM order_items
         WHERE parent_item_id IS NULL AND total_cost > 0
         GROUP BY order_id
       ) oi_agg ON o.id = oi_agg.order_id
       WHERE o.status != 'CANCELLED'
+        AND NOT ${voucherOrderSql('o')}
         AND o.created_at >= date('now', '-' || ? || ' months')
         AND oi_agg.cost > 0${ef.clause}
       GROUP BY c.id, c.client_name
@@ -664,14 +697,16 @@ reportsRouter.get('/receivables-analysis', async (c) => {
         COALESCE(pay.payments, 0) as payments
       FROM (
         SELECT DISTINCT strftime('%Y-%m', created_at) as month
-        FROM orders WHERE created_at >= date('now', '-' || ? || ' months')${efOrders.clause}
+        FROM orders WHERE created_at >= date('now', '-' || ? || ' months')
+          AND NOT ${voucherOrderSql('')}${efOrders.clause}
         UNION
         SELECT DISTINCT strftime('%Y-%m', payment_date) as month
         FROM payments WHERE payment_date >= date('now', '-' || ? || ' months')${efPayments.clause}
       ) m
       LEFT JOIN (
         SELECT strftime('%Y-%m', created_at) as month, SUM(final_amount) as revenue
-        FROM orders WHERE status != 'CANCELLED'${efOrders.clause} GROUP BY 1
+        FROM orders WHERE status != 'CANCELLED'
+          AND NOT ${voucherOrderSql('')}${efOrders.clause} GROUP BY 1
       ) rev ON m.month = rev.month
       LEFT JOIN (
         SELECT strftime('%Y-%m', payment_date) as month, SUM(amount) as payments
@@ -807,6 +842,7 @@ reportsRouter.get('/period-comparison', async (c) => {
           COUNT(DISTINCT client_id) as client_count
         FROM orders
         WHERE status != 'CANCELLED'
+          AND NOT ${voucherOrderSql('')}
           AND strftime('%Y-%m', created_at) = ?${efKPI.clause}
       `).bind(month, ...efKPI.params).all<KPIOrderRow>()
 
@@ -818,11 +854,12 @@ reportsRouter.get('/period-comparison', async (c) => {
 
       const { results: marginRows } = await c.env.DB.prepare(`
         SELECT
-          COALESCE(SUM(oi.unit_price * oi.quantity), 0) as revenue,
+          COALESCE(SUM(oi.amount), 0) as revenue,
           COALESCE(SUM(oi.total_cost), 0) as cost
         FROM order_items oi
         JOIN orders o ON oi.order_id = o.id
         WHERE o.status != 'CANCELLED'
+          AND NOT ${voucherOrderSql('o')}
           AND oi.parent_item_id IS NULL
           AND strftime('%Y-%m', o.created_at) = ?${efKPIo.clause}
       `).bind(month, ...efKPIo.params).all<KPIMarginRow>()
@@ -831,10 +868,11 @@ reportsRouter.get('/period-comparison', async (c) => {
         SELECT COUNT(DISTINCT client_id) as new_clients
         FROM orders
         WHERE status != 'CANCELLED'
+          AND NOT ${voucherOrderSql('')}
           AND strftime('%Y-%m', created_at) = ?${efKPI.clause}
           AND client_id NOT IN (
             SELECT DISTINCT client_id FROM orders
-            WHERE status != 'CANCELLED' AND created_at < ? || '-01'${efKPI.clause}
+            WHERE status != 'CANCELLED' AND NOT ${voucherOrderSql('')} AND created_at < ? || '-01'${efKPI.clause}
           )
       `).bind(month, ...efKPI.params, month, ...efKPI.params).all<KPINewClientRow>()
 
@@ -862,11 +900,12 @@ reportsRouter.get('/period-comparison', async (c) => {
       const { results } = await c.env.DB.prepare(`
         SELECT
           i.category,
-          COALESCE(SUM(oi.unit_price * oi.quantity), 0) as revenue
+          COALESCE(SUM(oi.amount), 0) as revenue
         FROM order_items oi
         JOIN orders o ON oi.order_id = o.id
         JOIN items i ON oi.item_id = i.id
         WHERE o.status != 'CANCELLED'
+          AND NOT ${voucherOrderSql('o')}
           AND oi.parent_item_id IS NULL
           AND strftime('%Y-%m', o.created_at) = ?${efKPIo.clause}
         GROUP BY i.category
@@ -899,7 +938,8 @@ reportsRouter.get('/period-comparison', async (c) => {
         SELECT c.id, c.client_name, COALESCE(SUM(o.final_amount), 0) as revenue
         FROM orders o
         JOIN clients c ON o.client_id = c.id
-        WHERE o.status != 'CANCELLED' AND strftime('%Y-%m', o.created_at) = ?${efKPIo.clause}
+        WHERE o.status != 'CANCELLED' AND NOT ${voucherOrderSql('o')}
+          AND strftime('%Y-%m', o.created_at) = ?${efKPIo.clause}
         GROUP BY c.id
       `).bind(month, ...efKPIo.params).all<PeriodClientRow>()
       return results
@@ -957,6 +997,7 @@ reportsRouter.get('/monthly-summary/csv', async (c) => {
         COALESCE(SUM(o.final_amount), 0) as revenue
       FROM orders o
       WHERE o.status != 'CANCELLED'
+        AND NOT ${voucherOrderSql('o')}
         AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
       GROUP BY strftime('%Y-%m', o.created_at)
       ORDER BY month DESC
