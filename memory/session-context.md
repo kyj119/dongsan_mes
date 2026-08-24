@@ -29,3 +29,34 @@
 node scripts/propose-costbase-prices.cjs        # 제안가 재생성 (읽기전용)
 $env:SMOKE_URL='https://webapp-9i0.pages.dev'; npm run smoke
 ```
+
+
+---
+
+# 세션 핸드오프(2) — 2026-08-24 분석·대시보드 수치 감사 + 마진/손익 재설계
+
+## 상태
+- **전부 prod 배포·검증 완료**: ①감사 ‹가›(전표 제외+`oi.amount` 기준, `ff40ac77`) ②정리(죽은 엔드포인트 7개·KST 45곳, `a7f8bda0`) ③마진 탭 추정원가 재설계+손익 탭 정본 포트(`9d421572`). prod smoke **111/111**(죽은 엔드포인트 5건 목록 제거로 116→111)·/reports 마커 7종 확인.
+
+## 결정 + 이유
+1. **E1-OPEN/ICM 전표는 매출 집계 전역 제외** — `voucherOrderSql(alias)`(orders/listFilter.ts). 2025-12-31에 189건 5.32억이 뭉쳐 12개월 창·TOP거래처를 오염. ICM 관계사 매출도 제외 유지(용준님 확정).
+2. **마진 매출 기준 = `oi.amount`** — `unit_price×quantity`는 AREA 라인에서 −8.83억(−21.8%) 과소.
+3. **마진 탭 = 추정 마진**(용준님 「나」): `avg_unit_cost×수량`, 커버 라인만 + **추정원가>매출 품목은 「단가 점검 필요」로 분리**(UV-FMX 원판단가×조각수량 함정·ETC-SHIP). 분모는 `JOIN items` 없이. 정본=memory `design-margin-estimated-cost`.
+4. **손익 탭 = finance-diagnose.cjs 정본 포트**(용준님 「다」): 판관비=통장·카드 계정분류(CAT_ROLE **사본 쌍** — 양쪽 동시 수정!)·장비 GDS-EQ(e1만) 제외·감가상각 가산·entity 0=그룹 연결(내부 양변 제거). **검증=GROUP 1~7월 diagnose 원단위 일치**(영업이익 272,110,171=311.7M−재고증감 39.6M). 재고증감은 웹 미반영(caveat 배너).
+5. 디자이너 탭 유지+라벨 보강(용준님 「나」) — 이관 주문 created_by=admin이라 전량 '관리자'.
+
+## 판단기준·주의
+- 손익 GROUP 검증법: admin 토큰 → `POST /api/auth/switch-entity {"entity_id":0}` → `/api/financial/pnl?from=&to=`. 기준값=`node scripts/finance-diagnose.cjs --group --from --to --json`.
+- 커밋 훅 doc-diet가 현황판·MEMORY **총량**까지 막는다 — 넘치면 큰 항목부터 압축(상세가 ARCHIVE에 이미 있는지 먼저 확인).
+- ⚠️balance-snapshot 은 이 세션 손익 재설계와 별개로 **위 세션(1)이 AP 부호 분리를 배포**함 — financialReports.ts 를 다음에 만질 때 두 축 모두 유지할 것.
+
+## 다음 세션 TODO
+1. (선택) 손익 재고증감 앵커 — 실사(inventory_counts) 연동으로 web caveat 해소.
+2. (선택) 미분류 출금·카드 1~7월 5,219만 분류 · 「단가 점검 필요」 11품목 단가 정리(커버리지 상승).
+3. 8월 주문 재적재 결정 시: 대시보드 「이번 달」 지표 정상화.
+
+## 검증 명령
+```powershell
+npm run verify; npm run smoke                       # 로컬 111/111
+node scripts/finance-diagnose.cjs --group --from 2026-01-01 --to 2026-07-31 --json   # 손익 기준값
+```
