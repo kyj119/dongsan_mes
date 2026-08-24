@@ -430,6 +430,61 @@ function fileStamp(full) {
   try { const st = fs.statSync(full); return `${Math.floor(st.mtimeMs)}:${st.size}` } catch { return null }
 }
 
+// ── 규격 헤더 판독 폴백 (2026-08-24, file-dimension-probe P4) ──────────────
+// 파일명에 규격이 없는 건은 EPS BoundingBox / PDF MediaBox 를 직접 읽어 복원한다.
+// 정본 파서 = src/utils/fileDimensions.ts — **사본을 만들지 않고** esbuild 로 트랜스파일해 쓴다
+// (orderline-selftest.cjs 와 같은 방식. 갈리면 웹과 스캐너의 판독이 어긋난다).
+function loadFileDimsUtil() {
+  const { execFileSync } = require('child_process')
+  const os = require('os')
+  const SRC = path.join(__dirname, '..', 'src', 'utils', 'fileDimensions.ts')
+  const ESBUILD = path.join(__dirname, '..', 'node_modules', 'esbuild', 'bin', 'esbuild')
+  const out = path.join(os.tmpdir(), `fileDimensions.zscan.${process.pid}.cjs`)
+  execFileSync(process.execPath, [ESBUILD, SRC, '--format=cjs', '--platform=node', `--outfile=${out}`], {
+    stdio: ['ignore', 'ignore', 'inherit'],
+  })
+  return require(out)
+}
+
+// 제품유형→작업배율 (learn_scale.py 학습 산출물). Z: 출력파일은 1/5·1/10 축소 저장이 흔해
+// 헤더 크기 ≠ 실물이다 — specless.py 와 같은 기준(support/read ≥ 0.85)의 유형만 신뢰하고,
+// 표에 없는 유형은 채우지 않는다(추측 금지 — 오늘처럼 NULL 로 남겨 사람이 본다).
+function loadScaleTable() {
+  const p = arg('--scale-table', path.join(__dirname, '..', 'docs', 'order-file-matching', 'scale_table.csv'))
+  const tbl = new Map()
+  try {
+    const lines = fs.readFileSync(p, 'utf8').split('\n')
+    for (const line of lines.slice(1)) {
+      const [ptype, scale, support, read] = line.trim().split(',')
+      if (!ptype || !scale) continue
+      const sup = parseInt(support, 10) || 0
+      const rd = Math.max(parseInt(read, 10) || 1, 1)
+      if (sup / rd >= 0.85) tbl.set(norm(ptype), parseFloat(scale))
+    }
+  } catch (e) { console.warn(`  ! 배율표 로드 실패(${p}): ${e.message}`) }
+  return tbl
+}
+
+/** 파일 머리(+필요 시 꼬리) 64KB 판독 → {w_cm,h_cm,source} | null. 실패는 조용히 null(폴백이므로). */
+function probeFileDims(dims, full) {
+  try {
+    const st = fs.statSync(full)
+    const fd = fs.openSync(full, 'r')
+    const headBuf = Buffer.alloc(Math.min(dims.PROBE_BYTES, st.size))
+    fs.readSync(fd, headBuf, 0, headBuf.length, 0)
+    const head = headBuf.toString('utf8')
+    let tail
+    if (dims.needsTailScan(head) && st.size > dims.PROBE_BYTES) {
+      const tailBuf = Buffer.alloc(dims.PROBE_BYTES)
+      fs.readSync(fd, tailBuf, 0, dims.PROBE_BYTES, st.size - dims.PROBE_BYTES)
+      tail = tailBuf.toString('utf8')
+    }
+    fs.closeSync(fd)
+    const r = dims.parseFileDimensions(head, tail)
+    return (r.source !== 'none' && r.w_cm > 0 && r.h_cm > 0) ? r : null
+  } catch { return null }
+}
+
 /** 페이지네이션 없는 단일 응답 수집 — 5xx 는 재시도, 끝내 실패하면 던진다. */
 async function fetchOne(token, path) {
   for (let attempt = 0; attempt < 4; attempt++) {
@@ -708,6 +763,36 @@ async function main() {
     console.log(`  → JSON ${jsonTargets.length.toLocaleString()}건: ${jsonOut}`)
   }
 
+  // ── 규격 미파싱 건 헤더 판독 폴백 (P4) ──────────────────────────
+  //   ★--json 내보내기 **뒤**에 돌린다 — 연결기(zscan-link-orders.py)는 검증된 파일명 파싱만
+  //   먹는 계약이라, 판독 추정값이 섞이면 채점 근거가 흔들린다. 여기서 채운 값은
+  //   대기함(designer_intakes) 프리필 전용이고 post_desc 에 출처를 남긴다.
+  if (!process.argv.includes('--no-probe')) {
+    const need = targets.filter((r) => !(r.w && r.h))
+    if (need.length) {
+      let dimsUtil = null
+      try { dimsUtil = loadFileDimsUtil() } catch (e) { console.warn(`  ! 규격판독 유틸 로드 실패(폴백 건너뜀): ${e.message}`) }
+      const scaleTbl = dimsUtil ? loadScaleTable() : null
+      if (dimsUtil && scaleTbl && scaleTbl.size) {
+        let filled = 0, noScale = 0, unread = 0
+        for (const r of need) {
+          const s = r.ptype ? scaleTbl.get(norm(r.ptype)) : null
+          if (!s) { noScale++; continue }
+          const d = probeFileDims(dimsUtil, r.full)
+          if (!d) { unread++; continue }
+          const w = Math.round(d.w_cm * s * 10) / 10
+          const h = Math.round(d.h_cm * s * 10) / 10
+          // 실물 상식 밖(1cm 미만·50m 초과)은 버린다 — 틀린 값이 조용히 주문이 되는 게 최악
+          if (w < 1 || h < 1 || w > 5000 || h > 5000) { unread++; continue }
+          r.w = w; r.h = h; r.probedScale = s
+          filled++
+        }
+        console.log(`  규격 헤더판독 — 대상 ${need.length.toLocaleString()} · 채움 ${filled.toLocaleString()}`
+          + ` · 배율표 밖 ${noScale.toLocaleString()} · 판독불가 ${unread.toLocaleString()}`)
+      }
+    }
+  }
+
   if (!commit) {
     // 축별 판독 실태 — 어디가 비는지 한눈에 본다(전사 품목 해소가 최대 덩어리였다)
     const byAxis = new Map()
@@ -809,7 +894,10 @@ async function main() {
       script_version: 'zscan-intake/2',
       // ⚠️ memo 는 라우트가 source_folder 전용으로 덮어쓴다(멱등 키). 사람이 볼 메모는 post_desc 로.
       //    트레이 행 2줄째에 그대로 표시된다(scripts/orderForm/intake.js:188).
-      post_desc: [r.flag ? `상태:${r.flag}` : null, miss.length ? `미파싱:${miss.join('·')}` : null]
+      post_desc: [r.flag ? `상태:${r.flag}` : null,
+        // 헤더 판독으로 채운 규격은 출처를 남긴다 — 트레이에서 사람이 "실측 추정"임을 보고 확인
+        r.probedScale ? `규격:파일실측×${r.probedScale}` : null,
+        miss.length ? `미파싱:${miss.join('·')}` : null]
         .filter(Boolean).join(' ') || null,
       // 라우트가 R2 로 외부화한다(externalizeGroups). 실패해도 base64 인라인으로 폴백하니 안전.
       ...(th ? { thumb_base64: th.b64 } : {}),
