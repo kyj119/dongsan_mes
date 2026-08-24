@@ -35,6 +35,7 @@
                                 </label>
                                 <button type="button" onclick="clearDirectFile(${id})" class="text-purple-400 hover:text-purple-700" title="연결 해제"><i class="fas fa-times"></i></button>
                             </span>
+                            <span id="dim_probe_${id}" class="hidden text-xs px-1.5 py-0.5 rounded" title="파일 헤더(BoundingBox/MediaBox)에서 읽은 규격 — 도련 포함 가능성이 있어 제안값입니다"></span>
                             <span id="dxf_file_chip_${id}" class="hidden inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200">
                                 <i class="fas fa-cut"></i><span id="dxf_file_name_chip_${id}" class="max-w-[140px] truncate"></span>
                                 <button type="button" onclick="clearLineDxf(${id})" class="text-teal-400 hover:text-teal-700" title="칼선 연결 해제"><i class="fas fa-times"></i></button>
@@ -612,6 +613,84 @@
                 calcItem(parentId);
             };
 
+            // ── 파일 규격 자동 판독 적용 (스펙 docs/superpowers/specs/2026-08-24-file-dimension-probe.md) ──
+            // 파일 먼저=실측 프리필(배율 1 가정) · 규격 먼저=배율 {1,2,5,10} 스냅(±10%, 도련 흡수) ·
+            // 스냅 실패/가로세로 상이=경고 배지 — 저장은 막지 않는다. BoundingBox=작업물 범위라 항상 "제안".
+            function probeSnapScale(ratio, allowed) {
+                for (var i = 0; i < allowed.length; i++) {
+                    if (ratio >= allowed[i] * 0.9 && ratio <= allowed[i] * 1.1) return allowed[i];
+                }
+                return null;
+            }
+
+            function applyProbedFileDims(id, wCm, hCm, isFinished) {
+                var wEl = document.querySelector('[name="width_' + id + '"]');
+                var hEl = document.querySelector('[name="height_' + id + '"]');
+                if (!wEl || !hEl) { console.warn('[itemRow] width_/height_' + id + ' not found'); return; }
+                var badge = document.getElementById('dim_probe_' + id);
+                var setBadge = function(text, tone) {
+                    if (!badge) { console.warn('[itemRow] #dim_probe_' + id + ' not found'); return; }
+                    badge.textContent = text;
+                    badge.className = 'text-xs px-1.5 py-0.5 rounded border ' + (tone === 'warn'
+                        ? 'bg-amber-50 text-amber-700 border-amber-300 font-medium'
+                        : 'bg-blue-50 text-blue-700 border-blue-200');
+                };
+                var setOrig = function(wMm, hMm) {
+                    // 기존 onScaleFactorChange(origMm×배율)와 자연 결합 + 해제 시 정리용 마커
+                    wEl.dataset.origMm = String(wMm); hEl.dataset.origMm = String(hMm);
+                    wEl.dataset.probeSource = '1'; hEl.dataset.probeSource = '1';
+                };
+                var fileLabel = wCm.toFixed(1) + '×' + hCm.toFixed(1) + 'cm';
+                var wIn = parseFloat(wEl.value) || 0;
+                var hIn = parseFloat(hEl.value) || 0;
+
+                if (!wIn && !hIn) {
+                    // 파일 먼저: 실측 프리필(배율 1 가정)
+                    wEl.value = wCm.toFixed(1);
+                    hEl.value = hCm.toFixed(1);
+                    setOrig(Math.round(wCm * 100) / 10, Math.round(hCm * 100) / 10);
+                    setBadge('파일 실측 ' + fileLabel + ' 적용', 'info');
+                    calcItem(id);
+                    return;
+                }
+                if (!wIn || !hIn) {
+                    // 한 변만 입력 — 배율 판정 유보, 실측만 안내
+                    setBadge('파일 실측 ' + fileLabel, 'info');
+                    return;
+                }
+
+                // 규격 먼저: 배율 = 입력규격 ÷ 파일실측 (가로·세로 각각). 완성본(복사)은 원치수(×1)만 정상.
+                var allowed = isFinished ? [1] : [1, 2, 5, 10];
+                var wSnap = probeSnapScale(wIn / wCm, allowed);
+                var hSnap = probeSnapScale(hIn / hCm, allowed);
+                var rotated = false;
+                if (!(wSnap && hSnap && wSnap === hSnap)) {
+                    // 가로↔세로 뒤집힘(회전 출력)도 일치로 본다 — /Rotate 예외는 무시(확정은 사람)
+                    var wSnapR = probeSnapScale(wIn / hCm, allowed);
+                    var hSnapR = probeSnapScale(hIn / wCm, allowed);
+                    if (wSnapR && hSnapR && wSnapR === hSnapR) { wSnap = hSnap = wSnapR; rotated = true; }
+                }
+                if (wSnap && hSnap && wSnap === hSnap) {
+                    var baseW = rotated ? hCm : wCm;
+                    var baseH = rotated ? wCm : hCm;
+                    setOrig(Math.round(baseW * 100) / 10, Math.round(baseH * 100) / 10);
+                    if (wSnap > 1) {
+                        var sfEl = document.querySelector('[name="scale_factor_' + id + '"]');
+                        if (sfEl) sfEl.value = wSnap;
+                        setBadge('파일 ' + fileLabel + ' → 배율 ×' + wSnap + ' 자동 인식' + (rotated ? ' (회전)' : ''), 'info');
+                    } else {
+                        setBadge('파일 실측 ' + fileLabel + ' 일치' + (rotated ? ' (회전)' : ''), 'info');
+                    }
+                    return;
+                }
+                setBadge('⚠ 파일 실측 ' + fileLabel + ' — 입력 규격과 불일치 (규격 오타·파일 오연결 확인)', 'warn');
+            }
+
+            function clearProbeBadge(id) {
+                var badge = document.getElementById('dim_probe_' + id);
+                if (badge) { badge.classList.add('hidden'); badge.textContent = ''; }
+            }
+
             // ── 직접 연결: 라인별 완성 EPS/AI 첨부 (그룹추출 우회) ──────────────────
             // 첨부 파일을 skip_analysis로 업로드(분석 안 함) → 라인 히든필드에 연결.
             // 썸네일은 출력 단계(IllustratorAutomat)에서 생성되어 카드/주문에 반영됨.
@@ -651,6 +730,12 @@
                     // 가공 라인은 파일 스케일 입력 표시
                     var scaleDiv = document.getElementById('scale_div_' + id);
                     if (scaleDiv) scaleDiv.classList.toggle('hidden', isFinished);
+                    // 파일 규격 자동 판독 — 비호환 .ai(pdfCompatible=false)·JPG/PNG는 source 'none' → 프리필·배지 없음이 정답
+                    if (d.measure_source && d.measure_source !== 'none' && d.measured_w_cm > 0 && d.measured_h_cm > 0) {
+                        applyProbedFileDims(id, d.measured_w_cm, d.measured_h_cm, isFinished);
+                    } else {
+                        clearProbeBadge(id);
+                    }
                     showToast('파일 연결됨: ' + file.name + (isFinished ? ' (완성본=복사)' : ' (가공)'), 'success');
                 } catch(e) {
                     if (nameEl) nameEl.textContent = '';
@@ -736,6 +821,12 @@
                 ['ai_analysis_id_', 'direct_file_path_', 'ai_group_index_'].forEach(function(pfx) {
                     var el = document.querySelector('[name="' + pfx + id + '"]');
                     if (el) el.value = '';
+                });
+                // 규격 판독 흔적 정리 — probe가 심은 origMm만 지운다(그룹분석이 심은 origMm 보호)
+                clearProbeBadge(id);
+                ['width_', 'height_'].forEach(function(pfx) {
+                    var el = document.querySelector('[name="' + pfx + id + '"]');
+                    if (el && el.dataset.probeSource) { delete el.dataset.origMm; delete el.dataset.probeSource; }
                 });
                 showToast('파일 연결이 해제되었습니다.', 'info');
             };

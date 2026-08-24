@@ -76,6 +76,7 @@
     "test:orderline": "node scripts/orderline-selftest.cjs",
     "test:finishing-label": "node scripts/finishing-label-selftest.cjs",
     "test:hookguard": "node scripts/hook-guard-selftest.cjs",
+    "test:file-dims": "node scripts/file-dims-selftest.cjs",
     "prices:derive": "node scripts/derive-item-prices.cjs",
     "smoke:write": "node scripts/smoke-write.cjs"
   },

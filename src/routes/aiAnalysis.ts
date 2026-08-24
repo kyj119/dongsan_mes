@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { externalizeGroups, externalizeCanvasJson, hydrateGroupsJson, putThumbnail, thumbRef, analysisThumbKey } from '../utils/thumbnailStore'
+import { parseFileDimensions, needsTailScan, PROBE_BYTES, type FileDimensions } from '../utils/fileDimensions'
 
 
 const aiAnalysisRouter = new Hono<HonoEnv>()
@@ -290,11 +291,29 @@ aiAnalysisRouter.post('/upload', async (c) => {
     const skipAnalysis = (formData.get('skip_analysis') as string) === '1' || (formData.get('skip_analysis') as string) === 'true'
     const initStatus = skipAnalysis ? 'direct' : 'pending'
 
+    // 파일 규격 자동 판독(일러 불요) — 머리 64KB(+필요 시 꼬리 64KB) 텍스트 파싱.
+    // file.slice() 는 아래 R2 put 의 file.stream() 과 독립이라 충돌 없다. 판독 실패는 업로드를 막지 않는다.
+    let dims: FileDimensions = { w_cm: null, h_cm: null, source: 'none' }
+    try {
+      const headText = await file.slice(0, PROBE_BYTES).text()
+      let tailText: string | undefined
+      if (needsTailScan(headText) && file.size > PROBE_BYTES) {
+        tailText = await file.slice(file.size - PROBE_BYTES).text()
+      }
+      dims = parseFileDimensions(headText, tailText)
+    } catch (e) { console.error('file dimension probe failed:', e) }
+
+    // 직접연결이면 판독 규격을 '직접연결' 그룹으로 미리 저장(/:id/thumbnail 콜백과 같은 구조)
+    // → 마이그레이션 불필요, 수정화면 재열람에도 사용. 분석(pending) 경로는 건드리지 않는다.
+    const directGroupsJson = (skipAnalysis && dims.source !== 'none')
+      ? JSON.stringify([{ index: 0, name: '직접연결', width_mm: Math.round(dims.w_cm! * 100) / 10, height_mm: Math.round(dims.h_cm! * 100) / 10, measure_source: dims.source }])
+      : null
+
     // 분석 요청 생성
     const result = await c.env.DB.prepare(
-      `INSERT INTO ai_analysis_requests (file_path, status, entity_id) VALUES (?, ?, ?)
+      `INSERT INTO ai_analysis_requests (file_path, status, entity_id, groups_json) VALUES (?, ?, ?, ?)
        RETURNING id, file_path, status, created_at`
-    ).bind(file.name, initStatus, getEntityId(c) || 1).first<{ id: number; file_path: string; status: string; created_at: string }>()
+    ).bind(file.name, initStatus, getEntityId(c) || 1, directGroupsJson).first<{ id: number; file_path: string; status: string; created_at: string }>()
 
     const analysisId = result!.id
 
@@ -314,7 +333,11 @@ aiAnalysisRouter.post('/upload', async (c) => {
 
     return c.json({
       success: true,
-      data: { id: analysisId, file_path: `r2://${r2Key}`, status: initStatus, r2_key: r2Key }
+      data: {
+        id: analysisId, file_path: `r2://${r2Key}`, status: initStatus, r2_key: r2Key,
+        // 규격 판독 결과 — BoundingBox=작업물 범위(도련 포함 가능)라 항상 "제안". 판독 불가 = null/'none'.
+        measured_w_cm: dims.w_cm, measured_h_cm: dims.h_cm, measure_source: dims.source
+      }
     })
   } catch (error) {
     console.error('AI Analysis upload error:', error)
@@ -350,13 +373,20 @@ aiAnalysisRouter.post('/:id/thumbnail', async (c) => {
       cardThumbValue = thumb.startsWith('data:') ? thumb : `data:image/png;base64,${thumb}`
     }
 
-    // groups_json 비어있으면(직접연결) 1그룹으로 저장 + status done 승격
+    // groups_json 비어있으면(직접연결) 1그룹으로 저장 + status done 승격.
+    // 업로드 시 규격 판독으로 '직접연결' 그룹이 미리 채워진 경우(파일 규격 자동 판독)에도
+    // 썸네일 병합·status 승격은 동일하게 진행해야 한다 — length===0 만 보면 조용히 건너뛴다.
     let groups: Array<Record<string, unknown>> = []
     try { groups = JSON.parse(row.groups_json || '[]') } catch { groups = [] }
-    if (groups.length === 0) {
-      const g: Record<string, unknown> = { index: 0, name: '직접연결', width_mm: body.width_mm ?? null, height_mm: body.height_mm ?? null }
+    const g0 = groups[0]
+    const prefilledDirect = (groups.length === 1 && g0 && g0.name === '직접연결' && !g0.thumbnail_r2_key && !g0.thumbnail_base64) ? g0 : null
+    if (groups.length === 0 || prefilledDirect) {
+      const g: Record<string, unknown> = prefilledDirect ?? { index: 0, name: '직접연결', width_mm: null, height_mm: null }
+      // 에이전트 실측(Illustrator가 문서를 연 값)이 헤더 판독보다 정확 — 값이 오면 덮어쓴다.
+      if (body.width_mm != null) { g.width_mm = body.width_mm; g.measure_source = 'agent' }
+      if (body.height_mm != null) { g.height_mm = body.height_mm; g.measure_source = 'agent' }
       if (storedToR2) g.thumbnail_r2_key = thumbKey; else g.thumbnail_base64 = thumb
-      groups = [g]
+      if (!prefilledDirect) groups = [g]
       await c.env.DB.prepare(
         `UPDATE ai_analysis_requests SET groups_json = ?, status = CASE WHEN status = 'direct' THEN 'done' ELSE status END WHERE id = ?`
       ).bind(JSON.stringify(groups), id).run()

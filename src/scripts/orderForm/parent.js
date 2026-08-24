@@ -1149,6 +1149,18 @@
                             if (dfChipE) dfChipE.classList.remove('hidden');
                             var dfPtE = document.getElementById('direct_passthrough_' + id);
                             if (dfPtE) dfPtE.checked = (item.ai_group_index === -3);
+                            // 파일 규격 판독값 복원(groups_json '직접연결' width_mm) — 수정화면에서도
+                            //   스케일 변경(origMm×배율)이 파일 실측과 결합되게 한다(2026-08-24 파일 규격 자동 판독)
+                            try {
+                                var dfGroups = JSON.parse(item.ai_groups_json || '[]');
+                                var dfG0 = dfGroups && dfGroups[0];
+                                if (dfG0 && dfG0.width_mm > 0 && dfG0.height_mm > 0) {
+                                    var dfW = document.querySelector('[name="width_' + id + '"]');
+                                    var dfH = document.querySelector('[name="height_' + id + '"]');
+                                    if (dfW) { dfW.dataset.origMm = String(dfG0.width_mm); dfW.dataset.probeSource = '1'; }
+                                    if (dfH) { dfH.dataset.origMm = String(dfG0.height_mm); dfH.dataset.probeSource = '1'; }
+                                }
+                            } catch (e) { /* groups_json 파싱 실패 무시 */ }
                         }
 
                         // 칼선 DXF 복원 (core.ts kind='dxf' 서브셀렉트) — 복원 없이는 재저장 시 재연결만 되고 칩이 안 보인다
@@ -1475,6 +1487,17 @@
                         if (cDfChip) cDfChip.classList.remove('hidden');
                         var cDfPt = document.getElementById('direct_passthrough_' + id);
                         if (cDfPt) cDfPt.checked = (item.ai_group_index === -3);
+                        // 파일 규격 판독값 복원 — 수정모드와 동일(재주문에서도 스케일↔실측 결합 유지)
+                        try {
+                            var cDfGroups = JSON.parse(item.ai_groups_json || '[]');
+                            var cDfG0 = cDfGroups && cDfGroups[0];
+                            if (cDfG0 && cDfG0.width_mm > 0 && cDfG0.height_mm > 0) {
+                                var cDfW = document.querySelector('[name="width_' + id + '"]');
+                                var cDfH = document.querySelector('[name="height_' + id + '"]');
+                                if (cDfW) { cDfW.dataset.origMm = String(cDfG0.width_mm); cDfW.dataset.probeSource = '1'; }
+                                if (cDfH) { cDfH.dataset.origMm = String(cDfG0.height_mm); cDfH.dataset.probeSource = '1'; }
+                            }
+                        } catch (e) { /* groups_json 파싱 실패 무시 */ }
                     }
                     // 재주문: 칼선 DXF 도 같은 소스 재사용
                     if (item.dxf_analysis_id) {
