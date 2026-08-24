@@ -86,8 +86,13 @@ inventoryCountRouter.get('/', async (c) => {
 //      발주일↔입고일 시차만큼 구간이 밀린다(주 단위 실사에서 특히 크다).
 //   ③ 양끝 중 한쪽이라도 미입력(NULL)이면 그 품목은 그 구간에서 **제외**한다.
 //      0 으로 채우면 재고 전량이 소모로 잡힌다.
-//   ④ 동일 (발주,품목,수량,단가) 중복 라인이 prod 에 실재한다(2026-08-19 기준 21행).
-//      임의로 합치지 않는다 — 진짜 분할발주와 구분할 근거가 없다. 건수만 보고한다.
+//   ④ 동일 (발주,품목,수량,단가) 라인이 한 전표에 여러 번 나온다(2026-08-19 기준 21행).
+//      ★2026-08-24 대사 결과 **중복이 아니라 정상**이었다 — 매입 원천이 「월 청구서」라
+//      납품 건별로 줄이 나뉜다. 정운교역 6월분은 적재 합계 119,732,538원/119,699Y 가
+//      청구서 PDF 헤더와 **차이 0**(한 줄 빼면 −6,760,040 어긋남), 서울경금속은 월 전표를
+//      일자별로 쪼갤 때 「월 재합산 불변」 게이트를 통과했다.
+//      그래도 건수는 계속 보고한다 — 다음에 진짜 중복이 섞이면 이 숫자가 먼저 움직인다.
+//      **절대 자동으로 합치지 않는다.**
 inventoryCountRouter.get('/consumption', async (c) => {
   try {
     const zoneId = c.req.query('zone_id') ? Number(c.req.query('zone_id')) : null
@@ -161,7 +166,7 @@ inventoryCountRouter.get('/consumption', async (c) => {
     const { results: buys } = await c.env.DB.prepare(pQuery).bind(...pParams)
       .all<{ po_id: number; item_id: number; quantity: number; unit_price: number; order_date: string }>()
 
-    // 중복 의심 = 동일 (발주, 품목, 수량, 단가). 합치지 않고 세기만 한다.
+    // 동일 (발주, 품목, 수량, 단가) 반복. 합치지 않고 세기만 한다 — 위 ④ 참고(정상이 확인됐다).
     const dupSeen = new Map<string, number>()
     let dupLines = 0
     for (const b of buys || []) {
@@ -263,7 +268,7 @@ inventoryCountRouter.get('/consumption', async (c) => {
           period_basis: '품목별로 그 품목을 실제 센 회차끼리 이었다. spans_counts>0 = 중간 회차를 건너뛴 구간',
           items_counted_once: singleCount,
           spanned_segments: spannedTotal,
-          duplicate_purchase_lines: dupLines,
+          repeated_purchase_lines: dupLines,   // 중복 아님(월 청구서가 납품 건별로 나뉜 것) — 급변하면 그때 의심한다
           negative_consumption_items: negatives,
         },
       },
