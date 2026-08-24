@@ -221,24 +221,28 @@ export function reportsPage(c: Context<HonoEnv>) {
         </div>
       </div>
 
-      <!-- Margin Tab -->
+      <!-- Margin Tab — 재료비 추정 마진 (2026-08-24 재설계: 원가 = 구매 평균단가 × 수량 추정) -->
       <div id="marginPanel" class="hidden">
+        <!-- 커버리지 안내 -->
+        <div class="mb-4 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800" id="mgCoverageNote">
+          <i class="fas fa-info-circle mr-1"></i>로딩 중...
+        </div>
         <!-- 요약 카드 4개 -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div class="ds-card p-4">
-            <div class="text-sm text-gray-500">총 매출</div>
+            <div class="text-sm text-gray-500">커버 매출</div>
             <div class="text-2xl font-bold text-blue-600" id="mgTotalRevenue">-</div>
           </div>
           <div class="ds-card p-4">
-            <div class="text-sm text-gray-500">총 원가</div>
+            <div class="text-sm text-gray-500">추정 원가</div>
             <div class="text-2xl font-bold text-red-600" id="mgTotalCost">-</div>
           </div>
           <div class="ds-card p-4">
-            <div class="text-sm text-gray-500">총 이익</div>
+            <div class="text-sm text-gray-500">추정 이익</div>
             <div class="text-2xl font-bold text-green-600" id="mgTotalProfit">-</div>
           </div>
           <div class="ds-card p-4">
-            <div class="text-sm text-gray-500">평균 마진율</div>
+            <div class="text-sm text-gray-500">추정 마진율</div>
             <div class="text-2xl font-bold text-gray-900" id="mgAvgMargin">-</div>
           </div>
         </div>
@@ -299,21 +303,40 @@ export function reportsPage(c: Context<HonoEnv>) {
           </div>
         </div>
 
-        <!-- 저마진 주문 -->
-        <div class="ds-card p-6">
-          <h3 class="text-lg font-bold mb-4"><i class="fas fa-exclamation-triangle text-orange-500 mr-2"></i>저마진 주문 TOP 10</h3>
+        <!-- 저마진 품목 -->
+        <div class="ds-card p-6 mb-6">
+          <h3 class="text-lg font-bold mb-4"><i class="fas fa-exclamation-triangle text-orange-500 mr-2"></i>저마진 품목 TOP 10 <span class="text-xs font-normal text-gray-400">(매출 10만원 이상)</span></h3>
           <table class="w-full text-sm ds-table ds-table-striped">
             <thead class="bg-gray-50">
               <tr>
-                <th class="col-code px-4 py-3 text-left">주문번호</th>
-                <th class="col-name px-4 py-3 text-left">거래처</th>
+                <th class="col-code px-4 py-3 text-left">품목코드</th>
+                <th class="col-name px-4 py-3 text-left">품목명</th>
+                <th class="col-tag px-4 py-3 text-left">카테고리</th>
                 <th class="col-amount px-4 py-3 text-right">매출</th>
-                <th class="col-amount px-4 py-3 text-right">원가</th>
+                <th class="col-amount px-4 py-3 text-right">추정원가</th>
                 <th class="col-amount px-4 py-3 text-right">이익</th>
                 <th class="col-qty px-4 py-3 text-right">마진율</th>
               </tr>
             </thead>
             <tbody id="mgLowMarginBody"></tbody>
+          </table>
+        </div>
+
+        <!-- 단가 점검 필요 (추정원가 > 매출) -->
+        <div class="ds-card p-6">
+          <h3 class="text-lg font-bold mb-4"><i class="fas fa-search-dollar text-red-500 mr-2"></i>단가 점검 필요 <span class="text-xs font-normal text-gray-400">(추정원가가 매출을 초과 — 단위 불일치 또는 실제 역마진. 집계에서 제외됨)</span></h3>
+          <table class="w-full text-sm ds-table ds-table-striped">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="col-code px-4 py-3 text-left">품목코드</th>
+                <th class="col-name px-4 py-3 text-left">품목명</th>
+                <th class="col-tag px-4 py-3 text-left">카테고리</th>
+                <th class="col-amount px-4 py-3 text-right">매출</th>
+                <th class="col-amount px-4 py-3 text-right">추정원가</th>
+                <th class="col-qty px-4 py-3 text-right">원가율</th>
+              </tr>
+            </thead>
+            <tbody id="mgAnomalyBody"></tbody>
           </table>
         </div>
       </div>

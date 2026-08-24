@@ -374,145 +374,144 @@ reportsRouter.get('/monthly-summary', async (c) => {
   }
 })
 
-// 5. 수익성 분석 (마진)
+// 5. 수익성 분석 — 재료비 추정 마진 (2026-08-24 재설계)
+//
+// order_items.total_cost 는 생산 경로가 없어 전량 0(감사 확정) → 원가 = items.avg_unit_cost(구매 평균단가) × 수량 「추정」.
+// ★적용 범위 = avg_unit_cost 보유 품목(매입-재판매 축) 라인만 — 커버리지를 함께 반환(2026년 매출 기준 ~30%).
+// ★품목 단위로 추정원가 > 매출이면 집계에서 빼고 「단가 점검 필요」로 분리 — UV 포맥스처럼
+//   원판 구매단가×조각 판매수량이 곱해지는 단위 불일치가 집계를 오염시킨다(실측: UV 원가율 136%).
+//   역마진 실물(배송비 부분청구 등)도 같은 목록에 나타나므로 숨기지 않고 보여준다.
+// 분모(전체 매출)는 items JOIN 없이 집계 — 미연결 라인이 조용히 빠지는 함정 방지(memory feedback-material-cost-stock-vs-purchase).
+interface EstMarginRow { item_id: number; item_code: string; item_name: string; category: string | null; month: string; line_count: number; revenue: number; est_cost: number }
+interface TotalRevRow { total_revenue: number }
+
 reportsRouter.get('/margin-analysis', async (c) => {
   try {
     const { months = '6' } = c.req.query()
     const monthCount = Number(months)
     const ef = entityFilter(c, 'o')
 
-    // 1. 기간 전체 요약
-    //   매출 기준 = oi.amount (청구 라인금액). unit_price×quantity 는 AREA 라인(면적단가×장수)에서
-    //   실제 청구액과 달라 2026년 기준 8.8억(−21.8%) 과소였다(2026-08-24 감사). item-analysis 와 동일 기준.
-    const { results: summaryRows } = await c.env.DB.prepare(`
-      SELECT
-        COALESCE(SUM(oi.amount), 0) as total_revenue,
-        COALESCE(SUM(oi.total_cost), 0) as total_cost,
-        COALESCE(AVG(oi.margin_rate), 0) as avg_margin_rate
-      FROM order_items oi
-      JOIN orders o ON oi.order_id = o.id
-      WHERE o.status != 'CANCELLED'
-        AND NOT ${voucherOrderSql('o')}
-        AND oi.parent_item_id IS NULL
-        AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')${ef.clause}
-    `).bind(monthCount, ...ef.params).all<MarginSummaryRow>()
-
-    const summaryRaw = summaryRows[0]
-    const totalRevenue = Number(summaryRaw?.total_revenue ?? 0)
-    const totalCost = Number(summaryRaw?.total_cost ?? 0)
-    const summary = {
-      total_revenue: totalRevenue,
-      total_cost: totalCost,
-      total_profit: totalRevenue - totalCost,
-      avg_margin_rate: Number(summaryRaw?.avg_margin_rate ?? 0),
-    }
-
-    // 2. 카테고리별 마진율
-    const { results: byCategory } = await c.env.DB.prepare(`
-      SELECT
-        i.category as category_name,
+    // 품목×월 단위 집계 한 번 → 요약/카테고리/월별/저마진/이상치는 JS에서 접는다(쿼리 1회).
+    const { results: rows } = await c.env.DB.prepare(`
+      SELECT oi.item_id, i.item_code, i.item_name, i.category,
+        strftime('%Y-%m', o.created_at, '+9 hours') as month,
+        COUNT(*) as line_count,
         COALESCE(SUM(oi.amount), 0) as revenue,
-        COALESCE(SUM(oi.total_cost), 0) as cost,
-        COALESCE(SUM(oi.amount) - SUM(oi.total_cost), 0) as profit,
-        CASE
-          WHEN SUM(oi.amount) > 0
-          THEN ROUND((SUM(oi.amount) - SUM(oi.total_cost)) * 100.0 / SUM(oi.amount), 2)
-          ELSE 0
-        END as margin_rate,
-        COUNT(oi.id) as item_count
+        COALESCE(SUM(i.avg_unit_cost * oi.quantity), 0) as est_cost
       FROM order_items oi
       JOIN orders o ON oi.order_id = o.id
       JOIN items i ON oi.item_id = i.id
       WHERE o.status != 'CANCELLED'
         AND NOT ${voucherOrderSql('o')}
         AND oi.parent_item_id IS NULL
+        AND COALESCE(i.avg_unit_cost, 0) > 0
         AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')${ef.clause}
-      GROUP BY i.category
-      ORDER BY revenue DESC
-    `).bind(monthCount, ...ef.params).all<MarginCategoryRow>()
+      GROUP BY oi.item_id, month
+    `).bind(monthCount, ...ef.params).all<EstMarginRow>()
 
-    const byCategoryMapped = byCategory.map((r) => ({
-      category_name: r.category_name,
-      revenue: Number(r.revenue),
-      cost: Number(r.cost),
-      profit: Number(r.profit),
-      margin_rate: Number(r.margin_rate),
-      item_count: r.item_count,
-    }))
-
-    // 3. 월별 수익성 추이
-    const { results: byMonth } = await c.env.DB.prepare(`
-      SELECT
-        strftime('%Y-%m', o.created_at, '+9 hours') as month,
-        COALESCE(SUM(oi.amount), 0) as revenue,
-        COALESCE(SUM(oi.total_cost), 0) as cost,
-        COALESCE(SUM(oi.amount) - SUM(oi.total_cost), 0) as profit,
-        CASE
-          WHEN SUM(oi.amount) > 0
-          THEN ROUND((SUM(oi.amount) - SUM(oi.total_cost)) * 100.0 / SUM(oi.amount), 2)
-          ELSE 0
-        END as margin_rate
+    // 분모: 전체 매출(동일 필터, items JOIN 없이 — 미연결 포함)
+    const efAll = entityFilter(c, 'o')
+    const { results: totalRows } = await c.env.DB.prepare(`
+      SELECT COALESCE(SUM(oi.amount), 0) as total_revenue
       FROM order_items oi
       JOIN orders o ON oi.order_id = o.id
       WHERE o.status != 'CANCELLED'
         AND NOT ${voucherOrderSql('o')}
         AND oi.parent_item_id IS NULL
-        AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')${ef.clause}
-      GROUP BY strftime('%Y-%m', o.created_at, '+9 hours')
-      ORDER BY month DESC
-    `).bind(monthCount, ...ef.params).all<MarginMonthRow>()
+        AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')${efAll.clause}
+    `).bind(monthCount, ...efAll.params).all<TotalRevRow>()
+    const totalRevenueAll = Number(totalRows[0]?.total_revenue ?? 0)
 
-    const byMonthMapped = byMonth.map((r) => ({
-      month: r.month,
-      revenue: Number(r.revenue),
-      cost: Number(r.cost),
-      profit: Number(r.profit),
-      margin_rate: Number(r.margin_rate),
-    }))
+    // 품목 총계 → 이상치(추정원가 > 매출) 분리
+    interface ItemAgg { item_id: number; item_code: string; item_name: string; category: string; line_count: number; revenue: number; est_cost: number }
+    const itemMap = new Map<number, ItemAgg>()
+    for (const r of rows) {
+      let it = itemMap.get(r.item_id)
+      if (!it) {
+        it = { item_id: r.item_id, item_code: r.item_code, item_name: r.item_name, category: r.category || '미분류', line_count: 0, revenue: 0, est_cost: 0 }
+        itemMap.set(r.item_id, it)
+      }
+      it.line_count += Number(r.line_count) || 0
+      it.revenue += Number(r.revenue) || 0
+      it.est_cost += Number(r.est_cost) || 0
+    }
+    // 이상치 = 추정원가 > 매출 (단위 불일치·역마진) 또는 추정원가 ≤ 0 (반품 음수수량 등 계산 불가)
+    const anomalyIds = new Set<number>()
+    for (const it of itemMap.values()) if (it.est_cost > it.revenue || it.est_cost <= 0) anomalyIds.add(it.item_id)
 
-    // 4. 마진율 낮은 주문 TOP 10 (margin_rate < 20 우선, 없으면 전체 최하위)
-    const { results: lowMarginOrders } = await c.env.DB.prepare(`
-      SELECT
-        o.id as order_id,
-        o.order_number,
-        c.client_name,
-        COALESCE(SUM(oi.amount), 0) as total_revenue,
-        COALESCE(SUM(oi.total_cost), 0) as total_cost,
-        CASE
-          WHEN SUM(oi.amount) > 0
-          THEN ROUND((SUM(oi.amount) - SUM(oi.total_cost)) * 100.0 / SUM(oi.amount), 2)
-          ELSE 0
-        END as margin_rate
-      FROM orders o
-      JOIN clients c ON o.client_id = c.id
-      JOIN order_items oi ON oi.order_id = o.id
-      WHERE o.status != 'CANCELLED'
-        AND NOT ${voucherOrderSql('o')}
-        AND oi.parent_item_id IS NULL
-        AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')${ef.clause}
-      GROUP BY o.id, o.order_number, c.client_name
-      HAVING SUM(oi.total_cost) > 0
-      ORDER BY margin_rate ASC
-      LIMIT 10
-    `).bind(monthCount, ...ef.params).all<LowMarginOrderRow>()
+    const sane = [...itemMap.values()].filter(it => !anomalyIds.has(it.item_id))
+    const anomalies = [...itemMap.values()].filter(it => anomalyIds.has(it.item_id))
 
-    const lowMarginMapped = lowMarginOrders.map((r) => ({
-      order_id: r.order_id,
-      order_number: r.order_number,
-      client_name: r.client_name,
-      total_revenue: Number(r.total_revenue),
-      total_cost: Number(r.total_cost),
-      margin_rate: Number(r.margin_rate),
-    }))
+    // 요약 — 정상 커버 라인 기준
+    const coveredRevenue = sane.reduce((a, it) => a + it.revenue, 0)
+    const coveredCost = sane.reduce((a, it) => a + it.est_cost, 0)
+    const anomalyRevenue = anomalies.reduce((a, it) => a + it.revenue, 0)
+    const summary = {
+      total_revenue: coveredRevenue,
+      total_cost: Math.round(coveredCost),
+      total_profit: Math.round(coveredRevenue - coveredCost),
+      avg_margin_rate: coveredRevenue > 0 ? Number(((coveredRevenue - coveredCost) / coveredRevenue * 100).toFixed(1)) : 0,
+      coverage: {
+        total_revenue_all: totalRevenueAll,
+        covered_revenue: coveredRevenue,
+        coverage_pct: totalRevenueAll > 0 ? Number((coveredRevenue / totalRevenueAll * 100).toFixed(1)) : 0,
+        anomaly_item_count: anomalies.length,
+        anomaly_revenue: anomalyRevenue,
+      },
+    }
+
+    // 카테고리별 (정상 커버만)
+    const catMap = new Map<string, { revenue: number; cost: number; item_count: number }>()
+    for (const it of sane) {
+      const cEntry = catMap.get(it.category) || { revenue: 0, cost: 0, item_count: 0 }
+      cEntry.revenue += it.revenue; cEntry.cost += it.est_cost; cEntry.item_count += 1
+      catMap.set(it.category, cEntry)
+    }
+    const byCategory = [...catMap.entries()].map(([name, v]) => ({
+      category_name: name,
+      revenue: Math.round(v.revenue), cost: Math.round(v.cost), profit: Math.round(v.revenue - v.cost),
+      margin_rate: v.revenue > 0 ? Number(((v.revenue - v.cost) / v.revenue * 100).toFixed(1)) : 0,
+      item_count: v.item_count,
+    })).sort((a, b) => b.revenue - a.revenue)
+
+    // 월별 (정상 커버만)
+    const monMap = new Map<string, { revenue: number; cost: number }>()
+    for (const r of rows) {
+      if (anomalyIds.has(r.item_id)) continue
+      const m = monMap.get(r.month) || { revenue: 0, cost: 0 }
+      m.revenue += Number(r.revenue) || 0; m.cost += Number(r.est_cost) || 0
+      monMap.set(r.month, m)
+    }
+    const byMonth = [...monMap.entries()].map(([month, v]) => ({
+      month, revenue: Math.round(v.revenue), cost: Math.round(v.cost), profit: Math.round(v.revenue - v.cost),
+      margin_rate: v.revenue > 0 ? Number(((v.revenue - v.cost) / v.revenue * 100).toFixed(1)) : 0,
+    })).sort((a, b) => b.month.localeCompare(a.month))
+
+    // 저마진 품목 TOP 10 (정상 커버 · 매출 10만원 이상 — 소액 노이즈 제외)
+    const lowMarginItems = sane
+      .filter(it => it.revenue >= 100000)
+      .map(it => ({
+        item_id: it.item_id, item_code: it.item_code, item_name: it.item_name, category: it.category,
+        line_count: it.line_count, revenue: Math.round(it.revenue), est_cost: Math.round(it.est_cost),
+        profit: Math.round(it.revenue - it.est_cost),
+        margin_rate: it.revenue > 0 ? Number(((it.revenue - it.est_cost) / it.revenue * 100).toFixed(1)) : 0,
+      }))
+      .sort((a, b) => a.margin_rate - b.margin_rate)
+      .slice(0, 10)
+
+    // 단가 점검 필요(추정원가 > 매출) — 과다 순
+    const anomalyItems = anomalies
+      .map(it => ({
+        item_id: it.item_id, item_code: it.item_code, item_name: it.item_name, category: it.category,
+        line_count: it.line_count, revenue: Math.round(it.revenue), est_cost: Math.round(it.est_cost),
+        cost_ratio: it.revenue > 0 ? Number((it.est_cost / it.revenue * 100).toFixed(0)) : null,
+      }))
+      .sort((a, b) => (b.est_cost - b.revenue) - (a.est_cost - a.revenue))
+      .slice(0, 15)
 
     return c.json({
       success: true,
-      data: {
-        summary,
-        by_category: byCategoryMapped,
-        by_month: byMonthMapped,
-        low_margin_orders: lowMarginMapped,
-      },
+      data: { summary, by_category: byCategory, by_month: byMonth, low_margin_items: lowMarginItems, anomaly_items: anomalyItems },
     })
   } catch (error) {
     console.error('src/routes/reports.ts error:', error)
@@ -520,7 +519,7 @@ reportsRouter.get('/margin-analysis', async (c) => {
   }
 })
 
-// 6. 거래처별 마진 분석
+// 5-b. 거래처별 추정 마진 — 정상 커버 품목만(이상치 품목은 CTE에서 제외)
 reportsRouter.get('/margin-by-client', async (c) => {
   try {
     const { months = '6' } = c.req.query()
@@ -528,41 +527,37 @@ reportsRouter.get('/margin-by-client', async (c) => {
     const ef = entityFilter(c, 'o')
 
     const { results } = await c.env.DB.prepare(`
-      SELECT
-        c.id as client_id, c.client_name,
-        COUNT(DISTINCT o.id) as order_count,
-        COALESCE(SUM(oi_agg.revenue), 0) as total_revenue,
-        COALESCE(SUM(oi_agg.cost), 0) as total_cost,
-        COALESCE(SUM(oi_agg.revenue), 0) - COALESCE(SUM(oi_agg.cost), 0) as margin_amount,
-        CASE WHEN SUM(oi_agg.revenue) > 0
-          THEN ROUND((SUM(oi_agg.revenue) - SUM(oi_agg.cost)) * 100.0 / SUM(oi_agg.revenue), 1)
-          ELSE 0
-        END as margin_rate
-      FROM orders o
-      JOIN clients c ON o.client_id = c.id
-      LEFT JOIN (
-        SELECT order_id,
-          SUM(amount) as revenue,
-          SUM(total_cost) as cost
-        FROM order_items
-        WHERE parent_item_id IS NULL AND total_cost > 0
-        GROUP BY order_id
-      ) oi_agg ON o.id = oi_agg.order_id
-      WHERE o.status != 'CANCELLED'
-        AND NOT ${voucherOrderSql('o')}
-        AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')
-        AND oi_agg.cost > 0${ef.clause}
-      GROUP BY c.id, c.client_name
-      HAVING total_revenue > 0
+      WITH covered AS (
+        SELECT oi.item_id, o.client_id, oi.order_id,
+          oi.amount AS rev, i.avg_unit_cost * oi.quantity AS est
+        FROM order_items oi
+        JOIN orders o ON oi.order_id = o.id
+        JOIN items i ON oi.item_id = i.id
+        WHERE o.status != 'CANCELLED'
+          AND NOT ${voucherOrderSql('o')}
+          AND oi.parent_item_id IS NULL
+          AND COALESCE(i.avg_unit_cost, 0) > 0
+          AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')${ef.clause}
+      ),
+      bad AS (SELECT item_id FROM covered GROUP BY item_id HAVING SUM(est) > SUM(rev) OR SUM(est) <= 0)
+      SELECT cv.client_id, cl.client_name,
+        COUNT(DISTINCT cv.order_id) as order_count,
+        CAST(SUM(cv.rev) AS INT) as total_revenue,
+        CAST(SUM(cv.est) AS INT) as total_cost,
+        CAST(SUM(cv.rev) - SUM(cv.est) AS INT) as margin_amount,
+        CASE WHEN SUM(cv.rev) > 0
+          THEN ROUND((SUM(cv.rev) - SUM(cv.est)) * 100.0 / SUM(cv.rev), 1) ELSE 0 END as margin_rate
+      FROM covered cv
+      JOIN clients cl ON cl.id = cv.client_id
+      WHERE cv.item_id NOT IN (SELECT item_id FROM bad)
+      GROUP BY cv.client_id, cl.client_name
+      HAVING total_revenue >= 100000 AND total_cost > 0
       ORDER BY margin_rate DESC
     `).bind(monthCount, ...ef.params).all<MarginByClientRow>()
 
-    // TOP 10 / BOTTOM 10
     const all = results || []
     const top10 = all.slice(0, 10)
     const bottom10 = all.slice().reverse().slice(0, 10)
-
-    // 수익성 등급
     const graded = all.map((r) => {
       let grade = 'D'
       if (r.margin_rate >= 50) grade = 'A'

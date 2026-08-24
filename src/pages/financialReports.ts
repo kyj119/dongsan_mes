@@ -34,6 +34,9 @@ export const financialReportsContent = `
               <button onclick="exportFinancialCsv()" class="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700"><i class="fas fa-file-csv mr-1"></i>CSV</button>
             </div>
 
+            <!-- 전제·한계 안내 (판관비 정본 기반, 2026-08-24 재설계) -->
+            <div id="pnlCaveats" class="hidden px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800"></div>
+
             <!-- KPI 행 -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
               <div class="ds-card p-3 text-center">
@@ -75,6 +78,23 @@ export const financialReportsContent = `
                       조회 버튼을 클릭하여 데이터를 불러오세요
                     </td>
                   </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- 판관비 계정 상세 (통장·카드 계정분류) -->
+            <div class="ds-card overflow-x-auto">
+              <div class="px-3 pt-3 text-xs font-bold text-gray-600"><i class="fas fa-list mr-1"></i>판관비 계정 상세 <span class="font-normal text-gray-400">(통장·카드 계정분류 — 정본)</span></div>
+              <table class="w-full text-xs ds-table-striped ds-compact">
+                <thead>
+                  <tr>
+                    <th class="text-left px-3">계정</th>
+                    <th class="text-right px-3" style="width:120px">금액</th>
+                    <th class="text-right px-3" style="width:80px">건수</th>
+                  </tr>
+                </thead>
+                <tbody id="pnlSgaBody">
+                  <tr><td colspan="3" class="px-3 py-4 text-center text-gray-400">조회 후 표시됩니다</td></tr>
                 </tbody>
               </table>
             </div>
@@ -126,10 +146,11 @@ export const financialReportsContent = `
                 <thead>
                   <tr>
                     <th class="text-center" style="width:60px">월</th>
-                    <th class="text-right" style="width:120px">매출</th>
-                    <th class="text-right" style="width:120px">비용</th>
-                    <th class="text-right" style="width:120px">이익</th>
-                    <th class="text-right" style="width:80px">이익률</th>
+                    <th class="text-right" style="width:110px">매출</th>
+                    <th class="text-right" style="width:110px">매출원가</th>
+                    <th class="text-right" style="width:110px">판관비</th>
+                    <th class="text-right" style="width:110px">영업이익</th>
+                    <th class="text-right" style="width:70px">이익률</th>
                   </tr>
                 </thead>
                 <tbody id="finMonthlyTableBody">

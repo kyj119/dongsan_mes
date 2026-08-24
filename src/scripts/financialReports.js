@@ -12,6 +12,7 @@ var monthlyChart = null;
 var currentFinancialTab = 'pnl';
 
 function fmt(n) { return window.fmtNum(n); }
+function escFin(str) { return String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 // 초기화는 파일 맨 아래에서 실행 (window.* 함수 정의 이후)
 
 // ============================================================
@@ -44,105 +45,97 @@ window.loadPnl = async function() {
 };
 
 function renderPnl(d) {
+  // 2026-08-24 재설계 — 판관비=통장·카드 계정분류(정본), 매출원가=매입(장비 제외)+직접원가, 재고증감 미반영
   var revenue = d.revenue.total || 0;
   var cogs = d.cogs.total || 0;
   var grossProfit = d.gross_profit.total || 0;
   var grossMargin = d.gross_profit.margin_pct || 0;
-  var opEx = d.operating_expense.total || 0;
+  var sga = d.operating_expense.total || 0;
   var opProfit = d.operating_profit.total || 0;
   var opMargin = d.operating_profit.margin_pct || 0;
   var netProfit = d.net_profit.total || 0;
   var netMargin = d.net_profit.margin_pct || 0;
 
+  // 전제·한계 배너
+  var cavEl = document.getElementById('pnlCaveats');
+  if (cavEl) {
+    var cav = d.caveats || {};
+    var msgs = [];
+    msgs.push('판관비 = <b>통장·카드 계정분류</b>(대출원금·부가세·가수금·리스료 등 비(非)비용 제외)');
+    if (d.scope === 'GROUP') msgs.push('전체 법인 = <b>그룹 연결</b> — 법인간 거래 양변 제거(내부매출 ' + fmt(d.revenue.internal_removed || 0) + '원)');
+    else if (d.revenue.internal_included) msgs.push('별도 기준 — 내부거래 포함(내부매출 ' + fmt(d.revenue.internal_included) + '원)');
+    if (cav.stock_change_unreflected) msgs.push('<b>재고증감 미반영</b>(실사 앵커 없음) — 재고가 늘었으면 이익 과소, 줄었으면 과대');
+    if (cav.unclassified_amount > 0) msgs.push('<span class="text-red-700">미분류 출금·카드 ' + fmt(cav.unclassified_amount) + '원 — 판관비가 그만큼 과소일 수 있음</span>');
+    if (cav.interest_understated) msgs.push('이자비용은 계정 실측분만(통장 「대출상환」 혼입분 제외 — 과소)');
+    cavEl.innerHTML = '<i class="fas fa-info-circle mr-1"></i>' + msgs.join(' · ');
+    cavEl.classList.remove('hidden');
+  }
+
   // KPI 카드
   var elRevenue = document.getElementById('pnlRevenue'); if (!elRevenue) { console.warn('[financialReports] #pnlRevenue not found'); return; }
   elRevenue.textContent = fmt(revenue);
   var elRevenueCount = document.getElementById('pnlRevenueCount'); if (!elRevenueCount) { console.warn('[financialReports] #pnlRevenueCount not found'); return; }
-  elRevenueCount.textContent = d.revenue.order_count + '건';
-
+  elRevenueCount.textContent = (d.revenue.order_count || 0) + '건 청구';
   var elGrossProfit = document.getElementById('pnlGrossProfit'); if (!elGrossProfit) { console.warn('[financialReports] #pnlGrossProfit not found'); return; }
   elGrossProfit.textContent = fmt(grossProfit);
   var elGrossMargin = document.getElementById('pnlGrossProfitMargin'); if (!elGrossMargin) { console.warn('[financialReports] #pnlGrossProfitMargin not found'); return; }
   elGrossMargin.textContent = grossMargin.toFixed(1) + '%';
-
-  var opProfitColor = opProfit < 0 ? 'color:#DC2626;' : '';
-  var netProfitColor = netProfit < 0 ? 'color:#DC2626;' : '';
   var opProfitEl = document.getElementById('pnlOperatingProfit');
-  if (!opProfitEl) { console.warn('[financialReports] #pnlOperatingProfit not found'); return; }
-  opProfitEl.style.cssText = opProfitColor + 'font-variant-numeric:tabular-nums;';
-  opProfitEl.className = opProfit < 0 ? '' : 'text-gray-900';
-  opProfitEl.textContent = fmt(opProfit);
+  if (opProfitEl) {
+    opProfitEl.textContent = fmt(opProfit);
+    opProfitEl.className = 'text-lg font-bold ' + (opProfit < 0 ? 'text-red-600' : 'text-gray-900');
+  }
   var elOpMargin = document.getElementById('pnlOperatingMargin'); if (!elOpMargin) { console.warn('[financialReports] #pnlOperatingMargin not found'); return; }
   elOpMargin.textContent = opMargin.toFixed(1) + '%';
-
   var netProfitEl = document.getElementById('pnlNetProfit');
-  if (!netProfitEl) { console.warn('[financialReports] #pnlNetProfit not found'); return; }
-  netProfitEl.style.cssText = netProfitColor + 'font-variant-numeric:tabular-nums;';
-  netProfitEl.className = netProfit < 0 ? '' : 'text-gray-900';
-  netProfitEl.textContent = fmt(netProfit);
+  if (netProfitEl) {
+    netProfitEl.textContent = fmt(netProfit);
+    netProfitEl.className = 'text-lg font-bold ' + (netProfit < 0 ? 'text-red-600' : 'text-gray-900');
+  }
   var elNetMargin = document.getElementById('pnlNetMargin'); if (!elNetMargin) { console.warn('[financialReports] #pnlNetMargin not found'); return; }
   elNetMargin.textContent = netMargin.toFixed(1) + '%';
 
   // P&L 테이블
+  function row(label, amount, note, cls) {
+    return '<tr class="' + (cls || 'border-b border-gray-100') + '">'
+      + '<td class="px-3 py-2">' + label + '</td>'
+      + '<td class="px-3 py-2 text-right" style="font-variant-numeric:tabular-nums;">' + fmt(amount) + '</td>'
+      + '<td class="px-3 py-2 text-right text-gray-500">' + (note || '') + '</td>'
+      + '</tr>';
+  }
   var html = '';
-  html += '<tr class="border-b border-gray-300">'
-    + '<td class="px-3 py-2 font-medium">매출</td>'
-    + '<td class="px-3 py-2 text-right font-variant-numeric:tabular-nums;">' + fmt(revenue) + '</td>'
-    + '<td class="px-3 py-2 text-right text-gray-500">' + d.revenue.order_count + '건</td>'
-    + '</tr>';
-
-  html += '<tr class="border-b border-gray-100">'
-    + '<td class="px-3 py-2 text-gray-600 text-[11px]">  매출원가</td>'
-    + '<td class="px-3 py-2 text-right font-variant-numeric:tabular-nums;">' + fmt(cogs) + '</td>'
-    + '<td class="px-3 py-2 text-right text-gray-500">' + d.cogs.margin_pct.toFixed(1) + '%</td>'
-    + '</tr>';
-
-  html += '<tr class="border-t-2 border-gray-300 font-semibold">'
-    + '<td class="px-3 py-2">매출총이익</td>'
-    + '<td class="px-3 py-2 text-right font-variant-numeric:tabular-nums;">' + fmt(grossProfit) + '</td>'
-    + '<td class="px-3 py-2 text-right">' + grossMargin.toFixed(1) + '%</td>'
-    + '</tr>';
-
-  html += '<tr class="border-b border-gray-100">'
-    + '<td class="px-3 py-2 text-gray-600 text-[11px]">  매입비</td>'
-    + '<td class="px-3 py-2 text-right font-variant-numeric:tabular-nums;">' + fmt(d.operating_expense.purchase_total || 0) + '</td>'
-    + '<td class="px-3 py-2 text-right text-gray-500">참고용</td>'
-    + '</tr>';
-
-  html += '<tr class="border-b border-gray-100">'
-    + '<td class="px-3 py-2 text-gray-600 text-[11px]">  경비</td>'
-    + '<td class="px-3 py-2 text-right font-variant-numeric:tabular-nums;">' + fmt(d.operating_expense.expense_approved || 0) + '</td>'
-    + '<td class="px-3 py-2"></td>'
-    + '</tr>';
-
-  html += '<tr class="border-b border-gray-100">'
-    + '<td class="px-3 py-2 text-gray-600 text-[11px]">  인건비</td>'
-    + '<td class="px-3 py-2 text-right font-variant-numeric:tabular-nums;">' + fmt(d.operating_expense.payroll || 0) + '</td>'
-    + '<td class="px-3 py-2"></td>'
-    + '</tr>';
-
-  html += '<tr class="border-b border-gray-100">'
-    + '<td class="px-3 py-2 text-gray-600 text-[11px]">  고정비</td>'
-    + '<td class="px-3 py-2 text-right font-variant-numeric:tabular-nums;">' + fmt(d.operating_expense.fixed_cost || 0) + '</td>'
-    + '<td class="px-3 py-2"></td>'
-    + '</tr>';
-
-  var opProfitClass = opProfit < 0 ? 'text-red-600' : '';
-  html += '<tr class="border-t-2 border-gray-300 font-semibold ' + opProfitClass + '">'
-    + '<td class="px-3 py-2">영업이익</td>'
-    + '<td class="px-3 py-2 text-right font-variant-numeric:tabular-nums;">' + fmt(opProfit) + '</td>'
-    + '<td class="px-3 py-2 text-right">' + opMargin.toFixed(1) + '%</td>'
-    + '</tr>';
-
-  var netProfitClass = netProfit < 0 ? 'text-red-600' : '';
-  html += '<tr class="border-t-4 border-gray-300 font-bold text-base ' + netProfitClass + '">'
-    + '<td class="px-3 py-3">당기순이익</td>'
-    + '<td class="px-3 py-3 text-right font-variant-numeric:tabular-nums;">' + fmt(netProfit) + '</td>'
-    + '<td class="px-3 py-3 text-right">' + netMargin.toFixed(1) + '%</td>'
-    + '</tr>';
+  html += row('<span class="font-medium">매출(외부)</span>', revenue, (d.revenue.order_count || 0) + '건', 'border-b border-gray-300');
+  html += row('<span class="text-gray-600 text-[11px]">&nbsp;&nbsp;매입(외부)</span>', d.cogs.purchase || 0, '');
+  if (d.cogs.equip_excluded) html += row('<span class="text-gray-600 text-[11px]">&nbsp;&nbsp;장비 제외(자산→감가상각)</span>', -(d.cogs.equip_excluded || 0), 'GDS-EQ-*');
+  html += row('<span class="text-gray-600 text-[11px]">&nbsp;&nbsp;직접원가(원재료비·외주)</span>', d.cogs.direct || 0, '통장·카드');
+  html += row('<span class="text-gray-600 text-[11px]">&nbsp;&nbsp;= 매출원가</span>', cogs, (d.cogs.margin_pct || 0).toFixed(1) + '% · 재고증감 미반영');
+  html += row('<span class="font-semibold">매출총이익</span>', grossProfit, grossMargin.toFixed(1) + '%', 'border-t-2 border-gray-300 font-semibold');
+  html += row('<span class="text-gray-600 text-[11px]">&nbsp;&nbsp;판관비(통장·카드)</span>', d.operating_expense.categories_total || 0, '');
+  html += row('<span class="text-gray-600 text-[11px]">&nbsp;&nbsp;감가상각비</span>', d.operating_expense.depreciation || 0, '');
+  html += row('<span class="font-semibold' + (opProfit < 0 ? ' text-red-600' : '') + '">영업이익</span>', opProfit, opMargin.toFixed(1) + '%', 'border-t-2 border-gray-300 font-semibold' + (opProfit < 0 ? ' text-red-600' : ''));
+  html += row('<span class="text-gray-600 text-[11px]">&nbsp;&nbsp;이자비용·기부금</span>', d.non_operating.total || 0, '실측분만(과소)');
+  html += row('<span class="text-gray-600 text-[11px]">&nbsp;&nbsp;법인세</span>', d.tax.total || 0, '');
+  html += row('<span class="font-bold text-base' + (netProfit < 0 ? ' text-red-600' : '') + '">당기순이익</span>', netProfit, netMargin.toFixed(1) + '%', 'border-t-4 border-gray-300 font-bold' + (netProfit < 0 ? ' text-red-600' : ''));
 
   var elPnlBody = document.getElementById('pnlTableBody'); if (!elPnlBody) { console.warn('[financialReports] #pnlTableBody not found'); return; }
   elPnlBody.innerHTML = html;
+
+  // 판관비 계정 상세
+  var sgaBody = document.getElementById('pnlSgaBody');
+  if (sgaBody) {
+    var cats = d.sga_categories || [];
+    if (cats.length === 0) {
+      sgaBody.innerHTML = '<tr><td colspan="3" class="px-3 py-4 text-center text-gray-400">분류된 판관비 없음</td></tr>';
+    } else {
+      sgaBody.innerHTML = cats.map(function(cEnt) {
+        return '<tr class="border-b border-gray-100">'
+          + '<td class="px-3 py-1.5">' + escFin(cEnt.name) + '</td>'
+          + '<td class="px-3 py-1.5 text-right" style="font-variant-numeric:tabular-nums;">' + fmt(cEnt.amount) + '</td>'
+          + '<td class="px-3 py-1.5 text-right text-gray-500">' + (cEnt.count || 0) + '</td>'
+          + '</tr>';
+      }).join('');
+    }
+  }
 }
 
 // ============================================================
@@ -173,9 +166,7 @@ function renderMonthlyPnl(d) {
   var monthly = d.monthly || [];
 
   var avgRevenue = monthly.length > 0 ? yearTotal.revenue / 12 : 0;
-  var avgMargin = yearTotal.profit > 0 && yearTotal.revenue > 0
-    ? (yearTotal.profit / yearTotal.revenue) * 100
-    : 0;
+  var avgMargin = yearTotal.revenue > 0 ? (yearTotal.profit / yearTotal.revenue) * 100 : 0;
 
   // KPI 카드
   var elYearRev = document.getElementById('monthlyYearRevenue'); if (!elYearRev) { console.warn('[financialReports] #monthlyYearRevenue not found'); return; }
@@ -187,22 +178,23 @@ function renderMonthlyPnl(d) {
   var elAvgMargin = document.getElementById('monthlyAvgMargin'); if (!elAvgMargin) { console.warn('[financialReports] #monthlyAvgMargin not found'); return; }
   elAvgMargin.textContent = avgMargin.toFixed(1) + '%';
 
-  // 월별 테이블
+  // 월별 테이블 — 매출/매출원가/판관비/영업이익/이익률
   var html = '';
   monthly.forEach(function(m) {
     var margin = m.margin_pct || 0;
     var marginColor = margin < 0 ? 'text-red-600' : '';
     html += '<tr class="border-b border-gray-100 hover:bg-blue-50/30">'
       + '<td class="px-3 py-2 text-center font-medium">' + m.month + '월</td>'
-      + '<td class="px-3 py-2 text-right font-variant-numeric:tabular-nums;">' + fmt(m.revenue) + '</td>'
-      + '<td class="px-3 py-2 text-right font-variant-numeric:tabular-nums;">' + fmt(m.expense + (m.payroll || 0)) + '</td>'
-      + '<td class="px-3 py-2 text-right font-variant-numeric:tabular-nums;">' + fmt(m.profit) + '</td>'
-      + '<td class="px-3 py-2 text-right font-variant-numeric:tabular-nums; ' + marginColor + '">' + margin.toFixed(1) + '%</td>'
+      + '<td class="px-3 py-2 text-right" style="font-variant-numeric:tabular-nums;">' + fmt(m.revenue) + '</td>'
+      + '<td class="px-3 py-2 text-right" style="font-variant-numeric:tabular-nums;">' + fmt(m.cogs || 0) + '</td>'
+      + '<td class="px-3 py-2 text-right" style="font-variant-numeric:tabular-nums;">' + fmt(m.sga || 0) + '</td>'
+      + '<td class="px-3 py-2 text-right ' + ((m.profit || 0) < 0 ? 'text-red-600' : '') + '" style="font-variant-numeric:tabular-nums;">' + fmt(m.profit) + '</td>'
+      + '<td class="px-3 py-2 text-right ' + marginColor + '" style="font-variant-numeric:tabular-nums;">' + margin.toFixed(1) + '%</td>'
       + '</tr>';
   });
 
   var elMonthlyBody = document.getElementById('finMonthlyTableBody'); if (!elMonthlyBody) { console.warn('[financialReports] #finMonthlyTableBody not found'); return; }
-  elMonthlyBody.innerHTML = html || '<tr><td colspan="5" class="px-3 py-12 text-center"><div class="flex flex-col items-center"><i class="fas fa-chart-line text-4xl text-gray-300 mb-3"></i><p class="text-gray-500 text-sm">데이터가 없습니다</p></div></td></tr>';
+  elMonthlyBody.innerHTML = html || '<tr><td colspan="6" class="px-3 py-12 text-center"><div class="flex flex-col items-center"><i class="fas fa-chart-line text-4xl text-gray-300 mb-3"></i><p class="text-gray-500 text-sm">데이터가 없습니다</p></div></td></tr>';
 }
 
 function renderMonthlyChart(d) {
@@ -225,10 +217,8 @@ function drawMonthlyChart(d) {
   var revenueData = monthly.map(function(m) { return m.revenue; });
   var profitData = monthly.map(function(m) { return m.profit; });
 
-  // 영업이익 = 매출 - (경비+인건비)
-  var operatingData = monthly.map(function(m) {
-    return m.revenue - (m.expense || 0) - (m.payroll || 0);
-  });
+  // 영업이익 = m.profit (서버가 매출-매출원가-판관비로 계산)
+  var operatingData = monthly.map(function(m) { return m.profit || 0; });
 
   var canvas = document.getElementById('monthlyTrendChart');
   if (!canvas) return;

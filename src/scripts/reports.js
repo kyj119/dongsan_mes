@@ -296,10 +296,23 @@ async function loadMarginAnalysis() {
     var summary = json.data.summary;
     var by_category = json.data.by_category;
     var by_month = json.data.by_month;
-    var low_margin_orders = json.data.low_margin_orders;
+    var low_margin_items = json.data.low_margin_items;
+    var anomaly_items = json.data.anomaly_items;
 
     // 요약 카드
     var fmtWon = function(n) { return window.fmtNum(n) + '원'; };
+
+    // 커버리지 안내 — 원가는 구매 평균단가 기반 추정, 커버 라인만 집계
+    var covEl = document.getElementById('mgCoverageNote');
+    if (covEl && summary.coverage) {
+      var cov = summary.coverage;
+      covEl.innerHTML = '<i class="fas fa-info-circle mr-1"></i>'
+        + '원가는 <b>구매 평균단가 × 수량 추정치</b>입니다. 단가 보유 품목만 집계 — 커버리지 <b>'
+        + (cov.coverage_pct || 0).toFixed(1) + '%</b> (전체 매출 ' + fmtWon(cov.total_revenue_all) + ' 중 ' + fmtWon(cov.covered_revenue) + ')'
+        + (cov.anomaly_item_count > 0
+          ? ' · <span class="text-red-700 font-medium">단가 점검 필요 ' + cov.anomaly_item_count + '품목(' + fmtWon(cov.anomaly_revenue) + ')은 집계 제외</span> — 하단 표 참조'
+          : '');
+    }
     var elMgRev = document.getElementById('mgTotalRevenue'); if (!elMgRev) { console.warn('[reports] #mgTotalRevenue not found'); return; }
     elMgRev.textContent = fmtWon(summary.total_revenue);
     var elMgCost = document.getElementById('mgTotalCost'); if (!elMgCost) { console.warn('[reports] #mgTotalCost not found'); return; }
@@ -353,25 +366,44 @@ async function loadMarginAnalysis() {
       }).join('');
     }
 
-    // 저마진 주문
+    // 저마진 품목
     var tbody = document.getElementById('mgLowMarginBody');
     if (!tbody) { console.warn('[reports] #mgLowMarginBody not found'); return; }
-    if (!low_margin_orders || low_margin_orders.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-gray-400 py-4">데이터 없음</td></tr>';
+    if (!low_margin_items || low_margin_items.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-gray-400 py-4">데이터 없음</td></tr>';
     } else {
-      tbody.innerHTML = low_margin_orders.map(function(o) {
-        var profit = (o.total_revenue || 0) - (o.total_cost || 0);
+      tbody.innerHTML = low_margin_items.map(function(o) {
         var marginRate = o.margin_rate || 0;
         var marginColor = marginRate < 0 ? 'text-red-600 font-bold' : marginRate < 15 ? 'text-orange-600' : 'text-gray-700';
-        return '<tr class="border-t hover:bg-gray-50 cursor-pointer" onclick="location.href=\'/orders?highlight=' + o.order_id + '\'">'
-          + '<td class="px-4 py-3 font-medium text-blue-600" title="' + esc(o.order_number || '') + '">' + (o.order_number || '') + '</td>'
-          + '<td class="px-4 py-3" title="' + esc(o.client_name || '') + '">' + esc(o.client_name || '') + '</td>'
-          + '<td class="px-4 py-3 text-right">' + fmtWon(o.total_revenue) + '</td>'
-          + '<td class="px-4 py-3 text-right">' + fmtWon(o.total_cost) + '</td>'
-          + '<td class="px-4 py-3 text-right' + (profit < 0 ? ' text-red-600' : '') + '">' + fmtWon(profit) + '</td>'
+        return '<tr class="border-t hover:bg-gray-50">'
+          + '<td class="px-4 py-3 font-medium text-blue-600" title="' + esc(o.item_code || '') + '">' + esc(o.item_code || '') + '</td>'
+          + '<td class="px-4 py-3" title="' + esc(o.item_name || '') + '">' + esc(o.item_name || '') + '</td>'
+          + '<td class="px-4 py-3 text-gray-500">' + esc(o.category || '') + '</td>'
+          + '<td class="px-4 py-3 text-right">' + fmtWon(o.revenue) + '</td>'
+          + '<td class="px-4 py-3 text-right">' + fmtWon(o.est_cost) + '</td>'
+          + '<td class="px-4 py-3 text-right' + ((o.profit || 0) < 0 ? ' text-red-600' : '') + '">' + fmtWon(o.profit) + '</td>'
           + '<td class="px-4 py-3 text-right ' + marginColor + '">' + marginRate.toFixed(1) + '%</td>'
           + '</tr>';
       }).join('');
+    }
+
+    // 단가 점검 필요 (추정원가 > 매출 — 집계 제외분)
+    var anomalyBody = document.getElementById('mgAnomalyBody');
+    if (anomalyBody) {
+      if (!anomaly_items || anomaly_items.length === 0) {
+        anomalyBody.innerHTML = '<tr><td colspan="6" class="text-center text-gray-400 py-4">점검 필요 품목 없음</td></tr>';
+      } else {
+        anomalyBody.innerHTML = anomaly_items.map(function(o) {
+          return '<tr class="border-t hover:bg-gray-50">'
+            + '<td class="px-4 py-3 font-medium text-blue-600" title="' + esc(o.item_code || '') + '">' + esc(o.item_code || '') + '</td>'
+            + '<td class="px-4 py-3" title="' + esc(o.item_name || '') + '">' + esc(o.item_name || '') + '</td>'
+            + '<td class="px-4 py-3 text-gray-500">' + esc(o.category || '') + '</td>'
+            + '<td class="px-4 py-3 text-right">' + fmtWon(o.revenue) + '</td>'
+            + '<td class="px-4 py-3 text-right text-red-600">' + fmtWon(o.est_cost) + '</td>'
+            + '<td class="px-4 py-3 text-right font-bold text-red-600">' + (o.cost_ratio != null ? o.cost_ratio + '%' : '-') + '</td>'
+            + '</tr>';
+        }).join('');
+      }
     }
 
     // 거래처별 마진 로드
