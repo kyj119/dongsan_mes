@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-08-24T21:45:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-08-25T03:52:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,20 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 4 데이터 정합성 (2026-08-25T03:52):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → origin `3da5e66`(직전 Area4 자신의 HEAD `665cc61`에서 **18커밋 전진**) → `git checkout main && git reset --hard origin/main`. `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area4 자신의 앵커(`665cc61`) 이후 웹앱 범위(`-- src migrations scripts .github`) diff = **14커밋**(나머지 4건은 `docs(status)`/`docs(handoff)` 순수 문서 커밋, 범위 밖). 핵심 = `9d42157`(재무리포트 마진탭/P&L탭 재설계, Area3 08-24T21:45가 이미 UX 렌즈로 정독) 포함 재무/원가 정정 5건(`9d42157`/`a7f8bda`/`7817182`/`9deae34`/`ff40ac7`) + IA/스캔축 3건(`f94d416`/`ab533dc`/`018bf35`, Area2 소관) + 재고 데이터정정 3건(`921558b`/`ca9b971`/`085e055`, 기보고) + 파일규격 P1(`b98c704`, Area2 소관) + IA패널(`ea773ab`) + 문서정합(`23ef6f3`). **신규 마이그레이션 0건**.
+> - **write-path 존재성 확인**: 재무 5건 전체 `git show <c> -- src | grep -E "INSERT|UPDATE|DELETE"` = **0건** — `9d42157`/`ff40ac7`/`9deae34`/`a7f8bda`는 전부 read-only 리포트 쿼리 재작성(커밋 메시지 자체도 "Never writes"/"report-only" 명시), DB 정합성 리스크 표면 자체가 없음. `085e055`의 prod 데이터 보정(6주 배너실사 백필·롤길이 정정)은 코드 없는 수기 전표 대조 재입력(paper invoice/sheet 대조 명시) — 이미 Area1(08-24T09:44)이 코드 write-path(`inventoryCount.ts`) 정독 완료, 나머지는 도메인 전문가 수기검증 영역이라 Area4 자동화 스캔 대상 아님.
+> - **🔍 audit:entity 신규 6건 → false positive 확정**: `npm run audit:entity` = 누락 **6건**(직전 Area2 08-24T16:44 "누락 0"에서 증가) 전부 `financialReports.ts:82/89/97/102/235/241`(`9d42157` P&L 재설계分, bank_transactions/card_transactions/expense_categories). **코드 직접 대조**: `fetchEntityPnl(db, E, from, to)`가 호출부(`:137-139`, `:254-256`)에서 `entities = entityId>0 ? [entityId] : [1,2,3]` 로 법인별 순회 후 각 쿼리에 `ba.entity_id=?`/`cc.entity_id=?`를 **E에 bind**하는 명시적 per-entity 루프 패턴 — 표준 `entityFilter(c, alias)` 헬퍼(정규식 기반 감사스크립트가 찾는 패턴)를 안 쓸 뿐, 격리 자체는 각 호출이 단일 법인만 조회(전체모드는 [1,2,3] 고정순회+내부거래 양변제거로 그룹연결이 의도된 설계, 주석 `:29` "법인 스코프: entityId=0(전체)→그룹연결")로 동등하게 강제됨 — **크로스법인 누출 없음, 오탐 확정**(`/pnl`·`/pnl/monthly` 양쪽 동일 패턴 확인). `audit:entity` 스크립트는 `entity_id=?` 명시 bind 패턴을 인식 못 하는 게 근본원인 — 이번 사이클은 Area4 소관이라 스크립트 수정은 issue화하지 않고 기록만(재발 시 Area2/6이 패턴 추가 검토).
+> - **standing scan**: ① `node scripts/sort-audit.cjs` P1 **0건**(변동없음). ② `git log 665cc61..HEAD -- migrations` = 0건(신규 스키마 없음 → NOT NULL/CHECK/FK/dangling-orphan sweep 대상 자체 없음).
+> - **`repeated_purchase_lines`/`unattributed_purchase_lines`(ca9b971/921558b) 재확인**: 이미 Area2·Area3가 "프론트 소비처 0건, #618 5번째 사례로 추적 중"으로 판정 — 재확인만, 신규 아님.
+> - **open 11건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` totalCount **11**(변동없음, #606·#608·#609·#612·#613·#614·#615·#616·#617·#618·#619 전건 일치), `search_issues`로 전 11건 `reactions.+1=0` 재확인(승인 대기 유지). Area4 소관 #614·#615도 무변화.
+> - **backlog↔GitHub 절대값 재동기화**: open **11**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · `reason:not_planned` **4**(재확인) + duplicate 2(캐시) = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md `line N` 잔여참조 재확인(0건, 기존에 이미 서술 참조로 전환 완료). 이번 사이클의 audit:entity FP(bound-param per-entity loop)는 financialReports.ts 1개 파일 국소 패턴이라 별도 standing scan 추가는 보류(재발 시 codify).
+> - **백로그 트림 체크**: 사이클 로그 11건(이번 로그 포함), 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(재무 5건 전부 read-only 확인 + audit:entity 6건 전부 FP 확정 + standing scan 전부 net-new 0), 자동수정 0건, done-sync: open 11(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-08-24T21:45):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → origin `9f3e59d`(직전 Area2 HEAD `018bf35`에서 **49커밋 전진**, 그중 웹앱 실코드 churn 다수) → `git checkout main && git reset --hard origin/main`. `npm ci`(0→81), `npx tsc --noEmit` clean.
