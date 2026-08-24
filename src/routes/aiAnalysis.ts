@@ -542,6 +542,90 @@ aiAnalysisRouter.get('/', async (c) => {
   }
 })
 
+// GET /api/ai-analysis/audit-dimensions — 소급 감사 (file-dimension-probe P5, 읽기전용)
+// 기존 직접연결 라인(ai_group_index -1/-3)의 R2 소스 머리를 판독해 주문 라인 규격×배율과 대조한다.
+// 일회성 admin 진단 — 폴링 금지([[design-nav-badge-cost-guard]]). 쓰기 없음.
+// ⚠️ '/:id' 라우트보다 먼저 등록해야 한다 — 뒤에 두면 'audit-dimensions' 가 :id 로 잡힌다
+//    ([[design-stock-consumption-api]] 와 같은 함정).
+aiAnalysisRouter.get('/audit-dimensions', async (c) => {
+  try {
+    const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '30', 10) || 30))
+    const offset = Math.max(0, parseInt(c.req.query('offset') || '0', 10) || 0)
+    const ef = entityFilter(c, 'ar')
+    // grain = 직접연결 라인. tie-break = 각 테이블 PK(정렬 규칙).
+    const { results: lines } = await c.env.DB.prepare(
+      `SELECT ar.id AS analysis_id, ar.file_path,
+              oi.id AS order_item_id, oi.width, oi.height, oi.scale_factor, oi.ai_group_index,
+              o.order_number
+       FROM ai_analysis_requests ar
+       JOIN order_items oi ON oi.ai_analysis_id = ar.id AND oi.ai_group_index IN (-1, -3)
+       JOIN orders o ON o.id = oi.order_id
+       WHERE ar.file_path LIKE 'r2://%'${ef.clause}
+       ORDER BY ar.id DESC, oi.id DESC LIMIT ? OFFSET ?`
+    ).bind(...ef.params, limit, offset).all<{
+      analysis_id: number; file_path: string; order_item_id: number
+      width: number | null; height: number | null; scale_factor: number | null
+      ai_group_index: number; order_number: string
+    }>()
+
+    // 분석 1건당 R2 머리(+필요 시 꼬리) 판독 1회 — 배치 내 중복 분석은 캐시
+    const dimsCache = new Map<number, FileDimensions | null>()
+    await Promise.all([...new Map((lines || []).map((l) => [l.analysis_id, l.file_path])).entries()]
+      .map(async ([aid, filePath]) => {
+        try {
+          const key = filePath.replace('r2://', '')
+          const headObj = await c.env.R2_BUCKET.get(key, { range: { offset: 0, length: PROBE_BYTES } })
+          if (!headObj) { dimsCache.set(aid, null); return }
+          const head = await headObj.text()
+          let tail: string | undefined
+          if (needsTailScan(head) && headObj.size > PROBE_BYTES) {
+            const tailObj = await c.env.R2_BUCKET.get(key, { range: { offset: headObj.size - PROBE_BYTES, length: PROBE_BYTES } })
+            tail = tailObj ? await tailObj.text() : undefined
+          }
+          dimsCache.set(aid, parseFileDimensions(head, tail))
+        } catch { dimsCache.set(aid, null) }
+      }))
+
+    // 판정: 라인 규격 ÷ 배율 = 파일 기대 크기 ↔ 실측. ±10%(도련 흡수) · 회전 허용 — 주문서 UI 와 같은 축.
+    const within = (a: number, b: number) => b > 0 && a / b >= 0.9 && a / b <= 1.1
+    let match = 0, mismatch = 0, unmeasured = 0, fetchFailed = 0, noSpec = 0
+    const rows = (lines || []).map((l) => {
+      const dims = dimsCache.get(l.analysis_id)
+      const sf = l.scale_factor && l.scale_factor > 0 ? l.scale_factor : 1
+      let verdict: string
+      if (dims === null || dims === undefined) { verdict = 'fetch_failed'; fetchFailed++ }
+      else if (dims.source === 'none' || !dims.w_cm || !dims.h_cm) { verdict = 'unmeasured'; unmeasured++ }
+      else if (!l.width || !l.height) { verdict = 'no_spec'; noSpec++ }
+      else {
+        const expW = l.width / sf, expH = l.height / sf
+        const ok = (within(expW, dims.w_cm) && within(expH, dims.h_cm))
+          || (within(expW, dims.h_cm) && within(expH, dims.w_cm)) // 회전
+        verdict = ok ? 'match' : 'mismatch'
+        if (ok) match++; else mismatch++
+      }
+      return {
+        analysis_id: l.analysis_id, order_item_id: l.order_item_id, order_number: l.order_number,
+        line_w: l.width, line_h: l.height, scale_factor: sf, group_index: l.ai_group_index,
+        measured_w_cm: dims?.w_cm ?? null, measured_h_cm: dims?.h_cm ?? null,
+        measure_source: dims?.source ?? null, verdict,
+      }
+    })
+
+    return c.json({
+      success: true,
+      data: {
+        batch: { limit, offset, returned: rows.length, next_offset: rows.length === limit ? offset + limit : null },
+        summary: { match, mismatch, unmeasured, no_spec: noSpec, fetch_failed: fetchFailed },
+        // 조치 대상(불일치)이 먼저 보이게 정렬 — 저장·수정은 하지 않는다(리포트 전용)
+        rows: rows.sort((a, b) => (a.verdict === 'mismatch' ? 0 : 1) - (b.verdict === 'mismatch' ? 0 : 1)),
+      },
+    })
+  } catch (error) {
+    console.error('AI Analysis audit-dimensions error:', error)
+    return c.json({ success: false, error: '규격 소급 감사 실패' }, 500)
+  }
+})
+
 // GET /api/ai-analysis/:id - 단건 조회 (브라우저 폴링용)
 aiAnalysisRouter.get('/:id', async (c) => {
   try {
