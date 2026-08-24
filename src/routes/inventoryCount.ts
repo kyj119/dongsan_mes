@@ -176,6 +176,20 @@ inventoryCountRouter.get('/consumption', async (c) => {
       if (n > 1) dupLines++
     }
 
+    // ★품목 미연결 매입 — 위 조회는 `JOIN items` 라 `item_id IS NULL` 라인이 **통째로 빠진다**.
+    //   빠지는 게 맞다(어느 품목인지 모르니 배분할 수 없다). 문제는 **조용히** 빠지는 것이다:
+    //   그러면 「매입 0원인데 재고가 늘었다」= 음수 소모로만 나타나 원인을 못 짚는다.
+    //   2026-08-24 실측 — 7월 동산 매입 66라인 중 **36라인(6,731만·44%)이 미연결**이었고,
+    //   그 안에 코스테크 전사잉크(`ST1000N`)와 케이엠테크 뭉친 전표 2줄이 들어 있었다.
+    //   구역을 못 가르니(품목이 없어 `storage_zone_id` 도 없다) 법인·기간 전체 금액으로 낸다.
+    const unattributed = await c.env.DB.prepare(
+      `SELECT COUNT(*) n, COALESCE(SUM(poi.amount), 0) amt
+         FROM purchase_order_items poi
+         JOIN purchase_orders po ON po.id = poi.po_id
+        WHERE poi.item_id IS NULL
+          AND po.order_date > ? AND po.order_date <= ?` + pef.clause
+    ).bind(firstDate, lastDate, ...pef.params).first<{ n: number; amt: number }>()
+
     // ── 구간별 집계
     //
     // ★구간은 **품목마다 다르다** — 그 품목이 실제로 세어진 회차만 이어 붙인다.
@@ -269,6 +283,9 @@ inventoryCountRouter.get('/consumption', async (c) => {
           items_counted_once: singleCount,
           spanned_segments: spannedTotal,
           repeated_purchase_lines: dupLines,   // 중복 아님(월 청구서가 납품 건별로 나뉜 것) — 급변하면 그때 의심한다
+          // ★음수 소모가 나오면 여기부터 본다. 이 금액만큼의 매입은 어느 품목에도 안 붙었다.
+          unattributed_purchase_lines: unattributed?.n || 0,
+          unattributed_purchase_amount: Math.round(unattributed?.amt || 0),
           negative_consumption_items: negatives,
         },
       },
