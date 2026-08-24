@@ -140,9 +140,13 @@
                     var hEl = document.querySelector('[name="height_' + id + '"]');
                     var wRaw = wEl ? (parseFloat(wEl.value) || 0) : 0;
                     var hRaw = hEl ? (parseFloat(hEl.value) || 0) : 0;
-                    // 금액 계산용: 10cm 단위 올림 후 최소 1m (표시는 원본 유지)
+                    // 금액 계산용: 10cm 단위 올림 후 최소 변 적용 (표시는 원본 유지)
                     //   0.5m×0.7m 는 1m×1m 로 청구한다 — 서버 orderLineAmount.ts MIN_BILLING_SIDE_CM 과 같은 값이어야 한다.
-                    var MIN_SIDE = 100;
+                    //   ★2026-08-25: 품목별 예외가 생겼다(UV 판재는 실규격 청구) → 히든필드 값을 우선한다.
+                    //     0 은 유효값(최소청구 없음)이라 `|| 100` 로 쓰면 안 된다 — 0 이 100 으로 되살아난다.
+                    var msEl = document.querySelector('[name="min_billing_side_' + id + '"]');
+                    var msRaw = msEl ? parseFloat(msEl.value) : NaN;
+                    var MIN_SIDE = (isFinite(msRaw) && msRaw >= 0) ? msRaw : 100;
                     var w = Math.max(Math.ceil(wRaw / 10) * 10, MIN_SIDE);
                     var h = Math.max(Math.ceil(hRaw / 10) * 10, MIN_SIDE);
                     amt = price * (w / 100) * (h / 100) * qty;

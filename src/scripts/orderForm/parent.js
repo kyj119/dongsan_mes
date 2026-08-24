@@ -562,6 +562,7 @@
                     <input type="hidden" name="client_group_id_${id}" value="${pgId}">
                     <input type="hidden" name="is_parent_${id}" value="1">
                     <input type="hidden" name="pricing_method_${id}" value="FIXED">
+                    <input type="hidden" name="min_billing_side_${id}" value="">
                     <div class="flex justify-between items-center mb-3">
                         <div class="flex items-center gap-2">
                             <span class="font-bold text-green-700">묶음 품목 #${id}</span>

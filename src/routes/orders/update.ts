@@ -74,13 +74,16 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
       orderData.items.map((it: any) => it.item_id).filter((pid: any) => pid != null)
     )] as number[]
     const putPricingMethodMap = new Map<number, string>()
+    // 품목별 최소청구 변(cm) — 생성 경로(create.ts)와 같은 규칙. 여기가 빠지면 수정 시 금액이 갈린다.
+    const putMinSideMap = new Map<number, number>()
     if (putItemIdsForPricing.length > 0) {
       const putPlaceholders = putItemIdsForPricing.map(() => '?').join(',')
       const { results: putPricingRows } = await c.env.DB.prepare(
-        `SELECT id, pricing_method FROM items WHERE id IN (${putPlaceholders})`
+        `SELECT id, pricing_method, min_billing_side_cm FROM items WHERE id IN (${putPlaceholders})`
       ).bind(...putItemIdsForPricing).all()
       for (const row of putPricingRows) {
         putPricingMethodMap.set(row.id as number, (row.pricing_method as string) || 'FIXED')
+        putMinSideMap.set(row.id as number, row.min_billing_side_cm as number)
       }
     }
 
@@ -97,7 +100,7 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
       if (item.price_status === 'PENDING') { continue }
       const pricingMethod = item.item_id ? (putPricingMethodMap.get(item.item_id) || 'FIXED') : 'FIXED'
       // 총액도 **최종 청구액(에누리 반영) 기준** — 자동값으로 잡으면 행 합계와 주문 총액이 갈린다
-      const putItemAmt = computeLineAmount(item, pricingMethod).final
+      const putItemAmt = computeLineAmount({ ...item, min_billing_side_cm: item.item_id ? putMinSideMap.get(item.item_id) : null }, pricingMethod).final
       totalAmount += putItemAmt
       if (item.vat_included) {
         vatAmount += putItemAmt * vatRatePut
@@ -337,7 +340,7 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
       // 금액 산식 = utils/orderLineAmount 단일 소스.
       //   ★수정 경로에도 반드시 있어야 한다 — 여기가 빠지면 "주문을 수정하면 에누리가 사라진다"
       //     (PUT 은 라인을 지우고 다시 INSERT 하는 구조라 에누리가 그대로 유실된다).
-      const putAmt = computeLineAmount(item, putItemPricingMethod)
+      const putAmt = computeLineAmount({ ...item, min_billing_side_cm: item.item_id ? putMinSideMap.get(item.item_id) : null }, putItemPricingMethod)
       const itemAmount = putAmt.final
       let itemName = item.item_name || null
       let categoryName = item.category_name || null

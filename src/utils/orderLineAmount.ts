@@ -35,6 +35,12 @@ export interface LineAmountInput {
    */
   amount?: number | string | null
   price_status?: string | null
+  /**
+   * 품목별 최소 청구 변 길이(cm). 미지정이면 `MIN_BILLING_SIDE_CM`(100) — 기존 동작.
+   * 0 = 최소청구 없음(실규격 그대로) — UV 판재 계열이 이 형이다(아래 상수 주석 참조).
+   * 라우트는 `items.min_billing_side_cm` 을 실어 보낸다.
+   */
+  min_billing_side_cm?: number | null
 }
 
 export interface LineAmount {
@@ -55,7 +61,14 @@ export interface LineAmount {
  * 보정 전에는 품목 중앙값의 2~3배로 튀는데(SV-SHEET 19,942 vs 중앙값 10,000),
  * 이 보정을 넣으면 중앙값에 수렴한다(9,757). AQ-PAT 11,940→6,680(중앙값 6,700),
  * SV-BANNER 16,417→7,280(7,100), UV-FLEXL 15,772→9,860(10,000)도 같은 양상.
- * 품목별로 다른 최소값을 쓴 흔적은 없다.
+ *
+ * ★2026-08-25 정정 — **전 품목 공통이 아니다**. 위 검증은 현수막·시트 계열 표본이었고,
+ * 그 범위에선 여전히 옳다(운영 중 AREA 53종의 base_price 를 이 규칙으로 53/53 재현).
+ * 그러나 **UV 판재(포맥스·자작나무·폼보드 등)는 실규격 그대로 청구한다**(용준님 확인).
+ * 근거: 자작나무 6T 는 62건 중 55건(89%)이 1㎡ 미만이라 이 규칙을 적용하면 ㎡단가가
+ * 8,000→33,300→109,500 으로 13배 벌어지지만, 실면적 기준이면 ≈120,000 으로 평평하다.
+ * 포맥스 5T 실측도 30×15=2,500원·40×30=7,000원 → 실면적 55,556·58,333원/㎡ 로 일치한다.
+ * ⇒ 품목별 `items.min_billing_side_cm` 로 재정의한다. 기본 100 = 종전 동작.
  */
 const MIN_BILLING_SIDE_CM = 100
 
@@ -64,8 +77,20 @@ const MIN_BILLING_SIDE_CM = 100
  * ⚠️ 입력 단위는 **cm** 다. 필드명이 `width_mm` 인 것은 과거 명명 잔재이고 값은 cm 로 들어온다
  *    (아래 `/100` 로 m 로 환산하는 것이 그 증거).
  */
-function billingSide(v: number): number {
-  return Math.max(Math.ceil(v / 10) * 10, MIN_BILLING_SIDE_CM)
+function billingSide(v: number, minSideCm: number = MIN_BILLING_SIDE_CM): number {
+  return Math.max(Math.ceil(v / 10) * 10, minSideCm)
+}
+
+/**
+ * 품목의 최소청구 변(cm) 정규화 — 미지정·비유한·음수는 기본값(100)으로 되돌린다.
+ * 0 은 **유효한 값**이다(최소청구 없음). `|| MIN` 로 쓰면 0 이 100 으로 되살아나므로 쓰지 말 것.
+ */
+function resolveMinSide(v: number | null | undefined): number {
+  // ★null/undefined/'' 를 Number() 에 넣으면 0(=예외)이 된다 — 「미지정」이 「최소청구 없음」으로
+  //   뒤집히는 사고. 먼저 걸러야 한다(게이트 `test:orderline` 이 이 회귀를 잡는다).
+  if (v === null || v === undefined || (v as unknown) === '') return MIN_BILLING_SIDE_CM
+  const n = Number(v)
+  return Number.isFinite(n) && n >= 0 ? n : MIN_BILLING_SIDE_CM
 }
 
 /** 100원 단위 반올림 — 최종 청구 단위 */
@@ -86,7 +111,8 @@ export function computeLineAmount(item: LineAmountInput, pricingMethod: PricingM
 
   let auto: number
   if (pricingMethod === 'AREA' && w > 0 && h > 0) {
-    auto = unitPrice * (billingSide(w) / 100) * (billingSide(h) / 100) * qty
+    const minSide = resolveMinSide(item.min_billing_side_cm)
+    auto = unitPrice * (billingSide(w, minSide) / 100) * (billingSide(h, minSide) / 100) * qty
   } else {
     auto = unitPrice * qty
   }

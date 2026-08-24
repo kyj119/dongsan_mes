@@ -87,6 +87,25 @@ check('에누리: 음수 허용(반품·조정)', { unit_price: 5000, quantity: 
 check('미정 품목은 0원', { unit_price: 9999, quantity: 9, width: 600, height: 600, price_status: 'PENDING' }, 'AREA',
   { auto: 0, final: 0, manual: false })
 
+// ── 품목별 최소청구 예외 (2026-08-25, 마이그 0541) ───────────────
+// UV 판재는 실규격 청구다 — min_billing_side_cm=0 이면 최소 1m 올림을 하지 않는다.
+// 이게 없으면 30×30 조각(0.09㎡)이 1㎡ 로 계산돼 11배 과청구된다.
+check('예외 0: 30×30 실규격(0.09㎡)', { unit_price: 120000, quantity: 1, width: 30, height: 30, min_billing_side_cm: 0 }, 'AREA',
+  { auto: 10800 })
+check('예외 0: 30×15 → 10cm 올림은 유지(30×20)', { unit_price: 100000, quantity: 1, width: 30, height: 15, min_billing_side_cm: 0 }, 'AREA',
+  { auto: 6000 })
+check('예외 0: 큰 규격은 종전과 동일(120×90)', { unit_price: 10000, quantity: 1, width: 120, height: 90, min_billing_side_cm: 0 }, 'AREA',
+  { auto: 10800 })
+// 기본값·미지정은 반드시 종전 동작(최소 1m)이어야 한다 — 배포만으로 금액이 바뀌면 안 된다.
+check('미지정이면 최소 1m 유지', { unit_price: 3000, quantity: 1, width: 50, height: 70 }, 'AREA', { auto: 3000 })
+check('100 명시도 최소 1m 유지', { unit_price: 3000, quantity: 1, width: 50, height: 70, min_billing_side_cm: 100 }, 'AREA', { auto: 3000 })
+// ★0 은 유효값이다 — `|| 100` 폴백을 쓰면 여기서 3,000 이 나와 실패한다(회귀 가드).
+check('★0 이 100 으로 되살아나지 않는다', { unit_price: 3000, quantity: 1, width: 50, height: 70, min_billing_side_cm: 0 }, 'AREA',
+  { auto: 1100 })
+// 불량값(null·음수·문자)은 기본값으로 안전 복귀
+check('null → 기본 100', { unit_price: 3000, quantity: 1, width: 50, height: 70, min_billing_side_cm: null }, 'AREA', { auto: 3000 })
+check('음수 → 기본 100', { unit_price: 3000, quantity: 1, width: 50, height: 70, min_billing_side_cm: -5 }, 'AREA', { auto: 3000 })
+
 // ── width_mm 별칭 (필드명은 mm 지만 값은 cm) ──────────────────
 check('width_mm 별칭도 cm 로 읽는다', { unit_price: 3000, quantity: 1, width_mm: 50, height_mm: 70 }, 'AREA', { auto: 3000 })
 

@@ -20,6 +20,7 @@
                     <input type="hidden" name="dxf_file_path_${id}" value="">
                     <input type="hidden" name="dxf_file_name_${id}" value="">
                     <input type="hidden" name="pricing_method_${id}" value="FIXED">
+                    <input type="hidden" name="min_billing_side_${id}" value="">
                     <div class="flex justify-between items-center mb-2">
                         <div class="flex items-center gap-2 flex-wrap">
                             <div id="thumb_${id}" class="hidden cursor-pointer" onclick="openThumbModal('thumb_img_${id}')" title="클릭하여 크게 보기">
@@ -65,6 +66,7 @@
                             <input type="text" name="item_search_${id}" placeholder="품목명 검색..." autocomplete="off"
                                    class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500">
                             <input type="hidden" name="pricing_method_${id}" value="FIXED">
+                    <input type="hidden" name="min_billing_side_${id}" value="">
                             <div id="item_spec_info_${id}" class="hidden text-xs text-blue-600 mt-0.5"></div>
                             <div id="item_dd_${id}" class="item-dd hidden"></div>
                         </div>
@@ -216,6 +218,10 @@
                     var pm = item.pricing_method || 'FIXED';
                     var pmInp = document.querySelector('[name="pricing_method_' + id + '"]');
                     if (pmInp) pmInp.value = pm;
+                    // 품목별 최소청구 변(cm) — calc.js 가 이 값으로 청구 치수를 정한다(UV 판재=0=실규격).
+                    //   미지정이면 빈값 → calc.js 가 기본 100 으로 처리한다.
+                    var msInp = document.querySelector('[name="min_billing_side_' + id + '"]');
+                    if (msInp) msInp.value = (item.min_billing_side_cm == null ? '' : item.min_billing_side_cm);
                     var wInp = document.querySelector('[name="width_' + id + '"]');
                     var hInp = document.querySelector('[name="height_' + id + '"]');
                     var priceLbl = document.getElementById('unit_price_label_' + id);

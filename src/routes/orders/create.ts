@@ -100,13 +100,16 @@ ordersCreateRouter.post('/', async (c) => {
       orderData.items.map((it: any) => it.item_id).filter((id: any) => id != null)
     )] as number[]
     const pricingMethodMap = new Map<number, string>()
+    // 품목별 최소청구 변(cm) — UV 판재는 0(실규격 청구). 같은 배치 조회에 얹는다(추가 왕복 없음).
+    const minSideMap = new Map<number, number>()
     if (itemIdsForPricing.length > 0) {
       const placeholders = itemIdsForPricing.map(() => '?').join(',')
       const { results: pricingRows } = await c.env.DB.prepare(
-        `SELECT id, pricing_method FROM items WHERE id IN (${placeholders})`
+        `SELECT id, pricing_method, min_billing_side_cm FROM items WHERE id IN (${placeholders})`
       ).bind(...itemIdsForPricing).all()
       for (const row of pricingRows) {
         pricingMethodMap.set(row.id as number, (row.pricing_method as string) || 'FIXED')
+        minSideMap.set(row.id as number, row.min_billing_side_cm as number)
       }
     }
 
@@ -125,7 +128,7 @@ ordersCreateRouter.post('/', async (c) => {
       // 금액 산식 = utils/orderLineAmount 단일 소스. 수동 금액(에누리)이 오면 final 이 그 값이 된다.
       //   총액·부가세는 **최종 청구액 기준**이어야 한다 — 자동값으로 잡으면 에누리가 총액에 반영되지 않아
       //   행 합계와 주문 총액이 갈린다(화면에서 이미 그렇게 어긋나 있었다).
-      const itemAmount = computeLineAmount(item, pricingMethod).final
+      const itemAmount = computeLineAmount({ ...item, min_billing_side_cm: item.item_id ? minSideMap.get(item.item_id) : null }, pricingMethod).final
       totalAmount += itemAmount
       if (item.vat_included) {
         vatAmount += itemAmount * vatRatePost
@@ -240,7 +243,7 @@ ordersCreateRouter.post('/', async (c) => {
 
       const itemPricingMethod = item.item_id ? (pricingMethodMap.get(item.item_id) || 'FIXED') : 'FIXED'
       // 금액 3종(자동·최종·에누리)을 함께 들고 다닌다 — INSERT 에서 전부 기록해야 하기 때문.
-      const amt = computeLineAmount(item, itemPricingMethod)
+      const amt = computeLineAmount({ ...item, min_billing_side_cm: item.item_id ? minSideMap.get(item.item_id) : null }, itemPricingMethod)
       const itemAmount = amt.final
 
       const entry = { idx: i, item, itemName: item.item_name || null, categoryName: item.category_name || null, unit: item.unit || 'EA', itemAmount, amt }
@@ -749,10 +752,14 @@ ordersCreateRouter.post('/:id/items', async (c) => {
     // pricing_method + vat rate
     const itemIdsForPricing = [...new Set(items.map((it) => it.item_id).filter((v) => v != null))] as number[]
     const pricingMethodMap = new Map<number, string>()
+    const minSideMap = new Map<number, number>()   // 품목별 최소청구 변(cm) — 위 POST 경로와 동일 규칙
     if (itemIdsForPricing.length > 0) {
       const ph = itemIdsForPricing.map(() => '?').join(',')
-      const { results } = await c.env.DB.prepare(`SELECT id, pricing_method FROM items WHERE id IN (${ph})`).bind(...itemIdsForPricing).all()
-      for (const r of results) pricingMethodMap.set(r.id as number, (r.pricing_method as string) || 'FIXED')
+      const { results } = await c.env.DB.prepare(`SELECT id, pricing_method, min_billing_side_cm FROM items WHERE id IN (${ph})`).bind(...itemIdsForPricing).all()
+      for (const r of results) {
+        pricingMethodMap.set(r.id as number, (r.pricing_method as string) || 'FIXED')
+        minSideMap.set(r.id as number, r.min_billing_side_cm as number)
+      }
     }
     const vatRow = await c.env.DB.prepare(`SELECT setting_value FROM settings WHERE setting_key = 'vat_rate'`).first<{ setting_value: string }>()
     const vatRate = vatRow ? parseFloat(vatRow.setting_value) : 0.10
@@ -781,7 +788,7 @@ ordersCreateRouter.post('/:id/items', async (c) => {
       const pm = item.item_id ? (pricingMethodMap.get(item.item_id) || 'FIXED') : 'FIXED'
       const isPending = item.price_status === 'PENDING'
       // 금액 산식 = utils/orderLineAmount 단일 소스(라인 추가 경로도 동일 규칙·에누리 지원)
-      const amt = computeLineAmount(item, pm)
+      const amt = computeLineAmount({ ...item, min_billing_side_cm: item.item_id ? minSideMap.get(item.item_id) : null }, pm)
       const amount = amt.final
       const vatIncluded = item.vat_included !== undefined ? (item.vat_included ? 1 : 0) : 1
       if (!isPending) {
