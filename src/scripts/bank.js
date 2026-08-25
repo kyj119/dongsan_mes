@@ -19,6 +19,7 @@
   var TX_RELOAD_CAP = 1000;   // 서버 limit 상한(routes/bank.ts) — 변경 후 새로고침 시 복원 한도
   var txTotal = 0;
   var txLoading = false;
+  var txSeq = 0;              // 응답 경합 방지 토큰
 
   // Tab switch
   var bankTabs = ['fund', 'tx', 'receivables', 'rules', 'accounts'];
@@ -202,8 +203,9 @@
   // Load transactions
   //   append=false → 처음부터 다시 그림(필터 변경·최초 진입) / append=true → 뒤에 이어붙임(더 보기)
   function fetchTransactions(limit, offset, append) {
-    if (txLoading) return;
+    if (txLoading && append) return;   // 「더 보기」 연타만 막는다. 변경 후 새로고침은 항상 통과시켜야 한다
     txLoading = true;
+    var seq = ++txSeq;                 // 늦게 도착한 옛 응답이 새 결과를 덮어쓰지 않도록
     var params = buildTxFilterParams();
     params.push('limit=' + limit);
     if (offset) params.push('offset=' + offset);
@@ -216,16 +218,19 @@
     setTxMoreBusy(true);
 
     axios.get(url).then(function(r) {
+      if (seq !== txSeq) return;   // 더 최신 요청이 이미 떴다 — 이 응답은 버린다
       var rows = r.data.data || r.data || [];
       txTotal = (r.data && r.data.total != null) ? r.data.total : rows.length;
       transactions = append ? transactions.concat(rows) : rows;
       renderTransactions(rows, append);
       loadStats();
     }).catch(function(e) {
+      if (seq !== txSeq) return;
       var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '거래내역 로딩 실패';
       if (append) showToast(msg, 'error');
       else tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8 text-red-400"><i class="fas fa-exclamation-circle mr-1"></i>' + msg + '</td></tr>';
     }).finally(function() {
+      if (seq !== txSeq) return;
       txLoading = false;
       setTxMoreBusy(false);
       renderTxRangeNote();

@@ -46,6 +46,24 @@ async function hasLateMinutesColumn(db: D1Database): Promise<boolean> {
   return !!cols['late_minutes']
 }
 
+/**
+ * 'YYYY-MM' → [해당월 1일, 다음달 1일) 의 반열림 구간.
+ *
+ * ⚠️ `strftime('%Y-%m', work_date) = ?` 로 쓰면 컬럼이 함수에 싸여 **idx_attendance_date 를 못 탄다**
+ *    (SQLite 비-sargable) → 월 조회 한 번마다 attendance 전량 스캔. 지금은 테이블이 작아 티가 안 나지만
+ *    근태는 직원×영업일로 매년 누적되는 표라 그대로 두면 선형으로 느려진다.
+ *    (정본 = CLAUDE.md §D1 실행계획)
+ */
+function monthRange(month: string): { start: string; end: string } {
+  const m = /^(\d{4})-(\d{2})$/.exec(month)
+  const ym = m ? month : kstYm()
+  const y = Number(ym.slice(0, 4))
+  const mo = Number(ym.slice(5, 7))
+  const nextY = mo === 12 ? y + 1 : y
+  const nextM = mo === 12 ? 1 : mo + 1
+  return { start: `${ym}-01`, end: `${nextY}-${String(nextM).padStart(2, '0')}-01` }
+}
+
 // ============================================================================
 // GET /api/attendance/month?month=YYYY-MM&department=...
 // 월간 근태 조회 (스프레드시트용 — 직원 × 해당 월 전체 일자)
@@ -56,7 +74,9 @@ async function hasLateMinutesColumn(db: D1Database): Promise<boolean> {
 // ============================================================================
 attendanceRouter.get('/month', async (c) => {
   try {
-    const month = c.req.query('month') || kstYm()
+    // 형식이 깨진 month 를 그대로 흘리면 구간 계산·응답이 서로 다른 달을 가리킨다 → 여기서 한 번만 정규화
+    const monthRaw = c.req.query('month') || ''
+    const month = /^\d{4}-\d{2}$/.test(monthRaw) ? monthRaw : kstYm()
     const department = c.req.query('department') || ''
     const status = c.req.query('status') || 'ACTIVE'
 
@@ -65,39 +85,52 @@ attendanceRouter.get('/month', async (c) => {
     const hasPayType = !!empCols['pay_type']
 
     // 재직중 직원 목록 (부서 필터) — 고정급(FIXED) 제외 + entity 필터
-    const ef = entityFilter(c, 'employees')
-    let empQuery = `
-      SELECT id, employee_code, name, department, position, base_salary, hire_date, resignation_date${hasPayType ? ', pay_type' : ''}
-      FROM employees
-      WHERE status = ? AND is_deleted = 0${ef.clause}
+    // 같은 조건을 아래 records 조인에서도 그대로 써야 해서(그리드에 없는 직원의 기록을 실어보내지 않도록)
+    // 술어를 한 곳에서 만든다. 별칭 e 고정 — entityFilter 도 같은 별칭으로 받는다.
+    const ef = entityFilter(c, 'e')
+    const empWhere = `e.status = ? AND e.is_deleted = 0${ef.clause}`
+      + (hasPayType ? ` AND (e.pay_type IS NULL OR e.pay_type != 'FIXED')` : '')
+      + (department ? ` AND e.department = ?` : '')
+    const empWhereParams: any[] = [status, ...ef.params]
+    if (department) empWhereParams.push(department)
+
+    const empQuery = `
+      SELECT e.id, e.employee_code, e.name, e.department, e.position, e.base_salary, e.hire_date, e.resignation_date${hasPayType ? ', e.pay_type' : ''}
+      FROM employees e
+      WHERE ${empWhere}
+      ORDER BY e.department, e.employee_code, e.id
     `
-    const empParams: any[] = [status, ...ef.params]
-    if (hasPayType) { empQuery += ` AND (pay_type IS NULL OR pay_type != 'FIXED')` }
-    if (department) { empQuery += ` AND department = ?`; empParams.push(department) }
-    empQuery += ` ORDER BY department, employee_code`
-    const { results: employees } = await c.env.DB.prepare(empQuery).bind(...empParams).all()
+    const { results: employees } = await c.env.DB.prepare(empQuery).bind(...empWhereParams).all()
 
     const hasCapsCols = await hasAttendanceSourceColumn(c.env.DB)
     const hasLateMin = await hasLateMinutesColumn(c.env.DB)
+    // caps_early_min·caps_night_min·caps_total_min 은 화면·저장(bulk 화이트리스트) 어디서도 안 쓰는데
+    // 매 행 실려 나가고 있었다(실측 53KB/월) → 제외.
     const capsSelect = hasCapsCols
-      ? `, source, caps_late_min, caps_early_min, caps_over_min, caps_night_min, caps_total_min, caps_synced_at`
+      ? `, a.source, a.caps_late_min, a.caps_over_min, a.caps_synced_at`
       : ''
-    const lateSelect = hasLateMin ? `, late_minutes` : ''
+    const lateSelect = hasLateMin ? `, a.late_minutes` : ''
 
     // 해당 월의 근태 기록 — entity 필터
-    const efAtt = entityFilter(c, 'attendance')
+    //  ① 날짜는 반열림 구간(sargable). strftime 로 감싸면 idx_attendance_date 를 못 탄다 → 매 조회 전량 스캔.
+    //  ② employees 조인 = 위 목록에 없는 직원(퇴사·고정급·타부서)의 기록은 화면이 쓰지도 않으면서
+    //     페이로드만 키운다(부서 필터 시 특히). 클라는 recordsMap[employee_id|work_date] 로만 소비한다.
+    const { start: mStart, end: mEnd } = monthRange(month)
+    const efAtt = entityFilter(c, 'a')
     const { results: records } = await c.env.DB.prepare(`
       SELECT
-        id, employee_id, work_date,
-        check_in_time, check_out_time,
-        work_hours, overtime_hours, early_hours, early_leave_hours, holiday_work_hours
+        a.id, a.employee_id, a.work_date,
+        a.check_in_time, a.check_out_time,
+        a.work_hours, a.overtime_hours, a.early_hours, a.early_leave_hours, a.holiday_work_hours
         ${lateSelect},
-        attendance_type, status, notes
+        a.attendance_type, a.status, a.notes
         ${capsSelect}
-      FROM attendance
-      WHERE strftime('%Y-%m', work_date) = ?${efAtt.clause}
-      ORDER BY work_date, employee_id
-    `).bind(month, ...efAtt.params).all()
+      FROM attendance a
+      JOIN employees e ON e.id = a.employee_id
+      WHERE a.work_date >= ? AND a.work_date < ?${efAtt.clause}
+        AND ${empWhere}
+      ORDER BY a.work_date, a.employee_id, a.id
+    `).bind(mStart, mEnd, ...efAtt.params, ...empWhereParams).all()
 
     // 최근 CAPS 동기화 정보
     let lastSync: any = null
@@ -121,8 +154,9 @@ attendanceRouter.get('/month', async (c) => {
     let holidays: { holiday_date: string; name: string }[] = []
     try {
       const { results: hrows } = await c.env.DB.prepare(
-        `SELECT holiday_date, name FROM holidays WHERE substr(holiday_date, 1, 7) = ?`
-      ).bind(month).all<{ holiday_date: string; name: string }>()
+        // substr() 로 감싸면 인덱스를 못 탄다 — 같은 반열림 구간을 쓴다(holidays 는 작지만 규칙은 하나로)
+        `SELECT holiday_date, name FROM holidays WHERE holiday_date >= ? AND holiday_date < ? ORDER BY holiday_date`
+      ).bind(mStart, mEnd).all<{ holiday_date: string; name: string }>()
       holidays = hrows || []
     } catch (_) { /* holidays 테이블 미적용 환경 — 주말만 표시 */ }
 
