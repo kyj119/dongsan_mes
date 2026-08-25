@@ -5,6 +5,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter } from '../utils/entityFilter'
+import { estMaterialCostSql } from '../utils/salesBaseQty'
 
 const departmentsRouter = new Hono<HonoEnv>()
 departmentsRouter.use('/*', authMiddleware)
@@ -207,7 +208,7 @@ departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
     //   COGS = 판매수량 × avg_unit_cost, 유통 부문 귀속. 제조 자재비(iad)와 부문 비중복(품목유형 disjoint).
     const efOc = entityFilter(c, 'o')
     const { results: cogs } = await c.env.DB.prepare(`
-      SELECT COALESCE(SUM(oi.quantity * COALESCE(i.avg_unit_cost, 0)), 0) AS cogs
+      SELECT COALESCE(SUM(${estMaterialCostSql('oi', 'i')}), 0) AS cogs
       FROM order_items oi
       JOIN orders o ON o.id = oi.order_id
       JOIN items i ON i.id = oi.item_id

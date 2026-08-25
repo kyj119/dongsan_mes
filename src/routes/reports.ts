@@ -8,6 +8,7 @@ import { buildOldestUnpaidJoin, agingDaysFromOldest } from './ledger/ar-helpers'
 // 회계 전표성 주문(기초채권 E1-OPEN·법인간 미러 ICM) 제외 — 2025-12-31에 189건 5.32억이 뭉쳐 있어
 // 매출·거래처 집계에 섞이면 가짜 매출월/순위 왜곡이 생긴다(2026-08-24 감사).
 import { voucherOrderSql } from './orders/listFilter'
+import { estMaterialCostSql } from '../utils/salesBaseQty'
 
 // ── Row types for D1 query results ──
 interface MonthlyRevenueRow { month: string; order_count: number; revenue: number }
@@ -397,7 +398,7 @@ reportsRouter.get('/margin-analysis', async (c) => {
         strftime('%Y-%m', o.created_at, '+9 hours') as month,
         COUNT(*) as line_count,
         COALESCE(SUM(oi.amount), 0) as revenue,
-        COALESCE(SUM(i.avg_unit_cost * oi.quantity), 0) as est_cost
+        COALESCE(SUM(${estMaterialCostSql('oi', 'i')}), 0) as est_cost
       FROM order_items oi
       JOIN orders o ON oi.order_id = o.id
       JOIN items i ON oi.item_id = i.id
@@ -529,7 +530,7 @@ reportsRouter.get('/margin-by-client', async (c) => {
     const { results } = await c.env.DB.prepare(`
       WITH covered AS (
         SELECT oi.item_id, o.client_id, oi.order_id,
-          oi.amount AS rev, i.avg_unit_cost * oi.quantity AS est
+          oi.amount AS rev, ${estMaterialCostSql('oi', 'i')} AS est
         FROM order_items oi
         JOIN orders o ON oi.order_id = o.id
         JOIN items i ON oi.item_id = i.id
