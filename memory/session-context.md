@@ -100,6 +100,8 @@ $env:SMOKE_URL="https://webapp-9i0.pages.dev" ; npm run smoke   # PASS 111/111 �
 
 1. **용준님(코드 0)**: 카톡방 개설 · 8/13 80610 벌크 3건(621,000)은 **보류 확정**(8월 매입 미반영).
    ✅`safe_stock`·`reorder_point` **48행 적용 완료**(출력실 44·전사 4 · 리드타임 1주 · 백업 `_bak_0825_safestock`). ★**경고 판정은 `reorder_point` 기준**이고 `safe_stock` 은 안 쓰인다(`notifications.ts:292-299`) · 창고 `SUM(quantity)` vs `MAX(reorder_point)` · `<=` 비교 · 알림은 「재고 부족 N개 품목」 **한 건**. 현재 발동 **21건**. ⚠️UV실·현수막실은 실사 이력 0이라 값 없음.
+   ✅**알림 가시성 수정 `6c14234b`** — 일일 알림 4종이 `target_role='MANAGER'` 인데 **MANAGER 계정이 0명**이라 생성만 되고 아무에게도 안 보였다(07-26~08-18 미읽음 15건). `VISIBLE_SQL` 상수로 뽑고 **ADMIN 예외** 추가, 5경로 전부 적용. 정본=memory `design-nav-badge-cost-guard`. ⚠️**admin 미읽음 1,734건 = 벨 포화** — 보존기간 정책 필요(`DELETE /cleanup` 존재).
+   ★내일 아침 실제 알림 = **재고 부족 1건뿐**(납기·발주·장비는 전부 0건).
 2. **개발 3종**: ①채택 계기판(1부·하루) ②`base_unit` 축 감사를 `audit:items` 에 추가(참조 0회 — 50배 사고를 낸 축만 감사망 밖) ③`resolveStockUnit` yd 폴백 수정.
 3. **계획 3단계(권한 개방)**: 2단계가 4주 이상 끊기지 않으면 착수. `permission_pages` 에 `/inventory-count` INSERT + `requireRole` → `requireAccessOrRole` + 승인·삭제는 잠금 유지 + 탭 게이팅(`pages/shipments.ts:32-36` 선례) + 모바일 CSS 3건.
 4. **관찰**: 다음 주 실사가 실제로 들어오는지(구역별 미입력률 추이). 안 들어오면 **품목을 더 줄인다**(사람을 채근하지 않는다).
