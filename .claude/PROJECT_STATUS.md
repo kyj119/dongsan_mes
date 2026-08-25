@@ -2,6 +2,8 @@
 
 > **운영 규칙(2026-08-10 확정)**: ①완료(✅)=아래 인덱스 1줄(제목+남은 것)만, 경위 전문은 `PROJECT_STATUS_ARCHIVE.md`에 직접 쓴다 (**「✅ 최근 완료」 항목 400자 상한** — 2026-08-19 게이트 강제, 초과 시 큰 것부터 지목) ②의미 없는 대기=보류함으로 과감히 이관 ③대기 항목=빠른 처리 우선 ④"커밋·미배포" 기록은 믿지 말고 prod 실측(deploy.yml=main push 자동배포). 게이트=`node scripts/doc-diet-audit.cjs`(훅·세션 시작 배너 연동).
 
+> **✅ prod 배포 2026-08-25 — D1 실행계획 붕괴: 최초 ANALYZE + 쿼리 재작성 + print-events 500** — ★**prod 에 `sqlite_stat1` 이 한 번도 없었다** → 플래너가 조인키를 버려 거래처 1건마다 orders 전량 스캔. ANALYZE 173ms 로 `/reports/client-revenue` **13,864→123ms**(rows_read 2,530만→8.8만) · `?dormant` 는 느린 게 아니라 **36초 뒤 500** 이던 게 83ms. ★부수 = `/print-events/unmatched` 가 구형식 nest_members 5건 때문에 days>=70 전 구간 500 — 기본값 90일이라 생산 「출력파일 연결」 탭이 아예 안 뜨고 있었다. 단가관리 펼침 **789→89ms** · 리포트 진입 API **7→1**. 재발방지=daily ANALYZE·`audit:query-cost` 게이트. 검증 smoke **111/111**·감사 12/12·콘솔 0. 경위 전문=ARCHIVE. 남은=전건 렌더 페이지(bank·ledger·attendance) 페이징
+
 > **✅ prod 배포 2026-08-25 — 발송 대상 정합성 3건(코드만·마이그 없음)** — ①★**내부 법인 3사(동산53·선명1271·청주3757)가 발송 대상에 있었다** — 자기 회사에 판촉 문자가 나갈 상태. `ICM-AR-*` 채권 전표와 실거래 양쪽으로 잡혔다 → `constants/intercompany` SSOT 제외 적용(**800→797**·PRINT 391·GOODS 355) ②광고 6개월 판정에 **취소주문·이관전표 필터가 아예 없었다** → 세그먼트와 정의 공유(`clientSegment.validOrderClause`). 현재 증상 0이나 다음 연말 이월에서 재발할 구조 ③**품목 오분류 정리는 하지 않기로** — `PRODUCT+원자재` 118개는 깃대파이프·엡손잉크·포맥스로 **자재가 맞고 `item_type` 이 틀린 것**이라 재고·원가·부문손익 전반이 걸리고 같은 품목을 타 세션이 정리 중. `기타` 1,476라인은 **배송비 89%**로 판명돼 직원 확인 불요. 검증=smoke **111/111**·3사 제외 실측. 남은=뭉친 전표(현수막조립외 8,037만·타 세션 영역)
 
 > **✅ prod 배포 2026-08-25 — 수신자 가드: 번호 통합·발송 피로도(마이그 `0543`)** — 발송 4경로 중 3곳(`/send-bulk`·`/ad/send`·`/send-sms-bulk`)에 번호 중복 통합 + 최근 N일 수신자 제외(`settings.message_fatigue_days` 기본 30·0=끔). **출고 안내는 의도적 미적용**(업무 필수 통지 + 자체 dedup 보유). ★**전제가 깨져 있었다** — 대량 발송은 `kakao_send_logs` 에 `BULK(N)` 한 줄만 남겨 **누구에게 보냈는지가 없어** 피로도가 개별 발송만 걸러냈다 → 경량 `message_send_recipients` 신설(본문 없이 번호·상태만, D1 팽창·이력화면 오염 회피). 부수로 "누가 못 받았는지 모른다"(#574 주석) 해소. 광고는 `resolveAdAudience` 안에 둬 **미리보기=실제 대상** 자동 일치. 검증=로컬 8항목(실패이력 무시·끄기 포함)·prod smoke **111/111**·마커 5/5·prod 실측 통합 1건·콘솔 0. 남은=실사용 후 기준일 조정
@@ -30,7 +32,7 @@
 
 ## ✅ 최근 완료 — 후속 대기 인덱스 (경위·상세 전문 = `PROJECT_STATUS_ARCHIVE.md`)
 
-- **✅ 08-25 D1 실행계획 붕괴 — prod 최초 ANALYZE + 쿼리 재작성 + 단가관리 렌더 개편** — ★prod에 `sqlite_stat1`이 **없었다**. ANALYZE 173ms로 `/reports` 13.9초→123ms · `?dormant` **36초 뒤 500(완전 고장)→83ms**. 정본=CLAUDE.md §D1 실행계획 · 게이트 `audit:query-cost`. **남은=코드 배포**(`session/query-perf`, ANALYZE만 prod 반영됨)
+- **✅ 08-25 D1 실행계획 붕괴 — prod 최초 ANALYZE + 쿼리 재작성 + 렌더 개편 (배포 완료)** — ★prod 에 `sqlite_stat1` 이 **없었다**. 정본=CLAUDE.md §D1 실행계획 · 게이트 `audit:query-cost` · 경위 전문=ARCHIVE. **남은=전건 렌더 페이지 페이징**(bank DOM 14,892·input 2,057 / ledger / attendance) · 대형 페이로드 6개(tax-invoices 1.1MB·ai-analysis 1.0MB) · 상관 서브쿼리 62곳은 현재 ANALYZE 가 가려주는 상태
 
 - **✅ 08-25 md·스킬 문서 전수 점검 — 드리프트 12건 정정(코드 0)** — smoke 102→**111**(CLAUDE.md·deploy-verify 스킬) · `~/.claude/plans/`(repo 밖) 경로 정정 · `docs/INDEX.md` spec 40→**46건**+8월 트랙 신설 · design-decisions **본문 없는 인덱스 전용 ID 14개** 명시 · C 카카오톡 「미구현」→구현 정정 · 미기재 TODO 3건(계기판·`resolveStockUnit` yd·`base_unit` 감사망) 등재. ⚠️**MEMORY.md 여유 61자** — 다음 추가 시 ARCHIVE 이관 필수
 
