@@ -1,0 +1,54 @@
+{
+  "base": "https://webapp-9i0.pages.dev",
+  "at": "2026-08-25T13:02:21.378Z",
+  "snapshot": {
+    "reports.clientRevenue": {
+      "ms": 153,
+      "kb": 242.7
+    },
+    "reports.receivables": {
+      "ms": 209,
+      "kb": 3.5
+    },
+    "reports.monthlySummary": {
+      "ms": 134,
+      "kb": 0.9
+    },
+    "clients.list50": {
+      "ms": 85,
+      "kb": 56
+    },
+    "clients.list200": {
+      "ms": 50,
+      "kb": 224.5
+    },
+    "clients.search": {
+      "ms": 35,
+      "kb": 22.5
+    },
+    "clients.dormant": {
+      "ms": 88,
+      "kb": 55.8
+    },
+    "prices.overview": {
+      "ms": 34,
+      "kb": 254.6
+    },
+    "dashboard.stats": {
+      "ms": 137,
+      "kb": 0.6
+    },
+    "ledger.monthlySummary": {
+      "ms": 52,
+      "kb": 0.9
+    },
+    "inventory.zones": {
+      "ms": 43,
+      "kb": 308.1
+    },
+    "bom.overview": {
+      "ms": 49,
+      "kb": 123.9
+    }
+  }
+}

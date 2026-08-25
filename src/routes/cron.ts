@@ -96,6 +96,28 @@ cronRouter.post('/barobill-sync', agentKeyMiddleware, async (c) => {
  *  3) 연체 경고: 거래처별 기준일(overdue_alert_days, 기본 30일) 초과 미수 거래처 ADMIN/MANAGER 알림(POST /api/ledger/receivables/check-overdue)
  * 멱등: OEE=upsert, 알림·연체=createIfNotExists dedup → 반복 호출 안전. 인증: X-Agent-Key.
  */
+/**
+ * POST /api/cron/analyze — 쿼리 플래너 통계(sqlite_stat1) 갱신.
+ *
+ * daily-maintenance 안에서도 매일 돌지만, 대량 이관 직후처럼 분포가 한 번에 바뀐 날에는
+ * 다음 배치를 기다리지 말고 바로 돌리는 게 맞다. 응답에 소요시간·통계행수를 담아
+ * "정말 반영됐는지" 를 눈으로 확인할 수 있게 한다.
+ *
+ * 되돌리기: `DROP TABLE sqlite_stat1` (통계는 데이터가 아니라 힌트라 지워도 결과는 불변, 느려질 뿐).
+ */
+cronRouter.post('/analyze', agentKeyMiddleware, async (c) => {
+  try {
+    const t0 = Date.now()
+    await c.env.DB.prepare('ANALYZE').run()
+    const ms = Date.now() - t0
+    const stat = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM sqlite_stat1').first<{ n: number }>()
+    return c.json({ success: true, ms, stat_rows: stat?.n ?? null })
+  } catch (err: any) {
+    console.error('[cron/analyze]', err)
+    return c.json({ success: false, error: String(err?.message || err).slice(0, 300) }, 500)
+  }
+})
+
 cronRouter.post('/daily-maintenance', agentKeyMiddleware, async (c) => {
   const jwtSecret = c.env.JWT_SECRET
   if (!jwtSecret) return c.json({ success: false, error: 'JWT_SECRET 미설정' }, 500)
@@ -250,9 +272,27 @@ cronRouter.post('/daily-maintenance', agentKeyMiddleware, async (c) => {
     intercompany.error = String(err?.message || err).slice(0, 200)
   }
 
+  // 8) 쿼리 플래너 통계 갱신(ANALYZE) — 2026-08-25.
+  //   D1(SQLite)은 sqlite_stat1 이 없으면 인덱스 선택도를 전부 같다고 가정한다. orders 처럼 인덱스가
+  //   17개 붙은 테이블에서는 조인키(client_id)를 버리고 엉뚱한 인덱스(entity_id)를 잡는 일이 생기고,
+  //   그러면 거래처 1건마다 orders 를 통째로 훑어 rows_read 가 수천만으로 튄다.
+  //   실제로 prod 는 통계가 한 번도 만들어진 적이 없었고, /reports 는 13.9초·휴면 거래처 필터는
+  //   36초 뒤 500 이었다. ANALYZE 한 번으로 각각 123ms·83ms 가 됐다(2,530만→8.8만 행).
+  //   통계는 데이터가 늘면 낡으므로 매일 갱신한다. 비용은 prod 규모에서 170ms 안팎.
+  const analyze: any = {}
+  try {
+    const t0 = Date.now()
+    await c.env.DB.prepare('ANALYZE').run()
+    analyze.ms = Date.now() - t0
+    analyze.stat_rows = (await c.env.DB.prepare('SELECT COUNT(*) AS n FROM sqlite_stat1').first<{ n: number }>())?.n ?? null
+  } catch (err: any) {
+    // 통계 갱신 실패가 일일 배치 전체를 막지 않는다(다음 날 다시 시도된다)
+    analyze.error = String(err?.message || err).slice(0, 200)
+  }
+
   const summary = { entities: entities.length, date: yesterday }
-  console.log('[cron/daily-maintenance]', JSON.stringify({ ...summary, leaves, retention, integrity, intercompany }))
-  return c.json({ success: true, summary, results: out, leaves, retention, integrity, intercompany })
+  console.log('[cron/daily-maintenance]', JSON.stringify({ ...summary, leaves, retention, integrity, intercompany, analyze }))
+  return c.json({ success: true, summary, results: out, leaves, retention, integrity, intercompany, analyze })
 })
 
 /**
