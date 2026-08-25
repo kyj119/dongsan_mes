@@ -65,29 +65,61 @@ function pmCanEditPrice() {
   catch (e) { return false; }
 }
 
-// 단가 셀 렌더: 편집권한 시 인라인 input, 아니면 텍스트(미설정은 amber 강조)
+// pmItems 에서 id 로 품목 찾기 (행 단위 부분 갱신에서 반복 사용)
+function pmFindItem(id) {
+  for (var i = 0; i < pmItems.length; i++) { if (pmItems[i].id === id) return pmItems[i]; }
+  return null;
+}
+
+// 단가 셀 렌더: 편집권한 시 「표시용 span」, 아니면 텍스트(미설정은 amber 강조)
+//   2026-08-25 — 예전엔 편집권한자에게 모든 칸을 <input> 으로 그렸다. 품목 1,203건 × 2칸 =
+//   input 2,630개가 항상 DOM 에 있어 첫 페인트가 크게 늦어졌다. 이제 클릭한 칸만 input 이 된다
+//   (pmBeginEdit). 편집 동작·단축키·저장 경로는 그대로다.
 function pmPriceCell(id, field, val, canEdit) {
   var missing = !(val > 0);
   if (canEdit) {
-    var cls = 'w-24 px-1.5 py-0.5 border rounded text-right font-mono text-sm focus:bg-white focus:border-blue-400 '
-      + (missing ? 'border-amber-300 bg-amber-50' : 'border-transparent bg-transparent hover:border-gray-300');
-    return '<input type="text" inputmode="numeric" value="' + (val > 0 ? val : '') + '" placeholder="0"'
-      + ' data-item="' + id + '" data-field="' + field + '"'
-      + ' onclick="event.stopPropagation()" onfocus="this.select()"'
-      + ' onchange="pmInlineSave(this)" onkeydown="pmInlinePriceKey(event,this)"'
-      + ' class="' + cls + '">';
+    var cls = 'inline-block w-24 px-1.5 py-0.5 border rounded text-right font-mono text-sm cursor-text '
+      + (missing ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-transparent hover:border-gray-300');
+    return '<span class="' + cls + '" data-item="' + id + '" data-field="' + field + '"'
+      + ' onclick="event.stopPropagation();pmBeginEdit(this)">' + (val > 0 ? fmt(val) : '0') + '</span>';
   }
   if (missing) return '<span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-xs">미설정</span>';
   return fmt(val);
 }
 
-// 인라인 저장: 값 변경 시에만 PATCH → price_change_history 기록(백엔드) → 재렌더로 마진·요약 갱신
+// 클릭한 단가 칸만 input 으로 승격. 승격된 input 은 다음 전체 재렌더까지 남는다
+// (한 화면에서 사람이 만지는 칸은 몇 개뿐이라 DOM 부담이 없다).
+function pmBeginEdit(span) {
+  if (!span) return;
+  var id = Number(span.getAttribute('data-item'));
+  var field = span.getAttribute('data-field');
+  var item = pmFindItem(id);
+  if (!item) { console.warn('[priceManagement] item not found: ' + id); return; }
+  var val = Number(item[field]) || 0;
+  var input = document.createElement('input');
+  input.type = 'text';
+  input.setAttribute('inputmode', 'numeric');
+  input.placeholder = '0';
+  input.value = val > 0 ? val : '';
+  input.setAttribute('data-item', String(id));
+  input.setAttribute('data-field', field);
+  input.className = 'w-24 px-1.5 py-0.5 border border-blue-400 rounded text-right font-mono text-sm bg-white';
+  input.onclick = function(e) { e.stopPropagation(); };
+  input.onchange = function() { pmInlineSave(input); };
+  input.onkeydown = function(e) { pmInlinePriceKey(e, input); };
+  span.parentNode.replaceChild(input, span);
+  input.focus();
+  input.select();
+}
+
+// 인라인 저장: 값 변경 시에만 PATCH → price_change_history 기록(백엔드)
+//   2026-08-25 — 저장 성공 시 renderPurchaseView() 로 1,203행을 통째로 다시 그리던 것을
+//   해당 행 + 요약 바만 갱신하도록 좁혔다. 재렌더는 화면 반영까지 약 600ms 였다.
 function pmInlineSave(el) {
   if (!el) return;
   var id = Number(el.getAttribute('data-item'));
   var field = el.getAttribute('data-field');
-  var item = null;
-  for (var i = 0; i < pmItems.length; i++) { if (pmItems[i].id === id) { item = pmItems[i]; break; } }
+  var item = pmFindItem(id);
   if (!item) return;
   var raw = String(el.value || '').replace(/[^0-9]/g, '');
   var val = raw === '' ? 0 : parseInt(raw, 10);
@@ -97,8 +129,11 @@ function pmInlineSave(el) {
   var body = {}; body[field] = val;
   axios.patch('/api/items/' + id, body).then(function() {
     item[field] = val;
+    el.disabled = false;
+    el.value = val > 0 ? val : '';
     showToast('단가 저장됨', 'success');
-    renderPurchaseView();
+    pmRefreshRow(item);
+    pmRenderSummaryBar();
   }).catch(function(e) {
     var st = e && e.response && e.response.status;
     showToast((st === 403 || st === 401) ? '단가 수정 권한이 없습니다' : '단가 저장 실패', 'error');
@@ -107,15 +142,30 @@ function pmInlineSave(el) {
   });
 }
 
+// 저장 후 해당 행만 갱신 — 마진 셀 + 미설정 강조. (요약 바는 pmRenderSummaryBar 담당)
+function pmRefreshRow(item) {
+  var row = document.getElementById('pmRow_' + item.id);
+  if (!row) { console.warn('[priceManagement] #pmRow_' + item.id + ' not found'); return; }
+  var margin = pmItemMargin(item);
+  var mc = document.getElementById('pmMargin_' + item.id);
+  if (mc) {
+    mc.textContent = margin !== null ? margin + '%' : '-';
+    mc.className = 'px-4 py-2 text-right font-semibold ' + pmMarginColor(margin);
+  }
+  // 펼친 행의 파란 배경이 미설정 amber 보다 우선 (buildItemTable 의 rowCls 규칙과 동일)
+  row.classList.remove('bg-amber-50', 'bg-blue-50');
+  if (pmExpandedId === item.id) row.classList.add('bg-blue-50');
+  else if (pmItemUnset(item)) row.classList.add('bg-amber-50');
+}
+
 // Enter=커밋(blur), Escape=원복(원값 복원 후 blur → change 미발생 → 저장 안 함)
 function pmInlinePriceKey(e, el) {
   if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
   else if (e.key === 'Escape') {
     var id = Number(el.getAttribute('data-item'));
     var field = el.getAttribute('data-field');
-    for (var i = 0; i < pmItems.length; i++) {
-      if (pmItems[i].id === id) { var v = Number(pmItems[i][field]) || 0; el.value = v > 0 ? v : ''; break; }
-    }
+    var it = pmFindItem(id);
+    if (it) { var v = Number(it[field]) || 0; el.value = v > 0 ? v : ''; }
     el.blur();
   }
 }
@@ -154,20 +204,9 @@ function renderPurchaseView() {
     }
   });
 
-  // ── 상단 요약 바 (품목수·평균마진·미설정 단가) — 기존 데이터 재사용 ──
-  var unsetCount = 0, mSum = 0, mCnt = 0;
-  pmItems.forEach(function(it) {
-    if (pmItemUnset(it)) unsetCount++;
-    var m = pmItemMargin(it);
-    if (m != null) { mSum += m; mCnt++; }
-  });
-  var avgM = mCnt ? Math.round(mSum / mCnt) : null;
-  var html = '<div class="ds-card px-4 py-2.5 mb-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">'
-    + '<span class="text-gray-500"><i class="fas fa-box mr-1 text-gray-400"></i>품목 <b class="text-gray-800">' + pmItems.length + '</b>개</span>'
-    + '<span class="text-gray-500">평균마진 <b class="' + pmMarginColor(avgM) + '">' + (avgM != null ? avgM + '%' : '-') + '</b></span>'
-    + '<span class="text-gray-500">미설정 단가 <b class="' + (unsetCount ? 'text-amber-600' : 'text-gray-400') + '">' + unsetCount + '</b>건</span>'
-    + (unsetCount ? '<span class="text-xs text-amber-600"><i class="fas fa-exclamation-triangle mr-1"></i>매입·판매단가 누락 품목 강조</span>' : '')
-    + '</div>';
+  // ── 상단 요약 바 — 껍데기만 그리고 내용은 pmRenderSummaryBar 가 채운다.
+  //   단가 1건 저장 후 요약만 다시 계산하면 되므로 전체 재렌더가 필요없다.
+  var html = '<div id="pmSummaryBar" class="ds-card px-4 py-2.5 mb-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm"></div>';
 
   // 그룹이 있는 품목
   var groupNames = Object.keys(groups).sort();
@@ -202,6 +241,27 @@ function renderPurchaseView() {
   }
 
   area.innerHTML = html;
+  pmRenderSummaryBar();
+  // 검색 재조회 등으로 목록을 통째로 다시 그린 경우, 펼쳐둔 행의 상세는 스피너만 남는다
+  //   (예전엔 여기서 loadItemDetail 이 호출되지 않아 영원히 스피너였다). 화면에 있으면 다시 채운다.
+  if (pmExpandedId && document.getElementById('pmDetail_' + pmExpandedId)) loadItemDetail(pmExpandedId);
+}
+
+// 요약 바(품목수·평균마진·미설정 단가) — pmItems 만으로 계산. 단가 저장 후 이것만 다시 그린다.
+function pmRenderSummaryBar() {
+  var bar = document.getElementById('pmSummaryBar');
+  if (!bar) { console.warn('[priceManagement] #pmSummaryBar not found'); return; }
+  var unsetCount = 0, mSum = 0, mCnt = 0;
+  pmItems.forEach(function(it) {
+    if (pmItemUnset(it)) unsetCount++;
+    var m = pmItemMargin(it);
+    if (m != null) { mSum += m; mCnt++; }
+  });
+  var avgM = mCnt ? Math.round(mSum / mCnt) : null;
+  bar.innerHTML = '<span class="text-gray-500"><i class="fas fa-box mr-1 text-gray-400"></i>품목 <b class="text-gray-800">' + pmItems.length + '</b>개</span>'
+    + '<span class="text-gray-500">평균마진 <b class="' + pmMarginColor(avgM) + '">' + (avgM != null ? avgM + '%' : '-') + '</b></span>'
+    + '<span class="text-gray-500">미설정 단가 <b class="' + (unsetCount ? 'text-amber-600' : 'text-gray-400') + '">' + unsetCount + '</b>건</span>'
+    + (unsetCount ? '<span class="text-xs text-amber-600"><i class="fas fa-exclamation-triangle mr-1"></i>매입·판매단가 누락 품목 강조</span>' : '');
 }
 
 function buildItemTable(items, linked) {
@@ -223,26 +283,50 @@ function buildItemTable(items, linked) {
     var rowCls = 'border-t hover:bg-gray-50 cursor-pointer';
     if (exp) rowCls += ' bg-blue-50';
     else if (unset) rowCls += ' bg-amber-50';
-    html += '<tr class="' + rowCls + '" onclick="expandPurchaseItem(' + item.id + ')">';
+    // 행·마진셀·상세행에 고유 id — 부분 갱신(pmRefreshRow·expandPurchaseItem)이 이걸로 찾는다
+    html += '<tr id="pmRow_' + item.id + '" class="' + rowCls + '" onclick="expandPurchaseItem(' + item.id + ')">';
     html += '<td class="px-4 py-2 font-mono text-xs text-gray-500">' + esc(item.item_code) + '</td>';
     html += '<td class="px-4 py-2 font-medium" title="' + esc(item.item_name || '') + '">' + esc(item.item_name) + '</td>';
     html += '<td class="px-4 py-2 text-right font-mono">' + pmPriceCell(item.id, 'base_price', base, canEdit) + '</td>';
     html += '<td class="px-4 py-2 text-right font-mono">' + pmPriceCell(item.id, 'sales_price', sales, canEdit) + '</td>';
-    html += '<td class="px-4 py-2 text-right font-semibold ' + mc + '">' + (margin !== null ? margin + '%' : '-') + '</td>';
+    html += '<td id="pmMargin_' + item.id + '" class="px-4 py-2 text-right font-semibold ' + mc + '">' + (margin !== null ? margin + '%' : '-') + '</td>';
     html += '</tr>';
-    if (exp) {
-      html += '<tr><td colspan="5" class="p-0"><div id="pmDetail_' + item.id + '" class="px-6 py-4 bg-blue-50 border-t border-blue-100">';
-      html += '<div class="text-center text-gray-400 py-3"><i class="fas fa-spinner fa-spin"></i></div></div></td></tr>';
-    }
+    if (exp) html += pmDetailRowHtml(item.id);
   });
   html += '</tbody></table>';
   return html;
 }
 
+// 펼친 행 아래 붙는 상세 행 — 최초 렌더와 클릭 시 삽입이 같은 HTML 을 쓰도록 한 곳에 둔다
+function pmDetailRowHtml(id) {
+  return '<tr id="pmDetailRow_' + id + '"><td colspan="5" class="p-0"><div id="pmDetail_' + id + '" class="px-6 py-4 bg-blue-50 border-t border-blue-100">'
+    + '<div class="text-center text-gray-400 py-3"><i class="fas fa-spinner fa-spin"></i></div></div></td></tr>';
+}
+
+// 2026-08-25 — 예전엔 행 하나 펼칠 때마다 renderPurchaseView() 로 1,203행을 다시 그렸다
+//   (화면 반영까지 약 600ms, 사무실 PC 에선 그 몇 배). 이제 접는 행·펴는 행만 건드린다.
 function expandPurchaseItem(id) {
-  pmExpandedId = pmExpandedId === id ? null : id;
-  renderPurchaseView();
-  if (pmExpandedId) loadItemDetail(id);
+  var prev = pmExpandedId;
+  if (prev) pmCollapseRow(prev);
+  if (prev === id) { pmExpandedId = null; return; }  // 같은 행 재클릭 = 접기
+  var row = document.getElementById('pmRow_' + id);
+  if (!row) { console.warn('[priceManagement] #pmRow_' + id + ' not found'); pmExpandedId = null; return; }
+  pmExpandedId = id;
+  row.classList.remove('bg-amber-50');
+  row.classList.add('bg-blue-50');
+  row.insertAdjacentHTML('afterend', pmDetailRowHtml(id));
+  loadItemDetail(id);
+}
+
+// 펼친 행 접기 — 상세 행 제거 + 배경 원복(미설정이면 amber 로 되돌린다)
+function pmCollapseRow(id) {
+  var detail = document.getElementById('pmDetailRow_' + id);
+  if (detail) detail.remove();
+  var row = document.getElementById('pmRow_' + id);
+  if (!row) return;
+  row.classList.remove('bg-blue-50');
+  var item = pmFindItem(id);
+  if (item && pmItemUnset(item)) row.classList.add('bg-amber-50');
 }
 
 function loadItemDetail(itemId) {

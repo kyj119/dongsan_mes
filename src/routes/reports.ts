@@ -102,15 +102,29 @@ reportsRouter.get('/client-revenue', async (c) => {
     const efBalG = entityFilter(c, 'o2')
     const efBalP = entityFilter(c, 'p')
     const efBalA = entityFilter(c, 'a')
+    // 성능(2026-08-25): clients를 바깥에 두고 orders를 조인하면 플래너가 조인키(client_id)를 버리고
+    //   idx_orders_entity_created(entity_id, created_at)를 잡는다 → 거래처 1건마다 기간내 orders 전량을
+    //   훑어 rows_read 2,530만 / 13초. orders를 client_id로 먼저 집계(agg)한 뒤 clients를 조인하면
+    //   같은 결과가 5.9만 행 / 21ms. 집계 단위가 이미 거래처라 바깥 GROUP BY도 불필요해진다.
     const { results: clientSummary } = await c.env.DB.prepare(`
       SELECT
         c.id, c.client_name,
         (COALESCE(bal.amt, 0) - COALESCE(pay.amt, 0) - COALESCE(adj.amt, 0)) as balance,
-        COUNT(o.id) as total_orders,
-        COALESCE(SUM(o.final_amount), 0) as total_revenue,
-        COALESCE(AVG(o.final_amount), 0) as avg_order_amount
-      FROM clients c
-      JOIN orders o ON c.id = o.client_id
+        agg.total_orders,
+        agg.total_revenue,
+        agg.avg_order_amount
+      FROM (
+        SELECT o.client_id AS cid,
+               COUNT(o.id) AS total_orders,
+               COALESCE(SUM(o.final_amount), 0) AS total_revenue,
+               COALESCE(AVG(o.final_amount), 0) AS avg_order_amount
+        FROM orders o
+        WHERE o.status != 'CANCELLED'
+          AND NOT ${voucherOrderSql('o')}
+          AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')${ef.clause}
+        GROUP BY o.client_id
+      ) agg
+      JOIN clients c ON c.id = agg.cid AND c.is_active = 1
       LEFT JOIN (
         SELECT o2.client_id AS cid, SUM(g.billed_amount) AS amt
         FROM order_billing_groups g JOIN orders o2 ON o2.id = g.order_id
@@ -123,13 +137,9 @@ reportsRouter.get('/client-revenue', async (c) => {
       LEFT JOIN (
         SELECT client_id AS cid, SUM(amount) AS amt FROM adjustments a WHERE 1=1${efBalA.clause} GROUP BY client_id
       ) adj ON adj.cid = c.id
-      WHERE c.is_active = 1 AND o.status != 'CANCELLED'
-        AND NOT ${voucherOrderSql('o')}
-        AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')${ef.clause}
-      GROUP BY c.id
-      ORDER BY total_revenue DESC
+      ORDER BY agg.total_revenue DESC, c.id ASC
       LIMIT 20
-    `).bind(...efBalG.params, ...efBalP.params, ...efBalA.params, monthCount, ...ef.params).all()
+    `).bind(monthCount, ...ef.params, ...efBalG.params, ...efBalP.params, ...efBalA.params).all()
 
     return c.json({ success: true, data: { monthly: results, clients: clientSummary } })
   } catch (error) {

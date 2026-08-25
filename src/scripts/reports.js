@@ -2,6 +2,30 @@
 // #335: XSS 방어 — 거래처명 등 자유 텍스트 HTML 이스케이프
 var esc = window.escapeHtml || function(s) { if (s === null || s === undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); };
 
+// 탭별 로더 (2026-08-25 지연로딩) — 예전엔 진입 즉시 7개 탭 데이터를 전부 받았다.
+//   보이지도 않는 탭 6개까지 동시에 요청하는 구조라, 그 중 하나(거래처 분석)가 느리면
+//   첫 화면 전체가 그만큼 늦어졌다. 이제 활성 탭만 받고, 나머지는 탭을 열 때 1회만 받는다.
+//   함수 선언은 호이스팅되므로 아래쪽에 정의된 로더를 여기서 참조해도 안전하다.
+var reportTabLoaders = {
+  monthly: [loadMonthlySummary],
+  clients: [loadClientRevenue],
+  items: [loadItemAnalysis],
+  designers: [loadSalesRepStats, loadDesignerStats],
+  margin: [loadMarginAnalysis],
+  receivables: [loadReceivablesAnalysis],
+  comparison: []  // 기간 비교 = 「조회」 버튼(loadComparison)으로만 실행 — 원래도 선로딩 대상이 아니었다
+};
+var reportTabLoaded = {};
+
+// 탭 1회 로드 + 캐시. 기간(periodMonths)이 바뀌면 loadAllReports 가 캐시를 비운다.
+function loadReportTab(tab) {
+  var loaders = reportTabLoaders[tab];
+  if (!loaders) { console.warn('[reports] unknown tab: ' + tab); return; }
+  if (reportTabLoaded[tab]) return;
+  reportTabLoaded[tab] = true;
+  loaders.forEach(function(fn) { fn(); });
+}
+
 function switchReportTab(tab) {
   currentReportTab = tab;
   var tabs = ['monthly', 'clients', 'items', 'designers', 'margin', 'receivables', 'comparison'];
@@ -17,6 +41,7 @@ function switchReportTab(tab) {
       panel.classList.add('hidden');
     }
   });
+  loadReportTab(tab);
 }
 
 function getMonths() {
@@ -35,13 +60,10 @@ async function loadAllReports() {
     var d = new Date(); d.setMonth(d.getMonth() - (m - 1)); d.setDate(1);
     window.renderCompletenessNotice('reportsCompletenessNotice', d.toISOString().slice(0, 10), null);
   } catch (e) { /* 안내 실패가 보고서를 막지 않는다 */ }
-  loadMonthlySummary();
-  loadClientRevenue();
-  loadItemAnalysis();
-  loadDesignerStats();
-  loadSalesRepStats();
-  loadMarginAnalysis();
-  loadReceivablesAnalysis();
+  // 기간이 바뀌면 이미 받아둔 탭도 낡은 값이 되므로 캐시를 비우고 활성 탭만 다시 받는다.
+  //   (숨은 탭은 다음에 열릴 때 새 기간으로 로드된다 — periodMonths 를 그때 읽으므로 항상 최신 기준)
+  reportTabLoaded = {};
+  loadReportTab(currentReportTab);
 }
 
 // 1. Monthly Summary

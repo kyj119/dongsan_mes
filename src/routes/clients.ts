@@ -136,7 +136,11 @@ clientsRouter.get('/', async (c) => {
     }
 
     const ef = entityFilter(c)
-    const query = `SELECT *, last_order_date FROM (SELECT c.*, pl.name as price_list_name, (SELECT MAX(order_date) FROM orders WHERE client_id = c.id${ef.clause}) as last_order_date FROM clients c LEFT JOIN price_lists pl ON c.price_list_id = pl.id` + filterWhere + `) c WHERE 1=1` + dormantWhere + orderByClause + ' LIMIT ? OFFSET ?'
+    // 성능(2026-08-25): last_order_date 를 상관 서브쿼리로 두면 플래너가 client_id 대신
+    //   idx_orders_entity_sales_rep(entity_id=?) 을 잡아 거래처 1건마다 orders 를 훑는다
+    //   → 200건 조회에 rows_read 364만 / 3.9초. orders 를 client_id 로 미리 집계해 조인하면 2.6만 행 / 27ms.
+    const lastOrderJoin = ` LEFT JOIN (SELECT client_id AS cid, MAX(order_date) AS last_order_date FROM orders WHERE 1=1${ef.clause} GROUP BY client_id) lo ON lo.cid = c.id`
+    const query = `SELECT *, last_order_date FROM (SELECT c.*, pl.name as price_list_name, lo.last_order_date AS last_order_date FROM clients c LEFT JOIN price_lists pl ON c.price_list_id = pl.id${lastOrderJoin}` + filterWhere + `) c WHERE 1=1` + dormantWhere + orderByClause + ' LIMIT ? OFFSET ?'
     const params = [...ef.params, ...filterParams, ...dormantParams, safeLimit, offset]
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
@@ -145,7 +149,7 @@ clientsRouter.get('/', async (c) => {
     let countQuery: string
     let countParams: any[]
     if (dormantWhere) {
-      countQuery = `SELECT COUNT(*) as count FROM (SELECT c.*, (SELECT MAX(order_date) FROM orders WHERE client_id = c.id${ef.clause}) as last_order_date FROM clients c` + filterWhere + `) c WHERE 1=1` + dormantWhere
+      countQuery = `SELECT COUNT(*) as count FROM (SELECT c.*, lo.last_order_date AS last_order_date FROM clients c${lastOrderJoin}` + filterWhere + `) c WHERE 1=1` + dormantWhere
       countParams = [...ef.params, ...filterParams, ...dormantParams]
     } else {
       countQuery = 'SELECT COUNT(*) as count FROM clients c' + filterWhere
