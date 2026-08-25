@@ -22,10 +22,14 @@
  *      거래가 아니므로 제외하지 않으면 **실거래가 전혀 없는 48곳이 "최근 1년 거래처"로 잡힌다**.
  *   2) 취소 주문(status='CANCELLED')
  *   3) 비활성 거래처(clients.is_active=0) — 폐업·거래종료
+ *   4) **내부 법인 3사**(동산 53·선명 1271·청주 3757) — 자기 회사에 판촉 문자를 보내게 된다.
+ *      법인간 채권 전표(`ICM-AR-*`)와 실제 3사간 거래가 모두 잡혀 셋 다 대상에 들어와 있었다.
+ *      제외 목록의 정본은 `constants/intercompany.ts`(원장·미수금·AP·발주가 이미 쓰는 SSOT).
  */
 
 import { normalizePhone } from './messageCompliance'
 import { kstDate } from '../utils/kstDate'
+import { excludeInternalClientsSql } from '../constants/intercompany'
 
 /** 품목묶음 키. UI 체크박스와 1:1. */
 export type SegmentKey = 'PRINT' | 'TRANSFER' | 'MATERIAL' | 'GOODS' | 'ETC'
@@ -78,6 +82,21 @@ const SEGMENT_CASE_SQL = `
  * 마커 없는 이월 라인 0건, OPEN 주문에 섞인 다른 라인 0건 — 1:1 대응.
  */
 const OPENING_BALANCE_ORDER_MARKER = '-OPEN-'
+
+/**
+ * "유효한 거래"의 정의 — 취소 주문과 이관 개시잔액 전표를 뺀다.
+ *
+ * ★세그먼트(누구에게 보낼까)와 광고 동의면제 판정(보내도 되는가)이 **같은 정의**를 써야 한다.
+ *   따로 두면 "발송 대상에는 있는데 광고는 못 나가는" 불일치가 생기고, 실제로 광고 필터
+ *   (`messagesAd.resolveAdAudience`)에는 취소 필터가 아예 없었다(2026-08-25 발견).
+ *   지금은 이월 전표가 6개월 밖이라 증상이 없지만 **다음 연말 이월에서 재발한다**.
+ *
+ * 마커는 ASCII 상수라 리터럴 삽입이 안전하다(사용자 입력이 섞이지 않는다).
+ */
+export function validOrderClause(alias = 'o'): string {
+  return `${alias}.status <> 'CANCELLED'`
+    + ` AND instr(COALESCE(${alias}.order_number, ''), '${OPENING_BALANCE_ORDER_MARKER}') = 0`
+}
 
 export interface SegmentFilter {
   /** 법인 id 배열. 비었으면 전 법인. */
@@ -177,9 +196,8 @@ export async function resolveSegment(db: D1Database, rawFilter: unknown): Promis
       FROM orders o
       JOIN order_items oi ON oi.order_id = o.id
       LEFT JOIN items i ON i.id = oi.item_id
-      WHERE o.status <> 'CANCELLED'
+      WHERE ${validOrderClause('o')}
         AND o.client_id IS NOT NULL
-        AND instr(COALESCE(o.order_number, ''), ?) = 0
         AND date(COALESCE(o.order_date, o.created_at)) >= ${cutoffSql}${entityClause}
     ),
     ag AS (
@@ -194,10 +212,11 @@ export async function resolveSegment(db: D1Database, rawFilter: unknown): Promis
            c.client_name, c.mobile, c.phone, c.email
     FROM ag
     JOIN clients c ON c.id = ag.cid AND c.is_active = 1
+    WHERE 1=1${excludeInternalClientsSql('c.id')}
     ORDER BY ag.amount DESC, ag.cid`
 
   const { results } = await db.prepare(sql)
-    .bind(OPENING_BALANCE_ORDER_MARKER, ...binds, ...filter.segments)
+    .bind(...binds, ...filter.segments)
     .all<{
       client_id: number; segs: string; last_order_date: string; amount: number
       client_name: string; mobile: string | null; phone: string | null; email: string | null

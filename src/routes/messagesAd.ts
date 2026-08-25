@@ -30,6 +30,7 @@ import {
 } from '../services/messageCompliance'
 import { checkBulkLimit } from '../services/messageBulkLimit'
 import { applyAudienceGuards, recordBulkRecipients } from '../services/messageAudience'
+import { validOrderClause } from '../services/clientSegment'
 import type { SMSMessage } from './kakao'
 
 /** 사전동의 면제 기간 — 시행령 §61② "거래가 종료된 날부터 6개월" */
@@ -127,11 +128,16 @@ export async function resolveAdAudience(c: Context<HonoEnv>, receivers: BulkRece
   for (let i = 0; i < clientIds.length; i += 80) {
     const chunk = clientIds.slice(i, i + 80)
     const ph = chunk.map(() => '?').join(',')
+    // ★"유효한 거래"의 정의는 세그먼트와 공유한다([[clientSegment.validOrderClause]]).
+    //   예전엔 필터가 전혀 없어 **취소 주문도 거래로 인정**했고, 이관 개시잔액 전표(-OPEN-)도
+    //   섞였다. 지금은 이월 전표가 6개월 밖이라 증상이 없지만 다음 연말 이월에서 재발한다.
+    //   order_date 가 비어 있는 주문이 있어 created_at 으로 보정한다(세그먼트와 동일 규칙).
     const { results } = await db.prepare(`
-      SELECT client_id, MAX(order_date) AS last_order
-      FROM orders
-      WHERE client_id IN (${ph})
-      GROUP BY client_id
+      SELECT o.client_id, MAX(COALESCE(o.order_date, o.created_at)) AS last_order
+      FROM orders o
+      WHERE o.client_id IN (${ph})
+        AND ${validOrderClause('o')}
+      GROUP BY o.client_id
     `).bind(...chunk).all<{ client_id: number; last_order: string }>()
     for (const row of results || []) {
       if (row.last_order) lastOrder[Number(row.client_id)] = row.last_order
