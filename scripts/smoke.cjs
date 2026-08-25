@@ -167,6 +167,7 @@ const ENDPOINTS = [
   // 관리
   { path: '/api/users', name: 'users.list' },
   { path: '/api/settings', name: 'settings.list' },
+  { path: '/api/settings/credit-policy', name: 'settings.creditPolicy' },
   { path: '/api/search?q=test', name: 'search.query' },
   { path: '/api/notifications?limit=10', name: 'notifications.list' },
   { path: '/api/notifications/unread-count', name: 'notifications.unreadCount' },

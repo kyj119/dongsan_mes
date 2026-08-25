@@ -769,3 +769,118 @@ function syncCompanyFormStamp(base64) {
   var preview = document.getElementById('stampPreview');
   if (preview) preview.src = base64 || '';
 }
+
+// ── 여신 정책 ──
+// 판정·산출 정본은 서버(routes/ledger/credit-helpers). 여기서 한도를 계산하지 않는다.
+// 영향 시뮬레이션은 전 거래처 집계라 무겁다 → 탭 진입 1회 + 버튼 클릭 시에만 호출(폴링 금지).
+
+function cpReadInputs() {
+  return {
+    multiplier: parseFloat(document.getElementById('cpMultiplier').value) || 0,
+    months: parseInt(document.getElementById('cpMonths').value, 10) || 0,
+    floor: window.parseMoney(document.getElementById('cpFloor').value),
+    cap: window.parseMoney(document.getElementById('cpCap').value),
+    warn_ratio: parseFloat(document.getElementById('cpWarnRatio').value) || 0
+  };
+}
+
+function cpFillInputs(p) {
+  document.getElementById('cpMultiplier').value = p.multiplier;
+  document.getElementById('cpMonths').value = p.months;
+  document.getElementById('cpFloor').value = window.fmtMoneyInput(p.floor);
+  document.getElementById('cpCap').value = window.fmtMoneyInput(p.cap);
+  document.getElementById('cpWarnRatio').value = p.warnRatio;
+}
+
+function cpRenderFormula(p) {
+  var man = function(n) { return Math.round(n / 10000).toLocaleString() + '만'; };
+  document.getElementById('cpFormulaMonths').textContent = p.months;
+  document.getElementById('cpFormulaMult').textContent = p.multiplier;
+  document.getElementById('cpFormulaFloor').textContent = man(p.floor);
+  document.getElementById('cpFormulaCap').textContent = man(p.cap);
+}
+
+function cpRenderImpact(im, isSim) {
+  var box = document.getElementById('cpImpact');
+  if (!box) { console.warn('[settings] #cpImpact not found'); return; }
+  var cell = function(tone, label, value, sub) {
+    return '<div class="rounded-lg border border-' + tone + '-200 bg-' + tone + '-50 px-4 py-3">'
+      + '<div class="text-[11px] text-' + tone + '-700">' + label + '</div>'
+      + '<div class="text-xl font-bold text-' + tone + '-800 mt-0.5">' + value + '</div>'
+      + (sub ? '<div class="text-[11px] text-' + tone + '-600 mt-0.5">' + sub + '</div>' : '')
+      + '</div>';
+  };
+  box.innerHTML =
+    (isSim ? '<div class="mb-3 text-[11px] text-blue-600">아직 저장하지 않은 값 기준입니다.</div>' : '')
+    + '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">'
+    + cell('red', '한도 초과', im.exceeded.toLocaleString() + '곳',
+        '미수 ' + Math.round(im.exceeded_balance / 10000).toLocaleString() + '만원')
+    + cell('amber', '경고 구간', im.warning.toLocaleString() + '곳', null)
+    + cell('gray', '판정 대상', im.total.toLocaleString() + '곳', '거래 이력 있는 거래처')
+    + cell('gray', '수동 차단 / 무제한', im.held.toLocaleString() + ' / ' + im.unlimited.toLocaleString(), null)
+    + '</div>';
+}
+
+async function loadCreditPolicy() {
+  try {
+    var res = await axios.get('/api/settings/credit-policy');
+    if (!res.data.success) return;
+    var d = res.data.data;
+    cpFillInputs(d.saved);
+    cpRenderFormula(d.saved);
+    cpRenderImpact(d.impact, false);
+  } catch (err) {
+    var box = document.getElementById('cpImpact');
+    if (box) box.textContent = '불러오지 못했습니다: ' + (err.response?.data?.error || err.message);
+  }
+}
+
+async function simulateCreditPolicy() {
+  var btn = document.getElementById('cpSimBtn');
+  var v = cpReadInputs();
+  btn.disabled = true;
+  btn.textContent = '계산 중…';
+  try {
+    var res = await axios.get('/api/settings/credit-policy', { params: v });
+    if (!res.data.success) return;
+    cpRenderFormula(res.data.data.simulated);
+    cpRenderImpact(res.data.data.impact, true);
+  } catch (err) {
+    showToast('시뮬레이션 실패: ' + (err.response?.data?.error || err.message), 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '영향 확인';
+  }
+}
+
+async function saveCreditPolicy() {
+  var msg = document.getElementById('cpSaveMsg');
+  var v = cpReadInputs();
+  if (v.multiplier <= 0 || v.months <= 0 || v.cap <= 0 || v.warn_ratio <= 0) {
+    msg.className = 'mt-3 text-center text-sm text-red-600';
+    msg.textContent = '배수·기간·상한·경고비율은 0보다 커야 합니다.';
+    msg.classList.remove('hidden');
+    return;
+  }
+  var btn = document.getElementById('cpSaveBtn');
+  btn.disabled = true;
+  try {
+    await axios.patch('/api/settings', { settings: {
+      credit_limit_multiplier: String(v.multiplier),
+      credit_limit_months: String(v.months),
+      credit_limit_floor: String(v.floor),
+      credit_limit_cap: String(v.cap),
+      credit_warn_ratio: String(v.warn_ratio)
+    }});
+    msg.className = 'mt-3 text-center text-sm text-green-600';
+    msg.textContent = '저장되었습니다. 다음 주문부터 이 기준이 적용됩니다.';
+    msg.classList.remove('hidden');
+    await loadCreditPolicy();
+  } catch (err) {
+    msg.className = 'mt-3 text-center text-sm text-red-600';
+    msg.textContent = '저장 실패: ' + (err.response?.data?.error || err.message);
+    msg.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+  }
+}

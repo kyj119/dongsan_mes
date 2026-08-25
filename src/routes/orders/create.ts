@@ -19,7 +19,7 @@ import { kstYmd, kstYmdCompact } from '../../utils/kstDate'
 import { ORDER_STATUS_LABELS } from '../../utils/statusLabels'
 import { thumbRef, resolveGroupByAiIndex, type AnalysisGroup } from '../../utils/thumbnailStore'
 import { recommendAssignedEntity, recalcOrderBillingGroups, generateCardsForOrder } from './helpers'
-import { deriveClientBalance } from '../ledger/ar-helpers'
+import { evaluateClientCredit } from '../ledger/credit-helpers'
 
 const ordersCreateRouter = new Hono<HonoEnv>()
 ordersCreateRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
@@ -465,28 +465,27 @@ ordersCreateRouter.post('/', async (c) => {
     }
 
     // ── 여신한도 체크 (#69) ──────────────────────────────────────────────────
-    // ADMIN은 무조건 통과, 그 외 역할은 여신 초과 시 결재 요청 생성 + 카드 미생성
+    // 판정 정본 = ledger/credit-helpers.evaluateClientCredit
+    //   (한도 = 수동값 or 최근 N개월 월평균 청구액 × 배수 / 잔액 = deriveClientBalance).
+    //
+    // ★ ADMIN = 경고만 (용준님 확정 2026-08-25) — 종전엔 ADMIN 이면 **검사 자체를 건너뛰었다**.
+    //   지금 주문을 만드는 계정이 사실상 admin 하나뿐이라, 한도를 아무리 채워도 발동이 0건이었다.
+    //   이제 ADMIN 도 판정은 받되 차단·결재 대신 응답에 credit_warning 만 실어 보낸다.
     let creditBlocked = false
+    let creditWarning: string | null = null
     let creditBalance = 0   // 판정·결재 payload 공용 (한 번만 구한다)
     let creditLimit = 0
-    if (orderData.client_id && user?.role !== 'ADMIN') {
-      const creditClient = await c.env.DB.prepare(
-        `SELECT credit_limit, credit_hold FROM clients WHERE id = ?`
-      ).bind(orderData.client_id).first<{ credit_limit: number; credit_hold: number }>()
-      creditLimit = Number(creditClient?.credit_limit) || 0
+    if (orderData.client_id) {
+      const credit = await evaluateClientCredit(c, orderData.client_id)
+      creditBalance = credit.balance
+      creditLimit = credit.limit
 
-      // 잔액 정본 = ledger/ar-helpers.deriveClientBalance
-      //   (order_billing_groups[BILLED] − payments − adjustments, entityFilter 적용).
-      // ⚠️ 예전엔 여기서 `SUM(orders.final_amount) − SUM(payments)` 를 직접 셌다. 원장과 세 군데가 달랐다:
-      //     ① 청구 전 주문까지 채권으로 계산  ② entity 필터가 없어 동산·선명 결제가 섞임
-      //     ③ adjustments(대손·조정) 누락
-      //    → 원장 화면과 **다른 숫자**로 결재요청이 나간다. 잔액을 세는 곳은 한 군데뿐이어야 한다.
-      if (creditClient?.credit_hold === 1) {
-        creditBlocked = true   // 수동 차단 — 주문 자체를 막진 않되 결재 필수
-        creditBalance = await deriveClientBalance(c, orderData.client_id)
-      } else if (creditLimit > 0) {
-        creditBalance = await deriveClientBalance(c, orderData.client_id)
-        if (creditBalance >= creditLimit) {
+      if (credit.blocking) {
+        if (user?.role === 'ADMIN') {
+          creditWarning = credit.status === 'BLOCKED'
+            ? `주문 차단 거래처 — ${credit.message}`
+            : `여신한도 초과 — ${credit.message}`
+        } else {
           creditBlocked = true
         }
       }
@@ -698,6 +697,8 @@ ordersCreateRouter.post('/', async (c) => {
       }),
       ...(materialGap && { material_gap: materialGap, material_gap_message: describeGap(materialGap) }),
       ...(materialCheckFailed && { material_check_failed: true }),
+      // ADMIN 이 여신 초과 거래처로 주문을 만든 경우 — 차단하지 않고 경고만 실어 보낸다.
+      ...(creditWarning && { credit_warning: creditWarning }),
     })
   } catch (error) {
     console.error('Order creation error:', error)

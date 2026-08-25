@@ -790,6 +790,11 @@
                         if (res.data.material_check_failed) {
                             msg += '\n\n[확인 필요] 자재 점검이 실패해 부족 여부를 확인하지 못했습니다.';
                         }
+                        // 여신 초과 — ADMIN 은 차단하지 않고 경고만 받는다(서버 orders/create.ts).
+                        // 다른 역할은 여기 오지 않는다(결재 대기로 분기).
+                        if (res.data.credit_warning) {
+                            msg += '\n\n[여신 경고] ' + res.data.credit_warning;
+                        }
                         showToast(msg, 'warning');
                         // 디자이너 가공 대기물 흡수 (intake.js — 실패해도 주문 등록에 영향 없음)
                         // 저장된 주문 id를 넘겨 서버 order_item 역추적 범위를 이 주문으로 축소(§4.2 라인별 매핑)

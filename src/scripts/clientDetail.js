@@ -110,12 +110,13 @@ async function loadClientDetail() {
       document.getElementById('cdCreditSection').classList.remove('hidden');
       document.getElementById('cdCreditLimit').value = fmtMoneyInput(cl.credit_limit || 0);
       document.getElementById('cdCreditHold').value = cl.credit_hold ? '1' : '0';
+      renderCreditLimitHint(cdData.credit);
       loadBillingGroups(cl.billing_group_id);
       loadGroupMembers();
     }
 
-    // 여신 상태 배너
-    renderCreditBanner(cl);
+    // 여신 상태 배너 — 판정 정본은 서버(cdData.credit)
+    renderCreditBanner(cdData.credit);
 
     // 포털 계정 (사이드바 자동 로드)
     loadPortalAccount();
@@ -334,23 +335,44 @@ async function updateAutoBilling() {
 // ============================================================
 // 여신 관리
 // ============================================================
-function renderCreditBanner(cl) {
+// 판정은 서버(ledger/credit-helpers)가 한다 — 여기서 credit_limit 을 다시 해석하지 않는다.
+// credit_limit=0 은 '무제한'이 아니라 '자동 파생'이라, 실효 한도는 서버만 알 수 있다.
+function renderCreditBanner(credit) {
   var banner = document.getElementById('cdCreditBanner');
-  var balance = parseFloat(cl.balance) || 0;
-  var limit = parseFloat(cl.credit_limit) || 0;
-  var hold = cl.credit_hold === 1;
+  if (!banner) { console.warn('[clientDetail] #cdCreditBanner not found'); return; }
+  if (!credit) { banner.classList.add('hidden'); return; }
 
-  if (hold) {
-    banner.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700"><i class="fas fa-ban"></i><span class="font-medium">주문 차단 중</span> — 관리자가 차단을 해제해야 주문 가능</div>';
-    banner.classList.remove('hidden');
-  } else if (limit > 0 && balance >= limit) {
-    banner.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700"><i class="fas fa-exclamation-triangle"></i><span class="font-medium">여신한도 초과</span> — 잔액 ' + fmt(balance) + '원 / 한도 ' + fmt(limit) + '원</div>';
-    banner.classList.remove('hidden');
-  } else if (limit > 0 && balance >= limit * 0.8) {
-    banner.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700"><i class="fas fa-exclamation-triangle"></i><span class="font-medium">여신한도 80% 도달</span> — 잔액 ' + fmt(balance) + '원 / 한도 ' + fmt(limit) + '원</div>';
-    banner.classList.remove('hidden');
+  var wrap = function(tone, icon, title, body) {
+    return '<div class="flex items-center gap-2 px-3 py-2 bg-' + tone + '-50 border border-' + tone
+      + '-200 rounded-lg text-sm text-' + tone + '-700"><i class="fas ' + icon
+      + '"></i><span class="font-medium">' + title + '</span>' + (body ? ' — ' + escapeHtml(body) : '') + '</div>';
+  };
+
+  if (credit.status === 'BLOCKED') {
+    banner.innerHTML = wrap('red', 'fa-ban', '주문 차단 중', '관리자가 차단을 해제해야 주문 가능');
+  } else if (credit.status === 'EXCEEDED') {
+    banner.innerHTML = wrap('red', 'fa-exclamation-triangle', '여신한도 초과', credit.message);
+  } else if (credit.status === 'WARNING') {
+    banner.innerHTML = wrap('amber', 'fa-exclamation-triangle', '여신한도 도달', credit.message);
   } else {
     banner.classList.add('hidden');
+    return;
+  }
+  banner.classList.remove('hidden');
+}
+
+// 여신한도 입력칸 보조 문구 — 0 이 '자동'임을 화면에서 알 수 있어야 한다(안 그러면 무제한으로 오해한다).
+function renderCreditLimitHint(credit) {
+  var hint = document.getElementById('cdCreditLimitHint');
+  if (!hint) return;
+  if (!credit || credit.limit_source === 'EXEMPT') { hint.textContent = ''; return; }
+  if (credit.limit_source === 'UNLIMITED') {
+    hint.textContent = '무제한 (음수 저장 상태) — 0 으로 바꾸면 자동 산출로 돌아갑니다';
+  } else if (credit.limit_source === 'MANUAL') {
+    hint.textContent = '수동 지정 — 0 으로 바꾸면 자동 산출(최근 거래 기준)로 돌아갑니다';
+  } else {
+    hint.textContent = '자동 산출 ' + fmt(credit.limit) + '원 (최근 월평균 청구 '
+      + fmt(Math.round(credit.avg_monthly || 0)) + '원 기준). 직접 지정하려면 금액을 입력하세요';
   }
 }
 

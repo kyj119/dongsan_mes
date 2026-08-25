@@ -8,6 +8,7 @@ import { hashPassword } from '../utils/crypto'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { getNextSeqNumber } from '../utils/sequenceGenerator'
 import { deriveClientBalance } from './ledger/ar-helpers'
+import { evaluateClientCredit } from './ledger/credit-helpers'
 
 const clientsRouter = new Hono<HonoEnv>()
 
@@ -178,51 +179,18 @@ clientsRouter.get('/', async (c) => {
   }
 })
 
-// 거래처 여신 체크
+// 거래처 여신 체크 — 판정 정본 = ledger/credit-helpers.evaluateClientCredit
+// ⚠️ 2026-08-25 이전 이 엔드포인트는 `SUM(orders.final_amount) − payments` 를 직접 셌다.
+//    orders/create.ts 주석이 "원장과 세 군데가 다르다"며 폐기한 산식이 여기 남아 있어서
+//    **화면 경고와 실제 차단이 다른 숫자로 움직였다**. 잔액을 세는 곳은 deriveClientBalance 한 군데뿐이다.
 clientsRouter.get('/:id/credit-check', async (c) => {
   try {
     const id = c.req.param('id')
-    const client = await c.env.DB.prepare(
-      'SELECT id, client_name, credit_limit, credit_hold FROM clients WHERE id = ?'
-    ).bind(id).first<{ id: number; client_name: string; credit_limit: number | null; credit_hold: number }>()
-    if (!client) return c.json({ success: false, error: '거래처를 찾을 수 없습니다.' }, 404)
+    const exists = await c.env.DB.prepare('SELECT id FROM clients WHERE id = ?').bind(id).first()
+    if (!exists) return c.json({ success: false, error: '거래처를 찾을 수 없습니다.' }, 404)
 
-    // 차단 상태
-    if (client.credit_hold) {
-      return c.json({ success: true, data: { status: 'BLOCKED', message: '관리자에 의해 주문이 차단되었습니다.' } })
-    }
-
-    // 여신한도 미설정
-    if (!client.credit_limit || client.credit_limit <= 0) {
-      return c.json({ success: true, data: { status: 'OK', message: '' } })
-    }
-
-    // 미수금 합계 조회
-    const ef = entityFilter(c, 'o')
-    const efp = entityFilter(c, 'p')
-    const ar = await c.env.DB.prepare(`
-      SELECT COALESCE(SUM(CASE WHEN o.final_amount > 0 THEN o.final_amount ELSE 0 END), 0)
-           - COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.client_id = ?${efp.clause}), 0) as balance
-      FROM orders o
-      WHERE o.client_id = ? AND o.status NOT IN ('CANCELLED','DELETED','QUOTATION')
-        ${ef.clause}
-    `).bind(id, ...efp.params, id, ...ef.params).first<{ balance: number }>()
-    const balance = ar?.balance || 0
-
-    if (balance >= client.credit_limit) {
-      return c.json({ success: true, data: {
-        status: 'EXCEEDED',
-        message: `미수금 ${balance.toLocaleString()}원 / 한도 ${client.credit_limit.toLocaleString()}원`
-      }})
-    }
-    if (balance >= client.credit_limit * 0.8) {
-      return c.json({ success: true, data: {
-        status: 'WARNING',
-        message: `미수금 ${balance.toLocaleString()}원 / 한도 ${client.credit_limit.toLocaleString()}원 (${Math.round(balance / client.credit_limit * 100)}%)`
-      }})
-    }
-
-    return c.json({ success: true, data: { status: 'OK', message: '' } })
+    const credit = await evaluateClientCredit(c, id)
+    return c.json({ success: true, data: credit })
   } catch (error) {
     console.error('credit-check error:', error)
     return c.json({ success: true, data: { status: 'OK', message: '' } })
@@ -285,7 +253,8 @@ clientsRouter.get('/:id', async (c) => {
               transfer_info, is_active, balance, client_type, delivery_method, delivery_address, auto_billing,
               price_policy_id, notes, invoice_method, address_detail,
               search_keywords, payment_cycle_type, payment_terms_days, closing_day,
-              payment_month_offset, payment_day, overdue_alert_days, created_at, updated_at
+              payment_month_offset, payment_day, overdue_alert_days, created_at, updated_at,
+              credit_limit, credit_hold, billing_group_id
        FROM clients WHERE id = ?`
     ).bind(id).first()
 
@@ -323,7 +292,8 @@ clientsRouter.get('/:id/detail', async (c) => {
               transfer_info, is_active, balance, client_type, delivery_method, delivery_address, auto_billing,
               price_policy_id, notes, invoice_method, address_detail,
               search_keywords, payment_cycle_type, payment_terms_days, closing_day,
-              payment_month_offset, payment_day, overdue_alert_days, created_at, updated_at
+              payment_month_offset, payment_day, overdue_alert_days, created_at, updated_at,
+              credit_limit, credit_hold, billing_group_id
        FROM clients WHERE id = ?`
     ).bind(id).first()
 
@@ -334,6 +304,10 @@ clientsRouter.get('/:id/detail', async (c) => {
     // 미수금 = 파생(deriveClientBalance) — clients.balance 캐시 폐기, /bank·/accounting 와 동일 정의
     const arBalance = await deriveClientBalance(c, id)
     ;(client as Record<string, unknown>).balance = arBalance  // 응답 client.balance도 파생값(여신 배너 등 프론트 일관)
+
+    // 여신 상태 — 판정 정본(credit-helpers). 프론트가 credit_limit 을 직접 해석하지 않게 한다:
+    //   credit_limit=0 은 '무제한'이 아니라 '자동 파생'이므로, 실효 한도는 서버만 안다.
+    const credit = await evaluateClientCredit(c, id)
 
     const ef = entityFilter(c)
 
@@ -433,7 +407,8 @@ clientsRouter.get('/:id/detail', async (c) => {
         prices,
         notes,
         collection_logs: collectionLogs,
-        monthly_trend: monthlyTrend
+        monthly_trend: monthlyTrend,
+        credit
       }
     })
   } catch (error) {
@@ -1081,13 +1056,17 @@ clientsRouter.patch('/:id', requireEditOrRole('/clients', 'MANAGER'), async (c) 
 })
 
 // PATCH /:id/credit — 여신 설정 저장 (ADMIN/MANAGER) [#476]
+// credit_limit 의미(2026-08-25 반전, 정본=ledger/credit-helpers):
+//   > 0 수동 지정 / = 0 자동 파생(월평균 청구액 × 배수) / < 0 무제한
+// ⚠️ 종전 `0 = 무제한` 이 아니다. 0 으로 저장하면 규칙 적용으로 되돌아간다.
 clientsRouter.patch('/:id/credit', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json()
     const existing = await c.env.DB.prepare('SELECT id FROM clients WHERE id = ?').bind(id).first()
     if (!existing) return c.json({ success: false, error: '거래처를 찾을 수 없습니다.' }, 404)
-    const creditLimit = body.credit_limit != null ? Number(body.credit_limit) : 0
+    const rawLimit = body.credit_limit != null ? Number(body.credit_limit) : 0
+    const creditLimit = Number.isFinite(rawLimit) ? rawLimit : 0
     const creditHold = body.credit_hold ? 1 : 0
     await c.env.DB.prepare('UPDATE clients SET credit_limit = ?, credit_hold = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
       .bind(creditLimit, creditHold, id).run()

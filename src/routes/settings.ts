@@ -1,7 +1,9 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { getEntityId } from '../utils/entityFilter'
+import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { excludeArExcludedClientsSql } from '../constants/arPolicy'
+import { getCreditPolicy, CREDIT_POLICY_DEFAULTS } from './ledger/credit-helpers'
 
 const settingsRouter = new Hono<HonoEnv>()
 settingsRouter.use('/*', authMiddleware)
@@ -136,6 +138,103 @@ settingsRouter.patch('/entity', requireRole('ADMIN'), async (c) => {
     return c.json({ success: true, data: updated })
   } catch (error) {
     console.error('PATCH /api/settings/entity error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ── 여신 정책 (credit policy) ──
+//
+// 값 자체는 settings KV 라 제네릭 `GET/PATCH /api/settings` 로 읽고 쓴다. 이 엔드포인트는 **영향 시뮬레이션** 전용:
+//   배수를 2로 할지 3으로 할지는 "몇 곳이 걸리는가"를 봐야 정할 수 있는데, 그걸 모르면 설정이 추측이 된다.
+// ⚠️ 전 거래처 집계라 무겁다 — **ADMIN 수동 호출 전용**. 폴링·뱃지·대시보드 카드에 붙이지 말 것
+//    (memory `design-nav-badge-cost-guard`: 폴링 × 무거운 집계가 월 $99 과금을 낸 전례).
+settingsRouter.get('/credit-policy', requireRole('ADMIN'), async (c) => {
+  try {
+    const policy = await getCreditPolicy(c)
+    // 저장 전 미리보기 — ?multiplier=3 처럼 후보값을 얹어 시뮬레이션할 수 있다.
+    const q = c.req.query()
+    const ov = (v: string | undefined, base: number, min: number, max: number) => {
+      const n = Number(v)
+      return Number.isFinite(n) && n >= min && n <= max ? n : base
+    }
+    const sim = {
+      multiplier: ov(q.multiplier, policy.multiplier, 0.1, 100),
+      months: Math.round(ov(q.months, policy.months, 1, 24)),
+      floor: ov(q.floor, policy.floor, 0, 1_000_000_000),
+      cap: ov(q.cap, policy.cap, 1, 100_000_000_000),
+      warnRatio: ov(q.warn_ratio, policy.warnRatio, 0.1, 1),
+    }
+
+    const gWin = entityFilter(c, 'g')
+    const gBal = entityFilter(c, 'g')
+    const pBal = entityFilter(c, 'p')
+    const aBal = entityFilter(c, 'a')
+
+    // 한도식은 credit-helpers.deriveCreditLimit 과 같은 정의를 SQL 로 옮긴 것(수동>0 우선, 음수=무제한=-1).
+    // ⚠️ 두 곳에 산식이 있는 셈이라, deriveCreditLimit 을 고치면 여기도 같이 고쳐야 한다.
+    const row = await c.env.DB.prepare(
+      `WITH win AS (
+         SELECT o.client_id AS cid, SUM(g.billed_amount) AS billed
+           FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+          WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'
+            AND COALESCE(g.accounting_date, date(g.billed_at)) >= date('now', '+9 hours', '-${sim.months} months')
+            ${gWin.clause}
+          GROUP BY o.client_id
+       ),
+       bal AS (
+         SELECT cid, SUM(v) AS b FROM (
+           SELECT o.client_id AS cid, g.billed_amount AS v
+             FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+            WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${gBal.clause}
+           UNION ALL SELECT p.client_id, -p.amount FROM payments p WHERE 1=1${pBal.clause}
+           UNION ALL SELECT a.client_id, -a.amount FROM adjustments a WHERE 1=1${aBal.clause}
+         ) GROUP BY cid
+       ),
+       x AS (
+         SELECT c.id, c.credit_hold,
+                COALESCE(bal.b, 0) AS balance,
+                CASE WHEN c.credit_limit < 0 THEN -1
+                     WHEN c.credit_limit > 0 THEN c.credit_limit
+                     ELSE MIN(?, MAX(?, MAX(0, COALESCE(win.billed, 0)) * 1.0 / ? * ?))
+                END AS lim
+           FROM clients c
+           LEFT JOIN win ON win.cid = c.id
+           LEFT JOIN bal ON bal.cid = c.id
+          WHERE c.is_active = 1
+            AND (win.billed IS NOT NULL OR bal.b IS NOT NULL)
+            ${excludeArExcludedClientsSql('c.id')}
+       )
+       SELECT COUNT(*) AS total,
+              SUM(CASE WHEN lim >= 0 AND balance >= lim THEN 1 ELSE 0 END) AS exceeded,
+              SUM(CASE WHEN lim >= 0 AND balance < lim AND balance >= lim * ? THEN 1 ELSE 0 END) AS warning,
+              CAST(SUM(CASE WHEN lim >= 0 AND balance >= lim THEN balance ELSE 0 END) AS INT) AS exceeded_balance,
+              SUM(CASE WHEN credit_hold = 1 THEN 1 ELSE 0 END) AS held,
+              SUM(CASE WHEN lim < 0 THEN 1 ELSE 0 END) AS unlimited
+         FROM x`
+    ).bind(
+      ...gWin.params, ...gBal.params, ...pBal.params, ...aBal.params,
+      sim.cap, sim.floor, sim.months, sim.multiplier,
+      sim.warnRatio
+    ).first<{ total: number; exceeded: number; warning: number; exceeded_balance: number; held: number; unlimited: number }>()
+
+    return c.json({
+      success: true,
+      data: {
+        saved: policy,
+        simulated: sim,
+        defaults: CREDIT_POLICY_DEFAULTS,
+        impact: {
+          total: Number(row?.total) || 0,
+          exceeded: Number(row?.exceeded) || 0,
+          warning: Number(row?.warning) || 0,
+          exceeded_balance: Number(row?.exceeded_balance) || 0,
+          held: Number(row?.held) || 0,
+          unlimited: Number(row?.unlimited) || 0,
+        },
+      },
+    })
+  } catch (error) {
+    console.error('src/routes/settings.ts credit-policy error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })

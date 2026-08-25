@@ -181,8 +181,9 @@ export function clientDetailPage(c: Context<HonoEnv>) {
                 </div>
                 <div class="space-y-2 text-sm">
                   <div>
-                    <label class="text-xs text-gray-500">여신한도 (0=무제한)</label>
+                    <label class="text-xs text-gray-500">여신한도 (0=자동 산출)</label>
                     <input type="text" inputmode="numeric" data-money id="cdCreditLimit" class="w-full border rounded px-2 py-1 text-sm mt-0.5" value="0">
+                    <p id="cdCreditLimitHint" class="text-[11px] text-gray-500 mt-1 leading-snug"></p>
                   </div>
                   <div>
                     <label class="text-xs text-gray-500">주문 차단</label>

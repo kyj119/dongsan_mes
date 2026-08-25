@@ -11,10 +11,11 @@ export function settingsPage(c: Context<HonoEnv>) {
 // ─── 탭 전환 함수 ───
 var TAB_ACTIVE = 'settings-tab px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600 cursor-pointer hover:text-blue-700';
 var TAB_INACTIVE = 'settings-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 cursor-pointer hover:text-gray-700';
-var TABS = ['company', 'cost', 'warehouse', 'caps', 'messages'];
+var TABS = ['company', 'cost', 'credit', 'warehouse', 'caps', 'messages'];
 var TAB_CONTENT_IDS = {
   company: 'companyTabContent',
   cost: 'costTabContent',
+  credit: 'creditTabContent',
   warehouse: 'warehouseTabContent',
   caps: 'capsTabContent',
   messages: 'messagesTabContent'
@@ -39,12 +40,18 @@ function switchSettingsTab(tab) {
     loadMsgSettings();
     testMsgBarobillConnection();
   }
+  // 여신 탭 — 영향 시뮬레이션이 전 거래처 집계라 무겁다. 진입 시 1회만 호출(폴링 금지).
+  if (tab === 'credit' && typeof loadCreditPolicy === 'function' && !window.__creditTabInitialized) {
+    window.__creditTabInitialized = true;
+    loadCreditPolicy();
+  }
 }
 
 // 페이지 로드 시 URL 파라미터 확인
 document.addEventListener('DOMContentLoaded', function() {
   var hash = window.location.hash;
   if (hash === '#tab=cost') switchSettingsTab('cost');
+  else if (hash === '#tab=credit') switchSettingsTab('credit');
   else if (hash === '#tab=warehouse') switchSettingsTab('warehouse');
   else if (hash === '#tab=caps') switchSettingsTab('caps');
   else if (hash === '#tab=messages') switchSettingsTab('messages');
@@ -70,6 +77,7 @@ ${capsSettingsScript}
         <div class="flex border-b mb-6">
           <button onclick="switchSettingsTab('company')" id="tabCompany" class="settings-tab px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600 cursor-pointer hover:text-blue-700">법인 설정</button>
           <button onclick="switchSettingsTab('cost')" id="tabCost" class="settings-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 cursor-pointer hover:text-gray-700">원가 기준</button>
+          <button onclick="switchSettingsTab('credit')" id="tabCredit" class="settings-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 cursor-pointer hover:text-gray-700">여신 정책</button>
           <button onclick="switchSettingsTab('warehouse')" id="tabWarehouse" class="settings-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 cursor-pointer hover:text-gray-700">창고 구역</button>
           <button onclick="switchSettingsTab('caps')" id="tabCaps" class="settings-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 cursor-pointer hover:text-gray-700">
             <i class="fas fa-fingerprint mr-1"></i>CAPS 근태 연동
@@ -304,6 +312,65 @@ ${capsSettingsScript}
             <datalist id="catList"></datalist>
           </div>
 
+        </div>
+
+        <!-- ─── 여신 정책 탭 ─── -->
+        <div id="creditTabContent" class="hidden space-y-6">
+          <div class="bg-white rounded-lg border border-gray-200 p-6">
+            <h2 class="text-lg font-bold text-gray-900 mb-2 flex items-center gap-2">
+              <i class="fas fa-shield-alt text-gray-400"></i>여신한도 자동 산출
+            </h2>
+            <p class="text-sm text-gray-500 mb-5 leading-relaxed">
+              거래처별로 한도를 입력하지 않습니다. <b>최근 거래 실적에서 한도를 계산</b>합니다.<br>
+              거래처 화면에서 한도를 직접 입력하면 그 거래처만 수동값이 우선하고, <b>0 으로 되돌리면 다시 자동</b>이 됩니다.
+            </p>
+
+            <div class="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 mb-5 text-sm text-gray-700">
+              한도 = 최근 <b id="cpFormulaMonths">6</b>개월 월평균 청구액 × <b id="cpFormulaMult">2</b>배
+              <span class="text-gray-500">(하한 <span id="cpFormulaFloor">100만</span> · 상한 <span id="cpFormulaCap">5,000만</span>)</span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">배수</label>
+                <input type="number" step="0.1" min="0.1" max="100" id="cpMultiplier" class="w-full border rounded px-3 py-2 text-sm">
+                <p class="text-[11px] text-gray-500 mt-1">월평균 청구액의 몇 배까지 미수를 허용할지</p>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">산출 기간 (개월)</label>
+                <input type="number" step="1" min="1" max="24" id="cpMonths" class="w-full border rounded px-3 py-2 text-sm">
+                <p class="text-[11px] text-gray-500 mt-1">12개월 이상으로 늘리면 이월 기초잔액 전표가 산출에 섞입니다</p>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">하한 (원)</label>
+                <input type="text" inputmode="numeric" data-money id="cpFloor" class="w-full border rounded px-3 py-2 text-sm">
+                <p class="text-[11px] text-gray-500 mt-1">신규·휴면 거래처가 한도 0 이 되는 것을 막습니다</p>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">상한 (원)</label>
+                <input type="text" inputmode="numeric" data-money id="cpCap" class="w-full border rounded px-3 py-2 text-sm">
+                <p class="text-[11px] text-gray-500 mt-1">대형 거래처가 사실상 무제한이 되는 것을 막습니다</p>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">경고 비율</label>
+                <input type="number" step="0.05" min="0.1" max="1" id="cpWarnRatio" class="w-full border rounded px-3 py-2 text-sm">
+                <p class="text-[11px] text-gray-500 mt-1">한도의 이 비율에 도달하면 경고(차단 아님). 0.8 = 80%</p>
+              </div>
+            </div>
+
+            <div class="mt-5 flex items-center gap-2">
+              <button onclick="simulateCreditPolicy()" id="cpSimBtn" class="ds-btn">영향 확인</button>
+              <button onclick="saveCreditPolicy()" id="cpSaveBtn" class="ds-btn ds-btn-primary">저장</button>
+              <span class="text-[11px] text-gray-400">전 거래처 집계라 몇 초 걸립니다</span>
+            </div>
+            <div id="cpSaveMsg" class="mt-3 text-center text-sm hidden"></div>
+          </div>
+
+          <div class="bg-white rounded-lg border border-gray-200 p-6">
+            <h3 class="text-sm font-bold text-gray-700 mb-1">현재 설정 적용 시 영향</h3>
+            <p class="text-[11px] text-gray-500 mb-4">현재 로그인한 법인 기준. 내부법인·현금소매 더미는 제외됩니다.</p>
+            <div id="cpImpact" class="text-sm text-gray-500">불러오는 중…</div>
+          </div>
         </div>
 
         <!-- ─── 창고 구역 탭 ─── -->
