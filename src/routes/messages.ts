@@ -20,6 +20,7 @@ import { kstYmd } from '../utils/kstDate'
 import messagesAdRouter from './messagesAd'
 import { getBannedWords, findBannedWords } from '../services/messageCompliance'
 import { checkBulkLimit, type BulkChannel } from '../services/messageBulkLimit'
+import { applyAudienceGuards, describeGuardResult, recordBulkRecipients } from '../services/messageAudience'
 import type { Context } from 'hono'
 
 /**
@@ -726,9 +727,24 @@ messagesRouter.post('/send-bulk', async (c) => {
       return c.json({ success: false, error: '발송 대상이 없습니다.' }, 400)
     }
 
-    const sendable = rawReceivers.filter(r => !!r.phone)
-    if (sendable.length === 0) {
+    const withPhone = rawReceivers.filter(r => !!r.phone)
+    if (withPhone.length === 0) {
       return c.json({ success: false, error: '유효한 전화번호가 없습니다.' }, 400)
+    }
+
+    // ── 수신자 가드: 번호 중복 통합 + 발송 피로도 ─────────────────────────
+    // 같은 번호가 여럿이면 같은 사람이 두 번 받고 두 번 과금된다. 최근 N일 내 이미 받은 번호도 뺀다
+    // (settings message_fatigue_days, 0=끔). ⚠️출고 안내 경로에는 적용하지 않는다 — 업무 필수 통지.
+    const audienceGuard = await applyAudienceGuards(
+      db, withPhone, r => r.phone || '', r => r.name || ''
+    )
+    const sendable = audienceGuard.kept
+    if (sendable.length === 0) {
+      const why = describeGuardResult(audienceGuard)
+      return c.json({
+        success: false,
+        error: `발송할 대상이 남지 않았습니다${why ? ` (${why})` : ''}.`,
+      }, 400)
     }
 
     // ── 수신자별 변수 해석 ────────────────────────────────────────────────
@@ -872,6 +888,26 @@ messagesRouter.post('/send-bulk', async (c) => {
         }))
       : []
 
+    // 수신자별 이력 — 대표 로그는 BULK(N) 한 줄이라 "누가 받았는지"가 여기에만 남는다.
+    // 피로도 가드의 데이터 소스이기도 하다. 기록 실패가 발송 결과를 덮지 않도록 예외는 삼킨다.
+    try {
+      await recordBulkRecipients(db, {
+        logId,
+        items: sendable.map((r, i) => ({
+          phone: r.phone || '',
+          name: r.name,
+          clientId: r.client_id ?? null,
+          ok: perItem.length === sendable.length ? perItem[i].ok : undefined,
+        })),
+        channel: limitChannel,
+        messageType: 'INFO',
+        entityId: getEntityId(c),
+        defaultOk: !!sendResult.receiptNum,
+      })
+    } catch (e) {
+      console.error('src/routes/messages.ts recordBulkRecipients error:', e)
+    }
+
     return c.json({
       success: true,
       data: {
@@ -886,6 +922,10 @@ messagesRouter.post('/send-bulk', async (c) => {
         failed: failedReceivers,
         // 건별 판정이 불가능한 응답이면 프론트가 "실패자 목록 없음"을 정확히 안내하도록 구분한다.
         failed_identifiable: perItem.length === sendable.length,
+        // 가드로 빠진 대상 — 화면이 "왜 60명이 아니라 52명인가"를 설명할 수 있어야 한다
+        merged_duplicate: audienceGuard.duplicates.length,
+        fatigue_skipped: audienceGuard.fatigued.length,
+        fatigue_days: audienceGuard.fatigueDays,
         type: templateCode,
       }
     })

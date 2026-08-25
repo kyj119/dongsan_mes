@@ -950,6 +950,8 @@ var msgCurrentGroupId = null;
 var msgGroupEditorId = null;   // null=신규, 숫자=수정
 
 async function loadContactGroups(keepSelection) {
+  // 조건 라벨(segDescribeFilter)이 서버 옵션에 의존하므로 목록을 그리기 전에 받아둔다
+  await segLoadOptions();
   try {
     var res = await axios.get('/api/contact-groups');
     msgGroups = res.data.data || [];
@@ -964,9 +966,14 @@ async function loadContactGroups(keepSelection) {
   } else {
     el.innerHTML = msgGroups.map(function(g) {
       var active = g.id === msgCurrentGroupId;
+      // 조건 그룹은 아이콘으로 구분하고, 갱신이 밀리면 목록에서 바로 보이게 한다
+      var mark = g.filter_json
+        ? '<i class="fas fa-filter text-indigo-500 mr-1" title="조건 그룹"></i>'
+          + (segIsStale(g.synced_at) || !g.synced_at ? '<i class="fas fa-exclamation-triangle text-amber-500 mr-1" title="갱신 필요"></i>' : '')
+        : '';
       return '<button onclick="selectContactGroup(' + g.id + ')" class="w-full text-left px-3 py-2 rounded-lg text-sm '
         + (active ? 'bg-blue-50 border border-blue-300 text-blue-800' : 'hover:bg-gray-50 border border-transparent text-gray-700') + '">'
-        + '<div class="flex items-center justify-between"><span class="font-medium truncate">' + escapeHtml(g.name) + '</span>'
+        + '<div class="flex items-center justify-between"><span class="font-medium truncate">' + mark + escapeHtml(g.name) + '</span>'
         + '<span class="text-xs text-gray-400 ml-2 whitespace-nowrap">' + (g.member_count || 0) + '명</span></div>'
         + (g.description ? '<div class="text-xs text-gray-400 truncate">' + escapeHtml(g.description) + '</div>' : '')
         + '</button>';
@@ -983,8 +990,24 @@ async function selectContactGroup(groupId) {
   document.getElementById('groupDetailActions').classList.remove('hidden');
   loadContactGroups(false);   // 선택 하이라이트 갱신 (재귀 방지: keepSelection=false)
 
+  // 조건이 설정된 그룹이면 무엇으로 담았는지·언제 갱신했는지 상단에 보여준다.
+  var fEl = document.getElementById('groupFilterInfo');
+  if (fEl) {
+    if (g && g.filter_json) {
+      var desc = segDescribeFilter(g.filter_json);
+      var stale = segIsStale(g.synced_at);
+      fEl.innerHTML = '<i class="fas fa-filter mr-1"></i>조건: ' + escapeHtml(desc)
+        + ' · 자동 ' + (g.auto_count || 0) + '곳'
+        + (g.synced_at ? ' · 갱신 ' + escapeHtml(String(g.synced_at).slice(0, 10)) : ' · <b>아직 갱신하지 않음</b>')
+        + (stale ? ' <span class="text-amber-700 font-semibold">· 30일 이상 지났습니다. 갱신하세요</span>' : '');
+      fEl.classList.remove('hidden');
+    } else {
+      fEl.classList.add('hidden');
+    }
+  }
+
   var body = document.getElementById('groupMemberBody');
-  body.innerHTML = '<tr><td colspan="4" class="text-center py-6 text-gray-400"><i class="fas fa-spinner fa-spin"></i></td></tr>';
+  body.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-gray-400"><i class="fas fa-spinner fa-spin"></i></td></tr>';
   try {
     var res = await axios.get('/api/contact-groups/' + groupId + '/members');
     var d = res.data.data || { members: [] };
@@ -999,19 +1022,24 @@ async function selectContactGroup(groupId) {
       warn.classList.add('hidden');
     }
     if (d.members.length === 0) {
-      body.innerHTML = '<tr><td colspan="4" class="text-center py-6 text-sm text-gray-400">멤버가 없습니다. <b>거래처 추가</b>로 담아보세요.</td></tr>';
+      body.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-sm text-gray-400">멤버가 없습니다. <b>조건 설정·갱신</b>으로 한 번에 담거나 <b>거래처 추가</b>로 골라 담으세요.</td></tr>';
       return;
     }
     body.innerHTML = d.members.map(function(m) {
+      var isAuto = m.source === 'AUTO';
+      var badge = isAuto
+        ? '<span class="px-1.5 py-0.5 rounded text-xs bg-indigo-50 text-indigo-700 border border-indigo-100">자동</span>'
+        : '<span class="px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-600 border border-gray-200">수동</span>';
       return '<tr class="border-b border-gray-100">'
         + '<td class="px-3 py-2 text-sm">' + escapeHtml(m.name || '') + '</td>'
         + '<td class="px-3 py-2 text-sm ' + (m.phone ? 'text-gray-600' : 'text-amber-600') + '">' + escapeHtml(m.phone || '연락처 없음') + '</td>'
-        + '<td class="px-3 py-2 text-sm text-gray-500">' + escapeHtml(m.email || '-') + '</td>'
+        + '<td class="px-3 py-2 whitespace-nowrap">' + badge + '</td>'
+        + '<td class="px-3 py-2 text-xs text-gray-500">' + escapeHtml(m.matched_reason || '-') + '</td>'
         + '<td class="px-3 py-2 text-center"><button onclick="removeGroupMember(\'' + m.member_type + '\',' + m.member_id + ')" class="text-gray-400 hover:text-red-600 text-xs"><i class="fas fa-times"></i></button></td>'
         + '</tr>';
     }).join('');
   } catch (e) {
-    body.innerHTML = '<tr><td colspan="4" class="text-center py-6 text-sm text-red-500">멤버 조회 실패</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-sm text-red-500">멤버 조회 실패</td></tr>';
   }
 }
 
@@ -1127,6 +1155,297 @@ async function applyGroupToBulk(groupId) {
     updateBulkSendLabel();
   } catch (e) {
     showToast('그룹 수신자 조회 실패', 'error');
+  }
+}
+
+/** 서버 수신자 가드(번호 통합·발송 피로도)로 빠진 대상 요약. 없으면 빈 문자열. */
+function msgGuardNote(d) {
+  var parts = [];
+  if (d.merged_duplicate > 0) parts.push('같은 번호 ' + d.merged_duplicate + '건 통합');
+  if (d.fatigue_skipped > 0) parts.push('최근 ' + (d.fatigue_days || 30) + '일 내 발송 ' + d.fatigue_skipped + '건 제외');
+  return parts.join(' · ');
+}
+
+// === 조건으로 대상 찾기 (세그먼트) ===
+// 판정 규칙의 정본은 서버 services/clientSegment.ts. 여기서는 라벨 표시와 조합 프리셋만 다룬다.
+// 품목 라벨을 여기에 하드코딩하면 서버 판정과 어긋나므로 /segment-options 로 받아 쓴다.
+var segMode = 'bulk';       // 'bulk' = 대량발송 수신자 채우기 · 'group' = 그룹 명단 갱신
+var segOptions = null;      // { segments:[{key,label,hint}], entities:[{id,name}] }
+var segLastResult = null;   // 마지막 [대상 확인] 결과 — 이게 없으면 적용 버튼이 잠긴다
+
+// 자주 쓰는 조합. "조합의 이름"은 업무 언어라 서버가 아니라 여기서 정한다.
+var SEG_PRESETS = [
+  { label: '전체 (명절 공지)', segments: [], months: 12 },
+  { label: '출력·간판', segments: ['PRINT'], months: 12 },
+  { label: '전사·태극기', segments: ['TRANSFER'], months: 12 },
+  { label: '출력+전사', segments: ['PRINT', 'TRANSFER'], months: 12 },
+  { label: '원자재', segments: ['MATERIAL'], months: 12 },
+  { label: '상품', segments: ['GOODS'], months: 12 }
+];
+
+function segLabelOf(key) {
+  if (!segOptions) return key;
+  var hit = (segOptions.segments || []).find(function(s) { return s.key === key; });
+  return hit ? hit.label : key;
+}
+
+/** 저장된 filter_json → 사람이 읽는 한 줄 설명. 라벨은 서버 옵션 기준(미로드 시 key 폴백). */
+function segDescribeFilter(raw) {
+  var f;
+  try { f = (typeof raw === 'string') ? JSON.parse(raw) : raw; } catch (e) { return '(조건 해석 실패)'; }
+  if (!f || typeof f !== 'object') return '(조건 없음)';
+  var parts = [];
+  var ents = f.entity_ids || [];
+  if (ents.length === 0) parts.push('전 사업자');
+  else if (segOptions) {
+    parts.push(ents.map(function(id) {
+      var e = (segOptions.entities || []).find(function(x) { return x.id === id; });
+      return e ? e.name : ('법인' + id);
+    }).join('+'));
+  } else parts.push(ents.length + '개 사업자');
+  var segs = f.segments || [];
+  parts.push(segs.length === 0 ? '전 품목' : segs.map(segLabelOf).join('+'));
+  parts.push('최근 ' + (f.months || 12) + '개월');
+  return parts.join(' · ');
+}
+
+/** 마지막 갱신이 30일을 넘었는지 — 조건 그룹은 놔두면 명단이 낡는다(경고 표시용). */
+function segIsStale(syncedAt) {
+  if (!syncedAt) return false;   // 미갱신은 별도 문구로 안내
+  var t = Date.parse(String(syncedAt).replace(' ', 'T') + 'Z');
+  if (isNaN(t)) return false;
+  return (Date.now() - t) > 30 * 86400 * 1000;
+}
+
+async function openSegmentPicker(mode) {
+  segMode = mode === 'group' ? 'group' : 'bulk';
+  if (segMode === 'group' && !msgCurrentGroupId) { showToast('그룹을 먼저 선택하세요', 'error'); return; }
+  var modal = document.getElementById('segmentPickerModal');
+  if (!modal) { console.warn('[messages] #segmentPickerModal not found'); return; }
+
+  modal.classList.remove('hidden');
+  segLastResult = null;
+  var resEl = document.getElementById('segResult');
+  if (resEl) resEl.classList.add('hidden');
+  var applyBtn = document.getElementById('segApplyBtn');
+  if (applyBtn) { applyBtn.disabled = true; applyBtn.textContent = '대상 확인 먼저'; }
+
+  var g = segMode === 'group' ? msgGroups.find(function(x) { return x.id === msgCurrentGroupId; }) : null;
+  document.getElementById('segModeHint').textContent = segMode === 'group'
+    ? '그룹 "' + (g ? g.name : '') + '"의 명단을 이 조건으로 채웁니다'
+    : '조건에 맞는 거래처를 수신자로 채웁니다';
+  document.getElementById('segFooterNote').textContent = segMode === 'group'
+    ? '조건으로 담은 멤버만 교체됩니다 (손으로 추가한 멤버는 유지)'
+    : '';
+
+  await segLoadOptions();
+  // 그룹 모드면 저장된 조건을 복원 — 매번 다시 고르지 않게 한다
+  segSetFilter(g && g.filter_json ? g.filter_json : null);
+}
+
+function closeSegmentPicker() {
+  var modal = document.getElementById('segmentPickerModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function segLoadOptions() {
+  if (segOptions) return;
+  try {
+    var res = await axios.get('/api/contact-groups/segment-options');
+    segOptions = res.data.data || { segments: [], entities: [] };
+  } catch (e) {
+    showToast('조건 옵션 조회 실패', 'error');
+    return;
+  }
+  var entEl = document.getElementById('segEntities');
+  if (entEl) {
+    var ents = segOptions.entities || [];
+    entEl.innerHTML = ents.length === 0
+      ? '<span class="text-xs text-gray-400">등록된 사업자가 없습니다 (전 사업자 기준으로 조회됩니다)</span>'
+      : ents.map(function(e) {
+          return '<label class="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">'
+            + '<input type="checkbox" value="' + e.id + '" class="w-4 h-4 rounded text-indigo-600">'
+            + escapeHtml(e.name) + '</label>';
+        }).join('');
+  }
+  var segEl = document.getElementById('segSegments');
+  if (segEl) {
+    segEl.innerHTML = (segOptions.segments || []).map(function(s) {
+      return '<label class="flex items-start gap-2 p-2 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">'
+        + '<input type="checkbox" value="' + s.key + '" class="w-4 h-4 rounded text-indigo-600 mt-0.5">'
+        + '<span><span class="text-sm text-gray-800">' + escapeHtml(s.label) + '</span>'
+        + '<span class="block text-xs text-gray-400">' + escapeHtml(s.hint) + '</span></span></label>';
+    }).join('');
+  }
+  var preEl = document.getElementById('segPresets');
+  if (preEl) {
+    preEl.innerHTML = SEG_PRESETS.map(function(p, i) {
+      return '<button onclick="segApplyPreset(' + i + ')" class="px-2.5 py-1 rounded-full text-xs border border-gray-300 text-gray-600 hover:border-indigo-400 hover:text-indigo-700">'
+        + escapeHtml(p.label) + '</button>';
+    }).join('');
+  }
+}
+
+/** 저장된 조건(filter_json 문자열 또는 객체)으로 체크박스 상태를 복원한다. */
+function segSetFilter(raw) {
+  var f = { entity_ids: [], segments: [], months: 12 };
+  if (raw) {
+    try {
+      var parsed = (typeof raw === 'string') ? JSON.parse(raw) : raw;
+      if (parsed && typeof parsed === 'object') {
+        f.entity_ids = parsed.entity_ids || [];
+        f.segments = parsed.segments || [];
+        f.months = parsed.months || 12;
+      }
+    } catch (e) { console.warn('[messages] filter_json 파싱 실패', e); }
+  }
+  document.querySelectorAll('#segEntities input[type=checkbox]').forEach(function(el) {
+    el.checked = f.entity_ids.indexOf(parseInt(el.value, 10)) >= 0;
+  });
+  document.querySelectorAll('#segSegments input[type=checkbox]').forEach(function(el) {
+    el.checked = f.segments.indexOf(el.value) >= 0;
+  });
+  var mEl = document.getElementById('segMonths');
+  if (mEl) mEl.value = String(f.months);
+}
+
+function segCollectFilter() {
+  var ent = [], seg = [];
+  document.querySelectorAll('#segEntities input[type=checkbox]:checked').forEach(function(el) {
+    ent.push(parseInt(el.value, 10));
+  });
+  document.querySelectorAll('#segSegments input[type=checkbox]:checked').forEach(function(el) {
+    seg.push(el.value);
+  });
+  var mEl = document.getElementById('segMonths');
+  return { entity_ids: ent, segments: seg, months: parseInt(mEl ? mEl.value : '12', 10) || 12 };
+}
+
+// 프리셋은 품목·기간만 바꾼다 — 사업자 선택은 사용자가 따로 고른 것이라 유지한다.
+function segApplyPreset(idx) {
+  var p = SEG_PRESETS[idx];
+  if (!p) return;
+  var cur = segCollectFilter();
+  segSetFilter({ entity_ids: cur.entity_ids, segments: p.segments, months: p.months });
+  segPreview();
+}
+
+async function segPreview() {
+  var btn = document.getElementById('segPreviewBtn');
+  var prev = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>조회 중'; }
+  try {
+    var res = await axios.post('/api/contact-groups/preview', { filter: segCollectFilter() });
+    segLastResult = res.data.data;
+    segRenderResult(segLastResult);
+  } catch (e) {
+    showToast((e.response && e.response.data && e.response.data.error) || '대상 조회 실패', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = prev; }
+  }
+}
+
+function segRenderResult(d) {
+  var resEl = document.getElementById('segResult');
+  if (resEl) resEl.classList.remove('hidden');
+
+  // 예상 비용은 현재 선택된 채널 단가로 — MMS(100원/건)는 조건 한 번에 금액이 크게 벌어진다.
+  var unit = { kakao: 7, sms: 15, mms: 100, email: 0 }[bulkChannel] || 0;
+  var costHtml = (segMode === 'bulk' && unit)
+    ? ' · 예상 <b>' + (d.sendable * unit).toLocaleString() + '원</b> <span class="text-gray-400">(' + unit + '원 × ' + d.sendable + ')</span>'
+    : '';
+  var notes = [];
+  if (d.no_phone > 0) notes.push('연락처 없음 ' + d.no_phone + '곳 제외');
+  if (d.merged_duplicate > 0) notes.push('같은 번호 ' + d.merged_duplicate + '건 통합(중복 발송·이중 과금 방지)');
+  document.getElementById('segSummary').innerHTML =
+    '발송 대상 <b class="text-indigo-700 text-base">' + d.sendable + '곳</b>' + costHtml
+    + (notes.length ? '<div class="text-xs text-gray-500 mt-1">' + notes.join(' · ') + '</div>' : '');
+
+  var body = document.getElementById('segSampleBody');
+  if (body) {
+    if (!d.sample || d.sample.length === 0) {
+      body.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-sm text-gray-400">조건에 맞는 거래처가 없습니다</td></tr>';
+    } else {
+      body.innerHTML = d.sample.map(function(x) {
+        return '<tr class="border-b border-gray-100">'
+          + '<td class="px-3 py-1.5 text-sm">' + escapeHtml(x.name || '') + '</td>'
+          + '<td class="px-3 py-1.5 text-sm text-gray-600">' + escapeHtml(x.phone || '') + '</td>'
+          + '<td class="px-3 py-1.5 text-xs text-gray-500">' + escapeHtml((x.segments || []).map(segLabelOf).join('·')) + '</td>'
+          + '<td class="px-3 py-1.5 text-xs text-gray-500 whitespace-nowrap">' + escapeHtml(x.last_order_date || '-') + '</td>'
+          + '</tr>';
+      }).join('');
+    }
+  }
+
+  var applyBtn = document.getElementById('segApplyBtn');
+  if (applyBtn) {
+    applyBtn.disabled = d.sendable === 0;
+    applyBtn.textContent = segMode === 'group'
+      ? '명단 갱신 (' + d.sendable + '곳)'
+      : '수신자 채우기 (' + d.sendable + '곳)';
+  }
+}
+
+function segApply() {
+  if (!segLastResult) { showToast('대상 확인을 먼저 눌러주세요', 'error'); return; }
+  return segMode === 'group' ? segSyncGroup() : segFillBulk();
+}
+
+// 조건 → 대량발송 수신자. 표본만 받아둔 상태이므로 전량을 다시 받아 채운다.
+async function segFillBulk() {
+  var btn = document.getElementById('segApplyBtn');
+  if (btn) btn.disabled = true;
+  try {
+    var res = await axios.post('/api/contact-groups/preview', { filter: segCollectFilter(), include_list: true });
+    var d = res.data.data || {};
+    var list = d.clients || [];
+    if (list.length === 0) { showToast('조건에 맞는 대상이 없습니다', 'error'); return; }
+
+    bulkTarget = 'clients';
+    setBulkTarget('clients');
+    bulkSelectedRecipients = list.map(function(x) {
+      return { id: x.client_id, name: x.name, phone: x.phone || '', email: x.email || '' };
+    });
+    closeSegmentPicker();
+
+    var infoEl = document.getElementById('bulkTargetInfo');
+    infoEl.textContent = '조건 대상 ' + list.length + '곳'
+      + (d.merged_duplicate > 0 ? ' · 같은 번호 ' + d.merged_duplicate + '건 통합' : '');
+    infoEl.className = 'text-sm text-indigo-600 mb-2';
+    renderSelectedTags();
+    updateBulkSendLabel();
+  } catch (e) {
+    showToast((e.response && e.response.data && e.response.data.error) || '수신자 채우기 실패', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// 조건 → 그룹 명단. 반영 전에 dry_run 으로 추가·제거 건수를 확인시킨다.
+async function segSyncGroup() {
+  var filter = segCollectFilter();
+  var btn = document.getElementById('segApplyBtn');
+  if (btn) btn.disabled = true;
+  try {
+    var dry = await axios.post('/api/contact-groups/' + msgCurrentGroupId + '/sync', { filter: filter, dry_run: true });
+    var d = dry.data.data || {};
+    var msg = '이 조건으로 명단을 갱신합니다.\n\n'
+      + '· 추가 ' + d.added + '곳\n'
+      + '· 제거 ' + d.removed + '곳\n'
+      + '· 유지 ' + d.kept + '곳\n\n'
+      + '갱신 후 명단은 ' + d.total + '곳이 됩니다.'
+      + (d.removed > 0 ? '\n\n제거되는 곳은 조건에서 벗어난 거래처입니다.\n손으로 추가한 멤버는 그대로 유지됩니다.' : '');
+    if (!(await showConfirm(msg))) return;
+
+    await axios.post('/api/contact-groups/' + msgCurrentGroupId + '/sync', { filter: filter });
+    closeSegmentPicker();
+    showToast('명단을 갱신했습니다 (' + d.total + '곳)', 'success');
+    await loadContactGroups(false);
+    selectContactGroup(msgCurrentGroupId);
+  } catch (e) {
+    showToast((e.response && e.response.data && e.response.data.error) || '명단 갱신 실패', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -1366,7 +1685,9 @@ async function msgSendBulkExec() {
       loadSummary();
       return;   // 선택목록을 비우지 않는다 — 재발송 버튼이 실패자만 남긴다
     }
-    showToast('대량 발송 완료 (' + okCnt + '건)', 'success');
+    // 가드로 빠진 대상을 반드시 알린다 — 60명 선택했는데 52건이 나가면 사용자는 이유를 알아야 한다
+    var guardNote = msgGuardNote(d);
+    showToast('대량 발송 완료 (' + okCnt + '건)' + (guardNote ? ' · ' + guardNote : ''), 'success');
     bulkSelectedRecipients = [];
     renderSelectedTags();
     updateBulkSendLabel();

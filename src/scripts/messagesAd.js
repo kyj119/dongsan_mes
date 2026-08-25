@@ -251,6 +251,9 @@ async function adPreviewSend() {
     chip('6개월 경과', ex.stale, exList.stale, 'bg-amber-50 text-amber-700');
     chip('거래이력 없음', ex.unknown, exList.unknown, 'bg-gray-100 text-gray-600');
     chip('번호 오류', ex.invalid, exList.invalid, 'bg-gray-100 text-gray-600');
+    // 법적 제외가 아니라 비용·수신거부 억제 목적이라 색을 구분한다(파랑=시스템 판단)
+    chip('같은 번호 통합', ex.duplicate, exList.duplicate, 'bg-blue-50 text-blue-700');
+    chip('최근 ' + (d.fatigue_days || 30) + '일 내 발송', ex.fatigue, exList.fatigue, 'bg-blue-50 text-blue-700');
     var exEl = document.getElementById('adPreviewExcluded');
     if (exEl) {
       exEl.innerHTML = parts.length

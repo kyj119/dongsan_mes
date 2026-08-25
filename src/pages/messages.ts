@@ -116,6 +116,7 @@ export function messagesPage(c: Context<HonoEnv>) {
           <button onclick="openRecipientPicker('employees')" id="bulkTgtEmployees" class="px-4 py-2 rounded-full text-sm font-medium bg-green-50 border-2 border-green-500 text-green-700"><i class="fas fa-users mr-1"></i>직원 선택</button>
           <button onclick="openRecipientPicker('clients')" id="bulkTgtClients" class="px-4 py-2 rounded-full text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400"><i class="fas fa-building mr-1"></i>거래처 선택</button>
           <button onclick="openGroupPicker()" id="bulkTgtGroup" class="px-4 py-2 rounded-full text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400"><i class="fas fa-layer-group mr-1"></i>그룹 선택</button>
+          <button onclick="openSegmentPicker('bulk')" id="bulkTgtSegment" class="px-4 py-2 rounded-full text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400" title="법인·품목·기간 조건으로 대상을 한 번에 산출합니다"><i class="fas fa-filter mr-1"></i>조건으로 찾기</button>
           <button onclick="setBulkTarget('custom')" id="bulkTgtCustom" class="px-4 py-2 rounded-full text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400"><i class="fas fa-pen mr-1"></i>직접 입력</button>
         </div>
         <div id="bulkTargetInfo" class="text-sm text-green-600 mb-2"></div>
@@ -339,19 +340,22 @@ export function messagesPage(c: Context<HonoEnv>) {
             <div id="groupDetailDesc" class="text-xs text-gray-400"></div>
           </div>
           <div id="groupDetailActions" class="hidden flex gap-2">
+            <button onclick="openSegmentPicker('group')" class="px-3 py-1.5 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700"><i class="fas fa-filter mr-1"></i>조건 설정·갱신</button>
             <button onclick="openRecipientPicker('clients', true)" class="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"><i class="fas fa-user-plus mr-1"></i>거래처 추가</button>
             <button onclick="editCurrentGroup()" class="px-3 py-1.5 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-50"><i class="fas fa-pen mr-1"></i>이름 수정</button>
             <button onclick="deleteCurrentGroup()" class="px-3 py-1.5 border border-red-200 text-red-600 rounded text-xs hover:bg-red-50"><i class="fas fa-trash mr-1"></i>삭제</button>
           </div>
         </div>
+        <div id="groupFilterInfo" class="hidden text-xs mb-2 px-2 py-1.5 rounded bg-indigo-50 border border-indigo-100 text-indigo-800"></div>
         <div id="groupMemberWarn" class="hidden text-xs text-amber-600 mb-2"></div>
-        <div class="overflow-hidden">
+        <div class="overflow-x-auto">
           <table class="w-full ds-table ds-table-striped">
             <thead class="bg-gray-50">
               <tr>
                 <th class="col-name px-3 py-2 text-left text-xs font-semibold text-gray-600">이름</th>
                 <th class="col-phone px-3 py-2 text-left text-xs font-semibold text-gray-600">연락처</th>
-                <th class="col-email px-3 py-2 text-left text-xs font-semibold text-gray-600">이메일</th>
+                <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 whitespace-nowrap">구분</th>
+                <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">근거</th>
                 <th class="col-action px-3 py-2 text-center text-xs font-semibold text-gray-600">제거</th>
               </tr>
             </thead>
@@ -565,6 +569,79 @@ export function messagesPage(c: Context<HonoEnv>) {
     <div class="flex justify-end gap-2 mt-5">
       <button onclick="closeGroupEditor()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">취소</button>
       <button onclick="saveGroupEditor()" class="ds-btn ds-btn-primary text-sm">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 조건으로 대상 찾기 — 대량발송(bulk)·그룹 갱신(group) 공용 -->
+<div id="segmentPickerModal" class="ds-modal-overlay hidden flex items-center justify-center">
+  <div class="ds-modal w-[680px] max-h-[88vh] flex flex-col">
+    <div class="flex items-center justify-between p-4 border-b">
+      <div>
+        <h3 class="text-lg font-bold text-gray-800">조건으로 대상 찾기</h3>
+        <div id="segModeHint" class="text-xs text-gray-400"></div>
+      </div>
+      <button onclick="closeSegmentPicker()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+    </div>
+
+    <div class="flex-1 overflow-y-auto p-4 space-y-4">
+      <div>
+        <label class="text-xs font-semibold text-gray-600 mb-1.5 block">자주 쓰는 조건</label>
+        <div id="segPresets" class="flex flex-wrap gap-1.5"></div>
+      </div>
+
+      <div>
+        <label class="text-xs font-semibold text-gray-600 mb-1.5 block">사업자 <span class="text-gray-400 font-normal">(선택 안 하면 전체)</span></label>
+        <div id="segEntities" class="flex flex-wrap gap-3"></div>
+      </div>
+
+      <div>
+        <label class="text-xs font-semibold text-gray-600 mb-1.5 block">품목 <span class="text-gray-400 font-normal">(선택 안 하면 전체 — 명절 공지 등)</span></label>
+        <div id="segSegments" class="grid grid-cols-2 gap-2"></div>
+      </div>
+
+      <div>
+        <label class="text-xs font-semibold text-gray-600 mb-1.5 block">거래 기간</label>
+        <select id="segMonths" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+          <option value="6">최근 6개월</option>
+          <option value="12" selected>최근 1년</option>
+          <option value="24">최근 2년</option>
+        </select>
+        <span class="text-xs text-gray-400 ml-2">이 기간에 거래가 있는 거래처만</span>
+      </div>
+
+      <div class="pt-1">
+        <button onclick="segPreview()" id="segPreviewBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
+          <i class="fas fa-search mr-1"></i>대상 확인
+        </button>
+        <span class="text-xs text-gray-400 ml-2">확인은 과금되지 않습니다</span>
+      </div>
+
+      <div id="segResult" class="hidden">
+        <div id="segSummary" class="text-sm p-3 rounded-lg bg-gray-50 border border-gray-200 mb-2"></div>
+        <div class="text-xs font-semibold text-gray-600 mb-1">대상 표본 <span class="text-gray-400 font-normal">(거래액 상위 20곳)</span></div>
+        <div class="overflow-x-auto border border-gray-200 rounded-lg">
+          <table class="w-full ds-table">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-3 py-1.5 text-left text-xs font-semibold text-gray-600">거래처</th>
+                <th class="px-3 py-1.5 text-left text-xs font-semibold text-gray-600">연락처</th>
+                <th class="px-3 py-1.5 text-left text-xs font-semibold text-gray-600">품목</th>
+                <th class="px-3 py-1.5 text-left text-xs font-semibold text-gray-600 whitespace-nowrap">최근 거래</th>
+              </tr>
+            </thead>
+            <tbody id="segSampleBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="p-4 border-t flex items-center justify-between gap-2">
+      <div id="segFooterNote" class="text-xs text-gray-400"></div>
+      <div class="flex gap-2">
+        <button onclick="closeSegmentPicker()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">취소</button>
+        <button onclick="segApply()" id="segApplyBtn" class="ds-btn ds-btn-primary text-sm" disabled>대상 확인 먼저</button>
+      </div>
     </div>
   </div>
 </div>

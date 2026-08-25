@@ -7,6 +7,7 @@ import { BarobillSmsProvider } from '../services/barobillSms'
 import { getEntityCorpNum } from '../utils/entitySettings'
 import { BAROBILL_UNIT_COST_VAT_EXCL } from '../constants/barobillCodes'
 import { checkBulkLimit } from '../services/messageBulkLimit'
+import { applyAudienceGuards, describeGuardResult, recordBulkRecipients } from '../services/messageAudience'
 import type { SMSMessage, ATSMessage } from '../services/barobillSms'
 export type { SMSMessage, ATSMessage }
 
@@ -1043,6 +1044,15 @@ kakaoRouter.post('/send-sms-bulk', async (c) => {
       return c.json({ success: false, error: '발송 대상이 없습니다.' }, 400)
     }
 
+    // 수신자 가드 — 번호 중복 통합 + 발송 피로도(settings message_fatigue_days, 0=끔).
+    // 상한 판정보다 먼저 적용해야 "빠진 뒤의 실제 건수"로 상한이 걸린다.
+    const smsGuard = await applyAudienceGuards(db, messages, m => m.rcv || '', m => m.rcvnm || '')
+    messages = smsGuard.kept
+    if (messages.length === 0) {
+      const why = describeGuardResult(smsGuard)
+      return c.json({ success: false, error: `발송할 대상이 남지 않았습니다${why ? ` (${why})` : ''}.` }, 400)
+    }
+
     // #584 건수 상한 — target_type=clients면 전 거래처(수천 건)가 한 번에 나간다.
     const smsBulkLimitErr = await checkBulkLimit(db, subject ? 'lms' : 'sms', messages.length)
     if (smsBulkLimitErr) return c.json({ success: false, error: smsBulkLimitErr }, 400)
@@ -1095,6 +1105,21 @@ kakaoRouter.post('/send-sms-bulk', async (c) => {
       getEntityId(c)
     ).run()
 
+    // 수신자별 이력 — 대표 로그는 BULK(N) 한 줄뿐이라 피로도 판정 소스가 여기에만 남는다.
+    // 기록 실패가 발송 결과를 덮지 않도록 예외는 삼킨다(이미 나간 발송이다).
+    try {
+      await recordBulkRecipients(db, {
+        logId: Number(insertResult.meta.last_row_id) || null,
+        items: messages.map(m => ({ phone: m.rcv || '', name: m.rcvnm })),
+        channel: subject ? 'lms' : 'sms',
+        messageType: 'INFO',
+        entityId: getEntityId(c),
+        defaultOk: !!sendResult.receiptNum,
+      })
+    } catch (e) {
+      console.error('src/routes/kakao.ts recordBulkRecipients error:', e)
+    }
+
     return c.json({
       success: true,
       data: {
@@ -1105,6 +1130,10 @@ kakaoRouter.post('/send-sms-bulk', async (c) => {
         status: sendResult.receiptNum ? 'SUCCESS' : 'FAILED',
         type: templateCode,
         receiver_count: messages.length,
+        // 가드로 빠진 대상 — 화면이 "왜 요청보다 적게 나갔는지" 설명할 수 있어야 한다
+        merged_duplicate: smsGuard.duplicates.length,
+        fatigue_skipped: smsGuard.fatigued.length,
+        fatigue_days: smsGuard.fatigueDays,
       }
     })
   } catch (error) {

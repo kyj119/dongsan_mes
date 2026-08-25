@@ -29,6 +29,7 @@ import {
   getBannedWords,
 } from '../services/messageCompliance'
 import { checkBulkLimit } from '../services/messageBulkLimit'
+import { applyAudienceGuards, recordBulkRecipients } from '../services/messageAudience'
 import type { SMSMessage } from './kakao'
 
 /** 사전동의 면제 기간 — 시행령 §61② "거래가 종료된 날부터 6개월" */
@@ -59,7 +60,13 @@ export interface AdAudience {
     unknown: AdReceiver[]
     /** 번호 자체가 없거나 형식 불량 */
     invalid: AdReceiver[]
+    /** 같은 번호라 통합되어 빠짐 — 이중 수신·이중 과금 방지 */
+    duplicate: AdReceiver[]
+    /** 최근 N일 내 이미 발송받음 — 수신거부 유발 억제 */
+    fatigue: AdReceiver[]
   }
+  /** 적용된 피로도 기준일(0 = 미적용) */
+  fatigueDays: number
 }
 
 /**
@@ -152,7 +159,17 @@ export async function resolveAdAudience(c: Context<HonoEnv>, receivers: BulkRece
     }
   }
 
-  return { sendable, excluded: { optOut, stale, unknown, invalid } }
+  // ── 4) 번호 중복 통합 + 발송 피로도 ──
+  // 광고는 대량이 기본이라 같은 번호 중복과 반복 수신이 그대로 비용·수신거부로 이어진다.
+  // 여기(resolveAdAudience)에 두는 이유 = /preview 와 /send 가 같은 함수를 쓰므로
+  // **미리보기 숫자와 실제 발송 대상이 자동으로 일치**한다.
+  const guard = await applyAudienceGuards(db, sendable, r => r.phone || '', r => r.name || '')
+
+  return {
+    sendable: guard.kept,
+    excluded: { optOut, stale, unknown, invalid, duplicate: guard.duplicates, fatigue: guard.fatigued },
+    fatigueDays: guard.fatigueDays,
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -219,16 +236,21 @@ messagesAdRouter.post('/preview', async (c) => {
           stale: audience.excluded.stale.length,
           unknown: audience.excluded.unknown.length,
           invalid: audience.excluded.invalid.length,
+          duplicate: audience.excluded.duplicate.length,
+          fatigue: audience.excluded.fatigue.length,
         },
         excluded_list: {
           opt_out: brief(audience.excluded.optOut),
           stale: brief(audience.excluded.stale),
           unknown: brief(audience.excluded.unknown),
           invalid: brief(audience.excluded.invalid),
+          duplicate: brief(audience.excluded.duplicate),
+          fatigue: brief(audience.excluded.fatigue),
         },
         previews,
         available_vars: BULK_VAR_NAMES,
         exempt_months: CONSENT_EXEMPT_MONTHS,
+        fatigue_days: audience.fatigueDays,
       }
     })
   } catch (error) {
@@ -263,7 +285,9 @@ messagesAdRouter.post('/send', async (c) => {
         success: false,
         error: `발송 가능한 대상이 없습니다. (수신거부 ${audience.excluded.optOut.length}건, `
           + `${CONSENT_EXEMPT_MONTHS}개월 경과 ${audience.excluded.stale.length}건, `
-          + `거래이력 확인불가 ${audience.excluded.unknown.length}건)`,
+          + `거래이력 확인불가 ${audience.excluded.unknown.length}건, `
+          + `번호중복 통합 ${audience.excluded.duplicate.length}건, `
+          + `최근 ${audience.fatigueDays}일 내 발송 ${audience.excluded.fatigue.length}건)`,
       }, 400)
     }
 
@@ -379,6 +403,26 @@ messagesAdRouter.post('/send', async (c) => {
           error: barobillErrorMessage(x.r.code),
         }))
       : []
+
+    // 수신자별 이력 — 대표 로그는 AD(N) 한 줄이라 "누구에게 광고가 나갔는지"가 여기에만 남는다.
+    // 광고는 분쟁 시 이 기록이 증거가 되고, 다음 발송의 피로도 판정 소스이기도 하다.
+    try {
+      await recordBulkRecipients(db, {
+        logId,
+        items: audience.sendable.map((r, i) => ({
+          phone: r.phone || '',
+          name: r.name,
+          clientId: r.client_id ?? null,
+          ok: perItem.length === messages.length ? perItem[i].ok : undefined,
+        })),
+        channel: channel === 'mms' ? 'mms' : 'lms',
+        messageType: 'AD',
+        entityId: getEntityId(c),
+        defaultOk: !!sendResult.receiptNum,
+      })
+    } catch (e) {
+      console.error('src/routes/messagesAd.ts recordBulkRecipients error:', e)
+    }
 
     return c.json({
       success: true,
