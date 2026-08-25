@@ -206,3 +206,6 @@ sync_clients.sql
 docs/analysis/*.csv
 docs/analysis/*.xlsx
 docs/order-file-matching/*.csv
+# 같은 CSV 의 백업본(scale_table.csv.bak-YYYY-MM-DD 등)은 `*.csv` 패턴을 빠져나가
+# 미추적으로 영구히 남는다. 원본이 애초에 비추적이므로 백업본도 추적하지 않는다.
+docs/order-file-matching/*.bak-*
