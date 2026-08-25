@@ -84,6 +84,12 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 - **통계는 만능이 아니다** — 상관 스칼라 서브쿼리(`(SELECT MAX(..) FROM orders WHERE client_id=c.id)`)·`clients`를 바깥에 둔 조인은 애초에 쓰지 말 것. **큰 쪽을 먼저 GROUP BY로 접고 작은 쪽을 조인**한다(`reports.ts` client-revenue·`clients.ts` last_order_date 정본).
 - **타입체크·smoke는 이걸 절대 못 잡는다** — 14초 응답도 200이다. 게이트 = `npm run audit:query-cost`(예산 초과 시 exit 1, 기준선=`scripts/query-cost-baseline.json`). 진단은 `EXPLAIN QUERY PLAN` + 응답의 `rows_read`.
 
+### 계산 규칙 = 값 대조 게이트로만 잡힌다 (`npm run test:calc` · CI 배포 차단)
+**문법이 멀쩡한 계산 오류는 기존 게이트 전부를 통과한다.** 2026-08-25 여신 리팩터링에서 공유 SQL을 서브쿼리로 감싸며 바깥에 `?`를 둬 **파라미터가 한 칸씩 밀렸고**(`a.entity_id=6` → adjustments 전량 누락, 초과 37곳이 108곳으로), typecheck·build·check:dom·sort-audit·entity-audit·smoke가 **전부 통과**했다. prod 배포 후 숫자를 대조해서야 잡혔다.
+- **게이트 = `npm run test:calc`** — 청구면적(`test:orderline`)·마감표기(`test:finishing-label`)·파일규격(`test:file-dims`)·여신(`test:credit`)·품목중복(`audit:items:selftest`). **deploy.yml 이 배포 전에 돌린다**(2026-08-25 신설 — 그전엔 npm 스크립트로만 있어 아무도 자동 실행하지 않았다).
+- `test:hookguard`는 제품이 아니라 **개발환경**(Windows 셸 차단)을 검증 → CI 제외, 로컬 `test:all`에만.
+- 새 계산 규칙을 만들면 **픽스처 테스트를 같이 만든다**. ⚠️로컬 D1이 비면 전부 0이라 판별이 안 된다(그래서 `test:credit`은 in-memory SQLite에 픽스처를 심는다). 상세=memory `feedback-sqlite-placeholder-subquery-order`.
+
 ### IA 스크립트 = 웹과 분리된 수동 배포 축 5개 (`npm run audit:ia-jsx`)
 `git push`·`npm run deploy` 로는 **절대 반영되지 않는다**. main에 있어도 런타임은 옛날 파일일 수 있다 — 브랜치·커밋 기록으로 배포 여부를 추론하면 틀린다.
 

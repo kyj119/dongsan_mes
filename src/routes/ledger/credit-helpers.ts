@@ -207,6 +207,52 @@ export function buildCreditEvalSql(
   return { sql, params }
 }
 
+export interface CreditImpact {
+  total: number
+  exceeded: number
+  warning: number
+  exceeded_balance: number
+  held: number
+  unlimited: number
+}
+
+/**
+ * 정책 적용 시 영향 집계 — 「이 배수로 하면 몇 곳이 걸리나」. 설정 화면 시뮬레이션이 쓴다.
+ *
+ * ★합성을 여기 두는 이유 = 이 자리가 2026-08-25 바인딩 사고가 난 지점이다(위 ⚠️ 참조).
+ *   호출부(settings.ts)에서 조립하면 위험 주석과 조립 코드가 떨어져 있어 다시 틀린다.
+ *   여기 두면 `test:credit` 이 **실제 합성 결과**를 검증한다 — 사본을 검증하는 게 아니라.
+ * warnRatio 는 인라인한다(바깥 `?` 금지 규칙). 호출부에서 숫자 범위 검증 후 넘길 것.
+ */
+export async function queryCreditImpact(
+  c: Context<HonoEnv>,
+  policy: CreditPolicy
+): Promise<CreditImpact> {
+  const { sql, params } = buildCreditEvalSql(c, policy)
+  const ratio = Number(policy.warnRatio)
+  if (!Number.isFinite(ratio) || ratio <= 0 || ratio > 1) {
+    throw new Error(`queryCreditImpact: warnRatio 범위 밖 (${policy.warnRatio})`)
+  }
+  const row = await c.env.DB.prepare(
+    `SELECT COUNT(*) AS total,
+            SUM(CASE WHEN lim >= 0 AND balance >= lim THEN 1 ELSE 0 END) AS exceeded,
+            SUM(CASE WHEN lim >= 0 AND balance < lim AND balance >= lim * ${ratio} THEN 1 ELSE 0 END) AS warning,
+            CAST(SUM(CASE WHEN lim >= 0 AND balance >= lim THEN balance ELSE 0 END) AS INT) AS exceeded_balance,
+            SUM(CASE WHEN credit_hold = 1 THEN 1 ELSE 0 END) AS held,
+            SUM(CASE WHEN lim < 0 THEN 1 ELSE 0 END) AS unlimited
+       FROM (${sql})`
+  ).bind(...params).first<CreditImpact>()
+
+  return {
+    total: Number(row?.total) || 0,
+    exceeded: Number(row?.exceeded) || 0,
+    warning: Number(row?.warning) || 0,
+    exceeded_balance: Number(row?.exceeded_balance) || 0,
+    held: Number(row?.held) || 0,
+    unlimited: Number(row?.unlimited) || 0,
+  }
+}
+
 export interface CreditExceededRow {
   client_id: number
   client_name: string
