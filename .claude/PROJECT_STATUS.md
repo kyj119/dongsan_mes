@@ -32,7 +32,9 @@
 
 ## ✅ 최근 완료 — 후속 대기 인덱스 (경위·상세 전문 = `PROJECT_STATUS_ARCHIVE.md`)
 
-- **✅ 08-25 D1 실행계획 붕괴 — prod 최초 ANALYZE + 쿼리 재작성 + 렌더 개편 (배포 완료)** — ★prod 에 `sqlite_stat1` 이 **없었다**. 정본=CLAUDE.md §D1 실행계획 · 게이트 `audit:query-cost` · 경위 전문=ARCHIVE. **남은=전건 렌더 페이지 페이징**(bank DOM 14,892·input 2,057 / ledger / attendance) · 대형 페이로드 6개(tax-invoices 1.1MB·ai-analysis 1.0MB) · 상관 서브쿼리 62곳은 현재 ANALYZE 가 가려주는 상태
+- **✅ 08-25 D1 실행계획 붕괴 — prod 최초 ANALYZE + 쿼리 재작성 + 렌더 개편 (배포 완료)** — ★prod 에 `sqlite_stat1` 이 **없었다**. 정본=CLAUDE.md §D1 실행계획 · 게이트 `audit:query-cost` · 경위 전문=ARCHIVE. 후속 3트랙은 아래 항목에서 이어감
+
+- **✅ 08-25 전건 렌더·페이로드·상관 서브쿼리 후속 (배포 완료)** — bank 거래내역 **더보기 누적 50건**(DOM 14,892→1,604·input 2,057→250·352→33KB, ★종전 501번째부터 **안내 없이 잘려** 있었다) · attendance `strftime` **비-sargable 제거**+표시 대상 직원 조인(942→606행·400→230KB, 감소분은 그리드에 없는 직원의 사표) · `audit:subquery` 신설(P1 30·최악 100만행+ 4). 경위·잔여 판정 전문=ARCHIVE. 남은=`/inventory/dashboard/zones` 미배정 980행 · ledger 854행 · P1 4건
 
 - **✅ 08-25 md·스킬 문서 전수 점검 — 드리프트 12건 정정(코드 0)** — smoke 102→**111**(CLAUDE.md·deploy-verify 스킬) · `~/.claude/plans/`(repo 밖) 경로 정정 · `docs/INDEX.md` spec 40→**46건**+8월 트랙 신설 · design-decisions **본문 없는 인덱스 전용 ID 14개** 명시 · C 카카오톡 「미구현」→구현 정정 · 미기재 TODO 3건(계기판·`resolveStockUnit` yd·`base_unit` 감사망) 등재. ⚠️**MEMORY.md 여유 61자** — 다음 추가 시 ARCHIVE 이관 필수
 
@@ -102,7 +104,7 @@
 
 ## 🔴 진행 중
 
-- **✅ prod 배포 08-25 `cc1ed55e`·`b1899e2d`·`7822d3ed` — 여신한도 파생 + 연체 알림 여신 기준·주 1회** — 한도=월평균×2 자동 산출(★`credit_limit` **0=자동·음수=무제한**, 종전 0=무제한에서 반전)·ADMIN 경고만·잔액식 통일. 알림 판정 FIFO→여신(**169→37곳**·제목 「여신 초과」)·dedup 168h·출고 시점 경고도 동일 기준. ⚠️`/overdue` 배너는 **FIFO 유지**(화면=aging·알림=risk). ⚠️리팩터링 바인딩 회귀 1건 자체 발견·수정 → memory `feedback-sqlite-placeholder-subquery-order`. prod smoke 112/112·마커 실측. 경위=ARCHIVE §여신한도 · 정본=memory `design-credit-limit-derived`. 남은=매입 겸업 4곳 상계(AP 파생 부재)
+- **✅ prod 배포 08-25 `cc1ed55e`·`b1899e2d`·`7822d3ed` — 여신한도 파생 + 연체 알림 여신 기준·주 1회** — 한도=월평균×2 자동 산출(★`credit_limit` **0=자동·음수=무제한**, 종전 0=무제한에서 반전)·ADMIN 경고만·잔액식 통일. 알림 판정 FIFO→여신(**169→37곳**·제목 「여신 초과」)·dedup 168h·출고 시점 경고도 동일 기준. ⚠️`/overdue` 배너는 **FIFO 유지**(화면=aging·알림=risk). ⚠️리팩터링 바인딩 회귀 1건 자체 발견·수정 → 게이트 신설 **`npm run test:calc`(CI 배포 차단, deploy.yml)**·`test:credit`=in-memory SQLite 픽스처. ★기존 selftest 4종은 **CI에서 한 번도 안 돌고 있었고** 첫 실행에서 esbuild CLI spawn 이 Linux 에서 깨진 걸 잡았다(→JS API). 정본=memory `feedback-sqlite-placeholder-subquery-order`. prod smoke 112/112·마커 실측. 경위=ARCHIVE §여신한도 · 정본=memory `design-credit-limit-derived`. 남은=매입 겸업 4곳 상계(AP 파생 부재)
 - **★재고실사 실행 + 불편 접수 개설 (08-25)** — 계획=`~/.claude/plans/greedy-exploring-stroustrup.md`(repo 밖) · 경위 전문=`PROJECT_STATUS_ARCHIVE.md` §2026-08-25 재고실사 · memory `project-employee-adoption-protocol`. ★병목=옮겨적기 · ★부족경고 판정축=**`reorder_point`**(`safe_stock` 아님 — 08-25 정정) · ★차단점=`inventoryCount.ts:10` 한 줄 · ★법인별 취급축=`inventory` 행. ✅**08-25 완결·배포 `d64a15c3`**(smoke 111/111·마커 실측): 5구역 담당+계정 5 · 8/24 승인(전사 재고 첫 반영 21,652yd) · 실사↔담당자 배선 · **한국엡손 뭉침 4전표 분해**(★SC-S8140=**6색기**, 9140 잉크 97,000→**101,900**). · **safe_stock/reorder_point 48행 채움**(★경고 판정은 `reorder_point` 기준·창고 SUM vs MAX — `safe_stock` 은 판정에 안 쓰인다. 리드타임 실측 불가라 1주, 발동 21건) · ★**일일 알림 4종이 아무에게도 안 보이고 있었다** — `target_role='MANAGER'` 인데 MANAGER 계정 0명 → ADMIN 예외 추가(`6c14234b`·5경로 전부·smoke 111/111). ⚠️admin 미읽음 1,734건 = 벨 포화. 남은=카톡방
 - **★MES 실사용 전환 (전략 방향 확정 2026-08-11 — 자체 ERP+MES 일원화, 이카운트 단계적 해지)**: ★**「6월 2,348건 급락」은 오독**(08-25 실측 — 2,275가 `e2e_tester` 로봇, 사람 활동은 전부 `admin`). **급락이 아니라 시작된 적이 없다**. 직원 48명 vs 실직원 계정 6·로그인 3·업무기록 0. 살아 있는 건 **사람 입력이 필요 없는 자동수집 4종뿐**. 구조는 완비돼 있고 **데이터만 비어 있다**(단가표 11테이블 0건). **전환 관문 = 경리가 MES 에 매출을 직접 입력할 수 있는가**. 다음 = 잔여 단가 판단 → 경리 1명 병행입력 → 월말 채권 대사 3개월 오차 0 → 이카운트 해지. **목표선 = 관리회계까지. 복식부기·재무제표·세무신고는 만들지 않는다**(WEHAGO·세무사 유지). 경위·대응 = memory `project-employee-adoption-protocol` · 계획 `~/.claude/plans/greedy-exploring-stroustrup.md`(repo 밖)
 
