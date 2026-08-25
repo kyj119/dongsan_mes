@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-08-25T03:52:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-08-25T09:45:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -26,6 +26,19 @@
 > - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md `line N` 잔여참조 재확인(0건, 기존에 이미 서술 참조로 전환 완료). 이번 사이클의 audit:entity FP(bound-param per-entity loop)는 financialReports.ts 1개 파일 국소 패턴이라 별도 standing scan 추가는 보류(재발 시 codify).
 > - **백로그 트림 체크**: 사이클 로그 11건(이번 로그 포함), 임계 13건 미만, 트림 불요.
 > - 신규 이슈 0건(재무 5건 전부 read-only 확인 + audit:entity 6건 전부 FP 확정 + standing scan 전부 net-new 0), 자동수정 0건, done-sync: open 11(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
+
+> **Area 5 보안 + 인프라 (2026-08-25T09:45):**
+> - **방법**: `git status`=워킹트리 clean, `git fetch origin main` → shallow clone(depth 50)이라 직전 Area5 앵커(`665cc61`)가 fetch 범위 밖 → `git fetch --unshallow origin main`으로 전체 이력 확보 후 `git checkout main && git reset --hard origin/main`(HEAD `8f652f8`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area5 자신의 앵커(`665cc61`) 이후 웹앱 범위(`-- src migrations scripts .github`) diff = 16커밋 — 대부분(재무/원가 5건·재고 3건·파일규격/스캔축 4건·IA패널 1건)은 이미 Area1~4가 각자 렌즈로 정독 완료(중복 재정독 스킵). **보안 렌즈 신규 대상 = Area4 사이클(03:52) 이후 새로 머지된 2건**: `b359f9a`(AREA 단가밴드 역산, report-only CLI) · `28c93f8`(품목별 최소청구변 예외, UV판재 실규격 청구).
+> - **28c93f8 보안 정독**: ① 신규 컬럼 `items.min_billing_side_cm`(마이그 0541)을 5개 서버 호출부(create.ts 3·update.ts 2) 전부 `SELECT ... FROM items WHERE id IN (${placeholders})`+`.bind(...itemIds)` 파라미터라이즈 조회 — SQLi 없음, 기존 `pricing_method` 조회와 동일 패턴(신규 취약면 아님). ② **클라이언트 신뢰 여부**: 프론트가 hidden field `min_billing_side_${id}`로 값을 들고 다니나, 서버 금액 계산은 `computeLineAmount({ ...item, min_billing_side_cm: minSideMap.get(item.item_id) }, ...)` — **스프레드 뒤에 서버값을 재대입**해 클라이언트가 body에 `min_billing_side_cm`을 조작해 넣어도 무시됨(0=최소청구 없음이라 조작 시 저가청구 우회 가능성 있었을 지점인데, 서버측 override로 차단 확인 — 기존 unit_price 서버재계산 패턴과 동형). ③ entity_id 격리: `items` 테이블 조회는 변경 전부터 entity 필터 미적용(품목 마스터=전역, FP클래스⑤와 동일 성격) — 이번 커밋이 새로 뚫은 게 아니라 기존 패턴 유지. **결론: 신규 공격표면 없음, clean**.
+> - **b359f9a**: report-only CLI 스크립트(`scripts/derive-area-price-bands.cjs`) — DB write 없음, 웹 라우트 아님, 커밋 메시지 자체도 "No writes" 명시. 보안 렌즈 대상 아님(Area4 소관도 이미 스킵 대상과 동급).
+> - **standing scan**: ① 시크릿 폴백 `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43` 1건뿐(기존 FP, 변동없음). ② 하드코딩 기본 비밀번호 `body.password || '...'` → 0건. ③ CI yml `secrets.X || '...'` → 0건. ④ `npm audit` 11건(1 moderate·8 high·2 critical) — undici/ws 등 전부 devDependency, #613 기보고와 완전 일치 net-new 0.
+> - **open 11건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` totalCount **11**(변동없음, #606·#608·#609·#612·#613·#614·#615·#616·#617·#618·#619 전건 일치), `search_issues`로 전 11건 `reactions.+1=0` 재확인(승인 대기 유지). Area5 소관 #612(크로스법인 IDOR)도 무변화.
+> - **backlog↔GitHub 절대값 재동기화**: open **11**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · rejected **6**(변동없음, 재확인 생략 — 대상 무변경).
+> - **🧬 SKILL 강화**: shallow-clone 함정 1건 신규 codify — 이번 세션이 컨테이너 fresh clone(depth 50)이라 백로그가 기록한 과거 앵커 커밋(`665cc61`)이 `git log <앵커>..HEAD`에서 `fatal: bad revision`으로 실패(히스토리 재작성 아님, 단순 fetch depth 부족). **대응**: 앵커 커밋이 `git cat-file -t <sha>` 실패 시 `git fetch --unshallow`로 전체 이력을 먼저 확보한 뒤 churn diff 재시도 — 회 초반부터 습관화하면 매 사이클 불필요한 재확인 절약. area-5-security-infra.md `line N` 잔여참조 재확인(0건, 서술식 각주만 존재).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 11건 → 이번 로그 추가 후 12건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(신규 웹 churn 2건 전부 보안 렌즈 clean + standing scan 전부 net-new 0), 자동수정 0건, done-sync: open 11(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
 >
 
 > **Area 3 UX/기능 감사 (2026-08-24T21:45):**

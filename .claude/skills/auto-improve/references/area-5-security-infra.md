@@ -5,6 +5,8 @@
 > 가리키는 항목을 찾으려면 숫자가 아니라 **인용문 옆의 서술을 grep** 한다(예: "컬럼-diff bridge").
 > 원문 보존을 위해 표기는 그대로 두었다 — 고칠 때 번호를 재계산하지 말고 서술 참조로 바꿀 것.
 
+> **🕸️ shallow-clone 앵커 유실 함정 (Area 5, 2026-08-25 codify)**: 이 세션의 컨테이너는 매번 `depth 50` 정도의 shallow clone으로 시작한다 — 백로그가 기록한 직전 사이클 자신의 앵커 커밋(`git log <앵커>..HEAD` 대조용)이 그 depth 밖에 있으면 `git cat-file -t <sha>` 가 실패하고 `git log <앵커>..HEAD`는 `fatal: bad revision`을 던진다. **히스토리 재작성(force-push)이 아니라 단순 fetch depth 부족**이니 당황해서 원격 히스토리 훼손을 의심하지 말 것. 대응: 앵커 조회가 실패하면 `git fetch --unshallow origin main` 으로 전체 이력을 먼저 확보한 뒤 churn diff를 재시도한다. 6개 Area 전부가 매 사이클 같은 앵커-대조 패턴을 쓰므로 이 함정은 어느 Area에서도 재현 가능 — 영역 무관 공통 습관으로 기억.
+
 ### 🟣 Area 5: 보안 + 인프라
 
 **목적**: 취약점과 인프라 문제
