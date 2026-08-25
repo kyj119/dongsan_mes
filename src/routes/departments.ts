@@ -205,7 +205,8 @@ departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
     `).bind(from, to, ...efI.params).all<any>()
 
     // 2-b) 유통 매출원가(COGS) — MATERIAL/GOODS 직접판매는 소진(제조)이 아니라 매입원가.
-    //   COGS = 판매수량 × avg_unit_cost, 유통 부문 귀속. 제조 자재비(iad)와 부문 비중복(품목유형 disjoint).
+    //   COGS = base 환산 판매수량 × avg_unit_cost, 유통 부문 귀속. 제조 자재비(iad)와 부문 비중복(품목유형 disjoint).
+    //   ★수량을 그대로 곱하면 안 된다 — 롤 판매 라인은 관리단위라 pack_size 배 과소가 된다(정본=utils/salesBaseQty.ts).
     const efOc = entityFilter(c, 'o')
     const { results: cogs } = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(${estMaterialCostSql('oi', 'i')}), 0) AS cogs
