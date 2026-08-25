@@ -1163,15 +1163,20 @@ printEventsRouter.get('/unmatched', authMiddleware, async (c) => {
         UNION ALL
         -- ⚠️ GROUP BY 에 별칭(file_name)을 쓰면 SQLite가 스코프에 있는 pe.file_name 컬럼으로 해석해
         --    합판 전체가 한 그룹으로 뭉개진다. 반드시 표현식을 그대로 반복할 것.
-        SELECT COALESCE(json_extract(m.value, '$.file'), m.value) AS file_name, COUNT(*) AS cnt,
+        -- ⚠️ 구형식 멤버(= 그냥 파일명 문자열)에 json_extract 를 쓰면 COALESCE 로 넘어가는 게 아니라
+        --    **쿼리 전체가 "malformed JSON" 으로 죽는다**(SQLITE_ERROR 7500). 2026-06-22 자 구형식 5건
+        --    때문에 days>=70 구간이 통째로 500 이었고, 화면 기본값이 90일이라 이 탭은 아예 안 떴다.
+        --    → json_valid 로 먼저 거른다. 구형식은 값 자체가 파일명이고 card_id 는 없다(=미연결).
+        SELECT CASE WHEN json_valid(m.value) THEN COALESCE(json_extract(m.value, '$.file'), m.value) ELSE m.value END AS file_name, COUNT(*) AS cnt,
                MAX(COALESCE(pe.print_completed_at, pe.created_at)) AS last_at,
-               MAX(json_extract(m.value, '$.w')) AS w, MAX(json_extract(m.value, '$.h')) AS h,
+               MAX(CASE WHEN json_valid(m.value) THEN json_extract(m.value, '$.w') END) AS w,
+               MAX(CASE WHEN json_valid(m.value) THEN json_extract(m.value, '$.h') END) AS h,
                MAX(pe.equipment_id) AS equipment_id, 1 AS is_nest
         FROM print_events pe, json_each(pe.nest_members) m
         WHERE pe.nest_members IS NOT NULL AND pe.nest_members != ''
-          AND json_extract(m.value, '$.card_id') IS NULL
+          AND (CASE WHEN json_valid(m.value) THEN json_extract(m.value, '$.card_id') END) IS NULL
           AND COALESCE(pe.print_completed_at, pe.created_at) >= date('now', '-' || ? || ' days')
-        GROUP BY COALESCE(json_extract(m.value, '$.file'), m.value)
+        GROUP BY CASE WHEN json_valid(m.value) THEN COALESCE(json_extract(m.value, '$.file'), m.value) ELSE m.value END
       )
       WHERE file_name IS NOT NULL AND file_name != ''
       GROUP BY file_name

@@ -329,7 +329,9 @@ ppRouter.get('/stats', async (c) => {
         SUM(CAST(oi.width AS REAL) / 100 * CAST(oi.height AS REAL) / 100 * oi.quantity) as total_area_sqm
       FROM order_items oi
       JOIN orders o ON oi.order_id = o.id
-      JOIN json_each(oi.post_processing) j
+      -- json_each 는 WHERE 보다 먼저 행마다 평가된다 → 비JSON('' 포함) 이 한 건만 있어도 WHERE 로 걸러지기 전에
+      --   쿼리 전체가 malformed JSON(SQLITE_ERROR 7500) 으로 죽는다. printEvents /unmatched 실사고와 같은 계열이라 선제 방어.
+      JOIN json_each(CASE WHEN json_valid(oi.post_processing) THEN oi.post_processing ELSE '[]' END) j
       WHERE oi.post_processing IS NOT NULL
         AND oi.post_processing != '[]'
         AND o.order_date >= ?${oef.clause}
@@ -349,7 +351,7 @@ ppRouter.get('/stats', async (c) => {
         COUNT(DISTINCT o.client_id) as client_count
       FROM order_items oi
       JOIN orders o ON oi.order_id = o.id
-      JOIN json_each(oi.post_processing) j
+      JOIN json_each(CASE WHEN json_valid(oi.post_processing) THEN oi.post_processing ELSE '[]' END) j
       WHERE oi.post_processing IS NOT NULL
         AND oi.post_processing != '[]'${oef.clause}
       GROUP BY pp_code
@@ -365,7 +367,7 @@ ppRouter.get('/stats', async (c) => {
         COUNT(*) as usage_count
       FROM order_items oi
       JOIN orders o ON oi.order_id = o.id
-      JOIN json_each(oi.post_processing) j
+      JOIN json_each(CASE WHEN json_valid(oi.post_processing) THEN oi.post_processing ELSE '[]' END) j
       WHERE oi.post_processing IS NOT NULL
         AND oi.post_processing != '[]'
         AND o.order_date >= ?${oef.clause}
