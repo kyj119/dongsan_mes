@@ -16,6 +16,15 @@ notificationsRouter.use('/*', authMiddleware)
 const NAV_BADGE_TTL_MS = 5 * 60 * 1000
 const navBadgeCache = new Map<string, { at: number, data: Record<string, number> }>()
 
+// ── 알림 가시성 조건 (읽기·읽음처리 전 경로 공유) ──
+// 개인 지정(user_id) + 자기 역할 대상 + **ADMIN 은 역할 지정 전부**.
+// ADMIN 예외를 넣는 이유: `requirePagePermission` 에서 ADMIN 이 권한 매트릭스를 우회하는 것과 같은 규칙인데
+//   알림만 예외가 없어서, `MANAGER` 역할 사용자가 0명인 동안 일일 알림 4종(납기지연·발주초과·장비정비·재고부족)이
+//   **생성은 되는데 아무에게도 안 보였다** (2026-08-25 실측: target_role='MANAGER' 15건이 그렇게 쌓여 있었다).
+// 바인드 순서 = user.id, user.role, user.role — `visibleParams()` 로 함께 넘긴다.
+const VISIBLE_SQL = `(user_id = ? OR (user_id IS NULL AND (target_role = ? OR ? = 'ADMIN')))`
+const visibleParams = (u: { id: number, role: string }) => [u.id, u.role, u.role]
+
 // ── Helper: 중복 방지 알림 생성 (당일 동일 title 스킵) ──
 async function createIfNotExists(db: D1Database, targetRole: string, title: string, message: string, link: string, entityId: number = 1) {
   const existing = await db.prepare(
@@ -35,8 +44,8 @@ notificationsRouter.get('/', async (c) => {
     const safeLimit = Math.min(Number(limit) || 20, 50)
 
     const ef = entityFilter(c, '')
-    let query = `SELECT id, user_id, target_role, title, message, link, is_read, created_at FROM notifications WHERE (user_id = ? OR (user_id IS NULL AND target_role = ?))${ef.clause}`
-    const params: any[] = [user.id, user.role, ...ef.params]
+    let query = `SELECT id, user_id, target_role, title, message, link, is_read, created_at FROM notifications WHERE ${VISIBLE_SQL}${ef.clause}`
+    const params: any[] = [...visibleParams(user), ...ef.params]
 
     if (unread_only === '1') {
       query += ' AND is_read = 0'
@@ -48,8 +57,8 @@ notificationsRouter.get('/', async (c) => {
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
     const countResult = await c.env.DB.prepare(
-      `SELECT COUNT(*) as count FROM notifications WHERE (user_id = ? OR (user_id IS NULL AND target_role = ?))${ef.clause} AND is_read = 0`
-    ).bind(user.id, user.role, ...ef.params).first<{ count: number }>()
+      `SELECT COUNT(*) as count FROM notifications WHERE ${VISIBLE_SQL}${ef.clause} AND is_read = 0`
+    ).bind(...visibleParams(user), ...ef.params).first<{ count: number }>()
 
     return c.json({
       success: true,
@@ -68,8 +77,8 @@ notificationsRouter.get('/unread-count', async (c) => {
     const user = c.get('user')
     const ef = entityFilter(c, '')
     const result = await c.env.DB.prepare(
-      `SELECT COUNT(*) as count FROM notifications WHERE (user_id = ? OR (user_id IS NULL AND target_role = ?)) AND is_read = 0${ef.clause}`
-    ).bind(user.id, user.role, ...ef.params).first<{ count: number }>()
+      `SELECT COUNT(*) as count FROM notifications WHERE ${VISIBLE_SQL} AND is_read = 0${ef.clause}`
+    ).bind(...visibleParams(user), ...ef.params).first<{ count: number }>()
 
     return c.json({ success: true, count: result?.count || 0 })
   } catch (error) {
@@ -189,8 +198,8 @@ notificationsRouter.patch('/read-all', async (c) => {
     const user = c.get('user')
     const ef = entityFilter(c) // #327: 역할 브로드캐스트 알림을 타 법인까지 읽음 처리 방지
     await c.env.DB.prepare(
-      `UPDATE notifications SET is_read = 1 WHERE (user_id = ? OR (user_id IS NULL AND target_role = ?)) AND is_read = 0${ef.clause}`
-    ).bind(user.id, user.role, ...ef.params).run()
+      `UPDATE notifications SET is_read = 1 WHERE ${VISIBLE_SQL} AND is_read = 0${ef.clause}`
+    ).bind(...visibleParams(user), ...ef.params).run()
     return c.json({ success: true })
   } catch (error) {
     console.error('src/routes/notifications.ts error:', error)
@@ -205,8 +214,8 @@ notificationsRouter.patch('/:id/read', async (c) => {
     const id = c.req.param('id')
     const ef = entityFilter(c) // #327: 역할 브로드캐스트 알림을 타 법인까지 읽음 처리 방지
     await c.env.DB.prepare(
-      `UPDATE notifications SET is_read = 1 WHERE id = ? AND (user_id = ? OR (user_id IS NULL AND target_role = ?))${ef.clause}`
-    ).bind(id, user.id, user.role, ...ef.params).run()
+      `UPDATE notifications SET is_read = 1 WHERE id = ? AND ${VISIBLE_SQL}${ef.clause}`
+    ).bind(id, ...visibleParams(user), ...ef.params).run()
     return c.json({ success: true })
   } catch (error) {
     console.error('src/routes/notifications.ts error:', error)
