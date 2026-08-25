@@ -159,7 +159,7 @@ cronRouter.post('/daily-maintenance', agentKeyMiddleware, async (c) => {
       rec.notifications = { error: String(err?.message || err).slice(0, 200) }
     }
 
-    // 3) 연체 경고 (거래처별 기준일 초과 미수 거래처 → ADMIN/MANAGER 알림, 24h dedup). 엔드포인트가 법인 entityFilter 스코프.
+    // 3) 연체 경고 (거래처별 기준일 초과 미수 거래처 → ADMIN/MANAGER 알림, **7일 dedup = 주 1회**). 엔드포인트가 법인 entityFilter 스코프.
     try {
       const r = await fetch(`${origin}/api/ledger/receivables/check-overdue`, { method: 'POST', headers: authHdr })
       rec.overdue = { status: r.status, ...(await r.json().catch(() => ({})) as any) }
