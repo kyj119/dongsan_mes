@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-08-25T21:51:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-08-26T01:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,19 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-08-26T01:20):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → `forced update`로 표시됐으나 `git merge-base --is-ancestor`로 fast-forward 확인(rewrite 아님, shallow depth 50 한계) → `git fetch --unshallow`로 전체 이력 확보 후 `git checkout main && git reset --hard origin/main`(HEAD `2f9f88f`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area2 자신의 앵커(`018bf35`) 이후 웹앱 범위(`-- src migrations scripts .github`) diff **34커밋** — 오래 밀린 앵커라 대부분(재무/마진 리포트 재설계·여신 정책·메시지 세그먼트 피커·재고 존 대시보드·D1 ANALYZE 성능튜닝)은 Area1·3·4·5·6이 각자 렌즈로 이미 정독. 이번 사이클은 **code-quality 렌즈(entity_id INSERT·N+1·authMiddleware·dead code·SELECT 존재성)로 34커밋 전체를 재통과**.
+> - **standing scan 4종**: ① `npm run audit:entity` — 누락 6건, 전부 `financialReports.ts:82/89/97/102/235/241`로 Area4(08-25T03:52)가 이미 "per-entity bound-param 루프 패턴, FP 확정" 판정한 대상과 동일(재확인, net-new 0). ② `node scripts/sort-audit.cjs` P1 **0건**(변동없음). ③ authMiddleware recursive 스캔 — 무-auth 7파일(`publicUnsubscribe.ts`·`orders/helpers.ts`·`payroll/shared.ts`·`cron.ts`·`messagesAd.ts`·`hrSelf.ts`·`taxInvoices/helpers.ts`) 전부 barrel(부모 라우터가 `.use('/*', authMiddleware, requireRole(...))`)·scoped-token·helpers 무-엔드포인트 기존 정당 클래스 — `messagesAd.ts`는 이번 churn(세그먼트 피커)으로 처음 스캔 대상에 들었으나 `messages.ts:121`이 `messagesRouter.use('/*', authMiddleware, requireRole('ADMIN','MANAGER'))`로 부모 게이트 확인, barrel 클래스 편입(net-new 0). ④ `npm audit` 11건(1 moderate·8 high·2 critical) 전부 devDependency, #613 기보고와 완전 일치.
+> - **신규 파일 4개 직접 정독**(`clientSegment.ts`·`messageAudience.ts`·`ledger/credit-helpers.ts`·`salesBaseQty.ts`): ① dead-code 후보 5개(`resolveFatigueDays`·`CREDIT_SETTING_KEYS`·`deriveCreditLimit`·`buildCreditEvalSql`·`salesBaseQtySql`, 최초 grep에서 "0개 파일에서 import")를 전수 재확인 — 전부 같은 파일 내부 호출 또는 `scripts/credit-selftest.cjs` 테스트 소비 확인, 실제 dead 아님(오탐 배제). ② 신규 INSERT 2곳(`message_send_recipients`·`contact_groups`) — 전자는 entity_id bind 포함 정상, 후자는 마이그 0476 주석이 "거래처는 법인 공유 자산이므로 그룹도 entity_id 없이 전사 공유"로 명시한 의도적 전역 테이블(#482 클래스의 미스매치 아님, 설계 그대로). ③ `messageAudience.ts`의 IN절(`fetchRecentlySent`)·INSERT(`recordBulkRecipients`) 둘 다 D1 바인드한도 대응 청크(80개/12행)로 기존 청크 컨벤션 준수(#458 클래스 없음). ④ `credit-helpers.ts`의 `buildCreditEvalSql`은 CLAUDE.md가 기록한 2026-08-25 "바깥 `?`가 서브쿼리 파라미터를 밀어낸" 사고의 **재발방지 형태로 이미 고쳐져 있음**(CTE `?`가 텍스트상 먼저, 바깥 `?`는 CTE 뒤 + `warnRatio`는 인라인) — 코드 직접 대조로 재확인, 새 결함 아님.
+> - **N+1 루프 스팟체크**: `reports.ts`/`financialReports.ts`(이번 churn 최대 diff, 442+614줄) 전체 `for (const ... of ...)` 루프 9곳 — awk로 각 루프 바디의 `await .*(prepare|DB\.)` 매치 **0건**(전부 in-memory 결과셋 순회, DB호출 없음). N+1 없음.
+> - **open 12건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` totalCount **12**(변동없음, #606·#608·#609·#612·#613·#614·#615·#616·#617·#618·#619·#620 전건 일치), 전건 `reactions.+1=0` 재확인(승인 대기 유지).
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 오래 밀린 앵커(34커밋)를 code-quality 렌즈로 전량 재통과했으나 신규 오탐/탐지 클래스 도출 없음(기존 standing scan 레시피가 전부 커버).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 9건 → 이번 로그 추가 후 10건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(34커밋 전체 code-quality 렌즈 clean, standing scan 전부 net-new 0, dead-code 후보 5건 전부 오탐 배제), 자동수정 0건, done-sync: open 12(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-08-25T21:51):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → 로컬 origin/main 참조가 이미지 시점 stale(`539387f`)이라 fast-forward 아닌 "forced update"로 표시됐으나 실제론 shallow(depth 50) 한계일 뿐 rewrite 아님(`git reset --hard` 후 "84 commits ahead, fast-forward" 확인로 rewrite 아님 재확인) → `git fetch --unshallow`로 전체 이력 확보 후 `git checkout main && git reset --hard origin/main`(HEAD `d72e497`). `npm ci`(0→81), `npx tsc --noEmit` clean.
