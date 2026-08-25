@@ -1,53 +1,53 @@
 {
   "base": "https://webapp-9i0.pages.dev",
-  "at": "2026-08-25T13:02:21.378Z",
+  "at": "2026-08-25T15:05:07.321Z",
   "snapshot": {
     "reports.clientRevenue": {
-      "ms": 153,
+      "ms": 142,
       "kb": 242.7
     },
     "reports.receivables": {
-      "ms": 209,
+      "ms": 208,
       "kb": 3.5
     },
     "reports.monthlySummary": {
-      "ms": 134,
+      "ms": 63,
       "kb": 0.9
     },
     "clients.list50": {
-      "ms": 85,
+      "ms": 60,
       "kb": 56
     },
     "clients.list200": {
-      "ms": 50,
+      "ms": 70,
       "kb": 224.5
     },
     "clients.search": {
-      "ms": 35,
+      "ms": 62,
       "kb": 22.5
     },
     "clients.dormant": {
-      "ms": 88,
+      "ms": 82,
       "kb": 55.8
     },
     "prices.overview": {
-      "ms": 34,
+      "ms": 42,
       "kb": 254.6
     },
     "dashboard.stats": {
-      "ms": 137,
+      "ms": 178,
       "kb": 0.6
     },
     "ledger.monthlySummary": {
-      "ms": 52,
+      "ms": 72,
       "kb": 0.9
     },
     "inventory.zones": {
-      "ms": 43,
-      "kb": 308.1
+      "ms": 56,
+      "kb": 42.5
     },
     "bom.overview": {
-      "ms": 49,
+      "ms": 57,
       "kb": 123.9
     }
   }
