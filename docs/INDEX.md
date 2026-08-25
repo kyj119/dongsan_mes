@@ -2,7 +2,8 @@
 
 > 이 프로젝트의 모든 문서가 **무엇이고 / 활성인지 / 어디 있는지**를 한곳에서 본다.
 > 새 문서를 만들면 여기 한 줄 추가. 상태가 바뀌면 여기서 갱신.
-> 최종 정리: 2026-07-27 (정합성 감사 — 유령 항목 2건 제거, 미등록 문서 등록, 건수 갱신)
+> 최종 정리: 2026-08-25 (md·스킬 전수 점검 — 8월 spec 6건 등록, 건수 갱신)
+> 이전: 2026-07-27 (정합성 감사 — 유령 항목 2건 제거, 미등록 문서 등록, 건수 갱신)
 > 이전: 2026-07-02 (md 전수 점검 — 구 아카이브·완료 큐 삭제, 완료/흡수 spec 13건 archive 이동, 전면 재작성)
 
 ## 상태 범례
@@ -79,7 +80,7 @@
 
 | 문서 | 상태 | 성격 · 비고 |
 |---|---|---|
-| `*.md` 8건 | 🟡 | 재무·원가·그룹 진단 기록(2026-08). 최신 정본 = `2026-08-12-group-diagnosis.md`. **/reports 재무 숫자 인용 금지** 규칙은 auto-memory `design-finance-diagnosis` |
+| `*.md` 9건 | 🟡 | 재무·원가·그룹 진단 기록(2026-08). 그룹 진단 정본 = `2026-08-12-group-diagnosis.md` · 최신 = `2026-08-19-장비-고정자산-대조표.md`. **/reports 재무 숫자 인용 금지** 규칙은 auto-memory `design-finance-diagnosis` |
 | `*-rollback.sql` | 🟡 | prod 일괄 작업 롤백 스크립트(백업 테이블 참조 — PII 리터럴 없음). **삭제 전 적용 여부 확인** |
 | `*.csv` / `*.xlsx` | ⛔ | 통장·카드·거래처 원자료 = PII → **gitignore**(2026-08-18). 로컬 산출물이며 재생성 가능 |
 
@@ -95,9 +96,9 @@
 | `design/ASSET_LIABILITY_DESIGN.md` | 🟡 | 자산·부채 설계 초안 |
 | `specs/` 3건 | 🟡 | superpowers 이전 spec 잔여분 |
 
-## 4. `docs/superpowers/specs/` — 활성 spec **40건** (2026-07-27 실측)
+## 4. `docs/superpowers/specs/` — 활성 spec **46건** (2026-08-25 실측)
 
-> ⚠️ 아래 트랙별 목록은 2026-07-02 기준 발췌라 40건 전수가 아니다. 신규 spec 추가 시 해당 트랙에 한 줄 등록할 것.
+> ⚠️ 아래 트랙별 목록은 2026-07-02 기준 발췌라 46건 전수가 아니다. 신규 spec 추가 시 해당 트랙에 한 줄 등록할 것.
 
 ### 최상위 로드맵·정본
 | 문서 | 상태 |
@@ -134,6 +135,16 @@
 | `2026-07-24-postproc-domain-profiles.md` | 🟡 후가공 도메인 프로파일 |
 | `2026-07-23-courier-tracking-smarttracker.md` | 🟡 배송추적 스마트택배 KDEXP — **구현 대기**(API key 발급 선행) |
 | ~~`2026-07-10-role-expansion-rw-permissions.local-copy.md`~~ | 🗑️ **삭제 완료 (2026-07-27)** — 원본보다 1커밋 뒤처진 stale 사본이었음 |
+
+### 8월 트랙 (2026-08-25 신규 등록 — 그간 인덱스 누락분)
+| 문서 | 상태 |
+|---|---|
+| `2026-08-25-employee-requirements-protocol.md` | 🟢 요구 발굴 + 마스터 데이터 합의 프로토콜 — **실행용 체크리스트 정본**. 전문 아티팩트 링크 내장 |
+| `2026-08-24-file-dimension-probe.md` | 🟢 파일 규격 자동 판독(일러 불요) — 설계 확정(「다: 전부」), **별도 세션 구현 대기** |
+| `2026-08-06-butt-exact-and-cutline-weld.md` | 🟡 맞붙임 = mm 배치 + 공유 변 단일 출력 — 설계 재작성분. 관련 `2026-07-31-cut-file-panel.md` |
+| `2026-08-05-ia-editor-sunset.md` | 🟡 웹 모아찍기 + /ia-editor 폐기 — **설계만**. 실행은 재단 패널 실기 검증 후 |
+| `2026-08-05-work-order-auto-issue.md` | 🟡 작업지시서 자동 발행 — 카드=작업지시서 승격 |
+| `2026-08-05-neostampa-rip-integration.md` | 🟡 전사 8색(Longyin Q2000·neoStampa) RIP 로그 연동 — **prod 미배포**(Topaz 조인키 미검증) |
 
 ### 결정 대기·보류·가드레일 (🟡)
 `2026-06-11-alimtalk-golive-package.md`(잔여 결정) · `2026-06-11-card-cashflow-forecast.md` · `2026-06-11-hanjin-courier-decision.md`(외부 의존) · `2026-06-11-client-self-order-portal.md`(선행 대기) · `2026-06-11-card-feed-cost-research.md`(⏸️보류) · `2026-06-11-static-assets-rootcause-redesign.md`(**삭제 금지** — decisions-code "재외부화 금지" 해제조건 앵커)

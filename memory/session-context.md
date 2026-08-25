@@ -1,3 +1,52 @@
+# 세션 핸드오프 — 2026-08-25 md·스킬 문서 전수 점검 (코드 0 · 문서만)
+
+> ⚠️ 아래에 **다른 세션(메시지 발송 대상 · 직원 참여/재고실사 · 08-24 이월)의 핸드오프가 이어집니다.** 덮어쓰지 않았습니다.
+
+## 상태 — 문서 8파일 수정 + auto-memory 2파일. 코드·마이그레이션 변경 0
+
+게이트 3개 통과: `doc-diet-audit` · `skill-audit` · `sort-audit`. 빌드·배포 불필요(코드 무변경).
+
+| 축 | 정정 |
+|---|---|
+| 수치 | smoke 엔드포인트 **~102 → 111** (`CLAUDE.md:18` · `skills/deploy-verify/SKILL.md:46`) |
+| 수치 | `docs/INDEX.md` 활성 spec **40 → 46건** · analysis **8 → 9건** · **「8월 트랙」 신설**(미등재 6건 등재) |
+| 경로 | `.claude/plans/…` → **`~/.claude/plans/…`(repo 밖)** — repo 상대로 읽으면 못 찾는다 |
+| 경로 | `scripts/layout/shell.js:520~598` → **`src/scripts/layout/shell.js:793`** · `architecture-flow.md` `src/` 접두 4곳 |
+| 모순 | `PROJECT_STATUS.md:99` 한 줄 안에서 「safe_stock 0이라 미작동」↔「48행 채움」 → **판정축=`reorder_point`** 로 통일 |
+| 모순 | `decisions-business.md` C 카카오톡 **「미구현」 → 2026-06-10 구현·운영 중**(`routes/kakao.ts`·`services/barobillSms.ts`) |
+| 유령 | `design-decisions.md` **본문이 없는 인덱스 전용 ID 14개**(U·V·W·X·Z·AI·AJ·AK·AM·AN·AO·AP·AQ·AR) 명시 |
+| 누락 | 핸드오프 TODO 3건을 현황판에 등재(채택 계기판 · `resolveStockUnit` yd · `base_unit` 감사망) |
+| 메모리 | `MEMORY.md` 재고실사 훅에 `reorder_point` 판정축 추가 · 고아 메모리 3건 ARCHIVE 등재 |
+
+## ★판단기준·주의 (다음 세션이 몰라서 틀릴 지점)
+
+- **★`MEMORY.md` 여유가 61자뿐이다.** 다음에 한 줄이라도 더 쓰면 `doc-diet-audit` 이 막는다.
+  그때 **방금 쓴 항목을 깎지 말 것** — 규칙대로 **오래된 덩어리를 `MEMORY-ARCHIVE.md` 로 이관**한다(총량만 보던 구 게이트가 이 실수를 유발했던 전례).
+- **★인덱스가 코드보다 오래 틀린 채로 산다.** 이번 12건 중 게이트가 잡은 건 **0건** — 한도·frontmatter 는 보지만 **내용이 코드와 맞는지는 안 본다**.
+  숫자·경로가 박힌 문서는 **주기적으로 실측 대조**해야 한다(`scripts/smoke.cjs` 항목 수 · spec 파일 수 · 심볼 위치).
+- **★`MEMORY.md` 가 잘못된 IA 경로를 싣고 있었다** — `IA publish Z:Designs...publish`. 축1 런타임은 **실행 중 exe 폴더**(`publish` 아님).
+  6일간 구버전이 돌았던 그 함정이라 인덱스 쪽을 정정했다. 원문은 `MEMORY-ARCHIVE.md` 보존.
+- **`design-decisions.md` 의 14개 ID 는 찾아도 없다** — git 히스토리에도 본문이 없다. 키워드 칸이 전부다.
+- **이 파일은 덮어쓰지 않고 앞에 쌓는다** — 아래 3개 세션 핸드오프가 아직 유효하다.
+
+## 다음 세션 TODO (이번 점검에서 드러난 것)
+
+1. **`resolveStockUnit` yd 폴백 수정** — `src/utils/rollConsumption.ts:75-80`. m·cm 외 전부 `yd` → **잉크가 「27 yd」**. 실사 입력을 현장에 넘기기 전.
+2. **`base_unit` 축 감사 추가** — `scripts/item-master-audit.cjs` 참조 **0회**. 50배 사고를 낸 축이 `npm run audit:items` 밖에 있다.
+3. **채택 계기판(요구 발굴 1부)** — ★`activity_logs` 지표는 `user_id` 로 `e2e_tester`·`admin` 을 걷어낸 뒤 볼 것.
+4. (선택) **문서 실측 대조를 게이트화** — smoke 항목 수·spec 파일 수처럼 기계로 세지는 숫자는 `doc-diet-audit` 에 붙일 수 있다.
+
+## 검증 명령 (PowerShell)
+
+```powershell
+node scripts/doc-diet-audit.cjs      # 현황판·MEMORY.md 한도 (여유 61자 주의)
+npm run audit:skills                 # 스킬 정의 게이트
+node scripts/sort-audit.cjs          # 목록 정렬 tie-break
+# 코드 무변경이라 build/verify/smoke 는 이번 건에 불필요
+```
+
+---
+
 # 세션 핸드오프 — 2026-08-25 메시지 발송 대상 3단계 (조건 세그먼트 · 수신자 가드 · 정합성)
 
 > ⚠️ 아래에 **다른 세션(직원 참여 3종·재고실사)의 핸드오프가 이어집니다.** 덮어쓰지 않았습니다.

@@ -293,4 +293,4 @@ db.batch([...otherUpdates, ...statements])
 ## BE. DB 마스터 존재 선택지는 UI 하드코딩 금지 — API 로드 (2026-06-12)
 
 - 법인(`entities`)·CAPS 사이트(`caps_sites`) 등 **DB 마스터가 있는 선택지는 프론트에 하드코딩하지 말고 API에서 로드**.
-- 구현: 법인 select = `loadEntities()` 공용 캐시(`scripts/layout/shell.js:520~598`, `/api/entities`). CAPS 사이트 = `axios.get('/api/caps/sites')`(`capsSettings.js`). 하드코딩 시 마스터 변경(오다플래그 entity 4 추가 등) 미반영.
+- 구현: 법인 select = `loadEntities()` 공용 캐시(`src/scripts/layout/shell.js:793`, `/api/entities`). CAPS 사이트 = `axios.get('/api/caps/sites')`(`capsSettings.js`). 하드코딩 시 마스터 변경(오다플래그 entity 4 추가 등) 미반영.

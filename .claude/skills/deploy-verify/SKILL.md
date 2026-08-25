@@ -43,7 +43,7 @@ npm run deploy:prod
 
 1. **API 스모크 (정본·자동)** — 하드코딩 목록을 만들지 말고 기존 러너를 쓴다:
    ```bash
-   npm run smoke      # scripts/smoke.cjs — 엔드포인트 ~102개 자동 호출
+   npm run smoke      # scripts/smoke.cjs — 엔드포인트 111개 자동 호출
    ```
    - 엔드포인트 목록의 **단일 소스는 `scripts/smoke.cjs`의 `ENDPOINTS`**. 신규 라우트를 추가했으면 이 스킬이 아니라 그 배열에 등록한다.
    - 통과 기준: `PASS n / n` (예: 102/102). 1건이라도 FAIL이면 롤백 판단.

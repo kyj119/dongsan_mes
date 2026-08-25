@@ -24,7 +24,7 @@
 | **카드** | `routes/cards.ts` | `cards/` = queries · scheduling · lifecycle (3) | (기존 유지) |
 | **급여** | `routes/payroll.ts` | `payroll/` = core · records · settings · shared · tax-agent · year-end (6) | shared=순수 헬퍼(auth 없음) |
 
-> 클라이언트 JS 분할(`?raw` **다중 import 결합**): `scripts/cards/`(actions·core·detail·misc·rip), `scripts/items/`(bulk·core·media·modals·tabs), `scripts/orderForm/`(calc·client·finishing·itemRow·parent·sheet), `scripts/layout/`(shell). → `cards.js` 단일 파일은 폐기, 5청크로 분할 후 페이지 스크립트에서 concat.
+> 클라이언트 JS 분할(`?raw` **다중 import 결합**): `src/scripts/cards/`(actions·core·detail·misc·rip), `src/scripts/items/`(bulk·core·media·modals·tabs), `src/scripts/orderForm/`(calc·client·finishing·itemRow·parent·sheet), `src/scripts/layout/`(shell). → `cards.js` 단일 파일은 폐기, 5청크로 분할 후 페이지 스크립트에서 concat.
 
 ## 요청 처리 흐름 (API)
 
@@ -94,7 +94,7 @@ fetch(url, { headers: { 'X-SPA-Request': '1', Authorization: Bearer } })
 ## 데이터 흐름 (프론트 → 백 → DB)
 
 ```
-scripts/cards/*.js (core·detail·actions·rip·misc, ?raw concat): axios.get('/api/cards', { params })
+src/scripts/cards/*.js (core·detail·actions·rip·misc, ?raw concat): axios.get('/api/cards', { params })
   ↓ (Authorization: Bearer 자동 추가 — SHARED_AUTH_JS 설정)
 routes/cards/{queries,scheduling,lifecycle}.ts: 쿼리 파라미터 파싱 → SQL 동적 구성
   ↓

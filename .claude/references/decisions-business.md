@@ -64,9 +64,11 @@
 
 ---
 
-## C. 카카오톡 알림 — 미구현 (2026-02-20)
+## C. 카카오톡 알림 (2026-02-20 설계 → **2026-06-10 구현·운영 중**)
 - 이벤트: PRINT_DONE, SHIPPED, HOLD
 - 구조: notifications 테이블 → 발송 워커
+- ⚠️ 「미구현」은 2026-02-20 시점 표기였다. **현재는 바로빌 KakaoTalk 로 발송 중**(`src/routes/kakao.ts`·`src/services/barobillSms.ts`).
+  동작·발송 함정(SenderID=연동ID · 성공판정=음수 아님 · -24005) 정본 = auto-memory `project-alimtalk-status`
 
 ---
 
