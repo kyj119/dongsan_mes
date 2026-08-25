@@ -144,13 +144,18 @@ const unitRows = d1(`SELECT i.item_code, i.item_name,
 let f2 = 0, f3 = 0
 for (const r of unitRows) {
   // F1 (게이트) — 수량은 base 인데 단가가 관리단위 그대로다.
-  //   판정: pack_size 로 나눠야 할 단가가 매입 단가와 사실상 같다(80% 이상) → 안 나눈 것이다.
+  //   ★판정은 **두 후보 중 어느 쪽에 더 가까운가**로 한다 — 「매입단가의 N% 이상」 같은 단일 임계는 못 쓴다.
+  //     pack_size 가 1.5 처럼 작으면 환산값(÷1.5 = 66.7%)과 미환산값(100%)이 붙어서,
+  //     임계 80% 로 잡으면 **제대로 나눈 품목까지 잡힌다**(코스테크 수성 RM-I0007~0010 이 그랬다).
   //   ⚠️ base_unit 이 빈 품목은 제외한다 — AQ* 처럼 **애초에 base 로 안 옮긴 무리**라 통 단가가 정상이다.
-  if (r.bu && r.ps > 1 && r.auc > 0 && r.po_avg > 0 && r.auc >= r.po_avg * 0.8) {
-    add(r.item_code, 'F1 재고단가 미환산',
-      `재고는 ${r.bu} 인데 단가 ${Number(r.auc).toLocaleString()} 가 ${r.un} 단가(${Number(r.po_avg).toLocaleString()}) 그대로다`
-      + ` — 평가액이 ${r.ps} 배 부푼다`)
-    continue
+  if (r.bu && r.ps > 1 && r.auc > 0 && r.po_avg > 0) {
+    const divided = r.po_avg / r.ps
+    if (Math.abs(r.auc - r.po_avg) < Math.abs(r.auc - divided)) {
+      add(r.item_code, 'F1 재고단가 미환산',
+        `재고는 ${r.bu} 인데 단가 ${Number(r.auc).toLocaleString()} 가 ${r.un} 단가(${Number(r.po_avg).toLocaleString()}) 그대로다`
+        + ` — ÷${r.ps} = ${Math.round(divided).toLocaleString()} 이어야 하고, 평가액이 ${r.ps} 배 부푼다`)
+      continue
+    }
   }
   // F2 (참고) — 관리단위≠재고단위인데 환산 계수가 없다. 입고가 ×1 로 들어가 수량이 pack 배 적게 잡힌다.
   if (r.bu && r.ps <= 1 && r.un && r.un.toLowerCase() !== r.bu.toLowerCase()) { f2++; continue }

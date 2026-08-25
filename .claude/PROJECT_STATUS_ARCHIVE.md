@@ -1,3 +1,55 @@
+## 📦 2026-08-26 알림 배선 + 재고 단위 라벨 (배포 `813d53ab`)
+
+**발단** — 08-25 에 `reorder_point` 48행을 채워 부족 경고를 켰는데, 다음 날 prod 를 보니
+`stock_alerts` 가 **0행**이었다. 알림은 「재고 부족 21개 품목」 **개수 한 줄**만 떴고 무엇이 부족한지는
+어디에도 없었다.
+
+**① 배지가 순환이었다.** `/purchase-orders` 부족 배지(`po-queries.ts` `active_alerts`)는 `stock_alerts`
+ACTIVE 를 세는데, 그 행은 **사람이 그 탭에서 「알림 체크」를 눌러야만** 생긴다
+(`scripts/purchaseOrders.js` `checkStockAlerts` → `POST /stock-alerts/check`).
+들어오게 만들 지표가 들어와야 켜지는 구조라 아무도 누르지 않았고 배지는 영원히 0이었다.
+→ `cron/daily-maintenance` **4-B 단계** 신설. 생성 쿼리가 `GROUP BY item_id, entity_id` 로 전 법인을
+한 번에 처리하므로 **법인 루프 밖 1회**로 부른다(법인별로 부르면 첫 호출이 전부 만들고 나머지는 no-op).
+멱등 = 같은 품목×법인에 ACTIVE/ACKNOWLEDGED 가 있으면 skip. prod 드라이런 = **entity 1 에 21행**
+(같은 날 알림의 「21개 품목」과 일치). ⚠️실제 생성은 다음 06:00 cron — 트리거 전에는 관측 불가.
+
+**② 알림이 로봇에게도 가고 있었다.** `notifyRoles` 는 `role IN (...) AND is_active = 1` 로 수신자를
+뽑는데 `e2e_tester`(user 6, `default_entity_id = 99`)가 **활성 ADMIN** 이라 매번 끼었다.
+실수신자 3명 = admin(5) · e2e_tester(6) · skysea2596(9, 로그인 이력 NULL).
+→ `E2E_ENTITY_ID = 99` 를 `entityFilter.ts` 에 두고 제외. ⚠️`entities.is_active = 0` 으로 끄는 방식은
+**택하지 않았다** — cron 의 법인 루프가 같은 조건을 써서 E2E 시나리오가 조용히 죽는다.
+
+**③ 벨은 이미 죽어 있었다.** 미읽음 **5,328건 중 5,034건(94.5%)이 「연체 경고」** —
+08-10~08-24 사이 **169곳 × 3수신자 × 매일**. 08-25 에 주 1회 + 여신 기준으로 바꿔 증가는 멎었지만
+과거분이 새 알림을 덮고 있었다(그날 처음 뜬 「재고 부족 21개 품목」이 그 밑에 깔려 있었다).
+→ 「연체 경고」 = **폐지된 판정축**이므로 전량 읽음, 바로빌 잔액 부족은 **최신 1건만 남기고** 읽음.
+합계 **5,078건**(삭제 아님·`is_read` 토글). 백업 `_bak_0826_notif_read`(id·title·created_at).
+★부수 확인 = `daily-maintenance` 5) 단계가 **30일 지난 알림을 DELETE** 하므로 이 적체는 자기제한적이었다.
+
+**④ `resolveStockUnit` 폴백 범위가 잉크보다 넓었다.** 「m·cm 아니면 yd」였는데,
+그 규칙은 `computeRollConsumption`(ROLL 자재만 통과)에 맞춘 것이고 이 헬퍼는 **전 품목**이 지나간다
+(주간 실사 라인 전개 `inventoryCount.ts` · 출고 저재고 알림 `inventory.ts` · 소요량 `materialRequirement.ts`).
+prod 실측 = `base_unit='L'` **83품목**(잉크) + base_unit 없는 비-ROLL **445품목**이 전부 yd.
+실사 스냅샷에도 그대로 저장돼 있었다(`RM-I0032` 회차 12~15 전부 `unit='yd'`).
+→ 새 규칙 = ①base_unit 있으면 그대로 ②없고 ROLL 이면 yd ③없고 BOARD 면 '장' ④나머지는 품목 자신의 unit.
+BOARD 분기는 `materialRequirement` 호출부에서 헬퍼 안으로 옮겼다(규칙이 둘이 되지 않게).
+호출부 3곳이 `deduction_method` 를 SELECT 하도록 함께 수정.
+
+**⑤ 게이트 2종.** `scripts/stock-unit-selftest.cjs` 19건(옛 폴백 재주입 시 **9건 실패** 실증) → `test:calc` 편입.
+`audit:items` 에 **F 재고단위 정합성** 신설 — 그 스크립트에 `base_unit` 참조가 **0회**였다.
+F1(게이트)=수량은 base 인데 단가가 관리단위 그대로 · F2·F3(참고)=환산계수/단위 편측 결손 46·49건.
+★F1 판정은 **두 후보 중 어느 쪽에 가까운가**로 한다 — 「매입단가의 80% 이상」 같은 단일 임계는
+pack_size 가 1.5 처럼 작을 때 **제대로 나눈 품목까지 잡는다**(코스테크 수성 `RM-I0007~0010` 오탐 실측).
+
+**⑥ F1 이 첫날 잡은 것 — 엡손 솔벤잉크 9140/8140 11품목.** 재고 수량은 L(7.5·6·4.5·3·1.5 = 전부 **1.5의 배수**)인데
+`avg_unit_cost` 는 **통 단가**(99,450) 그대로다. 평가액 **4,831,393 → 3,220,929**(차이 1,610,464 · 총 재고평가 1억 1,524만 중).
+★교차검증 = 같은 엡손 솔벤인 `RM-I0075~0080`(80610)은 `unit='L'` 로 관리하고 **72,100/L**.
+9140 을 1.5L 로 보면 66,300/L 로 같은 급이고, 1L 로 보면 99,450/L 로 38% 비싸진다 → **pack_size 1.5 가 맞고 단가가 안 나뉜 것**.
+`recalculate-avg` 는 이 품목들에 `inventory_transactions` IN 행이 **없어** 건너뛰므로 고쳐도 되돌려지지 않는다.
+
+**검증** — typecheck · build · check:dom · entity 감사 6건(전부 `financialReports.ts`, 타 세션·증가 0) ·
+로컬 smoke **112/112** · `test:calc` 6종 · CI 전 단계 success(prod smoke 포함).
+
 ## 📦 2026-08-25 이관분 (자동 트림 — scripts/status-trim.cjs)
 
 > 배포 배너 2건 + 완료 항목 1건. 원본 순서(시간 역순) 보존.

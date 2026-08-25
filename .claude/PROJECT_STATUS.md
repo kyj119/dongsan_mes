@@ -34,7 +34,9 @@
 
 ## ✅ 최근 완료 — 후속 대기 인덱스 (경위·상세 전문 = `PROJECT_STATUS_ARCHIVE.md`)
 
-- **✅ 08-25 IA 단위 통일(mm) + 도련 겹침 분할 — 구현·게이트 완료, 미배포** — ★`doc.rulerUnits` 대입은 **조용히 무시**된다(`DocumentPreset` 이 유일 경로). 도련은 간격 강제상향 폐기 → 간격 존중+경계 분할+하한 1.5mm(이형 재료 12~13%↓). spec=`specs/2026-08-25-unit-unification-and-bleed-split.md` · 경위=ARCHIVE · **남은=축1~4 배포**
+- **✅ 08-26 알림 배선 + 재고 단위 라벨 (배포 `813d53ab`)** — ★부족 배지가 **순환**이었다(배지는 `stock_alerts` 를 세는데 그 행은 그 탭에서 버튼을 눌러야 생겨 prod 0행) → cron 4-B 신설. ★`notifyRoles` 가 `e2e_tester` 에게도 보냈다. ★`resolveStockUnit` 폴백이 잉크·판재까지 **yd**. 게이트 `test:stock-unit` + `audit:items` **F축** 신설 → **엡손잉크 평가액 1.5배 11품목** 적발. 경위=ARCHIVE §2026-08-26 알림 배선. 남은=잉크 단가 정정 판단
+
+- **✅ 08-25 IA 단위 통일(mm) + 도련 겹침 분할 — 구현·게이트 완료, 미배포** — ★`doc.rulerUnits` 대입은 **조용히 무시**된다(`DocumentPreset` 이 유일 경로). 도련은 간격 강제상향 폐기 → 간격 존중+경계 분할+하한 1.5mm(이형 재료 12~13%↓). 검증=픽셀 실증 10케이스 겹침 0. spec=`specs/2026-08-25-unit-unification-and-bleed-split.md` · 경위=ARCHIVE · **축1 반영 완료 · 남은=축2·3 배포(실터미널 확인 필요)→축4**
 - **✅ 08-25 D1 실행계획 붕괴 — prod 최초 ANALYZE + 쿼리 재작성 + 렌더 개편 (배포 완료)** — ★prod 에 `sqlite_stat1` 이 **없었다**. 정본=CLAUDE.md §D1 실행계획 · 게이트 `audit:query-cost` · 경위 전문=ARCHIVE. 후속 3트랙은 아래 항목에서 이어감
 
 - **✅ 08-25 전건 렌더·페이로드·상관 서브쿼리 후속 (배포 완료)** — bank 거래내역 **더보기 누적 50건**(DOM 14,892→1,604·input 2,057→250·352→33KB, ★종전 501번째부터 **안내 없이 잘려** 있었다) · attendance `strftime` **비-sargable 제거**+표시 대상 직원 조인(942→606행·400→230KB, 감소분은 그리드에 없는 직원의 사표) · `audit:subquery` 신설(P1 30·최악 100만행+ 4). 경위·잔여 판정 전문=ARCHIVE. 남은=`/inventory/dashboard/zones` 미배정 980행 · ledger 854행 · P1 4건
@@ -107,7 +109,7 @@
 
 ## 🔴 진행 중
 
-- **★재고실사 실행 + 불편 접수 개설 (08-25)** — 계획=`~/.claude/plans/greedy-exploring-stroustrup.md`(repo 밖) · 경위 전문=`PROJECT_STATUS_ARCHIVE.md` §2026-08-25 재고실사 · memory `project-employee-adoption-protocol`. ★병목=옮겨적기 · ★부족경고 판정축=**`reorder_point`**(`safe_stock` 아님 — 08-25 정정) · ★차단점=`inventoryCount.ts:10` 한 줄 · ★법인별 취급축=`inventory` 행. ✅**08-25 완결·배포 `d64a15c3`**(smoke 111/111·마커 실측): 5구역 담당+계정 5 · 8/24 승인(전사 재고 첫 반영 21,652yd) · 실사↔담당자 배선 · **한국엡손 뭉침 4전표 분해**(★SC-S8140=**6색기**, 9140 잉크 97,000→**101,900**). · **safe_stock/reorder_point 48행 채움**(★경고 판정은 `reorder_point` 기준·창고 SUM vs MAX — `safe_stock` 은 판정에 안 쓰인다. 리드타임 실측 불가라 1주, 발동 21건) · ★**일일 알림 4종이 아무에게도 안 보이고 있었다** — `target_role='MANAGER'` 인데 MANAGER 계정 0명 → ADMIN 예외 추가(`6c14234b`·5경로 전부·smoke 111/111). ⚠️admin 미읽음 1,734건 = 벨 포화. 남은=카톡방
+- **★재고실사 실행 + 불편 접수 개설 (08-25)** — 계획=`~/.claude/plans/greedy-exploring-stroustrup.md`(repo 밖) · 경위 전문=`PROJECT_STATUS_ARCHIVE.md` §2026-08-25 재고실사 · memory `project-employee-adoption-protocol`. ★병목=옮겨적기 · ★부족경고 판정축=**`reorder_point`**(`safe_stock` 아님 — 08-25 정정) · ★차단점=`inventoryCount.ts:10` 한 줄 · ★법인별 취급축=`inventory` 행. ✅**08-25 완결·배포 `d64a15c3`**(smoke 111/111·마커 실측): 5구역 담당+계정 5 · 8/24 승인(전사 재고 첫 반영 21,652yd) · 실사↔담당자 배선 · **한국엡손 뭉침 4전표 분해**(★SC-S8140=**6색기**, 9140 잉크 97,000→**101,900**). · **safe_stock/reorder_point 48행 채움**(★경고 판정은 `reorder_point` 기준·창고 SUM vs MAX — `safe_stock` 은 판정에 안 쓰인다. 리드타임 실측 불가라 1주, 발동 21건) · ★**일일 알림 4종이 아무에게도 안 보이고 있었다** — `target_role='MANAGER'` 인데 MANAGER 계정 0명 → ADMIN 예외 추가(`6c14234b`·5경로 전부·smoke 111/111). ✅벨 포화는 08-26 해소(5,078건 읽음+E2E 제외). 남은=카톡방
 - **★MES 실사용 전환 (전략 방향 확정 2026-08-11 — 자체 ERP+MES 일원화, 이카운트 단계적 해지)**: ★**「6월 2,348건 급락」은 오독**(08-25 실측 — 2,275가 `e2e_tester` 로봇, 사람 활동은 전부 `admin`). **급락이 아니라 시작된 적이 없다**. 직원 48명 vs 실직원 계정 6·로그인 3·업무기록 0. 살아 있는 건 **사람 입력이 필요 없는 자동수집 4종뿐**. 구조는 완비돼 있고 **데이터만 비어 있다**(단가표 11테이블 0건). **전환 관문 = 경리가 MES 에 매출을 직접 입력할 수 있는가**. 다음 = 잔여 단가 판단 → 경리 1명 병행입력 → 월말 채권 대사 3개월 오차 0 → 이카운트 해지. **목표선 = 관리회계까지. 복식부기·재무제표·세무신고는 만들지 않는다**(WEHAGO·세무사 유지). 경위·대응 = memory `project-employee-adoption-protocol` · 계획 `~/.claude/plans/greedy-exploring-stroustrup.md`(repo 밖)
 
 > 착수 핸드오프 = `memory/session-context.md` (2026-08-11 — 5건 각각 다음 단계·착수 지점·주의 정리)
@@ -120,7 +122,7 @@
 
 ## 🟡 결정·확인 대기 (사용자)
 
-- **IA 단위·도련 변경 배포 여부**: 구현·게이트 완료, 축1(에이전트 빌드)·축2·3(Z:)·축4(PC별 설치) 미반영. 실기 1판 재단으로 도련 1.5mm 확인 후 배포 권장
+- **IA 단위·도련 축2·3 배포**: 축1 완료. 축2(호스트)는 Z: 교체 즉시 전 PC 반영이라 `ia:deploy` 가 **실제 터미널 확인**을 요구(--yes 로 안 넘어감). 실행 후 축4 설치+일러 재시작. ★도련 1.5mm 는 업계 통상(2~3mm) 미만 — 첫 판에서 실제 재단 밀림 실측 권장
 - **워크벤치 P1 노출**: 코드·권한 prod 배포 완료 — 메뉴 노출 여부 결정만 남음
 - **급여 신현서 케이스 = 입력차이(코드 정상)**: 부양가족·차량유지비 비과세 입력 필요 → [[payroll-calc-ecount-diff]]
 - **실검증 대기**: 수신번호 1개 확정 → 알림톡+MMS 실발송 검증 동시 해제(~400원)
@@ -149,8 +151,6 @@
 
 ## ⚠️ 잠복·블로커
 
-- **`resolveStockUnit` yd 폴백(현장 노출·미수정)**: `src/utils/rollConsumption.ts:75-80` 이 `m`·`cm` 외 전부 `'yd'` 반환 → **잉크가 「27 yd」로 표시**된다. 실사 입력을 현장에 넘기기 전 수정 필요 → [[design-weekly-stock-count]]
-- **`base_unit` 축이 감사망 밖**: `scripts/item-master-audit.cjs` 에 `base_unit` 참조 **0회**. 수량·단가 둘 다 base 로 넣어 **50배** 사고를 낸 축인데 `npm run audit:items` 가 안 본다 → [[design-stock-base-unit-rebase]]
 - **품목 단가 전역(블로커)**: 원가 avg_unit_cost 315개 backfill 완료 — 남은=매출 base_price·무이력 514·자재비 소진연결 → [[project-item-pricing]]
 - 핸드오프 정본=`memory/session-context.md` + [[project-workflow-master-plan]](Phase1~5 잔여)
 
