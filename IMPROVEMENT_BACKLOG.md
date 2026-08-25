@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-08-25T15:46:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-08-25T21:51:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,23 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **11** (`list_issues(state:open,label:auto-improve)` 실측, 변동 없음. #606·#608·#609·#612·#613·#614·#615·#616·#617·#618·#619) |
+| 🆕 new | **12** (`list_issues(state:open,label:auto-improve)` 실측. #606·#608·#609·#612·#613·#614·#615·#616·#617·#618·#619·#620, 신규 #620) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 1 프로덕션 헬스 (2026-08-25T21:51):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → 로컬 origin/main 참조가 이미지 시점 stale(`539387f`)이라 fast-forward 아닌 "forced update"로 표시됐으나 실제론 shallow(depth 50) 한계일 뿐 rewrite 아님(`git reset --hard` 후 "84 commits ahead, fast-forward" 확인로 rewrite 아님 재확인) → `git fetch --unshallow`로 전체 이력 확보 후 `git checkout main && git reset --hard origin/main`(HEAD `d72e497`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area1 자신의 앵커(`ea773ab`) 이후 웹앱 범위(`-- src migrations scripts .github`) diff 21커밋 — 그중 16건은 Area2~6(08-24~08-25)이 이미 각자 렌즈로 정독 완료. **어느 Area도 안 본 신선 커밋 5건**(직전 Area6 앵커 `45ac35a` 이후): `6c14234b`(알림 ADMIN 가시성 버그 픽스) · `d924a307`(재고 안전재고/발주점 백필) · `d64a15c3`(구역담당자 화면노출) · `e3e7c858`(메시지 발송대상 내부법인 제외+주문필터) · `78829f63`(메시지 세그먼트 피커, 0542/0543 신규 마이그).
+> - **CI 헬스**: `deploy.yml` 최근 30런 전부 `conclusion:success`(5건 신선 커밋 포함 전부 green, 커밋 메시지 자체도 "smoke 111/111" 명시).
+> - **🔍 신규 발견 — 한글 리터럴 LIKE/instr 부분매칭이 prod 원격 D1에서만 조용히 0행 반환**: `78829f63`의 `clientSegment.ts:76` 코멘트가 "로컬 D1(miniflare)에서는 `instr(item_name,'기초채권이월')`이 정상 매칭되는데 prod에서는 0건, 원인 미확정"이라 직접 기록 — 이번 사이클 배포 코드 자체가 발견·수정한 실측 버그. `grep -rn "(LIKE|instr\\()" src`로 같은 클래스(SQL 텍스트에 한글 리터럴 직접 삽입) 전수 대조: **미검증 3곳** 발견 — `orders/lifecycle.ts:501`(취소주문 복구 write 경로, HOLD카드 상태되돌리기) · `ledger/ar-receivables.ts:405`(연체알림 dedup) · `cron.ts:231`(법인간거래 대사알림 dedup). egress로 prod D1 직접 재현 불가 + write-path 비즈니스로직이라 자동수정 대상 아님(원인 자체도 발견자가 "미확정"이라 명시) → **issue化**(#620, bug/S). `shipments.ts:515`의 `instr(...,?)` 는 바인드파라미터(리터럴 아님)라 다른 코드경로 가능성 있어 신고범위에서 제외, 코멘트로 명시.
+> - **open→12건**: `list_issues(OPEN,label:auto-improve)` totalCount **12**(#620 신규 추가, 나머지 11건 변동없음: #606·#608·#609·#612·#613·#614·#615·#616·#617·#618·#619) — 기존 11건 전부 `reactions.+1=0` 재확인(승인 대기 유지).
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(+1, #620 신규) · `search_issues(reason:completed)` **531**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: area-1-production-health.md에 이번 발견을 "smoke 맹점" 계열 신규 축으로 codify(아래 섹션에 직접 추가) — 기존 3축(①프론트실행 ②DROP write-path ③agent-path FK)에 이은 **4번째 축(한글 리터럴 SQL 텍스트 매칭 = 로컬↔원격 D1 인코딩/파싱 차이로 조용히 0행)**. `line N` 잔여참조 재확인(0건, 서술식 각주만 존재, 재계산 없음).
+> - **백로그 트림 체크**: `npm run backlog:trim` = 사이클 로그 9건(이번 로그 포함, 직전 사이클들이 이미 62회차대에 트림 완료해 활성 로그가 적은 상태) / 활성 65KB / 임계 13건 → **트림 불필요**.
+> - 신규 이슈 1건(#620, 한글 리터럴 SQL 매칭 신규 버그클래스 재검증 요청), 자동수정 0건, done-sync: open 12(+1)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-08-25T15:46):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → origin `45ac35a`(직전 Area5 HEAD `8f652f8`에서 2커밋 전진) → shallow(depth 50)로 직전 Area6 자신의 앵커(`618195c`)가 fetch 범위 밖(`git cat-file -t` 실패) → `git fetch --unshallow origin main`으로 전체 이력 확보(Area5 62회차 codify 레시피 그대로 재현) 후 `git checkout main && git reset --hard origin/main`(HEAD `45ac35a`). `npm ci`(0→81), `npx tsc --noEmit` clean.
@@ -129,6 +141,7 @@
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
+| #620 | 한글 리터럴 LIKE/instr 매칭이 prod 원격 D1에서 조용히 실패할 수 있음 — clientSegment.ts 발견 버그(1건 확인)의 유사 패턴 3곳(lifecycle.ts 취소복구·ar-receivables.ts·cron.ts dedup) 재검증 필요 | Area 1 | bug,S | issue-only, 신규(#620) |
 | #618 | GET /api/inventory-counts/consumption(8fdf76c) — 프론트 소비처 0건, "백엔드 먼저·화면 나중" 5번째 사례 | Area 2 | improvement,S | issue-only, 신규(#618) |
 | #615 | 재고 188품목 rebase(8fdf76c) — qty×pack_size/cost÷pack_size 보정이 재현 불가능한 형태로 prod 적용됨 | Area 4 | bug,S | issue-only, 신규(#615) |
 | #614 | items 영구삭제 참조가드에 designer_intakes.item_id 누락(0532 신규 FK) — 하드삭제 시 친절한 409 대신 500 | Area 4 | bug,S | issue-only, 신규(#614) |
