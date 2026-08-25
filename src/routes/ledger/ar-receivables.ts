@@ -392,6 +392,13 @@ arReceivablesRouter.get('/receivables/:clientId/orders', async (c) => {
 //   판정·금액 = /overdue 배너와 **동일한 FIFO SSOT**(queryFifoOverdue). 종전엔 자체 쿼리로
 //   `잔액 전액 + 최고령 청구일 경과일`을 알렸다 → 이관 기초잔액 때문에 "미수금 3천만원, 최장 연체 223일"
 //   같은 알림이 거래 정상인 거래처에도 나갔다(2026-08-11 정정).
+//
+// ★주 1회 (용준님 확정 2026-08-25) — 종전 dedup 이 24시간이라 **연체 거래처 1곳당 매일 1건**이 쌓였다.
+//   prod 연체 169곳 = 하루 169건 → admin 미읽음 1,734건(벨 포화)의 주된 출처.
+//   ⚠️ cron 의 호출 주기(매일)는 그대로 두고 **dedup 창을 7일로 넓혀** 주기를 만든다. 요일 게이트로 막지 않는 이유:
+//     하루라도 cron 이 실패하면 그 주 알림이 통째로 사라진다. dedup 방식은 다음 날 실행이 대신 채우고,
+//     이후 7일 간격이 유지돼 **자가복구되면서 같은 요일로 자연히 수렴**한다.
+const OVERDUE_ALERT_DEDUP_HOURS = 24 * 7
 arReceivablesRouter.post('/receivables/check-overdue', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
   try {
     const overdueClients = await queryFifoOverdue(c)
@@ -399,11 +406,11 @@ arReceivablesRouter.post('/receivables/check-overdue', requireEditOrRole('/ledge
     let alertsCreated = 0
     const checked = overdueClients.length
 
-    // 24시간 내 이미 발송된 연체 알림 link를 한 번에 로드 (N+1 방지)
+    // dedup 창 내 이미 발송된 연체 알림 link를 한 번에 로드 (N+1 방지)
     const { results: recentNotifs } = await c.env.DB.prepare(`
       SELECT DISTINCT link FROM notifications
       WHERE title LIKE '연체 경고:%'
-        AND created_at > datetime('now', '-24 hours')
+        AND created_at > datetime('now', '-${OVERDUE_ALERT_DEDUP_HOURS} hours')
     `).all<NotifLinkRow>()
     const recentLinks = new Set((recentNotifs || []).map(n => n.link))
 
@@ -434,7 +441,8 @@ arReceivablesRouter.post('/receivables/check-overdue', requireEditOrRole('/ledge
       success: true,
       data: {
         checked,
-        alerts_created: alertsCreated
+        alerts_created: alertsCreated,
+        dedup_hours: OVERDUE_ALERT_DEDUP_HOURS
       }
     })
   } catch (error) {

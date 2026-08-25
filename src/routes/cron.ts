@@ -94,6 +94,8 @@ cronRouter.post('/barobill-sync', agentKeyMiddleware, async (c) => {
  *  1) OEE 일배치: 어제분 equipment_oee_daily 재계산(POST /api/oee/calculate)
  *  2) 알림 생성: 납기 도래/지연·저재고 등 서버측 생성(POST /api/notifications/generate) — 프론트 폴링 의존 제거
  *  3) 연체 경고: 거래처별 기준일(overdue_alert_days, 기본 30일) 초과 미수 거래처 ADMIN/MANAGER 알림(POST /api/ledger/receivables/check-overdue)
+ *     ★호출은 매일이지만 **실제 발송은 거래처당 주 1회** — 주기는 엔드포인트의 dedup 창(7일)이 만든다.
+ *     여기서 요일로 막지 않는 이유 = cron 이 하루 실패해도 다음 날이 대신 채우게 하려고(ar-receivables 주석 참조).
  * 멱등: OEE=upsert, 알림·연체=createIfNotExists dedup → 반복 호출 안전. 인증: X-Agent-Key.
  */
 /**
