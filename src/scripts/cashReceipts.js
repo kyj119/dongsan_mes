@@ -172,17 +172,25 @@ function openCreateModal() {
   document.getElementById('clientSelect').value = '';
 
   // Load clients dropdown
-  axios.get('/api/clients?limit=1000')
+  //  이 드롭다운은 세 군데가 한꺼번에 어긋나 **비어 있었다**(2026-08-25):
+  //   ① 응답이 `data.clients` 인데 `data` 를 배열로 보고 forEach → TypeError → catch 로 조용히 삼켜짐
+  //   ② 필드가 `client_name` 인데 `name` 을 읽음 (①을 고쳐도 라벨이 전부 빈칸)
+  //   ③ limit=1000 을 보내도 서버 상한이 200 이라 활성 2,873곳 중 200곳만 왔다
+  //  → 선택 목록 전용 응답(fields=picker: id·이름만, 상한 5000)으로 교체. 210KB → 약 7KB/200건.
+  axios.get('/api/clients', { params: { fields: 'picker', limit: 5000, active: 1 } })
     .then(function(response) {
-      var clients = response.data.data || [];
+      var clients = (response.data && response.data.data && response.data.data.clients) || [];
       var options = '<option value="">거래처를 선택하세요</option>';
       clients.forEach(function(client) {
-        options += '<option value="' + escapeHtml(client.id) + '">' + escapeHtml(client.name) + '</option>';
+        options += '<option value="' + escapeHtml(client.id) + '">' + escapeHtml(client.client_name) + '</option>';
       });
-      document.getElementById('clientSelect').innerHTML = options;
+      var sel = document.getElementById('clientSelect');
+      if (!sel) { console.warn('[cashReceipts] #clientSelect not found'); return; }
+      sel.innerHTML = options;
     })
     .catch(function(error) {
       console.error('Error loading clients:', error);
+      showToast('거래처 목록을 불러오지 못했습니다', 'error');
     });
 
   document.getElementById('createModal').classList.remove('hidden');

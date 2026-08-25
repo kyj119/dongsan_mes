@@ -11,15 +11,26 @@ aiInsights.use('*', authMiddleware)
 aiInsights.get('/credit-risk/summary', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     // G-1: 폐기 clients.balance 대신 파생 미수(order_billing_groups[BILLED]−payments−adjustments)
+    //
+    // 성능(2026-08-25): 이 셋을 **행별 상관 서브쿼리**로 두면 거래처 1건마다 order_billing_groups·
+    //   payments·adjustments 를 훑는다 — `/api/clients?dormant` 를 36초 뒤 500 으로 만든 것과 **같은 모양**이다.
+    //   지금 싸 보이는 건 `credit_risk_grade != 'N/A'` 가 1건만 남기기 때문이고, `calculate-all` 이
+    //   한 번 돌아 등급이 채워지면 그대로 2,873행 × 서브쿼리 3개가 된다. 미리 접어서 조인한다.
+    //   등가 검증 = prod 활성 2,873곳 전수 대조 **불일치 0**·합계 569,804,879 동일.
+    const arJoins = `
+      LEFT JOIN (SELECT o.client_id AS cid, SUM(g.billed_amount) AS billed
+                   FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+                  WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'
+                  GROUP BY o.client_id) b ON b.cid = cl.id
+      LEFT JOIN (SELECT client_id AS cid, SUM(amount) AS paid FROM payments GROUP BY client_id) p ON p.cid = cl.id
+      LEFT JOIN (SELECT client_id AS cid, SUM(amount) AS adj FROM adjustments GROUP BY client_id) a ON a.cid = cl.id`
+    const arBalance = `(COALESCE(b.billed, 0) - COALESCE(p.paid, 0) - COALESCE(a.adj, 0))`
+
     const { results } = await c.env.DB.prepare(`
       SELECT cl.credit_risk_grade as grade, COUNT(*) as count,
-        ROUND(SUM(
-          COALESCE((SELECT SUM(g.billed_amount) FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE o.client_id = cl.id AND g.billing_status = 'BILLED' AND o.status != 'CANCELLED'), 0)
-          - COALESCE((SELECT SUM(amount) FROM payments WHERE client_id = cl.id), 0)
-          - COALESCE((SELECT SUM(amount) FROM adjustments WHERE client_id = cl.id), 0)
-        ), 0) as total_outstanding,
+        ROUND(SUM(${arBalance}), 0) as total_outstanding,
         ROUND(AVG(cl.credit_risk_score), 1) as avg_score
-      FROM clients cl
+      FROM clients cl${arJoins}
       WHERE cl.is_active = 1 AND cl.credit_risk_grade != 'N/A'${excludeArExcludedClientsSql('cl.id')}
       GROUP BY cl.credit_risk_grade
       ORDER BY avg_score DESC
@@ -27,11 +38,9 @@ aiInsights.get('/credit-risk/summary', requireRole('ADMIN', 'MANAGER'), async (c
 
     const { results: highRisk } = await c.env.DB.prepare(`
       SELECT cl.id, cl.client_name, cl.credit_risk_score, cl.credit_risk_grade,
-        (COALESCE((SELECT SUM(g.billed_amount) FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE o.client_id = cl.id AND g.billing_status = 'BILLED' AND o.status != 'CANCELLED'), 0)
-         - COALESCE((SELECT SUM(amount) FROM payments WHERE client_id = cl.id), 0)
-         - COALESCE((SELECT SUM(amount) FROM adjustments WHERE client_id = cl.id), 0)) as balance,
+        ${arBalance} as balance,
         cl.credit_limit
-      FROM clients cl
+      FROM clients cl${arJoins}
       WHERE cl.is_active = 1 AND cl.credit_risk_grade IN ('D', 'F')${excludeArExcludedClientsSql('cl.id')}
       ORDER BY cl.credit_risk_score DESC, cl.id DESC LIMIT 10
     `).all()

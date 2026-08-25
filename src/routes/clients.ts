@@ -57,7 +57,14 @@ clientsRouter.get('/check-brn/:brn', async (c) => {
 clientsRouter.get('/', async (c) => {
   try {
     const { page = '1', limit = '50', search = '', client_type = '', active = '', invoice_method = '', delivery_method = '', sort = 'name', dormant = '', has_balance = '', credit_hold = '' } = c.req.query()
-    const safeLimit = Math.min(parseInt(limit) || 50, 200)
+
+    // fields=picker — 선택 목록(드롭다운·자동완성)용 축소 응답.
+    //   목록 화면은 46개 컬럼(`c.*`)이 다 필요하지만 드롭다운은 id·이름뿐이다.
+    //   현금영수증 거래처 드롭다운이 그 46컬럼을 200건 받아 210KB 를 쓰고 있었다(실제로 쓰는 건 2개).
+    //   ★상한도 다르다 — 목록은 한 페이지 200이면 충분하지만 드롭다운은 **전건이 안 들어오면 고른 값이 없다**.
+    const picker = c.req.query('fields') === 'picker'
+    const maxLimit = picker ? 5000 : 200
+    const safeLimit = Math.min(parseInt(limit) || 50, maxLimit)
     const offset = (parseInt(page) - 1) * safeLimit
 
     // WHERE 절 + params를 한 번만 빌드 (alias c. 사용, 카운트 쿼리도 FROM clients c로 통일)
@@ -141,8 +148,22 @@ clientsRouter.get('/', async (c) => {
     //   idx_orders_entity_sales_rep(entity_id=?) 을 잡아 거래처 1건마다 orders 를 훑는다
     //   → 200건 조회에 rows_read 364만 / 3.9초. orders 를 client_id 로 미리 집계해 조인하면 2.6만 행 / 27ms.
     const lastOrderJoin = ` LEFT JOIN (SELECT client_id AS cid, MAX(order_date) AS last_order_date FROM orders WHERE 1=1${ef.clause} GROUP BY client_id) lo ON lo.cid = c.id`
-    const query = `SELECT *, last_order_date FROM (SELECT c.*, pl.name as price_list_name, lo.last_order_date AS last_order_date FROM clients c LEFT JOIN price_lists pl ON c.price_list_id = pl.id${lastOrderJoin}` + filterWhere + `) c WHERE 1=1` + dormantWhere + orderByClause + ' LIMIT ? OFFSET ?'
-    const params = [...ef.params, ...filterParams, ...dormantParams, safeLimit, offset]
+
+    // picker 는 투영만 줄인다 — 필터·정렬·dormant 는 목록과 완전히 같은 경로여야 결과가 갈리지 않는다.
+    //   선택 목록이 실제로 그리는 건 이름(+코드)뿐이라, 나머지는 **빼면 깨지는 것만** 남긴다:
+    //     created_at       = sort=created 의 ORDER BY 가 바깥에서 참조
+    //     last_order_date  = dormant / sort=last_order 가 바깥에서 참조
+    //   둘 다 안 쓰는 호출(=드롭다운 기본형)에선 컬럼도 조인도 뺀다 — 2,000건 규모에선
+    //   컬럼 하나가 수십 KB 이고, lastOrderJoin 은 orders 전체 GROUP BY 라 공짜가 아니다.
+    const needsLastOrder = !picker || !!dormantWhere || sort === 'last_order'
+    const joinForQuery = needsLastOrder ? lastOrderJoin : ''
+    const lastOrderCol = needsLastOrder ? ', lo.last_order_date AS last_order_date' : ''
+    const innerSelect = picker
+      ? `SELECT c.id, c.client_name, c.client_code${sort === 'created' ? ', c.created_at' : ''}${lastOrderCol} FROM clients c${joinForQuery}`
+      : `SELECT c.*, pl.name as price_list_name${lastOrderCol} FROM clients c LEFT JOIN price_lists pl ON c.price_list_id = pl.id${joinForQuery}`
+    const query = `SELECT *${needsLastOrder ? ', last_order_date' : ''} FROM (${innerSelect}` + filterWhere + `) c WHERE 1=1` + dormantWhere + orderByClause + ' LIMIT ? OFFSET ?'
+    // ef.params 는 lastOrderJoin 안의 ${ef.clause} 바인드다 — 조인을 빼면 같이 빼야 개수가 맞는다
+    const params = [...(needsLastOrder ? ef.params : []), ...filterParams, ...dormantParams, safeLimit, offset]
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
