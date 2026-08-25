@@ -78,8 +78,11 @@ function pmFindItem(id) {
 function pmPriceCell(id, field, val, canEdit) {
   var missing = !(val > 0);
   if (canEdit) {
-    var cls = 'inline-block w-24 px-1.5 py-0.5 border rounded text-right font-mono text-sm cursor-text '
-      + (missing ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-transparent hover:border-gray-300');
+    // ⚠️ 이 span 에 박스 스타일(inline-block·w-24·padding·border)을 주면 셀 2,406개의 레이아웃
+    //    비용이 커져 **상시 input 보다 오히려 느려진다**. 같은 페이지 교차 실측(중앙값, 1,203품목):
+    //    상시 input 547ms · 박스 span 626ms · 테두리 없는 텍스트 475ms.
+    //    편집 가능 신호는 레이아웃 비용이 0 인 cursor 로만 준다. 박스를 다시 붙이지 말 것.
+    var cls = 'cursor-text ' + (missing ? 'text-amber-600' : '');
     return '<span class="' + cls + '" data-item="' + id + '" data-field="' + field + '"'
       + ' onclick="event.stopPropagation();pmBeginEdit(this)">' + (val > 0 ? fmt(val) : '0') + '</span>';
   }
