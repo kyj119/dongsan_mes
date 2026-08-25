@@ -371,3 +371,23 @@ EXTRA 는 그 일부다(전부가 아니다). 성격(직송/기타)만 미확인
 「3티캄판산-CNC-도형?」 420,000 = **외주가공**(용준님 확인) → 신설 없이 기존 `ETC-CUT`(재단/컷팅비)에 연결,
 `category_name = 외주가공`, 검색어에 「CNC 도형가공 외주가공 캄판」 추가.
 백업 = `_bak_0824_ballrope`.
+
+## 2026-08-25 재고실사 실행 + 불편 접수 개설 (경위 전문)
+
+계획 정본 = `C:\Users\user\.claude\plans\greedy-exploring-stroustrup.md`(승인) · 프로토콜 = `docs/superpowers/specs/2026-08-25-employee-requirements-protocol.md` · memory `project-employee-adoption-protocol`·`project-inventory-entity`.
+
+**진단**: ★「6월 2,348건 급락」은 오독 — 2,275가 `e2e_tester` 로봇, 사람 활동은 전부 `admin`. 직원 48명 vs 실직원 계정 6·로그인 3·업무기록 0. 유일한 채택=디자이너 1명 7/16~8/10 일러 CEP 패널 102건 → 8/10 중단(사람·업무 문제, 게이트는 전부 통과 중이었다). ★실사는 이미 돈다(이미지·메모장 수령) — **병목은 용준님의 옮겨적기**라 MES 입력이 8/07에 멈췄다. ★부족경고는 매일 06:00 cron 자동 판정 중인데 `inventory.safe_stock` 387행 0이라 안 걸림 = **값만 넣으면 코드 0**. ★현장개방 차단점 = `routes/inventoryCount.ts:10` `requireRole` 한 줄. ★법인별 취급 정본축 = `inventory` 행(`items` 에 entity_id 없음).
+
+**실행(prod 데이터·코드 0)**:
+- 투명시트 `SPC031G-105`·`-152` 하드삭제(참조 25테이블 0 확인·`_bak_0825_spc_*`). ⛔`-127` 은 주문11/매입6/재고50 이라 제외, `-137` 은 재고 100 이라 보류.
+- 상품전용 6품목(켈·켈그레이 60폭·시트 90폭·코팅지 90폭 2종·SPM011M) 동산 e1 구역 해제(`_bak_0825_goods_zone`, 수량 0 이라 평가액 무영향) ⇒ **출력실 실사표 73→65**.
+- 전사출력실 8/24 실사 적재 `IC-20260825153000`(SUBMITTED·실측 9품목/미입력 11) — 원단 **87롤 21,652yd** 재검산, KM잉크 M27/Y73통(1통=1L). ★전사출력실은 12주치가 **전부 미승인이라 재고가 0** 이었다.
+- **엡손 잉크 재분리**(`2026-08-25-epson-ink-resplit.sql`·`_bak_0825_epson_resplit`·`_epson_poi`): ⛔08-18 통합이 오류 — **9140/8140 겸용 잉크와 80610(이전모델·유통전용)은 다른 물건**. 80610 10품목 재활성(판매 dual·원가 73,000 복원)+매입라인 6건(poi 482~487) 환원+11색기는 `엡손 솔벤잉크 9140/8140 X` 개명·원가 67,933→0(그 6건이 유일한 매입 근거였다).
+- 제품코드 판독: `C11CL39405` = **Epson SureColor SC-S8140 본체**(1,450만·06-30 한국엡손) · `C13S210153` = **유지보수 키트**(장비 아님). 한국엡손 4건 전부 월말 = 계산서 뭉침 → 색상·품목별 분해 대기.
+- **구역 담당자 지정**: 계정 4개 신설(비번 1234 · `users` 17~20 · `job_role` OPERATOR/SALES)+`employees.user_id` 연결(7→11명)+배정 — 출력실=한두선(솔벤 시트·잉크)·전사출력실=최재영·**현수막실=정보람**·선명2=강지영(e2). **UV실=모니르**(5구역 전부 배정 완료). 백업 `_bak_0825_zone_mgr`. ★HR ALLOWED 화이트리스트에 `user_id` 가 없어 **화면에서 연결 불가**, SQL 이 유일.
+
+**신설 도구**: `npm run propose:count-scope`(읽기전용) → 출력실 주간 18·월간 40·확인필요 6·제거 9 / 전사출력실 미입력 80% 라 판정보류 16.
+
+**8/24 승인 완료**(`_bak_0825_approve_inv` · 재고 반영 = 원단 21,652yd + KM잉크 100통 · tx 9건 — 전사출력실 12주 만의 첫 승인).
+**실사↔담당자 배선 = 코드 완료·미배포**: `inventory.ts` dashboard/zones 에 `manager_id`·`manager_name` 추가 · `inventoryCount.ts` GET / 에 `scope=mine`(미지정 구역은 ADMIN·MANAGER 몫 — receiving 규칙) · 생성 모달 구역 select 에 담당자 병기+내 담당 ★상단 · 목록 구역뱃지에 담당자 · 필터바에 「내 담당만」(`#fMineOnly`). 검증=verify·check:dom·entity 0·정렬 P1 0·로컬 D1 파싱.
+**남은 것**: 카톡방 개설 · `safe_stock` 채우기 · 8/24 회차 승인 · 한국엡손 월말 계산서 분해 · **실사화면↔담당자 배선**(`dashboard/zones` 가 manager_id 미조회 · `/storage-zones/my` 는 어느 사이드바 페이지에도 미연결).

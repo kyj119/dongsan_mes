@@ -5,6 +5,22 @@ var _detailCountId = null;
 var _icDetailData = null;               // 상세 캐시 (다③: 입력마다 상세 재조회 제거)
 var _icFilter = { q: '', mode: 'all' }; // 다①: 패널 검색·필터 상태
 
+// 현재 로그인 사용자 — JWT payload 디코딩(verify 없음, 표시·필터 용도). receiving.js:865-877 과 같은 방식.
+// ?raw 전역 스코프 공유라 이름은 _ic 접두로 격리한다.
+var _icUser = { id: null, role: null };
+(function readIcUser() {
+  try {
+    var tok = localStorage.getItem('token');
+    if (!tok) return;
+    var parts = tok.split('.');
+    if (parts.length < 2) return;
+    var p = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    _icUser.id = p.id;
+    _icUser.role = p.role;
+  } catch (e) { /* silent */ }
+})();
+function _icIsSupervisor() { return _icUser.role === 'ADMIN' || _icUser.role === 'MANAGER'; }
+
 // ===== 상태 뱃지 =====
 function getStatusBadge(status) {
   if (status === 'DRAFT') return '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;background:#e0e7ff;color:#4f46e5;">작성중</span>';
@@ -42,8 +58,9 @@ function renderTable(list) {
     var submittedBy = c.submitted_by || '-';
     var typeLabel = c.count_type === 'FULL' ? '전수' : (c.count_type === 'ZONE' ? '구역' : '정기');
     // P3: 구역 실사면 구역명 뱃지 병기 (storage_zone_name은 null 가능)
+    var zoneMgr = c.zone_manager_name ? ' · ' + escapeHtml(c.zone_manager_name) : '';
     var zoneBadge = c.storage_zone_name
-      ? '<div style="margin-top:3px;"><span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;background:#ecfdf5;color:#047857;" title="' + escapeHtml(c.storage_zone_name) + '"><i class="fas fa-map-marker-alt" style="margin-right:2px;"></i>' + escapeHtml(c.storage_zone_name) + '</span></div>'
+      ? '<div style="margin-top:3px;"><span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;background:#ecfdf5;color:#047857;" title="' + escapeHtml(c.storage_zone_name) + (c.zone_manager_name ? ' — 담당 ' + escapeHtml(c.zone_manager_name) : ' — 담당 미지정') + '"><i class="fas fa-map-marker-alt" style="margin-right:2px;"></i>' + escapeHtml(c.storage_zone_name) + zoneMgr + '</span></div>'
       : '';
     return '<tr style="cursor:pointer;transition:background 0.15s;" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'\'" onclick="openDetail(' + c.id + ')">'
       + '<td style="padding:10px 12px;font-family:monospace;font-weight:600;" title="' + escapeHtml(c.count_number || '') + '">' + escapeHtml(c.count_number) + '</td>'
@@ -65,6 +82,9 @@ async function loadCounts() {
     var statusVal = document.getElementById('fStatus').value;
     var params = new URLSearchParams({ limit: '100' });
     if (statusVal) params.append('status', statusVal);
+    // 「내 담당만」 — 미지정 구역·전수 실사는 ADMIN·MANAGER 에게만 남는다(서버가 같은 규칙으로 거른다)
+    var mineEl = document.getElementById('fMineOnly');
+    if (mineEl && mineEl.checked) params.append('scope', 'mine');
 
     var res = await axios.get('/api/inventory-counts?' + params.toString());
     countsList = (res.data.data || []);
@@ -99,11 +119,18 @@ async function createNewCount() {
     opts += '<option value="' + c.category + '">' + c.category + ' (' + c.item_count + '건)</option>';
   });
 
+  // 담당자 병기 + 내 담당 구역을 위로 — 담당이 정해진 구역을 매주 그 사람이 고르게 된다(2026-08-25)
+  var myId = _icUser.id;
+  var mine = zones.filter(function(z) { return myId && z.manager_id === myId; });
+  var others = zones.filter(function(z) { return !(myId && z.manager_id === myId); });
   var zoneOpts = '<option value="">(구역 지정 안 함 — 아래 분류로 실사)</option>';
-  zones.forEach(function(z) {
-    zoneOpts += '<option value="' + z.id + '">' + escapeHtml(z.zone_name || '')
-      + (z.zone_code ? ' (' + escapeHtml(z.zone_code) + ')' : '') + '</option>';
-  });
+  function zoneOption(z, isMine) {
+    var mgr = z.manager_name ? ' · ' + escapeHtml(z.manager_name) : ' · 담당 미지정';
+    return '<option value="' + z.id + '">' + (isMine ? '★ ' : '') + escapeHtml(z.zone_name || '')
+      + (z.zone_code ? ' (' + escapeHtml(z.zone_code) + ')' : '') + mgr + '</option>';
+  }
+  mine.forEach(function(z) { zoneOpts += zoneOption(z, true); });
+  others.forEach(function(z) { zoneOpts += zoneOption(z, false); });
 
   var modalHtml = '<div id="countCreateModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:9999">'
     + '<div style="background:#fff;border-radius:12px;padding:24px;width:400px;box-shadow:0 20px 60px rgba(0,0,0,0.2)">'

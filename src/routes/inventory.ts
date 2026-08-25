@@ -957,11 +957,15 @@ inventoryRouter.get('/dashboard/zones', async (c) => {
     const params: any[] = []
 
     // 1. 창고 목록 (법인 필터)
+    // manager_id/manager_name: 실사 생성 화면이 「내 담당 구역」을 가리려면 여기서 나가야 한다
+    //   (2026-08-25 — 담당자는 storage_zones 에 지정돼 있는데 이 API 가 안 내보내 화면이 못 썼다)
     let zoneSql = `
       SELECT sz.id, sz.zone_name, sz.zone_code, sz.is_default, sz.entity_id,
+        sz.manager_id, u.name AS manager_name,
         e.short_name as entity_name
       FROM storage_zones sz
       LEFT JOIN entities e ON sz.entity_id = e.id
+      LEFT JOIN users u ON u.id = sz.manager_id
       WHERE sz.is_active = 1
     `
     const zoneParams: any[] = []

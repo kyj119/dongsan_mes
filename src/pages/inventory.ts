@@ -219,6 +219,10 @@ export function inventoryPage(c: Context<HonoEnv>) {
                   <option value="SUBMITTED">제출됨</option>
                   <option value="APPROVED">승인됨</option>
                 </select>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;cursor:pointer" title="구역 담당자가 나로 지정된 실사만 봅니다. 담당 미지정 구역과 전수 실사는 관리자에게만 보입니다.">
+                  <input type="checkbox" id="fMineOnly" onchange="loadCounts()" style="width:15px;height:15px;cursor:pointer">
+                  내 담당만
+                </label>
                 <div class="ml-auto flex gap-2">
                   <button onclick="loadCounts()" class="ds-btn ds-btn-ghost ds-btn-sm">
                     <i class="fas fa-sync-alt" style="margin-right:4px"></i>새로고침

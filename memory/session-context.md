@@ -1,91 +1,67 @@
-# 세션 핸드오프 — 2026-08-24 오후 3건 (AP 부호·base_price 자료·매입 미연결)
+# 세션 핸드오프 — 2026-08-25 직원 참여 3종 (요구 발굴 · 공동 결정 · 실사 실행)
 
 ## 상태
-1. **AP 부호 분리 = prod 배포 완결** (`03aac905`, CI 배포·smoke 116/116). balance-snapshot AP 를 공급처별 부호 분리 — 매입채무=양수합, `assets.prepaid_expenses`=음수 절대값(선급/과지급). prod 실측 선급금 5,382,565. UI 스냅샷 카드에 선수금·선급금 보조줄(`snapshotArAdvance`·`snapshotApPrepaid`, 0=숨김). ⚠️매입 원장 목록(`accounts-payable.ts` settlement summary.total_balance)도 음수를 상계하지만 행 단위로 부호가 보여 별건 관찰로 남김.
-2. **base_price 판단자료 = 생성·전달, 적용은 용준님 결정 대기**. `scripts/propose-costbase-prices.cjs`(신설·커밋 `7817182b`, 읽기전용) — 공백 586품목 중 원가 보유 FIXED 218건에 원가×카테고리 마진(상품 ×1.67·원자재 ×1.08·태극기 ×2.54, 참조 141건 중앙값) 제안 → `docs/pricing/costbase-proposals.csv`. 원가없음 315(GOODS 111·PRODUCT 127·MATERIAL 77)=매입이력 자체가 없어 3번 작업과 연동 · AREA 53=㎡단가표 설계 대상. ⚠️items 판매 플래그는 `is_sales_item`(is_sales 아님 — PRAGMA 실확인).
-3. **매입 미연결 = 실측 정정 + 15건 연결 + 잔여 작업목록**. 실측: 이월(OPEN·2025-12-31) 17라인 10.4억 제외 시 **343라인 2.64억**(현황판의 「112라인 1.24억」은 구 집계 — 스코프 차). 확실 15건(갈바→SGM-GALVA·각목→WDS-01·SMPS→SGM-SMPS·고무자석→MAG-060) 연결, 백업 `_bak_0824_unlink15`(롤백=poi_id 의 item_id 를 NULL 로). **아크릴 5건 보류** — ACR 계열 9종(2/3/5T×백/검/투명)이 **전부 품명 「아크릴」**이라 월합계 줄을 특정 규격에 물리면 오염. 잔여 328라인 2.5억 = 뭉친줄 37(4,455만, 원장 PDF 분해 대상 — Z:\DesignsS 방법론=ARCHIVE §2026-08-24 전사잉크) + 미매칭 286(2.05억, **시트지·각관·LED·로프·외주가공·운임 = 간판 자재 주류 → 품목화는 간판 BOM 트랙과 묶임**). 목록=`docs/analysis/2026-08-24-unlinked-purchase-lines.csv`.
 
-## 판단기준·주의
-- ⚠️연결된 1식 라인(qty 1·뭉친 금액)은 **원가 backfill 재실행 시 avg_unit_cost 를 오염**시킬 수 있다(440,000/EA 각목 등) — `backfill_avg_cost.sql` 재실행 전 1식 라인 제외 조건 검토.
-- 준석(AD) 태극기 끈 4,765,184(품목 없음)·에코컴퍼니 회전고리 18 88,280개×66원(ACC-014 가로등배너 회전고리와 동일물인지 불확실) — 용준님 질문 제출함.
-- 다른 세션이 메인 체크아웃에서 활동 중(reports·LogWatcher 키트) — docs 커밋은 파일 지정 add.
+코드 변경은 **읽기 전용 스크립트 1개 + npm 등록**뿐. prod 데이터·스키마 변경 **0건**. 나머지는 계획·문서·메모리.
 
-## 용준님 결정 반영 (같은 날 오후)
-- base_price **「일부만 적용」** → 상품·태극기 82건 적용 후 **GDS-EQ 장비 4건 원복**(소부속 마진 ×1.67을 장비 재판매에 이전 불가 판단) = **최종 78건**(백업 `_bak_0824_costbase_price`, old 전부 0이라 롤백=0). 원자재 134건 보류. 공백 586→508.
-- 회전고리 18(에코, 88,280개×66원) → **ACC-014 연결** + search_keywords '회전고리 18' 보강.
-- 태극기 끈(준석, 476만) → **ACC-056 신설**(볼로프 관례 상속: MATERIAL/원자재/EA·is_sales_item=0) 후 연결. ⚠️수량 없는 1식이라 원가 이력 부적합(backfill 재실행 시 제외 대상).
-- 잔여 미연결 실작업 = **326라인 2.507억**.
+- 계획 정본(**승인됨**) = `C:\Users\user\.claude\plans\greedy-exploring-stroustrup.md`
+- 프로토콜 정본 = `docs/superpowers/specs/2026-08-25-employee-requirements-protocol.md` (1부 요구 발굴 · 2부 마스터 데이터 합의)
+- 아티팩트(읽기용) = https://claude.ai/code/artifact/82cc7c5d-98ca-41cb-94c9-97174b383ba9
+- 신설 = `scripts/propose-count-scope.cjs` (`npm run propose:count-scope`, 읽기 전용) → `docs/analysis/2026-08-25-count-scope-proposal.csv`
 
-## 검토 2건 반영 (같은 날 저녁, 「검토 진행해줘」)
-- **원자재 base_price**: ★참조군 마진이 이봉(Q3=39·최대 392)=**롤(판매단위) 가격 ↔ M(base) 원가 단위 부정합**이 상위 절반 — ×1.08 전역치는 폐기하고 **단위 정합 참조 34건 중앙값 ×1.021**로 재산출. 적용 **102건**=안전군 41(장/EA/L·pack≤1)+롤군 61(롤당가=M당 원가×pack_size×1.021 — pack 은 08-20 rebase 로 보증). **보류 32건**=yd 30(AQ 계열 등 rebase 제외군이라 원가 basis 불명)+통 2(base L 부정합). 누적 적용 180건·공백 586→**406**. 백업=`_bak_0824_costbase_price`(cat 컬럼으로 구분).
-- **backfill 1식 가드**: `docs/price/backfill_avg_cost.sql` 제외 목록에 SGM-GALVA(건당 뭉침 8줄)·WDS-01(다발 3줄)·ACC-056(금액 전용) 추가 — 기존 「전표 뭉치 품목 제외」 관례 그대로. SMPS·MAG-060·ACC-014(실수량 66원/개)는 정상이라 미제외.
+## 결정 + 이유
 
-## 잔여 2건 점검·진행 (같은 날 밤, 「이어서 진행해줘」)
-- **원자재 32건(yd 30·통 2) basis 판정 완료 — 적용 SQL 준비, 실행만 남음**: 매입 라인 수량이 전부 yd 단위(655~18,600)·라인 평균단가=avg_unit_cost 일치 → **원가=yd당 확정**(어제 "basis 불명" 해소). 통 2건=pack_size 1(1통=1L) 등가. 값도 폭 순 단조증가로 시세 정합. ★이 배치는 yd당 150~9,457원이라 **10원 반올림**(100원 반올림은 저가 +33% 왜곡). ✅적용 완료(용준님 직접 실행 — 1차는 CF 인증 일시오류 code 10000, 재시도 성공): 32/32 적용·백업 32행·공백 **406→374**. base_price 누적 적용 **212건**(`_bak_0824_costbase_price`). 원가 보유 품목의 단가 배선 완결 — 남은 공백 374 = 원가없음 315(매입이력 0)+AREA 53(㎡단가표 대상)+기타.
-- **뭉친줄 37건 조사 완료 — 분해는 원장 소스 확보 전 불가**: 23거래처 분산, 상위=허밍 프린트 1,240만(잉크·립 부품 「외 N건」)·LED4U 492만(아침 세션이 이미 「의도적 뭉침」 판정)·우드케이 397만·대양(태극기 지관) 380만, 나머지 수십만원대 소액. ★아카이브의 원장 경로 `Z:\DesignsS\` 가 현재 **미존재**(이동/명칭 상이 추정) — 원장 PDF 위치 확인(용준님) 전 분해 불가. 또한 대부분 간판 부자재 계열이라 분해해도 대응 품목이 없음(미매칭 286과 동일) → 실익은 간판 BOM 트랙 이후.
+1. **「6월 2,348건에서 급락」은 오독이다.** 2,348 중 2,275가 `e2e_tester` 로봇. 사람 활동은 6월 73·5월 37건이고 전부 `admin`. **급락이 아니라 시작된 적이 없다.** `activity_logs` 를 채택 지표로 쓸 때는 반드시 `user_id` 로 로봇·admin 을 걷어낼 것. 현황판 문구 정정 완료.
+2. **실사는 이미 돈다 — 병목은 현장이 아니라 옮겨적기.** 이미지·메모장으로 계속 받아 왔고 출력실은 매주 센다. MES 입력만 8/07에 멈췄다. 그래서 계획은 "실사를 시작하자"가 아니라 **"이미 오는 걸 끊기지 않게 흘려보내자"**로 짰다.
+3. **초반 2~3주는 코드를 쓰지 않는다.** 첫 보상 = 매주 세는 대상 73→18로 **빼주는 것** + 안전재고 값을 채워 **이미 도는 경고를 켜는 것**. 둘 다 코드 0.
+4. **현장 계정 개방은 3단계로 미룬다** — 2단계가 4주 이상 끊기지 않았을 때만. 생산현장 계정 2개·로그인 0회가 근거.
 
-## 소형 잔여 3건 소화 (같은 날 밤 2차)
-- 코스테크 전사잉크 RM-I0067~70 = **이미 12,000원 채워져 있음**(아침 연결 후 처리됨, 현황판 항목이 구식) — 산출값과 일치 검증.
-- KM 열전사 8색 = **현 상태가 정답**: LY 계열(RM-I0055~58·63~65) 7/27까지 매입 지속→활성 유지, 중복 「KM테크 8색기」(RM-I0059~62)는 이미 비활성. 변경 0.
-- N+1 재감사(잠복 절) = **결함 없음·항목 제거**: quotations 목록=행수 무관 3~4쿼리·쓰기=db.batch / taxInvoices 월합산=단일 SELECT+그룹 상한(#562) / 선택발행(batch-issue)=그룹당 PK 조회(오류 격리 의도). 관찰 1건: batch-issue 는 #562 류 그룹 상한이 없어 수백 그룹 일괄 선택 시 서브요청 한도 이론상 도달 — 선택 기반이라 실위험 낮아 미조치.
+## ★판단기준·주의 (다음 세션이 몰라서 틀릴 지점)
 
-## AREA ㎡단가표 역산 (2026-08-25, 「c」→ ㎡단가 기준·역산 초안 방식 확정)
-- 도구 = `scripts/derive-area-price-bands.cjs`(신설 `b359f9ad`, 읽기전용) — 품목×면적구간 ㎡단가 역산. CSV=`docs/pricing/area-price-bands.csv`.
-- ★**방법·규칙 검증 100%**: 청구면적 기준(10cm 올림+최소 1m)으로 운영 중 AREA 53종의 base_price 를 **53/53 재현**(실면적 기준은 9/53). 「최소 1m 올림」 규칙은 시스템·데이터 양쪽에 정확히 살아 있다.
-- ★**UV 판재는 최소청구 규칙 대상이 아니다**(용준님 2026-08-25 확답: 전체 면적대로 청구). 데이터도 일치 — 자작나무 6T 는 62건 중 55건(89%)이 1㎡ 미만이라 최소청구를 적용하면 8,000→33,300→109,500원/㎡(13배)로 무너지지만, 실면적 기준이면 148,100/111,100/111,100/120,100 으로 평평(≈120,000원/㎡). 포맥스 5T 도 55,556·58,333원/㎡.
-- ✅**건별 청구 10종 FIXED 전환 완료**(prod, 백업 `_bak_0825_area_to_fixed`): 조명시트 1 + 아크릴 5 + 스카시 4. 규격 없이 `금액=단가×수량`으로 나가는데 AREA 라 주문서가 면적을 곱하던 오분류. ㎡단가로 산출됐던 base_price 2건(SV-LSHT 13,900·UV-ACR-5T-W 30,000)은 장당가로 재해석하면 틀리므로 **0으로 비움**(최근거래가 제안이 대체). 미언급 2종(AQ-GERILLA 7/7·AQ-SYNG 16/16 규격없음)은 현수막 계열이라 **확인 대기**.
-- ⛔**블로커 — UV 판재 단가를 채우면 과청구가 된다**: `orderLineAmount.ts:68` `billingSide()` 가 최소 1m 를 **모든 AREA 품목에 무조건** 적용한다. 자작나무 120,000원/㎡ 를 넣으면 30×30(0.09㎡) 조각이 실제 10,800원 대신 **120,000원(11배)** 으로 계산된다. ⇒ 품목별 최소청구 예외(컬럼 1개 + 산식 쌍 `orderLineAmount.ts`↔`calc.js` 수정, 게이트 `test:orderline`) 없이는 표를 적재하면 안 된다.
+- **부족 경고는 없는 게 아니라 값이 비어 있는 것이다.** `stock_alerts` 테이블·API·설정 모달·대시보드 카드가 전부 있고 **매일 06:00 KST cron 으로 판정이 돌고 있다**(`workers/barobill-cron` → `routes/cron.ts:132-137` → `POST /api/notifications/generate` → `routes/notifications.ts:287-306`). `inventory.safe_stock`·`reorder_point` 가 **387행 전부 0** 이라 안 걸릴 뿐 — **값만 넣으면 다음 날부터 작동한다.**
+- ⚠️`inventory` 는 **창고별 다중 행**이다. 판정이 `GROUP BY item_id,entity_id` + `SUM(quantity)` vs `MAX(safe_stock)` 로 접으므로 제안값은 **해당 구역 행에** 넣는다. 품목 단위로 합산 금지(`notifications.ts:288`·`stock-alerts.ts:19` 감사 주석).
+- **현장 개방 차단점은 딱 한 줄**: `src/routes/inventoryCount.ts:10` `requireRole('ADMIN','MANAGER')`. `requireRole` 은 DB 를 안 보고 JWT role 문자열만 비교하므로 **권한 매트릭스로는 못 뚫는다.** 교체 대상 = `requireAccessOrRole('/inventory-count',…)`(`middleware/permissions.ts:104`, 가산형이라 회귀 0). 승인·삭제는 `requireRole` 유지.
+- **실사 전용 page_key 가 없다** — `/inventory-count` 는 `/inventory#tab=count` 로 redirect(`src/index.tsx:487`). `/inventory` 권한을 주면 재고현황·창고별 탭까지 열린다. 탭 게이팅 선례 = `src/pages/shipments.ts:32-36`.
+- **`storage_zones.manager_id` 는 이미 있고 실사는 안 쓴다**(`inventoryCount.ts` 805줄에 0회). 「내 담당」 API(`storageZones.ts:49-64`)·입고 「내 담당만」(`receiving.js:390-395`) 선례 존재 → 새 테이블 불요.
+- ⚠️**생산 14명 다수가 외국인**(MOE KO CHIT·MAUNG MAUNG·NGUYEN THUY CUONG·킨뚜자소·서민쎌·니나잉·예민). **한국어 텍스트 의존 UI·안내문은 실패**한다 → 숫자·사진 위주.
+- ⚠️`users.role` 은 레거시 4역할 고정, **실제 역할은 `job_role`**(`COALESCE(job_role,role)` 이 JWT role — `routes/auth.ts:22`). DB `role` 만 보면 경리·영업이 전부 OPERATOR 로 보인다.
+- **알림톡으로 자유 문구를 못 보낸다** — 승인 템플릿 4종뿐. 자유 문구는 **SMS/LMS**. 직원 대상 대량 발송은 `target_type='employees'` 로 **오늘 이미 가능**(`routes/messages.ts:718-721`).
+- **인바운드(직원→회사) 접수 기능은 코드 0줄.** 카톡이 유일. MES 이전 시 이식 대상 = `pr_comments`(`purchaseRequests.ts:160-207`) + `utils/notify.ts` fan-out. ⚠️새 뱃지·폴링 전에 `notifications.ts:12-15` 주석 필독(일 28.5B행 = D1 읽기 98% → 월 $99 사고). `POST /generate` 는 **TTL 캐시가 없으니** 새 집계를 얹지 말 것.
+- **`rememberMe` 가 죽은 코드**(`pages/login.ts:59,116`) — 렌더·값 읽기만 하고 안 쓴다. 토큰 8시간 + 화면 열려 있으면 30분마다 갱신이라 근무 중엔 무기한이지만 **주말 넘기면 재로그인**.
+- 실사 입력 패널 `width:500px` 인라인 고정(미디어쿼리 0, `pages/inventory.ts:276`), 수량 입력 `type="number"` 가 전역 44px 터치 규칙 셀렉터에서 누락(`layout/shared-styles.ts:455-458`), 폰트 12px → **태블릿 가로 가능·폰 불가. CSS 3건.**
+- **스크립트 분류 함정 2개**: ①「전부 0」만 보면 엡손 잉크를 놓친다(6주 연속 0 뒤 8/07에 3) → 과반 0(≥60%·채운 회차 3+)을 확인필요로 잡는다. ②**구역 미입력률 50% 초과면 「제거후보」 판정을 신뢰하지 말 것** — 현장 미실사인지 옮겨적기 누락인지 구분 불가(전사출력실 80% → 판정보류 16건).
 
-## ✅ 최소청구 예외 기능 배포 (2026-08-25, 「다」 진행 — 블로커 해소)
-- 마이그 **0541** `items.min_billing_side_cm INTEGER DEFAULT 100` + 산식 쌍 수정(`orderLineAmount.ts`↔`calc.js`) + 서버 5곳(create 3·update 2)이 기존 pricing_method 배치 조회에 컬럼을 얹어 전달 + 주문서 히든필드 `min_billing_side_{id}`. 커밋 `28c93f88`.
-- ★**배포만으로는 금액이 안 바뀐다** — prod 1,383품목 전량 기본값 100(종전 동작). 0 = 최소청구 없음(실규격).
-- ★**`Number(null)=0` 함정**: null/미지정을 그대로 Number 에 넣으면 **「미지정」이 「최소청구 없음」으로 뒤집힌다**. `resolveMinSide` 가 null/undefined/'' 를 먼저 걸러낸다 — 개발 중 게이트가 실제로 이 결함을 잡았다. 게이트 `test:orderline` **30/30**(예외 케이스 9건 추가, 0-vs-미지정 회귀 가드 포함).
-- 실측: 로컬 30×30 라인 = 예외 **10,800원** / 기본 **120,000원**, 화면 산식도 동일 3값 일치.
-- ⚠️**prod 마이그 수동 적용 완료**(코드가 새 컬럼을 참조하므로 배포 전 필수 — 0528 전례). `ALTER TABLE items ADD COLUMN min_billing_side_cm INTEGER DEFAULT 100`.
-- ⚠️**entity 감사 누락 6건 발견 — 내 변경 아님**: 전부 `financialReports.ts`(오늘 타 세션 `9d421572` 손익 탭). 「entity 0=그룹 연결」 전사 집계 설계라면 `scripts/entity-audit.mjs` 예외 등록이 필요하다. 방치하면 이후 배포마다 감사가 빨간불.
+## 산출물 수치 (2026-08-25 prod)
 
-## ★단가 규칙 설계 입력 (용준님 2026-08-25 설명 — 다음 세션 정본)
-「원폭 출력」 = **완성품 규격이 아니라 어느 폭 원단을 소비하는가**가 단가를 정한다. 짧은 변이 320이면 ①320폭 원단 한 장 ②160폭 두 장 이어붙이기 — 원단 단가가 다르므로 판매 단가도 다르게 받는다.
-⇒ 단가 축 = **품목 × 소비 원단 폭**(완성품 폭 구간이 아님). 실측 뒷받침: 수성 현수막은 폭↑=단가↑(90폭 1,400 → 180폭+ 3,100~3,500원/㎡, 2배 이상)인데 솔벤은 7,000~7,800 으로 폭 무관 — **폭 의존성이 품목마다 다르다**. 기존 단가표 테이블(`size_grade_prices` 등)은 등급이 텍스트라 범위 판정 불가 → 신규 규칙 테이블 필요.
+| 구역 | 실사표 | 주간 잔류 | 월간 | 확인필요 | 제거/보류 | 미입력률 |
+|---|---|---|---|---|---|---|
+| 출력실 | 73 | **18** | 40 | 6 (엡손솔벤잉크 6색) | 9 제거후보 | 31.7% |
+| 전사출력실 | 20 | 0 | 4 | 0 | 16 **판정보류** | 80.0% |
+
+안전재고 제안 48품목(리드타임 2주 **가정** — 실제 발주~입고 확인 후 `--lead` 로 재산출). ★주간 품목은 전부 `AQ2-*` yd 계열이라 **base_unit 이 비어 있는 129품목과 겹친다**(2부 단위 공백과 같은 무리).
 
 ## 다음 세션 TODO
-1. UV 판재 예외 켤 품목 확정 + ㎡단가(실면적 기준) 적재 — ★예외 ON 과 단가는 **함께** 가야 한다(예외만 켜면 과소청구, 단가만 넣으면 과청구). 근거=`docs/pricing/area-price-bands.csv`.
-2. 뭉친줄 37건: 원장 PDF 소스 위치 확인되면(용준님) 허밍·우드케이·대양부터 분해(방법론=ARCHIVE §2026-08-24 전사잉크).
-3. 간판 BOM 2차 = 설계 세션 필요(brainstorming 선행).
+
+1. **완료(08-25 오후)**: 8/24 전사 적재+**승인**(`IC-20260825153000`·재고 첫 반영 원단 21,652yd+잉크 100통·백업 `_bak_0825_approve_inv`) · 구역 담당자 4명 배정(출력실=한두선·전사=최재영·현수막실=정보람·UV실=모니르·선명2=강지영 — **5구역 전부**) · 계정 5개 신설(비번 1234·`users` 17~21)+`employees.user_id` 연결 7→12 · 엡손 잉크 재분리 · 투명시트 105·152 삭제 · 상품 6품목 구역해제.
+2. **용준님 대기**: 카톡방 개설 · `safe_stock` 채우기(**구역 행에**·리드타임 확정 후 `--lead` 재산출) · **한국엡손 월말 계산서**(3·4·6·7월) 주면 뭉침 4건 품목별 분해 · **배포**(아래 3-① 코드가 미배포).
+3. **개발**: ①**실사↔담당자 배선 = 코드 완료·미커밋·미배포**(`routes/inventory.ts` dashboard/zones + `routes/inventoryCount.ts` GET / `scope=mine` + `scripts/inventoryCount.js` + `pages/inventory.ts` `#fMineOnly`). 검증 완료=verify·check:dom·entity 0·정렬 P1 0·로컬 D1 파싱. ⚠️**커밋 금지 주의** — 타 세션이 `messages.ts`·`kakao.ts`·`contactGroups.ts`·`messagesAd.ts` 등을 dirty 로 두고 있고 `deploy.yml` 이 main push 마다 전체 재배포한다. ②채택 계기판 ③`base_unit` 축 감사를 `audit:items` 에 추가 ④HR ALLOWED 에 `user_id` 추가(현재 화면에서 직원↔계정 연결 불가·SQL 유일).
+4. ⚠️`resolveStockUnit`(`utils/rollConsumption.ts:75-80`)이 m/cm 외 전부 'yd' 반환 → **잉크가 「27 yd」로 표시**. 현장 실사 이관 전 수정 필요.
 
 ## 검증 명령
-```powershell
-node scripts/propose-costbase-prices.cjs        # 제안가 재생성 (읽기전용)
-$env:SMOKE_URL='https://webapp-9i0.pages.dev'; npm run smoke
-```
 
+```powershell
+npm run propose:count-scope                     # 실사 범위·안전재고 제안 재생성 (읽기전용)
+npm run propose:count-scope -- --lead 3         # 리드타임 바꿔 재산출
+node scripts/doc-diet-audit.cjs                 # 현황판·메모리 한도 게이트
+```
 
 ---
 
-# 세션 핸드오프(2) — 2026-08-24 분석·대시보드 수치 감사 + 마진/손익 재설계
+# 이월 — 2026-08-24 미완 (아직 유효)
 
-## 상태
-- **전부 prod 배포·검증 완료**: ①감사 ‹가›(전표 제외+`oi.amount` 기준, `ff40ac77`) ②정리(죽은 엔드포인트 7개·KST 45곳, `a7f8bda0`) ③마진 탭 추정원가 재설계+손익 탭 정본 포트(`9d421572`). prod smoke **111/111**(죽은 엔드포인트 5건 목록 제거로 116→111)·/reports 마커 7종 확인.
-
-## 결정 + 이유
-1. **E1-OPEN/ICM 전표는 매출 집계 전역 제외** — `voucherOrderSql(alias)`(orders/listFilter.ts). 2025-12-31에 189건 5.32억이 뭉쳐 12개월 창·TOP거래처를 오염. ICM 관계사 매출도 제외 유지(용준님 확정).
-2. **마진 매출 기준 = `oi.amount`** — `unit_price×quantity`는 AREA 라인에서 −8.83억(−21.8%) 과소.
-3. **마진 탭 = 추정 마진**(용준님 「나」): `avg_unit_cost×수량`, 커버 라인만 + **추정원가>매출 품목은 「단가 점검 필요」로 분리**(UV-FMX 원판단가×조각수량 함정·ETC-SHIP). 분모는 `JOIN items` 없이. 정본=memory `design-margin-estimated-cost`.
-4. **손익 탭 = finance-diagnose.cjs 정본 포트**(용준님 「다」): 판관비=통장·카드 계정분류(CAT_ROLE **사본 쌍** — 양쪽 동시 수정!)·장비 GDS-EQ(e1만) 제외·감가상각 가산·entity 0=그룹 연결(내부 양변 제거). **검증=GROUP 1~7월 diagnose 원단위 일치**(영업이익 272,110,171=311.7M−재고증감 39.6M). 재고증감은 웹 미반영(caveat 배너).
-5. 디자이너 탭 유지+라벨 보강(용준님 「나」) — 이관 주문 created_by=admin이라 전량 '관리자'.
-
-## 판단기준·주의
-- 손익 GROUP 검증법: admin 토큰 → `POST /api/auth/switch-entity {"entity_id":0}` → `/api/financial/pnl?from=&to=`. 기준값=`node scripts/finance-diagnose.cjs --group --from --to --json`.
-- 커밋 훅 doc-diet가 현황판·MEMORY **총량**까지 막는다 — 넘치면 큰 항목부터 압축(상세가 ARCHIVE에 이미 있는지 먼저 확인).
-- ⚠️balance-snapshot 은 이 세션 손익 재설계와 별개로 **위 세션(1)이 AP 부호 분리를 배포**함 — financialReports.ts 를 다음에 만질 때 두 축 모두 유지할 것.
-
-## 다음 세션 TODO
-1. (선택) 손익 재고증감 앵커 — 실사(inventory_counts) 연동으로 web caveat 해소.
-2. (선택) 미분류 출금·카드 1~7월 5,219만 분류 · 「단가 점검 필요」 11품목 단가 정리(커버리지 상승).
-3. 8월 주문 재적재 결정 시: 대시보드 「이번 달」 지표 정상화.
-
-## 검증 명령
-```powershell
-npm run verify; npm run smoke                       # 로컬 111/111
-node scripts/finance-diagnose.cjs --group --from 2026-01-01 --to 2026-07-31 --json   # 손익 기준값
-```
+1. **뭉친줄 37건 분해**: 원장 PDF 위치 확인되면(용준님) 허밍 1,240만·우드케이 397만·대양 380만부터. ★아카이브의 `Z:\DesignsS\` 경로가 **현재 미존재** — 위치 확인 전 불가. 방법론 = ARCHIVE §2026-08-24 전사잉크.
+2. **AREA 53 ㎡단가표(나-v2)·간판 BOM 2차** = 설계 세션 필요(brainstorming 선행).
+3. 매입 미연결 잔여 **326라인 2.507억** — `docs/analysis/2026-08-24-unlinked-purchase-lines.csv`. 대부분 간판 자재라 간판 BOM 트랙과 묶임.
+4. ⚠️`docs/price/backfill_avg_cost.sql` 재실행 전 **1식 라인 제외 조건** 확인(SGM-GALVA·WDS-01·ACC-056 추가 완료).
+5. ⚠️`financialReports.ts` 를 다음에 만질 때 **AP 부호 분리(08-24)와 손익 재설계 두 축을 모두 유지**할 것.
+6. (선택) 손익 재고증감 앵커 — `inventory_counts` 연동으로 web caveat 해소 · 미분류 출금·카드 1~7월 5,219만 분류.

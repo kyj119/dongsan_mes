@@ -16,14 +16,31 @@ inventoryCountRouter.get('/', async (c) => {
     const offset = parseInt(c.req.query('offset') || '0')
     const status = c.req.query('status')
     const storageZoneId = c.req.query('storage_zone_id')
+    const scope = c.req.query('scope')  // 'mine' = 내가 담당인 구역만 (receiving.js scope 패턴과 동일)
 
     const ef = entityFilter(c, 'ic')  // #279: 법인별 격리 (sz JOIN으로 entity_id 모호 → alias 필수)
     let query = `SELECT ic.id, ic.count_number, ic.count_date, ic.count_type, ic.status, ic.submitted_at, ic.approved_at, ic.notes, ic.storage_zone_id, sz.zone_name AS storage_zone_name,
+      sz.manager_id AS zone_manager_id, mu.name AS zone_manager_name,
       (SELECT COUNT(*) FROM inventory_count_items ci WHERE ci.count_id = ic.id) AS item_count
       FROM inventory_counts ic
       LEFT JOIN storage_zones sz ON ic.storage_zone_id = sz.id
+      LEFT JOIN users mu ON mu.id = sz.manager_id
       WHERE 1=1` + ef.clause
     const params: any[] = [...ef.params]
+
+    // scope=mine: 내 담당 구역. 담당자 미지정(NULL) 구역과 전수 실사는 ADMIN·MANAGER 에게만 보인다
+    //   — receiving.js:388-393 과 같은 규칙(미지정은 관리자 몫).
+    if (scope === 'mine') {
+      const u = c.get('user')
+      const isSupervisor = u?.role === 'ADMIN' || u?.role === 'MANAGER'
+      if (isSupervisor) {
+        query += ' AND (sz.manager_id = ? OR sz.manager_id IS NULL)'
+        params.push(u?.id ?? 0)
+      } else {
+        query += ' AND sz.manager_id = ?'
+        params.push(u?.id ?? 0)
+      }
+    }
 
     if (status) {
       query += ' AND ic.status = ?'
