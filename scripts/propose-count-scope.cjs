@@ -47,6 +47,7 @@ const ZONES = String(flag('zones', '1,3')).split(',').map((s) => parseInt(s.trim
 const LEAD_WEEKS = Number(flag('lead', '2'))
 const WEEKLY_MIN_CHANGES = Number(flag('weekly-min', '5'))
 const OUT = flag('out', path.join(__dirname, '..', 'docs', 'analysis', '2026-08-25-count-scope-proposal.csv'))
+const SQL_OUT = flag('emit-sql', null)  // 지정 시 safe_stock·reorder_point UPDATE 문을 파일로 뽑는다
 
 const DB = 'webapp-production'
 const WRANGLER = path.join(__dirname, '..', 'node_modules', 'wrangler', 'bin', 'wrangler.js')
@@ -105,6 +106,16 @@ function main() {
     console.log('실사 이력이 없다. 구역 번호를 확인할 것.')
     return
   }
+
+  // 현재 재고 — 안전재고를 넣었을 때 곧바로 걸릴 품목 수를 미리 본다.
+  //   ★경고가 처음부터 쏟아지면 채널이 죽는다. 적용 전에 반드시 이 수치를 확인할 것.
+  const invRows = d1(`
+    SELECT inv.item_id, inv.storage_zone_id AS zone_id, inv.entity_id, inv.quantity
+      FROM inventory inv
+     WHERE inv.storage_zone_id IN (${ZONES.join(',')})
+  `)
+  const invByKey = new Map()
+  for (const r of invRows) invByKey.set(`${r.zone_id}:${r.item_id}`, Number(r.quantity) || 0)
 
   // 품목별 시계열로 접는다
   const byItem = new Map()
@@ -185,7 +196,12 @@ function main() {
     const safe = cls === '주간' || cls === '월간' ? roundUp((weekly || 0) * LEAD_WEEKS) : 0
     const rop = safe > 0 ? roundUp((weekly || 0) * (LEAD_WEEKS + 1)) : 0
 
+    const curQty = invByKey.get(`${it.zone_id}:${it.item_id}`)
     out.push({
+      _item_id: it.item_id,
+      _zone_id: it.zone_id,
+      cur_qty: curQty === undefined ? '' : curQty,
+      would_alert: safe > 0 && curQty !== undefined && curQty < safe ? 'Y' : '',
       zone: it.zone_name || `zone${it.zone_id}`,
       item_code: it.item_code,
       item_name: it.item_name,
@@ -254,11 +270,41 @@ function main() {
   }
 
   const withSafe = out.filter((r) => r.safe_stock > 0)
+  const alerting = withSafe.filter((r) => r.would_alert === 'Y')
   console.log(`\n■ 안전재고 제안 — ${withSafe.length}품목 (리드타임 ${LEAD_WEEKS}주 가정)`)
   console.log(`   현재 inventory.safe_stock 은 전 행 0 이라 매일 06:00 판정에 아무것도 안 걸린다.`)
   console.log(`   값을 넣으면 다음 날부터 경고가 돈다 — 코드 변경 없음.`)
-  console.log(`   ⚠️리드타임 ${LEAD_WEEKS}주는 가정값이다. 실제 발주~입고 기간 확인 후 --lead 로 재산출할 것.`)
-  console.log(`\n적용은 자동으로 하지 않는다. CSV 검토 후 /inventory 안전재고 설정 모달 또는 SQL 로 반영.`)
+  console.log(`   ⚠️리드타임 ${LEAD_WEEKS}주는 가정값이다(입고 시각 데이터가 없어 실측 불가). --lead 로 조정.`)
+  console.log(`\n   ★적용 즉시 경고가 걸릴 품목 = ${alerting.length} / ${withSafe.length}`)
+  console.log(`     경고가 처음부터 쏟아지면 채널이 죽는다. 이 수가 크면 --lead 를 낮춰 다시 본다.`)
+  for (const r of alerting.slice(0, 10)) {
+    console.log(`       ${String(r.item_code).padEnd(16)} 현재 ${String(r.cur_qty).padStart(8)} < 안전 ${r.safe_stock}`)
+  }
+  if (alerting.length > 10) console.log(`       … 외 ${alerting.length - 10}건`)
+
+  if (SQL_OUT) {
+    const stmts = [
+      '-- inventory.safe_stock · reorder_point 채우기 (propose-count-scope.cjs 생성)',
+      `-- 리드타임 ${LEAD_WEEKS}주 가정 · safe = 주당소모 × ${LEAD_WEEKS} · reorder = 주당소모 × ${LEAD_WEEKS + 1}`,
+      '-- ★창고별 다중 행이므로 (item_id, entity_id, storage_zone_id) 로 특정한다. 품목 단위 합산 금지.',
+      '-- 롤백: UPDATE inventory SET safe_stock=0, reorder_point=0 WHERE id IN (SELECT id FROM _bak_0825_safestock);',
+      '',
+      'CREATE TABLE IF NOT EXISTS _bak_0825_safestock AS',
+      `SELECT id, item_id, entity_id, storage_zone_id, safe_stock, reorder_point, datetime('now') AS saved_at`,
+      `  FROM inventory WHERE storage_zone_id IN (${ZONES.join(',')});`,
+      '',
+    ]
+    for (const r of withSafe) {
+      stmts.push(
+        `UPDATE inventory SET safe_stock = ${r.safe_stock}, reorder_point = ${r.reorder_point}, last_updated = CURRENT_TIMESTAMP\n` +
+        ` WHERE item_id = ${r._item_id} AND storage_zone_id = ${r._zone_id};   -- ${r.item_code}`)
+    }
+    fs.mkdirSync(path.dirname(SQL_OUT), { recursive: true })
+    fs.writeFileSync(SQL_OUT, stmts.join('\n') + '\n', 'utf8')
+    console.log(`\n   SQL 기록 → ${SQL_OUT} (${withSafe.length}건)`)
+  }
+
+  console.log(`\n적용은 자동으로 하지 않는다. CSV·SQL 검토 후 실행하거나 /inventory 안전재고 설정 모달로 반영.`)
 }
 
 main()

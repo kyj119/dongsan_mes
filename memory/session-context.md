@@ -98,7 +98,8 @@ $env:SMOKE_URL="https://webapp-9i0.pages.dev" ; npm run smoke   # PASS 111/111 �
 
 ## 다음 세션 TODO
 
-1. **용준님(코드 0)**: 카톡방 개설 · `safe_stock` 채우기(**구역 행에** · 리드타임 확정 후 `--lead` 재산출) · 8/13 80610 벌크 3건(621,000)은 **보류 확정**(8월 매입 미반영).
+1. **용준님(코드 0)**: 카톡방 개설 · 8/13 80610 벌크 3건(621,000)은 **보류 확정**(8월 매입 미반영).
+   ✅`safe_stock`·`reorder_point` **48행 적용 완료**(출력실 44·전사 4 · 리드타임 1주 · 백업 `_bak_0825_safestock`). ★**경고 판정은 `reorder_point` 기준**이고 `safe_stock` 은 안 쓰인다(`notifications.ts:292-299`) · 창고 `SUM(quantity)` vs `MAX(reorder_point)` · `<=` 비교 · 알림은 「재고 부족 N개 품목」 **한 건**. 현재 발동 **21건**. ⚠️UV실·현수막실은 실사 이력 0이라 값 없음.
 2. **개발 3종**: ①채택 계기판(1부·하루) ②`base_unit` 축 감사를 `audit:items` 에 추가(참조 0회 — 50배 사고를 낸 축만 감사망 밖) ③`resolveStockUnit` yd 폴백 수정.
 3. **계획 3단계(권한 개방)**: 2단계가 4주 이상 끊기지 않으면 착수. `permission_pages` 에 `/inventory-count` INSERT + `requireRole` → `requireAccessOrRole` + 승인·삭제는 잠금 유지 + 탭 게이팅(`pages/shipments.ts:32-36` 선례) + 모바일 CSS 3건.
 4. **관찰**: 다음 주 실사가 실제로 들어오는지(구역별 미입력률 추이). 안 들어오면 **품목을 더 줄인다**(사람을 채근하지 않는다).
