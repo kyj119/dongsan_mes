@@ -303,6 +303,13 @@ export const bankPageContent = `
                   <tr><td colspan="10" class="text-center py-10 text-gray-400">로딩 중...</td></tr>
                 </tbody>
               </table>
+              <!-- 누적 로드 푸터: 스크롤 컨테이너 안에 둬야 목록 끝에서 바로 이어 누를 수 있다 -->
+              <div class="flex items-center justify-center gap-3 py-3 border-t border-gray-100">
+                <span id="txRangeNote" class="text-xs text-gray-500 tabular-nums"></span>
+                <button id="txMoreBtn" onclick="loadMoreTransactions()" class="hidden px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200">
+                  <i class="fas fa-angle-down mr-1"></i>50건 더 보기
+                </button>
+              </div>
             </div>
           </div>
 

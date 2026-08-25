@@ -12,6 +12,14 @@
   var matchRules = {};
   var expenseCategories = [];
 
+  // 거래내역 누적 로드 — 종전엔 서버 기본 limit(500) 전건을 한 번에 렌더해 DOM 14,892 노드였고,
+  //   501번째부터는 화면에 **안내 없이 잘려** 있었다(서버가 total 을 주는데 클라가 안 썼다).
+  //   기본 50건 + 「더 보기」 누적. 누적이라 일괄적용 체크 선택은 이전처럼 계속 쌓인다.
+  var TX_PAGE = 50;
+  var TX_RELOAD_CAP = 1000;   // 서버 limit 상한(routes/bank.ts) — 변경 후 새로고침 시 복원 한도
+  var txTotal = 0;
+  var txLoading = false;
+
   // Tab switch
   var bankTabs = ['fund', 'tx', 'receivables', 'rules', 'accounts'];
   window.switchBankTab = function(tab) {
@@ -130,7 +138,7 @@
       var d = r.data.data || {};
       if (d.inserted > 0) {
         showToast('자동 동기화: ' + d.inserted + '건 신규, ' + (d.matched || 0) + '건 자동매칭', 'success');
-        loadTransactions();
+        refreshTransactions();
       }
       loadStats();
     }).catch(function() {
@@ -167,8 +175,8 @@
     }).catch(function() { accounts = []; });
   }
 
-  // Load transactions
-  window.loadTransactions = function() {
+  // 현재 필터 → 쿼리 파라미터. 목록·「더 보기」가 같은 조건을 쓰도록 한 곳에서 만든다.
+  function buildTxFilterParams() {
     var accountId = document.getElementById('filterAccount').value;
     var dateStart = document.getElementById('filterDateStart').value;
     var dateEnd = document.getElementById('filterDateEnd').value;
@@ -188,22 +196,84 @@
       params.push('match_status=' + encodeURIComponent(status));
     }
     if (txType) params.push('transaction_type=' + encodeURIComponent(txType));
+    return params;
+  }
 
-    var url = '/api/bank/transactions' + (params.length ? '?' + params.join('&') : '');
+  // Load transactions
+  //   append=false → 처음부터 다시 그림(필터 변경·최초 진입) / append=true → 뒤에 이어붙임(더 보기)
+  function fetchTransactions(limit, offset, append) {
+    if (txLoading) return;
+    txLoading = true;
+    var params = buildTxFilterParams();
+    params.push('limit=' + limit);
+    if (offset) params.push('offset=' + offset);
+    var url = '/api/bank/transactions?' + params.join('&');
+
     var tbody = document.getElementById('txTableBody');
-    tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>로딩 중...</td></tr>';
+    if (!append) {
+      tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>로딩 중...</td></tr>';
+    }
+    setTxMoreBusy(true);
 
     axios.get(url).then(function(r) {
-      transactions = r.data.data || r.data || [];
-      renderTransactions();
+      var rows = r.data.data || r.data || [];
+      txTotal = (r.data && r.data.total != null) ? r.data.total : rows.length;
+      transactions = append ? transactions.concat(rows) : rows;
+      renderTransactions(rows, append);
       loadStats();
     }).catch(function(e) {
       var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '거래내역 로딩 실패';
-      tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8 text-red-400"><i class="fas fa-exclamation-circle mr-1"></i>' + msg + '</td></tr>';
+      if (append) showToast(msg, 'error');
+      else tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8 text-red-400"><i class="fas fa-exclamation-circle mr-1"></i>' + msg + '</td></tr>';
+    }).finally(function() {
+      txLoading = false;
+      setTxMoreBusy(false);
+      renderTxRangeNote();
     });
+  }
+
+  // 필터 변경·최초 진입 = 처음 50건부터
+  window.loadTransactions = function() { fetchTransactions(TX_PAGE, 0, false); };
+
+  // 「더 보기」 = 뒤에 50건 이어붙임. 누적이라 체크해 둔 선택은 그대로 유지된다.
+  window.loadMoreTransactions = function() {
+    if (txLoading || transactions.length >= txTotal) return;
+    fetchTransactions(TX_PAGE, transactions.length, true);
   };
 
-  function renderTransactions() {
+  // 매칭·적용 등 변경 후 새로고침 = **지금 펼쳐 둔 범위를 유지**한 채 다시 읽는다.
+  //   여기서 loadTransactions() 를 부르면 300건 펼쳐 놓고 한 건 적용할 때마다 50건으로 접힌다.
+  function refreshTransactions() {
+    var keep = Math.min(Math.max(transactions.length, TX_PAGE), TX_RELOAD_CAP);
+    fetchTransactions(keep, 0, false);
+  }
+
+  function setTxMoreBusy(busy) {
+    var btn = document.getElementById('txMoreBtn');
+    if (!btn) return;
+    btn.disabled = !!busy;
+    btn.innerHTML = busy
+      ? '<i class="fas fa-spinner fa-spin mr-1"></i>불러오는 중'
+      : '<i class="fas fa-angle-down mr-1"></i>' + TX_PAGE + '건 더 보기';
+  }
+
+  // 「N / 전체 M건」 — 종전엔 이 표기가 없어 서버 상한(500) 너머가 무음 누락됐다.
+  function renderTxRangeNote() {
+    var note = document.getElementById('txRangeNote');
+    var btn = document.getElementById('txMoreBtn');
+    if (!note) { console.warn('[bank] #txRangeNote not found'); return; }
+    if (!transactions.length) {
+      note.textContent = '';
+      if (btn) btn.classList.add('hidden');
+      return;
+    }
+    var more = Math.max(txTotal - transactions.length, 0);
+    note.textContent = transactions.length.toLocaleString() + ' / 전체 ' + txTotal.toLocaleString() + '건'
+      + (more ? ' · ' + more.toLocaleString() + '건 남음' : '');
+    if (btn) btn.classList.toggle('hidden', more === 0);
+  }
+
+  function renderTransactions(rows, append) {
     var tbody = document.getElementById('txTableBody');
     if (!transactions.length) {
       tbody.innerHTML = '<tr><td colspan="10" class="text-center py-12">'
@@ -213,7 +283,7 @@
       return;
     }
     var html = '';
-    transactions.forEach(function(tx) {
+    (rows || transactions).forEach(function(tx) {
       var amt = Math.abs(parseFloat(tx.amount || 0));
       var isDeposit = tx.transaction_type === 'DEPOSIT';
       var badge = getStatusBadge(tx.match_status || 'UNMATCHED');
@@ -275,9 +345,15 @@
       html += '<td class="text-center">' + actionCell + '</td>';
       html += '</tr>';
     });
-    tbody.innerHTML = html;
     // 카테고리 추천값은 buildCategorySelect에서 이미 value 설정됨
-    bindCheckboxEvents();
+    if (append) {
+      tbody.insertAdjacentHTML('beforeend', html);   // 이어붙임 — 기존 행의 체크 상태 보존
+      // 새로 붙은 행은 미선택 → 헤더 전체선택이 켜져 있으면 거짓말이 된다
+      var _all = document.getElementById('checkAll');
+      if (_all && _all.checked) _all.checked = false;
+    } else {
+      tbody.innerHTML = html;
+    }
     updateSelectionBar();
   }
 
@@ -471,7 +547,7 @@
     if (feId) body.fixed_expense_id = feId;
     axios.post('/api/bank/transactions/' + txId + '/match', body).then(function(r) {
       showToast((r.data && r.data.message) || '확정 완료', 'success');
-      loadTransactions();
+      refreshTransactions();
       loadStats();
       if (feId) loadFixedExpenseStatus();
     }).catch(function(e) {
@@ -483,7 +559,7 @@
   // 제안 거절 → UNMATCHED로 되돌려 직접 매칭
   window.rejectSuggestion = function(txId) {
     axios.post('/api/bank/transactions/' + txId + '/unmatch').then(function() {
-      loadTransactions();
+      refreshTransactions();
     }).catch(function(e) {
       var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '처리 실패';
       showToast(msg, 'error');
@@ -543,12 +619,15 @@
     }
   }
 
-  // 테이블 렌더 후 체크박스 이벤트 바인딩
-  function bindCheckboxEvents() {
-    document.querySelectorAll('.tx-check').forEach(function(el) {
-      el.addEventListener('change', updateSelectionBar);
+  // 체크박스 이벤트 = tbody 위임 1회. 행마다 addEventListener 하면 「더 보기」로 이어붙일 때
+  //   기존 행에 리스너가 중복으로 쌓인다.
+  (function bindCheckboxDelegation() {
+    var tbody = document.getElementById('txTableBody');
+    if (!tbody) { console.warn('[bank] #txTableBody not found'); return; }
+    tbody.addEventListener('change', function(e) {
+      if (e.target && e.target.classList && e.target.classList.contains('tx-check')) updateSelectionBar();
     });
-  }
+  })();
 
   window.clearSelection = function() {
     document.querySelectorAll('.tx-check').forEach(function(el) { el.checked = false; });
@@ -567,7 +646,7 @@
     axios.post('/api/bank/transactions/auto-match').then(function(r) {
       var cnt = (r.data.data && r.data.data.matched) ? r.data.data.matched : 0;
       showToast('자동매칭 완료: ' + cnt + '건 매칭됨', 'success');
-      loadTransactions();
+      refreshTransactions();
     }).catch(function(e) {
       var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '자동매칭 실패';
       showToast(msg, 'error');
@@ -665,7 +744,7 @@
       } else {
         // 부분/전체 실패를 정직하게 보고 + 실패분만 목록 유지
         showToast(ok + '건 처리, ' + fail + '건 실패', ok > 0 ? 'warning' : 'error');
-        loadTransactions();
+        refreshTransactions();
         renderTransferCandidates();
       }
     }).finally(function() { if (__btn) __btn.disabled = false; });
@@ -673,14 +752,14 @@
 
   window.closeTransferModal = function() {
     document.getElementById('transferModal').classList.remove('show');
-    loadTransactions();
+    refreshTransactions();
   };
 
   window.unlinkTransfer = async function(txId) {
     if (!(await showConfirm('계좌이체를 해제하고 두 거래를 미매칭으로 되돌리시겠습니까?'))) return;
     axios.post('/api/bank/transactions/' + txId + '/unlink-transfer').then(function() {
       showToast('계좌이체 해제됨', 'success');
-      loadTransactions();
+      refreshTransactions();
     }).catch(function(e) {
       var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '해제 실패';
       showToast(msg, 'error');
@@ -768,11 +847,11 @@
       } catch (e) {
         var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '일괄 적용 실패';
         showToast(msg, 'error');
-        if (allResults.length === 0) { bankSetBatchProgress(0, 0); loadTransactions(); return; }
+        if (allResults.length === 0) { bankSetBatchProgress(0, 0); refreshTransactions(); return; }
         showToast('일부만 처리된 상태입니다 — 결과를 확인하세요.', 'warning');
       }
       bankSetBatchProgress(0, 0);
-      loadTransactions();
+      refreshTransactions();
       bankShowBatchResult(allResults, bankBatchItems);
     };
 
@@ -901,7 +980,7 @@
       // 비용분류 → match (서버에서 바로 APPLIED 처리)
       axios.post('/api/bank/transactions/' + txId + '/match', { category_id: parseInt(catId, 10) }).then(function() {
         showToast('비용 분류 적용 완료', 'success');
-        loadTransactions();
+        refreshTransactions();
         loadStats();
       }).catch(function(e) {
         var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '처리 실패';
@@ -930,7 +1009,7 @@
     if (!(await showConfirm('이 거래를 무시하시겠습니까?'))) return;
     axios.post('/api/bank/transactions/' + txId + '/ignore').then(function() {
       showToast('무시 처리됨', 'success');
-      loadTransactions();
+      refreshTransactions();
     }).catch(function(e) {
       var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '처리 실패';
       showToast(msg, 'error');
@@ -942,7 +1021,7 @@
     if (!(await showConfirm('매칭을 해제하고 미매칭 상태로 되돌리시겠습니까?'))) return;
     axios.post('/api/bank/transactions/' + txId + '/unmatch').then(function() {
       showToast('매칭 해제됨', 'success');
-      loadTransactions();
+      refreshTransactions();
     }).catch(function(e) {
       var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '처리 실패';
       showToast(msg, 'error');
@@ -1106,7 +1185,7 @@
     axios.post('/api/bank/transactions/' + txId + '/apply', payload).then(function(r) {
       showToast((r.data && r.data.message) || '적용 완료', 'success');
       closeApplyModal();
-      loadTransactions();
+      refreshTransactions();
       loadStats();
     }).catch(function(e) {
       var d = e.response && e.response.data;
@@ -1630,7 +1709,7 @@
         console.warn('[bank] 동기화 경고:', errs);
         showToast('⚠ 미수집 경고 ' + errs.length + '건: ' + errs.slice(0, 3).map(escHtml).join(' / '), 'warning');
       }
-      loadTransactions();
+      refreshTransactions();
       loadStats();
       loadAccountFilter();
     }).catch(function(e) {
@@ -1655,7 +1734,7 @@
     if (!(await showConfirm(msg, { danger: true }))) return;
     axios.post('/api/bank/transactions/' + txId + '/unapply').then(function(r) {
       showToast((r.data && r.data.message) || '적용 취소 완료', 'success');
-      loadTransactions();
+      refreshTransactions();
       loadStats();
     }).catch(function(e) {
       var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '취소 실패';
@@ -1665,25 +1744,8 @@
 
   // === CSV 내보내기 ===
   window.exportCsv = function() {
-    var accountId = document.getElementById('filterAccount').value;
-    var dateStart = document.getElementById('filterDateStart').value;
-    var dateEnd = document.getElementById('filterDateEnd').value;
-    var status = document.getElementById('filterStatus').value;
-    var txType = document.getElementById('filterTxType').value;
-
-    var params = [];
-    if (accountId) params.push('account_id=' + encodeURIComponent(accountId));
-    if (dateStart) params.push('date_start=' + encodeURIComponent(dateStart));
-    if (dateEnd) params.push('date_end=' + encodeURIComponent(dateEnd));
-    if (status === 'PENDING') {
-      params.push('match_status=UNMATCHED');
-      params.push('match_status=SUGGESTED');
-      params.push('match_status=CONFIRMED');
-    } else if (status) {
-      params.push('match_status=' + encodeURIComponent(status));
-    }
-    if (txType) params.push('transaction_type=' + encodeURIComponent(txType));
-
+    // 화면에 펼쳐 둔 건수와 무관하게 **필터 조건 전건**을 내보낸다(서버가 별도 집계).
+    var params = buildTxFilterParams();
     var url = '/api/bank/transactions/export' + (params.length ? '?' + params.join('&') : '');
     window.open(url, '_blank');
   };
@@ -2309,7 +2371,7 @@
       var d = r.data.data || {};
       showToast(r.data.message || (d.inserted + '건 등록'), 'success');
       closeCsvImport();
-      loadTransactions();
+      refreshTransactions();
       loadStats();
     }).catch(function(e) {
       var msg = (e.response && e.response.data && e.response.data.error) || 'CSV 가져오기 실패';

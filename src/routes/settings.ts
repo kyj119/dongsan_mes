@@ -165,18 +165,23 @@ settingsRouter.get('/credit-policy', requireRole('ADMIN'), async (c) => {
     }
 
     // 판정식은 credit-helpers 가 정본 — 여기서 복제하지 않는다(연체 알림 배치와 같은 SQL 을 쓴다).
+    //
+    // ⚠️ 경고비율을 `?` 로 바인딩하지 말 것 — SQLite 는 `?` 를 **SQL 텍스트에 나온 순서**로 채우는데,
+    //    이 자리(바깥 SELECT 목록)는 서브쿼리 `(${sql})` 보다 **앞**이라 buildCreditEvalSql 의 파라미터가
+    //    통째로 한 칸씩 밀린다. 2026-08-25 실측 사고: entity 필터 자리에 months(6)가 들어가
+    //    `a.entity_id = 6` 이 되면서 adjustments 가 통째로 빠졌다 → 초과 37곳이 **108곳**으로, 3.55억이 5.52억으로.
+    //    warnRatio 는 위 ov() 에서 0.1~1 숫자로 검증됐으므로 인라인이 안전하다(months 를 인라인하는 이유와 같다).
     const { sql, params } = buildCreditEvalSql(c, sim)
     const row = await c.env.DB.prepare(
       `SELECT COUNT(*) AS total,
               SUM(CASE WHEN lim >= 0 AND balance >= lim THEN 1 ELSE 0 END) AS exceeded,
-              SUM(CASE WHEN lim >= 0 AND balance < lim AND balance >= lim * ? THEN 1 ELSE 0 END) AS warning,
+              SUM(CASE WHEN lim >= 0 AND balance < lim AND balance >= lim * ${sim.warnRatio} THEN 1 ELSE 0 END) AS warning,
               CAST(SUM(CASE WHEN lim >= 0 AND balance >= lim THEN balance ELSE 0 END) AS INT) AS exceeded_balance,
               SUM(CASE WHEN credit_hold = 1 THEN 1 ELSE 0 END) AS held,
               SUM(CASE WHEN lim < 0 THEN 1 ELSE 0 END) AS unlimited
          FROM (${sql})`
     ).bind(
-      ...params,
-      sim.warnRatio
+      ...params
     ).first<{ total: number; exceeded: number; warning: number; exceeded_balance: number; held: number; unlimited: number }>()
 
     return c.json({
