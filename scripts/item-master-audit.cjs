@@ -12,14 +12,15 @@
  *       다음에 같은 물건을 팔 때 **또 새 품목을 만들게 된다**
  *   전부 「나중에 원가가 이상하다」로 드러나는 종류다. 그전에 잡는 게 이 스크립트다.
  *
- * 검사 (A~D = 규약 위반 · E = 추세 지표)
+ * 검사 (A~D·F = 규약 위반 · E = 추세 지표)
  *   A 규격에 계열 고정값   `*7m`·`*3m` 처럼 형제 전원이 공유하는 값 (참고 — 롤 사양은 남기는 게 맞다)
  *   B 규격에 색상          색이 품명에도 규격에도 있다 (참고 — 규격이 완결적이면 둬도 된다)
  *   C 단가 스케일 혼재     한 품목의 매입 단가가 50배 이상 벌어진다 — 단위 혼재이거나 **금액전용 라인 혼입**
  *   D 품명↔코드 불일치     코드의 식별 토큰(180G·5T)이 품명과 어긋난다
+ *   F 재고단위 정합성      수량(base)과 단가의 기준이 어긋난다 — 평가액이 pack_size 배로 튄다
  *   E 건강 지표            원가없음·규격없음·무실적·판매플래그 불일치 (절대값이 아니라 **추세**를 본다)
  *
- * ★ 등급을 나눈다 — **C·D 만 게이트(exit 1)**, A·B 는 참고(exit 0).
+ * ★ 등급을 나눈다 — **C·D·F1 만 게이트(exit 1)**, A·B·F2·F3 는 참고(exit 0).
  *   A·B 를 게이트로 두면 매번 빨개져 감사 자체가 무뎌진다(기존 audit 들이 같은 이유로 강/약을 나눴다).
  *   실제로 A 는 `BUJIK-*` 의 `50m` 처럼 **남겨야 하는 롤 사양**까지 잡는다 — 「그 계열 전원이 공유한다」는
  *   기계적 사실일 뿐, 빼도 되는지는 사람이 안다(트러스바의 7m 는 빼도 되고 원단의 50m 는 아니다).
@@ -125,7 +126,41 @@ for (const it of items) {
   }
 }
 
+// ── F. 재고단위(base_unit) 정합성 ────────────────────────────────────────
+// ★왜 뒤늦게 붙었나 (2026-08-26): 이 스크립트에 `base_unit` 참조가 **0회**였다.
+//   수량과 단가를 둘 다 base 로 넣어 **평가액 50배**를 낸 축인데 감사가 안 보고 있었다
+//   ([[design-stock-base-unit-rebase]]). C(단가 스케일)는 **매입 단가끼리** 비교하므로
+//   "매입은 일관되게 통 단가인데 재고 수량만 L" 인 이 결함을 원리적으로 못 잡는다.
+//
+// 단위 3층 = unit(입고·발주) / base_unit(재고·소모) / pack_size(환산 계수).
+//   재고 수량이 base 로 저장되면 **단가도 base 기준**이어야 평가액이 맞는다(수량×pack ÷ 단가×pack = 불변).
+const unitRows = d1(`SELECT i.item_code, i.item_name,
+    COALESCE(i.base_unit,'') bu, COALESCE(i.unit,'') un, COALESCE(i.pack_size,0) ps,
+    CAST(COALESCE(i.avg_unit_cost,0) AS INT) auc,
+    CAST(COALESCE((SELECT AVG(p.unit_price) FROM purchase_order_items p
+                   WHERE p.item_id = i.id AND p.unit_price > 0), 0) AS INT) po_avg
+  FROM items i WHERE i.is_active = 1`)
+
+let f2 = 0, f3 = 0
+for (const r of unitRows) {
+  // F1 (게이트) — 수량은 base 인데 단가가 관리단위 그대로다.
+  //   판정: pack_size 로 나눠야 할 단가가 매입 단가와 사실상 같다(80% 이상) → 안 나눈 것이다.
+  //   ⚠️ base_unit 이 빈 품목은 제외한다 — AQ* 처럼 **애초에 base 로 안 옮긴 무리**라 통 단가가 정상이다.
+  if (r.bu && r.ps > 1 && r.auc > 0 && r.po_avg > 0 && r.auc >= r.po_avg * 0.8) {
+    add(r.item_code, 'F1 재고단가 미환산',
+      `재고는 ${r.bu} 인데 단가 ${Number(r.auc).toLocaleString()} 가 ${r.un} 단가(${Number(r.po_avg).toLocaleString()}) 그대로다`
+      + ` — 평가액이 ${r.ps} 배 부푼다`)
+    continue
+  }
+  // F2 (참고) — 관리단위≠재고단위인데 환산 계수가 없다. 입고가 ×1 로 들어가 수량이 pack 배 적게 잡힌다.
+  if (r.bu && r.ps <= 1 && r.un && r.un.toLowerCase() !== r.bu.toLowerCase()) { f2++; continue }
+  // F3 (참고) — 환산 계수는 있는데 재고 단위가 없다. ×pack_size 로 늘어난 수량이 무슨 단위인지 아무도 모른다.
+  if (!r.bu && r.ps > 1) f3++
+}
+
 // ── 보고 ─────────────────────────────────────────────────────────────────
+// 게이트 = C·D·F1. 셋 다 "어느 경우에도 잘못"인 것만 골랐다(A·B·F2·F3 는 사람 판단이 필요).
+const GATE_KIND = /^(C|D|F1) /
 if (!METRICS_ONLY) {
   if (violations.length) {
     const byKind = new Map()
@@ -134,18 +169,21 @@ if (!METRICS_ONLY) {
       byKind.get(v.kind).push(v)
     }
     for (const [kind, list] of [...byKind].sort()) {
-      const gate = /^[CD] /.test(kind)
+      const gate = GATE_KIND.test(kind)
       console.log(`\n${gate ? '⚠️  [게이트]' : '·   [참고] '} ${kind} — ${list.length}건`)
       const n = gate ? 20 : 6
       for (const v of list.slice(0, n)) console.log(`   ${v.code.padEnd(20)} ${v.msg}`)
       if (list.length > n) console.log(`   … 외 ${list.length - n}건`)
     }
-    if (![...byKind.keys()].some((k) => /^[CD] /.test(k))) {
-      console.log('\n[item-audit] ✅ 게이트 항목(C·D) 위반 없음 — 위는 판단이 필요한 참고 정보다')
+    if (![...byKind.keys()].some((k) => GATE_KIND.test(k))) {
+      console.log('\n[item-audit] ✅ 게이트 항목(C·D·F1) 위반 없음 — 위는 판단이 필요한 참고 정보다')
     }
   } else {
-    console.log('[item-audit] ✅ 규약 위반 없음 (A~D 전부)')
+    console.log('[item-audit] ✅ 규약 위반 없음 (A~F 전부)')
   }
+  // F2·F3 는 개별 지목이 아니라 총량으로 본다 — 지금은 잘못이 아닐 수 있고(미취급·단일단위), 늘어나는 게 신호다.
+  console.log(`\n·   [참고]  F2 환산계수 없는 이중단위 ${f2}건 · F3 단위 없는 환산계수 ${f3}건`)
+  console.log('            F2=입고가 ×1 로 들어가 수량이 pack 배 적게 잡힌다 · F3=늘어난 수량의 단위가 미정의')
 }
 
 // ── E. 건강 지표 — 절대값이 아니라 **추세**를 본다 ──────────────────────
@@ -190,6 +228,6 @@ console.log(`   판매플래그 불일치 ${met.flag_sale}        팔렸는데 �
 console.log(`   매입플래그 불일치 ${met.flag_buy}        샀는데 매입품목이 아니다`)
 console.log('\n   ★ 플래그 불일치는 **즉시 고칠 것** — 선택기에 안 보여 같은 물건을 또 만들게 된다.')
 
-// C·D 만 실패로 처리한다. A·B 는 판단이 필요한 참고 정보라 게이트로 두면 감사가 무뎌진다.
-const hard = violations.filter((v) => /^[CD] /.test(v.kind))
+// C·D·F1 만 실패로 처리한다. A·B·F2·F3 는 판단이 필요한 참고 정보라 게이트로 두면 감사가 무뎌진다.
+const hard = violations.filter((v) => GATE_KIND.test(v.kind))
 process.exit(!METRICS_ONLY && hard.length ? 1 : 0)

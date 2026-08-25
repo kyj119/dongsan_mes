@@ -18,12 +18,14 @@
 // ============================================================================
 
 export interface RollUnitSpec {
-  /** items.base_unit — 재고·소모 단위. 'M'=미터 / 'cm' / NULL=yd */
+  /** items.base_unit — 재고·소모 단위. 'M'=미터 / 'cm' / 'L'(잉크) / NULL=품목 단위 따름 */
   base_unit?: string | null
-  /** items.unit — 입고·발주 단위('롤'/'yd'). 차감 계산에는 쓰지 않는다. */
+  /** items.unit — 입고·발주 단위('롤'/'yd'/'통'/'EA'). 차감 **계산**에는 쓰지 않는다(표기 폴백에만). */
   unit?: string | null
   /** items.pack_size — 롤당 길이(미터). 입고 환산용(롤 → m). */
   pack_size?: number | null
+  /** items.deduction_method — 'ROLL' | 'BOARD' | 'NONE'. base_unit 이 비었을 때 표기 판정에 쓴다. */
+  deduction_method?: string | null
 }
 
 export interface RollConsumption {
@@ -71,10 +73,30 @@ export function computeRollConsumption(
 // 규칙이 둘이 되어 갈린다 — 입고 쪽을 고칠 일이 있으면 위 두 파일을 고칠 것.
 // (2026-07-29: 취소 경로만 환산이 빠져 있어 비대칭이었고, 같은 회차에 맞췄다.)
 
-/** 소요량 표기용 단위 라벨 — computeRollConsumption 과 동일 규칙 (BOARD 는 호출측에서 '장'). */
+/**
+ * 재고 수량에 붙일 **단위 라벨**.
+ *
+ * ⚠️ computeRollConsumption 과 같은 규칙이 아니다 — 그건 **ROLL 자재만** 통과하는 함수라
+ *    "m/cm 아니면 yd" 로 끝나도 됐지만, 이 함수는 **전 품목**이 지나간다(주간 실사 라인 전개·출고 저재고 알림).
+ *    그래서 종전 폴백이 잉크·판재·부속까지 **전부 「yd」로 찍고 있었다**(2026-08-26 수정).
+ *    prod 실측 = base_unit 'L' 83품목(잉크) + base_unit 없는 비-ROLL 445품목이 오표기 대상이었다.
+ *
+ * 규칙:
+ *   ① base_unit 이 있으면 **그대로** 쓴다 — 재고 수량이 실제로 그 단위로 저장돼 있다('M'→m, 'L'→L).
+ *   ② base_unit 이 없고 ROLL 차감이면 'yd' — computeRollConsumption 이 yd 로 빼므로 재고도 yd 다.
+ *   ③ base_unit 이 없고 BOARD 차감이면 '장'.
+ *   ④ 나머지는 품목 자신의 단위(items.unit). 입고단위와 재고단위가 갈리지 않는 자재다.
+ */
 export function resolveStockUnit(m: RollUnitSpec): string {
-  const base = String(m?.base_unit ?? '').toLowerCase()
-  if (base === 'm') return 'm'
-  if (base === 'cm') return 'cm'
-  return 'yd'
+  const base = String(m?.base_unit ?? '').trim()
+  if (base) {
+    const lower = base.toLowerCase()
+    if (lower === 'm') return 'm'
+    if (lower === 'cm') return 'cm'
+    return base
+  }
+  const method = String(m?.deduction_method ?? '').trim().toUpperCase()
+  if (method === 'ROLL') return 'yd'
+  if (method === 'BOARD') return '장'
+  return String(m?.unit ?? '').trim()
 }

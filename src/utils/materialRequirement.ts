@@ -103,7 +103,8 @@ export async function computeMaterialCoverage(
       material_item_id: m.material_item_id,
       material_name: m.material_name,
       required,
-      base_unit: m.deduction_method === 'BOARD' ? '장' : resolveStockUnit(m),
+      // BOARD → '장' 분기는 resolveStockUnit 안으로 들어갔다(2026-08-26) — 여기서 다시 갈라 놓으면 규칙이 둘이 된다.
+      base_unit: resolveStockUnit(m),
     })
   }
 

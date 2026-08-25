@@ -188,6 +188,32 @@ cronRouter.post('/daily-maintenance', agentKeyMiddleware, async (c) => {
     leaves = { error: String(err?.message || err).slice(0, 200) }
   }
 
+  // 4-B) 재고 부족 알림 **행** 생성 — `stock_alerts` (품목별, 발주로 이어지는 목록).
+  //
+  // ★왜 필요했나(2026-08-26): `/purchase-orders` 의 「재고 부족」 배지는 `stock_alerts` ACTIVE 를 세는데
+  //   그 행은 **사람이 그 탭에서 「알림 체크」를 눌러야만** 생겼다(`scripts/purchaseOrders.js` checkStockAlerts).
+  //   들어오게 만들 지표가 들어와야 켜지는 순환이라 prod `stock_alerts` 는 **0행**이었다 —
+  //   08-25 에 `reorder_point` 48행을 채우고도 품목별 목록은 아무 데서도 안 보였다.
+  //   `notifications` 쪽 「재고 부족 N개 품목」(notifications.ts §4)은 **개수 요약뿐**이라 무엇이 부족한지 알 수 없다.
+  //
+  // 루프 밖 1회 — 생성 쿼리가 `GROUP BY item_id, entity_id` 로 **전 법인을 한 번에** 처리하고
+  // 행마다 그 법인으로 귀속시킨다(stock-alerts.ts). 법인별로 부르면 첫 호출이 전부 만들고 나머지는 no-op 이다.
+  // 멱등 = 같은 품목×법인에 ACTIVE/ACKNOWLEDGED 가 있으면 건너뛴다(NOT EXISTS).
+  let stockAlerts: any = {}
+  try {
+    const svcToken = await sign(
+      { id: 0, username: 'cron', role: 'ADMIN', entityId: 1, exp: Math.floor(Date.now() / 1000) + 900 },
+      jwtSecret, 'HS256'
+    )
+    const r = await fetch(`${origin}/api/purchase-orders/stock-alerts/check`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${svcToken}`, 'Content-Type': 'application/json' },
+    })
+    stockAlerts = { status: r.status, ...((await r.json().catch(() => ({}))) as any) }
+  } catch (err: any) {
+    stockAlerts = { error: String(err?.message || err).slice(0, 200) }
+  }
+
   // 5) 보존기간 정리(retention) — 무인 누적 방지. 각 단계 독립 try/catch(한 단계 실패가 다른 단계·전체 응답을 막지 않게).
   //    ⚠️ activity_logs·상태이력·발송로그(kakao/email)·업무 테이블은 삭제 금지(감사/법정보존). datetime('now')=UTC(기존 /cleanup 관례).
   const retention: any = {}
@@ -293,8 +319,8 @@ cronRouter.post('/daily-maintenance', agentKeyMiddleware, async (c) => {
   }
 
   const summary = { entities: entities.length, date: yesterday }
-  console.log('[cron/daily-maintenance]', JSON.stringify({ ...summary, leaves, retention, integrity, intercompany, analyze }))
-  return c.json({ success: true, summary, results: out, leaves, retention, integrity, intercompany, analyze })
+  console.log('[cron/daily-maintenance]', JSON.stringify({ ...summary, leaves, stockAlerts, retention, integrity, intercompany, analyze }))
+  return c.json({ success: true, summary, results: out, leaves, stockAlerts, retention, integrity, intercompany, analyze })
 })
 
 /**

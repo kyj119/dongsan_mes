@@ -360,7 +360,7 @@ inventoryCountRouter.post('/', async (c) => {
     if (zoneId) {
       // 구역 실사: 해당 구역·법인 재고가 있는 품목만 (INNER JOIN). 라인 창고 = 그 구역(inv.storage_zone_id=zoneId)
       const { results } = await c.env.DB.prepare(`
-        SELECT i.id, i.item_code, i.item_name, i.unit, i.base_unit, i.pack_size, i.category, inv.storage_zone_id, inv.quantity
+        SELECT i.id, i.item_code, i.item_name, i.unit, i.base_unit, i.pack_size, i.deduction_method, i.category, inv.storage_zone_id, inv.quantity
         FROM items i
         JOIN inventory inv ON i.id = inv.item_id AND inv.entity_id = ? AND inv.storage_zone_id = ?
         WHERE i.is_active = 1 AND i.is_purchase_item = 1
@@ -371,7 +371,7 @@ inventoryCountRouter.post('/', async (c) => {
       // 0396 다중행: 라인 창고 = 법인 인식 기본창고(getItemDefaultZones) — raw items.storage_zone_id는
       //   타법인 zone 배정 품목의 실사 승인 시 entity≠zone소유 어긋난 행을 만듦 (2026-07-06 감사 #3)
       let itemQuery = `
-        SELECT i.id, i.item_code, i.item_name, i.unit, i.base_unit, i.pack_size, i.category
+        SELECT i.id, i.item_code, i.item_name, i.unit, i.base_unit, i.pack_size, i.deduction_method, i.category
         FROM items i
         WHERE i.is_active = 1 AND i.is_purchase_item = 1
       `

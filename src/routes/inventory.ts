@@ -790,7 +790,7 @@ inventoryRouter.post('/releases', async (c) => {
         const lowItemIds = lowItems.map((i: any) => i.item_id)
         const lowPh = lowItemIds.map(() => '?').join(',')
         const { results: lowDetails } = await c.env.DB.prepare(`
-          SELECT i.id as item_id, i.item_name, i.unit, i.base_unit, i.pack_size,
+          SELECT i.id as item_id, i.item_name, i.unit, i.base_unit, i.pack_size, i.deduction_method,
                  COALESCE(SUM(inv.quantity), 0) as current_stock,
                  COALESCE(MAX(inv.safe_stock), 0) as safe_stock
           FROM items i LEFT JOIN inventory inv ON i.id = inv.item_id AND inv.entity_id = ?

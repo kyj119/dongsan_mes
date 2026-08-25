@@ -21,6 +21,18 @@ export function getWriteEntityId(c: Context<HonoEnv>): number | null {
 export const ENTITY_ALL_MODE_WRITE_ERROR = '전체 모드에서는 재고를 변경할 수 없습니다. 상단에서 법인을 선택하세요.'
 
 /**
+ * E2E 테스트 전용 법인. `entities` 에 `is_active = 1` 로 실재하므로
+ * "활성 법인" 조건만으로는 걸러지지 않는다 — 사람에게 나가는 것(알림·발송)에서 뺄 때는 이 상수를 쓸 것.
+ *
+ * ★2026-08-26: `notifyRoles` 가 이걸 안 봐서 **역할 알림이 전부 `e2e_tester` 에게도 갔다**.
+ *   수신자 3명 중 1명이 테스트 계정이라 알림이 33% 부풀었고(미읽음 5,328건 중 상당수),
+ *   채택 지표를 사람 활동으로 착각하게 만드는 축이기도 하다([[project-employee-adoption-protocol]]).
+ *   ⚠️`entities.is_active = 0` 으로 끄는 방식은 택하지 않았다 — cron 의 법인 루프가 같은 조건을 써서
+ *   E2E 시나리오가 조용히 죽는다.
+ */
+export const E2E_ENTITY_ID = 99
+
+/**
  * 트랜잭션 테이블 쿼리에 entity_id 필터를 추가하는 헬퍼.
  * entityId=0 (전체 모드)이면 빈 문자열 반환 → WHERE 절 생략.
  *

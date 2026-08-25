@@ -100,11 +100,13 @@ poQueriesRouter.get('/stats', async (c) => {
     `).bind(...ef.params, ...ef.params, ...ef.params, ...ef.params).all()
     ;(stats as Record<string, unknown>).supplier_balances = supplierBalances
 
-    // 재고 부족 알림 수
+    // 재고 부족 알림 수 — 형제 `GET /stock-alerts`(#446)·`PATCH /:id/acknowledge`(#571)와 동일 스코프.
+    // 2026-08-26: 여기만 entity 필터가 빠져 있어 타법인 알림까지 합산된 배지를 보여주고 있었다.
     try {
+      const saEf = entityFilter(c)
       const alertCount = await c.env.DB.prepare(
-        `SELECT COUNT(*) as count FROM stock_alerts WHERE status = 'ACTIVE'`
-      ).first<{ count: number }>()
+        `SELECT COUNT(*) as count FROM stock_alerts WHERE status = 'ACTIVE'${saEf.clause}`
+      ).bind(...saEf.params).first<{ count: number }>()
       stats.active_alerts = alertCount?.count || 0
     } catch { stats.active_alerts = 0 }
 
