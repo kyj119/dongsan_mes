@@ -30,6 +30,8 @@
 
 ## ✅ 최근 완료 — 후속 대기 인덱스 (경위·상세 전문 = `PROJECT_STATUS_ARCHIVE.md`)
 
+- **✅ 08-25 D1 실행계획 붕괴 — prod 최초 ANALYZE + 쿼리 재작성 + 단가관리 렌더 개편** — ★prod에 `sqlite_stat1`이 **없었다**. ANALYZE 173ms로 `/reports` 13.9초→123ms · `?dormant` **36초 뒤 500(완전 고장)→83ms**. 정본=CLAUDE.md §D1 실행계획 · 게이트 `audit:query-cost`. **남은=코드 배포**(`session/query-perf`, ANALYZE만 prod 반영됨)
+
 - **✅ 08-25 md·스킬 문서 전수 점검 — 드리프트 12건 정정(코드 0)** — smoke 102→**111**(CLAUDE.md·deploy-verify 스킬) · `~/.claude/plans/`(repo 밖) 경로 정정 · `docs/INDEX.md` spec 40→**46건**+8월 트랙 신설 · design-decisions **본문 없는 인덱스 전용 ID 14개** 명시 · C 카카오톡 「미구현」→구현 정정 · 미기재 TODO 3건(계기판·`resolveStockUnit` yd·`base_unit` 감사망) 등재. ⚠️**MEMORY.md 여유 61자** — 다음 추가 시 ARCHIVE 이관 필수
 
 - **✅ 08-24 배율표 학습기 + status-trim 계약 재정렬** — ①`zscan-learn-scale.cjs` 신설(파일명규격÷헤더실측, 정본 파서·판독기 재사용): 기존 표 유형 전부 동일 배율 재현(교차검증)·신규 21종 append(태극기 호수별 등). ★잔여 미파싱 86%=「전사」 혼합라벨(합의 38% 기각이 정답)+유형없음 — 표로 못 채우는 구조적 잔여. ②status-trim 계약이 구 문서구조를 봐 **모든 트림이 자가복구만 하던 것** 수정 → 배너 13→6 이관(37→32KB). 남은=없음

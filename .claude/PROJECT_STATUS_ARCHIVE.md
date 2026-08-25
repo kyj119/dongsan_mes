@@ -1,3 +1,34 @@
+## 📦 2026-08-25 D1 실행계획 붕괴 — 원인·실측 전문
+
+**증상** 단가관리 등 일부 페이지 체감 지연 제보 → 훑는 과정에서 훨씬 큰 것이 나옴.
+
+**근본 원인** prod D1 에 `sqlite_stat1` 이 아예 없었다(ANALYZE 미실행). 통계가 없으면 SQLite 는 모든 인덱스 선택도를 동일하게 가정 → `orders`(인덱스 17개)에서 조인키 `client_id` 를 버리고 `idx_orders_entity_created`/`idx_orders_entity_sales_rep` 를 잡아 **거래처 1건마다 orders 전량 스캔**.
+
+**실측 (prod, 코드 배포 없이 ANALYZE 만)**
+
+| 대상 | 전 | 후 |
+|---|---|---|
+| `/api/reports/client-revenue` | 13,864ms · rows_read 25,300,289 | 123ms · 87,898 |
+| `/api/clients?limit=200` | 4,087ms · rows_read 1,822,999 | 45ms · 7,028 |
+| `/api/clients?limit=50` | 841ms | 35ms |
+| `/api/clients?dormant=90` | **36초 후 HTTP 500** | 83ms 정상 |
+
+★ dormant 은 느린 게 아니라 **완전히 고장나 있었다** — 상관 서브쿼리가 D1 한도를 넘겨 500, 게다가 그 isolate 의 후속 요청까지 전멸시켰다(감사 실행 중 뒤따르던 엔드포인트 6개가 20ms 만에 500). 사용자가 「가끔 오류난다」고 느낄 뿐 원인 추적이 안 되는 유형.
+
+**적용 전 격리 검증** 로컬 D1 사본(junction 공유라 사본으로 분리) + prod 분포 재현(orders 10,074/거래처 855, obg 10,074, payments 3,816). 통계 없으면 prod 와 **같은 인덱스**(`idx_orders_entity_sales_rep`)를 잡는 것 재현 → ANALYZE 후 `idx_orders_client_id` 로 전환, 189ms→6ms. 대표 쿼리 10종 회귀 0건.
+
+**복합 인덱스는 넣지 않았다** `orders(client_id, entity_id, order_date)` 는 6ms→2ms 로 미미한 반면 쓰기 비용은 상시 → ANALYZE 로 충분.
+
+**코드 변경 (배포 대기, branch `session/query-perf`)**
+- `reports.ts` client-revenue: clients 바깥 조인 → orders 를 client_id 로 선집계 후 조인. prod 데이터 대조 결과 **완전 일치**.
+- `clients.ts`: `last_order_date` 상관 서브쿼리 → 사전집계 LEFT JOIN(목록·카운트 양쪽). 대조 **완전 일치**. dormant 500 도 이걸로 해소.
+- `priceManagement.js`: 행 펼침·단가 저장이 1,203행 전체를 재렌더하던 것 → 해당 행+요약만. 펼침 406→124ms · 저장 475→33ms. 단가칸 상시 `<input>` 2,630개 → 클릭 시 승격(DOM 14,637→10,506). 검색 후 펼친 행 상세가 스피너로 남던 잠복버그도 해소.
+- `reports.js`: 숨은 탭 6개까지 선로딩하던 것 → 활성 탭만, 탭별 캐시, 기간 변경 시 무효화. 첫 진입 API 7→1.
+
+**재발 방지** ①`cron/daily-maintenance` 마지막 단계에서 매일 ANALYZE ②`POST /api/cron/analyze` 수동 트리거(대량 이관 직후) ③`npm run audit:query-cost` — 페이지 진입 시 도는 엔드포인트의 ms·페이로드 예산 게이트(기준선 `scripts/query-cost-baseline.json`). **타입체크·smoke 는 이 계열을 못 잡는다 — 14초 응답도 200 이다.**
+
+**되돌리기** `DROP TABLE sqlite_stat1` (통계는 힌트라 결과 불변, 느려질 뿐).
+
 ## 📦 2026-08-25 이관분 (자동 트림 — scripts/status-trim.cjs)
 
 > 배포 배너 7건 + 완료 항목 0건. 원본 순서(시간 역순) 보존.
