@@ -28,7 +28,7 @@ interface MarginByClientRow { client_id: number; client_name: string; order_coun
 interface ARSummaryRow { total_ar: number; ar_client_count: number }
 interface BilledRow { billed: number }
 interface CollectedRow { collected: number }
-interface AgingRow { id: number; client_name: string; balance: number; last_payment_date: string | null; oldest_unpaid_date: string | null }
+interface AgingRow { id: number; client_name: string; balance: number; oldest_unpaid_date: string | null }
 interface TopARRow { id: number; client_name: string; balance: number; last_payment_date: string | null; days_overdue: number; collection_count: number; total_paid: number }
 interface MonthlyTrendRow { month: string; revenue: number; payments: number }
 interface PrintSummaryRow { ok_count: number; error_count: number; total_count: number }
@@ -650,11 +650,12 @@ reportsRouter.get('/receivables-analysis', async (c) => {
     // 2) Aging Buckets (미수금 연령 분석) - 파생 잔액 기준
     // 미수금 일원화(2026-07-17): 연령 기준 = 채권 나이(최고령 미결제 청구건 oldest_unpaid_date). ledger/bank 와 동일 SSOT.
     //   (기존 '최근 입금일 경과' payment recency 폐기 → 같은 거래처가 3개 화면에서 다른 연령으로 표시되던 불일치 제거)
+    // ↑ 그 폐기 때 `(SELECT MAX(payment_date) FROM payments WHERE client_id = c.id)` 만 남아 있었다 —
+    //   아무도 읽지 않는데 미수 거래처마다 payments 를 훑던 상관 서브쿼리라 제거(2026-08-25). 결과 불변.
     const oupAging = buildOldestUnpaidJoin(c, { entityScoped: true }) // reports balance 스코프(법인)와 일치
     const { results: agingData } = await c.env.DB.prepare(`
       SELECT
         c.id, c.client_name, ${arBalExpr} AS balance,
-        (SELECT MAX(p.payment_date) FROM payments p WHERE p.client_id = c.id) as last_payment_date,
         oup.oldest_unpaid_date as oldest_unpaid_date
       FROM clients c${arJoins}${oupAging.sql}
       WHERE c.is_active = 1${excludeArExcludedClientsSql('c.id')} AND ${arBalExpr} > 0

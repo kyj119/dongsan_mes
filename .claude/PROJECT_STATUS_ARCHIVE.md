@@ -1,3 +1,63 @@
+## 📦 2026-08-25 IA 단위 통일(mm) + 도련 겹침 분할 — 전문
+
+**발단** 용준님 지시 = "eps파일도 mm 단위로 통일". 조사해 보니 **의도는 이미 코드에 있었고 수단이 틀려 있었다.**
+
+**① `doc.rulerUnits` 대입은 아무 일도 하지 않는다 (AI 30.7 실측)**
+`SheetLayout.jsx:298` 에 `newDoc.rulerUnits = RulerUnits.Millimeters; // 저장 파일 기본 단위 = mm` 가 있었는데, 이 속성은 읽기 전용이라 **예외도 안 던지고 값도 안 바뀐다**. `preferences rulerType` 도 안 통한다 — 이미 `1`(mm)인데 `documents.add()` 는 Points 문서를 만든다. **`app.documents.addDocument(name, DocumentPreset{units})` 가 유일한 경로**(프로파일명은 없는 이름이어도 성공 = 로케일 위험 없음).
+
+**② 단위 축을 갈라 보니 손댈 곳은 한 군데뿐이었다**
+- DXF `$INSUNITS` = `ExportOptionsAutoCAD.unit` 이 결정 → 문서 단위와 **무관하게 이미 4(mm)**. pt 문서·mm 문서 둘 다 4 로 나가는 것 실측. **조치 불요.**
+- EPS = **문서 단위를 보존**(mm 문서 저장 → 재오픈 시 mm). EPS 좌표 자체는 PostScript 규격상 항상 point — 변경 불가·불요.
+- ⇒ EPS·재오픈 .ai·화면 눈금이 전부 "문서를 어떻게 만드느냐" 하나로 수렴. 헬퍼 3벌(`mesCut_newDocMM`·`mesA0_newDocMM`·`_iaNewDocMM`, 호스트 접두사 분리)로 `documents.add()` 8곳 교체.
+- 치수 회귀 0 확인: 요청 pt = `doc.width`/`artboardRect` 정확히 일치(16000pt 대형 포함), 레이어 수 1 동일.
+
+**③ 도련 — 간격 강제상향을 버리고 경계에서 나눈다**
+종전 `gapMm = nestBleedMm * 2` 는 사용자 입력을 덮었다. 대가를 **이형으로** 재니 컸다 — 이형 24조각·롤 1330 에서 간격/2 를 3px→6px 로 벌리면 효율 65%→56~58%(**재료 12~13% 손실**). ★직사각으로만 재면 0.9~2.3% 라 작아 보인다. 간격은 조각 **둘레 전체**에 붙으므로 이형에서 비싸다 — **이형으로 재야 한다.**
+- 신규 규칙(용준님 결정) = 간격 존중 + 겹치는 도련을 경계에서 절반씩 + **하한 1.5mm**. 하한 미달일 때만 간격을 올린다.
+- ★**하한은 `min(1.5, 요청도련)`** — 1mm 를 원한 사람에게 1.5mm 를 강요하며 재료를 뺏지 않는다.
+- ★**맞붙임은 제외** — 간격 0 이라 절반이 0 이고 도련이 통째로 사라진다. 게다가 맞붙임에서는 도련이 넘어가도 옆 조각 원본이 덮는다(SENDTOBACK).
+- 호스트 변경 불요(인자로 받은 값을 그대로 쓴다) → 배포 범위가 패널 shell 로 줄었다.
+
+**④ 게이트** 규칙 본체를 순수 함수 `mesCutSplitBleed` 로 뽑아 `cut:bleed` 하네스가 **브레이스 매칭으로 절취해 직접 돌린다**(분기 4개라 소스 패턴 검사로는 못 지킨다). 신규 10항목 + 불변식 전수 294조합(간격 축소 0 · 도련×2 ≤ 간격 · 요청 초과 0). `cut:smoke` 388/388(신규 3s 9항목 — ★"rulerUnits 대입 금지" 검사는 **주석을 걷어내고** 봐야 한다. 이 함정을 설명하는 주석이 세 파일에 다 있어 자기 자신에 걸린다). `panel:smoke` 111 · `cut:nest`·`cut:butt`·`cut:bench` 회귀 0.
+
+**⑤ 곁가지 실측** LiveEffect `Adobe Offset Path` 오차 = 조인 3종 × 거리 0.5~10mm × 크기 2종 전수에서 **0.000mm**(여백 보정 불요). `simplify menu item` 은 직전 대화상자 설정을 써서 원 4앵커를 2앵커로 뭉갠다 — **쓰지 말 것**. ExtendScript 는 30.7 에서 정상(웹의 "2026 제거" 주장은 실측이 반증).
+
+---
+
+## 📦 2026-08-25 전건 렌더·대형 페이로드·상관 서브쿼리 후속 — 전문
+
+**발단** 직전 세션이 남긴 3트랙(bank·ledger·attendance 페이징 / 대형 페이로드 6개 / 상관 서브쿼리 62곳). **실측해 보니 명단이 두 군데 틀려 있었다.**
+
+**① bank 거래내역 = 페이징이 아니라 무음 절단이었다**
+서버는 이미 `limit=500`+`total` 을 주고 있었는데 **클라가 둘 다 안 썼다** — 501번째부터 화면에 안내 없이 잘려 있었다(prod 전체 5,284건). 용준님 확정 = **더보기 누적·기본 50건**(체크 선택이 페이지 이동으로 초기화되는 페이지 버튼 방식은 일괄적용 동선을 깬다). 실측 DOM **14,892→1,604**·input **2,057→250**·응답 **352→33KB**. 「N / 전체 M건 · K건 남음」 표기 신설로 절단이 눈에 보이게 됐다.
+- ★**변경 후 새로고침은 `loadTransactions()` 가 아니라 `refreshTransactions()`** — 300건 펼쳐 놓고 한 건 적용할 때마다 50건으로 접히면 안 된다. 호출부 16곳 전환(필터 변경용 1곳만 리셋 유지).
+- 체크박스는 행별 `addEventListener` → **tbody 위임 1회**. 이어붙일 때 기존 행에 리스너가 중복으로 쌓인다.
+- 응답 경합 토큰(`txSeq`) — 늦게 온 옛 응답이 새 결과를 덮어쓰는 것 차단. CSV 내보내기는 필터 전건 유지(`buildTxFilterParams` 공유).
+
+**② attendance = 「페이징」이 성립하지 않는다 (월 그리드)**
+진짜 문제는 `WHERE strftime('%Y-%m', work_date) = ?` — 컬럼이 함수에 싸여 **`idx_attendance_date` 를 못 타고 attendance 전량 스캔**(5,697행, 매년 누적). 반열림 구간(`>= '2026-08-01' AND < '2026-09-01'`)으로 전환. EXPLAIN: `SCAN a USING INDEX idx_attendance_date` → `SEARCH a USING COVERING INDEX (employee_id=? AND work_date>? AND work_date<?)`.
+- 부수 = **화면에 없는 직원의 기록을 실어 보내고 있었다**. employees 조인(같은 술어 재사용)으로 942→**606행**. prod 대조 = entity1 월 전체 942 / 표시 대상 26명분 606 → **감소분 336건은 퇴사·고정급 직원의 사표**(클라는 `recordsMap[employee_id|work_date]` 로만 소비). 화면 변화 0.
+- `caps_early_min`·`caps_night_min`·`caps_total_min` = 화면·저장(bulk 화이트리스트) 어디서도 안 쓰는데 매 행 실려 나갔다(53KB) → 제외. 21→18열.
+- 합계 **400→230KB**. holidays 의 `substr()` 도 같은 구간으로 통일.
+
+**③ 대형 페이로드 「6개」는 실측하니 다른 목록이었다**
+진입 시 자동으로 도는 것 기준: attendance/month 400KB · bank/transactions 352KB · inventory/zones 308KB · prices/price-overview 255KB · reports/client-revenue 243KB · clients?limit=200 225KB. 앞의 둘은 위에서 해소.
+- **명단에 있던 둘은 진입 부하가 아니었다** — `tax-invoices/eligible-orders` 1.1MB 는 8개월 조회 시 값이고 **기본값은 당월(prod 0건)**, `ai-analysis/batch-results` 1.0MB 는 내부 테스트 페이지가 **썸네일을 실제로 그리는 값**(행수는 이미 200 상한). 둘 다 고칠 것 없음.
+- ★**대신 명단에 없던 게 나왔다** — `/inventory/dashboard/zones` 286KB 중 **257KB 가 「미배정」 980품목**이고 화면은 그걸 전부 표 행으로 그린다(1,092행). 실질적으로 bank 와 같은 유형. **미착수(방식 결정 필요)**.
+- `clients?limit=200` 은 **46열 전량 반환**(`credit_risk_updated_at` 100% null 등) — 목록이 쓰는 열만으로 줄일 여지. 미착수.
+
+**④ 상관 서브쿼리 = 감사 도구 신설 (`npm run audit:subquery`)**
+`scripts/correlated-subquery-audit.cjs` — 템플릿 리터럴에서 SQL 을 뽑아 **SELECT 절의 상관 스칼라 서브쿼리만** 골라낸다(WHERE 의 EXISTS 는 조기 종료돼 대체로 무해, 비상관은 1회 실행이라 대상 아님). 규모 가중 = `scripts/table-rows.json`(prod `sqlite_stat1` 스냅샷 — ANALYZE 산출물이라 별도 조회 불요).
+- ★**초안은 오탐이 절반이었다.** ㉠`query += ' ... LIMIT ? OFFSET ?'` 처럼 **LIMIT 이 템플릿 밖에서 붙는 경우**(orders/core.ts 목록 — 무제한처럼 보이지만 페이지당 50~200행) ㉡`WHERE o.id IN (${'{'}placeholders{'}'})` 처럼 **PK 로 못 박힌 경우**(taxInvoices 묶음 발행). 실행 지점(`.all`/`.first`)까지의 소스 구간을 함께 보도록 고쳐 P1 **80→30**.
+- 남은 P1 최악 100만행+ **4건** — `aiInsights.ts:14~19` `/credit-risk/summary`(clients 전량 × 서브쿼리 3개, dormant 500 과 **같은 모양**. 단 **클라 호출자가 없는 사문 라우트**) · `aiInsights.ts:139` `/credit-risk/calculate-all`(GROUP BY 라 재실행은 그룹 수) · `items.ts:444`·`specGroups.ts:47`(items→items, 바깥이 실제로는 소수).
+- **1건은 그 자리에서 제거** — `reports.ts` aging 쿼리의 `last_payment_date` 는 2026-07-17 payment-recency 폐기 때 **아무도 안 읽는데 남아** 미수 거래처마다 payments 를 훑고 있었다. 삭제(결과 불변, P1 31→30).
+- 눈금 주의: `[바깥×서브=최악]` 은 **테이블 전체 행수** 기준 상한이지 WHERE 로 걸러진 실제 행수가 아니다. 측정값이 아니라 순위용.
+
+**검증** typecheck 통과 · 로컬 D1 사본 `prepare()` 3형태(caps/late/pay_type·부서·entity 유무) + 바인드 개수 대조 · 로컬 smoke 112/112 · **prod smoke 112/112** · `audit:query-cost` 12/12 · prod 마커 5/5(attendance 18열·606행·230KB / bank txMoreBtn·txRangeNote / limit·offset 중복 0 / receivables aging [51,71,19,61] 불변) · **브라우저 실측**(더보기 50→100행·중복 0·체크 선택 유지·콘솔 0, 근태 그리드 26행 1,014셀 정상).
+
+**⚠️ 이번에 다시 겪은 것 — 공유 체크아웃에서 내 작업이 남의 커밋에 휩쓸렸다**
+작업 중 다른 세션이 `git add -A` 계열로 커밋하면서 **미완성 상태의 `bank.js`·`bank.ts`·`attendance.ts` 가 `7822d3ed`(fix(settings)…)·`fb2d05c3`(docs(status)…) 에 섞여** 커밋·push 됐다. `deploy.yml` 은 main push 자동배포라 **검증 전에 prod 로 나갔다**(결과적으로 위 실측은 전부 통과). 커밋 메시지와 실제 내용이 어긋난 상태로 남는다 — CLAUDE.md §멀티세션이 요구하는 **worktree 격리(`new-session.ps1`)를 지켰다면 발생하지 않았다**.
+
 ## 📦 2026-08-25 여신한도 파생 전환 + 연체 알림 주 1회 (배포 `cc1ed55e` → 판정 전환 `b1899e2d` → 바인딩 수정 `7822d3ed`) — 전문
 
 **✅ prod 배포 08-25 `cc1ed55e` — 여신한도 파생 전환 + 연체 알림 주 1회** — 한도=월평균×2배 자동 산출(★`credit_limit` **0=자동·음수=무제한**, 종전 0=무제한에서 반전)·ADMIN 경고만·잔액식 통일. 연체 알림 dedup 24h→**168h**. prod smoke 112/112·마커 4/4·초과 37곳 3.55억·`alerts_created 0` 실측. **연체 알림 판정도 여신 기준으로 전환**(2차) — `queryFifoOverdue`→`queryCreditExceeded`·제목 「연체 경고」→**「여신 초과」**·prod **169→37곳**. 출고 시점 경고(`lifecycle.ts`)도 같이 수정(★종전 `MIN(accounting_date)>30` 이라 이월 전표가 있으면 **출고할 때마다 「237일 연체」**). ⚠️`/overdue` 배너·`?overdue_only` 는 **FIFO 유지**(화면=aging·알림=risk, 다른 질문이라 일부러 안 맞춤). ⚠️**리팩터링 중 바인딩 회귀 1건 자체 발견·수정**(`7822d3ed`) — 공유 SQL 을 서브쿼리로 감싸며 바깥에 `?` 를 둬 파라미터가 밀림 → `a.entity_id=6` 으로 adjustments 전량 누락, 시뮬 37곳→**108곳** 표시. 알림 경로는 무영향(바깥 `?` 없음). **게이트 전부 통과했다 — 값 대조로만 잡힌다** → 정본=memory `feedback-sqlite-placeholder-subquery-order`. 경위=ARCHIVE §여신한도 · 정본=memory `design-credit-limit-derived`. 남은=매입 겸업 4곳 상계(AP 파생 부재)
