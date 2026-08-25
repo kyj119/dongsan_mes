@@ -1,9 +1,8 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { getEntityId, entityFilter } from '../utils/entityFilter'
-import { excludeArExcludedClientsSql } from '../constants/arPolicy'
-import { getCreditPolicy, CREDIT_POLICY_DEFAULTS } from './ledger/credit-helpers'
+import { getEntityId } from '../utils/entityFilter'
+import { getCreditPolicy, buildCreditEvalSql, CREDIT_POLICY_DEFAULTS } from './ledger/credit-helpers'
 
 const settingsRouter = new Hono<HonoEnv>()
 settingsRouter.use('/*', authMiddleware)
@@ -165,55 +164,18 @@ settingsRouter.get('/credit-policy', requireRole('ADMIN'), async (c) => {
       warnRatio: ov(q.warn_ratio, policy.warnRatio, 0.1, 1),
     }
 
-    const gWin = entityFilter(c, 'g')
-    const gBal = entityFilter(c, 'g')
-    const pBal = entityFilter(c, 'p')
-    const aBal = entityFilter(c, 'a')
-
-    // 한도식은 credit-helpers.deriveCreditLimit 과 같은 정의를 SQL 로 옮긴 것(수동>0 우선, 음수=무제한=-1).
-    // ⚠️ 두 곳에 산식이 있는 셈이라, deriveCreditLimit 을 고치면 여기도 같이 고쳐야 한다.
+    // 판정식은 credit-helpers 가 정본 — 여기서 복제하지 않는다(연체 알림 배치와 같은 SQL 을 쓴다).
+    const { sql, params } = buildCreditEvalSql(c, sim)
     const row = await c.env.DB.prepare(
-      `WITH win AS (
-         SELECT o.client_id AS cid, SUM(g.billed_amount) AS billed
-           FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
-          WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'
-            AND COALESCE(g.accounting_date, date(g.billed_at)) >= date('now', '+9 hours', '-${sim.months} months')
-            ${gWin.clause}
-          GROUP BY o.client_id
-       ),
-       bal AS (
-         SELECT cid, SUM(v) AS b FROM (
-           SELECT o.client_id AS cid, g.billed_amount AS v
-             FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
-            WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${gBal.clause}
-           UNION ALL SELECT p.client_id, -p.amount FROM payments p WHERE 1=1${pBal.clause}
-           UNION ALL SELECT a.client_id, -a.amount FROM adjustments a WHERE 1=1${aBal.clause}
-         ) GROUP BY cid
-       ),
-       x AS (
-         SELECT c.id, c.credit_hold,
-                COALESCE(bal.b, 0) AS balance,
-                CASE WHEN c.credit_limit < 0 THEN -1
-                     WHEN c.credit_limit > 0 THEN c.credit_limit
-                     ELSE MIN(?, MAX(?, MAX(0, COALESCE(win.billed, 0)) * 1.0 / ? * ?))
-                END AS lim
-           FROM clients c
-           LEFT JOIN win ON win.cid = c.id
-           LEFT JOIN bal ON bal.cid = c.id
-          WHERE c.is_active = 1
-            AND (win.billed IS NOT NULL OR bal.b IS NOT NULL)
-            ${excludeArExcludedClientsSql('c.id')}
-       )
-       SELECT COUNT(*) AS total,
+      `SELECT COUNT(*) AS total,
               SUM(CASE WHEN lim >= 0 AND balance >= lim THEN 1 ELSE 0 END) AS exceeded,
               SUM(CASE WHEN lim >= 0 AND balance < lim AND balance >= lim * ? THEN 1 ELSE 0 END) AS warning,
               CAST(SUM(CASE WHEN lim >= 0 AND balance >= lim THEN balance ELSE 0 END) AS INT) AS exceeded_balance,
               SUM(CASE WHEN credit_hold = 1 THEN 1 ELSE 0 END) AS held,
               SUM(CASE WHEN lim < 0 THEN 1 ELSE 0 END) AS unlimited
-         FROM x`
+         FROM (${sql})`
     ).bind(
-      ...gWin.params, ...gBal.params, ...pBal.params, ...aBal.params,
-      sim.cap, sim.floor, sim.months, sim.multiplier,
+      ...params,
       sim.warnRatio
     ).first<{ total: number; exceeded: number; warning: number; exceeded_balance: number; held: number; unlimited: number }>()
 

@@ -18,6 +18,7 @@ import {
   type PaymentRow, type IntegrityRow, type ReceivableClientRow,
   type ReceivableOrderRow, type NotifLinkRow,
 } from './ar-helpers'
+import { queryCreditExceeded } from './credit-helpers'
 
 const arReceivablesRouter = new Hono<HonoEnv>()
 arReceivablesRouter.use('/*', authMiddleware, requireEditOrRole('/ledger', 'MANAGER'))
@@ -388,49 +389,60 @@ arReceivablesRouter.get('/receivables/:clientId/orders', async (c) => {
   }
 })
 
-// POST /receivables/check-overdue - 연체 자동 알림 생성 (ADMIN/MANAGER)
-//   판정·금액 = /overdue 배너와 **동일한 FIFO SSOT**(queryFifoOverdue). 종전엔 자체 쿼리로
-//   `잔액 전액 + 최고령 청구일 경과일`을 알렸다 → 이관 기초잔액 때문에 "미수금 3천만원, 최장 연체 223일"
-//   같은 알림이 거래 정상인 거래처에도 나갔다(2026-08-11 정정).
+// POST /receivables/check-overdue - 여신 초과 자동 알림 생성 (ADMIN/MANAGER)
 //
-// ★주 1회 (용준님 확정 2026-08-25) — 종전 dedup 이 24시간이라 **연체 거래처 1곳당 매일 1건**이 쌓였다.
-//   prod 연체 169곳 = 하루 169건 → admin 미읽음 1,734건(벨 포화)의 주된 출처.
-//   ⚠️ cron 의 호출 주기(매일)는 그대로 두고 **dedup 창을 7일로 넓혀** 주기를 만든다. 요일 게이트로 막지 않는 이유:
-//     하루라도 cron 이 실패하면 그 주 알림이 통째로 사라진다. dedup 방식은 다음 날 실행이 대신 채우고,
-//     이후 7일 간격이 유지돼 **자가복구되면서 같은 요일로 자연히 수렴**한다.
+// ★판정 기준 = **여신**(2026-08-25 용준님 확정). 「청구일 + N일 경과」가 아니라 **잔액이 한도를 넘었는가**.
+//   경로명(check-overdue)은 cron·외부 호출자가 물고 있어 유지하되, 의미는 여신 초과다. 응답 `basis` 로 명시.
+//
+//   왜 바꿨나 — 날짜 기준 연체는 이 데이터에서 신호가 안 됐다:
+//     · 연체액 5.17억 중 **40.7%가 이관 기초잔액**(E1-OPEN, accounting_date 가 2025-12-31 로 일괄 고정)이라
+//       "연체일수"가 실제 경과일이 아니다. 23곳은 **이월분만으로** 연체 판정을 받았다.
+//     · 169곳이 매번 걸려 사실상 전 거래처 목록이었다 — 조치 대상을 못 고른다.
+//   여신 기준은 날짜를 아예 안 본다(잔액 vs 한도) → **이월 문제가 정의상 사라진다**. prod 169곳 → **37곳**.
+//
+// ⚠️ /overdue 배너와 /receivables?overdue_only 는 **FIFO 그대로 둔다**. 둘은 다른 질문에 답한다 —
+//    화면 = "이 채권이 얼마나 오래됐나"(aging, 회수 실무), 알림 = "이 거래처가 위험한가"(risk, 조치 대상).
+//    같은 이름으로 다른 숫자가 나오면 사고이므로 **알림 제목을 「여신 초과」로 분리**했다(종전 「연체 경고」).
+//    ⚠️ dedup 도 제목으로 매칭하므로, 배포 직후 1회는 기존 「연체 경고」가 억제하지 못해 37건이 새로 뜬다.
+//
+// ★주 1회 — 종전 dedup 이 24시간이라 **거래처 1곳당 매일 1건**이 쌓였다(169곳 = 하루 169건,
+//   admin 미읽음 1,734건의 주된 출처). cron 호출 주기(매일)는 그대로 두고 **dedup 창을 7일로** 넓혀 주기를 만든다.
+//   요일 게이트로 막지 않는 이유: 하루라도 cron 이 실패하면 그 주 알림이 통째로 사라진다. dedup 방식은
+//   다음 날 실행이 대신 채우고, 이후 7일 간격이 유지돼 **자가복구되면서 같은 요일로 자연히 수렴**한다.
 const OVERDUE_ALERT_DEDUP_HOURS = 24 * 7
+const CREDIT_ALERT_TITLE_PREFIX = '여신 초과'
 arReceivablesRouter.post('/receivables/check-overdue', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
   try {
-    const overdueClients = await queryFifoOverdue(c)
+    const exceeded = await queryCreditExceeded(c)
 
     let alertsCreated = 0
-    const checked = overdueClients.length
+    const checked = exceeded.length
 
-    // dedup 창 내 이미 발송된 연체 알림 link를 한 번에 로드 (N+1 방지)
+    // dedup 창 내 이미 발송된 알림 link를 한 번에 로드 (N+1 방지)
     const { results: recentNotifs } = await c.env.DB.prepare(`
       SELECT DISTINCT link FROM notifications
-      WHERE title LIKE '연체 경고:%'
+      WHERE title LIKE '${CREDIT_ALERT_TITLE_PREFIX}:%'
         AND created_at > datetime('now', '-${OVERDUE_ALERT_DEDUP_HOURS} hours')
     `).all<NotifLinkRow>()
     const recentLinks = new Set((recentNotifs || []).map(n => n.link))
 
-    for (const client of overdueClients) {
+    for (const client of exceeded) {
       const link = `/ledger?client=${client.client_id}`
       if (recentLinks.has(link)) continue
 
-      const overdueFormatted = client.overdue_amount.toLocaleString()
-      const days = agingDaysFromOldest(client.oldest_unpaid_at)
-      const alertDays = client.overdue_alert_days != null ? Number(client.overdue_alert_days) : 30
-      // 이관 기초잔액(OPEN 전표) 유래분은 연체일수가 '이관 기준일 경과일'이라 오독을 부른다 → 본문에 명시.
-      const carryNote = client.carryover_amount > 0
-        ? ` · 이월분 ${client.carryover_amount.toLocaleString()}원 포함`
-        : ''
+      const bal = Math.round(client.balance).toLocaleString()
+      // 수동 차단은 한도와 무관하게 먼저 알린다(한도 안이어도 거래를 막아둔 상태라 조치가 필요하다).
+      const body = client.hold
+        ? `주문 차단 중 · 미수금 ${bal}원`
+        : `미수금 ${bal}원 / 한도 ${Math.round(client.limit).toLocaleString()}원`
+          + `(${client.limit_source === 'MANUAL' ? '수동' : '자동'})`
+          + ` · 최근 월평균 청구 ${Math.round(client.avg_monthly).toLocaleString()}원`
 
       await notifyRoles(
         c.env.DB,
         ['ADMIN', 'MANAGER'],
-        `연체 경고: ${client.client_name}`,
-        `연체 미수금 ${overdueFormatted}원, 최장 연체 ${days ?? '-'}일 (기준 ${alertDays}일)${carryNote}`,
+        `${CREDIT_ALERT_TITLE_PREFIX}: ${client.client_name}`,
+        body,
         link
       )
 
@@ -440,6 +452,7 @@ arReceivablesRouter.post('/receivables/check-overdue', requireEditOrRole('/ledge
     return c.json({
       success: true,
       data: {
+        basis: 'CREDIT',
         checked,
         alerts_created: alertsCreated,
         dedup_hours: OVERDUE_ALERT_DEDUP_HOURS

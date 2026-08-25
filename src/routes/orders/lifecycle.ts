@@ -16,9 +16,10 @@ import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { checkMaterialCoverage, describeGap, type CoverageGap } from '../../utils/materialShortageCheck'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { setOrderBillingStatus } from './helpers'
-import { deriveClientBalance } from '../ledger/ar-helpers'
+// 여신 판정 정본. 내부법인·현금소매 제외(EXEMPT)와 잔액 파생을 헬퍼가 함께 담당하므로
+// 여기서 deriveClientBalance·isInternalEntityClient 를 따로 부르지 않는다.
+import { evaluateClientCredit } from '../ledger/credit-helpers'
 import { ensureShipmentForOrder } from '../../utils/shipmentHelper'
-import { isInternalEntityClient } from '../../constants/intercompany'
 
 const ordersLifecycleRouter = new Hono<HonoEnv>()
 ordersLifecycleRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
@@ -326,25 +327,22 @@ ordersLifecycleRouter.patch('/:id/status', requireEditOrRole('/orders', 'MANAGER
         console.error('status-change ensureShipment error:', shipRecErr)
       }
       await notifyRoles(c.env.DB, ['ADMIN', 'MANAGER'], '출고 완료', `${order.order_number} 출고 처리되었습니다.`, '/orders')
-      // 연체 거래처 경고: 파생 미수금(deriveClientBalance) > 0이고 30일 이상 미입금이면 경리에게 알림
-      // X5: 폐기 clients.balance 캐시(prod 전체 0) 대신 파생 — 캐시 의존 시 이 경고가 영구 미발동이던 것 정상화
+      // 출고 시점 여신 경고 — 판정 정본 = ledger/credit-helpers.evaluateClientCredit (일일 배치와 같은 기준).
+      //
+      // ⚠️ 2026-08-25까지 이 경고는 `MIN(accounting_date) 경과일 > 30` 이었다. 이관 기초잔액 전표(E1-OPEN)가
+      //    2025-12-31 로 일괄 고정돼 있어서, 그 전표가 있는 거래처는 **출고할 때마다 "237일 연체"** 가 떴다.
+      //    잔액도 FIFO 충당을 안 거친 총액이고 현금소매 더미도 안 걸렀다 → 경고가 상시 참이라 의미가 없었다.
+      //    여신 기준은 날짜를 보지 않으므로(잔액 vs 한도) 이 문제가 정의상 사라진다. EXEMPT 처리도 헬퍼가 한다.
       try {
-        const derivedBal = await deriveClientBalance(c, order.client_id as number)
-        // 내부법인(그룹 3사)은 연체 경고 제외 — 법인간거래는 회계허브 법인간거래 탭에서 관리
-        if (derivedBal > 0 && !isInternalEntityClient(order.client_id as number)) {
-          const clientCheck = await c.env.DB.prepare(`
-            SELECT c.client_name,
-              (SELECT MIN(COALESCE(o2.accounting_date, o2.billed_at)) FROM orders o2 WHERE o2.client_id = c.id AND o2.billing_status = 'BILLED') as oldest_billed
-            FROM clients c WHERE c.id = ?
-          `).bind(order.client_id).first<{ client_name: string; oldest_billed: string | null }>()
-          if (clientCheck && clientCheck.oldest_billed) {
-            const daysSince = Math.floor((Date.now() - new Date(clientCheck.oldest_billed).getTime()) / 86400000)
-            if (daysSince > 30) {
-              await notifyRoles(c.env.DB, ['ADMIN', 'MANAGER'], '연체 거래처 출고',
-                `${clientCheck.client_name} 미수금 ${derivedBal.toLocaleString()}원 (${daysSince}일 연체)`,
-                '/receivables')
-            }
-          }
+        const credit = await evaluateClientCredit(c, order.client_id as number)
+        if (credit.blocking) {
+          const bal = Math.round(credit.balance).toLocaleString()
+          const detail = credit.hold
+            ? '주문 차단 거래처'
+            : `한도 ${Math.round(credit.limit).toLocaleString()}원 초과`
+          await notifyRoles(c.env.DB, ['ADMIN', 'MANAGER'], '여신 초과 거래처 출고',
+            `${order.order_number} · 미수금 ${bal}원 (${detail})`,
+            '/receivables')
         }
       } catch (_) { /* 알림 실패해도 출고는 진행 */ }
     }

@@ -131,6 +131,113 @@ export async function deriveCreditLimit(
 }
 
 /**
+ * 전 거래처 여신 상태를 **한 쿼리**로 산출하는 SQL — deriveCreditLimit(단건 TS)의 SQL 판.
+ *
+ * ★왜 필요한가: deriveCreditLimit + deriveClientBalance 는 거래처당 4쿼리라 850곳을 돌면 3,400쿼리다.
+ *   연체 알림 배치·정책 시뮬레이션처럼 **전수**를 봐야 하는 경로는 이걸 쓴다.
+ *
+ * ⚠️ 산식이 TS(deriveCreditLimit)와 여기 둘로 나뉜다. 한쪽을 고치면 반드시 다른 쪽도 고칠 것.
+ *   둘을 합치지 못하는 이유 = 단건 경로는 entityFilter 가 걸린 3쿼리 파생(deriveClientBalance)을 재사용해야
+ *   원장 화면과 잔액이 한 글자도 안 어긋난다. 여기서 잔액을 다시 정의하는 건 그 SSOT 를 복제하는 것이라
+ *   **정의를 똑같이 유지하는 것이 계약**이다(billed[BILLED] − payments − adjustments).
+ *
+ * 반환 컬럼: client_id · client_name · credit_hold · balance · avg_monthly · lim(−1=무제한) · limit_source
+ *
+ * 대상 = 활성 거래처 중 **원장 활동이 있는 곳**(기간 내 청구 or 잔액). AR 제외(내부법인·현금소매)는 빠진다.
+ * ⚠️ 이 활동 조건이 `credit_hold` 보다 **먼저** 걸린다 — 거래 이력이 아예 없는 차단 거래처는 여기 안 나온다.
+ *    의도한 동작이다(잔액이 0이면 조치할 게 없고, 차단은 이벤트가 아니라 상태다). 잔액이 있으면 bal 에 잡히므로
+ *    "차단 + 미수 있음"은 정상적으로 걸린다. 차단 전량을 보려면 clients 를 직접 조회할 것.
+ */
+export function buildCreditEvalSql(
+  c: Context<HonoEnv>,
+  policy: CreditPolicy
+): { sql: string; params: unknown[] } {
+  const gWin = entityFilter(c, 'g')
+  const gBal = entityFilter(c, 'g')
+  const pBal = entityFilter(c, 'p')
+  const aBal = entityFilter(c, 'a')
+
+  const sql = `
+    WITH win AS (
+      SELECT o.client_id AS cid, SUM(g.billed_amount) AS billed
+        FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+       WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'
+         AND COALESCE(g.accounting_date, date(g.billed_at)) >= date('now', '+9 hours', '-${policy.months} months')
+         ${gWin.clause}
+       GROUP BY o.client_id
+    ),
+    bal AS (
+      SELECT cid, SUM(v) AS b FROM (
+        SELECT o.client_id AS cid, g.billed_amount AS v
+          FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+         WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${gBal.clause}
+        UNION ALL SELECT p.client_id, -p.amount FROM payments p WHERE 1=1${pBal.clause}
+        UNION ALL SELECT a.client_id, -a.amount FROM adjustments a WHERE 1=1${aBal.clause}
+      ) GROUP BY cid
+    )
+    SELECT c.id AS client_id, c.client_name, c.credit_hold,
+           COALESCE(bal.b, 0) AS balance,
+           MAX(0, COALESCE(win.billed, 0)) * 1.0 / ? AS avg_monthly,
+           CASE WHEN c.credit_limit < 0 THEN -1
+                WHEN c.credit_limit > 0 THEN c.credit_limit
+                ELSE MIN(?, MAX(?, MAX(0, COALESCE(win.billed, 0)) * 1.0 / ? * ?))
+           END AS lim,
+           CASE WHEN c.credit_limit < 0 THEN 'UNLIMITED'
+                WHEN c.credit_limit > 0 THEN 'MANUAL'
+                ELSE 'DERIVED' END AS limit_source
+      FROM clients c
+      LEFT JOIN win ON win.cid = c.id
+      LEFT JOIN bal ON bal.cid = c.id
+     WHERE c.is_active = 1
+       AND (win.billed IS NOT NULL OR bal.b IS NOT NULL)
+       ${excludeArExcludedClientsSql('c.id')}`
+
+  const params = [
+    ...gWin.params, ...gBal.params, ...pBal.params, ...aBal.params,
+    policy.months,                                              // avg_monthly
+    policy.cap, policy.floor, policy.months, policy.multiplier,  // lim
+  ]
+  return { sql, params }
+}
+
+export interface CreditExceededRow {
+  client_id: number
+  client_name: string
+  balance: number
+  limit: number
+  limit_source: CreditLimitSource
+  avg_monthly: number
+  hold: boolean
+}
+
+/**
+ * 여신 한도를 넘었거나 수동 차단된 거래처 전량 — 연체(여신) 알림 배치의 판정 정본.
+ * WARNING(한도 80% 도달)은 **제외**한다. 알림은 조치가 필요한 것만 와야 한다.
+ */
+export async function queryCreditExceeded(c: Context<HonoEnv>): Promise<CreditExceededRow[]> {
+  const policy = await getCreditPolicy(c)
+  const { sql, params } = buildCreditEvalSql(c, policy)
+  // 정렬 규약(CLAUDE.md): 고유키 tie-break 필수 — balance 동값 구간이 페이지마다 뒤집히지 않게.
+  const { results } = await c.env.DB.prepare(
+    `SELECT * FROM (${sql}) WHERE credit_hold = 1 OR (lim >= 0 AND balance >= lim)
+      ORDER BY balance DESC, client_id DESC`
+  ).bind(...params).all<{
+    client_id: number; client_name: string; credit_hold: number
+    balance: number; avg_monthly: number; lim: number; limit_source: string
+  }>()
+
+  return (results || []).map(r => ({
+    client_id: Number(r.client_id),
+    client_name: r.client_name,
+    balance: Number(r.balance) || 0,
+    limit: Number(r.lim) || 0,
+    limit_source: (r.limit_source as CreditLimitSource) || 'DERIVED',
+    avg_monthly: Number(r.avg_monthly) || 0,
+    hold: r.credit_hold === 1,
+  }))
+}
+
+/**
  * EXEMPT = 여신 판정 대상 아님. AR 제외 거래처(내부법인 3사 + 현금소매 더미)는 채권 개념이 없으므로
  * 잔액이 얼마든 경고·차단하지 않는다(`constants/arPolicy` 와 같은 기준을 쓴다 — 여기서 id를 다시 나열하지 말 것).
  */
