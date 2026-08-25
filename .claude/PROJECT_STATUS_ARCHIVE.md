@@ -1,3 +1,7 @@
+## 📦 2026-08-25 여신한도 파생 전환 + 연체 알림 주 1회 (배포 `cc1ed55e`) — 전문
+
+**✅ prod 배포 08-25 `cc1ed55e` — 여신한도 파생 전환 + 연체 알림 주 1회** — 정본=memory `design-credit-limit-derived` · 코드=`src/routes/ledger/credit-helpers.ts`(신규). 용준님 확정: **월평균 청구액×2배 clamp(하한100만·상한5,000만)·파생 방식·ADMIN 경고만·잔액 산식 통일**. ★`credit_limit` **0=자동 파생(무제한 아님)·음수=무제한** — 종전 `0=무제한` 의미 반전이라 배포 즉시 전 거래처가 규칙 대상이 된다. ★종전 ADMIN 은 **여신검사 자체를 건너뛰어** 한도를 채워도 발동 0이었다. ★`credit-check` 가 폐기된 `SUM(final_amount)−payments` 산식을 쓰고 있어 **화면 경고와 실제 차단이 다른 숫자**였다 → `deriveClientBalance` 통일. ★`/clients/:id/detail` SELECT 에 `credit_limit`·`credit_hold`·`billing_group_id` 누락 → 여신칸 항상 0·저장 시 수동값 삭제 경로였다(같이 수정). 설정=`/settings#tab=credit`(배수·기간·하한·상한·경고비율 + 영향 시뮬). 검증=**prod smoke 112/112**·prod 마커 4/4(정책 853/37/14·조창민 3794 credit_limit 0→**파생 한도 623만** EXCEEDED·내부법인 53 EXEMPT·dedup 168h). prod 실측=**초과 37곳 3.55억**·경고 14곳. ⚠️비-ADMIN 차단→결재 경로는 로컬 권한 시드 부재로 미실행(입력값 `blocking` 은 검증). **연체 알림=주 1회로 변경**(용준님 확정) — dedup 창 24h→**168h**(`ar-receivables.ts`). ★cron 요일 게이트를 안 쓴 이유=하루 실패 시 그 주가 통째로 날아간다·dedup 방식은 다음 날이 대신 채우고 같은 요일로 수렴. 종전 169곳×매일=벨 포화(admin 미읽음 1,734)의 주 출처 → 배포 후 실측 `checked 169 / alerts_created 0`. 남은=연체 알림 여신 기준 전환(별건 미승인)
+
 ## 📦 2026-08-25 D1 실행계획 붕괴 — 원인·실측 전문
 
 **증상** 단가관리 등 일부 페이지 체감 지연 제보 → 훑는 과정에서 훨씬 큰 것이 나옴.
