@@ -75,7 +75,7 @@ function Get-PrintExpCandidates {
                 try { $files = [IO.Directory]::GetFiles($d, "Log[*].txt") } catch { }
                 if ($files.Count -eq 0) { if ($reason -eq "Log 폴더 없음") { $reason = "일자 로그(Log[날짜].txt) 없음" }; continue }
                 $infos = @($files | ForEach-Object { [IO.FileInfo]$_ } | Sort-Object LastWriteTime -Descending)
-                if ($infos[0].LastWriteTime -lt (Get-Date).AddDays(-$RecentDays)) { $reason = ("최근 {0}일 기록 없음 (마지막 {1:MM-dd})" -f $RecentDays, $infos[0].LastWriteTime); continue }
+                if ($infos[0].LastWriteTime -lt (Get-Date).AddDays(-$RecentDays)) { $reason = ("최근 {0}일 기록 없음 (마지막 {1:yyyy-MM-dd})" -f $RecentDays, $infos[0].LastWriteTime); continue }
                 # 마커 검증 — 오늘 파일에 아직 출력이 없을 수 있어 최신 3개까지 본다
                 $hit = $false
                 foreach ($fi in ($infos | Select-Object -First 3)) {
@@ -272,7 +272,7 @@ if ($svc) {
             L ("tns 구성 감지(" + $tw.Source + ", " + $tw.EquipmentId + ") — PrintExp 자동 탐지...")
             $cands = Get-PrintExpCandidates
             if ($cands.Count -eq 1) {
-                L ("  PrintExp 확정: " + $cands[0].Dir + " (최근 기록 " + $cands[0].LastWrite.ToString("MM-dd HH:mm") + ")")
+                L ("  PrintExp 확정: " + $cands[0].Dir + " (최근 기록 " + $cands[0].LastWrite.ToString("yyyy-MM-dd HH:mm") + ")")
                 foreach ($c in @("appsettings.json", "equipment.json")) {
                     $t = Join-Path $appDir $c
                     if (Test-Path $t) { Copy-Item $t ($t + ".bak-" + $Stamp) -Force; L ("  기존 설정 백업: {0} → {0}.bak-{1}" -f $c, $Stamp) }

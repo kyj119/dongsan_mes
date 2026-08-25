@@ -292,7 +292,21 @@ function Invoke-Diagnose {
     Write-Host ("  장비명(안): {0}  ({1}) — 최종 확정은 개발자가 합니다" -f $equip, $label)
     Save-PcInfo -EquipName $equip -ProcessLabel $label
 
+    # n 을 고르면 마커도 취소 실측도 통째로 빠진다. 고르기 전에 알리고, 고른 뒤 한 번 더 되묻는다
+    # (4대가 n 으로 끝나 재방문한 실측이 있다 — 2026-08-25).
+    Write-Host ""
+    Write-Host "  ※ 이 진단의 핵심은 실제 출력입니다. n 을 고르면 자동 탐색만 돌아"
+    Write-Host "     '어느 파일이 로그인가' 는 추정에 그치고, 취소 실측(R1/R2/R3)은 아예 못 합니다."
     $ans = Read-Host "  지금 이 장비에서 실제 출력 1건이 가능합니까? 원단·잉크가 소모됩니다 (y/n)"
+    if ($ans -notmatch "^[yY]") {
+        Write-Host ""
+        Write-Host "  [주의] 출력 없이 끝내면 대부분 다시 와야 합니다."
+        $again = ""
+        for ($i = 0; $i -lt 3 -and $again -notmatch "^[ynYN]$"; $i++) {
+            $again = Read-Host "  그래도 자동 탐색만 진행할까요? (y=자동탐색만 / n=출력해서 제대로)"
+        }
+        if ($again -match "^[nN]$") { $ans = "y" }
+    }
     if ($ans -match "^[yY]") {
         # 취소는 로그만 봐서 "안 남는다"를 증명할 수 없다 — 시각을 아는 취소를 직접 만들어야
         # (a) 취소를 아예 안 남기는 SW 인지 (b) 다른 파일에 남는지가 갈린다. 취소 2종은 서로
@@ -312,7 +326,7 @@ function Invoke-Diagnose {
         }
         & $Exe @probeArgs | Tee-Object -FilePath $probeOut
     } else {
-        Write-Host "  → 최근 로그 자동 탐색(--discover)만 수행합니다."
+        Write-Host "  → 최근 로그 자동 탐색(--discover)만 수행합니다. (취소 실측 없음 — 재방문 가능성 있음)"
         $discOut = Join-Path (Ensure-Collect) "discover-output.txt"
         & $Exe --discover --days 3 | Tee-Object -FilePath $discOut
         Get-ChildItem $BinDir -Filter "discover-*.json" -ErrorAction SilentlyContinue |
