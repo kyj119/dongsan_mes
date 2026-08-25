@@ -950,11 +950,24 @@ inventoryRouter.get('/stats/summary', async (c) => {
 })
 
 // ── 창고별 재고 대시보드 API ──
+//
+// 페이로드 주의 (2026-08-25): 전체 응답 286KB 중 **257KB 가 「미배정」 980품목**이었고
+//   화면은 그걸 전부 표 행으로 그렸다(1,092행). 구역별 items 를 기본 50건으로 자르고
+//   나머지는 `?group_items=` 로 이어 받는다(bank 거래내역과 같은 「더 보기 누적」).
+//   ★요약·구역별 건수는 **전건 기준 그대로** 낸다 — 자른 건 표시분뿐이다.
+const ZONE_ITEM_PAGE = 50
+const ZONE_ITEM_MAX = 500
+
 inventoryRouter.get('/dashboard/zones', async (c) => {
   try {
     const entityId = getEntityId(c)
     const zoneFilter = c.req.query('zone_id')
     const params: any[] = []
+
+    // 「더 보기」·발주요청용 부분 조회 — zone_id(또는 'unassigned') 하나의 품목만 돌려준다.
+    //   shortage_only=1 = 부족/긴급만. ★발주요청은 표시분이 아니라 **이 경로로 전건**을 받아야 한다
+    //   (표가 잘린 상태에서 group.items 를 걸러 만들면 부족 품목이 조용히 빠진다).
+    const groupItems = c.req.query('group_items')
 
     // 1. 창고 목록 (법인 필터)
     // manager_id/manager_name: 실사 생성 화면이 「내 담당 구역」을 가리려면 여기서 나가야 한다
@@ -1013,8 +1026,41 @@ inventoryRouter.get('/dashboard/zones', async (c) => {
       itemSql += ' AND inv.storage_zone_id = ?'
       params.push(Number(zoneFilter))
     }
-    itemSql += ' ORDER BY sz.sort_order, sz.zone_name, i.category, i.item_name'
+    // 부분 조회: 한 구역만 (미배정 = storage_zone_id IS NULL — zone_id 로는 표현이 안 된다)
+    if (groupItems) {
+      if (groupItems === 'unassigned') {
+        itemSql += ' AND inv.storage_zone_id IS NULL'
+      } else {
+        // 숫자가 아니면 Number()가 NaN 이 되고 바인드 의미가 드라이버에 맡겨진다 → 여기서 끊는다
+        const gid = Number(groupItems)
+        if (!Number.isInteger(gid) || gid <= 0) {
+          return c.json({ success: false, error: 'group_items 는 구역 id 또는 unassigned 여야 합니다' }, 400)
+        }
+        itemSql += ' AND inv.storage_zone_id = ?'
+        params.push(gid)
+      }
+      // 부족/긴급 = stock_status 의 CASE 와 같은 조건(별칭은 WHERE 에서 못 쓴다)
+      if (c.req.query('shortage_only') === '1') {
+        itemSql += ' AND COALESCE(inv.safe_stock, 0) > 0 AND COALESCE(inv.quantity, 0) <= COALESCE(inv.safe_stock, 0)'
+      }
+    }
+    // ★고유키 tie-break 필수 — LIMIT/OFFSET 페이징에서 동값 구간이 페이지 간 중복·누락을 낸다
+    //   (CLAUDE.md §목록 정렬. 종전엔 item_name 까지라 동명이품이 있으면 순서가 미정의였다)
+    const itemOrderBy = ' ORDER BY sz.sort_order, sz.zone_name, i.category, i.item_name, i.id'
 
+    // 부분 조회는 여기서 끝 — 요약·구역목록은 만들지 않는다
+    if (groupItems) {
+      const limRaw = parseInt(c.req.query('limit') || '', 10)
+      const lim = Number.isFinite(limRaw) ? Math.min(Math.max(limRaw, 1), ZONE_ITEM_MAX) : ZONE_ITEM_PAGE
+      const offRaw = parseInt(c.req.query('offset') || '', 10)
+      const off = Number.isFinite(offRaw) && offRaw > 0 ? offRaw : 0
+      const { results: rows } = await c.env.DB.prepare(`${itemSql}${itemOrderBy} LIMIT ${lim} OFFSET ${off}`).bind(...params).all()
+      // 카운트는 ORDER BY 없이 (정렬은 건수에 영향 없다)
+      const cnt = await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM (${itemSql}) t`).bind(...params).first<{ n: number }>()
+      return c.json({ success: true, data: { items: rows, total: Number(cnt?.n) || 0, limit: lim, offset: off } })
+    }
+
+    itemSql += itemOrderBy
     const { results: items } = await c.env.DB.prepare(itemSql).bind(...params).all()
 
     // 3. 요약 통계
@@ -1036,7 +1082,8 @@ inventoryRouter.get('/dashboard/zones', async (c) => {
           total: 0, critical: 0, low: 0
         }
       }
-      zoneGroups[key].items.push(item)
+      // ★items 는 표시분만 담고 total·critical·low 는 전건을 센다 — 요약 숫자는 잘리면 안 된다
+      if (zoneGroups[key].items.length < ZONE_ITEM_PAGE) zoneGroups[key].items.push(item)
       zoneGroups[key].total++
       if (item.stock_status === 'CRITICAL') zoneGroups[key].critical++
       if (item.stock_status === 'LOW') zoneGroups[key].low++
@@ -1047,7 +1094,8 @@ inventoryRouter.get('/dashboard/zones', async (c) => {
       data: {
         zones,
         zone_groups: Object.values(zoneGroups),
-        summary: { total_items: totalItems, critical: criticalCount, low: lowCount, total_value: totalValue }
+        summary: { total_items: totalItems, critical: criticalCount, low: lowCount, total_value: totalValue },
+        item_page: ZONE_ITEM_PAGE   // 클라가 「더 보기」 증분을 서버와 맞추도록
       }
     })
   } catch (error: any) {

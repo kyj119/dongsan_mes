@@ -91,39 +91,100 @@ function renderDashboard() {
         + '<th class="col-qty px-3 py-2 text-right">안전재고</th>'
         + '<th class="col-qty px-3 py-2 text-right">부족량</th>'
         + '<th class="col-status px-3 py-2 text-center">상태</th>'
-        + '</tr></thead><tbody>';
+        + '</tr></thead><tbody id="zoneBody_' + zoneKey(g) + '">';
 
-      g.items.forEach(function(item) {
-        var shortage = Math.max(0, (item.safe_stock || 0) - (item.current_stock || 0));
-        var statusHtml = '';
-        if (item.stock_status === 'CRITICAL') {
-          statusHtml = '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700"><i class="fas fa-exclamation-circle mr-1 text-[9px]"></i>긴급</span>';
-        } else if (item.stock_status === 'LOW') {
-          statusHtml = '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700"><i class="fas fa-arrow-down mr-1 text-[9px]"></i>부족</span>';
-        } else {
-          statusHtml = '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">정상</span>';
-        }
+      g.items.forEach(function(item) { html += zoneRowHtml(item); });
 
-        var rowClass = item.stock_status === 'CRITICAL' ? 'bg-red-50/50' : (item.stock_status === 'LOW' ? 'bg-amber-50/30' : '');
-
-        html += '<tr class="border-b border-gray-50 hover:bg-gray-50 ' + rowClass + '">'
-          + '<td class="px-3 py-2 font-mono text-xs text-blue-600" title="' + escHtml(item.item_code) + '">' + escHtml(item.item_code) + '</td>'
-          + '<td class="px-3 py-2 font-medium text-gray-900" title="' + escHtml(item.item_name) + '">' + escHtml(item.item_name) + '</td>'
-          + '<td class="px-3 py-2 text-xs text-gray-500" title="' + escHtml(item.category || '') + (item.sub_category ? ' > ' + escHtml(item.sub_category) : '') + '">' + escHtml(item.category || '') + (item.sub_category ? ' > ' + escHtml(item.sub_category) : '') + '</td>'
-          + '<td class="px-3 py-2 text-right tabular-nums font-medium ' + (item.current_stock <= 0 ? 'text-red-600' : 'text-gray-900') + '">'
-          + (item.current_stock || 0).toLocaleString() + ' ' + escHtml(item.unit || '') + '</td>'
-          + '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + (item.safe_stock || '-') + '</td>'
-          + '<td class="px-3 py-2 text-right tabular-nums ' + (shortage > 0 ? 'text-red-600 font-medium' : 'text-gray-400') + '">'
-          + (shortage > 0 ? shortage.toLocaleString() : '-') + '</td>'
-          + '<td class="px-3 py-2 text-center">' + statusHtml + '</td>'
-          + '</tr>';
-      });
-
-      html += '</tbody></table></div></div>';
+      html += '</tbody></table></div>';
+      html += zoneFootHtml(g);
+      html += '</div>';
     });
   }
 
   content.innerHTML = html;
+}
+
+// 구역 식별자 — 미배정은 zone_id 가 null 이라 별도 키가 필요하다(서버 group_items 값과 동일)
+function zoneKey(g) {
+  return g.zone_id == null ? 'unassigned' : String(g.zone_id);
+}
+
+// 표 행 1개 — 최초 렌더와 「더 보기」 append 가 같은 함수를 쓴다(사본 신설 금지)
+function zoneRowHtml(item) {
+  var shortage = Math.max(0, (item.safe_stock || 0) - (item.current_stock || 0));
+  var statusHtml = '';
+  if (item.stock_status === 'CRITICAL') {
+    statusHtml = '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700"><i class="fas fa-exclamation-circle mr-1 text-[9px]"></i>긴급</span>';
+  } else if (item.stock_status === 'LOW') {
+    statusHtml = '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700"><i class="fas fa-arrow-down mr-1 text-[9px]"></i>부족</span>';
+  } else {
+    statusHtml = '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">정상</span>';
+  }
+  var rowClass = item.stock_status === 'CRITICAL' ? 'bg-red-50/50' : (item.stock_status === 'LOW' ? 'bg-amber-50/30' : '');
+  var cat = escHtml(item.category || '') + (item.sub_category ? ' &gt; ' + escHtml(item.sub_category) : '');
+  return '<tr class="border-b border-gray-50 hover:bg-gray-50 ' + rowClass + '">'
+    + '<td class="px-3 py-2 font-mono text-xs text-blue-600" title="' + escHtml(item.item_code) + '">' + escHtml(item.item_code) + '</td>'
+    + '<td class="px-3 py-2 font-medium text-gray-900" title="' + escHtml(item.item_name) + '">' + escHtml(item.item_name) + '</td>'
+    + '<td class="px-3 py-2 text-xs text-gray-500" title="' + cat + '">' + cat + '</td>'
+    + '<td class="px-3 py-2 text-right tabular-nums font-medium ' + (item.current_stock <= 0 ? 'text-red-600' : 'text-gray-900') + '">'
+    + (item.current_stock || 0).toLocaleString() + ' ' + escHtml(item.unit || '') + '</td>'
+    + '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + (item.safe_stock || '-') + '</td>'
+    + '<td class="px-3 py-2 text-right tabular-nums ' + (shortage > 0 ? 'text-red-600 font-medium' : 'text-gray-400') + '">'
+    + (shortage > 0 ? shortage.toLocaleString() : '-') + '</td>'
+    + '<td class="px-3 py-2 text-center">' + statusHtml + '</td>'
+    + '</tr>';
+}
+
+// 구역 표 아래 「N / 전체 M개 · 더 보기」 — 종전엔 표기가 없어 미배정 980행이 통째로 그려졌다
+function zoneFootHtml(g) {
+  var k = zoneKey(g);
+  var shown = (g.items || []).length;
+  var more = Math.max((g.total || 0) - shown, 0);
+  return '<div class="flex items-center justify-center gap-3 px-4 py-2.5 border-t border-gray-100" id="zoneFoot_' + k + '">'
+    + '<span class="text-xs text-gray-500 tabular-nums" id="zoneNote_' + k + '">' + shown.toLocaleString() + ' / 전체 ' + (g.total || 0).toLocaleString() + '개'
+    + (more ? ' · ' + more.toLocaleString() + '개 남음' : '') + '</span>'
+    + (more
+      ? '<button id="zoneMore_' + k + '" onclick="loadMoreZoneItems(\'' + k + '\')" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200">'
+        + '<i class="fas fa-angle-down mr-1"></i>' + zoneItemPage() + '개 더 보기</button>'
+      : '')
+    + '</div>';
+}
+
+function zoneItemPage() {
+  return (dashData && dashData.item_page) || 50;
+}
+
+// 「더 보기」 = 해당 구역 품목만 이어 받아 그 표에만 append (다른 구역·요약은 건드리지 않는다)
+var zoneMoreBusy = {};
+async function loadMoreZoneItems(key) {
+  if (!dashData || zoneMoreBusy[key]) return;
+  var g = (dashData.zone_groups || []).filter(function(x) { return zoneKey(x) === String(key); })[0];
+  if (!g) { console.warn('[inventoryDashboard] zone group not found: ' + key); return; }
+
+  var btn = document.getElementById('zoneMore_' + key);
+  var tbody = document.getElementById('zoneBody_' + key);
+  if (!tbody) { console.warn('[inventoryDashboard] #zoneBody_' + key + ' not found'); return; }
+
+  zoneMoreBusy[key] = true;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>불러오는 중'; }
+  try {
+    var res = await axios.get('/api/inventory/dashboard/zones', {
+      params: { group_items: key, offset: g.items.length, limit: zoneItemPage(), zone_id: selectedZoneId || undefined }
+    });
+    var d = (res.data && res.data.data) || {};
+    var rows = d.items || [];
+    g.items = g.items.concat(rows);
+    if (d.total != null) g.total = d.total;
+    tbody.insertAdjacentHTML('beforeend', rows.map(zoneRowHtml).join(''));
+    var foot = document.getElementById('zoneFoot_' + key);
+    if (foot) foot.outerHTML = zoneFootHtml(g);
+  } catch (err) {
+    console.error('zone items load failed:', err);
+    showToast('품목 추가 로드 실패', 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-angle-down mr-1"></i>' + zoneItemPage() + '개 더 보기'; }
+  } finally {
+    zoneMoreBusy[key] = false;
+  }
 }
 
 function summaryCard(icon, label, value, color) {
@@ -147,9 +208,23 @@ async function createPRForZone(zoneId) {
   var group = dashData.zone_groups.find(function(g) { return g.zone_id === zoneId; });
   if (!group) return;
 
-  var shortageItems = group.items.filter(function(i) {
-    return i.stock_status === 'CRITICAL' || i.stock_status === 'LOW';
-  });
+  // ★부족 품목은 **화면에 그려진 분이 아니라 서버에서 전건**을 받는다.
+  //   표가 50개로 잘려 있으므로 group.items 를 거르면 51번째부터의 부족 품목이 조용히 빠진다.
+  var shortageItems;
+  try {
+    var sres = await axios.get('/api/inventory/dashboard/zones', {
+      params: { group_items: zoneKey(group), shortage_only: 1, limit: 500, zone_id: selectedZoneId || undefined }
+    });
+    var sd = (sres.data && sres.data.data) || {};
+    shortageItems = sd.items || [];
+    if (sd.total != null && sd.total > shortageItems.length) {
+      showToast('부족 품목이 ' + sd.total + '건이라 상위 ' + shortageItems.length + '건만 담습니다.', 'warning');
+    }
+  } catch (err) {
+    console.error('shortage items load failed:', err);
+    showToast('부족 품목 조회 실패', 'error');
+    return;
+  }
 
   if (shortageItems.length === 0) {
     showToast('부족 품목이 없습니다.', 'info');
