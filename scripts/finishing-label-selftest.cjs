@@ -13,18 +13,14 @@
  */
 'use strict'
 
-const { execFileSync } = require('child_process')
+const { compileTs } = require('./lib/compile-ts.cjs')
 const path = require('path')
-const os = require('os')
 
 const SRC = path.join(__dirname, '..', 'src', 'utils', 'finishingLabel.ts')
-const ESBUILD = path.join(__dirname, '..', 'node_modules', 'esbuild', 'bin', 'esbuild')
 
-const outFile = path.join(os.tmpdir(), `finishingLabel.selftest.${process.pid}.cjs`)
-execFileSync(process.execPath, [ESBUILD, SRC, '--format=cjs', '--platform=node', `--outfile=${outFile}`], {
-  stdio: ['ignore', 'ignore', 'inherit'],
-})
-const { formatFinishing, formatPunching, formatPP, formatPPList } = require(outFile)
+// esbuild JS API 사용 — CLI spawn 은 CI(Linux)에서 죽는다(2026-08-25). 상세=scripts/lib/compile-ts.cjs
+const { mod: _m, cleanup: _cleanup } = compileTs(SRC)
+const { formatFinishing, formatPunching, formatPP, formatPPList } = _m
 
 let pass = 0
 const fails = []

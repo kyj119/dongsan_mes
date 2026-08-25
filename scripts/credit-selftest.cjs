@@ -26,7 +26,7 @@
  */
 'use strict'
 
-const { execFileSync } = require('child_process')
+const { compileTs } = require('./lib/compile-ts.cjs')
 // node:sqlite = Node 22.5+ 내장(실험적). 없으면 **조용히 건너뛰지 않고 실패**시킨다 —
 // 게이트가 소리 없이 사라지는 것이 이 테스트가 막으려는 사고보다 나쁘다.
 let DatabaseSync
@@ -38,24 +38,12 @@ try {
   process.exit(1)
 }
 const path = require('path')
-const os = require('os')
-const fs = require('fs')
 
-// ── 대상 모듈 컴파일 (finishing-label-selftest 와 같은 방식) ──────────────────
+// ── 대상 모듈 컴파일 (다른 selftest 와 같은 공용 헬퍼) ─────────────────────────
+//    bundle=true — credit-helpers 는 entityFilter·arPolicy·ar-helpers 를 import 한다.
 const SRC = path.join(__dirname, '..', 'src', 'routes', 'ledger', 'credit-helpers.ts')
-const ESBUILD = path.join(__dirname, '..', 'node_modules', 'esbuild', 'bin', 'esbuild')
-const outFile = path.join(os.tmpdir(), `credit-helpers.selftest.${process.pid}.cjs`)
-try {
-  // esbuild 는 요약을 stderr 로 뱉는다 → 성공 시엔 삼키고, 실패했을 때만 보여준다.
-  execFileSync(process.execPath, [ESBUILD, SRC, '--bundle', '--format=cjs', '--platform=node', `--outfile=${outFile}`], {
-    stdio: ['ignore', 'ignore', 'pipe'],
-  })
-} catch (err) {
-  console.error('✗ credit-helpers.ts 컴파일 실패')
-  if (err && err.stderr) console.error(String(err.stderr))
-  process.exit(1)
-}
-const { buildCreditEvalSql, queryCreditImpact, queryCreditExceeded, CREDIT_POLICY_DEFAULTS } = require(outFile)
+const { mod: _m, cleanup: _cleanup } = compileTs(SRC, { bundle: true })
+const { buildCreditEvalSql, queryCreditImpact, queryCreditExceeded, CREDIT_POLICY_DEFAULTS } = _m
 
 // ── D1 흉내: node:sqlite 위에 prepare().bind().first()/.all() 얹기 ────────────
 //    D1 의 bind()는 새 statement 를 돌려주고, first()/all()은 Promise 다.
@@ -199,7 +187,7 @@ const eq = (label, got, want) => {
   const e2 = await queryCreditImpact(makeCtx(db, 2), policy)
   eq('entity 2 판정대상', e2.total, 1)
 
-  try { fs.unlinkSync(outFile) } catch (_) { /* 임시파일 정리 실패는 무시 */ }
+  _cleanup()
 
   if (fails.length > 0) {
     console.error(`\n✗ 여신 판정 자체검증 실패 ${fails.length}건 (통과 ${pass})\n`)

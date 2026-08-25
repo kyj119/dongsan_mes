@@ -14,21 +14,15 @@
  */
 'use strict'
 
-const { execFileSync } = require('child_process')
+const { compileTs } = require('./lib/compile-ts.cjs')
 const path = require('path')
-const fs = require('fs')
-const os = require('os')
 
 const SRC = path.join(__dirname, '..', 'src', 'utils', 'orderLineAmount.ts')
-const ESBUILD = path.join(__dirname, '..', 'node_modules', 'esbuild', 'bin', 'esbuild')
 
 // TS → CJS 트랜스파일 후 require. tsc 를 거치지 않으므로 타입 오류는 안 잡지만(그건 npm run typecheck 담당)
-// 런타임 산식은 그대로다.
-const outFile = path.join(os.tmpdir(), `orderLineAmount.selftest.${process.pid}.cjs`)
-execFileSync(process.execPath, [ESBUILD, SRC, '--format=cjs', '--platform=node', `--outfile=${outFile}`], {
-  stdio: ['ignore', 'ignore', 'inherit'],
-})
-const { computeLineAmount } = require(outFile)
+// 런타임 산식은 그대로다. esbuild JS API 사용 — CLI spawn 은 CI(Linux)에서 죽는다(2026-08-25).
+const { mod: _m, cleanup: _cleanup } = compileTs(SRC)
+const { computeLineAmount } = _m
 
 let pass = 0
 const fails = []
@@ -109,7 +103,7 @@ check('음수 → 기본 100', { unit_price: 3000, quantity: 1, width: 50, heigh
 // ── width_mm 별칭 (필드명은 mm 지만 값은 cm) ──────────────────
 check('width_mm 별칭도 cm 로 읽는다', { unit_price: 3000, quantity: 1, width_mm: 50, height_mm: 70 }, 'AREA', { auto: 3000 })
 
-try { fs.unlinkSync(outFile) } catch { /* 임시파일 정리 실패는 무시 */ }
+_cleanup()
 
 if (fails.length) {
   process.stdout.write(`\n❌ ${fails.length}건 실패 / ${pass + fails.length}건 중\n\n`)
