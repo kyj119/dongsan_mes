@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-08-26T21:52:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-08-27T01:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,22 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 생략 — 대상 무변경) |
+
+> **Area 6 자기 진화 (2026-08-27T01:20):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → `forced update`로 표시됐으나 shallow(depth 50)라 직전 Area6 자신의 앵커(`45ac35a`)가 fetch 범위 밖 → `git fetch --unshallow origin main`으로 전체 이력 확보 후 `git merge-base --is-ancestor 45ac35a HEAD` = true(fast-forward 확인) → `git checkout main && git reset --hard origin/main`(HEAD `424f769e`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(범위 축 3종)**: 직전 Area6 자신의 앵커(`45ac35a`) 이후 웹앱 범위(`-- src migrations scripts .github`) diff **30커밋**, 비-웹앱 범위(`-- LogWatcher IllustratorAutomat caps-worker workers queue`) diff **5커밋**(`f2caf1b8`·`0255d456`·`eb8ffbb2`는 `scripts/cut/*`도 건드려 양쪽에 중복 계상). 웹앱 churn 대부분(재무/여신·D1 ANALYZE·재고 존 페이징·품목분류 재판정·메시지 세그먼트)은 Area1~5(08-25~08-26)가 각자 렌즈로 이미 정독. **어느 Area 로그에도 해시 언급이 없는 신선 커밋 4건**을 `grep -c` 백로그+아카이브 전수 대조로 확정: 웹앱 `50c99f02`(재고/발주요청 P0 UX버그 3건)·`30f446f2`(품목감사 게이트C 분리, CLI 전용) + 비-웹앱 `361557ce`(LogWatcher RIPLOG 인코딩 자동판별)·`035370cc`(진단 키트 재확인 프롬프트) — 이 4건을 Area6 우선 정독 대상으로 확정.
+> - **`50c99f02` 심층 정독(가장 큰 diff, 11파일)**: ① `pages/inventory.ts` 닫는 태그 누락으로 "창고별" 탭이 2026-07-16부터 6주간 `display:none` 부모에 갇혀 있던 P0 UX버그 — 자동차감/부족발주 유일 진입점이 통째로 도달불가였음(수정은 태그 추가 1줄, 회귀 위험 없음). ② 신규 `PATCH /:id/supplier`(purchaseRequests.ts) — `entityFilter` read-back 404 게이트 + `requireRole('ADMIN')` + CONVERTED 상태 가드 확인, 타법인 조작 불가. ③ 신규 `GET /open-items` — `entityFilter(c,'pr')` 별칭 명시(조인 모호성 회피) 정상 적용. ④ `routes/inventory.ts`의 신규 location 서브쿼리 — 커밋 주석이 **CLAUDE.md 2026-08-25 바인드-순서 사고**(`[[feedback-sqlite-placeholder-subquery-order]]`)를 직접 인용하며 `entityId===0 ? [...inv.params] : [entityId, ...inv.params]`로 서브쿼리 앞자리에 파라미터를 선치(SQL 텍스트 등장순서와 정확히 일치) — 재발방지 패턴이 신규 코드에 스스로 적용된 것을 코드 대조로 재확인. ⑤ `inventoryCount.ts` POST — 라인 INSERT 실패 시 헤더 보상삭제(`try/catch`+`DELETE`) 추가, 0품목 유령 실사 방지. ⑥ scripts 5개 파일 XSS sweep — `escapeHtml` 일관 적용, 누락 0건. **전체 clean, 자동수정 대상 아님**(이미 dev 세션이 완결 배포·prod smoke 검증 완료, `docs(status)` 커밋으로 자체 기록됨).
+> - **`30f446f2` 확인**: `scripts/item-master-audit.cjs`+`scripts/lump-voucher-report.cjs` CLI 감사 스크립트 재설계 + `docs/analysis/*.sql`(owner 수기검증 SQL, prod 2건 sales_flag 정정) — 웹 라우트·DB write 없음(#092a05e23류 기존 판정과 동형), Area6 자동스캔 대상 밖.
+> - **🗺️ 범위-축(62회차) 재실증 — `361557ce`/`035370cc` LogWatcher 정독**: ① `361557ce`(FlexiHtmlParser 인코딩 자동판별 + FlexiPrintExpParser 이름조인) — 위치파일을 `위치|길이`로 확장해 "재정렬 vs 진짜 truncation"을 파일 길이 이력으로 구분(무통지 절단 아님, 「no silent caps」 준수), cp949/UTF-8 자동판별 로직이 ASCII만 있으면 판정을 다음 폴로 유보(성급한 오판 방지) — **clean**. ② **주의사항 확인(net-new 버그 아님)**: 이 커밋이 도입한 이름조인(`ClaimRipByName`)도 시각조인과 동일한 `_pending`/폴백 메커니즘을 공유 — 기보고 **#616**(6h 폴백 송출 후 뒤늦은 결과가 UNMATCHED로 재송출, 이중계상)의 억제 로직(`_lastRipCancelAt`)이 이름조인 경로에는 여전히 없음. 이번 커밋으로 HYB-3200-01이 `flexi`→`flexi_printexp`로 전환되며 **#616 노출 대상이 1대 늘었을 뿐** — 새 결함 클래스 아니므로 별도 이슈화 안 함(#616가 이미 이 메커니즘 전체를 커버). ③ `035370cc`(kit.ps1 재확인 루프) — 3회 재입력 루프가 끝까지 무효 입력이어도 기존 분기로 안전하게 빠짐(무한루프·크래시 없음) — **clean**.
+> - **open≠unfixed 캐시 재확인**: 이번 사이클 churn 4건(50c99f02/30f446f2/361557ce/035370cc)이 손댄 파일이 open 12건(#606·#608·#609·#612·#613·#614·#615·#616·#617·#618·#619·#620)의 지목 파일과 전부 무관 → 기존 close-pending/open 캐시 유지, 재검증 스킵.
+> - **done-sync 절대값 재동기화**: `list_issues(OPEN,label:auto-improve)` totalCount **12**(변동없음, 전건 일치) · `search_issues(reason:completed)` **531**(변동없음) · `reason:not_planned` **4** + `duplicate` **2** = rejected **6**(변동없음). 전 12건 `reactions.+1=0` 재확인(승인 대기 유지).
+> - **브랜치 위생**(읽기전용): `npm run branch:clean` → SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **CI 헬스**: `deploy.yml` 최근 15런 전부 `conclusion:success`(50c99f02·30f446f2·424f769e 신선 커밋 포함).
+> - **npm audit 재확인**: 11건(1 moderate·8 high·2 critical) 전부 devDependency, #613 기보고와 완전 일치, net-new 0.
+> - **🧬 SKILL 강화**: 없음 — area-6-self-evolution.md `line N` 잔여참조 재확인(0건, 서술식 각주만 존재). 「범위 축」(62회차) 레시피가 이번에도 정확히 LogWatcher 2커밋을 Area1~5 사각지대에서 낚아챘고(패턴 재현), 「깊이 축」(#600)도 Area5 앵커 이후 신선 웹앱 2커밋을 정확히 격리 — 두 레시피 모두 정상 작동 재확인, 신규 코딩화 대상 없음.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 8건(Area5가 직전에 이미 13건 임계에서 트림 실행함) → 이번 로그 추가 후 9건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(fresh 커밋 4건 전부 clean, #616 노출 확대는 기존 이슈로 커버), 자동수정 0건, done-sync: open 12(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 + 인프라 (2026-08-26T21:52):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → `forced update`로 표시됐으나 shallow(depth 50)라 직전 Area5 자신의 앵커(`8f652f8`)가 fetch 범위 밖 → `git fetch --unshallow origin main`으로 전체 이력 확보 후 `git merge-base --is-ancestor 8f652f8 origin/main` = true(fast-forward 확인, rewrite 아님) → `git checkout main && git reset --hard origin/main`(HEAD `30aa144a`). `npm ci`(0→81), `npx tsc --noEmit` clean.
