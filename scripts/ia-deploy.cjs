@@ -249,9 +249,14 @@ async function main() {
         console.log(out.split(/\r?\n/).filter((l) => /완료|오류|실패|백업/.test(l)).map((l) => `  ${l}`).join('\n'))
       } catch (e) { die(`설치 스크립트 실패: ${e.message}`) }
     } else {
-      console.log(C.y('\n축4 — 이 PC 패널 설치본이 낡았습니다. 껍데기 수정은 설치해야 반영됩니다:'))
-      console.log(`  powershell -ExecutionPolicy Bypass -File "${script}"`)
-      console.log(C.dim('  (다른 디자이너 PC 도 각자 한 번씩 실행해야 합니다 · 실행 후 일러 재시작)'))
+      // ★2026-08-27 — 축4 는 **스스로 따라온다**. 옛 문구("각 PC 에서 설치 스크립트를 실행")를
+      //   그대로 두면 이제는 거짓말이고, 안 해도 되는 사무실 순회를 시킨다.
+      //   호스트(축2)의 mesA0_ping() → mesPanel_syncShell() 이 Z: 배포본과 설치본을 대조해 갱신한다.
+      console.log(C.y('\n축4 — 이 PC 설치본이 아직 낡았습니다(패널을 아직 안 열었기 때문).'))
+      console.log(C.dim('  ★디자이너 PC 는 방문하지 않아도 됩니다 — 패널을 여는 순간 스스로 갱신하고'))
+      console.log(C.dim('    "일러스트레이터를 다시 켜 주세요" 를 띄웁니다(호스트 A0-CEP-0.2.0+).'))
+      console.log(C.dim(`  이 PC 를 지금 맞추려면:  powershell -ExecutionPolicy Bypass -File "${script}"`))
+      console.log(C.dim('  (또는 그냥 패널을 한 번 열었다 일러를 재시작해도 됩니다)'))
     }
   }
 
@@ -266,7 +271,7 @@ async function main() {
     die('배포 후에도 드리프트가 남았습니다.')
   }
   if (left.length) {
-    console.log(C.y(`  축4 ${left.length}건 남음 — 설치 스크립트를 실행하면 해소됩니다(위 명령).`))
+    console.log(C.y(`  축4 ${left.length}건 남음 — 패널을 열면 자동으로 해소됩니다(또는 위 설치 명령).`))
   } else {
     console.log(C.g('  드리프트 없음 — repo와 런타임이 일치합니다.'))
   }
