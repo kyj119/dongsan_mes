@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-08-26T01:20:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-08-26T09:46:09+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,21 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 3 UX/기능 감사 (2026-08-26T09:46):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → `forced update`로 표시됐으나 `git merge-base --is-ancestor`로 fast-forward 확인(rewrite 아님, shallow depth 50 한계) → `git fetch --unshallow`로 전체 이력 확보 후 `git checkout main && git reset --hard origin/main`(HEAD `ef80c95`, 116커밋 전진). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area3 자신의 앵커(`efc5d27`/HEAD `9f3e59d`) 이후 웹앱 범위(`-- src migrations scripts .github`) diff **27커밋** — 대부분(재무/마진·여신 정책·D1 ANALYZE·파일규격)은 Area1·2·4·5·6이 각자 렌즈로 이미 정독. 이번 사이클은 **UX 렌즈(빈 상태·로딩·escape·더블클릭 가드·axios↔라우트 존재성·HTML↔JS silent-fail·"백엔드 먼저 화면 나중")로 신규 화면 요소 전량 재통과**. Area2 최신 앵커(`2f9f88f`) 이후 순수 신규 1건(`cbf5737a` 품목 피커 규격/제품자재 표시)도 포함.
+> - **HTML↔JS silent-fail 전수 diff**: churn 범위 `src/scripts`/`src/pages`에 신규 추가된 `getElementById` 리터럴 34개(`cpMultiplier`·`segApplyBtn`·`fMineOnly`·`txTableBody` 등, credit-policy 탭·segment picker·zone manager·query-render 재작업 전체)를 `comm -23`로 대조 — **id= 코퍼스 미존재 0건**(전건 같은 커밋에 템플릿/동적렌더 동반).
+> - **axios→백엔드 라우트 존재성**: churn 범위 신규 axios 호출 7개(`/api/clients` picker·`/api/contact-groups/segment-options`·`/api/contact-groups/preview`·`/api/contact-groups/`·`/api/inventory/dashboard/zones`·`/api/settings/credit-policy`·`/api/settings` patch) 전부 해당 라우터 파일에 exact-match 등록 확인(`contactGroups.ts:60`·`settings.ts:150`·`inventory.ts:961`), dead-button 0건.
+> - **신규 화면 3건 심층 정독**: ① `d64a15c3`(구역담당자 노출) — `escapeHtml` 일관 적용, `fMineOnly` 체크박스 null가드(`mineEl &&`), 담당구역 우선정렬 UX 양호. ② `78829f63`(메시지 세그먼트 피커, 이미 prod smoke 111/111 자체검증 배포분) — 표본 렌더 전 필드 `escapeHtml`, 빈 상태("조건에 맞는 거래처가 없습니다") 존재, `segApplyBtn`류 write 버튼 `try/finally`로 disable 복구(showConfirm 취소 시 `return`도 finally가 커버해 버튼 안 멈춤 확인). ③ `92d6ac52`(여신정책 시뮬레이터, `cpSimBtn`/`cpSaveBtn`) — 시뮬레이션·저장 양쪽 `disabled`+로딩 텍스트+`finally` 복구, 저장 전 값 검증(0 이하 거부) 존재. **셋 다 clean**.
+> - **로딩/더블클릭 가드 spot-check**: `ed4f4e8f`(구역 대시보드 페이지네이션 "더보기") — `zoneMoreBusy[key]` 플래그로 중복클릭 차단 + 스피너 텍스트, 표준 패턴 준수.
+> - **"백엔드 먼저·화면 나중" 재확인**: `d924a307`(안전재고/발주점 백필)이 채우는 `reorder_point`/`safe_stock` 소비처를 `grep -rln`으로 재확인 — `inventory.js`/`storageZones.js`/`inventoryDashboard.js`/`weeklyPurchase.js` 기존 화면이 이미 소비 중(신규 화면 갭 아님, 그동안 값이 0이라 안 보였을 뿐). 신규 마이그 2건(`78829f63`/`28c93f88`)은 이미 API 응답 alias 노출 확인됐고 프론트 소비처도 존재(#620/Area5가 각자 렌즈로 이미 검증) — net-new 갭 없음.
+> - **open 12건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` totalCount **12**(변동없음, #606·#608·#609·#612·#613·#614·#615·#616·#617·#618·#619·#620 전건 일치), `search_issues`로 전 12건 `reactions.+1=0` 재확인(승인 대기 유지).
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · rejected **6**(변동없음, 재확인 생략 — 대상 무변경).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 이번 27커밋 churn을 UX 렌즈로 전량 재통과했으나 신규 오탐/탐지 클래스 도출 없음(기존 standing scan 레시피 — silent-fail diff·axios matching·백엔드먼저화면나중·더블클릭가드 — 가 전부 커버).
+> - **백로그 트림 체크**: 사이클 로그 10건 → 이번 로그 추가 후 11건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(27커밋 전체 UX 렌즈 clean, 신규 화면 3건 심층정독 전부 clean, standing scan 전부 net-new 0), 자동수정 0건, done-sync: open 12(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-08-26T01:20):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → `forced update`로 표시됐으나 `git merge-base --is-ancestor`로 fast-forward 확인(rewrite 아님, shallow depth 50 한계) → `git fetch --unshallow`로 전체 이력 확보 후 `git checkout main && git reset --hard origin/main`(HEAD `2f9f88f`). `npm ci`(0→81), `npx tsc --noEmit` clean.
