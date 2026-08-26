@@ -1,3 +1,5 @@
+- **✅ 08-19 주문서 마감·펀칭 역할 재정의 + 출고검수 주문 찾기(부분일치)** — prod `a22fb424` · 정본=memory `design-order-finishing-role` — 마감/펀칭 = **청구+현장지시 축**으로 확정, 사문화된 기하 자동적용(auto_process_jobs producer 2곳·제2 여백정본 `AP_MARGIN_RULES`) 은퇴. 접수 UI=프리셋+요약(MES_FIN)·상세 접기. `/pack` 수동입력은 신설 **읽기전용** `GET /api/shipments/pack-search` 경유(숫자도 후보로만). 검증=prod smoke 112/112·entity 61/61·roundtrip 소실 0·P1 0. 남은=없음(미출고 필터=불필요 확정)
+
 ## 📦 2026-08-26 이관분 (잔여 없음 항목)
 
 - **08-18 청주(e3) 통장·카드 0건 = 바로빌 담당자ID 불일치(`-24005`) · 5주간 조용한 미수집** — 경위 전문=`PROJECT_STATUS_ARCHIVE.md` §08-18 청주 바로빌. 회수 통장 79건·카드 89건(분류 112). 바로빌 ID 3법인 정리(e1 `DONGSAN`·e2 `sunm2596`·e3 `dongsancj`·e4 미가입). 판정법 정본=memory `feedback-barobill-sender-id-silent-fail`. 남은=**없음**
