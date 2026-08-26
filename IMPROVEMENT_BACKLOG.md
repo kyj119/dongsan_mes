@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-08-26T09:46:09+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-08-26T15:47:02+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,20 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 완료 — 변동 없음) |
+
+> **Area 4 데이터 정합성 (2026-08-26T15:47):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → `forced update`로 표시됐으나 `git fetch --unshallow`(직전 Area4 앵커 `3da5e66`이 depth-50 밖) 후 `git checkout main && git reset --hard origin/main`(HEAD `16769552`, fast-forward 121커밋 확인). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area4 자신의 앵커(`3da5e66`) 이후 웹앱 범위(`-- src migrations scripts .github`) diff **28커밋** — 대부분(재무/마진 원가·여신 정책 CTE 사고+재발방지·메시지 세그먼트·재고 존 페이징·D1 ANALYZE·품목분류 재판정)은 Area1·2·3·5·6이 각자 렌즈로 이미 정독(직전 Area3 앵커 `ef80c95` 이후는 2커밋만 신선). 이번 사이클은 **데이터정합성 렌즈(고아·CHECK·NOT NULL·entity_id·denormalized delta·바인드 순서 사고 클래스 재발 여부)로 28커밋 전체 재통과**.
+> - **신규 마이그 3건 직접 정독(0541/0542/0543)**: ① `items.min_billing_side_cm`(기본 100, 0=유효값) — `orderLineAmount.ts:resolveMinSide`가 null/undefined/''는 기본값으로, `0`은 `Number.isFinite&&n>=0`으로 보존해 `\|\|` 폴백 사고 없음 확인(주석이 스스로 경고한 함정, 코드는 이미 회피). ② `contact_groups.filter_json/synced_at`+`contact_group_members.source/matched_reason` — AUTO 재동기화가 `DELETE ... WHERE source='AUTO'` 후 재삽입해 MANUAL 멤버 보존(설계 의도대로), `UNIQUE INDEX idx_contact_group_members_uniq`가 있어 `INSERT OR IGNORE`로 정상 dedupe. ③ `message_send_recipients`(FK 미선언, `entity_id` nullable) — 마이그 주석이 "D1은 컬럼 제거 불가라 제약을 늘리지 않음"으로 명시적 설계, `recordBulkRecipients` INSERT가 청크(12행×8바인드) 텍스트-포지션과 바인드 순서 일치 확인. **3건 모두 clean**.
+> - **🔍 바인드-순서 사고(CLAUDE.md 2026-08-25 여신 리팩터 사고) 재발 스캔**: 이번 churn에 그 사고의 **당사자 커밋(`7822d3ed`)이 이미 포함** — 시뮬레이션 경고비율 `?`가 `buildCreditEvalSql`의 서브쿼리보다 SQL 텍스트상 앞에 와 파라미터가 한 칸씩 밀리던 사고(초과 37→108건, 3.55억→5.52억 오탐)를 인라인 치환으로 수정 + `credit-helpers.ts`에 재발방지 경고 주석 추가 + `test:credit`에 값-대조 게이트 신설(5be0dc03). **같은 클래스가 코드베이스 다른 곳에 있는지 전수 스캔**: `grep -rn "FROM (\${" src`로 템플릿 서브쿼리 래핑 6곳(`credit-helpers.ts` 2·`clients.ts`·`inventory.ts` 2·`activityLogs.ts`) 전수 확인 — **전부 서브쿼리 앞 SQL 텍스트에 outer `?`가 없음**(clients.ts는 `SELECT *,...FROM(...)`처럼 outer 컬럼리스트가 리터럴이고, ef.params/filterParams/dormantParams/limit·offset이 텍스트 등장 순서와 정확히 일치 재확인) → **net-new 0, 사고 클래스 재발 없음**.
+> - **`92a05e23`/`23ae4f1d`/`2f9f88f9`(품목분류 재판정 3건) 데이터정합성 확인**: 전부 `scripts/item-master-audit.cjs`(자체 감사게이트) 정정 + `docs/analysis/*.sql`(수기 UPDATE 스크립트, 커밋에 포함) 형태로 owner가 직접 근거수치(35라인 2,685,000원 등)를 명시하고 완결 배포한 prod 데이터 보정 — Area4 자동스캔 대상 밖(085e055 선례와 동일: 도메인 전문가 수기검증 영역). `item_type` 변경이 department P&L의 order_items 기반 쿼리에만 영향(H2=미판매품목이라 영향 없음, 커밋 메시지 자체 명시) 확인.
+> - **standing scan**: ① `npm run audit:entity` 누락 6건 — 전건 `financialReports.ts:82/89/97/102/235/241`, 08-25 Area4 자신이 "per-entity bound-param 루프 패턴, FP 확정" 판정한 대상과 완전 동일(재확인, net-new 0). ② `node scripts/sort-audit.cjs` P1 **0건**(변동없음, P2 127건 중 attendance.ts:158 1건 신규 노출이나 P1 아님이라 게이트 무관). ③ `npm run audit:items:selftest` 7/7 통과(변동없음). ④ `git log 3da5e66..HEAD -- migrations` 신규 3파일 전부 위에서 직접 정독 완료, NOT NULL/CHECK 위반 없음(CHECK 제약 자체가 이번 3마이그에 없음).
+> - **open 12건 재확인(open≠unfixed)**: `list_issues(OPEN,auto-improve)` totalCount **12**(변동없음, #606·#608·#609·#612·#613·#614·#615·#616·#617·#618·#619·#620 전건 일치), `search_issues`로 전 12건 `reactions.+1=0` 재확인(승인 대기 유지). Area4 소관 #614·#615도 무변화.
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · rejected **6**(변동없음, 재확인 생략 — 대상 무변경).
+> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 바인드-순서 사고 클래스는 CLAUDE.md에 이미 전역 함정으로 기록돼 있고 이번 사이클의 `FROM (${` 전수 스캔이 codify된 탐지 레시피로 이미 충분히 커버됨(신규 표준 스캔 추가 불필요) — 새 오탐/탐지 클래스 도출 없음.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 11건 → 이번 로그 추가 후 12건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(28커밋 전체 데이터정합성 렌즈 clean, 신규 마이그 3건 전수정독 clean, 바인드-순서 사고 재발 스캔 net-new 0, 품목분류 재판정은 수기검증 영역), 자동수정 0건, done-sync: open 12(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-08-26T09:46):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → `forced update`로 표시됐으나 `git merge-base --is-ancestor`로 fast-forward 확인(rewrite 아님, shallow depth 50 한계) → `git fetch --unshallow`로 전체 이력 확보 후 `git checkout main && git reset --hard origin/main`(HEAD `ef80c95`, 116커밋 전진). `npm ci`(0→81), `npx tsc --noEmit` clean.
