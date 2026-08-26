@@ -228,6 +228,40 @@ const roleRows = d1(`SELECT i.item_code, i.item_name, COALESCE(i.item_type,'') i
   FROM items i WHERE i.is_active = 1`)
 const h1 = roleRows.filter((r) => r.itype === 'MATERIAL' && r.pn === 0 && r.sn > 0)
 const h2 = roleRows.filter((r) => r.itype === 'PRODUCT' && r.sn === 0 && r.pn > 0)
+
+// ── H4 (게이트) — 계열 안에서 **혼자만 다른 `item_type`** ────────────────
+// ★왜 H1·H2 를 게이트로 못 쓰나 (2026-08-26 실측): H2 49건을 계열별로 갈라 보니
+//   **대부분이 형제와 일관되게 PRODUCT** 였다(GDS-EQ 장비 11/11 · 포맥스 FMX-PMT 24/24 · FMX-YES 12/12 ·
+//   포장박스 5/5). 「아직 안 팔린 제품」과 「분류가 틀린 제품」이 같은 조건에 걸린다.
+//   개별로 뒤집으면 **형제가 갈라져 오히려 나빠진다** — 계열 전체를 옮길지는 사람이 정할 일이다.
+//   진짜 신호는 **계열 안의 소수파**다(「게양 부속품」 21건 중 16이 GOODS 인데 5건만 PRODUCT).
+// 계열 축 = `item_group`, 없으면 코드 접두(두 번째 '-' 까지). 표본이 작으면 다수결이 무의미하니 5건 이상만 본다.
+const famKeyOf = (it) => {
+  if (it.grp) return `G:${it.grp}`
+  const c = String(it.item_code)
+  const i1 = c.indexOf('-')
+  if (i1 < 0) return `C:${c}`
+  const i2 = c.indexOf('-', i1 + 1)
+  return `C:${i2 < 0 ? c : c.slice(0, i2)}`
+}
+const famType = new Map()
+for (const it of items) {
+  const k = famKeyOf(it)
+  if (!famType.has(k)) famType.set(k, new Map())
+  const m = famType.get(k)
+  m.set(it.itype, (m.get(it.itype) || 0) + 1)
+}
+for (const it of items) {
+  if (!it.itype) continue
+  const m = famType.get(famKeyOf(it))
+  const total = [...m.values()].reduce((a, b) => a + b, 0)
+  if (total < 5) continue
+  const [majType, majN] = [...m].sort((a, b) => b[1] - a[1])[0]
+  if (majType === it.itype) continue
+  if (majN / total < 0.7) continue              // 계열이 반반이면 다수결이 근거가 못 된다
+  add(it.item_code, 'H4a 계열 소수 분류',
+    `${it.itype} 인데 계열 ${majN}/${total} 이 ${majType} 다 (${famKeyOf(it).slice(2)})`)
+}
 // H3 — 같은 품명에 제품과 자재가 공존한다(솔벤 현수막 = 판매 제품 1 + 매입 원단 N폭).
 //   설계상 정상이지만 **화면에서 구분이 안 되면** 오선택이 난다 → 품목검색 모달에 구분 배지를 붙였다.
 const byName = new Map()
@@ -238,8 +272,9 @@ for (const r of roleRows) {
 const h3 = [...byName].filter(([, t]) => t.has('PRODUCT') && t.has('MATERIAL'))
 
 // ── 보고 ─────────────────────────────────────────────────────────────────
-// 게이트 = C·D·F1·G1. 넷 다 "어느 경우에도 잘못"인 것만 골랐다(나머지는 사람 판단이 필요).
-const GATE_KIND = /^(C|D|F1|G1) /
+// 게이트 = C·D·F1·G1·H4a. 전부 "어느 경우에도 잘못"인 것만 골랐다(나머지는 사람 판단이 필요).
+// ★H1·H2 를 게이트로 두지 않는 이유는 H4a 주석 참조 — 「아직 안 팔린 제품」과 구분이 안 된다.
+const GATE_KIND = /^(C|D|F1|G1|H4a) /
 if (!METRICS_ONLY) {
   if (violations.length) {
     const byKind = new Map()
@@ -272,6 +307,8 @@ if (!METRICS_ONLY) {
   for (const r of h2.slice(0, 5)) console.log(`      ${r.item_code.padEnd(20)} ${r.item_name} (매입 ${r.pn})`)
   console.log(`   H3 같은 품명에 제품+자재 공존 ${h3.length}건   설계상 정상 — 화면 구분(품목검색 모달 배지)으로 막는다`)
   if (h3.length) console.log(`      ${h3.slice(0, 5).map(([n]) => n).join(' · ')}`)
+  console.log('   ★H1·H2 는 추세용이다 — 계열 전체가 그 유형이면 「아직 안 팔린 제품」일 뿐이라 개별로 뒤집으면 형제가 갈라진다.')
+  console.log('     조치 대상은 위 **H4a**(계열 소수 이탈)뿐. 계열 전체를 옮기는 건 사람이 정한다.')
 }
 
 // ── E. 건강 지표 — 절대값이 아니라 **추세**를 본다 ──────────────────────
