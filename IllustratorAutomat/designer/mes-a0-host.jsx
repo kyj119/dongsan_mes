@@ -398,12 +398,16 @@ function mesPanel_probeCopy() {
 /**
  * ★복사·검증이 실패하면 방금 뜬 백업으로 되돌린다.
  *   부분 복사(파일 하나가 잠겨 있었다 등)로 **반쪽짜리 셸**이 남는 것이 이 기능의 유일한 실질 위험이다.
- *   되돌리기까지 실패하면 그 사실을 문자열에 담는다 — 조용히 넘어가면 원인을 못 찾는다.
+ *
+ * ★성패를 copyTree 의 반환으로 말하지 않는다 — **복구 후 서명**으로 말한다.
+ *   실측(2026-08-26, 잠긴 tabs.js): 본복사가 `rm tabs.js` 에서 실패 → 되돌리기도 같은 파일에서
+ *   실패했지만, **그 파일은 애초에 안 바뀌었으므로 설치본은 멀쩡했다.** 그런데도 ROLLBACKFAIL 로
+ *   보고됐다. 멀쩡한 것을 고장났다고 말하면 사람이 엉뚱한 곳을 고친다.
  */
-function mesPanel_rollback(bakDir, dst) {
+function mesPanel_rollback(bakDir, dst, expectSign) {
     try {
-        var r = mesPanel_copyTree(bakDir, dst);
-        return (r.indexOf('ERROR') === 0) ? ';ROLLBACKFAIL' : ';rolledback';
+        mesPanel_copyTree(bakDir, dst);
+        return (mesPanel_sign(dst) === expectSign) ? ';rolledback' : ';ROLLBACKFAIL';
     } catch (eR) {
         return ';ROLLBACKFAIL';
     }
@@ -453,7 +457,7 @@ function mesPanel_syncShell() {
         var bakDir = bakRoot + '/' + MESPANEL_EXT_ID + '.autobak-' + stamp;
         var rc = mesPanel_copyTree(MESPANEL_SRC_DIR, dst);
         if (rc.indexOf('ERROR') === 0) {
-            MESPANEL_SYNC = 'ERROR copy:' + mesPanel_ascii(rc) + mesPanel_rollback(bakDir, dst);
+            MESPANEL_SYNC = 'ERROR copy:' + mesPanel_ascii(rc) + mesPanel_rollback(bakDir, dst, dstSign);
             return MESPANEL_SYNC;
         }
 
@@ -461,7 +465,7 @@ function mesPanel_syncShell() {
         var after = mesPanel_sign(dst);
         if (after !== srcSign) {
             MESPANEL_SYNC = 'ERROR verify:' + mesPanel_ascii(after) + '!=' + mesPanel_ascii(srcSign)
-                + mesPanel_rollback(bakDir, dst);
+                + mesPanel_rollback(bakDir, dst, dstSign);
             return MESPANEL_SYNC;
         }
         mesA0_writeText(guard, srcSign + '|0');

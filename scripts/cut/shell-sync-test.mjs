@@ -47,6 +47,7 @@ for (const need of ['mesPanel_sign', 'mesPanel_copyTree', 'mesPanel_syncShell', 
 
 // ── ExtendScript File/Folder shim (실제 fs 사용) ────────────────────────
 const norm = (p) => String(p).replace(/\\/g, '/');
+const FAIL_REMOVE = new Set();   // 여기에 basename 을 넣으면 그 파일의 remove 가 실패한다
 class ESFolder {
   constructor(p) { this.__p = norm(p); }
   get fsName() { return this.__p.replace(/\//g, path.sep); }
@@ -65,7 +66,11 @@ class ESFile {
   get name() { return encodeURI(path.basename(this.__p)); }
   get exists() { try { return fs.statSync(this.__p).isFile(); } catch { return false; } }
   get length() { try { return fs.statSync(this.__p).size; } catch { return 0; } }
-  remove() { try { fs.unlinkSync(this.__p); return true; } catch { return false; } }
+  remove() {
+    // ★잠긴 파일 재현 — 실기(2026-08-26)에서 tabs.js 를 잡아두면 remove 가 실패했다(여기선 main.js).
+    if (FAIL_REMOVE.has(path.basename(this.__p))) return false;
+    try { fs.unlinkSync(this.__p); return true; } catch { return false; }
+  }
   copy(dest) {
     try {
       fs.mkdirSync(path.dirname(norm(dest)), { recursive: true });
@@ -208,6 +213,18 @@ console.log('\n[7] 배포 대상 판정');
   ok(api.deployable('cut-main.js.bak-20260805-1127') === false, '.bak-타임스탬프 제외');
   ok(api.deployable('index.html.bak') === false, '.bak 로 끝나도 제외');
   ok(api.deployable('.debug') === true, 'CEP .debug 는 배포 대상');
+}
+
+console.log('\n[8] 롤백 — 본복사 중 실패해도 설치본이 남아 있어야 한다');
+{
+  // 백업은 성공하고(대상이 없어 remove 를 안 부른다) 본복사의 remove 만 실패시킨다 = 실기 재현
+  FAIL_REMOVE.add('main.js');   // 픽스처에 실제로 있는 파일이어야 주입이 걸린다
+  let s;
+  try { s = scenario('rollback', { srcVer: '8.0.0', dstVer: '1.0.0' }); } finally { FAIL_REMOVE.delete('main.js'); }
+  ok(s.r.indexOf('ERROR copy:') === 0, '복사 실패를 ERROR 로 보고', s.r);
+  ok(s.r.indexOf(';rolledback') > 0, '설치본이 멀쩡하면 rolledback 으로 판정(ROLLBACKFAIL 아님)', s.r);
+  ok(/1\.0\.0/.test(fs.readFileSync(path.join(s.dstDir, 'js', 'cut-main.js'), 'utf8')), '되돌아간 셸 버전이 원래대로');
+  ok(fs.existsSync(path.join(s.dstDir, 'index.html')), '중간에 지워진 파일이 복구됨');
 }
 
 console.log('\n요약: ' + pass + ' / ' + (pass + fail));
