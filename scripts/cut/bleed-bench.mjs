@@ -181,6 +181,52 @@ console.log('\n── 8 ★소프트 에지(블렌드 밴드)는 링으로 확�
   ok('탐색 OFF 면 최외곽 색(회색) 유지', px(r0, 5 + g - 3, 10 + g).slice(0, 3).join() === '128,128,128', px(r0, 5 + g - 3, 10 + g).join())
 }
 
+// -- 9 도련 겹침 분할 (2026-08-25) --------------------------------------
+// ★`cut-main.js` 의 `mesCutSplitBleed` 를 **브레이스 매칭으로 절취해 그대로 돌린다**
+//   (`nesting-harness.mjs` 와 같은 수법). cut-main.js 는 DOM 에 묶여 import 가 안 되는데,
+//   이 규칙은 분기가 넷이라 소스 패턴 검사(cut:smoke)만으로는 동작을 못 지킨다.
+{
+  console.log('\n-- 9 도련 겹침 분할 --')
+  const CUT_MAIN = path.join(REPO, 'IllustratorAutomat', 'designer', 'poc-a0-cep', 'com.mes.a0.panel', 'js', 'cut-main.js')
+  const src = fs.readFileSync(CUT_MAIN, 'utf8')
+  const start = src.indexOf('function mesCutSplitBleed(')
+  if (start < 0) { ok('mesCutSplitBleed 추출', false, '함수를 못 찾음') }
+  else {
+    let i = src.indexOf('{', start), depth = 0, end = -1
+    for (; i < src.length; i++) {
+      if (src[i] === '{') depth++
+      else if (src[i] === '}') { depth--; if (depth === 0) { end = i + 1; break } }
+    }
+    const MIN = /var BLEED_MIN_MM = ([\d.]+);/.exec(src)
+    const split = new Function('BLEED_MIN_MM', src.slice(start, end) + '; return mesCutSplitBleed;')(MIN ? parseFloat(MIN[1]) : 1.5)
+    ok('하한 상수 1.5mm', !!MIN && parseFloat(MIN[1]) === 1.5, MIN ? MIN[1] : '없음')
+    const c = (gap, bleed, butt) => split(gap, bleed, !!butt)
+    // 1) 간격이 넉넉하면 요청 도련 그대로 · 간격 불변
+    let r = c(6, 3); ok('간격 6·도련 3 -> 그대로', r.gapMm === 6 && r.bleedMm === 3, JSON.stringify(r))
+    // 2) 갇히면 절반씩 나눠 갖는다 — **간격은 사용자 입력 그대로**(이번 변경의 핵심)
+    r = c(3, 3); ok('간격 3·도련 3 -> 간격 3 유지·도련 1.5', r.gapMm === 3 && r.bleedMm === 1.5, JSON.stringify(r))
+    // 3) 나눠도 하한 미달일 때만 간격을 올린다
+    r = c(1, 3); ok('간격 1·도련 3 -> 간격 3·도련 1.5', r.gapMm === 3 && r.bleedMm === 1.5, JSON.stringify(r))
+    // 4) ★하한이 요청 도련을 넘지 않는다 — 1mm 를 원한 사람에게 1.5mm 를 강요하며 재료를 뺏지 않는다
+    r = c(1, 1); ok('간격 1·도련 1 -> 간격 2·도련 1(하한이 요청을 안 넘음)', r.gapMm === 2 && r.bleedMm === 1, JSON.stringify(r))
+    r = c(0.4, 0.5); ok('작은 도련도 요청 이하로만', r.bleedMm === 0.5 && r.gapMm === 1, JSON.stringify(r))
+    // 5) ★맞붙임은 손대지 않는다 — 간격 0 에서 나누면 도련이 통째로 사라진다
+    r = c(0, 3, true); ok('맞붙임 -> 간격 0·도련 3 유지', r.gapMm === 0 && r.bleedMm === 3, JSON.stringify(r))
+    // 6) 도련 0 이면 아무것도 하지 않는다(시트컷 경로)
+    r = c(0, 0); ok('도련 0 -> 간격 0 통과', r.gapMm === 0 && r.bleedMm === 0, JSON.stringify(r))
+    r = c(2, 0); ok('도련 0 -> 간격 유지', r.gapMm === 2 && r.bleedMm === 0, JSON.stringify(r))
+    // 7) ★불변식 전수 — 간격은 절대 줄지 않고, 도련x2 는 간격을 넘지 않는다(넘으면 옆 조각과 겹친다)
+    let bad = 0
+    for (let g = 0; g <= 12.0001; g += 0.25) for (const b of [0, 0.5, 1, 1.5, 3, 5]) {
+      const o = c(g, b)
+      if (o.gapMm < g - 1e-9) bad++
+      if (b > 0 && o.gapMm > 0 && o.bleedMm * 2 > o.gapMm + 1e-9) bad += 100
+      if (o.bleedMm > b + 1e-9) bad += 10000
+    }
+    ok('간격 축소 0 · 도련x2 <= 간격 · 요청 초과 0 (전수 294조합)', bad === 0, String(bad))
+  }
+}
+
 console.log(`\n── 판정 ──`)
 if (fails) { console.log(`  ❌ ${fails}건 실패`); process.exit(1) }
-console.log('  ✅ 전 항목 통과 (링 색 보존·내부 선 차단·위치별 색·오목 홈·성능·반투명 가장자리·소프트 에지)')
+console.log('  ✅ 전 항목 통과 (링 색 보존·내부 선 차단·위치별 색·오목 홈·성능·반투명 가장자리·소프트 에지·겹침 분할)')

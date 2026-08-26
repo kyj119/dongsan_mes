@@ -28,7 +28,41 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.55.1';   // 0.55.1 = 도련 축소 스무딩 OFF(회색 오염) + 설명 다이어트
+  var SHELL_VERSION = '0.56.0';   // 0.56.0 = 도련 겹침 분할(간격 존중·하한 1.5mm) · 0.55.1 = 도련 축소 스무딩 OFF
+
+  // ── 도련 겹침 분할 (2026-08-25) ─────────────────────────────────────────
+  // ★순수 함수로 뽑아 둔 이유 = **하네스가 이 함수를 직접 돌리기 때문**이다(`npm run cut:bleed` §9).
+  //   분기가 넷(맞붙임·갇힘 여부·하한 미달·요청보다 큰 하한 금지)이라 소스 패턴 검사로는 못 지킨다.
+  var BLEED_MIN_MM = 1.5;   // 업계 최소치(1/16″ = 1.6mm) 근처 · 재단 오차 ±0.5mm 를 흡수
+  /**
+   * 도련은 칼선 **바깥**으로 나간다 → 간격이 도련×2 보다 좁으면 옆 조각 도련과 겹치고,
+   * 재단이 밀리면 **옆 디자인 색이 조각 가장자리에 남는다**.
+   *
+   * **예전에는 간격을 도련×2 로 올렸다**(사용자 입력을 덮었다). 대가가 실측으로 컸다 —
+   * 이형 24조각·롤 1330 에서 간격/2 를 3px→6px 로 벌리면 효율 65% → 56~58%, **재료 12~13%** 손실.
+   * (직사각만으로 재면 0.9~2.3% 라 작아 보인다. 간격은 조각 **둘레 전체**에 붙으므로 이형에서 비싸다.)
+   *
+   * ⇒ 2026-08-25 용준님 결정: **간격은 사용자 입력을 존중하고, 겹치는 도련을 경계에서 나눈다.**
+   * 두 조각의 도련은 서로를 향해 자라므로 각자 `간격/2` 를 가지면 겹치지 않으면서 최대다.
+   * 잘려 나갈 영역을 위해 재료를 더 쓸 이유가 없다. 업계 정본(tilia Phoenix)도 같은 방향이다
+   * (`spacing-type: Bleed` + `split bleed overlaps`).
+   *
+   * ⚠️ 하한은 `min(1.5, 요청도련)` 이다. 사용자가 도련 1mm 를 원했는데 1.5mm 를 확보하겠다고
+   *    간격을 벌리면, **원하지도 않은 품질을 위해 재료를 뺏는** 셈이 된다.
+   *
+   * @returns {gapMm, bleedMm, floorMm} — gapMm 은 하한 미달일 때만 커진다
+   */
+  function mesCutSplitBleed(gapMm, bleedMm, buttMode) {
+    var floorMm = Math.min(BLEED_MIN_MM, bleedMm > 0 ? bleedMm : BLEED_MIN_MM);
+    if (buttMode || !(bleedMm > 0)) return { gapMm: gapMm, bleedMm: bleedMm, floorMm: floorMm };
+    var halfGap = gapMm / 2;
+    if (halfGap >= bleedMm) return { gapMm: gapMm, bleedMm: bleedMm, floorMm: floorMm };  // 안 갇힌다
+    if (halfGap < floorMm) {                       // 나눠도 하한 미달 → 이때만 간격을 올린다
+      gapMm = Math.max(gapMm, floorMm * 2);
+      halfGap = gapMm / 2;
+    }
+    return { gapMm: gapMm, bleedMm: Math.min(bleedMm, halfGap), floorMm: floorMm };
+  }
   var PANEL_OWNER = 'cut';   // 크로스 패널 잠금의 소유자 식별자 (A0 는 'a0')
 
   // 이보다 작은 구멍은 재단선으로 만들지 않는다 — 칼날/비트가 들어갈 수 없는 크기이고,
@@ -1344,16 +1378,32 @@
     var wantCurve = cvN.curve;
     var nestBleedMm = toFileMm(num('nestBleed', 3));   // 조각마다 칼선 바깥으로 더 인쇄
     // ★도련은 칼선 **바깥**으로 나간다 → 간격이 도련×2 보다 좁으면 옆 조각 도련과 겹치고,
-    //   재단 오차가 나면 **옆 디자인 색이 넘어온다**. 재료보다 재단 사고가 비싸므로 간격을 올린다.
-    //   (도련을 깎는 쪽은 택하지 않았다 — 도련 3mm 는 실물 규약이고 품질 쪽이다)
-    var gapWanted = gapMm;
-    // ★맞붙임(여백 0 · 간격 0)은 이 규칙에서 **뺀다**.
-    //   간격을 올리는 이유는 "옆 조각 도련이 넘어와 남의 색이 보이는 것"인데, 맞붙임에서는
-    //   도련이 넘어가도 **옆 조각 원본이 그 위를 덮는다**(도련은 SENDTOBACK 으로 조각 뒤에 깔린다).
-    //   그래서 안쪽 경계에는 도련이 보이지 않고 **판 바깥 테두리에만** 남는다 — 명함 8up 이 하는 방식이다.
-    //   여기서 간격을 올려 버리면 조각이 떨어져 칼선이 2줄이 되고 맞붙임 자체가 성립하지 않는다.
+    //   재단 오차가 나면 **옆 디자인 색이 넘어온다**.
+    //
+    //   **예전에는 간격을 도련×2 로 올렸다**(사용자 입력을 덮었다). 그 대가가 실측으로 컸다 —
+    //   이형 24조각 롤 1330 기준 간격/2 를 3px→6px 로 벌리면 효율 65% → 56~58%,
+    //   **재료 12~13%** 를 더 쓴다(직사각만으로 재면 0.9~2.3% 라 작아 보인다. 간격은 조각
+    //   **둘레 전체**에 붙으므로 이형에서 비싸다).
+    //
+    //   ⇒ 2026-08-25 용준님 결정: **간격은 사용자 입력을 존중하고, 겹치는 도련을 경계에서 나눈다.**
+    //   두 조각의 도련은 서로를 향해 자라므로 각자 `간격/2` 를 가지면 겹치지 않으면서 최대다.
+    //   잘려 나갈 영역을 위해 재료를 더 쓸 이유가 없다. 업계 정본(tilia Phoenix)도 같은 방향이다
+    //   (`spacing-type: Bleed` + `split bleed overlaps`).
+    //
+    //   하한만 지킨다 — 하한 미달일 때**만** 간격을 올린다(§2.2 설계).
+    //   ⚠️ 하한은 `min(1.5, 요청도련)` 이다. 사용자가 도련 1mm 를 원했는데 우리가 1.5mm 를
+    //      확보하겠다고 간격을 벌리면, 원하지도 않은 품질을 위해 재료를 뺏는 셈이 된다.
+    //   ⚠️ 맞붙임(여백 0 · 간격 0)은 이 규칙에서 **뺀다**. 간격을 올리는 이유는 "옆 조각 도련이
+    //      넘어와 남의 색이 보이는 것"인데, 맞붙임에서는 도련이 넘어가도 **옆 조각 원본이 그 위를
+    //      덮는다**(도련은 SENDTOBACK 으로 조각 뒤에 깔린다). 안쪽 경계엔 도련이 안 보이고
+    //      **판 바깥 테두리에만** 남는다 — 명함 8up 이 하는 방식이다. 분할도 하면 안 된다:
+    //      간격이 0 이라 `간격/2 = 0` 이고, 그러면 도련이 통째로 사라진다.
     var buttMode = (offsetMm <= 0 && gapMm <= 0);
-    if (!buttMode && nestBleedMm > 0 && gapMm < nestBleedMm * 2) gapMm = nestBleedMm * 2;
+    var split = mesCutSplitBleed(gapMm, nestBleedMm, buttMode);
+    var gapWanted = gapMm;
+    gapMm = split.gapMm;
+    // 실제로 조각마다 만들 도련(mm). 요청값과 다르면 결과창에 반드시 밝힌다.
+    var effBleedMm = split.bleedMm;
     var nestBleedModeEl = document.getElementById('bleedMode');
     var nestBleedMode = nestBleedModeEl ? nestBleedModeEl.value : 'auto';
     var lmN = resolveLineMode();
@@ -1547,11 +1597,13 @@
         }
         // ★도련 PNG 는 params 를 쓰기 **전에** 만든다 — 실제 크기(mm)를 `L` 줄로 실어야 하기 때문이다.
         //   호스트가 픽셀에서 mm 를 다시 계산하면 반올림만큼 어긋나고, 그 오차가 조각마다 다르게 나온다.
-        var growMm = offsetMm + nestBleedMm;          // 인쇄는 칼선(=잉크+여백)보다 도련만큼 더 나가야 한다
+        // ★`effBleedMm` 을 쓴다 — 요청값이 아니라 **실제로 만들 도련**이다(간격 분할 반영).
+        //   요청값을 그대로 구우면 옆 조각 도련과 겹쳐 애초에 분할한 의미가 사라진다.
+        var growMm = offsetMm + effBleedMm;          // 인쇄는 칼선(=잉크+여백)보다 도련만큼 더 나가야 한다
         // ★useVec 게이트 제거 (2026-08-06). 도련은 배치된 **사본**에 작용하므로 칼선을 무엇으로
         //   뽑았든 만들 수 있다. 묶어 뒀더니 벡터가 안 되는 아트(사진·중첩 클립)에서 래스터로
         //   폴백하는 순간 도련이 통째로 사라졌고, 아래 보고까지 같은 게이트라 화면도 침묵했다.
-        var wantBleedPng = nestBleedMm > 0 && growMm > 0;
+        var wantBleedPng = effBleedMm > 0 && growMm > 0;
         var bleedNote = '';
         if (wantBleedPng && !hostSupportsBleedPng()) {
           // ★조용히 옛 방식으로 떨어지지 않는다 — 링이 지저분해진 것을 인쇄 뒤에야 알게 된다.
@@ -1578,7 +1630,7 @@
           out('새 문서에 배치 중...');
           // 기하는 **항상** 보낸다 — 도련이 필요하기 때문이다. 칼선을 래스터로 뽑았으면 cutMode='raster'
           //   를 덧붙여 호스트가 벡터 실루엣을 다시 만들지 않게 한다(구 호스트는 5번째 인자를 무시한다).
-          host('mesCut_nestApply(' + offsetMm + ',' + (prep.fill ? 'true' : 'false') + ',' + nestBleedMm + ',"' + nestBleedMode + '"' + (useVec ? '' : ',"raster"') + ')', function (ap, bad3) {
+          host('mesCut_nestApply(' + offsetMm + ',' + (prep.fill ? 'true' : 'false') + ',' + effBleedMm + ',"' + nestBleedMode + '"' + (useVec ? '' : ',"raster"') + ')', function (ap, bad3) {
             if (bad3 || ap.indexOf('ok;') !== 0) { done('배치 적용 실패: ' + ap, 'err'); return; }
             var a = kv(ap.substring(3));
             // ★여기부터는 **사람이 보는 값**이라 실물로 되돌린다(×N). 배율 1이면 그대로다.
@@ -1641,11 +1693,25 @@
                      + (holeOut ? (' · 구멍 ' + holeOut + '개') : '')
                      + ((!useVec && !hostSupportsHoles())
                         ? ('\n⚠ 호스트 구버전(' + (hostVersion || '?') + ' < CUT-CEP-0.19.0) — 조각별 칼선의 **구멍을 만들지 않았습니다**(ㅇ·ㅁ·0·8 속이 안 뚫립니다). mes-cut-host.jsx 를 배포하세요.') : '')) : ''))
-              + (nestBleedMm > 0 ? ('\n도련 ' + R(nestBleedMm) + 'mm (조각마다)'
+              + (effBleedMm > 0 ? ('\n도련 ' + R(effBleedMm) + 'mm (조각마다)'
                   // ★어느 방식으로 만들었는지 밝힌다 — 클립 확장·색 잇기·단색은 품질이 서로 다르다
                   + bleedHow(a)
-                  // ★조용히 바꾸지 않는다 — 간격을 올렸으면 올렸다고 말한다
-                  + (gapWanted < gapMm ? ' · 간격을 ' + R(gapWanted) + ' → ' + R(gapMm) + 'mm 로 올렸습니다(도련×2)' : '')
+                  // ★요청보다 줄였으면 줄였다고, 왜 줄였는지까지 말한다. 이 한 줄이 없으면
+                  //   "3mm 를 넣었는데 왜 1.5mm 로 나가지?"를 인쇄한 뒤에야 알게 된다.
+                  + (effBleedMm < nestBleedMm
+                     ? ('\n※ 요청 ' + R(nestBleedMm) + 'mm → 실제 ' + R(effBleedMm) + 'mm — 간격 '
+                        + R(gapMm) + 'mm 를 옆 조각과 절반씩 나눠 가졌습니다(겹치면 재단 오차 때 옆 색이 남습니다).'
+                        + ' 도련을 그대로 쓰려면 간격을 ' + R(nestBleedMm * 2) + 'mm 이상으로 올리세요.') : '')
+                  // ★업계 통상 도련은 2~3mm 이고 재단 기계 공차가 0.5~1.5mm 다(2026-08-25 조사).
+                  //   2mm 미만이면 **최악 공차와 여유가 거의 없다** — 재료를 아낀 대가를 작업자가
+                  //   알고 고르게 한다. 동작은 막지 않는다(하한 1.5mm 는 용준님 확정).
+                  + (effBleedMm > 0 && effBleedMm < 2
+                     ? ('\n⚠ 도련 ' + R(effBleedMm) + 'mm 는 업계 통상(2~3mm)보다 얇습니다 — 재단이 '
+                        + R(effBleedMm) + 'mm 이상 바깥으로 밀리면 옆 조각 색이 남습니다.'
+                        + ' 여유를 두려면 간격을 ' + R(Math.max(4, gapMm + 1)) + 'mm 이상으로(도련 2mm↑).') : '')
+                  // ★조용히 바꾸지 않는다 — 이제는 **하한 미달일 때만** 간격을 올린다
+                  + (gapWanted < gapMm ? ('\n※ 간격을 ' + R(gapWanted) + ' → ' + R(gapMm)
+                     + 'mm 로 올렸습니다 — 그 아래로는 도련이 ' + R(split.floorMm) + 'mm 하한을 못 지킵니다.') : '')
                   // ★도련이 조각별로 실패해도 판은 그려진다 — 조용히 넘기면 인쇄 뒤에야 안다(2026-08-04)
                   + (parseInt(a.bleedfail, 10) > 0
                     ? ('\n⚠ 도련 ' + a.bleedfail + '개 조각 실패 — ' + bleedFailWhy(a.bleedcode)) : '')
@@ -1814,6 +1880,11 @@
     var scaleN = cutScaleN();
     var gapMm = toFileMm(num('nestGap', 3));
     var offsetMm = toFileMm(num('nestOffset', 3));
+    // ★도련 하한 상향을 여기서도 **똑같이** 적용한다 (2026-08-25).
+    //   [네스팅 실행]이 간격을 올리는 경우가 있는데 여기서 안 올리면, 추천대로 폭을 골라도
+    //   실제 배치가 더 넓은 간격으로 돌아 결과가 안 맞는다. 위 주석("같은 규칙이어야 한다")이
+    //   가리키는 어긋남이 도련 축에서 그대로 있었다(배율·수량은 이미 맞춰 뒀는데 이것만 빠져 있었다).
+    gapMm = mesCutSplitBleed(gapMm, toFileMm(num('nestBleed', 3)), (offsetMm <= 0 && gapMm <= 0)).gapMm;
     var offsetShow = num('nestOffset', 3), gapShow = num('nestGap', 3);   // 표시는 사용자가 넣은 실물 값
     var fillMode = (document.getElementById('fillClosed') || {}).value || 'auto';
     var allowRot = !!(document.getElementById('nestRotate') && document.getElementById('nestRotate').checked);

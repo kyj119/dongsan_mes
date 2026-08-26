@@ -68,12 +68,43 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.20.1';  // 0.20.1 = ink 굽기 AA OFF(도련 회색 오염) · 0.15.0 = 도련을 칼선 방식과 분리(래스터에서도 생성)
+var MESCUT_VERSION = 'CUT-CEP-0.21.0';  // 0.21.0 = 새 문서 mm 단위(DocumentPreset) · 0.20.1 = ink 굽기 AA OFF(도련 회색 오염)
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
 //   굽기용 임시 문서에서 조각을 **가로 한 줄로만** 벌리다가 1:1(원본 크기) 조각에서 실제로 터졌다(2026-08-05).
 var MESCUT_CANVAS_MAX_PT = 16000;   // 여유를 둔 실사용 상한
+
+/**
+ * mm 단위 문서를 만든다 — `app.documents.add()` 를 이걸로 대체한다.
+ *
+ * ★왜 필요한가 (AI 30.7 실측, 2026-08-25):
+ *   `doc.rulerUnits = RulerUnits.Millimeters` 는 **예외도 안 던지고 값도 안 바뀐다**(읽기 전용).
+ *   `SheetLayout.jsx` 가 정확히 그렇게 쓰고 있었고, 그래서 "저장 파일 기본 단위 = mm" 라는 의도가
+ *   6개월+ 조용히 실패했다. `preferences rulerType` 도 안 통한다 — 이미 1(mm)인데
+ *   `documents.add()` 는 여전히 pt 문서를 만든다. **DocumentPreset 이 유일한 경로다.**
+ *
+ *   EPS 는 문서 단위를 보존하므로(실측: mm 문서 저장 → 재오픈 시 mm) 여기 하나로
+ *   EPS·재오픈 .ai·화면 눈금이 전부 mm 가 된다. DXF `$INSUNITS` 는 `ExportOptionsAutoCAD.unit`
+ *   이 정하므로 이미 mm 이고 영향받지 않는다.
+ *
+ * ⚠️ 좌표는 **point 그대로** 넘긴다 — 눈금 단위만 바뀌고 기하는 불변이다(회귀 0의 근거).
+ * ⚠️ 프로파일명은 로케일 종속이 아니다(실측: "[Default] Print"·"[기본] 인쇄"·없는 이름 전부 성공).
+ *    그래도 폴백을 둔다 — 조용한 실패보다 단위만 잃고 도는 편이 낫다.
+ * ⚠️ `mes-a0-host.jsx` 의 `mesA0_newDocMM` 과 **같은 내용의 사본**이다(호스트 접두사 분리 규칙).
+ */
+function mesCut_newDocMM(wPt, hPt) {
+    try {
+        var dp = new DocumentPreset();
+        dp.units = RulerUnits.Millimeters;
+        dp.colorMode = DocumentColorSpace.CMYK;
+        dp.width = wPt;
+        dp.height = hPt;
+        return app.documents.addDocument('[Default] Print', dp);
+    } catch (eU) {
+        return app.documents.add(DocumentColorSpace.CMYK, wPt, hPt);
+    }
+}
 
 // ── 크로스 패널 잠금 (spec §5.2-① · P0 핵심) ────────────────────────
 // 왜: A0 의 잠금(setHostBusy)은 **패널 내부 JS 상태**라 다른 패널을 모른다. 패널이 둘이 되면
@@ -357,7 +388,7 @@ function mesCut_rasterize(mmPerPx, padMm, fillClosed) {
     var tmp = null;
     var dupErr = '';
     try {
-        tmp = app.documents.add(DocumentColorSpace.CMYK, wPt, hPt);
+        tmp = mesCut_newDocMM(wPt, hPt);
         var lay = tmp.layers[0];
         // ★★ 문서 간 duplicate 는 **원본 문서가 active 일 때만** 동작한다.
         //    documents.add() 가 새 문서를 active 로 만들어 버리므로 여기서 되돌린다.
@@ -1838,7 +1869,7 @@ function mesCut_exportDxf(outPath) {
     try {
         var u0 = mesCut_unionOf(items);
         if (!u0) return 'ERROR 재단선 범위 계산 실패';
-        tmp = app.documents.add(DocumentColorSpace.CMYK, u0[2] - u0[0], u0[1] - u0[3]);
+        tmp = mesCut_newDocMM(u0[2] - u0[0], u0[1] - u0[3]);
         var lay = tmp.layers[0];
         lay.name = MESCUT_DXF_CUT_LAYER;
         // ★칼선과 마크(돔보)를 **다른 레이어**로 나눈다 — 실물 생산 DXF 12/12 가 그렇다(§2.5):
@@ -2036,7 +2067,7 @@ function mesCut_nestBakeAll(mmPerPx, padMm, fillClosed, tag) {
             return 'ERROR 조각이 너무 많거나 커서 한 문서에 못 담습니다(필요 '
                 + Math.round(totH / PT) + 'mm > 한계 ' + Math.round(MESCUT_CANVAS_MAX_PT / PT) + 'mm)';
         }
-        tmp = app.documents.add(DocumentColorSpace.CMYK, totW, totH);
+        tmp = mesCut_newDocMM(totW, totH);
         var lay = tmp.layers[0];
 
         app.activeDocument = srcDoc;                 // ★전환 1 — 복제는 원본이 active 일 때만 동작한다
@@ -2125,7 +2156,7 @@ function mesCut_rasterizeItem(idx, mmPerPx, padMm, fillClosed) {
     var outPath = Folder.temp.fsName.replace(/\\/g, '/') + '/mes_cut_nest_' + idx + '.png';
     var tmp = null;
     try {
-        tmp = app.documents.add(DocumentColorSpace.CMYK, wPt, hPt);
+        tmp = mesCut_newDocMM(wPt, hPt);
         var lay = tmp.layers[0];
         app.activeDocument = srcDoc;                 // ★복제는 원본이 active 일 때만
         try { it.duplicate(lay, ElementPlacement.PLACEATBEGINNING); } catch (eD) {}
@@ -2394,7 +2425,7 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
     try {
         for (var s = 0; s < sheets.length; s++) {
             var sh = sheets[s];
-            var doc = app.documents.add(DocumentColorSpace.CMYK, sh.w * MESCUT_PT_PER_MM, sh.h * MESCUT_PT_PER_MM);
+            var doc = mesCut_newDocMM(sh.w * MESCUT_PT_PER_MM, sh.h * MESCUT_PT_PER_MM);
             doc.artboards[0].artboardRect = [0, sh.h * MESCUT_PT_PER_MM, sh.w * MESCUT_PT_PER_MM, 0];
             var sheetH = sh.h * MESCUT_PT_PER_MM;
             // ★아트 레이어를 명시적으로 들고 간다. `doc.layers[0]` 을 그때그때 읽으면 안 된다 —

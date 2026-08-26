@@ -292,9 +292,33 @@ function expandClipInGroup(grp, dirs, bleedPt) {
 }
 
 // ── 6. 새 문서 생성 + 3개 레이어 설정 ──────────────────────────────────────
-var newDoc = app.documents.add(DocumentColorSpace.CMYK, canvasWidthPt, canvasHeightPt);
+/**
+ * mm 단위 문서를 만든다.
+ *
+ * ★여기 있던 `newDoc.rulerUnits = RulerUnits.Millimeters` 는 **아무 일도 하지 않았다**
+ *   (AI 30.7 실측 2026-08-25: 읽기 전용이라 예외도 안 던지고 값도 안 바뀐다).
+ *   의도("저장 파일 기본 단위 = mm")는 맞았고 수단이 틀렸다 — DocumentPreset 이 유일한 경로다.
+ *   `preferences rulerType` 도 안 통한다(이미 1(mm)인데 `documents.add()` 는 pt 문서를 만든다).
+ *   EPS 는 문서 단위를 보존하므로 이 한 줄로 저장된 EPS 도 mm 로 열린다.
+ *   DXF `$INSUNITS` 는 `ExportOptionsAutoCAD.unit` 이 정하므로 이미 mm 이고 영향 없다.
+ *
+ * 좌표는 point 그대로 넘긴다 — 눈금 단위만 바뀌고 기하는 불변이다.
+ * ⚠️ `mes-cut-host.jsx` `mesCut_newDocMM` · `mes-a0-host.jsx` `mesA0_newDocMM` 과 같은 내용의 사본.
+ */
+function _iaNewDocMM(wPt, hPt) {
+    try {
+        var dp = new DocumentPreset();
+        dp.units = RulerUnits.Millimeters;
+        dp.colorMode = DocumentColorSpace.CMYK;
+        dp.width = wPt;
+        dp.height = hPt;
+        return app.documents.addDocument("[Default] Print", dp);
+    } catch (eU) {
+        return app.documents.add(DocumentColorSpace.CMYK, wPt, hPt);
+    }
+}
+var newDoc = _iaNewDocMM(canvasWidthPt, canvasHeightPt);
 newDoc.artboards[0].artboardRect = [0, canvasHeightPt, canvasWidthPt, 0];
-newDoc.rulerUnits = RulerUnits.Millimeters; // 저장 파일 기본 단위 = mm (재단·검수 편의)
 
 // 레이어 생성 (아래→위 순서: A가 맨 아래, C가 맨 위)
 // 기본 레이어를 A로 사용

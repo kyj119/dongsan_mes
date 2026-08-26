@@ -646,7 +646,8 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   const bake = hostSrc.slice(hostSrc.indexOf('function mesCut_nestBakeAll('), hostSrc.indexOf('function mesCut_rasterizeItem('))
   ok('3r 활성 전환이 조각 수와 무관', (bake.match(/app\.activeDocument = /g) || []).length <= 4,
     String((bake.match(/app\.activeDocument = /g) || []).length))
-  ok('3r 임시 문서는 하나', (bake.match(/documents\.add\(/g) || []).length === 1)
+  // ★`documents.add` → `mesCut_newDocMM`(mm 단위 문서, 2026-08-25). 세는 대상만 바뀌고 규칙은 같다.
+  ok('3r 임시 문서는 하나', (bake.match(/mesCut_newDocMM\(/g) || []).length === 1)
   // ★복제본이 겹치면 다른 조각이 캔버스에 들어온다 → 벌려 놓아야 한다
   ok('3r 복제본을 벌려 놓는다', /translate\(dx, dy\)/.test(bake))
   ok('3r 패널이 버전 게이트로 고른다', /hostSupportsBakeAll\(\)\) bakeAll\(\); else next\(\)/.test(panelSrc))
@@ -678,7 +679,7 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   //   전에는 도련 전체가 `if (useVec)` 안에 있어, 벡터가 안 되는 아트에서 래스터로 폴백하면
   //   도련이 통째로 사라졌다. 화면 보고도 같은 게이트라 아무 말이 없었다.
   ok('3q 도련이 벡터 전용이 아니다(호스트)', /if \(hasGeom\) \{[\s\S]{0,400}?vecBleedMm > 0/.test(hostSrc))
-  ok('3q 래스터에서도 도련 PNG 를 굽는다', /var wantBleedPng = nestBleedMm > 0 && growMm > 0;/.test(panelSrc))
+  ok('3q 래스터에서도 도련 PNG 를 굽는다', /var wantBleedPng = effBleedMm > 0 && growMm > 0;/.test(panelSrc))
   ok('3q 래스터면 cutMode 를 알린다', /useVec \? '' : ',"raster"/.test(panelSrc))
   ok('3q 도련 0 을 조용히 넘기지 않는다', /도련 0mm — 만들지 않았습니다/.test(panelSrc))
 
@@ -877,9 +878,17 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   }
   // ★조각마다 따로 불러야 한다 — 한꺼번에 하면 조각끼리 이어진다
   ok('3q 배치된 사본마다 도련', /mesCut_bleedPlaceItem\(doc, artLayer, copies\[vi\]/.test(hostSrc))
-  ok('3q 패널이 도련을 넘긴다', /nestApply\([\s\S]{0,120}nestBleedMm/.test(panelSrc))
+  // ★넘기는 값은 **요청값이 아니라 실제로 만들 도련**이다(effBleedMm) — 요청값을 넘기면
+  //   간격 분할이 무의미해진다(옆 조각 도련과 다시 겹친다).
+  ok('3q 패널이 효과 도련을 넘긴다', /nestApply\([\s\S]{0,120}effBleedMm/.test(panelSrc))
   // ★간격 < 도련×2 면 인접 도련이 겹친다 — 조용히 두면 남의 색이 링에 남는다
-  ok('3q 간격이 좁으면 경고', /gapMm < nestBleedMm \* 2/.test(panelSrc))
+  // ★2026-08-25: 간격을 올리는 대신 **도련을 절반씩 나눈다**. 하한 미달일 때만 간격을 올린다.
+  // ★규칙 본체는 순수 함수 `mesCutSplitBleed` 에 있고 **동작 검증은 `cut:bleed` 9절이 전수로** 한다.
+  //   여기서는 **배선**만 본다 — 함수가 있고, 호출되고, 결과를 실제로 쓰는가.
+  ok('3q 분할 규칙이 순수 함수', /function mesCutSplitBleed\(gapMm, bleedMm, buttMode\)/.test(panelSrc))
+  ok('3q 분할 결과를 실제로 쓴다',
+    /var split = mesCutSplitBleed\(gapMm, nestBleedMm, buttMode\)/.test(panelSrc)
+    && /gapMm = split\.gapMm/.test(panelSrc) && /var effBleedMm = split\.bleedMm/.test(panelSrc))
 
   // ── 도련 = Repeat Last Pixel 배선 (2026-08-05) ─────────────────
   // 아래 넷은 전부 **조용히 틀리는** 실패다. 화면엔 "도련 완료"가 뜨고 인쇄 뒤에야 안다.
@@ -1090,9 +1099,17 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // ★부모가 갈린 선택은 메뉴 group 이 거부한다 → DOM 그룹으로 우회
   ok('3m 부모 갈린 선택은 DOM 그룹', /function mesCut_groupSel\(/.test(hostSrc)
     && /groupItems\.add\(\)/.test(hostSrc))
-  // ★간격 < 도련×2 면 옆 조각 도련이 넘어온다 → 간격을 올리고 **알린다**
+  // ★2026-08-25 규칙 교체 — 간격을 도련×2 로 올리던 것을 **도련 겹침 분할**로 바꿨다.
+  //   이형 24조각 실측에서 간격/2 를 3px→6px 로 벌리면 효율 65%→56~58%(재료 12~13% 손실).
+  //   사용자가 넣은 간격을 존중하고, 겹치는 도련만 경계에서 나눈다. 하한 미달일 때만 간격을 올린다.
   const panelSrc2 = fs.readFileSync(CUT_MAIN, 'utf8')
-  ok('3m 간격을 도련×2 로 올린다', /if \(!buttMode && nestBleedMm > 0 && gapMm < nestBleedMm \* 2\) gapMm = nestBleedMm \* 2/.test(panelSrc2))
+  ok('3m 옛 강제 상향이 없다', !/gapMm = nestBleedMm \* 2/.test(panelSrc2))
+  ok('3m 하한 상수', /var BLEED_MIN_MM = 1\.5;/.test(panelSrc2))
+  ok('3m 하한 미달일 때만 간격 상향', /if \(halfGap < floorMm\) \{[\s\S]{0,160}gapMm = Math\.max\(gapMm, floorMm \* 2\)/.test(panelSrc2))
+  // ★맞붙임은 분할에서 빠져야 한다 — 간격 0 이라 절반이 0 이고, 그러면 도련이 통째로 사라진다.
+  ok('3m 맞붙임은 분할 제외', /if \(buttMode \|\| !\(bleedMm > 0\)\) return/.test(panelSrc2))
+  // ★요청과 다르면 결과창에 밝힌다 — 조용히 줄이면 인쇄 뒤에야 안다
+  ok('3m 줄인 사실을 알린다', /effBleedMm < nestBleedMm/.test(panelSrc2))
   // ★맞붙임은 예외 — 도련이 넘어가도 옆 조각 원본이 덮으므로(도련은 SENDTOBACK) 간격을 올릴 이유가 없다.
   //   올려 버리면 조각이 떨어져 칼선이 2줄이 되고 맞붙임 자체가 깨진다.
   ok('3m 맞붙임은 간격 상향에서 뺀다', /var buttMode = \(offsetMm <= 0 && gapMm <= 0\)/.test(panelSrc2))
@@ -1206,6 +1223,26 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   const opts = (src) => ['cmykPostScript = true', 'Compatibility.ILLUSTRATOR10', 'EPSPreview.COLORTIFF', 'embedAllFonts = true']
     .filter((k) => src.includes(k)).join('|')
   ok('3l EPS 옵션이 A0 와 동일', opts(hostSrc) === opts(a0) && opts(hostSrc).split('|').length === 4, opts(hostSrc))
+  // -- 3s mm 단위 통일 (2026-08-25) --------------------------------------
+  // ★`doc.rulerUnits = ...` 는 **예외도 안 던지고 값도 안 바뀐다**(AI 30.7 실측).
+  //   SheetLayout.jsx 가 정확히 그렇게 쓰고 있었고 "저장 파일 기본 단위 = mm" 의도가
+  //   조용히 실패했다. 되살아나지 않도록 **금지 패턴으로 못박는다**.
+  const sheetLayoutSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'SheetLayout.jsx'), 'utf8')
+  const unitSrcs = [['cut-host', hostSrc], ['a0-host', a0], ['SheetLayout', sheetLayoutSrc]]
+  // ★주석은 걷어내고 본다 — 이 함정을 **설명하는 주석**이 각 파일에 있어서 그대로 재면 자기 자신에 걸린다
+  const noComment = (x) => x.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+  for (const [tag, src0] of unitSrcs) {
+    const src = noComment(src0)
+    ok(`3s ${tag} rulerUnits 대입 없음(조용히 실패한다)`, !/\.rulerUnits\s*=[^=]/.test(src),
+      (src.match(/.*\.rulerUnits\s*=[^=].*/) || [''])[0].trim())
+    // 새 문서는 반드시 헬퍼를 거친다 — 헬퍼 폴백 1곳만 bare add 를 남긴다
+    const bare = (src.match(/app\.documents\.add\(DocumentColorSpace/g) || []).length
+    ok(`3s ${tag} 새 문서는 mm 헬퍼 경유`, bare === 1, `bare add ${bare}곳(폴백 1곳만 허용)`)
+    ok(`3s ${tag} DocumentPreset 로 mm 지정`,
+      /dp\.units = RulerUnits\.Millimeters/.test(src) && /documents\.addDocument\(/.test(src))
+  }
+  // ★DXF `$INSUNITS` 는 ExportOptionsAutoCAD.unit 이 정한다(문서 단위와 무관) — 회귀 방지
+  ok('3s DXF 단위는 Millimeters 고정', /opts\.unit = AutoCADUnit\.Millimeters/.test(hostSrc))
   ok('3l BUSY_IDS 에 btnExportPair', fs.readFileSync(CUT_MAIN, 'utf8').includes("'btnExportPair'"))
   // ★파일명 규격 = 실제 아트보드여야 한다. 시트 프리셋을 쓰면 이름과 파일이 어긋난다
   //   (nestApply 가 아트보드를 배치 bbox + 돔보 여백으로 줄이기 때문)
