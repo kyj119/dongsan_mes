@@ -139,3 +139,44 @@ UPDATE purchase_order_items SET item_id = (SELECT b.item_id FROM _bak_0826_tpm18
 -- 롤백
 INSERT INTO items     SELECT * FROM _bak_0826_banner_ink_items;
 INSERT INTO inventory SELECT * FROM _bak_0826_banner_ink_inv;
+
+-- ============================================================================
+-- 추가 2026-08-26 — Extreme 수성 8품목 → 「수성잉크 코스테크」 통합·하드삭제 (용준님 확정)
+--
+-- 용준님: 「extreme 수성 잉크 그거 코스테크 현수막 잉크인것 같아」
+--
+-- ⚠️데이터만 보면 갈렸다 — 판단은 용준님 몫이었고 지시대로 통합했다. 대조표:
+--   |  | 코스테크 RM-I0007~10 | Extreme RM-I-EXT-* |
+--   |---|---|---|
+--   | 전표명 | 「수성안료잉크 **XP1000** 1.5L」 | 「**Extreme** 수성-C (1.5L)」 |
+--   | 매입처 | 다다모아 | **케이엠테크** |
+--   | 단가 | 11,000/1.5L (1kg 병 7,000 혼입) | **8,000**/1.5L · 16,000/3L |
+--   | 시점 | 2026-03-30 · 04-21 | 2026-06-08 |
+--   ★같은 케이엠테크가 `Extreme-1880T`(2월 2,800만)·`Extreme-2280T ×2`(4월 5,200만) **장비**를 팔았고
+--     6월에 이 잉크가 들어왔다 — 데이터만으로는 「Extreme 장비 전용」으로 읽혔다.
+--   ⚠️`equipment` 에 Extreme 장비가 **미등록**이고 코스테크 등록은 `KOSTECH-TRANS-01`(전사)뿐,
+--     `HSM-01~13` 은 메타데이터가 전부 비어 있어 현수막 쪽 연결을 데이터로 확인할 수 없었다.
+--
+-- 전수 참조 스캔(38테이블): `purchase_order_items` **8행뿐**. 재고·실사·BOM·주문·견적 전부 0.
+-- 통합: 1414·1418→444(C) · 1415·1419→445(M) · 1416·1420→446(Y) · 1417·1421→447(K)
+--
+-- ★단가 = **11,000 고정**(주력 규격 1.5L 병). 가중평균을 쓰지 않는다 —
+--   한 품목에 **1.5L 11,000 · 1kg 7,000 · Extreme 1.5L 8,000 · 3L 16,000** 네 규격이 섞여 있어
+--   평균이 「어느 병의 값」도 아니게 된다([[design-ink-inventory]] §단가 — 병 크기 혼입).
+--   ※같은 날 앞선 단위 통일(위 ②)에서 매입 가중평균으로 재계산해 M·K 가 10,636·10,333 으로 내려가 있었다 —
+--     그건 이 정책의 이탈이었고 여기서 되돌렸다.
+-- 검색어에 「Extreme 익스트림 케이엠테크 1880T 2280T」 추가 — 전표명으로도 찾히게.
+--
+-- 백업: _bak_0826_ext_items(8) · _bak_0826_ext_poi(8) · _bak_0826_kostech_cost(4)
+-- 검증: 잔여 EXT 0 · 고아 매입라인 증가 0 · 색상별 매입 4라인(기존 2 + Extreme 2) · 활성 품목 1,195 → 1,187
+--       `audit:items` G1·H4a 0건
+-- ⚠️매입 라인에 **3L 병 66통**이 섞여 있다 — 리터로 환산할 땐 `item_name` 스냅샷(「Extreme 수성-C (3L)」)을 볼 것.
+-- ============================================================================
+
+-- 롤백
+INSERT INTO items SELECT * FROM _bak_0826_ext_items;
+UPDATE purchase_order_items SET item_id = (SELECT b.item_id FROM _bak_0826_ext_poi b WHERE b.id = purchase_order_items.id)
+  WHERE id IN (SELECT id FROM _bak_0826_ext_poi);
+UPDATE items SET avg_unit_cost = (SELECT b.avg_unit_cost FROM _bak_0826_kostech_cost b WHERE b.id = items.id),
+                 description   = (SELECT b.description   FROM _bak_0826_kostech_cost b WHERE b.id = items.id)
+  WHERE id IN (444,445,446,447);
