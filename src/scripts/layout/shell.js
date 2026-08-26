@@ -2475,21 +2475,33 @@ function _doItemSearch(q) {
       + '<tr class="text-left text-xs text-gray-500">'
       + '<th class="px-4 py-2">코드</th>'
       + '<th class="px-4 py-2">품목명</th>'
+      + '<th class="px-4 py-2">규격</th>'
       + '<th class="px-4 py-2">분류</th>'
       + '<th class="px-4 py-2">단위</th>'
       + '<th class="px-4 py-2 text-right">단가</th>'
       + '</tr></thead><tbody>';
 
     if (favItems.length > 0) {
-      html += '<tr><td colspan="5" class="px-4 py-1 text-xs font-semibold text-amber-600 bg-amber-50/50 border-b border-amber-100"><i class="fas fa-star text-amber-400 mr-1"></i>즐겨찾기</td></tr>';
+      html += '<tr><td colspan="6" class="px-4 py-1 text-xs font-semibold text-amber-600 bg-amber-50/50 border-b border-amber-100"><i class="fas fa-star text-amber-400 mr-1"></i>즐겨찾기</td></tr>';
     }
 
     sorted.forEach(function(it, i) {
       if (i === favItems.length && favItems.length > 0) {
-        html += '<tr><td colspan="5" class="border-b-2 border-gray-200"></td></tr>';
+        html += '<tr><td colspan="6" class="border-b-2 border-gray-200"></td></tr>';
       }
       var pm = it.pricing_method || 'FIXED';
       var pmBadge = pm === 'AREA' ? ' <span class="text-xs text-blue-600 font-medium">[㎡]</span>' : '';
+      // ★품명만으로는 못 고르는 품목이 많다 — 활성 1,199 중 230 이 형제와 이름이 같고(포맥스 포마트 24·
+      //   아크릴 9·스카시 7 …), 구분 축(두께·규격·용량)이 `specification` 에만 있는데 여기 안 그려졌었다.
+      //   규격은 사실상 전부 채워져 있고 값도 유일해서(2026-08-26 실측) **보여주기만 하면 해결된다**.
+      //   품명을 고치는 방식은 택하지 않았다 — 이카운트 대사가 품명 매칭에 의존한다.
+      var typeMap = { PRODUCT: ['제품', 'text-indigo-700 bg-indigo-50 border-indigo-200'],
+                      MATERIAL: ['자재', 'text-amber-700 bg-amber-50 border-amber-200'],
+                      GOODS: ['상품', 'text-emerald-700 bg-emerald-50 border-emerald-200'] };
+      var tInfo = typeMap[it.item_type] || null;
+      // 제품↔자재는 **이름이 같은 채로 공존한다**(솔벤 현수막·솔벤 매쉬·텐트천 = 판매 제품 1 + 매입 원단 N폭).
+      // 주문서는 exclude_type=MATERIAL 이라 안 섞이지만 재고·매입 화면에서는 같이 뜨므로 구분을 붙인다.
+      var typeBadge = tInfo ? ' <span class="ml-1 px-1 py-px text-[10px] align-middle rounded border ' + tInfo[1] + '">' + tInfo[0] + '</span>' : '';
       var cat = it.category || it.category_direct || it.category_name || '';
       var subcat = it.sub_category || it.sub_category_direct || '';
       var catStr = cat + (subcat ? ' > ' + subcat : '');
@@ -2505,7 +2517,8 @@ function _doItemSearch(q) {
         + 'data-width-mm="' + (it.width_mm || '') + '" '
         + 'data-item-type="' + (it.item_type || '') + '">'
         + '<td class="px-4 py-2 font-mono text-xs text-blue-600">' + window.escapeHtml(it.item_code || '') + '</td>'
-        + '<td class="px-4 py-2 font-medium">' + window.escapeHtml(it.item_name || '') + pmBadge + (it.width_mm ? ' <span class="text-xs font-semibold text-emerald-600">' + (parseInt(it.width_mm, 10) / 10) + 'cm</span>' : '') + '</td>'
+        + '<td class="px-4 py-2 font-medium">' + window.escapeHtml(it.item_name || '') + pmBadge + (it.width_mm ? ' <span class="text-xs font-semibold text-emerald-600">' + (parseInt(it.width_mm, 10) / 10) + 'cm</span>' : '') + typeBadge + '</td>'
+        + '<td class="px-4 py-2 text-xs text-gray-600 whitespace-nowrap">' + window.escapeHtml(it.specification || '') + '</td>'
         + '<td class="px-4 py-2 text-xs text-gray-500">' + window.escapeHtml(catStr) + '</td>'
         + '<td class="px-4 py-2 text-gray-500">' + (it.unit || 'EA') + '</td>'
         + '<td class="px-4 py-2 text-right tabular-nums">' + priceStr + '</td>'

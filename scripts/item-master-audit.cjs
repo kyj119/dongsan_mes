@@ -56,7 +56,8 @@ function d1(sql) {
 }
 
 const items = d1(`SELECT id, item_code, item_name, COALESCE(specification,'') sp,
-  COALESCE(category,'') cat, COALESCE(unit,'') unit, COALESCE(avg_unit_cost,0) cost
+  COALESCE(category,'') cat, COALESCE(unit,'') unit, COALESCE(avg_unit_cost,0) cost,
+  COALESCE(item_group,'') grp, COALESCE(search_keywords,'') kw, COALESCE(item_type,'') itype
   FROM items WHERE is_active = 1`)
 console.log(`[item-audit] 활성 품목 ${items.length}`)
 
@@ -163,9 +164,82 @@ for (const r of unitRows) {
   if (!r.bu && r.ps > 1) f3++
 }
 
+// ── G. 계열(item_group)·검색어 정합성 ────────────────────────────────────
+// ★왜 (2026-08-26): TPM 잉크 8품목이 `item_group='수성잉크 잉크테크'` 에 들어가 있었다.
+//   빈 껍데기 4품목(「현수막 잉크-*」)이 반대로 `수성잉크 TPM` 을 차지해 **두 그룹이 뒤바뀐** 상태였다.
+//   증상은 검색어였다 — 잉크테크의 「수성잉크 C/M/Y/K/LC/LM」 블롭이 TPM 에 통째로 복사돼
+//   「수성잉크 C」 한 단어가 20품목에 매칭됐다. 그런데 **검색어만 고치면 원인이 남는다**:
+//   `item_group` 은 `user_item_access`(사용자별 사용품목)의 축이라 오배정은 **권한까지 어긋나게 한다**.
+const norm = (s) => String(s || '').replace(/[\s()（）\[\]_/·]/g, '').toLowerCase()
+const groupTokens = (g) => String(g || '').split(/\s+/).map((t) => norm(t)).filter((t) => t.length >= 2)
+
+// G1 — 품명이 자기 그룹은 안 가리키는데 **다른 그룹은 가리킨다**.
+//   ⚠️ 「자기 그룹을 안 가리킨다」만으로는 못 쓴다 — 142건이 나오고 대부분 오탐이다.
+//      `item_group` 에는 제품라인형(「수성잉크 잉크테크」)과 **범주형**(「배너 부속품」·「게양 부속품」)이 섞여 있고,
+//      범주형은 품명이 그룹명을 반복하지 않는 게 정상이다(「삼발이받침대」가 「배너 부속품」에 있는 건 맞다).
+//   ⇒ **더 잘 맞는 그룹이 실재할 때만** 지목한다. 그게 오배정의 지문이다
+//      (「TPM잉크 C 20L」이 「수성잉크 잉크테크」에 있는데 「수성잉크 TPM」 그룹이 따로 있었다).
+//   ⚠️ 「엡손솔벤잉크 11색기」↔「엡손 솔벤잉크 9140/8140 C」 처럼 띄어쓰기만 다른 게 흔해 정규화가 필수다.
+//   ★한 번 더 좁힌다 — **형제 그룹**(첫 토큰이 같은 그룹)끼리만 본다.
+//      「그냥 다른 그룹을 가리킨다」로 두면 87건이 나오는데, 대부분 **범주 그룹 ↔ 세부 그룹** 관계다
+//      (「깃대(기타)」가 「게양 부속품」에 있고 「깃대 파이프」 그룹도 따로 있는 건 둘 다 맞다).
+//      형제끼리는 그런 포함 관계가 없어서, 변별 토큰이 엇갈리면 그건 **바뀐 것**이다.
+const allGroups = [...new Set(items.map((i) => i.grp).filter(Boolean))]
+const groupTokMap = new Map(allGroups.map((g) => [g, groupTokens(g)]))
+const headOf = (g) => (groupTokMap.get(g) || [])[0] || ''
+for (const it of items) {
+  if (!it.grp) continue
+  const own = groupTokMap.get(it.grp) || []
+  if (own.length < 2) continue                       // 변별 토큰이 없는 단일어 그룹은 판단하지 않는다
+  const n = norm(it.item_name)
+  if (own.some((t) => n.includes(t))) continue
+  const head = headOf(it.grp)
+  const siblings = allGroups.filter((g) => g !== it.grp && headOf(g) === head && (groupTokMap.get(g) || []).length >= 2)
+  const hit = siblings.filter((g) => groupTokMap.get(g).slice(1).some((t) => n.includes(t)))
+  if (!hit.length) continue
+  add(it.item_code, 'G1 계열 오배정 의심',
+    `품명 「${it.item_name}」 은 그룹 「${it.grp}」 가 아니라 형제 그룹 「${hit.slice(0, 2).join('」·「')}」 를 가리킨다`)
+}
+
+// G2 — 같은 검색어 블롭이 여러 그룹에 걸쳐 있다. 한쪽에서 복사된 흔적이거나 그룹이 갈려야 할 무리다.
+const byKw = new Map()
+for (const it of items) {
+  if (!it.kw) continue
+  if (!byKw.has(it.kw)) byKw.set(it.kw, [])
+  byKw.get(it.kw).push(it)
+}
+let g2 = 0
+for (const [kw, list] of byKw) {
+  const groups = new Set(list.map((i) => i.grp || '(그룹없음)'))
+  if (groups.size < 2) continue
+  g2++
+  add(list[0].item_code, 'G2 검색어 계열 혼재',
+    `「${kw.slice(0, 30)}…」 블롭이 ${list.length}품목 · ${groups.size}계열에 걸쳐 있다 (${[...groups].join(' / ')})`)
+}
+const g3 = items.filter((i) => !i.grp).length
+
+// ── H. 제품↔원자재 축 ────────────────────────────────────────────────────
+// 겹업(dual 플래그)이 정상인 도메인이라 `is_sales_item`/`is_purchase_item` 로는 못 가른다
+// ([[design-item-role-multi-flag]]). **실제 거래가 한쪽으로만 있는데 분류가 반대**인 것만 본다.
+// 주문서 선택기가 `exclude_type=MATERIAL` 로 자르므로 오분류는 **품목이 안 보이거나 원단이 딸려오는** 결과가 된다.
+const roleRows = d1(`SELECT i.item_code, i.item_name, COALESCE(i.item_type,'') itype,
+    (SELECT COUNT(*) FROM order_items o WHERE o.item_id = i.id) sn,
+    (SELECT COUNT(*) FROM purchase_order_items p WHERE p.item_id = i.id) pn
+  FROM items i WHERE i.is_active = 1`)
+const h1 = roleRows.filter((r) => r.itype === 'MATERIAL' && r.pn === 0 && r.sn > 0)
+const h2 = roleRows.filter((r) => r.itype === 'PRODUCT' && r.sn === 0 && r.pn > 0)
+// H3 — 같은 품명에 제품과 자재가 공존한다(솔벤 현수막 = 판매 제품 1 + 매입 원단 N폭).
+//   설계상 정상이지만 **화면에서 구분이 안 되면** 오선택이 난다 → 품목검색 모달에 구분 배지를 붙였다.
+const byName = new Map()
+for (const r of roleRows) {
+  if (!byName.has(r.item_name)) byName.set(r.item_name, new Set())
+  byName.get(r.item_name).add(r.itype)
+}
+const h3 = [...byName].filter(([, t]) => t.has('PRODUCT') && t.has('MATERIAL'))
+
 // ── 보고 ─────────────────────────────────────────────────────────────────
-// 게이트 = C·D·F1. 셋 다 "어느 경우에도 잘못"인 것만 골랐다(A·B·F2·F3 는 사람 판단이 필요).
-const GATE_KIND = /^(C|D|F1) /
+// 게이트 = C·D·F1·G1. 넷 다 "어느 경우에도 잘못"인 것만 골랐다(나머지는 사람 판단이 필요).
+const GATE_KIND = /^(C|D|F1|G1) /
 if (!METRICS_ONLY) {
   if (violations.length) {
     const byKind = new Map()
@@ -189,6 +263,15 @@ if (!METRICS_ONLY) {
   // F2·F3 는 개별 지목이 아니라 총량으로 본다 — 지금은 잘못이 아닐 수 있고(미취급·단일단위), 늘어나는 게 신호다.
   console.log(`\n·   [참고]  F2 환산계수 없는 이중단위 ${f2}건 · F3 단위 없는 환산계수 ${f3}건`)
   console.log('            F2=입고가 ×1 로 들어가 수량이 pack 배 적게 잡힌다 · F3=늘어난 수량의 단위가 미정의')
+
+  console.log(`\n·   [참고]  G3 계열(item_group) 미지정 ${g3}건 — 사용자별 사용품목(user_item_access) 축이라 비면 필터가 안 걸린다`)
+  console.log('\n■ 제품↔원자재 축 — 실제 거래가 한쪽뿐인데 분류가 반대인 것')
+  console.log(`   H1 자재인데 판매만  ${h1.length}건   주문서는 exclude_type=MATERIAL 로 자르므로 **선택기에 안 보인다**`)
+  for (const r of h1.slice(0, 5)) console.log(`      ${r.item_code.padEnd(20)} ${r.item_name} (판매 ${r.sn})`)
+  console.log(`   H2 제품인데 매입만  ${h2.length}건   원가·재고 축에서 제품으로 잡혀 BOM 롤업이 어긋난다`)
+  for (const r of h2.slice(0, 5)) console.log(`      ${r.item_code.padEnd(20)} ${r.item_name} (매입 ${r.pn})`)
+  console.log(`   H3 같은 품명에 제품+자재 공존 ${h3.length}건   설계상 정상 — 화면 구분(품목검색 모달 배지)으로 막는다`)
+  if (h3.length) console.log(`      ${h3.slice(0, 5).map(([n]) => n).join(' · ')}`)
 }
 
 // ── E. 건강 지표 — 절대값이 아니라 **추세**를 본다 ──────────────────────
