@@ -28,7 +28,7 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.56.0';   // 0.56.0 = 도련 겹침 분할(간격 존중·하한 1.5mm) · 0.55.1 = 도련 축소 스무딩 OFF
+  var SHELL_VERSION = '0.57.0';   // 0.57.0 = 조각 속 메우기(그룹 하나=칼선 하나·맞붙임 복구) · 0.56.0 = 도련 겹침 분할(간격 존중·하한 1.5mm)
 
   // ── 도련 겹침 분할 (2026-08-25) ─────────────────────────────────────────
   // ★순수 함수로 뽑아 둔 이유 = **하네스가 이 함수를 직접 돌리기 때문**이다(`npm run cut:bleed` §9).
@@ -919,6 +919,38 @@
     };
   }
 
+  /**
+   * ★조각을 **한 덩어리**로 만든다 — "그룹 하나 = 칼선 하나" (2026-08-27 용준님 결정).
+   *
+   * 1) 속을 메운다 → "테두리 사각 + 안쪽 글자" 가 한 덩어리가 된다(실물 sample1.ai).
+   * 2) 그래도 덩어리가 여럿이면(= 테두리 없이 **글자만** 있는 그룹) **bbox 로 하나를 만든다.**
+   *    메우기만으로는 안 붙는다 — 실측: 글자만 있는 조각은 메운 뒤에도 채움 11.3% 였다.
+   *    떨어져 있는 것들을 하나로 자를 방법은 "다 감싸는 사각" 뿐이고, 그게 인쇄물 재단의
+   *    실제 관행이기도 하다(맞붙임도 bbox 의 변만 긋는다).
+   *
+   * ⚠️ 덩어리가 **하나면 bbox 를 쓰지 않는다** — 로고·이형 실루엣을 사각으로 뭉개면 제품이 달라진다.
+   * ⚠️ 낱개로 자르려면 [고급 · 단품 칼선] 을 쓴다. makeCut 은 손대지 않았다.
+   * @returns {m, filledPx, boxed} boxed=true 면 bbox 로 대체한 것
+   */
+  function weldPiece(G, m, W, H) {
+    var f = G.fillHoles(m, W, H), filledPx = 0, i;
+    for (i = 0; i < f.length; i++) if (f[i] && !m[i]) filledPx++;
+    var c = G.components(f, W, H, 1);
+    var big = 0;
+    for (i = 0; i < c.sizes.length; i++) if (c.sizes[i] >= 16) big++;
+    if (big <= 1) return { m: f, filledPx: filledPx, boxed: false };
+    // 잉크 bbox 를 통째로 채운다
+    var x0 = W, y0 = H, x1 = -1, y1 = -1, x, y;
+    for (y = 0; y < H; y++) for (x = 0; x < W; x++) if (f[y * W + x]) {
+      if (x < x0) x0 = x; if (x > x1) x1 = x;
+      if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+    if (x1 < x0) return { m: f, filledPx: filledPx, boxed: false };
+    var b = new Uint8Array(W * H);
+    for (y = y0; y <= y1; y++) for (x = x0; x <= x1; x++) b[y * W + x] = 1;
+    return { m: b, filledPx: filledPx, boxed: true };
+  }
+
   /** 부호 있는 팽창 — 양수=바깥(offsetMask) · 0=그대로 · 음수=안쪽(insetMask) */
   function growMask(G, m, W, H, rPx) {
     if (rPx > 0) return G.offsetMask(m, W, H, rPx);
@@ -969,7 +1001,7 @@
       //   그래서 굽기 해상도·패딩에 S/F 를 곱한다. F=S 면 1 이라 종전과 같다.
       //   (안 곱하면 F≠S 에서 마스크만 F 크기로 나와 배치가 통째로 어긋난다)
       var bakeK = fileToSave();
-      var pieces = [], rawInkPx = 0, i = 0, softened = 0, edgeDropped = 0;
+      var pieces = [], rawInkPx = 0, i = 0, softened = 0, edgeDropped = 0, filledPieces = 0, boxedPieces = 0;
       // 굽기 경로가 바뀐 사유 — 조용히 느려지거나 조용히 달라지지 않게 결과에 싣는다.
       //   (makeCut 의 fallbackNote 는 **다른 함수의 지역 변수**다. 여기서 건드리면 안 된다)
       var bakeNote = '';
@@ -1012,6 +1044,12 @@
             + '개를 걷어냈습니다(래스터화 아티팩트 — pad 덕에 진짜 아트는 테두리에 닿지 않습니다).') : '',
           offsetMm: offsetMm, cutFinePx: cutFinePx, fillNote: fv.note, lineArt: fv.lineArt, fill: fv.fill,
           bakeNote: bakeNote,
+          // ★조용히 바꾸지 않는다 — 속을 메운 조각이 있으면 몇 개인지 말한다.
+          holeNote: (filledPieces || boxedPieces)
+            ? ((filledPieces ? ('\n※ 조각 ' + filledPieces + '개는 **속을 메워** 외곽 하나로 잘랐습니다(테두리 안쪽 글자에는 칼선을 만들지 않습니다).') : '')
+              + (boxedPieces ? ('\n※ 조각 ' + boxedPieces + '개는 떨어진 덩어리가 여럿이라 **바깥 사각(bbox)** 하나로 잘랐습니다.') : '')
+              + '\n   낱개로 자르려면 [고급 · 단품 칼선]을 쓰세요.')
+            : '',
         });
       }
 
@@ -1036,9 +1074,31 @@
         if (em.edgeDropped) edgeDropped += em.edgeDropped;
         // ★효율%를 정직하게 내려면 **팽창 전** 잉크를 세 둬야 한다 —
         //   팽창된 마스크로 세면 조각이 작고 gap 이 클수록 크게 부풀려진다.
+        //   ⚠️ 아래 구멍 메우기 **전에** 센다 — 효율%는 "실제 인쇄되는 잉크" 기준을 유지한다.
         var pInk = 0;
         for (var k = 0; k < em.m.length; k++) pInk += em.m[k];
         rawInkPx += pInk;
+
+        // ★★조각 = 하나의 생산 단위 → **속을 메운다** (2026-08-27, 용준님 "그룹 하나 = 칼선 하나").
+        //   실물 sample1.ai("테두리 사각 + 안쪽 글자") 실측이 근본을 가리켰다 —
+        //   잉크가 링과 글자뿐이라 조각 bbox 의 **14.4% 만** 채워지고, 그 결과:
+        //     ① 네스터가 테두리 안쪽을 빈 자리로 보고 **다른 조각을 밀어 넣는다**
+        //        (조각 #1 이 #0 의 x범위 안으로 102mm 파고든 것을 실측)
+        //     ② mainPart 가 얇은 링 대신 **글자**를 본체로 골라 isRectish 64% → **맞붙임 거절**
+        //        → 맞닿은 변이 두 줄로 잘린다(용준님이 없애 달라고 한 그 중복)
+        //     ③ traceAll·findHoles 가 글자마다·글자 속마다 칼선 — 실측 10줄
+        //   메운 뒤: 채움 98.9% · isRectish true · 칼선 1줄 · 끼어들기 0 · **판 길이 동일**.
+        //   ⚠️ 도련은 영향 없다 — buildBleedPngs 는 자기 원색 PNG(tag='ink')를 따로 굽는다(실측 확인).
+        //   ⚠️ 낱개 재단(시트컷 글자·ㅇ 속 뚫기)이 필요하면 **[고급 · 단품 칼선]** 을 쓴다.
+        //      거기는 손대지 않았다 — makeCut 은 지금도 구멍을 낸다.
+        var wc = weldPiece(G, em.m, em.W, em.H);
+        if (wc.filledPx) filledPieces++;
+        if (wc.boxed) boxedPieces++;
+        em.m = wc.m;
+        if (em.fine) {
+          var wf = weldPiece(G, em.fine.m, em.fine.W, em.fine.H);
+          em.fine = { W: em.fine.W, H: em.fine.H, m: wf.m };
+        }
         // ★배치 마스크 = **여백 + 간격/2** 팽창 — 겹치지 않으면 칼선끼리 간격이 보장된다.
         //   반경은 **정수 px** 이어야 한다(소수부는 버려진다) → 스냅이 계산한 rPx 를 그대로 쓴다.
         var piece = {
@@ -1679,7 +1739,7 @@
                     : '\n⚠ 도련이 0 입니다 — 재단이 밀리면 옆 디자인이 바로 들어옵니다.')
                   + (mmpp > 0.3 ? ('\n⚠ 배치 격자가 ' + mmpp.toFixed(2) + 'mm 라 조각이 최대 그만큼 어긋날 수 있습니다 — 더 붙이려면 시트를 작게 잡으세요.') : '')) : '')
               + (prep.softened ? ('\n※ 반투명 조각 ' + prep.softened + '개는 경계를 느슨하게 잡았습니다.') : '')
-              + (prep.fillNote || '') + (prep.bakeNote || '') + (prep.edgeNote || '') + qtyNote
+              + (prep.fillNote || '') + (prep.bakeNote || '') + (prep.edgeNote || '') + (prep.holeNote || '') + qtyNote
               + (prep.exact ? '' : ' ⚠ 해상도 한계로 올림 적용')
               + (allowRot ? ' · 회전 허용' : '')
               + '\n돔보 ' + (a.dombo || 0) + '판 — 별도 레이어(인쇄 ON) · 재단선 레이어는 인쇄 OFF'

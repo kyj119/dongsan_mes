@@ -25,6 +25,7 @@ export const {
   rasterizePolygon, inkMask, components, traceAll, traceOuter, findHoles, assignHoles, simplify, polyArea, polyBBox,
   distanceOutside, distanceInside, offsetMask, insetMask, sampleEvenly, pickResolution, toMm,
   fitCurves, bezToMm, snapResolution, downsampleMask, flattenCubic, flattenSubpath, fillPolygonsInto,
+  fillHoles,
 } = G
 export const GEOMETRY_SOURCE = GEOM_PATH
 export default G

@@ -122,6 +122,43 @@
    *
    * @returns [{poly, px}] — 각 구멍의 외곽 폴리곤(픽셀 좌표)
    */
+  /**
+   * ★속을 메운다 — 바깥에서 못 닿는 배경을 전부 잉크로 바꾼다 (2026-08-27).
+   *
+   * 왜 필요한가 (실물 sample1.ai 로 실측):
+   *   "테두리 사각 + 안쪽 글자" 조각은 잉크가 **테두리 링 + 글자들**뿐이라 조각 bbox 의
+   *   **14.4% 만 채워진다**. 그러면 세 가지가 한꺼번에 무너진다 —
+   *     ① 네스터가 테두리 안쪽 빈 공간을 "쓸 수 있는 자리"로 보고 **다른 조각을 밀어 넣는다**
+   *        (실측: 조각 #1 이 #0 의 x범위 안으로 102mm 파고들었다)
+   *     ② `mainPart` 가 얇은 테두리 링보다 **글자 한 덩어리**를 본체로 골라
+   *        `isRectish` 가 64% 로 떨어지고 **맞붙임이 거절**된다 → 맞닿은 변이 두 줄로 잘린다
+   *     ③ `traceAll`·`findHoles` 가 글자마다·글자 속마다 칼선을 낸다 (실측 10줄)
+   *   메우면 채움 98.9% · isRectish true · 칼선 1줄 · 끼어들기 0 — **판 길이는 그대로**였다.
+   *
+   * 경계에서 시작하는 flood fill 이라 **바깥 배경만** 배경으로 남는다.
+   * ⚠️ 원본을 바꾸지 않는다 — 새 배열을 돌려준다(호출부가 팽창 전 잉크를 따로 세야 한다).
+   */
+  function fillHoles(mask, W, H) {
+    var n = W * H
+    var outside = new Uint8Array(n)
+    var st = [], i, x, y
+    for (x = 0; x < W; x++) { st.push(x); st.push((H - 1) * W + x) }
+    for (y = 0; y < H; y++) { st.push(y * W); st.push(y * W + W - 1) }
+    while (st.length) {
+      i = st.pop()
+      if (i < 0 || i >= n || outside[i] || mask[i]) continue
+      outside[i] = 1
+      x = i % W; y = (i / W) | 0
+      if (x > 0) st.push(i - 1)
+      if (x < W - 1) st.push(i + 1)
+      if (y > 0) st.push(i - W)
+      if (y < H - 1) st.push(i + W)
+    }
+    var out = new Uint8Array(n)
+    for (i = 0; i < n; i++) out[i] = (mask[i] || !outside[i]) ? 1 : 0
+    return out
+  }
+
   function findHoles(mask, W, H, minPx) {
     minPx = (minPx === undefined) ? 4 : minPx
     var c = components(mask, W, H, 0)          // 배경 성분
@@ -900,6 +937,7 @@
     traceAll: traceAll,
     traceOuter: traceOuter,
     findHoles: findHoles,
+    fillHoles: fillHoles,
     assignHoles: assignHoles,
     simplify: simplify,
     downsampleMask: downsampleMask,

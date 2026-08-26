@@ -738,6 +738,38 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // ★조각 크기는 호스트가 이미 아는 값 — 굽기 **전에** 받아야 예산을 세울 수 있다
   ok('3x 굽기 전에 크기를 받는다', /mesCut_nestSizes\(\)'[\s\S]{0,900}?prepareWith\(resolveFill/.test(panelSrc))
 
+  // ── ★조각 속 메우기 (2026-08-27) ─────────────────────────────────
+  // 실물 sample1.ai("테두리 사각 + 안쪽 글자") 실측으로 셋이 한 뿌리임이 확인됐다:
+  //   조각 bbox 채움 14.4% → ①네스터가 테두리 안쪽에 다른 조각을 밀어 넣고
+  //   ②mainPart 가 글자를 본체로 골라 isRectish 64% → 맞붙임 거절(맞닿은 변 두 줄)
+  //   ③traceAll·findHoles 가 글자마다·글자 속마다 칼선(10줄).
+  // 메우면 채움 98.9% · isRectish true · 칼선 1줄 · 끼어들기 0 · 판 길이 동일.
+  ok('3v 배치 마스크를 한 덩어리로 만든다', /var wc = weldPiece\(G, em\.m, em\.W, em\.H\);/.test(panelSrc))
+  ok('3v 칼선용 미세 마스크도 같은 규칙', /var wf = weldPiece\(G, em\.fine\.m, em\.fine\.W, em\.fine\.H\);/.test(panelSrc))
+  ok('3v 속을 먼저 메운다', /var f = G\.fillHoles\(m, W, H\)/.test(panelSrc))
+  ok('3v 덩어리가 하나면 bbox 를 쓰지 않는다(로고 보호)', /if \(big <= 1\) return \{ m: f/.test(panelSrc))
+  ok('3v 덩어리가 여럿이면 bbox 하나로', /boxed: true/.test(panelSrc))
+  ok('3v bbox 로 바꾼 조각 수를 센다', /if \(wc\.boxed\) boxedPieces\+\+;/.test(panelSrc))
+  ok('3v bbox 로 바꿨다는 사실을 알린다', /바깥 사각\(bbox\)/.test(panelSrc))
+  // ★효율%는 "실제 인쇄되는 잉크" 기준을 유지해야 한다 — 메운 뒤에 세면 조용히 부풀려진다.
+  {
+    const iInk = panelSrc.indexOf('rawInkPx += pInk;')
+    const iFill = panelSrc.indexOf('var wc = weldPiece(G, em.m')
+    ok('3v 잉크는 메우기 **전에** 센다(효율% 의미 보존)', iInk > 0 && iFill > iInk)
+  }
+  ok('3v 원본을 덮어쓰지 않고 새 배열을 받는다', /var f = G\.fillHoles\(m, W, H\), filledPx = 0/.test(panelSrc))
+  // ★조용히 바꾸지 않는다 — 몇 개를 메웠는지 결과에 싣는다.
+  ok('3v 메운 조각 수를 센다', /if \(wc\.filledPx\) filledPieces\+\+;/.test(panelSrc))
+  ok('3v 메웠다는 사실을 결과에 싣는다', /holeNote:/.test(panelSrc) && /속을 메워/.test(panelSrc))
+  ok('3v holeNote 를 실제로 출력한다', /\(prep\.holeNote \|\| ''\)/.test(panelSrc))
+  // ★낱개 재단 탈출구를 안내한다 — 시트컷 글자·ㅇ 속 뚫기는 [고급 · 단품 칼선] 이 담당한다.
+  ok('3v 낱개가 필요할 때의 경로를 안내', /단품 칼선/.test(panelSrc.slice(panelSrc.indexOf('holeNote:'), panelSrc.indexOf('holeNote:') + 400)))
+  // ★단품 칼선(makeCut)은 손대지 않았다 — 거기는 지금도 구멍을 낸다.
+  ok('3v 단품 칼선의 구멍은 유지', /var minHoleMm = toFileMm\(MIN_HOLE_MM\);/.test(panelSrc))
+  // 엔진 쪽 정본 확인 — 하네스(cut:bench ⑧)가 동작을 검증한다
+  ok('3v geometry 가 fillHoles 를 내보낸다',
+    /fillHoles: fillHoles,/.test(fs.readFileSync(path.join(PANEL_DIR, 'js', 'geometry.js'), 'utf8')))
+
   // ── 맞붙임 정확 배치 (2026-08-06) ────────────────────────────────
   // ★조건을 **좁게** 유지하는 것이 이 기능의 안전장치다.
   //   여백>0 이면 칼선이 이웃과 겹치고, 여백<0 이면 떨어져 공유할 변이 없다.

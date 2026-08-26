@@ -10,7 +10,7 @@
 import {
   traceAll, traceOuter, simplify, polyArea, polyBBox, findHoles, assignHoles,
   offsetMask, insetMask, distanceOutside, sampleEvenly, pickResolution,
-  fitCurves, snapResolution, downsampleMask,
+  fitCurves, snapResolution, downsampleMask, fillHoles,
 } from './geometry.mjs'
 
 const W = 900, H = 900, cx = W / 2, cy = H / 2
@@ -381,6 +381,64 @@ if (process.argv.includes('--res')) {
   console.log(`  자동 선택(판 122×207cm) → ${pick.mmPerPx}mm/px · ${pick.W}×${pick.H} · ${(pick.px / 1e6).toFixed(1)}M px`)
 }
 
+// ── ⑧ 속 메우기 — "테두리 사각 + 안쪽 글자" 를 한 덩어리로 만드는가 ──
+// 실물 sample1.ai 가 이 모양이다. 안 메우면 조각 bbox 채움 14.4% → 네스터가 테두리 안쪽에
+// 다른 조각을 밀어 넣고, mainPart 가 글자를 본체로 골라 맞붙임이 거절되고, 칼선이 10줄 나온다.
+{
+  const BW = 300, BH = 120
+  const mkB = fn => { const m = new Uint8Array(BW * BH); for (let y = 0; y < BH; y++) for (let x = 0; x < BW; x++) if (fn(x, y)) m[y * BW + x] = 1; return m }
+  const cnt = m => { let n = 0; for (let i = 0; i < m.length; i++) n += m[i]; return n }
+  const comps = m => { const c = []; const seen = new Uint8Array(BW * BH)
+    for (let i = 0; i < BW * BH; i++) { if (!m[i] || seen[i]) continue
+      let n = 0; const st = [i]; seen[i] = 1
+      while (st.length) { const j = st.pop(); n++
+        const x = j % BW, y = (j / BW) | 0
+        const nb = [x > 0 ? j - 1 : -1, x < BW - 1 ? j + 1 : -1, y > 0 ? j - BW : -1, y < BH - 1 ? j + BW : -1]
+        for (const k of nb) if (k >= 0 && m[k] && !seen[k]) { seen[k] = 1; st.push(k) } }
+      c.push(n) }
+    return c }
+
+  // 테두리 링(두께 2) + 안쪽에 떨어진 글자 3개
+  const border = (x, y) => (x >= 2 && x < BW - 2 && y >= 2 && y < BH - 2)
+    && (x < 4 || x >= BW - 4 || y < 4 || y >= BH - 4)
+  const letters = (x, y) => {
+    for (let k = 0; k < 3; k++) { const lx = 40 + k * 80
+      if (x >= lx && x < lx + 50 && y >= 40 && y < 80) return true }
+    return false
+  }
+  const piece = mkB((x, y) => border(x, y) || letters(x, y))
+  const before = { ink: cnt(piece), comps: comps(piece).length }
+  const filled = fillHoles(piece, BW, BH)
+  const after = { ink: cnt(filled), comps: comps(filled).length }
+  const bboxArea = (BW - 4) * (BH - 4)
+  console.log('\n⑧ 속 메우기 (테두리 + 안쪽 글자)')
+  console.log(`  전: 잉크 ${before.ink} · 덩어리 ${before.comps}개 · 채움 ${(before.ink / bboxArea * 100).toFixed(1)}%`)
+  console.log(`  후: 잉크 ${after.ink} · 덩어리 ${after.comps}개 · 채움 ${(after.ink / bboxArea * 100).toFixed(1)}%`)
+  ok(before.comps === 4, '속메우기', `전 덩어리 4개(테두리+글자3) 기대, 실제 ${before.comps}`)
+  ok(after.comps === 1, '속메우기', `후 덩어리는 1개여야 한다(그룹 하나=칼선 하나), 실제 ${after.comps}`)
+  ok(after.ink / bboxArea > 0.97, '속메우기', `후 채움 97% 초과 기대(맞붙임 98% 게이트), 실제 ${(after.ink / bboxArea * 100).toFixed(1)}%`)
+  ok(cnt(piece) === before.ink, '속메우기', '원본 마스크를 바꾸면 안 된다(효율%가 팽창 전 잉크를 센다)')
+
+  // 칼선 수 — 메우기 전후
+  const cpsBefore = traceAll(piece, BW, BH, 16)
+  const holesBefore = findHoles(piece, BW, BH, 16)
+  const cpsAfter = traceAll(filled, BW, BH, 16)
+  const holesAfter = findHoles(filled, BW, BH, 16)
+  console.log(`  칼선: 전 외곽 ${cpsBefore.length} + 구멍 ${holesBefore.length} = ${cpsBefore.length + holesBefore.length}줄 → 후 ${cpsAfter.length + holesAfter.length}줄`)
+  ok(cpsAfter.length === 1 && holesAfter.length === 0, '속메우기', `후 칼선은 1줄이어야 한다, 실제 외곽 ${cpsAfter.length} 구멍 ${holesAfter.length}`)
+  ok(cpsBefore.length + holesBefore.length > 1, '속메우기', '전에는 여러 줄이어야 이 케이스가 의미가 있다')
+
+  // 구멍이 없는 도형은 그대로여야 한다(불필요한 변형 금지)
+  const solid = mkB((x, y) => x >= 10 && x < 200 && y >= 10 && y < 100)
+  const solidFilled = fillHoles(solid, BW, BH)
+  ok(cnt(solid) === cnt(solidFilled), '속메우기', '구멍 없는 도형은 변하지 않아야 한다')
+
+  // 오목(바깥으로 열린 홈)은 메우면 안 된다 — 구멍이 아니다
+  const cShape = mkB((x, y) => (x >= 10 && x < 200 && y >= 10 && y < 100) && !(x >= 100 && y >= 40 && y < 70))
+  const cFilled = fillHoles(cShape, BW, BH)
+  ok(cnt(cShape) === cnt(cFilled), '속메우기', 'ㄷ자 홈은 바깥과 통하므로 메우면 안 된다')
+}
+
 // ── 판정 ──────────────────────────────────────────────────────────
 console.log('\n── 판정 ──')
 if (fails.length) {
@@ -388,4 +446,4 @@ if (fails.length) {
   console.log(`\n결과: 실패 ${fails.length}건`)
   process.exit(1)
 }
-console.log('  ✅ 전 항목 통과 (컨투어 정확도·다중 섬 보존·구멍 추출·오프셋 팽창량·병합 임계·타공 배치)')
+console.log('  ✅ 전 항목 통과 (컨투어 정확도·다중 섬 보존·구멍 추출·오프셋 팽창량·병합 임계·타공 배치·속 메우기)')
