@@ -2,6 +2,7 @@
 var dashData = null;
 var allEntities = [];
 var selectedZoneId = '';
+var openPrByItem = {};  // item_id → { qty, request_count } : 미결(승인대기·승인됨) 발주요청
 
 function escHtml(s) {
   return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -12,12 +13,19 @@ async function loadDashboard() {
   if (content) content.innerHTML = '<div class="text-center py-12 text-gray-400"><i class="fas fa-spinner fa-spin text-2xl mb-3"></i><p>로딩 중...</p></div>';
 
   try {
-    var [dashRes, entRes] = await Promise.all([
+    // 미결 발주요청 품목 — 부족 목록은 발주를 내도 재고가 그대로라 계속 「부족」으로 남는다.
+    //   이걸 표시하지 않으면 같은 자재를 매주 중복 발주하게 된다(2026-08-26).
+    var [dashRes, entRes, openRes] = await Promise.all([
       axios.get('/api/inventory/dashboard/zones', { params: { zone_id: selectedZoneId || undefined } }),
-      axios.get('/api/auth/entities')
+      axios.get('/api/auth/entities'),
+      axios.get('/api/purchase-requests/open-items').catch(function() { return { data: { success: false } }; })
     ]);
     dashData = dashRes.data.success ? dashRes.data.data : null;
     allEntities = entRes.data.success ? entRes.data.data : [];
+    openPrByItem = {};
+    if (openRes.data && openRes.data.success) {
+      (openRes.data.data || []).forEach(function(r) { openPrByItem[String(r.item_id)] = r; });
+    }
     renderDashboard();
   } catch (err) {
     console.error('Dashboard load failed:', err);
@@ -120,11 +128,19 @@ function zoneRowHtml(item) {
   } else {
     statusHtml = '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">정상</span>';
   }
+  // 이미 발주요청이 걸린 품목 표시 — 없으면 매주 같은 자재를 또 담게 된다.
+  //   상태 열은 표준 규격상 96px 고정(ellipsis)이라 배지가 잘린다 → 가변폭인 품목명 열에 붙인다.
+  var open = openPrByItem[String(item.item_id)];
+  //   품목명 뒤에 배지를 붙이면 긴 이름의 ellipsis 뒤로 밀려 안 보인다 → 이름 '앞' 아이콘으로 둔다.
+  var openBadge = open
+    ? '<i class="fas fa-clipboard-list text-blue-500 mr-1 text-[10px]" title="발주요청 진행 중 — 미결 '
+      + open.request_count + '건 · 요청수량 ' + open.qty + '"></i>'
+    : '';
   var rowClass = item.stock_status === 'CRITICAL' ? 'bg-red-50/50' : (item.stock_status === 'LOW' ? 'bg-amber-50/30' : '');
   var cat = escHtml(item.category || '') + (item.sub_category ? ' &gt; ' + escHtml(item.sub_category) : '');
   return '<tr class="border-b border-gray-50 hover:bg-gray-50 ' + rowClass + '">'
     + '<td class="px-3 py-2 font-mono text-xs text-blue-600" title="' + escHtml(item.item_code) + '">' + escHtml(item.item_code) + '</td>'
-    + '<td class="px-3 py-2 font-medium text-gray-900" title="' + escHtml(item.item_name) + '">' + escHtml(item.item_name) + '</td>'
+    + '<td class="px-3 py-2 font-medium text-gray-900" title="' + escHtml(item.item_name) + '">' + openBadge + escHtml(item.item_name) + '</td>'
     + '<td class="px-3 py-2 text-xs text-gray-500" title="' + cat + '">' + cat + '</td>'
     + '<td class="px-3 py-2 text-right tabular-nums font-medium ' + (item.current_stock <= 0 ? 'text-red-600' : 'text-gray-900') + '">'
     + (item.current_stock || 0).toLocaleString() + ' ' + escHtml(item.unit || '') + '</td>'
@@ -231,7 +247,21 @@ async function createPRForZone(zoneId) {
     return;
   }
 
-  var msg = escHtml(group.zone_name) + '의 부족 품목 ' + shortageItems.length + '건에 대해 발주요청을 생성하시겠습니까?';
+  // 이미 미결 요청이 있는 품목은 빼고 담는다 — 재고가 그대로라 계속 부족으로 뜨는 탓에
+  //   그냥 다시 누르면 같은 자재가 이중으로 발주된다(2026-08-26).
+  var already = shortageItems.filter(function(it) { return openPrByItem[String(it.item_id)]; });
+  shortageItems = shortageItems.filter(function(it) { return !openPrByItem[String(it.item_id)]; });
+  if (shortageItems.length === 0) {
+    showToast('부족 품목 ' + already.length + '건이 모두 이미 발주요청 중입니다.', 'info');
+    return;
+  }
+
+  var msg = escHtml(group.zone_name) + '의 부족 품목 ' + shortageItems.length + '건에 대해 발주요청을 생성하시겠습니까?'
+    + (already.length > 0 ? '\n(이미 요청 중인 ' + already.length + '건은 제외합니다)' : '')
+    + '\n\n' + shortageItems.slice(0, 8).map(function(it) {
+        return '· ' + it.item_name + ' ' + Math.max(1, Math.ceil((it.safe_stock || 0) - (it.current_stock || 0))) + ' ' + (it.unit || 'EA');
+      }).join('\n')
+    + (shortageItems.length > 8 ? '\n· 외 ' + (shortageItems.length - 8) + '건' : '');
   if (!(await showConfirm(msg))) return;
 
   try {
@@ -255,7 +285,9 @@ async function createPRForZone(zoneId) {
     });
 
     if (res.data.success) {
-      showToast('발주요청 ' + (res.data.data?.request_number || '') + ' 생성 완료', 'success');
+      // 응답은 최상위 request_number 다 — data.data 로 읽어 종전엔 번호가 비어 있었다
+      showToast('발주요청 ' + (res.data.request_number || res.data.data?.request_number || '') + ' 생성 완료', 'success');
+      loadDashboard();  // 「발주중」 배지 즉시 반영 (안 하면 방금 만든 요청이 안 보여 또 누르게 된다)
     } else {
       showToast(res.data.error || '발주요청 생성 실패', 'error');
     }

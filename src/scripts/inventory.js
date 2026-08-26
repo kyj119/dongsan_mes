@@ -590,6 +590,42 @@ document.getElementById('cancelAdjust').addEventListener('click', function() {
     document.getElementById('adjustmentModal').classList.add('hidden');
 });
 
+// 조정 대상 품목을 공용 검색 모달에서 고른다 — 드롭다운은 목록에 그려진 페이지분(기본 20건)만
+// 담고 있어, 찾는 품목이 2페이지 이후면 조정 자체가 불가능했다(2026-08-26).
+var invAdjustSearchBtn = document.getElementById('adjustItemSearchBtn');
+if (!invAdjustSearchBtn) {
+    console.warn('[inventory] #adjustItemSearchBtn not found');
+} else {
+    invAdjustSearchBtn.addEventListener('click', function() {
+        window.openItemSearchModal({
+            type: 'purchase',
+            onSelect: async function(picked) {
+                var sel = document.getElementById('adjustItem');
+                if (!sel) { console.warn('[inventory] #adjustItem not found'); return; }
+                try {
+                    // 현재고·단위 환산 정보는 목록 캐시에 없을 수 있어 상세로 채운다
+                    var res = await axios.get('/api/inventory/' + picked.id);
+                    var item = (res.data && res.data.data) ? res.data.data : null;
+                    if (!item) { showToast('품목 정보를 불러오지 못했습니다.', 'error'); return; }
+                    if (!Array.prototype.some.call(sel.options, function(o) { return o.value === String(item.id); })) {
+                        var opt = document.createElement('option');
+                        opt.value = item.id;
+                        opt.textContent = item.item_name + ' (재고: ' + uomFmt(item.current_stock || 0, item) + ')';
+                        sel.appendChild(opt);
+                    }
+                    sel.value = String(item.id);
+                    invAdjustCurrentItem = item;
+                    document.getElementById('adjustCurrentStock').textContent = uomFmt(item.current_stock || 0, item);
+                    invUomRenderUnitSelect('adjustUnit', item);
+                    invUomUpdateHint('adjustConvertHint', 'adjustQuantity', 'adjustUnit', item);
+                } catch (e) {
+                    showToast('품목 조회 실패', 'error');
+                }
+            }
+        });
+    });
+}
+
 // Update current stock when adjustment item is selected (MU4: uomFmt + 단위 select 갱신)
 document.getElementById('adjustItem').addEventListener('change', function() {
     var id = parseInt(this.value, 10);

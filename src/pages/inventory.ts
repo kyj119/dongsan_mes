@@ -261,6 +261,8 @@ export function inventoryPage(c: Context<HonoEnv>) {
               </div>
 
             </div>
+            </div><!-- /countTabContent — 이 닫는 태그가 없으면 zoneTabContent·detailPanel 이 실사 탭 안에
+                       중첩돼 '창고별' 탭이 부모 display:none 에 먹혀 통째로 안 보인다 (2026-08-26 수정) -->
 
             <!-- 창고별 재고 Tab Content (2026-07-16: /inventory-dashboard 흡수) -->
             <div id="zoneTabContent" class="hidden">
@@ -371,9 +373,16 @@ export function inventoryPage(c: Context<HonoEnv>) {
                         <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">품목 선택</label>
-                                <select id="adjustItem" class="w-full px-3 py-2 border rounded">
-                                    <option value="">품목 선택...</option>
-                                </select>
+                                <div class="flex gap-2">
+                                  <select id="adjustItem" class="w-full px-3 py-2 border rounded">
+                                      <option value="">품목 선택...</option>
+                                  </select>
+                                  <button type="button" id="adjustItemSearchBtn" class="px-3 py-2 bg-gray-100 rounded hover:bg-gray-200 text-sm" title="전체 품목에서 검색">
+                                    <i class="fas fa-search"></i>
+                                  </button>
+                                </div>
+                                <!-- 드롭다운에는 목록에 그려진 페이지분만 담긴다 — 나머지는 검색으로 -->
+                                <div class="text-xs text-gray-400 mt-1">목록에 없는 품목은 <i class="fas fa-search"></i> 로 찾으세요</div>
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">조정일</label>
@@ -541,7 +550,6 @@ export function inventoryPage(c: Context<HonoEnv>) {
                         </div>
                     </div>
                 </div>
-            </div>
     `,
     pageScript: combinedScript
   })

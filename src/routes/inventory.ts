@@ -39,12 +39,23 @@ inventoryRouter.get('/', async (c) => {
         COALESCE(MAX(inv.safe_stock), 0) as safety_stock,
         COALESCE(MAX(inv.reorder_point), 0) as reorder_point,
         COALESCE(MAX(inv.auto_pr_enabled), 0) as auto_pr_enabled,
+        -- 「보관위치」 열의 소스. 종전 SELECT 에 없어 화면이 항상 '-' 였다(2026-08-26).
+        -- 창고 다중 배치 품목은 이름이 여러 개라 그대로 이어 붙인다(품목당 창고 수는 한 자릿수).
+        -- 수량 0 도 포함한다 — '지금 몇 개 있나'가 아니라 '어디 두는 자재인가'를 보는 열이다.
+        -- GROUP_CONCAT(DISTINCT ...) 는 SQLite 에서 구분자 인자를 못 받으므로 기본 ',' 를 쓴다.
+        (SELECT GROUP_CONCAT(DISTINCT z.zone_name)
+           FROM inventory inv2
+           JOIN storage_zones z ON z.id = inv2.storage_zone_id
+          WHERE inv2.item_id = i.id
+            ${entityId === 0 ? '' : 'AND inv2.entity_id = ?'}) as location,
         i.description, i.is_active, i.created_at, i.updated_at
       FROM items i
       ${inv.join}
       WHERE i.is_purchase_item = 1 AND i.is_active = 1
     `
-    const params: any[] = [...inv.params]
+    // ⚠️ 바인딩은 쿼리 문자열 등장 순서다 — SELECT 절 서브쿼리의 ? 가 JOIN 의 ? 보다 앞선다.
+    //   순서를 뒤집으면 entity 가 한 칸씩 밀려 조용히 다른 법인 재고를 센다([[feedback-sqlite-placeholder-subquery-order]]).
+    const params: any[] = entityId === 0 ? [...inv.params] : [entityId, ...inv.params]
 
     if (search) {
       query += ` AND (i.item_name LIKE ? OR i.category LIKE ? OR i.search_keywords LIKE ?)`

@@ -66,11 +66,14 @@ prRouter.get('/', async (c) => {
     const safeLimit = Math.min(Number(limit) || 50, 200)
     const offset = (Number(page) - 1) * safeLimit
 
+    // item_count: 화면 「품목수」 열이 이 필드를 읽는데 종전 SELECT 에 없어 항상 0 이었다(2026-08-26).
+    //   요청:품목 1:N 이라 JOIN 하면 요청 행이 불어나므로 스칼라 서브쿼리로 센다(목록 페이지당 ≤200행).
     let query = `
       SELECT
         pr.*,
         u.name as requester_name,
-        c.client_name as supplier_name
+        c.client_name as supplier_name,
+        (SELECT COUNT(*) FROM purchase_request_items pri WHERE pri.request_id = pr.id) as item_count
       FROM purchase_requests pr
       JOIN users u ON pr.requester_id = u.id
       LEFT JOIN clients c ON pr.supplier_id = c.id
@@ -148,6 +151,30 @@ prRouter.get('/stats', async (c) => {
       stats.total += row.count
     }
     return c.json({ success: true, data: stats })
+  } catch (error) {
+    console.error('src/routes/purchaseRequests.ts error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ============================================================================
+// GET /open-items - 미결(PENDING·APPROVED) 요청에 들어 있는 품목 (/:id 보다 먼저 등록)
+// ============================================================================
+// 창고별 화면의 부족 목록은 발주요청을 냈어도 재고가 그대로라 계속 「부족」으로 남는다.
+// 이미 요청한 품목을 표시·제외하지 않으면 매주 같은 자재를 중복 발주하게 된다(2026-08-26).
+prRouter.get('/open-items', async (c) => {
+  try {
+    const ef = entityFilter(c, 'pr')  // 별칭 필수 — 조인된 두 테이블 모두 entity_id 를 가질 수 있어 모호해진다
+    const { results } = await c.env.DB.prepare(`
+      SELECT pri.item_id AS item_id,
+             SUM(COALESCE(pri.admin_quantity, pri.quantity, 0)) AS qty,
+             COUNT(DISTINCT pr.id) AS request_count
+      FROM purchase_request_items pri
+      JOIN purchase_requests pr ON pr.id = pri.request_id
+      WHERE pr.status IN ('PENDING', 'APPROVED') AND pri.item_id IS NOT NULL${ef.clause}
+      GROUP BY pri.item_id
+    `).bind(...ef.params).all<{ item_id: number; qty: number; request_count: number }>()
+    return c.json({ success: true, data: results || [] })
   } catch (error) {
     console.error('src/routes/purchaseRequests.ts error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
@@ -553,6 +580,46 @@ prRouter.patch('/:id/reject', requireRole('ADMIN'), async (c) => {
       INSERT INTO pr_status_history (request_id, from_status, to_status, changed_by, change_reason)
       VALUES (?, 'PENDING', 'REJECTED', ?, ?)
     `).bind(Number(id), user?.id || 1, data.reject_reason).run()
+
+    return c.json({ success: true })
+  } catch (error) {
+    console.error('src/routes/purchaseRequests.ts error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ============================================================================
+// PATCH /:id/supplier - 공급업체만 지정/변경 (ADMIN only)
+// ============================================================================
+// 승인 시 공급업체를 비워두면 변환(400)·자동변환(400)·수정(400)·반려(400)·삭제(400)가 전부 막혀
+// 화면에서 되돌릴 수단이 없었다(2026-08-26 로컬 실측). 창고별 「부족 품목 발주요청」이 만드는 PR 은
+// 애초에 공급처가 없으므로 이 경로가 유일한 탈출구다. 상태는 건드리지 않고 supplier_id 만 바꾼다.
+prRouter.patch('/:id/supplier', requireRole('ADMIN'), async (c) => {
+  try {
+    const id = c.req.param('id')
+    const { supplier_id } = await c.req.json<{ supplier_id?: number | null }>()
+
+    const ef = entityFilter(c)  // 타법인 PR 조작 차단(read-back 404 게이트)
+    const pr = await c.env.DB.prepare(
+      `SELECT id, status FROM purchase_requests WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<PurchaseRequest>()
+    if (!pr) return c.json({ success: false, error: '발주 요청을 찾을 수 없습니다.' }, 404)
+    if (pr.status === 'CONVERTED') {
+      return c.json({ success: false, error: '이미 발주서로 변환된 요청은 공급업체를 바꿀 수 없습니다.' }, 400)
+    }
+
+    const supplierId = supplier_id != null && supplier_id !== 0 ? Number(supplier_id) : null
+    if (supplierId != null) {
+      // 거래처 존재 확인 — 매입/매출 타입은 검사하지 않는다(prod 매입처 다수가 SALES 로 등록됨)
+      const client = await c.env.DB.prepare(
+        'SELECT id FROM clients WHERE id = ? AND is_active = 1'
+      ).bind(supplierId).first()
+      if (!client) return c.json({ success: false, error: '거래처를 찾을 수 없습니다.' }, 404)
+    }
+
+    await c.env.DB.prepare(
+      'UPDATE purchase_requests SET supplier_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).bind(supplierId, id).run()
 
     return c.json({ success: true })
   } catch (error) {

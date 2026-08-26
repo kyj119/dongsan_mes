@@ -72,7 +72,9 @@ function buildSourceRequestsHtml(requests) {
 
 async function loadSupplierFilter() {
   try {
-    var res = await axios.get('/api/clients', { params: { client_type: 'PURCHASES', is_active: '1' } });
+    // ⚠️ client_type 필터 금지 — prod 매입처 다수가 'SALES' 등록이라 거르면 공급처가 사라진다
+    //   ([[feedback-ap-client-type-filter]]). 종전 'PURCHASES' 는 enum(SALES/PURCHASE/BOTH)에 없어 무효였다.
+    var res = await axios.get('/api/clients', { params: { is_active: '1' } });
     if (res.data.success) {
       var sel = document.getElementById('supplierFilter');
       if (!sel) return;

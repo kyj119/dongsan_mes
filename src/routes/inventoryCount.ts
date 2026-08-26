@@ -412,17 +412,25 @@ inventoryCountRouter.post('/', async (c) => {
     // 실사 단위 = **재고 단위**(base_unit) — items.unit 은 입고·발주 단위('롤')라
     // 수량(base·미터)과 짝이 맞지 않는다. 150m 를 '150 롤'로 보여주면 오입력을 부른다.
     if (items && items.length > 0) {
-      await c.env.DB.batch(
-        items.map((item) =>
-          // 0540: per_pack_qty 기본값 = items.pack_size. 규격품(시트 50m·잉크 1.5L)은 이 값 그대로 쓰고
-          //   현수막 원단처럼 롤마다 다른 것만 실사 때 손으로 고친다. 없으면 NULL(=환산 없는 자재).
-          c.env.DB.prepare(`
-            INSERT INTO inventory_count_items (count_id, item_id, system_quantity, unit, storage_zone_id, per_pack_qty)
-            VALUES (?, ?, ?, ?, ?, ?)
-          `).bind(countId, item.id, item.quantity || 0, resolveStockUnit(item), item.storage_zone_id ?? null,
-            (item as any).pack_size && Number((item as any).pack_size) > 0 ? Number((item as any).pack_size) : null)
+      // 라인 INSERT 가 실패하면 헤더를 되돌린다 — 헤더는 last_row_id 가 필요해 batch 밖에서 먼저 넣으므로
+      //   보상 삭제가 없으면 「생성 실패」 토스트를 본 뒤에도 품목 0개짜리 유령 실사가 목록에 남는다
+      //   (2026-08-26 로컬 실측 2건: 마이그레이션 누락으로 라인만 실패).
+      try {
+        await c.env.DB.batch(
+          items.map((item) =>
+            // 0540: per_pack_qty 기본값 = items.pack_size. 규격품(시트 50m·잉크 1.5L)은 이 값 그대로 쓰고
+            //   현수막 원단처럼 롤마다 다른 것만 실사 때 손으로 고친다. 없으면 NULL(=환산 없는 자재).
+            c.env.DB.prepare(`
+              INSERT INTO inventory_count_items (count_id, item_id, system_quantity, unit, storage_zone_id, per_pack_qty)
+              VALUES (?, ?, ?, ?, ?, ?)
+            `).bind(countId, item.id, item.quantity || 0, resolveStockUnit(item), item.storage_zone_id ?? null,
+              (item as any).pack_size && Number((item as any).pack_size) > 0 ? Number((item as any).pack_size) : null)
+          )
         )
-      )
+      } catch (itemErr) {
+        await c.env.DB.prepare('DELETE FROM inventory_counts WHERE id = ?').bind(countId).run()
+        throw itemErr
+      }
     }
 
     return c.json({

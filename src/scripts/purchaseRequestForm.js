@@ -183,7 +183,10 @@ function onPRSupplierInput() {
   }
   prSupplierSearchTimer = setTimeout(async function() {
     try {
-      var res = await axios.get('/api/clients?type=PURCHASE&search=' + encodeURIComponent(q) + '&limit=20');
+      // ⚠️ client_type 필터를 걸지 않는다 — prod 매입처의 절반 이상이 'SALES' 로 등록돼 있어
+      //   (발주 이력 있는 123곳 중 65곳·발주 587건, 2026-08-26 실측) 타입으로 거르면 그만큼 사라진다.
+      //   종전 'type=PURCHASE' 는 서버가 읽지 않는 키라 무효였고, 그 덕에 목록이 살아 있었다.
+      var res = await axios.get('/api/clients?search=' + encodeURIComponent(q) + '&limit=20');
       var clients = (res.data && res.data.data && res.data.data.clients) ? res.data.data.clients : [];
       var dd = document.getElementById('prSupplierDd');
       if (clients.length === 0) {

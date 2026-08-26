@@ -117,10 +117,12 @@ export function purchaseOrderFormPage(c: Context<HonoEnv>) {
             <table class="w-full text-sm po-item-table ds-table-striped">
               <thead>
                 <tr class="bg-gray-50 text-gray-600 text-xs font-semibold uppercase tracking-wider">
-                  <th class="px-2 py-2.5 text-left" style="width:24%">품목명</th>
-                  <th class="px-2 py-2.5 text-left" style="width:14%">규격</th>
-                  <th class="px-2 py-2.5 text-center" style="width:8%">수량</th>
-                  <th class="px-2 py-2.5 text-center" style="width:6%">단위</th>
+                  <!-- 수량·단위는 발주서에서 가장 중요한 값인데 8%/6% 로는 좁은 창에서 36px/21px 까지
+                       줄어 두 자리 수도 안 읽혔다(2026-08-26 실측). 최소폭을 걸고 비고에서 덜어낸다. -->
+                  <th class="px-2 py-2.5 text-left" style="width:22%">품목명</th>
+                  <th class="px-2 py-2.5 text-left" style="width:13%">규격</th>
+                  <th class="px-2 py-2.5 text-center" style="width:10%;min-width:5.5rem">수량</th>
+                  <th class="px-2 py-2.5 text-center" style="width:7%;min-width:3.5rem">단위</th>
                   <th class="px-2 py-2.5 text-right" style="width:13%">단가</th>
                   <th class="px-2 py-2.5 text-right" style="width:13%">금액</th>
                   <th class="px-2 py-2.5 text-center" style="width:4%">VAT</th>

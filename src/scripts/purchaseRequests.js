@@ -164,6 +164,10 @@ function renderPRTable(requests) {
       }
     } else if (pr.status === 'APPROVED') {
       if (currentUserRole === 'ADMIN') {
+        // 공급처 미지정 승인 건의 유일한 탈출구 — 없으면 변환·수정·반려·삭제가 전부 막힌다
+        if (!pr.supplier_id) {
+          actions += '<button onclick="assignPRSupplier(' + pr.id + ')" class="px-2 py-1 text-xs bg-amber-50 text-amber-700 rounded hover:bg-amber-100" title="공급처 지정 (변환하려면 필요)"><i class="fas fa-truck"></i></button>';
+        }
         actions += '<button onclick="convertToPO(' + pr.id + ')" class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-100" title="발주서 변환"><i class="fas fa-exchange-alt"></i></button>';
         actions += '<button onclick="autoConvertToPO(' + pr.id + ')" class="px-2 py-1 text-xs bg-green-50 text-green-700 rounded hover:bg-green-100" title="자동 분리 변환"><i class="fas fa-project-diagram"></i></button>';
       } else {
@@ -380,14 +384,19 @@ async function openApproveModal(id) {
         + '</tr>';
     }).join('');
 
+    // 공급업체는 "선택"이 아니다 — 미지정으로 승인하면 발주서 변환이 막히고, 승인 후에는
+    //   [공급처 지정] 으로만 되돌릴 수 있다. 이름을 손으로 적어도 id 가 안 잡히므로 입력칸은
+    //   readonly + 검색 모달 전용으로 둔다(2026-08-26: 타이핑=미지정인데 화면이 같아 보이던 함정).
     var supplierHtml = '<div class="mb-4">'
-      + '<label class="block text-sm font-medium text-gray-700 mb-1">공급업체 변경 (선택)</label>'
+      + '<label class="block text-sm font-medium text-gray-700 mb-1">공급업체 <span class="text-xs font-normal text-gray-500">— 발주서 변환에 필요합니다</span></label>'
       + '<div class="flex gap-2">'
-      + '<input type="text" id="apprSupplierName" value="' + escapeHtml(pr.supplier_name || '') + '" placeholder="공급업체명 입력"'
-      + ' class="flex-1 px-3 py-2 border rounded-lg text-sm">'
+      + '<input type="text" id="apprSupplierName" value="' + escapeHtml(pr.supplier_name || '') + '" placeholder="검색으로 선택하세요" readonly'
+      + ' onclick="searchApprSupplier()" class="flex-1 px-3 py-2 border rounded-lg text-sm bg-gray-50 cursor-pointer">'
       + '<input type="hidden" id="apprSupplierId" value="' + (pr.supplier_id || '') + '">'
-      + '<button onclick="searchApprSupplier()" class="px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm">'
+      + '<button onclick="searchApprSupplier()" class="px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm" title="거래처 검색">'
       + '<i class="fas fa-search"></i></button>'
+      + '<button onclick="clearApprSupplier()" class="px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm" title="지정 해제">'
+      + '<i class="fas fa-times"></i></button>'
       + '</div>'
       + '</div>';
 
@@ -436,9 +445,41 @@ function searchApprSupplier() {
   });
 }
 
+// 승인 후 공급처 지정 — PATCH /:id/supplier (상태는 APPROVED 그대로)
+function assignPRSupplier(id) {
+  window.openClientSearchModal({
+    onSelect: async function(cl) {
+      try {
+        var res = await axios.patch('/api/purchase-requests/' + id + '/supplier', { supplier_id: cl.id });
+        if (res.data.success) {
+          showToast((cl.client_name || '') + ' 지정 완료 — 이제 발주서로 변환할 수 있습니다.', 'success');
+          loadPurchaseRequests(prCurrentPage);
+        } else {
+          showToast(res.data.error || '공급처 지정 실패', 'error');
+        }
+      } catch (e) {
+        showToast('공급처 지정 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
+      }
+    }
+  });
+}
+
+function clearApprSupplier() {
+  var idEl = document.getElementById('apprSupplierId');
+  var nameEl = document.getElementById('apprSupplierName');
+  if (!idEl || !nameEl) { console.warn('[purchaseRequests] #apprSupplierId/#apprSupplierName not found'); return; }
+  idEl.value = '';
+  nameEl.value = '';
+}
+
 async function submitApprove(prId, itemIds) {
   var supplierId = document.getElementById('apprSupplierId').value;
   var ids = itemIds || (window._approveItemIds || []);
+  // 공급처 없이 승인하면 변환이 막힌다 — 되돌리려면 [공급처 지정]을 따로 눌러야 하므로 여기서 먼저 경고
+  if (!supplierId) {
+    var ok = await showConfirm('공급업체가 지정되지 않았습니다. 이대로 승인하면 발주서로 변환할 수 없고, 나중에 목록에서 [공급처 지정]을 눌러 지정해야 합니다. 계속하시겠습니까?');
+    if (!ok) return;
+  }
   var itemUpdates = ids.map(function(itemId) {
     var qtyEl = document.getElementById('appr_qty_' + itemId);
     var priceEl = document.getElementById('appr_price_' + itemId);

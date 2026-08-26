@@ -226,17 +226,13 @@ async function loadDetailCount(countId) {
     } else { console.warn('[inventoryCount] #panelZoneInfo not found'); }
     icRenderUnassigned(data);
 
-    // 입력 완료율 표시
-    var totalCount = (data.items || []).length;
-    var filledCount = (data.items || []).filter(function(it) { return it.counted_quantity !== null && it.counted_quantity !== undefined; }).length;
-    var progressEl = document.getElementById('panelProgress');
-    if (progressEl) {
-      if (totalCount > 0) {
-        progressEl.innerHTML = '<span style="font-size:12px;color:#6b7280">입력: </span><span style="font-size:12px;font-weight:700;color:' + (filledCount === totalCount ? '#16a34a' : '#2563eb') + '">' + filledCount + '/' + totalCount + '</span>';
-      } else {
-        progressEl.innerHTML = '';
-      }
-    }
+    // 상태 배지는 서버 응답 기준으로 다시 그린다 — 위에서 목록 캐시(countsList)로만 그리면
+    //   제출 직후 배지는 '작성중'인데 버튼은 '승인/반려'로 바뀌어 한 화면에서 모순됐다(2026-08-26).
+    var badgeEl = document.getElementById('panelStatusBadge');
+    if (badgeEl && data.status) badgeEl.innerHTML = getStatusBadge(data.status);
+
+    // 입력 완료율 표시 (입력할 때마다 icRenderSummary 가 같은 값으로 갱신 — 두 곳이 어긋나지 않게)
+    icUpdateProgress(data.items || []);
 
     _icDetailData = data;
     // 필터 초기화 (다른 실사 전환 시 잔존 방지)
@@ -271,10 +267,22 @@ function icApplyFilter() {
   icRenderItems();
 }
 
+// 패널 헤더 진행률 — 상세 로드와 입력 갱신이 같은 함수를 쓴다(사본을 두면 두 숫자가 어긋난다)
+function icUpdateProgress(items) {
+  var progressEl = document.getElementById('panelProgress');
+  if (!progressEl) { console.warn('[inventoryCount] #panelProgress not found'); return; }
+  var total = (items || []).length;
+  if (total === 0) { progressEl.innerHTML = ''; return; }
+  var filled = (items || []).filter(function(it) { return it.counted_quantity !== null && it.counted_quantity !== undefined; }).length;
+  progressEl.innerHTML = '<span style="font-size:12px;color:#6b7280">입력: </span>'
+    + '<span style="font-size:12px;font-weight:700;color:' + (filled === total ? '#16a34a' : '#2563eb') + '">' + filled + '/' + total + '</span>';
+}
+
 function icRenderSummary() {
   var el = document.getElementById('panelDiffSummary');
   if (!el || !_icDetailData) { if (el) el.innerHTML = ''; return; }
   var items = _icDetailData.items || [];
+  icUpdateProgress(items);
   if (items.length === 0) { el.innerHTML = ''; return; }
   var filled = 0, plus = 0, minus = 0, changed = 0;
   items.forEach(function(it) {
@@ -291,7 +299,8 @@ function icRenderSummary() {
     return '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;background:' + bg + ';color:' + color + ';margin-right:4px;">' + text + '</span>';
   };
   el.innerHTML = chip('입력 ' + filled + '/' + items.length, '#eff6ff', '#1d4ed8')
-    + chip('차이 +' + plus + ' / −' + minus, (plus + minus) > 0 ? '#fef3c7' : '#f3f4f6', (plus + minus) > 0 ? '#92400e' : '#6b7280')
+    // '건' 을 붙인다 — 종전 '차이 +1 / −2' 는 수량 증감으로 읽혔다(실제는 품목 건수)
+    + chip('차이 +' + plus + '건 / −' + minus + '건', (plus + minus) > 0 ? '#fef3c7' : '#f3f4f6', (plus + minus) > 0 ? '#92400e' : '#6b7280')
     + (changed > 0 ? chip('⚠ 재고변동 ' + changed + '건', '#fee2e2', '#dc2626') : '');
 }
 
