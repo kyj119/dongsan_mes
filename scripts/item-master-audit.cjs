@@ -301,7 +301,7 @@ if (!METRICS_ONLY) {
 
   console.log(`\n·   [참고]  G3 계열(item_group) 미지정 ${g3}건 — 사용자별 사용품목(user_item_access) 축이라 비면 필터가 안 걸린다`)
   console.log('\n■ 제품↔원자재 축 — 실제 거래가 한쪽뿐인데 분류가 반대인 것')
-  console.log(`   H1 자재인데 판매만  ${h1.length}건   주문서는 exclude_type=MATERIAL 로 자르므로 **선택기에 안 보인다**`)
+  console.log(`   H1 자재인데 판매만  ${h1.length}건   ⚠️겹업(원자재 그대로 판매)이 정상 포함된다 — 포맥스 원판·조명시트가 그렇다`)
   for (const r of h1.slice(0, 5)) console.log(`      ${r.item_code.padEnd(20)} ${r.item_name} (판매 ${r.sn})`)
   console.log(`   H2 제품인데 매입만  ${h2.length}건   원가·재고 축에서 제품으로 잡혀 BOM 롤업이 어긋난다`)
   for (const r of h2.slice(0, 5)) console.log(`      ${r.item_code.padEnd(20)} ${r.item_name} (매입 ${r.pn})`)
