@@ -22,8 +22,17 @@ namespace LogWatcher.Parsers
     ///     취소를 `打印控制线程---被取消` 로 남긴다. 단 도안이 뭔지 모른다(~section0.prn).
     ///   → RIPLOG = 신원(파일·주문번호·매수·네스트), PrintExp = 결과(실시작/실종료/취소). 완성 이벤트 1건만 보낸다.
     ///
-    /// 조인 키 = PrintExp 의 `启动任务：yyyyMMddHHmmssfff` 앞 14자리(수신 시작 시각)
-    ///        ≡ RIPLOG 인쇄 블록의 '출력 시작 날짜 및 시간' (실측: 초 단위 일치. rp.log 수신 시각과 동일)
+    /// 조인 키는 PrintExp 가 `启动任务：` 뒤에 무엇을 찍는가에 따라 **두 가지**다:
+    ///   (A) 14자리 스탬프 `20260812120424151` → 시각 조인. RIPLOG 인쇄 블록의
+    ///       '출력 시작 날짜 및 시간' 과 초 단위로 일치한다(KM전사1 실측).
+    ///   (B) PRN 파일명 `...（200x180）....prt` → **이름 조인**(확장자 뗀 basename).
+    ///       HYB-3200-01·SOLV-3200-01 이 여기 해당(2026-08-26 실측). RIPLOG 는 원본(.eps/.jpg),
+    ///       PrintExp 는 RIP 산출물(.prt) 이라 확장자만 다르고 basename 은 같다(실측 6/6 일치).
+    ///       이름 조인은 취소 후 재출력에 강하다 — 립핑 1건에 인쇄 시작 3건이 붙는 상황(08-24 실측)에서
+    ///       시각 조인은 2·3회차를 놓치지만 이름 조인은 같은 신원을 계속 물린다.
+    ///
+    /// ⚠ PrintExp 로그는 **코드페이지가 섞인다** — 프로그램 문구는 GBK(cp936), 파일명은 OS ANSI(cp949).
+    ///   한 인코딩으로 둘 다 못 읽는다. 마커는 cp936 으로 읽고 파일명만 RecoverAnsiName 으로 되돌린다.
     ///
     /// config:
     ///   log_path               (required) RIPLOG.HTML — 기존 flexi 파서와 같은 키(설정 이관 호환).
@@ -50,19 +59,24 @@ namespace LogWatcher.Parsers
         private bool _stateLoaded;
         private bool _forceAll;
 
+        private bool _printUtf16;                     // ReadFrom 이 판별 — UTF-16 이면 파일명이 이미 정상
         private Block? _cur;                          // 진행 중 PrintExp 잡 블록 (폴 경계 유지)
         private readonly List<PendingRip> _pending = new();
 
         public string EquipmentId { get; }
         public string Name { get; }
 
-        // 启动任务：20260812120424151 (전각/반각 콜론 모두) — 스탬프 없는 값(Pass·HeadC)은 캘리브레이션
-        private static readonly Regex StartRe = new(@"启动任务[：:]\s*(\S+)", RegexOptions.Compiled);
+        // 启动任务：20260812120424151 또는 启动任务：<파일명>.prt (전각/반각 콜론 모두).
+        // ★ \S+ 로 끊으면 안 된다 — 실제 파일명에 공백이 들어간다("...상하6개 큰펀칭_24일택배.prt").
+        //   스탬프도 .prt 도 아닌 값(Pass·HeadC)은 캘리브레이션이라 버린다.
+        private static readonly Regex StartRe = new(@"启动任务[：:]\s*(.+?)\s*$", RegexOptions.Compiled);
         private static readonly Regex SpecRe = new(
             @"任务精度:(\d+)\s*X\s*(\d+),图像大小:([\d.]+)mm\s*X\s*([\d.]+)mm",
             RegexOptions.Compiled);
         private static readonly Regex DoneRe = new(@"_PrintWait---打印完成", RegexOptions.Compiled);
-        private static readonly Regex CancelRe = new(@"打印控制线程---被取消", RegexOptions.Compiled);
+        // 취소 2줄은 같은 초에 함께 나오지만(HYB-3200-01 R3 실측 09:47:48) 버전별 누락 대비로 둘 다 본다.
+        // ★ CancelDataSend·Cancel()开始 는 **정상 완료에도** 나오는 정리 호출이다 — 이 둘만 취소로 본다.
+        private static readonly Regex CancelRe = new(@"打印控制线程---被取消|_PrintWait---PRINT_RESULT_CANCEL", RegexOptions.Compiled);
         // 줄머리 시각 — KM전사1 실측 [12:04:24.411], 타 버전 대비 날짜 포함형도 지원 (8색 전례)
         private static readonly Regex TimeRe = new(@"\[(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?\]", RegexOptions.Compiled);
         private static readonly Regex DateTimeRe = new(@"\[(\d{4})[/-](\d{2})[/-](\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?\]", RegexOptions.Compiled);
@@ -103,15 +117,20 @@ namespace LogWatcher.Parsers
         private sealed class Block
         {
             public DateTime Start;
-            public string? Stamp;      // yyyyMMddHHmmss (null = Pass/HeadC 등 비인쇄 작업 — 마커만 흡수)
+            public string? Stamp;      // yyyyMMddHHmmss — 시각 조인용 (A안)
+            public string? JobKey;     // 확장자 뗀 PRN 파일명 — 이름 조인용 (B안). 한글은 복원된 상태.
             public double W, H;
             public string Dpi = "";
+            // Stamp·JobKey 둘 다 null = Pass/HeadC 등 비인쇄 작업 — 마커만 흡수하고 버린다
         }
 
         private sealed class PendingRip
         {
             public DateTime Start { get; set; }
             public DateTime SeenAt { get; set; }
+            // 이름 조인은 큐에서 빼지 않고 이 표시만 세운다(재출력이 같은 신원을 다시 물어야 하므로).
+            // 표시된 항목은 폴백 송출 대상에서 빠지고, 보존기간이 지나면 조용히 정리된다.
+            public bool Claimed { get; set; }
             public PrintEvent Evt { get; set; } = new();
         }
 
@@ -177,6 +196,7 @@ namespace LogWatcher.Parsers
                 for (int i = _pending.Count - 1; i >= 0; i--)
                 {
                     if (_pending[i].SeenAt > cutoff) continue;
+                    if (_pending[i].Claimed) { _pending.RemoveAt(i); continue; }   // 이미 물렸다 — 조용히 정리
                     var rip = _pending[i].Evt;
                     Console.WriteLine($"[{EquipmentId}] ⚠ PrintExp 미조인 {_fallbackHours}h 경과 — 전송 기준 폴백 송출: {rip.FileName}");
                     rip.EquipmentId = EquipmentId;
@@ -199,13 +219,21 @@ namespace LogWatcher.Parsers
             var st = StartRe.Match(line);
             if (st.Success)
             {
-                if (_cur?.Stamp != null)
-                    Console.WriteLine($"[{EquipmentId}] ⚠ 결과 없이 새 작업 시작 — 이전 블록 폐기 (stamp={_cur.Stamp})");
-                var stampMatch = StampRe.Match(st.Groups[1].Value);
+                if (_cur != null && (_cur.Stamp ?? _cur.JobKey) != null)
+                    Console.WriteLine($"[{EquipmentId}] ⚠ 결과 없이 새 작업 시작 — 이전 블록 폐기 ({_cur.Stamp ?? _cur.JobKey})");
+                var raw = st.Groups[1].Value;
+                var stampMatch = StampRe.Match(raw);
+                string? jobKey = null;
+                if (!stampMatch.Success && raw.EndsWith(".prt", StringComparison.OrdinalIgnoreCase))
+                {
+                    try { jobKey = Path.GetFileNameWithoutExtension(RecoverAnsiName(raw)); }
+                    catch { jobKey = RecoverAnsiName(raw); }
+                }
                 _cur = new Block
                 {
                     Start = TimeOf(line, logDate) ?? logDate,
-                    Stamp = stampMatch.Success ? stampMatch.Groups[1].Value : null,   // null = Pass/HeadC
+                    Stamp = stampMatch.Success ? stampMatch.Groups[1].Value : null,
+                    JobKey = string.IsNullOrWhiteSpace(jobKey) ? null : jobKey,
                 };
                 return;
             }
@@ -228,13 +256,22 @@ namespace LogWatcher.Parsers
         {
             var b = _cur;
             _cur = null;
-            if (b == null || b.Stamp == null) return;   // 비인쇄 작업(캘리브레이션)의 마커는 버린다
+            if (b == null || (b.Stamp == null && b.JobKey == null)) return;   // 캘리브레이션 마커는 버린다
 
-            var at = DateTime.TryParseExact(b.Stamp, "yyyyMMddHHmmss", CultureInfo.InvariantCulture,
-                                            DateTimeStyles.None, out var d) ? d : (DateTime?)null;
-            var rip = at != null ? ClaimRip(at.Value) : null;
+            PrintEvent? rip;
+            if (b.Stamp != null)
+            {
+                var at = DateTime.TryParseExact(b.Stamp, "yyyyMMddHHmmss", CultureInfo.InvariantCulture,
+                                                DateTimeStyles.None, out var d) ? d : (DateTime?)null;
+                rip = at != null ? ClaimRip(at.Value) : null;
+            }
+            else
+            {
+                rip = ClaimRipByName(b.JobKey!);
+            }
+            var key = b.Stamp ?? b.JobKey!;
             if (rip == null)
-                Console.WriteLine($"[{EquipmentId}] ⚠ 리핑 잡을 못 찾음 (stamp={b.Stamp}) — 도안명 없이 보냅니다");
+                Console.WriteLine($"[{EquipmentId}] ⚠ 리핑 잡을 못 찾음 (key={key}) — 도안명 없이 보냅니다");
 
             var start = b.Start;
             var end = endAt ?? start;
@@ -244,8 +281,8 @@ namespace LogWatcher.Parsers
                 EquipmentId = EquipmentId,
                 EventKind = "PRINT",
                 PrinterName = Name,
-                FilePath = rip?.FilePath ?? Path.Combine(_printDir, $"temp-{b.Stamp}"),
-                FileName = rip?.FileName ?? $"UNMATCHED-{b.Stamp}",
+                FilePath = rip?.FilePath ?? Path.Combine(_printDir, $"{key}.prt"),
+                FileName = rip?.FileName ?? (b.JobKey != null ? b.JobKey : $"UNMATCHED-{key}"),
                 PrintStatus = status,
                 StartDate = start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                 StartTime = start.ToString("HH:mm:ss", CultureInfo.InvariantCulture),
@@ -285,6 +322,47 @@ namespace LogWatcher.Parsers
             var evt = _pending[best].Evt;
             _pending.RemoveAt(best);
             return evt;
+        }
+
+        /// <summary>
+        /// 파일명(확장자 제외)으로 미결 RIPLOG 신원을 찾는다.
+        /// 시각 조인과 달리 **큐에서 빼지 않고 표시만** 한다: 취소 후 같은 .prt 를 다시 걸면
+        /// 립핑은 1건인데 인쇄 시작은 여러 번이라(08-24 실측 3회) 빼버리면 2·3회차가 미아가 된다.
+        /// 같은 이름이 여럿이면 최신 것 — 재전송된 도안이 맞다.
+        /// </summary>
+        private PrintEvent? ClaimRipByName(string key)
+        {
+            for (int i = _pending.Count - 1; i >= 0; i--)
+            {
+                if (!string.Equals(KeyOf(_pending[i].Evt), key, StringComparison.OrdinalIgnoreCase)) continue;
+                _pending[i].Claimed = true;
+                return _pending[i].Evt;
+            }
+            return null;
+        }
+
+        /// <summary>RIPLOG 이벤트의 이름 조인키 — 경로·확장자를 뗀 파일명.</summary>
+        private static string KeyOf(PrintEvent e)
+        {
+            var name = !string.IsNullOrEmpty(e.FileName) ? e.FileName : (e.FilePath ?? "");
+            name = name.Trim();
+            try { return Path.GetFileNameWithoutExtension(name); } catch { return name; }
+        }
+
+        /// <summary>
+        /// cp936 으로 읽힌 한글 파일명을 되돌린다 (원본은 cp949 바이트인데 로그를 cp936 으로 읽은 결과).
+        /// 2026-08-26 HYB-3200-01 실측: 8/8 정확히 복원("贾亥泅荐阜" → "솔벤현수막").
+        /// 복원 결과에 한글이 없으면(원래 ASCII 이거나 진짜 중국어면) 원본을 그대로 쓴다 — 멀쩡한 값을 망가뜨리지 않는다.
+        /// </summary>
+        private string RecoverAnsiName(string raw)
+        {
+            if (_printUtf16 || string.IsNullOrEmpty(raw)) return raw;
+            try
+            {
+                var ko = Encoding.GetEncoding(949).GetString(Encoding.GetEncoding(936).GetBytes(raw));
+                return ko.Any(c => c >= '\uAC00' && c <= '\uD7A3') ? ko : raw;
+            }
+            catch { return raw; }
         }
 
         /// <summary>FlexiHtmlParser 이벤트의 시작시각 ("yyyy.MM.dd" + "HH:mm:ss").</summary>
@@ -339,6 +417,7 @@ namespace LogWatcher.Parsers
                 }
                 if (cut < 0) return (lines, from);
 
+                _printUtf16 = utf16;
                 var enc = utf16 ? Encoding.Unicode : Encoding.GetEncoding(936);
                 var text = enc.GetString(buf, 0, cut);
                 lines.AddRange(text.Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0));

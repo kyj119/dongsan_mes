@@ -19,6 +19,8 @@ namespace LogWatcher.Parsers
         private readonly string _logPath;
         private readonly string _positionFile;
         private long _lastPosition;
+        private Encoding? _enc;   // RIPLOG 인코딩 — PC 별로 갈린다. 첫 비ASCII 청크에서 1회 확정 후 고정.
+        private long _knownLength = -1;   // 직전 폴에서 본 파일 길이 (‘비워짐’ 과 ‘위치 어긋남’ 을 가르는 유일한 근거)
 
         public string EquipmentId { get; }
         public string Name { get; }
@@ -75,6 +77,11 @@ namespace LogWatcher.Parsers
         private static readonly Regex FileSeqRegex = new(@"^(\d{8}-\d{3})-(\d{3})-", RegexOptions.Compiled);
         private static readonly Regex OrderNumberRegex = new(@"(\d{8}-\d{3})", RegexOptions.Compiled);
 
+        static FlexiHtmlParser()
+        {
+            try { Encoding.RegisterProvider(CodePagesEncodingProvider.Instance); } catch { /* 이미 등록됨 */ }
+        }
+
         public FlexiHtmlParser(WatcherConfig config, string positionsDir)
         {
             EquipmentId = config.EquipmentId;
@@ -107,18 +114,36 @@ namespace LogWatcher.Parsers
                 if (_lastPosition < 0)
                 {
                     _lastPosition = fileLength;
+                    _knownLength = fileLength;
                     SavePosition();
                     Console.WriteLine($"[{EquipmentId}] First run — skipping to end (position: {fileLength})");
                     return events;
                 }
 
-                // Handle truncation
+                // RIPLOG 는 append-only 다. 위치가 길이를 넘었다면 둘 중 하나다 —
+                //  (a) 사용자가 로그를 비웠다  (b) 우리 위치계산이 어긋났다.
+                // 예전엔 무조건 0 으로 되돌렸는데, (b)에서는 68MB 를 5초마다 다시 읽고 다시 어긋나는
+                // 무한 루프가 된다(2026-08-26 실측: HYB-3200-01 service.log 77,608줄이 전부 이 줄, 실적 0건).
+                // ★ 둘을 가르는 근거는 **길이 이력** 하나뿐이다 — 파일이 실제로 줄었는가.
+                //   길이를 모르면(구버전 .pos) 끝으로 정렬한다: 그래야 업그레이드 첫 폴에서
+                //   1년치 과거가 한꺼번에 재송출되지 않는다. 비움을 놓쳐도 손실은 다음 폴까지의 몇 초뿐.
                 if (_lastPosition > fileLength)
                 {
-                    Console.WriteLine($"[{EquipmentId}] RIPLOG.HTML truncated, resetting to 0");
-                    _lastPosition = 0;
-                    _ripBuffer.Clear();
-                    _lastNestBySize.Clear();
+                    if (_knownLength >= 0 && fileLength < _knownLength)
+                    {
+                        Console.WriteLine($"[{EquipmentId}] RIPLOG.HTML 비워짐 ({_knownLength} → {fileLength}) — 0 부터 재시작");
+                        _lastPosition = 0;
+                        _ripBuffer.Clear();
+                        _lastNestBySize.Clear();
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[{EquipmentId}] ⚠ 위치가 파일 길이를 넘었습니다 ({_lastPosition} > {fileLength}) — 파일 끝으로 정렬");
+                        _lastPosition = fileLength;
+                        _knownLength = fileLength;
+                        SavePosition();
+                        return events;
+                    }
                 }
 
                 if (_lastPosition >= fileLength)
@@ -130,7 +155,8 @@ namespace LogWatcher.Parsers
                 int bytesRead = fs.Read(newBytes, 0, newBytes.Length);
                 if (bytesRead == 0) return events;
 
-                var newContent = Encoding.UTF8.GetString(newBytes, 0, bytesRead);
+                var enc = ResolveEncoding(newBytes, bytesRead);
+                var newContent = enc.GetString(newBytes, 0, bytesRead);
 
                 // 모든 <TABLE>...</TABLE> 블록을 순서대로 스캔.
                 //  - 립핑(RIP) 블록 → 멤버 파일명을 _ripBuffer 에 누적
@@ -154,12 +180,15 @@ namespace LogWatcher.Parsers
                     searchFrom = tableEnd;
                 }
 
-                // 마지막 완료 블록 끝까지 위치 전진 (char index → UTF-8 byte offset 변환)
+                // 마지막 완료 블록 끝까지 위치 전진 (char index → byte offset).
+                // ★ 반드시 **읽을 때 쓴 인코딩**으로 센다. UTF-8 로 고정하면 cp949 파일에서
+                //   한글 1자(2바이트)가 U+FFFD 2개(6바이트)로 계산돼 위치가 3배 빨리 달아난다.
                 if (lastCompleteEnd >= 0)
                 {
-                    _lastPosition += Encoding.UTF8.GetByteCount(newContent.Substring(0, lastCompleteEnd));
+                    _lastPosition += enc.GetByteCount(newContent.Substring(0, lastCompleteEnd));
                 }
 
+                _knownLength = fileLength;
                 SavePosition();
 
                 if (events.Count > 0)
@@ -478,14 +507,42 @@ namespace LogWatcher.Parsers
             return (w, h);
         }
 
+        /// <summary>
+        /// RIPLOG 인코딩 판별 (UTF-8 / cp949). 같은 FlexiPRINT 19 라도 PC 별로 갈린다 —
+        /// 2026-08-26 수거 7대 실측: 5대 UTF-8, HYB-3200-01·SOLV-3200-01 2대는 cp949.
+        /// 잘못 고르면 필드 라벨("파일:"·"정보:")이 전부 깨져 이벤트가 0건이 되고,
+        /// 위치 전진까지 어긋나 truncated 리셋 루프에 빠진다.
+        /// 판정 = UTF-8 로 느슨하게 디코딩해서 U+FFFD 가 나오는가. 청크 끝 문자 잘림을 감안해 2자까지 허용.
+        /// ASCII 뿐인 청크는 두 인코딩이 동일하므로 확정을 미룬다(다음 폴에 한글이 들어오면 그때 정한다).
+        /// </summary>
+        private Encoding ResolveEncoding(byte[] buf, int len)
+        {
+            if (_enc != null) return _enc;
+
+            bool hasHigh = false;
+            for (int i = 0; i < len; i++) { if (buf[i] >= 0x80) { hasHigh = true; break; } }
+            if (!hasHigh) return Encoding.UTF8;   // 확정 보류 — ASCII 는 어느 쪽이든 바이트 수가 같다
+
+            var probe = Encoding.UTF8.GetString(buf, 0, len);
+            int bad = 0;
+            foreach (var ch in probe) { if (ch == '\uFFFD') bad++; }
+
+            _enc = bad > 2 ? Encoding.GetEncoding(949) : Encoding.UTF8;
+            Console.WriteLine($"[{EquipmentId}] RIPLOG 인코딩 = {_enc.WebName} (UTF-8 깨짐 {bad}자)");
+            return _enc;
+        }
+
         private long LoadPosition()
         {
             try
             {
                 if (File.Exists(_positionFile))
                 {
+                    // 신형 "위치|길이" · 구형 "위치" 둘 다 읽는다. 구형이면 길이는 미상(-1)으로 남는다.
                     string content = File.ReadAllText(_positionFile).Trim();
-                    if (long.TryParse(content, out long pos))
+                    var parts = content.Split('|');
+                    if (parts.Length == 2 && long.TryParse(parts[1], out long len)) _knownLength = len;
+                    if (long.TryParse(parts[0], out long pos))
                         return pos;
                 }
             }
@@ -497,7 +554,7 @@ namespace LogWatcher.Parsers
         {
             try
             {
-                File.WriteAllText(_positionFile, _lastPosition.ToString());
+                File.WriteAllText(_positionFile, $"{_lastPosition}|{_knownLength}");
             }
             catch (Exception ex)
             {
@@ -508,6 +565,7 @@ namespace LogWatcher.Parsers
         public void ResetPosition()
         {
             _lastPosition = 0;
+            _knownLength = -1;
             _ripBuffer.Clear();
             _lastNestBySize.Clear();
             SavePosition();

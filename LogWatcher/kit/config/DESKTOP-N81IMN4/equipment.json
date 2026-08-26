@@ -3,13 +3,16 @@
   "heartbeat_interval_seconds": 60,
   "watchers": [
     {
-      "_comment": "하이브리드 3200폭 — Flexi 19 FY Union Edition1(App2 실행 중인 쪽. 22 FY Union 도 설치돼 있으나 미사용). 키트 진단 2026-08-11.",
+      "_comment": "하이브리드 3200폭 — flexi → flexi_printexp 2축 전환 (2026-08-26 [1] 취소 3라운드 실측). RIPLOG=신원(전송)·PrintExp=결과(실인쇄·취소). R2 전송중 취소=RIPLOG '정보: Aborted'(인쇄블록 없음), R3 전송후 취소=PrintExp _PrintWait---PRINT_RESULT_CANCEL. flexi 단독이면 R3 가 유령 OK 로 남는다(08-19~26 5일 23건 중 7건=30%가 취소). 조인키=.prt 파일명 basename(이 PC 는 启动任务 에 스탬프가 아니라 파일명을 찍는다). 위치파일(HYB-3200-01.pos) 보존 = 재적재 없음.",
       "equipment_id": "HYB-3200-01",
       "name": "하이브리드 3200폭",
       "enabled": true,
-      "parser_type": "flexi",
+      "parser_type": "flexi_printexp",
       "config": {
-        "log_path": "C:\\Program Files (x86)\\SAi\\FlexiPRINT 19 FY Union Edition1\\Jobs and Settings\\RIPLOG.HTML"
+        "log_path": "C:\\Program Files (x86)\\SAi\\FlexiPRINT 19 FY Union Edition1\\Jobs and Settings\\RIPLOG.HTML",
+        "print_log_dir": "C:\\Program Files (x86)\\PrintExp\\Log\\main",
+        "join_tolerance_seconds": 5,
+        "rip_fallback_hours": 6
       }
     }
   ]
