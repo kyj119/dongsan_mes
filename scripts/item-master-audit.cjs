@@ -15,12 +15,13 @@
  * 검사 (A~D·F = 규약 위반 · E = 추세 지표)
  *   A 규격에 계열 고정값   `*7m`·`*3m` 처럼 형제 전원이 공유하는 값 (참고 — 롤 사양은 남기는 게 맞다)
  *   B 규격에 색상          색이 품명에도 규격에도 있다 (참고 — 규격이 완결적이면 둬도 된다)
- *   C 단가 스케일 혼재     한 품목의 매입 단가가 50배 이상 벌어진다 — 단위 혼재이거나 **금액전용 라인 혼입**
+ *   C1 단위 혼재           수량 있는 매입 단가가 50배 이상 벌어진다 — 롤/yd 가 섞였다 (게이트)
+ *   C2 수량 없는 매입      `수량 1 · 단가=금액` 인 뭉친 전표 — 실수량을 몰라 원가가 서지 않는다 (참고)
  *   D 품명↔코드 불일치     코드의 식별 토큰(180G·5T)이 품명과 어긋난다
  *   F 재고단위 정합성      수량(base)과 단가의 기준이 어긋난다 — 평가액이 pack_size 배로 튄다
  *   E 건강 지표            원가없음·규격없음·무실적·판매플래그 불일치 (절대값이 아니라 **추세**를 본다)
  *
- * ★ 등급을 나눈다 — **C·D·F1 만 게이트(exit 1)**, A·B·F2·F3 는 참고(exit 0).
+ * ★ 등급을 나눈다 — **C1·D·F1·G1·H4a 만 게이트(exit 1)**, A·B·C2·F2·F3 는 참고(exit 0).
  *   A·B 를 게이트로 두면 매번 빨개져 감사 자체가 무뎌진다(기존 audit 들이 같은 이유로 강/약을 나눴다).
  *   실제로 A 는 `BUJIK-*` 의 `50m` 처럼 **남겨야 하는 롤 사양**까지 잡는다 — 「그 계열 전원이 공유한다」는
  *   기계적 사실일 뿐, 빼도 되는지는 사람이 안다(트러스바의 7m 는 빼도 되고 원단의 50m 는 아니다).
@@ -102,19 +103,46 @@ for (const it of items) {
   if (hit && it.item_name.includes(hit)) add(it.item_code, 'B 규격 색상', `「${it.sp}」의 '${hit}' 는 품명 「${it.item_name}」에 이미 있다`)
 }
 
-// ── C. 단위 혼재 ─────────────────────────────────────────────────────────
-// 같은 품목의 매입 단가가 50배 이상 벌어지면 단위가 섞인 것이다(50m 롤 = 54.68yd).
+// ── C. 매입 단가 이상 — C1 단위 혼재(게이트) · C2 수량 없는 매입(참고) ──
+//
+// ★2026-08-26 분리. 종전에는 한 검사였고 **영구 빨간불**이었다(같은 4건이 상주).
+//   그 4건을 실측하니 **단위 혼재는 하나도 없었다** — 전부 `수량 1 · 단가=금액` 인 월합계 전표였다
+//   (운산 07-31 421만 · 부림엔에프 3건 · 「바로」 4건 · 영광엔터 월별 7건).
+//   뭉친 전표는 **코드로 못 고친다** — 공급처 청구서 실명세가 있어야 품목별로 쪼갤 수 있다.
+//   못 고치는 것을 게이트에 두면 **새 위반이 그 빨간불 뒤에 숨는다**. 그래서 C2 는 참고축이다.
+
+// C1 = 진짜 단위 혼재(50m 롤 = 54.68yd). **수량이 있는 라인만** 본다 —
+//      수량 1 라인은 단가가 곧 금액이라 애초에 단가로 읽을 수 없고,
+//      섞어 넣으면 모든 뭉친 전표가 「단위 혼재」로 오진된다.
 const mixed = d1(`SELECT i.item_code, i.item_name,
     CAST(MIN(p.unit_price) AS INT) lo, CAST(MAX(p.unit_price) AS INT) hi, COUNT(*) n,
     COUNT(DISTINCT p.unit) units
   FROM purchase_order_items p JOIN items i ON i.id = p.item_id
-  WHERE i.is_active = 1 AND p.unit_price > 0
+  WHERE i.is_active = 1 AND p.unit_price > 0 AND p.quantity <> 1
   GROUP BY i.id HAVING MAX(p.unit_price) >= MIN(p.unit_price) * 50`)
-// 원인은 둘 중 하나다 — ① 롤/yd 처럼 **단위가 섞였거나** ② 수량 없는 **금액전용 라인이 끼었거나**.
-//   ②는 세무장부 전표에서 온다(「가로봉 진공증착 1 × 6,498,500」 = 도금 외주비). 수량 1 로 들어와
-//   가중평균을 통째로 망가뜨린다 — 그 라인은 공정비지 그 자재의 단가가 아니다.
-for (const m of mixed) add(m.item_code, 'C 단가 스케일 혼재',
-  `매입 단가 ${Number(m.lo).toLocaleString()} ~ ${Number(m.hi).toLocaleString()} (${m.n}행·단위표기 ${m.units}종) — 단위 혼재 또는 금액전용 라인 혼입`)
+for (const m of mixed) add(m.item_code, 'C1 단위 혼재',
+  `수량 있는 매입 단가 ${Number(m.lo).toLocaleString()} ~ ${Number(m.hi).toLocaleString()} (${m.n}행·단위표기 ${m.units}종) — 롤/yd 처럼 단위가 섞였다`)
+
+// C2 = 수량 없는 매입. **그 자체로는 잘못이 아니다** — 용역·1식 매입이 원래 그렇다.
+//   해악은 두 갈래다: ① 실수량을 몰라 `avg_unit_cost` 가 서지 않는다
+//   ② 대금이 뭉침 품목에 다 붙어 **정작 팔리는 개별 품목은 매입 0 건**이 된다
+//      (깃대 계열 ACC-031·032·033·037 은 판매 4,189만인데 매입 라인이 하나도 없다 —
+//       영광엔터 대금이 `ACC-051` 월합계로 들어가 있기 때문이다).
+// ★판정은 `lump-voucher-report.cjs` 한 곳에만 둔다 — 여기에 사본을 두면 감사와 보고서의
+//   숫자가 갈린다. 공급처별 추적표·CSV 는 `npm run report:lump`.
+const { collectLumpLines } = require('./lump-voucher-report.cjs')
+const { lines: lumpLines, dropped: lumpDropped } = collectLumpLines(d1)
+const lumpByItem = new Map()
+for (const l of lumpLines) {
+  if (!lumpByItem.has(l.item_code)) lumpByItem.set(l.item_code, { n: 0, amt: 0, sup: new Set() })
+  const e = lumpByItem.get(l.item_code)
+  e.n++; e.amt += l.amt; e.sup.add(l.supplier)
+}
+for (const [code, e] of [...lumpByItem].sort((a, b) => b[1].amt - a[1].amt)) {
+  add(code, 'C2 수량 없는 매입',
+    `${e.n}행 ${Number(e.amt).toLocaleString()}원이 수량 1·단가=금액 (${[...e.sup].join('·')})`)
+}
+const lumpTotal = lumpLines.reduce((a, l) => a + l.amt, 0)
 
 // ── D. 품명↔코드 불일치 ──────────────────────────────────────────────────
 // 코드에 든 식별 토큰(평량 180G · 두께 5T)이 품명과 어긋나면 품명 매칭이 엉뚱한 데로 간다.
@@ -272,9 +300,11 @@ for (const r of roleRows) {
 const h3 = [...byName].filter(([, t]) => t.has('PRODUCT') && t.has('MATERIAL'))
 
 // ── 보고 ─────────────────────────────────────────────────────────────────
-// 게이트 = C·D·F1·G1·H4a. 전부 "어느 경우에도 잘못"인 것만 골랐다(나머지는 사람 판단이 필요).
+// 게이트 = C1·D·F1·G1·H4a. 전부 "어느 경우에도 잘못"인 것만 골랐다(나머지는 사람 판단이 필요).
 // ★H1·H2 를 게이트로 두지 않는 이유는 H4a 주석 참조 — 「아직 안 팔린 제품」과 구분이 안 된다.
-const GATE_KIND = /^(C|D|F1|G1|H4a) /
+// ★C2(수량 없는 매입)도 게이트가 아니다 — 용역·1식 매입은 정상이고, 뭉친 전표는 공급처
+//   청구서 없이는 못 푼다. 고칠 수 없는 항목을 게이트에 두면 감사 전체가 무뎌진다(C 분리 주석 참조).
+const GATE_KIND = /^(C1|D|F1|G1|H4a) /
 if (!METRICS_ONLY) {
   if (violations.length) {
     const byKind = new Map()
@@ -290,10 +320,14 @@ if (!METRICS_ONLY) {
       if (list.length > n) console.log(`   … 외 ${list.length - n}건`)
     }
     if (![...byKind.keys()].some((k) => GATE_KIND.test(k))) {
-      console.log('\n[item-audit] ✅ 게이트 항목(C·D·F1) 위반 없음 — 위는 판단이 필요한 참고 정보다')
+      console.log('\n[item-audit] ✅ 게이트 항목(C1·D·F1·G1·H4a) 위반 없음 — 위는 판단이 필요한 참고 정보다')
     }
   } else {
     console.log('[item-audit] ✅ 규약 위반 없음 (A~F 전부)')
+  }
+  if (lumpByItem.size) {
+    console.log(`\n·   [참고]  C2 합계 — ${lumpLines.length}행 ${Number(lumpTotal).toLocaleString()}원 (후보 중 ${lumpDropped}행은 반복 단가·스케일 정상이라 제외)`)
+    console.log('            공급처별 추적표·CSV = `npm run report:lump`. 청구서 실명세가 있어야 쪼갤 수 있다.')
   }
   // F2·F3 는 개별 지목이 아니라 총량으로 본다 — 지금은 잘못이 아닐 수 있고(미취급·단일단위), 늘어나는 게 신호다.
   console.log(`\n·   [참고]  F2 환산계수 없는 이중단위 ${f2}건 · F3 단위 없는 환산계수 ${f3}건`)
@@ -321,8 +355,12 @@ const met = d1(`SELECT COUNT(*) total,
     SUM(CASE WHEN NOT EXISTS(SELECT 1 FROM purchase_order_items p WHERE p.item_id=i.id)
           AND NOT EXISTS(SELECT 1 FROM order_items o WHERE o.item_id=i.id) THEN 1 ELSE 0 END) no_tx,
     SUM(CASE WHEN is_sales_item=0 AND EXISTS(SELECT 1 FROM order_items o WHERE o.item_id=i.id) THEN 1 ELSE 0 END) flag_sale,
-    SUM(CASE WHEN is_purchase_item=0 AND EXISTS(SELECT 1 FROM purchase_order_items p WHERE p.item_id=i.id) THEN 1 ELSE 0 END) flag_buy
+    SUM(CASE WHEN is_purchase_item=0 AND i.item_code NOT IN ('ETC-SHIP','ETC-EXP','ETC-DISC')
+          AND EXISTS(SELECT 1 FROM purchase_order_items p WHERE p.item_id=i.id) THEN 1 ELSE 0 END) flag_buy
   FROM items i WHERE i.is_active=1`)[0]
+// ★ETC 3종(SHIP·EXP·DISC)은 **청구 보조 라인**이라 매입차단이 의도된 것이다(2026-08-24 확정 —
+//   실비는 운반비 계정이 정본). 과거 매입 라인이 남아 있어 조건에 걸리므로 모수에서 뺀다.
+//   빼지 않으면 「즉시 고칠 것」이 영구히 3 을 가리켜 **진짜 불일치가 그 뒤에 묻힌다**.
 
 // ★ 「원가 없음」을 뭉뚱그리면 겁만 준다 — 570 중 대부분이 **원가가 없는 게 정상**이다.
 //   출력 제품은 원단을 사서 만들어 파는 것이라 `avg_unit_cost` 가 아니라 **BOM 롤업**이 원가다.
