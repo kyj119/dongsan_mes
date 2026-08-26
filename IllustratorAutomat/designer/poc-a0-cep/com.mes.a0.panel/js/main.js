@@ -10,7 +10,7 @@
   //   우상단 표시는 여태 host(mesA0_ping = MESA0_VERSION, 축2 = Z: 1곳)만 보여줬다. 껍데기는 PC 별
   //   복사 설치라서 재설치를 안 한 PC 도 최신 번호로 보였다(2026-07-30 점검에서 확인).
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다.
-  var SHELL_VERSION = '0.4.1';   // 0.4.1 = 설명 다이어트(cfg 압축·툴팁 이동) + 세로나열 CSS
+  var SHELL_VERSION = '0.5.0';   // 0.5.0 = 셸 자동 갱신 결과 수신·재시작 안내 · 0.4.1 = 설명 다이어트(cfg 압축·툴팁 이동) + 세로나열 CSS
   var STORE_WORKER = 'mes_a0_worker';
   var STORE_SETTINGS = 'mes_a0_settings';
   var CONFIG_PATH = 'Z:/DESIGNS/IA-등록/_config/config.json';
@@ -205,6 +205,18 @@
     //   하나만 보여주면 "Z: 로직은 최신인데 껍데기는 구버전"인 PC 를 구분할 수 없다.
     csi.evalScript('mesA0_ping()', function (v) {
       if (elVer) elVer.textContent = '· ' + (v || '(host?)') + ' / 화면 ' + SHELL_VERSION;
+      // ★셸 자동 갱신 결과 (2026-08-26) — 갱신 자체는 위 ping 이 이미 끝냈다(호스트 mesPanel_syncShell).
+      //   여기서는 **결과만** 읽는다. 다시 부르면 두 번 도는 게 아니라 캐시된 값이 온다.
+      //   갱신은 파일만 바꾸고 **이미 로드된 화면은 옛 파일이다** → 재시작을 반드시 알린다.
+      //   (구 셸이 깔린 PC 는 이 코드가 없어 메시지가 안 뜬다. 그래도 갱신은 된다 — 다음 실행부터 뜬다)
+      csi.evalScript('typeof mesPanel_syncStatus === "function" ? mesPanel_syncStatus() : "na"', function (sy) {
+        var r = String(sy || '');
+        if (r.indexOf('updated;') === 0) {
+          out('패널이 갱신됐습니다 — 일러스트레이터를 다시 켜 주세요.\n지금 화면은 아직 옛 버전입니다 (' + r + ')', 'okmsg');
+        } else if (r.indexOf('ERROR') === 0) {
+          out('패널 자동 갱신 실패 — 관리자에게 알려 주세요.\n' + r, 'err');
+        }
+      });
     });
 
     // ── 가공자 명단 = config 정본(하드코딩 제거, 2026-07-30) ──

@@ -19,7 +19,7 @@
 //   0.1.8 = 마감재단선(여백 위치 검정 실선·4변 한 그룹) + 주석 구조에 후가공 추가
 //           (키워드-식별번호-후가공-수량) (2026-07-30)
 //   0.1.9 = 크로스 패널 잠금 위임 추가(mes-lock.jsx) (2026-07-31)
-var MESA0_VERSION = 'A0-CEP-0.1.12'; // 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
+var MESA0_VERSION = 'A0-CEP-0.2.0'; // 0.2.0 = ★셸 자동 갱신(축3/4를 축2가 끌어온다) · 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
 var MESA0_REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
 var MESA0_PT_PER_MM = 72 / 25.4;
 var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];
@@ -27,6 +27,32 @@ var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];
 // 실측 근거(2026-07-30): 107MB work.ai = 임베드 49개 54.1MB 중 10개가 각 면적의 67%가 밖.
 // 안 완전포함 39개는 0% → 30 은 정상 디자인을 오탐하지 않는 하한.
 var MESA0_RASTER_OUT_PCT = 30;
+
+/**
+ * mm 단위 문서를 만든다 — `app.documents.add()` 를 이걸로 대체한다.
+ *
+ * ★왜 필요한가 (AI 30.7 실측, 2026-08-25):
+ *   `doc.rulerUnits = RulerUnits.Millimeters` 는 **예외도 안 던지고 값도 안 바뀐다**(읽기 전용).
+ *   `preferences rulerType` 도 안 통한다 — 이미 1(mm)인데 `documents.add()` 는 pt 문서를 만든다.
+ *   **DocumentPreset 이 유일한 경로다.**
+ *   EPS 는 문서 단위를 보존하므로(실측: mm 문서 저장 → 재오픈 시 mm) 여기 하나로 EPS·재오픈 .ai·
+ *   화면 눈금이 전부 mm 가 된다. DXF `$INSUNITS` 는 `ExportOptionsAutoCAD.unit` 이 정하므로 이미 mm.
+ *
+ * 좌표는 **point 그대로** 넘긴다 — 눈금 단위만 바뀌고 기하는 불변이다.
+ * ⚠️ `mes-cut-host.jsx` 의 `mesCut_newDocMM` 과 **같은 내용의 사본**이다(호스트 접두사 분리 규칙).
+ */
+function mesA0_newDocMM(wPt, hPt) {
+  try {
+    var dp = new DocumentPreset();
+    dp.units = RulerUnits.Millimeters;
+    dp.colorMode = DocumentColorSpace.CMYK;
+    dp.width = wPt;
+    dp.height = hPt;
+    return app.documents.addDocument('[Default] Print', dp);
+  } catch (eU) {
+    return app.documents.add(DocumentColorSpace.CMYK, wPt, hPt);
+  }
+}
 // 재단선 레이어명 — mes-sheet.jsx 의 CUT_LAYER 와 **같은 이름·같은 규약**(M100 실선 0.6)이어야 한다.
 // DXF 는 이 레이어만 남기고 나머지를 숨겨 내보내므로, 이름이 갈리면 빈 DXF 가 나간다.
 var MESA0_CUT_LAYER = '재단선';
@@ -244,7 +270,217 @@ function mesA0_lockProbe() { return mesA0_lockReady() ? mesLock_probe() : 'none'
 function mesA0_lockPath() { return mesA0_lockReady() ? mesLock_path() : ('(미로드) ' + MESA0_LOCK_PATH); }
 
 // ── 브릿지 API (ASCII in/out) ──
-function mesA0_ping() { return MESA0_VERSION; }
+// ── ★셸 자동 갱신 (2026-08-26) ────────────────────────────────────────────
+//  spec = docs/superpowers/specs/2026-08-26-panel-flow-restructure.md §2
+//
+//  결함 = 5축 중 **셸(축3/4)만 사람 손**이었다. 호스트(이 파일)는 Z: 1곳 교체로 전 PC 즉시
+//  반영인데(jsx/host.jsx 스텁이 $.evalFile), 패널 껍데기는 PC 를 방문해 install-a0-panel.ps1
+//  을 돌려야 했다 → **개선이 디자이너에게 도달하지 않는다.** 도달하지 않은 것을 "안 쓴다"고
+//  오독하기까지 했다(2026-08-26 재판정).
+//
+//  ★호스트가 셸을 갱신한다. 호스트는 이미 중앙이므로 **이 파일 하나로 전 PC 셸이 따라온다.**
+//    구 셸이 깔린 PC 도 자동으로 붙는다 — 트리거가 셸이 아니라 mesA0_ping() 이기 때문이다.
+//
+//  ⚠️ install-a0-panel.ps1 을 부르지 않는 이유 = ExtendScript 에 셸 실행 수단이 없다
+//     (2026-08-26 실측: system.callSystem·$.system 둘 다 undefined · File.execute 는 확장자
+//      연결에 기대어 .ps1 이 메모장으로 열린다). .bat/.vbs 경유는 콘솔 깜빡임·실행정책·백신에
+//      의존해 **볼 수 없는 PC** 에서 실패 모드만 늘린다.
+//  ⚠️ 백업을 extensions **안**에 만들지 않는다. CEP 는 extensions 아래 manifest 가 있는 폴더를
+//     전부 확장으로 등록하고, 같은 ExtensionBundleId 중 **백업(구버전)을 고른 적이 있다**
+//     (install-a0-panel.ps1 §2 주석의 2026-07-31 실측: host 는 신버전인데 shell 만 구버전).
+//     설치기와 **같은** _panel_backups 로 뺀다.
+//  ⚠️ 최초 설치는 여전히 install-a0-panel.ps1 이다. 이건 **이미 깔린 셸의 갱신**만 한다
+//     (레지스트리 PlayerDebugMode·구 확장 제거는 최초 1회 관심사라 여기서 하지 않는다).
+//  ⚠️ 반환에 경로를 담지 말 것 — 사용자명이 한글인 PC 가 있고 evalScript 반환은 ASCII 만이다.
+
+var MESPANEL_EXT_ID = 'com.mes.a0.panel';
+var MESPANEL_SRC_DIR = 'Z:/DESIGNS/IA-등록/_scripts/a0-panel/com.mes.a0.panel';
+var MESPANEL_SYNC = 'idle';
+var MESPANEL_SYNC_DONE = false;
+
+/** 반환 전용 — 한글 경로·메시지가 브릿지를 깨뜨리지 않게 비ASCII 를 접는다. */
+function mesPanel_ascii(s) {
+    return String(s == null ? '' : s).replace(/[^\x20-\x7E]/g, '?');
+}
+/**
+ * 배포 대상 파일인가 — `.bak-*` 잔재를 뺀다.
+ * ★없으면 서명이 영원히 수렴하지 않는다(2026-08-26 실측): Z: 15개 / 설치본 17개로
+ *   `.bak-*` 개수가 서로 달랐고, 복사는 덧쓰기만 하고 여분을 지우지 않으므로
+ *   복사 뒤 검증이 매번 어긋나 **매 부팅 재복사 → 재시도 한도**로 끝났을 것이다.
+ * ★여분을 지우지는 않는다 — extensions 아래 파일 삭제는 이 기능이 질 위험이 아니다.
+ *   대신 **새 잔재를 퍼뜨리지 않는다**(설치기는 `*` 로 복사해 Z: 의 .bak 을 전 PC에 옮긴다).
+ */
+function mesPanel_isDeployable(name) {
+    return !/\.bak(-|$)/i.test(String(name));
+}
+function mesPanel_cepRoot() {
+    var ad = $.getenv('APPDATA');
+    return ad ? (String(ad).replace(/\\/g, '/') + '/Adobe/CEP') : null;
+}
+function mesPanel_installDir() {
+    var r = mesPanel_cepRoot();
+    return r ? (r + '/extensions/' + MESPANEL_EXT_ID) : null;
+}
+
+/**
+ * 폴더 서명 = `<셸버전>/<파일수>/<총바이트>`.
+ * ★버전만 보면 안 된다 — CSS·HTML 만 고치고 SHELL_VERSION 을 안 올린 배포가 조용히 안 붙는다.
+ *   바이트 합을 같이 보면 사람의 규율에 기대지 않는다.
+ */
+function mesPanel_sign(dir) {
+    var root = new Folder(dir);
+    if (!root.exists) return null;
+    var n = 0, bytes = 0, ver = '';
+    function walk(fold) {
+        var items = fold.getFiles();
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            if (it instanceof Folder) { walk(it); continue; }
+            if (!mesPanel_isDeployable(decodeURI(it.name))) continue;
+            n++;
+            try { bytes += it.length; } catch (eL) {}
+            if (!ver && decodeURI(it.name) === 'cut-main.js') {
+                var sTxt = mesA0_readText(it.fsName);
+                var m = sTxt ? String(sTxt).match(/SHELL_VERSION\s*=\s*'([^']+)'/) : null;
+                if (m) ver = m[1];
+            }
+        }
+    }
+    walk(root);
+    return n ? (ver + '/' + n + '/' + bytes) : null;
+}
+
+/** 재귀 복사. File.copy 는 대상이 있으면 false 를 돌려주므로 먼저 지운다. */
+function mesPanel_copyTree(src, dst) {
+    var s = new Folder(src);
+    if (!s.exists) return 'ERROR nosrc';
+    var d = new Folder(dst);
+    if (!d.exists && !d.create()) return 'ERROR mkdir';
+    var items = s.getFiles();
+    for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        var nm = decodeURI(it.name);
+        if (it instanceof Folder) {
+            var r = mesPanel_copyTree(it.fsName, dst + '/' + nm);
+            if (r.indexOf('ERROR') === 0) return r;
+            continue;
+        }
+        if (!mesPanel_isDeployable(nm)) continue;   // 잔재는 옮기지 않는다
+        var target = new File(dst + '/' + nm);
+        if (target.exists && !target.remove()) return 'ERROR rm ' + mesPanel_ascii(nm);
+        if (!it.copy(target.fsName)) return 'ERROR cp ' + mesPanel_ascii(nm);
+    }
+    return 'ok';
+}
+
+/**
+ * ★파괴 전 probe — 이 환경에서 remove+copy 가 실제로 되는지 먼저 확인한다.
+ *   copyTree 는 대상 파일을 **지우고** 복사한다. copy 가 실패하면 지운 파일이 사라진다.
+ *   백업 되돌리기가 있지만 그것도 같은 copy 를 쓰므로, copy 자체가 안 되는 환경에서는
+ *   되돌리기까지 실패한다 → **손대기 전에** 임시 폴더에서 한 번 해 보고 안 되면 통째로 건너뛴다.
+ */
+function mesPanel_probeCopy() {
+    try {
+        var base = String(Folder.temp.fsName).replace(/\\/g, '/') + '/mes_panel_probe';
+        var d = new Folder(base);
+        if (!d.exists && !d.create()) return false;
+        var a = new File(base + '/a.txt');
+        if (!mesA0_writeText(a.fsName, 'probe')) return false;
+        var b = new File(base + '/b.txt');
+        if (b.exists && !b.remove()) return false;
+        if (!a.copy(b.fsName)) return false;
+        var okRead = (mesA0_readText(b.fsName) === 'probe');
+        try { a.remove(); b.remove(); } catch (eC) {}
+        return okRead;
+    } catch (e) { return false; }
+}
+
+/**
+ * ★복사·검증이 실패하면 방금 뜬 백업으로 되돌린다.
+ *   부분 복사(파일 하나가 잠겨 있었다 등)로 **반쪽짜리 셸**이 남는 것이 이 기능의 유일한 실질 위험이다.
+ *   되돌리기까지 실패하면 그 사실을 문자열에 담는다 — 조용히 넘어가면 원인을 못 찾는다.
+ */
+function mesPanel_rollback(bakDir, dst) {
+    try {
+        var r = mesPanel_copyTree(bakDir, dst);
+        return (r.indexOf('ERROR') === 0) ? ';ROLLBACKFAIL' : ';rolledback';
+    } catch (eR) {
+        return ';ROLLBACKFAIL';
+    }
+}
+
+/**
+ * Z: 셸 배포본과 이 PC 설치본을 비교해 다르면 갱신한다. **패널 로드당 1회**(mesA0_ping 이 부른다).
+ * 반환 'same;v=..' | 'updated;from=..;to=..' | 'skip;why=..' | 'ERROR ..'
+ */
+function mesPanel_syncShell() {
+    if (MESPANEL_SYNC_DONE) return MESPANEL_SYNC;
+    MESPANEL_SYNC_DONE = true;
+    try {
+        var dst = mesPanel_installDir();
+        if (!dst) { MESPANEL_SYNC = 'skip;why=noappdata'; return MESPANEL_SYNC; }
+        var srcSign = mesPanel_sign(MESPANEL_SRC_DIR);
+        // Z: 미연결은 조용히 넘어간다 — 갱신 실패가 패널 사용을 막으면 안 된다.
+        if (!srcSign) { MESPANEL_SYNC = 'skip;why=nosrc'; return MESPANEL_SYNC; }
+        var dstSign = mesPanel_sign(dst);
+        // 설치본이 없다 = 최초 설치 상황. 여기서 만들지 않는다(install-a0-panel.ps1 담당).
+        if (!dstSign) { MESPANEL_SYNC = 'skip;why=noinstall'; return MESPANEL_SYNC; }
+        if (srcSign === dstSign) { MESPANEL_SYNC = 'same;v=' + mesPanel_ascii(srcSign); return MESPANEL_SYNC; }
+
+        // ★같은 목표로 두 번 실패하면 그만둔다 — 매 부팅 복사를 반복하는 것이 더 나쁘다.
+        var guard = String(Folder.temp.fsName).replace(/\\/g, '/') + '/mes_panel_sync.txt';
+        var prev = mesA0_readText(guard);
+        var tries = 0;
+        if (prev) {
+            var pp = String(prev).split('|');
+            if (pp[0] === srcSign) tries = parseInt(pp[1], 10) || 0;
+            if (tries >= 2) { MESPANEL_SYNC = 'skip;why=retrylimit;v=' + mesPanel_ascii(srcSign); return MESPANEL_SYNC; }
+        }
+        mesA0_writeText(guard, srcSign + '|' + (tries + 1));
+
+        // ★파괴적 단계에 들어가기 전 마지막 관문
+        if (!mesPanel_probeCopy()) { MESPANEL_SYNC = 'skip;why=nocopy'; return MESPANEL_SYNC; }
+
+        var bakRoot = mesPanel_cepRoot() + '/_panel_backups';
+        var br = new Folder(bakRoot);
+        if (!br.exists && !br.create()) { MESPANEL_SYNC = 'ERROR bakdir'; return MESPANEL_SYNC; }
+        var now = new Date();
+        var stamp = '' + now.getFullYear() + mesA0_pad2(now.getMonth() + 1) + mesA0_pad2(now.getDate())
+            + '-' + mesA0_pad2(now.getHours()) + mesA0_pad2(now.getMinutes()) + mesA0_pad2(now.getSeconds());
+        var rb = mesPanel_copyTree(dst, bakRoot + '/' + MESPANEL_EXT_ID + '.autobak-' + stamp);
+        if (rb.indexOf('ERROR') === 0) { MESPANEL_SYNC = 'ERROR backup:' + mesPanel_ascii(rb); return MESPANEL_SYNC; }
+
+        var bakDir = bakRoot + '/' + MESPANEL_EXT_ID + '.autobak-' + stamp;
+        var rc = mesPanel_copyTree(MESPANEL_SRC_DIR, dst);
+        if (rc.indexOf('ERROR') === 0) {
+            MESPANEL_SYNC = 'ERROR copy:' + mesPanel_ascii(rc) + mesPanel_rollback(bakDir, dst);
+            return MESPANEL_SYNC;
+        }
+
+        // ★검증 — 복사가 "됐다"고 하는 것과 실제로 같아진 것은 다르다(부분 복사·잠긴 파일).
+        var after = mesPanel_sign(dst);
+        if (after !== srcSign) {
+            MESPANEL_SYNC = 'ERROR verify:' + mesPanel_ascii(after) + '!=' + mesPanel_ascii(srcSign)
+                + mesPanel_rollback(bakDir, dst);
+            return MESPANEL_SYNC;
+        }
+        mesA0_writeText(guard, srcSign + '|0');
+        MESPANEL_SYNC = 'updated;from=' + mesPanel_ascii(dstSign) + ';to=' + mesPanel_ascii(srcSign);
+    } catch (e) {
+        MESPANEL_SYNC = 'ERROR ' + mesPanel_ascii(e);
+    }
+    return MESPANEL_SYNC;
+}
+
+/** 셸이 읽어 가는 결과. ping 이 이미 돌렸으므로 여기서는 재실행하지 않는다. */
+function mesPanel_syncStatus() { return MESPANEL_SYNC; }
+
+// ★ping 이 트리거인 이유 = 구 셸도 ping 은 부른다. 셸을 고치지 않아도 전 PC 가 붙는다.
+//   갱신 실패가 ping 을 깨뜨리면 패널 전체가 죽으므로 반드시 삼킨다(결과는 mesPanel_syncStatus).
+function mesA0_ping() {
+    try { mesPanel_syncShell(); } catch (eSync) {}
+    return MESA0_VERSION;
+}
 
 // _config/config.json 원문 반환 (한글경로 Z: = ExtendScript File이 안전 처리 — cep.fs 폴백용)
 function mesA0_config() {
@@ -356,7 +592,7 @@ function mesA0_process() {
   // 캔버스는 겉보기 기준을 유지한다 — 클립 밖 아트까지 담을 자리를 두려는 원래 의도(아트보드는
   //   아래에서 db(클립 존중)로 다시 잡는다). ub 를 클립 기준으로 바꾼 것과 무관하게 기존 동작 보존.
   var cvB = vbAll || ub;
-  var newDoc = app.documents.add(DocumentColorSpace.CMYK, (cvB[2] - cvB[0]) || 100, (cvB[1] - cvB[3]) || 100);
+  var newDoc = mesA0_newDocMM((cvB[2] - cvB[0]) || 100, (cvB[1] - cvB[3]) || 100);
   var okAll = false, outlineFailed = false, epsName = null, dxfName = null, diagItems = 0, normed = 0;
   try {
     app.activeDocument = newDoc;
@@ -968,8 +1204,7 @@ function mesA0_seedRaster(srcDoc, items) {
   var tmp = null;
   try {
     // 초기 크기는 아무래도 좋다(아래에서 artboardRect 로 다시 잡는다). 일러 캔버스 한도(16383pt) 클램프.
-    tmp = app.documents.add(DocumentColorSpace.CMYK,
-      Math.min(16000, Math.max(10, wPtS)), Math.min(16000, Math.max(10, hPtS)));
+    tmp = mesA0_newDocMM(Math.min(16000, Math.max(10, wPtS)), Math.min(16000, Math.max(10, hPtS)));
     var lay = tmp.layers[0];
     // ★★ 문서 간 duplicate 는 **원본 문서가 active 일 때만** 동작한다. documents.add() 가
     //    새 문서를 active 로 만들어 버리므로 여기서 되돌린다. 실패해도 **예외를 던지지 않아**
@@ -1127,7 +1362,7 @@ function mesA0_reviewBegin() { mesA0_reviewDiscard(); mesA0_reviewEnsure(); retu
 
 function mesA0_reviewNewDoc(R) {
   var lim = MESA0_REVIEW_LIMIT_MM * MESA0_PT_PER_MM;
-  var rd = app.documents.add(DocumentColorSpace.CMYK, lim, lim);
+  var rd = mesA0_newDocMM(lim, lim);
   R.docs.push(rd);
   var ab = rd.artboards[0].artboardRect;
   R.ox = ab[0]; R.oy = ab[1]; // 좌상 원점 — 타일 좌표는 이 기준 오프셋

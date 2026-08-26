@@ -70,6 +70,7 @@
     "e2e:report": "npx playwright show-report",
     "ia:deploy": "node scripts/ia-deploy.cjs",
     "cut:butt": "node scripts/cut/butt-bench.mjs",
+    "cut:shellsync": "node scripts/cut/shell-sync-test.mjs",
     "audit:items": "node scripts/item-master-audit.cjs",
     "audit:skills": "node scripts/skill-audit.cjs",
     "audit:items:selftest": "node scripts/r0-selftest.cjs",
