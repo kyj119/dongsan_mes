@@ -171,6 +171,9 @@ const unitRows = d1(`SELECT i.item_code, i.item_name,
     COALESCE(i.deduction_method,'') dm, i.width_mm wmm,
     CAST(COALESCE(i.avg_unit_cost,0) AS INT) auc,
     CAST(COALESCE(i.base_price,0) AS INT) bp,
+    (SELECT COUNT(*) FROM purchase_order_items p JOIN purchase_orders po ON po.id = p.po_id
+      WHERE p.item_id = i.id AND p.unit_price > 0 AND po.status <> 'CANCELLED') buy_n,
+    (SELECT COUNT(*) FROM order_items oi WHERE oi.item_id = i.id AND oi.unit_price > 0) sell_n,
     CAST(COALESCE((SELECT AVG(p.unit_price) FROM purchase_order_items p
                    WHERE p.item_id = i.id AND p.unit_price > 0), 0) AS INT) po_avg
   FROM items i WHERE i.is_active = 1`)
@@ -231,8 +234,14 @@ for (const r of unitRows) {
 //   판정은 F1 과 같은 방식 — 두 후보 중 어디에 더 가까운가. prod 실측 분포가 뚜렷하게 갈렸다:
 //   정상군 100건은 `bp ÷ (auc×pack)` 이 **0.978~1.638**, 어긋난 4건은 **0.019~0.034** 였다.
 //   ⚠️ base_unit 이 없는 품목(AQ*)은 애초에 한 축이라 제외한다.
+let f5skip = 0
 for (const r of unitRows) {
   if (!r.bu || !(r.ps > 1) || !(r.bp > 0) || !(r.auc > 0)) continue
+  // ★근거 없는 품목은 게이트에 올리지 않는다 — 고칠 수 없는 항목을 세워 두면 그 빨간불 뒤로
+  //   새 위반이 숨는다(C1/C2 를 가른 것과 같은 이유). 비교 기준인 `avg_unit_cost` 자체가
+  //   취소된 발주에서 나온 값이면 「어느 쪽이 틀렸나」를 판정할 수 없다.
+  //   실제 사례 = LGSHT-122(유일한 발주 CANCELLED · 판매 0 · 재고 0).
+  if (!(r.buy_n > 0) && !(r.sell_n > 0)) { f5skip++; continue }
   const expect = r.auc * r.ps
   if (Math.abs(r.bp - r.auc) < Math.abs(r.bp - expect)) {
     add(r.item_code, 'F5 기준단가 축 오류',
@@ -370,7 +379,7 @@ if (!METRICS_ONLY) {
       if (list.length > n) console.log(`   … 외 ${list.length - n}건`)
     }
     if (![...byKind.keys()].some((k) => GATE_KIND.test(k))) {
-      console.log('\n[item-audit] ✅ 게이트 항목(C1·D·F1·F4·G1·H4a) 위반 없음 — 위는 판단이 필요한 참고 정보다')
+      console.log('\n[item-audit] ✅ 게이트 항목(C1·D·F1·F4·F5·G1·H4a) 위반 없음 — 위는 판단이 필요한 참고 정보다')
     }
   } else {
     console.log('[item-audit] ✅ 규약 위반 없음 (A~F 전부)')
@@ -381,7 +390,12 @@ if (!METRICS_ONLY) {
   }
   // F2·F3 는 개별 지목이 아니라 총량으로 본다 — 지금은 잘못이 아닐 수 있고(미취급·단일단위), 늘어나는 게 신호다.
   console.log(`\n·   [참고]  F2 환산계수 없는 이중단위 ${f2}건 · F3 단위 없는 환산계수 ${f3}건`)
-  console.log('            F2=입고가 ×1 로 들어가 수량이 pack 배 적게 잡힌다 · F3=늘어난 수량의 단위가 미정의')
+  console.log('            F2=입고가 ×1 로 들어가 수량이 pack 배 적게 잡힌다 · F3=단위 미정의(환산은 안 하므로 안전 — packFactor)')
+  if (f5skip) {
+    console.log(`
+·   [참고]  F5 판정 보류 ${f5skip}건 — 유효 매입·판매가 하나도 없어 어느 축이 맞는지 근거가 없다`)
+    console.log('            (예: LGSHT-122 = 유일한 발주가 CANCELLED · 판매 0 · 재고 0). 근거가 생기면 게이트로 올라온다')
+  }
 
   console.log(`\n·   [참고]  G3 계열(item_group) 미지정 ${g3}건 — 사용자별 사용품목(user_item_access) 축이라 비면 필터가 안 걸린다`)
   console.log('\n■ 제품↔원자재 축 — 실제 거래가 한쪽뿐인데 분류가 반대인 것')
