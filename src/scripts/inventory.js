@@ -233,7 +233,7 @@ function renderInventoryTable(items, total) {
             + '</td>'
             + '<td class="px-4 py-3 text-sm text-gray-900 text-right tabular-nums">' + safety + '</td>'
             + '<td class="px-4 py-3 text-sm text-gray-900 text-right tabular-nums">' + (rop || '-') + '</td>'
-            + '<td class="px-4 py-3 text-sm text-gray-900 text-right tabular-nums">' + (item.unit_price || 0).toLocaleString() + '원</td>'
+            + '<td class="px-4 py-3 text-sm text-gray-900 text-right tabular-nums">' + invUnitPriceCell(item) + '</td>'
             + '<td class="px-4 py-3 text-sm text-gray-500" title="' + escapeHtml(item.location || '') + '">' + escapeHtml(item.location || '-') + '</td>'
             + '<td class="px-4 py-3 text-center">'
             + '<div class="flex gap-1 justify-center">'
@@ -624,6 +624,26 @@ if (!invAdjustSearchBtn) {
             }
         });
     });
+}
+
+
+// 단가 열 — 재고 금액과 축을 맞춘 base_unit 당 단가가 주표기, 포장 단가는 괄호로 병기한다.
+//   현재고가 base(예: 800 M)인데 롤당 단가만 보이면 금액을 암산할 수 없고, 실제로 재고 금액이
+//   pack_size 배(시트류 50배) 부풀어 있었다(2026-08-26).
+function invUnitPriceCell(item) {
+    var base = Number(item.unit_price) || 0;
+    var baseUnit = item.base_unit || item.unit || '';
+    var pack = Number(item.pack_price) || 0;
+    var packSize = Number(item.pack_size) || 0;
+    if (!base && !pack) return '0원';
+    var main = base
+        ? Math.round(base).toLocaleString() + '원' + (baseUnit ? '/' + escapeHtml(baseUnit) : '')
+        : '<span class="text-gray-400">원가 없음</span>';
+    // 포장 단위가 따로 있을 때만 병기 (pack_size 1 이하면 두 단가가 같은 뜻이라 중복이다)
+    if (pack && packSize > 1) {
+        main += '<div class="text-xs text-gray-400">' + pack.toLocaleString() + '원/' + escapeHtml(item.unit || '') + '</div>';
+    }
+    return main;
 }
 
 // Update current stock when adjustment item is selected (MU4: uomFmt + 단위 select 갱신)

@@ -34,7 +34,13 @@ inventoryRouter.get('/', async (c) => {
       SELECT
         i.id, i.item_name, i.category, i.sub_category, i.unit,
         i.base_unit, i.pack_size, i.stock_mode,
-        i.base_price as unit_price,
+        -- ⚠️ 재고 금액의 단가 축 = avg_unit_cost(base_unit 당). items.base_price 는 **포장 단위 단가**
+        --    (롤당·통당)라 base 로 리베이스된 수량에 그대로 곱하면 pack_size 배(시트류 50배) 부풀어
+        --    2026-08-26 실측에서 4.65억 vs 정본 6,147만이 됐다. 평가 정본은 inventoryValuation /report
+        --    (WEIGHTED_AVG = 수량 × avg_unit_cost)이고 이 화면들도 같은 축을 쓴다.
+        --    포장 단가는 pack_price 로 따로 내려 화면이 「M당(롤당)」으로 병기한다.
+        COALESCE(i.avg_unit_cost, 0) as unit_price,
+        i.base_price as pack_price,
         COALESCE(SUM(inv.quantity), 0) as current_stock,
         COALESCE(MAX(inv.safe_stock), 0) as safety_stock,
         COALESCE(MAX(inv.reorder_point), 0) as reorder_point,
@@ -82,7 +88,7 @@ inventoryRouter.get('/', async (c) => {
     let countInner = `
       SELECT i.id,
         COALESCE(SUM(inv.quantity), 0) as qty,
-        i.base_price as unit_price
+        COALESCE(i.avg_unit_cost, 0) as unit_price   -- 재고 금액 축 = base_unit 당 (위 주석 참조)
       FROM items i
       ${inv.join}
       WHERE i.is_purchase_item = 1 AND i.is_active = 1
@@ -137,7 +143,8 @@ inventoryRouter.get('/:id', async (c) => {
       SELECT
         i.id, i.item_name, i.category, i.sub_category, i.unit,
         i.base_unit, i.pack_size, i.stock_mode,
-        i.base_price as unit_price,
+        COALESCE(i.avg_unit_cost, 0) as unit_price,  -- base_unit 당 (base_price 는 포장 단가라 축이 다르다)
+        i.base_price as pack_price,
         COALESCE(SUM(inv.quantity), 0) as current_stock,
         COALESCE(MAX(inv.safe_stock), 0) as safety_stock,
         COALESCE(MAX(inv.reorder_point), 0) as reorder_point,
@@ -932,14 +939,14 @@ inventoryRouter.get('/stats/summary', async (c) => {
     `).bind(...(entityId > 0 ? [entityId] : [])).first<{ count: number }>()
 
     const valueRow = await c.env.DB.prepare(`
-      SELECT SUM(COALESCE(inv.quantity, 0) * COALESCE(i.base_price, 0)) as total_value
+      SELECT SUM(COALESCE(inv.quantity, 0) * COALESCE(i.avg_unit_cost, 0)) as total_value
       FROM items i ${inv.join}
       WHERE i.is_purchase_item = 1 AND i.is_active = 1
     `).bind(...inv.params).first<{ total_value: number | null }>()
 
     const { results: categoryResults } = await c.env.DB.prepare(`
       SELECT i.category, COUNT(*) as item_count,
-        SUM(COALESCE(inv.quantity, 0) * COALESCE(i.base_price, 0)) as category_value
+        SUM(COALESCE(inv.quantity, 0) * COALESCE(i.avg_unit_cost, 0)) as category_value
       FROM items i ${inv.join}
       WHERE i.is_purchase_item = 1 AND i.is_active = 1
       GROUP BY i.category
@@ -1004,7 +1011,7 @@ inventoryRouter.get('/dashboard/zones', async (c) => {
     let itemSql = `
       SELECT
         i.id as item_id, i.item_code, i.item_name, i.category, i.sub_category,
-        i.unit, i.base_price,
+        i.unit, i.base_price, i.pack_size, COALESCE(i.avg_unit_cost, 0) as avg_unit_cost,
         inv.storage_zone_id as storage_zone_id,
         sz.zone_name, sz.entity_id as zone_entity_id,
         COALESCE(inv.quantity, 0) as current_stock,
@@ -1078,8 +1085,9 @@ inventoryRouter.get('/dashboard/zones', async (c) => {
     const totalItems = items.length
     const criticalCount = items.filter((i: any) => i.stock_status === 'CRITICAL').length
     const lowCount = items.filter((i: any) => i.stock_status === 'LOW').length
+    // 단가 축 = avg_unit_cost(base_unit 당). base_price(포장 단가)를 곱하면 pack_size 배 부푼다.
     const totalValue = items.reduce((sum: number, i: any) =>
-      sum + ((i.current_stock || 0) * (i.base_price || 0)), 0)
+      sum + ((i.current_stock || 0) * (i.avg_unit_cost || 0)), 0)
 
     // 4. 창고별 그룹핑
     const zoneGroups: Record<string, any> = {}

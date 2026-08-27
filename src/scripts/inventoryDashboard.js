@@ -273,7 +273,11 @@ async function createPRForZone(zoneId) {
         category_name: item.category || '',
         quantity: shortage,
         unit: item.unit || 'EA',
-        estimated_unit_price: item.base_price || 0,
+        // 수량(부족량)이 base_unit 이므로 단가도 base 축이어야 한다 — base_price 는 포장 단가(롤당)라
+        //   그대로 넣으면 예상금액이 pack_size 배 부푼다(2026-08-26). 원가 이력이 없으면 포장단가÷포장수량.
+        estimated_unit_price: Number(item.avg_unit_cost) > 0
+          ? Number(item.avg_unit_cost)
+          : (Number(item.pack_size) > 1 ? Math.round((Number(item.base_price) || 0) / Number(item.pack_size)) : (Number(item.base_price) || 0)),
         sort_order: idx + 1
       };
     });
