@@ -143,10 +143,11 @@ function zoneRowHtml(item) {
     + '<td class="px-3 py-2 font-medium text-gray-900" title="' + escHtml(item.item_name) + '">' + openBadge + escHtml(item.item_name) + '</td>'
     + '<td class="px-3 py-2 text-xs text-gray-500" title="' + cat + '">' + cat + '</td>'
     + '<td class="px-3 py-2 text-right tabular-nums font-medium ' + (item.current_stock <= 0 ? 'text-red-600' : 'text-gray-900') + '">'
-    + (item.current_stock || 0).toLocaleString() + ' ' + escHtml(item.unit || '') + '</td>'
+    + escHtml(window.uomFormatStock ? window.uomFormatStock(item.current_stock || 0, item)
+        : ((item.current_stock || 0).toLocaleString() + ' ' + (item.unit || ''))) + '</td>'
     + '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + (item.safe_stock || '-') + '</td>'
     + '<td class="px-3 py-2 text-right tabular-nums ' + (shortage > 0 ? 'text-red-600 font-medium' : 'text-gray-400') + '">'
-    + (shortage > 0 ? shortage.toLocaleString() : '-') + '</td>'
+    + (shortage > 0 ? shortage.toLocaleString() + ' ' + escHtml(item.base_unit || item.unit || '') : '-') + '</td>'
     + '<td class="px-3 py-2 text-center">' + statusHtml + '</td>'
     + '</tr>';
 }
@@ -219,6 +220,26 @@ function summaryCard(icon, label, value, color) {
     + '<div class="text-lg font-bold text-gray-900">' + value + '</div></div></div>';
 }
 
+
+// 발주 수량·단가 = **발주 단위(롤·통)** 축. 재고·부족량은 base(M·L)라 그대로 넘기면 안 된다 —
+//   발주서·입고가 전부 관리단위 축이고 입고는 `수량 × pack_size` 로 재고를 쌓기 때문에,
+//   base 수량을 그대로 발주하면 pack_size 배로 입고된다(2026-08-27 로컬 실증: 80M 요청 → 재고 +4,000M).
+//   환산 대상 판정은 단가 병기와 같다 — AQ 계열은 base_unit 이 없어 발주·재고가 같은 yd 축이다.
+function zoneOrderPack(item) {
+  var pack = Number(item.pack_size) || 0;
+  var convertible = pack > 1 && item.base_unit && item.base_unit !== item.unit;
+  return convertible ? pack : 1;
+}
+function zoneOrderQty(item) {
+  var pack = zoneOrderPack(item);
+  var shortageBase = Math.max(0, (Number(item.safe_stock) || 0) - (Number(item.current_stock) || 0));
+  var qty = Math.max(1, Math.ceil(shortageBase / pack));   // 반 롤은 살 수 없다 → 포장 단위 올림
+  var unitPrice = Number(item.base_price) > 0
+    ? Number(item.base_price)                              // 포장 단가가 정본
+    : Math.round((Number(item.avg_unit_cost) || 0) * pack); // 없으면 base 원가 × 포장수량
+  return { qty: qty, unitPrice: unitPrice, pack: pack, shortageBase: shortageBase };
+}
+
 async function createPRForZone(zoneId) {
   if (!dashData) return;
   var group = dashData.zone_groups.find(function(g) { return g.zone_id === zoneId; });
@@ -259,25 +280,24 @@ async function createPRForZone(zoneId) {
   var msg = escHtml(group.zone_name) + '의 부족 품목 ' + shortageItems.length + '건에 대해 발주요청을 생성하시겠습니까?'
     + (already.length > 0 ? '\n(이미 요청 중인 ' + already.length + '건은 제외합니다)' : '')
     + '\n\n' + shortageItems.slice(0, 8).map(function(it) {
-        return '· ' + it.item_name + ' ' + Math.max(1, Math.ceil((it.safe_stock || 0) - (it.current_stock || 0))) + ' ' + (it.unit || 'EA');
+        var need = zoneOrderQty(it);
+        // 발주 단위로 적되, 환산이 있는 자재는 부족량(base)을 괄호로 보여 준다
+        return '· ' + it.item_name + ' ' + need.qty + ' ' + (it.unit || 'EA')
+          + (need.pack > 1 ? ' (부족 ' + need.shortageBase + (it.base_unit || '') + ')' : '');
       }).join('\n')
     + (shortageItems.length > 8 ? '\n· 외 ' + (shortageItems.length - 8) + '건' : '');
   if (!(await showConfirm(msg))) return;
 
   try {
     var prItems = shortageItems.map(function(item, idx) {
-      var shortage = Math.max(1, Math.ceil((item.safe_stock || 0) - (item.current_stock || 0)));
+      var need = zoneOrderQty(item);
       return {
         item_id: item.item_id,
         item_name: item.item_name,
         category_name: item.category || '',
-        quantity: shortage,
+        quantity: need.qty,
         unit: item.unit || 'EA',
-        // 수량(부족량)이 base_unit 이므로 단가도 base 축이어야 한다 — base_price 는 포장 단가(롤당)라
-        //   그대로 넣으면 예상금액이 pack_size 배 부푼다(2026-08-26). 원가 이력이 없으면 포장단가÷포장수량.
-        estimated_unit_price: Number(item.avg_unit_cost) > 0
-          ? Number(item.avg_unit_cost)
-          : (Number(item.pack_size) > 1 ? Math.round((Number(item.base_price) || 0) / Number(item.pack_size)) : (Number(item.base_price) || 0)),
+        estimated_unit_price: need.unitPrice,
         sort_order: idx + 1
       };
     });

@@ -96,6 +96,43 @@ if (!/quantity\s*\*\s*COALESCE\(i\.avg_unit_cost/.test(valSrc)) {
   fails.push('inventoryValuation /report 가 더 이상 수량 × avg_unit_cost 가 아니다 — 평가 정본이 바뀌었는지 확인할 것')
 } else pass++
 
+
+// ── ③ 발주 수량 축: 부족량(base) → 발주 단위(pack) 환산 ───────────────
+// 2026-08-27 실증: 부족 80M 을 그대로 발주하면 입고가 `수량 × pack_size` 로 쌓아 재고가 +4,000M 이 된다.
+// createPRForZone 이 쓰는 zoneOrderQty 를 파일에서 그대로 떼어내 픽스처로 돌린다(사본을 두지 않는다).
+const DASH = path.join(__dirname, '..', 'src', 'scripts', 'inventoryDashboard.js')
+const dashSrc = fs.readFileSync(DASH, 'utf8')
+// 정규식 대신 마커로 자른다 — 여러 줄 패턴은 이 파일 안에서 읽기 어렵고 깨지기 쉽다
+const FN_START = 'function zoneOrderPack'
+const FN_END = 'return { qty: qty, unitPrice: unitPrice, pack: pack, shortageBase: shortageBase };'
+const startIdx = dashSrc.indexOf(FN_START)
+const endIdx = dashSrc.indexOf(FN_END)
+const fnBlock = (startIdx >= 0 && endIdx > startIdx) ? dashSrc.slice(startIdx, endIdx + FN_END.length) + '\n}' : null
+if (!fnBlock) {
+  fails.push('inventoryDashboard.js 에서 zoneOrderPack/zoneOrderQty 를 못 찾았다 — 발주 수량 환산이 사라졌는지 확인할 것')
+} else {
+  // eslint-disable-next-line no-new-func
+  const zoneOrderQty = new Function(fnBlock + '; return zoneOrderQty;')()
+
+  // 롤 자재: 재고 520M · 안전 600M · pack 50 → 부족 80M = 2롤(올림), 단가는 롤당
+  const rollOrder = zoneOrderQty({ current_stock: 520, safe_stock: 600, pack_size: 50, unit: '롤', base_unit: 'M', base_price: 115000, avg_unit_cost: 2325 })
+  check('롤 자재 발주 수량(부족 80M → 2롤)', rollOrder.qty, 2)
+  check('롤 자재 발주 단가(롤당)', rollOrder.unitPrice, 115000)
+
+  // AQ 계열: base_unit 없음 · pack_size 130 은 실사 편의 계수 → 환산하지 않는다
+  const aq = zoneOrderQty({ current_stock: 100, safe_stock: 300, pack_size: 130, unit: 'yd', base_unit: null, base_price: 978, avg_unit_cost: 1011 })
+  check('AQ 계열은 환산 없음(부족 200yd → 200)', aq.qty, 200)
+  check('AQ 계열 단가는 그대로', aq.unitPrice, 978)
+
+  // 포장 단가가 없으면 base 원가 × 포장수량
+  const noPack = zoneOrderQty({ current_stock: 0, safe_stock: 10, pack_size: 50, unit: '롤', base_unit: 'M', base_price: 0, avg_unit_cost: 2000 })
+  check('포장 단가 부재 시 base 원가 × pack', noPack.unitPrice, 100000)
+
+  // 부족이 포장 하나에 못 미쳐도 최소 1포장은 발주해야 한다
+  const tiny = zoneOrderQty({ current_stock: 495, safe_stock: 500, pack_size: 50, unit: '롤', base_unit: 'M', base_price: 115000, avg_unit_cost: 2325 })
+  check('부족 5M 이어도 최소 1롤', tiny.qty, 1)
+}
+
 // ── 결과 ─────────────────────────────────────────────────────────────
 if (fails.length) {
   console.error(`\n✗ 재고 평가 축 검증 실패 ${fails.length}건 (통과 ${pass})\n`)

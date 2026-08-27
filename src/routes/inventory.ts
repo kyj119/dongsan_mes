@@ -1011,7 +1011,7 @@ inventoryRouter.get('/dashboard/zones', async (c) => {
     let itemSql = `
       SELECT
         i.id as item_id, i.item_code, i.item_name, i.category, i.sub_category,
-        i.unit, i.base_price, i.pack_size, COALESCE(i.avg_unit_cost, 0) as avg_unit_cost,
+        i.unit, i.base_price, i.pack_size, i.base_unit, i.stock_mode, COALESCE(i.avg_unit_cost, 0) as avg_unit_cost,
         inv.storage_zone_id as storage_zone_id,
         sz.zone_name, sz.entity_id as zone_entity_id,
         COALESCE(inv.quantity, 0) as current_stock,

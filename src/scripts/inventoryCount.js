@@ -304,6 +304,19 @@ function icRenderSummary() {
     + (changed > 0 ? chip('⚠ 재고변동 ' + changed + '건', '#fee2e2', '#dc2626') : '');
 }
 
+
+// 실사 라인의 `unit` 은 **스냅샷된 재고 단위**(base, 예 'm')다. 그대로 uomFormatStock 에 넘기면
+//   관리단위 자리에 base 단위가 들어가 「520M (10.4m)」처럼 괄호가 무의미해진다.
+//   표시용으로 품목의 관리단위(item_unit = items.unit, 예 '롤')를 끼워 넣는다.
+function icUomItem(item) {
+  return {
+    unit: item.item_unit || item.unit || '',
+    base_unit: item.base_unit,
+    pack_size: item.pack_size,
+    stock_mode: item.stock_mode
+  };
+}
+
 function icRenderItems() {
   var container = document.getElementById('panelItems');
   if (!container) return;
@@ -351,7 +364,7 @@ function icRenderItems() {
       : '';
     // 라⑤: 실사 중 입출고 발생 경고
     var changedTag = icItemChanged(item)
-      ? ' <span style="font-size:10px;padding:1px 5px;border-radius:3px;background:#fee2e2;color:#dc2626;" title="실사 중 입출고 발생 — 현재고 ' + escapeHtml(window.uomFormatStock(Number(item.current_quantity) || 0, item)) + ' (스냅샷 ' + escapeHtml(window.uomFormatStock(systemQty, item)) + ')">⚠ 재고변동</span>'
+      ? ' <span style="font-size:10px;padding:1px 5px;border-radius:3px;background:#fee2e2;color:#dc2626;" title="실사 중 입출고 발생 — 현재고 ' + escapeHtml(window.uomFormatStock(Number(item.current_quantity) || 0, icUomItem(item))) + ' (스냅샷 ' + escapeHtml(window.uomFormatStock(systemQty, icUomItem(item))) + ')">⚠ 재고변동</span>'
       : '';
 
     // 0540 두 칸 입력 — [포장 수] × [포장당]. 포장당은 품목 기본값(pack_size)이 채워져 있고,
@@ -376,7 +389,7 @@ function icRenderItems() {
     } else {
       countedCell = notCounted
         ? '<span style="color:#9ca3af;">미실사 (보정 제외)</span>'
-        : '<strong>' + window.uomFormatStock(countedQty, item) + '</strong>'
+        : '<strong>' + window.uomFormatStock(countedQty, icUomItem(item)) + '</strong>'
           + (item.pack_count != null ? ' <span style="font-size:11px;color:#9ca3af;">(' + item.pack_count + ' × ' + (item.per_pack_qty || 1) + ')</span>' : '');
     }
 
@@ -386,7 +399,7 @@ function icRenderItems() {
         + (varClass ? '<span style="font-size:10px;padding:2px 6px;border-radius:3px;background:#fee2e2;color:#dc2626;flex-shrink:0;" class="' + varClass + '">' + diffPct.toFixed(1) + '%</span>' : '')
       + '</div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;color:#666;">'
-        + '<div>시스템: <strong>' + window.uomFormatStock(systemQty, item) + '</strong></div>'
+        + '<div>시스템: <strong>' + window.uomFormatStock(systemQty, icUomItem(item)) + '</strong></div>'
         + '<div>실사: ' + countedCell + '</div>'
       + '</div>'
       + (item.notes ? '<div style="font-size:11px;color:#9ca3af;margin-top:6px;padding-top:6px;border-top:1px solid #f1f5f9;"><strong>메모:</strong> ' + escapeHtml(item.notes) + '</div>' : '')
