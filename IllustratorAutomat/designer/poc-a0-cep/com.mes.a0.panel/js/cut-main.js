@@ -179,6 +179,10 @@
   }
   function hostSupportsButt() { return hostAtLeast(BUTT_MIN_HOST); }
   function hostSupportsBleedPng() { return hostAtLeast(BLEEDPNG_MIN_HOST); }
+  // ★도련 원색을 마스크 굽기와 **같은 문서에서** 내보내는 호스트인가 (2026-08-27).
+  //   못 받으면 옛 경로(도련만 따로 굽기)로 떨어진다 — 결과는 같고 느릴 뿐이다.
+  var BAKE1_MIN_HOST = 'CUT-CEP-0.23.0';
+  function hostSupportsOneBake() { return hostAtLeast(BAKE1_MIN_HOST); }
 
   // ── ★칼선 방식 (2026-08-01) ──────────────────────────────────────
   // 벡터 = 일러가 실루엣을 직접 오프셋한다. 래스터 왕복(굽기→임계→픽셀 계단→곡선 복원)이 없으므로
@@ -1005,6 +1009,7 @@
       // 굽기 경로가 바뀐 사유 — 조용히 느려지거나 조용히 달라지지 않게 결과에 싣는다.
       //   (makeCut 의 fallbackNote 는 **다른 함수의 지역 변수**다. 여기서 건드리면 안 된다)
       var bakeNote = '';
+      var inkList = [];   // 도련 원색 경로(호스트가 같은 문서에서 함께 내보낸 것)
       // ★★ 굽기 픽셀 상한 (2026-08-06 실사용 정지 — '마스크 n/n' 에서 수 분).
       //   위 예산(pickResolution·NEST_MAX_PX)은 **배치 격자** 기준이다. 그런데 실제로 굽는 해상도는
       //   `fineMmpp × bakeK` 라, 파일배율 10·저장배율 1 이면 격자보다 10배 곱다 → 픽셀은 **100배**.
@@ -1044,6 +1049,8 @@
             + '개를 걷어냈습니다(래스터화 아티팩트 — pad 덕에 진짜 아트는 테두리에 닿지 않습니다).') : '',
           offsetMm: offsetMm, cutFinePx: cutFinePx, fillNote: fv.note, lineArt: fv.lineArt, fill: fv.fill,
           bakeNote: bakeNote,
+          // ★도련이 다시 구울 필요가 없게 경로를 넘긴다. 비면 옛 경로가 스스로 굽는다(하위호환).
+          inkList: inkList,
           // ★조용히 바꾸지 않는다 — 속을 메운 조각이 있으면 몇 개인지 말한다.
           holeNote: (filledPieces || boxedPieces)
             ? ((filledPieces ? ('\n※ 조각 ' + filledPieces + '개는 **속을 메워** 외곽 하나로 잘랐습니다(테두리 안쪽 글자에는 칼선을 만들지 않습니다).') : '')
@@ -1118,7 +1125,12 @@
        */
       function bakeAll() {
         out('조각 ' + n + '개 굽는 중...');
-        host('mesCut_nestBakeAll(' + (fineMmpp * bakeK) + ',' + (padMm * bakeK) + ',' + (fv.fill ? 'true' : 'false') + ')', function (rz, badB) {
+        // ★도련 원색을 **같은 호출**로 받는다 — 임시문서·복제 왕복이 한 번으로 준다(실측 굽기 5.7초 절약).
+        //   ⚠️ 선 도안(fillClosed)이면 마스크가 닫힌 패스를 검게 칠하므로 **색이 파괴된다** →
+        //      그때는 도련을 같이 뽑지 않고 옛 경로가 따로 굽게 둔다.
+        var wantInk = hostSupportsOneBake() && !fv.fill;
+        host('mesCut_nestBakeAll(' + (fineMmpp * bakeK) + ',' + (padMm * bakeK) + ',' + (fv.fill ? 'true' : 'false')
+          + ',"nest"' + (wantInk ? ',"ink"' : '') + ')', function (rz, badB) {
           if (badB || rz.indexOf('ok;') !== 0) {
             // ★포기하지 않는다 — 조각당 임시 문서를 쓰는 구 경로가 있다(조각당 4초지만 동작한다).
             //   일괄 굽기는 조각을 한 문서에 모으므로 큰 조각·많은 조각에서 캔버스 한계에 걸릴 수 있다.
@@ -1131,6 +1143,8 @@
           var rows = String(rz).split(/[\r\n]+/), list = [];
           for (var r = 1; r < rows.length; r++) {
             var t = rows[r].split(' ');
+            // Q <idx> ... = 같은 문서에서 뽑은 **도련 원색**(pad 0 · AA OFF · 옛 'ink' 굽기와 같은 프레임)
+            if (t[0] === 'Q') { inkList.push({ id: parseInt(t[1], 10), path: t.slice(6).join(' ') }); continue; }
             if (t[0] !== 'P') continue;
             // P <idx> <w> <h> <ox> <oy> <path…>  — 경로에 공백이 있을 수 있어 뒤를 전부 붙인다
             list.push({ id: parseInt(t[1], 10), path: t.slice(6).join(' ') });
@@ -1218,6 +1232,10 @@
     var mmpp = prep.fineMmpp;
     var growPx = growMm / mmpp;
     var padPx = Math.ceil(growPx);
+    // ★굽기가 이미 도련 원색까지 내보냈으면 **다시 굽지 않는다** (2026-08-27).
+    //   실측: 도련 굽기만 5,728ms(조각 4개) — 임시문서·복제 왕복이 통째로 중복이었다.
+    //   프레임은 호스트가 옛 'ink' 굽기와 **같은 아트보드 산수**로 뽑으므로 결과가 같다.
+    if (prep.inkList && prep.inkList.length) { withList(prep.inkList); return; }
     out('도련용 원색 굽는 중...');
     host('mesCut_nestBakeAll(' + (mmpp * fileToSave()) + ',0,false,"ink")', function (rz, bad) {
       if (bad || String(rz).indexOf('ok;') !== 0) { cb({}, '원색 굽기 실패: ' + rz); return; }
@@ -1229,6 +1247,11 @@
         list.push({ id: parseInt(t[1], 10), path: t.slice(6).join(' ') });
       }
       if (!list.length) { cb({}, '구운 조각이 없습니다.'); return; }
+      withList(list);
+    });
+
+    /** 경로 목록을 받아 도련 PNG 를 만든다 — 재사용·재굽기 **두 경로가 같은 코드**를 쓴다. */
+    function withList(list) {
       // temp 경로는 호스트만 안다 — 굽기 결과 경로에서 폴더를 떼어 쓴다(경로가 브릿지를 안 탄다)
       var dir = String(list[0].path).replace(/[^\/\\]+$/, '');
       var map = {}, skipped = 0, tooBig = 0, coarse = 0, q = 0;
@@ -1271,7 +1294,7 @@
           q++; step();
         });
       })();
-    });
+    }
   }
 
   /** 도련을 **어느 방식으로** 만들었는지 — 품질이 다르므로 조각 수까지 밝힌다. */

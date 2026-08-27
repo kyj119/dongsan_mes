@@ -738,6 +738,37 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // ★조각 크기는 호스트가 이미 아는 값 — 굽기 **전에** 받아야 예산을 세울 수 있다
   ok('3x 굽기 전에 크기를 받는다', /mesCut_nestSizes\(\)'[\s\S]{0,900}?prepareWith\(resolveFill/.test(panelSrc))
 
+  // ── ★굽기 왕복 1회 + 판 문서 정리 (2026-08-27) ────────────────────
+  // 실측(조각 4개·12.0M px, AI 30.7): 마스크 굽기 5,624ms · 도련 굽기 5,728ms · 패널 JS 1,258ms.
+  // 픽셀을 16배 줄여도 40%만 빨라진다 = **고정비(임시문서·복제)가 지배** → 아낄 것은 왕복이다.
+  //   통합 후 8,311ms (11,352 → **27% 절감**).
+  // ⚠️ "마스크 PNG 재사용" 은 기각했다 — pad 가 달라 프레이밍이 1~2px 어긋나 도련이 2.6% 달라졌다.
+  //    대신 **같은 문서에서 같은 아트보드 산수로 한 번 더 내보낸다**.
+  //    실측 동등성: 도련 결과 크기 전부 동일 · 다른 픽셀 최대 0.0043%(전부 잉크 경계 AA).
+  //    (대조군 = 옛 경로를 두 번 돌리면 픽셀 차이 0 → 일러는 결정적이고, 이 차이는 서브픽셀 위치 탓)
+  ok('3t 굽기가 도련 태그를 함께 받는다', /function mesCut_nestBakeAll\(mmPerPx, padMm, fillClosed, tag, bleedTag\)/.test(
+    fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')))
+  {
+    const h = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
+    // ★도련 프레임 = pad 없는 잉크 bbox · AA OFF — 옛 'ink' 굽기와 **같은 조건**이어야 결과가 같다
+    ok('3t 도련은 pad 없는 아트보드', /artboardRect = \[bx\[0\], bx\[1\], bx\[2\], bx\[3\]\]/.test(h))
+    ok('3t 도련은 AA OFF', /bOpts\.antiAliasing = false/.test(h))
+    ok('3t 도련 줄은 Q', /lines\.push\('Q ' \+ i/.test(h))
+    // ★도련만 실패해도 마스크는 나가야 한다 — 패널이 옛 경로로 다시 구우면 된다
+    ok('3t 도련 실패가 마스크를 막지 않는다', /catch \(eB\) \{ \/\* 도련만 실패하면/.test(h))
+    // ★이전 판 문서 정리 — 안 닫으면 조정할 때마다 문서가 쌓인다
+    ok('3t 이전 판 문서를 닫는다', /MESCUT_NEST_DOCS\[oc\]\.close\(SaveOptions\.DONOTSAVECHANGES\)/.test(h))
+    ok('3t 호스트 버전이 0.23.0 이상', /MESCUT_VERSION = 'CUT-CEP-0\.(2[3-9]|[3-9]\d)\./.test(h))
+  }
+  ok('3t 패널이 도련 태그를 요청한다', /wantInk \? ',"ink"' : ''/.test(panelSrc))
+  // ★선 도안이면 마스크가 닫힌 패스를 검게 칠한다 = 색 파괴 → 그때는 같이 뽑으면 안 된다
+  ok('3t 선 도안이면 통합하지 않는다', /hostSupportsOneBake\(\) && !fv\.fill/.test(panelSrc))
+  ok('3t Q 줄을 모은다', /if \(t\[0\] === 'Q'\) \{ inkList\.push/.test(panelSrc))
+  ok('3t 있으면 다시 굽지 않는다', /if \(prep\.inkList && prep\.inkList\.length\) \{ withList\(prep\.inkList\); return; \}/.test(panelSrc))
+  // ★두 경로가 같은 코드를 써야 한쪽만 조용히 달라지지 않는다
+  ok('3t 재사용·재굽기가 같은 코드', /function withList\(list\) \{/.test(panelSrc))
+  ok('3t 구 호스트면 옛 경로로 떨어진다', /var BAKE1_MIN_HOST = 'CUT-CEP-0\.23\.0'/.test(panelSrc))
+
   // ── ★등록이 사실을 보낸다 (2026-08-27) ────────────────────────────
   // 여태 재단 탭 등록 manifest 는 finishing/trim/punch 를 **하드코딩 null·false** 로 보냈다.
   // 특히 trim:false 는 사실과 다르다 — 판에는 돔보가 **항상** 들어간다.

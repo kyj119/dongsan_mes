@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.22.0';  // 0.22.0 = 등록 파일명=실물 규약 + trim/자재·후가공 실제값 · 0.21.0 = 새 문서 mm 단위(DocumentPreset)
+var MESCUT_VERSION = 'CUT-CEP-0.23.0';  // 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -2013,7 +2013,7 @@ function mesCut_nestSizes() {
  *   P <idx> <w>px <h>px <oxMm> <oyMm> <path>
  * 실패한 조각은 그 줄이 빠진다 — 호출자가 idx 로 대조한다.
  */
-function mesCut_nestBakeAll(mmPerPx, padMm, fillClosed, tag) {
+function mesCut_nestBakeAll(mmPerPx, padMm, fillClosed, tag, bleedTag) {
     if (!MESCUT_NEST_ITEMS || !MESCUT_NEST_ITEMS.length) return 'ERROR 대상 없음 (nestBegin 먼저)';
     if (!mmPerPx || mmPerPx <= 0) mmPerPx = 0.5;
     if (!padMm || padMm < 0) padMm = 0;
@@ -2112,6 +2112,24 @@ function mesCut_nestBakeAll(mmPerPx, padMm, fillClosed, tag) {
         opts.transparency = true; opts.artBoardClipping = true;
         var sc = (1 / mmPerPx) * (25.4 / 72) * 100;
         opts.horizontalScale = sc; opts.verticalScale = sc;
+        // ★★도련 원색을 **같은 문서에서** 한 번 더 내보낸다 (2026-08-27).
+        //   여태 도련은 nestBakeAll 을 **통째로 다시** 호출했다 — 임시문서 생성 + 조각 전량 duplicate
+        //   + translate 를 두 번 치른 것이다. 실측(조각 4개·12.0M px, AI 30.7):
+        //     마스크 굽기 5,624ms · 도련 굽기 5,728ms · 패널 JS 전체 1,258ms
+        //   그런데 픽셀을 16배 줄여도(0.25→1.0mm/px) 40% 밖에 안 빨라진다 = **고정비가 지배**한다.
+        //   ⇒ 아낄 것은 픽셀이 아니라 **왕복**이다. 조각은 이미 여기 다 복제돼 있다.
+        //
+        //   ⚠️ "마스크 PNG 를 도련에도 재사용" 은 **기각**했다(2026-08-27 픽셀 대조):
+        //      pad 가 달라 프레이밍이 1~2px 어긋나고 도련 결과가 최대 2.6% 달라졌다.
+        //      그래서 재사용이 아니라 **같은 아트보드 산수로 한 번 더 내보낸다** — 오늘과 같은 값이 나온다.
+        //   ⚠️ 도련은 pad 0 · AA OFF 다(옛 'ink' 굽기와 동일). 여기서 그 조건을 그대로 재현한다.
+        var bOpts = null;
+        if (bleedTag) {
+            bOpts = new ExportOptionsPNG24();
+            bOpts.antiAliasing = false;
+            bOpts.transparency = true; bOpts.artBoardClipping = true;
+            bOpts.horizontalScale = sc; bOpts.verticalScale = sc;
+        }
         var f = function (pt) { return Math.round((pt / PT) * 100) / 100; };
         for (i = 0; i < n; i++) {
             if (!boxes[i] || !srcBB[i]) continue;
@@ -2123,6 +2141,17 @@ function mesCut_nestBakeAll(mmPerPx, padMm, fillClosed, tag) {
             var hPx = Math.round(((bx[1] - bx[3]) + padPt * 2) * sc / 100);
             lines.push('P ' + i + ' ' + wPx + ' ' + hPx
                 + ' ' + f(srcBB[i][0] - padPt) + ' ' + f(srcBB[i][1] + padPt) + ' ' + outPath);
+            if (bOpts) {
+                // 도련 프레임 = **pad 없는 잉크 bbox** (옛 'ink' 굽기와 같은 아트보드)
+                tmp.artboards[0].artboardRect = [bx[0], bx[1], bx[2], bx[3]];
+                var bPath = Folder.temp.fsName.replace(/\\/g, '/') + '/mes_cut_' + bleedTag + '_' + i + '.png';
+                try {
+                    tmp.exportFile(new File(bPath), ExportType.PNG24, bOpts);
+                    lines.push('Q ' + i + ' ' + Math.round((bx[2] - bx[0]) * sc / 100)
+                        + ' ' + Math.round((bx[1] - bx[3]) * sc / 100)
+                        + ' ' + f(srcBB[i][0]) + ' ' + f(srcBB[i][1]) + ' ' + bPath);
+                } catch (eB) { /* 도련만 실패하면 패널이 옛 경로로 다시 굽는다 */ }
+            }
         }
         tmp.close(SaveOptions.DONOTSAVECHANGES); tmp = null;
         app.activeDocument = srcDoc;
@@ -2416,6 +2445,17 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
     // ★도련 PNG 를 하나라도 받았는가 = **새 패널인가**. 구 패널이면 옛 경로를 그대로 태운다(아래 참조).
     var hasBleedPng = false;
     for (var bk in bleedSz) { if (bleedSz.hasOwnProperty(bk)) { hasBleedPng = true; break; } }
+    // ★★이전 판 문서를 닫는다 (2026-08-27).
+    //   여태 목록만 비우고 **문서는 열어 뒀다** — 간격을 다섯 번 조정하면 판 문서가 다섯 개 쌓인다.
+    //   판짜기는 한 번에 안 끝나는 작업이라(조정이 본질) 그만큼 어수선해지고,
+    //   어느 것이 최신인지 사람이 헷갈린다.
+    //   ⚠️ 저장한 적 없는 **우리가 만든 판**만 닫는다. 사용자가 손댔으면(saved=false 여도) 저장 여부를
+    //      물으면 안 되므로 DONOTSAVECHANGES 로 조용히 닫는다 — 원본은 애초에 이 목록에 없다.
+    try {
+        for (var oc = 0; oc < MESCUT_NEST_DOCS.length; oc++) {
+            try { MESCUT_NEST_DOCS[oc].close(SaveOptions.DONOTSAVECHANGES); } catch (eOc) {}
+        }
+    } catch (eOl) {}
     MESCUT_NEST_DOCS = [];
     MESCUT_LAST_SHEET_W = 0; MESCUT_LAST_SHEET_H = 0;
     // ★대화상자 억제(0.8.1) — 조각 하나에서 메뉴 명령이 모달을 띄우면 **남은 조각 전부**가 멈춘다.
