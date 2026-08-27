@@ -3,13 +3,16 @@
   "heartbeat_interval_seconds": 60,
   "watchers": [
     {
-      "_comment": "평판 4x8 — TNSRip-X(당일 로그 갱신 확인). 키트 진단 2026-08-11.",
+      "_comment": "평판 4x8 — tns → tns_flora 2축 전환 (2026-08-26 [1] 취소 3라운드 실측). Print.log=신원(전송)·Flora print_rec.dat=결과(실인쇄·중단). R2 전송중 취소=Print.log 'Cancel!'로 잡히지만, R3 전송후 프린터 취소는 Print.log 에 무흔적이라 OK 로 남았다(유령 OK). print_rec 전량 20,137건 중 중단 2,501=12.4%(최근 20영업일 약 20%)인데 Print.log 가 본 취소는 0.3%뿐. 레코드=2,376B 고정, 0x0933 중단플래그·0x0910/0x0920 SYSTEMTIME. 조인=.prt 꼬리(NNNN_M) 뗀 basename. ★활성 Flora 는 D:\\220304\\... 쪽이다 — 이름이 비슷한 구 설치본(D:\\Flora_XTRA2512UV_KM1024I 등)이 미끼. 위치파일(FLAT-4X8-01.pos) 보존 = 재적재 없음.",
       "equipment_id": "FLAT-4X8-01",
       "name": "평판 4x8",
       "enabled": true,
-      "parser_type": "tns",
+      "parser_type": "tns_flora",
       "config": {
-        "log_path": "C:\\TNSRip-X\\Print.log"
+        "log_path": "C:\\TNSRip-X\\Print.log",
+        "print_rec_path": "D:\\220304\\Flora_XTRA2512UV_KM1024I_N\\REC\\print_rec.dat",
+        "record_size": 2376,
+        "rip_fallback_hours": 6
       }
     }
   ]

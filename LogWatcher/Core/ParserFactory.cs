@@ -20,6 +20,8 @@ namespace LogWatcher.Core
                 "flexi_printexp" => new FlexiPrintExpParser(config, positionsDir),
                 // TNS 계열: 립(TopazRip) + 실인쇄(PrintExp)가 같은 PC → FIFO+시간창 조인으로 이벤트 1건만 보낸다
                 "tns_printexp" => new TnsPrintExpParser(config, positionsDir),
+                // 평판: 립(TopazRip) + 실인쇄(Flora print_rec.dat) — 전송 후 취소를 잡으려면 둘 다 봐야 한다
+                "tns_flora" => new TnsFloraParser(config, positionsDir),
                 "text_log" => new TextLogParser(config, positionsDir),
                 "neostampa" => new NeoStampaParser(config, positionsDir),
                 // 전사 8색: 리핑(neoStampa) + 출력(PrintExp)이 같은 PC → 합쳐서 이벤트 1건만 보낸다
