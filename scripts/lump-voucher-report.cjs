@@ -26,6 +26,10 @@ const OEM_ITEMS = ['JG-IMGA-OEM', 'JG-OEM', 'SGM-GALVA-OEM', 'ACC-041-GA-PL', 'A
 const EXCLUDE = `i.item_code NOT LIKE 'GDS-EQ-%' AND i.item_code NOT IN (${OEM_ITEMS.map((c) => `'${c}'`).join(',')})`
 // 「수량이 실수량이 아니다」의 서명 — 수량 1 이면서 단가가 곧 금액이다. 10만원 미만은 잡음이라 뺀다.
 const LUMP = `p.quantity = 1 AND p.unit_price > 0 AND ABS(p.unit_price - p.amount) < 1 AND p.amount >= 100000`
+// ★구조적 이월 = **전표가 아니라 잔액**이다. 품목이 없는 게 정상이라 청구서로 풀 대상이 아니다.
+//   (`*-OPEN` 기초채무 · `ICM-AP-*` 관계사 매입채무 — 27행 11.4억이 여기 든다)
+const STRUCTURAL = `(po.po_number LIKE '%OPEN%' OR po.po_number LIKE 'ICM-AP-%'
+  OR p.item_name LIKE '%이월%' OR p.item_name LIKE '%관계사 매입채무%')`
 
 const won = (n) => Number(n || 0).toLocaleString()
 
@@ -70,7 +74,44 @@ for (const [code, ls] of byItem) {
   if ((repeats >= 2 && repeats / ls.length >= 0.4) || (qmax > 0 && hi <= qmax * 3)) NORMAL.add(code)
 }
 const lines = raw.filter((l) => !NORMAL.has(l.item_code))
-return { lines, raw, dropped: raw.length - lines.length }
+
+// ── ★미연결 라인 (2026-08-27) ─────────────────────────────────────────────
+// 위 쿼리는 `JOIN items` 라 **`item_id IS NULL` 인 라인이 조용히 사라진다**
+// ([[feedback-material-cost-stock-vs-purchase]] §JOIN items 면 그 답은 이미 틀렸다).
+// 실측하니 잘린 게 219행 13.7억이었다 — 연결분(4.47억)의 **3배**다.
+// 대부분은 구조적 이월이라 제외가 맞지만, **말없이 자르면 「이게 전부」로 읽힌다.**
+// 그래서 세어서 돌려주고 호출부가 반드시 출력한다.
+// ⚠️미연결 라인은 품목이 없어 `avg_unit_cost` 를 채울 수 없다 — 청구서보다 **품목 연결이 먼저**다.
+const rawUn = d1(`SELECT COALESCE(c.client_name,'(미지정)') supplier,
+    p.item_name, po.entity_id, po.po_number, po.order_date, CAST(p.amount AS INT) amt,
+    CASE WHEN ${STRUCTURAL} THEN 1 ELSE 0 END structural
+  FROM purchase_order_items p
+    JOIN purchase_orders po ON po.id = p.po_id
+    LEFT JOIN clients c ON c.id = po.supplier_id
+  WHERE p.item_id IS NULL AND ${LUMP}
+  ORDER BY p.amount DESC`)
+const structural = rawUn.filter((l) => l.structural)
+const unRaw = rawUn.filter((l) => !l.structural)
+// 연결분과 같은 「반복 금액 = 실단가」 규칙. 품목코드가 없으니 **공급처+품명**으로 묶는다.
+const unNormal = new Set()
+const byName = new Map()
+for (const l of unRaw) {
+  const k = l.supplier + '|' + l.item_name
+  if (!byName.has(k)) byName.set(k, [])
+  byName.get(k).push(l)
+}
+for (const [k, ls] of byName) {
+  const freq = new Map()
+  for (const l of ls) freq.set(l.amt, (freq.get(l.amt) || 0) + 1)
+  const repeats = Math.max(...freq.values())
+  if (repeats >= 2 && repeats / ls.length >= 0.4) unNormal.add(k)
+}
+const unlinked = unRaw.filter((l) => !unNormal.has(l.supplier + '|' + l.item_name))
+
+return {
+  lines, raw, dropped: raw.length - lines.length,
+  unlinked, unlinkedDropped: unRaw.length - unlinked.length, structural,
+}
 }
 
 module.exports = { collectLumpLines }
@@ -100,7 +141,7 @@ function d1(sql) {
   }
 }
 
-const { lines, raw, dropped } = collectLumpLines(d1)
+const { lines, raw, dropped, unlinked, unlinkedDropped, structural } = collectLumpLines(d1)
 
 // ── 그 계열에서 매입 라인이 0 건인 판매품목 ──────────────────────────────
 // 뭉친 전표의 **진짜 피해자**다. 대금이 뭉침 품목에 다 붙어 있어 이쪽은 원가가 서지 않는다.
@@ -138,6 +179,28 @@ console.log(`   ※ 후보 ${raw.length}행 중 ${dropped}행은 **반복 단가
 console.log('   공급처                     행   품목        금액        기간')
 for (const [sup, s] of [...bySup].sort((a, b) => b[1].amt - a[1].amt)) {
   console.log(`   ${sup.padEnd(24)} ${String(s.n).padStart(4)} ${String(s.items.size).padStart(5)}  ${won(s.amt).padStart(12)}  ${s.from}~${s.to}`)
+}
+
+// ── ★미연결 라인 — 위 표에 **없던** 것들 ─────────────────────────────────
+// 종전 보고서는 `JOIN items` 라 이 219행 13.7억을 말없이 잘랐다. 대부분 제외가 맞지만
+// 말없이 자르면 위 숫자가 「전부」로 읽힌다 — 그래서 잘린 것도 세어서 보여 준다.
+{
+  const sAmt = structural.reduce((a, l) => a + l.amt, 0)
+  const uAmt = unlinked.reduce((a, l) => a + l.amt, 0)
+  console.log(`\n■ 품목 미연결 뭉침 라인 — ${unlinked.length}행 · ${won(uAmt)}원  (위 표에 안 잡힌다)`)
+  console.log(`   ⚠️품목이 없어 청구서를 받아도 **원가로 못 간다** — 이쪽은 청구서보다 **품목 연결이 먼저**다.`)
+  console.log(`   ※ 별도 제외: 구조적 이월 ${structural.length}행 ${won(sAmt)}원(기초채무·관계사 매입채무 = 전표가 아니라 잔액)`)
+  console.log(`   ※ 반복 단가 정상 ${unlinkedDropped}행도 제외.\n`)
+  const un = new Map()
+  for (const l of unlinked) {
+    if (!un.has(l.supplier)) un.set(l.supplier, { n: 0, amt: 0 })
+    const s = un.get(l.supplier); s.n++; s.amt += l.amt
+  }
+  console.log('   공급처                     행        금액')
+  for (const [sup, s] of [...un].sort((a, b) => b[1].amt - a[1].amt).slice(0, 12)) {
+    console.log(`   ${sup.padEnd(24)} ${String(s.n).padStart(4)}  ${won(s.amt).padStart(12)}`)
+  }
+  if (un.size > 12) console.log(`   … 외 ${un.size - 12}곳`)
 }
 
 if (orphans.length) {

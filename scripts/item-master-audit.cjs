@@ -135,7 +135,9 @@ for (const m of mixed) add(m.item_code, 'C1 단위 혼재',
 // ★판정은 `lump-voucher-report.cjs` 한 곳에만 둔다 — 여기에 사본을 두면 감사와 보고서의
 //   숫자가 갈린다. 공급처별 추적표·CSV 는 `npm run report:lump`.
 const { collectLumpLines } = require('./lump-voucher-report.cjs')
-const { lines: lumpLines, dropped: lumpDropped } = collectLumpLines(d1)
+// ⚠️`lines` 는 **품목에 연결된** 라인뿐이다 — `unlinked` 를 같이 받아 반드시 출력한다.
+//   말없이 자르면 C2 합계가 「뭉침의 전부」로 읽힌다(2026-08-27 실제로 3배 과소였다).
+const { lines: lumpLines, dropped: lumpDropped, unlinked: lumpUnlinked } = collectLumpLines(d1)
 const lumpByItem = new Map()
 for (const l of lumpLines) {
   if (!lumpByItem.has(l.item_code)) lumpByItem.set(l.item_code, { n: 0, amt: 0, sup: new Set() })
@@ -404,6 +406,11 @@ if (!METRICS_ONLY) {
   if (lumpByItem.size) {
     console.log(`\n·   [참고]  C2 합계 — ${lumpLines.length}행 ${Number(lumpTotal).toLocaleString()}원 (후보 중 ${lumpDropped}행은 반복 단가·스케일 정상이라 제외)`)
     console.log('            공급처별 추적표·CSV = `npm run report:lump`. 청구서 실명세가 있어야 쪼갤 수 있다.')
+  }
+  if (lumpUnlinked.length) {
+    const ua = lumpUnlinked.reduce((a, l) => a + l.amt, 0)
+    console.log(`·   [참고]  ★품목 미연결 뭉침 ${lumpUnlinked.length}행 ${Number(ua).toLocaleString()}원 — 위 C2 에 **안 들어간다**(품목이 없어 품목별로 못 센다)`)
+    console.log('            품목이 없으면 청구서를 받아도 원가로 못 간다 → 이쪽은 **품목 연결이 먼저**. 명단 = `npm run report:lump`')
   }
   // F2·F3 는 개별 지목이 아니라 총량으로 본다 — 지금은 잘못이 아닐 수 있고(미취급·단일단위), 늘어나는 게 신호다.
   console.log(`\n·   [참고]  F2 환산계수 없는 이중단위 ${f2}건 · F3 단위 없는 환산계수 ${f3}건`)
