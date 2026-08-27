@@ -23,8 +23,9 @@
  *
  *   F4 무효한 ROLL        개수 단위인데 `deduction_method=ROLL` — 라벨이 `yd` 로 나온다 (게이트)
  *   F5 기준단가 축 오류    `base_price` 가 관리단위(롤)가 아니라 재고단위(M) 당 값이다 (게이트)
+ *   F6 판재 규격 없음      `BOARD` 인데 `sheet_spec` 이 비어 4x8 로 조용히 폴백한다 (게이트)
  *
- * ★ 등급을 나눈다 — **C1·D·F1·F4·F5·G1·H4a 만 게이트(exit 1)**, A·B·C2·F2·F3 는 참고(exit 0).
+ * ★ 등급을 나눈다 — **C1·D·F1·F4·F5·F6·G1·H4a 만 게이트(exit 1)**, A·B·C2·F2·F3 는 참고(exit 0).
  *   A·B 를 게이트로 두면 매번 빨개져 감사 자체가 무뎌진다(기존 audit 들이 같은 이유로 강/약을 나눴다).
  *   실제로 A 는 `BUJIK-*` 의 `50m` 처럼 **남겨야 하는 롤 사양**까지 잡는다 — 「그 계열 전원이 공유한다」는
  *   기계적 사실일 뿐, 빼도 되는지는 사람이 안다(트러스바의 7m 는 빼도 되고 원단의 50m 는 아니다).
@@ -168,7 +169,7 @@ for (const it of items) {
 //   재고 수량이 base 로 저장되면 **단가도 base 기준**이어야 평가액이 맞는다(수량×pack ÷ 단가×pack = 불변).
 const unitRows = d1(`SELECT i.item_code, i.item_name,
     COALESCE(i.base_unit,'') bu, COALESCE(i.unit,'') un, COALESCE(i.pack_size,0) ps,
-    COALESCE(i.deduction_method,'') dm, i.width_mm wmm,
+    COALESCE(i.deduction_method,'') dm, i.width_mm wmm, COALESCE(i.sheet_spec,'') ss,
     CAST(COALESCE(i.avg_unit_cost,0) AS INT) auc,
     CAST(COALESCE(i.base_price,0) AS INT) bp,
     (SELECT COUNT(*) FROM purchase_order_items p JOIN purchase_orders po ON po.id = p.po_id
@@ -249,6 +250,22 @@ for (const r of unitRows) {
       + ` — 매입원가 ${Number(r.auc).toLocaleString()}/${r.bu} × ${r.ps} = ${Math.round(expect).toLocaleString()} 축이어야 한다`
       + ` (주문서가 이 값을 ${r.un} 단가로 프리필한다)`)
   }
+}
+
+// F6 (게이트) — `BOARD` 인데 `sheet_spec` 이 비었다.
+//   ★소리 없이 틀린다 — `BOARD_AREA_SQM[sheet_spec] || '4x8'`(`autoDeductInventory.ts:164` ·
+//     `materialRequirement.ts:144`)이라 비면 **전부 4x8 로 폴백**한다. 3x6(1.674㎡) 판재를
+//     4x8(2.977㎡)로 계산하면 면적이 **1.78배**라 소요량·차감량이 그만큼 어긋나는데,
+//     오류도 경고도 안 난다. 값이 있고 없고가 결과를 바꾸는데 **없어도 통과**하는 게 위험하다.
+//   2026-08-27: `unit='장'` 66품목 중 40건이 `sheet_spec` 없이 있었다(전부 `specification` 에
+//     `3x6`·`4x8` 이 이미 적혀 있어 거기서 채웠다 — 코드 접미 `-36`/`-48` 는 교차검증용).
+const BOARD_SPECS = ['3x6', '4x8']
+for (const r of unitRows) {
+  if (String(r.dm).toUpperCase() !== 'BOARD') continue
+  if (BOARD_SPECS.includes(String(r.ss))) continue
+  add(r.item_code, 'F6 판재 규격 없음',
+    `deduction_method=BOARD 인데 sheet_spec 이 ${r.ss ? `「${r.ss}」(미지원 값)` : '비어 있다'}`
+    + ` — 4x8 로 조용히 폴백해 3x6 판재면 면적이 1.78배가 된다`)
 }
 
 // ── G. 계열(item_group)·검색어 정합성 ────────────────────────────────────
@@ -363,7 +380,7 @@ const h3 = [...byName].filter(([, t]) => t.has('PRODUCT') && t.has('MATERIAL'))
 // ★H1·H2 를 게이트로 두지 않는 이유는 H4a 주석 참조 — 「아직 안 팔린 제품」과 구분이 안 된다.
 // ★C2(수량 없는 매입)도 게이트가 아니다 — 용역·1식 매입은 정상이고, 뭉친 전표는 공급처
 //   청구서 없이는 못 푼다. 고칠 수 없는 항목을 게이트에 두면 감사 전체가 무뎌진다(C 분리 주석 참조).
-const GATE_KIND = /^(C1|D|F1|F4|F5|G1|H4a) /
+const GATE_KIND = /^(C1|D|F1|F4|F5|F6|G1|H4a) /
 if (!METRICS_ONLY) {
   if (violations.length) {
     const byKind = new Map()
@@ -379,7 +396,7 @@ if (!METRICS_ONLY) {
       if (list.length > n) console.log(`   … 외 ${list.length - n}건`)
     }
     if (![...byKind.keys()].some((k) => GATE_KIND.test(k))) {
-      console.log('\n[item-audit] ✅ 게이트 항목(C1·D·F1·F4·F5·G1·H4a) 위반 없음 — 위는 판단이 필요한 참고 정보다')
+      console.log('\n[item-audit] ✅ 게이트 항목(C1·D·F1·F4·F5·F6·G1·H4a) 위반 없음 — 위는 판단이 필요한 참고 정보다')
     }
   } else {
     console.log('[item-audit] ✅ 규약 위반 없음 (A~F 전부)')
