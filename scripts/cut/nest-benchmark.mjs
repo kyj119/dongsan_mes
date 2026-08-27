@@ -12,9 +12,27 @@
  *   (원격 의존을 만들면 하네스가 네트워크 때문에 깨진다).
  *   형식: {name, strip_height, items:[{id, demand, allowed_orientations, shape:{data:[[x,y],..]}}]}
  *
- * ⚠️ 우리 엔진은 **래스터**라 해상도가 곧 정밀도다. 활용률은 scale 을 올리면 좋아지고 느려진다 —
- *    표에 scale 을 함께 적는 이유다. 문헌 수치(연속 기하 + 수 분~수십 분 탐색)와 직접 비교하지 말고
- *    **격차와 추세**를 볼 것.
+ * ⚠️ 우리 엔진은 **래스터**라 해상도가 곧 정밀도다. 문헌 수치(연속 기하 + 수 분~수십 분 탐색)와
+ *    직접 비교하지 말고 **격차와 추세**를 볼 것.
+ *
+ * ★★2026-08-27 실측 결론 — **격차는 해상도도 탐색폭도 아니고 배치 규칙이 천장이다.**
+ *
+ *      scale  8 / step 1  → 평균 격차 16.4%p
+ *      scale 16 / step 1  → 16.4%p      (픽셀 4배 · 시간 최대 10배)
+ *      scale 24 / step 1  → 16.3%p      (픽셀 9배 · 시간 최대 50배)
+ *      tries  8 / 32 / 128 → 16.2 / 16.2 / 16.1%p
+ *
+ *   즉 **더 곱게 굽거나 더 많이 시도해도 안 좁혀진다.** bottom-left 는 순서를 아무리 바꿔도
+ *   이미 놓인 조각을 **움직이지 못하기** 때문이다. 문헌 상위는 NFP(연속 좌표) + 놓인 조각을
+ *   흔드는 국소탐색(sparrow 는 겹침 최소화 SA)을 쓴다 — **다른 패러다임**이지 튜닝이 아니다.
+ *   ⇒ 여기를 좁히려면 엔진을 바꿔야 한다. 그 전에 **그럴 값이 있는지** 먼저 따질 것:
+ *      · 실사용 배치 탐색은 **37ms**(조각 4개 실측) — 우리 병목은 굽기(8.3초)다
+ *      · weldPiece(2026-08-27) 이후 우리 조각은 대체로 사각 → 이형 경로를 덜 탄다
+ *      · 사각 경로(butt.js packRects)는 이미 다중 휴리스틱 MaxRects 다(선반은 2026-08-07 폐기)
+ *
+ * ⚠️ 경로 함정 — 이 하네스는 패널의 `nesting.js` 를 직접 로드한다. 2026-08-04 패널 병합으로
+ *    `cut-panel/com.mes.cut.panel` → `poc-a0-cep/com.mes.a0.panel` 로 옮겨졌는데 여기가 안 따라가
+ *    **3주 넘게 조용히 깨져 있었다**(2026-08-27 발견·수정). 패널을 옮기면 여기도 같이 옮길 것.
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -24,7 +42,7 @@ import G from './geometry.mjs'
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO = path.resolve(HERE, '..', '..')
 const DATA = path.join(HERE, 'data')
-await import(pathToFileURL(path.join(REPO, 'IllustratorAutomat', 'designer', 'cut-panel', 'com.mes.cut.panel', 'js', 'nesting.js')).href)
+await import(pathToFileURL(path.join(REPO, 'IllustratorAutomat', 'designer', 'poc-a0-cep', 'com.mes.a0.panel', 'js', 'nesting.js')).href)
 const N = globalThis.MesCutNest
 
 // 문헌 best-known 활용률(%) — arxiv 2509.13329 (sparrow) Table 3
@@ -42,6 +60,7 @@ const opt = (k, d) => {
 }
 const SCALE = opt('scale', 8)    // 단위당 픽셀
 const STEP = opt("step", 0)      // 0 = 엔진 자동(조각 수에 맞춰 선택)
+const TRIES = Number(opt('tries', 0)) || 0
 const only = args.filter((a) => !a.startsWith('--'))
 
 const files = fs.existsSync(DATA)
@@ -92,6 +111,8 @@ for (const name of targets) {
 
   const common = { sheetW: SW, sheetH: 0, rollMaxH: Math.round(stripH * SCALE * 8), rotations, maxSheets: 1 }
   if (STEP) common.step = STEP
+  // ★탐색 폭 — 격차가 해상도 탓인지 **탐색 폭** 탓인지 가르는 손잡이(2026-08-27)
+  if (TRIES) common.tries = TRIES
 
   const t0 = process.hrtime.bigint()
   const res = N.nest(pieces, common)
