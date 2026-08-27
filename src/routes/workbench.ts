@@ -958,6 +958,62 @@ workbenchRouter.post('/intakes/:id/absorb', async (c) => {
       // 학습 실패가 흡수를 되돌리면 안 된다 — 다음 흡수 때 다시 시도된다.
     }
 
+    // ── ★출력완료 매칭 학습 (2026-08-27) ────────────────────────────────
+    // LogWatcher 는 RIP 에 들어간 **파일명**만 본다. 그런데 디자이너는 주문이 생기기 **전에**
+    // 파일을 만든다(가공 → 주문서 순서) — 그래서 파일명에 주문번호를 미리 심을 수가 없다.
+    //   실측(2026-08-26): 8월 print_events 5,554건 중 card_id 매칭 **0건**,
+    //   작업파일 962건 중 주문 코드를 가진 것 **0건**. 매칭이 통째로 죽어 있었다.
+    //   printEvents.ts:1107 주석이 이미 알고 있었다 — "파일명 규칙을 강제하는 대신 … 학습".
+    //   그 학습 경로(POST /print-events/link)는 15행에서 멈춰 있다(사람이 눌러야 해서).
+    //
+    // ★키는 앞에서 심는 게 아니라 **뒤에서 붙인다.** 흡수 시점에는 「파일」과 「사람이 고른
+    //   주문 라인」이 둘 다 있다 — 바로 위 거래처 별칭 학습과 **같은 논리·같은 자리**다.
+    //   이후 resolveCard 2차(file_name 일치)가 이벤트를 해소한다.
+    // ⚠️ 카드가 아직 0건이라 card_id 는 null 로 둔다 — print_file_map 은 이미 NULL 을 허용하고
+    //    (orders/core.ts 가 카드 삭제 시 SET NULL 한다) resolveCard 는 order_number·order_item_id
+    //    만으로도 이벤트를 주문에 붙일 수 있다.
+    // ⚠️ 파일명은 패널이 실물 규약으로 지은 등록 EPS 이름이다(CUT-CEP-0.22.0+).
+    //    구 이름(거래처-WxH-NEA-nest.eps)이면 RIP 에 그 이름으로 들어갈 일이 없어 매칭도 안 되지만,
+    //    학습해 둬서 손해는 없다(중복은 UNIQUE 로 흡수된다).
+    try {
+      const linkRow = await c.env.DB.prepare(
+        `SELECT di.eps_path AS epsPath, di.entity_id AS entityId, o.order_number AS orderNumber,
+                oi.id AS orderItemId
+           FROM designer_intakes di
+           JOIN order_items oi ON oi.id = di.order_item_id
+           JOIN orders o ON o.id = oi.order_id
+          WHERE di.id = ?`
+      ).bind(id).first<{ epsPath: string | null; entityId: number; orderNumber: string | null; orderItemId: number }>()
+      const fileName = String(linkRow?.epsPath || '').replace(/^.*[\\/]/, '').trim()
+      if (linkRow?.orderNumber && fileName) {
+        const seen = await c.env.DB.prepare(
+          'SELECT file_seq FROM print_file_map WHERE order_number = ? AND file_name = ?'
+        ).bind(linkRow.orderNumber, fileName).first<{ file_seq: number }>()
+        let fileSeq = seen?.file_seq
+        if (!fileSeq) {
+          const mx = await c.env.DB.prepare(
+            'SELECT COALESCE(MAX(file_seq), 0) AS m FROM print_file_map WHERE order_number = ?'
+          ).bind(linkRow.orderNumber).first<{ m: number }>()
+          fileSeq = (mx?.m || 0) + 1
+        }
+        await c.env.DB.prepare(`
+          INSERT INTO print_file_map (order_number, file_seq, card_id, card_number, order_item_id, file_name, entity_id)
+          VALUES (?, ?, NULL, NULL, ?, ?, ?)
+          ON CONFLICT(order_number, file_seq) DO UPDATE SET
+            order_item_id = excluded.order_item_id, file_name = excluded.file_name, entity_id = excluded.entity_id
+        `).bind(linkRow.orderNumber, fileSeq, linkRow.orderItemId, fileName, linkRow.entityId).run()
+
+        // 소급 — 이 이름으로 이미 들어온 미매칭 이벤트에 주문을 붙인다(확장자 유무 양쪽).
+        const noExt = fileName.replace(/\.[^.]+$/, '')
+        await c.env.DB.prepare(`
+          UPDATE print_events SET order_number = ?
+           WHERE order_number IS NULL AND (file_name = ? OR file_name = ?)
+        `).bind(linkRow.orderNumber, fileName, noExt).run()
+      }
+    } catch (_mapErr) {
+      // 매칭 학습 실패가 흡수를 되돌리면 안 된다 — 위 별칭 학습과 같은 원칙.
+    }
+
     return c.json({ success: true, data: { id, status: 'absorbed', order_item_id: orderItemId } })
   } catch (error) {
     console.error('Workbench intake absorb error:', error)

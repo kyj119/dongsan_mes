@@ -2201,6 +2201,15 @@
       //   host 는 예전부터 R.KEYWORD 를 읽고 있었다(mes-cut-host.jsx manifest keyword) — 보내는 쪽만 없었다.
       var keyword = (document.getElementById('regItem') || {}).value || '';
       keyword = String(keyword).replace(/^\s+|\s+$/g, '');
+      // ★★등록 이름 = **작업 폴더에 나갈 이름 그대로** (2026-08-27).
+      //   여태 등록 EPS 는 `거래처-WxH-NEA-nest.eps` 였고, 실제 작업 파일은
+      //   `(자재+후가공)품목(WxH-N장)` 이라 **두 갈래**였다. 그래서 RIP 가 보는 이름을
+      //   시스템이 전혀 몰랐고, 출력완료 매칭이 **0%** 였다
+      //   (실측 2026-08-26: 8월 print_events 5,554건 중 카드 매칭 0 · 작업파일 962건에 주문코드 0).
+      //   패널은 그 이름을 이미 계산해 화면에 띄우고 있었다(pairBaseName) — 보내지 않았을 뿐이다.
+      //   ⇒ 등록 파일명을 실물 규약으로 통일하면 나중에 **흡수 시점에** 그 이름을 배울 수 있다.
+      //   (파싱하는 곳이 없음을 확인하고 바꿨다 — 'EA-nest' 를 읽는 코드는 호스트 자신뿐이었다)
+      var nSheetsR = (lastNest && lastNest.sheets > 1) ? lastNest.sheets : 1;
       var lines = [
         'CLIENT ' + name,
         'CLIENTID ' + (clientIdOf(name) == null ? '' : clientIdOf(name)),
@@ -2208,7 +2217,14 @@
         'WORKER ' + workerName,
         'WORKERID ' + workerId,
         'KEYWORD ' + keyword,
+        // ★자재·후가공 — 화면에 이미 받아 두고 manifest 에는 안 보내던 값
+        'MATERIAL ' + String((document.getElementById('regMaterial') || {}).value || '').replace(/^\s+|\s+$/g, ''),
+        'FINISH ' + String((document.getElementById('regFinish') || {}).value || '').replace(/^\s+|\s+$/g, ''),
+        // ★돔보 — 판에는 **항상** 들어간다(index.html "돔보·시트 재단선은 항상 포함").
+        //   호스트는 여태 manifest 에 `trim:false` 를 **하드코딩**해 사실과 다른 값을 보냈다.
+        'TRIM 1',
       ];
+      for (var pn = 0; pn < nSheetsR; pn++) lines.push('NAME ' + pairBaseName(nSheetsR > 1 ? pn : null));
       host('mesCut_regPath()', function (rp) {
         var w = window.cep.fs.writeFile(rp, lines.join('\n'), window.cep.encoding.UTF8);
         if (!w || w.err !== 0) { fin('등록정보 쓰기 실패: ' + rp, 'err'); return; }
@@ -2217,6 +2233,7 @@
           var n = kv(res.substring(3)).folders;
           fin('주문서 대기함으로 보냈습니다 — ' + n + '건\n'
             + '거래처 ' + name + ' · 수량 ' + Math.max(1, Math.round(qty))
+            + '\n파일명 ' + pairBaseName(nSheetsR > 1 ? 0 : null) + (nSheetsR > 1 ? (' 외 ' + (nSheetsR - 1) + '판') : '')
             + '\n에이전트가 자동으로 올립니다. 주문서에서 불러 쓰세요.', 'ok');
         });
       });

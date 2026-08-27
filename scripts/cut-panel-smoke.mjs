@@ -738,6 +738,37 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // ★조각 크기는 호스트가 이미 아는 값 — 굽기 **전에** 받아야 예산을 세울 수 있다
   ok('3x 굽기 전에 크기를 받는다', /mesCut_nestSizes\(\)'[\s\S]{0,900}?prepareWith\(resolveFill/.test(panelSrc))
 
+  // ── ★등록이 사실을 보낸다 (2026-08-27) ────────────────────────────
+  // 여태 재단 탭 등록 manifest 는 finishing/trim/punch 를 **하드코딩 null·false** 로 보냈다.
+  // 특히 trim:false 는 사실과 다르다 — 판에는 돔보가 **항상** 들어간다.
+  // 그리고 등록 EPS 이름(거래처-WxH-NEA-nest.eps)이 실제 작업 파일명과 달라서
+  // RIP 가 보는 이름을 시스템이 몰랐다 → 출력완료 매칭 0%(8월 5,554건 중 0).
+  ok('3u 등록에 실물 파일명을 싣는다', /lines\.push\('NAME ' \+ pairBaseName\(nSheetsR/.test(panelSrc))
+  ok('3u 등록에 돔보 사실을 싣는다', /'TRIM 1',/.test(panelSrc))
+  ok('3u 등록에 자재·후가공을 싣는다', /'MATERIAL ' \+/.test(panelSrc) && /'FINISH ' \+/.test(panelSrc))
+  ok('3u 등록 결과에 파일명을 보여준다', /파일명 ' \+ pairBaseName/.test(panelSrc))
+  {
+    const h = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
+    // ★NAME 은 판 수만큼 온다 — 단일 맵에 넣으면 마지막 판만 남는다
+    ok('3u 호스트가 NAME 을 여러 줄 모은다', /o = \{ NAMES: \[\] \}/.test(h) && /if \(k === 'NAME'\)/.test(h))
+    ok('3u 등록 EPS 이름 = 실물 규약', /var ripName = \(R\.NAMES && R\.NAMES\.length\)/.test(h))
+    // ★구 셸이면 옛 이름으로 떨어진다 — 하위호환을 지운 채 배포하면 등록이 죽는다
+    ok('3u 이름이 없으면 옛 규약 폴백', /EA-nest\.eps'\)/.test(h))
+    ok('3u trim 을 하드코딩하지 않는다', !/"trim":false,"punch":null/.test(h))
+    ok('3u trim 을 실제값으로 보낸다', /R\.TRIM === '1'/.test(h))
+    ok('3u post_desc 에 자재\+후가공', /R\.MATERIAL \|\| R\.FINISH/.test(h))
+    ok('3u 호스트 버전이 0.22.0 이상', /MESCUT_VERSION = 'CUT-CEP-0\.(2[2-9]|[3-9]\d)\./.test(h))
+  }
+  {
+    // ★MES 쪽 절반 — 흡수 시점에 파일명↔주문을 배운다(키를 앞이 아니라 뒤에서 붙인다)
+    const wb = fs.readFileSync(path.join(REPO, 'src', 'routes', 'workbench.ts'), 'utf8')
+    ok('3u 흡수 시 print_file_map 을 배운다', /INSERT INTO print_file_map/.test(wb))
+    ok('3u 카드 없이도 배운다(카드 0건 상태)', /VALUES \(\?, \?, NULL, NULL, \?, \?, \?\)/.test(wb))
+    ok('3u 과거 이벤트를 소급한다', /UPDATE print_events SET order_number = \?/.test(wb))
+    // ★학습 실패가 흡수를 되돌리면 안 된다 — 별칭 학습과 같은 원칙
+    ok('3u 학습 실패를 삼킨다', /catch \(_mapErr\)/.test(wb))
+  }
+
   // ── ★조각 속 메우기 (2026-08-27) ─────────────────────────────────
   // 실물 sample1.ai("테두리 사각 + 안쪽 글자") 실측으로 셋이 한 뿌리임이 확인됐다:
   //   조각 bbox 채움 14.4% → ①네스터가 테두리 안쪽에 다른 조각을 밀어 넣고

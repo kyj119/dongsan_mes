@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.21.0';  // 0.21.0 = 새 문서 mm 단위(DocumentPreset) · 0.20.1 = ink 굽기 AA OFF(도련 회색 오염)
+var MESCUT_VERSION = 'CUT-CEP-0.22.0';  // 0.22.0 = 등록 파일명=실물 규약 + trim/자재·후가공 실제값 · 0.21.0 = 새 문서 mm 단위(DocumentPreset)
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -2776,13 +2776,16 @@ function mesCut_readReg() {
     var s = '';
     try { f.encoding = 'UTF-8'; f.open('r'); s = f.read(); f.close(); }
     catch (e) { try { f.close(); } catch (e2) {} return null; }
-    var o = {};
+    var o = { NAMES: [] };
     var lines = String(s).split(/[\r\n]+/);
     for (var i = 0; i < lines.length; i++) {
         var ln = lines[i];
         var sp = ln.indexOf(' ');
         if (sp <= 0) continue;
-        o[ln.substring(0, sp)] = ln.substring(sp + 1);
+        var k = ln.substring(0, sp), v = ln.substring(sp + 1);
+        // ★NAME 은 **판 수만큼** 온다 — 단일 맵에 넣으면 마지막 판 이름만 남는다(내보내기와 같은 규약).
+        if (k === 'NAME') { if (v) o.NAMES.push(v); continue; }
+        o[k] = v;
     }
     return o;
 }
@@ -2861,8 +2864,16 @@ function mesCut_saveOneSheet(doc, idx, R, clientName, pcName, userName) {
         try { workBytes = new File(workFile.fsName).length; } catch (eB) {}
     } catch (eW) { return 'ERROR work.ai 저장 실패: ' + eW }
 
-    // EPS — 파일명 규약은 A0 와 같은 골격(거래처-크기-수량EA)
-    var epsName = mesCut_sanitize(clientName) + '-' + wCm + 'x' + hCm + '-' + qty + 'EA-nest.eps';
+    // ★★EPS 이름 = **작업 폴더에 나갈 이름 그대로** (2026-08-27).
+    //   여태 `거래처-WxH-NEA-nest.eps` 였는데, 실제 작업 파일은 `(자재+후가공)품목(WxH-N장)` 이라
+    //   **두 갈래**였다. RIP 가 보는 이름을 시스템이 몰라 출력완료 매칭이 0% 였다
+    //   (실측: 8월 print_events 5,554건 중 카드 매칭 0). 패널이 그 이름을 이미 만들고 있었다.
+    //   ⚠️ 이 이름을 파싱하는 코드는 없다(2026-08-27 전수 확인) — 바꿔도 깨지는 소비자가 없다.
+    //   ⚠️ 패널이 안 보내면(구 셸) 옛 규약으로 떨어진다 — 하위호환.
+    var ripName = (R.NAMES && R.NAMES.length) ? R.NAMES[Math.min(idx, R.NAMES.length - 1)] : '';
+    var epsName = ripName
+        ? (mesCut_sanitize(ripName) + '.eps')
+        : (mesCut_sanitize(clientName) + '-' + wCm + 'x' + hCm + '-' + qty + 'EA-nest.eps');
     try {
         var eo = new EPSSaveOptions();
         eo.cmykPostScript = true;
@@ -2909,9 +2920,20 @@ function mesCut_saveOneSheet(doc, idx, R, clientName, pcName, userName) {
         + ',"client_name":"' + mesCut_jsonEsc(clientName) + '"'
         + ',"client_id":' + (R.CLIENTID ? R.CLIENTID : 'null')
         + ',"qty":' + qty
-        + ',"finishing":null,"trim":false,"punch":null'
+        // ★★여태 셋 다 **하드코딩 null/false** 였다 (2026-08-27 정정).
+        //   특히 `trim:false` 는 **사실과 다르다** — 판에는 돔보가 **항상** 들어간다
+        //   (index.html "돔보·시트 재단선은 항상 포함", 결과창도 "돔보 N판"). 주문서가 이 값을
+        //   프리필로 쓰면 틀린 값이 들어간다. 서버는 이미 trim·punch_json·finishing_json 을 받고 있었다
+        //   (workbench.ts POST /intakes) — 보내는 쪽만 없었다.
+        //   후가공은 자유 텍스트라 per-side JSON 이 아니다 → post_desc 로 보낸다(A0 의 변별 마감과 구분).
+        + ',"finishing":null'
+        + ',"trim":' + ((R.TRIM === '1' || R.TRIM === 'true') ? 'true' : 'false')
+        + ',"punch":null'
         + ',"keyword":' + (R.KEYWORD ? ('"' + mesCut_jsonEsc(R.KEYWORD) + '"') : 'null')
-        + ',"post_desc":null,"annotation":null,"annot_pos":null,"identifier":null'
+        + ',"post_desc":' + ((R.MATERIAL || R.FINISH)
+            ? ('"' + mesCut_jsonEsc([R.MATERIAL || '', R.FINISH || ''].join(R.MATERIAL && R.FINISH ? '+' : '')) + '"')
+            : 'null')
+        + ',"annotation":null,"annot_pos":null,"identifier":null'
         + ',"scale_pct":100'
         + ',"measured_cm":{"w":' + wCm + ',"h":' + hCm + '}'
         // ★mode='single' 이다. 'impose' 가 아니다.
