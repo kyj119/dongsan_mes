@@ -111,7 +111,7 @@ inventoryRouter.get('/', async (c) => {
     // ⚠️ 합계는 '조회조건 전체' 기준이며 현재 페이지 합이 아니다.
     const countQuery = `SELECT COUNT(*) as total,
         COALESCE(SUM(g.qty), 0) as sum_qty,
-        COALESCE(SUM(g.qty * COALESCE(g.unit_price, 0)), 0) as sum_value
+        ROUND(COALESCE(SUM(g.qty * COALESCE(g.unit_price, 0)), 0), 0) as sum_value
       FROM (${countInner}) g`
 
     const countRow = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ total: number; sum_qty: number; sum_value: number }>()
@@ -939,14 +939,14 @@ inventoryRouter.get('/stats/summary', async (c) => {
     `).bind(...(entityId > 0 ? [entityId] : [])).first<{ count: number }>()
 
     const valueRow = await c.env.DB.prepare(`
-      SELECT SUM(COALESCE(inv.quantity, 0) * COALESCE(i.avg_unit_cost, 0)) as total_value
+      SELECT ROUND(SUM(COALESCE(inv.quantity, 0) * COALESCE(i.avg_unit_cost, 0)), 0) as total_value
       FROM items i ${inv.join}
       WHERE i.is_purchase_item = 1 AND i.is_active = 1
     `).bind(...inv.params).first<{ total_value: number | null }>()
 
     const { results: categoryResults } = await c.env.DB.prepare(`
       SELECT i.category, COUNT(*) as item_count,
-        SUM(COALESCE(inv.quantity, 0) * COALESCE(i.avg_unit_cost, 0)) as category_value
+        ROUND(SUM(COALESCE(inv.quantity, 0) * COALESCE(i.avg_unit_cost, 0)), 0) as category_value
       FROM items i ${inv.join}
       WHERE i.is_purchase_item = 1 AND i.is_active = 1
       GROUP BY i.category
@@ -1086,8 +1086,8 @@ inventoryRouter.get('/dashboard/zones', async (c) => {
     const criticalCount = items.filter((i: any) => i.stock_status === 'CRITICAL').length
     const lowCount = items.filter((i: any) => i.stock_status === 'LOW').length
     // 단가 축 = avg_unit_cost(base_unit 당). base_price(포장 단가)를 곱하면 pack_size 배 부푼다.
-    const totalValue = items.reduce((sum: number, i: any) =>
-      sum + ((i.current_stock || 0) * (i.avg_unit_cost || 0)), 0)
+    const totalValue = Math.round(items.reduce((sum: number, i: any) =>
+      sum + ((i.current_stock || 0) * (i.avg_unit_cost || 0)), 0))
 
     // 4. 창고별 그룹핑
     const zoneGroups: Record<string, any> = {}

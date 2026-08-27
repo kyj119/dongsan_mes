@@ -639,8 +639,11 @@ function invUnitPriceCell(item) {
     var main = base
         ? Math.round(base).toLocaleString() + '원' + (baseUnit ? '/' + escapeHtml(baseUnit) : '')
         : '<span class="text-gray-400">원가 없음</span>';
-    // 포장 단위가 따로 있을 때만 병기 (pack_size 1 이하면 두 단가가 같은 뜻이라 중복이다)
-    if (pack && packSize > 1) {
+    // 포장 단위가 **실제 환산 관계**일 때만 병기한다.
+    //   pack_size > 1 만 보면 안 된다 — AQ 계열 현수막 원단은 base_unit 이 없고(입고·재고 모두 yd)
+    //   pack_size=130 은 실사 입력 편의 계수라, 병기하면 yd 단가를 「롤당」이라 표기하게 된다.
+    var convertible = packSize > 1 && item.base_unit && item.base_unit !== item.unit;
+    if (pack && convertible) {
         main += '<div class="text-xs text-gray-400">' + pack.toLocaleString() + '원/' + escapeHtml(item.unit || '') + '</div>';
     }
     return main;
