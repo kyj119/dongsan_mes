@@ -391,7 +391,10 @@ function printResults(results) {
   const summary = fail === 0
     ? `${COLOR.green}${COLOR.bold}PASS ${pass} / ${results.length}${COLOR.reset}`
     : `${COLOR.red}${COLOR.bold}FAIL ${fail} / ${results.length}${COLOR.reset}  (PASS ${pass})`
-  log(`요약: ${summary}`)
+  // 대상 URL 을 **요약 줄에도** 박는다 — 배포 후에는 tail 만 보게 되는데,
+  //   로컬 dev 서버가 떠 있으면 `npm run smoke` 가 조용히 localhost 를 통과시킨다(기본값이 localhost:3000).
+  //   시작 줄에도 있지만 그건 잘려 나간다. 「112/112」 라는 숫자만으로는 무엇을 쟀는지 알 수 없다.
+  log(`요약: ${summary}   ${COLOR.cyan}대상 ${BASE}${COLOR.reset}`)
   log('')
   return fail === 0
 }
