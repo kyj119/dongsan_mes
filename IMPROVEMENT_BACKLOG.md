@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-08-27T14:00:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-08-27T21:47:48+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,26 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **12** (`list_issues(state:open,label:auto-improve)` 실측. #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621 — #609 close·#621 신규로 교체, 총건수 불변) |
+| 🆕 new | **12** (`list_issues(state:open,label:auto-improve)` 실측, 변동없음: #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **532** (+1, #609 이번 사이클 completed) |
-| ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 생략 — 대상 무변경) |
+| ✔️ done | **532** (변동없음) |
+| ❌ rejected | **6** (재확인 생략 — 대상 무변경) |
+
+> **Area 3 UX/기능 감사 (2026-08-27T21:47):**
+> - **방법**: `git status`=워킹트리 clean, `git fetch origin main` → `forced update`로 표시됐으나 `git merge-base --is-ancestor 5cadd9f origin/main` = true(fast-forward 확인, rewrite 아님) → `git checkout main && git reset --hard origin/main`(HEAD `5cadd9f`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area3 자신의 앵커(`ef80c95`) 이후 웹앱 범위(`-- src migrations scripts .github`) diff **25커밋** — 대부분 IA/cut(IllustratorAutomat 패널·재단·품목감사) 스크립트로 UX 스캔 범위 밖. 프론트/라우트 churn은 **재고 pack_size 환산 UX 체인**(`inventory.ts/js`·`inventoryDashboard.js`·`inventoryCount.js`)과 **발주요청 공급처 지정 UX**(`purchaseRequests.js`·`purchaseOrders.js`·`purchaseRequestForm.js`)로 좁혀짐. 신규 마이그 0건.
+> - **HTML↔JS silent-fail 전수 diff**: churn 범위 신규 `getElementById` 7개(`adjustCurrentStock`·`adjustItem`·`adjustItemSearchBtn`·`apprSupplierId`·`apprSupplierName`·`panelProgress`·`panelStatusBadge`) 전건 대상 id 실재 확인(pages 정적 템플릿 또는 같은 파일 동적 innerHTML) — silent-fail 0건.
+> - **axios→라우트 존재성**: 신규 axios 호출 6개(`/api/auth/entities`·`/api/clients`·`/api/clients?search=`·`/api/inventory/:id`·`/api/purchase-requests/open-items`·`PATCH /api/purchase-requests/:id/supplier`) 전부 해당 라우터에 실재(`purchaseRequests.ts:165` `open-items`, `:597` `/:id/supplier`) — dead-button 0건.
+> - **신규 화면 요소 심층 정독 4건**: ① `inventoryDashboard.js`(+82) 구역별 부족품목 발주 — 미결 발주요청 품목을 배지로 표시하고 이미 요청중인 품목은 자동 제외(중복발주 방지), confirm 메시지에 발주단위·환산량 병기, 생성 후 `loadDashboard()` 재호출로 배지 즉시 반영 — UX 완결. ② `purchaseRequests.js`(+49) 공급처 미지정 승인건 전용 "공급처 지정" 버튼 — readonly 입력+검색모달 강제(오입력 방지), 미지정 승인 시 `showConfirm` 경고, `escapeHtml` 일관 적용 — clean. ③ `inventoryCount.js`(+52) 상태배지를 서버응답 기준으로 재그리기(목록캐시-상세패널 불일치 수정) + 진행률 함수 단일화(중복→일원화) — clean. ④ `inventory.ts/js` adjustItem 검색모달 추가(2페이지 이후 품목 조정 불가 문제 해결) — `console.warn` 가드 전건, 에러 toast 처리 — clean. **넷 다 자동수정 대상 아닌 이미 완결된 dev 작업, 신규 이슈 없음.**
+> - **"백엔드 먼저·화면 나중" gap 재확인**: 이번 churn의 신규 라우트 2개(`open-items`/`:id/supplier`) 둘 다 같은 커밋에서 프론트 소비처(`purchaseRequests.js`) 동반 — gap 없음. `workbench.ts`(+56, 출력완료 매칭 학습 backfill)는 기존 `/intakes/:id/absorb` 액션에 붙은 서버 전용 부수효과(신규 UI 불요) — 대상 아님.
+> - **standing scan**: `node scripts/sort-audit.cjs` P1 **0건**(변동없음, P2 1건 attendance.ts:158 기존 노출 유지).
+> - **open 12건 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **12**(변동없음, #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621 전건 일치), `search_issues`로 전 12건 `reactions.+1=0` 재확인(승인 대기 유지).
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · `search_issues(reason:completed)` **532**(변동없음) · rejected **6**(변동없음, 재확인 생략 — 대상 무변경).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md `line N` 잔여참조 재확인(0건, 서술식 각주만 존재). 이번 25커밋 churn을 UX 렌즈로 전량 재통과했으나 신규 오탐/탐지 클래스 도출 없음(기존 standing scan 레시피 — silent-fail diff·axios matching·백엔드먼저화면나중 — 가 전부 커버, 이번 churn은 dev 세션 자체가 이미 UX까지 완결한 수준).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 11건 → 이번 로그 추가 후 12건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(25커밋 전체 UX 렌즈 clean, 신규 화면 4건 심층정독 전부 clean, silent-fail/axios/backend-first standing scan 전부 net-new 0), 자동수정 0건, done-sync: open 12(변동없음)·done 532(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-08-27T14:00):**
 > - **방법**: `git status`=워킹트리 clean, `git fetch origin main` → `forced update`로 표시됐으나 `git merge-base --is-ancestor 77d5d6d5 origin/main` = true(fast-forward 확인, rewrite 아님) → `git checkout main && git reset --hard origin/main`(HEAD `d7f97e3`). `npm ci`(0→81), `npx tsc --noEmit` clean.
