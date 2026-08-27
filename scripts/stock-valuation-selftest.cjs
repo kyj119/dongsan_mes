@@ -14,6 +14,11 @@
  *       실제로 pack_size 배가 되는지 확인한다.
  * ② 소스: `src/routes/inventory.ts` 의 금액 계산에 base_price 가 다시 끼어들면 실패시킨다.
  *
+ * ③ 발주 축: 부족량(base) → 발주 단위(pack) 환산과 **단가 출처**. 2026-08-27 전수조사에서
+ *    `items.base_price` 가 발주 단가가 아니라 **판매 기준단가**임이 확인됐다(08-11 판매 실거래 백필).
+ * ④ 입고 축: 쓰기 경로 5곳이 `base_unit` 을 보지 않고 환산해 현수막 원단이 130배로 들어오던 것.
+ *    규칙 정본 = `src/utils/unitConvert.ts` packFactor().
+ *
  * 실행: node scripts/stock-valuation-selftest.cjs   (실패 시 exit 1)
  */
 'use strict'
@@ -117,20 +122,82 @@ if (!fnBlock) {
   // 롤 자재: 재고 520M · 안전 600M · pack 50 → 부족 80M = 2롤(올림), 단가는 롤당
   const rollOrder = zoneOrderQty({ current_stock: 520, safe_stock: 600, pack_size: 50, unit: '롤', base_unit: 'M', base_price: 115000, avg_unit_cost: 2325 })
   check('롤 자재 발주 수량(부족 80M → 2롤)', rollOrder.qty, 2)
-  check('롤 자재 발주 단가(롤당)', rollOrder.unitPrice, 115000)
+  check('롤 자재 발주 단가(= 매입원가 × pack)', rollOrder.unitPrice, 2325 * 50)
 
   // AQ 계열: base_unit 없음 · pack_size 130 은 실사 편의 계수 → 환산하지 않는다
   const aq = zoneOrderQty({ current_stock: 100, safe_stock: 300, pack_size: 130, unit: 'yd', base_unit: null, base_price: 978, avg_unit_cost: 1011 })
   check('AQ 계열은 환산 없음(부족 200yd → 200)', aq.qty, 200)
-  check('AQ 계열 단가는 그대로', aq.unitPrice, 978)
+  check('AQ 계열 단가도 환산 없음(yd 당)', aq.unitPrice, 1011)
 
-  // 포장 단가가 없으면 base 원가 × 포장수량
-  const noPack = zoneOrderQty({ current_stock: 0, safe_stock: 10, pack_size: 50, unit: '롤', base_unit: 'M', base_price: 0, avg_unit_cost: 2000 })
-  check('포장 단가 부재 시 base 원가 × pack', noPack.unitPrice, 100000)
+  // 매입 이력이 없을 때만 base_price 로 대체한다
+  const noAvg = zoneOrderQty({ current_stock: 0, safe_stock: 10, pack_size: 50, unit: '롤', base_unit: 'M', base_price: 79000, avg_unit_cost: 0 })
+  check('매입 이력 없으면 base_price 폴백', noAvg.unitPrice, 79000)
+
+  // ★핵심 회귀: base_price 에 **판매가**가 들어 있어도 발주 단가는 매입 원가를 쓴다.
+  //   prod 실측 FLEXN-090 — base_price 123,500(판매) vs 실제 매입 78,750. auc×pack = 75,375.
+  const sales = zoneOrderQty({ current_stock: 0, safe_stock: 10, pack_size: 50, unit: '롤', base_unit: 'M', base_price: 123500, avg_unit_cost: 1507.5 })
+  check('판매가가 base_price 에 있어도 매입원가를 쓴다', sales.unitPrice, 75375)
+
+  // ★prod 실측 SPT031M — base_price 가 base 축(4,057/M)으로 어긋나 있어도 발주 단가는 정상
+  const skew = zoneOrderQty({ current_stock: 0, safe_stock: 10, pack_size: 50, unit: '롤', base_unit: 'M', base_price: 4057, avg_unit_cost: 4291.67 })
+  check('base_price 축이 어긋나도 발주 단가 정상(SPT031M)', skew.unitPrice, Math.round(4291.67 * 50))
 
   // 부족이 포장 하나에 못 미쳐도 최소 1포장은 발주해야 한다
   const tiny = zoneOrderQty({ current_stock: 495, safe_stock: 500, pack_size: 50, unit: '롤', base_unit: 'M', base_price: 115000, avg_unit_cost: 2325 })
   check('부족 5M 이어도 최소 1롤', tiny.qty, 1)
+}
+
+// ── ④ 입고 환산 축: 서버 4곳이 packFactor() 단일 소스를 쓰는지 ──────────────
+// 2026-08-27 전수조사: 입고·취소·스캔 4곳이 `pack_size > 0 ? pack_size : 1` 을 손으로 복사해
+//   **base_unit 을 보지 않았다**. 현수막 원단(AQ*, base_unit 없음·pack 130)을 MES 로 입고하면
+//   재고가 130배가 된다. 활성 품목 49건 노출. prod 입고가 사실상 0건이라 아직 안 터졌을 뿐이다.
+//   맞는 규칙은 `inventoryCount.ts` 소모량 계산에만 있었다(`m.baseUnit ? m.pack : 1`).
+const UC = path.join(__dirname, '..', 'src', 'utils', 'unitConvert.ts')
+const ucSrc = fs.readFileSync(UC, 'utf8')
+if (!/export function packFactor/.test(ucSrc)) {
+  fails.push('src/utils/unitConvert.ts 에 packFactor() 가 없다 — 쓰기 경로 환산 규칙의 단일 소스가 사라졌다')
+} else {
+  // TS 규칙을 그대로 실행한다(타입 표기만 걷어내면 JS 다) — 사본을 두지 않기 위해 소스에서 떼어낸다
+  const grab = (marker, sig, name) => {
+    const i = ucSrc.indexOf(marker)
+    const j = ucSrc.indexOf('\n}', i)
+    return ucSrc.slice(i, j + 2).replace(sig, 'function ' + name + '(item)')
+  }
+  const jsBody = [
+    grab('export function packSize', 'export function packSize(item: UomItem): number', 'packSize'),
+    grab('export function isMultiUom', 'export function isMultiUom(item: UomItem): boolean', 'isMultiUom'),
+    grab('export function packFactor', 'export function packFactor(item: UomItem | null | undefined): number', 'packFactor'),
+  ].join('\n')
+  // eslint-disable-next-line no-new-func
+  const packFactor = new Function(jsBody + '; return packFactor;')()
+  check('시트류는 환산한다(롤→M ×50)', packFactor({ unit: '롤', base_unit: 'M', pack_size: 50 }), 50)
+  check('AQ 현수막은 환산하지 않는다(base_unit 없음)', packFactor({ unit: 'yd', base_unit: null, pack_size: 130 }), 1)
+  check('base_unit 이 빈 문자열이어도 환산하지 않는다', packFactor({ unit: '롤', base_unit: '', pack_size: 50 }), 1)
+  check('pack_size 없으면 불변', packFactor({ unit: '롤', base_unit: 'M', pack_size: null }), 1)
+
+  // 클라이언트 쌍(UOM_JS)도 같은 판정이어야 한다 — 표시와 쓰기가 갈리면 화면과 재고가 어긋난다
+  const jsTwin = /window\.uomPackFactor\s*=\s*function\(it\)\{\s*return window\.uomIsMulti\(it\)\s*\?\s*window\.uomPackSize\(it\)\s*:\s*1;/
+  if (!jsTwin.test(ucSrc)) fails.push('UOM_JS 의 uomPackFactor 가 uomIsMulti 가드를 잃었다 — TS 쌍과 갈린다')
+  else pass++
+  if (!/window\.uomToBase[^\n]*uomPackFactor/.test(ucSrc) || !/window\.uomFromBase[^\n]*uomPackFactor/.test(ucSrc)) {
+    fails.push('UOM_JS 의 uomToBase/uomFromBase 가 uomPackFactor 를 거치지 않는다')
+  } else pass++
+
+  // 4곳이 옛 규칙으로 되돌아가면 실패시킨다
+  const SITES = [
+    ['src/routes/purchaseOrders/po-receive.ts', '발주 입고'],
+    ['src/routes/inventory.ts', '수기입고·입고취소'],
+    ['src/routes/scan.ts', '스캔 입고·출고'],
+  ]
+  const legacy = /pack_size\s*&&\s*\w*\.?pack_size\s*>\s*0\s*\)\s*\?/
+  for (const [rel, label] of SITES) {
+    const site = fs.readFileSync(path.join(__dirname, '..', rel), 'utf8')
+    if (legacy.test(site)) {
+      fails.push(`${rel} (${label}) 가 base_unit 을 보지 않는 옛 환산 규칙으로 돌아갔다 — packFactor() 를 쓸 것`)
+    } else if (!site.includes('packFactor(')) {
+      fails.push(`${rel} (${label}) 가 packFactor() 를 쓰지 않는다 — 입고 환산 규칙이 갈렸다`)
+    } else pass++
+  }
 }
 
 // ── 결과 ─────────────────────────────────────────────────────────────
@@ -139,4 +206,4 @@ if (fails.length) {
   for (const f of fails) console.error('  - ' + f)
   process.exit(1)
 }
-console.log(`✅ 재고 평가 축 ${pass}항목 통과 — 금액은 base_unit 당 단가(avg_unit_cost)로 계산된다`)
+console.log(`✅ 재고 단위 축 ${pass}항목 통과 — 금액=base 단가 · 발주=포장 수량/원가 · 입고 환산=packFactor()`)

@@ -22,8 +22,9 @@
  *   E 건강 지표            원가없음·규격없음·무실적·판매플래그 불일치 (절대값이 아니라 **추세**를 본다)
  *
  *   F4 무효한 ROLL        개수 단위인데 `deduction_method=ROLL` — 라벨이 `yd` 로 나온다 (게이트)
+ *   F5 기준단가 축 오류    `base_price` 가 관리단위(롤)가 아니라 재고단위(M) 당 값이다 (게이트)
  *
- * ★ 등급을 나눈다 — **C1·D·F1·F4·G1·H4a 만 게이트(exit 1)**, A·B·C2·F2·F3 는 참고(exit 0).
+ * ★ 등급을 나눈다 — **C1·D·F1·F4·F5·G1·H4a 만 게이트(exit 1)**, A·B·C2·F2·F3 는 참고(exit 0).
  *   A·B 를 게이트로 두면 매번 빨개져 감사 자체가 무뎌진다(기존 audit 들이 같은 이유로 강/약을 나눴다).
  *   실제로 A 는 `BUJIK-*` 의 `50m` 처럼 **남겨야 하는 롤 사양**까지 잡는다 — 「그 계열 전원이 공유한다」는
  *   기계적 사실일 뿐, 빼도 되는지는 사람이 안다(트러스바의 7m 는 빼도 되고 원단의 50m 는 아니다).
@@ -169,6 +170,7 @@ const unitRows = d1(`SELECT i.item_code, i.item_name,
     COALESCE(i.base_unit,'') bu, COALESCE(i.unit,'') un, COALESCE(i.pack_size,0) ps,
     COALESCE(i.deduction_method,'') dm, i.width_mm wmm,
     CAST(COALESCE(i.avg_unit_cost,0) AS INT) auc,
+    CAST(COALESCE(i.base_price,0) AS INT) bp,
     CAST(COALESCE((SELECT AVG(p.unit_price) FROM purchase_order_items p
                    WHERE p.item_id = i.id AND p.unit_price > 0), 0) AS INT) po_avg
   FROM items i WHERE i.is_active = 1`)
@@ -210,8 +212,34 @@ for (const r of unitRows) {
   }
   // F2 (참고) — 관리단위≠재고단위인데 환산 계수가 없다. 입고가 ×1 로 들어가 수량이 pack 배 적게 잡힌다.
   if (r.bu && r.ps <= 1 && r.un && r.un.toLowerCase() !== r.bu.toLowerCase()) { f2++; continue }
-  // F3 (참고) — 환산 계수는 있는데 재고 단위가 없다. ×pack_size 로 늘어난 수량이 무슨 단위인지 아무도 모른다.
+  // F3 (참고) — 환산 계수는 있는데 재고 단위가 없다.
+  //   ★2026-08-27 정정: 종전 주석은 「×pack_size 로 수량이 늘어난다」였는데, 그건 **버그**였지 사양이 아니었다.
+  //     쓰기 경로 5곳이 base_unit 을 안 보고 환산해 현수막 원단(AQ*)이 130배로 들어오던 것 —
+  //     `unitConvert.packFactor()` 로 막았다. 지금 이 무리는 「환산하지 않는 품목」으로 안전하게 처리된다.
+  //     남은 건 메타데이터 미완성(진짜 롤인데 base_unit 을 안 넣은 LW2800M·LM5400-137 같은 것)뿐이라 참고축이다.
   if (!r.bu && r.ps > 1) f3++
+}
+
+// F5 (게이트) — `base_price` 축이 어긋났다. 재고 단가(base)와 같은 값이 관리단위 칸에 들어 있다.
+//
+// ★왜 (2026-08-27 전수조사): `items.base_price` 는 **관리단위(롤·통) 당** 값이다 —
+//   입고(`po-receive`)가 매입 단가로 덮어쓰고, 2026-08-11 `derive-item-prices.cjs` 가
+//   **판매 실거래 중앙값**을 심었다. 즉 이 칸은 「포장 하나의 값」이고, 주문서 품목 선택기가
+//   그대로 프리필한다(`shell.js` data-price). 여기에 미터당 단가가 들어 있으면
+//   **롤 하나를 1/pack 가격에 견적**하게 된다(실측 ULTRA-CAL-100: 2,700원 vs 실제 판매 87,000원).
+//
+//   판정은 F1 과 같은 방식 — 두 후보 중 어디에 더 가까운가. prod 실측 분포가 뚜렷하게 갈렸다:
+//   정상군 100건은 `bp ÷ (auc×pack)` 이 **0.978~1.638**, 어긋난 4건은 **0.019~0.034** 였다.
+//   ⚠️ base_unit 이 없는 품목(AQ*)은 애초에 한 축이라 제외한다.
+for (const r of unitRows) {
+  if (!r.bu || !(r.ps > 1) || !(r.bp > 0) || !(r.auc > 0)) continue
+  const expect = r.auc * r.ps
+  if (Math.abs(r.bp - r.auc) < Math.abs(r.bp - expect)) {
+    add(r.item_code, 'F5 기준단가 축 오류',
+      `${r.un} 당 단가여야 할 base_price ${Number(r.bp).toLocaleString()} 가 ${r.bu} 당 단가다`
+      + ` — 매입원가 ${Number(r.auc).toLocaleString()}/${r.bu} × ${r.ps} = ${Math.round(expect).toLocaleString()} 축이어야 한다`
+      + ` (주문서가 이 값을 ${r.un} 단가로 프리필한다)`)
+  }
 }
 
 // ── G. 계열(item_group)·검색어 정합성 ────────────────────────────────────
@@ -326,7 +354,7 @@ const h3 = [...byName].filter(([, t]) => t.has('PRODUCT') && t.has('MATERIAL'))
 // ★H1·H2 를 게이트로 두지 않는 이유는 H4a 주석 참조 — 「아직 안 팔린 제품」과 구분이 안 된다.
 // ★C2(수량 없는 매입)도 게이트가 아니다 — 용역·1식 매입은 정상이고, 뭉친 전표는 공급처
 //   청구서 없이는 못 푼다. 고칠 수 없는 항목을 게이트에 두면 감사 전체가 무뎌진다(C 분리 주석 참조).
-const GATE_KIND = /^(C1|D|F1|F4|G1|H4a) /
+const GATE_KIND = /^(C1|D|F1|F4|F5|G1|H4a) /
 if (!METRICS_ONLY) {
   if (violations.length) {
     const byKind = new Map()

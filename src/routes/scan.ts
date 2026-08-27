@@ -8,6 +8,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
 import { entityFilter, cardEntityFilter, getEntityId, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../utils/entityFilter'
 import { getItemDefaultZone } from '../utils/inventoryZone'
+import { packFactor } from '../utils/unitConvert'
 
 const scanRouter = new Hono<HonoEnv>()
 scanRouter.use('/*', authMiddleware)
@@ -253,8 +254,9 @@ scanRouter.post('/action', async (c) => {
         // UP1: 창고별 다중행. 입고 대상 창고 = 품목 기본창고 (NULL=미배정). 0396 UNIQUE=(item,entity,IFNULL(zone,0)).
         const zoneId = await getItemDefaultZone(c.env.DB, body.id, entityId)
         // MU3: 다단위 — 입력 수량(관리단위)을 base_unit으로 환산(×pack_size). 단일단위(pack_size NULL→1)=불변.
-        const muIn = await c.env.DB.prepare('SELECT pack_size FROM items WHERE id = ?').bind(body.id).first<{ pack_size: number | null }>()
-        const psIn = (muIn?.pack_size && muIn.pack_size > 0) ? muIn.pack_size : 1
+        //   ★base_unit 없는 품목은 환산하지 않는다 — packFactor() 정본(2026-08-27 전수조사).
+        const muIn = await c.env.DB.prepare('SELECT pack_size, unit, base_unit FROM items WHERE id = ?').bind(body.id).first<{ pack_size: number | null; unit: string | null; base_unit: string | null }>()
+        const psIn = packFactor(muIn)
         const qtyBaseIn = body.quantity * psIn
         // #412 + #169 + #289: 재고는 inventory.quantity (items에 current_stock 컬럼 없음).
         // upsert(행 부재 대비) + 감사 기록을 단일 batch로 원자 처리. balance_after는 upsert 후 잔량 서브쿼리.
@@ -288,8 +290,10 @@ scanRouter.post('/action', async (c) => {
         // UP2 제외: 수동 스캔 출고는 스캔 위치/장비를 캡처하지 않음 → 품목 기본창고가 정확.
         const zoneId2 = await getItemDefaultZone(c.env.DB, body.id, entityId2)
         // MU3: 다단위 — 출고 수량(관리단위·PACK=개봉통수)을 base로 환산(×pack_size). 단일단위=불변.
-        const muOut = await c.env.DB.prepare('SELECT pack_size FROM items WHERE id = ?').bind(body.id).first<{ pack_size: number | null }>()
-        const psOut = (muOut?.pack_size && muOut.pack_size > 0) ? muOut.pack_size : 1
+        //   ★입고와 **반드시 같은 계수**를 써야 한다 — 한쪽만 환산하면 스캔 입고/출고를 번갈아
+        //     한 것만으로 재고가 pack_size 배씩 어긋난다. 정본 = packFactor().
+        const muOut = await c.env.DB.prepare('SELECT pack_size, unit, base_unit FROM items WHERE id = ?').bind(body.id).first<{ pack_size: number | null; unit: string | null; base_unit: string | null }>()
+        const psOut = packFactor(muOut)
         const qtyBaseOut = body.quantity * psOut
         // #412 + #164: inventory.quantity 차감 (atomic UPDATE WHERE, 부족/행부재 시 changes=0 → 재고부족)
         const result = await c.env.DB.prepare(`

@@ -11,6 +11,7 @@ import { authMiddleware } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { getEntityId, entityFilter, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../../utils/entityFilter'
 import { getItemDefaultZones } from '../../utils/inventoryZone'
+import { packFactor } from '../../utils/unitConvert'
 import { kstYmd, kstYmdCompact, kstDate, kstDateOf } from '../../utils/kstDate'
 
 const poReceiveRouter = new Hono<HonoEnv>()
@@ -144,15 +145,17 @@ poReceiveRouter.post('/:id/receive', async (c) => {
     let itemZoneMap = new Map<number, number | null>()
     // #462 MU3: 다단위 — 입고 수량(관리단위) → base_unit 환산용 pack_size. NULL/0→1(단일단위·불변).
     //   inventory.quantity·inventory_transactions.quantity는 base 단위. scan/수기입고(inventory.ts:324-357,381)와 동일.
+    //   ★판정은 packFactor() 하나뿐이다 — `pack_size>0` 만 보면 base_unit 없는 현수막 원단(AQ*)이
+    //     130배로 들어온다(2026-08-27 전수조사).
     const packMap = new Map<number, number>()
     if (recvItemIds.length > 0) {
       itemZoneMap = await getItemDefaultZones(c.env.DB, recvItemIds, poEntityIdPrefetch)
       const iph = recvItemIds.map(() => '?').join(',')
       const { results: zoneRows } = await c.env.DB.prepare(
-        `SELECT id, pack_size FROM items WHERE id IN (${iph})`
-      ).bind(...recvItemIds).all<{ id: number; pack_size: number | null }>()
+        `SELECT id, pack_size, unit, base_unit FROM items WHERE id IN (${iph})`
+      ).bind(...recvItemIds).all<{ id: number; pack_size: number | null; unit: string | null; base_unit: string | null }>()
       for (const r of (zoneRows || [])) {
-        packMap.set(Number(r.id), (r.pack_size && r.pack_size > 0) ? r.pack_size : 1)
+        packMap.set(Number(r.id), packFactor(r))
       }
       const { results: invRows } = await c.env.DB.prepare(
         `SELECT item_id, storage_zone_id, quantity FROM inventory WHERE entity_id = ? AND item_id IN (${iph})`

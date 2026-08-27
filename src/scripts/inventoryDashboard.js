@@ -234,9 +234,15 @@ function zoneOrderQty(item) {
   var pack = zoneOrderPack(item);
   var shortageBase = Math.max(0, (Number(item.safe_stock) || 0) - (Number(item.current_stock) || 0));
   var qty = Math.max(1, Math.ceil(shortageBase / pack));   // 반 롤은 살 수 없다 → 포장 단위 올림
-  var unitPrice = Number(item.base_price) > 0
-    ? Number(item.base_price)                              // 포장 단가가 정본
-    : Math.round((Number(item.avg_unit_cost) || 0) * pack); // 없으면 base 원가 × 포장수량
+  // 단가 정본 = **매입 실적에서 나온 avg_unit_cost × 포장수량**. base_price 가 아니다.
+  //   `items.base_price` 는 발주 단가가 아니라 **판매 기준단가**다 — 2026-08-11
+  //   `derive-item-prices.cjs` 가 판매 실거래 중앙값을 심은 필드이고, 입고가 매입가로 덮어쓰기도 해서
+  //   두 의미가 한 칸에 섞여 있다. 2026-08-27 전수조사(환산대상 143품목·매입실적 98품목) 실측:
+  //     avg_unit_cost × pack → 최근 매입가 대비 오차 중앙 3.3% · 30% 초과 **0건**
+  //     base_price          → 오차 중앙 3.3% · 30% 초과 **8건**(그중 4건은 97% = 축 자체가 어긋남)
+  var unitPrice = Number(item.avg_unit_cost) > 0
+    ? Math.round(Number(item.avg_unit_cost) * pack)        // 매입 실적 원가 × 포장수량
+    : Number(item.base_price) || 0;                        // 매입 이력이 없을 때만 기준단가로 대체
   return { qty: qty, unitPrice: unitPrice, pack: pack, shortageBase: shortageBase };
 }
 

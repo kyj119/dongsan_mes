@@ -7,6 +7,7 @@ import { kstYmdCompact } from '../utils/kstDate'
 import { triggerLowStockAlert } from '../utils/inventoryAlert'
 import { getItemDefaultZone, getItemDefaultZones } from '../utils/inventoryZone'
 import { resolveStockUnit } from '../utils/rollConsumption'
+import { packFactor } from '../utils/unitConvert'
 
 const inventoryRouter = new Hono<HonoEnv>()
 
@@ -362,14 +363,15 @@ inventoryRouter.post('/receipts', async (c) => {
     const zoneMap = await getItemDefaultZones(c.env.DB, itemIds, entityId)
     // MU3: 다단위 — 입고 수량(관리단위) → base_unit 환산용 pack_size. 단일단위(NULL→1)=불변.
     // MU5: 입고 단위 스냅샷용 unit도 함께 조회.
+    //   ★환산 여부는 packFactor() 가 정한다(base_unit 이 있어야 환산). 2026-08-27 전수조사.
     const packMap = new Map<number, number>()
     const unitMap = new Map<number, string>()
     {
       const { results: psRows } = await c.env.DB.prepare(
-        `SELECT id, pack_size, unit FROM items WHERE id IN (${itemIds.map(() => '?').join(',')})`
-      ).bind(...itemIds).all<{ id: number; pack_size: number | null; unit: string | null }>()
+        `SELECT id, pack_size, unit, base_unit FROM items WHERE id IN (${itemIds.map(() => '?').join(',')})`
+      ).bind(...itemIds).all<{ id: number; pack_size: number | null; unit: string | null; base_unit: string | null }>()
       for (const r of psRows || []) {
-        packMap.set(Number(r.id), (r.pack_size && r.pack_size > 0) ? r.pack_size : 1)
+        packMap.set(Number(r.id), packFactor(r))
         unitMap.set(Number(r.id), r.unit || 'EA')
       }
     }
@@ -601,10 +603,10 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
       if (invItems.length > 0) {
         const cIds = invItems.map((ri) => ri.item_id as number)
         const { results: cpsRows } = await c.env.DB.prepare(
-          `SELECT id, pack_size FROM items WHERE id IN (${cIds.map(() => '?').join(',')})`
-        ).bind(...cIds).all<{ id: number; pack_size: number | null }>()
+          `SELECT id, pack_size, unit, base_unit FROM items WHERE id IN (${cIds.map(() => '?').join(',')})`
+        ).bind(...cIds).all<{ id: number; pack_size: number | null; unit: string | null; base_unit: string | null }>()
         for (const r of cpsRows || []) {
-          cancelPackMap.set(Number(r.id), (r.pack_size && r.pack_size > 0) ? r.pack_size : 1)
+          cancelPackMap.set(Number(r.id), packFactor(r))
         }
       }
       const cps = (id: number) => cancelPackMap.get(id) || 1
