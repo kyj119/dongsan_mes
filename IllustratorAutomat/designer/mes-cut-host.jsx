@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.23.0';  // 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
+var MESCUT_VERSION = 'CUT-CEP-0.24.0';  // 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -1925,6 +1925,42 @@ var MESCUT_NEST_ITEMS = null;   // rasterizeItem 이 쓰는 대상 목록(선택
  *   조각을 확인하면 선택이 그 하나로 바뀌고, 그 상태로 실행하면 여기서 1개만 다시 잡혀
  *   **수량이 통째로 날아간다**. keep 은 그 경로를 막는다.
  */
+/**
+ * ★문서의 **최상위 개체를 전부 선택**한다 (2026-08-27).
+ *
+ * 재단 탭은 여태 "일러에서 손으로 고른 뒤 ↻" 로만 시작할 수 있었다. 가공(A0) 탭에는
+ * 문서 전체를 스캔하는 [◎ 자동감지] 가 있는데 재단 탭에는 없었다 — 같은 기하 엔진을 쓰면서도.
+ *
+ * ⚠️ A0 의 자동감지와 **같지 않다.** 저쪽은 잉크 실루엣으로 덩어리를 나누고 개체를 묶는다
+ *    (mesA0_seedBegin → seedSplit → mesA0_seedApply → 문서에 그룹 생성). 여기서는 **문서를
+ *    바꾸지 않는다** — 이미 나뉘어 있는 최상위 개체를 고를 뿐이다.
+ *    실물 작업 파일은 대개 "최상위 개체 1개 = 조각 1개" 라 이것으로 충분하다(sample1.ai 13개 확인).
+ *    한 개체 안에 여러 디자인이 뭉쳐 있으면 이 버튼으로는 못 나눈다 — 그때는 손으로 고른다.
+ * ⚠️ 잠긴·숨은 레이어와 개체는 건너뛴다. 사용자가 일부러 빼 둔 것을 다시 끌어오면 안 된다.
+ *
+ * 반환 'ok;n=<개수>' · 'ERROR ..'
+ */
+function mesCut_selectAllTop() {
+    if (app.documents.length === 0) return 'ERROR 문서 없음';
+    var doc = app.activeDocument;
+    try { doc.selection = null; } catch (eS) {}
+    var n = 0;
+    for (var L = 0; L < doc.layers.length; L++) {
+        var lay = doc.layers[L];
+        try { if (lay.locked || !lay.visible) continue; } catch (eL) { continue; }
+        var items = lay.pageItems;
+        for (var i = 0; i < items.length; i++) {
+            try {
+                if (items[i].locked || items[i].hidden) continue;
+                items[i].selected = true;
+                n++;
+            } catch (eI) {}
+        }
+    }
+    if (!n) return 'ERROR 고를 개체가 없습니다(잠김·숨김만 있거나 빈 문서)';
+    return 'ok;n=' + n;
+}
+
 function mesCut_nestBegin(keep) {
     if (app.documents.length === 0) return 'ERROR 문서 없음';
     if (String(keep) === '1' && MESCUT_NEST_ITEMS && MESCUT_NEST_ITEMS.length) {

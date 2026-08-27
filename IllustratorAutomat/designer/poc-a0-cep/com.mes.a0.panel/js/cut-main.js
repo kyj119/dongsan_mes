@@ -277,7 +277,8 @@
   var elPunch = $('punch');
 
   // 잠금 시 막을 버튼. **새 버튼은 여기에 넣기만 하면 된다** — 개별 .disabled 조작 금지.
-  var BUSY_IDS = ['btnRefresh', 'btnMakeCut', 'btnNest', 'btnWidth', 'btnRegister', 'btnExportPair', 'btnLockProbe', 'btnLockTest', 'btnUnlock'];
+  var BUSY_IDS = ['btnRefresh', 'btnMakeCut', 'btnNest', 'btnWidth', 'btnRegister', 'btnExportPair', 'btnLockProbe', 'btnLockTest', 'btnUnlock', 'btnSelectAll',
+  ];
 
   function setBusy(on) {
     hostBusy = !!on;
@@ -2268,6 +2269,27 @@
       });
     }
   }
+
+  // ★[◎ 전체] — 문서 최상위 개체를 전부 고른다(문서 변경 없음). 호스트 구버전이면 사유를 말한다.
+  var SELALL_MIN_HOST = 'CUT-CEP-0.24.0';
+  function selectAllTop() {
+    if (hostBusy) return;
+    if (!hostAtLeast(SELALL_MIN_HOST)) {
+      out('호스트가 구버전(' + (hostVersion || '?') + ')이라 [◎ 전체]를 쓸 수 없습니다 — Z: 의 mes-cut-host.jsx 를 배포하세요.', 'err');
+      return;
+    }
+    out('문서 전체를 고르는 중...');
+    host('mesCut_selectAllTop()', function (r, bad) {
+      if (bad || r.indexOf('ok;') !== 0) { out(String(r).replace(/^ERROR\s*/, ''), 'err'); return; }
+      var n = kv(r.substring(3)).n;
+      refresh();
+      out('최상위 개체 ' + n + '개를 골랐습니다.'
+        + '\n※ 한 개체 안에 여러 디자인이 뭉쳐 있으면 이걸로는 안 나뉩니다 — 그때는 일러에서 직접 고르세요.'
+        + '\n(잠긴·숨은 것은 제외했습니다)', 'ok');
+    });
+  }
+  var btnSelAll = $('btnSelectAll');
+  if (btnSelAll) btnSelAll.addEventListener('click', selectAllTop);
 
   // ── 이벤트 ───────────────────────────────────────────────────────
   var btnReg = $('btnRegister');

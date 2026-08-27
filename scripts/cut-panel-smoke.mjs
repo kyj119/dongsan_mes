@@ -738,6 +738,33 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // ★조각 크기는 호스트가 이미 아는 값 — 굽기 **전에** 받아야 예산을 세울 수 있다
   ok('3x 굽기 전에 크기를 받는다', /mesCut_nestSizes\(\)'[\s\S]{0,900}?prepareWith\(resolveFill/.test(panelSrc))
 
+  // ── ★재단 탭 [◎ 전체] (2026-08-27) ────────────────────────────────
+  // 가공 탭에는 [◎ 자동감지] 가 있는데 재단 탭에는 없어 매번 손으로 골라야 했다.
+  // ⚠️ A0 의 자동감지와 **다르다** — 저쪽은 잉크 실루엣으로 나누고 문서에 그룹을 만든다.
+  //    여기는 **문서를 바꾸지 않고** 이미 나뉜 최상위 개체만 고른다. 그 한계를 화면에 적는다.
+  {
+    const h = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
+    ok('3r2 호스트에 전체 선택이 있다', /function mesCut_selectAllTop\(\)/.test(h))
+    // ★잠긴·숨은 것은 건드리지 않는다 — 사용자가 일부러 빼 둔 것을 되돌리면 안 된다
+    ok('3r2 잠긴·숨은 레이어 제외', /lay\.locked \|\| !lay\.visible/.test(h))
+    ok('3r2 잠긴·숨은 개체 제외', /items\[i\]\.locked \|\| items\[i\]\.hidden/.test(h))
+    // ★문서를 바꾸지 않는다 = 그룹을 만들지 않는다
+    ok('3r2 그룹을 만들지 않는다', !/groupItems\.add\(\)/.test(h.slice(h.indexOf('function mesCut_selectAllTop'), h.indexOf('function mesCut_nestBegin'))))
+    ok('3r2 고를 게 없으면 사유를 말한다', /고를 개체가 없습니다/.test(h))
+    ok('3r2 호스트 버전이 0.24.0 이상', /MESCUT_VERSION = 'CUT-CEP-0\.(2[4-9]|[3-9]\d)\./.test(h))
+  }
+  {
+    const html = fs.readFileSync(path.join(PANEL_DIR, 'index.html'), 'utf8')
+    ok('3r2 버튼이 선택 행에 있다', /id="btnSelectAll"/.test(html))
+  }
+  ok('3r2 셸이 버튼을 잡는다', /btnSelAll\.addEventListener\('click', selectAllTop\)/.test(panelSrc))
+  // ★새 버튼은 BUSY_IDS 에 넣는다(파일 머리 주석의 규약) — 안 넣으면 작업 중에 눌린다
+  ok('3r2 작업 중 잠긴다', /BUSY_IDS = \[[^\]]*'btnSelectAll'/.test(panelSrc))
+  // ★구 호스트면 조용히 아무 일도 안 하지 않는다 — 사유를 말한다
+  ok('3r2 구 호스트면 사유를 말한다', /SELALL_MIN_HOST/.test(panelSrc) && /hostAtLeast\(SELALL_MIN_HOST\)/.test(panelSrc))
+  // ★한계를 화면에 적는다 — "뭉친 개체는 안 나뉜다"
+  ok('3r2 한계를 화면에 적는다', /뭉쳐 있으면 이걸로는 안 나뉩니다/.test(panelSrc))
+
   // ── ★도련 방식 칸이 실제 쓰는 자리에 있다 (2026-08-27) ────────────
   // 판짜기는 `bleedMode` 를 읽는데(cut-main.js:1490), 그 칸은 「이 버튼 전용(판짜기와 별개)」이라고
   // 적힌 **접힌 단품 섹션 안**에 있었다 — 라벨이 거짓이었고, 거기서 방식을 바꾸면 판짜기 결과가
