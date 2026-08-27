@@ -82,6 +82,33 @@ POST /api/print-events → MES
 |---------|------|------|
 | `log_path` | ✅ | Print.log 파일 경로 |
 
+#### `tns_printexp` — TopazRip + PrintExp 2축 조인 ★
+
+| 파라미터 | 필수 | 설명 | 예시 |
+|---------|------|------|------|
+| `log_path` | ✅ | TNS `Print.log` (신원 축 — `tns` 와 같은 키라 설정 이관 호환) | `C:\TNSRip-X1\Print.log` |
+| `print_log_dir` | ✅ | PrintExp 일자 로그 폴더 | `C:\Program Files (x86)\PrintExp_X64_...\Log` |
+| `join_tolerance_seconds` | | 启动任务 가 립 시작보다 앞서도 허용 (기본 30) | `30` |
+| `result_wait_seconds` | | 미조인 결과를 숙성 후 신원미상 송출 (기본 180) | `180` |
+| `rip_fallback_hours` | | 결과가 안 붙은 립을 립 기준으로 송출 (기본 6, 0=끄기) | `6` |
+
+> 조인은 **FIFO + 시간창**이다. `flexi_printexp` 와 달리 스탬프가 없다 —
+> PrintExp 가 잡을 **`~section0.prn`** 이라는 고정 임시명으로만 기록하기 때문이다.
+> `Data\recordTask.tf`(레코드 836B)에도 같은 임시명뿐이라 신원은 TNS 쪽에서만 온다.
+
+> **⚠ 신원 없는 취소가 남는다 — 버그가 아니라 물리적 한계** (HSM-06 6일치 실측: 고아 8건).
+> PrintExp **자체 큐에서 재출력**하면 TNSRip 은 아무 기록도 남기지 않는다
+> (08-22 13:20~13:49 에 START→CANCEL 5회, 그 30분간 `Print.log`·`Job.log` 모두 무기록).
+> 이런 건은 `UNMATCHED-<시각>` 으로 나가고 카드·주문에 붙지 않는다 — **붙이면 오귀속이라 그게 맞다.**
+> ↳ 립이 중간에 끊긴 경우(8건 중 3건)는 `Job.log` 에 0초 등록 레코드로 이름이 남아 있어 복구 여지가 있다.
+>   `Job.log` 는 `Print.log` 의 상위집합(HSM-06 17,322 vs 9,707)이고 레코드 구조가 같다.
+>   단 **필드 수가 32개**라 역방향 탐색 상한 22를 넘어(경로가 28번째) 그대로는 안 읽힌다.
+
+> **✘ `C:\TNSRip-X1\PrintLog\<잡명>.log` 는 두 번째 축이 아니다** (HSM-04 실측, 2026-08-27).
+> `[PRINTJOB]` INI 로 `StartTime`·`EndTime` 이 보여 인쇄 축처럼 생겼지만,
+> `Print.log` 와 대조한 31건이 **초 단위까지 전부 동일**했다. 같은 립 축의 다른 표현일 뿐이다.
+> 추가로 있는 건 0초짜리 잡 등록 레코드 5건뿐. **이걸로는 전송 후 취소를 못 잡는다.**
+
 #### `printexp` — PrintExp 텍스트 로그
 
 | 파라미터 | 필수 | 설명 |
