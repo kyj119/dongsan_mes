@@ -21,7 +21,9 @@
  *   F 재고단위 정합성      수량(base)과 단가의 기준이 어긋난다 — 평가액이 pack_size 배로 튄다
  *   E 건강 지표            원가없음·규격없음·무실적·판매플래그 불일치 (절대값이 아니라 **추세**를 본다)
  *
- * ★ 등급을 나눈다 — **C1·D·F1·G1·H4a 만 게이트(exit 1)**, A·B·C2·F2·F3 는 참고(exit 0).
+ *   F4 무효한 ROLL        개수 단위인데 `deduction_method=ROLL` — 라벨이 `yd` 로 나온다 (게이트)
+ *
+ * ★ 등급을 나눈다 — **C1·D·F1·F4·G1·H4a 만 게이트(exit 1)**, A·B·C2·F2·F3 는 참고(exit 0).
  *   A·B 를 게이트로 두면 매번 빨개져 감사 자체가 무뎌진다(기존 audit 들이 같은 이유로 강/약을 나눴다).
  *   실제로 A 는 `BUJIK-*` 의 `50m` 처럼 **남겨야 하는 롤 사양**까지 잡는다 — 「그 계열 전원이 공유한다」는
  *   기계적 사실일 뿐, 빼도 되는지는 사람이 안다(트러스바의 7m 는 빼도 되고 원단의 50m 는 아니다).
@@ -165,10 +167,30 @@ for (const it of items) {
 //   재고 수량이 base 로 저장되면 **단가도 base 기준**이어야 평가액이 맞는다(수량×pack ÷ 단가×pack = 불변).
 const unitRows = d1(`SELECT i.item_code, i.item_name,
     COALESCE(i.base_unit,'') bu, COALESCE(i.unit,'') un, COALESCE(i.pack_size,0) ps,
+    COALESCE(i.deduction_method,'') dm, i.width_mm wmm,
     CAST(COALESCE(i.avg_unit_cost,0) AS INT) auc,
     CAST(COALESCE((SELECT AVG(p.unit_price) FROM purchase_order_items p
                    WHERE p.item_id = i.id AND p.unit_price > 0), 0) AS INT) po_avg
   FROM items i WHERE i.is_active = 1`)
+
+// F4 (게이트) — 무효한 `ROLL` 이 재고 단위 라벨을 `yd` 로 만든다.
+//   ★2026-08-27 실측: 활성 품목 **409건**이 개수 단위(EA·장)인데 `deduction_method='ROLL'` 이었고,
+//     `resolveStockUnit` 이 base_unit 없는 ROLL 을 `yd` 로 떨어뜨려 **봉·아일렛·판재가 야드로 표시**됐다.
+//   원인은 스키마 기본값 — `deduction_method TEXT DEFAULT 'ROLL'` 이라 지정 없이 만든 품목에 전부 흘러든다.
+//   ★ROLL 차감은 `deduction_method='ROLL' AND width_mm != null` 로 걸러지므로(`autoDeductInventory.ts:139`)
+//     width 없는 ROLL 은 **차감에 아예 못 들어간다** — 즉 설정이 무효인데 라벨만 망가뜨린다.
+//     그래서 고치는 값은 `NONE`(라벨이 `unit` 으로 떨어진다)이고, 동작 변화는 0이다.
+//   ⛔판재를 `BOARD` 로 올리는 건 **여기서 하지 않는다** — `sheet_spec` 이 비면 4x8 로 폴백해
+//     `-36`(3x6) 계열이 과소차감되고, 지금 무차감인 BOM 품목에 차감이 갑자기 붙는다.
+const PIECE_UNITS = ['EA', '장', '개', '통', '세트', 'SET', '박스', '팩']
+for (const r of unitRows) {
+  if (r.dm.toUpperCase() !== 'ROLL') continue
+  if (r.bu) continue                                   // base_unit 이 있으면 그게 라벨이라 문제없다
+  if (r.wmm != null) continue                          // 폭이 있으면 진짜 롤이다
+  if (!PIECE_UNITS.includes(r.un)) continue            // yd·롤·m 은 라벨이 맞는다
+  add(r.item_code, 'F4 무효한 ROLL',
+    `단위가 ${r.un} 인데 deduction_method=ROLL·폭 없음 — 차감엔 안 걸리고 재고 라벨만 「yd」로 나온다. NONE 이어야 한다`)
+}
 
 let f2 = 0, f3 = 0
 for (const r of unitRows) {
@@ -304,7 +326,7 @@ const h3 = [...byName].filter(([, t]) => t.has('PRODUCT') && t.has('MATERIAL'))
 // ★H1·H2 를 게이트로 두지 않는 이유는 H4a 주석 참조 — 「아직 안 팔린 제품」과 구분이 안 된다.
 // ★C2(수량 없는 매입)도 게이트가 아니다 — 용역·1식 매입은 정상이고, 뭉친 전표는 공급처
 //   청구서 없이는 못 푼다. 고칠 수 없는 항목을 게이트에 두면 감사 전체가 무뎌진다(C 분리 주석 참조).
-const GATE_KIND = /^(C1|D|F1|G1|H4a) /
+const GATE_KIND = /^(C1|D|F1|F4|G1|H4a) /
 if (!METRICS_ONLY) {
   if (violations.length) {
     const byKind = new Map()
@@ -320,7 +342,7 @@ if (!METRICS_ONLY) {
       if (list.length > n) console.log(`   … 외 ${list.length - n}건`)
     }
     if (![...byKind.keys()].some((k) => GATE_KIND.test(k))) {
-      console.log('\n[item-audit] ✅ 게이트 항목(C1·D·F1·G1·H4a) 위반 없음 — 위는 판단이 필요한 참고 정보다')
+      console.log('\n[item-audit] ✅ 게이트 항목(C1·D·F1·F4·G1·H4a) 위반 없음 — 위는 판단이 필요한 참고 정보다')
     }
   } else {
     console.log('[item-audit] ✅ 규약 위반 없음 (A~F 전부)')
