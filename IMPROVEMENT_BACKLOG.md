@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-08-27T01:20:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-08-27T05:30:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,20 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 생략 — 대상 무변경) |
+
+> **Area 1 프로덕션 헬스 (2026-08-27T05:30):**
+> - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → `forced update`로 표시됐으나 `git merge-base --is-ancestor 424f769e origin/main` = true(fast-forward 확인, rewrite 아님) → `git checkout main && git reset --hard origin/main`(HEAD `77d5d6d5`, 직전 Area6 자신의 커밋과 동일 트리). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area1 자신의 앵커(`d72e497`) 이후 웹앱 범위(`-- src migrations scripts .github`) diff **27커밋** — 전부 Area2~6(08-25~08-27)이 각자 렌즈로 이미 정독 완료(재무/여신·D1 ANALYZE·재고 존 페이징·품목분류 재판정·메시지 세그먼트·`50c99f02`/`30f446f2` 포함). 이번 사이클은 **prod-health 렌즈(smoke 맹점 4축 — 프론트실행·DROP write-path·agent-path FK·한글 리터럴 SQL)로 재통과**만 수행.
+> - **신규 마이그레이션 0건**(`git log d72e497..HEAD -- migrations` 공백) → DROP/RENAME write-path 붕괴 리스크 자체가 없음(축 2 해당 없음).
+> - **신규 라우트 4개 직접 정독**(축 3 agent-path FK 점검): `cronRouter.post('/analyze', agentKeyMiddleware, ...)`(ANALYZE 실행 + 통계행수 반환, audit 컬럼 write 없음) · `prRouter.get('/open-items')` · `prRouter.patch('/:id/supplier', requireRole('ADMIN'), ...)` · `settingsRouter.get('/credit-policy', requireRole('ADMIN'), ...)` — 4개 전부 GET/역할게이트 PATCH이고 `INSERT ... changed_by/performed_by` 류 audit-FK write 자체가 없음, 하드코딩 리터럴 위험 없음.
+> - **CI 헬스 실측**: `deploy.yml` 최근 30런 전부 `conclusion:success`. 최신런(1570, `77d5d6d5`) 잡 스텝 전부 success — Typecheck·Build·Self-tests(calc gates)·Deploy·Smoke(production) 전 단계 green. Smoke 로그 직접 확인 = **PASS 112/112**(prod 실제 엔드포인트 기준, forecast/oee/claims/notifications/shipments/inspections 등 전 카테고리 200). `backup.yml`(Daily D1 Backup) 최신런(102) success, 최근 24런 중 실패 1건(run 82, 08-06, `docs(ar)` 커밋 — 오래된 건이라 현재 헬스와 무관).
+> - **verify.yml 카나리 재확인**: #608(카나리 0회 실행) 무변동, 재확인만 — Area1 소관이나 verify.yml 수정은 CI 파이프라인 변경이라 자동수정 대상 아님.
+> - **open 12건 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **12**(변동없음, #606·#608·#609·#612·#613·#614·#615·#616·#617·#618·#619·#620 전건 일치), `search_issues`로 전 12건 `reactions.+1=0` 재확인(승인 대기 유지).
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · `search_issues(reason:completed)` **531**(변동없음) · rejected **6**(변동없음, 재확인 생략 — 대상 무변경).
+> - **🧬 SKILL 강화**: 없음 — area-1-production-health.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 신규 마이그 0건 + 신규 라우트 4개 전부 clean이라 smoke 맹점 4축 중 어느 것도 net-new 트리거 없음.
+> - **백로그 트림 체크**: 사이클 로그 9건 → 이번 로그 추가 후 10건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(27커밋 전체 이미 타 Area 정독 완료, prod-health 렌즈 재통과 clean, 신규 라우트 4개 agent-FK 위험 없음, CI/backup 전부 green), 자동수정 0건, done-sync: open 12(변동없음)·done 531(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-08-27T01:20):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → `forced update`로 표시됐으나 shallow(depth 50)라 직전 Area6 자신의 앵커(`45ac35a`)가 fetch 범위 밖 → `git fetch --unshallow origin main`으로 전체 이력 확보 후 `git merge-base --is-ancestor 45ac35a HEAD` = true(fast-forward 확인) → `git checkout main && git reset --hard origin/main`(HEAD `424f769e`). `npm ci`(0→81), `npx tsc --noEmit` clean.
