@@ -1,6 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { resolveDeductionZone } from './inventoryZone'
-import { computeRollConsumption } from './rollConsumption'
+import { computeRollConsumption, selectBoardMaterial, boardAreaSqm } from './rollConsumption'
 
 /**
  * Print event OK 상태 → 원단 재고 자동 차감
@@ -133,8 +133,8 @@ export async function autoDeductInventory(
       return { success: false, deducted: false, reason: 'no materials mapped to product' }
     }
 
-    // 5. 차감방식별 자재 선택 + 차감량 (ROLL=폭매칭+yd / BOARD=두께별 보드+면적→장 / NONE=제외)
-    const BOARD_AREA_SQM: Record<string, number> = { '4x8': (1220 * 2440) / 1e6, '3x6': (915 * 1830) / 1e6 }
+    // 5. 차감방식별 자재 선택 + 차감량 (ROLL=폭매칭+yd / BOARD=들어가는 최소 장+면적→장 / NONE=제외)
+    //    판재 면적·선택 규칙은 `utils/rollConsumption` 정본을 쓴다(사본을 두면 소요량계획과 갈린다).
     const rollMats = materialRows
       .filter((m: any) => m.deduction_method === 'ROLL' && m.width_mm != null)
       .sort((a: any, b: any) => a.width_mm - b.width_mm)
@@ -160,10 +160,11 @@ export async function autoDeductInventory(
     }
     // BOARD: 면적(㎡)→장 = W×H×copy×로스율 ÷ 보드면적
     if (!selectedMaterial && boardMats.length > 0) {
-      const bm = boardMats[0] // 제품→해당 두께 보드 1종
-      const boardArea = BOARD_AREA_SQM[bm.sheet_spec as string] || BOARD_AREA_SQM['4x8']
+      // ★`[0]` 이었다 — 「제품→해당 두께 보드 1종」 전제가 깨져서(같은 자재의 3x6·4x8 이 BOM 에 공존)
+      //   정렬 없는 쿼리의 행 순서로 차감량이 1.78배 갈렸다. 2026-08-27 선택 규칙 도입.
+      const bm = selectBoardMaterial(boardMats as any[], outputWidthMm, outputHeightMm)!
       selectedMaterial = bm; dedMethod = 'BOARD'; matchedWidthMm = null
-      deductedLengthYd = ((outputWidthMm * outputHeightMm) / 1e6) * copyTotal * (bm.waste_factor || 1) / boardArea
+      deductedLengthYd = ((outputWidthMm * outputHeightMm) / 1e6) * copyTotal * (bm.waste_factor || 1) / boardAreaSqm(bm.sheet_spec)
     }
 
     if (!selectedMaterial) {

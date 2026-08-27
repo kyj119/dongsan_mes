@@ -4,7 +4,7 @@
 //   부족체크(materialShortageCheck)·주간발주(weeklyPurchase) 계획 공용. (#465 bom_items 대체)
 // ============================================================================
 import type { D1Database } from '@cloudflare/workers-types'
-import { computeRollConsumption, resolveStockUnit } from './rollConsumption'
+import { computeRollConsumption, resolveStockUnit, selectBoardMaterial, boardAreaSqm } from './rollConsumption'
 
 export interface MaterialReq {
   material_item_id: number
@@ -40,7 +40,7 @@ export interface MaterialLineInput {
   item_name?: string | null
 }
 
-const BOARD_AREA_SQM: Record<string, number> = { '4x8': (1220 * 2440) / 1e6, '3x6': (915 * 1830) / 1e6 }
+// 판재 면적·선택 규칙은 `utils/rollConsumption` 이 정본이다(사본을 두면 두 경로가 갈린다).
 
 /**
  * order_items 규격(cm) → 자재별 소요량(base_unit). autoDeductInventory와 동일 산식.
@@ -140,9 +140,10 @@ export async function computeMaterialCoverage(
         add(maxRoll, computeRollConsumption(maxRoll, outHmm, qty).qty * splits)
       }
     } else if (boardMats.length > 0) {
-      const bm = boardMats[0]
-      const boardArea = BOARD_AREA_SQM[bm.sheet_spec as string] || BOARD_AREA_SQM['4x8']
-      add(bm, ((outWmm * outHmm) / 1e6) * qty * (Number(bm.waste_factor) || 1) / boardArea)
+      // 판재 선택은 `selectBoardMaterial` 단일 소스 — `[0]` 을 쓰면 같은 자재의 3x6·4x8 이
+      // BOM 에 함께 있을 때 행 순서로 소요량이 1.78배 갈린다(2026-08-27).
+      const bm = selectBoardMaterial(boardMats, outWmm, outHmm)!
+      add(bm, ((outWmm * outHmm) / 1e6) * qty * (Number(bm.waste_factor) || 1) / boardAreaSqm(bm.sheet_spec))
     }
     // else: NONE만 연결 or 유효자재 없음 → 의도된 무차감(판정 불가 아님)
   }

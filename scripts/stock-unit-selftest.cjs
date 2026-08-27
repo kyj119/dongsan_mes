@@ -18,7 +18,7 @@ const path = require('path')
 
 const SRC = path.join(__dirname, '..', 'src', 'utils', 'rollConsumption.ts')
 const { mod: _m, cleanup: _cleanup } = compileTs(SRC)
-const { resolveStockUnit, computeRollConsumption } = _m
+const { resolveStockUnit, computeRollConsumption, selectBoardMaterial, boardAreaSqm } = _m
 
 let pass = 0
 const fails = []
@@ -73,6 +73,38 @@ consume('cm 차감: 3000mm ×1', { base_unit: 'cm' }, 3000, 1, { qty: 300, unit:
 consume('yd 차감: 914.4mm ×2', { base_unit: null }, 914.4, 2, { qty: 2, unit: 'yd' })
 // ⚠️ 차감은 base_unit 만 본다 — deduction_method 를 봐서 갈리면 안 된다(표기 규칙과 별개).
 consume('차감은 base_unit 만 본다', { base_unit: null, deduction_method: 'BOARD', unit: '장' }, 914.4, 1, { qty: 1, unit: 'yd' })
+
+// ── ⑥ 판재 선택 — 「들어가는 가장 작은 장」 (2026-08-27 신설) ───────────
+// ★왜: 두 호출부가 `boardMats[0]` 이었고 `mats` 쿼리엔 ORDER BY 가 없다. UV 포맥스 10종은
+//   BOM 에 같은 자재의 3x6·4x8 이 함께 있어 **행 순서로 소요량이 1.78배** 갈렸다.
+const S36 = { material_item_id: 1, sheet_spec: '3x6' }   // 915 × 1830
+const S48 = { material_item_id: 2, sheet_spec: '4x8' }   // 1220 × 2440
+
+/** @param {string} name @param {object[]} mats @param {number} w @param {number} h @param {string|null} expect */
+function board(name, mats, w, h, expect) {
+  const got = selectBoardMaterial(mats, w, h)
+  const spec = got ? got.sheet_spec : null
+  if (spec !== expect) fails.push(`${name}\n    기대 '${expect}' · 실제 '${spec}'`)
+  else pass++
+}
+
+board('작은 출력물 → 3x6', [S36, S48], 600, 900, '3x6')
+board('행 순서를 뒤집어도 같다', [S48, S36], 600, 900, '3x6')          // ★핵심 회귀: [0] 이면 여기서 4x8
+board('3x6 을 넘으면 4x8', [S36, S48], 1000, 2000, '4x8')
+board('회전하면 들어간다(1800×900)', [S36, S48], 1800, 900, '3x6')
+board('둘 다 못 담으면 가장 큰 장', [S36, S48], 3000, 3000, '4x8')
+board('후보가 하나뿐이면 그것', [S36], 3000, 3000, '3x6')
+board('후보 없음 → null', [], 100, 100, null)
+
+// 면적 — 미기입·미지원은 4x8 폴백(감사 F6 가 그 상태 자체를 게이트로 잡는다)
+const area = (s) => Number(boardAreaSqm(s).toFixed(4))
+for (const [name, spec, expect] of [
+  ['3x6 면적', '3x6', 1.6744], ['4x8 면적', '4x8', 2.9768],   // 915×1830 / 1220×2440
+  ['미기입 → 4x8', null, 2.9768], ['미지원 값 → 4x8', '5x10', 2.9768],
+]) {
+  if (area(spec) !== expect) fails.push(`${name}\n    기대 ${expect} · 실제 ${area(spec)}`)
+  else pass++
+}
 
 _cleanup()
 

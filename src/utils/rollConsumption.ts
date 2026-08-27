@@ -28,6 +28,53 @@ export interface RollUnitSpec {
   deduction_method?: string | null
 }
 
+// ============================================================================
+// BOARD 자재 선택 — 판재도 롤과 같은 「맞는 것 중 가장 작은 것」 규칙을 쓴다
+// ----------------------------------------------------------------------------
+// ★ 2026-08-27: 두 호출부가 `boardMats[0]` 이었다. 「제품→해당 두께 보드 1종」이라는 전제였는데
+//   그 전제가 깨졌다 — UV 포맥스 10종은 BOM 에 **같은 자재의 3x6·4x8 두 규격**이 들어 있다.
+//   `mats` 쿼리에 `ORDER BY` 가 없어 `[0]` 은 **행 순서**고, 3x6(1.674㎡)이냐 4x8(2.977㎡)이냐에 따라
+//   소요량이 **1.78배** 갈렸다. 표시가 아니라 **어느 자재가 처리되는지**가 바뀌는 선택 경로다.
+//   → 롤이 「출력폭 이상인 최소폭」을 고르듯, 판재는 **출력물이 들어가는 최소 장**을 고른다.
+// ============================================================================
+
+/** 지원 판재 규격 — 면적(㎡)과 실치수(mm). 값을 늘리면 두 호출부에 동시에 반영된다. */
+export const BOARD_SHEETS: Record<string, { w: number; h: number }> = {
+  '3x6': { w: 915, h: 1830 },
+  '4x8': { w: 1220, h: 2440 },
+}
+const DEFAULT_SHEET = '4x8'
+
+/** 판재 1장의 면적(㎡). 미지원·미기입이면 4x8 로 폴백한다(감사 F6 가 그 상태를 게이트로 잡는다). */
+export function boardAreaSqm(sheetSpec?: string | null): number {
+  const s = BOARD_SHEETS[String(sheetSpec ?? '')] ?? BOARD_SHEETS[DEFAULT_SHEET]
+  return (s.w * s.h) / 1e6
+}
+
+export interface BoardSpec {
+  material_item_id?: number | null
+  sheet_spec?: string | null
+}
+
+/**
+ * 판재 후보 중 **출력물이 들어가는 가장 작은 장**을 고른다. 회전(가로↔세로)은 허용한다.
+ * 들어가는 장이 없으면 **가장 큰 장**을 돌려준다(롤에서 최대폭 분할출력으로 폴백하는 것과 같은 취지).
+ * ★면적이 같으면 `material_item_id` 로 tie-break — 행 순서에 의존하지 않게 한다.
+ */
+export function selectBoardMaterial<T extends BoardSpec>(
+  mats: T[], outWidthMm: number, outHeightMm: number
+): T | null {
+  if (!mats || mats.length === 0) return null
+  const sorted = [...mats].sort((a, b) =>
+    boardAreaSqm(a.sheet_spec) - boardAreaSqm(b.sheet_spec) ||
+    Number(a.material_item_id ?? 0) - Number(b.material_item_id ?? 0))
+  const fits = sorted.find((m) => {
+    const s = BOARD_SHEETS[String(m.sheet_spec ?? '')] ?? BOARD_SHEETS[DEFAULT_SHEET]
+    return (outWidthMm <= s.w && outHeightMm <= s.h) || (outWidthMm <= s.h && outHeightMm <= s.w)
+  })
+  return fits ?? sorted[sorted.length - 1]
+}
+
 export interface RollConsumption {
   /** 재고에서 뺄 수량 (아래 unit 기준) */
   qty: number
