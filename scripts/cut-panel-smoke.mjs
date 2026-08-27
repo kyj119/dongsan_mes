@@ -738,6 +738,21 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // ★조각 크기는 호스트가 이미 아는 값 — 굽기 **전에** 받아야 예산을 세울 수 있다
   ok('3x 굽기 전에 크기를 받는다', /mesCut_nestSizes\(\)'[\s\S]{0,900}?prepareWith\(resolveFill/.test(panelSrc))
 
+  // ── ★도련 방식 칸이 실제 쓰는 자리에 있다 (2026-08-27) ────────────
+  // 판짜기는 `bleedMode` 를 읽는데(cut-main.js:1490), 그 칸은 「이 버튼 전용(판짜기와 별개)」이라고
+  // 적힌 **접힌 단품 섹션 안**에 있었다 — 라벨이 거짓이었고, 거기서 방식을 바꾸면 판짜기 결과가
+  // 조용히 달라졌다. 동작(공용)은 그대로 두고 **보이는 자리**를 실제 쓰는 곳으로 옮겼다.
+  {
+    const html = fs.readFileSync(path.join(PANEL_DIR, 'index.html'), 'utf8')
+    const idHits = (html.match(/id="bleedMode"/g) || []).length
+    ok('3s2 bleedMode 는 하나뿐', idHits === 1, 'id 개수 ' + idHits)
+    ok('3s2 bleedMode 가 판짜기 섹션 안',
+      html.indexOf('id="bleedMode"') > html.indexOf('<details class="nest"'))
+    // 태그(<b>)가 섞이므로 문자 클래스로 '<' 를 막지 않는다
+    ok('3s2 단품 제목이 공용 사실을 말한다', /방식[\s\S]{0,12}은 판짜기와 공용/.test(html))
+    ok('3s2 판짜기가 그 칸을 읽는다', /getElementById\('bleedMode'\)/.test(panelSrc))
+  }
+
   // ── ★굽기 왕복 1회 + 판 문서 정리 (2026-08-27) ────────────────────
   // 실측(조각 4개·12.0M px, AI 30.7): 마스크 굽기 5,624ms · 도련 굽기 5,728ms · 패널 JS 1,258ms.
   // 픽셀을 16배 줄여도 40%만 빨라진다 = **고정비(임시문서·복제)가 지배** → 아낄 것은 왕복이다.

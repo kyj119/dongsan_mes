@@ -257,7 +257,7 @@
          두 곳에 오프셋·도련 칸이 따로 있어(여기 offset/bleed · 판짜기 nestOffset/nestBleed)
          "어느 칸을 고쳐야 하나"가 반복 질문이었다 → 제목에서 적용 범위를 못박는다. -->
     <details class="grp">
-      <summary>고급 · 단품 칼선 — <b>이 버튼 전용</b>(판짜기와 별개)</summary>
+      <summary>고급 · 단품 칼선 — 여백·도련 <b>값</b>은 이 버튼 전용(도련 <b>방식</b>은 판짜기와 공용)</summary>
     <div class="row">
       <label for="offset">오프셋</label>
       <input id="offset" type="number" value="3" min="0" max="50" step="0.5" />
@@ -269,12 +269,7 @@
       <input id="bleed" type="number" value="3" min="0" max="30" step="0.5" />
       <span class="unit">mm</span>
       <span class="cfg">칼선 <b>바깥</b>까지 더 인쇄</span>
-      <label for="bleedMode" class="l2">방식</label>
-      <select id="bleedMode">
-        <option value="auto" selected>자동(권장)</option>
-        <option value="region">단색/가장자리</option>
-        <option value="scale">사본 확대</option>
-      </select>
+      <span class="cfg l2">방식은 아래 판짜기 칸과 <b>공용</b></span>
     </div>
     <div class="hint" id="bleedHint">
       칼선보다 <b>더 크게 인쇄</b>해 재단 오차를 흡수 — 실물 실측 <b>3mm</b>, 0=안 만듦.
@@ -384,9 +379,22 @@
         <input id="nestBleed" type="number" value="3" min="0" max="30" step="0.5" />
         <span class="unit">mm</span>
         <span class="cfg">칼선 <b>바깥</b>까지 더 인쇄</span>
+        <!-- ★2026-08-27 — 이 칸은 원래 위 '고급 · 단품 칼선' 안에 있었다. 그런데 **판짜기가 그것을
+             읽고 있었다**(cut-main.js: getElementById('bleedMode')). 즉 「이 버튼 전용(판짜기와 별개)」
+             이라고 적힌 접힌 섹션의 값이 판짜기 결과를 조용히 바꾸고 있었다 — 라벨이 거짓이었다.
+             동작은 그대로 두고(공용이 맞다) **보이는 자리를 실제 쓰는 곳으로 옮긴다.**
+             ⚠️ id 를 바꾸지 말 것 — 두 경로와 스모크가 전부 이 id 로 찾는다. -->
+        <label for="bleedMode" class="l2">방식</label>
+        <select id="bleedMode">
+          <option value="auto" selected>자동(권장)</option>
+          <option value="region">단색/가장자리</option>
+          <option value="scale">사본 확대</option>
+        </select>
       </div>
       <div class="hint" id="nestBleedHint">
-        <b>간격 ≥ 도련×2</b> 라야 옆 조각 도련과 안 겹침 — 모자라면 간격을 자동으로 올리고 알림.
+        <b>간격 ≥ 도련×2</b> 라야 옆 조각 도련과 안 겹침 — 모자라면 <b>도련을 간격의 절반까지 줄이고</b> 알림(하한 1.5mm).
+        <br><b>방식</b> — 자동 = 클립 그룹이면 클립을 넓혀 원본을 더 드러냄(무손실) · <b>사본 확대</b> = 사진용(뾰족한 형상은 링의 20%까지 빔).
+        <br>단품 칼선도 <b>같은 방식</b>을 씁니다.
       </div>
       <div class="hint">
         칼선 = 디자인+여백 · 조각 사이는 칼선끼리 간격만큼(디자인끼리 = 여백×2+간격).
