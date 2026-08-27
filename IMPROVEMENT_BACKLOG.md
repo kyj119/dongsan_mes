@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-08-27T05:30:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-08-27T14:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,22 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **12** (`list_issues(state:open,label:auto-improve)` 실측. #606·#608·#609·#612·#613·#614·#615·#616·#617·#618·#619·#620, 변동 없음) |
+| 🆕 new | **12** (`list_issues(state:open,label:auto-improve)` 실측. #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621 — #609 close·#621 신규로 교체, 총건수 불변) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **531** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동 없음) |
+| ✔️ done | **532** (+1, #609 이번 사이클 completed) |
 | ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 재확인 생략 — 대상 무변경) |
+
+> **Area 2 코드 품질 심층 분석 (2026-08-27T14:00):**
+> - **방법**: `git status`=워킹트리 clean, `git fetch origin main` → `forced update`로 표시됐으나 `git merge-base --is-ancestor 77d5d6d5 origin/main` = true(fast-forward 확인, rewrite 아님) → `git checkout main && git reset --hard origin/main`(HEAD `d7f97e3`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area2 자신의 앵커(`2f9f88f`) 이후 웹앱 범위(`-- src migrations scripts .github`) diff **24커밋** — 대부분 IA/cut(IllustratorAutomat 패널·재단) 스크립트로 code-quality 스캔 범위(entity_id·auth·N+1) 밖. 핵심은 **재고 pack_size 환산 수정 체인 5커밋**(`cde2ac5`/`ec84f55`/`eda1905`/`b993cf0`/`2f0aaaa`)과 `50c99f0`(창고 탭 노출+공급업체지정, 이미 Area1·6이 정독)·`30f446f2`(품목감사 게이트C 분리, CLI전용).
+> - **#609 완료 확인**: 기존 오픈 이슈 #609("unitConvert.ts toBase/formatStock 0호출, write-path 3곳 인라인 재구현")가 오늘 dev 세션 `cde2ac5`로 정확히 해소됨을 코드 대조로 확인 — `unitConvert.ts`에 `packFactor()` SSOT 신설, **5개 write-path 전체**(`inventory.ts` 수기입고·입고취소, `scan.ts` 스캔입출고, `po-receive.ts` PO입고) 재확인 결과 인라인 재구현 잔존 0건, 전부 `packFactor()` 경유. 코멘트 남기고 close(completed).
+> - **신규 발견 — #621**: `workbench.ts`의 오늘 추가된 "출력완료 매칭 학습"(흡수 시점 파일명→주문번호 소급 backfill)을 정독하다가, `printEvents.ts:39-54` `deriveCardEntityId()`가 카드/카드번호 둘 다 모르면(에이전트 엔드포인트, 매칭 전) **entity_id=1로 무조건 디폴트**하고, 기존 `POST /link`·신규 workbench 학습 두 backfill 모두 order_number/card_id는 소급 교정하면서 **entity_id는 교정 안 함**을 확인. `grep -rn "pe.entity_id\|print_events.entity_id\|entityFilter(c,'pe')" src/routes` = 0건 — 대시보드/생산리포트/OEE 전부 이 컬럼을 안 써서 **활성 피해는 0건**(설비가 전사 공유라 원래 무관할 수도 있음)이나, 마이그 0264가 명시적으로 격리 목적 추가한 컬럼이라 향후 법인별 생산리포트를 만들 때 소급 오염된 데이터가 그대로 쌓여 있게 됨. issue化(#621, improvement/S) — production write-path 귀속 의미 변경이라 자동수정 대상 아님.
+> - **standing scan**: `npm run audit:entity` — 누락 6건, 전부 `financialReports.ts`(Area4가 이미 FP 확정한 대상과 동일, net-new 0). `purchaseRequests.ts`(69줄 변경, `/open-items`·`PATCH /:id/supplier`) 재정독 — 둘 다 `entityFilter` 정상 적용, Area1 05:30 사이클이 이미 확인한 것과 동일 결론 재확인.
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: 사이클 로그 10건 → 이번 로그 추가 후 11건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 1건(#621, entity_id backfill 미교정), 완료 1건(#609 close), 자동수정 0건, done-sync: open 12(구성 변경, 총량 불변)·done 532(+1)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-08-27T05:30):**
 > - **방법**: `git status`=detached HEAD였으나 워킹트리 clean, `git fetch origin main` → `forced update`로 표시됐으나 `git merge-base --is-ancestor 424f769e origin/main` = true(fast-forward 확인, rewrite 아님) → `git checkout main && git reset --hard origin/main`(HEAD `77d5d6d5`, 직전 Area6 자신의 커밋과 동일 트리). `npm ci`(0→81), `npx tsc --noEmit` clean.
@@ -166,12 +177,12 @@
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
+| #621 | print_events.entity_id — 미매칭 이벤트는 entity 1로 디폴트, 소급 매칭(backfill) 때도 미교정 (활성 피해 0, 향후 법인별 생산리포트 시 오염) | Area 2 | improvement,S | issue-only, 신규(#621) |
 | #620 | 한글 리터럴 LIKE/instr 매칭이 prod 원격 D1에서 조용히 실패할 수 있음 — clientSegment.ts 발견 버그(1건 확인)의 유사 패턴 3곳(lifecycle.ts 취소복구·ar-receivables.ts·cron.ts dedup) 재검증 필요 | Area 1 | bug,S | issue-only, 신규(#620) |
 | #618 | GET /api/inventory-counts/consumption(8fdf76c) — 프론트 소비처 0건, "백엔드 먼저·화면 나중" 5번째 사례 | Area 2 | improvement,S | issue-only, 신규(#618) |
 | #615 | 재고 188품목 rebase(8fdf76c) — qty×pack_size/cost÷pack_size 보정이 재현 불가능한 형태로 prod 적용됨 | Area 4 | bug,S | issue-only, 신규(#615) |
 | #614 | items 영구삭제 참조가드에 designer_intakes.item_id 누락(0532 신규 FK) — 하드삭제 시 친절한 409 대신 500 | Area 4 | bug,S | issue-only, 신규(#614) |
 | #612 | ai_analysis_id/dxf_analysis_id 크로스 법인 IDOR — 주문 라인에 타법인 분석파일 ID를 넣으면 에이전트가 자동 다운로드·복사 | Area 5 | bug,medium | issue-only, 신규(#612) |
-| #609 | unitConvert.ts toBase/formatStock 0호출 — write-path 3곳(scan/inventory/po-receive) pack_size 환산 각자 인라인 재구현, #462 재발위험 | Area 2 | improvement,S | issue-only |
 | #608 | 쓰기경로 회귀 방지 3중 장치 중 실제 배포경로엔 전무 — verify.yml 카나리는 생성 이래 0회 실행 | Area 1 | improvement,medium | issue-only |
 | #606 | GET /api/reports/entity-attribution-audit(0524) — 프론트 소비처 0건, "백엔드 먼저·화면 나중" 4번째 사례 | Area 3 | feature,S | issue-only |
 
