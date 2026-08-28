@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-08-28T09:47:55+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-08-28T15:48:35+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,25 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **532** (변동없음) |
 | ❌ rejected | **6** (재확인 생략 — 대상 무변경) |
+
+> **Area 6 자기 진화 (2026-08-28T15:48):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD), `git fetch origin main` → `forced update`로 표시됐으나 HEAD가 이미 `origin/main`과 동일(`14ab556`) → `git merge-base --is-ancestor 424f769e origin/main` = true(fast-forward 확인, rewrite 아님). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(범위 축 2종)**: 직전 Area6 자신의 앵커(`424f769e`) 이후 웹앱 범위(`-- src migrations scripts .github`) diff **21커밋**, 비-웹앱 범위(`-- LogWatcher IllustratorAutomat caps-worker workers queue`) diff **7커밋**(`1373f57`·`09feec3`·`2a10328`·`0dc1162`·`4156226`은 `scripts/cut/*`도 건드려 양쪽에 중복 계상). `grep -c` 백로그+아카이브 전수 대조 결과 **어느 로그에도 해시 언급 0건인 LogWatcher 커밋 2건**(`3ce57b2`·`1d3d3e7`)을 우선 정독 대상으로 확정.
+> - **`3ce57b2` 심층 정독(신규 TnsFloraParser, 평판 TopazRip+Flora 2축 조인, 372줄) — #616 형제-비대칭 3번째 사례**: 전송후취소 무흔적(현장 3라운드 실측 R3=OK 오판) 문제를 Flora `print_rec.dat`(고정 2,376바이트 레코드) 실시각/중단플래그로 보정하는 신규 파서. `ClaimRipByName`이 `_pending`을 **표시만 하고 유지**(재출력 재매칭 대비)하는 설계는 정확하나, `rip_fallback_hours`(기본 6h) 폴백이 미claim 항목을 **송출과 동시에 큐에서 제거**하는 지점 이후 그 이름으로 뒤늦게 도착하는 Flora 레코드는 `ClaimRipByName`이 못 찾아(`rip==null`) **신원 없는 새 이벤트로 무조건 재송출**(`ReadRecords`가 조건 없이 `outEvents`에 추가) — `TnsPrintExpParser.cs`의 `_lastRipCancelAt`(취소 경로 전용 억제 상태)와 동형인 폴백-OK 경로 억제 상태가 이번에도 없음. **#616 본문이 정확히 이 메커니즘**(취소 경로엔 억제 있음·OK 폴백 경로엔 없음)을 다른 파일(`TnsPrintExpParser.cs`)로 신고했고, 62회차 선례(`361557ce`의 `FlexiPrintExpParser`)가 "같은 클래스 재노출은 별도 이슈화 안 함, #616가 메커니즘 전체 커버"로 처리한 전례와 동형 — **신규 이슈화 안 함**, 노출 대상이 TnsPrintExpParser→FlexiPrintExpParser→**TnsFloraParser로 3번째 파서 확대**된 것만 기록(각 파서가 독립 `.cs` 파일에 동일 패턴을 복붙 구현 — 공유 코드 리팩터가 아니라 매 신규 파서가 개별적으로 같은 함정을 재도입하는 구조).
+> - **`1d3d3e7` 확인**: `.claude/PROJECT_STATUS.md` 1줄(docs-only, HSM-04 PrintLog 축 폐기 기록) — 코드 변경 없음, clean.
+> - **웹앱 축 21커밋 중 Area5 앵커(`3c4a5bc8`) 이후 순수 신규 3건**(`4c6e5ab`·`175c7f6`·`77782cf`) 개별 확인: ① `4c6e5ab`(avg-cost 백필 스크립트가 08-19 base 리베이스 이후 잘못된 축으로 재실행되면 43개 품목 평가액이 61.5M→3B로 폭증할 뻔한 것을 방지 + `audit:avgcost` 신설) ② `175c7f6`(IA 배포 시 버전 문자열 미변경 감지 게이트) ③ `77782cf`(뭉치전표 리포트가 item_id NULL 219행/13.7억을 조용히 누락하던 것을 LEFT JOIN + 사유분류로 표면화) — **셋 다 CLI 감사/배포 툴링**(웹 라우트·DB write 없음, `docs/price/backfill_avg_cost.sql`은 owner 수동 실행 스크립트) — 기존 판정(`30f446f2`/`ca46317`류, owner 수기검증 영역)과 동형, Area6 자동스캔 대상 밖.
+> - **웹앱 축 21커밋 중 미언급 12건**(cut/도구 IA 스크립트·데이터 마이그·docs) 스탯 레벨 확인 — 전부 `scripts/cut/*`(넷팅·베젤·용접선) 또는 `data(items)`/`docs(ia)` 성격, 이미 확립된 IA-축/데이터-전용 판정 범주(웹 라우트·DB write 없음)에 해당 — 개별 심층정독 불요.
+> - **close-pending 캐시**: 없음(이번 사이클 신규 fixed-in-tree 픽스 0건).
+> - **open 12건 재확인(open≠unfixed, 코드 재grep 전수)**: `list_issues(OPEN,label:auto-improve)` totalCount **12**(변동없음, #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621 전건 일치). 12건 전부 본문 안티패턴을 코드에서 개별 재grep — **전건 잔존 확인**(#606/#618/#619 프론트 소비처 여전히 0건, #612 `workbench.ts:653` 여전히 entity 격리 없이 INSERT, #614 `items.ts` 참조가드 20종에 `designer_intakes` 여전히 미포함, #616 위 상술, #617 `kit.ps1:242` `Select-Object -First 4000` 여전함, #620 3개 지점(`lifecycle.ts:499`·`ar-receivables.ts:424`의 `CREDIT_ALERT_TITLE_PREFIX='여신 초과'`·`cron.ts:281`) 전부 한글 리터럴 LIKE 여전함, #621 `deriveCardEntityId` 여전히 미교정) — **12건 전부 미픽스, close-pending 없음**. `search_issues`로 전 12건 `reactions.+1=0` 재확인(승인 대기 유지).
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · `search_issues(reason:completed)` **532**(변동없음) · `reason:not_planned` **4** + `duplicate` **2** = rejected **6**(변동없음).
+> - **브랜치 위생**(읽기전용): `npm run branch:clean` → SAFE-remote 0·SAFE-absorbed 1·REVIEW 0, SKIP 1(main) — 삭제대상 1건(30건 미만, 백로그 등록 불요).
+> - **CI 헬스**: `deploy.yml` 최근 30런 전부 `conclusion:success`(3ce57b2·4c6e5ab 포함 최신 커밋까지).
+> - **npm audit 재확인**: 11건(1 moderate·8 high·2 critical) 전부 devDependency, #613 기보고와 완전 일치, net-new 0.
+> - **verify.yml 카나리 재확인**: `list_workflow_runs(verify.yml)` totalCount **0**(변동없음, #608와 완전 일치).
+> - **🧬 SKILL 강화**: 없음 — area-6-self-evolution.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 「범위 축」(62회차) 레시피가 이번에도 LogWatcher 2커밋을 Area1~5 사각지대에서 정확히 낚아챘고, 신규 파서(TnsFloraParser)가 #616 메커니즘을 3번째로 재현한 것을 즉시 식별 — 두 레시피 모두 정상 작동, 신규 코딩화 대상 없음.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 9건 → 이번 로그 추가 후 10건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(fresh 웹앱 3건 전부 CLI 툴링 clean, LogWatcher 2건 중 1건은 #616 기존 메커니즘 재노출로 처리·1건은 docs-only clean), 자동수정 0건, done-sync: open 12(변동없음)·done 532(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 + 인프라 (2026-08-28T09:47):**
 > - **방법**: `git status`=워킹트리 clean(detached HEAD), `git fetch origin main` → `forced update`로 표시됐으나 shallow(depth 50)라 이전 앵커가 fetch 범위 밖 → `git fetch --unshallow origin main` 후 `git merge-base --is-ancestor` = true(fast-forward 확인, rewrite 아님) → `git checkout main && git reset --hard origin/main`(HEAD `3c4a5bc8`). `npm ci`(0→81), `npx tsc --noEmit` clean.
