@@ -30,6 +30,11 @@ const LUMP = `p.quantity = 1 AND p.unit_price > 0 AND ABS(p.unit_price - p.amoun
 //   (`*-OPEN` 기초채무 · `ICM-AP-*` 관계사 매입채무 — 27행 11.4억이 여기 든다)
 const STRUCTURAL = `(po.po_number LIKE '%OPEN%' OR po.po_number LIKE 'ICM-AP-%'
   OR p.item_name LIKE '%이월%' OR p.item_name LIKE '%관계사 매입채무%')`
+// ★품목 축이 아닌 매입 = `notes` 의 분류 태그로 판정한다(장비·리스·수선·용역·할인).
+//   ⛔품명 키워드 목록을 여기 박지 않는다 — 손목록은 조용히 낡는다(backfill 하드코딩 명단이
+//     그래서 폐기됐다). 태그는 **데이터에 근거가 같이 남고**, 태그 없는 건 그대로 목록에 남는다.
+//   태그 심는 곳 = `docs/analysis/2026-08-27-nonitem-purchase-classify.sql`
+const NON_ITEM = `p.notes LIKE '%[분류:%'`
 
 const won = (n) => Number(n || 0).toLocaleString()
 
@@ -84,14 +89,18 @@ const lines = raw.filter((l) => !NORMAL.has(l.item_code))
 // ⚠️미연결 라인은 품목이 없어 `avg_unit_cost` 를 채울 수 없다 — 청구서보다 **품목 연결이 먼저**다.
 const rawUn = d1(`SELECT COALESCE(c.client_name,'(미지정)') supplier,
     p.item_name, po.entity_id, po.po_number, po.order_date, CAST(p.amount AS INT) amt,
-    CASE WHEN ${STRUCTURAL} THEN 1 ELSE 0 END structural
+    CASE WHEN ${STRUCTURAL} THEN 1 ELSE 0 END structural,
+    CASE WHEN ${NON_ITEM} THEN 1 ELSE 0 END nonitem,
+    CASE WHEN ${NON_ITEM} THEN substr(p.notes, instr(p.notes,'[분류:') + 4,
+         instr(p.notes,']') - instr(p.notes,'[분류:') - 4) ELSE '' END cls
   FROM purchase_order_items p
     JOIN purchase_orders po ON po.id = p.po_id
     LEFT JOIN clients c ON c.id = po.supplier_id
   WHERE p.item_id IS NULL AND ${LUMP}
   ORDER BY p.amount DESC`)
 const structural = rawUn.filter((l) => l.structural)
-const unRaw = rawUn.filter((l) => !l.structural)
+const nonItem = rawUn.filter((l) => !l.structural && l.nonitem)
+const unRaw = rawUn.filter((l) => !l.structural && !l.nonitem)
 // 연결분과 같은 「반복 금액 = 실단가」 규칙. 품목코드가 없으니 **공급처+품명**으로 묶는다.
 const unNormal = new Set()
 const byName = new Map()
@@ -110,7 +119,7 @@ const unlinked = unRaw.filter((l) => !unNormal.has(l.supplier + '|' + l.item_nam
 
 return {
   lines, raw, dropped: raw.length - lines.length,
-  unlinked, unlinkedDropped: unRaw.length - unlinked.length, structural,
+  unlinked, unlinkedDropped: unRaw.length - unlinked.length, structural, nonItem,
 }
 }
 
@@ -141,7 +150,7 @@ function d1(sql) {
   }
 }
 
-const { lines, raw, dropped, unlinked, unlinkedDropped, structural } = collectLumpLines(d1)
+const { lines, raw, dropped, unlinked, unlinkedDropped, structural, nonItem } = collectLumpLines(d1)
 
 // ── 그 계열에서 매입 라인이 0 건인 판매품목 ──────────────────────────────
 // 뭉친 전표의 **진짜 피해자**다. 대금이 뭉침 품목에 다 붙어 있어 이쪽은 원가가 서지 않는다.
@@ -190,6 +199,13 @@ for (const [sup, s] of [...bySup].sort((a, b) => b[1].amt - a[1].amt)) {
   console.log(`\n■ 품목 미연결 뭉침 라인 — ${unlinked.length}행 · ${won(uAmt)}원  (위 표에 안 잡힌다)`)
   console.log(`   ⚠️품목이 없어 청구서를 받아도 **원가로 못 간다** — 이쪽은 청구서보다 **품목 연결이 먼저**다.`)
   console.log(`   ※ 별도 제외: 구조적 이월 ${structural.length}행 ${won(sAmt)}원(기초채무·관계사 매입채무 = 전표가 아니라 잔액)`)
+  if (nonItem.length) {
+    const byCls = new Map()
+    for (const l of nonItem) byCls.set(l.cls, (byCls.get(l.cls) || 0) + l.amt)
+    const parts = [...byCls].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${won(v)}`).join(' · ')
+    console.log(`   ※ 별도 제외: 품목 축 아님 ${nonItem.length}행 ${won(nonItem.reduce((a, l) => a + l.amt, 0))}원 — ${parts}`)
+    console.log(`      (\`notes\` 분류 태그 기준. 청구서를 받아도 원가로 갈 데가 없다)`)
+  }
   console.log(`   ※ 반복 단가 정상 ${unlinkedDropped}행도 제외.\n`)
   const un = new Map()
   for (const l of unlinked) {

@@ -75,6 +75,7 @@
     "cut:quality": "node scripts/cut/cutline-quality.mjs",
     "audit:items": "node scripts/item-master-audit.cjs",
     "report:lump": "node scripts/lump-voucher-report.cjs",
+    "audit:avgcost": "node scripts/avg-cost-backfill-check.cjs",
     "audit:skills": "node scripts/skill-audit.cjs",
     "audit:items:selftest": "node scripts/r0-selftest.cjs",
     "test:orderline": "node scripts/orderline-selftest.cjs",
