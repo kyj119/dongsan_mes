@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-08-28T15:48:35+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-08-28T21:47:29+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -31,6 +31,21 @@
 > - **🧬 SKILL 강화**: 없음 — area-6-self-evolution.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 「범위 축」(62회차) 레시피가 이번에도 LogWatcher 2커밋을 Area1~5 사각지대에서 정확히 낚아챘고, 신규 파서(TnsFloraParser)가 #616 메커니즘을 3번째로 재현한 것을 즉시 식별 — 두 레시피 모두 정상 작동, 신규 코딩화 대상 없음.
 > - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 9건 → 이번 로그 추가 후 10건, 임계 13건 미만, 트림 불요.
 > - 신규 이슈 0건(fresh 웹앱 3건 전부 CLI 툴링 clean, LogWatcher 2건 중 1건은 #616 기존 메커니즘 재노출로 처리·1건은 docs-only clean), 자동수정 0건, done-sync: open 12(변동없음)·done 532(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
+
+> **Area 1 프로덕션 헬스 (2026-08-28T21:47):**
+> - **방법**: `git status`=워킹트리 clean(main, origin과 동기), `git fetch origin main` → `git rev-list HEAD..origin/main --count`=0(이미 최신, reset 불요). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area1 자신의 앵커(`77d5d6d5`) 이후 웹앱 범위(`-- src migrations scripts .github`) diff **21커밋** — 전부 Area2~6(08-27~08-28)이 각자 렌즈로 이미 정독 완료(재고 pack_size 축 정정 체인·품목감사 게이트 재스코핑·avg-cost 백필 단위축·IA 배포 버전드리프트 게이트·뭉치전표 LEFT JOIN 정정 포함). 이번 사이클은 **prod-health/smoke 맹점 4축 렌즈(프론트실행·DROP write-path·agent-path FK·한글 리터럴 SQL)로 재통과**만 수행.
+> - **신규 마이그레이션 0건**(`git log 77d5d6d5..HEAD -- migrations` 공백) → DROP/RENAME write-path 붕괴 리스크 자체가 없음(축 2 해당 없음).
+> - **신규 라우트 0개**(라우트 churn 4파일 `inventory.ts`/`po-receive.ts`/`scan.ts`/`workbench.ts` 전부 **기존 엔드포인트 내부 로직 변경**만, `grep "^\+.*Router\.(get|post|patch|put|delete)\("` 매치 0건) → 축 3(agent-path FK 하드코딩) 신규 노출 표면 자체가 없음. 같은 4파일 diff에서 신규 `LIKE`/`instr(` 한글 리터럴(축 4) · 신규 `changed_by/performed_by/handled_by/created_by` 하드코딩(축 3) 둘 다 grep 0건 — smoke 맹점 4축 전부 net-new 트리거 없음.
+> - **CI 헬스 실측**: `deploy.yml` 최근 30런 전부 `conclusion:success`. 최신런(1594, `207078c`) 잡 스텝 전부 success — Typecheck·Build·Self-tests(calc gates)·Deploy·Smoke(production) 전 단계 green(스모크 07:30:23~07:30:38 완주). `backup.yml` 최신런(103, 08-28T01:13) success, 최근 20런 중 실패 0건(08-06 run 82 실패는 22일 전 오래된 건, 현재 헬스와 무관).
+> - **verify.yml 카나리 재확인**: `list_workflow_runs(verify.yml)` totalCount **0**(변동없음, #608와 완전 일치). `e2e.yml`은 `disabled_manually`(기존 상태 유지, 변동없음).
+> - **standing scan**: `npm audit` 11건(1 moderate·8 high·2 critical) 전부 devDependency, #613 기보고와 완전 일치, net-new 0. `npm run branch:clean` → SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **open 12건 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **12**(변동없음, #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621 전건 일치), `search_issues(reactions:>0)` **0건**(승인 대기 유지).
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · `search_issues(reason:completed)` **532**(변동없음) · `reason:"not planned"` **4**(재확인) + `duplicate` **2**(재확인 생략, 안정) = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-1-production-health.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 21커밋 churn이 타 Area 전량 정독 완료 + 신규 라우트/마이그 0건이라 smoke 맹점 4축 중 어느 것도 net-new 트리거 없음 — 신규 코딩화 대상 없음.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 10건 → 이번 로그 추가 후 11건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(21커밋 전체 이미 타 Area 정독 완료, prod-health 렌즈 재통과 clean, 신규 라우트/마이그 0건이라 agent-FK·한글리터럴 SQL 신규 노출 없음, CI/backup 전부 green), 자동수정 0건, done-sync: open 12(변동없음)·done 532(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
 >
 
 > **Area 5 보안 + 인프라 (2026-08-28T09:47):**
