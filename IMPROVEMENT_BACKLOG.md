@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-08-28T03:46:30+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-08-28T09:47:55+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,24 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **532** (변동없음) |
 | ❌ rejected | **6** (재확인 생략 — 대상 무변경) |
+
+> **Area 5 보안 + 인프라 (2026-08-28T09:47):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD), `git fetch origin main` → `forced update`로 표시됐으나 shallow(depth 50)라 이전 앵커가 fetch 범위 밖 → `git fetch --unshallow origin main` 후 `git merge-base --is-ancestor` = true(fast-forward 확인, rewrite 아님) → `git checkout main && git reset --hard origin/main`(HEAD `3c4a5bc8`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **⚠️ 앵커 산출 주의(자기 교정)**: 직전 Area5 로그(2026-08-26T21:52) 본문의 "직전 Area5 자신의 앵커(`8f652f8`)"는 **그 사이클이 시작한 지점**(두 사이클 전)을 가리키는 서술이라, 이번 사이클이 diff 기준으로 삼아야 할 값은 그 로그의 **방법 라인이 명시한 종료 HEAD(`30aa144a`)**다. 처음에 `8f652f8`으로 diff해 52커밋을 봤다가 messages/credit-helpers/attendance/kakao/cron 등 다수가 **이미 그 사이클이 검토한 범위**(`8f652f8..30aa144a`)에 속함을 뒤늦게 확인 — `30aa144a`로 재계산하니 20커밋으로 좁혀짐. 재검토 자체는 결론이 바뀌지 않아 무해했으나, **다음 Area 5부터는 방법 라인의 HEAD 값을 앵커로 쓸 것**(각 Area 로그가 이미 이렇게 기록해 두므로 서술 문장이 아니라 그 필드를 읽으면 된다).
+> - **churn 확인(올바른 앵커 `30aa144a` 기준)**: 웹앱 범위(`-- src migrations scripts .github`) diff **20커밋** — 대부분 IA/cut·품목분류 재판정(F5/F6 게이트)으로 보안 스캔 범위 밖. 보안 렌즈 대상 라우트 변경은 `inventory.ts`(+53)·`inventoryCount.ts`(+28)·`po-receive.ts`(+9)·`purchaseRequests.ts`(+69)·`scan.ts`(+12)·`workbench.ts`(+56) 6개. 신규 마이그 0건, `.github`/`index.tsx` 변경 0건(rate-limit 등록·CI 권한 변동 없음).
+> - **신규 라우트 2개 직접 정독**(`purchaseRequests.ts` `open-items`/`:id/supplier`, 이미 Area1·3·6이 각자 렌즈로 정독한 대상 재확인): `open-items`는 `entityFilter(c,'pr')` 명시 별칭 적용, `:id/supplier`는 `requireRole('ADMIN')` + read-back 404 게이트(`entityFilter(c)`) 후 UPDATE — 최종 UPDATE 자체는 bare `WHERE id=?`이나 그 앞 SELECT가 이미 타법인을 걸러 도달 자체가 불가(FP클래스 "블록내 read-gate 선행"과 동형) — clean.
+> - **`inventory.ts`/`inventoryCount.ts`/`po-receive.ts`/`scan.ts` pack_size→`packFactor()` 전환 4파일 바인딩 재확인**: 전부 `?` 파라미터라이즈, `entityId===0 ? [...inv.params] : [entityId, ...inv.params]` 패턴(2026-08-25 바인드-순서 사고 재발방지가 신규 코드에 스스로 적용됨, `inventory.ts` GET `/` 서브쿼리) 재확인 — SQLi·바인드-순서 회귀 없음.
+> - **`workbench.ts`(+56, 출력완료 매칭 학습 backfill) 보안 정독**: `INSERT INTO print_file_map`은 `di.entity_id` 파생(부모 조회 경유, body 미신뢰) — clean. `UPDATE print_events SET order_number = ? WHERE order_number IS NULL AND (file_name = ? OR file_name = ?)`는 entity_id 스코프가 없으나, **기존 `/print-events/link`(printEvents.ts:1327-1330)의 동일 패턴**(`WHERE card_id IS NULL AND (file_name = ? OR file_name = ?)`, entity 무관 file_name 매칭)을 그대로 따른 것 — net-new 취약점 아닌 기존 설계 확장. entity_id 컬럼 자체 미교정은 기보고 **#621**과 동일 근본원인(중복이슈화 안 함).
+> - **`ledger/credit-helpers.ts` 전체 재독(379줄, 2026-08-25 바인드-순서 사고 당사자 파일)**: `months`(`getCreditPolicy`에서 `Math.round(num(...,1,24))` 클램프 후 인라인)·`ratio`(`Number.isFinite && 0<r≤1` 검증 후에만 인라인) 재확인 — SQLi 없음. 이 사이클의 churn(20커밋) 범위 밖이라 코드 변경은 없었으나 보안 렌즈로 처음부터 끝까지 재검증(Area4가 correctness 관점, 이번은 injection 관점) — clean.
+> - **`cron.ts` 신규 `POST /analyze`+`stockAlerts` 내부 서비스토큰 확인**: `agentKeyMiddleware` 게이트, `sign({..., entityId:1, exp:+900s}, jwtSecret)`으로 내부 호출용 단기토큰 발급 — 같은 파일의 기존 연차적립 호출(`entityId:1` 하드코딩, 15분 만료)과 동일 패턴 재사용. 대상 엔드포인트(`stock-alerts/check`)는 `GROUP BY item_id, entity_id`로 전 법인을 한 번에 처리하고 행마다 자기 법인으로 귀속(요청자 entityId는 인증용일 뿐 스코프에 미사용) — 기존 설계와 일치, net-new 위험 없음.
+> - **XSS sweep(churn JS 6파일)**: `inventory.js`(+61)·`inventoryCount.js`(+52)·`inventoryDashboard.js`(+82)·`purchaseRequests.js`(+49)·`purchaseOrders.js`(+4)·`purchaseRequestForm.js`(+5) — 전부 이미 Area3(08-27T21:47)가 UX 렌즈로 escapeHtml 일관성 확인. 이번엔 보안 렌즈로 재확인 중 `grep -c escapeHtml inventoryDashboard.js`=0(1차 오탐 신호) → 직접 Read 결과 **로컬 래퍼 `escHtml()`**(파일 자체 정의)로 전 sink(품목명·코드·분류·창고명·단위) 일관 적용 확인 — 기존 FP 카탈로그("escapeHtml 헬퍼 전무" 오탐, prefix-scoped 래퍼)가 정확히 커버하는 사례라 net-new 스킬 보강 불필요.
+> - **standing scan 4종**: ① 시크릿 폴백 `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43` 1건뿐(기존 FP, 변동없음). ② `npm run audit:entity` **누락 0건**(financialReports.ts 6건 FP가 Area4 확인대로 `c09d0b8` 게이트 개선으로 이미 해소, 재확인). ③ `node scripts/sort-audit.cjs` P1 **0건**(변동없음, P2 1건 attendance.ts:158 기존 노출 유지). ④ `npm audit` 11건(1 moderate·8 high·2 critical) 전부 devDependency, #613 기보고와 완전 일치.
+> - **open 12건 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **12**(변동없음, #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621 전건 일치), `search_issues`로 전 12건 `reactions.+1=0` 재확인(승인 대기 유지). Area5 소관 #612(크로스법인 IDOR)도 무변화.
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · `search_issues(reason:completed)` **532**(변동없음) · rejected **6**(변동없음, `not_planned` 4 + `duplicate` 2 재확인).
+> - **🧬 SKILL 강화**: area-5-security-infra.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 이번 사이클의 유일한 프로세스 교훈은 위 "앵커 산출 주의" 자기교정(신규 코딩화 대상 아님, 다음 Area5 실행 시 유의사항으로 로그에만 남김).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 8건 → 이번 로그 추가 후 9건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(20커밋 전체 보안 렌즈 clean, 신규 라우트 2개·pack_size 전환 4파일·workbench 학습 backfill·credit-helpers 전체·cron 신규 엔드포인트 전부 clean, XSS sweep 6파일 net-new 0, standing scan 4종 전부 net-new 0), 자동수정 0건, done-sync: open 12(변동없음)·done 532(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-08-28T03:46):**
 > - **방법**: `git status`=워킹트리 clean(detached HEAD), `git fetch origin main` → `forced update`로 표시됐으나 `git merge-base --is-ancestor e2f5c938 origin/main` = true(fast-forward 확인, rewrite 아님) → `git checkout main && git reset --hard origin/main`(HEAD `e2f5c93`). `npm ci`(0→81), `npx tsc --noEmit` clean.
