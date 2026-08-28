@@ -223,10 +223,20 @@ const O6 = { client: '동산유통(주)', orderNo: 'E1-20260818-0040', due: '08/
 // ★박스 번호는 **인쇄**한다. 08-18 설계는 「박스 __/__ 손기입」이었는데,
 //   출력 시 박스 수를 입력받아 1/4·2/4… 로 N부를 뽑는 편이 낫다(용준님 2026-08-28).
 //   여전히 테이블은 신설하지 않는다 — 종이에만 존재하는 번호다.
-const SHEET_CAP_MM = 5.4;    // 판 아래 캡션(판번호·규격·장수) 높이
+// 판 아래 캡션 = 판번호·규격 / 지시장수 + **실제 기입칸** 2줄.
+// ★체크박스가 아니라 「빈 칸에 실제 담은 수량 기입」이다(08-18 확정, 보드마카).
+//   체크는 담았다/안 담았다만 남지만, 수량은 **부족·초과를 잡는다**.
+//   초안에서 이 칸을 빠뜨렸다 — 스티커가 「작업지시+검수」 한 장인데 검수 절반이 없었다.
+//   지면은 어차피 남는다(판 6장 혼재 채움률 70%) — 남는 자리를 검수에 쓴다.
+const SHEET_CAP_MM = 9.6;
 
-// 판 이미지 N개를 W×H(mm) 안에 어떻게 나눌지 — 열×행을 전부 시도해 **지면을 가장 많이
-// 덮는** 배치를 고른다. 정사각 슬롯 + contain 은 쓰지 않는다(08-18 실측: 평균 46%가 흰 여백).
+// 판 이미지 N개를 W×H(mm) 안에 어떻게 나눌지 — 열×행을 전부 시도한다.
+// 정사각 슬롯 + contain 은 쓰지 않는다(08-18 실측: 평균 46%가 흰 여백).
+//
+// ★목표는 「지면을 많이 덮기」가 아니라 **「가장 작은 판을 최대한 크게」**다(총면적은 동점 처리).
+//   총면적으로 고르면 한 판만 커지는 배치가 이긴다 — 판 3장에서 실제로 2열×2행(최소변 40mm·
+//   빈칸 1개)이 3열×1행(44mm·빈칸 0)을 이겼다. 이 라벨의 목적은 **판을 구분하는 것**이라
+//   제일 작은 판이 읽히느냐가 전부고, 큰 판이 더 커지는 건 아무 값이 없다.
 function sheetGrid(items, W, H, gap) {
   let best = null;
   for (let cols = 1; cols <= items.length; cols++) {
@@ -242,7 +252,8 @@ function sheetGrid(items, W, H, gap) {
       area += dw * dh;
       minSide = Math.min(minSide, Math.min(dw, dh));
     }
-    if (!best || area > best.area) best = { cols, rows, cw, ch, ih, area, minSide };
+    const cand = { cols, rows, cw, ch, ih, area, minSide };
+    if (!best || minSide > best.minSide || (minSide === best.minSide && area > best.area)) best = cand;
   }
   return best;
 }
@@ -266,7 +277,9 @@ function renderSheetLabel(cfg) {
     h += `<div class="sh-cell" style="height:${g.ch.toFixed(1)}mm">`
        + `<div class="sh-img" style="width:${(s.w * sc).toFixed(1)}mm;height:${(s.h * sc).toFixed(1)}mm">`
        + `<img src="${s.img}"></div>`
-       + `<div class="sh-cap"><b>판${s.no}</b> ${esc(s.spec)}<span class="dot">·</span>${s.pieces}장</div></div>`;
+       + `<div class="sh-cap"><div class="sh-cap1"><b>판${s.no}</b> ${esc(s.spec)}</div>`
+       + `<div class="sh-cap2">지시 <b>${s.pieces}</b>장<span class="dot">·</span>실제 <span class="wbox2"></span></div>`
+       + `</div></div>`;
   });
   h += `</div>`;
   h += `<div class="lb-foot"><div class="lb-fin"><b>파일</b> ${esc(cfg.file)}</div>`
@@ -420,8 +433,12 @@ body.guides .label { outline:0.2mm dashed #bbb; outline-offset:-0.1mm; }
 .sh-cell { display:flex; flex-direction:column; align-items:center; justify-content:flex-start; overflow:hidden; }
 .sh-img { border:0.25mm solid #888; background:#fff; overflow:hidden; }
 .sh-img img { width:100%; height:100%; display:block; }
-.sh-cap { font-size:8pt; color:#222; margin-top:1.1mm; white-space:nowrap; }
-.sh-cap b { font-size:8.5pt; }
+.sh-cap { font-size:7.5pt; color:#222; margin-top:1.1mm; white-space:nowrap; text-align:center; line-height:1.25; }
+.sh-cap1 b { font-size:8.5pt; }
+.sh-cap2 { margin-top:0.8mm; }
+/* 실제 기입칸 — 체크박스가 아니라 보드마카로 숫자를 쓰는 칸(08-18 확정) */
+.wbox2 { display:inline-block; width:11mm; height:5mm; border:0.3mm solid #111; background:#fde2e2;
+         border-radius:0.6mm; vertical-align:-1.4mm; }
 .sheetlb .lb-fin { font-size:7.5pt; color:#333; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100mm; }
 .ui code { background:#f2f2f2; padding:0.5mm 1.2mm; border-radius:1mm; font-size:9.5pt; }
 .ui .warn { background:#fff7ed; border-left:3px solid #ea580c; padding:3mm 4mm; margin:3mm 0; }
