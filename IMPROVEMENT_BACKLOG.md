@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-08-28T21:47:29+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-08-29T03:46:33+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,20 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **532** (변동없음) |
 | ❌ rejected | **6** (재확인 생략 — 대상 무변경) |
+
+> **Area 2 코드 품질 심층 분석 (2026-08-29T03:46):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD), `git fetch origin main`(`207078c..d745bdb`) → `git merge-base --is-ancestor d7f97e3 origin/main` = true(fast-forward 확인, rewrite 아님) → `git checkout main && git reset --hard origin/main`(HEAD `d745bdb`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area2 자신의 앵커(방법 라인 HEAD `d7f97e3`, 62회차 자기교정 규칙 적용) 이후 웹앱 범위(`-- src migrations scripts .github`) diff **6커밋**(`4c6e5ab`·`175c7f6`·`77782cf`·`c09d0b8`·`f1895a0`·`44576c4`) — **신규 마이그 0건, 신규 라우트 0개**. 6건 전부 CLI 감사/배포 툴링(`scripts/*.cjs`·`entity-audit.mjs`·`ia-deploy.cjs`) 또는 `src/utils/{autoDeductInventory,materialRequirement,rollConsumption}.ts`(자재선택 로직) — routes 변경 자체가 없어 Area2 표준 스캔(entity_id INSERT·authMiddleware·N+1)의 신규 표면이 사실상 없음.
+> - **`f1895a0` 유틸 3파일 직접 정독(판재 tie-break 버그픽스, 이미 Area1·4가 정독한 커밋의 코드 자체를 코드품질 렌즈로 재확인)**: `rollConsumption.ts` 신설 `selectBoardMaterial()`(면적 최소 우선 tie-break `material_item_id`) — `grep -rn "boardMats\[0\]\|mats\[0\]" src`=0(잔존 `[0]` 선택 없음, 두 호출부 `autoDeductInventory.ts:165`·`materialRequirement.ts:145` 전부 단일소스 경유), `grep -rn "BOARD_AREA_SQM" src`=0(중복 상수 제거 완료, dead code 없음) — clean.
+> - **`autoDeductInventory.ts` INSERT/UPDATE entity_id 재확인**: `inventory_auto_deductions` INSERT(15컬럼)·`inventory` INSERT OR IGNORE/UPDATE 전부 `entityId` 바인드 포함(재고 row 부재 시 0-row 선생성 → UPDATE silent miss 방지 패턴 포함) — clean.
+> - **standing scan 1: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 67건·**누락 0건**(c09d0b8 게이트 개선 이후 재확인, financialReports.ts 6건 FP 잔존 0 — Area4 08-28 판정과 동일).
+> - **standing scan 2: authMiddleware recursive 커버리지**(`find src/routes -name '*.ts'` 전수, top-level+subdir) — 후보 7개(`publicUnsubscribe.ts`·`orders/helpers.ts`·`payroll/shared.ts`·`cron.ts`·`messagesAd.ts`·`hrSelf.ts`·`taxInvoices/helpers.ts`) 전건 개별 확인: `orders/helpers.ts`·`payroll/shared.ts`·`taxInvoices/helpers.ts`=`Map.get()` FP(라우트 아님, helper 파일) · `publicUnsubscribe.ts`=의도적 공개(§50⑧ 무료 수신거부 수단, rateLimitMiddleware 게이트, 코드 주석에 명시) · `cron.ts`=`agentKeyMiddleware` scoped-token 4엔드포인트 전부 게이트 · `hrSelf.ts`=self-token scoped 기존 정당 클래스 · `messagesAd.ts`=자체 `requireRole('ADMIN')`만 보여 최초 의심됐으나 **부모 `messages.ts:121` `messagesRouter.use('/*', authMiddleware, requireRole('ADMIN','MANAGER'))`가 `/ad` 서브라우터 마운트(`:124`) 전에 이미 적용** — barrel 부모위임 정상 계층화(ADMIN·MANAGER 허용 후 자체 게이트로 ADMIN만 재좁힘), 실제 실행경로 index.tsx 마운트까지 추적 확인. **전건 FP/정당, net-new 0**.
+> - **open 12건 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **12**(변동없음, #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621 전건 일치), `search_issues`로 전 12건 `reactions.+1=0` 재확인(승인 대기 유지).
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · `search_issues(reason:completed)` **532**(변동없음) · rejected **6**(변동없음, 재확인 생략 — 대상 무변경).
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 11건 → 이번 로그 추가 후 12건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(6커밋 전체 코드품질 렌즈 clean — routes 변경 0으로 표준스캔 신규표면 없음, 유틸 3파일 tie-break 픽스 재확인 clean, entity audit·authMiddleware recursive 스캔 전부 net-new 0), 자동수정 0건, done-sync: open 12(변동없음)·done 532(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 6 자기 진화 (2026-08-28T15:48):**
 > - **방법**: `git status`=워킹트리 clean(detached HEAD), `git fetch origin main` → `forced update`로 표시됐으나 HEAD가 이미 `origin/main`과 동일(`14ab556`) → `git merge-base --is-ancestor 424f769e origin/main` = true(fast-forward 확인, rewrite 아님). `npm ci`(0→81), `npx tsc --noEmit` clean.
