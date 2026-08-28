@@ -32,6 +32,11 @@
  *   npm run ia:deploy -- --yes        # 프롬프트 생략(축2가 있으면 그때만 묻는다)
  *   npm run ia:deploy -- --skip-gates # 게이트 생략 — 비상용. 평소에 쓰지 말 것
  *
+ * ★버전 표기 게이트(2026-08-27) — 내용이 바뀌는 파일의 버전 문자열이 런타임과 같으면 **배포를 막는다**
+ *   (`SHELL_VERSION`·`MESCUT_VERSION`·`MESA0_VERSION`). 번호 하나가 여러 코드 상태를 가리키면
+ *   수동 배포축에서 "이 PC 는 어느 셸인가"를 판정할 방법이 없어진다. `--dry-run` 은 보여만 주고,
+ *   `--skip-gates` 로만 넘길 수 있다.
+ *
  * 종료코드: 0=성공/변경없음 · 1=실패(게이트·복사·재감사) · 2=사용자 취소
  */
 'use strict'
@@ -129,6 +134,36 @@ function audit() {
 
 const AXIS_LABEL = { agent: '축1 에이전트', designer: '축2 호스트(Z:)', panel: '축3 패널(Z:)', installed: '축4 설치본(이 PC)', tool: '축5 배포 도구(Z:)' }
 
+// ── ③-B 버전 표기 ───────────────────────────────────────────────────
+// **내용이 바뀌는데 번호가 그대로면 안 된다.** 그러면 하나의 번호가 여러 코드 상태를 가리키고,
+// 나중에 "이 PC 는 어느 셸인가"를 판정할 수 없다 — IA 축은 배포가 수동이라 이 표기가 유일한 단서다.
+// 2026-08-27 실제로 `cut-main.js` 가 **0.57.0 하나로 세 상태**를 가리키게 됐다
+// (등록 파라미터 · 굽기 통합 · [◎ 전체] 세 번이 번호 없이 들어갔다).
+// ⚠️ 셸 자동갱신 서명은 바이트도 보므로 **동기화 자체는 된다** — 그래서 조용하고, 그래서 위험하다.
+const VERSION_MARKS = [
+  { rel: /js\/cut-main\.js$/, re: /var\s+SHELL_VERSION\s*=\s*'([^']+)'/, label: '재단 셸 SHELL_VERSION' },
+  { rel: /js\/main\.js$/, re: /var\s+SHELL_VERSION\s*=\s*'([^']+)'/, label: 'A0 셸 SHELL_VERSION' },
+  { rel: /mes-cut-host\.jsx$/, re: /var\s+MESCUT_VERSION\s*=\s*'([^']+)'/, label: '재단 호스트 MESCUT_VERSION' },
+  { rel: /mes-a0-host\.jsx$/, re: /var\s+MESA0_VERSION\s*=\s*'([^']+)'/, label: 'A0 호스트 MESA0_VERSION' },
+]
+function readVer(file, re) {
+  try { const m = fs.readFileSync(file, 'utf8').match(re); return m ? m[1] : null } catch { return null }
+}
+/** 복사 예정 목록 중 "내용은 다른데 버전 문자열은 같은" 것 */
+function staleVersions(plan) {
+  const out = []
+  for (const p of plan) {
+    const rel = p.rel.replace(/\\/g, '/')
+    const mark = VERSION_MARKS.find((v) => v.rel.test(rel))
+    if (!mark) continue
+    const repoV = readVer(path.join(p.repoRoot, p.rel), mark.re)
+    const runV = readVer(path.join(p.runRoot, p.rel.replace(/\//g, path.sep)), mark.re)
+    // 런타임에 파일이 없으면(신규) 비교 대상이 없다 — 막을 이유도 없다.
+    if (repoV && runV && repoV === runV) out.push({ rel, label: mark.label, v: repoV })
+  }
+  return out
+}
+
 // ── ④ 백업 → 복사 ───────────────────────────────────────────────────
 function copyOne(repoRoot, runRoot, rel, backupRoot) {
   const src = path.join(repoRoot, rel)
@@ -207,6 +242,17 @@ async function main() {
     console.log(`  ${C.b('축4 설치본(이 PC)')}  → ${DO_INSTALL ? '설치 스크립트를 실행합니다' : C.y('수동 실행 필요 (--install 로 여기서 실행 가능)')}`)
   }
   for (const n of notes) console.log(C.y(`  ※ ${n}`))
+
+  // ③-B 버전 표기 — dry-run 에서도 보여주고, 실제 배포일 때만 막는다
+  const staleVer = staleVersions(plan)
+  if (staleVer.length) {
+    console.log(C.r('\n✖ 버전 표기가 그대로입니다 — 내용은 바뀌는데 번호가 안 올랐습니다.'))
+    for (const s of staleVer) console.log(`    ${s.rel}\n      ${s.label} = ${s.v} ${C.dim('(런타임과 동일)')}`)
+    console.log(C.dim('  번호 하나가 여러 코드 상태를 가리키면 "이 PC 는 어느 셸인가"를 판정할 수 없습니다.'))
+    console.log(C.dim('  번호를 올리고(맨 앞 주석에 무엇이 바뀌었는지 한 줄) 다시 실행하세요.'))
+    if (!DRY && !SKIP_GATES) die('버전 표기를 올린 뒤 다시 실행하세요. 비상 시에만 --skip-gates.')
+    if (SKIP_GATES) console.log(C.y('  --skip-gates — 그대로 진행합니다.'))
+  }
 
   if (DRY) { console.log(C.dim('\n--dry-run — 아무것도 바꾸지 않았습니다.')); process.exit(0) }
 
