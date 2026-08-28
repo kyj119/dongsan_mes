@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.24.0';  // 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
+var MESCUT_VERSION = 'CUT-CEP-0.25.0';  // 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -2404,6 +2404,102 @@ function mesCut_addDombo(doc) {
     return 'ok:' + n;
 }
 
+/* ══ 배율 확대 — 아트를 직접 키우지 않는다 (2026-08-28) ═══════════════════════
+ * ★증상: 1/10 축소본을 10배로 키워 판을 짜면 **배경이 통째로 사라진다**.
+ *   실측(약국.ai): 배경이 3겹(빈 사각형 / 그라디언트 / 회색 판)이고 그라디언트에
+ *   **불투명도 마스크**가 걸려 있다. 회색 판을 굳이 아래 깐 이유가 그것이다.
+ *   `resize()` 는 개체는 키우지만 **마스크는 제자리에 둔다** → 1/10 크기 창문만 남고
+ *   나머지가 투명해져 밑의 회색이 드러난다. 판에 작은 초록 조각 하나만 남은 게 그 증거다.
+ *
+ * ★일러에는 「마스크를 데리고 확대하는」 스크립트 경로가 없다. 2026-08-28 전수 시험:
+ *     resize(플래그 전부 켬) ✖ · resize(그라디언트 끔) ✖ · transform 행렬 ✖
+ *     원본 래스터화 후 확대 ✖(60초·결과 빈 이미지) · expandStyle 후 확대 ✖
+ *
+ * ★그래서 **아트를 키우지 않는다.** 조각을 PDF 로 굳혀 배치(PlacedItem)한 뒤 **껍데기만** 키운다.
+ *   마스크는 PDF 안쪽에 있어 바깥 확대와 무관하고, 일러가 커진 크기로 다시 렌더한다.
+ *   실측: PDF 1,026ms + 배치·확대 877ms + 임베드 1,148ms · **링크/임베드/EPS 되열기 전부 정상**.
+ *
+ * ⚠️ `preserveEditability = false` 가 핵심이다 — 편집성을 버리고 **겉모습**을 굳힌다.
+ *    true 로 두면 마스크가 그대로 살아 나와 같은 문제가 재발한다.
+ * ⚠️ 임베드는 필수다. 링크로 두면 임시 PDF 를 지우는 순간 판이 깨진다.
+ * @return 새 개체(성공) · null(실패 — 호출부가 종전 resize 로 폴백한다)
+ */
+function mesCut_scaleAsPlaced(doc, artLayer, srcItem, srcDoc, pct, tagIdx) {
+    var bb = null;
+    try { bb = srcItem.visibleBounds; } catch (e0) { return null; }
+    if (!bb) return null;
+    var w0 = bb[2] - bb[0], h0 = bb[1] - bb[3];
+    if (!(w0 > 0) || !(h0 > 0)) return null;
+
+    var pdfPath = Folder.temp.fsName.replace(/\\/g, '/') + '/mes_cut_place_' + tagIdx + '.pdf';
+    var pdfFile = new File(pdfPath);
+    var tmp = null;
+    try {
+        // ★굳힐 원본은 **원본 문서의 조각**이다. 판에 이미 복제해 둔 사본을 쓰면 안 된다 —
+        //   임시 문서를 만드는 순간 그 사본 참조가 무효가 된다(실측: "duplicate 이 함수가 아닙니다").
+        //   원본 문서의 조각 참조는 굽기 경로가 이미 같은 방식으로 쓰고 있어 안전하다.
+        tmp = mesCut_newDocMM(w0, h0);
+        app.activeDocument = srcDoc;                 // ★문서 간 복제는 원본이 active 일 때만 동작한다
+        var cp = srcItem.duplicate(tmp.layers[0], ElementPlacement.PLACEATEND);
+        app.activeDocument = tmp;
+        var nb = cp.visibleBounds;
+        cp.translate(-nb[0], h0 - nb[1]);
+        tmp.artboards[0].artboardRect = [0, h0, w0, 0];
+        var po = new PDFSaveOptions();
+        po.compatibility = PDFCompatibility.ACROBAT5;
+        po.preserveEditability = false;
+        po.generateThumbnails = false;
+        tmp.saveAs(pdfFile, po);
+        tmp.close(SaveOptions.DONOTSAVECHANGES); tmp = null;
+    } catch (e1) {
+        if (tmp) { try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) {} }
+        try { app.activeDocument = doc; } catch (e3) {}
+        return null;
+    }
+
+    // ★임베드는 PlacedItem 참조를 무효로 만든다 — 새 개체를 **위치로** 찾으면 안 된다.
+    //   판에는 이미 앞 조각들과 이 조각의 원본 사본이 올라와 있어 `pageItems[0]` 은 남의 것을 집는다
+    //   (첫 시험이 그래서 null 로 떨어졌다). 그래서 **빈 임시 레이어**에서 작업한다 —
+    //   거기엔 개체가 하나뿐이라 누구인지 헷갈릴 여지가 없다.
+    var stage = null;
+    try {
+        app.activeDocument = doc;
+        stage = doc.layers.add();
+        stage.name = '__mes_place_stage';
+        doc.activeLayer = stage;
+        var pl = doc.placedItems.add();
+        pl.file = pdfFile;
+        var pb = pl.visibleBounds;
+        var curW = pb[2] - pb[0];
+        if (!(curW > 0)) throw new Error('배치 크기 0');
+        var wantW = w0 * (pct / 100);
+        var need = (wantW / curW) * 100;
+        pl.resize(need, need, true, true, true, true, need);
+        pl.embed();
+        if (stage.pageItems.length !== 1) throw new Error('임시 레이어 개체 ' + stage.pageItems.length);
+        var got = stage.pageItems[0];
+        // ★크기 검증 — 어긋나면 폴백한다(조용히 틀린 크기로 배치하지 않는다)
+        var gb2 = got.visibleBounds;
+        if (Math.abs((gb2[2] - gb2[0]) - wantW) > wantW * 0.02) throw new Error('크기 불일치');
+        got.move(artLayer, ElementPlacement.PLACEATBEGINNING);
+        stage.remove(); stage = null;
+        return got;
+    } catch (e4) {
+        if (stage) { try { stage.remove(); } catch (e5) {} }
+        return null;
+    }
+}
+
+/** 임시 PDF 정리 — 임베드가 끝났으므로 판은 이 파일에 의존하지 않는다. */
+function mesCut_cleanPlaced(n) {
+    for (var i = 0; i < n; i++) {
+        try {
+            var f = new File(Folder.temp.fsName.replace(/\\/g, '/') + '/mes_cut_place_' + i + '.pdf');
+            if (f.exists) f.remove();
+        } catch (e) {}
+    }
+}
+
 /**
  * 배치 결과를 **새 문서**에 렌더링. params 파일 형식(UTF-8):
  *   S <sheetIdx> <Wmm> <Hmm>            시트 시작
@@ -2475,6 +2571,9 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
     if (!sheets.length) return 'ERROR 배치 결과 없음';
 
     var made = 0, items = 0, dombo = 0;
+    // ★배율 확대를 PDF 배치로 처리한 수 / 그게 안 돼 resize 로 폴백한 수.
+    //   폴백은 **배경이 깨졌을 수 있다는 뜻**이라 패널이 그걸 알아야 한다 — 조용히 넘기지 않는다.
+    var nPlaced = 0, nPlaceFail = 0;
     var sheetWH = [];   // 판별 실제 아트보드 크기 'WxH'(mm) — 판마다 다르므로 전부 모은다
     // 도련 실패 집계 — 조각마다 도는 자리라 **조용히 넘기면 판이 다 깔린 뒤에야** 없는 걸 안다.
     var blFail = 0, blCode = '', blClip = 0, blPix = 0, blSolid = 0, blLegacy = 0;
@@ -2528,7 +2627,29 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                 var it2 = sh.items[b];
                 // ★파일 좌표(F) 아트를 저장 좌표(S) 크기로 — **회전·이동보다 먼저** 해야 한다.
                 //   나중에 하면 이미 잡아 둔 잉크 경계가 어긋나 배치가 밀린다.
-                if (resizePct !== 100) { try { copy.resize(resizePct, resizePct); } catch (eRS) {} }
+                // ★확대는 `resize` 가 아니라 **PDF 배치**로 한다 — resize 는 불투명도 마스크를
+                //   제자리에 두고 개체만 키워 배경을 통째로 날린다(2026-08-28 실측).
+                //   실패하면 종전 resize 로 폴백한다 — 배율이 안 먹는 것보다는 낫다.
+                if (resizePct !== 100) {
+                    // ★사본을 **먼저** 치운다. 임시 문서를 만드는 순간 이 참조가 무효가 되므로
+                    //   나중에 지우려 하면 실패하고, 확대 안 된 사본이 판에 그대로 남아 겹친다.
+                    try { copy.remove(); } catch (eRm) {}
+                    copy = null; copies[b] = null;
+                    var placed = mesCut_scaleAsPlaced(doc, artLayer, MESCUT_NEST_ITEMS[it2.idx], srcDoc, resizePct, b);
+                    if (placed) { copy = placed; copies[b] = placed; nPlaced++; }
+                    else {
+                        // 폴백 — 원본에서 다시 복제해 종전 방식으로 키운다.
+                        // 배경이 깨질 수 있고, 그건 패널이 `placefail` 로 사용자에게 알린다.
+                        app.activeDocument = srcDoc;
+                        var re = null;
+                        try { re = MESCUT_NEST_ITEMS[it2.idx].duplicate(artLayer, ElementPlacement.PLACEATBEGINNING); } catch (eD2) {}
+                        app.activeDocument = doc;
+                        nPlaceFail++;
+                        if (!re) continue;
+                        try { re.resize(resizePct, resizePct); } catch (eRS) {}
+                        copy = re; copies[b] = re;
+                    }
+                }
                 if (it2.rot) { try { copy.rotate(-it2.rot); } catch (eR) {} }   // Konva CW → 일러 CCW
                 // ★배치 기준도 **잉크 경계** — 패널이 계산한 아트 원점이 잉크 기준이라 여기서만 visibleBounds 를
                 //    쓰면 클립이 잉크보다 큰 아트에서 그 차이만큼 조각이 밀린다.
@@ -2699,7 +2820,9 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
         // ★실제 아트보드 크기를 돌려준다 — 파일명 규격(`103x206`)은 **판 전체 크기**이고
         //   실물은 EPS 바운딩박스와 정확히 일치한다(1030×2060mm). 우리 아트보드는 배치 bbox +
         //   돔보 여백으로 줄어들므로 시트 프리셋(예 1370)을 쓰면 이름과 파일이 어긋난다.
+        mesCut_cleanPlaced(MESCUT_NEST_ITEMS.length);
         return 'ok;sheets=' + made + ';items=' + items + ';dombo=' + dombo
+            + ';placed=' + nPlaced + ';placefail=' + nPlaceFail
             + ';sheetw=' + MESCUT_LAST_SHEET_W + ';sheeth=' + MESCUT_LAST_SHEET_H
             + ';bleedfail=' + blFail + ';bleedclip=' + blClip + ';bleedpx=' + blPix + ';bleedsolid=' + blSolid
             + ';bleedlegacy=' + blLegacy + (blFail ? (';bleedcode=' + blCode) : '')

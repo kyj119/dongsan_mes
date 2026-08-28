@@ -1269,8 +1269,21 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     // ★굽기는 파일 좌표 아트를 대상으로 하므로 마스크를 저장 좌표 픽셀 수로 맞춰야 한다
     ok('3u 굽기 해상도가 저장 좌표에 맞춰진다', /fineMmpp \* bakeK/.test(panelSrc2) && /var bakeK = fileToSave\(\)/.test(panelSrc2))
     // ★리사이즈는 복제본에만 — 원본 아트를 건드리면 되돌릴 수 없다
-    ok('3u 조각 리사이즈는 복제본에만', /copy\.resize\(resizePct, resizePct\)/.test(nestSrc2)
+    ok('3u 조각 리사이즈는 복제본에만', /re\.resize\(resizePct, resizePct\)/.test(nestSrc2)
       && /lines\.push\('RS ' \+/.test(panelSrc2))
+    // ★확대 정본 = **PDF 배치**다(2026-08-28). `resize` 는 개체만 키우고 **불투명도 마스크는
+    //   제자리에 둬서** 배경을 통째로 날린다 — 약국.ai 실측에서 배경 3겹 중 그라디언트가 사라지고
+    //   밑에 깔린 회색이 드러났다. 일러에는 마스크를 데려가는 스크립트 경로가 없다(5가지 전수 실패).
+    //   그래서 아트를 키우지 않고 PDF 로 굳혀 배치한 뒤 **껍데기만** 키운다. resize 는 폴백으로만 남는다.
+    ok('3u 확대 정본은 PDF 배치', /function mesCut_scaleAsPlaced\(/.test(nestSrc2)
+      && /preserveEditability = false/.test(nestSrc2)
+      && /pl\.embed\(\)/.test(nestSrc2))
+    // ★임베드가 빠지면 임시 PDF 를 지우는 순간 판이 깨진다 — 정리 함수와 짝이다
+    ok('3u 배치본은 임베드하고 임시 PDF 를 지운다', /function mesCut_cleanPlaced\(/.test(nestSrc2)
+      && /mesCut_cleanPlaced\(MESCUT_NEST_ITEMS\.length\)/.test(nestSrc2))
+    // ★폴백은 조용하면 안 된다 — 폴백 = 배경이 깨졌을 수 있다는 뜻이고, 인쇄 뒤에 알면 늦다
+    ok('3u 폴백을 사용자에게 알린다', /placefail=/.test(nestSrc2)
+      && /parseInt\(a\.placefail, 10\) > 0/.test(panelSrc2))
     // ★환산은 입구에서 한 번만 — 중간에서 또 나누면 두 번 줄어들고 판을 뽑기 전엔 안 보인다
     ok('3u 배치 입력을 파일 좌표로 환산', /var gapMm = toFileMm\(/.test(panelSrc2) && /var offsetMm = toFileMm\(/.test(panelSrc2))
     ok('3u 도련·재료도 환산', /var nestBleedMm = toFileMm\(/.test(panelSrc2) && /toFileMm\(sp0\.wMm\)/.test(panelSrc2))
