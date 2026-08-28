@@ -40,6 +40,30 @@ const IMG = {
   s11b: svgBanner(1000, 1000, { bg: 'rgb(120,53,15)',  fg: '#fff', title: '주차금지' }),
 };
 
+// ── 판 미리보기 SVG — 재단 패널이 이미 굽는 `mes_cut_nest_<idx>.png` 자리 ──
+//   조각이 배치된 판 전체 그림. 실물에서는 패널이 만든 PNG 가 그대로 들어간다.
+function svgSheet(wCm, hCm, pieces, seed) {
+  const W = Math.round(wCm * 10), H = Math.round(hCm * 10);
+  const pad = W * 0.028;
+  const cols = Math.max(1, Math.round(Math.sqrt(pieces * (W / H))));
+  const rows = Math.ceil(pieces / cols);
+  const cw = (W - pad * (cols + 1)) / cols;
+  const ch = (H - pad * (rows + 1)) / rows;
+  let body = `<rect width="${W}" height="${H}" fill="#f2f2ef" stroke="#8a8a8a" stroke-width="${W * 0.005}"/>`;
+  for (let i = 0; i < pieces; i++) {
+    const gx = i % cols, gy = Math.floor(i / cols);
+    const x = pad + gx * (cw + pad), y = pad + gy * (ch + pad);
+    const hue = (seed * 53 + i * 67) % 360;
+    body += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${cw.toFixed(1)}" height="${ch.toFixed(1)}"`
+          + ` rx="${(Math.min(cw, ch) * 0.05).toFixed(1)}" fill="hsl(${hue} 58% 52%)"/>`;
+    body += `<text x="${(x + cw / 2).toFixed(1)}" y="${(y + ch / 2 + Math.min(cw, ch) * 0.16).toFixed(1)}"`
+          + ` font-family="sans-serif" font-size="${(Math.min(cw, ch) * 0.44).toFixed(1)}" font-weight="bold"`
+          + ` fill="#fff" text-anchor="middle">${i + 1}</text>`;
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${body}</svg>`;
+  return 'data:image/svg+xml;base64,' + Buffer.from(svg, 'utf8').toString('base64');
+}
+
 // ── A5 슬롯 규격 (mm). 유효 폭 138mm = 148 - 좌우여백 5mm ──────────
 //   실측 분포: 가로계 63.9% / 정사각 7.7% / 세로계 28.4% (order_items 16,351줄)
 const SLOT = {
@@ -184,6 +208,113 @@ const O6 = { client: '동산유통(주)', orderNo: 'E1-20260818-0040', due: '08/
   { img: IMG.h21,  name: '현수막 실사출력', spec: '2.0×1.0m', qty: 3,  w: 2000, h: 1000, memo: '예비' },
 ]};
 
+// ══ 시트(재단) 라벨 — 판 전체 이미지 N개 ════════════════════════════
+// ★왜 렌더러가 두 벌인가 (2026-08-28 용준님 확정)
+//   현수막·봉제 계열은 **행별 시안**이 정본이다 — 다품목을 첫 품목으로 요약하면 봉제실
+//   오재단이 난다([[design-work-order-system]] 결함 이력). 그래서 「대표 시안 1장 금지」다.
+//   시트·재단 계열은 다르다. 재단 패널이 판을 짜므로 **판 이미지 자체가 그 판의 전량**이고
+//   요약이 아니다 — 금지 조항의 실패 모드가 성립하지 않는다.
+//
+// ★판이 여러 장이면 **한 장에 같이 붙인다**(용준님). 이유는 단위가 어긋나기 때문이다:
+//     주문 30 이미지 → 판 3장(10/10/10) → 박스 2개(15/15)
+//   박스 경계가 판을 가로지르므로 「이 박스에 뭐가 들었나」는 어차피 못 적는다.
+//   대신 「이 작업은 판 3장짜리다」를 보여 주면 현장에서 작업 식별이 된다.
+//
+// ★박스 번호는 **인쇄**한다. 08-18 설계는 「박스 __/__ 손기입」이었는데,
+//   출력 시 박스 수를 입력받아 1/4·2/4… 로 N부를 뽑는 편이 낫다(용준님 2026-08-28).
+//   여전히 테이블은 신설하지 않는다 — 종이에만 존재하는 번호다.
+const SHEET_CAP_MM = 5.4;    // 판 아래 캡션(판번호·규격·장수) 높이
+
+// 판 이미지 N개를 W×H(mm) 안에 어떻게 나눌지 — 열×행을 전부 시도해 **지면을 가장 많이
+// 덮는** 배치를 고른다. 정사각 슬롯 + contain 은 쓰지 않는다(08-18 실측: 평균 46%가 흰 여백).
+function sheetGrid(items, W, H, gap) {
+  let best = null;
+  for (let cols = 1; cols <= items.length; cols++) {
+    const rows = Math.ceil(items.length / cols);
+    const cw = (W - gap * (cols - 1)) / cols;
+    const ch = (H - gap * (rows - 1)) / rows;
+    const ih = ch - SHEET_CAP_MM;
+    if (cw <= 6 || ih <= 10) continue;
+    let area = 0, minSide = Infinity;
+    for (const it of items) {
+      const s = Math.min(cw / it.w, ih / it.h);
+      const dw = it.w * s, dh = it.h * s;
+      area += dw * dh;
+      minSide = Math.min(minSide, Math.min(dw, dh));
+    }
+    if (!best || area > best.area) best = { cols, rows, cw, ch, ih, area, minSide };
+  }
+  return best;
+}
+
+function renderSheetLabel(cfg) {
+  const W = 138, GAP = 3;
+  // 지면 예산(mm): 유효 200 - 헤더 15 - 메타 8 - 푸터 13
+  const H = 200 - 15 - 8 - 13;
+  const g = sheetGrid(cfg.sheets, W, H, GAP);
+
+  let h = `<div class="label sheetlb">`;
+  h += `<div class="lb-head"><div class="lb-client">${esc(cfg.client)}</div>`
+     + `<div class="lb-boxn">박스 <b>${cfg.box}</b> / ${cfg.boxes}</div></div>`;
+  h += `<div class="lb-meta">${esc(cfg.date)}<span class="dot">·</span>${esc(cfg.content)}`
+     + `<span class="dot">·</span>판 ${cfg.sheets.length}장`
+     + `${cfg.part ? `<span class="pg">장 ${esc(cfg.part)}</span>` : ''}</div>`;
+  h += `<div class="sh-grid" style="height:${H}mm;gap:${GAP}mm;`
+     + `grid-template-columns:repeat(${g.cols}, ${g.cw.toFixed(1)}mm)">`;
+  cfg.sheets.forEach((s, i) => {
+    const sc = Math.min(g.cw / s.w, g.ih / s.h);
+    h += `<div class="sh-cell" style="height:${g.ch.toFixed(1)}mm">`
+       + `<div class="sh-img" style="width:${(s.w * sc).toFixed(1)}mm;height:${(s.h * sc).toFixed(1)}mm">`
+       + `<img src="${s.img}"></div>`
+       + `<div class="sh-cap"><b>판${s.no}</b> ${esc(s.spec)}<span class="dot">·</span>${s.pieces}장</div></div>`;
+  });
+  h += `</div>`;
+  h += `<div class="lb-foot"><div class="lb-fin"><b>파일</b> ${esc(cfg.file)}</div>`
+     + `<div class="lb-sign">확인 <span class="wl"></span></div></div>`;
+  h += `<div class="lb-tag">시트·재단 · 판 ${cfg.sheets.length} · 최소변 ${g.minSide.toFixed(0)}mm</div></div>`;
+  return h;
+}
+
+// 판이 너무 많으면 최소변이 우표만 해진다 — 그 아래로 내려가면 라벨을 나눈다.
+// ⚠️ 20mm 는 **가설이다**. 목적이 「조각을 읽는 것」이 아니라 「판을 구분하는 것」이라
+//    실물 인쇄로 확인해 조정할 값이다(판 6장 = 최소변 32mm 이 지금 표본).
+const SHEET_MIN_MM = 20;
+function renderSheetOrder(cfg) {
+  const pages = [];
+  let cur = [];
+  for (const s of cfg.sheets) {
+    const t = cur.concat([s]);
+    const g = sheetGrid(t, 138, 200 - 15 - 8 - 13, 3);
+    if (cur.length && (!g || g.minSide < SHEET_MIN_MM)) { pages.push(cur); cur = [s]; }
+    else cur = t;
+  }
+  if (cur.length) pages.push(cur);
+  return pages.map((ss, i) => renderSheetLabel({
+    ...cfg, sheets: ss,
+    part: pages.length > 1 ? `${i + 1} / ${pages.length}` : null,
+  }));
+}
+
+const SH = (no, wCm, hCm, pieces) => ({
+  no, w: wCm, h: hCm, pieces,
+  spec: `${wCm}×${hCm}cm`,
+  img: svgSheet(wCm, hCm, pieces, no * 3 + pieces),
+});
+
+// 판 1장 — 가장 흔한 경우
+const S1 = { client: '청주시청 도시경관과', date: '2026-08-28(금)', content: '쓰레기불법투기',
+  file: '청주시청-(포맥스5T+자동바니쉬)쓰레기불법투기(103x206-6장)', box: 1, boxes: 1,
+  sheets: [SH(1, 103, 206, 6)] };
+// 판 3장 — 용준님 예시(이미지 30개 → 10/10/10 → 박스 15/15)
+const S2 = { client: '(주)한국광고기획', date: '2026-08-28(금)', content: '안전표지 30종',
+  file: '한국광고기획-(솔벤시트)안전표지(137x240-10장)', box: 2, boxes: 4,
+  sheets: [SH(1, 137, 240, 10), SH(2, 137, 240, 10), SH(3, 137, 180, 10)] };
+// 판 6장 — 한 장에 어디까지 담기는지
+const S3 = { client: '동산산업(주)', date: '2026-08-28(금)', content: '주차금지 표지',
+  file: '동산산업-(포맥스3T)주차금지(90x180-8장)', box: 1, boxes: 2,
+  sheets: [SH(1, 90, 180, 8), SH(2, 90, 180, 8), SH(3, 90, 180, 6),
+           SH(4, 137, 100, 4), SH(5, 137, 100, 4), SH(6, 90, 120, 3)] };
+
 // ── 비교: 같은 A5 지면·같은 행 높이에서 정사각 슬롯 vs 방향 적응형 ──
 function renderCompare() {
   const cases = [
@@ -282,6 +413,16 @@ body.guides .label { outline:0.2mm dashed #bbb; outline-offset:-0.1mm; }
 .ui h1 { font-size:15pt; margin:0 0 2mm; } .ui h2 { font-size:11pt; margin:6mm 0 1.5mm; padding-top:4mm; border-top:1px solid #e5e5e5; }
 .ui ol, .ui ul { margin:1.5mm 0; padding-left:6mm; } .ui li { margin:1mm 0; }
 .ui .chk { display:inline-block; width:3.5mm; height:3.5mm; border:1.5px solid #888; border-radius:1px; vertical-align:-0.5mm; margin-right:2mm; }
+/* 시트(재단) 라벨 — 판 전체 이미지 N개 */
+.lb-boxn { font-size:11pt; white-space:nowrap; padding-bottom:0.4mm; }
+.lb-boxn b { font-size:15pt; }
+.sh-grid { display:grid; margin-top:2.2mm; align-content:start; justify-content:start; }
+.sh-cell { display:flex; flex-direction:column; align-items:center; justify-content:flex-start; overflow:hidden; }
+.sh-img { border:0.25mm solid #888; background:#fff; overflow:hidden; }
+.sh-img img { width:100%; height:100%; display:block; }
+.sh-cap { font-size:8pt; color:#222; margin-top:1.1mm; white-space:nowrap; }
+.sh-cap b { font-size:8.5pt; }
+.sheetlb .lb-fin { font-size:7.5pt; color:#333; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100mm; }
 .ui code { background:#f2f2f2; padding:0.5mm 1.2mm; border-radius:1mm; font-size:9.5pt; }
 .ui .warn { background:#fff7ed; border-left:3px solid #ea580c; padding:3mm 4mm; margin:3mm 0; }
 .tgl { background:#111; color:#fff; padding:2.5mm 5mm; border-radius:1.5mm; cursor:pointer; font-size:10pt; border:none; margin-right:2mm; }
@@ -292,7 +433,10 @@ body.guides .label { outline:0.2mm dashed #bbb; outline-offset:-0.1mm; }
 //   운영 인쇄도 이 출력물을 반 자르거나, 미리 재단해둔 A5 낱장을 급지하면 그대로 쓴다.
 const labels = [].concat(
   renderOrder(O1), renderOrder(O2), renderOrder(O3), renderOrder(O4),
-  renderOrder(O5), renderOrder(O6), [renderCompare()]
+  renderOrder(O5), renderOrder(O6),
+  // 시트·재단 계열 = 판 전체 이미지(2026-08-28). 위 6건과 **같은 A5**를 쓴다.
+  renderSheetOrder(S1), renderSheetOrder(S2), renderSheetOrder(S3),
+  [renderCompare()]
 );
 const sheets = [];
 for (let i = 0; i < labels.length; i += 2) {
@@ -322,9 +466,17 @@ const html = `<!DOCTYPE html>
   </ol>
   <h2>담긴 케이스</h2>
   <ul>
-    <li>가로형 4줄 / 세로형 3줄 / 가로형 1줄 / 정사각형 2줄 / <b>방향 혼재 4줄</b> / <b>9줄 → 자동 분할(1·2 / 2)</b></li>
+    <li><b>현수막·봉제 계열(행별 시안)</b> — 가로형 4줄 / 세로형 3줄 / 가로형 1줄 / 정사각형 2줄 / <b>방향 혼재 4줄</b> / <b>9줄 → 자동 분할(1·2 / 2)</b></li>
+    <li><b>시트·재단 계열(판 전체 이미지)</b> — 판 1장 / <b>판 3장</b>(이미지 30개 → 10·10·10 → 박스 15·15) / <b>판 6장</b>(한 장에 어디까지 담기는지)</li>
     <li>마지막 = 정사각 슬롯 vs 방향 적응형 비교표</li>
   </ul>
+  <h2>시트·재단 라벨에서 특히 볼 것</h2>
+  <ol>
+    <li><span class="chk"></span><b>판 이미지 식별력</b> — 판이 3장·6장일 때 조각 번호가 읽히는지. 안 읽혀도 <b>판을 구분</b>할 수 있으면 목적은 달성입니다.</li>
+    <li><span class="chk"></span><b>박스 번호</b> — <code>박스 2 / 4</code> 가 붙인 채로 멀리서 읽히는지. 출력 시 박스 수를 입력하면 N부가 자동 연번으로 나옵니다(손기입 아님).</li>
+    <li><span class="chk"></span><b>판 6장</b> — 최소변이 12mm 아래로 내려가면 라벨을 자동으로 나눕니다(<code>장 1/2</code>). 그 경계가 적절한지.</li>
+    <li><span class="chk"></span><b>「장 n/m」 과 「박스 n/N」 이 헷갈리지 않는지</b> — 서로 다른 수이고 한 장에 같이 나옵니다.</li>
+  </ol>
 </div>
 ${sheets.join('\n')}
 </body></html>`;

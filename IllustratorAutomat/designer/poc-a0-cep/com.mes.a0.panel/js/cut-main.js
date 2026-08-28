@@ -28,7 +28,10 @@
 
   // 껍데기(index.html · main.js · style.css) 버전. 축3/축4 배포 여부를 눈으로 확인하는 유일한 수단이다.
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다. 호스트 버전(mesCut_ping)과 **별개**다.
-  var SHELL_VERSION = '0.57.0';   // 0.57.0 = 조각 속 메우기(그룹 하나=칼선 하나·맞붙임 복구) · 0.56.0 = 도련 겹침 분할(간격 존중·하한 1.5mm)
+  // ⚠️ 내용을 고치면 **반드시 이 번호를 올린다** — 수동 배포축이라 이 문자열이 "이 PC 가 어느 셸인가"의
+  //    유일한 단서다. 0.57.0 하나가 세 상태를 가리키던 사고가 있었고(등록 파라미터·굽기 통합·[◎ 전체]),
+  //    그래서 `ia:deploy` 가 번호가 그대로면 배포를 막는다.
+  var SHELL_VERSION = '0.60.0';   // 0.60.0 = 파일명 맨 앞 거래처 · 자재/후가공 행 분리(폭 맞춤) · 「품목」→「내용」 명칭 분리(MES 품목 마스터와 구분) · 0.59.0 = 재단 탭 [◎ 전체] · 0.58.0 = 굽기 통합(마스크+도련 1왕복)·등록 파라미터(자재·후가공·돔보·파일명) · 0.57.0 = 조각 속 메우기(그룹 하나=칼선 하나·맞붙임 복구) · 0.56.0 = 도련 겹침 분할(간격 존중·하한 1.5mm)
 
   // ── 도련 겹침 분할 (2026-08-25) ─────────────────────────────────────────
   // ★순수 함수로 뽑아 둔 이유 = **하네스가 이 함수를 직접 돌리기 때문**이다(`npm run cut:bleed` §9).
@@ -2116,15 +2119,20 @@
     return String(s == null ? '' : s).replace(/[\\/:*?"<>|]/g, '_').replace(/^\s+|\s+$/g, '');
   }
 
-  /** `(자재+후가공)품목(WxH-N장)` — 빠진 값은 건너뛴다(부분 입력에서도 쓸 수 있게). */
+  /** `거래처-(자재+후가공)내용(WxH-N장)` — 빠진 값은 건너뛴다(부분 입력에서도 쓸 수 있게). */
   /** @param idx 판 번호(0부터). 생략하면 대표 이름(첫 판 규격·순번 없음) — 화면 미리보기용. */
   function pairBaseName(idx) {
     if (!lastNest) return '';
+    // ★거래처를 맨 앞에 둔다(2026-08-28 용준님). A0 규약 `[거래처]-[규격]-[내용]-…` 과 같은 자리다.
+    //   폴더에 파일이 쌓였을 때 **먼저 눈에 들어와야 하는 축이 거래처**이고, 정렬도 거래처로 묶인다.
+    //   ⚠️ 매칭은 안 깨진다 — `resolveCard` 2차는 **이름 전체 일치**이고, 그 이름은 흡수 시점에
+    //      이 함수가 만든 값을 그대로 배운다(workbench.ts). 1차(주문번호-순번)는 비anchored라 접두 무관.
+    var client = safeName((document.getElementById('regClient') || {}).value);
     var mat = safeName((document.getElementById('regMaterial') || {}).value);
     var fin = safeName((document.getElementById('regFinish') || {}).value);
     var item = safeName((document.getElementById('regItem') || {}).value);
-    var head = '';
-    if (mat || fin) head = '(' + mat + (mat && fin ? '+' : '') + fin + ')';
+    var head = client ? (client + '-') : '';
+    if (mat || fin) head += '(' + mat + (mat && fin ? '+' : '') + fin + ')';
     // ★규격은 **실물 cm**(lastNest 가 이미 실물). 축소본이면 A0 와 같은 `_1-N` 접미를 붙인다
     //   (mes-a0-host.jsx: `epsName = ... + (sN > 1 ? '_1-' + sN : '')`) — 파일만 보고 축소본임을 알아야 한다.
     var sN = cutScaleN();
@@ -2413,8 +2421,9 @@
 
   var btnPair = $('btnExportPair');
   if (btnPair) btnPair.addEventListener('click', exportPair);
-  // 자재·후가공·품목을 고칠 때마다 파일명 미리보기를 갱신한다 — 저장 직전에야 이름을 알면 늦다
-  var pairIds = ['regMaterial', 'regFinish', 'regItem'];
+  // 거래처·자재·후가공·내용을 고칠 때마다 파일명 미리보기를 갱신한다 — 저장 직전에야 이름을 알면 늦다
+  // ★regClient 를 빠뜨리면 거래처가 파일명 맨 앞에 오는데 **미리보기만 옛 이름**으로 남는다.
+  var pairIds = ['regClient', 'regMaterial', 'regFinish', 'regItem'];
   for (var pi = 0; pi < pairIds.length; pi++) {
     var pel = document.getElementById(pairIds[pi]);
     if (pel) { pel.addEventListener('input', refreshPairName); pel.addEventListener('change', refreshPairName); }

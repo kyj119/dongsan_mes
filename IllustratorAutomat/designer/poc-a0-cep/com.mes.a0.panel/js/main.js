@@ -1016,7 +1016,7 @@
               // 체크 상태는 queue[i].sel 이 정본 — innerHTML 재작성으로 DOM 이 날아가도 유지된다.
               (showSel ? ('<input class="qsel" data-i="' + i + '" type="checkbox" title="적용 대상 체크"' + (e.sel ? ' checked' : '') + ' />') : '') +
               '<span class="qn">#' + (i + 1) + '</span>' +
-              '<input class="qkw" data-i="' + i + '" type="text" value="' + escHtml(e.keyword || '') + '" placeholder="키워드" />' +
+              '<input class="qkw" data-i="' + i + '" type="text" value="' + escHtml(e.keyword || '') + '" placeholder="내용" />' +
               (showQty ? ('<input class="qqty" data-i="' + i + '" type="text" value="' + escHtml(String(e.qty || 1)) + '" title="확정 수량(이 행의 정본)" />') : '') +
               '<span class="qmeta" title="' + escHtml(meta) + '">' + escHtml(meta) + '</span>' +
               '<button class="qdel" data-i="' + i + '">✕</button></div>';

@@ -101,8 +101,8 @@
         <button id="finToggle" type="button" class="disc">▸ 후가공 <span class="cfg">마감·돔보·펀칭·주석</span></button>
         <!-- 적용 대상 버튼은 폼 옆에 둔다 — 하단 확정 버튼줄(검토·확정·비우기)과 섞으면
              '편집 도구'와 '확정 액션'의 구분이 사라진다(2026-07-30 지시). -->
-        <button id="btnApplySel" type="button" title="체크한 행에만 현재 후가공·가공 설정 적용 (수량·키워드·거래처는 행값 유지)" disabled>체크한 행 적용</button>
-        <button id="btnApplyAll" type="button" title="현재 가공·후가공 설정을 모든 행에 적용 (수량·키워드·거래처는 행값 유지)" disabled>전체 적용</button>
+        <button id="btnApplySel" type="button" title="체크한 행에만 현재 후가공·가공 설정 적용 (수량·내용·거래처는 행값 유지)" disabled>체크한 행 적용</button>
+        <button id="btnApplyAll" type="button" title="현재 가공·후가공 설정을 모든 행에 적용 (수량·내용·거래처는 행값 유지)" disabled>전체 적용</button>
       </div>
       <div id="finBody" class="hidden">
         <div class="row">
@@ -154,12 +154,12 @@
           <br><b>주석</b> = 마감 여백 <b>3cm 이상</b>인 변만.
           <br><b>출력 경계선</b> = 여백 바깥 백색 0.5pt(RIP 출력영역 확보). 원본에 테두리가 있으면 두 줄 → 끄세요.
         </div>
-        <!-- 묶음 탭에선 숨긴다 — 거기선 행별 키워드 칸이 정본이고 이 칸은 중복이다(2026-07-30 지적).
+        <!-- 묶음 탭에선 숨긴다 — 거기선 행별 내용 칸이 정본이고 이 칸은 중복이다(2026-07-30 지적).
              단건 탭에선 행이 없어 이 칸이 유일한 입력 경로라 남긴다. main.js applyTabUi() -->
         <div class="row" id="annotKwRow">
-          <input id="annot" type="text" placeholder="키워드(한글) · 식별번호·후가공·수량 자동결합" class="grow" />
+          <input id="annot" type="text" placeholder="내용(한글) · 식별번호·후가공·수량 자동결합" class="grow" />
         </div>
-        <div class="row"><span class="cfg" id="annotHint" title="주석 = 키워드-식별번호-후가공-수량 자동결합">여백 3cm 이상인 변만 선택 가능</span></div>
+        <div class="row"><span class="cfg" id="annotHint" title="주석 = 내용-식별번호-후가공-수량 자동결합">여백 3cm 이상인 변만 선택 가능</span></div>
       </div>
 
       <!-- 액션 동사 통일(2026-07-30 P3) — 세 탭의 최종 결과가 모두 같다(Z: 등록 → 에이전트 ingest
@@ -457,21 +457,27 @@
         <label for="regWorker" class="l2">가공자</label>
         <select id="regWorker"><option value="">(미지정)</option></select>
       </div>
+      <!-- ★자재·후가공을 한 행에 두지 않는다(2026-08-28 용준님 "폭에 맞춰서 배치").
+           패널 폭은 300px 안팎인데 입력 두 칸(기본폭 ~177px씩) + 라벨 두 개면 폭을 넘어
+           `flex-wrap` 이 후가공만 다음 줄로 떨어뜨리고 자재 칸 옆에 빈 공간이 남았다.
+           행을 나누면 두 칸 모두 `.grow` 로 **패널 폭 전체**를 쓴다(자동완성 목록도 넓어진다). -->
       <div class="row">
         <label for="regMaterial">자재</label>
-        <input id="regMaterial" type="text" list="materialList" placeholder="예: 포맥스5T" autocomplete="off" />
+        <input id="regMaterial" type="text" list="materialList" class="grow" placeholder="예: 포맥스5T" autocomplete="off" />
         <datalist id="materialList"></datalist>
-        <label for="regFinish" class="l2">후가공</label>
-        <input id="regFinish" type="text" list="finishList" placeholder="예: 자동바니쉬" autocomplete="off" />
+      </div>
+      <div class="row">
+        <label for="regFinish">후가공</label>
+        <input id="regFinish" type="text" list="finishList" class="grow" placeholder="예: 자동바니쉬" autocomplete="off" />
         <datalist id="finishList"></datalist>
       </div>
       <div class="row">
-        <label for="regItem">품목</label>
-        <input id="regItem" type="text" placeholder="예: 쓰레기불법투기" autocomplete="off" />
+        <label for="regItem">내용</label>
+        <input id="regItem" type="text" class="grow" placeholder="예: 쓰레기불법투기" autocomplete="off" />
       </div>
       <div class="hint" id="regHint">
         네스팅 시트를 <b>주문서 대기함</b>으로(시트 1장=1건 · 에이전트가 자동 업로드).
-        <b>[품목]</b> 은 주문 라인 내용으로도 실림 — 비우면 주문서·카드·파일명에 <b>식별 정보가 없음</b>.
+        <b>[내용]</b> = 이 파일이 어떤 그림인가(예 <code>쓰레기불법투기</code>) — 주문 라인 내용·파일명으로 실립니다. 비우면 주문서·카드·파일명에 <b>식별 정보가 없음</b>. ≠ MES <b>품목</b>(수성 현수막 등 마스터·단가축) — 둔 축이 다릅니다.
       </div>
       <button id="btnRegister" type="button" disabled title="네스팅을 먼저 실행하세요">주문 등록</button>
 
@@ -482,7 +488,7 @@
         <span id="pairName" class="meas">— 네스팅 후 자동으로 만들어집니다</span>
       </div>
       <div class="hint">
-        EPS+DXF <b>같은 이름 쌍</b>(실물 규약) · 규격=판 전체 cm · 장수=조각 수 — 예 <code>(포맥스5T+자동바니쉬)쓰레기불법투기(103x206-6장)</code>.
+        EPS+DXF <b>같은 이름 쌍</b>(실물 규약) · <b>거래처</b>가 맨 앞 · 규격=판 전체 cm · 장수=조각 수 — 예 <code>청주시청-(포맥스5T+자동바니쉬)쓰레기불법투기(103x206-6장)</code>.
       </div>
       <button id="btnExportPair" type="button" disabled title="네스팅을 먼저 실행하세요">작업 폴더로 내보내기 (EPS+DXF)</button>
     </details>
