@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-08-29T21:44:13+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-08-30T03:44:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,20 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **532** (`search_issues(reason:completed)` 재확인, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 재확인, 변동없음) |
+
+> **Area 6 자기 진화 (2026-08-30T03:44):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD, `bddb334`), `git fetch origin main`(`207078c..bddb334`, 이미 최신) → `git checkout main && git reset --hard origin/main`(HEAD `bddb334`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(범위 축 2종, 앵커 = 직전 Area6 방법 라인 HEAD `14ab556`)**: 웹앱 범위(`-- src migrations scripts .github`) diff **0커밋** — Area1~5가 이미 전량(3커밋, avg-cost 백필·ia-deploy 버전게이트·뭉치전표 LEFT JOIN) 소진 완료. 비-웹앱 범위(`-- LogWatcher IllustratorAutomat caps-worker workers queue`) diff **2커밋**(`2cb65aa`·`5a463f6`) — `grep -c` 백로그+아카이브 전수 대조 결과 **어느 로그에도 해시 언급 0건**(「범위 축」62회차 사각지대 재현) → 우선 정독 대상 확정.
+> - **`2cb65aa` 심층 정독(축2 디자이너 JSX, 재단 패널 파일명 규약 변경 + A5 스티커 목업, 211줄)**: 파일명 접두를 `(자재+후가공)내용` → `거래처-(자재+후가공)내용`으로 변경(A0 규약과 정렬) — 커밋 메시지가 "print-done 매칭 불영향"을 주장해 **직접 코드 대조로 검증**: `printEvents.ts:106` `resolveCard()` 1차 매칭은 `((?:E\d+-)?\d{8}-\d{3})-(\d{3})` 정규식이 **비anchored**(위치 무관, 2026-07-31 already codified: "정보 우선형 파일명은 키가 꼬리에 온다")라 접두 변경과 무관 — 2차 매칭은 파일명 전체 일치이나 그 학습 값(`workbench.ts` absorb) 자체가 `pairBaseName()`이 만든 문자열을 그대로 저장하므로 양쪽이 항상 같은 생성 규칙을 공유 — **주장 사실 확인, 회귀 없음**. `SHELL_VERSION` 갱신 규율(주석에 명시)도 확인.
+> - **`5a463f6` 확인**: `2cb65aa`의 셸 3파일(`index.html`/`cut-main.js`/`main.js`) 변경에 맞춰 `SHELL_VERSION`을 0.5.2→0.5.3으로 올린 자기교정 커밋(2026-08-19 62회차 codify된 버전-드리프트 게이트가 실제로 작동한 사례) — `npm run audit:ia-jsx` 재실행 결과 축1~5 전부 NAS 미연결로 판정 제외(변동없음, 이 샌드박스 상시 제약), 드리프트 자체는 이 커밋으로 이미 해소.
+> - **standing scan 1(closed≠fixed 재확인, #473)**: 이번 사이클 churn 2건 모두 CEP 패널 파일이라 12개 open 이슈의 대상 파일(entity_id/IDOR/LIKE매칭/마이그 등 서버 라우트·SQL)과 무관 — 재검증 스킵 근거 명확(파일 교집합 0).
+> - **standing scan 2(open≠unfixed 거울, close-pending 캐시)**: `list_issues(OPEN,label:auto-improve)` totalCount **12**(변동없음, #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621 전건 일치) — 12건 전부 이전 사이클(Area1 2026-08-28T21:47·Area2~5 2026-08-29)이 코드 재grep으로 잔존 확인한 것과 **churn 0**(웹앱 범위 diff 0)이므로 캐시 신뢰(재검증 스킵), 신규 fixed-in-tree 후보 없음.
+> - **브랜치 위생(읽기전용)**: `npm run branch:clean` → SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · `search_issues(reason:completed)` **532**(변동없음) · `reason:"not planned"` **4** + `reason:duplicate` **2** = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-6-self-evolution.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 10건 → 이번 로그 추가 후 11건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(비-웹앱 축 2커밋 모두 정독 완료 — 1건은 커밋 자신의 매칭-불영향 주장을 코드로 검증해 사실 확인, 1건은 버전게이트 자기교정 확인, 웹앱 축 churn 0으로 12개 open 이슈 전부 파일 교집합 없어 캐시 신뢰), 자동수정 0건, done-sync: open 12(변동없음)·done 532(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 + 인프라 (2026-08-29T21:44):**
 > - **방법**: `git status`=워킹트리 clean(detached HEAD, `3ec2d57`), `git fetch origin main`(`207078c..3ec2d57`) → `git checkout main && git reset --hard origin/main`(HEAD `3ec2d57`, 이미 최신 — Area4 자신의 직전 커밋). `npm ci`(0→81), `npx tsc --noEmit` clean.
