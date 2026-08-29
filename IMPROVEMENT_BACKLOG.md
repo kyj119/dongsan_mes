@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-08-29T09:47:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-08-29T15:47:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,20 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **532** (`search_issues(reason:completed)` 재확인, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 재확인, 변동없음) |
+
+> **Area 4 데이터 정합성 (2026-08-29T15:47):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD, f8ab48b), `git fetch origin main`(`207078c..f8ab48b`) → `git merge-base --is-ancestor e2f5c938 origin/main` = true(fast-forward 확인, rewrite 아님) → `git checkout main && git reset --hard origin/main`(HEAD `f8ab48b`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area4 자신의 앵커(`e2f5c938`) 이후 웹앱 범위(`-- src migrations scripts .github`) diff **3커밋**(`4c6e5ab`·`175c7f6`·`77782cf`) — **신규 마이그레이션 0건, 신규 라우트 0개**(`git diff --stat -- src/routes` 공백). 셋 다 Area1·2·3·6이 이미 각자 렌즈로 정독 완료한 CLI 툴링(avg-cost 백필 SQL 수정·IA 배포 버전드리프트 게이트·뭉치전표 감사 LEFT JOIN 정정) — 앱 write-path·스키마 변경 자체가 없어 **데이터정합성 렌즈의 표준 스캔(고아 레코드·NOT NULL diff·CHECK literal write·entity_id backfill) 신규 표면이 사실상 없음**.
+> - **standing scan 1: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 67건·**누락 0건**(변동없음).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 1건 `attendance.ts:158`(기존 노출 유지, 변동없음).
+> - **standing scan 3: 신규 비-FK `*_id` 참조 컬럼 sweep** — 이번 churn에 신규 마이그 0건이라 「churn-트리거 재스캔」(#477/#480 클래스)의 신규 후보 자체가 발생 불가.
+> - **`audit:migration-drift` 시도** — 이 샌드박스엔 `CLOUDFLARE_API_TOKEN` 미설정이라 prod D1 직접조회 불가(기존 제약과 동일, net-new 아님) — ground-truth 대조는 로컬 `npx tsc --noEmit` clean + `audit:entity` 정적분석으로 대체.
+> - **open 12건 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **12**(변동없음, #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621 전건 일치), `search_issues`로 전 12건 `reactions.+1=0` 재확인(승인 대기 유지). Area4 소관 #614(`designer_intakes` 참조가드 누락)·#615(재고 rebase 재현불가) 재확인 — 이번 churn이 손댄 파일과 무관, 무변화.
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · `search_issues(reason:completed)` **532**(변동없음) · `reason:"not planned"` **4** + `reason:duplicate` **2** = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 8건 → 이번 로그 추가 후 9건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(3커밋 전부 CLI 툴링, 신규 마이그/라우트 0건이라 데이터정합성 표준스캔 신규표면 없음, entity audit·sort-audit·비FK 참조컬럼 sweep 전부 net-new 0), 자동수정 0건, done-sync: open 12(변동없음)·done 532(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-08-29T09:47):**
 > - **방법**: `git status`=워킹트리 clean(detached HEAD), `git fetch origin main`(`207078c..564c174`) → `git checkout main && git reset --hard origin/main`(HEAD `564c174`). `npm ci`(0→81), `npx tsc --noEmit` clean.
