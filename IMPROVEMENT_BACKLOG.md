@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-08-29T15:47:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-08-29T21:44:13+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,23 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **532** (`search_issues(reason:completed)` 재확인, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 재확인, 변동없음) |
+
+> **Area 5 보안 + 인프라 (2026-08-29T21:44):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD, `3ec2d57`), `git fetch origin main`(`207078c..3ec2d57`) → `git checkout main && git reset --hard origin/main`(HEAD `3ec2d57`, 이미 최신 — Area4 자신의 직전 커밋). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area5 방법 라인 HEAD `3c4a5bc8`)**: 웹앱 범위(`-- src migrations scripts .github`) diff **3커밋**(`4c6e5ab`·`175c7f6`·`77782cf`) — Area1·2·3·4·6이 이미 각자 렌즈로 정독 완료한 동일 3건. `git show --stat` 재확인 결과 **셋 다 `docs/price/*.sql`·`package.json`·`scripts/*.cjs`만 변경**(`4c6e5ab`=avg-cost 백필 SQL+감사스크립트, `175c7f6`=`scripts/ia-deploy.cjs` 단독, `77782cf`=`scripts/item-master-audit.cjs`+`scripts/lump-voucher-report.cjs`) — **`src/routes` 변경 0파일, `src/scripts`(프론트 JS) 변경 0파일, 신규 마이그 0건** → 보안 렌즈 표준 스캔(SQL 바인딩·XSS sink·authMiddleware·rate-limit·IDOR 비대칭)의 churn-트리거 신규 표면이 없음. 이번 사이클은 **standing scan 전량 재통과**로 대체.
+> - **standing scan 1: 시크릿 폴백** `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43` 1건뿐(기존 FP, 변동없음).
+> - **standing scan 2: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 67건·**누락 0건**(변동없음).
+> - **standing scan 3: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 1건 `attendance.ts:158`(기존 노출 유지, 변동없음).
+> - **standing scan 4: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 5: `npm audit`** — 11건(1 moderate·8 high·2 critical) 전부 devDependency, #613 기보고와 완전 일치, net-new 0.
+> - **CI 헬스**: `deploy.yml` 최근 10런 전부 `conclusion:success`. `verify.yml` 카나리 `list_workflow_runs` totalCount **0**(변동없음, #608와 완전 일치).
+> - **IDOR 비대칭·XSS sink 전수 자동스캔(#452/#452-mirror) 재실행 불요 판단**: 신규 라우트 0개·신규 프론트 JS 0파일이라 이 사이클의 churn 안에 그 스캔의 신규 후보 자체가 없음(직전 Area5 08-28이 20커밋 범위로 이미 전수 재통과 완료, 그 결과와 이번 3커밋 diff 사이 라우트/JS 변경 0으로 재실행 무의미).
+> - **open 12건 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **12**(변동없음, #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621 전건 일치), `search_issues`로 전 12건 `reactions.+1=0` 재확인(승인 대기 유지). Area5 소관 #612(크로스법인 IDOR) 재확인 — 이번 churn이 손댄 파일과 무관, 무변화.
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · `search_issues(reason:completed)` **532**(변동없음) · `reason:not_planned` **4** + `duplicate` **2** = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-5-security-infra.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 9건 → 이번 로그 추가 후 10건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(3커밋 전부 CLI 툴링, src/routes·src/scripts 변경 0으로 보안 표준스캔 신규표면 없음, standing scan 5종·CI헬스·IDOR/XSS 전수스캔 재확인 판단 전부 net-new 0), 자동수정 0건, done-sync: open 12(변동없음)·done 532(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-08-29T15:47):**
 > - **방법**: `git status`=워킹트리 clean(detached HEAD, f8ab48b), `git fetch origin main`(`207078c..f8ab48b`) → `git merge-base --is-ancestor e2f5c938 origin/main` = true(fast-forward 확인, rewrite 아님) → `git checkout main && git reset --hard origin/main`(HEAD `f8ab48b`). `npm ci`(0→81), `npx tsc --noEmit` clean.
