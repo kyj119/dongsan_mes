@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-08-30T03:44:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-08-30T09:44:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,19 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **532** (`search_issues(reason:completed)` 재확인, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 재확인, 변동없음) |
+
+> **Area 1 프로덕션 헬스 (2026-08-30T09:44):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD, `24a40b1`), `git fetch origin main`(이미 최신) → `git checkout main && git reset --hard origin/main`(HEAD `24a40b1`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area1 방법 라인 HEAD `d745bdb`)**: `git log d745bdb..HEAD` 전체 5커밋(Area2~6, 08-29~08-30) diff가 **`IMPROVEMENT_BACKLOG.md`/`IMPROVEMENT_BACKLOG_ARCHIVE.md`만** — 웹앱 범위(`-- src migrations scripts .github`) 실질 churn **0**(각 사이클이 스스로 기록했듯 그 사이클들 자체가 이미 churn 0으로 판정). 신규 마이그/라우트 0건 → smoke 맹점 4축(프론트실행·DROP write-path·agent-FK·한글리터럴) 전부 신규 트리거 없음.
+> - **egress 제약 재확인**: `curl https://webapp-9i0.pages.dev/*` 3회 전부 `agent-proxy connect_rejected`(조직 정책, 기존 제약과 동일) — prod 직접 fetch 불가, CI(`deploy.yml`) smoke 스텝이 유일한 prod 건강 근거.
+> - **CI 헬스 실측**: `deploy.yml` 최근 30런 전부 `conclusion:success`. 최신런(1600, `24a40b1`) 잡 스텝 전수 확인 — Typecheck·Build·Self-tests·Deploy·**Smoke test (production)** 전부 success(18:45:59~18:46:14 완주). `backup.yml` 최근 10런 전부 success(최신 105회차, `24a40b1`). `verify.yml` 카나리 `list_workflow_runs` totalCount **0**(변동없음, #608와 완전 일치).
+> - **standing scan**: `npm audit` **11건**(1 moderate·8 high·2 critical) 전부 devDependency, #613 기보고와 완전 일치(net-new 0). `npm run branch:clean` → SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **open 12건 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **12**(변동없음, #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621 전건 일치), `search_issues(reactions:>0)` **0건**(승인 대기 유지).
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · `search_issues(reason:completed)` **532**(변동없음) · `reason:"not planned"` **4** + `reason:duplicate` **2** = rejected **6**(변동없음, 전부 재확인).
+> - **🧬 SKILL 강화**: 없음 — area-1-production-health.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 5커밋 전체가 backlog/archive 문서뿐이라 prod-health 렌즈의 신규 표면 자체가 없음.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 11건 → 이번 로그 추가 후 12건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(웹앱 churn 0, CI 전부 green, standing scan 2종 net-new 0, open/done/rejected 전부 GitHub 실측과 무편차), 자동수정 0건, done-sync: open 12(변동없음)·done 532(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-08-30T03:44):**
 > - **방법**: `git status`=워킹트리 clean(detached HEAD, `bddb334`), `git fetch origin main`(`207078c..bddb334`, 이미 최신) → `git checkout main && git reset --hard origin/main`(HEAD `bddb334`). `npm ci`(0→81), `npx tsc --noEmit` clean.
