@@ -20,6 +20,7 @@ import { setOrderBillingStatus } from './helpers'
 // 여기서 deriveClientBalance·isInternalEntityClient 를 따로 부르지 않는다.
 import { evaluateClientCredit } from '../ledger/credit-helpers'
 import { ensureShipmentForOrder } from '../../utils/shipmentHelper'
+import { deductStockLinesOnShip } from '../../utils/stockShip'
 
 const ordersLifecycleRouter = new Hono<HonoEnv>()
 ordersLifecycleRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
@@ -171,7 +172,7 @@ ordersLifecycleRouter.patch('/:id/status', requireEditOrRole('/orders', 'MANAGER
 
     // Get current status (#381: 소유 법인만 상태 변경)
     const efSt = entityFilter(c, 'orders')
-    const order = await c.env.DB.prepare(`SELECT status, client_id, final_amount, order_number, delivery_date FROM orders WHERE id = ?${efSt.clause}`).bind(id, ...efSt.params).first<{ status: string; client_id: number; final_amount: number; order_number: string; delivery_date: string | null }>()
+    const order = await c.env.DB.prepare(`SELECT status, client_id, final_amount, order_number, delivery_date, entity_id FROM orders WHERE id = ?${efSt.clause}`).bind(id, ...efSt.params).first<{ status: string; client_id: number; final_amount: number; order_number: string; delivery_date: string | null; entity_id: number | null }>()
 
     if (!order) {
       return c.json({
@@ -320,6 +321,9 @@ ordersLifecycleRouter.patch('/:id/status', requireEditOrRole('/orders', 'MANAGER
         console.error('Cost calculation failed (non-blocking):', costErr)
       }
     } else if (status === 'SHIPPED') {
+      // 기성/유통 라인 재고 차감 (멱등) — 카드 없는 기성·유통 주문은 위 미완료 카드 검사를 그냥 통과하므로
+      //   이 경로가 사실상 유일한 출고 지점이 된다. 2026-08-30 이전엔 여기에도 차감이 없었다.
+      await deductStockLinesOnShip(c.env.DB, parseInt(id), order.entity_id || getEntityId(c) || 1)
       // P1 출고 정합화: 수동 SHIPPED 전이도 shipment 기록 동기 (실패해도 전이는 유지)
       try {
         await ensureShipmentForOrder(c.env.DB, parseInt(id), { userId: user?.id ?? null, fallbackEntityId: getEntityId(c) || 1 })
@@ -526,6 +530,12 @@ ordersLifecycleRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), as
     const db = c.env.DB
     const user = c.get('user')
 
+    // ★재고 차감을 여기 넣지 않는다 (2026-08-30 검토):
+    //   ① 대상 집합이 `auto_complete_date IS NOT NULL` 인데 이 값은 출고 처리 경로(shipments.ts)에서만
+    //      설정된다 → 이미 그 시점에 차감됐다. 여기서 또 부르면 중복 호출일 뿐이다(멱등이라 무해하지만 무의미).
+    //   ② 이 라우트는 #478 로 100건 bound 돼 있다 — subrequest 한도(~1000) 때문이다.
+    //      deductStockLinesOnShip 은 라인당 5~6 쿼리를 쓰므로 여기서 부르면 그 한도를 넘긴다.
+    //   ③ 배치가 재고를 움직이면 "언제 왜 빠졌는지"가 사람 행동과 끊긴다. 차감은 사람이 출고를 누른 지점에서만.
     // Step 1: 출고완료 자동 전이 — auto_complete_date 도래 + 모든 카드 출고완료
     const ef = entityFilter(c, 'o')
     // 출고완료 전이: auto_complete_date 도래 + 미출고 카드 없음 (PRINT_DONE 가정 제거).

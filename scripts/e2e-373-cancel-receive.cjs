@@ -58,10 +58,13 @@ async function main() {
   console.log(`${C.b}#373 E2E — 취소→재입고 사이클${C.x}  (${BASE}, ${USER})\n`)
 
   // 테스트용 item / supplier 확보
-  const itemsRes = await api('GET', '/api/items?limit=50')
+  // ★매입품목(is_purchase_item=1)이어야 한다 — 재고 검증에 쓰는 GET /api/inventory/:id 가
+  //   is_purchase_item=1 로 필터해서, 아니면 404 → 재고가 0 으로 읽히고 「입고 후 +8」이 항상 FAIL,
+  //   「취소 후 원복」은 0==0 으로 **거짓 PASS** 가 된다. (2026-08-30 발견)
+  const itemsRes = await api('GET', '/api/items?limit=200')
   const items = arr(itemsRes.data?.data).filter((it) => it && it.id)
-  const item = items.find((it) => it.item_name) || items[0]
-  if (!item) throw new Error('테스트용 item 없음')
+  const item = items.find((it) => it.item_name && Number(it.is_purchase_item) === 1)
+  if (!item) throw new Error('테스트용 매입품목(is_purchase_item=1) 없음')
   const clientsRes = await api('GET', '/api/clients?limit=20')
   const clients = arr(clientsRes.data?.data).filter((c) => c && c.id)
   const supplier = clients[0]

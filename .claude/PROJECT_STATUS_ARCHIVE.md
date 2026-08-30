@@ -1,3 +1,67 @@
+## 📦 2026-08-13 8월 주문 삭제 — 전문 (현황판 축약분, 2026-08-30 이관)
+
+> **🗑️ prod 데이터 2026-08-13 — 8월 주문 510건 전량 삭제(용준님 요청, 코드 변경 없음)** — 이카운트 이관분(`이카운트 주문서 자동생성` 마커) = **8월 주문의 100%**(사람 직접입력 0건)라 8/1~8/12 전체가 사라졌다: orders 510·라인 1,036·카드 488(card_items 901)·파일연결 582·status_history 510·billing_groups 510. **세금계산서·현금영수증·출고·클레임·반품·출력이벤트·재고차감은 대상 0건**이라 회계·생산 이력 손상 없음. 대기함 62건은 `waiting` 복귀(용준님 결정 — 재적재 시 재사용 가능, 8월 waiting 252). 백업=`_bak_0813_aug_*` 8테이블 prod 상주 · **롤백 SQL=`docs/analysis/2026-08-13-aug-orders-delete-rollback.sql`**. 검증=잔여 0·고아 0·7월 1,420건 무손상·prod smoke **111/111**. ⚠️`wrangler --file` 이 **성공했는데도 「Not currently importing anything」 오류를 뱉는다** — 재실행 전 반드시 결과 조회(그대로 재실행하면 이중 적재). 남은=**재적재 여부 미정**(하면 `npm run ecount:orders`, 원천 8/12까지 재수출 필요)
+
+## 📦 2026-08-25 드롭다운 복구 — 전문 (현황판 축약분, 2026-08-30 이관)
+
+> **✅ prod 배포 2026-08-25 `cd7516b2` — 현금영수증 거래처 드롭다운 복구 + `/api/clients?fields=picker`** — ★**드롭다운이 비어 있었다**(세 겹: 응답 `data.clients` 를 `data` 로 읽어 TypeError→catch 가 삼킴 · 필드 `client_name` 을 `name` 으로 읽음 · `limit=1000` 인데 상한 200). 「선택사항」이라 신고가 없었고 **페이로드 재다가** 걸렸다. 고치려면 46컬럼×전건이라 오히려 악화 → `fields=picker`(id·이름·코드만, 필터·정렬은 목록과 동일 경로) **210KB(200곳 잘림)→181KB(2,873곳 전건)**. ★`/ai/credit-risk/summary` 상관 서브쿼리 3개→사전집계(2,873곳 전수 대조 불일치 0) — **데이터가 비어서 안 터지고 있었을 뿐**. ★나머지 P1 2건·ledger 854행은 **실측 후 조치 불요**(items 바깥 53행+인덱스 · ledger 기본 234행·DOM 5,143). `audit:subquery` P1 30→27. 검증=prod smoke 112/112·query-cost 12/12·드롭다운 2,874옵션·콘솔 0. 경위=ARCHIVE. 남은=없음
+
+## 📦 2026-08-30 입출고가 안 쌓이던 이유 추적 + 출고 차감/환원 대칭 — 전문
+
+> 증감내역 탭을 배포하고 보니 prod 원장이 104건뿐이었다(실사 조정 103 + 조정성 IN 1, **출고 0건**). 왜 안 쌓이는지 추적한 결과와 조치.
+
+### 왜 안 쌓였나 — 두 축 모두 「그 코드가 안 돈 것」
+
+**출고(OUT) 0건 — 1겹: 실행 이력 자체가 0**
+
+| 증거 | prod |
+|---|---|
+| `orders` | 10,074건 **전부 SHIPPED**(shipped_at 10,073) |
+| `order_status_history` | **0건** — 앱 상태 전이 경로 미통과 |
+| `cards` | **0건** |
+| `shipments` | **0건** |
+| `inventory_transactions` ref=`ORDER` | **0건** |
+
+대상이 없어서가 아니다: `production_required=0` 기성/유통 라인 **5,611행 · 주문 3,136건**. 이관이 최종 상태로 적재했을 뿐이다.
+
+**출고 — 2겹: 흔한 동선이 차감을 안 한다(코드 갭)**
+
+`deductStockLinesOnShip` 호출처가 `PATCH /orders/bulk-ship`·`PATCH /shipments/:id/ship` **2곳뿐**이었다. 주문을 SHIPPED 로 만들면서 차감을 안 하던 곳: `POST /cards/bulk-ship`·`POST /cards/:id/ship`·`PATCH /cards/:id/ship`·`PATCH /orders/:id/status`. UI 가 실제로 이 경로들을 부른다(`cards/actions.js:138,183` · `cardDetail.js:447` · `cards/rip.js:401`).
+
+**입고(IN) 1건 — 그 1건도 입고가 아니었다**
+
+유일한 IN 이 `reference_type='ADJUSTMENT'`·`reason='COUNT_ERROR'` = 재고 조정. 발주입고로 생긴 IN 은 0건. `inventory_receipts` **0건**인데 `purchase_order_items.received_quantity>0` 이 **2,813행**·`purchase_orders.status='RECEIVED'` 894건. ★**결정적 증거 = 그 2,813행 전부 `received_by`·`received_at` 이 NULL**(`po-receive.ts` 는 이 둘을 항상 세팅한다) → 한 건도 앱 입고를 통과하지 않았다. 배선은 정상이다(`receiving.js:514`·`purchaseOrders.js:513`) — 안 쓰고 있을 뿐.
+
+### 조치에서 뒤집힌 판단 3가지
+
+착수 전 검토에서 최초 제안이 세 군데 틀렸다.
+
+1. **`POST /orders/sync-statuses` 에 차감을 넣으면 이관분이 소급 차감된다** → **틀렸다**. 실측하니 prod `auto_complete_date` 가 10,074건 **전부 NULL** 이고 sync 대상 상태도 0건이라 이관 주문은 애초에 안 잡힌다. 넣지 않은 진짜 이유는 ①대상 집합이 이미 출고 처리를 거친 주문이라 중복 호출이고 ②#478 로 100건 bound 된 배치라 라인당 5~6쿼리가 subrequest 한도(~1000)를 넘기며 ③배치가 재고를 움직이면 "언제 왜 빠졌는지"가 사람 행동과 끊긴다. 근거를 코드 주석으로 남겼다.
+2. **환원을 「역분개 IN」으로 넣으려 했다** → **불가능**. `idx_inventory_tx_unique_ref`(0224·0293, #88)가 `(reference_type, reference_id, item_id, transaction_type, entity_id)` UNIQUE 를 강제한다. IN 을 더해 순합을 0 으로 만들어도 OUT 행이 남아 **재출고 INSERT 가 UNIQUE 위반 500**. e2e 로 실측했더니 재고는 이미 빠진 뒤 INSERT 만 터져 원장과 재고가 어긋났다. → 환원 = **차감 행 철회**(재고 복원 + 그 OUT 행 삭제). 「출고했다 취소했다」는 `order_status_history` 가 남긴다.
+3. **되돌리는 문이 하나인 줄 알았다** → **둘이었다**. `PATCH /cards/:id/unship` 말고 `PATCH /shipments/:id/status` 의 CANCELLED 분기(`shipments.ts:1224`)도 주문을 SHIPPED→PRINT_DONE 으로 되돌린다. 그리고 **이쪽은 출고가 예전부터 차감을 하고 있었다** → 출고취소 = 재고 증발이 **원래부터 있던 결함**이었다(prod 에서 안 돌아 드러나지 않았을 뿐).
+
+### 넣은 것
+
+- `utils/stockShip.ts` — 대상 라인 조회를 `selectShippableLines` 로 단일화(차감·환원이 같은 집합을 본다), 멱등 판정을 `findShipOutRow` 로, **`restoreStockLinesOnUnship` 신설**(되돌리는 양 = 주문 라인 수량이 아니라 **실제로 뺀 양**)
+- 차감 추가: `cards/lifecycle.ts` 3경로 + `orders/lifecycle.ts` 수동 SHIPPED 전이
+- 환원 추가: `cards/lifecycle.ts` unship + `shipments.ts` 출고 취소
+- `POST /orders/sync-statuses` 는 **의도적으로 제외** + 근거 주석
+
+### 검증
+
+- 신설 게이트 **`npm run test:ship-stock`**(`scripts/e2e-ship-unship-stock.cjs`) — 혼합 주문(제작+기성)으로 출고 → 재고 −10·OUT 1행 → 출고취소 → 재고 원복·OUT 철회 → 재출고 → 다시 −10·OUT 재생성(UNIQUE 위반 없음) → 중복 출고 무변화 → shipments 취소 → 원복. **20항목 전부 PASS**
+- `e2e-373-cancel-receive` 의 재고 검증이 **거짓이었다** — `is_purchase_item=0` 품목을 골라 `GET /api/inventory/:id`(=1 필터)가 404 → 재고가 늘 0 으로 읽혀 「입고 후 +8」은 항상 FAIL, 「취소 후 원복」은 0==0 **거짓 PASS**. 매입품목을 고르도록 고쳐 진짜 검증으로 만들었고, 그 결과 **입고 파이프라인이 정상임을 실증**했다(IN 8 → OUT 8(RECEIPT_CANCEL) → IN 10)
+- typecheck·build·check:dom·audit:entity·sort-audit·migration-drift·smoke 113/113
+
+### 소급 차감은 하지 않는다 (데이터로 확정)
+
+주문 10,074건이 **전부 `order_date` ≤ 2026-08-25**, `inventory` 231행의 `last_updated` 가 **2026-08-11~25 단 5일**에 몰려 있다(실사 21회, 마지막 08-24, 91품목). 현재 잔고는 8월 스냅샷이라 과거 주문을 소급 차감하면 **이중 차감**이다. sync-statuses 를 제외한 것이 이 원칙의 코드적 담보다.
+
+### 남은 것
+
+- **운영**: 발주 입고를 `/receiving` 에서 처리하기 시작해야 IN 이 쌓인다. 출고는 카드/주문 어느 화면으로 하든 이제 차감된다.
+- prod 에 OUT 행이 없어 부호 정규화·차감 대칭을 **prod 데이터로는 눈으로 확인할 수 없다** — 첫 실사용 출고 뒤 `/inventory#tab=tx` 에서 실측할 것.
+
 ## 📦 2026-08-12 이카운트 주문 적재 — 전문 (현황판 축약분, 2026-08-30 이관)
 
 > 총량 한도(25,000자)에 걸려 현황판에서 이관했다. 데이터 자체는 2026-08-13 삭제됐고, 아래 규칙은 재적재 시 그대로 유효하다.

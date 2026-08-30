@@ -3,6 +3,56 @@ import { getItemDefaultZone } from './inventoryZone'
 import { kstDate } from './kstDate'
 
 /**
+ * 출고 대상 라인(기성/유통) 조회 — 차감과 환원이 **같은 집합**을 보도록 한 곳에서 만든다.
+ * 두 방향이 서로 다른 기준으로 행을 고르면 환원이 차감을 못 따라가 재고가 어긋난다.
+ */
+async function selectShippableLines(db: D1Database, orderId: number) {
+  const { results } = await db.prepare(`
+    SELECT oi.item_id as item_id,
+           COALESCE(oi.assigned_entity_id, o.entity_id) as entity_id,
+           SUM(oi.quantity) as qty
+    FROM order_items oi
+    JOIN items i ON oi.item_id = i.id
+    JOIN orders o ON oi.order_id = o.id
+    WHERE oi.order_id = ?
+      AND oi.parent_item_id IS NULL
+      AND oi.item_id IS NOT NULL
+      AND i.production_required = 0
+    GROUP BY oi.item_id, COALESCE(oi.assigned_entity_id, o.entity_id)
+  `).bind(orderId).all<{ item_id: number; entity_id: number | null; qty: number }>()
+  return results || []
+}
+
+/**
+ * 이 (주문×품목×법인)의 출고 차감 행 — 있으면 이미 차감된 것.
+ *
+ * ★`idx_inventory_tx_unique_ref`(0224·0293, #88)가
+ *   `(reference_type, reference_id, item_id, transaction_type, entity_id)` UNIQUE 를 강제한다.
+ *   → **reference 당 OUT 은 최대 1행**이다. 그래서 출고취소를 「환원 IN 을 더한다」로 만들 수 없다:
+ *   IN 을 넣어 순합을 0 으로 만들어도 OUT 행이 남아 있어 **재출고 INSERT 가 UNIQUE 위반(500)** 이다.
+ *   (2026-08-30 e2e 로 실측 — 재고는 이미 빠진 뒤 INSERT 만 터져 원장·재고가 어긋났다)
+ *
+ *   그래서 환원은 역분개가 아니라 **그 차감의 철회**다(행 삭제 + 재고 복원).
+ *   「출고했다가 취소했다」는 사실은 `order_status_history` 가 남긴다 — 재고 원장은
+ *   UNIQUE 인덱스가 선언한 대로 "현재 유효한 이동" 한 벌만 담는다.
+ *
+ * ⚠️ `POST /api/inventory/releases` 는 `reference_type` 을 요청 본문에서 받는다. 누군가 'ORDER' +
+ *   같은 주문 id 로 수동 출고를 넣으면 이 키와 겹친다 — 그 경우 원래도 stockShip 이 조용히 스킵됐다.
+ *   구분 수단이 없는 기존 모호함이라 여기서 새로 악화시키지는 않는다.
+ */
+async function findShipOutRow(
+  db: D1Database, orderId: number, itemId: number, entityId: number
+): Promise<{ id: number; quantity: number } | null> {
+  const row = await db.prepare(`
+    SELECT id, quantity FROM inventory_transactions
+    WHERE reference_type = 'ORDER' AND reference_id = ? AND item_id = ? AND entity_id = ?
+      AND transaction_type = 'OUT'
+    LIMIT 1
+  `).bind(orderId, itemId, entityId).first<{ id: number; quantity: number }>()
+  return row || null
+}
+
+/**
  * 출고 시 기성품/유통(production_required=0) 라인의 재고를 차감한다.
  * - 제작 라인(production_required=1)은 제외 (생산품은 RIP 단계에서 원단 차감)
  * - 차감 법인 = 라인별 COALESCE(order_items.assigned_entity_id, orders.entity_id)
@@ -19,29 +69,15 @@ export async function deductStockLinesOnShip(
   orderId: number,
   entityId: number
 ): Promise<void> {
-  const { results: lines } = await db.prepare(`
-    SELECT oi.item_id as item_id,
-           COALESCE(oi.assigned_entity_id, o.entity_id) as entity_id,
-           SUM(oi.quantity) as qty
-    FROM order_items oi
-    JOIN items i ON oi.item_id = i.id
-    JOIN orders o ON oi.order_id = o.id
-    WHERE oi.order_id = ?
-      AND oi.parent_item_id IS NULL
-      AND oi.item_id IS NOT NULL
-      AND i.production_required = 0
-    GROUP BY oi.item_id, COALESCE(oi.assigned_entity_id, o.entity_id)
-  `).bind(orderId).all<{ item_id: number; entity_id: number | null; qty: number }>()
+  const lines = await selectShippableLines(db, orderId)
 
-  for (const ln of (lines || [])) {
+  for (const ln of lines) {
     if (!ln.item_id || !ln.qty) continue
     // 담당 법인 우선, NULL이면 청구 법인 fallback
     const lineEntity = Number(ln.entity_id) || entityId
-    // 중복 차감 방지 (주문×품목×법인 단위 — 같은 품목이 복수 법인 담당으로 분할돼도 각각 차감/멱등)
-    const dup = await db.prepare(
-      `SELECT 1 FROM inventory_transactions WHERE reference_type = 'ORDER' AND reference_id = ? AND item_id = ? AND entity_id = ? AND transaction_type = 'OUT' LIMIT 1`
-    ).bind(orderId, ln.item_id, lineEntity).first()
-    if (dup) continue
+    // 중복 차감 방지 (주문×품목×법인 단위 — 같은 품목이 복수 법인 담당으로 분할돼도 각각 차감/멱등).
+    // 출고취소가 이 행을 철회하므로, 취소 후 재출고에서는 다시 차감된다.
+    if (await findShipOutRow(db, orderId, ln.item_id, lineEntity)) continue
 
     // 소모 대상 창고 = 품목 기본창고 (NULL=미배정). 재고 행 키 = (item, entity, zone).
     // UP2 제외: 기성/유통 출고는 창고 피킹(소모 장비 없음) → 품목 기본창고가 정확.
@@ -67,5 +103,46 @@ export async function deductStockLinesOnShip(
       `INSERT INTO inventory_transactions (item_id, transaction_type, quantity, reference_type, reference_id, balance_after, notes, transaction_date, entity_id, storage_zone_id)
        VALUES (?, 'OUT', ?, 'ORDER', ?, ?, '기성/유통 출고 차감', ${kstDate()}, ?, ?)`
     ).bind(ln.item_id, ln.qty, orderId, after, lineEntity, zoneId).run()
+  }
+}
+
+/**
+ * 출고 취소 시 차감했던 재고를 되돌린다 — `deductStockLinesOnShip` 의 정확한 역방향.
+ *
+ * ★대칭이 깨지면 출고취소가 곧 재고 증발이다. 카드 출고취소(`PATCH /api/cards/:id/unship`)는
+ *   주문을 SHIPPED → PRINT_DONE 으로 되돌리는 **유일한 문**이므로(주문 상태 전이표는 `'SHIPPED': []`)
+ *   차감을 넣는 모든 경로는 이 함수와 짝을 이뤄야 한다.
+ *
+ * 되돌리는 양 = **미상쇄 차감량**(주문 라인 수량이 아니다). 라인이 나중에 수정돼도
+ * 실제로 뺀 만큼만 정확히 돌려놓는다.
+ *
+ * 원장은 지우지 않는다 — 환원도 행으로 남긴다(`IN` / `reference_type='ORDER'`).
+ * 그래서 재출고 시에는 순합이 0 이 되어 다시 차감된다.
+ */
+export async function restoreStockLinesOnUnship(
+  db: D1Database,
+  orderId: number,
+  entityId: number
+): Promise<void> {
+  const lines = await selectShippableLines(db, orderId)
+
+  for (const ln of lines) {
+    if (!ln.item_id) continue
+    const lineEntity = Number(ln.entity_id) || entityId
+    const out = await findShipOutRow(db, orderId, ln.item_id, lineEntity)
+    if (!out) continue   // 차감된 적 없거나 이미 환원됨
+
+    // 되돌리는 양 = **실제로 뺀 양**(주문 라인 수량이 아니다). 라인이 뒤에 수정돼도 정확히 원복된다.
+    const qty = Math.abs(Number(out.quantity) || 0)
+    const zoneId = await getItemDefaultZone(db, ln.item_id, lineEntity)
+    await db.prepare(
+      `INSERT OR IGNORE INTO inventory (item_id, entity_id, storage_zone_id, quantity) VALUES (?, ?, ?, 0)`
+    ).bind(ln.item_id, lineEntity, zoneId).run()
+    await db.prepare(
+      `UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
+    ).bind(qty, ln.item_id, lineEntity, zoneId).run()
+
+    // 차감 행 철회 — UNIQUE 인덱스가 reference 당 1행이라 이걸 남기면 재출고가 500 난다(위 주석).
+    await db.prepare(`DELETE FROM inventory_transactions WHERE id = ?`).bind(out.id).run()
   }
 }

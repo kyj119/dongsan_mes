@@ -18,6 +18,7 @@ import { requireAnyPagePermission, requireEditOrRole } from '../../middleware/pe
 import { logActivity } from '../../utils/activityLog'
 import { entityFilter, getEntityId } from '../../utils/entityFilter'
 import { ensureShipmentForOrder } from '../../utils/shipmentHelper'
+import { deductStockLinesOnShip, restoreStockLinesOnUnship } from '../../utils/stockShip'
 
 const cardsLifecycleRouter = new Hono<HonoEnv>()
 cardsLifecycleRouter.use('/*', authMiddleware, requireAnyPagePermission('/cards', '/orders'))
@@ -437,8 +438,11 @@ cardsLifecycleRouter.post('/bulk-ship', async (c) => {
       }
 
       if (progress && progress.total > 0 && progress.total === progress.shipped_count) {
-        const order = await c.env.DB.prepare('SELECT status FROM orders WHERE id = ?').bind(orderId).first<{ status: string }>()
+        const order = await c.env.DB.prepare('SELECT status, entity_id FROM orders WHERE id = ?').bind(orderId).first<{ status: string; entity_id: number | null }>()
         if (order && order.status !== 'SHIPPED' && order.status !== 'CANCELLED') {
+          // 기성/유통 라인 재고 차감 — 카드 경로도 주문 bulk-ship 과 동일 규칙(멱등).
+          //   2026-08-30: 이 호출이 없어 카드 화면에서 출고하면 재고가 안 빠지고 있었다.
+          await deductStockLinesOnShip(c.env.DB, Number(orderId), order.entity_id || getEntityId(c) || 1)
           // batch로 UPDATE + 이력 INSERT 원자 처리
           await c.env.DB.batch([
             c.env.DB.prepare(
@@ -527,10 +531,12 @@ cardsLifecycleRouter.post('/:id/ship', async (c) => {
     let orderShipped = false
     if (progress && progress.total > 0 && progress.total === progress.shipped_count) {
       const order = await c.env.DB.prepare(
-        'SELECT status FROM orders WHERE id = ?'
-      ).bind(card.order_id).first<{ status: string }>()
+        'SELECT status, entity_id FROM orders WHERE id = ?'
+      ).bind(card.order_id).first<{ status: string; entity_id: number | null }>()
 
       if (order && order.status !== 'SHIPPED' && order.status !== 'CANCELLED') {
+        // 기성/유통 라인 재고 차감 (멱등) — 위 bulk-ship 과 같은 규칙
+        await deductStockLinesOnShip(c.env.DB, Number(card.order_id), order.entity_id || getEntityId(c) || 1)
         await c.env.DB.batch([
           c.env.DB.prepare(`
             UPDATE orders SET status = 'SHIPPED', shipped_at = COALESCE(shipped_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ?
@@ -904,11 +910,13 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
     // 5. 모두 출고되었으면 주문 상태를 SHIPPED로 변경
     if (allShipped) {
       const order = await c.env.DB.prepare(
-        'SELECT status FROM orders WHERE id = ?'
-      ).bind(card.order_id).first<{ status: string }>()
+        'SELECT status, entity_id FROM orders WHERE id = ?'
+      ).bind(card.order_id).first<{ status: string; entity_id: number | null }>()
 
       if (order && order.status !== 'SHIPPED' && order.status !== 'CANCELLED') {
         prevOrderStatus = order.status
+        // 기성/유통 라인 재고 차감 (멱등) — 위 두 출고 경로와 같은 규칙
+        await deductStockLinesOnShip(c.env.DB, Number(card.order_id), order.entity_id || getEntityId(c) || 1)
         await c.env.DB.batch([
           c.env.DB.prepare(
             `UPDATE orders SET status = 'SHIPPED', shipped_at = COALESCE(shipped_at, CURRENT_TIMESTAMP), updated_at = datetime('now') WHERE id = ?`
@@ -988,10 +996,13 @@ cardsLifecycleRouter.patch('/:id/unship', requireRole('ADMIN', 'MANAGER'), async
 
     // 4. 주문이 SHIPPED 상태였으면 PRINT_DONE으로 되돌림
     const order = await c.env.DB.prepare(
-      'SELECT status FROM orders WHERE id = ?'
-    ).bind(card.order_id).first<{ status: string }>()
+      'SELECT status, entity_id FROM orders WHERE id = ?'
+    ).bind(card.order_id).first<{ status: string; entity_id: number | null }>()
 
     if (order && order.status === 'SHIPPED') {
+      // ★출고 차감 환원 — 이게 없으면 출고취소가 곧 재고 증발이다.
+      //   주문 상태 전이표가 'SHIPPED': [] 라 여기가 출고를 되돌리는 유일한 문이다.
+      await restoreStockLinesOnUnship(c.env.DB, Number(card.order_id), order.entity_id || getEntityId(c) || 1)
       await c.env.DB.batch([
         c.env.DB.prepare(
           `UPDATE orders SET status = 'PRINT_DONE', shipped_at = NULL, updated_at = datetime('now') WHERE id = ?`

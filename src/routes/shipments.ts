@@ -8,7 +8,7 @@ import { renderTemplate } from '../services/emailTemplates'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { autoDeductPostProcessingMaterials } from '../utils/autoDeductPostProcessingMaterials'
-import { deductStockLinesOnShip } from '../utils/stockShip'
+import { deductStockLinesOnShip, restoreStockLinesOnUnship } from '../utils/stockShip'
 import { ensureShipmentForOrder } from '../utils/shipmentHelper'
 import { kstYmd, kstYmdCompact, kstDate } from '../utils/kstDate'
 import { CONSOLIDATABLE_ORDER_STATUSES } from '../utils/statusLabels'
@@ -1183,10 +1183,10 @@ shipmentsRouter.patch('/:id/status', requireEditOrRole('/shipments', 'MANAGER'),
     // #51 + #185: 출고 취소 시 카드 shipped_at 롤백 + 주문 상태 복원 + auto_complete_date 리셋
     // 모든 UPDATE/INSERT를 수집하여 batch로 원자적 실행
     if (status === 'CANCELLED') {
-      // 취소에 필요한 정보를 먼저 조회
+      // 취소에 필요한 정보를 먼저 조회 (환원 대상 법인까지 함께)
       const orderRow = await c.env.DB.prepare(
-        'SELECT order_id FROM shipments WHERE id = ?'
-      ).bind(id).first<{ order_id: number }>()
+        `SELECT s.order_id, o.entity_id FROM shipments s LEFT JOIN orders o ON o.id = s.order_id WHERE s.id = ?`
+      ).bind(id).first<{ order_id: number; entity_id: number | null }>()
 
       const stmts: ReturnType<typeof c.env.DB.prepare>[] = [
         // 1) 출고 상태 변경
@@ -1218,6 +1218,12 @@ shipmentsRouter.patch('/:id/status', requireEditOrRole('/shipments', 'MANAGER'),
 
           if (!otherShipped || otherShipped.cnt === 0) {
             // 모든 출고 취소됨 → 주문 상태 복원
+            // ★재고 환원 — 이 라우트의 출고(PATCH /:orderId/ship)는 예전부터 차감을 했는데
+            //   취소 쪽에 환원이 없어 **출고취소가 곧 재고 증발**이었다(2026-08-30 발견, 기존 결함).
+            //   batch 밖에서 도는 건 차감 쪽(deductStockLinesOnShip)과 같은 모양이다.
+            await restoreStockLinesOnUnship(
+              c.env.DB, Number(orderRow.order_id), orderRow.entity_id || getEntityId(c) || 1
+            )
             const user = c.get('user')
             // 3) 주문 상태 복원 (shipped_at도 리셋 — P1 정합화)
             stmts.push(c.env.DB.prepare(
