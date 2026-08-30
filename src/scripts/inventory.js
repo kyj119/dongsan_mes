@@ -267,6 +267,7 @@ function updatePagination(pagination) {
 window.viewTransactions = async function(itemId, itemName) {
     try {
         document.getElementById('modalItemName').textContent = itemName;
+        window.__invTxModalItem = { id: itemId, name: itemName };
         var muItem = (allItems || []).find(function(it) { return it.id === itemId; }) || null; // MU4: 단위 표기용
         var response = await axios.get('/api/inventory/' + itemId + '/transactions?limit=50');
         if (response.data.success) {
@@ -274,22 +275,28 @@ window.viewTransactions = async function(itemId, itemName) {
             var tbody = document.getElementById('transactionTableBody');
             tbody.innerHTML = '';
             transactions.forEach(function(tx) {
-                // 조정 사유(adjustReason 옵션 + inventoryCount.ts STOCK_COUNT)과 통일
-                var reasonLabels = { 'STOCK_COUNT': '실사 보정', 'COUNT_ERROR': '실사 차이', 'DAMAGE': '파손·불량', 'LOSS': '분실', 'FOUND': '추가 발견', 'OTHER': '기타' };
-                var typeLabels = { 'IN': '입고', 'OUT': '출고', 'ADJUST': '조정', 'TRANSFER_IN': '이동입고', 'TRANSFER_OUT': '이동출고' };
-                var typeColors = { 'IN': 'bg-blue-50 text-blue-700', 'OUT': 'bg-amber-50 text-amber-700', 'ADJUST': 'bg-gray-100 text-gray-700', 'TRANSFER_IN': 'bg-indigo-50 text-indigo-700', 'TRANSFER_OUT': 'bg-purple-50 text-purple-700' };
-                var typeIcons = { 'IN': 'fas fa-arrow-down', 'OUT': 'fas fa-arrow-up', 'ADJUST': 'fas fa-sliders-h', 'TRANSFER_IN': 'fas fa-right-to-bracket', 'TRANSFER_OUT': 'fas fa-right-from-bracket' };
-                var typeClass = typeColors[tx.transaction_type] || 'bg-gray-100 text-gray-800';
-                var typeIcon = typeIcons[tx.transaction_type] || 'fas fa-circle';
-                var typeText = typeLabels[tx.transaction_type] || tx.transaction_type;
-                var qtyClass = tx.quantity > 0 ? 'text-blue-600' : 'text-orange-600';
+                // 라벨 정본 = constants/inventoryTx.ts (window.INV_TX_LABELS 주입) — 사본 신설 금지
+                var L = window.INV_TX_LABELS || { type: {}, reason: {}, style: {} };
+                var reasonLabels = L.reason;
+                var st = L.style[tx.transaction_type] || { cls: 'bg-gray-100 text-gray-800', icon: 'fas fa-circle' };
+                var typeClass = st.cls;
+                var typeIcon = st.icon;
+                var typeText = L.type[tx.transaction_type] || tx.transaction_type;
+                // ★부호 정규화: INSERT 경로마다 quantity 부호가 엇갈린다(같은 OUT 이 stockShip·입고취소는
+                //   양수, 출고등록은 음수). 원값을 그대로 쓰면 **출고가 '+' 로 표시**된다. 유형으로 강제한다.
+                var signedQty = (tx.transaction_type === 'OUT' || tx.transaction_type === 'TRANSFER_OUT')
+                    ? -Math.abs(Number(tx.quantity) || 0)
+                    : ((tx.transaction_type === 'IN' || tx.transaction_type === 'TRANSFER_IN')
+                        ? Math.abs(Number(tx.quantity) || 0)
+                        : (Number(tx.quantity) || 0));
+                var qtyClass = signedQty > 0 ? 'text-blue-600' : (signedQty < 0 ? 'text-orange-600' : 'text-gray-500');
 
                 var row = document.createElement('tr');
                 row.className = 'hover:bg-gray-50';
                 row.innerHTML = ''
                     + '<td class="px-4 py-2 text-sm text-gray-900">' + (tx.transaction_date || '-').substring(0, 16).replace('T', ' ') + '</td>'
                     + '<td class="px-4 py-2 text-sm"><span class="inline-flex items-center px-2 py-0.5 text-xs rounded ' + typeClass + '"><i class="' + typeIcon + ' text-[7px] mr-1"></i>' + typeText + '</span></td>'
-                    + '<td class="px-4 py-2 text-sm ' + qtyClass + ' text-right font-medium tabular-nums">' + (tx.quantity > 0 ? '+' : '') + escapeHtml(uomFmt(tx.quantity, muItem)) + '</td>'
+                    + '<td class="px-4 py-2 text-sm ' + qtyClass + ' text-right font-medium tabular-nums">' + (signedQty > 0 ? '+' : '') + escapeHtml(uomFmt(signedQty, muItem)) + '</td>'
                     + '<td class="px-4 py-2 text-sm text-gray-900 text-right font-medium tabular-nums">' + (tx.balance_after == null ? '-' : escapeHtml(uomFmt(tx.balance_after, muItem))) + '</td>'
                     + '<td class="px-4 py-2 text-sm text-gray-900" title="' + escapeHtml(reasonLabels[tx.reason] || tx.reason || '') + '">' + escapeHtml(reasonLabels[tx.reason] || tx.reason || '-') + '</td>'
                     + '<td class="px-4 py-2 text-sm text-gray-900" title="' + escapeHtml(tx.handled_by_name || '') + '">' + escapeHtml(tx.handled_by_name || '-') + '</td>';

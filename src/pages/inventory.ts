@@ -5,6 +5,8 @@ import { UOM_JS } from '../utils/unitConvert'
 import inventoryScript from '../scripts/inventory.js?raw'
 import inventoryCountScript from '../scripts/inventoryCount.js?raw'
 import inventoryDashboardScript from '../scripts/inventoryDashboard.js?raw'
+import inventoryTxScript from '../scripts/inventoryTx.js?raw'
+import { INVENTORY_TX_LABELS_JS } from '../constants/inventoryTx'
 
 export function inventoryPage(c: Context<HonoEnv>) {
   const tabScript = `
@@ -17,7 +19,8 @@ export function inventoryPage(c: Context<HonoEnv>) {
       var defs = [
         { key: 'stock', btn: 'tabStock', content: 'stockTabContent' },
         { key: 'count', btn: 'tabCount', content: 'countTabContent' },
-        { key: 'zone',  btn: 'tabZone',  content: 'zoneTabContent' }
+        { key: 'zone',  btn: 'tabZone',  content: 'zoneTabContent' },
+        { key: 'tx',    btn: 'tabTx',    content: 'txTabContent' }
       ];
       defs.forEach(function(d) {
         var btn = document.getElementById(d.btn);
@@ -43,6 +46,10 @@ export function inventoryPage(c: Context<HonoEnv>) {
         window.__zoneLoaded = true;
         loadDashboard();
       }
+      // 증감내역 탭: invTxInit 이 최초 1회만 초기화하고 이후엔 재조회 (inventoryTx.js)
+      if (tab === 'tx' && typeof invTxInit === 'function') {
+        invTxInit();
+      }
     }
 
     document.addEventListener('DOMContentLoaded', function() {
@@ -51,11 +58,13 @@ export function inventoryPage(c: Context<HonoEnv>) {
         setTimeout(() => switchInvTab('count'), 100);
       } else if (hash === '#tab=zone') {
         setTimeout(() => switchInvTab('zone'), 100);
+      } else if (hash === '#tab=tx') {
+        setTimeout(() => switchInvTab('tx'), 100);
       }
     });
   `;
 
-  const combinedScript = UOM_JS + '\n' + tabScript + '\n' + inventoryScript + '\n' + inventoryCountScript + '\n' + inventoryDashboardScript;
+  const combinedScript = UOM_JS + '\n' + INVENTORY_TX_LABELS_JS + '\n' + tabScript + '\n' + inventoryScript + '\n' + inventoryCountScript + '\n' + inventoryDashboardScript + '\n' + inventoryTxScript;
 
   return renderPage(c, {
     title: '재고 관리',
@@ -71,6 +80,9 @@ export function inventoryPage(c: Context<HonoEnv>) {
               </button>
               <button onclick="switchInvTab('zone')" id="tabZone" class="inv-tab px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
                 <i class="fas fa-warehouse mr-2"></i>창고별
+              </button>
+              <button onclick="switchInvTab('tx')" id="tabTx" class="inv-tab px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+                <i class="fas fa-right-left mr-2"></i>증감내역
               </button>
             </div>
 
@@ -332,6 +344,117 @@ export function inventoryPage(c: Context<HonoEnv>) {
             </div>
             </div>
 
+            <!-- 증감내역 Tab Content (2026-08-30: 전 품목 inventory_transactions) -->
+            <div id="txTabContent" class="hidden">
+              <!-- Filters -->
+              <div class="ds-filter-bar">
+                <div class="ds-filter-field" style="min-width:130px">
+                  <label class="ds-label">시작일</label>
+                  <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-08-01" id="invTxDateFrom" class="js-fp ds-input">
+                </div>
+                <div class="ds-filter-field" style="min-width:130px">
+                  <label class="ds-label">종료일</label>
+                  <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-08-31" id="invTxDateTo" class="js-fp ds-input">
+                </div>
+                <div class="ds-filter-field" style="min-width:110px">
+                  <label class="ds-label">유형</label>
+                  <select id="invTxType" class="ds-input" onchange="invTxSearch()">
+                    <option value="">전체</option>
+                    <option value="IN">입고</option>
+                    <option value="OUT">출고</option>
+                    <option value="ADJUST">조정</option>
+                    <option value="TRANSFER_IN">이동입고</option>
+                    <option value="TRANSFER_OUT">이동출고</option>
+                  </select>
+                </div>
+                <div class="ds-filter-field" style="min-width:130px">
+                  <label class="ds-label">분류</label>
+                  <select id="invTxCategory" class="ds-input" onchange="invTxSearch()">
+                    <option value="">전체</option>
+                  </select>
+                </div>
+                <div class="ds-filter-field" style="min-width:130px">
+                  <label class="ds-label">창고</label>
+                  <select id="invTxZone" class="ds-input" onchange="invTxSearch()">
+                    <option value="">전체</option>
+                    <option value="none">기본창고(미배정)</option>
+                  </select>
+                </div>
+                <div class="ds-filter-field" style="min-width:130px">
+                  <label class="ds-label">참조</label>
+                  <select id="invTxRefType" class="ds-input" onchange="invTxSearch()">
+                    <option value="">전체</option>
+                    <option value="PURCHASE">발주입고</option>
+                    <option value="RECEIPT_CANCEL">입고취소</option>
+                    <option value="ORDER">주문출고</option>
+                    <option value="RETURN">반품</option>
+                    <option value="TRANSFER">창고이동</option>
+                    <option value="ADJUSTMENT">재고조정</option>
+                    <option value="STOCK_COUNT">재고실사</option>
+                    <option value="SCAN">스캔</option>
+                  </select>
+                </div>
+                <div class="ds-filter-field" style="flex:1;min-width:160px">
+                  <label class="ds-label">검색</label>
+                  <input type="text" id="invTxSearch" placeholder="품목명 / 품목코드" class="ds-input">
+                </div>
+                <div class="ds-filter-actions">
+                  <button onclick="invTxSearch()" class="ds-btn ds-btn-primary ds-btn-sm">
+                    <i class="fas fa-search" style="margin-right:4px"></i>조회
+                  </button>
+                  <button onclick="invTxReset()" class="ds-btn ds-btn-sm">
+                    <i class="fas fa-rotate-left" style="margin-right:4px"></i>초기화
+                  </button>
+                  <button onclick="invTxExport()" class="ds-btn ds-btn-sm">
+                    <i class="fas fa-file-csv" style="margin-right:4px"></i>CSV
+                  </button>
+                </div>
+              </div>
+              <!-- 품목 단일 필터(재고 현황 탭 '이력' 버튼에서 전달). hidden = 화면엔 칩으로만 노출 -->
+              <input type="hidden" id="invTxItemId" value="">
+
+              <div class="ds-card p-6">
+                <div class="flex justify-between items-center mb-4">
+                  <h2 class="text-xl font-bold">
+                    <i class="fas fa-right-left text-blue-600 mr-2"></i>증감내역
+                  </h2>
+                  <span id="invTxItemName" class="text-sm text-blue-600 font-medium"></span>
+                </div>
+                <div id="invTxSummary" class="flex flex-wrap items-center gap-2 mb-3"></div>
+                <div class="overflow-x-auto" style="max-height: calc(100vh - 320px); overflow-y: auto;">
+                  <table class="w-full text-sm ds-table ds-table-striped">
+                    <thead class="bg-gray-50">
+                      <tr>
+                        <th class="col-datetime px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">일시</th>
+                        <th class="col-name px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">품목</th>
+                        <th class="col-tag px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">분류</th>
+                        <th class="col-tag px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">유형</th>
+                        <th class="col-amount px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">증감</th>
+                        <th class="col-amount px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase" title="해당 창고 기준 잔량">잔량</th>
+                        <th class="col-tag px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">창고</th>
+                        <th class="col-date px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">참조</th>
+                        <th class="col-name px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">사유·비고</th>
+                        <th class="col-tag px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">처리자</th>
+                      </tr>
+                    </thead>
+                    <tbody id="invTxTableBody" class="bg-white divide-y divide-gray-100"></tbody>
+                  </table>
+                </div>
+
+                <!-- Pagination -->
+                <div class="mt-4 flex justify-between items-center">
+                  <div class="text-sm text-gray-700">총 <span id="invTxTotalCount">0</span>건</div>
+                  <div class="flex gap-2">
+                    <button id="invTxPrevPage" class="px-3 py-1 bg-gray-300 rounded hover:bg-gray-400 disabled:opacity-50" disabled>이전</button>
+                    <span class="px-4 py-1 text-sm">
+                      페이지 <span id="invTxCurrentPage">1</span> / <span id="invTxTotalPages">1</span>
+                    </span>
+                    <button id="invTxNextPage" class="px-3 py-1 bg-gray-300 rounded hover:bg-gray-400 disabled:opacity-50" disabled>다음</button>
+                  </div>
+                </div>
+              </div>
+            </div><!-- /txTabContent -->
+
             <!-- 모든 모달들 (탭 콘텐츠 밖) -->
             <!-- Transaction History Modal -->
             <div id="transactionModal" class="ds-modal-overlay hidden">
@@ -341,9 +464,15 @@ export function inventoryPage(c: Context<HonoEnv>) {
                             <i class="fas fa-history text-gray-500 mr-2"></i>
                             거래 이력 - <span id="modalItemName"></span>
                         </h3>
-                        <button id="closeModal" class="text-gray-500 hover:text-gray-700">
-                            <i class="fas fa-times text-2xl"></i>
-                        </button>
+                        <div class="flex items-center gap-3">
+                            <!-- 모달은 최근 50건만 보여준다 — 전건·기간 조회는 증감내역 탭으로 -->
+                            <button onclick="invTxOpenForItem()" class="ds-btn ds-btn-sm" title="이 품목의 전체 증감내역을 기간 제한 없이 조회">
+                                <i class="fas fa-right-left mr-1"></i>전체 내역
+                            </button>
+                            <button id="closeModal" class="text-gray-500 hover:text-gray-700">
+                                <i class="fas fa-times text-2xl"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
                         <table class="w-full text-sm ds-table ds-table-striped">

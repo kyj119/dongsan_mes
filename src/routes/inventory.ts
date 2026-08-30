@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import type { HonoEnv } from '../types/env'
 import { getEntityId, entityFilter, isZoneOwnedByEntity, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../utils/entityFilter'
@@ -8,6 +9,8 @@ import { triggerLowStockAlert } from '../utils/inventoryAlert'
 import { getItemDefaultZone, getItemDefaultZones } from '../utils/inventoryZone'
 import { resolveStockUnit } from '../utils/rollConsumption'
 import { packFactor } from '../utils/unitConvert'
+import { escapeCsvField } from '../utils/csv'
+import { TX_TYPE_LABELS, TX_REF_LABELS, TX_REASON_LABELS } from '../constants/inventoryTx'
 
 const inventoryRouter = new Hono<HonoEnv>()
 
@@ -128,6 +131,157 @@ inventoryRouter.get('/', async (c) => {
     })
   } catch (error: any) {
     console.error('Failed to get inventory items:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
+// ---------------------------------------------------------------------------
+// 통합 증감내역 — 전 품목 inventory_transactions 조회 (2026-08-30)
+//
+// ★반드시 `/:id` 보다 먼저 등록한다 — 뒤에 두면 'transactions' 가 :id 로 잡혀
+//   NaN 조회가 된다(inventoryCount `/consumption` 과 같은 함정).
+// ---------------------------------------------------------------------------
+
+/**
+ * 부호 정규화. INSERT 경로마다 `quantity` 부호가 엇갈린다 —
+ * 같은 'OUT' 인데 출고차감(utils/stockShip.ts)·입고취소는 **양수**,
+ * 출고등록(POST /releases)은 **음수**로 들어간다.
+ * 합산이 서로 상쇄돼 무의미해지므로 **조회 시 유형으로 강제**한다(DB 무변경).
+ * ADJUST 는 증/감 양방향이라 원부호를 그대로 살린다.
+ */
+const TX_SIGNED_QTY = `CASE
+      WHEN t.transaction_type IN ('OUT','TRANSFER_OUT') THEN -ABS(t.quantity)
+      WHEN t.transaction_type IN ('IN','TRANSFER_IN')  THEN  ABS(t.quantity)
+      ELSE t.quantity END`
+
+/** 목록·집계·CSV 가 같은 조건을 쓰도록 WHERE 를 한 곳에서 만든다 */
+function buildTxFilter(c: Context<HonoEnv>): { clause: string; params: any[] } {
+  const { date_from, date_to, type, category, item_id, zone_id, reference_type, search } = c.req.query()
+  const ef = entityFilter(c, 't')
+  let clause = ` WHERE 1=1${ef.clause}`
+  const params: any[] = [...ef.params]
+
+  if (date_from) { clause += ' AND date(t.transaction_date) >= ?'; params.push(date_from) }
+  if (date_to) { clause += ' AND date(t.transaction_date) <= ?'; params.push(date_to) }
+  if (type) { clause += ' AND t.transaction_type = ?'; params.push(type) }
+  if (reference_type) { clause += ' AND t.reference_type = ?'; params.push(reference_type) }
+  if (item_id) { clause += ' AND t.item_id = ?'; params.push(Number(item_id)) }
+  if (category) { clause += ' AND i.category = ?'; params.push(category) }
+  // 'none' = 창고 미배정(기본창고) 행. storage_zone_id IS NULL 은 파라미터를 쓰지 않는다.
+  if (zone_id === 'none') { clause += ' AND t.storage_zone_id IS NULL' }
+  else if (zone_id) { clause += ' AND t.storage_zone_id = ?'; params.push(Number(zone_id)) }
+  if (search) { clause += ' AND (i.item_name LIKE ? OR i.item_code LIKE ?)'; params.push(`%${search}%`, `%${search}%`) }
+
+  return { clause, params }
+}
+
+// items 는 LEFT JOIN — INNER 로 묶으면 품목이 지워진 과거 거래가 **조용히 소멸**한다.
+const TX_FROM = `
+    FROM inventory_transactions t
+    LEFT JOIN items i ON i.id = t.item_id
+    LEFT JOIN storage_zones z ON z.id = t.storage_zone_id
+    LEFT JOIN users u ON u.id = t.handled_by
+    LEFT JOIN entities e ON e.id = t.entity_id`
+
+// GET /api/inventory/transactions — 전 품목 증감내역(필터·페이징·유형별 집계)
+inventoryRouter.get('/transactions', async (c) => {
+  try {
+    const { page = '1', limit = '50' } = c.req.query()
+    const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 200)
+    const safePage = Math.max(Number(page) || 1, 1)
+    const offset = (safePage - 1) * safeLimit
+    const { clause, params } = buildTxFilter(c)
+
+    const { results } = await c.env.DB.prepare(`
+      SELECT t.id, t.item_id, t.transaction_type, t.transaction_date,
+             t.quantity, ${TX_SIGNED_QTY} AS signed_quantity,
+             t.unit_price, t.total_amount, t.reference_type, t.reference_id,
+             t.balance_after, t.reason, t.notes, t.entity_id, t.storage_zone_id,
+             i.item_name, i.item_code, i.category, i.unit, i.base_unit, i.pack_size, i.stock_mode,
+             z.zone_name, u.name AS handled_by_name, e.short_name AS entity_name
+      ${TX_FROM}
+      ${clause}
+      ORDER BY t.transaction_date DESC, t.id DESC
+      LIMIT ? OFFSET ?
+    `).bind(...params, safeLimit, offset).all()
+
+    const countRow = await c.env.DB.prepare(
+      `SELECT COUNT(*) AS cnt ${TX_FROM} ${clause}`
+    ).bind(...params).first<{ cnt: number }>()
+    const total = Number(countRow?.cnt) || 0
+
+    // 유형별 집계. ⚠️ qty_sum 은 **단일 품목으로 좁혔을 때만** 의미가 있다 —
+    //    품목이 섞이면 단위(장·m·통)가 섞여 합산이 무의미하므로 화면이 판단해 숨긴다.
+    const { results: byType } = await c.env.DB.prepare(`
+      SELECT t.transaction_type AS type, COUNT(*) AS cnt,
+             SUM(${TX_SIGNED_QTY}) AS qty_sum,
+             SUM(CASE WHEN t.total_amount IS NOT NULL THEN ABS(t.total_amount) ELSE 0 END) AS amount_sum
+      ${TX_FROM}
+      ${clause}
+      GROUP BY t.transaction_type
+      ORDER BY t.transaction_type
+    `).bind(...params).all()
+
+    return c.json({
+      success: true,
+      data: {
+        transactions: results,
+        summary: { total, by_type: byType },
+        pagination: { page: safePage, limit: safeLimit, total, total_pages: Math.ceil(total / safeLimit) || 1 }
+      }
+    })
+  } catch (error: any) {
+    console.error('Failed to get inventory transactions:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
+// GET /api/inventory/transactions/export — 필터 조건 전건 CSV
+// (`/:id/transactions` 와 경로가 겹치지 않지만 함께 두어 등록 순서를 명확히 한다)
+inventoryRouter.get('/transactions/export', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const { clause, params } = buildTxFilter(c)
+    const { results } = await c.env.DB.prepare(`
+      SELECT t.transaction_date, t.transaction_type, ${TX_SIGNED_QTY} AS signed_quantity,
+             t.balance_after, t.unit_price, t.total_amount, t.reference_type, t.reference_id,
+             t.reason, t.notes,
+             i.item_code, i.item_name, i.category, i.base_unit, i.unit,
+             z.zone_name, u.name AS handled_by_name, e.short_name AS entity_name
+      ${TX_FROM}
+      ${clause}
+      ORDER BY t.transaction_date DESC, t.id DESC
+      LIMIT 5000
+    `).bind(...params).all<any>()
+
+    let csv = '﻿'  // UTF-8 BOM (엑셀 한글)
+    csv += '일시,사업자,품목코드,품목명,분류,유형,증감수량,단위,잔량,창고,참조,사유,비고,처리자\n'
+    for (const r of results) {
+      csv += [
+        (r.transaction_date || '').substring(0, 16).replace('T', ' '),
+        r.entity_name || '',
+        r.item_code || '',
+        r.item_name || '(삭제된 품목)',
+        r.category || '',
+        TX_TYPE_LABELS[r.transaction_type] || r.transaction_type,
+        r.signed_quantity,
+        r.base_unit || r.unit || '',
+        r.balance_after ?? '',
+        r.zone_name || '기본창고',
+        r.reference_type ? `${TX_REF_LABELS[r.reference_type] || r.reference_type}${r.reference_id ? ' #' + r.reference_id : ''}` : '',
+        TX_REASON_LABELS[r.reason] || r.reason || '',
+        r.notes || '',
+        r.handled_by_name || ''
+      ].map(escapeCsvField).join(',') + '\n'
+    }
+
+    return new Response(csv, {
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="inventory_transactions_${kstYmdCompact()}.csv"`
+      }
+    })
+  } catch (error: any) {
+    console.error('Failed to export inventory transactions:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
   }
 })

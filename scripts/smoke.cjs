@@ -117,6 +117,7 @@ const ENDPOINTS = [
   { path: '/api/purchase-orders?limit=10', name: 'purchaseOrders.list' },
   { path: '/api/purchase-requests?limit=10', name: 'purchaseRequests.list' },
   { path: '/api/inventory', name: 'inventory.list' },
+  { path: '/api/inventory/transactions?limit=5', name: 'inventory.transactions' },
   { path: '/api/inventory-counts', name: 'inventoryCount.list' },
   { path: '/api/inventory-counts/1', name: 'inventoryCount.detail', allow404: true },
   // ★`/:id` 보다 먼저 등록돼야 하는 경로 — 순서가 뒤집히면 'consumption' 이 id 로 파싱돼 조용히 빈 응답이 된다
