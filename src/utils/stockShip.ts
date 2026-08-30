@@ -116,8 +116,10 @@ export async function deductStockLinesOnShip(
  * 되돌리는 양 = **미상쇄 차감량**(주문 라인 수량이 아니다). 라인이 나중에 수정돼도
  * 실제로 뺀 만큼만 정확히 돌려놓는다.
  *
- * 원장은 지우지 않는다 — 환원도 행으로 남긴다(`IN` / `reference_type='ORDER'`).
- * 그래서 재출고 시에는 순합이 0 이 되어 다시 차감된다.
+ * `IN` 보정행을 남기지 않는다 — 위 `findShipOutRow` 주석대로 `idx_inventory_tx_unique_ref`가
+ * reference 당 OUT 1행만 허용해, IN을 더해 순합을 0으로 맞춰도 OUT 행이 남아 재출고 INSERT가
+ * UNIQUE 위반(500)이 된다. 그래서 환원은 역분개가 아니라 그 OUT 행 자체의 삭제다(아래).
+ * 재출고 시에는 OUT 행이 없으므로 `findShipOutRow`가 다시 차감을 허용한다.
  */
 export async function restoreStockLinesOnUnship(
   db: D1Database,
