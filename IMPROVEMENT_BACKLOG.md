@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-08-30T15:47:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-08-30T21:44:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -11,8 +11,22 @@
 | 🆕 new | **12** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음: #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **532** (`search_issues(reason:completed)` 재확인, 변동없음) |
+| ✔️ done | **532** (표기 유지 — 이번 사이클 `search_issues(reason:completed)`가 598 반환, 하단 Area 3 로그 참조. 절대값 재확정은 Area 6 소관) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 재확인, 변동없음) |
+
+> **Area 3 UX/기능 감사 (2026-08-30T21:44):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD, `047a1cd`), `git fetch origin main`(이미 최신) → `git checkout main && git reset --hard origin/main`(HEAD `047a1cd`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area3 방법 라인 HEAD `564c174`)**: 웹앱 범위(`-- src migrations scripts .github`) diff **3커밋**(`5dc788b`·`49fd79f`·`8ef1c6b`) — Area2가 이미 같은 3커밋을 코드품질 렌즈로 정독 완료. `5dc788b`는 IA JSX(재단 스케일링)만 건드려 UX 렌즈 밖. `8ef1c6b`(재고 차감/환원 write-path)는 프론트 표면 변경 0(백엔드 전용) → UX 렌즈 밖. `49fd79f`만 UX 렌즈 대상 — `/inventory#tab=tx` 신설 탭(전 품목 증감내역, 필터·페이징·CSV), 정확히 Area3가 반복 지적해온 클래스(#606/#618/#619 "백엔드 먼저·화면 나중")의 **반례**라 직접 정독.
+> - **`49fd79f` UX 렌즈 직독(`inventoryTx.js` 287줄 + `inventory.ts` +117줄)**: ① **로딩 상태** — `invTxLoad()`가 axios 호출 전 tbody에 스피너("로딩 중...") 즉시 렌더(`:59`). ② **빈 상태** — `rows.length===0`일 때 "해당 조건의 증감내역이 없습니다" 안내 렌더(`:70`, colspan 정합). ③ **에러 상태** — `.catch`가 콘솔 로그 + tbody에 "불러오기 실패" 사용자 메시지(`:102-105`, 백지 방치 없음). ④ **필터 완전성** — 기간·유형·분류·창고·참조유형·검색(품목명/코드) 6종 + CSV 내보내기, 기존 품목별 이력 모달(50건 고정)보다 상위호환. ⑤ **페이지네이션** — 이전/다음 버튼 + 현재/전체 페이지 표시, `disabled` 경계 처리(`invTxRenderPagination`). ⑥ **cross-page 배선** — 기존 품목별 거래이력 모달에 "전체 내역" 버튼 신설(`inventory.ts` diff) → `invTxOpenForItem()`이 `window.__invTxModalItem`(모달 오픈 시 `viewTransactions`가 세팅, `inventory.js` diff)을 읽어 tx탭으로 전환 + 품목고정 + 기간해제(`invTxConsumePending`) — Area3가 반복 검증하는 "실제 배선 확인"(콜백 도달성 3단) 통과, 유령 버튼 아님. ⑦ **HTML↔JS id 와이어링** — 신규 `getElementById` 대상(`invTxDateFrom` 등) 전부 페이지 템플릿에 실재 + 헬퍼 전부 `if(!el){console.warn...return}` 널가드(CLAUDE.md 패턴). ⑧ **더블클릭/showConfirm 오용 체크** — 이 탭은 read-only(axios.get만, delete/post 0건) → 해당 클래스 무관. **UX 관점 결함 0건, 오히려 기존 갭(#606/#618/#619 클래스) 정면 해소 사례**.
+> - **standing scan 1: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음, 신규 `/api/inventory/transactions` tie-break 정상), P2 1건 `attendance.ts:158`(기존 노출 유지, 변동없음).
+> - **standing scan 2: "백엔드 먼저·화면 나중" 패턴** — 이번 churn의 유일 신규 API(`GET /api/inventory/transactions`, `/transactions/export`)는 **같은 커밋에서 프론트 소비처(`inventoryTx.js`)까지 완결** → 이 패턴의 신규 후보 자체가 없음(기존 open #606/#618/#619 3건은 이번 churn과 무관 파일이라 무변화).
+> - **standing scan 3: axios→백엔드 라우트 존재성** — `inventoryTx.js` 신규 axios 호출 4종(`transactions`·`transactions/export`·`meta/categories`·`storage-zones`) 전부 `src/routes`에 실재 확인(`meta/categories`·`storage-zones`는 기존 라우트, 신규 아님) — dead button 0건.
+> - **open 12건 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **12**(변동없음, #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621 전건 일치), `search_issues(reactions:>0)` **0건**(승인 대기 유지).
+> - **backlog↔GitHub 절대값 재동기화 — 이상 신호**: `search_issues(reason:completed)`가 이번 사이클 **598**을 반환(직전 12회 연속 532로 일치하던 것과 어긋남). 같은 세션에서 쿼리 문구 2종(전체 쿼리스트링 vs `owner`/`repo` 파라미터 분리)으로 재시도해도 동일하게 598 — 우연한 오타가 아님. 이 MCP `search_issues`는 도구 설명상 "자연어 시맨틱 매칭"이라 `reason:completed` 리터럴 필터가 아닐 가능성 있음(카운트 근거 자체가 예전부터 근사치였을 수 있음). **rejected 카운트에는 재확인 생략**(대상 무변경 원칙 유지, done만 이상신호) → done 통계는 이번엔 **532 표기 유지**하되 절대값 재확정은 다음 **Area 6**(자기진화, backlog↔GitHub 동기화 소관)에 위임 — 이 필드가 시맨틱 검색이라 신뢰 불가하면 카운팅 방법 자체를 codify해야 함.
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md `line N` 잔여참조 재확인(0건, grep 검증 — 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 8건 → 이번 로그 추가 후 9건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(3커밋 중 UX 렌즈 대상은 1건뿐이었고 로딩·빈상태·에러·필터·페이징·cross-page 배선·id와이어링 전부 clean — 오히려 반복 지적 패턴의 해소 사례), 자동수정 0건, done-sync: open 12(변동없음)·done 532(표기 유지, 하단 이상신호 참조)·rejected 6(변동없음). **backlog↔GitHub 카운트 방법 재검증**을 다음 Area 6에 인계. 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-08-30T15:47):**
 > - **방법**: `git status`=워킹트리 clean(detached HEAD, `8ef1c6b`), `git fetch origin main`(이미 최신) → `git checkout main && git reset --hard origin/main`(HEAD `8ef1c6b`). `npm ci`(0→81), `npx tsc --noEmit` clean.
