@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-08-30T21:44:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-08-31T03:46:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,24 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **532** (표기 유지 — 이번 사이클 `search_issues(reason:completed)`가 598 반환, 하단 Area 3 로그 참조. 절대값 재확정은 Area 6 소관) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 재확인, 변동없음) |
+
+> **Area 4 데이터 정합성 (2026-08-31T03:46):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD, `49c2efc`), `git fetch origin main`(이미 최신) → `git checkout main && git reset --hard origin/main`(HEAD `49c2efc`). `npm ci`(0→81), `npx tsc --noEmit` clean, `npm run build` 성공.
+> - **churn 확인(앵커 = 직전 Area4 방법 라인 HEAD `f8ab48b`)**: 웹앱 범위(`-- src migrations scripts .github`) diff **3커밋**(`5dc788b`·`49fd79f`·`8ef1c6b`) — Area1~3·6이 이미 각자 렌즈로 정독 완료한 동일 3건, 신규 마이그레이션 0건. `5dc788b`(IA JSX 스케일링)·`49fd79f`(신규 `/inventory#tab=tx`, read-only GET 2종)는 데이터정합성 write-path 표면 없음(후자는 조회 전용). `8ef1c6b`(재고 출고/환원 write-path)만 이 렌즈 정독 대상.
+> - **`8ef1c6b` 데이터정합성 렌즈 직독(`stockShip.ts` 재구성)**: `restoreStockLinesOnUnship`이 `idx_inventory_tx_unique_ref`(reference당 OUT 1행 UNIQUE) 위반을 피하려 보정 IN행 대신 **OUT행 자체를 DELETE**하는 설계는 commit message·`findShipOutRow` 주석과 일치해 의도적·정합 — 단, **함수 자신의 JSDoc(구 `:119-120`)이 정반대로 서술**("원장은 지우지 않는다 — 환원도 행으로 남긴다(IN)... 재출고 시 순합이 0")돼 있어 같은 파일 27줄 안에서 자기모순. 실제 코드는 `DELETE FROM inventory_transactions WHERE id=?`(구 `:146`). 이 문서는 이 커밋이 방금 고친 "UNIQUE 위반→재출고 500"을 설명하는 척하며 정반대 설계(IN 보정행 유지)를 정본처럼 서술 — 향후 그 문서를 신뢰해 "감사 목적으로 IN 보정행을 추가"하는 수정이 들어오면 **재출고 UNIQUE 위반 500이 재발**하는 회귀 씨앗. 코드 자체(런타임 동작)는 정합이라 issue 아닌 **안전 자동수정**(주석 전용, 동작 무변경, `deductStockLinesOnShip`/`restoreStockLinesOnUnship` 호출부 4곳·시그니처·바인딩 전부 무변경) 판정 → 즉시 정정 커밋(`6da6a72`).
+> - **비-batch write-path 재확인(#477/#480 클래스 후보 배제)**: `deductStockLinesOnShip`/`restoreStockLinesOnUnship`이 주문 상태변경 `c.env.DB.batch()`와 **별도 await**로 실행돼 원자성이 깨지는 것처럼 보이나, `orders/queries.ts:312`·`shipments.ts:1223`에 **이미 명시적으로 문서화된 의도적 트레이드오프**("read-after-write 순차의존이라 batch 불가, 유지") — 재보고 대신 기존 결정 재확인만. 실패 시나리오도 자가치유 확인: `findShipOutRow` 멱등 가드가 있어 부분실패 후 재시도가 중복차감/유실 없이 수렴(라인별 OUT행 존재 여부로 재계산).
+> - **standing scan 1: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 67건·**누락 0건**(변동없음).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 1건 `attendance.ts:158`(기존 노출 유지, 변동없음).
+> - **standing scan 3: 신규 비-FK `*_id` 참조 컬럼 sweep** — `git diff --stat 49c2efc..HEAD -- migrations` 신규 마이그 0건 → 이 스캔의 신규 후보 자체가 발생 불가.
+> - **standing scan 4: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 5: `npm audit`** — 11건(1 moderate·8 high·2 critical) 전부 devDependency, #613 기보고와 완전 일치, net-new 0.
+> - **CI 헬스**: `deploy.yml` 최근 30런 전부 `conclusion:success`(`8ef1c6b`·`49fd79f`·`49c2efc` 포함 최신 커밋까지).
+> - **open 12건 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **12**(변동없음, #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621 전건 일치), `search_issues(reactions:>0)` **0건**(승인 대기 유지). Area4 소관 #614(`designer_intakes` 참조가드 누락)·#615(재고 rebase 재현불가) 재확인 — 이번 churn이 손댄 파일과 무관, 무변화.
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · done **532**(표기 유지 — Area6 재동기화 대기중, Area3 로그 참조) · rejected **6**(변동없음, 재확인 생략).
+> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 9건 → 이번 로그 추가 후 10건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건, **자동수정 1건**(A-026, `8ef1c6b`의 자기모순 JSDoc 정정 — 안전: 주석 전용·동작 무변경), done-sync: open 12(변동없음)·done 532(표기 유지)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-08-30T21:44):**
 > - **방법**: `git status`=워킹트리 clean(detached HEAD, `047a1cd`), `git fetch origin main`(이미 최신) → `git checkout main && git reset --hard origin/main`(HEAD `047a1cd`). `npm ci`(0→81), `npx tsc --noEmit` clean.
@@ -176,6 +194,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-026 | stockShip.ts 자기모순 JSDoc 정정 — `restoreStockLinesOnUnship`의 함수설명이 "원장은 지우지 않는다, 환원도 IN행으로 남긴다"(구 문서)와 정반대로 실제 코드는 `DELETE FROM inventory_transactions`(OUT행 삭제, `idx_inventory_tx_unique_ref` UNIQUE 위반 회피). 커밋메시지·형제 함수(`findShipOutRow`) 주석과는 일치·코드도 정합이라 런타임 버그는 아니나, 이 문서를 신뢰해 "IN 보정행 추가"로 되돌리면 방금 고친 재출고 UNIQUE 위반 500이 재발하는 회귀 씨앗. Area 4 직접 발견. 주석 전용·동작 무변경(안전 자동수정). verify PASS(tsc clean+build) | 6da6a72 | 2026-08-31 |
 | A-025 | smoke.cjs에 0540(재고실사 pack_count/per_pack_qty) 마이그 드리프트 detail 프로브 추가 — 오늘 배포된 `inventoryCount.ts:169/218`가 신규 컬럼을 명시 참조하는데 기존 smoke는 목록만 프로브해 #483/#484 (b)-risk 사각지대였음. `/api/inventory-counts/1`(allow404) 프로브 추가 후 push → 배포런 `32254495833` smoke success로 0540이 이미 prod 적용됐음을 라이브 확인(활성 장애 아님, 상시 디텍터 신설). Area 1 직접 발견. verify PASS(tsc clean+build) | c14296c | 2026-08-19 |
 | A-024 | orders/create.ts INSERT 바인드 개수 불일치(치명, 프로덕션 크래시) — `451f611`(담당자 필드)가 `INSERT INTO orders`에 `sales_rep_id` 32번째 컬럼·플레이스홀더를 추가했는데 `.bind()`엔 31개 값만 전달(계산된 `salesRepId` 변수가 끝내 미사용). D1은 플레이스홀더=바인드 개수 엄격 일치 요구 → `POST /api/orders`(신규 주문 생성) 전량 500, 08-07 이후 라이브 추정. `scripts/smoke.cjs`가 read-only GET 위주라 CI 미탐지(SKILL 기존 codify 사각). 노드 스크립트로 32=32 확정 후 `salesRepId`를 마지막 인자로 추가, 나머지 `INSERT INTO orders` 4개소(operations/quotations/taxInvoices/migration)도 전수 재검증(전부 정상, sales_rep_id 미참조). Area 4 54회차 직접 발견. verify PASS(tsc clean+build+entity 61/61), 즉시 push 배포 | 8e19b36 | 2026-08-09 |
 | A-023 | XSS escapeHtml 누락 2곳 (신규기능 부분누락) — `orderForm/intake.js:135-136 ofLoadSalesReps()`(#604 담당자 셀렉트, employees 자유입력 `name`/`department`를 escapeHtml 없이 `<option>` innerHTML — 형제 `client.js`/`finishing.js`는 이미 escapeHtml 컨벤션 확립) + `reports.js:261-262 loadSalesRepStats()`(담당자별 실적, `rep_name`/`department` 미escape — 같은 파일 바로 위 `loadDesignerStats()`는 로컬 `esc()` 별칭으로 이미 escape하는 확립된 패턴을 새 형제 함수만 누락). A-024/A-025급 "같은 파일 부분 롤아웃" 클래스. Area 3 52회차 직접 발견. verify PASS(tsc clean+build), check:dom baseline 무변(회귀 0) | (이번 커밋) | 2026-08-08 |
