@@ -33,6 +33,15 @@ function L([string]$m) {
     Add-Content -Path $LogFile -Value $line -Encoding UTF8
 }
 
+# ── JSON 읽기 (PS 5.1 인코딩 함정 차단) ──────────────────────────
+# ★ Get-Content -Raw 는 BOM 없는 UTF-8 을 시스템 ANSI 로 읽는다 — 한글이 깨져 ConvertFrom-Json 이 던지고,
+#   호출부의 catch 가 그걸 삼켜 "파싱 실패" 로 오판한다(자동 전환이 조용히 안 되는 경로였다).
+#   .NET ReadAllText 는 BOM 이 있으면 BOM 을, 없으면 지정한 UTF-8 을 쓴다 — 둘 다 맞게 읽힌다.
+function Read-JsonFile([string]$Path) {
+    $text = [IO.File]::ReadAllText($Path, (New-Object Text.UTF8Encoding($false)))
+    return ($text | ConvertFrom-Json)
+}
+
 # ── PrintExp 서식지 탐지 ──────────────────────────────────────────
 # 실측 5변종: D:\PrintExp_X64\Log\main · C:\PrintExp_X64\PrintExp_X64\Log\main
 #            · Program Files (x86)\PrintExp_X64_V5.7.6.5.14.BS\Log
@@ -113,7 +122,7 @@ function Resolve-TnsWatcher {
     $eqPath = Join-Path $AppDir "equipment.json"
     if (Test-Path -LiteralPath $eqPath) {
         $eq = $null
-        try { $eq = Get-Content -LiteralPath $eqPath -Raw | ConvertFrom-Json } catch { }
+        try { $eq = Read-JsonFile $eqPath } catch { }
         if (-not $eq) { return @{ Ok = $false; Reason = "equipment.json 파싱 실패" } }
         $ws = @($eq.watchers)
         if ($ws.Count -ne 1) { return @{ Ok = $false; Reason = ("watcher " + $ws.Count + "개 — 단일 tns 구성만 자동 전환") } }
@@ -127,7 +136,7 @@ function Resolve-TnsWatcher {
     $asPath = Join-Path $AppDir "appsettings.json"
     if (-not (Test-Path -LiteralPath $asPath)) { return @{ Ok = $false; Reason = "설정 파일 없음" } }
     $as = $null
-    try { $as = Get-Content -LiteralPath $asPath -Raw | ConvertFrom-Json } catch { }
+    try { $as = Read-JsonFile $asPath } catch { }
     if (-not $as) { return @{ Ok = $false; Reason = "appsettings.json 파싱 실패" } }
     $pt = $as.ParserType; if (-not $pt) { $pt = "TNS" }
     if ($pt -ne "TNS") { return @{ Ok = $false; Reason = ("ParserType=" + $pt + " — 대상 아님") } }

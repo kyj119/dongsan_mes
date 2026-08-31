@@ -427,6 +427,15 @@ function Invoke-EpsonCollect {
 # ── [4] FLEXI 취소검증 (KM전사 등 FlexiPRINT PC) ──────────────────
 # RIPLOG 는 "전송" 로그다 — 전송 완료 후의 취소(프린터에서)가 기록에 남는지,
 # 전송 중 취소(Production Manager 에서)와 어떻게 다른지 실측하는 안내 절차.
+# ── JSON 읽기 (PS 5.1 인코딩 함정 차단) ──────────────────────────
+# ★ Get-Content -Raw 는 BOM 없는 UTF-8 을 시스템 ANSI 로 읽는다 — 한글이 깨져 ConvertFrom-Json 이 던지고,
+#   호출부의 catch 가 그걸 삼켜 "파싱 실패" 로 오판한다(자동 전환이 조용히 안 되는 경로였다).
+#   .NET ReadAllText 는 BOM 이 있으면 BOM 을, 없으면 지정한 UTF-8 을 쓴다 — 둘 다 맞게 읽힌다.
+function Read-JsonFile([string]$Path) {
+    $text = [IO.File]::ReadAllText($Path, (New-Object Text.UTF8Encoding($false)))
+    return ($text | ConvertFrom-Json)
+}
+
 function Invoke-FlexiCancelTest {
     Write-Host ""
     Write-Host "── FLEXI 취소검증 (FlexiPRINT / Production Manager PC 전용) ──"
@@ -437,7 +446,7 @@ function Invoke-FlexiCancelTest {
     $eqJson = "C:\Logwatcher\equipment.json"
     if (Test-Path $eqJson) {
         try {
-            $cfg = Get-Content $eqJson -Raw | ConvertFrom-Json
+            $cfg = Read-JsonFile $eqJson
             foreach ($w in @($cfg.watchers)) {
                 if ($w.parser_type -eq "flexi" -and $w.config.log_path) { $ripLogs += $w.config.log_path }
             }
