@@ -41,6 +41,7 @@
     "zscan:recon": "python scripts/zscan-reconcile.py",
     "panel:smoke": "node scripts/panel-smoke.mjs",
     "cut:smoke": "node scripts/cut-panel-smoke.mjs",
+    "cut:e2e": "node scripts/cut-e2e.cjs",
     "cut:bench": "node scripts/cut/bench.mjs",
     "cut:bleed": "node scripts/cut/bleed-bench.mjs",
     "cut:nest": "node scripts/cut/nest-bench.mjs",

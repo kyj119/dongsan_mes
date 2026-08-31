@@ -98,7 +98,10 @@ function uncommittedIa() {
 
 // ── ② 게이트 ────────────────────────────────────────────────────────
 // 배포하는 코드가 통과한 코드여야 한다. package.json 에 실재하는 것만 돌린다.
-const GATES = ['cut:bleed', 'cut:nest', 'cut:smoke', 'panel:smoke']
+// ★`cut:e2e` = **일러를 실제로 돌려** 판을 짜 보는 게이트. 나머지 넷은 소스를 읽는 정적 검사라
+//   "코드가 이렇게 생겼다"까지만 본다 — 마스크가 죽어 배경이 사라진 사고는 그 넷을 전부 통과했다.
+//   일러가 안 떠 있으면 스스로 **건너뛴다**(exit 0). 못 도는 걸 실패로 만들면 사람이 게이트를 끈다.
+const GATES = ['cut:bleed', 'cut:nest', 'cut:smoke', 'panel:smoke', 'cut:e2e']
 function runGates() {
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'))
   const list = GATES.filter((g) => pkg.scripts && pkg.scripts[g])

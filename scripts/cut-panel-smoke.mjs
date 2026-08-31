@@ -1315,6 +1315,20 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     ok('3u PDF 아트보드·검산 모두 잉크 경계', /bb = mesCut_inkBounds\(srcItem\)/.test(nestSrc2)
       && /var nb = mesCut_inkBounds\(cp\)/.test(nestSrc2)
       && /var gb2 = mesCut_inkBounds\(got\)/.test(nestSrc2))
+    // ★스텁은 패널이 열릴 때 **한 번만** Z: 호스트를 evalFile 한다 — 배포해도 패널을 다시 열기 전엔
+    //   옛 코드가 돈다. 2026-08-31 에 이걸 모르고 반나절을 썼다(배포된 코드를 계속 의심했다).
+    //   ⓐ 감지는 **스텁이 심은 `MESCUT_CORE_PATH`** 로 한다 — 새 호스트 함수를 쓰면 구버전엔 그게 없다.
+    //   ⓑ 식에 역슬래시를 쓰지 않는다 — 문자열로 실려 가다 사라지면 조용히 안 맞는 정규식이 된다(실제 발생).
+    //   ⓒ 판짜기는 **막는다** — 옛 규칙 판은 조용히 틀리고 만드는 데 몇 분이 든다.
+    ok('4 호스트 구버전 감지(경로=스텁 전역 · 역슬래시 없음 · 판짜기 차단)', (() => {
+      const m = /var Z_VER_JS = ([\s\S]*?)\}\)\(\)';/.exec(panelSrc2)
+      if (!m) return false
+      const body = m[1]
+      return body.indexOf('MESCUT_CORE_PATH') >= 0
+        && body.indexOf(String.fromCharCode(92)) < 0
+        && /function checkHostFresh\(/.test(panelSrc2)
+        && /if \(hostStaleZ\) \{ out\(staleNote\(\), 'err'\); return; \}/.test(panelSrc2)
+    })())
     // ★폴백은 조용하면 안 된다 — 폴백 = 배경이 깨졌을 수 있다는 뜻이고, 인쇄 뒤에 알면 늦다
     ok('3u 폴백을 사용자에게 알린다', /placefail=/.test(nestSrc2)
       && /parseInt\(a\.placefail, 10\) > 0/.test(panelSrc2))

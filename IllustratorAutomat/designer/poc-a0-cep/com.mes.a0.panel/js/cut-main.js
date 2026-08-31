@@ -31,7 +31,7 @@
   // ⚠️ 내용을 고치면 **반드시 이 번호를 올린다** — 수동 배포축이라 이 문자열이 "이 PC 가 어느 셸인가"의
   //    유일한 단서다. 0.57.0 하나가 세 상태를 가리키던 사고가 있었고(등록 파라미터·굽기 통합·[◎ 전체]),
   //    그래서 `ia:deploy` 가 번호가 그대로면 배포를 막는다.
-  var SHELL_VERSION = '0.62.0';   // 0.62.0 = 폴백 문구에 회전 포함(배율 1배 회전도 PDF 경로) · 0.61.0 = 배율 확대 결과 보고(PDF 배치 / 예비 경로 폴백 경고) · 0.60.0 = 파일명 맨 앞 거래처 · 자재/후가공 행 분리(폭 맞춤) · 「품목」→「내용」 명칭 분리(MES 품목 마스터와 구분) · 0.59.0 = 재단 탭 [◎ 전체] · 0.58.0 = 굽기 통합(마스크+도련 1왕복)·등록 파라미터(자재·후가공·돔보·파일명) · 0.57.0 = 조각 속 메우기(그룹 하나=칼선 하나·맞붙임 복구) · 0.56.0 = 도련 겹침 분할(간격 존중·하한 1.5mm)
+  var SHELL_VERSION = '0.63.0';   // 0.63.0 = 호스트 구버전 감지(Z: 배포본과 대조 → 시작·포커스 시 경고 · 판짜기 차단) · 0.62.0 = 폴백 문구에 회전 포함(배율 1배 회전도 PDF 경로) · 0.61.0 = 배율 확대 결과 보고(PDF 배치 / 예비 경로 폴백 경고) · 0.60.0 = 파일명 맨 앞 거래처 · 자재/후가공 행 분리(폭 맞춤) · 「품목」→「내용」 명칭 분리(MES 품목 마스터와 구분) · 0.59.0 = 재단 탭 [◎ 전체] · 0.58.0 = 굽기 통합(마스크+도련 1왕복)·등록 파라미터(자재·후가공·돔보·파일명) · 0.57.0 = 조각 속 메우기(그룹 하나=칼선 하나·맞붙임 복구) · 0.56.0 = 도련 겹침 분할(간격 존중·하한 1.5mm)
 
   // ── 도련 겹침 분할 (2026-08-25) ─────────────────────────────────────────
   // ★순수 함수로 뽑아 둔 이유 = **하네스가 이 함수를 직접 돌리기 때문**이다(`npm run cut:bleed` §9).
@@ -129,6 +129,57 @@
   var hostVersion = null;
 
   function setHostVersion(s) { hostVersion = String(s || ''); }
+
+  // ── ★호스트 구버전 감지 (2026-08-31) ─────────────────────────────
+  // 스텁은 **패널이 열릴 때 한 번만** Z: 호스트를 evalFile 한다. 그래서 호스트를 배포해도
+  // 패널을 다시 열기 전까지는 옛 코드가 돈다 — 그동안 판은 조용히 옛 규칙으로 만들어진다.
+  // 실제로 2026-08-31 에 이걸로 반나절을 썼다: 배포는 됐는데 판이 안 고쳐져서, 고친 코드를
+  // 계속 의심했다. 배포본과 로드본이 다르면 **사람이 알 수 있어야 한다.**
+  //
+  // 새 호스트 함수를 만들지 않는 이유 = 그 함수는 **새 호스트에만** 있다. 구버전을 감지해야
+  // 하는데 구버전에는 감지 함수가 없다(닭과 달걀). 그래서 스텁이 심어 둔 `MESCUT_CORE_PATH`
+  // 만 쓰고 파일을 직접 읽는다 — 스텁은 갱신 불요 파일이라 어느 PC 에나 있다.
+  // ⚠️ 식은 **ASCII 만** — Z: 경로에 한글이 들어 있어 문자열로 넘기면 인코딩에 걸린다.
+  //    작은따옴표도 `[\x27]` 로 피한다(evalScript 문자열 안에서 중첩 인용은 깨지기 쉽다).
+  var Z_VER_JS = '(function(){try{'
+    + 'var p=(typeof MESCUT_CORE_PATH=="string")?MESCUT_CORE_PATH:"";'
+    + 'if(!p) return "nopath";'
+    + 'var f=new File(p); if(!f.exists) return "nofile";'
+    + 'f.encoding="UTF-8"; f.open("r"); var s=f.read(8000); f.close();'
+    // ★정규식을 쓰지 않는다 — 이 식은 문자열로 실려 가므로 역슬래시가 도중에 사라지면
+    //   조용히 안 맞는 정규식이 된다(2026-08-31 실제로 겪음). indexOf 는 그 위험이 없다.
+    + 'var k=s.indexOf("MESCUT_VERSION"); if(k<0) return "noversion";'
+    + 'var q=String.fromCharCode(39);'
+    + 'var a=s.indexOf(q,k); var b=(a<0)?-1:s.indexOf(q,a+1);'
+    + 'return (a>0 && b>a) ? s.substring(a+1,b) : "noversion";'
+    + '}catch(e){ return "err"; }})()';
+
+  /** Z: 배포본이 지금 로드된 호스트보다 새 버전이면 그 값, 아니면 ''. 판정 못 하면 ''. */
+  var hostStaleZ = '';
+
+  /** Z: 배포본 버전을 읽어 로드본과 대조한다. ★확실히 다를 때만 경고한다 —
+   *  Z: 가 끊겼거나 못 읽었으면 조용히 넘긴다(오탐이 잦으면 사람이 무시하게 된다). */
+  function checkHostFresh(cb) {
+    host(Z_VER_JS, function (zv) {
+      var z = String(zv || '');
+      var known = /^CUT-CEP-\d+\.\d+\.\d+$/.test(z);
+      hostStaleZ = (known && hostVersion && z !== hostVersion) ? z : '';
+      if (elVer) {
+        elVer.textContent = 'shell ' + SHELL_VERSION + ' · host ' + (hostVersion || '?')
+          + (hostStaleZ ? ('  ⚠ Z: ' + hostStaleZ) : '');
+      }
+      if (cb) cb(hostStaleZ);
+    });
+  }
+
+  /** 구버전이면 사용자에게 보여줄 문구. 아니면 ''. */
+  function staleNote() {
+    if (!hostStaleZ) return '';
+    return '⚠ 호스트가 갱신됐습니다 — 지금 패널은 ' + (hostVersion || '?')
+      + ' 를 들고 있고 Z: 에는 ' + hostStaleZ + ' 가 있습니다.\n'
+      + '패널을 닫았다 다시 여세요(또는 일러 재시작). 그 전에는 옛 규칙으로 판이 만들어집니다.';
+  }
+
   function hostAtLeast(min) {
     var m = /CUT-CEP-(\d+)\.(\d+)\.(\d+)/.exec(hostVersion || '');
     if (!m) return false;   // 못 읽으면 못 받는 것으로 본다(안전한 쪽)
@@ -1439,6 +1490,9 @@
 
   function runNest() {
     if (hostBusy) return;
+    // ★구버전이면 **아예 시작하지 않는다** — 옛 규칙으로 만든 판은 조용히 틀리고,
+    //   판 하나에 몇 분이 든다. 사람이 결과를 보고 알아채기까지가 너무 길다.
+    if (hostStaleZ) { out(staleNote(), 'err'); return; }
     var G = window.MesCutGeom, NST = window.MesCutNest;
     if (!G || !NST) { out('엔진 미로드(geometry.js·nesting.js) — 패널 설치본을 확인하세요', 'err'); return; }
 
@@ -2517,9 +2571,14 @@
     if (bad) { out(res + '\nZ: 연결과 mes-cut-host.jsx 배포를 확인하세요.', 'err'); return; }
     setHostVersion(res);
     applyGates();   // ★버전을 안 뒤 다시 — 초기 applyGates() 는 ping 이전이라 항상 '구버전'으로 보인다
-    out('준비됨 — P0 골격입니다. 칼선 생성은 P1 에서 켜집니다.'
-      + (hostSupportsCurve() ? '' : '\n⚠ 호스트가 구버전(' + res + ')이라 곡선 칼선을 끕니다 — 직선으로 만듭니다.'));
-    refresh();
+    // ★Z: 배포본과 대조 — 배포했는데 패널을 안 다시 연 상태를 여기서 잡는다(2026-08-31)
+    checkHostFresh(function () {
+      var note = staleNote();
+      out('준비됨 — P0 골격입니다. 칼선 생성은 P1 에서 켜집니다.'
+        + (hostSupportsCurve() ? '' : '\n⚠ 호스트가 구버전(' + res + ')이라 곡선 칼선을 끕니다 — 직선으로 만듭니다.')
+        + (note ? ('\n\n' + note) : ''), note ? 'err' : '');
+      refresh();
+    });
   });
 
   // 패널로 포커스가 돌아올 때 1회 갱신. 폴링하지 않는다 —
@@ -2531,6 +2590,7 @@
   window.addEventListener('focus', function () {
     if (hostBusy) return;
     if (document.body.getAttribute('data-main') !== 'cut') return;
+    checkHostFresh();   // ★배포는 패널을 열어 둔 채 일어난다 — 포커스가 돌아올 때 한 번 대조한다
     refresh();
   });
 
