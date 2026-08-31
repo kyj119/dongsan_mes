@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.28.0';  // 0.28.0 = 회전도 임베드 앞으로 + **회전만 있어도 PDF 경로**(1:1 회전도 마스크가 안 따라와 배경 절반이 회색) + 검산 기대폭에 회전 반영 · 0.27.0 = 배율 기준을 PDF 아트보드로(배치 직후 보고값은 잘려 있어 +23%) · 확대는 임베드 **전**(뒤로 옮기면 마스크가 안 따라와 배경이 죽는다) · 0.26.0 = 배율 확대 크기 계산을 임베드 **후**로(배치 직후 값은 그림 있는 데까지로 잘려 있어 클립 밖 삐짐 조각이 +23% 크게 나왔다) · 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
+var MESCUT_VERSION = 'CUT-CEP-0.29.0';  // 0.29.0 = PDF 아트보드 기준을 잉크 경계로(visibleBounds 로 잡으면 마스크로 가린 여분이 되살아나 조각이 커지고 재단선을 넘는다) · 0.28.0 = 회전도 임베드 앞으로 + **회전만 있어도 PDF 경로**(1:1 회전도 마스크가 안 따라와 배경 절반이 회색) + 검산 기대폭에 회전 반영 · 0.27.0 = 배율 기준을 PDF 아트보드로(배치 직후 보고값은 잘려 있어 +23%) · 확대는 임베드 **전**(뒤로 옮기면 마스크가 안 따라와 배경이 죽는다) · 0.26.0 = 배율 확대 크기 계산을 임베드 **후**로(배치 직후 값은 그림 있는 데까지로 잘려 있어 클립 밖 삐짐 조각이 +23% 크게 나왔다) · 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -2426,7 +2426,10 @@ function mesCut_addDombo(doc) {
  */
 function mesCut_scaleAsPlaced(doc, artLayer, srcItem, srcDoc, pct, tagIdx, rotDeg) {
     var bb = null;
-    try { bb = srcItem.visibleBounds; } catch (e0) { return null; }
+    // ★기준은 **잉크 경계**다 — 파이프라인 전체(굽기·배치·칼선)가 잉크 기준이라 여기만 visibleBounds 를
+    //   쓰면 마스크로 가려진 여분이 PDF 아트보드에 들어가고, 배치 후 그 여분이 되살아나 조각이 커진다
+    //   (2026-08-31 실측: 원본 잉크 124x80 인데 판에 810x1240 으로 놓여 재단선 800x1240 을 양옆 5mm 초과).
+    try { bb = mesCut_inkBounds(srcItem) || srcItem.visibleBounds; } catch (e0) { return null; }
     if (!bb) return null;
     var w0 = bb[2] - bb[0], h0 = bb[1] - bb[3];
     if (!(w0 > 0) || !(h0 > 0)) return null;
@@ -2442,7 +2445,7 @@ function mesCut_scaleAsPlaced(doc, artLayer, srcItem, srcDoc, pct, tagIdx, rotDe
         app.activeDocument = srcDoc;                 // ★문서 간 복제는 원본이 active 일 때만 동작한다
         var cp = srcItem.duplicate(tmp.layers[0], ElementPlacement.PLACEATEND);
         app.activeDocument = tmp;
-        var nb = cp.visibleBounds;
+        var nb = mesCut_inkBounds(cp) || cp.visibleBounds;   // ★원점도 같은 기준이어야 아트가 안 밀린다
         cp.translate(-nb[0], h0 - nb[1]);
         tmp.artboards[0].artboardRect = [0, h0, w0, 0];
         var po = new PDFSaveOptions();
@@ -2488,7 +2491,10 @@ function mesCut_scaleAsPlaced(doc, artLayer, srcItem, srcDoc, pct, tagIdx, rotDe
         if (stage.pageItems.length !== 1) throw new Error('임시 레이어 개체 ' + stage.pageItems.length);
         var got = stage.pageItems[0];
         // ★크기 검증 — 어긋나면 폴백한다(조용히 틀린 크기로 배치하지 않는다)
-        var gb2 = got.visibleBounds;
+        // ★검산도 **잉크 경계**로 — `embed()` 는 마스크로 가린 여분을 `visibleBounds` 에 되살린다
+        //   (실측: ink 800x1240 인데 vis 876x1240). 그 값으로 재면 정상 배치를 9.6% 불일치로 탈락시켜
+        //   배경 깨는 폴백으로 보낸다. 배치·칼선이 실제로 쓰는 값은 잉크 경계다.
+        var gb2 = mesCut_inkBounds(got) || got.visibleBounds;
         // ★기대 폭은 **회전 후** 값이다 — 90도 돌면 폭과 높이가 바뀐다. 안 고치면 정상 회전을
         //   "크기 불일치" 로 잡아 배경 깨는 폴백으로 보낸다.
         var _rad = (rotDeg || 0) * Math.PI / 180;

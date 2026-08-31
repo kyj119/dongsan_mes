@@ -1306,6 +1306,15 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
         && /it2\.rot && !rotDone/.test(nestSrc2)
         && /_expW/.test(nestSrc2)
     })())
+    // ★PDF 아트보드도 검산도 **잉크 경계** 기준이다 — 파이프라인 전체(굽기·배치·칼선)가 잉크 기준인데
+    //   여기만 `visibleBounds` 를 쓰면 두 방향으로 어긋난다(둘 다 2026-08-31 실측):
+    //   ⓐ 아트보드를 vis 로 잡으면 마스크로 가린 여분이 PDF 에 들어가 배치 후 되살아난다 —
+    //      원본 잉크 124x80 이 판에 810x1240 으로 놓여 재단선 800x1240 을 **양옆 5mm 넘었다**.
+    //   ⓑ 검산을 vis 로 재면 `embed()` 가 되살린 여분(ink 800 vs vis 876)을 보고 **9.6% 불일치**로
+    //      정상 배치를 탈락시켜 배경 깨는 폴백으로 보낸다.
+    ok('3u PDF 아트보드·검산 모두 잉크 경계', /bb = mesCut_inkBounds\(srcItem\)/.test(nestSrc2)
+      && /var nb = mesCut_inkBounds\(cp\)/.test(nestSrc2)
+      && /var gb2 = mesCut_inkBounds\(got\)/.test(nestSrc2))
     // ★폴백은 조용하면 안 된다 — 폴백 = 배경이 깨졌을 수 있다는 뜻이고, 인쇄 뒤에 알면 늦다
     ok('3u 폴백을 사용자에게 알린다', /placefail=/.test(nestSrc2)
       && /parseInt\(a\.placefail, 10\) > 0/.test(panelSrc2))
