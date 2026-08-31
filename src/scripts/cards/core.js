@@ -80,31 +80,63 @@ function getUrgency(deliveryDate) {
 }
 
 
+// ===== 생산 완료기한 =====
+// ★납품일이 아니라 **마감**을 본다 — 직배 오전편은 전날 18:00 이 기한이다(당일 아침엔 이미 실려 있어야 한다).
+//   규칙 정본 = window.MES_SLOT (shared/deliverySlot.js ↔ 서버 src/utils/productionDeadline.ts).
+function cardDeadline(card) {
+    if (!card) return null;
+    if (!window.MES_SLOT) {   // 사본 미로드 폴백 — 종전 동작(납품일+납품시간)
+        console.warn('[cards] MES_SLOT not loaded — 직배 슬롯 마감이 반영되지 않는다');
+        return card.delivery_date && card.delivery_time ? card.delivery_date + ' ' + card.delivery_time : null;
+    }
+    return window.MES_SLOT.deadline({
+        delivery_date: card.delivery_date,
+        delivery_time: card.delivery_time,
+        delivery_method: card.delivery_method,
+        delivery_slot: card.delivery_slot
+    });
+}
+
+// 긴급도·정렬이 보는 기한 날짜. 슬롯이 있으면 납품일이 아니라 마감일(오전편 = 전날).
+function cardDueDate(card) {
+    var d = cardDeadline(card);
+    return d ? d.slice(0, 10) : ((card && card.delivery_date) || '');
+}
+
 // ===== 남은 시간 계산 =====
-function getTimeRemaining(deliveryDate, deliveryTime) {
-    if (!deliveryDate) return null;
+function getTimeRemaining(card) {
+    if (!card || !card.delivery_date) return null;
     var now = new Date();
     var todayStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
     var tomorrowDate = new Date(now);
     tomorrowDate.setDate(tomorrowDate.getDate() + 1);
     var tomorrowStr = tomorrowDate.getFullYear() + '-' + String(tomorrowDate.getMonth()+1).padStart(2,'0') + '-' + String(tomorrowDate.getDate()).padStart(2,'0');
 
-    if (deliveryDate < todayStr) return { text: '지연', urgent: true };
-    if (deliveryDate === tomorrowStr) return { text: '내일', urgent: false };
-    if (deliveryDate > tomorrowStr) return { text: deliveryDate.slice(5), urgent: false };
+    var due = cardDeadline(card);
+    if (!due) {   // 마감시각 미정 = 날짜만으로 판단(종전 동작)
+        var dd = card.delivery_date;
+        if (dd < todayStr) return { text: '지연', urgent: true };
+        if (dd === todayStr) return { text: '오늘', urgent: false };
+        if (dd === tomorrowStr) return { text: '내일', urgent: false };
+        return { text: dd.slice(5), urgent: false };
+    }
 
-    // 오늘 납기
-    if (!deliveryTime) return { text: '오늘', urgent: false };
-    var parts = deliveryTime.split(':');
+    var dueDay = due.slice(0, 10);
+    if (dueDay > todayStr) {
+        if (dueDay === tomorrowStr) return { text: '내일', urgent: false };
+        return { text: dueDay.slice(5), urgent: false };
+    }
+    // 마감일이 이미 지났으면, 납품일까지 지났는지로 문구를 가른다
+    if (dueDay < todayStr) return { text: card.delivery_date < todayStr ? '지연' : '마감!', urgent: true };
+
+    var parts = due.slice(11).split(':');
     var deadline = new Date(now);
-    deadline.setHours(parseInt(parts[0]), parseInt(parts[1]), 0, 0);
-    var diffMs = deadline - now;
-    var diffMin = Math.floor(diffMs / 60000);
+    deadline.setHours(parseInt(parts[0], 10), parseInt(parts[1], 10), 0, 0);
+    var diffMin = Math.floor((deadline - now) / 60000);
     if (diffMin <= 0) return { text: '마감!', urgent: true };
     var h = Math.floor(diffMin / 60);
     var m = diffMin % 60;
-    var txt = h > 0 ? h + 'h ' + m + 'm' : m + 'm';
-    return { text: txt, urgent: diffMin <= 60 };
+    return { text: h > 0 ? h + 'h ' + m + 'm' : m + 'm', urgent: diffMin <= 60 };
 }
 
 // ===== 데이터 로드 =====
@@ -209,8 +241,8 @@ function sortCards(cards) {
         var aUrgent = (a.priority || 0) >= 90 ? 1 : 0;
         var bUrgent = (b.priority || 0) >= 90 ? 1 : 0;
         if (aUrgent !== bUrgent) return bUrgent - aUrgent;
-        var aDate = (a.delivery_date || '9999') + (a.delivery_time || '99:99');
-        var bDate = (b.delivery_date || '9999') + (b.delivery_time || '99:99');
+        var aDate = cardDeadline(a) || ((a.delivery_date || '9999') + ' 99:99');
+        var bDate = cardDeadline(b) || ((b.delivery_date || '9999') + ' 99:99');
         if (aDate !== bDate) return aDate < bDate ? -1 : 1;
         return (a.id || 0) - (b.id || 0);
     });
@@ -332,7 +364,7 @@ function loadCardThumbnails(scope) {
 // ===== 그리드 카드 빌더 (출력중/출력완료 전용) =====
 function buildGridCard(card, columnType) {
     var cItems = cardItems(card);  // 목록/단건 API 필드명 차이 흡수 (shell.js SSOT)
-    var urg = getUrgency(card.delivery_date);
+    var urg = getUrgency(cardDueDate(card));
     var isHold = card.status === 'HOLD';
     var ripStatus = card.rip_status || '';
     var deliveryMethod = card.delivery_method || '';
@@ -441,7 +473,7 @@ function buildGridCard(card, columnType) {
 
     // 납품 + 마감
     html += '<div class="flex items-center justify-between mt-1">';
-    var timeRem = getTimeRemaining(card.delivery_date, deliveryTime);
+    var timeRem = getTimeRemaining(card);
     if (timeRem) {
         html += '<span class="text-[10px] ' + (timeRem.urgent ? 'text-red-600 font-bold' : 'text-gray-500') + '">&#128345;' + timeRem.text + '</span>';
     } else {
@@ -526,7 +558,7 @@ function getPPBadge(ppName) {
 // ===== 카드 빌더 =====
 function buildKanbanCard(card, columnType) {
     var cItems = cardItems(card);  // 목록/단건 API 필드명 차이 흡수 (shell.js SSOT)
-    var urg = getUrgency(card.delivery_date);
+    var urg = getUrgency(cardDueDate(card));
     var isHold = card.status === 'HOLD';
     var ripStatus = card.rip_status || '';
     var deliveryMethod = card.delivery_method || '';
@@ -556,7 +588,7 @@ function buildKanbanCard(card, columnType) {
     else if (ripStatus === 'SENT') html += '<span class="rip-badge rip-badge-sent">RIP수신됨</span>';
     html += '<span class="font-semibold text-sm text-gray-800 truncate flex-1">' + escapeHtml(card.client_name || '') + '</span>';
     if (deliveryMethod) {
-        var dmLabel = deliveryMethod + (deliveryTime ? ' ' + deliveryTime : '');
+        var dmLabel = window.MES_SLOT ? window.MES_SLOT.timing(card) : (deliveryMethod + (deliveryTime ? ' ' + deliveryTime : ''));
         html += '<span class="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">' + dmLabel + '</span>';
     }
     // 메모 아이콘 (주문 메모 또는 카드 메모가 있으면)
@@ -696,7 +728,7 @@ function buildKanbanCard(card, columnType) {
 
     // ── 하단: 마감 카운트다운 + 액션 버튼 ──
     html += '<div class="flex items-center justify-between">';
-    var timeRem = getTimeRemaining(card.delivery_date, deliveryTime);
+    var timeRem = getTimeRemaining(card);
     if (timeRem) {
         html += '<span class="text-xs ' + (timeRem.urgent ? 'text-red-600 font-bold' : 'text-gray-500') + '">';
         html += '&#128345; ' + timeRem.text;

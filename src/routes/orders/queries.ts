@@ -13,6 +13,7 @@ import { kstYmd, kstDate } from '../../utils/kstDate'
 import { CONSOLIDATABLE_ORDER_STATUSES } from '../../utils/statusLabels'
 import { deductStockLinesOnShip } from '../../utils/stockShip'
 import { ensureShipmentForOrder } from '../../utils/shipmentHelper'
+import { formatDeliveryTiming } from '../../utils/productionDeadline'   // 직배 배차 슬롯 표기
 
 const ordersQueriesRouter = new Hono<HonoEnv>()
 ordersQueriesRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
@@ -429,7 +430,7 @@ ordersQueriesRouter.get('/export/csv', async (c) => {
 
     let query = `
       SELECT o.order_number, c.client_name, o.order_date, o.delivery_date,
-        o.delivery_method, o.delivery_time, o.final_amount, o.status,
+        o.delivery_method, o.delivery_time, o.delivery_slot, o.final_amount, o.status,
         o.billing_status, o.priority, o.contact_phone, o.notes,
         u.name as created_by_name, o.created_at
       FROM orders o
@@ -463,7 +464,7 @@ ordersQueriesRouter.get('/export/csv', async (c) => {
     const headers = ['주문번호', '거래처', '주문일', '납기일', '배송', '금액', '상태', '회계반영', '우선순위', '연락처', '비고', '작성자', '등록일']
     const rows = (results || []).map((o: any) => [
       o.order_number, o.client_name, o.order_date, o.delivery_date,
-      (o.delivery_method || '') + (o.delivery_time ? ' ' + o.delivery_time : ''),
+      formatDeliveryTiming(o),
       o.final_amount, statusLabels[o.status] || o.status,
       billingLabels[o.billing_status] || '', o.priority === 'URGENT' ? '긴급' : '일반',
       o.contact_phone, o.notes, o.created_by_name,

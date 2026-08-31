@@ -143,7 +143,7 @@ shipmentsRouter.get('/daily', async (c) => {
     const { results } = await c.env.DB.prepare(`
       SELECT o.id, o.order_number, o.delivery_date, o.delivery_method, o.delivery_info,
              o.delivery_postal, o.delivery_detail,
-             o.delivery_time, o.status, o.final_amount, o.contact_phone, o.notes,
+             o.delivery_time, o.delivery_slot, o.status, o.final_amount, o.contact_phone, o.notes,
              o.reception_location, o.shipping_payment,
              o.entity_id, en.short_name as entity_name,
              cl.id as client_id, cl.client_name, cl.phone as client_phone, cl.mobile as client_mobile,

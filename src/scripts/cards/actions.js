@@ -77,8 +77,8 @@ function renderPrintDoneGrouped(cards, targetId) {
     });
     // 각 그룹 내 정렬 + 그룹 간 정렬 (가장 급한 납기 기준)
     groupOrder.sort(function(a, b) {
-        var aMin = Math.min.apply(null, groups[a].map(function(c) { return getUrgency(c.delivery_date).diff; }));
-        var bMin = Math.min.apply(null, groups[b].map(function(c) { return getUrgency(c.delivery_date).diff; }));
+        var aMin = Math.min.apply(null, groups[a].map(function(c) { return getUrgency(cardDueDate(c)).diff; }));
+        var bMin = Math.min.apply(null, groups[b].map(function(c) { return getUrgency(cardDueDate(c)).diff; }));
         return aMin - bMin;
     });
 
@@ -86,7 +86,7 @@ function renderPrintDoneGrouped(cards, targetId) {
     groupOrder.forEach(function(clientName) {
         var groupCards = sortCards(groups[clientName]);
         var isExpanded = printDoneExpanded[clientName] !== false; // 기본 펼침
-        var minUrg = Math.min.apply(null, groupCards.map(function(c) { return getUrgency(c.delivery_date).diff; }));
+        var minUrg = Math.min.apply(null, groupCards.map(function(c) { return getUrgency(cardDueDate(c)).diff; }));
         var urgBadge = '';
         if (minUrg <= 0) urgBadge = '<span class="px-1 py-0.5 rounded text-xs font-bold bg-red-50 text-red-700 mr-1">긴급</span>';
         else if (minUrg <= 1) urgBadge = '<span class="px-1 py-0.5 rounded text-xs font-bold bg-amber-50 text-amber-700 mr-1">D-1</span>';

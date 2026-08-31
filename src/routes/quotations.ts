@@ -28,6 +28,7 @@ import { buildQuotListFilter, resolveQuotSort, QUOT_SORT_DEFAULT } from './quota
 //   주문만 고치면 견적·주문 금액이 갈리는 상태가 됐다 → 단일 소스로 통합.
 //   `.auto` 를 쓰는 이유 = 견적은 수동 금액(에누리) 개념이 없어 늘 자동값을 저장해 왔다. 기존 동작 유지.
 import { computeLineAmount } from '../utils/orderLineAmount'
+import { resolveSlot } from '../utils/productionDeadline'   // 직배 배차 슬롯(오전/오후) 정규화
 
 const quotationsRouter = new Hono<HonoEnv>()
 quotationsRouter.use('/*', authMiddleware, requireAnyPagePermission('/quotations', '/orders'))
@@ -306,10 +307,10 @@ quotationsRouter.post('/', async (c) => {
         quotation_number, client_id, entity_id, status,
         quotation_date, delivery_date, valid_until,
         total_amount, vat_amount, discount_amount, final_amount,
-        delivery_method, delivery_time, delivery_info,
+        delivery_method, delivery_time, delivery_slot, delivery_info,
         contact_phone, contact_mobile, shipping_payment,
         notes, internal_notes, created_by
-      ) VALUES (?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       quotationNumber,
       body.client_id,
@@ -320,6 +321,7 @@ quotationsRouter.post('/', async (c) => {
       totalAmount, vatAmount, body.discount_amount || 0, finalAmount,
       body.delivery_method || '배송',
       body.delivery_time || null,
+      resolveSlot(body.delivery_method, body.delivery_slot),
       body.delivery_info || null,
       body.contact_phone || null,
       body.contact_mobile || null,
@@ -452,7 +454,7 @@ quotationsRouter.put('/:id', async (c) => {
       UPDATE quotations SET
         client_id = ?, delivery_date = ?, valid_until = ?,
         total_amount = ?, vat_amount = ?, discount_amount = ?, final_amount = ?,
-        delivery_method = ?, delivery_time = ?, delivery_info = ?,
+        delivery_method = ?, delivery_time = ?, delivery_slot = ?, delivery_info = ?,
         contact_phone = ?, contact_mobile = ?, shipping_payment = ?,
         notes = ?, internal_notes = ?,
         updated_by = ?, updated_at = CURRENT_TIMESTAMP
@@ -462,7 +464,7 @@ quotationsRouter.put('/:id', async (c) => {
       body.delivery_date || null, body.valid_until || null,
       totalAmount, vatAmount, body.discount_amount || 0, finalAmount,
       body.delivery_method || '배송',
-      body.delivery_time || null, body.delivery_info || null,
+      body.delivery_time || null, resolveSlot(body.delivery_method, body.delivery_slot), body.delivery_info || null,
       body.contact_phone || null, body.contact_mobile || null, body.shipping_payment || null,
       body.notes || null, body.internal_notes || null,
       user?.id || null, id
@@ -587,7 +589,7 @@ quotationsRouter.post('/:id/convert-to-order', requireEditOrRole('/quotations', 
     const ef = entityFilter(c)  // #360: 타법인 견적서 주문전환 차단
     const quotation = await markExpiredIfNeeded(
       c.env.DB,
-      await c.env.DB.prepare(`SELECT id, quotation_number, client_id, entity_id, status, quotation_date, delivery_date, valid_until, total_amount, vat_amount, discount_amount, final_amount, delivery_method, delivery_time, delivery_info, contact_phone, contact_mobile, shipping_payment, notes, internal_notes, first_converted_at, converted_count, created_by, updated_by, created_at, updated_at FROM quotations WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first() as any
+      await c.env.DB.prepare(`SELECT id, quotation_number, client_id, entity_id, status, quotation_date, delivery_date, valid_until, total_amount, vat_amount, discount_amount, final_amount, delivery_method, delivery_time, delivery_slot, delivery_info, contact_phone, contact_mobile, shipping_payment, notes, internal_notes, first_converted_at, converted_count, created_by, updated_by, created_at, updated_at FROM quotations WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first() as any
     )
     if (!quotation) return c.json({ success: false, error: '견적서를 찾을 수 없습니다.' }, 404)
     if (quotation.status === 'CANCELLED') {
@@ -655,10 +657,10 @@ quotationsRouter.post('/:id/convert-to-order', requireEditOrRole('/quotations', 
         delivery_info, delivery_date, order_date,
         total_amount, vat_amount, discount_amount, final_amount,
         notes, internal_notes, created_by,
-        priority, delivery_method, delivery_time,
+        priority, delivery_method, delivery_time, delivery_slot,
         contact_phone, contact_mobile, shipping_payment,
         entity_id, order_type, quotation_id
-      ) VALUES (?, ?, 'CONFIRMED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, 'CONFIRMED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       orderNumber, quotation.client_id,
       today.getFullYear(), today.getMonth() + 1,
@@ -672,6 +674,7 @@ quotationsRouter.post('/:id/convert-to-order', requireEditOrRole('/quotations', 
       'NORMAL',
       quotation.delivery_method || '배송',
       quotation.delivery_time,
+      quotation.delivery_slot || null,
       quotation.contact_phone, quotation.contact_mobile, quotation.shipping_payment,
       quotation.entity_id || 1, 'PRODUCTION',
       quotation.id

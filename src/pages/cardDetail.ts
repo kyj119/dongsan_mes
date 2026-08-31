@@ -2,8 +2,9 @@ import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import finishingLabel from '../scripts/shared/finishingLabel.js?raw'   // 마감·후가공 표기 정본(클라 사본)
+import deliverySlot from '../scripts/shared/deliverySlot.js?raw'       // 직배 배차 슬롯·완료기한(클라 사본)
 import cardDetailScript from '../scripts/cardDetail.js?raw'
-const pageScript = [finishingLabel, cardDetailScript].join('\n')
+const pageScript = [finishingLabel, deliverySlot, cardDetailScript].join('\n')
 
 export function cardDetailPage(c: Context<HonoEnv>) {
   return renderPage(c, {

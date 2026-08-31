@@ -740,7 +740,16 @@
                     delivery_postal: _delivery.delivery_postal,
                     delivery_detail: _delivery.delivery_detail,
                     delivery_method: document.getElementById('deliveryMethod').value,
-                    delivery_time: (function() { var h = document.getElementById('deliveryTimeHour').value; var m = document.getElementById('deliveryTimeMinute').value; return h ? (h + ':' + (m || '00')) : null; })(),
+                    // 직배 슬롯을 골랐으면 납품시간은 대표시각(오전 09:00 / 오후 14:00)으로 기록한다 —
+                    //   출고목록 정렬·주문상세·칸반 집계가 delivery_time 을 그대로 쓰기 때문(비우면 전부 '미정').
+                    delivery_time: (function() {
+                        var slot = ofActiveSlot();
+                        if (slot) return window.MES_SLOT.REPRESENTATIVE_TIME[slot];
+                        var h = document.getElementById('deliveryTimeHour').value;
+                        var m = document.getElementById('deliveryTimeMinute').value;
+                        return h ? (h + ':' + (m || '00')) : null;
+                    })(),
+                    delivery_slot: ofActiveSlot(),
                     discount_amount: parseMoney(document.getElementById('discountAmount').value),
                     notes: document.getElementById('notes').value,
                     // 담당자 — 비우면 서버가 로그인 사용자로 채운다(employees.user_id 경유).

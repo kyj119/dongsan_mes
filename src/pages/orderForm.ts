@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 // Phase 3.1.C 분할: orderForm.js (3966줄) → 6개 모듈
 import finishingLabel from '../scripts/shared/finishingLabel.js?raw'   // 마감·후가공 표기 정본(클라 사본) — MES_FIN 없으면 요약이 조용히 빈값이 된다
+import deliverySlot from '../scripts/shared/deliverySlot.js?raw'       // 직배 배차 슬롯·완료기한(클라 사본) — 서버 정본 = utils/productionDeadline.ts
 import sClient from '../scripts/orderForm/client.js?raw'
 import sItemRow from '../scripts/orderForm/itemRow.js?raw'
 import sFinishing from '../scripts/orderForm/finishing.js?raw'
@@ -10,7 +11,7 @@ import sCalc from '../scripts/orderForm/calc.js?raw'
 import sSheet from '../scripts/orderForm/sheet.js?raw'
 import sParent from '../scripts/orderForm/parent.js?raw'
 import sIntake from '../scripts/orderForm/intake.js?raw'
-const pageScript = [finishingLabel, sClient, sItemRow, sFinishing, sCalc, sSheet, sParent, sIntake].join('\n')
+const pageScript = [finishingLabel, deliverySlot, sClient, sItemRow, sFinishing, sCalc, sSheet, sParent, sIntake].join('\n')
 import distPageScript from '../scripts/orderFormDist.js?raw'
 
 export async function orderFormPage(c: Context<HonoEnv>) {
@@ -142,8 +143,18 @@ export async function orderFormPage(c: Context<HonoEnv>) {
                                 <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="deliveryDate" required class="js-fp w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">납품시간</label>
-                                <div class="flex items-center gap-2">
+                                <label id="deliveryTimeLabel" class="block text-sm font-medium text-gray-700 mb-2">납품시간</label>
+                                <!-- 직배는 배차가 오전편·오후편 2회뿐이라 시:분 선택이 무의미하다.
+                                     슬롯을 고르면 완료기한(오전=전날 18:00 · 오후=당일 13:00)이 파생된다 — 정본 = src/utils/productionDeadline.ts -->
+                                <div id="deliverySlotWrap" class="hidden">
+                                    <select id="deliverySlot" onchange="onDeliverySlotChange()" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                        <option value="">미정</option>
+                                        <option value="AM">오전</option>
+                                        <option value="PM">오후</option>
+                                    </select>
+                                    <p id="deliverySlotHint" class="mt-1 text-xs text-gray-500"></p>
+                                </div>
+                                <div id="deliveryTimeWrap" class="flex items-center gap-2">
                                     <select id="deliveryTimeHour" onchange="onDeliveryTimeHourChange()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                                     </select>
                                     <span class="text-gray-500 font-medium">:</span>
@@ -489,7 +500,15 @@ function orderFormDistPage(c: Context<HonoEnv>) {
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">납품시간</label>
-                                <div class="flex items-center gap-2">
+                                <div id="distDeliverySlotWrap" class="hidden">
+                                    <select id="distDeliverySlot" onchange="onDistDeliverySlotChange()" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                        <option value="">미정</option>
+                                        <option value="AM">오전</option>
+                                        <option value="PM">오후</option>
+                                    </select>
+                                    <p id="distDeliverySlotHint" class="mt-1 text-xs text-gray-500"></p>
+                                </div>
+                                <div id="distDeliveryTimeWrap" class="flex items-center gap-2">
                                     <select id="distDeliveryTimeHour" onchange="onDistDeliveryTimeHourChange()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                                     </select>
                                     <span class="text-gray-500 font-medium">:</span>
@@ -573,6 +592,6 @@ function orderFormDistPage(c: Context<HonoEnv>) {
             </div>
         </div>
     `,
-    pageScript: distPageScript
+    pageScript: [deliverySlot, distPageScript].join(String.fromCharCode(10))
   })
 }

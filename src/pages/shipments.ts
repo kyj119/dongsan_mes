@@ -1,7 +1,9 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
-import pageScript from '../scripts/shipments.js?raw'
+import shipmentsScript from '../scripts/shipments.js?raw'
+import deliverySlot from '../scripts/shared/deliverySlot.js?raw'       // 직배 배차 슬롯·완료기한(클라 사본)
+const pageScript = [deliverySlot, shipmentsScript].join(String.fromCharCode(10))
 import shipmentsDashboardScript from '../scripts/shipmentsDashboard.js?raw'
 
 export function shipmentsPage(c: Context<HonoEnv>) {

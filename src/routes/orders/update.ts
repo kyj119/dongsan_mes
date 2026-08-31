@@ -8,6 +8,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import type { Order } from '../../types/models'
 import { authMiddleware } from '../../middleware/auth'
+import { resolveSlot } from '../../utils/productionDeadline'   // 직배 배차 슬롯(오전/오후) 정규화
 import { requireAnyPagePermission, requireEditOrRole } from '../../middleware/permissions'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { getEntityId, entityFilter, findForeignAnalysisIds, foreignAnalysisError } from '../../utils/entityFilter'
@@ -207,6 +208,7 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
         priority = ?,
         delivery_method = ?,
         delivery_time = ?,
+        delivery_slot = ?,
         contact_phone = ?,
         contact_mobile = ?,
         shipping_payment = ?,
@@ -232,6 +234,7 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
       orderData.priority || 'NORMAL',
       orderData.delivery_method || '배송',
       orderData.delivery_time || null,
+      resolveSlot(orderData.delivery_method, orderData.delivery_slot),
       orderData.contact_phone || null,
       orderData.contact_mobile || null,
       orderData.shipping_payment || null,

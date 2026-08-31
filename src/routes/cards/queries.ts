@@ -231,7 +231,7 @@ cardsQueriesRouter.get('/', async (c) => {
     const offset = (parseInt(page) - 1) * safeLimit
 
     let query = `
-      SELECT c.*, o.order_number, o.delivery_method, o.delivery_time, o.delivery_date as order_delivery_date,
+      SELECT c.*, o.order_number, o.delivery_method, o.delivery_time, o.delivery_slot, o.delivery_date as order_delivery_date,
              u.name as created_by_name, o.internal_notes as order_notes
       FROM cards c
       LEFT JOIN orders o ON c.order_id = o.id
@@ -1016,6 +1016,7 @@ cardsQueriesRouter.get('/:id', async (c) => {
         o.delivery_date as order_delivery_date,
         o.delivery_method,
         o.delivery_time,
+        o.delivery_slot,
         o.delivery_info,
         o.shipping_payment,
         o.contact_phone,

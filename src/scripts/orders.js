@@ -673,8 +673,9 @@ async function loadOrders() {
         const priorityBadge = order.priority === 'URGENT'
           ? '<span class="ml-1 px-1.5 py-0.5 rounded text-xs font-bold bg-red-50 text-red-700">긴급</span>'
           : '';
+        // 직배는 배차 슬롯 표기(`직배 오전`) — 정본 = window.MES_SLOT
         const deliveryLabel = order.delivery_method
-          ? (order.delivery_method + (order.delivery_time ? ' ' + order.delivery_time : ''))
+          ? (window.MES_SLOT ? window.MES_SLOT.timing(order) : (order.delivery_method + (order.delivery_time ? ' ' + order.delivery_time : '')))
           : '-';
         const billingText = getBillingStatusText(order.billing_status);
         const billingColor = getBillingStatusColor(order.billing_status);
@@ -1237,7 +1238,7 @@ function showOrderModal(order, cards, autoJobs) {
             <div><label class="text-sm font-medium text-gray-600">거래처</label><p class="text-lg">${escapeHtml(order.client_name || '-')}</p></div>
             <div><label class="text-sm font-medium text-gray-600">납기일</label><p class="text-lg">${escapeHtml(order.delivery_date || '-')}</p></div>
             <div><label class="text-sm font-medium text-gray-600">배송처</label><p class="text-lg">${escapeHtml(order.reception_location || '-')}</p></div>
-            <div><label class="text-sm font-medium text-gray-600">출고방법</label><p class="text-lg">${escapeHtml(order.delivery_method || '-')}${order.delivery_time ? ' ' + escapeHtml(order.delivery_time) : ' (미정)'}</p></div>
+            <div><label class="text-sm font-medium text-gray-600">출고방법</label><p class="text-lg">${escapeHtml(window.MES_SLOT ? (window.MES_SLOT.timing(order) || '-') : (order.delivery_method || '-'))}${(window.MES_SLOT ? window.MES_SLOT.resolveSlot(order.delivery_method, order.delivery_slot) : null) || order.delivery_time ? '' : ' (미정)'}</p></div>
             <div><label class="text-sm font-medium text-gray-600">배송처 주소</label><p class="text-lg">${order.delivery_postal ? '<span class="text-gray-500 text-base mr-1">[' + escapeHtml(order.delivery_postal) + ']</span>' : ''}${escapeHtml(order.delivery_info || '-')}</p></div>
             <div><label class="text-sm font-medium text-gray-600">우선순위</label><p class="text-lg">${order.priority === 'URGENT' ? '<span class="px-2 py-1 rounded-full bg-red-50 text-red-700 font-bold text-sm">긴급</span>' : '<span class="text-gray-500">일반</span>'}</p></div>
             <div><label class="text-sm font-medium text-gray-600">등록일</label><p class="text-lg">${formatKST(order.created_at)}</p></div>

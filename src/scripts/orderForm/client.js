@@ -220,10 +220,72 @@
                 updateMinuteOptions();
             }
 
+            // ── 직배 배차 슬롯(오전/오후) ──
+            // 규칙 정본 = window.MES_SLOT (shared/deliverySlot.js ↔ 서버 src/utils/productionDeadline.ts).
+            // 여기서 산식을 다시 쓰지 말 것 — 마감시각이 갈리면 칸반이 하루 어긋난다.
+
+            // 지금 저장될 슬롯. 직배가 아니면 null(= 종전 시:분 동작).
+            function ofActiveSlot() {
+                var m = document.getElementById('deliveryMethod');
+                var s = document.getElementById('deliverySlot');
+                if (!m || !s || !window.MES_SLOT) return null;
+                return window.MES_SLOT.isSlotMethod(m.value) ? (window.MES_SLOT.normalizeSlot(s.value) || null) : null;
+            }
+
+            function applyDeliverySlotUI(method) {
+                var wrap = document.getElementById('deliverySlotWrap');
+                var timeWrap = document.getElementById('deliveryTimeWrap');
+                var slotSel = document.getElementById('deliverySlot');
+                if (!wrap || !timeWrap || !slotSel) { console.warn('[orderForm] #deliverySlotWrap/#deliveryTimeWrap not found'); return; }
+                var useSlot = !!(window.MES_SLOT && window.MES_SLOT.isSlotMethod(method));
+                wrap.classList.toggle('hidden', !useSlot);
+                timeWrap.classList.toggle('hidden', useSlot);
+                if (!useSlot) { slotSel.value = ''; setDeliverySlotHint(''); return; }
+                refreshDeliverySlotGuard();
+            }
+
+            // 오전편 마감 = 납품일 전날 18:00. 지나면 못 고른다(용준님: 전날 접수건에만 허용).
+            // ★이미 저장된 AM 은 잠그지 않는다 — 잠그면 수정 화면에서 select 가 조용히 ''(미정)이 되어 슬롯이 소실된다.
+            function refreshDeliverySlotGuard() {
+                var slotSel = document.getElementById('deliverySlot');
+                var dateEl = document.getElementById('deliveryDate');
+                if (!slotSel || !window.MES_SLOT) return;
+                var date = dateEl ? dateEl.value : '';
+                var keepAm = slotSel.value === 'AM';
+                var amOk = window.MES_SLOT.selectable('AM', date);
+                var amOpt = slotSel.querySelector('option[value="AM"]');
+                if (amOpt) {
+                    amOpt.disabled = !amOk && !keepAm;
+                    amOpt.textContent = (amOk || keepAm) ? '오전' : '오전 (마감 지남)';
+                }
+                var slot = window.MES_SLOT.normalizeSlot(slotSel.value);
+                if (slot) {
+                    var due = window.MES_SLOT.deadline({
+                        delivery_date: date, delivery_method: '직배', delivery_slot: slot
+                    });
+                    var rep = window.MES_SLOT.REPRESENTATIVE_TIME[slot];
+                    setDeliverySlotHint(due
+                        ? '완료기한 ' + due + ' 까지 · 납품시간은 ' + rep + ' 로 기록됩니다'
+                        : '납품일을 먼저 선택하세요');
+                } else {
+                    setDeliverySlotHint(amOk ? '' : '오전편은 납품 전날 18:00 까지 접수분만 가능합니다');
+                }
+            }
+
+            function setDeliverySlotHint(text) {
+                var el = document.getElementById('deliverySlotHint');
+                if (el) el.textContent = text || '';
+            }
+
+            function onDeliverySlotChange() {
+                refreshDeliverySlotGuard();
+            }
+
             function onDeliveryMethodChange() {
                 var method = document.getElementById('deliveryMethod').value;
                 var hourSel = document.getElementById('deliveryTimeHour');
                 var minSel = document.getElementById('deliveryTimeMinute');
+                applyDeliverySlotUI(method);
                 if (method === '한진택배') {
                     hourSel.value = '18';
                     updateMinuteOptions();
@@ -333,6 +395,11 @@
 
                     // 납품시간 옵션 초기화
                     initDeliveryTimeOptions();
+                    var ddForSlot = document.getElementById('deliveryDate');
+                    if (ddForSlot) {
+                        ddForSlot.addEventListener('change', refreshDeliverySlotGuard);
+                        ddForSlot.addEventListener('input', refreshDeliverySlotGuard);
+                    } else { console.warn('[orderForm] #deliveryDate not found (슬롯 가드 미동작)'); }
                     // 기본 출고방법(대신택배)에 맞춰 시간 자동 설정
                     onDeliveryMethodChange();
 

@@ -103,7 +103,7 @@ function showCardModal(card, history, defects, siblingCards) {
         }
     }
 
-    var urg = getUrgency(card.delivery_date);
+    var urg = getUrgency(cardDueDate(card));
     var stLabel = statusLabels[card.status] || card.status;
     var statusBg = card.status === 'PRINT_DONE' ? 'background:#f0fdf4;color:#166534'
         : card.status === 'HOLD' ? 'background:#fef2f2;color:#991b1b'
@@ -263,7 +263,7 @@ function showCardModal(card, history, defects, siblingCards) {
     modal.className = 'card-panel-overlay';
     modal.onclick = function(e) { if (e.target === modal) closeCardModal(); };
 
-    var timeRem = getTimeRemaining(card.delivery_date, deliveryTime);
+    var timeRem = getTimeRemaining(card);
     var timeHtml = '';
     if (timeRem) {
         timeHtml = '<span style="font-size:12px;' + (timeRem.urgent ? 'color:#dc2626;font-weight:700' : 'color:#6b7280') + '"><i class="far fa-clock"></i> ' + timeRem.text + '</span>';
@@ -312,7 +312,7 @@ function showCardModal(card, history, defects, siblingCards) {
         + '<div style="border-top:1px solid #f1f5f9;margin:14px 0 10px"></div>'
         + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
         + '  <div style="font-size:12px"><span style="color:#9ca3af">납기일:</span> <span style="color:#111827;font-weight:500">' + (card.delivery_date || '미정') + '</span></div>'
-        + '  <div style="font-size:12px"><span style="color:#9ca3af">납품:</span> <span style="color:#111827;font-weight:500">' + (deliveryMethod || '-') + (deliveryTime ? ' ' + deliveryTime : '') + '</span></div>'
+        + '  <div style="font-size:12px"><span style="color:#9ca3af">납품:</span> <span style="color:#111827;font-weight:500">' + (window.MES_SLOT ? (window.MES_SLOT.timing(card) || '-') : ((deliveryMethod || '-') + (deliveryTime ? ' ' + deliveryTime : ''))) + '</span></div>'
         + '  <div style="font-size:12px"><span style="color:#9ca3af">카테고리:</span> <span style="color:#111827;font-weight:500">' + escapeHtml(card.category_name || '-') + '</span></div>'
         + '  <div style="font-size:12px"><span style="color:#9ca3af">접수자:</span> <span style="color:#111827;font-weight:500">' + escapeHtml(card.created_by_name || '-') + '</span></div>'
         + '</div>'

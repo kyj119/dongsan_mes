@@ -21,7 +21,7 @@ interface OrderCopyRow {
   delivery_postal: string | null; delivery_detail: string | null
   total_amount: number; vat_amount: number; discount_amount: number; final_amount: number
   notes: string | null; internal_notes: string | null
-  priority: string | null; delivery_method: string | null; delivery_time: string | null
+  priority: string | null; delivery_method: string | null; delivery_time: string | null; delivery_slot: string | null
   contact_phone: string | null; contact_mobile: string | null; shipping_payment: string | null
 }
 interface OrderItemCopyRow {
@@ -124,7 +124,7 @@ ordersOpsRouter.post('/:id/copy', requireEditOrRole('/orders', 'MANAGER', 'DESIG
              order_year, order_month, reception_location, delivery_info, delivery_postal, delivery_detail, delivery_date,
              total_amount, vat_amount, discount_amount, final_amount,
              notes, internal_notes,
-             priority, delivery_method, delivery_time,
+             priority, delivery_method, delivery_time, delivery_slot,
              contact_phone, contact_mobile, shipping_payment
       FROM orders WHERE id = ?${ovf.clause}
     `).bind(id, ...ovf.params).first<OrderCopyRow>()
@@ -156,9 +156,9 @@ ordersOpsRouter.post('/:id/copy', requireEditOrRole('/orders', 'MANAGER', 'DESIG
         delivery_date, order_date,
         total_amount, vat_amount, discount_amount, final_amount,
         notes, internal_notes, created_by,
-        priority, delivery_method, delivery_time,
+        priority, delivery_method, delivery_time, delivery_slot,
         contact_phone, contact_mobile, shipping_payment, entity_id
-      ) VALUES (?, ?, 'CONFIRMED', ?, ?, ?, ?, ?, ?, ?, date('now', '+9 hours'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, 'CONFIRMED', ?, ?, ?, ?, ?, ?, ?, date('now', '+9 hours'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       newOrderNumber,
       original.client_id,
@@ -179,6 +179,7 @@ ordersOpsRouter.post('/:id/copy', requireEditOrRole('/orders', 'MANAGER', 'DESIG
       original.priority || 'NORMAL',
       original.delivery_method || null,
       original.delivery_time || null,
+      original.delivery_slot || null,
       original.contact_phone || null,
       original.contact_mobile || null,
       original.shipping_payment || null,

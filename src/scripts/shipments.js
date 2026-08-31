@@ -149,6 +149,7 @@ async function loadShipmentsByDate() {
           delivery_type: s.delivery_type || s.delivery_method || '',
           delivery_method: s.delivery_method || '',
           delivery_time: s.delivery_time || '',
+          delivery_slot: s.delivery_slot || '',
           delivery_info: s.delivery_info || '',
           delivery_postal: s.delivery_postal || '',
           shipping_payment: s.shipping_payment || '',
@@ -266,6 +267,13 @@ function getDefaultTrackingNumber(grp) {
 }
 
 // P2: 법인 배지 (복수 법인 데이터가 로드된 전체모드에서만 표시)
+// 직배 탭 시간 칸 — 슬롯이 있으면 오전/오후, 없으면 종전 시각. 정본 = window.MES_SLOT
+function shipmentSlotLabel(grp) {
+    var slot = window.MES_SLOT ? window.MES_SLOT.resolveSlot(grp.delivery_method, grp.delivery_slot) : null;
+    if (slot) return window.MES_SLOT.LABELS[slot];
+    return grp.delivery_time || '-';
+}
+
 function shipmentsEntityChips(grp) {
   if (!shipmentsMultiEntity) return '';
   var names = Object.keys(grp.entity_names || {});
@@ -580,7 +588,7 @@ function renderJikbaeSection() {
       + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + shipmentsMergeBadge(grp) + shipmentsWaitBadge(grp) + shipmentsCheckChip('jikbae', key, grp) + '</td>'
       + '<td class="px-3 py-2 text-sm text-gray-600 truncate" title="' + escapeHtml(grp.receiver_address || '') + '">' + escapeHtml(grp.receiver_address || '-') + '</td>'
       + '<td class="px-3 py-2 text-sm">' + escapeHtml(grp.contact_phone || grp.client_mobile || '-') + '</td>'
-      + '<td class="px-3 py-2 text-sm text-center">' + escapeHtml(grp.delivery_time || '-') + '</td>'
+      + '<td class="px-3 py-2 text-sm text-center">' + escapeHtml(shipmentSlotLabel(grp)) + '</td>'
       + '<td class="px-3 py-2 text-center">'
       + '<button onclick="printJikbaeGuide(\'' + escapeHtml(key) + '\')" class="px-3 py-1.5 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 whitespace-nowrap">'
       + '<i class="fas fa-print mr-1"></i>안내용지</button>'

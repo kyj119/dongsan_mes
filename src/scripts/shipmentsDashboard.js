@@ -65,7 +65,10 @@
         html += '</div>';
         html += '<div class="flex items-center gap-3 text-sm text-gray-500">';
         html += '<span><i class="fas fa-truck mr-1"></i>' + window.escapeHtml(order.delivery_method || '미정') + '</span>';
-        if (order.delivery_time) {
+        var slotLabel = window.MES_SLOT ? window.MES_SLOT.resolveSlot(order.delivery_method, order.delivery_slot) : null;
+        if (slotLabel) {
+          html += '<span><i class="far fa-clock mr-1"></i>' + window.MES_SLOT.LABELS[slotLabel] + '</span>';
+        } else if (order.delivery_time) {
           html += '<span><i class="far fa-clock mr-1"></i>' + window.escapeHtml(order.delivery_time) + '</span>';
         }
         if (isReady) {

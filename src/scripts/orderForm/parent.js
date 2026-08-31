@@ -1037,6 +1037,11 @@
                     //   "이전에 고정이었던 경우 미정으로 리셋" 로직이 방금 복원한 시간을 지운다
                     //   (택배류가 아닌 전 주문에서 수정 저장마다 delivery_time 소실 — 왕복감사 실증).
                     onDeliveryMethodChange();
+                    var slotEl = document.getElementById('deliverySlot');
+                    if (slotEl && order.delivery_slot) {
+                        slotEl.value = order.delivery_slot;
+                        refreshDeliverySlotGuard();   // 마감이 지난 AM 도 값은 유지된다
+                    }
                     if (order.delivery_time) {
                         var dtParts = order.delivery_time.split(':');
                         var dtHourEl = document.getElementById('deliveryTimeHour');
@@ -1409,6 +1414,11 @@
                 }
                 // 방법 변경 훅은 시간 복원 전에 — 수정모드와 같은 소실 방지 (리셋 로직이 시간을 지움)
                 onDeliveryMethodChange();
+                var slotElCopy = document.getElementById('deliverySlot');
+                if (slotElCopy && order.delivery_slot) {
+                    slotElCopy.value = order.delivery_slot;
+                    refreshDeliverySlotGuard();
+                }
                 if (order.delivery_time) {
                     var dtPartsCopy = order.delivery_time.split(':');
                     var dtHourCopy = document.getElementById('deliveryTimeHour');

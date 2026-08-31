@@ -364,7 +364,7 @@ portal.get('/orders/:id', async (c) => {
     const order = await c.env.DB.prepare(
       `SELECT id, order_number, client_id, status, order_date, delivery_date,
               total_amount, vat_amount, discount_amount, final_amount,
-              notes, priority, delivery_method, delivery_time,
+              notes, priority, delivery_method, delivery_time, delivery_slot,
               reception_location, delivery_info, shipping_payment
        FROM orders WHERE id = ? AND client_id = ?`
     ).bind(orderId, user.portal_client_id).first()

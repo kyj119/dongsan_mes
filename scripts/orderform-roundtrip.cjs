@@ -97,8 +97,9 @@ function eq(a, b) {
       priority: 'URGENT',
       reception_location: '왕복감사-접수처',
       delivery_info: '왕복감사-배송정보',
-      delivery_method: '화물',
-      delivery_time: '14:30',
+      delivery_method: '직배',        // 직배로 두어야 배차 슬롯까지 왕복 검사가 걸린다
+      delivery_time: '09:00',
+      delivery_slot: 'AM',
       discount_amount: 1000,
       notes: '왕복감사-비고',
       contact_phone: '043-000-0000',
@@ -148,7 +149,7 @@ function eq(a, b) {
     const B = (await api(token, 'GET', '/api/orders/' + orderId)).data;
 
     const ORDER_FIELDS = ['delivery_date', 'priority', 'reception_location', 'delivery_info', 'delivery_method',
-      'delivery_time', 'discount_amount', 'notes', 'contact_phone', 'contact_mobile', 'shipping_payment',
+      'delivery_time', 'delivery_slot', 'discount_amount', 'notes', 'contact_phone', 'contact_mobile', 'shipping_payment',
       'sales_rep_id', 'total_amount', 'vat_amount', 'final_amount'];
     const ITEM_FIELDS = ['item_id', 'item_name', 'category_name', 'width', 'height', 'quantity', 'unit',
       'unit_price', 'amount', 'auto_amount', 'line_discount', 'discount_reason', 'vat_included',

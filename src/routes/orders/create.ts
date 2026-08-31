@@ -10,6 +10,7 @@ import type { Order } from '../../types/models'
 import { authMiddleware } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { getNextEntitySeqNumber } from '../../utils/sequenceGenerator'
+import { resolveSlot } from '../../utils/productionDeadline'   // 직배 배차 슬롯(오전/오후) 정규화
 import { computeLineAmount, type LineAmount } from '../../utils/orderLineAmount'
 import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
@@ -180,10 +181,10 @@ ordersCreateRouter.post('/', async (c) => {
         reception_location, delivery_info, delivery_postal, delivery_detail, delivery_date, order_date,
         total_amount, vat_amount, discount_amount, final_amount,
         notes, internal_notes, created_by,
-        ai_file_path, ai_analysis_id, layout_id, priority, delivery_method, delivery_time,
+        ai_file_path, ai_analysis_id, layout_id, priority, delivery_method, delivery_time, delivery_slot,
         contact_phone, contact_mobile, shipping_payment, valid_until, entity_id,
         sheet_layout_params, order_type, quotation_id, consolidate_with_order_id, sales_rep_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       orderNumber,
       orderData.client_id,
@@ -209,6 +210,8 @@ ordersCreateRouter.post('/', async (c) => {
       orderData.priority || 'NORMAL',
       orderData.delivery_method || '배송',
       orderData.delivery_time || null,
+      // 직배 배차 슬롯 — 직배가 아니면 resolveSlot 이 null 로 눌러 준다(방법을 바꿔도 유령 슬롯이 안 남는다)
+      resolveSlot(orderData.delivery_method, orderData.delivery_slot),
       orderData.contact_phone || null,
       orderData.contact_mobile || null,
       orderData.shipping_payment || null,

@@ -246,10 +246,63 @@
             }
 
             // ===== 출고방법 변경 시 선불/착불 + 납품시간 연동 =====
+            // 지금 저장될 슬롯. 직배가 아니면 null.
+            function distActiveSlot() {
+                var m = document.getElementById('distDeliveryMethod');
+                var sl = document.getElementById('distDeliverySlot');
+                if (!m || !sl || !window.MES_SLOT) return null;
+                return window.MES_SLOT.isSlotMethod(m.value) ? (window.MES_SLOT.normalizeSlot(sl.value) || null) : null;
+            }
+
+            function applyDistDeliverySlotUI(method) {
+                var wrap = document.getElementById('distDeliverySlotWrap');
+                var timeWrap = document.getElementById('distDeliveryTimeWrap');
+                var slotSel = document.getElementById('distDeliverySlot');
+                if (!wrap || !timeWrap || !slotSel) { console.warn('[orderFormDist] #distDeliverySlotWrap/#distDeliveryTimeWrap not found'); return; }
+                var useSlot = !!(window.MES_SLOT && window.MES_SLOT.isSlotMethod(method));
+                wrap.classList.toggle('hidden', !useSlot);
+                timeWrap.classList.toggle('hidden', useSlot);
+                if (!useSlot) { slotSel.value = ''; setDistSlotHint(''); return; }
+                refreshDistSlotGuard();
+            }
+
+            function refreshDistSlotGuard() {
+                var slotSel = document.getElementById('distDeliverySlot');
+                var dateEl = document.getElementById('distDeliveryDate');
+                if (!slotSel || !window.MES_SLOT) return;
+                var date = dateEl ? dateEl.value : '';
+                var keepAm = slotSel.value === 'AM';
+                var amOk = window.MES_SLOT.selectable('AM', date);
+                var amOpt = slotSel.querySelector('option[value="AM"]');
+                if (amOpt) {
+                    amOpt.disabled = !amOk && !keepAm;
+                    amOpt.textContent = (amOk || keepAm) ? '오전' : '오전 (마감 지남)';
+                }
+                var slot = window.MES_SLOT.normalizeSlot(slotSel.value);
+                if (slot) {
+                    var due = window.MES_SLOT.deadline({ delivery_date: date, delivery_method: '직배', delivery_slot: slot });
+                    setDistSlotHint(due
+                        ? '완료기한 ' + due + ' 까지 · 납품시간은 ' + window.MES_SLOT.REPRESENTATIVE_TIME[slot] + ' 로 기록됩니다'
+                        : '납품일을 먼저 선택하세요');
+                } else {
+                    setDistSlotHint(amOk ? '' : '오전편은 납품 전날 18:00 까지 접수분만 가능합니다');
+                }
+            }
+
+            function setDistSlotHint(text) {
+                var el = document.getElementById('distDeliverySlotHint');
+                if (el) el.textContent = text || '';
+            }
+
+            function onDistDeliverySlotChange() {
+                refreshDistSlotGuard();
+            }
+
             function onDistDeliveryMethodChange() {
                 var method = document.getElementById('distDeliveryMethod').value;
                 var hourSel = document.getElementById('distDeliveryTimeHour');
                 var minSel = document.getElementById('distDeliveryTimeMinute');
+                applyDistDeliverySlotUI(method);
 
                 // 납품시간 자동 설정
                 if (hourSel && minSel) {
@@ -388,9 +441,11 @@
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>등록 중...';
 
                 // 납품시간 조합
+                var distSlot = distActiveSlot();
                 var dtHour = (document.getElementById('distDeliveryTimeHour') || {}).value || '';
                 var dtMin = (document.getElementById('distDeliveryTimeMinute') || {}).value || '00';
-                var deliveryTime = dtHour ? (dtHour + ':' + dtMin) : null;
+                // 슬롯을 골랐으면 대표시각(오전 09:00 / 오후 14:00) — 비우면 출고목록·칸반이 '미정'이 된다
+                var deliveryTime = distSlot ? window.MES_SLOT.REPRESENTATIVE_TIME[distSlot] : (dtHour ? (dtHour + ':' + dtMin) : null);
 
                 var _delivery = collectDeliveryFieldsDist();   // 0535
                 var orderData = {
@@ -399,6 +454,7 @@
                     priority: (document.getElementById('distPriority') || {}).value || 'NORMAL',
                     delivery_date: document.getElementById('distDeliveryDate').value || null,
                     delivery_time: deliveryTime,
+                    delivery_slot: distSlot,
                     delivery_method: document.getElementById('distDeliveryMethod').value || null,
                     shipping_payment: document.getElementById('distShippingPayment').value || null,
                     reception_location: document.getElementById('receptionLocation').value || null,
@@ -465,6 +521,11 @@
                 if (dateEl) dateEl.value = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000).toISOString().split('T')[0];
                 // 납품시간 옵션 초기화
                 initDistDeliveryTimeOptions();
+                var distDdSlot = document.getElementById('distDeliveryDate');
+                if (distDdSlot) {
+                    distDdSlot.addEventListener('change', refreshDistSlotGuard);
+                    distDdSlot.addEventListener('input', refreshDistSlotGuard);
+                } else { console.warn('[orderFormDist] #distDeliveryDate not found (슬롯 가드 미동작)'); }
                 // 출고방법 초기화 (납품시간 자동 설정 포함)
                 onDistDeliveryMethodChange();
                 // 첫 품목 행 추가
