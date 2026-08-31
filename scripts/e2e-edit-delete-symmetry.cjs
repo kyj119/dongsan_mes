@@ -12,7 +12,15 @@
  *   ④ 매입잔액 — 지급 등록/삭제 후 응답 잔액이 파생값과 일치한다(캐시 드리프트 없음)
  *   ⑤ 견적 — 전환 주문을 지우면 "이미 전환됨" 잠금이 풀린다
  *
- * ③(자동차감 환원)은 print_events 를 만들어야 해서 여기서 못 돈다 — 원장 참조 유형 등록만 확인한다.
+ * ③(자동차감 환원)은 여기서 안 돈다 — 에이전트 키(AGENT_API_KEY)와 product_materials 차감설정 시드가
+ *   필요해 환경 의존이 크다. 대신 2026-08-31 로컬에서 **전 구간 수동 실측**했다(재현 절차):
+ *     ① items.width_mm 설정 + product_materials(product, material) 매핑 시드
+ *     ② 주문·카드 생성 → print_file_map(order_number, file_seq, card_id) 1행
+ *     ③ POST /api/print-events (X-Agent-Key, print_status=OK, output_width/height)
+ *        → 재고 480 → 477.81 · 원장 AUTO_DEDUCT OUT 1행 · inventory_auto_deductions 1행
+ *     ④ PATCH /api/cards/:id/revert → 재고 480 복원 · 원장 행 철회 · 차감 기록 철회
+ *     ⑤ print_completed_at 을 바꿔 재출력 → 다시 477.81 · 원장 재생성(UNIQUE 위반 없음)
+ *   ⚠️ 중복 판정 키가 (file_path, print_completed_at) 이라 시각을 빼면 재출력이 duplicate 로 삼켜진다.
  *
  * 사용: 서버(dev:d1) 가동 상태에서  node scripts/e2e-edit-delete-symmetry.cjs
  */
