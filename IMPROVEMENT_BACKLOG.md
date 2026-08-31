@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-08-31T21:30:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-09-01T03:45:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,27 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **4** (`list_issues(state:OPEN,label:auto-improve)` 실측, 12→4: #608·#613·#616·#617만 잔존) |
+| 🆕 new | **3** (`list_issues(state:OPEN,label:auto-improve)` 실측, 4→3: #608이 이번 churn 커밋으로 owner가 직접 close — #613·#616·#617만 잔존) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **540** (`search_issues(reason:completed)` 리터럴 쿼리, 532→540 — owner가 오늘 8건 직접 종료: #606·#610·#612·#614·#615·#618·#619·#620·#621 중 8건, 하단 Area 1 로그 참조) |
+| ✔️ done | **541** (`search_issues(reason:completed)` 리터럴 쿼리, 540→541, +1 = #608 close와 정확히 일치) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 재확인, 변동없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-09-01T03:45):**
+> - **방법**: `git status`=워킹트리 clean, `git fetch origin main`(`207078c..c97cdd8`, 로컬 ref가 갈라져 있어 forced update) → `git checkout main && git reset --hard origin/main`(HEAD `c97cdd8`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area2 방법 라인 HEAD `8ef1c6b`, 전체 17커밋 중 직전 Area1 사이클(21:30, HEAD `3ed9051`)이 이미 정독한 15건을 뺀 신규 2건만 미언급)**: 웹앱 범위(`-- src migrations scripts .github`) 신규 diff는 **`c4be537` 1커밋뿐**(`86d3c74`는 docs만). `src/` 실질 코드 변경 **0줄** — Area2 코드품질 렌즈의 신규 표면 자체가 이번 사이클엔 없음.
+> - **`c4be537`("write canary를 진짜 게이트로 만들고, 통과 못 하던 이유를 고침") 직독 — 정확히 #608(직전 Area1 사이클이 신규 발견해 open 상태였던 이슈)의 owner 자신의 수정 세션**: `.github/workflows/verify.yml`(`on:pull_request`라 이 direct-push 프로젝트에서 0회 실행)에 있던 write canary를 `deploy.yml`(매 push 실행, 실패 시 실제 배포 차단)로 이전 + entity 필터 감사(`node scripts/entity-audit.mjs`)도 동일 사유로 이전. 부가로 `migrations apply`를 0001부터 재생하면 `0344`에서 카테고리 id 환경분기(신규replay 14 vs prod 15)로 FK 위반 확정 실패하던 근본원인을 스키마 베이스라인(`#555`) 부트스트랩 후 `0475+` 증분으로 우회하는 `canary:write:ci`(`db:bootstrap:ci` + `canary:write`) 신설. **직접 검증**: `actions_list(deploy.yml)` 최신 3런(`c97cdd8`·`c4be537`·`c07ae82`) 전부 `conclusion:success` → `list_workflow_jobs(run 33395538987, HEAD c4be537)` 스텝 전개 확인 — "Entity filter audit"(22s 아님 즉시, 정상) + "Local write canary (bootstrap + items round-trip)" **26초 소요**(스킵이 아니라 실제 부트스트랩+마이그+round-trip 실행 증거) 둘 다 `conclusion:success`로 Deploy 앞에 배치 확인. **결론 = #608이 지목한 "3중 장치 중 실제 배포경로엔 전무" 상태가 실측으로 해소됨, 코드품질 관점 결함 0건**(YAML 트리거 이전 + 부트스트랩 스크립트 신설, 안티패턴 없음).
+> - **owner가 직접 close 확인**: `issue_read(#608)` → `state:closed, state_reason:completed, closed_by:kyj119, closed_at:2026-08-31T13:13:17Z`(=c4be537 커밋 직후) — 이번 사이클이 추가로 close할 것 없음, 재확인만.
+> - **standing scan 1: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 67건·**누락 0건**(변동없음).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 1건 `attendance.ts:158`(기존 노출 유지, 변동없음).
+> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(prod 청정). 전체 `npm audit` 11건(1 moderate·8 high·2 critical) 전부 devDependency, #613 기보고와 완전 일치, net-new 0.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **3**(`#613`·`#616`·`#617`만 잔존, #608 close로 4→3). `search_issues(reactions:>0, state:open)` **0건**(승인 대기 유지).
+> - **backlog↔GitHub 절대값 재동기화**: open **3**(4→3) · `search_issues(reason:completed)` **541**(540→541, #608 close와 일치) · rejected **6**(변동없음, 재확인 생략).
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md `line N` 잔여참조 재확인(0건, grep 검증 완료).
+> - **백로그 트림 체크**: `backlog:trim --check` 실행 예정(아래).
+> - 신규 이슈 0건(이번 사이클 웹앱 src 변경 0줄 — 유일 신규 커밋은 CI 인프라 YAML이고, 그 자체가 직전 사이클 발견 #608의 owner 수정이라 CI 실측으로 해소 확인만 수행), 자동수정 0건, done-sync: open 3(4→3)·done 541(540→541)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-08-31T21:30):**
 > - **방법**: `git status`=워킹트리 clean, `git fetch origin main`(`207078c..3ed9051`, 로컬 ref가 갈라져 있어 forced update) → `git checkout main && git reset --hard origin/main`(HEAD `3ed9051`). `npm ci`(0→81), `npx tsc --noEmit` clean.
