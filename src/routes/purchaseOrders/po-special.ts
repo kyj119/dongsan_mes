@@ -198,12 +198,7 @@ poSpecialRouter.post('/:id/reorder', requireRole('ADMIN', 'MANAGER'), async (c) 
       VALUES (?, NULL, ?, ?, ?)
     `).bind(newPoId, targetStatus, user.id, `재발주 생성 (원본: ${originalPo.po_number})`).run()
 
-    // CONFIRMED면 매입잔액 업데이트
-    if (targetStatus === 'CONFIRMED') {
-      await c.env.DB.prepare(`
-        UPDATE clients SET purchase_balance = COALESCE(purchase_balance, 0) + ? WHERE id = ?
-      `).bind(originalPo.final_amount, originalPo.supplier_id).run()
-    }
+    // AP 잔액은 파생(발주−지급−조정) — purchase_balance 캐시 갱신 제거(2026-08-31)
 
     return c.json({
       success: true,
@@ -310,12 +305,7 @@ poSpecialRouter.post('/quick', requireRole('ADMIN', 'MANAGER'), async (c) => {
       VALUES (?, NULL, ?, ?, ?)
     `).bind(newPoId, status, user.id, canAutoApprove ? '빠른 발주 (자동승인)' : '빠른 발주 생성').run()
 
-    // CONFIRMED면 매입잔액 업데이트
-    if (canAutoApprove) {
-      await c.env.DB.prepare(`
-        UPDATE clients SET purchase_balance = COALESCE(purchase_balance, 0) + ? WHERE id = ?
-      `).bind(finalAmount, body.supplier_id).run()
-    }
+    // AP 잔액은 파생(발주−지급−조정) — purchase_balance 캐시 갱신 제거(2026-08-31)
 
     return c.json({
       success: true,

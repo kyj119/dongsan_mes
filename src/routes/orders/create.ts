@@ -221,8 +221,7 @@ ordersCreateRouter.post('/', async (c) => {
       const quoteEf = entityFilter(c)
       await c.env.DB.prepare(`
         UPDATE quotations
-        SET converted_count = converted_count + 1,
-            first_converted_at = COALESCE(first_converted_at, CURRENT_TIMESTAMP),
+        SET first_converted_at = COALESCE(first_converted_at, CURRENT_TIMESTAMP),
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?${quoteEf.clause}
       `).bind(sourceQuotationId, ...quoteEf.params).run().catch(() => {})

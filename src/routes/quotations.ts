@@ -600,11 +600,18 @@ quotationsRouter.post('/:id/convert-to-order', requireEditOrRole('/quotations', 
     }
 
     // #161: 이미 주문 전환된 견적서 중복 전환 방지
-    if (quotation.converted_count > 0 && !force) {
+    //   ★판정 근거를 캐시(converted_count)에서 **실제 주문 수**로 바꿨다(2026-08-31).
+    //   캐시는 `+1` 만 있고 주문을 지워도 안 줄어서, 전환분을 전부 삭제한 견적서가 영영
+    //   "이미 전환됨" 으로 막혀 있었다(force 로만 우회 가능). 지금은 지우면 바로 풀린다.
+    const convertedRow = await c.env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM orders WHERE quotation_id = ? AND status != 'CANCELLED'`
+    ).bind(id).first<{ cnt: number }>()
+    const convertedCount = Number(convertedRow?.cnt) || 0
+    if (convertedCount > 0 && !force) {
       return c.json({
         success: false,
-        error: `이미 ${quotation.converted_count}건 주문 전환된 견적서입니다. 분할 주문 등 강제 전환하려면 force=true를 전달하세요.`,
-        meta: { already_converted: true, converted_count: quotation.converted_count }
+        error: `이미 ${convertedCount}건 주문 전환된 견적서입니다. 분할 주문 등 강제 전환하려면 force=true를 전달하세요.`,
+        meta: { already_converted: true, converted_count: convertedCount }
       }, 409)
     }
 
@@ -729,11 +736,13 @@ quotationsRouter.post('/:id/convert-to-order', requireEditOrRole('/quotations', 
       force && quotation.status === 'EXPIRED' ? '만료 견적 강제 전환' : `견적서 ${quotation.quotation_number} → 주문`
     ).run()
 
-    // 견적서의 변환 추적 업데이트
+    // 전환 건수는 파생이다 — `orders.quotation_id` 를 세면 된다(`quotations.ts:74` actual_order_count).
+    //   `converted_count` 캐시 갱신은 2026-08-31 제거: `+1` 만 있고 `-1` 이 없어 **주문을 지워도
+    //   안 줄었다**. 삭제·취소 경로마다 감산을 다는 대신 캐시를 없애 어긋날 여지 자체를 지운다.
+    //   (first_converted_at 은 "처음 전환한 시각" 이라 누적이 아니므로 그대로 둔다)
     await c.env.DB.prepare(`
       UPDATE quotations
-      SET converted_count = converted_count + 1,
-          first_converted_at = COALESCE(first_converted_at, CURRENT_TIMESTAMP),
+      SET first_converted_at = COALESCE(first_converted_at, CURRENT_TIMESTAMP),
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).bind(id).run()

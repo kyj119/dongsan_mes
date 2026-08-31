@@ -433,25 +433,38 @@ cashFlowRouter.post('/loans/:id/payments/:pid/pay', requireRole('ADMIN'), async 
     const body = await c.req.json<{ actual_paid_amount: number; actual_paid_date: string; notes?: string }>()
 
     const ef = entityFilter(c)
+    // ★이전 반영분(actual_paid_amount)까지 읽는다 — 이게 없으면 재호출 시 이미 반영된 걸 모른다.
     const payment = await c.env.DB.prepare(
-      `SELECT id, loan_id, payment_number, total_amount, principal_amount FROM loan_payments WHERE id = ? AND loan_id = ?${ef.clause}`
-    ).bind(pid, id, ...ef.params).first<{ total_amount: number; principal_amount: number }>()
+      `SELECT id, loan_id, payment_number, total_amount, principal_amount, actual_paid_amount, status FROM loan_payments WHERE id = ? AND loan_id = ?${ef.clause}`
+    ).bind(pid, id, ...ef.params).first<{ total_amount: number; principal_amount: number; actual_paid_amount: number | null; status: string | null }>()
     if (!payment) return c.json({ success: false, error: '상환 스케줄을 찾을 수 없습니다.' }, 404)
 
     const status = body.actual_paid_amount >= payment.total_amount ? 'PAID' : 'PARTIAL'
 
-    await c.env.DB.batch([
+    // 잔액에 반영하는 값 = **원금 충당분**. 이자분은 잔액을 줄이지 않으므로 원금 상한을 씌운다.
+    const principalApplied = (amt: number) => Math.min(Math.max(Number(amt) || 0, 0), payment.principal_amount)
+    // ★차액만 반영한다(2026-08-31). 이 라우트는 「상환 실행」이자 「금액 정정」 입구다 —
+    //   예전엔 이전 반영분을 안 봐서 **다시 부를 때마다 전액이 또 빠졌다**(되돌리는 라우트도 없다).
+    //   같은 값으로 재호출하면 delta 0 → 잔액 불변(멱등). 금액을 고치면 그 차이만 움직인다.
+    const prevApplied = principalApplied(payment.actual_paid_amount ?? 0)
+    const nextApplied = principalApplied(body.actual_paid_amount)
+    const delta = nextApplied - prevApplied
+
+    const stmts = [
       c.env.DB.prepare(`
         UPDATE loan_payments SET actual_paid_amount = ?, actual_paid_date = ?, status = ?, notes = ?
         WHERE id = ?
       `).bind(body.actual_paid_amount, body.actual_paid_date, status, body.notes || null, pid),
-      c.env.DB.prepare(`
+    ]
+    if (delta !== 0) {
+      stmts.push(c.env.DB.prepare(`
         UPDATE loans SET current_balance = current_balance - ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `).bind(Math.min(body.actual_paid_amount, payment.principal_amount), id)
-    ])
+      `).bind(delta, id))
+    }
+    await c.env.DB.batch(stmts)
 
-    return c.json({ success: true })
+    return c.json({ success: true, data: { principal_applied: nextApplied, balance_delta: -delta, restated: prevApplied > 0 } })
   } catch (error) {
     console.error('src/routes/cashFlow.ts error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

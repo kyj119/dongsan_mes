@@ -9,6 +9,7 @@ import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { autoDeductPostProcessingMaterials } from '../utils/autoDeductPostProcessingMaterials'
 import { deductStockLinesOnShip, restoreStockLinesOnUnship } from '../utils/stockShip'
+import { restorePpDeductionsByOrder } from '../utils/autoDeductRestore'
 import { ensureShipmentForOrder } from '../utils/shipmentHelper'
 import { kstYmd, kstYmdCompact, kstDate } from '../utils/kstDate'
 import { CONSOLIDATABLE_ORDER_STATUSES } from '../utils/statusLabels'
@@ -1224,6 +1225,8 @@ shipmentsRouter.patch('/:id/status', requireEditOrRole('/shipments', 'MANAGER'),
             await restoreStockLinesOnUnship(
               c.env.DB, Number(orderRow.order_id), orderRow.entity_id || getEntityId(c) || 1
             )
+            // 후가공 코팅지는 **출고 시점**에 차감된다(아래 autoDeductPostProcessingMaterials) → 취소도 짝을 맞춘다.
+            await restorePpDeductionsByOrder(c.env.DB, Number(orderRow.order_id))
             const user = c.get('user')
             // 3) 주문 상태 복원 (shipped_at도 리셋 — P1 정합화)
             stmts.push(c.env.DB.prepare(

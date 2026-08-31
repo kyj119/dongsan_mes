@@ -19,6 +19,7 @@ import { logActivity } from '../../utils/activityLog'
 import { entityFilter, getEntityId } from '../../utils/entityFilter'
 import { ensureShipmentForOrder } from '../../utils/shipmentHelper'
 import { deductStockLinesOnShip, restoreStockLinesOnUnship } from '../../utils/stockShip'
+import { restoreAutoDeductionsByCards } from '../../utils/autoDeductRestore'
 
 const cardsLifecycleRouter = new Hono<HonoEnv>()
 cardsLifecycleRouter.use('/*', authMiddleware, requireAnyPagePermission('/cards', '/orders'))
@@ -1291,6 +1292,10 @@ cardsLifecycleRouter.patch('/:id/revert', async (c) => {
     if (card.status !== 'PRINT_DONE') {
       return c.json({ success: false, error: '출력완료 상태의 카드만 되돌릴 수 있습니다.' }, 400)
     }
+
+    // ★인쇄 자재 자동차감 환원 — 출력을 안 한 것으로 되돌리므로 자재도 돌아와야 한다.
+    //   차감 기록까지 지우므로 **재출력하면 다시 차감된다**(UNIQUE print_event_id 로 막히지 않는다).
+    await restoreAutoDeductionsByCards(c.env.DB, [Number(id)])
 
     // 카드를 출력대기(PRINT_PENDING)로 되돌림 — 단일 상태축(Phase 4). rip_status도 초기화하여 재RIP 가능.
     await c.env.DB.prepare(

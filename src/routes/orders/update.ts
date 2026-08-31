@@ -54,6 +54,72 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
       return c.json({ success: false, error: '확정된 주문의 납품일은 필수입니다.' }, 400)
     }
 
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 출고 차감된 주문의 기성/유통 라인 구성 변경 차단 (2026-08-31)
+    //
+    // PUT 은 order_items 를 **전량 delete + reinsert** 한다(아래 :310). 그런데 재고 차감은
+    // (주문 × 품목 × 법인) 단위로 이미 나가 있다 — 라인을 지우면 `restoreStockLinesOnUnship`
+    // 이 되돌릴 근거(order_items)를 잃어 **재고가 영구히 빠진 채 남는다**. 수량만 바꿔도
+    // 차감은 옛 수량 그대로다.
+    //
+    // 발주 축과 같은 정책으로 통일한다 — 재고가 움직인 뒤에는 그 구성을 못 바꾼다
+    // (`purchaseOrders/core.ts:411` 은 DRAFT/CONFIRMED 만 수정 허용).
+    // 배송지·비고처럼 재고와 무관한 수정은 그대로 통과한다: 비교 대상은 **기성 라인 구성뿐**이다.
+    const shippedOutRows = await c.env.DB.prepare(`
+      SELECT item_id, ABS(quantity) AS qty FROM inventory_transactions
+      WHERE reference_type = 'ORDER' AND reference_id = ? AND transaction_type = 'OUT'
+    `).bind(id).all<{ item_id: number; qty: number }>()
+
+    if ((shippedOutRows.results || []).length > 0) {
+      // 차감된 구성 (품목 → 수량). 같은 품목이 여러 법인으로 분할 차감돼도 합쳐서 본다.
+      const deducted = new Map<number, number>()
+      for (const r of shippedOutRows.results) {
+        deducted.set(Number(r.item_id), (deducted.get(Number(r.item_id)) || 0) + Number(r.qty))
+      }
+
+      // 새 payload 의 기성/유통 라인 구성. production_required 는 items 에서 확인한다
+      // (payload 를 믿지 않는다 — 클라가 안 보내거나 틀린 값을 보낼 수 있다).
+      const putStockIds = [...new Set(
+        (orderData.items as any[]).map((it) => it.item_id).filter((v: any) => v != null).map(Number)
+      )]
+      const stockable = new Set<number>()
+      if (putStockIds.length > 0) {
+        for (let i = 0; i < putStockIds.length; i += 80) {   // D1 바인드 한도
+          const chunk = putStockIds.slice(i, i + 80)
+          const { results: prRows } = await c.env.DB.prepare(
+            `SELECT id FROM items WHERE production_required = 0 AND id IN (${chunk.map(() => '?').join(',')})`
+          ).bind(...chunk).all<{ id: number }>()
+          for (const r of prRows) stockable.add(Number(r.id))
+        }
+      }
+      const incoming = new Map<number, number>()
+      for (const it of (orderData.items as any[])) {
+        const iid = Number(it.item_id)
+        if (!iid || !stockable.has(iid)) continue
+        if (it.parent_client_id) continue   // 하위(부속) 라인은 차감 대상이 아니다
+        incoming.set(iid, (incoming.get(iid) || 0) + Number(it.quantity || 0))
+      }
+
+      const changed: string[] = []
+      for (const [iid, qty] of deducted) {
+        const now = incoming.get(iid)
+        if (now == null) changed.push(`품목#${iid} 삭제됨`)
+        else if (Math.abs(now - qty) > 1e-9) changed.push(`품목#${iid} ${qty}→${now}`)
+      }
+      for (const [iid] of incoming) {
+        if (!deducted.has(iid)) changed.push(`품목#${iid} 추가됨`)
+      }
+
+      if (changed.length > 0) {
+        return c.json({
+          success: false,
+          error: '출고 차감된 주문입니다. 기성·유통 품목 구성은 바꿀 수 없습니다. 먼저 출고를 취소하세요.',
+          meta: { stock_locked: true, changes: changed }
+        }, 400)
+      }
+    }
+
     // 합배송 예약 (배송 후속 P1): 같은 거래처 검증 + root 해소 + 자기참조 차단.
     // key 자체가 없는 호출자(유통 폼 등)는 기존 예약 보존, key가 있고 null/무효면 해제.
     let consolidateWithOrderId: number | null = ('consolidate_with_order_id' in orderData)

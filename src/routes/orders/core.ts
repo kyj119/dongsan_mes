@@ -9,6 +9,8 @@ import { notifyRoles } from '../../utils/notify'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { sendEmail } from '../../services/emailProvider'
 import { getEntityId, entityFilter, orderVisibilityFilter } from '../../utils/entityFilter'
+import { restoreStockLinesOnUnship } from '../../utils/stockShip'
+import { restoreAutoDeductionsByCards, restorePpDeductionsByOrder } from '../../utils/autoDeductRestore'
 import { getEntityCompanyInfo } from '../../utils/entitySettings'
 import { hydrateGroupsJson } from '../../utils/thumbnailStore'
 import { deriveClientBalance } from '../ledger/ar-helpers'
@@ -534,8 +536,8 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     // Check if order exists (status, client_id, final_amount 포함)
     const order = await c.env.DB.prepare(`
-      SELECT id, order_number, status, client_id, final_amount, billing_status, billed_amount FROM orders WHERE id = ?${efOrd.clause}
-    `).bind(id, ...efOrd.params).first<{ id: number; order_number: string; status: string; client_id: number; final_amount: number; billing_status: string | null; billed_amount: number | null }>()
+      SELECT id, order_number, status, client_id, final_amount, billing_status, billed_amount, entity_id FROM orders WHERE id = ?${efOrd.clause}
+    `).bind(id, ...efOrd.params).first<{ id: number; order_number: string; status: string; client_id: number; final_amount: number; billing_status: string | null; billed_amount: number | null; entity_id: number | null }>()
 
     if (!order) {
       return c.json({
@@ -588,6 +590,17 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         error: '현금영수증이 발행된 주문은 삭제할 수 없습니다. 먼저 현금영수증을 취소해주세요.'
       }, 400)
     }
+
+    // 출고 차감 환원 — 삭제(소프트·하드 공통) = "출고하지 않은 것"으로 되돌린다.
+    //   ★반드시 아래 batch **앞**에서 부른다: 하드 삭제가 order_items 를 지우면 되돌릴 근거가 사라진다.
+    //   차감된 적 없으면 no-op 이라 QUOTATION·DRAFT 삭제에도 안전하다(멱등).
+    await restoreStockLinesOnUnship(c.env.DB, Number(id), order.entity_id || getEntityId(c) || 1)
+
+    // 자동차감(인쇄 원단·후가공 코팅지)도 같이 환원한다. 아래 하드삭제 batch 가
+    //   inventory_auto_deductions 를 지우기 때문에 **여기서 먼저** 되돌려야 근거가 남아 있다.
+    const delCards = await c.env.DB.prepare('SELECT id FROM cards WHERE order_id = ?').bind(id).all<{ id: number }>()
+    await restoreAutoDeductionsByCards(c.env.DB, (delCards.results || []).map((r) => Number(r.id)))
+    await restorePpDeductionsByOrder(c.env.DB, Number(id))
 
     const CONFIRMED_AND_AFTER = ['CONFIRMED', 'PRINTING', 'PRINT_DONE', 'SHIPPED']
 
@@ -677,6 +690,8 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       c.env.DB.prepare('DELETE FROM original_archives WHERE order_id = ?').bind(id),  // ⚠️ R2 객체(archive_url)는 별도 정리 필요
       // #570: designer_intakes.order_item_id RESTRICT(0463) — 흡수 이력 보존 위해 SET NULL(디자이너 작업 이력은 존치, status='absorbed' 유지). order_items 삭제 전 필수.
       c.env.DB.prepare('UPDATE designer_intakes SET order_item_id = NULL WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').bind(id),
+      // 위 환원이 OUT 행을 철회하므로 보통 0행. 배포 전에 이미 CANCELLED 된 주문 등 잔여분 고아 방지.
+      c.env.DB.prepare("DELETE FROM inventory_transactions WHERE reference_type = 'ORDER' AND reference_id = ?").bind(id),
       c.env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM order_billing_groups WHERE order_id = ?').bind(id),  // split billing P3
       c.env.DB.prepare('DELETE FROM order_status_history WHERE order_id = ?').bind(id),

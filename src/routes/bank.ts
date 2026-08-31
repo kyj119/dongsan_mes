@@ -1670,8 +1670,7 @@ async function applyBankTransaction(
         INSERT INTO purchase_payments (supplier_id, payment_date, amount, payment_method, reference_number, notes, created_by, entity_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(clientId, payDate, amount, opts.paymentMethod || '계좌이체', String(tx.id), opts.notes || defaultNotes, user?.id ?? 1, entityId),
-      db.prepare('UPDATE clients SET purchase_balance = COALESCE(purchase_balance, 0) - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-        .bind(amount, clientId),
+      // AP 잔액은 파생(발주−지급−조정) — purchase_balance 캐시 갱신 제거(2026-08-31)
     ])
     const ppId = Number(results[0].meta.last_row_id)
     await db.prepare('UPDATE bank_transactions SET matched_purchase_payment_id = ? WHERE id = ?').bind(ppId, tx.id).run()
@@ -2180,7 +2179,7 @@ bankRouter.post('/transactions/:id/unapply', requireRole('ADMIN'), async (c) => 
         await clearStmt.run()
       }
     } else if (tx.matched_purchase_payment_id) {
-      // 2. bank이 생성한 매입 지급 삭제 + 미지급 잔액(purchase_balance) 복원
+      // 2. bank이 생성한 매입 지급 삭제 (미지급 잔액은 파생이라 지급 행만 지우면 자동 복원)
       const pp = await c.env.DB.prepare(
         'SELECT id, supplier_id, amount FROM purchase_payments WHERE id = ?'
       ).bind(tx.matched_purchase_payment_id).first<{ id: number; supplier_id: number; amount: number }>()
@@ -2188,7 +2187,7 @@ bankRouter.post('/transactions/:id/unapply', requireRole('ADMIN'), async (c) => 
       if (pp) {
         await c.env.DB.batch([
           c.env.DB.prepare('DELETE FROM purchase_payments WHERE id = ?').bind(pp.id),
-          c.env.DB.prepare('UPDATE clients SET purchase_balance = COALESCE(purchase_balance, 0) + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(pp.amount, pp.supplier_id),
+          // AP 잔액은 파생(발주−지급−조정) — purchase_balance 캐시 갱신 제거(2026-08-31)
           clearStmt,
         ])
         restoreMsg = '적용이 취소되었습니다. 지급 기록이 삭제되고 미지급 잔액이 복원되었습니다.'

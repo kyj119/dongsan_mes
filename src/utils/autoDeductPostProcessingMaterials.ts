@@ -1,4 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
+import { logAutoDeductToLedger, PP_DEDUCT_REF } from './autoDeductRestore'
 import { getItemDefaultZone } from './inventoryZone'
 import { computeRollConsumption } from './rollConsumption'
 
@@ -176,6 +177,13 @@ export async function autoDeductPostProcessingMaterials(
                 dedYd, before, after, entityId
               )
               .run()
+
+            // 원장 기록 (인쇄 자동차감과 같은 규칙 — 환원이 이 행을 근거로 한다)
+            await logAutoDeductToLedger(db, {
+              refType: PP_DEDUCT_REF, refId: pe.id,
+              itemId: mat.id, entityId, zoneId,
+              qty: dedYd, balanceAfter: after, note: '후가공 자재 자동차감',
+            })
             deducted++
           } catch (insertError: any) {
             // UNIQUE 위반 = 동시 중복 → 차감 롤백

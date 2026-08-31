@@ -1,4 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
+import { logAutoDeductToLedger, AUTO_DEDUCT_REF } from './autoDeductRestore'
 import { resolveDeductionZone } from './inventoryZone'
 import { computeRollConsumption, selectBoardMaterial, boardAreaSqm } from './rollConsumption'
 
@@ -252,6 +253,14 @@ export async function autoDeductInventory(
           deductedLengthYd  // MU4: deducted_base — base_unit 단위 차감량(cm/yd)
         )
         .run()
+
+      // 원장 기록 — 2026-08-31 이전엔 자동차감이 inventory.quantity 만 바꾸고 원장에 아무것도
+      //   안 남겨서 증감내역 화면에 자재 소모가 통째로 안 보였다. 환원도 이 행을 근거로 한다.
+      await logAutoDeductToLedger(db, {
+        refType: AUTO_DEDUCT_REF, refId: printEventId,
+        itemId: selectedMaterial.material_item_id, entityId, zoneId,
+        qty: deductedLengthYd, balanceAfter: inventoryAfter, note: '인쇄 자재 자동차감',
+      })
     } catch (insertError: any) {
       // UNIQUE 제약 위반 = 이미 차감됨 → 차감 롤백
       if (insertError?.message?.includes('UNIQUE')) {

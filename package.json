@@ -91,6 +91,7 @@
     "propose:count-scope": "node scripts/propose-count-scope.cjs",
     "smoke:write": "node scripts/smoke-write.cjs",
     "test:ship-stock": "node scripts/e2e-ship-unship-stock.cjs",
+    "test:symmetry": "node scripts/e2e-edit-delete-symmetry.cjs",
     "audit:query-cost": "node scripts/query-cost-audit.cjs",
     "audit:subquery": "node scripts/correlated-subquery-audit.cjs"
   },

@@ -25,6 +25,8 @@ export const TX_REF_LABELS: Record<string, string> = {
   ADJUSTMENT: '재고조정',
   STOCK_COUNT: '재고실사',
   SCAN: '스캔',
+  AUTO_DEDUCT: '인쇄 자동차감',
+  PP_DEDUCT: '후가공 자동차감',
   IN: '입고',
   OUT: '출고',
 }

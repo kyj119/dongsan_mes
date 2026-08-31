@@ -392,6 +392,8 @@ export function inventoryPage(c: Context<HonoEnv>) {
                     <option value="ADJUSTMENT">재고조정</option>
                     <option value="STOCK_COUNT">재고실사</option>
                     <option value="SCAN">스캔</option>
+                    <option value="AUTO_DEDUCT">인쇄 자동차감</option>
+                    <option value="PP_DEDUCT">후가공 자동차감</option>
                   </select>
                 </div>
                 <div class="ds-filter-field" style="flex:1;min-width:160px">

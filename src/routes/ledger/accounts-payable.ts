@@ -6,6 +6,7 @@ import { createPayment } from '../../lib/payments'
 import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
+import { deriveSupplierPayable } from '../../utils/supplierPayable'
 import { kstYmd, kstYear } from '../../utils/kstDate'
 import { excludePurchaseNonCounterpartiesSql, isInternalEntityClient } from '../../constants/intercompany'
 
@@ -503,20 +504,14 @@ apRouter.post('/purchase-payment', requireEditOrRole('/ledger', 'MANAGER'), asyn
       getEntityId(c) || 1
     ).run()
 
-    // #164: atomic purchase_balance 감소 (race condition 방지)
-    await c.env.DB.prepare(
-      'UPDATE clients SET purchase_balance = COALESCE(purchase_balance, 0) - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(body.amount, body.supplier_id).run()
-
-    const updatedSupplier = await c.env.DB.prepare(
-      'SELECT purchase_balance FROM clients WHERE id = ?'
-    ).bind(body.supplier_id).first<{ purchase_balance: number }>()
+    // 잔액은 캐시가 아니라 파생이다 — 지급 행이 들어간 순간 이미 반영돼 있다(utils/supplierPayable).
+    const newBalance = await deriveSupplierPayable(c.env.DB, body.supplier_id, getEntityId(c))
 
     return c.json({
       success: true,
       data: {
         id: result.meta.last_row_id,
-        new_purchase_balance: updatedSupplier?.purchase_balance ?? 0
+        new_purchase_balance: newBalance
       },
       message: '지급이 등록되었습니다'
     })
@@ -575,21 +570,12 @@ apRouter.put('/purchase-payment/:id', requireEditOrRole('/ledger', 'MANAGER'), a
       id
     ).run()
 
-    // Adjust purchase_balance: balance decreases when payment increases
-    if (amountDiff !== 0) {
-      await c.env.DB.prepare(
-        'UPDATE clients SET purchase_balance = purchase_balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-      ).bind(amountDiff, existing.supplier_id).run()
-    }
-
-    // Get updated balance
-    const supplier = await c.env.DB.prepare(
-      'SELECT purchase_balance FROM clients WHERE id = ?'
-    ).bind(existing.supplier_id).first<BalanceRow>()
+    // 잔액 = 파생. 금액을 고쳐도 지급 행이 정본이라 차액 보정이 필요 없다(어긋날 여지 자체가 없다).
+    const newBalance = await deriveSupplierPayable(c.env.DB, existing.supplier_id, getEntityId(c))
 
     return c.json({
       success: true,
-      data: { new_purchase_balance: supplier?.purchase_balance || 0 },
+      data: { new_purchase_balance: newBalance },
       message: '지급 내역이 수정되었습니다'
     })
   } catch (error) {
@@ -620,24 +606,17 @@ apRouter.delete('/purchase-payment/:id', requireRole('ADMIN'), async (c) => {
     // Delete payment
     await c.env.DB.prepare('DELETE FROM purchase_payments WHERE id = ?').bind(id).run()
 
-    // Restore purchase_balance (add back the deleted payment amount - 채무 복원)
-    await c.env.DB.prepare(
-      'UPDATE clients SET purchase_balance = purchase_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(existing.amount, existing.supplier_id).run()
-
     // bank 출금 연결 해제 (0466 대칭) — 지급 삭제 시 연결된 은행거래를 미매칭으로 복원
     await c.env.DB.prepare(
       `UPDATE bank_transactions SET match_status = 'UNMATCHED', matched_purchase_payment_id = NULL, matched_link_mode = NULL WHERE matched_purchase_payment_id = ?`
     ).bind(id).run()
 
-    // Get updated balance
-    const supplier = await c.env.DB.prepare(
-      'SELECT purchase_balance FROM clients WHERE id = ?'
-    ).bind(existing.supplier_id).first<BalanceRow>()
+    // 잔액 = 파생 (지급 행을 지운 것만으로 채무가 복원된다)
+    const newBalance = await deriveSupplierPayable(c.env.DB, existing.supplier_id, getEntityId(c))
 
     return c.json({
       success: true,
-      data: { new_purchase_balance: supplier?.purchase_balance || 0 },
+      data: { new_purchase_balance: newBalance },
       message: '지급 내역이 삭제되었습니다'
     })
   } catch (error) {
@@ -703,20 +682,14 @@ apRouter.post('/purchase-adjustment', requireEditOrRole('/ledger', 'MANAGER'), a
       adjEntityId
     ).run()
 
-    // 지급액 감소 (감액 → purchase_balance 차감)
-    await c.env.DB.prepare(
-      'UPDATE clients SET purchase_balance = purchase_balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(amount, body.supplier_id).run()
-
-    const updatedSupplier = await c.env.DB.prepare(
-      'SELECT purchase_balance FROM clients WHERE id = ?'
-    ).bind(body.supplier_id).first<BalanceRow>()
+    // 잔액 = 파생 (purchase_adjustments 행이 산식에 이미 들어간다)
+    const newBalance = await deriveSupplierPayable(c.env.DB, body.supplier_id, getEntityId(c))
 
     return c.json({
       success: true,
       data: {
         id: result.meta.last_row_id,
-        new_purchase_balance: updatedSupplier?.purchase_balance || 0
+        new_purchase_balance: newBalance
       }
     })
   } catch (error) {
@@ -780,18 +753,12 @@ apRouter.delete('/purchase-adjustment/:id', requireRole('ADMIN'), async (c) => {
 
     await c.env.DB.prepare('DELETE FROM purchase_adjustments WHERE id = ?').bind(id).run()
 
-    // 감액 복원 (purchase_balance 증가)
-    await c.env.DB.prepare(
-      'UPDATE clients SET purchase_balance = purchase_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(existing.amount, existing.supplier_id).run()
-
-    const updatedSupplier = await c.env.DB.prepare(
-      'SELECT purchase_balance FROM clients WHERE id = ?'
-    ).bind(existing.supplier_id).first<BalanceRow>()
+    // 잔액 = 파생
+    const newBalance = await deriveSupplierPayable(c.env.DB, existing.supplier_id, getEntityId(c))
 
     return c.json({
       success: true,
-      data: { new_purchase_balance: updatedSupplier?.purchase_balance || 0 },
+      data: { new_purchase_balance: newBalance },
       message: '매입 감액 내역이 삭제되었습니다'
     })
   } catch (error) {
@@ -972,6 +939,9 @@ apRouter.post('/purchase-integrity-fix', requireEditOrRole('/ledger', 'MANAGER')
       const cached = Number(row.purchase_balance) || 0
 
       if (Math.abs(calculated - cached) > 0.01) {
+        // 캐시에 남은 마지막 writer — 파생값을 그대로 써준다(누적이 아니라 덮어쓰기라 어긋날 수 없다).
+        //   화면·API 는 전부 파생을 쓰므로(utils/supplierPayable) 이 엔드포인트는 DB 를 직접 보는
+        //   사람을 위한 정합성 복구용으로만 남긴다.
         await c.env.DB.prepare(
           'UPDATE clients SET purchase_balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
         ).bind(+(calculated.toFixed(2)), row.id).run()

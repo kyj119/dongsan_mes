@@ -366,11 +366,6 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
         INSERT INTO po_status_history (po_id, from_status, to_status, changed_by, change_reason)
         VALUES (?, 'DRAFT', 'CONFIRMED', ?, '발주 생성 시 즉시 확정')
       `).bind(poId, user?.id || 1).run()
-
-      await c.env.DB.prepare(`
-        UPDATE clients SET purchase_balance = COALESCE(purchase_balance, 0) + ?,
-        updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `).bind(finalAmount, data.supplier_id).run()
     }
 
     return c.json({
@@ -438,31 +433,10 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     const finalAmount = totalAmount + vatAmount - (data.discount_amount !== undefined ? data.discount_amount : po.discount_amount)
 
-    // purchase_balance 재조정 (CONFIRMED 상태일 때만)
-    if (po.status === 'CONFIRMED') {
-      if (supplierChanged) {
-        // 이전 공급업체 잔액 차감
-        await c.env.DB.prepare(`
-          UPDATE clients SET purchase_balance = purchase_balance - ?,
-          updated_at = CURRENT_TIMESTAMP WHERE id = ?
-        `).bind(prevFinalAmount, prevSupplierId).run()
-
-        // 새 공급업체 잔액 증가
-        await c.env.DB.prepare(`
-          UPDATE clients SET purchase_balance = purchase_balance + ?,
-          updated_at = CURRENT_TIMESTAMP WHERE id = ?
-        `).bind(finalAmount, newSupplierId).run()
-      } else {
-        // 같은 공급업체: 차액만 조정
-        const diff = finalAmount - prevFinalAmount
-        if (diff !== 0) {
-          await c.env.DB.prepare(`
-            UPDATE clients SET purchase_balance = purchase_balance + ?,
-            updated_at = CURRENT_TIMESTAMP WHERE id = ?
-          `).bind(diff, newSupplierId).run()
-        }
-      }
-    }
+    // AP 잔액은 파생이다(`ledger/accounts-payable.ts` = 발주 − 지급 − 조정, 법인 필터).
+    //   `clients.purchase_balance` 캐시 갱신은 2026-08-31 제거 — 화면이 안 읽는데 14곳에서
+    //   갱신만 하고 있었고, 수정·삭제 경로가 하나만 어긋나도 조용히 틀린 값이 남는 축이었다.
+    //   (AR 의 `clients.balance` 폐기와 같은 처리 — 컬럼은 D1 제약상 남겨둔다)
 
     // 발주 헤더 업데이트
     await c.env.DB.prepare(`
@@ -611,27 +585,10 @@ poCoreRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => 
       }, 400)
     }
 
-    // 상태 전환별 purchase_balance 조정
-    if (newStatus === 'CONFIRMED' && po.status === 'DRAFT') {
-      // DRAFT → CONFIRMED: balance 증가
-      await c.env.DB.prepare(`
-        UPDATE clients SET purchase_balance = purchase_balance + ?,
-        updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `).bind(po.final_amount, po.supplier_id).run()
-    } else if (newStatus === 'DRAFT' && po.status === 'CONFIRMED') {
-      // CONFIRMED → DRAFT: balance 롤백
-      await c.env.DB.prepare(`
-        UPDATE clients SET purchase_balance = purchase_balance - ?,
-        updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `).bind(po.final_amount, po.supplier_id).run()
-    } else if (newStatus === 'CANCELLED' && (po.status === 'CONFIRMED' || po.status === 'PARTIAL_RECEIVED')) {
-      // CONFIRMED/PARTIAL_RECEIVED → CANCELLED: balance 감소
-      await c.env.DB.prepare(`
-        UPDATE clients SET purchase_balance = purchase_balance - ?,
-        updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `).bind(po.final_amount, po.supplier_id).run()
-    }
-    // CANCELLED → DRAFT: balance 변경 없음 (다시 CONFIRMED 시 증가)
+    // AP 잔액은 파생이다(`ledger/accounts-payable.ts` = 발주 − 지급 − 조정, 법인 필터).
+    //   `clients.purchase_balance` 캐시 갱신은 2026-08-31 제거 — 화면이 안 읽는데 14곳에서
+    //   갱신만 하고 있었고, 수정·삭제 경로가 하나만 어긋나도 조용히 틀린 값이 남는 축이었다.
+    //   (AR 의 `clients.balance` 폐기와 같은 처리 — 컬럼은 D1 제약상 남겨둔다)
 
     // confirmed_at, confirmed_by 설정 (DRAFT → CONFIRMED 전환 시)
     if (newStatus === 'CONFIRMED' && po.status === 'DRAFT') {
@@ -699,12 +656,7 @@ poCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     }
 
     if (po.status === 'CONFIRMED') {
-      // 소프트 삭제: CANCELLED 전환 + purchase_balance 차감
-      await c.env.DB.prepare(`
-        UPDATE clients SET purchase_balance = purchase_balance - ?,
-        updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `).bind(po.final_amount, po.supplier_id).run()
-
+      // 소프트 삭제: CANCELLED 전환 (AP 잔액은 파생이라 캐시 차감 불요 — 위 주석)
       await c.env.DB.prepare(`
         UPDATE purchase_orders SET
           status = 'CANCELLED',
