@@ -3,13 +3,15 @@
   "heartbeat_interval_seconds": 60,
   "watchers": [
     {
-      "_comment": "UV 3200폭 — TOPAZRIP-X 10.6.4(RipMain 실행 확인). 키트 진단 2026-08-11.",
+      "_comment": "UV-3200 — tns → tns_flora 2축 전환 (2026-08-25 수거본 print_rec.dat 15,065건 실측). Print.log=신원(전송)·Flora print_rec.dat=결과(실인쇄·중단). Print.log 가 본 취소는 40/12,095=0.33% 인데 print_rec 의 중단은 2,836/15,065=18.8%(최근 15.7%) — 전송 후 프린터에서 누른 취소가 그동안 전부 OK 로 쌓였다는 뜻. 완주 중앙값 749초 vs 취소 60초. ★레코드는 2248B 로 평판(2376B)보다 128B 짧다 — 꼬리 오프셋이 그만큼 앞으로 밀린다. record_size 를 적지 않으면 매직 간격으로 자동판별한다(판별 실패 시 Flora 축만 건너뛰고 립 폴백은 유지). 활성 설치본은 D:\\Flora XTRA3300S_KM1024I_N (폴더명에 공백 있음, 이 PC 엔 구 설치본 없음). 위치파일(UV-3200-01.pos) 보존 = 재적재 없음.",
       "equipment_id": "UV-3200-01",
       "name": "UV 3200폭",
       "enabled": true,
-      "parser_type": "tns",
+      "parser_type": "tns_flora",
       "config": {
-        "log_path": "C:\\TNSRip-X\\Print.log"
+        "log_path": "C:\\TNSRip-X\\Print.log",
+        "print_rec_path": "D:\\Flora XTRA3300S_KM1024I_N\\REC\\print_rec.dat",
+        "rip_fallback_hours": 6
       }
     }
   ]
