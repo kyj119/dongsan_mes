@@ -55,6 +55,19 @@
 - **주문 PUT 가드가 `orderData.items` 누락 시 TypeError** → `Array.isArray` 방어. 자식 라인 판별자(`parent_client_id`)는 `update.ts:380,403` 규약과 일치함을 확인.
 - **⑤ 판정과 목록 기준 불일치** — 전환 판정은 `status != 'CANCELLED'` 인데 목록의 `actual_order_count` 는 취소분까지 셌다. 주문을 지웠는데 화면엔 "주문생성 N건" 이 남는다 → 목록도 같은 기준으로 맞췄다.
 
+### 세션 마감 구조 검토 (같은 날 3차)
+
+프로세스가 아니라 **구조**를 다시 봤다. 두 가지를 확인하고 하나를 고쳤다.
+
+- ✅ **가드 우회 경로 없음** — 출고 차감된 주문의 라인 구성을 바꿀 수 있는 입구는 `PUT /orders/:id` 하나뿐이다. `orders/operations.ts` 의 INSERT 는 `/:id/copy`(**새 주문** 생성), `quotations.ts` 는 견적 전환(역시 새 주문), `workbench.ts`·`shipment_ready` 는 메타/플래그만 바꾼다. `DELETE FROM order_items` 는 update.ts·core.ts 뿐이고 둘 다 덮었다.
+- 🔧 **환원 창고가 어긋날 수 있었다(고침)** — `restoreStockLinesOnUnship` 이 `getItemDefaultZone` 을 **다시 불렀다**. 차감과 환원 사이에 품목 기본창고(`items.storage_zone_id`)가 바뀌면 **엉뚱한 창고로 환원**된다 — 총량은 맞고 창고별만 어긋나 **발견이 늦는** 종류다. `autoDeductRestore` 는 처음부터 원장에서 창고를 되찾게 만들었는데 `stockShip` 만 규칙이 달랐다. `findShipOutRow` 가 `storage_zone_id` 도 반환하도록 해 **원장이 기록한 그 창고**로 되돌린다. 회귀 없음(3개 게이트 재실행 통과).
+
+### 남은 구조적 부채 — 이번에 **의도적으로** 손대지 않은 것
+
+1. **`inventory.quantity` 와 `inventory_transactions` 가 이중 정본이다.** prod 격차 잔고 132,121 vs 원장 순합 72,873. 이번에 한 건 「새로 쓰는 20곳의 짝을 맞춘 것」이고 구조를 바꾼 게 아니다. UNIQUE 인덱스가 reference 당 1행을 강제하는 이상 이건 **원장이 아니라 상태 테이블**이다 → 대사 감사(`audit:stock-ledger`)를 만들지, 모델을 바꿀지 미결.
+2. **원자성** — `stockShip`·`autoDeductRestore` 는 개별 `.run()` 이라 UPDATE 후 원장 조작이 실패하면 어긋난다(UNIQUE 500 이 정확히 그 모습이었다). batch 로 묶으려면 `balance_after` 재조회 의존을 풀어야 한다.
+3. **환원의 흔적이 재고 축에 안 남는다** — 행을 지우므로 「출고했다 취소했다」가 원장에 없다. 주문은 `order_status_history` 가 받쳐 주지만 **자동차감 환원은 아무 데도 안 남는다**.
+
 ### 남은 것
 
 - ✅ **③ 자동차감은 게이트가 됐다 — `npm run test:autodeduct` 20항목**(`scripts/e2e-autodeduct-restore.cjs`). 전용 품목(자재 ROLL·폭1370 + 제작 제품)을 **이름으로 재사용**해 반복 실행해도 품목이 안 쌓이고, 매핑·재고시드·주문·카드·print_file_map 까지 스스로 만든다. 에이전트 키는 `AGENT_API_KEY` 또는 `.dev.vars`. 검증 = 차감(재고↓·원장 AUTO_DEDUCT OUT·부호 정규화) → 카드 되돌리기(원복·행 철회) → 재출력(재차감·UNIQUE 위반 없음) → **주문 삭제로도 환원**.

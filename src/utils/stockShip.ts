@@ -42,13 +42,13 @@ async function selectShippableLines(db: D1Database, orderId: number) {
  */
 async function findShipOutRow(
   db: D1Database, orderId: number, itemId: number, entityId: number
-): Promise<{ id: number; quantity: number } | null> {
+): Promise<{ id: number; quantity: number; storage_zone_id: number | null } | null> {
   const row = await db.prepare(`
-    SELECT id, quantity FROM inventory_transactions
+    SELECT id, quantity, storage_zone_id FROM inventory_transactions
     WHERE reference_type = 'ORDER' AND reference_id = ? AND item_id = ? AND entity_id = ?
       AND transaction_type = 'OUT'
     LIMIT 1
-  `).bind(orderId, itemId, entityId).first<{ id: number; quantity: number }>()
+  `).bind(orderId, itemId, entityId).first<{ id: number; quantity: number; storage_zone_id: number | null }>()
   return row || null
 }
 
@@ -136,7 +136,10 @@ export async function restoreStockLinesOnUnship(
 
     // 되돌리는 양 = **실제로 뺀 양**(주문 라인 수량이 아니다). 라인이 뒤에 수정돼도 정확히 원복된다.
     const qty = Math.abs(Number(out.quantity) || 0)
-    const zoneId = await getItemDefaultZone(db, ln.item_id, lineEntity)
+    // ★창고도 **원장이 기록한 그 창고**로 되돌린다. getItemDefaultZone 을 다시 부르면
+    //   그 사이 품목 기본창고(items.storage_zone_id)가 바뀐 경우 **엉뚱한 창고로 환원**된다
+    //   (총량은 맞고 창고별 재고만 어긋나 발견이 늦다). autoDeductRestore 와 같은 규칙이다.
+    const zoneId = out.storage_zone_id ?? null
     await db.prepare(
       `INSERT OR IGNORE INTO inventory (item_id, entity_id, storage_zone_id, quantity) VALUES (?, ?, ?, 0)`
     ).bind(ln.item_id, lineEntity, zoneId).run()
