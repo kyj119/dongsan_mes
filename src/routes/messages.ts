@@ -717,9 +717,12 @@ messagesRouter.post('/send-bulk', async (c) => {
       ).all<{ id: number; client_name: string; mobile: string }>()
       rawReceivers = (clientRows || []).map((r) => ({ name: r.client_name, phone: r.mobile, client_id: r.id }))
     } else if (targetType === 'employees') {
+      // employees 는 법인 소유(0148) — 필터가 없으면 타법인 직원에게 실제로 발송되고 건당 과금된다.
+      // clients 는 entity_id 컬럼 자체가 없어(전사 공유 마스터) 위 분기엔 필터를 걸지 않는다.
+      const efEmp = entityFilter(c)
       const { results: empRows } = await db.prepare(
-        `SELECT name, phone FROM employees WHERE phone IS NOT NULL AND phone != '' AND is_deleted = 0 ORDER BY name`
-      ).all<{ name: string; phone: string }>()
+        `SELECT name, phone FROM employees WHERE phone IS NOT NULL AND phone != '' AND is_deleted = 0${efEmp.clause} ORDER BY name`
+      ).bind(...efEmp.params).all<{ name: string; phone: string }>()
       rawReceivers = (empRows || []).map((r) => ({ name: r.name, phone: r.phone }))
     }
 

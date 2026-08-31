@@ -9,6 +9,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { entityFilter } from '../utils/entityFilter'
 import {
   resolveSegment, parseSegmentFilter, buildMatchedReason,
   SEGMENT_KEYS, SEGMENT_LABELS, SEGMENT_HINTS,
@@ -151,12 +152,15 @@ contactGroupsRouter.get('/:id/members', async (c) => {
         })
       }
     }
+    // 그룹 자체는 전사 공유지만 employees 는 법인 소유(0148)다 — 필터가 없으면 타법인 직원의
+    // 이름·전화·이메일(PII)이 그대로 응답에 실린다. 제외분은 위 clients 와 같이 orphan_count 로 잡힌다.
+    const efEmp = entityFilter(c)
     for (let i = 0; i < employeeIds.length; i += 80) {
       const chunk = employeeIds.slice(i, i + 80)
       const ph = chunk.map(() => '?').join(',')
       const { results } = await c.env.DB.prepare(
-        `SELECT id, name, phone, email FROM employees WHERE id IN (${ph}) AND is_deleted = 0`
-      ).bind(...chunk).all<{ id: number; name: string; phone: string; email: string }>()
+        `SELECT id, name, phone, email FROM employees WHERE id IN (${ph}) AND is_deleted = 0${efEmp.clause}`
+      ).bind(...chunk, ...efEmp.params).all<{ id: number; name: string; phone: string; email: string }>()
       for (const r of results || []) {
         const meta = metaOf.get(`EMPLOYEE:${r.id}`)
         members.push({
@@ -267,6 +271,30 @@ contactGroupsRouter.post('/:id/members', async (c) => {
 
     const group = await c.env.DB.prepare('SELECT id FROM contact_groups WHERE id = ?').bind(groupId).first()
     if (!group) return c.json({ success: false, error: '그룹을 찾을 수 없습니다.' }, 404)
+
+    // 직원은 법인 소유(0148)라 담는 시점에 막는다 — 조회 필터만 두면 행은 들어가고 화면에서만 사라져
+    // member_count 와 실제 대상 수가 영구히 어긋난다(orphan_count 로 잡히지만 원인은 안 보인다).
+    const empIds = rawMembers
+      .filter(m => normalizeMemberType(m.member_type) === 'EMPLOYEE')
+      .map(m => parseInt(String(m.member_id ?? m.id), 10))
+      .filter(n => !!n)
+    const foreignEmpIds = new Set<number>()
+    const efAdd = entityFilter(c)
+    if (efAdd.clause && empIds.length > 0) {
+      const uniq = [...new Set(empIds)]
+      for (let i = 0; i < uniq.length; i += 80) {
+        const chunk = uniq.slice(i, i + 80)
+        const ph = chunk.map(() => '?').join(',')
+        const { results } = await c.env.DB.prepare(
+          `SELECT id FROM employees WHERE id IN (${ph})${efAdd.clause}`
+        ).bind(...chunk, ...efAdd.params).all<{ id: number }>()
+        const owned = new Set((results || []).map(r => r.id))
+        for (const id of chunk) if (!owned.has(id)) foreignEmpIds.add(id)
+      }
+    }
+    if (foreignEmpIds.size > 0) {
+      return c.json({ success: false, error: `다른 법인 소속 직원은 담을 수 없습니다(${foreignEmpIds.size}명).` }, 400)
+    }
 
     const stmts = []
     for (const m of rawMembers) {

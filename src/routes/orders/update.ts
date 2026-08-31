@@ -10,7 +10,7 @@ import type { Order } from '../../types/models'
 import { authMiddleware } from '../../middleware/auth'
 import { requireAnyPagePermission, requireEditOrRole } from '../../middleware/permissions'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
-import { getEntityId, entityFilter } from '../../utils/entityFilter'
+import { getEntityId, entityFilter, findForeignAnalysisIds, foreignAnalysisError } from '../../utils/entityFilter'
 import { recommendAssignedEntity, recalcOrderBillingGroups, generateCardsForOrder } from './helpers'
 import { computeLineAmount } from '../../utils/orderLineAmount'
 
@@ -52,6 +52,16 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
     const confirmedStatuses = ['CONFIRMED', 'PRINTING', 'PRINT_DONE', 'SHIPPED']
     if (confirmedStatuses.includes(existingOrder.status) && !orderData.delivery_date) {
       return c.json({ success: false, error: '확정된 주문의 납품일은 필수입니다.' }, 400)
+    }
+
+    // #612 크로스 법인 IDOR — 생성 경로와 같은 가드. PUT 은 라인을 전량 재작성하므로
+    // 수정만으로도 타법인 분석파일을 새로 끼워 넣을 수 있다(create.ts 와 동일 헬퍼).
+    const foreignAnalysisPut = await findForeignAnalysisIds(c, [
+      ...(Array.isArray(orderData.items) ? orderData.items : [])
+        .flatMap((it: any) => [it?.ai_analysis_id, it?.dxf_analysis_id]),
+    ])
+    if (foreignAnalysisPut.length > 0) {
+      return c.json({ success: false, error: foreignAnalysisError(foreignAnalysisPut) }, 400)
     }
 
 

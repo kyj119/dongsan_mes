@@ -14,7 +14,7 @@ import { computeLineAmount, type LineAmount } from '../../utils/orderLineAmount'
 import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
 import { checkMaterialCoverage, describeGap, type CoverageGap } from '../../utils/materialShortageCheck'
-import { getEntityId, entityFilter } from '../../utils/entityFilter'
+import { getEntityId, entityFilter, findForeignAnalysisIds, foreignAnalysisError } from '../../utils/entityFilter'
 import { kstYmd, kstYmdCompact } from '../../utils/kstDate'
 import { ORDER_STATUS_LABELS } from '../../utils/statusLabels'
 import { thumbRef, resolveGroupByAiIndex, type AnalysisGroup } from '../../utils/thumbnailStore'
@@ -39,6 +39,16 @@ ordersCreateRouter.post('/', async (c) => {
     }
     if (!orderData.delivery_date) {
       return c.json({ success: false, error: '납품일은 필수입니다.' }, 400)
+    }
+
+    // #612 크로스 법인 IDOR — 분석파일 ID 는 R2 원본 다운로드 키다(DXF 는 에이전트가 무인 복사).
+    // 라인이 실려 들어오는 지금 한 번에 검증한다 — INSERT 자리마다 흩어 두면 새 경로가 또 빠진다.
+    const foreignAnalysis = await findForeignAnalysisIds(c, [
+      orderData.ai_analysis_id,
+      ...(orderData.items as any[]).flatMap(it => [it?.ai_analysis_id, it?.dxf_analysis_id]),
+    ])
+    if (foreignAnalysis.length > 0) {
+      return c.json({ success: false, error: foreignAnalysisError(foreignAnalysis) }, 400)
     }
 
     // AI 파일 관련 필드
@@ -727,6 +737,15 @@ ordersCreateRouter.post('/:id/items', async (c) => {
     const items: any[] = Array.isArray(body.items) ? body.items : []
     if (items.length === 0) {
       return c.json({ success: false, error: '추가할 품목이 없습니다.' }, 400)
+    }
+
+    // #612 — 라인 추가 경로도 같은 가드. 여기만 빠지면 생성에서 막힌 ID 를 추가로 넣을 수 있다.
+    const foreignAnalysisAppend = await findForeignAnalysisIds(c, [
+      body.ai_analysis_id,
+      ...items.flatMap(it => [it?.ai_analysis_id, it?.dxf_analysis_id]),
+    ])
+    if (foreignAnalysisAppend.length > 0) {
+      return c.json({ success: false, error: foreignAnalysisError(foreignAnalysisAppend) }, 400)
     }
 
     // 주문 조회 + 소유 법인 검증 (ADMIN entity=0이면 무필터)

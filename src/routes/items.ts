@@ -1425,8 +1425,8 @@ itemsRouter.delete('/:id/hard', requireRole('ADMIN'), async (c) => {
     // 참조 검사 — items(id)를 FK로 참조하는 모든 테이블에서 사용 중이면 영구삭제 차단.
     // RESTRICT FK면 DELETE가 던져 500(불명확)이 되고, CASCADE/SET NULL FK면 단가·이력이
     // 조용히 삭제/NULL 처리되어 데이터가 유실됨. 사전 차단으로 명확한 409 반환.
-    // 바인드 21개(< D1 ~100 한도) 단일 쿼리. inventory는 아래에서 정리(cleanup)하므로 차단 대상 제외.
-    const refBinds = 21
+    // 바인드 22개(< D1 ~100 한도) 단일 쿼리. inventory는 아래에서 정리(cleanup)하므로 차단 대상 제외.
+    const refBinds = 22
     const refs: any = await c.env.DB.prepare(
       'SELECT ' +
       '(SELECT COUNT(*) FROM order_items WHERE item_id = ?) AS oi, ' +
@@ -1448,7 +1448,9 @@ itemsRouter.delete('/:id/hard', requireRole('ADMIN'), async (c) => {
       '(SELECT COUNT(*) FROM inventory_release_items WHERE item_id = ?) AS irl, ' +
       '(SELECT COUNT(*) FROM inventory_adjustments WHERE item_id = ?) AS iadj, ' +
       '(SELECT COUNT(*) FROM waste_records WHERE material_item_id = ?) AS wr, ' +
-      '(SELECT COUNT(*) FROM pp_material_deductions WHERE material_item_id = ?) AS ppd'
+      '(SELECT COUNT(*) FROM pp_material_deductions WHERE material_item_id = ?) AS ppd, ' +
+      // 0532 designer_intakes.item_id — items(id) 참조 FK. 빠지면 가드가 통과시키고 D1이 FK로 던져 500.
+      '(SELECT COUNT(*) FROM designer_intakes WHERE item_id = ?) AS di'
     ).bind(...Array(refBinds).fill(id)).first()
 
     // 라벨: 기존 3종(주문·매입·BOM) 유지 + FK 참조 테이블 추가. 0이 아닌 항목만 메시지에 나열.
@@ -1473,6 +1475,7 @@ itemsRouter.delete('/:id/hard', requireRole('ADMIN'), async (c) => {
       ['재고조정', refs?.iadj || 0],
       ['자재폐기', refs?.wr || 0],
       ['코팅차감', refs?.ppd || 0],
+      ['가공대기', refs?.di || 0],
     ]
     const blocking = refCategories.filter(([, n]) => n > 0)
     if (blocking.length > 0) {

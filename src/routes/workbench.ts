@@ -1006,9 +1006,9 @@ workbenchRouter.post('/intakes/:id/absorb', async (c) => {
         // 소급 — 이 이름으로 이미 들어온 미매칭 이벤트에 주문을 붙인다(확장자 유무 양쪽).
         const noExt = fileName.replace(/\.[^.]+$/, '')
         await c.env.DB.prepare(`
-          UPDATE print_events SET order_number = ?
+          UPDATE print_events SET order_number = ?, entity_id = ?
            WHERE order_number IS NULL AND (file_name = ? OR file_name = ?)
-        `).bind(linkRow.orderNumber, fileName, noExt).run()
+        `).bind(linkRow.orderNumber, linkRow.entityId, fileName, noExt).run()
       }
     } catch (_mapErr) {
       // 매칭 학습 실패가 흡수를 되돌리면 안 된다 — 위 별칭 학습과 같은 원칙.

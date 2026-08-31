@@ -1324,10 +1324,12 @@ printEventsRouter.post('/link', authMiddleware, async (c) => {
     // (합판 멤버는 nest_members JSON 이라 갱신하지 않는다 — /unmatched 가 file_map 과 실시간 대조하므로
     //  연결 즉시 목록에서 빠지고, JSON 은 당시 기록으로 남긴다)
     const noExt = String(file_name).replace(/\.[^.]+$/, '')
+    // entity_id 도 같이 교정한다 — 입수 시점엔 카드가 안 붙어 deriveCardEntityId 가 법인 1로 디폴트했다.
+    // 카드가 확정되는 지금이 진짜 법인을 아는 유일한 시점이라, 여기서 안 고치면 영구히 1로 남는다.
     const back = await c.env.DB.prepare(`
-      UPDATE print_events SET card_id = ?, card_number = ?, order_number = ?
+      UPDATE print_events SET card_id = ?, card_number = ?, order_number = ?, entity_id = ?
       WHERE card_id IS NULL AND (file_name = ? OR file_name = ?)
-    `).bind(card.id, card.card_number, card.order_number, file_name, noExt).run()
+    `).bind(card.id, card.card_number, card.order_number, mapEntityId, file_name, noExt).run()
 
     return c.json({
       success: true,

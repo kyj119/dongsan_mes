@@ -106,3 +106,50 @@ export function orderVisibilityFilter(
     params: [entityId, entityId]
   }
 }
+
+/**
+ * 주문 라인이 참조하는 ai_analysis_requests 가 내 법인 것인지 검증. #612 크로스 법인 IDOR 가드.
+ *
+ * `ai_analysis_id`(EPS)·`dxf_analysis_id`(칼선) 는 `GET /api/ai-analysis/:id/download` 로 R2 원본을
+ * 내려받는 키다. DXF 는 에이전트가 사람 확인 없이 **자동으로 받아 주문 폴더에 복사**하므로,
+ * 순차 증가 ID 를 추측해 자기 주문 라인에 끼워 넣으면 타법인 거래처의 디자인 원본이 그대로 넘어온다.
+ *
+ * - entityId=0(전체 모드)·is_coordinator(법인협업 Phase B)는 애초에 전 법인 열람 권한이라 통과.
+ *   → orderVisibilityFilter 와 같은 면제 축을 쓴다(여기만 좁히면 협업 주문 등록이 400 으로 막힌다).
+ * - **미존재 ID 는 통과**시킨다 — 종전 동작(그냥 dangling 저장)을 유지해 폭발 반경을 넓히지 않는다.
+ *   공격에는 실재하는 파일이 필요하므로 차단 목적에는 영향이 없다.
+ *
+ * @returns 내 법인 소유가 아닌 analysis ID 목록. 빈 배열이면 통과.
+ */
+export async function findForeignAnalysisIds(
+  c: Context<HonoEnv>,
+  rawIds: Array<unknown>
+): Promise<number[]> {
+  const entityId = getEntityId(c)
+  if (entityId === 0) return []
+  const user = c.get('user') as { is_coordinator?: number } | undefined
+  if (user?.is_coordinator) return []
+
+  const ids = [...new Set(
+    rawIds.map(v => parseInt(String(v ?? ''), 10)).filter(n => Number.isFinite(n) && n > 0)
+  )]
+  if (ids.length === 0) return []
+
+  const foreign: number[] = []
+  // D1 바인드 파라미터 한도(~100) → 80개 청크 분할 [[d1-bind-param-limit]]
+  for (let i = 0; i < ids.length; i += 80) {
+    const chunk = ids.slice(i, i + 80)
+    const ph = chunk.map(() => '?').join(',')
+    // entity_id 는 0261 이 DEFAULT 1 로 추가 — NULL 은 이관분 방어용으로 1 취급.
+    const { results } = await c.env.DB.prepare(
+      `SELECT id FROM ai_analysis_requests WHERE id IN (${ph}) AND COALESCE(entity_id, 1) <> ?`
+    ).bind(...chunk, entityId).all<{ id: number }>()
+    for (const r of results || []) foreign.push(r.id)
+  }
+  return foreign
+}
+
+/** findForeignAnalysisIds 결과용 공용 400 문구. */
+export function foreignAnalysisError(ids: number[]): string {
+  return `다른 법인의 분석 파일은 주문에 연결할 수 없습니다 (analysis_id: ${ids.slice(0, 5).join(', ')}${ids.length > 5 ? ' 외' : ''}).`
+}
