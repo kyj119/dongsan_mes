@@ -1281,14 +1281,17 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     // ★임베드가 빠지면 임시 PDF 를 지우는 순간 판이 깨진다 — 정리 함수와 짝이다
     ok('3u 배치본은 임베드하고 임시 PDF 를 지운다', /function mesCut_cleanPlaced\(/.test(nestSrc2)
       && /mesCut_cleanPlaced\(MESCUT_NEST_ITEMS\.length\)/.test(nestSrc2))
-    // ★배율은 **임베드 후** 크기로 계산한다 — 배치 직후 `visibleBounds` 는 그림이 있는 데까지로
-    //   잘린 값이고, 임베드하면 PDF 아트보드 상자가 되살아난다. 두 값이 다른 조각(클립 밖으로
-    //   사진이 삐져나온 것)에서 결과가 **+23%** 커졌고, 검산에 걸려 배경을 깨는 폴백으로 떨어졌다
-    //   (약국.ai 1.13 실측: 아트보드 12.83 vs 배치 보고 10.43 · 2026-08-31).
-    ok('3u 확대 배율은 임베드 후 크기로 계산', (() => {
+    // ★확대는 `embed()` **앞**에서, 배율은 **우리가 만든 PDF 아트보드 기준**으로.
+    //   ⓐ 순서를 뒤집으면(임베드 후 확대) native 아트를 직접 키우는 것과 같아져 불투명도 마스크가
+    //      안 따라오고 **배경이 사라진다** — 실측에서 올리브 그린 배경이 회색으로 죽었다.
+    //   ⓑ 배치 직후 `visibleBounds` 로 나누면 안 된다. 그 값은 아트보드가 아니라 **그림 있는 데까지**로
+    //      잘려 있어, 클립 밖으로 사진이 삐져나온 조각에서 **+23%** 크게 나왔고 검산에 걸려
+    //      배경을 깨는 폴백으로 떨어졌다(약국.ai 1.13: 아트보드 12.83 vs 배치 보고 10.43 · 2026-08-31).
+    //   두 함정이 서로를 가린다 — ⓑ 만 고치면 ⓐ 를 밟는다. 그래서 한 항목으로 묶어 둔다.
+    ok('3u 확대는 임베드 앞 · 배율은 PDF 아트보드 기준', (() => {
+      const r = nestSrc2.indexOf('pl.resize(pct, pct')
       const e = nestSrc2.indexOf('pl.embed()')
-      const m = nestSrc2.indexOf('var need = (wantW / curW)')
-      return e > 0 && m > 0 && e < m
+      return r > 0 && e > 0 && r < e && !/wantW \/ curW/.test(nestSrc2)
     })())
     // ★폴백은 조용하면 안 된다 — 폴백 = 배경이 깨졌을 수 있다는 뜻이고, 인쇄 뒤에 알면 늦다
     ok('3u 폴백을 사용자에게 알린다', /placefail=/.test(nestSrc2)

@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.26.0';  // 0.26.0 = 배율 확대 크기 계산을 임베드 **후**로(배치 직후 값은 그림 있는 데까지로 잘려 있어 클립 밖 삐짐 조각이 +23% 크게 나왔다) · 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
+var MESCUT_VERSION = 'CUT-CEP-0.27.0';  // 0.27.0 = 배율 기준을 PDF 아트보드로(배치 직후 보고값은 잘려 있어 +23%) · 확대는 임베드 **전**(뒤로 옮기면 마스크가 안 따라와 배경이 죽는다) · 0.26.0 = 배율 확대 크기 계산을 임베드 **후**로(배치 직후 값은 그림 있는 데까지로 잘려 있어 클립 밖 삐짐 조각이 +23% 크게 나왔다) · 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -2469,20 +2469,20 @@ function mesCut_scaleAsPlaced(doc, artLayer, srcItem, srcDoc, pct, tagIdx) {
         doc.activeLayer = stage;
         var pl = doc.placedItems.add();
         pl.file = pdfFile;
-        // ★임베드를 **먼저** 한다 — 임베드 전후로 일러가 답하는 크기가 다르다.
-        //   배치 직후 `visibleBounds` 는 PDF 아트보드가 아니라 **그림이 있는 데까지**로 잘린 값이고,
-        //   임베드하면 아트보드 상자가 되살아난다. 앞 값으로 배율을 계산하면 그 차이만큼 **크게** 나온다
-        //   (실측: 클립 밖으로 사진이 삐져나온 조각 — 아트보드 12.83 vs 배치 보고 10.43 → 결과 +23%).
-        //   보통 아트는 두 값이 같아 종전과 결과가 같다.
+        var pb = pl.visibleBounds;
+        if (!((pb[2] - pb[0]) > 0)) throw new Error('배치 크기 0');
+        // ★배율의 기준은 **우리가 만든 PDF 아트보드(w0)** 다 — 배치 직후 `visibleBounds` 는 아트보드가
+        //   아니라 **그림이 있는 데까지**로 잘린 값이라, 그 값으로 나누면 차이만큼 크게 나온다
+        //   (약국.ai 1.13 실측: 아트보드 12.83 vs 배치 보고 10.43 → 결과 +23% → 검산 탈락 → 폴백).
+        //   `embed()` 가 아트보드 상자를 되살리므로 **그냥 pct 배**면 맞는다. 나눗셈이 필요 없다.
+        // ★resize 는 반드시 `embed()` **앞**이어야 한다 — 임베드하면 native 아트가 되어 그때 확대하는 건
+        //   아트를 직접 키우는 것과 같고, 불투명도 마스크가 안 따라와 **배경이 사라진다**.
+        //   (이 함수가 존재하는 이유 자체다. 순서를 뒤집었다가 배경이 회색으로 죽는 걸 실측했다.)
+        var wantW = w0 * (pct / 100);
+        pl.resize(pct, pct, true, true, true, true, pct);
         pl.embed();
         if (stage.pageItems.length !== 1) throw new Error('임시 레이어 개체 ' + stage.pageItems.length);
         var got = stage.pageItems[0];
-        var pb = got.visibleBounds;
-        var curW = pb[2] - pb[0];
-        if (!(curW > 0)) throw new Error('배치 크기 0');
-        var wantW = w0 * (pct / 100);
-        var need = (wantW / curW) * 100;
-        got.resize(need, need, true, true, true, true, need);
         // ★크기 검증 — 어긋나면 폴백한다(조용히 틀린 크기로 배치하지 않는다)
         var gb2 = got.visibleBounds;
         if (Math.abs((gb2[2] - gb2[0]) - wantW) > wantW * 0.02) throw new Error('크기 불일치');
