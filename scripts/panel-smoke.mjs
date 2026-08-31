@@ -693,6 +693,40 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   await pc.close()
 }
 
+// ── 7c A0 자동감지 캡처 경로 (2026-08-31) ────────────────────────────
+// 굽기용 임시 문서는 「무제」 창을 띄운다(실측 2.4초). `Document.imageCapture()` 는 문서를 안 만든다.
+// ⚠️ 그런데 캡처는 **그 영역에 그려지는 전부**를 찍는다 — 후보에서 뺀 잠긴 개체·50mm↓ 노이즈까지.
+//    픽스처 실측(2026-08-31): 잠근 다리를 두 디자인 사이에 두니 A=255 로 찍혀 한 덩어리가 됐다.
+//    그래서 **증명 가능할 때만** 쓴다. 아래 가드 중 하나라도 빠지면 분리 결과가 조용히 달라진다.
+// ⚠️ 해상도 하한 72dpi 도 실측이다(res=25.4 → "Specified value less than minimum allowed value").
+{
+  const a0h = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-a0-host.jsx'), 'utf8')
+  const a0m = fs.readFileSync(path.join(path.dirname(PANEL), 'js/main.js'), 'utf8')
+  const capFn = (a0h.match(/function mesA0_seedCapture[\s\S]*?\n}/) || [''])[0]
+  const rcFn = (a0h.match(/function mesA0_renderableCount[\s\S]*?\n}/) || [''])[0]
+  const beginFn = (a0h.match(/function mesA0_seedBegin[\s\S]*?\n}/) || [''])[0]
+
+  ok('7c 캡처는 자동감지에서만', /String\(source\) === 'auto'/.test(beginFn))
+  // 'sel' 은 선택이 그룹 **안쪽**일 수 있어 최상위 개수로 집합 동일성을 증명할 수 없다
+  ok('7c 캡처는 그려지는 개체 수 == 후보 수일 때만', /rc === kept\.length/.test(beginFn) && /rc >= 0/.test(beginFn))
+  ok('7c 조건 불충족이면 굽기로 되돌아간다', /if \(!rz\) rz = mesA0_seedRaster\(/.test(beginFn))
+  // 잠긴 개체도 **그려진다** — 세야 한다. 숨김·숨은 레이어는 안 그려진다 — 빼야 한다.
+  ok('7c 렌더 개수는 잠금을 세고 숨김을 뺀다',
+    /!ly\.visible/.test(rcFn) && /\.hidden/.test(rcFn) && !/\.locked/.test(rcFn))
+  ok('7c 캡처 해상도는 하한(72dpi) 안', /MESA0_CAPTURE_MAX_MMPP = 25\.4 \/ 72/.test(a0h)
+    && /mmppWant < MESA0_CAPTURE_MAX_MMPP/.test(capFn) && /resolution = 25\.4 \/ mmpp/.test(capFn))
+  ok('7c 캡처도 픽셀 예산을 지킨다', /wPx \* hPx > MESA0_SEED_MAX_PX/.test(capFn))
+  // 흰 배경이 깔리면 '흰 잉크'와 배경을 구분할 수 없다 — 굽기(transparency=true)와 같은 이유
+  ok('7c 캡처 배경은 투명(matte 금지)', /transparency = true/.test(capFn) && /matte = false/.test(capFn))
+  // ceil 은 부동소수 오차로 1px 더 준다(실측: 364mm/0.25 → 1457, 실제 PNG 1456)
+  ok('7c 캡처 픽셀 수는 round(ceil 금지)',
+    /Math\.round\(wMm \/ mmpp\)/.test(capFn) && !/Math\.ceil\(wMm \/ mmpp\)/.test(capFn))
+  ok('7c 어느 경로로 구웠는지 응답에 남는다', /"via":"/.test(a0h) && /via: 'capture'/.test(a0h) && /via: 'bake'/.test(a0h))
+  // ★1px 만 어긋나도 seedArgmaxLabel 의 행 인덱싱이 밀려 **엉뚱한 조각에 라벨이 붙는다**(조용히 틀린다)
+  ok('7c 패널이 마스크 픽셀 수를 실제 PNG 에 맞춘다 · seedSplit 앞에서',
+    /img\.W !== r\.w[\s\S]{0,500}seedSplit\(/.test(a0m))
+}
+
 await browser.close()
 let pass = 0
 for (const r of results) {

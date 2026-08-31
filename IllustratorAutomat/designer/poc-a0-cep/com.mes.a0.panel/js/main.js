@@ -10,7 +10,7 @@
   //   우상단 표시는 여태 host(mesA0_ping = MESA0_VERSION, 축2 = Z: 1곳)만 보여줬다. 껍데기는 PC 별
   //   복사 설치라서 재설치를 안 한 PC 도 최신 번호로 보였다(2026-07-30 점검에서 확인).
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다.
-  var SHELL_VERSION = '0.5.3';   // 0.5.3 = 「키워드」→「내용」 명칭 통일(MES 품목 마스터와 구분) · 0.5.2 = 재단 탭 [◎ 전체] · 0.5.1 = 도련 방식 칸을 판짜기로 이동(라벨 거짓 정정) · 0.5.0 = 셸 자동 갱신 결과 수신·재시작 안내 · 0.4.1 = 설명 다이어트(cfg 압축·툴팁 이동) + 세로나열 CSS
+  var SHELL_VERSION = '0.6.0';   // 0.6.0 = ★자동감지 캡처 경로 수용(임시문서 없음 표기) + 마스크 픽셀 수를 실제 PNG 에 맞춤(라벨 밀림 방지) · 0.5.3 =「키워드」→「내용」 명칭 통일(MES 품목 마스터와 구분) · 0.5.2 = 재단 탭 [◎ 전체] · 0.5.1 = 도련 방식 칸을 판짜기로 이동(라벨 거짓 정정) · 0.5.0 = 셸 자동 갱신 결과 수신·재시작 안내 · 0.4.1 = 설명 다이어트(cfg 압축·툴팁 이동) + 세로나열 CSS
   var STORE_WORKER = 'mes_a0_worker';
   var STORE_SETTINGS = 'mes_a0_settings';
   var CONFIG_PATH = 'Z:/DESIGNS/IA-등록/_config/config.json';
@@ -936,6 +936,15 @@
         }
         seedReadPng(r.path, function (err, img) {
           if (err) { setHostBusy(false); done('마스크 읽기 실패: ' + err); return; }
+          // ★호스트가 **계산한** 픽셀 수와 실제 PNG 가 다르면 라벨 인덱싱이 통째로 밀린다 —
+          //   seedArgmaxLabel 은 r.w 로 행을 잡는데 마스크는 img 로 만들어지므로, 1px 만 어긋나도
+          //   엉뚱한 조각에 라벨이 붙는다(조용히 틀린다 · 예외도 안 난다).
+          //   굽기는 export 배율 반올림, 캡처는 dpi 반올림이라 양쪽 다 1px 어긋날 수 있다.
+          //   영역(mm)은 ox/oy 와 w*mmpp 로 확정돼 있으므로 **실제 이미지 쪽에 맞춘다**.
+          if (img && (img.W !== r.w || img.H !== r.h)) {
+            if (r.w > 0 && img.W > 0) r.mmpp = (r.w * r.mmpp) / img.W;
+            r.w = img.W; r.h = img.H;
+          }
           var sp = null;
           try { sp = seedSplit(G, r, img, gap); }
           catch (eG) { setHostBusy(false); done('성분 분리 실패: ' + eG); return; }
@@ -944,6 +953,7 @@
             var r2 = null; try { r2 = JSON.parse(res2); } catch (e2) {}
             if (!r2 || !r2.ok) { done('큐 적재 실패: ' + (r2 ? (SEED_ERR[r2.err] || r2.err) : '호스트 연결 안 됨')); return; }
             r2.mmpp = r.mmpp;
+            r2.via = r.via;        // 'capture'=임시 문서 없이 구움 · 'bake'=임시 문서 복제(오늘까지의 유일한 경로)
             r2.comps = sp.comps;   // 잉크 덩어리 수 — 참고용(흰 요소·간격 때문에 과대계상될 수 있다)
             r2.cands = r.n;        // 후보 개체 수
             r2.grp = r.grp;        // 그 중 그룹 개수 ← "그룹을 푸세요" 진단의 **사실 근거**
@@ -1375,7 +1385,8 @@
         bumpRev();
         renderQueue();
         out((note || '') + '자동감지 시드: ' + r.added + '개 제안 (문서 전체 · 잉크 실루엣 · 50mm↓ 제외 · 분리간격 ' + gap + 'mm'
-          + (r.mmpp ? ' · 해상도 ' + r.mmpp + 'mm/px' : '') + ')\n틀리면 [✕] 삭제·선택 후 [＋ 개별]로 교정',
+          + (r.mmpp ? ' · 해상도 ' + (Math.round(r.mmpp * 1000) / 1000) + 'mm/px' : '')
+          + (r.via === 'capture' ? ' · 임시문서 없음' : '') + ')\n틀리면 [✕] 삭제·선택 후 [＋ 개별]로 교정',
           note ? 'err' : 'okmsg');
       });
     });

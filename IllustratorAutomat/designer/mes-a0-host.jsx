@@ -19,7 +19,7 @@
 //   0.1.8 = 마감재단선(여백 위치 검정 실선·4변 한 그룹) + 주석 구조에 후가공 추가
 //           (키워드-식별번호-후가공-수량) (2026-07-30)
 //   0.1.9 = 크로스 패널 잠금 위임 추가(mes-lock.jsx) (2026-07-31)
-var MESA0_VERSION = 'A0-CEP-0.2.0'; // 0.2.0 = ★셸 자동 갱신(축3/4를 축2가 끌어온다) · 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
+var MESA0_VERSION = 'A0-CEP-0.3.0'; // 0.3.0 = ★자동감지 굽기를 imageCapture 로(임시 문서 없음 — 증명 가능할 때만) · 0.2.0 = 셸 자동 갱신(축3/4를 축2가 끌어온다) · 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
 var MESA0_REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
 var MESA0_PT_PER_MM = 72 / 25.4;
 var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];
@@ -1196,6 +1196,76 @@ function mesA0_seedPickMmPerPx(wMm, hMm) {
   return c[c.length - 1];
 }
 
+// ── 캡처 경로 (2026-08-31, host 0.3.0) — 임시 문서를 아예 만들지 않는다 ──────────────
+// 왜: 굽기용 임시 문서는 **창이 뜬다**. 실측(3개체·147x240mm)에서 생성 632ms + 복제 1,047ms +
+//     닫기 721ms = 「무제」 창이 2.4초 떠 있었다. `Document.imageCapture()` 는 문서를 안 만들고
+//     영역만 굽는다(같은 조건 344ms).
+// ⚠️ 그런데 **아무 때나 바꾸면 분리 결과가 달라진다.** 굽기는 후보만 복제해 굽지만 캡처는
+//    그 영역에 그려지는 **전부**를 찍는다. 2026-08-31 픽스처 실측: 잠근 다리를 A와 B 사이에 두고
+//    캡처하니 그 픽셀이 A=255 로 찍혀 두 디자인이 한 덩어리가 됐다. 잠긴 개체·50mm↓ 노이즈는
+//    후보에서 빠지지만 화면에는 그려지기 때문이다.
+// ⚠️ 해상도 하한도 있다 — 72dpi(=0.353mm/px) 미만은 예외를 던진다(실측: res=25.4 → "Specified
+//    value less than minimum allowed value"). 마스크가 그보다 거칠어야 하는 큰 원고는 하한으로
+//    올리는 수밖에 없고, 그러면 픽셀이 불어나 예산을 넘는다.
+// → 그래서 **셋 다 맞을 때만** 쓴다. 하나라도 어긋나면 굽기로 간다(결과가 오늘과 같다).
+//    ① source='auto' — 후보 순회와 '문서에서 그려지는 것'을 같은 기준으로 셀 수 있어야 한다.
+//       'sel' 은 선택이 그룹 **안쪽**일 수 있어 최상위 개수로 집합 동일성을 증명할 수 없다.
+//    ② 그려지는 최상위 개체 수 == 후보(kept) 수 — kept ⊆ 그려지는 것이므로 개수가 같으면 집합이 같다.
+//    ③ 하한(72dpi)으로 올려도 픽셀 예산 안 — 아니면 캡처 자체가 굽기보다 무겁다.
+var MESA0_CAPTURE_MAX_MMPP = 25.4 / 72;   // imageCapture 해상도 하한 72dpi = 0.3528mm/px (실측)
+
+// 문서에서 **실제로 그려지는** 최상위 개체 수. 잠금은 포함(잠긴 것도 그려진다) · 숨김/숨은 레이어는 제외.
+// mesA0_seedCands(d,'auto') 와 같은 순회에서 `locked` 필터만 뺀 것이다 — 둘을 비교하려면 같아야 한다.
+function mesA0_renderableCount(d) {
+  var n = 0, bad = false;
+  var walk = function (ly) {
+    try {
+      if (!ly.visible) return;               // 숨은 레이어는 캡처에도 안 찍힌다
+      for (var i = 0; i < ly.pageItems.length; i++) {
+        try { if (!ly.pageItems[i].hidden) n++; } catch (eIt) { bad = true; }
+      }
+      for (var s = 0; s < ly.layers.length; s++) walk(ly.layers[s]);
+    } catch (eLy) { bad = true; }
+  };
+  try { for (var l = 0; l < d.layers.length; l++) walk(d.layers[l]); } catch (e) { return -1; }
+  return bad ? -1 : n;                       // 하나라도 못 읽었으면 증명 실패 → 굽기로
+}
+
+// 임시 문서 없이 영역을 굽는다. 반환 = 결과객체(mesA0_seedRaster 와 같은 계약) 또는 null(굽기로).
+function mesA0_seedCapture(srcDoc, items, mmppWant) {
+  if (typeof srcDoc.imageCapture !== 'function') return null;   // 구버전 일러
+  var uSrc = mesA0_unionBounds(items);
+  if (!uSrc) return null;
+  var padPt = MESA0_SEED_PAD_MM * MESA0_PT_PER_MM;
+  var L = uSrc[0] - padPt, T = uSrc[1] + padPt, R = uSrc[2] + padPt, B = uSrc[3] - padPt;
+  var wMm = (R - L) / MESA0_PT_PER_MM, hMm = (T - B) / MESA0_PT_PER_MM;
+  if (!(wMm > 0) || !(hMm > 0)) return null;
+  var mmpp = (mmppWant < MESA0_CAPTURE_MAX_MMPP) ? mmppWant : MESA0_CAPTURE_MAX_MMPP;
+  // ★ceil 이 아니라 round — 일러가 만드는 픽셀 수와 같아야 한다(실측: 364mm/0.25 을 ceil 하면
+  //   부동소수 오차로 1457, 실제 PNG 는 1456). 1px 만 어긋나도 패널의 라벨 인덱싱이 밀린다.
+  var wPx = Math.round(wMm / mmpp), hPx = Math.round(hMm / mmpp);
+  if (wPx * hPx > MESA0_SEED_MAX_PX) return null;               // ③ 하한으로 올리니 예산 초과
+  var outPath = Folder.temp.fsName.replace(/\\/g, '/') + '/mes_a0_seed.png';
+  try {
+    var o = new ImageCaptureOptions();
+    o.resolution = 25.4 / mmpp;      // ≥72dpi 가 보장된다(mmpp 상한을 위에서 걸었다)
+    o.antiAliasing = true;
+    o.transparency = true;
+    o.matte = false;                 // ★흰 배경이 깔리면 '흰 잉크'와 배경을 구분할 수 없다(굽기와 같은 이유)
+    srcDoc.imageCapture(new File(outPath), [L, T, R, B], o);
+  } catch (e) { return null; }
+  // 픽셀 크기는 계산값이다 — 실제 PNG 와 1px 어긋나면 라벨 인덱싱이 통째로 밀린다.
+  // 그래서 패널이 로드한 이미지 크기로 **다시 맞춘다**(main.js seedSilhouette). 여기서는 계약만 지킨다.
+  return {
+    path: outPath, w: wPx, h: hPx,
+    ox: L / MESA0_PT_PER_MM,          // 마스크 (0,0) 픽셀의 원본 문서 mm 좌표
+    oy: T / MESA0_PT_PER_MM,
+    mmpp: mmpp, dup: items.length,
+    dx: 0, dy: 0,                     // 복제가 없으므로 좌표 어긋남도 없다
+    via: 'capture'
+  };
+}
+
 // 후보 전체를 임시 문서로 복제해 PNG 1장으로 굽는다. 반환 = 결과객체 또는 null(폴백 신호).
 function mesA0_seedRaster(srcDoc, items) {
   var uSrc = mesA0_unionBounds(items);
@@ -1240,7 +1310,8 @@ function mesA0_seedRaster(srcDoc, items) {
       ox: (uSrc[0] - padPt) / MESA0_PT_PER_MM,   // 마스크 (0,0) 픽셀의 원본 문서 mm 좌표
       oy: (uSrc[1] + padPt) / MESA0_PT_PER_MM,
       mmpp: mmpp, dup: n,
-      dx: (u[0] - uSrc[0]) / MESA0_PT_PER_MM, dy: (u[1] - uSrc[1]) / MESA0_PT_PER_MM
+      dx: (u[0] - uSrc[0]) / MESA0_PT_PER_MM, dy: (u[1] - uSrc[1]) / MESA0_PT_PER_MM,
+      via: 'bake'
     };
     tmp.close(SaveOptions.DONOTSAVECHANGES); tmp = null;
     app.activeDocument = srcDoc;
@@ -1263,7 +1334,21 @@ function mesA0_seedBegin(source, gapMm) {
   var kept = mesA0_seedKeep(cands);
   if (!kept.length) return '{"ok":false,"err":"allnoise"}';
 
-  var rz = mesA0_seedRaster(d, kept);
+  // ── 캡처 우선 (0.3.0) — 증명 가능할 때만. 조건은 mesA0_seedCapture 주석 참조 ──
+  //   조건이 하나라도 안 맞으면 rz 는 null 이고 아래 굽기로 간다 = **오늘과 같은 결과**.
+  var rz = null;
+  if (String(source) === 'auto') {                       // ① 같은 순회로 셀 수 있는 경로만
+    var rc = mesA0_renderableCount(d);
+    if (rc >= 0 && rc === kept.length) {                 // ② 그려지는 것 == 후보 (잠금·노이즈 없음)
+      var uCap = mesA0_unionBounds(kept);
+      if (uCap) {
+        var wMmCap = (uCap[2] - uCap[0]) / MESA0_PT_PER_MM + MESA0_SEED_PAD_MM * 2;
+        var hMmCap = (uCap[1] - uCap[3]) / MESA0_PT_PER_MM + MESA0_SEED_PAD_MM * 2;
+        rz = mesA0_seedCapture(d, kept, mesA0_seedPickMmPerPx(wMmCap, hMmCap));  // ③ 예산은 안에서 본다
+      }
+    }
+  }
+  if (!rz) rz = mesA0_seedRaster(d, kept);
   if (!rz) {
     // 굽기 실패(캔버스 한도·export 오류 등) — 조용히 틀리느니 옛 방식으로라도 큐를 만들고 알린다.
     var fb = mesA0_seedQueueJson(d, kept, gapMm);
@@ -1290,6 +1375,7 @@ function mesA0_seedBegin(source, gapMm) {
   return '{"ok":true,"mode":"mask","path":"' + rz.path + '","w":' + rz.w + ',"h":' + rz.h
     + ',"ox":' + mesA0_r2(rz.ox) + ',"oy":' + mesA0_r2(rz.oy) + ',"mmpp":' + rz.mmpp
     + ',"n":' + kept.length + ',"grp":' + grp + ',"dup":' + rz.dup
+    + ',"via":"' + (rz.via || 'bake') + '"'
     + ',"dx":' + mesA0_r2(rz.dx) + ',"dy":' + mesA0_r2(rz.dy)
     + ',"bounds":[' + bs.join(',') + ']}';
 }
