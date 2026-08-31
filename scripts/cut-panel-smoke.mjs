@@ -1293,6 +1293,19 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
       const e = nestSrc2.indexOf('pl.embed()')
       return r > 0 && e > 0 && r < e && !/wantW \/ curW/.test(nestSrc2)
     })())
+    // ★회전도 `embed()` **앞**이다 — `rotate` 는 `resize` 와 똑같이 불투명도 마스크를 두고 간다.
+    //   실측 2026-08-31: 임베드 뒤에 90도 돌리니 판 위아래가 회색이 됐고, **배율 1배 회전만** 해도
+    //   배경 절반이 회색이 됐다. 그래서 ⓐ 회전은 임베드 앞에서 하고 ⓑ **변형이 있으면 배율이 1배여도**
+    //   PDF 경로를 탄다 ⓒ 검산 기대폭은 회전을 반영한다(안 하면 정상 90도 회전이 폴백으로 떨어진다).
+    ok('3u 회전도 임베드 앞 · 1배 회전도 PDF 경로', (() => {
+      const r = nestSrc2.indexOf('pl.rotate(-rotDeg)')
+      const e = nestSrc2.indexOf('pl.embed()')
+      return r > 0 && e > 0 && r < e
+        && /resizePct !== 100 \|\| it2\.rot/.test(nestSrc2)
+        && /resizePct, b, it2\.rot\)/.test(nestSrc2)
+        && /it2\.rot && !rotDone/.test(nestSrc2)
+        && /_expW/.test(nestSrc2)
+    })())
     // ★폴백은 조용하면 안 된다 — 폴백 = 배경이 깨졌을 수 있다는 뜻이고, 인쇄 뒤에 알면 늦다
     ok('3u 폴백을 사용자에게 알린다', /placefail=/.test(nestSrc2)
       && /parseInt\(a\.placefail, 10\) > 0/.test(panelSrc2))

@@ -1,5 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types'
-import { logAutoDeductToLedger, PP_DEDUCT_REF } from './autoDeductRestore'
+import { PP_DEDUCT_REF } from './autoDeductRestore'
+import { kstDate } from './kstDate'
 import { getItemDefaultZone } from './inventoryZone'
 import { computeRollConsumption } from './rollConsumption'
 
@@ -152,49 +153,40 @@ export async function autoDeductPostProcessingMaterials(
             .first() as any
           const before = invRow?.quantity ?? 0
 
-          await db
-            .prepare(`UPDATE inventory SET quantity = quantity - ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`)
-            .bind(dedYd, mat.id, entityId, zoneId)
-            .run()
-
           const after = before - dedYd
           if (after < 0) {
             console.warn(`[ppDeduct] ⚠️ 코팅지 재고 음수: ${mat.item_name} (entity=${entityId}), 잔량=${after.toFixed(2)}${ppCons.unit}, 차감=${dedYd.toFixed(2)}${ppCons.unit}, card=${cardId}`)
           }
 
+          // 차감·기록·원장을 한 batch 로 (2026-08-31 원자화 — 인쇄 자동차감과 같은 규칙).
+          //   UNIQUE(print_event, material) 위반 시 batch 전체가 롤백되므로 수동 보상이 필요 없다.
           try {
-            await db
-              .prepare(
+            await db.batch([
+              db.prepare(
+                `UPDATE inventory SET quantity = quantity - ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
+              ).bind(dedYd, mat.id, entityId, zoneId),
+              db.prepare(
                 `INSERT INTO pp_material_deductions (
                    print_event_id, order_id, order_item_id, pp_option_code, material_item_id,
                    matched_width_mm, output_width_mm, output_height_mm, copy_total,
                    deducted_length_yd, inventory_before, inventory_after, entity_id
                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-              )
-              .bind(
+              ).bind(
                 pe.id, card.order_id, card.order_item_id, cons.code, mat.id,
                 mat.width_mm, ow, oh, copy,
                 dedYd, before, after, entityId
-              )
-              .run()
-
-            // 원장 기록 (인쇄 자동차감과 같은 규칙 — 환원이 이 행을 근거로 한다)
-            await logAutoDeductToLedger(db, {
-              refType: PP_DEDUCT_REF, refId: pe.id,
-              itemId: mat.id, entityId, zoneId,
-              qty: dedYd, balanceAfter: after, note: '후가공 자재 자동차감',
-            })
+              ),
+              // 원장 기록 (인쇄 자동차감과 같은 규칙 — 환원이 이 행을 근거로 한다)
+              db.prepare(
+                `INSERT INTO inventory_transactions
+                   (item_id, transaction_type, quantity, reference_type, reference_id, balance_after, notes, transaction_date, entity_id, storage_zone_id)
+                 VALUES (?, 'OUT', ?, ?, ?, ?, '후가공 자재 자동차감', ${kstDate()}, ?, ?)`
+              ).bind(mat.id, Math.abs(dedYd), PP_DEDUCT_REF, pe.id, after, entityId, zoneId),
+            ])
             deducted++
           } catch (insertError: any) {
-            // UNIQUE 위반 = 동시 중복 → 차감 롤백
-            if (insertError?.message?.includes('UNIQUE')) {
-              await db
-                .prepare(`UPDATE inventory SET quantity = quantity + ? WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`)
-                .bind(dedYd, mat.id, entityId, zoneId)
-                .run()
-            } else {
-              throw insertError
-            }
+            // UNIQUE 위반 = 동시 중복. batch 가 통째로 롤백되므로 되돌릴 것이 없다.
+            if (!insertError?.message?.includes('UNIQUE')) throw insertError
           }
         }
       }

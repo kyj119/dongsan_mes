@@ -1,5 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types'
-import { kstDate } from './kstDate'
+import { logActivity } from './activityLog'
+import type { StockActor } from './stockShip'
 
 /**
  * 자동차감(인쇄 원단 · 후가공 코팅지) 환원 — `autoDeductInventory` / `autoDeductPostProcessingMaterials` 의 역방향.
@@ -24,23 +25,50 @@ export const PP_DEDUCT_REF = 'PP_DEDUCT'
 export interface RestoreResult {
   restored: number      // 되돌린 건수
   quantity: number      // 되돌린 총량(단위 혼재 — 건수 확인용)
+  lines: { itemId: number; qty: number; entityId: number }[]   // 시스템 로그용 내역
 }
 
-/** 창고 키가 어긋나면 엉뚱한 행이 늘어난다 — 차감과 같은 규칙으로 (item, entity, zone) 을 잡는다 */
-async function addBack(
+/** 환원 흔적을 시스템 로그(`/activity-log`)에 남긴다 — 원장에서 행을 철회하므로 재고 축엔 안 남는다 */
+async function logRestore(
+  db: D1Database, kind: string, refLabel: string, r: RestoreResult, actor?: StockActor
+): Promise<void> {
+  if (r.restored === 0) return
+  try {
+    await logActivity({
+      db,
+      userId: actor?.userId ?? null,
+      userName: actor?.userName ?? null,
+      action: 'STOCK_RESTORE',
+      entityType: 'INVENTORY',
+      entityId: null,
+      entityLabel: `${kind} 환원 ${r.restored}건 (${refLabel})`,
+      details: JSON.stringify({ reason: kind, lines: r.lines }),
+      actorEntityId: actor?.entityId ?? null,
+    })
+  } catch (e: any) {
+    console.warn(`[autoDeductRestore] 환원 로그 실패(환원은 유지): ${kind} ${refLabel} — ${e?.message}`)
+  }
+}
+
+/**
+ * 재고 복원 statement 3종 — **호출처가 batch 로 묶는다**.
+ *
+ * ★재고 복원 · 원장 행 철회 · 차감 기록 삭제가 따로 돌면 하나만 실패했을 때 어긋난다
+ *   (재고는 돌아왔는데 원장 OUT 이 남으면 다음 차감이 조용히 스킵된다). 2026-08-31 원자화.
+ * 창고 키가 어긋나면 엉뚱한 행이 늘어난다 — 차감과 같은 규칙으로 (item, entity, zone) 을 잡는다.
+ */
+function addBackStmts(
   db: D1Database, itemId: number, entityId: number, zoneId: number | null, qty: number
-): Promise<number> {
-  await db.prepare(
-    `INSERT OR IGNORE INTO inventory (item_id, entity_id, storage_zone_id, quantity) VALUES (?, ?, ?, 0)`
-  ).bind(itemId, entityId, zoneId).run()
-  await db.prepare(
-    `UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP
-     WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
-  ).bind(qty, itemId, entityId, zoneId).run()
-  const row = await db.prepare(
-    `SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
-  ).bind(itemId, entityId, zoneId).first<{ quantity: number }>()
-  return row?.quantity ?? 0
+) {
+  return [
+    db.prepare(
+      `INSERT OR IGNORE INTO inventory (item_id, entity_id, storage_zone_id, quantity) VALUES (?, ?, ?, 0)`
+    ).bind(itemId, entityId, zoneId),
+    db.prepare(
+      `UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP
+       WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
+    ).bind(qty, itemId, entityId, zoneId),
+  ]
 }
 
 /** 차감 시 쓴 창고를 원장에서 되찾는다. 원장 행이 없던 옛 차감분은 NULL(기본창고)로 되돌린다. */
@@ -60,9 +88,9 @@ async function zoneOfDeduction(
  * `inventory_auto_deductions` 는 `print_event_id` UNIQUE 라 이벤트당 1행이다.
  */
 export async function restoreAutoDeductionsByPrintEvents(
-  db: D1Database, printEventIds: number[]
+  db: D1Database, printEventIds: number[], actor?: StockActor
 ): Promise<RestoreResult> {
-  const out: RestoreResult = { restored: 0, quantity: 0 }
+  const out: RestoreResult = { restored: 0, quantity: 0, lines: [] }
   const ids = [...new Set(printEventIds.filter((v) => Number.isFinite(v)))]
   if (ids.length === 0) return out
 
@@ -80,40 +108,43 @@ export async function restoreAutoDeductionsByPrintEvents(
       if (!r.material_item_id || qty <= 0) continue
       const entityId = Number(r.entity_id) || 1
       const zoneId = await zoneOfDeduction(db, AUTO_DEDUCT_REF, r.print_event_id, r.material_item_id, entityId)
-      await addBack(db, r.material_item_id, entityId, zoneId, qty)
-
-      // 원장의 차감 행을 철회한다 — 재고 축(stockShip)과 같은 모델이다.
-      //   UNIQUE 인덱스(#88)가 reference 당 OUT 1행이라 역분개 IN 을 넣으면 재차감이 막힌다.
-      await db.prepare(
-        `DELETE FROM inventory_transactions
-         WHERE reference_type = ? AND reference_id = ? AND item_id = ? AND entity_id = ? AND transaction_type = 'OUT'`
-      ).bind(AUTO_DEDUCT_REF, r.print_event_id, r.material_item_id, entityId).run()
-
-      // 차감 기록도 지운다 — 남겨두면 UNIQUE(print_event_id)에 걸려 **재출력 시 재차감이 안 된다**.
-      await db.prepare(`DELETE FROM inventory_auto_deductions WHERE id = ?`).bind(r.id).run()
+      await db.batch([
+        ...addBackStmts(db, r.material_item_id, entityId, zoneId, qty),
+        // 원장의 차감 행을 철회한다 — 재고 축(stockShip)과 같은 모델이다.
+        //   UNIQUE 인덱스(#88)가 reference 당 OUT 1행이라 역분개 IN 을 넣으면 재차감이 막힌다.
+        db.prepare(
+          `DELETE FROM inventory_transactions
+           WHERE reference_type = ? AND reference_id = ? AND item_id = ? AND entity_id = ? AND transaction_type = 'OUT'`
+        ).bind(AUTO_DEDUCT_REF, r.print_event_id, r.material_item_id, entityId),
+        // 차감 기록도 지운다 — 남겨두면 UNIQUE(print_event_id)에 걸려 **재출력 시 재차감이 안 된다**.
+        db.prepare(`DELETE FROM inventory_auto_deductions WHERE id = ?`).bind(r.id),
+      ])
       out.restored++
       out.quantity += qty
+      out.lines.push({ itemId: r.material_item_id, qty, entityId })
     }
   }
+  await logRestore(db, '인쇄 자재 자동차감', `출력 ${ids.length}건`, out, actor)
   return out
 }
 
 /** 인쇄 자동차감 환원 — 카드 단위(카드 되돌리기·주문 삭제에서 사용) */
 export async function restoreAutoDeductionsByCards(
-  db: D1Database, cardIds: number[]
+  db: D1Database, cardIds: number[], actor?: StockActor
 ): Promise<RestoreResult> {
   const ids = [...new Set(cardIds.filter((v) => Number.isFinite(v)))]
-  if (ids.length === 0) return { restored: 0, quantity: 0 }
-  const acc: RestoreResult = { restored: 0, quantity: 0 }
+  if (ids.length === 0) return { restored: 0, quantity: 0, lines: [] }
+  const acc: RestoreResult = { restored: 0, quantity: 0, lines: [] }
   for (let i = 0; i < ids.length; i += 80) {
     const chunk = ids.slice(i, i + 80)
     const ph = chunk.map(() => '?').join(',')
     const { results } = await db.prepare(
       `SELECT DISTINCT print_event_id FROM inventory_auto_deductions WHERE card_id IN (${ph})`
     ).bind(...chunk).all<{ print_event_id: number }>()
-    const r = await restoreAutoDeductionsByPrintEvents(db, (results || []).map((x) => Number(x.print_event_id)))
+    const r = await restoreAutoDeductionsByPrintEvents(db, (results || []).map((x) => Number(x.print_event_id)), actor)
     acc.restored += r.restored
     acc.quantity += r.quantity
+    acc.lines.push(...r.lines)
   }
   return acc
 }
@@ -123,9 +154,9 @@ export async function restoreAutoDeductionsByCards(
  * `pp_material_deductions` 는 UNIQUE(print_event, material) 이라 이벤트당 여러 자재가 올 수 있다.
  */
 export async function restorePpDeductionsByOrder(
-  db: D1Database, orderId: number
+  db: D1Database, orderId: number, actor?: StockActor
 ): Promise<RestoreResult> {
-  const out: RestoreResult = { restored: 0, quantity: 0 }
+  const out: RestoreResult = { restored: 0, quantity: 0, lines: [] }
   if (!Number.isFinite(orderId)) return out
 
   const { results } = await db.prepare(`
@@ -138,45 +169,18 @@ export async function restorePpDeductionsByOrder(
     if (!r.material_item_id || qty <= 0) continue
     const entityId = Number(r.entity_id) || 1
     const zoneId = await zoneOfDeduction(db, PP_DEDUCT_REF, r.print_event_id, r.material_item_id, entityId)
-    await addBack(db, r.material_item_id, entityId, zoneId, qty)
-
-    await db.prepare(
-      `DELETE FROM inventory_transactions
-       WHERE reference_type = ? AND reference_id = ? AND item_id = ? AND entity_id = ? AND transaction_type = 'OUT'`
-    ).bind(PP_DEDUCT_REF, r.print_event_id, r.material_item_id, entityId).run()
-    await db.prepare(`DELETE FROM pp_material_deductions WHERE id = ?`).bind(r.id).run()
+    await db.batch([
+      ...addBackStmts(db, r.material_item_id, entityId, zoneId, qty),
+      db.prepare(
+        `DELETE FROM inventory_transactions
+         WHERE reference_type = ? AND reference_id = ? AND item_id = ? AND entity_id = ? AND transaction_type = 'OUT'`
+      ).bind(PP_DEDUCT_REF, r.print_event_id, r.material_item_id, entityId),
+      db.prepare(`DELETE FROM pp_material_deductions WHERE id = ?`).bind(r.id),
+    ])
     out.restored++
     out.quantity += qty
+    out.lines.push({ itemId: r.material_item_id, qty, entityId })
   }
+  await logRestore(db, '후가공 자재 자동차감', `주문 #${orderId}`, out, actor)
   return out
-}
-
-/**
- * 자동차감을 원장에 남긴다. 차감 함수 두 곳에서 부른다.
- *
- * 실패해도 차감 자체는 되돌리지 않는다 — 원장은 기록이고 `inventory.quantity` 가 정본이라,
- * 여기서 던지면 이미 빠진 재고가 되살아나지 않은 채 500 이 된다. 대신 경고를 남긴다.
- * (UNIQUE 위반 = 이미 기록됨 → 정상 흐름)
- */
-export async function logAutoDeductToLedger(
-  db: D1Database,
-  params: {
-    refType: string; refId: number; itemId: number; entityId: number;
-    zoneId: number | null; qty: number; balanceAfter: number; note: string
-  }
-): Promise<void> {
-  try {
-    await db.prepare(
-      `INSERT INTO inventory_transactions
-         (item_id, transaction_type, quantity, reference_type, reference_id, balance_after, notes, transaction_date, entity_id, storage_zone_id)
-       VALUES (?, 'OUT', ?, ?, ?, ?, ?, ${kstDate()}, ?, ?)`
-    ).bind(
-      params.itemId, Math.abs(params.qty), params.refType, params.refId,
-      params.balanceAfter, params.note, params.entityId, params.zoneId
-    ).run()
-  } catch (e: any) {
-    if (!String(e?.message || '').includes('UNIQUE')) {
-      console.warn(`[autoDeduct] 원장 기록 실패(차감은 유지): ref=${params.refType}#${params.refId} item=${params.itemId} — ${e?.message}`)
-    }
-  }
 }

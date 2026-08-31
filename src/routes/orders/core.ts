@@ -594,13 +594,14 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     // 출고 차감 환원 — 삭제(소프트·하드 공통) = "출고하지 않은 것"으로 되돌린다.
     //   ★반드시 아래 batch **앞**에서 부른다: 하드 삭제가 order_items 를 지우면 되돌릴 근거가 사라진다.
     //   차감된 적 없으면 no-op 이라 QUOTATION·DRAFT 삭제에도 안전하다(멱등).
-    await restoreStockLinesOnUnship(c.env.DB, Number(id), order.entity_id || getEntityId(c) || 1)
+    const stockActor = { userId: user?.id ?? null, userName: user?.username ?? null, entityId: getEntityId(c) }
+    await restoreStockLinesOnUnship(c.env.DB, Number(id), order.entity_id || getEntityId(c) || 1, stockActor)
 
     // 자동차감(인쇄 원단·후가공 코팅지)도 같이 환원한다. 아래 하드삭제 batch 가
     //   inventory_auto_deductions 를 지우기 때문에 **여기서 먼저** 되돌려야 근거가 남아 있다.
     const delCards = await c.env.DB.prepare('SELECT id FROM cards WHERE order_id = ?').bind(id).all<{ id: number }>()
-    await restoreAutoDeductionsByCards(c.env.DB, (delCards.results || []).map((r) => Number(r.id)))
-    await restorePpDeductionsByOrder(c.env.DB, Number(id))
+    await restoreAutoDeductionsByCards(c.env.DB, (delCards.results || []).map((r) => Number(r.id)), stockActor)
+    await restorePpDeductionsByOrder(c.env.DB, Number(id), stockActor)
 
     const CONFIRMED_AND_AFTER = ['CONFIRMED', 'PRINTING', 'PRINT_DONE', 'SHIPPED']
 

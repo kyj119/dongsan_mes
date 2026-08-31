@@ -62,6 +62,32 @@
 - ✅ **가드 우회 경로 없음** — 출고 차감된 주문의 라인 구성을 바꿀 수 있는 입구는 `PUT /orders/:id` 하나뿐이다. `orders/operations.ts` 의 INSERT 는 `/:id/copy`(**새 주문** 생성), `quotations.ts` 는 견적 전환(역시 새 주문), `workbench.ts`·`shipment_ready` 는 메타/플래그만 바꾼다. `DELETE FROM order_items` 는 update.ts·core.ts 뿐이고 둘 다 덮었다.
 - 🔧 **환원 창고가 어긋날 수 있었다(고침)** — `restoreStockLinesOnUnship` 이 `getItemDefaultZone` 을 **다시 불렀다**. 차감과 환원 사이에 품목 기본창고(`items.storage_zone_id`)가 바뀌면 **엉뚱한 창고로 환원**된다 — 총량은 맞고 창고별만 어긋나 **발견이 늦는** 종류다. `autoDeductRestore` 는 처음부터 원장에서 창고를 되찾게 만들었는데 `stockShip` 만 규칙이 달랐다. `findShipOutRow` 가 `storage_zone_id` 도 반환하도록 해 **원장이 기록한 그 창고**로 되돌린다. 회귀 없음(3개 게이트 재실행 통과).
 
+### 구조적 부채 3건 — 같은 날 전부 해소
+
+앞 절에서 「의도적으로 남긴다」고 적었던 셋을 이어서 처리했다. 셋 다 **근본 형태가 다르게 나왔다**.
+
+**① 이중 정본 → 없애지 못한다. 대신 감시한다** (`npm run audit:stock-ledger`)
+
+원장을 정본으로 바꾸는 건 UNIQUE 인덱스가 reference 당 1행을 강제하는 이상 불가능하다(append-only 가 아니다). 그리고 **기존 격차 59,248 은 버그가 아니라 이관이 만든 출발점**이라 총량을 재면 영원히 빨간불이다. → 품목별 격차를 기준선(`scripts/stock-ledger-baseline.json`, prod 197품목)으로 고정하고 **거기서 벗어난 품목만** 잡는다. 새 쓰기 경로가 원장을 빠뜨리면 그 품목 한 줄이 뜬다.
+- 검증: 로컬에서 **원장 없이 재고만 +7** 을 주입 → 격차 −10 → −3 으로 정확히 지목, exit 1. 되돌린 뒤 prod 기준선 재생성.
+- ⚠️기준선은 **대상 DB 별**이다. prod 기준선으로 로컬을 재면 전부 드리프트로 보이므로 `source` 불일치 시 차단한다.
+- ⚠️wrangler 를 `npx` 로 부르지 않는다 — Windows 의 `npx.cmd` 는 Node 24 에서 shell 없이 spawn 이 막히고(EINVAL), `shell:true` 로 돌리면 인자를 공백으로 이어 붙여 **SQL 이 토막난다**(둘 다 실측). `node` 로 wrangler 엔트리를 직접 실행한다.
+
+**② 원자성 → batch 로 묶었다. 보상 코드가 사라졌다**
+
+`stockShip` 차감·환원, `autoDeductRestore` 환원 2종, 자동차감 차감 2종을 전부 `db.batch()` 로 전환. `balance_after` 는 read-after-write 대신 **서브쿼리**로 읽어 중간 SELECT 를 없앴다(batch 는 순서대로 실행되므로 UPDATE 반영값을 본다).
+- ★부수 효과가 본체보다 낫다 — 자동차감의 **수동 롤백 코드가 통째로 사라졌다**. 예전엔 UPDATE 를 먼저 하고 INSERT 가 UNIQUE 로 터지면 손으로 되돌렸는데, batch 는 통째로 롤백되므로 되돌릴 것이 없다. **보상 로직이 없으면 "보상이 또 실패하는" 경로도 없다.**
+- 이 전환으로 `logAutoDeductToLedger`(silent catch 를 품고 있던 헬퍼)도 죽어서 제거했다.
+
+**③ 환원 흔적 → 원장이 아니라 시스템 로그에 남긴다**
+
+원장에 남기려면 tombstone 행이 필요한데(UNIQUE 때문에 `reference_type` 을 바꿔야 하고, 반복 취소 시 또 충돌한다) 그건 원장을 더 복잡하게 만든다. → 이 시스템이 이미 가진 감사 축인 `activity_log` 를 쓴다. `action='STOCK_RESTORE'` 로 `/activity-log` 에서 바로 보인다.
+- 호출처(카드 출고취소·카드 되돌리기·주문 삭제·출고 취소)가 actor 를 넘긴다 — 누가 되돌렸는지가 핵심이라 익명 기록은 의미가 적다.
+- 기록 실패가 환원을 막지 않는다(try/catch + warn). **기록이 본 작업을 막으면 안 된다.**
+- 실측 확인: `출고 차감 환원 1품목`(ORDER) · `인쇄 자재 자동차감 환원 1건`(INVENTORY) 둘 다 남는다.
+
+검증: `test:autodeduct` 20/20 · `test:ship-stock` 20/20 · `test:symmetry` 17/17 · 정적 게이트 전부 · `audit:stock-ledger` prod 드리프트 0.
+
 ### 남은 구조적 부채 — 이번에 **의도적으로** 손대지 않은 것
 
 1. **`inventory.quantity` 와 `inventory_transactions` 가 이중 정본이다.** prod 격차 잔고 132,121 vs 원장 순합 72,873. 이번에 한 건 「새로 쓰는 20곳의 짝을 맞춘 것」이고 구조를 바꾼 게 아니다. UNIQUE 인덱스가 reference 당 1행을 강제하는 이상 이건 **원장이 아니라 상태 테이블**이다 → 대사 감사(`audit:stock-ledger`)를 만들지, 모델을 바꿀지 미결.

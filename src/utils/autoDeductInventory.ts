@@ -1,5 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types'
-import { logAutoDeductToLedger, AUTO_DEDUCT_REF } from './autoDeductRestore'
+import { AUTO_DEDUCT_REF } from './autoDeductRestore'
+import { kstDate } from './kstDate'
 import { resolveDeductionZone } from './inventoryZone'
 import { computeRollConsumption, selectBoardMaterial, boardAreaSqm } from './rollConsumption'
 
@@ -208,16 +209,6 @@ export async function autoDeductInventory(
 
     const inventoryBefore = inventoryRow?.quantity ?? 0
 
-    // 원자적 UPDATE: quantity - deductedLengthYd (음수 허용, 경고만)
-    await db
-      .prepare(
-        `UPDATE inventory
-         SET quantity = quantity - ?, last_updated = CURRENT_TIMESTAMP
-         WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
-      )
-      .bind(deductedLengthYd, selectedMaterial.material_item_id, entityId, zoneId)
-      .run()
-
     const inventoryAfter = inventoryBefore - deductedLengthYd
 
     // 음수 재고 경고 로그
@@ -225,17 +216,27 @@ export async function autoDeductInventory(
       console.warn(`[autoDeduct] ⚠️ 재고 음수 경고: ${selectedMaterial.item_name} (entity=${entityId}), 잔량=${inventoryAfter.toFixed(2)}${dedUnit}, 차감=${deductedLengthYd.toFixed(2)}${dedUnit}, card=${cardId}`)
     }
 
-    // 8. inventory_auto_deductions 기록 (UNIQUE print_event_id로 중복 INSERT 방지)
+    // 8. 재고 차감 · 차감 기록 · 원장을 **한 batch 로** (2026-08-31 원자화)
+    //    ★예전엔 UPDATE 를 먼저 실행하고 INSERT 가 UNIQUE 로 터지면 **손으로 되돌렸다**.
+    //      batch 는 통째로 롤백되므로 그 수동 보상 코드가 필요 없어졌다 — 보상 로직이 없으면
+    //      "보상이 또 실패하는" 경로도 없다.
+    //    ★원장도 같은 batch 에 있다: 재고만 빠지고 원장이 비는 상태가 아예 만들어지지 않는다.
     try {
-      await db
-        .prepare(
+      await db.batch([
+        // 원자적 차감 (음수 허용, 경고만)
+        db.prepare(
+          `UPDATE inventory
+           SET quantity = quantity - ?, last_updated = CURRENT_TIMESTAMP
+           WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
+        ).bind(deductedLengthYd, selectedMaterial.material_item_id, entityId, zoneId),
+        // UNIQUE print_event_id 가 중복 차감을 막는다 — 위반하면 이 batch 전체가 롤백된다
+        db.prepare(
           `INSERT INTO inventory_auto_deductions (
             print_event_id, material_item_id, deducted_length_mm, deducted_length_yd,
             output_width_mm, output_height_mm, copy_total, inventory_before, inventory_after,
             matched_width_mm, card_id, order_number, entity_id, deduction_method, deducted_base
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        )
-        .bind(
+        ).bind(
           printEventId,
           selectedMaterial.material_item_id,
           outputHeightMm,
@@ -251,25 +252,20 @@ export async function autoDeductInventory(
           entityId,
           dedMethod,
           deductedLengthYd  // MU4: deducted_base — base_unit 단위 차감량(cm/yd)
-        )
-        .run()
-
-      // 원장 기록 — 2026-08-31 이전엔 자동차감이 inventory.quantity 만 바꾸고 원장에 아무것도
-      //   안 남겨서 증감내역 화면에 자재 소모가 통째로 안 보였다. 환원도 이 행을 근거로 한다.
-      await logAutoDeductToLedger(db, {
-        refType: AUTO_DEDUCT_REF, refId: printEventId,
-        itemId: selectedMaterial.material_item_id, entityId, zoneId,
-        qty: deductedLengthYd, balanceAfter: inventoryAfter, note: '인쇄 자재 자동차감',
-      })
+        ),
+        // 원장 기록 — 이게 없으면 증감내역 화면에 자재 소모가 통째로 안 보인다. 환원도 이 행이 근거다.
+        db.prepare(
+          `INSERT INTO inventory_transactions
+             (item_id, transaction_type, quantity, reference_type, reference_id, balance_after, notes, transaction_date, entity_id, storage_zone_id)
+           VALUES (?, 'OUT', ?, ?, ?, ?, '인쇄 자재 자동차감', ${kstDate()}, ?, ?)`
+        ).bind(
+          selectedMaterial.material_item_id, Math.abs(deductedLengthYd),
+          AUTO_DEDUCT_REF, printEventId, inventoryAfter, entityId, zoneId
+        ),
+      ])
     } catch (insertError: any) {
-      // UNIQUE 제약 위반 = 이미 차감됨 → 차감 롤백
+      // UNIQUE 위반 = 이미 차감됨. batch 가 통째로 롤백되므로 되돌릴 것이 없다.
       if (insertError?.message?.includes('UNIQUE')) {
-        await db
-          .prepare(
-            `UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
-          )
-          .bind(deductedLengthYd, selectedMaterial.material_item_id, entityId, zoneId)
-          .run()
         return { success: true, deducted: false, reason: 'already deducted (UNIQUE constraint)' }
       }
       throw insertError

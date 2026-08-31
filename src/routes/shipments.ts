@@ -1222,11 +1222,12 @@ shipmentsRouter.patch('/:id/status', requireEditOrRole('/shipments', 'MANAGER'),
             // ★재고 환원 — 이 라우트의 출고(PATCH /:orderId/ship)는 예전부터 차감을 했는데
             //   취소 쪽에 환원이 없어 **출고취소가 곧 재고 증발**이었다(2026-08-30 발견, 기존 결함).
             //   batch 밖에서 도는 건 차감 쪽(deductStockLinesOnShip)과 같은 모양이다.
+            const cancelActor = { userId: c.get('user')?.id ?? null, userName: c.get('user')?.username ?? null, entityId: getEntityId(c) }
             await restoreStockLinesOnUnship(
-              c.env.DB, Number(orderRow.order_id), orderRow.entity_id || getEntityId(c) || 1
+              c.env.DB, Number(orderRow.order_id), orderRow.entity_id || getEntityId(c) || 1, cancelActor
             )
             // 후가공 코팅지는 **출고 시점**에 차감된다(아래 autoDeductPostProcessingMaterials) → 취소도 짝을 맞춘다.
-            await restorePpDeductionsByOrder(c.env.DB, Number(orderRow.order_id))
+            await restorePpDeductionsByOrder(c.env.DB, Number(orderRow.order_id), cancelActor)
             const user = c.get('user')
             // 3) 주문 상태 복원 (shipped_at도 리셋 — P1 정합화)
             stmts.push(c.env.DB.prepare(

@@ -1003,7 +1003,8 @@ cardsLifecycleRouter.patch('/:id/unship', requireRole('ADMIN', 'MANAGER'), async
     if (order && order.status === 'SHIPPED') {
       // ★출고 차감 환원 — 이게 없으면 출고취소가 곧 재고 증발이다.
       //   주문 상태 전이표가 'SHIPPED': [] 라 여기가 출고를 되돌리는 유일한 문이다.
-      await restoreStockLinesOnUnship(c.env.DB, Number(card.order_id), order.entity_id || getEntityId(c) || 1)
+      await restoreStockLinesOnUnship(c.env.DB, Number(card.order_id), order.entity_id || getEntityId(c) || 1,
+        { userId: user?.id ?? null, userName: user?.username ?? null, entityId: getEntityId(c) })
       await c.env.DB.batch([
         c.env.DB.prepare(
           `UPDATE orders SET status = 'PRINT_DONE', shipped_at = NULL, updated_at = datetime('now') WHERE id = ?`
@@ -1295,7 +1296,8 @@ cardsLifecycleRouter.patch('/:id/revert', async (c) => {
 
     // ★인쇄 자재 자동차감 환원 — 출력을 안 한 것으로 되돌리므로 자재도 돌아와야 한다.
     //   차감 기록까지 지우므로 **재출력하면 다시 차감된다**(UNIQUE print_event_id 로 막히지 않는다).
-    await restoreAutoDeductionsByCards(c.env.DB, [Number(id)])
+    await restoreAutoDeductionsByCards(c.env.DB, [Number(id)],
+      { userId: user?.id ?? null, userName: user?.username ?? null, entityId: getEntityId(c) })
 
     // 카드를 출력대기(PRINT_PENDING)로 되돌림 — 단일 상태축(Phase 4). rip_status도 초기화하여 재RIP 가능.
     await c.env.DB.prepare(

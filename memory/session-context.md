@@ -1,4 +1,4 @@
-# 세션 핸드오프 — 2026-08-30~31 증감내역 탭 + 「누적 캐시가 수정·삭제를 안 따라온다」 5개 축
+# 세션 핸드오프 — 2026-08-30~31 증감내역 탭 · 누적 캐시 5개 축 · 구조적 부채 3건
 
 > ⚠️ 아래에 **이전 세션들의 핸드오프가 이어집니다.** 덮어쓰지 않았습니다.
 
@@ -55,17 +55,43 @@ prod 배포 **5회 전부 CI success**: `49fd79f3`(증감내역 탭) · `7b454cc
 - ⚠️ `grep 'UPDATE inventory'` 는 **`inventory_receipts`·`inventory_transactions` 까지 잡는다**(오탐). 반대로 `UPDATE inventory\n SET` 멀티라인은 **놓친다**(누락). 둘 다 겪었다 — 정규식으로 볼 것.
 - 새 로컬 게이트 3종은 **서버 기동 필요**라 CI 에 없다: `test:symmetry`(17) · `test:autodeduct`(20) · `test:ship-stock`(20). `test:autodeduct` 는 `AGENT_API_KEY` 또는 `.dev.vars` 를 읽는다.
 
-## 남은 구조적 부채 (이번에 손대지 않음 — 판단해서 남긴 것)
+## 구조적 부채 3건 — 전부 해소했다 (셋 다 근본 형태가 다르게 나왔다)
 
-1. **`inventory.quantity` 와 `inventory_transactions` 가 이중 정본이다.** prod 실측 격차 **잔고 132,121 vs 원장 순합 72,873**(이관이 잔고만 직접 넣었다). 이번에 한 건 "새로 쓰는 20곳의 짝을 맞춘 것"이지 구조를 바꾼 게 아니다. UNIQUE 인덱스가 reference 당 1행을 강제하는 이상 이건 **원장이 아니라 상태 테이블**이다. → 대사 감사(`audit:stock-ledger`)를 만들지, 모델을 바꿀지 미결.
-2. **원자성** — `stockShip`·`autoDeductRestore` 는 개별 `.run()` 이라 UPDATE 후 원장 조작이 실패하면 어긋난다(어제 UNIQUE 500 이 정확히 그 모습이었다). batch 로 묶으려면 `balance_after` 재조회 의존을 풀어야 한다.
-3. **환원의 흔적이 재고 축에 안 남는다** — 행을 지우므로 "출고했다 취소했다"가 원장에 없다. 주문은 `order_status_history` 가 받쳐 주지만 **자동차감 환원은 아무 데도 안 남는다**.
+### ① 이중 정본 → **없애지 못한다. 감시로 바꿨다** (`npm run audit:stock-ledger`)
+
+원장을 정본으로 만드는 건 UNIQUE 인덱스가 reference 당 1행을 강제하는 이상 불가능하다(append-only 가 아니다).
+그리고 **기존 격차 59,248 은 버그가 아니라 이관이 만든 출발점**이라 총량을 재면 영원히 빨간불이다.
+→ 품목별 격차를 기준선(`scripts/stock-ledger-baseline.json`, prod 197품목)으로 고정하고 **거기서 벗어난 품목만** 잡는다.
+
+- 검증법이 핵심이다 — 로컬에서 **원장 없이 재고만 +7** 을 주입해 감사가 그 품목을 지목하는지 봤다(격차 −10→−3, exit 1).
+- ⚠️기준선은 **대상 DB 별**이다. prod 기준선으로 로컬을 재면 전부 드리프트라 `source` 불일치 시 차단한다.
+- ⚠️**wrangler 를 `npx` 로 부르지 말 것** — Windows `npx.cmd` 는 Node 24 에서 shell 없이 spawn 이 막히고(EINVAL),
+  `shell:true` 로 돌리면 인자를 공백으로 이어 붙여 **SQL 이 토막난다**(둘 다 실측). `node` 로 wrangler 엔트리 직접 실행.
+
+### ② 원자성 → **batch 로 묶었더니 보상 코드가 사라졌다**
+
+`stockShip` 차감·환원, `autoDeductRestore` 2종, 자동차감 차감 2종을 전부 `db.batch()` 로.
+`balance_after` 는 read-after-write 대신 **서브쿼리**(batch 는 순서대로 실행되므로 UPDATE 반영값을 본다).
+
+★**부수 효과가 본체보다 낫다** — 자동차감의 수동 롤백이 통째로 사라졌다. batch 가 통째로 롤백되므로
+UNIQUE 위반 시 되돌릴 게 없다. **보상 로직이 없으면 "보상이 또 실패하는" 경로도 없다.**
+이 전환으로 silent catch 를 품고 있던 `logAutoDeductToLedger` 도 죽어서 제거했다.
+
+### ③ 환원 흔적 → **원장이 아니라 시스템 로그**
+
+원장에 남기려면 tombstone 이 필요한데(UNIQUE 때문에 `reference_type` 을 바꿔야 하고 반복 취소 시 또 충돌)
+그건 원장을 더 복잡하게 만든다. → 이미 있는 감사 축 `activity_log` 를 쓴다(`action='STOCK_RESTORE'`).
+
+- 호출처 4곳이 **actor 를 넘긴다** — 누가 되돌렸는지가 핵심이라 익명 기록은 값어치가 적다.
+- 기록 실패가 환원을 막지 않는다. **기록이 본 작업을 막으면 안 된다.**
+- 실측: `출고 차감 환원 1품목`(ORDER) · `인쇄 자재 자동차감 환원 1건`(INVENTORY) 둘 다 남는다.
 
 ## 다음 세션 TODO
 
 1. **prod 실사용 확인 2건** — ③ 자동차감은 첫 출력 이벤트 뒤 `/inventory#tab=tx` 에서 「인쇄 자동차감」 행 확인 · ⑤ 견적은 prod 0건이라 미확인(로컬은 통과).
 2. **발주 입고를 `/receiving` 에서 쓰기 시작해야 IN 이 쌓인다** — 파이프라인 정상은 실증됐다(`received_by`/`received_at` 이 2,813행 전부 NULL = 앱 미통과).
-3. 위 **구조적 부채 1~3** 중 무엇을 할지 결정.
+3. `audit:stock-ledger` 를 **주기 실행에 넣을지** 결정 — 지금은 수동이다. 대량 이관·백필 뒤에는 기준선을 다시 떠야 한다.
+4. 로컬 게이트 4종이 CI 밖이다(서버 기동 필요). 배포 전 체크리스트에 넣을지 검토.
 
 ## 검증 명령 (PowerShell)
 
@@ -77,6 +103,7 @@ npx wrangler pages dev dist --local --port 3099   # 별도 창
 $env:SMOKE_URL='http://127.0.0.1:3099'; npm run test:symmetry
 $env:SMOKE_URL='http://127.0.0.1:3099'; npm run test:autodeduct
 $env:SMOKE_URL='http://127.0.0.1:3099'; npm run test:ship-stock
+npm run audit:stock-ledger   # 잔고↔원장 대사 (prod)
 npm run smoke:prod
 ```
 

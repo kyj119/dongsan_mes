@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.27.0';  // 0.27.0 = 배율 기준을 PDF 아트보드로(배치 직후 보고값은 잘려 있어 +23%) · 확대는 임베드 **전**(뒤로 옮기면 마스크가 안 따라와 배경이 죽는다) · 0.26.0 = 배율 확대 크기 계산을 임베드 **후**로(배치 직후 값은 그림 있는 데까지로 잘려 있어 클립 밖 삐짐 조각이 +23% 크게 나왔다) · 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
+var MESCUT_VERSION = 'CUT-CEP-0.28.0';  // 0.28.0 = 회전도 임베드 앞으로 + **회전만 있어도 PDF 경로**(1:1 회전도 마스크가 안 따라와 배경 절반이 회색) + 검산 기대폭에 회전 반영 · 0.27.0 = 배율 기준을 PDF 아트보드로(배치 직후 보고값은 잘려 있어 +23%) · 확대는 임베드 **전**(뒤로 옮기면 마스크가 안 따라와 배경이 죽는다) · 0.26.0 = 배율 확대 크기 계산을 임베드 **후**로(배치 직후 값은 그림 있는 데까지로 잘려 있어 클립 밖 삐짐 조각이 +23% 크게 나왔다) · 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -2424,7 +2424,7 @@ function mesCut_addDombo(doc) {
  * ⚠️ 임베드는 필수다. 링크로 두면 임시 PDF 를 지우는 순간 판이 깨진다.
  * @return 새 개체(성공) · null(실패 — 호출부가 종전 resize 로 폴백한다)
  */
-function mesCut_scaleAsPlaced(doc, artLayer, srcItem, srcDoc, pct, tagIdx) {
+function mesCut_scaleAsPlaced(doc, artLayer, srcItem, srcDoc, pct, tagIdx, rotDeg) {
     var bb = null;
     try { bb = srcItem.visibleBounds; } catch (e0) { return null; }
     if (!bb) return null;
@@ -2478,14 +2478,22 @@ function mesCut_scaleAsPlaced(doc, artLayer, srcItem, srcDoc, pct, tagIdx) {
         // ★resize 는 반드시 `embed()` **앞**이어야 한다 — 임베드하면 native 아트가 되어 그때 확대하는 건
         //   아트를 직접 키우는 것과 같고, 불투명도 마스크가 안 따라와 **배경이 사라진다**.
         //   (이 함수가 존재하는 이유 자체다. 순서를 뒤집었다가 배경이 회색으로 죽는 걸 실측했다.)
-        var wantW = w0 * (pct / 100);
+        var wantW = w0 * (pct / 100), wantH = h0 * (pct / 100);
         pl.resize(pct, pct, true, true, true, true, pct);
+        // ★회전도 `embed()` **앞**이다 — 확대와 완전히 같은 이유다. 임베드 뒤에 돌리면 native 아트를
+        //   직접 돌리는 것이라 불투명도 마스크가 제자리에 남고 **배경이 깨진다**(실측: 판 위아래가 회색).
+        //   배치 상태에서는 개체가 통짜라 회전·확대 둘 다 안전하다.
+        if (rotDeg) { pl.rotate(-rotDeg); }        // Konva CW → 일러 CCW (호출부와 같은 규칙)
         pl.embed();
         if (stage.pageItems.length !== 1) throw new Error('임시 레이어 개체 ' + stage.pageItems.length);
         var got = stage.pageItems[0];
         // ★크기 검증 — 어긋나면 폴백한다(조용히 틀린 크기로 배치하지 않는다)
         var gb2 = got.visibleBounds;
-        if (Math.abs((gb2[2] - gb2[0]) - wantW) > wantW * 0.02) throw new Error('크기 불일치');
+        // ★기대 폭은 **회전 후** 값이다 — 90도 돌면 폭과 높이가 바뀐다. 안 고치면 정상 회전을
+        //   "크기 불일치" 로 잡아 배경 깨는 폴백으로 보낸다.
+        var _rad = (rotDeg || 0) * Math.PI / 180;
+        var _expW = Math.abs(wantW * Math.cos(_rad)) + Math.abs(wantH * Math.sin(_rad));
+        if (Math.abs((gb2[2] - gb2[0]) - _expW) > _expW * 0.02) throw new Error('크기 불일치');
         got.move(artLayer, ElementPlacement.PLACEATBEGINNING);
         stage.remove(); stage = null;
         return got;
@@ -2629,19 +2637,22 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
             for (var b = 0; b < copies.length; b++) {
                 var copy = copies[b];
                 if (!copy) continue;
-                var it2 = sh.items[b];
+                var it2 = sh.items[b], rotDone = false;
                 // ★파일 좌표(F) 아트를 저장 좌표(S) 크기로 — **회전·이동보다 먼저** 해야 한다.
                 //   나중에 하면 이미 잡아 둔 잉크 경계가 어긋나 배치가 밀린다.
                 // ★확대는 `resize` 가 아니라 **PDF 배치**로 한다 — resize 는 불투명도 마스크를
                 //   제자리에 두고 개체만 키워 배경을 통째로 날린다(2026-08-28 실측).
                 //   실패하면 종전 resize 로 폴백한다 — 배율이 안 먹는 것보다는 낫다.
-                if (resizePct !== 100) {
+                // ★회전만 걸려도(배율 1배) 이 경로를 탄다 — `rotate` 도 `resize` 와 똑같이 마스크를
+                //   제자리에 두고 개체만 돌린다(2026-08-31 실측: 1:1 90도 회전에 배경 절반이 회색).
+                //   그래서 **변형이 있으면 무조건** PDF 로 굳혀서 한다. 대가는 조각당 수 초.
+                if (resizePct !== 100 || it2.rot) {
                     // ★사본을 **먼저** 치운다. 임시 문서를 만드는 순간 이 참조가 무효가 되므로
                     //   나중에 지우려 하면 실패하고, 확대 안 된 사본이 판에 그대로 남아 겹친다.
                     try { copy.remove(); } catch (eRm) {}
                     copy = null; copies[b] = null;
-                    var placed = mesCut_scaleAsPlaced(doc, artLayer, MESCUT_NEST_ITEMS[it2.idx], srcDoc, resizePct, b);
-                    if (placed) { copy = placed; copies[b] = placed; nPlaced++; }
+                    var placed = mesCut_scaleAsPlaced(doc, artLayer, MESCUT_NEST_ITEMS[it2.idx], srcDoc, resizePct, b, it2.rot);
+                    if (placed) { copy = placed; copies[b] = placed; nPlaced++; rotDone = true; }
                     else {
                         // 폴백 — 원본에서 다시 복제해 종전 방식으로 키운다.
                         // 배경이 깨질 수 있고, 그건 패널이 `placefail` 로 사용자에게 알린다.
@@ -2655,7 +2666,8 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                         copy = re; copies[b] = re;
                     }
                 }
-                if (it2.rot) { try { copy.rotate(-it2.rot); } catch (eR) {} }   // Konva CW → 일러 CCW
+                // ★배치 경로는 임베드 **앞**에서 이미 돌렸다(마스크 보존). 폴백·배율 1배만 여기서 돈다.
+                if (it2.rot && !rotDone) { try { copy.rotate(-it2.rot); } catch (eR) {} }   // Konva CW → 일러 CCW
                 // ★배치 기준도 **잉크 경계** — 패널이 계산한 아트 원점이 잉크 기준이라 여기서만 visibleBounds 를
                 //    쓰면 클립이 잉크보다 큰 아트에서 그 차이만큼 조각이 밀린다.
                 var bb2 = mesCut_inkBounds(copy) || copy.visibleBounds;

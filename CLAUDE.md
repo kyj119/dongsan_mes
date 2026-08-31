@@ -99,9 +99,15 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 
 **배치는 재고를 움직이지 않는다** — `POST /orders/sync-statuses` 에 차감을 넣지 않은 이유: ①대상이 이미 출고 처리를 거친 주문 ②#478 로 100건 bound(subrequest 한도) ③배치가 재고를 움직이면 "언제 왜 빠졌는지"가 사람 행동과 끊긴다.
 
-**재고를 바꾸면 원장에 남긴다** — `inventory.quantity` 가 정본이고 `inventory_transactions` 는 별개 기록이라 **둘이 조용히 어긋난다**(prod 실측 2026-08-30: 잔고 합계 132,121 vs 원장 순합 72,873). 자동차감 2종은 원장을 아예 안 남겨 증감내역 화면의 사각지대였고, 실사 구역배정 이동도 빠져 있었다 — 셋 다 2026-08-31 에 메웠다. **`UPDATE inventory SET quantity` 를 새로 쓰면 같은 커밋에서 원장 INSERT 도 쓴다**(현재 20곳 전부 짝이 맞다).
+**재고를 바꾸면 원장에 남기고, 한 batch 로 묶는다** — `inventory.quantity` 가 정본이고 `inventory_transactions` 는 별개 기록이라 **둘이 조용히 어긋난다**(prod 실측 2026-08-30: 잔고 합계 132,121 vs 원장 순합 72,873). 자동차감 2종은 원장을 아예 안 남겨 증감내역 화면의 사각지대였고, 실사 구역배정 이동도 빠져 있었다 — 셋 다 2026-08-31 에 메웠다. **`UPDATE inventory SET quantity` 를 새로 쓰면 같은 커밋에서 원장 INSERT 도 쓴다**(현재 20곳 전부 짝이 맞다).
 
-**타입체크·smoke 는 이걸 절대 못 잡는다** — 캐시가 틀려도 200 이다. 게이트 = **`npm run test:symmetry`**(수정·삭제 대칭 17항목) · **`npm run test:ship-stock`**(출고/취소/재출고 20항목) · **`npm run test:autodeduct`**(자동차감 원장·환원 20항목). 셋 다 서버 기동 필요라 CI 가 아니라 로컬 게이트다. `test:autodeduct` 는 전용 품목을 이름으로 재사용해 반복 실행해도 품목이 쌓이지 않고, 에이전트 키는 `AGENT_API_KEY` 또는 `.dev.vars` 에서 읽는다. ⚠️print_event 중복 판정 키가 **(file_path, print_completed_at)** 이라 시각 없이 재전송하면 duplicate 로 삼켜져 **차감 로직에 도달조차 못 한다**.
+**원자성 — 재고와 원장은 같은 batch 에 넣는다**(2026-08-31 전환). 개별 `.run()` 이면 UPDATE 는 되고 INSERT 가 터졌을 때 **재고만 빠지고 원장이 빈다**(UNIQUE 위반 500 이 정확히 그 모습이었다). `balance_after` 는 read-after-write 대신 **서브쿼리**로 읽는다 — batch 는 순서대로 실행되므로 UPDATE 반영값을 본다(`returns.ts` 전례). 부수 효과로 자동차감의 **수동 롤백 코드가 사라졌다**: batch 가 통째로 롤백되므로 UNIQUE 위반 시 되돌릴 것이 없다 — 보상 로직이 없으면 "보상이 또 실패하는" 경로도 없다.
+
+**환원 흔적은 시스템 로그에 남긴다** — 환원이 원장의 차감 행을 **철회**하므로(UNIQUE 상 역분개 불가) 되돌린 사실이 재고 축에 안 남는다. 주문 출고는 `order_status_history` 가 받쳐 주지만 자동차감은 아무 데도 없었다 → 두 환원 경로 모두 `action='STOCK_RESTORE'` 로 `/activity-log` 에 기록한다(호출처가 actor 를 넘긴다). 기록 실패가 환원을 막지는 않는다.
+
+**이중 정본은 남아 있다 — 대사로 감시한다**(`npm run audit:stock-ledger`). 이관이 `inventory` 에만 수량을 넣어 prod 격차가 **59,248**(197품목)이다. 이건 버그가 아니라 **출발점**이라 총량을 재면 영원히 빨간불이다 → 품목별 격차를 기준선(`scripts/stock-ledger-baseline.json`)으로 고정하고 **거기서 벗어난 품목만** 잡는다. 새 쓰기 경로가 원장을 빠뜨리면 그 품목만 뜬다. ⚠️기준선은 대상 DB 별이다(로컬/prod 혼용 시 차단).
+
+**타입체크·smoke 는 이걸 절대 못 잡는다** — 캐시가 틀려도 200 이다. 게이트 = **`npm run test:symmetry`**(수정·삭제 대칭 17항목) · **`npm run test:ship-stock`**(출고/취소/재출고 20항목) · **`npm run test:autodeduct`**(자동차감 원장·환원 20항목) · **`npm run audit:stock-ledger`**(잔고↔원장 대사, prod 대상). 셋 다 서버 기동 필요라 CI 가 아니라 로컬 게이트다. `test:autodeduct` 는 전용 품목을 이름으로 재사용해 반복 실행해도 품목이 쌓이지 않고, 에이전트 키는 `AGENT_API_KEY` 또는 `.dev.vars` 에서 읽는다. ⚠️print_event 중복 판정 키가 **(file_path, print_completed_at)** 이라 시각 없이 재전송하면 duplicate 로 삼켜져 **차감 로직에 도달조차 못 한다**.
 
 (상세 경위 = `PROJECT_STATUS_ARCHIVE.md` §2026-08-31 · §2026-08-30)
 

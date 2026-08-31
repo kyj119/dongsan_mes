@@ -1,6 +1,20 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { getItemDefaultZone } from './inventoryZone'
 import { kstDate } from './kstDate'
+import { logActivity } from './activityLog'
+
+/**
+ * 재고를 움직인 주체 — 환원 흔적을 `activity_log` 에 남기기 위해 호출처가 넘긴다.
+ *
+ * ★환원은 원장의 차감 행을 **철회**하므로(UNIQUE 제약상 역분개가 불가능하다) 되돌린 사실이
+ *   재고 축에 남지 않는다. 주문 출고는 `order_status_history` 가 받쳐 주지만 자동차감은
+ *   아무 데도 안 남았다 — 그래서 두 환원 경로 모두 시스템 로그(`/activity-log`)에 기록한다.
+ */
+export interface StockActor {
+  userId?: number | null
+  userName?: string | null
+  entityId?: number | null
+}
 
 /**
  * 출고 대상 라인(기성/유통) 조회 — 차감과 환원이 **같은 집합**을 보도록 한 곳에서 만든다.
@@ -83,26 +97,35 @@ export async function deductStockLinesOnShip(
     // UP2 제외: 기성/유통 출고는 창고 피킹(소모 장비 없음) → 품목 기본창고가 정확.
     const zoneId = await getItemDefaultZone(db, ln.item_id, lineEntity)
 
-    // 담당 법인 재고 row 부재 시 0으로 생성(음수 차감 허용) → UPDATE silent miss 방지
-    await db.prepare(
-      `INSERT OR IGNORE INTO inventory (item_id, entity_id, storage_zone_id, quantity) VALUES (?, ?, ?, 0)`
-    ).bind(ln.item_id, lineEntity, zoneId).run()
+    // ★재고 UPDATE 와 원장 INSERT 를 **한 batch 로 묶는다**(2026-08-31).
+    //   예전엔 개별 `.run()` 이라 UPDATE 는 됐는데 INSERT 가 터지면 **재고만 빠지고 원장이 비었다** —
+    //   UNIQUE 위반 500 이 정확히 그 모습이었다. balance_after 도 read-after-write 대신
+    //   서브쿼리로 읽어(returns.ts 전례) 중간 SELECT 를 없앴다. batch 는 순서대로 실행되므로
+    //   서브쿼리는 UPDATE 가 반영된 값을 본다.
+    await db.batch([
+      // 담당 법인 재고 row 부재 시 0으로 생성(음수 차감 허용) → UPDATE silent miss 방지
+      db.prepare(
+        `INSERT OR IGNORE INTO inventory (item_id, entity_id, storage_zone_id, quantity) VALUES (?, ?, ?, 0)`
+      ).bind(ln.item_id, lineEntity, zoneId),
+      // #164 패턴: atomic UPDATE, 음수 허용
+      db.prepare(
+        `UPDATE inventory SET quantity = quantity - ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
+      ).bind(ln.qty, ln.item_id, lineEntity, zoneId),
+      db.prepare(
+        `INSERT INTO inventory_transactions (item_id, transaction_type, quantity, reference_type, reference_id, balance_after, notes, transaction_date, entity_id, storage_zone_id)
+         VALUES (?, 'OUT', ?, 'ORDER', ?,
+           (SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)),
+           '기성/유통 출고 차감', ${kstDate()}, ?, ?)`
+      ).bind(ln.item_id, ln.qty, orderId, ln.item_id, lineEntity, zoneId, lineEntity, zoneId),
+    ])
 
-    // #164 패턴: atomic UPDATE, 음수 허용
-    await db.prepare(
-      `UPDATE inventory SET quantity = quantity - ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
-    ).bind(ln.qty, ln.item_id, lineEntity, zoneId).run()
+    // 음수 경고는 **기록용**이라 batch 밖에서 읽는다(값이 틀려도 재고·원장은 이미 정합).
     const afterRow = await db.prepare(
       `SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
     ).bind(ln.item_id, lineEntity, zoneId).first<{ quantity: number }>()
-    const after = afterRow?.quantity ?? 0
-    if (after < 0) {
-      console.warn(`[stockShip] ⚠️ 재고 음수: item=${ln.item_id}, entity=${lineEntity}, 잔량=${after}, order=${orderId}`)
+    if ((afterRow?.quantity ?? 0) < 0) {
+      console.warn(`[stockShip] ⚠️ 재고 음수: item=${ln.item_id}, entity=${lineEntity}, 잔량=${afterRow?.quantity}, order=${orderId}`)
     }
-    await db.prepare(
-      `INSERT INTO inventory_transactions (item_id, transaction_type, quantity, reference_type, reference_id, balance_after, notes, transaction_date, entity_id, storage_zone_id)
-       VALUES (?, 'OUT', ?, 'ORDER', ?, ?, '기성/유통 출고 차감', ${kstDate()}, ?, ?)`
-    ).bind(ln.item_id, ln.qty, orderId, after, lineEntity, zoneId).run()
   }
 }
 
@@ -124,9 +147,11 @@ export async function deductStockLinesOnShip(
 export async function restoreStockLinesOnUnship(
   db: D1Database,
   orderId: number,
-  entityId: number
+  entityId: number,
+  actor?: StockActor
 ): Promise<void> {
   const lines = await selectShippableLines(db, orderId)
+  const restored: { itemId: number; qty: number; entityId: number }[] = []
 
   for (const ln of lines) {
     if (!ln.item_id) continue
@@ -140,14 +165,37 @@ export async function restoreStockLinesOnUnship(
     //   그 사이 품목 기본창고(items.storage_zone_id)가 바뀐 경우 **엉뚱한 창고로 환원**된다
     //   (총량은 맞고 창고별 재고만 어긋나 발견이 늦다). autoDeductRestore 와 같은 규칙이다.
     const zoneId = out.storage_zone_id ?? null
-    await db.prepare(
-      `INSERT OR IGNORE INTO inventory (item_id, entity_id, storage_zone_id, quantity) VALUES (?, ?, ?, 0)`
-    ).bind(ln.item_id, lineEntity, zoneId).run()
-    await db.prepare(
-      `UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
-    ).bind(qty, ln.item_id, lineEntity, zoneId).run()
+    // 복원과 철회를 한 batch 로 — 하나만 되면 재고·원장이 어긋난다(차감 쪽과 같은 이유).
+    await db.batch([
+      db.prepare(
+        `INSERT OR IGNORE INTO inventory (item_id, entity_id, storage_zone_id, quantity) VALUES (?, ?, ?, 0)`
+      ).bind(ln.item_id, lineEntity, zoneId),
+      db.prepare(
+        `UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
+      ).bind(qty, ln.item_id, lineEntity, zoneId),
+      // 차감 행 철회 — UNIQUE 인덱스가 reference 당 1행이라 이걸 남기면 재출고가 500 난다(위 주석).
+      db.prepare(`DELETE FROM inventory_transactions WHERE id = ?`).bind(out.id),
+    ])
+    restored.push({ itemId: ln.item_id, qty, entityId: lineEntity })
+  }
 
-    // 차감 행 철회 — UNIQUE 인덱스가 reference 당 1행이라 이걸 남기면 재출고가 500 난다(위 주석).
-    await db.prepare(`DELETE FROM inventory_transactions WHERE id = ?`).bind(out.id).run()
+  // 철회는 원장에 흔적을 안 남기므로(위 StockActor 주석) 시스템 로그에 남긴다.
+  //   실패해도 환원 자체는 유지한다 — 기록이 본 작업을 막으면 안 된다.
+  if (restored.length > 0) {
+    try {
+      await logActivity({
+        db,
+        userId: actor?.userId ?? null,
+        userName: actor?.userName ?? null,
+        action: 'STOCK_RESTORE',
+        entityType: 'ORDER',
+        entityId: orderId,
+        entityLabel: `출고 차감 환원 ${restored.length}품목`,
+        details: JSON.stringify({ reason: 'unship', lines: restored }),
+        actorEntityId: actor?.entityId ?? null,
+      })
+    } catch (e: any) {
+      console.warn(`[stockShip] 환원 로그 실패(환원은 유지): order=${orderId} — ${e?.message}`)
+    }
   }
 }
