@@ -57,8 +57,9 @@ function Get-PrintExpCandidates {
 
     $roots = @()
     foreach ($b in $bases) {
-        # "PrintExp*" = X64 외 변종(XSJ 실측 — UV-1800) 포함. 마커 검증이 오탐을 걸러준다.
-        try { $roots += [IO.Directory]::GetDirectories($b, "PrintExp*") } catch { }
+        # "*PrintExp*" = 접두사가 붙은 변종까지 잡는다 — RIC_PrintExp_X64(HSM-04 실측 2026-08-31) · PrintExp_XSJ(UV-1800).
+        # ★ 앞을 고정하면 RIC_ 같은 접두사 설치본을 통째로 놓쳐 자동 전환이 조용히 안 된다. 마커 검증이 오탐을 걸러준다.
+        try { $roots += [IO.Directory]::GetDirectories($b, "*PrintExp*") } catch { }
     }
 
     $script:PexRejects = @()   # 이름은 맞는데 탈락한 설치본 — 호출부가 admin-install.log 로 회수해 원인 진단
