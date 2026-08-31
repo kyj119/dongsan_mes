@@ -101,7 +101,7 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 
 **재고를 바꾸면 원장에 남긴다** — `inventory.quantity` 가 정본이고 `inventory_transactions` 는 별개 기록이라 **둘이 조용히 어긋난다**(prod 실측 2026-08-30: 잔고 합계 132,121 vs 원장 순합 72,873). 자동차감 2종은 원장을 아예 안 남겨 증감내역 화면의 사각지대였고, 실사 구역배정 이동도 빠져 있었다 — 셋 다 2026-08-31 에 메웠다. **`UPDATE inventory SET quantity` 를 새로 쓰면 같은 커밋에서 원장 INSERT 도 쓴다**(현재 20곳 전부 짝이 맞다).
 
-**타입체크·smoke 는 이걸 절대 못 잡는다** — 캐시가 틀려도 200 이다. 게이트 = **`npm run test:symmetry`**(수정·삭제 대칭 17항목) · **`npm run test:ship-stock`**(출고/취소/재출고 20항목). 둘 다 서버 기동 필요라 CI 가 아니라 로컬 게이트다.
+**타입체크·smoke 는 이걸 절대 못 잡는다** — 캐시가 틀려도 200 이다. 게이트 = **`npm run test:symmetry`**(수정·삭제 대칭 17항목) · **`npm run test:ship-stock`**(출고/취소/재출고 20항목) · **`npm run test:autodeduct`**(자동차감 원장·환원 20항목). 셋 다 서버 기동 필요라 CI 가 아니라 로컬 게이트다. `test:autodeduct` 는 전용 품목을 이름으로 재사용해 반복 실행해도 품목이 쌓이지 않고, 에이전트 키는 `AGENT_API_KEY` 또는 `.dev.vars` 에서 읽는다. ⚠️print_event 중복 판정 키가 **(file_path, print_completed_at)** 이라 시각 없이 재전송하면 duplicate 로 삼켜져 **차감 로직에 도달조차 못 한다**.
 
 (상세 경위 = `PROJECT_STATUS_ARCHIVE.md` §2026-08-31 · §2026-08-30)
 

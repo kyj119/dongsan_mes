@@ -92,6 +92,7 @@
     "smoke:write": "node scripts/smoke-write.cjs",
     "test:ship-stock": "node scripts/e2e-ship-unship-stock.cjs",
     "test:symmetry": "node scripts/e2e-edit-delete-symmetry.cjs",
+    "test:autodeduct": "node scripts/e2e-autodeduct-restore.cjs",
     "audit:query-cost": "node scripts/query-cost-audit.cjs",
     "audit:subquery": "node scripts/correlated-subquery-audit.cjs"
   },

@@ -57,7 +57,8 @@
 
 ### 남은 것
 
-- ✅ **③ 자동차감은 2026-08-31 로컬에서 전 구간 실측 완료** — 차감(재고 480→477.81 · 원장 `AUTO_DEDUCT` OUT 1행 · `inventory_auto_deductions` 1행) → 카드 revert(재고 480 복원 · 원장·차감기록 둘 다 철회) → 재출력(다시 477.81 · 원장 재생성, UNIQUE 위반 없음). 서버 ERROR 0건. 재현 절차는 `e2e-edit-delete-symmetry.cjs` 헤더에 적어 뒀다.
+- ✅ **③ 자동차감은 게이트가 됐다 — `npm run test:autodeduct` 20항목**(`scripts/e2e-autodeduct-restore.cjs`). 전용 품목(자재 ROLL·폭1370 + 제작 제품)을 **이름으로 재사용**해 반복 실행해도 품목이 안 쌓이고, 매핑·재고시드·주문·카드·print_file_map 까지 스스로 만든다. 에이전트 키는 `AGENT_API_KEY` 또는 `.dev.vars`. 검증 = 차감(재고↓·원장 AUTO_DEDUCT OUT·부호 정규화) → 카드 되돌리기(원복·행 철회) → 재출력(재차감·UNIQUE 위반 없음) → **주문 삭제로도 환원**.
+- 게이트로 만들기 전 수동 실측 결과(동일) — 차감(재고 480→477.81 · 원장 `AUTO_DEDUCT` OUT 1행 · `inventory_auto_deductions` 1행) → 카드 revert(재고 480 복원 · 원장·차감기록 둘 다 철회) → 재출력(다시 477.81 · 원장 재생성, UNIQUE 위반 없음). 서버 ERROR 0건. 재현 절차는 `e2e-edit-delete-symmetry.cjs` 헤더에 적어 뒀다.
   - ⚠️실측 중 발견: print_event 중복 판정 키가 `(file_path, print_completed_at)` 이라 **시각 없이 재전송하면 duplicate 로 삼켜져 재차감이 안 된다**. 실제 LogWatcher 는 시각을 보내므로 정상이지만, 수동 재전송 시 주의.
   - prod 확인은 여전히 남음 — `inventory_auto_deductions` 0건이라 실사용 출력이 들어와야 「인쇄 자동차감」 행이 보인다.
 - 이 부류를 앞으로 막는 규칙: **누적 캐시(`col = col ± ?`)를 새로 만들지 말 것.** 파생으로 되거나(⑤·④), 자기교정 산식으로 되거나(연차), 그것도 아니면 되돌리는 짝을 같은 커밋에서 만든다(①·②·③).
