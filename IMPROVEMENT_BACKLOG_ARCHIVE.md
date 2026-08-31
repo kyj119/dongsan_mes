@@ -1,3 +1,85 @@
+## 📦 2026-08-31 이관분 (1차 자동 트림 — scripts/backlog-trim.cjs)
+
+> 사이클 로그 5건. 원본 순서(시간 역순) 보존. 활성 파일은 최근 8건 유지.
+
+> **Area 5 보안 + 인프라 (2026-08-29T21:44):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD, `3ec2d57`), `git fetch origin main`(`207078c..3ec2d57`) → `git checkout main && git reset --hard origin/main`(HEAD `3ec2d57`, 이미 최신 — Area4 자신의 직전 커밋). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area5 방법 라인 HEAD `3c4a5bc8`)**: 웹앱 범위(`-- src migrations scripts .github`) diff **3커밋**(`4c6e5ab`·`175c7f6`·`77782cf`) — Area1·2·3·4·6이 이미 각자 렌즈로 정독 완료한 동일 3건. `git show --stat` 재확인 결과 **셋 다 `docs/price/*.sql`·`package.json`·`scripts/*.cjs`만 변경**(`4c6e5ab`=avg-cost 백필 SQL+감사스크립트, `175c7f6`=`scripts/ia-deploy.cjs` 단독, `77782cf`=`scripts/item-master-audit.cjs`+`scripts/lump-voucher-report.cjs`) — **`src/routes` 변경 0파일, `src/scripts`(프론트 JS) 변경 0파일, 신규 마이그 0건** → 보안 렌즈 표준 스캔(SQL 바인딩·XSS sink·authMiddleware·rate-limit·IDOR 비대칭)의 churn-트리거 신규 표면이 없음. 이번 사이클은 **standing scan 전량 재통과**로 대체.
+> - **standing scan 1: 시크릿 폴백** `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43` 1건뿐(기존 FP, 변동없음).
+> - **standing scan 2: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 67건·**누락 0건**(변동없음).
+> - **standing scan 3: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 1건 `attendance.ts:158`(기존 노출 유지, 변동없음).
+> - **standing scan 4: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 5: `npm audit`** — 11건(1 moderate·8 high·2 critical) 전부 devDependency, #613 기보고와 완전 일치, net-new 0.
+> - **CI 헬스**: `deploy.yml` 최근 10런 전부 `conclusion:success`. `verify.yml` 카나리 `list_workflow_runs` totalCount **0**(변동없음, #608와 완전 일치).
+> - **IDOR 비대칭·XSS sink 전수 자동스캔(#452/#452-mirror) 재실행 불요 판단**: 신규 라우트 0개·신규 프론트 JS 0파일이라 이 사이클의 churn 안에 그 스캔의 신규 후보 자체가 없음(직전 Area5 08-28이 20커밋 범위로 이미 전수 재통과 완료, 그 결과와 이번 3커밋 diff 사이 라우트/JS 변경 0으로 재실행 무의미).
+> - **open 12건 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **12**(변동없음, #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621 전건 일치), `search_issues`로 전 12건 `reactions.+1=0` 재확인(승인 대기 유지). Area5 소관 #612(크로스법인 IDOR) 재확인 — 이번 churn이 손댄 파일과 무관, 무변화.
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · `search_issues(reason:completed)` **532**(변동없음) · `reason:not_planned` **4** + `duplicate` **2** = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-5-security-infra.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 9건 → 이번 로그 추가 후 10건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(3커밋 전부 CLI 툴링, src/routes·src/scripts 변경 0으로 보안 표준스캔 신규표면 없음, standing scan 5종·CI헬스·IDOR/XSS 전수스캔 재확인 판단 전부 net-new 0), 자동수정 0건, done-sync: open 12(변동없음)·done 532(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
+
+> **Area 4 데이터 정합성 (2026-08-29T15:47):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD, f8ab48b), `git fetch origin main`(`207078c..f8ab48b`) → `git merge-base --is-ancestor e2f5c938 origin/main` = true(fast-forward 확인, rewrite 아님) → `git checkout main && git reset --hard origin/main`(HEAD `f8ab48b`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area4 자신의 앵커(`e2f5c938`) 이후 웹앱 범위(`-- src migrations scripts .github`) diff **3커밋**(`4c6e5ab`·`175c7f6`·`77782cf`) — **신규 마이그레이션 0건, 신규 라우트 0개**(`git diff --stat -- src/routes` 공백). 셋 다 Area1·2·3·6이 이미 각자 렌즈로 정독 완료한 CLI 툴링(avg-cost 백필 SQL 수정·IA 배포 버전드리프트 게이트·뭉치전표 감사 LEFT JOIN 정정) — 앱 write-path·스키마 변경 자체가 없어 **데이터정합성 렌즈의 표준 스캔(고아 레코드·NOT NULL diff·CHECK literal write·entity_id backfill) 신규 표면이 사실상 없음**.
+> - **standing scan 1: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 67건·**누락 0건**(변동없음).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 1건 `attendance.ts:158`(기존 노출 유지, 변동없음).
+> - **standing scan 3: 신규 비-FK `*_id` 참조 컬럼 sweep** — 이번 churn에 신규 마이그 0건이라 「churn-트리거 재스캔」(#477/#480 클래스)의 신규 후보 자체가 발생 불가.
+> - **`audit:migration-drift` 시도** — 이 샌드박스엔 `CLOUDFLARE_API_TOKEN` 미설정이라 prod D1 직접조회 불가(기존 제약과 동일, net-new 아님) — ground-truth 대조는 로컬 `npx tsc --noEmit` clean + `audit:entity` 정적분석으로 대체.
+> - **open 12건 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **12**(변동없음, #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621 전건 일치), `search_issues`로 전 12건 `reactions.+1=0` 재확인(승인 대기 유지). Area4 소관 #614(`designer_intakes` 참조가드 누락)·#615(재고 rebase 재현불가) 재확인 — 이번 churn이 손댄 파일과 무관, 무변화.
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · `search_issues(reason:completed)` **532**(변동없음) · `reason:"not planned"` **4** + `reason:duplicate` **2** = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 8건 → 이번 로그 추가 후 9건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(3커밋 전부 CLI 툴링, 신규 마이그/라우트 0건이라 데이터정합성 표준스캔 신규표면 없음, entity audit·sort-audit·비FK 참조컬럼 sweep 전부 net-new 0), 자동수정 0건, done-sync: open 12(변동없음)·done 532(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
+
+> **Area 3 UX/기능 감사 (2026-08-29T09:47):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD), `git fetch origin main`(`207078c..564c174`) → `git checkout main && git reset --hard origin/main`(HEAD `564c174`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area3 자신의 앵커(`5cadd9f`) 이후 웹앱 범위(`-- src migrations scripts .github`) diff **4커밋**(`4c6e5ab`·`175c7f6`·`77782cf`·`c09d0b8`) — 개별 `git show --stat` 확인 결과 **넷 다 `src/pages`·`src/scripts`·`src/routes` 변경 0건**(avg-cost 백필 스크립트·IA 배포 버전게이트·뭉치전표 감사 스크립트·entity-audit 게이트 자체 개선 — 전부 CLI 감사/배포 툴링, `.claude/PROJECT_STATUS*`·`scripts/*.cjs`·`scripts/entity-audit.mjs`·`docs/*` 파일만 변경). **신규 화면·신규 API 응답필드·신규 axios 호출 자체가 없어 UX 렌즈 신규 표면이 없음**(Area2·Area6가 이미 같은 4~6커밋을 각자 렌즈로 정독 완료, 이번엔 UX 관점으로 재확인만).
+> - **standing scan 1: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 1건 `attendance.ts:158`(기존 노출 유지, 변동없음).
+> - **standing scan 2: "백엔드 먼저·화면 나중" 패턴 재확인** — 이번 churn에 신규 마이그레이션 0건·신규 라우트 0개·신규 API 응답필드 0건이라 이 패턴의 신규 후보 자체가 발생 불가(기존 #606·#618·#619 3건은 무변화, 재검증 불요 — 관련 파일 미변경).
+> - **open 12건 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **12**(변동없음, #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621 전건 일치), `search_issues`로 전 12건 `reactions.+1=0` 재확인(승인 대기 유지).
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · `search_issues(reason:completed)` **532**(변동없음) · `reason:"not planned"` **4** + `reason:duplicate` **2** = rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 12건 → 이번 로그 추가 후 13건, 임계 도달 → 트림 실행.
+> - 신규 이슈 0건(4커밋 전부 CLI 툴링, UI/route/API 응답필드 변경 0건이라 UX 신규 표면 없음, standing scan 2종 net-new 0), 자동수정 0건, done-sync: open 12(변동없음)·done 532(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
+
+> **Area 2 코드 품질 심층 분석 (2026-08-29T03:46):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD), `git fetch origin main`(`207078c..d745bdb`) → `git merge-base --is-ancestor d7f97e3 origin/main` = true(fast-forward 확인, rewrite 아님) → `git checkout main && git reset --hard origin/main`(HEAD `d745bdb`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area2 자신의 앵커(방법 라인 HEAD `d7f97e3`, 62회차 자기교정 규칙 적용) 이후 웹앱 범위(`-- src migrations scripts .github`) diff **6커밋**(`4c6e5ab`·`175c7f6`·`77782cf`·`c09d0b8`·`f1895a0`·`44576c4`) — **신규 마이그 0건, 신규 라우트 0개**. 6건 전부 CLI 감사/배포 툴링(`scripts/*.cjs`·`entity-audit.mjs`·`ia-deploy.cjs`) 또는 `src/utils/{autoDeductInventory,materialRequirement,rollConsumption}.ts`(자재선택 로직) — routes 변경 자체가 없어 Area2 표준 스캔(entity_id INSERT·authMiddleware·N+1)의 신규 표면이 사실상 없음.
+> - **`f1895a0` 유틸 3파일 직접 정독(판재 tie-break 버그픽스, 이미 Area1·4가 정독한 커밋의 코드 자체를 코드품질 렌즈로 재확인)**: `rollConsumption.ts` 신설 `selectBoardMaterial()`(면적 최소 우선 tie-break `material_item_id`) — `grep -rn "boardMats\[0\]\|mats\[0\]" src`=0(잔존 `[0]` 선택 없음, 두 호출부 `autoDeductInventory.ts:165`·`materialRequirement.ts:145` 전부 단일소스 경유), `grep -rn "BOARD_AREA_SQM" src`=0(중복 상수 제거 완료, dead code 없음) — clean.
+> - **`autoDeductInventory.ts` INSERT/UPDATE entity_id 재확인**: `inventory_auto_deductions` INSERT(15컬럼)·`inventory` INSERT OR IGNORE/UPDATE 전부 `entityId` 바인드 포함(재고 row 부재 시 0-row 선생성 → UPDATE silent miss 방지 패턴 포함) — clean.
+> - **standing scan 1: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 67건·**누락 0건**(c09d0b8 게이트 개선 이후 재확인, financialReports.ts 6건 FP 잔존 0 — Area4 08-28 판정과 동일).
+> - **standing scan 2: authMiddleware recursive 커버리지**(`find src/routes -name '*.ts'` 전수, top-level+subdir) — 후보 7개(`publicUnsubscribe.ts`·`orders/helpers.ts`·`payroll/shared.ts`·`cron.ts`·`messagesAd.ts`·`hrSelf.ts`·`taxInvoices/helpers.ts`) 전건 개별 확인: `orders/helpers.ts`·`payroll/shared.ts`·`taxInvoices/helpers.ts`=`Map.get()` FP(라우트 아님, helper 파일) · `publicUnsubscribe.ts`=의도적 공개(§50⑧ 무료 수신거부 수단, rateLimitMiddleware 게이트, 코드 주석에 명시) · `cron.ts`=`agentKeyMiddleware` scoped-token 4엔드포인트 전부 게이트 · `hrSelf.ts`=self-token scoped 기존 정당 클래스 · `messagesAd.ts`=자체 `requireRole('ADMIN')`만 보여 최초 의심됐으나 **부모 `messages.ts:121` `messagesRouter.use('/*', authMiddleware, requireRole('ADMIN','MANAGER'))`가 `/ad` 서브라우터 마운트(`:124`) 전에 이미 적용** — barrel 부모위임 정상 계층화(ADMIN·MANAGER 허용 후 자체 게이트로 ADMIN만 재좁힘), 실제 실행경로 index.tsx 마운트까지 추적 확인. **전건 FP/정당, net-new 0**.
+> - **open 12건 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **12**(변동없음, #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621 전건 일치), `search_issues`로 전 12건 `reactions.+1=0` 재확인(승인 대기 유지).
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · `search_issues(reason:completed)` **532**(변동없음) · rejected **6**(변동없음, 재확인 생략 — 대상 무변경).
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 11건 → 이번 로그 추가 후 12건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(6커밋 전체 코드품질 렌즈 clean — routes 변경 0으로 표준스캔 신규표면 없음, 유틸 3파일 tie-break 픽스 재확인 clean, entity audit·authMiddleware recursive 스캔 전부 net-new 0), 자동수정 0건, done-sync: open 12(변동없음)·done 532(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
+
+> **Area 6 자기 진화 (2026-08-28T15:48):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD), `git fetch origin main` → `forced update`로 표시됐으나 HEAD가 이미 `origin/main`과 동일(`14ab556`) → `git merge-base --is-ancestor 424f769e origin/main` = true(fast-forward 확인, rewrite 아님). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(범위 축 2종)**: 직전 Area6 자신의 앵커(`424f769e`) 이후 웹앱 범위(`-- src migrations scripts .github`) diff **21커밋**, 비-웹앱 범위(`-- LogWatcher IllustratorAutomat caps-worker workers queue`) diff **7커밋**(`1373f57`·`09feec3`·`2a10328`·`0dc1162`·`4156226`은 `scripts/cut/*`도 건드려 양쪽에 중복 계상). `grep -c` 백로그+아카이브 전수 대조 결과 **어느 로그에도 해시 언급 0건인 LogWatcher 커밋 2건**(`3ce57b2`·`1d3d3e7`)을 우선 정독 대상으로 확정.
+> - **`3ce57b2` 심층 정독(신규 TnsFloraParser, 평판 TopazRip+Flora 2축 조인, 372줄) — #616 형제-비대칭 3번째 사례**: 전송후취소 무흔적(현장 3라운드 실측 R3=OK 오판) 문제를 Flora `print_rec.dat`(고정 2,376바이트 레코드) 실시각/중단플래그로 보정하는 신규 파서. `ClaimRipByName`이 `_pending`을 **표시만 하고 유지**(재출력 재매칭 대비)하는 설계는 정확하나, `rip_fallback_hours`(기본 6h) 폴백이 미claim 항목을 **송출과 동시에 큐에서 제거**하는 지점 이후 그 이름으로 뒤늦게 도착하는 Flora 레코드는 `ClaimRipByName`이 못 찾아(`rip==null`) **신원 없는 새 이벤트로 무조건 재송출**(`ReadRecords`가 조건 없이 `outEvents`에 추가) — `TnsPrintExpParser.cs`의 `_lastRipCancelAt`(취소 경로 전용 억제 상태)와 동형인 폴백-OK 경로 억제 상태가 이번에도 없음. **#616 본문이 정확히 이 메커니즘**(취소 경로엔 억제 있음·OK 폴백 경로엔 없음)을 다른 파일(`TnsPrintExpParser.cs`)로 신고했고, 62회차 선례(`361557ce`의 `FlexiPrintExpParser`)가 "같은 클래스 재노출은 별도 이슈화 안 함, #616가 메커니즘 전체 커버"로 처리한 전례와 동형 — **신규 이슈화 안 함**, 노출 대상이 TnsPrintExpParser→FlexiPrintExpParser→**TnsFloraParser로 3번째 파서 확대**된 것만 기록(각 파서가 독립 `.cs` 파일에 동일 패턴을 복붙 구현 — 공유 코드 리팩터가 아니라 매 신규 파서가 개별적으로 같은 함정을 재도입하는 구조).
+> - **`1d3d3e7` 확인**: `.claude/PROJECT_STATUS.md` 1줄(docs-only, HSM-04 PrintLog 축 폐기 기록) — 코드 변경 없음, clean.
+> - **웹앱 축 21커밋 중 Area5 앵커(`3c4a5bc8`) 이후 순수 신규 3건**(`4c6e5ab`·`175c7f6`·`77782cf`) 개별 확인: ① `4c6e5ab`(avg-cost 백필 스크립트가 08-19 base 리베이스 이후 잘못된 축으로 재실행되면 43개 품목 평가액이 61.5M→3B로 폭증할 뻔한 것을 방지 + `audit:avgcost` 신설) ② `175c7f6`(IA 배포 시 버전 문자열 미변경 감지 게이트) ③ `77782cf`(뭉치전표 리포트가 item_id NULL 219행/13.7억을 조용히 누락하던 것을 LEFT JOIN + 사유분류로 표면화) — **셋 다 CLI 감사/배포 툴링**(웹 라우트·DB write 없음, `docs/price/backfill_avg_cost.sql`은 owner 수동 실행 스크립트) — 기존 판정(`30f446f2`/`ca46317`류, owner 수기검증 영역)과 동형, Area6 자동스캔 대상 밖.
+> - **웹앱 축 21커밋 중 미언급 12건**(cut/도구 IA 스크립트·데이터 마이그·docs) 스탯 레벨 확인 — 전부 `scripts/cut/*`(넷팅·베젤·용접선) 또는 `data(items)`/`docs(ia)` 성격, 이미 확립된 IA-축/데이터-전용 판정 범주(웹 라우트·DB write 없음)에 해당 — 개별 심층정독 불요.
+> - **close-pending 캐시**: 없음(이번 사이클 신규 fixed-in-tree 픽스 0건).
+> - **open 12건 재확인(open≠unfixed, 코드 재grep 전수)**: `list_issues(OPEN,label:auto-improve)` totalCount **12**(변동없음, #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621 전건 일치). 12건 전부 본문 안티패턴을 코드에서 개별 재grep — **전건 잔존 확인**(#606/#618/#619 프론트 소비처 여전히 0건, #612 `workbench.ts:653` 여전히 entity 격리 없이 INSERT, #614 `items.ts` 참조가드 20종에 `designer_intakes` 여전히 미포함, #616 위 상술, #617 `kit.ps1:242` `Select-Object -First 4000` 여전함, #620 3개 지점(`lifecycle.ts:499`·`ar-receivables.ts:424`의 `CREDIT_ALERT_TITLE_PREFIX='여신 초과'`·`cron.ts:281`) 전부 한글 리터럴 LIKE 여전함, #621 `deriveCardEntityId` 여전히 미교정) — **12건 전부 미픽스, close-pending 없음**. `search_issues`로 전 12건 `reactions.+1=0` 재확인(승인 대기 유지).
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · `search_issues(reason:completed)` **532**(변동없음) · `reason:not_planned` **4** + `duplicate` **2** = rejected **6**(변동없음).
+> - **브랜치 위생**(읽기전용): `npm run branch:clean` → SAFE-remote 0·SAFE-absorbed 1·REVIEW 0, SKIP 1(main) — 삭제대상 1건(30건 미만, 백로그 등록 불요).
+> - **CI 헬스**: `deploy.yml` 최근 30런 전부 `conclusion:success`(3ce57b2·4c6e5ab 포함 최신 커밋까지).
+> - **npm audit 재확인**: 11건(1 moderate·8 high·2 critical) 전부 devDependency, #613 기보고와 완전 일치, net-new 0.
+> - **verify.yml 카나리 재확인**: `list_workflow_runs(verify.yml)` totalCount **0**(변동없음, #608와 완전 일치).
+> - **🧬 SKILL 강화**: 없음 — area-6-self-evolution.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 「범위 축」(62회차) 레시피가 이번에도 LogWatcher 2커밋을 Area1~5 사각지대에서 정확히 낚아챘고, 신규 파서(TnsFloraParser)가 #616 메커니즘을 3번째로 재현한 것을 즉시 식별 — 두 레시피 모두 정상 작동, 신규 코딩화 대상 없음.
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 9건 → 이번 로그 추가 후 10건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(fresh 웹앱 3건 전부 CLI 툴링 clean, LogWatcher 2건 중 1건은 #616 기존 메커니즘 재노출로 처리·1건은 docs-only clean), 자동수정 0건, done-sync: open 12(변동없음)·done 532(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
+
+
+---
 ## 📦 2026-08-30 이관분 (1차 자동 트림 — scripts/backlog-trim.cjs)
 
 > 사이클 로그 5건. 원본 순서(시간 역순) 보존. 활성 파일은 최근 8건 유지.
