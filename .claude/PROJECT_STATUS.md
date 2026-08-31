@@ -161,6 +161,7 @@
 ## ⚠️ 잠복·블로커
 
 - **품목 단가 전역(블로커)**: 원가 avg_unit_cost 315개 backfill 완료 — 남은=매출 base_price·무이력 514·자재비 소진연결 → [[project-item-pricing]]
+- **HSM-05·HSM-07 실적 0건(잠복)**: 1.1.0 에이전트가 매분 heartbeat 는 보내는데 `print_events` 가 **한 건도 없다**(전 기간). HSM-01 도 8월 1건뿐. 2축 3대(02·03·06)는 취소 6~7%인데 단축 7대는 **전부 0%** — [2] 때 같이 확인.
 - 핸드오프 정본=`memory/session-context.md` + [[project-workflow-master-plan]](Phase1~5 잔여)
 
 ## 📌 기존 에러
