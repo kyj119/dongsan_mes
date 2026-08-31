@@ -22,6 +22,8 @@
     "status:trim": "node scripts/status-trim.cjs",
     "branch:clean": "node scripts/branch-cleanup.cjs",
     "canary:write": "node scripts/write-canary.cjs",
+    "db:bootstrap:ci": "wrangler d1 execute webapp-production --local --file=./schema/baseline_schema.sql && wrangler d1 execute webapp-production --local --file=./schema/baseline_reference.sql && wrangler d1 execute webapp-production --local --file=./schema/baseline_applied_migrations.sql && wrangler d1 migrations apply webapp-production --local",
+    "canary:write:ci": "npm run db:bootstrap:ci && npm run canary:write",
     "ship:gate": "npm run verify && node scripts/entity-audit.mjs && npm run canary:write",
     "ship": "npm run ship:gate && npm run deploy:prod",
     "verify:items": "node scripts/verify-items.mjs",

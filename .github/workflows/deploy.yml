@@ -65,6 +65,23 @@ jobs:
       - name: Self-tests (calculation gates)
         run: npm run test:calc
 
+      # entity 필터 정적 감사 — verify.yml 에만 있어 **한 번도 돌지 않았다**(그 워크플로는 PR 트리거).
+      # 법인 데이터 유출은 200 으로 나가므로 스모크가 못 잡는다. 배포 차단 게이트로 여기 둔다.
+      - name: Entity filter audit
+        run: node scripts/entity-audit.mjs
+
+      # #430/#608: write-path 카나리 — read-only 스모크가 구조적으로 못 잡는 부류를 막는다
+      #   (0335 FK-drop 이 items INSERT 를 전면 차단했는데 SELECT 가 멀쩡해 smoke green 으로 배포된 전례).
+      #
+      # ★`migrations apply` 를 0001 부터 돌리면 **0344 에서 FK 위반으로 반드시 실패한다** — 수년간의
+      #   마이그 편집으로 카테고리 autoincrement id 가 환경분기(신규 replay 수성=14 vs prod 15)돼
+      #   0344+ 가 하드코딩 `category_id=15` 를 참조하기 때문이다. verify.yml 의 종전 카나리 스텝이
+      #   바로 그 형태라, 설령 PR 로 트리거됐어도 통과할 수 없었다(2026-08-31 실측).
+      #   → 정답은 스키마 베이스라인 부트스트랩(#555) 후 0475+ 증분. ps1 은 Windows 전용이라
+      #     ubuntu 러너용으로 같은 절차를 npm 스크립트(`canary:write:ci`)로 옮겼다.
+      - name: Local write canary (bootstrap + items round-trip)
+        run: npm run canary:write:ci
+
       - name: Deploy to Cloudflare Pages
         id: deploy
         uses: cloudflare/wrangler-action@v4
