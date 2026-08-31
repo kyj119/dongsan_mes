@@ -278,6 +278,10 @@ C:\Logwatcher\install-service.bat               # 관리자 권한
 확인: `/equipment` 온라인 → `/production` 이벤트.
 `equipment_id` 는 서버 등록값과 **글자 하나까지** 같아야 한다. 경로의 `\` 는 JSON 이라 `\\`.
 
+**이미 설치된 PC 에 새 빌드를 넣는 절차(업데이트 롤아웃)는 별도다** — 축이 둘이고 반영 방식이 다르다:
+`binLogWatcher.exe` 는 **PC 마다 [2] 실행**해야 하고, `kit.ps1`·`START.bat` 은 **Z: 갱신만으로 즉시**다.
+조립·배포는 `LogWatcherkitmake-kit.ps1` 하나가 둘 다 한다. → **§5**
+
 상세 = `docs/LOGWATCHER_FIELD_SETUP.md`.
 
 ---
