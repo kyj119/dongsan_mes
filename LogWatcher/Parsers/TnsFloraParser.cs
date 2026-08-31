@@ -28,9 +28,10 @@ namespace LogWatcher.Parsers
     /// 레코드 구조 (2,376바이트 고정. 2026-08-26 실측으로 확정, 시각 파싱 20,137/20,137 성공):
     ///   0x0000 매직 5C A3 F0 F0 · 0x0008 uint16 레코드ID(단조증가)
     ///   0x0024 .prt 전체 경로 (OS ANSI = 한국어 Windows 면 cp949, NUL 종료)
-    ///   0x0910 SYSTEMTIME 시작 · 0x0920 SYSTEMTIME 종료
-    ///   0x0933 중단 플래그 (0=완주 / 1=취소)  ← 정본
-    ///   0x0938 pass 수(진행량) — 판정에 쓰지 않는다. 방향성 확인용일 뿐(완주 중앙값 403초 vs 취소 79초).
+    ///   꼬리 3개는 **레코드 끝 기준 고정 거리**다 — 기종마다 레코드 크기가 달라도 위치가 따라 움직인다:
+    ///     끝-0x38 SYSTEMTIME 시작 · 끝-0x28 SYSTEMTIME 종료 · 끝-0x15 중단 플래그(0=완주/1=취소) ← 정본
+    ///   (평판 XTRA2512UV = 2376B 라 0x0910/0x0920/0x0933,
+    ///    UV-3200 XTRA3300S = 2248B 라 0x0890/0x08A0/0x08B3 — 정확히 128B 앞. 실측 2기종 15,065+20,137건)
     ///
     /// 조인 = **파일명**. print_rec 는 RIP 산출물(`&lt;잡명&gt;NNNN_M.prt`), Print.log 는 원본(.eps/.jpg) 이라
     ///        꼬리 `NNNN_M.prt` 만 떼면 basename 이 같다(프로브 5건·업무잡 전수 일치).
@@ -39,7 +40,8 @@ namespace LogWatcher.Parsers
     /// config:
     ///   log_path            (required) TNSRip Print.log — 기존 `tns` 와 같은 키(설정 이관 호환).
     ///   print_rec_path      (required) ...\REC\print_rec.dat
-    ///   record_size         (default 2376) — 기종별로 다를 수 있어 열어 둔다. 파일 길이로 검증한다.
+    ///   record_size         (기본 0 = 자동판별) — 매직 간격으로 알아낸다. 기종이 다르면 크기도 다르다
+    ///                       (평판 2376 / UV-3200 2248). 값을 주면 그것만 쓰고, 파일 길이의 배수인지 검증한다.
     ///   rip_fallback_hours  (default 6, 0=끄기) — Flora 축이 이 시간 동안 안 물면 Print.log 이벤트를
     ///                       그대로 송출(전송 기준 = 종전 동작). 형식이 바뀌어도 실적이 조용히 0 이 되지 않게.
     ///
@@ -51,7 +53,7 @@ namespace LogWatcher.Parsers
         private readonly PrintLogParser _rip;      // 신원 축 (이벤트를 직접 내보내지 않고 큐에 쌓는다)
         private readonly string _logPath;
         private readonly string _recPath;
-        private readonly int _recSize;
+        private int _recSize;                      // 0 = 아직 미판별(자동)
         private readonly int _fallbackHours;
         private readonly string _stateFile;
         private readonly string _pendingFile;
@@ -66,13 +68,19 @@ namespace LogWatcher.Parsers
         public string EquipmentId { get; }
         public string Name { get; }
 
-        // 레코드 내 오프셋 (위 표 참조)
+        // 레코드 내 오프셋 (위 표 참조). 머리 2개는 절대 위치, 꼬리 3개는 **끝 기준 고정 거리**다.
         private const int OffMagic = 0x0000;
         private const int OffPath = 0x0024;
-        private const int OffStart = 0x0910;
-        private const int OffEnd = 0x0920;
-        private const int OffFlag = 0x0933;
+        private const int TailStart = 0x38;   // 끝에서 SYSTEMTIME 시작까지
+        private const int TailEnd = 0x28;     // 끝에서 SYSTEMTIME 종료까지
+        private const int TailFlag = 0x15;    // 끝에서 중단 플래그까지
         private const int PathMax = 260;
+        private const int MinRecSize = 0x0400;  // 경로(0x24+260) + 꼬리가 들어갈 최소치
+        private const int MaxRecSize = 0x10000;
+
+        private int OffStart => _recSize - TailStart;
+        private int OffEnd => _recSize - TailEnd;
+        private int OffFlag => _recSize - TailFlag;
         private static readonly byte[] Magic = { 0x5C, 0xA3, 0xF0, 0xF0 };
 
         // "<잡명>0000_0.prt" 의 꼬리 — 이것만 떼면 Print.log 의 잡 이름과 같아진다
@@ -94,8 +102,9 @@ namespace LogWatcher.Parsers
             if (string.IsNullOrEmpty(_recPath))
                 throw new ArgumentException($"[{EquipmentId}] print_rec_path is required for tns_flora parser");
 
-            _recSize = config.GetConfigInt("record_size", 2376);
-            if (_recSize < 0x0940) throw new ArgumentException($"[{EquipmentId}] record_size 가 너무 작습니다: {_recSize}");
+            _recSize = config.GetConfigInt("record_size", 0);   // 0 = 자동판별
+            if (_recSize != 0 && (_recSize < MinRecSize || _recSize > MaxRecSize))
+                throw new ArgumentException($"[{EquipmentId}] record_size 가 범위를 벗어났습니다: {_recSize}");
             _fallbackHours = config.GetConfigInt("rip_fallback_hours", 6);
 
             _rip = new PrintLogParser(_logPath, Path.Combine(positionsDir, $"{EquipmentId}.pos"));
@@ -175,6 +184,13 @@ namespace LogWatcher.Parsers
             try { len = new FileInfo(_recPath).Length; }
             catch (Exception ex) { Console.WriteLine($"[{EquipmentId}] print_rec 크기 확인 실패: {ex.Message}"); return; }
 
+            if (_recSize == 0)
+            {
+                _recSize = DetectRecordSize(len);
+                if (_recSize == 0) return;                  // 판별 실패 — 립 폴백으로만 흐른다
+                Console.WriteLine($"[{EquipmentId}] print_rec 레코드 크기 자동판별 = {_recSize}B ({len / _recSize} 레코드)");
+            }
+
             if (len % _recSize != 0)
             {
                 // 기종이 다르면 레코드 크기가 다르다. 억지로 읽으면 전 레코드가 어긋나므로 아예 읽지 않는다
@@ -217,6 +233,76 @@ namespace LogWatcher.Parsers
             catch (Exception ex)
             {
                 Console.WriteLine($"[{EquipmentId}] print_rec 읽기 실패: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 레코드 크기를 매직(5C A3 F0 F0) 간격으로 알아낸다. 머리 256KB 만 본다.
+        /// ★ 크기를 틀리게 잡으면 전 레코드가 어긋나 조용히 쓰레기를 만든다 — 그래서
+        ///   ① 최빈 간격이 파일 길이를 나누어떨어지고 ② 그 간격으로 앞쪽 레코드가 전부 매직으로 시작할 때만 채택한다.
+        /// 실패하면 0 을 돌려 Flora 축을 통째로 건너뛴다(립 폴백은 살아 있다).
+        /// </summary>
+        private int DetectRecordSize(long len)
+        {
+            try
+            {
+                int probeLen = (int)Math.Min(len, 256 * 1024);
+                if (probeLen < MinRecSize * 2) return 0;
+                var head = new byte[probeLen];
+                using (var fs = new FileStream(_recPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                {
+                    int read = 0;
+                    while (read < probeLen)
+                    {
+                        int n = fs.Read(head, read, probeLen - read);
+                        if (n <= 0) break;
+                        read += n;
+                    }
+                    if (read < MinRecSize * 2) return 0;
+                    probeLen = read;
+                }
+
+                var hits = new List<int>();
+                for (int i = 0; i + Magic.Length <= probeLen && hits.Count < 200; i++)
+                {
+                    bool m = true;
+                    for (int k = 0; k < Magic.Length; k++) if (head[i + k] != Magic[k]) { m = false; break; }
+                    if (m) hits.Add(i);
+                }
+                if (hits.Count < 3 || hits[0] != 0) return 0;
+
+                var gaps = new Dictionary<int, int>();
+                for (int i = 1; i < hits.Count; i++)
+                {
+                    int g = hits[i] - hits[i - 1];
+                    if (g < MinRecSize || g > MaxRecSize) continue;
+                    gaps[g] = gaps.TryGetValue(g, out var c) ? c + 1 : 1;
+                }
+                int best = 0, bestN = 0;
+                foreach (var kv in gaps) if (kv.Value > bestN) { best = kv.Key; bestN = kv.Value; }
+                if (best == 0 || bestN < 2) return 0;
+                if (len % best != 0)
+                {
+                    Console.WriteLine($"[{EquipmentId}] ⚠ print_rec 매직 간격 {best}B 가 파일 길이 {len} 을 나누지 못합니다 — Flora 축 건너뜀");
+                    return 0;
+                }
+
+                // 채택 전 확인 — 그 간격으로 앞쪽 레코드가 전부 매직으로 시작해야 한다
+                for (long off = 0; off + Magic.Length <= probeLen; off += best)
+                {
+                    for (int k = 0; k < Magic.Length; k++)
+                        if (head[off + k] != Magic[k])
+                        {
+                            Console.WriteLine($"[{EquipmentId}] ⚠ print_rec 레코드 크기 {best}B 검증 실패(오프셋 {off}) — Flora 축 건너뜀");
+                            return 0;
+                        }
+                }
+                return best;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[{EquipmentId}] print_rec 레코드 크기 판별 실패: {ex.Message}");
+                return 0;
             }
         }
 
