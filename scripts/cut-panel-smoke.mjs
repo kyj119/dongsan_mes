@@ -1281,6 +1281,15 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     // ★임베드가 빠지면 임시 PDF 를 지우는 순간 판이 깨진다 — 정리 함수와 짝이다
     ok('3u 배치본은 임베드하고 임시 PDF 를 지운다', /function mesCut_cleanPlaced\(/.test(nestSrc2)
       && /mesCut_cleanPlaced\(MESCUT_NEST_ITEMS\.length\)/.test(nestSrc2))
+    // ★배율은 **임베드 후** 크기로 계산한다 — 배치 직후 `visibleBounds` 는 그림이 있는 데까지로
+    //   잘린 값이고, 임베드하면 PDF 아트보드 상자가 되살아난다. 두 값이 다른 조각(클립 밖으로
+    //   사진이 삐져나온 것)에서 결과가 **+23%** 커졌고, 검산에 걸려 배경을 깨는 폴백으로 떨어졌다
+    //   (약국.ai 1.13 실측: 아트보드 12.83 vs 배치 보고 10.43 · 2026-08-31).
+    ok('3u 확대 배율은 임베드 후 크기로 계산', (() => {
+      const e = nestSrc2.indexOf('pl.embed()')
+      const m = nestSrc2.indexOf('var need = (wantW / curW)')
+      return e > 0 && m > 0 && e < m
+    })())
     // ★폴백은 조용하면 안 된다 — 폴백 = 배경이 깨졌을 수 있다는 뜻이고, 인쇄 뒤에 알면 늦다
     ok('3u 폴백을 사용자에게 알린다', /placefail=/.test(nestSrc2)
       && /parseInt\(a\.placefail, 10\) > 0/.test(panelSrc2))
