@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-08-31T03:46:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-08-31T09:45:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,25 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **532** (표기 유지 — 이번 사이클 `search_issues(reason:completed)`가 598 반환, 하단 Area 3 로그 참조. 절대값 재확정은 Area 6 소관) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 재확인, 변동없음) |
+
+> **Area 5 보안 + 인프라 (2026-08-31T09:45):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD, `9bbf7f4`), `git fetch origin main`(`207078c..9bbf7f4`, 이미 최신) → `git checkout main && git reset --hard origin/main`(HEAD `9bbf7f4`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area5 방법 라인 HEAD `3ec2d57`)**: 웹앱 범위(`-- src migrations scripts .github`) diff **4커밋**(`5dc788b`·`49fd79f`·`8ef1c6b`·`6da6a72`) — Area1~4·6이 이미 각자 렌즈로 정독 완료한 동일 커밋군(`6da6a72`은 Area4 자신의 주석 정정 자동수정 커밋). `5dc788b`는 IA JSX(재단 스케일링)만 건드려 보안 렌즈 밖. 나머지 3건(재고 조회/출고/환원 write-path)을 보안 렌즈로 전문 재정독.
+> - **`49fd79f` CSV export 보안 직독(`inventory.ts:241` `GET /transactions/export`)**: 4개 기존 CSV 구현체 중 `utils/csv.escapeCsvField`를 사용(공용 헬퍼 재사용, 신규 5번째 구현 아님) — 렌더 루프의 14개 필드 **전부** `.map(escapeCsvField)`로 일괄 이스케이프(부분누락 0), 선행 `=`/`+`/`-`/`@` 수식주입 가드 + 숫자-세이프(`signed_quantity`/`balance_after`는 원본 숫자 유지) 확인. `requireRole('ADMIN','MANAGER')` 게이트 확인. `GET /transactions`도 `buildTxFilter`가 `entityFilter(c,'t')` + 전 조건절 바인드 파라미터(LIKE 검색 포함) + `ORDER BY t.transaction_date DESC, t.id DESC` tie-break — SQLi/정렬 규칙 위반 0.
+> - **`src/scripts/inventoryTx.js` XSS sweep(자동승격 스캔 레시피 적용)**: `innerHTML` 싱크 7곳 중 데이터 보간 라인(`:81-96`)이 `item_name`·`item_code`·`category`·`zone_name`·`memo`(reason+notes)·`handled_by_name` 전부 `window.escapeHtml()` 래핑, `title` 속성 포함(같은 파일 부분누락 클래스 A-025 재발 없음). `invTxRef()`의 `reference_id`는 시스템 채번 숫자(FP 배제 대상, escape 불요) — sink 0건.
+> - **`8ef1c6b` IDOR 비대칭 직독(재고 차감/환원 4개 호출부)**: `deductStockLinesOnShip`/`restoreStockLinesOnUnship` 호출 직전 소유권 검증 4곳 전수 확인 — ① `orders/queries.ts:316-324` bulk-ship이 `entityFilter(c)`로 주문 map을 선적재(타법인 주문은 map 부재→skip) ② `orders/lifecycle.ts:174-175` `/:id/status`가 `entityFilter(c,'orders')`로 order를 읽은 뒤 326행에서 SHIPPED 분기 차감 ③ `shipments.ts:1176` `/:id/status`가 `entityFilter(c)`로 shipment를 읽어 404게이트 통과 후 1187행의 bare `orderRow` 조회(같은 블록 내 이미 검증된 shipment id 파생 — FP클래스ⓐ "블록내 read-gate 선행"에 정확히 부합, IDOR 아님) ④ `shipments.ts:1332-1336` `/:orderId/ship`이 `entityFilter(c)`로 order를 읽은 뒤 1361행에서 차감. **4곳 전부 entityFilter 선행 게이트 확인, IDOR 비대칭 0건**. `entity_id` 폴백(`order.entity_id || getEntityId(c) || 1`)은 기존 157곳 관용구(Area2 기확인)라 net-new 아님.
+> - **standing scan 1: 시크릿 폴백** `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43` 1건뿐(기존 FP, 변동없음).
+> - **standing scan 2: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 67건·**누락 0건**(변동없음).
+> - **standing scan 3: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음, 신규 `/transactions` tie-break 정상), P2 1건 `attendance.ts:158`(기존 노출 유지, 변동없음).
+> - **standing scan 4: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 5: `npm audit`** — 11건(1 moderate·8 high·2 critical) 전부 devDependency, #613 기보고와 완전 일치, net-new 0.
+> - **CI 헬스**: `deploy.yml` 최근 30런 전부 `conclusion:success`(`9bbf7f4`까지 전부 green).
+> - **open 12건 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **12**(변동없음, #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621 전건 일치), `search_issues(reactions:>0)` **0건**(승인 대기 유지).
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · done **532**(표기 유지, Area6 재동기화 대기 — Area3 로그의 598 이상신호 아직 미해소) · rejected **6**(변동없음, 재확인 생략).
+> - **🧬 SKILL 강화**: 없음 — area-5-security-infra.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 10건 → 이번 로그 추가 후 11건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(CSV export escapeCsvField 완전 적용·XSS sweep clean·IDOR 4개 호출부 전부 entityFilter 선행 게이트 확인·SQL 바인딩/정렬 tie-break 정상, 5개 standing scan 전부 net-new 0), 자동수정 0건, done-sync: open 12(변동없음)·done 532(표기 유지)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-08-31T03:46):**
 > - **방법**: `git status`=워킹트리 clean(detached HEAD, `49c2efc`), `git fetch origin main`(이미 최신) → `git checkout main && git reset --hard origin/main`(HEAD `49c2efc`). `npm ci`(0→81), `npx tsc --noEmit` clean, `npm run build` 성공.
