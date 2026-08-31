@@ -70,9 +70,7 @@
 - **✅ 08-27 Z: 키트 `c230a33e` — 로그 인코딩 + 2축 3종** — RIPLOG 인코딩이 **PC마다 갈려**(UTF-8 5/cp949 2) HYB-3200-01·SOLV-3200-01 이 **13일간 실적 0건**. `flexi_printexp` 조인키=`.prt` 파일명, **`tns_flora` 신설**(Flora `print_rec.dat` 0x0933·취소 12.4% vs RIP 0.3%). 남은=**[2]** 실행 → [[design-probe-cancel-test]]
 - **✅ 08-25 Z: 키트 `eb38d1b2` — [1] 취소 실측 3라운드 + `--include-network`** — R1 정상→R2 전송중 취소(PC)→R3 전송후 취소(프린터), 라운드 diff 교차분석. ★08-25 현장 [1] 4대는 "출력 가능?"에 **n** 이라 취소 실측 미실시(프롬프트에 경고+재확인 추가). ★HSM-04 [2] 는 PrintExp 가 **2024-02-01 사망**이라 자동전환 거부 — 재실행 무의미(연도 표기 누락 수정). ★센서스가 2축 후보 확보 → 메모리 [[design-probe-cancel-test]]. 남은=**[1] 5대 재실행(y/y)**
 
-- **✅ 08-19 TNS 2축 파서 `tns_printexp`(`592b909d`) + 키트 [2] 자동 전환(`169340e0`)·[1] 센서스** — 경위·08-19 16시 일제실행 결과=`PROJECT_STATUS_ARCHIVE.md` §2026-08-19 TNS · 정본=memory `design-tns-printexp-join`. 남은: 미발견 9대+HSM-07=**[2] 재실행** · ★HYB-3200·SOLV-3200=이벤트 0건→**[1]**(상세=ARCHIVE) · UV 2대 [1] 재실행(print_rec 통째 수거) · EPSON 자연검증
 
-- **✅ prod 배포 08-19 `771e8db3` (배포 ID `cf0af4f0`) — 카드 마감·후가공 표기 통일 (사본 5벌 → 정본 1벌)** — 경위 전문=`PROJECT_STATUS_ARCHIVE.md` §2026-08-19 카드 마감·후가공 표기. 게이트=`npm run test:finishing-label`. smoke **111/111** · prod 마커 실측(MES_FIN·`4방`·`4모서리`) 확인. 남은=기존 카드 체크리스트 라벨은 소급 안 됨(DB 스냅샷·prod cards 0건)
 
 
 

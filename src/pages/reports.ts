@@ -201,6 +201,30 @@ export function reportsPage(c: Context<HonoEnv>) {
           </div>
         </div>
 
+        <!-- 귀속 확인 필요 (#606) — 담당자 소속(employees.default_entity_id)과 주문 청구법인이 어긋난 건.
+             막지 않고 보여만 준다. 어긋남이 0 이면 카드째 숨긴다 — 늘 떠 있는 0 은 아무도 안 본다. -->
+        <div id="attrAuditCard" class="ds-card overflow-hidden mb-6 hidden">
+          <div class="p-4 flex items-baseline justify-between flex-wrap gap-2">
+            <h3 class="text-lg font-bold"><i class="fas fa-triangle-exclamation text-amber-500 mr-2"></i>귀속 확인 필요
+              <span class="text-xs font-normal text-gray-400 ml-1">(담당자 소속 ≠ 주문 청구법인)</span></h3>
+            <span class="text-xs text-gray-500" id="attrAuditNote"></span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm ds-table ds-table-striped">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="col-name px-4 py-3 text-left">담당자</th>
+                  <th class="col-name px-4 py-3 text-left">소속 법인</th>
+                  <th class="col-qty px-3 py-3 text-right">건수</th>
+                  <th class="col-amount px-4 py-3 text-right">금액</th>
+                  <th class="col-name px-4 py-3 text-left">청구된 법인</th>
+                </tr>
+              </thead>
+              <tbody id="attrAuditBody"></tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="ds-card overflow-hidden">
           <div class="p-4"><h3 class="text-lg font-bold"><i class="fas fa-user-edit text-blue-500 mr-2"></i>디자이너별 주문 처리
             <span class="text-xs font-normal text-gray-400 ml-1">(등록자 기준 · 처리량 — 이관 주문은 전량 '관리자'로 집계됨. 실적은 위 담당자별 표 참조)</span></h3></div>

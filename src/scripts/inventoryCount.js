@@ -673,3 +673,84 @@ loadCounts().then(function() {
     openDetail(parseInt(_icOpenCountId, 10));
   }
 });
+
+// ===== 소모량 (#618) — /api/inventory-counts/consumption =====
+//
+// 실사는 「그날 얼마 남았나」만 답한다. 두 회차 사이에 매입이 끼면 단순 차감(기초−기말)이
+// 소모를 과소평가해, 많이 사서 많이 남은 주를 「덜 썼다」고 읽게 만든다.
+//
+// ★flags 를 반드시 같이 띄운다. 이 수치는 실측이 아니라 추정이고(발주일 기준·구역 귀속은
+//   품목 마스터), 그 한계를 안 보여주면 사람은 실측으로 읽는다. API 가 flags 를 돌려주는
+//   이유가 그것이다 — 화면이 그걸 버리면 API 쪽 배려가 통째로 사라진다.
+async function loadConsumption() {
+  var body = document.getElementById('consBody');
+  var flagBox = document.getElementById('consFlags');
+  if (!body || !flagBox) { console.warn('[inventoryCount] #consBody / #consFlags not found'); return; }
+  var zone = document.getElementById('consZone');
+  var from = document.getElementById('consFrom');
+  var to = document.getElementById('consTo');
+
+  var q = [];
+  if (zone && zone.value) q.push('zone_id=' + encodeURIComponent(zone.value));
+  if (from && from.value) q.push('from=' + encodeURIComponent(from.value));
+  if (to && to.value) q.push('to=' + encodeURIComponent(to.value));
+
+  body.innerHTML = '<tr><td colspan="5" class="px-4 py-6 text-center text-gray-400">계산 중...</td></tr>';
+  try {
+    var res = await axios.get('/api/inventory-counts/consumption' + (q.length ? '?' + q.join('&') : ''));
+    if (!res.data || !res.data.success) throw new Error('bad response');
+    var d = res.data.data || {};
+    var items = d.items || [];
+    var f = d.flags || {};
+
+    // 회차가 2개 미만이면 API 가 reason 만 돌려준다 — 빈 표로 끝내지 않고 이유를 보여준다
+    var notes = [];
+    if (f.reason) notes.push(f.reason);
+    if (f.date_basis) notes.push('기준: ' + f.date_basis);
+    if (f.zone_attribution) notes.push('구역 귀속: ' + f.zone_attribution);
+    if (f.spanned_segments) notes.push('중간 회차를 건너뛴 구간 ' + f.spanned_segments + '건');
+    if (f.items_counted_once) notes.push('회차가 1번뿐이라 제외된 품목 ' + f.items_counted_once + '개');
+    if (f.negative_consumption_items) notes.push('음수 소모 ' + f.negative_consumption_items + '품목 — 미귀속 매입부터 확인');
+    if (f.unattributed_purchase_lines) {
+      notes.push('어느 품목에도 안 붙은 매입 ' + f.unattributed_purchase_lines + '줄 ('
+        + Math.round(f.unattributed_purchase_amount || 0).toLocaleString() + '원)');
+    }
+    if (notes.length) { flagBox.innerHTML = notes.map(escapeHtml).join('<br>'); flagBox.classList.remove('hidden'); }
+    else { flagBox.classList.add('hidden'); }
+
+    if (!items.length) {
+      body.innerHTML = '<tr><td colspan="5" class="px-4 py-6 text-center text-gray-400">산출할 구간이 없습니다</td></tr>';
+      return;
+    }
+    body.innerHTML = items.map(function (r) {
+      var neg = Number(r.total_used) < 0;
+      return '<tr>'
+        + '<td class="px-4 py-2 text-gray-500">' + escapeHtml(r.item_code || '') + '</td>'
+        + '<td class="px-4 py-2">' + escapeHtml(r.item_name || '') + '</td>'
+        + '<td class="px-3 py-2 text-right tabular-nums ' + (neg ? 'text-red-600 font-medium' : '') + '">'
+        + Number(r.total_used || 0).toLocaleString() + ' <span class="text-gray-400">' + escapeHtml(r.unit || '') + '</span></td>'
+        + '<td class="px-3 py-2 text-right tabular-nums text-gray-600">' + Number(r.total_purchased || 0).toLocaleString() + '</td>'
+        + '<td class="px-4 py-2 text-right tabular-nums font-medium">' + Number(r.used_amount || 0).toLocaleString() + '</td>'
+        + '</tr>';
+    }).join('');
+  } catch (e) {
+    console.warn('[inventoryCount] 소모량 로드 실패', e);
+    body.innerHTML = '<tr><td colspan="5" class="px-4 py-6 text-center text-gray-400">불러오지 못했습니다</td></tr>';
+  }
+}
+
+// 구역 드롭다운 — 실사 탭이 처음 열릴 때 1회 채운다 (inventoryTx.js 와 같은 방식)
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    var zone = document.getElementById('consZone');
+    if (!zone) { console.warn('[inventoryCount] #consZone not found'); return; }
+    axios.get('/api/storage-zones').then(function (r) {
+      var list = (r.data && r.data.data) || [];
+      list.forEach(function (z) {
+        var o = document.createElement('option');
+        o.value = z.id; o.textContent = z.zone_name;
+        zone.appendChild(o);
+      });
+    }).catch(function (e) { console.warn('[inventoryCount] storage-zones 로드 실패', e); });
+  });
+})();

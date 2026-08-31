@@ -10,7 +10,7 @@ var reportTabLoaders = {
   monthly: [loadMonthlySummary],
   clients: [loadClientRevenue],
   items: [loadItemAnalysis],
-  designers: [loadSalesRepStats, loadDesignerStats],
+  designers: [loadSalesRepStats, loadDesignerStats, loadAttributionAudit],
   margin: [loadMarginAnalysis],
   receivables: [loadReceivablesAnalysis],
   comparison: []  // 기간 비교 = 「조회」 버튼(loadComparison)으로만 실행 — 원래도 선로딩 대상이 아니었다
@@ -303,6 +303,42 @@ async function loadSalesRepStats() {
   } catch (e) {
     console.warn('[reports] 담당자별 실적 로드 실패', e);
     body.innerHTML = '<tr><td class="px-4 py-6 text-center text-gray-400">불러오지 못했습니다</td></tr>';
+  }
+}
+
+// 4-c. 귀속 확인 필요 (#606) — /api/reports/entity-attribution-audit (0524, 그동안 화면이 없었다)
+//   담당자별로 접어서 본다. 한 사람이 통째로 어긋나면 틀린 건 주문이 아니라 그 사람의
+//   default_entity_id 다 — 개별 주문을 고치기 전에 그걸 먼저 본다.
+async function loadAttributionAudit() {
+  var card = document.getElementById('attrAuditCard');
+  var body = document.getElementById('attrAuditBody');
+  var note = document.getElementById('attrAuditNote');
+  if (!card || !body || !note) { console.warn('[reports] #attrAudit* not found'); return; }
+  try {
+    var res = await axios.get('/api/reports/entity-attribution-audit?months=' + getMonths());
+    if (!res.data.success) return;
+    var d = res.data.data || {};
+    var reps = d.by_rep || [];
+    if (!d.total || !reps.length) { card.classList.add('hidden'); return; }
+
+    var entName = function(id) { return (window.entityName ? window.entityName(id) : null) || ('법인 ' + id); };
+    body.innerHTML = reps.map(function(r) {
+      var spread = Object.keys(r.entities || {}).map(function(eid) {
+        return esc(entName(eid)) + ' <span class="text-gray-400">' + r.entities[eid] + '건</span>';
+      }).join(' · ');
+      return '<tr><td class="px-4 py-2">' + esc(r.rep_name || '') + '</td>'
+        + '<td class="px-4 py-2 text-gray-600">' + esc(entName(r.default_entity_id)) + '</td>'
+        + '<td class="px-3 py-2 text-right">' + (r.count || 0).toLocaleString() + '</td>'
+        + '<td class="px-4 py-2 text-right">' + Math.round(r.amount || 0).toLocaleString() + '</td>'
+        + '<td class="px-4 py-2 text-gray-600">' + spread + '</td></tr>';
+    }).join('');
+    // capped = 상한(500)에 걸렸다는 뜻. 조용히 자르지 않는다는 게 이 API 의 계약이라 화면도 그대로 옮긴다.
+    note.textContent = '최근 ' + getMonths() + '개월 · 총 ' + d.total.toLocaleString() + '건'
+      + (d.capped ? ' (상한 500건 도달 — 실제로는 더 있습니다)' : '') + ' · 막지 않고 보여만 줍니다';
+    card.classList.remove('hidden');
+  } catch (e) {
+    console.warn('[reports] 귀속 확인 로드 실패', e);
+    card.classList.add('hidden');
   }
 }
 

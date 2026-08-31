@@ -6,6 +6,7 @@ import inventoryScript from '../scripts/inventory.js?raw'
 import inventoryCountScript from '../scripts/inventoryCount.js?raw'
 import inventoryDashboardScript from '../scripts/inventoryDashboard.js?raw'
 import inventoryTxScript from '../scripts/inventoryTx.js?raw'
+import inventoryValuationScript from '../scripts/inventoryValuation.js?raw'
 import { INVENTORY_TX_LABELS_JS } from '../constants/inventoryTx'
 
 export function inventoryPage(c: Context<HonoEnv>) {
@@ -20,7 +21,8 @@ export function inventoryPage(c: Context<HonoEnv>) {
         { key: 'stock', btn: 'tabStock', content: 'stockTabContent' },
         { key: 'count', btn: 'tabCount', content: 'countTabContent' },
         { key: 'zone',  btn: 'tabZone',  content: 'zoneTabContent' },
-        { key: 'tx',    btn: 'tabTx',    content: 'txTabContent' }
+        { key: 'tx',    btn: 'tabTx',    content: 'txTabContent' },
+        { key: 'valuation', btn: 'tabValuation', content: 'valuationTabContent' }
       ];
       defs.forEach(function(d) {
         var btn = document.getElementById(d.btn);
@@ -50,6 +52,10 @@ export function inventoryPage(c: Context<HonoEnv>) {
       if (tab === 'tx' && typeof invTxInit === 'function') {
         invTxInit();
       }
+      // 재고자산 평가 탭: 전 품목 평가액 집계라 탭에 들어올 때만 부른다
+      if (tab === 'valuation' && typeof invValInit === 'function') {
+        invValInit();
+      }
     }
 
     document.addEventListener('DOMContentLoaded', function() {
@@ -60,11 +66,13 @@ export function inventoryPage(c: Context<HonoEnv>) {
         setTimeout(() => switchInvTab('zone'), 100);
       } else if (hash === '#tab=tx') {
         setTimeout(() => switchInvTab('tx'), 100);
+      } else if (hash === '#tab=valuation') {
+        setTimeout(() => switchInvTab('valuation'), 100);
       }
     });
   `;
 
-  const combinedScript = UOM_JS + '\n' + INVENTORY_TX_LABELS_JS + '\n' + tabScript + '\n' + inventoryScript + '\n' + inventoryCountScript + '\n' + inventoryDashboardScript + '\n' + inventoryTxScript;
+  const combinedScript = UOM_JS + '\n' + INVENTORY_TX_LABELS_JS + '\n' + tabScript + '\n' + inventoryScript + '\n' + inventoryCountScript + '\n' + inventoryDashboardScript + '\n' + inventoryTxScript + '\n' + inventoryValuationScript;
 
   return renderPage(c, {
     title: '재고 관리',
@@ -83,6 +91,9 @@ export function inventoryPage(c: Context<HonoEnv>) {
               </button>
               <button onclick="switchInvTab('tx')" id="tabTx" class="inv-tab px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
                 <i class="fas fa-right-left mr-2"></i>증감내역
+              </button>
+              <button onclick="switchInvTab('valuation')" id="tabValuation" class="inv-tab px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+                <i class="fas fa-coins mr-2"></i>재고자산 평가
               </button>
             </div>
 
@@ -272,9 +283,105 @@ export function inventoryPage(c: Context<HonoEnv>) {
                 </div>
               </div>
 
+              <!-- 소모량 (#618) — /api/inventory-counts/consumption. 실사는 「얼마 남았나」만 답하고
+                   판단에 필요한 건 「얼마를 썼나」다. 눌러야 부른다(회차 전체를 훑는 집계).
+                   ★이 수치는 추정이다 — API 가 주는 flags(구역 귀속·발주일 기준·건너뛴 구간)를
+                     표 위에 그대로 세운다. 숫자만 띄우면 실측으로 읽힌다. -->
+              <div class="ds-card overflow-hidden">
+                <div class="p-4 flex flex-wrap items-center gap-2">
+                  <h3 class="text-base font-bold"><i class="fas fa-fire-flame-simple text-orange-500 mr-2"></i>소모량
+                    <span class="text-xs font-normal text-gray-400 ml-1">(기초 + 매입 − 기말 · 추정)</span></h3>
+                  <select id="consZone" class="ds-input" style="width:auto"><option value="">전 구역</option></select>
+                  <input type="date" id="consFrom" class="ds-input" style="width:auto">
+                  <span class="text-gray-400">~</span>
+                  <input type="date" id="consTo" class="ds-input" style="width:auto">
+                  <button class="ds-btn ds-btn-sm" type="button" onclick="loadConsumption()">조회</button>
+                </div>
+                <div class="px-4 pb-2 text-xs text-gray-500 hidden" id="consFlags"></div>
+                <div class="ds-table-wrap" style="max-height:420px; overflow-y:auto;">
+                  <table class="w-full text-sm ds-table ds-table-striped ds-table-compact">
+                    <thead class="bg-gray-50">
+                      <tr>
+                        <th class="col-code px-4 py-3 text-left">품목코드</th>
+                        <th class="col-name px-4 py-3 text-left">품목명</th>
+                        <th class="col-qty px-3 py-3 text-right">소모량</th>
+                        <th class="col-qty px-3 py-3 text-right">매입량</th>
+                        <th class="col-amount px-4 py-3 text-right">소모 금액</th>
+                      </tr>
+                    </thead>
+                    <tbody id="consBody"><tr><td colspan="5" class="px-4 py-6 text-center text-gray-400">조회를 누르면 계산합니다</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+
             </div>
             </div><!-- /countTabContent — 이 닫는 태그가 없으면 zoneTabContent·detailPanel 이 실사 탭 안에
                        중첩돼 '창고별' 탭이 부모 display:none 에 먹혀 통째로 안 보인다 (2026-08-26 수정) -->
+
+            <!-- 재고자산 평가 Tab Content (#619) — /api/inventory-valuation/* 의 화면.
+                 총계 옆에 음수재고·무원가 품목 수를 같이 세운다: 이 수치는 그것들을 안고 있어서
+                 총계만 크게 띄우면 「깔끔한 오답」이 된다. -->
+            <div id="valuationTabContent" class="hidden">
+              <div class="space-y-4">
+
+                <div class="ds-card p-4 flex flex-wrap items-center gap-3">
+                  <label class="text-sm text-gray-600">평가 방법</label>
+                  <select id="ivMethod" class="ds-input" style="width:auto">
+                    <option value="WEIGHTED_AVG">이동평균</option>
+                    <option value="FIFO">선입선출(FIFO)</option>
+                    <option value="STANDARD">표준원가</option>
+                  </select>
+                  <button id="ivMethodSave" class="ds-btn ds-btn-primary hidden" type="button">저장</button>
+                  <span class="text-xs text-gray-400">방법을 바꾸면 평가액 산식 자체가 바뀝니다 (변경은 관리자만)</span>
+                </div>
+
+                <div class="ds-card p-6">
+                  <div class="text-sm text-gray-600 mb-1">재고자산 평가액</div>
+                  <div class="text-3xl font-bold" id="ivTotal">-</div>
+                  <div class="text-xs mt-2 flex flex-wrap gap-1 items-center" id="ivMeta"></div>
+                  <div class="text-xs mt-2 p-2 rounded bg-amber-50 text-amber-800 hidden" id="ivNote"></div>
+                </div>
+
+                <div class="ds-card overflow-hidden">
+                  <div class="ds-table-wrap" style="max-height: calc(100vh - 380px); overflow-y: auto;">
+                    <table class="w-full text-sm ds-table ds-table-striped ds-table-compact">
+                      <thead class="bg-gray-50">
+                        <tr>
+                          <th class="col-code px-4 py-3 text-left">품목코드</th>
+                          <th class="col-name px-4 py-3 text-left">품목명</th>
+                          <th class="col-tag px-3 py-3 text-left">단위</th>
+                          <th class="col-qty px-3 py-3 text-right">현재고</th>
+                          <th class="col-amount px-3 py-3 text-right">단가</th>
+                          <th class="col-amount px-4 py-3 text-right">평가액</th>
+                        </tr>
+                      </thead>
+                      <tbody id="ivBody"></tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <!-- 법인 간 단가 차이 — 눌러야 부른다(전 법인 수불 집계) -->
+                <div class="ds-card overflow-hidden">
+                  <div class="p-4 flex flex-wrap items-center gap-3">
+                    <h3 class="text-base font-bold"><i class="fas fa-scale-unbalanced text-amber-500 mr-2"></i>법인 간 단가 차이</h3>
+                    <input type="number" id="ivAlertThreshold" class="ds-input" style="width:90px" value="20" min="1" step="1">
+                    <span class="text-sm text-gray-500">% 이상</span>
+                    <button class="ds-btn" type="button" onclick="invValLoadAlerts()">조회</button>
+                  </div>
+                  <table class="w-full text-sm ds-table ds-table-striped ds-table-compact">
+                    <thead class="bg-gray-50">
+                      <tr>
+                        <th class="col-name px-4 py-3 text-left">품목</th>
+                        <th class="col-qty px-3 py-3 text-right">최대 차이</th>
+                        <th class="col-name px-4 py-3 text-left">법인별 평균 매입단가</th>
+                      </tr>
+                    </thead>
+                    <tbody id="ivAlertBody"><tr><td colspan="3" class="px-4 py-6 text-center text-gray-400">조회를 누르면 계산합니다</td></tr></tbody>
+                  </table>
+                </div>
+
+              </div>
+            </div>
 
             <!-- 창고별 재고 Tab Content (2026-07-16: /inventory-dashboard 흡수) -->
             <div id="zoneTabContent" class="hidden">
