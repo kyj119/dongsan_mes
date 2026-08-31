@@ -159,6 +159,22 @@ SELECT COUNT(*) FROM cards WHERE item_name LIKE 'E2E%';
 SELECT COUNT(*) FROM orders WHERE notes LIKE 'E2E%';
 ```
 
+### Phase 0: 이 환경이 prod 에 닿는가 (닿지 않으면 조용히 축소한다)
+
+Phase 1·3·4 는 prod 접근이 전제다. 스케줄 환경은 보통 닿지 않는다 —
+`webapp-9i0.pages.dev` CONNECT 403(egress 정책) · `CLOUDFLARE_API_TOKEN` 미설정.
+
+```bash
+curl -s -o /dev/null -w "%{http_code}" --max-time 10 https://webapp-9i0.pages.dev/ || true
+```
+
+**닿지 않으면 Phase 2(정적 분석)만 하고, 그 사실은 Phase 5 보고서에 한 줄로만 남긴다.**
+
+⛔ **이걸로 이슈를 만들거나 기존 이슈에 코멘트를 달지 않는다.** 코드 결함이 아니라 **환경 사실**이고,
+사이클마다 다시 적어도 아무것도 바뀌지 않는다 — #453 이 그렇게 9주간 같은 코멘트 8개를 쌓았고,
+그 소음이 정작 읽어야 할 이슈를 덮었다. 환경이 바뀌길 원하면 그건 사람이 ops 에서 할 일이지
+스캔이 매주 재신고할 일이 아니다.
+
 ### Phase 4: 기존 이슈 중복 확인 + Issue 등록
 
 ```bash
