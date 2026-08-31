@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-08-31T09:45:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-08-31T16:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -11,8 +11,23 @@
 | 🆕 new | **12** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음: #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **532** (표기 유지 — 이번 사이클 `search_issues(reason:completed)`가 598 반환, 하단 Area 3 로그 참조. 절대값 재확정은 Area 6 소관) |
+| ✔️ done | **532** (`search_issues(reason:completed)` 리터럴 쿼리로 재실측, 확정 — Area 3의 598 이상신호는 자연어 시맨틱 쿼리 아티팩트로 결론, 하단 Area 6 로그 참조) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 재확인, 변동없음) |
+
+> **Area 6 자기 진화 (2026-08-31T16:10):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD, `a2372c2` 직전), `git fetch origin main`(`207078c..a2372c2`) → `git checkout main && git reset --hard origin/main`(HEAD `a2372c2`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(범위 축 2종, 앵커 = 직전 Area6 방법 라인 HEAD `bddb334`)**: 웹앱 범위 diff 12커밋 — 이 중 Area1~5가 08-30~08-31 사이클에서 이미 개별 정독한 4건(`5dc788b`·`49fd79f`·`8ef1c6b`·`6da6a72`)을 뺀 **8건이 어느 Area 로그에도 언급 0회**(Area5 사이클 종료 이후 새로 착륙 — 「범위/깊이 축」62회차 사각지대와 동일 형태, 이번엔 Area 순환 텀 자체가 원인). 비-웹앱 범위(IA JSX) diff 5커밋 중 3건(`1002274`·`2fd81c4`·`d51811c`)도 미언급.
+> - **미언급 8건 중 핵심 1건 정독(`86d709b`, "누적 캐시는 수정·삭제가 안 따라온다" 5축 수정, CLAUDE.md 기술 사고)**: 커밋 자신이 `test:symmetry`(신설, 17건: 주문편집거부·차입금상환델타·자동차감2종 환원·거래처잔액 파생전환·견적전환수 카운트전환) + 회귀 없음(`test:ship-stock` 20/20·`e2e-373` 15/15·`smoke` 113/113)을 본문에 정량 보고 — 마이그레이션 변경 0건(컬럼-diff bridge 대상 아님), `src/scripts/**/*.js` 변경 0건(XSS bridge 대상 아님) 확인. 로컬 게이트 재실행은 서버 기동(`dev:d1`)이 전제(CLAUDE.md 명시)라 이 세션에선 재실행 생략, 대신 **CI 실측**으로 대체 검증 — `actions_list(deploy.yml)` 최신런(#1615, HEAD `a2372c2`) `conclusion:success`(Typecheck·Build·Self-tests·Deploy·Smoke 전 스텝 완주) = 이 churn 윈도 전체가 배포경로 상 이상 없음. 나머지 7건(`473e36a`·`10ff622`·`c5f0ba6`·`8f32418`·`e332e15`·`a2372c2` 등)은 위 5축 수정의 후속 커밋(테스트 게이트화·문서 압축·핸드오프 기록)으로 동일 diff 범위 내 — 별도 정독 불요.
+> - **비-웹앱 축 IA cut-panel 3커밋(`1002274`·`2fd81c4`·`d51811c`) 확인**: `5dc788b`(28회차 이전 원조 PDF-freeze 수정)의 후속 반복 정제 — 확대비율 계측 시점(embed 전→후), 회전 시 마스크 손실(rotate도 resize와 동일 결함이라 회전도 PDF 경유로 통일), 전부 각 커밋 자신이 `cut:smoke`(449→450→451, 자기증가) + 실측 좌표(예 1000%+90도 → 876.4x1240mm)로 검증 보고. `npm run audit:ia-jsx` 재실행 = 축1~5 전부 NAS 미연결로 판정 제외(변동없음, 상시 제약) — 드리프트 판정 자체는 무변화. `npm run cut:smoke` 로컬 재실행 시도는 이 샌드박스에 `chrome-headless-shell` 미설치로 실패(사전설치는 `/opt/pw-browsers/chromium`뿐) — **환경 제약이지 리포지토리 결함 아님**(3커밋 모두 자체 게이트 self-report 확인 완료, 실제 개발 PC의 playwright 풀설치에서 검증됨).
+> - **backlog↔GitHub 카운트 방법 재검증(Area 3가 위임한 598 이상신호 해소)**: `search_issues("repo:kyj119/dongsan_mes label:auto-improve is:closed reason:completed")` 리터럴 쿼리 재실행 = **532**(12연속 안정값과 일치). Area 3가 관찰한 598은 자연어 시맨틱 매칭(`query` 파라미터가 "conceptual/paraphrased" 매칭이라 도구 설명 자체가 리터럴 필터 아님을 명시)의 재현 불가능한 아티팩트로 결론 — **done=532 확정**, 이상신호 해소. rejected 재실측 `not_planned` 4 + `duplicate` 2 = 6(변동없음).
+> - **standing scan 1(closed≠fixed, #473 / open≠unfixed, 30회차)**: `list_issues(OPEN,label:auto-improve)` totalCount **12**(변동없음, #606·#608·#612·#613·#614·#615·#616·#617·#618·#619·#620·#621 전건 일치) — 12건 대상 파일(entity_id/IDOR/LIKE매칭/마이그 등)과 이번 churn(재고 수정·delete 대칭, IA cut-panel) 파일 교집합 0 → 재검증 스킵 근거 명확, close-pending 캐시 무변화.
+> - **standing scan 2: 브랜치 위생(읽기전용)** — `npm run branch:clean` → SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 3: `npm audit`** — 11건(1 moderate·8 high·2 critical) 전부 devDependency, #613 기보고와 완전 일치, net-new 0.
+> - **CI 헬스**: `deploy.yml` 최신런(#1615, HEAD `a2372c2`) `conclusion:success` — Typecheck·Build·Self-tests·Deploy·Smoke 전부 success.
+> - **🧬 SKILL 강화**: area-6-self-evolution.md에 "done 카운트 재동기화는 리터럴 `search_issues` 쿼리로만, 자연어 쿼리 결과는 신뢰 금지" 1줄 강화(§done-sync 방법론, 아래 참조). `line N` 잔여참조는 이번 사이클 대상 아님(직전 확인 0건 유지).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 11건 → 이번 로그 추가 후 12건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(웹앱 churn 12건 중 미언급 8건을 핵심 커밋 중심으로 정독 — 컬럼/XSS bridge 대상 아님, CI green으로 배포경로 검증 대체·IA cut-panel 3건은 자체 게이트 self-report로 검증·재현 불가한 샌드박스 제약 1건은 리포지토리 결함 아님으로 배제), 자동수정 0건, done-sync: open 12(변동없음)·**done 532(598 이상신호 해소, 확정)**·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 + 인프라 (2026-08-31T09:45):**
 > - **방법**: `git status`=워킹트리 clean(detached HEAD, `9bbf7f4`), `git fetch origin main`(`207078c..9bbf7f4`, 이미 최신) → `git checkout main && git reset --hard origin/main`(HEAD `9bbf7f4`). `npm ci`(0→81), `npx tsc --noEmit` clean.
