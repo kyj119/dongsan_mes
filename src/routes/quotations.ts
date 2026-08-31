@@ -71,7 +71,9 @@ quotationsRouter.get('/', async (c) => {
 
     let query = `
       SELECT q.*, c.client_name, u.name as created_by_name,
-        (SELECT COUNT(*) FROM orders o WHERE o.quotation_id = q.id) as actual_order_count,
+        -- 전환 판정(convert-to-order)과 **같은 기준**이어야 한다 — 취소분을 세면
+        --   주문을 지웠는데 화면엔 여전히 "주문생성 N건" 으로 남는다.
+        (SELECT COUNT(*) FROM orders o WHERE o.quotation_id = q.id AND o.status != 'CANCELLED') as actual_order_count,
         (SELECT item_name FROM quotation_items WHERE quotation_id = q.id AND (parent_id IS NULL OR parent_id = 0) ORDER BY sort_order, id LIMIT 1) as main_item_name,
         (SELECT width FROM quotation_items WHERE quotation_id = q.id AND (parent_id IS NULL OR parent_id = 0) ORDER BY sort_order, id LIMIT 1) as main_item_width,
         (SELECT height FROM quotation_items WHERE quotation_id = q.id AND (parent_id IS NULL OR parent_id = 0) ORDER BY sort_order, id LIMIT 1) as main_item_height,

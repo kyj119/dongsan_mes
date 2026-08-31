@@ -39,6 +39,22 @@
   - ③은 print_event 를 만들어야 해서 이 게이트에서 못 돈다 — 원장 참조 유형 등록만 확인
 - 기존 게이트 회귀 없음: `test:ship-stock` 20/20 · `e2e-373` 15/15 · smoke 113/113 · typecheck·build·check:dom·audit:entity·sort-audit·migration-drift
 
+### 재점검(같은 날 후속) — 원장 커버리지 전수
+
+배포 후 「원장이나 추가적인 부분」을 다시 훑었다. 재고를 바꾸는 경로를 **멀티라인까지 잡는 정규식**으로 전수(20곳) 세어 원장 기록과 짝을 맞췄다(1차 grep 은 `UPDATE inventory
+ SET` 형태를 놓쳐 오탐·누락이 둘 다 있었다).
+
+- **원장 미기록 1곳 발견 — 실사 구역배정 이동**(`inventoryCount.ts` add-items `assign_zone`). 미배정(NULL zone) 재고를 대상 창고로 합치고 NULL행을 지우는데 원장이 없었다. 총량은 불변이지만 **창고 귀속이 바뀌므로** 수동 이동(`POST /inventory/transfer`)과 같은 `TRANSFER_OUT`/`TRANSFER_IN` 을 남기도록 수정. 실측 확인: `-30`(NULL, 잔량 0) → `+30`(zone 3, 잔량 30).
+  - reference_id 를 안 넣어 UNIQUE 부분 인덱스(#88, `reference_id IS NOT NULL` 조건) 밖이라 반복 이동도 안전하다.
+  - ★SQL 은 타입체크가 못 잡으므로 로컬 D1 에 **매칭 0행으로 직접 실행**해 문법·컬럼을 먼저 검증했다.
+- **결과: 재고를 바꾸는 20곳 전부 원장과 짝이 맞는다.**
+- 앞선 3개 파일(`inspections.ts`·`purchaseInvoices.ts`·`po-receipts.ts`)은 **오탐**이었다 — `inventory_receipts`/`inventory_receipt_items`/`inventory_transactions` 를 `UPDATE inventory` 접두로 잘못 매칭한 것.
+
+### 재점검에서 같이 고친 2건
+
+- **주문 PUT 가드가 `orderData.items` 누락 시 TypeError** → `Array.isArray` 방어. 자식 라인 판별자(`parent_client_id`)는 `update.ts:380,403` 규약과 일치함을 확인.
+- **⑤ 판정과 목록 기준 불일치** — 전환 판정은 `status != 'CANCELLED'` 인데 목록의 `actual_order_count` 는 취소분까지 셌다. 주문을 지웠는데 화면엔 "주문생성 N건" 이 남는다 → 목록도 같은 기준으로 맞췄다.
+
 ### 남은 것
 
 - ③ 자동차감 환원의 실동작은 **출력 이벤트가 실제로 들어와야** 확인된다(prod `inventory_auto_deductions` 0건). 첫 출력 뒤 `/inventory#tab=tx` 에서 「인쇄 자동차감」 행이 보이는지 실측할 것.

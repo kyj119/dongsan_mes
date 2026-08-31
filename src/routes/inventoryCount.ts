@@ -668,6 +668,27 @@ inventoryCountRouter.post('/:id/add-items', async (c) => {
                last_updated = CURRENT_TIMESTAMP
              WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id,0) = IFNULL(?,0)`
           ).bind(itemId, entityId, itemId, entityId, zoneId),
+          // 원장 기록 — 재고를 움직이는 경로 중 여기만 빠져 있었다(2026-08-31).
+          //   총량은 그대로지만 창고 귀속이 바뀌므로 수동 이동(POST /inventory/transfer)과 같은 모양으로 남긴다.
+          //   ★반드시 위 UPDATE 뒤 · 아래 DELETE 앞이다: NULL행 수량이 아직 살아 있어야 이동량을 읽는다.
+          //   reference_id 를 안 넣으므로 UNIQUE 부분 인덱스(#88, reference_id IS NOT NULL 조건) 밖이라 반복 이동도 안전.
+          c.env.DB.prepare(
+            `INSERT INTO inventory_transactions
+               (item_id, transaction_type, transaction_date, quantity, balance_after, reference_type, reason, entity_id, storage_zone_id)
+             SELECT ?, 'TRANSFER_OUT', datetime('now'), -n.quantity, 0, 'TRANSFER', '실사 구역배정 이동', ?, NULL
+               FROM inventory n
+              WHERE n.item_id = ? AND n.entity_id = ? AND n.storage_zone_id IS NULL AND n.quantity <> 0`
+          ).bind(itemId, entityId, itemId, entityId),
+          c.env.DB.prepare(
+            `INSERT INTO inventory_transactions
+               (item_id, transaction_type, transaction_date, quantity, balance_after, reference_type, reason, entity_id, storage_zone_id)
+             SELECT ?, 'TRANSFER_IN', datetime('now'), n.quantity,
+                    (SELECT d.quantity FROM inventory d
+                      WHERE d.item_id = ? AND d.entity_id = ? AND IFNULL(d.storage_zone_id,0) = IFNULL(?,0)),
+                    'TRANSFER', '실사 구역배정 이동', ?, ?
+               FROM inventory n
+              WHERE n.item_id = ? AND n.entity_id = ? AND n.storage_zone_id IS NULL AND n.quantity <> 0`
+          ).bind(itemId, itemId, entityId, zoneId, entityId, zoneId, itemId, entityId),
           // NULL행 삭제 (이동 완료)
           c.env.DB.prepare(
             `DELETE FROM inventory WHERE item_id = ? AND entity_id = ? AND storage_zone_id IS NULL`

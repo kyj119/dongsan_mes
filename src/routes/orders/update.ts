@@ -80,8 +80,9 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
 
       // 새 payload 의 기성/유통 라인 구성. production_required 는 items 에서 확인한다
       // (payload 를 믿지 않는다 — 클라가 안 보내거나 틀린 값을 보낼 수 있다).
+      const putItems: any[] = Array.isArray(orderData.items) ? orderData.items : []
       const putStockIds = [...new Set(
-        (orderData.items as any[]).map((it) => it.item_id).filter((v: any) => v != null).map(Number)
+        putItems.map((it) => it.item_id).filter((v: any) => v != null).map(Number)
       )]
       const stockable = new Set<number>()
       if (putStockIds.length > 0) {
@@ -94,7 +95,7 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
         }
       }
       const incoming = new Map<number, number>()
-      for (const it of (orderData.items as any[])) {
+      for (const it of putItems) {
         const iid = Number(it.item_id)
         if (!iid || !stockable.has(iid)) continue
         if (it.parent_client_id) continue   // 하위(부속) 라인은 차감 대상이 아니다

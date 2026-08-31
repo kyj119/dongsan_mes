@@ -85,6 +85,26 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 - **「지금 빠르다」≠「안전하다」** — 데이터가 비어서 안 터지는 것과 구조가 안전한 것은 다르다(`/ai/credit-risk/summary`가 42ms인 건 등급이 1건뿐이라서였다).
 - **타입체크·smoke는 이걸 절대 못 잡는다** — 14초 응답도 200이다. 게이트 = `npm run audit:query-cost`(예산 초과 시 exit 1, 기준선=`scripts/query-cost-baseline.json`). 진단은 `EXPLAIN QUERY PLAN` + 응답의 `rows_read`.
 
+### 누적 캐시 = 수정·삭제가 안 따라온다 (`npm run test:symmetry`)
+**이벤트 시점에 `col = col ± ?` 로 누적해 놓고, 수정·삭제 경로가 그걸 모르는 것** — 이 프로젝트에서 가장 자주 재발한 결함이다. 2026-08-31 전수 점검에서 **5개 축이 동시에 걸렸다**: 주문↔재고 · 차입금 상환 · 자동차감 2종 · `clients.purchase_balance` · `quotations.converted_count`.
+
+**새 누적 캐시를 만들지 않는다.** 셋 중 하나로 해결한다 — 이 순서가 곧 우선순위다.
+1. **파생으로 뺀다**(캐시 없음) — AP 잔액=`utils/supplierPayable`(발주−지급−조정) · 미수금=`deriveClientBalance` · 견적 전환수=`orders.quotation_id` COUNT. 어긋날 여지 자체가 없어진다.
+2. **자기교정 산식**으로 만든다 — 연차 소멸이 정답 사례(`leaves.ts:770,773`): `remaining = accrued+…−expired` 이고 `>0` 조건이라 **두 번 돌려도 두 번째는 0**.
+3. 둘 다 안 되면 **되돌리는 짝을 같은 커밋에서** 만든다 — 차감(`deductStockLinesOnShip`)↔환원(`restoreStockLinesOnUnship`), 자동차감↔`utils/autoDeductRestore`.
+
+**되돌리기는 「역분개」가 아니라 「행 철회」다** — `idx_inventory_tx_unique_ref`(0224·0293, #88)가 `(reference_type, reference_id, item_id, transaction_type, entity_id)` UNIQUE 라 **reference 당 OUT 은 1행**이다. 상쇄 IN 을 더해도 OUT 행이 남아 **재차감 INSERT 가 UNIQUE 위반 500**(재고는 이미 빠진 뒤 INSERT 만 터진다). 그래서 환원 = 재고 복원 + 그 OUT 행 DELETE. 「무슨 일이 있었나」는 `order_status_history` 가 남긴다.
+
+**막을 수 없으면 막는다** — 발주는 재고가 움직인 뒤 수정·삭제가 **차단**된다(`purchaseOrders/core.ts:411`·`:694`). 주문도 같은 정책으로 통일했다: 출고 차감 이력이 있으면 **기성 라인 구성 변경만** 400(배송지·비고 수정은 통과). `PUT /orders/:id` 는 `order_items` 를 **전량 delete+reinsert** 하므로, 라인을 지우면 환원 근거가 사라져 **되돌릴 방법이 없다**.
+
+**배치는 재고를 움직이지 않는다** — `POST /orders/sync-statuses` 에 차감을 넣지 않은 이유: ①대상이 이미 출고 처리를 거친 주문 ②#478 로 100건 bound(subrequest 한도) ③배치가 재고를 움직이면 "언제 왜 빠졌는지"가 사람 행동과 끊긴다.
+
+**재고를 바꾸면 원장에 남긴다** — `inventory.quantity` 가 정본이고 `inventory_transactions` 는 별개 기록이라 **둘이 조용히 어긋난다**(prod 실측 2026-08-30: 잔고 합계 132,121 vs 원장 순합 72,873). 자동차감 2종은 원장을 아예 안 남겨 증감내역 화면의 사각지대였고, 실사 구역배정 이동도 빠져 있었다 — 셋 다 2026-08-31 에 메웠다. **`UPDATE inventory SET quantity` 를 새로 쓰면 같은 커밋에서 원장 INSERT 도 쓴다**(현재 20곳 전부 짝이 맞다).
+
+**타입체크·smoke 는 이걸 절대 못 잡는다** — 캐시가 틀려도 200 이다. 게이트 = **`npm run test:symmetry`**(수정·삭제 대칭 17항목) · **`npm run test:ship-stock`**(출고/취소/재출고 20항목). 둘 다 서버 기동 필요라 CI 가 아니라 로컬 게이트다.
+
+(상세 경위 = `PROJECT_STATUS_ARCHIVE.md` §2026-08-31 · §2026-08-30)
+
 ### 계산 규칙 = 값 대조 게이트로만 잡힌다 (`npm run test:calc` · CI 배포 차단)
 **문법이 멀쩡한 계산 오류는 기존 게이트 전부를 통과한다.** 2026-08-25 여신 리팩터링에서 공유 SQL을 서브쿼리로 감싸며 바깥에 `?`를 둬 **파라미터가 한 칸씩 밀렸고**(`a.entity_id=6` → adjustments 전량 누락, 초과 37곳이 108곳으로), typecheck·build·check:dom·sort-audit·entity-audit·smoke가 **전부 통과**했다. prod 배포 후 숫자를 대조해서야 잡혔다.
 - **게이트 = `npm run test:calc`** — 청구면적(`test:orderline`)·마감표기(`test:finishing-label`)·파일규격(`test:file-dims`)·여신(`test:credit`)·품목중복(`audit:items:selftest`). **deploy.yml 이 배포 전에 돌린다**(2026-08-25 신설 — 그전엔 npm 스크립트로만 있어 아무도 자동 실행하지 않았다).
