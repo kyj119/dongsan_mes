@@ -65,6 +65,10 @@ namespace LogWatcher.Parsers
         private DateTime? _curStart;                  // 진행 중 启动任务 시각 (폴 경계 유지)
         private DateTime _logClock = DateTime.MinValue; // 마지막으로 본 PrintExp 줄 시각(결과 숙성 기준)
         private DateTime? _lastRipCancelAt;           // 립 취소 통과 시각 — 고아 인쇄취소 이중계상 억제
+        // 폴백으로 이미 내보낸 립의 시작 시각 — 뒤늦게 도착한 결과가 같은 인쇄를 또 세지 않게 한다.
+        // 취소 축의 _lastRipCancelAt 와 같은 역할이지만 **목록**이다: 폴백은 대기열이 길수록
+        // 여러 건이 연달아 걸리므로 한 칸짜리 상태로는 두 번째부터 새어 나간다.
+        private readonly List<DateTime> _fallbackStarts = new();
 
         private readonly List<PendingRip> _rips = new();
         private readonly List<PendingResult> _results = new();
@@ -114,7 +118,7 @@ namespace LogWatcher.Parsers
             _rip.ResetPosition();
             _forceAll = true; _lastPosition = 0; _posDate = ""; _stateLoaded = true;
             _curStart = null; _logClock = DateTime.MinValue; _lastRipCancelAt = null;
-            _rips.Clear(); _results.Clear();
+            _rips.Clear(); _results.Clear(); _fallbackStarts.Clear();
             try { if (File.Exists(_stateFile)) File.Delete(_stateFile); } catch { /* best effort */ }
             try { if (File.Exists(_pendingFile)) File.Delete(_pendingFile); } catch { /* best effort */ }
         }
@@ -209,8 +213,21 @@ namespace LogWatcher.Parsers
                     var rip = _rips[i].Evt;
                     Console.WriteLine($"[{EquipmentId}] ⚠ PrintExp 미조인 {_fallbackHours}h 경과 — 립 기준 폴백 송출: {rip.FileName}");
                     events.Add(rip);
+                    // 이 립은 큐에서 사라지므로, 나중에 결과가 도착하면 조인 후보를 못 찾아 UNMATCHED 로
+                    // **한 번 더** 나간다(같은 물리 인쇄가 실적 2건). 시작 시각을 남겨 그때 억제한다.
+                    _fallbackStarts.Add(_rips[i].Start);
                     _rips.RemoveAt(i);
                 }
+                // 정리 — 조인 시간창(fallback) 의 두 배를 넘긴 항목은 다시 붙을 일이 없다.
+                // 기준은 **로그 시계**다: _fallbackStarts 와 조인 창(lowCut) 이 둘 다 로그 시각 축이라
+                // DateTime.Now 로 자르면 로그 시계가 밀린 PC 에서 멀쩡한 항목을 지운다.
+                if (_fallbackStarts.Count > 0 && _logClock > DateTime.MinValue)
+                {
+                    var fbCut = _logClock.AddHours(-_fallbackHours * 2.0);
+                    _fallbackStarts.RemoveAll(s => s < fbCut);
+                }
+                // 로그가 조용해 _logClock 이 안 움직여도 무한히 자라지 않게 한다(하드 상한).
+                if (_fallbackStarts.Count > 500) _fallbackStarts.RemoveRange(0, _fallbackStarts.Count - 500);
             }
 
             if (!_forceAll) SaveState();
@@ -297,6 +314,8 @@ namespace LogWatcher.Parsers
                             || (DateTime.Now > r.SeenAt.AddSeconds(_resultWaitSec * 2));
                 if (!aged) break;   // 선두 유지 — 뒷 결과가 립을 가로채지 않게
 
+                // ⚠ 폴백 뒤에 도착한 **취소**는 억제하지 않는다 — 억제하면 폴백이 내보낸 "인쇄했다"만
+                //   남아 취소 사실이 통째로 사라진다. 건수는 2건이 되지만 어느 쪽도 거짓이 아니다.
                 if (r.Status == "CANCEL")
                 {
                     if (_lastRipCancelAt != null && Math.Abs((_lastRipCancelAt.Value - r.Start).TotalMinutes) <= 5)
@@ -306,9 +325,22 @@ namespace LogWatcher.Parsers
                 }
                 else
                 {
-                    // 완료인데 립 기록이 없다 — 정비 출력(노즐체크 등) 가능성. 미상으로 송출하고 경고.
-                    Console.WriteLine($"[{EquipmentId}] ⚠ 립 기록 없는 완료 ({r.Start:HH:mm:ss}~{r.End:HH:mm:ss}) — 미상 송출");
-                    Emit(r, null, outEvents);
+                    // 립 후보가 없는 완료. 두 갈래다 —
+                    //   ① 폴백이 이미 그 립을 내보낸 뒤 결과가 늦게 도착한 것 → 같은 인쇄, 억제한다.
+                    //      판정 창은 위 후보 탐색과 **같은** [lowCut, highCut] 을 쓴다. 립이 아직
+                    //      큐에 있었다면 잡혔을 바로 그 범위라, 창을 따로 정할 필요가 없다.
+                    //   ② 진짜로 립 기록이 없는 완료(정비 출력·노즐체크 등) → 종전대로 미상 송출.
+                    int fb = _fallbackStarts.FindIndex(s => s >= lowCut && s <= highCut);
+                    if (fb >= 0)
+                    {
+                        Console.WriteLine($"[{EquipmentId}] 고아 완료 억제 — 폴백 송출(립 {_fallbackStarts[fb]:MM-dd HH:mm:ss})과 같은 건으로 판정");
+                        _fallbackStarts.RemoveAt(fb);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[{EquipmentId}] ⚠ 립 기록 없는 완료 ({r.Start:HH:mm:ss}~{r.End:HH:mm:ss}) — 미상 송출");
+                        Emit(r, null, outEvents);
+                    }
                 }
                 _results.RemoveAt(0);
             }
@@ -461,6 +493,9 @@ namespace LogWatcher.Parsers
         {
             public List<PendingRip> Rips { get; set; } = new();
             public List<PendingResult> Results { get; set; } = new();
+            // 폴백 억제 상태도 같이 남긴다 — 재시작이 이걸 잊으면 그 순간 대기 중인 결과가
+            // 전부 UNMATCHED 로 새로 나가, 억제를 넣은 의미가 없어진다.
+            public List<DateTime> FallbackStarts { get; set; } = new();
         }
 
         /// <summary>미결 큐 영속화 — 재시작 시 립은 끝났지만 아직 인쇄 안 끝난 잡의 신원이 날아가지 않게.</summary>
@@ -468,7 +503,8 @@ namespace LogWatcher.Parsers
         {
             try
             {
-                File.WriteAllText(_pendingFile, JsonSerializer.Serialize(new PendingState { Rips = _rips, Results = _results }));
+                File.WriteAllText(_pendingFile, JsonSerializer.Serialize(
+                    new PendingState { Rips = _rips, Results = _results, FallbackStarts = _fallbackStarts }));
             }
             catch (Exception ex) { Console.WriteLine($"[{EquipmentId}] pending save failed: {ex.Message}"); }
         }
@@ -482,6 +518,7 @@ namespace LogWatcher.Parsers
                 if (s == null) return;
                 _rips.AddRange(s.Rips);
                 _results.AddRange(s.Results);
+                _fallbackStarts.AddRange(s.FallbackStarts);
             }
             catch (Exception ex) { Console.WriteLine($"[{EquipmentId}] pending load failed: {ex.Message}"); }
         }

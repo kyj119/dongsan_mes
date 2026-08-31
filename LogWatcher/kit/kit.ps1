@@ -175,6 +175,43 @@ function Invoke-LogSweep {
 # AppData 에 쓰는 제어 SW(Flora RYPC 실측: 서식지에서 로그 0건)를 못 본다.
 # 여기서는 ①실행 중 제어 SW 프로세스의 폴더 ②서식지 와일드카드 ③AppData/ProgramData 흔적을
 # 확장자 무관으로 전수 목록화하고, 최근 변경된 작은 파일은 내용까지 수거한다 (2026-08-19).
+# 디렉터리 단위 재귀 열거.
+#
+# ★ [IO.Directory]::GetFiles($root,"*",AllDirectories) 를 쓰면 안 된다 — .NET Framework(PS 5.1,
+#   START.bat 이 띄우는 그것)의 그 오버로드는 하위 폴더 하나만 ACL 로 막혀도
+#   UnauthorizedAccessException 으로 **열거 전체를 중단**한다(.NET Core 의 IgnoreInaccessible
+#   기본값은 여기 적용되지 않는다). 루트 ③(%APPDATA%·ProgramData)은 ACL 이 섞인 대표 영역이라,
+#   로그가 있어도 그 루트는 통째로 "파일 0건"이 된다.
+#   폴더 단위로 돌면 막힌 폴더만 건너뛰고 나머지는 그대로 나온다.
+function Get-CensusFiles {
+    param([string]$Root, [int]$Limit = 4000)
+    $files  = New-Object System.Collections.Generic.List[System.IO.FileInfo]
+    $denied = 0
+    $stack  = New-Object System.Collections.Generic.Stack[string]
+    $stack.Push($Root)
+    while ($stack.Count -gt 0) {
+        $cur = $stack.Pop()
+        try { foreach ($d in [IO.Directory]::GetDirectories($cur)) { $stack.Push($d) } } catch { $denied++ }
+        try {
+            foreach ($f in [IO.Directory]::GetFiles($cur)) {
+                try { $files.Add((New-Object System.IO.FileInfo $f)) } catch { }
+            }
+        } catch { $denied++ }
+    }
+    $total = $files.Count
+    # 상한은 **최근 변경순**으로 남긴다. 디렉터리 순회 순서로 자르면 정작 찾는 최신 로그가
+    # 상한 뒤로 밀린다(Flora/PrintExp 설치 폴더는 ICC·리소스만으로 수천 개를 쉽게 넘는다).
+    $sorted = @($files | Sort-Object LastWriteTime -Descending)
+    if ($total -gt $Limit) { $kept = @($sorted | Select-Object -First $Limit) } else { $kept = $sorted }
+    return New-Object PSObject -Property @{
+        Files     = $kept
+        Total     = $total
+        Denied    = $denied
+        Limit     = $Limit
+        Truncated = ($total -gt $Limit)
+    }
+}
+
 function Invoke-HabitatCensus {
     param([int]$CollectDays = 7)
     $dir = Ensure-Collect
@@ -238,11 +275,16 @@ function Invoke-HabitatCensus {
 
     foreach ($root in $tops) {
         $lines.Add("== " + $root + " ==")
-        $files = @()
-        try { $files = @([IO.Directory]::GetFiles($root, "*", [IO.SearchOption]::AllDirectories) | Select-Object -First 4000) }
-        catch { $lines.Add("  (열람 실패: " + $_.Exception.Message + ")") }
-        foreach ($f in $files) {
-            $fi = $null; try { $fi = [IO.FileInfo]$f } catch { continue }
+        $scan = Get-CensusFiles -Root $root -Limit 4000
+        # 조용히 비는 두 경로를 반드시 지면에 남긴다 — 둘 다 "여기엔 로그가 없다"로 읽혀
+        # 기사가 재방문한다. 센서스를 만든 이유가 그 재방문을 없애는 것이었다.
+        if ($scan.Denied -gt 0) {
+            $lines.Add(("  (접근 거부 폴더 {0}곳 건너뜀 — 나머지는 그대로 열거했습니다)" -f $scan.Denied))
+        }
+        if ($scan.Truncated) {
+            $lines.Add(("  (목록 상한 {0}건 도달 — 최근 변경순 {0}건만 기록, 실제 {1}건)" -f $scan.Limit, $scan.Total))
+        }
+        foreach ($fi in $scan.Files) {
             $lines.Add(("  {0}`t{1}`t{2:yyyy-MM-dd HH:mm:ss}" -f $fi.FullName, $fi.Length, $fi.LastWriteTime))
             if ($fi.LastWriteTime -le $cut -or $fi.Length -eq 0) { continue }
             try {
@@ -253,7 +295,10 @@ function Invoke-HabitatCensus {
                     if ($noiseExt -contains $fi.Extension.ToLower()) { continue }
                     Copy-CensusFile $fi (Join-Path $outDir $safe)
                     $collected++
-                } elseif ($fi.Name -match "(?i)rec|history") {
+                } elseif ($fi.Name -match "(?i)(^|[_\-.])(rec|record|history)" -and -not ($noiseExt -contains $fi.Extension.ToLower())) {
+                    # 경계 있는 매칭 + noise 확장자 제외. 무앵커 "rec|history" 는 DirectX*·*Recovery*·
+                    # *precheck* 에 다 걸리고, 이 분기엔 확장자 필터가 없어 50MB 짜리 .exe/.cab 을
+                    # 통째로 복사했다. 대형 예산이 5개뿐이라 오탐 하나가 진짜 print_rec.dat 자리를 뺏는다.
                     # 대형 기록 파일 — Flora print_rec.dat(33~48MB) 실측(2026-08-19). 60MB 까지 통째,
                     # 그 이상은 꼬리 20MB (기록은 뒤에 쌓인다) + 구조 판독용 머리 2MB.
                     if ($bigCollected -ge $maxBigCollect) { continue }
@@ -510,7 +555,68 @@ if ($Action -eq "sweep") {
     exit 0
 }
 if ($Action -eq "info") { Save-PcInfo; exit 0 }
+# ── 열거기 자체검증 (`kit.ps1 -Action census-selftest`) ─────────────
+#
+# 센서스가 조용히 비는 두 경로는 현장에서 절대 눈에 안 띈다 — 결과 파일이 "파일 없음"으로
+# 보이는 것뿐이라, 기사는 그걸 사실로 읽고 재방문한다. 합성 트리로 여기서 잡는다.
+function Invoke-CensusSelfTest {
+    $t = Join-Path $env:TEMP ("census-selftest-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+    $denied = Join-Path $t "denied"
+    $script:stFail = 0
+    function Check([string]$name, [bool]$ok, [string]$detail) {
+        if (-not $ok) { $script:stFail++ }
+        Write-Host ("  {0}  {1}   -> {2}" -f $(if ($ok) { "PASS" } else { "FAIL" }), $name, $detail)
+    }
+    try {
+        New-Item -ItemType Directory -Force -Path (Join-Path $t "ok") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $t "deep\sub") | Out-Null
+        New-Item -ItemType Directory -Force -Path $denied | Out-Null
+        Set-Content -Path (Join-Path $t "ok\a.log")        -Value "a" -Encoding ascii
+        Set-Content -Path (Join-Path $t "deep\sub\b.log")  -Value "b" -Encoding ascii
+        Set-Content -Path (Join-Path $denied "secret.log") -Value "s" -Encoding ascii
+        (Get-Item (Join-Path $t "ok\a.log")).LastWriteTime       = (Get-Date).AddDays(-10)
+        (Get-Item (Join-Path $t "deep\sub\b.log")).LastWriteTime = (Get-Date).AddMinutes(-1)
+
+        # 이 사용자에게 읽기 거부 — Administrators 소속이어도 명시 거부가 우선한다
+        & icacls $denied /deny ("{0}:(OI)(CI)(RX)" -f $env:USERNAME) | Out-Null
+
+        # 종전 구현이 실제로 전멸하는지부터 확인한다. 안 터지면 이 환경에선 1번 검사가 무의미하다.
+        $blocked = $false
+        try { [void][IO.Directory]::GetFiles($t, "*", [IO.SearchOption]::AllDirectories) } catch { $blocked = $true }
+
+        if (-not $blocked) {
+            Write-Host "  SKIP  ACL 거부가 이 환경에서 적용되지 않아 1번 검사를 건너뜁니다"
+        } else {
+            $r = Get-CensusFiles -Root $t -Limit 100
+            $names = @($r.Files | ForEach-Object { $_.Name })
+            Check "접근거부 1곳이 나머지를 죽이지 않는다" `
+                  (($names -contains "a.log") -and ($names -contains "b.log") -and $r.Denied -ge 1) `
+                  ("files=" + ($names -join ",") + " denied=" + $r.Denied)
+        }
+
+        $r2 = Get-CensusFiles -Root $t -Limit 1
+        Check "상한 도달을 표시한다" ($r2.Truncated -and $r2.Total -ge 2) ("truncated=" + $r2.Truncated + " total=" + $r2.Total)
+        Check "상한은 최근 변경순으로 남긴다" (@($r2.Files).Count -eq 1 -and @($r2.Files)[0].Name -eq "b.log") ("kept=" + @($r2.Files)[0].Name)
+
+        # 대형 기록 파일 매칭 — 무앵커 시절엔 아래 넷이 전부 걸렸다
+        $re = "(?i)(^|[_\-.])(rec|record|history)"
+        Check "rec/history 매칭에 경계가 있다" `
+              (("print_rec.dat" -match $re) -and ("history.log" -match $re) -and `
+               (-not ("DirectX.exe" -match $re)) -and (-not ("precheck.dll" -match $re))) `
+              "print_rec/history=O, DirectX/precheck=X"
+    }
+    finally {
+        try { & icacls $denied /remove:d $env:USERNAME | Out-Null } catch { }
+        # 정리는 .NET 재귀 삭제 — 임시 트리 한정
+        try { if ([IO.Directory]::Exists($t)) { [IO.Directory]::Delete($t, $true) } } catch { }
+    }
+    Write-Host ""
+    if ($script:stFail -eq 0) { Write-Host "[census-selftest] OK"; exit 0 }
+    else { Write-Host ("[census-selftest] FAIL - {0}건" -f $script:stFail); exit 1 }
+}
+
 if ($Action -eq "census") { Invoke-HabitatCensus; exit 0 }
+if ($Action -eq "census-selftest") { Invoke-CensusSelfTest; exit 0 }
 
 # ── 메인 메뉴 ─────────────────────────────────────────────────────
 while ($true) {

@@ -49,6 +49,13 @@ namespace LogWatcher
                 return;
             }
 
+            // 조인 회귀 시험 — 합성 서식지로 돌므로 equipment.json 도 실기 로그도 필요 없다
+            if (args.Length > 0 && args[0] == "--selftest-pexp")
+            {
+                Tools.PexpSelfTest.Run(args);
+                return;
+            }
+
             var equipmentConfigPath = Path.Combine(AppContext.BaseDirectory, "equipment.json");
 
             // Route: equipment.json exists → new universal mode
