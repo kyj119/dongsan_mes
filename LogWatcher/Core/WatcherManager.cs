@@ -172,6 +172,8 @@ namespace LogWatcher.Core
                 ResetBackoff(eqId);
             }
 
+            events = DropStaleEvents(eqId, events);
+
             // Send events
             foreach (var evt in events)
             {
@@ -196,6 +198,44 @@ namespace LogWatcher.Core
                 var hbOk = await _apiClient.SendHeartbeatForEquipmentAsync(eqId, parser.Name, logPath, isPrinting);
                 if (hbOk) _lastHeartbeats[eqId] = DateTime.Now;
             }
+        }
+
+        /// <summary>
+        /// 파싱 직후 ★ 너무 오래된 이벤트를 버린다 (기본 7일, `max_event_age_days`, 0=끄기).
+        ///
+        /// 왜 필요한가 (2026-08-31 배포 전 점검):
+        ///   위치 파일이 어긋나 있으면 append-only 로그를 옛 지점부터 다시 읽는다. RIPLOG 는 60MB+ · 2~3년치라
+        ///   한 번에 수천 건이 소급 전송된다. 서버 멱등키(file_path+completed_at)는 **이미 적재된 것만** 막으므로,
+        ///   한 번도 적재된 적 없는 장비(HYB-3200-01·SOLV-3200-01 실측 0건)에는 아무 방어가 없고,
+        ///   이벤트마다 카드가 출력완료로 뒤집혀 **되돌리기 어려운 실적 오염**이 된다.
+        ///   정상 운영에서 7일을 넘는 이벤트는 나오지 않는다(폴백 창은 시간 단위). PC 가 며칠 꺼져 있었어도 복구된다.
+        ///
+        /// ★ 재시도 큐에는 적용하지 않는다 — 큐에 든 건 이미 파서를 통과한 정상 이벤트다(오프라인 며칠이면 당연히 오래된다).
+        /// ★ 조용히 버리지 않는다 — 몇 건을, 얼마나 오래된 것을 버렸는지 반드시 남긴다.
+        /// </summary>
+        private List<PrintEvent> DropStaleEvents(string eqId, List<PrintEvent> events)
+        {
+            int maxAge = Config.MaxEventAgeDays;
+            if (maxAge <= 0 || events.Count == 0) return events;
+
+            var cutoff = DateTime.Now.Date.AddDays(-maxAge);
+            var kept = new List<PrintEvent>(events.Count);
+            DateTime? oldest = null;
+            int dropped = 0;
+
+            foreach (var evt in events)
+            {
+                // 시작 시각을 못 읽으면 버리지 않는다 — 판단 근거가 없을 때 버리는 쪽이 더 위험하다.
+                if (!DateTime.TryParse(evt.PrintStartedAt, out var started)) { kept.Add(evt); continue; }
+                if (started >= cutoff) { kept.Add(evt); continue; }
+                dropped++;
+                if (oldest == null || started < oldest) oldest = started;
+            }
+
+            if (dropped > 0)
+                Console.WriteLine($"[{eqId}] ⚠ {maxAge}일보다 오래된 이벤트 {dropped}건 폐기 (최고령 {oldest:yyyy-MM-dd}) — 위치 파일이 어긋났을 수 있습니다");
+
+            return kept;
         }
 
         /// <summary>

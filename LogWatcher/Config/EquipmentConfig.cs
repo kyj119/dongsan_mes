@@ -15,6 +15,13 @@ namespace LogWatcher.Config
         [JsonPropertyName("heartbeat_interval_seconds")]
         public int HeartbeatIntervalSeconds { get; set; } = 60;
 
+        /// <summary>
+        /// 파싱 직후 이보다 오래된 이벤트는 버린다 (일, 0=끄기). 위치 파일이 어긋났을 때
+        /// append-only 로그 수천 건이 소급 전송돼 옛 카드를 뒤집는 사고를 막는다 — WatcherManager.DropStaleEvents 참조.
+        /// </summary>
+        [JsonPropertyName("max_event_age_days")]
+        public int MaxEventAgeDays { get; set; } = 7;
+
         [JsonPropertyName("watchers")]
         public List<WatcherConfig> Watchers { get; set; } = new();
     }

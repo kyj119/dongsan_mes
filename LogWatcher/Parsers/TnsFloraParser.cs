@@ -62,6 +62,7 @@ namespace LogWatcher.Parsers
         private bool _stateLoaded;
         private bool _forceAll;
         private bool _warnedMagic;
+        private bool _secondAxisOk = true;
 
         private readonly List<PendingRip> _pending = new();
 
@@ -113,7 +114,8 @@ namespace LogWatcher.Parsers
             LoadPending();
         }
 
-        public bool IsAccessible() => File.Exists(_logPath) && File.Exists(_recPath);
+        // ★ 신원 축(Print.log)만 본다. Flora 기록이 없다고 장비를 멈추면 실적이 통째로 0 이 된다.
+        public bool IsAccessible() => File.Exists(_logPath);
 
         public void ResetPosition()
         {
@@ -137,7 +139,7 @@ namespace LogWatcher.Parsers
             var events = new List<PrintEvent>();
             if (!IsAccessible())
             {
-                Console.WriteLine($"[{EquipmentId}] 경로 접근 불가 — Print.log 또는 print_rec_path: {_recPath}");
+                Console.WriteLine($"[{EquipmentId}] 경로 접근 불가 — Print.log: {_logPath}");
                 return events;
             }
 
@@ -152,7 +154,7 @@ namespace LogWatcher.Parsers
             }
 
             // 2) Flora 축 — 고정 크기 레코드 append
-            ReadRecords(events);
+            if (ProbeSecondAxis(File.Exists(_recPath), "print_rec.dat")) ReadRecords(events);
 
             // 3) 안전망 — Flora 축이 오래 침묵하면 Print.log 이벤트를 종전 동작대로 송출
             if (_fallbackHours > 0)
@@ -304,6 +306,19 @@ namespace LogWatcher.Parsers
                 Console.WriteLine($"[{EquipmentId}] print_rec 레코드 크기 판별 실패: {ex.Message}");
                 return 0;
             }
+        }
+
+
+        // 둘째 축이 사라져도 장비를 멈추지 않는다 — 신원 축만으로 종전(단축) 동작을 계속한다.
+        // ★ 사라진 것을 조용히 넘기지 않는다: 상태가 바뀔 때마다 한 번씩 남긴다.
+        private bool ProbeSecondAxis(bool present, string what)
+        {
+            if (present == _secondAxisOk) return present;
+            _secondAxisOk = present;
+            Console.WriteLine(present
+                ? $"[{EquipmentId}] {what} 복구 — 2축 조인 재개"
+                : $"[{EquipmentId}] ⚠ {what} 없음 — 2축 조인 중단, 립 기준으로만 송출합니다 (취소·실소요 미반영)");
+            return present;
         }
 
         private PrintEvent? ParseRecord(byte[] b)

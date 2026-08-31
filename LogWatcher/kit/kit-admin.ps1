@@ -251,8 +251,11 @@ if ($svc) {
     while ((Get-Service $SvcName).Status -ne "Stopped" -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
     L ("  서비스 상태: " + (Get-Service $SvcName).Status)
 
-    robocopy $Stage $appDir /E /R:2 /W:2 /NFL /NDL /NJH `
-        /XF appsettings.json equipment.json equipment.*.json pending_events.json service.log kit-admin.ps1 admin-install.log | Out-Null
+    # /XD positions · /XF last_position.txt = ★ 현장 위치 파일을 절대 덮지 않는다.
+    # 스테이지에 위치 파일이 섞여 들어오면 로그를 옛 지점부터 다시 읽어 과거를 소급 전송한다
+    # (지금은 max_event_age_days 가 7일로 막아 주지만, 애초에 덮지 않는 게 맞다).
+    robocopy $Stage $appDir /E /R:2 /W:2 /NFL /NDL /NJH /XD positions `
+        /XF appsettings.json equipment.json equipment.*.json pending_events.json service.log kit-admin.ps1 admin-install.log last_position.txt | Out-Null
     if ($LASTEXITCODE -ge 8) { L "[오류] 바이너리 교체 실패 (robocopy $LASTEXITCODE)"; Read-Host "Enter 로 닫기"; exit 1 }
     L "바이너리 교체 완료 (robocopy $LASTEXITCODE)"
 

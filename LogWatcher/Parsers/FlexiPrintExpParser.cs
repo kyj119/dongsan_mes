@@ -58,6 +58,7 @@ namespace LogWatcher.Parsers
         private long _lastPosition;
         private bool _stateLoaded;
         private bool _forceAll;
+        private bool _secondAxisOk = true;
 
         private bool _printUtf16;                     // ReadFrom 이 판별 — UTF-16 이면 파일명이 이미 정상
         private Block? _cur;                          // 진행 중 PrintExp 잡 블록 (폴 경계 유지)
@@ -103,7 +104,8 @@ namespace LogWatcher.Parsers
             LoadPending();
         }
 
-        public bool IsAccessible() => _flexi.IsAccessible() && Directory.Exists(_printDir);
+        // ★ 신원 축(RIPLOG)만 본다 — PrintExp 가 사라져도 단축으로 계속 흘린다.
+        public bool IsAccessible() => _flexi.IsAccessible();
 
         public void ResetPosition()
         {
@@ -139,7 +141,7 @@ namespace LogWatcher.Parsers
             var events = new List<PrintEvent>();
             if (!IsAccessible())
             {
-                Console.WriteLine($"[{EquipmentId}] 경로 접근 불가 — riplog 또는 print_log_dir: {_printDir}");
+                Console.WriteLine($"[{EquipmentId}] 경로 접근 불가 — RIPLOG.HTML");
                 return events;
             }
 
@@ -162,7 +164,8 @@ namespace LogWatcher.Parsers
 
             // 2) PrintExp 축 — 일별 로테이션 (TransferPressParser 와 동일 방식)
             var files = new List<(string Path, long StartPos, bool Tracked)>();
-            if (_forceAll)
+            if (!ProbeSecondAxis(Directory.Exists(_printDir), "PrintExp 로그 폴더")) files.Clear();
+            else if (_forceAll)
             {
                 foreach (var f in Directory.GetFiles(_printDir, "Log[*].txt").OrderBy(f => f))
                     files.Add((f, 0, false));
@@ -213,6 +216,19 @@ namespace LogWatcher.Parsers
         }
 
         // ── PrintExp 로그 줄 소비 ───────────────────────────────────────────
+
+
+        // 둘째 축이 사라져도 장비를 멈추지 않는다 — 신원 축만으로 종전(단축) 동작을 계속한다.
+        // ★ 사라진 것을 조용히 넘기지 않는다: 상태가 바뀔 때마다 한 번씩 남긴다.
+        private bool ProbeSecondAxis(bool present, string what)
+        {
+            if (present == _secondAxisOk) return present;
+            _secondAxisOk = present;
+            Console.WriteLine(present
+                ? $"[{EquipmentId}] {what} 복구 — 2축 조인 재개"
+                : $"[{EquipmentId}] ⚠ {what} 없음 — 2축 조인 중단, 립 기준으로만 송출합니다 (취소·실소요 미반영)");
+            return present;
+        }
 
         private void ConsumeLine(string line, DateTime logDate, List<PrintEvent> outEvents)
         {
