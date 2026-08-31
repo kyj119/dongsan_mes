@@ -183,3 +183,101 @@ LogWatcher.exe --analyze "<경로>"  # 기존 로그로 완료 패턴 후보 뽑
 LogWatcher.exe --learn "<경로>"    # 출력 1건을 실시간으로 지켜보며 패턴 추출 (text_log 전용)
 LogWatcher.exe --init              # discover + analyze → equipment.json 초안
 ```
+
+---
+
+## 5. 이미 설치된 PC 에 코드 수정 반영 (업데이트 롤아웃)
+
+§2 는 **신규 설치**다. 여기는 **이미 도는 PC 에 새 빌드를 넣는** 절차 — `#616`(tns_printexp 파서)·
+`#617`(kit 센서스)처럼 웹 배포로는 절대 반영되지 않는 수동 축이다.
+
+### 5-0. 축이 둘이고, 반영 방식이 다르다
+
+`make-kit.ps1` **하나가 둘 다** `Z:\Designs\LogWatcher-kit` 에 올린다. 하지만 현장 도달 방식이 다르다.
+
+| 축 | 무엇 | 어떻게 반영되나 |
+|---|---|---|
+| **A** | `bin\LogWatcher.exe` (파서·전송) | **PC 마다 [2] 실행해야** 반영. 서비스가 들고 있는 파일이라 자동 갱신 없음 |
+| **B** | `kit.ps1` · `START.bat` · `config\<PC명>\` | **Z: 갱신만으로 즉시.** 현장이 Z: 에서 직접 실행하므로 방문 불요 |
+
+⇒ `#617`(센서스 열거기)은 **축 B 라 PC 방문이 필요 없다.** `#616`(파서)은 축 A 라 대상 PC 를 돌아야 한다.
+
+### 5-1. 개발 PC — 게이트 먼저 (실기에서 되돌리는 것보다 싸다)
+
+```
+dotnet build LogWatcher\LogWatcher.csproj
+dotnet run --project LogWatcher\LogWatcher.csproj -- --selftest-pexp
+powershell -NoProfile -ExecutionPolicy Bypass -File LogWatcher\kit\kit.ps1 -Action census-selftest
+```
+
+- `--selftest-pexp` = 합성 서식지로 조인/폴백 억제 4항목. equipment.json·실기 로그 불요.
+- `census-selftest` = ACL 거부 폴더를 만들어 열거기 4항목. **반드시 `powershell.exe`(5.1)** 로 —
+  현장 `START.bat` 이 그 호스트를 쓰고, .NET Framework 와 .NET Core 는 열거 실패 동작이 다르다.
+
+### 5-2. 키트 조립·배포 (개발 PC)
+
+```
+cd LogWatcher\kit
+.\make-kit.ps1
+```
+
+`dotnet publish` → `Z:\Designs\LogWatcher-kit` 조립. 조립기가 인코딩 계약도 강제한다
+(kit ps1 = UTF-8 BOM · START.bat = ASCII+CRLF · `equipment*.json` 은 bin 에 절대 미포함).
+
+**`version.txt` = `kit git=<sha> built=<시각>`** — 현장에서 어느 빌드가 깔렸는지 알 수 있는 **유일한 지문**이다.
+[2] 실행 후 이 값이 안 바뀌면 그 PC 는 갱신되지 않은 것이다.
+
+### 5-3. 대상 PC — `#616` 은 2대뿐이다
+
+`TnsPrintExpParser` 를 쓰는 PC 는 `kit\config\` 기준 **둘**이다:
+
+| PC | 장비 | parser |
+|---|---|---|
+| `DESKTOP-8BR0QSJ` | **HSM-03** | `tns_printexp` |
+| `DESKTOP-GMKQE13` | **TOPM-01** | `tns_printexp` |
+
+나머지 12대(`flexi`·`flexi_printexp`·`epson`·`tns`·`tns_flora`)는 이번 수정과 무관하다 —
+exe 는 공통이라 언젠가 같이 올라가지만, **이 건 때문에 방문할 이유는 없다.**
+※ HSM-04 는 08-31 에 PrintExp 를 찾았으나 아직 `kit\config\` 에 설정이 없다. 전환하면 대상이 3대가 된다.
+
+### 5-4. 현장 절차 (PC 1대 ~5분)
+
+1. `Z:\Designs\LogWatcher-kit\START.bat` 더블클릭
+2. **[2] LogWatcher 설치/업데이트** → `y`
+3. 관리자 권한 창이 뜨면 **[예]**
+4. 끝나면 설치 로그 마지막 25줄이 화면에 뜬다 — **FATAL 이 없는지**, 버전이 바뀌었는지 확인
+
+내부적으로: C: 스테이징(승격 세션은 Z: 를 못 본다) → 서비스 중지 → 바이너리 교체 →
+**`appsettings.json`·`equipment.json`·재전송 큐 보존** → 시작 → 기동 검증.
+
+### 5-5. 확인
+
+```
+C:\Logwatcher\LogWatcher.exe --test HSM-03     # 전송 없이 파싱만. 반드시 먼저
+```
+그다음 웹에서 `/equipment` 온라인 · `/production` 이벤트.
+
+**`#616` 은 「없어져야 할 것」으로 판정한다.** 같은 물리 인쇄에 대해 파일명 있는 이벤트와
+`UNMATCHED-<타임스탬프>` 가 **쌍으로 들어오는 게 사라져야** 한다. 억제가 실제로 돌면 콘솔·로그에
+`고아 완료 억제 — 폴백 송출(립 MM-dd HH:mm:ss)과 같은 건으로 판정` 이 남는다.
+⚠️ 발동 조건이 **립 시작 후 `rip_fallback_hours`(기본 6h) 초과**라 한가한 날엔 아무 일도 안 일어난다 —
+「조용하다」를 「고쳐졌다」로 읽지 말 것. 대기열이 긴 날의 실적을 봐야 판정이 된다.
+
+**`#617` 은 census 결과 파일로 판정한다.** [1] 진단 또는 [2] 에서 PrintExp 미발견 시 자동 수거되는
+`수거\<PC명>-<시각>\census-<PC명>.txt` 에, 해당 상황이면
+`(접근 거부 폴더 N곳 건너뜀 — 나머지는 그대로 열거했습니다)` ·
+`(목록 상한 4000건 도달 — 최근 변경순 4000건만 기록, 실제 N건)` 줄이 찍힌다.
+종전엔 이 두 경우가 **아무 표시 없이 「파일 0건」** 으로 보여 기사를 재방문시켰다.
+
+### 5-6. 되돌리기
+
+| 대상 | 방법 |
+|---|---|
+| 설정(`equipment.json`·`appsettings.json`) | 교체 전 자동 백업 `*.bak-<타임스탬프>`. 자동 전환분은 기동 로그 FATAL 시 **자동 롤백** |
+| **바이너리** | **백업이 없다.** 이전 커밋에서 `make-kit.ps1` 재조립 후 [2] 재실행이 유일한 경로 |
+| 상태파일 `<장비ID>.pexpend.json` | 손댈 필요 없다. `#616` 이 `FallbackStarts` 를 추가했지만 System.Text.Json 은 미지 필드를 무시하므로 **구 exe 로 되돌려도 안전**(양방향 호환) |
+
+### 5-7. 순서 권고
+
+2대뿐이라 한 번에 가도 되지만, **TOPM-01 먼저 → 며칠 관찰 → HSM-03** 이 안전하다.
+바이너리 롤백 경로가 재조립뿐이라, 한 대를 남겨 두면 비교 대상이 생긴다.
