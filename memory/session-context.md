@@ -50,6 +50,7 @@ prod 배포 **5회 전부 CI success**: `49fd79f3`(증감내역 탭) · `7b454cc
 ## 주의사항 (다음 세션이 밟기 쉬운 것)
 
 - ⚠️ **로컬 3000 포트에 stale wrangler 가 여러 개** 떠 있다(일부는 `sign-estimate` 워크트리). 새 빌드를 서빙하지 않아 **배포 검증이 조용히 통과**한다. 이번 세션은 전부 **:3099 격리 서버**에서 검증했다. 남의 프로세스라 건드리지 않았다.
+- ⚠️⚠️ **공유 체크아웃에서 내 스테이지가 남의 커밋에 쓸려 들어갔다**(2026-08-31 실제 발생). IA 세션이 동시에 작업 중이라 `git add` 로 14개 파일을 올려둔 사이 그 세션이 커밋해 **내 변경 전부가 `d51811cc fix(cut): rotate before embed…` 에 섞여 들어갔다**. 내 `git commit` 은 "no changes added" 로 실패했고, 내용은 온전하지만 **커밋 메시지가 남의 것**이다. 이력을 다시 쓰지 않았다 — 다른 세션이 살아 있는 브랜치를 rewrite 하는 게 더 위험하다. **교훈: 공유 체크아웃에서는 stage→commit 사이를 벌리지 말 것**(한 명령으로 붙이거나, 애초에 worktree 로 격리). 정본 = memory `feedback-shared-checkout-git`
 - ⚠️ **로그인 레이트리밋** — e2e 를 연속으로 돌리면 "요청이 너무 많습니다" 로 죽는다. 코드 문제가 아니다. 하나씩 띄엄띄엄 돌릴 것.
 - ⚠️ **print_event 중복 판정 키 = `(file_path, print_completed_at)`** — 시각 없이 재전송하면 duplicate 로 삼켜져 **차감 로직에 도달조차 못 한다**. 수동 재현할 때 반드시 시각을 바꿀 것.
 - ⚠️ `grep 'UPDATE inventory'` 는 **`inventory_receipts`·`inventory_transactions` 까지 잡는다**(오탐). 반대로 `UPDATE inventory\n SET` 멀티라인은 **놓친다**(누락). 둘 다 겪었다 — 정규식으로 볼 것.
