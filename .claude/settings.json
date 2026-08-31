@@ -77,6 +77,16 @@
           }
         ]
       }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const f=require('fs'),p=require('path');const rel=p.join('.claude','hooks','precompact.cjs');let t=null;for(const s of [process.env.CLAUDE_PROJECT_DIR,process.cwd()].filter(Boolean)){let d=s;for(let i=0;i<12;i++){const c=p.join(d,rel);if(f.existsSync(c)){t=c;break}const u=p.dirname(d);if(u===d)break;d=u}if(t)break}if(!t)process.exit(0);require(t)\""
+          }
+        ]
+      }
     ]
   }
 }
