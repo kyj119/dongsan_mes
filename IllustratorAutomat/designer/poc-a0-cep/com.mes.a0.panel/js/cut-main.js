@@ -31,7 +31,7 @@
   // ⚠️ 내용을 고치면 **반드시 이 번호를 올린다** — 수동 배포축이라 이 문자열이 "이 PC 가 어느 셸인가"의
   //    유일한 단서다. 0.57.0 하나가 세 상태를 가리키던 사고가 있었고(등록 파라미터·굽기 통합·[◎ 전체]),
   //    그래서 `ia:deploy` 가 번호가 그대로면 배포를 막는다.
-  var SHELL_VERSION = '0.63.0';   // 0.63.0 = 호스트 구버전 감지(Z: 배포본과 대조 → 시작·포커스 시 경고 · 판짜기 차단) · 0.62.0 = 폴백 문구에 회전 포함(배율 1배 회전도 PDF 경로) · 0.61.0 = 배율 확대 결과 보고(PDF 배치 / 예비 경로 폴백 경고) · 0.60.0 = 파일명 맨 앞 거래처 · 자재/후가공 행 분리(폭 맞춤) · 「품목」→「내용」 명칭 분리(MES 품목 마스터와 구분) · 0.59.0 = 재단 탭 [◎ 전체] · 0.58.0 = 굽기 통합(마스크+도련 1왕복)·등록 파라미터(자재·후가공·돔보·파일명) · 0.57.0 = 조각 속 메우기(그룹 하나=칼선 하나·맞붙임 복구) · 0.56.0 = 도련 겹침 분할(간격 존중·하한 1.5mm)
+  var SHELL_VERSION = '0.64.0';   // 0.64.0 = 목록 달린 칸 한글 입력 복구(IME 조합 중 datalist 분리 — 자동완성 팝업이 조합을 가로챘다) · 0.63.0 = 호스트 구버전 감지(Z: 배포본과 대조 → 시작·포커스 시 경고 · 판짜기 차단) · 0.62.0 = 폴백 문구에 회전 포함(배율 1배 회전도 PDF 경로) · 0.61.0 = 배율 확대 결과 보고(PDF 배치 / 예비 경로 폴백 경고) · 0.60.0 = 파일명 맨 앞 거래처 · 자재/후가공 행 분리(폭 맞춤) · 「품목」→「내용」 명칭 분리(MES 품목 마스터와 구분) · 0.59.0 = 재단 탭 [◎ 전체] · 0.58.0 = 굽기 통합(마스크+도련 1왕복)·등록 파라미터(자재·후가공·돔보·파일명) · 0.57.0 = 조각 속 메우기(그룹 하나=칼선 하나·맞붙임 복구) · 0.56.0 = 도련 겹침 분할(간격 존중·하한 1.5mm)
 
   // ── 도련 겹침 분할 (2026-08-25) ─────────────────────────────────────────
   // ★순수 함수로 뽑아 둔 이유 = **하네스가 이 함수를 직접 돌리기 때문**이다(`npm run cut:bleed` §9).
@@ -2176,6 +2176,27 @@
     }
   }
 
+  /**
+   * ★한글이 입력되지 않는 칸 고치기 (2026-08-31 용준님) —
+   * `<input list=...>` 의 자동완성 팝업이 **IME 조합을 가로채** 한글이 아예 안 들어간다.
+   * 실제로 `list` 가 붙은 칸(거래처·자재·후가공)만 안 되고, 안 붙은 `내용` 칸은 됐다.
+   * 그래서 **조합 중에만 목록을 떼고** 끝나면 되돌린다. 목록은 그대로 쓸 수 있고,
+   * 조합이 끝난 뒤(또는 포커스를 잃으면) 자동완성이 다시 붙는다.
+   * ⚠️ 되돌림은 `compositionend` 하나에만 걸지 말 것 — 조합 도중에 포커스를 옮기면
+   *    그 이벤트가 안 오고 목록이 영영 떨어진 채로 남는다. `blur` 도 같이 건다.
+   */
+  function imeSafeList(el) {
+    if (!el) return;
+    var saved = el.getAttribute('list');
+    if (!saved) return;
+    var detach = function () { el.removeAttribute('list'); };
+    var restore = function () { if (!el.getAttribute('list')) el.setAttribute('list', saved); };
+    el.addEventListener('compositionstart', detach);
+    el.addEventListener('compositionend', restore);
+    el.addEventListener('blur', restore);
+  }
+
+
   /** 파일 이름에 못 쓰는 문자만 걷어낸다 — 한글은 그대로 둔다(경로는 파일 경유라 ASCII 제약이 없다). */
   function safeName(s) {
     return String(s == null ? '' : s).replace(/[\\/:*?"<>|]/g, '_').replace(/^\s+|\s+$/g, '');
@@ -2490,6 +2511,9 @@
     var pel = document.getElementById(pairIds[pi]);
     if (pel) { pel.addEventListener('input', refreshPairName); pel.addEventListener('change', refreshPairName); }
   }
+  // ★목록이 붙은 칸은 한글 조합 중 목록을 떼어 준다 — 안 그러면 한글이 아예 안 들어간다
+  var listIds = ['regClient', 'regMaterial', 'regFinish'];
+  for (var li = 0; li < listIds.length; li++) imeSafeList(document.getElementById(listIds[li]));
 
   var btnNest = $('btnNest');
   if (btnNest) btnNest.addEventListener('click', runNest);

@@ -61,7 +61,10 @@ const C = {
 }
 const die = (msg, code = 1) => { console.error(`\n${C.r('✖')} ${msg}`); process.exit(code) }
 
-function ask(q) {
+// @param hard  true = **--yes 로도 못 넘기는** 질문(축2 실기 확인). 안내 문구가 갈린다.
+//   ★이 구분이 없으면 미커밋 경고에도 축2 설명이 나온다 — 시킨 대로 했는데 엉뚱한 이유를
+//     읽게 되고, 그건 안내가 아니라 함정이다(2026-08-31 실제로 겪었다).
+function ask(q, hard) {
   // 비대화 실행(파이프·에디터 터미널·Claude Code `!`)에서는 조용히 진행하면 안 되므로 'n' 이다.
   // ★단 **왜 취소됐는지 말해야 한다.** 그러지 않으면 화면에는 배포 대상까지 멀쩡히 뜬 뒤
   //   "취소했습니다." 한 줄만 남아, 사용자는 자기가 뭘 잘못했는지 알 수 없다(2026-08-06 실제 발생).
@@ -71,13 +74,17 @@ function ask(q) {
     // ★안내는 **막고 있는 게 무엇인지**에 따라 달라야 한다 (2026-08-06).
     //   전에는 무조건 "--yes 를 붙이세요" 였는데, 축2 질문은 --yes 로 안 열린다.
     //   시킨 대로 했는데 같은 자리에서 또 멈추면 안내가 아니라 함정이다(실제로 발생).
-    if (YES) {
+    if (YES && hard) {
       console.log(C.y('  → 이 질문은 --yes 로 넘어가지 않습니다. 축2(호스트)는 Z: 파일 교체 즉시'))
       console.log(C.y('     **전 디자이너 PC** 에 반영돼서, 실기 확인을 사람이 답해야 합니다.'))
       console.log(C.dim('     실제 터미널에서:  Win+R → powershell → cd "' + REPO + '" → npm run ia:deploy'))
       console.log(C.dim('     (축2를 빼고 화면만 먼저 내보내려면 호스트 변경을 되돌린 뒤 다시 실행하세요)'))
     } else {
       console.log(C.dim('  → 위 "배포 대상" 을 확인했다면 --yes 를 붙여 다시 실행하세요:  npm run ia:deploy -- --yes'))
+      if (YES) {
+        console.log(C.y('  → --yes 를 붙였는데도 멈춘 이유 = **위 경고를 먼저 해소**해야 합니다.'))
+        console.log(C.dim('     미커밋 IA 변경이면 커밋하거나 되돌린 뒤 다시 실행하세요.'))
+      }
       console.log(C.dim('     (축2 호스트 로직이 포함되면 --yes 여도 한 번 더 묻습니다 — 그때는 실제 터미널에서)'))
     }
     return Promise.resolve('n')
@@ -263,7 +270,7 @@ async function main() {
   const hasHost = plan.some((p) => p.axis === 'designer')
   if (hasHost) {
     console.log(C.y('\n⚠ 축2(호스트 로직)가 포함되어 있습니다 — Z: 파일 교체 즉시 **전 디자이너 PC**에 반영됩니다.'))
-    const a = await ask('  실기 확인을 마쳤습니까? 진행하려면 y (y/N) ')
+    const a = await ask('  실기 확인을 마쳤습니까? 진행하려면 y (y/N) ', true)
     if (a !== 'y') { console.log('취소했습니다.'); process.exit(2) }
   } else if (!YES) {
     const a = await ask('\n배포할까요? (y/N) ')

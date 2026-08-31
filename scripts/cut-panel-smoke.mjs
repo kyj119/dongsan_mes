@@ -1329,6 +1329,31 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
         && /function checkHostFresh\(/.test(panelSrc2)
         && /if \(hostStaleZ\) \{ out\(staleNote\(\), 'err'\); return; \}/.test(panelSrc2)
     })())
+    // ★`<input list=...>` 은 CEF 에서 **한글 입력을 막는다** — 자동완성 팝업이 IME 조합을 가로챈다.
+    //   실제로 `list` 가 붙은 칸(거래처·자재·후가공)만 한글이 안 들어갔고, 안 붙은 `내용` 칸은 됐다
+    //   (2026-08-31 용준님). 조합 중에만 목록을 떼고 끝나면 되돌린다.
+    //   ⓐ **목록이 붙은 칸은 하나도 빠짐없이** 처리해야 한다 — 새 칸을 추가하고 여기를 빠뜨리면
+    //      그 칸만 조용히 한글이 안 된다. 그래서 index.html 을 읽어 전수 대조한다.
+    //   ⓑ 되돌림은 `compositionend` 하나로는 부족하다 — 조합 도중 포커스를 옮기면 그 이벤트가
+    //      안 와서 목록이 영영 떨어진 채 남는다. `blur` 도 걸어야 한다.
+    ok('4 목록 달린 칸은 한글 조합 중 목록을 뗀다(전수)', (() => {
+      const ids = []
+      const re = /<input[^>]*\sid="([^"]+)"[^>]*\slist="[^"]+"/g
+      let m
+      while ((m = re.exec(htmlSrc)) !== null) ids.push(m[1])
+      const re2 = /<input[^>]*\slist="[^"]+"[^>]*\sid="([^"]+)"/g
+      while ((m = re2.exec(htmlSrc)) !== null) if (ids.indexOf(m[1]) < 0) ids.push(m[1])
+      if (!ids.length) return false
+      const listed = /var listIds = \[([^\]]*)\]/.exec(panelSrc2)
+      if (!listed) return false
+      const covered = listed[1]
+      const all = ids.every((id) => covered.indexOf("'" + id + "'") >= 0)
+      return all
+        && /function imeSafeList\(/.test(panelSrc2)
+        && /addEventListener\('compositionstart', detach\)/.test(panelSrc2)
+        && /addEventListener\('compositionend', restore\)/.test(panelSrc2)
+        && /addEventListener\('blur', restore\)/.test(panelSrc2)
+    })())
     // ★폴백은 조용하면 안 된다 — 폴백 = 배경이 깨졌을 수 있다는 뜻이고, 인쇄 뒤에 알면 늦다
     ok('3u 폴백을 사용자에게 알린다', /placefail=/.test(nestSrc2)
       && /parseInt\(a\.placefail, 10\) > 0/.test(panelSrc2))
