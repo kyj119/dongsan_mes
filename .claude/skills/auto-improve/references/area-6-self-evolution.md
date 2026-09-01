@@ -62,5 +62,7 @@
 - dev server 전용 취약점 → 프로덕션 영향 없음
 - 의도적 IP 화이트리스트 코드 → 보안 제어 목적
 - **orphan 라우터의 entity_id 격리 갭** (프론트 호출처 0건) → 보안 아니라 dead code. 격리 갭 보고 전 도달성 선검증 필수 (#334). **단 예외**: 클라 제공 키로 raw 리소스 서빙하는 범용 프록시(R2 파일 등)는 0-refs여도 직접 HTTP 호출이 공격표면 → 보안 이슈 (#365)
+- **`SELECT DISTINCT` 프로젝션의 `ORDER BY`가 그 프로젝션 전 컬럼을 나열** → sort-audit P2가 "tie-break 없음"으로 잡아도 FP. DISTINCT는 정의상 출력 행 조합 자체를 유일하게 만들므로, 정렬키가 SELECT한 전 컬럼과 일치하면 동값 구간이 애초에 존재할 수 없다(64회차, `workbench.ts:577` `SELECT DISTINCT pm.product_item_id AS p, m.item_name AS m ... ORDER BY p, m` 실증). 정렬키가 SELECT 컬럼의 **부분집합**이면 이 논리가 깨지니 매번 전체 일치 여부 확인.
+- **이슈 코멘트가 "검증 전까지 열어둡니다"를 명시** → close-pending 적체(32회차 룰) 오경보 금지. owner가 최근 코멘트에서 열어두는 이유(실기 검증 대기 등)를 스스로 밝혔으면, 사이클 수와 무관하게 정상 open — "N사이클 미close"로 집계하지 않는다(64회차, #616/#617 — 코드는 `28f2dc83`로 병합됐으나 "장비 롤아웃+실기 확인" 대기임을 owner가 직접 명시).
 
 ---
