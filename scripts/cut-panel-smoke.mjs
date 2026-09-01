@@ -1337,23 +1337,28 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     //   그래도 규칙은 유지한다: 목록이 붙은 칸을 새로 만들 때 **하나만 빠지는 것**을 막는 값은 여전히 있다.
     //   ⓑ 되돌림은 `compositionend` 하나로는 부족하다 — 조합 도중 포커스를 옮기면 그 이벤트가
     //      안 와서 목록이 영영 떨어진 채 남는다. `blur` 도 걸어야 한다.
-    ok('4 목록 달린 칸은 조합 중 목록을 뗀다(전수 · 대비책)', (() => {
-      const ids = []
-      const re = /<input[^>]*\sid="([^"]+)"[^>]*\slist="[^"]+"/g
-      let m
-      while ((m = re.exec(htmlSrc)) !== null) ids.push(m[1])
-      const re2 = /<input[^>]*\slist="[^"]+"[^>]*\sid="([^"]+)"/g
-      while ((m = re2.exec(htmlSrc)) !== null) if (ids.indexOf(m[1]) < 0) ids.push(m[1])
-      if (!ids.length) return false
-      const listed = /var listIds = \[([^\]]*)\]/.exec(panelSrc2)
-      if (!listed) return false
-      const covered = listed[1]
-      const all = ids.every((id) => covered.indexOf("'" + id + "'") >= 0)
-      return all
-        && /function imeSafeList\(/.test(panelSrc2)
-        && /addEventListener\('compositionstart', detach\)/.test(panelSrc2)
-        && /addEventListener\('compositionend', restore\)/.test(panelSrc2)
-        && /addEventListener\('blur', restore\)/.test(panelSrc2)
+    ok('4 조합 중 datalist 를 떼지 않는다(대비책 철회 2026-09-01)', (() => {
+      // ★되돌아가지 말 것. 이 처리는 "한글이 안 들어간다" 보고로 2026-08-31 에 넣은 **대비책**이었고,
+      //   같은 날 실측이 가설을 기각했다(실제 타이핑 기록에 composition 이벤트가 하나도 없었다).
+      //   그런데 되돌림이 **비대칭**이었다 — 뗀 건 compositionstart 하나인데 붙이는 건
+      //   compositionend·blur 뿐이라, 조합이 시작되고 끝 이벤트가 안 오면(포커스 유지) 목록이
+      //   **떨어진 채 남아 자동완성이 조용히 죽는다**. 09-01 실사용 증상이 정확히 그 모양이었다
+      //   ("거래처 검색이 안 되는 **경우가 있음**" · 데이터는 2,873건 정상·매칭 정상).
+      //   다시 넣어야 한다면 되돌림을 input·타이머까지 걸어 **무조건** 복원하게 만들 것.
+      return !/function imeSafeList\(/.test(panelSrc2)
+        && !/var listIds = \[/.test(panelSrc2)
+        && !/removeAttribute\('list'\)/.test(panelSrc2)
+    })())
+    // ★굽기 격자 = 칼선을 뽑으려 굽는 이미지의 해상도. 픽셀이 **제곱으로** 늘어 큰 실물에서 메모리가 튄다
+    //   (실측 2026-09-01: 600×1800mm 2장 = 35M px > 상한 32M → 자동 강등 · 적용 105.5초 · 일러 2.5GB).
+    //   상수로 박혀 있던 동안은 사용자가 손쓸 방법이 없었다 → 칸으로 뺐다.
+    ok('4 굽기 격자를 화면에서 정한다(#nestBakeMm → subPxFactor)', (() => {
+      const fn = (panelSrc2.match(/function fineTargetMmpp[\s\S]{0,400}/) || [''])[0]
+      return /id="nestBakeMm"/.test(htmlSrc)
+        && /getElementById\('nestBakeMm'\)/.test(fn)
+        && /return FINE_MM_PER_PX/.test(fn)                       // 칸이 없거나 값이 이상하면 기본값
+        && /Math\.max\(0\.05, Math\.min\(2, v\)\)/.test(fn)        // 하한·상한
+        && /Math\.round\(mmpp \/ fineTargetMmpp\(\)\)/.test(panelSrc2)
     })())
     // ★품목(item_id) 배선 (2026-09-01) — 대기물이 품목을 실어 오면 주문서가 **단가까지** 채운다.
     //   ⚠️ [품목] 과 [내용] 은 다른 칸이다 — `regItem` 은 이름과 달리 **내용**(주석·파일명)이고,

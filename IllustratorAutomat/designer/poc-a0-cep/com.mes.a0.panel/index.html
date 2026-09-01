@@ -418,6 +418,17 @@
         <label class="rad"><input id="nestCut" type="checkbox" checked /> 조각별 칼선</label>
         <span class="cfg">돔보·시트 재단선은 항상 포함</span>
       </div>
+      <!-- 굽기 격자 = 칼선을 뽑으려고 굽는 이미지의 해상도. **픽셀은 제곱으로 는다** —
+           600×1800mm 조각 하나가 0.25mm/px 면 17M px 이고, 두 장이면 상한(32M)을 넘어
+           어차피 자동으로 성글어진다(그때 결과창에 「격자를 … 로 성글게」가 뜬다).
+           큰 실물은 미리 크게 잡는 편이 빠르고 메모리도 안 튄다 — 1.8m 짜리에서 0.5mm 오차는 무의미하다.
+           작은 조각·이형 재단은 0.25 를 그대로 둔다. -->
+      <div class="row">
+        <label for="nestBakeMm">굽기 격자</label>
+        <input id="nestBakeMm" type="number" value="0.25" min="0.05" max="2" step="0.05" />
+        <span class="unit">mm/px</span>
+        <span class="cfg">크게 = 가볍고 빠름 · 작게 = 정밀</span>
+      </div>
       <div class="hint">
         실제 외곽(이형)으로 맞물려 배치 · 결과는 <b>새 문서</b>(원본 불변) · 간격은 최근접 기준, 실보장값 표시.
       </div>

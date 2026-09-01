@@ -31,7 +31,7 @@
   // ⚠️ 내용을 고치면 **반드시 이 번호를 올린다** — 수동 배포축이라 이 문자열이 "이 PC 가 어느 셸인가"의
   //    유일한 단서다. 0.57.0 하나가 세 상태를 가리키던 사고가 있었고(등록 파라미터·굽기 통합·[◎ 전체]),
   //    그래서 `ia:deploy` 가 번호가 그대로면 배포를 막는다.
-  var SHELL_VERSION = '0.66.0';   // 0.66.0 = ★품목 칸(regProduct→ITEMID) — 주문서가 품목·단가까지 자동으로 채운다([내용]=regItem 과 다른 칸) · 0.65.0 = 0.64.0 의 근거 정정(실측상 composition 이벤트가 안 와서 그 처리는 발동하지 않는다 — 대비책으로만 유지) · 0.64.0 = 목록 달린 칸에 IME 조합 중 datalist 분리 · 0.63.0 = 호스트 구버전 감지(Z: 배포본과 대조 → 시작·포커스 시 경고 · 판짜기 차단) · 0.62.0 = 폴백 문구에 회전 포함(배율 1배 회전도 PDF 경로) · 0.61.0 = 배율 확대 결과 보고(PDF 배치 / 예비 경로 폴백 경고) · 0.60.0 = 파일명 맨 앞 거래처 · 자재/후가공 행 분리(폭 맞춤) · 「품목」→「내용」 명칭 분리(MES 품목 마스터와 구분) · 0.59.0 = 재단 탭 [◎ 전체] · 0.58.0 = 굽기 통합(마스크+도련 1왕복)·등록 파라미터(자재·후가공·돔보·파일명) · 0.57.0 = 조각 속 메우기(그룹 하나=칼선 하나·맞붙임 복구) · 0.56.0 = 도련 겹침 분할(간격 존중·하한 1.5mm)
+  var SHELL_VERSION = '0.67.0';   // 0.67.0 = ★굽기 격자 칸(#nestBakeMm — 큰 실물에서 메모리·시간 급증 완화) + 조합 중 datalist 분리 제거(복원이 비대칭이라 자동완성이 죽은 채 남았다) · 0.66.0 = ★품목 칸(regProduct→ITEMID) — 주문서가 품목·단가까지 자동으로 채운다([내용]=regItem 과 다른 칸) · 0.65.0 = 0.64.0 의 근거 정정(실측상 composition 이벤트가 안 와서 그 처리는 발동하지 않는다 — 대비책으로만 유지) · 0.64.0 = 목록 달린 칸에 IME 조합 중 datalist 분리 · 0.63.0 = 호스트 구버전 감지(Z: 배포본과 대조 → 시작·포커스 시 경고 · 판짜기 차단) · 0.62.0 = 폴백 문구에 회전 포함(배율 1배 회전도 PDF 경로) · 0.61.0 = 배율 확대 결과 보고(PDF 배치 / 예비 경로 폴백 경고) · 0.60.0 = 파일명 맨 앞 거래처 · 자재/후가공 행 분리(폭 맞춤) · 「품목」→「내용」 명칭 분리(MES 품목 마스터와 구분) · 0.59.0 = 재단 탭 [◎ 전체] · 0.58.0 = 굽기 통합(마스크+도련 1왕복)·등록 파라미터(자재·후가공·돔보·파일명) · 0.57.0 = 조각 속 메우기(그룹 하나=칼선 하나·맞붙임 복구) · 0.56.0 = 도련 겹침 분할(간격 존중·하한 1.5mm)
 
   // ── 도련 겹침 분할 (2026-08-25) ─────────────────────────────────────────
   // ★순수 함수로 뽑아 둔 이유 = **하네스가 이 함수를 직접 돌리기 때문**이다(`npm run cut:bleed` §9).
@@ -820,14 +820,28 @@
   //   ② 알파 임계를 **50% 피복**으로 — 6% 임계는 살짝 스친 픽셀까지 잉크로 세어 한 겹 부풀린다
   var EDGE_ALPHA_THR = 128;        // 50% 피복 = 경계가 참값에 가장 가깝다
   var PRESENCE_ALPHA_THR = 16;     // "여기 아트가 있나" 판정용(반투명 보호)
-  var FINE_MM_PER_PX = 0.25;       // 굽기 격자 상한 — 이보다 곱게 구워도 이득이 없다(0.25 실측 오차 ≈ 0)
+  var FINE_MM_PER_PX = 0.25;       // 굽기 격자 **기본값** — 이보다 곱게 구워도 이득이 없다(0.25 실측 오차 ≈ 0)
   var MAX_SUBPX = 4;               // 굽기 비용 상한(선형 4배 = 픽셀 16배)
   var DOWNSAMPLE_COVER = 0.5;      // 절반 이상 차면 잉크 — 안팎 편향이 없다
   var FINE_MASK_BUDGET_PX = 60e6;  // 조각 칼선용 미세 마스크 보관 상한(1바이트/px)
 
+  /**
+   * 굽기 격자 목표(mm/px). 화면 칸(#nestBakeMm)이 있으면 그 값, 없으면 기본값.
+   * ★크게 잡을수록 픽셀이 **제곱으로** 줄어 메모리·시간이 준다. 600×1800mm 조각 하나가
+   *   0.25mm/px 면 17M px 이고 두 장이면 상한(BAKE_MAX_PX 32M)을 넘어 어차피 자동으로 성글어진다
+   *   — 미리 크게 잡으면 그 왕복이 없다. 1.8m 짜리에서 0.5mm 오차는 무의미하다.
+   * 상한 2mm 는 칼선이 눈에 띄게 뭉개지기 시작하는 선, 하한 0.05mm 는 이형 재단용이다.
+   */
+  function fineTargetMmpp() {
+    var el = document.getElementById('nestBakeMm');
+    var v = el ? parseFloat(el.value) : NaN;
+    if (!isFinite(v) || v <= 0) return FINE_MM_PER_PX;
+    return Math.max(0.05, Math.min(2, v));
+  }
+
   /** 배치 격자 mmpp 에 대해 몇 배로 곱게 구울지 */
   function subPxFactor(mmpp) {
-    return Math.max(1, Math.min(MAX_SUBPX, Math.round(mmpp / FINE_MM_PER_PX)));
+    return Math.max(1, Math.min(MAX_SUBPX, Math.round(mmpp / fineTargetMmpp())));
   }
 
   /**
@@ -2203,16 +2217,6 @@
    * 속성을 뗐다 붙이는 것뿐이라 무해하다.
    * ⚠️ **이 코드를 "그 버그를 고친 것"으로 인용하지 말 것.** 한글이 안 들어가면 먼저 패널을 다시 연다.
    */
-  function imeSafeList(el) {
-    if (!el) return;
-    var saved = el.getAttribute('list');
-    if (!saved) return;
-    var detach = function () { el.removeAttribute('list'); };
-    var restore = function () { if (!el.getAttribute('list')) el.setAttribute('list', saved); };
-    el.addEventListener('compositionstart', detach);
-    el.addEventListener('compositionend', restore);
-    el.addEventListener('blur', restore);
-  }
 
 
   /** 파일 이름에 못 쓰는 문자만 걷어낸다 — 한글은 그대로 둔다(경로는 파일 경유라 ASCII 제약이 없다). */
@@ -2531,9 +2535,6 @@
     var pel = document.getElementById(pairIds[pi]);
     if (pel) { pel.addEventListener('input', refreshPairName); pel.addEventListener('change', refreshPairName); }
   }
-  // ★목록이 붙은 칸은 한글 조합 중 목록을 떼어 준다 — 안 그러면 한글이 아예 안 들어간다
-  var listIds = ['regClient', 'regMaterial', 'regFinish', 'regProduct'];
-  for (var li = 0; li < listIds.length; li++) imeSafeList(document.getElementById(listIds[li]));
 
   var btnNest = $('btnNest');
   if (btnNest) btnNest.addEventListener('click', runNest);
