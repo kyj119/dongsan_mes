@@ -564,25 +564,35 @@ workbenchRouter.get('/intake-config', async (c) => {
       // 제품 → 자재(2026-09-01). 재단 패널이 [자재]를 **하드코딩 15개**로 물어보고 있었는데,
       //   그건 품목과 같은 사실을 두 어휘로 두 번 묻는 것이다. 매핑이 있으면 후보를 좁히고
       //   1개면 자동으로 채운다 — 실사용 라인의 72.7%(6,865/9,446)가 매핑을 가진다.
+      //   ⚠️ **이름 기준 중복 제거**(DISTINCT, 2026-09-01 실측). 원단은 폭별로 행이 갈라지는데
+      //      `item_name` 은 같아서(프리즘반사시트 노랑 = 412·413) 후보가 같은 글자로 두 줄 뜬다.
+      //      패널은 자재를 **이름 문자열로만** 넘기므로(id 를 안 쓴다) 중복 제거는 무손실이다.
       //   ⚠️ 나머지 27%는 매핑이 없다 → 자유 입력을 없애면 안 된다(포맥스·폼보드처럼 품목과
       //      별개 축인 판재가 여기 남는다. 그건 오류가 아니라 정상이다).
       c.env.DB.prepare(
-        `SELECT pm.product_item_id AS p, m.item_name AS m
+        `SELECT DISTINCT pm.product_item_id AS p, m.item_name AS m
            FROM product_materials pm
            JOIN items m ON m.id = pm.material_item_id
           WHERE COALESCE(m.is_active, 1) = 1
-          ORDER BY pm.product_item_id, m.item_name, m.id`
+          ORDER BY p, m`
       ).all(),
       // 자재 목록(2026-09-01) — 재단 패널이 15개를 **소스에 박아** 두고 있었다. 그러면 MES 에서 뭘
       //   바꿔도 패널 5축을 다시 배포해야 반영된다. config 로 옮기면 다음 패널 열 때 따라온다.
       //   품목이 정해지면 product_materials 로 좁혀지고, 매핑이 없을 때의 폴백이 이 목록이다.
+      //   ⚠️ **이름 기준 중복 제거**(2026-09-01 실측 334행 → 135이름). 폭 축이 행을 가르는데
+      //      이름이 같다: 수성 현수막원단 2코팅 23행 · 포맥스 포마트(국산) 24행. 그대로 실으면
+      //      목록에서 같은 글자를 24번 고르게 된다. 여기도 넘어가는 값은 이름뿐이라 무손실.
       c.env.DB.prepare(
-        `SELECT id, item_name FROM items
+        `SELECT MIN(id) AS id, item_name FROM items
           WHERE COALESCE(is_active, 1) = 1 AND COALESCE(is_sales_item, 0) = 1 AND item_type = 'MATERIAL'
-          ORDER BY item_name, id`
+          GROUP BY item_name
+          ORDER BY item_name`
       ).all(),
       // 후가공 옵션(2026-09-01) — 15행뿐이라 통째로 싣는다. 소분류(sub_category)·분류(pp_category)를
       //   같이 주므로 패널이 필요한 갈래만 골라 쓴다(재단은 코팅 계열만).
+      //   ⚠️ **표시명 기준 중복 제거**(2026-09-01 실측). `유광코팅` 이 2행이다 — id10 `SPP031G`,
+      //      id16 `호홍`. 코팅지 종류가 달라도 패널이 파일명에 남기는 글자는 같아서 목록에 두 번
+      //      뜬다. 분류(pp_category)까지 묶어 재료 갈래는 유지한다.
       //   ⚠️ 여기 담긴 값이 **청구의 정본은 아니다** — 후가공 확정은 주문서에서 한다.
       //      패널이 쓰는 것은 파일명에 남길 표식이고, manifest 로는 post_desc 문자열로만 나간다.
       // ⚠️ 이 표에 `sub_category` 는 **없다**(2026-09-01 prod 500 의 원인). 소분류 연결은
@@ -590,10 +600,11 @@ workbenchRouter.get('/intake-config', async (c) => {
       //    (/api/post-processing/by-subcategory — 주문서가 쓴다). 패널은 분류(pp_category)만 보므로
       //    여기서는 그 이상을 싣지 않는다. ★없는 컬럼을 넣으면 config 브로드캐스트가 통째로 죽는다.
       c.env.DB.prepare(
-        `SELECT id, option_code, option_name, pp_category, material_item_group
+        `SELECT MIN(id) AS id, option_code, option_name, pp_category, material_item_group
            FROM post_processing_options
           WHERE COALESCE(is_active, 1) = 1
-          ORDER BY pp_category, option_name, id`
+          GROUP BY pp_category, option_name
+          ORDER BY pp_category, option_name`
       ).all(),
     ])
     // 경로①(주문 선행)용 미가공 라인: 파일 미연결 + 진행 중 주문만

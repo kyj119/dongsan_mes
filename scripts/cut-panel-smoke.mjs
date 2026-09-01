@@ -1387,6 +1387,21 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
       return /COALESCE\(is_sales_item, 0\) = 1 AND item_type = 'PRODUCT'/.test(wb)
         && /COALESCE\(is_sales_item, 0\) = 1 AND item_type = 'MATERIAL'/.test(wb)
     })())
+    // ★목록은 **이름 기준으로 중복을 제거**한다(2026-09-01 실측). 원단·판재는 폭 축으로 행이
+    //   갈라지는데 `item_name` 은 같다 — 자재 334행 = 실제 135이름(수성 현수막원단 2코팅 23행 ·
+    //   포맥스 포마트(국산) 24행), 제품→자재 425행 = 197쌍, 후가공 `유광코팅` 2행(SPP031G·호홍).
+    //   그대로 실으면 사람이 목록에서 **같은 글자를 24번** 고르게 된다.
+    //   ⚠️ 무손실인 이유 = 이 세 축은 패널로 **이름 문자열만** 나간다(id 를 안 쓴다). 되돌리면
+    //      기능은 멀쩡한 채 목록만 못 쓰게 되므로 타입체크·smoke 로는 안 잡힌다 → 여기서 잡는다.
+    ok('4 자재·후가공 목록은 이름 중복 제거', (() => {
+      const wb = fs.readFileSync(path.join(REPO, 'src', 'routes', 'workbench.ts'), 'utf8')
+      const mat = (wb.match(/SELECT MIN\(id\) AS id, item_name FROM items[\s\S]{0,320}/) || [''])[0]
+      const pm  = (wb.match(/SELECT DISTINCT pm\.product_item_id[\s\S]{0,320}/) || [''])[0]
+      const pp  = (wb.match(/SELECT MIN\(id\) AS id, option_code[\s\S]{0,320}/) || [''])[0]
+      return /GROUP BY item_name/.test(mat)
+        && /FROM product_materials pm/.test(pm)
+        && /GROUP BY pp_category, option_name/.test(pp)
+    })())
     // ★품목 → 자재. 매핑이 없으면 **전체 목록으로 되돌린다** — 실사용의 27% 가 매핑이 없고 거기엔
     //   포맥스·폼보드처럼 품목과 별개 축인 판재가 있다. 자유 입력을 막으면 등록 자체가 불가능해진다.
     ok('4 품목이 자재 후보를 좁힌다 · 매핑 없으면 자유 입력 유지', (() => {
