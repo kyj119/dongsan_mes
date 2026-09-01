@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-09-01T13:10:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-09-01T21:47:12+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,33 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **5** (`list_issues(state:OPEN,label:auto-improve)` 실측, 4→5: 이번 사이클 신규 발견 #623 추가 — #613·#616·#617·#622·#623) |
+| 🆕 new | **5** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음 — #613·#616·#617·#622·#623) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **541** (`search_issues(reason:completed)` 리터럴 쿼리, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 재확인 생략, 변동없음) |
+
+> **Area 5 보안 + 인프라 (2026-09-01T21:47):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD, `6f2dd0f`), `git fetch origin main`(`207078c..6f2dd0f`, forced update) → `git checkout main && git reset --hard origin/main`(HEAD `6f2dd0f`). `npm ci`(0→81), `npx tsc --noEmit` clean. 앵커(직전 Area5 방법 라인 HEAD `9bbf7f4`) shallow-clone 유실(기지 함정) → `git fetch --unshallow origin main`으로 전체 이력 복구 후 재시도.
+> - **churn 확인(앵커 = 직전 완주 Area4 방법 라인 HEAD `4bb3627`, Area4가 이미 그 이전 전량을 각 렌즈로 소화)**: 웹앱 범위(`-- src migrations scripts .github`) diff **10커밋 전부 신규**(`d1de333`·`db76996`·`94a3b72`·`d1f5a9a`·`e706c55`·`b2945c4`·`14d24f4`·`1106198`·`7527a15`·`9ec2c45`) — 어느 Area도 아직 정독하지 않은 최초 진입 창.
+> - **보안 렌즈 직독 대상 3파일(`dashboard.ts`·`printEvents.ts`·`workbench.ts`) — 신규 라우트 0건**(`grep "Router\.(get|post|put|delete|patch)\("` diff상 `+` 라인 0), 기존 핸들러 내부 쿼리·SELECT 확장만.
+> - **`printEvents.ts` heartbeat 확장(`kit_version`/`parser_type`)**: `agentKeyMiddleware` 유지, 신규 2필드 전부 `?` 바인드(SQLi 0), `COALESCE(excluded.x, agent_heartbeats.x)`는 구버전 에이전트의 NULL 덮어쓰기 방지용(정합성이지 보안 아님). 날짜 로직을 `printEventKstDay()`/`printEventAt()` 헬퍼로 통일한 부분도 alias 인자가 전부 코드 리터럴(`'pe'` 등, 사용자 입력 无)이라 SQL 조립 인젝션 표면 없음.
+> - **`workbench.ts` `/intake-config` 신규 3개 SELECT(`product_materials`·`items WHERE item_type='MATERIAL'`·`post_processing_options`)**: 대상 테이블 전부 `migrations/*.sql` 재확인 결과 **entity_id 컬럼 부재**(전역 마스터, FP클래스⑤와 동형 — 거래처/품목처럼 법인 무관 공유 마스터) → entityFilter 미적용이 정상, 격리 누락 아님. 라우터는 `.use('/*', authMiddleware, requireRole('ADMIN','MANAGER','DESIGNER'))`로 여전히 게이트(변경 없음).
+> - **`dashboard.ts:416-417` 신규 상관 서브쿼리(장비별 대표 공정 `process_code`, `ORDER BY ep.is_primary DESC, ep.process_code ASC LIMIT 1`)**: `node scripts/sort-audit.cjs`가 P2로 신규 플래그했으나 **FP로 판정** — `equipment_processes`의 PK가 `(equipment_id, process_code)` 복합키이고 서브쿼리가 `WHERE ep.equipment_id = e.id`로 단일 장비에 스코프되므로, 마지막 정렬키 `process_code`가 이미 그 스코프 내에서 유일 → 동값 구간 자체가 발생 불가(진짜 tie-break 누락 아님). 스캔이 서브쿼리 내부의 실질적 유일성까지는 못 봐서 과대플래그.
+> - **`production.js`/`intake.js` XSS sweep**: 신규 보간(`qty_unit` 조 표기 배지·`process_code` 그룹 라벨)이 `escapeHtml()` 일관 적용(기존 컨벤션 유지), free-text 미이스케이프 신규 sink 0건.
+> - **신규 마이그레이션 5건(0545~0549)**: `agent_heartbeats`/`equipment_processes` 컬럼·데이터 보정, `designer_intakes.qty_unit`(표시 전용, 계산 미사용), `items.min_billing_side_cm` 단일행 UPDATE — 전부 운영 데이터·스키마 성격, 시크릿/인증/격리 표면 없음.
+> - **standing scan 1: 시크릿 폴백** `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43` 1건뿐(기존 FP, 변동없음).
+> - **standing scan 2: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 67건·**누락 0건**(변동없음).
+> - **standing scan 3: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 2건(`attendance.ts:158` 기존 노출 유지 + `dashboard.ts:417` 신규 FP, 위 직독 참조).
+> - **standing scan 4: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 5: `npm audit --omit=dev`** — 0건(prod 청정). 전체 `npm audit` 11건(1 moderate·8 high·2 critical) 전부 devDependency, #613 기보고와 완전 일치, net-new 0.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최신런(HEAD `6f2dd0f`) `conclusion:success`, 이번 churn 10커밋 전부 그 이전 런에서 개별 success 확인.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **5**(변동없음, #613·#616·#617·#622·#623), `search_issues(reactions:>0, state:open)` 승인 대기 미확인(이번 사이클은 신규 감사만 수행, 승인 처리 워크플로 별도 트리거 대상).
+> - **backlog↔GitHub 절대값 재동기화**: open **5**(변동없음) · done **541**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-5-security-infra.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 11건 → 이번 로그 추가 후 12건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(신규 churn 10커밋 전량 보안 렌즈 직독 — 신규 라우트 0·SQL 바인딩 정상·XSS sink 0·신규 SELECT 대상 테이블 전부 entity_id 부재 전역 마스터로 격리 불요 확인, sort-audit 신규 P2 1건은 복합PK 유일성으로 FP 판정), 자동수정 0건, done-sync: open 5(변동없음)·done 541(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-09-01T13:10):**
 > - **방법**: `git status`=워킹트리 clean(detached HEAD, `4bb3627`), `git fetch origin main`(`207078c..4bb3627`, forced update) → `git checkout main && git reset --hard origin/main`(HEAD `4bb3627`). `npm ci`(0→81), `npx tsc --noEmit` clean.
