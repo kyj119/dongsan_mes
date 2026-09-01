@@ -5,6 +5,7 @@ import { requirePagePermission } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
 import { kstDate, kstDateOf, kstMonth } from '../utils/kstDate'
+import { printEventKstDay } from '../utils/printEventDay'
 import { buildOldestUnpaidJoin, agingDaysFromOldest } from './ledger/ar-helpers'
 import { VOUCHER_ORDER_SQL } from './orders/listFilter'
 
@@ -444,7 +445,7 @@ dashboardRouter.get('/stats/production-today', async (c) => {
         SUM(CASE WHEN pe.print_status = 'CANCEL' THEN 1 ELSE 0 END) as cancel_count,
         SUM(CASE WHEN pe.print_status = 'ERROR' THEN 1 ELSE 0 END) as error_count
       FROM print_events pe
-      WHERE ${kstDateOf('pe.created_at')} = ${kstDate()}
+      WHERE ${printEventKstDay('pe')} = ${kstDate()}
         AND pe.event_kind = 'PRINT'
     `).first()
 
@@ -454,7 +455,7 @@ dashboardRouter.get('/stats/production-today', async (c) => {
         SUM(CASE WHEN pe.print_status = 'OK' THEN 1 ELSE 0 END) as ok_count
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
-      WHERE ${kstDateOf('pe.created_at')} = ${kstDate()}
+      WHERE ${printEventKstDay('pe')} = ${kstDate()}
         AND pe.event_kind = 'PRINT'
       GROUP BY pe.equipment_id
       ORDER BY total DESC

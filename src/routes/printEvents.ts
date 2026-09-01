@@ -4,6 +4,7 @@ import { authMiddleware, agentKeyMiddleware } from '../middleware/auth'
 import { autoDeductInventory } from '../utils/autoDeductInventory'
 import { entityFilter, cardEntityFilter } from '../utils/entityFilter'
 import { kstDate, kstDateOf } from '../utils/kstDate'
+import { printEventAt, printEventKstDay } from '../utils/printEventDay'
 
 const printEventsRouter = new Hono<HonoEnv>()
 
@@ -875,11 +876,11 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
     // 저장값=UTC이므로 KST(+9h) 환산 후 date 비교. completed 없으면 created_at 폴백.
     if (from || to) {
       if (from) {
-        where += " AND date(datetime(COALESCE(pe.print_completed_at, pe.created_at), '+9 hours')) >= ?"
+        where += ` AND ${printEventKstDay('pe')} >= ?`
         params.push(from)
       }
       if (to) {
-        where += " AND date(datetime(COALESCE(pe.print_completed_at, pe.created_at), '+9 hours')) <= ?"
+        where += ` AND ${printEventKstDay('pe')} <= ?`
         params.push(to)
       }
     } else if (date) {
@@ -914,8 +915,8 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
 
     // 장비명 표시 통일: 사용자가 /장비관리에서 정한 equipment.name 우선, 없으면 RIPLOG 원본(printer_name)
     const selectQuery = `SELECT pe.*, COALESCE(eq.name, pe.printer_name) as printer_name,
-        date(datetime(COALESCE(pe.print_completed_at, pe.created_at), '+9 hours')) as kst_day
-      FROM print_events pe LEFT JOIN equipment eq ON pe.equipment_id = eq.id ${where} ORDER BY COALESCE(pe.print_completed_at, pe.created_at) DESC, pe.id DESC LIMIT ? OFFSET ?`
+        ${printEventKstDay('pe')} as kst_day
+      FROM print_events pe LEFT JOIN equipment eq ON pe.equipment_id = eq.id ${where} ORDER BY ${printEventAt('pe')} DESC, pe.id DESC LIMIT ? OFFSET ?`
     params.push(limitNum, offset)
     const { results } = await c.env.DB.prepare(selectQuery).bind(...params).all()
 
@@ -945,7 +946,7 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
           // ⚠️타일 정규화: 분할출력은 타일 1장 = 1행이라 그대로 합치면 "1장 주문 3타일 = 3매"로
           //   오탐한다(2026-08-12 prod 실측 TOPM-01). 각 행을 copy/tile_count 로 환산해 출력 1회 = 1로 센다.
           const grp = await c.env.DB.prepare(`
-            SELECT file_name, date(datetime(COALESCE(print_completed_at, created_at), '+9 hours')) as kst_day,
+            SELECT file_name, ${printEventKstDay()} as kst_day,
               SUM(COALESCE(copy_total, 1) * 1.0 / (CASE WHEN COALESCE(tile_count, 0) > 0 THEN tile_count ELSE 1 END)) as day_copies,
               SUM(1.0 / (CASE WHEN COALESCE(tile_count, 0) > 0 THEN tile_count ELSE 1 END)) as day_prints
             FROM print_events
@@ -1050,22 +1051,22 @@ printEventsRouter.get('/stats', authMiddleware, async (c) => {
         COUNT(CASE WHEN print_status = 'CANCEL' THEN 1 END) as cancel_count,
         COUNT(*) as total_count
       FROM print_events
-      WHERE ${kstDateOf('created_at')} = ${kstDate()}
+      WHERE ${printEventKstDay()} = ${kstDate()}
         AND event_kind = 'PRINT'
     `).first<TodaySummaryRow>()
 
     // Daily breakdown
     const { results: daily } = await c.env.DB.prepare(`
       SELECT
-        date(created_at) as date,
+        ${printEventKstDay()} as date,
         COUNT(CASE WHEN print_status = 'OK' THEN 1 END) as ok_count,
         COUNT(CASE WHEN print_status = 'ERROR' THEN 1 END) as error_count,
         COUNT(CASE WHEN print_status = 'CANCEL' THEN 1 END) as cancel_count,
         COUNT(*) as total_count
       FROM print_events
-      WHERE date(created_at) >= date('now', ? || ' days')
+      WHERE ${printEventKstDay()} >= ${kstDateOf("'now'", "? || ' days'")}
         AND event_kind = 'PRINT'
-      GROUP BY date(created_at)
+      GROUP BY ${printEventKstDay()}
       ORDER BY date DESC
     `).bind(`-${days}`).all()
 
@@ -1074,7 +1075,7 @@ printEventsRouter.get('/stats', authMiddleware, async (c) => {
       SELECT agent_id, COUNT(*) as count,
         COUNT(CASE WHEN print_status = 'OK' THEN 1 END) as ok_count
       FROM print_events
-      WHERE ${kstDateOf('created_at')} = ${kstDate()}
+      WHERE ${printEventKstDay()} = ${kstDate()}
         AND event_kind = 'PRINT'
       GROUP BY agent_id
       ORDER BY count DESC
@@ -1156,14 +1157,14 @@ printEventsRouter.get('/unmatched', authMiddleware, async (c) => {
              MAX(w) AS w, MAX(h) AS h, MAX(equipment_id) AS equipment_id, MAX(is_nest) AS is_nest
       FROM (
         SELECT pe.file_name AS file_name, COUNT(*) AS cnt,
-               MAX(COALESCE(pe.print_completed_at, pe.created_at)) AS last_at,
+               MAX(${printEventAt('pe')}) AS last_at,
                MAX(pe.output_width) AS w, MAX(pe.output_height) AS h,
                MAX(pe.equipment_id) AS equipment_id, 0 AS is_nest
         FROM print_events pe
         WHERE pe.card_id IS NULL
           AND (pe.nest_members IS NULL OR pe.nest_members = '')
           AND pe.file_name IS NOT NULL AND pe.file_name != ''
-          AND COALESCE(pe.print_completed_at, pe.created_at) >= date('now', '-' || ? || ' days')
+          AND ${printEventAt('pe')} >= date('now', '-' || ? || ' days')
         GROUP BY pe.file_name
         UNION ALL
         -- ⚠️ GROUP BY 에 별칭(file_name)을 쓰면 SQLite가 스코프에 있는 pe.file_name 컬럼으로 해석해
@@ -1173,14 +1174,14 @@ printEventsRouter.get('/unmatched', authMiddleware, async (c) => {
         --    때문에 days>=70 구간이 통째로 500 이었고, 화면 기본값이 90일이라 이 탭은 아예 안 떴다.
         --    → json_valid 로 먼저 거른다. 구형식은 값 자체가 파일명이고 card_id 는 없다(=미연결).
         SELECT CASE WHEN json_valid(m.value) THEN COALESCE(json_extract(m.value, '$.file'), m.value) ELSE m.value END AS file_name, COUNT(*) AS cnt,
-               MAX(COALESCE(pe.print_completed_at, pe.created_at)) AS last_at,
+               MAX(${printEventAt('pe')}) AS last_at,
                MAX(CASE WHEN json_valid(m.value) THEN json_extract(m.value, '$.w') END) AS w,
                MAX(CASE WHEN json_valid(m.value) THEN json_extract(m.value, '$.h') END) AS h,
                MAX(pe.equipment_id) AS equipment_id, 1 AS is_nest
         FROM print_events pe, json_each(pe.nest_members) m
         WHERE pe.nest_members IS NOT NULL AND pe.nest_members != ''
           AND (CASE WHEN json_valid(m.value) THEN json_extract(m.value, '$.card_id') END) IS NULL
-          AND COALESCE(pe.print_completed_at, pe.created_at) >= date('now', '-' || ? || ' days')
+          AND ${printEventAt('pe')} >= date('now', '-' || ? || ' days')
         GROUP BY CASE WHEN json_valid(m.value) THEN COALESCE(json_extract(m.value, '$.file'), m.value) ELSE m.value END
       )
       WHERE file_name IS NOT NULL AND file_name != ''
