@@ -581,9 +581,14 @@ workbenchRouter.get('/intake-config', async (c) => {
       //   같이 주므로 패널이 필요한 갈래만 골라 쓴다(재단은 코팅 계열만).
       //   ⚠️ 여기 담긴 값이 **청구의 정본은 아니다** — 후가공 확정은 주문서에서 한다.
       //      패널이 쓰는 것은 파일명에 남길 표식이고, manifest 로는 post_desc 문자열로만 나간다.
+      // ⚠️ 이 표에 `sub_category` 는 **없다**(2026-09-01 prod 500 의 원인). 소분류 연결은
+      //    `material_item_group` 이고, 소분류별 조회는 전용 라우트가 따로 한다
+      //    (/api/post-processing/by-subcategory — 주문서가 쓴다). 패널은 분류(pp_category)만 보므로
+      //    여기서는 그 이상을 싣지 않는다. ★없는 컬럼을 넣으면 config 브로드캐스트가 통째로 죽는다.
       c.env.DB.prepare(
-        `SELECT id, option_code, option_name, pp_category, sub_category
+        `SELECT id, option_code, option_name, pp_category, material_item_group
            FROM post_processing_options
+          WHERE COALESCE(is_active, 1) = 1
           ORDER BY pp_category, option_name, id`
       ).all(),
     ])
