@@ -480,11 +480,40 @@
                     container.innerHTML = html || '<div class="text-sm text-gray-400">\uc774 \uc18c\ubd84\ub958\uc5d0 \uc801\uc6a9 \uac00\ub2a5\ud55c \ud6c4\uac00\uacf5\uc774 \uc5c6\uc2b5\ub2c8\ub2e4.</div>';
 
                     setupPPEvents(rowId);
+                    applyPendingPunch(rowId); // 대기함이 얹어 둔 펀칭 반영 — 이벤트 배선 뒤여야 한다
 
                 } catch(e) {
                     console.error('loadItemPP error:', e);
                     container.innerHTML = '<span class="text-red-400 text-xs">\ud6c4\uac00\uacf5 \ub85c\ub529 \uc2e4\ud328</span>';
                 }
+            }
+
+            // 가공 대기함이 얹어 둔 펀칭(orderForm/intake.js ofStashPunch)을 PP 섹션이 생긴 뒤 꽂는다.
+            //   패널 punch = {top,bottom,left,right, corners:{tl,tr,bl,br}} → PP 그리드 키(side_*/corner_*).
+            //   이 소분류에 펀칭 옵션이 없으면 **보류값을 지우지 않는다** — 품목을 바꾸면 다시 시도된다.
+            function applyPendingPunch(rowId) {
+                var container = document.getElementById('pp_options_' + rowId);
+                if (!container || !container.dataset.pendingPunch) return;
+                var check = container.querySelector('.pp-punching-check');
+                if (!check) return;
+                var p;
+                try { p = JSON.parse(container.dataset.pendingPunch); }
+                catch (e) { delete container.dataset.pendingPunch; return; }
+                var c = p.corners || {};
+                var vals = {
+                    side_top: p.top || 0, side_bottom: p.bottom || 0,
+                    side_left: p.left || 0, side_right: p.right || 0,
+                    corner_tl: c.tl ? 1 : 0, corner_tr: c.tr ? 1 : 0,
+                    corner_bl: c.bl ? 1 : 0, corner_br: c.br ? 1 : 0
+                };
+                Object.keys(vals).forEach(function(k) {
+                    var el = container.querySelector('.pp-punch-val[data-key="' + k + '"]');
+                    if (el) el.value = vals[k];
+                });
+                delete container.dataset.pendingPunch;
+                check.checked = true;
+                // 상세 표시·주석 게이트·단가·합계는 기존 change 핸들러 한 곳에 맡긴다(경로 이중화 금지)
+                check.dispatchEvent(new Event('change'));
             }
 
             function setupPPEvents(rowId) {

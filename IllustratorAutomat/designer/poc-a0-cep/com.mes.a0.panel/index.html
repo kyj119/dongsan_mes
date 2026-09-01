@@ -67,6 +67,17 @@
         </div>
         <span id="clientHit" class="achit"></span>
       </div>
+      <!-- 품목 = 주문서 라인의 품목. 정확일치로 item_id 가 해소되면 주문서가 **단가까지** 자동으로
+           채운다(대기함 프리필 → 최근거래가>특약가>단가표>기본단가). 비워도 등록은 된다 —
+           그때는 주문서에서 사람이 고른다(자동 확정 금지 원칙 유지). -->
+      <div class="row">
+        <label for="item">품목</label>
+        <div class="acwrap grow">
+          <input id="item" type="text" placeholder="예: 수성 현수막 (비우면 주문서에서 선택)" autocomplete="off" />
+          <div id="itemSug" class="sug hidden"></div>
+        </div>
+        <span id="itemHit" class="achit"></span>
+      </div>
       <!-- 배율은 공통 유지: 단건·모아찍기 모두 실물 환산(realW = 파일cm × N)에 쓰인다.
            수량은 경로마다 의미가 달라 각 탭으로 내렸다(2026-07-29). -->
       <div class="row">
@@ -470,6 +481,11 @@
         <label for="regFinish">후가공</label>
         <input id="regFinish" type="text" list="finishList" class="grow" placeholder="예: 자동바니쉬" autocomplete="off" />
         <datalist id="finishList"></datalist>
+      </div>
+      <div class="row">
+        <label for="regProduct">품목</label>
+        <input id="regProduct" type="text" list="productList" class="grow" placeholder="예: 솔벤 시트 (비우면 주문서에서 선택)" autocomplete="off" />
+        <datalist id="productList"></datalist>
       </div>
       <div class="row">
         <label for="regItem">내용</label>

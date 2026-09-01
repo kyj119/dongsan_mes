@@ -1355,6 +1355,17 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
         && /addEventListener\('compositionend', restore\)/.test(panelSrc2)
         && /addEventListener\('blur', restore\)/.test(panelSrc2)
     })())
+    // ★품목(item_id) 배선 (2026-09-01) — 대기물이 품목을 실어 오면 주문서가 **단가까지** 채운다.
+    //   ⚠️ [품목] 과 [내용] 은 다른 칸이다 — `regItem` 은 이름과 달리 **내용**(주석·파일명)이고,
+    //      품목은 `regProduct` 다. 여기서 헷갈리면 대기물 keyword 자리에 품목이 실린다.
+    //   ⚠️ 정확일치만 id 로 본다. 부분일치로 넘겨짚으면 **틀린 단가**가 주문서에 실린다.
+    ok('4 재단 폼에 품목 칸(내용과 별개)', /id="regProduct"/.test(htmlSrc) && /id="regItem"/.test(htmlSrc))
+    ok('4 품목은 정확일치만 id 로 본다',
+      /function productIdOf\(/.test(panelSrc2) && /item_name === t/.test(panelSrc2))
+    ok('4 등록정보에 ITEMID · 호스트 manifest 에 item_id', (() => {
+      const h = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
+      return /'ITEMID ' \+ \(productIdOf\(/.test(panelSrc2) && /"item_id":' \+ \(R\.ITEMID/.test(h)
+    })())
     // ★폴백은 조용하면 안 된다 — 폴백 = 배경이 깨졌을 수 있다는 뜻이고, 인쇄 뒤에 알면 늦다
     ok('3u 폴백을 사용자에게 알린다', /placefail=/.test(nestSrc2)
       && /parseInt\(a\.placefail, 10\) > 0/.test(panelSrc2))

@@ -10,7 +10,7 @@
   //   우상단 표시는 여태 host(mesA0_ping = MESA0_VERSION, 축2 = Z: 1곳)만 보여줬다. 껍데기는 PC 별
   //   복사 설치라서 재설치를 안 한 PC 도 최신 번호로 보였다(2026-07-30 점검에서 확인).
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다.
-  var SHELL_VERSION = '0.6.0';   // 0.6.0 = ★자동감지 캡처 경로 수용(임시문서 없음 표기) + 마스크 픽셀 수를 실제 PNG 에 맞춤(라벨 밀림 방지) · 0.5.3 =「키워드」→「내용」 명칭 통일(MES 품목 마스터와 구분) · 0.5.2 = 재단 탭 [◎ 전체] · 0.5.1 = 도련 방식 칸을 판짜기로 이동(라벨 거짓 정정) · 0.5.0 = 셸 자동 갱신 결과 수신·재시작 안내 · 0.4.1 = 설명 다이어트(cfg 압축·툴팁 이동) + 세로나열 CSS
+  var SHELL_VERSION = '0.7.0';   // 0.7.0 = ★품목 자동완성(item_id) — 주문서가 품목·단가까지 자동으로 채운다 · 0.6.0 = ★자동감지 캡처 경로 수용(임시문서 없음 표기) + 마스크 픽셀 수를 실제 PNG 에 맞춤(라벨 밀림 방지) · 0.5.3 =「키워드」→「내용」 명칭 통일(MES 품목 마스터와 구분) · 0.5.2 = 재단 탭 [◎ 전체] · 0.5.1 = 도련 방식 칸을 판짜기로 이동(라벨 거짓 정정) · 0.5.0 = 셸 자동 갱신 결과 수신·재시작 안내 · 0.4.1 = 설명 다이어트(cfg 압축·툴팁 이동) + 세로나열 CSS
   var STORE_WORKER = 'mes_a0_worker';
   var STORE_SETTINGS = 'mes_a0_settings';
   var CONFIG_PATH = 'Z:/DESIGNS/IA-등록/_config/config.json';
@@ -22,6 +22,7 @@
   var workerDomains = {}; // worker_name → 도메인(output/transfer/sign)
   var workers = [];    // [{id, name}] — 가공자↔MES user id 매핑(spec §3.5)
   var clientList = []; // [{id, client_name}] — 거래처 자동완성(spec D5)
+  var itemList = [];   // [{id, item_name, sub_category}] — 품목 자동완성(2026-09-01)
   var DOMAIN_LABEL = { output: '현수막', transfer: '전사', sign: '간판' };
 
   function workerIdOf(name) {
@@ -33,6 +34,14 @@
     if (!t) return null;
     for (var i = 0; i < clientList.length; i++) if (clientList[i].client_name === t) return clientList[i].id;
     return null; // 미일치 = free-text 폴백(client_id null)
+  }
+  // 품목은 **정확일치만** id 로 본다. 부분일치로 넘겨짚으면 단가까지 틀린 채 주문서에 실린다
+  //   (거래처와 달리 품목은 free-text 폴백이 없다 — 못 고르면 그냥 안 보내고 사람이 주문서에서 고른다).
+  function itemIdOf(name) {
+    var t = (name || '').replace(/^\s+|\s+$/g, '');
+    if (!t) return null;
+    for (var i = 0; i < itemList.length; i++) if (itemList[i].item_name === t) return itemList[i].id;
+    return null;
   }
 
   function $(id) { return document.getElementById(id); }
@@ -140,7 +149,7 @@
     var elWorker = $('worker'), elSaved = $('saved'), elVer = $('ver');
     var elMeas = $('meas'), elBtnMeasure = $('btnMeasure');
     var elQty = $('qty'), elScale = $('scale'), elPreset = $('preset');
-    var elTrim = $('trim'), elTrimInk = $('trimInk'), elClient = $('client');
+    var elTrim = $('trim'), elTrimInk = $('trimInk'), elClient = $('client'), elItem = $('item');
     var elBorderLine = $('borderLine'); // 출력 경계선(백색 테두리) on/off — 기본 OFF(2026-08-06 용준님)
     var elPTop = $('pTop'), elPBottom = $('pBottom'), elPLeft = $('pLeft'), elPRight = $('pRight');
     var elPcTL = $('pcTL'), elPcTR = $('pcTR'), elPcBL = $('pcBL'), elPcBR = $('pcBR');
@@ -333,6 +342,49 @@
       elClient.addEventListener('blur', function () { window.setTimeout(hideClientSug, 150); updateClientHit(); });
     }
 
+    // ── 품목 자동완성(2026-09-01) — config.items 부분일치 제안, 정확일치 시 item_id 해소 ──
+    //   거래처와 같은 UI 를 쓰되 폴백 정책이 다르다: 거래처는 미일치도 free-text 로 실어 보내지만
+    //   품목은 **안 보낸다**. 이름만 맞춘 가짜 품목이 실리면 주문서가 그 단가로 계산한다.
+    var elItemSug = $('itemSug'), elItemHit = $('itemHit');
+    function updateItemHit() {
+      if (!elItemHit) return;
+      var v = elItem ? (elItem.value || '').replace(/^\s+|\s+$/g, '') : '';
+      var id = itemIdOf(v);
+      elItemHit.textContent = id ? '✓등록' : (v ? '미등록' : '');
+      elItemHit.className = 'achit' + (id ? ' ok' : '');
+    }
+    function hideItemSug() { if (elItemSug) { elItemSug.className = 'sug hidden'; elItemSug.innerHTML = ''; } }
+    function renderItemSug() {
+      if (!elItemSug || !elItem) return;
+      var q = (elItem.value || '').replace(/^\s+|\s+$/g, '');
+      if (!q || !itemList.length) { hideItemSug(); return; }
+      var qq = q.toLowerCase(), hits = [];
+      for (var i = 0; i < itemList.length && hits.length < 15; i++) {
+        var nm = itemList[i].item_name || '';
+        if (nm.toLowerCase().indexOf(qq) !== -1) hits.push(nm);
+      }
+      if (!hits.length || (hits.length === 1 && hits[0] === q)) { hideItemSug(); return; }
+      var html = '';
+      for (var h = 0; h < hits.length; h++) html += '<div class="sgi" data-name="' + escHtml(hits[h]) + '">' + escHtml(hits[h]) + '</div>';
+      elItemSug.innerHTML = html;
+      elItemSug.className = 'sug';
+      var sgis = elItemSug.getElementsByClassName('sgi');
+      for (var k = 0; k < sgis.length; k++) sgis[k].addEventListener('mousedown', function (ev) {
+        ev.preventDefault(); // blur 로 목록이 닫히기 전에 선택 확정
+        if (elItem) {
+          elItem.value = this.getAttribute('data-name');
+          hideItemSug();
+          updateItemHit();
+          saveSettings();
+        }
+      });
+    }
+    if (elItem) {
+      elItem.addEventListener('input', function () { renderItemSug(); updateItemHit(); });
+      elItem.addEventListener('focus', function () { renderItemSug(); });
+      elItem.addEventListener('blur', function () { window.setTimeout(hideItemSug, 150); updateItemHit(); });
+    }
+
     // ── 마감 method 셀렉트 채우기 ──
     function fillMethodSelects() {
       for (var s = 0; s < finM.length; s++) {
@@ -417,6 +469,7 @@
         for (var wi = 0; wi < wds.length; wi++) if (wds[wi] && wds[wi].worker_name) workerDomains[wds[wi].worker_name] = wds[wi].domain;
         workers = (data && data.workers) ? data.workers : [];       // 가공자↔user id
         clientList = (data && data.clients) ? data.clients : [];    // 거래처 자동완성
+        itemList = (data && data.items) ? data.items : [];          // 품목 자동완성(단가 자동 반영의 열쇠)
         ok = true;
       } catch (e) { console.warn('[mes-a0-cep] config parse fail', e); }
       fillWorkerSelect(); // 명단 = config 정본(매핑 우선 → 없으면 전량). showSaved 보다 먼저.
@@ -428,6 +481,7 @@
         (workers.length ? (' · 가공자 ' + workers.length) : '')) : 'config 파싱 실패 — 마감 수동 입력');
       restoreSettings();
       updateClientHit();
+      updateItemHit();
       updateAnnotGates();
       applyTabUi(); // 직전값에 mode가 없어도 게이트·버튼이 현재 탭과 맞도록 무조건 1회
     }
@@ -490,6 +544,7 @@
     function gatherSettings() {
       return { qty: elQty ? elQty.value : '1', scale: elScale ? elScale.value : '1',
         mode: modeValue(), trim: elTrim ? !!elTrim.checked : false, trimInk: elTrimInk ? !!elTrimInk.checked : false, client: elClient ? elClient.value : '',
+        item: elItem ? elItem.value : '',
         annot: elAnnot ? elAnnot.value : '' };
     }
     function saveSettings() { try { window.localStorage.setItem(STORE_SETTINGS, JSON.stringify(gatherSettings())); } catch (e) {} }
@@ -503,6 +558,7 @@
       if (elTrim) elTrim.checked = !!st.trim;
       if (elTrimInk) elTrimInk.checked = !!st.trimInk;
       if (elClient && st.client) elClient.value = st.client;
+      if (elItem && st.item) elItem.value = st.item; // 가공자는 보통 같은 품목을 연달아 친다 — 직전값 유지
       if (elAnnot && st.annot != null) elAnnot.value = st.annot;
       if (st.mode) setMode(st.mode);
       // st.punch·st.annotPos·st.fin(구버전 저장분)은 의도적으로 무시 — 위 gatherSettings 주석 참조.
@@ -613,6 +669,7 @@
         registered_by_id: workerIdOf(elWorker.value), // config.workers 매핑 → manifest worker_id("내 작업" 상관)
         client_name: elClient ? (elClient.value || '') : '',
         client_id: clientIdOf(elClient ? elClient.value : ''), // 정확일치 시 해소, 미일치=null(free-text)
+        item_id: itemIdOf(elItem ? elItem.value : ''),         // 정확일치만 — 대기함→주문서가 단가까지 채운다
         qty: qty, scale_n: scaleN, mode: modeValue(),
         trim: elTrim ? !!elTrim.checked : false,
         // 출력 경계선(백색 테두리). host 는 `!== false` 로 읽으므로 구 패널(키 없음)은 기존대로 ON.

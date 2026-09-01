@@ -23,6 +23,32 @@ const workbenchRouter = new Hono<HonoEnv>()
 
 workbenchRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER', 'DESIGNER'))
 
+// ── 대기물의 법인 = 「아직 없다」 (2026-09-01) ─────────────────────────────
+// 대기(waiting)는 아직 어느 법인의 매출도 아니다. 어느 법인 주문이 될지는 **주문서를 쓸 때** 정해진다.
+// 등록 시점엔 그걸 아는 주체가 없다 — 디자이너는 거래처만 알지 청구 법인을 모른다. 그래서 패널이
+// 전부 1 로 보내고 있었고(mes-a0-host.jsx entity_id:1 · cut-main.js 는 ENTITY 줄 자체를 안 씀),
+// 선명·청주 주문서를 열면 대기함이 **통째로 비어 보였다**(5~7월 주문의 16% = 672건).
+//   → 주문에 붙기 전까지 법인 격리를 풀고, **흡수 시점에 주문의 법인으로 확정**한다(absorbEntityOf).
+//
+// 판정 축은 상태가 아니라 **order_item_id IS NULL**(=아직 주문에 안 붙음)로 둔다. status='waiting'
+// 으로 했다면 「취소는 되는데 복구가 안 되는」 함정이 생긴다 — 타법인 대기물을 취소한 순간 void 가 돼
+// 자기 목록에서 사라지기 때문이다. 여는 쪽과 되돌리는 쪽은 같은 술어를 써야 한다.
+// ⚠️ 판 소비(consumed_intake_ids, #539)는 손대지 않는다 — 주문서 흐름이 아니라 패널→패널 경로다.
+function waitingOpenFilter(c: Context<HonoEnv>, alias = 'designer_intakes'): { clause: string; params: number[] } {
+  const ef = entityFilter(c, alias)
+  if (!ef.clause) return ef // 전체모드 = 이미 무필터
+  return { clause: ` AND (${alias}.order_item_id IS NULL OR (1=1${ef.clause}))`, params: ef.params }
+}
+
+/** 흡수 확정 법인 = 붙은 주문 라인의 주문 법인. 못 찾으면 null(=기존 값 유지). */
+async function absorbEntityOf(db: D1Database, orderItemId: number | null): Promise<number | null> {
+  if (!orderItemId) return null
+  const row = await db.prepare(
+    `SELECT o.entity_id AS entity_id FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.id = ?`
+  ).bind(orderItemId).first<{ entity_id: number | null }>()
+  return row?.entity_id ?? null
+}
+
 // ── 시트 네스팅 (sheet_layouts) CRUD — IA 편집기 P3 ──
 // spec: docs/superpowers/specs/2026-06-16-ia-editor-nesting-intake.md §5.4·6·7·12
 // 자동배치(shelfBinPack)는 브라우저에서 수행, 서버는 결과 좌표·메타를 entity 격리 보존.
@@ -501,7 +527,7 @@ workbenchRouter.get('/intake-config', async (c) => {
   try {
     // 거래처 리스트 재도입(2026-07-27, spec 2026-07-23 D5): CEP 패널 자동완성 소스(id+name 경량 전체).
     // workers = 가공자↔MES user id 매핑(spec §3.5) — manifest worker_id → 대기함 "내 작업" 상관.
-    const [methods, presets, workerDomains, workers, clients] = await Promise.all([
+    const [methods, presets, workerDomains, workers, clients, items] = await Promise.all([
       c.env.DB.prepare(
         `SELECT id, name, margin_cm, method_group FROM finishing_methods WHERE is_active = 1 ORDER BY sort_order, id`
       ).all(),
@@ -516,6 +542,15 @@ workbenchRouter.get('/intake-config', async (c) => {
       ).all(),
       c.env.DB.prepare(
         `SELECT id, client_name FROM clients WHERE COALESCE(is_active, 1) = 1 ORDER BY client_name, id`
+      ).all(),
+      // 품목 자동완성(2026-09-01) — 대기물이 item_id 를 실어 오면 주문서가 **단가까지** 따라 채운다
+      //   (orderForm/intake.js → applyItemSelection → /api/prices 최근거래가>특약가>단가표>기본단가).
+      //   여태 그 자리가 비어 있어 라인마다 사람이 품목·단가를 다시 골랐다 — 남은 이중입력의 본체.
+      //   판정은 사람이 한다(거래처 자동완성과 같은 정책): 정확일치만 id 해소, 미일치는 null.
+      c.env.DB.prepare(
+        `SELECT id, item_name, sub_category FROM items
+          WHERE COALESCE(is_active, 1) = 1 AND COALESCE(is_sales_item, 0) = 1
+          ORDER BY item_name, id`
       ).all(),
     ])
     // 경로①(주문 선행)용 미가공 라인: 파일 미연결 + 진행 중 주문만
@@ -540,6 +575,7 @@ workbenchRouter.get('/intake-config', async (c) => {
         worker_domains: workerDomains.results, // 가공자→도메인(CEP 필터·프로파일)
         workers: workers.results, // 가공자↔user id 매핑(id, name) — 패널 worker_id 해소
         clients: clients.results, // 거래처 자동완성(id, client_name) — 정확일치 시 client_id 해소
+        items: items.results, // 품목 자동완성(id, item_name, sub_category) — 정확일치 시 item_id 해소
         open_lines: openLines,
       },
     })
@@ -696,9 +732,12 @@ workbenchRouter.post('/intakes', async (c) => {
         await c.env.DB.prepare(
           `UPDATE order_items SET ai_analysis_id = ?, ai_group_index = -3 WHERE id = ?`
         ).bind(analysisId, orderItemId).run()
+        // 귀속 법인 확정 — 대기 동안은 법인이 없었다(waitingOpenFilter 주석). 붙은 주문이 정한다.
+        const absEntity = await absorbEntityOf(c.env.DB, orderItemId)
         await c.env.DB.prepare(
-          `UPDATE designer_intakes SET status = 'absorbed', order_item_id = ?, absorbed_at = datetime('now') WHERE id = ?`
-        ).bind(orderItemId, intake!.id).run()
+          `UPDATE designer_intakes SET status = 'absorbed', order_item_id = ?, entity_id = COALESCE(?, entity_id),
+                  absorbed_at = datetime('now') WHERE id = ?`
+        ).bind(orderItemId, absEntity, intake!.id).run()
         absorbed = true
       }
     }
@@ -720,7 +759,7 @@ workbenchRouter.get('/intakes', async (c) => {
     const worker = (c.req.query('worker') || '').trim()
     const lite = c.req.query('lite') === '1'
     const limit = Math.min(parseInt(c.req.query('limit') || '100', 10) || 100, 200)
-    const ef = entityFilter(c, 'designer_intakes')
+    const ef = waitingOpenFilter(c) // 대기 상태는 법인 공용(주문서를 쓸 때 확정)
     let where = `1=1${ef.clause}`
     const params: unknown[] = [...ef.params]
     // 콤마 다중 허용(2026-07-31): 트레이 '처리됨 보기' = absorbed,void 한 번에 조회. 단일값은 기존과 동일.
@@ -853,7 +892,7 @@ workbenchRouter.get('/intakes/:id/thumb', async (c) => {
   try {
     const id = parseInt(c.req.param('id'), 10)
     if (!Number.isFinite(id)) return c.json({ success: false, error: '잘못된 ID' }, 400)
-    const ef = entityFilter(c, 'designer_intakes')
+    const ef = waitingOpenFilter(c)
     const row = await c.env.DB.prepare(
       `SELECT ar.groups_json AS groups_json
        FROM designer_intakes
@@ -885,7 +924,7 @@ workbenchRouter.post('/intakes/:id/absorb', async (c) => {
     const orderId = Number(body?.order_id) || null
     const bodyAnalysisId = Number(body?.ai_analysis_id) || null
 
-    const ef = entityFilter(c, 'designer_intakes')
+    const ef = waitingOpenFilter(c)
     const row = await c.env.DB.prepare(
       `SELECT id, status, ai_analysis_id FROM designer_intakes WHERE id = ?${ef.clause}`
     ).bind(id, ...ef.params).first<{ id: number; status: string; ai_analysis_id: number | null }>()
@@ -921,9 +960,12 @@ workbenchRouter.post('/intakes/:id/absorb', async (c) => {
       if (cands.length === 1) orderItemId = cands[0].id
     }
 
+    // 귀속 법인 확정 — 대기 동안은 법인이 없었다(waitingOpenFilter 주석). 붙은 주문이 정한다.
+    const absEntity = await absorbEntityOf(c.env.DB, orderItemId)
     const upd = await c.env.DB.prepare(
-      `UPDATE designer_intakes SET status = 'absorbed', order_item_id = ?, absorbed_at = datetime('now') WHERE id = ? AND status = 'waiting'`
-    ).bind(orderItemId, id).run() // #534: TOCTOU 가드(선행 SELECT 이후 동시 흡수 차단)
+      `UPDATE designer_intakes SET status = 'absorbed', order_item_id = ?, entity_id = COALESCE(?, entity_id),
+              absorbed_at = datetime('now') WHERE id = ? AND status = 'waiting'`
+    ).bind(orderItemId, absEntity, id).run() // #534: TOCTOU 가드(선행 SELECT 이후 동시 흡수 차단)
     if (upd.meta.changes === 0) return c.json({ success: false, error: '이미 처리된 대기물입니다.' }, 409)
 
     // ── 별칭 학습(2026-08-12) — 같은 일을 두 번 하지 않게 만든다 ──────────────
@@ -1046,7 +1088,7 @@ workbenchRouter.post('/intakes/void-bulk', async (c) => {
       : []
     if (!ids.length) return c.json({ success: false, error: '취소할 대기물을 선택하세요.' }, 400)
 
-    const ef = entityFilter(c, 'designer_intakes')
+    const ef = waitingOpenFilter(c)
     const allowed: number[] = []
     let denied = 0, skipped = 0
     for (let i = 0; i < ids.length; i += 80) { // D1 바인드 한도([[d1-bind-param-limit]])
@@ -1083,7 +1125,7 @@ workbenchRouter.post('/intakes/:id/void', async (c) => {
   try {
     const id = parseInt(c.req.param('id'), 10)
     if (!Number.isFinite(id)) return c.json({ success: false, error: '잘못된 ID' }, 400)
-    const ef = entityFilter(c, 'designer_intakes')
+    const ef = waitingOpenFilter(c)
     const row = await c.env.DB.prepare(
       `SELECT id, status, worker_id FROM designer_intakes WHERE id = ?${ef.clause}`
     ).bind(id, ...ef.params).first<{ id: number; status: string; worker_id: number | null }>()
@@ -1110,7 +1152,7 @@ workbenchRouter.post('/intakes/:id/restore', async (c) => {
   try {
     const id = parseInt(c.req.param('id'), 10)
     if (!Number.isFinite(id)) return c.json({ success: false, error: '잘못된 ID' }, 400)
-    const ef = entityFilter(c, 'designer_intakes')
+    const ef = waitingOpenFilter(c)
     const row = await c.env.DB.prepare(
       `SELECT id, status, worker_id, order_item_id FROM designer_intakes WHERE id = ?${ef.clause}`
     ).bind(id, ...ef.params).first<{ id: number; status: string; worker_id: number | null; order_item_id: number | null }>()

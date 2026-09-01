@@ -2115,6 +2115,7 @@
   var CONFIG_PATH = 'Z:/DESIGNS/IA-등록/_config/config.json';
   var clientList = [];   // [{id, client_name}]
   var workerList = [];   // [{id, name}]
+  var productList = [];  // [{id, item_name, sub_category}] — 품목(2026-09-01)
 
   function loadConfig() {
     try {
@@ -2128,6 +2129,8 @@
       // ⚠️ 거래처 이름 필드는 `client_name` 이다(`name` 아님) — A0 스모크가 이걸로 한 번 새었다.
       clientList = cfg.clients || [];
       workerList = cfg.workers || [];
+      productList = cfg.items || [];
+      fillDatalist('productList', productList.map(function (it) { return it.item_name || ''; }));
       var dl = document.getElementById('clientList');
       if (dl) {
         dl.innerHTML = '';
@@ -2147,6 +2150,15 @@
         }
       }
     } catch (e) { console.warn('[mes-cut-cep] config 로드 실패: ' + e); }
+  }
+
+  // 품목은 **정확일치만** id 로 본다 — 이름만 맞춘 가짜 품목이 실리면 주문서가 그 단가로 계산한다.
+  //   미해소는 null 로 보내고 사람이 주문서에서 고른다(자동 확정 금지).
+  function productIdOf(name) {
+    var t = String(name || '').replace(/^\s+|\s+$/g, '');
+    if (!t) return null;
+    for (var i = 0; i < productList.length; i++) if (productList[i].item_name === t) return productList[i].id;
+    return null;
   }
 
   function clientIdOf(name) {
@@ -2338,6 +2350,8 @@
         'WORKER ' + workerName,
         'WORKERID ' + workerId,
         'KEYWORD ' + keyword,
+        // 품목 id — 대기함→주문서가 품목과 **단가까지** 채우는 열쇠(미해소면 빈 값)
+        'ITEMID ' + (productIdOf((document.getElementById('regProduct') || {}).value) || ''),
         // ★자재·후가공 — 화면에 이미 받아 두고 manifest 에는 안 보내던 값
         'MATERIAL ' + String((document.getElementById('regMaterial') || {}).value || '').replace(/^\s+|\s+$/g, ''),
         'FINISH ' + String((document.getElementById('regFinish') || {}).value || '').replace(/^\s+|\s+$/g, ''),
@@ -2518,7 +2532,7 @@
     if (pel) { pel.addEventListener('input', refreshPairName); pel.addEventListener('change', refreshPairName); }
   }
   // ★목록이 붙은 칸은 한글 조합 중 목록을 떼어 준다 — 안 그러면 한글이 아예 안 들어간다
-  var listIds = ['regClient', 'regMaterial', 'regFinish'];
+  var listIds = ['regClient', 'regMaterial', 'regFinish', 'regProduct'];
   for (var li = 0; li < listIds.length; li++) imeSafeList(document.getElementById(listIds[li]));
 
   var btnNest = $('btnNest');

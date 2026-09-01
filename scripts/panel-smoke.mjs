@@ -727,6 +727,32 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
     /img\.W !== r\.w[\s\S]{0,500}seedSplit\(/.test(a0m))
 }
 
+// ── 7d 품목(item_id) 배선 (2026-09-01) ───────────────────────────────
+// 대기물이 item_id 를 실어 오면 주문서가 품목과 **단가까지** 자동으로 채운다
+// (orderForm/intake.js → applyItemSelection → /api/prices). 그 자리가 비어 있어서
+// 라인마다 사람이 품목·단가를 다시 골랐다 — 남은 이중입력의 본체였다.
+// ⚠️ 정확일치만 해소한다. 부분일치로 넘겨짚으면 **틀린 단가**가 주문서에 실린다.
+{
+  const a0h = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-a0-host.jsx'), 'utf8')
+  const a0m = fs.readFileSync(path.join(path.dirname(PANEL), 'js/main.js'), 'utf8')
+  const html = fs.readFileSync(PANEL, 'utf8')
+  const wb = fs.readFileSync(path.join(REPO, 'src', 'routes', 'workbench.ts'), 'utf8')
+  const itemIdOf = (a0m.match(/function itemIdOf[\s\S]{0,320}/) || [''])[0]
+
+  ok('7d 가공 폼에 품목 칸', /id="item"/.test(html) && /id="itemSug"/.test(html) && /id="itemHit"/.test(html))
+  ok('7d 품목은 정확일치만 id 로 본다', /item_name === t/.test(itemIdOf) && !/indexOf/.test(itemIdOf))
+  ok('7d 패널이 item_id 를 싣는다', /item_id: itemIdOf\(/.test(a0m))
+  ok('7d 호스트 manifest 에 item_id', /item_id: \(P\.item_id != null\)/.test(a0h))
+  ok('7d 서버가 품목 목록을 config 로 내보낸다',
+    /is_sales_item, 0\) = 1/.test(wb) && /items: items\.results/.test(wb))
+  // 대기물의 법인 = 주문에 붙을 때 정해진다. 술어는 상태가 아니라 order_item_id 여야
+  // 「취소는 되는데 복구가 안 되는」 비대칭이 안 생긴다.
+  ok('7d 미귀속 대기물은 법인 공용 · 흡수 시 주문 법인으로 확정',
+    /order_item_id IS NULL OR \(1=1/.test(wb)
+    && /entity_id = COALESCE\(\?, entity_id\)/.test(wb)
+    && (wb.match(/absorbEntityOf\(c\.env\.DB/g) || []).length >= 2)
+}
+
 await browser.close()
 let pass = 0
 for (const r of results) {

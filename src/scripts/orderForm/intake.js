@@ -580,6 +580,23 @@
 
             // ── 프리필 (단건·그룹·선택 일괄) ─────────────────────────────
 
+            // 펀칭 보류 — 후가공(PP) 섹션은 **품목 소분류가 정해진 뒤에야** 생긴다(finishing.js loadItemPP).
+            //   마감(fin_*)은 품목과 무관해 지금 바로 꽂히지만 펀칭은 꽂을 칸 자체가 없다.
+            //   그래서 값을 행의 PP 컨테이너에 얹어 두고, loadItemPP 가 렌더 직후 applyPendingPunch 로 꺼낸다.
+            //   품목을 사람이 나중에 골라도 그때 반영된다 — 패널이 이미 받은 값을 다시 고르지 않게 하는 것.
+            function ofStashPunch(rowId, punchJson) {
+                if (!punchJson) return;
+                var p;
+                try { p = (typeof punchJson === 'string') ? JSON.parse(punchJson) : punchJson; } catch (e) { return; }
+                if (!p) return;
+                var c = p.corners || {};
+                var any = ((p.top || 0) + (p.bottom || 0) + (p.left || 0) + (p.right || 0)) > 0
+                    || !!c.tl || !!c.tr || !!c.bl || !!c.br;
+                if (!any) return; // 펀칭 없음 = 체크를 켜지 않는다(빈 값으로 켜면 단가만 붙는다)
+                var box = document.getElementById('pp_options_' + rowId);
+                if (box) box.dataset.pendingPunch = JSON.stringify(p);
+            }
+
             // 대기물 1건 → 주문 라인 1개 (라인별 intake_id 마커 → 저장 후 absorb가 order_item_id 매핑)
             async function ofIntakePrefillOne(r) {
                 // 빈 라인이 있으면 그 라인을 채운다(주문서를 열면 있는 라인1이 남지 않도록).
@@ -668,6 +685,9 @@
                         if (typeof calcFinishing === 'function') calcFinishing(id);
                     }
                 } catch (e) { console.warn('[orderForm] 대기물 마감 주입 실패', e); }
+
+                // 펀칭 — 품목 선택 후 PP 섹션이 생길 때 반영된다(ofStashPunch 주석)
+                ofStashPunch(id, r.punch_json);
 
                 // absorb 대상 마커 (주문 저장 성공 후 calc.js 훅이 수거 — 라인별 order_item_id 매핑)
                 var rowEl = document.getElementById('item-' + id);
@@ -804,6 +824,9 @@
                         if (typeof calcFinishing === 'function') calcFinishing(parentId);
                     }
                 } catch (e) { console.warn('[orderForm] 묶음 마감 주입 실패', e); }
+
+                // 펀칭도 마감과 같이 **부모 행에만** 얹는다 — 자식 카드가 상속한다(묶음 키가 마감을 보는 이유와 동일)
+                ofStashPunch(parentId, r0.punch_json);
 
                 var okIds = [], failed = [];
                 for (var i = 0; i < rows.length; i++) {

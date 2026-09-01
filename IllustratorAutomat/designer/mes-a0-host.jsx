@@ -19,7 +19,7 @@
 //   0.1.8 = 마감재단선(여백 위치 검정 실선·4변 한 그룹) + 주석 구조에 후가공 추가
 //           (키워드-식별번호-후가공-수량) (2026-07-30)
 //   0.1.9 = 크로스 패널 잠금 위임 추가(mes-lock.jsx) (2026-07-31)
-var MESA0_VERSION = 'A0-CEP-0.3.0'; // 0.3.0 = ★자동감지 굽기를 imageCapture 로(임시 문서 없음 — 증명 가능할 때만) · 0.2.0 = 셸 자동 갱신(축3/4를 축2가 끌어온다) · 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
+var MESA0_VERSION = 'A0-CEP-0.4.0'; // 0.4.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.3.0 = ★자동감지 굽기를 imageCapture 로(임시 문서 없음 — 증명 가능할 때만) · 0.2.0 = 셸 자동 갱신(축3/4를 축2가 끌어온다) · 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
 var MESA0_REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
 var MESA0_PT_PER_MM = 72 / 25.4;
 var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];
@@ -964,6 +964,8 @@ function mesA0_process() {
     entity_id: 1,
     client_name: clientName,
     client_id: (P.client_id != null) ? P.client_id : null,
+    // 품목 — 패널이 정확일치로만 해소한다(미해소=null → 주문서에서 사람이 고른다, 자동 확정 금지)
+    item_id: (P.item_id != null) ? P.item_id : null,
     qty: qty,
     finishing: (hasFinishing || hasMark) ? finJson : null,
     trim: trim,
