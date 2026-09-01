@@ -527,7 +527,7 @@ workbenchRouter.get('/intake-config', async (c) => {
   try {
     // 거래처 리스트 재도입(2026-07-27, spec 2026-07-23 D5): CEP 패널 자동완성 소스(id+name 경량 전체).
     // workers = 가공자↔MES user id 매핑(spec §3.5) — manifest worker_id → 대기함 "내 작업" 상관.
-    const [methods, presets, workerDomains, workers, clients, items, prodMats] = await Promise.all([
+    const [methods, presets, workerDomains, workers, clients, items, prodMats, materials, ppOpts] = await Promise.all([
       c.env.DB.prepare(
         `SELECT id, name, margin_cm, method_group FROM finishing_methods WHERE is_active = 1 ORDER BY sort_order, id`
       ).all(),
@@ -569,6 +569,23 @@ workbenchRouter.get('/intake-config', async (c) => {
           WHERE COALESCE(m.is_active, 1) = 1
           ORDER BY pm.product_item_id, m.item_name, m.id`
       ).all(),
+      // 자재 목록(2026-09-01) — 재단 패널이 15개를 **소스에 박아** 두고 있었다. 그러면 MES 에서 뭘
+      //   바꿔도 패널 5축을 다시 배포해야 반영된다. config 로 옮기면 다음 패널 열 때 따라온다.
+      //   품목이 정해지면 product_materials 로 좁혀지고, 매핑이 없을 때의 폴백이 이 목록이다.
+      c.env.DB.prepare(
+        `SELECT id, item_name FROM items
+          WHERE COALESCE(is_active, 1) = 1 AND item_type = 'MATERIAL'
+          ORDER BY item_name, id`
+      ).all(),
+      // 후가공 옵션(2026-09-01) — 15행뿐이라 통째로 싣는다. 소분류(sub_category)·분류(pp_category)를
+      //   같이 주므로 패널이 필요한 갈래만 골라 쓴다(재단은 코팅 계열만).
+      //   ⚠️ 여기 담긴 값이 **청구의 정본은 아니다** — 후가공 확정은 주문서에서 한다.
+      //      패널이 쓰는 것은 파일명에 남길 표식이고, manifest 로는 post_desc 문자열로만 나간다.
+      c.env.DB.prepare(
+        `SELECT id, option_code, option_name, pp_category, sub_category
+           FROM post_processing_options
+          ORDER BY pp_category, option_name, id`
+      ).all(),
     ])
     // 경로①(주문 선행)용 미가공 라인: 파일 미연결 + 진행 중 주문만
     const ovf = orderVisibilityFilter(c, 'o')
@@ -594,6 +611,8 @@ workbenchRouter.get('/intake-config', async (c) => {
         clients: clients.results, // 거래처 자동완성(id, client_name) — 정확일치 시 client_id 해소
         items: items.results, // 품목 자동완성(id, item_name, sub_category) — PRODUCT 만, 정확일치 시 item_id 해소
         product_materials: prodMats.results, // 제품 id → 자재명 — 재단 [자재] 후보 좁히기(없으면 자유 입력)
+        materials: materials.results, // 자재 전체(폴백 목록) — 소스 하드코딩을 대체한다
+        post_processing: ppOpts.results, // 후가공 옵션(분류·소분류 포함) — 패널은 파일명 표식용으로만 쓴다
         open_lines: openLines,
       },
     })

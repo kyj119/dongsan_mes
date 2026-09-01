@@ -41,7 +41,14 @@ window.__doc = ${JSON.stringify(opts.doc ?? 'name=test.ai;w=1220;h=2070;layers=3
 window.__vecProbe = ${JSON.stringify(opts.vecProbe ?? 'ok')};
 window.__vecCut = ${JSON.stringify(opts.vecCut ?? 'ok;paths=1;anchors=24')};
 window.__sel = ${JSON.stringify(opts.sel ?? 'n=2;w=300.5;h=180;x=10;y=20')};
-window.cep = { fs: { readFile: () => ({ err: 1 }), writeFile: () => ({ err: 0 }) } };
+// ★config 를 실제로 읽히게 한다 — 자재·후가공 목록이 소스가 아니라 config 에서 오기 때문이다.
+//   전엔 readFile 이 항상 err:1 이라 하드코딩 배열만 검증됐고, config 경로는 사각지대였다.
+window.__cfgObj = {"success": true, "data": {"methods": [{"name": "접어미싱", "margin_cm": 4, "method_group": "output"}], "presets": [], "workers": [{"id": 14, "name": "인호동"}], "worker_domains": [], "clients": [{"id": 1946, "client_name": "테스트거래처"}], "items": [{"id": 701, "item_name": "솔벤 시트", "sub_category": "시트"}, {"id": 702, "item_name": "UV 평판", "sub_category": "평판"}], "product_materials": [{"p": 701, "m": "솔벤시트"}, {"p": 702, "m": "포맥스5T"}, {"p": 702, "m": "폼보드5T"}], "materials": [{"id": 901, "item_name": "솔벤시트"}, {"id": 902, "item_name": "포맥스5T"}, {"id": 903, "item_name": "폼보드5T"}, {"id": 904, "item_name": "UV후렉스"}], "post_processing": [{"id": 1, "option_code": "COAT_M", "option_name": "무광코팅", "pp_category": "coating", "sub_category": "시트"}, {"id": 2, "option_code": "COAT_G", "option_name": "유광코팅", "pp_category": "coating", "sub_category": "시트"}, {"id": 3, "option_code": "DOMBO", "option_name": "돔보", "pp_category": "finish", "sub_category": "시트"}, {"id": 4, "option_code": "PUNCH", "option_name": "펀칭", "pp_category": "punching", "sub_category": "시트"}]}};
+window.__cfgJson = JSON.stringify(window.__cfgObj);
+window.cep = { encoding: { UTF8: 'UTF-8' }, fs: {
+  readFile: function (p) { return String(p).indexOf('config.json') >= 0 ? { err: 0, data: window.__cfgJson } : { err: 1 }; },
+  writeFile: function () { return { err: 0 }; },
+} };
 window.__adobe_cep__ = {
   getExtensionID: function () { return 'com.mes.a0.panel'; },
   getSystemPath: function () { return 'C:/tmp'; },
@@ -1438,11 +1445,21 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   }))
   // 네스팅 전에는 낼 것이 없다 — 눌러도 아무 일 없는 버튼을 열어 두지 않는다
   ok('3l 네스팅 전에는 비활성', await p.evaluate(() => document.getElementById('btnExportPair').disabled === true))
-  ok('3l 자재·후가공 후보가 실물 값', await p.evaluate(() => {
+  // ★목록은 **config 에서 온다**(2026-09-01). 소스에 박혀 있던 동안은 MES 에서 뭘 바꿔도
+  //   패널 5축을 다시 배포해야 반영됐다. 하드코딩으로 되돌아가면 여기서 걸린다.
+  //   ⚠️ 재단 후가공은 **coating 계열만** — 돔보는 [돔보] 체크박스와 중복이라 목록에 두지 않는다.
+  ok('3l 자재·후가공 후보가 config 에서 온다(코팅만 · 돔보 제외)', await p.evaluate(() => {
     const m = [...document.querySelectorAll('#materialList option')].map((o) => o.value)
     const f = [...document.querySelectorAll('#finishList option')].map((o) => o.value)
-    return m.includes('포맥스5T') && m.includes('솔벤시트') && f.includes('자동바니쉬') && f.includes('조')
+    return m.includes('포맥스5T') && m.includes('솔벤시트') && m.includes('UV후렉스')
+      && f.includes('무광코팅') && f.includes('유광코팅')
+      && !f.includes('돔보') && !f.includes('펀칭')
   }))
+  ok('3l 목록이 소스에 박혀 있지 않다', (() => {
+    const src = fs.readFileSync(CUT_MAIN, 'utf8')
+    return /var MATERIALS = \[\];/.test(src) && /var FINISHES = \[\];/.test(src)
+      && /cfg\.materials/.test(src) && /pp_category === 'coating'/.test(src)
+  })())
   const rows = await p.evaluate(() => {
     const P = window.__mesCutPair
     const set = (id, v) => { document.getElementById(id).value = v }
