@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-09-01T09:44:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-09-01T13:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,25 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **4** (`list_issues(state:OPEN,label:auto-improve)` 실측, 3→4: 이번 사이클 신규 발견 #622 추가 — #613·#616·#617·#622) |
+| 🆕 new | **5** (`list_issues(state:OPEN,label:auto-improve)` 실측, 4→5: 이번 사이클 신규 발견 #623 추가 — #613·#616·#617·#622·#623) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **541** (`search_issues(reason:completed)` 리터럴 쿼리, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 재확인 생략, 변동없음) |
+
+> **Area 4 데이터 정합성 (2026-09-01T13:10):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD, `4bb3627`), `git fetch origin main`(`207078c..4bb3627`, forced update) → `git checkout main && git reset --hard origin/main`(HEAD `4bb3627`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area4 방법 라인 HEAD `49c2efc`)**: 웹앱 범위 diff 20커밋 — 그중 Area1/2/3/5/6이 이미 각자 렌즈로 정독 완료한 18건(`5dc788b`·`49fd79f`·`8ef1c6b`·`6da6a72`·`d08aeb3`·`b13a415`·`16bdcbd`·`f7454bc`·`9d37076`·`5448d50`·`86d3c74`·`c4be537`·`10ff622`·`c5f0ba6`·`8f32418`·`473e36a`·`86d709b`·`2fd81c4`·`1002274`·`6354e92`·`d51811c`, IA cut-panel 포함)를 뺀 **신규 2건**(직전 완주 Area3 사이클 HEAD `897d65e` 이후 착지) `ab7efe2`(IA JSX 자동감지 마스크, 웹배포축 밖 — Area4 렌즈 대상 아님)·`0bf01c4`(feat(intake): 패널→주문서 item_id 전달 + 대기물 법인 확정 지연) 중 데이터정합성 표면은 후자뿐.
+> - **`0bf01c4` 데이터정합성 렌즈 직독(`workbench.ts`, designer_intakes 법인귀속 재설계)**: "대기(waiting)는 법인 미확정 → 흡수 시점에 주문 법인으로 확정"이라는 신규 정책이 판정축을 `status='waiting'`이 아닌 `order_item_id IS NULL`(`waitingOpenFilter`)로 둬 취소/복구 비대칭 함정을 스스로 피함 — 설계 자체는 정합. **형제-완전성 sweep**(`grep -n "designer_intakes" workbench.ts` 전수, #487 클래스 레시피): `entityFilter(c,'designer_intakes')` 잔존 2곳 중 `/intakes/stats`(874행)가 6개 형제 엔드포인트(list·thumb·absorb·void-bulk·void·restore)와 달리 **교체 누락** — 대기중 레코드가 여전히 entity_id=1(패널 미개조)에 몰려 있어 엔티티 스코프 세션(선명/청주)의 등록/대기 지표가 과소집계됨, 이 커밋이 고친 원 버그(대기함 텅 빔)와 동일 클래스가 지표 화면에 잔존. 나머지 1곳(`consumeSheetIntakes`, 99행)은 저장소 전체에서 **호출부 0건**(dead code) — 실행경로 영향 없어 severity 낮음, 이슈 본문에 참고로만 기재. `npm run audit:entity`(67/67 통과)는 필터 *존재* 유무만 검사해 이 "정책은 있으나 잘못된 필터 함수" 케이스를 놓침 — 정적 스캔의 사각 재확인.
+> - **판정**: 필터 함수 교체가 표시 집계 범위(비즈니스 카운트)를 바꾸므로 자동수정 금지 대상("비즈니스 로직 변경")에 해당한다고 보수적으로 판단 → **issue-only**(#623, S). 1줄 교체(`entityFilter`→`waitingOpenFilter`) + 로컬 D1 확인이면 충분해 owner 승인 시 즉시 처리 가능.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최신 5런(`4bb3627`~`c97cdd8`) 전부 `conclusion:success`, `0bf01c4` 자신의 배포런(`33463966498`)도 success — 배포경로 이상 없음.
+> - **standing scan: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 67건·**누락 0건**(변동없음, 위 케이스는 이 스캔의 구조적 사각지대로 별도 기록).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **5**(4→5, 이번 사이클 신규 #623 추가 — #613·#616·#617·#622·#623), 중복 확인 사전조회 결과 기존 4건과 주제 겹침 없음.
+> - **backlog↔GitHub 절대값 재동기화**: open **5**(4→5) · done **541**(변동없음) · rejected **6**(변동없음, 재확인 생략).
+> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md `line N` 잔여참조는 이번 사이클 대상 아님(직전 확인 이후 무변화).
+> - **백로그 트림 체크**: `backlog:trim --check` 실행 예정(아래).
+> - 신규 이슈 1건(#623, designer_intakes 대기함 법인-오픈 정책의 형제-완전성 누락 — `/intakes/stats` 1곳), 자동수정 0건(필터 정책 변경은 비즈니스 로직 영역으로 보수적 issue-only 판정), done-sync: open 5(4→5)·done 541(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-09-01T09:44):**
 > - **방법**: `git status`=워킹트리 clean(detached HEAD, `897d65e`), `git fetch origin main`(`207078c..897d65e`, forced update) → `git checkout main && git reset --hard origin/main`(HEAD `897d65e`). `npm ci`(0→81), `npx tsc --noEmit` clean, `npm run build` 성공.
