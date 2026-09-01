@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -98,6 +99,26 @@ namespace LogWatcher
             }
         }
 
+        // 키트 지문 — bin\version.txt("kit git=<sha> built=<시각>") 를 한 번만 읽어 둔다.
+        // ★ 이게 없으면 「그 PC 에 [2] 가 돌았는가」를 Z: 수거 폴더로 추측해야 하고, 그 추측은 틀린다
+        //   (2026-09-01: 폴더가 비어도 갱신된 PC 3대 / 실행했다는데 흔적 없는 PC 1대).
+        private static string? _kitVersion;
+        private static string KitVersion
+        {
+            get
+            {
+                if (_kitVersion != null) return _kitVersion;
+                try
+                {
+                    var p = Path.Combine(AppContext.BaseDirectory, "version.txt");
+                    _kitVersion = File.Exists(p) ? File.ReadAllText(p).Trim() : "";
+                }
+                catch { _kitVersion = ""; }
+                if (_kitVersion.Length > 120) _kitVersion = _kitVersion.Substring(0, 120);
+                return _kitVersion;
+            }
+        }
+
         /// <summary>
         /// Send heartbeat to MES.
         /// </summary>
@@ -110,6 +131,8 @@ namespace LogWatcher
                     agent_id = _agentId,
                     equipment_id = string.IsNullOrEmpty(_equipmentId) ? null : _equipmentId,
                     agent_version = "1.1.0",
+                    kit_version = KitVersion,
+                    parser_type = "legacy",
                     ip_address = GetLocalIp(),
                     print_log_path = printLogPath,
                     is_printing = isPrinting
@@ -149,7 +172,7 @@ namespace LogWatcher
         /// <summary>
         /// Send heartbeat for a specific equipment (used by WatcherManager).
         /// </summary>
-        public async Task<bool> SendHeartbeatForEquipmentAsync(string equipmentId, string? equipmentName, string? printLogPath, bool isPrinting = false)
+        public async Task<bool> SendHeartbeatForEquipmentAsync(string equipmentId, string? equipmentName, string? printLogPath, bool isPrinting = false, string? parserType = null)
         {
             try
             {
@@ -160,6 +183,8 @@ namespace LogWatcher
                     equipment_name = equipmentName,
                     print_log_path = printLogPath,
                     agent_version = "2.0.0",
+                    kit_version = KitVersion,
+                    parser_type = parserType ?? "",
                     ip_address = GetLocalIp(),
                     is_printing = isPrinting
                 };

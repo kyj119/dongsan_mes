@@ -513,7 +513,8 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
 // POST /api/print-events/heartbeat — agent heartbeat
 printEventsRouter.post('/heartbeat', agentKeyMiddleware, async (c) => {
   try {
-    const { agent_id, equipment_id, equipment_name, agent_version, ip_address, print_log_path, is_printing } = await c.req.json()
+    const { agent_id, equipment_id, equipment_name, agent_version, ip_address, print_log_path, is_printing,
+            kit_version, parser_type } = await c.req.json()
 
     if (!agent_id) {
       return c.json({ success: false, error: 'agent_id required' }, 400)
@@ -522,8 +523,8 @@ printEventsRouter.post('/heartbeat', agentKeyMiddleware, async (c) => {
     const isPrinting = is_printing ? 1 : 0
 
     await c.env.DB.prepare(`
-      INSERT INTO agent_heartbeats (agent_id, equipment_id, agent_version, ip_address, last_seen_at, print_log_path, status, is_printing, updated_at)
-      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 'online', ?, CURRENT_TIMESTAMP)
+      INSERT INTO agent_heartbeats (agent_id, equipment_id, agent_version, ip_address, last_seen_at, print_log_path, status, is_printing, updated_at, kit_version, parser_type)
+      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 'online', ?, CURRENT_TIMESTAMP, ?, ?)
       ON CONFLICT(agent_id) DO UPDATE SET
         equipment_id = excluded.equipment_id,
         agent_version = excluded.agent_version,
@@ -532,8 +533,12 @@ printEventsRouter.post('/heartbeat', agentKeyMiddleware, async (c) => {
         print_log_path = excluded.print_log_path,
         status = 'online',
         is_printing = excluded.is_printing,
-        updated_at = CURRENT_TIMESTAMP
-    `).bind(agent_id, equipment_id || null, agent_version || null, ip_address || null, print_log_path || null, isPrinting).run()
+        updated_at = CURRENT_TIMESTAMP,
+        -- 구버전 에이전트(필드 미전송)가 기존 값을 NULL 로 지우지 않게 한다 — 롤아웃 도중 섞여 붙는다
+        kit_version = COALESCE(excluded.kit_version, agent_heartbeats.kit_version),
+        parser_type = COALESCE(excluded.parser_type, agent_heartbeats.parser_type)
+    `).bind(agent_id, equipment_id || null, agent_version || null, ip_address || null, print_log_path || null, isPrinting,
+            kit_version || null, parser_type || null).run()
 
     // 장비 상태/수집정보 갱신 + 미등록 장비 자동 등록 (LogWatcher 장비 중심 모델, 스펙 0615)
     if (equipment_id) {
@@ -1002,7 +1007,7 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
 printEventsRouter.get('/agents', authMiddleware, async (c) => {
   try {
     const { results } = await c.env.DB.prepare(`
-      SELECT id, agent_id, agent_version, ip_address, last_seen_at, print_log_path, status, equipment_id, is_printing, created_at, updated_at,
+      SELECT id, agent_id, agent_version, kit_version, parser_type, ip_address, last_seen_at, print_log_path, status, equipment_id, is_printing, created_at, updated_at,
         CASE
           WHEN last_seen_at IS NULL THEN 'unknown'
           WHEN (julianday('now') - julianday(last_seen_at)) * 86400 > 120 THEN 'offline'

@@ -195,7 +195,7 @@ namespace LogWatcher.Core
                 if (string.IsNullOrEmpty(logPath)) logPath = cfg?.GetConfigString("print_log_dir") ?? "";
                 if (string.IsNullOrEmpty(logPath)) logPath = cfg?.GetConfigString("log_root") ?? "";
                 if (string.IsNullOrEmpty(logPath)) logPath = cfg?.GetConfigString("rip_log_root") ?? "";
-                var hbOk = await _apiClient.SendHeartbeatForEquipmentAsync(eqId, parser.Name, logPath, isPrinting);
+                var hbOk = await _apiClient.SendHeartbeatForEquipmentAsync(eqId, parser.Name, logPath, isPrinting, cfg?.ParserType);
                 if (hbOk) _lastHeartbeats[eqId] = DateTime.Now;
             }
         }
