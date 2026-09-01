@@ -19,7 +19,7 @@
 //   0.1.8 = 마감재단선(여백 위치 검정 실선·4변 한 그룹) + 주석 구조에 후가공 추가
 //           (키워드-식별번호-후가공-수량) (2026-07-30)
 //   0.1.9 = 크로스 패널 잠금 위임 추가(mes-lock.jsx) (2026-07-31)
-var MESA0_VERSION = 'A0-CEP-0.4.0'; // 0.4.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.3.0 = ★자동감지 굽기를 imageCapture 로(임시 문서 없음 — 증명 가능할 때만) · 0.2.0 = 셸 자동 갱신(축3/4를 축2가 끌어온다) · 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
+var MESA0_VERSION = 'A0-CEP-0.5.0'; // 0.5.0 = ★수량 단위(조) 표기 전달 — 대기함 「2개 (1조)」 검산용 · 0.4.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.3.0 = ★자동감지 굽기를 imageCapture 로(임시 문서 없음 — 증명 가능할 때만) · 0.2.0 = 셸 자동 갱신(축3/4를 축2가 끌어온다) · 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
 var MESA0_REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
 var MESA0_PT_PER_MM = 72 / 25.4;
 var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];
@@ -967,6 +967,9 @@ function mesA0_process() {
     // 품목 — 패널이 정확일치로만 해소한다(미해소=null → 주문서에서 사람이 고른다, 자동 확정 금지)
     item_id: (P.item_id != null) ? P.item_id : null,
     qty: qty,
+    // 단위 표기(추적용) — 값 자체는 이미 **개**로 환산돼 왔다(패널 gatherParams 가 유일 환산 지점).
+    //   'set' 이면 대기함이 「2개 (1조)」로 병기해 사람이 눈으로 검산할 수 있게 한다.
+    qty_unit: (P.qty_unit === 'set') ? 'set' : null,
     finishing: (hasFinishing || hasMark) ? finJson : null,
     trim: trim,
     border_line: (P.border_line !== false), // 출력 경계선 적용 여부(추적용 — 산출물 차이의 근거)

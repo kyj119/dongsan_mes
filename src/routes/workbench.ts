@@ -672,6 +672,9 @@ workbenchRouter.post('/intakes', async (c) => {
     const keyword = body.keyword != null ? String(body.keyword) : null
     const postDesc = body.post_desc != null ? String(body.post_desc) : null
     const punchJson = body.punch && typeof body.punch === 'object' ? JSON.stringify(body.punch) : null
+    // 수량 단위(0548) — 값(`qty`)은 이미 **개**로 환산돼 온다(패널 gatherParams 가 유일 환산 지점).
+    //   여기 남기는 것은 「조로 입력됐다」는 사실뿐이고 어떤 계산에도 쓰지 않는다 — 대기함 병기용.
+    const qtyUnit = String(body.qty_unit || '') === 'set' ? 'set' : null
     const workerName = body.worker_name != null ? String(body.worker_name) : null
     const workerId = Number.isFinite(Number(body.worker_id)) && Number(body.worker_id) > 0 ? Number(body.worker_id) : null
     // 작업 그룹핑 키(0477, D6): 일괄 확정의 공유 배치 폴더. 단건 확정은 null(단독 작업).
@@ -726,8 +729,8 @@ workbenchRouter.post('/intakes', async (c) => {
         entity_id, ai_analysis_id, client_name, client_id, qty, finishing_json, width_cm, height_cm,
         scale_pct, trim, mode, eps_path, work_ai_path, status,
         registered_by, pc_name, script_version, outline_failed, memo,
-        keyword, post_desc, punch_json, worker_name, worker_id, batch_key, item_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        keyword, post_desc, punch_json, worker_name, worker_id, batch_key, item_id, qty_unit
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING id
     `).bind(
       entityId, analysisId, clientName, clientId, qty, finishing, w, h,
@@ -737,7 +740,7 @@ workbenchRouter.post('/intakes', async (c) => {
       body.script_version != null ? String(body.script_version) : null,
       body.outline_failed ? 1 : 0,
       sourceFolder,
-      keyword, postDesc, punchJson, workerName, workerId, batchKey, itemId
+      keyword, postDesc, punchJson, workerName, workerId, batchKey, itemId, qtyUnit
     ).first<{ id: number }>()
 
     // 판짜기(sheet) manifest: 판에 소비된 조각 대기물 absorbed 처리 (mes-sheet.jsx consumed_intake_ids)

@@ -179,6 +179,9 @@
                     + stBadge
                     + (seq != null ? '<span class="inline-block px-1.5 rounded bg-gray-200 text-gray-700 text-xs mr-1">#' + seq + '</span>' : '')
                     + '<span class="font-medium">' + (r.width_cm != null ? r.width_cm : '?') + '×' + (r.height_cm != null ? r.height_cm : '?') + 'cm ×' + (r.qty || 1) + '</span>'
+                    // 「조」로 입력된 건 = 파일 한 장이 낱개 두 장. 수량은 이미 **개**이고(패널이 환산),
+                    //   여기 병기는 접수자가 눈으로 검산하라고 두는 것이다(0548 qty_unit).
+                    + (r.qty_unit === 'set' ? '<span class="ml-1 px-1 rounded bg-indigo-50 text-indigo-700 text-[11px]">' + Math.round((r.qty || 2) / 2) + '조</span>' : '')
                     // 품목이 해소된 대기물은 초록 배지로 구분 — 프리필하면 단가까지 채워진다(0532)
                     + (r.item_name ? ' · <span class="text-green-700 font-medium">' + escapeHtml(r.item_name) + '</span>' : '')
                     + (r.keyword ? ' · <span class="text-blue-600">' + escapeHtml(r.keyword) + '</span>' : '')

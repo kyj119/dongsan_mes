@@ -749,6 +749,26 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
     /item_type = 'PRODUCT'/.test(wb) && /items: items\.results/.test(wb))
   // 대기물의 법인 = 주문에 붙을 때 정해진다. 술어는 상태가 아니라 order_item_id 여야
   // 「취소는 되는데 복구가 안 되는」 비대칭이 안 생긴다.
+  // ★「조」 = 가로등배너 전용. 파일 한 장(120×180)이 낱개 두 장(60×180)이고 청구는 **개**다
+  //   (품목 `전사 가로등배너 폰지 60×180 · unit=EA · FIXED 5,000` · 이카운트도 2개로 청구).
+  //   ⚠️ 환산이 없으면 「1」이 1조인지 1개인지 아무도 모른 채 **절반만 청구**된다(에러 없음).
+  //   ⚠️ 환산 지점은 **gatherParams 하나**여야 한다. 행 적용 경로가 같은 함수를 다시 부르므로
+  //      값이 누적되지 않는다 — 다른 곳에 또 넣으면 그 보장이 깨진다.
+  ok('7d 수량 단위 [개|조] · 조는 ×2 · 환산은 한 곳', (() => {
+    const gp = (a0m.match(/function gatherParams[\s\S]{0,600}/) || [''])[0]
+    return /id="qtyUnit"/.test(html)
+      && /qty = qty \* qtyPerUnit\(\)/.test(gp)
+      && /'set' \? 2 : 1/.test(a0m)
+      && (a0m.match(/qtyPerUnit\(\)/g) || []).length === 2   // 정의 1 + 호출 1
+  })())
+  // 값은 개로만 흐르고 단위는 **표시·검산용**으로만 남는다 — 계산에 쓰면 청구 축이 둘로 갈린다
+  ok('7d 단위는 흔적만 남긴다(계산 아님)', (() => {
+    const intake = fs.readFileSync(path.join(REPO, 'src', 'scripts', 'orderForm', 'intake.js'), 'utf8')
+    return /qty_unit: \(P\.qty_unit === 'set'\)/.test(a0h)
+      && /const qtyUnit = String\(body\.qty_unit \|\| ''\) === 'set'/.test(wb)
+      && /r\.qty_unit === 'set'/.test(intake)
+      && !/qty_unit[\s\S]{0,80}\* 2/.test(wb)   // 서버가 다시 곱하지 않는다
+  })())
   ok('7d 미귀속 대기물은 법인 공용 · 흡수 시 주문 법인으로 확정',
     /order_item_id IS NULL OR \(1=1/.test(wb)
     && /entity_id = COALESCE\(\?, entity_id\)/.test(wb)

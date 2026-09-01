@@ -10,7 +10,7 @@
   //   우상단 표시는 여태 host(mesA0_ping = MESA0_VERSION, 축2 = Z: 1곳)만 보여줬다. 껍데기는 PC 별
   //   복사 설치라서 재설치를 안 한 PC 도 최신 번호로 보였다(2026-07-30 점검에서 확인).
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다.
-  var SHELL_VERSION = '0.7.0';   // 0.7.0 = ★품목 자동완성(item_id) — 주문서가 품목·단가까지 자동으로 채운다 · 0.6.0 = ★자동감지 캡처 경로 수용(임시문서 없음 표기) + 마스크 픽셀 수를 실제 PNG 에 맞춤(라벨 밀림 방지) · 0.5.3 =「키워드」→「내용」 명칭 통일(MES 품목 마스터와 구분) · 0.5.2 = 재단 탭 [◎ 전체] · 0.5.1 = 도련 방식 칸을 판짜기로 이동(라벨 거짓 정정) · 0.5.0 = 셸 자동 갱신 결과 수신·재시작 안내 · 0.4.1 = 설명 다이어트(cfg 압축·툴팁 이동) + 세로나열 CSS
+  var SHELL_VERSION = '0.8.0';   // 0.8.0 = ★수량 단위 [개|조] — 가로등배너 1조=2개 환산(조용한 절반 청구 방지) · 0.7.0 = ★품목 자동완성(item_id) — 주문서가 품목·단가까지 자동으로 채운다 · 0.6.0 = ★자동감지 캡처 경로 수용(임시문서 없음 표기) + 마스크 픽셀 수를 실제 PNG 에 맞춤(라벨 밀림 방지) · 0.5.3 =「키워드」→「내용」 명칭 통일(MES 품목 마스터와 구분) · 0.5.2 = 재단 탭 [◎ 전체] · 0.5.1 = 도련 방식 칸을 판짜기로 이동(라벨 거짓 정정) · 0.5.0 = 셸 자동 갱신 결과 수신·재시작 안내 · 0.4.1 = 설명 다이어트(cfg 압축·툴팁 이동) + 세로나열 CSS
   var STORE_WORKER = 'mes_a0_worker';
   var STORE_SETTINGS = 'mes_a0_settings';
   var CONFIG_PATH = 'Z:/DESIGNS/IA-등록/_config/config.json';
@@ -148,7 +148,7 @@
 
     var elWorker = $('worker'), elSaved = $('saved'), elVer = $('ver');
     var elMeas = $('meas'), elBtnMeasure = $('btnMeasure');
-    var elQty = $('qty'), elScale = $('scale'), elPreset = $('preset');
+    var elQty = $('qty'), elQtyUnit = $('qtyUnit'), elQtyHint = $('qtyHint'), elScale = $('scale'), elPreset = $('preset');
     var elTrim = $('trim'), elTrimInk = $('trimInk'), elClient = $('client'), elItem = $('item');
     var elBorderLine = $('borderLine'); // 출력 경계선(백색 테두리) on/off — 기본 OFF(2026-08-06 용준님)
     var elPTop = $('pTop'), elPBottom = $('pBottom'), elPLeft = $('pLeft'), elPRight = $('pRight');
@@ -482,6 +482,7 @@
       restoreSettings();
       updateClientHit();
       updateItemHit();
+      updateQtyHint();
       updateAnnotGates();
       applyTabUi(); // 직전값에 mode가 없어도 게이트·버튼이 현재 탭과 맞도록 무조건 1회
     }
@@ -542,7 +543,7 @@
     //   패널을 다시 열 때 앞 건 설정이 그대로 상속돼 정책이 무의미해진다.
     //   계속 기억하는 것 = 수량·배율·용도·돔보·거래처·키워드(작업 연속성 축).
     function gatherSettings() {
-      return { qty: elQty ? elQty.value : '1', scale: elScale ? elScale.value : '1',
+      return { qty: elQty ? elQty.value : '1', qtyUnit: qtyUnitValue(), scale: elScale ? elScale.value : '1',
         mode: modeValue(), trim: elTrim ? !!elTrim.checked : false, trimInk: elTrimInk ? !!elTrimInk.checked : false, client: elClient ? elClient.value : '',
         item: elItem ? elItem.value : '',
         annot: elAnnot ? elAnnot.value : '' };
@@ -554,6 +555,7 @@
       var st = null; try { st = JSON.parse(raw); } catch (e) { return; }
       if (!st) return;
       if (elQty && st.qty) elQty.value = st.qty;
+      if (elQtyUnit && st.qtyUnit) elQtyUnit.value = st.qtyUnit;
       if (elScale && st.scale) elScale.value = st.scale;
       if (elTrim) elTrim.checked = !!st.trim;
       if (elTrimInk) elTrimInk.checked = !!st.trimInk;
@@ -632,9 +634,29 @@
       updateApplyBar();
     }
 
+    // ── 수량 단위(2026-09-01) ─────────────────────────────────────────────
+    // 「조」 = 가로등배너 전용. 파일 한 장(120×180)이 낱개 두 장(60×180)이 되고 청구는 **개**로 한다
+    //   (품목이 이미 `전사 가로등배너 폰지 60×180 · unit=EA` 이고 이카운트도 2개로 청구한다).
+    // ★환산은 **여기 한 곳**에서만 한다 — manifest·대기함·주문서는 전부 개다.
+    //   gatherParams 는 폼에서 매번 다시 읽으므로 여러 번 적용해도 값이 누적되지 않는다
+    //   (행 적용 경로 applyFormToRows 도 같은 함수를 다시 부른다).
+    function qtyUnitValue() { return (elQtyUnit && elQtyUnit.value === 'set') ? 'set' : 'ea'; }
+    function qtyPerUnit() { return qtyUnitValue() === 'set' ? 2 : 1; }
+    /** 조를 고르면 「1조 = 2개」를 눈에 보이게 — 환산이 조용히 일어나지 않게 한다. */
+    function updateQtyHint() {
+      if (!elQtyHint) return;
+      var raw = parseInt(elQty ? elQty.value : '1', 10); if (isNaN(raw) || raw < 1) raw = 1;
+      elQtyHint.textContent = (qtyUnitValue() === 'set')
+        ? (raw + '조 = ' + (raw * 2) + '개로 등록됩니다 (낱개 60폭 기준)')
+        : '주문서 라인 수량으로 프리필';
+    }
+    if (elQtyUnit) elQtyUnit.addEventListener('change', function () { updateQtyHint(); saveSettings(); });
+    if (elQty) elQty.addEventListener('input', updateQtyHint);
+
     // ── 가공 실행 ──
     function gatherParams() {
       var qty = parseInt(elQty ? elQty.value : '1', 10); if (isNaN(qty) || qty < 1) qty = 1;
+      qty = qty * qtyPerUnit();   // 조 → 개 (유일한 환산 지점)
       var scaleN = parseInt(elScale ? elScale.value : '1', 10); if (isNaN(scaleN) || scaleN < 1) scaleN = 1;
       var finishing = {};
       for (var s = 0; s < SIDES.length; s++) {
@@ -670,7 +692,7 @@
         client_name: elClient ? (elClient.value || '') : '',
         client_id: clientIdOf(elClient ? elClient.value : ''), // 정확일치 시 해소, 미일치=null(free-text)
         item_id: itemIdOf(elItem ? elItem.value : ''),         // 정확일치만 — 대기함→주문서가 단가까지 채운다
-        qty: qty, scale_n: scaleN, mode: modeValue(),
+        qty: qty, qty_unit: qtyUnitValue(), scale_n: scaleN, mode: modeValue(),
         trim: elTrim ? !!elTrim.checked : false,
         // 출력 경계선(백색 테두리). host 는 `!== false` 로 읽으므로 구 패널(키 없음)은 기존대로 ON.
         border_line: elBorderLine ? !!elBorderLine.checked : false,
