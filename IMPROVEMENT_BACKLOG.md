@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-09-01T03:45:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-09-01T09:44:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,27 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **3** (`list_issues(state:OPEN,label:auto-improve)` 실측, 4→3: #608이 이번 churn 커밋으로 owner가 직접 close — #613·#616·#617만 잔존) |
+| 🆕 new | **4** (`list_issues(state:OPEN,label:auto-improve)` 실측, 3→4: 이번 사이클 신규 발견 #622 추가 — #613·#616·#617·#622) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **541** (`search_issues(reason:completed)` 리터럴 쿼리, 540→541, +1 = #608 close와 정확히 일치) |
-| ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 재확인, 변동없음) |
+| ✔️ done | **541** (`search_issues(reason:completed)` 리터럴 쿼리, 변동없음) |
+| ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 재확인 생략, 변동없음) |
+
+> **Area 3 UX/기능 감사 (2026-09-01T09:44):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD, `897d65e`), `git fetch origin main`(`207078c..897d65e`, forced update) → `git checkout main && git reset --hard origin/main`(HEAD `897d65e`). `npm ci`(0→81), `npx tsc --noEmit` clean, `npm run build` 성공.
+> - **churn 확인(앵커 = 직전 Area3 방법 라인 HEAD `047a1cd`)**: 웹앱 범위 diff 18커밋. 그중 UX 렌즈 실질 대상은 **`b13a415`**(재고평가/소모량/거래처귀속감사 3개 신규 화면 배선, Area3가 3회 누적 codify한 "백엔드 먼저·화면 나중" #619·#618·#606을 정확히 해소)와 **`f7454bc`**(직송 배송시간→오전/오후 슬롯 전환, orderForm/cards/shipments UI 동반) 2건. 나머지는 IA cut-panel(웹UX 렌즈 밖)·재고 원장 write-path(백엔드 전용, Area2/4/5/6 소관)·CI YAML.
+> - **`b13a415` 직독**: `inventoryValuation.js`(신규 143줄) — 로딩/빈상태/에러 3상태 전부 렌더, `negative_stock_items`/`zero_valuation_items`/`note`를 총계 옆에 노출(2026-08-20 평가액 오류 수정이 만든 필드를 총계 단독 표시로 감추지 않음), escapeHtml 전수 적용, `getElementById` 신규 대상 전부 존재+널가드. 커밋 자체가 격리 서버 13-assertion 브라우저 검증 + smoke 113/113 + entity audit 67/67 보고. **UX 관점 결함 0건, 오히려 기존 지적사항 해소**.
+> - **`b13a415` 커밋 메시지 내 자기보고 미해결 버그를 직접 추적 — 근본원인 확정, 영향범위 6페이지로 확장**: 메시지가 "the shell drops the URL fragment during auth restore, so /inventory#tab=count ... land on the default tab"를 언급만 하고 고치지 않음. 코드 추적 결과 — `src/layout.ts`가 `SHARED_AUTH_JS`(`shell.js`, 217행)를 페이지 전용 스크립트(266행)보다 먼저 인라인하는데, `shell.js:1805` `history.replaceState({...}, '', window.location.pathname + window.location.search)`가 DOMContentLoaded를 기다리지 않고 즉시 실행되며 URL에 해시를 안 넣어 **주소창 해시를 삭제**한다 — 이후 실행되는 각 페이지의 `DOMContentLoaded` 핸들러가 `window.location.hash`를 읽을 땐 이미 빈 문자열. `grep -rln "location.hash" src/pages`로 소비처 전수 = inventory(count/zone/tx/valuation)·activityLog·productionReports(cost/oee)·reports(forecast/financial)·settings·taxInvoices(cash/hometax/vat) **6페이지**. 새로고침·북마크·공유링크·`/inventory-count` 리다이렉트 전부 기본 탭으로 귀결. **이슈 등록** → #622(issue-only: SPA 내비 공유코드라 6페이지+뒤로가기 히스토리 회귀 확인 필요, 자동수정 정책상 제외).
+> - **`f7454bc` 직독(직송 오전/오후 슬롯)**: `npm run test:delivery-slot`(67건, SSOT 쌍 `productionDeadline.ts`↔`deliverySlot.js` 상수 대조) 자체 게이트 동반, 마감일 UI 전용 가드(서버 400은 과거 오전주문 편집을 막아 의도적으로 프론트만 가드) 명시. 코드 자체는 커밋 메시지가 이미 상세 검증 — 재확인 불요.
+> - **standing scan 1: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 1건 `attendance.ts:158`(기존 노출 유지, 변동없음).
+> - **standing scan 2: "백엔드 먼저·화면 나중"** — 이번 churn 신규 API 0건(`b13a415`는 기존 라우트에 화면만 배선) → 신규 후보 없음, 기존 3건(#606/#618/#619)은 `b13a415`로 이미 해소.
+> - **CI 헬스**: `deploy.yml` 최신런(HEAD `897d65e`) `conclusion:success`.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **4**(3→4, 이번 사이클 신규 #622 추가 — #613·#616·#617·#622), `search_issues(reactions:>0, state:open)` **0건**(승인 대기 유지). 중복 확인: `search_issues("hash fragment tab replaceState location.hash dropped")` 사전 조회 0건.
+> - **backlog↔GitHub 절대값 재동기화**: open **4**(3→4) · done **541**(변동없음) · rejected **6**(변동없음, 재확인 생략).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 9건 → 이번 로그 추가 후 10건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 1건(#622, 6페이지 해시 딥링크 무효화 — SPA 내비 공유코드 근본원인), 자동수정 0건, done-sync: open 4(3→4)·done 541(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-09-01T03:45):**
 > - **방법**: `git status`=워킹트리 clean, `git fetch origin main`(`207078c..c97cdd8`, 로컬 ref가 갈라져 있어 forced update) → `git checkout main && git reset --hard origin/main`(HEAD `c97cdd8`). `npm ci`(0→81), `npx tsc --noEmit` clean.
