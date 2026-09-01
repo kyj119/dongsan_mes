@@ -1377,9 +1377,15 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     // ★품목 = **제품(PRODUCT)만**. is_sales_item 으로 거르면 원자재가 섞인다(2026-09-01 실측:
     //   818건 앞머리가 「300D 무연새틴 · 3M IJ35C-10 · 45도 보강대」). PRODUCT 268 종이고
     //   주문 라인의 74.2% 를 덮는다 — 818개를 훑게 하면 하드코딩 15개보다 나빠진다.
-    ok('4 품목 목록은 제품만(원자재·상품 제외)', (() => {
+    // ⚠️ **두 필터가 함께** 걸려야 한다. 축이 다르다 —
+    //    `is_sales_item` = 업무에 쓰는 품목인가 · `item_type` = 제품인가 자재인가.
+    //    is_sales_item 만 쓰면 원자재가 섞이고(「300D 무연새틴 · 3M IJ35C-10」),
+    //    item_type 만 쓰면 **장비가 섞인다**(「CF2000 발색기 · Extreme 집진기」 25건).
+    //    둘 다 2026-09-01 에 실제로 prod config 에 나갔다. 하나만 걸면 여기서 걸린다.
+    ok('4 품목=제품 · 자재=자재, 둘 다 판매품목 필터와 함께', (() => {
       const wb = fs.readFileSync(path.join(REPO, 'src', 'routes', 'workbench.ts'), 'utf8')
-      return /item_type = 'PRODUCT'/.test(wb) && !/is_sales_item, 0\) = 1/.test(wb)
+      return /COALESCE\(is_sales_item, 0\) = 1 AND item_type = 'PRODUCT'/.test(wb)
+        && /COALESCE\(is_sales_item, 0\) = 1 AND item_type = 'MATERIAL'/.test(wb)
     })())
     // ★품목 → 자재. 매핑이 없으면 **전체 목록으로 되돌린다** — 실사용의 27% 가 매핑이 없고 거기엔
     //   포맥스·폼보드처럼 품목과 별개 축인 판재가 있다. 자유 입력을 막으면 등록 자체가 불가능해진다.

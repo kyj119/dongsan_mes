@@ -552,9 +552,13 @@ workbenchRouter.get('/intake-config', async (c) => {
       //   가공해서 등록하는 대상이 아니다). 축은 `item_type` 이다 — PRODUCT 268 · MATERIAL 334 · GOODS 216.
       //   주문 라인 실측으로도 PRODUCT 가 74.2%(7,010/9,446)이고 그 안에서 실제로 쓰인 건 149종뿐이라
       //   검색 목록으로 충분하다. 818개를 훑게 하면 하드코딩 15개보다 나빠진다.
+      //   ⚠️ **두 필터를 함께 써야 한다**(2026-09-01 실측). `is_sales_item` 을 빼고 `item_type` 만
+      //      쓰면 「CF2000 발색기 · Extreme 집진기」 같은 **장비가 PRODUCT 로 25건 섞여 든다**.
+      //      is_sales_item=0 쪽은 전부 기계 부품·부속이다(헤드·엔코더스트립·릴레이·블로어·각파이프).
+      //      is_sales_item = 「업무에 쓰는 품목인가」 · item_type = 「제품인가 자재인가」 — 축이 다르다.
       c.env.DB.prepare(
         `SELECT id, item_name, sub_category FROM items
-          WHERE COALESCE(is_active, 1) = 1 AND item_type = 'PRODUCT'
+          WHERE COALESCE(is_active, 1) = 1 AND COALESCE(is_sales_item, 0) = 1 AND item_type = 'PRODUCT'
           ORDER BY item_name, id`
       ).all(),
       // 제품 → 자재(2026-09-01). 재단 패널이 [자재]를 **하드코딩 15개**로 물어보고 있었는데,
@@ -574,7 +578,7 @@ workbenchRouter.get('/intake-config', async (c) => {
       //   품목이 정해지면 product_materials 로 좁혀지고, 매핑이 없을 때의 폴백이 이 목록이다.
       c.env.DB.prepare(
         `SELECT id, item_name FROM items
-          WHERE COALESCE(is_active, 1) = 1 AND item_type = 'MATERIAL'
+          WHERE COALESCE(is_active, 1) = 1 AND COALESCE(is_sales_item, 0) = 1 AND item_type = 'MATERIAL'
           ORDER BY item_name, id`
       ).all(),
       // 후가공 옵션(2026-09-01) — 15행뿐이라 통째로 싣는다. 소분류(sub_category)·분류(pp_category)를
