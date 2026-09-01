@@ -1367,6 +1367,24 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     ok('4 재단 폼에 품목 칸(내용과 별개)', /id="regProduct"/.test(htmlSrc) && /id="regItem"/.test(htmlSrc))
     ok('4 품목은 정확일치만 id 로 본다',
       /function productIdOf\(/.test(panelSrc2) && /item_name === t/.test(panelSrc2))
+    // ★품목 = **제품(PRODUCT)만**. is_sales_item 으로 거르면 원자재가 섞인다(2026-09-01 실측:
+    //   818건 앞머리가 「300D 무연새틴 · 3M IJ35C-10 · 45도 보강대」). PRODUCT 268 종이고
+    //   주문 라인의 74.2% 를 덮는다 — 818개를 훑게 하면 하드코딩 15개보다 나빠진다.
+    ok('4 품목 목록은 제품만(원자재·상품 제외)', (() => {
+      const wb = fs.readFileSync(path.join(REPO, 'src', 'routes', 'workbench.ts'), 'utf8')
+      return /item_type = 'PRODUCT'/.test(wb) && !/is_sales_item, 0\) = 1/.test(wb)
+    })())
+    // ★품목 → 자재. 매핑이 없으면 **전체 목록으로 되돌린다** — 실사용의 27% 가 매핑이 없고 거기엔
+    //   포맥스·폼보드처럼 품목과 별개 축인 판재가 있다. 자유 입력을 막으면 등록 자체가 불가능해진다.
+    ok('4 품목이 자재 후보를 좁힌다 · 매핑 없으면 자유 입력 유지', (() => {
+      const wb = fs.readFileSync(path.join(REPO, 'src', 'routes', 'workbench.ts'), 'utf8')
+      const fn = (panelSrc2.match(/function narrowMaterials[\s\S]{0,700}/) || [''])[0]
+      return /product_materials: prodMats\.results/.test(wb)
+        && /FROM product_materials pm/.test(wb)
+        && /fillDatalist\('materialList', list \|\| MATERIALS\)/.test(fn)   // 폴백
+        && /list\.length === 1/.test(fn)                                     // 하나면 채운다
+        && /!String\(el\.value \|\| ''\)/.test(fn)                          // 사람이 쓴 값은 안 덮는다
+    })())
     ok('4 등록정보에 ITEMID · 호스트 manifest 에 item_id', (() => {
       const h = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
       return /'ITEMID ' \+ \(productIdOf\(/.test(panelSrc2) && /"item_id":' \+ \(R\.ITEMID/.test(h)

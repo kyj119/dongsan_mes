@@ -527,7 +527,7 @@ workbenchRouter.get('/intake-config', async (c) => {
   try {
     // 거래처 리스트 재도입(2026-07-27, spec 2026-07-23 D5): CEP 패널 자동완성 소스(id+name 경량 전체).
     // workers = 가공자↔MES user id 매핑(spec §3.5) — manifest worker_id → 대기함 "내 작업" 상관.
-    const [methods, presets, workerDomains, workers, clients, items] = await Promise.all([
+    const [methods, presets, workerDomains, workers, clients, items, prodMats] = await Promise.all([
       c.env.DB.prepare(
         `SELECT id, name, margin_cm, method_group FROM finishing_methods WHERE is_active = 1 ORDER BY sort_order, id`
       ).all(),
@@ -547,10 +547,27 @@ workbenchRouter.get('/intake-config', async (c) => {
       //   (orderForm/intake.js → applyItemSelection → /api/prices 최근거래가>특약가>단가표>기본단가).
       //   여태 그 자리가 비어 있어 라인마다 사람이 품목·단가를 다시 골랐다 — 남은 이중입력의 본체.
       //   판정은 사람이 한다(거래처 자동완성과 같은 정책): 정확일치만 id 해소, 미일치는 null.
+      // ★제품만 — `is_sales_item` 으로 거르면 **원자재가 섞인다**(2026-09-01 실측: 818건 중 앞머리가
+      //   「300D 무연새틴 · 3M IJ35C-10 · 45도 보강대」 였다. 원단·부속은 판매 가능하지만 디자이너가
+      //   가공해서 등록하는 대상이 아니다). 축은 `item_type` 이다 — PRODUCT 268 · MATERIAL 334 · GOODS 216.
+      //   주문 라인 실측으로도 PRODUCT 가 74.2%(7,010/9,446)이고 그 안에서 실제로 쓰인 건 149종뿐이라
+      //   검색 목록으로 충분하다. 818개를 훑게 하면 하드코딩 15개보다 나빠진다.
       c.env.DB.prepare(
         `SELECT id, item_name, sub_category FROM items
-          WHERE COALESCE(is_active, 1) = 1 AND COALESCE(is_sales_item, 0) = 1
+          WHERE COALESCE(is_active, 1) = 1 AND item_type = 'PRODUCT'
           ORDER BY item_name, id`
+      ).all(),
+      // 제품 → 자재(2026-09-01). 재단 패널이 [자재]를 **하드코딩 15개**로 물어보고 있었는데,
+      //   그건 품목과 같은 사실을 두 어휘로 두 번 묻는 것이다. 매핑이 있으면 후보를 좁히고
+      //   1개면 자동으로 채운다 — 실사용 라인의 72.7%(6,865/9,446)가 매핑을 가진다.
+      //   ⚠️ 나머지 27%는 매핑이 없다 → 자유 입력을 없애면 안 된다(포맥스·폼보드처럼 품목과
+      //      별개 축인 판재가 여기 남는다. 그건 오류가 아니라 정상이다).
+      c.env.DB.prepare(
+        `SELECT pm.product_item_id AS p, m.item_name AS m
+           FROM product_materials pm
+           JOIN items m ON m.id = pm.material_item_id
+          WHERE COALESCE(m.is_active, 1) = 1
+          ORDER BY pm.product_item_id, m.item_name, m.id`
       ).all(),
     ])
     // 경로①(주문 선행)용 미가공 라인: 파일 미연결 + 진행 중 주문만
@@ -575,7 +592,8 @@ workbenchRouter.get('/intake-config', async (c) => {
         worker_domains: workerDomains.results, // 가공자→도메인(CEP 필터·프로파일)
         workers: workers.results, // 가공자↔user id 매핑(id, name) — 패널 worker_id 해소
         clients: clients.results, // 거래처 자동완성(id, client_name) — 정확일치 시 client_id 해소
-        items: items.results, // 품목 자동완성(id, item_name, sub_category) — 정확일치 시 item_id 해소
+        items: items.results, // 품목 자동완성(id, item_name, sub_category) — PRODUCT 만, 정확일치 시 item_id 해소
+        product_materials: prodMats.results, // 제품 id → 자재명 — 재단 [자재] 후보 좁히기(없으면 자유 입력)
         open_lines: openLines,
       },
     })

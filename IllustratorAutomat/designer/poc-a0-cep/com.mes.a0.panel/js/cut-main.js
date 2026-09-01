@@ -31,7 +31,7 @@
   // ⚠️ 내용을 고치면 **반드시 이 번호를 올린다** — 수동 배포축이라 이 문자열이 "이 PC 가 어느 셸인가"의
   //    유일한 단서다. 0.57.0 하나가 세 상태를 가리키던 사고가 있었고(등록 파라미터·굽기 통합·[◎ 전체]),
   //    그래서 `ia:deploy` 가 번호가 그대로면 배포를 막는다.
-  var SHELL_VERSION = '0.67.0';   // 0.67.0 = ★굽기 격자 칸(#nestBakeMm — 큰 실물에서 메모리·시간 급증 완화) + 조합 중 datalist 분리 제거(복원이 비대칭이라 자동완성이 죽은 채 남았다) · 0.66.0 = ★품목 칸(regProduct→ITEMID) — 주문서가 품목·단가까지 자동으로 채운다([내용]=regItem 과 다른 칸) · 0.65.0 = 0.64.0 의 근거 정정(실측상 composition 이벤트가 안 와서 그 처리는 발동하지 않는다 — 대비책으로만 유지) · 0.64.0 = 목록 달린 칸에 IME 조합 중 datalist 분리 · 0.63.0 = 호스트 구버전 감지(Z: 배포본과 대조 → 시작·포커스 시 경고 · 판짜기 차단) · 0.62.0 = 폴백 문구에 회전 포함(배율 1배 회전도 PDF 경로) · 0.61.0 = 배율 확대 결과 보고(PDF 배치 / 예비 경로 폴백 경고) · 0.60.0 = 파일명 맨 앞 거래처 · 자재/후가공 행 분리(폭 맞춤) · 「품목」→「내용」 명칭 분리(MES 품목 마스터와 구분) · 0.59.0 = 재단 탭 [◎ 전체] · 0.58.0 = 굽기 통합(마스크+도련 1왕복)·등록 파라미터(자재·후가공·돔보·파일명) · 0.57.0 = 조각 속 메우기(그룹 하나=칼선 하나·맞붙임 복구) · 0.56.0 = 도련 겹침 분할(간격 존중·하한 1.5mm)
+  var SHELL_VERSION = '0.68.0';   // 0.68.0 = ★품목=제품(PRODUCT)만 + 품목→자재 후보 좁히기(매핑 없으면 자유 입력 유지) · 0.67.0 = ★굽기 격자 칸(#nestBakeMm — 큰 실물에서 메모리·시간 급증 완화) + 조합 중 datalist 분리 제거(복원이 비대칭이라 자동완성이 죽은 채 남았다) · 0.66.0 = ★품목 칸(regProduct→ITEMID) — 주문서가 품목·단가까지 자동으로 채운다([내용]=regItem 과 다른 칸) · 0.65.0 = 0.64.0 의 근거 정정(실측상 composition 이벤트가 안 와서 그 처리는 발동하지 않는다 — 대비책으로만 유지) · 0.64.0 = 목록 달린 칸에 IME 조합 중 datalist 분리 · 0.63.0 = 호스트 구버전 감지(Z: 배포본과 대조 → 시작·포커스 시 경고 · 판짜기 차단) · 0.62.0 = 폴백 문구에 회전 포함(배율 1배 회전도 PDF 경로) · 0.61.0 = 배율 확대 결과 보고(PDF 배치 / 예비 경로 폴백 경고) · 0.60.0 = 파일명 맨 앞 거래처 · 자재/후가공 행 분리(폭 맞춤) · 「품목」→「내용」 명칭 분리(MES 품목 마스터와 구분) · 0.59.0 = 재단 탭 [◎ 전체] · 0.58.0 = 굽기 통합(마스크+도련 1왕복)·등록 파라미터(자재·후가공·돔보·파일명) · 0.57.0 = 조각 속 메우기(그룹 하나=칼선 하나·맞붙임 복구) · 0.56.0 = 도련 겹침 분할(간격 존중·하한 1.5mm)
 
   // ── 도련 겹침 분할 (2026-08-25) ─────────────────────────────────────────
   // ★순수 함수로 뽑아 둔 이유 = **하네스가 이 함수를 직접 돌리기 때문**이다(`npm run cut:bleed` §9).
@@ -2130,6 +2130,7 @@
   var clientList = [];   // [{id, client_name}]
   var workerList = [];   // [{id, name}]
   var productList = [];  // [{id, item_name, sub_category}] — 품목(2026-09-01)
+  var productMats = {};  // 제품 id → [자재명] (config.product_materials)
 
   function loadConfig() {
     try {
@@ -2145,6 +2146,13 @@
       workerList = cfg.workers || [];
       productList = cfg.items || [];
       fillDatalist('productList', productList.map(function (it) { return it.item_name || ''; }));
+      productMats = {};
+      var pms = cfg.product_materials || [];
+      for (var mi = 0; mi < pms.length; mi++) {
+        var pk = String(pms[mi].p);
+        if (!productMats[pk]) productMats[pk] = [];
+        productMats[pk].push(pms[mi].m);
+      }
       var dl = document.getElementById('clientList');
       if (dl) {
         dl.innerHTML = '';
@@ -2168,6 +2176,24 @@
 
   // 품목은 **정확일치만** id 로 본다 — 이름만 맞춘 가짜 품목이 실리면 주문서가 그 단가로 계산한다.
   //   미해소는 null 로 보내고 사람이 주문서에서 고른다(자동 확정 금지).
+  /**
+   * 품목이 정해지면 [자재] 후보를 **그 제품에 연결된 것만**으로 좁힌다(product_materials).
+   * ★매핑이 없으면 전체 목록으로 되돌린다 — 실사용 라인의 27%가 매핑이 없고, 거기엔 포맥스·폼보드처럼
+   *   **품목과 애초에 별개 축인 판재**가 들어 있다. 그건 누락이 아니라 정상이므로 자유 입력을 막지 않는다.
+   * ★후보가 하나면 채워 주되 **사람이 쓴 값은 덮지 않는다**(자동 확정 금지와 같은 결).
+   */
+  function narrowMaterials() {
+    var id = productIdOf((document.getElementById('regProduct') || {}).value);
+    var list = (id != null && productMats[String(id)]) ? productMats[String(id)] : null;
+    fillDatalist('materialList', list || MATERIALS);
+    var el = document.getElementById('regMaterial');
+    if (!el) return;
+    if (list && list.length === 1 && !String(el.value || '').replace(/^\s+|\s+$/g, '')) {
+      el.value = list[0];
+      refreshPairName();
+    }
+  }
+
   function productIdOf(name) {
     var t = String(name || '').replace(/^\s+|\s+$/g, '');
     if (!t) return null;
@@ -2535,6 +2561,9 @@
     var pel = document.getElementById(pairIds[pi]);
     if (pel) { pel.addEventListener('input', refreshPairName); pel.addEventListener('change', refreshPairName); }
   }
+  // 품목 → 자재 좁히기. input 까지 거는 이유 = 자동완성 선택이 change 를 안 낼 수 있다(datalist).
+  var pEl = document.getElementById('regProduct');
+  if (pEl) { pEl.addEventListener('input', narrowMaterials); pEl.addEventListener('change', narrowMaterials); }
 
   var btnNest = $('btnNest');
   if (btnNest) btnNest.addEventListener('click', runNest);

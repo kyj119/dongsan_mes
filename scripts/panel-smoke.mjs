@@ -743,8 +743,10 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   ok('7d 품목은 정확일치만 id 로 본다', /item_name === t/.test(itemIdOf) && !/indexOf/.test(itemIdOf))
   ok('7d 패널이 item_id 를 싣는다', /item_id: itemIdOf\(/.test(a0m))
   ok('7d 호스트 manifest 에 item_id', /item_id: \(P\.item_id != null\)/.test(a0h))
-  ok('7d 서버가 품목 목록을 config 로 내보낸다',
-    /is_sales_item, 0\) = 1/.test(wb) && /items: items\.results/.test(wb))
+  // 축은 is_sales_item 이 아니라 item_type 이다 — 판매 가능 여부로 거르면 원자재가 섞인다
+  // (2026-09-01 실측: 818건 앞머리가 「300D 무연새틴 · 3M IJ35C-10」. PRODUCT 만 268종·라인의 74.2%)
+  ok('7d 서버가 품목 목록을 config 로 내보낸다(제품만)',
+    /item_type = 'PRODUCT'/.test(wb) && /items: items\.results/.test(wb))
   // 대기물의 법인 = 주문에 붙을 때 정해진다. 술어는 상태가 아니라 order_item_id 여야
   // 「취소는 되는데 복구가 안 되는」 비대칭이 안 생긴다.
   ok('7d 미귀속 대기물은 법인 공용 · 흡수 시 주문 법인으로 확정',
