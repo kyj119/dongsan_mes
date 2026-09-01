@@ -174,17 +174,31 @@ async function loadPrintingCards() {
 }
 
 // ── 장비 그룹화 헬퍼 (장비목록·필터 드롭다운 공유) ──
-// 그룹 키 = location_zone 있으면 그것, 없으면 id의 '-' 앞 접두사
+// 그룹 키 = 출력방식(process_code). 정본 = equipment_processes + constants/process.ts (0546).
+// ★ 예전엔 자유텍스트 location_zone 을 1순위로 봤는데, 그 칸은 EPSON-01 한 대만 채워져 있어
+//   그 한 대만 '출력실' 그룹으로 튀었다(2026-09-01). 위치는 zone_id 축이 따로 갖는다 — 여기서 섞지 않는다.
+//   공정 미지정 장비는 접두사로 폴백해 목록에서 사라지지 않게 한다.
 var productionEqList = [];        // 마지막 로드 장비 원본
 var productionEqCollapsed = {};   // { groupKey: true } = 접힘 상태 유지
 var productionAgentSelected = {}; // { equipmentId: true } = 다중장비 필터 선택
 
 function productionEqGroupKey(eq) {
-  var zone = (eq && eq.location_zone ? String(eq.location_zone).trim() : '');
-  if (zone) return zone;
+  var code = (eq && eq.process_code ? String(eq.process_code).trim() : '');
+  if (code) {
+    var names = (typeof window !== 'undefined' && window.PROCESS_NAMES) || {};
+    return names[code] || code;
+  }
   var id = (eq && eq.id ? String(eq.id) : '');
   var dash = id.indexOf('-');
-  return dash > 0 ? id.substring(0, dash) : (id || '기타');
+  return dash > 0 ? id.substring(0, dash) : (id || '미지정');
+}
+
+// 그룹 정렬 = PROCESS_LIST 순서(수성·솔벤·UV·전사·태극기·간판) 우선, 미지정 접두사는 뒤로.
+// 가나다순이면 'UV' 가 한글 앞에 붙어 현장 순서와 어긋난다.
+function productionEqGroupRank(key) {
+  var list = (typeof window !== 'undefined' && window.PROCESS_LIST) || [];
+  for (var i = 0; i < list.length; i++) if (list[i].label === key) return i;
+  return 100;
 }
 
 // 장비 배열 → [{ key, items: [eq,...] }] (그룹명 오름차순, 그룹 내 name 오름차순)
@@ -197,6 +211,8 @@ function productionGroupEquipment(list) {
     map[k].push(eq);
   });
   return Object.keys(map).sort(function(a, b) {
+    var ra = productionEqGroupRank(a), rb = productionEqGroupRank(b);
+    if (ra !== rb) return ra - rb;
     return a < b ? -1 : a > b ? 1 : 0;
   }).map(function(k) {
     var items = map[k].slice().sort(function(a, b) {
@@ -783,7 +799,7 @@ function renderEquipmentColumn(eq) {
     + '<span class="text-[10px] px-1.5 py-0.5 rounded ' + statusClass + '">' + statusLabel + '</span>'
     + '</div>'
     + '<div class="flex items-center justify-between">'
-    + '<span class="text-[10px] text-gray-400">' + escapeHtml(eq.location_zone || '') + '</span>'
+    + '<span class="text-[10px] text-gray-400">' + escapeHtml(productionEqGroupKey(eq) || '') + '</span>'
     + '<button onclick="editCapacity(\'' + escapeHtml(eq.id) + '\', ' + capacity + ')" class="text-[10px] text-blue-500 hover:text-blue-700" title="용량 설정">'
     + '<i class="fas fa-cog"></i> 용량</button>'
     + '</div>' + loadBar + '</div>'

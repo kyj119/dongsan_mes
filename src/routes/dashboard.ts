@@ -411,6 +411,9 @@ dashboardRouter.get('/equipment-load', async (c) => {
       SELECT e.id, e.name, e.equipment_status, COALESCE(e.daily_capacity, 0) as daily_capacity,
         (SELECT COUNT(*) FROM cards c WHERE c.equipment_id = e.id AND c.status = 'PRINTING'${efCnt.clause}) as queue_count,
         e.last_seen_at, e.agent_id, e.print_log_path,
+        -- 장비 그룹 축 = 출력방식(equipment_processes.is_primary). 자유텍스트 location_zone 은 은퇴(0546).
+        (SELECT ep.process_code FROM equipment_processes ep
+          WHERE ep.equipment_id = e.id ORDER BY ep.is_primary DESC, ep.process_code ASC LIMIT 1) as process_code,
         CASE
           WHEN e.last_seen_at IS NULL THEN 'OFFLINE'
           WHEN (julianday('now') - julianday(e.last_seen_at)) * 86400 > 120 THEN 'OFFLINE'
