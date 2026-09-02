@@ -10,7 +10,7 @@
   //   우상단 표시는 여태 host(mesA0_ping = MESA0_VERSION, 축2 = Z: 1곳)만 보여줬다. 껍데기는 PC 별
   //   복사 설치라서 재설치를 안 한 PC 도 최신 번호로 보였다(2026-07-30 점검에서 확인).
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다.
-  var SHELL_VERSION = '0.8.0';   // 0.8.0 = ★수량 단위 [개|조] — 가로등배너 1조=2개 환산(조용한 절반 청구 방지) · 0.7.0 = ★품목 자동완성(item_id) — 주문서가 품목·단가까지 자동으로 채운다 · 0.6.0 = ★자동감지 캡처 경로 수용(임시문서 없음 표기) + 마스크 픽셀 수를 실제 PNG 에 맞춤(라벨 밀림 방지) · 0.5.3 =「키워드」→「내용」 명칭 통일(MES 품목 마스터와 구분) · 0.5.2 = 재단 탭 [◎ 전체] · 0.5.1 = 도련 방식 칸을 판짜기로 이동(라벨 거짓 정정) · 0.5.0 = 셸 자동 갱신 결과 수신·재시작 안내 · 0.4.1 = 설명 다이어트(cfg 압축·툴팁 이동) + 세로나열 CSS
+  var SHELL_VERSION = '0.9.0';   // 0.9.0 = ★검색이 공백을 무시한다 — 일러 CEP 는 IME 조합을 웹뷰에 안 넘기고(composition 0건) 마지막 글자를 스페이스로 확정해야 해서 그 공백이 이름 안에 남는다 · 0.8.0 = ★수량 단위 [개|조] — 가로등배너 1조=2개 환산(조용한 절반 청구 방지) · 0.7.0 = ★품목 자동완성(item_id) — 주문서가 품목·단가까지 자동으로 채운다 · 0.6.0 = ★자동감지 캡처 경로 수용(임시문서 없음 표기) + 마스크 픽셀 수를 실제 PNG 에 맞춤(라벨 밀림 방지) · 0.5.3 =「키워드」→「내용」 명칭 통일(MES 품목 마스터와 구분) · 0.5.2 = 재단 탭 [◎ 전체] · 0.5.1 = 도련 방식 칸을 판짜기로 이동(라벨 거짓 정정) · 0.5.0 = 셸 자동 갱신 결과 수신·재시작 안내 · 0.4.1 = 설명 다이어트(cfg 압축·툴팁 이동) + 세로나열 CSS
   var STORE_WORKER = 'mes_a0_worker';
   var STORE_SETTINGS = 'mes_a0_settings';
   var CONFIG_PATH = 'Z:/DESIGNS/IA-등록/_config/config.json';
@@ -29,20 +29,34 @@
     for (var i = 0; i < workers.length; i++) if (workers[i].name === name) return workers[i].id;
     return null;
   }
-  function clientIdOf(name) {
-    var t = (name || '').replace(/^\s+|\s+$/g, '');
-    if (!t) return null;
-    for (var i = 0; i < clientList.length; i++) if (clientList[i].client_name === t) return clientList[i].id;
-    return null; // 미일치 = free-text 폴백(client_id null)
+  // ★공백을 지운 비교축 — 일러 CEP 는 **IME 조합을 웹뷰에 넘기지 않는다**(2026-09-02 실측:
+  //   composition 이벤트 0건 · `isComposing` 항상 false · 확정된 글자만 keypress 로 한 자씩).
+  //   그래서 마지막 글자는 스페이스로 확정해야 들어오고, 그 스페이스가 이름 한가운데 남는다.
+  //   「가로등배」까지 친 상태로는 「가로등 배너」가 부분일치조차 안 된다 — 공백 하나 때문이다.
+  //   제품 이름의 **97%(254/263)가 공백을 포함**하므로 이건 예외가 아니라 기본 경로다.
+  function squash(s) { return String(s || '').toLowerCase().replace(/\s+/g, ''); }
+
+  //   ⚠️ id 해소는 **원문 정확일치가 먼저**다. 공백만 다른 이름이 실제로 있다(거래처 1쌍) —
+  //      완화 매칭은 후보가 **하나일 때만** 채택한다. 둘 이상이면 못 고른 것으로 둔다.
+  function idBySquash(list, field) {
+    return function (name) {
+      var t = String(name || '').replace(/^\s+|\s+$/g, ''), i;
+      if (!t) return null;
+      for (i = 0; i < list().length; i++) if (list()[i][field] === t) return list()[i].id;
+      var q = squash(t), hit = null;
+      for (i = 0; i < list().length; i++) {
+        if (squash(list()[i][field]) !== q) continue;
+        if (hit !== null) return null;   // 모호 = 안 고른다
+        hit = list()[i].id;
+      }
+      return hit;
+    };
   }
-  // 품목은 **정확일치만** id 로 본다. 부분일치로 넘겨짚으면 단가까지 틀린 채 주문서에 실린다
-  //   (거래처와 달리 품목은 free-text 폴백이 없다 — 못 고르면 그냥 안 보내고 사람이 주문서에서 고른다).
-  function itemIdOf(name) {
-    var t = (name || '').replace(/^\s+|\s+$/g, '');
-    if (!t) return null;
-    for (var i = 0; i < itemList.length; i++) if (itemList[i].item_name === t) return itemList[i].id;
-    return null;
-  }
+  var clientIdOf = idBySquash(function () { return clientList; }, 'client_name'); // 미일치 = free-text 폴백
+  // 품목은 **넘겨짚지 않는다**. 부분일치로 id 를 정하면 단가까지 틀린 채 주문서에 실린다
+  //   (거래처와 달리 품목은 free-text 폴백이 없다 — 못 고르면 안 보내고 사람이 주문서에서 고른다).
+  //   공백만 무시하는 것은 부분일치가 아니다 — 같은 글자열이어야 한다.
+  var itemIdOf = idBySquash(function () { return itemList; }, 'item_name');
 
   function $(id) { return document.getElementById(id); }
   function warnMissing(id) { console.warn('[mes-a0-cep] #' + id + ' not found'); }
@@ -314,10 +328,10 @@
       if (!elClientSug || !elClient) return;
       var q = (elClient.value || '').replace(/^\s+|\s+$/g, '');
       if (!q || !clientList.length) { hideClientSug(); return; }
-      var qq = q.toLowerCase(), hits = [];
+      var qq = squash(q), hits = [];
       for (var i = 0; i < clientList.length && hits.length < 15; i++) {
         var nm = clientList[i].client_name || '';
-        if (nm.toLowerCase().indexOf(qq) !== -1) hits.push(nm);
+        if (squash(nm).indexOf(qq) !== -1) hits.push(nm);
       }
       if (!hits.length || (hits.length === 1 && hits[0] === q)) { hideClientSug(); return; }
       var html = '';
@@ -358,10 +372,10 @@
       if (!elItemSug || !elItem) return;
       var q = (elItem.value || '').replace(/^\s+|\s+$/g, '');
       if (!q || !itemList.length) { hideItemSug(); return; }
-      var qq = q.toLowerCase(), hits = [];
+      var qq = squash(q), hits = [];
       for (var i = 0; i < itemList.length && hits.length < 15; i++) {
         var nm = itemList[i].item_name || '';
-        if (nm.toLowerCase().indexOf(qq) !== -1) hits.push(nm);
+        if (squash(nm).indexOf(qq) !== -1) hits.push(nm);
       }
       if (!hits.length || (hits.length === 1 && hits[0] === q)) { hideItemSug(); return; }
       var html = '';

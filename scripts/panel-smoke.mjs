@@ -737,10 +737,27 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   const a0m = fs.readFileSync(path.join(path.dirname(PANEL), 'js/main.js'), 'utf8')
   const html = fs.readFileSync(PANEL, 'utf8')
   const wb = fs.readFileSync(path.join(REPO, 'src', 'routes', 'workbench.ts'), 'utf8')
-  const itemIdOf = (a0m.match(/function itemIdOf[\s\S]{0,320}/) || [''])[0]
+  const idFn = (a0m.match(/function idBySquash[\s\S]{0,700}/) || [''])[0]
 
   ok('7d 가공 폼에 품목 칸', /id="item"/.test(html) && /id="itemSug"/.test(html) && /id="itemHit"/.test(html))
-  ok('7d 품목은 정확일치만 id 로 본다', /item_name === t/.test(itemIdOf) && !/indexOf/.test(itemIdOf))
+  // ★id 해소 = 원문 정확일치 **먼저**, 그다음 공백만 지운 일치, 그것도 **후보가 하나일 때만**.
+  //   일러 CEP 는 IME 조합을 웹뷰에 안 넘긴다(2026-09-02 실측: composition 이벤트 0건 ·
+  //   `isComposing` 항상 false) — 마지막 글자를 스페이스로 확정해야 들어오고 그 공백이 이름
+  //   안에 남는다. 제품 이름의 97%(254/263)가 공백을 포함하므로 예외가 아니라 기본 경로다.
+  //   ⚠️ 되돌리면 「가로등배」로는 「가로등 배너」를 못 찾는다 — 기능이 죽은 채 조용히 남는다.
+  //   ⚠️ 완화해도 **부분일치는 여전히 금지**다(`indexOf` 없음). 넘겨짚으면 틀린 단가가 실린다.
+  //      공백만 다른 이름이 실제로 있어(거래처 1쌍) 모호하면 **안 고르고 null** 을 준다.
+  ok('7d id 해소 = 원문 우선 · 공백무시는 유일할 때만 · 부분일치 금지', (() => {
+    const exact = idFn.indexOf("[field] === t") >= 0
+    const squash = /squash\(list\(\)\[i\]\[field\]\) !== q/.test(idFn)
+    const ambiguous = /if \(hit !== null\) return null/.test(idFn)
+    return exact && squash && ambiguous && !/indexOf/.test(idFn)
+      && /var itemIdOf = idBySquash/.test(a0m) && /var clientIdOf = idBySquash/.test(a0m)
+  })())
+  ok('7d 제안 목록도 공백을 무시한다', (() => {
+    const n = (a0m.match(/squash\(nm\)\.indexOf\(qq\)/g) || []).length
+    return /function squash\(/.test(a0m) && n === 2   // 거래처 · 품목 둘 다
+  })())
   ok('7d 패널이 item_id 를 싣는다', /item_id: itemIdOf\(/.test(a0m))
   ok('7d 호스트 manifest 에 item_id', /item_id: \(P\.item_id != null\)/.test(a0h))
   // 축은 is_sales_item 이 아니라 item_type 이다 — 판매 가능 여부로 거르면 원자재가 섞인다

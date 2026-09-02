@@ -31,7 +31,7 @@
   // ⚠️ 내용을 고치면 **반드시 이 번호를 올린다** — 수동 배포축이라 이 문자열이 "이 PC 가 어느 셸인가"의
   //    유일한 단서다. 0.57.0 하나가 세 상태를 가리키던 사고가 있었고(등록 파라미터·굽기 통합·[◎ 전체]),
   //    그래서 `ia:deploy` 가 번호가 그대로면 배포를 막는다.
-  var SHELL_VERSION = '0.69.0';   // 0.69.0 = ★자재·후가공 목록을 소스 하드코딩에서 config 로(이제 MES 에서 고치면 배포 없이 따라온다) · 재단 후가공=코팅 계열만 · 「돔보」 중복 제거 · 0.68.0 = ★품목=제품(PRODUCT)만 + 품목→자재 후보 좁히기(매핑 없으면 자유 입력 유지) · 0.67.0 = ★굽기 격자 칸(#nestBakeMm — 큰 실물에서 메모리·시간 급증 완화) + 조합 중 datalist 분리 제거(복원이 비대칭이라 자동완성이 죽은 채 남았다) · 0.66.0 = ★품목 칸(regProduct→ITEMID) — 주문서가 품목·단가까지 자동으로 채운다([내용]=regItem 과 다른 칸) · 0.65.0 = 0.64.0 의 근거 정정(실측상 composition 이벤트가 안 와서 그 처리는 발동하지 않는다 — 대비책으로만 유지) · 0.64.0 = 목록 달린 칸에 IME 조합 중 datalist 분리 · 0.63.0 = 호스트 구버전 감지(Z: 배포본과 대조 → 시작·포커스 시 경고 · 판짜기 차단) · 0.62.0 = 폴백 문구에 회전 포함(배율 1배 회전도 PDF 경로) · 0.61.0 = 배율 확대 결과 보고(PDF 배치 / 예비 경로 폴백 경고) · 0.60.0 = 파일명 맨 앞 거래처 · 자재/후가공 행 분리(폭 맞춤) · 「품목」→「내용」 명칭 분리(MES 품목 마스터와 구분) · 0.59.0 = 재단 탭 [◎ 전체] · 0.58.0 = 굽기 통합(마스크+도련 1왕복)·등록 파라미터(자재·후가공·돔보·파일명) · 0.57.0 = 조각 속 메우기(그룹 하나=칼선 하나·맞붙임 복구) · 0.56.0 = 도련 겹침 분할(간격 존중·하한 1.5mm)
+  var SHELL_VERSION = '0.70.0';   // 0.70.0 = ★품목·거래처 id 해소가 공백을 무시한다(IME 확정 스페이스가 이름 안에 남는다) · 모호하면 안 고른다 · 0.69.0 = ★자재·후가공 목록을 소스 하드코딩에서 config 로(이제 MES 에서 고치면 배포 없이 따라온다) · 재단 후가공=코팅 계열만 · 「돔보」 중복 제거 · 0.68.0 = ★품목=제품(PRODUCT)만 + 품목→자재 후보 좁히기(매핑 없으면 자유 입력 유지) · 0.67.0 = ★굽기 격자 칸(#nestBakeMm — 큰 실물에서 메모리·시간 급증 완화) + 조합 중 datalist 분리 제거(복원이 비대칭이라 자동완성이 죽은 채 남았다) · 0.66.0 = ★품목 칸(regProduct→ITEMID) — 주문서가 품목·단가까지 자동으로 채운다([내용]=regItem 과 다른 칸) · 0.65.0 = 0.64.0 의 근거 정정(실측상 composition 이벤트가 안 와서 그 처리는 발동하지 않는다 — 대비책으로만 유지) · 0.64.0 = 목록 달린 칸에 IME 조합 중 datalist 분리 · 0.63.0 = 호스트 구버전 감지(Z: 배포본과 대조 → 시작·포커스 시 경고 · 판짜기 차단) · 0.62.0 = 폴백 문구에 회전 포함(배율 1배 회전도 PDF 경로) · 0.61.0 = 배율 확대 결과 보고(PDF 배치 / 예비 경로 폴백 경고) · 0.60.0 = 파일명 맨 앞 거래처 · 자재/후가공 행 분리(폭 맞춤) · 「품목」→「내용」 명칭 분리(MES 품목 마스터와 구분) · 0.59.0 = 재단 탭 [◎ 전체] · 0.58.0 = 굽기 통합(마스크+도련 1왕복)·등록 파라미터(자재·후가공·돔보·파일명) · 0.57.0 = 조각 속 메우기(그룹 하나=칼선 하나·맞붙임 복구) · 0.56.0 = 도련 겹침 분할(간격 존중·하한 1.5mm)
 
   // ── 도련 겹침 분할 (2026-08-25) ─────────────────────────────────────────
   // ★순수 함수로 뽑아 둔 이유 = **하네스가 이 함수를 직접 돌리기 때문**이다(`npm run cut:bleed` §9).
@@ -2203,19 +2203,29 @@
     }
   }
 
-  function productIdOf(name) {
-    var t = String(name || '').replace(/^\s+|\s+$/g, '');
+  // ★공백을 지운 비교축 — 일러 CEP 는 **IME 조합을 웹뷰에 넘기지 않는다**(2026-09-02 실측:
+  //   composition 이벤트 0건 · `isComposing` 항상 false). 마지막 글자를 스페이스로 확정해야
+  //   들어오므로 그 스페이스가 이름 안에 남고, 「가로등 배너」가 「가로등배너」로 들어온다.
+  //   ⚠️ 원문 정확일치가 **먼저**다. 공백만 다른 이름이 실제로 있어(거래처 1쌍) 완화 매칭은
+  //      후보가 **하나일 때만** 채택한다 — 둘 이상이면 못 고른 것으로 둔다(넘겨짚지 않는다).
+  function cutSquash(s) { return String(s || '').toLowerCase().replace(/\s+/g, ''); }
+
+  function cutIdOf(list, field, name) {
+    var t = String(name || '').replace(/^\s+|\s+$/g, ''), i;
     if (!t) return null;
-    for (var i = 0; i < productList.length; i++) if (productList[i].item_name === t) return productList[i].id;
-    return null;
+    for (i = 0; i < list.length; i++) if (list[i][field] === t) return list[i].id;
+    var q = cutSquash(t), hit = null;
+    for (i = 0; i < list.length; i++) {
+      if (cutSquash(list[i][field]) !== q) continue;
+      if (hit !== null) return null;
+      hit = list[i].id;
+    }
+    return hit;
   }
 
-  function clientIdOf(name) {
-    var t = String(name || '').replace(/^\s+|\s+$/g, '');
-    if (!t) return null;
-    for (var i = 0; i < clientList.length; i++) if (clientList[i].client_name === t) return clientList[i].id;
-    return null;   // 미일치 = free-text 폴백(서버가 이름으로 처리)
-  }
+  function productIdOf(name) { return cutIdOf(productList, 'item_name', name); }
+
+  function clientIdOf(name) { return cutIdOf(clientList, 'client_name', name); }   // 미일치 = free-text 폴백
 
   // ── ★작업 폴더 산출 — EPS + DXF 같은 이름 쌍 (2026-08-02 · spec §2.7) ──
   // 실물 작업 폴더는 판마다 `(자재+후가공)품목(<W>x<H>-<N>장)` 로 **EPS 와 DXF 가 확장자만 다른 쌍**이다.

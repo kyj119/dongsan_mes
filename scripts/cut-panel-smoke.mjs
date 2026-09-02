@@ -1372,8 +1372,18 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     //      품목은 `regProduct` 다. 여기서 헷갈리면 대기물 keyword 자리에 품목이 실린다.
     //   ⚠️ 정확일치만 id 로 본다. 부분일치로 넘겨짚으면 **틀린 단가**가 주문서에 실린다.
     ok('4 재단 폼에 품목 칸(내용과 별개)', /id="regProduct"/.test(htmlSrc) && /id="regItem"/.test(htmlSrc))
-    ok('4 품목은 정확일치만 id 로 본다',
-      /function productIdOf\(/.test(panelSrc2) && /item_name === t/.test(panelSrc2))
+    // ★id 해소 = 원문 정확일치 **먼저** → 공백만 지운 일치 → 그것도 **후보가 하나일 때만**.
+    //   일러 CEP 는 IME 조합을 웹뷰에 안 넘긴다(2026-09-02 실측: composition 0건 ·
+    //   `isComposing` 항상 false) — 마지막 글자를 스페이스로 확정해야 들어와 공백이 이름에 남는다.
+    //   ⚠️ 완화해도 **부분일치는 금지**다. 넘겨짚으면 틀린 `item_id` 가 주문서에 실린다.
+    ok('4 품목·거래처 id = 원문 우선 · 공백무시는 유일할 때만 · 부분일치 금지', (() => {
+      const fn = (panelSrc2.match(/function cutIdOf[\s\S]{0,600}/) || [''])[0]
+      return /function productIdOf\(/.test(panelSrc2)
+        && fn.indexOf('[field] === t') >= 0
+        && /cutSquash\(list\[i\]\[field\]\) !== q/.test(fn)
+        && /if \(hit !== null\) return null/.test(fn)
+        && !/indexOf/.test(fn)
+    })())
     // ★품목 = **제품(PRODUCT)만**. is_sales_item 으로 거르면 원자재가 섞인다(2026-09-01 실측:
     //   818건 앞머리가 「300D 무연새틴 · 3M IJ35C-10 · 45도 보강대」). PRODUCT 268 종이고
     //   주문 라인의 74.2% 를 덮는다 — 818개를 훑게 하면 하드코딩 15개보다 나빠진다.
