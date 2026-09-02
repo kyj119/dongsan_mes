@@ -55,6 +55,12 @@ namespace LogWatcher
                 Tools.PexpSelfTest.Run(args);
                 return;
             }
+            // ★ 축마다 따로다 — pexp 시험은 Tns 축만 본다. flexi 축의 회귀는 그걸 통과한다(2026-09-03 실증).
+            if (args.Length > 0 && args[0] == "--selftest-flexi")
+            {
+                Tools.FlexiSelfTest.Run(args);
+                return;
+            }
 
             var equipmentConfigPath = Path.Combine(AppContext.BaseDirectory, "equipment.json");
 

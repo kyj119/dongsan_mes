@@ -64,6 +64,17 @@ namespace LogWatcher.Parsers
         private Block? _cur;                          // 진행 중 PrintExp 잡 블록 (폴 경계 유지)
         private readonly List<PendingRip> _pending = new();
 
+        // 폴백으로 이미 내보낸 립의 조인키 — 뒤늦게 도착한 결과가 같은 인쇄를 또 세지 않게 한다.
+        // ★ Tns 축(_fallbackStarts, 시간창)과 **키가 다르다**: 여기 조인은 스탬프 또는 .prt 이름이라
+        //   억제 판정도 그 두 축을 그대로 쓴다 — 조인이 못 찾은 것을 억제만 다른 잣대로 보면 어긋난다.
+        private readonly List<FallbackKey> _fallbackKeys = new();
+
+        private sealed class FallbackKey
+        {
+            public DateTime Start { get; set; }        // 스탬프 조인용 (ClaimRip 과 같은 _tolSec 판정)
+            public string Name { get; set; } = "";     // 이름 조인용 (KeyOf 와 같은 값)
+        }
+
         public string EquipmentId { get; }
         public string Name { get; }
 
@@ -204,9 +215,20 @@ namespace LogWatcher.Parsers
                     Console.WriteLine($"[{EquipmentId}] ⚠ PrintExp 미조인 {_fallbackHours}h 경과 — 전송 기준 폴백 송출: {rip.FileName}");
                     rip.EquipmentId = EquipmentId;
                     events.Add(rip);
+                    // 이 립은 큐에서 사라진다. 나중에 결과가 도착하면 조인 후보를 못 찾아 UNMATCHED 로
+                    // **한 번 더** 나간다(같은 물리 인쇄가 실적 2건) → 조인키를 남겨 그때 억제한다.
+                    _fallbackKeys.Add(new FallbackKey { Start = _pending[i].Start, Name = KeyOf(rip) });
                     _pending.RemoveAt(i);
                 }
             }
+
+            // 폴백 억제 키 정리 — 다시 붙을 일이 없어진 것은 버린다(무한 증식 방지).
+            if (_fallbackKeys.Count > 0 && _fallbackHours > 0)
+            {
+                var fbCut = DateTime.Now.AddHours(-_fallbackHours * 2.0);
+                _fallbackKeys.RemoveAll(k => k.Start < fbCut);
+            }
+            if (_fallbackKeys.Count > 500) _fallbackKeys.RemoveRange(0, _fallbackKeys.Count - 500);
 
             if (!_forceAll) SaveState();
             _forceAll = false;
@@ -287,7 +309,24 @@ namespace LogWatcher.Parsers
             }
             var key = b.Stamp ?? b.JobKey!;
             if (rip == null)
+            {
+                // 립 후보가 없다. 두 갈래다 —
+                //  ① 폴백이 이미 그 립을 내보낸 뒤 결과가 늦게 도착한 것 → 같은 인쇄, 억제한다.
+                //  ② 진짜로 립 기록이 없는 인쇄(정비 출력 등) → 종전대로 미상 송출.
+                // ⚠ **취소는 억제하지 않는다** — 억제하면 폴백이 내보낸 "인쇄했다"만 남고
+                //   취소 사실이 통째로 사라진다. 건수는 2건이 되지만 어느 쪽도 거짓이 아니다.
+                if (status != "CANCEL")
+                {
+                    int fb = MatchFallback(b);
+                    if (fb >= 0)
+                    {
+                        Console.WriteLine($"[{EquipmentId}] 고아 완료 억제 — 폴백 송출(립 {_fallbackKeys[fb].Start:MM-dd HH:mm:ss})과 같은 건으로 판정");
+                        _fallbackKeys.RemoveAt(fb);
+                        return;
+                    }
+                }
                 Console.WriteLine($"[{EquipmentId}] ⚠ 리핑 잡을 못 찾음 (key={key}) — 도안명 없이 보냅니다");
+            }
 
             var start = b.Start;
             var end = endAt ?? start;
@@ -325,6 +364,27 @@ namespace LogWatcher.Parsers
         }
 
         /// <summary>스탬프 시각 ±tolerance 로 미결 RIPLOG 이벤트를 찾아 꺼낸다(가장 가까운 것).</summary>
+        /// <summary>
+        /// 폴백이 이미 내보낸 립인지 판정. 인덱스 반환(없으면 -1).
+        /// 판정 잣대는 **조인이 쓰던 것과 같다** — 스탬프면 _tolSec, 이름이면 KeyOf 완전일치.
+        /// </summary>
+        private int MatchFallback(Block b)
+        {
+            if (_fallbackKeys.Count == 0) return -1;
+            if (b.JobKey != null)
+            {
+                var k = Path.GetFileNameWithoutExtension(b.JobKey.Trim());
+                return _fallbackKeys.FindIndex(f => string.Equals(f.Name, k, StringComparison.OrdinalIgnoreCase));
+            }
+            if (b.Stamp != null &&
+                DateTime.TryParseExact(b.Stamp, "yyyyMMddHHmmss", CultureInfo.InvariantCulture,
+                                       DateTimeStyles.None, out var at))
+            {
+                return _fallbackKeys.FindIndex(f => Math.Abs((f.Start - at).TotalSeconds) <= _tolSec);
+            }
+            return -1;
+        }
+
         private PrintEvent? ClaimRip(DateTime at)
         {
             int best = -1;
@@ -508,9 +568,24 @@ namespace LogWatcher.Parsers
         }
 
         /// <summary>미결 신원 큐 영속화 — 재시작 시 전송됐지만 아직 인쇄 안 끝난 잡의 신원이 날아가지 않게.</summary>
+        /// <summary>
+        /// 미결 큐 + 폴백 억제 키를 함께 저장한다.
+        /// ★ 억제 키를 안 남기면 재시작 순간 대기 중이던 결과가 전부 UNMATCHED 로 새로 나가
+        ///   억제를 넣은 의미가 사라진다(서비스는 [2] 마다 재시작된다).
+        /// </summary>
+        private sealed class PendingState
+        {
+            public List<PendingRip> Pending { get; set; } = new();
+            public List<FallbackKey> FallbackKeys { get; set; } = new();
+        }
+
         private void SavePending()
         {
-            try { File.WriteAllText(_pendingFile, JsonSerializer.Serialize(_pending)); }
+            try
+            {
+                File.WriteAllText(_pendingFile, JsonSerializer.Serialize(
+                    new PendingState { Pending = _pending, FallbackKeys = _fallbackKeys }));
+            }
             catch (Exception ex) { Console.WriteLine($"[{EquipmentId}] pending save failed: {ex.Message}"); }
         }
 
@@ -519,7 +594,20 @@ namespace LogWatcher.Parsers
             try
             {
                 if (!File.Exists(_pendingFile)) return;
-                var items = JsonSerializer.Deserialize<List<PendingRip>>(File.ReadAllText(_pendingFile));
+                var text = File.ReadAllText(_pendingFile);
+                // 구 형식(맨 배열)도 계속 읽는다 — 현장 PC 에 이미 그 파일이 있고,
+                // 못 읽으면 미결 큐가 통째로 날아가 대기 중인 립이 전부 미아가 된다.
+                if (text.TrimStart().StartsWith("{"))
+                {
+                    var st = JsonSerializer.Deserialize<PendingState>(text);
+                    if (st != null)
+                    {
+                        if (st.Pending != null) _pending.AddRange(st.Pending);
+                        if (st.FallbackKeys != null) _fallbackKeys.AddRange(st.FallbackKeys);
+                    }
+                    return;
+                }
+                var items = JsonSerializer.Deserialize<List<PendingRip>>(text);
                 if (items != null) _pending.AddRange(items);
             }
             catch (Exception ex) { Console.WriteLine($"[{EquipmentId}] pending load failed: {ex.Message}"); }
