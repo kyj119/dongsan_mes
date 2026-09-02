@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-09-02T15:45:58+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-09-02T21:46:09+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **6** (`list_issues(state:OPEN,label:auto-improve)` 실측, 5→6 — #613·#616·#617·#622·#623·#624) |
+| 🆕 new | **7** (`list_issues(state:OPEN,label:auto-improve)` 실측, 6→7 — #613·#616·#617·#622·#623·#624·#625) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **541** (`search_issues(reason:completed)` 리터럴 쿼리, 변동없음) |
@@ -29,6 +29,24 @@
 > - **🧬 SKILL 강화**: 없음 — area-1-production-health.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
 > - **백로그 트림 체크**: `backlog:trim --check` 실행 예정(아래).
 > - 신규 이슈 1건(#624, 0545/0548 마이그 (b)-risk 미적용 가능성 — smoke 사각지대 5번째 사례), 자동수정 1건(smoke.cjs에 printEvents.agents 프로브 추가, #484 패턴), done-sync: open 6(5→6)·done 541(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
+
+> **Area 3 UX/기능 감사 (2026-09-02T21:46):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD, `e472df1`), `git fetch origin main`(이미 최신 — `e472df1` = origin/main). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area3 방법 라인 HEAD `897d65e`)**: 웹앱 범위(`-- src migrations scripts .github`) diff 18커밋. 그중 IA CEP 패널(`caa5553`)·데이터전용 마이그(`e167ec4`)·백로그 갱신 자체(`97e1fa4`)는 UX 렌즈 밖. 나머지 15건은 Area1/2/4/5/6이 각자 렌즈로 이미 정독했으나 **UX 렌즈는 이번이 최초 통과** — `src/scripts`·`src/pages` 변경분 위주로 직독.
+> - **`src/scripts` 실질 변경 3건**: `1106198`(production.js, 장비 그룹화를 `location_zone` 자유텍스트→`process_code` 기반으로 전환) — `window.PROCESS_NAMES`/`PROCESS_LIST`가 `constants/process.ts`→`layout.ts`(`PROCESS_ENUMS_JS`)로 전역 주입되는 것 확인(크로스파일 미존재 아님, silent-fail 아님), 미지정 장비는 `'미지정'` 폴백으로 목록에서 안 사라짐, `escapeHtml` 적용 유지 — UX 결함 0건. `d1f5a9a`/`0bf01c4`(orderForm/intake.js·finishing.js, a0 패널 조단위 수량·item_id 전달) — 둘 다 커밋 자신이 panel:smoke/cut:smoke/test:calc/entity audit/check:dom 정량 검증 동반, 신규 보간(`qty_unit` 배지)도 `escapeHtml` 일관 적용. **이 3건 모두 결함 없음**.
+> - **신규 mutate 호출(axios post/put/delete)·`showConfirm` 신규 사용 0건**(`git diff 897d65e..HEAD -- src/scripts src/pages`에서 `+.*axios\.(get|post|put|delete|patch)`·`+.*showConfirm\(` 매치 0) → 더블클릭 중복제출·showConfirm 콜백오용 standing scan 대상 자체가 이번 윈도엔 없음.
+> - **🚪 "백엔드 먼저·화면 나중" standing scan(4번째 사례, 3회 누적 관찰로 승격된 패턴)**: `0545_agent_kit_version.sql`이 `agent_heartbeats.kit_version`/`parser_type`을 추가하고 `GET /api/print-events/agents`(`printEvents.ts:1011`)가 명시 SELECT로 노출하지만, `grep -rln "print-events/agents|kit_version|parser_type" src/scripts src/pages` = **소비처 0건**. 마이그레이션 커밋 메시지 자체가 목적을 명시("31대 전부를 prod 한 줄로 확인할 수 있다" — 현장 방문 없이 키트 버전 드리프트 확인) → API는 준비됐는데 그 목적을 이룰 화면이 없음. `/api/print-events/agents` 엔드포인트 자체는 이번 마이그 이전부터 존재했으나 그때도 소비처 0건(kit_version 추가로 운영가치가 뚜렷해져 이번에 표면화). **이슈 등록 → #625**(M: 신규 관리자 패널 + `permission_pages` 등록). 사전 중복확인(`search_issues` "agent heartbeat kit_version parser_type monitoring page") 결과 0건.
+> - **standing scan 1: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:417`[Area5 판정]·`workbench.ts:577`[Area6 판정]).
+> - **standing scan 2: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 67건·**누락 0건**(변동없음).
+> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최신런(HEAD `e472df1`) `conclusion:success`.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **6→7**(신규 #625 추가 — #613·#616·#617·#622·#623·#624·#625).
+> - **backlog↔GitHub 절대값 재동기화**: open **7**(6→7) · done **541**(변동없음) · rejected **6**(변동없음, 재확인 생략).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 10건 → 이번 로그 추가 후 11건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 1건(#625, `agent_heartbeats.kit_version`/`parser_type` API는 준비됐으나 화면 소비처 0건 — "백엔드 먼저·화면 나중" 4번째 사례), 자동수정 0건(이번 churn 3건 모두 UX 결함 없음, 신규 mutate/showConfirm 0건이라 standing scan 대상 자체가 없었음), done-sync: open 7(6→7)·done 541(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
 >
 
 > **Area 2 코드 품질 심층 분석 (2026-09-02T15:45):**
