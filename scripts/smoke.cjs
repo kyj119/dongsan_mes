@@ -74,6 +74,9 @@ const ENDPOINTS = [
   // days=90 = 화면(#linkDays) 기본값. 30일만 보면 구형식 nest_members 로 인한 500 을 놓친다(2026-08-25).
   { path: '/api/print-events/unmatched?days=90', name: 'printEvents.unmatched' },
   { path: '/api/print-events/link-candidates?file_name=smoke(10-10).eps', name: 'printEvents.linkCandidates' },
+  // agents — 명시 컬럼리스트 SELECT(kit_version/parser_type, 0545 신규 ADD COLUMN 참조)라
+  // printEvents.list(집계)가 못 잡는 no-such-column 드리프트를 500으로 노출(#484 패턴).
+  { path: '/api/print-events/agents', name: 'printEvents.agents' },
 
   // 견적서
   { path: '/api/quotations?limit=5', name: 'quotations.list' },

@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-09-02T03:48:05+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-09-02T09:47:01+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,28 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **5** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음 — #613·#616·#617·#622·#623) |
+| 🆕 new | **6** (`list_issues(state:OPEN,label:auto-improve)` 실측, 5→6 — #613·#616·#617·#622·#623·#624) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **541** (`search_issues(reason:completed)` 리터럴 쿼리, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 재확인 생략, 변동없음) |
+
+> **Area 1 프로덕션 헬스 (2026-09-02T09:47):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD, `0fe0170`), `git fetch origin main`(`207078c..0fe0170`, forced update) → `git checkout main && git reset --hard origin/main`(HEAD `0fe0170`). `npm ci`(0→81, node_modules 0개로 시작), `npx tsc --noEmit` clean, `npm run verify`(typecheck+build) 성공.
+> - **churn 확인(앵커 = 직전 Area1 방법 라인 HEAD `3ed9051`)**: 웹앱 범위(`-- src migrations scripts .github`) diff 16커밋 — 전부 Area2/4/5/6이 각자 렌즈로 이미 정독 완료(Area5: `d1de333`·`db76996`·`94a3b72`·`d1f5a9a`·`e706c55`·`b2945c4`·`14d24f4`·`1106198`·`7527a15`·`9ec2c45` / Area4: `0bf01c4` / Area2: `c4be537`·`86d3c74` / Area6: `2670f83`·`9b9f351`, `ab7efe2`는 IA JSX로 웹배포 축 밖). **프로덕션 헬스 렌즈는 다른 Area와 관점이 달라 재분석**: 마이그레이션 적용 드리프트((a)/(b) 분류, #483/#484 codify) — 다른 Area 로그 어디도 이 각도로 보지 않았음.
+> - **신규 마이그레이션 8건(0545~0552) 중 (b)-risk 2건 발견 — 이미 배포된 코드가 명시 컬럼 참조**: ① `0545_agent_kit_version.sql`(`agent_heartbeats.kit_version`/`parser_type`) — `9ec2c45`가 `printEvents.ts:527-542` INSERT에서 명시 바인드, `:1011` GET에서도 명시 SELECT. ② `0548_designer_intake_qty_unit.sql`(`designer_intakes.qty_unit`) — `d1f5a9a`가 `workbench.ts:752` INSERT 컬럼 리스트에 포함, 되읽는 SELECT는 전체 코드베이스에 0건(grep 확인 — 읽기전용 감지기 구성 불가). `deploy.yml`은 여전히 코드만 자동배포하고 마이그는 원격 자동적용 안 함(`Local write canary`=로컬 부트스트랩 한정) → prod에 `db:migrate:prod` 미실행 상태면 heartbeat 갱신 전량·디자이너 접수 등록 전량이 `no such column` 500으로 무음 사망 가능. **두 write-path 다 agent/패널 트리거라 smoke(GET 전용) 사각지대 — CLAUDE.md "smoke 맹점" 1~4축과 동일 클래스의 5번째 사례**. egress 차단으로 이 세션에서 prod 직접 확인 불가.
+> - **자동수정 적용(안전 — 테스트 인프라 정렬, #484 패턴)**: `scripts/smoke.cjs`에 `GET /api/print-events/agents` 프로브 추가(`kit_version`/`parser_type` 명시 SELECT라 0545 미적용 시 다음 배포 CI에서 500으로 즉시 노출, `items.detail` 프로브와 동일 형태). `node -c` 문법 확인 + `npm run verify` 통과 후 커밋. `0548`(qty_unit)은 되읽는 GET이 없어 같은 방식의 감지기 구성 불가 — issue-only.
+> - **이슈 등록 → #624**(S): 위 두 마이그레이션의 (b)-risk 상세 + 이번에 추가한 smoke 감지기가 다음 배포에서 0545 적용 여부를 대리 검증한다는 점 명시. 사전 중복확인(`search_issues` 5개 쿼리, kit_version/qty_unit/db:migrate:prod/0545/0548) 결과 기존 이슈 0건(0548 매칭 1건은 `#570`으로 다른 FK 이슈, 무관 확인).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 5런(`0fe0170`~`a00e89b`) 전부 `conclusion:success` — 단 이 결과는 heartbeat/intake write-path를 전혀 테스트하지 않았으므로 "정상" 증거가 아니라 "미검증" 상태임을 위 이슈에 명시.
+> - **egress 제약 재확인**: prod 직접 fetch 불가(기존 제약과 동일) — CI smoke가 유일한 prod 건강 근거, 이번 사이클은 그 근거 자체의 사각지대를 메우는 감지기를 추가.
+> - **standing scan 1: `npm audit --omit=dev`** — 0건(prod 런타임 의존성 청정, 변동없음).
+> - **standing scan 2: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **5→6**(신규 #624 추가 — #613·#616·#617·#622·#623·#624).
+> - **backlog↔GitHub 절대값 재동기화**: open **6**(5→6) · done **541**(변동없음) · rejected **6**(변동없음, 재확인 생략).
+> - **🧬 SKILL 강화**: 없음 — area-1-production-health.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: `backlog:trim --check` 실행 예정(아래).
+> - 신규 이슈 1건(#624, 0545/0548 마이그 (b)-risk 미적용 가능성 — smoke 사각지대 5번째 사례), 자동수정 1건(smoke.cjs에 printEvents.agents 프로브 추가, #484 패턴), done-sync: open 6(5→6)·done 541(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-09-02T03:48):**
 > - **방법**: `git status`=워킹트리 clean(detached HEAD, `3f25be8`), `git fetch origin main`(`207078c..3f25be8`, forced update) → `git checkout main && git reset --hard origin/main`(HEAD `3f25be8`). `npm ci`(0→81), `npx tsc --noEmit` clean. 앵커(직전 Area6 방법 라인 HEAD `a2372c2`) shallow-clone 유실(반복 함정) → `git fetch --unshallow origin main`으로 복구.
