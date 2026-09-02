@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-09-02T09:47:01+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-09-02T15:45:58+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -29,6 +29,25 @@
 > - **🧬 SKILL 강화**: 없음 — area-1-production-health.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
 > - **백로그 트림 체크**: `backlog:trim --check` 실행 예정(아래).
 > - 신규 이슈 1건(#624, 0545/0548 마이그 (b)-risk 미적용 가능성 — smoke 사각지대 5번째 사례), 자동수정 1건(smoke.cjs에 printEvents.agents 프로브 추가, #484 패턴), done-sync: open 6(5→6)·done 541(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
+
+> **Area 2 코드 품질 심층 분석 (2026-09-02T15:45):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD, `e167ec4`), `git fetch origin main`(이미 최신 — `e167ec4` = origin/main). `npm ci`(0→81), `npx tsc --noEmit` clean, `npm run verify`(typecheck+build) 성공.
+> - **churn 확인(앵커 = 직전 Area2 방법 라인 HEAD `c97cdd8`)**: 웹앱 범위(`-- src migrations scripts .github`) diff 17커밋. 그중 15건은 Area1/3/4/5/6이 각자 렌즈로 이미 정독(`d08aeb3`·`b13a415`·`f7454bc`·`0bf01c4`·`ab7efe2`·`d1de333`·`db76996`·`94a3b72`·`d1f5a9a`·`e706c55`·`b2945c4`·`14d24f4`·`1106198`·`7527a15`·`9ec2c45`·`2670f83`·`9b9f351` — Area1이 마이그 0545~0552를 (b)-risk 렌즈로, Area5가 보안 렌즈로, Area4가 데이터정합 렌즈로 이미 통과). **코드품질 렌즈는 이번이 최초 통과이므로 파일 단위로 직독**(다른 Area 로그는 다른 관점이라 이 렌즈의 커버리지 보증이 안 됨). **완전 신규 2건**(직전 사이클들의 최신 앵커 이후 착지): `caa5553`(IA CEP 패널 JS, 웹배포 축 밖 — 스코프 제외)·`e167ec4`(만국기 마이그 0553, 데이터 전용).
+> - **`dashboard.ts`/`printEvents.ts`/`workbench.ts` 직독(코드품질 체크리스트 전항목)**: entity_id INSERT 신규 누락 0건(`designer_intakes` INSERT는 기존 컬럼에 `qty_unit` 1개 추가, entity_id 그대로 바인드) · N+1 신규 0건(`intake-config`의 items/product_materials/materials/post_processing 4개 신규 SELECT는 `Promise.all` 병렬, 라우트당 1회 — 루프 내부 아님) · authMiddleware 커버리지 변동 0(라우터 전체가 여전히 `.use('/*', authMiddleware, requireRole(...))`) · `SELECT *` 신규 사용 0건(전부 명시 컬럼) · dead code 0건(`printEventDay.ts`의 `printEventAt`/`printEventKstDay`는 dashboard.ts·printEvents.ts 양쪽에서 import 확인, `waitingOpenFilter`/`absorbEntityOf`는 workbench.ts 6개 엔드포인트에서 사용 확인).
+> - **`dashboard.ts:417` 신규 상관 서브쿼리(장비 대표 공정) — Area5가 이미 FP 판정한 것을 코드품질 렌즈로 재확인**: `equipment_processes` PK가 `(equipment_id, process_code)` 복합키 + 서브쿼리가 `WHERE ep.equipment_id=e.id`로 단일 장비 스코프 → `process_code`가 스코프 내 이미 유일, sort-audit P2는 과대플래그. 코드품질 관점에서도 추가 결함 없음(동일 결론, 렌즈만 다름).
+> - **`workbench.ts` `waitingOpenFilter` 전환(6개 엔드포인트: list·thumb·absorb·void-bulk·void·restore) — Area4가 지목한 `/intakes/stats` 누락(#623)과 별개로 나머지 6곳 형제-완전성 재확인**: `grep -n "designer_intakes" workbench.ts`(intake-config 관련 신규 SELECT 4개 제외) 전수 대조 결과 **6곳 전부 `waitingOpenFilter`로 일관 전환됨, 추가 누락 0건**(#623 하나가 유일한 형제-불완전 지점이라는 Area4 판정과 정확히 일치).
+> - **`e167ec4`(0553 만국기 마이그) 직독**: `INSERT ... WHERE NOT EXISTS`(멱등) + `UPDATE ... WHERE item_id IS NULL`(재실행 안전) 패턴 준수, 형제 행(태극기 계열) 컨벤션 그대로 승계(category_id/pricing_method/stock_mode 등). 코드품질 결함 0건.
+> - **standing scan 1: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 67건·**누락 0건**(변동없음).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:417`[Area5 판정]·`workbench.ts:577`[Area6 판정, DISTINCT 유일성]).
+> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed **1**(이전 사이클 0에서 증가, 세션 워크트리 잔재로 추정 — main에 내용이 이미 흡수된 로컬 브랜치라 실삭제해도 무손실, 이번 사이클은 관찰만·삭제는 다음 사이클 재확인 후), REVIEW 0, SKIP 1(main).
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최신런(HEAD `e167ec4`) `conclusion:success`.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **6**(변동없음, #613·#616·#617·#622·#623·#624 전건 일치) — 이번 사이클 코드품질 렌즈 신규 결함 0건이라 추가 이슈 없음.
+> - **backlog↔GitHub 절대값 재동기화**: open **6**(변동없음) · `search_issues(reason:completed)` **541**(변동없음) · rejected **6**(변동없음, 재확인 생략).
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 9건 → 이번 로그 추가 후 10건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(신규 churn 2건 중 1건은 IA 축 밖·1건은 데이터 전용 마이그로 결함 없음, 나머지 15건은 타 Area가 이미 정독한 커밋을 코드품질 렌즈로 재직독해 entity_id/N+1/authMiddleware/SELECT */dead code 전항목 clean 확인 — #623은 Area4가 이미 등록해 중복 없음), 자동수정 0건, done-sync: open 6(변동없음)·done 541(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
 >
 
 > **Area 6 자기 진화 (2026-09-02T03:48):**
