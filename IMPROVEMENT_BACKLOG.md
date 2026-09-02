@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-09-02T21:46:09+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-09-03T03:48:15+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,25 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **541** (`search_issues(reason:completed)` 리터럴 쿼리, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 재확인 생략, 변동없음) |
+
+> **Area 4 데이터 정합성 (2026-09-03T03:48):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD, `4e5322d`), `git fetch origin main`(`207078c..4e5322d`, forced update) → `git checkout main && git reset --hard origin/main`(HEAD `4e5322d`). `npm ci`(0→81), `npx tsc --noEmit` clean. `npm run db:bootstrap:ci`로 로컬 D1에 baseline+전체 마이그레이션(0001~0553) 재적용 성공(구조적 ground-truth 확보).
+> - **churn 확인(앵커 = 직전 Area4 방법 라인 HEAD `4bb3627`)**: 웹앱 범위(`-- src migrations scripts .github`) diff 15커밋, 신규 마이그레이션 9건(0545~0553). 전부 Area1/2/3/5/6이 각자 렌즈로 이미 정독 완료(Area1: `9ec2c45`·`0bf01c4`류 배포드리프트 렌즈 / Area2: `d1de333`·`db76996`·`94a3b72`·`d1f5a9a`·`e706c55`·`b2945c4`·`14d24f4`·`1106198`·`7527a15`·`9ec2c45` 코드품질 렌즈 / Area3: `b13a415`·`f7454bc`·`1106198` UX 렌즈 / Area6: `9b9f351`·`2670f83` 자기진화 렌즈, `caa5553`·`97e1fa4`는 각각 IA축/백로그 자체커밋으로 대상 밖). **데이터정합성 렌즈는 이번이 최초 통과** — 마이그 9건 전문 직독 + 로컬 D1 ground-truth 대조로 재분석.
+> - **마이그 9건 직독(0545~0553) — 데이터정합성 결함 0건**: `0545`(agent_heartbeats.kit_version/parser_type, NULL 허용 additive) · `0546`(equipment_processes 최초 배정, `INSERT OR REPLACE` 멱등 + 근거 각주) · `0547`(FLAT-4X8-01만 UPDATE, 대상 1건) · `0548`(designer_intakes.qty_unit, additive) · `0549`(items 1행 UPDATE, 소급 없음 명시) · `0550`(품목 3종 신설 전부 `WHERE NOT EXISTS` 멱등 가드 + 계열 열거 근거, 주문라인 연결 8줄 전부 규격 정확일치 조건) · `0551`(2026-08-08 오분류 정정, `order_items.item_id` 불변이라 이력 보존) · `0552`(0550이 만든 이름충돌을 스스로 감지해 즉시 정정 — 자기교정) · `0553`(만국기 3종 신설 + 라인 5줄 연결, 동일 패턴). CHECK 제약(`pricing_method IN('FIXED','AREA')`·`item_type IN('PRODUCT','GOODS','MATERIAL')`) 대조 결과 위반 0건.
+> - **`workbench.ts:748` designer_intakes INSERT 바인드 정합성 직접 재검증(CLAUDE.md `orders/create.ts` 바인드불일치 클래스 재확인)**: `qty_unit` 컬럼 추가 후 컬럼 27개(`status` 리터럴 1개 제외 26개 placeholder) vs `.bind()` 인자 26개 — 정확히 일치. Area1이 이미 "명시 컬럼 참조"로 지목한 지점을 정합성 렌즈로 직접 카운트 재확인, 불일치 없음.
+> - **신규 비-FK `*_id` 포인터 컬럼 스캔(churn-트리거 재스캔 레시피, #477/#480 클래스)**: 이번 9개 마이그 중 신규 참조컬럼(`*_id`/`*_into_id`) 추가 0건(kit_version/parser_type/qty_unit은 값 컬럼, 0546~0553은 기존 PK 조합 INSERT/UPDATE) → 부모-삭제 dangling 후보 자체가 없음, 재스캔 대상 아님.
+> - **로컬 D1 ground-truth 활용 한계 재확인**: `db:bootstrap:ci`가 만드는 로컬 D1은 `baseline_reference.sql` 시드(items 77행·equipment 2행)뿐이라 prod 실데이터 규모의 고아/중복 검증에는 쓸 수 없음(예: `equipment_processes` INSERT가 참조하는 `HSM-01` 등 31개 장비코드 중 로컬 `equipment`엔 2행만 있어 형식상 "고아"로 보이나 이는 로컬 시드 공백일 뿐 — prod엔 31대 전부 존재가 마이그 자신의 각주로 확인됨, 오탐 배제). `audit:new-items`·`audit:migration-drift`는 `--remote`(prod) 전용이라 egress 차단으로 이번 사이클도 미실행(Area1이 같은 제약을 이미 codify).
+> - **standing scan 1: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 67건·**누락 0건**(변동없음).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:417`[Area2/5 판정]·`workbench.ts:577`[Area6 판정]).
+> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed **0**(직전 Area2 사이클의 1건 관찰 대상이 이번엔 사라짐 — 세션 워크트리 잔재 소멸로 추정, 추가 조치 불요), REVIEW 0, SKIP 1(main).
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최신런(HEAD `4e5322d`) `conclusion:success`.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **7**(변동없음, #613·#616·#617·#622·#623·#624·#625 전건 일치) — 이번 사이클 데이터정합성 렌즈 신규 결함 0건이라 추가 이슈 없음.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 리터럴 쿼리 재실행 — done **541**(변동없음) · rejected `not_planned` 4 + `duplicate` 2 = **6**(변동없음) · open **7**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: `backlog:trim --check` 실행 예정(아래).
+> - 신규 이슈 0건(마이그 9건 전부 멱등가드·근거각주·CHECK준수 확인, INSERT 바인드 정합·신규 비FK 포인터 0건도 재확인), 자동수정 0건, done-sync: open 7(변동없음)·done 541(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-09-02T09:47):**
 > - **방법**: `git status`=워킹트리 clean(detached HEAD, `0fe0170`), `git fetch origin main`(`207078c..0fe0170`, forced update) → `git checkout main && git reset --hard origin/main`(HEAD `0fe0170`). `npm ci`(0→81, node_modules 0개로 시작), `npx tsc --noEmit` clean, `npm run verify`(typecheck+build) 성공.
