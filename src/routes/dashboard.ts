@@ -495,7 +495,7 @@ dashboardRouter.get('/stats/equipment-utilization', async (c) => {
         MAX(pe.print_completed_at) as last_print
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
-      WHERE ${kstDateOf('pe.print_started_at')} = ${kstDate()}
+      WHERE ${printEventKstDay('pe')} = ${kstDate()}
         AND pe.event_kind = 'PRINT'
       GROUP BY pe.equipment_id
       ORDER BY total_sec DESC
@@ -505,11 +505,11 @@ dashboardRouter.get('/stats/equipment-utilization', async (c) => {
     const { results: weeklyRows } = await c.env.DB.prepare(`
       SELECT pe.equipment_id, e.name as equipment_name,
         SUM(pe.print_duration_sec) as total_sec,
-        COUNT(DISTINCT ${kstDateOf('pe.print_started_at')}) as active_days,
+        COUNT(DISTINCT ${printEventKstDay('pe')}) as active_days,
         COUNT(*) as print_count
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
-      WHERE ${kstDateOf('pe.print_started_at')} >= ${kstDate("'-6 days'")}
+      WHERE ${printEventKstDay('pe')} >= ${kstDate("'-6 days'")}
         AND pe.event_kind = 'PRINT'
       GROUP BY pe.equipment_id
       ORDER BY total_sec DESC

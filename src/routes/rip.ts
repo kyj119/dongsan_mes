@@ -3,7 +3,9 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole, agentKeyMiddleware } from '../middleware/auth'
 import { getEntityId, entityFilter, cardEntityFilter } from '../utils/entityFilter'
 import { PROCESS_CODES } from '../constants/process'
-import { kstDate, kstDateOf } from '../utils/kstDate'
+import { kstDate, kstDateOf, kstMonth } from '../utils/kstDate'
+// 출력 이벤트 업무일 SSOT — 한 응답 안에서 일별은 UTC, 오늘은 KST 로 축이 갈려 있었다
+import { printEventKstDay, printEventAt } from '../utils/printEventDay'
 import { EQUIP_STATUS_LABELS } from '../utils/statusLabels'
 
 // ─── D1 row types ───────────────────────────────────────────────────────────
@@ -1259,30 +1261,30 @@ ripRouter.get('/equipment/:id/stats', authMiddleware, async (c) => {
     // 일별 생산 실적 (최근 30일)
     const { results: dailyStats } = await c.env.DB.prepare(`
       SELECT
-        date(pe.print_completed_at) as date,
+        ${printEventKstDay('pe')} as date,
         COUNT(*) as print_count,
         COUNT(DISTINCT pe.card_number) as card_count
       FROM print_events pe
       WHERE pe.equipment_id = ?
         AND pe.print_status = 'OK'
         AND pe.event_kind = 'PRINT'
-        AND pe.print_completed_at >= date('now', '-30 days')
-      GROUP BY date(pe.print_completed_at)
+        AND ${printEventKstDay('pe')} >= date('now', '+9 hours', '-30 days')
+      GROUP BY ${printEventKstDay('pe')}
       ORDER BY date DESC
     `).bind(equipId).all()
 
     // 월별 집계 (최근 6개월)
     const { results: monthlyStats } = await c.env.DB.prepare(`
       SELECT
-        strftime('%Y-%m', pe.print_completed_at) as month,
+        ${kstMonth(printEventAt('pe'))} as month,
         COUNT(*) as print_count,
         COUNT(DISTINCT pe.card_number) as card_count
       FROM print_events pe
       WHERE pe.equipment_id = ?
         AND pe.print_status = 'OK'
         AND pe.event_kind = 'PRINT'
-        AND pe.print_completed_at >= date('now', '-180 days')
-      GROUP BY strftime('%Y-%m', pe.print_completed_at)
+        AND ${printEventKstDay('pe')} >= date('now', '+9 hours', '-180 days')
+      GROUP BY ${kstMonth(printEventAt('pe'))}
       ORDER BY month DESC
     `).bind(equipId).all()
 
@@ -1295,7 +1297,7 @@ ripRouter.get('/equipment/:id/stats', authMiddleware, async (c) => {
       WHERE equipment_id = ?
         AND print_status = 'OK'
         AND event_kind = 'PRINT'
-        AND ${kstDateOf('print_completed_at')} = ${kstDate()}
+        AND ${printEventKstDay()} = ${kstDate()}
     `).bind(equipId).first()
 
     // 가동률 (최근 7일: 출력 이벤트가 있는 시간대 비율)
@@ -1696,6 +1698,9 @@ ripRouter.post('/send-item/:cardItemId', authMiddleware, async (c) => {
     }
 
     // 1. card_item 존재 확인 + 카드/주문 정보 조인
+    //    #342 형제와 같은 카드 법인 격리 — 없으면 타법인 카드의 내용과 source_file_path 를 읽고
+    //    그 파일을 프린터 큐에 넣을 수 있다.
+    const sendEf = cardEntityFilter(c, 'c')
     const cardItem = await c.env.DB.prepare(`
       SELECT ci.id, ci.card_id, ci.order_item_id, ci.quantity, ci.rip_status, ci.source_file_path,
              c.card_number, c.status as card_status, c.delivery_date, c.priority,
@@ -1703,8 +1708,8 @@ ripRouter.post('/send-item/:cardItemId', authMiddleware, async (c) => {
       FROM card_items ci
       JOIN cards c ON ci.card_id = c.id
       JOIN order_items oi ON ci.order_item_id = oi.id
-      WHERE ci.id = ?
-    `).bind(cardItemId).first<CardItemJoinRow>()
+      WHERE ci.id = ?${sendEf.clause}
+    `).bind(cardItemId, ...sendEf.params).first<CardItemJoinRow>()
 
     if (!cardItem) {
       return c.json({ success: false, error: 'Card item not found' }, 404)
@@ -2060,6 +2065,8 @@ ripRouter.get('/card-items/:cardId', authMiddleware, async (c) => {
       return c.json({ success: false, error: 'Invalid card_id' }, 400)
     }
 
+    // #342 카드 법인 격리 — 타법인 카드의 라인 내용·RIP 파일 경로 노출 차단
+    const itemsEf = cardEntityFilter(c, 'c')
     const { results } = await c.env.DB.prepare(`
       SELECT
         ci.id as card_item_id,
@@ -2083,9 +2090,10 @@ ripRouter.get('/card-items/:cardId', authMiddleware, async (c) => {
         oi.ai_group_index
       FROM card_items ci
       JOIN order_items oi ON ci.order_item_id = oi.id
-      WHERE ci.card_id = ?
+      JOIN cards c ON c.id = ci.card_id
+      WHERE ci.card_id = ?${itemsEf.clause}
       ORDER BY oi.sort_order ASC, ci.id ASC
-    `).bind(cardId).all()
+    `).bind(cardId, ...itemsEf.params).all()
 
     return c.json({ success: true, data: results })
   } catch (error) {

@@ -3,6 +3,8 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter } from '../utils/entityFilter'
 import { kstYm } from '../utils/kstDate'
+// 출력 이벤트 업무일 SSOT — date(created_at) 은 UTC 버킷이라 00~09시 KST 출력이 전날로 빠진다
+import { printEventKstDay } from '../utils/printEventDay'
 
 const forecastRouter = new Hono<HonoEnv>()
 forecastRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
@@ -140,14 +142,14 @@ forecastRouter.get('/capacity-analysis', async (c) => {
     const { results: dailyPrint } = await c.env.DB.prepare(`
       SELECT
         printer_name,
-        date(created_at) as print_date,
+        ${printEventKstDay()} as print_date,
         COUNT(*) as print_count,
         COUNT(CASE WHEN print_status = 'OK' THEN 1 END) as ok_count
       FROM print_events
-      WHERE created_at >= date('now', '-' || ? || ' months')
+      WHERE ${printEventKstDay()} >= date('now', '+9 hours', '-' || ? || ' months')
         AND event_kind = 'PRINT'
         AND printer_name IS NOT NULL AND printer_name != ''
-      GROUP BY printer_name, date(created_at)
+      GROUP BY printer_name, ${printEventKstDay()}
       ORDER BY printer_name, print_date
     `).bind(monthCount).all<{ printer_name: string; print_date: string; print_count: number; ok_count: number }>()
 
