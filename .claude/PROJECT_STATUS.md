@@ -36,6 +36,8 @@
 
 ## ✅ 최근 완료 — 후속 대기 인덱스 (경위·상세 전문 = `PROJECT_STATUS_ARCHIVE.md`)
 
+- **✅ 09-03 prod 배포 — 전체 리뷰 결함 수정 오케스트레이션(11 worktree)** — 리뷰 CRITICAL 2·HIGH 89·MEDIUM 143 을 10묶음(Fable 인증·재고·회계 / Opus 나머지)으로 병렬 수정→fix-integration 통합→main. **194건 수정·설계상 보류 4**. C1=포털·직원셀프 토큰 내부 API 차단(auth.ts+permissions.ts) · C2=purchaseInvoice 반사 XSS. 검증(Opus5) blocking 0. 게이트 6종 신설(auth-boundary·csv-guard·card-spend·expense-month-key·tax-discount·year-end-deduction). **원가 백필 8,779건 prod 실행(에러 0)**. owner 결정: 에누리=과세표준차감(구현 일치)·단가기준=base_price 통일(0554 후속 3422c646)·입고게이트=ADMIN/MANAGER(기존 페이지권한과 동일, 실차단 0). 정본=docs/audits/2026-09-03-full-review.md(+fix-reports 10·VERIFY-REPORT). 남은=**IA 축2·3·4 수동 ia:deploy**·storageZones 단위표시 후속·간판 PER_AREA_ROLL/PER_LED
+
 - **✅ 09-03 전체 코드 리뷰(Fable 5.1) — 코드 0 수정** — 게이트 20종 전부 통과 · 에이전트 20개(보안 3·Area2/4·QA·슬라이스 9·/code-review) → **CRITICAL 2·HIGH 89·MEDIUM 142**, HIGH 이상은 메인이 소스 재검증. ★C1=포털·직원셀프 토큰이 내부 API 통과(auth.ts:22+permissions.ts:54) ★C2=purchaseInvoice.ts:6 무인증 반사 XSS. 정본=`docs/audits/2026-09-03-full-review.md`(+상세 15파일). 남은=**수정 묶음 1(인증 경계)부터 착수 여부 결정**
 
 - **✅ 09-02 S2 주문 라인 원가(BOM 기반) — 미배포** — ★`total_cost` 전량 0 = **`cost_standards` prod 0건**. ★★소요량이 `width`=폭 **고정**이라 86% 라인 폭·길이 뒤바뀜 → **2.5배 과소**. ★★★**분할 자동탐색 제거**(이음비 0→900폭 5~7분할 폭주·원단은 영업이 고르는 축). ★잉크=**방식별**(수성189·전사89·솔벤1011·UV1174). ★**단가 0 자재 1종이 제품 전체를 면적기준 강등**(18제품·7개는 원가 0)→`0555`. 게이트 25건. 남은=배포+`0554`+`0555`+백필 · 나머지 16제품 · 실사 수성잉크20+AQD3
