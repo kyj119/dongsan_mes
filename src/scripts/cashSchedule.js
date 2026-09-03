@@ -365,9 +365,9 @@ window.schSearchClient = function(query) {
       }
       var html = '';
       items.forEach(function(cl) {
-        var safe = String(cl.client_name || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-        var rep = cl.representative ? ' <span class="text-gray-400 text-xs">(' + String(cl.representative).replace(/</g,'&lt;') + ')</span>' : '';
-        html += '<div class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-50" onclick="schSelectClient(' + cl.id + ',\'' + safe.replace(/'/g, "\\'") + '\')">';
+        var safe = escapeHtml(cl.client_name || '');
+        var rep = cl.representative ? ' <span class="text-gray-400 text-xs">(' + escapeHtml(cl.representative) + ')</span>' : '';
+        html += '<div class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-50" onclick="schSelectClient(' + cl.id + ',\'' + escapeJsAttr(cl.client_name || '') + '\')">';
         html += '<span class="font-medium">' + safe + '</span>' + rep + '</div>';
       });
       dropdown.innerHTML = html;

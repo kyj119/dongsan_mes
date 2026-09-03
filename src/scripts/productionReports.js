@@ -146,7 +146,7 @@ function renderEquipmentTable(data) {
   data.forEach(function(e) {
     var pct = totalSqm > 0 ? Math.round((e.sqm || 0) / totalSqm * 100) : 0;
     html += '<tr class="hover:bg-gray-50">';
-    html += '<td class="px-3 py-2 font-medium" title="' + escapeHtml(e.equipment_name) + '">' + e.equipment_name + '</td>';
+    html += '<td class="px-3 py-2 font-medium" title="' + escapeHtml(e.equipment_name) + '">' + escapeHtml(e.equipment_name) + '</td>';
     html += '<td class="px-3 py-2 text-right">' + e.total + '</td>';
     html += '<td class="px-3 py-2 text-right font-medium">' + (e.sqm || 0).toLocaleString(undefined, {maximumFractionDigits:1}) + '</td>';
     html += '<td class="px-3 py-2 text-right">';

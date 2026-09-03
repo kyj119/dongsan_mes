@@ -91,14 +91,15 @@ function renderPrintDoneGrouped(cards, targetId) {
         if (minUrg <= 0) urgBadge = '<span class="px-1 py-0.5 rounded text-xs font-bold bg-red-50 text-red-700 mr-1">긴급</span>';
         else if (minUrg <= 1) urgBadge = '<span class="px-1 py-0.5 rounded text-xs font-bold bg-amber-50 text-amber-700 mr-1">D-1</span>';
 
-        var safeClient = clientName.replace(/'/g, '\x27').replace(/\\/g, '\\\\');
+        // '\x27' → "'" 라 기존 replace 는 무동작이었다. onclick 안의 JS 문자열은 escapeJsAttr 로만 안전하다.
+        var safeClient = escapeJsAttr(clientName);
         html += '<div class="mb-2 border border-gray-200 rounded-lg overflow-hidden bg-white">';
         // 아코디언 헤더
         html += '<div class="flex items-center justify-between px-3 py-2 bg-gray-50 cursor-pointer select-none" onclick="togglePrintDoneGroup(\'' + safeClient + '\')">';
         html += '<div class="flex items-center gap-1.5">';
         html += '<span class="text-xs text-gray-400">' + (isExpanded ? '&#9660;' : '&#9654;') + '</span>';
         html += urgBadge;
-        html += '<span class="font-semibold text-sm">' + clientName + '</span>';
+        html += '<span class="font-semibold text-sm">' + escapeHtml(clientName) + '</span>';
         html += '<span class="text-xs text-gray-500">(' + groupCards.length + '건)</span>';
         html += '</div>';
         html += '<button class="px-3 py-1.5 text-xs font-medium rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors" onclick="event.stopPropagation();bulkShipByClient(\'' + safeClient + '\')">일괄 출고</button>';

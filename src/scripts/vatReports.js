@@ -199,27 +199,32 @@ window.exportVatExcel = function() {
   if (!vatData) { showToast('먼저 집계를 실행하세요.', 'error'); return; }
   // CSV 형식으로 다운로드 (Excel 호환)
   var BOM = '\uFEFF';
+  // 모든 셀은 dsCsvCell(SSOT)을 거친다 — 거래처명은 자유 텍스트라 콤마 하나로 열이 통째로 밀리고,
+  // 선행 '='는 Excel에서 살아있는 수식(=HYPERLINK/WEBSERVICE)이 된다.
+  var cell = window.dsCsvCell;
+  var row = function(arr) { return arr.map(cell).join(','); };
   var lines = [];
-  lines.push('부가세 신고 자료 - ' + vatData.report_year + '년 ' + vatData.report_quarter + '기');
-  lines.push('기간: ' + vatData.period_start + ' ~ ' + vatData.period_end);
+  lines.push(row(['부가세 신고 자료 - ' + vatData.report_year + '년 ' + vatData.report_quarter + '기']));
+  lines.push(row(['기간: ' + vatData.period_start + ' ~ ' + vatData.period_end]));
   lines.push('');
   lines.push('[매출 세금계산서]');
   lines.push('발행일,계산서번호,거래처,사업자번호,공급가액,세액,합계');
   vatData.sales.list.forEach(function(it) {
-    lines.push([it.issue_date, it.invoice_number, it.buyer_name, it.buyer_brn, it.supply_amount, it.tax_amount, it.total_amount].join(','));
+    lines.push(row([it.issue_date, it.invoice_number, it.buyer_name, it.buyer_brn, it.supply_amount, it.tax_amount, it.total_amount]));
   });
   lines.push('');
-  lines.push('매출 합계,,,,' + vatData.sales.supply_amount + ',' + vatData.sales.tax_amount + ',' + (vatData.sales.supply_amount + vatData.sales.tax_amount));
+  lines.push(row(['매출 합계', '', '', '', vatData.sales.supply_amount, vatData.sales.tax_amount, vatData.sales.supply_amount + vatData.sales.tax_amount]));
   lines.push('');
   lines.push('[매입 세금계산서]');
   lines.push('발행일,승인번호,공급자,사업자번호,공급가액,세액,합계');
   (vatData.purchase.list || []).forEach(function(it) {
-    lines.push([it.issue_date, it.nts_confirm_number, it.supplier_name, it.supplier_brn, it.supply_amount, it.tax_amount, it.total_amount].join(','));
+    lines.push(row([it.issue_date, it.nts_confirm_number, it.supplier_name, it.supplier_brn, it.supply_amount, it.tax_amount, it.total_amount]));
   });
   lines.push('');
-  lines.push('매입 합계,,,,' + vatData.purchase.supply_amount + ',' + vatData.purchase.tax_amount + ',' + (vatData.purchase.supply_amount + vatData.purchase.tax_amount));
+  lines.push(row(['매입 합계', '', '', '', vatData.purchase.supply_amount, vatData.purchase.tax_amount, vatData.purchase.supply_amount + vatData.purchase.tax_amount]));
   lines.push('');
-  lines.push('납부세액,,,,,' + vatData.payable_tax);
+  // 납부세액은 '합계'(7번째) 열에 놓는다 — 콤마가 하나 모자라 '세액' 열에 찍히던 것을 바로잡음
+  lines.push(row(['납부세액', '', '', '', '', '', vatData.payable_tax]));
 
   window.dsDownloadCsv('vat_' + vatData.report_year + '_Q' + vatData.report_quarter + '.csv', BOM + lines.join('\r\n'));
 };

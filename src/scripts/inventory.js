@@ -220,7 +220,8 @@ function renderInventoryTable(items, total) {
             stockIcon = '<i class="fas fa-exclamation-circle text-orange-400 mr-1"></i>';
         }
 
-        var itemNameSafe = escapeHtml(item.item_name).replace(/'/g, "\\'");
+        // escapeHtml 뒤의 replace 는 무동작이었다(따옴표가 이미 &#039;). onclick 문자열은 escapeJsAttr 로.
+        var itemNameSafe = escapeJsAttr(item.item_name);
         var row = document.createElement('tr');
         row.className = rowClass;
         row.innerHTML = ''

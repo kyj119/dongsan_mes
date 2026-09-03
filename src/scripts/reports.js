@@ -406,7 +406,7 @@ async function loadMarginAnalysis() {
         var marginRate = c.margin_rate || 0;
         var marginColor = marginRate >= 30 ? 'text-green-600' : marginRate >= 15 ? 'text-amber-600' : 'text-red-600';
         return '<div class="flex items-center justify-between text-sm">'
-          + '<span class="w-24 truncate font-medium">' + (c.category_name || '미분류') + '</span>'
+          + '<span class="w-24 truncate font-medium">' + escapeHtml(c.category_name || '미분류') + '</span>'
           + '<div class="flex-1 mx-3"><div class="bg-gray-100 rounded-full h-4 relative">'
           + '<div class="bg-blue-400 h-4 rounded-full" style="width:' + pct + '%"></div></div></div>'
           + '<span class="w-20 text-right text-gray-600">' + fmtWon(c.revenue) + '</span>'

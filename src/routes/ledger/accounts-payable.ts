@@ -1051,7 +1051,9 @@ apRouter.get('/purchase-client/:clientId/export/csv', async (c) => {
     }
 
     // Format for CSV
-    const headers = ['일자', '구분', '참조', '발주금액(차변)', '지급금액(대변)', '감액', '잔액', '비고']
+    // 헤더 8개 / 행 7개라 잔액이 '감액' 열에, 비고가 '잔액' 열에 찍히고 있었다.
+    // 감액(adjustment)은 위에서 credit 으로 합쳐 넣으므로 별도 열이 없다 → 헤더에서 제거해 정렬을 맞춘다.
+    const headers = ['일자', '구분', '참조', '발주금액(차변)', '지급금액(대변)', '잔액', '비고']
     const rows = entries.map(entry => [
       entry.date,
       entry.type,

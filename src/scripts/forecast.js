@@ -86,7 +86,7 @@ async function loadForecast() {
         var trendColor = c.trend > 0 ? 'text-green-600' : c.trend < 0 ? 'text-red-600' : 'text-gray-500';
         var trendArrow = c.trend > 0 ? '▲' : c.trend < 0 ? '▼' : '-';
         return '<div class="flex items-center gap-2">'
-          + '<span class="w-20 text-xs text-gray-600 truncate" title="' + c.category + '">' + c.category + '</span>'
+          + '<span class="w-20 text-xs text-gray-600 truncate" title="' + escapeHtml(c.category) + '">' + escapeHtml(c.category) + '</span>'
           + '<div class="flex-1 h-4 bg-gray-100 rounded-full overflow-hidden">'
           + '<div class="h-full bg-purple-500 rounded-full" style="width:' + Math.max(pct, 2) + '%"></div></div>'
           + '<span class="w-24 text-right text-xs font-medium">' + fmt(c.forecast_revenue) + '원</span>'
@@ -125,7 +125,7 @@ async function loadClientForecast() {
 
         return '<tr class="border-t hover:bg-gray-50 cursor-pointer" onclick="location.href=\'/clients/' + cl.client_id + '\'">'
           + '<td class="px-4 py-3 text-center text-gray-400 font-bold">' + (i+1) + '</td>'
-          + '<td class="px-4 py-3 font-medium" title="' + window.escapeHtml(cl.client_name || '') + '">' + cl.client_name + '</td>'
+          + '<td class="px-4 py-3 font-medium" title="' + window.escapeHtml(cl.client_name || '') + '">' + window.escapeHtml(cl.client_name || '') + '</td>'
           + '<td class="px-4 py-3 text-right">' + fmt(cl.total_revenue) + '원</td>'
           + '<td class="px-4 py-3 text-right text-gray-500">' + fmt(cl.avg_monthly) + '원</td>'
           + '<td class="px-4 py-3 text-right font-bold text-blue-600">' + fmt(cl.forecast_revenue) + '원</td>'
@@ -153,7 +153,7 @@ async function loadClientForecast() {
             + '</div>';
         }).join('');
         return '<div class="flex items-center gap-4 py-2 border-b border-gray-100">'
-          + '<span class="w-32 text-sm font-medium truncate">' + cl.client_name + '</span>'
+          + '<span class="w-32 text-sm font-medium truncate">' + window.escapeHtml(cl.client_name || '') + '</span>'
           + '<div class="flex items-end gap-1">' + bars + '</div>'
           + '<span class="text-xs text-gray-500 ml-auto">' + fmt(cl.forecast_revenue) + '원/월</span>'
           + '</div>';

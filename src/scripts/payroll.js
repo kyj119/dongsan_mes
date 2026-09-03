@@ -51,9 +51,10 @@ async function prLoadEmployeeOptions() {
 // 급여대장 행 액션 버튼 (근태동기화/수정/명세서/연말정산/발송 + 상태별 승인/삭제/지급)
 function prActionsHtml(r) {
   var year = (r.pay_period || '').substring(0, 4);
-  var prEscName = (r.employee_name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-  var prEscPhone = (r.employee_mobile || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-  var prEscPeriod = (r.pay_period || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  // onclick 안의 JS 문자열 — HTML 속성 엔티티 디코딩이 JS 파싱보다 먼저라 escapeJsAttr 가 필요하다.
+  var prEscName = escapeJsAttr(r.employee_name || '');
+  var prEscPhone = escapeJsAttr(r.employee_mobile || '');
+  var prEscPeriod = escapeJsAttr(r.pay_period || '');
   var actions = r.published_at
     ? '<span class="text-indigo-600 mx-0.5" title="직원 교부됨 (' + escapeHtml(String(r.published_at)) + ')"><i class="fas fa-share-square"></i></span>'
     : '';

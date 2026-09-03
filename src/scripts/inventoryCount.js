@@ -116,7 +116,7 @@ async function createNewCount() {
 
   var opts = '<option value="">전체 실사 (모든 품목)</option>';
   categories.forEach(function(c) {
-    opts += '<option value="' + c.category + '">' + c.category + ' (' + c.item_count + '건)</option>';
+    opts += '<option value="' + escapeHtml(c.category) + '">' + escapeHtml(c.category) + ' (' + c.item_count + '건)</option>';
   });
 
   // 담당자 병기 + 내 담당 구역을 위로 — 담당이 정해진 구역을 매주 그 사람이 고르게 된다(2026-08-25)

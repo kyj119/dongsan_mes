@@ -3,7 +3,10 @@ import type { HonoEnv } from '../types/env'
 import purchaseInvoiceScript from '../scripts/purchaseInvoice.js?raw'
 
 export function purchaseInvoicePage(c: Context<HonoEnv>) {
-  var poId = c.req.param('poId')
+  // 반사 XSS 가드: poId 는 인라인 <script> 안에 그대로 박히므로 정수만 허용한다.
+  // (형제 인쇄 페이지들과 동일 규칙 — 검증 없이 넣으면 /purchase-invoice/1;alert(1) 이 실행된다)
+  const poId = parseInt(c.req.param('poId') || '', 10)
+  if (isNaN(poId)) return c.text('Invalid purchase order ID', 400)
   return c.html(`
     <!DOCTYPE html>
     <html lang="ko">

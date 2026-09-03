@@ -1384,7 +1384,7 @@ function buildAutoProcessSection(order, jobs) {
       + thumbHtml
       + '<div class="flex-1 min-w-0">'
       + '<div class="flex items-center gap-2">'
-      + '<span class="font-medium text-sm">' + (job.product || job.item_name || '품목 ' + (i + 1)) + '</span>'
+      + '<span class="font-medium text-sm">' + escapeHtml(job.product || job.item_name || '품목 ' + (i + 1)) + '</span>'
       + '<span class="px-1.5 py-0.5 rounded text-xs font-semibold ' + st.color + '"><i class="' + st.icon + ' mr-1"></i>' + st.label + '</span>'
       + '</div>'
       + '<div class="text-xs text-gray-500 mt-1">'
@@ -1392,7 +1392,7 @@ function buildAutoProcessSection(order, jobs) {
       + '축소비율 1:' + (job.scale_factor || '?') + ' | '
       + (job.finishing || '후가공 없음')
       + '</div>'
-      + (job.error_message ? '<div class="text-xs text-red-600 mt-1"><i class="fas fa-exclamation-triangle mr-1"></i>' + job.error_message + '</div>' : '')
+      + (job.error_message ? '<div class="text-xs text-red-600 mt-1"><i class="fas fa-exclamation-triangle mr-1"></i>' + escapeHtml(job.error_message) + '</div>' : '')
       + '</div>'
       + '<div class="flex-shrink-0">' + actionsHtml + '</div>'
       + '</div>';

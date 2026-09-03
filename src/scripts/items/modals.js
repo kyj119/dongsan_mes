@@ -558,7 +558,7 @@ function displayProductMaterials() {
             var items = groups[gName];
             var isExpanded = materialGroupExpanded[gName] !== false; // 기본 펼침
             var widths = items.map(function(m) { return m.width_mm ? Math.round(m.width_mm/10) + 'cm' : ''; }).filter(Boolean).join(', ');
-            var escapedG = gName.replace(/'/g, "\\'");
+            var escapedG = escapeJsAttr(gName);
 
             html += '<div class="border border-gray-200 rounded mb-2">';
             html += '<div class="flex items-center justify-between px-3 py-2 bg-gray-50 cursor-pointer hover:bg-gray-100">';
@@ -626,7 +626,7 @@ async function showMaterialSearchDropdown() {
             html += '<div class="px-3 py-1.5 bg-blue-50 text-xs font-bold text-blue-700 border-b">원단 그룹 (일괄 매핑)</div>';
             html += groups.map(function(g) {
                 var widths = (g.widths || '').split(',').map(function(w) { return (parseInt(w)/10) + 'cm'; }).join(', ');
-                var escapedGroup = (g.item_group || '').replace(/'/g, "\\'");
+                var escapedGroup = escapeJsAttr(g.item_group || '');
                 // 동폭 중복 경고: 같은 그룹에 폭이 겹치는 SKU가 있으면 자동차감이 무엇을 소비할지
                 // group_sort/재고로 갈라야 한다 → 대체 불가한 자재가 섞인 분류 오류일 가능성이 높다.
                 var dup = g.dup_widths || [];
