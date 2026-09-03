@@ -7,8 +7,18 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { entityFilter } from './entityFilter'
+import { cardNetAmountSql, cardSpendFilterSql } from './cardSpend'
 
 export type EstimateMethod = 'LAST' | 'AVG_3M' | 'AVG_6M' | 'SAME_MONTH_LAST_YEAR'
+
+/** 'YYYY-MM' → 'YYYYMM' (transaction_date 월 키) */
+export function ymToKey(ym: string): string {
+  return ym.replace(/-/g, '').slice(0, 6)
+}
+/** 'YYYYMM' → 'YYYY-MM' */
+export function keyToYm(key: string): string {
+  return `${key.slice(0, 4)}-${key.slice(4, 6)}`
+}
 
 export interface ExpenseEstimator {
   /** 추정치(원). 실적이 없어 추정 불가하면 null → 호출측에서 등록금액으로 폴백. */
@@ -44,17 +54,24 @@ export async function buildExpenseEstimator(
   const loadFrom = addMonths(targetFromYm, -12) // SAME_MONTH_LAST_YEAR 까지 커버
   const ph = ids.map(() => '?').join(',')
 
-  // 카드 실적 (지출은 항상 출금 방향)
+  // ★ card_transactions·bank_transactions 의 transaction_date 는 'YYYYMMDD'(하이픈 없음, cardExpenses.ts·bank.ts 적재).
+  //   월 키는 substr(…,1,6)='YYYYMM' 이고 비교값도 'YYYYMM' 이어야 한다. substr(…,1,7) 로 'YYYY-MM' 과
+  //   비교하면 문자열 비교가 절대 참이 안 돼 실적 0건 → estimate() 항상 null → 추정이 전부 등록금액 폴백(2026-09-03).
+  //   외부 인터페이스(targetYm 'YYYY-MM')는 유지하고 여기서만 환산한다.
+  const loadFromKey = ymToKey(loadFrom)
+  const targetToKey = ymToKey(targetToYm)
+
+  // 카드 실적 — 순지출 정본(utils/cardSpend): 취소 차감 · 상계쌍/가승인 제외
   const efCard = entityFilter(c)
   const { results: cardRows } = await c.env.DB.prepare(`
-    SELECT category_id AS cid, substr(transaction_date,1,7) AS ym, SUM(amount) AS total
+    SELECT category_id AS cid, substr(transaction_date,1,6) AS ym, SUM(${cardNetAmountSql()}) AS total
     FROM card_transactions
     WHERE category_id IN (${ph})
-      AND substr(transaction_date,1,7) BETWEEN ? AND ?${efCard.clause}
+      AND substr(transaction_date,1,6) BETWEEN ? AND ?${efCard.clause}${cardSpendFilterSql()}
     GROUP BY category_id, ym
-  `).bind(...ids, loadFrom, targetToYm, ...efCard.params).all<{ cid: number; ym: string; total: number }>()
+  `).bind(...ids, loadFromKey, targetToKey, ...efCard.params).all<{ cid: number; ym: string; total: number }>()
   for (const r of cardRows) {
-    const k = `${r.cid}:${r.ym}`
+    const k = `${r.cid}:${keyToYm(String(r.ym))}`
     totals.set(k, (totals.get(k) || 0) + (Number(r.total) || 0))
   }
 
@@ -62,17 +79,17 @@ export async function buildExpenseEstimator(
   //   0539: 대표자 개인통장(bank_accounts.is_personal=1) 출금은 법인 비용이 아니라 추정 소스에서 뺀다.
   const efBank = entityFilter(c, 'bt')
   const { results: bankRows } = await c.env.DB.prepare(`
-    SELECT bt.matched_category_id AS cid, substr(bt.transaction_date,1,7) AS ym, SUM(bt.amount) AS total
+    SELECT bt.matched_category_id AS cid, substr(bt.transaction_date,1,6) AS ym, SUM(bt.amount) AS total
     FROM bank_transactions bt
     JOIN bank_accounts ba ON ba.id = bt.bank_account_id
     WHERE bt.matched_category_id IN (${ph})
       AND bt.transaction_type = 'WITHDRAWAL'
       AND COALESCE(ba.is_personal, 0) = 0
-      AND substr(bt.transaction_date,1,7) BETWEEN ? AND ?${efBank.clause}
+      AND substr(bt.transaction_date,1,6) BETWEEN ? AND ?${efBank.clause}
     GROUP BY bt.matched_category_id, ym
-  `).bind(...ids, loadFrom, targetToYm, ...efBank.params).all<{ cid: number; ym: string; total: number }>()
+  `).bind(...ids, loadFromKey, targetToKey, ...efBank.params).all<{ cid: number; ym: string; total: number }>()
   for (const r of bankRows) {
-    const k = `${r.cid}:${r.ym}`
+    const k = `${r.cid}:${keyToYm(String(r.ym))}`
     totals.set(k, (totals.get(k) || 0) + (Number(r.total) || 0))
   }
 

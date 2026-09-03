@@ -13,6 +13,7 @@ import type { HonoEnv } from '../types/env'
 import { entityFilter } from './entityFilter'
 import { computeExpectedPaymentDate } from './paymentSchedule'
 import { buildExpenseEstimator, type EstimateMethod } from './expenseEstimator'
+import { cardNetAmountSql, cardSpendFilterSql } from './cardSpend'
 
 export interface CashflowItem {
   flow: 'IN' | 'OUT'
@@ -369,10 +370,12 @@ export async function buildCashflowDays(
     // 거래 일괄 조회 (가장 이른 cycleStart + AVG_3M 90일 포함 → from-100일부터)
     const earliest = addDays(from.replace(/-/g, ''), -100)
     const latest = to.replace(/-/g, '')
+    // 순지출 정본(utils/cardSpend): 취소는 차감, 상계쌍·가승인은 제외.
+    //   종전엔 전부 + 로 더해 100만 승인 + 100만 취소가 예정액 200만이 됐다(2026-09-03).
     const efTx = entityFilter(c, 'ct')
     const { results: txRows } = await c.env.DB.prepare(`
-      SELECT card_id, transaction_date, amount FROM card_transactions ct
-      WHERE transaction_date BETWEEN ? AND ?${efTx.clause}
+      SELECT card_id, transaction_date, ${cardNetAmountSql('ct')} AS amount FROM card_transactions ct
+      WHERE transaction_date BETWEEN ? AND ?${efTx.clause}${cardSpendFilterSql('ct')}
     `).bind(earliest, latest, ...efTx.params).all<{ card_id: number; transaction_date: string; amount: number }>()
     const txByCard = new Map<number, { d: string; a: number }[]>()
     for (const t of txRows) {
