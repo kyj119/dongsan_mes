@@ -10,6 +10,7 @@ import { hashPassword, verifyPassword } from '../utils/crypto'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { kstYmd } from '../utils/kstDate'
+import { deriveClientBalance } from './ledger/ar-helpers'
 import { getTaxProvider } from './taxInvoices' // #344: 포털 세금계산서 다운로드
 
 // ─── DB Row 타입 ────────────────────────────────────────────────────────────
@@ -280,7 +281,9 @@ portal.get('/dashboard', async (c) => {
     const user = c.get('portalUser')
     const clientId = user.portal_client_id
 
-    const [orderCount, recentOrders, balance] = await Promise.all([
+    // #317 잔여분: 'ledger' 테이블은 존재하지 않는다(마이그레이션 전량 확인) → Promise.all 전체가 reject 되어
+    // 포털 대시보드가 항상 500 이었다. 잔액은 /balance 와 같은 파생 정본(deriveClientBalance)으로 통일한다.
+    const [orderCount, recentOrders, outstanding] = await Promise.all([
       c.env.DB.prepare(
         `SELECT COUNT(*) as cnt FROM orders WHERE client_id = ?`
       ).bind(clientId).first<CountRow>(),
@@ -289,17 +292,14 @@ portal.get('/dashboard', async (c) => {
         FROM orders WHERE client_id = ?
         ORDER BY created_at DESC, id DESC LIMIT 5
       `).bind(clientId).all(),
-      c.env.DB.prepare(`
-        SELECT SUM(balance) as total_balance
-        FROM ledger WHERE client_id = ? AND balance > 0
-      `).bind(clientId).first<SumRow>(),
+      deriveClientBalance(c, clientId, { allEntities: true }),
     ])
 
     return c.json({
       success: true,
       data: {
         totalOrders: orderCount?.cnt || 0,
-        outstandingBalance: balance?.total_balance || 0,
+        outstandingBalance: outstanding,
         recentOrders: recentOrders.results || [],
       }
     })
@@ -429,25 +429,39 @@ portal.get('/balance', async (c) => {
   try {
     const user = c.get('portalUser')
 
-    // #317: 'ledger' 테이블 미존재 → orders(BILLED)+payments로 재작성. 회계반영(BILLED)된 미결제 주문을 미수 항목으로 표시.
+    // #317: 'ledger' 테이블 미존재 → 청구 정본(order_billing_groups)+입금/조정으로 재작성.
+    // 산식은 내부 원장과 동일해야 한다(deriveClientBalance = BILLED − payments − adjustments).
+    // 항목별 수금액은 입금이 주문단위로 배분되지 않으므로 FIFO 충당으로 표시한다 —
+    // queryFifoOverdue(ar-helpers)와 같은 방식(누적 청구액 − 총 충당액)이며 화면 표시 전용이다.
+    const clientId = user.portal_client_id
     const { results } = await c.env.DB.prepare(`
-      SELECT o.id as order_id, o.order_number,
-             COALESCE(o.billed_amount, o.final_amount, 0) as total_amount,
-             0 as paid_amount,
-             COALESCE(o.billed_amount, o.final_amount, 0) as balance,
-             o.billed_at as billing_date
-      FROM orders o
-      WHERE o.client_id = ? AND o.billing_status = 'BILLED'
-      ORDER BY o.billed_at DESC, o.id DESC
-    `).bind(user.portal_client_id).all()
+      WITH grp AS (
+        SELECT o.id AS order_id, o.order_number,
+               COALESCE(g.accounting_date, g.billed_at) AS billing_date,
+               g.billed_amount AS amt,
+               SUM(g.billed_amount) OVER (ORDER BY COALESCE(g.accounting_date, g.billed_at), g.id) AS cum
+          FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+         WHERE o.client_id = ? AND g.billing_status = 'BILLED' AND o.status != 'CANCELLED'
+      ),
+      settle AS (
+        SELECT COALESCE(SUM(v), 0) AS settled FROM (
+          SELECT amount AS v FROM payments WHERE client_id = ?
+          UNION ALL
+          SELECT amount FROM adjustments WHERE client_id = ?
+        )
+      )
+      SELECT grp.order_id, grp.order_number, grp.billing_date,
+             grp.amt AS total_amount,
+             grp.amt - MIN(grp.amt, MAX(0, grp.cum - settle.settled)) AS paid_amount,
+             MIN(grp.amt, MAX(0, grp.cum - settle.settled)) AS balance
+        FROM grp, settle
+       ORDER BY grp.billing_date DESC, grp.order_id DESC
+    `).bind(clientId, clientId, clientId).all()
 
-    // 총 미수 = 전체 청구(BILLED) − 전체 입금 (거래처 실 미수, 입금은 주문단위 배분 불가하므로 합계로 차감)
-    const total = await c.env.DB.prepare(
-      `SELECT COALESCE((SELECT SUM(CASE WHEN billing_status='BILLED' THEN COALESCE(billed_amount, final_amount, 0) ELSE 0 END) FROM orders WHERE client_id = ?), 0)
-            - COALESCE((SELECT SUM(amount) FROM payments WHERE client_id = ?), 0) as total`
-    ).bind(user.portal_client_id, user.portal_client_id).first<SumRow>()
+    // 총 미수 = 내부 원장과 같은 파생 정본. 포털은 세션 법인이 없으므로 법인 필터 생략.
+    const totalBalance = await deriveClientBalance(c, clientId, { allEntities: true })
 
-    return c.json({ success: true, data: { items: results, totalBalance: total?.total || 0 } })
+    return c.json({ success: true, data: { items: results, totalBalance } })
   } catch (e) {
     console.error('src/routes/portal.ts error:', e)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
@@ -745,29 +759,36 @@ portal.post('/verify-document', async (c) => {
         }
       })
     } else {
-      // 원장: metadata에 기간이 있으면 해당 기간, 없으면 최근 6개월
+      // 원장: metadata에 기간이 있으면 해당 기간, 없으면 최근 6개월.
+      // ⚠️ 기간 상한(`<= 종료일`)이 빠져 있으면 헤더에 찍힌 기간 이후 거래까지 섞여 나간다(고객 발송 문서).
+      //    시작일도 최대 36개월로 제한한다 — metadata 는 발급 시점에 박히므로 오래된 링크가 전 기간을 훑는 것을 막는다.
       const defaultStart = new Date(Date.now() - 180 * 86400000).toISOString().substring(0, 10)
       const defaultEnd = kstYmd()
-      const sixMonthsAgo = periodStart || defaultStart
+      const maxStart = new Date(Date.now() - 36 * 30 * 86400000).toISOString().substring(0, 10)
+      const rawStart = periodStart || defaultStart
+      const sixMonthsAgo = rawStart < maxStart ? maxStart : rawStart
       const today = periodEnd || defaultEnd
 
       const { results: orders } = await c.env.DB.prepare(`
         SELECT order_number, created_at, billed_amount, final_amount, billing_status
-        FROM orders WHERE client_id = ? AND status != 'CANCELLED' AND date(created_at) >= ?
+        FROM orders WHERE client_id = ? AND status != 'CANCELLED'
+          AND date(created_at) >= ? AND date(created_at) <= ?
         ORDER BY created_at ASC, id ASC
-      `).bind(clientId, sixMonthsAgo).all<OrderRow>()
+      `).bind(clientId, sixMonthsAgo, today).all<OrderRow>()
 
       const { results: payments } = await c.env.DB.prepare(`
         SELECT payment_date, amount, payment_method
-        FROM payments WHERE client_id = ? AND date(payment_date) >= ?
+        FROM payments WHERE client_id = ?
+          AND date(payment_date) >= ? AND date(payment_date) <= ?
         ORDER BY payment_date ASC, id ASC
-      `).bind(clientId, sixMonthsAgo).all<PaymentRow>()
+      `).bind(clientId, sixMonthsAgo, today).all<PaymentRow>()
 
       const { results: adjustments } = await c.env.DB.prepare(`
         SELECT created_at, amount, reason, type
-        FROM adjustments WHERE client_id = ? AND date(created_at) >= ?
+        FROM adjustments WHERE client_id = ?
+          AND date(created_at) >= ? AND date(created_at) <= ?
         ORDER BY created_at ASC, id ASC
-      `).bind(clientId, sixMonthsAgo).all<AdjustmentRow>()
+      `).bind(clientId, sixMonthsAgo, today).all<AdjustmentRow>()
 
       const transactions = [
         ...orders.map((o) => ({
