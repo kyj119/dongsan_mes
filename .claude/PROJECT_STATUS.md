@@ -40,6 +40,8 @@
 
 ## ✅ 최근 완료 — 후속 대기 인덱스 (경위·상세 전문 = `PROJECT_STATUS_ARCHIVE.md`)
 
+- **✅ 09-03 base_unit 공백은 결함이 아니다 — 채우려던 작업을 취소(미배포)** — `unitConvert.ts:6`=**NULL은 unit과 동일**(설계된 상태). 공백 142종 중 **20종이 AQ* 47종**(pack_size 130=실사 편의 계수)과 겹쳐 채우면 원가 **459→59,670**. ★08-27 스윕은 **쓰기 5곳만**이었고 **읽기**(수익성·부문손익)는 밖 → 판정식을 `isMultiUom` 에 맞춤(prod 노출 0=예방). ★`audit:items` **F3 가 이미 띄우는데 참고 등급**. 게이트 §⑤(29항목). 경위=ARCHIVE §2026-09-03 base_unit. 남은=**배포**
+
 - **✅ 09-03 prod 배포 — 전체 리뷰 결함 수정(11 worktree 오케스트레이션)** — CRITICAL 2·HIGH 89·MEDIUM 143 → 194건 수정·보류 4·백필 8,779건(에러 0)·검증 blocking 0. 경위=ARCHIVE §2026-09-03 리뷰수정. 남은=**IA 축2·3·4 ia:deploy**·storageZones 후속
 
 - **✅ 09-03 전체 코드 리뷰(Fable 5.1) — 코드 0 수정** — 게이트 20종 전부 통과 · 에이전트 20개(보안 3·Area2/4·QA·슬라이스 9·/code-review) → **CRITICAL 2·HIGH 89·MEDIUM 142**, HIGH 이상은 메인이 소스 재검증. ★C1=포털·직원셀프 토큰이 내부 API 통과(auth.ts:22+permissions.ts:54) ★C2=purchaseInvoice.ts:6 무인증 반사 XSS. 정본=`docs/audits/2026-09-03-full-review.md`(+상세 15파일). 남은=**수정 묶음 1(인증 경계)부터 착수 여부 결정**
