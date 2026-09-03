@@ -56,8 +56,16 @@ inventoryCountRouter.get('/', async (c) => {
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
-    // 전체 개수 (LIMIT/OFFSET 제외 → params.slice(0, -2))
-    let countQuery = 'SELECT COUNT(*) as cnt FROM inventory_counts ic WHERE 1=1' + ef.clause
+    // 전체 개수 — 본 쿼리와 **같은 절**을 재조립한다(LIMIT/OFFSET 만 제외 → params.slice(0, -2)).
+    //   scope=mine 절(sz.manager_id)이 빠져 있으면 플레이스홀더보다 바인드가 1개 많아 D1 오류 → 목록 500(2026-09-03).
+    let countQuery = `SELECT COUNT(*) as cnt FROM inventory_counts ic
+      LEFT JOIN storage_zones sz ON ic.storage_zone_id = sz.id
+      WHERE 1=1` + ef.clause
+    if (scope === 'mine') {
+      const u = c.get('user')
+      const isSupervisor = u?.role === 'ADMIN' || u?.role === 'MANAGER'
+      countQuery += isSupervisor ? ' AND (sz.manager_id = ? OR sz.manager_id IS NULL)' : ' AND sz.manager_id = ?'
+    }
     if (status) {
       countQuery += ' AND ic.status = ?'
     }
@@ -174,11 +182,13 @@ inventoryCountRouter.get('/consumption', async (c) => {
     const lastDate = counts[counts.length - 1].count_date
     const pef = entityFilter(c, 'po')
     const pParams: any[] = [firstDate, lastDate, ...pef.params]
+    //   상태 필터: DRAFT·CANCELLED 발주는 매입이 아니다(materialShortageCheck 형제와 같은 축) — 없으면 소모량이 과소평가된다.
     let pQuery = `SELECT poi.po_id, poi.item_id, poi.quantity, poi.unit_price, po.order_date
                     FROM purchase_order_items poi
                     JOIN purchase_orders po ON po.id = poi.po_id
                     JOIN items i ON i.id = poi.item_id
-                   WHERE po.order_date > ? AND po.order_date <= ?` + pef.clause
+                   WHERE po.order_date > ? AND po.order_date <= ?
+                     AND po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED', 'RECEIVED')` + pef.clause
     if (zoneId) { pQuery += ' AND i.storage_zone_id = ?'; pParams.push(zoneId) }
     const { results: buys } = await c.env.DB.prepare(pQuery).bind(...pParams)
       .all<{ po_id: number; item_id: number; quantity: number; unit_price: number; order_date: string }>()
@@ -548,8 +558,7 @@ inventoryCountRouter.put('/:id/items', async (c) => {
       return Number.isFinite(n) ? n : null
     }
     if (items.length > 0) {
-      await c.env.DB.batch(
-        items.map((item: any) => {
+      const saveStmts = items.map((item: any) => {
           const packCount = numOrNull(item.pack_count)
           const perPack = numOrNull(item.per_pack_qty)
           // 두 칸 입력이면 곱해서 counted 를 만든다. per_pack_qty 미지정은 1 로 본다(환산 없는 자재).
@@ -575,7 +584,10 @@ inventoryCountRouter.put('/:id/items', async (c) => {
             WHERE id = ? AND count_id = ?
           `).bind(counted, diff, diffPct, packCount, perPack, item.notes || '', item.id, countId)
         })
-      )
+      // 80 청크 규약(전수 실사는 수백 라인) — 각 UPDATE 는 독립(라인별 절대값)이라 청크 경계에서 반쪽 상태가 없다
+      for (let i = 0; i < saveStmts.length; i += 80) {
+        await c.env.DB.batch(saveStmts.slice(i, i + 80))
+      }
     }
 
     return c.json({ success: true })
@@ -795,7 +807,7 @@ inventoryCountRouter.patch('/:id/approve', async (c) => {
     // count_items 조회 (0396: storage_zone_id 포함 — 그 창고 행을 보정)
     const { results: countItems } = await c.env.DB.prepare(`
       SELECT id, count_id, item_id, system_quantity, counted_quantity, difference, difference_pct, unit, notes, storage_zone_id FROM inventory_count_items WHERE count_id = ?
-    `).bind(countId).all<{ item_id: number; system_quantity: number; counted_quantity: number | null; storage_zone_id: number | null }>()
+    `).bind(countId).all<{ id: number; item_id: number; system_quantity: number; counted_quantity: number | null; storage_zone_id: number | null }>()
 
     // 미입력(counted_quantity NULL) 항목은 보정 제외 — NULL 바인드 시 inventory.quantity=NULL 재고 소실
     const adjustable = (countItems || []).filter(
@@ -803,9 +815,18 @@ inventoryCountRouter.patch('/:id/approve', async (c) => {
     )
     const skippedCount = (countItems || []).length - adjustable.length
 
-    // #152: 재고 보정 + 상태 변경을 단일 batch로 원자화 (이중 조정 방지)
+    // #152: 재고 보정 + 원장을 batch 로 원자화 (이중 조정 방지)
     // #356: 호출자 entity가 아닌 실사 행의 entity로 보정 (타법인 재고 오조정 방지)
+    // ★원장 참조키 = **실사 라인 id**(inventory_count_items.id), 실사 id 가 아니다(2026-09-03).
+    //   idx_inventory_tx_unique_ref 는 (reference_type, reference_id, item_id, transaction_type, entity_id) UNIQUE 이고
+    //   storage_zone_id 가 없다 — 전수 실사는 라인을 (품목, 창고) 로 전개하므로(위 :402) 같은 품목이 창고 2곳에 있으면
+    //   reference_id=countId 로는 두 ADJUST 행이 같은 키가 되어 승인이 영원히 500 이었다.
+    //   라인 id 는 (품목, 창고) 당 하나라 창고별 원장 행을 그대로 살리고, 실사 번호는 notes 에 남긴다.
+    //   STOCK_COUNT reference_id 를 실사로 되짚는 소비처는 없다(constants·화면 라벨뿐).
+    // ★80 청크 + INSERT OR IGNORE: 청크 경계에서 실패하면 앞 청크는 반영된 채 상태가 SUBMITTED 로 남는다 —
+    //   재시도 시 UPDATE 는 절대값(멱등)이고 원장은 같은 참조키라 OR IGNORE 로 중복 없이 이어 붙는다.
     const entityId = count.entity_id || getEntityId(c) || 1
+    const countLabel = (count as any).count_number || countId
     const batchStmts = adjustable.flatMap((item) => {
       const zoneId = item.storage_zone_id ?? null
       return [
@@ -820,25 +841,25 @@ inventoryCountRouter.patch('/:id/approve', async (c) => {
         // #394: inventory_transactions 실제 스키마로 재작성 (inventory.ts:505 패턴).
         // 기존 컬럼셋(quantity_before/after/change/created_by)은 inventory_adjustments 것 — 혼동 버그.
         c.env.DB.prepare(`
-          INSERT INTO inventory_transactions (item_id, transaction_type, quantity, balance_after, reference_type, reference_id, reason, notes, handled_by, transaction_date, entity_id, storage_zone_id)
+          INSERT OR IGNORE INTO inventory_transactions (item_id, transaction_type, quantity, balance_after, reference_type, reference_id, reason, notes, handled_by, transaction_date, entity_id, storage_zone_id)
           VALUES (?, 'ADJUST', ?, ?, 'STOCK_COUNT', ?, 'STOCK_COUNT', ?, ?, datetime('now'), ?, ?)
         `).bind(
           item.item_id,
           item.counted_quantity - item.system_quantity, // quantity: 조정 변화량(부호 유지)
           item.counted_quantity,                         // balance_after: 보정 후 잔량
-          countId,                                       // reference_id
-          `Inventory Count ID: ${countId}`,              // notes
+          item.id,                                       // reference_id = 실사 라인 id (품목×창고 당 1)
+          `Inventory Count ${countLabel} (count_id=${countId}, line=${item.id})`,  // notes: 실사 번호·id 보존
           c.get('user')?.id || null,                     // #394: handled_by는 users(id) FK — 'system' 문자열은 FK 위반(prod FK 강제). JWT user.id 또는 NULL(inventory.ts:505 패턴)
           entityId,
           zoneId                                         // 0396: 창고별 거래 추적
         )
       ]
     })
-    // 상태 변경을 batch 마지막에 포함 — 보정+상태가 동시에 반영
-    batchStmts.push(
-      c.env.DB.prepare(`UPDATE inventory_counts SET status = 'APPROVED', approved_by = ?, approved_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'SUBMITTED'`).bind(userId, countId)
-    )
-    await c.env.DB.batch(batchStmts)
+    for (let i = 0; i < batchStmts.length; i += 78) {   // 3문/품목 → 26품목 = 78문 (80 이하, 품목 단위로 끊는다)
+      await c.env.DB.batch(batchStmts.slice(i, i + 78))
+    }
+    // 상태 변경은 보정이 전부 반영된 뒤 마지막에 — 중간 실패면 SUBMITTED 로 남아 재승인(멱등)이 가능하다
+    await c.env.DB.prepare(`UPDATE inventory_counts SET status = 'APPROVED', approved_by = ?, approved_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'SUBMITTED'`).bind(userId, countId).run()
 
     return c.json({ success: true, adjusted: adjustable.length, skipped: skippedCount })
   } catch (error) {
