@@ -11,9 +11,14 @@
 //   환산하면 1억 3,381만(87.5%)이다 — **원가 1억 3,024만이 사라져 있었다.**
 //   ⚠️ 이 왜곡은 「추정원가 > 매출」 이상치 표에 절대 안 걸린다. 방향이 반대다.
 //
-// 환산 여부 — base_unit 이 NULL 이면 환산하지 않는다(현수막 AQ* 계열: 발주도 재고도 yd).
-//   그 pack_size=130 은 실사 입력 편의 계수일 뿐 환산계수가 아니다
-//   (inventoryCount.ts:76 · 마이그 0540). 놓치면 현수막 원가가 130배가 된다.
+// 환산 여부 — 판정은 `utils/unitConvert.ts` isMultiUom() 과 **같은 규칙**이어야 한다:
+//   base_unit 이 있고 · unit 과 **다르고** · pack_size 가 유효할 때만 환산한다.
+//   현수막 AQ* 계열은 발주도 재고도 yd 라 환산 대상이 아니고, 그 pack_size=130 은
+//   실사 입력 편의 계수일 뿐 환산계수가 아니다(inventoryCount.ts:101 · 마이그 0540).
+//   ⚠️2026-09-03 까지 이 식은 `base_unit IS NULL` 만 봤다. 오늘 값으로는 결과가 같지만
+//   (base_unit=unit 이면서 pack>1 인 품목 prod 0건), AQ* 47종에 base_unit 을 채우는 순간
+//   130 이 환산계수로 살아나 **현수막 원가가 130배**가 된다. base_unit 공백은 결함이 아니라
+//   「포장 환산 없음」이라는 설계된 상태다 — 채우려면 pack_size 를 먼저 정리해야 한다.
 //   단위 3층 구조 정본 = utils/rollConsumption.ts 헤더.
 //
 // 라인 단위 판별 — 같은 품목에 롤 판매와 절단(미터) 판매가 섞인다(실측 9품목·혼재 9라인).
@@ -33,7 +38,8 @@
  */
 export function salesBaseQtySql(oi: string = 'oi', it: string = 'i'): string {
   return `(CASE
-    WHEN ${it}.base_unit IS NULL OR COALESCE(${it}.pack_size, 1) <= 1 THEN ${oi}.quantity
+    WHEN ${it}.base_unit IS NULL OR ${it}.base_unit = '' OR ${it}.base_unit = ${it}.unit
+      OR COALESCE(${it}.pack_size, 1) <= 1 THEN ${oi}.quantity
     WHEN ${oi}.unit_price > 0
      AND ${oi}.unit_price < ${it}.avg_unit_cost * SQRT(${it}.pack_size) THEN ${oi}.quantity
     ELSE ${oi}.quantity * ${it}.pack_size

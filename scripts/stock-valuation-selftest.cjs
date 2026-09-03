@@ -200,6 +200,49 @@ if (!/export function packFactor/.test(ucSrc)) {
   }
 }
 
+// ── ⑤ 판매 라인 환산 축: salesBaseQtySql 이 isMultiUom 과 같은 규칙인지 ──────
+// 2026-09-03: 이 식만 `base_unit IS NULL` 로 판정하고 있었다. unitConvert.isMultiUom 은
+//   `base_unit && base_unit !== unit && pack_size > 0` 을 요구한다. 오늘 값으로는 결과가
+//   같지만(base_unit=unit 이면서 pack>1 인 품목 prod 0건), AQ* 현수막 47종은 pack_size=130 을
+//   **실사 편의 계수**로 달고 있어서, base_unit 을 채우는 순간 130 이 환산계수로 살아나
+//   재료원가가 130배가 된다. 「base_unit 공백을 채운다」는 정비 작업이 곧 그 방아쇠다.
+{
+  const { compileTs } = require('./lib/compile-ts.cjs')
+  const SBQ = path.join(__dirname, '..', 'src', 'utils', 'salesBaseQty.ts')
+  const { mod, cleanup } = compileTs(SBQ, { bundle: true })
+  try {
+    const sql = mod.salesBaseQtySql('oi', 'i')
+    const costSql = mod.estMaterialCostSql('oi', 'i')
+
+    db.exec(`CREATE TABLE order_items (id INTEGER PRIMARY KEY, item_id INTEGER, quantity REAL, unit_price REAL)`)
+    // 90 시트(롤 판매) · 91 AQ 현수막(base 공백) · 92 AQ 에 base_unit 이 채워진 상태 · 93 base 공백문자열
+    db.exec(`INSERT INTO items (id, item_name, unit, base_unit, pack_size, base_price, avg_unit_cost) VALUES
+      (90, '일반시트',     '롤', 'M',  50, 115000, 2325),
+      (91, 'AQ2 현수막원단', 'yd', NULL, 130,   1200,  459),
+      (92, 'AQ2 현수막원단', 'yd', 'yd', 130,   1200,  459),
+      (93, '빈 base_unit',  '롤', '',    50, 115000, 2325)`)
+    db.exec(`INSERT INTO order_items (id, item_id, quantity, unit_price) VALUES
+      (1, 90,  2, 115000),
+      (2, 91, 60,   1200),
+      (3, 92,  1,  60000),
+      (4, 90, 60,   2500),
+      (5, 93,  3, 115000)`)
+
+    const q = (id, expr) => Number(db.prepare(
+      `SELECT ${expr} AS v FROM order_items oi JOIN items i ON i.id = oi.item_id WHERE oi.id = ?`
+    ).get(id).v)
+
+    check('롤 판매 라인은 base 로 환산한다(2롤 → 100M)', q(1, sql), 100)
+    check('AQ 현수막(base_unit 공백)은 환산하지 않는다', q(2, sql), 60)
+    check('★AQ 롤 판매 라인 — base_unit=unit 이 채워져도 환산하지 않는다(130배 방지)', q(3, sql), 1)
+    check('같은 시트라도 미터 단가로 팔린 라인은 환산하지 않는다', q(4, sql), 60)
+    check('base_unit 이 빈 문자열이면 환산하지 않는다', q(5, sql), 3)
+    check('추정 재료원가 = base 단가 × base 수량', q(1, costSql), 232500)
+    check('★가드가 빠지면 이 값이 59,670(=130배) 이 된다', q(3, costSql), 459)
+  } finally { cleanup() }
+}
+
+
 // ── 결과 ─────────────────────────────────────────────────────────────
 if (fails.length) {
   console.error(`\n✗ 재고 평가 축 검증 실패 ${fails.length}건 (통과 ${pass})\n`)
