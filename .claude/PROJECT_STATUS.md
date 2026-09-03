@@ -36,7 +36,7 @@
 
 ## ✅ 최근 완료 — 후속 대기 인덱스 (경위·상세 전문 = `PROJECT_STATUS_ARCHIVE.md`)
 
-- **✅ 09-03 prod 배포 — 전체 리뷰 결함 수정 오케스트레이션(11 worktree)** — 리뷰 CRITICAL 2·HIGH 89·MEDIUM 143 을 10묶음(Fable 인증·재고·회계 / Opus 나머지)으로 병렬 수정→fix-integration 통합→main. **194건 수정·설계상 보류 4**. C1=포털·직원셀프 토큰 내부 API 차단(auth.ts+permissions.ts) · C2=purchaseInvoice 반사 XSS. 검증(Opus5) blocking 0. 게이트 6종 신설(auth-boundary·csv-guard·card-spend·expense-month-key·tax-discount·year-end-deduction). **원가 백필 8,779건 prod 실행(에러 0)**. owner 결정: 에누리=과세표준차감(구현 일치)·단가기준=base_price 통일(0554 후속 3422c646)·입고게이트=ADMIN/MANAGER(기존 페이지권한과 동일, 실차단 0). 정본=docs/audits/2026-09-03-full-review.md(+fix-reports 10·VERIFY-REPORT). 남은=**IA 축2·3·4 수동 ia:deploy**·storageZones 단위표시 후속·간판 PER_AREA_ROLL/PER_LED
+- **✅ 09-03 prod 배포 — 전체 리뷰 결함 수정(11 worktree 오케스트레이션)** — CRITICAL 2·HIGH 89·MEDIUM 143 → 194건 수정·보류 4·백필 8,779건(에러 0)·검증 blocking 0. 경위=ARCHIVE §2026-09-03 리뷰수정. 남은=**IA 축2·3·4 ia:deploy**·storageZones 후속
 
 - **✅ 09-03 전체 코드 리뷰(Fable 5.1) — 코드 0 수정** — 게이트 20종 전부 통과 · 에이전트 20개(보안 3·Area2/4·QA·슬라이스 9·/code-review) → **CRITICAL 2·HIGH 89·MEDIUM 142**, HIGH 이상은 메인이 소스 재검증. ★C1=포털·직원셀프 토큰이 내부 API 통과(auth.ts:22+permissions.ts:54) ★C2=purchaseInvoice.ts:6 무인증 반사 XSS. 정본=`docs/audits/2026-09-03-full-review.md`(+상세 15파일). 남은=**수정 묶음 1(인증 경계)부터 착수 여부 결정**
 
