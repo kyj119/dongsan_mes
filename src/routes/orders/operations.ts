@@ -12,6 +12,7 @@ import { getEntityId, orderVisibilityFilter } from '../../utils/entityFilter'
 import { kstYmdCompact, kstYmd } from '../../utils/kstDate'
 import { checkMaterialCoverage, describeGap, type CoverageGap } from '../../utils/materialShortageCheck'
 import { deriveClientBalance } from '../ledger/ar-helpers'
+import { generateCardsForOrder } from './helpers'
 
 // ---------- D1 row shapes ----------
 interface OrderCopyRow {
@@ -32,12 +33,17 @@ interface OrderItemCopyRow {
   post_processing: string | null; content: string | null; specification: string | null; sort_order: number
   scale_factor: number; ai_group_index: number | null; parent_item_id: number | null
   assigned_entity_id: number | null; assignment_status: string | null
+  // 라인 고유 속성(주문에 종속되지 않는 값) — 복사본에도 그대로 따라가야 한다
+  finishing: string | null; price_status: string | null
+  auto_amount: number | null; line_discount: number | null; discount_reason: string | null
+  ai_analysis_id: number | null; shipment_ready: number | null
 }
 interface MaxSeqRow { max_seq: number }
 interface QuotationRow {
   id: number; order_number: string; status: string
   valid_until: string | null; client_id: number; final_amount: number
   delivery_date: string | null; order_type: string | null
+  priority: string | null; notes: string | null; entity_id: number | null
 }
 interface OrderEmailRow {
   id: number; order_number: string; order_date: string; delivery_date: string | null
@@ -138,7 +144,9 @@ ordersOpsRouter.post('/:id/copy', requireEditOrRole('/orders', 'MANAGER', 'DESIG
       SELECT id, order_id, item_id, item_name, category_name,
              width, height, quantity, unit, unit_price, amount, vat_included,
              post_processing, content, specification, sort_order, parent_item_id,
-             scale_factor, ai_group_index, assigned_entity_id, assignment_status
+             scale_factor, ai_group_index, assigned_entity_id, assignment_status,
+             finishing, price_status, auto_amount, line_discount, discount_reason,
+             ai_analysis_id, shipment_ready
       FROM order_items WHERE order_id = ? ORDER BY sort_order ASC, id ASC
     `).bind(id).all<OrderItemCopyRow>()
 
@@ -202,8 +210,10 @@ ordersOpsRouter.post('/:id/copy', requireEditOrRole('/orders', 'MANAGER', 'DESIG
           unit_price, amount, vat_included,
           post_processing, content, specification, sort_order,
           scale_factor, ai_group_index, parent_item_id,
-          assigned_entity_id, assignment_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+          assigned_entity_id, assignment_status,
+          finishing, price_status, auto_amount, line_discount, discount_reason,
+          ai_analysis_id, shipment_ready
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         newOrderId,
         item.item_id || null,
@@ -223,7 +233,14 @@ ordersOpsRouter.post('/:id/copy', requireEditOrRole('/orders', 'MANAGER', 'DESIG
         item.scale_factor || 1,
         item.ai_group_index !== undefined ? item.ai_group_index : null,
         item.assigned_entity_id || null,
-        item.assignment_status || null
+        item.assignment_status || null,
+        item.finishing || null,
+        item.price_status || null,
+        item.auto_amount ?? null,
+        item.line_discount ?? null,
+        item.discount_reason || null,
+        item.ai_analysis_id ?? null,
+        item.shipment_ready ?? 0
       ).run()
 
       copyIdMap.set(item.id as number, insertResult.meta.last_row_id as number)
@@ -242,8 +259,10 @@ ordersOpsRouter.post('/:id/copy', requireEditOrRole('/orders', 'MANAGER', 'DESIG
           unit_price, amount, vat_included,
           post_processing, content, specification, sort_order,
           scale_factor, ai_group_index, parent_item_id,
-          assigned_entity_id, assignment_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          assigned_entity_id, assignment_status,
+          finishing, price_status, auto_amount, line_discount, discount_reason,
+          ai_analysis_id, shipment_ready
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         newOrderId,
         item.item_id || null,
@@ -264,7 +283,14 @@ ordersOpsRouter.post('/:id/copy', requireEditOrRole('/orders', 'MANAGER', 'DESIG
         item.ai_group_index !== undefined ? item.ai_group_index : null,
         newParentId,
         item.assigned_entity_id || null,
-        item.assignment_status || null
+        item.assignment_status || null,
+        item.finishing || null,
+        item.price_status || null,
+        item.auto_amount ?? null,
+        item.line_discount ?? null,
+        item.discount_reason || null,
+        item.ai_analysis_id ?? null,
+        item.shipment_ready ?? 0
       ).run()
     }
 
@@ -297,10 +323,13 @@ ordersOpsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), a
     const body = await c.req.json().catch(() => ({})) as { force?: boolean }
     const force = body.force === true
 
+    // 타법인 견적을 주문으로 전환할 수 없다 — 복사 경로(:120 #446)와 같은 가시성 모델.
+    const cvOvf = orderVisibilityFilter(c, 'orders')
     const order = await c.env.DB.prepare(`
-      SELECT id, order_number, status, valid_until, client_id, final_amount, delivery_date, order_type
-      FROM orders WHERE id = ?
-    `).bind(id).first<QuotationRow>()
+      SELECT id, order_number, status, valid_until, client_id, final_amount, delivery_date, order_type,
+             priority, notes, entity_id
+      FROM orders WHERE id = ?${cvOvf.clause}
+    `).bind(id, ...cvOvf.params).first<QuotationRow>()
 
     if (!order) {
       return c.json({ success: false, error: 'Order not found' }, 404)
@@ -342,14 +371,43 @@ ordersOpsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), a
       VALUES (?, 'QUOTATION', 'CONFIRMED', ?, ?)
     `).bind(id, user?.id || null, force && isExpired ? '만료 견적 강제 전환' : '견적서 → 주문 전환').run()
 
+    // ★생산 카드 생성 — 생성 경로(create.ts:579)와 **같은 규칙**이어야 한다.
+    //   여기가 빠지면 전환된 주문은 카드 0건 + 전 라인 shipment_ready=0 이라 작업지시가 안 나가고
+    //   PATCH /shipments/:orderId/ship 이 「미완료 품목」으로 막힌다(지시 현황판 '누락' 큐에만 뜬다).
+    //   법인 기준은 세션이 아니라 **주문 행**(update.ts·lifecycle.ts:1131 과 동일).
+    const cvEntityId = order.entity_id ?? (getEntityId(c) || 1)
+    let cardsGenerated = 0
+    if (order.order_type === 'DISTRIBUTION') {
+      // 유통 주문: 카드 미생성, 전 품목 즉시 출고 가능
+      await c.env.DB.prepare(
+        `UPDATE order_items SET shipment_ready = 1 WHERE order_id = ?`
+      ).bind(id).run()
+    } else {
+      // 멱등: 이미 카드가 붙은 주문이면 재생성하지 않는다(중복 카드 방지)
+      const existingCards = await c.env.DB.prepare(
+        'SELECT COUNT(*) AS n FROM cards WHERE order_id = ?'
+      ).bind(id).first<{ n: number }>()
+      if (!existingCards || (existingCards.n || 0) === 0) {
+        cardsGenerated = await generateCardsForOrder({
+          db: c.env.DB,
+          orderId: order.id,
+          orderNumber: order.order_number,
+          clientId: order.client_id,
+          deliveryDate: order.delivery_date || null,
+          priority: order.priority || 'NORMAL',
+          notes: order.notes || null,
+          entityId: cvEntityId
+        })
+      }
+    }
+
     // Phase 5: 자재 부족 경고 (non-blocking)
     //   ⚠️ 부족 0건 ≠ 자재 이상 없음 — 판정 불가(gap)도 함께 올린다(생성·상태변경 경로와 동일 규칙).
     let materialWarnings: any[] = []
     let materialGap: CoverageGap | null = null
     let materialCheckFailed = false
     try {
-      const entityId = getEntityId(c) || 1
-      const cov = await checkMaterialCoverage(c.env.DB, order.id, entityId)
+      const cov = await checkMaterialCoverage(c.env.DB, order.id, cvEntityId)
       materialWarnings = cov.warnings
       materialGap = order.order_type === 'DISTRIBUTION' ? null : cov.gap
     } catch (mErr) {
@@ -359,8 +417,8 @@ ordersOpsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), a
 
     return c.json({
       success: true,
-      message: `견적서 ${order.order_number}이(가) 주문으로 전환되었습니다.`,
-      data: { id: order.id, order_number: order.order_number, status: 'CONFIRMED' },
+      message: `견적서 ${order.order_number}이(가) 주문으로 전환되었습니다. ${cardsGenerated} card(s) generated.`,
+      data: { id: order.id, order_number: order.order_number, status: 'CONFIRMED', cards_generated: cardsGenerated },
       ...(isExpired && { warning: `유효기한이 만료된 견적서입니다 (${order.valid_until}).` }),
       ...(materialWarnings.length > 0 && {
         material_warnings: materialWarnings,
@@ -397,12 +455,14 @@ ordersOpsRouter.post('/:id/send-email', requireRole('ADMIN', 'MANAGER'), async (
     }
 
     // 주문 + 거래처 정보 조회
+    //   ★타법인 주문의 금액·거래처·미수금을 임의 주소로 내보낼 수 없다 — 복사·전환 경로와 같은 가시성 모델.
+    const emOvf = orderVisibilityFilter(c, 'o')
     const order = await c.env.DB.prepare(`
       SELECT o.*, c.client_name, c.representative, c.email as client_email
       FROM orders o
       LEFT JOIN clients c ON o.client_id = c.id
-      WHERE o.id = ?
-    `).bind(id).first<OrderEmailRow>()
+      WHERE o.id = ?${emOvf.clause}
+    `).bind(id, ...emOvf.params).first<OrderEmailRow>()
 
     if (!order) {
       return c.json({ success: false, error: 'Order not found' }, 404)
