@@ -12,6 +12,26 @@
   var REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
   var PT_PER_MM = 72 / 25.4;
 
+  /**
+   * mm 단위 문서를 만든다 — `app.documents.add()` 를 이걸로 대체한다.
+   * ★`documents.add()` 가 만드는 문서는 눈금이 **point** 다. `doc.rulerUnits` 대입은 읽기 전용이라
+   *   아무 일도 하지 않고, `preferences rulerType` 도 안 통한다 — **DocumentPreset 이 유일한 경로다**
+   *   ([[feedback-illustrator-doc-units]], AI 30.7 실측 2026-08-25). 기하는 불변이고 눈금만 바뀐다.
+   * ⚠️ `mes-a0-host.jsx` `mesA0_newDocMM` 과 같은 내용의 사본.
+   */
+  function mesCore_newDocMM(wPt, hPt) {
+    try {
+      var dp = new DocumentPreset();
+      dp.units = RulerUnits.Millimeters;
+      dp.colorMode = DocumentColorSpace.CMYK;
+      dp.width = wPt;
+      dp.height = hPt;
+      return app.documents.addDocument('[Default] Print', dp);
+    } catch (eU) {
+      return app.documents.add(DocumentColorSpace.CMYK, wPt, hPt);
+    }
+  }
+
   // ══ 가드 ══
   if (app.documents.length === 0) { alert('열린 문서가 없습니다.'); return; }
   var srcDoc = app.activeDocument;
@@ -319,7 +339,7 @@
   }
 
   // ══ 복제 문서 생성 (원본 불가침 — 열린 고객 파일은 무변경) ══
-  var newDoc = app.documents.add(DocumentColorSpace.CMYK, (ub[2] - ub[0]) || 100, (ub[1] - ub[3]) || 100);
+  var newDoc = mesCore_newDocMM((ub[2] - ub[0]) || 100, (ub[1] - ub[3]) || 100);
   var okAll = false;
   var outlineFailed = false;
   var epsName = null;
