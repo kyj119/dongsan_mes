@@ -10,7 +10,7 @@ import type { PurchaseOrder } from '../../types/models'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
-import { getNextSeqNumber, getNextEntitySeqNumber } from '../../utils/sequenceGenerator'
+import { getNextEntitySeqNumber } from '../../utils/sequenceGenerator'
 import { kstYmdCompact, kstDate } from '../../utils/kstDate'
 
 const poSpecialRouter = new Hono<HonoEnv>()
@@ -147,10 +147,10 @@ poSpecialRouter.post('/:id/reorder', requireRole('ADMIN', 'MANAGER'), async (c) 
       FROM purchase_order_items WHERE po_id = ? ORDER BY sort_order, id
     `).bind(id).all()
 
-    // 새 PO 번호 생성
+    // 새 PO 번호 생성 — po_number 는 전역 UNIQUE(0032·0281 "제거 불가") 이라 법인별 MAX 채번(getNextSeqNumber+entityId)은
+    //   타법인이 같은 날 같은 번호를 만들어 UNIQUE 500. 정규 경로(core.ts POST)와 같은 E{eid} 내장 채번.
     const today = kstYmdCompact()
-    // entity별 시퀀스 (0281 복합 UNIQUE(entity_id, po_number) 정합 — 정규 생성 경로와 동일)
-    const poNumber = await getNextSeqNumber(c.env.DB, 'purchase_orders', 'po_number', `${today}-P`, 3, getEntityId(c) || 1)
+    const poNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_orders', 'po_number', getEntityId(c) || 1, today, { suffix: 'P' })
 
     // 새 PO 생성
     const result = await c.env.DB.prepare(`
@@ -259,10 +259,9 @@ poSpecialRouter.post('/quick', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const canAutoApprove = autoApproveEnabled && finalAmount <= autoApproveLimit
     const status = canAutoApprove ? 'CONFIRMED' : 'DRAFT'
 
-    // PO 번호 생성
+    // PO 번호 생성 — 재발주와 같은 이유로 E{eid} 내장 채번(전역 UNIQUE 정합)
     const today = kstYmdCompact()
-    // entity별 시퀀스 (0281 복합 UNIQUE(entity_id, po_number) 정합 — 정규 생성 경로와 동일)
-    const poNumber = await getNextSeqNumber(c.env.DB, 'purchase_orders', 'po_number', `${today}-P`, 3, getEntityId(c) || 1)
+    const poNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_orders', 'po_number', getEntityId(c) || 1, today, { suffix: 'P' })
 
     // PO 생성
     const result = await c.env.DB.prepare(`

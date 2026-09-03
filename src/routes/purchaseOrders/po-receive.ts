@@ -12,6 +12,7 @@ import { requireAnyPagePermission } from '../../middleware/permissions'
 import { getEntityId, entityFilter, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../../utils/entityFilter'
 import { getItemDefaultZones } from '../../utils/inventoryZone'
 import { packFactor } from '../../utils/unitConvert'
+import { getNextEntitySeqNumber } from '../../utils/sequenceGenerator'
 import { kstYmd, kstYmdCompact, kstDate, kstDateOf } from '../../utils/kstDate'
 
 const poReceiveRouter = new Hono<HonoEnv>()
@@ -51,14 +52,16 @@ poReceiveRouter.post('/:id/receive', async (c) => {
 
     const receiptDate = receipt_date || kstYmd()
 
-    // 입고 번호 생성: RCV-YYYYMMDD-001
-    const dateStr = kstYmdCompact()
-    const rcvCountRow = await c.env.DB.prepare(`
-      SELECT COUNT(*) as count FROM inventory_receipts WHERE receipt_number LIKE ?
-    `).bind(`RCV-${dateStr}%`).first<{ count: number }>()
+    // 재고 귀속 법인 — 전체모드(0) 쓰기 차단 (조용한 동산(1) 귀속 방지). 채번에도 쓰므로 먼저 확정.
+    const poEntityIdWrite = getWriteEntityId(c)
+    if (poEntityIdWrite == null) {
+      return c.json({ success: false, error: ENTITY_ALL_MODE_WRITE_ERROR }, 400)
+    }
 
-    const sequence = ((rcvCountRow?.count || 0) + 1).toString().padStart(3, '0')
-    const receiptNumber = `RCV-${dateStr}-${sequence}`
+    // 입고 번호: receipt_number 는 UNIQUE(0003) — 전역 COUNT+1 은 동시 입고·취소 후 재입고에서 충돌.
+    //   수기입고(inventory.ts #329)와 같은 법인 채번(RCV-E{eid}-YYYYMMDD-001).
+    const dateStr = kstYmdCompact()
+    const receiptNumber = await getNextEntitySeqNumber(c.env.DB, 'inventory_receipts', 'receipt_number', poEntityIdWrite, dateStr, { base: 'RCV-' })
 
     // po_item 정보 로딩
     const { results: poItems } = await c.env.DB.prepare(`
@@ -86,6 +89,14 @@ poReceiveRouter.post('/:id/receive', async (c) => {
       const receiveQty: number = Number(ri.received_quantity ?? ri.quantity ?? 0)
       const acceptedQty: number = ri.accepted_quantity !== undefined ? Number(ri.accepted_quantity) : receiveQty
       const rejectedQty: number = ri.rejected_quantity !== undefined ? Number(ri.rejected_quantity) : 0
+
+      // 하한: 수령 수량은 양수, 합격·불합격은 0 이상 (음수는 received_quantity 를 깎고 음수 입고 라인을 남긴다)
+      if (!Number.isFinite(receiveQty) || receiveQty <= 0 || !(acceptedQty >= 0) || !(rejectedQty >= 0)) {
+        return c.json({
+          success: false,
+          error: `품목 '${poItem.item_name}': 수령 수량은 0보다 커야 하고 합격·불합격 수량은 0 이상이어야 합니다.`
+        }, 400)
+      }
 
       // 합격 + 불합격 = 수령 수량 검증
       if (Math.abs((acceptedQty + rejectedQty) - receiveQty) > 0.0001) {
@@ -118,8 +129,6 @@ poReceiveRouter.post('/:id/receive', async (c) => {
       amount: number
       qualityStatus: string
       rejectMemo: string | null
-      balanceAfter: number
-      hasInventoryRow: boolean
       acceptedBase: number
       packSize: number
       entityId: number
@@ -128,20 +137,16 @@ poReceiveRouter.post('/:id/receive', async (c) => {
     let summaryAccepted = 0
     let summaryRejected = 0
 
-    // #389: inventory/items 건별 조회 N+1 제거 — item_ids로 IN-prefetch (루프 내 재고 쓰기 없음 → 등가)
-    // 재고 귀속 법인 — 전체모드(0) 쓰기 차단 (조용한 동산(1) 귀속 방지)
-    const poEntityIdWrite = getWriteEntityId(c)
-    if (poEntityIdWrite == null) {
-      return c.json({ success: false, error: ENTITY_ALL_MODE_WRITE_ERROR }, 400)
-    }
+    // #389: items 건별 조회 N+1 제거 — item_ids로 IN-prefetch (루프 내 재고 쓰기 없음 → 등가)
+    //   ★재고 잔량은 여기서 읽지 않는다 — 락(#420) 이전에 읽은 값으로 `SET quantity = ?` 덮어쓰면
+    //     그 사이의 자동차감·출고가 지워졌다(2026-09-03). 재고는 batch 안에서 상대 누적하고
+    //     balance_after 는 서브쿼리로 읽는다.
     const poEntityIdPrefetch = poEntityIdWrite
     const recvItemIds = [...new Set(
       receiveItems.map((ri: any) => poItemMap.get(ri.po_item_id)?.item_id).filter((x: any) => x != null)
     )] as number[]
-    // 0396 다중행: invQtyMap = 각 품목 기본창고 행의 현재고만.
-    //   itemZoneMap = getItemDefaultZones(법인 인식) — 타법인 zone 배정 품목은 입고 법인 기본창고로 리맵
+    // 0396 다중행: itemZoneMap = getItemDefaultZones(법인 인식) — 타법인 zone 배정 품목은 입고 법인 기본창고로 리맵
     //   (raw items.storage_zone_id 사용 금지: entity_id≠zone 소유법인 어긋난 유령 행 생성. 2026-07-06 감사 #1)
-    const invQtyMap = new Map<number, number>()
     let itemZoneMap = new Map<number, number | null>()
     // #462 MU3: 다단위 — 입고 수량(관리단위) → base_unit 환산용 pack_size. NULL/0→1(단일단위·불변).
     //   inventory.quantity·inventory_transactions.quantity는 base 단위. scan/수기입고(inventory.ts:324-357,381)와 동일.
@@ -157,13 +162,6 @@ poReceiveRouter.post('/:id/receive', async (c) => {
       for (const r of (zoneRows || [])) {
         packMap.set(Number(r.id), packFactor(r))
       }
-      const { results: invRows } = await c.env.DB.prepare(
-        `SELECT item_id, storage_zone_id, quantity FROM inventory WHERE entity_id = ? AND item_id IN (${iph})`
-      ).bind(poEntityIdPrefetch, ...recvItemIds).all<{ item_id: number; storage_zone_id: number | null; quantity: number }>()
-      for (const r of (invRows || [])) {
-        const itemId = Number(r.item_id)
-        if ((r.storage_zone_id ?? 0) === (itemZoneMap.get(itemId) ?? 0)) invQtyMap.set(itemId, Number(r.quantity))
-      }
     }
 
     for (const ri of receiveItems) {
@@ -175,20 +173,12 @@ poReceiveRouter.post('/:id/receive', async (c) => {
       const amount = receiveQty * unitPrice
       const qualityStatus = rejectedQty === 0 ? 'PASSED' : acceptedQty === 0 ? 'FAILED' : 'PARTIAL'
 
-      // #462 MU3: 관리단위 → base 환산. inventory/tx는 base 단위(invQtyMap 현재고도 base).
+      // #462 MU3: 관리단위 → base 환산. inventory/tx는 base 단위.
       const packSize = poItem.item_id ? (packMap.get(poItem.item_id as number) || 1) : 1
       const acceptedBase = acceptedQty * packSize
-      let balanceAfter = 0
-      let hasInventoryRow = false
       const poEntityId = poEntityIdPrefetch
-      if (poItem.item_id && acceptedQty > 0) {
-        // 0396 다중행: 기본창고 행 기준 현재고 (invQtyMap = 기본창고 행만 보유, base 단위)
-        hasInventoryRow = invQtyMap.has(poItem.item_id as number)
-        const currentStock = invQtyMap.get(poItem.item_id as number) || 0
-        balanceAfter = currentStock + acceptedBase
-      }
 
-      // 품목 기본창고 (0396): UPDATE WHERE zone·INSERT·tx 모두 사용 → hasInventoryRow 무관 항상 설정
+      // 품목 기본창고 (0396): UPDATE WHERE zone·INSERT·tx 모두 사용
       let itemZoneId: number | null = null
       if (poItem.item_id) {
         itemZoneId = itemZoneMap.get(poItem.item_id as number) ?? null
@@ -199,7 +189,7 @@ poReceiveRouter.post('/:id/receive', async (c) => {
         itemId: (poItem.item_id as number) || null,
         receiveQty, acceptedQty, rejectedQty, unitPrice, amount, qualityStatus,
         rejectMemo: ri.reject_memo || null,
-        balanceAfter, hasInventoryRow, acceptedBase, packSize,
+        acceptedBase, packSize,
         entityId: poEntityId, zoneId: itemZoneId,
       })
       summaryAccepted += acceptedQty
@@ -263,6 +253,7 @@ poReceiveRouter.post('/:id/receive', async (c) => {
     // ============================================================================
     try {
       const stmts: ReturnType<typeof c.env.DB.prepare>[] = []
+      const ledgerAgg = new Map<number, { qtyBase: number; amount: number; zoneId: number | null }>()
 
       for (const p of perItemPrep) {
         // purchase_order_items 누적 update + line_status 재계산 + 담당자 이력
@@ -297,32 +288,40 @@ poReceiveRouter.post('/:id/receive', async (c) => {
           p.qualityStatus, p.rejectMemo, p.poItemId
         ))
 
-        // inventory stock + transaction (합격 수량 있을 때만)
+        // inventory stock (합격 수량 있을 때만) — 행 부재 시 0 생성 후 **상대 누적**(절대값 SET 금지)
         if (p.itemId && p.acceptedQty > 0) {
-          if (p.hasInventoryRow) {
-            stmts.push(c.env.DB.prepare(`
-              UPDATE inventory SET quantity = ?, last_updated = CURRENT_TIMESTAMP
-              WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id,0)=IFNULL(?,0)
-            `).bind(p.balanceAfter, p.itemId, p.entityId, p.zoneId))
-          } else {
-            stmts.push(c.env.DB.prepare(`
-              INSERT INTO inventory (item_id, quantity, entity_id, storage_zone_id, last_updated) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-            `).bind(p.itemId, p.balanceAfter, p.entityId, p.zoneId))
-          }
-
           stmts.push(c.env.DB.prepare(`
-            INSERT INTO inventory_transactions (
-              item_id, transaction_type, transaction_date, quantity,
-              unit_price, total_amount, reference_type, reference_id,
-              balance_after, reason, handled_by, entity_id, storage_zone_id
-            ) VALUES (?, 'IN', ?, ?, ?, ?, 'PURCHASE', ?, ?, '발주입고(합격분)', ?, ?, ?)
-          `).bind(
-            // #462 MU3: 거래는 base 단위 — quantity=base(×pack), unit_price=base당(÷pack), total_amount=관리단위×관리단가(불변)
-            p.itemId, receiptDate, p.acceptedBase, p.unitPrice / p.packSize,
-            p.acceptedQty * p.unitPrice, receiptId, p.balanceAfter, user?.id || 1,
-            poEntityIdPrefetch, p.zoneId
-          ))
+            INSERT OR IGNORE INTO inventory (item_id, quantity, entity_id, storage_zone_id, last_updated)
+            VALUES (?, 0, ?, ?, CURRENT_TIMESTAMP)
+          `).bind(p.itemId, p.entityId, p.zoneId))
+          stmts.push(c.env.DB.prepare(`
+            UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP
+            WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id,0)=IFNULL(?,0)
+          `).bind(p.acceptedBase, p.itemId, p.entityId, p.zoneId))
+
+          const agg = ledgerAgg.get(p.itemId) || { qtyBase: 0, amount: 0, zoneId: p.zoneId }
+          agg.qtyBase += p.acceptedBase
+          agg.amount += p.acceptedQty * p.unitPrice
+          ledgerAgg.set(p.itemId, agg)
         }
+      }
+
+      // 원장 — 품목당 1행(같은 품목 발주 2줄이면 UNIQUE(0293) 참조키 충돌). balance_after 는 위 UPDATE 반영값을 서브쿼리로.
+      for (const [itemId, agg] of ledgerAgg) {
+        stmts.push(c.env.DB.prepare(`
+          INSERT INTO inventory_transactions (
+            item_id, transaction_type, transaction_date, quantity,
+            unit_price, total_amount, reference_type, reference_id,
+            balance_after, reason, handled_by, entity_id, storage_zone_id
+          ) VALUES (?, 'IN', ?, ?, ?, ?, 'PURCHASE', ?,
+            (SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id,0)=IFNULL(?,0)),
+            '발주입고(합격분)', ?, ?, ?)
+        `).bind(
+          // #462 MU3: 거래는 base 단위 — quantity=base(×pack), unit_price=base당(=금액÷base수량), total_amount=관리단위×관리단가(불변)
+          itemId, receiptDate, agg.qtyBase, agg.qtyBase > 0 ? agg.amount / agg.qtyBase : 0,
+          agg.amount, receiptId, itemId, poEntityIdPrefetch, agg.zoneId, user?.id || 1,
+          poEntityIdPrefetch, agg.zoneId
+        ))
       }
 
       // inventory_receipts.inspection_status 업데이트 (사전계산값 사용)

@@ -195,11 +195,16 @@ priceListsRouter.post('/bulk-assign', requireRole('ADMIN', 'MANAGER'), async (c)
       return c.json({ success: false, error: 'Price list not found' }, 404)
     }
 
-    const placeholders = client_ids.map(() => '?').join(',')
-    const result = await c.env.DB.prepare(
-      `UPDATE clients SET price_list_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`
-    ).bind(price_list_id, ...client_ids).run()
-    const updated = result.meta.changes ?? 0
+    // 80 청크 — 100건 이상 선택 시 D1 바인드 한도로 통째 500
+    let updated = 0
+    for (let i = 0; i < client_ids.length; i += 80) {
+      const chunk = client_ids.slice(i, i + 80)
+      const placeholders = chunk.map(() => '?').join(',')
+      const result = await c.env.DB.prepare(
+        `UPDATE clients SET price_list_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`
+      ).bind(price_list_id, ...chunk).run()
+      updated += result.meta.changes ?? 0
+    }
 
     return c.json({ success: true, updated })
   } catch (error) {

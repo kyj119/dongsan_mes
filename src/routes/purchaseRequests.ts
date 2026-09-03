@@ -637,7 +637,8 @@ prRouter.post('/:id/convert', requireRole('ADMIN'), async (c) => {
     const id = c.req.param('id')
 
     const ef = entityFilter(c)  // #455: 타법인 PR→PO 변환(절도) 차단(read-back 404 게이트)
-    const pr = await c.env.DB.prepare(`SELECT id, supplier_id, status FROM purchase_requests WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<PurchaseRequest>()
+    // notes·request_number 도 아래에서 쓴다 — 빠져 있으면 PO 비고가 항상 NULL, 이력이 '#undefined' 로 남았다(2026-09-03)
+    const pr = await c.env.DB.prepare(`SELECT id, request_number, supplier_id, status, notes FROM purchase_requests WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<PurchaseRequest>()
     if (!pr) return c.json({ success: false, error: '발주 요청을 찾을 수 없습니다.' }, 404)
     if (pr.status !== 'APPROVED') {
       return c.json({ success: false, error: `'${pr.status}' 상태에서는 발주서 변환이 불가능합니다. APPROVED 상태만 가능합니다.` }, 400)
@@ -750,7 +751,9 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
     const id = c.req.param('id')
 
     const ef = entityFilter(c)  // #455: 타법인 PR 자동변환(절도) 차단(read-back 404 게이트)
-    const pr = await c.env.DB.prepare(`SELECT id, status FROM purchase_requests WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<PurchaseRequest>()
+    // supplier_id·request_number 를 함께 읽는다 — 없으면 "이력 없으면 PR 공급업체" 폴백이 사문이 되어
+    //   입고 이력 없는 품목이 전부 unassigned 로 조용히 버려졌다(2026-09-03)
+    const pr = await c.env.DB.prepare(`SELECT id, request_number, supplier_id, status FROM purchase_requests WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<PurchaseRequest>()
     if (!pr) return c.json({ success: false, error: '발주 요청을 찾을 수 없습니다.' }, 404)
     if (pr.status !== 'APPROVED') {
       return c.json({ success: false, error: `'${pr.status}' 상태에서는 자동 변환이 불가능합니다. APPROVED 상태만 가능합니다.` }, 400)

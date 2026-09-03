@@ -227,6 +227,50 @@ async function stockOf(itemId) {
     }
   }
 
+  // ── ⑥ 수기 입고 — 수량 하한 · 재고↔원장 한 batch · 취소 환원 (2026-09-03) ──────────────
+  section('⑥ 수기 입고 하한·원자성·취소 환원')
+  // 원장 순합: OUT 계열은 저장 부호가 경로마다 다르다(출고 −q · 입고취소 +q) → transaction_type 으로 부호를 정한다
+  const txOf = async (itemId) => arr((await api('GET', `/api/inventory/${itemId}/transactions?limit=500`)).data?.data?.transactions)
+  const ledgerNet = (txs) => txs.reduce((s, t) => {
+    const q = Number(t.quantity || 0)
+    if (t.transaction_type === 'IN' || t.transaction_type === 'TRANSFER_IN') return s + Math.abs(q)
+    if (t.transaction_type === 'OUT' || t.transaction_type === 'TRANSFER_OUT') return s - Math.abs(q)
+    return s + q  // ADJUST = 부호 있는 변화량
+  }, 0)
+  const near = (a, b) => Math.abs(a - b) < 1e-6
+  const r0stock = await stockOf(stockItem.id)
+  const r0net = ledgerNet(await txOf(stockItem.id))
+  const rcpt = (items) => api('POST', '/api/inventory/receipts', { supplier: 'e2e', receipt_date: today, notes: 'e2e receipt', items })
+  const bad0 = await rcpt([{ item_id: stockItem.id, quantity: 0, unit_price: 100 }])
+  check('★수량 0 입고 → 400', bad0.status === 400, `${bad0.status} ${bad0.text.slice(0, 120)}`)
+  const badNeg = await rcpt([{ item_id: stockItem.id, quantity: -5, unit_price: 100 }])
+  check('★음수 입고 → 400', badNeg.status === 400, `${badNeg.status} ${badNeg.text.slice(0, 120)}`)
+  const badNan = await rcpt([{ item_id: stockItem.id, quantity: 'abc', unit_price: 100 }])
+  check('★비숫자 입고 → 400', badNan.status === 400, `${badNan.status} ${badNan.text.slice(0, 120)}`)
+  check('거부된 입고는 재고 불변', near(await stockOf(stockItem.id), r0stock), `before=${r0stock} after=${await stockOf(stockItem.id)}`)
+
+  // 같은 품목 2줄 — 원장은 품목당 1행(UNIQUE 참조키)이어야 batch 가 살아남는다
+  const okR = await rcpt([
+    { item_id: stockItem.id, quantity: 7, unit_price: 100 },
+    { item_id: stockItem.id, quantity: 3, unit_price: 120 },
+  ])
+  const receiptId = okR.data?.data?.receipt_id
+  check('입고 200 (같은 품목 2줄)', okR.status === 200 && !!receiptId, `${okR.status} ${okR.text.slice(0, 140)}`)
+  const r1stock = await stockOf(stockItem.id)
+  const r1net = ledgerNet(await txOf(stockItem.id))
+  check('입고 후 재고 증가', r1stock > r0stock, `before=${r0stock} after=${r1stock}`)
+  check('★재고 증가분 == 원장 증가분 (한 batch)', near(r1stock - r0stock, r1net - r0net),
+    `stockΔ=${r1stock - r0stock} ledgerΔ=${r1net - r0net}`)
+  const rget = await api('GET', `/api/inventory/receipts/${receiptId}`)
+  check('입고 상세 200 (자법인)', rget.status === 200 && Number(rget.data?.data?.id) === Number(receiptId), `${rget.status}`)
+
+  const cancel = await api('PATCH', `/api/inventory/receipts/${receiptId}/inspection-decision`, { decision: 'CANCELLED', notes: 'e2e cancel' })
+  check('입고 취소 200', cancel.status === 200, `${cancel.status} ${cancel.text.slice(0, 140)}`)
+  const r2stock = await stockOf(stockItem.id)
+  const r2net = ledgerNet(await txOf(stockItem.id))
+  check('★취소 후 재고 원복', near(r2stock, r0stock), `expected=${r0stock} actual=${r2stock}`)
+  check('★취소 후 원장 순합 원복', near(r2net, r0net), `expected=${r0net} actual=${r2net}`)
+
   console.log('')
   if (failed) { console.log(`${C.r}${C.b}E2E FAIL ${failed}건${C.x}`); process.exit(1) }
   console.log(`${C.g}${C.b}E2E PASS — 수정·삭제 대칭 확인${C.x}`)

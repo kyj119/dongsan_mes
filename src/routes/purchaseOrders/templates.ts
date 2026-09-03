@@ -276,11 +276,8 @@ templatesRouter.post('/from-template/:templateId', async (c) => {
         INSERT INTO po_status_history (po_id, from_status, to_status, changed_by, change_reason)
         VALUES (?, 'DRAFT', 'CONFIRMED', ?, '템플릿에서 즉시 확정 생성')
       `).bind(poId, user?.id || 1).run()
-
-      await c.env.DB.prepare(`
-        UPDATE clients SET purchase_balance = COALESCE(purchase_balance, 0) + ?,
-        updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `).bind(finalAmount, template.supplier_id).run()
+      // AP 잔액은 파생(utils/supplierPayable = 발주 − 지급 − 조정). `clients.purchase_balance` 누적은
+      //   2026-08-31 에 14곳에서 제거됐고 여기 1곳이 남아 단방향으로 커지고 있었다(2026-09-03 제거).
     }
 
     return c.json({

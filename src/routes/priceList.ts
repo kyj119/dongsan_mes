@@ -166,14 +166,16 @@ priceListRouter.delete('/policies/:id', requireRole('ADMIN', 'MANAGER'), async (
     const policy = await c.env.DB.prepare(
       `SELECT is_default FROM price_policies WHERE id = ?${efDel.clause}`
     ).bind(id, ...efDel.params).first<{ is_default: number }>()
-    if (policy?.is_default) return c.json({ success: false, error: '기본 정책은 삭제할 수 없습니다.' }, 400)
+    // 소유 검증 실패(타법인·미존재)는 404 — 예전엔 그대로 진행해 규칙 전량 삭제 + 거래처 연결 해제가 실행됐다(2026-09-03)
+    if (!policy) return c.json({ success: false, error: '가격 정책을 찾을 수 없습니다.' }, 404)
+    if (policy.is_default) return c.json({ success: false, error: '기본 정책은 삭제할 수 없습니다.' }, 400)
 
-    // 해당 정책 사용 중인 거래처 → NULL로 변경
-    await c.env.DB.prepare(
-      'UPDATE clients SET price_policy_id = NULL WHERE price_policy_id = ?'
-    ).bind(id).run()
-    await c.env.DB.prepare('DELETE FROM price_policy_rules WHERE policy_id = ?').bind(id).run()
-    await c.env.DB.prepare(`DELETE FROM price_policies WHERE id = ?${efDel.clause}`).bind(id, ...efDel.params).run()
+    // 소유 확인 뒤에만 — 거래처 연결 해제 + 규칙 + 헤더를 한 batch 로
+    await c.env.DB.batch([
+      c.env.DB.prepare('UPDATE clients SET price_policy_id = NULL WHERE price_policy_id = ?').bind(id),
+      c.env.DB.prepare('DELETE FROM price_policy_rules WHERE policy_id = ?').bind(id),
+      c.env.DB.prepare(`DELETE FROM price_policies WHERE id = ?${efDel.clause}`).bind(id, ...efDel.params),
+    ])
 
     return c.json({ success: true })
   } catch (error) {
