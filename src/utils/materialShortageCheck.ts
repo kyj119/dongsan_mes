@@ -133,6 +133,8 @@ export function describeGap(gap: CoverageGap): string {
   if (gap.by_reason.NO_ITEM) parts.push(`품목 미연결 ${gap.by_reason.NO_ITEM}`)
   if (gap.by_reason.NO_SIZE) parts.push(`규격 없음 ${gap.by_reason.NO_SIZE}`)
   if (gap.by_reason.NO_MATERIAL_LINK) parts.push(`자재 미등록 ${gap.by_reason.NO_MATERIAL_LINK}`)
+  // BOM 행은 있는데 산정 규칙이 아직 없다(PER_LED) — 라인은 계산됐지만 그만큼 덜 잡혔다.
+  if (gap.by_reason.PARTIAL_USAGE) parts.push(`산정규칙 미구현 ${gap.by_reason.PARTIAL_USAGE}`)
   const names = gap.sample_names.length ? ` (${gap.sample_names.join(', ')})` : ''
   return `자재 판정 불가 ${gap.lines}건 — ${parts.join(' · ')}${names}. 부족 여부를 확인하지 못했습니다.`
 }
@@ -140,7 +142,7 @@ export function describeGap(gap: CoverageGap): string {
 /** 판정 불가 라인 배열 → 사유별 집계. 0건이면 null(호출부에서 조건 표시가 쉬워진다). */
 function summarizeGap(unresolved: UnresolvedLine[]): CoverageGap | null {
   if (unresolved.length === 0) return null
-  const by_reason: Record<UnresolvedReason, number> = { NO_ITEM: 0, NO_SIZE: 0, NO_MATERIAL_LINK: 0 }
+  const by_reason: Record<UnresolvedReason, number> = { NO_ITEM: 0, NO_SIZE: 0, NO_MATERIAL_LINK: 0, PARTIAL_USAGE: 0 }
   const names: string[] = []
   for (const u of unresolved) {
     by_reason[u.reason] = (by_reason[u.reason] || 0) + 1
