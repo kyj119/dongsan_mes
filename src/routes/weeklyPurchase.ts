@@ -35,13 +35,16 @@ weeklyPurchaseRouter.get('/analyze', async (c) => {
 
     // 2. MRP 소요량 (확정/생산중 주문) — #465: 신모델(product_materials + 차감설정, autoDeduct 산식)로 재배선.
     //    구 bom_items(동결) 대체. 제품당 자재 1종 선택·폭 초과는 최대폭 분할 근사.
+    //    법인 필터: 같은 응답의 현재고·안전재고·발주중(consumptionForecast)이 effectiveEntity 기준이므로 소요량도 같은 법인만.
+    //    (없으면 타법인 주문 소요량이 shortage 에 더해져 /create-prs 가 과잉 발주요청을 만든다 — 2026-09-03)
     const { results: activeOrderItems } = await c.env.DB.prepare(`
       SELECT oi.item_id, oi.width, oi.height, oi.quantity
       FROM order_items oi
       JOIN orders o ON oi.order_id = o.id
       WHERE o.status IN ('CONFIRMED', 'IN_PRODUCTION')
+        AND o.entity_id = ?
         AND COALESCE(oi.width, 0) > 0 AND COALESCE(oi.height, 0) > 0
-    `).all()
+    `).bind(effectiveEntity).all()
 
     const mrpReq = await computeMaterialRequirements(c.env.DB, activeOrderItems as any[])
     const mrpMap: Record<number, { demand: number; materialName: string }> = {}

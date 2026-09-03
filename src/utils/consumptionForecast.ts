@@ -89,6 +89,7 @@ export async function getConsumptionForecast(
     FROM inventory_transactions t
     JOIN items i ON i.id = t.item_id
     WHERE t.transaction_type = 'OUT'
+      AND COALESCE(t.reference_type, '') != 'RECEIPT_CANCEL'  -- 입고 취소 역분개는 소모가 아니다(inventory.ts inspection-decision)
       AND t.transaction_date >= ?
       AND i.is_purchase_item = 1 AND i.is_active = 1 ${itemFilter}
       ${txCondition}
