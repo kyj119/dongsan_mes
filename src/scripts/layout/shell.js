@@ -1241,6 +1241,55 @@ window.showPrompt = function(message, options) {
   });
 };
 
+// === 범용 모달(제목 + 임의 HTML 본문 + 버튼 목록) ===
+// orders.js 의 「자재 부족 경고」·「미완료 카드 처리」가 이 헬퍼를 부르는데 정의가 어디에도 없어
+//   출고완료 상태변경(requires_confirmation 응답)이 ReferenceError 로 끝났다(2026-09-03 감사).
+//   showConfirm/showPrompt 는 본문이 텍스트 전용이라 표·행 버튼을 담을 수 없어 여기 하나를 만든다.
+// buttons = [{ text|label, class, onclick }] — onclick 은 함수 또는 인라인 문자열.
+// ⚠️ 닫기는 closeModal 이 아니라 **closeShellModal** 이다. orders.js·items/modals.js 등 여러 페이지가
+//    자기 소유 closeModal(자기 모달 id 전용)을 전역에 이미 선언해 두고 있어 이름이 겹치면 서로를 덮는다.
+var __shellModalEscHandler = null;
+window.closeShellModal = function() {
+  if (__shellModalEscHandler) {
+    document.removeEventListener('keydown', __shellModalEscHandler);
+    __shellModalEscHandler = null;
+  }
+  var el = document.getElementById('__shellModal');
+  if (el) el.remove();
+};
+window.showModal = function(title, bodyHtml, buttons) {
+  window.closeShellModal();
+  var overlay = document.createElement('div');
+  overlay.id = '__shellModal';
+  overlay.className = 'ds-modal-overlay';
+  overlay.style.zIndex = '9998';
+  overlay.innerHTML =
+    '<div class="ds-modal" style="max-width:720px;width:92%">' +
+      '<div class="ds-modal-header"><h3 style="font-size:15px"></h3></div>' +
+      '<div class="ds-modal-body" style="padding:16px 20px;max-height:70vh;overflow-y:auto"></div>' +
+      '<div class="ds-modal-footer"></div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  // 제목은 textContent(거래처명 등 사용자 입력이 들어온다). 본문은 호출부가 만든 HTML 을 그대로 쓴다.
+  overlay.querySelector('h3').textContent = title == null ? '' : String(title);
+  overlay.querySelector('.ds-modal-body').innerHTML = bodyHtml == null ? '' : String(bodyHtml);
+  var footer = overlay.querySelector('.ds-modal-footer');
+  (buttons || []).forEach(function(b) {
+    if (!b) return;
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = b.class || 'ds-btn ds-btn-ghost';
+    btn.textContent = b.text || b.label || '확인';
+    if (typeof b.onclick === 'function') btn.addEventListener('click', b.onclick);
+    else if (typeof b.onclick === 'string' && b.onclick) btn.setAttribute('onclick', b.onclick);
+    footer.appendChild(btn);
+  });
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) window.closeShellModal(); });
+  __shellModalEscHandler = function(e) { if (e.key === 'Escape') window.closeShellModal(); };
+  document.addEventListener('keydown', __shellModalEscHandler);
+  return overlay;
+};
+
 // === Table Density Toggle ===
 function toggleTableDensity(btn) {
   var wrap = btn.closest('.ds-card, .bg-white, [class*="rounded"]');

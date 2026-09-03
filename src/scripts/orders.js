@@ -823,17 +823,21 @@ async function confirmStatusChange() {
         showToast('자재 점검이 실패해 부족 여부를 확인하지 못했습니다.', 'warning');
       }
     } else if (response.data.requires_confirmation) {
-      // 미완료 카드 확인 모달 표시
+      // 미완료 카드 확인 모달 표시.
+      // ⚠️ closeStatusModal() 이 _statusChangeOrderId 를 null 로 되돌린다 — 닫기 전에 붙잡아 둔다.
+      //    (안 그러면 이어지는 submitCardConfirm 이 /api/orders/null/status 로 나간다.)
+      var _pendingOrderId = _statusChangeOrderId;
       closeStatusModal();
-      showCardConfirmModal(_statusChangeOrderId, newStatus, response.data.pending_cards);
+      showCardConfirmModal(_pendingOrderId, newStatus, response.data.pending_cards);
     } else {
       showToast('상태 변경 실패: ' + response.data.error, 'error');
     }
   } catch (error) {
     var errData = error.response?.data;
     if (errData && errData.requires_confirmation) {
+      var _pendingOrderIdErr = _statusChangeOrderId;
       closeStatusModal();
-      showCardConfirmModal(_statusChangeOrderId, errData.pending_cards ? 'SHIPPED' : 'SHIPPED', errData.pending_cards);
+      showCardConfirmModal(_pendingOrderIdErr, 'SHIPPED', errData.pending_cards);
     } else {
       showToast('상태 변경 중 오류: ' + (errData?.error || error.message), 'error');
     }
@@ -866,9 +870,18 @@ function showMaterialShortageWarning(warnings) {
       + '</tr>';
   });
   html += '</tbody></table></div>';
+  // 닫기는 closeShellModal (shell.js). 이 페이지의 closeModal 은 #orderModal 전용이라 이 모달을 못 닫는다.
   showModal('자재 부족 경고 (' + warnings.length + '건)', html, [
-    { label: '주간 발주로 이동', class: 'bg-blue-600 text-white hover:bg-blue-700', onclick: "window.navigateTo('/weekly-purchase')" },
-    { label: '확인', class: 'border border-gray-300 text-gray-700 hover:bg-gray-50', onclick: 'closeModal()' },
+    {
+      text: '주간 발주로 이동', class: 'ds-btn ds-btn-primary',
+      // window.navigateTo 는 이 코드베이스에 정의가 없다 — SPA 네비게이션 정본은 window.spaNavigate.
+      onclick: function() {
+        closeShellModal();
+        if (window.spaNavigate) window.spaNavigate('/weekly-purchase');
+        else window.location.href = '/weekly-purchase';
+      }
+    },
+    { text: '확인', class: 'ds-btn ds-btn-ghost', onclick: function() { closeShellModal(); } },
   ]);
 }
 
@@ -900,8 +913,8 @@ function showCardConfirmModal(orderId, targetStatus, pendingCards) {
     + '</div>';
 
   showModal('미완료 카드 처리', html, [
-    { text: '출고 진행', class: 'btn-primary', onclick: 'submitCardConfirm()' },
-    { text: '닫기', class: 'btn-secondary', onclick: 'closeModal()' }
+    { text: '출고 진행', class: 'ds-btn ds-btn-primary', onclick: function() { submitCardConfirm(); } },
+    { text: '닫기', class: 'ds-btn ds-btn-ghost', onclick: function() { closeShellModal(); } }
   ]);
 }
 
@@ -960,7 +973,7 @@ async function submitCardConfirm() {
       cancelled_card_ids: cancelledIds
     });
     if (response.data.success) {
-      closeModal();
+      closeShellModal();   // 미완료 카드 모달은 shell.js 소유 (#orderModal 이 아니다)
       showToast('출고 처리 완료 (확정 ' + confirmedIds.length + '건, 취소 ' + cancelledIds.length + '건)', 'success');
       loadOrders();
     } else {
