@@ -604,6 +604,34 @@ window.authFetch = function(url, options) {
     });
 };
 
+// === dsOpenAuthFile: 보호된 파일(R2 첨부 등)을 새 탭으로 연다 ===
+// 라우트가 authMiddleware(Authorization 헤더 전용)라 <a href="/api/..."> 직링크는 항상 401 빈 탭이 된다.
+// 팝업 차단 회피: 클릭 제스처 안에서 빈 탭을 먼저 열고, blob 준비 후 그 탭을 blob URL 로 이동시킨다.
+window.dsOpenAuthFile = function(url, label) {
+    var w = window.open('', '_blank');
+    return window.authFetch(url).then(function(res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.blob();
+    }).then(function(blob) {
+        var objUrl = URL.createObjectURL(blob);
+        if (w && !w.closed) {
+            w.location.href = objUrl;
+        } else {
+            // 팝업이 막힌 경우 — 다운로드로 대체
+            var a = document.createElement('a');
+            a.href = objUrl;
+            a.download = label || 'file';
+            a.click();
+        }
+        // 새 탭이 blob 을 다 읽은 뒤 해제 (즉시 revoke 하면 빈 탭이 된다)
+        setTimeout(function() { URL.revokeObjectURL(objUrl); }, 60000);
+    }).catch(function(e) {
+        if (w && !w.closed) w.close();
+        if (typeof showToast === 'function') showToast('파일 열기 실패: ' + e.message, 'error');
+        else console.error('[dsOpenAuthFile]', e);
+    });
+};
+
 // === Mobile Sidebar ===
 function toggleMobileSidebar() {
   document.getElementById('sidebar').classList.toggle('open');
@@ -629,8 +657,9 @@ function toggleSidebarPin() {
 
 function toggleSidebarGroup(gi) {
   var items = document.getElementById('groupItems' + gi);
+  if (!items) return;
   var header = items.previousElementSibling;
-  if (!items || !header) return;
+  if (!header) return;
   var collapsed = items.classList.toggle('collapsed');
   if (collapsed) header.classList.add('collapsed');
   else header.classList.remove('collapsed');
@@ -1803,6 +1832,16 @@ window.dsSkeleton = {
 
     // Set initial state
     history.replaceState({ spaUrl: window.location.pathname + window.location.search }, '', window.location.pathname + window.location.search);
+
+    // 페이지 스크립트에서 코드로 이동할 때 쓰는 전역 진입점.
+    //   spaNavigate 는 이 IIFE 안에 갇혀 있어 `window.spaNavigate` 를 부르던 호출부(hr.js 등)가
+    //   전부 undefined 폴백을 타고 있었고, `window.navigateTo` 는 아예 정의된 적이 없어
+    //   weeklyPurchase/scan/orders 의 "이동" 동작이 TypeError 로 죽어 있었다.
+    window.spaNavigate = spaNavigate;
+    window.navigateTo = function(url) {
+        if (!url) return;
+        try { spaNavigate(url); } catch (e) { window.location.href = url; }
+    };
 })();
 
 // ===================================================
