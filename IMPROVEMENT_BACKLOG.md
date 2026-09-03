@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-09-03T21:47:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-09-04T03:50:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,28 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **8** (`list_issues(state:OPEN,label:auto-improve)` 실측, 7→8 — #613·#616·#617·#622·#623·#624·#625·#626) |
+| 🆕 new | **7** (`list_issues(state:OPEN,label:auto-improve)` 실측, 8→7 — #613·#616·#617·#622·#624·#625·#626, #623 completed로 이동) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **541** (`search_issues(reason:completed)` 리터럴 쿼리, 변동없음) |
+| ✔️ done | **542** (`search_issues(reason:completed)` 리터럴 쿼리, 541→542 — #623) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 재확인 생략, 변동없음) |
+
+> **Area 6 자기 진화 (2026-09-04T03:50):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD, `78a8dae`), `git fetch origin main`(`207078c..78a8dae`, forced update) → `git checkout main && git reset --hard origin/main`(HEAD `78a8dae`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area6 방법 라인 HEAD `3f25be8`)**: 웹앱 범위 diff **92커밋** — Area5(51/62회차급)가 같은 초대형 창을 "09-03 전체 코드 리뷰(Fable 5.1) → `session/fix-*` 11-worktree 오케스트레이션" 5개 보안 도메인 표본검증으로 이미 정독, Area4 데이터정합성 렌즈도 별도 통과. Area6 고유 관점 = **비-웹앱 축 churn**(「범위 축」, 62회차)과 **done-sync 절대값 재동기화**로 좁혀 재분석(92커밋 전량 재독은 비현실적, Area5/4가 이미 다른 렌즈로 커버).
+> - **비-웹앱 축 churn(LogWatcher/IllustratorAutomat) 10건 개별 대조**: `b321417`(flexi join 창 5s→90s 비대칭 확장, FLEXI-03 78/83쌍 정정)·`8610ce7`(#616 폴백 이중계상 억제를 Flexi 파서에도 적용 — TnsPrintExpParser만 픽스됐던 것의 형제 완전성 자기 발견·자기 수정)·`5112002`(SheetLayout 검증이 `newDoc.close()` 이후 돌아 매번 빈 값으로 "통과" 오판정 + catch가 `$.fileName` 실패로 상태 미기록 — `_ia_status` 조기 return 규율 위반의 실제 재현 사례)·`d1bf6b9`/`606f124`/`476b918`(mes-core/mes-sheet 단위 mm 통일, cut-host 축척 매니페스트, 버전게이트 문자열 비교 버그) 등 — **전부 커밋 자체가 필드로그 리플레이·selftest 신설·수치 검증을 동반**(예: `b321417`은 FLEXI-03 13유령→0, FLEXI-TOYO1 무회귀 재생 검증). `grep -c` 로 두 로그 파일 전수 대조 결과 `8a9556a`·`caa5553` 2건만 기언급, 나머지 8건은 최초 진입이나 **전부 자기검증 동반 + `.claude/PROJECT_STATUS.md`에 축1/2·3·4 배포상태와 "남은 것" 명시**(line 5·7·43: IA 축2·3·4 `ia:deploy` 대기·축1 이미 동기화) → Area6 신규 이슈 불요, 기존 트래킹으로 충분.
+> - **`npm run audit:ia-jsx` 시도** — 이 샌드박스는 NAS(Z:) 미마운트라 5축 전부 "확인불가"로 판정 제외(드리프트 없음이 아니라 검증 자체 불가) — 기존 제약과 동일, Windows 실기에서만 판정 가능.
+> - **open≠unfixed 재검증 — #623 fixed-in-tree 아닌 진짜 미픽스 확인 후 직접 수정**: `/intakes/stats`(`workbench.ts:934`)가 여전히 `entityFilter(c,'designer_intakes')`(bare) — 형제 6개 중 유일하게 `waitingOpenFilter`로 안 바뀐 상태를 grep으로 재확인(closed로 오판하지 않고 코드로 확인, 30회차 거울의 반대 — 이번엔 실제로 안 고쳐져 있었음). `waitingOpenFilter` = `entityFilter`의 상위집합(entity 일치 OR `order_item_id IS NULL`)이라 스키마/응답 변경 없이 안전한 1줄 교체 — **자동수정 적용**: `entityFilter(c,'designer_intakes')` → `waitingOpenFilter(c)`. 검증 = `npx tsc --noEmit` clean · `npm run build` 성공 · `npm run audit:entity` 누락 0(변동없음) · `npm run db:bootstrap:ci`로 로컬 D1에 0558까지 적용 후 치환된 정확한 SQL을 `wrangler d1 execute --local`로 직접 실행해 문법·바인드 확인(0행, 에러 없음). 커밋 `8d812a1`(`Closes #623`) push 완료 → 이슈 자동 completed 전환 확인.
+> - **standing scan 1: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:417`·`workbench.ts:577`).
+> - **standing scan 3: `npm run audit:entity`** — 검사 133파일·entity테이블 SELECT 67건·**누락 0건**(변동없음, 수정 후 재확인 포함).
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 직전 런(HEAD `78a8dae`) `conclusion:success`. 이번 커밋(`8d812a1`)의 배포런은 push 직후 `queued` — 세션 종료 시점엔 완료 미확인(다음 사이클이 확인).
+> - **done-sync 절대값 재동기화(리터럴 쿼리)**: `search_issues(is:closed,reason:completed)` **541→542**(#623 completed) · `not_planned`4+`duplicate`2=rejected **6**(변동없음) · `list_issues(OPEN)` **8→7**(#623 이동, 나머지 #613·#616·#617·#622·#624·#625·#626 전건 일치).
+> - **🧬 SKILL 강화**: 없음 — area-6-self-evolution.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 이번 사이클은 기존 「범위 축」(62회차)·「open≠unfixed 거울」(30회차) 두 규칙이 정확히 의도대로 작동한 실증(신규 codify 불요).
+> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 8건 → 이번 로그 추가 후 9건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(비-웹앱 축 10건 전부 자기검증 동반 기존 트래킹 확인, IA JSX 드리프트는 샌드박스 제약으로 미판정), 자동수정 1건(`workbench.ts:934` `/intakes/stats` entityFilter→waitingOpenFilter, #623 종결), done-sync: open 7(8→7)·done 542(541→542)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 + 인프라 (2026-09-03T21:47):**
 > - **방법**: `git status`=워킹트리 clean(detached HEAD, `8a9556a`), `git fetch origin main`(`207078c..8a9556a`, forced update) → `git checkout main && git reset --hard origin/main`(HEAD `8a9556a`). `npm ci`(0→81), `npx tsc --noEmit` clean.
