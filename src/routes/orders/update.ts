@@ -699,14 +699,14 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
       }
     } // end if (canRegenerateCards)
 
-    // 주문 수정 시 원가 자동 재계산 (CONFIRMED 이상 상태에서)
-    const costStatuses = ['CONFIRMED', 'PRINTING', 'PRINT_DONE', 'SHIPPED']
-    if (costStatuses.includes(existingOrder.status)) {
-      try {
-        await recalculateOrderCosts(c.env.DB, parseInt(id))
-      } catch (costErr) {
-        console.error('Cost recalculation on update failed (non-blocking):', costErr)
-      }
+    // 원가 재계산 — PUT 은 라인을 delete+reinsert 하므로 여기서 다시 계산해야 값이 남는다.
+    // ★상태 제한을 두지 않는다(2026-09-02) — 종전엔 CONFIRMED 이상에서만 돌아
+    //   접수·견적 단계에서는 원가가 영영 안 잡혔다. 「받아도 되는지」는 그 단계에서 봐야 한다.
+    //   계산 비용은 주문당 자재조회 1회 + batch 1회로 작다.
+    try {
+      await recalculateOrderCosts(c.env.DB, parseInt(id))
+    } catch (costErr) {
+      console.error('Cost recalculation on update failed (non-blocking):', costErr)
     }
 
     return c.json({

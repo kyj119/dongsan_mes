@@ -1,10 +1,16 @@
 // ============================================================================
 // 신모델 자재 소요량 산정 (product_materials + 품목 차감설정)
-//   인쇄 자동차감(autoDeductInventory)과 동일 산식으로 주문 규격 → 자재별 소요량 도출.
+//   주문 규격 → 자재별 소요량 도출. 소요량 **환산 산식**(mm→yd/m/cm)은 `rollConsumption` 단일 소스다.
+//   ⚠️ **자재 선택 규칙은 자동차감(autoDeductInventory)과 다르다** — 예전 주석이 「동일 산식·미러링」이라
+//      적혀 있었으나 사실이 아니고, 그대로 두면 다음 사람이 옛 규칙을 계획 쪽에 되붙인다(2026-09-03 리뷰).
+//      · 여기(계획·원가) = `selectRollPlacement` — 방향 2가지 + 단가 있는 후보 우선 + 무분할 전용
+//      · 자동차감          = **실제 출력 로그의 폭**으로 「출력폭 이상 최소폭」 1종 (방향·단가 미고려)
+//      자동차감은 실측이라 그게 맞다. 대신 「이론 소요 ↔ 실제 차감 = 로스」를 볼 때 **다른 SKU 가 잡힐 수
+//      있다**는 것을 알고 봐야 한다(별도 트랙: autoDeduct 를 selectRollPlacement 로 통일할지).
 //   부족체크(materialShortageCheck)·주간발주(weeklyPurchase) 계획 공용. (#465 bom_items 대체)
 // ============================================================================
 import type { D1Database } from '@cloudflare/workers-types'
-import { computeRollConsumption, resolveStockUnit, selectBoardMaterial, boardAreaSqm } from './rollConsumption'
+import { computeRollConsumption, resolveStockUnit, selectBoardMaterial, boardAreaSqm, selectRollPlacement } from './rollConsumption'
 
 export interface MaterialReq {
   material_item_id: number
@@ -43,12 +49,12 @@ export interface MaterialLineInput {
 // 판재 면적·선택 규칙은 `utils/rollConsumption` 이 정본이다(사본을 두면 두 경로가 갈린다).
 
 /**
- * order_items 규격(cm) → 자재별 소요량(base_unit). autoDeductInventory와 동일 산식.
- * - ROLL(원단): 주문폭 이상 최소폭 원단 선택 → 길이 = 높이 ÷ divisor(cm:10 / yd:914.4) × 수량.
+ * order_items 규격(cm) → 자재별 소요량(base_unit).
+ * - ROLL(원단): `selectRollPlacement` — 폭 안에 통으로 들어가는 (자재 × 방향) 중 금액/면적 최소.
  *   주문폭 > 원단 최대폭이면 분할출력 근사 — 최대폭 원단으로 N=ceil(주문폭÷최대폭) 배 소요.
  * - BOARD(판재): 면적 × 로스율 ÷ 보드1장 면적 = 장수.
  * - NONE / 미링크 제품: 소요 없음(제외).
- * 제품당 자재 1종 선택(ROLL 우선 → BOARD) — autoDeduct 미러링.
+ * 제품당 자재 1종 선택(ROLL 우선 → BOARD).
  * ※ Step2 예정: print_events 실측으로 출력완료 order_item 제외(미출력분만 계획).
  */
 export async function computeMaterialRequirements(
@@ -84,7 +90,11 @@ export async function computeMaterialCoverage(
       `SELECT pm.product_item_id, pm.material_item_id, i.item_name AS material_name,
               i.width_mm, COALESCE(i.deduction_method,'ROLL') AS deduction_method,
               i.sheet_spec, COALESCE(i.waste_factor,1.0) AS waste_factor, i.base_unit,
-              i.unit, i.pack_size
+              i.unit, i.pack_size,
+              -- 단가를 함께 읽는다: 안 읽으면 selectRollPlacement 가 면적 기준으로 돌아
+              -- 같은 라인에서 원가(금액 기준)와 다른 원단을 고른다 (2026-09-03 리뷰가 실증:
+              -- 70x170 라인이 계획 AQ2-70 1.859yd / 원가 AQ2-180 0.766yd 로 갈렸다).
+              i.avg_unit_cost
        FROM product_materials pm JOIN items i ON pm.material_item_id = i.id
        WHERE pm.product_item_id IN (${ph})`
     ).bind(...chunk).all<any>()
@@ -130,15 +140,15 @@ export async function computeMaterialCoverage(
     const boardMats = mats.filter((m: any) => m.deduction_method === 'BOARD')
 
     if (rollMats.length > 0) {
-      const fit = rollMats.find((m: any) => m.width_mm >= outWmm)
-      if (fit) {
-        add(fit, computeRollConsumption(fit, outHmm, qty).qty)
-      } else {
-        // 주문폭 > 원단 최대폭 → 최대폭 원단 분할출력 근사(봉제). N=ceil(주문폭÷최대폭).
-        const maxRoll = rollMats[rollMats.length - 1]
-        const splits = Math.ceil(outWmm / maxRoll.width_mm)
-        add(maxRoll, computeRollConsumption(maxRoll, outHmm, qty).qty * splits)
-      }
+      // ★주문 라인의 가로·세로는 방향이 고정돼 있지 않다(수성 현수막 실측 86%가 width=길이).
+      //   `selectRollPlacement` 가 **원단 폭 안에 통으로 들어가는** (자재 × 방향) 중 최소를 고른다.
+      //   분할 조합은 자동으로 만들지 않는다 — 원단·분할은 영업이 주문서에서 고르는 축이고,
+      //   자동 탐색은 이음 비용이 0이라 「잘라 이어붙여라」로 폭주한다. 정본은 rollConsumption.
+      const pick = selectRollPlacement(rollMats, outWmm, outHmm, qty)
+      // null = 후보가 전부 width_mm ≤ 0 인 경우다. 조용히 건너뛰면 「자재 이상 없음」으로 보고돼
+      // 부족체크·주간발주가 수요를 0으로 본다 — 원가 쪽은 같은 상태를 NO_MATERIAL_LINK 로 부른다.
+      if (pick) add(pick.mat, pick.qty)
+      else unresolved.push({ reason: 'NO_MATERIAL_LINK', item_name: name })
     } else if (boardMats.length > 0) {
       // 판재 선택은 `selectBoardMaterial` 단일 소스 — `[0]` 을 쓰면 같은 자재의 3x6·4x8 이
       // BOM 에 함께 있을 때 행 순서로 소요량이 1.78배 갈린다(2026-08-27).

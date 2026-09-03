@@ -19,6 +19,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
 import { requireAnyPagePermission, requireEditOrRole } from '../middleware/permissions'
 import { logActivity } from '../utils/activityLog'
+import { recalculateOrderCosts } from '../utils/costCalculator'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { kstYmdCompact, kstYmd } from '../utils/kstDate'
@@ -732,6 +733,12 @@ quotationsRouter.post('/:id/convert-to-order', requireEditOrRole('/quotations', 
       ))
     }
     if (convChildStmts.length > 0) await c.env.DB.batch(convChildStmts)
+
+    // ★원가 스냅샷 — order_items 를 새로 만드는 **모든** 경로가 불러야 한다(2026-09-03 리뷰).
+    //   여기가 빠져 있어 전환·복사로 생긴 주문은 수정·확정 전까지 total_cost 0 · 마진 100 퍼센트로 남았다.
+    //   CLAUDE.md §누적 캐시 「수정·삭제 경로가 그걸 모르는 것 — 가장 자주 재발한 결함」과 같은 축이다.
+    //   실패해도 주문 생성 자체는 막지 않는다(백필로 복구 가능).
+    try { await recalculateOrderCosts(c.env.DB, orderId) } catch (e) { console.error('cost snapshot(quotation-convert) failed:', e) }
 
     // 주문 상태 이력
     await c.env.DB.prepare(`

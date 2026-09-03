@@ -20,6 +20,7 @@ import { kstYmd, kstYmdCompact } from '../../utils/kstDate'
 import { ORDER_STATUS_LABELS } from '../../utils/statusLabels'
 import { thumbRef, resolveGroupByAiIndex, type AnalysisGroup } from '../../utils/thumbnailStore'
 import { recommendAssignedEntity, recalcOrderBillingGroups, generateCardsForOrder } from './helpers'
+import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { evaluateClientCredit } from '../ledger/credit-helpers'
 
 const ordersCreateRouter = new Hono<HonoEnv>()
@@ -587,6 +588,10 @@ ordersCreateRouter.post('/', async (c) => {
       })
     }
 
+    // 원가 스냅샷 — 그 시점의 재료비를 라인에 박는다(자기교정: 저장할 때마다 처음부터 재계산).
+    // 실패해도 주문 저장은 막지 않는다(원가는 부가 정보).
+    try { await recalculateOrderCosts(c.env.DB, orderId) } catch (e) { console.error('cost snapshot(create) failed:', e) }
+
     // ── 타법인 배정 알림: 타법인 담당(assigned_entity_id ≠ 청구법인) 품목이 있으면 그 법인에 알림 (멀티법인 협업) ──
     try {
       const { results: crossEntities } = await c.env.DB.prepare(
@@ -871,6 +876,9 @@ ordersCreateRouter.post('/:id/items', async (c) => {
         entityId: billingEntityId, itemIdsFilter: newItemIds,
       })
     }
+
+    // 원가 스냅샷 — append 경로도 주문 전 라인을 다시 계산한다(부분만 갱신하면 기준이 갈린다).
+    try { await recalculateOrderCosts(c.env.DB, orderId) } catch (e) { console.error('cost snapshot(append) failed:', e) }
 
     // order_ai_files append (file_path 중복 제거)
     const aiFiles: Array<{ file_path: string; analysis_id?: number }> = Array.isArray(body.ai_files) ? body.ai_files : []

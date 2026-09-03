@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { recalculateOrderCosts } from '../utils/costCalculator'
+import { computeLineCost, loadCostMaterials, loadInkCostPerSqm, loadInkCostByCategory } from '../utils/orderLineCost'
 
 const costsRouter = new Hono<HonoEnv>()
 costsRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
@@ -93,6 +94,81 @@ costsRouter.delete('/:id', requireRole('ADMIN'), async (c) => {
 })
 
 // POST /recalculate/:orderId — 특정 주문의 원가 재계산 (ADMIN/MANAGER)
+// POST /backfill — 기존 주문에 원가를 소급으로 채운다 (ADMIN)
+//
+// ★왜 필요한가 — `cost_standards` 가 prod 0건이라 `order_items.total_cost` 가 22,973줄 전량 0이었다.
+//   BOM 기반 계산(2026-09-02)으로 바뀌었지만 **신규 저장부터** 적용되므로, 과거분은 여기서 채운다.
+//
+// ⚠️전량을 한 번에 돌리지 않는다 — Worker subrequest 한도(1000)가 있고 주문당 라인 수만큼 쿼리가 난다.
+//   `order_id_gt` 를 커서로 넘겨 여러 번 호출한다. `dry_run` 이면 커버리지만 세고 쓰지 않는다.
+costsRouter.post('/backfill', requireRole('ADMIN'), async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({})) as any
+    const limit = Math.min(Math.max(parseInt(body?.limit) || 30, 1), 100)
+    const after = parseInt(body?.order_id_gt) || 0
+    const dryRun = body?.dry_run === true
+
+    const ef = entityFilter(c, 'o')
+    const { results: orders } = await c.env.DB.prepare(
+      `SELECT o.id FROM orders o WHERE o.id > ?${ef.clause} ORDER BY o.id ASC LIMIT ?`
+    ).bind(after, ...ef.params, limit).all<{ id: number }>()
+    const list = orders || []
+    if (list.length === 0) {
+      return c.json({ success: true, data: { processed: 0, hasMore: false, lastOrderId: after, coverage: {} } })
+    }
+
+    const coverage: Record<string, number> = {}
+    const errorOrderIds: number[] = []
+    if (dryRun) {
+      // 쓰지 않고 커버리지만 — 「원가 0」과 「원가 미상」을 갈라 보기 위한 것이다.
+      const ids = list.map((o) => o.id)
+      const ph = ids.map(() => '?').join(',')
+      const { results: lines } = await c.env.DB.prepare(
+        `SELECT oi.id, oi.item_id, oi.width, oi.height, oi.quantity, i.category
+         FROM order_items oi LEFT JOIN items i ON oi.item_id = i.id
+         WHERE oi.order_id IN (${ph}) AND oi.parent_item_id IS NULL`
+      ).bind(...ids).all<any>()
+      const rows = lines || []
+      const matMap = await loadCostMaterials(c.env.DB, rows.map((r: any) => Number(r.item_id) || 0))
+      const inkCostByCategory = await loadInkCostByCategory(c.env.DB)
+      const inkCostPerSqm = inkCostByCategory ? 0 : await loadInkCostPerSqm(c.env.DB)
+      for (const r of rows) {
+        const lc = computeLineCost(matMap.get(Number(r.item_id) || 0), r, { inkCostPerSqm, inkCostByCategory })
+        coverage[lc.coverage] = (coverage[lc.coverage] || 0) + 1
+      }
+    } else {
+      for (const o of list) {
+        try {
+          await recalculateOrderCosts(c.env.DB, o.id)
+          coverage.OK = (coverage.OK || 0) + 1
+        } catch (e) {
+          console.error('[costs/backfill] order ' + o.id, e)
+          coverage.ERROR = (coverage.ERROR || 0) + 1
+          // ★실패한 주문 번호를 **돌려준다**(2026-09-03 리뷰).
+          //   커서(lastOrderId)는 그대로 전진하므로, 알려 주지 않으면 실패분이 **영구히 건너뛰어진다** —
+          //   `total_cost` 가 0 인 채로 남는데 「백필 완료」로 보인다. 호출부가 이 목록을
+          //   `POST /costs/recalculate/:orderId` 로 재시도하면 된다.
+          errorOrderIds.push(o.id)
+        }
+      }
+    }
+
+    const lastOrderId = list[list.length - 1].id
+    return c.json({
+      success: true,
+      data: {
+        processed: list.length, hasMore: list.length === limit, lastOrderId,
+        dry_run: dryRun, coverage,
+        // 빈 배열이면 전부 성공. 값이 있으면 그 주문들은 커서가 지나갔으니 **따로 재시도해야 한다.**
+        error_order_ids: errorOrderIds,
+      },
+    })
+  } catch (error) {
+    console.error('src/routes/costs.ts backfill error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 costsRouter.post('/recalculate/:orderId', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const orderId = parseInt(c.req.param('orderId'))
