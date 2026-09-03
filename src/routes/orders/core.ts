@@ -414,6 +414,9 @@ ordersCoreRouter.get('/:id', async (c) => {
              ar.groups_json AS ai_groups_json,
              i.pricing_method AS pricing_method,
              i.sub_category AS item_subcategory,
+             -- 품목별 최소청구 변(cm). 수정·복사 화면이 이 값을 히든에 되돌려야 청구면적 자동계산이
+             --   기본 100 으로 되돌아가지 않는다(orderForm/calc.js MIN_SIDE ↔ utils/orderLineAmount.ts).
+             i.min_billing_side_cm AS min_billing_side_cm,
              ci.card_id AS card_id,
              ca.card_number AS card_number,
              -- 라인 부가 파일(0516) = "kind|이름|경로" 줄 단위. 화면(orders.js)이 칩으로 그린다.

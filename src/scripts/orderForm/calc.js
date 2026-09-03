@@ -764,6 +764,14 @@
                     contact_mobile: document.getElementById('contactMobile').value.trim() || null,
                     shipping_payment: document.getElementById('shippingPayment').value || null,
                     consolidate_with_order_id: (typeof _ofConsolidateWith !== 'undefined' && _ofConsolidateWith) ? _ofConsolidateWith : null,
+                    // 견적→주문 프리필이 심어 둔 히든(parent.js loadQuotationForPrefill). 안 보내면
+                    //   create.ts:176 이 항상 null 이라 orders.quotation_id 가 비고, 견적 전환수(파생 COUNT)와
+                    //   quotations.first_converted_at 이 영구히 0/NULL 로 남는다.
+                    source_quotation_id: (function() {
+                        var sq = document.getElementById('sourceQuotationId');
+                        var v = sq && sq.value ? parseInt(sq.value) : NaN;
+                        return isFinite(v) ? v : null;
+                    })(),
                     ai_file_path: _firstAiPath,
                     ai_analysis_id: _firstAiAnalysisId,
                     ai_files: _combinedAiFiles,

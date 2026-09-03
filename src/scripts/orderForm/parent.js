@@ -795,6 +795,18 @@
                 return window.MES_STATUS.chipClass('order', status); // 상태 색상 SSOT (statusLabels.ts)
             }
 
+            // 담당 법인(assigned_entity) 복원 헬퍼.
+            //   셀렉트 옵션은 sheet.js loadEntities 가 비동기로 채운다 — 옵션이 없을 때 .value 를 넣으면
+            //   select 는 조용히 '' 가 된다(담당자 셀렉트 #64 와 같은 함정). 그래서 의도값을 dataset 에도
+            //   남기고, 옵션 로더가 채운 뒤 그 값을 다시 적용하게 한다.
+            function setAssignedEntity(rowId, entityId) {
+                var sel = document.querySelector('[name="assigned_entity_' + rowId + '"]');
+                if (!sel) return;
+                var v = (entityId == null || entityId === '') ? '' : String(entityId);
+                sel.dataset.desiredValue = v;
+                sel.value = v;
+            }
+
             // 후가공 복원 헬퍼
             function restorePostProcessing(rowId, ppJson) {
                 if (!ppJson) return;
@@ -1144,6 +1156,14 @@
                         set('content', item.content || '');
                         set('ai_group_index', item.ai_group_index != null ? item.ai_group_index : '');
                         set('ai_analysis_id', item.ai_analysis_id || '');
+                        // 담당 법인 복원 — 없으면 저장 시 undefined 가 가고 update.ts 가 추천값으로 덮는다
+                        //   (손으로 지정한 담당이 수정 저장마다 되돌아가고 청구 분할까지 다시 나뉜다).
+                        //   ⚠️ 옵션 로드(sheet.js loadEntities)와 순서가 보장되지 않아 의도값을 dataset 에도 남긴다.
+                        setAssignedEntity(id, item.assigned_entity_id);
+                        // 품목별 최소청구 변(cm) — 이 히든이 비면 calc.js 가 기본 100 으로 되돌아가
+                        //   실규격 청구 품목(UV 판재 등)의 금액이 커지고, 그 차이로 복원 로직이 해당 행을
+                        //   '수동 에누리'로 오인 마킹한다(이후 규격을 고쳐도 금액이 안 따라온다).
+                        set('min_billing_side', item.min_billing_side_cm == null ? '' : item.min_billing_side_cm);
 
                         // 직접연결 파일 칩 복원 (ai_group_index -1/-3 = 직접연결 약속값) — 없으면 수정화면에서
                         //   연결 여부가 안 보이고 완성본↔가공 전환도 불가(값은 유지되나 표시·조작 불능).
@@ -1489,6 +1509,9 @@
                     // 재주문: ai_group_index, ai_analysis_id 복사 (같은 디자인 파일 재사용)
                     set('ai_group_index', item.ai_group_index != null ? item.ai_group_index : '');
                     set('ai_analysis_id', item.ai_analysis_id || '');
+                    // 담당 법인·최소청구 변 — 수정 경로와 같은 이유로 승계한다(미승계 시 추천값 덮어쓰기·청구면적 왜곡)
+                    setAssignedEntity(id, item.assigned_entity_id);
+                    set('min_billing_side', item.min_billing_side_cm == null ? '' : item.min_billing_side_cm);
                     // 직접연결 파일 칩 복원 (수정모드와 동일 — 재주문도 연결 상태가 보여야 전환·해제 가능)
                     if (item.ai_analysis_id && (item.ai_group_index === -1 || item.ai_group_index === -3)) {
                         set('direct_file_path', item.ai_file_path || '');
@@ -1594,7 +1617,14 @@
                     cSet('child_ai_analysis_id', child.ai_analysis_id || '');
                 }
                 if (childItems.length > 0) {
-                    Object.values(idMap).forEach(pid => updateParentChildCount(pid));
+                    // ★자식이 있는 부모만. idMap 에는 일반 라인도 담겨 있어 전체를 돌리면
+                    //   updateParentChildCount 가 자식 0개를 세어 quantity 를 0 으로 덮고(:783-784),
+                    //   서버가 `quantity || 1` 로 1 을 저장한다 = 수량이 조용히 1 로 줄어든 복사본.
+                    //   수정 경로(loadOrderForEdit)와 같은 규칙이다.
+                    const parentIdsWithChildrenCopy = new Set(
+                        childItems.map(c => idMap[c.parent_item_id]).filter(Boolean)
+                    );
+                    parentIdsWithChildrenCopy.forEach(pid => updateParentChildCount(pid));
                 }
 
                 calculateTotal();
@@ -1731,8 +1761,21 @@
                     // 배송/연락
                     if (q.delivery_date) document.getElementById('deliveryDate').value = q.delivery_date;
                     if (q.delivery_method) {
-                        const dm = document.querySelector('[name="delivery_method"]');
-                        if (dm) dm.value = q.delivery_method;
+                        // 셀렉트에는 name 이 없다(id="deliveryMethod" 뿐) — [name="delivery_method"] 는 항상 null 이라
+                        //   가드에 걸려 조용히 통과했고, 견적서의 배송방법이 주문서에 안 실렸다(기본값 대신택배로 저장).
+                        const dm = document.getElementById('deliveryMethod');
+                        if (dm) {
+                            // 수정·복사 경로와 같은 규칙: 옵션에 없는 과거값은 '(이전값)' 동적 옵션으로 유지
+                            var qDmOpts = Array.from(dm.options).map(function(o) { return o.value; });
+                            if (qDmOpts.indexOf(q.delivery_method) < 0) {
+                                var qDmLegacy = document.createElement('option');
+                                qDmLegacy.value = q.delivery_method;
+                                qDmLegacy.textContent = q.delivery_method + ' (이전값)';
+                                dm.appendChild(qDmLegacy);
+                            }
+                            dm.value = q.delivery_method;
+                            if (typeof onDeliveryMethodChange === 'function') onDeliveryMethodChange();
+                        }
                     }
                     if (q.contact_phone) {
                         const cp = document.getElementById('contactPhone');
@@ -1791,6 +1834,14 @@
                                     if (qSubEl) qSubEl.value = qiData.sub_category || '';
                                     var qCatEl = document.querySelector('[name="category_name_' + id + '"]');
                                     if (qCatEl && !qCatEl.value) qCatEl.value = qiData.category || '';
+                                    // 단가 방식·최소청구 변 — 품목 마스터에서 보충한다. 안 채우면 calc.js 가
+                                    //   MIN_SIDE 100 으로 되돌아가 실규격 청구 품목의 금액이 부풀고,
+                                    //   AREA 품목이 FIXED 로 계산된다.
+                                    var qPmEl = document.querySelector('[name="pricing_method_' + id + '"]');
+                                    if (qPmEl) qPmEl.value = qiData.pricing_method || 'FIXED';
+                                    var qMsEl = document.querySelector('[name="min_billing_side_' + id + '"]');
+                                    if (qMsEl) qMsEl.value = (qiData.min_billing_side_cm == null ? '' : qiData.min_billing_side_cm);
+                                    if (typeof window.calcItem === 'function') window.calcItem(id);
                                     await loadItemPP(id, qiData.sub_category || '');
                                     if (it.post_processing) restorePostProcessing(id, it.post_processing);
                                 } catch(eQi) { console.warn('[orderForm] 견적 후가공 승계 실패', eQi); }
