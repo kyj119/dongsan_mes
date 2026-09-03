@@ -192,6 +192,68 @@
                 calculateDistTotal();
             }
 
+            // ===== 부속품 추가 =====
+            // 유통 주문서의 「부속품」 버튼(pages/orderForm.ts:530)이 부르는 함수.
+            //   이 페이지의 pageScript 는 [deliverySlot, orderFormDist.js] 뿐이라 정의가 없어 ReferenceError 였다.
+            //   생산 주문서의 동명 함수(orderForm/itemRow.js)는 품목 행 구조(item_search_*)가 달라 재사용할 수 없고,
+            //   itemRow.js 를 이 페이지에 함께 싣는 것도 안 된다 — 두 스크립트가 전역 이름 12개를 공유해 서로 덮는다.
+            window.addAccessoryRow = async function() {
+                try {
+                    var res = await axios.get('/api/items?category=ACCESSORY&is_active=1&limit=50');
+                    var accessories = (res.data.data || res.data.items || []);
+                    if (accessories.length === 0) {
+                        showToast('등록된 부속품이 없습니다. 품목 관리에서 부속품을 등록해주세요.', 'warning');
+                        return;
+                    }
+
+                    var overlay = document.createElement('div');
+                    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9998;display:flex;align-items:center;justify-content:center';
+                    overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+
+                    var modal = document.createElement('div');
+                    modal.style.cssText = 'background:white;border-radius:12px;padding:20px;max-width:400px;width:90%;max-height:70vh;overflow-y:auto';
+                    modal.innerHTML = '<h3 class="text-lg font-bold mb-3"><i class="fas fa-puzzle-piece text-amber-600 mr-2"></i>부속품 추가</h3>'
+                        + '<p class="text-xs text-gray-500 mb-3">선택한 부속품이 품목 행으로 추가됩니다.</p>'
+                        + '<div class="space-y-1">'
+                        + accessories.map(function(acc) {
+                            return '<button type="button" class="w-full text-left px-3 py-2 rounded hover:bg-amber-50 border border-gray-100 text-sm flex items-center justify-between" '
+                                + 'data-acc-id="' + acc.id + '">'
+                                + '<span><i class="fas fa-cube text-amber-400 mr-2"></i>' + escapeHtml(acc.item_name || '') + '</span>'
+                                + '<span class="text-xs text-gray-400">' + escapeHtml(acc.item_code || '') + '</span>'
+                                + '</button>';
+                        }).join('')
+                        + '</div>';
+
+                    modal.querySelectorAll('button[data-acc-id]').forEach(function(btn, accIdx) {
+                        btn.addEventListener('click', function() {
+                            var acc = accessories[accIdx];
+                            addItemRow();
+                            var id = itemCount;
+                            var nameEl = document.querySelector('[name="dist_item_search_' + id + '"]');
+                            if (nameEl) nameEl.value = acc.item_name || '';
+                            var idEl = document.querySelector('[name="dist_item_id_' + id + '"]');
+                            if (idEl) idEl.value = acc.id;
+                            var unitEl = document.querySelector('[name="dist_unit_' + id + '"]');
+                            if (unitEl) unitEl.value = acc.unit || 'EA';
+                            var specEl = document.querySelector('[name="dist_spec_' + id + '"]');
+                            if (specEl) specEl.value = acc.specification || '';
+                            var priceEl = document.querySelector('[name="dist_price_' + id + '"]');
+                            if (priceEl) priceEl.value = fmtMoneyInput(parseInt(acc.sales_price || acc.base_price || 0) || 0);
+                            var qtyEl = document.querySelector('[name="dist_qty_' + id + '"]');
+                            if (qtyEl) { qtyEl.value = ''; qtyEl.focus(); }
+                            calcDistItem(id);
+                            overlay.remove();
+                            showToast((acc.item_name || '부속품') + ' 추가됨. 수량을 입력하세요.', 'success');
+                        });
+                    });
+
+                    overlay.appendChild(modal);
+                    document.body.appendChild(overlay);
+                } catch(err) {
+                    showToast('부속품 목록 로딩 실패: ' + ((err.response && err.response.data && err.response.data.error) || err.message), 'error');
+                }
+            };
+
             // ===== 합계 계산 =====
             function calculateDistTotal() {
                 var total = 0;
@@ -202,7 +264,10 @@
                     total += qty * price;
                 });
                 var vatCheck = document.getElementById('distVatIncluded');
-                var vat = vatCheck && vatCheck.checked ? Math.round(total * 0.1) : 0;
+                // 부가세율 = 서버 settings 주입값(window.VAT_RATE). 하드코딩 0.1 이면 설정 변경 시
+                //   화면 합계와 저장 금액이 갈린다(생산 주문서 calc.js 와 같은 규칙).
+                var distVatRate = (typeof window.VAT_RATE === 'number' && isFinite(window.VAT_RATE)) ? window.VAT_RATE : 0.1;
+                var vat = vatCheck && vatCheck.checked ? Math.round(total * distVatRate) : 0;
                 var discount = parseMoney((document.getElementById('distDiscount') || {}).value);
                 var grand = Math.max(0, total + vat - discount);
 
