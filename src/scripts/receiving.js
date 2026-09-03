@@ -226,7 +226,8 @@ async function loadReceiptHistory(page) {
         + '<td class="px-4 py-3 text-right text-red-700 font-medium">' + (r.total_rejected || 0) + '</td>'
         + '<td class="px-4 py-3 text-center">' + escapeHtml(r.inspector_name || '-') + '</td>'
         + '<td class="px-4 py-3 text-center">' + (r.statement_file_key
-          ? '<a href="/api/purchase-orders/receipts/' + r.id + '/statement" target="_blank" class="text-blue-600 hover:underline text-xs"><i class="fas fa-file-invoice"></i> 보기</a>'
+          // 라우트가 authMiddleware(Authorization 헤더 전용) — 직링크는 401 빈 탭이라 blob 경유로 연다
+          ? '<button type="button" onclick="receivingOpenStatement(' + r.id + ')" class="text-blue-600 hover:underline text-xs"><i class="fas fa-file-invoice"></i> 보기</button>'
           : '<button onclick="receivingAttachStatement(' + r.id + ')" class="text-gray-500 hover:text-blue-600 text-xs" title="거래명세서 첨부"><i class="fas fa-paperclip"></i> 첨부</button>')
         + '</td>'
         + '</tr>';
@@ -237,6 +238,12 @@ async function loadReceiptHistory(page) {
     if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-red-500">조회 실패: ' + escapeHtml(e.message) + '</td></tr>';
   }
 }
+
+// ── 거래명세서 보기 (보호된 R2 파일 — 헤더 인증 필요) ──
+function receivingOpenStatement(receiptId) {
+  window.dsOpenAuthFile('/api/purchase-orders/receipts/' + receiptId + '/statement', '거래명세서_' + receiptId);
+}
+window.receivingOpenStatement = receivingOpenStatement;
 
 // ── 입고이력 CSV 내보내기 (현재 화면 필터 반영) ──
 async function exportReceivingCsv() {
