@@ -1,3 +1,5 @@
+// ORPHAN (2026-09-03 review): no client callers — src/scripts·src/pages 어디에서도 /api/waste 를 부르지 않는다.
+// 쓰기 경로(POST/PUT/DELETE)까지 열려 있으므로 유지 여부를 담당자가 정할 것. 삭제하지 않고 표시만 남긴다.
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'

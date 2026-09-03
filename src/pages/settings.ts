@@ -805,12 +805,12 @@ ${capsSettingsScript}
                   <option value="">미지정</option>
                 </select>
               </div>
-              <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-1">배치도 영역 <span class="text-gray-400 font-normal">(공장 배치도 연결 · 선택)</span></label>
-                <select id="zoneModalFacilityZone" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                  <option value="">미지정</option>
-                </select>
-              </div>
+              <!-- 「배치도 영역」 select 제거(2026-09-03) — 죽은 컨트롤이었다.
+                   옵션은 '미지정' 하나뿐이고 채우는 코드도, 저장 payload 도 없었다(storageZones.js).
+                   뒤에 있던 storage_zones.facility_zone_id 매핑(0391)은 0440「창고 배치도 독립」에서
+                   이미 deprecated 되어 prod 매핑 0건 · 읽는 코드도 없다(utils/inventoryZone.ts:76).
+                   → 배선이 아니라 제거가 맞다. 공간인식을 재도입하려면 equipment → storage_zone
+                   직접 링크(신규 컬럼)로 다시 설계할 것. -->
               <div class="grid grid-cols-2 gap-4">
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-1">정렬 순서</label>

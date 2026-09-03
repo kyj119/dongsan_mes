@@ -59,11 +59,16 @@ yearEndRouter.get('/year-end/:employeeId', async (c) => {
     if (!employeeId) return c.json({ success: false, error: 'employeeId 필요' }, 400)
 
     // #IDOR: 자법인 직원만 (ADMIN=entityId 0 → bypass). 형제 라우트(:144 settlement·:399 list)와 정합.
-    const yeEf = entityFilter(c)
+    const yeEf = entityFilter(c, 'e')
+    // 발행 법인명 동봉 — 영수증 서식이 발행 주체를 찍는다. 없으면 화면이 '동산기획'으로 하드코딩돼
+    // 선명(2)·청주(3) 직원의 영수증이 남의 법인 이름으로 나간다(급여명세서는 이미 entity_name 사용).
     const emp = await c.env.DB.prepare(
-      `SELECT id, name, employee_code, department, position, hire_date, resident_number, phone,
-              dependents_count, children_under_20_count, base_salary
-       FROM employees WHERE id = ?${yeEf.clause}`
+      `SELECT e.id, e.name, e.employee_code, e.department, e.position, e.hire_date, e.resident_number, e.phone,
+              e.dependents_count, e.children_under_20_count, e.base_salary,
+              ent.name as entity_name
+       FROM employees e
+       LEFT JOIN entities ent ON ent.id = e.entity_id
+       WHERE e.id = ?${yeEf.clause}`
     ).bind(employeeId, ...yeEf.params).first<any>()
     if (!emp) return c.json({ success: false, error: '직원 없음' }, 404)
 
