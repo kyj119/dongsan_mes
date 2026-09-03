@@ -3,7 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { recalculateOrderCosts } from '../utils/costCalculator'
-import { computeLineCost, loadCostMaterials, loadInkCostPerSqm, loadInkCostByCategory } from '../utils/orderLineCost'
+import { computeOrderLineCosts } from '../utils/orderLineCost'
 
 const costsRouter = new Hono<HonoEnv>()
 costsRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
@@ -128,14 +128,15 @@ costsRouter.post('/backfill', requireRole('ADMIN'), async (c) => {
          FROM order_items oi LEFT JOIN items i ON oi.item_id = i.id
          WHERE oi.order_id IN (${ph}) AND oi.parent_item_id IS NULL`
       ).bind(...ids).all<any>()
+      // ★계산 경로는 저장 경로(`recalculateOrderCosts`)와 **같은 함수**다 — 종전엔 같은 3단
+      //   레시피가 양쪽에 인라인돼 있어, 한쪽만 고치면 「백필이 보고하는 커버리지」와
+      //   「실제로 저장되는 원가」가 조용히 갈릴 수 있었다(2026-09-03 리뷰).
       const rows = lines || []
-      const matMap = await loadCostMaterials(c.env.DB, rows.map((r: any) => Number(r.item_id) || 0))
-      const inkCostByCategory = await loadInkCostByCategory(c.env.DB)
-      const inkCostPerSqm = inkCostByCategory ? 0 : await loadInkCostPerSqm(c.env.DB)
-      for (const r of rows) {
-        const lc = computeLineCost(matMap.get(Number(r.item_id) || 0), r, { inkCostPerSqm, inkCostByCategory })
-        coverage[lc.coverage] = (coverage[lc.coverage] || 0) + 1
-      }
+      const costs = await computeOrderLineCosts(c.env.DB, rows.map((r: any) => ({
+        item_id: r.item_id, width: r.width, height: r.height,
+        quantity: Number(r.quantity) || 1, category: r.category,
+      })))
+      for (const lc of costs) coverage[lc.coverage] = (coverage[lc.coverage] || 0) + 1
     } else {
       for (const o of list) {
         try {
