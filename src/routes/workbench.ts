@@ -931,7 +931,7 @@ workbenchRouter.get('/intakes', async (c) => {
 // ── GET /api/workbench/intakes/stats — 지표(D8): 일별·PC별 등록/흡수 ──
 workbenchRouter.get('/intakes/stats', async (c) => {
   try {
-    const ef = entityFilter(c, 'designer_intakes')
+    const ef = waitingOpenFilter(c)
     const { results } = await c.env.DB.prepare(`
       SELECT ${kstDateOf('designer_intakes.created_at')} AS day, pc_name,
              COUNT(*) AS cnt,
