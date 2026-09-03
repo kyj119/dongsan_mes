@@ -181,19 +181,8 @@ export function migrationPage(c: Context<HonoEnv>) {
           </div>
         </div>
 
-        <!-- #328: 잔액 유지보수 — 전체 거래처 잔액 재계산 (recalculateAllBalances 진입점 복구) -->
-        <div class="bg-white rounded-lg border shadow-sm p-4">
-          <div class="flex items-center justify-between gap-3">
-            <div>
-              <h3 class="text-sm font-semibold" style="color:#212529;">잔액 유지보수</h3>
-              <p class="text-xs text-gray-500 mt-1">주문(BILLED)·수금·조정 기준으로 전체 거래처의 미수 잔액을 다시 계산합니다.</p>
-            </div>
-            <button id="recalcBtn" onclick="recalculateAllBalances()"
-              class="px-3 py-1.5 text-xs bg-amber-500 text-white rounded hover:bg-amber-600 whitespace-nowrap">
-              <i class="fas fa-calculator mr-1"></i>재계산 실행
-            </button>
-          </div>
-        </div>
+        <!-- 잔액 유지보수 카드 제거(2026-09-03) — clients.balance 캐시 폐기.
+             미수금은 조회 시점에 파생 계산(청구−입금−조정)되므로 재계산할 캐시가 없다. -->
 
         <!-- 대사용 CSV 업로드 -->
         <div id="verifyUploadSection" class="bg-white rounded-lg border shadow-sm p-4 space-y-3 hidden">

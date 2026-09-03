@@ -671,11 +671,40 @@ messagesRouter.post('/send-bulk', async (c) => {
         return c.json({ success: false, error: 'email 대량 발송에서는 content.subject가 필요합니다.' }, 400)
       }
 
+      // ── 주소 중복 통합 ──────────────────────────────────────────────────
+      // 같은 주소를 쓰는 거래처가 여럿이면 같은 사람이 여러 통을 받는다(문자 경로의 번호 통합과 같은 이유).
+      // 대소문자만 다른 주소도 같은 사서함이므로 소문자로 정규화해 판정한다.
+      const seenEmail = new Set<string>()
+      const uniqueReceivers: typeof receivers = []
+      let mergedDuplicates = 0
+      for (const r of receivers) {
+        const key = String(r.email || '').trim().toLowerCase()
+        if (!key) continue
+        if (seenEmail.has(key)) { mergedDuplicates++; continue }
+        seenEmail.add(key)
+        uniqueReceivers.push({ ...r, email: key })
+      }
+      if (uniqueReceivers.length === 0) {
+        return c.json({ success: false, error: '유효한 이메일 주소가 없습니다.' }, 400)
+      }
+
+      // ── 건수 상한 (#584 헬퍼 재사용) ────────────────────────────────────
+      // 이메일은 과금이 없어 상한 밖이었지만, 건당 fetch 1 + 로그 INSERT 1 이라 수천 건이면
+      // Workers subrequest 한도에서 루프가 중간에 죽고 어디까지 나갔는지 남지 않는다.
+      const emailLimitErr = await checkBulkLimit(db, 'email', uniqueReceivers.length)
+      if (emailLimitErr) return c.json({ success: false, error: emailLimitErr }, 400)
+
+      // 수신거부(message_opt_outs)는 번호 기준 광고 경로 전용이라 정보성 이메일에는 적용 대상이 없다
+      // (형제 SMS 정보성 경로도 동일 — 중복 통합·피로도만 건다).
+
       let successCount = 0
       let failCount = 0
+      let processed = 0
+      const failedTo: string[] = []
 
-      for (const r of receivers) {
+      for (const r of uniqueReceivers) {
         if (!r.email) continue
+        processed++
         const result = await sendEmail(
           c.env,
           db,
@@ -683,16 +712,19 @@ messagesRouter.post('/send-bulk', async (c) => {
           { template: 'BULK', sentBy: userId }
         )
         if (result.success) successCount++
-        else failCount++
+        else { failCount++; if (failedTo.length < 20) failedTo.push(r.email) }
       }
 
       return c.json({
         success: true,
         data: {
           channel: 'email',
-          total: receivers.length,
+          total: uniqueReceivers.length,
+          processed,
+          merged_duplicate: mergedDuplicates,
           success_count: successCount,
           fail_count: failCount,
+          failed_to: failedTo,
         }
       })
     }
@@ -759,7 +791,11 @@ messagesRouter.post('/send-bulk', async (c) => {
     }))
 
     // 미치환 변수가 남으면 발송 차단 — 알림톡은 카카오가 거부하고, 문자는 "#{고객명}"이 그대로 찍힌다
-    const leftover = unresolvedVars(messages[0].msg || '')
+    // ⚠️ 첫 수신자만 보면 안 된다 — 엑셀 열(r.vars)은 행마다 있고 없어서 1행에 있고 57행에 없으면
+    //    57번 수신자에게 그대로 나간다. 전체를 훑어 남은 변수명을 모은다.
+    const leftoverSet = new Set<string>()
+    for (const m of messages) for (const v of unresolvedVars(m.msg || '')) leftoverSet.add(v)
+    const leftover = Array.from(leftoverSet)
     if (leftover.length > 0) {
       return c.json({
         success: false,
@@ -817,11 +853,13 @@ messagesRouter.post('/send-bulk', async (c) => {
       if (!kakaoSettings.enabled) {
         return c.json({ success: false, error: '카카오톡이 비활성화되어 있습니다.' }, 400)
       }
+      // ⚠️ msg/altmsg 는 반드시 수신자별 치환 결과(m.msg)를 쓴다 — 원본 content.body 를 다시 실으면
+      //    sendATSBulk 가 그대로 XML 에 담아 `#{고객명}` 리터럴이 발송된다(발송은 취소 불가).
       const atsMessages: ATSMessage[] = messages.map(m => ({
         rcv: m.rcv,
         rcvnm: m.rcvnm || '고객',
-        msg: content.body,
-        altmsg: content.body,
+        msg: m.msg || content.body,
+        altmsg: m.msg || content.body,
       }))
       sendResult = await provider.sendATS({
         templateCode: content.template_code,

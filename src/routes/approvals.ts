@@ -15,6 +15,17 @@ import { kstYmdCompact } from '../utils/kstDate'
 const approvals = new Hono<HonoEnv>()
 approvals.use('*', authMiddleware, requirePagePermission('/approvals'))
 
+/**
+ * 최종 승인 후 실제로 행을 바꾸는 참조 타입 → 테이블.
+ * 여기 있는 타입만 생성 시 소유(법인) 검증을 강제한다 — 나머지는 후처리가 없어 참조가 메모에 그친다.
+ * ⚠️ handlePostApproval 에 분기를 추가하면 이 표에도 반드시 같이 넣을 것.
+ * 값은 테이블명으로 SQL 에 직접 들어가므로 리터럴만 둔다(사용자 입력은 키로만 쓰인다).
+ */
+const POST_APPROVAL_TABLES: Record<string, string> = {
+  order: 'orders',
+  purchase_request: 'purchase_requests',
+}
+
 // ─── 결재 양식 관리 (ADMIN) ──────────────────────────────────────────────────
 
 approvals.get('/templates', async (c) => {
@@ -178,6 +189,23 @@ approvals.post('/', async (c) => {
     // 번호 생성 (#329: 법인코드 E{eid} 내장 — 멀티법인 번호 충돌 방지)
     const today = kstYmdCompact()
     const eid = getEntityId(c) || 1
+
+    // ── 참조 대상 검증 ────────────────────────────────────────────────────
+    // reference_type/reference_id 는 body 에서 그대로 들어오는데, 최종 승인 시
+    // handlePostApproval 이 그 행을 실제로 건드린다(주문 여신 APPROVED + 생산카드 생성 ·
+    // 발주요청 APPROVED). 검증이 없으면 남의 법인 주문 id 를 적어 두고 자기 결재선으로
+    // 통과시켜 그 주문을 생산에 밀어 넣을 수 있다. 후처리 대상이 있는 타입만 검사한다.
+    if (reference_type && reference_id != null) {
+      const refTable = POST_APPROVAL_TABLES[String(reference_type)]
+      if (refTable) {
+        const owned = await c.env.DB.prepare(
+          `SELECT id FROM ${refTable} WHERE id = ? AND entity_id = ?`
+        ).bind(reference_id, eid).first()
+        if (!owned) {
+          return c.json({ success: false, error: '참조 대상을 찾을 수 없거나 다른 법인의 자료입니다.' }, 400)
+        }
+      }
+    }
     const requestNumber = await getNextEntitySeqNumber(c.env.DB, 'approval_requests', 'request_number', eid, today, { base: 'APR-' })
 
     // 템플릿에서 결재 단계 가져오기
@@ -332,10 +360,16 @@ approvals.post('/:id/approve', async (c) => {
 
     const ef = entityFilter(c)  // #358: 타법인 결재 승인 차단 (credit/purchase 상태 연쇄 보호)
     const req = await c.env.DB.prepare(
-      `SELECT id, status, current_step, total_steps, reference_type, reference_id FROM approval_requests WHERE id = ?${ef.clause}`
-    ).bind(id, ...ef.params).first<{ status: string; current_step: number; total_steps: number; reference_type: string | null; reference_id: number | null }>()
+      `SELECT id, status, current_step, total_steps, reference_type, reference_id, requester_id, entity_id FROM approval_requests WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ status: string; current_step: number; total_steps: number; reference_type: string | null; reference_id: number | null; requester_id: number | null; entity_id: number | null }>()
     if (!req || !['PENDING', 'IN_REVIEW'].includes(req.status)) {
       return c.json({ success: false, error: '승인 가능한 상태가 아닙니다.' }, 400)
+    }
+
+    // 자기결재 금지 — 단계 승인자를 역할로 지정하면(approver_role) 요청자 본인의 역할이 그대로 맞아
+    // 여신한도 초과 요청을 스스로 끝까지 승인할 수 있었다. ADMIN 은 예외(마지막 수단 승인 경로).
+    if (req.requester_id != null && userId != null && req.requester_id === userId && userRole !== 'ADMIN') {
+      return c.json({ success: false, error: '본인이 상신한 결재는 승인할 수 없습니다.' }, 403)
     }
 
     // 현재 단계 조회
@@ -587,20 +621,24 @@ approvals.get('/badge/count', async (c) => {
 
 async function handlePostApproval(db: D1Database, req: any) {
   // 연관 엔티티에 따른 후처리
+  // ⚠️ 참조 행은 반드시 결재 요청과 같은 법인이어야 한다 — 생성 시점(POST /)에도 검증하지만
+  //    그 검증 이전에 만들어진 요청이 남아 있으므로 실행 직전에 한 번 더 건다.
+  const reqEntityId = req?.entity_id != null ? Number(req.entity_id) : null
   try {
     if (req.reference_type === 'purchase_request' && req.reference_id) {
       // 발주 요청 자동 승인
       await db.prepare(`
-        UPDATE purchase_requests SET status = 'APPROVED', approved_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'PENDING'
-      `).bind(req.reference_id).run()
+        UPDATE purchase_requests SET status = 'APPROVED', approved_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND status = 'PENDING' AND (? IS NULL OR entity_id = ?)
+      `).bind(req.reference_id, reqEntityId, reqEntityId).run()
     }
 
     // 여신한도 초과 승인 → 주문 카드 생성 (#69)
     if (req.reference_type === 'order' && req.reference_id) {
       const order = await db.prepare(`
         SELECT id, order_number, client_id, delivery_date, priority, notes, credit_status
-        FROM orders WHERE id = ? AND credit_status = 'PENDING'
-      `).bind(req.reference_id).first<{
+        FROM orders WHERE id = ? AND credit_status = 'PENDING' AND (? IS NULL OR entity_id = ?)
+      `).bind(req.reference_id, reqEntityId, reqEntityId).first<{
         id: number; order_number: string; client_id: number;
         delivery_date: string | null; priority: string; notes: string | null; credit_status: string
       }>()

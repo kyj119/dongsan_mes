@@ -1316,10 +1316,15 @@ hrRouter.put('/contracts/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       return c.json({ success: false, error: '서명된 계약서는 수정할 수 없습니다.' }, 400)
     }
 
+    // ⚠️ 급여 축(기본급·고정연장)이 허용목록에 없어서 **수정 저장이 조용히 버려졌다** —
+    //    화면은 저장된 것처럼 닫히고, 모달을 다시 열면 옛 값이 뜬다(신규 등록 POST 는 정상).
+    //    base_salary 는 labor_contracts 에 컬럼이 없다(POST 도 시급·월급 산출에만 쓴다) →
+    //    허용목록에 넣지 말고, POST 와 같은 산식으로 hourly_rate·monthly_salary 를 다시 계산한다.
     const ALLOWED = [
       'contract_type', 'contract_date', 'contract_start_date', 'contract_end_date',
       'wage_start_date', 'wage_end_date', 'hourly_rate', 'work_type',
-      'job_description', 'probation_months'
+      'job_description', 'probation_months',
+      'overtime_daily_hours', 'overtime_work_days', 'base_hours_monthly'
     ]
 
     const setCols: string[] = []
@@ -1328,6 +1333,26 @@ hrRouter.put('/contracts/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       if (!(key in body)) continue
       setCols.push(`${key} = ?`)
       vals.push(body[key] === '' ? null : body[key])
+    }
+
+    // 급여 파생 재계산 — 기본급/시급/고정연장 중 하나라도 오면 다시 센다.
+    // 산식은 POST(:1268-1272)와 동일해야 한다(두 경로가 다른 월급을 쓰면 계약서 금액이 갈린다).
+    if ('base_salary' in body || 'hourly_rate' in body
+        || 'overtime_daily_hours' in body || 'overtime_work_days' in body || 'base_hours_monthly' in body) {
+      const prev = await c.env.DB.prepare(
+        `SELECT hourly_rate, overtime_daily_hours, overtime_work_days, base_hours_monthly FROM labor_contracts WHERE id = ?`
+      ).bind(id).first<{ hourly_rate: number | null; overtime_daily_hours: number | null; overtime_work_days: number | null; base_hours_monthly: number | null }>()
+      const otDaily = ('overtime_daily_hours' in body ? Number(body.overtime_daily_hours) : Number(prev?.overtime_daily_hours)) || 0
+      const otDays = ('overtime_work_days' in body ? Number(body.overtime_work_days) : Number(prev?.overtime_work_days)) || 22
+      const baseH = ('base_hours_monthly' in body ? Number(body.base_hours_monthly) : Number(prev?.base_hours_monthly)) || 209
+      const baseSalary = Number(body.base_salary) || 0
+      const rate = Number(body.hourly_rate) || (baseSalary ? Math.floor(baseSalary / baseH) : (Number(prev?.hourly_rate) || 0))
+      const baseSalaryVal = baseSalary || rate * baseH
+      const monthlySalary = Math.round(baseSalaryVal + rate * otDaily * otDays * 1.5)
+      if (!setCols.some(sc => sc.startsWith('hourly_rate'))) { setCols.push('hourly_rate = ?'); vals.push(rate) }
+      else { vals[setCols.findIndex(sc => sc.startsWith('hourly_rate'))] = rate }
+      setCols.push('monthly_salary = ?')
+      vals.push(monthlySalary)
     }
 
     if (setCols.length === 0) {

@@ -12,17 +12,27 @@ import { excludeArExcludedClientsSql } from '../../constants/arPolicy'
 
 // ── split billing P3: (거래처) 미수금 파생 — order_billing_groups[BILLED] − payments − adjustments ──
 // clients.balance 캐시 대체. entityFilter 적용(현재 사용자 법인 = 청구 법인 기준).
-export async function deriveClientBalance(c: Context<HonoEnv>, clientId: number | string): Promise<number> {
-  const { clause: gEf, params: gP } = entityFilter(c, 'g')
+// opts.allEntities = 법인 필터 생략(고객 포털처럼 세션 법인이 없는 호출부 전용).
+//   ⚠️ 포털 컨텍스트는 entityId 를 세팅하지 않아 getEntityId 가 1 로 떨어진다 → 필터를 걸면
+//      선명(2)·청주(3) 청구분이 조용히 사라진다. 그래서 포털은 반드시 allEntities 로 부른다.
+export async function deriveClientBalance(
+  c: Context<HonoEnv>,
+  clientId: number | string,
+  opts: { allEntities?: boolean } = {}
+): Promise<number> {
+  const entityFilterOrAll = opts.allEntities
+    ? (_a?: string) => ({ clause: '', params: [] as number[] })
+    : (a?: string) => entityFilter(c, a)
+  const { clause: gEf, params: gP } = entityFilterOrAll('g')
   const billed = await c.env.DB.prepare(
     `SELECT COALESCE(SUM(g.billed_amount), 0) AS v FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
      WHERE o.client_id = ? AND g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${gEf}`
   ).bind(clientId, ...gP).first<{ v: number }>()
-  const { clause: pEf, params: pP } = entityFilter(c, 'p')
+  const { clause: pEf, params: pP } = entityFilterOrAll('p')
   const paid = await c.env.DB.prepare(
     `SELECT COALESCE(SUM(amount), 0) AS v FROM payments p WHERE client_id = ?${pEf}`
   ).bind(clientId, ...pP).first<{ v: number }>()
-  const { clause: aEf, params: aP } = entityFilter(c, 'a')
+  const { clause: aEf, params: aP } = entityFilterOrAll('a')
   const adj = await c.env.DB.prepare(
     `SELECT COALESCE(SUM(amount), 0) AS v FROM adjustments a WHERE client_id = ?${aEf}`
   ).bind(clientId, ...aP).first<{ v: number }>()

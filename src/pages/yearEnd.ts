@@ -9,6 +9,8 @@ export function yearEndPage(c: Context<HonoEnv>) {
   const employeeId = parseInt(c.req.param('employeeId') || '', 10)
   const year = parseInt(c.req.query('year') || String(kstYear()), 10)
   if (isNaN(employeeId)) return c.text('Invalid employee ID', 400)
+  // year 도 검증한다 — `?year=abc` 면 title 이 'NaN년', var YEAR = NaN 이 되어 월별 조회가
+  // 전부 어긋난 빈 표로 렌더된다(200 으로 뜨기 때문에 오류로 보이지도 않는다).
   if (isNaN(year)) return c.text('Invalid year', 400)
 
   return c.html(`
@@ -303,7 +305,7 @@ export function yearEndPage(c: Context<HonoEnv>) {
 
         '<div class="sign-area">' +
           '<div class="date">' + YEAR + '년 ' + (new Date(Date.now() + 9 * 3600 * 1000).getUTCMonth() + 1) + '월 ' + new Date(Date.now() + 9 * 3600 * 1000).getUTCDate() + '일 발행</div>' +
-          '<div><span class="company">동산기획</span> (인)</div>' +
+          '<div><span class="company">' + esc(emp.entity_name || '동산기획') + '</span> (인)</div>' +
         '</div>' +
 
         '<div class="footer-note">' +

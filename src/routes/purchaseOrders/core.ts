@@ -237,9 +237,20 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
     //    이걸 안 지키면 번호 접두와 행 entity_id 가 갈린다 — 주문에서 겪은 그 버그다.
     // ★ 이전엔 body 의 `entity_id` 를 아예 안 봤다. `entity_id: 99` 를 보내도 세션 법인(E1)에
     //   생성돼 **E2E 가 실법인을 오염**시켰다(쓰기 스모크가 잡았다, 2026-08-09).
-    const poEntityId = (data.entity_id && Number(data.entity_id) > 0)
-      ? Number(data.entity_id)
-      : (getEntityId(c) || 1)
+    // ★2026-09-03: body 값을 무조건 믿지는 않는다. E2E(법인 99)·ADMIN 전체모드는 그대로 두되,
+    //   법인 2 소속 MANAGER 가 `entity_id: 1` 을 실어 동산 장부에 발주를 꽂는 경로는 막는다.
+    const sessionEntityId = getEntityId(c)
+    const requestedEntityId = (data.entity_id && Number(data.entity_id) > 0) ? Number(data.entity_id) : null
+    const mayActForOtherEntity = user?.role === 'ADMIN' || sessionEntityId === 0
+    if (requestedEntityId && !mayActForOtherEntity && requestedEntityId !== sessionEntityId) {
+      return c.json({
+        success: false,
+        error: '다른 법인으로는 발주를 생성할 수 없습니다. 상단에서 해당 법인으로 전환하세요.'
+      }, 403)
+    }
+    const poEntityId = (requestedEntityId && mayActForOtherEntity)
+      ? requestedEntityId
+      : (sessionEntityId || 1)
 
     // 발주번호 자동생성: YYYYMMDD-P001
     const dateStr = kstYmdCompact()

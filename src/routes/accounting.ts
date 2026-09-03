@@ -17,7 +17,7 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
-import { requireAccessOrRole } from '../middleware/permissions'
+import { requireAccessOrRole, requireEditOrRole } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { kstDateOf } from '../utils/kstDate'
 import { INTERCOMPANY_ENTITIES } from '../constants/intercompany'
@@ -505,7 +505,7 @@ accountingRouter.get('/inter-entity', async (c) => {
 })
 
 // POST /api/accounting/inter-entity — 등록
-accountingRouter.post('/inter-entity', async (c) => {
+accountingRouter.post('/inter-entity', requireEditOrRole('/accounting', 'MANAGER'), async (c) => {
   try {
     const body = await c.req.json()
     const err = await ietValidate(c, body)
@@ -534,7 +534,7 @@ accountingRouter.post('/inter-entity', async (c) => {
 })
 
 // PUT /api/accounting/inter-entity/:id — 수정
-accountingRouter.put('/inter-entity/:id', async (c) => {
+accountingRouter.put('/inter-entity/:id', requireEditOrRole('/accounting', 'MANAGER'), async (c) => {
   try {
     const id = Number(c.req.param('id'))
     const vis = ietVisibility(c)
@@ -570,7 +570,7 @@ accountingRouter.put('/inter-entity/:id', async (c) => {
 })
 
 // DELETE /api/accounting/inter-entity/:id — 삭제
-accountingRouter.delete('/inter-entity/:id', async (c) => {
+accountingRouter.delete('/inter-entity/:id', requireEditOrRole('/accounting', 'MANAGER'), async (c) => {
   try {
     const id = Number(c.req.param('id'))
     const vis = ietVisibility(c)
