@@ -10,7 +10,9 @@ function numberToKorean(num) {
     if (!num || num === 0) return '영';
     num = Math.floor(Math.abs(num));
     var digits = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구'];
-    var smallUnits = ['', '십', '백', '청'];
+    // ⚠️ '천' 이다. '청' 오타가 있으면 매입계산서 인쇄본에 '삼백이십오만사청원정' 이 찍힌다.
+    //    같은 함수 사본이 invoice.js·quotation.js 에 있다 — 고칠 때 셋 다 본다.
+    var smallUnits = ['', '십', '백', '천'];
     var bigUnits = ['', '만', '억', '조'];
     var result = '';
     var unitIdx = 0;
