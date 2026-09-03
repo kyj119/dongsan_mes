@@ -2,7 +2,10 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter } from '../utils/entityFilter'
-import { kstYmd } from '../utils/kstDate'
+import { kstYmd, kstMonth } from '../utils/kstDate'
+// 출력 이벤트 업무일 SSOT — print_completed_at 은 UTC naive(printEvents.ts:14 kstNaiveToUtc)라
+//   date()/strftime() 를 직접 쓰면 KST 09:00~익일 09:00 을 하루로 세고 시간대별 통계가 9시간 밀린다.
+import { printEventKstDay, printEventAt } from '../utils/printEventDay'
 
 const productionReportsRouter = new Hono<HonoEnv>()
 
@@ -22,10 +25,12 @@ productionReportsRouter.get('/daily-summary', async (c) => {
         COUNT(CASE WHEN print_status = 'ERROR' THEN 1 END) as error_count,
         COUNT(CASE WHEN print_status = 'CANCEL' THEN 1 END) as cancel_count,
         COUNT(*) as total_count,
-        COALESCE(SUM(CASE WHEN print_status = 'OK' THEN CAST(output_width AS REAL) * CAST(output_height AS REAL) / 1000000 END), 0) as total_sqm,
+        -- 면적은 매수(copy_total)를 곱한다 — /print-events 요약(printEvents.ts:885)과 같은 산식이어야
+        --   같은 날의 두 화면이 다른 ㎡ 를 말하지 않는다.
+        COALESCE(SUM(CASE WHEN print_status = 'OK' THEN CAST(output_width AS REAL) * CAST(output_height AS REAL) * COALESCE(copy_total, 1) / 1000000 END), 0) as total_sqm,
         AVG(CASE WHEN print_status = 'OK' AND print_duration_sec > 0 THEN print_duration_sec END) as avg_duration
       FROM print_events
-      WHERE date(print_completed_at) = ?
+      WHERE ${printEventKstDay()} = ?
         AND event_kind = 'PRINT'
     `).bind(targetDate).first<{ ok_count: number; error_count: number; cancel_count: number; total_count: number; total_sqm: number; avg_duration: number }>()
 
@@ -38,7 +43,7 @@ productionReportsRouter.get('/daily-summary', async (c) => {
         COUNT(*) as total
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
-      WHERE date(pe.print_completed_at) = ?
+      WHERE ${printEventKstDay('pe')} = ?
         AND pe.event_kind = 'PRINT'
       GROUP BY COALESCE(e.name, pe.agent_id)
       ORDER BY ok_count DESC
@@ -47,11 +52,11 @@ productionReportsRouter.get('/daily-summary', async (c) => {
     // 시간대별 통계
     const { results: byHour } = await c.env.DB.prepare(`
       SELECT
-        CAST(strftime('%H', print_completed_at) AS INTEGER) as hour,
+        CAST(strftime('%H', ${printEventAt()}, '+9 hours') AS INTEGER) as hour,
         COUNT(CASE WHEN print_status = 'OK' THEN 1 END) as ok_count,
         COUNT(CASE WHEN print_status != 'OK' THEN 1 END) as error_count
       FROM print_events
-      WHERE date(print_completed_at) = ?
+      WHERE ${printEventKstDay()} = ?
         AND event_kind = 'PRINT'
       GROUP BY hour
       ORDER BY hour
@@ -112,12 +117,12 @@ productionReportsRouter.get('/production', async (c) => {
         COUNT(CASE WHEN pe.print_status = 'ERROR' THEN 1 END) as error_count,
         COUNT(CASE WHEN pe.print_status = 'CANCEL' THEN 1 END) as cancel_count,
         COUNT(DISTINCT pe.card_number) as card_count,
-        COUNT(DISTINCT date(pe.print_completed_at)) as active_days
+        COUNT(DISTINCT ${printEventKstDay('pe')}) as active_days
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
       WHERE pe.equipment_id IS NOT NULL
         AND pe.event_kind = 'PRINT'
-        AND date(pe.print_completed_at) >= ? AND date(pe.print_completed_at) <= ?
+        AND ${printEventKstDay('pe')} >= ? AND ${printEventKstDay('pe')} <= ?
       GROUP BY pe.equipment_id
       ORDER BY ok_count DESC
     `).bind(dateFrom, dateTo).all()
@@ -125,15 +130,15 @@ productionReportsRouter.get('/production', async (c) => {
     // 일별 추이
     const { results: daily } = await c.env.DB.prepare(`
       SELECT
-        date(print_completed_at) as date,
+        ${printEventKstDay()} as date,
         COUNT(*) as total_prints,
         COUNT(CASE WHEN print_status = 'OK' THEN 1 END) as ok_count,
         COUNT(DISTINCT card_number) as card_count
       FROM print_events
       WHERE equipment_id IS NOT NULL
         AND event_kind = 'PRINT'
-        AND date(print_completed_at) >= ? AND date(print_completed_at) <= ?
-      GROUP BY date(print_completed_at)
+        AND ${printEventKstDay()} >= ? AND ${printEventKstDay()} <= ?
+      GROUP BY ${printEventKstDay()}
       ORDER BY date ASC
     `).bind(dateFrom, dateTo).all()
 
@@ -148,7 +153,7 @@ productionReportsRouter.get('/production', async (c) => {
       LEFT JOIN equipment e ON pe.equipment_id = e.id
       WHERE pe.equipment_id IS NOT NULL
         AND pe.event_kind = 'PRINT'
-        AND date(pe.print_completed_at) >= ? AND date(pe.print_completed_at) <= ?
+        AND ${printEventKstDay('pe')} >= ? AND ${printEventKstDay('pe')} <= ?
       GROUP BY COALESCE(e.location_zone, '미지정')
       ORDER BY ok_count DESC
     `).bind(dateFrom, dateTo).all()
@@ -164,7 +169,7 @@ productionReportsRouter.get('/production', async (c) => {
       FROM print_events
       WHERE equipment_id IS NOT NULL
         AND event_kind = 'PRINT'
-        AND date(print_completed_at) >= ? AND date(print_completed_at) <= ?
+        AND ${printEventKstDay()} >= ? AND ${printEventKstDay()} <= ?
     `).bind(dateFrom, dateTo).first()
 
     return c.json({
@@ -255,16 +260,16 @@ productionReportsRouter.get('/uptime', async (c) => {
       SELECT
         pe.equipment_id,
         COALESCE(e.name, pe.equipment_id) as equipment_name,
-        strftime('%Y-%m', pe.print_completed_at) as month,
-        COUNT(DISTINCT date(pe.print_completed_at)) as active_days,
+        ${kstMonth(printEventAt('pe'))} as month,
+        COUNT(DISTINCT ${printEventKstDay('pe')}) as active_days,
         COUNT(*) as print_count
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
       WHERE pe.equipment_id IS NOT NULL
         AND pe.event_kind = 'PRINT'
         AND pe.print_status = 'OK'
-        AND pe.print_completed_at >= date('now', '+9 hours', '-' || ? || ' months')
-      GROUP BY pe.equipment_id, strftime('%Y-%m', pe.print_completed_at)
+        AND ${printEventKstDay('pe')} >= date('now', '+9 hours', '-' || ? || ' months')
+      GROUP BY pe.equipment_id, ${kstMonth(printEventAt('pe'))}
       ORDER BY pe.equipment_id, month
     `).bind(monthCount).all()
 
@@ -315,7 +320,7 @@ productionReportsRouter.get('/defects', async (c) => {
       LEFT JOIN equipment e ON pe.equipment_id = e.id
       WHERE pe.equipment_id IS NOT NULL
         AND pe.event_kind = 'PRINT'
-        AND date(pe.print_completed_at) >= ? AND date(pe.print_completed_at) <= ?
+        AND ${printEventKstDay('pe')} >= ? AND ${printEventKstDay('pe')} <= ?
       GROUP BY pe.equipment_id
       ORDER BY defect_rate DESC
     `).bind(dateFrom, dateTo).all()
@@ -323,7 +328,7 @@ productionReportsRouter.get('/defects', async (c) => {
     // 월별 불량률 추이
     const { results: monthlyTrend } = await c.env.DB.prepare(`
       SELECT
-        strftime('%Y-%m', print_completed_at) as month,
+        ${kstMonth(printEventAt())} as month,
         COUNT(*) as total,
         COUNT(CASE WHEN print_status = 'OK' THEN 1 END) as ok,
         COUNT(CASE WHEN print_status != 'OK' THEN 1 END) as defects,
@@ -331,8 +336,8 @@ productionReportsRouter.get('/defects', async (c) => {
       FROM print_events
       WHERE equipment_id IS NOT NULL
         AND event_kind = 'PRINT'
-        AND date(print_completed_at) >= ? AND date(print_completed_at) <= ?
-      GROUP BY strftime('%Y-%m', print_completed_at)
+        AND ${printEventKstDay()} >= ? AND ${printEventKstDay()} <= ?
+      GROUP BY ${kstMonth(printEventAt())}
       ORDER BY month ASC
     `).bind(dateFrom, dateTo).all()
 
@@ -523,7 +528,7 @@ productionReportsRouter.get('/print-duration', async (c) => {
       LEFT JOIN equipment e ON pe.equipment_id = e.id
       WHERE pe.print_status = 'OK' AND pe.print_duration_sec IS NOT NULL AND pe.print_duration_sec > 0
         AND pe.event_kind = 'PRINT'
-        AND date(pe.print_completed_at) >= ? AND date(pe.print_completed_at) <= ?
+        AND ${printEventKstDay('pe')} >= ? AND ${printEventKstDay('pe')} <= ?
       GROUP BY pe.equipment_id
       ORDER BY avg_sec DESC
     `).bind(dateFrom, dateTo).all()
@@ -531,15 +536,15 @@ productionReportsRouter.get('/print-duration', async (c) => {
     // 일별 평균 인쇄시간 추이
     const { results: daily } = await c.env.DB.prepare(`
       SELECT
-        date(print_completed_at) as date,
+        ${printEventKstDay()} as date,
         COUNT(*) as print_count,
         ROUND(AVG(print_duration_sec), 0) as avg_sec,
         ROUND(SUM(print_duration_sec) / 3600.0, 1) as total_hours
       FROM print_events
       WHERE print_status = 'OK' AND print_duration_sec IS NOT NULL AND print_duration_sec > 0
         AND event_kind = 'PRINT'
-        AND date(print_completed_at) >= ? AND date(print_completed_at) <= ?
-      GROUP BY date(print_completed_at)
+        AND ${printEventKstDay()} >= ? AND ${printEventKstDay()} <= ?
+      GROUP BY ${printEventKstDay()}
       ORDER BY date ASC
     `).bind(dateFrom, dateTo).all()
 
@@ -566,7 +571,7 @@ productionReportsRouter.get('/print-duration', async (c) => {
         AND event_kind = 'PRINT'
         AND print_duration_sec IS NOT NULL AND print_duration_sec > 0
         AND output_width IS NOT NULL AND output_height IS NOT NULL
-        AND date(print_completed_at) >= ? AND date(print_completed_at) <= ?
+        AND ${printEventKstDay()} >= ? AND ${printEventKstDay()} <= ?
       GROUP BY printer_name, area_range
       ORDER BY printer_name, avg_area_sqm
     `).bind(dateFrom, dateTo).all()
@@ -605,12 +610,12 @@ productionReportsRouter.get('/export/csv', async (c) => {
           COUNT(CASE WHEN pe.print_status = 'ERROR' THEN 1 END) as error_count,
           COUNT(CASE WHEN pe.print_status = 'CANCEL' THEN 1 END) as cancel_count,
           COUNT(DISTINCT pe.card_number) as card_count,
-          COUNT(DISTINCT date(pe.print_completed_at)) as active_days
+          COUNT(DISTINCT ${printEventKstDay('pe')}) as active_days
         FROM print_events pe
         LEFT JOIN equipment e ON pe.equipment_id = e.id
         WHERE pe.equipment_id IS NOT NULL
           AND pe.event_kind = 'PRINT'
-          AND date(pe.print_completed_at) >= ? AND date(pe.print_completed_at) <= ?
+          AND ${printEventKstDay('pe')} >= ? AND ${printEventKstDay('pe')} <= ?
         GROUP BY pe.equipment_id
         ORDER BY ok_count DESC
       `).bind(dateFrom, dateTo).all()
@@ -627,7 +632,7 @@ productionReportsRouter.get('/export/csv', async (c) => {
     if (type === 'daily') {
       const { results } = await c.env.DB.prepare(`
         SELECT
-          date(print_completed_at) as date,
+          ${printEventKstDay()} as date,
           COUNT(*) as total_prints,
           COUNT(CASE WHEN print_status = 'OK' THEN 1 END) as ok_count,
           COUNT(CASE WHEN print_status != 'OK' THEN 1 END) as fail_count,
@@ -636,8 +641,8 @@ productionReportsRouter.get('/export/csv', async (c) => {
         FROM print_events
         WHERE equipment_id IS NOT NULL
           AND event_kind = 'PRINT'
-          AND date(print_completed_at) >= ? AND date(print_completed_at) <= ?
-        GROUP BY date(print_completed_at)
+          AND ${printEventKstDay()} >= ? AND ${printEventKstDay()} <= ?
+        GROUP BY ${printEventKstDay()}
         ORDER BY date ASC
       `).bind(dateFrom, dateTo).all()
 

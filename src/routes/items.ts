@@ -156,6 +156,9 @@ itemsRouter.get('/', async (c) => {
 
     // C2: 사용자별 사용품목 분리 — for_user=1 이면 현재 사용자 허용 그룹(+그룹없는 품목)만.
     // 규칙 없는 사용자=제한 없음(전체). 그룹 90개 초과 배정=사실상 전체라 제한 생략(바인드 한도).
+    //   본 쿼리와 count 쿼리가 **같은 절**을 쓰도록 한 번 만든다(count 가 이 필터를 빠뜨려 total 이 과대였다, 2026-09-03).
+    let userGroupClause = ''
+    const userGroupParams: string[] = []
     if (c.req.query('for_user') === '1') {
       const authUser = c.get('user') as { id?: number } | undefined
       if (authUser?.id) {
@@ -165,11 +168,13 @@ itemsRouter.get('/', async (c) => {
         const allowed = (acc.results || []).map((r) => r.item_group)
         if (allowed.length > 0 && allowed.length <= 90) {
           const ph = allowed.map(() => '?').join(',')
-          query += ` AND (i.item_group IN (${ph}) OR i.item_group IS NULL)`
-          params.push(...allowed)
+          userGroupClause = ` AND (i.item_group IN (${ph}) OR i.item_group IS NULL)`
+          userGroupParams.push(...allowed)
         }
       }
     }
+    query += userGroupClause
+    params.push(...userGroupParams)
 
     if (category) {
       query += ' AND ic.category_code = ?'
@@ -214,6 +219,10 @@ itemsRouter.get('/', async (c) => {
       countQuery += ' AND i.is_purchase_item = 1'
     }
 
+    // 본 쿼리와 같은 순서·같은 절 (for_user 허용그룹 → category → search → item_group)
+    countQuery += userGroupClause
+    countParams.push(...userGroupParams)
+
     if (category) {
       countQuery += ' AND ic.category_code = ?'
       countParams.push(category)
@@ -222,6 +231,11 @@ itemsRouter.get('/', async (c) => {
     if (search) {
       countQuery += ' AND (i.item_name LIKE ? OR i.item_code LIKE ? OR i.search_keywords LIKE ?)'
       countParams.push(`%${search}%`, `%${search}%`, `%${search}%`)
+    }
+
+    if (item_group) {
+      countQuery += ' AND i.item_group = ?'
+      countParams.push(item_group)
     }
 
     const countRow = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ count: number }>()
@@ -813,7 +827,7 @@ itemsRouter.get('/:id', async (c) => {
   try {
     const id = c.req.param('id')
     const item = await c.env.DB.prepare(`
-      SELECT id, category_id, subcategory_id, item_code, item_name, description, unit, base_price, sales_price, is_active, item_type, category, sub_category, is_sales_item, is_purchase_item, pricing_method, item_group, group_sort, width_mm, storage_zone_id, is_favorite, code_prefix, specification, production_required, spec_group_id, spec_value, spec_group_id2, spec_value2, deduction_method, sheet_spec, waste_factor, base_unit, pack_size, stock_mode, search_keywords, ecount_code, image_key, created_at, updated_at FROM items WHERE id = ?
+      SELECT id, category_id, subcategory_id, item_code, item_name, description, unit, base_price, sales_price, is_active, item_type, category, sub_category, is_sales_item, is_purchase_item, pricing_method, min_billing_side_cm, item_group, group_sort, width_mm, storage_zone_id, is_favorite, code_prefix, specification, production_required, spec_group_id, spec_value, spec_group_id2, spec_value2, deduction_method, sheet_spec, waste_factor, base_unit, pack_size, stock_mode, search_keywords, ecount_code, image_key, created_at, updated_at FROM items WHERE id = ?
     `).bind(id).first()
 
     if (!item) {
@@ -1258,6 +1272,13 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const widthMmParams = itemData.width_mm !== undefined
       ? [itemData.width_mm || null] : []
 
+    // description·is_active: 수정 모달이 보내지 않는다 — 무조건 SET 하면 저장할 때마다 설명이 NULL 로 지워지고
+    //   비활성 품목이 is_active=1 로 되살아났다(2026-09-03). 전송 시에만 갱신.
+    const descClause = itemData.description !== undefined ? 'description = ?,' : ''
+    const descParams = itemData.description !== undefined ? [itemData.description || null] : []
+    const isActiveClause = itemData.is_active !== undefined ? 'is_active = ?,' : ''
+    const isActiveParams = itemData.is_active !== undefined ? [Number(itemData.is_active) ? 1 : 0] : []
+
     // production_required(제작 필요/기성품): 전송 시에만 갱신, 미전송 시 기존값 보존
     const prodReqClause = itemData.production_required !== undefined
       ? 'production_required = ?,' : ''
@@ -1300,8 +1321,8 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         sub_category = ?,
         unit = ?,
         base_price = ?,
-        description = ?,
-        is_active = ?,
+        ${descClause}
+        ${isActiveClause}
         is_sales_item = ?,
         is_purchase_item = ?,
         pricing_method = ?,
@@ -1328,8 +1349,8 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       subCategory,
       itemData.unit || 'EA',
       itemData.base_price || 0,
-      itemData.description || null,
-      itemData.is_active !== undefined ? itemData.is_active : 1,
+      ...descParams,
+      ...isActiveParams,
       isSalesItem,
       isPurchaseItem,
       itemData.pricing_method || 'FIXED',

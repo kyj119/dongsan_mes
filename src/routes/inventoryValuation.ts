@@ -20,9 +20,12 @@ inventoryValuation.put('/method', requireRole('ADMIN'), async (c) => {
   if (!['FIFO', 'WEIGHTED_AVG', 'STANDARD'].includes(method)) {
     return c.json({ success: false, error: '유효한 방법: FIFO, WEIGHTED_AVG, STANDARD' }, 400)
   }
-  await c.env.DB.prepare(
-    `UPDATE settings SET setting_value = ? WHERE setting_key = 'inventory_valuation_method'`
-  ).bind(method).run()
+  // UPSERT — 설정 행이 없으면 UPDATE 는 0행이고 success:true 만 나가 GET 이 계속 기본값을 돌려줬다(2026-09-03)
+  await c.env.DB.prepare(`
+    INSERT INTO settings (setting_key, setting_value, description, updated_by, updated_at)
+    VALUES ('inventory_valuation_method', ?, '재고 평가 방법', ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_by = excluded.updated_by, updated_at = CURRENT_TIMESTAMP
+  `).bind(method, c.get('user')?.id ?? null).run()
   return c.json({ success: true })
 })
 

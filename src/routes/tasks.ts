@@ -266,10 +266,15 @@ tasksRouter.post('/:id/retry', async (c) => {
     const row = await c.env.DB.prepare(`SELECT status FROM tasks WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<{ status: string }>()
     if (!row) return c.json({ success: false, error: 'Task not found' }, 404)
 
+    // retry_count 를 반드시 0으로 되돌린다 — /claim 이 `retry_count < max_retries` 로 거르므로
+    // 재시도가 소진된 작업(retry_count = max)은 상태만 PENDING 이 되고 에이전트가 영원히 집지 않는다.
+    // 응답은 "Task requeued" 라 실패가 보이지도 않는다. 수동 재시도의 목적이 정확히 이 복구다.
     await c.env.DB.prepare(`
       UPDATE tasks
       SET status = 'PENDING',
           error_message = NULL,
+          retry_count = 0,
+          started_at = NULL,
           updated_at = datetime('now')
       WHERE id = ?${ef.clause}
     `).bind(id, ...ef.params).run()

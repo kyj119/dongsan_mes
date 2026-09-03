@@ -69,8 +69,9 @@
       var d = res.data.data;
       document.getElementById('confirmPoNumber').textContent = d.po.po_number || '';
       document.getElementById('confirmSupplier').textContent = d.po.supplier_name || '';
+      // 라우트가 authMiddleware(Authorization 헤더 전용) — 직링크는 401 빈 탭이라 blob 경유로 연다
       var stmtHtml = (d.receipts || []).filter(function(rc) { return rc.statement_file_key; }).map(function(rc) {
-        return '<a href="/api/purchase-orders/receipts/' + rc.id + '/statement" target="_blank" class="text-blue-600 hover:underline text-xs mr-3"><i class="fas fa-file-invoice"></i> ' + escapeHtml(rc.receipt_number || '명세서') + '</a>';
+        return '<button type="button" onclick="pinvOpenStatement(' + rc.id + ')" class="text-blue-600 hover:underline text-xs mr-3"><i class="fas fa-file-invoice"></i> ' + escapeHtml(rc.receipt_number || '명세서') + '</button>';
       }).join('');
       document.getElementById('confirmStatements').innerHTML = stmtHtml || '<span class="text-gray-400 text-xs">첨부된 거래명세서 없음 (입고 관리에서 첨부 권장)</span>';
       var itemsHtml = (d.items || []).map(function(it) {
@@ -78,7 +79,8 @@
           + '<td class="px-3 py-2">' + escapeHtml(it.item_name || '-') + '</td>'
           + '<td class="px-3 py-2 text-center">' + fmt(it.received_quantity) + ' ' + escapeHtml(it.unit || '') + '</td>'
           + '<td class="px-3 py-2 text-right text-gray-400 text-xs">' + (it.base_price ? '직전 ' + fmt(it.base_price) : '') + '</td>'
-          + '<td class="px-3 py-2"><input type="number" min="0" data-poitem="' + it.po_item_id + '" class="confirm-price w-28 text-right border rounded px-2 py-1" placeholder="실단가" value="' + (it.base_price || '') + '" oninput="recalcConfirmTotal()"></td>'
+          // data-qty = 합계 미리보기의 수량 정본. DOM 텍스트(fmt 반올림·단위 문자열 혼입)를 역파싱하지 않는다.
+          + '<td class="px-3 py-2"><input type="number" min="0" data-poitem="' + it.po_item_id + '" data-qty="' + (Number(it.received_quantity) || 0) + '" class="confirm-price w-28 text-right border rounded px-2 py-1" placeholder="실단가" value="' + (it.base_price || '') + '" oninput="recalcConfirmTotal()"></td>'
           + '</tr>';
       }).join('');
       document.getElementById('confirmItemsBody').innerHTML = itemsHtml;
@@ -89,12 +91,14 @@
   }
   window.openConfirmModal = openConfirmModal;
 
+  window.pinvOpenStatement = function(receiptId) {
+    window.dsOpenAuthFile('/api/purchase-orders/receipts/' + receiptId + '/statement', '거래명세서_' + receiptId);
+  };
+
   window.recalcConfirmTotal = function() {
     var total = 0;
     document.querySelectorAll('.confirm-price').forEach(function(inp) {
-      var tr = inp.closest('tr');
-      if (!tr) return;
-      var qty = parseFloat((tr.children[1].textContent || '').replace(/[^0-9.]/g, '')) || 0;
+      var qty = parseFloat(inp.dataset.qty) || 0;
       var price = parseFloat(inp.value) || 0;
       total += qty * price;
     });

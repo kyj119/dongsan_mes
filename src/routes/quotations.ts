@@ -30,6 +30,7 @@ import { buildQuotListFilter, resolveQuotSort, QUOT_SORT_DEFAULT } from './quota
 //   `.auto` 를 쓰는 이유 = 견적은 수동 금액(에누리) 개념이 없어 늘 자동값을 저장해 왔다. 기존 동작 유지.
 import { computeLineAmount } from '../utils/orderLineAmount'
 import { resolveSlot } from '../utils/productionDeadline'   // 직배 배차 슬롯(오전/오후) 정규화
+import { generateCardsForOrder } from './orders/helpers'    // 견적 → 주문 전환 시 생산 카드 생성(create.ts 와 동일 규칙)
 
 const quotationsRouter = new Hono<HonoEnv>()
 quotationsRouter.use('/*', authMiddleware, requireAnyPagePermission('/quotations', '/orders'))
@@ -739,6 +740,26 @@ quotationsRouter.post('/:id/convert-to-order', requireEditOrRole('/quotations', 
     //   CLAUDE.md §누적 캐시 「수정·삭제 경로가 그걸 모르는 것 — 가장 자주 재발한 결함」과 같은 축이다.
     //   실패해도 주문 생성 자체는 막지 않는다(백필로 복구 가능).
     try { await recalculateOrderCosts(c.env.DB, orderId) } catch (e) { console.error('cost snapshot(quotation-convert) failed:', e) }
+    // ★생산 카드 생성 — 주문 생성 경로(orders/create.ts:579)와 같은 규칙.
+    //   order_type 을 'PRODUCTION' 으로 고정 INSERT 하므로 항상 카드 대상이다.
+    //   빠지면 전환 주문이 카드 0건·shipment_ready 0 으로 남아 작업지시·출고가 모두 막힌다.
+    let convCardsGenerated = 0
+    try {
+      convCardsGenerated = await generateCardsForOrder({
+        db: c.env.DB,
+        orderId,
+        orderNumber,
+        clientId: quotation.client_id as number,
+        deliveryDate: (quotation.delivery_date as string) || null,
+        priority: 'NORMAL',
+        notes: (quotation.notes as string) || null,
+        entityId: (quotation.entity_id as number) || 1
+      })
+    } catch (cardErr) {
+      // 카드 생성 실패가 전환 자체를 되돌리지는 않는다(주문·라인은 이미 INSERT 됨).
+      //   조용히 넘기지 않고 로그를 남긴다 — 카드 0건 주문은 지시 현황판 '누락' 큐가 잡는다.
+      console.error('quotations.convert card generation failed (non-blocking):', cardErr)
+    }
 
     // 주문 상태 이력
     await c.env.DB.prepare(`
@@ -769,8 +790,8 @@ quotationsRouter.post('/:id/convert-to-order', requireEditOrRole('/quotations', 
 
     return c.json({
       success: true,
-      data: { order_id: orderId, order_number: orderNumber, quotation_id: Number(id) },
-      message: `견적서 ${quotation.quotation_number} → 주문 ${orderNumber} 생성됨`
+      data: { order_id: orderId, order_number: orderNumber, quotation_id: Number(id), cards_generated: convCardsGenerated },
+      message: `견적서 ${quotation.quotation_number} → 주문 ${orderNumber} 생성됨 (카드 ${convCardsGenerated}건)`
     })
   } catch (error) {
     console.error('quotations.convert error:', error)

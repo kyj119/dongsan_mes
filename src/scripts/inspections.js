@@ -51,7 +51,7 @@
           '<td class="px-4 py-2 text-center">' + status + '</td>' +
           '<td class="px-4 py-2 text-center">' +
             '<button onclick="inspectionsOpenTemplateModal(' + t.id + ')" class="text-blue-600 hover:underline mr-2">편집</button>' +
-            '<button onclick="inspectionsDeleteTemplate(' + t.id + ',\\\'' + escapeHtml(t.template_name).replace(/'/g, '&#39;') + '\\\')" class="text-red-600 hover:underline">삭제</button>' +
+            '<button onclick="inspectionsDeleteTemplate(' + t.id + ',\'' + escapeJsAttr(t.template_name) + '\')" class="text-red-600 hover:underline">삭제</button>' +
           '</td>' +
         '</tr>'
       }).join('')

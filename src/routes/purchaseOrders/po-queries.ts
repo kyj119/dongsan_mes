@@ -11,7 +11,7 @@ import { requireAnyPagePermission } from '../../middleware/permissions'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { excludePurchaseNonCounterpartiesSql } from '../../constants/intercompany'
 import { getEntityCompanyInfo } from '../../utils/entitySettings'
-import { kstYmd } from '../../utils/kstDate'
+import { kstYmd, kstDate } from '../../utils/kstDate'
 import { buildPoListFilter, resolvePoSort, PO_SORT_DEFAULT } from './listFilter'
 
 const poQueriesRouter = new Hono<HonoEnv>()
@@ -65,7 +65,7 @@ poQueriesRouter.get('/stats', async (c) => {
       SELECT COALESCE(SUM(final_amount), 0) as total
       FROM purchase_orders
       WHERE status NOT IN ('CANCELLED', 'DRAFT')
-        AND order_date >= date('now', 'start of month')${efAnd}${icAnd}
+        AND order_date >= ${kstDate("'start of month'")}${efAnd}${icAnd}
     `).bind(...ef.params).first<{ total: number }>()
     stats.monthly_amount = monthlyAmount?.total || 0
 
@@ -235,6 +235,7 @@ poQueriesRouter.get('/my-lines', async (c) => {
     const user = c.get('user')
     if (!user?.id) return c.json({ success: false, error: '인증 필요' }, 401)
     const isSupervisor = user.role === 'ADMIN' || user.role === 'MANAGER'
+    const efMy = entityFilter(c, 'po')  // 형제 /receiving-queue(po-receipts.ts)와 같은 법인 격리
 
     const sql = `
       SELECT
@@ -264,7 +265,7 @@ poQueriesRouter.get('/my-lines', async (c) => {
       LEFT JOIN clients c ON c.id = po.supplier_id
       LEFT JOIN users u ON u.id = poi.received_by
       WHERE poi.line_status IN ('PENDING','PARTIAL')
-        AND po.status IN ('CONFIRMED','PARTIAL_RECEIVED')
+        AND po.status IN ('CONFIRMED','PARTIAL_RECEIVED')${efMy.clause}
         AND (
           sz.manager_id = ?
           ${isSupervisor ? "OR sz.manager_id IS NULL OR sz.id IS NULL" : ""}
@@ -272,7 +273,7 @@ poQueriesRouter.get('/my-lines', async (c) => {
       ORDER BY po.order_date ASC, poi.id ASC
       LIMIT 200
     `
-    const { results } = await c.env.DB.prepare(sql).bind(user.id).all()
+    const { results } = await c.env.DB.prepare(sql).bind(...efMy.params, user.id).all()
     return c.json({ success: true, data: results || [] })
   } catch (err: any) {
     console.error('my-lines error:', err)
@@ -286,6 +287,7 @@ poQueriesRouter.get('/my-lines-count', async (c) => {
     const user = c.get('user')
     if (!user?.id) return c.json({ success: false, error: '인증 필요' }, 401)
     const isSupervisor = user.role === 'ADMIN' || user.role === 'MANAGER'
+    const efCnt = entityFilter(c, 'po')  // /my-lines 와 동일 격리 (배지 숫자 부풀림 방지)
 
     const sql = `
       SELECT COUNT(*) as cnt
@@ -294,13 +296,13 @@ poQueriesRouter.get('/my-lines-count', async (c) => {
       LEFT JOIN items i ON i.id = poi.item_id
       LEFT JOIN storage_zones sz ON sz.id = COALESCE(poi.storage_zone_id, i.storage_zone_id)
       WHERE poi.line_status IN ('PENDING','PARTIAL')
-        AND po.status IN ('CONFIRMED','PARTIAL_RECEIVED')
+        AND po.status IN ('CONFIRMED','PARTIAL_RECEIVED')${efCnt.clause}
         AND (
           sz.manager_id = ?
           ${isSupervisor ? "OR sz.manager_id IS NULL OR sz.id IS NULL" : ""}
         )
     `
-    const row = await c.env.DB.prepare(sql).bind(user.id).first<{ cnt: number }>()
+    const row = await c.env.DB.prepare(sql).bind(...efCnt.params, user.id).first<{ cnt: number }>()
     return c.json({ success: true, data: { count: Number(row?.cnt || 0) } })
   } catch (err: any) {
     console.error('my-lines-count error:', err)

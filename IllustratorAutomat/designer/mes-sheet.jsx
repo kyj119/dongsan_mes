@@ -19,6 +19,28 @@
   var SHEET_DOC_PREFIX = 'MES판_';
   var CUT_LAYER = '재단선';
 
+  /**
+   * mm 단위 문서를 만든다 — `app.documents.add()` 를 이걸로 대체한다.
+   * ★`documents.add()` 가 만드는 문서는 눈금이 **point** 다. `doc.rulerUnits` 대입은 읽기 전용이라
+   *   아무 일도 하지 않고(예외도 안 던진다), `preferences rulerType` 도 안 통한다 —
+   *   **DocumentPreset 이 유일한 경로다**([[feedback-illustrator-doc-units]], AI 30.7 실측 2026-08-25).
+   *   이 축은 **디자이너가 다시 여는 `.ai`** 를 만들므로 눈금이 pt 면 매번 손으로 바꿔야 한다.
+   * 좌표는 point 그대로 넘긴다 — 눈금 단위만 바뀌고 기하는 불변이다.
+   * ⚠️ `SheetLayout.jsx` `_iaNewDocMM` · `mes-cut-host.jsx` `mesCut_newDocMM` 과 같은 내용의 사본.
+   */
+  function mesSheet_newDocMM(wPt, hPt) {
+    try {
+      var dp = new DocumentPreset();
+      dp.units = RulerUnits.Millimeters;
+      dp.colorMode = DocumentColorSpace.CMYK;
+      dp.width = wPt;
+      dp.height = hPt;
+      return app.documents.addDocument('[Default] Print', dp);
+    } catch (eU) {
+      return app.documents.add(DocumentColorSpace.CMYK, wPt, hPt);
+    }
+  }
+
   // ══ 유틸 (mes-core.jsx 동일 — 중복 주의) ══
   function readTextFile(path) {
     var f = new File(path);
@@ -221,7 +243,7 @@
     var jobFolder = new Folder(REGISTER_ROOT + '/' + folderName);
     if (!jobFolder.exists && !jobFolder.create()) { alert('등록 폴더 생성 실패:\n' + jobFolder.fsName); return; }
 
-    var sheetDoc = app.documents.add(DocumentColorSpace.CMYK, sheetWpt, (sheetHmm || 1000) * PT_PER_MM);
+    var sheetDoc = mesSheet_newDocMM(sheetWpt, (sheetHmm || 1000) * PT_PER_MM);
     sheetDoc.artboards[0].artboardRect = [0, 0, sheetWpt, -((sheetHmm || 1000) * PT_PER_MM)];
 
     // ── 조각 로드: work.ai 열기 → 그룹으로 복제 → 실물 크기 보정 → 수량만큼 복제 ──

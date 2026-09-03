@@ -503,10 +503,14 @@ storageZonesRouter.patch('/assign-items', requireRole('ADMIN'), async (c) => {
       if (!zone) return c.json({ success: false, error: '구역을 찾을 수 없습니다.' }, 404)
     }
 
-    const placeholders = item_ids.map(() => '?').join(',')
-    await c.env.DB.prepare(
-      `UPDATE items SET storage_zone_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`
-    ).bind(zone_id, ...item_ids).run()
+    // 80 청크 — 100건 이상 선택 시 D1 바인드 한도로 통째 500 (inventory.ts bulk-assign-zones 와 같은 규약)
+    for (let i = 0; i < item_ids.length; i += 80) {
+      const chunk = item_ids.slice(i, i + 80)
+      const placeholders = chunk.map(() => '?').join(',')
+      await c.env.DB.prepare(
+        `UPDATE items SET storage_zone_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`
+      ).bind(zone_id, ...chunk).run()
+    }
 
     return c.json({ success: true, message: `${item_ids.length}개 품목의 구역이 변경되었습니다.` })
   } catch (error) {

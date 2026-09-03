@@ -221,7 +221,7 @@ async function loadTransactions() {
         '<td class="px-1 py-1"><input type="text" class="w-full border border-gray-200 rounded px-1.5 py-0.5 text-xs" value="' + escapeHtml(tx.memo || '') + '" placeholder="적요..." onblur="quickMemo(' + tx.id + ', this.value)" data-memo-input="' + tx.id + '"' + lockAttr + '></td>' +
         '<td class="px-1 py-1.5 text-center">' + statusHtml + '</td>' +
         '<td class="px-1 py-1.5 text-center whitespace-nowrap">' +
-          (hasReceipt ? '<button onclick="viewReceipt(\'' + (tx.receipt_image_url || '') + '\')" class="text-blue-500 hover:text-blue-700 mr-1" title="영수증 보기"><i class="fas fa-magnifying-glass text-xs"></i></button>' : '') +
+          (hasReceipt ? '<button onclick="viewReceipt(\'' + escapeJsAttr(tx.receipt_image_url || '') + '\')" class="text-blue-500 hover:text-blue-700 mr-1" title="영수증 보기"><i class="fas fa-magnifying-glass text-xs"></i></button>' : '') +
           '<label class="' + (hasReceipt ? 'text-green-500' : 'text-gray-400') + ' hover:text-green-600 cursor-pointer mr-1" title="' + (hasReceipt ? '영수증 교체' : '영수증 첨부') + '">' +
             '<i class="fas ' + (hasReceipt ? 'fa-check-circle' : 'fa-camera') + ' text-xs"></i>' +
             '<input type="file" accept="image/*,.pdf" class="hidden" onchange="quickReceipt(' + tx.id + ', this)">' +
@@ -482,7 +482,7 @@ async function loadCategories() {
         '<td class="px-3 py-2 text-center"><div style="width:20px;height:20px;border-radius:4px;background:' + (c.color || '#6b7280') + ';margin:0 auto"></div></td>' +
         '<td class="px-3 py-2 text-center text-gray-500">' + (c.sort_order || 0) + '</td>' +
         '<td class="px-3 py-2 text-center">' +
-        '<button onclick="editCategory(' + c.id + ',\'' + escapeHtml(c.name).replace(/'/g, "\\'") + '\',\'' + (c.icon || 'fa-tag') + '\',\'' + (c.color || '#6b7280') + '\')" class="text-gray-400 hover:text-blue-600 p-1"><i class="fas fa-pen text-xs"></i></button>' +
+        '<button onclick="editCategory(' + c.id + ',\'' + escapeJsAttr(c.name) + '\',\'' + escapeJsAttr(c.icon || 'fa-tag') + '\',\'' + escapeJsAttr(c.color || '#6b7280') + '\')" class="text-gray-400 hover:text-blue-600 p-1"><i class="fas fa-pen text-xs"></i></button>' +
         '<button onclick="deleteCategory(' + c.id + ')" class="text-gray-400 hover:text-red-600 p-1"><i class="fas fa-trash text-xs"></i></button></td></tr>';
     }).join('');
   } catch (e) { console.error('Categories error:', e); }
@@ -604,7 +604,7 @@ async function openEditTx(id) {
     var rUrl = editTxData.receipt_image_url;
     preview.innerHTML = '<span class="text-xs text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>영수증 불러오는 중...</span>';
     loadReceiptBlob(rUrl).then(function(blobUrl) {
-      preview.innerHTML = '<img src="' + blobUrl + '" class="receipt-preview mb-2 cursor-pointer" alt="영수증" onclick="viewReceipt(\'' + rUrl + '\')"><br><span class="text-xs text-green-600"><i class="fas fa-check-circle mr-1"></i>영수증 첨부됨 (클릭 시 확대)</span>';
+      preview.innerHTML = '<img src="' + blobUrl + '" class="receipt-preview mb-2 cursor-pointer" alt="영수증" onclick="viewReceipt(\'' + escapeJsAttr(rUrl) + '\')"><br><span class="text-xs text-green-600"><i class="fas fa-check-circle mr-1"></i>영수증 첨부됨 (클릭 시 확대)</span>';
     }).catch(function() {
       preview.innerHTML = '<span class="text-xs text-red-400">영수증을 불러오지 못했습니다</span>';
     });

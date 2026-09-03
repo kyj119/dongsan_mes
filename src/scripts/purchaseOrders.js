@@ -74,7 +74,9 @@ async function loadSupplierFilter() {
   try {
     // ⚠️ client_type 필터 금지 — prod 매입처 다수가 'SALES' 등록이라 거르면 공급처가 사라진다
     //   ([[feedback-ap-client-type-filter]]). 종전 'PURCHASES' 는 enum(SALES/PURCHASE/BOTH)에 없어 무효였다.
-    var res = await axios.get('/api/clients', { params: { is_active: '1' } });
+    // fields=picker + limit=5000 — 기본 limit 50 이면 이름순 앞 50곳 외에는 선택 자체가 불가능했다.
+    //   (라우트 파라미터명은 is_active 가 아니라 active. picker 상한 5000, 응답은 id·이름·코드만)
+    var res = await axios.get('/api/clients', { params: { fields: 'picker', limit: 5000, active: 1 } });
     if (res.data.success) {
       var sel = document.getElementById('supplierFilter');
       if (!sel) return;
@@ -128,16 +130,17 @@ async function checkStockAlerts() {
     var alertsRes = await axios.get('/api/purchase-orders/stock-alerts', { params: { status: 'ACTIVE' } });
     if (alertsRes.data.success && alertsRes.data.data.length > 0) {
       var alerts = alertsRes.data.data;
-      var msg = '재고 부족 품목 (' + alerts.length + '건):\\n\\n';
+      // ?raw 소스라 '\\n' 은 백슬래시+n 문자 2개로 그대로 찍힌다 — 실제 개행을 써야 showToast 가 <br> 로 바꾼다
+      var msg = '재고 부족 품목 (' + alerts.length + '건):\n\n';
       alerts.slice(0, 10).forEach(function(a) {
         msg += '- ' + a.item_name + ': 현재 ' + a.current_stock + ' / 기준 ' + a.threshold_quantity;
         if (a.zone_name) msg += ' [' + a.zone_name + ']';
-        msg += '\\n';
+        msg += '\n';
       });
-      if (alerts.length > 10) msg += '\\n...외 ' + (alerts.length - 10) + '건';
+      if (alerts.length > 10) msg += '\n...외 ' + (alerts.length - 10) + '건';
       showToast(msg, 'warning');
     } else {
-      showToast(checkRes.data.message || '재고 부족 품목이 없습니다.', 'error');
+      showToast(checkRes.data.message || '재고 부족 품목이 없습니다.', 'info');
     }
     loadStats();
   } catch(e) {

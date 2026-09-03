@@ -2,6 +2,8 @@ import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import pageScript from '../scripts/clients.js?raw'
+// 배송방법 값은 SSOT 에서만 만든다 — 목록 필터는 영문 enum(SAME/FREIGHT/DIRECT/PICKUP)이라 늘 0건이었다
+import { deliveryMethodOptionsHtml } from '../constants/deliveryMethod'
 
 export function clientsPage(c: Context<HonoEnv>) {
   return renderPage(c, {
@@ -39,10 +41,7 @@ export function clientsPage(c: Context<HonoEnv>) {
           <label class="ds-label">배송</label>
           <select id="deliveryMethodFilter" class="ds-input" onchange="searchClients()">
             <option value="">전체</option>
-            <option value="SAME">소재지</option>
-            <option value="FREIGHT">화물</option>
-            <option value="DIRECT">직배송</option>
-            <option value="PICKUP">방문수령</option>
+            ${deliveryMethodOptionsHtml()}
           </select>
         </div>
         <div class="ds-filter-field">
@@ -227,13 +226,7 @@ export function clientsPage(c: Context<HonoEnv>) {
               <div>
                 <label class="ds-label">배송방식</label>
                 <select id="clientModalDeliveryMethod" class="ds-input">
-                  <option value="대신택배">대신택배</option>
-                  <option value="대신화물">대신화물</option>
-                  <option value="한진택배">한진택배</option>
-                  <option value="직배">직배</option>
-                  <option value="용차">용차</option>
-                  <option value="퀵">퀵</option>
-                  <option value="방문수령">방문수령</option>
+                  ${deliveryMethodOptionsHtml()}
                 </select>
               </div>
               <div class="col-span-1 md:col-span-2">

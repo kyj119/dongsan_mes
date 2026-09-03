@@ -58,7 +58,9 @@ async function loadAllReports() {
     await window.ensureDataCompleteness();
     var m = parseInt(getMonths(), 10) || 6;
     var d = new Date(); d.setMonth(d.getMonth() - (m - 1)); d.setDate(1);
-    window.renderCompletenessNotice('reportsCompletenessNotice', d.toISOString().slice(0, 10), null);
+    // toISOString 은 UTC — 09:00 KST 이전에 열면 전월 말일로 밀린다. 로컬 필드로 조립한다.
+    var startYmd = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-01';
+    window.renderCompletenessNotice('reportsCompletenessNotice', startYmd, null);
   } catch (e) { /* 안내 실패가 보고서를 막지 않는다 */ }
   // 기간이 바뀌면 이미 받아둔 탭도 낡은 값이 되므로 캐시를 비우고 활성 탭만 다시 받는다.
   //   (숨은 탭은 다음에 열릴 때 새 기간으로 로드된다 — periodMonths 를 그때 읽으므로 항상 최신 기준)
@@ -75,14 +77,26 @@ async function loadMonthlySummary() {
     var monthlyData = raw.monthly || [];
     var payData = raw.payments || [];
 
-    // 수금 데이터를 월 기준 맵으로 변환
-    var payMap = {};
-    payData.forEach(function(p) { payMap[p.month] = parseFloat(p.payments) || 0; });
-
-    // monthly + payments 병합
-    var data = monthlyData.map(function(m) {
-      return { month: m.month, order_count: m.order_count, revenue: parseFloat(m.revenue) || 0, payments: payMap[m.month] || 0, unique_clients: m.unique_clients || 0 };
+    // monthly + payments 병합 — 두 쿼리가 각자 GROUP BY 라 달 집합이 다르다.
+    // 주문 있는 달만 순회하면 **주문 0건인 달의 입금이 통째로 사라져** 총수금·수금률이 과소 표시된다 → 달의 합집합.
+    var monthMap = {};
+    monthlyData.forEach(function(m) {
+      monthMap[m.month] = {
+        month: m.month,
+        order_count: m.order_count || 0,
+        revenue: parseFloat(m.revenue) || 0,
+        payments: 0,
+        unique_clients: m.unique_clients || 0
+      };
     });
+    payData.forEach(function(p) {
+      if (!monthMap[p.month]) {
+        monthMap[p.month] = { month: p.month, order_count: 0, revenue: 0, payments: 0, unique_clients: 0 };
+      }
+      monthMap[p.month].payments = parseFloat(p.payments) || 0;
+    });
+    // 서버와 같은 최신순(DESC) — 아래에서 reverse 해 오름차순으로 그린다
+    var data = Object.keys(monthMap).sort().reverse().map(function(k) { return monthMap[k]; });
 
     var totalRev = 0, totalPay = 0, totalOrd = 0;
     data.forEach(function(m) {
@@ -392,7 +406,7 @@ async function loadMarginAnalysis() {
         var marginRate = c.margin_rate || 0;
         var marginColor = marginRate >= 30 ? 'text-green-600' : marginRate >= 15 ? 'text-amber-600' : 'text-red-600';
         return '<div class="flex items-center justify-between text-sm">'
-          + '<span class="w-24 truncate font-medium">' + (c.category_name || '미분류') + '</span>'
+          + '<span class="w-24 truncate font-medium">' + escapeHtml(c.category_name || '미분류') + '</span>'
           + '<div class="flex-1 mx-3"><div class="bg-gray-100 rounded-full h-4 relative">'
           + '<div class="bg-blue-400 h-4 rounded-full" style="width:' + pct + '%"></div></div></div>'
           + '<span class="w-20 text-right text-gray-600">' + fmtWon(c.revenue) + '</span>'

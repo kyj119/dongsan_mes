@@ -10,3 +10,10 @@ export function escapeHtml(value: unknown): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;')
 }
+
+// 인라인 <script> 안에 JS 리터럴로 값을 넣을 때 쓴다.
+// JSON.stringify 만으로는 문자열 안의 `</script>` 가 그대로 살아남아 스크립트 요소를 조기 종료시킨다.
+// `<` 를 < 로 바꾸면 JS 값은 동일하면서 HTML 파서가 태그로 보지 않는다.
+export function jsonForScript(value: unknown): string {
+  return JSON.stringify(value === undefined ? null : value).replace(/</g, '\\u003c')
+}

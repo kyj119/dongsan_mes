@@ -195,7 +195,7 @@ function renderClientTable(clients, isFullList) {
         row.dataset.id = cl.id;
         row.dataset.name = cl.client_name;
         row.onclick = function() { selectClient(cl.id, cl.client_name); };
-        var safeClientName = escapeHtml(cl.client_name).replace(/'/g, "\\'");
+        var safeClientName = escapeJsAttr(cl.client_name);
         // Aging info from merged receivables data
         var aging = agingMap[cl.id];
         var agingHtml = '-';
@@ -691,7 +691,9 @@ function closeAdjustmentModal() {
 
 async function loadOrdersForAdjustment() {
     try {
-        var res = await axios.get('/api/orders?status=SHIPPED&limit=100&clientId=' + selectedClientId);
+        // 파라미터명은 client_id — 서버 조회조건 SSOT(routes/orders/listFilter.ts)가 쓰는 이름이다.
+        //   camelCase clientId 는 화이트리스트에 없어 조용히 무시됐고, 전 거래처 100건이 떴다.
+        var res = await axios.get('/api/orders?status=SHIPPED&limit=100&client_id=' + encodeURIComponent(selectedClientId));
         var orders = [];
         if (res.data.success) {
             orders = res.data.data || [];
@@ -818,7 +820,7 @@ function drawOverdueWarning() {
         var dateLabel = carryOnly
             ? '이관 기초잔액 (' + (item.oldest_billed_at ? formatDate(item.oldest_billed_at) : '-') + ' 기준)'
             : '최고령 미결제: ' + (item.oldest_billed_at ? formatDate(item.oldest_billed_at) : '-');
-        return '<div onclick="selectClient(' + item.client_id + ', \'' + escapeHtml(item.client_name || '').replace(/'/g, "&#039;") + '\')" '
+        return '<div onclick="selectClient(' + item.client_id + ', \'' + escapeJsAttr(item.client_name || '') + '\')" '
             + 'class="flex items-center justify-between p-3 bg-white rounded border ' + tone.border + ' cursor-pointer ' + tone.hover + ' transition-colors">'
             + '<div>'
             + '<div class="font-medium text-gray-800 text-sm">' + escapeHtml(item.client_name || '-') + badge + '</div>'
@@ -1063,11 +1065,12 @@ function toggleMonthly() {
 function exportClientsCSV() {
     if (allClients.length === 0) { showToast('내보낼 데이터가 없습니다', 'info'); return; }
     var bom = '\uFEFF';
-    var csv = bom + '거래처코드,거래처명,주문수,매출,입금,잔액\n';
-    allClients.forEach(function(cl) {
-        csv += '"' + (cl.client_code || '').replace(/"/g, '""') + '","' + (cl.client_name || '').replace(/"/g, '""') + '",' + (cl.order_count || 0) + ',' + (cl.total_sales || 0) + ',' + (cl.total_payments || 0) + ',' + (cl.balance || 0) + '\n';
+    // dsBuildCsv = dsCsvCell(SSOT) 조립 — 수식(=+-@) 가드 + 콤마/따옴표/개행 처리. BOM은 dsDownloadCsv가 보장.
+    var headers = ['거래처코드', '거래처명', '주문수', '매출', '입금', '잔액'];
+    var rows = allClients.map(function(cl) {
+        return [cl.client_code || '', cl.client_name || '', cl.order_count || 0, cl.total_sales || 0, cl.total_payments || 0, cl.balance || 0];
     });
-    downloadCSV(csv, 'ledger_clients.csv');
+    downloadCSV(bom + window.dsBuildCsv(headers, rows), 'ledger_clients.csv');
 }
 
 function exportTransactionsCSV() {
@@ -1077,16 +1080,17 @@ function exportTransactionsCSV() {
         return;
     }
     var bom = '\uFEFF';
-    var csv = bom + '일시,유형,상세,공급가액,부가세,합계,입금,잔액,비고\n';
+    var headers = ['일시', '유형', '상세', '공급가액', '부가세', '합계', '입금', '잔액', '비고'];
+    var out = [];
     rows.forEach(function(row) {
         var cells = row.querySelectorAll('td');
         if (cells.length >= 8) {
             var vals = [];
-            cells.forEach(function(c) { vals.push('"' + c.textContent.trim().replace(/"/g, '""') + '"'); });
-            csv += vals.join(',') + '\n';
+            cells.forEach(function(c) { vals.push(c.textContent.trim()); });
+            out.push(vals);
         }
     });
-    downloadCSV(csv, 'ledger_transactions_' + (selectedClientName || 'all') + '.csv');
+    downloadCSV(bom + window.dsBuildCsv(headers, out), 'ledger_transactions_' + (selectedClientName || 'all') + '.csv');
 }
 
 function downloadCSV(csv, filename) {
@@ -1564,30 +1568,32 @@ function togglePurchaseMonthly() {
 // ===== Purchase CSV Export =====
 function exportSuppliersCSV() {
     var bom = '\uFEFF';
-    var csv = bom + '공급업체명,발주수,총매입,총지급,잔액\n';
-    allSuppliers.forEach(function(sp) {
-        csv += '"' + (sp.client_name || '') + '",' + (sp.po_count || 0) + ',' + (sp.total_purchases || 0) + ',' + (sp.total_payments || 0) + ',' + (sp.purchase_balance || 0) + '\n';
+    // 따옴표 이중화 없이 감싸던 곳 — 업체명에 " 가 하나 있으면 행이 통째로 깨졌다.
+    var headers = ['공급업체명', '발주수', '총매입', '총지급', '잔액'];
+    var rows = allSuppliers.map(function(sp) {
+        return [sp.client_name || '', sp.po_count || 0, sp.total_purchases || 0, sp.total_payments || 0, sp.purchase_balance || 0];
     });
-    downloadCSV(csv, 'purchase_settlement_' + new Date().toISOString().split('T')[0] + '.csv');
+    downloadCSV(bom + window.dsBuildCsv(headers, rows), 'purchase_settlement_' + new Date().toISOString().split('T')[0] + '.csv');
 }
 
 function exportPurchaseTransactionsCSV() {
     var body = document.getElementById('pTransactionsBody');
     if (!body) return;
     var bom = '\uFEFF';
-    var csv = bom + '일시,유형,상세,공급가액,부가세,합계,지급,잔액,비고\n';
+    var headers = ['일시', '유형', '상세', '공급가액', '부가세', '합계', '지급', '잔액', '비고'];
+    var out = [];
     var rows = body.querySelectorAll('tr');
     rows.forEach(function(row) {
         var cells = row.querySelectorAll('td');
         if (cells.length >= 8) {
             var vals = [];
             for (var i = 0; i < cells.length; i++) {
-                vals.push('"' + (cells[i].textContent || '').replace(/"/g, '""') + '"');
+                vals.push(cells[i].textContent || '');
             }
-            csv += vals.join(',') + '\n';
+            out.push(vals);
         }
     });
-    downloadCSV(csv, 'purchase_transactions_' + new Date().toISOString().split('T')[0] + '.csv');
+    downloadCSV(bom + window.dsBuildCsv(headers, out), 'purchase_transactions_' + new Date().toISOString().split('T')[0] + '.csv');
 }
 
 // ===== Collection Logs (수금 독촉 이력) =====

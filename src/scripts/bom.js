@@ -144,4 +144,10 @@ function renderBomOverview() {
   tbody.innerHTML = html;
 }
 
-document.addEventListener('DOMContentLoaded', initBom);
+// SPA 전환(사이드바 클릭)은 DOMContentLoaded 를 다시 쏘지 않는다 — 스크립트가 주입되는 시점에
+// 이미 문서가 로드 완료 상태라 리스너만 걸면 영원히 실행되지 않고 스켈레톤이 남는다.
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initBom);
+} else {
+  initBom();
+}

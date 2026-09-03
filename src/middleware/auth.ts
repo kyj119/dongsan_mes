@@ -5,6 +5,33 @@ import type { AuthUser } from '../types/models'
 
 export type { AuthUser }
 
+// 내부 사용자 토큰만 인정한다 (2026-09-03 C1).
+//   같은 JWT_SECRET 으로 서명되는 토큰이 세 종류다 — 로그인(id·role) · 포털 고객(portal:true, role 없음,
+//   portalAuth.ts) · 직원 셀프(scope:'employee-self', role 없음, hrSelf.ts). 서명만 보면 셋 다 통과하므로
+//   클레임 모양으로 구분한다: portal/scope 가 있거나 id·role 이 없으면 내부 토큰이 아니다.
+export function toAuthUser(payload: unknown): AuthUser | null {
+  if (!payload || typeof payload !== 'object') return null
+  const p = payload as Record<string, unknown>
+  if (p.portal !== undefined || p.scope !== undefined) return null
+  if (p.id === null || p.id === undefined) return null
+  if (typeof p.role !== 'string' || !p.role) return null
+  return p as unknown as AuthUser
+}
+
+// 비밀값 비교는 상수시간으로 — 양쪽을 SHA-256 으로 접어 길이·접두 일치가 비교 시간에 드러나지 않게 한다
+// (caps.ts verifyAgentKey 와 같은 패턴).
+export async function secretEquals(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder()
+  const [da, db] = await Promise.all([
+    crypto.subtle.digest('SHA-256', enc.encode(a)),
+    crypto.subtle.digest('SHA-256', enc.encode(b)),
+  ])
+  const ua = new Uint8Array(da), ub = new Uint8Array(db)
+  let diff = 0
+  for (let i = 0; i < ua.length; i++) diff |= ua[i] ^ ub[i]
+  return diff === 0
+}
+
 // JWT 토큰 검증 미들웨어
 export const authMiddleware = createMiddleware<HonoEnv>(async (c, next) => {
   try {
@@ -21,7 +48,10 @@ export const authMiddleware = createMiddleware<HonoEnv>(async (c, next) => {
     }
     const payload = await verify(token, jwtSecret, 'HS256')
 
-    const authUser = payload as unknown as AuthUser
+    const authUser = toAuthUser(payload)
+    if (!authUser) {
+      return c.json({ success: false, message: 'Unauthorized - Invalid token' }, 401)
+    }
     c.set('user', authUser)
     c.set('entityId', (authUser.entityId != null) ? authUser.entityId : 1)
     await next()
@@ -66,7 +96,10 @@ export const pageAuthMiddleware = createMiddleware<HonoEnv>(async (c, next) => {
     try {
       const token = authHeader.substring(7)
       const payload = await verify(token, c.env.JWT_SECRET, 'HS256')
-      const authUser = payload as unknown as AuthUser
+      const authUser = toAuthUser(payload)
+      if (!authUser) {
+        return c.json({ error: 'Unauthorized' }, 401)
+      }
       c.set('user', authUser)
       c.set('entityId', (authUser.entityId != null) ? authUser.entityId : 1)
     } catch {
@@ -84,7 +117,7 @@ export const agentKeyMiddleware = createMiddleware<HonoEnv>(async (c, next) => {
     return c.json({ success: false, error: 'Server configuration error' }, 500)
   }
   const key = c.req.header('X-Agent-Key')
-  if (!key || key !== expectedKey) {
+  if (!key || !(await secretEquals(key, expectedKey))) {
     return c.json({ success: false, error: 'Invalid or missing API key' }, 401)
   }
   await next()
@@ -97,7 +130,7 @@ export const agentKeyOrAuthMiddleware = createMiddleware<HonoEnv>(async (c, next
   const agentKey = c.req.header('X-Agent-Key')
   if (agentKey) {
     const expectedKey = c.env.AGENT_API_KEY
-    if (expectedKey && agentKey === expectedKey) {
+    if (expectedKey && await secretEquals(agentKey, expectedKey)) {
       c.set('entityId', 0)  // 에이전트 = 전역 조회(법인 필터 생략)
       await next()
       return
@@ -111,7 +144,10 @@ export const agentKeyOrAuthMiddleware = createMiddleware<HonoEnv>(async (c, next
   }
   try {
     const payload = await verify(authHeader.substring(7), c.env.JWT_SECRET, 'HS256')
-    const authUser = payload as unknown as AuthUser
+    const authUser = toAuthUser(payload)
+    if (!authUser) {
+      return c.json({ success: false, message: 'Unauthorized - Invalid token' }, 401)
+    }
     c.set('user', authUser)
     c.set('entityId', (authUser.entityId != null) ? authUser.entityId : 1)
     await next()

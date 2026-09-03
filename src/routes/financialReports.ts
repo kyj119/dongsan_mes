@@ -9,6 +9,7 @@ import { excludePurchaseNonCounterpartiesSql, INTERNAL_ENTITY_CLIENT_IDS } from 
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
 import { kstYear } from '../utils/kstDate'
 import { deriveArSplit } from './ledger/ar-helpers'
+import { cardNetAmountSql, cardSpendFilterSql } from '../utils/cardSpend'
 
 // ── Row types for D1 queries ──
 interface ApRow { payable: number; prepaid: number; prepaid_suppliers: number }
@@ -86,11 +87,13 @@ async function fetchEntityPnl(db: D1Database, E: number, from: string, to: strin
       WHERE ba.entity_id=? AND COALESCE(ba.is_personal,0)=0 AND bt.transaction_type='WITHDRAWAL'
         AND bt.transaction_date BETWEEN ? AND ?
       GROUP BY ec.name`).bind(E, bFrom, bTo).all<CatRow>(),
-    db.prepare(`SELECT ec.name nm, COUNT(*) cnt, CAST(SUM(t.amount) AS INT) amt
+    // 카드 판관비 = 순지출 정본(utils/cardSpend): 취소 차감 + 상계쌍·가승인 제외.
+    //   is_offset 만 걸면 상계 실패한 취소(±30일 밖·가맹점명 상이·부분취소)가 +로 합산돼 판관비가 과대.
+    db.prepare(`SELECT ec.name nm, COUNT(*) cnt, CAST(SUM(${cardNetAmountSql('t')}) AS INT) amt
       FROM card_transactions t
       JOIN corporate_cards cc ON cc.id=t.card_id
       JOIN expense_categories ec ON ec.id=t.category_id
-      WHERE cc.entity_id=? AND COALESCE(t.is_offset,0)=0
+      WHERE cc.entity_id=?${cardSpendFilterSql('t')}
         AND t.transaction_date BETWEEN ? AND ?
       GROUP BY ec.name`).bind(E, bFrom, bTo).all<CatRow>(),
     // 커버리지 — 미분류(계정도 거래처도 없음)는 판관비에서 빠져 있다 = 판관비 과소 경고용
@@ -238,11 +241,11 @@ async function fetchEntityMonthly(db: D1Database, E: number, year: number) {
       JOIN expense_categories ec ON ec.id=bt.matched_category_id
       WHERE ba.entity_id=? AND COALESCE(ba.is_personal,0)=0 AND bt.transaction_type='WITHDRAWAL'
         AND substr(bt.transaction_date,1,4) = ? GROUP BY m, ec.name`).bind(E, y).all<MonthCatRow>(),
-    db.prepare(`SELECT substr(t.transaction_date,5,2) m, ec.name nm, CAST(SUM(t.amount) AS INT) amt
+    db.prepare(`SELECT substr(t.transaction_date,5,2) m, ec.name nm, CAST(SUM(${cardNetAmountSql('t')}) AS INT) amt
       FROM card_transactions t
       JOIN corporate_cards cc ON cc.id=t.card_id
       JOIN expense_categories ec ON ec.id=t.category_id
-      WHERE cc.entity_id=? AND COALESCE(t.is_offset,0)=0
+      WHERE cc.entity_id=?${cardSpendFilterSql('t')}
         AND substr(t.transaction_date,1,4) = ? GROUP BY m, ec.name`).bind(E, y).all<MonthCatRow>(),
   ])
   return { sales, salesInt, purch, purchInt, equip, dep, expBank, expCard }

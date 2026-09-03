@@ -183,7 +183,7 @@ function accRenderRow(p) {
     '<td class="px-3 py-2 text-left text-gray-500 text-xs">' + escapeHtml(p.created_by_name || '') + '</td>' +
     '<td class="px-2 py-2 text-center whitespace-nowrap">' +
       '<button onclick="accEditPayment(' + p.id + ')" class="text-blue-500 hover:text-blue-700 px-1" title="수정"><i class="fas fa-pen"></i></button>' +
-      '<button onclick="accDeletePayment(' + p.id + ',\'' + (p.client_name || '').replace(/'/g, "\\'") + '\')" class="text-red-400 hover:text-red-600 px-1" title="삭제"><i class="fas fa-trash"></i></button>' +
+      '<button onclick="accDeletePayment(' + p.id + ',\'' + escapeJsAttr(p.client_name || '') + '\')" class="text-red-400 hover:text-red-600 px-1" title="삭제"><i class="fas fa-trash"></i></button>' +
     '</td>' +
   '</tr>';
 }
@@ -848,8 +848,11 @@ async function accIetClientFetch() {
   var q = document.getElementById('accIetClientSearch').value.trim();
   if (!q) { drop.classList.add('hidden'); return; }
   try {
-    var res = await axios.get('/api/clients?search=' + encodeURIComponent(q) + '&limit=8&active=1');
-    var list = res.data.data || [];
+    // 응답은 배열이 아니라 { clients, pagination } — 배열로 읽어 length 가 undefined 였고
+    // 그래서 이 검색이 입력과 무관하게 항상 "검색 결과 없음"이었다(routes/clients.ts:185).
+    // fields=picker: id·client_name·client_code 만 (드롭다운이 쓰는 건 그 셋뿐)
+    var res = await axios.get('/api/clients?fields=picker&search=' + encodeURIComponent(q) + '&limit=8&active=1');
+    var list = (res.data && res.data.data && res.data.data.clients) || [];
     if (!list.length) {
       drop.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">검색 결과 없음</div>';
       drop.classList.remove('hidden');

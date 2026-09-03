@@ -17,12 +17,13 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
-import { requireAccessOrRole } from '../middleware/permissions'
+import { requireAccessOrRole, requireEditOrRole } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { kstDateOf } from '../utils/kstDate'
 import { INTERCOMPANY_ENTITIES } from '../constants/intercompany'
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
 import { deriveArSplit } from './ledger/ar-helpers'
+import { cardNetAmountSql, cardSpendFilterSql } from '../utils/cardSpend'
 
 const accountingRouter = new Hono<HonoEnv>()
 // ACCOUNTANT(경리) 등 신규 역할은 /accounting 매트릭스 열람권으로 통과(회귀 0: ADMIN·MANAGER 종전 유지)
@@ -61,12 +62,12 @@ accountingRouter.get('/summary', async (c) => {
         AND ${kstDateOf('COALESCE(g.accounting_date, g.billed_at)')} >= ? AND ${kstDateOf('COALESCE(g.accounting_date, g.billed_at)')} <= ?${efG.clause}
     `).bind(start, end, ...efG.params).first<{ v: number }>()
 
-    // ── 지출(카드): 기간 카드사용 (취소는 차감) ──
+    // ── 지출(카드): 기간 카드 순지출 — 정본 utils/cardSpend (취소 차감 · 상계쌍/가승인 제외). /timeline 과 같은 식 ──
     const efCt = entityFilter(c, 'ct')
     const cardRow = await c.env.DB.prepare(`
-      SELECT COALESCE(SUM(CASE WHEN ct.approval_type != 'CANCEL' THEN ct.amount ELSE -ct.amount END), 0) AS v
+      SELECT COALESCE(SUM(${cardNetAmountSql('ct')}), 0) AS v
       FROM card_transactions ct
-      WHERE ct.transaction_date >= ? AND ct.transaction_date <= ?${efCt.clause}
+      WHERE ct.transaction_date >= ? AND ct.transaction_date <= ?${efCt.clause}${cardSpendFilterSql('ct')}
     `).bind(startCompact, endCompact, ...efCt.params).first<{ v: number }>()
 
     // ── 지출(매입): 기간 매입확정 (인보이스 일자 기준) ──
@@ -242,12 +243,13 @@ accountingRouter.get('/timeline', async (c) => {
       SELECT COUNT(*) AS cnt, COALESCE(SUM(p.amount), 0) AS v FROM payments p
       WHERE date(p.payment_date) >= ? AND date(p.payment_date) <= ?${efP.clause}
     `).bind(start, end, ...efP.params).first<{ cnt: number; v: number }>()
+    // 카드 순지출 = /summary 와 같은 정본(utils/cardSpend). 종전 활성카드(is_active=1) 한정은 제거 —
+    //   해지된 카드의 과거 사용도 그 기간의 실지출이라 KPI(/summary)와 타임라인 합계가 어긋났다.
     const cardAgg = await c.env.DB.prepare(`
       SELECT COUNT(*) AS cnt,
-             COALESCE(SUM(CASE WHEN ct.approval_type != 'CANCEL' THEN ct.amount ELSE -ct.amount END), 0) AS v
+             COALESCE(SUM(${cardNetAmountSql('ct')}), 0) AS v
       FROM card_transactions ct
-      WHERE ct.transaction_date >= ? AND ct.transaction_date <= ?${efCt.clause}
-        AND EXISTS (SELECT 1 FROM corporate_cards cca WHERE cca.id = ct.card_id AND cca.is_active = 1)
+      WHERE ct.transaction_date >= ? AND ct.transaction_date <= ?${efCt.clause}${cardSpendFilterSql('ct')}
     `).bind(startCompact, endCompact, ...efCt.params).first<{ cnt: number; v: number }>()
     const purAgg = await c.env.DB.prepare(`
       SELECT COUNT(*) AS cnt, COALESCE(SUM(pi.total_amount), 0) AS v FROM purchase_invoices pi
@@ -505,7 +507,7 @@ accountingRouter.get('/inter-entity', async (c) => {
 })
 
 // POST /api/accounting/inter-entity — 등록
-accountingRouter.post('/inter-entity', async (c) => {
+accountingRouter.post('/inter-entity', requireEditOrRole('/accounting', 'MANAGER'), async (c) => {
   try {
     const body = await c.req.json()
     const err = await ietValidate(c, body)
@@ -534,7 +536,7 @@ accountingRouter.post('/inter-entity', async (c) => {
 })
 
 // PUT /api/accounting/inter-entity/:id — 수정
-accountingRouter.put('/inter-entity/:id', async (c) => {
+accountingRouter.put('/inter-entity/:id', requireEditOrRole('/accounting', 'MANAGER'), async (c) => {
   try {
     const id = Number(c.req.param('id'))
     const vis = ietVisibility(c)
@@ -570,7 +572,7 @@ accountingRouter.put('/inter-entity/:id', async (c) => {
 })
 
 // DELETE /api/accounting/inter-entity/:id — 삭제
-accountingRouter.delete('/inter-entity/:id', async (c) => {
+accountingRouter.delete('/inter-entity/:id', requireEditOrRole('/accounting', 'MANAGER'), async (c) => {
   try {
     const id = Number(c.req.param('id'))
     const vis = ietVisibility(c)

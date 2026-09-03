@@ -14,7 +14,11 @@ export function messagesPage(c: Context<HonoEnv>) {
     <div class="ds-card p-5">
       <div class="text-xs text-gray-500">카카오톡 상태</div>
       <div class="text-3xl font-bold mt-1" id="msgStatusValue">-</div>
-      <div class="text-xs text-gray-400 mt-1" id="msgChannelInfo"></div>
+      <!-- id 는 msgPageChannelInfo — 전역 발송 모달(layout.ts:133)이 같은 이름의 #msgChannelInfo 를 쓴다.
+           /messages 에서는 pageContent 가 모달보다 먼저 렌더돼 getElementById 가 이 KPI 카드를 집었고,
+           그래서 모달의 채널·SMS/LMS 표시가 영영 갱신되지 않고 본문을 타이핑하면 이 카드의
+           카카오 채널 ID 가 「SMS」/「LMS」로 덮어써졌다. -->
+      <div class="text-xs text-gray-400 mt-1" id="msgPageChannelInfo"></div>
     </div>
     <div class="ds-card p-5">
       <div class="text-xs text-gray-500">오늘 발송</div>

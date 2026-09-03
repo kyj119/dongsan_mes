@@ -22,11 +22,17 @@ const path = require('path')
 
 const ROLL_SRC = path.join(__dirname, '..', 'src', 'utils', 'rollConsumption.ts')
 const COST_SRC = path.join(__dirname, '..', 'src', 'utils', 'orderLineCost.ts')
+const CALC_SRC = path.join(__dirname, '..', 'src', 'utils', 'costCalculator.ts')
 const { mod: rollMod, cleanup: rollCleanup } = compileTs(ROLL_SRC)
 // orderLineCost 는 rollConsumption 을 import 하므로 bundle 필요(단일 파일 컴파일이면 MODULE_NOT_FOUND)
 const { mod: costMod, cleanup: costCleanup } = compileTs(COST_SRC, { bundle: true })
-const { selectRollPlacement } = rollMod
+// costCalculator 의 **저장값 판정**(재료 vs 잉크 폴백 · 마진 분모)도 여기서 실행한다.
+// DB 를 보는 건 `recalculateOrderCosts` 뿐이고 판정은 순수 함수 `combineLineCost` 로 뽑아 뒀다 —
+// 이 판정들은 전부 「200 이 나오는 오답」이라 타입체크·빌드·smoke 로는 절대 안 잡힌다.
+const { mod: calcMod, cleanup: calcCleanup } = compileTs(CALC_SRC, { bundle: true })
+const { selectRollPlacement, resolveLineMaterials } = rollMod
 const { computeLineCost } = costMod
+const { combineLineCost } = calcMod
 
 let pass = 0
 const fails = []
@@ -195,8 +201,172 @@ const BOARD = [{ material_item_id: 500, material_name: '포맥스 3T', width_mm:
 cost('판재 — 장수 환산 + waste_factor', BOARD,
   { item_id: 300, width: 60, height: 90, quantity: 1 }, {}, { coverage: 'FULL', material_cost: 2395 })
 
+
+// ── (5) 계획 ↔ 원가가 **같은 자재**를 고른다 (2026-09-03 리뷰 #1) ────────────
+// 종전엔 계획 로더가 `avg_unit_cost` 를 안 읽어 계획은 면적, 원가는 금액 기준으로 돌았다.
+// 70×170: 면적은 700폭(1.19㎡ · 1.859yd), 금액은 1800폭(799원 · 0.766yd) — **다른 SKU** 다.
+// 주간발주가 AQ2-70 을 사 오라 하는 동안 원가는 AQ2-180 으로 잡혀 로스 측정이 성립하지 않았다.
+// 이제 둘 다 `resolveLineMaterials` 를 지나므로 갈릴 수가 없다.
+{
+  const line = { width: 70, height: 170, quantity: 1 }
+  const plan = resolveLineMaterials(AQ, line)
+  const c = computeLineCost(AQ, Object.assign({ item_id: 172 }, line))
+  const planId = plan.picks.length === 1 ? plan.picks[0].mat.material_item_id : null
+  if (planId === null || planId !== c.detail.material_item_id) {
+    fails.push('70×170 — 계획과 원가가 같은 자재를 골라야 한다'
+      + '\n    계획 ' + JSON.stringify(plan.picks.map(function (p) { return p.mat.material_item_id }))
+      + ' · 원가 ' + c.detail.material_item_id)
+  } else pass++
+  if (plan.picks.length === 1 && !near(plan.picks[0].required, c.detail.required)) {
+    fails.push('70×170 — 소요량도 같아야 한다\n    계획 ' + plan.picks[0].required + ' · 원가 ' + c.detail.required)
+  } else pass++
+}
+
+// ── (6) 단가 미상 원단 1종이 멀쩡한 선택을 뒤집지 못한다 (리뷰 #2) ───────────
+// 실증: BOM [700폭 단가0, 900폭 459원] · 라인 65×300.
+//   종전 `every(단가>0)` → 면적 기준으로 강등 → 700폭(2.1㎡ < 2.7㎡)을 골라 **NO_PRICE, 0원**.
+//   즉 한 번도 사 본 적 없는 원단을 BOM 에 한 줄 넣은 것만으로 기존 라인 원가가 전부 0이 됐다.
+{
+  const base = computeLineCost([M(202, 900, 459)], { item_id: 172, width: 65, height: 300, quantity: 1 })
+  const mixed = computeLineCost([M(200, 700, 0), M(202, 900, 459)], { item_id: 172, width: 65, height: 300, quantity: 1 })
+  if (base.coverage !== 'FULL' || mixed.coverage !== 'FULL'
+    || mixed.detail.material_item_id !== base.detail.material_item_id
+    || mixed.material_cost !== base.material_cost) {
+    fails.push('단가 미상 원단 1종이 섞여도 선택·원가가 그대로여야 한다'
+      + '\n    단독 cov=' + base.coverage + ' 자재=' + base.detail.material_item_id + ' 재료비=' + base.material_cost
+      + '\n    혼합 cov=' + mixed.coverage + ' 자재=' + mixed.detail.material_item_id + ' 재료비=' + mixed.material_cost)
+  } else pass++
+  // 분할 폴백 경로에도 같은 규칙이 있어야 한다 — 종전엔 거기만 `every` 로 남아 있었다.
+  const split = selectRollPlacement([M(200, 700, 0), M(202, 900, 459)], 4000, 4000, 1)
+  if (!split || (Number(split.mat.avg_unit_cost) || 0) <= 0) {
+    fails.push('분할 폴백도 단가 있는 후보를 우선해야 한다 · 실제 폭='
+      + (split && split.mat.width_mm) + ' 단가=' + (split && split.mat.avg_unit_cost))
+  } else pass++
+}
+
+// ── (7) 저장값 판정 — 재료비와 잉크는 **따로** 본다 (리뷰 #4) ────────────────
+const NO_STD = { media: 0, ink: 0 }
+{
+  // 무차감 라인의 잉크가 살아남는다. 종전 `useBom = coverage==='FULL'` 은 이걸 통째로 버려
+  // 같은 인쇄물이 BOM 유무로 잉크가 갈렸다(수성 100×200 5장 → 1,890원이 0원으로).
+  const nd = computeLineCost([{
+    material_item_id: 900, material_name: '무차감', width_mm: null, deduction_method: 'NONE',
+    sheet_spec: null, waste_factor: 1, base_unit: null, unit: 'EA', pack_size: null, avg_unit_cost: 100,
+  }], { item_id: 172, width: 100, height: 200, quantity: 5, category: '수성' }, { inkCostByCategory: INK })
+  const ndOut = combineLineCost({ bom: nd, std: NO_STD, areaSqm: 2, quantity: 5, amount: 100000 })
+  if (nd.coverage !== 'NO_DEDUCT' || ndOut.ink_cost !== 1890 || ndOut.total_cost !== 1890) {
+    fails.push('무차감 라인도 잉크를 저장한다 · 실제 cov=' + nd.coverage
+      + ' ink=' + ndOut.ink_cost + ' total=' + ndOut.total_cost)
+  } else pass++
+
+  // 명시적 0(태극기)은 기준표로 **되메우지 않는다** — 「0원」과 「규칙 없음」을 가르는 지점이다.
+  const flag = computeLineCost(AQ, { item_id: 172, width: 450, height: 90, quantity: 1, category: '태극기' },
+    { inkCostByCategory: INK })
+  const flagOut = combineLineCost({ bom: flag, std: { media: 0, ink: 1000 }, areaSqm: 4.05, quantity: 1, amount: 50000 })
+  if (flagOut.ink_cost !== 0) fails.push('태극기 잉크가 기준표로 되살아나면 안 된다 · 실제 ' + flagOut.ink_cost)
+  else pass++
+
+  // 맵에 **없는** 분류는 규칙이 없는 것이므로 기준표가 메운다.
+  const unk = computeLineCost(AQ, { item_id: 172, width: 450, height: 90, quantity: 1, category: '상품' },
+    { inkCostByCategory: INK })
+  const unkOut = combineLineCost({ bom: unk, std: { media: 0, ink: 1000 }, areaSqm: 4.05, quantity: 1, amount: 50000 })
+  if (unkOut.ink_cost !== 4050) fails.push('규칙 없는 분류는 기준표로 메운다 · 실제 ' + unkOut.ink_cost)
+  else pass++
+}
+
+// ── (8) 마진 분모 = 실제 청구금액 (리뷰 #3) ───────────────────────
+// AREA 450×90 · 5,000원/㎡ → 청구 22,500원. `unit_price × 수량` 은 5,000원이라
+// 원가 2,259 기준 마진이 90.0% ↔ 54.8% 로 뒤집힌다.
+// ⚠️ 청구면적은 4.05㎡가 **아니다** — 최소 청구 변 1m 규칙이 있어 90cm 가 100cm 로 올라
+//    4.5×1.0 = 4.5㎡ 로 청구된다(2026-09-03 리뷰의 20,250 은 이 규칙을 빼고 계산한 값이다).
+//    재료 소모 면적(4.05㎡)과 청구 면적(4.5㎡)은 원래 다른 축이다.
+{
+  const bom = computeLineCost(AQ, { item_id: 172, width: 450, height: 90, quantity: 1 })
+  const billed = combineLineCost({ bom: bom, std: NO_STD, areaSqm: 4.05, quantity: 1, amount: 22500 })
+  if (billed.margin_rate !== 90) fails.push('AREA 라인 마진(청구액 기준) 기대 90 · 실제 ' + billed.margin_rate)
+  else pass++
+  // 종전 식(`unit_price × 수량`)을 분모로 쓰면 얼마나 벌어지는가 — 픽스처 자체 검증을 겸한다.
+  const wrong = combineLineCost({ bom: bom, std: NO_STD, areaSqm: 4.05, quantity: 1, amount: 5000 })
+  if (wrong.margin_rate !== 54.8) fails.push('분모를 단가×수량으로 보면 54.8 이 나와야 한다 · 실제 ' + wrong.margin_rate)
+  else pass++
+  // amount 가 비어 있어도 **청구 산식 정본**으로 되살린다 — 여기서 unit_price×수량으로
+  // 떨어지면 amount 컴럼을 도입해 고친 그 오류가 그대로 재현된다.
+  const derived = combineLineCost({
+    bom: bom, std: NO_STD, areaSqm: 4.05, quantity: 1,
+    amount: null, unit_price: 5000, pricing_method: 'AREA', width: 450, height: 90,
+  })
+  if (derived.amount !== 22500 || derived.margin_rate !== 90) {
+    fails.push('amount 결측 폴백은 AREA 청구식을 써야 한다 · 실제 amount='
+      + derived.amount + ' margin=' + derived.margin_rate)
+  } else pass++
+  // 라인 에누리(0501)도 같은 축 — 10,000×2 를 16,000 으로 깎았으면 분모는 16,000 이다.
+  const disc = combineLineCost({
+    bom: computeLineCost([], { item_id: 172, width: 100, height: 100, quantity: 2 }),
+    std: NO_STD, areaSqm: 1, quantity: 2, amount: 16000,
+  })
+  if (disc.amount !== 16000) fails.push('에누리 라인 분모 기대 16000 · 실제 ' + disc.amount)
+  else pass++
+}
+
+// ── (9) 간판 BOM — usage_type 이 폭 휴리스틱보다 우선한다 (리뷰 #9) ──────────
+// 0508 이 SIGN-CH/SIGN-FRL 에 심어 둔 규칙을 아무도 읽지 않았다. LED·SMPS·입체바는 EA 품목이라
+// `COALESCE(deduction_method,'ROLL')` 로 ROLL 취급 → width_mm NULL 로 탈락했고,
+// 결과적으로 **간판 원가가 알루미늄 한 장**인데 커버리지는 FULL 이었다.
+const U = function (id, name, qty, type, param, price) {
+  return {
+    material_item_id: id, material_name: name, width_mm: null, deduction_method: 'NONE',
+    sheet_spec: null, waste_factor: 1, base_unit: null, unit: 'EA', pack_size: null,
+    avg_unit_cost: price, quantity: qty, usage_type: type, usage_param: param,
+  }
+}
+{
+  // 200×100cm 채널간판 1개 = 2㎡ · 둘레 6m.
+  //   백판   PER_AREA_SHEET 2.5 → ceil(2/2.5)=1장  × 48,000 = 48,000
+  //   옆마구리 FIXED_QTY 2      → 2개              ×  3,000 =  6,000
+  //   LED    PER_AREA 35        → 2×35 = 70개      ×    500 = 35,000
+  //   입체바 PER_PERIMETER 3    → ceil(6/3)=2개    × 12,000 = 24,000
+  const SIGN = [
+    U(601, '알루미늄 백판', null, 'PER_AREA_SHEET', 2.5, 48000),
+    U(602, '옆마구리', 2, 'FIXED_QTY', null, 3000),
+    U(603, 'LED 모듈', null, 'PER_AREA', 35, 500),
+    U(604, '입체바', null, 'PER_PERIMETER', 3, 12000),
+  ]
+  cost('간판 BOM — usage_type 전 규칙 합산', SIGN,
+    { item_id: 400, width: 200, height: 100, quantity: 1, category: '간판' },
+    { inkCostByCategory: INK }, { coverage: 'FULL', material_cost: 113000, ink_cost: 0 })
+
+  // 미구현 규칙(PER_LED)은 **조용히 빠지지 않는다** — FULL 이 아니라 PARTIAL 로 보고된다.
+  const withSmps = SIGN.concat([U(605, 'SMPS', null, 'PER_LED', 300, 25000)])
+  const partial = computeLineCost(withSmps,
+    { item_id: 400, width: 200, height: 100, quantity: 1, category: '간판' }, { inkCostByCategory: INK })
+  if (partial.coverage !== 'PARTIAL' || partial.detail.unsupported.indexOf('PER_LED') < 0) {
+    fails.push('PER_LED 미구현은 PARTIAL 로 보고돼야 한다 · 실제 cov=' + partial.coverage
+      + ' unsupported=' + JSON.stringify(partial.detail.unsupported))
+  } else pass++
+  // 그래도 산정된 자재비는 그대로 남는다(부분 결과를 버리면 원가가 0이 된다).
+  if (partial.material_cost !== 113000) fails.push('PARTIAL 라인도 산정분은 유지 · 실제 ' + partial.material_cost)
+  else pass++
+
+  // 계획도 같은 규칙을 지난다 — 4종 전부가 소요로 잡혀야 한다(종전엔 0종이었다).
+  const signPlan = resolveLineMaterials(SIGN, { width: 200, height: 100, quantity: 1 })
+  if (signPlan.picks.length !== 4) fails.push('간판 계획 소요 4종 기대 · 실제 ' + signPlan.picks.length)
+  else pass++
+
+  // PER_AREA_ROLL 은 **일부러** 미구현이다 — 결과가 「롤 수」인데 원단 단가는 base 단위(m/yd)당이라
+  // 그대로 곱하면 pack_size 배(50m 롤이면 50배) 어긋난다. 틀린 숫자보다 공백이 낫다.
+  // 그래도 폭 휴리스틱으로 **새면 안 된다** — usage_type 이 붙은 행은 usage 축에서만 다룬다.
+  const flexRoll = Object.assign(U(610, '조명 후렉스', null, 'PER_AREA_ROLL', 65, 3000),
+    { width_mm: 1300, deduction_method: 'ROLL', base_unit: 'M', pack_size: 50 })
+  const rollLine = computeLineCost([flexRoll],
+    { item_id: 401, width: 200, height: 100, quantity: 1, category: '간판' }, { inkCostByCategory: INK })
+  if (rollLine.material_cost !== 0 || rollLine.detail.unsupported.indexOf('PER_AREA_ROLL') < 0) {
+    fails.push('PER_AREA_ROLL 은 폭 휴리스틱으로 새지 않고 미상으로 남아야 한다 · 실제 재료비='
+      + rollLine.material_cost + ' unsupported=' + JSON.stringify(rollLine.detail.unsupported))
+  } else pass++
+}
+
 // ── 결과 ───────────────────────────────────────────────────────────────────
-rollCleanup(); costCleanup()
+rollCleanup(); costCleanup(); calcCleanup()
 if (fails.length) {
   console.error(`\n[orderline-cost] ❌ ${fails.length}건 실패 / ${pass + fails.length}건`)
   for (const f of fails) console.error('  - ' + f)

@@ -40,6 +40,16 @@ function formatDateLabel(dateStr) {
   return mm + '.' + dd + ' (' + days[d.getDay()] + ')';
 }
 
+// 직배(자가 배송) 판정 = 정본 한 곳. 이 페이지에 이미 실려 있는 shared/deliverySlot.js 가
+//   '직접배송'·'직배'·'직접 배송'·'자차배송' 을 모두 받는다(constants/deliveryMethod.ts ALIASES 사본).
+//   전엔 두 문자열만 하드코딩해, 별칭 표기로 남은 주문이 「기타」로 떨어져 라벨·안내용지·출고 확정에서 빠졌다.
+function isDirectDeliveryMethod(v) {
+  if (window.MES_SLOT && typeof window.MES_SLOT.isSlotMethod === 'function') return window.MES_SLOT.isSlotMethod(v);
+  console.warn('[shipments] window.MES_SLOT not found — 직배 판정이 축소됩니다');
+  var t = String(v == null ? '' : v).trim();
+  return t === '직접배송' || t === '직배';
+}
+
 function sectionOf(s) {
   // shipments 테이블 기반 (기존) — /daily는 합포장 자식에 대표(primary) 값을 COALESCE로 내려줌
   //   → 합포장 그룹은 대표의 운송수단 섹션 하나로 모임 (박스는 대표 운송수단으로 나감)
@@ -48,11 +58,11 @@ function sectionOf(s) {
   if (type === 'FREIGHT' && courier === '대신화물') return 'freight';
   if (type === 'DELIVERY' && courier === '대신택배') return 'daesintaekbae';
   if (type === 'DELIVERY' && courier === '한진택배') return 'hanjin';
-  if (type === 'DELIVERY' && (courier === '직배' || courier === '직접배송')) return 'jikbae';
+  if (type === 'DELIVERY' && isDirectDeliveryMethod(courier)) return 'jikbae';
   if (type === 'QUICK') return 'quick';
   // orders/daily 기반 (delivery_method) — 합포장 자식은 대표 주문의 배송방법 우선
   var method = ((s.merged_into_id && s.primary_delivery_method) || s.delivery_method || '').trim();
-  if (method === '직배' || method === '직접배송') return 'jikbae';
+  if (isDirectDeliveryMethod(method)) return 'jikbae';
   if (method === '화물' || method.includes('화물')) return 'freight';
   if (method === '택배' || method.includes('한진')) return 'hanjin';
   if (method === '대신택배') return 'daesintaekbae';

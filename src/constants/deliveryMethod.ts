@@ -48,6 +48,28 @@ export function isValidDeliveryMethod(value: string | null | undefined): boolean
 }
 
 /**
+ * 필터·조회용 동치 목록 — 정본 1개를 고르면 그 값과 **같은 뜻의 과거 표기**를 함께 돌려준다.
+ * 마이그 0526 이후에도 이관·외부 유입이 옛 값을 넣을 수 있어, 정본만 비교하면 그 행이 조용히 빠진다.
+ */
+export function deliveryMethodMatchValues(value: string | null | undefined): string[] {
+  const canonical = normalizeDeliveryMethod(value)
+  if (!canonical) return []
+  const legacy = Object.keys(ALIASES).filter((k) => ALIASES[k] === canonical)
+  return [canonical, ...legacy.filter((k) => k !== canonical)]
+}
+
+/**
+ * 배송방법 셀렉트의 <option> 마크업. 페이지마다 값을 손으로 적지 않게 한다 —
+ * 폐기값 `직배` 가 세 페이지에 남아 있던 이유가 그 손목록이었다.
+ */
+export function deliveryMethodOptionsHtml(selected?: string | null): string {
+  const sel = normalizeDeliveryMethod(selected)
+  return DELIVERY_METHODS
+    .map((m) => `<option value="${m}"${sel === m ? ' selected' : ''}>${m}</option>`)
+    .join('')
+}
+
+/**
  * 자가 배송(자사 인력·차량) — 합배송 동선 묶음 후보 판정에 쓴다.
  * 과거 표기를 함께 담아 미이관 데이터에서도 판정이 유지되게 한다.
  */

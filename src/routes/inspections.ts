@@ -260,6 +260,7 @@ inspectionsRouter.post('/results', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), 
     const resultId = result.meta.last_row_id
 
     // Step 4. items + status UPDATE (D1 batch 원자 실행)
+    let statusApplied = false
     try {
       const stmts = [
         ...itemsToInsert.map(item =>
@@ -271,13 +272,19 @@ inspectionsRouter.post('/results', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), 
             item.check_result, item.value, item.notes
           )
         ),
+        // ★재검수는 NORMAL 에서도 올라갈 수 있어야 한다 — 1차가 NORMAL 로 확정된 뒤 불량·수량부족이
+        //   나와도 예전 가드(NULL 또는 PENDING_REVIEW)로는 **0행**이었고, 응답만 PENDING_REVIEW 라
+        //   화면과 DB 가 갈렸다. 종결 상태(WAITING_RESHIP·CANCELLED)는 그대로 지킨다 —
+        //   그쪽은 입고 판정 라우트(inventory.ts:825)가 소유한다.
         c.env.DB.prepare(`
           UPDATE inventory_receipts
           SET inspection_status = ?
-          WHERE id = ? AND (inspection_status IS NULL OR inspection_status = 'PENDING_REVIEW')
+          WHERE id = ? AND (inspection_status IS NULL OR inspection_status IN ('PENDING_REVIEW', 'NORMAL'))
         `).bind(inspectionStatus, body.receipt_id),
       ]
-      await c.env.DB.batch(stmts)
+      const batchResults = await c.env.DB.batch(stmts)
+      // 실제로 반영됐는지를 응답에 싣는다(종결 상태면 0행 = 상태 유지)
+      statusApplied = (batchResults[batchResults.length - 1]?.meta?.changes || 0) > 0
     } catch (batchErr) {
       try { await c.env.DB.prepare(`DELETE FROM inspection_results WHERE id = ?`).bind(resultId).run() } catch (_) {}
       throw batchErr
@@ -285,7 +292,7 @@ inspectionsRouter.post('/results', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), 
 
     return c.json({
       success: true,
-      data: { id: resultId, overall_result: overallResult, inspection_status: inspectionStatus, mode },
+      data: { id: resultId, overall_result: overallResult, inspection_status: inspectionStatus, status_applied: statusApplied, mode },
       message: mode === 'quantity_only'
         ? `수량 확인 완료 (${hasShortage ? '부족 감지' : '전량 정상'})`
         : `검수가 완료되었습니다. (${overallResult === 'PASSED' ? '합격' : overallResult === 'FAILED' ? '불합격' : '부분합격'})`

@@ -164,12 +164,16 @@ paymentRequestsRouter.post('/from-po/:poId', async (c) => {
     const user = c.get('user')
     const poId = c.req.param('poId')
 
+    // 법인 필터 필수 — 이 파일의 다른 모든 경로는 entityFilter 를 거는데 여기만 빠져 있었다.
+    // 없으면 타법인 발주서로 지출결의서를 만들 수 있고, 결의서는 요청자 법인으로 귀속돼(아래 entity_id)
+    // 법인 간 자금 예정이 섞인다.
+    const efPo = entityFilter(c, 'po')
     const po = await c.env.DB.prepare(`
       SELECT po.*, c.client_name, c.transfer_info
       FROM purchase_orders po
       LEFT JOIN clients c ON c.id = po.supplier_id
-      WHERE po.id = ?
-    `).bind(poId).first<Record<string, unknown>>()
+      WHERE po.id = ?${efPo.clause}
+    `).bind(poId, ...efPo.params).first<Record<string, unknown>>()
 
     if (!po) return c.json({ success: false, error: '발주서 없음' }, 404)
 

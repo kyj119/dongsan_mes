@@ -1,6 +1,9 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
+import { readVatRate } from '../utils/vatRate'
+// 배송방법 값은 SSOT 에서만 만든다 — 폐기값 `직배` 가 손목록으로 남아 있었다(마이그 0526)
+import { deliveryMethodOptionsHtml } from '../constants/deliveryMethod'
 // Phase 3.1.C 분할: orderForm.js (3966줄) → 6개 모듈
 import finishingLabel from '../scripts/shared/finishingLabel.js?raw'   // 마감·후가공 표기 정본(클라 사본) — MES_FIN 없으면 요약이 조용히 빈값이 된다
 import deliverySlot from '../scripts/shared/deliverySlot.js?raw'       // 직배 배차 슬롯·완료기한(클라 사본) — 서버 정본 = utils/productionDeadline.ts
@@ -19,18 +22,8 @@ export async function orderFormPage(c: Context<HonoEnv>) {
   if (type === 'dist') {
     return orderFormDistPage(c)
   }
-  // 부가세율 = settings 단일 정본을 화면에 주입한다(2026-07-30).
-  //   전엔 calc.js 가 0.1 을 하드코딩해, 서버(create.ts 는 settings.vat_rate 를 읽는다)와
-  //   **정본이 둘**이었다. 값이 같아 안 보였지만 설정을 바꾸는 순간 화면과 저장이 갈린다.
-  //   실패해도 화면은 떠야 하므로 조회 실패 시 서버와 같은 기본값(0.10)으로 폴백한다.
-  let vatRate = 0.1
-  try {
-    const row = await c.env.DB.prepare(
-      `SELECT setting_value FROM settings WHERE setting_key = 'vat_rate'`
-    ).first<{ setting_value: string }>()
-    const parsed = row ? parseFloat(row.setting_value) : NaN
-    if (Number.isFinite(parsed) && parsed >= 0) vatRate = parsed
-  } catch { /* 설정 조회 실패 → 기본값 유지 */ }
+  // 부가세율 = settings 단일 정본을 화면에 주입한다(2026-07-30). 정본 조회 = utils/vatRate.ts
+  const vatRate = await readVatRate(c.env.DB)
   // 웹 AI추출·합판(시트배치) 진입점 게이트 — JSX 디자이너 세션 루프로 전환 (IA web sunset Phase 0).
   // false=숨김. 하부구조(ai_analysis_requests·ProcessOrderItem -3 passthrough·카드 썸네일)는 존치.
   // ③직접연결(itemRow '파일 연결')은 이행기 fallback으로 무관·유지.
@@ -121,13 +114,7 @@ export async function orderFormPage(c: Context<HonoEnv>) {
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">출고방법</label>
                                 <select id="deliveryMethod" onchange="onDeliveryMethodChange()" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                    <option value="대신택배">대신택배</option>
-                                    <option value="대신화물">대신화물</option>
-                                    <option value="한진택배">한진택배</option>
-                                    <option value="직배">직배</option>
-                                    <option value="용차">용차</option>
-                                    <option value="퀵">퀵</option>
-                                    <option value="방문수령">방문수령</option>
+                                    ${deliveryMethodOptionsHtml()}
                                 </select>
                             </div>
                             <div>
@@ -404,7 +391,9 @@ export async function orderFormPage(c: Context<HonoEnv>) {
   })
 }
 
-function orderFormDistPage(c: Context<HonoEnv>) {
+async function orderFormDistPage(c: Context<HonoEnv>) {
+  // 생산 주문서와 같은 규칙 — 합계의 부가세율은 settings 정본을 주입한다(하드코딩 0.1 해소)
+  const vatRate = await readVatRate(c.env.DB)
   return renderPage(c, {
     title: '유통 주문 등록',
     activePage: '/orders',
@@ -477,13 +466,7 @@ function orderFormDistPage(c: Context<HonoEnv>) {
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">출고방법</label>
                                 <select id="distDeliveryMethod" onchange="onDistDeliveryMethodChange()" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                    <option value="대신택배">대신택배</option>
-                                    <option value="대신화물">대신화물</option>
-                                    <option value="한진택배">한진택배</option>
-                                    <option value="직배">직배</option>
-                                    <option value="용차">용차</option>
-                                    <option value="퀵">퀵</option>
-                                    <option value="방문수령">방문수령</option>
+                                    ${deliveryMethodOptionsHtml()}
                                 </select>
                             </div>
                             <div>
@@ -592,6 +575,6 @@ function orderFormDistPage(c: Context<HonoEnv>) {
             </div>
         </div>
     `,
-    pageScript: [deliverySlot, distPageScript].join(String.fromCharCode(10))
+    pageScript: `window.VAT_RATE = ${vatRate};\n` + [deliverySlot, distPageScript].join(String.fromCharCode(10))
   })
 }

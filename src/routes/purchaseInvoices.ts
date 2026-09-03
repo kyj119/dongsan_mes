@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { packFactor } from '../utils/unitConvert'
 import { computeExpectedPaymentDate } from '../utils/paymentSchedule'
 import { kstYmd } from '../utils/kstDate'
 
@@ -139,6 +140,20 @@ purchaseInvoices.post('/confirm', requireRole('ADMIN', 'MANAGER'), async (c) => 
   const poiMap = new Map<number, { id: number; item_id: number | null; quantity: number; received_quantity: number }>()
   for (const r of poiRows) poiMap.set(r.id, r)
 
+  // 원장(inventory_transactions)은 **base 단위**다(po-receive: quantity=×pack, unit_price=÷pack). 관리단가를 그대로
+  //   `quantity × 단가` 로 쓰면 시트류(1롤=50m)에서 50배 부풀고 recalculate-avg 가 그걸로 avg_unit_cost 를 만든다
+  //   (memory feedback-avg-cost-backfill-axis 재발 경로, 2026-09-03). 품목별 packFactor 로 축을 맞춘다.
+  const packMap = new Map<number, number>()
+  {
+    const packIds = [...new Set(poiRows.map(r => r.item_id).filter((x): x is number => x != null))]
+    if (packIds.length > 0) {
+      const { results: packRows } = await c.env.DB.prepare(
+        `SELECT id, pack_size, unit, base_unit FROM items WHERE id IN (${packIds.map(() => '?').join(',')})`
+      ).bind(...packIds).all<{ id: number; pack_size: number | null; unit: string | null; base_unit: string | null }>()
+      for (const r of packRows || []) packMap.set(Number(r.id), packFactor(r))
+    }
+  }
+
   const confirmStmts: D1PreparedStatement[] = []
   for (const it of items) {
     const price = Number(it.unit_price)
@@ -156,13 +171,14 @@ purchaseInvoices.post('/confirm', requireRole('ADMIN', 'MANAGER'), async (c) => 
       `UPDATE inventory_receipt_items SET unit_price = ?, amount = received_quantity * ? WHERE po_item_id = ?`
     ).bind(price, price, poi.id))
 
-    // 재고 원장(inventory_transactions) valuation 정정 — 이 PO의 입고 건 한정
+    // 재고 원장(inventory_transactions) valuation 정정 — 이 PO의 입고 건 한정. base 당 단가 = 관리단가 ÷ pack.
     if (poi.item_id) {
+      const basePrice = price / (packMap.get(poi.item_id) || 1)
       confirmStmts.push(c.env.DB.prepare(
         `UPDATE inventory_transactions SET unit_price = ?, total_amount = quantity * ?
          WHERE item_id = ? AND reference_type = 'PURCHASE'
            AND reference_id IN (SELECT id FROM inventory_receipts WHERE po_id = ?)`
-      ).bind(price, price, poi.item_id, po_id))
+      ).bind(basePrice, basePrice, poi.item_id, po_id))
     }
 
     invoiceItems.push({ po_item_id: poi.id, item_id: poi.item_id, quantity: recvQty, unit_price: price, amount: recvQty * price })
@@ -292,7 +308,8 @@ purchaseInvoices.post('/confirm', requireRole('ADMIN', 'MANAGER'), async (c) => 
 })
 
 // ─── 매입 인보이스 생성 ──────────────────────────────────────────────────────
-purchaseInvoices.post('/', async (c) => {
+//   형제 /confirm·/:id/match 와 같은 가드 — 없으면 아무 인증 계정이나 AP 문서를 만들었다(2026-09-03)
+purchaseInvoices.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
   const body = await c.req.json()
   const userId = c.get('user')?.id
   const { invoice_number, supplier_id, po_id, invoice_date, due_date, items, notes } = body
@@ -400,6 +417,7 @@ purchaseInvoices.get('/:id', async (c) => {
     LEFT JOIN purchase_orders po ON pi.po_id = po.id
     WHERE pi.id = ? ${detailEf.clause}
   `).bind(id, ...detailEf.params).first()
+  if (!invoice) return c.json({ success: false, error: '인보이스를 찾을 수 없습니다.' }, 404)  // 타법인·미존재 → 라인 유출 차단
 
   const { results: items } = await c.env.DB.prepare(`
     SELECT pii.*, i.item_name

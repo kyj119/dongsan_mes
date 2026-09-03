@@ -10,7 +10,9 @@ function numberToKorean(num) {
     if (!num || num === 0) return '영';
     num = Math.floor(Math.abs(num));
     var digits = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구'];
-    var smallUnits = ['', '십', '백', '청'];
+    // ⚠️ '천' 이다. '청' 오타가 있으면 매입계산서 인쇄본에 '삼백이십오만사청원정' 이 찍힌다.
+    //    같은 함수 사본이 invoice.js·quotation.js 에 있다 — 고칠 때 셋 다 본다.
+    var smallUnits = ['', '십', '백', '천'];
     var bigUnits = ['', '만', '억', '조'];
     var result = '';
     var unitIdx = 0;
@@ -79,13 +81,13 @@ function buildPOSheet(data) {
         var itemName = (it.item_name || it.name || '') + (spec ? ' [' + spec + ']' : '');
         itemRows += '<tr>'
             + '<td>' + (i+1) + '</td>'
-            + '<td class="left">' + itemName + '</td>'
+            + '<td class="left">' + escapeHtml(itemName) + '</td>'
             + '<td>' + qty + '</td>'
-            + '<td>' + (it.unit || 'EA') + '</td>'
+            + '<td>' + escapeHtml(it.unit || 'EA') + '</td>'
             + '<td class="right">' + fmt(unitPrice) + '</td>'
             + '<td class="right">' + fmt(supply) + '</td>'
             + '<td class="right">' + fmt(vat) + '</td>'
-            + '<td class="left" style="font-size:9px">' + (it.notes || it.content || '') + '</td>'
+            + '<td class="left" style="font-size:9px">' + escapeHtml(it.notes || it.content || '') + '</td>'
             + '</tr>';
     }
 
@@ -110,36 +112,37 @@ function buildPOSheet(data) {
         ? '<img class="rep-stamp" src="' + co.company_stamp_base64 + '" alt="도장">'
         : '<span class="stamp-placeholder">(인)</span>';
 
-    var managerName = po.created_by_name || '';
-    var managerPhone = po.created_by_phone || '';
+    // 아래 두 값은 여러 곳에 삽입되므로 대입 시점에 한 번만 이스케이프한다.
+    var managerName = escapeHtml(po.created_by_name || '');
+    var managerPhone = escapeHtml(po.created_by_phone || '');
 
     return '<div class="po-sheet">'
         + '<div class="po-header">' + logoHtml + '<div class="po-title">발   주   서</div></div>'
-        + '<div class="po-subtitle">발주번호: ' + (po.po_number || po.order_number || '') + '</div>'
+        + '<div class="po-subtitle">발주번호: ' + escapeHtml(po.po_number || po.order_number || '') + '</div>'
 
         + '<div class="info-grid">'
         + '  <div class="info-box">'
         + '    <div class="box-title">발 주 자 (당사)</div>'
         + '    <div class="info-row"><div class="info-label">등록번호</div><div class="info-value">' + formatRegNumber(co.company_business_registration_number) + '</div></div>'
-        + '    <div class="info-row"><div class="info-label">상호/대표</div><div class="info-value rep-row">' + (co.company_name || '') + '  <span class="rep-name">' + (co.company_representative || '') + ' ' + stampHtml + '</span></div></div>'
-        + '    <div class="info-row"><div class="info-label">주소</div><div class="info-value">' + (co.company_address || '') + '</div></div>'
-        + '    <div class="info-row"><div class="info-label">전화/FAX</div><div class="info-value">' + (co.company_phone || '') + ' / ' + (co.company_fax || '') + '</div></div>'
+        + '    <div class="info-row"><div class="info-label">상호/대표</div><div class="info-value rep-row">' + escapeHtml(co.company_name || '') + '  <span class="rep-name">' + escapeHtml(co.company_representative || '') + ' ' + stampHtml + '</span></div></div>'
+        + '    <div class="info-row"><div class="info-label">주소</div><div class="info-value">' + escapeHtml(co.company_address || '') + '</div></div>'
+        + '    <div class="info-row"><div class="info-label">전화/FAX</div><div class="info-value">' + escapeHtml(co.company_phone || '') + ' / ' + escapeHtml(co.company_fax || '') + '</div></div>'
         + '    <div class="info-row"><div class="info-label">담당자</div><div class="info-value">' + managerName + (managerPhone ? '  (직통: ' + managerPhone + ')' : '') + '</div></div>'
         + '  </div>'
         + '  <div class="info-box">'
         + '    <div class="box-title">공 급 업 체</div>'
         + '    <div class="info-row"><div class="info-label">등록번호</div><div class="info-value">' + formatRegNumber(supplier.business_registration_number) + '</div></div>'
-        + '    <div class="info-row"><div class="info-label">상호/대표</div><div class="info-value">' + (supplier.client_name || supplier.name || '') + '  <span class="rep-name">' + (supplier.representative || '') + ' <span class="stamp-placeholder">(인)</span></span></div></div>'
-        + '    <div class="info-row"><div class="info-label">주소</div><div class="info-value">' + (supplier.address || '') + '</div></div>'
-        + '    <div class="info-row"><div class="info-label">전화/FAX</div><div class="info-value">' + (supplier.phone || '') + ' / ' + (supplier.fax || '') + '</div></div>'
-        + '    <div class="info-row"><div class="info-label">업태/종목</div><div class="info-value">' + (supplier.business_type || '') + (supplier.business_item ? ' / ' + supplier.business_item : '') + '</div></div>'
+        + '    <div class="info-row"><div class="info-label">상호/대표</div><div class="info-value">' + escapeHtml(supplier.client_name || supplier.name || '') + '  <span class="rep-name">' + escapeHtml(supplier.representative || '') + ' <span class="stamp-placeholder">(인)</span></span></div></div>'
+        + '    <div class="info-row"><div class="info-label">주소</div><div class="info-value">' + escapeHtml(supplier.address || '') + '</div></div>'
+        + '    <div class="info-row"><div class="info-label">전화/FAX</div><div class="info-value">' + escapeHtml(supplier.phone || '') + ' / ' + escapeHtml(supplier.fax || '') + '</div></div>'
+        + '    <div class="info-row"><div class="info-label">업태/종목</div><div class="info-value">' + escapeHtml(supplier.business_type || '') + (supplier.business_item ? ' / ' + escapeHtml(supplier.business_item) : '') + '</div></div>'
         + '  </div>'
         + '</div>'
 
         + '<div class="meta-row">'
         + '  <span>발주일자: ' + poDate + '</span>'
         + '  <span>낙품요청일: ' + (deliveryDate || '-') + '</span>'
-        + '  <span>납품장소: ' + (po.delivery_location || '-') + '</span>'
+        + '  <span>납품장소: ' + escapeHtml(po.delivery_location || '-') + '</span>'
         + '</div>'
 
         + '<div class="total-korean">' + koreanAmount + ' (₩' + fmt(finalAmount) + ')</div>'
@@ -164,13 +167,13 @@ function buildPOSheet(data) {
         + '</tr></tfoot>'
         + '</table>'
 
-        + '<div class="footer-section"><span class="label">비고:</span>' + (po.notes || '') + '</div>'
+        + '<div class="footer-section"><span class="label">비고:</span>' + escapeHtml(po.notes || '') + '</div>'
 
         + '<div class="sign-section">'
         + '  <div class="sign-box">'
         + '    <div class="sign-label">검수 담당자</div>'
         + '    <div class="sign-info">'
-        + '      <div>' + (co.company_name || '') + '</div>'
+        + '      <div>' + escapeHtml(co.company_name || '') + '</div>'
         + '      <div>담당: ' + managerName + '</div>'
         + (managerPhone ? '      <div>직통: ' + managerPhone + '</div>' : '')
         + '    </div>'
@@ -178,8 +181,8 @@ function buildPOSheet(data) {
         + '  <div class="sign-box">'
         + '    <div class="sign-label">공급업체 확인</div>'
         + '    <div class="sign-info">'
-        + '      <div>' + (supplier.client_name || '') + '</div>'
-        + '      <div>대표: ' + (supplier.representative || '') + '</div>'
+        + '      <div>' + escapeHtml(supplier.client_name || '') + '</div>'
+        + '      <div>대표: ' + escapeHtml(supplier.representative || '') + '</div>'
         + '    </div>'
         + '  </div>'
         + '</div>'

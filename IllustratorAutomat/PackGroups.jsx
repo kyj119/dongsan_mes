@@ -25,15 +25,34 @@
 app.userInteractionLevel = UserInteractionLevel.DONTDISPLAYALERTS;
 
 var _savedResultJson = ""; // catch 블록에서 접근할 수 있도록 IIFE 외부에 선언
+
+/** 스크립트 폴더 — 에이전트가 주입한 경로를 먼저 본다. `$.fileName` 은 DoJavaScript 실행에서
+ *  파일을 안 가리키고 **예외를 던질 수 있다**(그래서 감싼다). 못 구하면 임시폴더로 떨어진다 —
+ *  로그 위치가 덜 좋을 뿐, 여기서 죽어서 증거가 통째로 사라지는 것보다 낫다. */
+function _iaScriptDir() {
+    if (typeof _ia_trace_path !== "undefined" && _ia_trace_path) {
+        try { return new File(_ia_trace_path).parent.fsName; } catch (e1) {}
+    }
+    if (typeof _ia_params_override_path !== "undefined" && _ia_params_override_path) {
+        try { return new File(_ia_params_override_path).parent.fsName; } catch (e2) {}
+    }
+    try { return new File($.fileName).parent.fsName; } catch (e3) {}
+    try { return Folder.temp.fsName; } catch (e4) {}
+    return ".";
+}
+
 try {
 (function() {
 
 // ── 1. 파라미터 읽기 (ia_params.json) ──────────────────────────────────────
 // COM 자동화 시 _ia_params_override_path 변수로 경로가 주입됨
-var _scriptDir = new File($.fileName).parent.fsName;
+// ★주입 경로를 **먼저** 본다 (2026-09-03 정정). 여태 `new File($.fileName).parent.fsName` 를
+//   무조건 먼저 실행했는데, DoJavaScript(문자열) 실행에서는 `$.fileName` 이 파일을 가리키지 않아
+//   여기서 통째로 죽었다 — 파라미터를 읽기도 전이라 아래 catch 의 폴백도 같은 식이라 `ia_error.log`
+//   조차 안 남는다(=아무 증거 없이 실패). ExtractGroups.jsx:518 · ProcessOrderItem.jsx:38 과 같은 규약.
 var _cfgPathPG = (typeof _ia_params_override_path !== "undefined" && _ia_params_override_path)
     ? _ia_params_override_path
-    : (_scriptDir + "/ia_params.json");
+    : (_iaScriptDir() + "/ia_params.json");
 var _configFile = new File(_cfgPathPG);
 _configFile.open("r");
 var _params = eval("(" + _configFile.read() + ")");
@@ -95,6 +114,27 @@ var DOMBO_DIAM  = 6 * PT_PER_MM;   // 6mm 지름
 var CORNER_DIST = 10 * PT_PER_MM;  // 꼭짓점에서 1cm
 var DIR_OFFSET  = 100 * PT_PER_MM; // 방향 마크: 10cm
 var MAX_GAP     = 500 * PT_PER_MM; // 50cm 간격 초과 시 추가
+
+/**
+ * mm 단위 문서를 만든다 — `app.documents.add()` 를 이걸로 대체한다.
+ * ★`documents.add()` 가 만드는 문서는 눈금이 **point** 다. `doc.rulerUnits` 대입은 읽기 전용이라
+ *   아무 일도 하지 않고, `preferences rulerType` 도 안 통한다 — **DocumentPreset 이 유일한 경로다**
+ *   ([[feedback-illustrator-doc-units]], AI 30.7 실측 2026-08-25).
+ * 좌표는 point 그대로 넘긴다 — 눈금 단위만 바뀌고 기하는 불변이다.
+ * ⚠️ `SheetLayout.jsx` `_iaNewDocMM` 과 같은 내용의 사본.
+ */
+function _pgNewDocMM(wPt, hPt) {
+    try {
+        var dp = new DocumentPreset();
+        dp.units = RulerUnits.Millimeters;
+        dp.colorMode = DocumentColorSpace.CMYK;
+        dp.width = wPt;
+        dp.height = hPt;
+        return app.documents.addDocument("[Default] Print", dp);
+    } catch (eU) {
+        return app.documents.add(DocumentColorSpace.CMYK, wPt, hPt);
+    }
+}
 
 // ── 4. 소스 파일 열기 ─────────────────────────────────────────────────────
 var doc = app.open(srcFile);
@@ -321,7 +361,7 @@ if (mode === "combined") {
     resultHeightCm = canvasH / PT_PER_CM;
 
     // 새 문서 생성 (1번 파일용)
-    var doc1 = app.documents.add(DocumentColorSpace.CMYK, canvasW, canvasH);
+    var doc1 = _pgNewDocMM(canvasW, canvasH);
     doc1.artboards[0].artboardRect = [0, canvasH, canvasW, 0];
 
     // Illustrator 좌표: 좌측하단 = (0,0), 좌측상단 = (0, canvasH)
@@ -364,7 +404,7 @@ if (mode === "combined") {
     $.writeln("PackGroups: 1번 파일 → " + output1);
 
     // ── 2번 파일: 재단선(외곽 Path Outline만) ──────────────────────────
-    var doc2 = app.documents.add(DocumentColorSpace.CMYK, canvasW, canvasH);
+    var doc2 = _pgNewDocMM(canvasW, canvasH);
     doc2.artboards[0].artboardRect = [0, canvasH, canvasW, 0];
 
     for (var pi2 = 0; pi2 < bestLayout.placements.length; pi2++) {
@@ -416,7 +456,7 @@ if (mode === "combined") {
             : outputThumb + '_g' + gi2;
 
         // 1번 파일
-        var docI = app.documents.add(DocumentColorSpace.CMYK, sz2.w, sz2.h);
+        var docI = _pgNewDocMM(sz2.w, sz2.h);
         docI.artboards[0].artboardRect = [0, sz2.h, sz2.w, 0];
 
         if (grp !== null) {
@@ -448,7 +488,7 @@ if (mode === "combined") {
         docI.saveAs(eps1iFile, epsOptsI1);
 
         // 2번 파일
-        var docI2 = app.documents.add(DocumentColorSpace.CMYK, sz2.w, sz2.h);
+        var docI2 = _pgNewDocMM(sz2.w, sz2.h);
         docI2.artboards[0].artboardRect = [0, sz2.h, sz2.w, 0];
         if (grp !== null) {
             var copiedI2 = grp.duplicate(docI2, ElementPlacement.PLACEATBEGINNING);
@@ -545,21 +585,24 @@ function applyOutlineRecursive(item, black) {
 })();
 } catch(e) {
     // $.getenv("IA_RESULT_JSON") 대신 IIFE 외부 변수 사용 ($.getenv()는 커스텀 환경변수 미작동)
-    if (_savedResultJson) {
-        var _errDir  = _savedResultJson.replace(/[^\\\/]*$/, "");
-        var _logFile = new File(_errDir + "error.log");
-        _logFile.open("w");
-        _logFile.write("JSError: " + e.message + " (line " + e.line + ")");
-        _logFile.close();
-    } else {
-        // resultJson 파라미터를 못 읽은 경우 스크립트 폴더에 저장
-        var _scriptDirForErr = new File($.fileName).parent.fsName;
-        var _logFile2 = new File(_scriptDirForErr + "/ia_error.log");
-        _logFile2.open("w");
-        _logFile2.write("JSError: " + e.message + " (line " + e.line + ")");
-        _logFile2.close();
-    }
-    $.writeln("PackGroups EXCEPTION: " + e.message + " (line " + e.line + ")");
+    // ★로그 쓰기 자체가 던져도 삼킨다 — 폴백 경로가 다시 죽으면 예외가 예외를 가린다.
+    try {
+        var _errTxt = "JSError: " + e.message + " (line " + e.line + ")";
+        if (_savedResultJson) {
+            var _errDir  = _savedResultJson.replace(/[^\\\/]*$/, "");
+            var _logFile = new File(_errDir + "error.log");
+            _logFile.open("w");
+            _logFile.write(_errTxt);
+            _logFile.close();
+        } else {
+            // resultJson 파라미터를 못 읽은 경우 스크립트 폴더에 저장
+            var _logFile2 = new File(_iaScriptDir() + "/ia_error.log");
+            _logFile2.open("w");
+            _logFile2.write(_errTxt);
+            _logFile2.close();
+        }
+    } catch (e_log) {}
+    try { $.writeln("PackGroups EXCEPTION: " + e.message + " (line " + e.line + ")"); } catch (e_w) {}
 }
 // app.quit() 제거 — COM 자동화 시 Illustrator가 계속 실행되어야 함
 // (직접 실행 시에도 문서는 doc.close()로 이미 닫힘)

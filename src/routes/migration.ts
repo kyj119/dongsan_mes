@@ -2,11 +2,34 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId } from '../utils/entityFilter'
+import { getNextEntitySeqNumber } from '../utils/sequenceGenerator'
 
 const migrationRouter = new Hono<HonoEnv>()
 
 // 전체 ADMIN 전용
 migrationRouter.use('/*', authMiddleware, requireRole('ADMIN'))
+
+/**
+ * 적재 법인 결정 — 세션 법인이 정본이다.
+ *
+ * 이전에는 body 의 `entity_id || 1` 을 그대로 썼다. 그러면 법인 2 세션에서 법인 1 로 매출·입금을
+ * 적재할 수 있고, `migration_logs` 에는 세션 법인이 남아 **로그와 실제 적재 법인이 어긋난다**.
+ * 전체모드(0)에서는 세션에 귀속 법인이 없으므로 그때만 body 값을 받는다(미지정이면 400).
+ */
+function resolveImportEntity(c: any, bodyEntityId?: number): { entityId: number } | { error: string } {
+  const sessionEntity = getEntityId(c)
+  const bodyId = bodyEntityId != null ? Number(bodyEntityId) : null
+  if (sessionEntity === 0) {
+    if (!bodyId || !Number.isFinite(bodyId)) {
+      return { error: '전체 모드에서는 적재할 법인(entity_id)을 지정해야 합니다. 상단에서 법인을 선택하세요.' }
+    }
+    return { entityId: bodyId }
+  }
+  if (bodyId != null && Number.isFinite(bodyId) && bodyId !== sessionEntity) {
+    return { error: `선택된 법인(${sessionEntity})과 요청 법인(${bodyId})이 다릅니다. 상단에서 적재할 법인으로 전환하세요.` }
+  }
+  return { entityId: sessionEntity }
+}
 
 // ============================================================
 // 이관 로그 조회
@@ -233,13 +256,16 @@ migrationRouter.post('/items/import', async (c) => {
         ).bind(row.item_code).first()
 
         if (existing) {
+          // 단가 열이 없는 파일을 다시 올려도 기존 단가를 0으로 밀지 않는다 —
+          // 거래처 import(:110 credit_limit)와 같은 보존 규칙으로 맞춘다(형제 비대칭 해소).
           await db.prepare(`
-            UPDATE items SET item_name = ?, specification = ?, unit = ?, base_price = ?,
+            UPDATE items SET item_name = ?, specification = ?, unit = ?,
+              base_price = CASE WHEN ? > 0 THEN ? ELSE base_price END,
               updated_at = CURRENT_TIMESTAMP
             WHERE item_code = ?
           `).bind(
             row.item_name, row.specification || null,
-            row.unit || 'EA', row.unit_price || 0,
+            row.unit || 'EA', row.unit_price || 0, row.unit_price || 0,
             row.item_code
           ).run()
         } else {
@@ -344,7 +370,9 @@ migrationRouter.post('/orders/import', async (c) => {
   try {
     const user = c.get('user')
     const { orders, entity_id } = await c.req.json() as { orders: any[], entity_id?: number }
-    const entityId = entity_id || 1
+    const resolved = resolveImportEntity(c, entity_id)
+    if ('error' in resolved) return c.json({ success: false, error: resolved.error }, 400)
+    const entityId = resolved.entityId
     if (!Array.isArray(orders) || orders.length === 0) {
       return c.json({ success: false, error: '데이터가 없습니다.' }, 400)
     }
@@ -353,7 +381,7 @@ migrationRouter.post('/orders/import', async (c) => {
     const logResult = await db.prepare(`
       INSERT INTO migration_logs (migration_type, status, total_rows, started_at, created_by, entity_id)
       VALUES ('orders', 'RUNNING', ?, CURRENT_TIMESTAMP, ?, ?)
-    `).bind(orders.length, user?.id || null, getEntityId(c) || 1).run()
+    `).bind(orders.length, user?.id || null, entityId).run()
     const logId = logResult.meta.last_row_id
 
     let imported = 0, skipped = 0, errorCount = 0
@@ -384,13 +412,11 @@ migrationRouter.post('/orders/import', async (c) => {
         }
 
         // 주문번호 생성 (이카운트 번호와 별도로 시스템 번호 생성)
+        // COUNT(*)+1 은 삭제 이력이 있으면 기존 번호와 충돌하고, 패턴도 구형식('YYYYMMDD-%')이라
+        // 현행 E{n}-YYYYMMDD-NNN 체계를 못 센다 → 정본 채번기(MAX+SUBSTR, 법인별)를 쓴다.
         const orderDate = row.order_date || new Date().toISOString().substring(0, 10)
         const dateStr = orderDate.replace(/-/g, '')
-        const countResult = await db.prepare(
-          `SELECT COUNT(*) as cnt FROM orders WHERE order_number LIKE ?`
-        ).bind(`${dateStr}-%`).first() as any
-        const seq = (countResult?.cnt || 0) + 1
-        const orderNumber = `${dateStr}-${String(seq).padStart(3, '0')}`
+        const orderNumber = await getNextEntitySeqNumber(db, 'orders', 'order_number', entityId, dateStr)
 
         await db.prepare(`
           INSERT INTO orders (
@@ -477,7 +503,9 @@ migrationRouter.post('/payments/import', async (c) => {
   try {
     const user = c.get('user')
     const { payments, entity_id } = await c.req.json() as { payments: any[], entity_id?: number }
-    const entityId = entity_id || 1
+    const resolved = resolveImportEntity(c, entity_id)
+    if ('error' in resolved) return c.json({ success: false, error: resolved.error }, 400)
+    const entityId = resolved.entityId
     if (!Array.isArray(payments) || payments.length === 0) {
       return c.json({ success: false, error: '데이터가 없습니다.' }, 400)
     }
@@ -486,7 +514,7 @@ migrationRouter.post('/payments/import', async (c) => {
     const logResult = await db.prepare(`
       INSERT INTO migration_logs (migration_type, status, total_rows, started_at, created_by, entity_id)
       VALUES ('payments', 'RUNNING', ?, CURRENT_TIMESTAMP, ?, ?)
-    `).bind(payments.length, user?.id || null, getEntityId(c) || 1).run()
+    `).bind(payments.length, user?.id || null, entityId).run()
     const logId = logResult.meta.last_row_id
 
     let imported = 0, skipped = 0, errorCount = 0
@@ -526,10 +554,9 @@ migrationRouter.post('/payments/import', async (c) => {
           user?.id || null, entityId
         ).run()
 
-        // 거래처 잔액 갱신
-        await db.prepare(`
-          UPDATE clients SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-        `).bind(row.amount, clientId).run()
+        // 거래처 잔액은 갱신하지 않는다 — `clients.balance` 는 폐기된 누적 캐시이고
+        // 미수는 deriveClientBalance(청구−입금−조정)로 파생한다. 여기서 캐시를 건드리면
+        // payment INSERT 와 별개 .run() 이라 한쪽만 반영되는 어긋남까지 같이 만든다.
 
         imported++
       } catch (err) {
@@ -874,47 +901,19 @@ migrationRouter.get('/report/summary', async (c) => {
   }
 })
 
-// 잔액 일괄 재계산 (이관 후)
+// 잔액 일괄 재계산 — **폐기(2026-09-03)**. 동작하지 않는 no-op 으로 남긴다.
+//  ① `clients.balance` 는 폐기된 누적 캐시다(clients.ts 의 파생 정본 = deriveClientBalance).
+//  ② 산식도 파생 정본과 달랐다(청구 정본 order_billing_groups 대신 orders.billed_amount + opening_balance).
+//  ③ 활성 2,800여 건을 행별 UPDATE 루프로 돌아 Workers subrequest 한도에서 중간에 죽었다
+//     → 절반만 덮인 캐시가 남는, 고치려던 것보다 나쁜 상태.
+// 엔드포인트 자체는 지우지 않는다 — 외부에서 호출하던 흔적이 404 로 조용히 사라지는 대신
+// 왜 없어졌는지 응답으로 알려 준다.
 migrationRouter.post('/recalculate-all-balances', async (c) => {
-  try {
-    const db = c.env.DB
-
-    const { results: rows } = await db.prepare(`
-      SELECT c.id, c.opening_balance,
-        COALESCE(o.v, 0) as total_billed,
-        COALESCE(p.v, 0) as total_paid,
-        COALESCE(a.v, 0) as total_adj
-      FROM clients c
-      LEFT JOIN (
-        SELECT client_id, SUM(CASE WHEN billing_status = 'BILLED' THEN billed_amount ELSE 0 END) as v
-        FROM orders GROUP BY client_id
-      ) o ON o.client_id = c.id
-      LEFT JOIN (
-        SELECT client_id, SUM(amount) as v FROM payments GROUP BY client_id
-      ) p ON p.client_id = c.id
-      LEFT JOIN (
-        SELECT client_id, SUM(amount) as v FROM adjustments GROUP BY client_id
-      ) a ON a.client_id = c.id
-      WHERE c.is_active = 1
-    `).all() as any
-
-    let updated = 0
-    for (const row of rows) {
-      const newBalance = (row.opening_balance || 0) + (row.total_billed || 0) - (row.total_paid || 0) - (row.total_adj || 0)
-      await db.prepare(
-        `UPDATE clients SET balance = ? WHERE id = ?`
-      ).bind(newBalance, row.id).run()
-      updated++
-    }
-
-    return c.json({
-      success: true,
-      data: { updated_count: updated }
-    })
-  } catch (error) {
-    console.error('recalculate-all-balances error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
+  return c.json({
+    success: false,
+    deprecated: true,
+    error: '잔액 캐시(clients.balance)는 폐기되었습니다. 미수금은 조회 시점에 파생 계산(청구−입금−조정)되므로 재계산이 필요 없습니다.',
+  }, 410)
 })
 
 export default migrationRouter

@@ -51,7 +51,7 @@ async function loadSummary() {
         statusEl.textContent = '비활성';
         statusEl.className = 'text-3xl font-bold mt-1 text-red-600';
       }
-      document.getElementById('msgChannelInfo').textContent = s.kakao_channel_id || '채널 미설정';
+      document.getElementById('msgPageChannelInfo').textContent = s.kakao_channel_id || '채널 미설정';
     }
   } catch(e) { console.error('msg summary error', e); }
 

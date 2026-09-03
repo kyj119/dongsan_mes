@@ -211,7 +211,9 @@ async function saveItem(event) {
     var specVal = (document.getElementById('itemSpecification') || {}).value || '';
 
     // 원자재 롤 폭: 폭 필드 값 우선(화면=저장값), 비어 있으면 규격에서 인식 (소수점 지원)
-    var widthMm = null;
+    // ⚠️ MATERIAL 이 아니면 undefined = 미전송. 라우트(items.ts:1256)가 undefined 만 "기존값 보존"으로
+    //    보고 null 은 지우기로 처리하므로, null 로 두면 제품·상품을 수정할 때마다 width_mm 이 날아간다.
+    var widthMm = undefined;
     if (selectedItemType === 'MATERIAL') {
         var wElSave = document.getElementById('itemWidthMm');
         if (wElSave) {
@@ -556,7 +558,7 @@ function displayProductMaterials() {
             var items = groups[gName];
             var isExpanded = materialGroupExpanded[gName] !== false; // 기본 펼침
             var widths = items.map(function(m) { return m.width_mm ? Math.round(m.width_mm/10) + 'cm' : ''; }).filter(Boolean).join(', ');
-            var escapedG = gName.replace(/'/g, "\\'");
+            var escapedG = escapeJsAttr(gName);
 
             html += '<div class="border border-gray-200 rounded mb-2">';
             html += '<div class="flex items-center justify-between px-3 py-2 bg-gray-50 cursor-pointer hover:bg-gray-100">';
@@ -624,7 +626,7 @@ async function showMaterialSearchDropdown() {
             html += '<div class="px-3 py-1.5 bg-blue-50 text-xs font-bold text-blue-700 border-b">원단 그룹 (일괄 매핑)</div>';
             html += groups.map(function(g) {
                 var widths = (g.widths || '').split(',').map(function(w) { return (parseInt(w)/10) + 'cm'; }).join(', ');
-                var escapedGroup = (g.item_group || '').replace(/'/g, "\\'");
+                var escapedGroup = escapeJsAttr(g.item_group || '');
                 // 동폭 중복 경고: 같은 그룹에 폭이 겹치는 SKU가 있으면 자동차감이 무엇을 소비할지
                 // group_sort/재고로 갈라야 한다 → 대체 불가한 자재가 섞인 분류 오류일 가능성이 높다.
                 var dup = g.dup_widths || [];

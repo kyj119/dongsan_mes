@@ -128,10 +128,23 @@ productionRouter.post('/logs', async (c) => {
     const body = await c.req.json()
     const { log_date, shift = 'DAY', weather, temperature, humidity, supervisor_id, notes } = body
 
+    // ★D1 은 undefined 바인드를 거부한다(D1_TYPE_ERROR = 결정적 500).
+    //   작업실적 화면은 {log_date, shift} 두 필드만 보내므로(src/scripts/production.js:1040)
+    //   나머지 선택 필드는 반드시 null 로 접어야 한다.
     const result = await c.env.DB.prepare(`
       INSERT INTO production_logs (log_date, shift, weather, temperature, humidity, supervisor_id, notes, created_by, entity_id)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(log_date, shift, weather, temperature, humidity, supervisor_id, notes, user.id, getEntityId(c) || 1).run()
+    `).bind(
+      log_date ?? null,
+      shift ?? 'DAY',
+      weather ?? null,
+      temperature ?? null,
+      humidity ?? null,
+      supervisor_id ?? null,
+      notes ?? null,
+      user.id,
+      getEntityId(c) || 1
+    ).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id } })
   } catch (error) {

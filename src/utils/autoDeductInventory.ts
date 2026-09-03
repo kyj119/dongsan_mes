@@ -2,7 +2,7 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { AUTO_DEDUCT_REF } from './autoDeductRestore'
 import { kstDate } from './kstDate'
 import { resolveDeductionZone } from './inventoryZone'
-import { computeRollConsumption, selectBoardMaterial, boardAreaSqm } from './rollConsumption'
+import { computeRollConsumption, selectBoardMaterial, boardAreaSqm, selectRollPlacement } from './rollConsumption'
 
 /**
  * Print event OK 상태 → 원단 재고 자동 차감
@@ -137,9 +137,10 @@ export async function autoDeductInventory(
 
     // 5. 차감방식별 자재 선택 + 차감량 (ROLL=폭매칭+yd / BOARD=들어가는 최소 장+면적→장 / NONE=제외)
     //    판재 면적·선택 규칙은 `utils/rollConsumption` 정본을 쓴다(사본을 두면 소요량계획과 갈린다).
+    // 폭 정렬은 없앴다 — 선택이 `selectRollPlacement` 로 넘어가 **행 순서에 의존하지 않는다**
+    // (동점이면 폭 → material_item_id 로 tie-break 한다).
     const rollMats = materialRows
       .filter((m: any) => m.deduction_method === 'ROLL' && m.width_mm != null)
-      .sort((a: any, b: any) => a.width_mm - b.width_mm)
     const boardMats = materialRows.filter((m: any) => m.deduction_method === 'BOARD')
 
     let selectedMaterial: any = null
@@ -150,15 +151,24 @@ export async function autoDeductInventory(
     // ROLL: output_width 이상 최소폭 → 길이
     // 단위 환산은 utils/rollConsumption 단일 소스. unit='롤'+pack_size 면 롤 수,
     // base_unit='cm' 면 cm, 그 외는 yd(현행) — 롤이 아닌 자재는 회귀 0.
+    //
+    // ★2026-09-03: 손으로 쓴 「폭 오름차순 정렬 → 첫 번째로 폭이 충분한 것」 루프를 걷어내고
+    //   원가·소요량계획과 **같은 함수**를 부른다. 값은 그대로다 — 옵션으로 차이를 명시했을 뿐이다:
+    //     orientation:'width-fixed' = 회전 금지. `output_width` 는 RIP 이 이미 정한 실측 폭이다.
+    //     criterion:'area'          = 단가를 보지 않는다. 어느 롤을 걸었는지는 이미 정해졌고,
+    //                                 방향이 고정이면 길이가 같으므로 면적 최소 = **최소폭**이다.
+    //     splitFallback:false       = 어느 롤에도 안 들어가면 **차감하지 않는다**(멋대로 분할해
+    //                                 재고를 빼면 안 된다). 종전 동작과 동일.
+    //   사본을 지운 이유 = 리뷰 지적. 규칙이 세 벌이면 waste_factor·폭 규칙을 세 번 고쳐야 한다.
     let dedUnitFromCalc = 'yd'
-    for (const m of rollMats) {
-      if (m.width_mm >= outputWidthMm) {
-        selectedMaterial = m; dedMethod = 'ROLL'; matchedWidthMm = m.width_mm
-        const cons = computeRollConsumption(m, outputHeightMm, copyTotal)
-        deductedLengthYd = cons.qty
-        dedUnitFromCalc = cons.unit
-        break
-      }
+    const rollPick = selectRollPlacement(rollMats as any[], outputWidthMm, outputHeightMm, copyTotal, {
+      orientation: 'width-fixed', criterion: 'area', splitFallback: false,
+    })
+    if (rollPick) {
+      const m = rollPick.mat as any
+      selectedMaterial = m; dedMethod = 'ROLL'; matchedWidthMm = m.width_mm
+      deductedLengthYd = rollPick.qty
+      dedUnitFromCalc = computeRollConsumption(m, rollPick.lengthMm, copyTotal).unit
     }
     // BOARD: 면적(㎡)→장 = W×H×copy×로스율 ÷ 보드면적
     if (!selectedMaterial && boardMats.length > 0) {

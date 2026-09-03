@@ -118,6 +118,25 @@ window.escapeHtml = function(str) {
     .replace(/'/g, '&#039;');
 };
 
+// === XSS Protection: onclick="fn('...')" 처럼 "HTML 속성 안의 JS 문자열" 전용 이스케이프 ===
+// escapeHtml 만으로는 안전하지 않다 — HTML 파서가 속성값의 엔티티를 먼저 디코딩한 뒤
+// 그 결과를 JS 로 컴파일하므로 &#039; 가 살아있는 따옴표가 되어 문자열을 탈출한다.
+// 그래서 ①JS 문자열 이스케이프 → ②HTML 속성 이스케이프 순서여야 한다(순서를 바꾸면 무효).
+window.escapeJsAttr = function(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '\\"')
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+};
+
 // === KST 시간 헬퍼 (전역) — #366 ===
 // 정책: 저장은 UTC(불변·감사 표준), 표시는 항상 한국시간(Asia/Seoul).
 // SQLite 타임스탬프("YYYY-MM-DD HH:MM:SS", tz 표식 없음)를 new Date()로 바로 파싱하면
@@ -604,6 +623,34 @@ window.authFetch = function(url, options) {
     });
 };
 
+// === dsOpenAuthFile: 보호된 파일(R2 첨부 등)을 새 탭으로 연다 ===
+// 라우트가 authMiddleware(Authorization 헤더 전용)라 <a href="/api/..."> 직링크는 항상 401 빈 탭이 된다.
+// 팝업 차단 회피: 클릭 제스처 안에서 빈 탭을 먼저 열고, blob 준비 후 그 탭을 blob URL 로 이동시킨다.
+window.dsOpenAuthFile = function(url, label) {
+    var w = window.open('', '_blank');
+    return window.authFetch(url).then(function(res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.blob();
+    }).then(function(blob) {
+        var objUrl = URL.createObjectURL(blob);
+        if (w && !w.closed) {
+            w.location.href = objUrl;
+        } else {
+            // 팝업이 막힌 경우 — 다운로드로 대체
+            var a = document.createElement('a');
+            a.href = objUrl;
+            a.download = label || 'file';
+            a.click();
+        }
+        // 새 탭이 blob 을 다 읽은 뒤 해제 (즉시 revoke 하면 빈 탭이 된다)
+        setTimeout(function() { URL.revokeObjectURL(objUrl); }, 60000);
+    }).catch(function(e) {
+        if (w && !w.closed) w.close();
+        if (typeof showToast === 'function') showToast('파일 열기 실패: ' + e.message, 'error');
+        else console.error('[dsOpenAuthFile]', e);
+    });
+};
+
 // === Mobile Sidebar ===
 function toggleMobileSidebar() {
   document.getElementById('sidebar').classList.toggle('open');
@@ -629,8 +676,9 @@ function toggleSidebarPin() {
 
 function toggleSidebarGroup(gi) {
   var items = document.getElementById('groupItems' + gi);
+  if (!items) return;
   var header = items.previousElementSibling;
-  if (!items || !header) return;
+  if (!header) return;
   var collapsed = items.classList.toggle('collapsed');
   if (collapsed) header.classList.add('collapsed');
   else header.classList.remove('collapsed');
@@ -1241,6 +1289,55 @@ window.showPrompt = function(message, options) {
   });
 };
 
+// === 범용 모달(제목 + 임의 HTML 본문 + 버튼 목록) ===
+// orders.js 의 「자재 부족 경고」·「미완료 카드 처리」가 이 헬퍼를 부르는데 정의가 어디에도 없어
+//   출고완료 상태변경(requires_confirmation 응답)이 ReferenceError 로 끝났다(2026-09-03 감사).
+//   showConfirm/showPrompt 는 본문이 텍스트 전용이라 표·행 버튼을 담을 수 없어 여기 하나를 만든다.
+// buttons = [{ text|label, class, onclick }] — onclick 은 함수 또는 인라인 문자열.
+// ⚠️ 닫기는 closeModal 이 아니라 **closeShellModal** 이다. orders.js·items/modals.js 등 여러 페이지가
+//    자기 소유 closeModal(자기 모달 id 전용)을 전역에 이미 선언해 두고 있어 이름이 겹치면 서로를 덮는다.
+var __shellModalEscHandler = null;
+window.closeShellModal = function() {
+  if (__shellModalEscHandler) {
+    document.removeEventListener('keydown', __shellModalEscHandler);
+    __shellModalEscHandler = null;
+  }
+  var el = document.getElementById('__shellModal');
+  if (el) el.remove();
+};
+window.showModal = function(title, bodyHtml, buttons) {
+  window.closeShellModal();
+  var overlay = document.createElement('div');
+  overlay.id = '__shellModal';
+  overlay.className = 'ds-modal-overlay';
+  overlay.style.zIndex = '9998';
+  overlay.innerHTML =
+    '<div class="ds-modal" style="max-width:720px;width:92%">' +
+      '<div class="ds-modal-header"><h3 style="font-size:15px"></h3></div>' +
+      '<div class="ds-modal-body" style="padding:16px 20px;max-height:70vh;overflow-y:auto"></div>' +
+      '<div class="ds-modal-footer"></div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  // 제목은 textContent(거래처명 등 사용자 입력이 들어온다). 본문은 호출부가 만든 HTML 을 그대로 쓴다.
+  overlay.querySelector('h3').textContent = title == null ? '' : String(title);
+  overlay.querySelector('.ds-modal-body').innerHTML = bodyHtml == null ? '' : String(bodyHtml);
+  var footer = overlay.querySelector('.ds-modal-footer');
+  (buttons || []).forEach(function(b) {
+    if (!b) return;
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = b.class || 'ds-btn ds-btn-ghost';
+    btn.textContent = b.text || b.label || '확인';
+    if (typeof b.onclick === 'function') btn.addEventListener('click', b.onclick);
+    else if (typeof b.onclick === 'string' && b.onclick) btn.setAttribute('onclick', b.onclick);
+    footer.appendChild(btn);
+  });
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) window.closeShellModal(); });
+  __shellModalEscHandler = function(e) { if (e.key === 'Escape') window.closeShellModal(); };
+  document.addEventListener('keydown', __shellModalEscHandler);
+  return overlay;
+};
+
 // === Table Density Toggle ===
 function toggleTableDensity(btn) {
   var wrap = btn.closest('.ds-card, .bg-white, [class*="rounded"]');
@@ -1803,6 +1900,16 @@ window.dsSkeleton = {
 
     // Set initial state
     history.replaceState({ spaUrl: window.location.pathname + window.location.search }, '', window.location.pathname + window.location.search);
+
+    // 페이지 스크립트에서 코드로 이동할 때 쓰는 전역 진입점.
+    //   spaNavigate 는 이 IIFE 안에 갇혀 있어 `window.spaNavigate` 를 부르던 호출부(hr.js 등)가
+    //   전부 undefined 폴백을 타고 있었고, `window.navigateTo` 는 아예 정의된 적이 없어
+    //   weeklyPurchase/scan/orders 의 "이동" 동작이 TypeError 로 죽어 있었다.
+    window.spaNavigate = spaNavigate;
+    window.navigateTo = function(url) {
+        if (!url) return;
+        try { spaNavigate(url); } catch (e) { window.location.href = url; }
+    };
 })();
 
 // ===================================================

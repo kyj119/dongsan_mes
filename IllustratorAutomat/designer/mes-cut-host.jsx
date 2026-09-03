@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.30.0';  // 0.30.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.29.0 = PDF 아트보드 기준을 잉크 경계로(visibleBounds 로 잡으면 마스크로 가린 여분이 되살아나 조각이 커지고 재단선을 넘는다) · 0.28.0 = 회전도 임베드 앞으로 + **회전만 있어도 PDF 경로**(1:1 회전도 마스크가 안 따라와 배경 절반이 회색) + 검산 기대폭에 회전 반영 · 0.27.0 = 배율 기준을 PDF 아트보드로(배치 직후 보고값은 잘려 있어 +23%) · 확대는 임베드 **전**(뒤로 옮기면 마스크가 안 따라와 배경이 죽는다) · 0.26.0 = 배율 확대 크기 계산을 임베드 **후**로(배치 직후 값은 그림 있는 데까지로 잘려 있어 클립 밖 삐짐 조각이 +23% 크게 나왔다) · 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
+var MESCUT_VERSION = 'CUT-CEP-0.31.0';  // 0.31.0 = ★등록 manifest 가 저장 배율을 반영한다(measured_cm=실물 · scale_pct=100/N) — 여태 1/2 로 짜면 주문 라인 규격이 1/S · 청구면적이 1/S² 였다 · 0.30.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.29.0 = PDF 아트보드 기준을 잉크 경계로(visibleBounds 로 잡으면 마스크로 가린 여분이 되살아나 조각이 커지고 재단선을 넘는다) · 0.28.0 = 회전도 임베드 앞으로 + **회전만 있어도 PDF 경로**(1:1 회전도 마스크가 안 따라와 배경 절반이 회색) + 검산 기대폭에 회전 반영 · 0.27.0 = 배율 기준을 PDF 아트보드로(배치 직후 보고값은 잘려 있어 +23%) · 확대는 임베드 **전**(뒤로 옮기면 마스크가 안 따라와 배경이 죽는다) · 0.26.0 = 배율 확대 크기 계산을 임베드 **후**로(배치 직후 값은 그림 있는 데까지로 잘려 있어 클립 밖 삐짐 조각이 +23% 크게 나왔다) · 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -3070,8 +3070,15 @@ function mesCut_saveOneSheet(doc, idx, R, clientName, pcName, userName) {
     try { app.activeDocument = doc; } catch (eA) { return 'ERROR 시트 문서 활성화 실패' }
 
     var ab = doc.artboards[0].artboardRect;
-    var wCm = Math.round((ab[2] - ab[0]) / MESCUT_PT_PER_MM) / 10;
-    var hCm = Math.round((ab[1] - ab[3]) / MESCUT_PT_PER_MM) / 10;
+    // ★★저장 배율을 되돌려 **실물** 규격으로 적는다 (2026-09-03 정정).
+    //   판 문서는 `mesCut_sc` 로 **실물/N** 에 저장된다(N = MESCUT_SCALE_N, nestApply 의 `N` 줄).
+    //   여태 아트보드를 그대로 cm 로 적고 scale_pct 를 100 으로 하드코딩해서, 1/2 로 짠 판은
+    //   대기물 가로·세로가 **절반**으로 올라가고 배율칸은 1 이 됐다 → 주문 라인 규격 1/S ·
+    //   청구면적 1/S². 주문서는 `width_cm` 을 **실물**로 보고 `100/scale_pct` 를 배율칸에 넣는다
+    //   (orderForm/intake.js:620·:801·:845). A0 와 같은 규약으로 맞춘다(mes-a0-host.jsx:982~983).
+    var sN = (MESCUT_SCALE_N > 0) ? MESCUT_SCALE_N : 1;
+    var wCm = Math.round(((ab[2] - ab[0]) / MESCUT_PT_PER_MM) * sN) / 10;
+    var hCm = Math.round(((ab[1] - ab[3]) / MESCUT_PT_PER_MM) * sN) / 10;
     var qty = parseInt(R.QTY, 10);
     if (isNaN(qty) || qty < 1) qty = 1;
 
@@ -3156,7 +3163,7 @@ function mesCut_saveOneSheet(doc, idx, R, clientName, pcName, userName) {
             ? ('"' + mesCut_jsonEsc([R.MATERIAL || '', R.FINISH || ''].join(R.MATERIAL && R.FINISH ? '+' : '')) + '"')
             : 'null')
         + ',"annotation":null,"annot_pos":null,"identifier":null'
-        + ',"scale_pct":100'
+        + ',"scale_pct":' + Math.round(100 / sN)
         + ',"measured_cm":{"w":' + wCm + ',"h":' + hCm + '}'
         // ★mode='single' 이다. 'impose' 가 아니다.
         //   `impose` 는 **ia-editor 전용 용도**다 — "대지로 가져와 다시 배치할 조각"을 뜻하고,

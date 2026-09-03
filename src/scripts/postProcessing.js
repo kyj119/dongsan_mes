@@ -121,17 +121,17 @@ function addParamField(data = {}) {
             </div>
             <div>
                 <label class="text-xs text-gray-600">단위 <span class="text-gray-400">(선택, 예: 개)</span></label>
-                <input type="text" placeholder="예: 개, cm" value="${data.unit||''}" class="param-unit w-full border rounded px-2 py-1 text-sm">
+                <input type="text" placeholder="예: 개, cm" value="${escapeHtml(data.unit||'')}" class="param-unit w-full border rounded px-2 py-1 text-sm">
             </div>
         </div>
         <div id="selectOptions_${id}" class="${data.type==='select'?'':'hidden'} mb-2">
             <label class="text-xs text-gray-600">선택 목록 <span class="text-gray-400">(쉼표로 구분, 예: 사방,상,하,좌,우)</span></label>
-            <input type="text" placeholder="예: 사방,상,하,좌,우" value="${(data.options||[]).join(',')}" class="param-options w-full border rounded px-2 py-1 text-sm">
+            <input type="text" placeholder="예: 사방,상,하,좌,우" value="${escapeHtml((data.options||[]).join(','))}" class="param-options w-full border rounded px-2 py-1 text-sm">
         </div>
         <div class="grid grid-cols-2 gap-2">
             <div>
                 <label class="text-xs text-gray-600">기본값</label>
-                <input type="text" placeholder="" value="${data.default!==undefined?data.default:''}" class="param-default w-full border rounded px-2 py-1 text-sm">
+                <input type="text" placeholder="" value="${escapeHtml(data.default!==undefined?data.default:'')}" class="param-default w-full border rounded px-2 py-1 text-sm">
             </div>
             <div>
                 <label class="text-xs text-gray-600">최솟값 <span class="text-gray-400">(숫자 입력 시)</span></label>

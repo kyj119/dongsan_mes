@@ -397,7 +397,7 @@ export function renderLaborContractHTML(data: {
         <div class="article-title">제6조 (임금)</div>
         <div class="article-body">
           ${isMonthly ? `
-          <p>1) 월 급여: <strong>${formatNumber(contract.hourly_rate)}원</strong></p>
+          <p>1) 월 급여: <strong>${formatNumber(totalPay)}원</strong></p>
           ` : `
           <p>1) 통상시급: <strong>${formatNumber(hourlyDisplay)}원</strong> <span style="font-size:12px;color:#555">(기본급 ${formatNumber(basePay)}원 ÷ ${baseH}시간)</span></p>
           <table class="party-table" style="margin:8px 0 12px">

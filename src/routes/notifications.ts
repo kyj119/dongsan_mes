@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import type { D1Database } from '@cloudflare/workers-types'
-import { authMiddleware } from '../middleware/auth'
+import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
 import { kstYmd, kstDate, kstDateOf } from '../utils/kstDate'
@@ -26,10 +26,12 @@ const VISIBLE_SQL = `(user_id = ? OR (user_id IS NULL AND (target_role = ? OR ? 
 const visibleParams = (u: { id: number, role: string }) => [u.id, u.role, u.role]
 
 // ── Helper: 중복 방지 알림 생성 (당일 동일 title 스킵) ──
+// ⚠️ 중복 판정에 entity_id 를 반드시 넣는다 — cron 이 법인 루프를 돌 때 건수가 같으면 제목도 같아서
+//    ("납기 지연 3건") 선명·청주 알림이 동산의 같은 제목 때문에 조용히 생성되지 않았다.
 async function createIfNotExists(db: D1Database, targetRole: string, title: string, message: string, link: string, entityId: number = 1) {
   const existing = await db.prepare(
-    `SELECT id FROM notifications WHERE target_role = ? AND title = ? AND ${kstDateOf('created_at')} = ${kstDate()} LIMIT 1`
-  ).bind(targetRole, title).first()
+    `SELECT id FROM notifications WHERE target_role = ? AND title = ? AND entity_id = ? AND ${kstDateOf('created_at')} = ${kstDate()} LIMIT 1`
+  ).bind(targetRole, title, entityId).first()
   if (existing) return
   await db.prepare(
     `INSERT INTO notifications (target_role, title, message, link, entity_id) VALUES (?, ?, ?, ?, ?)`
@@ -322,9 +324,12 @@ notificationsRouter.post('/generate', async (c) => {
 })
 
 // ── DELETE old notifications (30일 이상) + 포털 토큰 정리 (90일) ──
-notificationsRouter.delete('/cleanup', async (c) => {
+// 역할 가드 필수 — 라우터는 authMiddleware 뿐이라 로그인만 하면 누구나 알림 전량과 포털 토큰을
+// 지울 수 있었다. `?token_retention_days=1` 이면 이미 알림톡으로 나간 고객 링크가 통째로 죽는다.
+// 보존일수도 하한을 둬 사고 반경을 줄인다(최소 7일).
+notificationsRouter.delete('/cleanup', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
-    const retentionDays = Number(c.req.query('token_retention_days')) || 90
+    const retentionDays = Math.max(7, Number(c.req.query('token_retention_days')) || 90)
 
     const [notifResult, tokenResult] = await Promise.all([
       c.env.DB.prepare(

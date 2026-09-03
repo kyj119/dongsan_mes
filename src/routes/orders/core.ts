@@ -245,6 +245,14 @@ ordersCoreRouter.get('/', async (c) => {
 ordersCoreRouter.get('/:id/timeline', async (c) => {
   try {
     const id = c.req.param('id')
+    // 타법인 주문의 상태 이력을 열람할 수 없다 — 형제 GET /:id(:452 viewerEntity)와 같은 가시성 모델.
+    const tlOvf = orderVisibilityFilter(c, 'o')
+    const tlOrder = await c.env.DB.prepare(
+      `SELECT o.id FROM orders o WHERE o.id = ?${tlOvf.clause}`
+    ).bind(id, ...tlOvf.params).first<{ id: number }>()
+    if (!tlOrder) {
+      return c.json({ success: false, error: 'Order not found' }, 404)
+    }
     const { results } = await c.env.DB.prepare(`
       SELECT osh.*, u.name as changed_by_name
       FROM order_status_history osh
@@ -264,6 +272,10 @@ ordersCoreRouter.get('/:id/invoice', async (c) => {
   try {
     const id = c.req.param('id')
 
+    // 거래명세서는 주문 전체 금액 + 거래처 마스터를 통째로 돌려준다 — 형제 GET /:id 와 같은
+    // 가시성 모델로 막는다(#333 이후 이 경로만 무필터로 남아 있었다).
+    const invOvf = orderVisibilityFilter(c, 'o')
+
     // Get order with client_name
     const order = await c.env.DB.prepare(`
       SELECT
@@ -276,8 +288,8 @@ ordersCoreRouter.get('/:id/invoice', async (c) => {
       LEFT JOIN clients c ON o.client_id = c.id
       LEFT JOIN users u ON o.created_by = u.id
       LEFT JOIN employees sr ON sr.id = o.sales_rep_id
-      WHERE o.id = ?
-    `).bind(id).first()
+      WHERE o.id = ?${invOvf.clause}
+    `).bind(id, ...invOvf.params).first()
 
     if (!order) {
       return c.json({
@@ -414,6 +426,9 @@ ordersCoreRouter.get('/:id', async (c) => {
              ar.groups_json AS ai_groups_json,
              i.pricing_method AS pricing_method,
              i.sub_category AS item_subcategory,
+             -- 품목별 최소청구 변(cm). 수정·복사 화면이 이 값을 히든에 되돌려야 청구면적 자동계산이
+             --   기본 100 으로 되돌아가지 않는다(orderForm/calc.js MIN_SIDE ↔ utils/orderLineAmount.ts).
+             i.min_billing_side_cm AS min_billing_side_cm,
              ci.card_id AS card_id,
              ca.card_number AS card_number,
              -- 라인 부가 파일(0516) = "kind|이름|경로" 줄 단위. 화면(orders.js)이 칩으로 그린다.
@@ -591,6 +606,21 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       }, 400)
     }
 
+    const CONFIRMED_AND_AFTER = ['CONFIRMED', 'PRINTING', 'PRINT_DONE', 'SHIPPED']
+
+    // CONFIRMED 이후 상태 → 소프트 삭제(CANCELLED)
+    const needsSoftDelete = CONFIRMED_AND_AFTER.includes(order.status)
+
+    // 하드 삭제(CANCELLED·QUOTATION·DRAFT 등) — ADMIN만 허용.
+    //   ★권한 검사는 어떤 부수효과보다 **앞**에 있어야 한다(2026-09-03): 예전엔 아래 재고 환원 3종을 먼저 돌리고
+    //     여기서 403 을 냈기 때문에, MANAGER 가 삭제를 시도만 해도 재고가 되살아나고 주문은 그대로 남았다.
+    if (!needsSoftDelete && user.role !== 'ADMIN') {
+      return c.json({
+        success: false,
+        error: '해당 상태의 주문을 삭제하려면 ADMIN 권한이 필요합니다'
+      }, 403)
+    }
+
     // 출고 차감 환원 — 삭제(소프트·하드 공통) = "출고하지 않은 것"으로 되돌린다.
     //   ★반드시 아래 batch **앞**에서 부른다: 하드 삭제가 order_items 를 지우면 되돌릴 근거가 사라진다.
     //   차감된 적 없으면 no-op 이라 QUOTATION·DRAFT 삭제에도 안전하다(멱등).
@@ -602,11 +632,6 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const delCards = await c.env.DB.prepare('SELECT id FROM cards WHERE order_id = ?').bind(id).all<{ id: number }>()
     await restoreAutoDeductionsByCards(c.env.DB, (delCards.results || []).map((r) => Number(r.id)), stockActor)
     await restorePpDeductionsByOrder(c.env.DB, Number(id), stockActor)
-
-    const CONFIRMED_AND_AFTER = ['CONFIRMED', 'PRINTING', 'PRINT_DONE', 'SHIPPED']
-
-    // CONFIRMED 이후 상태 → 소프트 삭제(CANCELLED)
-    const needsSoftDelete = CONFIRMED_AND_AFTER.includes(order.status)
 
     if (needsSoftDelete) {
       // #219: 소프트 삭제 — 원자적 batch 처리
@@ -644,13 +669,7 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       })
     }
 
-    // 하드 삭제 (CANCELLED 상태) — ADMIN만 허용
-    if (user.role !== 'ADMIN') {
-      return c.json({
-        success: false,
-        error: '해당 상태의 주문을 삭제하려면 ADMIN 권한이 필요합니다'
-      }, 403)
-    }
+    // 하드 삭제 — ADMIN 검사는 위(부수효과 앞)에서 끝났다.
 
     // split billing P3: balance 캐시 미사용 — 하드 삭제 시 order_billing_groups 도 함께 삭제(아래 batch).
     // 미수금은 파생이므로 별도 역산 불필요.

@@ -3,12 +3,16 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { DEPARTMENT_LABELS, POSITION_LABELS } from '../constants/hr'
+import { jsonForScript } from '../utils/escapeHtml'
 
 export function payslipPage(c: Context<HonoEnv>) {
   const idParam = c.req.param('id')
   const periodParam = c.req.query('period')
   // id가 숫자면 단일, 'batch'이면 일괄
   const mode = idParam === 'batch' ? 'batch' : 'single'
+  // 반사 XSS 가드: 두 값 모두 인라인 <script> 안으로 들어간다.
+  // 단일 모드의 id 는 정수만 허용하고, period 는 자유 문자열이라 jsonForScript 로 `</script>` 를 무력화한다.
+  if (mode === 'single' && isNaN(parseInt(idParam || '', 10))) return c.text('Invalid payslip ID', 400)
 
   return c.html(`
 <!DOCTYPE html>
@@ -185,11 +189,11 @@ export function payslipPage(c: Context<HonoEnv>) {
       }
     })();
 
-    var MODE = ${JSON.stringify(mode)};
-    var ID_PARAM = ${JSON.stringify(idParam)};
-    var PERIOD_PARAM = ${JSON.stringify(periodParam || '')};
-    var DEPT_LABELS = ${JSON.stringify(DEPARTMENT_LABELS)};
-    var POSITION_LABELS = ${JSON.stringify(POSITION_LABELS)};
+    var MODE = ${jsonForScript(mode)};
+    var ID_PARAM = ${jsonForScript(idParam)};
+    var PERIOD_PARAM = ${jsonForScript(periodParam || '')};
+    var DEPT_LABELS = ${jsonForScript(DEPARTMENT_LABELS)};
+    var POSITION_LABELS = ${jsonForScript(POSITION_LABELS)};
 
     function fmt(n) {
       if (n == null) return '0';

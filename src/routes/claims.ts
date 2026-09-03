@@ -116,7 +116,22 @@ claims.patch('/:id/resolve', requireEditOrRole('/quality', 'MANAGER'), async (c)
   ).bind(id, ...ef.params).first<{ client_id: number; order_id: number | null; entity_id: number; claim_number: string }>()
   if (!claim) return c.json({ success: false, error: '클레임을 찾을 수 없습니다.' }, 404)
 
-  const amount = Number(resolved_amount) || 0
+  // ★해결금액 한도 — REFUND·DISCOUNT 는 그대로 AR 감액(외상매출 차감)이 되므로 상한이 없으면
+  //   품질 페이지 편집 권한만으로 임의 금액의 고객 여신을 발행할 수 있다.
+  //   음수는 거부하고, 연결된 주문이 있으면 그 주문 청구액을 넘지 못하게 한다.
+  const amount = Math.round(Number(resolved_amount) || 0)
+  if (amount < 0) {
+    return c.json({ success: false, error: '해결금액은 0원 이상이어야 합니다.' }, 400)
+  }
+  if (claim.order_id && amount > 0) {
+    const claimOrder = await c.env.DB.prepare(
+      'SELECT final_amount FROM orders WHERE id = ?'
+    ).bind(claim.order_id).first<{ final_amount: number | null }>()
+    const claimCap = Math.round(Number(claimOrder?.final_amount) || 0)
+    if (claimCap > 0 && amount > claimCap) {
+      return c.json({ success: false, error: `해결금액이 원 주문 금액(${claimCap.toLocaleString()}원)을 초과할 수 없습니다.` }, 400)
+    }
+  }
   // #567: 환불/할인(REFUND·DISCOUNT)만 AR 감액. 재작업·재제작·반려는 조정 없음.
   const arAmount = (resolution_type === 'REFUND' || resolution_type === 'DISCOUNT') ? amount : 0
 

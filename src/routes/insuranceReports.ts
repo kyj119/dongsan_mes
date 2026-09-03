@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { kstYear } from '../utils/kstDate'
+import { decryptPII } from '../utils/crypto'
 
 const insuranceReportsRouter = new Hono<HonoEnv>()
 
@@ -73,7 +74,26 @@ insuranceReportsRouter.get('/:id', async (c) => {
       `SELECT id, report_id, employee_id, employee_name, rrn, base_salary, national_pension, health_insurance, long_term_care, employment_insurance, employer_national_pension, employer_health_insurance, employer_long_term_care, employer_employment_insurance, employer_industrial_accident FROM insurance_report_details WHERE report_id = ? ORDER BY employee_name, id`
     ).bind(id).all()
 
-    return c.json({ success: true, data: { report, details: details.results || [] } })
+    // 주민번호: 저장은 employees.resident_number 와 같은 **암호문(aes:)** 그대로 두고(평문 사본 금지),
+    //   조회 시점에 복호화한다 — 종전엔 암호문이 그대로 화면에 찍혀 신고서를 쓸 수 없었다(2026-09-03).
+    //   ADMIN 은 원본(신고 입력용), 그 외는 마스킹(payroll/year-end.ts:75 패턴).
+    const isAdmin = c.get('user')?.role === 'ADMIN'
+    const piiKey = c.env.JWT_SECRET
+    const rows = (details.results || []) as Array<{ rrn?: string | null }>
+    for (const d of rows) {
+      const raw = d.rrn ? String(d.rrn) : ''
+      if (!raw) { d.rrn = null; continue }
+      let plain = raw
+      if (raw.startsWith('aes:')) {
+        if (!piiKey) throw new Error('PII encryption key (JWT_SECRET) is not configured')
+        try { plain = await decryptPII(raw, piiKey) } catch { plain = '' }
+      }
+      d.rrn = !plain ? null
+        : isAdmin ? plain
+        : (plain.length >= 7 ? plain.slice(0, 6) + '-*******' : '******-*******')
+    }
+
+    return c.json({ success: true, data: { report, details: rows } })
   } catch (err: any) {
     console.error('Insurance reports GET :id error:', err)
     return c.json({ success: false, error: '조회 실패', detail: '서버 오류가 발생했습니다' }, 500)

@@ -245,7 +245,10 @@ pricesRouter.get('/client-item-prices', async (c) => {
       const ph = itemIds.map(() => '?').join(',')
 
       // 매입 최근 거래 (품목별 최신 1건)
+      // ★MAX 서브쿼리에도 같은 법인 필터 — 바깥만 걸면 최신 거래가 타법인 것일 때 만나는 행이 0 이 되어
+      //   최근 단가가 조용히 빈칸이 된다(2026-09-03). 바인드 순서 = SQL 텍스트의 ? 순서(바깥 → 서브쿼리).
       const efPo = entityFilter(c, 'po')
+      const efPo2 = entityFilter(c, 'po2')
       const { results: purchaseRows } = await c.env.DB.prepare(`
         SELECT poi.item_id, poi.unit_price, po.order_date
         FROM purchase_order_items poi
@@ -254,16 +257,17 @@ pricesRouter.get('/client-item-prices', async (c) => {
           AND po.order_date = (
             SELECT MAX(po2.order_date) FROM purchase_orders po2
             JOIN purchase_order_items poi2 ON poi2.po_id = po2.id
-            WHERE poi2.item_id = poi.item_id AND po2.supplier_id = po.supplier_id AND po2.status != 'CANCELLED'
+            WHERE poi2.item_id = poi.item_id AND po2.supplier_id = po.supplier_id AND po2.status != 'CANCELLED'${efPo2.clause}
           )
         GROUP BY poi.item_id
-      `).bind(...itemIds, client_id, ...efPo.params).all<RecentTransactionRow>()
+      `).bind(...itemIds, client_id, ...efPo.params, ...efPo2.params).all<RecentTransactionRow>()
       for (const r of purchaseRows) {
         purchaseMap[r.item_id] = { unit_price: r.unit_price, order_date: r.order_date }
       }
 
       // 매출 최근 거래 (품목별 최신 1건)
       const efO = entityFilter(c, 'o')
+      const efO2 = entityFilter(c, 'o2')
       const { results: salesRows } = await c.env.DB.prepare(`
         SELECT oi.item_id, oi.unit_price, o.order_date
         FROM order_items oi
@@ -272,10 +276,10 @@ pricesRouter.get('/client-item-prices', async (c) => {
           AND o.order_date = (
             SELECT MAX(o2.order_date) FROM orders o2
             JOIN order_items oi2 ON oi2.order_id = o2.id
-            WHERE oi2.item_id = oi.item_id AND o2.client_id = o.client_id AND o2.status != 'CANCELLED'
+            WHERE oi2.item_id = oi.item_id AND o2.client_id = o.client_id AND o2.status != 'CANCELLED'${efO2.clause}
           )
         GROUP BY oi.item_id
-      `).bind(...itemIds, client_id, ...efO.params).all<RecentTransactionRow>()
+      `).bind(...itemIds, client_id, ...efO.params, ...efO2.params).all<RecentTransactionRow>()
       for (const r of salesRows) {
         salesMap[r.item_id] = { unit_price: r.unit_price, order_date: r.order_date }
       }
@@ -674,7 +678,7 @@ pricesRouter.post('/price-groups/:id/assign', requireRole('ADMIN', 'MANAGER'), a
     const stmts = item_ids.map(itemId =>
       c.env.DB.prepare('UPDATE items SET price_group_id = ? WHERE id = ?').bind(groupId, itemId)
     )
-    await c.env.DB.batch(stmts)
+    for (let i = 0; i < stmts.length; i += 80) await c.env.DB.batch(stmts.slice(i, i + 80))  // 80 청크 규약
 
     return c.json({ success: true, assigned: item_ids.length })
   } catch (error) {
@@ -696,7 +700,7 @@ pricesRouter.post('/price-groups/:id/unassign', requireRole('ADMIN', 'MANAGER'),
         'UPDATE items SET price_group_id = NULL WHERE id = ? AND price_group_id = ?'
       ).bind(itemId, groupId)
     )
-    await c.env.DB.batch(stmts)
+    for (let i = 0; i < stmts.length; i += 80) await c.env.DB.batch(stmts.slice(i, i + 80))  // 80 청크 규약
 
     return c.json({ success: true, unassigned: item_ids.length })
   } catch (error) {

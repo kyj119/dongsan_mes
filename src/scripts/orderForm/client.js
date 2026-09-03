@@ -169,8 +169,13 @@
             function checkClientCredit(clientId) {
                 var banner = document.getElementById('creditBanner');
                 if (!banner) return;
+                function showCreditUnknown() {
+                    // 판정이 실패했으면 조용히 숨기지 않는다 — 「경고가 없다」가 「이상 없음」으로 읽힌다.
+                    banner.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600"><i class="fas fa-question-circle"></i><b>여신 확인 실패</b> — 한도 판정을 가져오지 못했습니다. 새로고침 후 다시 확인해 주세요.</div>';
+                    banner.classList.remove('hidden');
+                }
                 axios.get('/api/clients/' + clientId + '/credit-check').then(function(res) {
-                    if (!res.data.success) return;
+                    if (!res.data.success) { showCreditUnknown(); return; }
                     var d = res.data.data;
                     if (d.status === 'BLOCKED') {
                         banner.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700"><i class="fas fa-ban"></i><b>주문 차단</b> — 이 거래처는 관리자에 의해 주문이 차단되어 있습니다.</div>';
@@ -184,7 +189,7 @@
                     } else {
                         banner.classList.add('hidden');
                     }
-                }).catch(function() {});
+                }).catch(function() { showCreditUnknown(); });
             }
 
             function initDeliveryTimeOptions() {

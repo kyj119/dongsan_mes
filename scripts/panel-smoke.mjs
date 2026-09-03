@@ -111,7 +111,8 @@ window.cep = { fs: {
     if (window.__seedPngB64 && String(p).indexOf('mes_a0_seed') >= 0) return { err: 0, data: window.__seedPngB64 };
     return { err: 1 };
   },
-  writeFile: function () { return { err: 0 }; },
+  // ★쓴 내용을 남긴다 — params JSON 이 실제로 무엇을 싣는지 봐야 검증이 성립한다(2026-09-03).
+  writeFile: function (p, data) { (window.__written = window.__written || []).push(String(data)); return { err: 0 }; },
 } };
 window.__adobe_cep__ = {
   getExtensionID: function () { return 'com.mes.a0.panel'; },
@@ -142,9 +143,21 @@ window.__adobe_cep__ = {
       var gs = spec ? spec.split(';') : [];
       var sz2 = [];
       for (var g = 0; g < gs.length; g++) sz2.push({ w: 87 + g, h: 197, items: gs[g].split(',').length });
+      window.__hostQ = sz2.length;   // seedFlush 는 큐에 적재하고 total 을 돌려준다
       res = JSON.stringify({ ok: true, added: sz2.length, total: sz2.length, sizes: sz2 });
     }
     else if (/^mesA0_queueSelect/.test(script)) res = JSON.stringify({ ok: true, n: 2 });
+    // ★호스트 큐 개수를 실제로 센다 — mesA0_queueRemove 는 **남은 개수를 문자열로** 돌려준다
+    //   (mes-a0-host.jsx:1486). 전엔 폴백 '{"ok":true}' 를 돌려줘서, 패널이 성공 판정을 하도록
+    //   고쳐도 스텁이 그 계약을 안 지키면 검증이 성립하지 않는다(2026-09-03).
+    else if (/^mesA0_queueRemove/.test(script)) {
+      if (window.__failQueueRemove) res = 'EvalScript error.';
+      else { window.__hostQ = Math.max(0, (window.__hostQ || 0) - 1); res = String(window.__hostQ); }
+    }
+    else if (/^mesA0_queueAdd\\(/.test(script)) {
+      window.__hostQ = (window.__hostQ || 0) + 1;
+      res = JSON.stringify({ ok: true, n: window.__hostQ, w: 8.7, h: 19.7, items: 1 });
+    }
     else if (/^mesA0_paramsPath/.test(script)) res = 'C:/tmp/ia_params.json';
     // 크로스 패널 잠금(mes-lock.jsx 위임). window.__lockBusy 로 "재단이 점유 중" 상황을 재현한다.
     else if (/^mesA0_lockAcquire/.test(script)) res = window.__lockBusy ? 'busy:cut:make-cut' : 'ok';
@@ -411,6 +424,70 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
     (await p5.locator('#out').innerText()).slice(0, 60))
   ok('15 콘솔 에러 0', p5.__errs.length === 0, p5.__errs.join(' | '))
   await p5.close()
+}
+
+// ── 15b) ★호스트가 못 지웠으면 패널 큐도 줄이지 않는다 (2026-09-03) ──
+// 여태 `mesA0_queueRemove(i)` 결과를 보지 않고 splice 했다. 호스트 호출이 실패하면 패널만 줄어
+// host `$.global.mesA0Q` 와 인덱스가 어긋나고, 이후 `mesA0_queueSelect(i)` 가 **다른 조각**을
+// 골라 엉뚱한 행이 가공된다. 조용히 틀린 산출물이 나오는 형태라 가장 나쁘다.
+{
+  const p5b = await openPanel(CONFIG)
+  await p5b.click('.tab[data-tab="bundle"]')
+  await p5b.click('#btnQueueBatch')
+  await p5b.waitForTimeout(400)
+  ok('15b 큐 3행 준비', (await p5b.locator('#queueBox .qrow').count()) === 3)
+  await p5b.evaluate(() => { window.__failQueueRemove = true })
+  await p5b.click('#queueBox .qdel')
+  await p5b.waitForTimeout(250)
+  const m5b = await p5b.locator('#out').innerText()
+  ok('15b 실패하면 행을 지우지 않는다', (await p5b.locator('#queueBox .qrow').count()) === 3, m5b.slice(0, 80))
+  ok('15b 실패를 사람에게 알린다', /지우지 못했습니다/.test(m5b), m5b.slice(0, 80))
+  // 성공하면 정상적으로 줄어든다(막아 놓기만 한 게 아니다)
+  await p5b.evaluate(() => { window.__failQueueRemove = false })
+  await p5b.click('#queueBox .qdel')
+  await p5b.waitForTimeout(250)
+  ok('15b 성공하면 행이 준다', (await p5b.locator('#queueBox .qrow').count()) === 2)
+  ok('15b 콘솔 에러 0', p5b.__errs.length === 0, p5b.__errs.join(' | '))
+  await p5b.close()
+}
+
+// ── 15c) ★「조」 단위 표기는 단건 칸이 보일 때만 (2026-09-03) ──
+// `gatherParams` 는 `qty_unit` 을 무조건 싣는데, 묶음 행은 수량을 seedQty·행값으로 덮어쓰면서
+// 단위는 그대로 뒀다 → **환산은 안 된 채 단위만 'set'** 으로 나가 대기함 「N개 (M조)」가 틀린다.
+// ★환산 지점(gatherParams 한 곳)은 그대로다 — 여기서 보는 것은 표기뿐이다.
+{
+  const p5c = await openPanel(CONFIG)
+  await p5c.selectOption('#qtyUnit', 'set')     // 단건 탭에서 「조」를 골라 두고
+  await p5c.click('.tab[data-tab="bundle"]')    // 묶음 탭으로 옮기면 그 칸은 숨는다
+  await p5c.click('#btnQueueBatch')
+  await p5c.waitForTimeout(400)
+  await p5c.evaluate(() => { window.__written = [] })
+  await p5c.click('#btnConfirm')
+  await p5c.waitForTimeout(900)
+  const written = await p5c.evaluate(() => (window.__written || []).join('\n'))
+  const parsed = written.split('\n').filter((s) => s.indexOf('{') === 0).map((s) => { try { return JSON.parse(s) } catch { return null } }).filter(Boolean)
+  ok('15c params 가 실제로 나갔다', parsed.length === 3, String(parsed.length))
+  ok('15c 묶음 행에 조 단위가 실리지 않는다',
+    parsed.length > 0 && parsed.every((o) => o.qty_unit !== 'set'),
+    parsed.map((o) => o.qty_unit).join(','))
+  ok('15c 콘솔 에러 0', p5c.__errs.length === 0, p5c.__errs.join(' | '))
+  await p5c.close()
+}
+
+// ── 15d) ★단건 탭에서는 「조」가 그대로 실린다 — 게이트가 기능을 죽인 게 아니다 ──
+{
+  const p5d = await openPanel(CONFIG)
+  await p5d.selectOption('#qtyUnit', 'set')
+  await p5d.fill('#qty', '3')
+  await p5d.evaluate(() => { window.__written = [] })
+  await p5d.click('#btnProcess')
+  await p5d.waitForTimeout(900)
+  const w = await p5d.evaluate(() => (window.__written || []).join('\n'))
+  const o = w.split('\n').filter((s) => s.indexOf('{') === 0).map((s) => { try { return JSON.parse(s) } catch { return null } }).filter(Boolean)[0]
+  ok('15d 단건은 조 표기를 유지한다', !!o && o.qty_unit === 'set', o ? String(o.qty_unit) : 'noparams')
+  ok('15d 환산은 여전히 한 곳에서 한 번만(3조=6개)', !!o && o.qty === 6, o ? String(o.qty) : 'noparams')
+  ok('15d 콘솔 에러 0', p5d.__errs.length === 0, p5d.__errs.join(' | '))
+  await p5d.close()
 }
 
 // ── 17) P2: 호스트 작업 잠금 단일화 + 취소 (params 파일 경쟁 차단) ──

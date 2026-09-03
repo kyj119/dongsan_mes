@@ -333,8 +333,12 @@ messagesAdRouter.post('/send', async (c) => {
     const varCtx = await buildBulkVarContext(c, audience.sendable)
 
     // 미치환 변수는 발송 차단 — "#{고객명}"이 그대로 찍힌 광고가 나가면 되돌릴 수 없다
-    const firstResolved = applyVars(content.body, varCtx.varsFor(audience.sendable[0]))
-    const leftover = unresolvedVars(firstResolved)
+    // ⚠️ 첫 수신자만 보면 안 된다 — 엑셀 열(r.vars)은 행마다 있고 없어서 뒤쪽 수신자에게만 남을 수 있다.
+    const leftoverSet = new Set<string>()
+    for (const r of audience.sendable) {
+      for (const v of unresolvedVars(applyVars(content.body, varCtx.varsFor(r)))) leftoverSet.add(v)
+    }
+    const leftover = Array.from(leftoverSet)
     if (leftover.length > 0) {
       return c.json({
         success: false,

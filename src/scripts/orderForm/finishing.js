@@ -61,7 +61,7 @@
                     var presetsEl = document.getElementById('finishing_presets_' + id);
                     if (presetsEl && presets.length > 0) {
                         presetsEl.innerHTML = presets.map(function(p) {
-                            return '<button type="button" data-preset-id="' + id + '" onclick="applyFinPresetToOrder(' + id + ',\'' + escapeHtml(p.config).replace(/'/g, "\\'") + '\',this)" '
+                            return '<button type="button" data-preset-id="' + id + '" onclick="applyFinPresetToOrder(' + id + ',\'' + escapeJsAttr(p.config) + '\',this)" '
                                 + 'class="fin-preset-btn px-2 py-0.5 text-[10px] bg-gray-100 text-gray-600 rounded hover:bg-blue-100 hover:text-blue-700 border border-transparent">'
                                 + escapeHtml(p.name) + '</button>';
                         }).join('');

@@ -20,6 +20,18 @@ const poCoreRouter = new Hono<HonoEnv>()
 // 쓰기 권한(POST/PUT/DELETE/PATCH)은 각 엔드포인트에서 requireRole('ADMIN','MANAGER') 로 별도 제한.
 poCoreRouter.use('/*', authMiddleware, requireAnyPagePermission('/purchase-orders', '/receiving'))
 
+/**
+ * 입고가 한 줄이라도 있었는가 — 재고가 움직인 발주는 수정·삭제·DRAFT 복귀를 막는다(2026-09-03).
+ *   status 만 보면 PARTIAL_RECEIVED → CANCELLED → DRAFT 로 돌아온 발주가 통과해, PUT 이 라인을 delete+reinsert
+ *   하며 received_quantity=0 으로 초기화(입고 이력↔재고 영구 불일치)되고 DELETE 가 inventory_receipts.po_id 를 dangling 으로 남겼다.
+ */
+async function poHasReceivedLines(db: D1Database, poId: string | number): Promise<boolean> {
+  const r = await db.prepare(
+    `SELECT COUNT(*) AS n FROM purchase_order_items WHERE po_id = ? AND COALESCE(received_quantity, 0) > 0`
+  ).bind(poId).first<{ n: number }>()
+  return Number(r?.n || 0) > 0
+}
+
 poCoreRouter.get('/', async (c) => {
   try {
     const {
@@ -237,9 +249,20 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
     //    이걸 안 지키면 번호 접두와 행 entity_id 가 갈린다 — 주문에서 겪은 그 버그다.
     // ★ 이전엔 body 의 `entity_id` 를 아예 안 봤다. `entity_id: 99` 를 보내도 세션 법인(E1)에
     //   생성돼 **E2E 가 실법인을 오염**시켰다(쓰기 스모크가 잡았다, 2026-08-09).
-    const poEntityId = (data.entity_id && Number(data.entity_id) > 0)
-      ? Number(data.entity_id)
-      : (getEntityId(c) || 1)
+    // ★2026-09-03: body 값을 무조건 믿지는 않는다. E2E(법인 99)·ADMIN 전체모드는 그대로 두되,
+    //   법인 2 소속 MANAGER 가 `entity_id: 1` 을 실어 동산 장부에 발주를 꽂는 경로는 막는다.
+    const sessionEntityId = getEntityId(c)
+    const requestedEntityId = (data.entity_id && Number(data.entity_id) > 0) ? Number(data.entity_id) : null
+    const mayActForOtherEntity = user?.role === 'ADMIN' || sessionEntityId === 0
+    if (requestedEntityId && !mayActForOtherEntity && requestedEntityId !== sessionEntityId) {
+      return c.json({
+        success: false,
+        error: '다른 법인으로는 발주를 생성할 수 없습니다. 상단에서 해당 법인으로 전환하세요.'
+      }, 403)
+    }
+    const poEntityId = (requestedEntityId && mayActForOtherEntity)
+      ? requestedEntityId
+      : (sessionEntityId || 1)
 
     // 발주번호 자동생성: YYYYMMDD-P001
     const dateStr = kstYmdCompact()
@@ -408,6 +431,9 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         success: false,
         error: `'${po.status}' 상태에서는 수정할 수 없습니다. DRAFT 또는 CONFIRMED 상태만 수정 가능합니다.`
       }, 400)
+    }
+    if (await poHasReceivedLines(c.env.DB, id)) {
+      return c.json({ success: false, error: '입고 이력이 있는 발주는 수정할 수 없습니다. (라인 재작성이 입고 수량을 지웁니다)' }, 400)
     }
 
     if (!data.items || data.items.length === 0) {
@@ -584,6 +610,10 @@ poCoreRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => 
         error: `'${po.status}' → '${newStatus}' 전환은 허용되지 않습니다. 가능한 상태: ${allowed.join(', ') || '없음'}`
       }, 400)
     }
+    // PARTIAL_RECEIVED → CANCELLED(잔량 취소)는 허용하되, 재고가 움직인 발주를 DRAFT 로 되돌리는 것은 막는다
+    if (newStatus === 'DRAFT' && await poHasReceivedLines(c.env.DB, id)) {
+      return c.json({ success: false, error: '입고 이력이 있는 발주는 DRAFT 로 되돌릴 수 없습니다.' }, 400)
+    }
 
     // AP 잔액은 파생이다(`ledger/accounts-payable.ts` = 발주 − 지급 − 조정, 법인 필터).
     //   `clients.purchase_balance` 캐시 갱신은 2026-08-31 제거 — 화면이 안 읽는데 14곳에서
@@ -653,6 +683,9 @@ poCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         success: false,
         error: `'${po.status}' 상태의 발주는 삭제할 수 없습니다.`
       }, 400)
+    }
+    if (await poHasReceivedLines(c.env.DB, id)) {
+      return c.json({ success: false, error: '입고 이력이 있는 발주는 삭제할 수 없습니다. 입고를 먼저 취소하세요.' }, 400)
     }
 
     if (po.status === 'CONFIRMED') {
