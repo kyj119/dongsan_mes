@@ -37,7 +37,10 @@ namespace LogWatcher.Parsers
     /// config:
     ///   log_path               (required) RIPLOG.HTML — 기존 flexi 파서와 같은 키(설정 이관 호환).
     ///   print_log_dir          (required) PrintExp 본 로그 폴더 (Log[yyyy_MM_dd].txt 가 있는 곳, 보통 ...\Log\main)
-    ///   join_tolerance_seconds (default 5)
+    ///   join_tolerance_seconds (default 90) — 립 시작이 PrintExp 스탬프보다 이만큼까지 앞서도 조인.
+    ///                          ★ 5 였다가 90 으로 올렸다(2026-09-03). 장비별 지연이 0~60초로
+    ///                            제각각인데 5초를 쓰면 KM전사3 처럼 +7초인 기기는 전부 깨진다.
+    ///                            립 사이 간격은 최소 56초(2주 실측)라 90 이어도 옆 립을 물지 않는다.
     ///   rip_fallback_hours     (default 6, 0=끄기) — PrintExp 축이 이 시간 동안 잡을 안 가져가면
     ///                          RIPLOG 이벤트를 그대로 송출(전송 기준 = 종전 동작). PrintExp 로그 형식이
     ///                          바뀌어도 생산 기록이 조용히 0 이 되지 않게 하는 안전망.
@@ -95,6 +98,9 @@ namespace LogWatcher.Parsers
         private static readonly Regex LogDateRe = new(@"Log\[(\d{4})[_-](\d{2})[_-](\d{2})\]", RegexOptions.Compiled);
         private static readonly Regex StampRe = new(@"^(\d{14})", RegexOptions.Compiled);
 
+        // 립이 스탬프보다 '뒤'에 있어도 봐주는 폭. 물리적으로는 있을 수 없고 시계 오차뿐이라 좁게 둔다.
+        private const int BackGraceSec = 5;
+
         static FlexiPrintExpParser()
         {
             try { Encoding.RegisterProvider(CodePagesEncodingProvider.Instance); } catch { /* 이미 등록됨 */ }
@@ -108,7 +114,7 @@ namespace LogWatcher.Parsers
             if (string.IsNullOrEmpty(_printDir))
                 throw new ArgumentException($"[{EquipmentId}] print_log_dir is required for flexi_printexp parser");
             _flexi = new FlexiHtmlParser(config, positionsDir);   // log_path 검증은 여기서 된다
-            _tolSec = config.GetConfigInt("join_tolerance_seconds", 5);
+            _tolSec = config.GetConfigInt("join_tolerance_seconds", 90);
             _fallbackHours = config.GetConfigInt("rip_fallback_hours", 6);
             _stateFile = Path.Combine(positionsDir, $"{EquipmentId}.pex.pos");
             _pendingFile = Path.Combine(positionsDir, $"{EquipmentId}.pexpend.json");
@@ -385,14 +391,31 @@ namespace LogWatcher.Parsers
             return -1;
         }
 
+        /// <summary>
+        /// 스탬프 시각으로 미결 RIPLOG 신원을 찾는다 — 가장 가까운 립 1건.
+        ///
+        /// ★ 창이 **비대칭**이다. PrintExp 스탬프는 RIPLOG 의 출력 시작보다 **항상 뒤**다
+        ///   (립이 먼저, 프린터가 잡을 받는 게 나중). 그 지연은 장비 상수다 —
+        ///   KM전사1·2 는 0~1초, KM전사3 은 +6~8초(2026-08-13 수거로그 4건 전부 정확히 +7초,
+        ///   prod 2주 실측 최대 +60초). 시간 지터가 아니라 그 기기의 성질이다.
+        ///   그래서 '립이 앞선다' 방향으로만 넓게 열고 뒤쪽은 시계 오차만큼만 둔다.
+        ///   양방향으로 넓히면 **아직 인쇄되지 않은 다음 립**을 앞당겨 물 수 있다.
+        ///
+        /// 창이 5초면 KM전사3 은 매번 조인이 깨져 유령 1건 + 6시간 뒤 폴백 1건 =
+        /// 같은 인쇄가 2건이 된다(2026-09-03 실측: prod 이중계상 83쌍 중 78쌍이 이 장비).
+        /// 수거로그 재생에서 20건 중 7건만 조인 → 창을 넓히면 20/20, 이중계상 13→0.
+        /// </summary>
         private PrintEvent? ClaimRip(DateTime at)
         {
             int best = -1;
-            double bestDiff = _tolSec + 1;
+            double bestDiff = double.MaxValue;
             for (int i = 0; i < _pending.Count; i++)
             {
-                var diff = Math.Abs((_pending[i].Start - at).TotalSeconds);
-                if (diff <= _tolSec && diff < bestDiff) { best = i; bestDiff = diff; }
+                // + = 립이 스탬프보다 앞섬(정상) · - = 립이 뒤(시계 오차만 허용)
+                var lag = (at - _pending[i].Start).TotalSeconds;
+                if (lag < -BackGraceSec || lag > _tolSec) continue;
+                var diff = Math.Abs(lag);
+                if (diff < bestDiff) { best = i; bestDiff = diff; }
             }
             if (best < 0) return null;
             var evt = _pending[best].Evt;

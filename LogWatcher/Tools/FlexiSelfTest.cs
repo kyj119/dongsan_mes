@@ -27,6 +27,9 @@ namespace LogWatcher.Tools
     ///   B 폴백 없는 진짜 고아 완료       → 1건 UNMATCHED (과잉 억제 방지)
     ///   C 폴백 뒤 지각 **취소**          → 취소는 억제하지 않는다(취소 사실이 사라지면 안 된다)
     ///   D 재시작 후에도 억제 유지        → 억제 키가 pexpend.json 에 남는지
+    ///   E 립보다 +7초 뒤 스탬프          → 조인된다 (장비 고유 지연. 창이 5초면 여기서 깨졌다)
+    ///   F 창 밖(+300초)                 → 조인하지 않는다 (넓힌 창이 아무거나 물면 안 된다)
+    ///   G 립이 스탬프보다 뒤             → 조인하지 않는다 (창은 비대칭 — 물리적으로 불가능한 방향)
     /// </summary>
     public static class FlexiSelfTest
     {
@@ -43,6 +46,9 @@ namespace LogWatcher.Tools
                 CaseB(Path.Combine(root, "B"));
                 CaseC(Path.Combine(root, "C"));
                 CaseD(Path.Combine(root, "D"));
+                CaseE(Path.Combine(root, "E"));
+                CaseF(Path.Combine(root, "F"));
+                CaseG(Path.Combine(root, "G"));
             }
             finally
             {
@@ -50,7 +56,7 @@ namespace LogWatcher.Tools
             }
 
             Console.WriteLine();
-            Console.WriteLine(_fail == 0 ? "[selftest-flexi] OK — 4건 통과" : $"[selftest-flexi] FAIL — {_fail}건 실패");
+            Console.WriteLine(_fail == 0 ? "[selftest-flexi] OK — 7건 통과" : $"[selftest-flexi] FAIL — {_fail}건 실패");
             Environment.Exit(_fail == 0 ? 0 : 1);
         }
 
@@ -117,6 +123,54 @@ namespace LogWatcher.Tools
             Check("D-2 재시작 후에도 억제", e.Count == 0, Describe(e));
         }
 
+        // ── E: 장비 고유 지연이 있어도 조인된다 (KM전사3 이 깨지던 자리) ────────
+        private static void CaseE(string dir)
+        {
+            var h = new Habitat(dir);
+            h.SeedRip("E-도안", At(9, 0, 0), DateTime.Now);       // 방금 본 립 → 폴백 없음
+            h.WriteLog(Line(9, 59, 0, "대기"));
+            h.NewParser().ReadNewEntries();                        // 첫 폴 = 로그 끝으로
+
+            h.AppendLog(Line(10, 0, 0, "启动任务：" + Stamp(9, 0, 7)));   // ★ 립보다 7초 뒤
+            h.AppendLog(Line(10, 30, 0, "_PrintWait---打印完成"));
+
+            var e = h.NewParser().ReadNewEntries();
+            Check("E 지연 +7초도 조인(도안명 유지)",
+                  e.Count == 1 && e[0].FileName == "E-도안", Describe(e));
+        }
+
+        // ── F: 창 밖은 붙이지 않는다 (창을 넓힌 대가로 아무거나 물면 안 된다) ──
+        private static void CaseF(string dir)
+        {
+            var h = new Habitat(dir);
+            h.SeedRip("F-도안", At(9, 0, 0), DateTime.Now);
+            h.WriteLog(Line(9, 59, 0, "대기"));
+            h.NewParser().ReadNewEntries();
+
+            h.AppendLog(Line(10, 0, 0, "启动任务：" + Stamp(9, 5, 0)));   // 300초 뒤 = 90초 창 밖
+            h.AppendLog(Line(10, 30, 0, "_PrintWait---打印完成"));
+
+            var e = h.NewParser().ReadNewEntries();
+            Check("F 창 밖(300초)은 미조인",
+                  e.Count == 1 && e[0].FileName.StartsWith("UNMATCHED-"), Describe(e));
+        }
+
+        // ── G: 립이 스탬프보다 '뒤'면 붙이지 않는다 (창은 비대칭이다) ───────────
+        private static void CaseG(string dir)
+        {
+            var h = new Habitat(dir);
+            h.SeedRip("G-도안", At(9, 1, 0), DateTime.Now);       // 립이 스탬프보다 60초 뒤
+            h.WriteLog(Line(9, 59, 0, "대기"));
+            h.NewParser().ReadNewEntries();
+
+            h.AppendLog(Line(10, 0, 0, "启动任务：" + Stamp(9, 0, 0)));
+            h.AppendLog(Line(10, 30, 0, "_PrintWait---打印完成"));
+
+            var e = h.NewParser().ReadNewEntries();
+            Check("G 립이 스탬프보다 뒤면 미조인",
+                  e.Count == 1 && e[0].FileName.StartsWith("UNMATCHED-"), Describe(e));
+        }
+
         // ── 합성 서식지 ────────────────────────────────────────────────────────
         private sealed class Habitat
         {
@@ -177,7 +231,7 @@ namespace LogWatcher.Tools
                         ["log_path"] = Path.Combine(_dir, "RIPLOG.HTML"),
                         ["print_log_dir"] = _printDir,
                         ["rip_fallback_hours"] = 6,
-                        ["join_tolerance_seconds"] = 30,
+                        ["join_tolerance_seconds"] = 90,   // 실기 config 와 같아야 시험이 의미가 있다
                     })).RootElement.Clone(),
                 };
                 return new FlexiPrintExpParser(cfg, _posDir);

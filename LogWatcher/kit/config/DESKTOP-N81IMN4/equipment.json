@@ -11,7 +11,7 @@
       "config": {
         "log_path": "C:\\Program Files (x86)\\SAi\\FlexiPRINT 19 FY Union Edition1\\Jobs and Settings\\RIPLOG.HTML",
         "print_log_dir": "C:\\Program Files (x86)\\PrintExp\\Log\\main",
-        "join_tolerance_seconds": 5,
+        "join_tolerance_seconds": 90,
         "rip_fallback_hours": 6
       }
     }

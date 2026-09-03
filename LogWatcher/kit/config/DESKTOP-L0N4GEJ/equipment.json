@@ -11,7 +11,7 @@
       "config": {
         "log_path": "C:\\Program Files\\SAi\\FlexiPRINT 24 ToyoPrinter Edition\\Jobs and Settings\\RIPLOG.HTML",
         "print_log_dir": "C:\\PrintExp_X64\\PrintExp_X64\\Log\\main",
-        "join_tolerance_seconds": 5,
+        "join_tolerance_seconds": 90,
         "rip_fallback_hours": 6
       }
     }
