@@ -254,11 +254,17 @@ window.updateMapping = function(select) {
 // ============================================================
 // CSV 파일 업로드 & 파싱
 // ============================================================
-document.addEventListener('DOMContentLoaded', () => {
+function migInit() {
   setupDropZone('dropZone', 'csvFileInput', handleImportFile);
   setupDropZone('verifyDropZone', 'verifyCsvInput', handleVerifyFile);
   loadMigrationLogs();
-});
+}
+// SPA 전환 시 DOMContentLoaded 는 다시 발화하지 않는다 — readyState 가드 필수.
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', migInit);
+} else {
+  migInit();
+}
 
 function setupDropZone(zoneId, inputId, handler) {
   const zone = document.getElementById(zoneId);

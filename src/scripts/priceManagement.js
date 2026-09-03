@@ -17,7 +17,7 @@ var pmSheetClientId = null;    // 모달 거래처 id
 var pmSheetClientName = '';
 
 // ===================== Init =====================
-document.addEventListener('DOMContentLoaded', function() {
+function pmInit() {
   loadPurchaseView();
   var el = document.getElementById('pmSearch');
   if (el) {
@@ -27,7 +27,13 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   setupSalesClientSearch();
   setupPmSheetClientSearch();
-});
+}
+// SPA 전환 시 DOMContentLoaded 는 다시 발화하지 않는다 — readyState 가드 필수.
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', pmInit);
+} else {
+  pmInit();
+}
 
 // ===================== Tab =====================
 function switchPmTab(tab) {
