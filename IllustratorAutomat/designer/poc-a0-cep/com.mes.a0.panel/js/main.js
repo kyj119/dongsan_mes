@@ -10,7 +10,7 @@
   //   우상단 표시는 여태 host(mesA0_ping = MESA0_VERSION, 축2 = Z: 1곳)만 보여줬다. 껍데기는 PC 별
   //   복사 설치라서 재설치를 안 한 PC 도 최신 번호로 보였다(2026-07-30 점검에서 확인).
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다.
-  var SHELL_VERSION = '0.10.0';   // 0.10.0 = ★큐 제거는 호스트가 실제로 지웠을 때만 축소 · seedSilhouette 는 호스트 바쁨에도 done 콜백을 불러 호출자 멈춤 방지 ·「조」 표기 가시성 게이트 · 0.9.0 = ★검색이 공백을 무시한다 — 일러 CEP 는 IME 조합을 웹뷰에 안 넘기고(composition 0건) 마지막 글자를 스페이스로 확정해야 해서 그 공백이 이름 안에 남는다 · 0.8.0 = ★수량 단위 [개|조] — 가로등배너 1조=2개 환산(조용한 절반 청구 방지) · 0.7.0 = ★품목 자동완성(item_id) — 주문서가 품목·단가까지 자동으로 채운다 · 0.6.0 = ★자동감지 캡처 경로 수용(임시문서 없음 표기) + 마스크 픽셀 수를 실제 PNG 에 맞춤(라벨 밀림 방지) · 0.5.3 =「키워드」→「내용」 명칭 통일(MES 품목 마스터와 구분) · 0.5.2 = 재단 탭 [◎ 전체] · 0.5.1 = 도련 방식 칸을 판짜기로 이동(라벨 거짓 정정) · 0.5.0 = 셸 자동 갱신 결과 수신·재시작 안내 · 0.4.1 = 설명 다이어트(cfg 압축·툴팁 이동) + 세로나열 CSS
+  var SHELL_VERSION = '0.11.0';   // 0.11.0 = ★표 헤더가 세로로 쌓이던 것 정정(재단선·주석·여백cm 열 폭) · [1건 등록] 위 중복 문구 제거 · 0.10.0 = ★큐 제거는 호스트가 실제로 지웠을 때만 축소 · seedSilhouette 는 호스트 바쁨에도 done 콜백을 불러 호출자 멈춤 방지 ·「조」 표기 가시성 게이트 · 0.9.0 = ★검색이 공백을 무시한다 — 일러 CEP 는 IME 조합을 웹뷰에 안 넘기고(composition 0건) 마지막 글자를 스페이스로 확정해야 해서 그 공백이 이름 안에 남는다 · 0.8.0 = ★수량 단위 [개|조] — 가로등배너 1조=2개 환산(조용한 절반 청구 방지) · 0.7.0 = ★품목 자동완성(item_id) — 주문서가 품목·단가까지 자동으로 채운다 · 0.6.0 = ★자동감지 캡처 경로 수용(임시문서 없음 표기) + 마스크 픽셀 수를 실제 PNG 에 맞춤(라벨 밀림 방지) · 0.5.3 =「키워드」→「내용」 명칭 통일(MES 품목 마스터와 구분) · 0.5.2 = 재단 탭 [◎ 전체] · 0.5.1 = 도련 방식 칸을 판짜기로 이동(라벨 거짓 정정) · 0.5.0 = 셸 자동 갱신 결과 수신·재시작 안내 · 0.4.1 = 설명 다이어트(cfg 압축·툴팁 이동) + 세로나열 CSS
   var STORE_WORKER = 'mes_a0_worker';
   var STORE_SETTINGS = 'mes_a0_settings';
   var CONFIG_PATH = 'Z:/DESIGNS/IA-등록/_config/config.json';
@@ -167,7 +167,7 @@
     var elBorderLine = $('borderLine'); // 출력 경계선(백색 테두리) on/off — 기본 OFF(2026-08-06 용준님)
     var elPTop = $('pTop'), elPBottom = $('pBottom'), elPLeft = $('pLeft'), elPRight = $('pRight');
     var elPcTL = $('pcTL'), elPcTR = $('pcTR'), elPcBL = $('pcBL'), elPcBR = $('pcBR');
-    var elAnnot = $('annot'), elAnnotKwRow = $('annotKwRow'), elAnnotHint = $('annotHint');
+    var elAnnot = $('annot'), elAnnotKwRow = $('annotKwRow');
     var elATop = $('aTop'), elABottom = $('aBottom'), elALeft = $('aLeft'), elARight = $('aRight');
     var elBtnProcess = $('btnProcess'), elOut = $('out'), elCfg = $('cfgStatus');
     // 후가공 접이식(단건 탭 안) — 최상위 탭에서 강등. 모아찍기엔 아예 존재하지 않는 개념이라
@@ -632,10 +632,8 @@
       // ⚠️ class 'hidden' 을 쓰지 않는다 — `.row`(display:flex)와 `.hidden` 이 같은 명시도라
       //    stylesheet 순서에 따라 .row 가 이겨 안 숨는다(#finBody 때와 같은 함정, 스모크가 잡았다).
       if (elAnnotKwRow) elAnnotKwRow.style.display = (activeTab() === 'bundle') ? 'none' : '';
-      // 상세(자동결합 구성)는 HTML title 툴팁에 있다 — 화면 문구는 짧게(2026-08-20 설명 다이어트)
-      if (elAnnotHint) elAnnotHint.textContent = (activeTab() === 'bundle')
-        ? '키워드는 각 행에서 입력 · 여백 3cm 이상인 변만'
-        : '여백 3cm 이상인 변만 선택 가능';
+      // (2026-09-04) 주석 힌트 행은 없앴다 — 3cm 규칙은 `updateAnnotGates` 가 체크박스를
+      //   막아 **동작으로** 알리고, 설명은 위 힌트 블록에 한 번만 둔다.
       // config 로드(restoreSettings→setMode)가 큐 초기화보다 먼저 도는 경로가 있다 —
       //   그때 queue 는 아직 undefined 다. 여기서 막지 않으면 패널이 통째로 죽는다.
       //   이후 DOMContentLoaded 끝의 renderQueue() 가 게이트·버튼을 정리한다.

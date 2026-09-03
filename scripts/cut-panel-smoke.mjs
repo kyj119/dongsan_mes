@@ -891,21 +891,34 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3v 속을 먼저 메운다', /var f = G\.fillHoles\(m, W, H\)/.test(panelSrc))
   ok('3v 덩어리가 하나면 bbox 를 쓰지 않는다(로고 보호)', /if \(big <= 1\) return \{ m: f/.test(panelSrc))
   ok('3v 덩어리가 여럿이면 bbox 하나로', /boxed: true/.test(panelSrc))
-  ok('3v bbox 로 바꾼 조각 수를 센다', /if \(wc\.boxed\) boxedPieces\+\+;/.test(panelSrc))
-  ok('3v bbox 로 바꿨다는 사실을 알린다', /바깥 사각\(bbox\)/.test(panelSrc))
-  // ★효율%는 "실제 인쇄되는 잉크" 기준을 유지해야 한다 — 메운 뒤에 세면 조용히 부풀려진다.
+  // ★개수가 아니라 **번호**를 남긴다 (2026-09-04) — 개수만 말하면 화면의 어느 조각인지 대조할 수
+  //   없어, 사각으로 보이는 조각이 ⓐ원래 테두리가 사각인 아트인지 ⓑ이 규칙에 걸린 것인지 못 가린다.
+  ok('3v bbox 로 바꾼 조각 **번호**를 남긴다', /if \(wc\.boxed\) boxedIds\.push\(id \+ 1\);/.test(panelSrc))
+  ok('3v 번호는 화면과 같은 1-based', /boxedIds\.push\(id \+ 1\)/.test(panelSrc) && /'#' \+ \(i \+ 1\)/.test(panelSrc))
+  // ★★글자를 감싸는 규칙은 **취소**됐다 (2026-09-04 용준님 정정).
+  //   「조각 하나 = 칼선 하나」는 바깥 사각으로 묶으라는 뜻이 아니라,
+  //   **칼선 하나하나가 끊김 없이 닫혀 있어야** 한다는 뜻이었다(재단 중 사고 우려).
+  //   그래서 바깥 사각은 **배치에만** 쓰고, 칼선은 요소별로 내보낸다.
+  ok('3v bbox 는 배치에만 쓴다고 말한다', /\*\*배치\*\*를 바깥 사각으로/.test(panelSrc))
+  ok('3v 문장을 실제로 출력한다', /weldNote\(prep, useVec, a\.vecdrop\)/.test(panelSrc))
   {
-    const iInk = panelSrc.indexOf('rawInkPx += pInk;')
-    const iFill = panelSrc.indexOf('var wc = weldPiece(G, em.m')
-    ok('3v 잉크는 메우기 **전에** 센다(효율% 의미 보존)', iInk > 0 && iFill > iInk)
+    const wn = panelSrc.slice(panelSrc.indexOf('function weldNote('), panelSrc.indexOf('function weldNote(') + 2600)
+    ok('3v 벡터면 칼선은 요소별이라고 말한다', /칼선은 요소별로 그대로 나옵니다/.test(wn))
+    ok('3v 래스터면 그 사각을 따른다고 말한다', /래스터 칼선은 이 사각을 따릅니다/.test(wn))
+    // 부스러기를 걷어냈으면 **조용히** 넘기지 않는다
+    ok('3v 걷어낸 부스러기를 알린다', /부스러기\*\*를 걷어냈습니다/.test(wn))
+    ok('3v 부스러기 번호는 호스트가 준다', /vecDropStr/.test(wn))
+    ok('3v 역슬래시 이스케이프를 안 쓴다(개행=fromCharCode)', /String\.fromCharCode\(10\)/.test(wn))
+    ok('3v 번호를 어디서 대조하는지 알려준다', /조각 수량\] 목록의 #N/.test(wn))
   }
-  ok('3v 원본을 덮어쓰지 않고 새 배열을 받는다', /var f = G\.fillHoles\(m, W, H\), filledPx = 0/.test(panelSrc))
-  // ★조용히 바꾸지 않는다 — 몇 개를 메웠는지 결과에 싣는다.
-  ok('3v 메운 조각 수를 센다', /if \(wc\.filledPx\) filledPieces\+\+;/.test(panelSrc))
-  ok('3v 메웠다는 사실을 결과에 싣는다', /holeNote:/.test(panelSrc) && /속을 메워/.test(panelSrc))
-  ok('3v holeNote 를 실제로 출력한다', /\(prep\.holeNote \|\| ''\)/.test(panelSrc))
-  // ★낱개 재단 탈출구를 안내한다 — 시트컷 글자·ㅇ 속 뚫기는 [고급 · 단품 칼선] 이 담당한다.
-  ok('3v 낱개가 필요할 때의 경로를 안내', /단품 칼선/.test(panelSrc.slice(panelSrc.indexOf('holeNote:'), panelSrc.indexOf('holeNote:') + 400)))
+  // ★호스트 — 자를 수 없는 부스러기를 걷어낸다(래스터 minCutPx 와 같은 일을 벡터에서도).
+  {
+    const h2 = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
+    ok('3v 호스트가 부스러기를 걷어낸다', /function mesCut_dropCutSlivers\(/.test(h2))
+    ok('3v 컴파운드 서브패스까지 본다', /CompoundPathItem[\s\S]{0,400}pathItems\[q\]\.remove\(\)|subs\[k\]\.remove\(\)/.test(h2))
+    ok('3v 임계는 물리 치수다', /MESCUT_MIN_CUT_MM = 0\.2/.test(h2))
+    ok('3v 감싸는 규칙은 사라졌다', !/weldOne/.test(h2))
+  }
   // ★단품 칼선(makeCut)은 손대지 않았다 — 거기는 지금도 구멍을 낸다.
   ok('3v 단품 칼선의 구멍은 유지', /var minHoleMm = toFileMm\(MIN_HOLE_MM\);/.test(panelSrc))
   // 엔진 쪽 정본 확인 — 하네스(cut:bench ⑧)가 동작을 검증한다

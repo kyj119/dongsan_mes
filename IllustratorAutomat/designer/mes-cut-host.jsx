@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.31.0';  // 0.31.0 = ★등록 manifest 가 저장 배율을 반영한다(measured_cm=실물 · scale_pct=100/N) — 여태 1/2 로 짜면 주문 라인 규격이 1/S · 청구면적이 1/S² 였다 · 0.30.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.29.0 = PDF 아트보드 기준을 잉크 경계로(visibleBounds 로 잡으면 마스크로 가린 여분이 되살아나 조각이 커지고 재단선을 넘는다) · 0.28.0 = 회전도 임베드 앞으로 + **회전만 있어도 PDF 경로**(1:1 회전도 마스크가 안 따라와 배경 절반이 회색) + 검산 기대폭에 회전 반영 · 0.27.0 = 배율 기준을 PDF 아트보드로(배치 직후 보고값은 잘려 있어 +23%) · 확대는 임베드 **전**(뒤로 옮기면 마스크가 안 따라와 배경이 죽는다) · 0.26.0 = 배율 확대 크기 계산을 임베드 **후**로(배치 직후 값은 그림 있는 데까지로 잘려 있어 클립 밖 삐짐 조각이 +23% 크게 나왔다) · 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
+var MESCUT_VERSION = 'CUT-CEP-0.34.0';  // 0.34.0 = ★칼선에서 **자를 수 없는 부스러기**를 걷어낸다(실물 판 131개 중 15개가 0.01x0mm 3점 조각 — 컬파운드 안쪽이라 안 보였다) · 글자는 글자대로 남긴다(감싸기 안 함) · 0.33.0 = ★회전한 조각의 칼선이 **바깥 사각**으로 나가던 것 정정 — PDF 굳히기 임베드가 만든 사각 클립이 실루에을 덮었다(자르는 게 없는 클립만 걷어낸다) · 0.32.0 = ★굳혀서 배치하는 새 법 — **한 판에 1회**(조각 전부를 계자 PDF 로 한 번 굳힌 뒤 회전 값마다 마스턼 하나 → 배치는 duplicate) — 회전만 걸려도 조각당 3.05초가 붙던 것이 조각 수와 무관해진다 · 0.31.0 = ★등록 manifest 가 저장 배율을 반영한다(measured_cm=실물 · scale_pct=100/N) — 여태 1/2 로 짜면 주문 라인 규격이 1/S · 청구면적이 1/S² 였다 · 0.30.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.29.0 = PDF 아트보드 기준을 잉크 경계로(visibleBounds 로 잡으면 마스크로 가린 여분이 되살아나 조각이 커지고 재단선을 넘는다) · 0.28.0 = 회전도 임베드 앞으로 + **회전만 있어도 PDF 경로**(1:1 회전도 마스크가 안 따라와 배경 절반이 회색) + 검산 기대폭에 회전 반영 · 0.27.0 = 배율 기준을 PDF 아트보드로(배치 직후 보고값은 잘려 있어 +23%) · 확대는 임베드 **전**(뒤로 옮기면 마스크가 안 따라와 배경이 죽는다) · 0.26.0 = 배율 확대 크기 계산을 임베드 **후**로(배치 직후 값은 그림 있는 데까지로 잘려 있어 클립 밖 삐짐 조각이 +23% 크게 나왔다) · 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -943,6 +943,100 @@ function mesCut_vecCropClip(doc, item) {
  * @param fillClosed 선 도안(면 0·닫힌 선)이면 true — **사본에만** 채우기를 켠다
  * @returns {n, anchors, err}
  */
+/**
+ * ★잘라 내는 게 **없는** 클리핑 마스크를 걷어낸다 (2026-09-04 실측 발견).
+ *
+ * 증상: 회전한 조각만 칼선이 **바깥 사각**으로 나왔다(곡선 도형 → 4점 정사각). 회전 안 한 조각은
+ *   멀쩡했다 — "어떤 건 제대로, 어떤 건 사각"이 정확히 **회전 여부**로 갈렸다.
+ * 원인: 회전·배율 조각은 PDF 로 굳혀 배치하는데(0.28.0 `mesCut_scaleAsPlaced`), 그 **임베드가
+ *   사각 클립을 2겹 만든다**(원본에는 클립이 하나도 없다 — 실측). `mesCut_vecCropClip` 은
+ *   **최상위 클립만** 처리하므로 안쪽 클립이 남고, 그 사각 패스가 OffsetPath+Pathfinder Add 에
+ *   섞여 실루엣이 통째로 바깥 상자가 된다.
+ *   실측(원본 60.8x61.23 곡선 마름모): 굳히기 없이 → 4점 shape · 굳힌 뒤 → 4점 **RECT**.
+ *
+ * ⚠️ 아무 클립이나 지우면 안 된다 — **진짜로 잘라 내던** 클립을 지우면 숨어 있던 아트가 드러나
+ *    실루엣이 커지고 재단선이 그림 밖으로 나간다. 그래서 **내용이 이미 클립 안에 다 들어가는**
+ *    (= 자르는 게 없는) 클립만 지운다. PDF 굳히기의 클립은 아트보드=잉크 경계라 항상 여기 걸린다
+ *    (실측: 지운 뒤 잉크 경계 61.23x60.8 그대로 · 결과 4점 shape).
+ * ⚠️ 안쪽부터 푼다 — 바깥 판정이 **실제 내용**으로 이뤄져야 한다.
+ * @returns 지운 클립 패스 수
+ */
+function mesCut_dropNoopClips(it) {
+    var n = 0, t;
+    try { t = it.typename; } catch (e) { return 0; }
+    if (t !== 'GroupItem') { return 0; }
+    var kids = [];
+    try { for (var i = 0; i < it.pageItems.length; i++) { kids.push(it.pageItems[i]); } } catch (e1) { return 0; }
+    for (var k = 0; k < kids.length; k++) { n += mesCut_dropNoopClips(kids[k]); }
+    var clipped = false;
+    try { clipped = !!it.clipped; } catch (e2) {}
+    if (!clipped) { return n; }
+    var cb = mesCut_clipBounds(it), content = mesCut_contentUnion(it);
+    if (!cb || !content) { return n; }
+    var tol = 0.5;   // pt — 반올림·헤어라인 여유
+    if (content[0] < cb[0] - tol || content[1] > cb[1] + tol
+        || content[2] > cb[2] + tol || content[3] < cb[3] - tol) { return n; }   // 진짜로 자르고 있다 → 둔다
+    var again = [];
+    try { for (var j = 0; j < it.pageItems.length; j++) { again.push(it.pageItems[j]); } } catch (e3) { return n; }
+    for (var q = 0; q < again.length; q++) {
+        var isClip = false;
+        try { isClip = !!again[q].clipping; } catch (e4) {}
+        if (isClip) { try { again[q].remove(); n++; } catch (e5) {} }
+    }
+    try { it.clipped = false; } catch (e6) {}
+    return n;
+}
+
+/**
+ * ★재단할 수 없는 **축퇴 조각**을 칼선에서 걷어낸다 (2026-09-04 실물 발견).
+ *
+ * 실물 판 실측: 칼선 131개 중 **15개가 `0.01 x 0 mm` 짜리 3점 조각**이었다. 전부 컴파운드 패스
+ * 안쪽 서브패스라 눈에도 안 띄고 `closed=true` 라 "닫혀 있는가" 검사도 통과한다.
+ * 재단기는 이걸 만나면 **제자리에서 칼을 내렸다 올린다** — 용준님이 걱정한 "쪼개지면 재단 중 문제"가 이것이다.
+ *
+ * 래스터 경로에는 이미 파편 제거가 있다(`minCutPx` = 조각 넓이의 1%). **벡터 경로에만 없었다.**
+ * 여기서 같은 일을 한다 — 다만 기준은 넓이 비율이 아니라 **물리 치수**다(칼날이 못 들어가는 크기).
+ *
+ * ⚠️ 임계는 실측으로 정했다 — 축퇴 조각 0.01mm vs **실제 요소 최소 3.98mm**. 그 사이가 크게 비어
+ *    있어서 0.2mm 는 어느 쪽으로도 오판하지 않는다(실제 요소보다 20배 작다).
+ * ⚠️ 글자를 합치지 않는다 — 조각마다 칼선이 따로 나오는 것은 **정상**이다(2026-09-04 용준님 정정).
+ *    없애야 하는 것은 "떨어진 요소"가 아니라 "자를 수 없는 부스러기"다.
+ */
+var MESCUT_MIN_CUT_MM = 0.2;
+
+function mesCut_dropCutSlivers(flat) {
+    var PT = MESCUT_PT_PER_MM, lim = MESCUT_MIN_CUT_MM * PT, dropped = 0;
+    function degenerate(p) {
+        var b;
+        try { b = p.geometricBounds; } catch (e) { return false; }
+        if (!b) return false;
+        return (Math.min(b[2] - b[0], b[1] - b[3]) < lim);
+    }
+    var keep = [];
+    for (var i = 0; i < flat.length; i++) {
+        var it = flat[i], t;
+        try { t = it.typename; } catch (e0) { continue; }
+        if (t === 'CompoundPathItem') {
+            var subs = [];
+            try { for (var q = 0; q < it.pathItems.length; q++) subs.push(it.pathItems[q]); } catch (e1) {}
+            for (var k = 0; k < subs.length; k++) {
+                if (!degenerate(subs[k])) continue;
+                try { subs[k].remove(); dropped++; } catch (e2) {}
+            }
+            var left = 0;
+            try { left = it.pathItems.length; } catch (e3) { left = 0; }
+            if (!left) { try { it.remove(); } catch (e4) {} continue; }
+            keep.push(it);
+        } else if (t === 'PathItem') {
+            if (degenerate(it)) { try { it.remove(); dropped++; } catch (e5) {} continue; }
+            keep.push(it);
+        } else {
+            keep.push(it);
+        }
+    }
+    return { flat: keep, dropped: dropped };
+}
+
 function mesCut_vecSilhouette(doc, items, cutLayer, offsetMm, fillClosed, styleMode) {
     var i, s;
     var dups = [];
@@ -959,6 +1053,9 @@ function mesCut_vecSilhouette(doc, items, cutLayer, offsetMm, fillClosed, styleM
     for (i = 0; i < dups.length; i++) {
         mesCut_vecOutlineText(dups[i]);
         dups[i] = mesCut_vecCropClip(doc, dups[i]);
+        // ★중첩 클립 정리 — Crop 이 못 푼 **아무것도 안 자르는** 클립을 걷어낸다.
+        //   안 하면 굳힌(PDF) 조각의 사각 클립이 실루엣이 되어 칼선이 바깥 상자로 나간다.
+        try { mesCut_dropNoopClips(dups[i]); } catch (eNC) {}
         mesCut_normalizeCopy(dups[i]);   // ★잠금 해제·숨김 제거·잉크 0 제거 — 안 하면 실루엣이 조용히 틀린다
     }
     doc.selection = null;
@@ -1002,8 +1099,13 @@ function mesCut_vecSilhouette(doc, items, cutLayer, offsetMm, fillClosed, styleM
     var sel2 = doc.selection;
     for (i = 0; sel2 && i < sel2.length; i++) unwrap(sel2[i], 0);
 
+    // ★자를 수 없는 부스러기를 걷어낸다 — **모든 경로에서** 한다(판짜기·단품·도련 다 나쁘다).
+    var sv = mesCut_dropCutSlivers(flat);
+    flat = sv.flat;
+
+
     var mag = mesCut_magenta();
-    var out = { n: 0, anchors: 0, err: null };
+    var out = { n: 0, anchors: 0, err: null, dropped: sv.dropped };
     function style(it) {
         var t;
         try { t = it.typename; } catch (e) { return; }
@@ -2519,6 +2621,252 @@ function mesCut_cleanPlaced(n) {
     }
 }
 
+/* == 굳히기를 **판당 1회**로 (2026-09-03) ==================================
+ * ★증상: 회전만 걸린 판짜기가 실사용 불가로 느려졌다. 0.28.0 이 「회전만 있어도 PDF 경로」로
+ *   바꾼 뒤 조각당 3.05초가 붙어, 20조각이면 적용 단계만 1분이다.
+ *
+ * ★원인은 PDF 가 아니라 **조각마다 임시 문서를 만드는 것**이다. `nestBakeAll` 이 굽기에서
+ *   이미 실측해 둔 분해와 그대로 맞아떨어진다:
+ *       문서 생성+닫기 2,000ms · 활성 전환 338ms x3 · 문서 간 복제 183ms  = 약 3,200ms
+ *       (scaleAsPlaced 실측 = PDF 1,026 + 배치·확대 877 + 임베드 1,148 = 3,051ms)
+ *   즉 굳히기 자체가 비싼 게 아니라 **조각 수에 비례하는 문서 관리**가 비싸다.
+ *
+ * ★굳히기는 없앨 수 없다 — 일러에는 마스크를 데리고 변형하는 스크립트 경로가 아예 없고
+ *   (mesCut_scaleAsPlaced 주석의 전수 시험), 마스크 유무는 DOM 으로 알 수 없다(그래서 픽스처가
+ *   크기가 아니라 **색**으로 판정한다). 그리고 회전은 **임베드 앞**에서만 안전하다 —
+ *   임베드 뒤 native 아트를 돌리면 마스크가 제자리에 남아 다시 깨진다.
+ *
+ * => 그래서 **조각 수와 무관하게** 만든다. 회전 값은 {0,90,180,270} 네 가지뿐이므로:
+ *     (1) 조각 전부를 임시 문서 **하나**에 격자로 모아 PDF 를 **한 번** 굳힌다(문서 왕복 1회)
+ *     (2) 판에서 그 PDF 를 **회전 값마다 한 번** 배치→확대→회전→임베드 한다(최대 4회)
+ *     (3) 임베드된 격자를 조각별로 **나눠** 두고, 배치마다 그것을 `duplicate` 한다(ms)
+ *   비용 = 1x PDF + (쓰인 회전 수) x (배치+임베드). 조각 수에 안 붙는다.
+ *
+ * ⚠️ 결과물은 오늘과 **같은 것**이다 — 같은 `preserveEditability=false` 평탄화를 거치고,
+ *    회전도 같은 자리(임베드 앞)에서 걸린다. 새 판정·휴리스틱을 넣지 않았다.
+ * ⚠️ 나누기가 실패하면(평탄화가 페이지를 통째로 뭉갠 경우 등) **조각별 옛 경로로 되돌린다.**
+ *    조용히 틀린 자리에 놓는 것이 가장 나쁘므로 배정은 **개수·위치·크기 셋 다** 확인한다.
+ */
+
+/** 격자 셀 사이 여백 — 평탄화가 이웃 조각을 한 덩어리로 물지 않게 띄운다 */
+var MESCUT_HARDEN_GAP_MM = 20;
+
+/**
+ * ★게이트 전용 스위치 — true 면 격자 마스터를 안 만들고 **조각별 옛 경로**로만 돈다.
+ * 왜 있나: ① 폴백 경로가 살아 있는지 게이트가 실제로 확인해야 한다(안 쓰이는 코드는 썩는다)
+ *          ② 개선폭을 추정이 아니라 **A/B 실측**으로 말할 수 있어야 한다.
+ * ⚠️ 패널은 이 값을 절대 건드리지 않는다. `cut:e2e` 만 쓴다.
+ */
+var MESCUT_HARDEN_OFF = false;
+
+/**
+ * (1) 조각 전부를 임시 문서 하나에 격자로 모아 **PDF 한 번** 굳힌다.
+ * @returns {pdf, w, h, cells:{idx:{cx,cy,w,h}}} — 좌표는 격자 좌하단 원점 pt. 실패 시 null.
+ */
+function mesCut_hardenGrid(srcDoc, idxList) {
+    var PT = MESCUT_PT_PER_MM;
+    var GAP = MESCUT_HARDEN_GAP_MM * PT;
+    var n = idxList.length, i;
+    if (!n) return null;
+    var cw = [], ch = [];
+    for (i = 0; i < n; i++) {
+        var b = null;
+        try { b = mesCut_inkBounds(MESCUT_NEST_ITEMS[idxList[i]]); } catch (e0) {}
+        if (!b) return null;
+        cw.push((b[2] - b[0]) + GAP);
+        ch.push((b[1] - b[3]) + GAP);
+        if (cw[i] > MESCUT_CANVAS_MAX_PT || ch[i] > MESCUT_CANVAS_MAX_PT) return null;
+    }
+    // 행 줄바꿈 = `nestBakeAll` 과 **같은 규칙**(한 줄이 캔버스 한계에 닿으면 다음 줄).
+    // ⚠️ 재는 패스와 놓는 패스가 **같은 조건**을 써야 한다 — 다르면 조각이 아트보드 밖으로 나간다.
+    var totW = 0, totH = 0, rowW = 0, rowH = 0;
+    for (i = 0; i < n; i++) {
+        if (rowW > 0 && rowW + cw[i] > MESCUT_CANVAS_MAX_PT) {
+            if (rowW > totW) totW = rowW;
+            totH += rowH; rowW = 0; rowH = 0;
+        }
+        rowW += cw[i];
+        if (ch[i] > rowH) rowH = ch[i];
+    }
+    if (rowW > totW) totW = rowW;
+    totH += rowH;
+    if (!(totW > 0) || !(totH > 0) || totH > MESCUT_CANVAS_MAX_PT) return null;
+
+    var pdfPath = Folder.temp.fsName.replace(/\\/g, '/') + '/mes_cut_harden.pdf';
+    var tmp = null, cells = {};
+    try {
+        tmp = mesCut_newDocMM(totW, totH);
+        var lay = tmp.layers[0];
+        app.activeDocument = srcDoc;                 // ★전환 1 — 문서 간 복제는 원본이 active 여야 한다
+        var cps = [];
+        for (i = 0; i < n; i++) {
+            var cp = null;
+            try { cp = MESCUT_NEST_ITEMS[idxList[i]].duplicate(lay, ElementPlacement.PLACEATEND); } catch (eD) {}
+            cps.push(cp);
+        }
+        app.activeDocument = tmp;                    // ★전환 2 — 이후로는 임시 문서 안에서만 논다
+        var curX = 0, curY = totH, rowMax = 0;
+        for (i = 0; i < n; i++) {
+            if (!cps[i]) throw new Error('복제 실패 ' + idxList[i]);
+            if (curX > 0 && curX + cw[i] > MESCUT_CANVAS_MAX_PT) { curX = 0; curY -= rowMax; rowMax = 0; }
+            var b2 = mesCut_inkBounds(cps[i]);
+            if (!b2) throw new Error('경계 없음 ' + idxList[i]);
+            var w2 = b2[2] - b2[0], h2 = b2[1] - b2[3];
+            // 셀 **중앙**에 놓는다 — 나눌 때 중심으로 배정하므로 여백이 대칭이어야 한다
+            var tx = curX + (cw[i] - w2) / 2, ty = curY - (ch[i] - h2) / 2;
+            try { cps[i].translate(tx - b2[0], ty - b2[1]); } catch (eT) {}
+            cells[String(idxList[i])] = { cx: tx + w2 / 2, cy: ty - h2 / 2, w: w2, h: h2 };
+            curX += cw[i];
+            if (ch[i] > rowMax) rowMax = ch[i];
+        }
+        tmp.artboards[0].artboardRect = [0, totH, totW, 0];
+        var po = new PDFSaveOptions();
+        po.compatibility = PDFCompatibility.ACROBAT5;
+        po.preserveEditability = false;              // ★핵심 — 편집성을 버리고 **겉모습**을 굳힌다
+        po.generateThumbnails = false;
+        tmp.saveAs(new File(pdfPath), po);
+        tmp.close(SaveOptions.DONOTSAVECHANGES); tmp = null;
+    } catch (e) {
+        if (tmp) { try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) {} }
+        try { app.activeDocument = srcDoc; } catch (e3) {}
+        return null;
+    }
+    try { app.activeDocument = srcDoc; } catch (e4) {}
+    return { pdf: pdfPath, w: totW, h: totH, cells: cells };
+}
+
+/**
+ * 굳힌 격자에서 조각 후보 자식을 꺼낸다 — 페이지 상자 클립 래퍼를 벗긴다.
+ * ⚠️ `need` 를 받아 **필요 이상 내려가지 않게** 한다. 조각이 하나뿐일 때 계속 내려가면
+ *    그 조각의 내부 그룹까지 풀어 버려 한 조각이 여러 개로 보인다.
+ */
+function mesCut_hardenKids(item, need) {
+    var t;
+    try { t = item.typename; } catch (e) { return []; }
+    if (t !== 'GroupItem') return [item];
+    var kids = [];
+    try {
+        for (var i = 0; i < item.pageItems.length; i++) {
+            var c = item.pageItems[i];
+            try { if (c.clipping || c.hidden) continue; } catch (e1) {}
+            kids.push(c);
+        }
+    } catch (e2) { return []; }
+    if (kids.length === 1 && kids.length < need) {
+        var inner = mesCut_hardenKids(kids[0], need);
+        if (inner.length > 1) return inner;
+    }
+    return kids;
+}
+
+/**
+ * (3) 임베드된 격자 마스터를 조각별 그룹으로 나눈다.
+ *
+ * 좌표 사상 = 격자 중심 기준 -> x배율 -> 회전 -> 마스터 상자 중심.
+ *   `embed()` 가 아트보드 상자를 되살리므로 마스터 상자의 **중심**이 격자 중심에 대응한다.
+ *   회전은 90도 배수뿐이라 cos/sin 이 정수여서 부동소수 오차가 없다.
+ *
+ * ⚠️ 배정을 **세 번** 확인한다 — 개수(자식이 조각 수 이상) · 위치(최근접 셀) · 크기(묶은 뒤 셀 크기).
+ *    하나라도 어긋나면 null 을 돌려 조각별 옛 경로로 보낸다. 틀린 자리에 조용히 놓는 것보다
+ *    느린 편이 낫다.
+ * @returns {idx: GroupItem} 또는 null
+ */
+function mesCut_hardenSplit(destLayer, master, grid, rot, pct) {
+    var gb = null;
+    try { gb = master.visibleBounds; } catch (e) { return null; }
+    if (!gb) return null;
+    var k = pct / 100;
+    var swap = (Math.abs((rot || 0) % 180) === 90);
+    var expW = (swap ? grid.h : grid.w) * k, expH = (swap ? grid.w : grid.h) * k;
+    // 상자가 기대와 다르면 사상 전제가 깨진 것이다
+    if (Math.abs((gb[2] - gb[0]) - expW) > expW * 0.02 + 1) return null;
+    if (Math.abs((gb[1] - gb[3]) - expH) > expH * 0.02 + 1) return null;
+    var gcx = (gb[0] + gb[2]) / 2, gcy = (gb[1] + gb[3]) / 2;
+    var th = -(rot || 0) * Math.PI / 180;            // 일러는 CCW 양수 · 호출부와 같은 규칙
+    var cs = Math.cos(th), sn = Math.sin(th);
+    var idxs = [], want = [], size = [], key, i, j;
+    for (key in grid.cells) {
+        if (!grid.cells.hasOwnProperty(key)) continue;
+        var c = grid.cells[key];
+        var ax = (c.cx - grid.w / 2) * k, ay = (c.cy - grid.h / 2) * k;
+        idxs.push(key);
+        want.push([gcx + (ax * cs - ay * sn), gcy + (ax * sn + ay * cs)]);
+        size.push([(swap ? c.h : c.w) * k, (swap ? c.w : c.h) * k]);
+    }
+    if (!idxs.length) return null;
+    var kids = mesCut_hardenKids(master, idxs.length);
+    if (kids.length < idxs.length) return null;      // 평탄화가 페이지를 통째로 뭉갰다
+    var buckets = [];
+    for (i = 0; i < idxs.length; i++) buckets.push([]);
+    for (i = 0; i < kids.length; i++) {
+        var kb = mesCut_inkBounds(kids[i]);
+        if (!kb) continue;
+        var kx = (kb[0] + kb[2]) / 2, ky = (kb[1] + kb[3]) / 2;
+        var best = -1, bd = 0;
+        for (j = 0; j < idxs.length; j++) {
+            var dx = kx - want[j][0], dy = ky - want[j][1];
+            var d = dx * dx + dy * dy;
+            if (best < 0 || d < bd) { best = j; bd = d; }
+        }
+        buckets[best].push(kids[i]);
+    }
+    var made = [], map = {};
+    try {
+        for (i = 0; i < idxs.length; i++) {
+            if (!buckets[i].length) throw new Error('빈 조각 ' + idxs[i]);
+            var g = destLayer.groupItems.add();
+            made.push(g);
+            for (j = 0; j < buckets[i].length; j++) buckets[i][j].move(g, ElementPlacement.PLACEATEND);
+            var gib = mesCut_inkBounds(g);
+            if (!gib) throw new Error('묶음 경계 없음 ' + idxs[i]);
+            // 크기 확인 — 옆 조각이 섞여 들어오면 여기서 걸린다
+            var tol = Math.max(size[i][0], size[i][1]) * 0.05 + 1;
+            if (Math.abs((gib[2] - gib[0]) - size[i][0]) > tol) throw new Error('폭 불일치 ' + idxs[i]);
+            if (Math.abs((gib[1] - gib[3]) - size[i][1]) > tol) throw new Error('높이 불일치 ' + idxs[i]);
+            map[idxs[i]] = g;
+        }
+    } catch (eS) {
+        for (i = 0; i < made.length; i++) { try { made[i].remove(); } catch (eR) {} }
+        return null;
+    }
+    return map;
+}
+
+/**
+ * (2) 판 문서에서 굳힌 격자를 **회전 값마다 한 번** 배치·확대·회전·임베드하고 조각별로 나눈다.
+ * ⚠️ 순서는 배치 -> 확대 -> 회전 -> 임베드 다. 확대·회전은 반드시 `embed()` **앞**이어야 한다 —
+ *    뒤에서 하면 native 아트를 직접 변형하는 것이라 불투명도 마스크가 제자리에 남는다.
+ * ⚠️ 빈 임시 레이어에서 작업한다 — 판에는 이미 다른 개체가 있어 `pageItems[0]` 이 남의 것을 집는다.
+ * @returns {layer, byRot:{rot:{idx:GroupItem}}, n} — 하나도 못 만들면 null
+ */
+function mesCut_hardenMasters(doc, grid, rots, pct) {
+    var lay = null;
+    try { lay = doc.layers.add(); lay.name = '__mes_harden'; } catch (eL) { return null; }
+    var byRot = {}, n = 0;
+    for (var r = 0; r < rots.length; r++) {
+        var rot = rots[r] || 0;
+        var stage = null, got = null;
+        try {
+            stage = doc.layers.add();
+            stage.name = '__mes_harden_stage';
+            doc.activeLayer = stage;
+            var pl = doc.placedItems.add();
+            pl.file = new File(grid.pdf);
+            if (pct !== 100) pl.resize(pct, pct, true, true, true, true, pct);
+            if (rot) pl.rotate(-rot);                // Konva CW -> 일러 CCW (조각별 경로와 같은 규칙)
+            pl.embed();
+            if (stage.pageItems.length !== 1) throw new Error('임시 레이어 개체 ' + stage.pageItems.length);
+            got = stage.pageItems[0];
+        } catch (eP) { got = null; }
+        var map = got ? mesCut_hardenSplit(lay, got, grid, rot, pct) : null;
+        if (map) { byRot[String(rot)] = map; n++; }
+        // 임시 레이어를 통째로 치운다 — 나눈 그룹은 이미 `lay` 로 옮겨졌고 남은 것은 클립 패스뿐이다
+        if (stage) { try { stage.remove(); } catch (eR) {} }
+    }
+    if (!n) { try { lay.remove(); } catch (eR2) {} return null; }
+    return { layer: lay, byRot: byRot, n: n };
+}
+
 /**
  * 배치 결과를 **새 문서**에 렌더링. params 파일 형식(UTF-8):
  *   S <sheetIdx> <Wmm> <Hmm>            시트 시작
@@ -2617,6 +2965,31 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
     //   배치가 중단되고 도련이 안 만들어졌다. finally 에서 반드시 되돌린다.
     var silent = mesCut_silentBegin();
     try {
+        // ★굳히기 준비 — **판당 1회**(위 mesCut_hardenGrid 주석). 조각마다 임시 문서를 만드는 게
+        //   조각당 3초의 정체였다. 회전·배율이 걸린 조각이 하나도 없으면 아예 만들지 않는다
+        //   = 종전 경로와 완전히 같다(회귀 0).
+        var hardenGrid = null, nFast = 0, nMasters = 0, hardenWhy = '';
+        // ★자를 수 없는 부스러기를 걷어낸 조각 **번호** — 화면이 어느 조각인지 말할 수 있어야 한다
+        var vecDrop = [];
+        var needIdx = [], seenIdx = {}, si, sj;
+        for (si = 0; si < sheets.length; si++) {
+            for (sj = 0; sj < sheets[si].items.length; sj++) {
+                var itN = sheets[si].items[sj];
+                if (!(resizePct !== 100 || itN.rot)) continue;
+                if (seenIdx[String(itN.idx)]) continue;
+                seenIdx[String(itN.idx)] = 1; needIdx.push(itN.idx);
+            }
+        }
+        if (needIdx.length && MESCUT_HARDEN_OFF) hardenWhy = 'off';
+        else if (needIdx.length) {
+            hardenGrid = mesCut_hardenGrid(srcDoc, needIdx);
+            if (!hardenGrid) hardenWhy = 'grid';
+            else if (hardenGrid.w * (resizePct / 100) > MESCUT_CANVAS_MAX_PT
+                || hardenGrid.h * (resizePct / 100) > MESCUT_CANVAS_MAX_PT) {
+                // 확대한 격자가 일러 캔버스에 안 들어간다 → 조각별 옛 경로로(배율이 클 때만 생긴다)
+                hardenGrid = null; hardenWhy = 'canvas';
+            }
+        }
         for (var s = 0; s < sheets.length; s++) {
             var sh = sheets[s];
             var doc = mesCut_newDocMM(sh.w * MESCUT_PT_PER_MM, sh.h * MESCUT_PT_PER_MM);
@@ -2629,12 +3002,38 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
             MESCUT_NEST_DOCS.push(doc);
             made++;
 
+            // ★회전 값마다 마스터 하나 — 배치·임베드가 **조각 수와 무관하게** 최대 4회로 끝난다.
+            //   여기(문서 생성 직후)에서 만드는 이유 = `doc` 가 이미 active 라 전환이 안 붙는다.
+            var masters = null;
+            if (hardenGrid) {
+                var rotSeen = {}, rotList = [], ra;
+                for (ra = 0; ra < sh.items.length; ra++) {
+                    var itR = sh.items[ra];
+                    if (!(resizePct !== 100 || itR.rot)) continue;
+                    var rk = String(itR.rot || 0);
+                    if (rotSeen[rk]) continue;
+                    rotSeen[rk] = 1; rotList.push(itR.rot || 0);
+                }
+                if (rotList.length) {
+                    masters = mesCut_hardenMasters(doc, hardenGrid, rotList, resizePct);
+                    if (masters) nMasters += masters.n;
+                    else if (!hardenWhy) hardenWhy = 'split';
+                }
+            }
+
             // ★★ 문서 간 duplicate 는 **원본이 active 일 때만** 동작한다(예외 없이 조용히 실패).
             //     그래서 원본을 **한 번만** 켜고 이 시트의 조각을 전부 복제한다.
             app.activeDocument = srcDoc;
-            var copies = [];
+            var copies = [], fromMaster = [];
             for (var a = 0; a < sh.items.length; a++) {
-                var src = MESCUT_NEST_ITEMS[sh.items[a].idx], cp = null;
+                var itA = sh.items[a];
+                var mmap = masters ? masters.byRot[String(itA.rot || 0)] : null;
+                if (mmap && mmap[String(itA.idx)]) {
+                    // ★마스터가 대신한다 — 여기서 복제하지 않는다(문서 간 복제 183ms/조각을 안 낸다)
+                    copies.push(null); fromMaster.push(true); continue;
+                }
+                fromMaster.push(false);
+                var src = MESCUT_NEST_ITEMS[itA.idx], cp = null;
                 if (src) { try { cp = src.duplicate(artLayer, ElementPlacement.PLACEATBEGINNING); } catch (eC) {} }
                 copies.push(cp);
             }
@@ -2642,8 +3041,22 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
             app.activeDocument = doc;
             for (var b = 0; b < copies.length; b++) {
                 var copy = copies[b];
-                if (!copy) continue;
                 var it2 = sh.items[b], rotDone = false;
+                // ★굳힌 격자에서 조각을 꺼내 온다 — 확대·회전이 이미 걸려 있어 이동만 남는다(ms).
+                if (fromMaster[b]) {
+                    var mi = masters.byRot[String(it2.rot || 0)][String(it2.idx)];
+                    try { copy = mi.duplicate(artLayer, ElementPlacement.PLACEATBEGINNING); } catch (eMD) { copy = null; }
+                    if (copy) { copies[b] = copy; nPlaced++; nFast++; rotDone = true; }
+                    else {
+                        // 마스터 복제 실패 — 원본에서 다시 복제해 **조각별 옛 경로**로 되돌린다
+                        app.activeDocument = srcDoc;
+                        try { copy = MESCUT_NEST_ITEMS[it2.idx].duplicate(artLayer, ElementPlacement.PLACEATBEGINNING); }
+                        catch (eMR) { copy = null; }
+                        app.activeDocument = doc;
+                        copies[b] = copy; fromMaster[b] = false;
+                    }
+                }
+                if (!copy) continue;
                 // ★파일 좌표(F) 아트를 저장 좌표(S) 크기로 — **회전·이동보다 먼저** 해야 한다.
                 //   나중에 하면 이미 잡아 둔 잉크 경계가 어긋나 배치가 밀린다.
                 // ★확대는 `resize` 가 아니라 **PDF 배치**로 한다 — resize 는 불투명도 마스크를
@@ -2652,7 +3065,9 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                 // ★회전만 걸려도(배율 1배) 이 경로를 탄다 — `rotate` 도 `resize` 와 똑같이 마스크를
                 //   제자리에 두고 개체만 돌린다(2026-08-31 실측: 1:1 90도 회전에 배경 절반이 회색).
                 //   그래서 **변형이 있으면 무조건** PDF 로 굳혀서 한다. 대가는 조각당 수 초.
-                if (resizePct !== 100 || it2.rot) {
+                // ★이 경로는 이제 **폴백**이다 — 정상 경로는 위의 격자 마스터(조각 수와 무관)이고,
+                //   여기 오는 것은 격자·나누기가 실패한 경우뿐이다(`hardenwhy` 로 사유를 돌려준다).
+                if (!rotDone && (resizePct !== 100 || it2.rot)) {
                     // ★사본을 **먼저** 치운다. 임시 문서를 만드는 순간 이 참조가 무효가 되므로
                     //   나중에 지우려 하면 실패하고, 확대 안 된 사본이 판에 그대로 남아 겹친다.
                     try { copy.remove(); } catch (eRm) {}
@@ -2682,6 +3097,11 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                 items++;
             }
 
+            // ★마스터를 치운다 — 아트보드 맞추기(`unionOf(topItems)`)가 이걸 세면 판이 커진다.
+            //   여기서 치우는 이유 = 이 아래(칼선·도련·아트보드·돔보)는 전부 `copies` 만 보므로
+            //   가장 이른 안전 지점이다.
+            if (masters) { try { masters.layer.remove(); } catch (eML) {} masters = null; }
+
             // 조각별 칼선 — 재단은 시트가 아니라 **조각 단위**라 이게 없으면 떼어낼 수 없다.
             // ★칼선 방식과 도련은 **독립**이다 (2026-08-06 근본수정).
             //   전에는 도련 전체가 `if (useVec)` 안에 있었다. 그래서 벡터가 안 되는 아트
@@ -2698,7 +3118,12 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                 for (var vi = 0; vi < copies.length; vi++) {
                     if (!copies[vi]) continue;
                     // 조각마다 따로 부른다 — 한꺼번에 합집합하면 **조각끼리 이어질 수 있다**(오프셋 ≥ 간격/2).
-                    try { mesCut_vecSilhouette(doc, [copies[vi]], vcl, vecOffsetMm, vecFillClosed); } catch (eVS) {}
+                    // ★마지막 인자 = 「조각 하나 = 칼선 하나」. 판짜기에서만 켠다(단품·도련은 낱개가 목적).
+                    try {
+                        var vres = mesCut_vecSilhouette(doc, [copies[vi]], vcl, vecOffsetMm, vecFillClosed);
+                        // ★부스러기를 걷어낸 조각은 **번호로** 알린다 — 조용히 지우지 않는다.
+                        if (vres && vres.dropped) vecDrop.push(sh.items[vi].idx + 1);
+                    } catch (eVS) {}
                 }
                 try { doc.selection = null; } catch (eSel) {}
             } else if (sh.segs && sh.segs.length) {
@@ -2844,8 +3269,13 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
         //   실물은 EPS 바운딩박스와 정확히 일치한다(1030×2060mm). 우리 아트보드는 배치 bbox +
         //   돔보 여백으로 줄어들므로 시트 프리셋(예 1370)을 쓰면 이름과 파일이 어긋난다.
         mesCut_cleanPlaced(MESCUT_NEST_ITEMS.length);
+        if (hardenGrid) { try { var hf = new File(hardenGrid.pdf); if (hf.exists) hf.remove(); } catch (eHF) {} }
+        // ★fast = 격자 마스터로 처리한 배치 수 · masters = 만든 마스터 수(= 쓰인 회전 값 수)
+        //   hardenwhy = 격자·나누기가 실패해 조각별 옛 경로로 떨어진 사유. 조용히 느려지지 않게 싣는다.
         return 'ok;sheets=' + made + ';items=' + items + ';dombo=' + dombo
             + ';placed=' + nPlaced + ';placefail=' + nPlaceFail
+            + ';fast=' + nFast + ';masters=' + nMasters + (hardenWhy ? (';hardenwhy=' + hardenWhy) : '')
+            + (vecDrop.length ? (';vecdrop=' + vecDrop.join(',')) : '')
             + ';sheetw=' + MESCUT_LAST_SHEET_W + ';sheeth=' + MESCUT_LAST_SHEET_H
             + ';bleedfail=' + blFail + ';bleedclip=' + blClip + ';bleedpx=' + blPix + ';bleedsolid=' + blSolid
             + ';bleedlegacy=' + blLegacy + (blFail ? (';bleedcode=' + blCode) : '')

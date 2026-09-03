@@ -682,6 +682,20 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   })
   ok('최소 폭에서 가장 긴 방식이 안 잘림', selFit.w >= selFit.need,
     `'${selFit.longest}' 필요 ${selFit.need}px · 실제 ${selFit.w}px @${min[2]}px`)
+  // ★헤더가 접히면 **세로로 쌓여** 읽을 수 없다 (2026-09-04 용준님: "재단선이 세로로 있다").
+  //   `table-layout: fixed` 라 열이 헤더 글자보다 좁으면 조용히 줄바꿈된다 — 눈으로만 보이고
+  //   기능은 멀쩡해서 아무 게이트도 안 잡았다. 폭을 다시 줄이는 변경이 오면 여기서 걸린다.
+  //   (.fhdr 에 white-space:nowrap 이 있으므로 넘치면 scrollWidth 로 드러난다)
+  const hdrFit = await p6.evaluate(() => {
+    const bad = []
+    document.querySelectorAll('table.fin td.fhdr').forEach((td) => {
+      if (td.scrollWidth > td.clientWidth + 1) {
+        bad.push((td.textContent || '?') + ' ' + td.scrollWidth + '>' + td.clientWidth)
+      }
+    })
+    return bad
+  })
+  ok('최소 폭에서 표 헤더가 안 접힘', hdrFit.length === 0, hdrFit.join(' · '))
   ok('16 콘솔 에러 0', p6.__errs.length === 0, p6.__errs.join(' | '))
   await p6.close()
 }

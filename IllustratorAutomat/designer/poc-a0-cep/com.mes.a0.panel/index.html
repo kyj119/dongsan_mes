@@ -179,7 +179,10 @@
         <div class="row" id="annotKwRow">
           <input id="annot" type="text" placeholder="내용(한글) · 식별번호·후가공·수량 자동결합" class="grow" />
         </div>
-        <div class="row"><span class="cfg" id="annotHint" title="주석 = 내용-식별번호-후가공-수량 자동결합">여백 3cm 이상인 변만 선택 가능</span></div>
+        <!-- (2026-09-04 제거) 「여백 3cm 이상인 변만 선택 가능」 행 — 같은 말이 바로 위 힌트에
+             이미 있고([1건 등록] 바로 위라 버튼을 밀어냈다), 규칙 자체는 화면이 아니라 **동작**으로
+             알려 준다: 여백이 3cm 미만이면 main.js `updateAnnotGates` 가 그 변의 주석 체크를
+             disable + 흐리게 한다. 규칙은 그대로 살아 있다(호스트도 mes-a0-host.jsx 에서 생략). -->
       </div>
 
       <!-- 액션 동사 통일(2026-07-30 P3) — 세 탭의 최종 결과가 모두 같다(Z: 등록 → 에이전트 ingest

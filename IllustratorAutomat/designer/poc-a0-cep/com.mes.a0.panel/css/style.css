@@ -75,15 +75,20 @@ button.cancel:hover { background: #5a4c33; border-color: #d9a84a; }
    ⚠️ 폭은 **첫 행(헤더)** 에서만 읽힌다 — 본문 td 에 width 를 줘도 무시된다. */
 table.fin { width: 100%; border-collapse: collapse; table-layout: fixed; }
 table.fin tr:first-child td:nth-child(1) { width: 13px; }   /* 변 이름 */
-table.fin tr:first-child td:nth-child(3) { width: 32px; }   /* 여백cm */
-table.fin tr:first-child td:nth-child(4) { width: 24px; }   /* 재단선 = 체크 1개 */
+/* ★열 폭은 **체크박스가 아니라 헤더 글자**가 정한다 (2026-09-04 용준님: "재단선이 세로로 있다").
+   `table-layout: fixed` 라 열이 헤더보다 좁으면 조용히 줄바꿈돼 「재/단/선」으로 쌓인다.
+   10px 한글 1자 ≈ 10px + td 좌우 패딩 3+3 → 3자 헤더는 **최소 30px 콘텐츠 폭**이 필요하다.
+   ⚠️ 여기서 넓힌 만큼 「방식」 열이 줄어든다 — 근거는 panel:smoke 두 항목이다
+      (가장 긴 방식이 안 잘리는가 · 헤더가 안 접히는가). 폭을 만질 땐 둘 다 통과시킬 것. */
+table.fin tr:first-child td:nth-child(3) { width: 38px; }   /* 여백cm — 4자(스모크 실측 37px) */
+table.fin tr:first-child td:nth-child(4) { width: 32px; }   /* 재단선 — 3자(체크는 1개지만 헤더가 기준) */
 table.fin tr:first-child td:nth-child(5) { width: 38px; }   /* 펀칭 — 숫자를 눌러 고르는 칸이라 좁으면 못 쓴다 */
-table.fin tr:first-child td:nth-child(6) { width: 20px; }   /* 주석 */
+table.fin tr:first-child td:nth-child(6) { width: 26px; }   /* 주석 — 2자 */
 /* 2열(방식)은 폭을 주지 않는다 = 남는 폭을 전부 가져간다 */
 table.fin td { padding: 2px 2px; vertical-align: middle; }
 table.fin td.fl { color: #b0b0b0; width: 13px; text-align: center; }
 table.fin td.fu { color: #888; width: 22px; }
-table.fin td.fhdr { color: #7a7a7a; font-size: 10px; text-align: center; padding: 1px 3px; }
+table.fin td.fhdr { color: #7a7a7a; font-size: 10px; text-align: center; padding: 1px 3px; white-space: nowrap; }
 table.fin select.finM { width: 100%; }
 table.fin input.finCm { width: 28px; }
 table.fin input.finMark { margin: 0; }
