@@ -8,6 +8,18 @@ import type { HonoEnv } from '../types/env'
 
 interface RolePerm { access: Set<string>; edit: Set<string> }
 let _cache: Map<string, RolePerm> | null = null
+let _cacheBuiltAt = 0
+// 캐시는 isolate 별 모듈 전역이라 권한 저장(routes/permissions.ts)의 invalidate 가 다른 isolate 에는 닿지 않는다.
+// 짧은 TTL 로 전 isolate 가 늦어도 1분 안에 새 매트릭스를 본다 (2026-09-03).
+const CACHE_TTL_MS = 60_000
+
+async function cachedPerms(db: D1Database): Promise<Map<string, RolePerm>> {
+  if (!_cache || Date.now() - _cacheBuiltAt > CACHE_TTL_MS) {
+    _cache = await buildCache(db)
+    _cacheBuiltAt = Date.now()
+  }
+  return _cache
+}
 
 async function buildCache(db: D1Database): Promise<Map<string, RolePerm>> {
   const { results } = await db
@@ -31,19 +43,18 @@ async function allActivePages(db: D1Database): Promise<Set<string>> {
 
 export async function getAccessiblePages(db: D1Database, role: string): Promise<Set<string>> {
   if (role === 'ADMIN') return allActivePages(db)
-  if (!_cache) _cache = await buildCache(db)
-  return _cache.get(role)?.access || new Set()
+  return (await cachedPerms(db)).get(role)?.access || new Set()
 }
 
 // can_edit=1 인 페이지 집합. ADMIN 은 전체 편집 가능.
 export async function getEditablePages(db: D1Database, role: string): Promise<Set<string>> {
   if (role === 'ADMIN') return allActivePages(db)
-  if (!_cache) _cache = await buildCache(db)
-  return _cache.get(role)?.edit || new Set()
+  return (await cachedPerms(db)).get(role)?.edit || new Set()
 }
 
 export function invalidatePermissionCache(): void {
   _cache = null
+  _cacheBuiltAt = 0
 }
 
 export function requirePagePermission(pageKey: string): MiddlewareHandler<HonoEnv> {
@@ -51,7 +62,11 @@ export function requirePagePermission(pageKey: string): MiddlewareHandler<HonoEn
     const user = c.get('user') as any
     // 비-SPA 초기 페이지 로드: pageAuthMiddleware 가 user 를 set 하지 않음 → 통과.
     // 클라이언트 JS 가 토큰 확인 후 데이터 API 호출 시 다시 권한 검증됨.
-    if (!user?.role) return next()
+    if (!user) return next()
+    // user 는 있는데 role 이 없다 = 내부 사용자 토큰이 아니다(포털·셀프 토큰). 통과시키면 안 된다 (C1).
+    if (!user.role) {
+      return c.json({ success: false, error: '이 페이지에 접근할 권한이 없습니다' }, 403)
+    }
     if (user.role === 'ADMIN') return next()
     const allowed = await getAccessiblePages(c.env.DB, user.role)
     if (!allowed.has(pageKey)) {
@@ -121,7 +136,7 @@ export function requireAccessOrRole(pageKey: string, ...legacyRoles: string[]): 
 export function requireAdminPage(): MiddlewareHandler<HonoEnv> {
   return async (c, next) => {
     const user = c.get('user') as any
-    if (!user?.role) return next()
+    if (!user) return next()
     if (user.role !== 'ADMIN') {
       return c.json({ success: false, error: 'ADMIN 전용 페이지입니다' }, 403)
     }
