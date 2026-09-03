@@ -118,6 +118,25 @@ window.escapeHtml = function(str) {
     .replace(/'/g, '&#039;');
 };
 
+// === XSS Protection: onclick="fn('...')" 처럼 "HTML 속성 안의 JS 문자열" 전용 이스케이프 ===
+// escapeHtml 만으로는 안전하지 않다 — HTML 파서가 속성값의 엔티티를 먼저 디코딩한 뒤
+// 그 결과를 JS 로 컴파일하므로 &#039; 가 살아있는 따옴표가 되어 문자열을 탈출한다.
+// 그래서 ①JS 문자열 이스케이프 → ②HTML 속성 이스케이프 순서여야 한다(순서를 바꾸면 무효).
+window.escapeJsAttr = function(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '\\"')
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+};
+
 // === KST 시간 헬퍼 (전역) — #366 ===
 // 정책: 저장은 UTC(불변·감사 표준), 표시는 항상 한국시간(Asia/Seoul).
 // SQLite 타임스탬프("YYYY-MM-DD HH:MM:SS", tz 표식 없음)를 new Date()로 바로 파싱하면

@@ -193,7 +193,7 @@ function updateFieldVisibility(type) {
                 ? ITEM_CATS.filter(function(c){ return ['MATERIAL','GOODS','ETC'].indexOf(c.category_code) < 0; })
                 : ['수성','UV','솔벤','전사','태극기','간판'].map(function(n){ return { category_name: n }; });
             catEl.innerHTML = '<option value="">선택...</option>'
-                + _prodCats.map(function(c){ return '<option value="' + c.category_name + '">' + c.category_name + '</option>'; }).join('');
+                + _prodCats.map(function(c){ return '<option value="' + escapeHtml(c.category_name) + '">' + escapeHtml(c.category_name) + '</option>'; }).join('');
             var categoryHint = document.getElementById('categoryHint');
             if (categoryHint) { categoryHint.textContent = '출력 품목은 설정 탭에서 소재 등록 시 자동 생성됩니다'; categoryHint.classList.remove('hidden'); }
         }

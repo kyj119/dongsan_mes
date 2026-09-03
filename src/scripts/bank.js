@@ -2156,7 +2156,7 @@
     var sel = document.getElementById('csvAccountId');
     sel.innerHTML = '<option value="">계좌 선택</option>';
     accounts.forEach(function(a) {
-      sel.innerHTML += '<option value="' + a.id + '">' + a.bank_name + ' ' + a.account_number + '</option>';
+      sel.innerHTML += '<option value="' + a.id + '">' + escapeHtml(a.bank_name || '') + ' ' + escapeHtml(a.account_number || '') + '</option>';
     });
     document.getElementById('csvStep1').classList.remove('hidden');
     document.getElementById('csvStep2').classList.add('hidden');

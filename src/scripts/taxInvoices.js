@@ -594,7 +594,7 @@ async function viewDetail(id) {
       + (tiStatusLabels[inv.status] || inv.status) + '</span>';
     var itemRows = items.map(function(it) {
       return '<tr class="border-t">'
-        + '<td class="px-3 py-2">' + (it.item_name || it.description || '-') + '</td>'
+        + '<td class="px-3 py-2">' + escapeHtml(it.item_name || it.description || '-') + '</td>'
         + '<td class="px-3 py-2 text-right">' + fmt(it.supply_amount || it.amount) + '</td>'
         + '<td class="px-3 py-2 text-right">' + fmt(it.tax_amount) + '</td>'
         + '</tr>';
@@ -1441,7 +1441,7 @@ async function searchDirectClient() {
       return;
     }
     resEl.innerHTML = clients.map(function(cl) {
-      var safeName = escapeHtml(cl.client_name || '').replace(/'/g, "\\'");
+      var safeName = escapeJsAttr(cl.client_name || '');
       var brn = cl.business_registration_number ? ' · ' + escapeHtml(cl.business_registration_number) : '';
       return '<div class="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b last:border-0" '
         + 'onclick="selectDirectClient(' + cl.id + ',\'' + safeName + '\')">'

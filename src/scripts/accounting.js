@@ -183,7 +183,7 @@ function accRenderRow(p) {
     '<td class="px-3 py-2 text-left text-gray-500 text-xs">' + escapeHtml(p.created_by_name || '') + '</td>' +
     '<td class="px-2 py-2 text-center whitespace-nowrap">' +
       '<button onclick="accEditPayment(' + p.id + ')" class="text-blue-500 hover:text-blue-700 px-1" title="수정"><i class="fas fa-pen"></i></button>' +
-      '<button onclick="accDeletePayment(' + p.id + ',\'' + (p.client_name || '').replace(/'/g, "\\'") + '\')" class="text-red-400 hover:text-red-600 px-1" title="삭제"><i class="fas fa-trash"></i></button>' +
+      '<button onclick="accDeletePayment(' + p.id + ',\'' + escapeJsAttr(p.client_name || '') + '\')" class="text-red-400 hover:text-red-600 px-1" title="삭제"><i class="fas fa-trash"></i></button>' +
     '</td>' +
   '</tr>';
 }

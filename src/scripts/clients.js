@@ -274,7 +274,7 @@ function displayClients(clients, pagination) {
             + '<td class="px-3 py-2.5 text-xs tabular-nums">' + orderDisplay + '</td>'
             + '<td class="px-3 py-2.5 text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">'
                 + '<button onclick="editClient(' + c.id + ')" class="text-blue-600 hover:text-blue-800 mr-2"><i class="fas fa-edit"></i></button>'
-                + '<button onclick="deleteClient(' + c.id + ', \'' + escapeHtml(c.client_name).replace(/'/g, "&#039;") + '\')" class="text-red-500 hover:text-red-700"><i class="fas fa-trash"></i></button>'
+                + '<button onclick="deleteClient(' + c.id + ', \'' + escapeJsAttr(c.client_name) + '\')" class="text-red-500 hover:text-red-700"><i class="fas fa-trash"></i></button>'
             + '</td>'
             + '</tr>';
     }).join('');
