@@ -1,9 +1,12 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
+import { readVatRate } from '../utils/vatRate'
 import pageScript from '../scripts/quotationForm.js?raw'
 
-export function quotationFormPage(c: Context<HonoEnv>) {
+export async function quotationFormPage(c: Context<HonoEnv>) {
+  // 주문서와 같은 규칙 — 합계의 부가세율은 settings 정본을 주입한다(quotations.ts:283 이 읽는 것과 동일 값)
+  const vatRate = await readVatRate(c.env.DB)
   return renderPage(c, {
     title: '견적서 작성',
     activePage: '/quotations',
@@ -91,6 +94,6 @@ export function quotationFormPage(c: Context<HonoEnv>) {
         </div>
       </div>
     `,
-    pageScript
+    pageScript: `window.VAT_RATE = ${vatRate};\n` + pageScript
   })
 }

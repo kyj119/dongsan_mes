@@ -40,6 +40,8 @@
                             });
                             return;
                         }
+                        // 부모(묶음) 행은 client_group_id 를 실어야 자식의 parent_client_id 가 붙는다
+                        //   (quotations POST 가 이 키로 부모 DB id 를 매핑한다). 없으면 자식이 parent_id NULL 로 흩어진다.
                         const id = row.id.replace('item-', '');
                         const itemName = document.querySelector('[name="item_search_' + id + '"]')?.value?.trim();
                         if (!itemName) return;
@@ -54,34 +56,42 @@
                             quantity: qty,
                             unit: (document.querySelector('[name="item_unit_' + id + '"]')?.value || 'EA'),
                             unit_price: unitPrice,
+                            // 단가 방식 — 안 보내면 서버가 FIXED 로 계산해 면적 품목 금액이 통째로 틀린다.
+                            pricing_method: (document.querySelector('[name="pricing_method_' + id + '"]')?.value || 'FIXED'),
+                            assigned_entity_id: (document.querySelector('[name="assigned_entity_' + id + '"]')?.value
+                                ? parseInt(document.querySelector('[name="assigned_entity_' + id + '"]').value) : undefined),
+                            client_group_id: document.querySelector('[name="client_group_id_' + id + '"]')?.value || null,
                             specification: (document.querySelector('[name="spec_' + id + '"]')?.value || '').trim() || null,
                             vat_included: 1, sort_order: idx + 1, post_processing: [],
                         });
                     });
 
                     const _delivery = collectDeliveryFields();   // 0535
-                    const orderData = {
+                    // ★견적서는 분리된 quotations 테이블이 정본이다(0191 분리). 전엔 여기서
+                    //   POST /api/orders + status:'QUOTATION' 으로 orders 에 쓰고 /quotations 로 이동해,
+                    //   "저장됐습니다" 뒤에 빈 목록이 떴다. 정상 경로 = quotationForm.js 와 같은 POST /api/quotations.
+                    //   ⚠️ 아래 키 목록은 routes/quotations.ts POST 가 읽는 것만 담는다(priority·reception_location·
+                    //      배송 3축 분해값은 quotations 스키마에 없다 — 보내도 버려진다).
+                    const quotationData = {
                         client_id: parseInt(clientId),
-                        delivery_date: document.getElementById('deliveryDate').value,
-                        priority: document.getElementById('priority').value,
-                        reception_location: document.getElementById('receptionLocation').value,
+                        delivery_date: document.getElementById('deliveryDate').value || null,
                         delivery_info: _delivery.delivery_info,
-                        delivery_postal: _delivery.delivery_postal,
-                        delivery_detail: _delivery.delivery_detail,
                         delivery_method: document.getElementById('deliveryMethod').value,
+                        delivery_slot: (typeof ofActiveSlot === 'function') ? ofActiveSlot() : null,
+                        shipping_payment: (document.getElementById('shippingPayment') || {}).value || null,
                         notes: document.getElementById('notes').value,
                         contact_phone: document.getElementById('contactPhone').value.trim() || null,
                         contact_mobile: document.getElementById('contactMobile').value.trim() || null,
-                        status: 'QUOTATION',
+                        discount_amount: (typeof parseMoney === 'function')
+                            ? parseMoney((document.getElementById('discountAmount') || {}).value) : 0,
                         valid_until: validUntil,
                         items
                     };
 
-                    const res = await axios.post('/api/orders', orderData);
+                    const res = await axios.post('/api/quotations', quotationData);
 
                     if (res.data.success) {
-                        const id = res.data.data.id;
-                        showToast('견적서가 저장되었습니다.', 'success');
+                        showToast('견적서 ' + (res.data.data.quotation_number || '') + ' 이(가) 저장되었습니다.', 'success');
                         window.location.href = '/quotations';
                     } else {
                         showToast('견적서 저장 실패: ' + (res.data.error || '알 수 없는 오류'), 'error');
@@ -108,7 +118,9 @@
                         assignOpts += '<option value="' + e.id + '">' + nm + '</option>';
                     });
                     document.querySelectorAll('[name^="assigned_entity_"]').forEach(function(sel) {
-                        var cur = sel.value;
+                        // 복원 경로가 옵션보다 먼저 돌면 sel.value 는 이미 '' 다 — 그때 남겨 둔 의도값을 우선한다
+                        //   (parent.js setAssignedEntity). 없으면 종전대로 현재 값을 보존.
+                        var cur = sel.dataset.desiredValue || sel.value;
                         sel.innerHTML = assignOpts;
                         if (cur) sel.value = cur;
                     });
@@ -147,12 +159,16 @@
                     if (!firstPP) { showToast('첫 번째 품목의 후가공을 먼저 설정하세요.', 'warning'); return; }
 
                     // finish 방향 드롭다운 값 수집
+                    // ★키는 data-direction 이다(finishing.js 가 그렇게 심는다). dataset.dir 은 항상 undefined 라
+                    //   폴백 sel.className 이 쓰였고, 4개 셀렉트의 className 이 같아 상/하/좌 값이 버려지고
+                    //   마지막(우) 하나가 전 행의 4변에 복사됐다.
                     var finishVals = {};
                     firstPP.querySelectorAll('.pp-finish-dir').forEach(function(sel) {
-                        finishVals[sel.dataset.dir || sel.className] = sel.value;
+                        if (!sel.dataset.direction) return;
+                        finishVals[sel.dataset.direction] = sel.value;
                     });
-                    // punch 체크
-                    var punchChecked = firstPP.querySelector('.pp-punch-check');
+                    // punch 체크 — 실제 클래스는 .pp-punching-check (finishing.js). .pp-punch-check 는 항상 null 이었다.
+                    var punchChecked = firstPP.querySelector('.pp-punching-check');
                     var punchState = punchChecked ? punchChecked.checked : false;
                     // annotation 체크
                     var annoChecked = firstPP.querySelector('.pp-annotation-check');
@@ -171,12 +187,13 @@
                         if (!pp) return;
                         // finish 복사
                         pp.querySelectorAll('.pp-finish-dir').forEach(function(sel) {
-                            var key = sel.dataset.dir || sel.className;
-                            if (finishVals[key] !== undefined) sel.value = finishVals[key];
+                            var key = sel.dataset.direction;
+                            if (!key || finishVals[key] === undefined) return;
+                            sel.value = finishVals[key];
                             sel.dispatchEvent(new Event('change', {bubbles: true}));
                         });
                         // punch 복사
-                        var pc = pp.querySelector('.pp-punch-check');
+                        var pc = pp.querySelector('.pp-punching-check');
                         if (pc && pc.checked !== punchState) { pc.checked = punchState; pc.dispatchEvent(new Event('change', {bubbles: true})); }
                         // annotation 복사
                         var ac = pp.querySelector('.pp-annotation-check');

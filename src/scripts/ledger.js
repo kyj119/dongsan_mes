@@ -691,7 +691,9 @@ function closeAdjustmentModal() {
 
 async function loadOrdersForAdjustment() {
     try {
-        var res = await axios.get('/api/orders?status=SHIPPED&limit=100&clientId=' + selectedClientId);
+        // 파라미터명은 client_id — 서버 조회조건 SSOT(routes/orders/listFilter.ts)가 쓰는 이름이다.
+        //   camelCase clientId 는 화이트리스트에 없어 조용히 무시됐고, 전 거래처 100건이 떴다.
+        var res = await axios.get('/api/orders?status=SHIPPED&limit=100&client_id=' + encodeURIComponent(selectedClientId));
         var orders = [];
         if (res.data.success) {
             orders = res.data.data || [];

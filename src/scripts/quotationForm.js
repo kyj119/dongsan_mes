@@ -297,6 +297,7 @@ function checkPriceWarning(id, currentPrice) {
 
 function calculateTotal() {
     var total = 0, vat = 0;
+    var qfVatRate = (typeof window.VAT_RATE === 'number' && isFinite(window.VAT_RATE)) ? window.VAT_RATE : 0.1;
     document.querySelectorAll('#itemsContainer > [id^="item-"]').forEach(function(row) {
         var id = row.id.replace('item-', '');
         var qty = parseInt((document.querySelector('[name="quantity_' + id + '"]') || {}).value || 0);
@@ -313,7 +314,9 @@ function calculateTotal() {
         }
         total += amt;
         var vatEl = document.querySelector('[name="vat_' + id + '"]');
-        if (vatEl && vatEl.checked) vat += Math.round(amt * 0.1);
+        // 부가세율 = 서버 settings 주입값(window.VAT_RATE). 하드코딩 0.1 이면 설정 변경 시
+        //   화면 합계와 저장 금액(quotations.ts 가 settings.vat_rate 로 계산)이 갈린다.
+        if (vatEl && vatEl.checked) vat += Math.round(amt * qfVatRate);
     });
     var discount = parseMoney((document.getElementById('discountAmount') || {}).value);
     document.getElementById('totalAmount').textContent = Math.round(total).toLocaleString();

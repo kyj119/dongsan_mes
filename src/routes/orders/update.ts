@@ -204,7 +204,13 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
         discount_amount = ?,
         final_amount = ?,
         notes = ?,
-        internal_notes = ?,
+        -- 특이사항(작업지시서 인쇄의 정본)은 주문서 폼이 아예 안 보내는 키다. 그냥 대입하면
+        --   「배송지 한 줄 수정」만으로 이관·API 로 들어온 값이 지워진다. sales_rep_id 와 같은 규약 —
+        --   null = 미변경, 빈 문자열 = 지우기.
+        internal_notes = COALESCE(?, internal_notes),
+        -- 판짜기(합판) 파라미터도 생성 경로는 저장하는데 수정 경로에만 없었다 → 바꿔도 옛 값이 남아
+        --   IA SheetLayout 합본 처리를 계속 지배했다. 라인에서 걷는 규칙은 create.ts 와 동일.
+        sheet_layout_params = ?,
         priority = ?,
         delivery_method = ?,
         delivery_time = ?,
@@ -230,7 +236,11 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
       orderData.discount_amount || 0,
       finalAmount,
       orderData.notes || null,
-      orderData.internal_notes || null,
+      orderData.internal_notes === undefined ? null : orderData.internal_notes,
+      (() => {
+        const slItemPut = (orderData.items || []).find((it: any) => it.sheet_layout_params && !it.parent_client_id)
+        return slItemPut?.sheet_layout_params || null
+      })(),
       orderData.priority || 'NORMAL',
       orderData.delivery_method || '배송',
       orderData.delivery_time || null,
