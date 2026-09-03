@@ -119,7 +119,15 @@ export function selectBoardMaterial<T extends BoardSpec>(
 //
 // ⚠️ 원가(`orderLineCost`)와 소요량계획(`materialRequirement`)이 **같은 후보 목록**을 넘겨야 둘이 갈리지 않는다 —
 //    계획 쪽이 `avg_unit_cost` 를 안 실어 보내면 같은 라인에서 **다른 원단**을 고른다(2026-09-03 리뷰가 실증).
-//    그래서 `materialRequirement` 의 로더도 단가를 함께 읽는다.
+//    ⇒ 2026-09-03 2차: 「같은 목록을 넘기자」는 규약이 아니라 **같은 함수·같은 로더**로 만들었다.
+//      규약은 다음 사람이 모르면 깨진다 — 실제로 그렇게 깨져서 이 항목이 리뷰에 올라왔다.
+//      정본 = `resolveLineMaterials()`(아래) + `orderLineCost.loadCostMaterials()`.
+//
+// ⚠️ 자동차감(`autoDeductInventory`)은 **규칙이 다르고, 그게 맞다** — 출력 이벤트의 `output_width` 는
+//    RIP 이 이미 방향을 정한 뒤의 실측 폭이라 회전시키면 안 되고, 어느 롤에도 안 들어가면
+//    차감하지 않는 편이 맞다(멋대로 분할해 재고를 빼면 안 된다). 그래서 **삭제하지 않고**
+//    같은 함수를 `{ orientation:'width-fixed', criterion:'area', splitFallback:false }` 로 부른다 —
+//    값은 종전(「출력폭 이상 최소폭 롤」)과 같고, 차이가 **옵션으로 명시**돼 사본이 세 벌 굴러다니지 않는다.
 //
 // ⚠️ BOARD 는 손대지 않는다 — `selectBoardMaterial` 이 이미 회전을 허용한다.
 // ============================================================================
@@ -149,6 +157,21 @@ export interface RollWidthSpec extends RollUnitSpec {
 
 type RollCandidate = RollWidthSpec & { material_item_id?: number | null; avg_unit_cost?: number | null }
 
+export interface RollSelectOptions {
+  /**
+   * 'auto'(기본) = 단가 있는 후보를 먼저 본다(위 ★★★★).
+   * 'area' = 단가를 **아예 보지 않는다** — 어느 롤을 걸었는지가 이미 정해진 실차감 전용.
+   */
+  criterion?: 'auto' | 'area'
+  /**
+   * 'auto'(기본) = 가로↔세로 두 방향을 모두 본다 — 주문 라인은 방향이 고정돼 있지 않다.
+   * 'width-fixed' = `aMm` 을 폭으로 고정 — 출력 이벤트는 RIP 이 방향을 이미 정했다.
+   */
+  orientation?: 'auto' | 'width-fixed'
+  /** 어느 폭에도 안 들어갈 때 최대폭 분할 폴백을 쓸 것인가. 기본 true(실차감만 false). */
+  splitFallback?: boolean
+}
+
 /**
  * ROLL 자재 후보 중 **원단 폭 안에 통으로 들어가는 (자재 × 방향)** 조합을 고른다.
  *
@@ -156,12 +179,13 @@ type RollCandidate = RollWidthSpec & { material_item_id?: number | null; avg_uni
  * @param aMm    주문 라인의 한 변(mm)
  * @param bMm    주문 라인의 다른 변(mm)
  * @param copies 수량
+ * @param opts   기준·방향·폴백. 기본값이 주문 라인용(원가·계획 공용)이고 실차감만 바꿔 부른다.
  *
  * tie-break = 금액(또는 면적) → 분할 적은 것 → 폭 좁은 것 → `material_item_id`.
  * (정렬 없는 행 순서에 의존하면 같은 주문이 실행마다 다른 자재를 고른다 — 판재에서 겪은 함정)
  */
 export function selectRollPlacement<T extends RollCandidate>(
-  mats: T[], aMm: number, bMm: number, copies: number = 1
+  mats: T[], aMm: number, bMm: number, copies: number = 1, opts: RollSelectOptions = {}
 ): RollPlacement<T> | null {
   if (!mats || mats.length === 0) return null
   const a = Number(aMm) || 0
@@ -170,7 +194,11 @@ export function selectRollPlacement<T extends RollCandidate>(
 
   const usable = mats.filter((m) => (Number(m.width_mm) || 0) > 0)
   if (usable.length === 0) return null
-  const priced = usable.filter((m) => (Number(m.avg_unit_cost) || 0) > 0)
+  const usePrice = opts.criterion !== 'area'
+  const priced = usePrice ? usable.filter((m) => (Number(m.avg_unit_cost) || 0) > 0) : []
+  const orientations: Array<[number, number]> = opts.orientation === 'width-fixed'
+    ? [[a, b]]
+    : [[a, b], [b, a]]
 
   /** 한 pool 안에서 최선 1개. `byPrice` 로 비교 기준을 바꾼다. */
   const pick = (pool: T[], byPrice: boolean, splitFallback: boolean): RollPlacement<T> | null => {
@@ -206,7 +234,7 @@ export function selectRollPlacement<T extends RollCandidate>(
       // 무분할 — 한 변이 원단 폭 안에 들어가는 조합만 본다.
       for (const m of pool) {
         const w = Number(m.width_mm) || 0
-        for (const [widthMm, lengthMm] of [[a, b], [b, a]] as Array<[number, number]>) {
+        for (const [widthMm, lengthMm] of orientations) {
           if (widthMm <= w) consider(m, widthMm, lengthMm, 1, true)
         }
       }
@@ -217,10 +245,10 @@ export function selectRollPlacement<T extends RollCandidate>(
     // (여기서 폭을 더 좁혀 가며 최저가를 찾으면 ★★★ 의 분할 폭주가 그대로 되살아난다)
     const maxW = Math.max(...pool.map((m) => Number(m.width_mm) || 0))
     if (!(maxW > 0)) return null
-    const minSplits = Math.min(Math.ceil(a / maxW), Math.ceil(b / maxW))
+    const minSplits = Math.min(...orientations.map(([widthMm]) => Math.ceil(widthMm / maxW)))
     for (const m of pool) {
       if ((Number(m.width_mm) || 0) !== maxW) continue
-      for (const [widthMm, lengthMm] of [[a, b], [b, a]] as Array<[number, number]>) {
+      for (const [widthMm, lengthMm] of orientations) {
         if (Math.ceil(widthMm / maxW) !== minSplits) continue
         consider(m, widthMm, lengthMm, minSplits, false)
       }
@@ -236,8 +264,18 @@ export function selectRollPlacement<T extends RollCandidate>(
   // ② 없으면 전 후보 → 면적 최소 (미상 원단이 뽑히면 NO_PRICE 로 보고된다)
   const byAreaFit = pick(usable, false, false)
   if (byAreaFit) return byAreaFit
-  // ③ 어느 원단에도 안 들어간다 → 최대 폭·분할 최소
-  return pick(usable, priced.length === usable.length, true)
+
+  // 실차감은 여기서 멈춘다 — 어느 롤에도 안 들어가면 **차감하지 않는 것**이 맞다.
+  if (opts.splitFallback === false) return null
+
+  // ③ 어느 원단에도 안 들어간다 → 최대 폭·분할 최소.
+  //    ★①과 **같은 우선순위**를 쓴다 — 여기만 `every(단가>0)` 이면 미상 원단 1종이 다시 기준을
+  //      뒤집어 NO_PRICE 를 만든다(①에서 고친 것과 똑같은 결함이 폴백 경로에 남아 있었다).
+  if (priced.length > 0) {
+    const byPriceSplit = pick(priced, true, true)
+    if (byPriceSplit) return byPriceSplit
+  }
+  return pick(usable, false, true)
 }
 
 export interface RollConsumption {
@@ -311,4 +349,168 @@ export function resolveStockUnit(m: RollUnitSpec): string {
   if (method === 'ROLL') return 'yd'
   if (method === 'BOARD') return '장'
   return String(m?.unit ?? '').trim()
+}
+
+// ============================================================================
+// 라인 → 자재 소요 해석 (원가 · 소요량계획 **공용 단일 소스**)
+// ----------------------------------------------------------------------------
+// ★ 왜 함수로 묶었나 — 「어느 자재를 얼마나」가 세 벌 있었다:
+//   `materialRequirement.computeMaterialCoverage` · `orderLineCost.computeLineCost` · `autoDeductInventory`.
+//   앞의 둘은 **로더가 달라서**(계획이 `avg_unit_cost` 를 안 읽었다) 같은 라인에 다른 롤을 잡았고
+//   (70×170 → 계획 AQ2-70 1.859yd vs 원가 AQ2-180 0.766yd), 그러면 「이론 소요 ↔ 실제 차감 = 로스」가
+//   애초에 성립하지 않는다. 그 로더는 고쳤지만 **규약은 다음 사람이 모르면 또 깨진다** —
+//   그래서 선택·소요 자체를 한 함수로 내렸다(2026-09-03 2차).
+//
+// ★ `product_materials.usage_type`(0508) 이 있으면 **그게 우선**이다.
+//   폭/판재 휴리스틱은 원단·판재를 전제한 추정인데, 간판 BOM 은 LED·SMPS·입체바처럼 폭이 없는
+//   부속을 담는다. 종전엔 그 행들이 `COALESCE(deduction_method,'ROLL')` 로 ROLL 취급 → `width_mm` NULL
+//   로 탈락해 **간판 원가가 알루미늄 한 장**이 되고도 커버리지는 FULL 이었다.
+//
+// ★ 휴리스틱은 「제품당 1종」이지만 usage 행은 **여러 종이 함께** 나온다(간판=백판+LED+프레임…).
+//   그래서 반환이 배열이다.
+// ============================================================================
+
+/** `product_materials` + `items` 조인 1행 — 원가·계획이 **같은 로더**로 읽는 모양. */
+export interface LineMaterialSpec extends RollWidthSpec {
+  material_item_id: number
+  material_name?: string | null
+  sheet_spec?: string | null
+  waste_factor?: number | null
+  /** items.avg_unit_cost — base 단위당 단가 */
+  avg_unit_cost?: number | null
+  /** product_materials.quantity — FIXED_QTY 의 개수 */
+  quantity?: number | null
+  /** product_materials.usage_type — 0508 */
+  usage_type?: string | null
+  /** product_materials.usage_param — 0508 */
+  usage_param?: number | null
+}
+
+/** 라인 기하 — 규격은 **cm**(`order_items.width/height` 와 같은 축) */
+export interface LineGeometry {
+  width: number | null
+  height: number | null
+  quantity: number | null
+}
+
+export type LineMaterialReason = 'NO_SIZE' | 'NO_MATERIAL_LINK' | 'NO_DEDUCT'
+
+export interface LineMaterialPick<T> {
+  mat: T
+  /** base 단위 소요량 */
+  required: number
+  /** 무슨 규칙으로 골랐나 — 'USAGE'=BOM 명시, 'ROLL'/'BOARD'=폭·장 휴리스틱 */
+  via: 'USAGE' | 'ROLL' | 'BOARD'
+  /** ROLL 일 때의 배치 근거(폭·길이·분할·fitted) */
+  placement?: RollPlacement<T>
+}
+
+export interface LineMaterialResolution<T> {
+  picks: Array<LineMaterialPick<T>>
+  /** picks 가 비어 있을 때의 이유. 정상이면 null. */
+  reason: LineMaterialReason | null
+  /**
+   * 산정 규칙을 **아직 구현하지 않은** BOM 행. 원가·계획 모두 이만큼 모자란다 —
+   * 조용히 빠지면 「간판 원가가 알루미늄뿐」인 상태가 FULL 로 보고된다.
+   */
+  unsupported: Array<{ mat: T; usage_type: string }>
+  /** 실면적(㎡) = 가로×세로×수량. **청구면적이 아니다**(청구는 10cm 올림·최소 1m). */
+  areaSqm: number
+}
+
+/**
+ * 인식하는 `usage_type`. 여기 없는 값은 휴리스틱으로 흘러가지 않고 **unsupported 로 표시**된다.
+ * ⚠️ `PER_LED` 만 미구현이다 — 「LED 몇 개」가 **다른 BOM 행**(PER_AREA 로 잡히는 LED 모듈)에서
+ *    나오는데 「어느 행이 LED 인가」가 데이터에 없다. 품목코드로 추측하면 그게 또 하나의 숨은
+ *    규칙이 되므로 하지 않는다. 해당 = SIGN-CH·SIGN-PRT 의 SMPS·LED바.
+ */
+const USAGE_TYPES = new Set([
+  'FIXED_QTY', 'PER_AREA', 'PER_AREA_SHEET', 'PER_AREA_ROLL', 'PER_PERIMETER', 'PER_WIDTH', 'PER_LED',
+])
+
+/**
+ * `usage_type` 별 소요량. 파라미터가 없으면 **null**(=미상)이지 0이 아니다.
+ * 면적 기준은 라인 총면적(수량 포함)을 쓴다 — `PER_AREA_SHEET` 의 param 은 「장당 **유효** ㎡」
+ * (로스 포함 수율)라 여러 장을 함께 앉히는 전제다(0508 주석: 「장당 유효 2.5㎡(로스 16%)」).
+ */
+function usageRequired(m: LineMaterialSpec, wCm: number, hCm: number, qty: number): number | null {
+  const t = String(m.usage_type ?? '').trim().toUpperCase()
+  const param = Number(m.usage_param)
+  const hasParam = Number.isFinite(param) && param > 0
+  const areaSqm = (wCm / 100) * (hCm / 100) * qty
+  switch (t) {
+    case 'FIXED_QTY': {
+      const n = Number(m.quantity)
+      return Number.isFinite(n) && n > 0 ? n * qty : null
+    }
+    case 'PER_AREA':       return hasParam ? areaSqm * param : null
+    case 'PER_AREA_SHEET': return hasParam ? Math.ceil(areaSqm / param) : null
+    case 'PER_AREA_ROLL':  return hasParam ? areaSqm / param : null
+    case 'PER_WIDTH':      return hasParam ? Math.ceil((wCm / 100) / param) * qty : null
+    case 'PER_PERIMETER':  return hasParam ? Math.ceil((2 * (wCm + hCm) / 100) / param) * qty : null
+    default:               return null   // PER_LED = 교차행 의존, 미구현
+  }
+}
+
+/**
+ * 주문 라인 1건 → 자재별 소요량. **원가와 소요량계획이 이 함수 하나만 쓴다.**
+ *
+ * @param mats  이 제품(`product_item_id`)에 연결된 BOM 행. 비면 NO_MATERIAL_LINK.
+ * @param line  주문 라인(규격 cm)
+ * @param opts  ROLL 선택 옵션. 기본값이 주문 라인용이다.
+ */
+export function resolveLineMaterials<T extends LineMaterialSpec>(
+  mats: T[] | undefined | null,
+  line: LineGeometry,
+  opts: RollSelectOptions = {}
+): LineMaterialResolution<T> {
+  const wCm = Number(line.width) || 0
+  const hCm = Number(line.height) || 0
+  const qty = Number(line.quantity) || 1
+  const picks: Array<LineMaterialPick<T>> = []
+  const unsupported: Array<{ mat: T; usage_type: string }> = []
+
+  if (wCm <= 0 || hCm <= 0) return { picks, reason: 'NO_SIZE', unsupported, areaSqm: 0 }
+  const areaSqm = (wCm / 100) * (hCm / 100) * qty
+  if (!mats || mats.length === 0) return { picks, reason: 'NO_MATERIAL_LINK', unsupported, areaSqm }
+
+  // ① BOM 이 소요 규칙을 명시한 행 — 휴리스틱보다 우선한다.
+  const usageRows = new Set<T>()
+  for (const m of mats) {
+    if (USAGE_TYPES.has(String(m.usage_type ?? '').trim().toUpperCase())) usageRows.add(m)
+  }
+  for (const m of usageRows) {
+    const req = usageRequired(m, wCm, hCm, qty)
+    if (req != null && req > 0) picks.push({ mat: m, required: req, via: 'USAGE' })
+    else unsupported.push({ mat: m, usage_type: String(m.usage_type ?? '').trim().toUpperCase() })
+  }
+
+  // ② 나머지는 종전 휴리스틱 — 원단(ROLL) 우선, 없으면 판재(BOARD). 이 축은 **1종만** 고른다.
+  const rest = mats.filter((m) => !usageRows.has(m))
+  const rollMats = rest.filter((m) => String(m.deduction_method ?? '') === 'ROLL' && m.width_mm != null)
+  const boardMats = rest.filter((m) => String(m.deduction_method ?? '') === 'BOARD')
+  let heuristicTried = false
+
+  if (rollMats.length > 0) {
+    heuristicTried = true
+    const p = selectRollPlacement(rollMats, wCm * 10, hCm * 10, qty, opts)
+    if (p) picks.push({ mat: p.mat, required: p.qty, via: 'ROLL', placement: p })
+  }
+  // ★종전엔 `else if` 라 **ROLL 후보가 있기만 하면** 판재를 아예 보지 않았다. ROLL 후보가 전부
+  //   width_mm ≤ 0 이면 같은 BOM 의 판재가 멀쩡해도 아무것도 안 골랐다.
+  if (!picks.some((p) => p.via === 'ROLL') && boardMats.length > 0) {
+    heuristicTried = true
+    const bm = selectBoardMaterial(boardMats, wCm * 10, hCm * 10)
+    if (bm) {
+      // 판재만 waste_factor 를 쓴다 — 롤의 로스는 여기 넣지 않는다(이론값만 담는다).
+      picks.push({ mat: bm, required: areaSqm * (Number(bm.waste_factor) || 1) / boardAreaSqm(bm.sheet_spec), via: 'BOARD' })
+    }
+  }
+
+  if (picks.length === 0) {
+    // 고를 후보가 있었는데 못 골랐다 = **미상**. 후보 자체가 없었다(NONE 만 연결) = 의도된 0.
+    const reason: LineMaterialReason = (heuristicTried || usageRows.size > 0) ? 'NO_MATERIAL_LINK' : 'NO_DEDUCT'
+    return { picks, reason, unsupported, areaSqm }
+  }
+  return { picks, reason: null, unsupported, areaSqm }
 }
