@@ -11,6 +11,7 @@ import { sendEmail } from '../../services/emailProvider'
 import { renderTemplate } from '../../services/emailTemplates'
 import { getEntityCompanyInfo } from '../../utils/entitySettings'
 import { kstYear } from '../../utils/kstDate'
+import { splitDiscount, groupDiscount } from '../../utils/taxInvoiceDiscount'
 
 export async function getTaxProvider(db: D1Database, env: any, corpNum: string): Promise<TaxProvider | null> {
   const testModeRow = await db.prepare(
@@ -373,20 +374,26 @@ export async function createSplitInvoices(
   const ph = orderIds.map(() => '?').join(',')
 
   // 청구그룹 → 법인별 집계 (supply/tax는 recalc·마이그가 채운 값). 그룹별 group_id 보유.
+  //   에누리(orders.discount_amount)는 그룹에 별도 컬럼이 없고 billed_amount = supply + tax − discount 로만 남는다
+  //   (orders/helpers.ts recalcBillingGroups). 그래서 그룹 에누리 = supply + tax − billed 로 복원한다.
   const { results: grows } = await db.prepare(
     `SELECT g.id AS group_id, g.order_id, g.entity_id,
             CAST(COALESCE(g.supply_amount,0) AS INTEGER) AS supply,
-            CAST(COALESCE(g.tax_amount,0)    AS INTEGER) AS tax
+            CAST(COALESCE(g.tax_amount,0)    AS INTEGER) AS tax,
+            CAST(COALESCE(g.billed_amount, COALESCE(g.supply_amount,0) + COALESCE(g.tax_amount,0)) AS INTEGER) AS billed
      FROM order_billing_groups g WHERE g.order_id IN (${ph})`
-  ).bind(...orderIds).all<{ group_id: number; order_id: number; entity_id: number; supply: number; tax: number }>()
+  ).bind(...orderIds).all<{ group_id: number; order_id: number; entity_id: number; supply: number; tax: number; billed: number }>()
 
   // 법인별 그룹화
-  const byEntity = new Map<number, { supply: number; tax: number; orderIds: Set<number>; groupIds: number[] }>()
+  const byEntity = new Map<number, { supply: number; tax: number; discount: number; orderIds: Set<number>; groupIds: number[] }>()
   for (const g of grows) {
     let e = byEntity.get(g.entity_id)
-    if (!e) { e = { supply: 0, tax: 0, orderIds: new Set(), groupIds: [] }; byEntity.set(g.entity_id, e) }
-    e.supply += Number(g.supply) || 0
-    e.tax += Number(g.tax) || 0
+    if (!e) { e = { supply: 0, tax: 0, discount: 0, orderIds: new Set(), groupIds: [] }; byEntity.set(g.entity_id, e) }
+    const gs = Number(g.supply) || 0, gt = Number(g.tax) || 0
+    e.supply += gs
+    e.tax += gt
+    // 그룹 에누리 = 공급가+세액 − 청구액. 음수(청구액이 더 큰 비정상)는 0 으로, 상한은 공급가+세액.
+    e.discount += groupDiscount(gs, gt, g.billed)
     e.orderIds.add(g.order_id)
     e.groupIds.push(g.group_id)
   }
@@ -394,8 +401,13 @@ export async function createSplitInvoices(
   const out: Array<{ entity_id: number; invoice_id: number; invoice_number: string; supply: number; tax: number; total: number; issued: boolean; error?: string }> = []
 
   for (const [entityId, agg] of byEntity) {
-    const supplyAmount = agg.supply
-    const taxAmount = agg.tax
+    // ★ 에누리 반영 — 세금계산서 합계는 AR 청구액(billed = supply + tax − discount)과 같아야 한다.
+    //   주문의 에누리는 부가세 포함 최종액에서 빼는 값(orders/create.ts finalAmount)이므로, 계산서에서는
+    //   공급가액·세액에 **그룹의 세율 비율대로** 나눠 뺀다(부가세법 §29③ 에누리는 과세표준에서 제외).
+    //   세액 0 인 그룹(면세·영세)은 전액 공급가액에서 뺀다.
+    const { supply: discSupply, tax: discTax } = splitDiscount(agg.discount, agg.supply, agg.tax)
+    const supplyAmount = agg.supply - discSupply
+    const taxAmount = agg.tax - discTax
     const totalAmount = supplyAmount + taxAmount
     if (totalAmount <= 0) {
       out.push({ entity_id: entityId, invoice_id: 0, invoice_number: '', supply: 0, tax: 0, total: 0, issued: false, error: '금액 0 (주문 재저장 필요 — 청구그룹 금액 미산정)' })
@@ -465,6 +477,13 @@ export async function createSplitInvoices(
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(taxInvoiceId, issueDate, oi.item_name, spec, oi.quantity, parseFloat(String(oi.unit_price)) || 0, itemAmount, itemTax, idx))
       })
+      // 에누리 라인(음수) — 품목 합계가 헤더(공급가액·세액)와 일치해야 한다. 수정계산서도 음수 라인을 쓰므로 공급자 측 허용.
+      if (discSupply + discTax > 0) {
+        stmts.push(db.prepare(`
+          INSERT INTO tax_invoice_items (tax_invoice_id, item_date, item_name, quantity, unit_price, supply_amount, tax_amount, sort_order)
+          VALUES (?, ?, '에누리', 1, ?, ?, ?, ?)
+        `).bind(taxInvoiceId, issueDate, -discSupply, -discSupply, -discTax, items.length))
+      }
     }
     for (let i = 0; i < stmts.length; i += 80) await db.batch(stmts.slice(i, i + 80))
 
