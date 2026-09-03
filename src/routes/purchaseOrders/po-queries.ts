@@ -11,7 +11,7 @@ import { requireAnyPagePermission } from '../../middleware/permissions'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { excludePurchaseNonCounterpartiesSql } from '../../constants/intercompany'
 import { getEntityCompanyInfo } from '../../utils/entitySettings'
-import { kstYmd } from '../../utils/kstDate'
+import { kstYmd, kstDate } from '../../utils/kstDate'
 import { buildPoListFilter, resolvePoSort, PO_SORT_DEFAULT } from './listFilter'
 
 const poQueriesRouter = new Hono<HonoEnv>()
@@ -65,7 +65,7 @@ poQueriesRouter.get('/stats', async (c) => {
       SELECT COALESCE(SUM(final_amount), 0) as total
       FROM purchase_orders
       WHERE status NOT IN ('CANCELLED', 'DRAFT')
-        AND order_date >= date('now', 'start of month')${efAnd}${icAnd}
+        AND order_date >= ${kstDate("'start of month'")}${efAnd}${icAnd}
     `).bind(...ef.params).first<{ total: number }>()
     stats.monthly_amount = monthlyAmount?.total || 0
 

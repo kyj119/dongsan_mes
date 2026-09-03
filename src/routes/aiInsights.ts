@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter, cardEntityFilter } from '../utils/entityFilter'
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
+import { deriveClientBalance } from './ledger/ar-helpers'
 
 const aiInsights = new Hono<HonoEnv>()
 aiInsights.use('*', authMiddleware)
@@ -64,12 +65,16 @@ aiInsights.get('/credit-risk/:clientId', requireRole('ADMIN', 'MANAGER'), async 
     SELECT
       COUNT(*) as total_orders,
       COALESCE(SUM(final_amount), 0) as total_revenue,
-      COALESCE(SUM(final_amount), 0) - COALESCE((SELECT SUM(amount) FROM payments WHERE client_id = ?${ef.clause}), 0) as outstanding,
       MIN(order_date) as first_order,
       MAX(order_date) as last_order
     FROM orders
     WHERE client_id = ?${ef.clause} AND status NOT IN ('CANCELLED', 'DELETED', 'QUOTATION')
-  `).bind(clientId, ...ef.params, clientId, ...ef.params).first<any>()
+  `).bind(clientId, ...ef.params).first<any>()
+
+  // 미수금은 파생 정본(청구 정본 order_billing_groups[BILLED] − 입금 − 조정)만 쓴다.
+  // 종전 `SUM(orders.final_amount) − SUM(payments.amount)` 는 clients.ts 가 폐기 선언한 그 식이라
+  // 미청구 주문까지 미수로 세어 등급을 과대 위험 쪽으로 밀었다(형제 /credit-risk/summary 는 이미 파생).
+  const outstanding = await deriveClientBalance(c, clientId)
 
   // 평균 수금일 (입금까지 걸린 일수)
   const avgDays = await c.env.DB.prepare(`
@@ -96,7 +101,7 @@ aiInsights.get('/credit-risk/:clientId', requireRole('ADMIN', 'MANAGER'), async 
   // 리스크 스코어 계산 (0~100, 높을수록 위험)
   const avgCollectionDays = avgDays?.avg_days || 0
   const overdueRatio = stats?.total_orders > 0 ? (overdueCount?.cnt || 0) / stats.total_orders : 0
-  const outstandingRatio = stats?.total_revenue > 0 ? (stats.outstanding || 0) / stats.total_revenue : 0
+  const outstandingRatio = stats?.total_revenue > 0 ? outstanding / stats.total_revenue : 0
 
   let score = 0
   // 평균 수금일 기여 (30일 이상부터 가중)
@@ -132,7 +137,7 @@ aiInsights.get('/credit-risk/:clientId', requireRole('ADMIN', 'MANAGER'), async 
         outstanding_ratio: Math.round(outstandingRatio * 1000) / 10,
         trading_months: tradingMonths,
         total_orders: stats?.total_orders || 0,
-        outstanding: stats?.outstanding || 0
+        outstanding
       }
     }
   })
@@ -141,19 +146,38 @@ aiInsights.get('/credit-risk/:clientId', requireRole('ADMIN', 'MANAGER'), async 
 // ─── 전체 거래처 리스크 일괄 계산 ────────────────────────────────────────────
 aiInsights.post('/credit-risk/calculate-all', requireRole('ADMIN', 'MANAGER'), async (c) => {
   // #177: N+1 → 단일 집계 쿼리로 교체
+  // 미수금은 파생 정본(order_billing_groups[BILLED] − payments − adjustments)으로 계산한다 —
+  // 종전 `SUM(final_amount) − (SELECT SUM(amount) FROM payments WHERE client_id = o.client_id)` 는
+  // ①폐기된 산식이고 ②거래처마다 payments 를 훑는 행별 상관 서브쿼리라 계획이 무너진다.
+  // 큰 쪽을 먼저 GROUP BY 로 접고 작은 쪽을 조인한다(형제 /credit-risk/summary 와 같은 모양).
   const { results: clientStats } = await c.env.DB.prepare(`
-    SELECT o.client_id,
-      COUNT(*) as total_orders,
-      COALESCE(SUM(o.final_amount), 0) as total_revenue,
-      COALESCE(SUM(o.final_amount), 0) - COALESCE((SELECT SUM(amount) FROM payments WHERE client_id = o.client_id), 0) as outstanding,
-      SUM(CASE WHEN o.billing_status = 'BILLED'
-           AND julianday('now') - julianday(COALESCE(o.accounting_date, o.billed_at)) > 30
-           THEN 1 ELSE 0 END) as overdue_count
-    FROM orders o
-    JOIN clients c ON o.client_id = c.id AND c.is_active = 1
-    WHERE o.status NOT IN ('CANCELLED','DELETED','QUOTATION')${excludeArExcludedClientsSql('c.id')}
-    GROUP BY o.client_id
-    HAVING total_orders > 0
+    WITH ord AS (
+      SELECT o.client_id AS client_id,
+        COUNT(*) as total_orders,
+        COALESCE(SUM(o.final_amount), 0) as total_revenue,
+        SUM(CASE WHEN o.billing_status = 'BILLED'
+             AND julianday('now') - julianday(COALESCE(o.accounting_date, o.billed_at)) > 30
+             THEN 1 ELSE 0 END) as overdue_count
+      FROM orders o
+      JOIN clients c ON o.client_id = c.id AND c.is_active = 1
+      WHERE o.status NOT IN ('CANCELLED','DELETED','QUOTATION')${excludeArExcludedClientsSql('c.id')}
+      GROUP BY o.client_id
+    ),
+    billed AS (
+      SELECT o.client_id AS cid, SUM(g.billed_amount) AS v
+        FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+       WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'
+       GROUP BY o.client_id
+    ),
+    paid AS (SELECT client_id AS cid, SUM(amount) AS v FROM payments GROUP BY client_id),
+    adj  AS (SELECT client_id AS cid, SUM(amount) AS v FROM adjustments GROUP BY client_id)
+    SELECT ord.client_id, ord.total_orders, ord.total_revenue, ord.overdue_count,
+      (COALESCE(billed.v, 0) - COALESCE(paid.v, 0) - COALESCE(adj.v, 0)) as outstanding
+    FROM ord
+    LEFT JOIN billed ON billed.cid = ord.client_id
+    LEFT JOIN paid ON paid.cid = ord.client_id
+    LEFT JOIN adj ON adj.cid = ord.client_id
+    WHERE ord.total_orders > 0
   `).all<{ client_id: number; total_orders: number; total_revenue: number; outstanding: number; overdue_count: number }>()
 
   const updateStmts = clientStats.map(s => {

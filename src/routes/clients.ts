@@ -213,8 +213,10 @@ clientsRouter.get('/:id/credit-check', async (c) => {
     const credit = await evaluateClientCredit(c, id)
     return c.json({ success: true, data: credit })
   } catch (error) {
+    // 여신 판정 실패를 「이상 없음」으로 삼키지 않는다(fail-open 금지) — 주문서 경고 배너가
+    // 이 응답 하나에 달려 있어서, 실패했는데 status:'OK' 를 주면 한도 초과 거래처가 정상으로 보인다.
     console.error('credit-check error:', error)
-    return c.json({ success: true, data: { status: 'OK', message: '' } })
+    return c.json({ success: false, error: '여신 판정에 실패했습니다. 잠시 후 다시 시도해 주세요.' }, 500)
   }
 })
 
