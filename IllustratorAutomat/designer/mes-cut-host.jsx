@@ -978,12 +978,16 @@ function mesCut_dropNoopClips(it) {
         || content[2] > cb[2] + tol || content[3] < cb[3] - tol) { return n; }   // 진짜로 자르고 있다 → 둔다
     var again = [];
     try { for (var j = 0; j < it.pageItems.length; j++) { again.push(it.pageItems[j]); } } catch (e3) { return n; }
+    var gone = 0;
     for (var q = 0; q < again.length; q++) {
         var isClip = false;
         try { isClip = !!again[q].clipping; } catch (e4) {}
-        if (isClip) { try { again[q].remove(); n++; } catch (e5) {} }
+        if (isClip) { try { again[q].remove(); gone++; n++; } catch (e5) {} }
     }
-    try { it.clipped = false; } catch (e6) {}
+    // ⚠️ `clipped = false` 는 **실제로 지웠을 때만** 한다. 클립 패스를 못 찾았는데 플래그만 내리면
+    //    그 사각 패스가 **일반 패스로 풀려** OffsetPath+Pathfinder 에 섞인다 = 고치려던 결함이 그대로
+    //    재발한다(`clipBounds` 는 클립을 못 찾으면 geometricBounds 를 돌려주므로 이 분기에 들어올 수 있다).
+    if (gone) { try { it.clipped = false; } catch (e6) {} }
     return n;
 }
 
@@ -997,12 +1001,14 @@ function mesCut_dropNoopClips(it) {
  * 래스터 경로에는 이미 파편 제거가 있다(`minCutPx` = 조각 넓이의 1%). **벡터 경로에만 없었다.**
  * 여기서 같은 일을 한다 — 다만 기준은 넓이 비율이 아니라 **물리 치수**다(칼날이 못 들어가는 크기).
  *
- * ⚠️ 임계는 실측으로 정했다 — 축퇴 조각 0.01mm vs **실제 요소 최소 3.98mm**. 그 사이가 크게 비어
- *    있어서 0.2mm 는 어느 쪽으로도 오판하지 않는다(실제 요소보다 20배 작다).
+ * ⚠️ 임계는 **양쪽 여유**로 정했다. 아래가 손으로 쟰 값이 아니라는 근거다:
+ *      위 — 관찰된 축퇴 조각이 **0.01mm** (10배 여유)
+ *      아래 — 0.5pt 헤어라인을 면으로 바꾸면 **0.176mm** 로 이것은 **살아남아야** 한다
+ *    그래서 0.2mm 가 아니라 **0.1mm** 다 — 0.2 로 잡으면 선 도안의 가는 획이 통째로 날아간다.
  * ⚠️ 글자를 합치지 않는다 — 조각마다 칼선이 따로 나오는 것은 **정상**이다(2026-09-04 용준님 정정).
  *    없애야 하는 것은 "떨어진 요소"가 아니라 "자를 수 없는 부스러기"다.
  */
-var MESCUT_MIN_CUT_MM = 0.2;
+var MESCUT_MIN_CUT_MM = 0.1;
 
 function mesCut_dropCutSlivers(flat) {
     var PT = MESCUT_PT_PER_MM, lim = MESCUT_MIN_CUT_MM * PT, dropped = 0;
@@ -1029,6 +1035,16 @@ function mesCut_dropCutSlivers(flat) {
             keep.push(it);
         } else if (t === 'PathItem') {
             if (degenerate(it)) { try { it.remove(); dropped++; } catch (e5) {} continue; }
+            keep.push(it);
+        } else if (t === 'GroupItem') {
+            // unwrap 은 깊이 8 에서 멈춘다 → 그룹이 그대로 남을 수 있다. 그 안도 본다.
+            var inner = [];
+            try { for (var g = 0; g < it.pageItems.length; g++) { inner.push(it.pageItems[g]); } } catch (e6) {}
+            var sub = mesCut_dropCutSlivers(inner);
+            dropped += sub.dropped;
+            var rest = 0;
+            try { rest = it.pageItems.length; } catch (e7) { rest = 1; }
+            if (!rest) { try { it.remove(); } catch (e8) {} continue; }   // 부스러기만 있던 껍데기
             keep.push(it);
         } else {
             keep.push(it);
@@ -3122,7 +3138,12 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                     try {
                         var vres = mesCut_vecSilhouette(doc, [copies[vi]], vcl, vecOffsetMm, vecFillClosed);
                         // ★부스러기를 걷어낸 조각은 **번호로** 알린다 — 조용히 지우지 않는다.
-                        if (vres && vres.dropped) vecDrop.push(sh.items[vi].idx + 1);
+                        if (vres && vres.dropped) {
+                            // 같은 조각이 여러 장 배치되면 번호가 중복으로 찍힌다(#3·#3) → 한 번만
+                            var vdn = sh.items[vi].idx + 1, vdSeen = false;
+                            for (var vdi = 0; vdi < vecDrop.length; vdi++) { if (vecDrop[vdi] === vdn) { vdSeen = true; break; } }
+                            if (!vdSeen) vecDrop.push(vdn);
+                        }
                     } catch (eVS) {}
                 }
                 try { doc.selection = null; } catch (eSel) {}
@@ -3269,7 +3290,6 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
         //   실물은 EPS 바운딩박스와 정확히 일치한다(1030×2060mm). 우리 아트보드는 배치 bbox +
         //   돔보 여백으로 줄어들므로 시트 프리셋(예 1370)을 쓰면 이름과 파일이 어긋난다.
         mesCut_cleanPlaced(MESCUT_NEST_ITEMS.length);
-        if (hardenGrid) { try { var hf = new File(hardenGrid.pdf); if (hf.exists) hf.remove(); } catch (eHF) {} }
         // ★fast = 격자 마스터로 처리한 배치 수 · masters = 만든 마스터 수(= 쓰인 회전 값 수)
         //   hardenwhy = 격자·나누기가 실패해 조각별 옛 경로로 떨어진 사유. 조용히 느려지지 않게 싣는다.
         return 'ok;sheets=' + made + ';items=' + items + ';dombo=' + dombo
@@ -3286,6 +3306,12 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
         return 'ERROR nestApply: ' + e;
     } finally {
         mesCut_silentEnd(silent);   // ★반드시 되돌린다 — 안 되돌리면 사용자 작업의 경고까지 사라진다
+        // ★뒷정리는 **여기서** 한다 — 정상 반환 자리에 두면 중간에 예외가 났을 때
+        //   임시 PDF 가 남고, 더 나쁘게는 **마스터 레이어가 판에 남아** 아트보드 맞추기에 끼어든다.
+        try { if (masters && masters.layer) { masters.layer.remove(); masters = null; } } catch (eFM) {}
+        try {
+            if (hardenGrid) { var hf = new File(hardenGrid.pdf); if (hf.exists) { hf.remove(); } }
+        } catch (eHF) {}
     }
 }
 

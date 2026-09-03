@@ -189,6 +189,9 @@ function buildJsx(cs, out) {
     '    shot(plate, [pab[0], pab[1], pab[2], pab[3]], "plate.png");',
     '  }',
     '} catch (e) { say("EXC " + e + (e.line ? (" line " + e.line) : "")); }',
+    // ★게이트 전용 스위치를 **반드시** 되돌린다 — 패널과 같은 JS 엔진이라
+    //   `--only=C` 로 돌리고 끝나면 그 뒤 판짜기가 조용히 옛(느린) 경로로 돌게 된다.
+    'try { MESCUT_HARDEN_OFF = false; } catch (eR) {}',
     'for (var c = opened.length - 1; c >= 0; c--) { try { opened[c].close(SaveOptions.DONOTSAVECHANGES); } catch (eC) {} }',
     'var of = new File(OUT + "/result.txt");',
     'of.encoding = "UTF-8"; of.open("w");',
@@ -258,7 +261,7 @@ function buildSilJsx(dir) {
     'function measure(doc, item){',
     '  var cl = mesCut_ensureCutLayer(doc);',
     '  mesCut_vecSilhouette(doc, [item], cl, 0, false);',
-    '  var n = 0, r = 0, sv = 0, lim = 0.2 * 2.834645;',
+    '  var n = 0, r = 0, sv = 0, lim = 0.1 * 2.834645;',
     '  function sliver(p){ var b = p.geometricBounds; return Math.min(b[2]-b[0], b[1]-b[3]) < lim; }',
     '  for (var k = 0; k < cl.pageItems.length; k++) {',
     '    var it = cl.pageItems[k]; n++;',

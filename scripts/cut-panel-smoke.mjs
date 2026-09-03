@@ -916,7 +916,7 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     const h2 = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
     ok('3v 호스트가 부스러기를 걷어낸다', /function mesCut_dropCutSlivers\(/.test(h2))
     ok('3v 컴파운드 서브패스까지 본다', /CompoundPathItem[\s\S]{0,400}pathItems\[q\]\.remove\(\)|subs\[k\]\.remove\(\)/.test(h2))
-    ok('3v 임계는 물리 치수다', /MESCUT_MIN_CUT_MM = 0\.2/.test(h2))
+    ok('3v 임계는 물리 치수다', /MESCUT_MIN_CUT_MM = 0\.1/.test(h2))
     ok('3v 감싸는 규칙은 사라졌다', !/weldOne/.test(h2))
   }
   // ★단품 칼선(makeCut)은 손대지 않았다 — 거기는 지금도 구멍을 낸다.
