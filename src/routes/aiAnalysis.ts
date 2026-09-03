@@ -453,6 +453,14 @@ aiAnalysisRouter.post('/:id/chunks', async (c) => {
       return c.json({ success: false, error: 'chunk_index and chunk_data are required' }, 400)
     }
 
+    // #339 와 같은 격리 — 형제 /:id/download 는 필터를 걸었는데 청크 경로만 빠져 있었다.
+    // 여기는 원본 디자인 파일을 조립·덮어쓰는 경로라 id 만으로 남의 법인 파일을 바꿀 수 있었다.
+    const efW = entityFilter(c)
+    const ownedW = await c.env.DB.prepare(
+      `SELECT id FROM ai_analysis_requests WHERE id = ?${efW.clause}`
+    ).bind(id, ...efW.params).first()
+    if (!ownedW) return c.json({ success: false, error: 'Not found' }, 404)
+
     await c.env.DB.prepare(
       `INSERT OR REPLACE INTO ai_file_chunks (analysis_id, chunk_index, chunk_data)
        VALUES (?, ?, ?)`
@@ -472,6 +480,13 @@ aiAnalysisRouter.post('/:id/chunks', async (c) => {
 aiAnalysisRouter.get('/:id/chunks', async (c) => {
   try {
     const id = c.req.param('id')
+    // #339 와 같은 격리(형제 /:id/download 대조) — 조립되는 것이 원본 디자인 파일이다.
+    const ef = entityFilter(c)
+    const owned = await c.env.DB.prepare(
+      `SELECT id FROM ai_analysis_requests WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first()
+    if (!owned) return c.json({ success: false, error: 'Not found' }, 404)
+
     const { results } = await c.env.DB.prepare(
       `SELECT chunk_index, chunk_data FROM ai_file_chunks
        WHERE analysis_id = ? ORDER BY chunk_index ASC`
