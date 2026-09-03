@@ -5,7 +5,9 @@ import { deptOptions, positionOptions, employmentTypeOptions } from '../constant
 import pageScript from '../scripts/hrDetail.js?raw'
 
 export function hrDetailPage(c: Context<HonoEnv>) {
-  const id = c.req.param('id') || '0'
+  // 반사 XSS 가드: id 가 data-employee-id 속성에 그대로 들어간다 (clientDetail.ts 와 동일 규칙)
+  const id = parseInt(c.req.param('id') || '', 10)
+  if (isNaN(id)) return c.text('Invalid employee ID', 400)
   return renderPage(c, {
     title: '직원 상세',
     activePage: '/hr',

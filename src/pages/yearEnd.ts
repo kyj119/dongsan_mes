@@ -9,6 +9,7 @@ export function yearEndPage(c: Context<HonoEnv>) {
   const employeeId = parseInt(c.req.param('employeeId') || '', 10)
   const year = parseInt(c.req.query('year') || String(kstYear()), 10)
   if (isNaN(employeeId)) return c.text('Invalid employee ID', 400)
+  if (isNaN(year)) return c.text('Invalid year', 400)
 
   return c.html(`
 <!DOCTYPE html>
