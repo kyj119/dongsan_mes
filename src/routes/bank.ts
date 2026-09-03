@@ -2652,12 +2652,17 @@ bankRouter.post('/auto-sync', requireRole('ADMIN'), async (c) => {
 
               // #474: UNIQUE 인덱스에 위임 — 건별 dup-check SELECT 제거(N+1)
               // 0451: dedup 신원을 content_key(내용키)로 이전 → 외부 TransRefKey 재생성돼도 중복 미삽입.
+              // #500 (수동 /sync-barobill 과 동일): 잔액 미제공은 NULL — 0 으로 저장하면 그 건이 계좌의 최신 거래일 때
+              //   LATEST_BALANCE_SUBQUERY 가 0 을 잔액으로 읽어 자금현황·재무 스냅샷에서 그 계좌가 사라진다.
+              const autoBalRaw = item.Balance
+              const autoBalParsed = (autoBalRaw === undefined || autoBalRaw === null || autoBalRaw === '') ? null : parseFloat(autoBalRaw)
+              const autoBalanceAfter = (autoBalParsed === null || Number.isNaN(autoBalParsed)) ? null : autoBalParsed
               const r = await c.env.DB.prepare(`
                 INSERT OR IGNORE INTO bank_transactions (bank_account_id, transaction_date, transaction_time, transaction_type, amount, balance_after, counterpart_name, description, codef_transaction_id, match_status, entity_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'UNMATCHED', ?)
               `).bind(
                 bankAcc.id, txDate, txTime, txType, amount,
-                parseFloat(item.Balance || '0'),
+                autoBalanceAfter,
                 item.TransRemark1 || null, item.TransOffice || null,
                 refKey || null, bankAcc.entity_id ?? getEntityId(c)
               ).run()

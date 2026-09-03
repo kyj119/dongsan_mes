@@ -251,9 +251,11 @@ fixedAssets.post('/depreciate', requireRole('ADMIN'), async (c) => {
     if (String(asset.acquisition_date).slice(0, 7) > period) continue
 
     const lastRecord = latestMap.get(asset.id)
-    const accumulated = lastRecord?.accumulated_depreciation ?? 0
     // ?? 필수 — `||` 면 상각완료(장부가 0) 자산이 취득가로 되살아나 무한 상각된다.
     const bookValue = lastRecord?.book_value ?? asset.current_book_value ?? asset.acquisition_cost
+    // 상각기록이 없는 자산(이관 자산·첫 상각)은 **개시 장부가**가 앵커다: 누계 = 취득가 − 개시 장부가.
+    //   0 으로 두면 newBookValue = 취득가 − 당월액 이 되어 이관 장부가 3천만 자산이 9,900만으로 되살아난다(2026-09-03).
+    const accumulated = lastRecord?.accumulated_depreciation ?? Math.max(0, asset.acquisition_cost - bookValue)
 
     const salvage = asset.salvage_value || 0
     // 잔존가치 도달 시 스킵
@@ -275,7 +277,9 @@ fixedAssets.post('/depreciate', requireRole('ADMIN'), async (c) => {
       //   미설정 자산은 종전 이중체감(2/내용연수)으로 폴백 — 세법과 다르니 rate 를 채우는 게 정답이다.
       const rate = asset.depreciation_rate
       if (rate && rate > 0) {
-        const openingAcc = prevYearMap.get(asset.id) || 0
+        // 전년말·당해 첫 기록이 둘 다 없으면(이관 후 첫 상각) 개시 장부가 앵커(accumulated)가 연초 누계다.
+        //   `|| 0` 이면 기준액이 취득가가 되어 정률 상각액이 과대(실측 +70%).
+        const openingAcc = prevYearMap.get(asset.id) ?? accumulated
         const openingBase = asset.acquisition_cost - openingAcc
         monthlyDepreciation = expired
           // 내용연수가 끝나는 사업연도엔 미상각잔액을 비망가액만 남기고 **전액** 턴다(세법).

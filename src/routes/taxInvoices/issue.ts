@@ -516,10 +516,20 @@ taxInvoicesIssueRouter.post('/:id/modify', requireEditOrRole('/tax-invoices', 'M
       'SELECT id, tax_invoice_id, item_date, item_name, specification, quantity, unit_price, supply_amount, tax_amount, notes, sort_order FROM tax_invoice_items WHERE tax_invoice_id = ? ORDER BY sort_order'
     ).bind(id).all()
 
+    // ★ 부호는 수정사유 코드가 정한다 (프론트는 code·issue_date·notes 만 보낸다 — taxInvoices.js submitModify).
+    //   3 환입 · 4 계약해제 · 6 착오에 의한 이중발급 = 당초분을 **음수(−)** 로 취소하는 계산서.
+    //   원본 양수를 그대로 복사하면 매출·부가세가 두 배로 잡힌다(vatReports 가 MODIFY 를 합산).
+    //   1 기재사항 착오정정 · 5 내국신용장 사후개설 = 수정분(+)을 만든다(당초분 − 는 별도 발행 필요).
+    //   2 공급가액 변동 = 증감분만 발행하므로 금액(items) 없이는 만들 수 없다.
+    const modifySign = ['3', '4', '6'].includes(body.modify_code) ? -1 : 1
+    if (body.modify_code === '2' && !body.items?.length) {
+      return c.json({ success: false, error: '공급가액 변동(2)은 증감분 품목(items)을 함께 보내야 합니다.' }, 400)
+    }
+
     const invoiceNumber = await generateInvoiceNumber(c.env.DB, getEntityId(c))
     const issueDate = body.issue_date || kstYmd()
 
-    // 새 수정발행 계산서 생성 (원본 정보 복사)
+    // 새 수정발행 계산서 생성 (원본 정보 복사, 금액은 코드 부호 적용)
     const insertResult = await c.env.DB.prepare(`
       INSERT INTO tax_invoices (
         invoice_number, order_id, invoice_type, modify_code, original_invoice_id,
@@ -559,9 +569,9 @@ taxInvoicesIssueRouter.post('/:id/modify', requireEditOrRole('/tax-invoices', 'M
       original.buyer_business_type || null,
       original.buyer_business_item || null,
       body.buyer_email || original.buyer_email || null,
-      original.supply_amount,
-      original.tax_amount,
-      original.total_amount,
+      modifySign * (Number(original.supply_amount) || 0),
+      modifySign * (Number(original.tax_amount) || 0),
+      modifySign * (Number(original.total_amount) || 0),
       issueDate,
       body.notes !== undefined ? body.notes : (original.notes || null),
       original.entity_id || 1
@@ -603,8 +613,9 @@ taxInvoicesIssueRouter.post('/:id/modify', requireEditOrRole('/tax-invoices', 'M
           specification: it.specification || null,
           quantity: it.quantity,
           unit_price: Number(it.unit_price) || 0,
-          supply_amount: Number(it.supply_amount) || 0,
-          tax_amount: Number(it.tax_amount) || 0,
+          // 원본 복사 시 헤더와 같은 부호(환입·계약해제·이중발급 = 음수)
+          supply_amount: modifySign * (Number(it.supply_amount) || 0),
+          tax_amount: modifySign * (Number(it.tax_amount) || 0),
           notes: it.notes || null,
           sort_order: i
         }))

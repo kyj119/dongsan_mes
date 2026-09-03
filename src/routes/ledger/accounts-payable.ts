@@ -1051,15 +1051,16 @@ apRouter.get('/purchase-client/:clientId/export/csv', async (c) => {
     }
 
     // Format for CSV
-    // 헤더 8개 / 행 7개라 잔액이 '감액' 열에, 비고가 '잔액' 열에 찍히고 있었다.
-    // 감액(adjustment)은 위에서 credit 으로 합쳐 넣으므로 별도 열이 없다 → 헤더에서 제거해 정렬을 맞춘다.
-    const headers = ['일자', '구분', '참조', '발주금액(차변)', '지급금액(대변)', '잔액', '비고']
+    // 헤더 8열 = 값 8열. 종전엔 값이 7개라 잔액이 「감액」칸, 비고가 「잔액」칸으로 밀렸다(2026-09-03).
+    //   감액 행(type='감액')은 credit 에 들어 있으므로 지급/감액 칸을 구분해 채운다.
+    const headers = ['일자', '구분', '참조', '발주금액(차변)', '지급금액(대변)', '감액', '잔액', '비고']
     const rows = entries.map(entry => [
       entry.date,
       entry.type,
       entry.ref,
       entry.debit || '',
-      entry.credit || '',
+      entry.type === '감액' ? '' : (entry.credit || ''),
+      entry.type === '감액' ? (entry.credit || '') : '',
       entry.balance,
       entry.note
     ])

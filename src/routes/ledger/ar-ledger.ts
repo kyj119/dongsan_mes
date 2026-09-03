@@ -14,7 +14,7 @@ import { kstYm, kstYear, kstYmd } from '../../utils/kstDate'
 import { isInternalEntityClient } from '../../constants/intercompany'
 import { excludeArExcludedClientsSql } from '../../constants/arPolicy'
 import {
-  arOrderDateExpr,
+  arOrderDateExpr, deriveArSplit,
   type ClientRow, type OrderRow, type PaymentRow, type AdjustmentRow,
   type OrderAggRow, type PaymentAggRow, type MonthlyOrderRow, type MonthlyPaymentRow,
 } from './ar-helpers'
@@ -649,10 +649,10 @@ arLedgerRouter.get('/closing-summary', async (c) => {
     `).bind(monthStart, monthEnd, ...efP.params).first<{ month_payments: number; month_payment_count: number }>()
 
     // 총 미수금 (전체)
-    const balRes = await c.env.DB.prepare(
-      `SELECT COALESCE(SUM(balance),0) as total_receivables, COUNT(*) as receivable_clients
-       FROM clients WHERE is_active=1 AND balance > 0`
-    ).first<{ total_receivables: number; receivable_clients: number }>()
+    //   clients.balance 캐시는 폐기(prod 전량 0) → 파생(order_billing_groups[BILLED] − payments − adjustments).
+    //   거래처별 잔액을 먼저 낸 뒤 양수만 합산(deriveArSplit) — 선수금이 매출채권을 상쇄하지 않도록.
+    const arSplit = await deriveArSplit(c)
+    const balRes = { total_receivables: arSplit.receivable, receivable_clients: arSplit.receivableClients }
 
     // 미발행 세금계산서 (SHIPPED but not BILLED)
     const unbilledRes = await c.env.DB.prepare(`

@@ -4,6 +4,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { requireAccessOrRole } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { kstYm, kstDate } from '../utils/kstDate'
+import { cardNetAmountSql, cardSpendFilterSql } from '../utils/cardSpend'
 
 const cashFlowRouter = new Hono<HonoEnv>()
 cashFlowRouter.use('/*', authMiddleware)
@@ -557,11 +558,12 @@ cashFlowRouter.get('/projection', requireRole('ADMIN'), async (c) => {
       const firstPrev = monthsList[0].prevYM
       const lastPrev = monthsList[monthsList.length - 1].prevYM
       const efCard = entityFilter(c, 'ct')
+      // 순지출 정본(utils/cardSpend): 취소는 **차감**(종전 ELSE 0 은 차감을 안 해 과대) · 상계쌍/가승인 제외
       const { results: cardRows } = await c.env.DB.prepare(`
         SELECT substr(ct.transaction_date, 1, 6) as ym,
-               COALESCE(SUM(CASE WHEN ct.approval_type != 'CANCEL' THEN ct.amount ELSE 0 END), 0) as total
+               COALESCE(SUM(${cardNetAmountSql('ct')}), 0) as total
         FROM card_transactions ct
-        WHERE substr(ct.transaction_date, 1, 6) BETWEEN ? AND ?${efCard.clause}
+        WHERE substr(ct.transaction_date, 1, 6) BETWEEN ? AND ?${efCard.clause}${cardSpendFilterSql('ct')}
         GROUP BY ym
       `).bind(firstPrev, lastPrev, ...efCard.params).all()
       for (const r of cardRows || []) cardMap.set(String((r as any).ym), Number((r as any).total) || 0)
@@ -711,9 +713,9 @@ cashFlowRouter.get('/calendar', requireRole('ADMIN'), async (c) => {
 
         const efTxSum = entityFilter(c)
         const txSum = await c.env.DB.prepare(`
-          SELECT COALESCE(SUM(CASE WHEN approval_type != 'CANCEL' THEN amount ELSE -amount END), 0) as total
+          SELECT COALESCE(SUM(${cardNetAmountSql()}), 0) as total
           FROM card_transactions
-          WHERE card_id = ? AND transaction_date >= ? AND transaction_date <= ?${efTxSum.clause}
+          WHERE card_id = ? AND transaction_date >= ? AND transaction_date <= ?${efTxSum.clause}${cardSpendFilterSql()}
         `).bind(card.id, billingStart.replace(/-/g, ''), billingEnd.replace(/-/g, ''), ...efTxSum.params).first<{ total: number }>()
 
         if (txSum && txSum.total > 0) {
