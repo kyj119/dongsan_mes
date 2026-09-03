@@ -21,7 +21,9 @@ const BULK_LIMIT_DEFAULTS: Record<BulkChannel, number> = {
   lms: 500,   // 장문, 수십 원/건
   sms: 500,   // 15원/건 — 500건이면 약 7,500원
   kakao: 500, // 7원/건 (알림톡)
-  email: 0,   // 과금 없음 → 무제한
+  // 이메일은 과금이 없지만 무제한은 아니다 — 건당 fetch 1 + 로그 INSERT 1 이라
+  // Workers subrequest 한도(1,000)에 걸려 400건대에서 루프가 죽는다. 안전여유를 둬 300.
+  email: 300,
 }
 
 /** 안내 문구의 예상 비용 계산용 단가(원/건). 정확한 청구단가가 아니라 오조작 감각용 추정치. */
