@@ -662,7 +662,9 @@ shipmentsRouter.patch('/checklist/:shipmentId', async (c) => {
 // ============================================================================
 shipmentsRouter.get('/dashboard/counts', async (c) => {
   try {
-    const today = kstYmd()
+    // ?date= 를 형제 GET /dashboard 와 같게 받는다 — 고정 오늘이면 화면 날짜를 바꿔도 카운터만 오늘 값으로 남는다.
+    const { date } = c.req.query()
+    const today = date || kstYmd()
     const ef = entityFilter(c, 'o')
     const { results } = await c.env.DB.prepare(`
       SELECT o.id,
@@ -943,6 +945,17 @@ shipmentsRouter.post('/', requireEditOrRole('/shipments', 'MANAGER', 'DESIGNER')
 
     if (batchStmts.length > 0) {
       await c.env.DB.batch(batchStmts)
+    }
+
+    // ★기성·유통 라인 재고 차감 — 다른 출고 경로(cards/lifecycle.ts:446·orders/queries.ts:370)와 같은 규칙.
+    //   여기만 빠져 있어서, 이 API 로 출고한 혼합주문은 나중에 sync-statuses 가 SHIPPED 로 올려도
+    //   그 라우트가 "auto_complete_date 가 있으니 출고 경로에서 이미 차감됐다"(orders/lifecycle.ts:535)를
+    //   전제해 차감을 건너뛴다 → 기성 라인 재고가 어디서도 안 빠진다.
+    //   (주문×품목×법인) OUT 행 기준 멱등이라 부분출고로 여러 번 불려도 두 번 빠지지 않는다.
+    try {
+      await deductStockLinesOnShip(c.env.DB, Number(body.order_id), order.entity_id || getEntityId(c) || 1)
+    } catch (stockDeductErr) {
+      console.error('Ship stock deduction error:', stockDeductErr)
     }
 
     // 출고 완료 → 후가공(코팅 등) 소비자재 폭매칭 자동차감 (fire-and-forget — 실패해도 출고는 성공)
@@ -1273,8 +1286,24 @@ shipmentsRouter.patch('/:id/status', requireEditOrRole('/shipments', 'MANAGER'),
 
       // 주문 상태 동기화
       const orderRow = await c.env.DB.prepare(
-        'SELECT order_id FROM shipments WHERE id = ?'
-      ).bind(id).first<{ order_id: number }>()
+        `SELECT s.order_id, o.entity_id, o.status FROM shipments s LEFT JOIN orders o ON o.id = s.order_id WHERE s.id = ?`
+      ).bind(id).first<{ order_id: number; entity_id: number | null; status: string | null }>()
+
+      // ★이 경로로 주문이 SHIPPED 로 올라가면 **재고 차감과 상태 이력**도 다른 출고 경로와 같아야 한다.
+      //   빠져 있으면 기성·유통 라인 재고가 영영 안 빠지고, 나중에 같은 라우트로 취소해도
+      //   restoreStockLinesOnUnship 이 차감 행을 못 찾아 no-op → 재고와 원장이 조용히 어긋난다.
+      //   deductStockLinesOnShip 은 (주문×품목×법인) OUT 행으로 멱등이라 반복 호출해도 안전하다.
+      let needsShipDeduct = false
+      if (orderRow?.order_id && (status === 'SHIPPED' || status === 'IN_TRANSIT') && orderRow.status !== 'SHIPPED') {
+        needsShipDeduct = true
+        stmts.push(c.env.DB.prepare(`
+          INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
+          VALUES (?, ?, 'SHIPPED', ?, ?)
+        `).bind(
+          orderRow.order_id, orderRow.status || null, c.get('user')?.id || null,
+          status === 'IN_TRANSIT' ? '출고 배송중 전환' : '출고 상태 변경'
+        ))
+      }
 
       if (orderRow?.order_id) {
         const user = c.get('user')
@@ -1312,6 +1341,17 @@ shipmentsRouter.patch('/:id/status', requireEditOrRole('/shipments', 'MANAGER'),
       }
 
       await c.env.DB.batch(stmts)
+
+      // 재고 차감은 batch 밖 — 내부에서 스스로 batch 를 쓴다(차감·환원 쌍과 같은 모양).
+      if (needsShipDeduct && orderRow?.order_id) {
+        try {
+          await deductStockLinesOnShip(
+            c.env.DB, Number(orderRow.order_id), orderRow.entity_id || getEntityId(c) || 1
+          )
+        } catch (deductErr) {
+          console.error('[shipments/status] stock deduction failed:', deductErr)
+        }
+      }
     }
 
     return c.json({ success: true, message: '출고 상태가 변경되었습니다.' })

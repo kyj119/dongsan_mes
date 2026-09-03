@@ -172,7 +172,7 @@ ordersLifecycleRouter.patch('/:id/status', requireEditOrRole('/orders', 'MANAGER
 
     // Get current status (#381: 소유 법인만 상태 변경)
     const efSt = entityFilter(c, 'orders')
-    const order = await c.env.DB.prepare(`SELECT status, client_id, final_amount, order_number, delivery_date, entity_id FROM orders WHERE id = ?${efSt.clause}`).bind(id, ...efSt.params).first<{ status: string; client_id: number; final_amount: number; order_number: string; delivery_date: string | null; entity_id: number | null }>()
+    const order = await c.env.DB.prepare(`SELECT status, client_id, final_amount, order_number, delivery_date, entity_id, order_type FROM orders WHERE id = ?${efSt.clause}`).bind(id, ...efSt.params).first<{ status: string; client_id: number; final_amount: number; order_number: string; delivery_date: string | null; entity_id: number | null; order_type: string | null }>()
 
     if (!order) {
       return c.json({
@@ -306,7 +306,7 @@ ordersLifecycleRouter.patch('/:id/status', requireEditOrRole('/orders', 'MANAGER
         const cov = await checkMaterialCoverage(c.env.DB, parseInt(id), entityId)
         materialWarnings = cov.warnings
         // 유통 주문은 자재 소요 개념이 없다 → gap 은 전건 오탐이 된다
-        materialGap = (order as { order_type?: string | null }).order_type === 'DISTRIBUTION' ? null : cov.gap
+        materialGap = order.order_type === 'DISTRIBUTION' ? null : cov.gap
       } catch (mErr) {
         materialCheckFailed = true
         console.error('Material shortage check failed (non-blocking):', mErr)

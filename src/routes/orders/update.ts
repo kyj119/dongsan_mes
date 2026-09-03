@@ -357,6 +357,10 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
         c.env.DB.prepare('UPDATE print_events SET card_id = NULL WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
         c.env.DB.prepare('DELETE FROM card_items WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
         c.env.DB.prepare('DELETE FROM card_checklist_items WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
+        // 파일맵도 끊는다 — 하드삭제(core.ts:669,687)와 같은 처리. print_file_map 은 FK 가 없어(0079)
+        //   500 도 안 나고 죽은 card_id 를 그대로 가리킨다 → resolveCard 가 사라진 카드를 돌려줘
+        //   출력완료가 어느 카드에도 안 찍힌 채 print_events 에 유령 id 만 쌓인다.
+        c.env.DB.prepare('UPDATE print_file_map SET card_id = NULL WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
         c.env.DB.prepare('DELETE FROM cards WHERE order_id = ?').bind(id),
         c.env.DB.prepare("DELETE FROM auto_process_jobs WHERE order_id = ? AND status IN ('pending','processing','failed')").bind(id),
         // #480: 검수 기록(shipment_checks, 0439)이 order_item_id FK로 물려 있으면 order_items 삭제가 FK throw
@@ -366,6 +370,8 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
         c.env.DB.prepare('UPDATE designer_intakes SET order_item_id = NULL WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').bind(id),
         // #597: order_ai_files.order_item_id RESTRICT(0516) 해제 — 행 보존, 신규 라인 삽입 후 재연결
         c.env.DB.prepare('UPDATE order_ai_files SET order_item_id = NULL WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').bind(id),
+        // 파일맵의 라인 참조도 끊는다 (core.ts:687 하드삭제와 대칭) — 죽은 order_item_id 는 autoCheckCardItem 이 아무 라인도 못 찾게 만든다
+        c.env.DB.prepare('UPDATE print_file_map SET order_item_id = NULL WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').bind(id),
         c.env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(id),
       ])
     }
