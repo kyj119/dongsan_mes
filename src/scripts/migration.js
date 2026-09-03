@@ -825,21 +825,5 @@ async function loadStatusReport() {
   }
 }
 
-window.recalculateAllBalances = async function() {
-  if (!(await showConfirm('전체 거래처 잔액을 재계산하시겠습니까?'))) return;
-  const btn = document.getElementById('recalcBtn');
-  btn.disabled = true;
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>재계산 중...';
-
-  try {
-    const res = await axios.post('/api/migration/recalculate-all-balances');
-    if (res.data.success) {
-      showToast(`${res.data.data.updated}개 거래처 잔액이 재계산되었습니다.`, 'warning');
-    }
-  } catch (err) {
-    showToast('재계산 실패: ' + (err.response?.data?.error || err.message), 'error');
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '<i class="fas fa-calculator mr-1"></i>재계산 실행';
-  }
-};
+// recalculateAllBalances 제거(2026-09-03) — clients.balance 캐시 폐기로 서버가 410 을 준다.
+// 진입 버튼(#recalcBtn)도 같이 제거했다. 미수금은 조회 시점 파생(청구−입금−조정)이라 재계산 대상이 없다.
