@@ -2,13 +2,13 @@ import { Hono } from 'hono'
 import { sign, verify } from 'hono/jwt'
 import type { HonoEnv } from '../types/env'
 import { verifyPassword, hashPassword } from '../utils/crypto'
-import { authMiddleware, requireRole } from '../middleware/auth'
-import { rateLimitMiddleware } from '../middleware/rateLimit'
+import { authMiddleware, toAuthUser } from '../middleware/auth'
 
 const auth = new Hono<HonoEnv>()
 
-// 로그인 API (브루트포스 방지: 60초당 10회 — 현장 PC 공유 NAT 고려)
-auth.post('/login', rateLimitMiddleware(10, 60000), async (c) => {
+// 로그인 API — 브루트포스 방지 레이트리밋은 index.tsx(`/api/auth/login`, 분당 5회) 한 곳에서만 건다.
+//   여기에 하나 더 두면 같은 카운터(ip:pathname)를 요청당 두 번 올려 실효 한도가 3회로 줄었다 (2026-09-03).
+auth.post('/login', async (c) => {
   try {
     const { username, password } = await c.req.json()
 
@@ -95,12 +95,15 @@ auth.get('/me', async (c) => {
 
     // JWT 토큰 검증 및 디코딩
     const jwtSecret = c.env.JWT_SECRET
-    const payload = await verify(token, jwtSecret, 'HS256')
+    const claims = toAuthUser(await verify(token, jwtSecret, 'HS256'))
+    if (!claims) {
+      return c.json({ success: false, message: 'Invalid token' }, 401)
+    }
 
     // 사용자 정보 조회
     const user = await c.env.DB.prepare(
       'SELECT id, username, name, COALESCE(job_role, role) AS role, email, created_at, last_login_at FROM users WHERE id = ? AND is_active = 1'
-    ).bind(payload.id).first()
+    ).bind(claims.id).first()
 
     if (!user) {
       return c.json({ success: false, message: 'User not found' }, 404)
@@ -117,6 +120,8 @@ auth.get('/me', async (c) => {
 })
 
 // 토큰 갱신 (만료 2시간 이내이면 새 토큰 발급)
+//   제시된 클레임을 그대로 재서명하지 않는다 (2026-09-03): users 를 다시 읽어 비활성·삭제 계정은 거부하고,
+//   role·is_coordinator 는 현재 DB 값으로 갱신한다. 포털·셀프 토큰은 toAuthUser 에서 걸러진다.
 auth.post('/refresh', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
@@ -127,6 +132,10 @@ auth.post('/refresh', async (c) => {
     const token = authHeader.substring(7)
     const jwtSecret = c.env.JWT_SECRET
     const payload = await verify(token, jwtSecret, 'HS256')
+    const claims = toAuthUser(payload)
+    if (!claims) {
+      return c.json({ success: false, message: 'Invalid token' }, 401)
+    }
 
     const now = Math.floor(Date.now() / 1000)
     const timeLeft = (payload.exp as number) - now
@@ -136,13 +145,29 @@ auth.post('/refresh', async (c) => {
       return c.json({ success: true, refreshed: false, message: 'Token still valid' })
     }
 
+    const row = await c.env.DB.prepare(
+      'SELECT id, username, COALESCE(job_role, role) AS role, default_entity_id, is_coordinator FROM users WHERE id = ? AND is_active = 1'
+    ).bind(claims.id).first<{ id: number; username: string; role: string; default_entity_id: number | null; is_coordinator: number | null }>()
+    if (!row) {
+      return c.json({ success: false, message: '계정이 비활성화되었거나 존재하지 않습니다' }, 401)
+    }
+
+    // 법인 컨텍스트: 제시된 entityId 를 유지하되(0 = ADMIN 전체 모드, 예전 `|| 1` 은 0 을 1 로 바꿔 버렸다)
+    //   switch-entity 와 같은 정책으로 — ADMIN 은 그대로, MANAGER 는 0 만 불가, 그 외는 소속 법인으로 되돌린다.
+    const homeEntity = row.default_entity_id || 1
+    const presented = claims.entityId != null ? claims.entityId : homeEntity
+    let entityId: number
+    if (row.role === 'ADMIN') entityId = presented
+    else if (row.role === 'MANAGER') entityId = presented === 0 ? homeEntity : presented
+    else entityId = homeEntity
+
     // 새 토큰 발급 (8시간)
     const newPayload = {
-      id: payload.id,
-      username: payload.username,
-      role: payload.role,
-      entityId: payload.entityId || 1,
-      is_coordinator: (payload as Record<string, unknown>).is_coordinator ? 1 : 0,
+      id: row.id,
+      username: row.username,
+      role: row.role,
+      entityId,
+      is_coordinator: Number(row.is_coordinator) ? 1 : 0,
       exp: now + (60 * 60 * 8),
     }
     const newToken = await sign(newPayload, jwtSecret, 'HS256')
@@ -170,10 +195,15 @@ auth.get('/entities', authMiddleware, async (c) => {
 auth.post('/switch-entity', authMiddleware, async (c) => {
   try {
     const user = c.get('user')
-    const { entity_id } = await c.req.json()
+    const body = await c.req.json().catch(() => ({})) as { entity_id?: unknown }
+    const raw = body.entity_id
 
-    if (!entity_id && entity_id !== 0) {
+    if (raw === undefined || raw === null || raw === '') {
       return c.json({ success: false, error: 'entity_id 필수' }, 400)
+    }
+    const entity_id = Number(raw)
+    if (!Number.isInteger(entity_id) || entity_id < 0) {
+      return c.json({ success: false, error: '유효하지 않은 법인' }, 400)
     }
 
     // entity_id=0: ADMIN 전용 "전체" 모드
@@ -190,13 +220,18 @@ auth.post('/switch-entity', authMiddleware, async (c) => {
         return c.json({ success: false, error: '유효하지 않은 법인' }, 400)
       }
 
-      // 일반 직원은 본인 소속 법인만
+      // 일반 직원은 본인 소속 법인만. 소속이 비어 있으면(NULL/0) 전환 자체를 막는다 —
+      //   예전 `default_entity_id &&` 가드는 NULL 이면 검사를 건너뛰어 임의 법인 토큰을 내줬다 (2026-09-03).
       if (!['ADMIN', 'MANAGER'].includes(user.role)) {
         const userRow = await c.env.DB.prepare(
-          'SELECT default_entity_id FROM users WHERE id = ?'
+          'SELECT default_entity_id FROM users WHERE id = ? AND is_active = 1'
         ).bind(user.id).first<{ default_entity_id: number | null }>()
-        if (userRow?.default_entity_id && userRow.default_entity_id !== entity_id) {
-          return c.json({ success: false, error: '권한 없음' }, 403)
+        const home = Number(userRow?.default_entity_id) || 0
+        if (!home) {
+          return c.json({ success: false, error: '소속 법인이 지정되지 않은 계정은 법인을 전환할 수 없습니다. 관리자에게 문의하세요.' }, 403)
+        }
+        if (home !== entity_id) {
+          return c.json({ success: false, error: '본인 소속 법인으로만 전환할 수 있습니다' }, 403)
         }
       }
     }
