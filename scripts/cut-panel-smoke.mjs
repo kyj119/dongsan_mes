@@ -75,6 +75,7 @@ window.__adobe_cep__ = {
       else if (window.__lock.owner !== o2) res = 'notowner:' + window.__lock.owner;
       else { window.__lock = null; res = 'ok'; }
     }
+    else if (/^mesCut_selectAllTop/.test(script)) res = 'ok;n=3';
     else if (/^mesCut_vecProbe/.test(script)) res = window.__vecProbe;
     else if (/^mesCut_vecCut/.test(script)) res = window.__vecCut;
     else if (/^mesCut_forceUnlock/.test(script)) { window.__lock = null; res = 'ok'; }
@@ -772,6 +773,33 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // ★한계를 화면에 적는다 — "뭉친 개체는 안 나뉜다"
   ok('3r2 한계를 화면에 적는다', /뭉쳐 있으면 이걸로는 안 나뉩니다/.test(panelSrc))
 
+  // ── ★게이트 인자 형태 (2026-09-03 발견) ───────────────────────────
+  // `hostAtLeast(min)` 은 `min[i]` 를 **숫자로** 읽는다(:183~). 문자열('CUT-CEP-0.24.0')을 넘기면
+  // 글자와 숫자를 비교해 **항상 false** → 그 기능이 영구히 잠기고, 화면엔 "호스트가 구버전" 이라는
+  // **틀린 진단**이 떠 엉뚱한 재배포를 유도한다. 실제로 SELALL·BAKE1 두 자리가 그랬다.
+  // 소스 패턴만 보면 또 놓치므로 **버튼을 눌러 동작으로** 확인한다.
+  ok('3r2 게이트 상수는 배열', /var SELALL_MIN_HOST = \[0, 24, 0\]/.test(panelSrc))
+  {
+    const p = await openPanel({ ping: 'CUT-CEP-0.30.0' })   // 실제 배포된 호스트 버전
+    await p.click('#btnSelectAll')
+    await p.waitForTimeout(150)
+    const calls = await p.evaluate(() => window.__calls.join('\n'))
+    const out = await txt(p, '#cutOut')
+    ok('3r2 새 호스트면 실제로 호출한다', /mesCut_selectAllTop\(\)/.test(calls), out.slice(0, 80))
+    ok('3r2 새 호스트에 구버전 진단을 띄우지 않는다', !out.includes('구버전'), out.slice(0, 80))
+    await p.close()
+  }
+  {
+    const p = await openPanel({ ping: 'CUT-CEP-0.20.0' })   // 게이트 미만 = 여전히 막혀야 한다
+    await p.click('#btnSelectAll')
+    await p.waitForTimeout(150)
+    const calls = await p.evaluate(() => window.__calls.join('\n'))
+    const out = await txt(p, '#cutOut')
+    ok('3r2 구 호스트면 호출하지 않는다', !/mesCut_selectAllTop\(\)/.test(calls), calls.slice(-80))
+    ok('3r2 구 호스트면 사유를 화면에 쓴다', out.includes('구버전'), out.slice(0, 80))
+    await p.close()
+  }
+
   // ── ★도련 방식 칸이 실제 쓰는 자리에 있다 (2026-08-27) ────────────
   // 판짜기는 `bleedMode` 를 읽는데(cut-main.js:1490), 그 칸은 「이 버튼 전용(판짜기와 별개)」이라고
   // 적힌 **접힌 단품 섹션 안**에 있었다 — 라벨이 거짓이었고, 거기서 방식을 바꾸면 판짜기 결과가
@@ -816,7 +844,10 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3t 있으면 다시 굽지 않는다', /if \(prep\.inkList && prep\.inkList\.length\) \{ withList\(prep\.inkList\); return; \}/.test(panelSrc))
   // ★두 경로가 같은 코드를 써야 한쪽만 조용히 달라지지 않는다
   ok('3t 재사용·재굽기가 같은 코드', /function withList\(list\) \{/.test(panelSrc))
-  ok('3t 구 호스트면 옛 경로로 떨어진다', /var BAKE1_MIN_HOST = 'CUT-CEP-0\.23\.0'/.test(panelSrc))
+  // ★배열이어야 한다 — 문자열이면 hostSupportsOneBake() 가 **상시 false** 라 이 통합 경로가
+  //   한 번도 발동하지 않고 도련을 매번 다시 굽는다(실측 5.7초/회 낭비). 결과는 같고 느리기만 해서
+  //   조용히 잠복했다(2026-09-03 발견 · 아래 3r2 게이트 인자 형태와 같은 결함).
+  ok('3t 구 호스트면 옛 경로로 떨어진다', /var BAKE1_MIN_HOST = \[0, 23, 0\]/.test(panelSrc))
 
   // ── ★등록이 사실을 보낸다 (2026-08-27) ────────────────────────────
   // 여태 재단 탭 등록 manifest 는 finishing/trim/punch 를 **하드코딩 null·false** 로 보냈다.
