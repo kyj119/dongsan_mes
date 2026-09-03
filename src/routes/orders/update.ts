@@ -39,6 +39,11 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
       }, 404)
     }
 
+    // ★법인 기준은 **세션이 아니라 주문 행**이다 — 생성 경로(create.ts:294 orderEntityId=billingEntityId)와 같아야 한다.
+    //   세션 법인을 쓰면 ADMIN(entityId 0→1)이 청주(3) 주문을 저장만 해도 담당법인 추천·카드 법인이 1 로 바뀌어
+    //   청구그룹이 이동하고(helpers.ts:83 COALESCE) 새 카드가 원 법인의 /cards 목록에서 사라진다.
+    const orderEntityId = existingOrder.entity_id ?? (getEntityId(c) || 1)
+
     // 회계반영된 주문은 ADMIN/MANAGER만 수정 가능
     if (existingOrder.billing_status === 'BILLED') {
       if (!user || !['ADMIN', 'MANAGER'].includes(user.role)) {
@@ -188,7 +193,10 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
     // ★부가세 원 단위 반올림 — 생성 경로(orders/create.ts)와 **같은 규칙**이어야 한다.
     //   여기만 안 하면 무변경 저장만으로 금액이 소수로 바뀐다(왕복감사가 잡는 종류의 어긋남).
     vatAmount = Math.round(vatAmount)
-    const finalAmount = Math.round(totalAmount) + vatAmount - Math.round(orderData.discount_amount || 0)
+    // ★헤더 에누리 clamp — 생성 경로(create.ts)와 같은 규칙. 음수=총액 부풀림, 과대=음수 미수금.
+    const putGrossAmount = Math.round(totalAmount) + vatAmount
+    const putDiscountAmount = Math.min(Math.max(Math.round(Number(orderData.discount_amount) || 0), 0), putGrossAmount)
+    const finalAmount = putGrossAmount - putDiscountAmount
 
     // Update order
     await c.env.DB.prepare(`
@@ -227,7 +235,7 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
       orderData.delivery_detail || null,
       totalAmount,
       vatAmount,
-      orderData.discount_amount || 0,
+      putDiscountAmount,
       finalAmount,
       orderData.notes || null,
       orderData.internal_notes || null,
@@ -437,7 +445,7 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
 
       const putAssignedEntity = (item.assigned_entity_id !== undefined && item.assigned_entity_id !== null)
         ? item.assigned_entity_id
-        : recommendAssignedEntity({ ...item, category_name: categoryName }, getEntityId(c) || 1)
+        : recommendAssignedEntity({ ...item, category_name: categoryName }, orderEntityId)
       const putAssignmentStatus = putAssignedEntity ? (item.assignment_status || 'PENDING') : null
       putParentStmts.push(c.env.DB.prepare(`
         INSERT INTO order_items (
@@ -670,7 +678,7 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
         deliveryDate: orderData.delivery_date || null,
         priority: orderData.priority || 'NORMAL',
         notes: orderData.notes || null,
-        entityId: getEntityId(c) || 1
+        entityId: orderEntityId
       })
     } else if (cardsPreserved) {
       // 보존 경로에서 **카드가 안 붙은 라인**(신규 추가분 + 재매핑 실패분)만 append 로 카드 생성.
@@ -693,7 +701,7 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
           deliveryDate: orderData.delivery_date || null,
           priority: orderData.priority || 'NORMAL',
           notes: orderData.notes || null,
-          entityId: getEntityId(c) || 1,
+          entityId: orderEntityId,
           itemIdsFilter: orphanIds
         })
       }
