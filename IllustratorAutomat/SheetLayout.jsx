@@ -559,6 +559,64 @@ if (previewOnly) {
     return;
 }
 
+// ── 10-2.5 사후 검증 ──────────────────────────────────────────────────────
+// ★위치가 곧 정확성이다 (2026-09-03 정정). 여태 이 블록이 `newDoc.close()` **뒤**에 있어
+//   닫힌 문서의 `layers`·`artboards` 를 읽었다 → 세 검증이 매번 예외를 던지고 각 catch 가
+//   삼켜 `verifyErrors` 가 **영원히 빈 배열** = 항상 "모든 검증 통과". 검증이 있는 척만 했다.
+//   여기(EPS·JPG 저장 완료 · `layerA.remove()` 전)가 세 레이어가 모두 살아 있는 마지막 지점이다.
+var verifyErrors = [];
+
+// 검증 1: 레이어 구조 확인 (Design 은 아래 DXF 단계에서 지워지므로 반드시 그 **전에** 본다)
+try {
+    var expectedLayers = ["Design", "CutLine", "Dombo"];
+    for (var vli = 0; vli < expectedLayers.length; vli++) {
+        var found = false;
+        for (var vl2 = 0; vl2 < newDoc.layers.length; vl2++) {
+            if (newDoc.layers[vl2].name === expectedLayers[vli]) { found = true; break; }
+        }
+        if (!found) verifyErrors.push("missing_layer:" + expectedLayers[vli]);
+    }
+} catch(e_v1) { verifyErrors.push("verify1_failed:" + e_v1.message); }
+
+// 검증 2: CutLine 아이템 수 = placements 수
+try {
+    var cutLineLayer = null;
+    for (var vl3 = 0; vl3 < newDoc.layers.length; vl3++) {
+        if (newDoc.layers[vl3].name === "CutLine") { cutLineLayer = newDoc.layers[vl3]; break; }
+    }
+    if (cutLineLayer && cutLineLayer.pathItems.length !== placements.length) {
+        verifyErrors.push("cutline_count:" + cutLineLayer.pathItems.length + "/" + placements.length);
+    }
+} catch(e_v2) { verifyErrors.push("verify2_failed:" + e_v2.message); }
+
+// 검증 3: 아트보드 크기
+// ★기대식에 **돔보 확장**(9.5절, 변당 CORNER_DIST+pad)이 빠져 있어, 검증이 돌았다면 상시 경고였다.
+//   기준은 캔버스가 아니라 **콘텐츠 바운드 + 돔보 확장**이다 — 아트보드를 그렇게 정했기 때문이다(:517~521).
+//   캔버스 대조는 별도로 「콘텐츠가 캔버스를 넘지 않는가」만 본다(덜 채우는 것은 정상).
+try {
+    var abRect = newDoc.artboards[0].artboardRect;
+    var abW = Math.round(Math.abs(abRect[2] - abRect[0]) / PT_PER_MM);
+    var abH = Math.round(Math.abs(abRect[1] - abRect[3]) / PT_PER_MM);
+    var domboPadMm = (CORNER_DIST + pad) / PT_PER_MM;   // 변당 확장(실제 40mm / scaleFactor)
+    var contentWmm = (artR - artL) / PT_PER_MM;
+    var contentHmm = (artT - artB) / PT_PER_MM;
+    var expectedW = Math.round(contentWmm + domboPadMm * 2);
+    var expectedH = Math.round(contentHmm + domboPadMm * 2);
+    if (Math.abs(abW - expectedW) > 2) verifyErrors.push("artboard_w:" + abW + "/" + expectedW);
+    if (Math.abs(abH - expectedH) > 2) verifyErrors.push("artboard_h:" + abH + "/" + expectedH);
+    // 콘텐츠가 캔버스를 넘으면 배치가 틀린 것이다(도련 여유 2mm 허용).
+    if (contentWmm > canvasWidthCm * 10 + bleedMm * 2 + 2)
+        verifyErrors.push("content_over_w:" + Math.round(contentWmm) + "/" + Math.round(canvasWidthCm * 10));
+    if (contentHmm > maxBottomCm * 10 + bleedMm * 2 + 2)
+        verifyErrors.push("content_over_h:" + Math.round(contentHmm) + "/" + Math.round(maxBottomCm * 10));
+} catch(e_v3) { verifyErrors.push("verify3_failed:" + e_v3.message); }
+
+if (verifyErrors.length > 0) {
+    $.writeln("SheetLayout VERIFY WARN: " + verifyErrors.join(", "));
+} else {
+    $.writeln("SheetLayout VERIFY: 모든 검증 통과");
+}
+
 // 10-3. DXF 저장 (B + C만, A 삭제)
 layerA.remove(); // EPS/JPG 이미 저장됨, 문서는 close(DONOTSAVE)이므로 안전
 
@@ -582,49 +640,8 @@ if (dxfPath) {
 newDoc.close(SaveOptions.DONOTSAVECHANGES);
 for (var _sdc = 0; _sdc < srcDocs.length; _sdc++) { try { srcDocs[_sdc].close(SaveOptions.DONOTSAVECHANGES); } catch(e_sdc){} }
 
-// ── 12. 사후 검증 + 결과 JSON ──────────────────────────────────────────────
-var verifyErrors = [];
-
-// 검증 1: 레이어 구조 확인 (저장 전이므로 newDoc 기준 — DXF 전에는 모든 레이어 존재)
-try {
-    var expectedLayers = ["Design", "CutLine", "Dombo"];
-    for (var vli = 0; vli < expectedLayers.length; vli++) {
-        var found = false;
-        for (var vl2 = 0; vl2 < newDoc.layers.length; vl2++) {
-            if (newDoc.layers[vl2].name === expectedLayers[vli]) { found = true; break; }
-        }
-        if (!found) verifyErrors.push("missing_layer:" + expectedLayers[vli]);
-    }
-} catch(e_v1) {}
-
-// 검증 2: CutLine 아이템 수 = placements 수
-try {
-    var cutLineLayer = null;
-    for (var vl3 = 0; vl3 < newDoc.layers.length; vl3++) {
-        if (newDoc.layers[vl3].name === "CutLine") { cutLineLayer = newDoc.layers[vl3]; break; }
-    }
-    if (cutLineLayer && cutLineLayer.pathItems.length !== placements.length) {
-        verifyErrors.push("cutline_count:" + cutLineLayer.pathItems.length + "/" + placements.length);
-    }
-} catch(e_v2) {}
-
-// 검증 3: 아트보드 크기 (도련 포함)
-try {
-    var abRect = newDoc.artboards[0].artboardRect;
-    var abW = Math.round(Math.abs(abRect[2] - abRect[0]) / PT_PER_MM);
-    var abH = Math.round(Math.abs(abRect[1] - abRect[3]) / PT_PER_MM);
-    var expectedW = Math.round(canvasWidthCm * 10 + (bleedPt > 0 ? bleedMm * 2 : 0));
-    var expectedH = Math.round(maxBottomCm * 10 + (bleedPt > 0 ? bleedMm * 2 : 0));
-    if (Math.abs(abW - expectedW) > 2) verifyErrors.push("artboard_w:" + abW + "/" + expectedW);
-    if (Math.abs(abH - expectedH) > 2) verifyErrors.push("artboard_h:" + abH + "/" + expectedH);
-} catch(e_v3) {}
-
-if (verifyErrors.length > 0) {
-    $.writeln("SheetLayout VERIFY WARN: " + verifyErrors.join(", "));
-} else {
-    $.writeln("SheetLayout VERIFY: 모든 검증 통과");
-}
-
+// ── 12. 결과 JSON ─────────────────────────────────────────────────────────
+// (사후 검증은 10-2.5 로 옮겼다 — 여기서는 문서가 이미 닫혀 있어 읽을 수 없다)
 var epsEsc = epsPath.replace(/\\/g, "\\\\");
 var dxfEsc = (dxfPath || "").replace(/\\/g, "\\\\");
 var jpgEsc = (jpgPath || "").replace(/\\/g, "\\\\");
@@ -651,17 +668,32 @@ _ia_status = "done";
 
 })();
 } catch(e) {
-    if (_savedResultJson) {
-        var _errDir2 = _savedResultJson.replace(/[^\\\/]*$/, "");
-        var _logF = new File(_errDir2 + "error.log");
-        _logF.open("w"); _logF.write("JSError: " + e.message + " (line " + e.line + ")"); _logF.close();
-    } else {
-        var _sd = new File($.fileName).parent.fsName;
-        var _logF2 = new File(_sd + "/ia_error.log");
-        _logF2.open("w"); _logF2.write("JSError: " + e.message + " (line " + e.line + ")"); _logF2.close();
-    }
-    $.writeln("SheetLayout EXCEPTION: " + e.message + " (line " + e.line + ")");
+    // ★status 를 **가장 먼저** 잡는다 (2026-09-03 정정). 여태 로그를 먼저 썼는데, 그 경로가
+    //   `new File($.fileName).parent.fsName` 이라 **에이전트 실행에서는 쓸 수 없다**
+    //   (DoJavaScript(문자열) 이라 `$.fileName` 이 없다 — 그래서 `_ia_trace_path` 를 주입한다,
+    //   Program.cs:3704~3708). 그 쓰기가 던지면 아래 status 대입에 **도달하지 못하고** 반환이 "" 가 되어
+    //   JsxDiag() 가 "JSX 반환 빈값(미실행/조기종료 의심 — 일러 모달 확인)" 이라는 **틀린 진단**을 UI 에 띄웠다
+    //   (Program.cs:3729). 진짜 원인(원래 예외)은 그 자리에서 사라진다.
     _ia_status = "ERR: " + e.message + " (line " + e.line + ")";
+    try { $.writeln("SheetLayout EXCEPTION: " + e.message + " (line " + e.line + ")"); } catch (e_w) {}
+    // 로그는 **부가 기능**이다 — 실패해도 status 를 덮지 않는다.
+    try {
+        var _errTxt = "JSError: " + e.message + " (line " + e.line + ")";
+        if (_savedResultJson) {
+            var _errDir2 = _savedResultJson.replace(/[^\\\/]*$/, "");
+            var _logF = new File(_errDir2 + "error.log");
+            _logF.open("w"); _logF.write(_errTxt); _logF.close();
+        } else {
+            // ★`$.fileName` 이 없을 수 있다 → 에이전트가 주입한 경로를 먼저 본다(다른 3종과 같은 규약).
+            var _sd = (typeof _ia_trace_path !== "undefined" && _ia_trace_path)
+                ? new File(_ia_trace_path).parent.fsName
+                : ((typeof _ia_params_override_path !== "undefined" && _ia_params_override_path)
+                    ? new File(_ia_params_override_path).parent.fsName
+                    : new File($.fileName).parent.fsName);
+            var _logF2 = new File(_sd + "/ia_error.log");
+            _logF2.open("w"); _logF2.write(_errTxt); _logF2.close();
+        }
+    } catch (e_log) { /* 로그를 못 남겨도 status 는 위에서 이미 잡았다 */ }
 }
 // ★ 마지막 표현식 = DoJavaScript 반환값. 에이전트가 이 문자열을 render_error 에 실어
 //   "왜 산출물이 없는지"를 남긴다. 문자열이 아니면 COM 이 빈값으로 넘기므로 String() 고정.
