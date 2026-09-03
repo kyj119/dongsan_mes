@@ -38,7 +38,7 @@ function renderCapsSiteCards() {
   if (!container) return;
   var html = capsSitesCache.map(function(s) {
     var isActive = s.id === capsCurrentSiteId;
-    var syncOk = s.last_sync_ok_at ? timeAgo(s.last_sync_ok_at) : '없음';
+    var syncOk = s.last_sync_ok_at ? capsTimeAgo(s.last_sync_ok_at) : '없음';
     var statusDot = s.sync_enabled ? 'bg-green-500' : 'bg-gray-400';
     return '<button onclick="selectCapsSite(\'' + s.id + '\')" class="text-left p-3 rounded-lg border-2 transition-all ' +
       (isActive ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-200' : 'border-gray-200 bg-white hover:border-blue-300') + '">' +
@@ -65,7 +65,9 @@ function selectCapsSite(siteId) {
   loadCapsSyncLog();
 }
 
-function timeAgo(dateStr) {
+// ?raw 전역 스코프 — 종전 이름이 `timeAgo` 라 셸 전역(shell.js:1440)을 덮어써
+// /settings 의 알림 목록이 "412일 전"처럼 표시되고 빈값이 '없음'이 되던 문제. 이름 격리.
+function capsTimeAgo(dateStr) {
   if (!dateStr) return '없음';
   try {
     var d = Date.parse(dateStr.replace(' ', 'T') + (dateStr.includes('Z') ? '' : 'Z'));

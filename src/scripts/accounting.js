@@ -848,8 +848,11 @@ async function accIetClientFetch() {
   var q = document.getElementById('accIetClientSearch').value.trim();
   if (!q) { drop.classList.add('hidden'); return; }
   try {
-    var res = await axios.get('/api/clients?search=' + encodeURIComponent(q) + '&limit=8&active=1');
-    var list = res.data.data || [];
+    // 응답은 배열이 아니라 { clients, pagination } — 배열로 읽어 length 가 undefined 였고
+    // 그래서 이 검색이 입력과 무관하게 항상 "검색 결과 없음"이었다(routes/clients.ts:185).
+    // fields=picker: id·client_name·client_code 만 (드롭다운이 쓰는 건 그 셋뿐)
+    var res = await axios.get('/api/clients?fields=picker&search=' + encodeURIComponent(q) + '&limit=8&active=1');
+    var list = (res.data && res.data.data && res.data.data.clients) || [];
     if (!list.length) {
       drop.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">검색 결과 없음</div>';
       drop.classList.remove('hidden');

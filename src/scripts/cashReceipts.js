@@ -1,4 +1,7 @@
-var currentPage = 1;
+// cr 프리픽스로 격리 — taxInvoices.js 와 같은 ?raw 전역 스코프에 concat 되므로(pages/taxInvoices.ts:1013)
+// 종전 `currentPage` 는 세금계산서 목록과 한 변수를 공유했다. 세금계산서 3페이지를 본 뒤
+// 현금영수증 탭에서 취소·삭제하면 loadReceipts(3) 이 불려 엉뚱한 페이지가 떴다(반대 방향도 동일).
+var crCurrentPage = 1;
 
 var statusLabels = {
   'DRAFT': '작성중',
@@ -50,7 +53,7 @@ function formatDate(dateStr) {
 }
 
 function loadReceipts(page) {
-  currentPage = page || 1;
+  crCurrentPage = page || 1;
 
   // #352: 현금영수증 탭 전용 고유 ID(cr*) 참조 — 세금계산서 탭 ID 셰도잉 방지
   var statusEl = document.getElementById('crStatusFilter');
@@ -64,7 +67,7 @@ function loadReceipts(page) {
   var search = searchEl.value;
 
   var params = new URLSearchParams();
-  params.append('page', currentPage);
+  params.append('page', crCurrentPage);
   params.append('limit', 20);
   if (status) params.append('status', status);
   // #352: 라우트는 date_from/date_to 수신 (dateFrom/dateTo 아님)
@@ -341,7 +344,7 @@ async function issueReceipt(id) {
     .then(function(response) {
       showToast('현금영수증이 발행되었습니다.', 'success');
       document.getElementById('crDetailModal').classList.add('hidden');
-      loadReceipts(currentPage);
+      loadReceipts(crCurrentPage);
     })
     .catch(function(error) {
       console.error('Error issuing receipt:', error);
@@ -356,7 +359,7 @@ async function cancelReceipt(id) {
     .then(function(response) {
       showToast('현금영수증이 취소되었습니다.', 'success');
       document.getElementById('crDetailModal').classList.add('hidden');
-      loadReceipts(currentPage);
+      loadReceipts(crCurrentPage);
     })
     .catch(function(error) {
       console.error('Error cancelling receipt:', error);
@@ -369,7 +372,7 @@ function refreshStatus(id) {
     .then(function(response) {
       showToast('상태가 업데이트되었습니다.', 'success');
       document.getElementById('crDetailModal').classList.add('hidden');
-      loadReceipts(currentPage);
+      loadReceipts(crCurrentPage);
     })
     .catch(function(error) {
       console.error('Error refreshing status:', error);
@@ -397,7 +400,7 @@ async function deleteReceipt(id) {
   axios.delete('/api/cash-receipts/' + encodeURIComponent(id))
     .then(function(response) {
       showToast('현금영수증이 삭제되었습니다.', 'success');
-      loadReceipts(currentPage);
+      loadReceipts(crCurrentPage);
     })
     .catch(function(error) {
       console.error('Error deleting receipt:', error);

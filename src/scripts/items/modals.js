@@ -211,7 +211,9 @@ async function saveItem(event) {
     var specVal = (document.getElementById('itemSpecification') || {}).value || '';
 
     // 원자재 롤 폭: 폭 필드 값 우선(화면=저장값), 비어 있으면 규격에서 인식 (소수점 지원)
-    var widthMm = null;
+    // ⚠️ MATERIAL 이 아니면 undefined = 미전송. 라우트(items.ts:1256)가 undefined 만 "기존값 보존"으로
+    //    보고 null 은 지우기로 처리하므로, null 로 두면 제품·상품을 수정할 때마다 width_mm 이 날아간다.
+    var widthMm = undefined;
     if (selectedItemType === 'MATERIAL') {
         var wElSave = document.getElementById('itemWidthMm');
         if (wElSave) {

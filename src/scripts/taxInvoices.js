@@ -4,7 +4,8 @@
 // 세금계산서 전용 식별자에 ti 프리픽스로 격리(이 파일 내부 참조만, onclick 전역 노출 아님).
 // tiRefreshStatus: cash refreshStatus(현금영수증 미지원 400 stub)가 tax 버전을 shadow해 상태새로고침 버튼이
 //   /api/cash-receipts/:id/refresh-status 400을 치던 것을 ti 프리픽스+onclick(:175/:544)로 격리(auto-improve Area 3).
-// (currentPage는 hometaxInvoices.js 페이지 onclick이 전역으로 참조하므로 의도적으로 미개명 — 별도 flagged.)
+// currentPage: hometaxInvoices.js 는 자체 IIFE 스코프 + window.htCurrentPage 로 이미 분리됐고(:4,:237),
+//   cashReceipts.js 의 동명 전역은 crCurrentPage 로 격리했다 — 이제 이 전역은 세금계산서 목록 전용이다.
 // tiOpenPrintURL: cash openPrintURL(존재하지 않는 /api/cash-receipts/:id/print-url 호출)이 tax 버전을
 //   shadow해 인쇄/PDF 버튼이 404를 치던 것을 ti 프리픽스+onclick(:181/:555)로 격리 (#475).
 var currentPage = 1;
@@ -1502,16 +1503,28 @@ function recalcDirectRow(rid) {
   recalcDirectTotals();
 }
 
-function recalcDirectTotals() {
+// 직접발행 합계 SSOT — 서버(routes/taxInvoices/issue.ts:96-117)는 **품목별** round(공급가×0.1)을 합산한다.
+// 화면이 round(Σ공급가 × 0.1)로 계산하면 여러 줄일 때 원 단위로 어긋나고, 발행 후에야 드러난다.
+function _diCalcTotals() {
   var tbody = document.getElementById('diItemRows');
-  if (!tbody) return;
-  var supply = 0;
-  tbody.querySelectorAll('tr').forEach(function(tr) {
-    supply += _diNum(tr.querySelector('.di-amount').value);
-  });
-  supply = Math.round(supply);
-  var vat = Math.round(supply * 0.1);
-  var total = supply + vat;
+  var supply = 0, vat = 0;
+  if (tbody) {
+    tbody.querySelectorAll('tr').forEach(function(tr) {
+      var amtEl = tr.querySelector('.di-amount');
+      if (!amtEl) return;
+      var line = Math.round(_diNum(amtEl.value));
+      supply += line;
+      vat += Math.round(line * 0.1);
+    });
+  }
+  return { supply: supply, vat: vat, total: supply + vat };
+}
+
+function recalcDirectTotals() {
+  var t = _diCalcTotals();
+  var supply = t.supply;
+  var vat = t.vat;
+  var total = t.total;
   var sEl = document.getElementById('diSupplyDisplay');
   var vEl = document.getElementById('diVatDisplay');
   var tEl = document.getElementById('diTotalDisplay');
@@ -1553,9 +1566,11 @@ async function submitDirectIssue() {
   if (items.length === 0) { showToast('품목을 1개 이상 입력하세요.', 'warning'); return; }
   if (supplyTotal <= 0) { showToast('공급가액이 0원입니다. 금액을 입력하세요.', 'warning'); return; }
 
-  var supplyAmount = Math.round(supplyTotal);
-  var vatAmount = Math.round(supplyAmount * 0.1);
-  var totalAmount = supplyAmount + vatAmount;
+  // 미리보기와 같은 SSOT(_diCalcTotals) — 서버의 품목별 반올림 합산과 일치시킨다
+  var _tot = _diCalcTotals();
+  var supplyAmount = _tot.supply;
+  var vatAmount = _tot.vat;
+  var totalAmount = _tot.total;
 
   var payload = {
     client_id: parseInt(clientId, 10),

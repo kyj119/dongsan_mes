@@ -617,4 +617,9 @@ async function deleteTemplate(id) {
   } catch (e) { showToast('삭제 실패', 'error'); }
 }
 
-document.addEventListener('DOMContentLoaded', initApprovals);
+// SPA 전환 시 DOMContentLoaded 는 다시 발화하지 않는다 — readyState 가드 필수.
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApprovals);
+} else {
+  initApprovals();
+}
