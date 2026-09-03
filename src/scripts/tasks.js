@@ -117,5 +117,11 @@ document.getElementById('statusFilter').addEventListener('change', loadTasks);
 loadStats();
 loadTasks();
 
+// 폴링 규약(shell.js:735 · dashboard.js:762): 60초 + 숨은 탭 스킵.
+// 종전 10초·가드 없음은 탭 하나가 하루 17,000회를 쳐 CF 과금 가드 위반이었다.
+// SPA 전환 시 타이머 정리는 shell 의 setInterval 래퍼(_spaTimers)가 맡는다.
 if (window.__tasksRefreshTimer) clearInterval(window.__tasksRefreshTimer);
-window.__tasksRefreshTimer = setInterval(function() { loadStats(); loadTasks(); }, 10000);
+window.__tasksRefreshTimer = setInterval(function() {
+  if (document.hidden) return;
+  loadStats(); loadTasks();
+}, 60000);
