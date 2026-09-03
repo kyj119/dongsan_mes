@@ -100,6 +100,7 @@ export function buildOrderListFilter(c: Context<HonoEnv>, opts: OrderListFilterO
     priority = '', amount_min = '', amount_max = '', delivery_method = '',
     billing_status = '', overdue = '',
     ship_date_from = '', ship_date_to = '', exclude_vouchers = '',
+    client_id = '',
   } = c.req.query()
 
   const clauses: string[] = []
@@ -151,6 +152,13 @@ export function buildOrderListFilter(c: Context<HonoEnv>, opts: OrderListFilterO
       clauses.push(`o.status NOT IN (${excludes.map(() => '?').join(',')})`)
       params.push(...excludes)
     }
+  }
+
+  // 거래처 한정 — 원장 「감액(에누리) 등록」 모달이 그 거래처의 출고 주문만 고르는 데 쓴다(scripts/ledger.js).
+  //   전엔 이 조건이 없어 clientId=… 가 조용히 무시되고 전 거래처 최근 100건이 목록에 떴다.
+  if (client_id) {
+    const cid = parseInt(client_id, 10)
+    if (!isNaN(cid)) { clauses.push('o.client_id = ?'); params.push(cid) }
   }
 
   if (priority) { clauses.push('o.priority = ?'); params.push(priority) }
