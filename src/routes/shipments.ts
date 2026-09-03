@@ -1224,13 +1224,28 @@ shipmentsRouter.patch('/:id/status', requireEditOrRole('/shipments', 'MANAGER'),
           'SELECT status FROM orders WHERE id = ?'
         ).bind(orderRow.order_id).first<{ status: string }>()
 
-        if (orderInfo?.status === 'SHIPPED') {
-          // #218: 동일 주문에 다른 활성 출고가 남아있는지 확인
-          const otherShipped = await c.env.DB.prepare(
+        // #218: 동일 주문에 다른 활성 출고가 남아있는지 확인 (주문 상태와 무관하게 먼저 센다)
+        const noOtherShipped = await (async () => {
+          const row = await c.env.DB.prepare(
             `SELECT COUNT(*) as cnt FROM shipments WHERE order_id = ? AND id != ? AND status = 'SHIPPED'`
           ).bind(orderRow.order_id, id).first<{ cnt: number }>()
+          return !row || row.cnt === 0
+        })()
 
-          if (!otherShipped || otherShipped.cnt === 0) {
+        // ★환원은 **주문 상태와 무관하게** 마지막 활성 출고가 취소될 때 돈다.
+        //   POST /shipments 는 orders.status 를 SHIPPED 로 올리지 않고 sync-statuses 가 나중에 올린다 —
+        //   그 사이에 취소하면 예전 조건(status='SHIPPED')으로는 환원이 통째로 건너뛰어져
+        //   차감만 남는다. restoreStockLinesOnUnship 은 OUT 행이 없으면 no-op 이라 넓혀도 안전하다.
+        if (noOtherShipped && orderInfo?.status !== 'SHIPPED') {
+          const earlyActor = { userId: c.get('user')?.id ?? null, userName: c.get('user')?.username ?? null, entityId: getEntityId(c) }
+          await restoreStockLinesOnUnship(
+            c.env.DB, Number(orderRow.order_id), orderRow.entity_id || getEntityId(c) || 1, earlyActor
+          )
+          await restorePpDeductionsByOrder(c.env.DB, Number(orderRow.order_id), earlyActor)
+        }
+
+        if (orderInfo?.status === 'SHIPPED') {
+          if (noOtherShipped) {
             // 모든 출고 취소됨 → 주문 상태 복원
             // ★재고 환원 — 이 라우트의 출고(PATCH /:orderId/ship)는 예전부터 차감을 했는데
             //   취소 쪽에 환원이 없어 **출고취소가 곧 재고 증발**이었다(2026-08-30 발견, 기존 결함).
