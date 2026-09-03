@@ -1,3 +1,31 @@
+## 📦 2026-09-03 IA 배포 축 정리 (경위 전문)
+
+### 축2~4 — 패널 검색이 공백을 무시한다 (셸 0.10.0 / 0.71.0)
+
+> **✅ IA 배포 2026-09-03 — 패널 검색이 공백을 무시한다** — 「한글이 안 써진다」의 정체를 CDP 로 실측: 일러 CEP 는 **IME 조합을 웹뷰에 넘기지 않는다**(composition 이벤트 **0건** · `isComposing` 항상 false · 확정된 글자만 keypress 로 한 자씩). 조합은 일러 자체 창에서 일어나고(용준님이 본 「우측 위 글자」) **마지막 글자는 스페이스로 확정**해야 들어온다 → 그 공백이 이름 안에 남는다. CEF 런타임이라 못 고치지만 **검색이 깨지던 원인**이 이것이었다 — 제품 이름의 **97%(254/263)가 공백**을 포함해 단어 경계를 넘는 질의가 0건이었다(「수성현수막」 0→1 · 「전사깃발」 0→3 · 「UV포맥스5T」 0→2). ★id 해소는 **원문 정확일치 우선**, 공백무시는 **후보가 하나일 때만**(공백만 다른 거래처 1쌍 존재) · 부분일치는 여전히 금지. 게이트 `panel:smoke` **130**·`cut:smoke` **462**.
+
+반영 확인(2026-09-03 21:49) = `npm run audit:ia-jsx` 축2·3·4·5 **드리프트 0**, 축4(일러가 실제로 읽는 `%APPDATA%`) 셸 **0.10.0 / 0.71.0** 으로 repo 와 일치. 현황판의 「미배포 · 남은=ia:deploy」 표기는 그 시점에 이미 stale 이었다.
+
+### 축1 — 에이전트 JSX 3종이 실행 중 프로세스에 미반영
+
+`git push` 도 `npm run ia:deploy` 도 축1 에는 닿지 않는다(축1 정본 = **실행 중 exe 폴더**). 2026-09-03 21:38 `npm run audit:ia-jsx` 에서 드리프트 3건:
+
+| 파일 | 런타임 파일 날짜 | 빠져 있던 것 |
+|---|---|---|
+| SheetLayout.jsx | 2026-08-25 | `eb8ffbb2`(08-26 도련 경계분할·mm 단위 통일) + `51120021`(09-03 리뷰수정) |
+| ExtractGroups.jsx | 2026-07-15 | `51120021` |
+| PackGroups.jsx | 2026-04-15 | `51120021` |
+
+`51120021` 이 고친 것(= 지금까지 **실행되지 않던** 코드):
+- SheetLayout 의 사후검증 3종이 `newDoc.close()` **뒤에** 돌아 layers/artboards 읽기가 전부 예외 → 각 지역 catch 가 삼킴 → `verifyErrors` 항상 비어 로그는 **언제나 「all checks passed」**. 검증을 `layerA.remove()` 앞(세 레이어가 모두 살아 있는 마지막 지점)으로 옮기고 기대 아트보드 수식에 9.5 절 돔보 확장을 반영.
+- SheetLayout 최상위 catch 가 `_ia_status` 설정 **전에** 로그를 썼고 그 경로가 `$.fileName` 에 의존 — 에이전트는 DoJavaScript 로 돌려서 신뢰 불가. 쓰기가 터지면 `_ia_status` 가 영영 설정되지 않아 빈 반환 → JsxDiag 가 **「JSX 반환 빈값」이라는 틀린 진단**을 UI 에 띄웠다(진짜 예외는 소실).
+- ExtractGroups 가 `<req>-work.ai` 를 `pdfCompatible=true` 로 저장해 파일이 2배 + .ai 머리에 `%PDF-` 마커. 유일한 소비자는 ProcessOrderItem 의 `app.open` 이라 PDF 스트림은 사장 용량.
+- PackGroups 의 `app.documents.add()` = point 단위 문서 → 프로젝트 표준인 DocumentPreset 경로로 교체.
+
+조치 = `node scripts/ia-jsx-audit.cjs --sync-agent`(기존 런타임 파일을 `.bak-<ts>` 로 백업 후 repo→런타임 복사). 검증 = repo↔런타임 **sha256 4/4 일치**(SheetLayout·ExtractGroups·PackGroups·ProcessOrderItem). `IllustratorAutomat/*.cs` 는 실행 중 exe 빌드 시점(09-01 16:49) 이후 **변경 0** 이라 재빌드·에이전트 재시작 불요 — 잡마다 JSX 를 새로 읽는다.
+
+남은 검증 = 다음 모아찍기 잡의 SheetLayout 로그. 이제 검증이 **실제로 실행**되므로 로그가 「통과」를 무조건 찍지 않고, 실패 시 사유를 남긴다.
+
 ## 📦 2026-09-03 이관분 (자동 트림 — scripts/status-trim.cjs)
 
 > 배포 배너 6건 + 완료 항목 0건. 원본 순서(시간 역순) 보존.

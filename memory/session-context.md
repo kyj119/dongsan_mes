@@ -13,7 +13,7 @@
 - 입고/재고 쓰기 게이트 = requireEditOrRole(ADMIN/MANAGER). prod 권한매트릭스상 /receiving·/inventory 는 ADMIN만 edit·타 역할 접근 0 → 실제 차단된 비관리자 0. 비관리자 위임 필요 시 permission_pages can_edit 부여.
 
 ## 남은 일 (다음 세션)
-1. ★IA 축2·3·4 = git push 로 안 나감. `npm run ia:deploy` 수동 필요(fix-ia 커밋은 main 에 있으나 런타임 미반영). 대상=재단/가공 패널·호스트 JSX. fix-ia FIX-REPORT 의 배포 축 안내 참조(단, worktree 삭제됨 → docs/audits/.../fix-reports/fix-ia.md).
+1. ~~IA 축2·3·4 ia:deploy~~ **해소(09-03 21:49)** — 축2~5 드리프트 0, 축4 셸 0.10.0/0.71.0 = repo 일치. 별건으로 **축1(에이전트 JSX) 3종이 드리프트**였고(리뷰수정 51120021 + 08-26 도련 경계분할 미반영) `--sync-agent` 로 반영·sha256 4/4 일치. 남은 검증=다음 모아찍기 잡의 SheetLayout 로그.
 2. storageZones 재고단위 표시 = 라우트 SELECT 에 base_unit/pack_size 추가 + inventory.ts 외 페이지에 UOM_JS 주입(반쪽 수정 상태).
 3. 간판 BOM PER_AREA_ROLL·PER_LED usage_type 소요 산식(골격만).
 4. autodeduct prod 실동작 = 첫 출력 뒤 실측.
