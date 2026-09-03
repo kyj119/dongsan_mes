@@ -245,6 +245,14 @@ ordersCoreRouter.get('/', async (c) => {
 ordersCoreRouter.get('/:id/timeline', async (c) => {
   try {
     const id = c.req.param('id')
+    // 타법인 주문의 상태 이력을 열람할 수 없다 — 형제 GET /:id(:452 viewerEntity)와 같은 가시성 모델.
+    const tlOvf = orderVisibilityFilter(c, 'o')
+    const tlOrder = await c.env.DB.prepare(
+      `SELECT o.id FROM orders o WHERE o.id = ?${tlOvf.clause}`
+    ).bind(id, ...tlOvf.params).first<{ id: number }>()
+    if (!tlOrder) {
+      return c.json({ success: false, error: 'Order not found' }, 404)
+    }
     const { results } = await c.env.DB.prepare(`
       SELECT osh.*, u.name as changed_by_name
       FROM order_status_history osh
@@ -264,6 +272,10 @@ ordersCoreRouter.get('/:id/invoice', async (c) => {
   try {
     const id = c.req.param('id')
 
+    // 거래명세서는 주문 전체 금액 + 거래처 마스터를 통째로 돌려준다 — 형제 GET /:id 와 같은
+    // 가시성 모델로 막는다(#333 이후 이 경로만 무필터로 남아 있었다).
+    const invOvf = orderVisibilityFilter(c, 'o')
+
     // Get order with client_name
     const order = await c.env.DB.prepare(`
       SELECT
@@ -276,8 +288,8 @@ ordersCoreRouter.get('/:id/invoice', async (c) => {
       LEFT JOIN clients c ON o.client_id = c.id
       LEFT JOIN users u ON o.created_by = u.id
       LEFT JOIN employees sr ON sr.id = o.sales_rep_id
-      WHERE o.id = ?
-    `).bind(id).first()
+      WHERE o.id = ?${invOvf.clause}
+    `).bind(id, ...invOvf.params).first()
 
     if (!order) {
       return c.json({
