@@ -296,22 +296,27 @@ scanRouter.post('/action', async (c) => {
         const psOut = packFactor(muOut)
         const qtyBaseOut = body.quantity * psOut
         // #412 + #164: inventory.quantity 차감 (atomic UPDATE WHERE, 부족/행부재 시 changes=0 → 재고부족)
-        const result = await c.env.DB.prepare(`
-          UPDATE inventory SET quantity = quantity - ?, last_updated = CURRENT_TIMESTAMP
-          WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0) AND quantity >= ?
-        `).bind(qtyBaseOut, body.id, entityId2, zoneId2, qtyBaseOut).run()
+        // ★차감과 원장을 **한 batch** 로(CLAUDE.md 「원자성」). 예전엔 두 .run() 이라 원장 INSERT 가 터지면 재고만 빠졌다.
+        //   원장은 INSERT…SELECT 로 같은 `quantity >= ?` 조건을 보고 먼저 넣는다 — batch 는 한 트랜잭션이고
+        //   재고는 뒤의 UPDATE 에서만 바뀌므로 둘이 같은 스냅샷을 본다. UPDATE changes=0 이면 원장도 0행.
+        const keyWhere = `item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
+        const res = await c.env.DB.batch([
+          c.env.DB.prepare(`
+            INSERT INTO inventory_transactions
+            (item_id, transaction_type, transaction_date, quantity, reference_type, balance_after, reason, handled_by, entity_id, storage_zone_id)
+            SELECT ?, 'OUT', DATE('now'), ?, 'SCAN', quantity - ?, ?, ?, ?, ?
+            FROM inventory WHERE ${keyWhere} AND quantity >= ?
+          `).bind(body.id, qtyBaseOut, qtyBaseOut, body.notes || '스캔 출고', user?.id || 1, entityId2, zoneId2,
+            body.id, entityId2, zoneId2, qtyBaseOut),
+          c.env.DB.prepare(`
+            UPDATE inventory SET quantity = quantity - ?, last_updated = CURRENT_TIMESTAMP
+            WHERE ${keyWhere} AND quantity >= ?
+          `).bind(qtyBaseOut, body.id, entityId2, zoneId2, qtyBaseOut),
+        ])
 
-        if (!result.meta.changes || result.meta.changes === 0) {
+        if (!Number(res[1]?.meta?.changes || 0)) {
           return c.json({ success: false, error: '재고가 부족합니다.' }, 400)
         }
-
-        // #169 + #289: 감사 기록 — balance_after를 서브쿼리로 (중간 SELECT 제거, race 차단)
-        await c.env.DB.prepare(`
-          INSERT INTO inventory_transactions
-          (item_id, transaction_type, transaction_date, quantity, reference_type, balance_after, reason, handled_by, entity_id, storage_zone_id)
-          VALUES (?, 'OUT', DATE('now'), ?, 'SCAN', (SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)), ?, ?, ?, ?)
-        `).bind(body.id, qtyBaseOut, body.id, entityId2, zoneId2,
-          body.notes || '스캔 출고', user?.id || 1, entityId2, zoneId2).run()
 
         return c.json({ success: true, message: `${body.quantity} 출고 처리되었습니다.` })
       }

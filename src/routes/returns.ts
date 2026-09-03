@@ -173,10 +173,21 @@ returns.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => {
       for (const [eid, items] of byEntity) {
         zoneMaps.set(eid, await getItemDefaultZones(c.env.DB, items.map(ri => ri.item_id), eid))
       }
+      // 원장은 (법인, 품목)당 1행 — idx_inventory_tx_unique_ref 가 (reference_type, reference_id, item_id,
+      //   transaction_type, entity_id) UNIQUE 라 같은 품목 2라인(주문 라인이 둘)을 라인별로 넣으면 두 번째가
+      //   UNIQUE 위반으로 batch 전체를 뒤집었다(2026-09-03). 재고 UPDATE 도 같은 단위로 합친다.
+      const restockAgg = new Map<string, { eid: number; item_id: number; quantity: number }>()
+      for (const ri of returnItems) {
+        const eid = (ri.stock_entity_id ?? sessionEid) as number
+        const key = `${eid}:${ri.item_id}`
+        const cur = restockAgg.get(key) || { eid, item_id: ri.item_id, quantity: 0 }
+        cur.quantity += Number(ri.quantity) || 0
+        restockAgg.set(key, cur)
+      }
       // #164: balance_after를 서브쿼리로 읽어 race condition 방지
       await c.env.DB.batch(
-        returnItems.flatMap(ri => {
-          const eid = (ri.stock_entity_id ?? sessionEid) as number
+        [...restockAgg.values()].flatMap(ri => {
+          const eid = ri.eid
           const zoneId = zoneMaps.get(eid)?.get(ri.item_id) ?? null
           return [
             // 대상 창고 행이 없으면 생성 (UNIQUE=IFNULL(zone,0) → 미배정 NULL 행과 구분)
