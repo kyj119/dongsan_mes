@@ -351,6 +351,18 @@ const U = function (id, name, qty, type, param, price) {
   const signPlan = resolveLineMaterials(SIGN, { width: 200, height: 100, quantity: 1 })
   if (signPlan.picks.length !== 4) fails.push('간판 계획 소요 4종 기대 · 실제 ' + signPlan.picks.length)
   else pass++
+
+  // PER_AREA_ROLL 은 **일부러** 미구현이다 — 결과가 「롤 수」인데 원단 단가는 base 단위(m/yd)당이라
+  // 그대로 곱하면 pack_size 배(50m 롤이면 50배) 어긋난다. 틀린 숫자보다 공백이 낫다.
+  // 그래도 폭 휴리스틱으로 **새면 안 된다** — usage_type 이 붙은 행은 usage 축에서만 다룬다.
+  const flexRoll = Object.assign(U(610, '조명 후렉스', null, 'PER_AREA_ROLL', 65, 3000),
+    { width_mm: 1300, deduction_method: 'ROLL', base_unit: 'M', pack_size: 50 })
+  const rollLine = computeLineCost([flexRoll],
+    { item_id: 401, width: 200, height: 100, quantity: 1, category: '간판' }, { inkCostByCategory: INK })
+  if (rollLine.material_cost !== 0 || rollLine.detail.unsupported.indexOf('PER_AREA_ROLL') < 0) {
+    fails.push('PER_AREA_ROLL 은 폭 휴리스틱으로 새지 않고 미상으로 남아야 한다 · 실제 재료비='
+      + rollLine.material_cost + ' unsupported=' + JSON.stringify(rollLine.detail.unsupported))
+  } else pass++
 }
 
 // ── 결과 ───────────────────────────────────────────────────────────────────

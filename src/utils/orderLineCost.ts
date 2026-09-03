@@ -176,11 +176,14 @@ export function computeLineCost(
   // ★잉크는 **자재 연결과 무관**하다 — 규격과 분류만 있으면 계산된다(2026-09-03 리뷰).
   //   자재를 못 골랐다고 잉크까지 0으로 버리면 같은 인쇄물이 BOM 유무로 잉크가 갈린다.
   const inkCost = Math.round(areaSqm * (inkPerSqm ?? 0))
+  // ⚠️ 자재를 하나도 못 골랐을 때도 `unsupported` 는 실어 보낸다 — **전부 미구현 규칙이라
+  //    비었을 때**가 정확히 이 경로다. 여기서 빈 배열로 덮으면 「왜 0원인가」가 사라진다.
+  const unsupportedAll = res.unsupported.map((u) => u.usage_type)
   const inkOnly = (coverage: CostCoverage): LineCost => ({
     material_cost: 0, ink_cost: inkCost, total_cost: inkCost,
     unit_cost: qty > 0 ? Math.round(inkCost / qty) : 0,
     coverage,
-    detail: { ...EMPTY_DETAIL, area_sqm: areaSqm, ink_per_sqm: inkPerSqm, materials: [], unsupported: [] },
+    detail: { ...EMPTY_DETAIL, area_sqm: areaSqm, ink_per_sqm: inkPerSqm, materials: [], unsupported: unsupportedAll },
   })
 
   if (res.reason === 'NO_SIZE') return zero('NO_SIZE', 0, inkPerSqm)
@@ -200,7 +203,7 @@ export function computeLineCost(
   })
   const materialCost = materials.reduce((sum, m) => sum + m.cost, 0)
   const total = materialCost + inkCost
-  const unsupported = res.unsupported.map((u) => u.usage_type)
+  const unsupported = unsupportedAll
   const pricedCount = materials.filter((m) => m.unit_price > 0).length
 
   // 커버리지 = 「원가 0」과 「원가 미상」을 가르는 값이다.

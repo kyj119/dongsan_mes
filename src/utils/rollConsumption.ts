@@ -420,12 +420,26 @@ export interface LineMaterialResolution<T> {
 
 /**
  * 인식하는 `usage_type`. 여기 없는 값은 휴리스틱으로 흘러가지 않고 **unsupported 로 표시**된다.
- * ⚠️ `PER_LED` 만 미구현이다 — 「LED 몇 개」가 **다른 BOM 행**(PER_AREA 로 잡히는 LED 모듈)에서
- *    나오는데 「어느 행이 LED 인가」가 데이터에 없다. 품목코드로 추측하면 그게 또 하나의 숨은
- *    규칙이 되므로 하지 않는다. 해당 = SIGN-CH·SIGN-PRT 의 SMPS·LED바.
+ *
+ * ★소요량의 **단위 축**이 `avg_unit_cost` 의 축과 같아야 한다 — 이게 구현/미구현을 가르는 기준이다.
+ *   구현분은 전부 축이 맞는다: FIXED_QTY·PER_AREA·PER_PERIMETER·PER_WIDTH = **개(EA)**,
+ *   PER_AREA_SHEET = **장** (판재 단가가 장당이라 BOARD 휴리스틱과 같은 축이다).
+ *
+ * ⚠️ 미구현 2종 — 조용히 0으로 만들지 않고 `unsupported` 로 올려 PARTIAL 로 보고한다.
+ *   · `PER_LED` — 「LED 몇 개」가 **다른 BOM 행**(PER_AREA 로 잡히는 LED 모듈)에서 나오는데
+ *     「어느 행이 LED 인가」가 데이터에 없다. 품목코드로 추측하면 그게 또 하나의 숨은 규칙이 된다.
+ *     해당 = SIGN-CH·SIGN-PRT 의 SMPS·LED바.
+ *   · `PER_AREA_ROLL` — 결과가 **롤 수**인데 원단 `avg_unit_cost` 는 **base 단위(m/yd)당**이다.
+ *     그대로 곱하면 pack_size 배(= 50m 롤이면 **50배**) 어긋난다 —
+ *     [[design-stock-base-unit-rebase]] 의 50배 사고와 **같은 축**이다.
+ *     환산하려면 롤당 길이가 확정돼야 하는데(param 65㎡ 는 폭×길이를 이미 곱한 값이다)
+ *     폭 변종이 대체 가능하다고 0508 주석에 적혀 있어 역산이 유일하지 않다.
+ *     해당 = SIGN-FRL·SIGN-FRN·-R 의 후렉스 원단. 값을 확정하기 전엔 **틀린 숫자보다 공백이 낫다.**
  */
 const USAGE_TYPES = new Set([
-  'FIXED_QTY', 'PER_AREA', 'PER_AREA_SHEET', 'PER_AREA_ROLL', 'PER_PERIMETER', 'PER_WIDTH', 'PER_LED',
+  'FIXED_QTY', 'PER_AREA', 'PER_AREA_SHEET', 'PER_PERIMETER', 'PER_WIDTH',
+  // 아래 둘은 **인식만** 한다 — 휴리스틱으로 새지 않게 잡아 두고 unsupported 로 보고한다.
+  'PER_LED', 'PER_AREA_ROLL',
 ])
 
 /**
@@ -445,10 +459,10 @@ function usageRequired(m: LineMaterialSpec, wCm: number, hCm: number, qty: numbe
     }
     case 'PER_AREA':       return hasParam ? areaSqm * param : null
     case 'PER_AREA_SHEET': return hasParam ? Math.ceil(areaSqm / param) : null
-    case 'PER_AREA_ROLL':  return hasParam ? areaSqm / param : null
     case 'PER_WIDTH':      return hasParam ? Math.ceil((wCm / 100) / param) * qty : null
     case 'PER_PERIMETER':  return hasParam ? Math.ceil((2 * (wCm + hCm) / 100) / param) * qty : null
-    default:               return null   // PER_LED = 교차행 의존, 미구현
+    // PER_LED(교차행 의존) · PER_AREA_ROLL(단위 축 불일치) = 미구현. 위 주석 참조.
+    default:               return null
   }
 }
 
