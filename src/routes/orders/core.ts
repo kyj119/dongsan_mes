@@ -591,6 +591,21 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       }, 400)
     }
 
+    const CONFIRMED_AND_AFTER = ['CONFIRMED', 'PRINTING', 'PRINT_DONE', 'SHIPPED']
+
+    // CONFIRMED 이후 상태 → 소프트 삭제(CANCELLED)
+    const needsSoftDelete = CONFIRMED_AND_AFTER.includes(order.status)
+
+    // 하드 삭제(CANCELLED·QUOTATION·DRAFT 등) — ADMIN만 허용.
+    //   ★권한 검사는 어떤 부수효과보다 **앞**에 있어야 한다(2026-09-03): 예전엔 아래 재고 환원 3종을 먼저 돌리고
+    //     여기서 403 을 냈기 때문에, MANAGER 가 삭제를 시도만 해도 재고가 되살아나고 주문은 그대로 남았다.
+    if (!needsSoftDelete && user.role !== 'ADMIN') {
+      return c.json({
+        success: false,
+        error: '해당 상태의 주문을 삭제하려면 ADMIN 권한이 필요합니다'
+      }, 403)
+    }
+
     // 출고 차감 환원 — 삭제(소프트·하드 공통) = "출고하지 않은 것"으로 되돌린다.
     //   ★반드시 아래 batch **앞**에서 부른다: 하드 삭제가 order_items 를 지우면 되돌릴 근거가 사라진다.
     //   차감된 적 없으면 no-op 이라 QUOTATION·DRAFT 삭제에도 안전하다(멱등).
@@ -602,11 +617,6 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const delCards = await c.env.DB.prepare('SELECT id FROM cards WHERE order_id = ?').bind(id).all<{ id: number }>()
     await restoreAutoDeductionsByCards(c.env.DB, (delCards.results || []).map((r) => Number(r.id)), stockActor)
     await restorePpDeductionsByOrder(c.env.DB, Number(id), stockActor)
-
-    const CONFIRMED_AND_AFTER = ['CONFIRMED', 'PRINTING', 'PRINT_DONE', 'SHIPPED']
-
-    // CONFIRMED 이후 상태 → 소프트 삭제(CANCELLED)
-    const needsSoftDelete = CONFIRMED_AND_AFTER.includes(order.status)
 
     if (needsSoftDelete) {
       // #219: 소프트 삭제 — 원자적 batch 처리
@@ -644,13 +654,7 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       })
     }
 
-    // 하드 삭제 (CANCELLED 상태) — ADMIN만 허용
-    if (user.role !== 'ADMIN') {
-      return c.json({
-        success: false,
-        error: '해당 상태의 주문을 삭제하려면 ADMIN 권한이 필요합니다'
-      }, 403)
-    }
+    // 하드 삭제 — ADMIN 검사는 위(부수효과 앞)에서 끝났다.
 
     // split billing P3: balance 캐시 미사용 — 하드 삭제 시 order_billing_groups 도 함께 삭제(아래 batch).
     // 미수금은 파생이므로 별도 역산 불필요.
