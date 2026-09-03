@@ -489,7 +489,11 @@ function main(sourceFile, outputFolder, requestId, thumbSize, epsWidthMm, epsHei
     // 네이티브 .ai + 명시 IllustratorSaveOptions는 대화상자 없이 무인 저장. C#이 이 경로를 ProcessOrderItem source로 사용.
     var _workAi = new File(outputFolder + "\\" + requestId + "-work.ai");
     var _aiOpts = new IllustratorSaveOptions();
-    _aiOpts.pdfCompatible = true;
+    // ★pdfCompatible=false — 기본값(true)은 같은 그림을 AI 편집부 + PDF 복사본 **2벌**로 담아 용량이 2배가 되고
+    //   첫 바이트가 `%PDF-` 라 audit:ia-storage 판정에 걸린다([[design-ai-save-pdfcompatible]]).
+    //   이 파일의 소비자는 ProcessOrderItem 의 app.open 하나뿐이라(Program.cs:1471~1474 → source) PDF 스트림이 불필요하다.
+    //   같은 저장을 하는 다른 4곳(mes-a0-host·mes-cut-host·mes-core·mes-sheet)은 이미 false 다.
+    _aiOpts.pdfCompatible = false;
     doc.saveAs(_workAi, _aiOpts);
     doc.close(SaveOptions.DONOTSAVECHANGES);
 
