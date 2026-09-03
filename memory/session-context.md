@@ -17,7 +17,7 @@
 2. storageZones 재고단위 표시 = 라우트 SELECT 에 base_unit/pack_size 추가 + inventory.ts 외 페이지에 UOM_JS 주입(반쪽 수정 상태).
 3. 간판 BOM PER_AREA_ROLL·PER_LED usage_type 소요 산식(골격만).
 4. autodeduct prod 실동작 = 첫 출력 뒤 실측.
-5. 의도적 미수정 2: 평문비번 폴백(#336 위험수용)·JWT_SECRET AES 겸용 — 대표 결정 대기.
+5. ✅결정됨: 평문비번 폴백·JWT_SECRET AES 겸용 강화 = **실사용 전환 계획에 맞춰 예약**(지금 미착수). 절차·순서 정본=memory/project-security-hardening-golive.md. 순서 1(JWT↔PII 키분리+재암호화)→2(계정 PBKDF2 이관→폴백 제거→admin·테스트계정 정리, ③은 전환 당일).
 
 ## 주의
 - 세션 도중 main 이력이 2번 재작성됨(다른 세션 amend + S2 커밋 c317e8fe). 재작업 시 origin/main 실측 우선.
