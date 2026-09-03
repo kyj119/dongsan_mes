@@ -19,7 +19,7 @@
 //   0.1.8 = 마감재단선(여백 위치 검정 실선·4변 한 그룹) + 주석 구조에 후가공 추가
 //           (키워드-식별번호-후가공-수량) (2026-07-30)
 //   0.1.9 = 크로스 패널 잠금 위임 추가(mes-lock.jsx) (2026-07-31)
-var MESA0_VERSION = 'A0-CEP-0.5.0'; // 0.5.0 = ★수량 단위(조) 표기 전달 — 대기함 「2개 (1조)」 검산용 · 0.4.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.3.0 = ★자동감지 굽기를 imageCapture 로(임시 문서 없음 — 증명 가능할 때만) · 0.2.0 = 셸 자동 갱신(축3/4를 축2가 끌어온다) · 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
+var MESA0_VERSION = 'A0-CEP-0.6.0'; // 0.6.0 = ★셸 서명에 파일 목록 포함 + 비교를 src 기준으로 — Z: 에서 파일이 하나 빠지면 그 PC 자동갱신이 retrylimit 로 영구 중단됐다 · 0.5.0 = ★수량 단위(조) 표기 전달 — 대기함 「2개 (1조)」 검산용 · 0.4.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.3.0 = ★자동감지 굽기를 imageCapture 로(임시 문서 없음 — 증명 가능할 때만) · 0.2.0 = 셸 자동 갱신(축3/4를 축2가 끌어온다) · 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
 var MESA0_REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
 var MESA0_PT_PER_MM = 72 / 25.4;
 var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];
@@ -322,32 +322,92 @@ function mesPanel_installDir() {
     return r ? (r + '/extensions/' + MESPANEL_EXT_ID) : null;
 }
 
-/**
- * 폴더 서명 = `<셸버전>/<파일수>/<총바이트>`.
- * ★버전만 보면 안 된다 — CSS·HTML 만 고치고 SHELL_VERSION 을 안 올린 배포가 조용히 안 붙는다.
- *   바이트 합을 같이 보면 사람의 규율에 기대지 않는다.
- */
-function mesPanel_sign(dir) {
+/** 짧은 ASCII 해시(djb2 변형) — 반환에 실려도 브릿지를 안 깨뜨린다. */
+function mesPanel_hash(s) {
+    var h = 5381;
+    for (var i = 0; i < s.length; i++) { h = ((h * 33) ^ s.charCodeAt(i)) & 0x7FFFFFFF; }
+    return h.toString(16);
+}
+
+/** 배포 대상 파일 목록 — `{rel, size}` 를 **상대경로 오름차순**으로. `.bak-*` 는 뺀다. */
+function mesPanel_list(dir) {
     var root = new Folder(dir);
     if (!root.exists) return null;
-    var n = 0, bytes = 0, ver = '';
-    function walk(fold) {
+    var out = [];
+    function walk(fold, prefix) {
         var items = fold.getFiles();
         for (var i = 0; i < items.length; i++) {
             var it = items[i];
-            if (it instanceof Folder) { walk(it); continue; }
-            if (!mesPanel_isDeployable(decodeURI(it.name))) continue;
-            n++;
-            try { bytes += it.length; } catch (eL) {}
-            if (!ver && decodeURI(it.name) === 'cut-main.js') {
-                var sTxt = mesA0_readText(it.fsName);
-                var m = sTxt ? String(sTxt).match(/SHELL_VERSION\s*=\s*'([^']+)'/) : null;
-                if (m) ver = m[1];
-            }
+            var nm = decodeURI(it.name);
+            if (it instanceof Folder) { walk(it, prefix + nm + '/'); continue; }
+            if (!mesPanel_isDeployable(nm)) continue;
+            var len = -1;
+            try { len = it.length; } catch (eL) { len = -1; }
+            out.push({ rel: prefix + nm, size: len });
         }
     }
-    walk(root);
-    return n ? (ver + '/' + n + '/' + bytes) : null;
+    walk(root, '');
+    out.sort(function (a, b) { return (a.rel < b.rel) ? -1 : ((a.rel > b.rel) ? 1 : 0); });
+    return out;
+}
+
+/**
+ * 목록 → 서명 = `<셸버전>/<파일수>/<총바이트>/<상대경로:크기 목록 해시>`.
+ * ★버전만 보면 안 된다 — CSS·HTML 만 고치고 SHELL_VERSION 을 안 올린 배포가 조용히 안 붙는다.
+ * ★이름 목록까지 넣는다 (2026-09-03) — 파일수·바이트 합만으로는 **개명**(한 파일이 줄고 다른 파일이
+ *   같은 크기로 느는 경우)이 상쇄돼 보이지 않는다. 정렬된 상대경로를 해시에 넣으면 그 구멍이 막힌다.
+ */
+function mesPanel_signOfList(dir, list) {
+    if (!list || !list.length) return null;
+    var ver = '', bytes = 0, s = '';
+    for (var i = 0; i < list.length; i++) {
+        if (list[i].size > 0) bytes += list[i].size;
+        s += list[i].rel + ':' + list[i].size + '\n';
+        if (!ver && /(^|\/)cut-main\.js$/i.test(list[i].rel)) {
+            var sTxt = mesA0_readText(dir + '/' + list[i].rel);
+            var m = sTxt ? String(sTxt).match(/SHELL_VERSION\s*=\s*'([^']+)'/) : null;
+            if (m) ver = m[1];
+        }
+    }
+    return ver + '/' + list.length + '/' + bytes + '/' + mesPanel_hash(s);
+}
+
+/** 폴더 전체 서명(옛 계약과 같은 의미). */
+function mesPanel_sign(dir) {
+    return mesPanel_signOfList(dir, mesPanel_list(dir));
+}
+
+/**
+ * ★src 기준 서명 — **src 에 있는 파일들만** dst 에서 재어 서명한다 (2026-09-03 정정).
+ *   `mesPanel_copyTree` 는 덧쓰기만 하고 dst 여분을 지우지 않는다. 그래서 폴더 **전체**를 재면
+ *   Z: 배포본에서 파일이 하나 빠진 순간 설치본 파일수가 영영 많아 `after !== srcSign` 이 되고,
+ *   매 로드 `ERROR verify` + 롤백 → 2회 뒤 `skip;why=retrylimit` 로 **그 PC 는 조용히 영구 중단**된다
+ *   (그 뒤로 셸이 안 오는데 아무도 모른다). 여분은 index.html 이 부르지 않아 무해하므로,
+ *   extensions 아래를 지우는 위험을 지는 대신 **여분을 등식에서 뺀다**. 여분 개수는 상태에 실어 알린다.
+ *   ★없는 파일은 size = -1 로 남긴다 — 0 바이트 파일과 구분돼야 한다.
+ */
+function mesPanel_signAs(dir, srcList) {
+    if (!srcList || !srcList.length) return null;
+    var mirror = [];
+    for (var i = 0; i < srcList.length; i++) {
+        var len = -1;
+        try {
+            var f = new File(dir + '/' + srcList[i].rel);
+            if (f.exists) len = f.length;
+        } catch (eL) { len = -1; }
+        mirror.push({ rel: srcList[i].rel, size: len });
+    }
+    return mesPanel_signOfList(dir, mirror);
+}
+
+/** dst 에만 있는(=src 에서 빠진) 배포 대상 파일 수. 0 이면 깨끗하다. */
+function mesPanel_extraCount(srcList, dstList) {
+    if (!srcList || !dstList) return 0;
+    var have = {}, i;
+    for (i = 0; i < srcList.length; i++) have['#' + srcList[i].rel] = 1;
+    var n = 0;
+    for (i = 0; i < dstList.length; i++) if (!have['#' + dstList[i].rel]) n++;
+    return n;
 }
 
 /** 재귀 복사. File.copy 는 대상이 있으면 false 를 돌려주므로 먼저 지운다. */
@@ -404,10 +464,11 @@ function mesPanel_probeCopy() {
  *   실패했지만, **그 파일은 애초에 안 바뀌었으므로 설치본은 멀쩡했다.** 그런데도 ROLLBACKFAIL 로
  *   보고됐다. 멀쩡한 것을 고장났다고 말하면 사람이 엉뚱한 곳을 고친다.
  */
-function mesPanel_rollback(bakDir, dst, expectSign) {
+function mesPanel_rollback(bakDir, dst, srcList, expectSign) {
     try {
         mesPanel_copyTree(bakDir, dst);
-        return (mesPanel_sign(dst) === expectSign) ? ';rolledback' : ';ROLLBACKFAIL';
+        // ★성패 판정도 **src 기준 서명**으로 한다 — 본복사와 같은 잣대여야 한다.
+        return (mesPanel_signAs(dst, srcList) === expectSign) ? ';rolledback' : ';ROLLBACKFAIL';
     } catch (eR) {
         return ';ROLLBACKFAIL';
     }
@@ -423,13 +484,18 @@ function mesPanel_syncShell() {
     try {
         var dst = mesPanel_installDir();
         if (!dst) { MESPANEL_SYNC = 'skip;why=noappdata'; return MESPANEL_SYNC; }
-        var srcSign = mesPanel_sign(MESPANEL_SRC_DIR);
+        var srcList = mesPanel_list(MESPANEL_SRC_DIR);
+        var srcSign = mesPanel_signOfList(MESPANEL_SRC_DIR, srcList);
         // Z: 미연결은 조용히 넘어간다 — 갱신 실패가 패널 사용을 막으면 안 된다.
         if (!srcSign) { MESPANEL_SYNC = 'skip;why=nosrc'; return MESPANEL_SYNC; }
-        var dstSign = mesPanel_sign(dst);
+        var dstList = mesPanel_list(dst);
         // 설치본이 없다 = 최초 설치 상황. 여기서 만들지 않는다(install-a0-panel.ps1 담당).
-        if (!dstSign) { MESPANEL_SYNC = 'skip;why=noinstall'; return MESPANEL_SYNC; }
-        if (srcSign === dstSign) { MESPANEL_SYNC = 'same;v=' + mesPanel_ascii(srcSign); return MESPANEL_SYNC; }
+        if (!dstList || !dstList.length) { MESPANEL_SYNC = 'skip;why=noinstall'; return MESPANEL_SYNC; }
+        // ★비교는 **src 기준**이다(mesPanel_signAs 주석) — dst 여분이 있어도 수렴한다.
+        var dstSign = mesPanel_signAs(dst, srcList);
+        var extra = mesPanel_extraCount(srcList, dstList);
+        var extraNote = extra ? (';extra=' + extra) : '';
+        if (srcSign === dstSign) { MESPANEL_SYNC = 'same;v=' + mesPanel_ascii(srcSign) + extraNote; return MESPANEL_SYNC; }
 
         // ★같은 목표로 두 번 실패하면 그만둔다 — 매 부팅 복사를 반복하는 것이 더 나쁘다.
         var guard = String(Folder.temp.fsName).replace(/\\/g, '/') + '/mes_panel_sync.txt';
@@ -457,19 +523,19 @@ function mesPanel_syncShell() {
         var bakDir = bakRoot + '/' + MESPANEL_EXT_ID + '.autobak-' + stamp;
         var rc = mesPanel_copyTree(MESPANEL_SRC_DIR, dst);
         if (rc.indexOf('ERROR') === 0) {
-            MESPANEL_SYNC = 'ERROR copy:' + mesPanel_ascii(rc) + mesPanel_rollback(bakDir, dst, dstSign);
+            MESPANEL_SYNC = 'ERROR copy:' + mesPanel_ascii(rc) + mesPanel_rollback(bakDir, dst, srcList, dstSign);
             return MESPANEL_SYNC;
         }
 
         // ★검증 — 복사가 "됐다"고 하는 것과 실제로 같아진 것은 다르다(부분 복사·잠긴 파일).
-        var after = mesPanel_sign(dst);
+        var after = mesPanel_signAs(dst, srcList);
         if (after !== srcSign) {
             MESPANEL_SYNC = 'ERROR verify:' + mesPanel_ascii(after) + '!=' + mesPanel_ascii(srcSign)
-                + mesPanel_rollback(bakDir, dst, dstSign);
+                + mesPanel_rollback(bakDir, dst, srcList, dstSign);
             return MESPANEL_SYNC;
         }
         mesA0_writeText(guard, srcSign + '|0');
-        MESPANEL_SYNC = 'updated;from=' + mesPanel_ascii(dstSign) + ';to=' + mesPanel_ascii(srcSign);
+        MESPANEL_SYNC = 'updated;from=' + mesPanel_ascii(dstSign) + ';to=' + mesPanel_ascii(srcSign) + extraNote;
     } catch (e) {
         MESPANEL_SYNC = 'ERROR ' + mesPanel_ascii(e);
     }

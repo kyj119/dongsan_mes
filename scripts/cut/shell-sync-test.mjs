@@ -227,5 +227,43 @@ console.log('\n[8] 롤백 — 본복사 중 실패해도 설치본이 남아 있
   ok(fs.existsSync(path.join(s.dstDir, 'index.html')), '중간에 지워진 파일이 복구됨');
 }
 
+console.log('\n[9] 삭제 수렴 — Z: 에서 파일이 빠져도 영구 중단되지 않는다');
+{
+  // ★2026-09-03 정정. 서명이 `버전/파일수/총바이트` 이고 copyTree 는 여분을 안 지우므로,
+  //   Z: 에서 파일이 하나 빠지면 설치본 파일수가 영영 많아 `after !== srcSign` → 매 로드
+  //   ERROR verify + 롤백 → 2회 뒤 retrylimit 로 **그 PC 는 조용히 영구 중단**됐다.
+  const base = path.join(TMP, 'deleted');
+  const srcDir = path.join(base, 'z', 'com.mes.a0.panel');
+  const appdata = path.join(base, 'AppData');
+  const dstDir = path.join(appdata, 'Adobe', 'CEP', 'extensions', 'com.mes.a0.panel');
+  makePanel(srcDir, '9.0.0');
+  makePanel(dstDir, '1.0.0');
+  fs.unlinkSync(path.join(srcDir, 'css', 'style.css'));   // Z: 배포본에서 한 파일이 빠졌다
+  const temp = path.join(base, 'temp');
+  const api = makeSandbox({ appdata, temp });
+  api.setSrc(norm(srcDir)); api.reset();
+  const r = api.syncShell();
+  ok(r.indexOf('updated;') === 0, '빠진 파일이 있어도 갱신이 성사된다(ERROR verify 아님)', r);
+  ok(r.indexOf(';extra=1') > 0, '설치본에 남은 여분을 상태로 알린다(조용히 넘기지 않는다)', r);
+  ok(/9\.0\.0/.test(fs.readFileSync(path.join(dstDir, 'js', 'cut-main.js'), 'utf8')), '새 셸이 실제로 깔린다');
+  ok(fs.existsSync(path.join(dstDir, 'css', 'style.css')), 'extensions 아래 여분을 지우지는 않는다');
+  const api2 = makeSandbox({ appdata, temp });   // 다음 패널 로드
+  api2.setSrc(norm(srcDir)); api2.reset();
+  const r2 = api2.syncShell();
+  ok(r2.indexOf('same;') === 0, '다음 로드는 same — 여분 때문에 매번 재복사하지 않는다', r2);
+}
+
+console.log('\n[10] 서명 — 개명은 파일수·바이트 합만으로는 안 보인다');
+{
+  const base = path.join(TMP, 'rename');
+  const a = path.join(base, 'a', 'com.mes.a0.panel');
+  const b = path.join(base, 'b', 'com.mes.a0.panel');
+  makePanel(a, '1.0.0'); makePanel(b, '1.0.0');
+  fs.renameSync(path.join(b, 'js', 'main.js'), path.join(b, 'js', 'main2.js')); // 개수·바이트 불변
+  const api = makeSandbox({ appdata: path.join(base, 'AppData'), temp: path.join(base, 't') });
+  ok(api.sign(norm(a)) !== api.sign(norm(b)), '이름만 다르고 개수·바이트가 같아도 서명이 다르다',
+    api.sign(norm(a)) + ' vs ' + api.sign(norm(b)));
+}
+
 console.log('\n요약: ' + pass + ' / ' + (pass + fail));
 if (fail) process.exit(1);
