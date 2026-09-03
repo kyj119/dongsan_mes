@@ -23,9 +23,11 @@ interface SheetItemRow {
   category: string | null
 }
 
-/** priceList /calculate와 동일 우선순위로 적용가 계산. rules 비었으면 base(=sales_price||base_price). */
+/** priceList /calculate와 동일 우선순위로 적용가 계산. rules 비었으면 base(=base_price).
+ *  2026-09-03 결정: 고객 노출 단가 기준을 단가표 미리보기(base_price)로 통일 — 세트가 sales_price 를
+ *  우선하던 불일치 제거. sales_price 는 참조로만 조회한다. */
 function computeAppliedPrice(item: SheetItemRow, rules: PriceRule[]): number {
-  const base = item.sales_price || item.base_price || 0
+  const base = item.base_price || 0
   if (!rules.length) return base
 
   const itemFixed = rules.find((r) => r.item_id === item.item_id && r.fixed_price != null)
