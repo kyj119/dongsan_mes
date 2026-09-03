@@ -823,6 +823,21 @@
       if (!annotVisible()) return '';
       return (elAnnot.value || '').replace(/^\s+|\s+$/g, '');
     }
+    // ── 「조」 단위 표기도 같은 함정에 걸린다 (2026-09-03) ────────────────────
+    //   `#qtyUnit` 은 **단건 탭 칸**이다(index.html:111). 그런데 gatherParams 는 `qty_unit` 을
+    //   무조건 싣고, 묶음·모아찍기 행은 수량을 seedQty·행값으로 **덮어쓰면서 단위는 그대로 뒀다**
+    //   → 환산은 안 된 채 단위만 'set' 으로 나가 대기함 「N개 (M조)」 병기가 틀린다.
+    //   ★환산 지점은 gatherParams 한 곳뿐이므로(:673) 손대지 않는다 — 여기서는 **표기만** 맞춘다.
+    //   ★gatherParams 자체에 게이트를 넣으면 안 된다(:689 주석) — syncBoundRow 가 연동 행을 지운다.
+    function qtyUnitVisible() {
+      return !!(elQtyUnit && elQtyUnit.offsetParent !== null);
+    }
+    /** 행 수량으로 덮어쓸 때 단위 표기까지 같이 맞춘다. 행 수량은 언제나 **개** 단위다. */
+    function setRowQty(p, n) {
+      if (!p) return;
+      p.qty = n;
+      p.qty_unit = qtyUnitVisible() ? qtyUnitValue() : 'ea';
+    }
     var elBtnReview = $('btnReview'), elBtnAutoDetect = $('btnAutoDetect');
 
     // 확정 게이트(D4): 검토문서를 만든 큐 상태(rev)에서만 확정 허용. 큐가 바뀌면 재검토 요구.
@@ -1011,7 +1026,10 @@
     function seedSilhouette(source, gap, done) {
       var G = window.MesCutGeom;
       if (!G) { done('geometry.js 미로드 — 이 PC 에 패널을 다시 설치하세요(install-a0-panel.ps1)'); return; }
-      if (hostBusy) return;
+      // ★done 을 부르지 않고 돌아가지 않는다 (2026-09-03 정정) — 호출자(묶음분리·자동감지·모아찍기
+      //   분리)는 아무 응답도 못 받고 화면이 직전 문구인 채 멈춘다. 이 패널이 특히 경계하는
+      //   「콜백 무음 사멸」([[feedback-cep-callback-silent-death]]) 형태다.
+      if (hostBusy) { done('작업 중입니다 — 끝난 뒤 다시 눌러 주세요.'); return; }
       setHostBusy(true, '분리');
       var src = (source === 'auto') ? 'auto' : 'sel';
       csi.evalScript('mesA0_seedBegin("' + src + '",' + gap + ')', function (res) {
@@ -1155,7 +1173,7 @@
             var n = parseInt(this.value, 10); if (isNaN(n) || n < 1) n = 1;
             this.value = String(n); // 잘못 입력한 값 즉시 교정 표시
             queue[ix].qty = n;
-            if (queue[ix].params) queue[ix].params.qty = n; // 호스트 전송값 동기화
+            setRowQty(queue[ix].params, n); // 호스트 전송값 동기화(단위 표기 포함)
             // 폼(#qty)으로 되쓰지 않는다 — #qty 는 단건 탭 전용값이고, 행 수량의 정본은 이 칸이다.
             bumpRev(); // 수량=주석 문구에 반영 → 재검토 필요
           });
@@ -1222,7 +1240,7 @@
         if (!e) continue;
         var p = JSON.parse(JSON.stringify(base));
         keepRowMode(p, e); // 행 용도 보존 — 모아찍기 행에 후가공이 실리지 않게
-        p.qty = e.qty;
+        setRowQty(p, e.qty);
         if (!e.keyword && formKw) e.keyword = formKw; // 행 표시(qkw)도 같이 정합
         p.keyword = e.keyword || '';
         p.client_name = e.client || '';
@@ -1337,7 +1355,7 @@
       if (bound < 0 || bound >= queue.length) return;
       var e = queue[bound];
       var p = keepRowMode(gatherParams(), e); // 행 용도는 폼이 바꾸지 않는다
-      p.qty = e.qty;   // 행 수량 보존 — 폼(#qty)은 단건 전용이라 행을 덮어쓰면 안 된다
+      setRowQty(p, e.qty);   // 행 수량 보존 — 폼(#qty)은 단건 전용이라 행을 덮어쓰면 안 된다
       // 주석 키워드 칸이 **숨어 있으면 행에 쓰지 않는다**(2026-07-30 P2). 묶음 탭에선 행별 키워드가
       //   정본이고, 숨은 칸엔 지난번 값이 남아 있어(localStorage 복원) 그대로 쓰면 조용히 덮인다.
       if (!annotVisible()) p.keyword = e.keyword || '';
@@ -1386,14 +1404,34 @@
         ' (수량·거래처는 행값 유지)' + annotGapNote(idx));
     });
 
+    /**
+     * ★호스트가 실제로 지웠을 때만 패널 큐를 줄인다 (2026-09-03 정정).
+     *   여태 결과를 안 보고 splice 했다. 호스트 호출이 실패하면(문서 닫힘·'EvalScript error.')
+     *   패널만 줄어 host `$.global.mesA0Q` 와 **인덱스가 어긋나고**, 이후 `mesA0_queueSelect(i)` 가
+     *   **다른 조각**을 골라 엉뚱한 행이 가공된다. 조용히 틀린 산출물이 나오는 형태라 가장 나쁘다.
+     *   호스트는 지운 뒤 **남은 개수**를 돌려준다(mes-a0-host.jsx:1486) → 숫자가 아니면 실패고,
+     *   숫자가 패널 예상과 다르면 이미 어긋난 것이므로 **둘 다 사람에게 말한다**.
+     */
     function queueRemove(i) {
       if (i < 0 || i >= queue.length) return;
-      csi.evalScript('mesA0_queueRemove(' + i + ')', function () {});
-      queue.splice(i, 1);
-      if (bound === i) bound = -1;
-      else if (bound > i) bound--;
-      bumpRev();
-      renderQueue();
+      var expect = queue.length - 1;
+      csi.evalScript('mesA0_queueRemove(' + i + ')', function (res) {
+        var n = parseInt(res, 10);
+        if (isNaN(n)) {
+          out('호스트에서 조각을 지우지 못했습니다 — 목록을 그대로 둡니다.\n'
+            + '패널을 닫았다 다시 여세요(' + String(res).replace(/^ERROR\s*/, '') + ')', 'err');
+          return;
+        }
+        queue.splice(i, 1);
+        if (bound === i) bound = -1;
+        else if (bound > i) bound--;
+        bumpRev();
+        renderQueue();
+        if (n !== expect) {
+          out('⚠ 호스트 큐(' + n + ')와 목록(' + expect + ')이 어긋났습니다 — 패널을 닫았다 다시 여세요.\n'
+            + '그대로 두면 다른 조각이 가공될 수 있습니다.', 'err');
+        }
+      });
     }
 
     if (elBtnQAdd) elBtnQAdd.addEventListener('click', function () {
@@ -1407,7 +1445,7 @@
         var qtyN = seedQtyValue(); // 묶음: 새 행 기본수량(#seedQty). 확정 수량은 각 행에서.
         var client = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
         var keyword = seedKeyword(); // 보이는 칸만 시드(숨은 값 주입 차단)
-        var pAdd = gatherParams(); pAdd.qty = qtyN; // #qty(단건 최종값)가 아니라 seedQty 가 기본값이다
+        var pAdd = gatherParams(); setRowQty(pAdd, qtyN); // #qty(단건 최종값)가 아니라 seedQty 가 기본값이다
         queue.push({ params: pAdd, client: client, keyword: keyword, qty: qtyN, w: r.w, h: r.h });
         bumpRev();
         renderQueue();
@@ -1425,7 +1463,7 @@
         var keyword = seedKeyword(); // 보이는 칸만 시드(숨은 값 주입 차단)
         var base = gatherParams();
         for (var s = 0; s < r.sizes.length; s++) {
-          var pRow = JSON.parse(JSON.stringify(base)); pRow.qty = qtyN;
+          var pRow = JSON.parse(JSON.stringify(base)); setRowQty(pRow, qtyN);
           queue.push({ params: pRow, client: client, keyword: keyword, qty: qtyN, w: r.sizes[s].w, h: r.sizes[s].h });
         }
         bumpRev();
@@ -1472,7 +1510,7 @@
         var keyword = seedKeyword(); // 보이는 칸만 시드(숨은 값 주입 차단)
         var base = gatherParams();
         for (var s = 0; s < r.sizes.length; s++) {
-          var pRow = JSON.parse(JSON.stringify(base)); pRow.qty = qtyN;
+          var pRow = JSON.parse(JSON.stringify(base)); setRowQty(pRow, qtyN);
           queue.push({ params: pRow, client: client, keyword: keyword, qty: qtyN, w: r.sizes[s].w, h: r.sizes[s].h });
         }
         bumpRev();
@@ -1577,15 +1615,25 @@
           //   처음부터 다시 선택·분리해야 했다(#574 '실패자만 재선택'과 같은 클래스).
           //   내림차순 + 콜백 체이닝으로 제거해 패널 큐와 host 큐의 인덱스 정합을 보장한다
           //   (한꺼번에 evalScript 를 뿌리면 순서가 보장되지 않아 엉뚱한 행이 지워질 수 있다).
+          //   ★성공 판정만 빠져 있었다 (2026-09-03 정정) — 인덱스 정합을 지키려고 내림차순·콜백
+          //     체이닝까지 해 놓고 정작 호스트가 지웠는지를 안 봤다. 실패하면 **더 지우지 않고 멈춘다**
+          //     (그 뒤 인덱스는 이미 신뢰할 수 없다).
           function removeOk(list, done) {
-            if (!list.length) { done(); return; }
+            if (!list.length) { done(null); return; }
             var ix = list.pop();
-            csi.evalScript('mesA0_queueRemove(' + ix + ')', function () {
+            var expect = queue.length - 1;
+            csi.evalScript('mesA0_queueRemove(' + ix + ')', function (res) {
+              var n = parseInt(res, 10);
+              if (isNaN(n)) {
+                done('#' + (ix + 1) + ' 을 호스트에서 지우지 못했습니다(' + String(res).replace(/^ERROR\s*/, '') + ')');
+                return;
+              }
               queue.splice(ix, 1);
+              if (n !== expect) { done('#' + (ix + 1) + ' 제거 후 호스트 큐 ' + n + ' ≠ 목록 ' + expect); return; }
               removeOk(list, done);
             });
           }
-          removeOk(okIdx.slice(), function () {
+          removeOk(okIdx.slice(), function (rmErr) {
             bound = -1;
             bumpRev(); // 큐가 바뀌었다 → 재검토 표시가 다시 붙는다
             csi.evalScript('mesA0_reviewDiscard()', function () {}); // 검토문서 정리(저장물과 무관)
@@ -1601,7 +1649,9 @@
                 ? '\n⚠ 실패 ' + failN + '건은 목록에 남겨 뒀습니다 — 원인을 고친 뒤 [일괄 확정]으로 재시도하세요 (성공분은 제거됨)'
                 : (cancelledAt >= 0
                     ? '\n남은 건은 목록에 있습니다 — [일괄 확정]으로 이어서 진행하세요 (성공분은 제거됨)'
-                    : '\n→ 에이전트 ingest 후 대기함')), (failN || cancelledAt >= 0) ? 'err' : 'okmsg');
+                    : '\n→ 에이전트 ingest 후 대기함'))
+              + (rmErr ? '\n⚠ ' + rmErr + '\n  목록과 호스트가 어긋났습니다 — 패널을 닫았다 다시 여세요(그대로 두면 다른 조각이 가공될 수 있습니다).' : ''),
+              (failN || cancelledAt >= 0 || rmErr) ? 'err' : 'okmsg');
             if (typeof onDone === 'function') onDone(okN, failN);
           });
         }
@@ -1656,10 +1706,10 @@
         var client = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
         var keyword = seedKeyword(); // 보이는 칸만 시드(숨은 값 주입 차단)
         var base = gatherParams(); // impose 탭이라 finishing·punch·annot_pos는 이미 비어 있다
-        base.qty = qtyN;
+        setRowQty(base, qtyN);
         var lines = [];
         for (var s = 0; s < r.sizes.length; s++) {
-          var pRow = JSON.parse(JSON.stringify(base)); pRow.qty = qtyN;
+          var pRow = JSON.parse(JSON.stringify(base)); setRowQty(pRow, qtyN);
           queue.push({ params: pRow, client: client, keyword: keyword, qty: qtyN, w: r.sizes[s].w, h: r.sizes[s].h });
           lines.push('#' + (s + 1) + ' ' + r.sizes[s].w + '×' + r.sizes[s].h + 'cm');
         }
