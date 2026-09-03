@@ -77,10 +77,11 @@ function renderSchedule() {
   document.getElementById('schKpiInDone').textContent = fmt(summary.in_done);
 
   // 연체 개수 계산 (물질화 예정 중 날짜가 지났는데 미완료인 항목 — 온더플라이 추정치는 제외)
-  var today = new Date();
+  // 날짜끼리 비교한다 — parseDate(dateStr)는 그날 00:00 이라 시각과 비교하면 **오늘 만기 건이 전부 연체**로 잡힌다.
+  var todayStr = window.kstToday();
   var overdueCount = 0;
   for (var dateStr in days) {
-    if (parseDate(dateStr) < today) {
+    if (dateStr < todayStr) {
       var day = days[dateStr];
       for (var i = 0; i < day.items.length; i++) {
         var item = day.items[i];
@@ -110,8 +111,8 @@ function renderSchedule() {
     var outAmount = dayData.out_total;
     var itemCount = dayData.items.length;
 
-    var isPast = parseDate(dateStr) < new Date();
-    var isToday = dateStr === fmtDate(new Date());
+    var isPast = dateStr < todayStr;   // 날짜 비교 — 오늘 셀이 '지남'으로 칠해지지 않게
+    var isToday = dateStr === todayStr;
     var className = 'p-1.5 text-[9px] h-24 border rounded cursor-pointer transition-colors hover:bg-blue-50/50 ' +
       (isToday ? 'bg-blue-50 border-blue-300' : 'bg-white border-gray-200 hover:border-blue-300');
 
@@ -324,7 +325,8 @@ window.schDeleteItem = async function(id) {
 };
 
 window.schOpenAddModal = function() {
-  document.getElementById('schAddDate').value = new Date().toISOString().slice(0, 10);
+  // toISOString 은 UTC — KST 00:00~09:00 에 열면 전날이 채워진다. 업무일은 window.kstToday()가 정본.
+  document.getElementById('schAddDate').value = window.kstToday();
   document.getElementById('schAddType').value = 'IN';
   document.getElementById('schAddSource').value = 'ORDER';
   document.getElementById('schAddAmount').value = '';
@@ -566,6 +568,6 @@ function renderForecast() {
   schCurrentYear = today.getFullYear();
   schCurrentMonth = today.getMonth() + 1;
   var addDateEl = document.getElementById('schAddDate');
-  if (addDateEl) addDateEl.value = today.toISOString().slice(0, 10);
+  if (addDateEl) addDateEl.value = window.kstToday();   // UTC 슬라이스 금지(오전 전날로 밀림)
   window.loadSchedule();
 })();
