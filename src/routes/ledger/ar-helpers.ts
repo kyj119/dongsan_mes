@@ -93,7 +93,7 @@ export async function deriveClientBalancesBulk(
 export async function deriveArSplit(
   c: Context<HonoEnv>,
   opts: { allEntities?: boolean } = {}
-): Promise<{ receivable: number; advance: number; net: number; advanceClients: number }> {
+): Promise<{ receivable: number; advance: number; net: number; advanceClients: number; receivableClients: number }> {
   // allEntities = 전사 기준(entity 무필터). /financial/balance-snapshot 이 설계상 전사라 필요하다.
   const NO_EF = { clause: '', params: [] as unknown[] }
   const g = opts.allEntities ? NO_EF : entityFilter(c, 'g')
@@ -113,12 +113,17 @@ export async function deriveArSplit(
      )
      SELECT COALESCE(SUM(CASE WHEN b > 0 THEN b ELSE 0 END), 0) AS receivable,
             COALESCE(SUM(CASE WHEN b < 0 THEN -b ELSE 0 END), 0) AS advance,
-            COALESCE(SUM(CASE WHEN b < 0 THEN 1 ELSE 0 END), 0) AS advance_clients
+            COALESCE(SUM(CASE WHEN b < 0 THEN 1 ELSE 0 END), 0) AS advance_clients,
+            COALESCE(SUM(CASE WHEN b > 0 THEN 1 ELSE 0 END), 0) AS receivable_clients
        FROM bal`
-  ).bind(...g.params, ...p.params, ...a.params).first<{ receivable: number; advance: number; advance_clients: number }>()
+  ).bind(...g.params, ...p.params, ...a.params).first<{ receivable: number; advance: number; advance_clients: number; receivable_clients: number }>()
   const receivable = Number(row?.receivable) || 0
   const advance = Number(row?.advance) || 0
-  return { receivable, advance, net: receivable - advance, advanceClients: Number(row?.advance_clients) || 0 }
+  return {
+    receivable, advance, net: receivable - advance,
+    advanceClients: Number(row?.advance_clients) || 0,
+    receivableClients: Number(row?.receivable_clients) || 0,
+  }
 }
 
 /**
@@ -214,6 +219,61 @@ export async function queryFifoOverdue(c: Context<HonoEnv>): Promise<FifoOverdue
     carryover_amount: Number(r.carryover_amount) || 0,
     unpaid_total: Number(r.unpaid_total) || 0,
     oldest_unpaid_at: r.oldest_unpaid_at,
+  }))
+}
+
+/**
+ * 거래처 1곳의 **청구건별 미충당액**(FIFO) — 독촉 메일의 "미결제 주문" 목록용.
+ * queryFifoOverdue 와 같은 충당 규칙(오래된 청구부터 payments+adjustments 로 소진)을 거래처 1곳에 적용해
+ * 미충당액(un)이 남은 청구건을 오래된 순으로 돌려준다.
+ *
+ * ★ 왜 필요한가 — 종전 독촉 필터는 `orders.id NOT IN (SELECT order_id FROM payments)` 였는데 payments.order_id 는
+ *   어떤 INSERT 경로에서도 채워지지 않는다(lib/payments.ts·migration.ts). 서브쿼리가 항상 빈 집합이라
+ *   **완납된 옛 BILLED 주문까지 전부 "미결제"** 로 고객 메일에 실렸다(2026-09-03).
+ */
+export interface ClientUnpaidRow {
+  order_id: number
+  order_number: string
+  order_date: string | null
+  billed_amount: number
+  unpaid_amount: number
+}
+export async function queryClientUnpaidFifo(
+  c: Context<HonoEnv>, clientId: number | string, limit = 10
+): Promise<ClientUnpaidRow[]> {
+  const g = entityFilter(c, 'g')
+  const p = entityFilter(c, 'p')
+  const a = entityFilter(c, 'a')
+  const lim = Math.max(1, Math.min(200, Math.floor(Number(limit) || 10)))
+  const { results } = await c.env.DB.prepare(
+    `WITH grp AS (
+       SELECT o.id AS order_id, o.order_number, o.order_date,
+              COALESCE(g.accounting_date, g.billed_at) AS bdate,
+              g.billed_amount AS amt,
+              SUM(g.billed_amount) OVER (ORDER BY COALESCE(g.accounting_date, g.billed_at), g.id) AS cum
+         FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+        WHERE o.client_id = ? AND g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${g.clause}
+     ),
+     settle AS (
+       SELECT COALESCE(SUM(v), 0) AS settled FROM (
+         SELECT p.amount AS v FROM payments p WHERE p.client_id = ?${p.clause}
+         UNION ALL
+         SELECT a.amount FROM adjustments a WHERE a.client_id = ?${a.clause}
+       )
+     )
+     SELECT order_id, order_number, order_date, amt AS billed_amount,
+            MIN(amt, MAX(0, cum - (SELECT settled FROM settle))) AS unpaid_amount
+       FROM grp
+      WHERE MIN(amt, MAX(0, cum - (SELECT settled FROM settle))) > 0
+      ORDER BY bdate ASC, order_id ASC
+      LIMIT ${lim}`
+  ).bind(clientId, ...g.params, clientId, ...p.params, clientId, ...a.params).all<ClientUnpaidRow>()
+  return (results || []).map(r => ({
+    order_id: Number(r.order_id),
+    order_number: r.order_number,
+    order_date: r.order_date,
+    billed_amount: Number(r.billed_amount) || 0,
+    unpaid_amount: Number(r.unpaid_amount) || 0,
   }))
 }
 

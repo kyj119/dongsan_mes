@@ -13,8 +13,8 @@ import { logActivity } from '../../utils/activityLog'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { kstYmd } from '../../utils/kstDate'
 import {
-  deriveClientBalance,
-  type ClientRow, type OrderRow, type PaymentRow, type AdjustmentRow, type UnpaidOrderRow,
+  deriveClientBalance, queryClientUnpaidFifo,
+  type ClientRow, type OrderRow, type PaymentRow, type AdjustmentRow,
 } from './ar-helpers'
 
 const arDunningRouter = new Hono<HonoEnv>()
@@ -191,17 +191,9 @@ arDunningRouter.post('/collection-logs', async (c) => {
         ).bind(body.client_id).first<{ client_name: string; email: string | null; balance: number }>()
 
         if (client?.email) {
-          const { clause: emailOrdEf, params: emailOrdEfParams } = entityFilter(c)
-          const { clause: emailPayEf, params: emailPayEfParams } = entityFilter(c)
-          const { results: unpaidOrders } = await c.env.DB.prepare(`
-            SELECT order_number, billed_amount, order_date
-            FROM orders
-            WHERE client_id = ? AND billing_status = 'BILLED'${emailOrdEf}
-              AND id NOT IN (
-                SELECT DISTINCT order_id FROM payments WHERE order_id IS NOT NULL${emailPayEf}
-              )
-            ORDER BY order_date ASC, id ASC LIMIT 10
-          `).bind(body.client_id, ...emailOrdEfParams, ...emailPayEfParams).all<UnpaidOrderRow>()
+          // 미결제 주문 = 청구건별 FIFO 미충당액(queryClientUnpaidFifo). payments.order_id 는 어디서도 채워지지 않아
+          //   종전 `id NOT IN (SELECT order_id FROM payments)` 는 완납 주문까지 전부 "미결제"로 실었다.
+          const unpaidOrders = await queryClientUnpaidFifo(c, body.client_id, 10)
 
           const balance = (await deriveClientBalance(c, body.client_id)) || body.amount_requested || 0  // split billing P3: 파생
           const firstOrderDate = unpaidOrders[0]?.order_date
@@ -215,8 +207,8 @@ arDunningRouter.post('/collection-logs', async (c) => {
             agingDays: Math.max(agingDays, 0),
             orders: unpaidOrders.map(o => ({
               orderNumber: o.order_number,
-              amount: Number(o.billed_amount) || 0,
-              orderDate: o.order_date,
+              amount: o.unpaid_amount,          // 부분 입금분을 뺀 잔여액
+              orderDate: o.order_date || '',
             })),
             notes: body.notes,
           })
@@ -342,8 +334,13 @@ arDunningRouter.post('/send-email', async (c) => {
       }))
     ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
-    // Running balance
-    let runningBalance = 0
+    // Running balance — 전기이월(기간 이전 잔액)에서 시작한다.
+    //   0 에서 기간 증감만 누적하면 "현재 잔액"이 실제 잔액이 아니라 기간 순증감으로 발송된다(2026-09-03).
+    //   이월 = 파생 전체잔액(deriveClientBalance: BILLED − payments − adjustments) − 기간 순증감 → 마지막 행 = 실제 잔액.
+    const allTimeBalance = await deriveClientBalance(c, client_id)
+    const periodNet = transactions.reduce((s, t) => s + t.debit - t.credit, 0)
+    const openingBalance = allTimeBalance - periodNet
+    let runningBalance = openingBalance
     const txWithBalance = transactions.map(t => {
       runningBalance += t.debit - t.credit
       return { ...t, balance: runningBalance }
@@ -371,7 +368,15 @@ arDunningRouter.post('/send-email', async (c) => {
     const formatNum = (n: number) => n.toLocaleString('ko-KR')
     const formatDate = (d: string) => d ? d.substring(0, 10) : '-'
 
-    const rowsHtml = txWithBalance.map(t => {
+    const openingRowHtml = `<tr style="background:#f9fafb">
+        <td style="padding:8px;border:1px solid #e5e7eb">${startDate}</td>
+        <td style="padding:8px;border:1px solid #e5e7eb">이월</td>
+        <td style="padding:8px;border:1px solid #e5e7eb">전기이월 잔액</td>
+        <td style="padding:8px;border:1px solid #e5e7eb;text-align:right">-</td>
+        <td style="padding:8px;border:1px solid #e5e7eb;text-align:right">-</td>
+        <td style="padding:8px;border:1px solid #e5e7eb;text-align:right;font-weight:bold;color:${openingBalance > 0 ? '#dc2626' : '#16a34a'}">${formatNum(openingBalance)}</td>
+      </tr>`
+    const rowsHtml = openingRowHtml + txWithBalance.map(t => {
       const typeName = t.type === 'order' ? '주문' : t.type === 'payment' ? '입금' : '할인/조정'
       const typeColor = t.type === 'order' ? '#dcfce7' : t.type === 'payment' ? '#dbeafe' : '#fef9c3'
       return `<tr style="background:${typeColor}">
