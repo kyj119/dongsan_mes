@@ -246,7 +246,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
     // #IDOR: entityFilter로 자법인 직원만 로드 (ADMIN=entityId 0 → bypass). 타 법인 직원 급여 변조 차단.
     const empEf = entityFilter(c)
     const emp = await c.env.DB.prepare(
-      `SELECT id, base_salary, hourly_rate, overtime_daily_hours, overtime_work_days,
+      `SELECT id, entity_id, base_salary, hourly_rate, overtime_daily_hours, overtime_work_days,
               dependents_count, income_tax_table_option, hire_date, resignation_date
        FROM employees WHERE id = ?${empEf.clause}`
     ).bind(employeeId, ...empEf.params).first<any>()
@@ -503,7 +503,8 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
       d.employer_employment_insurance, d.employer_industrial_accident,
       total_deduction, net_pay,
       work_days, overtime_hours, extra_overtime_hours, absent_days, late_count, leave_used_days,
-      notes, user?.id || null, getEntityId(c) || 1
+      // 귀속 법인 = 직원의 entity (전체모드 ADMIN 이 세션값 0→1 로 찍으면 선명·청주 급여가 동산 귀속)
+      notes, user?.id || null, emp.entity_id || getEntityId(c) || 1
     ).run()
 
     return c.json({
@@ -561,7 +562,7 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
       ).bind(payPeriod, ...empIds).all<{ employee_id: number }>()
       for (const r of existRows || []) existsSet.add(r.employee_id)
       const { results: empRows } = await c.env.DB.prepare(
-        `SELECT id, base_salary, hourly_rate, overtime_daily_hours, overtime_work_days,
+        `SELECT id, entity_id, base_salary, hourly_rate, overtime_daily_hours, overtime_work_days,
                 dependents_count, income_tax_table_option, hire_date, resignation_date FROM employees WHERE id IN (${ph})`
       ).bind(...empIds).all<any>()
       for (const r of empRows || []) empRowMap.set(r.id, r)
@@ -676,7 +677,9 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
         d.employment_insurance, d.income_tax, d.local_tax, fixed_other_deduction,
         d.employer_national_pension, d.employer_health_insurance, d.employer_long_term_care,
         d.employer_employment_insurance, d.employer_industrial_accident,
-        d.total_deduction + fixed_other_deduction, net_pay, user?.id || null, getEntityId(c) || 1
+        // 귀속 법인 = 직원 행의 entity_id. 전체모드(entityId 0)에서 세션값(→1)으로 찍으면 선명(2)·청주(3) 직원 급여가
+        //   전부 동산 귀속이 되어 insuranceReports(p.entity_id = ?) 가 그 법인 신고서를 0건으로 만든다.
+        d.total_deduction + fixed_other_deduction, net_pay, user?.id || null, empRow?.entity_id || getEntityId(c) || 1
       ).run()
       created++
     }
