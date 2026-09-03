@@ -8,48 +8,13 @@ import { authMiddleware, requireRole } from '../../middleware/auth'
 import { entityFilter, getEntityId } from '../../utils/entityFilter'
 import { decryptPII } from '../../utils/crypto'
 import { kstYear } from '../../utils/kstDate'
+import { calcYearEndSettlement } from './year-end-calc'
 
 const yearEndRouter = new Hono<HonoEnv>()
 // 연말정산(직원 급여·정산 데이터)은 전 라우트 ADMIN/MANAGER 전용
 yearEndRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 
-// 연말정산 전용 헬퍼 (원본 1554~1589)
-// ── 연말정산 계산 헬퍼 ──
-
-// 근로소득공제 (2026년 세법 기준)
-function calcEarnedIncomeDeduction(grossTaxable: number): number {
-  if (grossTaxable <= 5000000) return Math.floor(grossTaxable * 0.7)
-  if (grossTaxable <= 15000000) return 3500000 + Math.floor((grossTaxable - 5000000) * 0.4)
-  if (grossTaxable <= 45000000) return 7500000 + Math.floor((grossTaxable - 15000000) * 0.15)
-  if (grossTaxable <= 100000000) return 12000000 + Math.floor((grossTaxable - 45000000) * 0.05)
-  return Math.min(14750000 + Math.floor((grossTaxable - 100000000) * 0.02), 20000000)
-}
-
-// 종합소득세 세율표 (2026년 기준)
-function calcIncomeTax(taxableIncome: number): number {
-  if (taxableIncome <= 14000000) return Math.floor(taxableIncome * 0.06)
-  if (taxableIncome <= 50000000) return 840000 + Math.floor((taxableIncome - 14000000) * 0.15)
-  if (taxableIncome <= 88000000) return 6240000 + Math.floor((taxableIncome - 50000000) * 0.24)
-  if (taxableIncome <= 150000000) return 15360000 + Math.floor((taxableIncome - 88000000) * 0.35)
-  if (taxableIncome <= 300000000) return 37060000 + Math.floor((taxableIncome - 150000000) * 0.38)
-  if (taxableIncome <= 500000000) return 94060000 + Math.floor((taxableIncome - 300000000) * 0.40)
-  if (taxableIncome <= 1000000000) return 174060000 + Math.floor((taxableIncome - 500000000) * 0.42)
-  return 384060000 + Math.floor((taxableIncome - 1000000000) * 0.45)
-}
-
-// 근로소득세액공제
-function calcEarnedTaxCredit(calculatedTax: number, grossTaxable: number): number {
-  let credit: number
-  if (calculatedTax <= 1300000) {
-    credit = Math.floor(calculatedTax * 0.55)
-  } else {
-    credit = 715000 + Math.floor((calculatedTax - 1300000) * 0.30)
-  }
-  // 한도
-  if (grossTaxable <= 33000000) return Math.min(credit, 740000)
-  if (grossTaxable <= 70000000) return Math.min(credit, 660000)
-  return Math.min(credit, 500000)
-}
+// 연말정산 산식(근로소득공제·세율표·세액공제) = ./year-end-calc.ts (순수 함수 · test:calc 게이트)
 
 // 연말정산 라우트 (원본 1214~1552)
 yearEndRouter.get('/year-end/:employeeId', async (c) => {
@@ -205,66 +170,35 @@ yearEndRouter.post('/year-end-settlement/:employeeId', requireRole('ADMIN', 'MAN
     const prepaidIncomeTax = Number(agg?.sum_income_tax || 0)
     const prepaidLocalTax = Number(agg?.sum_local_tax || 0)
 
-    // 2) 근로소득공제 계산 (2026년 기준)
-    const earnedIncomeDeduction = calcEarnedIncomeDeduction(grossTaxable)
-
-    // 근로소득금액 = 총급여 - 비과세 - 근로소득공제
-    const earnedIncome = Math.max(0, grossTaxable - earnedIncomeDeduction)
-
-    // 3) 인적공제
+    // 2)~10) 산식 = year-end-calc.ts (순수 함수, test:calc 게이트).
+    //   ★ 보험료·의료비·교육비·기부금은 세액공제만, 국민연금은 소득공제만, 연금저축은 세액공제 — 이중공제 금지.
     const dependentsCount = Number(body.dependents_count || 1)
-    const basicDeduction = dependentsCount * 1500000
-    const additionalAged = Number(body.additional_aged || 0) * 1000000
-    const additionalDisabled = Number(body.additional_disabled || 0) * 2000000
-    const additionalSingleParent = Number(body.additional_single_parent || 0)  // 50만 or 100만 직접 입력
-
-    // 4) 특별소득공제 (직원 제출 서류 기반)
-    const insuranceDeduction = Math.min(Number(body.insurance_deduction || 0), 1000000)
-    const medicalDeduction = Math.max(0, Number(body.medical_deduction || 0) - Math.floor(grossTaxable * 0.03))
-    const educationDeduction = Number(body.education_deduction || 0)
-    const housingDeduction = Number(body.housing_deduction || 0)
-    const donationDeduction = Number(body.donation_deduction || 0)
-
-    // 국민연금 공제 (전액 공제)
-    const nationalPensionDeduction = Number(agg?.sum_national_pension || 0)
-
-    // 5) 기타소득공제
-    const pensionSaving = Math.min(Number(body.pension_saving || 0), 4000000)
-    const creditCardDeduction = Number(body.credit_card_deduction || 0)
-
-    // 6) 과세표준
-    const totalDeductions = basicDeduction + additionalAged + additionalDisabled + additionalSingleParent
-      + insuranceDeduction + medicalDeduction + educationDeduction + housingDeduction + donationDeduction
-      + nationalPensionDeduction + pensionSaving + creditCardDeduction
-    const taxableIncome = Math.max(0, earnedIncome - totalDeductions)
-
-    // 7) 산출세액 (세율표)
-    const calculatedTax = calcIncomeTax(taxableIncome)
-
-    // 8) 세액공제
-    const earnedTaxCredit = calcEarnedTaxCredit(calculatedTax, grossTaxable)
-    const childTaxCredit = Number(body.child_tax_credit || 0)
-    // 보장성보험료 세액공제 (12%), 의료비 (15%), 교육비 (15%), 기부금 (15%/30%)
-    const insurancePremiumCredit = Math.floor(insuranceDeduction * 0.12)
-    const medicalCredit = Math.floor(medicalDeduction * 0.15)
-    const educationCredit = Math.floor(educationDeduction * 0.15)
-    const donationCredit = Math.floor(donationDeduction * 0.15)
-    const pensionContributionCredit = Math.floor(nationalPensionDeduction * 0.12)
-    // 표준세액공제: 특별공제를 안 받는 경우 13만원 (여기서는 특별공제 0이면 적용)
-    const hasSpecialDeductions = insuranceDeduction + medicalDeduction + educationDeduction + housingDeduction + donationDeduction > 0
-    const standardTaxCredit = hasSpecialDeductions ? 0 : 130000
-
-    const totalTaxCredits = earnedTaxCredit + childTaxCredit + insurancePremiumCredit
-      + medicalCredit + educationCredit + donationCredit + pensionContributionCredit + standardTaxCredit
-
-    // 9) 결정세액
-    const determinedTax = Math.max(0, calculatedTax - totalTaxCredits)
-    const determinedLocalTax = Math.floor(determinedTax * 0.1)
-
-    // 10) 차감징수(환급)세액
-    const refundIncomeTax = prepaidIncomeTax - determinedTax
-    const refundLocalTax = prepaidLocalTax - determinedLocalTax
-    const refundTotal = refundIncomeTax + refundLocalTax
+    const r = calcYearEndSettlement({
+      totalSalary, totalNontax,
+      nationalPension: Number(agg?.sum_national_pension || 0),
+      prepaidIncomeTax, prepaidLocalTax,
+      dependentsCount,
+      additionalAged: Number(body.additional_aged || 0),
+      additionalDisabled: Number(body.additional_disabled || 0),
+      additionalSingleParent: Number(body.additional_single_parent || 0),  // 50만 or 100만 직접 입력
+      insurance: Number(body.insurance_deduction || 0),
+      medical: Number(body.medical_deduction || 0),
+      education: Number(body.education_deduction || 0),
+      housing: Number(body.housing_deduction || 0),
+      donation: Number(body.donation_deduction || 0),
+      pensionSaving: Number(body.pension_saving || 0),
+      creditCard: Number(body.credit_card_deduction || 0),
+      childTaxCredit: Number(body.child_tax_credit || 0),
+    })
+    const {
+      earnedIncomeDeduction, earnedIncome, totalDeductions, totalTaxCredits,
+      basicDeduction, additionalSingleParent,
+      insuranceDeduction, medicalDeduction, educationDeduction, housingDeduction, donationDeduction,
+      pensionSaving, creditCardDeduction, taxableIncome, calculatedTax,
+      earnedTaxCredit, childTaxCredit, pensionContributionCredit, insurancePremiumCredit,
+      medicalCredit, educationCredit, donationCredit, standardTaxCredit,
+      determinedTax, determinedLocalTax, refundIncomeTax, refundLocalTax, refundTotal,
+    } = r
 
     // 11) UPSERT
     const now = new Date().toISOString()
