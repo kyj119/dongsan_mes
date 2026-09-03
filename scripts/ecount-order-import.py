@@ -50,7 +50,16 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DICT_PATH = os.path.join(ROOT, 'docs', 'order-file-matching', 'ecount_item_map.csv')
 DEFAULT_TRUTH = os.path.join(ROOT, '품목마스터', '원천주문데이터', '동산_주문서현황_2607-2608.xlsx')
 
+# 전표번호 = 화면 내보내기 `2026/08/01 -1` · Excel(데이터) 내보내기 `20260801-1`. 둘 다 받는다.
 RX_SLIP = re.compile(r'^(\d{4})/(\d\d)/(\d\d)\s*-\s*(\d+)$')
+RX_SLIP_RAW = re.compile(r'^(\d{4})(\d\d)(\d\d)-(\d+)$')
+
+
+def parse_slip(v):
+    """전표 문자열 -> (YYYY, MM, DD, No) 또는 None."""
+    v = str(v or '').strip()
+    m = RX_SLIP.match(v) or RX_SLIP_RAW.match(v)
+    return m.groups() if m else None
 RX_SPEC = re.compile(r'\[([^\]]*)\]\s*$')
 RX_WH = re.compile(r'^\s*(\d+(?:\.\d+)?)\s*[*xX×]\s*(\d+(?:\.\d+)?)\s*$')
 RX_LEGAL = re.compile(r'\(주\)|주식회사|㈜|유한회사|주\)')
@@ -59,6 +68,12 @@ MARKER = '이카운트 주문서 자동생성'
 #: 폴백 거래처로 들어간 주문에 원래 표기를 남기는 태그. **이 문자열로 나중에 되찾는다** —
 #  실거래처가 등록되면 `notes LIKE '%미확인거래처:이름%'` 으로 골라 client_id 를 옮길 수 있다.
 UNRESOLVED_TAG = '미확인거래처:'
+
+
+def norm_date(v):
+    """`2026/07/30 ` / `20260730` / `2026-07-30` -> `2026-07-30`. 못 읽으면 None."""
+    d = re.sub(r'\D', '', str(v or ''))
+    return f'{d[0:4]}-{d[4:6]}-{d[6:8]}' if len(d) >= 8 else None
 
 
 def nrm(s):
@@ -192,6 +207,10 @@ TRUTH_COLS = {
     'addr':      ['배송처주소'],
     'ship_via':  ['출고방법'],
     'pay':       ['착불/선불명', '착불/선불'],
+    # ↓ 판매현황(Excel 데이터)에만 있는 열 — 있으면 이름 대신 코드로, 규격은 파싱 없이 그대로 쓴다.
+    'brn':       ['거래처코드'],
+    'spec':      ['규격'],
+    'code':      ['품목코드'],
 }
 
 
@@ -230,19 +249,22 @@ def load_truth(path, d_from, d_to):
 
     slips = defaultdict(list)
     for row in rows[hrow + 1:]:
-        m = RX_SLIP.match(s(row, 'slip'))
+        m = parse_slip(s(row, 'slip'))
         if not m:
             continue
-        d = f'{m.group(1)}-{m.group(2)}-{m.group(3)}'
+        d = f'{m[0]}-{m[1]}-{m[2]}'
         if not (d_from <= d <= d_to):
             continue
-        slips[f'{d} -{m.group(4)}'].append({
+        slips[f'{d} -{m[3]}'].append({
             'date': d, 'client': s(row, 'client'), 'staff': s(row, 'staff'),
             'label': s(row, 'label'), 'desc': s(row, 'desc'),
             'note': s(row, 'note'), 'qty': g(row, 'qty'), 'price': g(row, 'price'),
             'amount': g(row, 'amount'),
-            'ship_date': s(row, 'ship_date').replace('/', '-')[:10] or None,
+            'ship_date': norm_date(s(row, 'ship_date')),
             'addr': s(row, 'addr'), 'ship_via': s(row, 'ship_via'), 'pay': s(row, 'pay'),
+            # 판매현황 전용 — `spec_col` 이 True 면 규격을 품목명에서 뜯지 않는다.
+            'brn': s(row, 'brn'), 'spec': s(row, 'spec'), 'code': s(row, 'code'),
+            'spec_col': idx['spec'] is not None,
         })
     return dict(sorted(slips.items()))
 
@@ -426,7 +448,14 @@ def main():
             skipped += 1
             continue
         raw_client = lines[0]['client']
-        cid = cidx.get(nrm(raw_client))
+        # ★판매현황은 거래처코드(사업자번호)를 준다 — 이름보다 먼저 쓴다.
+        #   이름 매칭은 「본체(현장)」 표기에서 깨진다(육군본부박재현서기관 등 실측 8전표).
+        brn_digits = re.sub(r'\D', '', lines[0].get('brn') or '')
+        cid = bidx.get(brn_digits) if len(brn_digits) == 10 else None
+        if cid:
+            pass
+        else:
+            cid = cidx.get(nrm(raw_client))
         if not cid and RX_BIZ_NAME.match(raw_client.strip()):
             # 거래처명이 **통째로** 사업자번호인 경우만 코드로 찾는다.
             #   부분 일치를 허용하면 「비젼텍(823-04-03349)」 같은 이름이 엉뚱한 곳에 붙는다.
@@ -443,9 +472,14 @@ def main():
 
         payload_items = []
         for ln in lines:
-            ms = RX_SPEC.search(ln['label'])
-            spec = ms.group(1).strip() if ms else ''
-            bare = RX_SPEC.sub('', ln['label']).strip()
+            if ln.get('spec_col'):
+                # ★판매현황은 규격이 **별도 열**이라 품목명에서 뜯지 않는다.
+                #   단위 표기가 없고 실측상 전부 cm 다(`1200*90 현수막`=12m 게시대 · `800*530 대형태극기`).
+                spec, bare = ln['spec'], ln['label']
+            else:
+                ms = RX_SPEC.search(ln['label'])
+                spec = ms.group(1).strip() if ms else ''
+                bare = RX_SPEC.sub('', ln['label']).strip()
             iid = imap.get(nrm(bare))
             if not iid:
                 no_item[bare] += 1
