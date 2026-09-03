@@ -2,6 +2,8 @@ import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import { readVatRate } from '../utils/vatRate'
+// 배송방법 값은 SSOT 에서만 만든다 — 폐기값 `직배` 가 손목록으로 남아 있었다(마이그 0526)
+import { deliveryMethodOptionsHtml } from '../constants/deliveryMethod'
 // Phase 3.1.C 분할: orderForm.js (3966줄) → 6개 모듈
 import finishingLabel from '../scripts/shared/finishingLabel.js?raw'   // 마감·후가공 표기 정본(클라 사본) — MES_FIN 없으면 요약이 조용히 빈값이 된다
 import deliverySlot from '../scripts/shared/deliverySlot.js?raw'       // 직배 배차 슬롯·완료기한(클라 사본) — 서버 정본 = utils/productionDeadline.ts
@@ -112,13 +114,7 @@ export async function orderFormPage(c: Context<HonoEnv>) {
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">출고방법</label>
                                 <select id="deliveryMethod" onchange="onDeliveryMethodChange()" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                    <option value="대신택배">대신택배</option>
-                                    <option value="대신화물">대신화물</option>
-                                    <option value="한진택배">한진택배</option>
-                                    <option value="직배">직배</option>
-                                    <option value="용차">용차</option>
-                                    <option value="퀵">퀵</option>
-                                    <option value="방문수령">방문수령</option>
+                                    ${deliveryMethodOptionsHtml()}
                                 </select>
                             </div>
                             <div>
@@ -470,13 +466,7 @@ async function orderFormDistPage(c: Context<HonoEnv>) {
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">출고방법</label>
                                 <select id="distDeliveryMethod" onchange="onDistDeliveryMethodChange()" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                    <option value="대신택배">대신택배</option>
-                                    <option value="대신화물">대신화물</option>
-                                    <option value="한진택배">한진택배</option>
-                                    <option value="직배">직배</option>
-                                    <option value="용차">용차</option>
-                                    <option value="퀵">퀵</option>
-                                    <option value="방문수령">방문수령</option>
+                                    ${deliveryMethodOptionsHtml()}
                                 </select>
                             </div>
                             <div>

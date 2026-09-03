@@ -118,11 +118,30 @@ returns.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => {
     return c.json({ success: false, error: `${currentReturn.status} → ${status} 전환은 허용되지 않습니다.` }, 400)
   }
 
+  // ★환불액 한도 — RESOLVED 시 그대로 AR 감액이 되므로 상한이 없으면 임의 금액의 고객 여신이 된다.
+  //   음수 거부 + 연결된 주문 청구액 상한(클레임 해결 경로와 같은 규칙).
+  let normalizedRefund: number | undefined
+  if (refund_amount !== undefined) {
+    normalizedRefund = Math.round(Number(refund_amount) || 0)
+    if (normalizedRefund < 0) {
+      return c.json({ success: false, error: '환불액은 0원 이상이어야 합니다.' }, 400)
+    }
+    if (currentReturn.order_id && normalizedRefund > 0) {
+      const retOrder = await c.env.DB.prepare(
+        'SELECT final_amount FROM orders WHERE id = ?'
+      ).bind(currentReturn.order_id).first<{ final_amount: number | null }>()
+      const retCap = Math.round(Number(retOrder?.final_amount) || 0)
+      if (retCap > 0 && normalizedRefund > retCap) {
+        return c.json({ success: false, error: `환불액이 원 주문 금액(${retCap.toLocaleString()}원)을 초과할 수 없습니다.` }, 400)
+      }
+    }
+  }
+
   let sql = `UPDATE returns SET status = ?, updated_at = CURRENT_TIMESTAMP`
   const binds: any[] = [status]
 
   if (resolution) { sql += ', resolution = ?'; binds.push(resolution) }
-  if (refund_amount !== undefined) { sql += ', refund_amount = ?'; binds.push(refund_amount) }
+  if (normalizedRefund !== undefined) { sql += ', refund_amount = ?'; binds.push(normalizedRefund) }
 
   sql += ` WHERE id = ?${patchEf.clause}`
   binds.push(id, ...patchEf.params)
@@ -131,7 +150,7 @@ returns.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
   // #567: RESOLVED 시 환불액(refund_amount>0) → AR 자동조정 멱등 동기화. body 미지정 시 기존값 사용.
   if (status === 'RESOLVED') {
-    const effRefund = refund_amount !== undefined ? Number(refund_amount) || 0 : Number(currentReturn.refund_amount) || 0
+    const effRefund = normalizedRefund !== undefined ? normalizedRefund : Number(currentReturn.refund_amount) || 0
     const userId = c.get('user')?.id
     await c.env.DB.batch(
       syncArAdjustmentStmts(c.env.DB, {

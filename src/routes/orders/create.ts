@@ -91,10 +91,18 @@ ordersCreateRouter.post('/', async (c) => {
     //      담당자 소속은 **둘 다 없을 때만** 쓰는 폴백이다.
     //   ⚠️ 강제 규칙이 아니다 — 담당 12명 중 임선미·김용준은 두 법인에 걸친다(591·106건).
     //      어긋난 건은 막지 않고 `/api/reports/entity-attribution-audit` 로 잡는다.
+    //   ⚠️ 본문 billing_entity_id 는 **무조건 신뢰하지 않는다**(entity 주입) — 현재 이 값을 보내는
+    //      클라이언트는 없고(주문·유통·견적 폼 전부 세션 법인 유지, design-order-intake-split),
+    //      타법인 지정은 전체모드(entityId 0) 또는 ADMIN/MANAGER 만 허용한다. 그 외에는 세션 법인으로 접는다.
     const sessionEntityId = getEntityId(c)
-    let billingEntityId = (orderData.billing_entity_id && Number(orderData.billing_entity_id) > 0)
+    const requestedBillingEntityId = (orderData.billing_entity_id && Number(orderData.billing_entity_id) > 0)
       ? Number(orderData.billing_entity_id)
-      : (sessionEntityId || 0)
+      : 0
+    const mayChooseBillingEntity = sessionEntityId === 0 || ['ADMIN', 'MANAGER'].includes(user?.role || '')
+    const allowedBillingEntityId = (requestedBillingEntityId && (mayChooseBillingEntity || requestedBillingEntityId === sessionEntityId))
+      ? requestedBillingEntityId
+      : 0
+    let billingEntityId = allowedBillingEntityId || (sessionEntityId || 0)
     if (!billingEntityId && salesRepHintId) {
       const rep = await c.env.DB.prepare('SELECT default_entity_id FROM employees WHERE id = ?')
         .bind(salesRepHintId).first<{ default_entity_id: number | null }>()
@@ -152,7 +160,11 @@ ordersCreateRouter.post('/', async (c) => {
     //   실제로 27,272,728원 라인이 final_amount 30,000,000.8 로 저장됐다(2026-08-13).
     //   라인 추가 경로(POST /:id/items)는 이미 반올림한다 → 두 경로가 갈려 있었다.
     vatAmount = Math.round(vatAmount)
-    const finalAmount = Math.round(totalAmount) + vatAmount - Math.round(orderData.discount_amount || 0)
+    // ★헤더 에누리는 0..공급가+부가세 로 가둔다 — 음수는 총액을 부풀리고, 과대값은 final_amount 를
+    //   음수(=마이너스 미수금)로 만든다. 저장값도 같은 clamp 를 쓴다(표시=계산 일치).
+    const grossAmount = Math.round(totalAmount) + vatAmount
+    const discountAmount = Math.min(Math.max(Math.round(Number(orderData.discount_amount) || 0), 0), grossAmount)
+    const finalAmount = grossAmount - discountAmount
 
     // QUOTATION 상태가 명시적으로 전달되면 견적서로 생성, 그 외 기본값 CONFIRMED
     const requestedStatus = orderData.status
@@ -200,7 +212,7 @@ ordersCreateRouter.post('/', async (c) => {
       orderData.order_date || kstYmd(),
       totalAmount,
       vatAmount,
-      orderData.discount_amount || 0,
+      discountAmount,
       finalAmount,
       orderData.notes || null,
       orderData.internal_notes || null,

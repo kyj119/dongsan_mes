@@ -1106,9 +1106,13 @@ cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
     if (isNaN(orderId)) return c.json({ success: false, error: '잘못된 주문 ID' }, 400)
     const user = c.get('user')
 
+    // 타 법인 주문에 카드를 만들 수 없다 — 형제 카드 핸들러의 cardEntityScope 와 같은 축(orders.entity_id).
+    const genEntityId = getEntityId(c)
+    const genClause = genEntityId === 0 ? '' : ' AND entity_id = ?'
+    const genParams = genEntityId === 0 ? [] : [genEntityId]
     const order = await c.env.DB.prepare(
-      'SELECT id, order_number, client_id, delivery_date, priority, notes, entity_id FROM orders WHERE id = ?'
-    ).bind(orderId).first<{ id: number; order_number: string; client_id: number; delivery_date: string | null; priority: string | null; notes: string | null; entity_id: number | null }>()
+      `SELECT id, order_number, client_id, delivery_date, priority, notes, entity_id FROM orders WHERE id = ?${genClause}`
+    ).bind(orderId, ...genParams).first<{ id: number; order_number: string; client_id: number; delivery_date: string | null; priority: string | null; notes: string | null; entity_id: number | null }>()
     if (!order) return c.json({ success: false, error: 'Order not found' }, 404)
 
     const existing = await c.env.DB.prepare(
@@ -1160,14 +1164,25 @@ cardsLifecycleRouter.patch('/:cardId/items/:itemId/print-toggle', async (c) => {
     const itemId = c.req.param('itemId')
     const user = c.get('user')
 
-    // card_item 확인
-    const ci = await c.env.DB.prepare(
-      'SELECT ci.id, ci.card_id, ci.print_completed, c.status, c.order_id FROM card_items ci JOIN cards c ON c.id = ci.card_id WHERE ci.id = ? AND ci.card_id = ?'
-    ).bind(itemId, cardId).first<{ id: number; card_id: number; print_completed: number; status: string; order_id: number }>()
+    // #432: 타 법인 카드 출력완료 차단 — 형제 7개 핸들러와 같은 스코프.
+    //   (cardEntityScope 절이 별칭 없는 `order_id` 를 쓰므로 카드를 먼저 단독 조회한다.)
+    const ptScope = cardEntityScope(c)
+    const ptCard = await c.env.DB.prepare(
+      `SELECT id, status, order_id, post_processing FROM cards WHERE id = ?${ptScope.clause}`
+    ).bind(cardId, ...ptScope.params).first<{ id: number; status: string; order_id: number; post_processing: string | null }>()
+    if (!ptCard) {
+      return c.json({ success: false, error: 'Card not found' }, 404)
+    }
 
-    if (!ci) {
+    // card_item 확인
+    const ciRow = await c.env.DB.prepare(
+      'SELECT id, card_id, print_completed FROM card_items WHERE id = ? AND card_id = ?'
+    ).bind(itemId, cardId).first<{ id: number; card_id: number; print_completed: number }>()
+
+    if (!ciRow) {
       return c.json({ success: false, error: 'Card item not found' }, 404)
     }
+    const ci = { ...ciRow, status: ptCard.status, order_id: ptCard.order_id }
 
     const newVal = ci.print_completed === 1 ? 0 : 1
 
@@ -1191,10 +1206,18 @@ cardsLifecycleRouter.patch('/:cardId/items/:itemId/print-toggle', async (c) => {
     const allDone = total > 0 && done === total
 
     if (allDone && ci.status !== 'PRINT_DONE') {
-      // 모든 파일 완료 → PRINT_DONE
+      // 모든 파일 완료 → PRINT_DONE.
+      //   ★pp_status·상태이력을 형제 PATCH /:id/complete 와 **똑같이** 남긴다.
+      //     pp_status 가 NULL 로 남으면 ①출고 시 「후가공 미완료」 경고가 안 뜨고
+      //     ②bulk/pp-complete(pp_status='PENDING' 조건)로 완료 처리할 수 없다.
+      const ptHasPP = ptCard.post_processing && ptCard.post_processing !== '[]' && ptCard.post_processing !== ''
+      const ptPpStatus = ptHasPP ? 'PENDING' : 'N/A'
       await c.env.DB.prepare(
-        "UPDATE cards SET status = 'PRINT_DONE', print_done_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-      ).bind(cardId).run()
+        "UPDATE cards SET status = 'PRINT_DONE', pp_status = ?, print_done_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+      ).bind(ptPpStatus, cardId).run()
+      await c.env.DB.prepare(
+        "INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason) VALUES (?, ?, 'PRINT_DONE', ?, '품목 출력완료 체크')"
+      ).bind(cardId, ci.status, user?.id || null).run()
       await syncOrderStatusFromCards(c.env.DB, ci.order_id)
     } else if (!allDone && ci.status === 'PRINT_DONE') {
       // 체크 해제로 미완료 → PRINTING으로 되돌림

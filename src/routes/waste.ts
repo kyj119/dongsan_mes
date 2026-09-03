@@ -4,6 +4,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter, cardEntityFilter } from '../utils/entityFilter'
+import { printEventKstDay } from '../utils/printEventDay'   // 출력 이벤트 업무일 SSOT
 
 const waste = new Hono<HonoEnv>()
 waste.use('*', authMiddleware)
@@ -114,10 +115,17 @@ waste.get('/analytics', async (c) => {
   `).bind(...eFilter.params).all()
 
   // 로스율 (최근 30일): waste / (output + waste)
+  //   ★분모가 늘 0 이었다 — ①`print_status='COMPLETED'` 는 **존재하지 않는 값**이다(정상 완료 = 'OK',
+  //     그 외 'ERROR'·'CANCEL'). ②entity 절이 `w.` 별칭이라 print_events 에는 붙을 수 없다
+  //     (법인 사용자 조회 시 `no such column: w.entity_id` 로 500). 별칭을 이 표의 것으로 바꾼다.
+  //   업무일 축도 SSOT(printEventKstDay)로 맞춘다 — 원시 컬럼은 UTC naive 다.
+  const peFilter = entityFilter(c, 'pe')
   const outputRow = await c.env.DB.prepare(`
-    SELECT COALESCE(SUM(CAST(COALESCE(output_width,'0') AS REAL) * CAST(COALESCE(output_height,'0') AS REAL) / 1000000.0), 0) as output_sqm
-    FROM print_events WHERE print_status = 'COMPLETED' AND event_kind = 'PRINT' AND print_started_at >= date('now', '-30 days')${eFilter.clause}
-  `).bind(...eFilter.params).first<{ output_sqm: number }>()
+    SELECT COALESCE(SUM(CAST(COALESCE(pe.output_width,'0') AS REAL) * CAST(COALESCE(pe.output_height,'0') AS REAL) / 1000000.0), 0) as output_sqm
+    FROM print_events pe
+    WHERE pe.print_status = 'OK' AND pe.event_kind = 'PRINT'
+      AND ${printEventKstDay('pe')} >= date('now', '+9 hours', '-30 days')${peFilter.clause}
+  `).bind(...peFilter.params).first<{ output_sqm: number }>()
   const wasteRow = await c.env.DB.prepare(`
     SELECT COALESCE(SUM(quantity), 0) as waste_sqm
     FROM waste_records w WHERE unit = 'SQM' AND waste_date >= date('now', '-30 days') ${eFilter.clause}

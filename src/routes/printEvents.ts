@@ -209,9 +209,18 @@ async function applyEventToCard(
   }
   if (eventKind !== 'RIP') {
     if (printStatus === 'CANCEL') {
-      await db.prepare(
-        `UPDATE cards SET rip_status = 'ERROR', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-      ).bind(card.id).run()
+      // 취소 흔적을 상태이력에 남긴다 — 상태축은 그대로라(from=to) rip_status 만으로는
+      // "언제 왜 멈췄나"가 어디에도 안 남는다. batch 경로가 하던 기록을 공용 경로로 옮긴 것.
+      const cancelReason = copyTotal > 1
+        ? `Print cancelled (${copyTotal}매 배열출력 중 취소) on ${equipLabel}`
+        : `Print cancelled on ${equipLabel}`
+      await db.batch([
+        db.prepare(`UPDATE cards SET rip_status = 'ERROR', updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(card.id),
+        db.prepare(
+          `INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason)
+           VALUES (?, ?, ?, NULL, ?)`
+        ).bind(card.id, card.status, card.status, cancelReason)
+      ])
     }
     if (printStatus === 'ERROR' || printStatus === 'CANCEL') {
       await autoCreateQualityIssue(db, card.id, printStatus, equipLabel, filePath, copyTotal)
@@ -639,60 +648,19 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
         const orderNumber = evtPrimary.orderNumber
         const evtAppliedIds: (number | null)[] = []
 
-        // file_map 또는 fallback으로 카드 매칭 (status + post_processing 1쿼리로 조회)
+        // ★단건 핸들러(:409)와 **같은 경로**를 탄다 — 예전엔 여기서 OK 이벤트 하나로 카드를
+        //   곧장 PRINT_DONE 으로 만들었다. 그러면 ①분할출력 첫 타일에서 카드가 완료되고
+        //   ②card_items.print_completed 가 안 찍혀 진행률이 0/N 으로 남으며
+        //   ③주문 상태가 전이되지 않아 출고 대기 목록에 영영 안 뜬다.
+        //   전이 판단은 아래 타일완료 + autoCheckCardItem 이 한다(불변식 한 곳).
         for (const resolved of evtResolvedList) {
-          let memberCardId = resolved.cardId
-          const card = memberCardId
-            ? await c.env.DB.prepare('SELECT id, status, post_processing FROM cards WHERE id = ?').bind(memberCardId).first<CardRow>()
-            : resolved.cardNumber
-              ? await c.env.DB.prepare('SELECT id, status, post_processing FROM cards WHERE card_number = ?').bind(resolved.cardNumber).first<CardRow>()
-              : null
-          if (card) {
-            memberCardId = card.id
-            // RIP 이벤트는 실제 출력이 아니다 → PRINT_DONE·ERROR·불량등록을 하지 않는다
-            if (evtKind === 'RIP') {
-              if (evt.print_status === 'OK' && (card.status === 'PRINT_PENDING' || card.status === 'RIP_WAITING')) {
-                await c.env.DB.prepare(
-                  "UPDATE cards SET status = 'PRINTING', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-                ).bind(card.id).run()
-              }
-            }
-            else if (evt.print_status === 'OK' && card.status !== 'PRINT_DONE') {
-              const bHasPP = card.post_processing && card.post_processing !== '[]' && card.post_processing !== ''
-              const bPpStatus = bHasPP ? 'PENDING' : 'N/A'
-
-              await c.env.DB.batch([
-                c.env.DB.prepare(
-                  `UPDATE cards SET status = 'PRINT_DONE', rip_status = 'COMPLETED',
-                   pp_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-                ).bind(bPpStatus, card.id),
-                c.env.DB.prepare(
-                  `INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason)
-                   VALUES (?, ?, 'PRINT_DONE', NULL, ?)`
-                ).bind(card.id, card.status, `Print completed on ${equipLabel}`)
-              ])
-            }
-            if (evtKind !== 'RIP' && evt.print_status === 'CANCEL') {
-              const evtCopyTotal = evt.copy_total || 1
-              const reason = evtCopyTotal > 1
-                ? `Print cancelled (${evtCopyTotal}매 배열출력 중 취소) on ${equipLabel}`
-                : `Print cancelled on ${equipLabel}`
-              await c.env.DB.batch([
-                c.env.DB.prepare(
-                  `UPDATE cards SET rip_status = 'ERROR', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-                ).bind(card.id),
-                c.env.DB.prepare(
-                  `INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason)
-                   VALUES (?, ?, ?, NULL, ?)`
-                ).bind(card.id, card.status, card.status, reason)
-              ])
-            }
-            if (evtKind !== 'RIP' && (evt.print_status === 'ERROR' || evt.print_status === 'CANCEL')) {
-              await autoCreateQualityIssue(c.env.DB, card.id, evt.print_status, equipLabel, evt.file_path, evt.copy_total || 1)
-            }
-          }
-          evtAppliedIds.push(card ? memberCardId : null)
+          evtAppliedIds.push(await applyEventToCard(
+            c.env.DB, resolved, evt.print_status, evtKind, equipLabel, evt.file_path, evt.copy_total || 1
+          ))
         }
+        const evtAppliedCards = evtResolvedList
+          .map((r, i) => ({ cardId: evtAppliedIds[i], orderItemId: r.orderItemId }))
+          .filter((a): a is { cardId: number, orderItemId: number | null } => a.cardId != null)
 
         const cardId = evtAppliedIds[evtPrimaryIdx] ?? evtPrimary.cardId ?? null
         const evtDuration = calcPrintDuration(evtNormStartedAt, evtNormCompletedAt)
@@ -731,6 +699,20 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
         ).run()
 
         const batchPrintEventId = batchResult.meta.last_row_id as number
+
+        // 타일 완료 체크 → card_item 자동 체크 → 전체 완료 시 PRINT_DONE 전환 (단건 :465 과 동일)
+        if (evt.print_status === 'OK' && evtKind !== 'RIP' && evtAppliedCards.length > 0) {
+          try {
+            const evtTileComplete = await checkAllTilesComplete(c.env.DB, evt.file_path, evt.tile_count || 0)
+            if (evtTileComplete) {
+              for (const a of evtAppliedCards) {
+                await autoCheckCardItem(c.env.DB, a.cardId, a.orderItemId, equipLabel)
+              }
+            }
+          } catch (tileError) {
+            console.error('[printEvents/batch] tile completion check error:', tileError)
+          }
+        }
 
         // Auto-deduct inventory if print_status === 'OK' (RIP 은 자재 미사용 → 이중차감 방지)
         if (evt.print_status === 'OK' && evtKind !== 'RIP' && batchPrintEventId) {
@@ -1304,6 +1286,17 @@ printEventsRouter.post('/link', authMiddleware, async (c) => {
 
     const mapEntityId = await deriveCardEntityId(c.env.DB, { cardId: card.id })
 
+    // ★print_file_map.order_item_id 는 **card_items** 에서 뽑는다.
+    //   `cards.order_item_id` 는 정규 생성기가 항상 NULL 로 INSERT 하므로(orders/helpers.ts:408)
+    //   그 값을 그대로 학습시키면 맵이 NULL 로 남고, 다음 출력 이벤트에서 autoCheckCardItem(:236)이
+    //   아무 품목도 체크하지 못해 카드가 PRINT_DONE 으로 전이되지 않는다(PRINTING 까지만 간다).
+    //   라인이 둘 이상인 카드는 파일이 어느 라인인지 알 수 없으므로 NULL 을 유지한다
+    //   (그 경우 정본은 에이전트가 파일 생성 시 넘기는 POST /file-map 의 order_item_id).
+    const { results: linkLines } = await c.env.DB.prepare(
+      'SELECT order_item_id FROM card_items WHERE card_id = ? AND order_item_id IS NOT NULL ORDER BY id ASC LIMIT 2'
+    ).bind(card.id).all<{ order_item_id: number }>()
+    const linkOrderItemId = (linkLines && linkLines.length === 1) ? linkLines[0].order_item_id : null
+
     // file_seq: 같은 파일명이 이미 있으면 그 자리에 덮어쓰고, 없으면 다음 번호를 딴다.
     // (UNIQUE(order_number, file_seq) — IA 자동등록분과 충돌하지 않도록 max+1)
     const existing = await c.env.DB.prepare(
@@ -1324,7 +1317,7 @@ printEventsRouter.post('/link', authMiddleware, async (c) => {
         card_id = excluded.card_id, card_number = excluded.card_number,
         order_item_id = excluded.order_item_id, file_name = excluded.file_name,
         entity_id = excluded.entity_id
-    `).bind(card.order_number, fileSeq, card.id, card.card_number, card.order_item_id || null, file_name, mapEntityId).run()
+    `).bind(card.order_number, fileSeq, card.id, card.card_number, linkOrderItemId, file_name, mapEntityId).run()
 
     // 소급: 이 파일명으로 이미 들어온 단건 미매칭 이벤트에 카드를 붙인다.
     // (합판 멤버는 nest_members JSON 이라 갱신하지 않는다 — /unmatched 가 file_map 과 실시간 대조하므로

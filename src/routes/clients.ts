@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { DELIVERY_METHODS, isValidDeliveryMethod } from '../constants/deliveryMethod'
+import { DELIVERY_METHODS, isValidDeliveryMethod, deliveryMethodMatchValues } from '../constants/deliveryMethod'
 import type { HonoEnv } from '../types/env'
 import type { Client, ApiResponse, PaginatedResponse } from '../types/models'
 import { authMiddleware, requireRole } from '../middleware/auth'
@@ -102,10 +102,17 @@ clientsRouter.get('/', async (c) => {
         fp.push(q.invoice_method)
       }
 
-      // delivery_method 필터
+      // delivery_method 필터 — 정본값 하나로 과거 표기(`직배` 등)까지 함께 잡는다.
+      //   마이그 0526 이후에도 이관·외부 유입이 옛 값을 넣을 수 있어 정본만 비교하면 그 행이 조용히 빠진다.
       if (q.delivery_method) {
-        where += ' AND c.delivery_method = ?'
-        fp.push(q.delivery_method)
+        const dmValues = deliveryMethodMatchValues(q.delivery_method)
+        if (dmValues.length > 0) {
+          where += ` AND c.delivery_method IN (${dmValues.map(() => '?').join(', ')})`
+          fp.push(...dmValues)
+        } else {
+          where += ' AND c.delivery_method = ?'
+          fp.push(q.delivery_method)
+        }
       }
 
       // balance 필터 — #441: 폐기 clients.balance 캐시 대신 라이브 파생(order_billing_groups[BILLED]−payments−adjustments).
@@ -852,11 +859,13 @@ clientsRouter.post('/', requireEditOrRole('/clients', 'MANAGER'), async (c) => {
     const result = await c.env.DB.prepare(`
       INSERT INTO clients (
         client_code, client_name, representative, business_type, business_item,
-        phone, mobile, fax, email, address, search_keywords, transfer_info, is_active,
-        business_registration_number, delivery_method, client_type, price_list_id, auto_billing,
+        phone, mobile, fax, email, address, postal_code, address_detail,
+        search_keywords, transfer_info, is_active,
+        business_registration_number, delivery_method, delivery_address, notes,
+        client_type, price_list_id, auto_billing,
         price_policy_id, payment_cycle_type, payment_terms_days, closing_day, payment_month_offset, payment_day,
         overdue_alert_days
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       clientData.client_code,
       clientData.client_name,
@@ -868,11 +877,16 @@ clientsRouter.post('/', requireEditOrRole('/clients', 'MANAGER'), async (c) => {
       clientData.fax || null,
       clientData.email || null,
       clientData.address || null,
+      // 우편번호·상세주소·배송지·비고는 모달이 늘 보내는데 등록 경로에만 빠져 있었다(영구 유실).
+      clientData.postal_code || null,
+      clientData.address_detail || null,
       clientData.search_keywords || null,
       clientData.transfer_info || null,
       clientData.is_active !== undefined ? clientData.is_active : 1,
       clientData.business_registration_number || null,
       clientData.delivery_method || '방문수령',
+      clientData.delivery_address || null,
+      clientData.notes || null,
       clientType,
       priceListId,
       clientData.auto_billing ? 1 : 0,
@@ -956,6 +970,15 @@ clientsRouter.patch('/:id', requireEditOrRole('/clients', 'MANAGER'), async (c) 
     if (clientData.address !== undefined) {
       updates.push('address = ?')
       params.push(clientData.address)
+    }
+    // 우편번호·상세주소는 모달이 늘 보내는데 수정 경로에도 없었다 — 컬럼(0126)은 있고 SELECT 도 한다.
+    if (clientData.postal_code !== undefined) {
+      updates.push('postal_code = ?')
+      params.push(clientData.postal_code)
+    }
+    if (clientData.address_detail !== undefined) {
+      updates.push('address_detail = ?')
+      params.push(clientData.address_detail)
     }
     if (clientData.business_registration_number !== undefined) {
       updates.push('business_registration_number = ?')
