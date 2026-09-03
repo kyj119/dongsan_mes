@@ -497,7 +497,13 @@ async function szShowZoneStock(zoneId) {
     var rows = items.map(function(it) {
       var low = it.safe_stock > 0 && it.quantity <= it.safe_stock;
       return '<tr class="border-b border-gray-50"><td class="py-1" title="' + escapeAttr(it.item_name || '') + '">' + escapeAttr(it.item_name || '') + '</td>'
-        + '<td class="py-1 text-right font-semibold ' + (low ? 'text-red-600' : 'text-gray-700') + '">' + (it.quantity || 0) + ' ' + escapeAttr(it.unit || '') + '</td>'
+        // inventory.quantity 는 base 수량이다 — 관리단위 라벨을 그냥 붙이면 롤 원단이 "800 롤"로 읽힌다.
+        // 형제 화면(inventory.js·inventoryTx.js·inventoryDashboard.js:146)과 같은 SSOT 헬퍼로 통일.
+        // ⚠️ 아직 완전한 수정이 아니다 — ①라우트(routes/storageZones.ts:266 SELECT)가 base_unit·pack_size·
+        //    stock_mode 를 안 실어 보내고 ②UOM_JS 가 pages/inventory.ts 에만 주입돼 이 페이지엔 헬퍼가 없다.
+        //    둘 중 하나라도 빠지면 가드가 종전 표기로 폴백한다(= 회귀 없음). 둘 다 채우면 자동으로 올바르게 표시된다.
+        + '<td class="py-1 text-right font-semibold ' + (low ? 'text-red-600' : 'text-gray-700') + '">'
+        + escapeAttr(window.uomFormatStock ? window.uomFormatStock(it.quantity || 0, it) : ((it.quantity || 0) + ' ' + (it.unit || ''))) + '</td>'
         + '<td class="py-1 text-right text-gray-400">' + (it.safe_stock || 0) + '</td></tr>';
     }).join('');
     body.innerHTML = head

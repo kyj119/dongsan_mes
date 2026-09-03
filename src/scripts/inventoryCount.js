@@ -385,7 +385,10 @@ function icRenderItems() {
         + ' <span style="font-size:11px;color:#6b7280;">' + escapeHtml(item.base_unit || item.unit || '') + '</span>'
         + '<div id="icCalc' + item.id + '" style="font-size:11px;color:#6b7280;margin-top:2px;">' + (notCounted ? '' : '= ' + countedQty + ' ' + escapeHtml(item.base_unit || item.unit || '')) + '</div>';
     } else if (isEditable) {
-      countedCell = '<input type="number" step="any" value="' + (notCounted ? '' : window.uomFromBase(countedQty, item)) + '" placeholder="미입력" style="width:60px;' + inS + '" onchange="updateItemCount(' + item.id + ', this.value, ' + item.count_id + ', ' + ((item.pack_size && item.pack_size > 0) ? item.pack_size : 1) + ')" /> ' + escapeHtml(item.unit || '');
+      // 표시(uomFromBase)와 저장(× factor)이 같은 계수를 써야 한다 — 종전엔 저장만 pack_size 로
+      // 무조건 곱해, 다단위가 아닌데 pack_size 가 있는 품목에서 입력값이 pack_size 배로 부풀었다.
+      var icFactor = window.uomPackFactor(icUomItem(item));
+      countedCell = '<input type="number" step="any" value="' + (notCounted ? '' : window.uomFromBase(countedQty, icUomItem(item))) + '" placeholder="미입력" style="width:60px;' + inS + '" onchange="updateItemCount(' + item.id + ', this.value, ' + item.count_id + ', ' + icFactor + ')" /> ' + escapeHtml(item.unit || '');
     } else {
       countedCell = notCounted
         ? '<span style="color:#9ca3af;">미실사 (보정 제외)</span>'
@@ -506,8 +509,12 @@ async function updateItemPack(itemId, packCount, perPackQty, countId) {
     var curPack = cached.pack_count != null ? cached.pack_count
                 : (cached.counted_quantity != null ? (Number(cached.counted_quantity) || 0) / curPer : null);
 
+    // 포장당 칸을 비우면 품목 기본값(pack_size)으로 되돌린다. 종전엔 1 로 저장돼 다음 렌더가
+    // 한 칸 모드로 바뀌고(usePack = perPack > 1), 그 칸에서 수량을 고치면 pack_size 배로 부풀었다.
+    var defPer = (cached.pack_size && cached.pack_size > 0) ? cached.pack_size : 1;
     var pack = packCount === null ? curPack : (String(packCount).trim() === '' ? null : parseFloat(packCount));
-    var per  = perPackQty === null ? curPer  : (String(perPackQty).trim() === '' ? 1 : parseFloat(perPackQty));
+    var per  = perPackQty === null ? curPer  : (String(perPackQty).trim() === '' ? defPer : parseFloat(perPackQty));
+    if (!(per > 0)) per = defPer;
     if (!(per > 0)) per = 1;
 
     var sysQty = Number(cached.system_quantity) || 0;
@@ -529,14 +536,15 @@ async function updateItemPack(itemId, packCount, perPackQty, countId) {
   }
 }
 
-async function updateItemCount(itemId, countedQty, countId, packSize) {
+async function updateItemCount(itemId, countedQty, countId, packFactor) {
   try {
-    // #463: 입력은 관리단위(통/롤) → base_unit 저장(× pack_size). system_quantity·confirm 과 단위 일치(붕괴 방지).
+    // #463: 입력은 관리단위(통/롤) → base_unit 저장(× 환산계수). system_quantity·confirm 과 단위 일치(붕괴 방지).
+    // packFactor = 렌더가 넘긴 window.uomPackFactor(...) — 표시(uomFromBase)와 반드시 같은 계수여야 한다.
     // 빈칸 = 미입력(NULL) 되돌림 (승인 시 보정 제외)
     var raw = String(countedQty == null ? '' : countedQty).trim();
     var countedBase = null;
     if (raw !== '') {
-      var ps = (packSize && packSize > 0) ? packSize : 1;
+      var ps = (packFactor && packFactor > 0) ? packFactor : 1;
       countedBase = (parseFloat(raw) || 0) * ps;
     }
     // 다③: 캐시(_icDetailData)에서 system_quantity 참조 — 입력마다 상세 재조회(N+1) 제거
@@ -657,9 +665,12 @@ function closeDetailPanel() {
 }
 
 document.addEventListener('click', function(e) {
-  if (_detailCountId !== null && !e.target.closest('#detailPanel') && !e.target.closest('#countBody')) {
-    closeDetailPanel();
-  }
+  if (_detailCountId === null) return;
+  if (e.target.closest('#detailPanel') || e.target.closest('#countBody')) return;
+  // body 에 붙는 오버레이(새 실사 모달·showConfirm)를 클릭하면 패널이 닫히던 문제 —
+  // 모달/오버레이/토스트 안의 클릭은 "바깥 클릭"이 아니다.
+  if (e.target.closest('#countCreateModal, .ds-modal-overlay, .ds-modal, #toast-container')) return;
+  closeDetailPanel();
 });
 
 // ===== 필터 이벤트 바인딩 =====

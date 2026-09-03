@@ -4,7 +4,10 @@ var allEntities = [];
 var selectedZoneId = '';
 var openPrByItem = {};  // item_id → { qty, request_count } : 미결(승인대기·승인됨) 발주요청
 
-function escHtml(s) {
+// ?raw 전역 스코프 — 종전 이름이 `escHtml` 이라 셸 전역(shell.js:1401)을 덮어써
+// 같은 페이지의 알림 패널이 이 사본(작은따옴표 미이스케이프)을 쓰게 됐다. 이름 격리 + SSOT 위임.
+function invDashEsc(s) {
+  if (typeof window.escapeHtml === 'function') return window.escapeHtml(s);
   return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
@@ -64,7 +67,7 @@ function renderDashboard() {
     html += '<button class="px-3 py-1.5 rounded-lg text-sm font-medium '
       + (isActive ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200')
       + '" onclick="selectZoneFilter(' + z.id + ')">'
-      + escHtml(z.zone_name) + badge + '</button>';
+      + invDashEsc(z.zone_name) + badge + '</button>';
   });
   html += '</div>';
 
@@ -81,7 +84,7 @@ function renderDashboard() {
       html += '<div class="bg-white rounded-lg border shadow-sm mb-4">';
       html += '<div class="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">';
       html += '<div class="flex items-center gap-2"><i class="fas fa-warehouse text-gray-400"></i>'
-        + '<span class="font-bold text-gray-800">' + escHtml(g.zone_name) + '</span>'
+        + '<span class="font-bold text-gray-800">' + invDashEsc(g.zone_name) + '</span>'
         + '<span class="text-xs text-gray-500">' + g.total + '개 품목</span>' + alertBadge + '</div>';
       if (g.critical > 0 || g.low > 0) {
         html += '<button onclick="createPRForZone(' + (g.zone_id || 'null') + ')" class="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">'
@@ -137,17 +140,17 @@ function zoneRowHtml(item) {
       + open.request_count + '건 · 요청수량 ' + open.qty + '"></i>'
     : '';
   var rowClass = item.stock_status === 'CRITICAL' ? 'bg-red-50/50' : (item.stock_status === 'LOW' ? 'bg-amber-50/30' : '');
-  var cat = escHtml(item.category || '') + (item.sub_category ? ' &gt; ' + escHtml(item.sub_category) : '');
+  var cat = invDashEsc(item.category || '') + (item.sub_category ? ' &gt; ' + invDashEsc(item.sub_category) : '');
   return '<tr class="border-b border-gray-50 hover:bg-gray-50 ' + rowClass + '">'
-    + '<td class="px-3 py-2 font-mono text-xs text-blue-600" title="' + escHtml(item.item_code) + '">' + escHtml(item.item_code) + '</td>'
-    + '<td class="px-3 py-2 font-medium text-gray-900" title="' + escHtml(item.item_name) + '">' + openBadge + escHtml(item.item_name) + '</td>'
+    + '<td class="px-3 py-2 font-mono text-xs text-blue-600" title="' + invDashEsc(item.item_code) + '">' + invDashEsc(item.item_code) + '</td>'
+    + '<td class="px-3 py-2 font-medium text-gray-900" title="' + invDashEsc(item.item_name) + '">' + openBadge + invDashEsc(item.item_name) + '</td>'
     + '<td class="px-3 py-2 text-xs text-gray-500" title="' + cat + '">' + cat + '</td>'
     + '<td class="px-3 py-2 text-right tabular-nums font-medium ' + (item.current_stock <= 0 ? 'text-red-600' : 'text-gray-900') + '">'
-    + escHtml(window.uomFormatStock ? window.uomFormatStock(item.current_stock || 0, item)
+    + invDashEsc(window.uomFormatStock ? window.uomFormatStock(item.current_stock || 0, item)
         : ((item.current_stock || 0).toLocaleString() + ' ' + (item.unit || ''))) + '</td>'
     + '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + (item.safe_stock || '-') + '</td>'
     + '<td class="px-3 py-2 text-right tabular-nums ' + (shortage > 0 ? 'text-red-600 font-medium' : 'text-gray-400') + '">'
-    + (shortage > 0 ? shortage.toLocaleString() + ' ' + escHtml(item.base_unit || item.unit || '') : '-') + '</td>'
+    + (shortage > 0 ? shortage.toLocaleString() + ' ' + invDashEsc(item.base_unit || item.unit || '') : '-') + '</td>'
     + '<td class="px-3 py-2 text-center">' + statusHtml + '</td>'
     + '</tr>';
 }
@@ -283,7 +286,7 @@ async function createPRForZone(zoneId) {
     return;
   }
 
-  var msg = escHtml(group.zone_name) + '의 부족 품목 ' + shortageItems.length + '건에 대해 발주요청을 생성하시겠습니까?'
+  var msg = invDashEsc(group.zone_name) + '의 부족 품목 ' + shortageItems.length + '건에 대해 발주요청을 생성하시겠습니까?'
     + (already.length > 0 ? '\n(이미 요청 중인 ' + already.length + '건은 제외합니다)' : '')
     + '\n\n' + shortageItems.slice(0, 8).map(function(it) {
         var need = zoneOrderQty(it);
