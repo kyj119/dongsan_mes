@@ -17,9 +17,18 @@
 
 ⚠️ ③은 `print_file_map`·`print_events` 가 카드번호를 **문자열로** 참조한다. 참조가 생긴 뒤에는
    번호를 바꾸면 안 된다 — 실행 전에 참조 0건을 확인하고, 0이 아니면 번호 변경을 건너뛴다.
+   ★2026-09-04 실제로 걸렸다 — 소급 매칭(`print-order-backfill.py`)이 먼저 돌아 참조 3,016건이
+   생겨 번호 변경이 통째로 스킵됐다. **순서는 postfix 가 먼저다**. 이미 붙였다면
+   `print-order-backfill.py --revert` → postfix → `--commit` 로 되돌렸다 다시 붙인다.
+
+⚠️ ①의 원천은 **주문서현황**이다. 판매현황으로 이관한 구간에 그냥 돌리면 담당자가 옛 소스로
+   덮인다(8월 실측: 1,257건 중 242건이 뒤집혔을 뻔). 원천이 다르면 `--no-rep` 을 쓴다.
+   ⚠️주문서현황 엑셀은 커버 구간이 좁다(8/11까지) — "원천 전표 N" 이 대상 주문 수보다
+   훨씬 작으면 그 자체가 원천 불일치 신호다.
 
 사용법:
   python scripts/ecount-order-postfix.py --from 2026-08-01 --to 2026-08-11 [--apply]
+  python scripts/ecount-order-postfix.py --from 2026-08-01 --to 2026-08-31 --no-rep --apply
 """
 import argparse, io, json, os, re, subprocess, sys
 from collections import Counter, defaultdict
@@ -71,6 +80,10 @@ def main():
     ap.add_argument('--to', dest='d_to', required=True)
     ap.add_argument('--truth', default=DEFAULT_TRUTH)
     ap.add_argument('--today', default=None, help='납기 경과 판정 기준일(기본=--to 다음날 아님, 오늘)')
+    ap.add_argument('--no-rep', action='store_true',
+                    help='담당자(①)를 건드리지 않는다 — 원천이 다른 이관분 보호')
+    ap.add_argument('--prefix', default='A', choices=['A', 'I'],
+                    help='주문번호 구분자 — A=일상 자동생성 · I=과거분 대량 이관(기본 A)')
     ap.add_argument('--apply', action='store_true')
     a = ap.parse_args()
     today = a.today or __import__('datetime').date.today().isoformat()
@@ -107,7 +120,19 @@ def main():
                 f"WHERE o.notes LIKE {q(MARKER + '%')}"):
         cards[c['order_id']].append(c)
 
+    # ★채번은 0 이 아니라 **그 날짜에 이미 쓰인 최대값**에서 이어받는다.
+    #   같은 날짜에 다른 경로로 만들어진 번호가 이미 있으면(7월 실측: 마커 없는 이관분 1,132건이
+    #   E1-YYYYMMDD-I### 를 선점) 1번부터 매기는 순간 통째로 충돌한다.
+    #   대상만 보면 안 보인다 — 스코프(마커) 밖의 번호까지 봐야 한다.
     seq = Counter()
+    for r in d1(f"SELECT order_number FROM orders WHERE order_number LIKE 'E%-{a.prefix}%'"
+                f" OR order_number GLOB 'E*-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-{a.prefix}*'"):
+        mm = re.match(rf'^E\d+-(\d{{8}})-{a.prefix}(\d+)$', r['order_number'] or '')
+        if mm:
+            seq[mm.group(1)] = max(seq[mm.group(1)], int(mm.group(2)))
+    if seq:
+        print(f'기존 채번 이어받기: {len(seq)}개 날짜 (예: '
+              + ', '.join(f'{k}→{v}' for k, v in sorted(seq.items())[:3]) + ')')
     sql, st = [], Counter()
     no_staff = Counter()
     for o in sorted(orders, key=lambda x: (x['order_date'], x['id'])):
@@ -115,7 +140,9 @@ def main():
         nm = staff.get(m.group(1)) if m else None
         eid = emp.get(nm) if nm else None
         sets = []
-        if eid and o['sales_rep_id'] != eid:
+        if a.no_rep:
+            pass          # 원천이 다른 이관분 보호 — 아래 --no-rep 주석 참조
+        elif eid and o['sales_rep_id'] != eid:
             sets.append(f'sales_rep_id = {eid}'); st['rep'] += 1
         elif nm and not eid:
             no_staff[nm] += 1
@@ -125,7 +152,7 @@ def main():
         if renumber:
             d = o['order_date'].replace('-', '')
             seq[d] += 1
-            newno = f"E{o['entity_id'] or 1}-{d}-A{seq[d]:03d}"
+            newno = f"E{o['entity_id'] or 1}-{d}-{a.prefix}{seq[d]:03d}"
             if newno != o['order_number']:
                 sets.append(f'order_number = {q(newno)}'); st['number'] += 1
                 for c in cards[o['id']]:
@@ -133,8 +160,12 @@ def main():
                     sql.append(f"UPDATE cards SET card_number = {q(newno + '-' + tail)} WHERE id = {c['id']};")
         past_due = o['delivery_date'] and o['delivery_date'] < today
         if past_due and o['status'] != 'SHIPPED':
+            # 출고일이 주문일보다 앞설 수는 없다 — 원천의 납기일이 전표일보다 이른 건이 실재한다
+            # (8월 실측 61건: 이카운트에서 납기를 먼저 잡고 전표를 뒤에 끊은 경우).
+            # 그대로 넣으면 기간 집계에서 「주문 없는 출고」가 된다.
+            ship_day = max(o['delivery_date'], o['order_date'])
             sets.append(f"status = 'SHIPPED'")
-            sets.append(f"shipped_at = {q(o['delivery_date'] + ' 00:00:00')}")
+            sets.append(f"shipped_at = {q(ship_day + ' 00:00:00')}")
             st['shipped'] += 1
             for c in cards[o['id']]:
                 if c['status'] != 'SHIPPED':
