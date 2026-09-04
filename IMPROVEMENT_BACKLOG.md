@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-09-04T15:52:27+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-09-04T21:49:15+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,32 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **9** (`list_issues(state:OPEN,label:auto-improve)` 실측 — #613·#616·#617·#622·#624·#625·#626·#627(신규)·#628(신규)) |
+| 🆕 new | **11** (`list_issues(state:OPEN,label:auto-improve)` 실측 — #613·#616·#617·#622·#624·#625·#626·#627·#628·#629(신규)·#630(신규)) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **542** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 3 UX/기능 감사 (2026-09-04T21:49):**
+> - **방법**: `git status`=워킹트리 clean, `git fetch origin main`(`207078c..6020713`, forced update) → `git checkout main && git reset --hard origin/main`(HEAD `6020713`). 얕은 clone이라 `git fetch --unshallow`로 전체 이력 복구 후 churn 대조. `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area3 방법 라인 HEAD `e472df1`)**: 웹앱 범위(`-- src migrations scripts .github`) diff **107커밋** — Area1/2/4/5/6이 이미 각자 렌즈로 정독한 `09-03 전체 코드 리뷰 → session/fix-* 11-worktree fix-integration` 대형 병합 + Area2가 코드품질 렌즈로 이미 통과한 **신규 구역관리 기능 웨이브**(2026-09-04, storage_zones 품목배정·inventoryCount 전체화면·zonePicker 신설 등). **UX 렌즈는 이번이 최초 통과** — `src/scripts`/`src/pages` 변경분(`e472df1..HEAD` 32커밋) 위주로 좁혀 분석.
+> - **fix-integration 병합분(22커밋, `f511f08b`~`437031c2`) 커밋 메시지 자체가 UX 결함 수정**(예: "add the missing showModal helper so list ship-completion works", "wire the distribution accessory button and the VAT rate", "stop edit/copy/quote prefill from dropping line fields") — 09-03 전체리뷰가 찾은 UX 결함들이 이미 코드로 해소된 상태. 개별 재검증은 Area2가 이미 병행 수행(HIGH 6/6 fixed-in-tree) → Area3는 중복 검증 대신 **신규 구역관리 웨이브(10커밋, `30c230b9`~`6ae1f554`)**에 집중(UX 렌즈 최초 통과, Area2는 code-quality 렌즈로만 통과).
+> - **구역관리 웨이브 심층 리뷰(background agent, 6개 파일 전문 Read — `zonePicker.js`/`inventoryCount.js`/`storageZones.js`/`inventoryTx.js`/`inventory.ts`/`storageZones.ts`, 총 3,282줄)**:
+>   - **HIGH 발견 → #629**: `POST /api/inventory-counts/:id/add-items`(`inventoryCount.ts:693-702`)의 중복방지가 `SELECT` 조회 후 별도 `INSERT`(비원자) + `inventory_count_items`에 `(count_id,item_id)` UNIQUE 제약 없음(`migrations/0089:68-83` 인덱스만) — 직접 스키마·라우트 확인으로 재검증 완료. 트리거 버튼(`icCandApply`/`icAssignUnassigned`, `inventory.ts:770`)도 요청중 disable 없음. 창고 실사가 태블릿 터치 환경이라 더블탭 흔함 → 같은 품목이 실사 시트에 중복 행. 부수로 `submitNewCount`/`szStartZoneCount`도 버튼가드 없으나 `count_number` UNIQUE(초단위)가 1초 이내는 막아줌(단 원시 제약위반 문자열 노출) — 같은 이슈에 합쳐 기록.
+>   - **MED 발견 → #630**: `szAssignInit`(`storageZones.js:608-624`) — "품목 배정" 탭 초기 구역목록 GET 실패 시 `console.warn`만 하고 `sel.options.length` 0이라 `szAssignLoad()` 자체가 호출 안 돼 **탭 전체가 무통지 빈 패널**. 목록 탭의 `noZonesMsg`(정상 빈 상태 처리)와 대조되는 갭 — 직접 코드 대조로 재검증 완료.
+>   - **checked 및 clean 확인(에이전트 보고, 표본 재검증 불요 수준)**: `showConfirm` 오용 7곳 전수 확인 0건(전부 `await`/`.then`), 신규 onclick/onchange 핸들러 ~40개 전수 도달성 확인(dead button 0건, concat scope 정확), 로딩/빈상태 표시(zone picker·ledger·count-item 리스트·held-items) 전부 정상, 나머지 write 경로(saveZone/deleteZone/szAssignApply 등) 에러 토스트 정상.
+> - **standing scan 1: `showConfirm` 콜백 오용 전역 재스캔**(`grep -rn "showConfirm(" src/scripts` + 2번째인자 function/화살표 패턴) — **0건**(변동없음).
+> - **standing scan 2: axios→백엔드 라우트 대사(dead-button)** — 이번 사이클 자체 매처 스크립트가 서브라우터(`.route()`) prefix 미전개로 921/1004건을 가짜 unmatched 처리(SKILL #37에 이미 codify된 "서브라우터 미전개 함정" 재현) → **신뢰 불가로 폐기**, 결과 미채택. 과거 21·27회차가 이미 이 함정을 해소한 버전으로 net-new 0을 반복 확인했으므로 이번 사이클은 재구현 대신 background agent의 표적 도달성 확인(구역관리 웨이브 신규 핸들러 전수, 위 항목)으로 대체.
+> - **standing scan 3: `npm run audit:entity`** — 검사 133파일·entity테이블 SELECT 67건·**누락 0건**(변동없음).
+> - **standing scan 4: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:417`·`workbench.ts:577`).
+> - **standing scan 5: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 5런(HEAD `6020713` 포함) 전부 `conclusion:success`.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **9→11**(신규 #629·#630 추가 — 기존 9건 전건 일치).
+> - **backlog↔GitHub 절대값 재동기화**: open **11**(9→11) · done **542**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: 아래 실행.
+> - 신규 이슈 2건(#629 재고실사 품목추가 더블탭 중복편입 HIGH+버튼가드 부재 부수발견, #630 구역배정 탭 무통지 빈화면 MED), 자동수정 0건(UI/UX 변경 동반이라 정책상 issue-only), done-sync: open 11(9→11)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-09-04T15:52):**
 > - **방법**: `git status`=워킹트리 clean(detached HEAD, `5f75e659`), `git fetch origin main`(이미 최신). `npm ci`(0→81), `npx tsc --noEmit` clean, `npm run build` 성공. 얕은 clone이라 `git fetch --unshallow`로 전체 이력 복구 후 churn 대조.
