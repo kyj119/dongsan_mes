@@ -186,6 +186,9 @@ poCoreRouter.get('/:id', async (c) => {
         u_mgr.name AS zone_manager_name,
         u_rcv.name AS received_by_name
       FROM purchase_order_items poi
+      -- ★ RECEIVING_ZONE_* 는 po.entity_id 를 참조한다 — 이 조인이 없으면 별칭 미해소로
+      --   쿼리가 통째로 터져 **발주 상세가 500** 이다(prod 실측 2026-09-04, 형제 5곳은 전부 있었다).
+      JOIN purchase_orders po ON po.id = poi.po_id
       LEFT JOIN items i ON i.id = poi.item_id
       ${RECEIVING_ZONE_JOIN_SQL}
       LEFT JOIN users u_mgr ON u_mgr.id = sz.manager_id
@@ -222,9 +225,9 @@ poCoreRouter.get('/:id', async (c) => {
 
     return c.json(response)
   } catch (error) {
+    console.error('purchase order detail error:', error)   // 무음 catch 가 500 을 5일간 감췄다
     return c.json({
       success: false,
-
       error: '서버 오류가 발생했습니다.'
     }, 500)
   }
