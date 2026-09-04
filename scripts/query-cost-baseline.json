@@ -2,6 +2,10 @@
   "base": "https://webapp-9i0.pages.dev",
   "at": "2026-08-25T15:05:07.321Z",
   "snapshot": {
+    "cashSchedule.overview": {
+      "ms": 247,
+      "kb": 303.2
+    },
     "reports.clientRevenue": {
       "ms": 142,
       "kb": 242.7
