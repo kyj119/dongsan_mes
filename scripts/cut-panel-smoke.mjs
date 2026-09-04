@@ -1005,6 +1005,25 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3y 폴백하면 벡터 요청을 되돌려 준다',
     /if \(buttOverVec\) useVec = false;/.test(panelSrc) && /on = false\s*\n\s*overVec = false/.test(placeSrc))
   ok('3y 맞붙임이면 호스트에 raster 로 알린다', /useVec \? '' : ',"raster"'/.test(panelSrc))
+  // ★★도련이 이웃 아트를 침범하면 클립 확장(자동 ①)을 못 쓴다 (2026-09-05 실사용).
+  //   ①은 **아트 사본의 클립 사각 자체**를 벌리므로 도련이 아트와 한 개체가 되고, 그러면
+  //   `zOrder(SENDTOBACK)` 을 줄 수단이 없다 → 나중에 놓인 조각의 도련이 앞선 조각의
+  //   **진짜 아트를 덮는다**(실측: 맞붙임 접합면 6mm 띠를 앞 조각이 통째로 이겼다).
+  ok('3y 도련이 겹치면 클립 확장을 안 쓴다',
+    /var bleedOverlaps = effBleedMm > 0 && \(gapMm \/ 2\) < effBleedMm;/.test(panelSrc)
+    && /nestBleedMode = 'region';/.test(panelSrc))
+  // 판정은 **간격과 실제 도련**으로 — 맞붙임 여부로 하면 간격 분할이 바뀔 때 따라오지 못한다
+  ok('3y 겹침 판정이 맞붙임 플래그가 아니다',
+    !/bleedOverlaps\s*=\s*buttMode/.test(panelSrc))
+  // 사용자가 고른 「자동」과 다르게 돌았는데 조용하면 무손실이 왜 안 나왔는지 알 수 없다
+  ok('3y 방식을 바꿨으면 이유를 말한다',
+    /bleedModeNote = '/.test(panelSrc) && /\+ bleedModeNote/.test(panelSrc))
+  // 호스트 쪽 정본 — ①은 클립을 벌리고(개체가 하나), ②는 별도 개체라 뒤로 보낸다
+  ok('3y 호스트 ②는 도련을 뒤로 보낸다', (() => {
+    const h = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
+    return /pi\.zOrder\(ZOrderMethod\.SENDTOBACK\)/.test(h)
+      && /vecBleedMode === 'auto'/.test(h)          // ①은 auto 일 때만 시도한다(패널이 끌 수 있다)
+  })())
   ok('3y 조각 크기를 못 받으면 안 쓴다',
     /조각 크기를 못 받았습니다/.test(placeSrc) && /buttMode && BT && prep\.sizes\.length/.test(panelSrc))
   ok('3y 안 켜지면 이유를 결과에 싣는다',
