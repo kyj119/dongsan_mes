@@ -94,12 +94,41 @@ export async function getItemDefaultZones(db: D1Database, itemIds: number[], ent
 // 공간인식 소모를 재도입하려면 equipment → storage_zone 직접 링크(신규 컬럼)로 재배선할 것.
 
 /**
- * 소모(차감) 대상 창고 해석 — 품목 기본창고, 없으면 **법인 기본창고**(그것도 없으면 NULL).
+ * 소모(차감) 대상 창고 해석.
+ *
+ * ★**입고와 차감은 다른 물음이다** — 「어디로 넣을지」는 의도(품목 기본창고)이고,
+ *   「어디서 뺄지」는 **실제 위치**다. 종전엔 둘 다 `getItemDefaultZone` 을 써서, 자재가 현수막실에
+ *   있는데 축1 이 출력실이면 **출력실이 음수가 되고 현수막실은 그대로**였다.
+ *
+ * 규칙 (2026-09-04)
+ *   ① 양수 재고가 있는 구역이 **정확히 하나**면 그 구역 — 실제 케이스의 전부다.
+ *   ② 여럿이면 **품목 기본창고가 그중에 있으면 그것**, 없으면 **최다 보유 구역**
+ *      (동률은 `storage_zone_id` 오름차순 — 정렬에 tie-break 가 없으면 어느 구역에서 빠지는지가
+ *       실행마다 달라진다. 표시가 아니라 **쓰기 대상**이므로 반드시 고정한다).
+ *   ③ 재고가 어디에도 없으면 입고 규칙(`getItemDefaultZone`)을 그대로 쓴다 — 음수는 거기 생긴다.
+ *
+ * ⚠️적용 시점 실측(2026-09-04): 양수 재고를 가진 203품목이 **전부 단일 구역**이고,
+ *   축1(또는 폴백)이 가리키는 구역과 실제 보유 구역이 **어긋난 사례가 0건**이었다.
+ *   즉 이 변경은 **동작 변화 0**이다 — 구멍이 열리기 전에 닫는다.
+ *
  * equipmentId는 시그니처 유지용(공간인식 재도입 대비). 현재는 미사용.
  */
 export async function resolveDeductionZone(
   db: D1Database,
   opts: { equipmentId: string | null | undefined; itemId: number; entityId: number }
 ): Promise<number | null> {
-  return getItemDefaultZone(db, opts.itemId, opts.entityId)
+  const { results } = await db
+    .prepare(
+      `SELECT storage_zone_id AS zid, quantity AS qty FROM inventory
+        WHERE item_id = ? AND entity_id = ? AND quantity > 0 AND storage_zone_id IS NOT NULL
+        ORDER BY quantity DESC, storage_zone_id ASC`
+    )
+    .bind(opts.itemId, opts.entityId)
+    .all<{ zid: number; qty: number }>()
+  const rows = results || []
+  if (rows.length === 0) return getItemDefaultZone(db, opts.itemId, opts.entityId)
+  if (rows.length === 1) return rows[0].zid
+  const preferred = await getItemDefaultZone(db, opts.itemId, opts.entityId)
+  if (preferred != null && rows.some((r) => r.zid === preferred)) return preferred
+  return rows[0].zid
 }

@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
-import { getItemDefaultZone } from './inventoryZone'
+import { resolveDeductionZone } from './inventoryZone'
 import { kstDate } from './kstDate'
 import { logActivity } from './activityLog'
 
@@ -93,9 +93,10 @@ export async function deductStockLinesOnShip(
     // 출고취소가 이 행을 철회하므로, 취소 후 재출고에서는 다시 차감된다.
     if (await findShipOutRow(db, orderId, ln.item_id, lineEntity)) continue
 
-    // 소모 대상 창고 = 품목 기본창고 (NULL=미배정). 재고 행 키 = (item, entity, zone).
-    // UP2 제외: 기성/유통 출고는 창고 피킹(소모 장비 없음) → 품목 기본창고가 정확.
-    const zoneId = await getItemDefaultZone(db, ln.item_id, lineEntity)
+    // 소모 대상 창고 = **재고가 실제로 있는 구역**(`resolveDeductionZone`). 재고 행 키 = (item, entity, zone).
+    // ★2026-09-04 이전엔 품목 기본창고(축1)에서 뺐다 — 자재가 다른 구역에 있으면 축1 이 음수가 되고
+    //   실제 보유 구역은 그대로였다. 되돌리기(`unship`)는 지금도 **원장이 기록한 창고**를 되짚는다(아래 :164).
+    const zoneId = await resolveDeductionZone(db, { equipmentId: null, itemId: ln.item_id, entityId: lineEntity })
 
     // ★재고 UPDATE 와 원장 INSERT 를 **한 batch 로 묶는다**(2026-08-31).
     //   예전엔 개별 `.run()` 이라 UPDATE 는 됐는데 INSERT 가 터지면 **재고만 빠지고 원장이 비었다** —
