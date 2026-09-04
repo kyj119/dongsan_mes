@@ -178,6 +178,72 @@ def build_dict(remote):
     print(f'품목 사전 저장: {DICT_PATH}  ({len(best)}종 / 라인 {sum(r["c"] for r in rows)})')
 
 
+# ── 현수막 3분할 라우팅 (2026-09-04 `0568`·`0569`) ──────────────────────────
+#: 게릴라 전문 거래처. **숫자로는 못 가리는 축이라 사람이 정한 목록**이다(2026-09-04 용준님 확정).
+#  가격 수준으로는 안 갈린다 — 500x90 장당가가 3,500~8,500 연속이라 일반 현수막과 통째로 겹친다.
+#  판정에 쓴 신호 = 장당 정액(500원 배수 95~100%) · 대량 · ★**장폭을 아예 안 시킨다**(A군 0건).
+#  새 게릴라 거래처가 생기면 여기에 추가한다. 지우면 그 거래처가 일반 현수막으로 되돌아간다.
+GUERRILLA_CLIENT_IDS = {
+    2103,   # 주식회사 오케이애드공사
+    2068,   # 주식회사 성진광고기획
+    730,    # 동아애드넷
+    161,    # (주)크리에이티브온
+    2193,   # 주안애드
+    2097,   # 주식회사 엠에스이  ← 장폭도 시키는 혼합 거래처. 규격 조건이 반드시 같이 걸려야 한다
+    1297,   # 성진 현수막출력센터
+    2410,   # 트윈디자인
+}
+
+
+def refine_banner(iid, by_code, cid, w, h, desc):
+    """`수성 현수막`(AQ-BANNER)으로 해소된 라인을 폭·거래처 기준으로 다시 태운다.
+
+    품목 사전은 「이카운트 표기 → item_id」 **다수결**이라 폭 축을 볼 수 없다.
+    이카운트 표기가 똑같은 `현수막` 이 실제로는 가격체계 셋(일반 AREA / 장폭 AREA / 게릴라 FIXED)이라,
+    사전에만 맡기면 전부 172 로 들어가 거래처 직전가 제안이 최대 3배 어긋난다.
+    분리 근거·실측 = `migrations/0568_banner_item_split.sql`.
+    """
+    if not iid or iid != by_code.get('AQ-BANNER'):
+        return iid
+    if desc and '게릴라' in str(desc):
+        return by_code.get('AQ-GERILLA', iid)        # 명시가 최우선
+    if w and h and min(w, h) > 152:
+        return by_code.get('AQ-WDB', iid)            # 장폭 = 이어붙임·광폭원단. 수량이 늘어도 안 내려간다
+    if (cid in GUERRILLA_CLIENT_IDS and w and h
+            and 60 <= min(w, h) <= 90 and 300 <= max(w, h) <= 900):
+        return by_code.get('AQ-GERILLA', iid)
+    return iid
+
+
+def selftest_banner():
+    """`--selftest` — 현수막 라우팅 픽스처. 돈에 직접 닿는 규칙이라 눈으로 안 믿는다.
+
+    CI 는 `test:calc`(node) 축이라 파이썬을 안 돌린다 → 스크립트 자신이 들고 있는다.
+    """
+    by = {'AQ-BANNER': 172, 'AQ-WDB': 1726, 'AQ-GERILLA': 173}
+    name = {172: '일반', 1726: '장폭', 173: '게릴라', 999: '타품목'}
+    cases = [
+        ('일반 — 게릴라 아닌 거래처의 500x90',        172,  109,  500,   90, None,          172),
+        ('게릴라 — 게릴라 거래처의 500x90',           172, 2103,  500,   90, None,          173),
+        ('게릴라 — 명시는 거래처를 무시한다',          172,  109,  500,   90, '게릴라) 바벨', 173),
+        ('장폭 — 짧은변 300',                        172,  109,  800,  300, None,          1726),
+        ('장폭 — 게릴라 거래처라도 폭이 이긴다',       172, 2103,  800,  300, None,          1726),
+        ('일반 — 게릴라 거래처지만 짧은변 50',         172, 2103,  500,   50, None,          172),
+        ('일반 — 게릴라 거래처지만 긴변 1200',         172, 2103, 1200,   90, None,          172),
+        ('일반 — 규격이 없으면 못 가른다',             172, 2103, None, None, None,          172),
+        ('현수막이 아닌 품목은 손대지 않는다',         999, 2103,  800,  300, None,          999),
+        ('미해소(None)는 그대로 둔다',                None, 2103,  800,  300, None,          None),
+    ]
+    bad = 0
+    for label, iid, cid, w, h, desc, want in cases:
+        got = refine_banner(iid, by, cid, w, h, desc)
+        ok = got == want
+        bad += 0 if ok else 1
+        print(f"{'OK  ' if ok else 'FAIL'} {label:34s} → {name.get(got, got)}")
+    print(f'\n현수막 라우팅 {len(cases)-bad}/{len(cases)} 통과')
+    return 1 if bad else 0
+
+
 def load_dict():
     if not os.path.exists(DICT_PATH):
         return {}
@@ -356,7 +422,12 @@ def main():
                          '원래 표기는 notes 에 「미확인거래처:이름」 으로 남는다.')
     ap.add_argument('--link-files', dest='link_files', action='store_true',
                     help='대기함 파일을 라인에 물려 카드 썸네일까지 자동 생성')
+    ap.add_argument('--selftest', action='store_true',
+                    help='현수막 3분할 라우팅 픽스처만 돌린다(쓰기 없음)')
     a = ap.parse_args()
+
+    if a.selftest:
+        return selftest_banner()
 
     if a.build_dict:
         return build_dict(a.remote)
@@ -430,6 +501,7 @@ def main():
     imap = load_dict()
     items = page_all(base, tok, '/api/items?include_inactive=1', limit=500)
     pricing = {it['id']: (it.get('pricing_method') or 'FIXED') for it in items}
+    by_code = {str(it.get('item_code') or ''): it['id'] for it in items}
     for it in items:
         imap.setdefault(nrm(it.get('item_name')), it['id'])
         for kw in str(it.get('search_keywords') or '').replace(',', '|').split('|'):
@@ -510,6 +582,9 @@ def main():
             h = num(mw.group(2), None) if mw else None
             q = int(num(ln['qty'], 1)) or 1
             price, amt = num(ln['price']), num(ln['amount'])
+            # ★폭·거래처 라우팅은 `method` 를 읽기 **전에** 해야 한다 —
+            #   게릴라는 FIXED(장당 정액)라 여기서 갈리지 않으면 ㎡단가로 환산돼 버린다.
+            iid = refine_banner(iid, by_code, cid, w, h, ln.get('desc'))
             method = pricing.get(iid, 'FIXED')
             if method == 'AREA' and w and h and q and amt:
                 price = area_unit_price(amt, q, w, h)
