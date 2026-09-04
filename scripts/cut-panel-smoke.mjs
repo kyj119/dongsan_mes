@@ -655,7 +655,9 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3r 활성 전환이 조각 수와 무관', (bake.match(/app\.activeDocument = /g) || []).length <= 4,
     String((bake.match(/app\.activeDocument = /g) || []).length))
   // ★`documents.add` → `mesCut_newDocMM`(mm 단위 문서, 2026-08-25). 세는 대상만 바뀌고 규칙은 같다.
-  ok('3r 임시 문서는 하나', (bake.match(/mesCut_newDocMM\(/g) || []).length === 1)
+  // ★2026-09-04: 문서 **개수**는 캔버스 한계를 넘을 때만 늘어난다(mesCut_bakeGroups) — 조각 수와는
+  //   여전히 무관하다. 여기서 세는 것은 "문서를 만드는 자리가 한 곳인가" 다.
+  ok('3r 임시 문서 생성은 한 곳', (bake.match(/mesCut_newDocMM\(/g) || []).length === 1)
   // ★복제본이 겹치면 다른 조각이 캔버스에 들어온다 → 벌려 놓아야 한다
   ok('3r 복제본을 벌려 놓는다', /translate\(dx, dy\)/.test(bake))
   ok('3r 패널이 버전 게이트로 고른다', /hostSupportsBakeAll\(\)\) bakeAll\(\); else next\(\)/.test(panelSrc))

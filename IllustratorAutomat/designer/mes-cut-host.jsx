@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.37.0';  // 0.37.0 = ★굳힌 조각 배정을 「가장 가까운 중심」에서 **셀 상자 포함**으로 — 굳힌 PDF 는 조각별 그룹이 아니라 낱개 패스로 풀려(4조각=57개) 넓은 조각의 끝쪽이 옆 조각 중심에 더 가까워 어깋나 **검산이 터지고 판 전체가 조각당 6.5초 경로**로 돌았다(적용 111.9초 중 98.1초) · 0.36.0 = ★굳히기 격자가 **PDF 페이지 한계(200인치=5,080mm)**를 넘어 저장이 취소되던 것 정정 — 캔버스 한계(5,644mm)로 재고 있어 조각이 많으면 판이 조용히 조각당 3초 경로로 떨어졌다(23조각 실패→성공) · 적용 단계별 소요(`ms=`)와 굳히기 실패 이유(`hardenwhy=`)를 결과에 실어 보낸다(판은 불변) · 0.35.0 = ★굽기 export 는 **호출당 고정비가 지배**한다 — 조각마다 exportFile 하던 것을 아트보드 N개 + `exportForScreens` 1회로 (실물 23조각 8,263ms ×2 → 4,841 + 695ms). 경로 규약은 그대로 — 파일을 `Folder.temp` 의 옛 이름으로 옮겨 둔다(안 그러면 도련이 조용히 사라진다) · 0.34.0 = ★칼선에서 **자를 수 없는 부스러기**를 걷어낸다(실물 판 131개 중 15개가 0.01x0mm 3점 조각 — 컬파운드 안쪽이라 안 보였다) · 글자는 글자대로 남긴다(감싸기 안 함) · 0.33.0 = ★회전한 조각의 칼선이 **바깥 사각**으로 나가던 것 정정 — PDF 굳히기 임베드가 만든 사각 클립이 실루에을 덮었다(자르는 게 없는 클립만 걷어낸다) · 0.32.0 = ★굳혀서 배치하는 새 법 — **한 판에 1회**(조각 전부를 계자 PDF 로 한 번 굳힌 뒤 회전 값마다 마스턼 하나 → 배치는 duplicate) — 회전만 걸려도 조각당 3.05초가 붙던 것이 조각 수와 무관해진다 · 0.31.0 = ★등록 manifest 가 저장 배율을 반영한다(measured_cm=실물 · scale_pct=100/N) — 여태 1/2 로 짜면 주문 라인 규격이 1/S · 청구면적이 1/S² 였다 · 0.30.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.29.0 = PDF 아트보드 기준을 잉크 경계로(visibleBounds 로 잡으면 마스크로 가린 여분이 되살아나 조각이 커지고 재단선을 넘는다) · 0.28.0 = 회전도 임베드 앞으로 + **회전만 있어도 PDF 경로**(1:1 회전도 마스크가 안 따라와 배경 절반이 회색) + 검산 기대폭에 회전 반영 · 0.27.0 = 배율 기준을 PDF 아트보드로(배치 직후 보고값은 잘려 있어 +23%) · 확대는 임베드 **전**(뒤로 옮기면 마스크가 안 따라와 배경이 죽는다) · 0.26.0 = 배율 확대 크기 계산을 임베드 **후**로(배치 직후 값은 그림 있는 데까지로 잘려 있어 클립 밖 삐짐 조각이 +23% 크게 나왔다) · 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
+var MESCUT_VERSION = 'CUT-CEP-0.38.0';  // 0.38.0 = ★굽기가 한 임시문서에 안 들어가면 **문서를 나눈다** — 여태는 여기서 실패해 패널이 조각당 임시문서를 만드는 옛 경로로 떨어졌다(조각당 4초) · 그 옛 경로(rasterizeItem·rasterize)가 복제본을 **원점으로 안 옮겨** 원본에서 원점에서 먼 조각이 `AOoC`(1095724867)로 죽던 것 정정(실사용: 1050폭 세로 1열 파일의 4번째 조각) · 0.37.0 = ★굳힌 조각 배정을 「가장 가까운 중심」에서 **셀 상자 포함**으로 — 굳힌 PDF 는 조각별 그룹이 아니라 낱개 패스로 풀려(4조각=57개) 넓은 조각의 끝쪽이 옆 조각 중심에 더 가까워 어깋나 **검산이 터지고 판 전체가 조각당 6.5초 경로**로 돌았다(적용 111.9초 중 98.1초) · 0.36.0 = ★굳히기 격자가 **PDF 페이지 한계(200인치=5,080mm)**를 넘어 저장이 취소되던 것 정정 — 캔버스 한계(5,644mm)로 재고 있어 조각이 많으면 판이 조용히 조각당 3초 경로로 떨어졌다(23조각 실패→성공) · 적용 단계별 소요(`ms=`)와 굳히기 실패 이유(`hardenwhy=`)를 결과에 실어 보낸다(판은 불변) · 0.35.0 = ★굽기 export 는 **호출당 고정비가 지배**한다 — 조각마다 exportFile 하던 것을 아트보드 N개 + `exportForScreens` 1회로 (실물 23조각 8,263ms ×2 → 4,841 + 695ms). 경로 규약은 그대로 — 파일을 `Folder.temp` 의 옛 이름으로 옮겨 둔다(안 그러면 도련이 조용히 사라진다) · 0.34.0 = ★칼선에서 **자를 수 없는 부스러기**를 걷어낸다(실물 판 131개 중 15개가 0.01x0mm 3점 조각 — 컬파운드 안쪽이라 안 보였다) · 글자는 글자대로 남긴다(감싸기 안 함) · 0.33.0 = ★회전한 조각의 칼선이 **바깥 사각**으로 나가던 것 정정 — PDF 굳히기 임베드가 만든 사각 클립이 실루에을 덮었다(자르는 게 없는 클립만 걷어낸다) · 0.32.0 = ★굳혀서 배치하는 새 법 — **한 판에 1회**(조각 전부를 계자 PDF 로 한 번 굳힌 뒤 회전 값마다 마스턼 하나 → 배치는 duplicate) — 회전만 걸려도 조각당 3.05초가 붙던 것이 조각 수와 무관해진다 · 0.31.0 = ★등록 manifest 가 저장 배율을 반영한다(measured_cm=실물 · scale_pct=100/N) — 여태 1/2 로 짜면 주문 라인 규격이 1/S · 청구면적이 1/S² 였다 · 0.30.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.29.0 = PDF 아트보드 기준을 잉크 경계로(visibleBounds 로 잡으면 마스크로 가린 여분이 되살아나 조각이 커지고 재단선을 넘는다) · 0.28.0 = 회전도 임베드 앞으로 + **회전만 있어도 PDF 경로**(1:1 회전도 마스크가 안 따라와 배경 절반이 회색) + 검산 기대폭에 회전 반영 · 0.27.0 = 배율 기준을 PDF 아트보드로(배치 직후 보고값은 잘려 있어 +23%) · 확대는 임베드 **전**(뒤로 옮기면 마스크가 안 따라와 배경이 죽는다) · 0.26.0 = 배율 확대 크기 계산을 임베드 **후**로(배치 직후 값은 그림 있는 데까지로 잘려 있어 클립 밖 삐짐 조각이 +23% 크게 나왔다) · 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -404,24 +404,33 @@ function mesCut_rasterize(mmPerPx, padMm, fillClosed) {
         //        activeDocument = 원본 후 duplicate  → 99개 ✅
         //    예외를 던지지 않기 때문에 try/catch 로는 절대 못 잡는다 — 결과 개수로 검증할 것.
         app.activeDocument = srcDoc;
+        var dups = [];
         for (var i = 0; i < items.length; i++) {
-            try { items[i].duplicate(lay, ElementPlacement.PLACEATBEGINNING); }
+            try { dups.push(items[i].duplicate(lay, ElementPlacement.PLACEATBEGINNING)); }
             catch (eDup) { if (!dupErr) dupErr = String(eDup); }
         }
         app.activeDocument = tmp;
         // 사본에서만 채운다 — 원본은 무손상
         var nFill = fillClosed ? mesCut_fillClosedIn(tmp) : 0;
-        // ★조각의 position 을 옮기지 않는다 — 대신 **아트보드를 아트에 맞춘다**.
+        // ★조각의 position 을 **낱개로** 재계산하지 않는다 — 대신 **아트보드를 아트에 맞춘다**.
         //   좌표 보정(position 재계산)은 group/clip 기준이 visibleBounds 와 어긋나 빈 PNG 를 만든 전례가 있다
         //   (2026-07-31: 100% 투명 PNG). 아트보드를 맞추면 보정식이 아예 필요 없다.
         //   패널에 돌려주는 origin 은 **원본 문서의 bb** 다 — 조각의 상대 배치는 복제해도 그대로이므로
         //   픽셀→mm 매핑(origin + px*mmpp)이 원본 문서 좌표로 정확히 떨어진다.
         var u = mesCut_unionOf(mesCut_topItems(tmp));
+        // (u 는 사본 전체의 경계다 — 아래에서 원점으로 옮긴 뒤 다시 잰다)
         if (!u) {
             var n = tmp.pageItems.length;
             tmp.close(SaveOptions.DONOTSAVECHANGES);
             return 'ERROR 복제 실패 (선택 ' + items.length + '개 → 복제 ' + n + '개' + (dupErr ? ('; ' + dupErr) : '') + ')';
         }
+        // ★★단, **전체를 같은 양만큼** 원점으로 끌어다 놓는다 (2026-09-04). 위 전례와 다르다 —
+        //   낱개 보정이 아니라 평행이동이라 상대 배치가 그대로고, 기준도 union 하나뿐이다.
+        //   안 옮기면 아트보드를 원본 자리로 이동해야 하는데, 아트가 원점에서 멀면(세로로 길게
+        //   늘어놓은 작업 파일 등) 임시 문서의 캔버스를 벗어나 `AOoC`(1095724867) 로 죽는다.
+        var mvx = -u[0], mvy = -u[1];
+        for (var mv = 0; mv < dups.length; mv++) { try { dups[mv].translate(mvx, mvy); } catch (eMv) {} }
+        u = mesCut_unionOf(mesCut_topItems(tmp)) || [u[0] + mvx, u[1] + mvy, u[2] + mvx, u[3] + mvy];
         var padPt = padMm * MESCUT_PT_PER_MM;
         tmp.artboards[0].artboardRect = [u[0] - padPt, u[1] + padPt, u[2] + padPt, u[3] - padPt];
         wPt = (u[2] - u[0]) + padPt * 2;
@@ -2311,72 +2320,130 @@ function mesCut_nestBakeAll(mmPerPx, padMm, fillClosed, tag, bleedTag) {
     var srcBB = [];
     for (i = 0; i < n; i++) srcBB.push(mesCut_inkBounds(MESCUT_NEST_ITEMS[i]));
 
-    var tmp = null, nFill = 0, fastBake = 0;
-    var lines = [];
+    // ② 조각마다 격자 칸 크기. 20mm 는 이웃이 서로의 아트보드에 들어오지 않게 하는 여백이다.
+    var cellW = [], cellH = [];
+    for (i = 0; i < n; i++) {
+        if (!srcBB[i]) { cellW.push(0); cellH.push(0); continue; }
+        cellW.push((srcBB[i][2] - srcBB[i][0]) + padPt * 2 + 20 * PT);
+        cellH.push((srcBB[i][1] - srcBB[i][3]) + padPt * 2 + 20 * PT);
+        // 조각 하나가 혼자 한계를 넘으면 어떻게 배치해도 못 굽는다 → 원인을 정확히 알린다
+        if (cellW[i] > MESCUT_CANVAS_MAX_PT || cellH[i] > MESCUT_CANVAS_MAX_PT) {
+            return 'ERROR 조각 ' + i + ' 가 일러 캔버스 한계('
+                + Math.round(MESCUT_CANVAS_MAX_PT / PT) + 'mm)를 넘습니다 — 배율을 줄이거나 조각을 나누세요';
+        }
+    }
+
+    // ③ ★한 문서에 다 안 들어가면 **문서를 나눈다**(2026-09-04).
+    //    여태는 여기서 그냥 실패했고, 패널은 조각당 임시문서를 만드는 옛 경로로 떨어져
+    //    조각당 4초를 냈다(실물 23조각 ≈ 1분 반). 그 옛 경로가 긴 원본에서 'AOoC' 로 죽는
+    //    바로 그 길이다 — 애초에 거기로 안 떨어지게 만드는 것이 근본이다.
+    //    임시 문서는 **저장하지 않는다** — 굽고 나서 닫는다. 사용자에게 남는 파일은 판뿐이다.
+    var groups = mesCut_bakeGroups(cellW, cellH);
+    if (!groups.length) return 'ERROR 크기 0';
+
+    var lines = [], nFill = 0, nFast = 0, g;
+    for (g = 0; g < groups.length; g++) {
+        var r = mesCut_bakeOneDoc(srcDoc, groups[g], srcBB, cellW, cellH, padPt, mmPerPx, fillClosed, tag, bleedTag, n);
+        // 한 문서라도 실패하면 통째로 실패시킨다 — 반쪽 결과를 넘기면 패널이 조각 일부만 배치한다
+        if (r.err) return 'ERROR nestBakeAll: ' + r.err;
+        for (i = 0; i < r.lines.length; i++) lines.push(r.lines[i]);
+        nFill += r.nFill; nFast += r.fast;
+    }
+    if (!lines.length) return 'ERROR 구운 조각 0개';
+    // ★`fastbake` 는 **전 문서가 빠른 길로 갔을 때만** 1 이다 — 하네스(cut:e2e [K])가 이 값을 본다.
+    var fastBake = (nFast === groups.length) ? 1 : 0;
+    return 'ok;n=' + lines.length + ';mmpp=' + mmPerPx + ';filled=' + nFill
+        + ';fastbake=' + fastBake + ';docs=' + groups.length
+        + '\n' + lines.join('\n');
+}
+
+/**
+ * 조각을 **임시 문서 단위로** 묶는다 — 한 묶음이 일러 캔버스 안에 들어가도록.
+ *
+ * ★줄바꿈 규칙은 `mesCut_bakeOneDoc` 의 실제 배치와 **같아야 한다**. 달라지면 여기서
+ *   "들어간다"고 센 묶음이 실제로는 안 들어가 아트보드 이동이 'AOoC' 로 죽는다.
+ * 반환 = [[조각번호…], …]
+ */
+function mesCut_bakeGroups(cellW, cellH) {
+    var groups = [], cur = [], rowW = 0, rowH = 0, totH = 0, i;
+    for (i = 0; i < cellW.length; i++) {
+        if (!cellW[i]) continue;                       // 경계를 못 잰 조각 — 어차피 굽지 못한다
+        var rw = rowW, rh = rowH, th = totH;
+        if (rw > 0 && rw + cellW[i] > MESCUT_CANVAS_MAX_PT) { th += rh; rw = 0; rh = 0; }
+        rw += cellW[i];
+        if (cellH[i] > rh) rh = cellH[i];
+        if (th + rh > MESCUT_CANVAS_MAX_PT && cur.length) {
+            // 이 조각을 넣으면 문서가 넘친다 → 여기서 끊고 다음 문서의 첫 조각으로 넘긴다
+            groups.push(cur);
+            cur = []; rowW = cellW[i]; rowH = cellH[i]; totH = 0;
+        } else { rowW = rw; rowH = rh; totH = th; }
+        cur.push(i);
+    }
+    if (cur.length) groups.push(cur);
+    return groups;
+}
+
+/**
+ * 임시 문서 **하나**에 `idxs` 조각을 모아 굽는다. 반환 = {lines, nFill, fast, err}
+ *
+ * ⚠️ `boxes` 는 **전체 길이 배열**이고 이 문서에 없는 조각 자리는 null 이다 —
+ *    P/Q 줄의 번호와 PNG 파일명이 **원래 조각 번호**여야 패널이 대조할 수 있다.
+ *    (`mesCut_bakeScreens` 도 null 을 건너뛰고 번호를 그대로 쓴다)
+ */
+function mesCut_bakeOneDoc(srcDoc, idxs, srcBB, cellW, cellH, padPt, mmPerPx, fillClosed, tag, bleedTag, n) {
+    var out = { lines: [], nFill: 0, fast: 0, err: '' };
+    var PT = MESCUT_PT_PER_MM, tmp = null, i, k;
+    var lines = [], fastBake = 0;
     try {
         // ★조각을 **격자**로 벌린다. 가로 한 줄로만 늘어놓으면 1:1(원본 크기) 조각에서 총 폭이
         //   일러 캔버스 한계를 넘어 아트보드 이동이 'AOoC' 로 죽는다(2026-08-05 실사용).
         //   행 폭이 한계에 닿으면 다음 줄로 내린다 — 굽기는 아트보드를 옮겨 다니므로 줄이 나뉘어도 무관하다.
-        var cellW = [], cellH = [];
-        for (i = 0; i < n; i++) {
-            if (!srcBB[i]) { cellW.push(0); cellH.push(0); continue; }
-            cellW.push((srcBB[i][2] - srcBB[i][0]) + padPt * 2 + 20 * PT);
-            cellH.push((srcBB[i][1] - srcBB[i][3]) + padPt * 2 + 20 * PT);
-            // 조각 하나가 혼자 한계를 넘으면 어떻게 배치해도 못 굽는다 → 원인을 정확히 알린다
-            if (cellW[i] > MESCUT_CANVAS_MAX_PT || cellH[i] > MESCUT_CANVAS_MAX_PT) {
-                return 'ERROR 조각 ' + i + ' 가 일러 캔버스 한계('
-                    + Math.round(MESCUT_CANVAS_MAX_PT / PT) + 'mm)를 넘습니다 — 배율을 줄이거나 조각을 나누세요';
-            }
-        }
         var totW = 0, totH = 0, rowW = 0, rowH = 0;
-        for (i = 0; i < n; i++) {
-            if (!cellW[i]) continue;
-            if (rowW > 0 && rowW + cellW[i] > MESCUT_CANVAS_MAX_PT) {
+        for (i = 0; i < idxs.length; i++) {
+            k = idxs[i];
+            if (rowW > 0 && rowW + cellW[k] > MESCUT_CANVAS_MAX_PT) {
                 if (rowW > totW) totW = rowW;
                 totH += rowH; rowW = 0; rowH = 0;
             }
-            rowW += cellW[i];
-            if (cellH[i] > rowH) rowH = cellH[i];
+            rowW += cellW[k];
+            if (cellH[k] > rowH) rowH = cellH[k];
         }
         if (rowW > totW) totW = rowW;
         totH += rowH;
-        if (totW <= 0 || totH <= 0) return 'ERROR 크기 0';
-        if (totH > MESCUT_CANVAS_MAX_PT) {
-            return 'ERROR 조각이 너무 많거나 커서 한 문서에 못 담습니다(필요 '
-                + Math.round(totH / PT) + 'mm > 한계 ' + Math.round(MESCUT_CANVAS_MAX_PT / PT) + 'mm)';
-        }
+        if (totW <= 0 || totH <= 0) { out.err = '크기 0'; return out; }
+
         tmp = mesCut_newDocMM(totW, totH);
         var lay = tmp.layers[0];
 
         app.activeDocument = srcDoc;                 // ★전환 1 — 복제는 원본이 active 일 때만 동작한다
         var copies = [];
-        for (i = 0; i < n; i++) {
+        for (i = 0; i < idxs.length; i++) {
             var cp = null;
-            try { cp = MESCUT_NEST_ITEMS[i].duplicate(lay, ElementPlacement.PLACEATEND); } catch (eD) {}
+            try { cp = MESCUT_NEST_ITEMS[idxs[i]].duplicate(lay, ElementPlacement.PLACEATEND); } catch (eD) {}
             copies.push(cp);
         }
         app.activeDocument = tmp;                    // ★전환 2 — 이후로는 임시 문서 안에서만 논다
-        if (fillClosed) nFill = mesCut_fillClosedIn(tmp);
+        if (fillClosed) out.nFill = mesCut_fillClosedIn(tmp);
 
         // ② 격자로 벌려 놓는다 — 서로 캔버스에 들어오지 않게 하되, 한 줄이 한계에 닿으면 다음 줄로.
         //    y 는 아래로 내려가므로 감소시킨다(일러는 y-up).
         var curX = 0, curY = 0, rowMax = 0;
         var boxes = [];
-        for (i = 0; i < n; i++) {
-            if (!copies[i]) { boxes.push(null); continue; }
+        for (i = 0; i < n; i++) boxes.push(null);
+        for (i = 0; i < idxs.length; i++) {
+            k = idxs[i];
+            if (!copies[i]) continue;
             var b = mesCut_inkBounds(copies[i]);
-            if (!b) { boxes.push(null); continue; }
+            if (!b) continue;
             var cw = (b[2] - b[0]) + padPt * 2 + 20 * PT;
             var ch = (b[1] - b[3]) + padPt * 2 + 20 * PT;
             if (curX > 0 && curX + cw > MESCUT_CANVAS_MAX_PT) { curX = 0; curY -= rowMax; rowMax = 0; }
             var dx = curX - b[0], dy = curY - b[1];
             try { copies[i].translate(dx, dy); } catch (eT) {}
-            var nb = mesCut_inkBounds(copies[i]) || [b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy];
-            boxes.push(nb);
+            boxes[k] = mesCut_inkBounds(copies[i]) || [b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy];
             curX += cw;
             if (ch > rowMax) rowMax = ch;
         }
-
         // ③ 아트보드만 옮기며 굽는다 — 남는 비용은 export 뿐이다
         var opts = new ExportOptionsPNG24();
         // ★도련용 원색(tag="ink")은 AA 를 끈다 (2026-08-24 반백반흑 회색 오염 대응).
@@ -2450,11 +2517,11 @@ function mesCut_nestBakeAll(mmPerPx, padMm, fillClosed, tag, bleedTag) {
     } catch (e) {
         if (tmp) { try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) {} }
         try { app.activeDocument = srcDoc; } catch (e3) {}
-        return 'ERROR nestBakeAll: ' + e;
+        out.err = String(e);
+        return out;
     }
-    if (!lines.length) return 'ERROR 구운 조각 0개';
-    return 'ok;n=' + lines.length + ';mmpp=' + mmPerPx + ';filled=' + nFill + ';fastbake=' + fastBake
-        + '\n' + lines.join('\n');
+    out.lines = lines; out.fast = fastBake;
+    return out;
 }
 
 /**
@@ -2481,11 +2548,24 @@ function mesCut_rasterizeItem(idx, mmPerPx, padMm, fillClosed) {
         tmp = mesCut_newDocMM(wPt, hPt);
         var lay = tmp.layers[0];
         app.activeDocument = srcDoc;                 // ★복제는 원본이 active 일 때만
-        try { it.duplicate(lay, ElementPlacement.PLACEATBEGINNING); } catch (eD) {}
+        var dup = null;
+        try { dup = it.duplicate(lay, ElementPlacement.PLACEATBEGINNING); } catch (eD) {}
         app.activeDocument = tmp;
         var nFill = fillClosed ? mesCut_fillClosedIn(tmp) : 0;   // 사본에서만 — 원본 무손상
         var u = mesCut_unionOf(mesCut_topItems(tmp));
+        // (u 는 복제본 하나의 경계다 — 아래에서 원점으로 옮긴 뒤 다시 잰다)
         if (!u) { tmp.close(SaveOptions.DONOTSAVECHANGES); app.activeDocument = srcDoc; return 'ERROR 복제 실패'; }
+        // ★★복제본은 **원본 좌표를 그대로** 들고 온다 → 원점으로 끌어다 놓고 굽는다 (2026-09-04).
+        //   안 옮기면 아트보드를 원본 자리로 이동해야 하는데, 조각이 원점에서 멀면
+        //   (1050 폭에 세로로 길게 늘어놓은 작업 파일 등) 임시 문서의 캔버스를 벗어나
+        //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다.
+        //   실사용에서 **4번째 조각**부터 터졌다 — 앞 조각은 원점 근처라 통과해서 원인이 안 보였다.
+        //   `mesCut_bakeOneDoc` 은 복제 직후 격자로 옮겨서 애초에 이 문제가 없다. 여기도 같게 만든다.
+        //   ⚠️ 돌려주는 ox/oy 는 아래에서 **원본 bb** 로 만든다 — 여기서 옮겨도 배치 수식은 그대로다.
+        //      (px→mm 매핑은 origin + px*mmpp 이고 origin 이 원본 좌표다)
+        var mvx = -u[0], mvy = -u[1];
+        if (dup) { try { dup.translate(mvx, mvy); } catch (eMv) {} }
+        u = mesCut_unionOf(mesCut_topItems(tmp)) || [u[0] + mvx, u[1] + mvy, u[2] + mvx, u[3] + mvy];
         var padPt = padMm * MESCUT_PT_PER_MM;
         tmp.artboards[0].artboardRect = [u[0] - padPt, u[1] + padPt, u[2] + padPt, u[3] - padPt];
         var opts = new ExportOptionsPNG24();
