@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-09-04T03:50:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-09-04T09:50:59+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,28 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **7** (`list_issues(state:OPEN,label:auto-improve)` 실측, 8→7 — #613·#616·#617·#622·#624·#625·#626, #623 completed로 이동) |
+| 🆕 new | **7** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음 — #613·#616·#617·#622·#624·#625·#626) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **542** (`search_issues(reason:completed)` 리터럴 쿼리, 541→542 — #623) |
+| ✔️ done | **542** (변동없음, 재확인 생략 — 이번 사이클 신규 completed 없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 재확인 생략, 변동없음) |
+
+> **Area 1 프로덕션 헬스 (2026-09-04T09:50):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD, `bccb517`), `git fetch origin main`(`207078c..bccb517`, forced update) → `git checkout main && git reset --hard origin/main`(HEAD `bccb517`). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area1 방법 라인 HEAD `0fe0170`)**: 웹앱 범위 diff **92커밋**(Area5/6이 이미 09-03 전체리뷰 fix-integration 대형 병합창으로 표본검증·비웹앱축 검증 완료). Area1 고유 렌즈 = **마이그레이션 신규분 (a)/(b) 분류 + 이전 사이클이 심은 감지기(#624 printEvents.agents 프로브)의 실측 결과 확인**으로 좁힘.
+> - **신규 마이그레이션 11건(`0553`~`0562`) 전수 스캔** — `grep -iE "ADD COLUMN|CREATE TABLE"` 결과 **0건**. 전부 데이터 UPDATE/INSERT(품목 단가·잉크 원가·재고구역배정·단종품 상각)이라 #483/#484 (b)-risk 클래스 자체가 발생하지 않음(신규 컬럼 없음 → 배포코드 참조 컬럼드리프트 가능성 없음). `npm run db:bootstrap:ci`로 로컬 D1에 11건 전부 적용 성공 확인(베이스라인+0001~0562 전량 ✅).
+> - **`0555` 번호 중복 발견(`0555_aq2_200_cost_and_095_bom.sql` / `0555_synthetic_grey_split_product_and_roll.sql`) — 실해 없음 재확인**: `wrangler d1 migrations apply`는 전체 파일명으로 추적(숫자 접두만이 아님) → `db:bootstrap:ci` 로컬 적용에서 둘 다 정상 순서(알파벳순, `aq2...` < `synthetic...`)로 ✅ 적용됨. 스키마/데이터 사고 없음 — 명명 컨벤션 사소 위반이라 이슈화 안 함(비즈니스 영향 없음, CLAUDE.md에 번호 유일성 규칙 없음).
+> - **#624 감지기 실측 확인(전 사이클이 심은 `printEvents.agents` smoke 프로브 결과 판독)**: `bccb517` 배포런(job 100854805669) 로그에서 `PASS 200 206ms printEvents.agents /api/print-events/agents` 직접 확인. D1은 SELECT prepare 시점에 컬럼 존재를 검사하므로 `agent_heartbeats.kit_version`/`parser_type`(0545) 미적용이면 결정적 500이어야 하는데 200 — **0545는 prod에 이미 적용됨을 확인**. `0548`(`designer_intakes.qty_unit`)은 되읽는 GET 경로가 없어 여전히 대리검증 불가 — **#624에 코멘트로 확인결과 기록**(0545 파트 종결 가능, 0548은 owner 수동확인 요청).
+> - **신규 route 제거(`git diff -- src/routes`에서 제거된 `.get/.post` 매치)** = 0건 → 스모크 프로브 stale(#429 4번째 축) 위험 이번 사이클 해당없음.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 10런(`bccb517`~`3422c64`) 전부 `conclusion:success`, smoke `PASS 114/114`(가장 최근 런 실측).
+> - **standing scan 1: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 2: `npm audit --omit=dev`** — 이번 사이클 **미완료**(장시간 hang, 60초+ 무응답 — 네트워크/프록시 지연으로 추정). `package.json` diff 확인 결과 이번 창은 스크립트 항목만 추가(`test:orderline-cost`·`test:csv-guard` 등)이고 의존성 변경 0건이라 결과는 직전 사이클과 동일(0건)일 가능성 높으나 **이번 사이클은 실측 미완료로 기록**(추정 금지 원칙 준수 — 다음 사이클이 재시도).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **7**(변동없음 — #613·#616·#617·#622·#624·#625·#626 전건 일치).
+> - **backlog↔GitHub 절대값 재동기화**: open **7**(변동없음) · done **542**(변동없음, 재확인 생략) · rejected **6**(변동없음, 재확인 생략).
+> - **🧬 SKILL 강화**: 없음 — area-1-production-health.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: 사이클 로그 9건 → 이번 로그 추가 후 10건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(마이그 11건 전부 (a)benign·컬럼드리프트 위험 0, 0555 번호중복은 실해 없음 확인), 자동수정 0건(고칠 코드 없음, #624 진행상황 코멘트 1건만), done-sync: open 7(변동없음)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-09-04T03:50):**
 > - **방법**: `git status`=워킹트리 clean(detached HEAD, `78a8dae`), `git fetch origin main`(`207078c..78a8dae`, forced update) → `git checkout main && git reset --hard origin/main`(HEAD `78a8dae`). `npm ci`(0→81), `npx tsc --noEmit` clean.
