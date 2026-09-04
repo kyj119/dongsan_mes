@@ -4,6 +4,7 @@
  * 입고이력 CSV · 거래명세서 첨부/조회(receipts/:receiptId/statement) · 입고이력 목록(receipts) ·
  * 검수내역(/:id/inspections) · 입고 대기 큐(receiving-queue). 배럴에서 core 앞 마운트. ⚠️ 이동만, 로직 수정 0.
  */
+import { RECEIVING_ZONE_JOIN_SQL, RECEIVING_ZONE_EXPR_SQL } from '../../utils/inventoryZone'
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import type { HonoEnv } from '../../types/env'
@@ -376,7 +377,7 @@ poReceiptsRouter.get('/receiving-queue', async (c) => {
         poi.unit_price,
         poi.line_status,
         poi.received_at,
-        COALESCE(poi.storage_zone_id, i.storage_zone_id) as effective_zone_id,
+        ${RECEIVING_ZONE_EXPR_SQL} as effective_zone_id,
         sz.zone_name,
         sz.manager_id as zone_manager_id,
         u_mgr.name as zone_manager_name,
@@ -384,7 +385,7 @@ poReceiptsRouter.get('/receiving-queue', async (c) => {
       FROM purchase_order_items poi
       JOIN purchase_orders po ON po.id = poi.po_id
       LEFT JOIN items i ON i.id = poi.item_id
-      LEFT JOIN storage_zones sz ON sz.id = COALESCE(poi.storage_zone_id, i.storage_zone_id)
+      ${RECEIVING_ZONE_JOIN_SQL}
       LEFT JOIN clients c ON c.id = po.supplier_id
       LEFT JOIN users u_mgr ON u_mgr.id = sz.manager_id
       LEFT JOIN users u_rcv ON u_rcv.id = poi.received_by

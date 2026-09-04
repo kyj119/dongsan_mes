@@ -4,6 +4,7 @@
  * 상태별 통계(stats) · CSV export · 발주서 인쇄데이터(/:id/invoice) · 담당 입고대기 라인(my-lines·my-lines-count).
  * 배럴(purchaseOrders.ts)에서 core 앞에 마운트(/:id 섀도잉 방지). ⚠️ 이동만, 로직 수정 0.
  */
+import { RECEIVING_ZONE_JOIN_SQL, RECEIVING_ZONE_EXPR_SQL } from '../../utils/inventoryZone'
 import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import { authMiddleware } from '../../middleware/auth'
@@ -254,14 +255,14 @@ poQueriesRouter.get('/my-lines', async (c) => {
         po.expected_date,
         po.status as po_status,
         c.client_name as supplier_name,
-        COALESCE(poi.storage_zone_id, i.storage_zone_id) as effective_zone_id,
+        ${RECEIVING_ZONE_EXPR_SQL} as effective_zone_id,
         sz.zone_name,
         sz.manager_id as zone_manager_id,
         u.name as received_by_name
       FROM purchase_order_items poi
       JOIN purchase_orders po ON po.id = poi.po_id
       LEFT JOIN items i ON i.id = poi.item_id
-      LEFT JOIN storage_zones sz ON sz.id = COALESCE(poi.storage_zone_id, i.storage_zone_id)
+      ${RECEIVING_ZONE_JOIN_SQL}
       LEFT JOIN clients c ON c.id = po.supplier_id
       LEFT JOIN users u ON u.id = poi.received_by
       WHERE poi.line_status IN ('PENDING','PARTIAL')
@@ -294,7 +295,7 @@ poQueriesRouter.get('/my-lines-count', async (c) => {
       FROM purchase_order_items poi
       JOIN purchase_orders po ON po.id = poi.po_id
       LEFT JOIN items i ON i.id = poi.item_id
-      LEFT JOIN storage_zones sz ON sz.id = COALESCE(poi.storage_zone_id, i.storage_zone_id)
+      ${RECEIVING_ZONE_JOIN_SQL}
       WHERE poi.line_status IN ('PENDING','PARTIAL')
         AND po.status IN ('CONFIRMED','PARTIAL_RECEIVED')${efCnt.clause}
         AND (

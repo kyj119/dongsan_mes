@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { RECEIVING_ZONE_JOIN_SQL } from '../utils/inventoryZone'
 import type { HonoEnv } from '../types/env'
 import type { D1Database } from '@cloudflare/workers-types'
 import { authMiddleware, requireRole } from '../middleware/auth'
@@ -166,21 +167,9 @@ notificationsRouter.get('/nav-badges', async (c) => {
         FROM purchase_order_items poi
         JOIN purchase_orders po ON po.id = poi.po_id
         LEFT JOIN items i ON i.id = poi.item_id
-        LEFT JOIN storage_zones iz ON iz.id = i.storage_zone_id
-        -- 입고 귀속 창고 = utils/inventoryZone.getItemDefaultZone 과 **같은 규칙**이어야 한다.
-        --   ①발주 라인 지정 ②품목 기본창고가 이 법인의 활성 구역이면 그것 ③타법인 구역이면 이 법인 기본창고.
-        --   ★종전엔 ③이 없어 두 가지가 어긋났다 — 선명 발주는 품목 기본창고가 전부 동산 구역이라
-        --     **선명 담당자에게 영영 안 뜨고**, 전체모드(entity 0)에서는 반대로 **동산 담당자에게 떴다**.
-        --   ★items.storage_zone_id 가 NULL 이면 NULL 로 둔다 — 미배정 입고에는 담당자가 없다(헬퍼와 동일).
-        LEFT JOIN storage_zones sz ON sz.id = COALESCE(
-          poi.storage_zone_id,
-          CASE WHEN iz.entity_id = po.entity_id AND iz.is_active = 1 THEN iz.id END,
-          CASE WHEN iz.id IS NOT NULL THEN (
-            SELECT dz.id FROM storage_zones dz
-             WHERE dz.entity_id = po.entity_id AND dz.is_default = 1 AND dz.is_active = 1
-             ORDER BY dz.id LIMIT 1
-          ) END
-        )
+        -- 입고 귀속 창고 = **입고 큐·발주 상세와 같은 문장**(utils/inventoryZone.RECEIVING_ZONE_JOIN_SQL).
+        --   사본을 두면 배지 숫자와 목록이 어긋난다.
+        ${RECEIVING_ZONE_JOIN_SQL}
         WHERE poi.line_status IN ('PENDING','PARTIAL')
           AND po.status IN ('CONFIRMED','PARTIAL_RECEIVED')
           AND (sz.manager_id = ? ${supervisorClause})${efPO}

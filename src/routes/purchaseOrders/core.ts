@@ -2,6 +2,7 @@
  * purchaseOrders/core.ts — 발주 CRUD + 상태/조회/특수 (15 routes)
  * 2026-04-15 분할
  */
+import { RECEIVING_ZONE_JOIN_SQL, RECEIVING_ZONE_EXPR_SQL } from '../../utils/inventoryZone'
 import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import type { PurchaseOrder, PurchaseOrderItem, ApiResponse, PaginatedResponse } from '../../types/models'
@@ -179,14 +180,14 @@ poCoreRouter.get('/:id', async (c) => {
         i.width_mm AS item_width_mm,
         i.specification AS item_specification,
         i.unit AS item_unit,
-        COALESCE(poi.storage_zone_id, i.storage_zone_id) AS effective_zone_id,
+        ${RECEIVING_ZONE_EXPR_SQL} AS effective_zone_id,
         sz.zone_name AS zone_name,
         sz.manager_id AS zone_manager_id,
         u_mgr.name AS zone_manager_name,
         u_rcv.name AS received_by_name
       FROM purchase_order_items poi
       LEFT JOIN items i ON i.id = poi.item_id
-      LEFT JOIN storage_zones sz ON sz.id = COALESCE(poi.storage_zone_id, i.storage_zone_id)
+      ${RECEIVING_ZONE_JOIN_SQL}
       LEFT JOIN users u_mgr ON u_mgr.id = sz.manager_id
       LEFT JOIN users u_rcv ON u_rcv.id = poi.received_by
       WHERE poi.po_id = ?

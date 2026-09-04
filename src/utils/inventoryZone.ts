@@ -132,3 +132,39 @@ export async function resolveDeductionZone(
   if (preferred != null && rows.some((r) => r.zid === preferred)) return preferred
   return rows[0].zid
 }
+
+// ── 입고 귀속 창고 SQL — 화면·큐·배지가 **같은 문장**을 써야 한다 ──────────────
+//
+// 「이 발주 라인이 어느 창고로 들어오나」를 SQL 로 푸는 자리가 4곳(발주 상세·입고 큐·큐 카운트·
+// nav 배지)이었고 전부 `COALESCE(poi.storage_zone_id, i.storage_zone_id)` 사본이었다.
+// 그 식은 **법인을 안 본다** — 선명 발주 991건이 동산기획 출력실 담당자에게 귀속돼 있었다.
+//
+// ★규칙은 `getItemDefaultZone` 과 같아야 한다:
+//   ①발주 라인 지정 ②품목 기본창고가 이 법인의 활성 구역이면 그것 ③타법인 구역이면 이 법인 기본창고.
+//   ⚠️`items.storage_zone_id` 가 NULL 이면 NULL 로 둔다 — 미배정 입고에는 담당자가 없다.
+//      (헬퍼는 법인 기본창고로 폴백하지만, 그건 **행을 만들 때**의 규칙이고 여기는 **담당자 귀속**이다.
+//       담당자 없는 라인을 기본창고 담당자에게 떠넘기지 않는다.)
+//
+// 요구 별칭 = `poi`(발주 라인) · `i`(품목) · `po`(발주). 결과 별칭 = `sz`(귀속 구역) · `iz`(품목 기본창고).
+export const RECEIVING_ZONE_JOIN_SQL = `
+      LEFT JOIN storage_zones iz ON iz.id = i.storage_zone_id
+      LEFT JOIN storage_zones sz ON sz.id = COALESCE(
+        poi.storage_zone_id,
+        CASE WHEN iz.entity_id = po.entity_id AND iz.is_active = 1 THEN iz.id END,
+        CASE WHEN iz.id IS NOT NULL THEN (
+          SELECT dz.id FROM storage_zones dz
+           WHERE dz.entity_id = po.entity_id AND dz.is_default = 1 AND dz.is_active = 1
+           ORDER BY dz.id LIMIT 1
+        ) END
+      )`
+
+/** 같은 규칙의 SELECT 절 표현 — `effective_zone_id` 로 쓰는 곳용. */
+export const RECEIVING_ZONE_EXPR_SQL = `COALESCE(
+        poi.storage_zone_id,
+        CASE WHEN iz.entity_id = po.entity_id AND iz.is_active = 1 THEN iz.id END,
+        CASE WHEN iz.id IS NOT NULL THEN (
+          SELECT dz.id FROM storage_zones dz
+           WHERE dz.entity_id = po.entity_id AND dz.is_default = 1 AND dz.is_active = 1
+           ORDER BY dz.id LIMIT 1
+        ) END
+      )`
