@@ -192,6 +192,7 @@ function buildJsx(cs, out) {
     // ★게이트 전용 스위치를 **반드시** 되돌린다 — 패널과 같은 JS 엔진이라
     //   `--only=C` 로 돌리고 끝나면 그 뒤 판짜기가 조용히 옛(느린) 경로로 돌게 된다.
     'try { MESCUT_HARDEN_OFF = false; } catch (eR) {}',
+    'try { MESCUT_EFS_OFF = false; } catch (eR2) {}',
     'for (var c = opened.length - 1; c >= 0; c--) { try { opened[c].close(SaveOptions.DONOTSAVECHANGES); } catch (eC) {} }',
     'var of = new File(OUT + "/result.txt");',
     'of.encoding = "UTF-8"; of.open("w");',
@@ -320,6 +321,74 @@ function buildSilJsx(dir) {
   ].join(NL)
 }
 
+// ── [K] 굽기 경로 — exportForScreens 가 조각별 export 와 같은 것을 만드는가 ──
+// ★왜 별도 축인가: 굽기는 **결과가 아니라 재료**를 만든다. 여기서 어긋나면 배치·칼선이
+//   전부 조금씩 틀리는데 판은 멀쩡해 보인다. 그래서 두 경로를 같은 입력으로 돌려 **직접 대조**한다.
+// ⚠️ 조각을 여러 개 만들어야 의미가 있다 — 조각 1개면 "호출당 고정비"가 드러나지 않는다.
+//    그래서 글자 픽스처의 **자식들을** 고른다(낱개 8개).
+function buildBakeJsx(dir) {
+  return [
+    'var OUT = "' + dir + '";',
+    'var L = [], C10 = String.fromCharCode(10), C13 = String.fromCharCode(13);',
+    'function say(s){ L.push(String(s)); }',
+    'function rows(rz){ var out = [], cur = "", s = String(rz), i, c;',
+    '  for (i = 0; i < s.length; i++) { c = s.charAt(i);',
+    '    if (c === C10 || c === C13) { if (cur.length) out.push(cur); cur = ""; } else cur += c; }',
+    '  if (cur.length) out.push(cur); return out; }',
+    'function parse(rz){ var R = rows(rz), P = {}, Q = {}, i, t;',
+    '  for (i = 1; i < R.length; i++) { t = R[i].split(" ");',
+    '    var rec = { ox: t[4], oy: t[5], path: t.slice(6).join(" ") };',
+    '    if (t[0] === "P") P[t[1]] = rec; else if (t[0] === "Q") Q[t[1]] = rec; }',
+    '  return { head: R[0], P: P, Q: Q }; }',
+    'function count(o){ var k, n = 0; for (k in o) if (o.hasOwnProperty(k)) n++; return n; }',
+    'function allExist(o){ var k; for (k in o) if (o.hasOwnProperty(k))',
+    '  { if (!(new File(o[k].path)).exists) return 0; } return 1; }',
+    'var made = [];',
+    'try {',
+    '  $.evalFile(new File("' + fwd(HOST) + '"));',
+    '  say("host=" + mesCut_ping());',
+    '  var lt = app.open(new File("' + fwd(FIX_LETTERS) + '"));',
+    '  made.push(lt); app.activeDocument = lt;',
+    '  var tops = mesCut_topItems(lt), i;',
+    // ★조각을 **여러 개**로 만든다 — 1개면 「호출당 고정비」가 드러나지 않고
+    //   아트보드 N개 경로 자체가 시험되지 않는다. 픽스처 구조에 기대지 않고 복제해서 만든다.
+    '  var g = tops[0], gb = g.geometricBounds, gw = (gb[2] - gb[0]) + 20;',
+    '  for (i = 0; i < 3; i++) { var cpy = g.duplicate(lt.layers[0], ElementPlacement.PLACEATEND);',
+    '    cpy.translate(gw * (i + 1), 0); }',
+    '  var all = mesCut_topItems(lt);',
+    '  lt.selection = null;',
+    '  for (i = 0; i < all.length; i++) all[i].selected = true;',
+    '  say("begin=" + mesCut_nestBegin());',
+    '  var silent = mesCut_silentBegin();',
+    '  MESCUT_EFS_OFF = true;',
+    '  var t1 = (new Date()).getTime();',
+    '  var A = parse(mesCut_nestBakeAll(0.25, 0, false, "gnest", "gink"));',
+    '  var msA = (new Date()).getTime() - t1;',
+    '  MESCUT_EFS_OFF = false;',
+    '  var t2 = (new Date()).getTime();',
+    '  var B = parse(mesCut_nestBakeAll(0.25, 0, false, "gnest", "gink"));',
+    '  var msB = (new Date()).getTime() - t2;',
+    '  mesCut_silentEnd(silent);',
+    '  var same = 1, k;',
+    '  for (k in A.P) if (A.P.hasOwnProperty(k))',
+    '    { if (!B.P[k] || B.P[k].ox !== A.P[k].ox || B.P[k].oy !== A.P[k].oy) same = 0; }',
+    '  say("old=" + A.head);',
+    '  say("new=" + B.head);',
+    '  say("ms=" + msA + "," + msB);',
+    '  say("pieces=" + count(A.P) + "," + count(B.P));',
+    '  say("ink=" + count(A.Q) + "," + count(B.Q));',
+    '  say("sameoxy=" + same + " files=" + allExist(B.P) + " inkfiles=" + allExist(B.Q));',
+    '} catch (e) { say("EXC " + e + (e.line ? (" line " + e.line) : "")); }',
+    'try { MESCUT_EFS_OFF = false; } catch (eR) {}',
+    'for (var q = made.length - 1; q >= 0; q--) { try { made[q].close(SaveOptions.DONOTSAVECHANGES); } catch (eC) {} }',
+    'var of = new File(OUT + "/result.txt");',
+    'of.encoding = "UTF-8"; of.open("w");',
+    'for (var i2 = 0; i2 < L.length; i2++) of.writeln(L[i2]);',
+    'of.close();',
+    '"ok";',
+  ].join(NL)
+}
+
 // ── 실행 ─────────────────────────────────────────────────────────────
 console.log(C.b(NL + '재단 E2E — 픽스처로 실제 판짜기'))
 console.log(C.dim('  픽스처 ' + path.relative(REPO, FIXTURE) + ' · 시트 ' + SHEET_W + 'x' + SHEET_H + 'mm'))
@@ -439,6 +508,45 @@ if (!ONLY.length || ONLY.indexOf('S') >= 0) {
     if (run.res.EXC) console.log('    ' + C.dim('EXC ' + run.res.EXC))
     bad += lb
     if (lb) keepDirs.push(dir)
+    else { try { fs.rmSync(dir, { recursive: true, force: true }) } catch (e) { /* 무해 */ } }
+  }
+}
+
+// ── [K] 굽기 경로 ──────────────────────────
+if (!ONLY.length || ONLY.indexOf('K') >= 0) {
+  console.log(C.b(NL + '  [K] 굽기 — exportForScreens 가 조각별 export 와 같은 것을 만드는가'))
+  const dir = fwd(fs.mkdtempSync(path.join(os.tmpdir(), 'mescut-bake-')))
+  const run = runJsx(dir, buildBakeJsx(dir), 'bake.jsx')
+  if (run.fatal) {
+    console.log('    ' + C.r('FAIL') + '  하네스  ' + C.dim(run.fatal))
+    bad++; keepDirs.push(dir)
+  } else {
+    const R = run.res
+    const pieces = String(R.pieces || '').split(',')
+    const ink = String(R.ink || '').split(',')
+    const ms = String(R.ms || '').split(',')
+    const fl = String(R.sameoxy || '')
+    const rows = [
+      ['하네스가 살았다', !R.EXC, R.EXC || 'ok'],
+      ['옛 경로로도 굽는다', String(R.old || '').indexOf('fastbake=0') >= 0, R.old || '?'],
+      ['새 경로가 실제로 탔다', String(R.new || '').indexOf('fastbake=1') >= 0, R.new || '?'],
+      ['조각 수가 같다', pieces[0] === pieces[1] && Number(pieces[0]) > 1, pieces.join(' vs ')],
+      ['도련 원색 수가 같다', ink[0] === ink[1] && Number(ink[0]) > 1, ink.join(' vs ')],
+      // ★원점이 틀어지면 칼선이 통째로 밀린다 — 판은 멀줦해 보이고 치수만 틀린다.
+      ['원점(ox/oy)이 같다', fl.indexOf('1') === 0, fl || '?'],
+      ['PNG 가 실제로 있다', fl.indexOf('files=1') >= 0 && fl.indexOf('inkfiles=1') >= 0, fl || '?'],
+    ]
+    let kb = 0
+    for (const row of rows) {
+      console.log('    ' + (row[1] ? C.g('PASS') : C.r('FAIL')) + '  ' + row[0] + '  ' + C.dim(String(row[2])))
+      if (!row[1]) kb++
+    }
+    if (ms.length === 2 && Number(ms[0]) > 0) {
+      console.log('    ' + C.dim('소요 옛 ' + (Number(ms[0]) / 1000).toFixed(1) + '초 vs 새 '
+        + (Number(ms[1]) / 1000).toFixed(1) + '초  (' + (Number(ms[1]) / Number(ms[0])).toFixed(2) + '배)'))
+    }
+    bad += kb
+    if (kb) keepDirs.push(dir)
     else { try { fs.rmSync(dir, { recursive: true, force: true }) } catch (e) { /* 무해 */ } }
   }
 }

@@ -918,6 +918,32 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     ok('3v 컴파운드 서브패스까지 본다', /CompoundPathItem[\s\S]{0,400}pathItems\[q\]\.remove\(\)|subs\[k\]\.remove\(\)/.test(h2))
     ok('3v 임계는 물리 치수다', /MESCUT_MIN_CUT_MM = 0\.1/.test(h2))
     ok('3v 감싸는 규칙은 사라졌다', !/weldOne/.test(h2))
+
+    // ── 굽기 export = 호출당 고정비 (2026-09-04) ──────────
+    // ★실측: 조각별 exportFile x23 = 8,263ms(개당 359ms) · 격자 전체 1번 = 2,145ms.
+    //   픽셀이 아니라 **왜복**이 비싸다 → 아트보드 N개 + exportForScreens 1회.
+    ok('3w 굽기가 exportForScreens 를 쓴다', /function mesCut_bakeScreens\(/.test(h2)
+      && /exportForScreens\(/.test(h2))
+    // ⚠️ antiAliasing 은 **불리언이 아니라 enum** 이다. true 를 넣으면 대입은 통과하고
+    //    호출이 통째로 "Enumerated value expected" 로 죽는다 — 기능이 없는 것처럼 보인다.
+    ok('3w AA 는 enum 으로 넣는다', /AntiAliasingMethod\.(ARTOPTIMIZED|None)/.test(h2)
+      && !/ExportForScreensOptionsPNG24[\s\S]{0,300}antiAliasing = (true|false)/.test(h2))
+    // ★경로 규약을 바꾸면 패널은 도련 PNG 를 "마스크와 같은 폴더"에 쓰는데
+    //   호스트는 Folder.temp 에서 읽어 **도련이 조용히 사라진다** → 옛 이름으로 옮긴다.
+    ok('3w 결과를 Folder.temp 옛 이름으로 옮긴다',
+      /mes_cut_' \+ tag \+ '_' \+ idx\[i\]/.test(h2) && /from\.copy\(to\)/.test(h2))
+    // ★묵은 파일을 안 지우면 실패한 조각이 **지난번 그림**으로 조용히 채워진다.
+    ok('3w 내보내기 전에 폴더를 비운다', /mesCut_efsPurge\(fold\)/.test(h2))
+    // ★배율 하위폴더 이름("1.411x")은 **만들지 않고 찾는다** — 형식이 배율에 따라 달라진다.
+    ok('3w 배율 폴더를 찾아서 쓴다', /getFiles\(function \(x\) \{ return x instanceof Folder/.test(h2))
+    // ★실패하면 옛 경로가 받는다 — 그런데 옛 경로는 **활성 아트보드**를 내보낸다.
+    //   아트보드를 1개로 되돌리지 않으면 **같은 그림을 n 번** 뷄는다(하네스에서 실제로 겪었다).
+    ok('3w 폴백 전에 아트보드를 1개로 되돌린다',
+      /while \(tmp\.artboards\.length > 1\) tmp\.artboards\.remove/.test(h2)
+      && /setActiveArtboardIndex\(0\)/.test(h2))
+    ok('3w 게이트 스위치가 있다', /var MESCUT_EFS_OFF = false;/.test(h2))
+    ok('3w 상한을 넘으면 옛 경로', /idx\.length > MESCUT_EFS_MAX_AB/.test(h2))
+    ok('3w 결과에 새 경로 여부를 밝힌다', /;fastbake=' \+ fastBake/.test(h2))
   }
   // ★단품 칼선(makeCut)은 손대지 않았다 — 거기는 지금도 구멍을 낸다.
   ok('3v 단품 칼선의 구멍은 유지', /var minHoleMm = toFileMm\(MIN_HOLE_MM\);/.test(panelSrc))

@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.34.0';  // 0.34.0 = ★칼선에서 **자를 수 없는 부스러기**를 걷어낸다(실물 판 131개 중 15개가 0.01x0mm 3점 조각 — 컬파운드 안쪽이라 안 보였다) · 글자는 글자대로 남긴다(감싸기 안 함) · 0.33.0 = ★회전한 조각의 칼선이 **바깥 사각**으로 나가던 것 정정 — PDF 굳히기 임베드가 만든 사각 클립이 실루에을 덮었다(자르는 게 없는 클립만 걷어낸다) · 0.32.0 = ★굳혀서 배치하는 새 법 — **한 판에 1회**(조각 전부를 계자 PDF 로 한 번 굳힌 뒤 회전 값마다 마스턼 하나 → 배치는 duplicate) — 회전만 걸려도 조각당 3.05초가 붙던 것이 조각 수와 무관해진다 · 0.31.0 = ★등록 manifest 가 저장 배율을 반영한다(measured_cm=실물 · scale_pct=100/N) — 여태 1/2 로 짜면 주문 라인 규격이 1/S · 청구면적이 1/S² 였다 · 0.30.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.29.0 = PDF 아트보드 기준을 잉크 경계로(visibleBounds 로 잡으면 마스크로 가린 여분이 되살아나 조각이 커지고 재단선을 넘는다) · 0.28.0 = 회전도 임베드 앞으로 + **회전만 있어도 PDF 경로**(1:1 회전도 마스크가 안 따라와 배경 절반이 회색) + 검산 기대폭에 회전 반영 · 0.27.0 = 배율 기준을 PDF 아트보드로(배치 직후 보고값은 잘려 있어 +23%) · 확대는 임베드 **전**(뒤로 옮기면 마스크가 안 따라와 배경이 죽는다) · 0.26.0 = 배율 확대 크기 계산을 임베드 **후**로(배치 직후 값은 그림 있는 데까지로 잘려 있어 클립 밖 삐짐 조각이 +23% 크게 나왔다) · 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
+var MESCUT_VERSION = 'CUT-CEP-0.35.0';  // 0.35.0 = ★굽기 export 는 **호출당 고정비가 지배**한다 — 조각마다 exportFile 하던 것을 아트보드 N개 + `exportForScreens` 1회로 (실물 23조각 8,263ms ×2 → 4,841 + 695ms). 경로 규약은 그대로 — 파일을 `Folder.temp` 의 옛 이름으로 옮겨 둔다(안 그러면 도련이 조용히 사라진다) · 0.34.0 = ★칼선에서 **자를 수 없는 부스러기**를 걷어낸다(실물 판 131개 중 15개가 0.01x0mm 3점 조각 — 컬파운드 안쪽이라 안 보였다) · 글자는 글자대로 남긴다(감싸기 안 함) · 0.33.0 = ★회전한 조각의 칼선이 **바깥 사각**으로 나가던 것 정정 — PDF 굳히기 임베드가 만든 사각 클립이 실루에을 덮었다(자르는 게 없는 클립만 걷어낸다) · 0.32.0 = ★굳혀서 배치하는 새 법 — **한 판에 1회**(조각 전부를 계자 PDF 로 한 번 굳힌 뒤 회전 값마다 마스턼 하나 → 배치는 duplicate) — 회전만 걸려도 조각당 3.05초가 붙던 것이 조각 수와 무관해진다 · 0.31.0 = ★등록 manifest 가 저장 배율을 반영한다(measured_cm=실물 · scale_pct=100/N) — 여태 1/2 로 짜면 주문 라인 규격이 1/S · 청구면적이 1/S² 였다 · 0.30.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.29.0 = PDF 아트보드 기준을 잉크 경계로(visibleBounds 로 잡으면 마스크로 가린 여분이 되살아나 조각이 커지고 재단선을 넘는다) · 0.28.0 = 회전도 임베드 앞으로 + **회전만 있어도 PDF 경로**(1:1 회전도 마스크가 안 따라와 배경 절반이 회색) + 검산 기대폭에 회전 반영 · 0.27.0 = 배율 기준을 PDF 아트보드로(배치 직후 보고값은 잘려 있어 +23%) · 확대는 임베드 **전**(뒤로 옮기면 마스크가 안 따라와 배경이 죽는다) · 0.26.0 = 배율 확대 크기 계산을 임베드 **후**로(배치 직후 값은 그림 있는 데까지로 잘려 있어 클립 밖 삐짐 조각이 +23% 크게 나왔다) · 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -2167,6 +2167,124 @@ function mesCut_nestSizes() {
  *   P <idx> <w>px <h>px <oxMm> <oyMm> <path>
  * 실패한 조각은 그 줄이 빠진다 — 호출자가 idx 로 대조한다.
  */
+/** 내보내기 폴더를 비운다 — ★안 비우면 이번에 실패한 조각이 **지난번 그림**으로 조용히 채워진다. */
+function mesCut_efsPurge(fold) {
+    try {
+        var fs = fold.getFiles();
+        for (var i = 0; i < fs.length; i++) {
+            if (fs[i] instanceof Folder) { mesCut_efsPurge(fs[i]); try { fs[i].remove(); } catch (e1) {} }
+            else { try { fs[i].remove(); } catch (e2) {} }
+        }
+    } catch (e) {}
+}
+
+/**
+ * 조각마다 아트보드를 만들고 **한 번의 `exportForScreens`** 로 전부 내보낸다.
+ *
+ * ★왜 — export 는 **호출당 고정비가 지배한다**(2026-09-04 실측, 실물 23조각):
+ *   개별 `exportFile` x23 = 8,263ms(개당 359ms) 인데 픽셀은 11Mpx 뿐이고,
+ *   격자 전체를 한 번에 뽑으면 20Mpx 를 2,145ms 에 끝낸다. 즉 **픽셀이 아니라 왕복이 비싸다.**
+ *   `exportForScreens` 는 아트보드 N개를 한 호출로 처리한다 → 마스크 4,841ms · 원색 695ms
+ *   (원색이 훨씬 싼 이유는 AA 를 끄기 때문이다).
+ *
+ * ⚠️ **`antiAliasing` 은 불리언이 아니라 enum 이다.** `true` 를 넣으면 대입은 통과하고
+ *    **호출이 통째로** "Enumerated value expected" 로 죽는다 — 옵션 한 줄 때문에 기능 전체가
+ *    없는 것처럼 보인다(2026-09-04 에 이걸로 헤맸다). `AntiAliasingMethod.ARTOPTIMIZED` / `.None`.
+ *
+ * ⚠️ 결과 파일은 **`<폴더>/<배율>x/<아트보드이름>.png`** 로 떨어진다. 배율 폴더 이름("1.411x")을
+ *    **만들어서 찾지 않는다** — 형식이 배율 값에 따라 달라 재현이 취약하다. 폴더를 뒤져서 찾는다.
+ *
+ * ⚠️ 그리고 **파일을 `Folder.temp` 의 옛 이름으로 옮긴다.** 경로 규약을 바꾸면 패널이 도련 PNG 를
+ *    "마스크와 같은 폴더"에 쓰는데 호스트는 `Folder.temp` 에서 읽어 **도련이 조용히 사라진다.**
+ *    굽는 방법만 바꾸고 **주고받는 약속은 그대로 둔다.**
+ *
+ * @returns {Array<string>} 조각 순서대로 최종 경로, 실패 시 null
+ */
+function mesCut_efsRound(doc, rects, names, mmPerPx, aaOn, tag, idx) {
+    var i;
+    if (typeof ExportForScreensType === 'undefined') return null;
+    while (doc.artboards.length > rects.length) {
+        try { doc.artboards.remove(doc.artboards.length - 1); } catch (eR) { return null; }
+    }
+    for (i = 0; i < rects.length; i++) {
+        try {
+            if (i < doc.artboards.length) { doc.artboards[i].artboardRect = rects[i]; doc.artboards[i].name = names[i]; }
+            else { doc.artboards.add(rects[i]).name = names[i]; }
+        } catch (eA) { return null; }
+    }
+    var tmpDir = Folder.temp.fsName.replace(/\\/g, '/');
+    var fold = new Folder(tmpDir + '/mes_cut_efs_' + tag);
+    if (fold.exists) mesCut_efsPurge(fold);
+    else { try { if (!fold.create()) return null; } catch (eC) { return null; } }
+    var o, it;
+    try {
+        o = new ExportForScreensOptionsPNG24();
+        o.transparency = true;
+        o.antiAliasing = aaOn ? AntiAliasingMethod.ARTOPTIMIZED : AntiAliasingMethod.None;
+        o.scaleType = ExportForScreensScaleType.SCALEBYFACTOR;
+        o.scaleTypeValue = (1 / mmPerPx) * (25.4 / 72);
+        it = new ExportForScreensItemToExport();
+        it.document = false;
+        it.artboards = '1-' + rects.length;
+    } catch (eO) { return null; }
+    try { doc.exportForScreens(fold, ExportForScreensType.SE_PNG24, o, it, ''); } catch (eE) { return null; }
+    var src = null;
+    try {
+        var subs = fold.getFiles(function (x) { return x instanceof Folder; });
+        for (i = 0; i < subs.length; i++) {
+            var ff = subs[i].getFiles('*.png');
+            if (ff && ff.length) { src = subs[i]; break; }
+        }
+        if (!src) { var flat = fold.getFiles('*.png'); if (flat && flat.length) src = fold; }
+    } catch (eF) { return null; }
+    if (!src) return null;
+    var base = src.fsName.replace(/\\/g, '/'), out = [];
+    for (i = 0; i < rects.length; i++) {
+        var from = new File(base + '/' + names[i] + '.png');
+        if (!from.exists) return null;
+        var to = tmpDir + '/mes_cut_' + tag + '_' + idx[i] + '.png';
+        try { var tf = new File(to); if (tf.exists) tf.remove(); } catch (eD) {}
+        if (!from.copy(to)) return null;
+        out.push(to);
+    }
+    return out;
+}
+
+/** 마스크(+도련 원색)를 `exportForScreens` 로 굽고 P/Q 줄을 채운다. 하나라도 어긋나면 false. */
+function mesCut_bakeScreens(doc, boxes, srcBB, padPt, mmPerPx, tag, bleedTag, lines, f) {
+    var n = boxes.length, i, sc = (1 / mmPerPx) * (25.4 / 72) * 100;
+    var idx = [], names = [], mRect = [], iRect = [];
+    for (i = 0; i < n; i++) {
+        if (!boxes[i] || !srcBB[i]) continue;
+        var bx = boxes[i];
+        idx.push(i); names.push('p' + i);
+        mRect.push([bx[0] - padPt, bx[1] + padPt, bx[2] + padPt, bx[3] - padPt]);
+        iRect.push([bx[0], bx[1], bx[2], bx[3]]);
+    }
+    if (!idx.length || idx.length > MESCUT_EFS_MAX_AB) return false;
+    var got = mesCut_efsRound(doc, mRect, names, mmPerPx, true, tag, idx);
+    if (!got) return false;
+    for (i = 0; i < idx.length; i++) {
+        var k = idx[i], b2 = boxes[k];
+        lines.push('P ' + k + ' ' + Math.round(((b2[2] - b2[0]) + padPt * 2) * sc / 100)
+            + ' ' + Math.round(((b2[1] - b2[3]) + padPt * 2) * sc / 100)
+            + ' ' + f(srcBB[k][0] - padPt) + ' ' + f(srcBB[k][1] + padPt) + ' ' + got[i]);
+    }
+    // 도련만 실패하면 마스크는 살린다 — 패널이 옛 경로로 원색을 따로 굽는다.
+    if (bleedTag) {
+        var gotB = mesCut_efsRound(doc, iRect, names, mmPerPx, false, bleedTag, idx);
+        if (gotB) {
+            for (i = 0; i < idx.length; i++) {
+                var k2 = idx[i], b3 = boxes[k2];
+                lines.push('Q ' + k2 + ' ' + Math.round((b3[2] - b3[0]) * sc / 100)
+                    + ' ' + Math.round((b3[1] - b3[3]) * sc / 100)
+                    + ' ' + f(srcBB[k2][0]) + ' ' + f(srcBB[k2][1]) + ' ' + gotB[i]);
+            }
+        }
+    }
+    return true;
+}
+
 function mesCut_nestBakeAll(mmPerPx, padMm, fillClosed, tag, bleedTag) {
     if (!MESCUT_NEST_ITEMS || !MESCUT_NEST_ITEMS.length) return 'ERROR 대상 없음 (nestBegin 먼저)';
     if (!mmPerPx || mmPerPx <= 0) mmPerPx = 0.5;
@@ -2187,7 +2305,7 @@ function mesCut_nestBakeAll(mmPerPx, padMm, fillClosed, tag, bleedTag) {
     var srcBB = [];
     for (i = 0; i < n; i++) srcBB.push(mesCut_inkBounds(MESCUT_NEST_ITEMS[i]));
 
-    var tmp = null, nFill = 0;
+    var tmp = null, nFill = 0, fastBake = 0;
     var lines = [];
     try {
         // ★조각을 **격자**로 벌린다. 가로 한 줄로만 늘어놓으면 1:1(원본 크기) 조각에서 총 폭이
@@ -2285,7 +2403,21 @@ function mesCut_nestBakeAll(mmPerPx, padMm, fillClosed, tag, bleedTag) {
             bOpts.horizontalScale = sc; bOpts.verticalScale = sc;
         }
         var f = function (pt) { return Math.round((pt / PT) * 100) / 100; };
-        for (i = 0; i < n; i++) {
+        // ★ export 는 **호출당 고정비가 지배**한다 — 조각마다 부르지 말고 아트보드 N개를 한 번에.
+        //   실물 23조각 실측: 개별 8,263ms ×2(마스크·원색) → 4,841 + 695ms.
+        //   실패하면 아래 옛 경로가 그대로 받는다(구 일러·상한 초과·API 거부).
+        if (!MESCUT_EFS_OFF) {
+            try { fastBake = mesCut_bakeScreens(tmp, boxes, srcBB, padPt, mmPerPx, tag, bleedTag, lines, f) ? 1 : 0; }
+            catch (eFS) { fastBake = 0; }
+        }
+        if (!fastBake) {
+            lines = [];   // 부분 성공 잔재를 남기지 않는다
+            // ★fast 경로가 아트보드를 여러 개 남겼을 수 있다 — 옛 경로는 **활성 아트보드**를 내보내므로
+            //   1개로 되돌리지 않으면 같은 그림을 n 번 뷄는다(2026-09-04 하네스에서 실제로 겪었다).
+            try { while (tmp.artboards.length > 1) tmp.artboards.remove(tmp.artboards.length - 1); } catch (eAB) {}
+            try { tmp.artboards.setActiveArtboardIndex(0); } catch (eAI) {}
+        }
+        for (i = 0; i < n && !fastBake; i++) {
             if (!boxes[i] || !srcBB[i]) continue;
             var bx = boxes[i];
             tmp.artboards[0].artboardRect = [bx[0] - padPt, bx[1] + padPt, bx[2] + padPt, bx[3] - padPt];
@@ -2315,7 +2447,8 @@ function mesCut_nestBakeAll(mmPerPx, padMm, fillClosed, tag, bleedTag) {
         return 'ERROR nestBakeAll: ' + e;
     }
     if (!lines.length) return 'ERROR 구운 조각 0개';
-    return 'ok;n=' + lines.length + ';mmpp=' + mmPerPx + ';filled=' + nFill + '\n' + lines.join('\n');
+    return 'ok;n=' + lines.length + ';mmpp=' + mmPerPx + ';filled=' + nFill + ';fastbake=' + fastBake
+        + '\n' + lines.join('\n');
 }
 
 /**
@@ -2674,6 +2807,12 @@ var MESCUT_HARDEN_GAP_MM = 20;
  * ⚠️ 패널은 이 값을 절대 건드리지 않는다. `cut:e2e` 만 쓴다.
  */
 var MESCUT_HARDEN_OFF = false;
+
+// ★게이트 전용 — 켜면 굽기가 조각마다 exportFile 하는 옛 경로로 돈다(동등성 시험용).
+//   `MESCUT_HARDEN_OFF` 와 같은 성질이라 **하네스가 반드시 되돌려야** 한다.
+var MESCUT_EFS_OFF = false;
+// 아트보드 상한(일러 1000). 넘으면 옛 경로로 간다 — 쪼개서 여러 번 부르는 복잡도를 살 만한 자리가 아니다.
+var MESCUT_EFS_MAX_AB = 900;
 
 /**
  * (1) 조각 전부를 임시 문서 하나에 격자로 모아 **PDF 한 번** 굳힌다.
