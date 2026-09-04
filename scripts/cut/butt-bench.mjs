@@ -196,6 +196,47 @@ console.log('\n맞붙임 (js/butt.js)\n' + '='.repeat(52))
   ok('회전 미지정이면 세우지 않는다', noRot.unplaced.length === 1, JSON.stringify(noRot.placements))
 }
 
+// ── ⑦ 판 나누기 (2026-09-04) ─────────────────────────────────────
+// 여태 롤은 길이 무제한 전제라 **판 1장**만 나왔다. 그래서 조각이 한 줄로 서는 실물이
+// 13,442mm 한 판이 되어 일러 한계(5,644mm)에 걸렸고, 큰 잡에서 맞붙임이 한 번도 안 켜졌다.
+{
+  const many = (n, w, h) => Array.from({ length: n }, (_, i) => ({ id: i, w, h }))
+
+  // 상한을 안 주면 예전 그대로 — 기존 호출부가 조용히 달라지면 안 된다
+  const one = B.packSheets(many(6, 950, 2240), 1050, false, 0)
+  ok('⑦ 상한이 없으면 판 1장(옛 동작)', one.length === 1, `${one.length}장`)
+
+  const sh = B.packSheets(many(6, 950, 2240), 1050, false, 5600)
+  ok('⑦ 상한을 주면 판이 나뉜다', sh.length === 3, `${sh.length}장`)
+  ok('⑦ 모든 판이 상한 이하', sh.every((s) => s.usedH <= 5600), sh.map((s) => s.usedH).join(','))
+  ok('⑦ 조각을 하나도 안 잃는다', sh.reduce((n, s) => n + s.placements.length, 0) === 6,
+    String(sh.reduce((n, s) => n + s.placements.length, 0)))
+  ok('⑦ 판마다 겹침 없음', sh.every((s) => !B.anyOverlap(s.placements)))
+
+  // ★공유 변은 **판마다** 계산한다 — 판을 가로지르는 공유 변은 존재하지 않는다
+  const segs0 = B.cutSegments(sh[0].placements)
+  ok('⑦ 판 안에서는 공유 변이 합쳐진다', segs0.length < 4 * sh[0].placements.length,
+    `${segs0.length}개 / 조각 ${sh[0].placements.length}장`)
+  ok('⑦ 공유 변이 판 밖으로 안 나간다', segs0.every((s) => Math.max(s.y1, s.y2) <= sh[0].usedH + 1e-9))
+
+  // ★id 는 유일하지 않다 — 수량 반영 때 같은 조각이 여러 번 들어온다.
+  //   판을 나눌 때 id 로 남은 것을 거르면 **한 장만 남고 나머지가 사라진다**(그래서 인덱스로 센다).
+  const dup = Array.from({ length: 4 }, () => ({ id: 7, w: 950, h: 2240 }))
+  const dupSh = B.packSheets(dup, 1050, false, 5600)
+  ok('⑦ ★같은 id 가 여러 장이어도 안 잃는다',
+    dupSh.reduce((n, s) => n + s.placements.length, 0) === 4,
+    String(dupSh.reduce((n, s) => n + s.placements.length, 0)))
+
+  // 조각 하나가 판보다 크면 나눠도 답이 없다 → null(호출부가 래스터로 되돌린다)
+  ok('⑦ 조각이 판보다 크면 null', B.packSheets([{ id: 0, w: 900, h: 9000 }], 1050, false, 5600) === null)
+  ok('⑦ 폭보다 넓어도 null', B.packSheets([{ id: 0, w: 2000, h: 100 }], 1050, false, 5600) === null)
+
+  // 같은 입력 → 같은 판 나누기(결정적)
+  ok('⑦ 판 나누기도 결정적',
+    JSON.stringify(B.packSheets(many(6, 950, 2240), 1050, false, 5600))
+    === JSON.stringify(B.packSheets(many(6, 950, 2240), 1050, false, 5600)))
+}
+
 console.log('\n── 판정 ──')
 if (fail === 0) console.log(`  ✅ 전 항목 통과 (${pass}건)`)
 else console.log(`  ❌ 실패 ${fail}건 / 통과 ${pass}건`)

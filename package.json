@@ -74,6 +74,7 @@
     "e2e:report": "npx playwright show-report",
     "ia:deploy": "node scripts/ia-deploy.cjs",
     "cut:butt": "node scripts/cut/butt-bench.mjs",
+    "cut:placement": "node scripts/cut/placement-bench.mjs",
     "cut:shellsync": "node scripts/cut/shell-sync-test.mjs",
     "cut:quality": "node scripts/cut/cutline-quality.mjs",
     "audit:items": "node scripts/item-master-audit.cjs",

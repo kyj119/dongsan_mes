@@ -20,6 +20,9 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 // 검사 대상은 같은 파일들이고 위치만 바뀌었다 — main.js 만 cut-main.js 로 나뉘어 있다.
 const PANEL_DIR = path.join(REPO, 'IllustratorAutomat', 'designer', 'poc-a0-cep', 'com.mes.a0.panel')
 const CUT_MAIN = path.join(PANEL_DIR, 'js/cut-main.js')
+// ★배치 판정은 2026-09-04 에 `placement.js` 로 나갔다 — 동작 검증은 `cut:placement` 가 하고,
+//   여기서는 **패널이 그 모듈을 실제로 타는지**(배선)만 본다. 소스 텍스트로 볼 수 있는 건 그것뿐이다.
+const PLACEMENT_JS = path.join(PANEL_DIR, 'js/placement.js')
 const PANEL = path.join(PANEL_DIR, 'index.html')
 const A0_DIR = path.join(REPO, 'IllustratorAutomat', 'designer', 'poc-a0-cep', 'com.mes.a0.panel')
 
@@ -985,13 +988,25 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   //   넷 중 하나라도 걸리면 기존 래스터 경로여야 한다(회귀 0).
   // ⚠️ 조건은 **왜 안 켜졌는지 말하는** if/else 사슬로 바뀌었다(2026-08-07). 조용히 폴백하면
   //    사용자는 기능이 고장난 줄 안다 — 실제로 한 번 그렇게 헛돌았다. 항목별로 나눠 본다.
-  ok('3y 맞붙임은 여백·간격 정확히 0 일 때만', /offsetMm !== 0 \|\| gapMm !== 0/.test(panelSrc))
+  // ★판정은 `placement.js` 로 나갔다 (2026-09-04) — 조건 자체는 `cut:placement` 가 값으로 확인한다.
+  //   여기서는 **패널이 그 모듈을 실제로 타는지**만 본다(배선이 끊기면 조건이 맞아도 안 켜진다).
+  const placeSrc = fs.readFileSync(PLACEMENT_JS, 'utf8')
+  ok('3y 맞붙임은 여백·간격 정확히 0 일 때만', /o\.offsetMm !== 0 \|\| o\.gapMm !== 0/.test(placeSrc))
+  ok('3y 패널이 판정 모듈을 탄다', /PLC\.choose\(\{/.test(panelSrc) && /window\.MesCutPlacement/.test(panelSrc))
+  ok('3y 판정 모듈이 없으면 멈춘다', /placement\.js 미로드/.test(panelSrc))
+  ok('3y 판정 모듈이 실려 있다',
+    /<script src="js\/placement\.js"><\/script>/.test(fs.readFileSync(PANEL, 'utf8')))
   // ★맞붙임은 벡터보다 우선한다(2026-08-07 실사용). 벡터는 조각마다 실루엣을 따로 그려
   //   맞닿은 변이 **원리상 반드시 두 줄**이라, 여백 0·간격 0 요청 자체를 만족시킬 수 없다.
   //   호스트 분기가 `if (useVec) … else if (segs)` 이므로 패널이 useVec 를 내려야 선분이 그려진다.
-  ok('3y 맞붙임이 벡터보다 우선', /if \(buttExact && useVec\) \{ useVec = false/.test(panelSrc))
+  ok('3y 맞붙임이 벡터보다 우선', /overVec = !!\(on && o\.wantVec\)/.test(placeSrc))
+  // ★★맞붙임이 **실제로 켜졌을 때만** 벡터를 내린다 (2026-09-04). 전에는 폴백해도 useVec 이
+  //   false 로 남아 맞붙임도 안 되고 벡터 칼선까지 잃었다 — 요청은 벡터였다.
+  ok('3y 폴백하면 벡터 요청을 되돌려 준다',
+    /if \(buttOverVec\) useVec = false;/.test(panelSrc) && /on = false\s*\n\s*overVec = false/.test(placeSrc))
   ok('3y 맞붙임이면 호스트에 raster 로 알린다', /useVec \? '' : ',"raster"'/.test(panelSrc))
-  ok('3y 조각 크기를 못 받으면 안 쓴다', /!prep\.sizes\.length/.test(panelSrc))
+  ok('3y 조각 크기를 못 받으면 안 쓴다',
+    /조각 크기를 못 받았습니다/.test(placeSrc) && /buttMode && BT && prep\.sizes\.length/.test(panelSrc))
   ok('3y 안 켜지면 이유를 결과에 싣는다',
     /buttWhy/.test(panelSrc) && /맞붙임 정확 배치 OFF/.test(panelSrc) && /buttDiag \+= buttExact/.test(panelSrc))
   // ★판정 대상은 **본체(가장 큰 연결요소)** 다. 마스크 전체로 보면 본체와 떨어진 가는 선
@@ -1013,10 +1028,18 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3y 맞붙임이 파일→저장 좌표로 환산',
     /var k = fileToSave\(\) \|\| 1/.test(panelSrc) && /w: sz\.w \/ k, h: sz\.h \/ k/.test(panelSrc))
   ok('3y 배치 크기를 마스크와 대조(검산)', /BT\.inkBBox\(pc\.base\)/.test(panelSrc) && /pls\[s\]\.rot === 90 \? bb\.H : bb\.W/.test(panelSrc))
-  ok('3y 못 넣은 조각이 있으면 되돌린다', /if \(r\.unplaced\.length\) return null/.test(panelSrc))
+  // ★못 담았으면 되돌린다 — packSheets 는 한 조각도 못 넣으면 null 을 준다(조각이 판보다 크다).
+  ok('3y 못 넣은 조각이 있으면 되돌린다', /if \(!packed \|\| !packed\.length\) return null/.test(panelSrc))
   // 회전은 패커가 정한다(폭 맞춤뿐 아니라 틈 메우기에도 쓰인다) — 패널은 허용 여부만 넘기고
   //   결과의 rot 를 그대로 호스트에 전달한다.
-  ok('3y 회전 허용을 패커에 넘긴다', /BT\.packRects\(rects, usableW, allowRot !== false\)/.test(panelSrc))
+  ok('3y 회전 허용을 패커에 넘긴다',
+    /BT\.packSheets\(rects, usableW, allowRot !== false, maxH\)/.test(panelSrc))
+  // ★★맞붙임도 **판을 나눈다** (2026-09-04). 상한을 안 주면 길이 무한 전제로 판 1장만 나오고,
+  //   큰 잡이 통째로 관문에 막혀 맞붙임이 한 번도 안 켜진다(칼선이 늘 두 줄).
+  ok('3y 맞붙임이 길이 상한을 받는다',
+    /var maxH = Math\.max\(1, \(sheetHmm \|\| NEST_ROLL_MAX_MM\) - domboMm\(\) \* 2\);/.test(panelSrc))
+  ok('3y 공유 변을 판마다 따로 낸다', /segs: BT\.cutSegments\(r\.placements\)/.test(panelSrc)
+    && /for \(var sN = 0; sN < packed\.length; sN\+\+\)/.test(panelSrc))
   ok('3y 패커가 정한 회전을 그대로 쓴다', /rot: p\.rot \|\| 0/.test(panelSrc))
   // ★평판 폭 좁히기 재시도가 맞붙임 결과를 갈아치우면 segs 가 사라진다 → 화면은 "한 줄" 이라고
   //   써 놓고 조각별 칼선이 나간다. 좁힌 폭에서도 맞붙임으로 돌려야 한다.
@@ -1032,11 +1055,12 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // ★구 호스트는 C 줄을 조용히 무시한다 → 조각별 칼선도 안 보냈으니 **칼선 없는 판**이 나온다.
   //   축2는 Z: 파일 1개로 전 PC 에 퍼지고 축3은 PC별 설치라, 역방향 스큐가 반드시 생긴다
   //   (도련 PNG 때와 같은 함정 — 그때도 구 패널/새 호스트 조합을 따로 막아야 했다).
-  ok('3y 구 호스트면 맞붙임을 쓰지 않는다', /else if \(!hostSupportsButt\(\)\)/.test(panelSrc))
+  ok('3y 구 호스트면 맞붙임을 쓰지 않는다',
+    /if \(!o\.hostOk\)/.test(placeSrc) && /hostOk: hostSupportsButt\(\)/.test(panelSrc))
   ok('3y 맞붙임 최소 호스트 명시', /var BUTT_MIN_HOST = \[0, 18, 0\]/.test(panelSrc))
-  // ★실패하면 조용히 이상한 판을 내지 말고 기존 경로로 되돌아가야 한다
-  //   ★창을 400 자로 둔다 — 사이에 되돌린 **사유 문구**가 들어간다(2026-09-04). 성질은 그대로다.
-  ok('3y 실패 시 래스터로 폴백', /buttExact = false;[\s\S]{0,400}?res = nestPlace\(NST, prep/.test(panelSrc))
+  // ★실패하면 조용히 이상한 판을 내지 말고 기존 경로로 되돌아가야 한다 — 그리고 **사유를 남긴다**
+  ok('3y 실패 시 래스터로 폴백',
+    /on = false[\s\S]{0,500}?res = o\.placeRaster\(\)/.test(placeSrc))
   // ★맞붙임에서는 조각별 닫힌 경로를 만들지 않는다 — 그게 두 줄의 원인이다
   ok('3y 맞붙임이면 조각별 칼선 생략', /!useVec && !res\.butt\) holeOut \+= \(pieceCutLines/.test(panelSrc))
   // ── 구멍(2026-08-07) — 시트컷 글자는 속이 뚫려야 한다. 단품에만 있던 것을 판짜기로 옮겼다.
@@ -1550,15 +1574,20 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     // ★★판 길이 관문은 **배치 엔진 밖 한 곳**이어야 한다 (2026-09-04).
     //   상한이 엔진 안에만 있으면 새 배치 방식이 그것을 모른 채 통과한다 — 맞붙임이 정확히 그랬고,
     //   1050폭 1열에서 13,442mm 판이 나가 호스트가 PARM(1346458189) 으로 죽었다.
-    ok('3u 판 길이 관문이 배치 밖에 있다', /function sheetsFitLength\(res, mmpp, sheetHmm\)/.test(panelSrc2))
+    //   ★2026-09-04 이후 그 관문은 `placement.js` 에 있다 — 판정 전체가 순수 모듈이라
+    //     "기능이 켜진 채로 끝났는가"까지 `cut:placement` 가 값으로 확인한다.
+    ok('3u 판 길이 관문이 배치 밖에 있다',
+      /function fitsLength\(res, o\)/.test(fs.readFileSync(PLACEMENT_JS, 'utf8'))
+      && !/function sheetsFitLength/.test(panelSrc2))
     // ★재는 대상은 usedH 가 아니라 **호스트로 나가는 판 높이**(돔보 포함)여야 한다
     ok('3u 관문이 돔보 포함 판 높이를 잰다',
       /Math\.ceil\(res\.sheets\[i\]\.usedH \* mmpp\) \+ domboMm\(\) \* 2/.test(panelSrc2))
     ok('3u 맞붙임도 관문을 통과해야 한다',
-      /if \(buttExact && \(!res \|\| !res\.sheets\.length \|\| lenOver\)\)/.test(panelSrc2))
+      /if \(on && \(!res \|\| !res\.sheets \|\| !res\.sheets\.length \|\| lenOver\)\)/
+        .test(fs.readFileSync(PLACEMENT_JS, 'utf8')))
     // ★되돌린 뒤에도 넘으면 보내지 않는다 — 호스트가 PARM 으로 죽느니 패널이 이유를 말한다
     ok('3u 관문 통과 못하면 호스트로 안 보낸다',
-      /if \(!sheetsFitLength\(res, mmpp, sheetHmm\)\) \{[\s\S]{0,260}?return;/.test(panelSrc2))
+      /if \(pick\.fatal\) \{ done\(pick\.fatal, 'err'\); return; \}/.test(panelSrc2))
     // ★호스트도 최종 방어선 — 판을 **만들기 전에** 검사해야 반쪽 결과가 안 남는다
     ok('3u 호스트가 판을 만들기 전에 규격을 본다', (() => {
       const h = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
@@ -1574,6 +1603,18 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     //      있어서, 단순 부재 검사는 자기 주석에 걸린다(2026-09-04 실제로 걸렸다).
     ok('3u 폭 추천이 실행과 같은 배치 조건',
       /nestPlace\(NST, prep, wFile, 0, allowRot, \{ tries: 2 \}\)/.test(panelSrc2))
+    // ★★맞붙임도 **같은 판정**을 타야 한다 (2026-09-04). 추천만 늘 래스터로 재면 맞붙임 잡이
+    //   실제보다 긴 길이로 비교된다 — maxSheets:1 과 **같은 종류의 어긋남**(추천≠실행)이다.
+    ok('3u 폭 추천도 맞붙임 판정을 탄다',
+      /var r = widthPlace\(wFile\);/.test(panelSrc2)
+      && /PLCw\.choose\(\{/.test(panelSrc2)
+      && /placeButt: function \(\) \{ return buttPlace\(BTw, prep, wFile, 0, allowRot\); \}/.test(panelSrc2))
+    // 직사각 판정은 폭과 무관하다 — 폭마다 다시 하면 스캔이 조각 수 × 폭 수만큼 느려진다
+    ok('3u 폭 추천의 직사각 판정은 한 번만', /for \(var rw0 = 0; rw0 < prep\.pieces\.length; rw0\+\+\)/.test(panelSrc2)
+      && panelSrc2.indexOf('var rectishW = []') < panelSrc2.indexOf('for (var i = 0; i < ROLL_WIDTHS_MM.length'))
+    // 같은 표에서 잣대가 다르면 비교가 오해된다 — 맞붙임으로 잰 폭은 그렇게 말한다
+    ok('3u 폭 추천이 맞붙임 여부를 밝힌다', /butt: !!r\.butt/.test(panelSrc2)
+      && /rw\.butt \? ' · 맞붙임' : ''/.test(panelSrc2))
     // ★판이 여러 장이면 재료비는 그 합이다 — 첫 판만 재면 폭 비교 자체가 틀린다
     ok('3u 폭 추천이 판 전부를 합산한다',
       /for \(var sN2 = 0; sN2 < r\.sheets\.length; sN2\+\+\)/.test(panelSrc2)

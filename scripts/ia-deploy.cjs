@@ -105,10 +105,13 @@ function uncommittedIa() {
 
 // ── ② 게이트 ────────────────────────────────────────────────────────
 // 배포하는 코드가 통과한 코드여야 한다. package.json 에 실재하는 것만 돌린다.
-// ★`cut:e2e` = **일러를 실제로 돌려** 판을 짜 보는 게이트. 나머지 넷은 소스를 읽는 정적 검사라
-//   "코드가 이렇게 생겼다"까지만 본다 — 마스크가 죽어 배경이 사라진 사고는 그 넷을 전부 통과했다.
+// ★`cut:e2e` = **일러를 실제로 돌려** 판을 짜 보는 게이트. 나머지는 소스를 읽거나(정적) 순수
+//   모듈을 값으로 돌리는 검사다 — 마스크가 죽어 배경이 사라진 사고는 정적 검사를 전부 통과했다.
 //   일러가 안 떠 있으면 스스로 **건너뛴다**(exit 0). 못 도는 걸 실패로 만들면 사람이 게이트를 끈다.
-const GATES = ['cut:bleed', 'cut:nest', 'cut:smoke', 'panel:smoke', 'cut:e2e']
+// ★★`cut:butt` 는 하네스가 2026-08-06 부터 있었는데 **이 목록에 없었다** — 배포 때 아무도 안 돌렸다.
+//   `cut:placement` 도 같이 넣는다: 「기능이 켜진 채로 끝났는가」를 보는 유일한 게이트라
+//   빠지면 조용한 격하(맞붙임이 래스터로 떨어지는 것)가 또 배포를 통과한다(2026-09-04 실사고).
+const GATES = ['cut:bleed', 'cut:nest', 'cut:butt', 'cut:placement', 'cut:smoke', 'panel:smoke', 'cut:e2e']
 function runGates() {
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'))
   const list = GATES.filter((g) => pkg.scripts && pkg.scripts[g])

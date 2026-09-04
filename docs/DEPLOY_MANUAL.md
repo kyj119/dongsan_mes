@@ -157,9 +157,18 @@ npm run audit:ia-jsx
 **① 게이트 (배포 전 필수)**
 ```powershell
 npm run panel:smoke        # 가공 탭 — 탭 구조·실루엣 분리
-npm run cut:smoke          # 재단 탭 — 칼선·네스팅·도련
+npm run cut:smoke          # 재단 탭 — 칼선·네스팅·도련 (소스 텍스트)
+npm run cut:butt           # 맞붙임 엔진 — 공유 변·판 나누기 (값)
+npm run cut:placement      # ★배치 판정 — 「맞붙임이 켜진 채로 끝났는가」 (값)
 npm run audit:ia-jsx       # 현재 드리프트 확인
 ```
+> `ia:deploy` 가 위 게이트를 **자동으로 돌린다**(`scripts/ia-deploy.cjs` GATES). 손으로 먼저 돌리는 건
+> 실패 지점을 빨리 보기 위한 것이다.
+>
+> ⚠️ **`cut:smoke` 통과는 「기능이 살아 있다」가 아니다.** 소스 텍스트 검사라 코드 모양만 본다 —
+> 2026-09-04 에 판 길이 관문이 맞붙임을 조용히 래스터로 격하시켰을 때 `cut:butt`(엔진 단독)·
+> `cut:smoke`(텍스트)·`cut:e2e`(판이 나오나)가 **전부 통과**했다. 격하는 실패가 아니라 성공처럼
+> 생겼기 때문이다. `cut:placement` 가 그 자리를 메운다.
 
 **② 축2·축3 — 관리 PC 1회**
 ```powershell

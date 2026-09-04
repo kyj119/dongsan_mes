@@ -31,7 +31,7 @@
   // ⚠️ 내용을 고치면 **반드시 이 번호를 올린다** — 수동 배포축이라 이 문자열이 "이 PC 가 어느 셸인가"의
   //    유일한 단서다. 0.57.0 하나가 세 상태를 가리키던 사고가 있었고(등록 파라미터·굽기 통합·[◎ 전체]),
   //    그래서 `ia:deploy` 가 번호가 그대로면 배포를 막는다.
-  var SHELL_VERSION = '0.76.0';   // 0.76.0 = ★[폭 추천]이 [네스팅 실행]과 **같은 배치 조건**으로 돈다 — 여태 추천만 `maxSheets: 1` 이라, 조각이 커서 한 판에 안 들어가는 잡은 **전 폭 실패**로 나왔다(실행은 판을 나눠 멀쩡히 짜는데 추천만 「어느 폭에도 배치하지 못했습니다」라고 말했다). 길이·면적도 **판 전부의 합**으로(첫 판만 재면 재료비가 틀린다) · 판 수 표시 · 「폭보다 크다」와 「판이 모자라다」를 구분 · 0.75.0 = ★판 길이 상한을 배치 엔진 밖 **관문 한 곳**(sheetsFitLength)으로 — 맞붙임(butt.packRects)은 폭만 받고 길이는 무한 전제라 상한을 모른 채 1050폭 1열에서 **13,442mm 판**을 내보냈고 호스트가 PARM 으로 죽었다. 상한 기준도 usedH 에서 **판 전체(돔보 포함)** 로 바로잡았다(usedH 만 재면 돔보 40mm 를 놓친다) · 넘으면 래스터로 되돌리고 **그 사유를 화면에 쓴다** · 0.74.0 = ★글자를 감싸는 규칙 취소(글자는 글자대로) · 칼선에서 걷어낸 **부스러기** 조각 번호를 알린다 · 0.73.0 = ★칼선을 감싼 조각 번호를 **호스트가 준 값**으로 쓴다(벡터는 호스트가 칼선을 그리므로 그쪽이 정본) · 0.72.0 = ★사각으로 바뀐 조각을 **번호로** 알린다(#N = 조각 수량 목록) · ★벡터 모드에서 「사각으로 잘랐습니다」는 거짓이었다 — 그 사각은 **배치용**이고 칼선은 아트 실루에이다 · 0.71.0 = ★호스트 게이트 인자 형태 정정([◎ 전체]·도련 통합 굽기가 상시 잠겨 있었다) · 호스트 큐 제거 성공 판정 · 「조」 표기 가시성 게이트 · 분리 중복 호출에도 응답 · 0.70.0 = ★품목·거래처 id 해소가 공백을 무시한다(IME 확정 스페이스가 이름 안에 남는다) · 모호하면 안 고른다 · 0.69.0 = ★자재·후가공 목록을 소스 하드코딩에서 config 로(이제 MES 에서 고치면 배포 없이 따라온다) · 재단 후가공=코팅 계열만 · 「돔보」 중복 제거 · 0.68.0 = ★품목=제품(PRODUCT)만 + 품목→자재 후보 좁히기(매핑 없으면 자유 입력 유지) · 0.67.0 = ★굽기 격자 칸(#nestBakeMm — 큰 실물에서 메모리·시간 급증 완화) + 조합 중 datalist 분리 제거(복원이 비대칭이라 자동완성이 죽은 채 남았다) · 0.66.0 = ★품목 칸(regProduct→ITEMID) — 주문서가 품목·단가까지 자동으로 채운다([내용]=regItem 과 다른 칸) · 0.65.0 = 0.64.0 의 근거 정정(실측상 composition 이벤트가 안 와서 그 처리는 발동하지 않는다 — 대비책으로만 유지) · 0.64.0 = 목록 달린 칸에 IME 조합 중 datalist 분리 · 0.63.0 = 호스트 구버전 감지(Z: 배포본과 대조 → 시작·포커스 시 경고 · 판짜기 차단) · 0.62.0 = 폴백 문구에 회전 포함(배율 1배 회전도 PDF 경로) · 0.61.0 = 배율 확대 결과 보고(PDF 배치 / 예비 경로 폴백 경고) · 0.60.0 = 파일명 맨 앞 거래처 · 자재/후가공 행 분리(폭 맞춤) · 「품목」→「내용」 명칭 분리(MES 품목 마스터와 구분) · 0.59.0 = 재단 탭 [◎ 전체] · 0.58.0 = 굽기 통합(마스크+도련 1왕복)·등록 파라미터(자재·후가공·돔보·파일명) · 0.57.0 = 조각 속 메우기(그룹 하나=칼선 하나·맞붙임 복구) · 0.56.0 = 도련 겹침 분할(간격 존중·하한 1.5mm)
+  var SHELL_VERSION = '0.77.0';   // 0.77.0 = ★맞붙임이 **판을 나눈다** — 여태 길이를 무한으로 보고(butt.js BIG=1e9) **판 1장**만 냈다. 1050폭에 조각이 한 줄로 서는 실물이 13,442mm 한 판으로 나가 길이 관문에 막혔고, 그래서 **큰 잡에서는 맞붙임이 한 번도 안 켜졌다**(칼선이 늘 두 줄). nesting.js 는 처음부터 rollMaxH 를 받았다 — 엔진 둘의 **능력이 달랐던 것**뿐이다. 판마다 packRects 를 새로 돌리므로 **공유 변 정확도(허용오차 없음)는 그대로**다 · ★「어느 엔진으로 짤까」 판정을 **placement.js** 로 분리 — 이 판정만 2,800줄 UI 파일 안에 있어서 **「기능이 켜진 채로 끝났는가」를 아무 게이트도 못 봤고**, 그 틈으로 0.75.0 회귀가 지나갔다(cut:butt=엔진 단독 · cut:smoke=소스 텍스트 · cut:e2e=판이 나오나 → 셋 다 통과). 게이트 = cut:placement · ★폭 추천도 **같은 판정**을 탄다(맞붙임 잡을 래스터로 재던 것 정정 — maxSheets:1 과 같은 종류의 어긋남) · ★맞붙임이 폴백하면 **벡터 칼선 요청을 되돌려 준다**(전에는 맞붙임도 안 되고 벡터도 잃었다) · 0.76.0 = ★[폭 추천]이 [네스팅 실행]과 **같은 배치 조건**으로 돈다 — 여태 추천만 `maxSheets: 1` 이라, 조각이 커서 한 판에 안 들어가는 잡은 **전 폭 실패**로 나왔다(실행은 판을 나눠 멀쩡히 짜는데 추천만 「어느 폭에도 배치하지 못했습니다」라고 말했다). 길이·면적도 **판 전부의 합**으로(첫 판만 재면 재료비가 틀린다) · 판 수 표시 · 「폭보다 크다」와 「판이 모자라다」를 구분 · 0.75.0 = ★판 길이 상한을 배치 엔진 밖 **관문 한 곳**(sheetsFitLength)으로 — 맞붙임(butt.packRects)은 폭만 받고 길이는 무한 전제라 상한을 모른 채 1050폭 1열에서 **13,442mm 판**을 내보냈고 호스트가 PARM 으로 죽었다. 상한 기준도 usedH 에서 **판 전체(돔보 포함)** 로 바로잡았다(usedH 만 재면 돔보 40mm 를 놓친다) · 넘으면 래스터로 되돌리고 **그 사유를 화면에 쓴다** · 0.74.0 = ★글자를 감싸는 규칙 취소(글자는 글자대로) · 칼선에서 걷어낸 **부스러기** 조각 번호를 알린다 · 0.73.0 = ★칼선을 감싼 조각 번호를 **호스트가 준 값**으로 쓴다(벡터는 호스트가 칼선을 그리므로 그쪽이 정본) · 0.72.0 = ★사각으로 바뀐 조각을 **번호로** 알린다(#N = 조각 수량 목록) · ★벡터 모드에서 「사각으로 잘랐습니다」는 거짓이었다 — 그 사각은 **배치용**이고 칼선은 아트 실루에이다 · 0.71.0 = ★호스트 게이트 인자 형태 정정([◎ 전체]·도련 통합 굽기가 상시 잠겨 있었다) · 호스트 큐 제거 성공 판정 · 「조」 표기 가시성 게이트 · 분리 중복 호출에도 응답 · 0.70.0 = ★품목·거래처 id 해소가 공백을 무시한다(IME 확정 스페이스가 이름 안에 남는다) · 모호하면 안 고른다 · 0.69.0 = ★자재·후가공 목록을 소스 하드코딩에서 config 로(이제 MES 에서 고치면 배포 없이 따라온다) · 재단 후가공=코팅 계열만 · 「돔보」 중복 제거 · 0.68.0 = ★품목=제품(PRODUCT)만 + 품목→자재 후보 좁히기(매핑 없으면 자유 입력 유지) · 0.67.0 = ★굽기 격자 칸(#nestBakeMm — 큰 실물에서 메모리·시간 급증 완화) + 조합 중 datalist 분리 제거(복원이 비대칭이라 자동완성이 죽은 채 남았다) · 0.66.0 = ★품목 칸(regProduct→ITEMID) — 주문서가 품목·단가까지 자동으로 채운다([내용]=regItem 과 다른 칸) · 0.65.0 = 0.64.0 의 근거 정정(실측상 composition 이벤트가 안 와서 그 처리는 발동하지 않는다 — 대비책으로만 유지) · 0.64.0 = 목록 달린 칸에 IME 조합 중 datalist 분리 · 0.63.0 = 호스트 구버전 감지(Z: 배포본과 대조 → 시작·포커스 시 경고 · 판짜기 차단) · 0.62.0 = 폴백 문구에 회전 포함(배율 1배 회전도 PDF 경로) · 0.61.0 = 배율 확대 결과 보고(PDF 배치 / 예비 경로 폴백 경고) · 0.60.0 = 파일명 맨 앞 거래처 · 자재/후가공 행 분리(폭 맞춤) · 「품목」→「내용」 명칭 분리(MES 품목 마스터와 구분) · 0.59.0 = 재단 탭 [◎ 전체] · 0.58.0 = 굽기 통합(마스크+도련 1왕복)·등록 파라미터(자재·후가공·돔보·파일명) · 0.57.0 = 조각 속 메우기(그룹 하나=칼선 하나·맞붙임 복구) · 0.56.0 = 도련 겹침 분할(간격 존중·하한 1.5mm)
 
   // ── 도련 겹침 분할 (2026-08-25) ─────────────────────────────────────────
   // ★순수 함수로 뽑아 둔 이유 = **하네스가 이 함수를 직접 돌리기 때문**이다(`npm run cut:bleed` §9).
@@ -1468,37 +1468,45 @@
     }
     // ★회전은 패커가 정한다 — 직사각은 돌려도 직사각이라 맞붙임 산수가 그대로 성립하고,
     //   폭에 맞추는 것뿐 아니라 **틈을 메우는 데도** 회전이 필요하다(실물 5장 3725 → 2585mm).
-    var r = BT.packRects(rects, usableW, allowRot !== false);
-    if (!r.placements.length || BT.anyOverlap(r.placements)) return null;
-    // ★하나라도 못 넣었으면 **조용히 빠뜨리지 말고** 되돌린다 — 래스터 경로가 회전·탐색으로 넣을 수 있다.
-    if (r.unplaced.length) return null;
-    if (sheetHmm && r.usedH > Math.max(1, sheetHmm - domboMm() * 2)) return null;   // 평판 높이 초과
-    var mmpp = prep.mmpp, inkPx = 0, pls = [];
-    for (var q = 0; q < r.placements.length; q++) {
-      var p = r.placements[q];
-      inkPx += (p.w / mmpp) * (p.h / mmpp);
-      pls.push({ id: p.id, x: p.x / mmpp, y: p.y / mmpp, rot: p.rot || 0, W: p.w / mmpp, H: p.h / mmpp });
+    // ★★길이 상한을 **여기서** 준다 (2026-09-04). 여태 맞붙임은 길이를 무한으로 보고 **판 1장**만
+    //   냈다 — 1050폭에 조각이 한 줄로 서는 실물이 13,442mm 한 판으로 나가 관문에 막혔고,
+    //   그래서 큰 잡에서는 맞붙임이 **한 번도 안 켜졌다**(칼선이 늘 두 줄). 산식은 `nestPlace` 의
+    //   rollMaxH·sheetH 와 같다 — 배치 영역은 판 전체에서 돔보 여백만큼 좁다.
+    var maxH = Math.max(1, (sheetHmm || NEST_ROLL_MAX_MM) - domboMm() * 2);
+    var packed = BT.packSheets(rects, usableW, allowRot !== false, maxH);
+    // 못 담았다 = 조각이 판보다 크다. 래스터 경로가 회전·탐색으로 넣을 수 있으니 되돌린다.
+    if (!packed || !packed.length) return null;
+    var mmpp = prep.mmpp, sheets = [];
+    for (var sN = 0; sN < packed.length; sN++) {
+      var r = packed[sN];
+      if (!r.placements.length || BT.anyOverlap(r.placements)) return null;
+      var inkPx = 0, pls = [];
+      for (var q = 0; q < r.placements.length; q++) {
+        var p = r.placements[q];
+        inkPx += (p.w / mmpp) * (p.h / mmpp);
+        pls.push({ id: p.id, x: p.x / mmpp, y: p.y / mmpp, rot: p.rot || 0, W: p.w / mmpp, H: p.h / mmpp });
+      }
+      // ★★검산 — 배치가 **실제 마스크와 같은 크기**인가 (2026-08-07).
+      //   좌표계를 잘못 쓰면(파일↔저장) 조각이 1/10 로 깔려 **전부 겹친 판**이 그대로 나간다.
+      //   `anyOverlap` 은 포장 공간 안에서만 보므로 이 사고를 못 잡는다 — 축척이 통째로 틀리면
+      //   포장 공간에서는 아무 문제가 없기 때문이다. 그래서 **다른 출처**(굽은 마스크)와 대조한다.
+      //   어긋나면 조용히 내보내지 말고 null → 호출부가 래스터로 되돌린다.
+      for (var s = 0; s < pls.length; s++) {
+        var pc = null;
+        for (var t2 = 0; t2 < prep.pieces.length; t2++) if (prep.pieces[t2].id === pls[s].id) { pc = prep.pieces[t2]; break; }
+        if (!pc || !pc.base) continue;
+        var bb = BT.inkBBox(pc.base);
+        if (!bb) continue;
+        var expW = pls[s].rot === 90 ? bb.H : bb.W;
+        var expH = pls[s].rot === 90 ? bb.W : bb.H;
+        var tol = function (a, b) { return Math.abs(a - b) <= Math.max(4, b * 0.05); };
+        if (!tol(pls[s].W, expW) || !tol(pls[s].H, expH)) return null;
+      }
+      // ★공유 변은 **판마다** 따로 계산한다 — 판을 가로지르는 공유 변은 존재하지 않는다
+      //   (판 = 생산 단위 = 등록 1건이라 애초에 따로 자른다).
+      sheets.push({ placements: pls, usedH: r.usedH / mmpp, inkPx: inkPx, segs: BT.cutSegments(r.placements) });
     }
-    // ★★검산 — 배치가 **실제 마스크와 같은 크기**인가 (2026-08-07).
-    //   좌표계를 잘못 쓰면(파일↔저장) 조각이 1/10 로 깔려 **전부 겹친 판**이 그대로 나간다.
-    //   `anyOverlap` 은 포장 공간 안에서만 보므로 이 사고를 못 잡는다 — 축척이 통째로 틀리면
-    //   포장 공간에서는 아무 문제가 없기 때문이다. 그래서 **다른 출처**(굽은 마스크)와 대조한다.
-    //   어긋나면 조용히 내보내지 말고 null → 호출부가 래스터로 되돌린다.
-    for (var s = 0; s < pls.length; s++) {
-      var pc = null;
-      for (var t2 = 0; t2 < prep.pieces.length; t2++) if (prep.pieces[t2].id === pls[s].id) { pc = prep.pieces[t2]; break; }
-      if (!pc || !pc.base) continue;
-      var bb = BT.inkBBox(pc.base);
-      if (!bb) continue;
-      var expW = pls[s].rot === 90 ? bb.H : bb.W;
-      var expH = pls[s].rot === 90 ? bb.W : bb.H;
-      var tol = function (a, b) { return Math.abs(a - b) <= Math.max(4, b * 0.05); };
-      if (!tol(pls[s].W, expW) || !tol(pls[s].H, expH)) return null;
-    }
-    return {
-      sheets: [{ placements: pls, usedH: r.usedH / mmpp, inkPx: inkPx, segs: BT.cutSegments(r.placements) }],
-      unplaced: r.unplaced, butt: true,
-    };
+    return { sheets: sheets, unplaced: [], butt: true };
   }
 
   /** 공통 배치 호출 — [네스팅 실행]과 [폭 추천]이 같은 규칙으로 돌아야 비교가 성립한다. */
@@ -1521,25 +1529,13 @@
   }
 
   /**
-   * ★판 길이 관문 — **어느 배치 알고리즘이 만들었든 여기를 통과해야 판이 된다.**
+   * 가장 긴 판의 높이(mm) — `S` 줄에 싣는 값과 **같은 산식**이어야 한다.
    *
-   * 상한이 배치 엔진 **안에만** 있으면 새 배치 방식은 그것을 모른 채 통과한다.
-   * 맞붙임(`buttPlace`)이 정확히 그랬다 — `butt.packRects` 는 폭만 받고 길이는 무한 전제라
-   * 1050폭 1열에서 **13,442mm 판**이 그대로 나가 호스트가 `PARM`(1346458189) 으로 죽었다
-   * (2026-09-04 실사용). 판 = 생산 단위 = **등록 1건**이므로(호스트가 판마다 등록 폴더를 만든다
-   * — mes-cut-host.jsx 의 saveOneSheet 루프), 상한을 넘는 판은 업무적으로도 존재할 수 없다.
-   *
-   * ⚠️ 재는 대상은 **호스트로 나가는 판 높이**(usedH + 돔보 여백 ×2)다 — `S` 줄에 싣는 그 값.
+   * ⚠️ 재는 대상은 **호스트로 나가는 판 높이**(usedH + 돔보 여백 ×2)다.
    *    usedH 만 재면 돔보만큼 초과분을 놓친다.
-   * ⚠️ 평판(sheetHmm)은 높이가 규격으로 고정이고 배치가 이미 검사했다.
+   * ★판 길이 **관문**은 `placement.js` 의 `fitsLength` 다 — 어느 배치 알고리즘이 만들었든
+   *   거기를 통과해야 판이 된다(판 = 생산 단위 = 등록 1건). 이 함수는 그 관문이 쓰는 자였다.
    */
-  function sheetsFitLength(res, mmpp, sheetHmm) {
-    if (!res || !res.sheets || !res.sheets.length) return false;
-    if (sheetHmm) return true;
-    return maxPlateMm(res, mmpp) <= NEST_ROLL_MAX_MM;
-  }
-
-  /** 가장 긴 판의 높이(mm) — `S` 줄에 싣는 값과 **같은 산식**이어야 한다. */
   function maxPlateMm(res, mmpp) {
     var m = 0;
     if (res && res.sheets) {
@@ -1695,60 +1691,46 @@
         // ★★안 켜졌으면 **왜 안 켜졌는지 말한다** (2026-08-07 용준님: "여백 0·간격 0 인데 그대로다").
         //   조건이 5개라 조용히 폴백하면 사용자는 기능이 고장난 줄 안다 — 실제로 그렇게 한 번 헛돌았다.
         //   호스트 구버전이 가장 흔한 원인인데, 그건 **패널이 아니라 Z: 배포** 문제라 화면에 안 쓰면 알 수 없다.
-        var BT = window.MesCutButt;
-        var buttExact = false, buttWhy = '', buttStray = '';
-        if (buttMode) {
-          if (!BT) buttWhy = 'butt.js 미설치 — 패널 설치본을 갱신하세요';
-          else if (!hostSupportsButt()) buttWhy = '호스트 구버전(' + (hostVersion || '?') + ' < CUT-CEP-0.18.0) — Z: 의 mes-cut-host.jsx 를 배포하세요';
-          else if (offsetMm !== 0 || gapMm !== 0) buttWhy = '여백/간격이 0이 아님(' + offsetMm + '/' + gapMm + ')';
-          else if (!prep.sizes.length) buttWhy = '조각 크기를 못 받았습니다';
-          else {
-            buttExact = true;
-            for (var bi = 0; bi < prep.pieces.length; bi++) {
-              var mp = mainPart(G, prep.pieces[bi].base);
-              if (mp.strays) buttStray += (buttStray ? ', ' : '') + '#' + prep.pieces[bi].id + '(' + mp.strays + '개)';
-              if (!BT.isRectish(mp.mask)) {
-                buttExact = false;
-                buttWhy = '조각 #' + prep.pieces[bi].id + ' 의 본체가 직사각이 아님(라운드·이형) — 맞붙임은 직각 사각만';
-                break;
-              }
-            }
+        // ★★판정 자체는 `placement.js` 가 한다 (2026-09-04). 여태 이 판정만 UI 파일 안에 있어서
+        //   **「기능이 켜진 채로 끝났는가」를 아무 게이트도 확인하지 못했고**, 그 틈으로 회귀가 지나갔다
+        //   (0.75.0 길이 관문이 맞붙임을 조용히 격하시켰는데 cut:butt·cut:smoke·cut:e2e 가 전부 통과).
+        //   여기서는 **사실만 모아 넘기고** 결과를 화면에 옮긴다 — 게이트 = `npm run cut:placement`.
+        var BT = window.MesCutButt, PLC = window.MesCutPlacement;
+        if (!PLC) { done('placement.js 미로드 — 패널 설치본을 확인하세요(install-a0-panel.ps1)', 'err'); return; }
+        // 직사각 판정·여분 개체 세기는 **마스크**가 있어야 하므로 여기서 한다(모듈은 결과만 받는다).
+        // ★크기를 모르면 애초에 산수를 못 하므로 마스크를 훑지 않는다 — 빈 목록이 곧 그 사유다.
+        var rectish = [], pieceIds = [], buttStray = '';
+        if (buttMode && BT && prep.sizes.length) {
+          for (var bi = 0; bi < prep.pieces.length; bi++) {
+            var mp = mainPart(G, prep.pieces[bi].base);
+            if (mp.strays) buttStray += (buttStray ? ', ' : '') + '#' + prep.pieces[bi].id + '(' + mp.strays + '개)';
+            rectish.push(!!BT.isRectish(mp.mask));
+            pieceIds.push(prep.pieces[bi].id);
           }
         }
-        // ★★맞붙임이 벡터보다 **우선한다** (2026-08-07 실사용 — 이것 때문에 계속 두 줄이 나왔다).
-        //   벡터 칼선은 조각마다 실루엣을 따로 그린다 → 맞닿은 변은 **원리상 반드시 두 줄**이다.
-        //   여백 0·간격 0 은 "붙여서 한 번만 자르겠다"는 뜻이므로 벡터로는 그 요청을 만족시킬 수 없다.
-        //   직사각에서는 맞붙임 쪽이 벡터보다 오히려 정확하다 — 실루엣 추적이 아니라 **치수 산수**다.
-        //   호스트는 cutMode='raster' 를 받으면 벡터 실루엣 대신 `C` 선분을 긋는다(배타적 분기).
-        var buttOverVec = false;
-        if (buttExact && useVec) { useVec = false; buttOverVec = true; }
         // ★mmpp 는 여기서 잡는다 — 아래 진단·좌표 변환이 전부 이 값을 쓴다.
         //   전에는 선언이 200줄쯤 아래에 있어서, 그 위에 붙인 진단 블록이 **호이스팅된 undefined**
         //   를 읽고 `.toFixed` 로 터졌다(2026-08-07). 쓰는 곳보다 위에 둬야 같은 사고가 안 난다.
         var mmpp = prep.mmpp;
         out('배치 계산 중...');
-        var res = buttExact
-          ? buttPlace(BT, prep, sheetWmm, sheetHmm, allowRot)
-          : nestPlace(NST, prep, sheetWmm, sheetHmm, allowRot);
-        // ★길이 상한은 **배치 엔진이 아니라 여기서** 본다 — 맞붙임은 스스로 보지 않는다.
-        var lenOver = !!res && !!res.sheets.length && !sheetsFitLength(res, mmpp, sheetHmm);
-        if (buttExact && (!res || !res.sheets.length || lenOver)) {
-          buttExact = false;
-          buttWhy = lenOver
-            ? ('맞붙임 판이 길이 한계 ' + NEST_ROLL_MAX_MM + 'mm 를 넘어(' + maxPlateMm(res, mmpp) + 'mm) 래스터로 되돌렸습니다 — 판이 나뉩니다')
-            : '맞붙임 배치가 시트 폭/높이에 안 들어가 래스터로 되돌렸습니다';
-          res = nestPlace(NST, prep, sheetWmm, sheetHmm, allowRot);
-        }
+        var pick = PLC.choose({
+          offsetMm: offsetMm, gapMm: gapMm,
+          hasButt: !!BT, hostOk: hostSupportsButt(),
+          hostVersion: hostVersion, minHost: 'CUT-CEP-0.18.0',
+          rectish: rectish, ids: pieceIds, wantVec: useVec,
+          sheetHmm: sheetHmm, rollMaxMm: NEST_ROLL_MAX_MM,
+          placeButt: function () { return buttPlace(BT, prep, sheetWmm, sheetHmm, allowRot); },
+          placeRaster: function () { return nestPlace(NST, prep, sheetWmm, sheetHmm, allowRot); },
+          plateMm: function (r) { return maxPlateMm(r, mmpp); },
+        });
+        var buttExact = pick.engine === 'butt', buttWhy = pick.why, buttOverVec = pick.overVec;
+        var res = pick.res;
+        // ★호스트는 cutMode='raster' 를 받으면 벡터 실루엣 대신 `C` 선분을 긋는다(배타적 분기).
+        //   ⚠️맞붙임이 **실제로 켜졌을 때만** 벡터를 내린다 — 전에는 폴백해도 useVec 이 false 로
+        //   남아, 맞붙임이 안 켜졌는데 벡터 칼선까지 잃었다(요청은 벡터였다).
+        if (buttOverVec) useVec = false;
         T.place = Date.now();
-        if (!res.sheets.length) { done('배치 실패 — 조각이 시트보다 큽니다.', 'err'); return; }
-
-        // ★★최종 관문 — 래스터로 되돌린 뒤에도 넘으면 **호스트로 보내지 않는다**.
-        //   호스트가 `PARM` 으로 죽는 것보다 여기서 이유를 말하는 편이 낫다(2026-09-04).
-        if (!sheetsFitLength(res, mmpp, sheetHmm)) {
-          done('판 길이 ' + maxPlateMm(res, mmpp) + 'mm 가 한계 ' + NEST_ROLL_MAX_MM
-            + 'mm 를 넘습니다 — 조각을 나누거나 저장 배율을 낮추세요.', 'err');
-          return;
-        }
+        if (pick.fatal) { done(pick.fatal, 'err'); return; }
 
         // ★시트 모드에서 판이 **가로로 길쭉해지는** 것을 막는다 (2026-08-05 실측: 판 면적 −22%).
         //   엔진 점수(nesting.js scoreOf)는 usedH(세로)만 본다. 그런데 아트보드는 배치 bbox 로
@@ -2170,6 +2152,36 @@
         //   빠뜨리면 1장씩 기준으로 폭을 추천하고 실제로는 N장을 깔게 돼, 추천대로 골라도
         //   결과가 안 맞는다 — 배율을 빠뜨렸던 2026-08-05 건과 같은 종류의 어긋남이다.
         var qtyNote = expandByQty(prep);
+        // ★★맞붙임도 [네스팅 실행]과 **같은 판정**을 태운다 (2026-09-04). 여태 추천은 늘 래스터로만
+        //   재서, 맞붙임 잡은 실제보다 긴 길이로 비교됐다 — `maxSheets: 1` 과 **같은 종류의 어긋남**이다
+        //   (추천과 실행이 다른 규칙으로 보는 것). 직사각 판정은 폭과 무관하므로 **루프 밖에서 한 번**만 한다.
+        var BTw = window.MesCutButt, PLCw = window.MesCutPlacement;
+        var rectishW = [], idsW = [];
+        if (PLCw && BTw && (offsetMm <= 0 && gapMm <= 0) && prep.sizes.length) {
+          for (var rw0 = 0; rw0 < prep.pieces.length; rw0++) {
+            rectishW.push(!!BTw.isRectish(mainPart(G, prep.pieces[rw0].base).mask));
+            idsW.push(prep.pieces[rw0].id);
+          }
+        }
+        /**
+         * 폭 하나를 [네스팅 실행]과 **같은 판정**으로 배치한다.
+         * ★`tries: 2` 성근 스캔만 다르다 — 폭당 비용 때문이고, 정밀 재실행은 [네스팅 실행]이 한다.
+         * ★모듈이 없거나 맞붙임 대상이 아니면 예전처럼 래스터로만 잰다(추천이 멈추는 것보다 낫다).
+         */
+        var widthPlace = function (wFile) {
+          var raster = function () { return nestPlace(NST, prep, wFile, 0, allowRot, { tries: 2 }); };
+          if (!PLCw || !rectishW.length) return raster();
+          return PLCw.choose({
+            offsetMm: offsetMm, gapMm: gapMm,
+            hasButt: !!BTw, hostOk: hostSupportsButt(),
+            hostVersion: hostVersion, minHost: 'CUT-CEP-0.18.0',
+            rectish: rectishW, ids: idsW, wantVec: false,
+            sheetHmm: 0, rollMaxMm: NEST_ROLL_MAX_MM,
+            placeButt: function () { return buttPlace(BTw, prep, wFile, 0, allowRot); },
+            placeRaster: raster,
+            plateMm: function (r) { return maxPlateMm(r, prep.mmpp); },
+          }).res;
+        };
         var rows = [], best = null;
         for (var i = 0; i < ROLL_WIDTHS_MM.length; i++) {
           var wReal = ROLL_WIDTHS_MM[i];           // 재료 폭 = 실물(화면·재료비용)
@@ -2182,7 +2194,7 @@
           //   1050폭 → "어느 폭에도 배치하지 못했습니다"). 그런데 실행은 판을 나눠 멀쩡히 짠다 —
           //   추천만 다른 규칙으로 보고 있었다. 위 nestPlace 주석의 "같은 규칙이어야 비교가
           //   성립한다"가 여기서 깨져 있었다. `tries: 2` 성근 스캔은 비용 때문이라 그대로 둔다.
-          var r = nestPlace(NST, prep, wFile, 0, allowRot, { tries: 2 });
+          var r = widthPlace(wFile);
           var okAll = r.sheets.length && !r.unplaced.length;
           // ★길이·면적은 **판 전부의 합**이다 — 판마다 길이가 달라 첫 판만 보면 재료비가 틀린다
           var lenMm = 0;
@@ -2193,7 +2205,7 @@
           // ★「폭보다 크다」와 「판 수가 모자라다」는 **다른 문제**다 — 대책이 정반대라 구분해 말한다.
           //   아무것도 못 놓으면(sheets 0) 폭 자체가 모자란 것이고, 배율·조각 분할 말고는 답이 없다.
           rows.push({ w: wReal, len: lenMm, area: areaCm2, ok: okAll, unplaced: r.unplaced.length,
-            sheets: r.sheets.length, tooWide: !okAll && !r.sheets.length });
+            sheets: r.sheets.length, tooWide: !okAll && !r.sheets.length, butt: !!r.butt });
           if (okAll && (!best || areaCm2 < best.area)) best = rows[rows.length - 1];
         }
         // 실패 사유를 가르기 위해 폭 부족 건수를 센다 — 대책이 정반대다
@@ -2208,6 +2220,8 @@
           txt += rw.ok
             ? ('판 ' + rw.sheets + '장 · 총 길이 ' + rw.len.toLocaleString() + 'mm · 면적 '
               + Math.round(rw.area).toLocaleString() + 'cm²'
+              // 맞붙임으로 잰 폭은 그렇게 말한다 — 같은 표에서 잣대가 다르면 비교가 오해된다
+              + (rw.butt ? ' · 맞붙임' : '')
               + (best && rw.w !== best.w ? ('  (+' + (100 * (rw.area / best.area - 1)).toFixed(1) + '%)') : ''))
             : (rw.tooWide
               ? '배치 실패 — 조각이 이 폭보다 큽니다'

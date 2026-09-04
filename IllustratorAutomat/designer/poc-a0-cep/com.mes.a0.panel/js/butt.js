@@ -113,7 +113,12 @@
    * @param rects [{id, w, h}] mm
    * @param sheetWmm 배치 가능 폭(돔보 여백은 호출자가 이미 뺀 값)
    * @param allowRot true 면 90° 세워서도 시도한다(직사각은 돌려도 직사각이라 산수가 그대로 성립)
-   * @returns {placements:[{id,x,y,w,h,rot}], usedW, usedH, unplaced:[id]}
+   * @param maxHmm 배치 가능 길이 상한(mm). 0/생략 = 무제한. 넘치는 조각은 `unplaced` 로 나온다
+   * @returns {placements:[{id,x,y,w,h,rot}], usedW, usedH, unplaced:[id], unplacedIdx:[i]}
+   *
+   * ★`unplacedIdx` 가 따로 있는 이유 — **id 는 유일하지 않다.** 패널이 수량을 반영할 때
+   *   같은 조각 객체를 q 번 밀어 넣으므로(cut-main.js `expandByQty`) 2장짜리 조각은 id 가
+   *   두 번 나온다. 판을 나눌 때 id 로 "남은 것"을 거르면 **한 장만 남기고 나머지가 사라진다**.
    */
   // 넣는 순서 — 어느 하나가 늘 이기지 않는다(고전 결과). 순서 자체가 결과를 크게 바꾼다.
   var SORTS = [
@@ -132,11 +137,11 @@
     function (c) { return [c.area, c.top, c.x] },       // ② 넓이가 덜 남는 자리 (BAF)
   ]
 
-  function packRects(rects, sheetWmm, allowRot) {
+  function packRects(rects, sheetWmm, allowRot, maxHmm) {
     var best = null
     for (var s = 0; s < SORTS.length; s++) {
       for (var c = 0; c < SCORES.length; c++) {
-        var r = run(rects, sheetWmm, allowRot === true, SORTS[s], SCORES[c])
+        var r = run(rects, sheetWmm, allowRot === true, SORTS[s], SCORES[c], maxHmm)
         // ★먼저 나온 쪽이 이긴다(엄격한 부등호) — 동점이면 ⓪·⓪ 조합이 유지되므로
         //   기존 배치가 조용히 달라지지 않는다.
         if (!best
@@ -147,21 +152,55 @@
     return best
   }
 
-  function run(rects, sheetWmm, ROT, sortFn, scoreFn) {
-    var BIG = 1e9                    // 롤 = 길이 무제한. 평판 높이 확인은 호출자가 usedH 로 한다.
-    var free = [{ x: 0, y: 0, w: sheetWmm, h: BIG }]
+  /**
+   * 여러 판으로 나눠 담는다 — 한 판에 `maxHmm` 까지만 넣고 남은 것은 다음 판으로.
+   *
+   * ★**공유 변 정확도는 그대로다.** 판마다 `packRects` 를 새로 돌리므로 각 판 안에서
+   *   좌표는 여전히 `0` 또는 `먼저 놓인 조각의 x+w` 다 = 맞닿은 변이 비트 단위로 같다.
+   *   허용오차 개념이 없는 이유가 판마다 그대로 성립한다(판을 가로지르는 공유 변은 없다 —
+   *   판이 곧 생산 단위·등록 1건이라 애초에 따로 자른다).
+   *
+   * ★남은 것을 **인덱스**로 고른다 — id 는 수량 반영 때 중복될 수 있다(packRects 주석 참조).
+   *
+   * @returns [{placements, usedW, usedH}] · 한 조각도 못 넣으면 null(= 조각이 판보다 크다)
+   */
+  function packSheets(rects, sheetWmm, allowRot, maxHmm) {
+    var remain = rects.slice(), sheets = [], guard = 0
+    while (remain.length) {
+      // 진행이 없으면 무한 루프다 — 판 수는 조각 수를 넘을 수 없다(판마다 최소 1장은 들어간다).
+      if (++guard > rects.length + 1) return null
+      var r = packRects(remain, sheetWmm, allowRot, maxHmm)
+      // 한 장도 못 넣었다 = 남은 조각이 판보다 크다. 나눠도 해결이 안 되므로 호출자가 되돌린다.
+      if (!r || !r.placements.length) return null
+      sheets.push({ placements: r.placements, usedW: r.usedW, usedH: r.usedH })
+      if (!r.unplacedIdx || !r.unplacedIdx.length) break
+      var next = []
+      for (var u = 0; u < r.unplacedIdx.length; u++) next.push(remain[r.unplacedIdx[u]])
+      remain = next
+    }
+    return sheets
+  }
+
+  function run(rects, sheetWmm, ROT, sortFn, scoreFn, maxHmm) {
+    // ★길이 상한 (2026-09-04). 여태 `1e9` 고정이라 **롤은 무한히 길다**는 전제였다.
+    //   그 전제 때문에 1050폭에 조각이 한 줄로 서는 실물이 **13,442mm 한 판**으로 나갔고,
+    //   일러 캔버스 한계(5,644mm)에 걸려 호스트가 `PARM` 으로 죽거나 관문에 막혀
+    //   래스터로 되돌아갔다 = **맞붙임이 큰 잡에서 한 번도 안 켜졌다.**
+    //   `nesting.js` 는 처음부터 `rollMaxH` 를 받았다 — 엔진 둘의 능력이 달랐던 것뿐이다.
+    var LIM = (maxHmm > 0) ? maxHmm : 1e9
+    var free = [{ x: 0, y: 0, w: sheetWmm, h: LIM }]
     var list = [], i
     for (i = 0; i < rects.length; i++) list.push({ id: rects[i].id, w: rects[i].w, h: rects[i].h, i: i })
     list.sort(sortFn)
 
-    var placements = [], unplaced = [], usedW = 0, usedH = 0
+    var placements = [], unplaced = [], unplacedIdx = [], usedW = 0, usedH = 0
     for (var k = 0; k < list.length; k++) {
       var p = list[k], best = null
       for (var f = 0; f < free.length; f++) {
         best = pick(best, tryFit(free[f], p.w, p.h, 0))
         if (ROT) best = pick(best, tryFit(free[f], p.h, p.w, 90))
       }
-      if (!best) { unplaced.push(p.id); continue }
+      if (!best) { unplaced.push(p.id); unplacedIdx.push(p.i); continue }
       var pl = { id: p.id, x: best.x, y: best.y, w: best.w, h: best.h, rot: best.rot }
       placements.push(pl)
       split(pl)
@@ -169,7 +208,9 @@
       if (pl.x + pl.w > usedW) usedW = pl.x + pl.w
       if (pl.y + pl.h > usedH) usedH = pl.y + pl.h
     }
-    return { placements: placements, usedW: usedW, usedH: usedH, unplaced: unplaced }
+    // ⚠️한 줄로 둔다 — `scripts/cut/undeclared.mjs` 는 세미콜론 없는 이 파일에서 여러 줄 반환
+    //   객체를 만나면 `var` 선언 목록을 끝까지 읽어 **`function` 을 변수로 오인**한다(오탐).
+    return { placements: placements, usedW: usedW, usedH: usedH, unplaced: unplaced, unplacedIdx: unplacedIdx }
 
     /** 자유 사각의 **좌상단**에 놓아 본다 — 좌표가 기존 변에서 그대로 오므로 정확도가 유지된다. */
     function tryFit(fr, w, h, rot) {
@@ -279,6 +320,7 @@
 
   return {
     isRectish: isRectish, inkBBox: inkBBox,
-    packRects: packRects, cutSegments: cutSegments, anyOverlap: anyOverlap,
+    packRects: packRects, packSheets: packSheets,
+    cutSegments: cutSegments, anyOverlap: anyOverlap,
   }
 })
