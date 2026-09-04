@@ -244,15 +244,20 @@ function szSwitchTab(tab) {
   szCurrentTab = tab;
   var listPanel = document.getElementById('szPanelList');
   var layoutPanel = document.getElementById('szPanelLayout');
+  var assignPanel = document.getElementById('szPanelAssign');
   if (listPanel) listPanel.classList.toggle('hidden', tab !== 'list');
   if (layoutPanel) layoutPanel.classList.toggle('hidden', tab !== 'layout');
+  if (assignPanel) assignPanel.classList.toggle('hidden', tab !== 'assign');
   var active = 'px-4 py-2 text-sm font-semibold text-blue-600 border-b-2 border-blue-600 -mb-px';
   var idle = 'px-4 py-2 text-sm font-medium text-gray-500 border-b-2 border-transparent -mb-px hover:text-gray-700';
   var tabList = document.getElementById('szTabList');
   var tabLayout = document.getElementById('szTabLayout');
+  var tabAssign = document.getElementById('szTabAssign');
   if (tabList) tabList.className = tab === 'list' ? active : idle;
   if (tabLayout) tabLayout.className = tab === 'layout' ? active : idle;
+  if (tabAssign) tabAssign.className = tab === 'assign' ? active : idle;
   if (tab === 'layout') szLoadLayout();
+  if (tab === 'assign') szAssignInit();
 }
 
 async function szLoadLayout() {
@@ -588,4 +593,228 @@ async function szDeletePlan() {
 
 // 초기 로드 (?tab=layout 딥링크 지원)
 loadStorageZones();
-if (new URLSearchParams(window.location.search).get('tab') === 'layout') szSwitchTab('layout');
+var _szUrlTab = new URLSearchParams(window.location.search).get('tab');
+if (_szUrlTab === 'layout' || _szUrlTab === 'assign') szSwitchTab(_szUrlTab);
+
+// ── 품목 배정 탭 (2026-09-04) ────────────────────────────────────────────────
+// 「이 구역에 이 품목이 있다」의 정본 = `inventory` 행. 구역 실사가 그 행을 JOIN 하므로
+// 여기서 넣고 뺀 것이 곧 실사표가 된다. `items.storage_zone_id` 는 「입고 기본 창고」로 의미를 좁혔고
+// 이 화면은 그 칸을 건드리지 않는다.
+
+var _szAssign = { zoneId: null, held: [], tree: [], items: [], nav: [], sel: {}, cat: '', grp: '', timer: null };
+
+async function szAssignInit() {
+  var sel = document.getElementById('szAssignZone');
+  if (!sel) { console.warn('[storageZones] #szAssignZone not found'); return; }
+  if (sel.options.length === 0) {
+    try {
+      var r = await axios.get('/api/storage-zones');
+      var list = (r.data && r.data.data) || [];
+      // 담당자를 같이 보여 준다 — 누구 구역인지 모르면 남의 구역을 고치게 된다.
+      list.forEach(function (z) {
+        var o = document.createElement('option');
+        o.value = z.id;
+        o.textContent = (z.zone_name || '') + (z.manager_name ? ' · ' + z.manager_name : ' · 담당 미지정');
+        sel.appendChild(o);
+      });
+    } catch (e) { console.warn('[storageZones] 구역 목록 로드 실패', e); }
+  }
+  if (sel.options.length > 0) await szAssignLoad();
+}
+
+async function szAssignLoad() {
+  var sel = document.getElementById('szAssignZone');
+  if (!sel || !sel.value) return;
+  _szAssign.zoneId = Number(sel.value);
+  _szAssign.sel = {};
+  _szAssign.cat = '';
+  _szAssign.grp = '';
+  await Promise.all([szAssignLoadHeld(), szAssignLoadCand()]);
+}
+
+async function szAssignLoadHeld() {
+  var box = document.getElementById('szAssignHeld');
+  if (!box) return;
+  box.innerHTML = '<div class="py-6 text-center text-gray-400 text-sm"><i class="fas fa-spinner fa-spin"></i></div>';
+  try {
+    var r = await axios.get('/api/storage-zones/' + _szAssign.zoneId + '/stock');
+    var d = (r.data && r.data.data) || {};
+    _szAssign.held = d.items || [];
+    var meta = document.getElementById('szAssignMeta');
+    if (meta) meta.textContent = (d.manager_name ? '담당 ' + d.manager_name + ' · ' : '') + _szAssign.held.length + '품목';
+    szAssignRenderHeld();
+  } catch (e) {
+    var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+    box.innerHTML = '<div class="py-6 text-center text-red-500 text-sm">' + escapeAttr(msg) + '</div>';
+  }
+}
+
+function szAssignRenderHeld() {
+  var box = document.getElementById('szAssignHeld');
+  var cnt = document.getElementById('szAssignHeldCount');
+  if (!box) return;
+  var items = _szAssign.held;
+  // 재고 0 인 것부터 보여 준다 — 뺄 수 있는 것이 그것뿐이고, 대개 그게 정리 대상이다.
+  var zero = items.filter(function (it) { return Number(it.quantity) === 0; });
+  if (cnt) cnt.textContent = items.length + '품목' + (zero.length ? ' · 재고 0 이 ' + zero.length + '개' : '');
+  if (!items.length) {
+    box.innerHTML = '<div class="py-8 text-center text-gray-400 text-sm">이 구역에 배정된 품목이 없습니다.</div>';
+    return;
+  }
+  var sorted = items.slice().sort(function (a, b) {
+    var az = Number(a.quantity) === 0 ? 0 : 1, bz = Number(b.quantity) === 0 ? 0 : 1;
+    if (az !== bz) return az - bz;
+    return String(a.item_name || '').localeCompare(String(b.item_name || ''));
+  });
+  box.innerHTML = sorted.map(function (it) {
+    var q = Number(it.quantity) || 0;
+    var canRemove = (q === 0);
+    var qty = window.uomFormatStock ? window.uomFormatStock(q, it) : (q + ' ' + (it.unit || ''));
+    return '<div class="flex items-center gap-2 py-1.5 border-b border-gray-50 text-xs">'
+      + '<span class="flex-1 min-w-0 truncate" title="' + escapeAttr(it.item_name || '') + '">' + escapeAttr(it.item_name || '') + '</span>'
+      + '<span class="' + (q === 0 ? 'text-gray-400' : (q < 0 ? 'text-red-600 font-semibold' : 'text-gray-700')) + ' tabular-nums whitespace-nowrap">' + escapeAttr(qty) + '</span>'
+      + (canRemove
+          ? '<button onclick="szAssignRemove(' + it.item_id + ')" class="text-gray-400 hover:text-red-600 px-1" title="이 구역에서 빼기">✕</button>'
+          : '<span class="px-1 text-gray-300" title="재고가 남아 있어 뺄 수 없습니다 — 다른 구역으로 옮기거나 0으로 맞추세요">✕</span>')
+      + '</div>';
+  }).join('');
+}
+
+async function szAssignRemove(itemId) {
+  try {
+    await axios.delete('/api/storage-zones/' + _szAssign.zoneId + '/items/' + itemId);
+    showToast('구역에서 뺐습니다', 'success');
+    await Promise.all([szAssignLoadHeld(), szAssignLoadCand()]);
+  } catch (e) {
+    var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+    showToast(msg, 'error');
+  }
+}
+
+function szAssignSearchInput() {
+  if (_szAssign.timer) clearTimeout(_szAssign.timer);
+  _szAssign.timer = setTimeout(szAssignLoadCand, 300);
+}
+
+async function szAssignLoadCand() {
+  var box = document.getElementById('szAssignCand');
+  if (!box) return;
+  box.innerHTML = '<div class="py-6 text-center text-gray-400 text-sm"><i class="fas fa-spinner fa-spin"></i></div>';
+  var qEl = document.getElementById('szAssignSearch');
+  try {
+    var r = await axios.get('/api/storage-zones/' + _szAssign.zoneId + '/candidates', {
+      params: { q: qEl ? qEl.value.trim() : '', category: _szAssign.cat, group: _szAssign.grp }
+    });
+    var d = (r.data && r.data.data) || {};
+    _szAssign.tree = d.tree || [];
+    _szAssign.items = d.items || [];
+    szAssignRenderCand(!!d.truncated);
+  } catch (e) {
+    var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+    box.innerHTML = '<div class="py-6 text-center text-red-500 text-sm">' + escapeAttr(msg) + '</div>';
+  }
+}
+
+function szAssignRenderCand(truncated) {
+  var box = document.getElementById('szAssignCand');
+  if (!box) return;
+  var byCat = {}, order = [];
+  _szAssign.tree.forEach(function (t) {
+    if (!byCat[t.category]) { byCat[t.category] = []; order.push(t.category); }
+    byCat[t.category].push(t);
+  });
+
+  // onclick 에 한글 그룹명을 끼우면 따옴표가 깨진다 → **인덱스로** 부른다.
+  _szAssign.nav = [];
+  var html = order.map(function (cat) {
+    var rows = byCat[cat];
+    var total = rows.reduce(function (a, b) { return a + (Number(b.n) || 0); }, 0);
+    var open = (_szAssign.cat === cat);
+    var ci = _szAssign.nav.push({ cat: cat, grp: '' }) - 1;
+    var head = '<button onclick="szAssignPick(' + ci + ')" class="w-full text-left px-2 py-1 rounded text-xs font-semibold '
+      + (open ? 'bg-blue-50' : '') + '">' + (open ? '▾ ' : '▸ ') + escapeAttr(cat)
+      + ' <span class="text-gray-400 font-normal">' + total + '</span></button>';
+    if (!open) return head;
+    var kids = rows.map(function (t) {
+      var gi = _szAssign.nav.push({ cat: cat, grp: t.item_group }) - 1;
+      var on = (_szAssign.grp === t.item_group);
+      return '<button onclick="szAssignPick(' + gi + ')" class="w-full text-left pl-5 pr-2 py-1 rounded text-xs '
+        + (on ? 'bg-blue-100' : '') + '">' + escapeAttr(t.item_group)
+        + ' <span class="text-gray-400">' + t.n + '</span></button>';
+    }).join('');
+    // 그룹을 고른 상태면 그 자리에 품목 체크박스를 펼친다 — 트리와 목록이 떨어져 있으면 눈이 왔다갔다 한다.
+    var picked = (open && _szAssign.grp) ? szAssignItemsHtml() : '';
+    return head + kids + picked;
+  }).join('');
+
+  var selCount = 0;
+  for (var k in _szAssign.sel) { if (_szAssign.sel[k]) selCount++; }
+  var btn = document.getElementById('szAssignApply');
+  if (btn) {
+    btn.textContent = selCount > 0 ? (selCount + '개 추가') : '추가';
+    btn.disabled = (selCount === 0);
+    btn.style.opacity = selCount === 0 ? '0.5' : '1';
+  }
+
+  box.innerHTML = (html || '<div class="py-8 text-center text-gray-400 text-sm">추가할 후보가 없습니다.</div>')
+    + (truncated ? '<div class="text-xs text-amber-700 mt-2">※ 결과가 잘렸습니다. 그룹으로 더 좁히거나 검색하세요.</div>' : '');
+}
+
+function szAssignItemsHtml() {
+  if (!_szAssign.items.length) {
+    return '<div class="pl-5 py-2 text-xs text-gray-400">이 그룹은 모두 배정돼 있습니다.</div>';
+  }
+  var all = '<div class="pl-5 py-1"><button onclick="szAssignSelectShown()" class="text-[11px] px-2 py-0.5 rounded border border-gray-300">'
+    + '보이는 ' + _szAssign.items.length + '개 선택</button></div>';
+  return all + _szAssign.items.map(function (it) {
+    // 이미 다른 구역에 있으면 알려 준다 — 이 동작은 **옮기는 것이 아니라 양쪽에 만드는 것**이다.
+    var where = it.current_zones
+      ? '<span class="ml-1 px-1 rounded text-[10px] bg-amber-50 text-amber-700">' + escapeAttr(it.current_zones) + '</span>'
+      : '';
+    return '<label class="flex items-center gap-2 pl-5 pr-2 py-1 text-xs cursor-pointer hover:bg-gray-50">'
+      + '<input type="checkbox" onchange="szAssignToggle(' + it.id + ', this.checked)"' + (_szAssign.sel[it.id] ? ' checked' : '') + '>'
+      + '<span class="flex-1 min-w-0 truncate">' + escapeAttr(it.item_name || '') + where + '</span>'
+      + '<span class="text-gray-400 text-[11px]">' + escapeAttr(it.item_code || '') + '</span></label>';
+  }).join('');
+}
+
+function szAssignPick(idx) {
+  var n = _szAssign.nav[idx];
+  if (!n) return;
+  if (!n.grp) {
+    _szAssign.cat = (_szAssign.cat === n.cat) ? '' : n.cat;
+    _szAssign.grp = '';
+  } else {
+    _szAssign.cat = n.cat;
+    _szAssign.grp = (_szAssign.grp === n.grp) ? '' : n.grp;
+  }
+  szAssignLoadCand();
+}
+
+function szAssignToggle(id, on) { _szAssign.sel[id] = !!on; szAssignRenderCand(false); }
+
+function szAssignSelectShown() {
+  _szAssign.items.forEach(function (it) { _szAssign.sel[it.id] = true; });
+  szAssignRenderCand(false);
+}
+
+async function szAssignApply() {
+  var ids = [];
+  for (var k in _szAssign.sel) { if (_szAssign.sel[k]) ids.push(Number(k)); }
+  if (ids.length === 0) return;
+  try {
+    var r = await axios.post('/api/storage-zones/' + _szAssign.zoneId + '/items', { item_ids: ids });
+    var added = (r.data && r.data.data && r.data.data.added) || 0;
+    showToast(added + '개 품목을 배정했습니다', 'success');
+    _szAssign.sel = {};
+    await Promise.all([szAssignLoadHeld(), szAssignLoadCand()]);
+  } catch (e) {
+    var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+    showToast('배정 실패: ' + msg, 'error');
+  }
+}
+
+function szAssignStartCount() {
+  if (!_szAssign.zoneId) return;
+  szStartZoneCount(_szAssign.zoneId);
+}

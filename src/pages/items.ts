@@ -199,12 +199,19 @@ export function itemsPage(c: Context<HonoEnv>) {
                                     <input type="text" inputmode="numeric" data-money id="itemPrice" value="0" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                                 </div>
 
-                                <!-- 9. 창고 구역 (GOODS/MATERIAL만) -->
+                                <!-- 9. 입고 기본 창고 (GOODS/MATERIAL만) — 읽기 전용 (2026-09-04)
+                                     이 칸은 **입고가 어느 창고로 들어갈지**만 정한다. 「이 품목이 어느 구역에
+                                     있나」는 inventory 행이 정본이고 창고 페이지에서 배정한다.
+                                     ⚠️items 에는 entity_id 가 없어 이 칸은 **법인 공유**다 — 여기서 고치면
+                                       다른 법인 설정을 덮는다. 그래서 편집 경로를 창고 페이지로 옮겼다. -->
                                 <div id="fieldStorageZone">
-                                    <label class="block text-sm font-semibold text-gray-700 mb-1">창고 구역</label>
-                                    <select id="itemStorageZone" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                                        <option value="">미지정</option>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-1">입고 기본 창고</label>
+                                    <select id="itemStorageZone" disabled class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-500 cursor-not-allowed">
+                                        <option value="">미지정 (법인 기본창고로 입고)</option>
                                     </select>
+                                    <p class="text-xs text-gray-400 mt-1">
+                                        구역 배정은 <a href="/storage-zones?tab=assign" class="text-blue-600 hover:underline">창고 구역 관리 &gt; 품목 배정</a>에서 합니다.
+                                    </p>
                                 </div>
 
                                 <!-- (제거) 연결된 소재 — 소재(print_media) 폐기, 원단=품목 product_materials 연결 -->

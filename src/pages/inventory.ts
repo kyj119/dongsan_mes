@@ -133,9 +133,13 @@ export function inventoryPage(c: Context<HonoEnv>) {
                     <button id="adjustmentBtn" class="ds-btn ds-btn-primary">
                         <i class="fas fa-adjust mr-2"></i>재고 조정
                     </button>
-                    <button id="bulkAssignBtn" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700" data-admin-only>
-                        <i class="fas fa-warehouse mr-2"></i>기본창고 일괄배정
-                    </button>
+                    <!-- 구역 배정은 창고 페이지 한 곳으로 모았다 (2026-09-04). 여기 있던 「기본창고 일괄배정」은
+                         items.storage_zone_id(법인 공유 칸)만 바꿔 **실사표가 따라오지 않았고**, 카테고리
+                         옵션이 원자재·태극기·상품 3개로 하드코딩돼 UV·솔벤·간판·기타·부자재는 배정 자체가
+                         불가능했다. 모달 마크업은 남겨 두되(다른 스크립트가 참조) 진입점만 옮긴다. -->
+                    <a href="/storage-zones?tab=assign" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 inline-block" data-admin-only>
+                        <i class="fas fa-warehouse mr-2"></i>구역 품목 배정
+                    </a>
                     <button id="refreshBtn" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">
                         <i class="fas fa-sync-alt mr-2"></i>새로고침
                     </button>

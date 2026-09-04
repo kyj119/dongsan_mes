@@ -361,8 +361,10 @@ document.getElementById('submitSettings').addEventListener('click', async functi
 });
 
 // ===== 기본창고 일괄배정 (운영설계 B) =====
-var bulkAssignBtnEl = document.getElementById('bulkAssignBtn');
-if (bulkAssignBtnEl) bulkAssignBtnEl.addEventListener('click', openBulkAssign);
+// ⚠️ 2026-09-04: 진입 버튼(#bulkAssignBtn)을 창고 페이지 링크로 바꿔 **이 모달은 더 이상 열리지 않는다**.
+//    구역 배정 정본 = /storage-zones?tab=assign (inventory 행을 만들고 없앤다).
+//    모달 마크업과 아래 핸들러는 남겨 둔다 — 되돌릴 때 버튼 하나만 복구하면 되고, 지우면
+//    submitBulkAssign 이 쓰는 bulk-assign-zones API 까지 같이 정리해야 해서 이번 범위를 넘는다.
 var cancelBulkAssignEl = document.getElementById('cancelBulkAssign');
 if (cancelBulkAssignEl) cancelBulkAssignEl.addEventListener('click', function() { document.getElementById('bulkAssignModal').classList.add('hidden'); });
 var submitBulkAssignEl = document.getElementById('submitBulkAssign');

@@ -30,6 +30,45 @@ export function storageZonesPage(c: Context<HonoEnv>) {
     <button id="szTabLayout" onclick="szSwitchTab('layout')" class="px-4 py-2 text-sm font-medium text-gray-500 border-b-2 border-transparent -mb-px hover:text-gray-700">
       <i class="fas fa-map-marked-alt mr-1"></i>배치도
     </button>
+    <button id="szTabAssign" onclick="szSwitchTab('assign')" class="px-4 py-2 text-sm font-medium text-gray-500 border-b-2 border-transparent -mb-px hover:text-gray-700">
+      <i class="fas fa-boxes-stacked mr-1"></i>품목 배정
+    </button>
+  </div>
+
+  <!-- 품목 배정 (2026-09-04) — 「어느 구역에 무엇이 있나」를 여기서만 관리한다.
+       종전엔 품목 등록 폼의 「창고 구역」 셀렉트와 재고현황의 「기본창고 일괄 배정」 모달로 갈려 있었고,
+       둘 다 items.storage_zone_id(법인 공유 칸)만 바꿔 **실사표가 따라오지 않았다**.
+       정본은 inventory 행이고, 그 행을 만들고 없애는 화면이 이것이다.
+       ⚠️이 파일은 백틱 템플릿이다 — 주석에도 백틱을 쓰지 말 것(CLAUDE.md 알려진 함정). -->
+  <div id="szPanelAssign" class="hidden space-y-3">
+    <div class="ds-card p-4">
+      <div class="flex items-center gap-3 flex-wrap">
+        <label class="text-sm font-semibold text-gray-700">구역</label>
+        <select id="szAssignZone" onchange="szAssignLoad()" class="ds-input" style="min-width:200px"></select>
+        <span id="szAssignMeta" class="text-xs text-gray-500"></span>
+        <button onclick="szAssignStartCount()" class="ds-btn ds-btn-sm ml-auto" title="이 구역을 대상으로 재고 실사를 시작합니다">
+          <i class="fas fa-clipboard-check mr-1"></i>이 구역 실사
+        </button>
+      </div>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <div class="ds-card p-4">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-sm font-bold text-gray-800">이 구역의 품목</h3>
+          <span id="szAssignHeldCount" class="text-xs text-gray-400"></span>
+        </div>
+        <div id="szAssignHeld" style="max-height:420px;overflow-y:auto;"></div>
+      </div>
+      <div class="ds-card p-4">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-sm font-bold text-gray-800">추가할 품목</h3>
+          <button id="szAssignApply" onclick="szAssignApply()" class="ds-btn ds-btn-primary ds-btn-sm">추가</button>
+        </div>
+        <input type="text" id="szAssignSearch" placeholder="품목명 · 코드 · 검색어" oninput="szAssignSearchInput()"
+               class="ds-input mb-2" style="width:100%">
+        <div id="szAssignCand" style="max-height:380px;overflow-y:auto;"></div>
+      </div>
+    </div>
   </div>
 
   <div id="szPanelList">
