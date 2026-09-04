@@ -416,8 +416,8 @@ export function inventoryPage(c: Context<HonoEnv>) {
                     <h3 id="panelCountNumber" style="font-size:18px;font-weight:700;color:var(--c-text);"></h3>
                     <div id="panelCountDate" style="font-size:12px;color:var(--c-text-muted);margin-top:2px;"></div>
                   </div>
-                  <button onclick="closeDetailPanel()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--c-text-muted);padding:4px;" title="닫기">
-                    <i class="fas fa-times"></i>
+                  <button onclick="closeDetailPanel()" style="border:1px solid var(--c-border);background:var(--c-surface);cursor:pointer;font-size:13px;color:var(--c-text);padding:6px 12px;border-radius:6px;white-space:nowrap;" title="실사 목록으로 돌아갑니다">
+                    <i class="fas fa-arrow-left" style="margin-right:5px"></i>목록으로
                   </button>
                 </div>
 
@@ -439,8 +439,8 @@ export function inventoryPage(c: Context<HonoEnv>) {
                     <i class="fas fa-boxes" style="margin-right:6px"></i>품목 실사 현황
                   </h4>
                   <!-- 실사 UX 다①: 품목 검색·필터 / 다②: 차이 요약 -->
-                  <div style="display:flex;gap:6px;margin-bottom:8px;">
-                    <input type="text" id="panelItemSearch" placeholder="품목명·코드 검색" oninput="icApplyFilter()" style="flex:1;min-width:0;padding:6px 8px;border:1px solid var(--c-border);border-radius:6px;font-size:12px;">
+                  <div style="display:flex;gap:6px;margin-bottom:8px;position:sticky;top:0;z-index:5;background:var(--c-surface);padding:6px 0;">
+                    <input type="text" id="panelItemSearch" placeholder="규격·품목명·코드 검색" oninput="icApplyFilter()" style="flex:1;min-width:0;padding:6px 8px;border:1px solid var(--c-border);border-radius:6px;font-size:12px;">
                     <!-- 「재고 있는 것만」이 구역 실사의 기본값이다 — UV실은 16줄 중 15줄이 0 이라
                          담당자가 의미 있는 1줄을 보려고 16줄을 넘겼다(2026-09-04 실측). -->
                     <select id="panelItemFilter" onchange="icApplyFilter()" style="padding:6px 8px;border:1px solid var(--c-border);border-radius:6px;font-size:12px;">
@@ -457,11 +457,13 @@ export function inventoryPage(c: Context<HonoEnv>) {
                   <div id="panelDiffSummary" style="margin-bottom:8px;"></div>
                   <!-- 0 인 줄을 접었을 때 그 사실을 알려 주는 자리 (숨기면 「없는 품목」으로 읽힌다) -->
                   <div id="panelZeroHint" style="margin-bottom:8px;"></div>
-                  <div id="panelItems" style="max-height:400px;overflow-y:auto;"></div>
+                  <!-- ⚠️종전 max-height:400px — 전체 화면으로 바꿨는데 내용은 400px 상자에 갇혀 있었다.
+                       이제 페이지가 스크롤한다(필터 바와 그룹 헤더가 sticky 라 기준이 안 사라진다). -->
+                  <div id="panelItems"></div>
                 </div>
 
                 <!-- 액션 버튼 -->
-                <div id="panelActions" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:20px;padding-top:12px;border-top:1px solid var(--c-border-light);">
+                <div id="panelActions" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;position:sticky;bottom:0;z-index:5;background:var(--c-surface);margin-top:20px;padding:12px 0;border-top:1px solid var(--c-border);">
                 </div>
 
               </div>

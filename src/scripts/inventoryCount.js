@@ -373,18 +373,23 @@ function icRenderItems() {
   });
   var itemsHtml = icGroups.map(function(g) {
     var gf = g.rows.filter(function(r) { return r.counted_quantity !== null && r.counted_quantity !== undefined; }).length;
-    return '<div style="margin-bottom:12px;">'
-      + '<div style="display:flex;align-items:center;gap:6px;padding:3px 2px;border-bottom:2px solid #e5e7eb;margin-bottom:6px;">'
+    var gdone = (gf === g.rows.length);
+    return '<div style="margin-bottom:14px;">'
+      // 그룹 헤더는 sticky — 71줄을 내리는 동안 「지금 어느 계열인지」가 사라지면 안 된다.
+      + '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#f1f5f9;'
+        + 'border-left:3px solid ' + (gdone ? '#16a34a' : '#94a3b8') + ';border-radius:3px;'
+        + 'position:sticky;top:42px;z-index:3;">'
         + '<span style="font-size:13px;font-weight:700;">' + escapeHtml(g.name) + '</span>'
-        + '<span style="font-size:11px;color:' + (gf === g.rows.length ? '#16a34a' : '#9ca3af') + ';">' + gf + '/' + g.rows.length + '</span>'
+        + '<span style="font-size:11px;font-weight:600;color:' + (gdone ? '#16a34a' : '#64748b') + ';">'
+          + gf + '/' + g.rows.length + '</span>'
       + '</div>'
-      + g.rows.map(icItemRowHtml).join('')
+      + g.rows.map(function (r, ri) { return icItemRowHtml(r, ri); }).join('')
     + '</div>';
   }).join('');
 
   container.innerHTML = itemsHtml;
 
-  function icItemRowHtml(item) {
+  function icItemRowHtml(item, rowIdx) {
     var systemQty = parseFloat(item.system_quantity) || 0;
     // 미입력(NULL)은 "0으로 실사"와 구분 — 빈칸 렌더, 승인 시 보정 제외 대상
     var notCounted = (item.counted_quantity === null || item.counted_quantity === undefined);
@@ -451,25 +456,28 @@ function icRenderItems() {
       bookCell = '장부 <strong>' + window.uomFormatStock(systemQty, icUomItem(item)) + '</strong> · ' + dTxt;
     }
 
-    return '<div style="padding:10px;border:1px solid #f1f5f9;border-radius:4px;margin-bottom:8px;">'
-      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">'
-        + '<div style="font-weight:600;font-size:13px;min-width:0;">'
-          + escapeHtml(item.specification || item.item_name || item.item_code || '')
-          + (item.specification ? '' : '')
-          + '<span style="font-weight:400;font-size:11px;color:#9ca3af;margin-left:6px;">' + escapeHtml(item.item_code || '') + '</span>'
-          + zoneTag + changedTag + '</div>'
-        + (varClass ? '<span style="font-size:10px;padding:2px 6px;border-radius:3px;background:#fee2e2;color:#dc2626;flex-shrink:0;" class="' + varClass + '">' + diffPct.toFixed(1) + '%</span>' : '')
+    // ★한 줄 표 형태 — 전체 폭에서 「카드 + 1fr 1fr 그리드」는 규격과 입력칸이 화면 양끝으로
+    //   벌어져 눈이 왕복한다. 열 폭을 고정해 세로로 정렬을 맞춘다.
+    //   테두리는 #f1f5f9(거의 흰색)이라 줄 구분이 안 보였다 → 아래 실선 + 줄무늬 배경.
+    var zebra = (rowIdx % 2 === 1) ? '#fafbfc' : 'transparent';
+    var bookTitle = (isEditable && notCounted)
+      ? '입력하면 장부 수량과 차이가 표시됩니다'
+      : '실사를 만든 시점의 재고입니다. 지금 재고가 아니며, 그 뒤 입출고가 있으면 ⚠️재고변동으로 표시됩니다.';
+    // hover 는 CSS 클래스로 — 인라인 onmouseover 에 따옴표를 넣으면 이스케이프가 깨진다(알려진 함정).
+    return '<div class="ic-row" style="display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:7px 8px;'
+        + 'border-bottom:1px solid #e5e7eb;background:' + zebra + ';">'
+      // 규격 — 이 줄이 무엇인지 정하는 축이다. 없으면 품목명이 그 자리에 온다.
+      + '<div style="flex:0 0 110px;font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"'
+        + ' title="' + escapeHtml(item.item_name || '') + '">'
+        + escapeHtml(item.specification || item.item_name || item.item_code || '') + '</div>'
+      + '<div style="flex:0 0 128px;font-size:11px;color:#9ca3af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
+        + escapeHtml(item.item_code || '') + '</div>'
+      + '<div style="flex:1 1 160px;min-width:0;font-size:12px;color:#6b7280;" title="' + bookTitle + '">' + bookCell + '</div>'
+      + '<div style="flex:0 0 auto;display:flex;align-items:center;gap:6px;">' + countedCell + '</div>'
+      + '<div style="flex:0 0 auto;display:flex;align-items:center;gap:4px;">' + zoneTag + changedTag
+        + (varClass ? '<span style="font-size:10px;padding:2px 6px;border-radius:3px;background:#fee2e2;color:#dc2626;" class="' + varClass + '">' + diffPct.toFixed(1) + '%</span>' : '')
       + '</div>'
-      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;color:#666;">'
-        // 「시스템」이라 쓰면 **지금 재고**로 읽힌다. 실제로는 **실사를 만든 시점의 스냅샷**이고,
-        //   그 뒤 입출고가 있으면 ⚠️재고변동 배지가 붙는다(그때의 현재고는 current_quantity).
-        + '<div title="' + (isEditable && notCounted
-              ? '입력하면 장부 수량과 차이가 표시됩니다'
-              : '실사를 만든 시점의 재고입니다. 지금 재고가 아니며, 그 뒤 입출고가 있으면 ⚠️재고변동으로 표시됩니다.') + '">'
-          + bookCell + '</div>'
-        + '<div>실사: ' + countedCell + '</div>'
-      + '</div>'
-      + (item.notes ? '<div style="font-size:11px;color:#9ca3af;margin-top:6px;padding-top:6px;border-top:1px solid #f1f5f9;"><strong>메모:</strong> ' + escapeHtml(item.notes) + '</div>' : '')
+      + (item.notes ? '<div style="flex:1 1 100%;font-size:11px;color:#9ca3af;padding-left:110px;"><strong>메모:</strong> ' + escapeHtml(item.notes) + '</div>' : '')
     + '</div>';
   }
 }

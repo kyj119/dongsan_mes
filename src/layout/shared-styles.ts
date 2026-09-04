@@ -570,6 +570,10 @@ export const SHARED_CSS = `
   .ds-table tbody tr { transition: background var(--transition-fast); }
   .ds-table tbody tr:nth-child(even) { background: var(--c-surface-stripe); }
   .ds-table tbody tr:hover { background: var(--c-bg); }
+
+  /* 실사표 한 줄 (inventoryCount.js icItemRowHtml). 인라인 onmouseover 로는 따옴표 이스케이프가
+     깨지므로 hover 는 여기서 준다 — CSS 는 layout 전역이 정본이다. */
+  .ic-row:hover { background: #eff6ff !important; }
   .ds-table tbody tr:last-child td { border-bottom: none; }
   .ds-table-compact thead th { padding: 6px 8px; }
   .ds-table-compact tbody td { padding: 6px 8px; font-size: var(--fs-xs); }
