@@ -418,7 +418,10 @@ function icRenderItems() {
         + (varClass ? '<span style="font-size:10px;padding:2px 6px;border-radius:3px;background:#fee2e2;color:#dc2626;flex-shrink:0;" class="' + varClass + '">' + diffPct.toFixed(1) + '%</span>' : '')
       + '</div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;color:#666;">'
-        + '<div>시스템: <strong>' + window.uomFormatStock(systemQty, icUomItem(item)) + '</strong></div>'
+        // 「시스템」이라 쓰면 **지금 재고**로 읽힌다. 실제로는 **실사를 만든 시점의 스냅샷**이고,
+        //   그 뒤 입출고가 있으면 ⚠️재고변동 배지가 붙는다(그때의 현재고는 current_quantity).
+        + '<div title="실사를 만든 시점의 재고입니다. 지금 재고가 아니며, 그 뒤 입출고가 있으면 ⚠️재고변동으로 표시됩니다.">'
+          + '장부: <strong>' + window.uomFormatStock(systemQty, icUomItem(item)) + '</strong></div>'
         + '<div>실사: ' + countedCell + '</div>'
       + '</div>'
       + (item.notes ? '<div style="font-size:11px;color:#9ca3af;margin-top:6px;padding-top:6px;border-top:1px solid #f1f5f9;"><strong>메모:</strong> ' + escapeHtml(item.notes) + '</div>' : '')

@@ -52,22 +52,26 @@ export function storageZonesPage(c: Context<HonoEnv>) {
         </button>
       </div>
     </div>
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
-      <div class="ds-card p-4">
-        <div class="flex items-center justify-between mb-2">
-          <h3 class="text-sm font-bold text-gray-800">이 구역의 품목</h3>
-          <span id="szAssignHeldCount" class="text-xs text-gray-400"></span>
-        </div>
-        <div id="szAssignHeld" style="max-height:420px;overflow-y:auto;"></div>
+    <!-- ⚠️2열로 두면 선택기가 **절반 폭**에 갇혀 규격 칩을 가로로 못 편다(용준님 2026-09-04 지적).
+         선택기가 주 작업면이므로 **전체 폭**으로 올리고, 보유 목록은 아래에 접어 둔다.
+         보유 여부는 선택기 안에서 회색 칩으로 이미 보이므로 아래 목록은 **수량 확인·빼기 전용**이다. -->
+    <div class="ds-card p-4">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="text-sm font-bold text-gray-800">추가할 품목</h3>
+        <button id="szAssignApply" onclick="szAssignApply()" class="ds-btn ds-btn-primary ds-btn-sm">추가</button>
       </div>
-      <div class="ds-card p-4">
-        <div class="flex items-center justify-between mb-2">
-          <h3 class="text-sm font-bold text-gray-800">추가할 품목</h3>
-          <button id="szAssignApply" onclick="szAssignApply()" class="ds-btn ds-btn-primary ds-btn-sm">추가</button>
-        </div>
-        <!-- 선택기 = scripts/zonePicker.js (실사 「품목 추가」와 같은 화면) -->
-        <div id="szAssignCand" style="max-height:520px;overflow-y:auto;"></div>
-      </div>
+      <!-- 선택기 = scripts/zonePicker.js (실사 「품목 추가」와 같은 화면) -->
+      <div id="szAssignCand" style="max-height:60vh;overflow-y:auto;"></div>
+    </div>
+
+    <div class="ds-card p-4">
+      <button onclick="szAssignToggleHeld()" class="w-full flex items-center gap-2 text-left">
+        <span id="szAssignHeldCaret" class="text-gray-400 text-xs">▸</span>
+        <h3 class="text-sm font-bold text-gray-800">이 구역의 품목</h3>
+        <span id="szAssignHeldCount" class="text-xs text-gray-400"></span>
+        <span class="ml-auto text-xs text-gray-400">수량 확인 · 빼기</span>
+      </button>
+      <div id="szAssignHeld" class="hidden mt-2" style="max-height:420px;overflow-y:auto;"></div>
     </div>
   </div>
 

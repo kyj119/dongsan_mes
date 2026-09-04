@@ -716,3 +716,13 @@ function szAssignStartCount() {
   if (!_szAssign.zoneId) return;
   szStartZoneCount(_szAssign.zoneId);
 }
+
+// 보유 목록 접기 — 선택기가 주 작업면이라 기본은 접어 둔다(보유 여부는 회색 칩으로 이미 보인다).
+function szAssignToggleHeld() {
+  var box = document.getElementById('szAssignHeld');
+  var caret = document.getElementById('szAssignHeldCaret');
+  if (!box) { console.warn('[storageZones] #szAssignHeld not found'); return; }
+  var open = !box.classList.contains('hidden');
+  box.classList.toggle('hidden', open);
+  if (caret) caret.textContent = open ? '\u25B8' : '\u25BE';
+}
