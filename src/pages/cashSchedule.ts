@@ -85,24 +85,18 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
           <button id="tabSchedule" onclick="switchScheduleTab('schedule')" class="px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600 flex items-center gap-2">
             <i class="fas fa-calendar-alt text-sm"></i>자금계획
           </button>
-          <button id="tabMonthly" onclick="switchScheduleTab('monthly')" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 flex items-center gap-2">
-            <i class="fas fa-chart-bar text-sm"></i>월별 요약
-          </button>
           <button id="tabFixed" onclick="switchScheduleTab('fixed')" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 flex items-center gap-2">
             <i class="fas fa-file-invoice-dollar text-sm"></i>고정비
           </button>
           <button id="tabLoans" onclick="switchScheduleTab('loans')" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 flex items-center gap-2">
             <i class="fas fa-university text-sm"></i>대출
           </button>
-          <button id="tabForecast" onclick="switchScheduleTab('forecast')" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 flex items-center gap-2">
-            <i class="fas fa-chart-line text-sm"></i>추정자금일보
-          </button>
         </div>
 
-        <!-- 자금계획 탭 -->
-        <div id="schedulePanel" class="space-y-4">
+        <!-- 자금계획 탭 = 계획 대시보드(달력 + 통계 한 화면) -->
+        <div id="schedulePanel" class="space-y-3">
           <!-- KPI 카드 -->
-          <div class="grid grid-cols-5 gap-2">
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
             <div class="ds-card p-2.5 text-center hover:shadow-md transition-shadow">
               <div class="text-[10px] text-gray-400 mb-1">이번달 입금예정</div>
               <div class="text-lg font-bold tabular-nums text-gray-900" id="schKpiInTotal">-</div>
@@ -122,6 +116,10 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
             <div class="ds-card border-red-200 p-2.5 text-center hover:shadow-md transition-shadow">
               <div class="text-[10px] text-red-500 font-medium mb-1">연체</div>
               <div class="text-lg font-bold text-red-600 tabular-nums" id="schKpiOverdue">-</div>
+            </div>
+            <div class="ds-card p-2.5 text-center hover:shadow-md transition-shadow" title="은행 실잔액에서 출발한 예측 기간 중 최저 잔액">
+              <div class="text-[10px] text-gray-400 mb-1"><span id="schKpiMinDays">90</span>일 최저잔액</div>
+              <div class="text-lg font-bold tabular-nums text-gray-900" id="schKpiMinBalance">-</div>
             </div>
           </div>
 
@@ -150,116 +148,115 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
             </button>
           </div>
 
-          <!-- 캘린더 그리드 -->
-          <div class="ds-card p-3">
-            <div class="grid grid-cols-7 gap-1 text-[10px]">
-              <!-- 요일 헤더 -->
-              <div class="text-center font-bold text-gray-600 py-1">일</div>
-              <div class="text-center font-bold text-gray-600 py-1">월</div>
-              <div class="text-center font-bold text-gray-600 py-1">화</div>
-              <div class="text-center font-bold text-gray-600 py-1">수</div>
-              <div class="text-center font-bold text-gray-600 py-1">목</div>
-              <div class="text-center font-bold text-gray-600 py-1">금</div>
-              <div class="text-center font-bold text-gray-600 py-1">토</div>
-              <!-- 캘린더 셀 — 컨테이너 자신이 7열 그리드여야 한다.
-                   col-span-7만 주면 이 div는 '블록'이라 안에 들어온 날짜 셀 31개가 7열로 안 깔리고 세로로 쌓인다(달력이 세로 목록이 됨).
-                   부모(gap-1)와 자식(gap-1)의 열 폭 계산이 같아 요일 헤더와 정확히 정렬된다. -->
-              <div id="schCalendarContainer" class="col-span-7 grid grid-cols-7 gap-1"></div>
+          <!-- 본문 = 달력(좌) + 통계(우). xl 미만 화면에선 세로로 쌓인다. -->
+          <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-3 items-start">
+            <!-- 캘린더 그리드 -->
+            <div class="ds-card p-3">
+              <div class="grid grid-cols-7 gap-1 text-[10px]">
+                <!-- 요일 헤더 -->
+                <div class="text-center font-bold text-gray-600 py-1">일</div>
+                <div class="text-center font-bold text-gray-600 py-1">월</div>
+                <div class="text-center font-bold text-gray-600 py-1">화</div>
+                <div class="text-center font-bold text-gray-600 py-1">수</div>
+                <div class="text-center font-bold text-gray-600 py-1">목</div>
+                <div class="text-center font-bold text-gray-600 py-1">금</div>
+                <div class="text-center font-bold text-gray-600 py-1">토</div>
+                <!-- 캘린더 셀 — 컨테이너 자신이 7열 그리드여야 한다.
+                     col-span-7만 주면 이 div는 '블록'이라 안에 들어온 날짜 셀 31개가 7열로 안 깔리고 세로로 쌓인다(달력이 세로 목록이 됨).
+                     부모(gap-1)와 자식(gap-1)의 열 폭 계산이 같아 요일 헤더와 정확히 정렬된다. -->
+                <div id="schCalendarContainer" class="col-span-7 grid grid-cols-7 gap-1"></div>
+              </div>
+            </div>
+
+            <!-- 통계 패널 -->
+            <div class="space-y-3">
+              <!-- 잔액 추이 -->
+              <div class="ds-card p-3">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="text-xs font-medium text-gray-600">잔액 추이</div>
+                  <select id="fcDays" onchange="loadOverview()" class="border rounded px-1.5 py-0.5 text-[11px] text-gray-700">
+                    <option value="30">30일</option>
+                    <option value="60">60일</option>
+                    <option value="90" selected>90일</option>
+                    <option value="180">180일</option>
+                  </select>
+                </div>
+                <div id="schBalanceSpark" class="w-full"></div>
+                <div class="grid grid-cols-3 gap-1 mt-2 text-center">
+                  <div>
+                    <div class="text-[9px] text-gray-400 mb-0.5">시작(은행)</div>
+                    <input id="fcStartBalance" type="text" inputmode="numeric" data-money onchange="loadOverview()"
+                      class="w-full border rounded px-1 py-0.5 text-[11px] text-center tabular-nums text-gray-900" title="비우면 은행 실잔액으로 되돌아갑니다">
+                  </div>
+                  <div>
+                    <div class="text-[9px] text-gray-400 mb-0.5">최저</div>
+                    <div class="text-[11px] font-bold tabular-nums py-0.5" id="schFcMin">-</div>
+                  </div>
+                  <div>
+                    <div class="text-[9px] text-red-500 mb-0.5">위험일</div>
+                    <div class="text-[11px] font-bold text-red-600 tabular-nums py-0.5" id="schFcRisk">-</div>
+                  </div>
+                </div>
+                <div id="schCarriedNote" class="hidden mt-2 text-[10px] text-amber-700 bg-amber-50 rounded px-2 py-1"></div>
+              </div>
+
+              <!-- 이번달 구성 -->
+              <div class="ds-card p-3">
+                <div class="text-xs font-medium text-gray-600 mb-2">이번달 구성</div>
+                <div id="schCompIn" class="mb-3"></div>
+                <div id="schCompOut"></div>
+              </div>
+
+              <!-- 예상수금 Top -->
+              <div class="ds-card p-3">
+                <div class="text-xs font-medium text-gray-600 mb-2">예상수금 Top 5</div>
+                <div id="schTopReceipts" class="space-y-1"></div>
+              </div>
             </div>
           </div>
+
+          <!-- 하단: 6개월 전망 (구 '월별 요약' 탭) -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div class="ds-card p-3">
+              <div class="text-xs font-medium text-gray-600 mb-2">6개월 현금흐름 전망</div>
+              <div id="monthlyChart" class="space-y-2"></div>
+            </div>
+            <div class="ds-card p-3">
+              <div class="text-xs font-medium text-gray-600 mb-2">월별 상세</div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm ds-table ds-table-striped">
+                  <thead>
+                    <tr class="bg-gray-50 text-gray-600">
+                      <th class="col-name px-3 py-2 text-left">월</th>
+                      <th class="col-amount px-3 py-2 text-right">수입</th>
+                      <th class="col-amount px-3 py-2 text-right">지출</th>
+                      <th class="col-amount px-3 py-2 text-right">순 현금흐름</th>
+                      <th class="col-amount px-3 py-2 text-right">누적</th>
+                    </tr>
+                  </thead>
+                  <tbody id="monthlyTable"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 일별 예측 (구 '추정자금일보' 탭 — 상시 노출할 분량이 아니라 접어둔다) -->
+          <details class="ds-card p-3">
+            <summary class="text-xs font-medium text-gray-600 cursor-pointer select-none">일별 예측 · 음수 잔액 일자</summary>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
+              <div>
+                <div class="text-[11px] text-gray-500 mb-1">음수 잔액 일자</div>
+                <div id="fcRiskTable" class="overflow-x-auto"></div>
+              </div>
+              <div>
+                <div class="text-[11px] text-gray-500 mb-1">일별 예측</div>
+                <div id="fcForecastTable" class="overflow-x-auto" style="max-height:320px; overflow-y:auto;"></div>
+              </div>
+            </div>
+          </details>
         </div>
 
-        <!-- 추정자금일보 탭 -->
-        <div id="forecastPanel" class="hidden space-y-4">
-          <!-- 제어 바 -->
-          <div class="ds-card p-3 flex items-center gap-2">
-            <label class="text-[10px] text-gray-500">시작 잔액</label>
-            <input id="fcStartBalance" type="text" inputmode="numeric" data-money value="0" class="border rounded px-2 py-1 text-xs w-32 text-gray-900">
-            <label class="text-[10px] text-gray-500 ml-2">기간</label>
-            <select id="fcDays" class="border rounded px-2 py-1 text-xs">
-              <option value="30">30일</option>
-              <option value="60">60일</option>
-              <option value="90" selected>90일</option>
-              <option value="180">180일</option>
-            </select>
-            <div class="flex-1"></div>
-            <button onclick="loadForecast()" class="ds-btn ds-btn-primary text-xs">
-              <i class="fas fa-play mr-1"></i>예측 실행
-            </button>
-          </div>
-
-          <!-- KPI 카드 -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-            <div class="ds-card p-2.5 text-center hover:shadow-md transition-shadow">
-              <div class="text-[10px] text-gray-400 mb-1">예상 종료 잔액</div>
-              <div class="text-lg font-bold tabular-nums text-gray-900" id="fcKpiEndBalance">-</div>
-            </div>
-            <div class="ds-card p-2.5 text-center hover:shadow-md transition-shadow">
-              <div class="text-[10px] text-gray-400 mb-1">최저 잔액</div>
-              <div class="text-lg font-bold tabular-nums text-gray-900" id="fcKpiMinBalance">-</div>
-            </div>
-            <div class="ds-card p-2.5 text-center hover:shadow-md transition-shadow">
-              <div class="text-[10px] text-gray-400 mb-1">최고 잔액</div>
-              <div class="text-lg font-bold tabular-nums text-gray-900" id="fcKpiMaxBalance">-</div>
-            </div>
-            <div class="ds-card border-red-200 p-2.5 text-center hover:shadow-md transition-shadow">
-              <div class="text-[10px] text-red-500 font-medium mb-1">위험일</div>
-              <div class="text-lg font-bold text-red-600 tabular-nums" id="fcKpiRiskDays">-</div>
-            </div>
-          </div>
-
-          <!-- 차트 (간단한 HTML 바 차트) -->
-          <div class="ds-card p-3">
-            <div class="text-xs font-medium mb-2 text-gray-600">일별 잔액 추이</div>
-            <div id="fcChartContainer" class="w-full overflow-x-auto" style="max-height: 200px;">
-              <div class="flex gap-1" id="fcChart"></div>
-            </div>
-          </div>
-
-          <!-- 위험일 테이블 -->
-          <div class="ds-card p-3">
-            <div class="text-xs font-medium mb-2 text-gray-600">음수 잔액 일자</div>
-            <div id="fcRiskTable" class="overflow-x-auto"></div>
-          </div>
-
-          <!-- 예측 테이블 -->
-          <div class="ds-card p-3">
-            <div class="text-xs font-medium mb-2 text-gray-600">일별 예측</div>
-            <div id="fcForecastTable" class="overflow-x-auto"></div>
-          </div>
-        </div>
       </div>
-
-        <!-- 월별 요약 탭 (구 캐시플로 현황) -->
-        <div id="monthlyPanel" class="hidden space-y-4">
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div class="ds-card p-4"><div class="text-sm text-gray-500">이번달 수입</div><div id="kpiIncome" class="text-2xl font-bold text-green-600 mt-1">-</div></div>
-            <div class="ds-card p-4"><div class="text-sm text-gray-500">이번달 지출</div><div id="kpiExpense" class="text-2xl font-bold text-red-600 mt-1">-</div></div>
-            <div class="ds-card p-4"><div class="text-sm text-gray-500">순 현금흐름</div><div id="kpiNet" class="text-2xl font-bold mt-1">-</div></div>
-            <div class="ds-card p-4"><div class="text-sm text-gray-500">대출 잔액 합계</div><div id="kpiLoanBalance" class="text-2xl font-bold mt-1">-</div><button onclick="switchScheduleTab('loans')" class="text-[11px] text-gray-400 hover:text-blue-600 mt-0.5"><i class="fas fa-arrow-right text-[9px] mr-0.5"></i>대출 상세</button></div>
-          </div>
-          <div class="ds-card p-6">
-            <h3 class="text-lg font-bold mb-4">6개월 현금흐름 전망</h3>
-            <div id="monthlyChart" class="space-y-3"></div>
-          </div>
-          <div class="ds-card p-6">
-            <h3 class="text-lg font-bold mb-4">월별 상세</h3>
-            <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-              <table class="w-full text-sm ds-table ds-table-striped">
-                <thead>
-                  <tr class="bg-gray-50 text-gray-600">
-                    <th class="col-name px-3 py-2 text-left">월</th>
-                    <th class="col-amount px-3 py-2 text-right">수입</th>
-                    <th class="col-amount px-3 py-2 text-right">지출</th>
-                    <th class="col-amount px-3 py-2 text-right">순 현금흐름</th>
-                    <th class="col-amount px-3 py-2 text-right">누적</th>
-                  </tr>
-                </thead>
-                <tbody id="monthlyTable"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
 
         <!-- 고정비 탭 -->
         <div id="fixedPanel" class="hidden space-y-4">

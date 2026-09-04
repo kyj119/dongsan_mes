@@ -21,66 +21,6 @@
     if (s == null) return '';
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
-  function setText(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; }
-
-  // ── 월별 요약 탭 (구 캐시플로 현황) — summary KPI + monthly 표/차트 ──
-  async function loadMonthly() {
-    var chartEl = document.getElementById('monthlyChart');
-    if (chartEl) chartEl.innerHTML = '<div class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></div>';
-    var tableEl = document.getElementById('monthlyTable');
-    if (tableEl) tableEl.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-gray-400">로딩 중...</td></tr>';
-    try {
-      var results = await Promise.all([
-        axios.get('/api/cash-flow/summary'),
-        axios.get('/api/cash-flow/schedule/monthly?months=6')
-      ]);
-      var sumRes = results[0], monRes = results[1];
-      if (sumRes.data.success) {
-        var s = sumRes.data.data;
-        setText('kpiIncome', fmt(s.income) + '원');
-        setText('kpiExpense', fmt(s.fixed_expenses + s.loan_payments) + '원');
-        var net = s.income - s.fixed_expenses - s.loan_payments;
-        var netEl = document.getElementById('kpiNet');
-        if (netEl) {
-          netEl.textContent = (net >= 0 ? '+' : '') + fmt(net) + '원';
-          netEl.className = 'text-2xl font-bold mt-1 ' + (net >= 0 ? 'text-green-600' : 'text-red-600');
-        }
-        setText('kpiLoanBalance', fmt(s.total_loan_balance) + '원');
-      }
-      if (monRes.data.success) renderMonthly(monRes.data.data);
-    } catch (err) { console.error('Monthly load failed:', err); }
-  }
-  window.loadMonthly = loadMonthly;
-
-  function renderMonthly(data) {
-    var maxVal = 1;
-    data.forEach(function (d) { maxVal = Math.max(maxVal, d.in, d.out); });
-
-    var chartEl = document.getElementById('monthlyChart');
-    if (chartEl) chartEl.innerHTML = data.map(function (d) {
-      var inPct = Math.round((d.in / maxVal) * 100);
-      var outPct = Math.round((d.out / maxVal) * 100);
-      return '<div class="flex items-center gap-2 text-xs">'
-        + '<span class="w-16 text-gray-600">' + d.month + '</span>'
-        + '<div class="flex-1">'
-        + '<div class="flex items-center gap-1 mb-0.5"><span class="w-8 text-green-600">수입</span><div class="flex-1 h-3 bg-gray-100 rounded-full"><div class="h-full bg-green-500 rounded-full" style="width:' + inPct + '%"></div></div><span class="w-24 text-right">' + fmt(d.in) + '</span></div>'
-        + '<div class="flex items-center gap-1"><span class="w-8 text-red-600">지출</span><div class="flex-1 h-3 bg-gray-100 rounded-full"><div class="h-full bg-red-400 rounded-full" style="width:' + outPct + '%"></div></div><span class="w-24 text-right">' + fmt(d.out) + '</span></div>'
-        + '</div></div>';
-    }).join('');
-
-    var tableEl = document.getElementById('monthlyTable');
-    if (tableEl) tableEl.innerHTML = data.map(function (d) {
-      var netClass = d.net >= 0 ? 'text-green-600' : 'text-red-600';
-      var cumClass = d.cumulative >= 0 ? 'text-green-600' : 'text-red-600';
-      return '<tr class="border-b hover:bg-gray-50">'
-        + '<td class="px-3 py-2 font-medium">' + d.month + '</td>'
-        + '<td class="px-3 py-2 text-right text-green-600">' + fmt(d.in) + '</td>'
-        + '<td class="px-3 py-2 text-right text-red-600">' + fmt(d.out) + '</td>'
-        + '<td class="px-3 py-2 text-right font-bold ' + netClass + '">' + fmt(d.net) + '</td>'
-        + '<td class="px-3 py-2 text-right ' + cumClass + '">' + fmt(d.cumulative) + '</td>'
-        + '</tr>';
-    }).join('');
-  }
 
   // ── 고정비 탭 ──
   async function loadFixedExpenses() {
