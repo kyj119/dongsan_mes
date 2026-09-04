@@ -4,6 +4,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
 import { getEntityId, entityFilter, isZoneOwnedByEntity, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../utils/entityFilter'
 import { getItemDefaultZones } from '../utils/inventoryZone'
+import { isSupervisor, canTouchZone } from '../utils/zoneAccess'
 import { resolveStockUnit } from '../utils/rollConsumption'
 import { kstStamp14, kstYmd } from '../utils/kstDate'
 
@@ -21,24 +22,6 @@ const inventoryCountRouter = new Hono<HonoEnv>()
 //    ([[feedback-client-role-gate]]).
 // ⚠️ **구역 미지정 실사(전수·PERIODIC)는 담당자가 못 만진다** — 남의 구역이 섞여 있다. 관리자 전용.
 inventoryCountRouter.use('/*', authMiddleware)
-
-/** ADMIN·MANAGER = 전 구역. (MANAGER 는 현재 0명이지만 역할 축은 유지한다) */
-function isSupervisor(c: Context<HonoEnv>): boolean {
-  const r = c.get('user')?.role
-  return r === 'ADMIN' || r === 'MANAGER'
-}
-
-/** 이 구역을 만질 수 있나. 관리자는 전부, 그 외는 **자기 담당 활성 구역**만. 미지정(NULL)은 관리자만. */
-async function canTouchZone(c: Context<HonoEnv>, zoneId: number | null | undefined): Promise<boolean> {
-  if (isSupervisor(c)) return true
-  if (zoneId == null) return false
-  const uid = c.get('user')?.id
-  if (!uid) return false
-  const row = await c.env.DB.prepare(
-    'SELECT 1 AS ok FROM storage_zones WHERE id = ? AND manager_id = ? AND is_active = 1'
-  ).bind(Number(zoneId), uid).first<{ ok: number }>()
-  return !!row
-}
 
 /**
  * 실사 1건을 법인 필터와 함께 읽고 담당 구역 검사까지 한다.

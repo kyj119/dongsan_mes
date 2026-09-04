@@ -1,8 +1,10 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { getEntityId, entityFilter, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../utils/entityFilter'
 import { validateUpload } from '../utils/uploadValidation'
+import { canTouchZone } from '../utils/zoneAccess'
 
 const storageZonesRouter = new Hono<HonoEnv>()
 storageZonesRouter.use('/*', authMiddleware)
@@ -515,6 +517,190 @@ storageZonesRouter.patch('/assign-items', requireRole('ADMIN'), async (c) => {
     return c.json({ success: true, message: `${item_ids.length}개 품목의 구역이 변경되었습니다.` })
   } catch (error) {
     console.error('storageZones assign-items error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ── 구역 ↔ 품목 배정 (2026-09-04) ───────────────────────────────────────────
+// **「이 구역에 이 품목이 있다」의 정본 = `inventory` 행**이다. `items.storage_zone_id` 는
+// 「입고 기본 창고」로 의미를 좁혔다(법인 공유 칸이라 법인별 배정을 못 담는다).
+// 구역 실사가 `JOIN inventory ... AND inv.storage_zone_id = ?` 로 대상을 잡으므로,
+// 여기서 만든 행이 그대로 실사표가 된다.
+//
+// 종전 배정 경로 3개는 축이 제각각이라 서로 안 맞았다 —
+//   `PATCH /assign-items`(축1만) · `POST /inventory/bulk-assign-zones`(축1+옵션 이동) ·
+//   `POST /inventory-counts/:id/add-items`(축2, 실사 안에서만). 그리고 **빼는 경로가 없었다**.
+//
+// ⚠️ 수량 이동은 여기서 하지 않는다 — `POST /api/inventory/transfer` 가 원장 2행(TRANSFER_OUT/IN)을
+//    남기며 이미 한다. 이 API 는 **0 수량 행을 만들고 없애는 것만** 한다. 하나의 API 는 하나만 한다.
+
+/** 배정 대상 구역을 검증한다. 반환 = 오류 응답(있으면) · null(통과). */
+async function guardZone(c: Context<HonoEnv>, zoneId: number): Promise<Response | null> {
+  const entityId = getWriteEntityId(c)
+  if (entityId == null) {
+    return c.json({ success: false, error: ENTITY_ALL_MODE_WRITE_ERROR }, 400)
+  }
+  const zone = await c.env.DB.prepare(
+    'SELECT id FROM storage_zones WHERE id = ? AND entity_id = ? AND is_active = 1'
+  ).bind(zoneId, entityId).first<{ id: number }>()
+  // 타법인 구역은 **없는 것으로** 답한다 — 다른 법인 구역 구성을 흘리지 않는다.
+  if (!zone) return c.json({ success: false, error: '구역을 찾을 수 없습니다.' }, 404)
+  if (!(await canTouchZone(c, zoneId))) {
+    return c.json({ success: false, error: '담당 구역이 아닙니다.' }, 403)
+  }
+  return null
+}
+
+// GET /api/storage-zones/:id/candidates — 이 구역에 **아직 없는** 매입 품목
+//   화면이 분류(8) → 그룹(209) → 품목 2단계로 접을 수 있게 두 축을 그대로 내려보낸다.
+//   대상 축 = `is_purchase_item = 1 AND is_active = 1` — 구역 실사 쿼리와 **같은 조건**이어야
+//   추가한 품목이 실사표에 반드시 뜬다.
+storageZonesRouter.get('/:id/candidates', async (c) => {
+  try {
+    const zoneId = parseInt(c.req.param('id'))
+    const entityId = getEntityId(c)
+    if (!entityId) return c.json({ success: false, error: ENTITY_ALL_MODE_WRITE_ERROR }, 400)
+    if (!(await canTouchZone(c, zoneId))) {
+      return c.json({ success: false, error: '담당 구역이 아닙니다.' }, 403)
+    }
+    const q = (c.req.query('q') || '').trim()
+    const category = (c.req.query('category') || '').trim()
+    const group = (c.req.query('group') || '').trim()
+    const limit = Math.min(parseInt(c.req.query('limit') || '500'), 1000)
+
+    // 검색만 걸린 공통 조건. 트리 집계와 품목 목록이 **같은 모수**를 봐야 개수가 맞는다.
+    const base = ['i.is_purchase_item = 1', 'i.is_active = 1']
+    const baseBinds: any[] = []
+    if (q) {
+      base.push('(i.item_name LIKE ? OR i.item_code LIKE ? OR i.search_keywords LIKE ?)')
+      const t = `%${q}%`
+      baseBinds.push(t, t, t)
+    }
+    const notInZone = `NOT EXISTS (SELECT 1 FROM inventory v
+                                    WHERE v.item_id = i.id AND v.entity_id = ? AND v.storage_zone_id = ?)`
+
+    // ── 트리 = 분류 → 그룹 개수. 후보가 1,000개를 넘는 구역이 있어(현수막실 1,077) 목록만으로는
+    //    화면을 못 만든다. 개수를 먼저 주고 사람이 좁혀 들어오게 한다.
+    const { results: tree } = await c.env.DB.prepare(`
+      SELECT COALESCE(i.category, '(분류 없음)')   AS category,
+             COALESCE(i.item_group, '(그룹 없음)') AS item_group,
+             COUNT(*) AS n
+        FROM items i
+       WHERE ${base.join(' AND ')} AND ${notInZone}
+       GROUP BY category, item_group
+       ORDER BY category, item_group
+    `).bind(...baseBinds, entityId, zoneId).all()
+
+    // ── 품목 목록 (분류·그룹으로 좁힌 뒤)
+    const conds = [...base]
+    const binds: any[] = [...baseBinds]
+    if (category) { conds.push(`COALESCE(i.category, '(분류 없음)') = ?`); binds.push(category) }
+    if (group) { conds.push(`COALESCE(i.item_group, '(그룹 없음)') = ?`); binds.push(group) }
+
+    // ⚠️ 바인딩은 **쿼리 문자열 등장 순서**다 — SELECT 절 서브쿼리의 ? 가 WHERE 보다 앞선다
+    //    ([[feedback-sqlite-placeholder-subquery-order]]). 그래서 entityId 를 맨 앞에 한 번 더 준다.
+    // 정렬 규약 = 고유키 tie-break 필수. 분류·그룹은 동값이 많아 페이지가 흔들린다.
+    const { results } = await c.env.DB.prepare(`
+      SELECT i.id, i.item_code, i.item_name, i.unit,
+             COALESCE(i.category, '(분류 없음)')   AS category,
+             COALESCE(i.item_group, '(그룹 없음)') AS item_group,
+             (SELECT GROUP_CONCAT(z2.zone_name)
+                FROM inventory v2 JOIN storage_zones z2 ON z2.id = v2.storage_zone_id
+               WHERE v2.item_id = i.id AND v2.entity_id = ?) AS current_zones
+        FROM items i
+       WHERE ${conds.join(' AND ')} AND ${notInZone}
+       ORDER BY category, item_group, i.item_name, i.id
+       LIMIT ?
+    `).bind(entityId, ...binds, entityId, zoneId, limit).all()
+
+    return c.json({
+      success: true,
+      data: { tree: tree || [], items: results || [], truncated: (results || []).length >= limit },
+    })
+  } catch (error) {
+    console.error('storageZones candidates error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// POST /api/storage-zones/:id/items — 구역에 품목 편입 (0 수량 행 생성)
+storageZonesRouter.post('/:id/items', async (c) => {
+  try {
+    const zoneId = parseInt(c.req.param('id'))
+    const bad = await guardZone(c, zoneId)
+    if (bad) return bad
+    const entityId = getWriteEntityId(c) as number
+
+    const body = await c.req.json<{ item_ids?: number[] }>()
+    const itemIds = Array.from(new Set((body.item_ids || []).map(Number).filter(n => Number.isFinite(n))))
+    if (itemIds.length === 0) return c.json({ success: true, data: { added: 0 } })
+    if (itemIds.length > 500) {
+      return c.json({ success: false, error: '한 번에 500개 이하로 나눠서 배정하세요.' }, 400)
+    }
+
+    // 매입 품목만 — 제품을 넣으면 실사표에 뜨지 않아(구역 실사가 is_purchase_item=1) 조용히 사라진다.
+    let added = 0
+    for (let i = 0; i < itemIds.length; i += 80) {   // D1 바인드 한도 → 80 청크
+      const chunk = itemIds.slice(i, i + 80)
+      const ph = chunk.map(() => '?').join(',')
+      const res = await c.env.DB.prepare(`
+        INSERT OR IGNORE INTO inventory (item_id, entity_id, storage_zone_id, quantity)
+        SELECT i.id, ?, ?, 0 FROM items i
+         WHERE i.id IN (${ph}) AND i.is_purchase_item = 1 AND i.is_active = 1
+      `).bind(entityId, zoneId, ...chunk).run()
+      added += Number(res.meta?.changes || 0)
+    }
+    // 수량 0 행만 만든다 → 재고 총량이 안 변하므로 원장을 남기지 않는다(CLAUDE.md 「재고를 바꾸면 원장」).
+    return c.json({ success: true, data: { added, requested: itemIds.length } })
+  } catch (error) {
+    console.error('storageZones add items error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// DELETE /api/storage-zones/:id/items/:itemId — 구역에서 품목 제외
+//   ★재고 0 일 때만. 전례 = 구역 삭제(`DELETE FROM inventory WHERE storage_zone_id=? AND quantity=0`).
+storageZonesRouter.delete('/:id/items/:itemId', async (c) => {
+  try {
+    const zoneId = parseInt(c.req.param('id'))
+    const itemId = parseInt(c.req.param('itemId'))
+    const bad = await guardZone(c, zoneId)
+    if (bad) return bad
+    const entityId = getWriteEntityId(c) as number
+
+    const row = await c.env.DB.prepare(
+      'SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND storage_zone_id = ?'
+    ).bind(itemId, entityId, zoneId).first<{ quantity: number }>()
+    if (!row) return c.json({ success: false, error: '이 구역에 없는 품목입니다.' }, 404)
+    if (Number(row.quantity) !== 0) {
+      return c.json({
+        success: false,
+        error: `재고가 남아 있어 뺄 수 없습니다 (${row.quantity}). 다른 구역으로 옮기거나 0으로 맞춘 뒤 다시 시도하세요.`,
+      }, 400)
+    }
+
+    // ⚠️ 진행 중인 실사에 이 라인이 있으면 막는다 — 승인이 `INSERT OR IGNORE INTO inventory` 로
+    //    행을 되살리므로, 빼도 승인 순간 되돌아와 「뺐는데 왜 또 있지」가 된다.
+    const open = await c.env.DB.prepare(`
+      SELECT ic.count_number FROM inventory_count_items ci
+        JOIN inventory_counts ic ON ic.id = ci.count_id
+       WHERE ci.item_id = ? AND IFNULL(ci.storage_zone_id, 0) = ?
+         AND ic.entity_id = ? AND ic.status IN ('DRAFT', 'SUBMITTED')
+       ORDER BY ic.id DESC LIMIT 1
+    `).bind(itemId, zoneId, entityId).first<{ count_number: string }>()
+    if (open) {
+      return c.json({
+        success: false,
+        error: `진행 중인 실사(${open.count_number})에 포함된 품목입니다. 실사를 끝낸 뒤 빼 주세요.`,
+      }, 400)
+    }
+
+    const res = await c.env.DB.prepare(
+      'DELETE FROM inventory WHERE item_id = ? AND entity_id = ? AND storage_zone_id = ? AND quantity = 0'
+    ).bind(itemId, entityId, zoneId).run()
+    return c.json({ success: true, data: { removed: Number(res.meta?.changes || 0) } })
+  } catch (error) {
+    console.error('storageZones remove item error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
