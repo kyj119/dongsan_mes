@@ -82,11 +82,14 @@ def main():
     ap.add_argument('--today', default=None, help='납기 경과 판정 기준일(기본=--to 다음날 아님, 오늘)')
     ap.add_argument('--no-rep', action='store_true',
                     help='담당자(①)를 건드리지 않는다 — 원천이 다른 이관분 보호')
-    ap.add_argument('--prefix', default='A', choices=['A', 'I'],
-                    help='주문번호 구분자 — A=일상 자동생성 · I=과거분 대량 이관(기본 A)')
+    ap.add_argument('--prefix', default='A', choices=['A', 'I', ''],
+                    help="주문번호 구분자 — A=일상 자동생성 · I=과거분 대량 이관 · ''=선명·청주 규약(E2-YYYYMMDD-NNN)")
+    ap.add_argument('--marker', default=None,
+                    help="notes 마커 접두(기본=동산 importer). 선명·청주는 '선명 이관'")
     ap.add_argument('--apply', action='store_true')
     a = ap.parse_args()
     today = a.today or __import__('datetime').date.today().isoformat()
+    marker = a.marker or MARKER      # 스코프·채번·카드 조회가 전부 이 값에 걸린다
 
     # ── 원천: 전표 → 담당명 ──
     wb = openpyxl.load_workbook(a.truth, read_only=True, data_only=True)
@@ -104,20 +107,20 @@ def main():
         "SELECT id, name FROM employees WHERE status='ACTIVE'")}
     orders = d1(f"SELECT id, order_number, order_date, delivery_date, created_at, status, "
                 f"sales_rep_id, entity_id, notes FROM orders "
-                f"WHERE notes LIKE {q(MARKER + '%')} AND order_date BETWEEN {q(a.d_from)} AND {q(a.d_to)}")
+                f"WHERE notes LIKE {q(marker + '%')} AND order_date BETWEEN {q(a.d_from)} AND {q(a.d_to)}")
     print(f'대상 주문 {len(orders)}건 · 원천 전표 {len(staff)} · 직원 {len(emp)}')
 
     refs = d1(f"SELECT (SELECT COUNT(*) FROM print_file_map m JOIN cards c ON c.card_number=m.card_number "
-              f"JOIN orders o ON o.id=c.order_id WHERE o.notes LIKE {q(MARKER + '%')}) a, "
+              f"JOIN orders o ON o.id=c.order_id WHERE o.notes LIKE {q(marker + '%')}) a, "
               f"(SELECT COUNT(*) FROM print_events e JOIN cards c ON c.card_number=e.card_number "
-              f"JOIN orders o ON o.id=c.order_id WHERE o.notes LIKE {q(MARKER + '%')}) b")[0]
+              f"JOIN orders o ON o.id=c.order_id WHERE o.notes LIKE {q(marker + '%')}) b")[0]
     renumber = (refs['a'] == 0 and refs['b'] == 0)
     if not renumber:
         print(f"⚠️ 카드번호 참조 {refs['a']}+{refs['b']}건 존재 → 번호 변경 건너뜀(접수일·담당·상태만)")
 
     cards = defaultdict(list)
     for c in d1(f"SELECT c.id, c.card_number, c.order_id, c.status FROM cards c JOIN orders o ON o.id=c.order_id "
-                f"WHERE o.notes LIKE {q(MARKER + '%')}"):
+                f"WHERE o.notes LIKE {q(marker + '%')}"):
         cards[c['order_id']].append(c)
 
     # ★채번은 0 이 아니라 **그 날짜에 이미 쓰인 최대값**에서 이어받는다.

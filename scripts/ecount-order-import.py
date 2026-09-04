@@ -344,6 +344,10 @@ def main():
     ap.add_argument('--user', default=os.environ.get('SMOKE_USER', 'admin'))
     ap.add_argument('--pass', dest='pw', default=os.environ.get('SMOKE_PASS', 'password'))
     ap.add_argument('--apply', action='store_true', help='실제 생성(기본은 미리보기)')
+    ap.add_argument('--entity', type=int, default=1,
+                    help='적재 법인 (1=동산기획 · 2=선명 · 3=청주). 주문의 entity 는 body 가 아니라 세션 토큰에서 온다')
+    ap.add_argument('--marker', default=MARKER,
+                    help="notes 마커 접두 — 법인마다 규약이 다르다(선명·청주 기존분은 '선명 이관')")
     ap.add_argument('--build-dict', action='store_true')
     ap.add_argument('--remote', action='store_true', help='--build-dict 를 prod D1 로')
     ap.add_argument('--limit', type=int, default=0, help='전표 N건만(시범 적재용)')
@@ -370,6 +374,17 @@ def main():
 
     base, tok = a.url.rstrip('/'), None
     tok = login(base, a.user, a.pw)
+
+    # ★주문의 entity_id 는 **body 가 아니라 세션 토큰**에서 온다(body 의 entity_id 는 안 먹는다).
+    #   그래서 타 법인 적재는 반드시 여기서 토큰을 갈아야 한다 — 안 하면 선명 전표가 통째로
+    #   동산(1) 에 꽂힌다. 아래 담당자 조회용 entity 0 전환은 별도 토큰이라 서로 간섭하지 않는다.
+    if a.entity != 1:
+        r_ent = api(base, '/api/auth/switch-entity', tok, {'entity_id': a.entity})
+        tok_ent = (r_ent.get('data') or {}).get('token')
+        if not tok_ent:
+            raise SystemExit(f'법인 {a.entity} 전환 실패 — 적재를 중단한다(동산에 잘못 꽂히는 것을 막는다)')
+        tok = tok_ent
+        print(f'적재 법인 = {a.entity}')
 
     # 마스터
     clients = page_all(base, tok, '/api/clients?active=all')
@@ -547,7 +562,7 @@ def main():
             no_staff[head['staff']] += 1
         body = {
             'client_id': cid,
-            'billing_entity_id': 1,
+            'billing_entity_id': a.entity,
             **({'sales_rep_id': rep} if rep else {}),
             'order_date': head['date'],
             'delivery_date': head['ship_date'] or head['date'],
@@ -555,7 +570,7 @@ def main():
             'delivery_info': head['addr'] or None,
             'delivery_method': head['ship_via'] or None,
             'shipping_payment': head['pay'] or None,
-            'notes': (f"{MARKER} · 담당 {head['staff'] or '-'} · 전표 {slip}"
+            'notes': (f"{a.marker} · 담당 {head['staff'] or '-'} · 전표 {slip}"
                       + (f" · {UNRESOLVED_TAG}{unresolved_name}" if unresolved_name else '')),
             'items': payload_items,
         }
