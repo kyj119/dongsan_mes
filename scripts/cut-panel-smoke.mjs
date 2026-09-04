@@ -1035,7 +1035,8 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3y 구 호스트면 맞붙임을 쓰지 않는다', /else if \(!hostSupportsButt\(\)\)/.test(panelSrc))
   ok('3y 맞붙임 최소 호스트 명시', /var BUTT_MIN_HOST = \[0, 18, 0\]/.test(panelSrc))
   // ★실패하면 조용히 이상한 판을 내지 말고 기존 경로로 되돌아가야 한다
-  ok('3y 실패 시 래스터로 폴백', /buttExact = false;[\s\S]{0,180}?res = nestPlace\(NST, prep/.test(panelSrc))
+  //   ★창을 400 자로 둔다 — 사이에 되돌린 **사유 문구**가 들어간다(2026-09-04). 성질은 그대로다.
+  ok('3y 실패 시 래스터로 폴백', /buttExact = false;[\s\S]{0,400}?res = nestPlace\(NST, prep/.test(panelSrc))
   // ★맞붙임에서는 조각별 닫힌 경로를 만들지 않는다 — 그게 두 줄의 원인이다
   ok('3y 맞붙임이면 조각별 칼선 생략', /!useVec && !res\.butt\) holeOut \+= \(pieceCutLines/.test(panelSrc))
   // ── 구멍(2026-08-07) — 시트컷 글자는 속이 뚫려야 한다. 단품에만 있던 것을 판짜기로 옮겼다.
@@ -1541,7 +1542,45 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     //   컨투어가 계단이 되고 **직선 재단선이 휘어 보인다**(2026-08-05 실사용에서 걸림).
     // ★롤 상한은 **파일 좌표** 제약(일러 아트보드 한계 5780mm)이다. toFileMm 을 씌우면 실물 상한이
     //   배율과 무관하게 고정돼 "배율을 낮춰 한 대지에 담기"가 성립하지 않는다(2026-08-05).
-    ok('3u 롤 상한은 파일 좌표 제약', /rollMaxH: Math\.floor\(NEST_ROLL_MAX_MM \/ prep\.mmpp\)/.test(panelSrc2))
+    //   ★2026-09-04: 상한을 **판 전체 길이**로 통일하며 배치 영역에서 돔보를 뺀다. 지켜야 할 규칙은
+    //   여전히 "toFileMm 을 씌우지 않는다" 이므로 그것도 함께 못박는다(domboMm 자체가 파일 좌표다).
+    ok('3u 롤 상한은 파일 좌표 제약',
+      /rollMaxH: Math\.floor\(Math\.max\(10, NEST_ROLL_MAX_MM - domboMm\(\) \* 2\) \/ prep\.mmpp\)/.test(panelSrc2)
+      && !/toFileMm\(NEST_ROLL_MAX_MM/.test(panelSrc2))
+    // ★★판 길이 관문은 **배치 엔진 밖 한 곳**이어야 한다 (2026-09-04).
+    //   상한이 엔진 안에만 있으면 새 배치 방식이 그것을 모른 채 통과한다 — 맞붙임이 정확히 그랬고,
+    //   1050폭 1열에서 13,442mm 판이 나가 호스트가 PARM(1346458189) 으로 죽었다.
+    ok('3u 판 길이 관문이 배치 밖에 있다', /function sheetsFitLength\(res, mmpp, sheetHmm\)/.test(panelSrc2))
+    // ★재는 대상은 usedH 가 아니라 **호스트로 나가는 판 높이**(돔보 포함)여야 한다
+    ok('3u 관문이 돔보 포함 판 높이를 잰다',
+      /Math\.ceil\(res\.sheets\[i\]\.usedH \* mmpp\) \+ domboMm\(\) \* 2/.test(panelSrc2))
+    ok('3u 맞붙임도 관문을 통과해야 한다',
+      /if \(buttExact && \(!res \|\| !res\.sheets\.length \|\| lenOver\)\)/.test(panelSrc2))
+    // ★되돌린 뒤에도 넘으면 보내지 않는다 — 호스트가 PARM 으로 죽느니 패널이 이유를 말한다
+    ok('3u 관문 통과 못하면 호스트로 안 보낸다',
+      /if \(!sheetsFitLength\(res, mmpp, sheetHmm\)\) \{[\s\S]{0,260}?return;/.test(panelSrc2))
+    // ★호스트도 최종 방어선 — 판을 **만들기 전에** 검사해야 반쪽 결과가 안 남는다
+    ok('3u 호스트가 판을 만들기 전에 규격을 본다', (() => {
+      const h = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
+      const gate = h.indexOf('chkW * MESCUT_PT_PER_MM > MESCUT_CANVAS_MAX_PT')
+      const make = h.indexOf('mesCut_newDocMM(sh.w * MESCUT_PT_PER_MM')
+      return gate > 0 && make > 0 && gate < make
+    })())
+    // ★★[폭 추천]과 [네스팅 실행]은 **같은 배치 조건**이어야 비교가 성립한다 (2026-09-04).
+    //   여태 추천만 maxSheets:1 이라, 한 판에 안 들어가는 잡이 **전 폭 실패**로 나왔다 —
+    //   실행은 판을 나눠 멀쩡히 짜는데 추천만 "어느 폭에도 배치하지 못했습니다"라고 말했다.
+    //   두 경로가 갈라지면 추천이 거짓말을 한다(실사용 956x2380 6조각 · 1050폭).
+    //   ⚠️ 문자열 검색이 아니라 **호출부**를 본다 — 변경 이력 주석에도 `maxSheets: 1` 이 적혀
+    //      있어서, 단순 부재 검사는 자기 주석에 걸린다(2026-09-04 실제로 걸렸다).
+    ok('3u 폭 추천이 실행과 같은 배치 조건',
+      /nestPlace\(NST, prep, wFile, 0, allowRot, \{ tries: 2 \}\)/.test(panelSrc2))
+    // ★판이 여러 장이면 재료비는 그 합이다 — 첫 판만 재면 폭 비교 자체가 틀린다
+    ok('3u 폭 추천이 판 전부를 합산한다',
+      /for \(var sN2 = 0; sN2 < r\.sheets\.length; sN2\+\+\)/.test(panelSrc2)
+      && /sheets: r\.sheets\.length/.test(panelSrc2))
+    // ★「폭보다 크다」와 「판이 모자라다」는 대책이 정반대다 — 문구가 갈려야 한다
+    ok('3u 폭 추천이 실패 사유를 가른다', /tooWide: !okAll && !r\.sheets\.length/.test(panelSrc2)
+      && /nTooWide === rows\.length/.test(panelSrc2))
     ok('3u 롤 상한이 일러 한계 안', /var NEST_ROLL_MAX_MM = (\d+)/.test(panelSrc2)
       && Number(/var NEST_ROLL_MAX_MM = (\d+)/.exec(panelSrc2)[1]) <= 5780)
     ok('3u 격자 후보도 배율을 반영',

@@ -31,7 +31,7 @@
   // ⚠️ 내용을 고치면 **반드시 이 번호를 올린다** — 수동 배포축이라 이 문자열이 "이 PC 가 어느 셸인가"의
   //    유일한 단서다. 0.57.0 하나가 세 상태를 가리키던 사고가 있었고(등록 파라미터·굽기 통합·[◎ 전체]),
   //    그래서 `ia:deploy` 가 번호가 그대로면 배포를 막는다.
-  var SHELL_VERSION = '0.74.0';   // 0.74.0 = ★글자를 감싸는 규칙 취소(글자는 글자대로) · 칼선에서 걷어낸 **부스러기** 조각 번호를 알린다 · 0.73.0 = ★칼선을 감싼 조각 번호를 **호스트가 준 값**으로 쓴다(벡터는 호스트가 칼선을 그리므로 그쪽이 정본) · 0.72.0 = ★사각으로 바뀐 조각을 **번호로** 알린다(#N = 조각 수량 목록) · ★벡터 모드에서 「사각으로 잘랐습니다」는 거짓이었다 — 그 사각은 **배치용**이고 칼선은 아트 실루에이다 · 0.71.0 = ★호스트 게이트 인자 형태 정정([◎ 전체]·도련 통합 굽기가 상시 잠겨 있었다) · 호스트 큐 제거 성공 판정 · 「조」 표기 가시성 게이트 · 분리 중복 호출에도 응답 · 0.70.0 = ★품목·거래처 id 해소가 공백을 무시한다(IME 확정 스페이스가 이름 안에 남는다) · 모호하면 안 고른다 · 0.69.0 = ★자재·후가공 목록을 소스 하드코딩에서 config 로(이제 MES 에서 고치면 배포 없이 따라온다) · 재단 후가공=코팅 계열만 · 「돔보」 중복 제거 · 0.68.0 = ★품목=제품(PRODUCT)만 + 품목→자재 후보 좁히기(매핑 없으면 자유 입력 유지) · 0.67.0 = ★굽기 격자 칸(#nestBakeMm — 큰 실물에서 메모리·시간 급증 완화) + 조합 중 datalist 분리 제거(복원이 비대칭이라 자동완성이 죽은 채 남았다) · 0.66.0 = ★품목 칸(regProduct→ITEMID) — 주문서가 품목·단가까지 자동으로 채운다([내용]=regItem 과 다른 칸) · 0.65.0 = 0.64.0 의 근거 정정(실측상 composition 이벤트가 안 와서 그 처리는 발동하지 않는다 — 대비책으로만 유지) · 0.64.0 = 목록 달린 칸에 IME 조합 중 datalist 분리 · 0.63.0 = 호스트 구버전 감지(Z: 배포본과 대조 → 시작·포커스 시 경고 · 판짜기 차단) · 0.62.0 = 폴백 문구에 회전 포함(배율 1배 회전도 PDF 경로) · 0.61.0 = 배율 확대 결과 보고(PDF 배치 / 예비 경로 폴백 경고) · 0.60.0 = 파일명 맨 앞 거래처 · 자재/후가공 행 분리(폭 맞춤) · 「품목」→「내용」 명칭 분리(MES 품목 마스터와 구분) · 0.59.0 = 재단 탭 [◎ 전체] · 0.58.0 = 굽기 통합(마스크+도련 1왕복)·등록 파라미터(자재·후가공·돔보·파일명) · 0.57.0 = 조각 속 메우기(그룹 하나=칼선 하나·맞붙임 복구) · 0.56.0 = 도련 겹침 분할(간격 존중·하한 1.5mm)
+  var SHELL_VERSION = '0.76.0';   // 0.76.0 = ★[폭 추천]이 [네스팅 실행]과 **같은 배치 조건**으로 돈다 — 여태 추천만 `maxSheets: 1` 이라, 조각이 커서 한 판에 안 들어가는 잡은 **전 폭 실패**로 나왔다(실행은 판을 나눠 멀쩡히 짜는데 추천만 「어느 폭에도 배치하지 못했습니다」라고 말했다). 길이·면적도 **판 전부의 합**으로(첫 판만 재면 재료비가 틀린다) · 판 수 표시 · 「폭보다 크다」와 「판이 모자라다」를 구분 · 0.75.0 = ★판 길이 상한을 배치 엔진 밖 **관문 한 곳**(sheetsFitLength)으로 — 맞붙임(butt.packRects)은 폭만 받고 길이는 무한 전제라 상한을 모른 채 1050폭 1열에서 **13,442mm 판**을 내보냈고 호스트가 PARM 으로 죽었다. 상한 기준도 usedH 에서 **판 전체(돔보 포함)** 로 바로잡았다(usedH 만 재면 돔보 40mm 를 놓친다) · 넘으면 래스터로 되돌리고 **그 사유를 화면에 쓴다** · 0.74.0 = ★글자를 감싸는 규칙 취소(글자는 글자대로) · 칼선에서 걷어낸 **부스러기** 조각 번호를 알린다 · 0.73.0 = ★칼선을 감싼 조각 번호를 **호스트가 준 값**으로 쓴다(벡터는 호스트가 칼선을 그리므로 그쪽이 정본) · 0.72.0 = ★사각으로 바뀐 조각을 **번호로** 알린다(#N = 조각 수량 목록) · ★벡터 모드에서 「사각으로 잘랐습니다」는 거짓이었다 — 그 사각은 **배치용**이고 칼선은 아트 실루에이다 · 0.71.0 = ★호스트 게이트 인자 형태 정정([◎ 전체]·도련 통합 굽기가 상시 잠겨 있었다) · 호스트 큐 제거 성공 판정 · 「조」 표기 가시성 게이트 · 분리 중복 호출에도 응답 · 0.70.0 = ★품목·거래처 id 해소가 공백을 무시한다(IME 확정 스페이스가 이름 안에 남는다) · 모호하면 안 고른다 · 0.69.0 = ★자재·후가공 목록을 소스 하드코딩에서 config 로(이제 MES 에서 고치면 배포 없이 따라온다) · 재단 후가공=코팅 계열만 · 「돔보」 중복 제거 · 0.68.0 = ★품목=제품(PRODUCT)만 + 품목→자재 후보 좁히기(매핑 없으면 자유 입력 유지) · 0.67.0 = ★굽기 격자 칸(#nestBakeMm — 큰 실물에서 메모리·시간 급증 완화) + 조합 중 datalist 분리 제거(복원이 비대칭이라 자동완성이 죽은 채 남았다) · 0.66.0 = ★품목 칸(regProduct→ITEMID) — 주문서가 품목·단가까지 자동으로 채운다([내용]=regItem 과 다른 칸) · 0.65.0 = 0.64.0 의 근거 정정(실측상 composition 이벤트가 안 와서 그 처리는 발동하지 않는다 — 대비책으로만 유지) · 0.64.0 = 목록 달린 칸에 IME 조합 중 datalist 분리 · 0.63.0 = 호스트 구버전 감지(Z: 배포본과 대조 → 시작·포커스 시 경고 · 판짜기 차단) · 0.62.0 = 폴백 문구에 회전 포함(배율 1배 회전도 PDF 경로) · 0.61.0 = 배율 확대 결과 보고(PDF 배치 / 예비 경로 폴백 경고) · 0.60.0 = 파일명 맨 앞 거래처 · 자재/후가공 행 분리(폭 맞춤) · 「품목」→「내용」 명칭 분리(MES 품목 마스터와 구분) · 0.59.0 = 재단 탭 [◎ 전체] · 0.58.0 = 굽기 통합(마스크+도련 1왕복)·등록 파라미터(자재·후가공·돔보·파일명) · 0.57.0 = 조각 속 메우기(그룹 하나=칼선 하나·맞붙임 복구) · 0.56.0 = 도련 겹침 분할(간격 존중·하한 1.5mm)
 
   // ── 도련 겹침 분할 (2026-08-25) ─────────────────────────────────────────
   // ★순수 함수로 뽑아 둔 이유 = **하네스가 이 함수를 직접 돌리기 때문**이다(`npm run cut:bleed` §9).
@@ -807,9 +807,12 @@
   // [폭 추천] 이 훑는 롤 후보. index.html 의 프리셋과 같은 값이어야 한다.
   var ROLL_WIDTHS_MM = [914, 1050, 1270, 1370, 1520];
 
-  // 롤 1장의 최대 길이 — **파일 좌표** 기준이다(배치 버퍼·해상도 예산, 그리고 일러 아트보드 한계).
+  // 롤 1장(=판 하나)의 최대 길이 — **파일 좌표** 기준이며 **돔보 여백을 포함한 판 전체**다.
   //   일러는 16383pt = **5780mm** 를 넘는 아트보드를 못 만든다. 6000 은 그 한계를 넘어서,
   //   배치는 6000 까지 허용하는데 문서는 못 만드는 구간이 있었다 → 한계 안쪽으로 내린다.
+  // ★★이 값은 **생산 단위**다 — 판 1장 = 등록 1건 = 가공대기함 1건이다(2026-09-04).
+  //   그래서 기술 한계가 아니라 "한 판으로 인쇄·재단해 넘길 수 있는 길이"가 근거여야 한다.
+  //   실물 장비 실측이 나오면 이 숫자 하나만 바꾸면 된다 — 관문은 sheetsFitLength 한 곳이다.
   // ★여기에 toFileMm 을 씌우면 안 된다. 씌우면 실물 상한이 배율과 무관하게 고정돼
   //   "배율을 낮춰 한 대지에 담는다"가 성립하지 않는다(2026-08-05 용준님 제안).
   //   파일 좌표 상한을 고정해 두면 배율 1/2 = 실물 11200mm, 1/4 = 22400mm 가 한 대지에 들어간다.
@@ -1508,12 +1511,44 @@
     return NST.nest(prep.pieces, {
       sheetW: Math.floor(usableWmm / prep.mmpp),
       sheetH: sheetHmm ? Math.floor(Math.max(10, sheetHmm - domboMm() * 2) / prep.mmpp) : 0,
-      rollMaxH: Math.floor(NEST_ROLL_MAX_MM / prep.mmpp),
+      // ★상한은 **판 전체 길이**다 — 배치 영역은 돔보 여백만큼 좁다(안 빼면 판이 상한을 넘는다)
+      rollMaxH: Math.floor(Math.max(10, NEST_ROLL_MAX_MM - domboMm() * 2) / prep.mmpp),
       step: opts.step || 4,
       tries: opts.tries,
       rotations: allowRot ? [0, 90, 180, 270] : [0],
       maxSheets: opts.maxSheets || 20,
     });
+  }
+
+  /**
+   * ★판 길이 관문 — **어느 배치 알고리즘이 만들었든 여기를 통과해야 판이 된다.**
+   *
+   * 상한이 배치 엔진 **안에만** 있으면 새 배치 방식은 그것을 모른 채 통과한다.
+   * 맞붙임(`buttPlace`)이 정확히 그랬다 — `butt.packRects` 는 폭만 받고 길이는 무한 전제라
+   * 1050폭 1열에서 **13,442mm 판**이 그대로 나가 호스트가 `PARM`(1346458189) 으로 죽었다
+   * (2026-09-04 실사용). 판 = 생산 단위 = **등록 1건**이므로(호스트가 판마다 등록 폴더를 만든다
+   * — mes-cut-host.jsx 의 saveOneSheet 루프), 상한을 넘는 판은 업무적으로도 존재할 수 없다.
+   *
+   * ⚠️ 재는 대상은 **호스트로 나가는 판 높이**(usedH + 돔보 여백 ×2)다 — `S` 줄에 싣는 그 값.
+   *    usedH 만 재면 돔보만큼 초과분을 놓친다.
+   * ⚠️ 평판(sheetHmm)은 높이가 규격으로 고정이고 배치가 이미 검사했다.
+   */
+  function sheetsFitLength(res, mmpp, sheetHmm) {
+    if (!res || !res.sheets || !res.sheets.length) return false;
+    if (sheetHmm) return true;
+    return maxPlateMm(res, mmpp) <= NEST_ROLL_MAX_MM;
+  }
+
+  /** 가장 긴 판의 높이(mm) — `S` 줄에 싣는 값과 **같은 산식**이어야 한다. */
+  function maxPlateMm(res, mmpp) {
+    var m = 0;
+    if (res && res.sheets) {
+      for (var i = 0; i < res.sheets.length; i++) {
+        var v = Math.ceil(res.sheets[i].usedH * mmpp) + domboMm() * 2;
+        if (v > m) m = v;
+      }
+    }
+    return m;
   }
 
   /**
@@ -1695,13 +1730,25 @@
         var res = buttExact
           ? buttPlace(BT, prep, sheetWmm, sheetHmm, allowRot)
           : nestPlace(NST, prep, sheetWmm, sheetHmm, allowRot);
-        if (buttExact && (!res || !res.sheets.length)) {   // 폭 초과 등 — 조용히 틀리지 말고 되돌린다
+        // ★길이 상한은 **배치 엔진이 아니라 여기서** 본다 — 맞붙임은 스스로 보지 않는다.
+        var lenOver = !!res && !!res.sheets.length && !sheetsFitLength(res, mmpp, sheetHmm);
+        if (buttExact && (!res || !res.sheets.length || lenOver)) {
           buttExact = false;
-          buttWhy = '맞붙임 배치가 시트 폭/높이에 안 들어가 래스터로 되돌렸습니다';
+          buttWhy = lenOver
+            ? ('맞붙임 판이 길이 한계 ' + NEST_ROLL_MAX_MM + 'mm 를 넘어(' + maxPlateMm(res, mmpp) + 'mm) 래스터로 되돌렸습니다 — 판이 나뉩니다')
+            : '맞붙임 배치가 시트 폭/높이에 안 들어가 래스터로 되돌렸습니다';
           res = nestPlace(NST, prep, sheetWmm, sheetHmm, allowRot);
         }
         T.place = Date.now();
         if (!res.sheets.length) { done('배치 실패 — 조각이 시트보다 큽니다.', 'err'); return; }
+
+        // ★★최종 관문 — 래스터로 되돌린 뒤에도 넘으면 **호스트로 보내지 않는다**.
+        //   호스트가 `PARM` 으로 죽는 것보다 여기서 이유를 말하는 편이 낫다(2026-09-04).
+        if (!sheetsFitLength(res, mmpp, sheetHmm)) {
+          done('판 길이 ' + maxPlateMm(res, mmpp) + 'mm 가 한계 ' + NEST_ROLL_MAX_MM
+            + 'mm 를 넘습니다 — 조각을 나누거나 저장 배율을 낮추세요.', 'err');
+          return;
+        }
 
         // ★시트 모드에서 판이 **가로로 길쭉해지는** 것을 막는다 (2026-08-05 실측: 판 면적 −22%).
         //   엔진 점수(nesting.js scoreOf)는 usedH(세로)만 본다. 그런데 아트보드는 배치 bbox 로
@@ -2129,14 +2176,29 @@
           var wFile = toFileMm(wReal);             // 배치는 파일 좌표에서
           out('폭 비교 중... ' + (i + 1) + '/' + ROLL_WIDTHS_MM.length + ' (' + wReal + 'mm)');
           // 성근 스캔 — 순서 후보를 줄여 폭당 비용을 낮춘다(정밀 재실행은 [네스팅 실행]이 한다)
-          var r = nestPlace(NST, prep, wFile, 0, allowRot, { tries: 2, maxSheets: 1 });
+          // ★★[네스팅 실행]과 **같은 조건**으로 돌린다 (2026-09-04).
+          //   여태 `maxSheets: 1` 이었다 — 판 1장에 다 못 담으면 그 폭을 실패로 봤고, 조각이 커서
+          //   어떤 폭에서도 1장에 안 들어가는 잡은 **전 폭 실패**로 나왔다(실사용: 956x2380 6조각
+          //   1050폭 → "어느 폭에도 배치하지 못했습니다"). 그런데 실행은 판을 나눠 멀쩡히 짠다 —
+          //   추천만 다른 규칙으로 보고 있었다. 위 nestPlace 주석의 "같은 규칙이어야 비교가
+          //   성립한다"가 여기서 깨져 있었다. `tries: 2` 성근 스캔은 비용 때문이라 그대로 둔다.
+          var r = nestPlace(NST, prep, wFile, 0, allowRot, { tries: 2 });
           var okAll = r.sheets.length && !r.unplaced.length;
-          var lenFile = r.sheets.length ? (Math.ceil(r.sheets[0].usedH * prep.mmpp) + domboMm() * 2) : 0;
-          var lenMm = Math.round(toRealMm(lenFile));   // 소요 길이도 실물로 — 재료비 기준이다
+          // ★길이·면적은 **판 전부의 합**이다 — 판마다 길이가 달라 첫 판만 보면 재료비가 틀린다
+          var lenMm = 0;
+          for (var sN2 = 0; sN2 < r.sheets.length; sN2++) {
+            lenMm += Math.round(toRealMm(Math.ceil(r.sheets[sN2].usedH * prep.mmpp) + domboMm() * 2));
+          }
           var areaCm2 = okAll ? (wReal * lenMm / 100) : Infinity;
-          rows.push({ w: wReal, len: lenMm, area: areaCm2, ok: okAll, unplaced: r.unplaced.length });
+          // ★「폭보다 크다」와 「판 수가 모자라다」는 **다른 문제**다 — 대책이 정반대라 구분해 말한다.
+          //   아무것도 못 놓으면(sheets 0) 폭 자체가 모자란 것이고, 배율·조각 분할 말고는 답이 없다.
+          rows.push({ w: wReal, len: lenMm, area: areaCm2, ok: okAll, unplaced: r.unplaced.length,
+            sheets: r.sheets.length, tooWide: !okAll && !r.sheets.length });
           if (okAll && (!best || areaCm2 < best.area)) best = rows[rows.length - 1];
         }
+        // 실패 사유를 가르기 위해 폭 부족 건수를 센다 — 대책이 정반대다
+        var nTooWide = 0;
+        for (var tw = 0; tw < rows.length; tw++) { if (rows[tw].tooWide) nTooWide++; }
         var txt = '폭 추천 (조각 ' + prep.n + '개 · 여백 ' + offsetShow + 'mm · 간격 ' + gapShow + 'mm'
           + (scaleN > 1 ? (' · 배율 1/' + scaleN + ' 반영') : '')
           + (allowRot ? ' · 회전 허용' : '') + ' · ' + prep.mmpp + 'mm/px)\n';
@@ -2144,9 +2206,12 @@
           var rw = rows[j];
           txt += (best && rw.w === best.w ? '★ ' : '  ') + String(rw.w) + 'mm  ';
           txt += rw.ok
-            ? ('길이 ' + rw.len + 'mm · 면적 ' + Math.round(rw.area).toLocaleString() + 'cm²'
+            ? ('판 ' + rw.sheets + '장 · 총 길이 ' + rw.len.toLocaleString() + 'mm · 면적 '
+              + Math.round(rw.area).toLocaleString() + 'cm²'
               + (best && rw.w !== best.w ? ('  (+' + (100 * (rw.area / best.area - 1)).toFixed(1) + '%)') : ''))
-            : ('배치 실패 — 못 놓은 조각 ' + rw.unplaced + '개');
+            : (rw.tooWide
+              ? '배치 실패 — 조각이 이 폭보다 큽니다'
+              : ('배치 실패 — 못 놓은 조각 ' + rw.unplaced + '개 (판 ' + rw.sheets + '장까지 깔았습니다)'));
           txt += '\n';
         }
         // ★추천했으면 **바로 적용한다** (2026-08-06 용준님). 전에는 사람이 시트 드롭다운을
@@ -2170,7 +2235,10 @@
           ? ('\n→ ' + best.w + 'mm 롤이 재료를 가장 적게 씁니다.'
             + (applied ? ' **시트를 이 폭으로 바꿔 놨습니다** — [네스팅 실행]만 누르세요.'
                        : ' 시트 목록에 없는 폭이라 직접 골라야 합니다.'))
-          : '\n⚠ 어느 폭에도 전부 배치하지 못했습니다 — 간격을 줄이거나 조각을 나누세요.';
+          : ('\n⚠ 어느 폭에도 전부 배치하지 못했습니다 — '
+            + (nTooWide === rows.length
+              ? '조각이 가장 넓은 롤보다 큽니다. 저장 배율을 낮추거나 조각을 나누세요.'
+              : '간격을 줄이거나 조각을 나누세요.'));
         done(txt, best ? 'ok' : 'err');
       });
     });
