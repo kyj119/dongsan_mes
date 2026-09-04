@@ -229,8 +229,12 @@ function renderForecastPanel(fc, carried) {
   var note = document.getElementById('schCarriedNote');
   if (note) {
     if (carried && carried.count > 0) {
-      note.innerHTML = '<i class="fas fa-circle-exclamation mr-1"></i>기한이 지난 ' + carried.count + '건(입금 ' + fmt(carried.in) +
-        ' · 지급 ' + fmt(carried.out) + ')을 예측 시작일에 얹었습니다. 달력에는 원래 예정일에 표시됩니다.';
+      // 등록/자동을 나눠 적는다 — 연체 KPI는 '등록'만 세므로, 안 나누면 'KPI 0 · 안내 8건'이 모순으로 읽힌다.
+      var mat = carried.materialized || 0;
+      var auto = carried.count - mat;
+      note.innerHTML = '<i class="fas fa-circle-exclamation mr-1"></i>기한이 지난 ' + carried.count + '건(등록 ' + mat +
+        ' · 자동 ' + auto + ' · 입금 ' + fmt(carried.in) + ' · 지급 ' + fmt(carried.out) +
+        ')을 예측 시작일에 얹었습니다. 달력에는 원래 예정일에 표시됩니다.';
       note.classList.remove('hidden');
     } else {
       note.classList.add('hidden');

@@ -113,7 +113,7 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
               <div class="text-[10px] text-gray-400 mb-1">입금 완료</div>
               <div class="text-lg font-bold tabular-nums text-gray-900" id="schKpiInDone">-</div>
             </div>
-            <div class="ds-card border-red-200 p-2.5 text-center hover:shadow-md transition-shadow">
+            <div class="ds-card border-red-200 p-2.5 text-center hover:shadow-md transition-shadow" title="예정일이 지났는데 아직 안 끝난 '등록된' 예정 행(기간 전체). 대출·발주처럼 자동 합성된 항목은 세지 않습니다.">
               <div class="text-[10px] text-red-500 font-medium mb-1">연체</div>
               <div class="text-lg font-bold text-red-600 tabular-nums" id="schKpiOverdue">-</div>
             </div>

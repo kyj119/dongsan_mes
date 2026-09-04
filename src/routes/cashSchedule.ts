@@ -241,8 +241,6 @@ cashScheduleRouter.get('/schedule/overview', requireEditOrRole('/cash-schedule',
           if (it.flow === 'IN') day.in_done += it.amount
           else day.out_done += it.amount
         }
-        // 연체 = 예정일이 지났는데 아직 안 끝난 '물질화' 행. 온더플라이 추정치는 세지 않는다.
-        if (dateStr < today && it.materialized && it.status !== 'DONE') overdueCount++
         const bucket = it.flow === 'IN' ? inByType : outByType
         bucket[it.type] = (bucket[it.type] || 0) + it.amount
         if (it.flow === 'IN') {
@@ -273,14 +271,18 @@ cashScheduleRouter.get('/schedule/overview', requireEditOrRole('/cash-schedule',
     }
     const riskDays = series.filter((d) => d.is_negative)
 
-    // 연체 이월분(예측 첫날에 얹힌 금액) — 예측 시작일의 큰 숫자가 '오늘 들어온다'는 뜻이 아님을 화면에 알리기 위함
+    // 연체 이월분(예측 첫날에 얹힌 금액) — 예측 시작일의 큰 숫자가 '오늘 들어온다'는 뜻이 아님을 화면에 알리기 위함.
+    //   연체 건수도 여기서 센다: 이월 대상 = schedule_date < 오늘 & 미완료라 연체의 정의와 정확히 같다.
+    //   ⚠️ 달력(A)에서 당월분만 세면 지난 달 연체가 빠져 'KPI 연체 0 · 안내문 8건'처럼 같은 화면이 서로 다른 말을 한다.
     let carriedIn = 0, carriedOut = 0, carriedCount = 0
     for (const it of fcMap[today]?.items || []) {
       if (!it.carried_from) continue
       carriedCount++
       if (it.flow === 'IN') carriedIn += it.amount
       else carriedOut += it.amount
+      if (it.materialized) overdueCount++   // 연체 KPI = 물질화 행만(온더플라이 추정치는 '연체'가 아니다)
     }
+    summary.overdue_count = overdueCount
 
     // ── 월별 (당월=A, 이후=B) ──────────────────────────────────────────────
     const months: { month: string; in: number; out: number; net: number; cumulative: number }[] = []
@@ -331,7 +333,8 @@ cashScheduleRouter.get('/schedule/overview', requireEditOrRole('/cash-schedule',
         monthly: months,
         composition: { in: inByType, out: outByType },
         top_receipts: receipts.slice(0, 5),
-        carried: { in: carriedIn, out: carriedOut, count: carriedCount },
+        // materialized = 등록된 예정 행(연체 KPI와 같은 수) · count-materialized = 자동 합성분(대출·발주 등)
+        carried: { in: carriedIn, out: carriedOut, count: carriedCount, materialized: overdueCount },
       },
     })
   } catch (error) {
