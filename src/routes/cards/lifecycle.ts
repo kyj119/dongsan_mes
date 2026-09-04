@@ -571,6 +571,7 @@ cardsLifecycleRouter.post('/:id/ship', async (c) => {
         : '카드 출고 처리 완료'
     })
   } catch (error) {
+    console.error('cards/lifecycle GET user error:', error)
     return c.json({
       success: false,
 
@@ -1018,6 +1019,7 @@ cardsLifecycleRouter.patch('/:id/unship', requireRole('ADMIN', 'MANAGER'), async
 
     return c.json({ success: true })
   } catch (error) {
+    console.error('cards/lifecycle GET user error:', error)
     return c.json({
       success: false,
 

@@ -233,6 +233,7 @@ ordersCoreRouter.get('/', async (c) => {
 
     return c.json(response)
   } catch (error) {
+    console.error('orders/core GET / error:', error)
     return c.json({
       success: false,
 
@@ -359,6 +360,7 @@ ordersCoreRouter.get('/:id/invoice', async (c) => {
       }
     })
   } catch (error) {
+    console.error('orders/core GET /:id/invoice error:', error)
     return c.json({
       success: false,
 
@@ -386,6 +388,7 @@ ordersCoreRouter.get('/in-transit', requireAccessOrRole('/orders', 'MANAGER'), a
 
     return c.json({ success: true, data: results })
   } catch (error) {
+    console.error('orders/core GET /in-transit error:', error)
     return c.json({ success: false, error: '조회 실패' }, 500)
   }
 })
@@ -534,6 +537,7 @@ ordersCoreRouter.get('/:id', async (c) => {
 
     return c.json(response)
   } catch (error) {
+    console.error('orders/core GET user error:', error)
     return c.json({
       success: false,
 

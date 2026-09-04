@@ -448,6 +448,7 @@ aiAnalysisRouter.get('/:id/download', async (c) => {
     // 로컬 경로인 경우 → 청크 방식으로 폴백
     return c.json({ success: false, error: 'File is local path, use chunks endpoint' }, 400)
   } catch (error) {
+    console.error('aiAnalysis GET /:id/download error:', error)
     return c.json({ success: false, error: 'Download failed' }, 500)
   }
 })

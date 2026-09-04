@@ -199,6 +199,7 @@ clientsRouter.get('/', async (c) => {
       }
     })
   } catch (error) {
+    console.error('clients GET / error:', error)
     return c.json({
       success: false,
 
@@ -302,6 +303,7 @@ clientsRouter.get('/:id', async (c) => {
 
     return c.json(response)
   } catch (error) {
+    console.error('clients GET /:id error:', error)
     return c.json({
       success: false,
 
@@ -785,6 +787,7 @@ clientsRouter.post('/import', async (c) => {
       message: `Imported ${results.inserted} new clients, updated ${results.updated} existing clients`
     })
   } catch (error) {
+    console.error('clients POST /import error:', error)
     return c.json({
       success: false,
 

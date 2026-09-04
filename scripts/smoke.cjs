@@ -290,6 +290,69 @@ async function checkFrontBootstrap() {
   return { ok: false, detail: '인라인 셸 마커도 외부 셸 스크립트도 없음 — 부트스트랩 누락 의심' }
 }
 
+// ── 단건 상세 프로브 (2026-09-04) ────────────────────────────────────────────
+// 이 스모크는 **목록만** 때리고 있었다. 라우트는 `GET /:id` 를 24개 정의하는데 목록에
+// 올라온 단건은 5개뿐이었고, 그래서 `GET /api/purchase-orders/:id` 가 **전 법인 500** 인
+// 채로 통과했다(수취구역 SQL 이 `po.entity_id` 를 보는데 그 쿼리에만 조인이 빠져 있었다).
+// 무음 catch 가 로그도 안 남겨 「목록 200」 뒤에서 조용히 죽어 있었다.
+//
+// ★ 대상을 손으로 나열하지 않는다 — 목록 응답의 첫 행 id 를 뽑아 `<컬렉션>/<id>` 를 자동으로
+//   때린다. 라우트가 늘어도 ENDPOINTS 에 목록 하나만 있으면 상세가 따라온다.
+//   (손목록은 이 프로젝트에서 같은 사고를 세 번 냈다 — `ia:deploy` 배포 대상 전례.)
+
+/** 목록 응답에서 행 배열을 찾는다. 봉투 모양이 라우터마다 다르다 —
+ *  `data` 가 배열이기도 하고(`orders`), `data.items`/`data.rows` 이기도 하고,
+ *  `data.clients` 처럼 **자원 이름을 키로 쓰기도** 한다(그래서 키를 고정하면 놓친다). */
+function rowsOf(data) {
+  if (!data || data.success === false) return null
+  const d = data.data
+  if (Array.isArray(d)) return d
+  if (!d || typeof d !== 'object') return null
+  if (Array.isArray(d.items)) return d.items
+  if (Array.isArray(d.rows)) return d.rows
+  if (Array.isArray(d.list)) return d.list
+  for (const k of Object.keys(d)) if (Array.isArray(d[k])) return d[k]
+  return null
+}
+
+/** 목록 응답에서 첫 행의 숫자 id. 행이 없거나 id 가 없으면 null(=프로브 안 함). */
+function firstRowId(data) {
+  const arr = rowsOf(data)
+  if (!arr || arr.length === 0) return null
+  const row = arr[0]
+  if (!row || typeof row !== 'object') return null
+  // 발주는 목록에서 id, 생성 응답에서 po_id 로 준다 — 라우터마다 응답 계약이 다르다.
+  const id = row.id != null ? row.id : (row.po_id != null ? row.po_id : null)
+  return (typeof id === 'number' && Number.isInteger(id) && id > 0) ? id : null
+}
+
+// `/api/orders?limit=10` -> `/api/orders`. 하위 경로(`/api/cards/issue-status`)는 제외한다.
+const COLLECTION_RE = new RegExp('^/api/[a-z0-9-]+$', 'i')
+
+function collectionBase(path) {
+  let p = path.split('?')[0]
+  while (p.endsWith('/')) p = p.slice(0, -1)
+  return COLLECTION_RE.test(p) ? p : null
+}
+
+/** 1차 배치 결과에서 상세 프로브를 만든다 — 컬렉션당 1개. */
+function buildDetailProbes(results) {
+  const seen = new Set()
+  const probes = []
+  for (const r of results) {
+    if (!r.ok || !r.firstId) continue
+    const base = collectionBase(r.ep.path)
+    if (!base || seen.has(base)) continue
+    seen.add(base)
+    probes.push({
+      path: base + '/' + r.firstId,
+      name: r.ep.name.split('.')[0] + '.detail',
+      detailProbe: true,
+    })
+  }
+  return probes
+}
+
 async function hit(token, ep) {
   const url = `${BASE}${ep.path}`
   const t0 = Date.now()
@@ -321,6 +384,11 @@ async function hit(token, ep) {
     ok = true
   } else if (res.status === 401 && ep.allow401) {
     ok = true
+  } else if (ep.detailProbe && (res.status === 401 || res.status === 403 || res.status === 404)) {
+    // 상세 프로브는 **목록에서 뽑은 id** 를 그대로 때린다. 권한·가시성 필터로 안 보이거나
+    //   그 라우터에 단건 라우트가 아예 없으면 401/403/404 다 — 그건 결함이 아니다.
+    //   이 프로브가 잡으려는 것은 오직 **5xx**(컬럼·별칭·조인이 깨진 쿼리)다.
+    ok = true
   }
 
   return {
@@ -331,6 +399,7 @@ async function hit(token, ep) {
     body: text.slice(0, 300),
     success: data?.success,
     errorMsg: data?.error || data?.message || data?.detail || '',
+    firstId: firstRowId(data),
   }
 }
 
@@ -436,6 +505,16 @@ async function main() {
   const results = await runBatch(token, ENDPOINTS)
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1)
   log(`${COLOR.dim}완료: ${elapsed}s${COLOR.reset}`)
+
+  // 2차 — 목록에서 뽑은 id 로 단건 상세를 때린다(5xx 만 FAIL).
+  const probes = buildDetailProbes(results)
+  if (probes.length > 0) {
+    log(COLOR.cyan + '▶ 단건 상세 프로브 ' + probes.length + '개 (목록 응답에서 id 자동 추출)' + COLOR.reset)
+    const probeResults = await runBatch(token, probes)
+    results.push(...probeResults)
+  } else {
+    warn(COLOR.yellow + '상세 프로브 0개 — 목록이 전부 비었는지 확인할 것' + COLOR.reset)
+  }
 
   const allPass = printResults(results)
   process.exit(allPass && front.ok ? 0 : 1)

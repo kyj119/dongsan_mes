@@ -331,6 +331,7 @@ cardExpRouter.get('/categories', requireEditOrRole('/card-expenses', 'MANAGER'),
     ).bind(...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
+    console.error('cardExpenses GET /categories error:', error)
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -346,6 +347,7 @@ cardExpRouter.post('/categories', requireRole('ADMIN'), async (c) => {
     ).bind(name, icon || 'fa-tag', color || '#6b7280', sort_order || 99, entityId).run()
     return c.json({ success: true, data: { id: result.meta.last_row_id } })
   } catch (error) {
+    console.error('cardExpenses POST /categories error:', error)
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -691,6 +693,7 @@ cardExpRouter.get('/receipt-image/*', requireEditOrRole('/card-expenses', 'MANAG
     headers.set('Cache-Control', 'private, max-age=86400')
     return new Response(obj.body, { headers })
   } catch (error) {
+    console.error('cardExpenses GET /receipt-image/* error:', error)
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -789,6 +792,7 @@ cardExpRouter.post('/transactions/:id/match-bank', requireRole('ADMIN'), async (
     await c.env.DB.prepare(`UPDATE card_transactions SET matched_bank_tx_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}`).bind(bank_transaction_id, id, ...ef.params).run()
     return c.json({ success: true, message: '통장 대사 완료' })
   } catch (error) {
+    console.error('cardExpenses POST /transactions/:id/match-bank error:', error)
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -923,6 +927,7 @@ cardExpRouter.get('/auto-rules', requireEditOrRole('/card-expenses', 'MANAGER'),
     `).bind(...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
+    console.error('cardExpenses GET /auto-rules error:', error)
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -941,6 +946,7 @@ cardExpRouter.delete('/auto-rules/:id', requireRole('ADMIN'), async (c) => {
     await c.env.DB.prepare('DELETE FROM expense_auto_rules WHERE id = ?').bind(id).run()
     return c.json({ success: true, message: '규칙 삭제 완료' })
   } catch (error) {
+    console.error('cardExpenses DELETE /auto-rules/:id error:', error)
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -1025,6 +1031,7 @@ cardExpRouter.post('/transactions/bulk-classify', requireEditOrRole('/card-expen
     }
     return c.json({ success: true, data: { classified: ids.length }, message: `${ids.length}건 분류 완료` })
   } catch (error) {
+    console.error('cardExpenses POST /transactions/bulk-classify error:', error)
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -1096,6 +1103,7 @@ cardExpRouter.post('/transactions/create-requests', requireRole('ADMIN'), async 
     }
     return c.json({ success: true, data: { created: ids.length }, message: `${ids.length}건 결의 요청 완료` })
   } catch (error) {
+    console.error('cardExpenses POST /transactions/create-requests error:', error)
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -1111,6 +1119,7 @@ cardExpRouter.put('/categories/:id', requireRole('ADMIN'), async (c) => {
     ).bind(name || null, icon || null, color || null, id, ...(entityId > 0 ? [entityId] : [])).run()
     return c.json({ success: true, message: '분류 수정 완료' })
   } catch (error) {
+    console.error('cardExpenses PUT /categories/:id error:', error)
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -1124,6 +1133,7 @@ cardExpRouter.delete('/categories/:id', requireRole('ADMIN'), async (c) => {
     ).bind(c.req.param('id'), ...(entityId > 0 ? [entityId] : [])).run()
     return c.json({ success: true, message: '분류 삭제 완료' })
   } catch (error) {
+    console.error('cardExpenses DELETE /categories/:id error:', error)
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })

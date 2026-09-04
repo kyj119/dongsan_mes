@@ -2922,6 +2922,7 @@ bankRouter.get('/client-search', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     return c.json({ success: true, data: results })
   } catch (error) {
+    console.error('bank GET /client-search error:', error)
     return c.json({ success: false, error: '검색 실패' }, 500)
   }
 })

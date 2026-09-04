@@ -681,6 +681,7 @@ shipmentsRouter.get('/dashboard/counts', async (c) => {
     const ready = typedResults.filter(r => r.all_ready === 1).length
     return c.json({ success: true, data: { total, ready, pending: total - ready } })
   } catch (err) {
+    console.error('shipments GET /dashboard/counts error:', err)
     return c.json({ success: false, error: 'Failed to load counts' }, 500)
   }
 })
@@ -764,6 +765,7 @@ shipmentsRouter.get('/dashboard', async (c) => {
 
     return c.json({ success: true, data: filtered })
   } catch (err) {
+    console.error('shipments GET /dashboard error:', err)
     return c.json({ success: false, error: 'Failed to load dashboard' }, 500)
   }
 })
@@ -1447,6 +1449,7 @@ shipmentsRouter.patch('/:orderId/ship', requireEditOrRole('/shipments', 'MANAGER
 
     return c.json({ success: true, message: '출고완료 처리되었습니다.' })
   } catch (err) {
+    console.error('shipments GET user error:', err)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })

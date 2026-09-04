@@ -130,6 +130,7 @@ cardsSchedulingRouter.patch('/bulk/priority', requireEditOrRole('/cards', 'MANAG
 
     return c.json({ success: true, data: { updated: card_ids.length }, message: `${card_ids.length}장 우선순위 변경 완료` })
   } catch (error) {
+    console.error('cards/scheduling PATCH /bulk/priority error:', error)
     return c.json({
       success: false,
 

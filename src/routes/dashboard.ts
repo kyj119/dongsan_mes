@@ -172,6 +172,7 @@ dashboardRouter.get('/stats/clients', async (c) => {
       data: results
     })
   } catch (error) {
+    console.error('dashboard GET /stats/clients error:', error)
     return c.json({
       success: false,
 
@@ -317,6 +318,7 @@ dashboardRouter.get('/overdue-pos', async (c) => {
 
     return c.json({ success: true, data: results })
   } catch (error) {
+    console.error('dashboard GET /overdue-pos error:', error)
     return c.json({
       success: false,
 
@@ -352,6 +354,7 @@ dashboardRouter.get('/low-stock', async (c) => {
 
     return c.json({ success: true, data: results })
   } catch (error) {
+    console.error('dashboard GET /low-stock error:', error)
     return c.json({
       success: false,
 
@@ -472,6 +475,7 @@ dashboardRouter.get('/stats/production-today', async (c) => {
       }
     })
   } catch (error) {
+    console.error('dashboard GET /stats/production-today error:', error)
     return c.json({
       success: false,
 

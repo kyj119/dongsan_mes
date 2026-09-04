@@ -156,6 +156,7 @@ faxRouter.get('/ftp-check', async (c) => {
     const r = await ftpLoginCheck({ host, port, user, pass })
     return c.json({ success: true, data: { host, port, user, isTest, ...r } })
   } catch (error) {
+    console.error('fax GET /ftp-check error:', error)
     return c.json({ success: false, error: (error as any).message }, 500)
   }
 })

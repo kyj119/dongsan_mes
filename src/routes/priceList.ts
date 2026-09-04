@@ -96,6 +96,7 @@ priceListRouter.get('/policies', async (c) => {
     `).bind(...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
+    console.error('priceList GET /policies error:', error)
     return c.json({ success: false, error: '정책 목록 조회 실패' }, 500)
   }
 })
@@ -112,6 +113,7 @@ priceListRouter.post('/policies', requireRole('ADMIN', 'MANAGER'), async (c) => 
 
     return c.json({ success: true, data: { id: result.meta.last_row_id } })
   } catch (error) {
+    console.error('priceList POST /policies error:', error)
     return c.json({ success: false, error: '정책 생성 실패' }, 500)
   }
 })
@@ -136,6 +138,7 @@ priceListRouter.get('/policies/:id', async (c) => {
 
     return c.json({ success: true, data: { ...policy, rules } })
   } catch (error) {
+    console.error('priceList GET /policies/:id error:', error)
     return c.json({ success: false, error: '정책 조회 실패' }, 500)
   }
 })
@@ -154,6 +157,7 @@ priceListRouter.put('/policies/:id', requireRole('ADMIN', 'MANAGER'), async (c) 
 
     return c.json({ success: true })
   } catch (error) {
+    console.error('priceList PUT /policies/:id error:', error)
     return c.json({ success: false, error: '정책 수정 실패' }, 500)
   }
 })
@@ -179,6 +183,7 @@ priceListRouter.delete('/policies/:id', requireRole('ADMIN', 'MANAGER'), async (
 
     return c.json({ success: true })
   } catch (error) {
+    console.error('priceList DELETE /policies/:id error:', error)
     return c.json({ success: false, error: '정책 삭제 실패' }, 500)
   }
 })
@@ -270,6 +275,7 @@ priceListRouter.get('/calculate', async (c) => {
 
     return c.json({ success: true, data: { price: basePrice, source: 'base' } })
   } catch (error) {
+    console.error('priceList GET /calculate error:', error)
     return c.json({ success: false, error: '단가 계산 실패' }, 500)
   }
 })
@@ -286,6 +292,7 @@ priceListRouter.get('/logo/:entityId', async (c) => {
     ).bind(entityId).first<{ name: string; logo_base64: string | null; phone: string | null; fax: string | null; address: string | null; email: string | null }>()
     return c.json({ success: true, data: entity || {} })
   } catch (error) {
+    console.error('priceList GET /logo/:entityId error:', error)
     return c.json({ success: false, error: '로고 조회 실패' }, 500)
   }
 })
@@ -300,6 +307,7 @@ priceListRouter.put('/logo/:entityId', requireRole('ADMIN'), async (c) => {
     ).bind(logo_base64 || null, entityId).run()
     return c.json({ success: true })
   } catch (error) {
+    console.error('priceList PUT /logo/:entityId error:', error)
     return c.json({ success: false, error: '로고 저장 실패' }, 500)
   }
 })
@@ -315,6 +323,7 @@ priceListRouter.put('/stamp/:entityId', requireRole('ADMIN'), async (c) => {
     ).bind(stamp_base64 || null, entityId).run()
     return c.json({ success: true })
   } catch (error) {
+    console.error('priceList PUT /stamp/:entityId error:', error)
     return c.json({ success: false, error: '직인 저장 실패' }, 500)
   }
 })
@@ -354,6 +363,7 @@ priceListRouter.put('/company/:entityId', requireRole('ADMIN'), async (c) => {
     ).bind(webhard_url?.trim() || null, entityId).run()
     return c.json({ success: true })
   } catch (error) {
+    console.error('priceList PUT /company/:entityId error:', error)
     return c.json({ success: false, error: '웹하드 주소 저장 실패' }, 500)
   }
 })
@@ -368,6 +378,7 @@ priceListRouter.get('/company/:entityId/contacts', async (c) => {
     ).bind(entityId).all()
     return c.json({ success: true, data: results })
   } catch (error) {
+    console.error('priceList GET /company/:entityId/contacts error:', error)
     return c.json({ success: false, error: '부서 연락처 조회 실패' }, 500)
   }
 })
@@ -384,6 +395,7 @@ priceListRouter.post('/company/:entityId/contacts', requireRole('ADMIN'), async 
     ).bind(entityId, b.department.trim(), b.person_name?.trim() || null, b.phone?.trim() || null, b.fax?.trim() || null, b.sort_order || 0).run()
     return c.json({ success: true, data: { id: result.meta.last_row_id } })
   } catch (error) {
+    console.error('priceList POST /company/:entityId/contacts error:', error)
     return c.json({ success: false, error: '부서 연락처 추가 실패' }, 500)
   }
 })
@@ -401,6 +413,7 @@ priceListRouter.put('/company/:entityId/contacts/:cid', requireRole('ADMIN'), as
     ).bind(b.department.trim(), b.person_name?.trim() || null, b.phone?.trim() || null, b.fax?.trim() || null, b.sort_order || 0, cid, entityId).run()
     return c.json({ success: true })
   } catch (error) {
+    console.error('priceList PUT /company/:entityId/contacts/:cid error:', error)
     return c.json({ success: false, error: '부서 연락처 수정 실패' }, 500)
   }
 })
@@ -416,6 +429,7 @@ priceListRouter.delete('/company/:entityId/contacts/:cid', requireRole('ADMIN'),
     ).bind(cid, entityId).run()
     return c.json({ success: true })
   } catch (error) {
+    console.error('priceList DELETE /company/:entityId/contacts/:cid error:', error)
     return c.json({ success: false, error: '부서 연락처 삭제 실패' }, 500)
   }
 })

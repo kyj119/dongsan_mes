@@ -80,6 +80,7 @@ searchRouter.get('/', async (c) => {
       }
     })
   } catch (error) {
+    console.error('search GET / error:', error)
     return c.json({
       success: false,
 

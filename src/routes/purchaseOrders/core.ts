@@ -401,6 +401,7 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       message: initialStatus === 'CONFIRMED' ? '발주가 확정 상태로 생성되었습니다.' : '발주가 생성되었습니다.'
     }, 201)
   } catch (error) {
+    console.error('purchaseOrders/core GET user error:', error)
     return c.json({
       success: false,
 
@@ -656,6 +657,7 @@ poCoreRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => 
       message: `발주 상태가 '${newStatus}'으로 변경되었습니다.`
     })
   } catch (error) {
+    console.error('purchaseOrders/core GET user error:', error)
     return c.json({
       success: false,
 

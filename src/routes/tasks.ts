@@ -57,6 +57,7 @@ tasksRouter.get('/', async (c) => {
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
+    console.error('tasks GET / error:', error)
     return c.json({
       success: false,
       error: '서버 오류가 발생했습니다.'
@@ -79,6 +80,7 @@ tasksRouter.get('/:id', async (c) => {
     if (!row) return c.json({ success: false, error: 'Task not found' }, 404)
     return c.json({ success: true, data: row })
   } catch (error) {
+    console.error('tasks GET /:id error:', error)
     return c.json({
       success: false,
       error: '서버 오류가 발생했습니다.'
@@ -128,6 +130,7 @@ tasksRouter.post('/', async (c) => {
 
     return c.json({ success: true, data: row })
   } catch (error) {
+    console.error('tasks GET user error:', error)
     return c.json({
       success: false,
       error: '서버 오류가 발생했습니다.'
@@ -183,6 +186,7 @@ tasksRouter.post('/claim', async (c) => {
 
     return c.json({ success: true, data: claimed })
   } catch (error) {
+    console.error('tasks POST /claim error:', error)
     return c.json({
       success: false,
       error: '서버 오류가 발생했습니다.'
@@ -251,6 +255,7 @@ tasksRouter.patch('/:id', async (c) => {
 
     return c.json({ success: true })
   } catch (error) {
+    console.error('tasks PATCH /:id error:', error)
     return c.json({
       success: false,
       error: '서버 오류가 발생했습니다.'
@@ -281,6 +286,7 @@ tasksRouter.post('/:id/retry', async (c) => {
 
     return c.json({ success: true, message: 'Task requeued' })
   } catch (error) {
+    console.error('tasks POST /:id/retry error:', error)
     return c.json({
       success: false,
       error: '서버 오류가 발생했습니다.'
@@ -316,6 +322,7 @@ tasksRouter.get('/_/stats', async (c) => {
       `).bind(...ef.params).first()
       return c.json({ success: true, data: stats })
     } catch (fallbackError) {
+      console.error('tasks GET /_/stats error:', fallbackError)
       return c.json({
         success: false,
         error: fallbackError instanceof Error ? fallbackError.message : 'Unknown error'

@@ -101,6 +101,7 @@ filesRouter.delete('/*', requireRole('ADMIN'), async (c) => {
     await c.env.R2_BUCKET.delete(key)
     return c.json({ success: true, message: 'File deleted' })
   } catch (error) {
+    console.error('files DELETE /* error:', error)
     return c.json({ success: false, error: 'Delete failed' }, 500)
   }
 })

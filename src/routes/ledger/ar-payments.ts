@@ -108,6 +108,7 @@ arPaymentsRouter.get('/payment/:id', async (c) => {
 
     return c.json({ success: true, data: payment })
   } catch (error) {
+    console.error('ledger/ar-payments GET /payment/:id error:', error)
     return c.json({
       success: false,
 

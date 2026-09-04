@@ -155,6 +155,7 @@ ordersQueriesRouter.get('/stats', async (c) => {
 
     return c.json({ success: true, data: stats })
   } catch (error) {
+    console.error('orders/queries GET /stats error:', error)
     return c.json({
       success: false,
 
@@ -175,6 +176,7 @@ ordersQueriesRouter.get('/options/post-processing', async (c) => {
       data: results
     })
   } catch (error) {
+    console.error('orders/queries GET /options/post-processing error:', error)
     return c.json({
       success: false,
 
@@ -205,6 +207,7 @@ ordersQueriesRouter.get('/ready-to-ship', async (c) => {
 
     return c.json({ success: true, data: results })
   } catch (error) {
+    console.error('orders/queries GET /ready-to-ship error:', error)
     return c.json({
       success: false,
 
@@ -416,6 +419,7 @@ ordersQueriesRouter.patch('/bulk-ship', requireRole('ADMIN', 'MANAGER'), async (
 
     return c.json({ success: true, data: results })
   } catch (error) {
+    console.error('orders/queries GET user error:', error)
     return c.json({
       success: false,
 

@@ -113,6 +113,7 @@ poQueriesRouter.get('/stats', async (c) => {
 
     return c.json({ success: true, data: stats })
   } catch (error) {
+    console.error('purchaseOrders/po-queries GET /stats error:', error)
     return c.json({
       success: false,
 
@@ -220,6 +221,7 @@ poQueriesRouter.get('/:id/invoice', async (c) => {
       data: { po, supplier, items, company }
     })
   } catch (error) {
+    console.error('purchaseOrders/po-queries GET /:id/invoice error:', error)
     return c.json({
       success: false,
 

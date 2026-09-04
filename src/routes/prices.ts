@@ -415,6 +415,7 @@ pricesRouter.post('/client-item-prices', requireRole('ADMIN', 'MANAGER'), async 
       message: '단가가 저장되었습니다.'
     })
   } catch (error) {
+    console.error('prices POST /client-item-prices error:', error)
     return c.json({
       success: false,
 

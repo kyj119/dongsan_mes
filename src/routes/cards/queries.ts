@@ -157,6 +157,7 @@ cardsQueriesRouter.get('/schedule/unassigned', async (c) => {
 
     return c.json({ success: true, data: results })
   } catch (error) {
+    console.error('cards/queries GET /schedule/unassigned error:', error)
     return c.json({
       success: false,
 
@@ -203,6 +204,7 @@ cardsQueriesRouter.get('/categories', async (c) => {
     const categories = results.map((r) => r.category_name)
     return c.json({ success: true, data: categories })
   } catch (error) {
+    console.error('cards/queries GET /categories error:', error)
     return c.json({
       success: false,
 
@@ -751,6 +753,7 @@ cardsQueriesRouter.get('/defect-stats', async (c) => {
       }
     })
   } catch (error) {
+    console.error('cards/queries GET /defect-stats error:', error)
     return c.json({
       success: false,
 
@@ -927,6 +930,7 @@ cardsQueriesRouter.get('/thumbnails', async (c) => {
     }
     return c.json({ success: true, data: map })
   } catch (error) {
+    console.error('cards/queries GET /thumbnails error:', error)
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -1252,6 +1256,7 @@ cardsQueriesRouter.get('/:id/history', async (c) => {
     `).bind(id).all()
     return c.json({ success: true, data: results })
   } catch (error) {
+    console.error('cards/queries GET /:id/history error:', error)
     return c.json({
       success: false,
 

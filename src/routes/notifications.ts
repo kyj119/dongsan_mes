@@ -85,6 +85,7 @@ notificationsRouter.get('/unread-count', async (c) => {
 
     return c.json({ success: true, count: result?.count || 0 })
   } catch (error) {
+    console.error('notifications GET user error:', error)
     return c.json({ success: false, count: 0 }, 500)
   }
 })

@@ -150,6 +150,7 @@ poReceiptsRouter.get('/receipts/:receiptId/statement', async (c) => {
     headers.set('Cache-Control', 'private, max-age=3600')
     return new Response(obj.body, { headers })
   } catch (error) {
+    console.error('purchaseOrders/po-receipts GET /receipts/:receiptId/statement error:', error)
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -320,6 +321,7 @@ poReceiptsRouter.get('/:id/inspections', async (c) => {
       inspections: Array.from(inspectionMap.values())
     })
   } catch (error) {
+    console.error('purchaseOrders/po-receipts GET /:id/inspections error:', error)
     return c.json({
       success: false,
 

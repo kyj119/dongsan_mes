@@ -223,6 +223,7 @@ ripRouter.get('/status', authMiddleware, async (c) => {
 
     return c.json({ success: true, data: summary })
   } catch (error) {
+    console.error('rip GET /status error:', error)
     return c.json({
       success: false,
 
@@ -326,6 +327,7 @@ ripRouter.post('/equipment', authMiddleware, requireRole('ADMIN'), async (c) => 
 
     return c.json({ success: true, data: equipment }, 201)
   } catch (error) {
+    console.error('rip POST /equipment error:', error)
     return c.json({
       success: false,
 
@@ -476,6 +478,7 @@ ripRouter.post('/equipment/:id/presets', authMiddleware, requireRole('ADMIN'), a
 
     return c.json({ success: true, data: preset }, 201)
   } catch (error) {
+    console.error('rip POST /equipment/:id/presets error:', error)
     return c.json({
       success: false,
 
@@ -617,6 +620,7 @@ ripRouter.patch('/equipment/:id/status', authMiddleware, async (c) => {
 
     return c.json({ success: true, data: { prev_status: prevStatus, new_status: equipment_status } })
   } catch (error) {
+    console.error('rip GET user error:', error)
     return c.json({
       success: false,
 
@@ -802,6 +806,7 @@ ripRouter.put('/equipment/:id/heads/:headNum', authMiddleware, requireRole('ADMI
 
     return c.json({ success: true, data: updated })
   } catch (error) {
+    console.error('rip GET user error:', error)
     return c.json({
       success: false,
 
@@ -944,6 +949,7 @@ ripRouter.get('/equipment/:id/consumables', authMiddleware, async (c) => {
 
     return c.json({ success: true, data: results })
   } catch (error) {
+    console.error('rip GET /equipment/:id/consumables error:', error)
     return c.json({
       success: false,
 
@@ -1134,6 +1140,7 @@ ripRouter.get('/equipment/:id/schedules', authMiddleware, async (c) => {
 
     return c.json({ success: true, data: results })
   } catch (error) {
+    console.error('rip GET /equipment/:id/schedules error:', error)
     return c.json({
       success: false,
 
@@ -1220,6 +1227,7 @@ ripRouter.post('/equipment/:id/schedules/:sid/complete', authMiddleware, async (
 
     return c.json({ success: true, data: { next_due_at: nextDue } })
   } catch (error) {
+    console.error('rip GET user error:', error)
     return c.json({
       success: false,
 
@@ -1239,6 +1247,7 @@ ripRouter.delete('/equipment/:id/schedules/:sid', authMiddleware, requireRole('A
     ).bind(sid, ...ef.params).run()
     return c.json({ success: true })
   } catch (error) {
+    console.error('rip DELETE /equipment/:id/schedules/:sid error:', error)
     return c.json({
       success: false,
 
@@ -1331,6 +1340,7 @@ ripRouter.get('/equipment/:id/stats', authMiddleware, async (c) => {
       }
     })
   } catch (error) {
+    console.error('rip GET /equipment/:id/stats error:', error)
     return c.json({
       success: false,
 
@@ -1462,6 +1472,7 @@ ripRouter.post('/send/:cardId', authMiddleware, async (c) => {
       }
     })
   } catch (error) {
+    console.error('rip POST /send/:cardId error:', error)
     return c.json({
       success: false,
 

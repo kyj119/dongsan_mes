@@ -810,6 +810,7 @@ quotationsRouter.get('/:id/orders', async (c) => {
     `).bind(id).all()
     return c.json({ success: true, data: results })
   } catch (error) {
+    console.error('quotations GET /:id/orders error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })

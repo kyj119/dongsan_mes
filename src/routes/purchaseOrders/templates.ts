@@ -28,6 +28,7 @@ templatesRouter.get('/templates', async (c) => {
 
     return c.json({ success: true, data: results })
   } catch (error) {
+    console.error('purchaseOrders/templates GET /templates error:', error)
     return c.json({
       success: false,
 
@@ -62,6 +63,7 @@ templatesRouter.get('/templates/:id', async (c) => {
 
     return c.json({ success: true, data: { ...template, items } })
   } catch (error) {
+    console.error('purchaseOrders/templates GET /templates/:id error:', error)
     return c.json({
       success: false,
 
@@ -119,6 +121,7 @@ templatesRouter.post('/templates', async (c) => {
       message: '템플릿이 저장되었습니다.'
     }, 201)
   } catch (error) {
+    console.error('purchaseOrders/templates GET user error:', error)
     return c.json({
       success: false,
 
@@ -286,6 +289,7 @@ templatesRouter.post('/from-template/:templateId', async (c) => {
       message: `템플릿 "${template.name}"에서 발주가 생성되었습니다.`
     }, 201)
   } catch (error) {
+    console.error('purchaseOrders/templates GET user error:', error)
     return c.json({
       success: false,
 

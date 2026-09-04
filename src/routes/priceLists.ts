@@ -53,6 +53,7 @@ priceListsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       data: { id: result.meta.last_row_id }
     })
   } catch (error) {
+    console.error('priceLists POST / error:', error)
     return c.json({
       success: false,
 
@@ -208,6 +209,7 @@ priceListsRouter.post('/bulk-assign', requireRole('ADMIN', 'MANAGER'), async (c)
 
     return c.json({ success: true, updated })
   } catch (error) {
+    console.error('priceLists POST /bulk-assign error:', error)
     return c.json({
       success: false,
 

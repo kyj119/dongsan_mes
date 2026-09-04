@@ -317,6 +317,7 @@ settingsRouter.delete('/holidays/:date', requireRole('ADMIN', 'MANAGER'), async 
     await c.env.DB.prepare(`DELETE FROM holidays WHERE holiday_date = ?`).bind(c.req.param('date')).run()
     return c.json({ success: true })
   } catch (err) {
+    console.error('payroll/settings DELETE /holidays/:date error:', err)
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })

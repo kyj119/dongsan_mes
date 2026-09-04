@@ -612,6 +612,7 @@ itemsRouter.get('/group-settings/:groupName', async (c) => {
     ).bind(groupName).first()
     return c.json({ success: true, settings: row || { group_name: groupName, price_linked: 0 } })
   } catch (error) {
+    console.error('items GET /group-settings/:groupName error:', error)
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -628,6 +629,7 @@ itemsRouter.put('/group-settings/:groupName', requireRole('ADMIN', 'MANAGER'), a
     `).bind(groupName, price_linked ? 1 : 0, notes || null, price_linked ? 1 : 0, notes || null).run()
     return c.json({ success: true })
   } catch (error) {
+    console.error('items PUT /group-settings/:groupName error:', error)
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })

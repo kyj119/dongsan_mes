@@ -45,6 +45,7 @@ settingsRouter.get('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     return c.json({ success: true, data: settingsMap })
   } catch (error) {
+    console.error('settings GET / error:', error)
     return c.json({
       success: false,
 
@@ -92,6 +93,7 @@ settingsRouter.get('/entity', requireRole('ADMIN', 'MANAGER'), async (c) => {
     }
     return c.json({ success: true, data: entity })
   } catch (error) {
+    console.error('settings GET /entity error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })

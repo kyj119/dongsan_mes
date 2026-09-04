@@ -341,6 +341,7 @@ printEventsRouter.post('/file-map', agentKeyMiddleware, async (c) => {
 
     return c.json({ success: true, data: { order_number, file_seq, card_number } })
   } catch (error) {
+    console.error('printEvents POST /file-map error:', error)
     return c.json({
       success: false,
 
@@ -581,6 +582,7 @@ printEventsRouter.post('/heartbeat', agentKeyMiddleware, async (c) => {
 
     return c.json({ success: true, message: 'Heartbeat received' })
   } catch (error) {
+    console.error('printEvents POST /heartbeat error:', error)
     return c.json({
       success: false,
 
@@ -978,6 +980,7 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
       }
     })
   } catch (error) {
+    console.error('printEvents GET / error:', error)
     return c.json({
       success: false,
 
