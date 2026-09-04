@@ -361,7 +361,29 @@ function icRenderItems() {
     return;
   }
 
-  var itemsHtml = filtered.map(function(item) {
+  // 그룹으로 묶고 **규격을 앞세운다** — 원단 계열은 23줄이 전부 같은 이름이라
+  //   품목명만 보이면 어느 줄이 어느 폭인지 구분이 안 된다(2026-09-04 용준님 지적).
+  //   규격이 없는 품목(간판자재 66/69)은 품목명이 곧 규격이므로 그대로 쓴다.
+  var icGroups = [], icGmap = {};
+  filtered.forEach(function(it) {
+    var key = it.item_group || it.item_name || it.item_code || '(기타)';
+    if (!icGmap[key]) { icGmap[key] = { name: key, rows: [] }; icGroups.push(icGmap[key]); }
+    icGmap[key].rows.push(it);
+  });
+  var itemsHtml = icGroups.map(function(g) {
+    var gf = g.rows.filter(function(r) { return r.counted_quantity !== null && r.counted_quantity !== undefined; }).length;
+    return '<div style="margin-bottom:12px;">'
+      + '<div style="display:flex;align-items:center;gap:6px;padding:3px 2px;border-bottom:2px solid #e5e7eb;margin-bottom:6px;">'
+        + '<span style="font-size:13px;font-weight:700;">' + escapeHtml(g.name) + '</span>'
+        + '<span style="font-size:11px;color:' + (gf === g.rows.length ? '#16a34a' : '#9ca3af') + ';">' + gf + '/' + g.rows.length + '</span>'
+      + '</div>'
+      + g.rows.map(icItemRowHtml).join('')
+    + '</div>';
+  }).join('');
+
+  container.innerHTML = itemsHtml;
+
+  function icItemRowHtml(item) {
     var systemQty = parseFloat(item.system_quantity) || 0;
     // 미입력(NULL)은 "0으로 실사"와 구분 — 빈칸 렌더, 승인 시 보정 제외 대상
     var notCounted = (item.counted_quantity === null || item.counted_quantity === undefined);
@@ -414,7 +436,11 @@ function icRenderItems() {
 
     return '<div style="padding:10px;border:1px solid #f1f5f9;border-radius:4px;margin-bottom:8px;">'
       + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">'
-        + '<div style="font-weight:500;font-size:13px;min-width:0;">' + escapeHtml(item.item_name || item.item_code || '') + zoneTag + changedTag + '</div>'
+        + '<div style="font-weight:600;font-size:13px;min-width:0;">'
+          + escapeHtml(item.specification || item.item_name || item.item_code || '')
+          + (item.specification ? '' : '')
+          + '<span style="font-weight:400;font-size:11px;color:#9ca3af;margin-left:6px;">' + escapeHtml(item.item_code || '') + '</span>'
+          + zoneTag + changedTag + '</div>'
         + (varClass ? '<span style="font-size:10px;padding:2px 6px;border-radius:3px;background:#fee2e2;color:#dc2626;flex-shrink:0;" class="' + varClass + '">' + diffPct.toFixed(1) + '%</span>' : '')
       + '</div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;color:#666;">'
@@ -426,9 +452,7 @@ function icRenderItems() {
       + '</div>'
       + (item.notes ? '<div style="font-size:11px;color:#9ca3af;margin-top:6px;padding-top:6px;border-top:1px solid #f1f5f9;"><strong>메모:</strong> ' + escapeHtml(item.notes) + '</div>' : '')
     + '</div>';
-  }).join('');
-
-  container.innerHTML = itemsHtml;
+  }
 }
 
 // ===== P3: 구역 실사 — 미배정 품목 배정 =====

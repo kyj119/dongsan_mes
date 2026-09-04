@@ -538,7 +538,8 @@ inventoryCountRouter.get('/:id', async (c) => {
       SELECT ci.id, ci.count_id, ci.item_id, ci.system_quantity, ci.counted_quantity, ci.difference, ci.difference_pct, ci.unit, ci.notes,
              ci.pack_count, ci.per_pack_qty,
              ci.storage_zone_id, sz.zone_name AS storage_zone_name,
-             i.item_code, i.item_name, i.unit AS item_unit, i.base_unit, i.pack_size, i.stock_mode,
+             i.item_code, i.item_name, COALESCE(i.specification, '') AS specification,
+             i.item_group, i.unit AS item_unit, i.base_unit, i.pack_size, i.stock_mode,
              (SELECT inv.quantity FROM inventory inv
                WHERE inv.item_id = ci.item_id AND inv.entity_id = ?
                  AND IFNULL(inv.storage_zone_id, 0) = IFNULL(ci.storage_zone_id, 0)) AS current_quantity
