@@ -1,25 +1,40 @@
-# 세션 컨텍스트 — 2026-09-03 전체 리뷰 결함 수정 + prod 배포
+# 세션 컨텍스트 — 2026-09-04 IA 재단 패널 배포 검증 + 도련/간격 문의 판정
 
 ## 완료
-- 09-02~03 전체 코드 리뷰(CRITICAL 2·HIGH 89·MEDIUM 143)를 10묶음 오케스트레이션으로 수정→통합→main→prod 배포.
-- worktree 11개(fix-*): rebase --onto main → fix-integration 순차 병합 → main c9e48243(172파일) + 3422c646(단가기준). push=자동배포 성공, prod smoke 114/114.
-- 원가 백필 POST /costs/backfill 8,779건 prod 실행, 에러 0.
-- worktree 11개 end-session 정리 완료(date-filter·sign-estimate 는 타 작업이라 유지).
-- 정본: docs/audits/2026-09-03-full-review.md + fix-reports/*.md(10) + VERIFY-REPORT.md.
+- **재단 패널 3결함 배포 확인** — 호스트 CUT-CEP-0.34.0 · 재단 셸 0.74.0 · 가공 셸 0.11.0. `audit:ia-jsx` **드리프트 0(축1~5)**, 축4는 ping 자동동기화가 따라옴.
+- **실물 A/B 실측** — 살아 있는 패널을 CDP(8888)로 몰아 같은 파일·같은 선택으로 두 경로 측정:
+  **옛 경로 101.1초(적용 80.7) vs 새 경로 33.2·33.6초(적용 12.7·13.0)** = 전체 3.0배·적용 6.4배.
+  옛 경로 101.1초가 용준님이 겪은 99.4초와 사실상 같아 **같은 것을 재고 있다는 것까지 확인**.
+- **판 전수 실측** — 재단선 117개/서브패스 184개: **사각 0 · 0.1mm 미만 부스러기 0 · 열린 패스 0**. 판을 두 번 만들어 동일.
+- `cut:e2e --require` 배포본에 대고 전 케이스 통과.
+- 문서 = 현황판 1줄 + ARCHIVE §2026-09-04 IA 재단 · memory `feedback-ia-pdf-scale` ⑤~⑪ · `feedback-ia-agent-verify` CDP/ExtendScript 항목. 커밋 `4c17fb78`·`bf3c1369`.
 
 ## owner 결정 (반영됨)
-- 에누리 = 과세표준 차감(splitDiscount 부가세법 §29③ 이미 구현, 변경 불요).
-- 단가 기준 = 미리보기 방식(base_price)으로 통일(priceSheets computeAppliedPrice, 3422c646).
-- 입고/재고 쓰기 게이트 = requireEditOrRole(ADMIN/MANAGER). prod 권한매트릭스상 /receiving·/inventory 는 ADMIN만 edit·타 역할 접근 0 → 실제 차단된 비관리자 0. 비관리자 위임 필요 시 permission_pages can_edit 부여.
+- **「간격 0 + 도련 3 → 3mm 간격」은 의도된 동작 — 코드 변경 없음**(용준님 「이대로 유지」).
+  근거 실측: 간격 0→3 상향과 **동시에 도련 3→1.5mm** 로 줄어들고, 칼선 간격 실보장 4.00mm 라 **잉크는 1mm 떨어져 있다**.
+  보이던 겹침 = 도련 **PNG 사각**이 최대 3.8mm 물린 것(조각 bbox 가 0.88mm 물려 있어 필연) — 그 구간 **알파 0**(32bpp ARGB 실측)이라 인쇄 무영향.
+  ⚠️결과창 괄호 문구(「겹치면 재단 오차 때…」)가 *지금 겹친다*로 읽히는 건 알고 남겨 둔 것 — 고치자고 다시 제안하지 말 것.
+- 간격 0 을 진짜 원할 때의 세 경로 = **여백도 0**(맞붙임) · **도련 0** · **간격 6 이상**.
 
 ## 남은 일 (다음 세션)
-1. ~~IA 축2·3·4 ia:deploy~~ **해소(09-03 21:49)** — 축2~5 드리프트 0, 축4 셸 0.10.0/0.71.0 = repo 일치. 별건으로 **축1(에이전트 JSX) 3종이 드리프트**였고(리뷰수정 51120021 + 08-26 도련 경계분할 미반영) `--sync-agent` 로 반영·sha256 4/4 일치. 남은 검증=다음 모아찍기 잡의 SheetLayout 로그.
-2. storageZones 재고단위 표시 = 라우트 SELECT 에 base_unit/pack_size 추가 + inventory.ts 외 페이지에 UOM_JS 주입(반쪽 수정 상태).
-3. 간판 BOM PER_AREA_ROLL·PER_LED usage_type 소요 산식(골격만).
+1. **재단 패널 = 정소은 님 실사용 판정** (유일한 남은 항목. 코드·게이트 쪽은 끝).
+2. storageZones 재고단위 표시 = 라우트 SELECT 에 base_unit/pack_size + inventory.ts 외 페이지에 UOM_JS 주입(반쪽 상태).
+3. 간판 BOM PER_AREA_ROLL·PER_LED 소요 산식(골격만).
 4. autodeduct prod 실동작 = 첫 출력 뒤 실측.
-5. ✅결정됨: 평문비번 폴백·JWT_SECRET AES 겸용 강화 = **실사용 전환 계획에 맞춰 예약**(지금 미착수). 절차·순서 정본=memory/project-security-hardening-golive.md. 순서 1(JWT↔PII 키분리+재암호화)→2(계정 PBKDF2 이관→폴백 제거→admin·테스트계정 정리, ③은 전환 당일).
+5. 보안강화(평문비번 폴백·JWT_SECRET 분리) = 실사용 전환 계획에 맞춰 **예약**. 정본=memory/project-security-hardening-golive.md.
+6. 다음 최적화 대상은 **굽기 18.8초**(래스터 마스크) — 적용 단계는 이미 12.7초로 접혔다.
 
 ## 주의
-- 세션 도중 main 이력이 2번 재작성됨(다른 세션 amend + S2 커밋 c317e8fe). 재작업 시 origin/main 실측 우선.
-- 새 커밋 트레일러 = Claude Opus 4.8(19:30 이후). 브랜치 기존 커밋은 Fable 트레일러.
-- 로컬 dev 서버 잔재 없음(백그라운드 wrangler 전부 종료).
+- **일러스트레이터를 내가 켰고 켜 둔 채로 끝났다.** 패널 값이 **여백 3 · 간격 0 · 도련 3** 으로 바뀌어 있고 테스트 판 `Untitled` 가 열려 있다(용준님께 되돌리라 안내함). 원본 파일은 안 건드렸고 저장도 안 했다.
+- **illustrator MCP 서버는 이 세션 내내 연결 실패** — 검증은 PowerShell COM(`GetActiveObject` + `DoJavaScriptFile`) + CDP 8888 로 했다. MCP 없이도 전부 된다.
+- 게이트 스위치 `MESCUT_HARDEN_OFF` 는 **패널 엔진**에 산다 — COM 으로 세워도 패널엔 안 보인다. 측정 후 `false` 로 되돌린 것 확인함.
+- 다른 세션이 `b8586215`(ecount)·`bccb5177`(현황판) 을 push 했다. main 실측 우선.
+- 현황판·MEMORY.md 둘 다 **한도에 붙어 있다**(`doc-diet-audit` OK 지만 여유 없음). 새 항목을 넣으려면 오래된 항목을 ARCHIVE 로 먼저 옮길 것.
+
+## 검증 명령 (PowerShell)
+```powershell
+npm run audit:ia-jsx                 # 축1~5 드리프트 (배포 후 필수)
+npm run cut:smoke ; npm run panel:smoke
+npm run cut:e2e -- --require         # 일러 실행 중이어야 함
+node scripts/doc-diet-audit.cjs      # 현황판·메모리 한도
+```
