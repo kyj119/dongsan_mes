@@ -31,9 +31,9 @@ inventoryCountRouter.use('/*', authMiddleware)
 async function loadOwnedCount(c: Context<HonoEnv>, countId: number) {
   const ef = entityFilter(c, 'ic')
   const row = await c.env.DB.prepare(
-    `SELECT ic.id, ic.status, ic.storage_zone_id, ic.entity_id, ic.count_number
+    `SELECT ic.id, ic.status, ic.storage_zone_id, ic.entity_id, ic.count_number, ic.count_date
        FROM inventory_counts ic WHERE ic.id = ?${ef.clause}`
-  ).bind(countId, ...ef.params).first<{ id: number; status: string; storage_zone_id: number | null; entity_id: number; count_number: string }>()
+  ).bind(countId, ...ef.params).first<{ id: number; status: string; storage_zone_id: number | null; entity_id: number; count_number: string; count_date: string }>()
   if (!row) return null
   return (await canTouchZone(c, row.storage_zone_id)) ? row : null
 }
@@ -865,10 +865,33 @@ inventoryCountRouter.patch('/:id/approve', async (c) => {
     const userId = c.get('user')?.username || 'system'
 
     // ★담당자가 **자기 구역 실사는 승인까지** 한다(용준님 2026-09-04). 승인이 ADMIN 3명에게만 있어
-    //   실사 22건 중 18건이 SUBMITTED 로 묶여 재고에 한 줄도 반영되지 않았다 — 견제보다 반영이 먼저다.
+    //   실사 22건 중 18건이 SUBMITTED 로 묶여 있었다 — 견제보다 반영이 먼저다.
     //   구역 미지정(전수) 실사는 `canTouchZone` 이 담당자를 막으므로 여전히 관리자 몫이다.
-    if (!(await loadOwnedCount(c, countId))) {
+    const owned = await loadOwnedCount(c, countId)
+    if (!owned) {
       return c.json({ success: false, error: 'Count not found or not submitted' }, 400)
+    }
+
+    // ★낡은 회차 승인 차단 (2026-09-04) — 승인은 `quantity = counted` 로 **덮어쓴다**. 같은 구역에
+    //   더 최신 회차가 이미 승인돼 있으면, 옛 회차를 승인하는 순간 재고가 **그때 값으로 되돌아간다**.
+    //   배포 당일 prod 이 정확히 그 모양이었다 — 출력실은 08-07 이 승인된 상태인데 05-22~07-24 의
+    //   10건이 SUBMITTED 로 남아 있었고(전사출력실도 08-24 승인 vs 06-04~08-07 8건),
+    //   그 18건은 **이력으로 남기기로 했다**(용준님). 남긴 이상 누군가 누를 수 있으므로 서버가 막는다.
+    //   ⚠️화면에서 버튼을 숨기는 것으로는 부족하다 — API 를 직접 부르면 그대로 들어간다.
+    const newer = await c.env.DB.prepare(`
+      SELECT count_number, count_date FROM inventory_counts
+       WHERE IFNULL(storage_zone_id, 0) = IFNULL(?, 0)
+         AND entity_id = ? AND status = 'APPROVED'
+         AND (count_date > ? OR (count_date = ? AND id > ?))
+       ORDER BY count_date DESC, id DESC LIMIT 1
+    `).bind(owned.storage_zone_id, owned.entity_id, owned.count_date, owned.count_date, countId)
+      .first<{ count_number: string; count_date: string }>()
+    if (newer) {
+      return c.json({
+        success: false,
+        error: `더 최신 회차(${newer.count_number} · ${newer.count_date})가 이미 승인돼 있어 이 회차는 승인할 수 없습니다. `
+             + `승인하면 재고가 ${owned.count_date} 값으로 되돌아갑니다.`,
+      }, 400)
     }
 
     // 먼저 count 조회 (타법인 실사 승인 차단)
