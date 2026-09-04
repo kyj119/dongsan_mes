@@ -495,6 +495,11 @@ window.schOpenDayDetail = function(dateStr) {
       html += '</div>';
       html += '<div class="text-[11px] text-gray-600">' + escapeHtml(it.name || '-') + '</div>';
       html += '<div class="text-sm font-bold tabular-nums text-gray-900">' + fmt(it.amount) + '</div>';
+      // 부분수금 — 금액은 '잔여'라 얼마가 이미 들어왔는지 같이 보여야 숫자가 설명된다.
+      if (it.settled_amount > 0) {
+        html += '<div class="text-[10px] text-emerald-700">회수 ' + fmt(it.settled_amount) +
+          (it.amount > 0 ? ' · 잔여 ' + fmt(it.amount) : ' · 전액 회수') + '</div>';
+      }
       if (it.materialized && it.schedule_id) {
         html += '<div class="flex gap-1 pt-1">';
         if (it.status !== 'DONE') {

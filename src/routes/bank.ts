@@ -1715,21 +1715,12 @@ async function applyBankTransaction(
   const paymentId = Number(batchResults[0].meta.last_row_id)
   await db.prepare('UPDATE bank_transactions SET matched_payment_id = ? WHERE id = ?').bind(paymentId, tx.id).run()
 
-  // Phase 4: 대응 입금예정(cash_schedule) 자동 DONE (보조 — 실패해도 적용엔 영향 없음)
-  try {
-    await db.prepare(`
-      UPDATE cash_schedule
-      SET status = 'DONE', bank_transaction_id = ?, actual_date = ?, actual_amount = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = (
-        SELECT id FROM cash_schedule
-        WHERE client_id = ? AND flow_type = 'IN' AND source_type = 'ORDER'
-          AND status IN ('PENDING', 'OVERDUE') AND amount = ? AND entity_id = ?
-        ORDER BY schedule_date ASC, id ASC LIMIT 1
-      )
-    `).bind(tx.id, payDate, amount, clientId, amount, entityId).run()
-  } catch (e) {
-    console.warn('cash_schedule DONE 연동 실패(입금 적용은 정상):', e)
-  }
+  // 입금예정(cash_schedule) 소진은 여기서 찍지 않는다 — payments 행이 곧 근거이고,
+  // 어느 예정이 얼마나 회수됐는지는 조회 시점에 FIFO 로 파생한다(utils/cashflowEngine §0).
+  //   종전엔 `금액 완전일치` 한 건만 DONE 으로 UPDATE 했다. 부분입금·합산입금·상계 후 입금은
+  //   영영 매칭되지 않아 예정이 남았고, 더 나쁘게는 적용 취소(/cancel-apply)가 그 DONE 을
+  //   되돌리지 않아 한 번 찍힌 예정이 굳었다. 파생이면 이 취소가 그냥 payments 삭제로 끝난다.
+  //   게이트 = npm run test:cash-settle
 
   return { ok: true, mode: 'CREATED', ledgerId: paymentId, message: '입금이 생성되었습니다' }
 }

@@ -24,6 +24,8 @@ export interface CashflowItem {
   materialized: boolean           // true=cash_schedule 행(은행매칭 DONE 대상), false=온더플라이
   schedule_id?: number            // 물질화 행 id
   estimated?: boolean             // true=과거 실적 추정치(변동비, 확정 전)
+  /** 입금예정 중 이미 회수된 금액(파생 FIFO 충당). amount는 '잔여'라 이 값만큼 이미 들어와 있다. */
+  settled_amount?: number
   /** 연체 이월(carryOverdueToStart)로 from에 당겨온 항목의 '원래 예정일'.
    *  없으면 표시일 = 예정일. 이게 없으면 달력(원 날짜)과 월별·예측(이월 후)의 같은 달 합계가 조용히 어긋난다. */
   carried_from?: string
@@ -78,6 +80,84 @@ export async function buildCashflowDays(
     day.items.push(item)
   }
 
+  // ── 0) 입금예정의 '이미 회수된 금액'을 파생으로 구한다 (FIFO 충당) ─────────
+  //   payments·adjustments에는 '어느 예정 행을 갚은 것인지' 기록이 없다 → 거래처×법인 안에서 예정일 순으로 충당한다.
+  //   ⚠️ 충당 결과를 테이블에 저장하지 않는 이유: 수금 생성 경로가 둘(은행매칭 bank.ts·원장등록 ledger/ar-payments.ts)이고
+  //      삭제 경로도 둘이라, 저장하면 네 곳 모두에 충당·복원을 심어야 하고 하나만 빠지면 예정이 영영 굳는다.
+  //      실제로 bank.ts는 입금 적용 때 DONE을 찍으면서 적용 취소 때 되돌리지 않아 그 상태였다.
+  //      파생이면 수금을 지우는 순간 다음 조회에서 저절로 복구된다. [[design-ar-overdue-fifo]] 와 같은 방식.
+  const ckeyOf = (cid: number, eid: number) => cid + ':' + eid
+  const efArCs = entityFilter(c, 'cs')
+  const { results: arScheduleRows } = await c.env.DB.prepare(`
+    SELECT cs.id, cs.client_id, cs.entity_id, cs.schedule_date, cs.amount, cs.status, cs.actual_amount
+    FROM cash_schedule cs
+    WHERE cs.flow_type = 'IN' AND cs.source_type = 'ORDER'
+      AND cs.status != 'CANCELLED' AND cs.client_id IS NOT NULL${efArCs.clause}
+    ORDER BY cs.client_id, cs.entity_id, cs.schedule_date, cs.id
+  `).bind(...efArCs.params).all<{
+    id: number; client_id: number; entity_id: number; schedule_date: string
+    amount: number; status: string; actual_amount: number | null
+  }>()
+
+  /** 예정 행 id → 이미 회수된 금액 */
+  const settledById = new Map<number, number>()
+  /** 거래처×법인 → 미회수 예정 잔여 합계 (§4b 미수 residual에서 차감) */
+  const pendingRemainByCE = new Map<string, number>()
+  /** payments·adjustments 집계 — §4b도 같은 값을 쓰므로 한 번만 조회해 공유한다 */
+  let arAggCache: { paid: Map<string, number>; adj: Map<string, number> } | null = null
+  const loadArAgg = async () => {
+    if (arAggCache) return arAggCache
+    const efP = entityFilter(c)
+    const efA = entityFilter(c)
+    const [pAgg, aAgg] = await Promise.all([
+      c.env.DB.prepare(`SELECT client_id, entity_id, COALESCE(SUM(amount), 0) AS v FROM payments WHERE 1=1${efP.clause} GROUP BY client_id, entity_id`).bind(...efP.params).all<{ client_id: number; entity_id: number; v: number }>(),
+      c.env.DB.prepare(`SELECT client_id, entity_id, COALESCE(SUM(amount), 0) AS v FROM adjustments WHERE 1=1${efA.clause} GROUP BY client_id, entity_id`).bind(...efA.params).all<{ client_id: number; entity_id: number; v: number }>(),
+    ])
+    const paid = new Map<string, number>(), adj = new Map<string, number>()
+    for (const r of pAgg.results) paid.set(ckeyOf(r.client_id, r.entity_id), Number(r.v) || 0)
+    for (const r of aAgg.results) adj.set(ckeyOf(r.client_id, r.entity_id), Number(r.v) || 0)
+    arAggCache = { paid, adj }
+    return arAggCache
+  }
+
+  if (arScheduleRows.length > 0) {
+    const { paid, adj } = await loadArAgg()
+    const byCEsched = new Map<string, typeof arScheduleRows>()
+    for (const r of arScheduleRows) {
+      const k = ckeyOf(r.client_id, r.entity_id)
+      const list = byCEsched.get(k) ?? []
+      list.push(r)
+      byCEsched.set(k, list)
+    }
+    for (const [k, list] of byCEsched) {
+      // 수동 완료(DONE)로 처리된 행은 이미 해결된 건이므로 충당 대상에서 빼되,
+      // 그 금액만큼 회수 풀에서도 뺀다 — 안 그러면 같은 입금이 다른 예정을 한 번 더 지운다.
+      let pool = (paid.get(k) || 0) + (adj.get(k) || 0)
+      for (const r of list) {
+        if (r.status !== 'DONE') continue
+        pool -= Number(r.actual_amount ?? r.amount) || 0
+      }
+      if (pool < 0) pool = 0
+      let remainSum = 0
+      for (const r of list) {                       // 이미 schedule_date, id 순으로 정렬돼 있다
+        const amt = Number(r.amount) || 0
+        if (r.status === 'DONE') { settledById.set(r.id, Number(r.actual_amount ?? r.amount) || 0); continue }
+        const take = Math.min(pool, amt)
+        if (take > 0) { settledById.set(r.id, take); pool -= take }
+        remainSum += Math.max(0, amt - take)
+      }
+      pendingRemainByCE.set(k, remainSum)
+    }
+  }
+
+  /** 물질화 예정 행의 표시 금액 = 아직 안 들어온 잔여. 이미 받은 몫은 은행 잔액에 있으므로 예정에 또 세면 이중계상이다. */
+  const remainingOf = (row: { id: number; amount: number; status: string; actual_amount: number | null }, isArRow: boolean) => {
+    const amt = Number(row.amount) || 0
+    if (!isArRow) return { remaining: row.status === 'DONE' ? (Number(row.actual_amount ?? row.amount) || 0) : amt, settled: 0 }
+    const settled = settledById.get(row.id) ?? (row.status === 'DONE' ? (Number(row.actual_amount ?? row.amount) || 0) : 0)
+    return { remaining: Math.max(0, amt - settled), settled }
+  }
+
   // ── 1) 물질화: cash_schedule (FIXED 제외) ──────────────────────────────
   const efCs = entityFilter(c, 'cs')
   const { results: csRows } = await c.env.DB.prepare(`
@@ -94,15 +174,18 @@ export async function buildCashflowDays(
     actual_amount: number | null; client_name: string | null
   }>()
   for (const r of csRows) {
-    const effective = r.status === 'DONE' ? (r.actual_amount ?? r.amount) : r.amount
+    const isAr = r.flow_type === 'IN' && r.source_type === 'ORDER'
+    const { remaining, settled } = remainingOf(r, isAr)
     add(r.schedule_date, {
       flow: r.flow_type === 'IN' ? 'IN' : 'OUT',
       type: r.source_type,
       name: r.description || r.client_name || r.source_type,
-      amount: Number(effective) || 0,
-      status: r.status,
+      amount: remaining,
+      // 잔여가 0이면 물리 status가 아직 PENDING이어도 회수 완료다(은행매칭이 못 잡은 부분·합산 입금).
+      status: isAr && remaining <= 0 ? 'DONE' : r.status,
       materialized: true,
       schedule_id: r.id,
+      ...(settled > 0 ? { settled_amount: settled } : {}),
     })
   }
 
@@ -126,15 +209,20 @@ export async function buildCashflowDays(
       description: string | null; status: string; client_name: string | null
     }>()
     for (const r of ovRows) {
+      const isAr = r.flow_type === 'IN' && r.source_type === 'ORDER'
+      // 부분수금된 연체는 잔여만 끌어온다. 전액 회수됐으면(은행매칭이 못 잡은 합산 입금 등) 연체가 아니다.
+      const { remaining, settled } = remainingOf({ ...r, actual_amount: null }, isAr)
+      if (isAr && remaining <= 0) continue
       add(from, {
         flow: r.flow_type === 'IN' ? 'IN' : 'OUT',
         type: r.source_type,
         name: `${r.description || r.client_name || r.source_type} (연체)`,
-        amount: Number(r.amount) || 0,
+        amount: remaining,
         status: r.status,
         materialized: true,
         schedule_id: r.id,
         carried_from: r.schedule_date,
+        ...(settled > 0 ? { settled_amount: settled } : {}),
       })
     }
   }
@@ -257,25 +345,18 @@ export async function buildCashflowDays(
   }
 
   // 4b) 청구 그룹(BILLED·미물질화) → 미수 예상입금. cap = (거래처×법인) 파생 미수잔여.
-  //   파생잔여 = Σ BILLED그룹 − payments − adjustments − 이미 물질화된 PENDING/OVERDUE(전 기간).
+  //   파생잔여 = Σ BILLED그룹 − payments − adjustments − 물질화 예정의 '미회수 잔여'(전 기간).
   //   (clients.balance P3 폐기 → 파생. 물질화분은 §1에서 별도 표시 → 잔여만 분배해 이중계산 방지.)
+  //   ⚠️ 물질화분을 예정 '전액'으로 빼면 안 된다 — §1이 잔여만 표시하도록 바뀌었으므로 여기서도 잔여로 빼야
+  //      총합(§1 잔여 + §4b 합성)이 실제 미수와 맞는다. §0에서 계산한 pendingRemainByCE가 그 값이다.
   const billedGroups = grpRows.filter(g => g.billing_status === 'BILLED' && Number(g.materialized) === 0 && Number(g.amount) > 0)
   if (billedGroups.length > 0) {
-    const ckey = (cid: number, eid: number) => cid + ':' + eid
-    const efP = entityFilter(c)
-    const efA = entityFilter(c)
-    const efCsB = entityFilter(c, 'cs')
-    const [bAgg, pAgg, aAgg, mAgg] = await Promise.all([
-      c.env.DB.prepare(`SELECT o.client_id, g.entity_id, COALESCE(SUM(g.billed_amount), 0) AS v FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${efG.clause} GROUP BY o.client_id, g.entity_id`).bind(...efG.params).all<{ client_id: number; entity_id: number; v: number }>(),
-      c.env.DB.prepare(`SELECT client_id, entity_id, COALESCE(SUM(amount), 0) AS v FROM payments WHERE 1=1${efP.clause} GROUP BY client_id, entity_id`).bind(...efP.params).all<{ client_id: number; entity_id: number; v: number }>(),
-      c.env.DB.prepare(`SELECT client_id, entity_id, COALESCE(SUM(amount), 0) AS v FROM adjustments WHERE 1=1${efA.clause} GROUP BY client_id, entity_id`).bind(...efA.params).all<{ client_id: number; entity_id: number; v: number }>(),
-      c.env.DB.prepare(`SELECT cs.client_id, cs.entity_id, COALESCE(SUM(cs.amount), 0) AS v FROM cash_schedule cs WHERE cs.flow_type = 'IN' AND cs.source_type = 'ORDER' AND cs.status IN ('PENDING', 'OVERDUE')${efCsB.clause} GROUP BY cs.client_id, cs.entity_id`).bind(...efCsB.params).all<{ client_id: number; entity_id: number; v: number }>(),
-    ])
-    const billedByCE = new Map<string, number>(), paidByCE = new Map<string, number>(), adjByCE = new Map<string, number>(), matByCE = new Map<string, number>()
-    for (const r of bAgg.results) billedByCE.set(ckey(r.client_id, r.entity_id), Number(r.v) || 0)
-    for (const r of pAgg.results) paidByCE.set(ckey(r.client_id, r.entity_id), Number(r.v) || 0)
-    for (const r of aAgg.results) adjByCE.set(ckey(r.client_id, r.entity_id), Number(r.v) || 0)
-    for (const r of mAgg.results) matByCE.set(ckey(r.client_id, r.entity_id), Number(r.v) || 0)
+    const ckey = ckeyOf
+    const { paid: paidByCE, adj: adjByCE } = await loadArAgg()   // §0과 동일 집계 — 재조회하지 않는다
+    const { results: bAggRows } = await c.env.DB.prepare(`SELECT o.client_id, g.entity_id, COALESCE(SUM(g.billed_amount), 0) AS v FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${efG.clause} GROUP BY o.client_id, g.entity_id`).bind(...efG.params).all<{ client_id: number; entity_id: number; v: number }>()
+    const billedByCE = new Map<string, number>()
+    for (const r of bAggRows) billedByCE.set(ckey(r.client_id, r.entity_id), Number(r.v) || 0)
+    const matByCE = pendingRemainByCE
     const residualByCE = new Map<string, number>()
     for (const k of billedByCE.keys()) {
       residualByCE.set(k, Math.max(0, (billedByCE.get(k) || 0) - (paidByCE.get(k) || 0) - (adjByCE.get(k) || 0) - (matByCE.get(k) || 0)))

@@ -50,6 +50,9 @@ const TARGETS = [
   { path: `/api/ledger/monthly-summary?month=${yyyy}-${mm}`, name: 'ledger.monthlySummary',   budgetMs: 1000, maxKB: 100 },
   { path: '/api/inventory/dashboard/zones',                  name: 'inventory.zones',         budgetMs: 1000, maxKB: 500 },
   { path: '/api/bom/overview',                               name: 'bom.overview',            budgetMs: 1000, maxKB: 300 },
+  // 자금계획 통합 화면 — buildCashflowDays(무거운 하이브리드 엔진)를 한 요청에 2회 돌린다.
+  // 응답에 달력 items + 90일 시계열이 실려 KB가 크다. 여기가 부풀면 계획 탭 진입이 통째로 느려진다.
+  { path: '/api/cash-flow/schedule/overview',                name: 'cashSchedule.overview',   budgetMs: 2000, maxKB: 800 },
 ]
 
 const C = { reset: '\x1b[0m', red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m', dim: '\x1b[2m', cyan: '\x1b[36m' }
