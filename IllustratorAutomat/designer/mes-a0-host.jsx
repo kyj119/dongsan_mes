@@ -19,7 +19,7 @@
 //   0.1.8 = 마감재단선(여백 위치 검정 실선·4변 한 그룹) + 주석 구조에 후가공 추가
 //           (키워드-식별번호-후가공-수량) (2026-07-30)
 //   0.1.9 = 크로스 패널 잠금 위임 추가(mes-lock.jsx) (2026-07-31)
-var MESA0_VERSION = 'A0-CEP-0.6.0'; // 0.6.0 = ★셸 서명에 파일 목록 포함 + 비교를 src 기준으로 — Z: 에서 파일이 하나 빠지면 그 PC 자동갱신이 retrylimit 로 영구 중단됐다 · 0.5.0 = ★수량 단위(조) 표기 전달 — 대기함 「2개 (1조)」 검산용 · 0.4.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.3.0 = ★자동감지 굽기를 imageCapture 로(임시 문서 없음 — 증명 가능할 때만) · 0.2.0 = 셸 자동 갱신(축3/4를 축2가 끌어온다) · 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
+var MESA0_VERSION = 'A0-CEP-0.7.0'; // 0.7.0 = ★인쇄용 고해상도 썸네일(thumb_hi) 동시 굽기 — 목록용 400px 는 그대로 두고 작업지시서만 1200px 를 쓴다 · 0.6.0 = ★셸 서명에 파일 목록 포함 + 비교를 src 기준으로 — Z: 에서 파일이 하나 빠지면 그 PC 자동갱신이 retrylimit 로 영구 중단됐다 · 0.5.0 = ★수량 단위(조) 표기 전달 — 대기함 「2개 (1조)」 검산용 · 0.4.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.3.0 = ★자동감지 굽기를 imageCapture 로(임시 문서 없음 — 증명 가능할 때만) · 0.2.0 = 셸 자동 갱신(축3/4를 축2가 끌어온다) · 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
 var MESA0_REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
 var MESA0_PT_PER_MM = 72 / 25.4;
 var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];
@@ -998,6 +998,19 @@ function mesA0_process() {
       pngOpts.horizontalScale = pct;
       pngOpts.verticalScale = pct;
       newDoc.exportFile(pngFile, ExportType.PNG24, pngOpts);
+
+      // ⑥ 인쇄용 고해상도 썸네일 (최대 ~1200px)
+      //   왜 두 장인가 — 목록(칸반 배치 20장)은 썸네일을 base64 로 응답에 실어 보낸다. 1200px 를
+      //   거기 태우면 응답이 20MB 가 되므로 목록용 400px 는 그대로 두고, 인쇄만 이 파일을 쓴다.
+      //   (실측 2026-09-04: 490cm 현수막의 시안이 300x41px 로 저장돼 종이에서 뭉갰다.)
+      //   ⚠️ export 는 호출당 고정비가 있다 — 굽는 장수를 더 늘리지 말 것.
+      var pctHi = maxPt > 0 ? Math.min(100, (1200 / maxPt) * 100) : 100;
+      var pngFileHi = new File(jobFolder.fsName + '/thumb_hi' + sfx + '.png');
+      var pngOptsHi = new ExportOptionsPNG24();
+      pngOptsHi.artBoardClipping = true;
+      pngOptsHi.horizontalScale = pctHi;
+      pngOptsHi.verticalScale = pctHi;
+      newDoc.exportFile(pngFileHi, ExportType.PNG24, pngOptsHi);
     }
 
     if (review) {
@@ -1050,7 +1063,7 @@ function mesA0_process() {
     mode: mode,
     order_item_id: orderItemId,
     // dxf = 돔보 선택 시 재단선 레이어만 담은 재단 데이터(없으면 null). ingest 는 무시 — 추적용
-    files: { work_ai: 'work' + sfx + '.ai', eps: epsName, dxf: dxfName, thumb: 'thumb' + sfx + '.png', work_bytes: workBytes },
+    files: { work_ai: 'work' + sfx + '.ai', eps: epsName, dxf: dxfName, thumb: 'thumb' + sfx + '.png', thumb_hi: 'thumb_hi' + sfx + '.png', work_bytes: workBytes },
     batch_folder: batchFolder || null,
     batch_index: (P.batch_index != null && P.batch_index !== '') ? P.batch_index : null,
     outline_failed: outlineFailed,

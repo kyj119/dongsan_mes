@@ -726,10 +726,13 @@ workbenchRouter.post('/intakes', async (c) => {
 
     // 썸네일: R2 외부화(0449 정책) 후 groups_json 저장 — 실패 시 base64 인라인 폴백
     if (body.thumb_base64) {
+      // thumb_hi_base64 = 인쇄용 고해상도(패널이 thumb_hi.png 를 함께 굽는다). 없으면 sm 만 저장하고
+      //   작업지시서는 자동으로 sm 로 내려간다 — 구버전 패널이 붙은 PC 도 그대로 동작한다.
       const groups = [{
         index: 0,
         name: 'design',
         thumbnail_base64: String(body.thumb_base64),
+        thumbnail_hi_base64: body.thumb_hi_base64 ? String(body.thumb_hi_base64) : undefined,
         width_mm: w != null ? Math.round(w * 10) : undefined,
         height_mm: h != null ? Math.round(h * 10) : undefined,
       }]

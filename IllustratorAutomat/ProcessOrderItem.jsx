@@ -56,6 +56,10 @@ function main() {
     var outputEps   = _p.epsOutput   || "";
     var outputPng   = _p.pngOutput   || "";
     var thumbSize   = _p.thumbSize   || 300;
+    // 인쇄용 고해상도 PNG (선택). 목록용 썸네일은 위 thumbSize 그대로 두고 **한 장 더** 굽는다 —
+    //   작업지시서가 시안을 크게 싣는데 300px 로는 종이에서 뭉갠다(2026-09-04).
+    var outputPngHi = _p.pngOutputHi || "";
+    var thumbSizeHi = _p.thumbSizeHi || 1200;
     var punching    = _p.punching    || null;
     var annotation  = _p.annotation  || null;
     var scaleFactor = _p.scaleFactor || 1;
@@ -129,6 +133,16 @@ function main() {
                 _ptOpts.verticalScale = _ptSc * 100;
                 doc.exportFile(new File(outputPng), ExportType.PNG24, _ptOpts);
                 $.writeln("ProcessOrderItem passthroughThumb: PNG -> " + outputPng);
+                if (outputPngHi) {
+                    var _ptScHi = (_ptLong > 0) ? (thumbSizeHi / _ptLong) : 1;
+                    if (_ptScHi > 1) _ptScHi = 1;
+                    var _ptOptsHi = new ExportOptionsPNG24();
+                    _ptOptsHi.antiAliasing = true;
+                    _ptOptsHi.artBoardClipping = true;
+                    _ptOptsHi.horizontalScale = _ptScHi * 100;
+                    _ptOptsHi.verticalScale = _ptScHi * 100;
+                    doc.exportFile(new File(outputPngHi), ExportType.PNG24, _ptOptsHi);
+                }
             }
         } catch (ePt) { $.writeln("passthroughThumb 오류: " + ePt); }
         try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch (e) {}
@@ -795,6 +809,17 @@ function main() {
         pngOpts.verticalScale = sc * 100;
         doc.exportFile(pngFile, ExportType.PNG24, pngOpts);
         $.writeln("ProcessOrderItem: PNG -> " + outputPng);
+        if (outputPngHi) {
+            var scHi = (totalW >= totalH) ? (thumbSizeHi / totalW) : (thumbSizeHi / totalH);
+            if (scHi > 1) scHi = 1;
+            var pngOptsHi = new ExportOptionsPNG24();
+            pngOptsHi.antiAliasing = true;
+            pngOptsHi.artBoardClipping = true;
+            pngOptsHi.transparency = false;
+            pngOptsHi.horizontalScale = scHi * 100;
+            pngOptsHi.verticalScale = scHi * 100;
+            doc.exportFile(new File(outputPngHi), ExportType.PNG24, pngOptsHi);
+        }
     }
 
     // ── 9.5 돔보 마크 (단일 그룹 출력 둘레, K100 채움 원) — SheetLayout.jsx 포팅 ──

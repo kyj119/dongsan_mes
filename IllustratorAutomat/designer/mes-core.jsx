@@ -8,7 +8,7 @@
 #target illustrator
 
 (function () {
-  var SCRIPT_VERSION = '0.1.0';
+  var SCRIPT_VERSION = '0.2.0';   // 0.2.0 = 인쇄용 고해상도 썸네일(thumb_hi.png) 동시 굽기
   var REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
   var PT_PER_MM = 72 / 25.4;
 
@@ -472,6 +472,19 @@
     pngOpts.verticalScale = pct;
     newDoc.exportFile(pngFile, ExportType.PNG24, pngOpts);
 
+    // ⑥ 인쇄용 고해상도 썸네일 (최대 ~1200px)
+    //   왜 두 장인가 — 목록(칸반 배치 20장)은 썸네일을 base64 로 응답에 실어 보낸다. 1200px 를
+    //   거기 태우면 응답이 20MB 가 되므로 목록용 400px 는 그대로 두고, 인쇄만 이 파일을 쓴다.
+    //   (실측 2026-09-04: 490cm 현수막의 시안이 300x41px 로 저장돼 종이에서 뭉갰다.)
+    //   ⚠️ export 는 호출당 고정비가 있다 — 굽는 장수를 더 늘리지 말 것.
+    var pctHi = maxPt > 0 ? Math.min(100, (1200 / maxPt) * 100) : 100;
+    var pngFileHi = new File(jobFolder.fsName + '/thumb_hi.png');
+    var pngOptsHi = new ExportOptionsPNG24();
+    pngOptsHi.artBoardClipping = true;
+    pngOptsHi.horizontalScale = pctHi;
+    pngOptsHi.verticalScale = pctHi;
+    newDoc.exportFile(pngFileHi, ExportType.PNG24, pngOptsHi);
+
     okAll = true;
   } catch (eProc) {
     alert('가공 중 오류가 발생했습니다:\n' + eProc);
@@ -495,7 +508,7 @@
     measured_cm: { w: Math.round(realW * 10) / 10, h: Math.round(realH * 10) / 10 },
     mode: mode,
     order_item_id: orderItemId,
-    files: { work_ai: 'work.ai', eps: epsName, thumb: 'thumb.png' },
+    files: { work_ai: 'work.ai', eps: epsName, thumb: 'thumb.png', thumb_hi: 'thumb_hi.png' },
     outline_failed: outlineFailed,
     preflight: { source_rgb: pfSourceRGB, remaining_text: pfRemainingText, linked_images: pfLinkedImages },
     created_at_kst: now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate()) +

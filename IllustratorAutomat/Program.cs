@@ -1085,6 +1085,17 @@ namespace IllustratorAutomation
                     var bytes = File.ReadAllBytes(thumbPath);
                     if (bytes.Length <= 1_500_000) obj["thumb_base64"] = Convert.ToBase64String(bytes); // D5 썸네일 크기 가드와 동일
                 }
+                // 인쇄용 고해상도(호스트 JSX 0.2.0 / A0-CEP-0.7.0 부터). 파일이 없으면 그냥 건너뛴다 —
+                //   구버전 스크립트가 깔린 PC 는 sm 만 보내고 작업지시서가 자동으로 그것을 쓴다.
+                //   상한이 sm(1.5MB)보다 큰 이유: 1200px PNG 는 보통 1~3MB 다. 그보다 크면 원고가
+                //   비정상이므로 버리고 sm 으로 간다(등록 자체는 막지 않는다).
+                var thumbHiPath = Abs("thumb_hi", $"thumb_hi{sfx}.png");
+                if (thumbHiPath != null)
+                {
+                    var hiBytes = File.ReadAllBytes(thumbHiPath);
+                    if (hiBytes.Length <= 8_000_000) obj["thumb_hi_base64"] = Convert.ToBase64String(hiBytes);
+                    else Console.WriteLine($"      ⚠️ 고해상도 썸네일 과대({hiBytes.Length / 1024}KB) — sm 만 전송");
+                }
                 // 배치는 폴더 공유 → 서버 memo 기반 중복가드가 디자인 단위로 동작하게 접미 포함 유니크 키
                 obj["source_folder"] = folder + (string.IsNullOrEmpty(sfx) ? "" : "#" + sfx);
 
@@ -3119,6 +3130,9 @@ namespace IllustratorAutomation
                                 epsOutput = "",
                                 pngOutput = pngOutputPath,
                                 thumbSize = 300,
+                                // 작업지시서용 한 장 더 — 목록은 300px 그대로, 인쇄만 이걸 쓴다.
+                                pngOutputHi = HiPngPath(pngOutputPath),
+                                thumbSizeHi = 1200,
                                 passthroughThumb = true
                             });
                             File.WriteAllText(Path.Combine(ptDir, "ia_params.json"), ptJson, System.Text.Encoding.UTF8);
@@ -3163,6 +3177,8 @@ namespace IllustratorAutomation
                     epsOutput = epsOutputPath,
                     pngOutput = pngOutputPath,
                     thumbSize = 300,
+                    pngOutputHi = HiPngPath(pngOutputPath),   // 작업지시서 인쇄용(1200px)
+                    thumbSizeHi = 1200,
                     scaleFactor = scaleFactor,
                     realSize    = realSize,     // 실물 저장: jsx _p.realSize (아트워크 ×N 확대, 마진 선처리 스킵과 짝)
                     punching    = punchingConfig,
@@ -3495,7 +3511,19 @@ namespace IllustratorAutomation
                 string b64 = Convert.ToBase64String(png);
                 double wmm = (item.TryGetProperty("width", out var wEl2) && wEl2.ValueKind != JsonValueKind.Null) ? wEl2.GetDouble() * 10 : 0;
                 double hmm = (item.TryGetProperty("height", out var hEl2) && hEl2.ValueKind != JsonValueKind.Null) ? hEl2.GetDouble() * 10 : 0;
-                var payload = JsonSerializer.Serialize(new { thumbnail_base64 = b64, width_mm = wmm, height_mm = hmm });
+                // 인쇄용 고해상도는 있으면 싣고 없으면 뺀다(서버가 선택 필드로 받는다).
+                string? hiB64 = null;
+                try
+                {
+                    var hiPath = HiPngPath(pngPath);
+                    if (File.Exists(hiPath))
+                    {
+                        var hiBytes = File.ReadAllBytes(hiPath);
+                        if (hiBytes.Length <= 8_000_000) hiB64 = Convert.ToBase64String(hiBytes);
+                    }
+                }
+                catch { }
+                var payload = JsonSerializer.Serialize(new { thumbnail_base64 = b64, thumbnail_hi_base64 = hiB64, width_mm = wmm, height_mm = hmm });
                 var req = new HttpRequestMessage(HttpMethod.Post, $"{ERP_API_URL}/api/ai-analysis/{aid}/thumbnail");
                 if (!string.IsNullOrEmpty(authToken))
                     req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", authToken);
@@ -3507,6 +3535,15 @@ namespace IllustratorAutomation
             {
                 Console.WriteLine($"      ⚠️ 썸네일 보고 실패: {ex.Message}");
             }
+        }
+
+        /// <summary>인쇄용 고해상도 PNG 경로 — 같은 폴더에 `_hi` 접미로 나란히 둔다.</summary>
+        private static string HiPngPath(string pngPath)
+        {
+            if (string.IsNullOrEmpty(pngPath)) return "";
+            var dir = Path.GetDirectoryName(pngPath) ?? "";
+            var stem = Path.GetFileNameWithoutExtension(pngPath);
+            return Path.Combine(dir, stem + "_hi.png");
         }
 
         // 주문번호에서 YYYYMMDD 추출 (멀티법인 E1-20260618-001 등 접두사/하이픈 대응). 기존 Substring(0,4)는 E1- 접두사에 깨짐.

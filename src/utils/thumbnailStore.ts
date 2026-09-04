@@ -61,6 +61,15 @@ export function analysisThumbKey(analysisId: number | string, groupIndex: number
   return `${KEY_ROOT}/analysis/${analysisId}/${groupIndex}.png`
 }
 
+/**
+ * 인쇄용 고해상도(@lg) 키. 목록용 썸네일과 **다른 객체**로 나란히 둔다.
+ *   목록(칸반 배치 20장)은 base64 로 응답에 실리므로 1200px 를 그리로 보내면 응답이 20MB 가 된다.
+ *   그래서 hydrate 는 sm 만 복원하고, lg 는 작업지시서 인쇄가 필요할 때만 R2 에서 직접 읽는다.
+ */
+export function analysisThumbKeyLg(analysisId: number | string, groupIndex: number | string): string {
+  return `${KEY_ROOT}/analysis/${analysisId}/${groupIndex}@lg.png`
+}
+
 /** base64/data URI → R2.put → bare key 반환 (범용: 썸네일·첨부 공용) */
 export async function putBase64ToR2(env: R2Env, key: string, base64OrDataUri: string, contentType: string): Promise<string> {
   await env.R2_BUCKET.put(key, base64ToBytes(base64OrDataUri), { httpMetadata: { contentType } })
@@ -89,6 +98,9 @@ export interface AnalysisGroup {
   index?: number
   thumbnail_base64?: string | null
   thumbnail_r2_key?: string | null
+  /** 인쇄용 고해상도 — 저장 시에만 base64 로 들어오고, emit 에는 **절대 실리지 않는다**(위 keyLg 주석). */
+  thumbnail_hi_base64?: string | null
+  thumbnail_hi_r2_key?: string | null
   [k: string]: unknown
 }
 
@@ -127,6 +139,16 @@ export async function externalizeGroups(env: R2Env, analysisId: number | string,
       } catch (_e) {
         // R2 저장 실패 → base64 원본 유지(썸네일 유실 방지). 다음 externalize 시 재시도.
       }
+    }
+    // 인쇄용 고해상도 — 실패해도 조용히 넘어간다(sm 이 이미 있으므로 인쇄는 그것으로 나간다).
+    //   ⚠️ base64 는 **반드시** 지운다. D1 groups_json 에 1200px 가 남으면 목록 응답이 통째로 무거워진다.
+    if (g && typeof g.thumbnail_hi_base64 === 'string' && g.thumbnail_hi_base64.length > 0) {
+      const keyLg = analysisThumbKeyLg(analysisId, g.index ?? 0)
+      try {
+        await putThumbnail(env, keyLg, g.thumbnail_hi_base64)
+        g.thumbnail_hi_r2_key = keyLg
+      } catch (_e) { /* sm 폴백으로 충분 */ }
+      delete g.thumbnail_hi_base64
     }
   }
   return groups

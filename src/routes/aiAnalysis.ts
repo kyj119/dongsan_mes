@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
-import { externalizeGroups, externalizeCanvasJson, hydrateGroupsJson, putThumbnail, thumbRef, analysisThumbKey } from '../utils/thumbnailStore'
+import { externalizeGroups, externalizeCanvasJson, hydrateGroupsJson, putThumbnail, thumbRef, analysisThumbKey, analysisThumbKeyLg } from '../utils/thumbnailStore'
 import { parseFileDimensions, needsTailScan, PROBE_BYTES, type FileDimensions } from '../utils/fileDimensions'
 
 
@@ -350,7 +350,7 @@ aiAnalysisRouter.post('/upload', async (c) => {
 aiAnalysisRouter.post('/:id/thumbnail', async (c) => {
   try {
     const id = c.req.param('id')
-    const body = await c.req.json<{ thumbnail_base64?: string; width_mm?: number; height_mm?: number }>()
+    const body = await c.req.json<{ thumbnail_base64?: string; thumbnail_hi_base64?: string; width_mm?: number; height_mm?: number }>()
     const thumb = body.thumbnail_base64
     if (!thumb) return c.json({ success: false, error: 'thumbnail_base64 required' }, 400)
 
@@ -373,6 +373,17 @@ aiAnalysisRouter.post('/:id/thumbnail', async (c) => {
       cardThumbValue = thumb.startsWith('data:') ? thumb : `data:image/png;base64,${thumb}`
     }
 
+    // 인쇄용 고해상도(@lg) — 있으면 R2 에 나란히 둔다. 목록 응답에는 절대 싣지 않는다(hydrate 대상 아님).
+    //   작업지시서(/api/orders/:id/work-order)만 이 키를 직접 읽는다.
+    let hiKey: string | null = null
+    if (body.thumbnail_hi_base64) {
+      try {
+        const k = analysisThumbKeyLg(id, 0)
+        await putThumbnail(c.env, k, body.thumbnail_hi_base64)
+        hiKey = k
+      } catch (_e) { /* sm 폴백으로 충분 */ }
+    }
+
     // groups_json 비어있으면(직접연결) 1그룹으로 저장 + status done 승격.
     // 업로드 시 규격 판독으로 '직접연결' 그룹이 미리 채워진 경우(파일 규격 자동 판독)에도
     // 썸네일 병합·status 승격은 동일하게 진행해야 한다 — length===0 만 보면 조용히 건너뛴다.
@@ -386,6 +397,7 @@ aiAnalysisRouter.post('/:id/thumbnail', async (c) => {
       if (body.width_mm != null) { g.width_mm = body.width_mm; g.measure_source = 'agent' }
       if (body.height_mm != null) { g.height_mm = body.height_mm; g.measure_source = 'agent' }
       if (storedToR2) g.thumbnail_r2_key = thumbKey; else g.thumbnail_base64 = thumb
+      if (hiKey) g.thumbnail_hi_r2_key = hiKey
       if (!prefilledDirect) groups = [g]
       await c.env.DB.prepare(
         `UPDATE ai_analysis_requests SET groups_json = ?, status = CASE WHEN status = 'direct' THEN 'done' ELSE status END WHERE id = ?`
