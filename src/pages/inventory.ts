@@ -7,6 +7,7 @@ import inventoryCountScript from '../scripts/inventoryCount.js?raw'
 import inventoryDashboardScript from '../scripts/inventoryDashboard.js?raw'
 import inventoryTxScript from '../scripts/inventoryTx.js?raw'
 import inventoryValuationScript from '../scripts/inventoryValuation.js?raw'
+import zonePickerScript from '../scripts/zonePicker.js?raw'
 import { INVENTORY_TX_LABELS_JS } from '../constants/inventoryTx'
 
 export function inventoryPage(c: Context<HonoEnv>) {
@@ -72,7 +73,7 @@ export function inventoryPage(c: Context<HonoEnv>) {
     });
   `;
 
-  const combinedScript = UOM_JS + '\n' + INVENTORY_TX_LABELS_JS + '\n' + tabScript + '\n' + inventoryScript + '\n' + inventoryCountScript + '\n' + inventoryDashboardScript + '\n' + inventoryTxScript + '\n' + inventoryValuationScript;
+  const combinedScript = UOM_JS + '\n' + INVENTORY_TX_LABELS_JS + '\n' + tabScript + '\n' + zonePickerScript + '\n' + inventoryScript + '\n' + inventoryCountScript + '\n' + inventoryDashboardScript + '\n' + inventoryTxScript + '\n' + inventoryValuationScript;
 
   return renderPage(c, {
     title: '재고 관리',
@@ -750,14 +751,14 @@ export function inventoryPage(c: Context<HonoEnv>) {
             <!-- 구역 실사: 품목 추가 (2026-09-04) — 「이 구역에 있는데 목록에 없어요」를 그 자리에서 푼다.
                  ⚠️ display 는 **클래스로만** 다룬다 — 인라인 style 이 .hidden 을 이겨 항상 보이게 된다. -->
             <div id="icCandModal" class="ds-modal-overlay hidden flex items-center justify-center">
-              <div class="ds-card" style="width:min(760px,94vw);padding:20px;">
+              <div class="ds-card" style="width:min(1100px,96vw);padding:20px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
                   <h3 style="font-size:16px;font-weight:700;">이 구역에 품목 추가</h3>
                   <button onclick="icCloseCandidates()" style="border:0;background:transparent;font-size:20px;line-height:1;color:#9ca3af;cursor:pointer;">&times;</button>
                 </div>
-                <input type="text" id="icCandSearch" placeholder="품목명 · 코드 · 검색어" oninput="icCandSearchInput()"
-                       style="width:100%;padding:7px 10px;border:1px solid var(--c-border);border-radius:6px;font-size:13px;margin-bottom:10px;">
-                <div id="icCandBody"></div>
+                <!-- 선택기 = scripts/zonePicker.js (창고 페이지 「품목 배정」과 같은 화면).
+                     검색·분류 셀렉트도 그 컴포넌트가 직접 그린다. -->
+                <div id="icCandMount"></div>
                 <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
                   <button onclick="icCloseCandidates()" class="ds-btn ds-btn-sm">취소</button>
                   <button id="icCandApply" onclick="icCandApply()" class="ds-btn ds-btn-primary ds-btn-sm">추가</button>

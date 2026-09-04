@@ -791,21 +791,23 @@ function icShowAllRows() {
   icRenderItems();
 }
 
-// 후보 상태. 서버가 분류→그룹 **개수**를 같이 주므로(후보가 1,000개 넘는 구역이 있다) 사람이 좁혀 들어온다.
-// `nav` = 트리 버튼을 **인덱스로** 부르기 위한 평탄 배열 — onclick 에 한글 문자열을 끼우면 따옴표가 깨진다.
-var _icCand = { tree: [], items: [], nav: [], sel: {}, cat: '', grp: '', zoneId: null };
+// 품목 선택은 **`scripts/zonePicker.js` 공용 컴포넌트**가 그린다(창고 페이지 배정 탭과 같은 화면).
+// 여기 두면 두 화면이 갈라져 한쪽만 고쳐지는 날이 온다.
 
-async function icOpenCandidates() {
+function icOpenCandidates() {
   var zoneId = (_icDetailData && _icDetailData.storage_zone_id) ? Number(_icDetailData.storage_zone_id) : null;
   if (!zoneId) { showToast('구역 실사에서만 품목을 추가할 수 있습니다', 'error'); return; }
   if (_icDetailData.status !== 'DRAFT') { showToast('작성중 실사에만 품목을 추가할 수 있습니다', 'error'); return; }
-  _icCand = { tree: [], items: [], nav: [], sel: {}, cat: '', grp: '', zoneId: zoneId };
   var m = document.getElementById('icCandModal');
   if (!m) { console.warn('[inventoryCount] #icCandModal not found'); return; }
   m.classList.remove('hidden');
-  var s = document.getElementById('icCandSearch');
-  if (s) s.value = '';
-  await icLoadCandidates();
+  zpOpen(zoneId, 'icCandMount', function (n) {
+    var btn = document.getElementById('icCandApply');
+    if (!btn) return;
+    btn.textContent = n > 0 ? (n + '개 추가') : '추가';
+    btn.disabled = (n === 0);
+    btn.style.opacity = n === 0 ? '0.5' : '1';
+  });
 }
 
 function icCloseCandidates() {
@@ -813,137 +815,22 @@ function icCloseCandidates() {
   if (m) m.classList.add('hidden');
 }
 
-async function icLoadCandidates() {
-  var box = document.getElementById('icCandBody');
-  if (!box) { console.warn('[inventoryCount] #icCandBody not found'); return; }
-  box.innerHTML = '<div style="padding:16px;color:#9ca3af;font-size:13px;">불러오는 중…</div>';
-  var qEl = document.getElementById('icCandSearch');
-  try {
-    var r = await axios.get('/api/storage-zones/' + _icCand.zoneId + '/candidates', {
-      params: { q: qEl ? qEl.value.trim() : '', category: _icCand.cat, group: _icCand.grp }
-    });
-    var d = (r.data && r.data.data) || {};
-    _icCand.tree = d.tree || [];
-    _icCand.items = d.items || [];
-    icRenderCandidates(!!d.truncated);
-  } catch (e) {
-    var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
-    box.innerHTML = '<div style="padding:16px;color:#ef4444;font-size:13px;">' + escapeHtml(msg) + '</div>';
-  }
-}
-
-function icRenderCandidates(truncated) {
-  var box = document.getElementById('icCandBody');
-  if (!box) return;
-
-  // 왼쪽 = 분류→그룹 개수 트리. 열린 분류만 그룹을 펼친다.
-  var byCat = {}, order = [];
-  _icCand.tree.forEach(function (t) {
-    if (!byCat[t.category]) { byCat[t.category] = []; order.push(t.category); }
-    byCat[t.category].push(t);
-  });
-
-  _icCand.nav = [];
-  var treeHtml = order.map(function (cat) {
-    var rows = byCat[cat];
-    var total = rows.reduce(function (a, b) { return a + (Number(b.n) || 0); }, 0);
-    var open = (_icCand.cat === cat);
-    var ci = _icCand.nav.push({ cat: cat, grp: '' }) - 1;
-    var head = '<button onclick="icCandPick(' + ci + ')" style="width:100%;text-align:left;padding:6px 8px;border:0;'
-      + 'background:' + (open ? '#eff6ff' : 'transparent') + ';font-size:12px;font-weight:600;cursor:pointer;border-radius:4px;">'
-      + (open ? '▾ ' : '▸ ') + escapeHtml(cat)
-      + ' <span style="color:#9ca3af;font-weight:400;">' + total + '</span></button>';
-    if (!open) return head;
-    return head + rows.map(function (t) {
-      var gi = _icCand.nav.push({ cat: cat, grp: t.item_group }) - 1;
-      var on = (_icCand.grp === t.item_group);
-      return '<button onclick="icCandPick(' + gi + ')" style="width:100%;text-align:left;padding:4px 8px 4px 20px;border:0;'
-        + 'background:' + (on ? '#dbeafe' : 'transparent') + ';font-size:12px;cursor:pointer;border-radius:4px;">'
-        + escapeHtml(t.item_group) + ' <span style="color:#9ca3af;">' + t.n + '</span></button>';
-    }).join('');
-  }).join('');
-
-  var itemsHtml = _icCand.items.map(function (it) {
-    // 이미 다른 구역에 있는 품목은 그 사실을 보여 준다 — 옮기는 것이 아니라 **양쪽에 생긴다**.
-    var where = it.current_zones
-      ? '<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:#fef3c7;color:#92400e;margin-left:4px;">'
-        + escapeHtml(it.current_zones) + '</span>'
-      : '';
-    return '<label style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-bottom:1px solid #f8fafc;font-size:12px;cursor:pointer;">'
-      + '<input type="checkbox" onchange="icCandToggle(' + it.id + ', this.checked)"' + (_icCand.sel[it.id] ? ' checked' : '') + '>'
-      + '<span style="flex:1;min-width:0;">' + escapeHtml(it.item_name || '') + where + '</span>'
-      + '<span style="color:#9ca3af;font-size:11px;">' + escapeHtml(it.item_code || '') + '</span></label>';
-  }).join('');
-
-  var selCount = 0;
-  for (var k in _icCand.sel) { if (_icCand.sel[k]) selCount++; }
-
-  box.innerHTML = '<div style="display:flex;gap:10px;min-height:0;">'
-    + '<div style="width:210px;flex-shrink:0;max-height:340px;overflow-y:auto;border-right:1px solid #f1f5f9;padding-right:6px;">'
-      + (treeHtml || '<div style="color:#9ca3af;font-size:12px;padding:8px;">추가할 후보가 없습니다</div>') + '</div>'
-    + '<div style="flex:1;min-width:0;">'
-      + '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:6px;">'
-        + '<span style="font-size:11px;color:#6b7280;min-width:0;">'
-          + (_icCand.grp ? escapeHtml(_icCand.cat + ' > ' + _icCand.grp) : (_icCand.cat ? escapeHtml(_icCand.cat) : '왼쪽에서 분류를 고르세요'))
-        + '</span>'
-        + (_icCand.items.length > 0
-            ? '<button onclick="icCandSelectShown()" style="padding:3px 8px;border:1px solid #d1d5db;border-radius:4px;background:#fff;font-size:11px;cursor:pointer;white-space:nowrap;">보이는 ' + _icCand.items.length + '개 선택</button>'
-            : '')
-      + '</div>'
-      + '<div style="max-height:310px;overflow-y:auto;">'
-        + (itemsHtml || '<div style="color:#9ca3af;font-size:12px;padding:8px;">분류·그룹을 고르거나 검색하세요</div>') + '</div>'
-      + (truncated ? '<div style="font-size:11px;color:#b45309;margin-top:4px;">※ 결과가 잘렸습니다. 그룹으로 더 좁히거나 검색하세요.</div>' : '')
-    + '</div></div>';
-
-  var btn = document.getElementById('icCandApply');
-  if (btn) {
-    btn.textContent = selCount > 0 ? (selCount + '개 추가') : '추가';
-    btn.disabled = (selCount === 0);
-    btn.style.opacity = selCount === 0 ? '0.5' : '1';
-  }
-}
-
-function icCandPick(idx) {
-  var n = _icCand.nav[idx];
-  if (!n) return;
-  if (!n.grp) {
-    _icCand.cat = (_icCand.cat === n.cat) ? '' : n.cat;   // 같은 분류를 다시 누르면 접는다
-    _icCand.grp = '';
-  } else {
-    _icCand.cat = n.cat;
-    _icCand.grp = (_icCand.grp === n.grp) ? '' : n.grp;
-  }
-  icLoadCandidates();
-}
-
-function icCandToggle(id, on) { _icCand.sel[id] = !!on; icRenderCandidates(false); }
-
-function icCandSelectShown() {
-  _icCand.items.forEach(function (it) { _icCand.sel[it.id] = true; });
-  icRenderCandidates(false);
-}
-
 async function icCandApply() {
-  var ids = [];
-  for (var k in _icCand.sel) { if (_icCand.sel[k]) ids.push(Number(k)); }
-  if (ids.length === 0) return;
+  var ids = zpSelectedIds();
+  if (!ids.length) return;
+  var zoneId = (_icDetailData && _icDetailData.storage_zone_id) ? Number(_icDetailData.storage_zone_id) : null;
+  if (!zoneId) return;
   try {
     // ①구역에 편입(재고 0 행 생성) → ②열린 실사에도 라인 추가. **둘 다** 해야 지금 화면에서 셀 수 있다.
     //   ①만 하면 다음 실사부터 뜨고, ②만 하면 이번 실사에만 있고 구역에는 안 남는다.
-    await axios.post('/api/storage-zones/' + _icCand.zoneId + '/items', { item_ids: ids });
+    await axios.post('/api/storage-zones/' + zoneId + '/items', { item_ids: ids });
     await axios.post('/api/inventory-counts/' + _icDetailData.id + '/add-items', { item_ids: ids });
     showToast(ids.length + '개 품목을 구역에 추가했습니다', 'success');
+    zpClearSelection();
     icCloseCandidates();
     await loadDetailCount(_icDetailData.id);
   } catch (e) {
     var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
     showToast('추가 실패: ' + msg, 'error');
   }
-}
-
-// 검색 디바운스 — oninput 마다 API 를 때리면 한 글자에 한 번씩 나간다.
-var _icCandTimer = null;
-function icCandSearchInput() {
-  if (_icCandTimer) clearTimeout(_icCandTimer);
-  _icCandTimer = setTimeout(icLoadCandidates, 300);
 }

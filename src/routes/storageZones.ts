@@ -576,20 +576,27 @@ storageZonesRouter.get('/:id/candidates', async (c) => {
       const t = `%${q}%`
       baseBinds.push(t, t, t)
     }
-    const notInZone = `NOT EXISTS (SELECT 1 FROM inventory v
-                                    WHERE v.item_id = i.id AND v.entity_id = ? AND v.storage_zone_id = ?)`
+    // `include_held` = 이 구역에 **이미 있는 품목까지** 내려보낸다(`in_zone=1` 표시).
+    //   ★그룹 안에서 규격만 다른 형제를 가로로 펴 보는 화면(zonePicker)이 이걸 쓴다 —
+    //     「무엇이 빠졌나」는 **있는 것을 같이 봐야** 읽힌다. 없는 것만 주면 30·45·90 처럼
+    //     띄엄띄엄 나와 순서감이 사라진다(용준님 2026-09-04).
+    const includeHeld = c.req.query('include_held') === '1' || c.req.query('include_held') === 'true'
+    const inZoneExpr = `EXISTS (SELECT 1 FROM inventory v
+                                 WHERE v.item_id = i.id AND v.entity_id = ? AND v.storage_zone_id = ?)`
+    const notInZone = `NOT ${inZoneExpr}`
 
-    // ── 트리 = 분류 → 그룹 개수. 후보가 1,000개를 넘는 구역이 있어(현수막실 1,077) 목록만으로는
-    //    화면을 못 만든다. 개수를 먼저 주고 사람이 좁혀 들어오게 한다.
+    // ── 트리 = 분류 → 그룹. `n` = 그룹 전체, `held` = 그중 이미 이 구역에 있는 수.
+    //    후보가 1,000개를 넘는 구역이 있어(현수막실 1,077) 개수를 먼저 주고 좁혀 들어오게 한다.
     const { results: tree } = await c.env.DB.prepare(`
       SELECT COALESCE(i.category, '(분류 없음)')   AS category,
              COALESCE(i.item_group, '(그룹 없음)') AS item_group,
-             COUNT(*) AS n
+             COUNT(*) AS n,
+             SUM(CASE WHEN ${inZoneExpr} THEN 1 ELSE 0 END) AS held
         FROM items i
-       WHERE ${base.join(' AND ')} AND ${notInZone}
+       WHERE ${base.join(' AND ')}${includeHeld ? '' : ` AND ${notInZone}`}
        GROUP BY category, item_group
        ORDER BY category, item_group
-    `).bind(...baseBinds, entityId, zoneId).all()
+    `).bind(entityId, zoneId, ...baseBinds, ...(includeHeld ? [] : [entityId, zoneId])).all()
 
     // ── 품목 목록 (분류·그룹으로 좁힌 뒤)
     const conds = [...base]
@@ -602,16 +609,18 @@ storageZonesRouter.get('/:id/candidates', async (c) => {
     // 정렬 규약 = 고유키 tie-break 필수. 분류·그룹은 동값이 많아 페이지가 흔들린다.
     const { results } = await c.env.DB.prepare(`
       SELECT i.id, i.item_code, i.item_name, i.unit,
+             COALESCE(i.specification, '') AS specification,
              COALESCE(i.category, '(분류 없음)')   AS category,
              COALESCE(i.item_group, '(그룹 없음)') AS item_group,
+             CASE WHEN ${inZoneExpr} THEN 1 ELSE 0 END AS in_zone,
              (SELECT GROUP_CONCAT(z2.zone_name)
                 FROM inventory v2 JOIN storage_zones z2 ON z2.id = v2.storage_zone_id
                WHERE v2.item_id = i.id AND v2.entity_id = ?) AS current_zones
         FROM items i
-       WHERE ${conds.join(' AND ')} AND ${notInZone}
+       WHERE ${conds.join(' AND ')}${includeHeld ? '' : ` AND ${notInZone}`}
        ORDER BY category, item_group, i.item_name, i.id
        LIMIT ?
-    `).bind(entityId, ...binds, entityId, zoneId, limit).all()
+    `).bind(entityId, zoneId, entityId, ...binds, ...(includeHeld ? [] : [entityId, zoneId]), limit).all()
 
     return c.json({
       success: true,

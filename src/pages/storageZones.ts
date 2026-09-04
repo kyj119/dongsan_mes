@@ -3,6 +3,7 @@ import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import storageZonesScript from '../scripts/storageZones.js?raw'
+import zonePickerScript from '../scripts/zonePicker.js?raw'
 
 export function storageZonesPage(c: Context<HonoEnv>) {
   const pageContent = `
@@ -64,9 +65,8 @@ export function storageZonesPage(c: Context<HonoEnv>) {
           <h3 class="text-sm font-bold text-gray-800">추가할 품목</h3>
           <button id="szAssignApply" onclick="szAssignApply()" class="ds-btn ds-btn-primary ds-btn-sm">추가</button>
         </div>
-        <input type="text" id="szAssignSearch" placeholder="품목명 · 코드 · 검색어" oninput="szAssignSearchInput()"
-               class="ds-input mb-2" style="width:100%">
-        <div id="szAssignCand" style="max-height:380px;overflow-y:auto;"></div>
+        <!-- 선택기 = scripts/zonePicker.js (실사 「품목 추가」와 같은 화면) -->
+        <div id="szAssignCand" style="max-height:520px;overflow-y:auto;"></div>
       </div>
     </div>
   </div>
@@ -206,6 +206,7 @@ export function storageZonesPage(c: Context<HonoEnv>) {
     title: '창고 관리',
     activePage: '/storage-zones',
     pageContent,
-    pageScript: storageZonesScript,
+    // zonePicker 를 먼저 붙인다 — 선언은 호이스팅되지만 `_zp` 초기화가 먼저 돌아야 안전하다.
+    pageScript: zonePickerScript + '\n' + storageZonesScript,
   })
 }
