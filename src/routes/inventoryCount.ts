@@ -1,13 +1,59 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
-import { authMiddleware, requireRole } from '../middleware/auth'
+import { authMiddleware } from '../middleware/auth'
 import { getEntityId, entityFilter, isZoneOwnedByEntity, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../utils/entityFilter'
 import { getItemDefaultZones } from '../utils/inventoryZone'
 import { resolveStockUnit } from '../utils/rollConsumption'
 import { kstStamp14, kstYmd } from '../utils/kstDate'
 
 const inventoryCountRouter = new Hono<HonoEnv>()
-inventoryCountRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
+
+// ── 권한 (2026-09-04 재배치) ────────────────────────────────────────────────
+// 종전엔 **라우터 전체**가 `requireRole('ADMIN','MANAGER')` 였다. 그런데 구역 담당자 5명이 전부
+// `OPERATOR` 이고 `MANAGER` 는 **0명**이라, 실사를 할 수 있는 사람이 ADMIN 3명뿐이었다.
+// `scope=mine` 의 비관리자 분기(`sz.manager_id = ?`)는 **도달 불가능한 죽은 코드**였고,
+// 실사 22건 중 18건이 SUBMITTED 로 묶여 재고에 한 줄도 반영되지 않았다(승인률 18%).
+//
+// 새 규칙 = **자기 담당 구역 실사는 담당자가 승인까지** 한다(용준님 2026-09-04).
+//   견제가 없어지는 대신 재고가 실제로 움직인다 — 지금은 승인이 안 돼 실사 자체가 무의미했다.
+// ⚠️ **화면이 아니라 서버에서 막는다** — 목록·상세·쓰기 전 경로가 `canTouchZone` 을 통과해야 한다
+//    ([[feedback-client-role-gate]]).
+// ⚠️ **구역 미지정 실사(전수·PERIODIC)는 담당자가 못 만진다** — 남의 구역이 섞여 있다. 관리자 전용.
+inventoryCountRouter.use('/*', authMiddleware)
+
+/** ADMIN·MANAGER = 전 구역. (MANAGER 는 현재 0명이지만 역할 축은 유지한다) */
+function isSupervisor(c: Context<HonoEnv>): boolean {
+  const r = c.get('user')?.role
+  return r === 'ADMIN' || r === 'MANAGER'
+}
+
+/** 이 구역을 만질 수 있나. 관리자는 전부, 그 외는 **자기 담당 활성 구역**만. 미지정(NULL)은 관리자만. */
+async function canTouchZone(c: Context<HonoEnv>, zoneId: number | null | undefined): Promise<boolean> {
+  if (isSupervisor(c)) return true
+  if (zoneId == null) return false
+  const uid = c.get('user')?.id
+  if (!uid) return false
+  const row = await c.env.DB.prepare(
+    'SELECT 1 AS ok FROM storage_zones WHERE id = ? AND manager_id = ? AND is_active = 1'
+  ).bind(Number(zoneId), uid).first<{ ok: number }>()
+  return !!row
+}
+
+/**
+ * 실사 1건을 법인 필터와 함께 읽고 담당 구역 검사까지 한다.
+ * 반환 = 실사 행(통과) 또는 null(없음·타법인·남의 구역). **호출부는 404/403 을 구분하지 않는다** —
+ *   남의 구역 실사가 「존재한다」는 사실도 흘리지 않는다.
+ */
+async function loadOwnedCount(c: Context<HonoEnv>, countId: number) {
+  const ef = entityFilter(c, 'ic')
+  const row = await c.env.DB.prepare(
+    `SELECT ic.id, ic.status, ic.storage_zone_id, ic.entity_id, ic.count_number
+       FROM inventory_counts ic WHERE ic.id = ?${ef.clause}`
+  ).bind(countId, ...ef.params).first<{ id: number; status: string; storage_zone_id: number | null; entity_id: number; count_number: string }>()
+  if (!row) return null
+  return (await canTouchZone(c, row.storage_zone_id)) ? row : null
+}
 
 // GET / — 실사 목록 (페이징, 필터)
 inventoryCountRouter.get('/', async (c) => {
@@ -28,18 +74,16 @@ inventoryCountRouter.get('/', async (c) => {
       WHERE 1=1` + ef.clause
     const params: any[] = [...ef.params]
 
-    // scope=mine: 내 담당 구역. 담당자 미지정(NULL) 구역과 전수 실사는 ADMIN·MANAGER 에게만 보인다
-    //   — receiving.js:388-393 과 같은 규칙(미지정은 관리자 몫).
-    if (scope === 'mine') {
-      const u = c.get('user')
-      const isSupervisor = u?.role === 'ADMIN' || u?.role === 'MANAGER'
-      if (isSupervisor) {
-        query += ' AND (sz.manager_id = ? OR sz.manager_id IS NULL)'
-        params.push(u?.id ?? 0)
-      } else {
-        query += ' AND sz.manager_id = ?'
-        params.push(u?.id ?? 0)
-      }
+    // 담당자는 **scope 와 무관하게 항상 자기 구역만** 본다 — 목록에 남의 구역 실사 제목이 뜨는 것만으로
+    //   정보가 샌다. 관리자에게만 scope=mine 이 선택 필터로 남는다(미지정 구역은 관리자 몫).
+    //   — receiving.js:388-393 과 같은 규칙.
+    const sup = isSupervisor(c)
+    if (!sup) {
+      query += ' AND sz.manager_id = ?'
+      params.push(c.get('user')?.id ?? 0)
+    } else if (scope === 'mine') {
+      query += ' AND (sz.manager_id = ? OR sz.manager_id IS NULL)'
+      params.push(c.get('user')?.id ?? 0)
     }
 
     if (status) {
@@ -61,10 +105,10 @@ inventoryCountRouter.get('/', async (c) => {
     let countQuery = `SELECT COUNT(*) as cnt FROM inventory_counts ic
       LEFT JOIN storage_zones sz ON ic.storage_zone_id = sz.id
       WHERE 1=1` + ef.clause
-    if (scope === 'mine') {
-      const u = c.get('user')
-      const isSupervisor = u?.role === 'ADMIN' || u?.role === 'MANAGER'
-      countQuery += isSupervisor ? ' AND (sz.manager_id = ? OR sz.manager_id IS NULL)' : ' AND sz.manager_id = ?'
+    if (!sup) {
+      countQuery += ' AND sz.manager_id = ?'
+    } else if (scope === 'mine') {
+      countQuery += ' AND (sz.manager_id = ? OR sz.manager_id IS NULL)'
     }
     if (status) {
       countQuery += ' AND ic.status = ?'
@@ -122,6 +166,8 @@ inventoryCountRouter.get('/', async (c) => {
 //      **절대 자동으로 합치지 않는다.**
 inventoryCountRouter.get('/consumption', async (c) => {
   try {
+    // 매입 금액·단가가 그대로 나가므로 **관리자 전용을 유지**한다(라우터 전역 게이트가 사라진 뒤에도).
+    if (!isSupervisor(c)) return c.json({ success: false, error: '권한이 없습니다 (관리자 전용)' }, 403)
     const zoneId = c.req.query('zone_id') ? Number(c.req.query('zone_id')) : null
     const from = c.req.query('from') || null
     const to = c.req.query('to') || null
@@ -344,6 +390,12 @@ inventoryCountRouter.post('/', async (c) => {
     // P3: 구역 기반 실사 — storage_zone_id 있으면 count_type='ZONE', 품목을 그 구역으로 스코프
     const zoneId = (body.storage_zone_id != null && body.storage_zone_id !== '') ? Number(body.storage_zone_id) : null
 
+    // 담당자는 **자기 담당 구역 실사만** 만들 수 있다. 구역 미지정(전수·분류 실사)은 관리자 전용 —
+    //   남의 구역 품목이 통째로 섞여 들어온다.
+    if (!(await canTouchZone(c, zoneId))) {
+      return c.json({ success: false, error: '담당 구역이 아닙니다' }, 403)
+    }
+
     // count_number 생성: IC-YYYYMMDDHHMMSS (초까지 — 같은 분 다중 생성 UNIQUE 충돌 방지. P3 구역 실사로 연속 생성 빈번)
     const countNumber = 'IC-' + kstStamp14()
     const countDate = kstYmd()
@@ -480,6 +532,10 @@ inventoryCountRouter.post('/', async (c) => {
 inventoryCountRouter.get('/:id', async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
+    // 남의 구역 실사는 **존재 사실도 흘리지 않는다** — 403 이 아니라 404 로 답한다.
+    if (!(await loadOwnedCount(c, id))) {
+      return c.json({ success: false, error: 'Count not found' }, 404)
+    }
     const ef = entityFilter(c, 'ic')  // sz JOIN으로 entity_id 모호 → alias 필수
 
     const count = await c.env.DB.prepare(`
@@ -546,6 +602,11 @@ inventoryCountRouter.put('/:id/items', async (c) => {
     const countId = parseInt(c.req.param('id'))
     const body = await c.req.json<{ items?: { id: number; system_quantity: string; counted_quantity: string | null; notes?: string; pack_count?: string | number | null; per_pack_qty?: string | number | null }[] }>()
     const { items = [] } = body
+
+    // 담당 구역 검사 — 아래의 타법인 차단과 **별개 축**이다(법인이 같아도 남의 구역일 수 있다).
+    if (!(await loadOwnedCount(c, countId))) {
+      return c.json({ success: false, error: 'Count not found' }, 404)
+    }
 
     // 타법인 실사 항목 수정 차단: 부모 count가 호출자 법인 소속인지 확인
     const efItems = entityFilter(c)
@@ -625,6 +686,10 @@ inventoryCountRouter.post('/:id/add-items', async (c) => {
       `SELECT id, status, storage_zone_id, entity_id FROM inventory_counts WHERE id = ?${ef.clause}`
     ).bind(countId, ...ef.params).first<{ id: number; status: string; storage_zone_id: number | null; entity_id: number }>()
     if (!count) {
+      return c.json({ success: false, error: 'Count not found' }, 404)
+    }
+    // 담당 구역 검사 — 법인이 같아도 남의 구역이면 편입할 수 없다.
+    if (!(await canTouchZone(c, count.storage_zone_id))) {
       return c.json({ success: false, error: 'Count not found' }, 404)
     }
     // 품목 편입(+구역 배정=재고 이동)은 작성중 실사에만 — 제출/승인 후 추가는 스냅샷 정합 붕괴
@@ -736,6 +801,9 @@ inventoryCountRouter.patch('/:id/submit', async (c) => {
     const countId = parseInt(c.req.param('id'))
     // #436: 미전송 X-User-Id 헤더(항상 undefined)→'system' 고정 버그. JWT 검증 유저로 실제 제출자 기록
     const userId = c.get('user')?.username || 'system'
+    if (!(await loadOwnedCount(c, countId))) {
+      return c.json({ success: false, error: 'Count not found' }, 404)
+    }
     const ef = entityFilter(c)
 
     const result = await c.env.DB.prepare(`
@@ -759,6 +827,9 @@ inventoryCountRouter.patch('/:id/submit', async (c) => {
 inventoryCountRouter.patch('/:id/reject', async (c) => {
   try {
     const countId = parseInt(c.req.param('id'))
+    if (!(await loadOwnedCount(c, countId))) {
+      return c.json({ success: false, error: 'Count not found' }, 404)
+    }
     const ef = entityFilter(c)
     const result = await c.env.DB.prepare(`
       UPDATE inventory_counts
@@ -779,6 +850,9 @@ inventoryCountRouter.patch('/:id/reject', async (c) => {
 inventoryCountRouter.delete('/:id', async (c) => {
   try {
     const countId = parseInt(c.req.param('id'))
+    if (!(await loadOwnedCount(c, countId))) {
+      return c.json({ success: false, error: 'Count not found' }, 404)
+    }
     const ef = entityFilter(c)
     const count = await c.env.DB.prepare(
       `SELECT id, status FROM inventory_counts WHERE id = ?${ef.clause}`
@@ -806,6 +880,13 @@ inventoryCountRouter.patch('/:id/approve', async (c) => {
     const countId = parseInt(c.req.param('id'))
     // #436: 미전송 X-User-Id 헤더(항상 undefined)→'system' 고정 버그. JWT 검증 유저로 실제 승인자 기록
     const userId = c.get('user')?.username || 'system'
+
+    // ★담당자가 **자기 구역 실사는 승인까지** 한다(용준님 2026-09-04). 승인이 ADMIN 3명에게만 있어
+    //   실사 22건 중 18건이 SUBMITTED 로 묶여 재고에 한 줄도 반영되지 않았다 — 견제보다 반영이 먼저다.
+    //   구역 미지정(전수) 실사는 `canTouchZone` 이 담당자를 막으므로 여전히 관리자 몫이다.
+    if (!(await loadOwnedCount(c, countId))) {
+      return c.json({ success: false, error: 'Count not found or not submitted' }, 400)
+    }
 
     // 먼저 count 조회 (타법인 실사 승인 차단)
     const ef = entityFilter(c)
