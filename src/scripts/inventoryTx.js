@@ -59,7 +59,7 @@ function invTxLoad() {
   tbody.innerHTML = '<tr><td colspan="' + COLS + '" class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>로딩 중...</td></tr>';
 
   var params = invTxBuildParams();
-  params.push('page=' + invTxPage, 'limit=' + invTxLimit);
+  params.push('page=' + invTxPage, 'limit=' + invTxLimitFor());
 
   axios.get('/api/inventory/transactions?' + params.join('&')).then(function(r) {
     var d = (r.data && r.data.data) || {};
@@ -70,7 +70,46 @@ function invTxLoad() {
       tbody.innerHTML = '<tr><td colspan="' + COLS + '" class="text-center py-8 text-gray-400">해당 조건의 증감내역이 없습니다</td></tr>';
     }
 
-    rows.forEach(function(row) {
+    // 품목별로 묶기 — 한 줄씩 흐르는 원장은 「이 품목이 어떻게 됐나」를 못 읽는다.
+    //   묶으면 품목 한 줄(순증감·출고합계)로 접히고, 눌러야 그 품목의 이력이 열린다.
+    //   ⚠️묶음은 **이 페이지 안에서만** 성립한다 — 서버 페이징이라 같은 품목이 다음 장에 이어질 수 있다.
+    //     그래서 묶기를 켜면 limit 을 키워 요청한다(invTxBuildParams 아래 invTxLimitFor).
+    var groups = null;
+    if (invTxGrouped()) {
+      groups = [];
+      var gmap = {};
+      rows.forEach(function(row) {
+        var key = (row.item_id != null ? row.item_id : ('n' + (row.item_name || ''))) + '|' + (row.zone_name || '');
+        if (!gmap[key]) { gmap[key] = { key: key, rows: [], net: 0, out: 0, sample: row }; groups.push(gmap[key]); }
+        var g = gmap[key];
+        g.rows.push(row);
+        var s = Number(row.signed_quantity) || 0;
+        g.net += s;
+        if (s < 0) g.out += -s;   // 출고 합계 = 음수 증감의 절대값 합(원장 기준)
+      });
+      groups.forEach(function(g, gi) {
+        tbody.appendChild(invTxGroupTr(g, gi, COLS));
+        g.rows.forEach(function(row) {
+          var dtr = invTxRowTr(row);
+          dtr.className += ' invtx-detail invtx-g' + gi;
+          dtr.style.display = 'none';   // 접힌 채로 시작 — 펼쳐야 이력이 보인다
+          tbody.appendChild(dtr);
+        });
+      });
+    } else {
+      rows.forEach(function(row) { tbody.appendChild(invTxRowTr(row)); });
+    }
+
+    invTxRenderSummary(d.summary || {}, rows);
+    invTxRenderPagination(d.pagination || {});
+  }).catch(function(e) {
+    console.error('[inventoryTx] load failed', e);
+    tbody.innerHTML = '<tr><td colspan="' + COLS + '" class="text-center py-8 text-red-500">불러오기 실패</td></tr>';
+  });
+}
+
+/** 원장 한 줄 → <tr>. 묶기 모드와 평면 모드가 **같은 함수**를 써야 두 화면이 갈라지지 않는다. */
+function invTxRowTr(row) {
       var signed = Number(row.signed_quantity) || 0;
       var qtyCls = signed > 0 ? 'text-blue-600' : (signed < 0 ? 'text-orange-600' : 'text-gray-500');
       var reasonTxt = invTxLabels().reason[row.reason] || row.reason || '';
@@ -94,15 +133,7 @@ function invTxLoad() {
         + '<td class="px-3 py-2 text-sm text-gray-600 whitespace-nowrap">' + invTxRef(row) + '</td>'
         + '<td class="px-3 py-2 text-sm text-gray-600" title="' + window.escapeHtml(memo) + '">' + window.escapeHtml(memo || '-') + '</td>'
         + '<td class="px-3 py-2 text-sm text-gray-600">' + window.escapeHtml(row.handled_by_name || '-') + '</td>';
-      tbody.appendChild(tr);
-    });
-
-    invTxRenderSummary(d.summary || {}, rows);
-    invTxRenderPagination(d.pagination || {});
-  }).catch(function(e) {
-    console.error('[inventoryTx] load failed', e);
-    tbody.innerHTML = '<tr><td colspan="' + COLS + '" class="text-center py-8 text-red-500">불러오기 실패</td></tr>';
-  });
+  return tr;
 }
 
 /**
@@ -260,6 +291,9 @@ function invTxLoadFilterOptions() {
         o.value = z.id; o.textContent = z.zone_name;
         zone.appendChild(o);
       });
+      // ★옵션이 다 들어온 **뒤에** 역할 기본값을 건다 — 먼저 걸면 값이 없어 조용히 무시된다.
+      //   목록을 이미 받았으므로 그대로 넘겨 재요청하지 않는다.
+      invTxApplyRoleDefaults(list);
     }).catch(function(e) { console.warn('[inventoryTx] zones load failed', e); });
   }
 }
@@ -284,3 +318,69 @@ window.invTxInit = function() {
 
   invTxLoad();
 };
+
+// ── 품목별 묶기 (2026-09-04) ────────────────────────────────────────────────
+// 원장을 한 줄씩 흘려 보면 「이 품목이 어떻게 됐나」를 못 읽는다. 품목(×창고) 한 줄로 접고
+// 순증감·출고합계를 먼저 보여 준 뒤, 눌러야 그 품목의 이력이 열린다.
+//
+// ⚠️ **소모 = 원장 기준**이다. 실사 탭의 소모량(`/inventory-counts/consumption`)은 회차 간 차이
+//    (기초+매입−기말)라 **다른 숫자**다. 라벨에 「출고」라고 적어 두 축을 섞지 않는다.
+
+function invTxGrouped() {
+  var el = document.getElementById('invTxGroupToggle');
+  return !el || el.checked;   // 요소가 없으면 묶기가 기본
+}
+
+// 묶기는 **받아 온 페이지 안에서만** 성립한다 — 서버 페이징이라 같은 품목이 다음 장에 이어질 수 있다.
+// 그래서 묶기를 켜면 한 번에 더 받아 온다. 상한은 서버 쪽 limit 정책에 맡긴다.
+function invTxLimitFor() { return invTxGrouped() ? 300 : invTxLimit; }
+
+function invTxGroupTr(g, gi, cols) {
+  var s = g.sample || {};
+  var netCls = g.net > 0 ? 'text-blue-600' : (g.net < 0 ? 'text-orange-600' : 'text-gray-500');
+  var tr = document.createElement('tr');
+  tr.className = 'bg-gray-50 cursor-pointer hover:bg-gray-100';
+  tr.setAttribute('onclick', 'invTxToggleGroup(' + gi + ')');
+  tr.innerHTML =
+      '<td class="px-3 py-2 text-sm text-gray-400" id="invTxCaret' + gi + '">▸</td>'
+    + '<td class="px-3 py-2 text-sm">'
+      + '<span class="font-semibold">' + window.escapeHtml(s.item_name || '(삭제된 품목)') + '</span>'
+      + (s.item_code ? '<span class="text-xs text-gray-400 ml-1">' + window.escapeHtml(s.item_code) + '</span>' : '')
+    + '</td>'
+    + '<td class="px-3 py-2 text-sm text-gray-500">' + g.rows.length + '건</td>'
+    + '<td class="px-3 py-2 text-sm text-gray-400 text-xs">순증감</td>'
+    + '<td class="px-3 py-2 text-sm text-right font-semibold tabular-nums ' + netCls + '">'
+      + (g.net > 0 ? '+' : '') + window.escapeHtml(invTxQty(g.net, s)) + '</td>'
+    + '<td class="px-3 py-2 text-sm text-right tabular-nums text-gray-700" title="원장 기준 출고 합계 — 실사 기준 소모량과는 다른 숫자입니다">'
+      + (g.out ? '출고 ' + window.escapeHtml(invTxQty(g.out, s)) : '') + '</td>'
+    + '<td class="px-3 py-2 text-sm text-gray-600">' + window.escapeHtml(s.zone_name || '기본창고') + '</td>'
+    + '<td class="px-3 py-2" colspan="3"></td>';
+  return tr;
+}
+
+function invTxToggleGroup(gi) {
+  var rows = document.querySelectorAll('.invtx-g' + gi);
+  if (!rows.length) return;
+  var open = rows[0].style.display !== 'none';
+  for (var i = 0; i < rows.length; i++) rows[i].style.display = open ? 'none' : '';
+  var caret = document.getElementById('invTxCaret' + gi);
+  if (caret) caret.textContent = open ? '▸' : '▾';
+}
+
+// ── 역할별 기본값 — 담당자는 자기 구역이 기본, 관리자는 전체 (2026-09-04) ──────
+// 한 화면을 쓰되 들어올 때의 기본값만 다르게 한다. 담당자에게 전 법인 원장을 첫 화면으로 주면
+// 자기 것을 찾는 데만 시간이 든다.
+function invTxApplyRoleDefaults(zones) {
+  // `?raw` 전역 스코프 공유 — inventoryCount.js 가 이미 JWT 를 읽어 둔다. 없으면 조용히 넘어간다.
+  var me = (typeof _icUser !== 'undefined' && _icUser) ? _icUser : null;
+  if (!me || !me.id) return;
+  if (me.role === 'ADMIN' || me.role === 'MANAGER') return;   // 관리자는 전체가 기본
+  var mine = (zones || []).filter(function (z) { return z.manager_id === me.id; });
+  if (mine.length !== 1) return;   // 담당 구역이 **하나일 때만** 자동으로 고른다(둘이면 고를 근거가 없다)
+  var sel = document.getElementById('invTxZone');
+  if (!sel || sel.value) return;   // 사람이 이미 고른 값은 덮지 않는다
+  var has = Array.prototype.some.call(sel.options, function (o) { return String(o.value) === String(mine[0].id); });
+  if (!has) return;
+  sel.value = String(mine[0].id);
+  invTxLoad();
+}

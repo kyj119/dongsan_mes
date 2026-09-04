@@ -529,6 +529,12 @@ export function inventoryPage(c: Context<HonoEnv>) {
                   <button onclick="invTxExport()" class="ds-btn ds-btn-sm">
                     <i class="fas fa-file-csv" style="margin-right:4px"></i>CSV
                   </button>
+                  <!-- 품목별 묶기 (2026-09-04) — 한 줄씩 흐르는 원장은 「이 품목이 어떻게 됐나」를 못 읽는다.
+                       켜면 한 번에 더 받아 온다(묶음이 페이지 경계에서 갈리지 않게). -->
+                  <label class="flex items-center gap-1.5 text-xs text-gray-600 whitespace-nowrap" title="품목(×창고)으로 접고 순증감·출고합계를 먼저 보여줍니다">
+                    <input type="checkbox" id="invTxGroupToggle" checked onchange="invTxPage = 1; invTxLoad();">
+                    품목별 묶기
+                  </label>
                 </div>
               </div>
               <!-- 품목 단일 필터(재고 현황 탭 '이력' 버튼에서 전달). hidden = 화면엔 칩으로만 노출 -->
