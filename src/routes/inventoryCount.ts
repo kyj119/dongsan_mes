@@ -104,9 +104,11 @@ inventoryCountRouter.get('/', async (c) => {
 //   이 구분을 놓치면 현수막 매입이 130배로 잡혀 소모량이 통째로 무의미해진다.
 //
 // 알려진 한계 — 숨기지 말고 flags 로 같이 낸다. 이 수치는 「추정」이지 「실측」이 아니다.
-//   ① 매입 구역 귀속 = items.storage_zone_id.
+//   ① 매입 구역 귀속 = **그 구역에 재고 행이 있는 품목**(inventory.storage_zone_id).
 //      purchase_order_items.storage_zone_id 는 prod 전량 NULL 이라 쓸 수 없다.
-//      품목이 한 구역에만 속한다는 가정 위에 선다.
+//      ★2026-09-04 축 변경 — 종전 `items.storage_zone_id` 는 `items` 에 있어 **법인 공유**라
+//        선명(entity 2) 품목은 배정이 0개였고, 선명 구역 소모량의 매입이 통째로 0이었다.
+//      한 품목이 여러 구역에 재고를 가지면 그 매입이 **양쪽에 다 잡힌다**(중복). 지금 그런 품목은 없다.
 //   ② 날짜 기준 = po.order_date. inventory_receipts 가 prod 0행이라 실입고일을 모른다.
 //      발주일↔입고일 시차만큼 구간이 밀린다(주 단위 실사에서 특히 크다).
 //   ③ 양끝 중 한쪽이라도 미입력(NULL)이면 그 품목은 그 구간에서 **제외**한다.
@@ -189,7 +191,18 @@ inventoryCountRouter.get('/consumption', async (c) => {
                     JOIN items i ON i.id = poi.item_id
                    WHERE po.order_date > ? AND po.order_date <= ?
                      AND po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED', 'RECEIVED')` + pef.clause
-    if (zoneId) { pQuery += ' AND i.storage_zone_id = ?'; pParams.push(zoneId) }
+    // 구역 귀속 = **재고 행(축2)**. 「이 구역에서 쓴 자재」이므로 재고가 거기 있는 품목의 매입을 잡는다.
+    //   ★종전엔 `i.storage_zone_id`(축1 = 품목 마스터)를 썼는데, 그 칸은 `items` 에 있어 **법인 공유**다.
+    //     배정된 457품목이 전부 동산기획 구역이고 **선명2를 가진 품목은 0개**라, 선명 구역 소모량은
+    //     매입이 통째로 0으로 잡혀 「기초 − 기말」만 남았다(과소평가인데 오류가 안 나 안 보인다).
+    //   재고 행은 법인별이라 이 문제가 없다. 축1 은 이제 「입고 기본 창고」로만 쓴다.
+    if (zoneId) {
+      pQuery += ` AND EXISTS (SELECT 1 FROM inventory inv
+                               WHERE inv.item_id = poi.item_id
+                                 AND inv.storage_zone_id = ?
+                                 AND inv.entity_id = po.entity_id)`
+      pParams.push(zoneId)
+    }
     const { results: buys } = await c.env.DB.prepare(pQuery).bind(...pParams)
       .all<{ po_id: number; item_id: number; quantity: number; unit_price: number; order_date: string }>()
 
