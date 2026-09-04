@@ -344,6 +344,7 @@ function buildBakeJsx(dir) {
     'function allExist(o){ var k; for (k in o) if (o.hasOwnProperty(k))',
     '  { if (!(new File(o[k].path)).exists) return 0; } return 1; }',
     'var made = [];',
+    'var savedMax = 0;',
     'try {',
     '  $.evalFile(new File("' + fwd(HOST) + '"));',
     '  say("host=" + mesCut_ping());',
@@ -378,8 +379,21 @@ function buildBakeJsx(dir) {
     '  say("pieces=" + count(A.P) + "," + count(B.P));',
     '  say("ink=" + count(A.Q) + "," + count(B.Q));',
     '  say("sameoxy=" + same + " files=" + allExist(B.P) + " inkfiles=" + allExist(B.Q));',
+    // ★★한 문서에 안 들어갈 때 문서를 나눠서 굽는가 (0.38.0). 캔버스 한계를 임시로 낮춰 강제한다 —
+    //    실물로 이 경로를 밟으려면 원본이 5m 넘게 길어야 해서 픽스처로는 재현이 안 된다.
+    //    전역이라 반드시 되돌린다(패널과 같은 JS 엔진이다 — 남기면 판짜기가 계속 쪼개진다).
+    '  savedMax = MESCUT_CANVAS_MAX_PT;',
+    '  MESCUT_CANVAS_MAX_PT = 500;',
+    '  var C2 = parse(mesCut_nestBakeAll(0.25, 0, false, "gnest", "gink"));',
+    '  MESCUT_CANVAS_MAX_PT = savedMax; savedMax = 0;',
+    '  var sameC = 1;',
+    '  for (k in B.P) if (B.P.hasOwnProperty(k))',
+    '    { if (!C2.P[k] || C2.P[k].ox !== B.P[k].ox || C2.P[k].oy !== B.P[k].oy) sameC = 0; }',
+    '  say("split=" + C2.head);',
+    '  say("splitpieces=" + count(C2.P) + " splitsame=" + sameC + " splitfiles=" + allExist(C2.P));',
     '} catch (e) { say("EXC " + e + (e.line ? (" line " + e.line) : "")); }',
     'try { MESCUT_EFS_OFF = false; } catch (eR) {}',
+    'try { if (savedMax) MESCUT_CANVAS_MAX_PT = savedMax; } catch (eR2) {}',
     'for (var q = made.length - 1; q >= 0; q--) { try { made[q].close(SaveOptions.DONOTSAVECHANGES); } catch (eC) {} }',
     'var of = new File(OUT + "/result.txt");',
     'of.encoding = "UTF-8"; of.open("w");',
@@ -526,6 +540,8 @@ if (!ONLY.length || ONLY.indexOf('K') >= 0) {
     const ink = String(R.ink || '').split(',')
     const ms = String(R.ms || '').split(',')
     const fl = String(R.sameoxy || '')
+    const sp = String(R.splitpieces || '')
+    const splitDocs = Number((String(R.split || '').match(/docs=([0-9]+)/) || [])[1] || 0)
     const rows = [
       ['하네스가 살았다', !R.EXC, R.EXC || 'ok'],
       ['옛 경로로도 굽는다', String(R.old || '').indexOf('fastbake=0') >= 0, R.old || '?'],
@@ -535,6 +551,13 @@ if (!ONLY.length || ONLY.indexOf('K') >= 0) {
       // ★원점이 틀어지면 칼선이 통째로 밀린다 — 판은 멀줦해 보이고 치수만 틀린다.
       ['원점(ox/oy)이 같다', fl.indexOf('1') === 0, fl || '?'],
       ['PNG 가 실제로 있다', fl.indexOf('files=1') >= 0 && fl.indexOf('inkfiles=1') >= 0, fl || '?'],
+      // ★0.38.0 — 한 문서에 안 들어가면 **문서를 나눈다**. 나눠도 결과가 같아야 한다(원점이 틀어지면
+      //   칼선이 통째로 밀린다). 하네스가 캔버스 한계를 500pt 로 낮춰 강제로 나누게 했다.
+      ['문서를 나눠서도 굽는다', splitDocs >= 2, R.split || '?'],
+      ['나눠도 빠른 길로 간다', String(R.split || '').indexOf('fastbake=1') >= 0, R.split || '?'],
+      ['나눠 구워도 조각 수가 같다', sp.split(' ')[0] === pieces[1] && Number(pieces[1]) > 1, sp + ' vs ' + pieces[1]],
+      ['나눠 구워도 원점이 같다', sp.indexOf('splitsame=1') >= 0, sp || '?'],
+      ['나눠 구운 PNG 가 실제로 있다', sp.indexOf('splitfiles=1') >= 0, sp || '?'],
     ]
     let kb = 0
     for (const row of rows) {
