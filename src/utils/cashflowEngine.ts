@@ -24,6 +24,11 @@ export interface CashflowItem {
   materialized: boolean           // true=cash_schedule 행(은행매칭 DONE 대상), false=온더플라이
   schedule_id?: number            // 물질화 행 id
   estimated?: boolean             // true=과거 실적 추정치(변동비, 확정 전)
+  /** 연체 이월(carryOverdueToStart)로 from에 당겨온 항목의 '원래 예정일'.
+   *  없으면 표시일 = 예정일. 이게 없으면 달력(원 날짜)과 월별·예측(이월 후)의 같은 달 합계가 조용히 어긋난다. */
+  carried_from?: string
+  /** 예상입금 근거: BILLED=청구완료 미수 · UNBILLED=미청구 확정주문 추정. 화면 배지용. */
+  basis?: 'BILLED' | 'UNBILLED'
 }
 
 export interface CashflowDay {
@@ -110,14 +115,14 @@ export async function buildCashflowDays(
   if (carryOverdue) {
     const efOv = entityFilter(c, 'cs')
     const { results: ovRows } = await c.env.DB.prepare(`
-      SELECT cs.id, cs.flow_type, cs.source_type, cs.amount, cs.description, cs.status, cl.client_name
+      SELECT cs.id, cs.schedule_date, cs.flow_type, cs.source_type, cs.amount, cs.description, cs.status, cl.client_name
       FROM cash_schedule cs
       LEFT JOIN clients cl ON cl.id = cs.client_id
       WHERE cs.schedule_date < ?
         AND cs.status IN ('PENDING', 'OVERDUE')
         AND cs.source_type != 'FIXED'${efOv.clause}
     `).bind(from, ...efOv.params).all<{
-      id: number; flow_type: string; source_type: string; amount: number
+      id: number; schedule_date: string; flow_type: string; source_type: string; amount: number
       description: string | null; status: string; client_name: string | null
     }>()
     for (const r of ovRows) {
@@ -129,6 +134,7 @@ export async function buildCashflowDays(
         status: r.status,
         materialized: true,
         schedule_id: r.id,
+        carried_from: r.schedule_date,
       })
     }
   }
@@ -197,10 +203,12 @@ export async function buildCashflowDays(
   for (const lp of loanRows) {
     const remaining = (Number(lp.total_amount) || 0) - (Number(lp.actual_paid_amount) || 0)
     if (remaining <= 0) continue
-    const due = carryOverdue && lp.scheduled_date < from ? from : lp.scheduled_date  // 과거 미납분은 예측 시작일에 표시
+    const carried = carryOverdue && lp.scheduled_date < from
+    const due = carried ? from : lp.scheduled_date  // 과거 미납분은 예측 시작일에 표시
     add(due, {
       flow: 'OUT', type: 'LOAN', name: `${lp.creditor} 상환`,
       amount: remaining, status: lp.status, materialized: false,
+      ...(carried ? { carried_from: lp.scheduled_date } : {}),
     })
   }
 
@@ -244,7 +252,7 @@ export async function buildCashflowDays(
     add(due, {
       flow: 'IN', type: 'ORDER_EXPECTED',
       name: `${g.client_name || ''} 예상입금 (주문 ${g.order_number})`.trim(),
-      amount: Number(g.amount) || 0, materialized: false,
+      amount: Number(g.amount) || 0, materialized: false, basis: 'UNBILLED',
     })
   }
 
@@ -274,16 +282,17 @@ export async function buildCashflowDays(
     }
 
     // (거래처×법인)별 그룹 → 예상입금일 오름차순(빠른 건부터) 분배, 그룹 금액 상한, 잔여 소진 시 중단.
-    const byCE = new Map<string, { order_number: string; client_name: string | null; amount: number; due: string }[]>()
+    const byCE = new Map<string, { order_number: string; client_name: string | null; amount: number; due: string; carriedFrom?: string }[]>()
     for (const g of billedGroups) {
-      let due = computeExpectedPaymentDate(g.accounting_date || g.billed_at || (g.created_at || '').substring(0, 10), {
+      const expected = computeExpectedPaymentDate(g.accounting_date || g.billed_at || (g.created_at || '').substring(0, 10), {
         payment_cycle_type: g.payment_cycle_type, payment_terms_days: g.terms,
         closing_day: g.closing_day, payment_month_offset: g.payment_month_offset, payment_day: g.payment_day,
       })
-      if (carryOverdue && due < from) due = from   // 연체분(예상일이 과거)은 예측 시작일에 표시 — 미수는 즉시 회수 대상
+      const carried = carryOverdue && expected < from   // 연체분(예상일이 과거)은 예측 시작일에 표시 — 미수는 즉시 회수 대상
+      const due = carried ? from : expected
       const k = ckey(g.client_id, g.entity_id)
       const list = byCE.get(k) ?? []
-      list.push({ order_number: g.order_number, client_name: g.client_name, amount: Number(g.amount) || 0, due })
+      list.push({ order_number: g.order_number, client_name: g.client_name, amount: Number(g.amount) || 0, due, ...(carried ? { carriedFrom: expected } : {}) })
       byCE.set(k, list)
     }
     for (const [k, list] of byCE) {
@@ -298,7 +307,8 @@ export async function buildCashflowDays(
         add(it.due, {
           flow: 'IN', type: 'ORDER_EXPECTED',
           name: `${it.client_name || ''} 미수 예상입금 (주문 ${it.order_number})`.trim(),
-          amount: amt, materialized: false,
+          amount: amt, materialized: false, basis: 'BILLED',
+          ...(it.carriedFrom ? { carried_from: it.carriedFrom } : {}),
         })
       }
     }
@@ -333,15 +343,17 @@ export async function buildCashflowDays(
     if (!(Number(po.final_amount) > 0)) continue
     const base = po.delivery_date || (po.created_at || '').substring(0, 10)
     if (!base) continue
-    let due = computeExpectedPaymentDate(base, {
+    const expected = computeExpectedPaymentDate(base, {
       payment_cycle_type: po.payment_cycle_type, payment_terms_days: po.terms,
       closing_day: po.closing_day, payment_month_offset: po.payment_month_offset, payment_day: po.payment_day,
     })
-    if (carryOverdue && due < from) due = from   // 연체 지급(예정일 경과)은 예측 시작일에 표시 (매출 §4b와 대칭)
+    const carried = carryOverdue && expected < from   // 연체 지급(예정일 경과)은 예측 시작일에 표시 (매출 §4b와 대칭)
+    const due = carried ? from : expected
     add(due, {
       flow: 'OUT', type: 'PURCHASE_EXPECTED',
       name: `${po.supplier_name || '공급사'} 지급예정 (발주 ${po.po_number})`,
       amount: Number(po.final_amount) || 0, materialized: false,
+      ...(carried ? { carried_from: expected } : {}),
     })
   }
 

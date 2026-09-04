@@ -182,6 +182,164 @@ cashScheduleRouter.get('/schedule/calendar', requireEditOrRole('/cash-schedule',
   }
 })
 
+// 계획 화면 통합 개요 — 달력 + 90일 예측 + 6개월 월별 + 유형 구성 + 예상수금 Top을 한 응답으로.
+//   종전엔 calendar/forecast/monthly 세 화면이 각각 buildCashflowDays(무거운 하이브리드 엔진)를 호출했다.
+//   한 화면에 모으면 진입마다 엔진이 3번 도므로 여기서 2회로 접는다:
+//     A = 당월(carryOverdueToStart:false — 연체를 '원래 예정일'에)  → 달력·월별 당월·구성·Top
+//     B = 오늘~수평선(연체 이월)                                   → 예측·다음 달 이후 월별
+//   ⚠️ 월별의 '당월'을 B로 집계하면 안 된다 — B는 과거 연체 전부를 오늘로 끌어와 당월에 얹으므로
+//      같은 화면의 달력 합계와 조용히 어긋난다(통합 전 월별요약 탭이 실제로 그랬다).
+cashScheduleRouter.get('/schedule/overview', requireEditOrRole('/cash-schedule', 'MANAGER'), async (c) => {
+  try {
+    const nowYm = kstYm()
+    const y = Number(c.req.query('year') || nowYm.substring(0, 4))
+    const m = Number(c.req.query('month') || nowYm.substring(5, 7))
+    if (!Number.isInteger(y) || !Number.isInteger(m) || m < 1 || m > 12) {
+      return c.json({ success: false, error: 'year, month 값이 올바르지 않습니다' }, 400)
+    }
+    const days = Math.min(Math.max(Number(c.req.query('days') || '90') || 90, 7), 365)
+    const monthCount = Math.min(Math.max(Number(c.req.query('months') || '6') || 6, 1), 12)
+
+    const pad2 = (n: number) => String(n).padStart(2, '0')
+    const lastDay = new Date(y, m, 0).getDate()
+    const monthStart = `${y}-${pad2(m)}-01`
+    const monthEnd = `${y}-${pad2(m)}-${pad2(lastDay)}`
+
+    const today = kstYmd()
+    const todayMs = Date.parse(`${today}T00:00:00Z`)
+    const forecastEnd = new Date(todayMs + days * 86400000).toISOString().substring(0, 10)
+    // 월별 수평선 = (조회월 + monthCount-1)의 말일. 예측창보다 멀면 그쪽까지 한 번에 덮는다.
+    const monthlyLast = new Date(y, m - 1 + monthCount, 0)
+    const monthlyEnd = `${monthlyLast.getFullYear()}-${pad2(monthlyLast.getMonth() + 1)}-${pad2(monthlyLast.getDate())}`
+    const horizonEnd = forecastEnd > monthlyEnd ? forecastEnd : monthlyEnd
+
+    const [calMap, fcMap, bank] = await Promise.all([
+      buildCashflowDays(c, monthStart, monthEnd, { carryOverdueToStart: false }),
+      buildCashflowDays(c, today, horizonEnd),
+      getTotalBankBalance(c),
+    ])
+
+    // ── 달력 (calendar 엔드포인트와 동일 구조) ──────────────────────────────
+    interface DayBucket { date: string; in_total: number; out_total: number; in_done: number; out_done: number; items: CashflowItem[] }
+    const calDays: Record<string, DayBucket> = {}
+    for (let d = 1; d <= lastDay; d++) {
+      const dateStr = `${y}-${pad2(m)}-${pad2(d)}`
+      calDays[dateStr] = { date: dateStr, in_total: 0, out_total: 0, in_done: 0, out_done: 0, items: [] }
+    }
+    let overdueCount = 0
+    const inByType: Record<string, number> = {}
+    const outByType: Record<string, number> = {}
+    const receipts: { date: string; name: string; amount: number; type: string; basis?: string; materialized: boolean; status?: string }[] = []
+    for (const [dateStr, cfDay] of Object.entries(calMap)) {
+      const day = calDays[dateStr]
+      if (!day) continue
+      day.in_total = cfDay.in
+      day.out_total = cfDay.out
+      day.items = cfDay.items
+      for (const it of cfDay.items) {
+        if (it.materialized && it.status === 'DONE') {
+          if (it.flow === 'IN') day.in_done += it.amount
+          else day.out_done += it.amount
+        }
+        // 연체 = 예정일이 지났는데 아직 안 끝난 '물질화' 행. 온더플라이 추정치는 세지 않는다.
+        if (dateStr < today && it.materialized && it.status !== 'DONE') overdueCount++
+        const bucket = it.flow === 'IN' ? inByType : outByType
+        bucket[it.type] = (bucket[it.type] || 0) + it.amount
+        if (it.flow === 'IN') {
+          receipts.push({ date: dateStr, name: it.name, amount: it.amount, type: it.type, basis: it.basis, materialized: it.materialized, status: it.status })
+        }
+      }
+    }
+    const summary = {
+      in_total: Object.values(calDays).reduce((s, d) => s + d.in_total, 0),
+      out_total: Object.values(calDays).reduce((s, d) => s + d.out_total, 0),
+      in_done: Object.values(calDays).reduce((s, d) => s + d.in_done, 0),
+      out_done: Object.values(calDays).reduce((s, d) => s + d.out_done, 0),
+      overdue_count: overdueCount,
+    }
+
+    // ── 예측 (오늘부터 days일, 시작잔액=은행 실잔액) ────────────────────────
+    const startBalanceRaw = c.req.query('start_balance')
+    const startBalance = startBalanceRaw !== undefined ? (Number(startBalanceRaw) || 0) : (bank.total_balance || 0)
+    const series: ForecastDay[] = []
+    let running = startBalance
+    for (let i = 0; i <= days; i++) {
+      const dateStr = new Date(todayMs + i * 86400000).toISOString().substring(0, 10)
+      const day = fcMap[dateStr]
+      const inA = day?.in || 0
+      const outA = day?.out || 0
+      running += inA - outA
+      series.push({ date: dateStr, in_amount: inA, out_amount: outA, net: inA - outA, balance: +running.toFixed(2), is_negative: running < 0 })
+    }
+    const riskDays = series.filter((d) => d.is_negative)
+
+    // 연체 이월분(예측 첫날에 얹힌 금액) — 예측 시작일의 큰 숫자가 '오늘 들어온다'는 뜻이 아님을 화면에 알리기 위함
+    let carriedIn = 0, carriedOut = 0, carriedCount = 0
+    for (const it of fcMap[today]?.items || []) {
+      if (!it.carried_from) continue
+      carriedCount++
+      if (it.flow === 'IN') carriedIn += it.amount
+      else carriedOut += it.amount
+    }
+
+    // ── 월별 (당월=A, 이후=B) ──────────────────────────────────────────────
+    const months: { month: string; in: number; out: number; net: number; cumulative: number }[] = []
+    const idx: Record<string, number> = {}
+    for (let i = 0; i < monthCount; i++) {
+      const d = new Date(y, m - 1 + i, 1)
+      const ym = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`
+      idx[ym] = i
+      months.push({ month: ym, in: 0, out: 0, net: 0, cumulative: 0 })
+    }
+    months[0].in = summary.in_total
+    months[0].out = summary.out_total
+    for (const [dateStr, day] of Object.entries(fcMap)) {
+      const i = idx[dateStr.substring(0, 7)]
+      if (i === undefined || i === 0) continue   // 당월은 A 기준(위) — B로 더하면 연체 이월분이 이중 계상된다
+      months[i].in += day.in
+      months[i].out += day.out
+    }
+    let cumulative = 0
+    for (const mo of months) {
+      mo.in = Math.round(mo.in)
+      mo.out = Math.round(mo.out)
+      mo.net = mo.in - mo.out
+      cumulative += mo.net
+      mo.cumulative = cumulative
+    }
+
+    // 예상수금 Top — 금액 내림차순, 동액이면 빠른 날짜부터
+    receipts.sort((a, b) => (b.amount - a.amount) || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+
+    return c.json({
+      success: true,
+      data: {
+        today,
+        calendar: { year: y, month: m, days: calDays, summary },
+        forecast: {
+          start_balance: startBalance,
+          bank_balance: bank.total_balance || 0,
+          account_count: bank.account_count || 0,
+          end_balance: running,
+          min_balance: series.length ? Math.min(...series.map((d) => d.balance)) : startBalance,
+          max_balance: series.length ? Math.max(...series.map((d) => d.balance)) : startBalance,
+          risk_days_count: riskDays.length,
+          risk_days: riskDays.slice(0, 10),
+          days,
+          series,
+        },
+        monthly: months,
+        composition: { in: inByType, out: outByType },
+        top_receipts: receipts.slice(0, 5),
+        carried: { in: carriedIn, out: carriedOut, count: carriedCount },
+      },
+    })
+  } catch (error) {
+    console.error('cashSchedule overview error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // 특정 날짜 상세
 cashScheduleRouter.get('/schedule/day/:date', requireEditOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {

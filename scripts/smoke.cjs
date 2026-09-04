@@ -105,6 +105,7 @@ const ENDPOINTS = [
   { path: '/api/cash-flow/summary', name: 'cashFlow.summary' },
   { path: '/api/cash-flow/fixed-expenses', name: 'cashFlow.fixedExpenses' },
   { path: `/api/cash-flow/schedule?from=${FIRST_OF_MONTH}&to=${TODAY}`, name: 'cashSchedule.range' },
+  { path: '/api/cash-flow/schedule/overview', name: 'cashSchedule.overview' },
   { path: '/api/vat/summary', name: 'vat.summary' },
   { path: '/api/vat/reports', name: 'vat.reports' },
   { path: '/api/payment-requests?limit=10', name: 'paymentRequests.list' },
