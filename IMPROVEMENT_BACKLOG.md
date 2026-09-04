@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-09-04T09:50:59+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-09-04T15:52:27+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,40 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **7** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음 — #613·#616·#617·#622·#624·#625·#626) |
+| 🆕 new | **9** (`list_issues(state:OPEN,label:auto-improve)` 실측 — #613·#616·#617·#622·#624·#625·#626·#627(신규)·#628(신규)) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **542** (변동없음, 재확인 생략 — 이번 사이클 신규 completed 없음) |
-| ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 재확인 생략, 변동없음) |
+| ✔️ done | **542** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
+| ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-09-04T15:52):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD, `5f75e659`), `git fetch origin main`(이미 최신). `npm ci`(0→81), `npx tsc --noEmit` clean, `npm run build` 성공. 얕은 clone이라 `git fetch --unshallow`로 전체 이력 복구 후 churn 대조.
+> - **churn 확인(앵커 = 직전 Area2 방법 라인 HEAD `e167ec4`)**: 웹앱 범위 diff **135커밋** — `09-03 전체 코드 리뷰`(Fable 5.1) → `session/fix-*` 11-worktree `fix-integration` 대형 병합(Area5/6이 이미 09-03 정독) + 그 뒤에 얹힌 **신규 구역관리 기능 웨이브**(2026-09-04, storage_zones 품목배정·inventoryCount 권한 재배치 등 25커밋, 어느 Area도 아직 안 본 완전 신선 구간).
+> - **09-03 전체 리뷰의 Area2 자체 스냅샷**(`docs/audits/2026-09-03-full-review/area2-codequality.md`, HIGH 6·MEDIUM 3·LOW 1) **fixed-in-tree 개별 재검증** — 10건 전수 소스 대조:
+>   - HIGH 1(한글금액 '청'→'천' 오타, invoice.js/purchaseInvoice.js) ✅ 수정됨(`quotation.js`와 동일한 `'천'`, 주석에 사고 재발 방지 경고 추가)
+>   - HIGH 2(`orders/update.ts:440` PUT이 세션법인 넘겨 담당법인 소실) ✅ 수정됨(`update.ts:464` 이 `orderEntityId` 사용, create/PUT 통일)
+>   - HIGH 3(`직배` 폐기값 잔존, orderForm.ts/clients.ts) ✅ 수정됨(SSOT `deliveryMethodOptionsHtml()` 전환)
+>   - HIGH 4(clients.ts 배송 필터 영문 enum 0건 매칭) ✅ 수정됨(같은 SSOT 헬퍼로 교체)
+>   - HIGH 5(`dashboard.ts:508/512` 장비가동률 `print_started_at` 단독축) ✅ 수정됨(`printEventKstDay()` 적용)
+>   - HIGH 6(`forecast.ts:143/147/150` `date(created_at)` UTC 버킷) ✅ 수정됨(`printEventKstDay()` 적용, 헤더에 사고 경위 주석)
+>   - MEDIUM 7(유통주문서/견적서 VAT 0.1 하드코딩) ✅ 수정됨(`window.VAT_RATE` 폴백 패턴 적용)
+>   - MEDIUM 8(`po-queries.ts:68` 이번달 발주금액 UTC) ✅ 수정됨(`kstDate("'start of month'")`)
+>   - MEDIUM 9(`waste.ts`/`budgets.ts` 프론트 호출 0건 고아 라우터, 쓰기 포함) ❌ **미조치 확인 — 신규 이슈 #627 등록**(owner 판단 필요: 미완성기능 vs 폐기, 자동수정 금지 항목이라 issue-only)
+>   - LOW 10(`models.ts` `Entity.updated_at` — DB에 없는 컬럼) ❌ **미조치 확인 → 직접 자동수정**(read-only 타입 필드 제거, 참조 0건 확인 후 `npx tsc --noEmit`·`npm run build` 통과, 커밋 `a566de7e` push 완료)
+>   - **결과: HIGH 6/6·MEDIUM 2/3 fixed-in-tree, MEDIUM 1건은 이슈화, LOW 1건은 자동수정 — 이번 사이클 fix-integration 세션의 코드품질 개선을 완전히 검증**.
+> - **신규 구역관리 기능 웨이브(25커밋, `storageZones.ts`·`inventoryCount.ts`·`notifications.ts`·`orders/listFilter.ts` 직독) — Area2 렌즈 최초 통과**: `storageZones.ts` 신규 3엔드포인트(`/:id/candidates`·`POST /:id/items`·`DELETE /:id/items/:itemId`) 전부 `getWriteEntityId`+`canTouchZone` 이중 가드, D1 바인드 80청크(#458 컨벤션 준수), SELECT 서브쿼리 바인드 순서 주석(`feedback-sqlite-placeholder-subquery-order` 명시 회피) 확인 — entity_id 누락·N+1·바인드초과 0건. `inventoryCount.ts` 권한 재배치(라우터 전역 `requireRole` 제거 → `canTouchZone`/`isSupervisor` 개별 게이트로 전환, 담당자 셀프승인 허용)는 **의도적 비즈니스 정책 변경**(주석에 사유·수치 명시: 실사 22건 중 18건이 승인자 부재로 SUBMITTED 정체) — 10개 엔드포인트 전수 대조 결과 게이트 없는 곳 0건(전부 `loadOwnedCount`/`canTouchZone`/`isSupervisor` 중 하나). `notifications.ts` 입고 담당 매칭이 `items.storage_zone_id`(법인공유) 단일축 → 3단 COALESCE(라인지정→같은법인기본창고→법인 default구역)로 확장된 것도 entity 경계 정확.
+> - **신규 발견 — `ar-helpers.ts:171` `CARRYOVER_ORDER_NUMBER_LIKE` 형제 위치 잔존 (이슈 #628)**: `orders/listFilter.ts`의 `voucherOrderSql()`이 이번 웨이브에서 이름패턴(`ICM-%`/`%OPEN%`) 의존을 `orders.is_voucher` 플래그(마이그 `0563`)로 교체했다 — 사유는 실제 사고(`E1-ACCT-1670` 회계매출이 옛 패턴에 안 걸려 6월 매출 오염). `0563`은 `ICM-%`·`%OPEN%`·`E{1,2,3}-ACCT-%` 세 패턴 전부를 `is_voucher`로 백필했는데, `ar-helpers.ts`의 형제 상수 `CARRYOVER_ORDER_NUMBER_LIKE`는 여전히 `%OPEN%` 하나뿐 — AR 미수금 리포트의 "이월분" breakdown이 같은 클래스의 드리프트에 노출됨(단, 실제 미수금 합계 `overdue_amount`/`unpaid_total`은 이 패턴을 안 써서 영향 없음, `carryover_amount` breakdown만). `carryover`가 `is_voucher` 전체와 의미가 같은지(이관만 vs 전표 전체) 업무 판단이 필요해 issue-only.
+> - **standing scan 1: `npm run audit:entity`** — 검사 133파일·entity테이블 SELECT 67건·**누락 0건**(변동없음).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:417`·`workbench.ts:577`).
+> - **standing scan 3: authMiddleware recursive 커버리지** — 무-auth 7건(`publicUnsubscribe.ts`·`orders/helpers.ts`·`payroll/shared.ts`·`cron.ts`·`messagesAd.ts`·`hrSelf.ts`·`taxInvoices/helpers.ts`) 전부 기존 정당 클래스 재확인(public 의도적+rateLimit · Map.get FP 3 · agentKeyMiddleware · hrSelf scoped-token · messagesAd는 `messages.ts:121`의 `.route('/ad', ...)` 상속+자체 `requireRole('ADMIN')` 추가 게이트, barrel 하위유형으로 신규 codify 불요).
+> - **standing scan 4: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 5: `npm audit --omit=dev`** — 이번 사이클도 **미완료**(60초+ 무응답, Area1 09-04 사이클과 동일 증상). `package.json` diff 확인 결과 신규 devDependency 0건(추가분은 전부 `scripts` 항목, selftest 커맨드 등록뿐) → 실측 결과는 직전과 동일(0건)일 가능성 높으나 추정 금지 원칙상 미완료로 기록.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 5런(HEAD `5f75e659` 포함) 전부 `conclusion:success`.
+> - **backlog↔GitHub 절대값 재동기화**: open **9**(7→9, #627·#628 신규) · done **542**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: 아래 실행.
+> - 신규 이슈 2건(#627 waste/budgets 고아 라우터 owner판단, #628 ar-helpers.ts 이름패턴 잔존 sibling), 자동수정 1건(`models.ts` Entity.updated_at 제거, 커밋 `a566de7e`), 09-03 전체리뷰 Area2 발견 10건 전수 재검증 완료(HIGH 6/6·MEDIUM 2/3 fixed, MEDIUM 1+LOW 1 이번 사이클로 해소), done-sync: open 9(7→9)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-09-04T09:50):**
 > - **방법**: `git status`=워킹트리 clean(detached HEAD, `bccb517`), `git fetch origin main`(`207078c..bccb517`, forced update) → `git checkout main && git reset --hard origin/main`(HEAD `bccb517`). `npm ci`(0→81), `npx tsc --noEmit` clean.
