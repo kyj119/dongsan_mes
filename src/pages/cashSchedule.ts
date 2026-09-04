@@ -161,8 +161,10 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
               <div class="text-center font-bold text-gray-600 py-1">목</div>
               <div class="text-center font-bold text-gray-600 py-1">금</div>
               <div class="text-center font-bold text-gray-600 py-1">토</div>
-              <!-- 캘린더 셀 -->
-              <div id="schCalendarContainer" class="col-span-7"></div>
+              <!-- 캘린더 셀 — 컨테이너 자신이 7열 그리드여야 한다.
+                   col-span-7만 주면 이 div는 '블록'이라 안에 들어온 날짜 셀 31개가 7열로 안 깔리고 세로로 쌓인다(달력이 세로 목록이 됨).
+                   부모(gap-1)와 자식(gap-1)의 열 폭 계산이 같아 요일 헤더와 정확히 정렬된다. -->
+              <div id="schCalendarContainer" class="col-span-7 grid grid-cols-7 gap-1"></div>
             </div>
           </div>
         </div>
