@@ -72,12 +72,12 @@
                         </div>
                         <div>
                             <label id="dim_label_${id}" class="block text-xs font-medium text-gray-600 mb-0.5">가로(cm)</label>
-                            <input type="number" name="width_${id}" min="0" step="0.1" placeholder="90" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" oninput="calcItem(${id})">
+                            <input type="number" name="width_${id}" min="0" step="0.1" placeholder="90" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" oninput="calcItem(${id})" onchange="refreshPriceSuggestion(${id})">
                             <input type="text" name="spec_${id}" placeholder="폭 등 규격" class="hidden w-full px-2 py-1.5 border border-gray-300 rounded text-sm">
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-gray-600 mb-0.5">세로(cm)</label>
-                            <input type="number" name="height_${id}" min="0" step="0.1" placeholder="60" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" oninput="calcItem(${id})">
+                            <input type="number" name="height_${id}" min="0" step="0.1" placeholder="60" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" oninput="calcItem(${id})" onchange="refreshPriceSuggestion(${id})">
                             <div id="bill_dim_hint_${id}" class="hidden text-[10px] text-gray-500 mt-0.5 whitespace-nowrap" title="면적 단가는 10cm 단위 올림 치수로 계산됩니다"></div>
                         </div>
                         <div id="scale_div_${id}" class="hidden">
@@ -254,32 +254,7 @@
                     //   서버가 recent(최근 거래) > matched(특약·단가표) > base 순으로 골라 준다.
                     //   ⚠️ AREA 품목의 recent 는 서버가 금액에서 ㎡ 단가로 환산해 준다(routes/prices.ts) —
                     //      이관분 unit_price 가 장당금액이라 원값을 쓰면 6배가 된다. 여기서 다시 만지지 말 것.
-                    var priceClientEl = document.getElementById('clientId');
-                    var clientIdVal = priceClientEl ? priceClientEl.value : '';
-                    if (clientIdVal && item.id) {
-                        // 응답이 늦게 온 사이 사용자가 손으로 고쳤으면 덮지 않는다.
-                        var priceAtRequest = priceInp.value;
-                        axios.get('/api/prices?item_id=' + encodeURIComponent(item.id) +
-                                  '&client_id=' + encodeURIComponent(clientIdVal) + '&context=sales')
-                            .then(function(r) {
-                                var d = r && r.data;
-                                if (!d || !(d.suggested_price > 0)) return;
-                                if (priceInp.value !== priceAtRequest) return;  // 사용자 입력 우선
-                                priceInp.value = fmtMoneyInput(d.suggested_price);
-                                priceInp.dataset.basePrice = d.suggested_price;  // 특약 저장 제안의 비교 기준도 갱신
-                                var srcEl = document.getElementById('price_src_' + id);
-                                if (srcEl) {
-                                    var label = d.price_source === 'recent_transaction' ? '최근 거래가'
-                                              : d.price_source === 'client_item_price' ? '거래처 특약가'
-                                              : d.price_source === 'price_list' ? '단가표'
-                                              : d.price_source === 'base_price' ? '기본 단가' : '';
-                                    srcEl.textContent = label;
-                                    srcEl.classList.toggle('hidden', !label);
-                                }
-                                calcItem(id);
-                            })
-                            .catch(function() { /* 제안 실패는 무음 — 기본 단가로 진행 */ });
-                    }
+                    refreshPriceSuggestion(id);
 
                     // 유통 품목(GOODS/부자재)이면 인쇄 전용 칸/섹션 단순화
                     var itType = (item.item_type || '').toUpperCase();

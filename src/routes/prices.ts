@@ -43,10 +43,25 @@ pricesRouter.use('/*', authMiddleware)
 // 쿼리 파라미터: item_id, client_id, context (purchase|sales)
 pricesRouter.get('/', async (c) => {
   try {
-    const { item_id, client_id, context } = c.req.query()
+    const { item_id, client_id, context, width, height } = c.req.query()
 
     if (!item_id) {
       return c.json({ success: false, error: 'item_id is required' }, 400)
+    }
+
+    // ★제안을 아예 하지 않는 품목이 있다 — 주문제작이라 예측이 성립하지 않는 계열.
+    //   채널간판은 287라인 60거래처에 장당 12,000~9,400,000원(783배)이고 규격이 적힌 라인이 14% 뿐이다.
+    //   직전가 중앙오차 59% · **2배 이상 빗나감 23%** — 규격을 맞춰도 57.7% 로 안 나아진다.
+    //   틀린 값을 채워 두면 「검토했다」는 착시를 주므로 빈칸이 낫다(`items.price_suggest = 0`).
+    const suggestRow = await c.env.DB.prepare(
+      'SELECT COALESCE(price_suggest, 1) AS ok FROM items WHERE id = ?'
+    ).bind(item_id).first<{ ok: number }>()
+    if (suggestRow && !suggestRow.ok) {
+      return c.json({
+        suggested_price: null,
+        price_source: 'suppressed',
+        details: { recent: null, matched: null, base: null },
+      })
     }
 
     const details: {
@@ -112,16 +127,40 @@ pricesRouter.get('/', async (c) => {
           OR (COALESCE(oi.width, 0) > 0 AND COALESCE(oi.height, 0) > 0
               AND NOT (oi.width <= 10 AND oi.height <= 10))
         )`
-        const recentSales = await c.env.DB.prepare(`
+        // ★규격이 같은 직전가를 **먼저** 찾는다 (2026-09-05 백테스트).
+        //   2026년 전 라인을 날짜순으로 재생해 실제로 제안했을 값을 채점한 결과:
+        //     거래처+품목       → 중앙오차 4.6% · ±10% 57%
+        //     거래처+품목+규격  → **중앙오차 0.0%** · ±10% 73% (전체의 56% 에서 성립)
+        //     폴백 포함 실효    → 4.6% → **2.1%**, ±10% 57% → 62%
+        //   같은 거래처가 같은 품목을 **같은 크기**로 다시 시키면 값이 그냥 같기 때문이다.
+        //   수량대를 조건에 넣는 것은 이득이 거의 없었다(4.6% → 4.2%) — 축은 수량이 아니라 규격이다.
+        //   효과는 지금 나쁜 품목에 정확히 몰린다:
+        //     전사 깃발 폰지 17.1% → 0.0% · 수성 패트 6.7% → 0.0% · 수성 현수막 20.0% → 11.1%
+        //   ⚠️ 폴백은 반드시 남긴다 — 규격 일치 이력이 없는 44% 는 기존 동작이 최선이다.
+        //   재측정 = `python scripts/price-match-audit.py`
+        const wNum = Number(width) || 0
+        const hNum = Number(height) || 0
+        const RECENT_SQL = (specMatch: boolean) => `
           SELECT ROUND(${AREA_UNIT_PRICE_SQL}) AS unit_price, o.order_date, o.order_number
           FROM order_items oi
           JOIN orders o ON oi.order_id = o.id
           JOIN items i  ON i.id = oi.item_id
           WHERE oi.item_id = ? AND o.client_id = ? AND o.status != 'CANCELLED'
-            AND ${AREA_USABLE_SQL}${efSales.clause}
+            AND ${AREA_USABLE_SQL}${specMatch ? ' AND oi.width = ? AND oi.height = ?' : ''}${efSales.clause}
           ORDER BY o.order_date DESC, o.id DESC
-          LIMIT 1
-        `).bind(item_id, client_id, ...efSales.params).first<RecentSalesRow>()
+          LIMIT 1`
+
+        let recentSales: RecentSalesRow | null = null
+        let recentBySpec = false
+        if (wNum > 0 && hNum > 0) {
+          recentSales = await c.env.DB.prepare(RECENT_SQL(true))
+            .bind(item_id, client_id, wNum, hNum, ...efSales.params).first<RecentSalesRow>()
+          recentBySpec = !!recentSales
+        }
+        if (!recentSales) {
+          recentSales = await c.env.DB.prepare(RECENT_SQL(false))
+            .bind(item_id, client_id, ...efSales.params).first<RecentSalesRow>()
+        }
 
         if (recentSales) {
           details.recent = {
@@ -129,6 +168,7 @@ pricesRouter.get('/', async (c) => {
             date: recentSales.order_date,
             reference: recentSales.order_number
           }
+          ;(details as any).recent_by_spec = recentBySpec
         }
 
         // #75: 3개월 평균 판매단가 (전체 거래처 대상, 원가 미노출)
@@ -166,16 +206,31 @@ pricesRouter.get('/', async (c) => {
     // - purchase: client_item_prices 테이블 직접 조회
     if (client_id) {
       if (context === 'sales') {
-        const plData = await c.env.DB.prepare(`
-          SELECT pl.adjustment_percent
-          FROM clients c
-          JOIN price_lists pl ON c.price_list_id = pl.id
-          WHERE c.id = ?
-        `).bind(client_id).first<AdjustmentRow>()
+        // ★특약가를 **쓰기만 하고 읽지 않고 있었다**(2026-09-05 발견).
+        //   주문서의 「이 거래처 기본 단가로 저장할까요?」(`orderForm/parent.js` onUnitPriceManualChange)가
+        //   `POST /api/prices/client-item-prices` 로 `client_item_prices` 에 쓰는데,
+        //   판매 조회는 `price_lists`(조정률)만 봐서 그 값이 되돌아오지 않았다.
+        //   → 특약가 우선, 없으면 기존 단가표 조정률. 고리를 끊지 말고 잇는다.
+        //   ⚠️두 테이블 다 현재 prod 0건이다(`price_lists` 도 UI 가 있으나 미사용).
+        //     그래도 지우지 않는 이유 = 쓰기 경로가 살아 있고, 전환 후 채워질 자리이기 때문.
+        const cip = await c.env.DB.prepare(
+          'SELECT price FROM client_item_prices WHERE client_id = ? AND item_id = ?'
+        ).bind(client_id, item_id).first<PriceRow>()
 
-        if (plData && baseItem && baseItem.base_price != null) {
-          const adjusted = baseItem.base_price * (1 + plData.adjustment_percent / 100)
-          details.matched = Math.round(adjusted)
+        if (cip && cip.price > 0) {
+          details.matched = cip.price
+        } else {
+          const plData = await c.env.DB.prepare(`
+            SELECT pl.adjustment_percent
+            FROM clients c
+            JOIN price_lists pl ON c.price_list_id = pl.id
+            WHERE c.id = ?
+          `).bind(client_id).first<AdjustmentRow>()
+
+          if (plData && baseItem && baseItem.base_price != null) {
+            const adjusted = baseItem.base_price * (1 + plData.adjustment_percent / 100)
+            details.matched = Math.round(adjusted)
+          }
         }
       } else if (context === 'purchase') {
         const matched = await c.env.DB.prepare(`
@@ -203,10 +258,11 @@ pricesRouter.get('/', async (c) => {
 
     if (details.recent !== null) {
       suggested_price = details.recent.price
-      price_source = 'recent_transaction'
+      // 규격까지 맞은 직전가는 실측 중앙오차 0.0% 라 화면에서 구분해 보여 준다.
+      price_source = (details as any).recent_by_spec ? 'recent_same_spec' : 'recent_transaction'
     } else if (details.matched !== null) {
       suggested_price = details.matched
-      price_source = context === 'sales' ? 'price_list' : 'client_item_price'
+      price_source = 'client_item_price'
     } else if (details.base !== null) {
       suggested_price = details.base
       price_source = 'base_price'

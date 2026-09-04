@@ -1685,6 +1685,61 @@
             // ============================================
             // 단가 수동 변경 시 거래처 특약 저장 제안
             // ============================================
+            // 거래처 단가 제안 — 품목 선택 시 1회, 그리고 **규격이 채워지면 다시** 물어본다.
+            //   품목을 고르는 시점엔 크기를 아직 모르는데, 실측상 단가를 가르는 축이 규격이다:
+            //   같은 거래처+품목+규격의 직전가는 중앙오차 **0.0%**(거래처+품목만이면 4.6%).
+            //   서버가 규격 일치를 먼저 찾고 없으면 기존 직전가로 떨어진다(routes/prices.ts).
+            //   ⚠️ AREA 품목의 ㎡ 단가 환산은 서버가 한다 — 여기서 다시 만지지 말 것.
+            window.refreshPriceSuggestion = function(id) {
+                var priceInp = document.querySelector('[name="unit_price_' + id + '"]');
+                var itemIdEl = document.querySelector('[name="item_id_' + id + '"]');
+                var clientEl = document.getElementById('clientId');
+                if (!priceInp || !itemIdEl || !clientEl) {
+                    console.warn('[orderForm] refreshPriceSuggestion: 행 요소를 찾지 못했습니다 #' + id);
+                    return;
+                }
+                var itemId = itemIdEl.value, clientId = clientEl.value;
+                if (!itemId || !clientId) return;
+
+                // 사용자가 손으로 고쳤으면 건드리지 않는다 — 마지막으로 제안한 값과 같을 때만 덮는다.
+                var suggested = priceInp.dataset.basePrice;
+                var cur = parseMoney(priceInp.value);
+                if (suggested && cur && String(cur) !== String(suggested)) return;
+
+                var wEl = document.querySelector('[name="width_' + id + '"]');
+                var hEl = document.querySelector('[name="height_' + id + '"]');
+                var w = wEl ? parseFloat(wEl.value) : 0;
+                var h = hEl ? parseFloat(hEl.value) : 0;
+                var q = '/api/prices?item_id=' + encodeURIComponent(itemId) +
+                        '&client_id=' + encodeURIComponent(clientId) + '&context=sales';
+                if (w > 0 && h > 0) q += '&width=' + w + '&height=' + h;
+
+                var priceAtRequest = priceInp.value;
+                axios.get(q).then(function(r) {
+                    var d = r && r.data;
+                    var srcEl = document.getElementById('price_src_' + id);
+                    if (d && d.price_source === 'suppressed') {
+                        // 주문제작 계열 — 틀린 값을 채우면 「검토했다」는 착시를 준다. 빈칸이 낫다.
+                        if (srcEl) { srcEl.textContent = '건별 견적'; srcEl.classList.remove('hidden'); }
+                        return;
+                    }
+                    if (!d || !(d.suggested_price > 0)) return;
+                    if (priceInp.value !== priceAtRequest) return;   // 응답 대기 중 사용자 입력 우선
+                    priceInp.value = fmtMoneyInput(d.suggested_price);
+                    priceInp.dataset.basePrice = d.suggested_price;  // 특약 저장 제안의 비교 기준
+                    if (srcEl) {
+                        var label = d.price_source === 'recent_same_spec' ? '같은 규격 최근가'
+                                  : d.price_source === 'recent_transaction' ? '최근 거래가'
+                                  : d.price_source === 'client_item_price' ? '거래처 특약가'
+                                  : d.price_source === 'price_list' ? '단가표'
+                                  : d.price_source === 'base_price' ? '기본 단가(추정)' : '';
+                        srcEl.textContent = label;
+                        srcEl.classList.toggle('hidden', !label);
+                    }
+                    calcItem(id);
+                }).catch(function() { /* 제안 실패는 무음 — 기본 단가로 진행 */ });
+            };
+
             window.onUnitPriceManualChange = function(id) {
                 var priceInp = document.querySelector('[name="unit_price_' + id + '"]');
                 var itemIdEl = document.querySelector('[name="item_id_' + id + '"]');
