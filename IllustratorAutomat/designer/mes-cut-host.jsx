@@ -68,12 +68,18 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.35.0';  // 0.35.0 = ★굽기 export 는 **호출당 고정비가 지배**한다 — 조각마다 exportFile 하던 것을 아트보드 N개 + `exportForScreens` 1회로 (실물 23조각 8,263ms ×2 → 4,841 + 695ms). 경로 규약은 그대로 — 파일을 `Folder.temp` 의 옛 이름으로 옮겨 둔다(안 그러면 도련이 조용히 사라진다) · 0.34.0 = ★칼선에서 **자를 수 없는 부스러기**를 걷어낸다(실물 판 131개 중 15개가 0.01x0mm 3점 조각 — 컬파운드 안쪽이라 안 보였다) · 글자는 글자대로 남긴다(감싸기 안 함) · 0.33.0 = ★회전한 조각의 칼선이 **바깥 사각**으로 나가던 것 정정 — PDF 굳히기 임베드가 만든 사각 클립이 실루에을 덮었다(자르는 게 없는 클립만 걷어낸다) · 0.32.0 = ★굳혀서 배치하는 새 법 — **한 판에 1회**(조각 전부를 계자 PDF 로 한 번 굳힌 뒤 회전 값마다 마스턼 하나 → 배치는 duplicate) — 회전만 걸려도 조각당 3.05초가 붙던 것이 조각 수와 무관해진다 · 0.31.0 = ★등록 manifest 가 저장 배율을 반영한다(measured_cm=실물 · scale_pct=100/N) — 여태 1/2 로 짜면 주문 라인 규격이 1/S · 청구면적이 1/S² 였다 · 0.30.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.29.0 = PDF 아트보드 기준을 잉크 경계로(visibleBounds 로 잡으면 마스크로 가린 여분이 되살아나 조각이 커지고 재단선을 넘는다) · 0.28.0 = 회전도 임베드 앞으로 + **회전만 있어도 PDF 경로**(1:1 회전도 마스크가 안 따라와 배경 절반이 회색) + 검산 기대폭에 회전 반영 · 0.27.0 = 배율 기준을 PDF 아트보드로(배치 직후 보고값은 잘려 있어 +23%) · 확대는 임베드 **전**(뒤로 옮기면 마스크가 안 따라와 배경이 죽는다) · 0.26.0 = 배율 확대 크기 계산을 임베드 **후**로(배치 직후 값은 그림 있는 데까지로 잘려 있어 클립 밖 삐짐 조각이 +23% 크게 나왔다) · 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
+var MESCUT_VERSION = 'CUT-CEP-0.36.0';  // 0.36.0 = ★굳히기 격자가 **PDF 페이지 한계(200인치=5,080mm)**를 넘어 저장이 취소되던 것 정정 — 캔버스 한계(5,644mm)로 재고 있어 조각이 많으면 판이 조용히 조각당 3초 경로로 떨어졌다(23조각 실패→성공) · 적용 단계별 소요(`ms=`)와 굳히기 실패 이유(`hardenwhy=`)를 결과에 실어 보낸다(판은 불변) · 0.35.0 = ★굽기 export 는 **호출당 고정비가 지배**한다 — 조각마다 exportFile 하던 것을 아트보드 N개 + `exportForScreens` 1회로 (실물 23조각 8,263ms ×2 → 4,841 + 695ms). 경로 규약은 그대로 — 파일을 `Folder.temp` 의 옛 이름으로 옮겨 둔다(안 그러면 도련이 조용히 사라진다) · 0.34.0 = ★칼선에서 **자를 수 없는 부스러기**를 걷어낸다(실물 판 131개 중 15개가 0.01x0mm 3점 조각 — 컬파운드 안쪽이라 안 보였다) · 글자는 글자대로 남긴다(감싸기 안 함) · 0.33.0 = ★회전한 조각의 칼선이 **바깥 사각**으로 나가던 것 정정 — PDF 굳히기 임베드가 만든 사각 클립이 실루에을 덮었다(자르는 게 없는 클립만 걷어낸다) · 0.32.0 = ★굳혀서 배치하는 새 법 — **한 판에 1회**(조각 전부를 계자 PDF 로 한 번 굳힌 뒤 회전 값마다 마스턼 하나 → 배치는 duplicate) — 회전만 걸려도 조각당 3.05초가 붙던 것이 조각 수와 무관해진다 · 0.31.0 = ★등록 manifest 가 저장 배율을 반영한다(measured_cm=실물 · scale_pct=100/N) — 여태 1/2 로 짜면 주문 라인 규격이 1/S · 청구면적이 1/S² 였다 · 0.30.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.29.0 = PDF 아트보드 기준을 잉크 경계로(visibleBounds 로 잡으면 마스크로 가린 여분이 되살아나 조각이 커지고 재단선을 넘는다) · 0.28.0 = 회전도 임베드 앞으로 + **회전만 있어도 PDF 경로**(1:1 회전도 마스크가 안 따라와 배경 절반이 회색) + 검산 기대폭에 회전 반영 · 0.27.0 = 배율 기준을 PDF 아트보드로(배치 직후 보고값은 잘려 있어 +23%) · 확대는 임베드 **전**(뒤로 옮기면 마스크가 안 따라와 배경이 죽는다) · 0.26.0 = 배율 확대 크기 계산을 임베드 **후**로(배치 직후 값은 그림 있는 데까지로 잘려 있어 클립 밖 삐짐 조각이 +23% 크게 나왔다) · 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
 //   굽기용 임시 문서에서 조각을 **가로 한 줄로만** 벌리다가 1:1(원본 크기) 조각에서 실제로 터졌다(2026-08-05).
 var MESCUT_CANVAS_MAX_PT = 16000;   // 여유를 둔 실사용 상한
+// ★**PDF 페이지는 200인치(=14,400pt · 5,080mm)가 한계**다 — 일러 캔버스 한계보다 좁다.
+//   굳히기 격자를 캔버스 한계로 재면 조각이 많을 때 격자가 5,080mm 를 넘고
+//   `saveAs` 가 **"the operation was cancelled"** 로 죽는다 — 그러면 판이 조용히
+//   조각당 3초 경로로 떨어진다(2026-09-04 실측: 16조각 4,515mm 성공 · 23조각 실패).
+//   여유 한 칸 두고 14,000pt(4,938mm) 로 자른다.
+var MESCUT_PDF_MAX_PT = 14000;
 
 /**
  * mm 단위 문서를 만든다 — `app.documents.add()` 를 이걸로 대체한다.
@@ -2818,6 +2824,10 @@ var MESCUT_EFS_MAX_AB = 900;
  * (1) 조각 전부를 임시 문서 하나에 격자로 모아 **PDF 한 번** 굳힌다.
  * @returns {pdf, w, h, cells:{idx:{cx,cy,w,h}}} — 좌표는 격자 좌하단 원점 pt. 실패 시 null.
  */
+// ★굳히기 격자가 왜 안 됐는지를 남긴다 — 여태까지 그냥 null 이라 판이
+//   **조용히 조각당 3초 경로**로 떨어져도 사람이 이유를 알 길이 없었다.
+var MESCUT_HARDEN_ERR = '';
+
 function mesCut_hardenGrid(srcDoc, idxList) {
     var PT = MESCUT_PT_PER_MM;
     var GAP = MESCUT_HARDEN_GAP_MM * PT;
@@ -2830,13 +2840,13 @@ function mesCut_hardenGrid(srcDoc, idxList) {
         if (!b) return null;
         cw.push((b[2] - b[0]) + GAP);
         ch.push((b[1] - b[3]) + GAP);
-        if (cw[i] > MESCUT_CANVAS_MAX_PT || ch[i] > MESCUT_CANVAS_MAX_PT) return null;
+        if (cw[i] > MESCUT_PDF_MAX_PT || ch[i] > MESCUT_PDF_MAX_PT) { MESCUT_HARDEN_ERR = 'cell' + idxList[i]; return null; }
     }
     // 행 줄바꿈 = `nestBakeAll` 과 **같은 규칙**(한 줄이 캔버스 한계에 닿으면 다음 줄).
     // ⚠️ 재는 패스와 놓는 패스가 **같은 조건**을 써야 한다 — 다르면 조각이 아트보드 밖으로 나간다.
     var totW = 0, totH = 0, rowW = 0, rowH = 0;
     for (i = 0; i < n; i++) {
-        if (rowW > 0 && rowW + cw[i] > MESCUT_CANVAS_MAX_PT) {
+        if (rowW > 0 && rowW + cw[i] > MESCUT_PDF_MAX_PT) {
             if (rowW > totW) totW = rowW;
             totH += rowH; rowW = 0; rowH = 0;
         }
@@ -2845,7 +2855,7 @@ function mesCut_hardenGrid(srcDoc, idxList) {
     }
     if (rowW > totW) totW = rowW;
     totH += rowH;
-    if (!(totW > 0) || !(totH > 0) || totH > MESCUT_CANVAS_MAX_PT) return null;
+    if (!(totW > 0) || !(totH > 0) || totH > MESCUT_PDF_MAX_PT) { MESCUT_HARDEN_ERR = 'size' + Math.round(totW) + 'x' + Math.round(totH); return null; }
 
     var pdfPath = Folder.temp.fsName.replace(/\\/g, '/') + '/mes_cut_harden.pdf';
     var tmp = null, cells = {};
@@ -2862,10 +2872,10 @@ function mesCut_hardenGrid(srcDoc, idxList) {
         app.activeDocument = tmp;                    // ★전환 2 — 이후로는 임시 문서 안에서만 논다
         var curX = 0, curY = totH, rowMax = 0;
         for (i = 0; i < n; i++) {
-            if (!cps[i]) throw new Error('복제 실패 ' + idxList[i]);
-            if (curX > 0 && curX + cw[i] > MESCUT_CANVAS_MAX_PT) { curX = 0; curY -= rowMax; rowMax = 0; }
+            if (!cps[i]) throw new Error('dup' + idxList[i]);
+            if (curX > 0 && curX + cw[i] > MESCUT_PDF_MAX_PT) { curX = 0; curY -= rowMax; rowMax = 0; }
             var b2 = mesCut_inkBounds(cps[i]);
-            if (!b2) throw new Error('경계 없음 ' + idxList[i]);
+            if (!b2) throw new Error('bounds' + idxList[i]);
             var w2 = b2[2] - b2[0], h2 = b2[1] - b2[3];
             // 셀 **중앙**에 놓는다 — 나눌 때 중심으로 배정하므로 여백이 대칭이어야 한다
             var tx = curX + (cw[i] - w2) / 2, ty = curY - (ch[i] - h2) / 2;
@@ -2882,6 +2892,7 @@ function mesCut_hardenGrid(srcDoc, idxList) {
         tmp.saveAs(new File(pdfPath), po);
         tmp.close(SaveOptions.DONOTSAVECHANGES); tmp = null;
     } catch (e) {
+        MESCUT_HARDEN_ERR = String(e && e.message ? e.message : e).replace(/[^A-Za-z0-9_.:-]+/g, '_').substr(0, 50);
         if (tmp) { try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) {} }
         try { app.activeDocument = srcDoc; } catch (e3) {}
         return null;
@@ -2928,14 +2939,14 @@ function mesCut_hardenKids(item, need) {
  */
 function mesCut_hardenSplit(destLayer, master, grid, rot, pct) {
     var gb = null;
-    try { gb = master.visibleBounds; } catch (e) { return null; }
-    if (!gb) return null;
+    try { gb = master.visibleBounds; } catch (e) { MESCUT_HARDEN_ERR = 'nobounds'; return null; }
+    if (!gb) { MESCUT_HARDEN_ERR = 'nogb'; return null; }
     var k = pct / 100;
     var swap = (Math.abs((rot || 0) % 180) === 90);
     var expW = (swap ? grid.h : grid.w) * k, expH = (swap ? grid.w : grid.h) * k;
     // 상자가 기대와 다르면 사상 전제가 깨진 것이다
-    if (Math.abs((gb[2] - gb[0]) - expW) > expW * 0.02 + 1) return null;
-    if (Math.abs((gb[1] - gb[3]) - expH) > expH * 0.02 + 1) return null;
+    if (Math.abs((gb[2] - gb[0]) - expW) > expW * 0.02 + 1) { MESCUT_HARDEN_ERR = 'W' + Math.round(gb[2] - gb[0]) + 'vs' + Math.round(expW); return null; }
+    if (Math.abs((gb[1] - gb[3]) - expH) > expH * 0.02 + 1) { MESCUT_HARDEN_ERR = 'H' + Math.round(gb[1] - gb[3]) + 'vs' + Math.round(expH); return null; }
     var gcx = (gb[0] + gb[2]) / 2, gcy = (gb[1] + gb[3]) / 2;
     var th = -(rot || 0) * Math.PI / 180;            // 일러는 CCW 양수 · 호출부와 같은 규칙
     var cs = Math.cos(th), sn = Math.sin(th);
@@ -2948,9 +2959,9 @@ function mesCut_hardenSplit(destLayer, master, grid, rot, pct) {
         want.push([gcx + (ax * cs - ay * sn), gcy + (ax * sn + ay * cs)]);
         size.push([(swap ? c.h : c.w) * k, (swap ? c.w : c.h) * k]);
     }
-    if (!idxs.length) return null;
+    if (!idxs.length) { MESCUT_HARDEN_ERR = 'noidx'; return null; }
     var kids = mesCut_hardenKids(master, idxs.length);
-    if (kids.length < idxs.length) return null;      // 평탄화가 페이지를 통째로 뭉갰다
+    if (kids.length < idxs.length) { MESCUT_HARDEN_ERR = 'kids' + kids.length + 'of' + idxs.length; return null; }      // 평탄화가 페이지를 통째로 뭉갰다
     var buckets = [];
     for (i = 0; i < idxs.length; i++) buckets.push([]);
     for (i = 0; i < kids.length; i++) {
@@ -2968,19 +2979,20 @@ function mesCut_hardenSplit(destLayer, master, grid, rot, pct) {
     var made = [], map = {};
     try {
         for (i = 0; i < idxs.length; i++) {
-            if (!buckets[i].length) throw new Error('빈 조각 ' + idxs[i]);
+            if (!buckets[i].length) throw new Error('empty' + idxs[i]);
             var g = destLayer.groupItems.add();
             made.push(g);
             for (j = 0; j < buckets[i].length; j++) buckets[i][j].move(g, ElementPlacement.PLACEATEND);
             var gib = mesCut_inkBounds(g);
-            if (!gib) throw new Error('묶음 경계 없음 ' + idxs[i]);
+            if (!gib) throw new Error('nob' + idxs[i]);
             // 크기 확인 — 옆 조각이 섞여 들어오면 여기서 걸린다
             var tol = Math.max(size[i][0], size[i][1]) * 0.05 + 1;
-            if (Math.abs((gib[2] - gib[0]) - size[i][0]) > tol) throw new Error('폭 불일치 ' + idxs[i]);
-            if (Math.abs((gib[1] - gib[3]) - size[i][1]) > tol) throw new Error('높이 불일치 ' + idxs[i]);
+            if (Math.abs((gib[2] - gib[0]) - size[i][0]) > tol) throw new Error('w' + idxs[i] + ':' + Math.round(gib[2] - gib[0]) + 'vs' + Math.round(size[i][0]));
+            if (Math.abs((gib[1] - gib[3]) - size[i][1]) > tol) throw new Error('h' + idxs[i] + ':' + Math.round(gib[1] - gib[3]) + 'vs' + Math.round(size[i][1]));
             map[idxs[i]] = g;
         }
     } catch (eS) {
+        MESCUT_HARDEN_ERR = String(eS && eS.message ? eS.message : eS).replace(/[^A-Za-z0-9_.:-]+/g, '_').substr(0, 40);
         for (i = 0; i < made.length; i++) { try { made[i].remove(); } catch (eR) {} }
         return null;
     }
@@ -2995,6 +3007,7 @@ function mesCut_hardenSplit(destLayer, master, grid, rot, pct) {
  * @returns {layer, byRot:{rot:{idx:GroupItem}}, n} — 하나도 못 만들면 null
  */
 function mesCut_hardenMasters(doc, grid, rots, pct) {
+    MESCUT_HARDEN_ERR = '';
     var lay = null;
     try { lay = doc.layers.add(); lay.name = '__mes_harden'; } catch (eL) { return null; }
     var byRot = {}, n = 0;
@@ -3012,8 +3025,10 @@ function mesCut_hardenMasters(doc, grid, rots, pct) {
             pl.embed();
             if (stage.pageItems.length !== 1) throw new Error('임시 레이어 개체 ' + stage.pageItems.length);
             got = stage.pageItems[0];
-        } catch (eP) { got = null; }
+        } catch (eP) { got = null; MESCUT_HARDEN_ERR = 'place:'
+            + String(eP && eP.message ? eP.message : eP).replace(/[^A-Za-z0-9_.:-]+/g, '_').substr(0, 40); }
         var map = got ? mesCut_hardenSplit(lay, got, grid, rot, pct) : null;
+        if (got && !map && !MESCUT_HARDEN_ERR) MESCUT_HARDEN_ERR = 'split';
         if (map) { byRot[String(rot)] = map; n++; }
         // 임시 레이어를 통째로 치운다 — 나눈 그룹은 이미 `lay` 로 옮겨졌고 남은 것은 클립 패스뿐이다
         if (stage) { try { stage.remove(); } catch (eR) {} }
@@ -3034,6 +3049,17 @@ function mesCut_hardenMasters(doc, grid, rots, pct) {
  *   ★이 모드에선 좌표 정렬 문제가 원리적으로 없다 — 이미 회전·이동이 끝난 사본을 그대로 쓰므로
  *     패널의 `baseX`/trim 오프셋 수식도, 미세·거친 두 마스크를 함께 들고 다니는 것도 필요 없다.
  */
+// ★적용 단계를 **단계별로** 재 둔다 — 「적용 12.7초」 하나로는 어디를 고칠지 모른다.
+//   굽기에서 같은 실수를 했다 — 경계계산을 의심했는데 비용은 전부 export 였다(2026-09-04).
+//   결과 문자열에만 붙는다 — 판은 전혀 바뀌지 않는다.
+var MESCUT_TMS = {};
+function mesCut_tm(k, t0) { MESCUT_TMS[k] = (MESCUT_TMS[k] || 0) + ((new Date()).getTime() - t0); }
+function mesCut_tmStr() {
+    var out = [], k;
+    for (k in MESCUT_TMS) if (MESCUT_TMS.hasOwnProperty(k) && MESCUT_TMS[k] > 0) out.push(k + ':' + MESCUT_TMS[k]);
+    return out.join(',');
+}
+
 function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, cutMode) {
     if (!MESCUT_NEST_ITEMS || !MESCUT_NEST_ITEMS.length) return 'ERROR 대상 없음 (nestBegin 먼저)';
     var raw = mesCut_readParams();
@@ -3048,6 +3074,8 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
     // ★배율은 **매 호출 초기화**한다. 지난 실행 값이 남으면 다음 판의 돔보가 조용히 작아진다.
     MESCUT_SCALE_N = 1;
     var resizePct = 100;   // 파일 좌표(F) → 저장 좌표(S) 조각 리사이즈. 100 = 그대로
+    MESCUT_TMS = {};
+    var TMA = (new Date()).getTime();
     var sheets = [], cur = null, bleedSz = {};
     for (var i = 0; i < lines.length; i++) {
         var ln = lines[i].replace(/^\s+|\s+$/g, '');
@@ -3137,8 +3165,10 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
         }
         if (needIdx.length && MESCUT_HARDEN_OFF) hardenWhy = 'off';
         else if (needIdx.length) {
+            var tmH = (new Date()).getTime();
             hardenGrid = mesCut_hardenGrid(srcDoc, needIdx);
-            if (!hardenGrid) hardenWhy = 'grid';
+            mesCut_tm('harden', tmH);
+            if (!hardenGrid) hardenWhy = 'grid' + (MESCUT_HARDEN_ERR ? ('.' + MESCUT_HARDEN_ERR) : '');
             else if (hardenGrid.w * (resizePct / 100) > MESCUT_CANVAS_MAX_PT
                 || hardenGrid.h * (resizePct / 100) > MESCUT_CANVAS_MAX_PT) {
                 // 확대한 격자가 일러 캔버스에 안 들어간다 → 조각별 옛 경로로(배율이 클 때만 생긴다)
@@ -3147,7 +3177,9 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
         }
         for (var s = 0; s < sheets.length; s++) {
             var sh = sheets[s];
+            var tmD = (new Date()).getTime();
             var doc = mesCut_newDocMM(sh.w * MESCUT_PT_PER_MM, sh.h * MESCUT_PT_PER_MM);
+            mesCut_tm('newdoc', tmD);
             doc.artboards[0].artboardRect = [0, sh.h * MESCUT_PT_PER_MM, sh.w * MESCUT_PT_PER_MM, 0];
             var sheetH = sh.h * MESCUT_PT_PER_MM;
             // ★아트 레이어를 명시적으로 들고 간다. `doc.layers[0]` 을 그때그때 읽으면 안 된다 —
@@ -3170,9 +3202,11 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                     rotSeen[rk] = 1; rotList.push(itR.rot || 0);
                 }
                 if (rotList.length) {
+                    var tmM = (new Date()).getTime();
                     masters = mesCut_hardenMasters(doc, hardenGrid, rotList, resizePct);
+                    mesCut_tm('master', tmM);
                     if (masters) nMasters += masters.n;
-                    else if (!hardenWhy) hardenWhy = 'split';
+                    else if (!hardenWhy) hardenWhy = 'split' + (MESCUT_HARDEN_ERR ? ('.' + MESCUT_HARDEN_ERR) : '');
                 }
             }
 
@@ -3227,7 +3261,9 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                     //   나중에 지우려 하면 실패하고, 확대 안 된 사본이 판에 그대로 남아 겹친다.
                     try { copy.remove(); } catch (eRm) {}
                     copy = null; copies[b] = null;
+                    var tmS = (new Date()).getTime();
                     var placed = mesCut_scaleAsPlaced(doc, artLayer, MESCUT_NEST_ITEMS[it2.idx], srcDoc, resizePct, b, it2.rot);
+                    mesCut_tm('scale', tmS);
                     if (placed) { copy = placed; copies[b] = placed; nPlaced++; rotDone = true; }
                     else {
                         // 폴백 — 원본에서 다시 복제해 종전 방식으로 키운다.
@@ -3275,7 +3311,9 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                     // 조각마다 따로 부른다 — 한꺼번에 합집합하면 **조각끼리 이어질 수 있다**(오프셋 ≥ 간격/2).
                     // ★마지막 인자 = 「조각 하나 = 칼선 하나」. 판짜기에서만 켠다(단품·도련은 낱개가 목적).
                     try {
+                        var tmV = (new Date()).getTime();
                         var vres = mesCut_vecSilhouette(doc, [copies[vi]], vcl, vecOffsetMm, vecFillClosed);
+                        mesCut_tm('vecsil', tmV);
                         // ★부스러기를 걷어낸 조각은 **번호로** 알린다 — 조용히 지우지 않는다.
                         if (vres && vres.dropped) {
                             // 같은 조각이 여러 장 배치되면 번호가 중복으로 찍힌다(#3·#3) → 한 번만
@@ -3357,8 +3395,10 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                             //   그 PC 를 새 계층에 태우면 ②가 없으니 곧장 ③단색으로 떨어진다 = 명백한 회귀다.
                             //   → 구 패널은 옛 경로를 **그대로** 태운다. 품질은 종전과 같고 나빠지지 않는다.
                             var lg = null;
+                            var tmB = (new Date()).getTime();
                             try { lg = mesCut_vecBleed(doc, [copies[vi]], vecOffsetMm, vecBleedMm, vecFillClosed, vecBleedMode); }
                             catch (eLG) { lg = null; }
+                            mesCut_tm('bleed', tmB);
                             if (lg && lg.ok) bMode = 'legacy';
                             else if (!blCode) blCode = (lg && lg.code) || 'fail';
                         } else {
@@ -3400,7 +3440,9 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
             //   기준 = **조각 + 조각별 칼선 전체를 감싼 사각**. 그 바깥 17mm 가 돔보 자리다.
             //   (조각만으로 잡으면 gap/2 만큼 바깥에 있는 조각 칼선이 테두리를 삐져나온다)
             //   배치 영역이 이미 margin 만큼 안쪽이라 확장해도 시트 규격을 넘지 않는다.
+            var tmF = (new Date()).getTime();
             var u = mesCut_unionOf(mesCut_topItems(doc));
+            mesCut_tm('fit', tmF);
             if (u) {
                 var m = mesCut_domboMargin() * MESCUT_PT_PER_MM;
                 doc.artboards[0].artboardRect = [u[0] - m, u[1] + m, u[2] + m, u[3] - m];
@@ -3435,6 +3477,7 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
             + ';placed=' + nPlaced + ';placefail=' + nPlaceFail
             + ';fast=' + nFast + ';masters=' + nMasters + (hardenWhy ? (';hardenwhy=' + hardenWhy) : '')
             + (vecDrop.length ? (';vecdrop=' + vecDrop.join(',')) : '')
+            + ';ms=' + mesCut_tmStr() + ';msall=' + ((new Date()).getTime() - TMA)
             + ';sheetw=' + MESCUT_LAST_SHEET_W + ';sheeth=' + MESCUT_LAST_SHEET_H
             + ';bleedfail=' + blFail + ';bleedclip=' + blClip + ';bleedpx=' + blPix + ';bleedsolid=' + blSolid
             + ';bleedlegacy=' + blLegacy + (blFail ? (';bleedcode=' + blCode) : '')

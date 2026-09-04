@@ -944,6 +944,21 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     ok('3w 게이트 스위치가 있다', /var MESCUT_EFS_OFF = false;/.test(h2))
     ok('3w 상한을 넘으면 옛 경로', /idx\.length > MESCUT_EFS_MAX_AB/.test(h2))
     ok('3w 결과에 새 경로 여부를 밝힌다', /;fastbake=' \+ fastBake/.test(h2))
+
+    // ── 굳히기 격자 = PDF 페이지 한계 (2026-09-04) ──────────
+    // ★일러 캔버스는 5,644mm 까지지만 **PDF 페이지는 200인치(5,080mm)** 까지다.
+    //   캔버스 한계로 격자를 재면 조각이 많을 때 `saveAs` 가 취소되고
+    //   판이 **조용히** 조각당 3초 경로로 떨어졌다(23조각 실측).
+    ok('3x 굳히기 격자는 PDF 한계를 쓴다', /var MESCUT_PDF_MAX_PT = 14000;/.test(h2))
+    // 격자 안의 네 자리(셀 크기·재는 줄바꿈·총크기·놓는 줄바꿈)가 전부 PDF 한계를 써야 한다
+    ok('3x 격자 네 자리 전부 PDF 한계', (h2.match(/MESCUT_PDF_MAX_PT/g) || []).length >= 5)
+    // ★조용한 폴백은 이유를 남겨야 보인다 — 여태 null 이라 사람이 알 길이 없었다.
+    ok('3x 굳히기 실패 이유를 남긴다', /var MESCUT_HARDEN_ERR = '';/.test(h2)
+      && /hardenWhy = 'grid' \+ \(MESCUT_HARDEN_ERR/.test(h2)
+      && /hardenWhy = 'split' \+ \(MESCUT_HARDEN_ERR/.test(h2))
+    // ★적용이 왜 그런지를 재는 눈금 — 판은 전혀 바뀌지 않는다(문자열에만 붙는다).
+    ok('3x 적용 단계별 소요를 보낸다', /';ms=' \+ mesCut_tmStr\(\)/.test(h2)
+      && /mesCut_tm\('vecsil'/.test(h2) && /mesCut_tm\('harden'/.test(h2))
   }
   // ★단품 칼선(makeCut)은 손대지 않았다 — 거기는 지금도 구멍을 낸다.
   ok('3v 단품 칼선의 구멍은 유지', /var minHoleMm = toFileMm\(MIN_HOLE_MM\);/.test(panelSrc))
