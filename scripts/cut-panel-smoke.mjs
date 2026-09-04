@@ -963,8 +963,11 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     // ★셀 포함 검사 — 조각 파편이 **자기 셀 안에** 있어야 한다.
     //   이게 없으면 「검산 실패한 조각만 빼기」가 **옆 조각 파편을 섞은 채** 통과시킬 수 있다.
     //   실제로 이 검사가 실물에서 `outside` 를 잡았다 — 부분 수용은 안전하지 않았다.
-    ok('3x 조각이 자기 셀 안에 있는지 확인', /MESCUT_HARDEN_ERR = 'outside'/.test(h2)
-      && /MESCUT_HARDEN_GAP_MM \* MESCUT_PT_PER_MM \/ 2/.test(h2))
+    // ★배정은 「가장 가까운 중심」이 아니라 **셀 상자 포함**이어야 한다 —
+    //   굳힌 PDF 는 낱개 패스로 풀리므로 넓은 조각의 끝쪽이 옆 조각 중심에 더 가까워진다.
+    ok('3x 배정은 셀 상자 포함으로', /\(hits \? 'ambig' : 'outside'\)/.test(h2)
+      && /MESCUT_HARDEN_GAP_MM \* MESCUT_PT_PER_MM \/ 2/.test(h2)
+      && !/best < 0 \|\| d < bd/.test(h2))
     ok('3x 포기한 조각 수를 밝힌다', /;hardenskip=/.test(h2) && /MESCUT_HARDEN_SKIP\+\+/.test(h2))
   }
   // ★단품 칼선(makeCut)은 손대지 않았다 — 거기는 지금도 구멍을 낸다.
