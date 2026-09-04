@@ -432,14 +432,22 @@ export function inventoryPage(c: Context<HonoEnv>) {
                   <!-- 실사 UX 다①: 품목 검색·필터 / 다②: 차이 요약 -->
                   <div style="display:flex;gap:6px;margin-bottom:8px;">
                     <input type="text" id="panelItemSearch" placeholder="품목명·코드 검색" oninput="icApplyFilter()" style="flex:1;min-width:0;padding:6px 8px;border:1px solid var(--c-border);border-radius:6px;font-size:12px;">
+                    <!-- 「재고 있는 것만」이 구역 실사의 기본값이다 — UV실은 16줄 중 15줄이 0 이라
+                         담당자가 의미 있는 1줄을 보려고 16줄을 넘겼다(2026-09-04 실측). -->
                     <select id="panelItemFilter" onchange="icApplyFilter()" style="padding:6px 8px;border:1px solid var(--c-border);border-radius:6px;font-size:12px;">
+                      <option value="nonzero">재고 있는 것만</option>
                       <option value="all">전체</option>
                       <option value="unfilled">미입력만</option>
                       <option value="diff">차이만</option>
                       <option value="changed">재고변동만</option>
                     </select>
+                    <button id="panelAddItemBtn" onclick="icOpenCandidates()" style="padding:6px 10px;border:1px solid var(--c-border);border-radius:6px;font-size:12px;background:var(--c-surface);white-space:nowrap;">
+                      <i class="fas fa-plus mr-1"></i>품목 추가
+                    </button>
                   </div>
                   <div id="panelDiffSummary" style="margin-bottom:8px;"></div>
+                  <!-- 0 인 줄을 접었을 때 그 사실을 알려 주는 자리 (숨기면 「없는 품목」으로 읽힌다) -->
+                  <div id="panelZeroHint" style="margin-bottom:8px;"></div>
                   <div id="panelItems" style="max-height:400px;overflow-y:auto;"></div>
                 </div>
 
@@ -727,6 +735,24 @@ export function inventoryPage(c: Context<HonoEnv>) {
                         <button id="submitBulkAssign" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">적용</button>
                     </div>
                 </div>
+            </div>
+
+            <!-- 구역 실사: 품목 추가 (2026-09-04) — 「이 구역에 있는데 목록에 없어요」를 그 자리에서 푼다.
+                 ⚠️ display 는 **클래스로만** 다룬다 — 인라인 style 이 .hidden 을 이겨 항상 보이게 된다. -->
+            <div id="icCandModal" class="ds-modal-overlay hidden flex items-center justify-center">
+              <div class="ds-card" style="width:min(760px,94vw);padding:20px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                  <h3 style="font-size:16px;font-weight:700;">이 구역에 품목 추가</h3>
+                  <button onclick="icCloseCandidates()" style="border:0;background:transparent;font-size:20px;line-height:1;color:#9ca3af;cursor:pointer;">&times;</button>
+                </div>
+                <input type="text" id="icCandSearch" placeholder="품목명 · 코드 · 검색어" oninput="icCandSearchInput()"
+                       style="width:100%;padding:7px 10px;border:1px solid var(--c-border);border-radius:6px;font-size:13px;margin-bottom:10px;">
+                <div id="icCandBody"></div>
+                <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+                  <button onclick="icCloseCandidates()" class="ds-btn ds-btn-sm">취소</button>
+                  <button id="icCandApply" onclick="icCandApply()" class="ds-btn ds-btn-primary ds-btn-sm">추가</button>
+                </div>
+              </div>
             </div>
 
             <!-- 창고별 재고 + 창고 간 이동 (UP3-B1) -->
