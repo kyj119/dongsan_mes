@@ -41,13 +41,17 @@ export const SHIP_DATE_ESTIMATED_SQL =
   "(o.shipped_at IS NULL OR o.shipped_at = o.order_date || ' 00:00:00')"
 
 /**
- * 회계 전표성 주문 — 기초채권 이월(`*OPEN*`)·법인간 미러(`ICM-*`). prod 195건(5.4억)이 status=SHIPPED 다.
- * 실제 출고가 아니므로 출고 이력에서 제외한다(안 하면 "2025-12-31 출고 5.3억"이 뜬다).
- * ⚠️ 명명 규칙 의존은 이관 규칙이 바뀌면 깨진다 — `orders.is_voucher` 플래그 신설이 후속 과제(§7).
+ * 회계 전표성 주문 — 기초채권 이월·법인간 미러·회계전표. prod 197건(5.39억)이 status=SHIPPED 다.
+ * 실제 출고·판매가 아니므로 출고 이력과 매출 통계에서 제외한다(안 하면 "2025-12-31 출고 5.3억"이 뜬다).
+ *
+ * ★2026-09-04: 명명 규칙(`ICM-%`·`%OPEN%`) 의존을 **`orders.is_voucher` 플래그로 교체**(마이그 0563).
+ *   이름으로 거르던 동안 `E1-ACCT-1670 회계매출 1,150,000`(2026-06-30)이 규칙에 안 걸려 6월 매출에
+ *   들어가 있었다 — 이 파일 주석이 「후속 과제」로 지목했던 사고가 이미 일어난 상태였다.
+ *   ⚠️ 새 전표성 주문은 **플래그를 직접 세운다**. 이름으로 추론하지 않는다.
  */
 export const voucherOrderSql = (alias: string = 'o') => {
   const p = alias ? `${alias}.` : ''
-  return `(${p}order_number LIKE 'ICM-%' OR ${p}order_number LIKE '%OPEN%')`
+  return `(${p}is_voucher = 1)`
 }
 export const VOUCHER_ORDER_SQL = voucherOrderSql('o')
 
