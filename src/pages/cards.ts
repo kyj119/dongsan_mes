@@ -5,13 +5,14 @@ import { renderPage } from '../layout'
 // 결과가 원본과 내용 동일(동작 보존). 초기화/DnD는 misc(마지막)에 위치(호이스팅).
 import finishingLabel from '../scripts/shared/finishingLabel.js?raw'   // 마감·후가공 표기 정본(클라 사본)
 import deliverySlot from '../scripts/shared/deliverySlot.js?raw'       // 직배 배차 슬롯·완료기한(클라 사본)
+import workOrderPrint from '../scripts/shared/workOrderPrint.js?raw'   // 작업지시서 인쇄(정본 1벌)
 import cardsCore from '../scripts/cards/core.js?raw'
 import cardsActions from '../scripts/cards/actions.js?raw'
 import cardsRip from '../scripts/cards/rip.js?raw'
 import cardsDetail from '../scripts/cards/detail.js?raw'
 import cardsIssueStatus from '../scripts/cards/issueStatus.js?raw'
 import cardsMisc from '../scripts/cards/misc.js?raw'
-const pageScript = [finishingLabel, deliverySlot, cardsCore, cardsActions, cardsRip, cardsDetail, cardsIssueStatus, cardsMisc].join('\n')
+const pageScript = [finishingLabel, deliverySlot, workOrderPrint, cardsCore, cardsActions, cardsRip, cardsDetail, cardsIssueStatus, cardsMisc].join('\n')
 
 export function cardsPage(c: Context<HonoEnv>) {
   return renderPage(c, {

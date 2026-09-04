@@ -3,8 +3,9 @@ import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import finishingLabel from '../scripts/shared/finishingLabel.js?raw'   // 마감·후가공 표기 정본(클라 사본)
 import deliverySlot from '../scripts/shared/deliverySlot.js?raw'       // 직배 배차 슬롯·완료기한(클라 사본)
+import workOrderPrint from '../scripts/shared/workOrderPrint.js?raw'   // 작업지시서 인쇄(정본 1벌)
 import cardDetailScript from '../scripts/cardDetail.js?raw'
-const pageScript = [finishingLabel, deliverySlot, cardDetailScript].join('\n')
+const pageScript = [finishingLabel, deliverySlot, workOrderPrint, cardDetailScript].join('\n')
 
 export function cardDetailPage(c: Context<HonoEnv>) {
   return renderPage(c, {
@@ -67,29 +68,10 @@ export function cardDetailPage(c: Context<HonoEnv>) {
       /* 비고 */
       .cd-notes { display: flex; gap: 8px; align-items: center; padding: 8px 12px; margin: 8px 0; border: 1px solid var(--c-border); border-radius: 4px; }
 
-      /* ── 인쇄 스타일 ── */
-      .print-only { display: none; }
-      .cd-print-header { text-align: center; position: relative; }
-      /* 종이 → 화면 복귀용 QR (이 카드의 /cards/:id). 우상단 고정. */
-      .cd-print-qr { position: absolute; right: 0; top: 0; text-align: center; }
-      .cd-print-qr img { width: 66px; height: 66px; display: block; }
-      .cd-print-qr-no { font-size: 8px; font-family: ui-monospace, monospace; color: #374151; margin-top: 1px; }
-      .cd-print-title { font-size: 24px; font-weight: 900; letter-spacing: 10px; margin-bottom: 8px; }
-      .cd-print-meta { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 10px; }
-
-      @media print {
-        .cd-multi-wrap { overflow: visible !important; }
-        .cd-multi { min-width: 0 !important; }
-        .no-print { display: none !important; }
-        .print-only { display: block !important; }
-        .cd-section { border: none; padding: 0; margin-bottom: 8px; box-shadow: none; }
-        .cd-work-order { border: none; }
-        .cd-designs { gap: 12px; }
-        .cd-design-thumb { width: 140px; height: 140px; }
-        .cd-header { display: none !important; }
-        body { padding: 8px; }
-        @page { size: A4; margin: 8mm; }
-      }
+      /* 이 화면은 **화면 전용**이다 — 종이는 주문 단위 작업지시서 1벌(shared/workOrderPrint.js)이
+         새 창에 자기 스타일로 그린다. 예전엔 여기 인쇄 헤더(print-only)와 @media print 가 따로 있어
+         카드 인쇄본과 주문 인쇄본 두 벌이 갈렸다(용준님 결정 2026-09-04).
+         .no-print 클래스는 마크업에 남아 있으나 화면에는 영향이 없다. */
     `,
     pageScript,
     pageContent: `

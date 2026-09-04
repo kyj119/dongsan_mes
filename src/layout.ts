@@ -54,6 +54,11 @@ export function appLayout(opts: AppLayoutOptions): string {
          실제로 존재하는 마지막 버전 = 1.5.1. 버전을 올릴 땐 build/qrcode.min.js 존재를 먼저 확인할 것. -->
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"
             onerror="console.error('[layout] QRCode CDN 로드 실패 — 작업지시서 QR 이 생략됩니다')"></script>
+    <!-- Code128 바코드 — 작업지시서의 주문번호를 리더기로 읽기 위한 것. QR 과 같은 이유로
+         전역이 없으면 조용히 빠지므로(2026-08-10 전례) 로드 실패를 콘솔에 남긴다.
+         ⚠️ code128 만 담은 dist/JsBarcode.code128.min.js 는 **404** 다(2026-09-04 실측) — all 번들이 실존 경로. -->
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"
+            onerror="console.error('[layout] JsBarcode CDN 로드 실패 — 작업지시서 바코드가 생략됩니다')"></script>
     <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>

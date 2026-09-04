@@ -14,6 +14,7 @@ import { CONSOLIDATABLE_ORDER_STATUSES } from '../../utils/statusLabels'
 import { deductStockLinesOnShip } from '../../utils/stockShip'
 import { ensureShipmentForOrder } from '../../utils/shipmentHelper'
 import { formatDeliveryTiming } from '../../utils/productionDeadline'   // 직배 배차 슬롯 표기
+import { resolveGroupByAiIndex, getThumbnailDataUri, isThumbRef, type AnalysisGroup } from '../../utils/thumbnailStore'
 
 const ordersQueriesRouter = new Hono<HonoEnv>()
 ordersQueriesRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
@@ -483,5 +484,189 @@ ordersQueriesRouter.get('/export/csv', async (c) => {
 })
 
 // PATCH /api/orders/:id/bill - 경리 확인 (MANAGER+)
+
+// ── GET /:id/work-order — 작업지시서 인쇄 정본 (2026-09-04) ────────────────────
+// 인쇄 화면이 주문 1건 + 카드 N건을 개별로 긁던 N+1(scripts/cards/detail.js)을 한 번에 대체한다.
+// 종이에 실리는 것만 담는다 — 헤더·담당자·라인(생산라인 귀속·원단·시안).
+//
+// ★원단 = `product_materials` 후보들의 **이름**이다(`is_default` 아님). 주력 제품은 폭만 다른
+//   같은 이름의 후보가 19개씩 붙어 있어 기본값을 못 박는다 — `is_default=1` 조인은 8월 기준
+//   라인의 **80%가 빈칸**이었다(실측 2026-09-04: 4,074건 중 815건만 채워짐). 이름으로 접으면
+//   70%가 채워지고, 어느 폭·어느 코팅을 거는지는 현장이 정한다(용준님 결정).
+// ★상관 서브쿼리를 쓰지 않는다 — 라인·카드·자재를 각각 한 번씩 읽어 앱에서 잇는다
+//   (SELECT절 상관 서브쿼리 금지 정책 · `npm run audit:subquery`).
+interface WorkOrderLineRow {
+  id: number
+  item_id: number | null
+  item_name: string | null
+  specification: string | null
+  width: number | null
+  height: number | null
+  quantity: number | null
+  unit: string | null
+  content: string | null
+  post_processing: string | null
+  finishing: string | null
+  scale_factor: number | null
+  parent_item_id: number | null
+  ai_analysis_id: number | null
+  ai_group_index: number | null
+}
+
+/** 원단 후보 이름들 → 종이 한 칸. 계열이 하나면 그 이름, 둘이면 병기, 셋 이상이면 「외 N종」. */
+function formatFabricNames(names: string[]): string | null {
+  const uniq = names.filter((n) => n && n.trim() !== '')
+  if (uniq.length === 0) return null
+  if (uniq.length === 1) return uniq[0]
+  if (uniq.length === 2) return `${uniq[0]} / ${uniq[1]}`
+  return `${uniq[0]} 외 ${uniq.length - 1}종`
+}
+
+ordersQueriesRouter.get('/:id/work-order', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    if (!id || isNaN(id)) return c.json({ success: false, error: '주문 ID가 올바르지 않습니다.' }, 400)
+
+    // 형제 GET /:id·/:id/invoice 와 같은 가시성 모델(분할청구 협업 라인 포함)
+    const ovf = orderVisibilityFilter(c, 'o')
+    const order = await c.env.DB.prepare(`
+      SELECT o.id, o.order_number, o.order_date, o.delivery_date, o.delivery_method,
+             o.delivery_time, o.delivery_slot, o.delivery_info, o.shipping_payment,
+             o.internal_notes, o.notes, o.priority,
+             cl.client_name,
+             sr.name AS sales_rep_name, sr.mobile AS sales_rep_mobile
+      FROM orders o
+      LEFT JOIN clients cl ON cl.id = o.client_id
+      LEFT JOIN employees sr ON sr.id = o.sales_rep_id
+      WHERE o.id = ?${ovf.clause}
+    `).bind(id, ...ovf.params).first<Record<string, unknown>>()
+    if (!order) return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)
+
+    // ① 라인 — 자식을 가진 부모 행은 뺀다(기존 인쇄 규칙 유지: 종이 단위 = 실제 제작·출고 대상)
+    const { results: rawLines } = await c.env.DB.prepare(`
+      SELECT oi.id, oi.item_id, oi.item_name, oi.specification, oi.width, oi.height,
+             oi.quantity, oi.unit, oi.content, oi.post_processing, oi.finishing,
+             oi.scale_factor, oi.parent_item_id, oi.ai_analysis_id, oi.ai_group_index
+      FROM order_items oi
+      WHERE oi.order_id = ?
+      ORDER BY oi.sort_order ASC, oi.id ASC
+    `).bind(id).all<WorkOrderLineRow>()
+    const allLines = rawLines || []
+    const parentIds = new Set<number>()
+    for (const l of allLines) if (l.parent_item_id) parentIds.add(l.parent_item_id)
+    const lines = allLines.filter((l) => !parentIds.has(l.id))
+
+    // ② 생산 라인 귀속 — 카드에서 역으로 읽는다. 카드 그룹 판정은 서버(getCardGroup)가 정본이라
+    //    프론트에서 재구현하면 반드시 갈린다. 카드에 안 담긴 라인 = 제작 대상 아님(상품·부자재).
+    const { results: cardRows } = await c.env.DB.prepare(`
+      SELECT ci.order_item_id, ci.card_id, c.category_name, c.thumbnail_url
+      FROM card_items ci
+      JOIN cards c ON c.id = ci.card_id
+      WHERE c.order_id = ? AND c.status != 'CANCELLED'
+      ORDER BY c.id ASC, ci.id ASC
+    `).bind(id).all<{ order_item_id: number; card_id: number; category_name: string | null; thumbnail_url: string | null }>()
+    const lineByItem = new Map<number, string>()
+    const cardOfItem = new Map<number, { card_id: number; thumbnail_url: string | null }>()
+    const itemsPerCard = new Map<number, number>()
+    for (const r of cardRows || []) {
+      if (r.category_name) lineByItem.set(r.order_item_id, r.category_name)
+      cardOfItem.set(r.order_item_id, { card_id: r.card_id, thumbnail_url: r.thumbnail_url })
+      itemsPerCard.set(r.card_id, (itemsPerCard.get(r.card_id) || 0) + 1)
+    }
+
+    // ③ 원단 — 제품에 걸린 자재 후보의 이름을 접는다. 바인드 한도(100) 대비 80개 청크.
+    const itemIds = Array.from(new Set(lines.map((l) => l.item_id).filter((v): v is number => !!v)))
+    const fabricByItem = new Map<number, string[]>()
+    for (let i = 0; i < itemIds.length; i += 80) {
+      const chunk = itemIds.slice(i, i + 80)
+      const ph = chunk.map(() => '?').join(',')
+      const { results: mats } = await c.env.DB.prepare(`
+        SELECT pm.product_item_id, m.item_name
+        FROM product_materials pm
+        JOIN items m ON m.id = pm.material_item_id
+        WHERE pm.product_item_id IN (${ph})
+        ORDER BY m.item_name ASC, m.id ASC
+      `).bind(...chunk).all<{ product_item_id: number; item_name: string }>()
+      for (const r of mats || []) {
+        const cur = fabricByItem.get(r.product_item_id) || []
+        if (!cur.includes(r.item_name)) cur.push(r.item_name)
+        fabricByItem.set(r.product_item_id, cur)
+      }
+    }
+
+    // ④ 시안 — order_items.ai_analysis_id + ai_group_index 가 정본. 카드 썸네일은 **단품 카드**
+    //    에서만 폴백한다(다품목은 어느 라인 것인지 모호 → 오표시).
+    //    ⚠️ 인증이 헤더 전용이라 <img src> 가 R2 를 직접 못 부른다 → 백엔드가 data URI 로 서빙.
+    const analysisIds = Array.from(new Set(lines.map((l) => l.ai_analysis_id).filter((v): v is number => !!v)))
+    const groupsByAnalysis = new Map<number, AnalysisGroup[]>()
+    for (let i = 0; i < analysisIds.length; i += 80) {
+      const chunk = analysisIds.slice(i, i + 80)
+      const ph = chunk.map(() => '?').join(',')
+      const { results: rows } = await c.env.DB.prepare(
+        `SELECT id, groups_json FROM ai_analysis_requests WHERE id IN (${ph})`
+      ).bind(...chunk).all<{ id: number; groups_json: string | null }>()
+      for (const r of rows || []) {
+        if (!r.groups_json) continue
+        try { groupsByAnalysis.set(r.id, JSON.parse(r.groups_json)) } catch { groupsByAnalysis.set(r.id, []) }
+      }
+    }
+
+    // R2 GET 은 병렬 — 직렬 await 면 라인 수만큼 왕복이 그대로 쌓인다(인쇄 대기 시간).
+    const thumbByLine = new Map<number, string>()
+    await Promise.all(lines.map(async (l) => {
+      let ref: string | null = null
+      if (l.ai_analysis_id) {
+        const g = resolveGroupByAiIndex(groupsByAnalysis.get(l.ai_analysis_id), l.ai_group_index)
+        if (g) {
+          // 고해상도(@lg)가 있으면 그것을 쓴다 — 인쇄는 목록과 달리 픽셀이 필요하다.
+          //   P2(에이전트 2장 export) 이전 데이터엔 hi 키가 없어 자동으로 sm 로 내려간다.
+          const hi = (g as Record<string, unknown>).thumbnail_hi_r2_key
+          const sm = g.thumbnail_r2_key
+          if (typeof hi === 'string' && hi) ref = hi
+          else if (typeof sm === 'string' && sm) ref = sm
+          else if (typeof g.thumbnail_base64 === 'string' && g.thumbnail_base64) {
+            thumbByLine.set(l.id, `data:image/png;base64,${g.thumbnail_base64}`)
+            return
+          }
+        }
+      }
+      if (!ref) {
+        // 단품 카드 폴백 — 그 카드의 라인이 하나뿐일 때만 그림이 모호하지 않다.
+        const card = cardOfItem.get(l.id)
+        if (card && card.thumbnail_url && (itemsPerCard.get(card.card_id) || 0) === 1) {
+          if (isThumbRef(card.thumbnail_url)) ref = card.thumbnail_url
+          else { thumbByLine.set(l.id, card.thumbnail_url); return }   // 레거시 data URI
+        }
+      }
+      if (!ref) return
+      try {
+        const uri = await getThumbnailDataUri(c.env, ref)
+        if (uri) thumbByLine.set(l.id, uri)
+      } catch { /* 시안이 없어도 작업지시서는 나가야 한다 */ }
+    }))
+
+    const outLines = lines.map((l) => ({
+      id: l.id,
+      item_name: l.item_name,
+      specification: l.specification,
+      width: l.width,
+      height: l.height,
+      quantity: l.quantity,
+      unit: l.unit,
+      content: l.content,
+      post_processing: l.post_processing,
+      finishing: l.finishing,
+      scale_factor: l.scale_factor,
+      production_line: lineByItem.get(l.id) || null,   // null = 제작 대상 아님(출고만)
+      fabric: l.item_id ? formatFabricNames(fabricByItem.get(l.item_id) || []) : null,
+      thumbnail: thumbByLine.get(l.id) || null,
+    }))
+
+    return c.json({ success: true, data: { order, lines: outLines } })
+  } catch (error) {
+    console.error('orders work-order error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
 
 export default ordersQueriesRouter

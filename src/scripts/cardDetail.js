@@ -38,17 +38,7 @@
             var cardRes = bundle[0], histRes = bundle[1], defRes = bundle[2], cclRes = bundle[3], nbRes = bundle[4];
             if (!cardRes.data.success) throw new Error('카드 조회 실패');
             neighbors = (nbRes && nbRes.data && nbRes.data.data) || null;
-            // 인쇄물에 실을 QR — **이 카드**를 가리킨다(종이를 든 사람이 화면으로 돌아오는 길).
-            //   주문 단위 QR(printWorkOrder)은 목록으로 보내서 현장이 다시 찾아야 했다.
-            var qrDataUrl = '';
-            if (typeof QRCode !== 'undefined') {
-                try { qrDataUrl = await QRCode.toDataURL(window.location.origin + '/cards/' + cardId, { width: 140, margin: 0 }); }
-                catch(e) { console.warn('[cardDetail] QR 생성 실패', e); }
-            } else {
-                console.warn('[cardDetail] QRCode 미로드 — 인쇄 QR 생략 (layout.ts CDN 확인)');
-            }
-            if (seq !== loadSeq) return;   // QR 생성 대기 중 다른 슬라이드가 시작됐으면 폐기
-            render(cardRes.data.data, histRes.data.data || [], defRes.data.data || [], cclRes.data.data || [], qrDataUrl);
+            render(cardRes.data.data, histRes.data.data || [], defRes.data.data || [], cclRes.data.data || []);
             // 다음 카드 프리페치 — 도착 여부는 사용 시점에 await 로 확인(실패하면 그때 404 안내가 뜬다)
             if (neighbors && neighbors.next_id) {
                 var pfId = neighbors.next_id;
@@ -75,7 +65,7 @@
         }
     }
 
-    function render(card, history, defects, checklist, qrDataUrl) {
+    function render(card, history, defects, checklist) {
         var items = cardItems(card);
         var accessories = card.accessories || [];
         var totalQty = items.reduce(function(s, i) { return s + (i.quantity || 1); }, 0);
@@ -197,7 +187,8 @@
             html += '<button onclick="cdSlide(' + (neighbors.next_id || 'null') + ')"' + (neighbors.next_id ? '' : ' disabled') + ' class="cd-nav-btn"><i class="fas fa-chevron-right"></i></button>';
             html += '</div>';
         }
-        html += '<button onclick="window.print()" class="px-3 py-1.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm"><i class="fas fa-print mr-1"></i>인쇄/PDF</button>';
+        // 종이는 **주문 단위 정본 1벌**(shared/workOrderPrint.js). 이 화면 자체는 인쇄하지 않는다.
+        if (card.order_id) html += '<button onclick="printWorkOrder(' + card.order_id + ')" class="px-3 py-1.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm"><i class="fas fa-print mr-1"></i>작업지시서</button>';
         html += '</div>';
         html += '</div>';
 
@@ -209,18 +200,6 @@
             html += '</div>';
         }
 
-        // ── 인쇄 전용 헤더 ──
-        html += '<div class="print-only cd-print-header">';
-        if (qrDataUrl) {
-            html += '<div class="cd-print-qr"><img src="' + qrDataUrl + '" alt="">'
-                 + '<div class="cd-print-qr-no">' + esc(card.card_number || '') + '</div></div>';
-        }
-        html += '<div class="cd-print-title">● 작 업 지 시 서 ●</div>';
-        html += '<div class="cd-print-meta">';
-        html += '<span>출고날짜 : <b>' + esc(dateStr) + '</b></span>';
-        html += '<span>작업수량 : <b>' + totalQty + '장</b></span>';
-        html += '</div>';
-        html += '</div>';
 
         // ── 작업 지시 영역 ──
         html += '<div class="cd-section cd-work-order">';
