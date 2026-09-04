@@ -493,8 +493,13 @@ function icRenderUnassigned(data) {
   var rows = items.map(function(it) {
     return '<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid #fde68a;border-radius:4px;margin-bottom:4px;cursor:pointer;background:#fff;">'
       + '<input type="checkbox" class="ic-unassigned-chk" value="' + it.item_id + '" style="width:15px;height:15px;flex-shrink:0;">'
-      + '<span style="flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml((it.item_code || '') + ' ' + (it.item_name || '')) + '">'
-        + '<span style="font-family:monospace;color:#6b7280;">' + escapeHtml(it.item_code || '') + '</span> ' + escapeHtml(it.item_name || '')
+      // 실사표와 **같은 규칙** — 규격을 앞세우고 없으면 품목명. 원단 계열은 이름이 전부 같아
+      //   품목명만 보이면 어느 폭인지 구분이 안 된다(2026-09-04 용준님 지적, 미배정 목록에도 같은 문제).
+      + '<span style="flex:0 0 100px;font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
+        + escapeHtml(it.specification || it.item_name || it.item_code || '') + '</span>'
+      + '<span style="flex:1;min-width:0;font-size:11px;color:#9ca3af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml((it.item_code || '') + ' ' + (it.item_name || '')) + '">'
+        + escapeHtml(it.item_group || it.item_name || '')
+        + '<span style="font-family:monospace;margin-left:6px;">' + escapeHtml(it.item_code || '') + '</span>'
       + '</span>'
       + '<span style="font-size:11px;color:#9ca3af;white-space:nowrap;flex-shrink:0;">' + window.uomFormatStock((it.quantity != null ? it.quantity : 0), it) + '</span>'
       + '</label>';

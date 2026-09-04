@@ -555,13 +555,15 @@ inventoryCountRouter.get('/:id', async (c) => {
     if (count.count_type === 'ZONE' && count.status === 'DRAFT') {
       const entityId = count.entity_id || getEntityId(c) || 1
       const { results: unassigned } = await c.env.DB.prepare(`
-        SELECT i.id AS item_id, i.item_code, i.item_name, i.unit, i.base_unit, i.pack_size, i.stock_mode, inv.quantity
+        SELECT i.id AS item_id, i.item_code, i.item_name,
+               COALESCE(i.specification, '') AS specification, i.item_group,
+               i.unit, i.base_unit, i.pack_size, i.stock_mode, inv.quantity
         FROM inventory inv
         JOIN items i ON i.id = inv.item_id
         WHERE inv.storage_zone_id IS NULL AND inv.entity_id = ?
           AND i.is_active = 1 AND i.is_purchase_item = 1
           AND i.id NOT IN (SELECT item_id FROM inventory_count_items WHERE count_id = ?)
-        ORDER BY i.category, i.item_name, inv.id
+        ORDER BY i.category, i.item_group, i.item_name, inv.id
       `).bind(entityId, id).all()
       unassignedItems = unassigned || []
     }
