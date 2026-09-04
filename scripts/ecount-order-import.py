@@ -397,8 +397,15 @@ def main():
     # 담당자 — 이카운트 「사원(담당)명」을 **생성 시점에** 넣는다.
     #   `POST /api/orders` 는 sales_rep_id 를 받는다(안 보내면 로그인 사용자로 박힌다).
     #   created_at·order_number·status 와 달리 이건 소급 보정이 필요 없다.
+    #   ⚠️직원은 **법인 귀속**이라 entity 1 토큰으로는 선명·청주 소속이 안 보인다.
+    #     담당자는 법인을 넘나든다(김용준=CEO·임선미=선명 SIGN 인데 동산 주문 담당) →
+    #     ADMIN **전체 모드(entity 0)** 로만 조회한다. 실측 27명 → 47명.
+    r_all = api(base, '/api/auth/switch-entity', tok, {'entity_id': 0})
+    tok_all = ((r_all.get('data') or {}).get('token')) or tok
+    if tok_all is tok:
+        print('⚠️ 전체 모드 전환 실패 — 담당자가 법인 필터에 걸릴 수 있다')
     staff_idx = {}
-    for e in page_all(base, tok, '/api/hr/employees?status=ACTIVE'):
+    for e in page_all(base, tok_all, '/api/hr/employees?status=ACTIVE'):
         nm = str(e.get('name') or '').strip()
         if nm:
             staff_idx.setdefault(nm, e['id'])
