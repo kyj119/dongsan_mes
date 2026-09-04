@@ -95,12 +95,30 @@ pricesRouter.get('/', async (c) => {
                     * (MAX(CAST((oi.height + 9) / 10 AS INT) * 10, 100) / 100.0)
                     * oi.quantity )
                ELSE oi.unit_price END`
+        // ★AREA 품목인데 **규격이 없는 라인은 아예 빼야 한다**(2026-09-04 실측).
+        //   위 CASE 는 규격이 없으면 `ELSE oi.unit_price` 로 떨어지는데, 그 값은 ㎡단가가 아니라
+        //   **장당금액**이다(이관분은 `unit_price = amount ÷ quantity` 로 들어온다).
+        //   그대로 최근가로 내보내면 화면이 ㎡단가로 받아 곱한다 —
+        //   실측 피해: (주)애니룩스 수성 현수막 제안가 **18,000원/㎡**(근거 E1-20260831-I002, 규격 없는 라인).
+        //   같은 품목 두용기획 1,556 · 선명커뮤니케이션 1,700 이 정상값이다. 3개월 평균도 8,408 로 부풀어 있었다.
+        //   원천(이카운트 판매현황)에도 규격이 비어 있어 복구가 불가하므로 **제외가 유일한 처리**다.
+        //   규모 = AREA 라인 15,949건 중 331건(2.1%) — `python scripts/price-table.py --audit` 로 상시 확인.
+        // ⚠️ 3x6·4x8 은 cm 가 아니라 **자(尺)** 판재 규격이 잘못 저장된 것이다(포맥스 계열 18건).
+        //    cm 로 보면 청구면적이 최소 1㎡ 로 뭉개져 역시 장당금액이 된다 → 같이 뺀다.
+        // ⚠️ 20m 초과 대형은 **정상이다**(42m×24m 건물 랩핑·113m 매쉬). 이상치로 걸러내지 말 것 —
+        //    ㎡단가가 3,040~3,563원으로 오히려 일관된다.
+        const AREA_USABLE_SQL = `(
+             i.pricing_method <> 'AREA'
+          OR (COALESCE(oi.width, 0) > 0 AND COALESCE(oi.height, 0) > 0
+              AND NOT (oi.width <= 10 AND oi.height <= 10))
+        )`
         const recentSales = await c.env.DB.prepare(`
           SELECT ROUND(${AREA_UNIT_PRICE_SQL}) AS unit_price, o.order_date, o.order_number
           FROM order_items oi
           JOIN orders o ON oi.order_id = o.id
           JOIN items i  ON i.id = oi.item_id
-          WHERE oi.item_id = ? AND o.client_id = ? AND o.status != 'CANCELLED'${efSales.clause}
+          WHERE oi.item_id = ? AND o.client_id = ? AND o.status != 'CANCELLED'
+            AND ${AREA_USABLE_SQL}${efSales.clause}
           ORDER BY o.order_date DESC, o.id DESC
           LIMIT 1
         `).bind(item_id, client_id, ...efSales.params).first<RecentSalesRow>()
@@ -121,7 +139,8 @@ pricesRouter.get('/', async (c) => {
           JOIN orders o ON oi.order_id = o.id
           JOIN items i  ON i.id = oi.item_id
           WHERE oi.item_id = ? AND o.status NOT IN ('CANCELLED','DRAFT')
-            AND o.order_date >= date('now', '-3 months')${efSales.clause}
+            AND o.order_date >= date('now', '-3 months')
+            AND ${AREA_USABLE_SQL}${efSales.clause}
         `).bind(item_id, ...efSales.params).first<{ avg_price: number | null; tx_count: number }>()
 
         if (avg3m && avg3m.avg_price && avg3m.tx_count > 0) {
