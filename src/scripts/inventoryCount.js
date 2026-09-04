@@ -202,7 +202,8 @@ async function loadDetailCount(countId) {
   _detailCountId = countId;
   var panel = document.getElementById('detailPanel');
   panel.classList.remove('hidden');
-  panel.style.display = 'flex';
+  panel.style.display = 'block';   // 전체 화면 인플로우 — 종전 우측 fixed 슬라이드의 flex 가 아니다
+  icShowList(false);
 
   var count = countsList.find(function(c) { return c.id === countId; });
   if (count) {
@@ -434,6 +435,22 @@ function icRenderItems() {
           + (item.pack_count != null ? ' <span style="font-size:11px;color:#9ca3af;">(' + item.pack_count + ' × ' + (item.per_pack_qty || 1) + ')</span>' : '');
     }
 
+    // ★장부는 **입력 전에는 감춘다**(용준님 2026-09-04). 먼저 보여주면 그 숫자를 베끼게 되고
+    //   「장부가 맞나」를 확인하는 실사의 목적이 사라진다(전사출력실은 20줄 중 4줄만 채운 회차를
+    //   네 번 반복했다). 입력하는 순간 장부와 차이를 함께 펼친다.
+    //   ⚠️승인 후(비편집)에는 기록이므로 항상 보여준다.
+    var bookCell;
+    if (isEditable && notCounted) {
+      bookCell = '<span style="color:#cbd5e1;">장부 —</span>';
+    } else {
+      var diffQty = countedQty - systemQty;
+      var dTxt = (diffQty === 0)
+        ? '<span style="color:#16a34a;">일치</span>'
+        : '<span style="color:' + (diffQty > 0 ? '#2563eb' : '#ea580c') + ';font-weight:600;">'
+            + (diffQty > 0 ? '+' : '') + window.uomFormatStock(diffQty, icUomItem(item)) + '</span>';
+      bookCell = '장부 <strong>' + window.uomFormatStock(systemQty, icUomItem(item)) + '</strong> · ' + dTxt;
+    }
+
     return '<div style="padding:10px;border:1px solid #f1f5f9;border-radius:4px;margin-bottom:8px;">'
       + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">'
         + '<div style="font-weight:600;font-size:13px;min-width:0;">'
@@ -446,8 +463,10 @@ function icRenderItems() {
       + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;color:#666;">'
         // 「시스템」이라 쓰면 **지금 재고**로 읽힌다. 실제로는 **실사를 만든 시점의 스냅샷**이고,
         //   그 뒤 입출고가 있으면 ⚠️재고변동 배지가 붙는다(그때의 현재고는 current_quantity).
-        + '<div title="실사를 만든 시점의 재고입니다. 지금 재고가 아니며, 그 뒤 입출고가 있으면 ⚠️재고변동으로 표시됩니다.">'
-          + '장부: <strong>' + window.uomFormatStock(systemQty, icUomItem(item)) + '</strong></div>'
+        + '<div title="' + (isEditable && notCounted
+              ? '입력하면 장부 수량과 차이가 표시됩니다'
+              : '실사를 만든 시점의 재고입니다. 지금 재고가 아니며, 그 뒤 입출고가 있으면 ⚠️재고변동으로 표시됩니다.') + '">'
+          + bookCell + '</div>'
         + '<div>실사: ' + countedCell + '</div>'
       + '</div>'
       + (item.notes ? '<div style="font-size:11px;color:#9ca3af;margin-top:6px;padding-top:6px;border-top:1px solid #f1f5f9;"><strong>메모:</strong> ' + escapeHtml(item.notes) + '</div>' : '')
@@ -700,10 +719,16 @@ function openDetail(countId) {
   loadDetailCount(countId);
 }
 
+/** 상세를 열면 목록을 감춘다 — 전체 화면이라 둘이 같이 떠 있으면 안 된다. */
+function icShowList(show) {
+  var list = document.getElementById('countTabContent');
+  if (list) list.classList.toggle('hidden', !show);
+}
+
 function closeDetailPanel() {
   var panel = document.getElementById('detailPanel');
-  panel.classList.add('hidden');
-  panel.style.display = 'none';
+  if (panel) { panel.classList.add('hidden'); panel.style.display = 'none'; }
+  icShowList(true);
   _detailCountId = null;
 }
 

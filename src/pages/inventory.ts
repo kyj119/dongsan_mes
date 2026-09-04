@@ -402,11 +402,12 @@ export function inventoryPage(c: Context<HonoEnv>) {
               <div id="dashContent"></div>
             </div>
 
-            <!-- 상세 패널 (우측 슬라이드)
-                 ⚠️2026-09-04 폭 확대 500px → min(1180px, 96vw). 71줄짜리 실사표를 500px 안에서
-                    입력하는 건 현장에서 못 쓴다(용준님). 여는 방식(display 토글)은 그대로라
-                    openDetail/closeDetailPanel 로직은 손대지 않는다. -->
-            <div id="detailPanel" class="hidden" style="position:fixed;right:0;top:0;height:100vh;width:min(1180px,96vw);background:var(--c-surface);box-shadow:-4px 0 24px rgba(0,0,0,.12);z-index:60;overflow-y:auto;display:none;">
+            <!-- 실사 상세 — **전체 화면**(2026-09-04)
+                 종전엔 우측 고정 슬라이드(500px)였다. 71줄짜리 실사표를 그 폭에서 입력하는 건
+                 현장에서 못 쓴다(용준님). 이제 목록 자리에 통째로 열린다 —
+                 openDetail 이 #countTabContent 를 감추고 이걸 띄운다.
+                 ⚠️이 파일은 백틱 템플릿이다 — 주석에도 백틱을 쓰지 말 것. -->
+            <div id="detailPanel" class="hidden" style="display:none;">
               <div style="padding:20px;">
 
                 <!-- 패널 헤더 -->
