@@ -2827,6 +2827,8 @@ var MESCUT_EFS_MAX_AB = 900;
 // ★굳히기 격자가 왜 안 됐는지를 남긴다 — 여태까지 그냥 null 이라 판이
 //   **조용히 조각당 3초 경로**로 떨어져도 사람이 이유를 알 길이 없었다.
 var MESCUT_HARDEN_ERR = '';
+// 굳히기에서 **몇 조각을 포기했는지** — 0 이 아니면 그만큼 느린 경로를 탄 것이다.
+var MESCUT_HARDEN_SKIP = 0;
 
 function mesCut_hardenGrid(srcDoc, idxList) {
     var PT = MESCUT_PT_PER_MM;
@@ -2974,28 +2976,47 @@ function mesCut_hardenSplit(destLayer, master, grid, rot, pct) {
             var d = dx * dx + dy * dy;
             if (best < 0 || d < bd) { best = j; bd = d; }
         }
+        // ★**자기 셀 안에 있는지 확인한다** — 이게 있어야 아래의
+        //   「검산 실패한 조각만 빼기」가 안전해진다. 셀은 서로 20mm 떨어져 있으므로
+        //   자기 상자 + 절반(10mm) 안에 들어오면 **옆 셀과 겹칠 수 없다**.
+        //   하나라도 밖에 있으면 사상 전제가 깨진 것이니 종전처럼 **판 전체를 포기**한다.
+        var hw = size[best][0] / 2 + MESCUT_HARDEN_GAP_MM * MESCUT_PT_PER_MM / 2;
+        var hh = size[best][1] / 2 + MESCUT_HARDEN_GAP_MM * MESCUT_PT_PER_MM / 2;
+        if (kb[0] < want[best][0] - hw || kb[2] > want[best][0] + hw
+            || kb[3] < want[best][1] - hh || kb[1] > want[best][1] + hh) {
+            MESCUT_HARDEN_ERR = 'outside' + idxs[best];
+            return null;
+        }
         buckets[best].push(kids[i]);
     }
-    var made = [], map = {};
-    try {
-        for (i = 0; i < idxs.length; i++) {
+    var map = {}, nOk = 0;
+    // ★검산에 걸린 조각은 **그 조각만** 버린다 (2026-09-04).
+    //   예전엔 하나라도 어깋나면 판 전체를 포기했다 — 실사용에서 그 대가가 컸다:
+    //   조각 하나가 10% 어깋나(1313 vs 1456pt) **15조각 전부**가 조각당 6.5초 경로로
+    //   돌았다(적용 111.9초 중 98.1초가 그것). 버린 조각은 호출부가 **지금과 똑같은**
+    //   조각별 경로로 만드므로 결과물은 불변이다.
+    //   ⚠️ 안전한 근거는 위의 **셀 포함 검사**다 — 옆 조각 파편이 섞일 수 없음을
+    //      먼저 보장했으므로 크기 불일치는 **그 조각만의 문제**다. 포함 검사 없이
+    //      부분 수용하면 안 된다.
+    for (i = 0; i < idxs.length; i++) {
+        var g = null;
+        try {
             if (!buckets[i].length) throw new Error('empty' + idxs[i]);
-            var g = destLayer.groupItems.add();
-            made.push(g);
+            g = destLayer.groupItems.add();
             for (j = 0; j < buckets[i].length; j++) buckets[i][j].move(g, ElementPlacement.PLACEATEND);
             var gib = mesCut_inkBounds(g);
             if (!gib) throw new Error('nob' + idxs[i]);
-            // 크기 확인 — 옆 조각이 섞여 들어오면 여기서 걸린다
             var tol = Math.max(size[i][0], size[i][1]) * 0.05 + 1;
             if (Math.abs((gib[2] - gib[0]) - size[i][0]) > tol) throw new Error('w' + idxs[i] + ':' + Math.round(gib[2] - gib[0]) + 'vs' + Math.round(size[i][0]));
             if (Math.abs((gib[1] - gib[3]) - size[i][1]) > tol) throw new Error('h' + idxs[i] + ':' + Math.round(gib[1] - gib[3]) + 'vs' + Math.round(size[i][1]));
-            map[idxs[i]] = g;
+            map[idxs[i]] = g; nOk++;
+        } catch (eS) {
+            MESCUT_HARDEN_SKIP++;
+            if (!MESCUT_HARDEN_ERR) MESCUT_HARDEN_ERR = String(eS && eS.message ? eS.message : eS).replace(/[^A-Za-z0-9_.:-]+/g, '_').substr(0, 40);
+            if (g) { try { g.remove(); } catch (eR) {} }   // 그 조각의 아트만 치운다
         }
-    } catch (eS) {
-        MESCUT_HARDEN_ERR = String(eS && eS.message ? eS.message : eS).replace(/[^A-Za-z0-9_.:-]+/g, '_').substr(0, 40);
-        for (i = 0; i < made.length; i++) { try { made[i].remove(); } catch (eR) {} }
-        return null;
     }
+    if (!nOk) return null;
     return map;
 }
 
@@ -3008,6 +3029,7 @@ function mesCut_hardenSplit(destLayer, master, grid, rot, pct) {
  */
 function mesCut_hardenMasters(doc, grid, rots, pct) {
     MESCUT_HARDEN_ERR = '';
+    MESCUT_HARDEN_SKIP = 0;
     var lay = null;
     try { lay = doc.layers.add(); lay.name = '__mes_harden'; } catch (eL) { return null; }
     var byRot = {}, n = 0;
@@ -3476,6 +3498,7 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
         return 'ok;sheets=' + made + ';items=' + items + ';dombo=' + dombo
             + ';placed=' + nPlaced + ';placefail=' + nPlaceFail
             + ';fast=' + nFast + ';masters=' + nMasters + (hardenWhy ? (';hardenwhy=' + hardenWhy) : '')
+            + (MESCUT_HARDEN_SKIP ? (';hardenskip=' + MESCUT_HARDEN_SKIP + '.' + MESCUT_HARDEN_ERR) : '')
             + (vecDrop.length ? (';vecdrop=' + vecDrop.join(',')) : '')
             + ';ms=' + mesCut_tmStr() + ';msall=' + ((new Date()).getTime() - TMA)
             + ';sheetw=' + MESCUT_LAST_SHEET_W + ';sheeth=' + MESCUT_LAST_SHEET_H
