@@ -488,7 +488,7 @@
            게다가 일러 CEP 는 IME 조합을 웹뷰에 안 넘겨(cutSquash 주석의 실측) 조합 중에는
            후보가 아예 안 뜨고, 확정 때 붙는 스페이스가 앞부분 일치마저 깨뜨린다.
            ⚠️`<datalist>` 는 **후보 데이터 저장소로 그대로 남긴다** — narrowMaterials 가
-             자재 후보를 좁힐 때 쓰는 곳이 여기라, 정본을 하나로 유지한다. 입력칸의 `list=` 만 뗀다. -->
+             후보 데이터를 한 벌로 유지하는 자리라 그대로 둔다. 입력칸의 `list=` 만 뗀다. -->
       <div class="row">
         <label for="regClient">거래처</label>
         <div class="acwrap grow">
@@ -504,19 +504,12 @@
         <label for="regWorker" class="l2">가공자</label>
         <select id="regWorker"><option value="">(미지정)</option></select>
       </div>
-      <!-- ★자재·후가공을 한 행에 두지 않는다(2026-08-28 용준님 "폭에 맞춰서 배치").
-           패널 폭은 300px 안팎인데 입력 두 칸(기본폭 ~177px씩) + 라벨 두 개면 폭을 넘어
-           `flex-wrap` 이 후가공만 다음 줄로 떨어뜨리고 자재 칸 옆에 빈 공간이 남았다.
-           행을 나누면 두 칸 모두 `.grow` 로 **패널 폭 전체**를 쓴다(자동완성 목록도 넓어진다). -->
-      <div class="row">
-        <label for="regMaterial">자재</label>
-        <div class="acwrap grow">
-          <input id="regMaterial" type="text" placeholder="품목을 고르면 자동으로 채워집니다" autocomplete="off" />
-          <div id="regMaterialSug" class="sug hidden"></div>
-        </div>
-        <span id="regMaterialHit" class="achit"></span>
-        <datalist id="materialList"></datalist>
-      </div>
+      <!-- ★[자재] 칸은 2026-09-06 에 없앴다. 아무도 그 값을 보지 않았다 —
+           작업지시서의 「원단」 줄은 주문 라인의 품목에서 **자동 파생**되고(orders/queries.ts:588,
+           product_materials 조인), 오퍼레이터가 여는 파일명은 에이전트가 새로 짓는데 거기 자재가 없다.
+           대기함 트레이도 품목명을 초록으로 따로 보여준다(intake.js:186).
+           재고 차감·자재 소요도 같은 매핑을 쓰므로, 사람이 적어 넣을 자리가 아니라 **품목 마스터**의
+           product_materials 를 채우는 것이 정답이다(패널 자유입력으로 때우면 재고는 여전히 모른다). -->
       <div class="row">
         <label for="regFinish">후가공</label>
         <div class="acwrap grow">

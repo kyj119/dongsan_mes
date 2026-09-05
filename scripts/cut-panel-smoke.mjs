@@ -861,7 +861,9 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // RIP 가 보는 이름을 시스템이 몰랐다 → 출력완료 매칭 0%(8월 5,554건 중 0).
   ok('3u 등록에 실물 파일명을 싣는다', /lines\.push\('NAME ' \+ pairBaseName\(nSheetsR/.test(panelSrc))
   ok('3u 등록에 돔보 사실을 싣는다', /'TRIM 1',/.test(panelSrc))
-  ok('3u 등록에 자재·후가공을 싣는다', /'MATERIAL ' \+/.test(panelSrc) && /'FINISH ' \+/.test(panelSrc))
+  // ★자재는 2026-09-06 에 뺐다 — 작업지시서 「원단」은 품목에서 파생되고(orders/queries.ts:588),
+  //   오퍼레이터 파일명에도 자재가 없다. 보내던 값을 되살리면 아무도 안 보는 축이 다시 는다.
+  ok('3u 등록에 후가공을 싣는다', /'FINISH ' \+/.test(panelSrc) && !/'MATERIAL ' \+/.test(panelSrc))
   ok('3u 등록 결과에 파일명을 보여준다', /파일명 ' \+ pairBaseName/.test(panelSrc))
   {
     const h = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
@@ -872,7 +874,9 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     ok('3u 이름이 없으면 옛 규약 폴백', /EA-nest\.eps'\)/.test(h))
     ok('3u trim 을 하드코딩하지 않는다', !/"trim":false,"punch":null/.test(h))
     ok('3u trim 을 실제값으로 보낸다', /R\.TRIM === '1'/.test(h))
-    ok('3u post_desc 에 자재\+후가공', /R\.MATERIAL \|\| R\.FINISH/.test(h))
+    // ★호스트는 손대지 않았다 — `(R.MATERIAL || R.FINISH)` 라 패널이 MATERIAL 을 안 보내면
+    //   post_desc 가 후가공만으로 만들어진다. 이 관용성이 축2 배포를 불필요하게 한다.
+    ok('3u post_desc 가 MATERIAL 없이도 만들어진다', /R\.MATERIAL \|\| R\.FINISH/.test(h))
     ok('3u 호스트 버전이 0.22.0 이상', /MESCUT_VERSION = 'CUT-CEP-0\.(2[2-9]|[3-9]\d)\./.test(h))
   }
   {
@@ -1523,15 +1527,13 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     // 입력칸이 datalist 를 **직접** 물면 네이티브 목록이 같이 떠서 두 규칙이 경합한다
     ok('4 재단 입력칸이 datalist 를 안 문다',
       !/id="reg(Client|Product|Material|Finish)"[^>]*\slist=/.test(htmlSrc))
-    // ★후보 정본은 datalist 하나 — narrowMaterials 가 좁히는 곳이라 목록을 두 벌로 만들지 않는다
-    ok('4 후보 정본이 datalist 하나다',
-      /dl\.getElementsByTagName\('option'\)/.test(panelSrc2)
-      && /fillDatalist\('materialList', list \|\| MATERIALS\)/.test(panelSrc2))
+    // ★후보 정본은 datalist 하나 — 목록을 두 벌로 만들지 않는다(갈라지면 한쪽만 조용히 낡는다)
+    ok('4 후보 정본이 datalist 하나다', /dl\.getElementsByTagName\('option'\)/.test(panelSrc2))
     // ★맞았는지 보이지 않으면, id 가 해소돼도 사용자는 "매칭이 안 된다"고 볼 수밖에 없다
     ok('4 재단이 맞았는지 표시한다',
-      ['regClient', 'regProduct', 'regMaterial', 'regFinish']
+      ['regClient', 'regProduct', 'regFinish']
         .every((k) => new RegExp('id="' + k + 'Hit"').test(htmlSrc) && new RegExp('id="' + k + 'Sug"').test(htmlSrc)))
-    // ★폴백 정책 — 거래처·자재·후가공은 자유 입력을 허용하지만 품목은 **미등록**이라고 말한다
+    // ★폴백 정책 — 거래처·후가공은 자유 입력을 허용하지만 품목은 **미등록**이라고 말한다
     //   (이름만 맞춘 가짜 품목이 실리면 주문서가 그 단가로 계산한다)
     ok('4 품목 미일치는 자유입력이 아니다',
       /productIdOf\(v\) \? \{ ok: true, text: '✓등록' \} : \{ ok: false, text: '미등록' \}/.test(panelSrc2))
@@ -1575,16 +1577,19 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
         && /FROM product_materials pm/.test(pm)
         && /GROUP BY pp_category, option_name/.test(pp)
     })())
-    // ★품목 → 자재. 매핑이 없으면 **전체 목록으로 되돌린다** — 실사용의 27% 가 매핑이 없고 거기엔
-    //   포맥스·폼보드처럼 품목과 별개 축인 판재가 있다. 자유 입력을 막으면 등록 자체가 불가능해진다.
-    ok('4 품목이 자재 후보를 좁힌다 · 매핑 없으면 자유 입력 유지', (() => {
-      const wb = fs.readFileSync(path.join(REPO, 'src', 'routes', 'workbench.ts'), 'utf8')
-      const fn = (panelSrc2.match(/function narrowMaterials[\s\S]{0,700}/) || [''])[0]
-      return /product_materials: prodMats\.results/.test(wb)
-        && /FROM product_materials pm/.test(wb)
-        && /fillDatalist\('materialList', list \|\| MATERIALS\)/.test(fn)   // 폴백
-        && /list\.length === 1/.test(fn)                                     // 하나면 채운다
-        && /!String\(el\.value \|\| ''\)/.test(fn)                          // 사람이 쓴 값은 안 덮는다
+    // ★★[자재] 칸은 2026-09-06 에 없앴다. 자재는 **품목에서 파생**된다 — 작업지시서 「원단」 줄이
+    //   product_materials 조인으로 만들어지고(orders/queries.ts), 재고 차감·자재 소요도 같은 매핑을
+    //   쓴다. 패널이 자유 텍스트로 받아 봐야 그 값은 어디에도 안 실린다(오퍼레이터 파일명에도 없다).
+    //   → 칸이 되살아나지 않도록 **부재를 게이트로 고정**한다. 필요한 것은 품목 마스터의 매핑이다.
+    ok('4 자재 칸이 없다(품목에서 파생)',
+      !/id="regMaterial"/.test(htmlSrc)
+      // ⚠️변경 이력 주석에는 옛 이름이 남는다 — **정의**가 사라졌는지를 본다
+      && !/function narrowMaterials/.test(panelSrc2)
+      && !/materialList/.test(panelSrc2))
+    ok('4 원단은 서버가 품목에서 만든다', (() => {
+      const q = fs.readFileSync(path.join(REPO, 'src', 'routes', 'orders', 'queries.ts'), 'utf8')
+      const w = fs.readFileSync(path.join(REPO, 'src', 'scripts', 'shared', 'workOrderPrint.js'), 'utf8')
+      return /FROM product_materials pm/.test(q) && /fabric:/.test(q) && /ln\.fabric/.test(w)
     })())
     ok('4 등록정보에 ITEMID · 호스트 manifest 에 item_id', (() => {
       const h = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
@@ -1709,7 +1714,7 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
 {
   const p = await openPanel({ ping: 'CUT-CEP-0.7.0' })
   ok('3l UI 필드·버튼 존재', await p.evaluate(() => {
-    return !!document.getElementById('regMaterial') && !!document.getElementById('regFinish')
+    return !document.getElementById('regMaterial') && !!document.getElementById('regFinish')
       && !!document.getElementById('regItem') && !!document.getElementById('btnExportPair')
   }))
   // 네스팅 전에는 낼 것이 없다 — 눌러도 아무 일 없는 버튼을 열어 두지 않는다
@@ -1717,17 +1722,15 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // ★목록은 **config 에서 온다**(2026-09-01). 소스에 박혀 있던 동안은 MES 에서 뭘 바꿔도
   //   패널 5축을 다시 배포해야 반영됐다. 하드코딩으로 되돌아가면 여기서 걸린다.
   //   ⚠️ 재단 후가공은 **coating 계열만** — 돔보는 [돔보] 체크박스와 중복이라 목록에 두지 않는다.
-  ok('3l 자재·후가공 후보가 config 에서 온다(코팅만 · 돔보 제외)', await p.evaluate(() => {
-    const m = [...document.querySelectorAll('#materialList option')].map((o) => o.value)
+  //   ⚠️ 자재 목록은 2026-09-06 에 없앴다(품목에서 파생) — 후가공만 남는다.
+  ok('3l 후가공 후보가 config 에서 온다(코팅만 · 돔보 제외)', await p.evaluate(() => {
     const f = [...document.querySelectorAll('#finishList option')].map((o) => o.value)
-    return m.includes('포맥스5T') && m.includes('솔벤시트') && m.includes('UV후렉스')
-      && f.includes('무광코팅') && f.includes('유광코팅')
+    return f.includes('무광코팅') && f.includes('유광코팅')
       && !f.includes('돔보') && !f.includes('펀칭')
   }))
   ok('3l 목록이 소스에 박혀 있지 않다', (() => {
     const src = fs.readFileSync(CUT_MAIN, 'utf8')
-    return /var MATERIALS = \[\];/.test(src) && /var FINISHES = \[\];/.test(src)
-      && /cfg\.materials/.test(src) && /pp_category === 'coating'/.test(src)
+    return /var FINISHES = \[\];/.test(src) && /pp_category === 'coating'/.test(src)
   })())
   const rows = await p.evaluate(() => {
     const P = window.__mesCutPair
@@ -1735,19 +1738,20 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     const out = {}
     out.before = P.name()
     P.setNest({ wCm: 103, hCm: 206, n: 6 })
-    set('regMaterial', '포맥스5T'); set('regFinish', '자동바니쉬'); set('regItem', '쓰레기불법투기')
+    set('regFinish', '자동바니쉬'); set('regItem', '쓰레기불법투기')
     out.full = P.name()
     out.enabled = document.getElementById('btnExportPair').disabled === false
     set('regFinish', '')
     out.noFinish = P.name()
-    set('regMaterial', ''); set('regItem', '테스트/이름:주의')
+    set('regItem', '테스트/이름:주의')
     out.sanitized = P.name()
     return out
   })
   ok('3l 네스팅 전에는 이름이 없다', rows.before === '', JSON.stringify(rows.before))
-  ok('3l 파일명이 실물 규약대로', rows.full === '(포맥스5T+자동바니쉬)쓰레기불법투기(103x206-6장)', rows.full)
+  ok('3l 파일명이 실물 규약대로', rows.full === '(자동바니쉬)쓰레기불법투기(103x206-6장)', rows.full)
   ok('3l 이름이 생기면 버튼 활성', rows.enabled === true)
-  ok('3l 후가공이 없으면 + 를 안 붙임', rows.noFinish === '(포맥스5T)쓰레기불법투기(103x206-6장)', rows.noFinish)
+  // ★자재를 뺀 뒤에는 후가공이 없으면 괄호 자체가 사라진다(빈 괄호를 남기지 않는다)
+  ok('3l 후가공이 없으면 괄호가 없다', rows.noFinish === '쓰레기불법투기(103x206-6장)', rows.noFinish)
   ok('3l 파일명 금지문자 치환(한글은 유지)', rows.sanitized === '테스트_이름_주의(103x206-6장)', rows.sanitized)
   await p.close()
 }

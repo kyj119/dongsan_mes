@@ -31,7 +31,7 @@
   // ⚠️ 내용을 고치면 **반드시 이 번호를 올린다** — 수동 배포축이라 이 문자열이 "이 PC 가 어느 셸인가"의
   //    유일한 단서다. 0.57.0 하나가 세 상태를 가리키던 사고가 있었고(등록 파라미터·굽기 통합·[◎ 전체]),
   //    그래서 `ia:deploy` 가 번호가 그대로면 배포를 막는다.
-  var SHELL_VERSION = '0.80.0';   // 0.80.0 = ★재단 탭 자동완성을 **가공 탭과 같은 규칙**으로(부분 일치·공백 무시·상위 15건). `<datalist>` 는 CEF 에서 **앞부분 일치**만 걸어, 거래처 2,890건에서 「디자인」이 앞부분 75 / 부분 286 이라 **211건(74%)이 화면에 아예 안 떴다**(「(주)모노디자인」 등 — 이 프로젝트 거래처는 대부분 `(주)…` 로 시작해 앞부분 일치가 사실상 무용하다). 여기에 IME 조합 미전달(cutSquash 주석의 실측)이 겹쳐 조합 중에는 후보가 안 뜨고, 확정 스페이스가 앞부분 일치를 한 번 더 깼다 · ★거래처·품목·자재·후가공 4칸에 **`✓등록` 표시** 신설 — 표시가 없어 id 가 해소돼도 「매칭이 안 된다」로 보였다(두 번 보고됨) · 후보 정본은 여전히 datalist 하나(narrowMaterials 가 품목에 맞춰 자재를 좁히는 곳) · 품목 미일치는 「미등록」이지 자유입력이 아니다 — 이름만 맞춘 가짜 품목이 실리면 주문서가 그 단가로 계산한다 · 0.79.0 = ★「롤 길이」가 **판 전부의 합**이다 — 여태 sheets[0] 만 재서, 판이 나뉘면 재료 길이를 **첫 판 하나**로 보고했다(실측 3판 4807/3927/4807 = 13,541mm 인데 화면은 4801mm = **1/2.8**). 맞붙임이 판을 나누기 시작하며 상시로 드러난다. 효율%의 분모(sheetAreaMm2)는 처음부터 전 판을 합산했으므로 **표시만** 틀렸다 · 판이 여럿이면 최장 판도 병기 · ★효율의 **분자·분모와 굽기 경로**를 결과에 싣는다 — 같은 파일·같은 배치인데 효율 87.8%→67.3%, 굽기 22.9→46.4초로 갈린 실행이 있었는데 **사후 판별이 불가능했다**(호스트가 응답 첫 줄에 주는 fastbake=·docs= 를 패널이 버리고 콘솔에도 안 남겼다). 굽기 경로가 갈리면 마스크가 갈리고, 마스크가 갈리면 잉크·효율이 갈린다 · 0.78.0 = ★도련이 **옆 조각과 겹치면** 클립 확장(자동 ①)을 쓰지 않는다 — ①은 아트 사본의 **클립 사각 자체**를 벌리므로(호스트 mesCut_vecGrowClips) 도련이 **아트와 같은 개체**가 되고, 그러면 zOrder(SENDTOBACK) 을 줄 수단이 없다. 그래서 나중에 놓인 조각의 도련이 먼저 놓인 조각의 **진짜 아트를 덮었다**(실측 2026-09-05: 맞붙임 2조각이 y=2380.4 에서 맞닿고 확장 3mm → 겹침 띠 6mm 를 앞 조각이 통째로 이김. 6조각 중 4개가 ①, 2개만 ②라 **같은 판에서 조각마다 동작이 갈렸다**). ②PNG 는 별도 개체라 늘 아트 뒤로 간다 → 겹치는 잡은 ②로 보낸다. 안쪽 도련은 어차피 이웃이 덮고 잘려 나가므로 무손실 이점이 성립하지 않는다 · 판정은 **간격과 실제 도련**으로(맞붙임 여부로 하지 않는다) · 방식을 바꿨으면 **결과창에 이유를 쓴다**(조용한 격하 금지) · 0.77.0 = ★맞붙임이 **판을 나눈다** — 여태 길이를 무한으로 보고(butt.js BIG=1e9) **판 1장**만 냈다. 1050폭에 조각이 한 줄로 서는 실물이 13,442mm 한 판으로 나가 길이 관문에 막혔고, 그래서 **큰 잡에서는 맞붙임이 한 번도 안 켜졌다**(칼선이 늘 두 줄). nesting.js 는 처음부터 rollMaxH 를 받았다 — 엔진 둘의 **능력이 달랐던 것**뿐이다. 판마다 packRects 를 새로 돌리므로 **공유 변 정확도(허용오차 없음)는 그대로**다 · ★「어느 엔진으로 짤까」 판정을 **placement.js** 로 분리 — 이 판정만 2,800줄 UI 파일 안에 있어서 **「기능이 켜진 채로 끝났는가」를 아무 게이트도 못 봤고**, 그 틈으로 0.75.0 회귀가 지나갔다(cut:butt=엔진 단독 · cut:smoke=소스 텍스트 · cut:e2e=판이 나오나 → 셋 다 통과). 게이트 = cut:placement · ★폭 추천도 **같은 판정**을 탄다(맞붙임 잡을 래스터로 재던 것 정정 — maxSheets:1 과 같은 종류의 어긋남) · ★맞붙임이 폴백하면 **벡터 칼선 요청을 되돌려 준다**(전에는 맞붙임도 안 되고 벡터도 잃었다) · 0.76.0 = ★[폭 추천]이 [네스팅 실행]과 **같은 배치 조건**으로 돈다 — 여태 추천만 `maxSheets: 1` 이라, 조각이 커서 한 판에 안 들어가는 잡은 **전 폭 실패**로 나왔다(실행은 판을 나눠 멀쩡히 짜는데 추천만 「어느 폭에도 배치하지 못했습니다」라고 말했다). 길이·면적도 **판 전부의 합**으로(첫 판만 재면 재료비가 틀린다) · 판 수 표시 · 「폭보다 크다」와 「판이 모자라다」를 구분 · 0.75.0 = ★판 길이 상한을 배치 엔진 밖 **관문 한 곳**(sheetsFitLength)으로 — 맞붙임(butt.packRects)은 폭만 받고 길이는 무한 전제라 상한을 모른 채 1050폭 1열에서 **13,442mm 판**을 내보냈고 호스트가 PARM 으로 죽었다. 상한 기준도 usedH 에서 **판 전체(돔보 포함)** 로 바로잡았다(usedH 만 재면 돔보 40mm 를 놓친다) · 넘으면 래스터로 되돌리고 **그 사유를 화면에 쓴다** · 0.74.0 = ★글자를 감싸는 규칙 취소(글자는 글자대로) · 칼선에서 걷어낸 **부스러기** 조각 번호를 알린다 · 0.73.0 = ★칼선을 감싼 조각 번호를 **호스트가 준 값**으로 쓴다(벡터는 호스트가 칼선을 그리므로 그쪽이 정본) · 0.72.0 = ★사각으로 바뀐 조각을 **번호로** 알린다(#N = 조각 수량 목록) · ★벡터 모드에서 「사각으로 잘랐습니다」는 거짓이었다 — 그 사각은 **배치용**이고 칼선은 아트 실루에이다 · 0.71.0 = ★호스트 게이트 인자 형태 정정([◎ 전체]·도련 통합 굽기가 상시 잠겨 있었다) · 호스트 큐 제거 성공 판정 · 「조」 표기 가시성 게이트 · 분리 중복 호출에도 응답 · 0.70.0 = ★품목·거래처 id 해소가 공백을 무시한다(IME 확정 스페이스가 이름 안에 남는다) · 모호하면 안 고른다 · 0.69.0 = ★자재·후가공 목록을 소스 하드코딩에서 config 로(이제 MES 에서 고치면 배포 없이 따라온다) · 재단 후가공=코팅 계열만 · 「돔보」 중복 제거 · 0.68.0 = ★품목=제품(PRODUCT)만 + 품목→자재 후보 좁히기(매핑 없으면 자유 입력 유지) · 0.67.0 = ★굽기 격자 칸(#nestBakeMm — 큰 실물에서 메모리·시간 급증 완화) + 조합 중 datalist 분리 제거(복원이 비대칭이라 자동완성이 죽은 채 남았다) · 0.66.0 = ★품목 칸(regProduct→ITEMID) — 주문서가 품목·단가까지 자동으로 채운다([내용]=regItem 과 다른 칸) · 0.65.0 = 0.64.0 의 근거 정정(실측상 composition 이벤트가 안 와서 그 처리는 발동하지 않는다 — 대비책으로만 유지) · 0.64.0 = 목록 달린 칸에 IME 조합 중 datalist 분리 · 0.63.0 = 호스트 구버전 감지(Z: 배포본과 대조 → 시작·포커스 시 경고 · 판짜기 차단) · 0.62.0 = 폴백 문구에 회전 포함(배율 1배 회전도 PDF 경로) · 0.61.0 = 배율 확대 결과 보고(PDF 배치 / 예비 경로 폴백 경고) · 0.60.0 = 파일명 맨 앞 거래처 · 자재/후가공 행 분리(폭 맞춤) · 「품목」→「내용」 명칭 분리(MES 품목 마스터와 구분) · 0.59.0 = 재단 탭 [◎ 전체] · 0.58.0 = 굽기 통합(마스크+도련 1왕복)·등록 파라미터(자재·후가공·돔보·파일명) · 0.57.0 = 조각 속 메우기(그룹 하나=칼선 하나·맞붙임 복구) · 0.56.0 = 도련 겹침 분할(간격 존중·하한 1.5mm)
+  var SHELL_VERSION = '0.81.0';   // 0.81.0 = ★[자재] 칸 제거 — **아무도 그 값을 보지 않았다.** 작업지시서의 「원단」 줄은 주문 라인의 **품목에서 자동 파생**되고(orders/queries.ts:588 — product_materials 조인), 오퍼레이터가 여는 주문 폴더의 파일명은 에이전트가 새로 짓는데 거기엔 자재가 없다(Program.cs:3018). 대기함 트레이도 품목명을 초록으로 따로 보여준다(intake.js:186). 재고 차감·자재 소요도 같은 매핑을 쓴다 → 패널의 자재는 **인입함 폴더 안 파일명에서만** 보이는 중복 축이었다 · 파일명 `(자재+후가공)` → `(후가공)`, 둘 다 없으면 **괄호 자체가 사라진다** · manifest `MATERIAL` 제거 — 호스트는 `(R.MATERIAL || R.FINISH)` 라 관용적이어서 **축2 배포가 필요 없다** · ⚠️매핑이 없는 품목(281 중 128)은 패널 자유입력으로 때울 게 아니라 **품목 마스터의 product_materials 를 채워야** 원단 표시·재고 차감·자재 소요가 한 번에 맞는다 · 0.80.0 = ★재단 탭 자동완성을 **가공 탭과 같은 규칙**으로(부분 일치·공백 무시·상위 15건). `<datalist>` 는 CEF 에서 **앞부분 일치**만 걸어, 거래처 2,890건에서 「디자인」이 앞부분 75 / 부분 286 이라 **211건(74%)이 화면에 아예 안 떴다**(「(주)모노디자인」 등 — 이 프로젝트 거래처는 대부분 `(주)…` 로 시작해 앞부분 일치가 사실상 무용하다). 여기에 IME 조합 미전달(cutSquash 주석의 실측)이 겹쳐 조합 중에는 후보가 안 뜨고, 확정 스페이스가 앞부분 일치를 한 번 더 깼다 · ★거래처·품목·자재·후가공 4칸에 **`✓등록` 표시** 신설 — 표시가 없어 id 가 해소돼도 「매칭이 안 된다」로 보였다(두 번 보고됨) · 후보 정본은 여전히 datalist 하나(narrowMaterials 가 품목에 맞춰 자재를 좁히는 곳) · 품목 미일치는 「미등록」이지 자유입력이 아니다 — 이름만 맞춘 가짜 품목이 실리면 주문서가 그 단가로 계산한다 · 0.79.0 = ★「롤 길이」가 **판 전부의 합**이다 — 여태 sheets[0] 만 재서, 판이 나뉘면 재료 길이를 **첫 판 하나**로 보고했다(실측 3판 4807/3927/4807 = 13,541mm 인데 화면은 4801mm = **1/2.8**). 맞붙임이 판을 나누기 시작하며 상시로 드러난다. 효율%의 분모(sheetAreaMm2)는 처음부터 전 판을 합산했으므로 **표시만** 틀렸다 · 판이 여럿이면 최장 판도 병기 · ★효율의 **분자·분모와 굽기 경로**를 결과에 싣는다 — 같은 파일·같은 배치인데 효율 87.8%→67.3%, 굽기 22.9→46.4초로 갈린 실행이 있었는데 **사후 판별이 불가능했다**(호스트가 응답 첫 줄에 주는 fastbake=·docs= 를 패널이 버리고 콘솔에도 안 남겼다). 굽기 경로가 갈리면 마스크가 갈리고, 마스크가 갈리면 잉크·효율이 갈린다 · 0.78.0 = ★도련이 **옆 조각과 겹치면** 클립 확장(자동 ①)을 쓰지 않는다 — ①은 아트 사본의 **클립 사각 자체**를 벌리므로(호스트 mesCut_vecGrowClips) 도련이 **아트와 같은 개체**가 되고, 그러면 zOrder(SENDTOBACK) 을 줄 수단이 없다. 그래서 나중에 놓인 조각의 도련이 먼저 놓인 조각의 **진짜 아트를 덮었다**(실측 2026-09-05: 맞붙임 2조각이 y=2380.4 에서 맞닿고 확장 3mm → 겹침 띠 6mm 를 앞 조각이 통째로 이김. 6조각 중 4개가 ①, 2개만 ②라 **같은 판에서 조각마다 동작이 갈렸다**). ②PNG 는 별도 개체라 늘 아트 뒤로 간다 → 겹치는 잡은 ②로 보낸다. 안쪽 도련은 어차피 이웃이 덮고 잘려 나가므로 무손실 이점이 성립하지 않는다 · 판정은 **간격과 실제 도련**으로(맞붙임 여부로 하지 않는다) · 방식을 바꿨으면 **결과창에 이유를 쓴다**(조용한 격하 금지) · 0.77.0 = ★맞붙임이 **판을 나눈다** — 여태 길이를 무한으로 보고(butt.js BIG=1e9) **판 1장**만 냈다. 1050폭에 조각이 한 줄로 서는 실물이 13,442mm 한 판으로 나가 길이 관문에 막혔고, 그래서 **큰 잡에서는 맞붙임이 한 번도 안 켜졌다**(칼선이 늘 두 줄). nesting.js 는 처음부터 rollMaxH 를 받았다 — 엔진 둘의 **능력이 달랐던 것**뿐이다. 판마다 packRects 를 새로 돌리므로 **공유 변 정확도(허용오차 없음)는 그대로**다 · ★「어느 엔진으로 짤까」 판정을 **placement.js** 로 분리 — 이 판정만 2,800줄 UI 파일 안에 있어서 **「기능이 켜진 채로 끝났는가」를 아무 게이트도 못 봤고**, 그 틈으로 0.75.0 회귀가 지나갔다(cut:butt=엔진 단독 · cut:smoke=소스 텍스트 · cut:e2e=판이 나오나 → 셋 다 통과). 게이트 = cut:placement · ★폭 추천도 **같은 판정**을 탄다(맞붙임 잡을 래스터로 재던 것 정정 — maxSheets:1 과 같은 종류의 어긋남) · ★맞붙임이 폴백하면 **벡터 칼선 요청을 되돌려 준다**(전에는 맞붙임도 안 되고 벡터도 잃었다) · 0.76.0 = ★[폭 추천]이 [네스팅 실행]과 **같은 배치 조건**으로 돈다 — 여태 추천만 `maxSheets: 1` 이라, 조각이 커서 한 판에 안 들어가는 잡은 **전 폭 실패**로 나왔다(실행은 판을 나눠 멀쩡히 짜는데 추천만 「어느 폭에도 배치하지 못했습니다」라고 말했다). 길이·면적도 **판 전부의 합**으로(첫 판만 재면 재료비가 틀린다) · 판 수 표시 · 「폭보다 크다」와 「판이 모자라다」를 구분 · 0.75.0 = ★판 길이 상한을 배치 엔진 밖 **관문 한 곳**(sheetsFitLength)으로 — 맞붙임(butt.packRects)은 폭만 받고 길이는 무한 전제라 상한을 모른 채 1050폭 1열에서 **13,442mm 판**을 내보냈고 호스트가 PARM 으로 죽었다. 상한 기준도 usedH 에서 **판 전체(돔보 포함)** 로 바로잡았다(usedH 만 재면 돔보 40mm 를 놓친다) · 넘으면 래스터로 되돌리고 **그 사유를 화면에 쓴다** · 0.74.0 = ★글자를 감싸는 규칙 취소(글자는 글자대로) · 칼선에서 걷어낸 **부스러기** 조각 번호를 알린다 · 0.73.0 = ★칼선을 감싼 조각 번호를 **호스트가 준 값**으로 쓴다(벡터는 호스트가 칼선을 그리므로 그쪽이 정본) · 0.72.0 = ★사각으로 바뀐 조각을 **번호로** 알린다(#N = 조각 수량 목록) · ★벡터 모드에서 「사각으로 잘랐습니다」는 거짓이었다 — 그 사각은 **배치용**이고 칼선은 아트 실루에이다 · 0.71.0 = ★호스트 게이트 인자 형태 정정([◎ 전체]·도련 통합 굽기가 상시 잠겨 있었다) · 호스트 큐 제거 성공 판정 · 「조」 표기 가시성 게이트 · 분리 중복 호출에도 응답 · 0.70.0 = ★품목·거래처 id 해소가 공백을 무시한다(IME 확정 스페이스가 이름 안에 남는다) · 모호하면 안 고른다 · 0.69.0 = ★자재·후가공 목록을 소스 하드코딩에서 config 로(이제 MES 에서 고치면 배포 없이 따라온다) · 재단 후가공=코팅 계열만 · 「돔보」 중복 제거 · 0.68.0 = ★품목=제품(PRODUCT)만 + 품목→자재 후보 좁히기(매핑 없으면 자유 입력 유지) · 0.67.0 = ★굽기 격자 칸(#nestBakeMm — 큰 실물에서 메모리·시간 급증 완화) + 조합 중 datalist 분리 제거(복원이 비대칭이라 자동완성이 죽은 채 남았다) · 0.66.0 = ★품목 칸(regProduct→ITEMID) — 주문서가 품목·단가까지 자동으로 채운다([내용]=regItem 과 다른 칸) · 0.65.0 = 0.64.0 의 근거 정정(실측상 composition 이벤트가 안 와서 그 처리는 발동하지 않는다 — 대비책으로만 유지) · 0.64.0 = 목록 달린 칸에 IME 조합 중 datalist 분리 · 0.63.0 = 호스트 구버전 감지(Z: 배포본과 대조 → 시작·포커스 시 경고 · 판짜기 차단) · 0.62.0 = 폴백 문구에 회전 포함(배율 1배 회전도 PDF 경로) · 0.61.0 = 배율 확대 결과 보고(PDF 배치 / 예비 경로 폴백 경고) · 0.60.0 = 파일명 맨 앞 거래처 · 자재/후가공 행 분리(폭 맞춤) · 「품목」→「내용」 명칭 분리(MES 품목 마스터와 구분) · 0.59.0 = 재단 탭 [◎ 전체] · 0.58.0 = 굽기 통합(마스크+도련 1왕복)·등록 파라미터(자재·후가공·돔보·파일명) · 0.57.0 = 조각 속 메우기(그룹 하나=칼선 하나·맞붙임 복구) · 0.56.0 = 도련 겹침 분할(간격 존중·하한 1.5mm)
 
   // ── 도련 겹침 분할 (2026-08-25) ─────────────────────────────────────────
   // ★순수 함수로 뽑아 둔 이유 = **하네스가 이 함수를 직접 돌리기 때문**이다(`npm run cut:bleed` §9).
@@ -2322,7 +2322,6 @@
   var clientList = [];   // [{id, client_name}]
   var workerList = [];   // [{id, name}]
   var productList = [];  // [{id, item_name, sub_category}] — 품목(2026-09-01)
-  var productMats = {};  // 제품 id → [자재명] (config.product_materials)
 
   function loadConfig() {
     try {
@@ -2338,22 +2337,12 @@
       workerList = cfg.workers || [];
       productList = cfg.items || [];
       fillDatalist('productList', productList.map(function (it) { return it.item_name || ''; }));
-      // 자재 = MES 정본. 없으면 빈 목록으로 두고 **자유 입력을 막지 않는다**(datalist 는 제안일 뿐).
-      MATERIALS = (cfg.materials || []).map(function (m) { return m.item_name || ''; });
       // 재단이 파일명에 남길 표식 = 코팅 계열만(용준님 2026-09-01: 재단·네스팅은 유·무광이면 충분).
       //   부족하면 MES post_processing_options 에 추가하면 된다 — 패널 배포 없이 따라온다.
       FINISHES = (cfg.post_processing || [])
         .filter(function (o) { return o.pp_category === 'coating'; })
         .map(function (o) { return o.option_name || ''; });
-      fillDatalist('materialList', MATERIALS);
       fillDatalist('finishList', FINISHES);
-      productMats = {};
-      var pms = cfg.product_materials || [];
-      for (var mi = 0; mi < pms.length; mi++) {
-        var pk = String(pms[mi].p);
-        if (!productMats[pk]) productMats[pk] = [];
-        productMats[pk].push(pms[mi].m);
-      }
       var dl = document.getElementById('clientList');
       if (dl) {
         dl.innerHTML = '';
@@ -2377,24 +2366,6 @@
 
   // 품목은 **정확일치만** id 로 본다 — 이름만 맞춘 가짜 품목이 실리면 주문서가 그 단가로 계산한다.
   //   미해소는 null 로 보내고 사람이 주문서에서 고른다(자동 확정 금지).
-  /**
-   * 품목이 정해지면 [자재] 후보를 **그 제품에 연결된 것만**으로 좁힌다(product_materials).
-   * ★매핑이 없으면 전체 목록으로 되돌린다 — 실사용 라인의 27%가 매핑이 없고, 거기엔 포맥스·폼보드처럼
-   *   **품목과 애초에 별개 축인 판재**가 들어 있다. 그건 누락이 아니라 정상이므로 자유 입력을 막지 않는다.
-   * ★후보가 하나면 채워 주되 **사람이 쓴 값은 덮지 않는다**(자동 확정 금지와 같은 결).
-   */
-  function narrowMaterials() {
-    var id = productIdOf((document.getElementById('regProduct') || {}).value);
-    var list = (id != null && productMats[String(id)]) ? productMats[String(id)] : null;
-    fillDatalist('materialList', list || MATERIALS);
-    var el = document.getElementById('regMaterial');
-    if (!el) return;
-    if (list && list.length === 1 && !String(el.value || '').replace(/^\s+|\s+$/g, '')) {
-      el.value = list[0];
-      refreshPairName();
-    }
-  }
-
   // ★공백을 지운 비교축 — 일러 CEP 는 **IME 조합을 웹뷰에 넘기지 않는다**(2026-09-02 실측:
   //   composition 이벤트 0건 · `isComposing` 항상 false). 마지막 글자를 스페이스로 확정해야
   //   들어오므로 그 스페이스가 이름 안에 남고, 「가로등 배너」가 「가로등배너」로 들어온다.
@@ -2429,7 +2400,6 @@
   //      order_items 23,162행 중 마감·후가공이 기록된 행이 **0** 이라 데이터로 고를 수도 없었다.
   //      → 내용을 지금 확정하지 않는다. 자리만 옮겨 두면 이후로는 MES 에서 고치고 패널은 따라온다.
   //   ⚠️ 「돔보」는 목록에 두지 않는다 — 이미 [돔보] 체크박스가 있고 `TRIM` 으로 나간다(같은 사실 두 곳 금지).
-  var MATERIALS = [];   // config.materials (item_type='MATERIAL') — 품목 매핑이 없을 때의 폴백
   var FINISHES = [];    // config.post_processing 중 코팅 계열 — 재단이 파일명에 남길 표식
   var lastNest = null;     // {wCm, hCm, n} — 파일명 규격의 출처
 
@@ -2448,8 +2418,7 @@
    *   여기에 IME 가 겹친다 — 일러 CEP 는 조합을 웹뷰에 안 넘겨(cutSquash 주석) 조합 중에는
    *   후보가 안 뜨고, 확정 때 붙는 스페이스가 앞부분 일치를 한 번 더 깬다.
    *
-   * ★후보의 정본은 여전히 `<datalist>` 다 — `narrowMaterials` 가 품목에 맞춰 자재 후보를
-   *   좁히는 곳이 거기라, 목록을 두 벌로 만들지 않는다(갈라지면 한쪽만 조용히 낡는다).
+   * ★후보의 정본은 `<datalist>` 다 — 목록을 두 벌로 만들지 않는다(갈라지면 한쪽만 조용히 낡는다).
    * ★맞았는지(`✓등록`)를 **눈에 보이게** 한다. 여태 재단 탭에는 이 표시가 없어서, id 가
    *   해소돼도 사용자는 "매칭이 안 된다"고 볼 수밖에 없었다(실제로 그렇게 두 번 보고됐다).
    *
@@ -2553,12 +2522,17 @@
     //   폴더에 파일이 쌓였을 때 **먼저 눈에 들어와야 하는 축이 거래처**이고, 정렬도 거래처로 묶인다.
     //   ⚠️ 매칭은 안 깨진다 — `resolveCard` 2차는 **이름 전체 일치**이고, 그 이름은 흡수 시점에
     //      이 함수가 만든 값을 그대로 배운다(workbench.ts). 1차(주문번호-순번)는 비anchored라 접두 무관.
+    // ★★자재는 파일명에 넣지 않는다 (2026-09-06 검토 결론). **아무도 이 이름의 자재를 안 본다** —
+    //   오퍼레이터가 여는 주문 폴더의 파일명은 에이전트가 새로 짓고(`거래처-WxH-내용-후가공-NEA-
+    //   주문번호-FFF`, Program.cs:3018) 거기에 자재가 없다. 작업지시서의 「원단」 줄은 주문 라인의
+    //   품목에서 **자동 파생**되고(orders/queries.ts:588 — product_materials 조인), 재고 차감·자재
+    //   소요도 같은 매핑을 쓴다. 대기함 트레이도 품목명을 초록으로 따로 보여준다(intake.js:186).
+    //   → 자재를 여기 넣으면 **인입함 폴더 안에서만** 보이는 중복 축이 하나 늘 뿐이다.
     var client = safeName((document.getElementById('regClient') || {}).value);
-    var mat = safeName((document.getElementById('regMaterial') || {}).value);
     var fin = safeName((document.getElementById('regFinish') || {}).value);
     var item = safeName((document.getElementById('regItem') || {}).value);
     var head = client ? (client + '-') : '';
-    if (mat || fin) head += '(' + mat + (mat && fin ? '+' : '') + fin + ')';
+    if (fin) head += '(' + fin + ')';
     // ★규격은 **실물 cm**(lastNest 가 이미 실물). 축소본이면 A0 와 같은 `_1-N` 접미를 붙인다
     //   (mes-a0-host.jsx: `epsName = ... + (sN > 1 ? '_1-' + sN : '')`) — 파일만 보고 축소본임을 알아야 한다.
     var sN = cutScaleN();
@@ -2677,8 +2651,10 @@
         'KEYWORD ' + keyword,
         // 품목 id — 대기함→주문서가 품목과 **단가까지** 채우는 열쇠(미해소면 빈 값)
         'ITEMID ' + (productIdOf((document.getElementById('regProduct') || {}).value) || ''),
-        // ★자재·후가공 — 화면에 이미 받아 두고 manifest 에는 안 보내던 값
-        'MATERIAL ' + String((document.getElementById('regMaterial') || {}).value || '').replace(/^\s+|\s+$/g, ''),
+        // ★후가공만 보낸다 (2026-09-06). 자재는 **품목에서 파생**되므로 패널이 들고 있을 이유가 없다 —
+        //   작업지시서 「원단」 = product_materials 조인(orders/queries.ts:588) · 재고 차감·자재 소요도 같은 매핑.
+        //   ⚠️호스트는 손대지 않는다 — `(R.MATERIAL || R.FINISH)` 라 MATERIAL 이 아예 없으면
+        //     post_desc 가 후가공만으로 만들어진다(mes-cut-host.jsx:3925). 축2 배포가 필요 없다.
         'FINISH ' + String((document.getElementById('regFinish') || {}).value || '').replace(/^\s+|\s+$/g, ''),
         // ★돔보 — 판에는 **항상** 들어간다(index.html "돔보·시트 재단선은 항상 포함").
         //   호스트는 여태 manifest 에 `trim:false` 를 **하드코딩**해 사실과 다른 값을 보냈다.
@@ -2851,17 +2827,13 @@
   if (btnPair) btnPair.addEventListener('click', exportPair);
   // 거래처·자재·후가공·내용을 고칠 때마다 파일명 미리보기를 갱신한다 — 저장 직전에야 이름을 알면 늦다
   // ★regClient 를 빠뜨리면 거래처가 파일명 맨 앞에 오는데 **미리보기만 옛 이름**으로 남는다.
-  var pairIds = ['regClient', 'regMaterial', 'regFinish', 'regItem'];
+  var pairIds = ['regClient', 'regFinish', 'regItem'];
   for (var pi = 0; pi < pairIds.length; pi++) {
     var pel = document.getElementById(pairIds[pi]);
     if (pel) { pel.addEventListener('input', refreshPairName); pel.addEventListener('change', refreshPairName); }
   }
-  // 품목 → 자재 좁히기. input 까지 거는 이유 = 자동완성 선택이 change 를 안 낼 수 있다(datalist).
-  var pEl = document.getElementById('regProduct');
-  if (pEl) { pEl.addEventListener('input', narrowMaterials); pEl.addEventListener('change', narrowMaterials); }
-
   // ── 자동완성 — 가공 탭과 같은 규칙(부분 일치·공백 무시·`✓등록` 표시) ─────────────
-  // ★폴백 정책이 칸마다 다르다. 거래처·자재·후가공은 미일치도 **자유 입력**으로 실어 보내지만,
+  // ★폴백 정책이 칸마다 다르다. 거래처·후가공은 미일치도 **자유 입력**으로 실어 보내지만,
   //   품목은 **안 보낸다** — 이름만 맞춘 가짜 품목이 실리면 주문서가 그 단가로 계산한다(가공 탭과 동일).
   var sugClient = attachSug('regClient', 'clientList', function (v) {
     return v ? (clientIdOf(v) ? { ok: true, text: '✓등록' } : { ok: false, text: '자유입력' }) : { ok: false, text: '' };
@@ -2877,19 +2849,9 @@
     for (var i = 0; i < op.length; i++) if (cutSquash(op[i].value) === q) return true;
     return false;
   }
-  var sugMaterial = attachSug('regMaterial', 'materialList', function (v) {
-    return v ? (inDatalist('materialList', v) ? { ok: true, text: '✓목록' } : { ok: false, text: '자유입력' }) : { ok: false, text: '' };
-  });
   var sugFinish = attachSug('regFinish', 'finishList', function (v) {
     return v ? (inDatalist('finishList', v) ? { ok: true, text: '✓목록' } : { ok: false, text: '자유입력' }) : { ok: false, text: '' };
   });
-  // ★품목이 자재를 자동으로 채우면 그 칸의 표시도 따라가야 한다 — 안 그러면 값은 들어갔는데
-  //   「자유입력」이 남아, 자동으로 채워졌다는 사실이 화면에서 지워진다.
-  if (pEl) {
-    pEl.addEventListener('input', function () { if (sugMaterial) sugMaterial.refresh(); });
-    pEl.addEventListener('change', function () { if (sugMaterial) sugMaterial.refresh(); });
-  }
-
   var btnNest = $('btnNest');
   if (btnNest) btnNest.addEventListener('click', runNest);
 
@@ -2964,13 +2926,11 @@
   applyGates();
   loadConfig();
   // 초기 1회 — config 로드 전에는 빈 목록이다(loadConfig 가 채운다). 비어 있어도 자유 입력은 된다.
-  fillDatalist('materialList', MATERIALS);
   fillDatalist('finishList', FINISHES);
   // ★설정에서 복원한 값은 **config 가 오기 전에** 칸에 들어간다 — 그때 판정하면 등록된 거래처도
   //   「자유입력」으로 굳는다. 목록이 채워진 뒤 한 번 더 판정한다.
   if (sugClient) sugClient.refresh();
   if (sugProduct) sugProduct.refresh();
-  if (sugMaterial) sugMaterial.refresh();
   if (sugFinish) sugFinish.refresh();
   host('mesCut_ping()', function (res, bad) {
     if (elVer) elVer.textContent = 'shell ' + SHELL_VERSION + ' · host ' + res;
