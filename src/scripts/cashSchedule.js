@@ -17,7 +17,7 @@ function fmt(n) {
 
 // 하이브리드 엔진 항목 type → 한글 라벨 (달력 pill·일자 상세 공용)
 var SCH_TYPE_LABELS = {
-  ORDER: '입금예정', ORDER_EXPECTED: '예상입금',
+  ORDER: '입금예정', ORDER_EXPECTED: '예상입금', ORDER_OVERDUE: '연체회수(추정)',
   PURCHASE: '지급예정', PURCHASE_EXPECTED: '지급예상', PURCHASE_OVERDUE: '연체분산(추정)',
   CARD: '카드대금', CARD_EXPECTED: '카드대금',
   FIXED: '고정비', LOAN: '대출상환',
@@ -96,7 +96,7 @@ function renderSchedule() {
 
   // 우측 통계 + 하단 전망 (overview 응답이 있을 때만 — 달력만 갱신되는 경로 대비)
   if (schOverviewData) {
-    renderForecastPanel(schOverviewData.forecast, schOverviewData.carried, schOverviewData.ap);
+    renderForecastPanel(schOverviewData.forecast, schOverviewData.carried, schOverviewData.ap, schOverviewData.ar);
     renderComposition(schOverviewData.composition);
     renderTopReceipts(schOverviewData.top_receipts);
     renderMonthlyOutlook(schOverviewData.monthly);
@@ -164,7 +164,7 @@ function renderSchedule() {
 
 // 유형별 색 — 달력 pill/구성 스택바/범례가 같은 색을 쓴다.
 var SCH_TYPE_COLORS = {
-  ORDER: '#16a34a', ORDER_EXPECTED: '#86efac',
+  ORDER: '#16a34a', ORDER_EXPECTED: '#86efac', ORDER_OVERDUE: '#0d9488',
   PURCHASE: '#dc2626', PURCHASE_EXPECTED: '#fca5a5', PURCHASE_OVERDUE: '#f97316',
   CARD: '#f59e0b', CARD_EXPECTED: '#fcd34d',
   FIXED: '#8b5cf6', LOAN: '#0ea5e9',
@@ -203,7 +203,7 @@ function schSparklineSvg(series) {
   return svg;
 }
 
-function renderForecastPanel(fc, carried, ap) {
+function renderForecastPanel(fc, carried, ap, ar) {
   if (!fc) return;
   var spark = document.getElementById('schBalanceSpark');
   if (spark) spark.innerHTML = schSparklineSvg(fc.series);
@@ -258,7 +258,7 @@ function renderForecastPanel(fc, carried, ap) {
     }
   }
 
-  renderApReconcile(ap);
+  renderApReconcile(ap, ar);
 
   // 접이식: 음수 잔액 일자 / 일별 예측
   var riskEl = document.getElementById('fcRiskTable');
@@ -332,7 +332,7 @@ function schCompositionBlock(title, byType, total, accentClass) {
 // 매입 지급예정 ↔ 실제 지급 대사 — 곡선의 지급액이 왜 그 값인지를 숫자로 밝힌다.
 //   ★ '연체'와 '미입력'을 구분해 적는 게 이 블록의 핵심이다. 지급 입력이 밀려 있으면
 //     남은 채무의 상당분은 안 낸 돈이 아니라 아직 안 적은 돈이고, 그걸 모르면 예측을 못 믿는다.
-function renderApReconcile(ap) {
+function renderApReconcile(ap, ar) {
   var el = document.getElementById('schApNote');
   if (!el) { console.warn('[cashSchedule] #schApNote not found'); return; }
   if (!ap || !ap.obligation_total) { el.classList.add('hidden'); return; }
@@ -375,6 +375,25 @@ function renderApReconcile(ap) {
       return escapeHtml(s.name) + ' ' + fmt(s.remaining) + (s.days != null ? '<span class="text-gray-400">(' + s.days + '일)</span>' : '');
     }).join(' · ');
     rows.push('<div class="text-gray-500">잔여 상위 ' + top + '</div>');
+  }
+
+  // 매출 쪽도 같은 자리에 나란히 — 유입만 첫날에 뭉쳐 있으면 곡선이 거짓말을 한다.
+  if (ar && ar.overdue_total > 0) {
+    rows.push('<div class="pt-1 mt-1 border-t border-slate-200 font-semibold text-gray-800">' +
+      '<i class="fas fa-hand-holding-dollar mr-1 text-teal-600"></i>매출 수금 연체</div>');
+    if (ar.spread_months > 0) {
+      rows.push('<div class="tabular-nums text-teal-700">연체 ' + fmt(ar.overdue_total) + '(' + ar.overdue_count +
+        '건)을 실적 월평균 ' + fmt(ar.run_rate) + '으로 ' + ar.spread_months + '개월 분산했습니다.' +
+        (ar.run_rate_basis ? ' <span class="text-gray-500">근거 ' + ar.run_rate_basis + ' ' + ar.run_rate_months + '개월</span>' : '') +
+        '</div>');
+    } else {
+      rows.push('<div class="tabular-nums text-teal-700">연체 ' + fmt(ar.overdue_total) + '(' + ar.overdue_count +
+        '건)을 예측 시작일에 얹었습니다. <span class="text-gray-500">수금 실적이 없어 분산 기준을 못 구했습니다.</span></div>');
+    }
+    if (ar.entry_lag_days != null && ar.entry_lag_days > 45) {
+      rows.push('<div class="text-amber-700"><i class="fas fa-triangle-exclamation mr-1"></i>수금 입력이 ' +
+        ar.entry_lag_days + '일째 멈춰 있습니다(최종 ' + (ar.last_receipt_date || '-') + ').</div>');
+    }
   }
 
   el.innerHTML = rows.join('');

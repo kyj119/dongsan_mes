@@ -16,10 +16,11 @@ import { buildExpenseEstimator, type EstimateMethod } from './expenseEstimator'
 import { cardNetAmountSql, cardSpendFilterSql } from './cardSpend'
 import { excludePurchaseNonCounterpartiesSql } from '../constants/intercompany'
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
+import { settleApFifo, type ApObligation, type ApSettlementEvent } from './apSettlement'
 import {
-  settleApFifo, paymentRunRate, medianPaymentDay, median, spreadOverdue, daysBetween,
-  type ApObligation, type ApSettlementEvent,
-} from './apSettlement'
+  paymentRunRate, runRateFromMonthly, medianPaymentDay, medianDayFromCounts,
+  median, spreadOverdue, daysBetween, type RunRate,
+} from './overdueSpread'
 
 export interface CashflowItem {
   flow: 'IN' | 'OUT'
@@ -50,11 +51,13 @@ export interface CashflowOptions {
   /** true(기본)=연체·기한경과 항목을 from으로 끌어옴(예측용 — 즉시 회수·지급 대상).
    *  false=원래 예정일 유지(달력 월뷰용 — 범위 밖 연체는 해당 월에서만 표시). */
   carryOverdueToStart?: boolean
-  /** 연체 매입채무를 실적 런레이트로 분산할지. carryOverdueToStart 가 true 일 때만 의미가 있다.
-   *  false = 예측 첫날 일괄(구 동작). 달력 월뷰는 원래 예정일을 지켜야 하므로 호출부가 끈다. */
-  spreadOverdueAp?: boolean
-  /** 진단 out-param — 엔진이 채워 준다. 엔진을 두 번 부르지 않고 매입 대사 결과를 꺼내기 위한 통로. */
-  diagnostics?: { ap?: ApDiagnostics }
+  /** 연체(매입 지급 · 매출 수금)를 실적 런레이트로 분산할지. carryOverdueToStart 가 true 일 때만 의미가 있다.
+   *  false = 예측 첫날 일괄(구 동작). 달력 월뷰는 원래 예정일을 지켜야 하므로 호출부가 끈다.
+   *  ★매입·매출을 한 스위치로 묶는다 — 한쪽만 분산하면 유출은 여러 달에 깔리고 유입은 첫날에 뭉쳐
+   *    곡선이 「첫날 급등 후 우하향」이 되어 고치기 전보다 더 오해를 부른다. */
+  spreadOverdue?: boolean
+  /** 진단 out-param — 엔진이 채워 준다. 엔진을 두 번 부르지 않고 대사 결과를 꺼내기 위한 통로. */
+  diagnostics?: { ap?: ApDiagnostics; ar?: ArDiagnostics }
 }
 
 /** 매입 지급예정 ↔ 실제 지급 대사 결과. 숫자를 화면에 그대로 적기 위한 것이라 전부 원 단위. */
@@ -92,6 +95,25 @@ export interface ApDiagnostics {
   observed_lag_samples: number
   /** 잔여가 큰데 지급 입력이 오래 멈춘 공급처 — '연체'가 아니라 '미입력'일 수 있는 후보 */
   lagging_suppliers: { name: string; remaining: number; last_payment_date: string | null; days: number | null }[]
+}
+
+/** 관측 지연 중앙값을 내놓기 위한 최소 표본 수. */
+const MIN_LAG_SAMPLES = 10
+
+/** 매출 수금 연체 분산의 근거. 매입(ApDiagnostics)과 같은 축만 담는다 — 다르면 화면이 둘을 못 나란히 놓는다. */
+export interface ArDiagnostics {
+  /** 연체(만기 경과) 미수 잔여 */
+  overdue_total: number
+  overdue_count: number
+  /** 실제 수금 월평균(완결월 기준) */
+  run_rate: number
+  run_rate_months: number
+  run_rate_basis: string
+  /** 연체 분산 회차 수(0 = 분산 안 함) */
+  spread_months: number
+  last_receipt_month: string | null
+  last_receipt_date: string | null
+  entry_lag_days: number | null
 }
 
 /** §0b(대사)와 §4.5(합성)가 같은 발주 목록을 쓴다 — 두 번 조회하지 않기 위해 형태를 공유한다. */
@@ -137,7 +159,7 @@ export async function buildCashflowDays(
   opts: CashflowOptions = {}
 ): Promise<Record<string, CashflowDay>> {
   const carryOverdue = opts.carryOverdueToStart !== false
-  const spreadAp = carryOverdue && opts.spreadOverdueAp === true
+  const doSpread = carryOverdue && opts.spreadOverdue === true
   // 채권·채무 집계에서 빼는 거래처 — **여기서 정책을 새로 정하지 않는다.**
   //   AR = 내부법인 3사 + 현금소매 더미(constants/arPolicy) · AP = 내부법인 3사 + 관계사(constants/intercompany).
   //   AP 원장·재무제표·미수금 화면이 이미 이 SSOT 를 쓰는데 자금 예측만 안 써서, 같은 거래처가
@@ -244,7 +266,8 @@ export async function buildCashflowDays(
       // 물질화된 지급예정 — 창(from..to) 밖도 전부 본다. 충당은 기간이 아니라 잔액의 문제라서다.
       c.env.DB.prepare(`
         SELECT cs.id, cs.client_id, cs.entity_id, cs.schedule_date, cs.amount, cs.status, cs.actual_amount,
-               po.status AS po_status
+               po.status AS po_status,
+               COALESCE(po.delivery_date, substr(po.created_at, 1, 10)) AS po_base
         FROM cash_schedule cs
         LEFT JOIN purchase_orders po ON po.id = cs.source_id
         WHERE cs.flow_type = 'OUT' AND cs.source_type = 'PURCHASE'
@@ -253,7 +276,8 @@ export async function buildCashflowDays(
         LIMIT 5000
       `).bind(...efApCs.params).all<{
         id: number; client_id: number; entity_id: number; schedule_date: string
-        amount: number; status: string; actual_amount: number | null; po_status: string | null
+        amount: number; status: string; actual_amount: number | null
+        po_status: string | null; po_base: string | null
       }>(),
       c.env.DB.prepare(`
         SELECT po.id, po.po_number, po.final_amount, po.delivery_date, po.created_at,
@@ -298,6 +322,7 @@ export async function buildCashflowDays(
       obligations.push({
         ref: 'cs:' + r.id, supplierId: r.client_id, entityId: Number(r.entity_id) || 0,
         due: r.schedule_date, amount: Number(r.amount) || 0,
+        notBefore: r.po_base || undefined,
         ...(r.status === 'DONE' ? { done: true, doneAmount: Number(r.actual_amount ?? r.amount) || 0 } : {}),
       })
     }
@@ -309,6 +334,7 @@ export async function buildCashflowDays(
       obligations.push({
         ref: 'po:' + po.id, supplierId: Number(po.supplier_id) || 0, entityId: Number(po.entity_id) || 0,
         due, amount: Number(po.final_amount) || 0,
+        notBefore: po.delivery_date || (po.created_at || '').substring(0, 10),
       })
     }
 
@@ -362,7 +388,9 @@ export async function buildCashflowDays(
       spread_months: 0,
       last_payment_month: rr.lastMonth, last_payment_date: lastPayDate,
       entry_lag_days: lastPayDate ? daysBetween(lastPayDate, from) : null,
-      observed_lag_days: median(settled.lagSamples), observed_lag_samples: settled.lagSamples.length,
+      // 표본이 적으면 중앙값을 내지 않는다 — 몇 건짜리 중앙값을 '우리 회사 지급 습성'으로 읽으면 안 된다.
+      observed_lag_days: settled.lagSamples.length >= MIN_LAG_SAMPLES ? median(settled.lagSamples) : null,
+      observed_lag_samples: settled.lagSamples.length,
       lagging_suppliers: lagging,
     }
   }
@@ -428,8 +456,9 @@ export async function buildCashflowDays(
   //   FIXED 제외(온더플라이 통일)·CANCELLED 제외. DONE은 이미 정산분이라 과거에 남김.
   //   ※ ORDER 연체분은 §4b residual의 mAgg(전 기간 PENDING/OVERDUE)에서 차감되고 §4b 합성 대상(materialized=0)도 아니므로
   //     여기서 from에 표시해도 이중계산 없음.
-  /** 연체 매입채무 풀 — spreadAp 일 때 from 에 얹지 않고 여기 모았다가 §4.6 에서 런레이트로 나눈다. */
+  /** 연체 풀 — doSpread 일 때 from 에 얹지 않고 여기 모았다가 §4.6(매입)·§4.7(매출)에서 런레이트로 나눈다. */
   const apOverduePool: { name: string; amount: number; due: string }[] = []
+  const arOverduePool: { name: string; amount: number; due: string }[] = []
   if (carryOverdue) {
     const efOv = entityFilter(c, 'cs')
     const { results: ovRows } = await c.env.DB.prepare(`
@@ -455,7 +484,8 @@ export async function buildCashflowDays(
       const { remaining, settled } = remainingOf({ ...r, actual_amount: null }, isAr, isAp)
       if ((isAr || isAp) && remaining <= 0) continue
       const label = `${r.description || r.client_name || r.source_type} (연체)`
-      if (isAp && spreadAp) { apOverduePool.push({ name: label, amount: remaining, due: r.schedule_date }); continue }
+      if (isAp && doSpread) { apOverduePool.push({ name: label, amount: remaining, due: r.schedule_date }); continue }
+      if (isAr && doSpread) { arOverduePool.push({ name: label, amount: remaining, due: r.schedule_date }); continue }
       add(from, {
         flow: r.flow_type === 'IN' ? 'IN' : 'OUT',
         type: r.source_type,
@@ -628,9 +658,11 @@ export async function buildCashflowDays(
         const amt = Math.min(it.amount, residual)
         if (amt <= 0) continue
         residual -= amt
+        const arName = `${it.client_name || ''} 미수 예상입금 (주문 ${it.order_number})`.trim()
+        if (it.carriedFrom && doSpread) { arOverduePool.push({ name: arName, amount: amt, due: it.carriedFrom }); continue }
         add(it.due, {
           flow: 'IN', type: 'ORDER_EXPECTED',
-          name: `${it.client_name || ''} 미수 예상입금 (주문 ${it.order_number})`.trim(),
+          name: arName,
           amount: amt, materialized: false, basis: 'BILLED',
           ...(it.carriedFrom ? { carried_from: it.carriedFrom } : {}),
         })
@@ -655,7 +687,7 @@ export async function buildCashflowDays(
     if (remaining <= 0) continue        // 이미 다 낸 발주 — 예정에 남기면 이중계상
     const name = `${po.supplier_name || '공급사'} 지급예정 (발주 ${po.po_number})`
     const carried = carryOverdue && expected < from   // 연체 지급(예정일 경과)은 예측 시작일에 표시 (매출 §4b와 대칭)
-    if (carried && spreadAp) { apOverduePool.push({ name, amount: remaining, due: expected }); continue }
+    if (carried && doSpread) { apOverduePool.push({ name, amount: remaining, due: expected }); continue }
     add(carried ? from : expected, {
       flow: 'OUT', type: 'PURCHASE_EXPECTED',
       name,
@@ -671,7 +703,7 @@ export async function buildCashflowDays(
   //   실제로 나가는 속도는 완결월 기준 월평균이고, 그게 이 회사가 실제로 하는 행동이다.
   //   ⚠️ 이건 '추정'이다 — estimated:true 로 표시하고, 근거(런레이트·산출 기간)를 진단에 함께 싣는다.
   //   ⚠️ 달력 월뷰(carryOverdueToStart:false)는 원래 예정일을 지켜야 하므로 호출부가 spreadOverdueAp 를 끈다.
-  if (spreadAp && apOverduePool.length > 0 && apDiag) {
+  if (doSpread && apOverduePool.length > 0 && apDiag) {
     const total = apOverduePool.reduce((a, x) => a + x.amount, 0)
     const day = medianPaymentDay(apEvents)
     const tranches = spreadOverdue(total, apDiag.run_rate, from, day)
@@ -693,6 +725,66 @@ export async function buildCashflowDays(
           amount: t.amount, materialized: false, estimated: true,
           carried_from: oldest,
         })
+      }
+    }
+  }
+
+  // ── 4.7) 연체 미수를 실적 수금 런레이트로 분산 (ORDER_OVERDUE) — §4.6 대칭 ──
+  //   매입만 분산하면 유출은 여러 달에 깔리고 유입은 첫날에 뭉친다 → 곡선이 「첫날 급등 후 우하향」이 되어
+  //   고치기 전보다 더 오해를 부른다. prod 실측(2026-09-06) 미수 파생잔여 9.0억 vs 매입 잔여 10.4억으로
+  //   규모가 비슷해, 한쪽만 고치면 정확히 그 모양이 나온다.
+  //   ★수금은 '상대의 행동'이지만 근거는 같다 — 우리가 실제로 받아 온 속도.
+  //   ⚠️ 행이 수천 건(prod 3,816)이라 매입처럼 행을 끌어오지 않고 GROUP BY 결과만 받는다.
+  if (doSpread && arOverduePool.length > 0) {
+    const efRr = entityFilter(c)
+    const efRd = entityFilter(c)
+    const [mRes, dRes] = await Promise.all([
+      c.env.DB.prepare(`SELECT substr(payment_date, 1, 7) AS m, COALESCE(SUM(amount), 0) AS v, MAX(substr(payment_date, 1, 10)) AS mx
+                        FROM payments WHERE payment_date IS NOT NULL${efRr.clause}${arExcl('client_id')} GROUP BY 1`)
+        .bind(...efRr.params).all<{ m: string; v: number; mx: string }>(),
+      c.env.DB.prepare(`SELECT CAST(substr(payment_date, 9, 2) AS INTEGER) AS d, COUNT(*) AS n
+                        FROM payments WHERE payment_date IS NOT NULL${efRd.clause}${arExcl('client_id')} GROUP BY 1`)
+        .bind(...efRd.params).all<{ d: number; n: number }>(),
+    ])
+    const byMonth = new Map<string, number>()
+    let lastDate: string | null = null
+    for (const r of mRes.results) {
+      if (!r.m || r.m.length !== 7) continue
+      byMonth.set(r.m, Number(r.v) || 0)
+      if (r.mx && (!lastDate || r.mx > lastDate)) lastDate = r.mx
+    }
+    const dayCounts = new Map<number, number>()
+    for (const r of dRes.results) if (r.d >= 1 && r.d <= 31) dayCounts.set(r.d, Number(r.n) || 0)
+
+    const rr: RunRate = runRateFromMonthly(byMonth)
+    const total = arOverduePool.reduce((a, x) => a + x.amount, 0)
+    const tranches = spreadOverdue(total, rr.rate, from, medianDayFromCounts(dayCounts))
+    if (tranches.length === 0) {
+      // 수금 실적이 없어 속도를 못 구했다 → 구 동작(첫날 일괄)으로 되돌린다. 조용히 빠뜨리지 않는다.
+      for (const it of arOverduePool) {
+        add(from, {
+          flow: 'IN', type: 'ORDER_EXPECTED', name: it.name, amount: it.amount,
+          materialized: false, basis: 'BILLED', carried_from: it.due,
+        })
+      }
+    } else {
+      const oldest = arOverduePool.reduce((m, x) => (x.due < m ? x.due : m), arOverduePool[0].due)
+      for (const t of tranches) {
+        add(t.date, {
+          flow: 'IN', type: 'ORDER_OVERDUE',
+          name: `연체 미수 회수 분산 ${t.index}/${t.of} (실적 월평균 기준)`,
+          amount: t.amount, materialized: false, estimated: true, basis: 'BILLED',
+          carried_from: oldest,
+        })
+      }
+    }
+    if (opts.diagnostics) {
+      opts.diagnostics.ar = {
+        overdue_total: Math.round(total), overdue_count: arOverduePool.length,
+        run_rate: rr.rate, run_rate_months: rr.months, run_rate_basis: rr.basis,
+        spread_months: tranches.length,
+        last_receipt_month: rr.lastMonth, last_receipt_date: lastDate,
+        entry_lag_days: lastDate ? daysBetween(lastDate, from) : null,
       }
     }
   }

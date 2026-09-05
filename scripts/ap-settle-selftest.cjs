@@ -20,9 +20,15 @@
 const { compileTs } = require('./lib/compile-ts.cjs')
 const path = require('path')
 
-const SRC = path.join(__dirname, '..', 'src', 'utils', 'apSettlement.ts')
-const { mod, cleanup } = compileTs(SRC)
-const { settleApFifo, paymentRunRate, medianPaymentDay, median, spreadOverdue, daysBetween } = mod
+// FIFO 충당(매입 전용)과 연체 분산(매입·매출 공용)이 다른 모듈이라 각각 컴파일한다.
+// apSettlement 는 overdueSpread 를 import 하므로 bundle 이 필요하다.
+const AP_SRC = path.join(__dirname, '..', 'src', 'utils', 'apSettlement.ts')
+const SPREAD_SRC = path.join(__dirname, '..', 'src', 'utils', 'overdueSpread.ts')
+const { mod: apMod, cleanup: apCleanup } = compileTs(AP_SRC, { bundle: true })
+const { mod: spMod, cleanup: spCleanup } = compileTs(SPREAD_SRC)
+const { settleApFifo } = apMod
+const { paymentRunRate, runRateFromMonthly, medianPaymentDay, medianDayFromCounts, median, spreadOverdue, daysBetween } = spMod
+const cleanup = () => { apCleanup?.(); spCleanup?.() }
 
 let pass = 0
 const fails = []
@@ -139,6 +145,23 @@ const settledOf = (r, ref) => r.settledByRef.get(ref) || 0
   const r = settleApFifo([ob('po:1', '2026-02-01', 100000)], [pay('2026-01-20', 100000)])
   check('관측 지연 — 조기 지급은 음수', r.lagSamples, [-12])
 }
+{
+  // 채무가 생기기 전의 지급으로 닫힌 짝은 표본이 아니다.
+  // prod 에서 이 가드가 없어 중앙값이 −111일로 나왔다(이관이 지급 이력만 먼저 넣은 탓).
+  const r = settleApFifo(
+    [ob('po:1', '2026-05-01', 100000, { notBefore: '2026-04-01' })],
+    [pay('2026-01-10', 100000)]
+  )
+  check('관측 지연 — 채무 생성 전 지급은 표본 제외', r.lagSamples, [])
+  check('관측 지연 — 그래도 충당은 된다(잔액은 원장 항등식)', settledOf(r, 'po:1'), 100000)
+}
+{
+  const r = settleApFifo(
+    [ob('po:1', '2026-05-01', 100000, { notBefore: '2026-04-01' })],
+    [pay('2026-04-20', 100000)]
+  )
+  check('관측 지연 — 생성 후 조기 지급은 표본에 남는다', r.lagSamples, [-11])
+}
 check('daysBetween', daysBetween('2026-01-01', '2026-01-11'), 10)
 check('daysBetween — 잘못된 값은 null', daysBetween('', '2026-01-11'), null)
 check('median — 홀수', median([1, 5, 3]), 3)
@@ -177,6 +200,14 @@ check('median — 빈 표본은 null', median([]), null)
 }
 check('대표 지급일 — 중앙값', medianPaymentDay([pay('2026-01-05', 1), pay('2026-01-25', 1), pay('2026-02-15', 1)]), 15)
 check('대표 지급일 — 표본 없으면 25일', medianPaymentDay([]), 25)
+// 행이 수천 건인 수금 쪽은 GROUP BY 결과만 넘긴다 — 행 버전과 같은 답이 나와야 한다(사본이 아니라 위임).
+check('월별합계 런레이트 — 행 버전과 동일',
+  runRateFromMonthly(new Map([['2026-01', 300], ['2026-02', 500], ['2026-03', 10]])).rate,
+  paymentRunRate([pay('2026-01-10', 300), pay('2026-02-10', 500), pay('2026-03-01', 10)]).rate)
+check('일자별 건수 대표일 — 행 버전과 동일',
+  medianDayFromCounts(new Map([[5, 1], [25, 1], [15, 1]])),
+  medianPaymentDay([pay('2026-01-05', 1), pay('2026-01-25', 1), pay('2026-02-15', 1)]))
+check('일자별 건수 — 표본 없으면 25일', medianDayFromCounts(new Map()), 25)
 
 // ── ⑤ 연체 분산 ────────────────────────────────────────────────────────────
 {

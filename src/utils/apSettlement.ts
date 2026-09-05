@@ -15,6 +15,8 @@
 //   매출 §0 은 SUM 만 쓴다. 매입은 **관측 지연**(실제 지급일 − 예정일)을 같이 뽑아야 해서 날짜가 필요하다.
 //   prod 실측 536행이라 메모리 부담이 없고, 호출부가 LIMIT 으로 상한을 건다.
 
+import { daysBetween, type CashEvent } from './overdueSpread'
+
 /** 지급 의무 한 건 = 물질화된 cash_schedule PURCHASE 행 또는 미물질화 확정발주. */
 export interface ApObligation {
   /** 엔진이 되찾을 키. 'cs:<id>' 또는 'po:<id>' */
@@ -29,17 +31,18 @@ export interface ApObligation {
   done?: boolean
   /** done 일 때의 실지급액(없으면 amount) */
   doneAmount?: number
+  /** 이 채무가 '생긴 날'(발주 기준일). 이보다 앞선 지급은 이 채무의 지급일 수 없다.
+   *  ★관측 지연 표본에서만 쓴다 — 잔액 계산은 원장 항등식이라 여기 영향을 받지 않는다.
+   *  prod 2026-09-06 실측: 이게 없어서 중앙값이 **−111일**로 나왔다. 지급 기록은 1월부터 있는데
+   *  발주 기록은 공급처마다 훨씬 늦게 시작해, FIFO 가 '발주보다 먼저 있었던 지급'으로 채무를 닫았다.
+   *  「111일 일찍 낸다」로 읽히는 숫자를 화면에 띄우면 진단이 아니라 오정보다. */
+  notBefore?: string
 }
 
 /** 실제로 나간 돈 한 건 = purchase_payments 또는 purchase_adjustments. */
-export interface ApSettlementEvent {
+export interface ApSettlementEvent extends CashEvent {
   supplierId: number
   entityId: number
-  /** YYYY-MM-DD */
-  date: string
-  amount: number
-  /** 'PAYMENT' | 'ADJUSTMENT' — 런레이트는 실제 현금(PAYMENT)만 센다. 조정은 감액이라 통장에서 나가지 않는다. */
-  kind: 'PAYMENT' | 'ADJUSTMENT'
 }
 
 export interface ApSettlementResult {
@@ -52,13 +55,6 @@ export interface ApSettlementResult {
 }
 
 const keyOf = (s: number, e: number) => s + ':' + e
-
-/** YYYY-MM-DD 두 개의 일수 차(b - a). 잘못된 값이면 null. */
-export function daysBetween(a: string, b: string): number | null {
-  const pa = Date.parse(a + 'T00:00:00Z'), pb = Date.parse(b + 'T00:00:00Z')
-  if (!Number.isFinite(pa) || !Number.isFinite(pb)) return null
-  return Math.round((pb - pa) / 86400000)
-}
 
 /**
  * 공급처×법인 안에서 예정일 순으로 실제 지급을 충당한다.
@@ -128,7 +124,8 @@ export function settleApFifo(
       const { taken, lastDate } = consume(amt)
       if (taken > 0) settledByRef.set(o.ref, taken)
       // 완전히 닫힌 의무만 관측 지연 표본이 된다 — 부분 지급은 '언제 다 갚았는지'를 아직 모른다.
-      if (taken >= amt - 0.5 && lastDate) {
+      // 채무가 생기기 전의 지급으로 닫힌 건은 짝 자체가 성립하지 않는다(이관으로 한쪽 이력만 있는 경우) → 표본 제외.
+      if (taken >= amt - 0.5 && lastDate && (!o.notBefore || lastDate >= o.notBefore)) {
         const d = daysBetween(o.due, lastDate)
         if (d !== null) lagSamples.push(d)
       }
@@ -144,108 +141,4 @@ export function settleApFifo(
   }
 
   return { settledByRef, lagSamples, unappliedTotal }
-}
-
-export interface RunRate {
-  /** 월 평균 실지급액. 표본이 없으면 0. */
-  rate: number
-  /** 평균에 쓴 완결월 수 */
-  months: number
-  /** 'YYYY-MM~YYYY-MM' — 근거를 화면에 그대로 적기 위한 것 */
-  basis: string
-  /** 지급 입력이 있는 마지막 월(YYYY-MM). 이 달은 진행 중일 수 있어 평균에서 뺀다. */
-  lastMonth: string | null
-}
-
-/**
- * 실제 지급 런레이트(월평균).
- *
- * ★ 마지막 입력월은 평균에서 뺀다 — prod 실측(2026-09-05)에서 8월 지급 입력이 4건 36.9M 뿐인데
- *   같은 달 발주는 379건 791M 이었다. 입력이 진행 중인 달을 평균에 넣으면 런레이트가 통째로 주저앉는다.
- *   (지급 입력은 발주보다 두 달 밀려 있다 — 이건 '연체'가 아니라 '미입력'이다)
- */
-export function paymentRunRate(events: ApSettlementEvent[], maxMonths = 6): RunRate {
-  const byMonth = new Map<string, number>()
-  for (const e of events) {
-    if (e.kind !== 'PAYMENT') continue
-    const m = (e.date || '').substring(0, 7)
-    if (m.length !== 7) continue
-    byMonth.set(m, (byMonth.get(m) || 0) + (Number(e.amount) || 0))
-  }
-  const months = [...byMonth.keys()].sort()
-  if (months.length === 0) return { rate: 0, months: 0, basis: '', lastMonth: null }
-  const lastMonth = months[months.length - 1]
-  const complete = months.filter(m => m < lastMonth)
-  if (complete.length === 0) {
-    // 표본이 한 달뿐 — 그 달을 그대로 쓴다(빼면 0이 되어 분산 자체가 불가능해진다).
-    return { rate: byMonth.get(lastMonth) || 0, months: 1, basis: `${lastMonth}~${lastMonth}`, lastMonth }
-  }
-  const used = complete.slice(-maxMonths)
-  const sum = used.reduce((a, m) => a + (byMonth.get(m) || 0), 0)
-  return {
-    rate: used.length > 0 ? Math.round(sum / used.length) : 0,
-    months: used.length,
-    basis: `${used[0]}~${used[used.length - 1]}`,
-    lastMonth,
-  }
-}
-
-/** 실제 지급이 몰리는 '월중 대표일'(중앙값). 표본이 없으면 말일 대신 25일(월급·결제 관행)로 둔다. */
-export function medianPaymentDay(events: ApSettlementEvent[]): number {
-  const days = events
-    .filter(e => e.kind === 'PAYMENT')
-    .map(e => Number((e.date || '').substring(8, 10)))
-    .filter(d => d >= 1 && d <= 31)
-    .sort((a, b) => a - b)
-  if (days.length === 0) return 25
-  return days[Math.floor(days.length / 2)]
-}
-
-/** 표본 중앙값(정수 반올림). 비면 null. */
-export function median(values: number[]): number | null {
-  if (values.length === 0) return null
-  const s = values.slice().sort((a, b) => a - b)
-  const mid = Math.floor(s.length / 2)
-  const v = s.length % 2 === 1 ? s[mid] : (s[mid - 1] + s[mid]) / 2
-  return Math.round(v)
-}
-
-export interface SpreadTranche { date: string; amount: number; index: number; of: number }
-
-/**
- * 연체 매입채무를 실적 런레이트로 향후 여러 달에 나눈다.
- *
- * 왜 1일차 일괄이 아닌가: 확정발주 최종일 + 결제조건이 이미 전부 지나 있어(prod 실측 전량 만기 도래)
- * 통째로 예측 첫날에 얹으면 잔액이 −12억으로 시작해 위험일이 영구히 100% 가 된다.
- * 실제로 나가는 속도는 월 3.5억이고, 그 속도야말로 이 회사가 실제로 하는 행동이다.
- *
- * @param total   연체 잔여 합계
- * @param rate    월 실지급 런레이트(0 이면 분산 불가 → 빈 배열, 호출부가 일괄로 되돌린다)
- * @param from    예측 시작일 YYYY-MM-DD
- * @param day     월중 대표 지급일
- * @param maxMonths 안전 상한 — 초과분은 마지막 회차에 몰아 넣는다(돈이 조용히 사라지지 않게)
- */
-export function spreadOverdue(
-  total: number, rate: number, from: string, day: number, maxMonths = 24
-): SpreadTranche[] {
-  if (!(total > 0) || !(rate > 0)) return []
-  const n = Math.min(maxMonths, Math.max(1, Math.ceil(total / rate)))
-  const [fy, fm] = from.split('-').map(Number)
-  if (!fy || !fm) return []
-  const out: SpreadTranche[] = []
-  let left = total
-  for (let i = 0; i < n; i++) {
-    let y = fy, m = fm + i
-    y += Math.floor((m - 1) / 12); m = ((m - 1) % 12) + 1
-    const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate()
-    const d = Math.min(day, lastDay)
-    let date = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-    // 첫 회차의 대표일이 이미 지났으면 예측 시작일로 당긴다(과거 날짜에 얹으면 곡선 밖으로 떨어진다).
-    if (date < from) date = from
-    const amount = i === n - 1 ? left : Math.min(rate, left)
-    if (amount <= 0) break
-    out.push({ date, amount, index: i + 1, of: n })
-    left -= amount
-  }
-  return out
 }

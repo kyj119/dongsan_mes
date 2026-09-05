@@ -91,7 +91,7 @@ function seed() {
       source_id INTEGER, client_id INTEGER, amount REAL, description TEXT,
       status TEXT DEFAULT 'PENDING', actual_amount REAL, entity_id INTEGER DEFAULT 1
     );
-    CREATE TABLE payments (id INTEGER PRIMARY KEY, client_id INTEGER, amount REAL, entity_id INTEGER);
+    CREATE TABLE payments (id INTEGER PRIMARY KEY, client_id INTEGER, payment_date TEXT, amount REAL, entity_id INTEGER);
     CREATE TABLE adjustments (id INTEGER PRIMARY KEY, client_id INTEGER, amount REAL, entity_id INTEGER);
     CREATE TABLE orders (
       id INTEGER PRIMARY KEY, client_id INTEGER, status TEXT DEFAULT 'CONFIRMED',
@@ -178,7 +178,7 @@ function seed() {
     [9, 400000, 1],    // ⑧ 혼합: 예정 100만 + 청구 100만 중 40만 수금
   ]
   for (const [cid, amt, eid] of pay) {
-    db.prepare('INSERT INTO payments (client_id, amount, entity_id) VALUES (?,?,?)').run(cid, amt, eid)
+    db.prepare('INSERT INTO payments (client_id, payment_date, amount, entity_id) VALUES (?,?,?,?)').run(cid, D(5), amt, eid)
   }
 
   // ⑧ 미수 합성(§4b) — 청구 그룹. c8=물질화 없음 / c9=예정 1건이 물질화(주문 900)
@@ -234,6 +234,16 @@ function seed() {
   ppay(26, PREV(3, 10), 300000, 3)
   ppay(26, PREV(2, 10), 200000, 3)
 
+  // ── 매출 수금 연체 분산 (2026-09-06) — 법인 4 격리, 매입 §4.6 과 같은 이유 ──
+  //   청구 100만 · 수금 50만 → 잔여 50만, 수금 런레이트 30만(완결월 1개) → 2회차.
+  db.prepare('INSERT INTO clients (id, client_name, payment_terms_days) VALUES (27,?,0)').run('연체수금')
+  db.prepare('INSERT INTO orders (id, client_id, status, order_number, delivery_date, created_at) VALUES (910,27,?,?,?,?)')
+    .run('CONFIRMED', 'O-910', PREV(3, 10), PREV(3, 10) + ' 00:00:00')
+  db.prepare(`INSERT INTO order_billing_groups (order_id, entity_id, billing_status, billed_amount, supply_amount, tax_amount, billed_at, accounting_date)
+              VALUES (910,4,'BILLED',1000000,1000000,0,?,?)`).run(PREV(3, 10) + ' 00:00:00', PREV(3, 10))
+  db.prepare('INSERT INTO payments (client_id, payment_date, amount, entity_id) VALUES (27,?,300000,4)').run(PREV(3, 10))
+  db.prepare('INSERT INTO payments (client_id, payment_date, amount, entity_id) VALUES (27,?,200000,4)').run(PREV(2, 10))
+
   return db
 }
 
@@ -280,13 +290,26 @@ function apItemsOf(dayMap) {
 const apSum = (items, namePart) =>
   items.filter(i => !namePart || String(i.name).includes(namePart)).reduce((a, i) => a + i.amount, 0)
 
+/** 매출 입금 항목만 뽑는다 */
+function arItemsOf(dayMap) {
+  const out = []
+  for (const day of Object.values(dayMap)) {
+    for (const it of day.items) {
+      if (it.flow !== 'IN') continue
+      if (!/^ORDER/.test(it.type)) continue
+      out.push({ date: day.date, type: it.type, name: it.name, amount: it.amount, estimated: !!it.estimated })
+    }
+  }
+  return out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+}
+
 /** 예측 조건(연체 이월) — 분산 on/off 를 갈아 끼워 비교한다. */
 async function runForecast(db, entityId, spread) {
   const c = makeCtx(db, entityId)
   const to = new Date(Date.parse(KST_TODAY + 'T00:00:00Z') + 150 * 86400000).toISOString().slice(0, 10)
   const diagnostics = {}
-  const dayMap = await buildCashflowDays(c, KST_TODAY, to, { spreadOverdueAp: spread, diagnostics })
-  return { dayMap, diag: diagnostics.ap }
+  const dayMap = await buildCashflowDays(c, KST_TODAY, to, { spreadOverdue: spread, diagnostics })
+  return { dayMap, diag: diagnostics.ap, arDiag: diagnostics.ar }
 }
 
 let pass = 0
@@ -347,7 +370,7 @@ const eq = (label, got, want) => {
   eq('⑨ 수금 삭제 후 회수액 0', after[1].settled, 0)
 
   // 재적용해도 같은 값 — 멱등(두 번 돌려도 두 번 깎이지 않는다)
-  db.prepare('INSERT INTO payments (client_id, amount, entity_id) VALUES (1,400000,1)').run()
+  db.prepare('INSERT INTO payments (client_id, payment_date, amount, entity_id) VALUES (1,?,400000,1)').run(D(5))
   const again = byScheduleId(await runMonth(db))
   eq('⑩ 재적용 멱등', [again[1].amount, again[1].settled], [600000, 400000])
 
@@ -388,6 +411,26 @@ const eq = (label, got, want) => {
   eq('⑱ 진단 연체', [on.diag.overdue_total, on.diag.overdue_count], [500000, 1])
   eq('⑱ 진단 런레이트', on.diag.run_rate, 300000)
   eq('⑱ 진단 분산 회차', on.diag.spread_months, 2)
+
+  // ══ 매출 수금 연체 분산 — 매입과 대칭 ═════════════════════════════════════
+  //   한쪽만 분산하면 유출은 여러 달에 깔리고 유입은 첫날에 뭉쳐 곡선이 「첫날 급등 후 우하향」이 된다.
+  const arOff = await runForecast(db, 4, false)
+  const arOffItems = arItemsOf(arOff.dayMap)
+  eq('⑳ 매출 분산 OFF — 첫날 일괄', [arOffItems.length, arOffItems[0] && arOffItems[0].amount, arOffItems[0] && arOffItems[0].date],
+    [1, 500000, KST_TODAY])
+
+  const arOn = await runForecast(db, 4, true)
+  const arOnItems = arItemsOf(arOn.dayMap).filter(i => i.type === 'ORDER_OVERDUE')
+  eq('㉑ 매출 분산 ON — 회차 수', arOnItems.length, 2)
+  eq('㉑ 매출 분산 ON — 돈을 잃지 않는다', arOnItems.reduce((a, i) => a + i.amount, 0), 500000)
+  eq('㉑ 매출 분산 ON — 추정 표시', arOnItems.every(i => i.estimated), true)
+  eq('㉑ 매출 분산 ON — 총액은 OFF 와 같다',
+    arItemsOf(arOn.dayMap).reduce((a, i) => a + i.amount, 0), arOffItems.reduce((a, i) => a + i.amount, 0))
+  eq('㉒ 매출 진단', [arOn.arDiag.overdue_total, arOn.arDiag.run_rate, arOn.arDiag.spread_months], [500000, 300000, 2])
+
+  // 달력 월뷰는 분산하지 않는다 — 원래 예정일을 지켜야 달력과 예측이 서로 다른 말을 하지 않는다.
+  const calE4 = await buildCashflowDays(makeCtx(db, 4), `${YM}-01`, `${YM}-28`, { carryOverdueToStart: false, spreadOverdue: true })
+  eq('㉓ 달력 월뷰는 분산 대상이 아니다', arItemsOf(calE4).filter(i => i.type === 'ORDER_OVERDUE').length, 0)
 
   // 법인 1 진단 — 제외·취소가 숫자로 남는지(숨긴 게 아니라 옮긴 것임을 화면이 말할 수 있어야 한다)
   const e1 = await runForecast(db, 1, true)

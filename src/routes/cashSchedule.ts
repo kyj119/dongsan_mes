@@ -6,7 +6,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { requireEditOrRole } from '../middleware/permissions'
 import { requirePagePermission } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
-import { buildCashflowDays, type CashflowItem, type ApDiagnostics } from '../utils/cashflowEngine'
+import { buildCashflowDays, type CashflowItem, type ApDiagnostics, type ArDiagnostics } from '../utils/cashflowEngine'
 import { computeExpectedPaymentDate } from '../utils/paymentSchedule'
 import { kstYm, kstYmd } from '../utils/kstDate'
 import { getTotalBankBalance, getCashPlanStartBalance } from '../utils/bankBalance'
@@ -215,10 +215,10 @@ cashScheduleRouter.get('/schedule/overview', requireEditOrRole('/cash-schedule',
 
     // 진단(매입 대사)은 B 패스에서만 받는다 — A(달력 월뷰)는 연체를 원래 날짜에 두는 화면이라
     // 분산을 켜면 안 되고, 같은 숫자를 두 번 계산할 이유도 없다.
-    const diag: { ap?: ApDiagnostics } = {}
+    const diag: { ap?: ApDiagnostics; ar?: ArDiagnostics } = {}
     const [calMap, fcMap, bank] = await Promise.all([
       buildCashflowDays(c, monthStart, monthEnd, { carryOverdueToStart: false }),
-      buildCashflowDays(c, today, horizonEnd, { spreadOverdueAp: true, diagnostics: diag }),
+      buildCashflowDays(c, today, horizonEnd, { spreadOverdue: true, diagnostics: diag }),
       getCashPlanStartBalance(c),
     ])
 
@@ -346,6 +346,7 @@ cashScheduleRouter.get('/schedule/overview', requireEditOrRole('/cash-schedule',
         carried: { in: carriedIn, out: carriedOut, count: carriedCount, materialized: overdueCount },
         // 매입 지급예정 ↔ 실제 지급 대사. 곡선의 숫자가 왜 그 값인지를 화면이 스스로 설명하게 하는 근거다.
         ap: diag.ap || null,
+        ar: diag.ar || null,
       },
     })
   } catch (error) {
@@ -608,7 +609,7 @@ cashScheduleRouter.get('/schedule/forecast', requireEditOrRole('/cash-schedule',
     const endDate = new Date(Date.now() + 9 * 3600 * 1000 + days * 86400000).toISOString().substring(0, 10)
 
     // overview 와 같은 조건으로 돈다 — 한쪽만 분산하면 같은 '예측'인데 두 화면이 다른 답을 낸다.
-    const dayMap = await buildCashflowDays(c, today, endDate, { spreadOverdueAp: true })
+    const dayMap = await buildCashflowDays(c, today, endDate, { spreadOverdue: true })
 
     const forecast: ForecastDay[] = []
     let runningBalance = startBalance
@@ -658,7 +659,7 @@ cashScheduleRouter.get('/schedule/monthly', requireEditOrRole('/cash-schedule', 
     const lastMonthEnd = new Date(Number(nowYm.slice(0, 4)), Number(nowYm.slice(5, 7)) - 1 + monthCount, 0)
     const to = lastMonthEnd.toISOString().substring(0, 10)
 
-    const dayMap = await buildCashflowDays(c, from, to, { spreadOverdueAp: true })
+    const dayMap = await buildCashflowDays(c, from, to, { spreadOverdue: true })
 
     const months: { month: string; in: number; out: number; net: number; cumulative: number }[] = []
     const idx: Record<string, number> = {}
