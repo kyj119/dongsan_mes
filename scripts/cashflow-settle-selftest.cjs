@@ -69,6 +69,11 @@ function makeCtx(db, entityId) {
 const KST_TODAY = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10)
 const YM = KST_TODAY.slice(0, 7)
 const D = (day) => `${YM}-${String(day).padStart(2, '0')}`
+/** n개월 전의 day일 — 매입 런레이트는 '완결월'을 봐야 해서 과거 달이 필요하다. */
+const PREV = (n, day) => {
+  const d = new Date(Number(YM.slice(0, 4)), Number(YM.slice(5, 7)) - 1 - n, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
 
 // ── 픽스처 ────────────────────────────────────────────────────────────────────
 // 기댓값을 손으로 계산할 수 있게 최소로 만든다. 카드·급여·고정비·대출은 비워 둔다
@@ -77,7 +82,7 @@ function seed() {
   const db = new DatabaseSync(':memory:')
   db.exec(`
     CREATE TABLE clients (
-      id INTEGER PRIMARY KEY, client_name TEXT,
+      id INTEGER PRIMARY KEY, client_name TEXT, client_code TEXT,
       payment_terms_days INTEGER, payment_cycle_type TEXT,
       closing_day INTEGER, payment_month_offset INTEGER, payment_day INTEGER
     );
@@ -112,6 +117,12 @@ function seed() {
       created_at TEXT, supplier_id INTEGER, status TEXT, entity_id INTEGER DEFAULT 1
     );
     CREATE TABLE payment_requests (id INTEGER PRIMARY KEY, related_po_id INTEGER, status TEXT);
+    CREATE TABLE purchase_payments (
+      id INTEGER PRIMARY KEY, supplier_id INTEGER, payment_date TEXT, amount REAL, entity_id INTEGER DEFAULT 1
+    );
+    CREATE TABLE purchase_adjustments (
+      id INTEGER PRIMARY KEY, supplier_id INTEGER, adjustment_date TEXT, amount REAL, entity_id INTEGER DEFAULT 1
+    );
     CREATE TABLE corporate_cards (
       id INTEGER PRIMARY KEY, card_name TEXT, cutoff_day INTEGER, payment_day INTEGER,
       is_active INTEGER DEFAULT 1, entity_id INTEGER DEFAULT 1
@@ -183,6 +194,46 @@ function seed() {
     db.prepare(`INSERT INTO order_billing_groups (order_id, entity_id, billing_status, billed_amount, supply_amount, tax_amount, billed_at, accounting_date)
                 VALUES (?,1,'BILLED',?,?,0,?,?)`).run(oid, amt, amt, `${D(5)} 00:00:00`, D(5))
   }
+  // ── 매입 지급예정 (2026-09-05) ───────────────────────────────────────────
+  //   ★ 내부법인(53)·관계사(1655) id 는 constants/intercompany.ts 가 SQL 에 리터럴로 박는 값이라
+  //     픽스처도 같은 id 를 써야 제외 경로를 실제로 지난다. 이름만 바꾼 다른 id 로는 검증이 안 된다.
+  const suppliers = [
+    [21, '매입부분'], [22, '매입완납'], [23, '매입취소'], [24, '매입물질화'],
+    [25, '매입연체'], [53, '(주)동산기획'], [1655, '오다플래그'],
+  ]
+  for (const [id, name] of suppliers) {
+    db.prepare('INSERT INTO clients (id, client_name, payment_terms_days) VALUES (?,?,0)').run(id, name)
+  }
+  const po = (id, sid, amt, date, status, eid) =>
+    db.prepare(`INSERT INTO purchase_orders (id, po_number, final_amount, delivery_date, created_at, supplier_id, status, entity_id)
+                VALUES (?,?,?,?,?,?,?,?)`).run(id, 'PO-' + id, amt, date, date + ' 00:00:00', sid, status, eid || 1)
+  const ppay = (sid, date, amt, eid) =>
+    db.prepare('INSERT INTO purchase_payments (supplier_id, payment_date, amount, entity_id) VALUES (?,?,?,?)').run(sid, date, amt, eid || 1)
+
+  po(801, 21, 1000000, D(6), 'RECEIVED')      // 부분지급 40만 → 잔여 60만
+  po(802, 22, 500000, D(7), 'RECEIVED')       // 완납 → 예정에서 사라져야 한다
+  po(803, 23, 300000, D(9), 'CANCELLED')      // 취소인데 예정 행이 남아 있는 경우
+  po(806, 24, 800000, D(11), 'RECEIVED')      // 물질화(cs 행 있음) → §4.5 는 건너뛰고 §1 이 잔여로 표시
+  po(804, 53, 1000000, D(8), 'RECEIVED')      // 내부법인 — 제외(회계허브 내부거래 탭이 흡수)
+  po(805, 1655, 500000, D(8), 'RECEIVED')     // 관계사 — 제외
+
+  // 취소 발주의 잔존 예정 행 + 물질화 지급예정
+  db.prepare(`INSERT INTO cash_schedule (id, schedule_date, flow_type, source_type, source_id, client_id, amount, description, status, entity_id)
+              VALUES (20,?, 'OUT','PURCHASE',803,23,300000,'취소발주 잔존','PENDING',1)`).run(D(9))
+  db.prepare(`INSERT INTO cash_schedule (id, schedule_date, flow_type, source_type, source_id, client_id, amount, description, status, entity_id)
+              VALUES (21,?, 'OUT','PURCHASE',806,24,800000,'물질화 지급예정','PENDING',1)`).run(D(11))
+
+  ppay(21, PREV(2, 12), 400000)
+  ppay(22, PREV(2, 12), 500000)
+  ppay(24, PREV(1, 12), 300000)
+
+  // 연체 분산용 — 법인 3 에 격리한다. 같은 법인에 두면 위 항목의 만기 경과 여부가
+  // '오늘이 며칠인가'에 따라 달라져 기댓값을 손으로 못 적는다(테스트가 날짜에 흔들린다).
+  db.prepare('INSERT INTO clients (id, client_name, payment_terms_days) VALUES (26,?,0)').run('연체분산')
+  po(807, 26, 1000000, PREV(3, 10), 'RECEIVED', 3)
+  ppay(26, PREV(3, 10), 300000, 3)
+  ppay(26, PREV(2, 10), 200000, 3)
+
   return db
 }
 
@@ -212,6 +263,30 @@ function expectedSumFor(dayMap, namePart) {
     }
   }
   return sum
+}
+
+/** 매입 항목만 뽑는다 — type/이름/금액/충당액 */
+function apItemsOf(dayMap) {
+  const out = []
+  for (const day of Object.values(dayMap)) {
+    for (const it of day.items) {
+      if (it.flow !== 'OUT') continue
+      if (!/^PURCHASE/.test(it.type)) continue
+      out.push({ date: day.date, type: it.type, name: it.name, amount: it.amount, settled: it.settled_amount || 0, estimated: !!it.estimated })
+    }
+  }
+  return out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+}
+const apSum = (items, namePart) =>
+  items.filter(i => !namePart || String(i.name).includes(namePart)).reduce((a, i) => a + i.amount, 0)
+
+/** 예측 조건(연체 이월) — 분산 on/off 를 갈아 끼워 비교한다. */
+async function runForecast(db, entityId, spread) {
+  const c = makeCtx(db, entityId)
+  const to = new Date(Date.parse(KST_TODAY + 'T00:00:00Z') + 150 * 86400000).toISOString().slice(0, 10)
+  const diagnostics = {}
+  const dayMap = await buildCashflowDays(c, KST_TODAY, to, { spreadOverdueAp: spread, diagnostics })
+  return { dayMap, diag: diagnostics.ap }
 }
 
 let pass = 0
@@ -276,6 +351,48 @@ const eq = (label, got, want) => {
   const again = byScheduleId(await runMonth(db))
   eq('⑩ 재적용 멱등', [again[1].amount, again[1].settled], [600000, 400000])
 
+  // ══ 매입 지급예정 대사 (2026-09-05) ═══════════════════════════════════════
+  //   매출 §0 과 대칭. 이걸 안 하고 있어서 확정발주 37.4억 중 이미 낸 24.8억이
+  //   계속 '앞으로 낼 돈'으로 잡혔다. 판정 단위 검증은 ap-settle-selftest.cjs, 여기는 엔진 배선.
+  const apMap = await runMonth(db)
+  const ap = apItemsOf(apMap)
+
+  eq('⑪ 매입 부분지급 — 잔여만 예정에', apSum(ap, '매입부분'), 600000)
+  eq('⑪ 매입 부분지급 — 충당액 표시', ap.filter(i => /매입부분/.test(i.name)).map(i => i.settled), [400000])
+  eq('⑫ 매입 완납 — 예정에서 사라진다', apSum(ap, '매입완납'), 0)
+  eq('⑬ 취소 발주의 잔존 예정 — 걷어낸다', apSum(ap, '취소발주 잔존'), 0)
+  eq('⑭ 물질화 지급예정 — 잔여로 표시', apSum(ap, '물질화 지급예정'), 500000)
+  eq('⑭ 물질화분은 §4.5 가 중복 합성하지 않는다', ap.filter(i => /PO-806|매입물질화/.test(i.name)).length, 0)
+  eq('⑮ 내부법인 제외', apSum(ap, '동산기획'), 0)
+  eq('⑮ 관계사 제외', apSum(ap, '오다플래그'), 0)
+
+  // 연체 분산 — 법인 3 격리. 채무 100만 − 지급 50만 = 50만, 런레이트 30만(완결월 1개) → 2회차.
+  //   같은 법인에 두면 위 항목의 만기 경과 여부가 '오늘이 며칠인가'에 따라 달라져 기댓값이 흔들린다.
+  const off = await runForecast(db, 3, false)
+  const offItems = apItemsOf(off.dayMap)
+  eq('⑯ 분산 OFF — 첫날 일괄', [offItems.length, offItems[0] && offItems[0].amount, offItems[0] && offItems[0].date],
+    [1, 500000, KST_TODAY])
+  eq('⑯ 분산 OFF — 유형은 지급예상', offItems[0] && offItems[0].type, 'PURCHASE_EXPECTED')
+
+  const on = await runForecast(db, 3, true)
+  const onItems = apItemsOf(on.dayMap).filter(i => i.type === 'PURCHASE_OVERDUE')
+  eq('⑰ 분산 ON — 회차 수', onItems.length, 2)
+  eq('⑰ 분산 ON — 돈을 잃지 않는다', onItems.reduce((a, i) => a + i.amount, 0), 500000)
+  eq('⑰ 분산 ON — 추정 표시', onItems.every(i => i.estimated), true)
+  eq('⑰ 분산 ON — 총액은 OFF 와 같다', apSum(apItemsOf(on.dayMap)), apSum(offItems))
+
+  // 진단 — 화면이 근거로 그대로 쓰는 값이라 여기서 굳힌다.
+  eq('⑱ 진단 채무 총액', on.diag.obligation_total, 1000000)
+  eq('⑱ 진단 지급완료', on.diag.settled_total, 500000)
+  eq('⑱ 진단 잔여', on.diag.remaining_total, 500000)
+  eq('⑱ 진단 연체', [on.diag.overdue_total, on.diag.overdue_count], [500000, 1])
+  eq('⑱ 진단 런레이트', on.diag.run_rate, 300000)
+  eq('⑱ 진단 분산 회차', on.diag.spread_months, 2)
+
+  // 법인 1 진단 — 제외·취소가 숫자로 남는지(숨긴 게 아니라 옮긴 것임을 화면이 말할 수 있어야 한다)
+  const e1 = await runForecast(db, 1, true)
+  eq('⑲ 진단 내부법인·관계사 제외액', [e1.diag.excluded_total, e1.diag.excluded_count], [1500000, 2])
+  eq('⑲ 진단 취소 발주 잔존', [e1.diag.cancelled_total, e1.diag.cancelled_count], [300000, 1])
   if (fails.length) {
     console.error(`\n✗ 입금예정 FIFO 충당 자체검증 실패 ${fails.length}건 (통과 ${pass})`)
     for (const f of fails) console.error(`  · ${f}`)

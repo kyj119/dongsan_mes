@@ -18,7 +18,7 @@ function fmt(n) {
 // 하이브리드 엔진 항목 type → 한글 라벨 (달력 pill·일자 상세 공용)
 var SCH_TYPE_LABELS = {
   ORDER: '입금예정', ORDER_EXPECTED: '예상입금',
-  PURCHASE: '지급예정', PURCHASE_EXPECTED: '지급예상',
+  PURCHASE: '지급예정', PURCHASE_EXPECTED: '지급예상', PURCHASE_OVERDUE: '연체분산(추정)',
   CARD: '카드대금', CARD_EXPECTED: '카드대금',
   FIXED: '고정비', LOAN: '대출상환',
   PAYROLL: '급여', PAYROLL_TAX: '4대보험·원천세',
@@ -96,7 +96,7 @@ function renderSchedule() {
 
   // 우측 통계 + 하단 전망 (overview 응답이 있을 때만 — 달력만 갱신되는 경로 대비)
   if (schOverviewData) {
-    renderForecastPanel(schOverviewData.forecast, schOverviewData.carried);
+    renderForecastPanel(schOverviewData.forecast, schOverviewData.carried, schOverviewData.ap);
     renderComposition(schOverviewData.composition);
     renderTopReceipts(schOverviewData.top_receipts);
     renderMonthlyOutlook(schOverviewData.monthly);
@@ -165,7 +165,7 @@ function renderSchedule() {
 // 유형별 색 — 달력 pill/구성 스택바/범례가 같은 색을 쓴다.
 var SCH_TYPE_COLORS = {
   ORDER: '#16a34a', ORDER_EXPECTED: '#86efac',
-  PURCHASE: '#dc2626', PURCHASE_EXPECTED: '#fca5a5',
+  PURCHASE: '#dc2626', PURCHASE_EXPECTED: '#fca5a5', PURCHASE_OVERDUE: '#f97316',
   CARD: '#f59e0b', CARD_EXPECTED: '#fcd34d',
   FIXED: '#8b5cf6', LOAN: '#0ea5e9',
   PAYROLL: '#ec4899', PAYROLL_TAX: '#f9a8d4',
@@ -203,7 +203,7 @@ function schSparklineSvg(series) {
   return svg;
 }
 
-function renderForecastPanel(fc, carried) {
+function renderForecastPanel(fc, carried, ap) {
   if (!fc) return;
   var spark = document.getElementById('schBalanceSpark');
   if (spark) spark.innerHTML = schSparklineSvg(fc.series);
@@ -257,6 +257,8 @@ function renderForecastPanel(fc, carried) {
       note.classList.add('hidden');
     }
   }
+
+  renderApReconcile(ap);
 
   // 접이식: 음수 잔액 일자 / 일별 예측
   var riskEl = document.getElementById('fcRiskTable');
@@ -325,6 +327,58 @@ function schCompositionBlock(title, byType, total, accentClass) {
   legend += '</div>';
   return '<div class="flex items-baseline justify-between mb-1"><span class="text-[11px] ' + accentClass + '">' + title + '</span>' +
     '<span class="text-[11px] font-bold tabular-nums text-gray-900">' + fmt(sum) + '</span></div>' + bar + legend;
+}
+
+// 매입 지급예정 ↔ 실제 지급 대사 — 곡선의 지급액이 왜 그 값인지를 숫자로 밝힌다.
+//   ★ '연체'와 '미입력'을 구분해 적는 게 이 블록의 핵심이다. 지급 입력이 밀려 있으면
+//     남은 채무의 상당분은 안 낸 돈이 아니라 아직 안 적은 돈이고, 그걸 모르면 예측을 못 믿는다.
+function renderApReconcile(ap) {
+  var el = document.getElementById('schApNote');
+  if (!el) { console.warn('[cashSchedule] #schApNote not found'); return; }
+  if (!ap || !ap.obligation_total) { el.classList.add('hidden'); return; }
+
+  var rows = [];
+  rows.push('<div class="font-semibold text-gray-800"><i class="fas fa-scale-balanced mr-1 text-slate-500"></i>매입 지급예정 대사</div>');
+  rows.push('<div class="tabular-nums">확정 채무 ' + fmt(ap.obligation_total) + ' − 지급완료 ' + fmt(ap.settled_total) +
+    ' = <b class="text-gray-900">잔여 ' + fmt(ap.remaining_total) + '</b></div>');
+
+  if (ap.spread_months > 0) {
+    rows.push('<div class="tabular-nums text-orange-700">연체 ' + fmt(ap.overdue_total) + '(' + ap.overdue_count +
+      '건)을 실적 월평균 ' + fmt(ap.run_rate) + '으로 ' + ap.spread_months + '개월 분산했습니다.' +
+      (ap.run_rate_basis ? ' <span class="text-gray-500">근거 ' + ap.run_rate_basis + ' ' + ap.run_rate_months + '개월</span>' : '') +
+      '</div>');
+  } else if (ap.overdue_total > 0) {
+    rows.push('<div class="tabular-nums text-orange-700">연체 ' + fmt(ap.overdue_total) + '(' + ap.overdue_count +
+      '건)을 예측 시작일에 얹었습니다. <span class="text-gray-500">지급 실적이 없어 분산 기준을 못 구했습니다.</span></div>');
+  }
+
+  // 입력 지연 — 지급 입력이 멈춘 지 오래면 '연체'로 보이는 것이 사실은 '미입력'이다.
+  if (ap.entry_lag_days != null && ap.entry_lag_days > 45) {
+    rows.push('<div class="text-amber-700"><i class="fas fa-triangle-exclamation mr-1"></i>지급 입력이 ' +
+      ap.entry_lag_days + '일째 멈춰 있습니다(최종 ' + (ap.last_payment_date || '-') +
+      '). 남은 채무의 일부는 미지급이 아니라 <b>미입력</b>일 수 있습니다.</div>');
+  }
+
+  if (ap.observed_lag_days != null) {
+    rows.push('<div class="text-gray-600">관측 지연 <b class="tabular-nums">' + ap.observed_lag_days +
+      '일</b> <span class="text-gray-400">(닫힌 ' + ap.observed_lag_samples + '건의 실제 지급일 − 예정일 중앙값)</span></div>');
+  }
+
+  var extras = [];
+  if (ap.excluded_total > 0) extras.push('내부법인·관계사 ' + fmt(ap.excluded_total) + '(' + ap.excluded_count + '건)은 회계허브 내부거래 탭');
+  if (ap.cancelled_total > 0) extras.push('취소 발주의 잔존 예정 ' + fmt(ap.cancelled_total) + '(' + ap.cancelled_count + '건) 제외');
+  if (ap.unapplied_total > 0) extras.push('발주 없는 지급 ' + fmt(ap.unapplied_total));
+  if (extras.length) rows.push('<div class="text-gray-500">' + extras.join(' · ') + '</div>');
+
+  if (ap.lagging_suppliers && ap.lagging_suppliers.length) {
+    var top = ap.lagging_suppliers.slice(0, 3).map(function(s) {
+      return escapeHtml(s.name) + ' ' + fmt(s.remaining) + (s.days != null ? '<span class="text-gray-400">(' + s.days + '일)</span>' : '');
+    }).join(' · ');
+    rows.push('<div class="text-gray-500">잔여 상위 ' + top + '</div>');
+  }
+
+  el.innerHTML = rows.join('');
+  el.classList.remove('hidden');
 }
 
 function renderComposition(comp) {

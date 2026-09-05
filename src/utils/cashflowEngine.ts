@@ -14,6 +14,12 @@ import { entityFilter } from './entityFilter'
 import { computeExpectedPaymentDate } from './paymentSchedule'
 import { buildExpenseEstimator, type EstimateMethod } from './expenseEstimator'
 import { cardNetAmountSql, cardSpendFilterSql } from './cardSpend'
+import { excludePurchaseNonCounterpartiesSql } from '../constants/intercompany'
+import { excludeArExcludedClientsSql } from '../constants/arPolicy'
+import {
+  settleApFifo, paymentRunRate, medianPaymentDay, median, spreadOverdue, daysBetween,
+  type ApObligation, type ApSettlementEvent,
+} from './apSettlement'
 
 export interface CashflowItem {
   flow: 'IN' | 'OUT'
@@ -44,6 +50,67 @@ export interface CashflowOptions {
   /** true(기본)=연체·기한경과 항목을 from으로 끌어옴(예측용 — 즉시 회수·지급 대상).
    *  false=원래 예정일 유지(달력 월뷰용 — 범위 밖 연체는 해당 월에서만 표시). */
   carryOverdueToStart?: boolean
+  /** 연체 매입채무를 실적 런레이트로 분산할지. carryOverdueToStart 가 true 일 때만 의미가 있다.
+   *  false = 예측 첫날 일괄(구 동작). 달력 월뷰는 원래 예정일을 지켜야 하므로 호출부가 끈다. */
+  spreadOverdueAp?: boolean
+  /** 진단 out-param — 엔진이 채워 준다. 엔진을 두 번 부르지 않고 매입 대사 결과를 꺼내기 위한 통로. */
+  diagnostics?: { ap?: ApDiagnostics }
+}
+
+/** 매입 지급예정 ↔ 실제 지급 대사 결과. 숫자를 화면에 그대로 적기 위한 것이라 전부 원 단위. */
+export interface ApDiagnostics {
+  /** 대사 대상 채무 총액(취소 발주·제외 거래처 뺀 값) */
+  obligation_total: number
+  obligation_count: number
+  /** FIFO 로 이미 지급된 것으로 판정된 금액 */
+  settled_total: number
+  /** 아직 안 나간 돈 */
+  remaining_total: number
+  /** 잔여 중 만기가 이미 지난 것 */
+  overdue_total: number
+  overdue_count: number
+  /** 발주 없이 지급만 있는 금액(이관 흔적) */
+  unapplied_total: number
+  /** 내부법인·관계사라서 제외한 금액 — 회계허브 내부거래 탭에서 본다 */
+  excluded_total: number
+  excluded_count: number
+  /** 취소된 발주인데 예정 행이 남아 있어 걷어낸 금액 */
+  cancelled_total: number
+  cancelled_count: number
+  /** 실지급 월평균(완결월 기준) */
+  run_rate: number
+  run_rate_months: number
+  run_rate_basis: string
+  /** 연체 분산 회차 수(0 = 분산 안 함) */
+  spread_months: number
+  /** 지급 입력이 있는 마지막 달 · 마지막 지급일 · 오늘까지의 지연 일수 */
+  last_payment_month: string | null
+  last_payment_date: string | null
+  entry_lag_days: number | null
+  /** 관측 지연 = FIFO 가 닫은 건의 (실제 지급일 − 예정일) 중앙값. 명목 결제조건과 실제 습성의 차이. */
+  observed_lag_days: number | null
+  observed_lag_samples: number
+  /** 잔여가 큰데 지급 입력이 오래 멈춘 공급처 — '연체'가 아니라 '미입력'일 수 있는 후보 */
+  lagging_suppliers: { name: string; remaining: number; last_payment_date: string | null; days: number | null }[]
+}
+
+/** §0b(대사)와 §4.5(합성)가 같은 발주 목록을 쓴다 — 두 번 조회하지 않기 위해 형태를 공유한다. */
+interface PoRow {
+  id: number; po_number: string; final_amount: number; delivery_date: string | null; created_at: string
+  supplier_id: number | null; entity_id: number | null; supplier_name: string | null
+  payment_cycle_type: string | null; closing_day: number | null
+  payment_month_offset: number | null; payment_day: number | null; terms: number
+  materialized: number; pr_materialized: number
+}
+
+/** 발주의 지급 예정일 = (납기 또는 등록일) + 공급처 결제조건. 근거 날짜가 없으면 ''. */
+function poExpectedDate(po: PoRow): string {
+  const base = po.delivery_date || (po.created_at || '').substring(0, 10)
+  if (!base) return ''
+  return computeExpectedPaymentDate(base, {
+    payment_cycle_type: po.payment_cycle_type, payment_terms_days: po.terms,
+    closing_day: po.closing_day, payment_month_offset: po.payment_month_offset, payment_day: po.payment_day,
+  })
 }
 
 /** from~to(YYYY-MM-DD, inclusive)에 걸치는 'YYYY-MM' 월 목록 */
@@ -70,6 +137,14 @@ export async function buildCashflowDays(
   opts: CashflowOptions = {}
 ): Promise<Record<string, CashflowDay>> {
   const carryOverdue = opts.carryOverdueToStart !== false
+  const spreadAp = carryOverdue && opts.spreadOverdueAp === true
+  // 채권·채무 집계에서 빼는 거래처 — **여기서 정책을 새로 정하지 않는다.**
+  //   AR = 내부법인 3사 + 현금소매 더미(constants/arPolicy) · AP = 내부법인 3사 + 관계사(constants/intercompany).
+  //   AP 원장·재무제표·미수금 화면이 이미 이 SSOT 를 쓰는데 자금 예측만 안 써서, 같은 거래처가
+  //   원장에선 빠지고 예측에선 잡히는 상태였다(prod 실측 매입 460,286,796 · 매출 275,326,225).
+  //   내부거래는 회계허브 「내부거래 채권·채무」 탭이 흡수한다 → 예측에서 빼도 볼 곳이 남는다.
+  const arExcl = excludeArExcludedClientsSql            // (col) => ' AND ...'
+  const apExcl = excludePurchaseNonCounterpartiesSql
   const days: Record<string, CashflowDay> = {}
   const ensure = (d: string): CashflowDay => (days[d] ??= { date: d, in: 0, out: 0, items: [] })
   const add = (date: string, item: CashflowItem) => {
@@ -92,7 +167,7 @@ export async function buildCashflowDays(
     SELECT cs.id, cs.client_id, cs.entity_id, cs.schedule_date, cs.amount, cs.status, cs.actual_amount
     FROM cash_schedule cs
     WHERE cs.flow_type = 'IN' AND cs.source_type = 'ORDER'
-      AND cs.status != 'CANCELLED' AND cs.client_id IS NOT NULL${efArCs.clause}
+      AND cs.status != 'CANCELLED' AND cs.client_id IS NOT NULL${efArCs.clause}${arExcl('cs.client_id')}
     ORDER BY cs.client_id, cs.entity_id, cs.schedule_date, cs.id
   `).bind(...efArCs.params).all<{
     id: number; client_id: number; entity_id: number; schedule_date: string
@@ -110,8 +185,8 @@ export async function buildCashflowDays(
     const efP = entityFilter(c)
     const efA = entityFilter(c)
     const [pAgg, aAgg] = await Promise.all([
-      c.env.DB.prepare(`SELECT client_id, entity_id, COALESCE(SUM(amount), 0) AS v FROM payments WHERE 1=1${efP.clause} GROUP BY client_id, entity_id`).bind(...efP.params).all<{ client_id: number; entity_id: number; v: number }>(),
-      c.env.DB.prepare(`SELECT client_id, entity_id, COALESCE(SUM(amount), 0) AS v FROM adjustments WHERE 1=1${efA.clause} GROUP BY client_id, entity_id`).bind(...efA.params).all<{ client_id: number; entity_id: number; v: number }>(),
+      c.env.DB.prepare(`SELECT client_id, entity_id, COALESCE(SUM(amount), 0) AS v FROM payments WHERE 1=1${efP.clause}${arExcl('client_id')} GROUP BY client_id, entity_id`).bind(...efP.params).all<{ client_id: number; entity_id: number; v: number }>(),
+      c.env.DB.prepare(`SELECT client_id, entity_id, COALESCE(SUM(amount), 0) AS v FROM adjustments WHERE 1=1${efA.clause}${arExcl('client_id')} GROUP BY client_id, entity_id`).bind(...efA.params).all<{ client_id: number; entity_id: number; v: number }>(),
     ])
     const paid = new Map<string, number>(), adj = new Map<string, number>()
     for (const r of pAgg.results) paid.set(ckeyOf(r.client_id, r.entity_id), Number(r.v) || 0)
@@ -150,32 +225,190 @@ export async function buildCashflowDays(
     }
   }
 
+  // ── 0b) 매입 지급예정의 '이미 지급된 금액'을 파생으로 구한다 (FIFO 충당) — 매출 §0 대칭 ──
+  //   왜 필요했나: 매출은 §0 이 회수분을 빼는데 매입은 아무것도 안 뺐다. prod 실측(2026-09-05)에서
+  //   확정발주 3,737,785,592 중 **이미 지급한 2,483,414,286 이 계속 '앞으로 낼 돈'** 으로 잡혀
+  //   예측 첫날 잔액을 −21억으로 만들고 위험일을 91/91 로 고정시켰다.
+  //   발주↔지급을 잇는 기록은 사실상 없다(purchase_payments 536건 중 po_id 있는 건 1건) → 공급처×법인 FIFO.
+  //   판정 로직은 utils/apSettlement.ts(순수 모듈). 여기서는 데이터만 모은다.
+  const apSettledByRef = new Map<string, number>()
+  let apDiag: ApDiagnostics | null = null
+  let poRows: PoRow[] = []
+  let apEvents: ApSettlementEvent[] = []
+  {
+    const efApCs = entityFilter(c, 'cs')
+    const efApPo = entityFilter(c, 'po')
+    const efPp = entityFilter(c)
+    const efPa = entityFilter(c)
+    const [csApRes, poRes, ppRes, paRes] = await Promise.all([
+      // 물질화된 지급예정 — 창(from..to) 밖도 전부 본다. 충당은 기간이 아니라 잔액의 문제라서다.
+      c.env.DB.prepare(`
+        SELECT cs.id, cs.client_id, cs.entity_id, cs.schedule_date, cs.amount, cs.status, cs.actual_amount,
+               po.status AS po_status
+        FROM cash_schedule cs
+        LEFT JOIN purchase_orders po ON po.id = cs.source_id
+        WHERE cs.flow_type = 'OUT' AND cs.source_type = 'PURCHASE'
+          AND cs.status != 'CANCELLED' AND cs.client_id IS NOT NULL${efApCs.clause}${apExcl('cs.client_id')}
+        ORDER BY cs.schedule_date, cs.id
+        LIMIT 5000
+      `).bind(...efApCs.params).all<{
+        id: number; client_id: number; entity_id: number; schedule_date: string
+        amount: number; status: string; actual_amount: number | null; po_status: string | null
+      }>(),
+      c.env.DB.prepare(`
+        SELECT po.id, po.po_number, po.final_amount, po.delivery_date, po.created_at,
+               po.supplier_id, po.entity_id, s.client_name AS supplier_name,
+               s.payment_cycle_type, s.closing_day, s.payment_month_offset, s.payment_day,
+               COALESCE(s.payment_terms_days, 30) AS terms,
+               (SELECT COUNT(*) FROM cash_schedule cs WHERE cs.source_type = 'PURCHASE' AND cs.source_id = po.id AND cs.status != 'CANCELLED') AS materialized,
+               (SELECT COUNT(*) FROM payment_requests pr WHERE pr.related_po_id = po.id AND pr.status IN ('APPROVED', 'PAID')) AS pr_materialized
+        FROM purchase_orders po
+        LEFT JOIN clients s ON s.id = po.supplier_id
+        WHERE po.status IN ('CONFIRMED', 'RECEIVED', 'PARTIAL_RECEIVED')${efApPo.clause}${apExcl('po.supplier_id')}
+        ORDER BY po.id
+        LIMIT 2000
+      `).bind(...efApPo.params).all<PoRow>(),
+      c.env.DB.prepare(`
+        SELECT supplier_id, entity_id, substr(payment_date, 1, 10) AS d, amount
+        FROM purchase_payments WHERE 1=1${efPp.clause}${apExcl('supplier_id')}
+        ORDER BY d, id LIMIT 20000
+      `).bind(...efPp.params).all<{ supplier_id: number; entity_id: number; d: string; amount: number }>(),
+      c.env.DB.prepare(`
+        SELECT supplier_id, entity_id, substr(adjustment_date, 1, 10) AS d, amount
+        FROM purchase_adjustments WHERE 1=1${efPa.clause}${apExcl('supplier_id')}
+        ORDER BY d, id LIMIT 20000
+      `).bind(...efPa.params).all<{ supplier_id: number; entity_id: number; d: string; amount: number }>(),
+    ])
+
+    poRows = poRes.results
+    const events = apEvents
+    for (const r of ppRes.results) {
+      events.push({ supplierId: r.supplier_id, entityId: Number(r.entity_id) || 0, date: r.d, amount: Number(r.amount) || 0, kind: 'PAYMENT' })
+    }
+    for (const r of paRes.results) {
+      events.push({ supplierId: r.supplier_id, entityId: Number(r.entity_id) || 0, date: r.d, amount: Number(r.amount) || 0, kind: 'ADJUSTMENT' })
+    }
+
+    const obligations: ApObligation[] = []
+    let cancelledTotal = 0, cancelledCount = 0
+    for (const r of csApRes.results) {
+      // 취소된 발주인데 예정 행이 안 지워진 것 — 채무가 아니다. prod 실측 28건 52,006,174.
+      // 「수정·삭제가 안 따라온다」의 재발이라 여기서 걷어내되, 몇 건인지 진단에 남겨 사람이 지울 수 있게 한다.
+      if (r.po_status === 'CANCELLED' || r.po_status === 'DRAFT') { cancelledTotal += Number(r.amount) || 0; cancelledCount++; continue }
+      obligations.push({
+        ref: 'cs:' + r.id, supplierId: r.client_id, entityId: Number(r.entity_id) || 0,
+        due: r.schedule_date, amount: Number(r.amount) || 0,
+        ...(r.status === 'DONE' ? { done: true, doneAmount: Number(r.actual_amount ?? r.amount) || 0 } : {}),
+      })
+    }
+    for (const po of poRows) {
+      if (Number(po.materialized) > 0 || Number(po.pr_materialized) > 0) continue
+      if (!(Number(po.final_amount) > 0)) continue
+      const due = poExpectedDate(po)
+      if (!due) continue
+      obligations.push({
+        ref: 'po:' + po.id, supplierId: Number(po.supplier_id) || 0, entityId: Number(po.entity_id) || 0,
+        due, amount: Number(po.final_amount) || 0,
+      })
+    }
+
+    const settled = settleApFifo(obligations, events)
+    for (const [k, v] of settled.settledByRef) apSettledByRef.set(k, v)
+
+    // ── 진단: 「지급 예정을 실제와 비교해서 추측」의 근거를 숫자로 남긴다 ──
+    // 제외한 금액은 위 쿼리가 이미 걸러 버려서 셀 수가 없다 → 제외 대상만 따로 한 번 센다.
+    //   숨기는 게 아니라 옮기는 것임을 화면이 말할 수 있어야 한다("회계허브 내부거래 탭에서 확인").
+    const efEx = entityFilter(c, 'po')
+    const exclRow = await c.env.DB.prepare(`
+      SELECT COUNT(*) AS n, COALESCE(SUM(po.final_amount), 0) AS v
+      FROM purchase_orders po
+      WHERE po.status IN ('CONFIRMED', 'RECEIVED', 'PARTIAL_RECEIVED')${efEx.clause}
+        AND NOT (1=1${apExcl('po.supplier_id')})
+    `).bind(...efEx.params).first<{ n: number; v: number }>()
+    const rr = paymentRunRate(events)
+    let obligationTotal = 0, remainingTotal = 0, overdueTotal = 0, overdueCount = 0
+    const remainBySupplier = new Map<number, number>()
+    for (const o of obligations) {
+      const amt = Number(o.amount) || 0
+      obligationTotal += amt
+      const rem = Math.max(0, amt - (apSettledByRef.get(o.ref) || 0))
+      remainingTotal += rem
+      if (rem > 0) {
+        remainBySupplier.set(o.supplierId, (remainBySupplier.get(o.supplierId) || 0) + rem)
+        if (o.due < from) { overdueTotal += rem; overdueCount++ }
+      }
+    }
+    const lastPayDate = ppRes.results.length > 0 ? ppRes.results[ppRes.results.length - 1].d : null
+    const nameOf = new Map<number, string>()
+    for (const po of poRows) if (po.supplier_id) nameOf.set(po.supplier_id, po.supplier_name || '공급사')
+    const lastPayBySupplier = new Map<number, string>()
+    for (const r of ppRes.results) lastPayBySupplier.set(r.supplier_id, r.d)   // 날짜 오름차순이라 마지막이 최신
+    const lagging = [...remainBySupplier.entries()]
+      .map(([sid, remaining]) => {
+        const lp = lastPayBySupplier.get(sid) ?? null
+        return { name: nameOf.get(sid) || `공급사#${sid}`, remaining, last_payment_date: lp, days: lp ? daysBetween(lp, from) : null }
+      })
+      .sort((a, b) => b.remaining - a.remaining)
+      .slice(0, 8)
+
+    apDiag = {
+      obligation_total: Math.round(obligationTotal), obligation_count: obligations.length,
+      settled_total: Math.round(obligationTotal - remainingTotal), remaining_total: Math.round(remainingTotal),
+      overdue_total: Math.round(overdueTotal), overdue_count: overdueCount,
+      unapplied_total: Math.round(settled.unappliedTotal),
+      excluded_total: Math.round(Number(exclRow?.v) || 0), excluded_count: Number(exclRow?.n) || 0,
+      cancelled_total: Math.round(cancelledTotal), cancelled_count: cancelledCount,
+      run_rate: rr.rate, run_rate_months: rr.months, run_rate_basis: rr.basis,
+      spread_months: 0,
+      last_payment_month: rr.lastMonth, last_payment_date: lastPayDate,
+      entry_lag_days: lastPayDate ? daysBetween(lastPayDate, from) : null,
+      observed_lag_days: median(settled.lagSamples), observed_lag_samples: settled.lagSamples.length,
+      lagging_suppliers: lagging,
+    }
+  }
+
   /** 물질화 예정 행의 표시 금액 = 아직 안 들어온 잔여. 이미 받은 몫은 은행 잔액에 있으므로 예정에 또 세면 이중계상이다. */
-  const remainingOf = (row: { id: number; amount: number; status: string; actual_amount: number | null }, isArRow: boolean) => {
+  const remainingOf = (row: { id: number; amount: number; status: string; actual_amount: number | null }, isArRow: boolean, isApRow = false) => {
     const amt = Number(row.amount) || 0
+    if (isApRow) {
+      const settled = apSettledByRef.get('cs:' + row.id) ?? (row.status === 'DONE' ? (Number(row.actual_amount ?? row.amount) || 0) : 0)
+      return { remaining: Math.max(0, amt - settled), settled }
+    }
     if (!isArRow) return { remaining: row.status === 'DONE' ? (Number(row.actual_amount ?? row.amount) || 0) : amt, settled: 0 }
     const settled = settledById.get(row.id) ?? (row.status === 'DONE' ? (Number(row.actual_amount ?? row.amount) || 0) : 0)
     return { remaining: Math.max(0, amt - settled), settled }
   }
+  const isApRow = (r: { flow_type: string; source_type: string }) => r.flow_type === 'OUT' && r.source_type === 'PURCHASE'
+  const isCancelledPurchaseRow = (r: { source_type: string; po_status: string | null }) =>
+    r.source_type === 'PURCHASE' && (r.po_status === 'CANCELLED' || r.po_status === 'DRAFT')
 
   // ── 1) 물질화: cash_schedule (FIXED 제외) ──────────────────────────────
   const efCs = entityFilter(c, 'cs')
+  //   제외 거래처는 행 유형별로 다르다(AR=매출 정책·AP=매입 정책) → 유형이 맞을 때만 제외를 건다.
+  //   `(1=1 ...)` 로 감싸는 건 SSOT 헬퍼가 ' AND a AND b' 형태를 돌려주기 때문 — 문자열을 쪼개지 않고 그대로 쓴다.
   const { results: csRows } = await c.env.DB.prepare(`
     SELECT cs.id, cs.schedule_date, cs.flow_type, cs.source_type, cs.amount,
-           cs.description, cs.status, cs.actual_amount, cl.client_name
+           cs.description, cs.status, cs.actual_amount, cs.client_id, cs.entity_id, cs.source_id,
+           cl.client_name, po.status AS po_status
     FROM cash_schedule cs
     LEFT JOIN clients cl ON cl.id = cs.client_id
+    LEFT JOIN purchase_orders po ON cs.source_type = 'PURCHASE' AND po.id = cs.source_id
     WHERE cs.schedule_date BETWEEN ? AND ?
       AND cs.status != 'CANCELLED'
       AND cs.source_type != 'FIXED'${efCs.clause}
+      AND (cs.flow_type != 'IN'  OR cs.source_type != 'ORDER'    OR (1=1${arExcl('cs.client_id')}))
+      AND (cs.flow_type != 'OUT' OR cs.source_type != 'PURCHASE' OR (1=1${apExcl('cs.client_id')}))
   `).bind(from, to, ...efCs.params).all<{
     id: number; schedule_date: string; flow_type: string; source_type: string
     amount: number; description: string | null; status: string
-    actual_amount: number | null; client_name: string | null
+    actual_amount: number | null; client_id: number | null; entity_id: number | null
+    source_id: number | null; client_name: string | null; po_status: string | null
   }>()
   for (const r of csRows) {
     const isAr = r.flow_type === 'IN' && r.source_type === 'ORDER'
-    const { remaining, settled } = remainingOf(r, isAr)
+    if (isCancelledPurchaseRow(r)) continue
+    const { remaining, settled } = remainingOf(r, isAr, isApRow(r))
+    if (isApRow(r) && remaining <= 0) continue    // 전액 지급됨 — 예정으로 또 세면 이중계상
     add(r.schedule_date, {
       flow: r.flow_type === 'IN' ? 'IN' : 'OUT',
       type: r.source_type,
@@ -195,28 +428,38 @@ export async function buildCashflowDays(
   //   FIXED 제외(온더플라이 통일)·CANCELLED 제외. DONE은 이미 정산분이라 과거에 남김.
   //   ※ ORDER 연체분은 §4b residual의 mAgg(전 기간 PENDING/OVERDUE)에서 차감되고 §4b 합성 대상(materialized=0)도 아니므로
   //     여기서 from에 표시해도 이중계산 없음.
+  /** 연체 매입채무 풀 — spreadAp 일 때 from 에 얹지 않고 여기 모았다가 §4.6 에서 런레이트로 나눈다. */
+  const apOverduePool: { name: string; amount: number; due: string }[] = []
   if (carryOverdue) {
     const efOv = entityFilter(c, 'cs')
     const { results: ovRows } = await c.env.DB.prepare(`
-      SELECT cs.id, cs.schedule_date, cs.flow_type, cs.source_type, cs.amount, cs.description, cs.status, cl.client_name
+      SELECT cs.id, cs.schedule_date, cs.flow_type, cs.source_type, cs.amount, cs.description, cs.status,
+             cl.client_name, po.status AS po_status
       FROM cash_schedule cs
       LEFT JOIN clients cl ON cl.id = cs.client_id
+      LEFT JOIN purchase_orders po ON cs.source_type = 'PURCHASE' AND po.id = cs.source_id
       WHERE cs.schedule_date < ?
         AND cs.status IN ('PENDING', 'OVERDUE')
         AND cs.source_type != 'FIXED'${efOv.clause}
+        AND (cs.flow_type != 'IN'  OR cs.source_type != 'ORDER'    OR (1=1${arExcl('cs.client_id')}))
+        AND (cs.flow_type != 'OUT' OR cs.source_type != 'PURCHASE' OR (1=1${apExcl('cs.client_id')}))
     `).bind(from, ...efOv.params).all<{
       id: number; schedule_date: string; flow_type: string; source_type: string; amount: number
-      description: string | null; status: string; client_name: string | null
+      description: string | null; status: string; client_name: string | null; po_status: string | null
     }>()
     for (const r of ovRows) {
       const isAr = r.flow_type === 'IN' && r.source_type === 'ORDER'
+      const isAp = isApRow(r)
+      if (isCancelledPurchaseRow(r)) continue
       // 부분수금된 연체는 잔여만 끌어온다. 전액 회수됐으면(은행매칭이 못 잡은 합산 입금 등) 연체가 아니다.
-      const { remaining, settled } = remainingOf({ ...r, actual_amount: null }, isAr)
-      if (isAr && remaining <= 0) continue
+      const { remaining, settled } = remainingOf({ ...r, actual_amount: null }, isAr, isAp)
+      if ((isAr || isAp) && remaining <= 0) continue
+      const label = `${r.description || r.client_name || r.source_type} (연체)`
+      if (isAp && spreadAp) { apOverduePool.push({ name: label, amount: remaining, due: r.schedule_date }); continue }
       add(from, {
         flow: r.flow_type === 'IN' ? 'IN' : 'OUT',
         type: r.source_type,
-        name: `${r.description || r.client_name || r.source_type} (연체)`,
+        name: label,
         amount: remaining,
         status: r.status,
         materialized: true,
@@ -315,7 +558,7 @@ export async function buildCashflowDays(
     FROM order_billing_groups g
     JOIN orders o ON o.id = g.order_id
     LEFT JOIN clients cl ON cl.id = o.client_id
-    WHERE o.status NOT IN ('CANCELLED', 'DRAFT')${efG.clause}
+    WHERE o.status NOT IN ('CANCELLED', 'DRAFT')${efG.clause}${arExcl('o.client_id')}
     ORDER BY o.delivery_date IS NULL, o.delivery_date ASC, g.order_id ASC, g.entity_id ASC
     LIMIT 2000
   `).bind(...efG.params).all<{
@@ -353,7 +596,7 @@ export async function buildCashflowDays(
   if (billedGroups.length > 0) {
     const ckey = ckeyOf
     const { paid: paidByCE, adj: adjByCE } = await loadArAgg()   // §0과 동일 집계 — 재조회하지 않는다
-    const { results: bAggRows } = await c.env.DB.prepare(`SELECT o.client_id, g.entity_id, COALESCE(SUM(g.billed_amount), 0) AS v FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${efG.clause} GROUP BY o.client_id, g.entity_id`).bind(...efG.params).all<{ client_id: number; entity_id: number; v: number }>()
+    const { results: bAggRows } = await c.env.DB.prepare(`SELECT o.client_id, g.entity_id, COALESCE(SUM(g.billed_amount), 0) AS v FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${efG.clause}${arExcl('o.client_id')} GROUP BY o.client_id, g.entity_id`).bind(...efG.params).all<{ client_id: number; entity_id: number; v: number }>()
     const billedByCE = new Map<string, number>()
     for (const r of bAggRows) billedByCE.set(ckey(r.client_id, r.entity_id), Number(r.v) || 0)
     const matByCE = pendingRemainByCE
@@ -397,45 +640,61 @@ export async function buildCashflowDays(
 
   // ── 4.5) 온더플라이: 매입 지급예정 (PURCHASE_EXPECTED) — 매출 §4 대칭 (H1b) ──
   //   확정발주(CONFIRMED/RECEIVED/PARTIAL_RECEIVED) 중 cash_schedule 미물질화분을 공급사 결제조건으로 OUT 합성.
-  //   이전: 매입은 물질화(auto-generate·매입확정)된 행만 §1에 등장 → 미물질화 확정발주는 예측에서 누락(매출은 자동 합성인데 비대칭).
   //   dedup: (a) cash_schedule PURCHASE source_id=po.id 존재 시 §1과 중복 → skip,
   //          (b) 지출결의(payment_requests.related_po_id) APPROVED/PAID 존재 시 그 결의 행과 중복 → skip.
-  const efPo = entityFilter(c, 'po')
-  const { results: poRows } = await c.env.DB.prepare(`
-    SELECT po.id, po.po_number, po.final_amount, po.delivery_date, po.created_at, po.supplier_id,
-           s.client_name AS supplier_name,
-           s.payment_cycle_type, s.closing_day, s.payment_month_offset, s.payment_day,
-           COALESCE(s.payment_terms_days, 30) AS terms,
-           (SELECT COUNT(*) FROM cash_schedule cs WHERE cs.source_type = 'PURCHASE' AND cs.source_id = po.id) AS materialized,
-           (SELECT COUNT(*) FROM payment_requests pr WHERE pr.related_po_id = po.id AND pr.status IN ('APPROVED', 'PAID')) AS pr_materialized
-    FROM purchase_orders po
-    LEFT JOIN clients s ON s.id = po.supplier_id
-    WHERE po.status IN ('CONFIRMED', 'RECEIVED', 'PARTIAL_RECEIVED')${efPo.clause}
-    LIMIT 2000
-  `).bind(...efPo.params).all<{
-    id: number; po_number: string; final_amount: number; delivery_date: string | null; created_at: string
-    supplier_id: number | null; supplier_name: string | null
-    payment_cycle_type: string | null; closing_day: number | null
-    payment_month_offset: number | null; payment_day: number | null; terms: number
-    materialized: number; pr_materialized: number
-  }>()
+  //   ★ 발주 목록·제외 필터는 §0b 에서 이미 한 번 조회했다(poRows) — 여기서 다시 조회하지 않는다.
+  //   ★ 금액은 final_amount 가 아니라 **FIFO 로 차감하고 남은 잔여**다. 이게 없어서 이미 낸 24.8억이
+  //     계속 '앞으로 낼 돈'으로 잡혔다(2026-09-05 수정).
   for (const po of poRows) {
     if (Number(po.materialized) > 0 || Number(po.pr_materialized) > 0) continue
     if (!(Number(po.final_amount) > 0)) continue
-    const base = po.delivery_date || (po.created_at || '').substring(0, 10)
-    if (!base) continue
-    const expected = computeExpectedPaymentDate(base, {
-      payment_cycle_type: po.payment_cycle_type, payment_terms_days: po.terms,
-      closing_day: po.closing_day, payment_month_offset: po.payment_month_offset, payment_day: po.payment_day,
-    })
+    const expected = poExpectedDate(po)
+    if (!expected) continue
+    const settled = apSettledByRef.get('po:' + po.id) || 0
+    const remaining = Math.max(0, (Number(po.final_amount) || 0) - settled)
+    if (remaining <= 0) continue        // 이미 다 낸 발주 — 예정에 남기면 이중계상
+    const name = `${po.supplier_name || '공급사'} 지급예정 (발주 ${po.po_number})`
     const carried = carryOverdue && expected < from   // 연체 지급(예정일 경과)은 예측 시작일에 표시 (매출 §4b와 대칭)
-    const due = carried ? from : expected
-    add(due, {
+    if (carried && spreadAp) { apOverduePool.push({ name, amount: remaining, due: expected }); continue }
+    add(carried ? from : expected, {
       flow: 'OUT', type: 'PURCHASE_EXPECTED',
-      name: `${po.supplier_name || '공급사'} 지급예정 (발주 ${po.po_number})`,
-      amount: Number(po.final_amount) || 0, materialized: false,
+      name,
+      amount: remaining, materialized: false,
+      ...(settled > 0 ? { settled_amount: settled } : {}),
       ...(carried ? { carried_from: expected } : {}),
     })
+  }
+
+  // ── 4.6) 연체 매입채무를 실적 런레이트로 분산 (PURCHASE_OVERDUE) ────────────
+  //   왜 첫날 일괄이 아닌가: 확정발주가 전부 만기 도래 상태라(prod 실측 최종 발주 2026-08-06 + NET30 = 오늘)
+  //   통째로 얹으면 잔액이 −12억으로 시작해 위험일이 영구히 100%가 되고, 그 화면은 아무도 안 본다.
+  //   실제로 나가는 속도는 완결월 기준 월평균이고, 그게 이 회사가 실제로 하는 행동이다.
+  //   ⚠️ 이건 '추정'이다 — estimated:true 로 표시하고, 근거(런레이트·산출 기간)를 진단에 함께 싣는다.
+  //   ⚠️ 달력 월뷰(carryOverdueToStart:false)는 원래 예정일을 지켜야 하므로 호출부가 spreadOverdueAp 를 끈다.
+  if (spreadAp && apOverduePool.length > 0 && apDiag) {
+    const total = apOverduePool.reduce((a, x) => a + x.amount, 0)
+    const day = medianPaymentDay(apEvents)
+    const tranches = spreadOverdue(total, apDiag.run_rate, from, day)
+    if (tranches.length === 0) {
+      // 런레이트를 못 구했다(지급 이력 없음) → 구 동작으로 되돌린다. 조용히 빠뜨리지 않는다.
+      for (const it of apOverduePool) {
+        add(from, {
+          flow: 'OUT', type: 'PURCHASE_EXPECTED', name: it.name, amount: it.amount,
+          materialized: false, carried_from: it.due,
+        })
+      }
+    } else {
+      apDiag.spread_months = tranches.length
+      const oldest = apOverduePool.reduce((m, x) => (x.due < m ? x.due : m), apOverduePool[0].due)
+      for (const t of tranches) {
+        add(t.date, {
+          flow: 'OUT', type: 'PURCHASE_OVERDUE',
+          name: `연체 매입채무 분산 ${t.index}/${t.of} (실적 월평균 기준)`,
+          amount: t.amount, materialized: false, estimated: true,
+          carried_from: oldest,
+        })
+      }
+    }
   }
 
   // ── 5) 온더플라이: 법인카드 청구 예정 (CARD_EXPECTED) ──────────────────
@@ -587,5 +846,6 @@ export async function buildCashflowDays(
     }
   }
 
+  if (opts.diagnostics && apDiag) opts.diagnostics.ap = apDiag
   return days
 }

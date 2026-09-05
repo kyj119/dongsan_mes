@@ -199,6 +199,8 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
                 </div>
                 <div id="schExcludedNote" class="hidden mt-2 text-[10px] text-gray-600 bg-gray-50 rounded px-2 py-1"></div>
                 <div id="schCarriedNote" class="hidden mt-2 text-[10px] text-amber-700 bg-amber-50 rounded px-2 py-1"></div>
+                <!-- 매입 지급예정 ↔ 실제 지급 대사. 곡선이 왜 그 모양인지를 화면이 스스로 설명하는 자리 -->
+                <div id="schApNote" class="hidden mt-2 text-[10px] text-gray-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 space-y-1"></div>
               </div>
 
               <!-- 이번달 구성 -->
