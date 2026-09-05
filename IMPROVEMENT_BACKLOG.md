@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-09-05T03:47:12+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-09-05T09:05:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,31 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **11** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음 — #613·#616·#617·#622·#624·#625·#626·#627·#628·#629·#630) |
+| 🆕 new | **12** (`list_issues(state:OPEN,label:auto-improve)` 실측, 11→12 — #631 신규) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **542** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 5 보안 + 인프라 (2026-09-05T09:05):**
+> - **방법**: `git status`=워킹트리 clean(main, `7529b10`), `git fetch origin main`=이미 최신(로컬이 origin과 동일 커밋). `git fetch --unshallow`(얕은 clone 복구). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area5 방법 라인 HEAD `8a9556a`)**: 웹앱 범위 diff **59커밋**. 그중 직전 Area4 사이클(HEAD `abc38eb`)까지는 Area1~4가 각자 렌즈로 이미 정독(prod헬스/코드품질/UX/데이터정합성) — **보안 렌즈로는 전부 미정독**이었으므로, `abc38eb..HEAD`의 **신규 11커밋**(cash-plan 신설 + prices 특약가 재연결 + cut 엔진, `df039437`~`c9a4a58`)에 전체 보안 심층, 그 이전 48커밋은 대표 XSS 표본(신규 대형 스크립트 파일)으로 좁혀 분석.
+> - **신규 라우터 `cashSchedule.ts`(161줄, 신설) 전문 직독** — `cash_schedule`(entity_id 보유, `migrations/0245`)을 다루는 9개 핸들러 전수 대조: 목록/일자상세/PATCH/DELETE/complete/auto-generate **7개는 전부 `entityFilter` 적용**(형제 일관). **`POST /schedule/check-overdue`(:571) 1곳만 UPDATE·COUNT 둘 다 entity 절 없음** — 같은 파일 안에서 유일하게 컨벤션을 벗어난 형제-비대칭(#437/#452 클래스) → **이슈 등록 #631**(사전 `search_issues` 중복확인 0건). 프론트 트리거(`cashSchedule.js:446`)가 cron이 아니라 버튼이라 실제 도달 가능. 영향은 상태필드 cross-tenant write + 집계 카운트 노출(데이터 절도는 아님) — severity S, issue-only(IDOR류=owner 워크플로).
+> - **`prices.ts`(+90/-대량 diff, 특약가 재연결 + 규격매칭 폴백) 직독** — 신규 `SELECT price_suggest FROM items`·`SELECT price FROM client_item_prices` 전부 바인드 파라미터, `width`/`height` 쿼리값도 `Number()` 강제 후 바인드라 SQLi 없음. `client_item_prices`·`items` 둘 다 entity_id 컬럼 부재(전역 마스터, FP클래스⑤와 동형) → entityFilter 불필요가 정상. 형제 `efSales`/`efPurchase`는 기존 그대로 유지 확인. **결함 0건**.
+> - **`bank.ts`(21줄 diff)** — `applyBankTransaction`의 cash_schedule 자동-DONE UPDATE 제거(파생 계산으로 전환, 누적캐시 클래스 개선이지 보안 이슈 아님). 회귀 없음.
+> - **XSS 표본 스캔(신규/재작성 대형 스크립트, escapeHtml 사용 0회 파일 우선)**: `storageZones.js`(escapeHtml 매치 0 → 헬퍼명이 `escapeAttr`라 오탐, 19개 innerHTML sink 전수 `escapeAttr` 일관 적용 확인·zone_name/description/manager_name/item_name/entity_name 전부 커버) · `cashSchedule.js`(신규 393줄, client_name/representative/description 전부 `escapeHtml`+`escapeJsAttr`(onclick 속성) 이중 적용, `schTypeLabel`은 리터럴 맵 폴백이라 FP) · `orderForm/parent.js` 신규 `refreshPriceSuggestion`(가격원천 라벨은 `textContent` 대입이라 애초 innerHTML 아님, safe) — **net-new sink 0건**.
+> - **standing scan 1: 시크릿 폴백** `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43` 1건뿐(빈 문자열 폴백, 기존 FP, 변동없음).
+> - **standing scan 2: `npm run audit:entity`** — 검사 133파일·entity테이블 SELECT 67건·**누락 0건**(변동없음, cashSchedule.ts 포함 스캔 확인).
+> - **standing scan 3: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 4: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 5: `npm audit --omit=dev`** — **0건**(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 5런(HEAD `7529b10` 포함) 전부 `conclusion:success`.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **11→12**(#631 신규 — 기존 11건 전건 일치: #613·#616·#617·#622·#624·#625·#626·#627·#628·#629·#630).
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(11→12) · done **542**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-5-security-infra.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: 아래 실행.
+> - 신규 이슈 1건(#631, cashSchedule check-overdue 형제-비대칭 cross-tenant write), 자동수정 0건(IDOR류=issue-only 컨벤션), done-sync: open 12(11→12)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-09-05T03:47):**
 > - **방법**: `git status`=워킹트리 clean(main, `abc38eb`), `git fetch origin main`=이미 최신. `git fetch --unshallow`(얕은 clone 복구). `npm ci`(0→81), `npx tsc --noEmit` clean, `npm run db:bootstrap:ci`로 로컬 D1에 baseline+전체 마이그레이션(0001~0571) 재적용 성공.
