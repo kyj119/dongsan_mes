@@ -92,6 +92,9 @@ const ENDPOINTS = [
   { path: '/api/price-lists', name: 'priceLists.list' },
   { path: '/api/prices?item_id=1&client_id=1&context=sales', name: 'prices.lookup', allow404: true },
   { path: '/api/bom/overview', name: 'bom.overview' },
+  // 0573(finishing_methods.pricing_type/unit_price)이 명시 컬럼리스트 SELECT — 이 목록 라우트 하나뿐이라
+  // 프로브가 없으면 (b)-risk 컬럼드리프트가 완전 무음(#483/#484 클래스). GET은 group 없이도 200이어야 정상.
+  { path: '/api/finishing/methods', name: 'finishing.methods' },
   { path: '/api/facility/zones', name: 'facility.zones' },
   { path: '/api/storage-zones', name: 'storageZones.list' },
 
