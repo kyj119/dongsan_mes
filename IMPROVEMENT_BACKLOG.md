@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-09-05T09:05:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-09-05T13:35:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,29 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **12** (`list_issues(state:OPEN,label:auto-improve)` 실측, 11→12 — #631 신규) |
+| 🆕 new | **12** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **542** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 6 자기 진화 (2026-09-05T13:35):**
+> - **방법**: `git status`=워킹트리 clean(main, `5d71457`), `git fetch origin main`=이미 최신(로컬=origin 동일 커밋). `git fetch --unshallow`(얕은 clone 복구). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area6 방법 라인 HEAD `78a8dae`)**: 웹앱 범위 diff **62커밋** — Area1~5가 이미 각자 렌즈로 이 창을 순차 정독(직전 Area5 09:05 사이클까지 `7529b10` 커버). Area5 이후 신규 커밋 **3건만**(`b84e713`·`2729bec9`·`5d71457c`) 전 영역 미정독 — Area6 신선각도로 직접 정독.
+> - **신선 3커밋 직독** — ① `b84e713`(은행계좌 `include_in_cash_plan` 플래그, 0574) — prod가 자금계획 시작잔액에 마이너스통장 사용액(-4.2억)까지 합산해 90일 예측 위험일이 91/91로 상시 경보였던 걸 수정. `entityFilter` 전 쿼리 적용 확인(`bank.ts` GET/POST/PUT, `cashSchedule.ts` 신규 `getCashPlanStartBalance`), 규칙이 `utils/bankBalance.ts` 한 곳(`isInCashPlan`/`IN_CASH_PLAN`)에만 정의돼 화면 간 불일치(2026-07-17 P1) 재발 없음. ② `2729bec9`(마감 봉제 축 가격 컬럼 Phase 0, 0573) — 전 단가 0원 시작이라 금액 영향 0, `finishing_methods`는 entity_id 없는 전역 마스터라 entityFilter 불요(정상). 둘 다 로컬 픽스처/셀프테스트 자체 검증 동반. ③ `5d71457c`는 0573 번호충돌(다른 세션과 동시 착륙) 리네임뿐(코드 변경 없음). **3건 전부 결함 0건**.
+> - **마이그 번호 중복 standing scan**(#438 레시피) — `0573`은 리네임으로 해소(신규 재충돌 없음), 기존 중복 9건(`0327`·`0412`·`0416`·`0420`·`0453`·`0555`·`0563`·`0569`·`0570`)은 전부 과거 사이클이 기능안전 확인한 잔존분(변동없음).
+> - **컬럼-diff bridge 적용(0574 `include_in_cash_plan`)**: `scripts/smoke.cjs`가 이 컬럼을 명시 SELECT하는 두 엔드포인트(`bank.accounts`·`cashSchedule.overview`) **둘 다 이미 프로브 중**(108행·195행) — #484류 "smoke가 detail만 놓쳐 마이그 미적용을 은폐" 사각지대가 이번엔 처음부터 없음(list/overview 자체가 신규 컬럼을 참조). 별도 조치 불요.
+> - **범위 축 standing scan(#616/#617 레시피) — 비-웹앱 축(LogWatcher/IllustratorAutomat/caps-worker/workers/queue) churn**: `78a8dae..HEAD`에서 **12커밋**(전부 IllustratorAutomat 배치엔진, `69655f41`~`45f5af4a`) — `grep -c`로 백로그+아카이브 전수 대조 = **어느 로그에도 언급 0건**(나열조차 안 됨, 62회차와 동일 사각지대 패턴 재현). 직접 정독 결과 이 wave가 바로 CLAUDE.md "조용한 격하"(2026-09-04 맞붙임 래스터 격하 사고)의 **사고→진단→수정 전체 시퀀스**(엔진 선택을 `placement.js` 순수모듈로 분리, 판 길이 상한 관문화, harden 격자 셀 소속 판정 등) — `npm run cut:butt`(53건)·`npm run cut:placement`(38건) 전항목 통과 재확인(이번 churn 반영 후에도 회귀 없음). `cut:smoke`는 샌드박스 Playwright chromium_headless_shell 미설치로 실행불가(환경 제약, 코드결함 아님), `cut:e2e`는 실제 일러 필요라 원천 불가 — 기존 제약과 동일. **net-new 결함 0건, 사고 대응 자체는 검증됐으나 발견 프로세스의 사각지대(범위 축)는 이번에도 재현** — #616/#617 codify 문단이 정확히 예측한 패턴이라 신규 codify 불요, 기존 레시피 유효성만 재확인.
+> - **done-sync 절대값 재동기화(리터럴 쿼리)**: `search_issues(is:closed,reason:completed,label:auto-improve)` **542**(변동없음) · `not_planned`4+`duplicate`2=rejected **6**(변동없음) · `list_issues(OPEN,label:auto-improve)` **12**(변동없음, #613·#616·#617·#622·#624·#625·#626·#627·#628·#629·#630·#631 전건 일치).
+> - **open≠unfixed 거울(30회차 레시피)**: 최근 커밋 메시지 전수(`git log 78a8dae..HEAD --grep`)에 열린 12개 이슈 번호 중 어느 것도 "fix #NNN"류로 등장하지 않음(백로그 자체 커밋 4건만 매치) → fixed-in-tree 후보 0건. 표본 재검증(#622, 2026-09-01 가장 오래된 미close): `shell.js` `history.replaceState` 해시 미보존 버그 코드 상 여전히 잔존(1902행, 이슈 인용 라인과 동일 로직) — 정상 open 확인.
+> - **standing scan 1: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 3: `npm audit --omit=dev`** — **0건**(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 5런(HEAD `5d71457` 포함) 전부 `conclusion:success`.
+> - **🧬 SKILL 강화**: 없음 — area-6-self-evolution.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 이번 사이클은 기존 「범위 축」(62회차)·「컬럼-diff bridge」(15회차)·「open≠unfixed 거울」(30회차) 세 규칙이 정확히 의도대로 작동한 실증(신규 codify 불요) — 특히 범위 축 사각지대가 62회차 이후에도 구조적으로 재발함을 재확인(다음 세션들의 churn 로그가 IA 배치엔진 wave를 여전히 나열조차 안 함).
+> - **백로그 트림 체크**: 아래 실행.
+> - 신규 이슈 0건(신선 웹앱 3커밋 전부 clean, 비-웹앱 축 12커밋도 cut:butt/cut:placement 전항목 통과 재확인해 net-new 0), 자동수정 0건(고칠 코드 없음), done-sync: open 12(변동없음)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 + 인프라 (2026-09-05T09:05):**
 > - **방법**: `git status`=워킹트리 clean(main, `7529b10`), `git fetch origin main`=이미 최신(로컬이 origin과 동일 커밋). `git fetch --unshallow`(얕은 clone 복구). `npm ci`(0→81), `npx tsc --noEmit` clean.
