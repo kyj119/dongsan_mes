@@ -9,7 +9,7 @@ import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { buildCashflowDays, type CashflowItem } from '../utils/cashflowEngine'
 import { computeExpectedPaymentDate } from '../utils/paymentSchedule'
 import { kstYm, kstYmd } from '../utils/kstDate'
-import { getTotalBankBalance } from '../utils/bankBalance'
+import { getTotalBankBalance, getCashPlanStartBalance } from '../utils/bankBalance'
 
 interface BilledOrderRow {
   id: number
@@ -216,7 +216,7 @@ cashScheduleRouter.get('/schedule/overview', requireEditOrRole('/cash-schedule',
     const [calMap, fcMap, bank] = await Promise.all([
       buildCashflowDays(c, monthStart, monthEnd, { carryOverdueToStart: false }),
       buildCashflowDays(c, today, horizonEnd),
-      getTotalBankBalance(c),
+      getCashPlanStartBalance(c),
     ])
 
     // ── 달력 (calendar 엔드포인트와 동일 구조) ──────────────────────────────
@@ -256,9 +256,11 @@ cashScheduleRouter.get('/schedule/overview', requireEditOrRole('/cash-schedule',
       overdue_count: overdueCount,
     }
 
-    // ── 예측 (오늘부터 days일, 시작잔액=은행 실잔액) ────────────────────────
+    // ── 예측 (오늘부터 days일) ─────────────────────────────────────────────
+    //   시작잔액 = '계획에 넣기로 한' 계좌들의 실잔액(0573). 마이너스통장처럼 제외된 계좌는
+    //   빠진 사실이 안 보이면 안 되므로 excluded_* 를 응답에 실어 화면에 병기한다.
     const startBalanceRaw = c.req.query('start_balance')
-    const startBalance = startBalanceRaw !== undefined ? (Number(startBalanceRaw) || 0) : (bank.total_balance || 0)
+    const startBalance = startBalanceRaw !== undefined ? (Number(startBalanceRaw) || 0) : (bank.start_balance || 0)
     const series: ForecastDay[] = []
     let running = startBalance
     for (let i = 0; i <= days; i++) {
@@ -320,8 +322,10 @@ cashScheduleRouter.get('/schedule/overview', requireEditOrRole('/cash-schedule',
         calendar: { year: y, month: m, days: calDays, summary },
         forecast: {
           start_balance: startBalance,
-          bank_balance: bank.total_balance || 0,
+          bank_balance: bank.start_balance || 0,
           account_count: bank.account_count || 0,
+          excluded_balance: bank.excluded_balance || 0,   // 계획에서 뺀 계좌 합(주로 마이너스통장 사용액)
+          excluded_count: bank.excluded_count || 0,
           end_balance: running,
           min_balance: series.length ? Math.min(...series.map((d) => d.balance)) : startBalance,
           max_balance: series.length ? Math.max(...series.map((d) => d.balance)) : startBalance,
@@ -678,13 +682,14 @@ cashScheduleRouter.get('/schedule/monthly', requireEditOrRole('/cash-schedule', 
   }
 })
 
-// 은행 실잔액 합계 — 추정자금일보 시작잔액 자동 주입용 (Phase 4 연결)
-// bank_accounts에 잔액 컬럼이 없어 계좌별 최신 bank_transactions.balance_after 합산
+// 자금계획 시작잔액 — bank_accounts에 잔액 컬럼이 없어 계좌별 최신 bank_transactions.balance_after 합산.
+//   0573: '계획에 넣기로 한' 계좌만 센다(overview 와 같은 헬퍼) — 이 엔드포인트 이름이 곧 자금계획 기준이라
+//   전체 현금(getTotalBankBalance)을 돌려주면 화면과 어긋난다. 전체 현금은 /api/bank/fund-summary 가 준다.
 cashScheduleRouter.get('/schedule/bank-balance', requireEditOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
-    // P1(2026-07-17): bank fund-summary와 동일 로직으로 수렴 → 현금잔액 불일치 제거. [[bankBalance]]
-    const { total_balance, account_count } = await getTotalBankBalance(c)
-    return c.json({ success: true, data: { total_balance, account_count } })
+    const { start_balance, account_count, excluded_balance, excluded_count } = await getCashPlanStartBalance(c)
+    // total_balance 키는 기존 응답계약 유지(값의 기준만 계획 포함분으로 좁혀졌다).
+    return c.json({ success: true, data: { total_balance: start_balance, account_count, excluded_balance, excluded_count } })
   } catch (error) {
     console.error('cashSchedule bank-balance error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

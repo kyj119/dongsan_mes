@@ -218,11 +218,28 @@ function renderForecastPanel(fc, carried) {
   var minEl = document.getElementById('schFcMin');
   if (minEl) minEl.className = 'text-[11px] font-bold tabular-nums py-0.5 ' + (fc.min_balance < 0 ? 'text-red-600' : 'text-gray-900');
 
-  // 시작잔액 input — 사용자가 손대지 않았으면 은행 실잔액을 채워 넣는다(직접 입력한 값은 건드리지 않음).
+  // 시작잔액 input — 사용자가 손대지 않았으면 계획 기준 잔액을 채워 넣는다(직접 입력한 값은 건드리지 않음).
   var startEl = document.getElementById('fcStartBalance');
   if (startEl && String(startEl.value || '').replace(/[^\d.-]/g, '') === '') {
     startEl.value = fmt(fc.start_balance);
-    startEl.title = '은행 실잔액 ' + fmt(fc.bank_balance) + '원(계좌 ' + fc.account_count + '개) 기준. 비우면 이 값으로 되돌아갑니다.';
+    var tip = '자금계획에 포함된 계좌 ' + fc.account_count + '개의 실잔액 ' + fmt(fc.bank_balance) + '원 기준.';
+    if (fc.excluded_count > 0) {
+      tip += ' 제외 ' + fc.excluded_count + '개(' + fmt(fc.excluded_balance) + '원)는 계좌 관리에서 조정합니다.';
+    }
+    startEl.title = tip + ' 비우면 이 값으로 되돌아갑니다.';
+  }
+
+  // 계획에서 뺀 계좌(주로 마이너스통장 사용액)를 병기한다 — 시작잔액에서 빠진 사실이 화면에서 사라지면
+  // 예측이 실제보다 낙관적으로 읽힌다. 계산은 예금 기준 그대로 두고 사실만 덧붙인다.
+  var exEl = document.getElementById('schExcludedNote');
+  if (exEl) {
+    if (fc.excluded_count > 0 && fc.excluded_balance !== 0) {
+      exEl.innerHTML = '<i class="fas fa-circle-info mr-1"></i>계좌 ' + fc.excluded_count + '개(' + fmt(fc.excluded_balance) +
+        ')는 시작잔액에서 제외했습니다. 마이너스통장 사용액은 갚아야 할 돈이라 예측 출발점에 넣지 않습니다.';
+      exEl.classList.remove('hidden');
+    } else {
+      exEl.classList.add('hidden');
+    }
   }
 
   // 연체 이월 안내 — 예측 첫날의 큰 숫자가 '오늘 들어온다'는 뜻이 아님을 밝힌다.

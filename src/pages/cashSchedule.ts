@@ -197,6 +197,7 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
                     <div class="text-[11px] font-bold text-red-600 tabular-nums py-0.5" id="schFcRisk">-</div>
                   </div>
                 </div>
+                <div id="schExcludedNote" class="hidden mt-2 text-[10px] text-gray-600 bg-gray-50 rounded px-2 py-1"></div>
                 <div id="schCarriedNote" class="hidden mt-2 text-[10px] text-amber-700 bg-amber-50 rounded px-2 py-1"></div>
               </div>
 

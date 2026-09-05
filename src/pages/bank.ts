@@ -489,10 +489,17 @@ export const bankPageContent = `
             </div>
             <div>
               <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                <input type="checkbox" id="accOverdraft" class="w-4 h-4">
+                <input type="checkbox" id="accOverdraft" class="w-4 h-4" onchange="if(this.checked){var c=document.getElementById('accCashPlan'); if(c) c.checked=false;}">
                 마이너스통장(한도대출) 계좌
               </label>
               <p class="text-xs text-gray-400 mt-1">체크하면 자금현황의 총 계좌잔액(예금)에서 제외되고 마이너스통장 사용액으로 따로 집계됩니다.</p>
+            </div>
+            <div>
+              <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                <input type="checkbox" id="accCashPlan" class="w-4 h-4">
+                자금계획 시작잔액에 포함
+              </label>
+              <p class="text-xs text-gray-400 mt-1">자금계획 예측이 <b>출발점으로 삼는 잔액</b>에 이 계좌를 넣을지 정합니다. 마이너스통장은 잔액이 '가진 돈'이 아니라 <b>빌려 쓴 돈</b>이라 기본으로 빠집니다(체크 해제). 보증금 예치처럼 당장 못 쓰는 예금도 빼두면 예측이 정확해집니다. 빼도 거래내역·입금매칭·실적 집계는 그대로입니다.</p>
             </div>
             <div>
               <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">

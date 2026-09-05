@@ -17,7 +17,7 @@ import { computeExpectedPaymentDate } from '../utils/paymentSchedule'
 import { escapeCsvField } from '../utils/csv'
 import { kstYmd, kstYmdCompact, kstYear } from '../utils/kstDate'
 import { counterpartKey, unescapeCounterpart } from '../utils/counterpart'
-import { LATEST_BALANCE_SUBQUERY } from '../utils/bankBalance'
+import { LATEST_BALANCE_SUBQUERY, isInCashPlan } from '../utils/bankBalance'
 
 const bankRouter = new Hono<HonoEnv>()
 
@@ -65,7 +65,7 @@ bankRouter.get('/accounts', requireRole('ADMIN'), async (c) => {
   try {
     const ef = entityFilter(c, 'bank_accounts')
     const { results } = await c.env.DB.prepare(
-      `SELECT id, bank_code, bank_name, account_number, account_holder, account_alias, is_overdraft, is_personal, connected_id, is_active, last_synced_at, last_synced_date, entity_id, created_at, barobill_registered, collect_cycle, barobill_registered_at FROM bank_accounts WHERE is_active = 1${ef.clause} ORDER BY created_at DESC, id DESC`
+      `SELECT id, bank_code, bank_name, account_number, account_holder, account_alias, is_overdraft, is_personal, include_in_cash_plan, connected_id, is_active, last_synced_at, last_synced_date, entity_id, created_at, barobill_registered, collect_cycle, barobill_registered_at FROM bank_accounts WHERE is_active = 1${ef.clause} ORDER BY created_at DESC, id DESC`
     ).bind(...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -86,14 +86,16 @@ bankRouter.get('/fund-summary', requireRole('ADMIN'), async (c) => {
     const { results } = await c.env.DB.prepare(
       `SELECT
         ba.id, ba.bank_name, ba.account_number, ba.account_holder, ba.account_alias,
-        ba.is_overdraft, ba.is_personal, ba.barobill_registered, ba.last_synced_at,
+        ba.is_overdraft, ba.is_personal, ba.include_in_cash_plan, ba.barobill_registered, ba.last_synced_at,
         ${LATEST_BALANCE_SUBQUERY} AS current_balance,
         (SELECT MAX(bt.transaction_date) FROM bank_transactions bt
           WHERE bt.bank_account_id = ba.id) AS last_tx_date
       FROM bank_accounts ba
       WHERE ba.is_active = 1${ef.clause}
       ORDER BY ba.created_at DESC, ba.id DESC`
-    ).bind(...ef.params).all<{ current_balance: number | null; is_overdraft: number; is_personal: number }>()
+    ).bind(...ef.params).all<{
+      current_balance: number | null; is_overdraft: number; is_personal: number; include_in_cash_plan: number | null
+    }>()
 
     // 개인통장은 어떤 합계에도 넣지 않는다. 화면에는 별도 줄로 보여준다.
     const corporate = results.filter(a => !a.is_personal)
@@ -105,6 +107,10 @@ bankRouter.get('/fund-summary', requireRole('ADMIN'), async (c) => {
       .reduce((s, a) => s + (Number(a.current_balance) || 0), 0)
     const overdraftAccounts = corporate.filter(a => !!a.is_overdraft)
     const overdraftBalance = overdraftAccounts.reduce((s, a) => s + (Number(a.current_balance) || 0), 0)
+    // 자금계획 시작잔액(0573) — 판정은 utils/bankBalance 의 isInCashPlan 하나만 쓴다.
+    //   여기서 규칙을 다시 쓰면 계획 탭과 실적 탭이 서로 다른 시작잔액을 말하게 된다.
+    const cashPlanBalance = results.filter(isInCashPlan)
+      .reduce((s, a) => s + (Number(a.current_balance) || 0), 0)
 
     // 대출 목록 + 합계 (loans, entity 필터) — 자금현황에서 대출을 분리해 상세 확인
     const loanEf = entityFilter(c, 'loans')
@@ -125,6 +131,7 @@ bankRouter.get('/fund-summary', requireRole('ADMIN'), async (c) => {
         deposit_balance: depositBalance,      // 마이너스통장 제외 예금 합
         overdraft_balance: overdraftBalance,  // 마이너스통장 잔액 합 (통상 음수 = 사용액)
         overdraft_count: overdraftAccounts.length,
+        cash_plan_balance: cashPlanBalance,   // 자금계획 예측이 출발점으로 쓰는 잔액(0573)
         personal_balance: personalBalance,    // 대표자 개인통장 잔액 합 (총자금·순자금에 미포함)
         personal_count: personalAccounts.length,
         loan_total: loanTotal,
@@ -264,6 +271,7 @@ bankRouter.post('/accounts', requireRole('ADMIN'), async (c) => {
     const body = await c.req.json()
     const {
       bank_code, bank_name, account_number, account_holder, account_alias, is_overdraft, is_personal,
+      include_in_cash_plan,
       barobill_sync, account_password, web_id, web_pwd, identity_num,
       collect_cycle, account_type,
     } = body
@@ -331,8 +339,8 @@ bankRouter.post('/accounts', requireRole('ADMIN'), async (c) => {
     }
 
     const result = await c.env.DB.prepare(`
-      INSERT INTO bank_accounts (bank_code, bank_name, account_number, account_holder, account_alias, is_overdraft, is_personal, entity_id, barobill_registered, collect_cycle, barobill_registered_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${barobillRegistered ? 'CURRENT_TIMESTAMP' : 'NULL'})
+      INSERT INTO bank_accounts (bank_code, bank_name, account_number, account_holder, account_alias, is_overdraft, is_personal, include_in_cash_plan, entity_id, barobill_registered, collect_cycle, barobill_registered_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${barobillRegistered ? 'CURRENT_TIMESTAMP' : 'NULL'})
     `).bind(
       bank_code,
       bank_name,
@@ -341,6 +349,8 @@ bankRouter.post('/accounts', requireRole('ADMIN'), async (c) => {
       (account_alias && String(account_alias).trim()) || null,
       is_overdraft ? 1 : 0,
       is_personal ? 1 : 0,
+      // 미지정이면 마이너스통장은 제외·나머지는 포함 — 0573 마이그레이션의 초기화와 같은 규칙
+      include_in_cash_plan != null ? (include_in_cash_plan ? 1 : 0) : (is_overdraft ? 0 : 1),
       entityId,
       barobillRegistered,
       cycle,
@@ -367,7 +377,7 @@ bankRouter.put('/accounts/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json()
-    const { bank_code, bank_name, account_number, account_holder, account_alias, is_overdraft, is_personal } = body
+    const { bank_code, bank_name, account_number, account_holder, account_alias, is_overdraft, is_personal, include_in_cash_plan } = body
 
     // #437: entity 격리 — 형제 DELETE/refresh와 동일. 미적용 시 타 법인 계좌 master(계좌번호 등) cross-tenant 덮어쓰기(IDOR)
     const ef = entityFilter(c, 'bank_accounts')
@@ -390,7 +400,8 @@ bankRouter.put('/accounts/:id', requireRole('ADMIN'), async (c) => {
           account_holder = COALESCE(?, account_holder),
           account_alias = CASE WHEN ? = 1 THEN ? ELSE account_alias END,
           is_overdraft = COALESCE(?, is_overdraft),
-          is_personal = COALESCE(?, is_personal)
+          is_personal = COALESCE(?, is_personal),
+          include_in_cash_plan = COALESCE(?, include_in_cash_plan)
       WHERE id = ?${ef.clause}
     `).bind(
       bank_code ?? null,
@@ -401,6 +412,7 @@ bankRouter.put('/accounts/:id', requireRole('ADMIN'), async (c) => {
       aliasValue,
       is_overdraft != null ? (is_overdraft ? 1 : 0) : null,
       is_personal != null ? (is_personal ? 1 : 0) : null,
+      include_in_cash_plan != null ? (include_in_cash_plan ? 1 : 0) : null,
       id,
       ...ef.params
     ).run()
