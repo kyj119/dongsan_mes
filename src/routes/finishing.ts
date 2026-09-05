@@ -44,7 +44,7 @@ async function uniqueNameMessage(db: D1Database, name: string, reqGroup: string 
 finishingRouter.get('/methods', async (c) => {
   try {
     const group = c.req.query('group')
-    let query = 'SELECT id, name, margin_cm, description, sort_order, method_group FROM finishing_methods WHERE is_active = 1'
+    let query = 'SELECT id, name, margin_cm, description, sort_order, method_group, pricing_type, unit_price FROM finishing_methods WHERE is_active = 1'
     const params: string[] = []
     if (group) {
       query += ' AND method_group = ?'

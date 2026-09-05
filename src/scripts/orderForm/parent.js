@@ -640,6 +640,8 @@
                         <div class="flex items-center gap-2 flex-wrap" id="finishing_simple_${id}">
                             <span id="finishing_summary_${id}" class="text-xs font-medium text-gray-700"></span>
                             <button type="button" onclick="toggleFinishingDetail(${id})" class="text-[10px] text-gray-400 hover:text-blue-600 whitespace-nowrap">개별 설정 <i class="fas fa-caret-down"></i></button>
+                            <label class="text-[10px] text-gray-500 inline-flex items-center gap-1 whitespace-nowrap cursor-pointer" title="작업은 그대로 하고 청구만 하지 않습니다 — 카드·작업지시서에는 마감이 그대로 표기됩니다"><input type="checkbox" name="fin_service_${id}" onchange="calcFinishing(${id})"> 서비스</label>
+                            <span id="finishing_service_${id}" class="hidden text-[11px] font-medium text-orange-600"></span>
                         </div>
                         <div class="grid grid-cols-4 gap-1 mt-1 hidden" id="finishing_sides_${id}">
                             <div><label class="text-[10px] text-gray-400">상</label><select name="fin_top_${id}" class="w-full border rounded px-1 py-0.5 text-xs fin-select" onchange="onFinMethodChange(${id},'top')"></select><input name="fin_cm_top_${id}" type="number" step="0.5" min="0" class="w-full border rounded px-1 py-0.5 text-xs mt-0.5" placeholder="cm" onchange="calcFinishing(${id})"></div>

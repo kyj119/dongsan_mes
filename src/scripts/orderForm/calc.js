@@ -628,6 +628,11 @@
                                 left: document.querySelector('[name="fin_left_' + id + '"]')?.value || '',
                                 right: document.querySelector('[name="fin_right_' + id + '"]')?.value || ''
                             };
+                            // 마감 서비스 — 작업은 하고 청구만 0. `charged:false` 만 서비스다.
+                            //   ★MES_FIN.formatFinishing 은 top/bottom/left/right 만 순회하므로
+                            //     이 키를 넣어도 카드·체크리스트 표기는 그대로다(현장은 그대로 박는다).
+                            var finSvc = document.querySelector('[name="fin_service_' + id + '"]');
+                            if (finSvc && finSvc.checked) finObj.charged = false;
                             // cm 오버라이드 (비어있으면 포함 안 함)
                             ['top','bottom','left','right'].forEach(function(dir) {
                                 var cmEl = document.querySelector('[name="fin_cm_' + dir + '_' + id + '"]');

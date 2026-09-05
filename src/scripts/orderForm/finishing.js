@@ -11,7 +11,8 @@
                     if (group) url += '?group=' + group;
                     var res = await axios.get(url);
                     finishingMethodsCache[key] = (res.data.data || []).map(function(m) {
-                        return { name: m.name, margin: m.margin_cm };
+                        return { name: m.name, margin: m.margin_cm,
+                                 pricingType: m.pricing_type || 'none', unitPrice: m.unit_price || 0 };
                     });
                     return finishingMethodsCache[key];
                 } catch(e) { console.warn('마감 방식 로드 실패'); return []; }
@@ -77,6 +78,9 @@
                 if (!finishingStr) return;
                 try {
                     var finSaved = JSON.parse(finishingStr);
+                    // 서비스 여부 복원 — `charged:false` 만 서비스다(키가 없으면 청구).
+                    var svcRestore = document.querySelector('[name="fin_service_' + id + '"]');
+                    if (svcRestore) svcRestore.checked = (finSaved && finSaved.charged === false);
                     var finAny = false;
                     ['top','bottom','left','right'].forEach(function(dir) {
                         var finSel = document.querySelector('[name="fin_' + dir + '_' + id + '"]');
@@ -180,6 +184,39 @@
                             left: getVal('fin_left_' + itemId), right: getVal('fin_right_' + itemId)
                         });
                         sumEl.textContent = finText || '';
+                    }
+                }
+
+                // ── 마감 정가 (변별 길이 x m단가) ─────────────────────────────────────
+                //   `order_items.finishing` 이 변별 JSON 이라 「그 방식으로 박는 변」만 골라 길이를 더한다.
+                //   후가공의 per_meter(둘레 전체)로는 안 된다 — 변마다 방식이 다르기 때문.
+                //   ★Phase 0 은 **표시만** 한다. 단가가 전부 0 이라 값도 0 이고, 청구액에 반영하지 않는다.
+                //     조립(금액 = 기본 + 마감 + 후가공)은 단가를 채운 뒤 Phase 1 에서 붙인다.
+                var finGroup = getFinishingGroup(itemId);
+                var finMethods = finishingMethodsCache[finGroup] || finishingMethodsCache['all'] || [];
+                var sideLen = { top: w, bottom: w, left: h, right: h };
+                var finListPrice = 0;
+                ['top', 'bottom', 'left', 'right'].forEach(function(dir) {
+                    var nm = getVal('fin_' + dir + '_' + itemId);
+                    if (!nm) return;
+                    var m = finMethods.find(function(fm) { return fm.name === nm; });
+                    if (!m || !m.unitPrice) return;
+                    if (m.pricingType === 'per_side_length') finListPrice += (sideLen[dir] / 100) * m.unitPrice;
+                    else if (m.pricingType === 'per_unit') finListPrice += m.unitPrice;
+                });
+                var qtyEl = document.querySelector('[name="quantity_' + itemId + '"]');
+                finListPrice = Math.round(finListPrice * (parseFloat(qtyEl && qtyEl.value) || 1));
+
+                // 서비스 = 작업은 하고 청구만 안 한다. 카드·작업지시서에는 그대로 찍힌다.
+                var svcEl = document.getElementById('finishing_service_' + itemId);
+                var svcChk = document.querySelector('[name="fin_service_' + itemId + '"]');
+                if (svcEl) {
+                    if (svcChk && svcChk.checked && finListPrice > 0) {
+                        svcEl.textContent = '서비스 ' + finListPrice.toLocaleString() + '원';
+                        svcEl.classList.remove('hidden');
+                    } else {
+                        svcEl.textContent = '';
+                        svcEl.classList.add('hidden');
                     }
                 }
 

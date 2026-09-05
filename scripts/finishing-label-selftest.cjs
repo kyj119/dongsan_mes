@@ -34,6 +34,13 @@ eq('4변 동일 = 4방',
   formatFinishing({ top: '열재단', bottom: '열재단', left: '열재단', right: '열재단' }), '4방열재단')
 eq('3변 = 방향 나열(상하좌우 순)',
   formatFinishing({ top: '열재단', bottom: '열재단', left: '열재단' }), '상하좌 열재단')
+// 서비스 플래그(`charged:false`)는 **표기에 영향이 없어야** 한다 — 청구만 0이고 현장은 그대로 박는다.
+// 이 키가 라벨을 바꾸면 카드에 「좌우 줄미싱」이 안 찍혀 현장이 재봉을 빠뜨린다(0573 Phase 0).
+eq('서비스 플래그는 표기를 바꾸지 않는다',
+  formatFinishing({ top: '열재단', bottom: '열재단', left: '열재단', right: '열재단', charged: false }), '4방열재단')
+eq('서비스 플래그 + 혼재',
+  formatFinishing({ top: '봉미싱', bottom: '봉미싱', left: '줄미싱', right: '줄미싱', charged: false }), '좌우 줄미싱+상하 봉미싱')
+
 eq('혼재 = 좌우 축 먼저',
   formatFinishing({ top: '봉미싱', bottom: '봉미싱', left: '줄미싱', right: '줄미싱' }), '좌우 줄미싱+상하 봉미싱')
 eq('상하만',
