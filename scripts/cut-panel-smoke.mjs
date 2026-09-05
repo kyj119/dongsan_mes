@@ -1638,6 +1638,26 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     ok('3u 폭 추천이 판 전부를 합산한다',
       /for \(var sN2 = 0; sN2 < r\.sheets\.length; sN2\+\+\)/.test(panelSrc2)
       && /sheets: r\.sheets\.length/.test(panelSrc2))
+    // ★★[네스팅 실행]의 「롤 길이」도 **판 전부의 합**이어야 한다 (2026-09-05).
+    //   여태 sheets[0] 만 재서, 판이 나뉘면 재료 길이를 첫 판 하나로 보고했다
+    //   (실측 3판 4807/3927/4807 = 13,541mm 인데 화면은 4801mm — 1/2.8).
+    //   효율%의 분모(sheetAreaMm2)는 처음부터 전 판을 합산했으므로 **표시만** 틀렸었다.
+    ok('3u 롤 길이가 판 전부의 합이다',
+      /rollTotMm \+= oneMm;/.test(panelSrc2)
+      && /for \(var rs = 0; rs < res\.sheets\.length; rs\+\+\)/.test(panelSrc2)
+      && !/롤 길이 ' \+ Math\.round\(R\(Math\.ceil\(res\.sheets\[0\]/.test(panelSrc2))
+    ok('3u 판이 여럿이면 최장 판도 알린다', /최장 ' \+ rollMaxMm2/.test(panelSrc2))
+    // ★★비율만 보여주면 잉크가 준 건지 재료가 는 건지 못 가른다 — 분자·분모를 그대로 싣는다.
+    ok('3u 효율의 분자·분모를 보여준다',
+      /잉크 ' \+ Math\.round\(prep\.rawInkPx \* mmpp \* mmpp/.test(panelSrc2)
+      && /재료 ' \+ Math\.round\(areaMm2/.test(panelSrc2))
+    // ★굽기 경로가 갈리면 마스크가 갈리고, 마스크가 갈리면 잉크·효율이 갈린다 → 보이게 둔다.
+    //   호스트는 응답 첫 줄에 fastbake=·docs= 를 싣는데 패널이 그 줄을 버리고 있었다.
+    ok('3u 굽기 경로를 결과에 싣는다',
+      /fastbake=/.test(panelSrc2)                     // 호스트 응답 첫 줄을 읽는다(여태 버렸다)
+      && /bakeWay: bakeWay/.test(panelSrc2)           // prep 으로 넘긴다
+      && /굽기 경로 ' \+ \(prep\.bakeWay/.test(panelSrc2))
+    ok('3u 일괄 굽기 폴백도 경로로 남는다', /bakeWay = 'fallback';/.test(panelSrc2))
     // ★「폭보다 크다」와 「판이 모자라다」는 대책이 정반대다 — 문구가 갈려야 한다
     ok('3u 폭 추천이 실패 사유를 가른다', /tooWide: !okAll && !r\.sheets\.length/.test(panelSrc2)
       && /nTooWide === rows\.length/.test(panelSrc2))
