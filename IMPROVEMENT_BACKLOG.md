@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-09-05T13:35:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-09-05T21:52:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,23 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **542** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 1 프로덕션 헬스 (2026-09-05T21:52):**
+> - **방법**: `git status`=워킹트리 clean(main, `79902ea`), `git fetch origin main`=이미 최신(로컬=origin 동일 커밋). `git fetch --unshallow`(얕은 clone 복구). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area1 방법 라인 HEAD `bccb517`)**: 웹앱 범위 diff **53커밋** — Area2~6이 각자 렌즈로 이미 이 창의 대부분(구역관리 웨이브·cash-plan 신설·prices 재연결 등)을 정독 완료. Area1 고유 렌즈 = **신규 마이그레이션 14건의 (a)/(b) 드리프트 분류 + CI/smoke 실측**으로 좁힘.
+> - **신규 마이그레이션 14건(`0563`~`0574`, 번호중복 2쌍 `0569`·`0570` 포함) `ADD COLUMN` 전수 스캔** — `orders.is_voucher`(0563)·`print_events.match_method`(0569)·`items.price_suggest`(0572)·`finishing_methods.pricing_type/unit_price`(0573)·`bank_accounts.include_in_cash_plan`(0574) 5건이 (b)-risk 후보(배포 코드가 명시 컬럼 SELECT/INSERT). `npm run db:bootstrap:ci`로 로컬 D1에 14건 전부 ✅ 적용 확인.
+> - **prod 적용 여부 실측(smoke PASS/FAIL 대리검증, #483/#484 방식)**: 최신 배포런(`79902ea`, job 101265090828) smoke `PASS 129/129` — `bank.accounts`·`cashSchedule.overview`(0574) 200, `orders.detail`·`items.detail`·`purchaseOrders.detail`(0563/0572 인접 경로) 전부 200으로 해당 컬럼들의 prod 적용을 간접 확인. **단 `finishing_methods.pricing_type/unit_price`(0573)를 읽는 유일한 라우트 `GET /api/finishing/methods`가 smoke에 프로브 자체가 없어 드리프트가 있어도 무음**이었음(#483/#484 (b)-risk 클래스의 완전한 사각지대, `orders.is_voucher`·`print_events.match_method`는 각각 orders/print-events 기존 프로브의 목록 SELECT에 안 걸려있어 별도 확인했으나 그쪽은 명시 컬럼 SELECT가 아니라 무해 — `is_voucher`는 응답 필드 추가일 뿐 SELECT * 경로, `match_method`도 동일).
+> - **자동수정 적용**: `scripts/smoke.cjs`에 `{ path: '/api/finishing/methods', name: 'finishing.methods' }` 프로브 추가(#429/#484 클래스 — 테스트 인프라 정렬, 비즈로직/스키마 무관). 검증: `node -c` 문법 · `npm run verify`(typecheck+build) clean · `npm run db:bootstrap:ci` 후 해당 쿼리를 `wrangler d1 execute --local`로 직접 실행해 SQL 문법 확인(0행, 에러 없음). 커밋 `50828e8`(`test(smoke): probe /api/finishing/methods for the 0573 column drift`) push 완료 → 다음 배포런(`50828e8`, job 101308911423) smoke **PASS 130/130**, `finishing.methods` 200 — **0573도 이미 prod 적용 확인**(오탐 없음, 이슈 생성 불요·감지기만 신설).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 10런(HEAD `79902ea`→`50828e8` 포함) 전부 `conclusion:success`.
+> - **standing scan 1: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 1(내용이 main에 흡수된 로컬전용 브랜치, 삭제 무해)·REVIEW 0, SKIP 1(main).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 3: `npm audit --omit=dev`** — **0건**(prod 청정, 변동없음).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **12**(변동없음 — #613·#616·#617·#622·#624·#625·#626·#627·#628·#629·#630·#631 전건 일치). #624(0545/0548 드리프트)는 여전히 open — 0548(`designer_intakes.qty_unit`)은 읽기경로 부재로 이번 사이클도 대리검증 불가, owner 확인 대기 유지.
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · done **542**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-1-production-health.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: 사이클 로그 10건 → 이번 로그 추가 후 11건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 0건(5개 (b)-risk 컬럼 중 4개는 기존 프로브로 이미 대리검증됐고, 유일한 사각지대(finishing.methods)는 이슈 대신 감지기 자체를 신설해 즉시 prod 적용 확인), 자동수정 1건(smoke.cjs finishing.methods 프로브 추가, 커밋 `50828e8`), done-sync: open 12(변동없음)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-09-05T13:35):**
 > - **방법**: `git status`=워킹트리 clean(main, `5d71457`), `git fetch origin main`=이미 최신(로컬=origin 동일 커밋). `git fetch --unshallow`(얕은 clone 복구). `npm ci`(0→81), `npx tsc --noEmit` clean.
