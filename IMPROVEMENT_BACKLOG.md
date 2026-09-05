@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-09-05T21:52:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-09-06T03:48:38+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,30 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **12** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음) |
+| 🆕 new | **13** (`list_issues(state:OPEN,label:auto-improve)` 실측, 12→13 · #632 신규) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **542** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-09-06T03:48):**
+> - **방법**: `git status`=워킹트리 clean(main, `f019102`), `git fetch origin main`=이미 최신(로컬=origin 동일 커밋). `git fetch --unshallow`(얕은 clone 복구). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area2 방법 라인 HEAD `5f75e659`)**: 웹앱 범위 diff **43커밋** — Area1/3/4/5/6이 이미 이 창을 각자 렌즈(마이그 드리프트·UX·데이터정합성·보안·자기진화)로 정독했으나, **코드품질 렌즈(entity_id 오귀속·N+1·authMiddleware·컬럼드리프트·dead code)로는 이번이 최초 통과**. 신규 대형 기능 = **cash-plan/cashflow 엔진 신설**(`cashSchedule.ts`·`cashflowEngine.ts`·`overdueSpread.ts`·`apSettlement.ts`·`counterpartName.ts`·`bankBalance.ts`) + `prices.ts` 특약가 재연결 + `bank.ts` 매칭 로직 개선 — 이 렌즈 최초 통과 구간에 집중.
+> - **cash-plan/cashflow 신설 파일 6개 전문 심층 리뷰(background agent)** — entity_id 격리·N+1·authMiddleware·컬럼존재성·dead code·타입불일치·누적캐시 7개 클래스 전수 점검:
+>   - **HIGH 발견 → #632**: `cashSchedule.ts:471` `POST /schedule/auto-generate` 안에서 **PURCHASE 블록만** ORDER 블록(`g.entity_id`를 조회→dedup→INSERT 전체에 일관 사용)과 비대칭 — SELECT가 `po.entity_id`를 조회 안 함(컬럼리스트·`ConfirmedPORow` 인터페이스 둘 다 부재), dedup NOT EXISTS도 `cs.entity_id = po.entity_id` 조건 누락, INSERT(`:558`)가 발주 자신의 법인 대신 **`getEntityId(c) || 1`**(요청 세션 법인)을 사용. 이 패턴은 프로젝트가 이미 문서화한 함정(`entityFilter.ts:12-13` 주석 "기존 `getEntityId(c) || 1` 패턴은 전체모드 쓰기를 조용히 동산(1)에 귀속시키는 함정" — 전용 회피 헬퍼 `getWriteEntityId`까지 만들어 놨는데 이 블록만 구패턴 잔존). 트리거 = ADMIN "전체"모드(entityId=0)에서 자동생성 클릭 → 전 법인 발주가 전부 법인1 자금계획에 귀속, 법인2/3 자금계획엔 그 발주의 지급예정이 누락. 재무 write-path + egress 검증불가 → issue-only.
+>   - **checked clean**: `cashSchedule.ts`·`cashflowEngine.ts`·`bank.ts`(include_in_cash_plan)의 나머지 SELECT/UPDATE/DELETE/INSERT 전수(cash_schedule 0245·loans/fixed_expenses 0230·corporate_cards/card_transactions 0231·payments류 0150·purchase_adjustments 0250·price_change_history 0274 대조) entity_id 누락 0건(`loan_payments`는 테이블 자체에 entity_id 없어 `l.entity_id` JOIN 경유가 의도적, 버그 아님). N+1 0건(`cashflowEngine.ts`/`overdueSpread.ts`/`apSettlement.ts`는 순수함수라 D1 호출 자체 없음, `cashSchedule.ts` auto-generate 루프는 `c.env.DB.batch()` 단일 호출로 이미 최적). authMiddleware 정상(라우터 레벨 적용, 형제 패턴 일치). 컬럼존재성 드리프트 0건. dead code 0건(신규 export 전부 사용처 확인). `models.ts`엔 해당 테이블 인터페이스 자체가 없어(로컬 인라인 interface 사용) 타입불일치 대상 없음. 누적캐시 0건(AP/AR 정산이 매 호출 FIFO 파생, 저장형 running total 없음 — CLAUDE.md 「누적 캐시」 권장 패턴 그대로 준수).
+> - **standing scan 1: `npm run audit:entity`** — 검사 133파일·entity테이블 SELECT 67건·**누락 0건**(변동없음 — cashSchedule.ts 포함 스캔 확인, #632는 SELECT 누락이 아니라 오귀속이라 이 스캔 클래스 밖).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 3: authMiddleware recursive 커버리지** — 무-auth 7건(`publicUnsubscribe.ts`·`orders/helpers.ts`·`payroll/shared.ts`·`cron.ts`·`messagesAd.ts`·`hrSelf.ts`·`taxInvoices/helpers.ts`) 전부 기존 정당 클래스 재확인(변동없음, 신규 cashSchedule.ts는 router-level authMiddleware 정상 적용이라 후보에 안 잡힘).
+> - **standing scan 4: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 1(내용 main에 흡수된 로컬전용 브랜치, 삭제 무해)·REVIEW 0, SKIP 1(main).
+> - **standing scan 5: `npm audit --omit=dev`** — **0건**(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 5런(HEAD `f019102` 포함) 전부 `conclusion:success`, job별 typecheck·build·self-test·entity audit·local write canary·smoke 전 단계 success.
+> - **open 이슈 재확인(open≠unfixed)**: 기존 #627(waste/budgets 고아 라우터)·#628(ar-helpers.ts CARRYOVER_ORDER_NUMBER_LIKE 잔존) 직접 재확인 — 둘 다 여전히 미조치 상태 확인(정상 open, fixed-in-tree 아님).
+> - **backlog↔GitHub 절대값 재동기화**: open **13**(12→13, #632 신규) · done **542**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: 사이클 로그 11건 → 이번 로그 추가 후 12건, 임계 13건 미만, 트림 불요.
+> - 신규 이슈 1건(#632, cashSchedule 자동생성 PURCHASE 블록 entity_id 오귀속 — 프로젝트가 이미 문서화한 `getEntityId(c)||1` 함정의 재발), 자동수정 0건(재무 write-path + egress 검증불가로 issue-only), done-sync: open 13(12→13)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-09-05T21:52):**
 > - **방법**: `git status`=워킹트리 clean(main, `79902ea`), `git fetch origin main`=이미 최신(로컬=origin 동일 커밋). `git fetch --unshallow`(얕은 clone 복구). `npm ci`(0→81), `npx tsc --noEmit` clean.
