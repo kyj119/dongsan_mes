@@ -8,6 +8,7 @@ import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { validatePayment, preparePaymentStatements } from '../lib/payments'
+import { normalizeCounterpart, stripBankPrefix, isNonCounterpartName } from '../utils/counterpartName'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
 import { getEntityCorpNum, getEntityBarobillSenderId } from '../utils/entitySettings'
@@ -1023,13 +1024,6 @@ bankRouter.delete('/match-rules/:id', requireRole('ADMIN'), async (c) => {
 // 입금자명/거래처명 정규화 — 법인격 표기·공백·괄호·구분기호 차이를 흡수.
 //   "(주)동산기획" · "㈜ 동산기획" · "동산기획(주)" → "동산기획"
 //   자동매칭에서만 사용(저장값은 원문 유지).
-function normalizeCounterpart(s: string | null | undefined): string {
-  return String(s ?? '')
-    .replace(/주식회사|유한회사|합자회사|합명회사|\(주\)|\(유\)|㈜|㈜/g, '')
-    .replace(/[\s()（）[\]{}.,\-_/·:'"]/g, '')
-    .toLowerCase()
-}
-
 // 매칭 규칙 학습(단일 소스) — 사람이 거래처/비용분류를 확정한 시점마다 호출.
 //   다음 동기화부터 같은 적요(counterpart_name)는 자동매칭이 잡는다.
 async function learnMatchRule(
@@ -1246,6 +1240,20 @@ async function runAutoMatchEngine(
       const txName = (tx.counterpart_name ?? '').trim()
       if (!txName) continue
 
+      // 거래처 수금·지급이 아닌 것을 먼저 걷어낸다 — 카드 매출 정산금(가맹점번호)·계좌번호 표기.
+      //   거래처별 payments 로 만들면 AR 이 오염된다(정산금은 여러 매출이 합쳐진 한 덩어리다).
+      //   prod 실측 2026-09-06: 428건 537,964,046 이 이 형태로 UNMATCHED 에 쌓여 사람 눈을 가리고 있었다.
+      const nonCounterpart = isNonCounterpartName(txName)
+      if (nonCounterpart) {
+        matchUpdateStmts.push(c.env.DB.prepare(`
+          UPDATE bank_transactions
+          SET match_status = 'IGNORED', matched_client_id = NULL, match_confidence = 1.0, match_reason = ?
+          WHERE id = ?
+        `).bind(nonCounterpart === 'CARD' ? '카드매출 정산(거래처 매칭 대상 아님)' : '계좌번호 표기(거래처 매칭 대상 아님)', tx.id))
+        matchedCount++
+        continue
+      }
+
       let bestClientId: number | null = null
       let bestConfidence = 0
       let bestReason = ''
@@ -1315,6 +1323,10 @@ async function runAutoMatchEngine(
           //   강한 규칙(완전일치·정규화 완전일치·키워드·금액)은 즉시 best 갱신,
           //   약한 규칙(거래처명 부분포함·대표자명)은 후보만 모아 "유일할 때만" 채택(SUGGESTED).
           const normTx = normalizeCounterpart(txName)
+          // 은행앱 접두를 벗긴 두 번째 키. "홈) 기업(주)정운교역" → "정운교역".
+          //   원문 키를 버리지 않고 **둘 다** 본다 — 접두처럼 보이는 글자가 실제 상호의 일부인 경우가 있다.
+          const strippedName = stripBankPrefix(txName)
+          const normStripped = strippedName === txName ? '' : normalizeCounterpart(strippedName)
           // 괄호 표기는 "개인명(상호)" 형태 → 괄호 안 상호가 실제 거래 주체.
           //   "이성현(무지개기획)" → ['무지개기획'] (닫는 괄호가 없는 "이도운(88광고기획"도 인식)
           const parenNames = (txName.match(/[(（][^)）]*/g) || [])
@@ -1341,6 +1353,11 @@ async function runAutoMatchEngine(
             else if (normTx && client.norm && normTx === client.norm && (normDup.get(client.norm) ?? 0) === 1) {
               confidence = 0.85
               reason     = '입금자명 일치(표기차이 무시)'
+            }
+            // 규칙 1-c: 은행앱 접두를 벗기면 완전일치 → 0.8. 원문 일치보다 한 단계 낮게 둔다(벗긴 건 추정이다).
+            else if (normStripped && client.norm && normStripped === client.norm && (normDup.get(client.norm) ?? 0) === 1) {
+              confidence = 0.8
+              reason     = '입금자명 일치(은행표기 접두 제거)'
             }
             // 규칙 2: 입금자명이 search_keywords에 포함 → 0.7
             else if (keywords.some(k => k && txName.includes(k))) {
@@ -1378,8 +1395,11 @@ async function runAutoMatchEngine(
               // (b) 입금자명이 거래처명의 앞부분/일부(은행 표기 잘림). "대전광역시옥외광"→사단법인 대전광역시옥외광고협회.
               //     반대 방향(입금자명 ⊃ 거래처명)은 우연 포함 오탐이 많아 채택하지 않는다(수동 1회 → 규칙 학습으로 흡수).
               prefixHits.add(client.id)
+            } else if (normStripped.length >= 4 && client.norm.includes(normStripped)) {
+              // (b') 접두를 벗겨야 비로소 앞부분이 되는 표기. "홈) 하나(주)케이엠테" → 케이엠테크.
+              prefixHits.add(client.id)
             }
-            if (!hasParen && client.rep.length >= 2 && normTx === client.rep) {
+            if (!hasParen && client.rep.length >= 2 && (normTx === client.rep || normStripped === client.rep)) {
               // (c) 대표자명 단독 입금만 인정. 괄호 상호가 있으면 그 상호가 주체이므로 대표자명 매칭 금지
               //     ("이성현(무지개기획)"에서 무지개기획 미등록인데 동명 대표자의 다른 거래처로 붙는 사고 방지).
               repHits.add(client.id)
