@@ -257,7 +257,7 @@ cashScheduleRouter.get('/schedule/overview', requireEditOrRole('/cash-schedule',
     }
 
     // ── 예측 (오늘부터 days일) ─────────────────────────────────────────────
-    //   시작잔액 = '계획에 넣기로 한' 계좌들의 실잔액(0573). 마이너스통장처럼 제외된 계좌는
+    //   시작잔액 = '계획에 넣기로 한' 계좌들의 실잔액(0574). 마이너스통장처럼 제외된 계좌는
     //   빠진 사실이 안 보이면 안 되므로 excluded_* 를 응답에 실어 화면에 병기한다.
     const startBalanceRaw = c.req.query('start_balance')
     const startBalance = startBalanceRaw !== undefined ? (Number(startBalanceRaw) || 0) : (bank.start_balance || 0)
@@ -683,7 +683,7 @@ cashScheduleRouter.get('/schedule/monthly', requireEditOrRole('/cash-schedule', 
 })
 
 // 자금계획 시작잔액 — bank_accounts에 잔액 컬럼이 없어 계좌별 최신 bank_transactions.balance_after 합산.
-//   0573: '계획에 넣기로 한' 계좌만 센다(overview 와 같은 헬퍼) — 이 엔드포인트 이름이 곧 자금계획 기준이라
+//   0574: '계획에 넣기로 한' 계좌만 센다(overview 와 같은 헬퍼) — 이 엔드포인트 이름이 곧 자금계획 기준이라
 //   전체 현금(getTotalBankBalance)을 돌려주면 화면과 어긋난다. 전체 현금은 /api/bank/fund-summary 가 준다.
 cashScheduleRouter.get('/schedule/bank-balance', requireEditOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {

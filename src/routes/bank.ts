@@ -107,7 +107,7 @@ bankRouter.get('/fund-summary', requireRole('ADMIN'), async (c) => {
       .reduce((s, a) => s + (Number(a.current_balance) || 0), 0)
     const overdraftAccounts = corporate.filter(a => !!a.is_overdraft)
     const overdraftBalance = overdraftAccounts.reduce((s, a) => s + (Number(a.current_balance) || 0), 0)
-    // 자금계획 시작잔액(0573) — 판정은 utils/bankBalance 의 isInCashPlan 하나만 쓴다.
+    // 자금계획 시작잔액(0574) — 판정은 utils/bankBalance 의 isInCashPlan 하나만 쓴다.
     //   여기서 규칙을 다시 쓰면 계획 탭과 실적 탭이 서로 다른 시작잔액을 말하게 된다.
     const cashPlanBalance = results.filter(isInCashPlan)
       .reduce((s, a) => s + (Number(a.current_balance) || 0), 0)
@@ -131,7 +131,7 @@ bankRouter.get('/fund-summary', requireRole('ADMIN'), async (c) => {
         deposit_balance: depositBalance,      // 마이너스통장 제외 예금 합
         overdraft_balance: overdraftBalance,  // 마이너스통장 잔액 합 (통상 음수 = 사용액)
         overdraft_count: overdraftAccounts.length,
-        cash_plan_balance: cashPlanBalance,   // 자금계획 예측이 출발점으로 쓰는 잔액(0573)
+        cash_plan_balance: cashPlanBalance,   // 자금계획 예측이 출발점으로 쓰는 잔액(0574)
         personal_balance: personalBalance,    // 대표자 개인통장 잔액 합 (총자금·순자금에 미포함)
         personal_count: personalAccounts.length,
         loan_total: loanTotal,
@@ -349,7 +349,7 @@ bankRouter.post('/accounts', requireRole('ADMIN'), async (c) => {
       (account_alias && String(account_alias).trim()) || null,
       is_overdraft ? 1 : 0,
       is_personal ? 1 : 0,
-      // 미지정이면 마이너스통장은 제외·나머지는 포함 — 0573 마이그레이션의 초기화와 같은 규칙
+      // 미지정이면 마이너스통장은 제외·나머지는 포함 — 0574 마이그레이션의 초기화와 같은 규칙
       include_in_cash_plan != null ? (include_in_cash_plan ? 1 : 0) : (is_overdraft ? 0 : 1),
       entityId,
       barobillRegistered,

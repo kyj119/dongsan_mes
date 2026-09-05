@@ -1240,7 +1240,7 @@
       ac.textContent = (d.accounts ? d.accounts.length : 0) + '개 계좌'
         + (odCnt ? ' · 마이너스통장 ' + odCnt + '건 제외' : '')
         + (pCnt ? ' · 개인통장 ' + pCnt + '건 제외(' + fmtWon(d.personal_balance) + ')' : '');
-      // 자금계획 시작잔액(0573)이 이 예금 합계와 다를 때만 덧붙인다 — 기본 설정에선 값이 같아
+      // 자금계획 시작잔액(0574)이 이 예금 합계와 다를 때만 덧붙인다 — 기본 설정에선 값이 같아
       //   항상 적으면 같은 숫자를 두 번 쓰는 셈이고, 정작 계좌를 뺀 사실이 묻힌다.
       var dep = d.deposit_balance != null ? d.deposit_balance : d.total_balance;
       if (d.cash_plan_balance != null && d.cash_plan_balance !== dep) {
@@ -1446,7 +1446,7 @@
       if (a.is_personal) {
         connBadge += ' <span class="ml-1 inline-block px-2 py-0.5 rounded text-xs font-medium" style="background:#ede9fe;color:#5b21b6;" title="자금·판관비 집계에서 완전히 제외됩니다. 입금(수금) 반영 용도로만 사용">대표자 개인통장</span>';
       }
-      // 자금계획 포함 여부(0573) — 기본(예금=포함·마통=제외)에서 벗어난 계좌만 배지를 단다.
+      // 자금계획 포함 여부(0574) — 기본(예금=포함·마통=제외)에서 벗어난 계좌만 배지를 단다.
       //   기본 상태까지 표시하면 마통마다 배지가 둘씩 붙어 시끄럽고, 정작 예외가 묻힌다.
       if (!a.is_personal) {
         var inPlan = a.include_in_cash_plan != null ? !!a.include_in_cash_plan : !a.is_overdraft;
@@ -1605,7 +1605,7 @@
     var odEl = document.getElementById('accOverdraft');
     if (odEl) odEl.checked = !!acc.is_overdraft;
     var cpEl = document.getElementById('accCashPlan');
-    // 값이 없는 계좌(플래그 도입 전 행)는 마통이면 제외·아니면 포함 — 0573 초기화와 같은 규칙
+    // 값이 없는 계좌(플래그 도입 전 행)는 마통이면 제외·아니면 포함 — 0574 초기화와 같은 규칙
     if (cpEl) cpEl.checked = acc.include_in_cash_plan != null ? !!acc.include_in_cash_plan : !acc.is_overdraft;
     else console.warn('[bank] #accCashPlan not found');
     var psEl = document.getElementById('accPersonal');
