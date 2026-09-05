@@ -481,9 +481,21 @@
       <div class="sep"></div>
       <!-- 주문 등록 — A0 와 같은 파일 경유 ingest 경로(IA-등록 manifest)를 탄다.
            ia-editor 를 거치지 않고 여기서 바로 주문서 대기함으로 넘긴다. -->
+      <!-- ★★자동완성을 `<datalist>` 에서 **가공 탭과 같은 후보 목록**으로 바꿨다 (2026-09-05).
+           datalist 는 CEF 에서 **앞부분 일치**만 걸린다 — 실측: 거래처 2,890건에서 「디자인」이
+           앞부분 75건 / 부분 286건이라 **211건(74%)이 아예 안 보였다**(「(주)모노디자인」 등).
+           이 프로젝트 거래처는 대부분 `(주)…` 로 시작하므로 앞부분 일치는 사실상 무용하다.
+           게다가 일러 CEP 는 IME 조합을 웹뷰에 안 넘겨(cutSquash 주석의 실측) 조합 중에는
+           후보가 아예 안 뜨고, 확정 때 붙는 스페이스가 앞부분 일치마저 깨뜨린다.
+           ⚠️`<datalist>` 는 **후보 데이터 저장소로 그대로 남긴다** — narrowMaterials 가
+             자재 후보를 좁힐 때 쓰는 곳이 여기라, 정본을 하나로 유지한다. 입력칸의 `list=` 만 뗀다. -->
       <div class="row">
         <label for="regClient">거래처</label>
-        <input id="regClient" type="text" list="clientList" placeholder="(필수)" autocomplete="off" />
+        <div class="acwrap grow">
+          <input id="regClient" type="text" placeholder="(필수)" autocomplete="off" />
+          <div id="regClientSug" class="sug hidden"></div>
+        </div>
+        <span id="regClientHit" class="achit"></span>
         <datalist id="clientList"></datalist>
       </div>
       <div class="row">
@@ -498,17 +510,29 @@
            행을 나누면 두 칸 모두 `.grow` 로 **패널 폭 전체**를 쓴다(자동완성 목록도 넓어진다). -->
       <div class="row">
         <label for="regMaterial">자재</label>
-        <input id="regMaterial" type="text" list="materialList" class="grow" placeholder="예: 포맥스5T" autocomplete="off" />
+        <div class="acwrap grow">
+          <input id="regMaterial" type="text" placeholder="품목을 고르면 자동으로 채워집니다" autocomplete="off" />
+          <div id="regMaterialSug" class="sug hidden"></div>
+        </div>
+        <span id="regMaterialHit" class="achit"></span>
         <datalist id="materialList"></datalist>
       </div>
       <div class="row">
         <label for="regFinish">후가공</label>
-        <input id="regFinish" type="text" list="finishList" class="grow" placeholder="예: 자동바니쉬" autocomplete="off" />
+        <div class="acwrap grow">
+          <input id="regFinish" type="text" placeholder="예: 자동바니쉬" autocomplete="off" />
+          <div id="regFinishSug" class="sug hidden"></div>
+        </div>
+        <span id="regFinishHit" class="achit"></span>
         <datalist id="finishList"></datalist>
       </div>
       <div class="row">
         <label for="regProduct">품목</label>
-        <input id="regProduct" type="text" list="productList" class="grow" placeholder="예: 솔벤 시트 (비우면 주문서에서 선택)" autocomplete="off" />
+        <div class="acwrap grow">
+          <input id="regProduct" type="text" placeholder="예: 솔벤 시트 (비우면 주문서에서 선택)" autocomplete="off" />
+          <div id="regProductSug" class="sug hidden"></div>
+        </div>
+        <span id="regProductHit" class="achit"></span>
         <datalist id="productList"></datalist>
       </div>
       <div class="row">

@@ -1513,6 +1513,28 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     //      품목은 `regProduct` 다. 여기서 헷갈리면 대기물 keyword 자리에 품목이 실린다.
     //   ⚠️ 정확일치만 id 로 본다. 부분일치로 넘겨짚으면 **틀린 단가**가 주문서에 실린다.
     ok('4 재단 폼에 품목 칸(내용과 별개)', /id="regProduct"/.test(htmlSrc) && /id="regItem"/.test(htmlSrc))
+    // ★★재단 자동완성 = 가공 탭과 **같은 규칙**이어야 한다 (2026-09-05 용준님 두 번째 지적).
+    //   CEF 의 `<datalist>` 는 앞부분 일치만 건다 — 실측: 거래처 2,890건에서 「디자인」이
+    //   앞부분 75 / 부분 286 이라 **211건(74%)이 화면에 안 떴다**. 이 프로젝트 거래처는 대부분
+    //   `(주)…` 로 시작해 앞부분 일치가 사실상 무용하다.
+    ok('4 재단 자동완성이 부분 일치다',
+      /function attachSug\(/.test(panelSrc2)
+      && /cutSquash\(list\[i\]\)\.indexOf\(qq\) !== -1/.test(panelSrc2))
+    // 입력칸이 datalist 를 **직접** 물면 네이티브 목록이 같이 떠서 두 규칙이 경합한다
+    ok('4 재단 입력칸이 datalist 를 안 문다',
+      !/id="reg(Client|Product|Material|Finish)"[^>]*\slist=/.test(htmlSrc))
+    // ★후보 정본은 datalist 하나 — narrowMaterials 가 좁히는 곳이라 목록을 두 벌로 만들지 않는다
+    ok('4 후보 정본이 datalist 하나다',
+      /dl\.getElementsByTagName\('option'\)/.test(panelSrc2)
+      && /fillDatalist\('materialList', list \|\| MATERIALS\)/.test(panelSrc2))
+    // ★맞았는지 보이지 않으면, id 가 해소돼도 사용자는 "매칭이 안 된다"고 볼 수밖에 없다
+    ok('4 재단이 맞았는지 표시한다',
+      ['regClient', 'regProduct', 'regMaterial', 'regFinish']
+        .every((k) => new RegExp('id="' + k + 'Hit"').test(htmlSrc) && new RegExp('id="' + k + 'Sug"').test(htmlSrc)))
+    // ★폴백 정책 — 거래처·자재·후가공은 자유 입력을 허용하지만 품목은 **미등록**이라고 말한다
+    //   (이름만 맞춘 가짜 품목이 실리면 주문서가 그 단가로 계산한다)
+    ok('4 품목 미일치는 자유입력이 아니다',
+      /productIdOf\(v\) \? \{ ok: true, text: '✓등록' \} : \{ ok: false, text: '미등록' \}/.test(panelSrc2))
     // ★id 해소 = 원문 정확일치 **먼저** → 공백만 지운 일치 → 그것도 **후보가 하나일 때만**.
     //   일러 CEP 는 IME 조합을 웹뷰에 안 넘긴다(2026-09-02 실측: composition 0건 ·
     //   `isComposing` 항상 false) — 마지막 글자를 스페이스로 확정해야 들어와 공백이 이름에 남는다.
