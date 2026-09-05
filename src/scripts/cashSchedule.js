@@ -353,7 +353,8 @@ function renderApReconcile(ap, ar) {
   }
 
   // 입력 지연 — 지급 입력이 멈춘 지 오래면 '연체'로 보이는 것이 사실은 '미입력'이다.
-  if (ap.entry_lag_days != null && ap.entry_lag_days > 45) {
+  // 기준 판정은 서버(ENTRY_STALL_DAYS) — 화면이 자기 숫자를 들면 매입·매출 기준이 갈린다.
+  if (ap.entry_stalled) {
     rows.push('<div class="text-amber-700"><i class="fas fa-triangle-exclamation mr-1"></i>지급 입력이 ' +
       ap.entry_lag_days + '일째 멈춰 있습니다(최종 ' + (ap.last_payment_date || '-') +
       '). 남은 채무의 일부는 미지급이 아니라 <b>미입력</b>일 수 있습니다.</div>');
@@ -390,7 +391,7 @@ function renderApReconcile(ap, ar) {
       rows.push('<div class="tabular-nums text-teal-700">연체 ' + fmt(ar.overdue_total) + '(' + ar.overdue_count +
         '건)을 예측 시작일에 얹었습니다. <span class="text-gray-500">수금 실적이 없어 분산 기준을 못 구했습니다.</span></div>');
     }
-    if (ar.entry_lag_days != null && ar.entry_lag_days > 45) {
+    if (ar.entry_stalled) {
       rows.push('<div class="text-amber-700"><i class="fas fa-triangle-exclamation mr-1"></i>수금 입력이 ' +
         ar.entry_lag_days + '일째 멈춰 있습니다(최종 ' + (ar.last_receipt_date || '-') + ').</div>');
     }

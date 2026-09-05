@@ -411,6 +411,8 @@ const eq = (label, got, want) => {
   eq('⑱ 진단 연체', [on.diag.overdue_total, on.diag.overdue_count], [500000, 1])
   eq('⑱ 진단 런레이트', on.diag.run_rate, 300000)
   eq('⑱ 진단 분산 회차', on.diag.spread_months, 2)
+  // 입력 멈춤 — 마지막 지급이 두 달 전이면 '연체'의 상당분이 미입력일 수 있다는 신호가 떠야 한다.
+  eq('⑱ 진단 입력 멈춤', [on.diag.entry_stalled, on.diag.entry_lag_days > 30], [true, true])
 
   // ══ 매출 수금 연체 분산 — 매입과 대칭 ═════════════════════════════════════
   //   한쪽만 분산하면 유출은 여러 달에 깔리고 유입은 첫날에 뭉쳐 곡선이 「첫날 급등 후 우하향」이 된다.
@@ -427,6 +429,7 @@ const eq = (label, got, want) => {
   eq('㉑ 매출 분산 ON — 총액은 OFF 와 같다',
     arItemsOf(arOn.dayMap).reduce((a, i) => a + i.amount, 0), arOffItems.reduce((a, i) => a + i.amount, 0))
   eq('㉒ 매출 진단', [arOn.arDiag.overdue_total, arOn.arDiag.run_rate, arOn.arDiag.spread_months], [500000, 300000, 2])
+  eq('㉒ 매출 입력 멈춤 판정도 서버가 한다', arOn.arDiag.entry_stalled, true)
 
   // 달력 월뷰는 분산하지 않는다 — 원래 예정일을 지켜야 달력과 예측이 서로 다른 말을 하지 않는다.
   const calE4 = await buildCashflowDays(makeCtx(db, 4), `${YM}-01`, `${YM}-28`, { carryOverdueToStart: false, spreadOverdue: true })

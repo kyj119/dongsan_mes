@@ -90,6 +90,8 @@ export interface ApDiagnostics {
   last_payment_month: string | null
   last_payment_date: string | null
   entry_lag_days: number | null
+  /** 입력이 한 달 넘게 멈췄나 — true 면 '연체'의 상당분이 미입력일 수 있다. */
+  entry_stalled: boolean
   /** 관측 지연 = FIFO 가 닫은 건의 (실제 지급일 − 예정일) 중앙값. 명목 결제조건과 실제 습성의 차이. */
   observed_lag_days: number | null
   observed_lag_samples: number
@@ -99,6 +101,12 @@ export interface ApDiagnostics {
 
 /** 관측 지연 중앙값을 내놓기 위한 최소 표본 수. */
 const MIN_LAG_SAMPLES = 10
+
+/** 입력이 「멈췄다」고 볼 기준(일). 한 달치가 통째로 비면 그 달의 실적을 아예 모르는 상태이고,
+ *  화면의 '연체'는 미지급·미회수가 아니라 **미입력**일 가능성이 높다.
+ *  ★임의값이 아니라 런레이트의 단위(월)에서 나온 값이다 — 30일을 넘으면 완결월 하나가 통째로 빈다.
+ *  ⚠️ 판정을 서버에 두는 이유: 화면 두 곳(매입·매출)이 각자 숫자를 들고 비교하면 기준이 갈린다. */
+const ENTRY_STALL_DAYS = 30
 
 /** 매출 수금 연체 분산의 근거. 매입(ApDiagnostics)과 같은 축만 담는다 — 다르면 화면이 둘을 못 나란히 놓는다. */
 export interface ArDiagnostics {
@@ -114,6 +122,7 @@ export interface ArDiagnostics {
   last_receipt_month: string | null
   last_receipt_date: string | null
   entry_lag_days: number | null
+  entry_stalled: boolean
 }
 
 /** §0b(대사)와 §4.5(합성)가 같은 발주 목록을 쓴다 — 두 번 조회하지 않기 위해 형태를 공유한다. */
@@ -388,6 +397,7 @@ export async function buildCashflowDays(
       spread_months: 0,
       last_payment_month: rr.lastMonth, last_payment_date: lastPayDate,
       entry_lag_days: lastPayDate ? daysBetween(lastPayDate, from) : null,
+      entry_stalled: !!lastPayDate && (daysBetween(lastPayDate, from) ?? 0) > ENTRY_STALL_DAYS,
       // 표본이 적으면 중앙값을 내지 않는다 — 몇 건짜리 중앙값을 '우리 회사 지급 습성'으로 읽으면 안 된다.
       observed_lag_days: settled.lagSamples.length >= MIN_LAG_SAMPLES ? median(settled.lagSamples) : null,
       observed_lag_samples: settled.lagSamples.length,
@@ -785,6 +795,7 @@ export async function buildCashflowDays(
         spread_months: tranches.length,
         last_receipt_month: rr.lastMonth, last_receipt_date: lastDate,
         entry_lag_days: lastDate ? daysBetween(lastDate, from) : null,
+        entry_stalled: !!lastDate && (daysBetween(lastDate, from) ?? 0) > ENTRY_STALL_DAYS,
       }
     }
   }
