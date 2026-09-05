@@ -3015,7 +3015,13 @@ namespace IllustratorAutomation
                     .Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToList();
                 string ppLabel = SanitizeFilename(string.Join("+", ppAll));
                 if (ppLabel.Length > 30) ppLabel = ppLabel.Substring(0, 30);
-                string baseName = $"{SanitizeFilename(clientName)}-{wStr}x{hStr}-{contentPart}"
+                // 저장 축척 병기(2026-09-05): {W}x{H} 는 **실물** 규격이고 실제 파일은 1/N 축소본일 수 있다.
+                //   워크벤치 가공 경로(:1943)와 같은 _1-N 토큰을 규격 옆에 붙여 RIP 가 ×N 확대 출력하게 한다.
+                //   ★완성본(-3)은 파일을 가공 없이 그대로 복사하므로, 이 표기가 축소본임을 알리는 유일한 신호다.
+                //   ★위치는 규격 옆 — 꼬리 '{주문번호}-{FFF}' 를 건드리면 printEvents.resolveCard 매칭이 죽는다.
+                //   realSize(REALSIZE 후가공)는 파일을 실물로 저장하므로 토큰을 붙이지 않는다.
+                string lineScaleTok = realSize ? "" : FormatScaleToken(scaleFactor);
+                string baseName = $"{SanitizeFilename(clientName)}-{wStr}x{hStr}{lineScaleTok}-{contentPart}"
                     + (ppLabel.Length > 0 ? $"-{ppLabel}" : "")
                     + $"-{qty}EA-{orderNumber}-{fileSeqStr}";
 

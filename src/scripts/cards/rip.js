@@ -96,11 +96,13 @@ async function showRipSendModal(cardId) {
         // 규격 정보
         var w = item.width || 0;
         var h = item.height || 0;
+        // ⚠️order_items.width/height 는 **실물 규격**이다(축소 저장이면 파일만 작다 — audit-dimensions·
+        //   카드 상세와 같은 축). ×sf 를 하면 1/5 저장 라인이 5배로 부풀어 보였다(2026-09-05 정정).
         var sf = item.scale_factor || 1;
-        var displayW = (w * sf).toFixed(0);
-        var displayH = (h * sf).toFixed(0);
+        var displayW = w.toFixed(0);
+        var displayH = h.toFixed(0);
         html += '<div style="font-size:12px;color:#6b7280;margin-bottom:10px">';
-        html += displayW + '×' + displayH + 'cm · ' + (item.quantity || 1) + '매';
+        html += displayW + '×' + displayH + 'cm' + (sf > 1 ? ' (1/' + sf + ' 저장)' : '') + ' · ' + (item.quantity || 1) + '매';
         if (item.content) html += ' · ' + escapeHtml(item.content);
         html += '</div>';
 

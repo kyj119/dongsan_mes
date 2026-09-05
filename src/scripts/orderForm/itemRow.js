@@ -80,9 +80,18 @@
                             <input type="number" name="height_${id}" min="0" step="0.1" placeholder="60" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" oninput="calcItem(${id})" onchange="refreshPriceSuggestion(${id})">
                             <div id="bill_dim_hint_${id}" class="hidden text-[10px] text-gray-500 mt-0.5 whitespace-nowrap" title="면적 단가는 10cm 단위 올림 치수로 계산됩니다"></div>
                         </div>
-                        <div id="scale_div_${id}" class="hidden">
-                            <label class="block text-xs font-medium text-gray-600 mb-0.5" title="실제크기/파일크기 배율">스케일</label>
-                            <input type="number" name="scale_factor_${id}" min="1" step="1" value="1" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" title="실제크기/파일크기 배율. 1/5 축소 파일이면 5 입력" oninput="onScaleFactorChange(${id})">
+                        <!-- 축척 = 파일 저장 비율(1/N). 규격·청구는 **항상 실물**이고 파일만 작다 — 완성본(그대로 복사)도 같다.
+                             전엔 파일 연결 후 가공(.ai) 라인에만 보여 1/5 저장 파일이 규격·금액까지 1/5 로 들어갔다(2026-09-05).
+                             눈금 = designer_intakes.scale_pct(100/50/25/20/10 → 1/2/4/5/10) 와 동일. -->
+                        <div id="scale_div_${id}">
+                            <label class="block text-xs font-medium text-gray-600 mb-0.5" title="파일 저장 축척(1/N). 규격·청구는 항상 실물 크기 — 축척을 바꾸면 파일 실측 × N 으로 재환산됩니다">축척</label>
+                            <select name="scale_factor_${id}" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" title="파일 저장 축척. 1/5 로 줄여 저장한 파일이면 1/5" onchange="onScaleFactorChange(${id})">
+                                <option value="1">1/1</option>
+                                <option value="2">1/2</option>
+                                <option value="4">1/4</option>
+                                <option value="5">1/5</option>
+                                <option value="10">1/10</option>
+                            </select>
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-gray-600 mb-0.5">수량 <span class="text-red-500">*</span></label>
@@ -532,6 +541,23 @@
                 if (el) { el.remove(); renumberDisplay(); calculateTotal(); }
             };
 
+            // 축척 세팅 정본 — 라인은 select(1/1·1/2·1/4·1/5·1/10), 묶음 부모행은 number 입력이라 한 함수로 다룬다.
+            // ⚠️select 는 옵션에 없는 값을 대입하면 **조용히 무시**되고 value 가 '' 이 돼 배율 1 로 오인된다
+            //   → 표 밖 배율(2.5 등)은 옵션을 만들어 붙인다.
+            window.setLineScale = function(id, v) {
+                var el = document.querySelector('[name="scale_factor_' + id + '"]');
+                if (!el) { console.warn('[itemRow] scale_factor_' + id + ' not found'); return; }
+                var n = parseFloat(v);
+                if (!(n > 0)) n = 1;
+                var val = String(n);
+                if (el.tagName === 'SELECT' && !Array.prototype.some.call(el.options, function(o) { return o.value === val; })) {
+                    var opt = document.createElement('option');
+                    opt.value = val; opt.textContent = '1/' + val;
+                    el.appendChild(opt);
+                }
+                el.value = val;
+            };
+
             window.onScaleFactorChange = function(id) {
                 const sf = parseFloat(document.querySelector(`[name="scale_factor_${id}"]`)?.value) || 1;
                 const wEl = document.querySelector(`[name="width_${id}"]`);
@@ -628,11 +654,15 @@
                 var hIn = parseFloat(hEl.value) || 0;
 
                 if (!wIn && !hIn) {
-                    // 파일 먼저: 실측 프리필(배율 1 가정)
-                    wEl.value = wCm.toFixed(1);
-                    hEl.value = hCm.toFixed(1);
+                    // 파일 먼저: 실측 × 현재 축척 = 실물 규격(전엔 배율 1 고정이라 1/5 파일이 1/5 규격·1/5 금액으로 들어갔다).
+                    //   origMm 은 파일 실측이라 이후 축척을 바꾸면 onScaleFactorChange 가 그대로 재환산한다.
+                    var sfNow = parseFloat((document.querySelector('[name="scale_factor_' + id + '"]') || {}).value) || 1;
+                    wEl.value = (wCm * sfNow).toFixed(1);
+                    hEl.value = (hCm * sfNow).toFixed(1);
                     setOrig(Math.round(wCm * 100) / 10, Math.round(hCm * 100) / 10);
-                    setBadge('파일 실측 ' + fileLabel + ' 적용', 'info');
+                    setBadge(sfNow > 1
+                        ? '파일 실측 ' + fileLabel + ' × 축척 1/' + sfNow + ' → 규격 ' + (wCm * sfNow).toFixed(1) + '×' + (hCm * sfNow).toFixed(1) + 'cm'
+                        : '파일 실측 ' + fileLabel + ' 적용', 'info');
                     calcItem(id);
                     return;
                 }
@@ -642,8 +672,11 @@
                     return;
                 }
 
-                // 규격 먼저: 배율 = 입력규격 ÷ 파일실측 (가로·세로 각각). 완성본(복사)은 원치수(×1)만 정상.
-                var allowed = isFinished ? [1] : [1, 2, 5, 10];
+                // 규격 먼저: 배율 = 입력규격 ÷ 파일실측 (가로·세로 각각).
+                // ⚠️완성본(복사)도 축소 저장이 흔하다 — Z: 출력파일은 1/5·1/10 저장이 일상이라 [1] 로 묶어 두면
+                //   정상 파일이 전부 "불일치" 경고로 떨어졌다(2026-09-05 해제). 파일은 그대로 복사하고 청구 규격만
+                //   실물로 올린다 = 패널에서 저장 비율을 낮춘 것과 같은 취급. 4 는 zscan 배율표(scale_pct 25%) 근거.
+                var allowed = [1, 2, 4, 5, 10];
                 var wSnap = probeSnapScale(wIn / wCm, allowed);
                 var hSnap = probeSnapScale(hIn / hCm, allowed);
                 var rotated = false;
@@ -658,9 +691,9 @@
                     var baseH = rotated ? wCm : hCm;
                     setOrig(Math.round(baseW * 100) / 10, Math.round(baseH * 100) / 10);
                     if (wSnap > 1) {
-                        var sfEl = document.querySelector('[name="scale_factor_' + id + '"]');
-                        if (sfEl) sfEl.value = wSnap;
-                        setBadge('파일 ' + fileLabel + ' → 배율 ×' + wSnap + ' 자동 인식' + (rotated ? ' (회전)' : ''), 'info');
+                        setLineScale(id, wSnap);
+                        setBadge('파일 ' + fileLabel + ' = 1/' + wSnap + ' 저장 인식' + (rotated ? ' (회전)' : '')
+                            + (isFinished ? ' · 완성본은 파일 그대로 출력(파일명 _1-' + wSnap + ')' : ''), 'info');
                     } else {
                         setBadge('파일 실측 ' + fileLabel + ' 일치' + (rotated ? ' (회전)' : ''), 'info');
                     }
@@ -710,9 +743,6 @@
                     if (pt) pt.checked = isFinished;
                     onDirectModeToggle(id);
                     if (nameEl) nameEl.textContent = file.name;
-                    // 가공 라인은 파일 스케일 입력 표시
-                    var scaleDiv = document.getElementById('scale_div_' + id);
-                    if (scaleDiv) scaleDiv.classList.toggle('hidden', isFinished);
                     // 파일 규격 자동 판독 — 비호환 .ai(pdfCompatible=false)·JPG/PNG는 source 'none' → 프리필·배지 없음이 정답
                     if (d.measure_source && d.measure_source !== 'none' && d.measured_w_cm > 0 && d.measured_h_cm > 0) {
                         applyProbedFileDims(id, d.measured_w_cm, d.measured_h_cm, isFinished);
@@ -736,8 +766,8 @@
                 var fpEl = document.querySelector('[name="direct_file_path_' + id + '"]');
                 if (!giEl || !fpEl || !fpEl.value) return;
                 giEl.value = (pt && pt.checked) ? -3 : -1;
-                var scaleDiv = document.getElementById('scale_div_' + id);
-                if (scaleDiv) scaleDiv.classList.toggle('hidden', !!(pt && pt.checked));
+                // 축척칸은 완성본에서도 숨기지 않는다 — 완성본은 파일을 그대로 복사하므로
+                //   축소 저장분을 청구 규격으로 되살릴 유일한 수단이 이 칸이다(2026-09-05).
             };
 
             // ── 칼선 DXF 연결: 라인별 재단 칼선 첨부 (EPS와 별개 축) ──────────────
@@ -807,10 +837,14 @@
                 });
                 // 규격 판독 흔적 정리 — probe가 심은 origMm만 지운다(그룹분석이 심은 origMm 보호)
                 clearProbeBadge(id);
+                var hadProbe = false;
                 ['width_', 'height_'].forEach(function(pfx) {
                     var el = document.querySelector('[name="' + pfx + id + '"]');
-                    if (el && el.dataset.probeSource) { delete el.dataset.origMm; delete el.dataset.probeSource; }
+                    if (el && el.dataset.probeSource) { hadProbe = true; delete el.dataset.origMm; delete el.dataset.probeSource; }
                 });
+                // 축척은 그 파일의 저장 비율이었다 — 파일이 빠지면 근거도 없어진다.
+                //   단 probe 가 세팅한 경우만 되돌린다(사람이 손으로 고른 값은 보존).
+                if (hadProbe) setLineScale(id, 1);
                 showToast('파일 연결이 해제되었습니다.', 'info');
             };
 

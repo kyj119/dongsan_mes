@@ -614,8 +614,8 @@
                 if (dfEl) dfEl.value = r.eps_path || r.work_ai_path || '';
 
                 // 크기(실물)·수량·파일 배율
-                var sfEl = document.querySelector('[name="scale_factor_' + id + '"]');
-                if (sfEl && r.scale_pct && r.scale_pct < 100) sfEl.value = Math.round(100 / r.scale_pct);
+                // 라인 축척칸은 select 라 옵션에 없는 값을 대입하면 조용히 무시된다 → setLineScale 경유
+                if (r.scale_pct && r.scale_pct < 100) setLineScale(id, Math.round(100 / r.scale_pct));
                 var wEl = document.querySelector('[name="width_' + id + '"]');
                 if (wEl && r.width_cm != null) wEl.value = r.width_cm;
                 var hEl = document.querySelector('[name="height_' + id + '"]');
