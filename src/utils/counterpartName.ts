@@ -35,7 +35,12 @@ const BANK_PREFIX_RE = new RegExp('^(' + BANK_PREFIXES.join('|') + ')(?=[^\\s])'
  * 벗긴 결과가 비면 원문을 돌려준다(은행명이 곧 상호인 경우 보호).
  */
 export function stripBankPrefix(s: string | null | undefined): string {
-  let t = String(s ?? '').replace(/^\s*홈\s*[)）]\s*/, '').trim()
+  // ★구분자를 괄호로 못박지 않는다 — prod 에 `홈)` 과 `홈>` 이 **둘 다** 있다(19건 41,214,700).
+  //   `CD이체` 도 같은 성격의 경로 표기라 함께 벗긴다.
+  let t = String(s ?? '')
+    .replace(/^\s*홈\s*[^가-힣A-Za-z0-9\s]{0,2}\s*/, '')
+    .replace(/^\s*CD\s*이체\s*/i, '')
+    .trim()
   const m = t.match(BANK_PREFIX_RE)
   if (m) {
     const rest = t.slice(m[1].length).trim()

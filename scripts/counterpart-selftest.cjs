@@ -20,8 +20,13 @@ const { compileTs } = require('./lib/compile-ts.cjs')
 const path = require('path')
 
 const SRC = path.join(__dirname, '..', 'src', 'utils', 'counterpartName.ts')
-const { mod, cleanup } = compileTs(SRC)
+const POLICY_SRC = path.join(__dirname, '..', 'src', 'utils', 'bankMatchPolicy.ts')
+const { mod, cleanup: nameCleanup } = compileTs(SRC)
 const { normalizeCounterpart, stripBankPrefix, isNonCounterpartName } = mod
+// 정책 모듈은 constants/intercompany 를 import 하므로 bundle 이 필요하다.
+const { mod: policy, cleanup: policyCleanup } = compileTs(POLICY_SRC, { bundle: true })
+const { resolveInternalEntityMatch, buildSettlementClientMap } = policy
+const cleanup = () => { nameCleanup?.(); policyCleanup?.() }
 
 let pass = 0
 const fails = []
@@ -48,6 +53,10 @@ check('접두 — 홈) + 농협', stripBankPrefix('홈) 농협주식회사엘이
 check('접두 — 홈) + 하나', stripBankPrefix('홈) 하나(주)케이엠테'), '(주)케이엠테')
 check('접두 — 은행명만', stripBankPrefix('신한(주)동산기획'), '(주)동산기획')
 check('접두 — 전각 괄호 홈）', stripBankPrefix('홈） 국민솜씨'), '솜씨')
+// ★prod 에 `홈)` 과 `홈>` 이 둘 다 있다. 구분자를 괄호로 못박으면 19건 41,214,700 이 통째로 빠진다.
+check('접두 — 홈> 변형', stripBankPrefix('홈> 국민에코컴퍼니'), '에코컴퍼니')
+check('접두 — 홈> + 기업', stripBankPrefix('홈> 기업더존섬유'), '더존섬유')
+check('접두 — CD이체', stripBankPrefix('CD이체농협송재웅'), '송재웅')
 check('접두 — 날짜 4자리', stripBankPrefix('0521유경컴퍼니'), '유경컴퍼니')
 check('접두 없음은 그대로', stripBankPrefix('운산직물'), '운산직물')
 check('접두 제거 후 조합', normalizeCounterpart(stripBankPrefix('홈) 기업(주)정운교역')), '정운교역')
@@ -76,6 +85,41 @@ check('빈값', isNonCounterpartName(''), null)
 // 은행명+상호는 카드가 아니다 — 숫자가 없으므로.
 check('은행명+상호는 거래처', isNonCounterpartName('신한(주)동산기획'), null)
 
+// ── ④ 붙여도 되는가(정책) ───────────────────────────────────────────────────
+// ★이 판정이 틀리면 돈이 엉뚱한 원장에 들어간다. prod 에서 자기 계좌간 이체 54건 502,280,000 이
+//   수금으로 확정돼 있었고, 시험 적용 직전에 사람 눈으로 겨우 잡혔다.
+{
+  // 동산기획(법인1) 계좌에 거래처 53(=동산기획)이 넣은 돈 → 자기 이체
+  const d = resolveInternalEntityMatch(53, 1, 0.9)
+  check('같은 법인 — 자기 이체로 무시', [d.status, d.clientId, d.reason], ['IGNORED', null, '자사 계좌간 이체(같은 법인)'])
+}
+{
+  // 청주(법인3) 계좌에 선명(거래처 1271)이 넣은 돈 → 진짜 내부거래
+  const d = resolveInternalEntityMatch(1271, 3, 0.9)
+  check('다른 법인 — 내부거래는 사람이 본다', [d.status, d.clientId], ['SUGGESTED', 1271])
+  check('내부거래 신뢰도 상한 0.7', d.confidence, 0.7)
+}
+check('낮은 신뢰도는 그대로', resolveInternalEntityMatch(1271, 3, 0.55).confidence, 0.55)
+check('내부법인 아니면 판단 안 함', resolveInternalEntityMatch(719, 1, 0.9), null)
+check('거래처 없으면 판단 안 함', resolveInternalEntityMatch(null, 1, 0.9), null)
+// 관계사(오다플래그 1655)는 내부법인이 아니다 — 매입 집계에서만 빼는 축이라 여기 대상이 아니다.
+check('관계사는 이 정책 대상 아님', resolveInternalEntityMatch(1655, 1, 0.9), null)
+
+{
+  const m = buildSettlementClientMap([
+    { id: 3777, client_name: '현대카드(매출정산)' },
+    { id: 3783, client_name: 'NH농협카드(매출정산)' },
+    { id: 719, client_name: '동산플래그' },
+    { id: 9999, client_name: '현대카드(매출정산)' },   // 중복 등록 — 먼저 만난 것을 쓴다
+  ])
+  check('정산 거래처 맵 — 브랜드 키', [m.get('현대'), m.get('NH농협')], [3777, 3783])
+  check('정산 거래처 맵 — 일반 거래처 제외', m.has('동산플래그'), false)
+  check('정산 거래처 맵 — 중복은 먼저 것', m.get('현대'), 3777)
+  // 이름 판정과 이어붙였을 때 실제로 찾아지는지 — 통장은 현대를 '현'으로 쓴다.
+  const kind = isNonCounterpartName('현300326494')
+  check('통장 표기 → 정산 거래처까지 연결', m.get(kind.brand), 3777)
+}
+
 cleanup()
 
 if (fails.length) {
@@ -83,4 +127,4 @@ if (fails.length) {
   for (const f of fails) console.error('  · ' + f)
   process.exit(1)
 }
-console.log(`✓ 통장 상대방명 판정 자체검증 통과 ${pass}항목`)
+console.log(`✓ 통장 상대방명·정책 판정 자체검증 통과 ${pass}항목`)

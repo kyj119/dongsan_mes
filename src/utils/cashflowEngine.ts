@@ -275,7 +275,7 @@ export async function buildCashflowDays(
       // 물질화된 지급예정 — 창(from..to) 밖도 전부 본다. 충당은 기간이 아니라 잔액의 문제라서다.
       c.env.DB.prepare(`
         SELECT cs.id, cs.client_id, cs.entity_id, cs.schedule_date, cs.amount, cs.status, cs.actual_amount,
-               po.status AS po_status,
+               cs.source_id, po.status AS po_status,
                COALESCE(po.delivery_date, substr(po.created_at, 1, 10)) AS po_base
         FROM cash_schedule cs
         LEFT JOIN purchase_orders po ON po.id = cs.source_id
@@ -286,7 +286,7 @@ export async function buildCashflowDays(
       `).bind(...efApCs.params).all<{
         id: number; client_id: number; entity_id: number; schedule_date: string
         amount: number; status: string; actual_amount: number | null
-        po_status: string | null; po_base: string | null
+        source_id: number | null; po_status: string | null; po_base: string | null
       }>(),
       c.env.DB.prepare(`
         SELECT po.id, po.po_number, po.final_amount, po.delivery_date, po.created_at,
@@ -327,7 +327,10 @@ export async function buildCashflowDays(
     for (const r of csApRes.results) {
       // 취소된 발주인데 예정 행이 안 지워진 것 — 채무가 아니다. prod 실측 28건 52,006,174.
       // 「수정·삭제가 안 따라온다」의 재발이라 여기서 걷어내되, 몇 건인지 진단에 남겨 사람이 지울 수 있게 한다.
-      if (r.po_status === 'CANCELLED' || r.po_status === 'DRAFT') { cancelledTotal += Number(r.amount) || 0; cancelledCount++; continue }
+      // 취소·초안이거나, 발주 행이 아예 사라진 것(하드 삭제 잔재) — 셋 다 채무가 아니다.
+      if (r.po_status === 'CANCELLED' || r.po_status === 'DRAFT' || (r.source_id != null && r.po_status === null)) {
+        cancelledTotal += Number(r.amount) || 0; cancelledCount++; continue
+      }
       obligations.push({
         ref: 'cs:' + r.id, supplierId: r.client_id, entityId: Number(r.entity_id) || 0,
         due: r.schedule_date, amount: Number(r.amount) || 0,
@@ -417,8 +420,12 @@ export async function buildCashflowDays(
     return { remaining: Math.max(0, amt - settled), settled }
   }
   const isApRow = (r: { flow_type: string; source_type: string }) => r.flow_type === 'OUT' && r.source_type === 'PURCHASE'
-  const isCancelledPurchaseRow = (r: { source_type: string; po_status: string | null }) =>
-    r.source_type === 'PURCHASE' && (r.po_status === 'CANCELLED' || r.po_status === 'DRAFT')
+  /** 지급예정 행의 근거 발주가 사라졌거나 취소된 것 — 채무가 아니다.
+   *  ★`source_id` 는 있는데 `po_status` 가 없으면 **발주 행이 하드 삭제된 잔재**다.
+   *    상태 조인으로는 안 걸러지므로(null 은 CANCELLED 가 아니다) 여기서 명시적으로 뺀다. */
+  const isCancelledPurchaseRow = (r: { source_type: string; source_id?: number | null; po_status: string | null }) =>
+    r.source_type === 'PURCHASE' &&
+    (r.po_status === 'CANCELLED' || r.po_status === 'DRAFT' || (r.source_id != null && r.po_status === null))
 
   // ── 1) 물질화: cash_schedule (FIXED 제외) ──────────────────────────────
   const efCs = entityFilter(c, 'cs')
@@ -473,7 +480,7 @@ export async function buildCashflowDays(
     const efOv = entityFilter(c, 'cs')
     const { results: ovRows } = await c.env.DB.prepare(`
       SELECT cs.id, cs.schedule_date, cs.flow_type, cs.source_type, cs.amount, cs.description, cs.status,
-             cl.client_name, po.status AS po_status
+             cs.source_id, cl.client_name, po.status AS po_status
       FROM cash_schedule cs
       LEFT JOIN clients cl ON cl.id = cs.client_id
       LEFT JOIN purchase_orders po ON cs.source_type = 'PURCHASE' AND po.id = cs.source_id
@@ -484,7 +491,8 @@ export async function buildCashflowDays(
         AND (cs.flow_type != 'OUT' OR cs.source_type != 'PURCHASE' OR (1=1${apExcl('cs.client_id')}))
     `).bind(from, ...efOv.params).all<{
       id: number; schedule_date: string; flow_type: string; source_type: string; amount: number
-      description: string | null; status: string; client_name: string | null; po_status: string | null
+      description: string | null; status: string; source_id: number | null
+      client_name: string | null; po_status: string | null
     }>()
     for (const r of ovRows) {
       const isAr = r.flow_type === 'IN' && r.source_type === 'ORDER'

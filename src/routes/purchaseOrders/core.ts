@@ -696,18 +696,29 @@ poCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     if (po.status === 'CONFIRMED') {
       // 소프트 삭제: CANCELLED 전환 (AP 잔액은 파생이라 캐시 차감 불요 — 위 주석)
-      await c.env.DB.prepare(`
-        UPDATE purchase_orders SET
-          status = 'CANCELLED',
-          updated_by = ?,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `).bind((user?.id) || null, id).run()
-
-      await c.env.DB.prepare(`
-        INSERT INTO po_status_history (po_id, from_status, to_status, changed_by, change_reason)
-        VALUES (?, 'CONFIRMED', 'CANCELLED', ?, '발주 삭제(확정 취소)')
-      `).bind(parseInt(id), (user?.id) || null).run()
+      //   ★지급예정(cash_schedule)도 같은 batch 에서 접는다. 취소한 발주의 예정행이 남으면
+      //     자금예측이 나가지도 않을 돈을 계속 유출로 센다 — prod 실측 2026-09-06 에 28건 52,006,174 가
+      //     그 상태였다(전부 선명 SMP-*). 「되돌리는 짝을 같은 커밋에서」(CLAUDE.md §누적 캐시).
+      //   ★행을 지우지 않고 CANCELLED 로 두는 이유: 엔진이 이미 status!='CANCELLED' 로 거르므로
+      //     숫자는 즉시 맞고, 무슨 일이 있었는지는 남는다.
+      //   ★개별 .run() 이 아니라 batch — 상태만 바뀌고 예정행이 안 접히는 반쪽 상태를 만들지 않는다.
+      await c.env.DB.batch([
+        c.env.DB.prepare(`
+          UPDATE purchase_orders SET
+            status = 'CANCELLED',
+            updated_by = ?,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).bind((user?.id) || null, id),
+        c.env.DB.prepare(`
+          UPDATE cash_schedule SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP
+          WHERE source_type = 'PURCHASE' AND source_id = ? AND status IN ('PENDING', 'OVERDUE')
+        `).bind(id),
+        c.env.DB.prepare(`
+          INSERT INTO po_status_history (po_id, from_status, to_status, changed_by, change_reason)
+          VALUES (?, 'CONFIRMED', 'CANCELLED', ?, '발주 삭제(확정 취소)')
+        `).bind(parseInt(id), (user?.id) || null),
+      ])
 
       return c.json({
         success: true,
@@ -722,6 +733,9 @@ poCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         c.env.DB.prepare('UPDATE purchase_adjustments SET po_id = NULL WHERE po_id = ?').bind(id),
         // #324: 매입 인보이스 댕글링 방지 — po_id NULL 처리 (인보이스 레코드 보존)
         c.env.DB.prepare('UPDATE purchase_invoices SET po_id = NULL WHERE po_id = ?').bind(id),
+        // 지급예정도 함께 지운다. 여기는 발주 행 자체가 사라지는 경로라 예정행을 남기면
+        //   **주인 없는 예정**이 되어 상태 조인으로도 못 걸러지고 계속 유출로 잡힌다(소프트 삭제보다 나쁘다).
+        c.env.DB.prepare(`DELETE FROM cash_schedule WHERE source_type = 'PURCHASE' AND source_id = ?`).bind(id),
         c.env.DB.prepare('DELETE FROM purchase_orders WHERE id = ?').bind(id)
       ])
 

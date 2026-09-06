@@ -222,6 +222,9 @@ function seed() {
               VALUES (20,?, 'OUT','PURCHASE',803,23,300000,'취소발주 잔존','PENDING',1)`).run(D(9))
   db.prepare(`INSERT INTO cash_schedule (id, schedule_date, flow_type, source_type, source_id, client_id, amount, description, status, entity_id)
               VALUES (21,?, 'OUT','PURCHASE',806,24,800000,'물질화 지급예정','PENDING',1)`).run(D(11))
+  // 발주 행이 하드 삭제돼 주인이 사라진 예정행 — 상태 조인으로는 안 걸러진다(null 은 CANCELLED 가 아니다).
+  db.prepare(`INSERT INTO cash_schedule (id, schedule_date, flow_type, source_type, source_id, client_id, amount, description, status, entity_id)
+              VALUES (22,?, 'OUT','PURCHASE',999999,23,400000,'주인없는 지급예정','PENDING',1)`).run(D(12))
 
   ppay(21, PREV(2, 12), 400000)
   ppay(22, PREV(2, 12), 500000)
@@ -384,6 +387,7 @@ const eq = (label, got, want) => {
   eq('⑪ 매입 부분지급 — 충당액 표시', ap.filter(i => /매입부분/.test(i.name)).map(i => i.settled), [400000])
   eq('⑫ 매입 완납 — 예정에서 사라진다', apSum(ap, '매입완납'), 0)
   eq('⑬ 취소 발주의 잔존 예정 — 걷어낸다', apSum(ap, '취소발주 잔존'), 0)
+  eq('⑬ 발주가 사라진 예정 — 걷어낸다', apSum(ap, '주인없는 지급예정'), 0)
   eq('⑭ 물질화 지급예정 — 잔여로 표시', apSum(ap, '물질화 지급예정'), 500000)
   eq('⑭ 물질화분은 §4.5 가 중복 합성하지 않는다', ap.filter(i => /PO-806|매입물질화/.test(i.name)).length, 0)
   eq('⑮ 내부법인 제외', apSum(ap, '동산기획'), 0)
@@ -438,7 +442,8 @@ const eq = (label, got, want) => {
   // 법인 1 진단 — 제외·취소가 숫자로 남는지(숨긴 게 아니라 옮긴 것임을 화면이 말할 수 있어야 한다)
   const e1 = await runForecast(db, 1, true)
   eq('⑲ 진단 내부법인·관계사 제외액', [e1.diag.excluded_total, e1.diag.excluded_count], [1500000, 2])
-  eq('⑲ 진단 취소 발주 잔존', [e1.diag.cancelled_total, e1.diag.cancelled_count], [300000, 1])
+  // 취소분 300,000 + 주인 없는 400,000
+  eq('⑲ 진단 취소·주인없는 예정', [e1.diag.cancelled_total, e1.diag.cancelled_count], [700000, 2])
   if (fails.length) {
     console.error(`\n✗ 입금예정 FIFO 충당 자체검증 실패 ${fails.length}건 (통과 ${pass})`)
     for (const f of fails) console.error(`  · ${f}`)

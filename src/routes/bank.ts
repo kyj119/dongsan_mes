@@ -11,7 +11,7 @@ import { validatePayment, preparePaymentStatements } from '../lib/payments'
 import { normalizeCounterpart, stripBankPrefix, isNonCounterpartName } from '../utils/counterpartName'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
-import { internalEntityByClientId } from '../constants/intercompany'
+import { resolveInternalEntityMatch, buildSettlementClientMap } from '../utils/bankMatchPolicy'
 import { getEntityCorpNum, getEntityBarobillSenderId } from '../utils/entitySettings'
 import { loadProvision, agingCategoryToBucket, effectiveLossRate } from '../utils/provisionMatrix'
 import { buildOldestUnpaidJoin, agingDaysFromOldest, getAgingCategory } from './ledger/ar-helpers'
@@ -27,6 +27,8 @@ bankRouter.use('/*', authMiddleware)
 
 // H5: 무인 auto-match/sync가 매칭 실패건(UNMATCHED 잔존)을 매일 전건 재스캔하며 대상 집합이
 //     무한 성장하는 것 방지. 스캔 대상을 최근 N일 + 오래된 순 상한으로 제한(매칭 알고리즘 자체는 불변).
+/** (b'') 적요 포함 매칭의 거래처명 길이 하한. prod 실측으로 고른 값 — 내리면 은행명이 거래처로 붙는다. */
+const CONTAINED_MIN_LEN = 4
 const MATCH_LOOKBACK_DAYS = 90
 const MATCH_SCAN_CAP = 500
 
@@ -1154,15 +1156,8 @@ async function runAutoMatchEngine(
       normDup.set(cl.norm, (normDup.get(cl.norm) ?? 0) + 1)
     }
 
-    // 2-c. 카드사별 정산 전용 거래처(`현대카드(매출정산)` 류) — 이름으로 찾는다.
-    //   id 하드코딩을 피하는 이유: 로컬·신규 D1 에는 그 id 가 없고, 있으면 엉뚱한 거래처에 붙는다.
-    const settlementClientByBrand = new Map<string, number>()
-    for (const cl of clients) {
-      const nm = (cl.client_name || '').trim()
-      if (!nm.includes('매출정산')) continue
-      const brand = nm.replace(/카드.*$/, '').trim()   // "NH농협카드(매출정산)" → "NH농협"
-      if (brand && !settlementClientByBrand.has(brand)) settlementClientByBrand.set(brand, cl.id)
-    }
+    // 2-c. 카드사별 정산 전용 거래처(`현대카드(매출정산)` 류) — 판정은 utils/bankMatchPolicy(순수 모듈).
+    const settlementClientByBrand = buildSettlementClientMap(clients)
 
     // 2-b. 거래처별 미수금 파생잔액(1쿼리) — clients.balance 캐시 폐기 → /receivables·deriveClientBalance 동일 정의.
     //      rule 3(금액일치) 매칭에 사용. 같은 잔액 거래처가 여럿이면 모호 → 매칭 제외(유일성 가드).
@@ -1361,6 +1356,7 @@ async function runAutoMatchEngine(
           const hasParen = /[(（]/.test(txName)
           const parenHits = new Set<number>()   // 괄호 안 상호가 이 거래처와 일치
           const prefixHits = new Set<number>()  // 입금자명이 거래처명의 앞부분(잘린 표기)
+          const containedHits = new Set<number>() // 적요 안에 거래처명이 통째로 묻힘
           const repHits = new Set<number>()     // 대표자명 단독 입금
 
           for (const client of normClients) {
@@ -1424,6 +1420,13 @@ async function runAutoMatchEngine(
             } else if (normStripped.length >= 4 && client.norm.includes(normStripped)) {
               // (b') 접두를 벗겨야 비로소 앞부분이 되는 표기. "홈) 하나(주)케이엠테" → 케이엠테크.
               prefixHits.add(client.id)
+            } else if (client.norm.length >= CONTAINED_MIN_LEN && normTx.length >= 6 && normTx.includes(client.norm)) {
+              // (b'') **반대 방향** — 적요 안에 거래처명이 묻힌 표기. "강기태세진광고" → 세진광고.
+              //   ⚠️이 방향이 기록된 오탐의 출처다('대진'⊂'대진국기사박대혁'). 그래서 거래처명에 길이 하한을 건다.
+              //   prod 실측 2026-09-06 으로 하한을 골랐다 — 4자: 102건 183,435,998 모호율 6% ·
+              //   2자로 내리면 '국민'(은행명)이 「유한회사 국민」에 붙는다(모호율 11%).
+              //   유일할 때만·SUGGESTED 까지만 — 확정은 사람이 한다.
+              containedHits.add(client.id)
             }
             if (!hasParen && client.rep.length >= 2 && (normTx === client.rep || normStripped === client.rep)) {
               // (c) 대표자명 단독 입금만 인정. 괄호 상호가 있으면 그 상호가 주체이므로 대표자명 매칭 금지
@@ -1442,6 +1445,10 @@ async function runAutoMatchEngine(
               bestClientId   = [...prefixHits][0]
               bestConfidence = 0.65
               bestReason     = '거래처명 부분일치'
+            } else if (containedHits.size === 1) {
+              bestClientId   = [...containedHits][0]
+              bestConfidence = 0.6
+              bestReason     = '적요에 거래처명 포함'
             } else if (repHits.size === 1) {
               bestClientId   = [...repHits][0]
               bestConfidence = 0.65
@@ -1457,20 +1464,13 @@ async function runAutoMatchEngine(
       //     거래처 53(=동산기획 자신)으로 확정돼 있었다. 원장에 넣었으면 매출채권이 통째로 거짓이 된다.
       //   ★다른 법인이면 내부거래다 — 회계허브 「내부거래 채권·채무」 탭이 흡수하는 축이라
       //     자동 확정 대신 사람이 보게 남긴다(채권·채무 집계는 내부법인을 제외하도록 이미 맞춰져 있다).
-      const internalOfClient = bestClientId !== null ? internalEntityByClientId(bestClientId) : undefined
-      if (internalOfClient) {
-        const sameEntity = Number(tx.entity_id) === internalOfClient.entityId
+      const internalDecision = resolveInternalEntityMatch(bestClientId, tx.entity_id, bestConfidence)
+      if (internalDecision) {
         matchUpdateStmts.push(c.env.DB.prepare(`
           UPDATE bank_transactions
           SET match_status = ?, matched_client_id = ?, match_confidence = ?, match_reason = ?
           WHERE id = ?
-        `).bind(
-          sameEntity ? 'IGNORED' : 'SUGGESTED',
-          sameEntity ? null : bestClientId,
-          sameEntity ? 1.0 : Math.min(bestConfidence, 0.7),
-          sameEntity ? '자사 계좌간 이체(같은 법인)' : '내부거래 — 회계허브에서 확인',
-          tx.id,
-        ))
+        `).bind(internalDecision.status, internalDecision.clientId, internalDecision.confidence, internalDecision.reason, tx.id))
         matchedCount++
         continue
       }
