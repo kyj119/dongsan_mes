@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-09-06T09:52:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-09-06T15:47:53+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,26 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **542** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 4 데이터 정합성 (2026-09-06T15:47):**
+> - **방법**: 세션 시작 시 detached HEAD `e31d4ba`(origin/main과 동일 커밋) → `git checkout main` + `git fetch origin main` + `git pull`로 정합 확인(변동 없음, 이미 최신). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area4 방법 라인 HEAD `abc38eb`)**: 웹앱 범위(`-- src migrations scripts .github`) diff **22커밋** — 대부분 **cash-plan/cashflow 확장**(연체분산·기지급차감·이상거래 경고, Area2/3/5가 이미 각자 렌즈로 정독) + **은행 매칭 엔진 신설**(`counterpartName.ts` 신규 모듈 — 은행앱 접두 제거·카드정산/계좌번호 판별·내부법인 자기이체 차단, `f019102`·`c8197a5`·`4a0cefe`, 이번 세션 직전 착륙) + IA 배치엔진(`cut:` 축, 비-웹앱) + 마감(봉제) 과금축 Phase 0(0573) + 규격축소파일 스케일 보정(`ad20ec4`, 순수 프론트+IA). **데이터정합성 렌즈로는 은행 매칭 엔진이 이번이 최초 통과**(Area5가 보안 렌즈로 이미 본 파일이나 겹치는 함수 없음).
+> - **신규 마이그레이션 3건(0572~0574) 전문 직독 + `db:bootstrap:ci` 전량 ✅ 적용 확인**: (a) `0572`(품목 제안억제 플래그 + 원단교체 2종 FIXED→AREA 축전환) — 축 전환과 같은 마이그에서 `unit_price = amount ÷ 재산정면적`으로 즉시 재계산(선행 사고 0571의 "축만 바꾸고 단가 의미 재계산 누락" 재발 방지 학습 반영), `amount`는 불변이라 재계산행은 `unit_price × 면적 × 수량 = amount` 항등식이 정의상 성립 — 청구 정정 아님 확인. 백업테이블(`_bak_0572_frame_sign`) 존재. 규격 없는 11라인은 재산정 제외하고 그대로 둔 것도 `/api/prices` AREA_USABLE_SQL이 규격없는 AREA라인을 이미 걸러 제안에 안 섞임을 재확인. (b) `0573`(마감 과금축 Phase 0) — 단가 전부 0 시작이라 금액영향 0, `finishing_methods`는 entity_id 없는 전역마스터라 entityFilter 대상 아님. (c) `0574`(계좌별 자금계획 편입 플래그) — 기본값이 멱등하게 의도된 동작을 재현(마이너스통장 제외/예금 포함). 3건 전부 CHECK 위반 0(`db:bootstrap:ci` 통과 자체가 증거), 신규 비-FK `*_id` 포인터 컬럼 0건(→ 부모삭제 dangling 후보 없음).
+> - **은행 매칭 엔진 신설 3커밋 데이터정합성 렌즈 직독** — `counterpartName.ts`(정규화·은행앱접두 제거·카드정산/계좌번호 판별)와 `bank.ts`의 `runAutoMatchEngine`/`applyBankTransaction` 변경분 전문 대조: ① 카드정산 브랜드 매칭(`settlementClientByBrand`)이 참조하는 `clients` 쿼리는 `WHERE is_active=1`만이고 entity_id 필터 없음 — `clients` 테이블 자체가 entity_id 미보유 전역마스터(기존 다회차 FP 확인 클래스와 동형)라 정상, 브랜드 매핑(`CARD_BRAND_CANON`)과 정산거래처 이름 파싱(`카드.*$` 제거)의 캐노니컬 값 8종 전수 대조 = 일치. ② 내부법인 자기이체 차단(`internalEntityByClientId`+`tx.entity_id` 비교) — 참조하는 `INTERCOMPANY_ENTITIES`(3사 고정, `constants/intercompany.ts`)는 기존 SSOT(2026-07-20)로 이번 churn 무변경, 매핑 자체 재검증 불요. ③ `applyBankTransaction`의 구 cash_schedule 자동-DONE UPDATE 제거(FIFO 파생 전환) — 남은 `cashSchedule.ts:459`(사람이 누르는 수동 완료 버튼)는 별개 경로라 회귀 아님, 파생 전환 자체는 `test:cash-settle`(52항목)로 게이트됨. **결함 0건**.
+> - **standing scan 1: CHECK IN 제약 ↔ literal write 대조** — `db:bootstrap:ci` 3건 전체 적용 성공 자체가 CHECK 위반 0건 입증(`pricing_type`·`pricing_method`(AREA/FIXED) 등).
+> - **standing scan 2: `npm run audit:entity`** — 검사 133파일·entity테이블 SELECT 67건·**누락 0건**(변동없음).
+> - **standing scan 3: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 4: `npm run audit:items:selftest`** — 품목중복 판정 7케이스(중복 3·정상 4) 전부 기대대로.
+> - **standing scan 5: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 6: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **직접 실행 확인**: `npm run test:cash-settle`(52항목)·`npm run test:ap-settle`(47항목)·`npm run test:counterpart`(32항목) 전부 PASS — 은행매칭·자금계획 신설 로직의 자체 게이트가 이미 촘촘함을 재확인.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 5런(HEAD `e31d4ba` 포함, 은행매칭 3커밋 각각 개별 배포) 전부 `conclusion:success`.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **16**(변동없음 — #613·#616·#617·#622·#624~635 전건 일치) — 이번 사이클 데이터정합성 렌즈 신규 결함 0건이라 추가 이슈 없음.
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 리터럴 쿼리 재실행 — done **542**(변동없음) · rejected `not_planned` 4 + `duplicate` 2 = **6**(변동없음) · open **16**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: 사이클 로그 8건 → 이번 로그 추가 후 9건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(신규 마이그 3건 전부 항등식·CHECK·전역마스터 정합 확인, 은행매칭 엔진 신설도 entity 경계·내부법인 판정·FIFO 파생 전환 전부 clean, 자체 게이트 131항목 PASS), 자동수정 0건(고칠 코드 없음), done-sync: open 16(변동없음)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-09-06T09:52):**
 > - **방법**: `git status`=워킹트리 clean(detached HEAD `a6faad9`, origin/main과 동일 커밋) → `git checkout main`(32커밋 behind) → `git fetch --unshallow` + `git pull origin main` → HEAD `a6faad9`로 정합. `npm ci`(0→81), `npx tsc --noEmit` clean.
