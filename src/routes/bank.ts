@@ -11,6 +11,7 @@ import { validatePayment, preparePaymentStatements } from '../lib/payments'
 import { normalizeCounterpart, stripBankPrefix, isNonCounterpartName } from '../utils/counterpartName'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
+import { internalEntityByClientId } from '../constants/intercompany'
 import { getEntityCorpNum, getEntityBarobillSenderId } from '../utils/entitySettings'
 import { loadProvision, agingCategoryToBucket, effectiveLossRate } from '../utils/provisionMatrix'
 import { buildOldestUnpaidJoin, agingDaysFromOldest, getAgingCategory } from './ledger/ar-helpers'
@@ -1109,7 +1110,7 @@ async function runAutoMatchEngine(
     const dateParams = lookbackDays > 0 ? [lookbackYmd(lookbackDays)] : []
     // 1. UNMATCHED 거래내역 가져오기 (입금+출금 모두, 최근 우선 소진 위해 오래된 순)
     const { results: unmatchedTxs } = await c.env.DB.prepare(`
-      SELECT id, amount, counterpart_name, description, transaction_type
+      SELECT id, amount, counterpart_name, description, transaction_type, entity_id
       FROM bank_transactions
       WHERE match_status = 'UNMATCHED'${ef.clause}${dateClause}
       ORDER BY transaction_date ASC, id ASC
@@ -1120,6 +1121,7 @@ async function runAutoMatchEngine(
       counterpart_name: string | null
       description: string | null
       transaction_type: string
+      entity_id: number | null
     }>()
 
     if (unmatchedTxs.length === 0) return { matched: 0, total: 0 }
@@ -1447,6 +1449,30 @@ async function runAutoMatchEngine(
             }
           }
         }
+      }
+
+      // ── 내부법인으로 붙은 건은 자동 확정하지 않는다 ────────────────────────
+      //   ★같은 법인이면 그건 '수금'이 아니라 **자기 계좌간 이체**다. prod 실측 2026-09-06:
+      //     동산기획(법인1) 계좌에 「신한(주)동산기획」으로 들어온 입금 54건 502,280,000 이
+      //     거래처 53(=동산기획 자신)으로 확정돼 있었다. 원장에 넣었으면 매출채권이 통째로 거짓이 된다.
+      //   ★다른 법인이면 내부거래다 — 회계허브 「내부거래 채권·채무」 탭이 흡수하는 축이라
+      //     자동 확정 대신 사람이 보게 남긴다(채권·채무 집계는 내부법인을 제외하도록 이미 맞춰져 있다).
+      const internalOfClient = bestClientId !== null ? internalEntityByClientId(bestClientId) : undefined
+      if (internalOfClient) {
+        const sameEntity = Number(tx.entity_id) === internalOfClient.entityId
+        matchUpdateStmts.push(c.env.DB.prepare(`
+          UPDATE bank_transactions
+          SET match_status = ?, matched_client_id = ?, match_confidence = ?, match_reason = ?
+          WHERE id = ?
+        `).bind(
+          sameEntity ? 'IGNORED' : 'SUGGESTED',
+          sameEntity ? null : bestClientId,
+          sameEntity ? 1.0 : Math.min(bestConfidence, 0.7),
+          sameEntity ? '자사 계좌간 이체(같은 법인)' : '내부거래 — 회계허브에서 확인',
+          tx.id,
+        ))
+        matchedCount++
+        continue
       }
 
       // 신뢰도 기반 상태 분리: >= 0.8 → CONFIRMED, 0.5~0.8 → SUGGESTED
