@@ -1739,6 +1739,26 @@ async function applyBankTransaction(
   if (isWithdrawal) {
     const supplier = await db.prepare('SELECT id FROM clients WHERE id = ?').bind(clientId).first()
     if (!supplier) return { ok: false, error: '매칭된 거래처를 찾을 수 없습니다', status: 404 }
+    // ★확정 발주가 하나도 없는 거래처에는 매입 지급을 조용히 만들지 않는다.
+    //   여긴 거래처가 존재하기만 하면 purchase_payments 를 만들던 자리다. 그래서 참가비·인증비 같은
+    //   **비용이 매입지급으로 둔갑**했고, AP 가 「발주 없이 지급만 있는」 상태가 됐다(prod 2026-09-06 43,163,797).
+    //   ⚠️client_type 으로는 못 가른다 — 활성 거래처 2,890 곳 중 PURCHASE 는 67 곳뿐이고
+    //     실제 매입처 대부분이 SALES 로 등록돼 있다(실측).
+    //   막는 게 아니라 **결정을 요구한다**: 발주를 먼저 등록하든, 비용분류로 적용하든, 알고 강행하든.
+    //   강행은 기존 force_create 가 받는다(사람이 의도를 밝힌 경로).
+    if (!opts.forceCreate) {
+      const hasPo = await db.prepare(`
+        SELECT 1 FROM purchase_orders
+        WHERE supplier_id = ? AND status IN ('CONFIRMED', 'RECEIVED', 'PARTIAL_RECEIVED') AND entity_id = ?
+        LIMIT 1
+      `).bind(clientId, entityId).first()
+      if (!hasPo) {
+        return {
+          ok: false, status: 409,
+          error: '이 거래처에 확정 발주가 없습니다 — 매입 지급이 아니라 비용일 수 있습니다. 발주를 등록하거나 비용분류로 적용하세요.',
+        }
+      }
+    }
     // 원자적 클레임 우선 — 돈 변동(지급 INSERT·잔액 차감) 전에 배타 소유권 확보. changes=0 이면 동시 요청 선점 → 409, 돈 변동 없음.
     const claim = await db.prepare(`
       UPDATE bank_transactions

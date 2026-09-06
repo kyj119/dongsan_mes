@@ -74,6 +74,16 @@ const settledOf = (r, ref) => r.settledByRef.get(ref) || 0
 {
   const r = settleApFifo([], [pay('2026-02-05', 70000)])
   check('발주 없는 지급 — 전액 unapplied', r.unappliedTotal, 70000)
+  // 총액만으로는 아무도 못 고친다 — 어느 거래처인지가 남아야 한다.
+  check('발주 없는 지급 — 거래처별로 남는다', [...r.unappliedBySupplier.entries()], [[1, 70000]])
+}
+{
+  // 여러 공급처가 섞여도 각자에게 귀속된다.
+  const r = settleApFifo(
+    [ob('po:1', '2026-01-31', 100000)],
+    [pay('2026-02-01', 130000), Object.assign(pay('2026-02-01', 50000), { supplierId: 7 })]
+  )
+  check('unapplied 귀속 — 공급처별', [r.unappliedBySupplier.get(1), r.unappliedBySupplier.get(7)], [30000, 50000])
 }
 {
   // 이미 DONE 처리된 행은 충당 대상이 아니되 풀은 소진시킨다. 안 그러면 같은 지급이 다른 예정을 또 지운다.

@@ -371,6 +371,14 @@ function renderApReconcile(ap, ar) {
   if (ap.unapplied_total > 0) extras.push('발주 없는 지급 ' + fmt(ap.unapplied_total));
   if (extras.length) rows.push('<div class="text-gray-500">' + extras.join(' · ') + '</div>');
 
+  // 「발주 없는 지급」은 총액만 보여 주면 아무도 못 고친다 — 어느 거래처인지가 있어야 발주 등록이든 비용 재분류든 한다.
+  if (ap.unapplied_suppliers && ap.unapplied_suppliers.length) {
+    var us = ap.unapplied_suppliers.slice(0, 3).map(function(s) {
+      return escapeHtml(s.name) + ' ' + fmt(s.amount);
+    }).join(' · ');
+    rows.push('<div class="text-gray-500">발주 없는 지급 상위 ' + us + '</div>');
+  }
+
   if (ap.lagging_suppliers && ap.lagging_suppliers.length) {
     var top = ap.lagging_suppliers.slice(0, 3).map(function(s) {
       return escapeHtml(s.name) + ' ' + fmt(s.remaining) + (s.days != null ? '<span class="text-gray-400">(' + s.days + '일)</span>' : '');

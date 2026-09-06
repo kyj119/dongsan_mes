@@ -72,8 +72,10 @@ export interface ApDiagnostics {
   /** 잔여 중 만기가 이미 지난 것 */
   overdue_total: number
   overdue_count: number
-  /** 발주 없이 지급만 있는 금액(이관 흔적) */
+  /** 발주 없이 지급만 있는 금액 */
   unapplied_total: number
+  /** 그게 어느 거래처인지 — 총액만으로는 아무도 못 고친다 */
+  unapplied_suppliers: { name: string; amount: number }[]
   /** 내부법인·관계사라서 제외한 금액 — 회계허브 내부거래 탭에서 본다 */
   excluded_total: number
   excluded_count: number
@@ -381,6 +383,17 @@ export async function buildCashflowDays(
     for (const po of poRows) if (po.supplier_id) nameOf.set(po.supplier_id, po.supplier_name || '공급사')
     const lastPayBySupplier = new Map<number, string>()
     for (const r of ppRes.results) lastPayBySupplier.set(r.supplier_id, r.d)   // 날짜 오름차순이라 마지막이 최신
+    // 발주 없이 지급만 있는 거래처는 poRows 에 없어 이름을 모른다 → 상위 8곳만 따로 찾는다(있을 때만).
+    const unappliedTop = [...settled.unappliedBySupplier.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8)
+    const unappliedNames = new Map<number, string>()
+    if (unappliedTop.length > 0) {
+      const ids = unappliedTop.map(([sid]) => sid)
+      const { results: nmRows } = await c.env.DB.prepare(
+        `SELECT id, client_name FROM clients WHERE id IN (${ids.map(() => '?').join(',')})`
+      ).bind(...ids).all<{ id: number; client_name: string | null }>()
+      for (const r of nmRows) unappliedNames.set(r.id, r.client_name || '')
+    }
+
     const lagging = [...remainBySupplier.entries()]
       .map(([sid, remaining]) => {
         const lp = lastPayBySupplier.get(sid) ?? null
@@ -394,6 +407,9 @@ export async function buildCashflowDays(
       settled_total: Math.round(obligationTotal - remainingTotal), remaining_total: Math.round(remainingTotal),
       overdue_total: Math.round(overdueTotal), overdue_count: overdueCount,
       unapplied_total: Math.round(settled.unappliedTotal),
+      unapplied_suppliers: unappliedTop.map(([sid, amount]) => ({
+        name: nameOf.get(sid) || unappliedNames.get(sid) || `공급사#${sid}`, amount: Math.round(amount),
+      })),
       excluded_total: Math.round(Number(exclRow?.v) || 0), excluded_count: Number(exclRow?.n) || 0,
       cancelled_total: Math.round(cancelledTotal), cancelled_count: cancelledCount,
       run_rate: rr.rate, run_rate_months: rr.months, run_rate_basis: rr.basis,

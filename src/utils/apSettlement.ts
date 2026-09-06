@@ -50,8 +50,10 @@ export interface ApSettlementResult {
   settledByRef: Map<string, number>
   /** 관측 지연 표본(일) — FIFO 가 '닫은' 의무의 (실제 지급일 − 예정일). 음수 = 예정보다 일찍 냄. */
   lagSamples: number[]
-  /** 충당하고도 남은 지급(발주 없이 지급만 있는 이관 흔적). 공급처×법인 합계. */
+  /** 충당하고도 남은 지급(발주 없이 지급만 있는 것). 공급처×법인 합계. */
   unappliedTotal: number
+  /** 공급처 id → 충당하고 남은 지급액. **어느 거래처가 그런지**를 화면이 말할 수 있어야 사람이 고친다. */
+  unappliedBySupplier: Map<number, number>
 }
 
 const keyOf = (s: number, e: number) => s + ':' + e
@@ -86,6 +88,7 @@ export function settleApFifo(
   }
 
   let unappliedTotal = 0
+  const unappliedBySupplier = new Map<number, number>()
   const allKeys = new Set<string>([...obByKey.keys(), ...evByKey.keys()])
 
   for (const k of allKeys) {
@@ -137,8 +140,13 @@ export function settleApFifo(
       left += evLeft
       for (let j = ei + 1; j < evs.length; j++) left += Number(evs[j].amount) || 0
     }
-    unappliedTotal += Math.max(0, left)
+    const leftPos = Math.max(0, left)
+    unappliedTotal += leftPos
+    if (leftPos > 0) {
+      const sid = Number(k.split(':')[0])
+      unappliedBySupplier.set(sid, (unappliedBySupplier.get(sid) || 0) + leftPos)
+    }
   }
 
-  return { settledByRef, lagSamples, unappliedTotal }
+  return { settledByRef, lagSamples, unappliedTotal, unappliedBySupplier }
 }
