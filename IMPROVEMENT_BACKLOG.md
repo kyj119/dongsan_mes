@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-09-06T03:48:38+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-09-06T09:52:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,31 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **13** (`list_issues(state:OPEN,label:auto-improve)` 실측, 12→13 · #632 신규) |
+| 🆕 new | **16** (`list_issues(state:OPEN,label:auto-improve)` 실측, 13→16 · #633·#634·#635 신규) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **542** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 3 UX/기능 감사 (2026-09-06T09:52):**
+> - **방법**: `git status`=워킹트리 clean(detached HEAD `a6faad9`, origin/main과 동일 커밋) → `git checkout main`(32커밋 behind) → `git fetch --unshallow` + `git pull origin main` → HEAD `a6faad9`로 정합. `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area3 방법 라인 HEAD `6020713`)**: 웹앱 범위 diff 31커밋, `src/scripts`+`src/pages` 좁힌 범위 13커밋 — 전부 **cash-plan/cashflow 신설 웨이브**(자금계획 달력·예측·전망을 한 화면에 통합, `449635f` 등). Area2가 이미 같은 웨이브를 코드품질 렌즈(entity_id·N+1·authMiddleware)로 정독했으나 **UX 렌즈는 이번이 최초 통과**.
+> - **cash-plan 화면 전문 심층 리뷰(background agent)** — `cashSchedule.ts`/`cashSchedule.js`/`bank.ts`/`bank.js` 전문 Read, 빈상태·로딩·에러·showConfirm 오용·`?raw` concat 스코프·더블서브밋·KPI필드 대조·사이드바 도달성 전 항목 점검, 부수로 `orderForm/{finishing,itemRow,calc,parent}.js`(같은 웨이브의 봉제축 가격 Phase 0) 표본 확인:
+>   - **신규 → #633(MED)**: `schSave`(수동 자금예정 등록, `cashSchedule.js:723`) 버튼에 disable/in-progress 가드 없음 + 서버 `POST /schedule`(`cashSchedule.ts:376`)도 단순 INSERT라 멱등성 없음(형제 `schAutoGenerate`/`schCheckOverdue`는 서버가 `NOT EXISTS`/조건부 UPDATE로 이미 멱등, 이 버튼만 예외) → 더블클릭 시 동일 예정 중복 등록, 캘린더·90일예측·위험일 KPI 부풀림. 직접 소스 대조로 재검증 완료.
+>   - **신규 → #634(LOW-MED)**: 주문폼 가로/세로(`width_/height_`) `oninput`이 `calcItem`만 부르고 `calcFinishing`은 안 부름(`itemRow.js:75,80`) — `calcFinishing`(`finishing.js:153`)은 그 필드를 직접 읽어 "여백 …cm → W×Hcm(참고)"·"서비스 N원"을 그리므로, 마감방식 먼저 선택 후 규격을 고치면 옛 규격 기준 참고값이 그대로 남음. 현재 마감단가 전부 0(Phase 0)이라 "서비스 N원" 표시 자체는 항상 숨김(청구액 영향 없음), 단 "여백 참고" 표시는 지금도 오차 노출·Phase 1(단가 도입) 이후 위험 잔존. 직접 코드 대조(calcItem/calcFinishing 양쪽 전문)로 재검증 완료.
+>   - **신규 → #635(MED, #632 형제)**: 수동등록 `POST /schedule`(`cashSchedule.ts:397`)도 `getEntityId(c) || 1` 사용 — `#632`(같은 파일 `:558` 자동생성 PURCHASE 블록)와 **동일 클래스, 다른 위치**. Area2가 "나머지 INSERT 전수 entity_id 누락 0건"이라 기록했으나 그건 "누락" 검사였고 이건 "오귀속"(getWriteEntityId 미사용) 클래스라 그 스캔 밖 — background agent 보고에는 없었으나, #633 검증 과정에서 백엔드 라우트를 직접 열어보다가 발견. 전용 회피 헬퍼 `getWriteEntityId`가 `inventory.ts`·`storageZones.ts`·`returns.ts`·`scan.ts`·`priceSheets.ts`·`fixedAssets.ts`엔 이미 적용돼 있는데 이 엔드포인트만 구패턴. ADMIN 전체모드에서 수동 자금예정 입력 시 법인2/3 담당자 입력분이 법인1에만 잡힘.
+>   - **checked clean(agent 보고)**: 빈 상태(일정 없음/`include_in_cash_plan` 계좌 없음) 안전 기본값, 로딩/에러 토스트 정상, `showConfirm` 오용 0건(전부 `await`/`.then`), `?raw` concat 크로스스코프 가드 정상(`hubGoto` 등), KPI 필드명(`overview` 응답 ↔ 프론트 렌더) 전수 일치, `include_in_cash_plan` 토글 왕복 정상.
+>   - **직접 재확인(owner 세션)**: 사이드바 도달성 — `menu.ts:64` `/cash-schedule` 정상 등록(구 `/bank` 은퇴는 주석으로 의도 확인) → 네비게이션 갭 아님. `permission_pages` 등록 — `migrations/0137`·`0138`에 이미 존재(이번 웨이브 이전부터의 기존 페이지, 신규 페이지 아님) → CLAUDE.md "신규 페이지→권한 등록" 대상 아님.
+> - **standing scan 1: `npm run audit:entity`** — 검사 133파일·entity테이블 SELECT 67건·**누락 0건**(변동없음 — #635는 "오귀속"이라 이 스캔 클래스 밖, #632와 동일 사각지대).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 5런(HEAD `a6faad9` 포함) 전부 `conclusion:success`.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **13**(신규 등록 전) 기존 13건 전건 일치(#613·#616·#617·#622·#624~632) 확인 후 #633·#634·#635 신규 생성.
+> - **backlog↔GitHub 절대값 재동기화**: open **16**(13→16, #633·#634·#635 신규) · done **542**(변동없음, `search_issues(reason:completed)` 재확인) · rejected **6**(변동없음, `not_planned` 4 + `duplicate` 2 재확인).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: 사이클 로그 12건 → 이번 로그 추가 후 13건, 임계 도달 → 아래 트림 실행.
+> - 신규 이슈 3건(#633 자금예정 수동등록 더블클릭 중복 MED, #634 주문폼 마감참고값 미갱신 LOW-MED, #635 수동등록 entity_id 오귀속 MED — #632 형제), 자동수정 0건(전부 UI가드/버튼동작/재무write-path 판단 동반이라 정책상 issue-only), done-sync: open 16(13→16)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-09-06T03:48):**
 > - **방법**: `git status`=워킹트리 clean(main, `f019102`), `git fetch origin main`=이미 최신(로컬=origin 동일 커밋). `git fetch --unshallow`(얕은 clone 복구). `npm ci`(0→81), `npx tsc --noEmit` clean.
@@ -157,95 +177,6 @@
 > - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
 > - **백로그 트림 체크**: 아래 실행.
 > - 신규 이슈 2건(#627 waste/budgets 고아 라우터 owner판단, #628 ar-helpers.ts 이름패턴 잔존 sibling), 자동수정 1건(`models.ts` Entity.updated_at 제거, 커밋 `a566de7e`), 09-03 전체리뷰 Area2 발견 10건 전수 재검증 완료(HIGH 6/6·MEDIUM 2/3 fixed, MEDIUM 1+LOW 1 이번 사이클로 해소), done-sync: open 9(7→9)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
->
-
-> **Area 1 프로덕션 헬스 (2026-09-04T09:50):**
-> - **방법**: `git status`=워킹트리 clean(detached HEAD, `bccb517`), `git fetch origin main`(`207078c..bccb517`, forced update) → `git checkout main && git reset --hard origin/main`(HEAD `bccb517`). `npm ci`(0→81), `npx tsc --noEmit` clean.
-> - **churn 확인(앵커 = 직전 Area1 방법 라인 HEAD `0fe0170`)**: 웹앱 범위 diff **92커밋**(Area5/6이 이미 09-03 전체리뷰 fix-integration 대형 병합창으로 표본검증·비웹앱축 검증 완료). Area1 고유 렌즈 = **마이그레이션 신규분 (a)/(b) 분류 + 이전 사이클이 심은 감지기(#624 printEvents.agents 프로브)의 실측 결과 확인**으로 좁힘.
-> - **신규 마이그레이션 11건(`0553`~`0562`) 전수 스캔** — `grep -iE "ADD COLUMN|CREATE TABLE"` 결과 **0건**. 전부 데이터 UPDATE/INSERT(품목 단가·잉크 원가·재고구역배정·단종품 상각)이라 #483/#484 (b)-risk 클래스 자체가 발생하지 않음(신규 컬럼 없음 → 배포코드 참조 컬럼드리프트 가능성 없음). `npm run db:bootstrap:ci`로 로컬 D1에 11건 전부 적용 성공 확인(베이스라인+0001~0562 전량 ✅).
-> - **`0555` 번호 중복 발견(`0555_aq2_200_cost_and_095_bom.sql` / `0555_synthetic_grey_split_product_and_roll.sql`) — 실해 없음 재확인**: `wrangler d1 migrations apply`는 전체 파일명으로 추적(숫자 접두만이 아님) → `db:bootstrap:ci` 로컬 적용에서 둘 다 정상 순서(알파벳순, `aq2...` < `synthetic...`)로 ✅ 적용됨. 스키마/데이터 사고 없음 — 명명 컨벤션 사소 위반이라 이슈화 안 함(비즈니스 영향 없음, CLAUDE.md에 번호 유일성 규칙 없음).
-> - **#624 감지기 실측 확인(전 사이클이 심은 `printEvents.agents` smoke 프로브 결과 판독)**: `bccb517` 배포런(job 100854805669) 로그에서 `PASS 200 206ms printEvents.agents /api/print-events/agents` 직접 확인. D1은 SELECT prepare 시점에 컬럼 존재를 검사하므로 `agent_heartbeats.kit_version`/`parser_type`(0545) 미적용이면 결정적 500이어야 하는데 200 — **0545는 prod에 이미 적용됨을 확인**. `0548`(`designer_intakes.qty_unit`)은 되읽는 GET 경로가 없어 여전히 대리검증 불가 — **#624에 코멘트로 확인결과 기록**(0545 파트 종결 가능, 0548은 owner 수동확인 요청).
-> - **신규 route 제거(`git diff -- src/routes`에서 제거된 `.get/.post` 매치)** = 0건 → 스모크 프로브 stale(#429 4번째 축) 위험 이번 사이클 해당없음.
-> - **CI 헬스**: `actions_list(deploy.yml)` 최근 10런(`bccb517`~`3422c64`) 전부 `conclusion:success`, smoke `PASS 114/114`(가장 최근 런 실측).
-> - **standing scan 1: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
-> - **standing scan 2: `npm audit --omit=dev`** — 이번 사이클 **미완료**(장시간 hang, 60초+ 무응답 — 네트워크/프록시 지연으로 추정). `package.json` diff 확인 결과 이번 창은 스크립트 항목만 추가(`test:orderline-cost`·`test:csv-guard` 등)이고 의존성 변경 0건이라 결과는 직전 사이클과 동일(0건)일 가능성 높으나 **이번 사이클은 실측 미완료로 기록**(추정 금지 원칙 준수 — 다음 사이클이 재시도).
-> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **7**(변동없음 — #613·#616·#617·#622·#624·#625·#626 전건 일치).
-> - **backlog↔GitHub 절대값 재동기화**: open **7**(변동없음) · done **542**(변동없음, 재확인 생략) · rejected **6**(변동없음, 재확인 생략).
-> - **🧬 SKILL 강화**: 없음 — area-1-production-health.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
-> - **백로그 트림 체크**: 사이클 로그 9건 → 이번 로그 추가 후 10건, 임계 13건 미만, 트림 불요.
-> - 신규 이슈 0건(마이그 11건 전부 (a)benign·컬럼드리프트 위험 0, 0555 번호중복은 실해 없음 확인), 자동수정 0건(고칠 코드 없음, #624 진행상황 코멘트 1건만), done-sync: open 7(변동없음)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
->
-
-> **Area 6 자기 진화 (2026-09-04T03:50):**
-> - **방법**: `git status`=워킹트리 clean(detached HEAD, `78a8dae`), `git fetch origin main`(`207078c..78a8dae`, forced update) → `git checkout main && git reset --hard origin/main`(HEAD `78a8dae`). `npm ci`(0→81), `npx tsc --noEmit` clean.
-> - **churn 확인(앵커 = 직전 Area6 방법 라인 HEAD `3f25be8`)**: 웹앱 범위 diff **92커밋** — Area5(51/62회차급)가 같은 초대형 창을 "09-03 전체 코드 리뷰(Fable 5.1) → `session/fix-*` 11-worktree 오케스트레이션" 5개 보안 도메인 표본검증으로 이미 정독, Area4 데이터정합성 렌즈도 별도 통과. Area6 고유 관점 = **비-웹앱 축 churn**(「범위 축」, 62회차)과 **done-sync 절대값 재동기화**로 좁혀 재분석(92커밋 전량 재독은 비현실적, Area5/4가 이미 다른 렌즈로 커버).
-> - **비-웹앱 축 churn(LogWatcher/IllustratorAutomat) 10건 개별 대조**: `b321417`(flexi join 창 5s→90s 비대칭 확장, FLEXI-03 78/83쌍 정정)·`8610ce7`(#616 폴백 이중계상 억제를 Flexi 파서에도 적용 — TnsPrintExpParser만 픽스됐던 것의 형제 완전성 자기 발견·자기 수정)·`5112002`(SheetLayout 검증이 `newDoc.close()` 이후 돌아 매번 빈 값으로 "통과" 오판정 + catch가 `$.fileName` 실패로 상태 미기록 — `_ia_status` 조기 return 규율 위반의 실제 재현 사례)·`d1bf6b9`/`606f124`/`476b918`(mes-core/mes-sheet 단위 mm 통일, cut-host 축척 매니페스트, 버전게이트 문자열 비교 버그) 등 — **전부 커밋 자체가 필드로그 리플레이·selftest 신설·수치 검증을 동반**(예: `b321417`은 FLEXI-03 13유령→0, FLEXI-TOYO1 무회귀 재생 검증). `grep -c` 로 두 로그 파일 전수 대조 결과 `8a9556a`·`caa5553` 2건만 기언급, 나머지 8건은 최초 진입이나 **전부 자기검증 동반 + `.claude/PROJECT_STATUS.md`에 축1/2·3·4 배포상태와 "남은 것" 명시**(line 5·7·43: IA 축2·3·4 `ia:deploy` 대기·축1 이미 동기화) → Area6 신규 이슈 불요, 기존 트래킹으로 충분.
-> - **`npm run audit:ia-jsx` 시도** — 이 샌드박스는 NAS(Z:) 미마운트라 5축 전부 "확인불가"로 판정 제외(드리프트 없음이 아니라 검증 자체 불가) — 기존 제약과 동일, Windows 실기에서만 판정 가능.
-> - **open≠unfixed 재검증 — #623 fixed-in-tree 아닌 진짜 미픽스 확인 후 직접 수정**: `/intakes/stats`(`workbench.ts:934`)가 여전히 `entityFilter(c,'designer_intakes')`(bare) — 형제 6개 중 유일하게 `waitingOpenFilter`로 안 바뀐 상태를 grep으로 재확인(closed로 오판하지 않고 코드로 확인, 30회차 거울의 반대 — 이번엔 실제로 안 고쳐져 있었음). `waitingOpenFilter` = `entityFilter`의 상위집합(entity 일치 OR `order_item_id IS NULL`)이라 스키마/응답 변경 없이 안전한 1줄 교체 — **자동수정 적용**: `entityFilter(c,'designer_intakes')` → `waitingOpenFilter(c)`. 검증 = `npx tsc --noEmit` clean · `npm run build` 성공 · `npm run audit:entity` 누락 0(변동없음) · `npm run db:bootstrap:ci`로 로컬 D1에 0558까지 적용 후 치환된 정확한 SQL을 `wrangler d1 execute --local`로 직접 실행해 문법·바인드 확인(0행, 에러 없음). 커밋 `8d812a1`(`Closes #623`) push 완료 → 이슈 자동 completed 전환 확인.
-> - **standing scan 1: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
-> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:417`·`workbench.ts:577`).
-> - **standing scan 3: `npm run audit:entity`** — 검사 133파일·entity테이블 SELECT 67건·**누락 0건**(변동없음, 수정 후 재확인 포함).
-> - **standing scan 4: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
-> - **CI 헬스**: `actions_list(deploy.yml)` 직전 런(HEAD `78a8dae`) `conclusion:success`. 이번 커밋(`8d812a1`)의 배포런은 push 직후 `queued` — 세션 종료 시점엔 완료 미확인(다음 사이클이 확인).
-> - **done-sync 절대값 재동기화(리터럴 쿼리)**: `search_issues(is:closed,reason:completed)` **541→542**(#623 completed) · `not_planned`4+`duplicate`2=rejected **6**(변동없음) · `list_issues(OPEN)` **8→7**(#623 이동, 나머지 #613·#616·#617·#622·#624·#625·#626 전건 일치).
-> - **🧬 SKILL 강화**: 없음 — area-6-self-evolution.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 이번 사이클은 기존 「범위 축」(62회차)·「open≠unfixed 거울」(30회차) 두 규칙이 정확히 의도대로 작동한 실증(신규 codify 불요).
-> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 8건 → 이번 로그 추가 후 9건, 임계 13건 미만, 트림 불요.
-> - 신규 이슈 0건(비-웹앱 축 10건 전부 자기검증 동반 기존 트래킹 확인, IA JSX 드리프트는 샌드박스 제약으로 미판정), 자동수정 1건(`workbench.ts:934` `/intakes/stats` entityFilter→waitingOpenFilter, #623 종결), done-sync: open 7(8→7)·done 542(541→542)·rejected 6(변동없음). 다음 순번 **Area 1**.
->
-
-> **Area 5 보안 + 인프라 (2026-09-03T21:47):**
-> - **방법**: `git status`=워킹트리 clean(detached HEAD, `8a9556a`), `git fetch origin main`(`207078c..8a9556a`, forced update) → `git checkout main && git reset --hard origin/main`(HEAD `8a9556a`). `npm ci`(0→81), `npx tsc --noEmit` clean.
-> - **churn 확인(앵커 = 직전 Area5 방법 라인 HEAD `6f2dd0f`)**: 웹앱 범위 diff **135커밋**(`207078c..8a9556a` 자체가 forced-update — origin/main 이력이 재작성됨, 히스토리 훼손 아니라 별도 세션의 대규모 정리). 이번 창은 지난 4사이클(Area1~4) 어느 창보다 압도적으로 큼 — **`09-03 전체 코드 리뷰`(Fable 5.1, `docs/audits/2026-09-03-full-review.md`) → `session/fix-*` 11-worktree 오케스트레이션(main 이력에 `fix(auth-scope)`·`fix(security)`·`fix(auth)` 등 다수)이 이미 CRITICAL 2·HIGH 89·MEDIUM 143 중 194건을 수정해 prod 배포까지 마친 상태**(`.claude/PROJECT_STATUS.md` "09-03 prod 배포 — 전체 리뷰 결함 수정" 인덱스 확인). Area 5 렌즈로 135커밋 전량 라인단위 재독은 비현실적 — 대신 보안 관련 픽스가 **실제로 소스에 반영됐는지 대표 표본 검증** + 리뷰가 명시적으로 SKIP한 항목의 트래킹 상태 확인으로 전략 전환.
-> - **C1(인증 경계) 직접 검증**: `middleware/auth.ts` `toAuthUser()`(신설)가 `portal`/`scope` 클레임 또는 `role` 부재 시 내부 사용자로 인정 안 함 — 주석에 "2026-09-03 C1" 명시. `middleware/permissions.ts` `requirePagePermission`/`requireEditPermission`/`requireAdminPage` 전부 `!user.role → 403`으로 교체 확인(과거 `next()` 통과 로직 소멸). **C2(반사XSS)** `pages/purchaseInvoice.ts:6-9` `parseInt`+`isNaN→400` 가드 확인.
-> - **HIGH 보안 5개 도메인 표본 검증(전부 소스 확인, 형제 패턴 comment로 실증)**: ① `cards/lifecycle.ts` print-toggle 등 7곳 전부 `cardEntityScope()` + `// #432` 주석 통일 ② `priceList.ts` 정책 삭제가 소유 검증 실패 시 404(과거는 그대로 진행해 전량 삭제됐다는 주석 명시) ③ `kakao.ts` `/send-sms-bulk` employees 대상에 `entityFilter` 추가(`// #610과 같은 이유` 주석) ④ `weeklyPurchase.ts` MRP 소요량 쿼리에 `entity_id = ?` 추가(주석에 "없으면 타법인 주문 소요량이 shortage 에 더해져 과잉발주" 명시) ⑤ `orders/core.ts:271` `/:id/invoice`에 `orderVisibilityFilter` 추가(형제 GET `/:id`와 동일 가시성 모델 명시). **XSS/CSV**: `scripts/cards/actions.js:102` innerHTML이 `escapeHtml()`로 교체·`scripts/vatReports.js:204-205`가 공용 `window.dsCsvCell` 헬퍼로 통일(개별 이스케이프 산재 해소). **5개 도메인 전부 확인된 소스 반영 — 표본 실패 0건**.
-> - **⚠️ SKIP 트래킹 이슈 부재 발견 → #626 등록**: `fix-reports/fix-auth.md`가 명시적으로 SKIP한 2건 — ① `utils/crypto.ts:69-71` `verifyPassword`의 레거시 평문 비밀번호 비교 경로(`pbkdf2:` 프리픽스 없으면 `password === stored`, 로그인 성공 시에만 마이그레이션 — 미로그인 계정은 DB에 평문 잔존) ② `hr.ts`/`payroll/year-end.ts`의 `requirePiiKey`가 `JWT_SECRET`을 주민등록번호 AES 키로 겸용(#338에서 하드코딩 폴백은 제거됐으나 키 겸용 자체는 "지시대로 미조치"). 둘 다 `.claude/PROJECT_STATUS.md`·`memory/session-context.md`(세션마다 덮어써짐)에만 "대표 결정 대기"로 남아 **GitHub Issue가 없어 다음 세션 유실 위험** — 사전 `search_issues` 확인 결과 기존 이슈 0건(참조된 #336은 CI 워크플로 자격증명 건이라 이 코드 경로와 별개) → issue-only 등록(자동수정 금지 — 계정 강제 재설정/키 분리 둘 다 정책 결정 필요).
-> - **standing scan 1: 시크릿 폴백** `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43` 1건뿐(빈 문자열 폴백, 기존 FP, 변동없음).
-> - **standing scan 2: `npm run audit:entity`** — 검사 133파일·entity테이블 SELECT 67건·**누락 0건**(변동없음).
-> - **standing scan 3: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:417`·`workbench.ts:577`).
-> - **standing scan 4: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
-> - **standing scan 5: `npm audit --omit=dev`** — **0건**(prod 청정, 변동없음). 전체 `npm audit` 11건(1 moderate·8 high·2 critical) 전부 devDependency, #613 기보고와 완전 일치.
-> - **CI 헬스**: `actions_list(deploy.yml)` 최신런(HEAD `8a9556a`) `conclusion:success`.
-> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **7→8**(신규 #626 추가 — #613·#616·#617·#622·#623·#624·#625·#626).
-> - **backlog↔GitHub 절대값 재동기화**: open **8**(7→8) · done **541**(변동없음) · rejected **6**(변동없음, 재확인 생략).
-> - **🧬 SKILL 강화**: 없음 — area-5-security-infra.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
-> - **백로그 트림 체크**: `backlog:trim --check` = 사이클 로그 12건 → 이번 로그 추가 후 13건, 임계 도달 → 트림 실행.
-> - 신규 이슈 1건(#626, 09-03 전체리뷰 fix-auth 세션이 의도적으로 SKIP한 평문비밀번호 검증경로 + JWT_SECRET/PII키 겸용 2건의 트래킹 이슈 부재 — session-context.md 휘발성 대비 GitHub 이슈로 고정), 자동수정 0건(이미 대규모 human-orchestrated 세션이 대부분 반영·배포 완료, 표본검증만 수행), done-sync: open 8(7→8)·done 541(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
->
-
-> **Area 4 데이터 정합성 (2026-09-03T03:48):**
-> - **방법**: `git status`=워킹트리 clean(detached HEAD, `4e5322d`), `git fetch origin main`(`207078c..4e5322d`, forced update) → `git checkout main && git reset --hard origin/main`(HEAD `4e5322d`). `npm ci`(0→81), `npx tsc --noEmit` clean. `npm run db:bootstrap:ci`로 로컬 D1에 baseline+전체 마이그레이션(0001~0553) 재적용 성공(구조적 ground-truth 확보).
-> - **churn 확인(앵커 = 직전 Area4 방법 라인 HEAD `4bb3627`)**: 웹앱 범위(`-- src migrations scripts .github`) diff 15커밋, 신규 마이그레이션 9건(0545~0553). 전부 Area1/2/3/5/6이 각자 렌즈로 이미 정독 완료(Area1: `9ec2c45`·`0bf01c4`류 배포드리프트 렌즈 / Area2: `d1de333`·`db76996`·`94a3b72`·`d1f5a9a`·`e706c55`·`b2945c4`·`14d24f4`·`1106198`·`7527a15`·`9ec2c45` 코드품질 렌즈 / Area3: `b13a415`·`f7454bc`·`1106198` UX 렌즈 / Area6: `9b9f351`·`2670f83` 자기진화 렌즈, `caa5553`·`97e1fa4`는 각각 IA축/백로그 자체커밋으로 대상 밖). **데이터정합성 렌즈는 이번이 최초 통과** — 마이그 9건 전문 직독 + 로컬 D1 ground-truth 대조로 재분석.
-> - **마이그 9건 직독(0545~0553) — 데이터정합성 결함 0건**: `0545`(agent_heartbeats.kit_version/parser_type, NULL 허용 additive) · `0546`(equipment_processes 최초 배정, `INSERT OR REPLACE` 멱등 + 근거 각주) · `0547`(FLAT-4X8-01만 UPDATE, 대상 1건) · `0548`(designer_intakes.qty_unit, additive) · `0549`(items 1행 UPDATE, 소급 없음 명시) · `0550`(품목 3종 신설 전부 `WHERE NOT EXISTS` 멱등 가드 + 계열 열거 근거, 주문라인 연결 8줄 전부 규격 정확일치 조건) · `0551`(2026-08-08 오분류 정정, `order_items.item_id` 불변이라 이력 보존) · `0552`(0550이 만든 이름충돌을 스스로 감지해 즉시 정정 — 자기교정) · `0553`(만국기 3종 신설 + 라인 5줄 연결, 동일 패턴). CHECK 제약(`pricing_method IN('FIXED','AREA')`·`item_type IN('PRODUCT','GOODS','MATERIAL')`) 대조 결과 위반 0건.
-> - **`workbench.ts:748` designer_intakes INSERT 바인드 정합성 직접 재검증(CLAUDE.md `orders/create.ts` 바인드불일치 클래스 재확인)**: `qty_unit` 컬럼 추가 후 컬럼 27개(`status` 리터럴 1개 제외 26개 placeholder) vs `.bind()` 인자 26개 — 정확히 일치. Area1이 이미 "명시 컬럼 참조"로 지목한 지점을 정합성 렌즈로 직접 카운트 재확인, 불일치 없음.
-> - **신규 비-FK `*_id` 포인터 컬럼 스캔(churn-트리거 재스캔 레시피, #477/#480 클래스)**: 이번 9개 마이그 중 신규 참조컬럼(`*_id`/`*_into_id`) 추가 0건(kit_version/parser_type/qty_unit은 값 컬럼, 0546~0553은 기존 PK 조합 INSERT/UPDATE) → 부모-삭제 dangling 후보 자체가 없음, 재스캔 대상 아님.
-> - **로컬 D1 ground-truth 활용 한계 재확인**: `db:bootstrap:ci`가 만드는 로컬 D1은 `baseline_reference.sql` 시드(items 77행·equipment 2행)뿐이라 prod 실데이터 규모의 고아/중복 검증에는 쓸 수 없음(예: `equipment_processes` INSERT가 참조하는 `HSM-01` 등 31개 장비코드 중 로컬 `equipment`엔 2행만 있어 형식상 "고아"로 보이나 이는 로컬 시드 공백일 뿐 — prod엔 31대 전부 존재가 마이그 자신의 각주로 확인됨, 오탐 배제). `audit:new-items`·`audit:migration-drift`는 `--remote`(prod) 전용이라 egress 차단으로 이번 사이클도 미실행(Area1이 같은 제약을 이미 codify).
-> - **standing scan 1: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 67건·**누락 0건**(변동없음).
-> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:417`[Area2/5 판정]·`workbench.ts:577`[Area6 판정]).
-> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed **0**(직전 Area2 사이클의 1건 관찰 대상이 이번엔 사라짐 — 세션 워크트리 잔재 소멸로 추정, 추가 조치 불요), REVIEW 0, SKIP 1(main).
-> - **standing scan 4: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
-> - **CI 헬스**: `actions_list(deploy.yml)` 최신런(HEAD `4e5322d`) `conclusion:success`.
-> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **7**(변동없음, #613·#616·#617·#622·#623·#624·#625 전건 일치) — 이번 사이클 데이터정합성 렌즈 신규 결함 0건이라 추가 이슈 없음.
-> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 리터럴 쿼리 재실행 — done **541**(변동없음) · rejected `not_planned` 4 + `duplicate` 2 = **6**(변동없음) · open **7**(변동없음).
-> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
-> - **백로그 트림 체크**: `backlog:trim --check` 실행 예정(아래).
-> - 신규 이슈 0건(마이그 9건 전부 멱등가드·근거각주·CHECK준수 확인, INSERT 바인드 정합·신규 비FK 포인터 0건도 재확인), 자동수정 0건, done-sync: open 7(변동없음)·done 541(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
->
-
-> **Area 1 프로덕션 헬스 (2026-09-02T09:47):**
-> - **방법**: `git status`=워킹트리 clean(detached HEAD, `0fe0170`), `git fetch origin main`(`207078c..0fe0170`, forced update) → `git checkout main && git reset --hard origin/main`(HEAD `0fe0170`). `npm ci`(0→81, node_modules 0개로 시작), `npx tsc --noEmit` clean, `npm run verify`(typecheck+build) 성공.
-> - **churn 확인(앵커 = 직전 Area1 방법 라인 HEAD `3ed9051`)**: 웹앱 범위(`-- src migrations scripts .github`) diff 16커밋 — 전부 Area2/4/5/6이 각자 렌즈로 이미 정독 완료(Area5: `d1de333`·`db76996`·`94a3b72`·`d1f5a9a`·`e706c55`·`b2945c4`·`14d24f4`·`1106198`·`7527a15`·`9ec2c45` / Area4: `0bf01c4` / Area2: `c4be537`·`86d3c74` / Area6: `2670f83`·`9b9f351`, `ab7efe2`는 IA JSX로 웹배포 축 밖). **프로덕션 헬스 렌즈는 다른 Area와 관점이 달라 재분석**: 마이그레이션 적용 드리프트((a)/(b) 분류, #483/#484 codify) — 다른 Area 로그 어디도 이 각도로 보지 않았음.
-> - **신규 마이그레이션 8건(0545~0552) 중 (b)-risk 2건 발견 — 이미 배포된 코드가 명시 컬럼 참조**: ① `0545_agent_kit_version.sql`(`agent_heartbeats.kit_version`/`parser_type`) — `9ec2c45`가 `printEvents.ts:527-542` INSERT에서 명시 바인드, `:1011` GET에서도 명시 SELECT. ② `0548_designer_intake_qty_unit.sql`(`designer_intakes.qty_unit`) — `d1f5a9a`가 `workbench.ts:752` INSERT 컬럼 리스트에 포함, 되읽는 SELECT는 전체 코드베이스에 0건(grep 확인 — 읽기전용 감지기 구성 불가). `deploy.yml`은 여전히 코드만 자동배포하고 마이그는 원격 자동적용 안 함(`Local write canary`=로컬 부트스트랩 한정) → prod에 `db:migrate:prod` 미실행 상태면 heartbeat 갱신 전량·디자이너 접수 등록 전량이 `no such column` 500으로 무음 사망 가능. **두 write-path 다 agent/패널 트리거라 smoke(GET 전용) 사각지대 — CLAUDE.md "smoke 맹점" 1~4축과 동일 클래스의 5번째 사례**. egress 차단으로 이 세션에서 prod 직접 확인 불가.
-> - **자동수정 적용(안전 — 테스트 인프라 정렬, #484 패턴)**: `scripts/smoke.cjs`에 `GET /api/print-events/agents` 프로브 추가(`kit_version`/`parser_type` 명시 SELECT라 0545 미적용 시 다음 배포 CI에서 500으로 즉시 노출, `items.detail` 프로브와 동일 형태). `node -c` 문법 확인 + `npm run verify` 통과 후 커밋. `0548`(qty_unit)은 되읽는 GET이 없어 같은 방식의 감지기 구성 불가 — issue-only.
-> - **이슈 등록 → #624**(S): 위 두 마이그레이션의 (b)-risk 상세 + 이번에 추가한 smoke 감지기가 다음 배포에서 0545 적용 여부를 대리 검증한다는 점 명시. 사전 중복확인(`search_issues` 5개 쿼리, kit_version/qty_unit/db:migrate:prod/0545/0548) 결과 기존 이슈 0건(0548 매칭 1건은 `#570`으로 다른 FK 이슈, 무관 확인).
-> - **CI 헬스**: `actions_list(deploy.yml)` 최근 5런(`0fe0170`~`a00e89b`) 전부 `conclusion:success` — 단 이 결과는 heartbeat/intake write-path를 전혀 테스트하지 않았으므로 "정상" 증거가 아니라 "미검증" 상태임을 위 이슈에 명시.
-> - **egress 제약 재확인**: prod 직접 fetch 불가(기존 제약과 동일) — CI smoke가 유일한 prod 건강 근거, 이번 사이클은 그 근거 자체의 사각지대를 메우는 감지기를 추가.
-> - **standing scan 1: `npm audit --omit=dev`** — 0건(prod 런타임 의존성 청정, 변동없음).
-> - **standing scan 2: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
-> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **5→6**(신규 #624 추가 — #613·#616·#617·#622·#623·#624).
-> - **backlog↔GitHub 절대값 재동기화**: open **6**(5→6) · done **541**(변동없음) · rejected **6**(변동없음, 재확인 생략).
-> - **🧬 SKILL 강화**: 없음 — area-1-production-health.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
-> - **백로그 트림 체크**: `backlog:trim --check` 실행 예정(아래).
-> - 신규 이슈 1건(#624, 0545/0548 마이그 (b)-risk 미적용 가능성 — smoke 사각지대 5번째 사례), 자동수정 1건(smoke.cjs에 printEvents.agents 프로브 추가, #484 패턴), done-sync: open 6(5→6)·done 541(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
 >
 
 ## ✅ Approved / 👀 Reviewed (owner 피드백 수신)
