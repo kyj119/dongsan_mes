@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-09-06T22:02:49+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-09-07T03:45:40+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,22 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **542** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 6 자기 진화 (2026-09-07T03:45):**
+> - **방법**: 세션 시작 시 detached HEAD `3c72ef6`(직전 Area5가 방금 이 세션에서 만든 커밋, origin과 동일) → `git checkout main`(로컬 main이 43커밋 뒤처져 있었음) + `git pull origin main`으로 정합. `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area6 방법 라인 HEAD `5d71457`)**: 웹앱 범위 diff **12커밋** — 전부 Area1~5가 이번 세션 안에서 순차로 이미 각자 렌즈로 정독한 은행매칭엔진·cashflow 확장·XSS 자체수정 웨이브(직전 Area5가 바로 이 창을 보안 렌즈로 방금 전수 훑고 끝냄, `3bf7427`/`b16fafb`도 그 산출물). **신규 마이그레이션 0건**(`e31d4ba..HEAD -- migrations` 공집합) → 「컬럼-diff bridge」는 이번 사이클 대상 없음. 비-웹앱 축(`LogWatcher/IllustratorAutomat/caps-worker/workers/queue`) churn도 `ad20ec4`(주문 스케일 보정 기능의 `IllustratorAutomat/Program.cs` 8줄) 1건뿐 — 이미 Area4 로그가 "순수 프론트+IA"로 인지·나열했고, 이 사이클이 직접 diff를 열어 확인(파일명에 축소배율 토큰을 규격 옆에 병기, `printEvents.resolveCard`가 의존하는 꼬리 `{주문번호}-{FFF}`는 안 건드림 — 주석이 그 제약을 스스로 명시). 축1(exe 폴더)·축2~5(Z:) 전부 이 샌드박스에 NAS 연결이 없어 실배포 여부 검증 불가(`audit:ia-jsx` 6개축 전부 "경로 접근 불가"로 판정 제외 — #616/#617 이래 반복되는 환경 제약, 신규 아님).
+> - **XSS bridge(「XSS bridge」, 16회차 원조 문단) — 직전 Area5 review 대상에 없던 신규 sink 1곳 발견·직접 확인**: `cashSchedule.js`(+94줄, AP/AR 대사 패널 `renderApReconcile` 신설, `0e455ac`/`995ef16` 계열)의 `unapplied_suppliers`/`lagging_suppliers` 배열의 `s.name`(거래처명, free-text) 2곳 — 둘 다 `escapeHtml(s.name)`으로 이미 이스케이프 확인. **net-new XSS 0**(Area5가 남긴 것 없이 clean, 다만 Area5 로그 본문에 이 신설 함수가 개별 언급되지 않았어 "나열됨≠Read됨"(#600) 재발 방지 차원에서 Area6가 직접 열어본 것).
+> - **open≠unfixed 거울(「open≠unfixed 거울」, 30회차)**: cashSchedule 3형제(#631 check-overdue entity필터 누락·#632/#635 `getEntityId(c)||1`)를 코드 직접 grep으로 재확인 — `cashSchedule.ts:583-598`(check-overdue UPDATE/COUNT 둘 다 여전히 entity 절 없음)·`:397`·`:558`(`getEntityId(c) || 1` 여전히 잔존) 전부 **미픽스, 정상 open**(이번 churn이 이 파일의 프론트만 건드리고 백엔드 핸들러 3곳은 무변경). #627(waste/budgets 고아 라우터)·#628(ar-helpers.ts)·#629(재고실사 중복편입)·#630(구역배정 빈화면) 대상 파일도 이번 churn 0건(「close-pending 캐시」, 32회차 — 파일 불변이면 재검증 skip, 직전 검증 유효) 확인 후 재grep 생략.
+> - **standing scan 1: done-sync 절대값 재동기화(리터럴 쿼리)** — `search_issues("repo:kyj119/dongsan_mes label:auto-improve is:closed reason:completed")` **542**(변동없음) · `reason:not_planned` **4** + `reason:duplicate` **2** = rejected **6**(변동없음) · `list_issues(state:OPEN,label:auto-improve)` **16**(변동없음, #613·#616·#617·#622·#624~635 전건 일치).
+> - **standing scan 2: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 3: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 5런(HEAD `3c72ef6` 포함) 전부 `conclusion:success`.
+> - **close-pending 재확인**: #616·#617은 owner 코멘트가 "실기 확인 대기"를 명시(64회차 FP룰) — 사이클 수와 무관하게 정상 open, 재통지 불요.
+> - **🧬 SKILL 강화**: 없음 — 이번 사이클은 기존 「컬럼-diff bridge」·「XSS bridge」·「open≠unfixed 거울」·「close-pending 캐시」 4개 규칙이 정확히 의도대로 작동(신규 마이그 0·신설 sink 1건 clean·open 3형제 미픽스 확정·churn 0 파일 재검증 생략)한 실증이라 신규 codify 불요. area-6-self-evolution.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: 사이클 로그 10건 → 이번 로그 추가 후 11건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(직전 Area5가 같은 세션에서 방금 이 churn 창을 보안 렌즈로 전수 훑어 브릿지 대상 자체가 거의 없었음, 유일한 신선 지점인 AP/AR 패널 신설 sink 1건도 clean), 자동수정 0건(고칠 코드 없음), done-sync: open 16(변동없음)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 + 인프라 (2026-09-06T22:02):**
 > - **방법**: 세션 시작 시 detached HEAD `af61e7e`(origin/main과 동일 커밋) → `git checkout main` + `git fetch origin main` + `git pull`로 정합 확인(변동 없음). `npm ci`(0→81), `npx tsc --noEmit` clean, `npm audit --omit=dev` 0건(변동없음).
