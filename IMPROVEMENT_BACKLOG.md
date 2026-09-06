@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-09-06T15:47:53+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-09-06T22:02:49+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,31 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **16** (`list_issues(state:OPEN,label:auto-improve)` 실측, 13→16 · #633·#634·#635 신규) |
+| 🆕 new | **16** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음 — 이번 사이클 신규 이슈 0건) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **542** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 5 보안 + 인프라 (2026-09-06T22:02):**
+> - **방법**: 세션 시작 시 detached HEAD `af61e7e`(origin/main과 동일 커밋) → `git checkout main` + `git fetch origin main` + `git pull`로 정합 확인(변동 없음). `npm ci`(0→81), `npx tsc --noEmit` clean, `npm audit --omit=dev` 0건(변동없음).
+> - **churn 확인(앵커 = 직전 Area5 방법 라인 HEAD `7529b10`)**: 웹앱 범위 diff **13커밋** — 전부 은행 매칭 엔진 확장(카드정산 라우팅·내부법인 자기이체 차단·은행앱 접두 제거 2차 규칙·발주취소 시 지급예정 batch 정리)과 cashflow 신규(연체분산 2종). Area4가 데이터정합성 렌즈로 이미 대부분 정독했으나 **보안 렌즈는 이번이 최초 통과**.
+> - **churn 직독 결과 — net-new 0건**: `bank.ts`(136줄 diff) 신규 SQL 전부 바인드 파라미터, `entityFilter` 형제 일관 유지, 내부법인 판정(`bankMatchPolicy.ts`)·카드정산 매핑(`buildSettlementClientMap`)·접두제거(`counterpartName.ts`)는 전부 순수함수(D1 호출 없음, `eval`/동적 `RegExp` 사용자입력 없음 — `BANK_PREFIX_RE`는 고정 은행명 리스트로만 구성돼 ReDoS 대상 아님). `purchaseOrders/core.ts`(발주취소 시 `cash_schedule` batch 정리)·`cashSchedule.ts`(GET 전용, 기존 `requireEditOrRole` 게이트 유지)는 읽기/상태전이 로직 변경뿐 신규 공격면 없음.
+> - **🔴 신규 발견·직접 수정 1 — `scripts/price-match-audit.py` SQL/커맨드 인젝션**: `--since` CLI 값을 f-string으로 SQL에 직접 삽입해 `wrangler d1 execute --remote --command`(prod DB)로 넘기고, Windows에서 `shell=True`. 형식검증 없는 문자열이 SQL과(엔진이 지원하면) cmd.exe 양쪽에 인젝션 가능 — 로컬 전용 읽기전용 분석툴이라 공격표면은 작지만(운영자가 직접 실행) 실제 SQL/커맨드 인젝션 결함. `re.fullmatch(r'\d{4}-\d{2}-\d{2}', a.since)` 검증을 fetch 호출 전에 추가(기본값·문서화된 사용법 모두 그대로 통과, 동작 무변경). 검증: 악의적 `--since` 값 투입 시 검증 실패로 조기 종료 확인. **자동수정**(로컬 dev 스크립트 입력검증, 스키마/API/비즈니스로직 무관 — 안전 범주).
+> - **🔴 신규 발견·직접 수정 2 — `scripts/check-xss.mjs`가 생성 이후 한 번도 작동한 적이 없었음**: 이 파일이 문자 그대로 `escapeHtml\(`만 인식해, 이 프로젝트가 실제 쓰는 별칭(`esc`·`escAttr`·`hrEscape`·`sgpEsc` 등— 「SPA innerHTML XSS 자동 standing scan」 항목이 이미 문서화한 정규식 `/[A-Za-z_]*[Ee]sc[A-Za-z]*\s*\(/`)을 전부 미이스케이프로 오판 → `src/scripts` 전체(189줄)가 매번 걸려 신호대잡음비 0에 가까움(git log 1커밋, npm script/CI 미연결, 유용한 결과 낸 적 없음). 문서화된 정규식으로 교체(189→117건). **SKILL 강화**: area-5-security-infra.md에 codify 추가(다음 사이클부터 standing scan 편입).
+> - **117건 백그라운드 에이전트 전수 triage(기존 FP 클래스 대조)** — 106건 FP(에러메시지 23·enum/시드데이터 라벨 6·숫자/id 9·정의-지점escape 재사용 등 이미escape 59·jsStr류 JS문자열escape 3·비-사용자데이터 4 등), **confirmed 11건**(1건은 재검증 결과 정규식 파싱 아티팩트로 확인 — 실제로는 이미 fix 적용됨, 나머지 10건 + 클러스터 정독 중 부수 발견 1건 = 총 11개 사이트 fix): `hr.js:77`(entity_name, title속성은 escape인데 content는 raw)·`layout/shell.js:2189`+`messages.js:755`+`ledger.js:1961`(카카오 템플릿 `<option>` 동일 버그 3파일 복붙)·`paymentRequests.js:151/153/154`(수신자명·비고·작성자명)·`postProcessing.js:425/461/470/497`(같은 파일 CRUD 목록 섹션은 이미 escape, 통계/차트 섹션만 누락 — `:470`은 속성 컨텍스트라 `"` 포함 시 속성 자체 파괴)·`dashboard.js:332`(같은 후가공명 필드, 대시보드 배지)·`purchaseRequests.js:259`(changed_by_name, 같은 줄 change_reason은 이미 escape)·`purchaseOrders.js:711`(템플릿명, 인접 supplier_name/notes는 이미 escape — 클러스터 정독 중 부수 발견). **전부 단순 테이블/드롭다운/배지 렌더** = 안전 자동수정 범주(복합 출력문서 아님) → 9개 파일 14줄 17개 escapeHtml 호출 직접 추가, `node --check` 전체 통과·`npm run verify`(typecheck+build) clean·`npm run check:dom` OK·재실행한 check-xss.mjs에서 수정한 10개 라인 전부 후보 목록에서 소멸 확인.
+> - **standing scan 1: 시크릿 폴백** `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43` 1건뿐(기존 FP, 변동없음).
+> - **standing scan 2: `npm run audit:entity`** — 검사 133파일·entity테이블 SELECT 67건·**누락 0건**(변동없음).
+> - **standing scan 3: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지.
+> - **standing scan 4: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 5: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: 두 수정 커밋(`b16fafb`·`3bf7427`) 모두 push 후 `actions_list(deploy.yml)` 확인 — `b16fafb` `conclusion:success`, `3bf7427`는 이 로그 작성 시점 진행중(다음 사이클 시작 시 재확인).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **16**(변동없음, #613·#616·#617·#622·#624~635 전건 일치). #626(레거시 평문비번·JWT_SECRET PII키 겸용, owner 결정 대기)·#631(cashSchedule check-overdue 형제비대칭, IDOR=owner 워크플로) 재확인 — 둘 다 정상 open, 코멘트/리액션 없음.
+> - **backlog↔GitHub 절대값 재동기화**: open **16**(변동없음) · done **542**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: area-5-security-infra.md에 「커밋된 스캐너가 자기 문서화된 레시피와 다르게 구현돼 있으면 조용히 무용지물」 codify 추가(check-xss.mjs 사례) — "이 클래스는 이미 스크립트가 있다"고 존재 여부만 확인하고 넘기지 말 것, 실행해서 신호대잡음비까지 확인해야 검증이 끝난다는 교훈.
+> - **백로그 트림 체크**: 사이클 로그 9건 → 이번 로그 추가 후 10건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(churn 자체는 clean, 대신 저장소에 방치돼 있던 스캐너 결함 2건을 직접 발견·수정), 자동수정 2건(price-match-audit.py 입력검증 커밋 `b16fafb` + check-xss.mjs 별칭인식 수정 커밋 `b16fafb`) + XSS 실제 수정 1건(9파일 17건 escapeHtml 추가, 커밋 `3bf7427`), done-sync: open 16(변동없음)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-09-06T15:47):**
 > - **방법**: 세션 시작 시 detached HEAD `e31d4ba`(origin/main과 동일 커밋) → `git checkout main` + `git fetch origin main` + `git pull`로 정합 확인(변동 없음, 이미 최신). `npm ci`(0→81), `npx tsc --noEmit` clean.
