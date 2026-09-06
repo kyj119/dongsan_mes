@@ -67,9 +67,18 @@ async function getBarobillConfig(c: any) {
 // GET /api/bank/accounts — 연결 계좌 목록
 bankRouter.get('/accounts', requireRole('ADMIN'), async (c) => {
   try {
-    const ef = entityFilter(c, 'bank_accounts')
+    const ef = entityFilter(c, 'ba')
+    // 잔액·최종 거래일을 같이 준다. `last_synced_at` 은 prod 전 계좌가 NULL 이라 화면이 늘 「동기화 안됨」을 띄웠고,
+    //   정작 **이 계좌가 며칠째 멈춰 있는지**는 아무 데도 안 보였다(마이너스통장이 27일 밀린 걸 아무도 몰랐다).
+    //   잔액은 자금현황·자금계획과 같은 정본식(LATEST_BALANCE_SUBQUERY)을 쓴다 — 화면마다 다른 잔액이 나오면 안 된다.
     const { results } = await c.env.DB.prepare(
-      `SELECT id, bank_code, bank_name, account_number, account_holder, account_alias, is_overdraft, is_personal, include_in_cash_plan, connected_id, is_active, last_synced_at, last_synced_date, entity_id, created_at, barobill_registered, collect_cycle, barobill_registered_at FROM bank_accounts WHERE is_active = 1${ef.clause} ORDER BY created_at DESC, id DESC`
+      `SELECT ba.id, ba.bank_code, ba.bank_name, ba.account_number, ba.account_holder, ba.account_alias,
+              ba.is_overdraft, ba.is_personal, ba.include_in_cash_plan, ba.connected_id, ba.is_active,
+              ba.last_synced_at, ba.last_synced_date, ba.entity_id, ba.created_at,
+              ba.barobill_registered, ba.collect_cycle, ba.barobill_registered_at,
+              ${LATEST_BALANCE_SUBQUERY} AS balance,
+              (SELECT MAX(bt.transaction_date) FROM bank_transactions bt WHERE bt.bank_account_id = ba.id) AS last_tx_date
+       FROM bank_accounts ba WHERE ba.is_active = 1${ef.clause} ORDER BY ba.created_at DESC, ba.id DESC`
     ).bind(...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {

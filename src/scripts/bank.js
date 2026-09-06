@@ -1464,12 +1464,25 @@
       var subBank = a.account_alias ? escHtml(a.bank_name) + ' · ' : '';
       html += '<div class="font-semibold text-gray-800">' + titleText + connBadge + '</div>';
       html += '<div class="text-sm text-gray-500">' + subBank + escHtml(a.account_number) + (a.account_holder ? ' · ' + escHtml(a.account_holder) : '') + '</div>';
-      html += '<div class="text-xs text-gray-400 mt-1"><i class="fas fa-clock mr-1"></i>마지막 동기화: ' + syncTime + '</div>';
+      // 잔액과 **며칠째 멈췄는지**를 같이 보여 준다. last_synced_at 은 전 계좌 NULL 이라 늘 '동기화 안됨' 이었고,
+      //   정작 마이너스통장이 27일 밀린 걸 화면 어디서도 알 수 없었다.
+      var bal = (a.balance != null) ? Number(a.balance) : null;
+      var balTxt = bal == null ? '<span class="text-gray-400">잔액 없음</span>'
+        : '<span class="' + (bal < 0 ? 'text-red-600' : 'text-gray-800') + ' font-semibold tabular-nums">' + fmtMoney(bal) + '원</span>';
+      var stale = bankStaleDays(a.last_tx_date);
+      var freshTxt;
+      if (!a.last_tx_date) freshTxt = '<span class="text-gray-400">거래 없음</span>';
+      else {
+        var cls = stale >= 14 ? 'text-red-600 font-medium' : (stale >= 7 ? 'text-amber-600' : 'text-gray-400');
+        freshTxt = '<span class="' + cls + '">최종 거래 ' + bankFmtYmd(a.last_tx_date) + ' (' + stale + '일 전)</span>';
+      }
+      html += '<div class="text-xs mt-1 flex items-center gap-3">' + balTxt + freshTxt + '</div>';
+      html += '<div class="text-xs text-gray-400 mt-0.5"><i class="fas fa-clock mr-1"></i>마지막 동기화 요청: ' + syncTime + '</div>';
       html += '</div>';
       html += '</div>';
       html += '<div class="flex gap-2">';
       if (a.barobill_registered) {
-        html += '<button class="btn-sm" style="background:#d1fae5;color:#065f46;" onclick="refreshAccount(' + a.id + ')"><i class="fas fa-sync-alt mr-1"></i>즉시조회</button>';
+        html += '<button class="btn-sm" style="background:#d1fae5;color:#065f46;" onclick="refreshAccount(' + a.id + ')" title="바로빌 즉시조회 요청 → 최종 거래일부터 오늘까지 수집"><i class="fas fa-sync-alt mr-1"></i>갱신</button>';
       }
       html += '<button class="btn-sm" style="background:#e0e7ff;color:#3730a3;" onclick="editAccount(' + a.id + ')"><i class="fas fa-edit mr-1"></i>수정</button>';
       html += '<button class="btn-sm btn-delete" onclick="deleteAccount(' + a.id + ')"><i class="fas fa-trash mr-1"></i>삭제</button>';
@@ -1495,14 +1508,53 @@
     });
   };
 
-  // 바로빌 즉시조회 요청
-  window.refreshAccount = function(id) {
-    axios.post('/api/bank/accounts/' + id + '/refresh').then(function(r) {
-      showToast((r && r.data && r.data.message) || '즉시조회 요청 완료', 'success');
-    }).catch(function(e) {
+  /** YYYYMMDD → 오늘까지 경과일. 값이 이상하면 0. */
+  function bankStaleDays(ymd) {
+    var s = String(ymd || '').replace(/-/g, '');
+    if (s.length !== 8) return 0;
+    var t = Date.parse(s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8) + 'T00:00:00Z');
+    if (!isFinite(t)) return 0;
+    var today = window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10);
+    var n = Math.round((Date.parse(today + 'T00:00:00Z') - t) / 86400000);
+    return n > 0 ? n : 0;
+  }
+  function bankFmtYmd(ymd) {
+    var s = String(ymd || '').replace(/-/g, '');
+    return s.length === 8 ? s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8) : s;
+  }
+  function fmtMoney(n) { return Number(n || 0).toLocaleString('ko-KR'); }
+
+  // 갱신 = 바로빌 즉시조회 요청 + **최종 거래일부터 오늘까지** 수집.
+  //   ★두 단계를 한 버튼으로 묶은 이유: 즉시조회는 「바로빌한테 은행 다녀와 달라」는 요청일 뿐이고
+  //     수집은 별도 버튼(다른 탭)이라, 사람이 둘을 이어서 누를 거라고 기대하면 안 된다.
+  //   ★수집 구간을 오늘 하루가 아니라 **비어 있는 구간 전체**로 잡는다 — 마이너스통장이 27일 밀려 있었는데
+  //     기본값(오늘)으로 돌리면 그 27일은 영원히 안 들어온다.
+  window.refreshAccount = async function(id) {
+    var acc = accounts.find(function(a) { return a.id === id; });
+    showToast('갱신 요청 중...', 'info');
+    try {
+      await axios.post('/api/bank/accounts/' + id + '/refresh');
+    } catch (e) {
       var m = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '즉시조회 실패';
       showToast(m, 'error');
-    });
+      return;
+    }
+    // 즉시조회는 비동기라 바로빌이 은행에서 받아오는 데 시간이 걸린다 → 수집은 사용자가 확인 후 진행.
+    var from = (acc && acc.last_tx_date) ? bankFmtYmd(acc.last_tx_date) : (window.kstToday ? window.kstToday() : '');
+    var days = bankStaleDays(acc && acc.last_tx_date);
+    var msg = '바로빌 즉시조회를 요청했습니다.\n\n이어서 ' + from + ' ~ 오늘 구간을 수집할까요?'
+      + (days >= 7 ? '\n(이 계좌는 ' + days + '일째 거래가 들어오지 않았습니다)' : '');
+    if (!(await showConfirm(msg))) return;
+    try {
+      var r = await axios.post('/api/bank/sync-barobill', { date_start: from, date_end: (window.kstToday ? window.kstToday() : '') });
+      var d = (r && r.data && r.data.data) || {};
+      showToast('수집 완료 — 신규 ' + (d.inserted != null ? d.inserted : 0) + '건', 'success');
+      loadAccounts();
+      refreshTransactions();
+    } catch (e2) {
+      var m2 = (e2.response && e2.response.data && e2.response.data.error) ? e2.response.data.error : '수집 실패';
+      showToast(m2, 'error');
+    }
   };
 
   // Account modal (add/edit)
