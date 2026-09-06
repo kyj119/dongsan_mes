@@ -1152,6 +1152,16 @@ async function runAutoMatchEngine(
       normDup.set(cl.norm, (normDup.get(cl.norm) ?? 0) + 1)
     }
 
+    // 2-c. 카드사별 정산 전용 거래처(`현대카드(매출정산)` 류) — 이름으로 찾는다.
+    //   id 하드코딩을 피하는 이유: 로컬·신규 D1 에는 그 id 가 없고, 있으면 엉뚱한 거래처에 붙는다.
+    const settlementClientByBrand = new Map<string, number>()
+    for (const cl of clients) {
+      const nm = (cl.client_name || '').trim()
+      if (!nm.includes('매출정산')) continue
+      const brand = nm.replace(/카드.*$/, '').trim()   // "NH농협카드(매출정산)" → "NH농협"
+      if (brand && !settlementClientByBrand.has(brand)) settlementClientByBrand.set(brand, cl.id)
+    }
+
     // 2-b. 거래처별 미수금 파생잔액(1쿼리) — clients.balance 캐시 폐기 → /receivables·deriveClientBalance 동일 정의.
     //      rule 3(금액일치) 매칭에 사용. 같은 잔액 거래처가 여럿이면 모호 → 매칭 제외(유일성 가드).
     const { results: balRows } = await c.env.DB.prepare(`
@@ -1240,16 +1250,30 @@ async function runAutoMatchEngine(
       const txName = (tx.counterpart_name ?? '').trim()
       if (!txName) continue
 
-      // 거래처 수금·지급이 아닌 것을 먼저 걷어낸다 — 카드 매출 정산금(가맹점번호)·계좌번호 표기.
-      //   거래처별 payments 로 만들면 AR 이 오염된다(정산금은 여러 매출이 합쳐진 한 덩어리다).
-      //   prod 실측 2026-09-06: 428건 537,964,046 이 이 형태로 UNMATCHED 에 쌓여 사람 눈을 가리고 있었다.
+      // 가맹점번호·계좌번호 표기는 일반 거래처 매칭 대상이 아니다 — 먼저 갈라 낸다.
+      //   prod 실측 2026-09-06: 이 형태 460건이 UNMATCHED 에 쌓여 사람이 읽을 목록을 가리고 있었다.
+      //   ★카드 정산은 **카드사별 정산 전용 거래처**(`…카드(매출정산)`)로 붙인다 — 선명이 이미 쓰던 방식이고
+      //     그래야 정산금이 원장에 남아 통장 대사가 닫힌다. 이 거래처들은 주문이 0건이라 미수금을 왜곡하지 않는다
+      //     (파생잔여 음수 클램프). 브랜드를 못 찾을 때만 IGNORED 로 떨군다.
       const nonCounterpart = isNonCounterpartName(txName)
       if (nonCounterpart) {
-        matchUpdateStmts.push(c.env.DB.prepare(`
-          UPDATE bank_transactions
-          SET match_status = 'IGNORED', matched_client_id = NULL, match_confidence = 1.0, match_reason = ?
-          WHERE id = ?
-        `).bind(nonCounterpart === 'CARD' ? '카드매출 정산(거래처 매칭 대상 아님)' : '계좌번호 표기(거래처 매칭 대상 아님)', tx.id))
+        const settleId = nonCounterpart.kind === 'CARD' && nonCounterpart.brand
+          ? (settlementClientByBrand.get(nonCounterpart.brand) ?? null)
+          : null
+        if (settleId) {
+          matchUpdateStmts.push(c.env.DB.prepare(`
+            UPDATE bank_transactions
+            SET match_status = 'CONFIRMED', matched_client_id = ?, match_confidence = 0.9,
+                match_reason = '카드매출 정산 매칭'
+            WHERE id = ?
+          `).bind(settleId, tx.id))
+        } else {
+          matchUpdateStmts.push(c.env.DB.prepare(`
+            UPDATE bank_transactions
+            SET match_status = 'IGNORED', matched_client_id = NULL, match_confidence = 1.0, match_reason = ?
+            WHERE id = ?
+          `).bind(nonCounterpart.kind === 'CARD' ? '카드매출 정산(정산 거래처 미등록)' : '계좌번호 표기(거래처 매칭 대상 아님)', tx.id))
+        }
         matchedCount++
         continue
       }

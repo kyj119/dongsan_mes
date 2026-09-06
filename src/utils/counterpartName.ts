@@ -58,10 +58,26 @@ export function stripBankPrefix(s: string | null | undefined): string {
 const CARD_BRAND_RE = /^(KB|국민|하나|신한|삼성|롯데|현대|현|우리|NH|농협|씨티|비씨|BC)\d{6,}$/
 const CARD_BC_SUFFIX_RE = /^\d{6,}BC$/
 const ACCOUNT_NO_RE = /^\d[\d-]{8,}$/
-export function isNonCounterpartName(s: string | null | undefined): 'CARD' | 'ACCOUNT' | null {
+
+/** 통장 표기의 카드사 축약 → 정산 거래처 이름에 쓰이는 정식 브랜드. `현300326494` 의 `현` 이 현대다. */
+const CARD_BRAND_CANON: Record<string, string> = {
+  KB: 'KB국민', 국민: 'KB국민', 하나: '하나', 신한: '신한', 삼성: '삼성',
+  롯데: '롯데', 현대: '현대', 현: '현대', 우리: '우리',
+  NH: 'NH농협', 농협: 'NH농협', 씨티: '씨티', 비씨: '비씨', BC: '비씨',
+}
+
+export interface CounterpartKind {
+  kind: 'CARD' | 'ACCOUNT'
+  /** kind='CARD' 일 때 정산 거래처를 찾는 브랜드 키 */
+  brand?: string
+}
+
+export function isNonCounterpartName(s: string | null | undefined): CounterpartKind | null {
   const flat = String(s ?? '').replace(/\s/g, '')
   if (!flat) return null
-  if (CARD_BRAND_RE.test(flat) || CARD_BC_SUFFIX_RE.test(flat)) return 'CARD'
-  if (ACCOUNT_NO_RE.test(flat)) return 'ACCOUNT'
+  const m = flat.match(CARD_BRAND_RE)
+  if (m) return { kind: 'CARD', brand: CARD_BRAND_CANON[m[1]] }
+  if (CARD_BC_SUFFIX_RE.test(flat)) return { kind: 'CARD', brand: '비씨' }
+  if (ACCOUNT_NO_RE.test(flat)) return { kind: 'ACCOUNT' }
   return null
 }

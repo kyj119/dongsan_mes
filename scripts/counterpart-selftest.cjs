@@ -59,15 +59,17 @@ check('숫자만은 안 벗긴다(계좌번호)', stripBankPrefix('6029802007314
 check('은행명 + 공백은 접두 아님', stripBankPrefix('신한 은행'), '신한 은행')
 
 // ── ③ 거래처 아님 판별 ──────────────────────────────────────────────────────
-check('카드 정산 — KB', isNonCounterpartName('KB43229063'), 'CARD')
-check('카드 정산 — BC 접미', isNonCounterpartName('756921567BC'), 'CARD')
-check('카드 정산 — 하나', isNonCounterpartName('하나94108997'), 'CARD')
-check('카드 정산 — 삼성', isNonCounterpartName('삼성117636309'), 'CARD')
-check('카드 정산 — 현(현대 축약)', isNonCounterpartName('현300326494'), 'CARD')
-check('카드 정산 — 롯데', isNonCounterpartName('롯데9213645955'), 'CARD')
-// ★브랜드 표식이 없는 긴 숫자는 계좌번호다. 둘 다 IGNORED 로 가지만 사유가 달라 라벨이 틀리면 안 된다.
-check('계좌번호', isNonCounterpartName('60298020073142'), 'ACCOUNT')
-check('계좌번호 — 하이픈', isNonCounterpartName('60298018641042-00001'), 'ACCOUNT')
+check('카드 정산 — KB', isNonCounterpartName('KB43229063'), { kind: 'CARD', brand: 'KB국민' })
+check('카드 정산 — BC 접미', isNonCounterpartName('756921567BC'), { kind: 'CARD', brand: '비씨' })
+check('카드 정산 — 하나', isNonCounterpartName('하나94108997'), { kind: 'CARD', brand: '하나' })
+check('카드 정산 — 삼성', isNonCounterpartName('삼성117636309'), { kind: 'CARD', brand: '삼성' })
+// ★통장은 '현대'를 '현'으로 줄여 쓴다. 정산 거래처 이름은 '현대카드(매출정산)' 이라 브랜드를 펴 줘야 붙는다.
+check('카드 정산 — 현(현대 축약)', isNonCounterpartName('현300326494'), { kind: 'CARD', brand: '현대' })
+check('카드 정산 — 롯데', isNonCounterpartName('롯데9213645955'), { kind: 'CARD', brand: '롯데' })
+check('카드 정산 — NH', isNonCounterpartName('NH12345678'), { kind: 'CARD', brand: 'NH농협' })
+// ★브랜드 표식이 없는 긴 숫자는 계좌번호다. 카드로 잘못 적으면 대출 계좌에 '카드매출 정산'이 남는다.
+check('계좌번호', isNonCounterpartName('60298020073142'), { kind: 'ACCOUNT' })
+check('계좌번호 — 하이픈', isNonCounterpartName('60298018641042-00001'), { kind: 'ACCOUNT' })
 check('일반 거래처는 아님', isNonCounterpartName('(주)정운교역'), null)
 check('짧은 숫자는 아님', isNonCounterpartName('12345'), null)
 check('빈값', isNonCounterpartName(''), null)
