@@ -3,9 +3,15 @@
 //
 // Scans src/scripts/**/*.js for likely-unescaped HTML sinks: lines that touch
 // innerHTML or look like template/string HTML and interpolate a user-controlled
-// field (name/notes/description/message/memo/content) WITHOUT escapeHtml( on the
-// same interpolation. This is deliberately conservative and approximate — it can
-// miss real issues and flag false positives. Treat findings as review hints, not
+// field (name/notes/description/message/memo/content) WITHOUT an escape helper
+// on the same interpolation. "Escape helper" means any call whose name contains
+// esc/Esc (escapeHtml, esc, escAttr, escHtml, sgpEsc, iaeEscape, wbEscape,
+// lvEscapeHtml, escTask, ...) — this codebase uses many prefix-scoped aliases,
+// not just the literal escapeHtml name (CLAUDE.md/auto-improve Area 5 §prefix-
+// scoped escape 래퍼). Checking for the literal name only made this script
+// flag the entire codebase as unescaped even where every sink was covered by
+// an alias. This is deliberately conservative and approximate — it can miss
+// real issues and flag false positives. Treat findings as review hints, not
 // proof of a vulnerability. Manually verify before acting.
 //
 // Exit 1 if any candidate found, else 0.
@@ -58,9 +64,14 @@ function isHtmlLine(line) {
 }
 
 // Does this interpolation reference a sensitive field but NOT escape it?
+// Any identifier containing esc/Esc immediately followed by a call — covers every
+// alias this codebase uses (escapeHtml, esc, escAttr, escHtml, sgpEsc, iaeEscape,
+// wbEscape, lvEscapeHtml, escTask, ...), not just the literal escapeHtml name.
+const ESCAPE_CALL_RE = /[A-Za-z_]*[Ee]sc[A-Za-z]*\s*\(/;
+
 function isSuspectInterp(expr) {
   if (!FIELD_RE.test(expr)) return false;
-  if (/escapeHtml\s*\(/.test(expr)) return false;       // escaped — ok
+  if (ESCAPE_CALL_RE.test(expr)) return false;            // escaped (any esc* alias) — ok
   if (/encodeURIComponent\s*\(/.test(expr)) return false; // url-encoded — ok
   return true;
 }

@@ -17,7 +17,7 @@
   python scripts/price-match-audit.py            # 전체
   python scripts/price-match-audit.py --since 2026-01-01 --min-lines 80
 """
-import argparse, json, math, os, statistics as st, subprocess, sys
+import argparse, json, math, os, re, statistics as st, subprocess, sys
 from collections import defaultdict, Counter
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -219,6 +219,11 @@ def main():
     ap.add_argument('--min-lines', type=int, default=80)
     ap.add_argument('--top', type=int, default=18)
     a = ap.parse_args()
+
+    # fetch()가 이 값을 SQL 문자열에 직접 삽입해 `wrangler d1 execute --remote --command`로
+    # 넘긴다(prod DB, Windows에선 shell=True) — 형식을 강제하지 않으면 SQL/셸 인젝션이 된다.
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', a.since):
+        sys.exit(f"[--since 형식 오류] 'YYYY-MM-DD'만 허용: {a.since!r}")
 
     rows = fetch(a.since)
     print(f'대상 라인 {len(rows):,}건 ({a.since}~ · 취소/전표 제외)')
