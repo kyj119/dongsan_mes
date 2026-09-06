@@ -256,7 +256,7 @@ async function viewPRDetail(id) {
         + '</div>'
         + '<div class="flex-1 text-sm">'
         + statusHtml
-        + (h.changed_by_name ? ' <span class="text-gray-500 text-xs">by ' + h.changed_by_name + '</span>' : '')
+        + (h.changed_by_name ? ' <span class="text-gray-500 text-xs">by ' + escapeHtml(h.changed_by_name) + '</span>' : '')
         + (h.change_reason ? '<div class="text-xs text-gray-500 mt-0.5">' + escapeHtml(h.change_reason) + '</div>' : '')
         + '</div>'
         + '</div>';

@@ -1958,7 +1958,7 @@ async function openLedgerSendModal(clientId, clientName, balance, defaultChannel
             var sel = document.getElementById('ledgerTemplateCode');
             if (sel) {
                 sel.innerHTML = '<option value="">직접 작성 (템플릿 없이)</option>' + tpls.map(function(t) {
-                    return '<option value="' + t.templateCode + '">' + t.templateName + '</option>';
+                    return '<option value="' + escapeHtml(t.templateCode) + '">' + escapeHtml(t.templateName) + '</option>';
                 }).join('');
                 // 발송 위치별 기본 템플릿 — DB(kakao_template_defaults)에서 resolve
                 try {

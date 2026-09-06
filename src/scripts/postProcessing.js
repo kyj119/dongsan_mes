@@ -422,7 +422,7 @@ function renderTotalStats(stats) {
         var pct = totalUsage > 0 ? (r.usage_count / totalUsage * 100) : 0;
         var area = r.total_area_sqm ? r.total_area_sqm.toFixed(1) : '0';
         return '<tr class="border-b hover:bg-gray-50">' +
-            '<td class="px-4 py-2 font-medium">' + (r.pp_name || r.pp_code) + '</td>' +
+            '<td class="px-4 py-2 font-medium">' + escapeHtml(r.pp_name || r.pp_code) + '</td>' +
             '<td class="px-4 py-2 text-right font-bold">' + r.usage_count.toLocaleString() + '건</td>' +
             '<td class="px-4 py-2 text-right">' + (r.total_qty || 0).toLocaleString() + '</td>' +
             '<td class="px-4 py-2 text-right">' + area + ' m\u00B2</td>' +
@@ -458,7 +458,7 @@ function renderMonthlyChart(stats, months) {
 
     var legend = '<div class="flex flex-wrap gap-3 mb-3">' + ppCodes.map(function(c, i) {
         var col = colorMap[c] || defaultColors[i % defaultColors.length];
-        return '<span class="flex items-center gap-1 text-xs"><span class="w-3 h-3 rounded" style="background:' + col + '"></span>' + (ppNameMap[c] || c) + '</span>';
+        return '<span class="flex items-center gap-1 text-xs"><span class="w-3 h-3 rounded" style="background:' + col + '"></span>' + escapeHtml(ppNameMap[c] || c) + '</span>';
     }).join('') + '</div>';
 
     var chart = '<table class="w-full text-sm"><tbody>' + monthKeys.map(function(m) {
@@ -467,7 +467,7 @@ function renderMonthlyChart(stats, months) {
             if (v === 0) return '';
             var w = maxVal > 0 ? Math.max(v / maxVal * 100, 2) : 0;
             var col = colorMap[c] || defaultColors[i % defaultColors.length];
-            return '<div class="h-5 rounded-sm inline-block mr-0.5 relative group" style="width:' + w + '%;background:' + col + '" title="' + (ppNameMap[c]||c) + ': ' + v + '\uAC74">' +
+            return '<div class="h-5 rounded-sm inline-block mr-0.5 relative group" style="width:' + w + '%;background:' + col + '" title="' + escapeHtml(ppNameMap[c]||c) + ': ' + v + '\uAC74">' +
                 '<span class="absolute inset-0 flex items-center justify-center text-white text-xs font-bold" style="font-size:10px">' + (v > 0 ? v : '') + '</span></div>';
         }).join('');
         return '<tr class="border-b"><td class="px-2 py-2 text-gray-600 whitespace-nowrap w-20">' + m + '</td><td class="px-2 py-2"><div class="flex">' + bars + '</div></td></tr>';
@@ -494,7 +494,7 @@ function renderSubcatStats(stats) {
         var bars = items.map(function(r) {
             var pct = total > 0 ? (r.usage_count / total * 100) : 0;
             return '<div class="flex items-center gap-2 text-sm">' +
-                '<span class="w-20 text-gray-600 text-right">' + (r.pp_name || r.pp_code) + '</span>' +
+                '<span class="w-20 text-gray-600 text-right">' + escapeHtml(r.pp_name || r.pp_code) + '</span>' +
                 '<div class="flex-1 bg-gray-200 rounded-full h-3 overflow-hidden"><div class="bg-pink-400 h-3 rounded-full" style="width:' + pct + '%"></div></div>' +
                 '<span class="text-xs text-gray-500 w-16">' + r.usage_count + '\uAC74 (' + pct.toFixed(0) + '%)</span></div>';
         }).join('');

@@ -329,7 +329,7 @@ async function loadActiveCards() {
                     const ppArr = typeof card.post_processing === 'string' ? JSON.parse(card.post_processing) : card.post_processing;
                     if (Array.isArray(ppArr) && ppArr.length > 0) {
                         ppBadges = ppArr.map(function(pp) {
-                            return '<span class="ds-badge ds-badge-orange" style="margin-right:2px">' + (pp.name || pp.code || pp) + '</span>';
+                            return '<span class="ds-badge ds-badge-orange" style="margin-right:2px">' + escapeHtml(pp.name || pp.code || pp) + '</span>';
                         }).join('');
                     }
                 } catch(e) {}

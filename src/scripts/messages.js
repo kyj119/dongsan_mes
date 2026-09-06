@@ -752,7 +752,7 @@ function loadBulkTemplates() {
 function fillBulkTemplates() {
   var sel = document.getElementById('bulkTemplate');
   sel.innerHTML = '<option value="">템플릿 선택</option>' + bulkTemplatesCache.map(function(t) {
-    return '<option value="' + t.templateCode + '">' + t.templateName + '</option>';
+    return '<option value="' + escapeHtml(t.templateCode) + '">' + escapeHtml(t.templateName) + '</option>';
   }).join('');
 }
 

@@ -2186,7 +2186,7 @@ function fillMsgTemplates() {
   var sel = document.getElementById('msgTemplate');
   if (!sel) return;
   sel.innerHTML = '<option value="">직접 작성</option>' + _msgTemplates.map(function(t) {
-    return '<option value="' + (t.templateCode || '') + '">' + (t.templateName || t.templateCode || '') + '</option>';
+    return '<option value="' + window.escapeHtml(t.templateCode || '') + '">' + window.escapeHtml(t.templateName || t.templateCode || '') + '</option>';
   }).join('');
 }
 

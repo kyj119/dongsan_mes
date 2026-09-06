@@ -708,7 +708,7 @@ async function loadTemplates() {
     container.innerHTML = templates.map(function(t) {
       return '<div class="border rounded-lg p-3 hover:bg-blue-50 cursor-pointer transition" onclick="selectTemplate(' + t.id + ')">'
         + '<div class="flex justify-between items-center">'
-        + '<div><span class="font-medium">' + (t.name || '-') + '</span>'
+        + '<div><span class="font-medium">' + escapeHtml(t.name || '-') + '</span>'
         + '<span class="text-xs text-gray-500 ml-2">' + escapeHtml(t.supplier_name || '공급업체 미지정') + '</span></div>'
         + '<span class="text-xs text-gray-400">' + (t.item_count || 0) + '개 품목</span>'
         + '</div>'

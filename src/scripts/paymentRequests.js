@@ -148,11 +148,11 @@ function renderPrTable(rows) {
       + '<td class="px-2 py-1.5 font-medium text-gray-900">' + r.request_number + '</td>'
       + '<td class="px-2 py-1.5 text-gray-500">' + r.request_date + '</td>'
       + '<td class="px-2 py-1.5">' + (typeLabel[r.request_type] || r.request_type) + '</td>'
-      + '<td class="px-2 py-1.5" title="' + window.escapeHtml(r.recipient_client_name || r.recipient_name || '') + '">' + (r.recipient_client_name || r.recipient_name) + '</td>'
+      + '<td class="px-2 py-1.5" title="' + window.escapeHtml(r.recipient_client_name || r.recipient_name || '') + '">' + window.escapeHtml(r.recipient_client_name || r.recipient_name || '') + '</td>'
       + '<td class="px-2 py-1.5 text-right font-medium" style="font-variant-numeric:tabular-nums;">' + fmt(r.amount) + '</td>'
-      + '<td class="px-2 py-1.5 text-gray-500 truncate" style="max-width:200px;" title="' + window.escapeHtml(r.description || '') + '">' + (r.description || '') + '</td>'
+      + '<td class="px-2 py-1.5 text-gray-500 truncate" style="max-width:200px;" title="' + window.escapeHtml(r.description || '') + '">' + window.escapeHtml(r.description || '') + '</td>'
       + '<td class="px-2 py-1.5 text-center">' + statusBadge(r.status) + '</td>'
-      + '<td class="px-2 py-1.5 text-center text-gray-500">' + (r.creator_name || '') + '</td>'
+      + '<td class="px-2 py-1.5 text-center text-gray-500">' + window.escapeHtml(r.creator_name || '') + '</td>'
       + '<td class="px-2 py-1.5 text-center">' + actions + '</td>'
       + '</tr>';
   }).join('');
