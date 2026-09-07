@@ -17,6 +17,7 @@ import { cardNetAmountSql, cardSpendFilterSql } from './cardSpend'
 import { excludePurchaseNonCounterpartiesSql } from '../constants/intercompany'
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
 import { settleApFifo, type ApObligation, type ApSettlementEvent } from './apSettlement'
+import { settleLoanPayments } from './loanSettlement'
 import {
   paymentRunRate, runRateFromMonthly, medianPaymentDay, medianDayFromCounts,
   median, spreadOverdue, daysBetween, type RunRate,
@@ -587,15 +588,50 @@ export async function buildCashflowDays(
   //   A1: PARTIAL은 total_amount 전액이 아닌 잔여(total − 기납부)만 계상. A2: 최근 과거미납(from-31d~)을 from으로 끌어옴(매출 §4b 대칭).
   const efLoan = entityFilter(c)
   const { results: loanRows } = await c.env.DB.prepare(`
-    SELECT lp.scheduled_date, lp.total_amount, lp.actual_paid_amount, lp.status, l.creditor
+    SELECT lp.id, lp.loan_id, lp.scheduled_date, lp.total_amount, lp.actual_paid_amount, lp.status,
+           l.creditor, l.entity_id
     FROM loan_payments lp
     JOIN loans l ON lp.loan_id = l.id
     WHERE lp.scheduled_date >= ${carryOverdue ? "date(?, '-31 days')" : '?'} AND lp.scheduled_date <= ?
       AND lp.status IN ('SCHEDULED', 'OVERDUE', 'PARTIAL')${efLoan.clause.replace('entity_id', 'l.entity_id')}
   `).bind(from, to, ...efLoan.params).all<{
-    scheduled_date: string; total_amount: number; actual_paid_amount: number | null; status: string; creditor: string
+    id: number; loan_id: number; scheduled_date: string; total_amount: number
+    actual_paid_amount: number | null; status: string; creditor: string; entity_id: number | null
   }>()
+  // A3(2026-09-07): **이미 통장에서 나간 회차를 빼고 센다.**
+  //   `loan_payments` 는 344회차 전부 `bank_transaction_id` 가 비어 있었다 — 상환 실적을 사람이 손으로
+  //   PAID 처리하는 구조인데 아무도 안 하니 지난 회차가 SCHEDULED 로 남고, 바로 위 carryOverdue 가
+  //   그걸 예측 시작일로 끌어와 **이미 낸 돈을 유출로 한 번 더** 셌다(prod 실측 15회차 19,251,119).
+  //   매입 §0b·매출 §0 과 같은 처리를 LOAN 축에도 넣는 것이다. 판정은 utils/loanSettlement(순수 모듈).
+  //   '지난 회차' = 예측 시작일(from) 이전 = 바로 위 carried 조건과 같은 집합이다.
+  const pastDue = loanRows.filter(lp => lp.scheduled_date < from)
+  let loanSettled = new Set<number>()
+  if (pastDue.length) {
+    const earliest = pastDue.reduce((a, x) => (x.scheduled_date < a ? x.scheduled_date : a), pastDue[0].scheduled_date)
+    const wd = new Date(earliest + 'T00:00:00Z'); wd.setUTCDate(wd.getUTCDate() - 5)
+    const wFrom = wd.toISOString().slice(0, 10)
+    const { results: wRows } = await c.env.DB.prepare(`
+      SELECT bt.id, bt.entity_id, bt.transaction_date, bt.amount, bt.counterpart_name
+      FROM bank_transactions bt
+      WHERE bt.transaction_type = 'WITHDRAWAL' AND bt.transaction_date >= ?
+      LIMIT 4000
+    `).bind(wFrom.replace(/-/g, '')).all<{
+      id: number; entity_id: number | null; transaction_date: string; amount: number; counterpart_name: string | null
+    }>()
+    loanSettled = settleLoanPayments(
+      pastDue.map(lp => ({
+        id: lp.id, loanId: lp.loan_id, entityId: Number(lp.entity_id) || 1,
+        creditor: lp.creditor, due: lp.scheduled_date, amount: Number(lp.total_amount) || 0,
+      })),
+      (wRows as any[]).map(w => ({
+        id: w.id, entityId: Number(w.entity_id) || 1, date: w.transaction_date,
+        amount: Number(w.amount) || 0, counterpartName: w.counterpart_name,
+      }))
+    ).settledIds
+  }
+
   for (const lp of loanRows) {
+    if (loanSettled.has(lp.id)) continue   // 통장에서 이미 나갔다 — 다시 세지 않는다
     const remaining = (Number(lp.total_amount) || 0) - (Number(lp.actual_paid_amount) || 0)
     if (remaining <= 0) continue
     const carried = carryOverdue && lp.scheduled_date < from
