@@ -113,6 +113,7 @@
     "audit:stock-ledger": "node scripts/stock-ledger-audit.cjs --remote",
     "audit:orphan-schedule": "node scripts/orphan-schedule-audit.cjs --remote",
     "audit:card-offset-reason": "node scripts/card-offset-reason-audit.cjs --remote",
+    "audit:expense-category": "node scripts/expense-category-audit.cjs --remote",
     "audit:query-cost": "node scripts/query-cost-audit.cjs",
     "audit:subquery": "node scripts/correlated-subquery-audit.cjs"
   },

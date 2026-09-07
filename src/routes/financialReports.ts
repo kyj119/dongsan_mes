@@ -36,7 +36,7 @@ const CAT_ROLE: Record<string, string[]> = {
   COGS: ['원재료비', '외주가공비'],
   NONOP: ['이자비용', '기부금'],
   TAX: ['법인세'],
-  NOT_EXPENSE: ['차입금상환', '대출상환', '대출금', '부가세', '가수금', '가지급금', '보증금', '유형자산취득', '리스료', '공제부금'],
+  NOT_EXPENSE: ['차입금상환', '차입금', '대출상환', '대출금', '부가세', '가수금', '가지급금', '보증금', '유형자산취득', '리스료', '공제부금'],
 }
 function roleOf(nm: string): string {
   for (const [role, names] of Object.entries(CAT_ROLE)) if (names.includes(nm)) return role
