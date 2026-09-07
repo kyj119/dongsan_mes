@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-09-07T15:52:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-09-07T21:45:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,30 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **19** (`list_issues(state:OPEN,label:auto-improve)` 실측, 17→19: #637·#638 신규) |
+| 🆕 new | **19** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **542** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 3 UX/기능 감사 (2026-09-07T21:45):**
+> - **방법**: 세션 시작 시 detached HEAD `d4b9528`(origin/main과 동일 커밋이나 얕은 clone) → `git checkout main` → `git pull`이 divergent-history로 실패 → `git fetch --unshallow` + `git merge --ff-only origin/main`으로 정합(변동 없음, 이미 최신). `npm ci`(0→81).
+> - **churn 확인(앵커 = 직전 Area3 방법 라인 HEAD `a6faad9`)**: 웹앱 범위 diff **28커밋** — 대부분 회계축(계정 표준화·차입금/상환 분리·특약가/원가 데이터 보정)과 은행매칭 엔진 튜닝, IA 재단엔진(맞붙임 롤 소요량·자재필드 제거)으로 **UI 화면 변경은 없음**. `src/scripts`+`src/pages` 좁힌 범위 **8커밋**만 실제 화면 churn — 그중 **feat 2건이 이번 UX 렌즈 최초 통과**: `04d5e932`(바로빌 등록현황 대조 패널 신설, funds 페이지)·`98438b3f`(계좌 카드에 잔액·최종거래 경과일 표시 + "즉시조회"→"갱신" 버튼 통합).
+> - **feat 2건 전문 심층 리뷰(직접 Read, `src/scripts/bank.js`+`src/pages/bank.ts`+`src/routes/bank.ts`+`src/routes/barobill.ts`+`src/routes/cardExpenses.ts` 전문 대조)** — 빈상태·로딩·showConfirm 오용·더블서브밋·cross-scope shadow·백엔드먼저화면나중 6개 클래스 점검:
+>   - **바로빌 등록현황 패널**(`04d5e932`): 로딩 스피너(초기 hidden div) → `loadBarobillAudit()` 성공 시에만 `barobillAuditSlot`에 "등록현황" 버튼이 주입되는 구조라, **버튼이 DOM에 나타나는 시점 = 이미 `barobillAuditData`가 채워진 시점**(경합 불가 — 버튼 클릭 가능해지기 전에 데이터가 이미 있음) 확인. 에러 시(`entityId=0`·바로빌 API 실패) `bbSection`이 `sec.error`/`empty_suspicious` 분기로 "0건"과 "못 받음"을 구분해 표시 — CLAUDE.md 「조용한 격하」 패턴 회피 의도가 코드에 실제 반영됨. 계좌 삭제(`bank.ts:481`)·카드 삭제(`cardExpenses.ts:290`) 양쪽 다 `barobill_registered=0, collect_cycle=NULL` 리셋 짝 확인(CLAUDE.md 「되돌리는 짝」 준수).
+>   - **계좌 카드 잔액/경과일**(`98438b3f`): 신규 mutate `refreshAccount`(즉시조회+수집 통합)가 `await`+`showConfirm(msg)` 정상 패턴(콜백 오용 아님), 서버 `POST /accounts/:id/refresh`·`POST /sync-barobill` 둘 다 실재(`bank.ts:498`·`:736`) 확인 — dead call 아님. 잔액 = `LATEST_BALANCE_SUBQUERY`(자금현황·자금계획과 동일식, 화면 간 불일치 없음). staleness 임계값(7일 amber·14일 red)은 이 커밋 자체가 "계좌마다 정상 주기가 다르다"는 걸 알고도 전 계좌 동일 임계 — 단 이 화면은 "위험 신호" 용도(형제 커밋 `5728fecf`가 이미 판정 로직 쪽엔 계좌별 리듬 반영 완료, 화면 임계값은 단순 안내라 별개 사안, 신규 결함 아님).
+>   - **신규 mutate write-path 전수(diff 전체, 8커밋)**: `axios.post/put/delete` net-new 호출 **1건**(위 `refreshAccount`) — 더블서브밋 가드 불요(2단계 모두 사용자 확인 개재, 서버측 refresh는 바로빌 조회 요청이라 멱등, sync-barobill은 날짜범위 upsert성). showConfirm 오용 0건. `?raw` concat 스코프 충돌 0건(신규 top-level 함수 `bbCycleSummary`/`bbSection`/`bbFmtAcct`/`bbFmtCard`/`bankStaleDays`/`bankFmtYmd`/`fmtMoney`가 bank.js 기존 식별자와 충돌 없음, `grep -c` 대조).
+>   - **checked clean(나머지 6커밋)**: `531fa093`(margin 탭 커버리지 안내 텍스트만 확장, UI 구조 무변경)·`5728fecf`(bank.js 프론트 diff는 에러메시지 원문노출 개선뿐)·`99891e73`(cashSchedule.js diff는 미적용 사유 텍스트 추가, 이미 Area2가 코드품질 렌즈로 정독한 웨이브)·`3bf74275`(XSS escapeHtml 추가, Area5가 이미 정독) — 전부 UX 신규 결함 없음.
+>   - **「백엔드 먼저·화면 나중」standing scan**: 이번 churn의 회계축 마이그레이션(계정 표준화·차입금 분리) 20커밋은 신규 API 응답 필드 노출이 아니라 기존 화면이 읽는 마스터데이터(`account_name` 등)의 값 자체를 정정하는 것이라 이 클래스 대상 아님(화면 소비처는 원래부터 있음, 신규 필드 없음).
+> - **standing scan 1: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 5런(HEAD `d4b9528` 포함) 전부 `conclusion:success`(1건 `cancelled`는 같은 세션 연속 push로 인한 정상 supersede, 실패 아님).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **19**(변동없음, #613·#616·#617·#622·#624~638 전건 일치) — 이번 사이클 신규 결함 0건이라 추가 이슈 없음.
+> - **backlog↔GitHub 절대값 재동기화**: open **19**(변동없음) · done **542**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: 사이클 로그 8건(직전 Area2가 13건 도달 시 트림 완료 확인) → 이번 로그 추가 후 9건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(이번 churn의 유일한 신규 UI 표면 2건이 CLAUDE.md 핵심 패턴들 — 조용한 격하 회피·되돌리는 짝·정본식 재사용 — 을 실제로 준수해 구현됨, 신규 mutate 1건도 가드·서버멱등성 정상), 자동수정 0건(고칠 결함 없음), done-sync: open 19(변동없음)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-09-07T15:52):**
 > - **방법**: 세션 시작 시 detached HEAD `0eb0c4d`(origin/main과 동일 커밋이나 얕은 clone) → `git checkout main` + `git fetch --unshallow`(divergent-history 오류 해소) + `git merge --ff-only origin/main`으로 정합. `npm ci`(0→81), `npx tsc --noEmit` clean, `npm audit --omit=dev` 0건(변동없음).
