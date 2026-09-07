@@ -10,7 +10,8 @@ import type { PurchaseOrder } from '../../types/models'
 import { authMiddleware } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { getEntityId, entityFilter, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../../utils/entityFilter'
-import { getItemDefaultZones } from '../../utils/inventoryZone'
+import { getItemDefaultZones, RECEIVING_ZONE_JOIN_SQL } from '../../utils/inventoryZone'
+import { isSupervisor, canTouchZone } from '../../utils/zoneAccess'
 import { packFactor } from '../../utils/unitConvert'
 import { getNextEntitySeqNumber } from '../../utils/sequenceGenerator'
 import { kstYmd, kstYmdCompact, kstDate, kstDateOf } from '../../utils/kstDate'
@@ -63,10 +64,19 @@ poReceiveRouter.post('/:id/receive', async (c) => {
     const dateStr = kstYmdCompact()
     const receiptNumber = await getNextEntitySeqNumber(c.env.DB, 'inventory_receipts', 'receipt_number', poEntityIdWrite, dateStr, { base: 'RCV-' })
 
-    // po_item 정보 로딩
+    // po_item 정보 로딩 — **귀속 구역(sz)을 함께** 읽는다.
+    //   ★입고 큐·nav 배지와 **같은 문장**(`RECEIVING_ZONE_JOIN_SQL`)을 쓴다. 다른 식을 쓰면
+    //     「큐에는 보이는데 입고하면 403」 또는 그 반대가 난다.
+    //   ⚠️이건 **담당자 귀속 축**이다(`items.storage_zone_id` NULL → sz NULL = 담당자 없음).
+    //     아래 재고 쓰기가 쓰는 `getItemDefaultZones` 는 **행을 어디에 만들까**라 규칙이 다르다.
     const { results: poItems } = await c.env.DB.prepare(`
-      SELECT id, item_id, item_name, quantity, received_quantity, unit_price
-      FROM purchase_order_items WHERE po_id = ?
+      SELECT poi.id, poi.item_id, poi.item_name, poi.quantity, poi.received_quantity, poi.unit_price,
+             sz.id AS effective_zone_id
+      FROM purchase_order_items poi
+      JOIN purchase_orders po ON po.id = poi.po_id
+      LEFT JOIN items i ON i.id = poi.item_id
+      ${RECEIVING_ZONE_JOIN_SQL}
+      WHERE poi.po_id = ?
     `).bind(id).all()
 
     type PoItemRow = Record<string, unknown>
@@ -75,8 +85,10 @@ poReceiveRouter.post('/:id/receive', async (c) => {
       poItemMap.set(pi.id as number, pi)
     }
 
-    // 수량 초과 검증 + 입고 총액 계산
+    // 수량 초과 검증 + 구역 소유 검증 + 입고 총액 계산
     // 하위호환: received_quantity 없으면 quantity 사용
+    const supervisor = isSupervisor(c)
+    const zoneAllowCache = new Map<number | null, boolean>()
     let receiptTotalAmount = 0
     for (const ri of receiveItems) {
       const poItem = poItemMap.get(ri.po_item_id)
@@ -112,6 +124,27 @@ poReceiveRouter.post('/:id/receive', async (c) => {
           success: false,
           error: `품목 '${poItem.item_name}': 입고 가능 수량(${remaining})을 초과했습니다. 요청: ${receiveQty}`
         }, 400)
+      }
+      // ★구역 소유 게이트 (2026-09-08) — 종전엔 페이지 권한만 봤다. `/receiving` 을 OPERATOR 에게
+      //   열면서(마이그 0585) **남의 구역 자재도 입고할 수 있는 구멍**이 생기므로 함께 닫는다.
+      //   판정은 실사(`inventoryCount.loadOwnedCount`)와 **같은 헬퍼**(`canTouchZone`):
+      //   관리자 통과 · 구역 NULL 거부(담당자 없는 입고는 주인이 없다) · 그 외 `manager_id` 일치.
+      //   ⚠️구역별로 한 번만 물어본다 — 라인마다 부르면 N+1 이다.
+      const zoneId = (poItem.effective_zone_id as number | null) ?? null
+      if (!supervisor) {
+        let allowed = zoneAllowCache.get(zoneId)
+        if (allowed === undefined) {
+          allowed = await canTouchZone(c, zoneId)
+          zoneAllowCache.set(zoneId, allowed)
+        }
+        if (!allowed) {
+          return c.json({
+            success: false,
+            error: zoneId == null
+              ? `품목 '${poItem.item_name}': 입고 창고가 지정되지 않아 담당자를 알 수 없습니다. 창고 관리에서 품목의 기본 창고를 배정해 주세요.`
+              : `품목 '${poItem.item_name}': 담당 구역이 아닙니다.`,
+          }, 403)
+        }
       }
       receiptTotalAmount += receiveQty * (Number(poItem.unit_price) || 0)
     }
