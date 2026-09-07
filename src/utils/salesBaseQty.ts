@@ -50,3 +50,47 @@ export function salesBaseQtySql(oi: string = 'oi', it: string = 'i'): string {
 export function estMaterialCostSql(oi: string = 'oi', it: string = 'i'): string {
   return `(COALESCE(${it}.avg_unit_cost, 0) * ${salesBaseQtySql(oi, it)})`
 }
+
+// ============================================================================
+// 라인 원가 = **조립 우선, 없으면 추정** (2026-09-07)
+// ----------------------------------------------------------------------------
+// 원가 축은 품목 종류에 따라 둘이고, 둘은 **경쟁하는 정본이 아니라 서로 다른 대상**을 잰다:
+//
+//   조립 `order_items.total_cost` — 제조물. `utils/orderLineCost` 가 규격에서 원단 소요량을
+//     내고(폭매칭) 인쇄방식별 잉크 ㎡단가를 더한 **이론 재료비**다. 로스는 안 들어 있다.
+//   추정 `estMaterialCostSql`     — 유통물(MATERIAL·GOODS). 매입 평균단가 × base 환산 수량.
+//
+// ★2026-09-07 실측 — 이 파일의 소비자(수익성 탭)는 조립축을 **아예 안 보고 있었다.**
+//   `reports.ts` 주석이 "total_cost 는 생산 경로가 없어 전량 0(감사 확정)" 이라 단정했는데
+//   그 사이 S2 가 원가를 채웠다: 2026년 수성 99% · 전사 99% · 솔벤 93% · UV 89% 가 값을 갖는다.
+//   낡은 전제 때문에 인쇄물 매출 **28.9억이 통째로 「원가 미상」** 으로 빠져 있었고,
+//   커버리지가 30% 로 보고됐다. 같은 파일 `:865`(월간 KPI)는 이미 total_cost 를 쓰고 있어
+//   **한 파일 안에서 두 원가축이 공존**했다.
+//
+// ⚠️ 우선순위를 조립에 두는 이유 — 겸용 품목(태극기 PRODUCT 79종 중 77종이 `is_purchase_item=1`)은
+//   양쪽 축에 값이 다 있다. 그때 **라인별 규격으로 계산된 조립값이 품목 평균 매입단가보다 구체적**이다.
+//   CASE 로 하나만 고르므로 이중계상은 구조적으로 불가능하다.
+//
+// ⚠️ **`departments.ts`(부문별 손익 COGS)는 일부러 바꾸지 않았다.** 그쪽 영업이익은 실측 대사를
+//   거친 값이라(1~7월 그룹 +3억 825만) 원가축을 조용히 갈면 검증된 숫자가 소리 없이 움직인다.
+//   전환하려면 값 대조를 먼저 한다 — [[design-pnl-expense-sourcing]].
+// ============================================================================
+
+/**
+ * 라인 원가 SQL 조각 — 조립원가(`total_cost`)가 있으면 그것, 없으면 매입 추정.
+ * `hasLineCostSql` 과 **짝으로** 쓴다(WHERE 로 거르지 않으면 원가 0 라인이 마진 100% 로 섞인다).
+ */
+export function lineCostSql(oi: string = 'oi', it: string = 'i'): string {
+  return `(CASE WHEN COALESCE(${oi}.total_cost, 0) > 0 THEN ${oi}.total_cost
+                ELSE ${estMaterialCostSql(oi, it)} END)`
+}
+
+/** 원가를 낼 수 있는 라인인가 = 조립값이 있거나 매입단가가 있다. */
+export function hasLineCostSql(oi: string = 'oi', it: string = 'i'): string {
+  return `(COALESCE(${oi}.total_cost, 0) > 0 OR COALESCE(${it}.avg_unit_cost, 0) > 0)`
+}
+
+/** 이 라인이 조립축인가(= 매출을 조립/추정으로 가르는 데 쓴다). */
+export function isBuildupCostSql(oi: string = 'oi'): string {
+  return `(COALESCE(${oi}.total_cost, 0) > 0)`
+}

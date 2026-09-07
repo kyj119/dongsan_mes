@@ -8,7 +8,7 @@ import { buildOldestUnpaidJoin, agingDaysFromOldest } from './ledger/ar-helpers'
 // 회계 전표성 주문(기초채권 E1-OPEN·법인간 미러 ICM) 제외 — 2025-12-31에 189건 5.32억이 뭉쳐 있어
 // 매출·거래처 집계에 섞이면 가짜 매출월/순위 왜곡이 생긴다(2026-08-24 감사).
 import { voucherOrderSql } from './orders/listFilter'
-import { estMaterialCostSql } from '../utils/salesBaseQty'
+import { lineCostSql, hasLineCostSql, isBuildupCostSql } from '../utils/salesBaseQty'
 
 // ── Row types for D1 query results ──
 interface MonthlyRevenueRow { month: string; order_count: number; revenue: number }
@@ -385,15 +385,18 @@ reportsRouter.get('/monthly-summary', async (c) => {
   }
 })
 
-// 5. 수익성 분석 — 재료비 추정 마진 (2026-08-24 재설계)
+// 5. 수익성 분석 — 재료비 마진 (2026-08-24 재설계 · 2026-09-07 조립축 편입)
 //
-// order_items.total_cost 는 생산 경로가 없어 전량 0(감사 확정) → 원가 = items.avg_unit_cost(구매 평균단가) × 수량 「추정」.
-// ★적용 범위 = avg_unit_cost 보유 품목(매입-재판매 축) 라인만 — 커버리지를 함께 반환(2026년 매출 기준 ~30%).
-// ★품목 단위로 추정원가 > 매출이면 집계에서 빼고 「단가 점검 필요」로 분리 — UV 포맥스처럼
+// 원가 = `utils/salesBaseQty.lineCostSql` — **조립원가(order_items.total_cost) 우선, 없으면
+//   매입 평균단가 추정**. 두 축의 성격·우선순위 근거는 그 파일 헤더가 정본이다.
+// ★2026-09-07 정정 — 종전 주석은 "total_cost 는 생산 경로가 없어 전량 0(감사 확정)"이라 단정하고
+//   추정축만 썼다. 그 사이 S2 가 원가를 채웠는데(수성 99%·전사 99%·솔벤 93%·UV 89%) 전제가 낡아
+//   **인쇄물 매출 28.9억이 통째로 「원가 미상」으로 빠져** 커버리지가 30% 로 보고됐다.
+// ★품목 단위로 원가 > 매출이면 집계에서 빼고 「단가 점검 필요」로 분리 — UV 포맥스처럼
 //   원판 구매단가×조각 판매수량이 곱해지는 단위 불일치가 집계를 오염시킨다(실측: UV 원가율 136%).
 //   역마진 실물(배송비 부분청구 등)도 같은 목록에 나타나므로 숨기지 않고 보여준다.
 // 분모(전체 매출)는 items JOIN 없이 집계 — 미연결 라인이 조용히 빠지는 함정 방지(memory feedback-material-cost-stock-vs-purchase).
-interface EstMarginRow { item_id: number; item_code: string; item_name: string; category: string | null; month: string; line_count: number; revenue: number; est_cost: number }
+interface EstMarginRow { item_id: number; item_code: string; item_name: string; category: string | null; month: string; line_count: number; revenue: number; est_cost: number; buildup_revenue: number; buildup_lines: number }
 interface TotalRevRow { total_revenue: number }
 
 reportsRouter.get('/margin-analysis', async (c) => {
@@ -408,14 +411,16 @@ reportsRouter.get('/margin-analysis', async (c) => {
         strftime('%Y-%m', o.created_at, '+9 hours') as month,
         COUNT(*) as line_count,
         COALESCE(SUM(oi.amount), 0) as revenue,
-        COALESCE(SUM(${estMaterialCostSql('oi', 'i')}), 0) as est_cost
+        COALESCE(SUM(${lineCostSql('oi', 'i')}), 0) as est_cost,
+        COALESCE(SUM(CASE WHEN ${isBuildupCostSql('oi')} THEN oi.amount ELSE 0 END), 0) as buildup_revenue,
+        COALESCE(SUM(CASE WHEN ${isBuildupCostSql('oi')} THEN 1 ELSE 0 END), 0) as buildup_lines
       FROM order_items oi
       JOIN orders o ON oi.order_id = o.id
       JOIN items i ON oi.item_id = i.id
       WHERE o.status != 'CANCELLED'
         AND NOT ${voucherOrderSql('o')}
         AND oi.parent_item_id IS NULL
-        AND COALESCE(i.avg_unit_cost, 0) > 0
+        AND ${hasLineCostSql('oi', 'i')}
         AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')${ef.clause}
       GROUP BY oi.item_id, month
     `).bind(monthCount, ...ef.params).all<EstMarginRow>()
@@ -434,17 +439,19 @@ reportsRouter.get('/margin-analysis', async (c) => {
     const totalRevenueAll = Number(totalRows[0]?.total_revenue ?? 0)
 
     // 품목 총계 → 이상치(추정원가 > 매출) 분리
-    interface ItemAgg { item_id: number; item_code: string; item_name: string; category: string; line_count: number; revenue: number; est_cost: number }
+    interface ItemAgg { item_id: number; item_code: string; item_name: string; category: string; line_count: number; revenue: number; est_cost: number; buildup_revenue: number; buildup_lines: number }
     const itemMap = new Map<number, ItemAgg>()
     for (const r of rows) {
       let it = itemMap.get(r.item_id)
       if (!it) {
-        it = { item_id: r.item_id, item_code: r.item_code, item_name: r.item_name, category: r.category || '미분류', line_count: 0, revenue: 0, est_cost: 0 }
+        it = { item_id: r.item_id, item_code: r.item_code, item_name: r.item_name, category: r.category || '미분류', line_count: 0, revenue: 0, est_cost: 0, buildup_revenue: 0, buildup_lines: 0 }
         itemMap.set(r.item_id, it)
       }
       it.line_count += Number(r.line_count) || 0
       it.revenue += Number(r.revenue) || 0
       it.est_cost += Number(r.est_cost) || 0
+      it.buildup_revenue += Number(r.buildup_revenue) || 0
+      it.buildup_lines += Number(r.buildup_lines) || 0
     }
     // 이상치 = 추정원가 > 매출 (단위 불일치·역마진) 또는 추정원가 ≤ 0 (반품 음수수량 등 계산 불가)
     const anomalyIds = new Set<number>()
@@ -457,6 +464,9 @@ reportsRouter.get('/margin-analysis', async (c) => {
     const coveredRevenue = sane.reduce((a, it) => a + it.revenue, 0)
     const coveredCost = sane.reduce((a, it) => a + it.est_cost, 0)
     const anomalyRevenue = anomalies.reduce((a, it) => a + it.revenue, 0)
+    // 원가축 구성 — 조립(제조물)과 추정(유통물)을 **합쳐 보여주되 비율은 밝힌다**.
+    // 두 축을 말없이 섞으면 커버리지가 왜 올랐는지 화면에서 판별할 수 없다.
+    const coveredBuildup = sane.reduce((a, it) => a + it.buildup_revenue, 0)
     const summary = {
       total_revenue: coveredRevenue,
       total_cost: Math.round(coveredCost),
@@ -468,6 +478,9 @@ reportsRouter.get('/margin-analysis', async (c) => {
         coverage_pct: totalRevenueAll > 0 ? Number((coveredRevenue / totalRevenueAll * 100).toFixed(1)) : 0,
         anomaly_item_count: anomalies.length,
         anomaly_revenue: anomalyRevenue,
+        buildup_revenue: Math.round(coveredBuildup),
+        estimated_revenue: Math.round(coveredRevenue - coveredBuildup),
+        buildup_pct: coveredRevenue > 0 ? Number((coveredBuildup / coveredRevenue * 100).toFixed(1)) : 0,
       },
     }
 
@@ -530,7 +543,8 @@ reportsRouter.get('/margin-analysis', async (c) => {
   }
 })
 
-// 5-b. 거래처별 추정 마진 — 정상 커버 품목만(이상치 품목은 CTE에서 제외)
+// 5-b. 거래처별 마진 — 정상 커버 품목만(이상치 품목은 CTE에서 제외).
+//   원가축은 5번과 **같은 조각**(lineCostSql)이다. 갈리면 같은 화면의 두 표가 다른 원가를 말한다.
 reportsRouter.get('/margin-by-client', async (c) => {
   try {
     const { months = '6' } = c.req.query()
@@ -540,14 +554,14 @@ reportsRouter.get('/margin-by-client', async (c) => {
     const { results } = await c.env.DB.prepare(`
       WITH covered AS (
         SELECT oi.item_id, o.client_id, oi.order_id,
-          oi.amount AS rev, ${estMaterialCostSql('oi', 'i')} AS est
+          oi.amount AS rev, ${lineCostSql('oi', 'i')} AS est
         FROM order_items oi
         JOIN orders o ON oi.order_id = o.id
         JOIN items i ON oi.item_id = i.id
         WHERE o.status != 'CANCELLED'
           AND NOT ${voucherOrderSql('o')}
           AND oi.parent_item_id IS NULL
-          AND COALESCE(i.avg_unit_cost, 0) > 0
+          AND ${hasLineCostSql('oi', 'i')}
           AND o.created_at >= date('now', '+9 hours', '-' || ? || ' months')${ef.clause}
       ),
       bad AS (SELECT item_id FROM covered GROUP BY item_id HAVING SUM(est) > SUM(rev) OR SUM(est) <= 0)

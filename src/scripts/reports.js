@@ -374,13 +374,16 @@ async function loadMarginAnalysis() {
     // 요약 카드
     var fmtWon = function(n) { return window.fmtNum(n) + '원'; };
 
-    // 커버리지 안내 — 원가는 구매 평균단가 기반 추정, 커버 라인만 집계
+    // 커버리지 안내 — 원가축이 둘이라 **비율을 밝힌다**(조립=제조물 / 추정=유통물).
     var covEl = document.getElementById('mgCoverageNote');
     if (covEl && summary.coverage) {
       var cov = summary.coverage;
+      var buildupPct = cov.buildup_pct || 0;
       covEl.innerHTML = '<i class="fas fa-info-circle mr-1"></i>'
-        + '원가는 <b>구매 평균단가 × 수량 추정치</b>입니다. 단가 보유 품목만 집계 — 커버리지 <b>'
-        + (cov.coverage_pct || 0).toFixed(1) + '%</b> (전체 매출 ' + fmtWon(cov.total_revenue_all) + ' 중 ' + fmtWon(cov.covered_revenue) + ')'
+        + '원가 = <b>조립 재료비</b>(원단+잉크) <b>' + buildupPct.toFixed(1) + '%</b>'
+        + ' + <b>매입 평균단가 추정</b> ' + (100 - buildupPct).toFixed(1) + '%'
+        + ' · 커버리지 <b>' + (cov.coverage_pct || 0).toFixed(1) + '%</b>'
+        + ' (전체 매출 ' + fmtWon(cov.total_revenue_all) + ' 중 ' + fmtWon(cov.covered_revenue) + ')'
         + (cov.anomaly_item_count > 0
           ? ' · <span class="text-red-700 font-medium">단가 점검 필요 ' + cov.anomaly_item_count + '품목(' + fmtWon(cov.anomaly_revenue) + ')은 집계 제외</span> — 하단 표 참조'
           : '');
