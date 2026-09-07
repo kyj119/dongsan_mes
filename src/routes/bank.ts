@@ -193,7 +193,7 @@ bankRouter.get('/fixed-expense-status', requireRole('ADMIN'), async (c) => {
     const curPeriod = today.slice(0, 7)
     const todayDay = Number(today.slice(8, 10))
     const CAT_LABEL: Record<string, string> = {
-      RENT: '임대료', INSURANCE: '보험', UTILITY: '공과금', LEASE: '리스', SALARY: '급여', TAX: '세금', OTHER: '기타',
+      RENT: '지급임차료', INSURANCE: '보험', UTILITY: '수도광열비', LEASE: '리스', SALARY: '급여', TAX: '세금과공과', OTHER: '잡비',
     }
 
     const items = results.map(r => {
