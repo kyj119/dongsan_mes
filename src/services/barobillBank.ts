@@ -134,9 +134,16 @@ export async function stopBankAccount(config: BarobillConfig, bankAccountNum: st
 
 /** 계좌 즉시조회 요청 (RefreshBankAccount) — 1 이상 성공.
  *  WSDL 순서: CERTKEY, CorpNum, ID, BankAccountNum. ID(담당자) 누락 시 -24005. */
-export async function refreshBankAccount(config: BarobillConfig, bankAccountNum: string): Promise<number> {
+export async function refreshBankAccount(
+  config: BarobillConfig, bankAccountNum: string
+): Promise<{ code: number; raw: string }> {
   const result = await barobillCall(config, 'BANKACCOUNT', 'RefreshBankAccount', { ID: config.senderId || '', BankAccountNum: bankAccountNum })
-  return parseInt(result.trim()) || 0
+  const raw = String(result ?? '').trim()
+  const n = parseInt(raw, 10)
+  // ★`parseInt(...) || 0` 로 뭉개지 않는다 — 숫자가 아닌 응답(빈 문자열·설명문)이 전부 「코드 0」이 되어
+  //   진짜 원인이 사라진다. 바로빌 오류는 음수코드로 오므로 숫자면 그대로, 아니면 원문을 들려 보낸다.
+  //   (같은 계열 함정 = memory feedback-barobill-sender-id-silent-fail)
+  return { code: Number.isFinite(n) ? n : 0, raw }
 }
 
 /**

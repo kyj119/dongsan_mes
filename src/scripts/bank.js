@@ -1473,8 +1473,14 @@
       var freshTxt;
       if (!a.last_tx_date) freshTxt = '<span class="text-gray-400">거래 없음</span>';
       else {
-        var cls = stale >= 14 ? 'text-red-600 font-medium' : (stale >= 7 ? 'text-amber-600' : 'text-gray-400');
-        freshTxt = '<span class="' + cls + '">최종 거래 ' + bankFmtYmd(a.last_tx_date) + ' (' + stale + '일 전)</span>';
+        // 「며칠 멈췄나」는 계좌마다 뜻이 다르다 — 매일 도는 주거래 계좌의 7일과
+        //   월 2~3건짜리 마이너스통장의 27일은 같은 신호가 아니다. 평소 간격의 배수로 본다.
+        //   (실측 2026-09-07: 마통 27일·SC제일 18일이 둘 다 정상 리듬이었는데 빨갛게 떴다)
+        var gap = Number(a.avg_gap_days) || 0;
+        var warnAt = Math.max(7, Math.round(gap * 3));
+        var cls = stale > warnAt * 2 ? 'text-red-600 font-medium' : (stale > warnAt ? 'text-amber-600' : 'text-gray-400');
+        var rhythm = gap >= 3 ? ' <span class="text-gray-400">· 평소 ' + Math.round(gap) + '일 간격</span>' : '';
+        freshTxt = '<span class="' + cls + '">최종 거래 ' + bankFmtYmd(a.last_tx_date) + ' (' + stale + '일 전)</span>' + rhythm;
       }
       html += '<div class="text-xs mt-1 flex items-center gap-3">' + balTxt + freshTxt + '</div>';
       html += '<div class="text-xs text-gray-400 mt-0.5"><i class="fas fa-clock mr-1"></i>마지막 동기화 요청: ' + syncTime + '</div>';

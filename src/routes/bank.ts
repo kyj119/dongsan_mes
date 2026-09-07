@@ -77,7 +77,18 @@ bankRouter.get('/accounts', requireRole('ADMIN'), async (c) => {
               ba.last_synced_at, ba.last_synced_date, ba.entity_id, ba.created_at,
               ba.barobill_registered, ba.collect_cycle, ba.barobill_registered_at,
               ${LATEST_BALANCE_SUBQUERY} AS balance,
-              (SELECT MAX(bt.transaction_date) FROM bank_transactions bt WHERE bt.bank_account_id = ba.id) AS last_tx_date
+              (SELECT MAX(bt.transaction_date) FROM bank_transactions bt WHERE bt.bank_account_id = ba.id) AS last_tx_date,
+              -- 이 계좌의 **평소 거래 간격**(최근 90일). 「며칠 멈췄나」는 계좌마다 뜻이 다르다 —
+              --   매일 도는 주거래 계좌의 7일과 월 2~3건짜리 마이너스통장의 27일은 같은 신호가 아니다.
+              --   실측(2026-09-07): 하나은행 1,128건(0.1일) vs 마통 7건(10일) vs SC제일 8건(9일).
+              (SELECT CASE WHEN COUNT(*) > 1
+                      THEN (julianday(substr(MAX(t.transaction_date),1,4)||'-'||substr(MAX(t.transaction_date),5,2)||'-'||substr(MAX(t.transaction_date),7,2))
+                          - julianday(substr(MIN(t.transaction_date),1,4)||'-'||substr(MIN(t.transaction_date),5,2)||'-'||substr(MIN(t.transaction_date),7,2)))
+                          / (COUNT(*) - 1)
+                      END
+               FROM bank_transactions t
+               WHERE t.bank_account_id = ba.id
+                 AND t.transaction_date >= strftime('%Y%m%d', 'now', '-90 days')) AS avg_gap_days
        FROM bank_accounts ba WHERE ba.is_active = 1${ef.clause} ORDER BY ba.created_at DESC, ba.id DESC`
     ).bind(...ef.params).all()
     return c.json({ success: true, data: results })
@@ -497,8 +508,13 @@ bankRouter.post('/accounts/:id/refresh', requireRole('ADMIN'), async (c) => {
     const { refreshBankAccount } = await import('../services/barobillBank')
     const { barobillErrorMessage } = await import('../constants/barobillCodes')
     const config = await getBarobillConfig(c)
-    const code = await refreshBankAccount(config, String(account.account_number).replace(/-/g, ''))
-    if (code <= 0) return c.json({ success: false, error: '즉시조회 요청 실패: ' + barobillErrorMessage(code) }, 400)
+    const { code, raw } = await refreshBankAccount(config, String(account.account_number).replace(/-/g, ''))
+    if (code <= 0) {
+      // 숫자가 아닌 응답이면 코드가 0 으로 뭉개진다 — 그때는 원문을 그대로 들려준다.
+      //   「바로빌 오류 (코드 0)」만 띄우면 진짜 원인을 아무도 못 쫓는다(2026-09-07 실측).
+      const detail = code === 0 && raw && !/^-?\d+$/.test(raw) ? `응답: ${raw.slice(0, 120)}` : barobillErrorMessage(code)
+      return c.json({ success: false, error: '즉시조회 요청 실패: ' + detail }, 400)
+    }
     return c.json({ success: true, message: '바로빌 즉시조회를 요청했습니다. 잠시 후 동기화하세요.' })
   } catch (error: any) {
     console.error('Bank refresh error:', error?.message || 'unknown')
@@ -1287,6 +1303,12 @@ async function runAutoMatchEngine(
       let bestClientId: number | null = null
       let bestConfidence = 0
       let bestReason = ''
+      // 이름 근거 없이 **금액 우연 일치**만으로 잡힌 상태인가.
+      //   ★이게 없어서 실사고가 났다(2026-09-07): `박영석(산그라픽스)` 입금 19,800원이
+      //     광고월드의 미수잔액과 우연히 같아 0.5로 붙었고, 괄호 안 상호(산그라픽스, 0.7)는
+      //     약한 후보 게이트가 `bestConfidence < 0.5` 라 **조회조차 되지 않았다**.
+      //     점수는 0.7 이 높은데 순서 때문에 0.5 가 이긴 것이다.
+      let bestIsAmountOnly = false
 
       // Step 1: 먼저 bank_match_rules에서 정확히 일치하는 규칙 찾기
       const rule = ruleMap.get(txName)
@@ -1413,6 +1435,7 @@ async function runAutoMatchEngine(
               bestConfidence = confidence
               bestClientId   = client.id
               bestReason     = reason
+              bestIsAmountOnly = reason === '금액일치'
             }
 
             // 약한 후보 수집(강한 규칙이 하나도 없을 때만 사용).
@@ -1445,7 +1468,9 @@ async function runAutoMatchEngine(
           }
 
           // 약한 규칙은 후보가 정확히 1곳일 때만 제안(SUGGESTED). 여러 곳이면 모호 → 사람이 판단.
-          if (bestConfidence < 0.5) {
+          //   ★금액 우연 일치(이름 근거 0)는 여기서 **밀려나야 한다** — 상호·잘림·대표자명은 전부
+          //     「이 이름이 누구인가」라는 근거가 있고 점수도 더 높다.
+          if (bestConfidence < 0.5 || bestIsAmountOnly) {
             if (parenHits.size === 1) {
               bestClientId   = [...parenHits][0]
               bestConfidence = 0.7
