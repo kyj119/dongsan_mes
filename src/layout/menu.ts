@@ -40,6 +40,8 @@ export const MENU_ITEMS: MenuGroup[] = [
       { path: '/inspections', icon: 'fa-clipboard-check', label: '검수 템플릿 (고급)', roles: ['ADMIN'], badgeId: 'nav-badge-insp' },
       { path: '/receiving', icon: 'fa-truck-loading', label: '입고 관리', roles: ['ADMIN', 'MANAGER', 'OPERATOR'], badgeId: 'nav-badge-my-receiving' },
       { path: '/purchase-invoices', icon: 'fa-file-invoice-dollar', label: '매입확정', roles: ['ADMIN', 'MANAGER'] },
+      // 2026-09-07: 발주 등록이 8월부터 멈춰 재고가 나가기만 하는 상태 → 통장 출금에서 후보를 띄운다
+      { path: '/purchase-candidates', icon: 'fa-magnifying-glass-dollar', label: '매입 후보', roles: ['ADMIN', 'MANAGER'] },
     ],
   },
   {

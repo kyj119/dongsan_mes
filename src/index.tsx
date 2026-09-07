@@ -40,6 +40,7 @@ import settingsRouter from './routes/settings'
 import poRouter from './routes/purchaseOrders'
 import purchaseRequestsRouter from './routes/purchaseRequests'
 import weeklyPurchaseRouter from './routes/weeklyPurchase'
+import purchaseCandidatesRouter from './routes/purchaseCandidates'
 import pricesRouter from './routes/prices'
 import priceListsRouter from './routes/priceLists'
 import usersRouter from './routes/users'
@@ -136,6 +137,7 @@ import { settingsPage } from './pages/settings'
 import { purchaseOrdersPage } from './pages/purchaseOrders'
 import { purchaseOrderFormPage } from './pages/purchaseOrderForm'
 import { purchaseRequestsPage } from './pages/purchaseRequests'
+import { purchaseCandidatesPage } from './pages/purchaseCandidates'
 import { purchaseRequestFormPage } from './pages/purchaseRequestForm'
 import { weeklyPurchasePage } from './pages/weeklyPurchase'
 import { inspectionsPage } from './pages/inspections'
@@ -299,6 +301,7 @@ app.route('/api/settings', settingsRouter)
 app.route('/api/purchase-orders', poRouter)
 app.route('/api/purchase-requests', purchaseRequestsRouter)
 app.route('/api/weekly-purchase', weeklyPurchaseRouter)
+app.route('/api/purchase-candidates', purchaseCandidatesRouter)
 app.route('/api/prices', pricesRouter)
 app.route('/api/price-lists', priceListsRouter)
 app.route('/api/price-list', priceListRouter)
@@ -461,6 +464,7 @@ app.get('/purchase-order-form', pageAuthMiddleware, requirePagePermission('/purc
 app.get('/purchase-requests', pageAuthMiddleware, requirePagePermission('/purchase-requests'), purchaseRequestsPage)
 app.get('/purchase-request-form', pageAuthMiddleware, requirePagePermission('/purchase-requests'), purchaseRequestFormPage)
 app.get('/weekly-purchase', pageAuthMiddleware, requirePagePermission('/purchase-requests'), weeklyPurchasePage)
+app.get('/purchase-candidates', pageAuthMiddleware, requirePagePermission('/purchase-candidates'), purchaseCandidatesPage)
 app.get('/inspections', pageAuthMiddleware, requireAdminPage(), inspectionsPage)
 app.get('/receiving', pageAuthMiddleware, requirePagePermission('/receiving'), receivingPage)
 // 2026-04-15 저녁: /my-receiving은 /receiving 으로 통합. 기존 링크 호환 위해 301 리다이렉트.
