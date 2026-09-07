@@ -2224,6 +2224,15 @@
     }
     var mt = sec.matched || [];
     h += '<div class="text-gray-600">바로빌 목록에 있음 <b>' + mt.length + '</b>건 · 수집주기 ' + bbCycleSummary(mt) + '</div>';
+    // 바로빌이 상태를 안 주므로 「해지했는데 목록에 남아 있다」는 우리 플래그로만 잡힌다.
+    // 해지 성공 시 flag 를 내리도록 고쳤으니(2026-09-07), 목록에 있는데 flag=0 이면 그 경우다.
+    var offCnt = 0;
+    for (var q = 0; q < mt.length; q++) if (!mt[q].flag) offCnt++;
+    if (offCnt) {
+      h += '<div class="bg-amber-50 border border-amber-200 text-amber-800 rounded px-2 py-1 mt-1">'
+        + '이 중 <b>' + offCnt + '건</b>은 MES 기준 해지 상태인데 바로빌 목록에는 남아 있습니다 — 아래 <b>해지?</b> 표시.'
+        + ' 바로빌 화면에서 실제 수집이 멈췄는지 확인하세요.</div>';
+    }
     if (mt.length) {
       h += '<div class="mt-1 text-xs text-gray-500">';
       for (var k = 0; k < mt.length; k++) h += '<div>· ' + fmt(mt[k]) + '</div>';
@@ -2243,8 +2252,12 @@
     return ' <span class="bg-gray-100 px-1 rounded">' + escHtml(r.cycle)
       + (src ? '<span class="text-gray-400">·' + src + '</span>' : '') + '</span>';
   }
+  // 바로빌 목록 응답에 상태 필드가 없어(2026-09-07 실측: 이름·번호 2개뿐) 이 칩은 보통 안 뜬다.
+  // 응답이 늘어나면 자동으로 보이도록 남겨 둔다. 대신 해지 여부는 MES 플래그로 표시한다.
   function bbStatusChip(r) {
-    return r.status ? ' <span class="bg-blue-50 text-blue-700 px-1 rounded">상태 ' + escHtml(r.status) + '</span>' : '';
+    var s = r.status ? ' <span class="bg-blue-50 text-blue-700 px-1 rounded">상태 ' + escHtml(r.status) + '</span>' : '';
+    if (!r.flag) s += ' <span class="bg-amber-100 text-amber-800 px-1 rounded">해지?</span>';
+    return s;
   }
 
   function bbFmtAcct(r) {
@@ -2269,7 +2282,8 @@
     if (!d) { p.innerHTML = '<div class="text-gray-400">불러오는 중...</div>'; return; }
     p.innerHTML = bbSection('계좌', d.bank, bbFmtAcct) + bbSection('카드', d.card, bbFmtCard)
       + '<div class="text-xs text-gray-400 mt-2">정본은 바로빌입니다. 해지·등록은 바로빌 화면 또는 각 관리 화면에서 진행하세요.<br>'
-      + '⚠️ 목록 조회가 <b>전체 상태</b>로 걸려 있어 <b>해지한 것도 목록에는 남습니다</b> — 「상태」 값으로 구분하세요.</div>';
+      + '⚠️ 바로빌 목록은 <b>이름과 번호만</b> 돌려줍니다(계좌 BankName·BankAccountNum / 카드 CardCompanyName·CardNum).'
+      + ' <b>수집주기와 상태는 오지 않으므로</b> 주기는 MES 가 등록할 때 적어 둔 값(<b>·MES기록</b>)이고, 그 뒤 바로빌에서 바꿨다면 여기 반영되지 않습니다.</div>';
   };
 
   function loadBarobillAudit() {

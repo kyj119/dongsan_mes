@@ -48,6 +48,9 @@ export const MENU_ITEMS: MenuGroup[] = [
       { path: '/clients', icon: 'fa-building', label: '거래처', roles: ['ADMIN', 'MANAGER'] },
       { path: '/items', icon: 'fa-tags', label: '품목', roles: ['ADMIN', 'MANAGER'] },
       // /spec-groups 사이드바 은퇴 (2026-06-26): 규격그룹/변종 폐기 설계(신 품목모델 product_materials 대체)·prod 데이터 0.
+      // ⚠️ 「데이터 0」은 더 이상 사실이 아니다 — 2026-09-07 실측 prod 18건 활성(간판색상·LED형광등형·
+      //    SMPS와트·깃발규격·배너형 등)에 items 참조 컬럼 2개. 2026-07-30 DESIGNER 권한도 새로 부여됐다.
+      //    폐기 설계 이후 다시 쓰이기 시작한 것으로 보이니, 지우기 전에 실사용부터 확인할 것.
       // 페이지·API는 보존(직접 URL만 접근). 되살릴 경우 이 줄 복원.
       // { path: '/spec-groups', icon: 'fa-layer-group', label: '규격그룹 관리', roles: ['ADMIN', 'MANAGER'] },
       { path: '/price-list', icon: 'fa-won-sign', label: '단가 관리', roles: ['ADMIN', 'MANAGER'] },
@@ -73,7 +76,11 @@ export const MENU_ITEMS: MenuGroup[] = [
       // 페이지·라우트·API 보존(직접 URL만 접근). 되살릴 경우 이 줄 복원.
       // { path: '/financial-reports', icon: 'fa-chart-bar', label: '손익계산서', roles: ['ADMIN', 'MANAGER'] },
       { path: '/reports', icon: 'fa-chart-line', label: '손익·경영 분석', roles: ['ADMIN', 'MANAGER'] },
-      // /management-report 사이드바 은퇴 (손익허브 통합, 2026-07-18): /reports '경영진단' 탭으로 흡수(정적 스냅샷).
+      // /management-report 사이드바 은퇴 (2026-07-18).
+      // ⚠️ 「/reports '경영진단' 탭으로 흡수」는 사실이 아니었다 — reports.ts·reports.js 어디에도 진단이 없다
+      //    (2026-09-07 확인). 흡수처 없이 사이드바에서만 사라진 상태였다. 형제인 손익계산서·부가세는
+      //    실제로 흡수됐다(reports.ts ${financialReportsContent} · taxInvoices.ts ${vatReportsContent}).
+      //    2026-09-07 용준님 폐기 결정 → permission_pages 행 제거. 라우트는 보존(ADMIN 직접 URL).
       // 페이지·라우트 보존(직접 URL). 되살릴 경우 이 줄 복원.
       // { path: '/management-report', icon: 'fa-stethoscope', label: '경영진단', roles: ['ADMIN', 'MANAGER'] },
     ],
