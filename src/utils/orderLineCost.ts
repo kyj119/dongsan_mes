@@ -49,6 +49,8 @@ export interface CostMaterial extends LineMaterialSpec {
   waste_factor: number | null
   /** items.avg_unit_cost — base 단위당 단가 */
   avg_unit_cost: number | null
+  /** product_materials.is_default — 택1 대안 판별(2026-09-07). 규칙 정본 = `resolveLineMaterials` ①. */
+  is_default?: number | null
 }
 
 export interface LineCostInput {
@@ -106,6 +108,11 @@ export interface LineCost {
     materials: Array<{ material_item_id: number; material_name: string | null; required: number; unit_price: number; cost: number }>
     /** 산정 규칙 미구현으로 **빠진** BOM 행(usage_type). 있으면 FULL 이 될 수 없다. */
     unsupported: string[]
+    /**
+     * 택1에서 탈락한 **대안 자재** 이름(2026-09-07). 빠진 게 정상이라 커버리지를 깎지 않지만
+     * — `unsupported` 와 다른 점이 이것이다 — 「왜 이 원가인가」를 되짚을 때 필요하다.
+     */
+    alternates: string[]
   }
 }
 
@@ -141,6 +148,7 @@ const EMPTY_DETAIL = {
   ink_per_sqm: null as number | null,
   materials: [] as LineCost['detail']['materials'],
   unsupported: [] as string[],
+  alternates: [] as string[],
 }
 
 function zero(coverage: CostCoverage, areaSqm = 0, inkPerSqm: number | null = null): LineCost {
@@ -179,11 +187,12 @@ export function computeLineCost(
   // ⚠️ 자재를 하나도 못 골랐을 때도 `unsupported` 는 실어 보낸다 — **전부 미구현 규칙이라
   //    비었을 때**가 정확히 이 경로다. 여기서 빈 배열로 덮으면 「왜 0원인가」가 사라진다.
   const unsupportedAll = res.unsupported.map((u) => u.usage_type)
+  const alternatesAll = res.alternates.map((m) => m.material_name || String(m.material_item_id))
   const inkOnly = (coverage: CostCoverage): LineCost => ({
     material_cost: 0, ink_cost: inkCost, total_cost: inkCost,
     unit_cost: qty > 0 ? Math.round(inkCost / qty) : 0,
     coverage,
-    detail: { ...EMPTY_DETAIL, area_sqm: areaSqm, ink_per_sqm: inkPerSqm, materials: [], unsupported: unsupportedAll },
+    detail: { ...EMPTY_DETAIL, area_sqm: areaSqm, ink_per_sqm: inkPerSqm, materials: [], unsupported: unsupportedAll, alternates: alternatesAll },
   })
 
   if (res.reason === 'NO_SIZE') return zero('NO_SIZE', 0, inkPerSqm)
@@ -232,6 +241,7 @@ export function computeLineCost(
       ink_per_sqm: inkPerSqm,
       materials,
       unsupported,
+      alternates: alternatesAll,
     },
   }
 }
@@ -257,7 +267,7 @@ export async function loadCostMaterials(
               i.width_mm, COALESCE(i.deduction_method,'ROLL') AS deduction_method,
               i.sheet_spec, COALESCE(i.waste_factor,1.0) AS waste_factor,
               i.base_unit, i.unit, i.pack_size, i.avg_unit_cost,
-              pm.quantity, pm.usage_type, pm.usage_param
+              pm.quantity, pm.usage_type, pm.usage_param, pm.is_default
        FROM product_materials pm JOIN items i ON pm.material_item_id = i.id
        WHERE pm.product_item_id IN (${ph})`
     ).bind(...chunk).all<any>()

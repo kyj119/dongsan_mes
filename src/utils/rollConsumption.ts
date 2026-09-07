@@ -384,6 +384,11 @@ export interface LineMaterialSpec extends RollWidthSpec {
   usage_type?: string | null
   /** product_materials.usage_param — 0508 */
   usage_param?: number | null
+  /**
+   * product_materials.is_default — **택1 대안 판별축**(2026-09-07). 아래 `resolveLineMaterials` ① 참조.
+   * 로더가 안 실어 보내면 `undefined` 이고, 그때 대안 필터는 **아무것도 하지 않는다**(안전 기본값).
+   */
+  is_default?: number | boolean | null
 }
 
 /** 라인 기하 — 규격은 **cm**(`order_items.width/height` 와 같은 축) */
@@ -414,6 +419,11 @@ export interface LineMaterialResolution<T> {
    * 조용히 빠지면 「간판 원가가 알루미늄뿐」인 상태가 FULL 로 보고된다.
    */
   unsupported: Array<{ mat: T; usage_type: string }>
+  /**
+   * 택1에서 **탈락한 대안 자재**. 빠진 게 정상이지만 조용히 사라지면 안 된다 —
+   * 「왜 이 원가인가」를 되짚을 때 여기를 본다(`unsupported` 와 달리 커버리지를 깎지 않는다).
+   */
+  alternates: T[]
   /** 실면적(㎡) = 가로×세로×수량. **청구면적이 아니다**(청구는 10cm 올림·최소 1m). */
   areaSqm: number
 }
@@ -483,16 +493,43 @@ export function resolveLineMaterials<T extends LineMaterialSpec>(
   const qty = Number(line.quantity) || 1
   const picks: Array<LineMaterialPick<T>> = []
   const unsupported: Array<{ mat: T; usage_type: string }> = []
+  const alternates: T[] = []
 
-  if (wCm <= 0 || hCm <= 0) return { picks, reason: 'NO_SIZE', unsupported, areaSqm: 0 }
+  if (wCm <= 0 || hCm <= 0) return { picks, reason: 'NO_SIZE', unsupported, alternates, areaSqm: 0 }
   const areaSqm = (wCm / 100) * (hCm / 100) * qty
-  if (!mats || mats.length === 0) return { picks, reason: 'NO_MATERIAL_LINK', unsupported, areaSqm }
+  if (!mats || mats.length === 0) return { picks, reason: 'NO_MATERIAL_LINK', unsupported, alternates, areaSqm }
 
   // ① BOM 이 소요 규칙을 명시한 행 — 휴리스틱보다 우선한다.
   const usageRows = new Set<T>()
   for (const m of mats) {
     if (USAGE_TYPES.has(String(m.usage_type ?? '').trim().toUpperCase())) usageRows.add(m)
   }
+
+  // ★택1 대안 자재 (2026-09-07) — usage 행은 원래 **전부 합산**이다(간판=백판+LED+프레임…).
+  //   그런데 같은 역할의 원단을 **대안으로** 두 줄 적어 둔 BOM 이 있다:
+  //   태극기 8호 = 「두폭 60×90」(0.4921yd) + 「복합 60×90+90×135」(0.9843yd) — 둘 중 하나로 뽑는데
+  //   둘 다 더해져 원가가 1,988원/장이 됐다. 판매가가 850~1,100원/장이라 **원가율 182%**,
+  //   매출 1.27억이 「단가 점검 필요」로 집계에서 통째로 빠지고 있었다(2026-09-07 발견).
+  //
+  //   판별축은 이미 데이터에 있다 — `is_default`. prod 전수에서 **구성 자재는 전부 1**이고
+  //   (국기함세트·자수깃발세트·채널간판·프레임간판), **0 인 usage 행은 정확히 2행**이며
+  //   둘 다 그 태극기 복합원단이다. ⚠️`item_group` 은 판별축이 못 된다 —
+  //   국기함 「케이스」와 「깃봉」이 같은 그룹인데 둘 다 필요하다.
+  //
+  //   ⚠️ **섞여 있을 때만** 거른다. 전부 0이면(=로더가 플래그를 안 실어 보냈거나 아무도 안 정했으면)
+  //   무엇이 기본인지 알 수 없으므로 **하나도 버리지 않는다** — 과소 원가는 이상치 감사에
+  //   영원히 안 걸리는 방향이라, 모르면 남기는 쪽이 안전하다.
+  if (usageRows.size > 1) {
+    const rows = [...usageRows]
+    const isDefault = (m: T) => m.is_default === 1 || m.is_default === true
+    const isExplicitNonDefault = (m: T) => m.is_default === 0 || m.is_default === false
+    if (rows.some(isDefault) && rows.some(isExplicitNonDefault)) {
+      for (const m of rows) {
+        if (!isDefault(m)) { alternates.push(m); usageRows.delete(m) }
+      }
+    }
+  }
+
   for (const m of usageRows) {
     const req = usageRequired(m, wCm, hCm, qty)
     if (req != null && req > 0) picks.push({ mat: m, required: req, via: 'USAGE' })
@@ -500,7 +537,9 @@ export function resolveLineMaterials<T extends LineMaterialSpec>(
   }
 
   // ② 나머지는 종전 휴리스틱 — 원단(ROLL) 우선, 없으면 판재(BOARD). 이 축은 **1종만** 고른다.
-  const rest = mats.filter((m) => !usageRows.has(m))
+  //    ⚠️대안(alternates)은 여기로 **흘려보내지 않는다** — 태극기 복합원단은 width_mm·ROLL 이 있어
+  //    그대로 두면 휴리스틱이 다시 주워 담아 방금 뺀 것이 되살아난다.
+  const rest = mats.filter((m) => !usageRows.has(m) && !alternates.includes(m))
   const rollMats = rest.filter((m) => String(m.deduction_method ?? '') === 'ROLL' && m.width_mm != null)
   const boardMats = rest.filter((m) => String(m.deduction_method ?? '') === 'BOARD')
   let heuristicTried = false
@@ -524,7 +563,7 @@ export function resolveLineMaterials<T extends LineMaterialSpec>(
   if (picks.length === 0) {
     // 고를 후보가 있었는데 못 골랐다 = **미상**. 후보 자체가 없었다(NONE 만 연결) = 의도된 0.
     const reason: LineMaterialReason = (heuristicTried || usageRows.size > 0) ? 'NO_MATERIAL_LINK' : 'NO_DEDUCT'
-    return { picks, reason, unsupported, areaSqm }
+    return { picks, reason, unsupported, alternates, areaSqm }
   }
-  return { picks, reason: null, unsupported, areaSqm }
+  return { picks, reason: null, unsupported, alternates, areaSqm }
 }

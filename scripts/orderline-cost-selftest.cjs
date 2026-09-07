@@ -365,6 +365,66 @@ const U = function (id, name, qty, type, param, price) {
   } else pass++
 }
 
+// ── ⑦ 택1 대안 자재 (2026-09-07) ────────────────────────────────────────────
+// 태극기 8호 실측 BOM — 「두폭 60×90」(기본)과 「복합 60×90+90×135」(대안)가 **둘 다 FIXED_QTY** 라
+// 합산돼 원가가 1,988원/장이 됐다. 판매가는 850~1,100원/장이라 **원가율 182%**,
+// 매출 1.27억이 「단가 점검 필요」로 수익성 집계에서 통째로 빠지고 있었다.
+// 판별축은 `is_default` — prod 전수에서 구성 자재는 전부 1이고, 0 인 usage 행은 이 둘뿐이었다.
+{
+  const D = (o, isDef) => Object.assign(o, { is_default: isDef })
+  const TGK_DEF = D(U(1215, '태극기 두폭 인쇄원단 60×90', 0.4921, 'FIXED_QTY', null, 1207), 1)
+  // ★대안에도 폭·ROLL 이 실제로 붙어 있다 — 택1에서 뺀 뒤 휴리스틱이 다시 주워 담으면 안 된다.
+  const TGK_ALT = Object.assign(
+    D(U(1224, '태극기 복합 인쇄원단 60×90+90×135', 0.9843, 'FIXED_QTY', null, 1416), 0),
+    { width_mm: 1651, deduction_method: 'ROLL' })
+  const TGK = [TGK_DEF, TGK_ALT]
+  const tgkLine = { item_id: 500, width: 90, height: 60, quantity: 1, category: '태극기' }
+
+  cost('태극기 8호 — 대안 원단은 합산하지 않는다(기본 594원만)', TGK, tgkLine,
+    { inkCostByCategory: INK }, { coverage: 'FULL', material_cost: 594, ink_cost: 0 })
+
+  const tgkGot = computeLineCost(TGK, tgkLine, { inkCostByCategory: INK })
+  if (tgkGot.detail.materials.length !== 1 || tgkGot.detail.materials[0].material_item_id !== 1215) {
+    fails.push('대안 제외 후 남는 자재는 기본 1종 · 실제 '
+      + JSON.stringify(tgkGot.detail.materials.map(function (m) { return m.material_item_id })))
+  } else pass++
+  // 빠진 사실이 **보여야** 한다 — `unsupported` 와 달리 커버리지는 깎지 않는다(빠진 게 정상이므로).
+  if (tgkGot.detail.alternates.length !== 1 || tgkGot.coverage !== 'FULL') {
+    fails.push('대안은 detail.alternates 에 남고 커버리지는 FULL · 실제 alt='
+      + JSON.stringify(tgkGot.detail.alternates) + ' cov=' + tgkGot.coverage)
+  } else pass++
+
+  // 구성 자재(전부 기본)는 **종전대로 합산**한다 — 국기함세트 = 케이스+깃봉+태극기.
+  // ⚠️`item_group` 으로 갈랐다면 여기서 틀린다(케이스와 깃봉이 같은 그룹인데 둘 다 필요하다).
+  const SET = [
+    D(U(701, '국기함 보급형 케이스', 1, 'FIXED_QTY', null, 1524), 1),
+    D(U(702, '국기함 보급형 깃봉', 1, 'FIXED_QTY', null, 181), 1),
+    D(U(703, '태극기 7호', 1, 'FIXED_QTY', null, 1348), 1),
+  ]
+  cost('국기함세트 — 전부 기본이면 합산(택1 아님)', SET,
+    { item_id: 501, width: 90, height: 60, quantity: 1, category: '상품' },
+    { inkCostByCategory: INK }, { coverage: 'FULL', material_cost: 3053 })
+
+  // ★안전 기본값 — 전부 0이면 무엇이 기본인지 알 수 없으므로 **하나도 버리지 않는다**.
+  //   과소 원가는 「원가 > 매출」 이상치 감사에 영원히 안 걸리는 방향이라, 모르면 남기는 쪽이 안전하다.
+  const ALL_ZERO = [D(U(801, 'A', 1, 'FIXED_QTY', null, 1000), 0), D(U(802, 'B', 1, 'FIXED_QTY', null, 2000), 0)]
+  cost('플래그가 전부 0이면 거르지 않는다', ALL_ZERO,
+    { item_id: 502, width: 90, height: 60, quantity: 1, category: '상품' },
+    { inkCostByCategory: INK }, { coverage: 'FULL', material_cost: 3000 })
+
+  // 로더가 플래그를 안 실어 보내면(undefined) 종전 동작 그대로 — `autoDeductInventory` 가 그 형이다.
+  const NO_FLAG = [U(901, 'A', 1, 'FIXED_QTY', null, 1000), U(902, 'B', 1, 'FIXED_QTY', null, 2000)]
+  cost('플래그가 없으면 종전대로 합산', NO_FLAG,
+    { item_id: 503, width: 90, height: 60, quantity: 1, category: '상품' },
+    { inkCostByCategory: INK }, { coverage: 'FULL', material_cost: 3000 })
+
+  // 계획(materialRequirement)도 같은 함수를 지난다 — 거기서도 대안이 소요로 잡히면 안 된다.
+  const tgkPlan = resolveLineMaterials(TGK, { width: 90, height: 60, quantity: 1 })
+  if (tgkPlan.picks.length !== 1 || tgkPlan.alternates.length !== 1) {
+    fails.push('계획 소요도 기본 1종 · 실제 picks=' + tgkPlan.picks.length + ' alt=' + tgkPlan.alternates.length)
+  } else pass++
+}
+
 // ── 결과 ───────────────────────────────────────────────────────────────────
 rollCleanup(); costCleanup(); calcCleanup()
 if (fails.length) {
