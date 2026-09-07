@@ -115,3 +115,44 @@ export function resolveHistoryMatch(
 export function allowAmountOnlyMatch(txName: string | null | undefined): boolean {
   return !/[가-힣A-Za-z]/.test(String(txName || ''))
 }
+
+/** 「제안」이 아니라 「힌트」로 다뤄야 하는 신뢰도 하한 — 이 미만은 일괄확정 대상에서 뺀다. */
+export const SUGGESTION_WEAK_BELOW = 0.7
+
+/**
+ * 약한 제안인가 — 화면·일괄적용이 **확정 버튼을 내주면 안 되는** 근거인지.
+ *
+ * ★prod 실측 2026-09-07: `대표자명 일치`(0.65) 220건 199,941,722. 대표자명은 직원·동명이인과
+ *   충돌해 오탐 17.6% 다. 0.6~0.65 대(부분일치·적요에 거래처명 포함)도 같은 성격이라
+ *   **한 줄(0.7)로 자른다** — 근거 문자열을 화면이 다시 해석하면 사본 쌍이 하나 더 생긴다.
+ *   제안 자체는 지우지 않는다. 사람이 한 건씩 보면 유용한 단서다.
+ */
+export function isWeakSuggestion(confidence: number | null | undefined): boolean {
+  const v = Number(confidence)
+  return !Number.isFinite(v) || v < SUGGESTION_WEAK_BELOW
+}
+
+/**
+ * 기존 SUGGESTED 를 새 근거로 **승격**할지 — 강등·횡보는 하지 않는다.
+ *
+ * ★스윕 본 루프는 `match_status='UNMATCHED'` 만 본다. 그래서 규칙을 새로 넣어도 **이미 제안이 붙은
+ *   행에는 영원히 닿지 않는다**. prod 실측 2026-09-07: 확정 이력이 단일 거래처를 가리키는데도
+ *   미처리로 남은 485건 중 465건은 제안이 이력과 같고, 15건 6,709,200 은 **이력과 다른 거래처**를
+ *   가리키고 있었다(그중 3건이 `대표자명 일치` 오탐).
+ *
+ * ★「승격만」인 이유 — 사람이 고른 값은 CONFIRMED/APPLIED 라 여기 오지 않는다. 즉 SUGGESTED 를
+ *   덮어써도 사람의 판단은 지워지지 않는다. 그래도 신뢰도가 **더 높을 때만** 갈아탄다.
+ *   같은 신뢰도에서 거래처만 바꾸면 스윕을 돌릴 때마다 결과가 흔들린다(멱등하지 않다).
+ */
+export function shouldPromoteSuggestion(
+  existing: { status: string | null | undefined; confidence: number | null | undefined; clientId: number | null | undefined },
+  next: { confidence: number; clientId: number }
+): boolean {
+  if (String(existing.status) !== 'SUGGESTED') return false
+  if (!Number.isFinite(Number(next.confidence)) || next.clientId == null) return false
+  const cur = Number(existing.confidence)
+  const base = Number.isFinite(cur) ? cur : 0
+  if (Number(next.confidence) > base) return true
+  // 같은 근거·같은 거래처면 이미 반영된 상태 → 아무것도 하지 않는다(멱등).
+  return false
+}

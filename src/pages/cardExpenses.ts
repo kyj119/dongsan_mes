@@ -233,6 +233,7 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
               <th class="text-center" style="width:50px">아이콘</th>
               <th class="col-name text-left">분류명</th>
               <th class="text-center" style="width:60px">색상</th>
+              <th class="text-center" style="width:76px" title="손익에서 이 계정이 어디로 가는지">역할</th>
               <th class="col-qty text-center" style="width:60px">순서</th>
               <th class="col-action text-center" style="width:80px">관리</th>
             </tr></thead>
@@ -347,6 +348,17 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
             <div>
               <label class="text-sm font-semibold text-gray-700 mb-1 block">분류명 <span class="text-red-500">*</span></label>
               <input type="text" id="catName" placeholder="예: 복리후생비" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            </div>
+            <div>
+              <label class="text-sm font-semibold text-gray-700 mb-1 block">역할 <span class="text-red-500">*</span></label>
+              <select id="catRole" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <option value="SGA">판매관리비 — 영업이익을 깎는 비용 (기본)</option>
+                <option value="COGS">매출원가 — 원재료비·외주가공비</option>
+                <option value="NONOP">영업외비용 — 이자비용·기부금</option>
+                <option value="TAX">법인세</option>
+                <option value="NOT_EXPENSE">비용 아님 — 차입·상환·예수금·자산취득·세금납부</option>
+              </select>
+              <p class="text-[11px] text-gray-500 mt-1">손익에서 이 계정을 어디에 넣을지 정합니다. 잘못 고르면 영업이익이 조용히 틀립니다.</p>
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div>

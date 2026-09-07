@@ -89,28 +89,26 @@ const q = s => "'" + String(s).replace(/'/g, "''") + "'"
 const ymd = s => s.replace(/-/g, '')          // bank/card 의 transaction_date 는 YYYYMMDD 문자열
 
 /**
- * 계정을 손익 위치로 분류한다. `expense_categories` 에 성격 컬럼이 없어서 이름으로 판정한다.
- * ★NOT_EXPENSE 가 이 개정의 핵심 — 대출원금·부가세·가수금은 돈이 나가지만 비용이 아니다.
+ * 계정 역할은 `expense_categories.role`(0584) 이 정본이다 — 여기서는 **해석만** 한다.
+ * 어휘 정본 = src/utils/expenseRole.ts (SGA·COGS·NONOP·TAX·NOT_EXPENSE), 감사 = audit:expense-category.
+ *
+ * ★NOT_EXPENSE 가 이 축의 핵심 — 대출원금·부가세·가수금은 돈이 나가지만 비용이 아니다.
  *   이걸 안 빼면 동산 1~7월 지출 17.3억이 통째로 판관비가 되어 손익이 6.8억 과대 계상된다.
+ *
+ * 역할 배정 근거 중 헷갈리는 둘 — 계정에 붙어 있으니 화면에서 안 보인다. 여기 남긴다.
+ *   · 기부금 = NONOP(2026-08-19). 정치자금 후원금은 영업활동과 무관하고 **세법상 손금불산입**이라
+ *     판관비에 섞으면 영업이익이 그만큼 과소해지고 세무조정 때 또 걸러야 한다.
+ *   · 리스료 = NOT_EXPENSE(2026-08-19, **세무장부 실측 근거**). WEHAGO 합계잔액시산표(21기,
+ *     2026-07-31)에 **「리스부채」 계정이 아예 없고** 리스가 **장기차입금 18.49억**에 들어가 있다.
+ *     즉 세무사는 리스·할부를 **차입금**으로 잡았다 → 납입액은 원금 상환이고 비용이 아니다.
+ *     리스 장비는 이미 `fixed_assets` 로 감가상각 중이라(FA-*-L*) 리스료를 비용으로 또 넣으면 이중이다.
+ *     ⚠️이자 부분은 여기서 같이 빠진다 — 세무장부 이자비용(931) **5,696만**이 정본이고
+ *       MES 「이자비용」 계정 307만은 극히 일부만 잡은 값이다(아래 이자 표시가 과소인 이유).
  */
-const CAT_ROLE = {
-  COGS: ['원재료비', '외주가공비'],
-  // ★기부금 = 영업외비용(2026-08-19). 정치자금 후원금은 영업활동과 무관하고 **세법상 손금불산입**이라
-  //   판관비에 섞으면 영업이익이 그만큼 과소해지고 세무조정 때 또 걸러야 한다.
-  NONOP: ['이자비용', '기부금'],
-  TAX: ['법인세'],
-  // 비용이 아닌 현금흐름 — 부채 상환·예수금 정산·자금 대차·자산 취득
-  //   ★「리스료」 추가(2026-08-19) — **세무장부 실측 근거**. WEHAGO 합계잔액시산표(21기, 2026-07-31)에
-  //     **「리스부채」 계정이 아예 없고** 리스가 **장기차입금 18.49억**에 들어가 있다.
-  //     즉 세무사는 리스·할부를 **차입금**으로 잡았다 → 납입액은 원금 상환이고 비용이 아니다.
-  //     리스 장비는 이미 `fixed_assets` 로 감가상각 중이라(FA-*-L*) 리스료를 비용으로 또 넣으면 이중이다.
-  //     ⚠️이자 부분은 여기서 같이 빠진다 — 세무장부 이자비용(931) **5,696만**이 정본이고
-  //       MES 「이자비용」 계정 307만은 극히 일부만 잡은 값이다(아래 이자 표시가 과소인 이유).
-  NOT_EXPENSE: ['차입금상환', '차입금', '대출상환', '대출금', '부가세', '가수금', '가지급금', '보증금', '유형자산취득', '리스료', '공제부금'],
-}
-const roleOf = nm => {
-  for (const [role, names] of Object.entries(CAT_ROLE)) if (names.includes(nm)) return role
-  return 'SGA'   // 나머지는 전부 판관비
+const EXPENSE_ROLES = new Set(['SGA', 'COGS', 'NONOP', 'TAX', 'NOT_EXPENSE'])
+const roleOf = role => {
+  const v = String(role || '').trim().toUpperCase()
+  return EXPENSE_ROLES.has(v) ? v : 'SGA'   // 모르는 값·빈값은 비용으로 — 누락(안 보임)보다 과대(보임)가 낫다
 }
 
 function run(sql) {
@@ -194,20 +192,20 @@ const buildSQL = (E) => ({
 
   // B-2. 비용 실측 — 통장·카드 계정분류 (★판관비의 정본)
   expense: `
-    SELECT 'bank' src, ec.name nm, COUNT(*) cnt, CAST(SUM(bt.amount) AS INT) amt
+    SELECT 'bank' src, ec.name nm, ec.role role, COUNT(*) cnt, CAST(SUM(bt.amount) AS INT) amt
       FROM bank_transactions bt
       JOIN bank_accounts ba ON ba.id = bt.bank_account_id
       JOIN expense_categories ec ON ec.id = bt.matched_category_id
      WHERE ba.entity_id = ${E} AND ${NOT_PERSONAL} AND bt.transaction_type = 'WITHDRAWAL'
        AND bt.transaction_date BETWEEN ${q(ymd(FROM))} AND ${q(ymd(TO))}
-     GROUP BY ec.name;
-    SELECT 'card' src, ec.name nm, COUNT(*) cnt, CAST(SUM(t.amount) AS INT) amt
+     GROUP BY ec.name, ec.role;
+    SELECT 'card' src, ec.name nm, ec.role role, COUNT(*) cnt, CAST(SUM(t.amount) AS INT) amt
       FROM card_transactions t
       JOIN corporate_cards cc ON cc.id = t.card_id
       JOIN expense_categories ec ON ec.id = t.category_id
      WHERE cc.entity_id = ${E} AND COALESCE(t.is_offset,0) = 0
        AND t.transaction_date BETWEEN ${q(ymd(FROM))} AND ${q(ymd(TO))}
-     GROUP BY ec.name;`,
+     GROUP BY ec.name, ec.role;`,
 
   // B-3. 비용 커버리지 — 위 숫자를 어디까지 믿나. 미분류가 크면 판관비는 과소다.
   coverage: `
@@ -326,7 +324,7 @@ if (GROUP) {
     const pnl = run(S.pnl), exp = run(S.expense), cov = run(S.coverage)
     const gv = k => n((pick(pnl, k) || {}).v)
     const rows = exp.flat().filter(r => r && r.nm)
-    const sum = role => rows.filter(r => roleOf(r.nm) === role).reduce((a, r) => a + n(r.amt), 0)
+    const sum = role => rows.filter(r => roleOf(r.role) === role).reduce((a, r) => a + n(r.amt), 0)
     const cvRow = k => (cov.flat().find(x => x && x.k === k) || {})
     const open = openingStock(e, FROM), close = openingStock(e, TO)
     return {
@@ -431,7 +429,7 @@ const months = Math.max(1, Math.round((new Date(TO) - new Date(FROM)) / (30 * 86
 const rows = expB.flat().filter(r => r && r.nm)
 const byCat = new Map()
 for (const r of rows) {
-  const e = byCat.get(r.nm) || { 계정: r.nm, 역할: roleOf(r.nm), 통장: 0, 카드: 0, 합계: 0, 건수: 0 }
+  const e = byCat.get(r.nm) || { 계정: r.nm, 역할: roleOf(r.role), 통장: 0, 카드: 0, 합계: 0, 건수: 0 }
   e[r.src === 'bank' ? '통장' : '카드'] += n(r.amt); e.합계 += n(r.amt); e.건수 += n(r.cnt)
   byCat.set(r.nm, e)
 }

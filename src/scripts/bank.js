@@ -197,6 +197,9 @@
       params.push('match_status=' + encodeURIComponent(status));
     }
     if (txType) params.push('transaction_type=' + encodeURIComponent(txType));
+    var sortEl = document.getElementById('filterTxSort');
+    if (!sortEl) console.warn('[bank] #filterTxSort not found');
+    else if (sortEl.value) params.push('sort=' + encodeURIComponent(sortEl.value));
     return params;
   }
 
@@ -336,7 +339,8 @@
         + ' data-name="' + escHtml(tx.counterpart_name || tx.description || '') + '"'
         + ' data-date="' + escHtml(dateStr) + '"'
         + ' data-amount="' + amt + '"'
-        + ' data-dir="' + (isDeposit ? 'IN' : 'OUT') + '"></td>';
+        + ' data-dir="' + (isDeposit ? 'IN' : 'OUT') + '"'
+        + (tx.match_weak ? ' data-weak="1"' : '') + '></td>';
       html += '<td class="text-gray-600 text-xs whitespace-nowrap">' + dateStr + '</td>';
       html += '<td><span class="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">' + escHtml(accountLabel) + '</span></td>';
       html += '<td class="font-medium text-gray-800" title="' + escHtml(tx.counterpart_name || tx.description || '') + '">' + escHtml(tx.counterpart_name || tx.description || '') + '</td>';
@@ -344,7 +348,12 @@
       html += '<td class="text-right tabular-nums ' + (!isDeposit ? 'text-red-600' : '') + '">' + (!isDeposit ? '-' + amt.toLocaleString() : '') + '</td>';
       var bal = tx.balance_after != null ? Number(tx.balance_after).toLocaleString() : '';
       html += '<td class="text-right text-xs text-gray-500 tabular-nums">' + bal + '</td>';
-      html += '<td class="text-center">' + badge + '</td>';
+      // 약한 제안(신뢰도 0.7 미만) — 대표자명·부분일치는 오탐 17.6% 라 일괄확정에서 뺀다.
+      //   제안 자체는 지우지 않는다. 한 건씩 보면 유용한 단서다.
+      var weakMark = tx.match_weak
+        ? '<span class="ml-1 text-[10px] px-1 py-0.5 rounded bg-rose-50 text-rose-600" title="근거가 약합니다(' + (tx.match_reason || '') + '). 한 건씩 확인하세요 — 전체선택·일괄적용에서 제외됩니다">약함</span>'
+        : '';
+      html += '<td class="text-center">' + badge + weakMark + '</td>';
       // ds-wrap: td 기본 overflow:hidden이 셀 내 절대배치 드롭다운(거래처/비용분류)을 잘라버림 → 해제
       html += '<td class="ds-wrap">' + matchedClient + '</td>';
       html += '<td class="text-center">' + actionCell + '</td>';
@@ -605,8 +614,15 @@
   };
 
   // Checkbox all
+  // ★전체선택은 **약한 제안을 건너뛴다** — 220건 199,941,722 이 `대표자명 일치`(오탐 17.6%)였다.
+  //   근거가 약한 걸 지우는 게 아니라, 사람이 한 번도 안 보고 확정되는 경로만 막는다.
   window.toggleCheckAll = function(cb) {
-    document.querySelectorAll('.tx-check').forEach(function(el) { el.checked = cb.checked; });
+    var skipped = 0;
+    document.querySelectorAll('.tx-check').forEach(function(el) {
+      if (cb.checked && el.getAttribute('data-weak') === '1') { el.checked = false; skipped++; return; }
+      el.checked = cb.checked;
+    });
+    if (skipped > 0) showToast('근거가 약한 ' + skipped + '건은 전체선택에서 제외했습니다 — 개별 확인이 필요합니다', 'info');
     updateSelectionBar();
   };
 
@@ -798,7 +814,8 @@
         amount: Number(el.getAttribute('data-amount') || 0),
         dir: el.getAttribute('data-dir') || '',
         mode: 'SKIP',
-        target: ''
+        target: '',
+        weak: el.getAttribute('data-weak') === '1'
       };
       if (isCategoryMode && categoryId) {
         categoryMap[String(txId)] = categoryId;
@@ -900,13 +917,20 @@
       var html = '<div class="text-sm font-semibold text-blue-700 mb-1">'
         + '<i class="fas fa-check-double mr-1"></i>' + apply.length + '건 적용</div>'
         + '<div class="text-xs text-gray-500 mb-2 pl-5">거래처 = 입금/지급 원장 반영 · 비용분류 = 비용 확정</div>';
+      var weakList = apply.filter(function(x) { return x.weak; });
+      if (weakList.length) {
+        html += '<div class="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1 mb-2">'
+          + '<i class="fas fa-triangle-exclamation mr-1"></i>근거가 <b>약한</b> 제안 ' + weakList.length + '건이 포함돼 있습니다'
+          + ' — 대표자명·부분일치는 오탐이 잦습니다. 적요를 직접 확인하세요.</div>';
+      }
       if (apply.length) {
         html += '<ul class="text-xs text-gray-700 space-y-0.5 mb-3">';
         apply.forEach(function(x) {
           var tag = x.mode === 'CATEGORY'
             ? '<span class="px-1 py-0.5 rounded bg-purple-50 text-purple-700">비용분류</span>'
             : '<span class="px-1 py-0.5 rounded bg-blue-50 text-blue-700">거래처</span>';
-          html += '<li class="flex items-start gap-1"><span class="shrink-0">' + tag + '</span>'
+          var wk = x.weak ? '<span class="px-1 py-0.5 rounded bg-rose-50 text-rose-600 shrink-0">약함</span>' : '';
+          html += '<li class="flex items-start gap-1"><span class="shrink-0">' + tag + '</span>' + wk
             + '<span>' + escHtml(bankBatchLabel(x.id)) + ' → <b>' + escHtml(x.target || '') + '</b></span></li>';
         });
         html += '</ul>';

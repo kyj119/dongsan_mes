@@ -9,15 +9,18 @@
  *     · 「수도광열비」에 세금 성격 30건이 남아 있었다
  *   타입체크·smoke 는 이걸 절대 못 잡는다 — 계정이 틀려도 200 이고 화면도 정상이다.
  *
- * ★`CAT_ROLE` 은 **계정명 문자열**로 역할을 가른다(financialReports.ts + finance-diagnose.cjs 사본 쌍).
- *   그래서 이름이 곧 계약이고, 이름과 내용이 어긋나면 손익이 조용히 틀린다.
+ * ★역할은 이제 `expense_categories.role`(0584) 이 정본이다 — 계정명 문자열로 가르던
+ *   `CAT_ROLE` 사본 쌍은 폐기했다. 그래서 「사본이 어긋났나」 대신 **「역할 값이 성립하나」**를 본다.
+ *   이름 기반 판정이 남은 곳은 아래 ⑥·⑦ 뿐이고, 그건 판단이 아니라 **의심**이다(게이트 안에만 산다).
  *
  * 보는 것:
  *   ① 비활성 계정에 남은 행                → 화면에서 고칠 수 없다 (P0)
- *   ② 입금에 **비용 역할** 계정이 붙음      → 부호가 반대다 (P0)
- *      (가수금·차입금·보증금 같은 NOT_EXPENSE 는 입금이 정상이라 제외한다)
- *   ③ 방향을 말하는 계정에 반대 거래       → 「상환」에 입금, 「취득」에 입금 (P1)
- *   ④ CAT_ROLE 사본 쌍 불일치              → 한쪽만 고치면 화면과 진단이 갈린다 (P0)
+ *   ② 입금에 **비용 역할** 계정이 붙음      → 부호가 반대다. NOT_EXPENSE 는 입금이 정상이라 제외 (P0)
+ *   ③ 역할 어휘 밖의 값                    → 코드가 조용히 SGA(비용)로 떨어뜨린다 (P0)
+ *   ④ 같은 이름인데 법인마다 역할이 다름    → 연간 손익은 **이름으로** 합산한다 → 어느 역할이 이길지 미정 (P0)
+ *   ⑤ 역할 미지정(빈값)                    → 기본값이 안 먹은 행 (P0)
+ *   ⑥ 방향을 말하는 계정에 반대 거래       → 「상환」에 입금, 「취득」에 입금 (P1)
+ *   ⑦ 이름은 자금이동인데 역할이 비용       → 새 계정을 만들며 역할을 안 골랐을 때 (P1 의심)
  *
  * 실행: node scripts/expense-category-audit.cjs [--remote]   (발견 시 exit 1)
  */
@@ -50,36 +53,21 @@ function d1(sql, tries = 3) {
 }
 const won = (n) => Math.round(Number(n) || 0).toLocaleString('ko-KR')
 
-// ── ④ CAT_ROLE 사본 쌍이 같은가 (DB 를 안 봐도 되는 검사라 먼저) ──────────
-//   ★주석은 두 파일이 다르게 쓴다(진단 도구 쪽에 경위가 길다) -> **역할별 이름 목록만** 뽑아 비교한다.
-//     원문 텍스트를 비교하면 주석 한 줄 차이로 매번 빨간불이 뜬다(실제로 한 번 그랬다).
-const roleOf = (p) => {
-  const src = fs.readFileSync(path.join(__dirname, '..', p), 'utf8')
-  const m = src.match(/const CAT_ROLE[^=]*=\s*\{([\s\S]*?)\n\}/)
-  if (!m) throw new Error(`CAT_ROLE 을 못 찾았다: ${p}`)
-  const out = {}
-  for (const g of m[1].matchAll(/^\s*([A-Z_]+):\s*\[([^\]]*)\]/gm))
-    out[g[1]] = g[2].split(',').map(x => x.trim().replace(/^'|'$/g, '')).filter(Boolean)
-  if (!Object.keys(out).length) throw new Error(`CAT_ROLE 항목을 못 읽었다: ${p}`)
-  return out
-}
-const A = roleOf('src/routes/financialReports.ts')
-const B = roleOf('scripts/finance-diagnose.cjs')
-const same = JSON.stringify(A) === JSON.stringify(B)
+// 역할 어휘는 src/utils/expenseRole.ts 가 정본 — 여기서 목록을 다시 적지 않는다.
+const roleSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'utils', 'expenseRole.ts'), 'utf8')
+const roleMatch = roleSrc.match(/export const EXPENSE_ROLES\s*=\s*\[([^\]]*)\]/)
+if (!roleMatch) throw new Error('EXPENSE_ROLES 를 못 찾았다 — src/utils/expenseRole.ts')
+const ROLES = roleMatch[1].split(',').map(x => x.trim().replace(/^'|'$/g, '')).filter(Boolean)
+if (!ROLES.length) throw new Error('EXPENSE_ROLES 가 비었다')
+const roleSql = ROLES.map(r => `'${r}'`).join(',')
+
+// ⑦ 의심 이름 — **판단이 아니라 의심**이다. 제품 코드에 두면 다시 「이름이 역할을 정하는」 구조가 된다.
+const FLOW_LIKE = ['%상환%', '%차입%', '%대출%', '%가수금%', '%가지급금%', '%보증금%', '%취득%',
+                   '%부가세%', '%리스료%', '%공제부금%', '%예수금%', '%카드대금%']
+const flowSql = FLOW_LIKE.map(p => `ec.name LIKE '${p}'`).join(' OR ')
+
 let bad = 0
 console.log(`\n${C.b}■ 비용 계정 정합성 감사${C.x} ${C.d}(${REMOTE ? 'prod' : '로컬'})${C.x}\n`)
-if (!same) {
-  bad++
-  console.log(`  ${C.r}✗ [P0] CAT_ROLE 사본 쌍 불일치${C.x} — financialReports.ts ↔ scripts/finance-diagnose.cjs`)
-  console.log(`      ${C.d}한쪽만 고치면 화면(손익)과 진단 도구가 다른 답을 낸다.${C.x}`)
-} else {
-  console.log(`  ${C.g}✓${C.x} CAT_ROLE 사본 쌍 일치`)
-}
-
-// NOT_EXPENSE 이름 목록을 코드에서 그대로 읽는다(하드코딩 사본을 또 만들지 않는다).
-//   가수금·차입금·보증금처럼 **입금이 정상인** 계정을 아래 ② 검사에서 빼는 데 쓴다.
-const NOT_EXPENSE = A.NOT_EXPENSE || []
-const notExpSql = NOT_EXPENSE.map(n => `'${n.replace(/'/g, "''")}'`).join(',') || `''`
 
 const CHECKS = [
   ['P0', '비활성 계정에 남은 행 (통장)',
@@ -93,7 +81,14 @@ const CHECKS = [
   ['P0', '입금에 비용 역할 계정이 붙음',
    `SELECT bt.id, bt.transaction_date d, bt.counterpart_name cn, bt.amount amt, ec.name nm
     FROM bank_transactions bt JOIN expense_categories ec ON ec.id = bt.matched_category_id
-    WHERE bt.transaction_type = 'DEPOSIT' AND ec.name NOT IN (${notExpSql})`],
+    WHERE bt.transaction_type = 'DEPOSIT' AND COALESCE(ec.role,'') != 'NOT_EXPENSE'`],
+  ['P0', '역할 어휘 밖의 값',
+   `SELECT ec.id, ec.name nm, ec.role d, ec.entity_id cn, 0 amt
+    FROM expense_categories ec WHERE COALESCE(ec.role,'') NOT IN (${roleSql})`],
+  ['P0', '같은 이름인데 법인마다 역할이 다름',
+   `SELECT MIN(ec.id) id, ec.name nm, GROUP_CONCAT(DISTINCT ec.role) d,
+           COUNT(DISTINCT ec.role) cn, 0 amt
+    FROM expense_categories ec GROUP BY ec.name HAVING COUNT(DISTINCT ec.role) > 1`],
   ['P1', '「상환」 계정에 입금',
    `SELECT bt.id, bt.transaction_date d, bt.counterpart_name cn, bt.amount amt, ec.name nm
     FROM bank_transactions bt JOIN expense_categories ec ON ec.id = bt.matched_category_id
@@ -102,6 +97,10 @@ const CHECKS = [
    `SELECT bt.id, bt.transaction_date d, bt.counterpart_name cn, bt.amount amt, ec.name nm
     FROM bank_transactions bt JOIN expense_categories ec ON ec.id = bt.matched_category_id
     WHERE bt.transaction_type = 'DEPOSIT' AND ec.name LIKE '%취득%'`],
+  ['P1', '이름은 자금이동인데 역할이 비용 (의심)',
+   `SELECT ec.id, ec.name nm, ec.role d, ec.entity_id cn, 0 amt
+    FROM expense_categories ec
+    WHERE ec.role != 'NOT_EXPENSE' AND (${flowSql})`],
 ]
 
 for (const [sev, label, sql] of CHECKS) {
@@ -109,15 +108,16 @@ for (const [sev, label, sql] of CHECKS) {
   if (!rows.length) { console.log(`  ${C.g}✓${C.x} ${label}`); continue }
   bad += rows.length
   const amt = rows.reduce((a, r) => a + Math.abs(Number(r.amt) || 0), 0)
-  console.log(`  ${C.r}✗ [${sev}] ${label} — ${rows.length}건 ${won(amt)}${C.x}`)
+  console.log(`  ${C.r}✗ [${sev}] ${label} — ${rows.length}건${amt ? ' ' + won(amt) : ''}${C.x}`)
   for (const r of rows.slice(0, 8))
-    console.log(`      ${C.d}#${r.id} ${r.d} ${String(r.cn || '').slice(0, 22).padEnd(23)} ${won(r.amt).padStart(12)} → ${r.nm}${C.x}`)
+    console.log(`      ${C.d}#${r.id} ${r.d} ${String(r.cn ?? '').slice(0, 22).padEnd(23)} ${(amt ? won(r.amt) : '').padStart(12)} → ${r.nm}${C.x}`)
   if (rows.length > 8) console.log(`      ${C.d}… 외 ${rows.length - 8}건${C.x}`)
 }
 
 if (bad) {
   console.log(`\n${C.r}✗ 계정 정합성 결함 ${bad}건${C.x}`)
-  console.log(`${C.d}  이름이 곧 역할이다 — 계정을 새로 만들거나 이름을 바꾸면 CAT_ROLE 사본 쌍도 같은 커밋에서 고친다.${C.x}\n`)
+  console.log(`${C.d}  역할 정본 = expense_categories.role (0584) · 어휘 = src/utils/expenseRole.ts.${C.x}`)
+  console.log(`${C.d}  계정을 새로 만들면 역할을 함께 고른다 — 안 고르면 SGA(비용)로 잡힌다.${C.x}\n`)
   process.exit(1)
 }
 console.log(`\n${C.g}✓ 계정 정합성 이상 없음${C.x}\n`)

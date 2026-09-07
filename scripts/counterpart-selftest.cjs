@@ -25,7 +25,8 @@ const { mod, cleanup: nameCleanup } = compileTs(SRC)
 const { normalizeCounterpart, stripBankPrefix, isNonCounterpartName } = mod
 // 정책 모듈은 constants/intercompany 를 import 하므로 bundle 이 필요하다.
 const { mod: policy, cleanup: policyCleanup } = compileTs(POLICY_SRC, { bundle: true })
-const { resolveInternalEntityMatch, buildSettlementClientMap, resolveHistoryMatch, allowAmountOnlyMatch } = policy
+const { resolveInternalEntityMatch, buildSettlementClientMap, resolveHistoryMatch, allowAmountOnlyMatch,
+        shouldPromoteSuggestion, isWeakSuggestion, SUGGESTION_WEAK_BELOW } = policy
 const cleanup = () => { nameCleanup?.(); policyCleanup?.() }
 
 let pass = 0
@@ -146,6 +147,37 @@ check('관계사는 이 정책 대상 아님', resolveInternalEntityMatch(1655, 
   check('순수 숫자 적요는 금액 단독 허용', allowAmountOnlyMatch('300326494'), true)
   check('빈 적요도 허용', allowAmountOnlyMatch(''), true)
   check('null 도 허용', allowAmountOnlyMatch(null), true)
+}
+
+// ---------------------------------------------------------------------------
+// 제안 승격·약한 제안 — 스윕이 UNMATCHED 만 보던 사각지대
+//   본 루프 밖이라 회귀가 나도 200 이고 화면도 멀쩡하다. 여기가 유일한 감시다.
+// ---------------------------------------------------------------------------
+{
+  const sug = (conf, cid) => ({ status: 'SUGGESTED', confidence: conf, clientId: cid })
+  // 승격만 — 더 센 근거일 때만 갈아탄다
+  check('약한 제안 → 이력 0.95 승격', shouldPromoteSuggestion(sug(0.65, 111), { confidence: 0.95, clientId: 222 }), true)
+  check('0.7 제안 → 0.75 승격', shouldPromoteSuggestion(sug(0.7, 111), { confidence: 0.75, clientId: 222 }), true)
+  check('신뢰도 없는 제안도 승격', shouldPromoteSuggestion(sug(null, null), { confidence: 0.75, clientId: 222 }), true)
+  // 강등·횡보 금지 — 돌릴 때마다 결과가 바뀌면 멱등이 아니다
+  check('더 센 제안은 강등 안 함', shouldPromoteSuggestion(sug(0.9, 111), { confidence: 0.75, clientId: 222 }), false)
+  check('같은 신뢰도면 거래처를 안 바꾼다', shouldPromoteSuggestion(sug(0.95, 111), { confidence: 0.95, clientId: 222 }), false)
+  check('같은 신뢰도·같은 거래처는 무동작', shouldPromoteSuggestion(sug(0.95, 222), { confidence: 0.95, clientId: 222 }), false)
+  // 사람의 판단은 건드리지 않는다
+  check('CONFIRMED 는 대상 아님', shouldPromoteSuggestion({ status: 'CONFIRMED', confidence: 0.6, clientId: 111 }, { confidence: 0.95, clientId: 222 }), false)
+  check('APPLIED 는 대상 아님', shouldPromoteSuggestion({ status: 'APPLIED', confidence: 0.6, clientId: 111 }, { confidence: 0.95, clientId: 222 }), false)
+  check('IGNORED 는 대상 아님', shouldPromoteSuggestion({ status: 'IGNORED', confidence: null, clientId: null }, { confidence: 0.95, clientId: 222 }), false)
+  check('UNMATCHED 는 본 루프 몫', shouldPromoteSuggestion({ status: 'UNMATCHED', confidence: null, clientId: null }, { confidence: 0.95, clientId: 222 }), false)
+  check('거래처 없는 승격은 무효', shouldPromoteSuggestion(sug(0.6, null), { confidence: 0.95, clientId: null }), false)
+
+  // 약한 제안 경계 — 실제 prod 근거들이 어느 쪽에 떨어지는지 고정한다
+  check('경계값 0.7 은 약하지 않다', isWeakSuggestion(SUGGESTION_WEAK_BELOW), false)
+  check('대표자명 일치 0.65 = 약함', isWeakSuggestion(0.65), true)
+  check('적요에 거래처명 포함 0.6 = 약함', isWeakSuggestion(0.6), true)
+  check('상호 표기 일치 0.7 = 강함', isWeakSuggestion(0.7), false)
+  check('학습된 규칙 0.8 = 강함', isWeakSuggestion(0.8), false)
+  check('확정 이력 0.75 = 강함', isWeakSuggestion(0.75), false)
+  check('신뢰도 null 은 약함으로 본다', isWeakSuggestion(null), true)
 }
 
 cleanup()

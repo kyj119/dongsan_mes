@@ -6,6 +6,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { LATEST_BALANCE_SUBQUERY, NOT_PERSONAL_ACCOUNT } from '../utils/bankBalance'
 import { excludePurchaseNonCounterpartiesSql, INTERNAL_ENTITY_CLIENT_IDS } from '../constants/intercompany'
+import { normalizeRole } from '../utils/expenseRole'
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
 import { kstYear } from '../utils/kstDate'
 import { deriveArSplit } from './ledger/ar-helpers'
@@ -30,22 +31,13 @@ financialReportsRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER')
 // ★법인 스코프: entityId=0(전체) → 그룹 연결(내부거래 양변 제거) · 개별 법인 → 별도 기준(내부 포함 표시).
 // ============================================================
 
-// ⚠️ CAT_ROLE 은 scripts/finance-diagnose.cjs 와 사본 쌍 — 한쪽을 바꾸면 반드시 같이 바꾼다.
-//   NOT_EXPENSE = 돈은 나가지만 비용이 아닌 현금흐름(부채 상환·예수금·자산 취득·리스료=차입 원금).
-const CAT_ROLE: Record<string, string[]> = {
-  COGS: ['원재료비', '외주가공비'],
-  NONOP: ['이자비용', '기부금'],
-  TAX: ['법인세'],
-  NOT_EXPENSE: ['차입금상환', '차입금', '대출상환', '대출금', '부가세', '가수금', '가지급금', '보증금', '유형자산취득', '리스료', '공제부금'],
-}
-function roleOf(nm: string): string {
-  for (const [role, names] of Object.entries(CAT_ROLE)) if (names.includes(nm)) return role
-  return 'SGA'
-}
+// 계정 역할은 `expense_categories.role`(0584) — 이름 문자열로 판정하던 CAT_ROLE 사본 쌍을 폐기했다.
+//   왜: 2026-09-07 하루에 계정 이름을 세 번 바꿨고(0578·0579·0583) 매번 두 파일의 배열을 손으로
+//   따라 고쳐야 했다. 한 번만 빠뜨렸으면 이름으로만 손익 밖에 있던 12.3억이 판관비가 됐다.
 const ymdCompact = (s: string) => s.replace(/-/g, '')   // bank/card transaction_date = YYYYMMDD 문자열
 
 interface KvRow { v: number; cnt?: number }
-interface CatRow { nm: string; cnt: number; amt: number; month?: string }
+interface CatRow { nm: string; role: string; cnt: number; amt: number; month?: string }
 interface CovRow { badv: number }
 
 /** 법인 1개의 손익 원자료 (기간 range). monthly=true 면 월 축 포함 rows 반환용 쿼리로 바뀐다. */
@@ -80,22 +72,22 @@ async function fetchEntityPnl(db: D1Database, E: number, from: string, to: strin
     db.prepare(`SELECT CAST(COALESCE(SUM(depreciation_amount),0) AS INT) v
       FROM depreciation_records WHERE entity_id=?
         AND substr(period,1,7) BETWEEN substr(?,1,7) AND substr(?,1,7)`).bind(E, from, to).first<KvRow>(),
-    db.prepare(`SELECT ec.name nm, COUNT(*) cnt, CAST(SUM(bt.amount) AS INT) amt
+    db.prepare(`SELECT ec.name nm, ec.role role, COUNT(*) cnt, CAST(SUM(bt.amount) AS INT) amt
       FROM bank_transactions bt
       JOIN bank_accounts ba ON ba.id=bt.bank_account_id
       JOIN expense_categories ec ON ec.id=bt.matched_category_id
       WHERE ba.entity_id=? AND COALESCE(ba.is_personal,0)=0 AND bt.transaction_type='WITHDRAWAL'
         AND bt.transaction_date BETWEEN ? AND ?
-      GROUP BY ec.name`).bind(E, bFrom, bTo).all<CatRow>(),
+      GROUP BY ec.name, ec.role`).bind(E, bFrom, bTo).all<CatRow>(),
     // 카드 판관비 = 순지출 정본(utils/cardSpend): 취소 차감 + 상계쌍·가승인 제외.
     //   is_offset 만 걸면 상계 실패한 취소(±30일 밖·가맹점명 상이·부분취소)가 +로 합산돼 판관비가 과대.
-    db.prepare(`SELECT ec.name nm, COUNT(*) cnt, CAST(SUM(${cardNetAmountSql('t')}) AS INT) amt
+    db.prepare(`SELECT ec.name nm, ec.role role, COUNT(*) cnt, CAST(SUM(${cardNetAmountSql('t')}) AS INT) amt
       FROM card_transactions t
       JOIN corporate_cards cc ON cc.id=t.card_id
       JOIN expense_categories ec ON ec.id=t.category_id
       WHERE cc.entity_id=?${cardSpendFilterSql('t')}
         AND t.transaction_date BETWEEN ? AND ?
-      GROUP BY ec.name`).bind(E, bFrom, bTo).all<CatRow>(),
+      GROUP BY ec.name, ec.role`).bind(E, bFrom, bTo).all<CatRow>(),
     // 커버리지 — 미분류(계정도 거래처도 없음)는 판관비에서 빠져 있다 = 판관비 과소 경고용
     db.prepare(`SELECT CAST(COALESCE(SUM(CASE WHEN bt.matched_category_id IS NULL AND bt.matched_client_id IS NULL
                      AND bt.transfer_pair_id IS NULL AND bt.match_status <> 'IGNORED' THEN bt.amount ELSE 0 END),0) AS INT) badv
@@ -112,7 +104,7 @@ async function fetchEntityPnl(db: D1Database, E: number, from: string, to: strin
   const catMap = new Map<string, { name: string; role: string; amount: number; count: number }>()
   for (const r of [...(expBank?.results || []), ...(expCard?.results || [])]) {
     if (!r || !r.nm) continue
-    const e = catMap.get(r.nm) || { name: r.nm, role: roleOf(r.nm), amount: 0, count: 0 }
+    const e = catMap.get(r.nm) || { name: r.nm, role: normalizeRole(r.role), amount: 0, count: 0 }
     e.amount += Number(r.amt) || 0
     e.count += Number(r.cnt) || 0
     catMap.set(r.nm, e)
@@ -206,7 +198,7 @@ financialReportsRouter.get('/pnl', async (c) => {
 // GET /pnl/monthly?year=
 // ============================================================
 interface MonthValRow { m: string; v: number }
-interface MonthCatRow { m: string; nm: string; amt: number }
+interface MonthCatRow { m: string; nm: string; role: string; amt: number }
 
 async function fetchEntityMonthly(db: D1Database, E: number, year: number) {
   const internal = INTERNAL_ENTITY_CLIENT_IDS.join(',')
@@ -235,18 +227,18 @@ async function fetchEntityMonthly(db: D1Database, E: number, year: number) {
       : Promise.resolve({ results: [] as MonthValRow[] } as { results: MonthValRow[] }),
     db.prepare(`SELECT substr(period,6,2) m, CAST(COALESCE(SUM(depreciation_amount),0) AS INT) v
       FROM depreciation_records WHERE entity_id=? AND substr(period,1,4) = ? GROUP BY m`).bind(E, y).all<MonthValRow>(),
-    db.prepare(`SELECT substr(bt.transaction_date,5,2) m, ec.name nm, CAST(SUM(bt.amount) AS INT) amt
+    db.prepare(`SELECT substr(bt.transaction_date,5,2) m, ec.name nm, ec.role role, CAST(SUM(bt.amount) AS INT) amt
       FROM bank_transactions bt
       JOIN bank_accounts ba ON ba.id=bt.bank_account_id
       JOIN expense_categories ec ON ec.id=bt.matched_category_id
       WHERE ba.entity_id=? AND COALESCE(ba.is_personal,0)=0 AND bt.transaction_type='WITHDRAWAL'
-        AND substr(bt.transaction_date,1,4) = ? GROUP BY m, ec.name`).bind(E, y).all<MonthCatRow>(),
-    db.prepare(`SELECT substr(t.transaction_date,5,2) m, ec.name nm, CAST(SUM(${cardNetAmountSql('t')}) AS INT) amt
+        AND substr(bt.transaction_date,1,4) = ? GROUP BY m, ec.name, ec.role`).bind(E, y).all<MonthCatRow>(),
+    db.prepare(`SELECT substr(t.transaction_date,5,2) m, ec.name nm, ec.role role, CAST(SUM(${cardNetAmountSql('t')}) AS INT) amt
       FROM card_transactions t
       JOIN corporate_cards cc ON cc.id=t.card_id
       JOIN expense_categories ec ON ec.id=t.category_id
       WHERE cc.entity_id=?${cardSpendFilterSql('t')}
-        AND substr(t.transaction_date,1,4) = ? GROUP BY m, ec.name`).bind(E, y).all<MonthCatRow>(),
+        AND substr(t.transaction_date,1,4) = ? GROUP BY m, ec.name, ec.role`).bind(E, y).all<MonthCatRow>(),
   ])
   return { sales, salesInt, purch, purchInt, equip, dep, expBank, expCard }
 }
@@ -276,7 +268,7 @@ financialReportsRouter.get('/pnl/monthly', async (c) => {
       for (const r of pEnt.equip.results || []) at(r.m).equip += Number(r.v) || 0
       for (const r of pEnt.dep.results || []) at(r.m).dep += Number(r.v) || 0
       for (const r of [...(pEnt.expBank.results || []), ...(pEnt.expCard.results || [])]) {
-        const role = roleOf(r.nm)
+        const role = normalizeRole(r.role)
         if (role === 'COGS') at(r.m).cogs_direct += Number(r.amt) || 0
         else if (role === 'SGA') at(r.m).sga += Number(r.amt) || 0
         // NONOP·TAX·NOT_EXPENSE 는 월별 영업이익 축에서 제외 (연간 상세는 /pnl)
@@ -457,7 +449,7 @@ financialReportsRouter.get('/export/csv', async (c) => {
       for (const r of pEnt.equip.results || []) at(r.m).equip += Number(r.v) || 0
       for (const r of pEnt.dep.results || []) at(r.m).dep += Number(r.v) || 0
       for (const r of [...(pEnt.expBank.results || []), ...(pEnt.expCard.results || [])]) {
-        const role = roleOf(r.nm)
+        const role = normalizeRole(r.role)
         if (role === 'COGS') at(r.m).cogs_direct += Number(r.amt) || 0
         else if (role === 'SGA') at(r.m).sga += Number(r.amt) || 0
       }

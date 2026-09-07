@@ -239,6 +239,12 @@ export const bankPageContent = `
                 <option value="DEPOSIT">입금</option>
                 <option value="WITHDRAWAL">출금</option>
               </select>
+              <!-- 미처리는 금액순으로 처리한다 — 상위 100건이 미처리 금액의 61%(2026-09-07 실측) -->
+              <select id="filterTxSort" class="form-select text-sm" style="width:104px;" onchange="loadTransactions()" title="정렬 기준">
+                <option value="date">날짜 최신순</option>
+                <option value="amount">금액 큰순</option>
+                <option value="amount_asc">금액 작은순</option>
+              </select>
               <div class="border-l border-gray-200 h-5 mx-1"></div>
               <!-- 인라인 KPI 뱃지 -->
               <div class="flex items-center gap-2 text-xs">

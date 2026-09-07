@@ -8,6 +8,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { requireEditOrRole } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
+import { normalizeRole } from '../utils/expenseRole'
 import { getEntityCorpNum, getEntityBarobillSenderId } from '../utils/entitySettings'
 import { validateUpload } from '../utils/uploadValidation'
 import { generateCsv, csvResponse, CSV_EXPORT_CAP, CSV_TRUNCATION_NOTE } from '../utils/csv'
@@ -343,12 +344,13 @@ cardExpRouter.get('/categories', requireEditOrRole('/card-expenses', 'MANAGER'),
 cardExpRouter.post('/categories', requireRole('ADMIN'), async (c) => {
   try {
     const body = await c.req.json()
-    const { name, icon, color, sort_order } = body
+    const { name, icon, color, sort_order, role } = body
     if (!name) return c.json({ success: false, error: 'name 필수' }, 400)
     const entityId = getEntityId(c) || 1
+    // 역할 미지정은 SGA(비용) — 누락(안 보임)보다 과대(보임)로 떨어뜨린다. 판정 = utils/expenseRole.
     const result = await c.env.DB.prepare(
-      'INSERT INTO expense_categories (name, icon, color, sort_order, entity_id) VALUES (?, ?, ?, ?, ?)'
-    ).bind(name, icon || 'fa-tag', color || '#6b7280', sort_order || 99, entityId).run()
+      'INSERT INTO expense_categories (name, icon, color, sort_order, entity_id, role) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind(name, icon || 'fa-tag', color || '#6b7280', sort_order || 99, entityId, normalizeRole(role)).run()
     return c.json({ success: true, data: { id: result.meta.last_row_id } })
   } catch (error) {
     console.error('cardExpenses POST /categories error:', error)
@@ -1116,11 +1118,12 @@ cardExpRouter.post('/transactions/create-requests', requireRole('ADMIN'), async 
 cardExpRouter.put('/categories/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
-    const { name, icon, color } = await c.req.json()
+    const { name, icon, color, role } = await c.req.json()
     const entityId = getEntityId(c)
+    // role 은 보낸 경우에만 바꾼다(COALESCE) — 구 화면이 role 없이 저장해도 역할이 SGA 로 리셋되지 않는다.
     await c.env.DB.prepare(
-      `UPDATE expense_categories SET name = COALESCE(?, name), icon = COALESCE(?, icon), color = COALESCE(?, color) WHERE id = ?${entityId > 0 ? ' AND entity_id = ?' : ''}`
-    ).bind(name || null, icon || null, color || null, id, ...(entityId > 0 ? [entityId] : [])).run()
+      `UPDATE expense_categories SET name = COALESCE(?, name), icon = COALESCE(?, icon), color = COALESCE(?, color), role = COALESCE(?, role) WHERE id = ?${entityId > 0 ? ' AND entity_id = ?' : ''}`
+    ).bind(name || null, icon || null, color || null, role ? normalizeRole(role) : null, id, ...(entityId > 0 ? [entityId] : [])).run()
     return c.json({ success: true, message: '분류 수정 완료' })
   } catch (error) {
     console.error('cardExpenses PUT /categories/:id error:', error)

@@ -11,7 +11,7 @@ import { validatePayment, preparePaymentStatements } from '../lib/payments'
 import { normalizeCounterpart, stripBankPrefix, isNonCounterpartName } from '../utils/counterpartName'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
-import { resolveInternalEntityMatch, buildSettlementClientMap, resolveHistoryMatch, allowAmountOnlyMatch } from '../utils/bankMatchPolicy'
+import { resolveInternalEntityMatch, buildSettlementClientMap, resolveHistoryMatch, allowAmountOnlyMatch, shouldPromoteSuggestion, SUGGESTION_WEAK_BELOW } from '../utils/bankMatchPolicy'
 import { getEntityCorpNum, getEntityBarobillSenderId } from '../utils/entitySettings'
 import { loadProvision, agingCategoryToBucket, effectiveLossRate } from '../utils/provisionMatrix'
 import { buildOldestUnpaidJoin, agingDaysFromOldest, getAgingCategory } from './ledger/ar-helpers'
@@ -556,6 +556,16 @@ bankRouter.get('/transactions', requireRole('ADMIN'), async (c) => {
     const offsetRaw = parseInt(c.req.query('offset') || '', 10)
     const offset = Number.isFinite(offsetRaw) && offsetRaw > 0 ? offsetRaw : 0
 
+    // 정렬 — 미처리 잔량은 **금액순으로 처리**해야 한다. prod 실측 2026-09-07: 미처리 1,304건 중
+    //   상위 100건이 금액의 61%, 200건이 79%. 적요 묶음은 적요당 1.6건뿐이라 레버리지가 없었다.
+    //   ★모든 항목에 고유키 tie-break(id) — LIMIT/OFFSET 페이징에서 페이지 간 중복·누락 방지.
+    const sortOptions: Record<string, string> = {
+      date:   'bt.transaction_date DESC, bt.transaction_time DESC, bt.id DESC',
+      amount: 'bt.amount DESC, bt.id DESC',
+      amount_asc: 'bt.amount ASC, bt.id ASC',
+    }
+    const orderBy = sortOptions[c.req.query('sort') || 'date'] ?? sortOptions.date
+
     const ef = entityFilter(c, 'bt')
     let where = `WHERE 1=1${ef.clause}`
     const params: (string | number)[] = [...ef.params]
@@ -593,7 +603,10 @@ bankRouter.get('/transactions', requireRole('ADMIN'), async (c) => {
         bt.counterpart_name, bt.description,
         bt.match_status, bt.matched_client_id, bt.matched_category_id, bt.matched_fixed_expense_id,
         bt.matched_purchase_payment_id, bt.matched_link_mode,
-        bt.match_reason, bt.transfer_pair_id,
+        bt.match_reason, bt.transfer_pair_id, bt.match_confidence,
+        -- 약한 제안 표식: 화면·일괄적용이 확정 버튼을 내주면 안 되는 근거인지(판정 기준 = 서버 한 곳).
+        CASE WHEN bt.match_status = 'SUGGESTED' AND COALESCE(bt.match_confidence, 0) < ${SUGGESTION_WEAK_BELOW}
+             THEN 1 ELSE 0 END AS match_weak,
         ba.bank_name, ba.account_number, ba.account_holder, ba.account_alias,
         c.client_name as matched_client_name, c.representative as matched_client_representative,
         ec.name as matched_category_name, ec.icon as matched_category_icon, ec.color as matched_category_color,
@@ -604,7 +617,7 @@ bankRouter.get('/transactions', requireRole('ADMIN'), async (c) => {
       LEFT JOIN expense_categories ec ON bt.matched_category_id = ec.id
       LEFT JOIN fixed_expenses fe ON bt.matched_fixed_expense_id = fe.id
       ${where}
-      ORDER BY bt.transaction_date DESC, bt.transaction_time DESC, bt.id DESC
+      ORDER BY ${orderBy}
       LIMIT ${limit} OFFSET ${offset}
     `
 
@@ -902,7 +915,7 @@ bankRouter.get('/expense-categories', requireRole('ADMIN', 'MANAGER'), async (c)
   try {
     const ef = entityFilter(c)
     const { results } = await c.env.DB.prepare(`
-      SELECT id, name, icon, color FROM expense_categories
+      SELECT id, name, icon, color, role FROM expense_categories
       WHERE is_active = 1${ef.clause}
       ORDER BY sort_order, id
     `).bind(...ef.params).all()
@@ -1121,6 +1134,72 @@ async function applyExpenseCategory(
 }
 
 // ---------------------------------------------------------------------------
+// 기존 SUGGESTED 재평가 — 확정 이력으로 **승격만** 한다
+//   스윕 본 루프는 `match_status='UNMATCHED'` 만 훑는다. 그래서 판정 규칙을 새로 넣어도
+//   **이미 제안이 붙은 행에는 영원히 닿지 않는다**. prod 실측 2026-09-07: 확정 이력이 단일
+//   거래처를 가리키는데 미처리로 남은 485건 중 15건 6,709,200 이 **이력과 다른 거래처**를
+//   제안하고 있었고, 그중 3건이 오탐 17.6% 짜리 `대표자명 일치` 였다.
+//   판정은 utils/bankMatchPolicy(순수 모듈) — 승격 조건이 코드가 아니라 하네스에 닿는다.
+// ---------------------------------------------------------------------------
+const PROMOTE_CAP = 300   // 1회당 상한. 멱등이라(승격 후엔 신뢰도가 이미 높아 건너뛴다) 다음 실행이 이어받는다.
+
+async function promoteSuggestionsFromHistory(
+  c: Context<HonoEnv>,
+  opts?: { lookbackDays?: number }
+): Promise<number> {
+  const efHist = entityFilter(c, 'bank_transactions')
+  const { results: histRows } = await c.env.DB.prepare(`
+    SELECT counterpart_name, MIN(matched_client_id) AS client_id,
+           COUNT(DISTINCT matched_client_id) AS n_client, COUNT(*) AS n
+    FROM bank_transactions
+    WHERE match_status IN ('CONFIRMED','APPLIED') AND matched_client_id IS NOT NULL
+      AND COALESCE(counterpart_name,'') != ''${efHist.clause}
+    GROUP BY counterpart_name
+    HAVING n_client = 1
+  `).bind(...efHist.params).all<{ counterpart_name: string; client_id: number; n_client: number; n: number }>()
+  if (histRows.length === 0) return 0
+  const hist = new Map(histRows.map(r => [String(r.counterpart_name).trim(), r]))
+
+  const lookbackDays = opts?.lookbackDays ?? MATCH_LOOKBACK_DAYS
+  const dateClause = lookbackDays > 0 ? ' AND transaction_date >= ?' : ''
+  const dateParams = lookbackDays > 0 ? [lookbackYmd(lookbackDays)] : []
+  const ef = entityFilter(c, 'bank_transactions')
+  // ★비용분류·고정비 제안이 붙은 행은 건드리지 않는다 — 다른 축의 판단을 이 패스가 지울 이유가 없다.
+  //   정렬이 금액순인 건 상한(PROMOTE_CAP)에 걸릴 때 **큰 돈부터** 처리되게 하려는 것.
+  const { results: rows } = await c.env.DB.prepare(`
+    SELECT id, counterpart_name, match_status, match_confidence, matched_client_id
+    FROM bank_transactions
+    WHERE match_status = 'SUGGESTED'
+      AND matched_category_id IS NULL AND matched_fixed_expense_id IS NULL${ef.clause}${dateClause}
+    ORDER BY amount DESC, id ASC
+    LIMIT ${PROMOTE_CAP}
+  `).bind(...ef.params, ...dateParams).all<{
+    id: number; counterpart_name: string | null; match_status: string
+    match_confidence: number | null; matched_client_id: number | null
+  }>()
+
+  const stmts: D1PreparedStatement[] = []
+  for (const r of rows) {
+    const h = hist.get(String(r.counterpart_name ?? '').trim())
+    if (!h) continue
+    const d = resolveHistoryMatch(h.client_id, Number(h.n_client), Number(h.n))
+    if (!d) continue
+    const ok = shouldPromoteSuggestion(
+      { status: r.match_status, confidence: r.match_confidence, clientId: r.matched_client_id },
+      { confidence: d.confidence, clientId: d.clientId }
+    )
+    if (!ok) continue
+    stmts.push(c.env.DB.prepare(`
+      UPDATE bank_transactions
+      SET matched_client_id = ?, match_confidence = ?, match_reason = ?
+      WHERE id = ? AND match_status = 'SUGGESTED'
+    `).bind(d.clientId, d.confidence, d.reason, r.id))
+  }
+  if (stmts.length > 0) await c.env.DB.batch(stmts)
+  return stmts.length
+}
+
+// ---------------------------------------------------------------------------
 // 자동매칭 엔진 (수동 [자동매칭] 버튼·바로빌 sync·무인 cron 공용 — 단일 소스)
 //   규칙(EXACT→APPLIED / CONTAINS→SUGGESTED) → 출금 고정비 제안(SUGGESTED) → 거래처명/키워드/금액.
 //   Q3=제안 후 사람 확정: 부분일치·고정비는 SUGGESTED(자동 APPLIED 아님).
@@ -1128,7 +1207,7 @@ async function applyExpenseCategory(
 async function runAutoMatchEngine(
   c: Context<HonoEnv>,
   opts?: { lookbackDays?: number; scanCap?: number }
-): Promise<{ matched: number; total: number }> {
+): Promise<{ matched: number; total: number; promoted: number }> {
     const ef = entityFilter(c, 'bank_transactions')
     // H5: 스캔 범위 제한(무인 cron이 실패건을 매일 무한 재스캔하는 것 방지). 기본 90일·500건 상한.
     const lookbackDays = opts?.lookbackDays ?? MATCH_LOOKBACK_DAYS
@@ -1151,7 +1230,8 @@ async function runAutoMatchEngine(
       entity_id: number | null
     }>()
 
-    if (unmatchedTxs.length === 0) return { matched: 0, total: 0 }
+    // 미매칭이 없어도 승격 패스는 돌린다 — 대상이 SUGGESTED 라 본 루프와 모집단이 다르다.
+    if (unmatchedTxs.length === 0) return { matched: 0, total: 0, promoted: await promoteSuggestionsFromHistory(c, opts) }
 
     // 2. 모든 활성 거래처 가져오기 (대표자명 포함 — 대표자 개인명 입금 대응)
     const { results: clients } = await c.env.DB.prepare(`
@@ -1564,7 +1644,8 @@ async function runAutoMatchEngine(
     }
 
     if (matchUpdateStmts.length > 0) await c.env.DB.batch(matchUpdateStmts)
-    return { matched: matchedCount, total: unmatchedTxs.length }
+    const promoted = await promoteSuggestionsFromHistory(c, opts)
+    return { matched: matchedCount, total: unmatchedTxs.length, promoted }
 }
 
 // POST /api/bank/transactions/auto-match — 미매칭 거래 자동매칭 (입금+출금, 규칙 학습 포함)
@@ -1578,8 +1659,9 @@ bankRouter.post('/transactions/auto-match', requireRole('ADMIN'), async (c) => {
     const r = await runAutoMatchEngine(c, { lookbackDays, scanCap })
     return c.json({
       success: true,
-      data: { matched: r.matched, total: r.total },
-      message: r.total === 0 ? '매칭할 거래가 없습니다' : `${r.total}건 중 ${r.matched}건 매칭 제안`,
+      data: { matched: r.matched, total: r.total, promoted: r.promoted },
+      message: (r.total === 0 ? '매칭할 거래가 없습니다' : `${r.total}건 중 ${r.matched}건 매칭 제안`)
+        + (r.promoted > 0 ? ` · 기존 제안 ${r.promoted}건 확정이력으로 승격` : ''),
     })
   } catch (error) {
     console.error('Auto-match error:', error)
@@ -2679,7 +2761,7 @@ bankRouter.get('/transactions/export', requireRole('ADMIN'), async (c) => {
       query += ' AND bt.match_status = ?'; params.push(singleStatus)
     }
     if (transaction_type) { query += ' AND bt.transaction_type = ?'; params.push(transaction_type) }
-    query += ' ORDER BY bt.transaction_date DESC, bt.transaction_time DESC'
+    query += ' ORDER BY bt.transaction_date DESC, bt.transaction_time DESC, bt.id DESC'
     query += ' LIMIT 5000'  // 확장성: CSV 무제한 스캔 방지(orders CSV 관례)
 
     const { results } = params.length > 0

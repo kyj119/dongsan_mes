@@ -469,6 +469,16 @@ async function deleteCard(id) {
   } catch (e) { showToast('삭제 실패', 'error'); }
 }
 
+// 역할 = 손익에서 이 계정이 어디로 가는지. 정본 = expense_categories.role(0584) · 어휘 = utils/expenseRole.
+//   ★비용 아님(NOT_EXPENSE)만 눈에 띄게 칠한다 — 잘못 걸리면 영업이익이 통째로 흔들리는 쪽이다.
+var CAT_ROLE_LABEL = { SGA: '판관비', COGS: '매출원가', NONOP: '영업외', TAX: '법인세', NOT_EXPENSE: '비용아님' };
+function roleBadge(role) {
+  var r = CAT_ROLE_LABEL[role] ? role : 'SGA';
+  var cls = r === 'NOT_EXPENSE' ? 'bg-amber-50 text-amber-700'
+    : r === 'SGA' ? 'bg-gray-100 text-gray-600' : 'bg-indigo-50 text-indigo-700';
+  return '<span class="text-[11px] px-1.5 py-0.5 rounded ' + cls + '">' + CAT_ROLE_LABEL[r] + '</span>';
+}
+
 // ===== Categories CRUD =====
 async function loadCategories() {
   try {
@@ -480,9 +490,10 @@ async function loadCategories() {
         '<td class="px-3 py-2 text-center"><i class="fas ' + (c.icon || 'fa-tag') + '" style="color:' + (c.color || '#6b7280') + '"></i></td>' +
         '<td class="px-3 py-2 font-medium" title="' + escapeHtml(c.name || '') + '">' + escapeHtml(c.name) + '</td>' +
         '<td class="px-3 py-2 text-center"><div style="width:20px;height:20px;border-radius:4px;background:' + (c.color || '#6b7280') + ';margin:0 auto"></div></td>' +
+        '<td class="px-3 py-2 text-center">' + roleBadge(c.role) + '</td>' +
         '<td class="px-3 py-2 text-center text-gray-500">' + (c.sort_order || 0) + '</td>' +
         '<td class="px-3 py-2 text-center">' +
-        '<button onclick="editCategory(' + c.id + ',\'' + escapeJsAttr(c.name) + '\',\'' + escapeJsAttr(c.icon || 'fa-tag') + '\',\'' + escapeJsAttr(c.color || '#6b7280') + '\')" class="text-gray-400 hover:text-blue-600 p-1"><i class="fas fa-pen text-xs"></i></button>' +
+        '<button onclick="editCategory(' + c.id + ',\'' + escapeJsAttr(c.name) + '\',\'' + escapeJsAttr(c.icon || 'fa-tag') + '\',\'' + escapeJsAttr(c.color || '#6b7280') + '\',\'' + escapeJsAttr(c.role || 'SGA') + '\')" class="text-gray-400 hover:text-blue-600 p-1"><i class="fas fa-pen text-xs"></i></button>' +
         '<button onclick="deleteCategory(' + c.id + ')" class="text-gray-400 hover:text-red-600 p-1"><i class="fas fa-trash text-xs"></i></button></td></tr>';
     }).join('');
   } catch (e) { console.error('Categories error:', e); }
@@ -493,15 +504,21 @@ function openAddCategoryModal() {
   document.getElementById('catName').value = '';
   document.getElementById('catIcon').value = 'fa-tag';
   document.getElementById('catColor').value = '#6b7280';
+  var roleEl = document.getElementById('catRole');
+  if (!roleEl) console.warn('[cardExpenses] #catRole not found');
+  else roleEl.value = 'SGA';
   document.getElementById('categoryModal').classList.remove('hidden');
 }
 function closeCategoryModal() { document.getElementById('categoryModal').classList.add('hidden'); }
 
-function editCategory(id, name, icon, color) {
+function editCategory(id, name, icon, color, role) {
   document.getElementById('editCategoryId').value = id;
   document.getElementById('catName').value = name;
   document.getElementById('catIcon').value = icon;
   document.getElementById('catColor').value = color;
+  var roleEl = document.getElementById('catRole');
+  if (!roleEl) console.warn('[cardExpenses] #catRole not found');
+  else roleEl.value = CAT_ROLE_LABEL[role] ? role : 'SGA';
   document.getElementById('categoryModal').classList.remove('hidden');
 }
 
@@ -510,7 +527,8 @@ async function saveCategory() {
   var data = {
     name: document.getElementById('catName').value.trim(),
     icon: document.getElementById('catIcon').value.trim() || 'fa-tag',
-    color: document.getElementById('catColor').value
+    color: document.getElementById('catColor').value,
+    role: (document.getElementById('catRole') || {}).value || 'SGA'
   };
   if (!data.name) { showToast('분류명을 입력하세요', 'warning'); return; }
   try {
