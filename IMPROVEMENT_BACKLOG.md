@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-09-07T03:45:40+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-09-07T09:52:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,25 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **16** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음 — 이번 사이클 신규 이슈 0건) |
+| 🆕 new | **17** (`list_issues(state:OPEN,label:auto-improve)` 실측, 16→17: #636 신규) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **542** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 1 프로덕션 헬스 (2026-09-07T09:52):**
+> - **방법**: 세션 시작 시 detached HEAD `1eb836a`(직전 Area6가 이 세션 끝에 만든 docs 커밋, origin과 동일) → `git checkout main` + `git fetch origin main` + `git pull`로 정합(변동 없음, 이미 최신). `npm ci`(0→81), `npx tsc --noEmit` clean, `npm run build` clean.
+> - **churn 확인(앵커 = 직전 Area1 방법 라인 HEAD `50828e8`)**: 웹앱 범위 diff **12커밋** — Area2~6이 이번 세션에서 이미 각자 렌즈로 정독한 은행매칭엔진·cashflow 확장·XSS 자체수정 웨이브(직전 Area6 로그와 동일 창, 새 커밋 없음). **신규 마이그레이션 0건**(migrations diff 공집합) — (a)/(b) 드리프트 분류 대상 없음. CI 헬스: `actions_list(deploy.yml)` 최근 10런(HEAD `1eb836a` 포함) 전부 `conclusion:success`, 최신 job(101579217784)의 typecheck·build·self-tests·entity audit·write canary·smoke 전 단계 success.
+> - **🔴 신규 발견 — `cashSchedule.overview` 응답시간 회귀, 예산·baseline 둘 다 초과, CI가 무음(#636)**: 이 세션은 egress 차단으로 prod에 직접 fetch 불가(`agent-proxy connect_rejected` 확인) → `npm run audit:query-cost`를 로컬에서 못 돌림. 대신 최근 배포 job 로그(GitHub Actions)의 smoke 응답시간 줄을 직접 대조하는 방식을 이번에 처음 씀: 최신 배포(`1eb836a`, job 101579217784)의 `cashSchedule.overview` 3589ms, 하루 전 배포(`b84e713`, job 101237225487) 3135ms — 둘 다 `query-cost-audit.cjs`의 `budgetMs:2000` 초과이자 `query-cost-baseline.json`에 저장된 247ms(2026-08-25) 대비 14배. smoke는 200 응답이면 무조건 PASS(`PASS 130/130`)라 이 회귀를 전혀 못 봤고, `audit:query-cost` 자체가 `deploy.yml`에 안 물려 있어 baseline이 이 사이클의 cash-plan/cashflow 대형 웨이브 내내 한 번도 재검증되지 않았다. 원인 추정: `cashSchedule.ts:219-221`이 `buildCashflowDays()`(978줄, D1 쿼리 15개 중 3곳만 `Promise.all`)를 `Promise.all`로 2회 호출 — 각 호출 내부 순차 구간이 병목. 재무 계산 엔진 내부 순서 재배치라 자동수정 대상 아님(`test:cash-settle`/`test:ap-settle`/`test:counterpart` 131항목 회귀 필요) → **issue #636 등록**.
+> - **standing scan 1: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 3: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **16**(신규 등록 전) 기존 16건 전건 일치(#613·#616·#617·#622·#624~635) 확인 후 #636 신규 생성.
+> - **backlog↔GitHub 절대값 재동기화**: open **17**(16→17, #636 신규) · done **542**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: area-1-production-health.md에 「CI 배포 job 로그의 smoke 응답시간 줄 = egress 차단 시 audit:query-cost 대리지표」 codify 추가 — 다음 사이클부터 무거운 신규 엔드포인트가 churn에 끼면 이 방법으로 baseline 대조.
+> - **백로그 트림 체크**: 사이클 로그 11건 → 이번 로그 추가 후 12건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 1건(#636, cashSchedule.overview 응답시간 14배 회귀 — CI가 구조적으로 못 보는 사각지대, job 로그 대조로 신규 탐지 기법 확립), 자동수정 0건(재무 계산 엔진 내부 순서 재배치라 회귀 위험 — issue-only), done-sync: open 17(16→17)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-09-07T03:45):**
 > - **방법**: 세션 시작 시 detached HEAD `3c72ef6`(직전 Area5가 방금 이 세션에서 만든 커밋, origin과 동일) → `git checkout main`(로컬 main이 43커밋 뒤처져 있었음) + `git pull origin main`으로 정합. `npm ci`(0→81), `npx tsc --noEmit` clean.
