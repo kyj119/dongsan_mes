@@ -1166,11 +1166,15 @@ async function promoteSuggestionsFromHistory(
   const ef = entityFilter(c, 'bank_transactions')
   // ★비용분류·고정비 제안이 붙은 행은 건드리지 않는다 — 다른 축의 판단을 이 패스가 지울 이유가 없다.
   //   정렬이 금액순인 건 상한(PROMOTE_CAP)에 걸릴 때 **큰 돈부터** 처리되게 하려는 것.
+  // ★★이미 승격된 행을 후보에서 뺀다 — 안 빼면 **꼬리에 영영 못 닿는다**. 승격해도 상태는 SUGGESTED
+  //   그대로라, 금액 상위 300건 창에 그 행들이 계속 남아 다음 실행이 같은 300건만 다시 훑는다.
+  //   실측 2026-09-07: 1회차 131건 → 2회차 0건인데 대상은 324건이 남아 있었다(고정점에 갇힘).
   const { results: rows } = await c.env.DB.prepare(`
     SELECT id, counterpart_name, match_status, match_confidence, matched_client_id
     FROM bank_transactions
     WHERE match_status = 'SUGGESTED'
-      AND matched_category_id IS NULL AND matched_fixed_expense_id IS NULL${ef.clause}${dateClause}
+      AND matched_category_id IS NULL AND matched_fixed_expense_id IS NULL
+      AND COALESCE(match_reason, '') NOT LIKE '확정 이력%'${ef.clause}${dateClause}
     ORDER BY amount DESC, id ASC
     LIMIT ${PROMOTE_CAP}
   `).bind(...ef.params, ...dateParams).all<{
