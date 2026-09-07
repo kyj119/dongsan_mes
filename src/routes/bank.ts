@@ -11,7 +11,7 @@ import { validatePayment, preparePaymentStatements } from '../lib/payments'
 import { normalizeCounterpart, stripBankPrefix, isNonCounterpartName } from '../utils/counterpartName'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
-import { resolveInternalEntityMatch, buildSettlementClientMap } from '../utils/bankMatchPolicy'
+import { resolveInternalEntityMatch, buildSettlementClientMap, resolveHistoryMatch, allowAmountOnlyMatch } from '../utils/bankMatchPolicy'
 import { getEntityCorpNum, getEntityBarobillSenderId } from '../utils/entitySettings'
 import { loadProvision, agingCategoryToBucket, effectiveLossRate } from '../utils/provisionMatrix'
 import { buildOldestUnpaidJoin, agingDaysFromOldest, getAgingCategory } from './ledger/ar-helpers'
@@ -1219,6 +1219,25 @@ async function runAutoMatchEngine(
       match_type: string | null
     }>()
 
+    // 3-b. 확정 이력 = **파생**으로 읽는다 (캐시 아님)
+    //   `bank_match_rules` 는 사람이 「수동매칭」했을 때만 쓰인다 — 자동 제안을 승인해 APPLIED 가 된
+    //   경로는 학습을 안 한다. 그래서 prod 에서 한 거래처로만 확정된 적요 1,136종 중 규칙은 266종뿐이었다.
+    //   규칙 테이블을 더 채우는 대신 확정 이력을 **그때그때 집계**한다 — 과거 매칭이 정정되면 판정도
+    //   같이 따라오고(자기교정), 어긋날 캐시가 하나 더 생기지 않는다.
+    //   ★같은 적요가 **두 거래처 이상**에 붙어 있으면 쓰지 않는다(모호 → 이름·금액 규칙으로 넘긴다).
+    const efHist = entityFilter(c, 'bank_transactions')
+    const { results: histRows } = await c.env.DB.prepare(`
+      SELECT counterpart_name, MIN(matched_client_id) AS client_id,
+             COUNT(DISTINCT matched_client_id) AS n_client, COUNT(*) AS n
+      FROM bank_transactions
+      WHERE match_status IN ('CONFIRMED','APPLIED') AND matched_client_id IS NOT NULL
+        AND COALESCE(counterpart_name,'') != ''${efHist.clause}
+      GROUP BY counterpart_name
+      HAVING n_client = 1
+    `).bind(...efHist.params).all<{ counterpart_name: string; client_id: number; n_client: number; n: number }>()
+    const historyMap = new Map(histRows.map(r => [r.counterpart_name.trim(),
+      { clientId: r.client_id, nClients: Number(r.n_client) || 0, n: Number(r.n) || 0 }]))
+
     // EXACT 규칙 = 이름 완전일치 맵. CONTAINS 규칙 = 부분일치 후보 배열(적요 변동 대응).
     const ruleMap = new Map(
       matchRules
@@ -1312,6 +1331,8 @@ async function runAutoMatchEngine(
 
       // Step 1: 먼저 bank_match_rules에서 정확히 일치하는 규칙 찾기
       const rule = ruleMap.get(txName)
+      const hist = historyMap.get(txName)
+      const histDecision = hist ? resolveHistoryMatch(hist.clientId, hist.nClients, hist.n) : null
       if (rule) {
         // match_count 증가
         matchUpdateStmts.push(c.env.DB.prepare(`
@@ -1338,6 +1359,18 @@ async function runAutoMatchEngine(
         bestClientId = rule.clientId
         bestConfidence = 0.95
         bestReason = '학습된 규칙'
+      } else if (histDecision) {
+        // Step 1-a′: 확정 이력 — 같은 적요가 과거 **한 거래처로만** 확정된 적이 있다.
+        //   ★2026-09-07 실사고: 적요 `홍익` 이 홍익(익산)에 26번 확정돼 있는데도, 「홍익」이 세 거래처
+        //     (홍익(익산)·홍익디자인·홍익산업디자인)의 **접두**라 이름 규칙이 하나도 못 걸렸고,
+        //     220,000 이 **온오프컴퍼니** 미수잔액과 우연히 같아 `금액일치`(0.5)로 붙었다.
+        //     이력과 다른 거래처를 제안한 건이 prod 36건 17,371,300 · 이력으로 살릴 수 있던
+        //     미매칭이 115건 150,785,404 였다.
+        //   ★이력을 **규칙 테이블에 더 쌓지 않고** 파생으로 읽는 이유는 위 3-b 주석에 있다.
+        //   1회뿐이면 SUGGESTED 로 남긴다 — 오확정 1건이 자동으로 번지지 않게.
+        bestClientId = histDecision.clientId
+        bestConfidence = histDecision.confidence
+        bestReason = histDecision.reason
       } else {
         // Step 1-b: CONTAINS 규칙(부분일치) — 적요가 매달 달라도 키워드로 제안
         const cRule = containsRules.find(r => txName.includes(r.key) || r.key.includes(txName))
@@ -1381,6 +1414,12 @@ async function runAutoMatchEngine(
           const normStripped = strippedName === txName ? '' : normalizeCounterpart(strippedName)
           // 괄호 표기는 "개인명(상호)" 형태 → 괄호 안 상호가 실제 거래 주체.
           //   "이성현(무지개기획)" → ['무지개기획'] (닫는 괄호가 없는 "이도운(88광고기획"도 인식)
+          // 적요가 **이름을 담고 있나** — 금액 단독 매칭을 허용할지 가르는 기준.
+          //   ★금액만으로 붙이면 「그 금액과 미수가 같은 거래처」가 흡인점이 된다. prod 실측
+          //     2026-09-07: 1,000,000→프로테크 6건 · 198,000→에스에이치몰 3건 · 220,000→온오프컴퍼니
+          //     3건 · 19,800→광고월드. 적요는 `홍익`·`시나위광고`처럼 멀쩡한 상호인데 전혀 다른 곳에 붙었다.
+          //   이름이 없는 적요(순수 숫자·기호)라면 금액이 유일한 단서이므로 그때만 남긴다.
+          const amountOnlyAllowed = allowAmountOnlyMatch(txName)
           const parenNames = (txName.match(/[(（][^)）]*/g) || [])
             .map(s => normalizeCounterpart(s))
             .filter(s => s.length >= 2)
@@ -1425,7 +1464,7 @@ async function runAutoMatchEngine(
                 const namePartial = clientName.includes(txName) || txName.includes(clientName)
                 confidence = namePartial ? 0.8 : Math.max(confidence, 0.5)
                 reason += reason ? ' + 금액일치' : '금액일치'
-              } else {
+              } else if (amountOnlyAllowed) {
                 confidence = 0.5
                 reason     = '금액일치'
               }

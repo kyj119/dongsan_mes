@@ -68,3 +68,50 @@ export function buildSettlementClientMap(
   }
   return map
 }
+
+/** 확정 이력 판정 결과. null 이면 이력을 근거로 쓰지 않는다. */
+export interface HistoryMatchDecision {
+  clientId: number
+  confidence: number
+  reason: string
+}
+
+/**
+ * 같은 적요가 과거 확정된 이력을 근거로 쓸지 정한다.
+ *
+ * ★왜 이력이 필요한가 (2026-09-07 실사고)
+ *   적요 `홍익` 은 홍익(익산)에 **26회** 확정돼 있었는데, 「홍익」이 세 거래처
+ *   (홍익(익산)·홍익디자인·홍익산업디자인)의 **접두**라 이름 규칙이 하나도 못 걸렸다.
+ *   그 사이 220,000 이 온오프컴퍼니 미수와 우연히 같아 `금액일치`(0.5)로 붙었다.
+ *   이름 규칙이 못 가리는 곳을 **사람이 이미 여러 번 답해 놓았는데** 아무도 안 읽고 있었다.
+ *
+ * ★규칙 테이블(`bank_match_rules`)에 더 쌓지 않고 이력을 파생으로 읽는 이유
+ *   규칙은 「수동매칭」 경로에서만 쓰인다 — 자동 제안을 승인해 APPLIED 가 된 건 학습을 안 한다.
+ *   그래서 한 거래처로만 확정된 적요 1,136종 중 규칙은 266종뿐이었다(prod 실측).
+ *   파생이면 과거 매칭이 정정될 때 판정도 같이 따라오고, 어긋날 캐시가 하나 더 생기지 않는다.
+ *
+ * @param nClients 그 적요가 붙은 **서로 다른** 거래처 수 — 2 이상이면 모호하므로 쓰지 않는다
+ * @param nRows    확정된 건수 — 1회뿐이면 자동 확정하지 않고 사람이 보게 남긴다
+ */
+export function resolveHistoryMatch(
+  clientId: number | null | undefined,
+  nClients: number,
+  nRows: number
+): HistoryMatchDecision | null {
+  if (clientId == null || Number(nClients) !== 1 || Number(nRows) < 1) return null
+  const n = Number(nRows)
+  return { clientId: Number(clientId), confidence: n >= 2 ? 0.95 : 0.75, reason: `확정 이력 ${n}회` }
+}
+
+/**
+ * 금액 단독 매칭(`금액일치`)을 허용할지 — 적요에 **이름이 없을 때만** 허용한다.
+ *
+ * ★금액만으로 붙이면 「그 금액과 미수잔액이 같은 거래처」가 흡인점이 된다. prod 실측 2026-09-07:
+ *   1,000,000 → 프로테크 6건 · 198,000 → 에스에이치몰 3건 · 220,000 → 온오프컴퍼니 3건 ·
+ *   19,800 → 광고월드. 적요는 `홍익`·`시나위광고`처럼 멀쩡한 상호인데 전혀 다른 곳에 붙었다.
+ *   36건 중 21건은 확정 이력이 **다른** 거래처를 가리키고 있었다.
+ * ★이름이 하나도 없는 적요(순수 숫자·기호)라면 금액이 유일한 단서이므로 그때는 남긴다.
+ */
+export function allowAmountOnlyMatch(txName: string | null | undefined): boolean {
+  return !/[가-힣A-Za-z]/.test(String(txName || ''))
+}

@@ -25,7 +25,7 @@ const { mod, cleanup: nameCleanup } = compileTs(SRC)
 const { normalizeCounterpart, stripBankPrefix, isNonCounterpartName } = mod
 // 정책 모듈은 constants/intercompany 를 import 하므로 bundle 이 필요하다.
 const { mod: policy, cleanup: policyCleanup } = compileTs(POLICY_SRC, { bundle: true })
-const { resolveInternalEntityMatch, buildSettlementClientMap } = policy
+const { resolveInternalEntityMatch, buildSettlementClientMap, resolveHistoryMatch, allowAmountOnlyMatch } = policy
 const cleanup = () => { nameCleanup?.(); policyCleanup?.() }
 
 let pass = 0
@@ -118,6 +118,34 @@ check('관계사는 이 정책 대상 아님', resolveInternalEntityMatch(1655, 
   // 이름 판정과 이어붙였을 때 실제로 찾아지는지 — 통장은 현대를 '현'으로 쓴다.
   const kind = isNonCounterpartName('현300326494')
   check('통장 표기 → 정산 거래처까지 연결', m.get(kind.brand), 3777)
+}
+
+// ── 확정 이력 판정 (2026-09-07) ──────────────────────────────────────────
+//   실사고: 적요 `홍익` 이 홍익(익산)에 26회 확정돼 있었는데, 「홍익」이 세 거래처의 접두라
+//   이름 규칙이 하나도 안 걸리고 220,000 이 온오프컴퍼니 미수와 우연히 같아 금액일치로 붙었다.
+{
+  const many = resolveHistoryMatch(2638, 1, 26)
+  check('이력 2회 이상 → 0.95(자동 확정)', many.confidence, 0.95)
+  check('이력 근거를 사유에 남긴다', many.reason, '확정 이력 26회')
+  check('이력이 가리키는 거래처', many.clientId, 2638)
+  check('이력 1회 → 0.75(사람이 본다)', resolveHistoryMatch(1713, 1, 1).confidence, 0.75)
+  // ★두 거래처 이상에 붙은 적요는 모호하다 — 이력으로 못 가른다(이름·금액 규칙으로 넘긴다)
+  check('두 거래처 이상이면 쓰지 않는다', resolveHistoryMatch(2638, 2, 30), null)
+  check('이력 없으면 판단 안 함', resolveHistoryMatch(null, 1, 5), null)
+  check('건수 0이면 판단 안 함', resolveHistoryMatch(2638, 1, 0), null)
+}
+
+// ── 금액 단독 매칭 억제 ───────────────────────────────────────────────────
+//   ★금액만으로 붙이면 그 금액과 미수가 같은 거래처가 흡인점이 된다(1,000,000→프로테크 6건).
+{
+  check('한글 상호가 있으면 금액 단독 금지', allowAmountOnlyMatch('홍익'), false)
+  check('괄호 표기도 이름이다', allowAmountOnlyMatch('최종일(우림기획)'), false)
+  check('영문 상호도 이름이다', allowAmountOnlyMatch('LJM기획이진미'), false)
+  check('숫자 섞인 상호도 이름이다', allowAmountOnlyMatch('6312부대태극'), false)
+  // 이름이 하나도 없으면 금액이 유일한 단서다
+  check('순수 숫자 적요는 금액 단독 허용', allowAmountOnlyMatch('300326494'), true)
+  check('빈 적요도 허용', allowAmountOnlyMatch(''), true)
+  check('null 도 허용', allowAmountOnlyMatch(null), true)
 }
 
 cleanup()
