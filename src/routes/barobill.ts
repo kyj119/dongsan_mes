@@ -11,7 +11,7 @@ import type { BarobillConfig } from '../services/barobillClient'
 import { getBarobillBalance } from '../services/barobillClient'
 import { getCardList, getDailyCardLog, getMonthlyCardLog } from '../services/barobillCard'
 import { getBankAccountList, getDailyBankLog, getMonthlyBankLog } from '../services/barobillBank'
-import { getEntityId } from '../utils/entityFilter'
+import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getEntityCorpNum, getEntityBarobillSenderId } from '../utils/entitySettings'
 
 const barobillRouter = new Hono<HonoEnv>()
@@ -160,6 +160,143 @@ barobillRouter.get('/bank-accounts/logs', async (c) => {
     console.error('Barobill API error:', error)
     return c.json({ success: false, error: '바로빌 요청 처리 중 오류가 발생했습니다' }, 500)
   }
+})
+
+// -------------------------------------------------------
+// 등록 현황 대조 (바로빌 실등록 ↔ MES 플래그)
+// -------------------------------------------------------
+
+/**
+ * GET /api/barobill/registration-audit — 바로빌에 실제로 등록된 계좌·카드와 MES 플래그를 대조한다.
+ *
+ * 왜 필요한가: `barobill_registered` 를 **0으로 되돌리는 코드가 없었다**. 해지에 성공해도 1로 남아
+ * 「지금 무엇에 요금을 내고 있는가」를 DB 로 판별할 수 없었다(2026-09-07 선명 BC카드 3 실사고 —
+ * MES 에서는 삭제됐는데 바로빌에는 살아 있어 요금이 계속 나갔다). 정본은 바로빌이므로 **거기서 받아
+ * 우리 것과 맞춰 본다**.
+ *
+ * ⚠️ 바로빌 계정은 **법인별**(corpNum·senderId)이라 전체모드(entityId=0)에서는 조회 자체가 성립하지 않는다.
+ * ⚠️ 목록이 비면 「등록 0건」이 아니라 **수집 설정 실패**일 수 있다(senderId 폴백 → -24005 빈배열).
+ *    그래서 `empty_suspicious` 로 표시해 화면이 「없음」과 「못 받았음」을 구분하게 한다.
+ */
+barobillRouter.get('/registration-audit', async (c) => {
+  const entityId = getEntityId(c)
+  if (!entityId) {
+    return c.json({ success: false, error: '바로빌 계정은 법인별입니다. 법인을 선택한 뒤 조회하세요.' }, 400)
+  }
+
+  const norm = (s: any) => String(s ?? '').replace(/[^0-9]/g, '')
+  const pick = (r: any, keys: string[]) => {
+    for (const k of keys) if (r && r[k] != null && String(r[k]).trim() !== '') return String(r[k]).trim()
+    return ''
+  }
+
+  const efA = entityFilter(c, 'a')
+  const efC = entityFilter(c, 'c')
+
+  // --- MES 쪽 (비활성도 포함한다 — 거짓 플래그가 바로 거기 숨는다)
+  const { results: mesAccounts } = await c.env.DB.prepare(`
+    SELECT a.id, a.bank_name, a.account_number, a.account_alias, a.is_active,
+           a.barobill_registered, a.collect_cycle, a.is_personal,
+           COUNT(t.id) AS tx_count, MAX(t.transaction_date) AS last_tx
+    FROM bank_accounts a
+    LEFT JOIN bank_transactions t ON t.bank_account_id = a.id
+    WHERE 1 = 1${efA.clause}
+    GROUP BY a.id
+    ORDER BY a.id
+  `).bind(...efA.params).all<any>()
+
+  const { results: mesCards } = await c.env.DB.prepare(`
+    SELECT c.id, c.card_name, c.card_company, c.card_number_last4, c.is_active,
+           c.barobill_registered, c.collect_cycle,
+           COUNT(t.id) AS tx_count, MAX(t.transaction_date) AS last_tx
+    FROM corporate_cards c
+    LEFT JOIN card_transactions t ON t.card_id = c.id
+    WHERE 1 = 1${efC.clause}
+    GROUP BY c.id
+    ORDER BY c.id
+  `).bind(...efC.params).all<any>()
+
+  const out: any = { entity_id: entityId }
+
+  // --- 계좌
+  try {
+    const config = await getConfig(c)
+    const rows = await getBankAccountList(config)
+    const bbMap = new Map<string, any>()
+    for (const r of rows) bbMap.set(norm(pick(r, ['BankAccountNum', 'AccountNum'])), r)
+
+    const matched: any[] = []
+    const onlyMes: any[] = []
+    for (const a of mesAccounts as any[]) {
+      const key = norm(a.account_number)
+      const bb = bbMap.get(key)
+      const row = {
+        id: a.id, name: a.bank_name, number: a.account_number, alias: a.account_alias,
+        is_active: a.is_active, flag: a.barobill_registered, is_personal: a.is_personal,
+        cycle: bb ? pick(bb, ['CollectCycle', 'Cycle']) || a.collect_cycle : a.collect_cycle,
+        tx_count: a.tx_count, last_tx: a.last_tx,
+      }
+      if (bb) { matched.push(row); bbMap.delete(key) }
+      else if (a.barobill_registered) onlyMes.push(row)
+    }
+    const onlyBarobill = Array.from(bbMap.values()).map((r) => ({
+      number: pick(r, ['BankAccountNum', 'AccountNum']),
+      name: pick(r, ['BankName', 'Bank']),
+      alias: pick(r, ['Alias']),
+      cycle: pick(r, ['CollectCycle', 'Cycle']),
+      status: pick(r, ['BankAccountStatus', 'Status']),
+    }))
+    out.bank = {
+      barobill_count: rows.length,
+      empty_suspicious: rows.length === 0,
+      matched, only_mes: onlyMes, only_barobill: onlyBarobill,
+    }
+  } catch (e: any) {
+    out.bank = { error: String(e?.message || e).slice(0, 200) }
+  }
+
+  // --- 카드 (매칭키 = 뒤 4자리. 등록/해지 경로가 쓰는 것과 같은 규칙)
+  try {
+    const config = await getConfig(c)
+    const rows = await getCardList(config)
+    const bbMap = new Map<string, any>()
+    for (const r of rows) bbMap.set(norm(pick(r, ['CardNum'])).slice(-4), r)
+
+    const matched: any[] = []
+    const onlyMes: any[] = []
+    for (const cd of mesCards as any[]) {
+      const key = String(cd.card_number_last4 || '').slice(-4)
+      const bb = key ? bbMap.get(key) : undefined
+      const row = {
+        id: cd.id, name: cd.card_name, company: cd.card_company, last4: cd.card_number_last4,
+        is_active: cd.is_active, flag: cd.barobill_registered,
+        cycle: bb ? pick(bb, ['CollectCycle', 'Cycle']) || cd.collect_cycle : cd.collect_cycle,
+        tx_count: cd.tx_count, last_tx: cd.last_tx,
+      }
+      if (bb) { matched.push(row); bbMap.delete(key) }
+      else if (cd.barobill_registered) onlyMes.push(row)
+    }
+    const onlyBarobill = Array.from(bbMap.values()).map((r) => ({
+      number: pick(r, ['CardNum']),
+      company: pick(r, ['CardCorpName', 'CardCompany', 'CardCorp']),
+      alias: pick(r, ['Alias']),
+      cycle: pick(r, ['CollectCycle', 'Cycle']),
+      status: pick(r, ['CardStatus', 'Status']),
+    }))
+    out.card = {
+      barobill_count: rows.length,
+      empty_suspicious: rows.length === 0,
+      matched, only_mes: onlyMes, only_barobill: onlyBarobill,
+    }
+  } catch (e: any) {
+    out.card = { error: String(e?.message || e).slice(0, 200) }
+  }
+
+  out.mismatch_count =
+    (out.bank?.only_mes?.length || 0) + (out.bank?.only_barobill?.length || 0) +
+    (out.card?.only_mes?.length || 0) + (out.card?.only_barobill?.length || 0)
+
+  return c.json({ success: true, data: out })
 })
 
 export default barobillRouter

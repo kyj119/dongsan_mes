@@ -287,7 +287,8 @@ cardExpRouter.delete('/cards/:id', requireRole('ADMIN'), async (c) => {
       }
     }
 
-    await c.env.DB.prepare(`UPDATE corporate_cards SET is_active = 0 WHERE id = ?${ef.clause}`).bind(id, ...ef.params).run()
+    // 해지 성공분은 플래그도 내린다 — 계좌 쪽(bank.ts)과 짝. 남겨두면 거짓 플래그가 요금을 숨긴다.
+    await c.env.DB.prepare(`UPDATE corporate_cards SET is_active = 0, barobill_registered = 0, collect_cycle = NULL WHERE id = ?${ef.clause}`).bind(id, ...ef.params).run()
     return c.json({ success: true, message: '카드 삭제 완료' })
   } catch (error) {
     console.error('Delete card error:', error)

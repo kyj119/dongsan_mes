@@ -2177,6 +2177,108 @@
     resultDiv.classList.remove('hidden');
   };
 
+// 바로빌 등록 현황 대조 — 「지금 무엇에 요금을 내고 있는가」를 바로빌에 들어가지 않고 본다.
+  // 정본은 바로빌이다. MES 의 barobill_registered 는 해지 후에도 1로 남던 이력이 있어(2026-09-07 수정)
+  // 과거 데이터에는 여전히 거짓 플래그가 섞여 있다 → 대조가 유일한 판별 수단.
+  var barobillAuditData = null;
+
+  function bbCycleSummary(rows) {
+    var m = {};
+    for (var i = 0; i < rows.length; i++) {
+      var k = rows[i].cycle || '미지정';
+      m[k] = (m[k] || 0) + 1;
+    }
+    var parts = [];
+    for (var k2 in m) parts.push(escHtml(k2) + ' ' + m[k2]);
+    return parts.length ? parts.join(' · ') : '-';
+  }
+
+  function bbSection(title, sec, fmt) {
+    if (!sec) return '';
+    var h = '<div class="mb-3"><div class="font-semibold text-gray-700 mb-1">' + title + '</div>';
+    if (sec.error) {
+      return h + '<div class="text-red-600"><i class="fas fa-triangle-exclamation mr-1"></i>조회 실패: ' + escHtml(sec.error) + '</div></div>';
+    }
+    if (sec.empty_suspicious) {
+      h += '<div class="bg-amber-50 border border-amber-200 text-amber-800 rounded px-2 py-1 mb-2">'
+        + '바로빌 목록이 <b>비어 있습니다</b>. 등록이 0건인지, 수집 설정(법인별 senderId) 실패인지 확인이 필요합니다.</div>';
+    }
+    if (sec.only_barobill && sec.only_barobill.length) {
+      h += '<div class="bg-red-50 border border-red-200 rounded px-2 py-1 mb-2">'
+        + '<div class="text-red-700 font-medium mb-1"><i class="fas fa-circle-exclamation mr-1"></i>바로빌에만 등록됨 '
+        + sec.only_barobill.length + '건 — MES 가 모르는 요금</div>';
+      for (var i = 0; i < sec.only_barobill.length; i++) {
+        var b = sec.only_barobill[i];
+        h += '<div class="text-red-800">· ' + escHtml(b.name || b.company || '') + ' ' + escHtml(b.number || '')
+          + (b.cycle ? ' <span class="text-xs bg-red-100 px-1 rounded">' + escHtml(b.cycle) + '</span>' : '')
+          + (b.alias ? ' <span class="text-gray-500">' + escHtml(b.alias) + '</span>' : '') + '</div>';
+      }
+      h += '</div>';
+    }
+    if (sec.only_mes && sec.only_mes.length) {
+      h += '<div class="bg-orange-50 border border-orange-200 rounded px-2 py-1 mb-2">'
+        + '<div class="text-orange-700 font-medium mb-1"><i class="fas fa-flag mr-1"></i>MES 플래그만 켜짐 '
+        + sec.only_mes.length + '건 — 이미 해지됐거나 등록 실패</div>';
+      for (var j = 0; j < sec.only_mes.length; j++) h += '<div class="text-orange-800">· ' + fmt(sec.only_mes[j]) + '</div>';
+      h += '</div>';
+    }
+    var mt = sec.matched || [];
+    h += '<div class="text-gray-600">일치 <b>' + mt.length + '</b>건 · 수집주기 ' + bbCycleSummary(mt) + '</div>';
+    if (mt.length) {
+      h += '<div class="mt-1 text-xs text-gray-500">';
+      for (var k = 0; k < mt.length; k++) h += '<div>· ' + fmt(mt[k]) + '</div>';
+      h += '</div>';
+    }
+    return h + '</div>';
+  }
+
+  function bbFmtAcct(r) {
+    return escHtml(r.name || '') + ' ' + escHtml(r.number || '')
+      + (r.cycle ? ' <span class="bg-gray-100 px-1 rounded">' + escHtml(r.cycle) + '</span>' : '')
+      + (r.is_personal ? ' <span class="text-purple-600">개인</span>' : '')
+      + (r.is_active ? '' : ' <span class="text-gray-400">(비활성)</span>')
+      + ' — 거래 ' + (r.tx_count || 0) + '건' + (r.last_tx ? ' · 최근 ' + escHtml(String(r.last_tx)) : ' · 거래 없음');
+  }
+  function bbFmtCard(r) {
+    return escHtml(r.name || '') + ' ' + escHtml(r.company || '') + ' ' + escHtml(r.last4 || '')
+      + (r.cycle ? ' <span class="bg-gray-100 px-1 rounded">' + escHtml(r.cycle) + '</span>' : '')
+      + (r.is_active ? '' : ' <span class="text-gray-400">(비활성)</span>')
+      + ' — 거래 ' + (r.tx_count || 0) + '건' + (r.last_tx ? ' · 최근 ' + escHtml(String(r.last_tx)) : ' · 거래 없음');
+  }
+
+  window.toggleBarobillAudit = function() {
+    var p = document.getElementById('barobillAuditPanel');
+    if (!p) { console.warn('[bank] #barobillAuditPanel not found'); return; }
+    if (!p.classList.contains('hidden')) { p.classList.add('hidden'); return; }
+    p.classList.remove('hidden');
+    var d = barobillAuditData;
+    if (!d) { p.innerHTML = '<div class="text-gray-400">불러오는 중...</div>'; return; }
+    p.innerHTML = bbSection('계좌', d.bank, bbFmtAcct) + bbSection('카드', d.card, bbFmtCard)
+      + '<div class="text-xs text-gray-400 mt-2">정본은 바로빌입니다. 해지·등록은 바로빌 화면 또는 각 관리 화면에서 진행하세요.</div>';
+  };
+
+  function loadBarobillAudit() {
+    var bar = document.getElementById('barobillStatusBar');
+    if (!bar) return;
+    axios.get('/api/barobill/registration-audit').then(function(r) {
+      var d = r.data.data || {};
+      barobillAuditData = d;
+      var n = d.mismatch_count || 0;
+      var badge = n > 0
+        ? '<span class="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-medium">불일치 ' + n + '</span>'
+        : '<span class="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">일치</span>';
+      var counts = '<span class="text-gray-500">등록 계좌 <b>' + ((d.bank && d.bank.barobill_count) || 0)
+        + '</b> · 카드 <b>' + ((d.card && d.card.barobill_count) || 0) + '</b></span>';
+      var btn = '<button type="button" onclick="toggleBarobillAudit()" class="text-xs px-2 py-0.5 border border-gray-300 rounded hover:bg-gray-100">등록현황</button>';
+      var slot = document.getElementById('barobillAuditSlot');
+      if (slot) slot.innerHTML = counts + badge + btn;
+    }).catch(function(e) {
+      var slot = document.getElementById('barobillAuditSlot');
+      var msg = (e.response && e.response.data && e.response.data.error) || '등록현황 조회 실패';
+      if (slot) slot.innerHTML = '<span class="text-xs text-gray-400">' + escHtml(msg) + '</span>';
+    });
+  }
+
   // 바로빌 연결 상태 표시
   function loadBarobillStatus() {
     var bar = document.getElementById('barobillStatusBar');
@@ -2188,7 +2290,9 @@
         : '<span class="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">운영</span>';
       bar.className = 'flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-4 py-2 mb-4 text-sm';
       bar.innerHTML = '<div class="flex items-center gap-2"><i class="fas fa-check-circle text-green-500"></i><span class="font-medium text-gray-700">바로빌 연결됨</span>' + mode + '</div>'
-        + '<span class="text-gray-500">포인트 잔액: <b class="text-blue-600">' + (d.balance || 0).toLocaleString() + '원</b></span>';
+        + '<div class="flex items-center gap-3"><span class="text-gray-500">포인트 잔액: <b class="text-blue-600">' + (d.balance || 0).toLocaleString() + '원</b></span>'
+        + '<span id="barobillAuditSlot" class="flex items-center gap-2"></span></div>';
+      loadBarobillAudit();
     }).catch(function(e) {
       var msg = (e.response && e.response.data && e.response.data.error) || '바로빌 미연결';
       bar.className = 'flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 mb-4 text-sm';

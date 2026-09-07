@@ -49,6 +49,10 @@ export const bankPageContent = `
           <div id="barobillStatusBar" class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 mb-4 text-sm">
             <span class="text-gray-400"><i class="fas fa-plug mr-1"></i>바로빌 연결 확인 중...</span>
           </div>
+          <!-- 바로빌 등록 현황 대조 (바로빌 실등록 vs MES 플래그) -->
+          <div id="barobillAuditPanel" class="hidden bg-white border border-gray-200 rounded-lg p-4 mb-4 text-sm">
+            <div class="text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>불러오는 중...</div>
+          </div>
           <!-- Tab Navigation -->
           <div class="flex border-b mb-6">
           <button id="tabFund" class="tab-btn active px-6 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600"

@@ -481,7 +481,7 @@ bankRouter.delete('/accounts/:id', requireRole('ADMIN'), async (c) => {
     }
 
     await c.env.DB.prepare(
-      'UPDATE bank_accounts SET is_active = 0 WHERE id = ?'
+      'UPDATE bank_accounts SET is_active = 0, barobill_registered = 0, collect_cycle = NULL WHERE id = ?'
     ).bind(id).run()
 
     return c.json({ success: true, message: '계좌가 비활성화되었습니다' })
