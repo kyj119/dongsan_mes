@@ -2223,25 +2223,39 @@
       h += '</div>';
     }
     var mt = sec.matched || [];
-    h += '<div class="text-gray-600">일치 <b>' + mt.length + '</b>건 · 수집주기 ' + bbCycleSummary(mt) + '</div>';
+    h += '<div class="text-gray-600">바로빌 목록에 있음 <b>' + mt.length + '</b>건 · 수집주기 ' + bbCycleSummary(mt) + '</div>';
     if (mt.length) {
       h += '<div class="mt-1 text-xs text-gray-500">';
       for (var k = 0; k < mt.length; k++) h += '<div>· ' + fmt(mt[k]) + '</div>';
       h += '</div>';
     }
+    // 응답 필드명 — 주기·상태를 못 읽으면 여기서 실제 이름을 확인해 후보를 좁힌다.
+    if (sec.bb_fields && sec.bb_fields.length) {
+      h += '<div class="mt-1 text-xs text-gray-300">바로빌 응답 필드: ' + escHtml(sec.bb_fields.join(', ')) + '</div>';
+    }
     return h + '</div>';
   }
 
+  // 주기는 출처를 밝힌다 — 바로빌이 안 주면 MES 에 저장된 «등록 당시» 값이고, 그건 지금 상태가 아니다.
+  function bbCycleChip(r) {
+    if (!r.cycle) return '';
+    var src = r.cycle_src === 'barobill' ? '바로빌' : (r.cycle_src === 'mes' ? 'MES기록' : '');
+    return ' <span class="bg-gray-100 px-1 rounded">' + escHtml(r.cycle)
+      + (src ? '<span class="text-gray-400">·' + src + '</span>' : '') + '</span>';
+  }
+  function bbStatusChip(r) {
+    return r.status ? ' <span class="bg-blue-50 text-blue-700 px-1 rounded">상태 ' + escHtml(r.status) + '</span>' : '';
+  }
+
   function bbFmtAcct(r) {
-    return escHtml(r.name || '') + ' ' + escHtml(r.number || '')
-      + (r.cycle ? ' <span class="bg-gray-100 px-1 rounded">' + escHtml(r.cycle) + '</span>' : '')
+    return escHtml(r.name || '') + ' ' + escHtml(r.number || '') + bbCycleChip(r) + bbStatusChip(r)
       + (r.is_personal ? ' <span class="text-purple-600">개인</span>' : '')
       + (r.is_active ? '' : ' <span class="text-gray-400">(비활성)</span>')
       + ' — 거래 ' + (r.tx_count || 0) + '건' + (r.last_tx ? ' · 최근 ' + escHtml(String(r.last_tx)) : ' · 거래 없음');
   }
   function bbFmtCard(r) {
     return escHtml(r.name || '') + ' ' + escHtml(r.company || '') + ' ' + escHtml(r.last4 || '')
-      + (r.cycle ? ' <span class="bg-gray-100 px-1 rounded">' + escHtml(r.cycle) + '</span>' : '')
+      + bbCycleChip(r) + bbStatusChip(r)
       + (r.is_active ? '' : ' <span class="text-gray-400">(비활성)</span>')
       + ' — 거래 ' + (r.tx_count || 0) + '건' + (r.last_tx ? ' · 최근 ' + escHtml(String(r.last_tx)) : ' · 거래 없음');
   }
@@ -2254,7 +2268,8 @@
     var d = barobillAuditData;
     if (!d) { p.innerHTML = '<div class="text-gray-400">불러오는 중...</div>'; return; }
     p.innerHTML = bbSection('계좌', d.bank, bbFmtAcct) + bbSection('카드', d.card, bbFmtCard)
-      + '<div class="text-xs text-gray-400 mt-2">정본은 바로빌입니다. 해지·등록은 바로빌 화면 또는 각 관리 화면에서 진행하세요.</div>';
+      + '<div class="text-xs text-gray-400 mt-2">정본은 바로빌입니다. 해지·등록은 바로빌 화면 또는 각 관리 화면에서 진행하세요.<br>'
+      + '⚠️ 목록 조회가 <b>전체 상태</b>로 걸려 있어 <b>해지한 것도 목록에는 남습니다</b> — 「상태」 값으로 구분하세요.</div>';
   };
 
   function loadBarobillAudit() {

@@ -185,6 +185,9 @@ barobillRouter.get('/registration-audit', async (c) => {
   }
 
   const norm = (s: any) => String(s ?? '').replace(/[^0-9]/g, '')
+  // 주기 필드명 후보. 등록 «파라미터»는 CollectCycle 로 확정돼 있지만(WSDL), 조회 «응답»이 같은
+  // 이름을 쓴다는 보장은 없다 — 실제로 못 읽어서 MES 값을 바로빌 값인 양 보여줬다(2026-09-07).
+  const CYCLE_KEYS = ['CollectCycle', 'Cycle', 'CollectType', 'CollectCycleType']
   const pick = (r: any, keys: string[]) => {
     for (const k of keys) if (r && r[k] != null && String(r[k]).trim() !== '') return String(r[k]).trim()
     return ''
@@ -222,33 +225,52 @@ barobillRouter.get('/registration-audit', async (c) => {
   try {
     const config = await getConfig(c)
     const rows = await getBankAccountList(config)
-    const bbMap = new Map<string, any>()
-    for (const r of rows) bbMap.set(norm(pick(r, ['BankAccountNum', 'AccountNum'])), r)
+    // ⚠️ 같은 계좌번호가 MES 에 여러 행일 수 있다(비활성 잔재). 한 행이 매칭을 «가져가 버리면»
+    // 진짜 계좌가 「플래그만 켜짐」으로 오표시된다 — 2026-09-07 주거래 하나 …7704(거래 2,700건)가
+    // 비활성 중복행에 매칭을 뺏겨 그렇게 떴다. 그래서 소비하지 않고 키가 맞는 행을 «전부» 맞춘다.
+    const bbByKey = new Map<string, any[]>()
+    for (const r of rows) {
+      const k = norm(pick(r, ['BankAccountNum', 'AccountNum']))
+      const arr = bbByKey.get(k) || []
+      arr.push(r)
+      bbByKey.set(k, arr)
+    }
 
+    const consumed = new Set<string>()
     const matched: any[] = []
     const onlyMes: any[] = []
     for (const a of mesAccounts as any[]) {
       const key = norm(a.account_number)
-      const bb = bbMap.get(key)
+      const bb = (bbByKey.get(key) || [])[0]
+      const bbCycle = bb ? pick(bb, CYCLE_KEYS) : ''
       const row = {
         id: a.id, name: a.bank_name, number: a.account_number, alias: a.account_alias,
         is_active: a.is_active, flag: a.barobill_registered, is_personal: a.is_personal,
-        cycle: bb ? pick(bb, ['CollectCycle', 'Cycle']) || a.collect_cycle : a.collect_cycle,
+        cycle: bbCycle || a.collect_cycle || '',
+        cycle_src: bbCycle ? 'barobill' : (a.collect_cycle ? 'mes' : ''),
+        status: bb ? pick(bb, ['BankAccountStatus', 'Status', 'State']) : '',
         tx_count: a.tx_count, last_tx: a.last_tx,
       }
-      if (bb) { matched.push(row); bbMap.delete(key) }
+      if (bb) { consumed.add(key); matched.push(row) }
       else if (a.barobill_registered) onlyMes.push(row)
     }
-    const onlyBarobill = Array.from(bbMap.values()).map((r) => ({
-      number: pick(r, ['BankAccountNum', 'AccountNum']),
-      name: pick(r, ['BankName', 'Bank']),
-      alias: pick(r, ['Alias']),
-      cycle: pick(r, ['CollectCycle', 'Cycle']),
-      status: pick(r, ['BankAccountStatus', 'Status']),
-    }))
+    const onlyBarobill: any[] = []
+    for (const [k, arr] of bbByKey) {
+      if (consumed.has(k)) continue
+      for (const r of arr) onlyBarobill.push({
+        number: pick(r, ['BankAccountNum', 'AccountNum']),
+        name: pick(r, ['BankName', 'Bank']),
+        alias: pick(r, ['Alias']),
+        cycle: pick(r, CYCLE_KEYS),
+        status: pick(r, ['BankAccountStatus', 'Status', 'State']),
+      })
+    }
     out.bank = {
       barobill_count: rows.length,
       empty_suspicious: rows.length === 0,
+      // 응답 «필드명»은 문서가 아니라 실제 응답이 정본이다. 못 읽는 채로 MES 값을 바로빌 값인 양
+      // 보여주면 판단을 그르친다 — 화면이 출처를 밝히려면 무엇이 오는지부터 알아야 한다.
+      bb_fields: rows.length ? Object.keys(rows[0]) : [],
       matched, only_mes: onlyMes, only_barobill: onlyBarobill,
     }
   } catch (e: any) {
@@ -259,33 +281,50 @@ barobillRouter.get('/registration-audit', async (c) => {
   try {
     const config = await getConfig(c)
     const rows = await getCardList(config)
-    const bbMap = new Map<string, any>()
-    for (const r of rows) bbMap.set(norm(pick(r, ['CardNum'])).slice(-4), r)
+    // ⚠️ GetCardEx 를 CardStatus=0(전체)으로 부르므로 «해지된 카드도 목록에 들어온다».
+    // 「목록에 있다 = 요금이 나간다」가 아니다 — 해지 직후의 선명 BC카드 3(…2909)이 그대로
+    // 「일치」로 잡혔다(2026-09-07). 상태 원문을 같이 실어 화면이 구분할 수 있게 한다.
+    const bbByKey = new Map<string, any[]>()
+    for (const r of rows) {
+      const k = norm(pick(r, ['CardNum'])).slice(-4)
+      const arr = bbByKey.get(k) || []
+      arr.push(r)
+      bbByKey.set(k, arr)
+    }
 
+    const consumed = new Set<string>()
     const matched: any[] = []
     const onlyMes: any[] = []
     for (const cd of mesCards as any[]) {
       const key = String(cd.card_number_last4 || '').slice(-4)
-      const bb = key ? bbMap.get(key) : undefined
+      const bb = key ? (bbByKey.get(key) || [])[0] : undefined
+      const bbCycle = bb ? pick(bb, CYCLE_KEYS) : ''
       const row = {
         id: cd.id, name: cd.card_name, company: cd.card_company, last4: cd.card_number_last4,
         is_active: cd.is_active, flag: cd.barobill_registered,
-        cycle: bb ? pick(bb, ['CollectCycle', 'Cycle']) || cd.collect_cycle : cd.collect_cycle,
+        cycle: bbCycle || cd.collect_cycle || '',
+        cycle_src: bbCycle ? 'barobill' : (cd.collect_cycle ? 'mes' : ''),
+        status: bb ? pick(bb, ['CardStatus', 'Status', 'State']) : '',
         tx_count: cd.tx_count, last_tx: cd.last_tx,
       }
-      if (bb) { matched.push(row); bbMap.delete(key) }
+      if (bb) { consumed.add(key); matched.push(row) }
       else if (cd.barobill_registered) onlyMes.push(row)
     }
-    const onlyBarobill = Array.from(bbMap.values()).map((r) => ({
-      number: pick(r, ['CardNum']),
-      company: pick(r, ['CardCorpName', 'CardCompany', 'CardCorp']),
-      alias: pick(r, ['Alias']),
-      cycle: pick(r, ['CollectCycle', 'Cycle']),
-      status: pick(r, ['CardStatus', 'Status']),
-    }))
+    const onlyBarobill: any[] = []
+    for (const [k, arr] of bbByKey) {
+      if (consumed.has(k)) continue
+      for (const r of arr) onlyBarobill.push({
+        number: pick(r, ['CardNum']),
+        company: pick(r, ['CardCorpName', 'CardCompany', 'CardCorp']),
+        alias: pick(r, ['Alias']),
+        cycle: pick(r, CYCLE_KEYS),
+        status: pick(r, ['CardStatus', 'Status', 'State']),
+      })
+    }
     out.card = {
       barobill_count: rows.length,
       empty_suspicious: rows.length === 0,
+      bb_fields: rows.length ? Object.keys(rows[0]) : [],
       matched, only_mes: onlyMes, only_barobill: onlyBarobill,
     }
   } catch (e: any) {
