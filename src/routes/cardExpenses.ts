@@ -12,6 +12,7 @@ import { getEntityCorpNum, getEntityBarobillSenderId } from '../utils/entitySett
 import { validateUpload } from '../utils/uploadValidation'
 import { generateCsv, csvResponse, CSV_EXPORT_CAP, CSV_TRUNCATION_NOTE } from '../utils/csv'
 import { kstYmd, kstYmdCompact, kstYear, kstYm } from '../utils/kstDate'
+import { OFFSET_REASON_LABEL } from '../utils/cardSpend'
 
 const cardExpRouter = new Hono<HonoEnv>()
 cardExpRouter.use('/*', authMiddleware)
@@ -85,8 +86,10 @@ async function reconcileCardOffsets(c: any): Promise<number> {
   if (!pairs.length) return 0
   const stmts: any[] = []
   for (const [cid, aid] of pairs) {
-    stmts.push(c.env.DB.prepare('UPDATE card_transactions SET is_offset = 1, offset_pair_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(aid, cid))
-    stmts.push(c.env.DB.prepare('UPDATE card_transactions SET is_offset = 1, offset_pair_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(cid, aid))
+    // 사유 마커(0575)를 같은 UPDATE 에서 쓴다 — is_offset 만 세우면 청구 기준이 다시 못 가른다.
+    const setPair = "UPDATE card_transactions SET is_offset = 1, offset_pair_id = ?, offset_reason = 'PAIR', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+    stmts.push(c.env.DB.prepare(setPair).bind(aid, cid))
+    stmts.push(c.env.DB.prepare(setPair).bind(cid, aid))
   }
   for (let i = 0; i < stmts.length; i += 80) await c.env.DB.batch(stmts.slice(i, i + 80))
   return pairs.length
@@ -448,13 +451,13 @@ cardExpRouter.post('/sync', requireRole('ADMIN'), async (c) => {
         const isPreauth = (item.UseStoreName || '').includes('가승인')
 
         await c.env.DB.prepare(`
-          INSERT INTO card_transactions (card_id, transaction_date, transaction_time, merchant_name, amount, supply_amount, tax_amount, approval_number, approval_type, codef_transaction_id, installments, status, entity_id, is_offset)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'UNCLASSIFIED', ?, ?)
+          INSERT INTO card_transactions (card_id, transaction_date, transaction_time, merchant_name, amount, supply_amount, tax_amount, approval_number, approval_type, codef_transaction_id, installments, status, entity_id, is_offset, offset_reason)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'UNCLASSIFIED', ?, ?, ?)
         `).bind(
           dbCardId, txDate, txTime, item.UseStoreName || null, amount,
           parseFloat(item.Amount || '0'), parseFloat(item.Tax || '0'),
           item.ApprovalNum || null, isCancel ? 'CANCEL' : 'APPROVED',
-          refKey, parseInt(item.InstallmentMonths || '0') || 1, entityId, isPreauth ? 1 : 0
+          refKey, parseInt(item.InstallmentMonths || '0') || 1, entityId, isPreauth ? 1 : 0, isPreauth ? 'PREAUTH' : null
         ).run()
         inserted++
       }
@@ -836,7 +839,7 @@ cardExpRouter.get('/export-csv', requireEditOrRole('/card-expenses', 'MANAGER'),
 
     const { results } = await c.env.DB.prepare(`
       SELECT ct.transaction_date, ct.transaction_time, ct.merchant_name, ct.amount,
-             ct.supply_amount, ct.tax_amount, ct.approval_number, ct.approval_type, ct.is_offset,
+             ct.supply_amount, ct.tax_amount, ct.approval_number, ct.approval_type, ct.is_offset, ct.offset_reason,
              ct.memo, ct.status, ct.receipt_image_url,
              cc.card_name, cc.card_number_last4, ec.name as category_name
       FROM card_transactions ct
@@ -858,7 +861,7 @@ cardExpRouter.get('/export-csv', requireEditOrRole('/card-expenses', 'MANAGER'),
     const headers = ['사용일', '카드', '카드번호', '가맹점', '공급가액', '부가세', '금액', '구분', '경비분류', '적요', '승인번호', '영수증', '영수증링크']
     const csvRows = data.map((r) => {
       const sign = r.approval_type === 'CANCEL' ? -1 : 1
-      const kind = r.is_offset ? (String(r.merchant_name || '').includes('가승인') ? '가승인' : '상계') : (r.approval_type === 'CANCEL' ? '취소' : '승인')
+      const kind = r.is_offset ? (OFFSET_REASON_LABEL[String(r.offset_reason || '')] || '상계') : (r.approval_type === 'CANCEL' ? '취소' : '승인')
       return [
         fmtDate(String(r.transaction_date)),
         r.card_name || '',
