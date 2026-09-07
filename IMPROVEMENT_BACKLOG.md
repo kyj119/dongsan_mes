@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-09-07T21:45:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-09-08T01:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,33 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **19** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음) |
+| 🆕 new | **20** (`list_issues(state:OPEN,label:auto-improve)` 실측, 19→20) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **542** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 4 데이터 정합성 (2026-09-08T01:20):**
+> - **방법**: 세션 시작 시 detached HEAD `8f55dd0`(origin/main과 동일 커밋이나 얕은 clone) → `git checkout main` → `git pull`이 divergent-history(unrelated histories)로 실패 → `git fetch --unshallow` + `git merge --ff-only origin/main`으로 정합(변동 없음, 이미 최신). `npm ci`(0→81), `npx tsc --noEmit` clean, `npm audit --omit=dev` 0건.
+> - **churn 확인(앵커 = 직전 Area4 방법 라인 HEAD `e31d4ba`)**: 웹앱 범위 diff **30커밋** — Area1·2·3·5·6이 이번 세션 안에서 이미 각자 렌즈(프로덕션 헬스·코드품질·UX·보안·자기진화)로 정독한 은행매칭 확장(잔여 제안 승격·카드정산 계정)·cashflow(차입/상환 분리)·계정마스터 대정리(공제부금·결번보충·이름통일·표준명·역할컬럼화 0576~0585 7단계)·원가축 보정(롤자재 단위축·UV폼보드 mm→cm·무광시트 폭분리)·신규 매입후보 큐(`purchaseCandidates`)·입고 OPERATOR 권한개방(`0585_receiving_operator_access`) 웨이브. **데이터정합성 렌즈로는 신규 마이그 15건 전수 직독이 이번이 최초**.
+> - **신규 마이그레이션 15건(`0575`~`0585`, 번호중복 7쌍 포함) 전문 직독 + `db:bootstrap:ci` 전량 ✅ 적용 확인**: 전부 멱등 가드(`NOT EXISTS`/`WHERE role IS NULL`류)·백업테이블(`_bak_0576_*`·`_bak_0577_*`)·되돌리기 절차를 갖춘 실측 근거 기반 데이터 정정(가맹점명 224건 대조·이카운트 코드 사다리 추론 등 원문 각주에 근거 명시). CHECK 위반 0(`db:bootstrap:ci` 통과 자체가 증거), 신규 비-FK `*_id` 포인터 컬럼 0건(부모삭제 dangling 후보 없음).
+> - **계정마스터 7단계 재정리(0576→0577→0578→0579→0580→0581→0582, 같은 날 이름을 세 번 바꾼 이력) 순서 정합성 직접 대조**: 각 UPDATE의 name 대상이 그 시점 스키마에서 실재하는 이름인지 파일 적용 순서(알파벳=시간 순서, 0576 expense < 0576 roll 등 6쌍 전부 도메인 무관이라 순서 무관)대로 추적 — 신설(0576/0577/0578 결번보충)→통합(0578 대출금→대출상환·수수료→지급수수료)→표준화(0579 개칭)→누락정정(0581/0582 수도광열비 잔류 세금성 재분류, 통장+카드 양축)까지 전부 이름 일치 확인, 끊긴 참조 0건. **핵심 구조 개선 확인**: `CAT_ROLE`(계정명 문자열 두 파일 사본)이 이름을 세 번 바꾸는 과정에서 실제로 깨질 뻔한 전례(0584 자체 주석 "한 번만 빠뜨렸으면 4.3억이 조용히 판관비") → 같은 커밋에서 `expense_categories.role` 컬럼화 + `utils/expenseRole.ts` 단일 정본화로 사본 자체를 폐기(`financialReports.ts:34` 주석으로 폐기 확인) — **구조적 재발방지가 코드에 실제 반영됨**.
+> - **신규 매입후보 큐(`purchaseCandidates.ts`+`utils/apCandidate.ts`) 데이터정합성 렌즈 직독**: 거래처 풀 조회가 entity_id 필터 없이 **전체 활성 거래처**를 스캔하나 이는 "같은 거래처의 타법인 매칭 후보"가 목적인 의도적 cross-entity 설계(기존 「cross-entity 파생 배지 FP 클래스」와 동형, read-only 집계라 leak 아님) — 출금(`entityFilter(c,'b')`)·발주합계(`entityFilter(c,'po')`) 양쪽은 정상 entity 격리. `test:ap-candidate` 28건 자체 게이트 보유.
+> - **0585 입고 OPERATOR 권한개방 — 마이그 자체 경고("이 마이그레이션만 따로 적용하지 말 것") 이행 확인**: 같은 커밋(`8f55dd0`)에서 `po-receive.ts`가 `canTouchZone`(실사 `loadOwnedCount`와 동일 헬퍼) 게이트를 함께 추가해 권한개방+구역검증이 분리배포되지 않음을 코드 직접 대조로 확인(마이그만 먼저 배포되는 창이 없음, 같은 커밋).
+> - **🔴 신규 발견 — 병렬 worktree 마이그레이션 번호 중복 채번, 감지 도구 없음(issue-only)**: 이번 사이클 15건 중 **7쌍**(`0576`·`0577`·`0578`·`0579`·`0580`·`0584`·`0585`)이 번호가 겹친다. 직전 Area4 사이클에도 `0569`·`0570` 2쌍이 있었던 **재발 패턴**(2→7쌍, CLAUDE.md 멀티세션 worktree 워크플로우가 번호를 사람이 눈으로 채번하게 하는 구조적 원인). 이번엔 대상 테이블·컬럼이 전부 안 겹쳐 우연히 무해했으나, 감지 도구가 없어 같은 테이블에 같은 컬럼명으로 채번되면 배포 시 `wrangler d1 migrations apply`가 "duplicate column name"으로 실패하거나 스키마가 조용히 갈라질 수 있다. 새 감시 스크립트 신설은 SKILL 정책상 "새 기능"이라 자동수정 대상 아님 → **issue #639 등록**.
+> - **standing scan 1: CHECK IN 제약 ↔ literal write 대조** — `db:bootstrap:ci` 15건 전체 적용 성공 자체가 CHECK 위반 0건 입증.
+> - **standing scan 2: `npm run audit:entity`** — 검사 134파일·entity테이블 SELECT 73건·**누락 0건**(133→134파일은 `purchaseCandidates.ts` 신규 반영).
+> - **standing scan 3: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 4: `npm run test:calc`(19개 자체테스트 전체, `test:ap-candidate` 28건 포함)** — 전부 PASS.
+> - **standing scan 5: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 6: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 6런(HEAD `8f55dd0` 포함) 전부 `conclusion:success`.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **19**(신규 등록 전) 기존 19건 전건 일치(#613·#616·#617·#622·#624~638) 확인 후 #639 신규 생성.
+> - **backlog↔GitHub 절대값 재동기화**: open **20**(19→20, #639 신규) · done **542**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: area-4-data-integrity.md에 「중복 마이그레이션 번호 = 병렬 worktree 채번 충돌」 codify 추가(55회차) — 2569·0570(2쌍)→0576~0585(7쌍) 재발 빈도 증가 기록, 탐지 레시피(`ls migrations | sed ... | sort | uniq -d`) 명시.
+> - **백로그 트림 체크**: 사이클 로그 9건 → 이번 로그 추가 후 10건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 1건(#639 병렬 worktree 마이그 번호 중복 채번 — 이번엔 무해했으나 재발 패턴 확인·향후 실충돌 시 배포차단 위험), 자동수정 0건(신규 마이그 15건 전부 정합·구조개선(role 컬럼화) 이미 코드에 반영·발견한 유일한 결함은 도구신설이라 issue-only), done-sync: open 19(변동없음)·done 542(변동없음)·rejected 6(변동없음, #639 반영 전 기준)→#639 반영 후 20. 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-09-07T21:45):**
 > - **방법**: 세션 시작 시 detached HEAD `d4b9528`(origin/main과 동일 커밋이나 얕은 clone) → `git checkout main` → `git pull`이 divergent-history로 실패 → `git fetch --unshallow` + `git merge --ff-only origin/main`으로 정합(변동 없음, 이미 최신). `npm ci`(0→81).

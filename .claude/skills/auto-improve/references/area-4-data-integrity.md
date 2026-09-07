@@ -52,4 +52,6 @@
 > - **우선순위**: 저장되는 DATE 컬럼(`disposed_at`/`order_date`/`auto_complete_date`)은 시간정보 없어 **영구 off-by-one**(회계 귀속·매출 집계 직결) > 비교 필터(매 쿼리 재계산되어 9시 이후 정상화, 일시적).
 > - 탐지: `grep -rn "date('now')\|datetime('now')" src/routes` 후 각 사용처가 (a)업무일자(비즈니스 의미) 인지 (b)순수 감사 타임스탬프(`created_at`/`updated_at`=UTC 정상)인지 분류. 업무일자는 `'+9 hours'` 보정 필요. **자동수정 금지**(날짜 시맨틱=비즈니스 로직, 사용처 분류 선행, 잘못 보정 시 UTC 감사로그 훼손).
 
+> **🔢 중복 마이그레이션 번호 = 병렬 worktree 채번 충돌, 감지 도구 없음 (Area 4 #639, 2026-09-08 codify, 55회차)**: `migrations/`에 같은 4자리 번호(`0576`~`0585` 중 7쌍)가 반복 발생 — CLAUDE.md 멀티세션 워크플로우(worktree 격리)가 각 세션에 독립 체크아웃을 주는데, 번호는 "현재 디렉터리에서 다음 번호"를 눈으로 보고 채번하므로 두 worktree가 같은 순간 같은 번호를 집는다. `wrangler d1 migrations apply`는 번호가 아니라 **전체 파일명**으로 추적해 중복 자체는 막지 않는다. 직전 Area4 사이클(로그 「신규 마이그레이션 14건」)에도 `0569`·`0570` 2쌍이 이미 있었다 — **재발 패턴**(2쌍→7쌍, 빈도 증가). **탐지**: `ls migrations | sed -E 's/^([0-9]+)_.*/\1/' | sort | uniq -d` 로 중복 번호 나열 → 각 쌍이 **같은 테이블**에 DDL(특히 `ADD COLUMN` 같은 컬럼명)을 겹치는지 확인, 겹치면 실충돌(배포 시 wrangler가 "duplicate column name"으로 실패) 가능성. 이번 7쌍은 전부 대상 테이블·컬럼 비겹침으로 우연히 무해(`db:bootstrap:ci` 15건 전부 적용 확인). **판정 = issue-only**(도구 신설이라 SKILL 워크플로우상 "새 기능"에 해당, owner 승인 후 `scripts/migration-number-audit.cjs` 신설 + `migration-check` 게이트 연동이 근본 수정).
+
 ---
