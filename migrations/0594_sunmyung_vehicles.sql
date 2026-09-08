@@ -69,4 +69,6 @@ UPDATE fixed_assets SET loan_id = (SELECT id FROM loans WHERE loan_number = '848
  WHERE asset_code = 'FA-E2-L03' AND loan_id IS NULL;
 UPDATE fixed_assets SET loan_id = (SELECT id FROM loans WHERE loan_number = '800더7445')
  WHERE asset_code = 'FA-E2-L04' AND loan_id IS NULL;
-UPDATE fixed_assets SET loan_id = 15 WHERE asset_code = 'FA-E2-L01' AND loan_id IS NULL;
+-- ★EXISTS 가드 — CI 의 빈 부트스트랩 DB에는 loans #15 가 없어 FOREIGN KEY 로 배포가 막힌다(0593 과 같은 함정).
+UPDATE fixed_assets SET loan_id = 15
+ WHERE asset_code = 'FA-E2-L01' AND loan_id IS NULL AND EXISTS (SELECT 1 FROM loans WHERE id = 15);
