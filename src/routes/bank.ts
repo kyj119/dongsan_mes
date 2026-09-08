@@ -12,6 +12,7 @@ import { normalizeCounterpart, stripBankPrefix, isNonCounterpartName } from '../
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
 import { resolveInternalEntityMatch, buildSettlementClientMap, resolveHistoryMatch, allowAmountOnlyMatch, shouldPromoteSuggestion, SUGGESTION_WEAK_BELOW } from '../utils/bankMatchPolicy'
+import { canAttachToDeposit } from '../utils/expenseRole'
 import { getEntityCorpNum, getEntityBarobillSenderId } from '../utils/entitySettings'
 import { loadProvision, agingCategoryToBucket, effectiveLossRate } from '../utils/provisionMatrix'
 import { buildOldestUnpaidJoin, agingDaysFromOldest, getAgingCategory } from './ledger/ar-helpers'
@@ -1091,11 +1092,21 @@ async function learnMatchRule(
 //   /match·단건 apply·batch-apply 3곳 공용 — 어느 경로로 들어와도 동일 결과.
 async function applyExpenseCategory(
   c: Context<HonoEnv>,
-  tx: { id: number; transaction_date: string; amount: number; counterpart_name: string | null; entity_id: number | null },
+  tx: { id: number; transaction_date: string; amount: number; counterpart_name: string | null; entity_id: number | null; transaction_type: string },
   categoryId: number | null,
   fixedExpenseId: number | null,
   userId: number | null
 ): Promise<{ message: string }> {
+  // ★입금에 비용 계정을 붙이지 못하게 막는다 — 제안 단계에서도 막지만(스윕 Step 1-b) 적용은
+  //   /match·단건·일괄 셋이 공용이라 여기가 마지막 관문이다. NOT_EXPENSE(차입·가수금·보증금
+  //   회수)는 입금이 정상이라 통과시킨다. 감사(audit:expense-category ②)와 같은 선이다.
+  if (tx.transaction_type === 'DEPOSIT' && categoryId) {
+    const role = await c.env.DB.prepare('SELECT role FROM expense_categories WHERE id = ?')
+      .bind(categoryId).first<{ role: string | null }>()
+    if (!canAttachToDeposit(role?.role)) {
+      throw new Error('입금에는 비용 계정을 붙일 수 없습니다 — 부호가 반대입니다')
+    }
+  }
   await c.env.DB.prepare(`
     UPDATE bank_transactions
     SET match_status = 'APPLIED',
@@ -1293,14 +1304,18 @@ async function runAutoMatchEngine(
     }
 
     // 3. bank_match_rules 캐시 로드 (거래처 + 비용카테고리 규칙, match_type)
-    const efRules = entityFilter(c, 'bank_match_rules')
+    const efRules = entityFilter(c, 'r')
     const { results: matchRules } = await c.env.DB.prepare(`
-      SELECT counterpart_name, matched_client_id, matched_category_id, match_type FROM bank_match_rules WHERE 1=1${efRules.clause}
+      SELECT r.counterpart_name, r.matched_client_id, r.matched_category_id, r.match_type, ec.role AS category_role
+      FROM bank_match_rules r
+      LEFT JOIN expense_categories ec ON ec.id = r.matched_category_id
+      WHERE 1=1${efRules.clause}
     `).bind(...efRules.params).all<{
       counterpart_name: string
       matched_client_id: number | null
       matched_category_id: number | null
       match_type: string | null
+      category_role: string | null
     }>()
 
     // 3-b. 확정 이력 = **파생**으로 읽는다 (캐시 아님)
@@ -1330,7 +1345,7 @@ async function runAutoMatchEngine(
     )
     const containsRules = matchRules
       .filter(r => (r.match_type ?? 'EXACT') === 'CONTAINS' && r.counterpart_name.trim())
-      .map(r => ({ key: r.counterpart_name.trim(), clientId: r.matched_client_id, categoryId: r.matched_category_id }))
+      .map(r => ({ key: r.counterpart_name.trim(), clientId: r.matched_client_id, categoryId: r.matched_category_id, categoryRole: r.category_role }))
 
     // 3-b. 활성 고정비 로드 (출금 → 고정비 제안용). 적요 변동 무관: 거래처/키워드 + 금액대로 앵커.
     const efFixed = entityFilter(c, 'fixed_expenses')
@@ -1458,7 +1473,12 @@ async function runAutoMatchEngine(
       } else {
         // Step 1-b: CONTAINS 규칙(부분일치) — 적요가 매달 달라도 키워드로 제안
         const cRule = containsRules.find(r => txName.includes(r.key) || r.key.includes(txName))
-        if (cRule && cRule.categoryId) {
+        // ★입금에 **비용** 계정을 붙이지 않는다 — 규칙 학습은 입출금을 안 가린다.
+        //   지우기만 하면 스윕이 다시 만든다(0583 이 거둔 입금 운반비가 그대로 되살아났다).
+        const catAllowed = cRule?.categoryId
+          ? (tx.transaction_type !== 'DEPOSIT' || canAttachToDeposit(cRule.categoryRole))
+          : false
+        if (cRule && cRule.categoryId && catAllowed) {
           // 부분일치 비용분류 → 제안(SUGGESTED, 사람 확정)
           matchUpdateStmts.push(c.env.DB.prepare(`
             UPDATE bank_transactions
@@ -1691,8 +1711,8 @@ bankRouter.post('/transactions/:id/match', requireRole('ADMIN'), async (c) => {
 
     const ef = entityFilter(c, 'bank_transactions')
     const tx = await c.env.DB.prepare(
-      `SELECT id, match_status, counterpart_name, transaction_date, amount, entity_id FROM bank_transactions WHERE id = ?${ef.clause}`
-    ).bind(id, ...ef.params).first<{ id: number; match_status: string; counterpart_name: string | null; transaction_date: string; amount: number; entity_id: number | null }>()
+      `SELECT id, match_status, counterpart_name, transaction_date, transaction_type, amount, entity_id FROM bank_transactions WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; match_status: string; counterpart_name: string | null; transaction_date: string; transaction_type: string; amount: number; entity_id: number | null }>()
 
     if (!tx) {
       return c.json({ success: false, error: '거래내역을 찾을 수 없습니다' }, 404)

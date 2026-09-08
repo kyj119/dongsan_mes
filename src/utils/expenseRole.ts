@@ -45,6 +45,18 @@ export function countsAsExpense(v: unknown): boolean {
   return normalizeRole(v) !== 'NOT_EXPENSE'
 }
 
+/**
+ * **입금**에 이 계정을 붙여도 되는가 — 비용 역할이면 안 된다.
+ *
+ * ★돈이 들어온 건은 비용이 아니다. 그런데 규칙 학습(`bank_match_rules` CONTAINS)은 입출금을 안 가려서
+ *   `신화테크택배비포함` **입금** 32,670 에 운반비가 붙었다. 마이그레이션(0583)으로 지웠지만
+ *   **규칙이 살아 있어 스윕이 그대로 다시 만들었다** — 데이터를 지워도 그걸 만든 규칙은 남는다.
+ * ★차입금·가수금·보증금 회수처럼 NOT_EXPENSE 는 입금이 정상이라 허용한다(감사 규칙과 같은 선).
+ */
+export function canAttachToDeposit(v: unknown): boolean {
+  return normalizeRole(v) === 'NOT_EXPENSE'
+}
+
 /** 영업이익 축(매출원가+판관비)에 들어가는가 — NONOP·TAX·NOT_EXPENSE 는 아래로 뺀다. */
 export function countsAsOperating(v: unknown): boolean {
   const r = normalizeRole(v)

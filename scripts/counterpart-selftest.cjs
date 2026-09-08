@@ -25,9 +25,12 @@ const { mod, cleanup: nameCleanup } = compileTs(SRC)
 const { normalizeCounterpart, stripBankPrefix, isNonCounterpartName } = mod
 // 정책 모듈은 constants/intercompany 를 import 하므로 bundle 이 필요하다.
 const { mod: policy, cleanup: policyCleanup } = compileTs(POLICY_SRC, { bundle: true })
+const ROLE_SRC = path.join(__dirname, '..', 'src', 'utils', 'expenseRole.ts')
+const { mod: roleMod, cleanup: roleCleanup } = compileTs(ROLE_SRC)
+const { normalizeRole, canAttachToDeposit, countsAsExpense } = roleMod
 const { resolveInternalEntityMatch, buildSettlementClientMap, resolveHistoryMatch, allowAmountOnlyMatch,
         shouldPromoteSuggestion, isWeakSuggestion, SUGGESTION_WEAK_BELOW } = policy
-const cleanup = () => { nameCleanup?.(); policyCleanup?.() }
+const cleanup = () => { nameCleanup?.(); policyCleanup?.(); roleCleanup?.() }
 
 let pass = 0
 const fails = []
@@ -177,7 +180,27 @@ check('관계사는 이 정책 대상 아님', resolveInternalEntityMatch(1655, 
   check('상호 표기 일치 0.7 = 강함', isWeakSuggestion(0.7), false)
   check('학습된 규칙 0.8 = 강함', isWeakSuggestion(0.8), false)
   check('확정 이력 0.75 = 강함', isWeakSuggestion(0.75), false)
-  check('신뢰도 null 은 약함으로 본다', isWeakSuggestion(null), true)
+  check('신뢰도 null 은 약함으로 본다', isWeakSuggestion(null), true)}
+
+// ---------------------------------------------------------------------------
+// 계정 역할 — **입금에 비용 계정**이 붙으면 손익이 조용히 틀린다
+//   규칙 학습(bank_match_rules CONTAINS)이 입출금을 안 가려 입금 32,670 에 운반비가 붙었다.
+//   마이그레이션(0583)으로 지웠더니 스윕이 **그대로 다시 만들었다**(2026-09-08).
+//   데이터를 지우는 것으로는 안 끝난다 — 그걸 만든 규칙을 막아야 한다.
+// ---------------------------------------------------------------------------
+{
+  check('모르는 값은 SGA(비용)로 떨어진다', normalizeRole('WAT'), 'SGA')
+  check('빈값도 SGA', normalizeRole(null), 'SGA')
+  check('소문자도 인식', normalizeRole('not_expense'), 'NOT_EXPENSE')
+  check('앞뒤 공백 허용', normalizeRole('  COGS '), 'COGS')
+  check('NOT_EXPENSE 는 비용 아님', countsAsExpense('NOT_EXPENSE'), false)
+  check('SGA 는 비용', countsAsExpense('SGA'), true)
+  check('입금에 운반비(SGA) 금지', canAttachToDeposit('SGA'), false)
+  check('입금에 원재료비(COGS) 금지', canAttachToDeposit('COGS'), false)
+  check('입금에 이자비용(NONOP) 금지', canAttachToDeposit('NONOP'), false)
+  check('입금에 법인세(TAX) 금지', canAttachToDeposit('TAX'), false)
+  check('차입금 입금은 허용', canAttachToDeposit('NOT_EXPENSE'), true)
+  check('역할 없는 계정은 금지', canAttachToDeposit(null), false)
 }
 
 cleanup()
