@@ -23,7 +23,8 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
 import { requireAccessOrRole } from '../middleware/permissions'
-import { entityFilter } from '../utils/entityFilter'
+import { requireRole } from '../middleware/auth'
+import { entityFilter, E2E_ENTITY_ID } from '../utils/entityFilter'
 import { kstYmd } from '../utils/kstDate'
 import {
   buildClientPool, classifyWithdrawal, isCandidate,
@@ -199,6 +200,108 @@ purchaseCandidatesRouter.get('/', async (c) => {
     return c.json({ success: true, data: { summary, suppliers, rows } })
   } catch (error) {
     console.error('src/routes/purchaseCandidates.ts error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+
+// ============================================================================
+// 거래처별 발주 담당 (0586) — 조회 · 지정
+// ----------------------------------------------------------------------------
+// ★씨앗은 매입 이력 역산이라 **틀릴 수 있다**. 사람이 고칠 통로가 없으면 그 값이 그대로 굳는다.
+//   그래서 목록에 **역산 근거**(2026 매입액·발주 건수)를 같이 실어 판단할 수 있게 한다.
+// ⚠️쓰기는 관리자만 — 담당 배정은 조직의 결정이다. 열람은 담당자도 한다(자기 거래처를 봐야 하므로).
+// ============================================================================
+
+interface OwnerListRow {
+  entity_id: number; entity_name: string
+  client_id: number; client_name: string
+  user_id: number | null; user_name: string | null
+  note: string | null
+  po_count: number; po_amount: number; last_po: string | null
+}
+
+purchaseCandidatesRouter.get('/owners', async (c) => {
+  try {
+    const ef = entityFilter(c, 'po')
+    // 2026 매입이 있었던 (법인, 거래처) 전부 — 담당이 아직 없는 곳도 보여야 지정할 수 있다.
+    const { results } = await c.env.DB.prepare(`
+      SELECT po.entity_id, e.name AS entity_name,
+             po.supplier_id AS client_id, cl.client_name,
+             so.user_id, u.name AS user_name, so.note,
+             COUNT(DISTINCT po.id) AS po_count,
+             CAST(COALESCE(SUM(poi.amount), 0) AS INT) AS po_amount,
+             MAX(po.order_date) AS last_po
+        FROM purchase_order_items poi
+        JOIN purchase_orders po ON po.id = poi.po_id
+        JOIN clients cl ON cl.id = po.supplier_id
+        LEFT JOIN entities e ON e.id = po.entity_id
+        LEFT JOIN supplier_owners so ON so.entity_id = po.entity_id AND so.client_id = po.supplier_id
+        LEFT JOIN users u ON u.id = so.user_id
+       WHERE po.order_date >= '2026-01-01' AND po.status <> 'CANCELLED'${ef.clause}
+       GROUP BY po.entity_id, po.supplier_id
+       ORDER BY po_amount DESC, po.supplier_id
+    `).bind(...ef.params).all<OwnerListRow>()
+
+    // 담당 후보 = **활성 사용자 전원**. 역할로 좁히지 않는다 —
+    //   구역 담당 5명의 role 이 OPERATOR 4 · SALES 1 로 제각각이라 역할로 거르면 사람이 사라진다.
+    const { results: users } = await c.env.DB.prepare(`
+      SELECT u.id, u.name, COALESCE(u.job_role, u.role) AS role, COALESCE(u.default_entity_id, 0) AS entity_id
+        FROM users u
+       WHERE u.is_active = 1 AND COALESCE(u.default_entity_id, 0) <> ${E2E_ENTITY_ID}
+       ORDER BY u.name
+    `).all()
+
+    const rows = (results || []).map((r) => ({
+      entity_id: r.entity_id, entity_name: r.entity_name || String(r.entity_id),
+      client_id: r.client_id, client_name: r.client_name,
+      user_id: r.user_id, user_name: r.user_name || '',
+      note: r.note || '',
+      po_count: Number(r.po_count) || 0,
+      po_amount: Math.round(Number(r.po_amount) || 0),
+      last_po: r.last_po || '',
+    }))
+    return c.json({
+      success: true,
+      data: {
+        rows, users: users || [],
+        assigned: rows.filter((r) => r.user_id).length,
+        total: rows.length,
+      },
+    })
+  } catch (error) {
+    console.error('src/routes/purchaseCandidates.ts owners error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// PUT /owners — (법인, 거래처) 담당 지정. `user_id: null` = 지정 해제.
+purchaseCandidatesRouter.put('/owners', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({})) as
+      { entity_id?: unknown; client_id?: unknown; user_id?: unknown }
+    const entityId = Number(body.entity_id)
+    const clientId = Number(body.client_id)
+    const userId = (body.user_id === null || body.user_id === '' || body.user_id === undefined)
+      ? null : Number(body.user_id)
+    if (!(entityId > 0) || !(clientId > 0)) {
+      return c.json({ success: false, error: 'entity_id · client_id 필수' }, 400)
+    }
+    if (userId !== null && !(userId > 0)) {
+      return c.json({ success: false, error: '유효하지 않은 담당자' }, 400)
+    }
+    const me = c.get('user')
+    // 사람이 정한 값은 「자동 역산」 표시를 지운다 — 다음 재실행이 덮지 않는다는 뜻이기도 하다.
+    await c.env.DB.prepare(`
+      INSERT INTO supplier_owners (entity_id, client_id, user_id, note, updated_at, updated_by)
+      VALUES (?, ?, ?, '수동 지정', CURRENT_TIMESTAMP, ?)
+      ON CONFLICT(entity_id, client_id) DO UPDATE SET
+        user_id = excluded.user_id, note = excluded.note,
+        updated_at = CURRENT_TIMESTAMP, updated_by = excluded.updated_by
+    `).bind(entityId, clientId, userId, me?.id || null).run()
+    return c.json({ success: true, data: { entity_id: entityId, client_id: clientId, user_id: userId } })
+  } catch (error) {
+    console.error('src/routes/purchaseCandidates.ts owners write error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })

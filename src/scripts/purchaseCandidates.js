@@ -160,9 +160,85 @@ window.pcqLoad = async function() {
   }
 };
 
+// ── 거래처 담당 (2026-09-08) ──────────────────────────────────────────────
+// 씨앗이 매입 이력 역산이라 틀릴 수 있다 → 사람이 고칠 통로. 바꾸면 즉시 저장한다.
+var pcqOwners = { rows: [], users: [], assigned: 0, total: 0 };
+
+async function pcqLoadOwners() {
+  var body = document.getElementById('pcqOwnBody');
+  if (!body) { console.warn('[purchaseCandidates] #pcqOwnBody not found'); return; }
+  try {
+    var res = await axios.get('/api/purchase-candidates/owners');
+    if (!res.data || !res.data.success) throw new Error((res.data && res.data.error) || '조회 실패');
+    pcqOwners = res.data.data;
+    pcqRenderOwners();
+  } catch (e) {
+    console.error('[purchaseCandidates] owners error:', e);
+    body.innerHTML = '<tr><td colspan="6" class="px-4 py-6 text-center text-red-500">담당 목록을 불러오지 못했습니다.</td></tr>';
+  }
+}
+
+function pcqRenderOwners() {
+  var body = document.getElementById('pcqOwnBody');
+  var note = document.getElementById('pcqOwnNote');
+  var onlyEmpty = document.getElementById('pcqOwnOnlyEmpty');
+  if (!body || !note) { console.warn('[purchaseCandidates] #pcqOwnBody/#pcqOwnNote not found'); return; }
+  var list = pcqOwners.rows || [];
+  if (onlyEmpty && onlyEmpty.checked) list = list.filter(function(r) { return !r.user_id; });
+  note.textContent = '지정 ' + pcqOwners.assigned + ' / ' + pcqOwners.total + '곳';
+  if (!list.length) {
+    body.innerHTML = '<tr><td colspan="6" class="px-4 py-6 text-center text-gray-400">해당하는 거래처가 없습니다.</td></tr>';
+    return;
+  }
+  var opts = pcqOwners.users || [];
+  body.innerHTML = list.map(function(r) {
+    var sel = '<select onchange="pcqSetOwner(' + r.entity_id + ',' + r.client_id + ',this.value,this)"'
+      + ' class="border rounded px-2 py-1 text-xs ' + (r.user_id ? 'bg-blue-50 border-blue-200' : 'text-gray-400') + '">'
+      + '<option value="">— 미지정 —</option>'
+      + opts.map(function(u) {
+          return '<option value="' + u.id + '"' + (r.user_id === u.id ? ' selected' : '') + '>'
+            + pcqEsc(u.name) + ' (' + pcqEsc(u.role) + ')</option>';
+        }).join('')
+      + '</select>';
+    return '<tr class="border-t hover:bg-gray-50">'
+      + '<td class="px-4 py-2 font-medium">' + pcqEsc(r.client_name) + '</td>'
+      + '<td class="px-4 py-2 text-xs text-gray-600">' + pcqEsc(r.entity_name) + '</td>'
+      + '<td class="px-4 py-2 text-right">' + pcqNum(r.po_amount) + '</td>'
+      + '<td class="px-4 py-2 text-right text-xs text-gray-500">' + r.po_count + '건</td>'
+      + '<td class="px-4 py-2 text-xs text-gray-500">' + pcqDate(r.last_po) + '</td>'
+      + '<td class="px-4 py-2">' + sel
+      + (r.note ? '<div class="text-xs text-gray-400 mt-0.5">' + pcqEsc(r.note) + '</div>' : '')
+      + '</td></tr>';
+  }).join('');
+}
+
+window.pcqSetOwner = async function(entityId, clientId, value, el) {
+  var prev = el ? el.value : '';
+  try {
+    var res = await axios.put('/api/purchase-candidates/owners', {
+      entity_id: entityId, client_id: clientId, user_id: value === '' ? null : Number(value)
+    });
+    if (!res.data || !res.data.success) throw new Error((res.data && res.data.error) || '저장 실패');
+    var row = (pcqOwners.rows || []).filter(function(r) {
+      return r.entity_id === entityId && r.client_id === clientId; })[0];
+    if (row) {
+      row.user_id = value === '' ? null : Number(value);
+      row.note = '수동 지정';
+      pcqOwners.assigned = (pcqOwners.rows || []).filter(function(r) { return r.user_id; }).length;
+    }
+    pcqRenderOwners();
+    pcqLoad();   // 위 거래처 표의 담당 열도 따라오게
+  } catch (e) {
+    console.error('[purchaseCandidates] setOwner error:', e);
+    alert((e.response && e.response.data && e.response.data.error) || '담당을 저장하지 못했습니다.');
+    if (el) el.value = prev;
+  }
+};
+
 // ===== 초기화 =====
 (function() {
   pcqChips('pcqSupFilter', pcqSupFilter, pcqRenderSuppliers);
   pcqChips('pcqRowFilter', pcqRowFilter, pcqRenderRows);
   window.pcqLoad();
+  pcqLoadOwners();
 })();

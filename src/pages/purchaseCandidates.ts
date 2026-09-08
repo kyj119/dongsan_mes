@@ -91,6 +91,39 @@ export function purchaseCandidatesPage(c: Context<HonoEnv>) {
         </div>
       </div>
 
+      <div class="bg-white rounded-lg shadow mt-5">
+        <div class="px-4 py-3 border-b flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 class="font-semibold text-gray-800">
+              거래처 담당 <span id="pcqOwnNote" class="text-xs font-normal text-gray-500 ml-1"></span>
+            </h2>
+            <p class="text-xs text-gray-500 mt-0.5">
+              「이 거래처에 <b>주문하는</b> 사람」입니다. 자재를 <b>받는</b> 사람(창고 담당)과는 다른 축입니다.
+              초기값은 매입 이력에서 역산한 것이라 <b>틀릴 수 있습니다</b> — 바꾸면 바로 저장됩니다.
+            </p>
+          </div>
+          <label class="flex items-center gap-1.5 text-xs text-gray-600">
+            <input type="checkbox" id="pcqOwnOnlyEmpty" onchange="pcqRenderOwners()" class="w-3.5 h-3.5">
+            미지정만
+          </label>
+        </div>
+        <div class="overflow-x-auto" style="max-height:460px">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-500 sticky top-0">
+              <tr>
+                <th class="px-4 py-2 text-left font-medium">거래처</th>
+                <th class="px-4 py-2 text-left font-medium">법인</th>
+                <th class="px-4 py-2 text-right font-medium">2026 매입</th>
+                <th class="px-4 py-2 text-right font-medium">발주</th>
+                <th class="px-4 py-2 text-left font-medium">최근</th>
+                <th class="px-4 py-2 text-left font-medium">발주 담당</th>
+              </tr>
+            </thead>
+            <tbody id="pcqOwnBody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <p class="text-xs text-gray-500 mt-4 leading-relaxed">
         <b>판정</b> — <b>확실</b>: 적요에 「외상·물대·미지급」이 있거나 등록된 거래처 이름과 일치 ·
         <b>가능</b>: 잘린 이름·2글자 거래처 일치 또는 「대금·자재·원단」 같은 매입어 ·
