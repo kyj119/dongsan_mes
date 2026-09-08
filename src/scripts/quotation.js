@@ -103,7 +103,9 @@ function buildQuotationHalf(data, copyLabel, fullPage, validUntil, isExpired) {
             + '<td class="left">' + nameWithSpec + '</td>'
             + '<td>' + (it.quantity || 0) + '</td>'
             + '<td>' + escapeHtml(it.unit || 'EA') + '</td>'
-            + '<td class="right">' + fmt(it.unit_price) + '</td>'
+            // ★단가 = 장당가 파생(거래명세서와 같은 축이어야 한다 — 갈리면 "견적과 청구가 다르다"가 된다).
+            //   정본 = shared/displayUnitPrice.js
+            + '<td class="right">' + fmt(window.MES_UP.perUnit(it)) + '</td>'
             + '<td class="right">' + fmt(supply) + '</td>'
             + '<td class="right">' + fmt(vat) + '</td>'
             + '<td class="left" style="font-size:9px">' + remark + '</td>'

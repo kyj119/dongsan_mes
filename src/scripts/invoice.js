@@ -111,7 +111,10 @@ function buildInvoiceHalf(data, copyLabel, fullPage) {
             + '<td class="left" style="font-size:9px">' + spec + '</td>'
             + '<td>' + (it.quantity || 0) + '</td>'
             + '<td>' + escapeHtml(it.unit || 'EA') + '</td>'
-            + '<td class="right">' + fmt(it.unit_price) + '</td>'
+            // ★단가는 저장값이 아니라 **장당가 파생**이다 — AREA 품목의 unit_price 는 ㎡단가라
+            //   그대로 찍으면 `수량 × 단가 ≠ 공급가` 가 되어 거래처가 검산할 수 없다.
+            //   정본 = shared/displayUnitPrice.js (MES_UP 없으면 표기가 조용히 틀린다).
+            + '<td class="right">' + fmt(window.MES_UP.perUnit(it)) + '</td>'
             + '<td class="right">' + fmt(supply) + '</td>'
             + '<td class="right">' + fmt(vat) + '</td>'
             + '</tr>';

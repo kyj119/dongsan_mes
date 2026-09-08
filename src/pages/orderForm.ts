@@ -7,6 +7,7 @@ import { deliveryMethodOptionsHtml } from '../constants/deliveryMethod'
 // Phase 3.1.C 분할: orderForm.js (3966줄) → 6개 모듈
 import finishingLabel from '../scripts/shared/finishingLabel.js?raw'   // 마감·후가공 표기 정본(클라 사본) — MES_FIN 없으면 요약이 조용히 빈값이 된다
 import deliverySlot from '../scripts/shared/deliverySlot.js?raw'       // 직배 배차 슬롯·완료기한(클라 사본) — 서버 정본 = utils/productionDeadline.ts
+import displayUnitPrice from '../scripts/shared/displayUnitPrice.js?raw' // 단가 표기 정본(장당가 파생) — 입력칸 실시간 병기가 이걸 쓴다
 import sClient from '../scripts/orderForm/client.js?raw'
 import sItemRow from '../scripts/orderForm/itemRow.js?raw'
 import sFinishing from '../scripts/orderForm/finishing.js?raw'
@@ -14,7 +15,7 @@ import sCalc from '../scripts/orderForm/calc.js?raw'
 import sSheet from '../scripts/orderForm/sheet.js?raw'
 import sParent from '../scripts/orderForm/parent.js?raw'
 import sIntake from '../scripts/orderForm/intake.js?raw'
-const pageScript = [finishingLabel, deliverySlot, sClient, sItemRow, sFinishing, sCalc, sSheet, sParent, sIntake].join('\n')
+const pageScript = [finishingLabel, deliverySlot, displayUnitPrice, sClient, sItemRow, sFinishing, sCalc, sSheet, sParent, sIntake].join('\n')
 import distPageScript from '../scripts/orderFormDist.js?raw'
 
 export async function orderFormPage(c: Context<HonoEnv>) {

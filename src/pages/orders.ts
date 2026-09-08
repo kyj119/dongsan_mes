@@ -3,7 +3,8 @@ import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import ordersScript from '../scripts/orders.js?raw'
 import deliverySlot from '../scripts/shared/deliverySlot.js?raw'       // 직배 배차 슬롯·완료기한(클라 사본)
-const pageScript = [deliverySlot, ordersScript].join(String.fromCharCode(10))
+import displayUnitPrice from '../scripts/shared/displayUnitPrice.js?raw' // 단가 표기 정본(장당가+㎡단가 병기) — MES_UP 없으면 라인 단가가 조용히 빈다
+const pageScript = [deliverySlot, displayUnitPrice, ordersScript].join(String.fromCharCode(10))
 
 export function ordersPage(c: Context<HonoEnv>) {
   return renderPage(c, {

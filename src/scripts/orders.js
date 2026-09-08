@@ -1226,7 +1226,9 @@ function showOrderModal(order, cards, autoJobs) {
         <td class="px-4 py-2" title="${escapeHtml(item.item_name || '')}">${namePrefix}${escapeHtml(item.item_name || '-')}${lineFileHtml}</td>
         <td class="px-4 py-2 text-center">${sizeStr}</td>
         <td class="px-4 py-2 text-center tabular-nums">${item.quantity || 1} ${item.unit || 'EA'}</td>
-        <td class="px-4 py-2 text-right tabular-nums">${isChild ? '-' : (item.unit_price?.toLocaleString() || 0) + '원'}</td>
+        <!-- 내부 화면이라 장당가 + ㎡단가 병기 — 영업·디자이너는 두 축을 다 봐야 한다.
+             대외 문서(거래명세서·견적서·고객포털)는 장당가 단독. 정본 = shared/displayUnitPrice.js -->
+        <td class="px-4 py-2 text-right tabular-nums">${isChild ? '-' : window.MES_UP.dual(item)}</td>
         <td class="px-4 py-2 text-right tabular-nums">${isChild ? '-' : (item.amount?.toLocaleString() || 0) + '원'}</td>
         <td class="px-4 py-2" title="${escapeHtml(item.content || '')}">${escapeHtml(item.content || '-')}</td>
         <td class="px-4 py-2" title="${escapeHtml(ppText)}">${ppText}</td>

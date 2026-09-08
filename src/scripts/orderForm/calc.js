@@ -128,7 +128,7 @@
             window.calcItem = function(id) {
                 // 미정 품목은 계산 스킵
                 var pendingCb = document.querySelector('[name="price_pending_' + id + '"]');
-                if (pendingCb && pendingCb.checked) return;
+                if (pendingCb && pendingCb.checked) { updateUnitPricePerEa(id); return; }
 
                 var qty = parseInt(document.querySelector('[name="quantity_' + id + '"]').value) || 0;
                 var price = parseMoney((document.querySelector('[name="unit_price_' + id + '"]') || {}).value);
@@ -179,8 +179,40 @@
                     }
                     el.dataset.autoAmount = String(amt);
                 }
+                updateUnitPricePerEa(id);
                 calculateTotal();
             };
+
+            /**
+             * 단가칸 아래 **장당가 실시간 병기** — `= 5,000원/EA`
+             *
+             * 왜 필요한가: AREA 품목의 단가칸은 ㎡단가다(라벨도 `단가 (원/㎡)`). 그런데 입력자는
+             *   `수량 × 단가` 로 검산하려 들고, 60×180·30장·2,778원이면 83,340 이 나와 금액 150,000 과
+             *   안 맞는다 — 계산은 정상인데(청구 1.0×1.8m ×30 = 54㎡) 사람이 확인할 방법이 없었다.
+             *
+             * 값은 **최종 청구액 기준**이다(lineFinalAmount) — 에누리를 넣으면 장당가도 같이 내려간다.
+             * 그래야 나중에 거래명세서에 찍히는 값과 정확히 같다.
+             * 표기 정본 = shared/displayUnitPrice.js (문서·목록이 쓰는 그 식).
+             */
+            function updateUnitPricePerEa(id) {
+                var el = document.getElementById('unit_price_per_ea_' + id);
+                if (!el) { console.warn('[orderForm] #unit_price_per_ea_' + id + ' not found'); return; }
+                var pmEl = document.querySelector('[name="pricing_method_' + id + '"]');
+                var pm = pmEl ? pmEl.value : 'FIXED';
+                var qtyEl = document.querySelector('[name="quantity_' + id + '"]');
+                var qty = qtyEl ? (parseInt(qtyEl.value) || 0) : 0;
+                var amt = lineFinalAmount(id);
+                // FIXED 는 단가칸이 이미 장당가라 병기가 노이즈다. AREA 만 띄운다.
+                if (pm !== 'AREA' || qty <= 0 || amt <= 0 || !window.MES_UP) {
+                    el.classList.add('hidden');
+                    return;
+                }
+                var unitEl = document.querySelector('[name="unit_display_' + id + '"]');
+                var unit = (unitEl && unitEl.value) ? unitEl.value : 'EA';
+                var per = window.MES_UP.perUnit({ quantity: qty, amount: amt });
+                el.textContent = '= ' + per.toLocaleString() + '원/' + unit;
+                el.classList.remove('hidden');
+            }
 
             // 행의 최종 청구액 = 에누리(수동 수정)가 있으면 그 값. 없으면 자동 계산값.
             //   ★전엔 합계가 수동값을 무시해 화면 안에서 어긋났다(행 200,000인데 합계 62,000).

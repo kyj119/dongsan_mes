@@ -1,6 +1,7 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import invoiceScript from '../scripts/invoice.js?raw'
+import displayUnitPrice from '../scripts/shared/displayUnitPrice.js?raw'   // 단가 표기 정본(장당가 파생) — MES_UP 없으면 문서 단가가 조용히 틀린다
 
 export function invoicePage(c: Context<HonoEnv>) {
   const orderId = parseInt(c.req.param('orderId') || '', 10)
@@ -180,6 +181,7 @@ export function invoicePage(c: Context<HonoEnv>) {
 
         <script>
             var ORDER_ID = ${orderId};
+            ${displayUnitPrice}
             ${invoiceScript}
         </script>
     </body>

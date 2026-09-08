@@ -537,6 +537,7 @@ def main():
     made = skipped = 0
     linked_ids, link_hits = [], 0
     no_client, no_item, fails, diverge, no_staff = Counter(), Counter(), [], [], Counter()
+    no_spec = Counter()          # AREA 품목인데 규격을 못 읽은 라인 — 단가가 장당가로 들어간다
     for slip, lines in slips.items():
         if slip in seen:
             skipped += 1
@@ -588,6 +589,15 @@ def main():
             method = pricing.get(iid, 'FIXED')
             if method == 'AREA' and w and h and q and amt:
                 price = area_unit_price(amt, q, w, h)
+            elif method == 'AREA':
+                # ★규격을 못 읽으면 환산이 **안 돈다** — `unit_price` 가 ㎡단가가 아니라 장당금액으로 남는다.
+                #   그 상태로도 금액은 맞다(서버가 규격 없는 AREA 를 FIXED 분기로 계산한다).
+                #   위험은 **나중에 규격만 채울 때**다 — 단가를 같이 안 고치면 그 주문을 화면에서
+                #   저장하는 순간 차액이 통째로 행 에누리가 된다(2026-09-08 실측 336건, 마이그 0575).
+                #   → 규격을 손으로 채우려면 `npm run audit:unit-price-semantics` 를 반드시 같이 돌린다.
+                #   ⚠️ 정규식을 넓혀 규격을 억지로 뽑지 않는다 — `specification` 원문의 대부분은 규격이
+                #      아니다(`127폭`·`20w`·`3구 R-150(120*80)` = LED 모듈 치수). 오독하면 ㎡단가가 틀린다.
+                no_spec[spec or '(빈 규격)'] += 1
             auto = mes_auto(price, q, w or 0, h or 0, method)
             if round(amt) != auto:
                 diverge.append((slip, bare, auto, amt))
@@ -688,6 +698,12 @@ def main():
         print(f'품목 미해소 {sum(no_item.values())}라인 → item_id NULL 로 생성(품목명은 보존):')
         for k, v in no_item.most_common(15):
             print(f'   {v:>3}  {k}')
+    if no_spec:
+        print(f'규격 미판독 {sum(no_spec.values())}라인 (AREA 품목) → unit_price 가 **장당금액**으로 저장된다:')
+        for k, v in no_spec.most_common(15):
+            print(f'   {v:>3}  {k}')
+        print('   ⚠️ 이 라인들의 규격을 나중에 채우면 단가도 함께 ㎡단가로 고쳐야 한다 —')
+        print('      점검 = npm run audit:unit-price-semantics · 정정 = migrations/0575_*.sql (멱등)')
     if diverge:
         gap = sum(abs(a - b) for _, _, a, b in diverge)
         print(f'MES 자동산식과 금액 상이 {len(diverge)}/{n_lines}라인 (차 합 {gap:,.0f}원) '

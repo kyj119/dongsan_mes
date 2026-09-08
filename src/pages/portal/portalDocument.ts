@@ -1,4 +1,5 @@
 import type { Context } from 'hono'
+import displayUnitPrice from '../../scripts/shared/displayUnitPrice.js?raw'  // 단가 표기 정본(장당가 파생) — 명세서와 같은 값이어야 한다
 
 export const portalDocumentPage = (c: Context) => {
   return c.html(`<!DOCTYPE html>
@@ -87,6 +88,7 @@ export const portalDocumentPage = (c: Context) => {
   </div>
 
 <script>
+${displayUnitPrice}
 var token = new URLSearchParams(window.location.search).get('t') || '';
 var docType = 'ledger'; // API 응답에서 결정됨
 
@@ -171,7 +173,7 @@ function renderDocument(data) {
     var r = rows[i];
     if (docType === 'invoice') {
       html += '<tr><td>' + esc(r.item_name || '') + '</td><td>' + esc(r.spec || '') + '</td>'
-        + '<td class="right">' + (r.quantity || 0) + '</td><td class="right">' + fmt(r.unit_price) + '</td>'
+        + '<td class="right">' + (r.quantity || 0) + '</td><td class="right">' + fmt(MES_UP.perUnit(r)) + '</td>'
         + '<td class="right">' + fmt(r.amount) + '</td></tr>';
     } else {
       var cls = r.type === 'order' ? 'row-order' : r.type === 'payment' ? 'row-payment' : 'row-adjustment';

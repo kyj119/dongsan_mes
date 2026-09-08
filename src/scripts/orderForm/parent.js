@@ -1658,6 +1658,8 @@
                     el.title = '';
                     if (box) box.classList.add('hidden');
                 }
+                // 에누리를 넣으면 장당가도 따라 내려가야 한다 — 명세서에 찍히는 값과 같아야 하므로.
+                updateUnitPricePerEa(id);
                 calculateTotal();
             };
 

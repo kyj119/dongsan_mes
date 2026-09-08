@@ -103,6 +103,9 @@
                             <!-- 자동 채워진 단가의 출처(최근 거래가·특약가·기본단가). 어디서 온 값인지 안 보이면
                                  경리가 믿을 수 없어 결국 매번 손으로 다시 친다. 미채움이면 숨긴다. -->
                             <div id="price_src_${id}" class="hidden text-[11px] text-blue-600 mt-0.5"></div>
+                            <!-- 장당가 실시간 병기 — AREA 품목의 단가칸은 ㎡단가라 입력자가 검산할 수 없다.
+                                 표기 정본 = shared/displayUnitPrice.js (문서·목록이 쓰는 그 식). -->
+                            <div id="unit_price_per_ea_${id}" class="hidden text-[11px] text-gray-500 mt-0.5"></div>
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-gray-600 mb-0.5">금액</label>

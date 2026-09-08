@@ -1,6 +1,7 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import quotationScript from '../scripts/quotation.js?raw'
+import displayUnitPrice from '../scripts/shared/displayUnitPrice.js?raw'   // 단가 표기 정본(장당가 파생) — 거래명세서와 같은 축이어야 한다
 
 export function quotationPage(c: Context<HonoEnv>) {
   const orderId = parseInt(c.req.param('orderId') || '', 10)
@@ -259,6 +260,7 @@ export function quotationPage(c: Context<HonoEnv>) {
                 }
             }
 
+            ${displayUnitPrice}
             ${quotationScript}
         </script>
     </body>
