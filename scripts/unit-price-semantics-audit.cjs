@@ -87,6 +87,7 @@ SELECT c.id, o.order_number, o.order_date, c.item_name, c.pm,
    AND COALESCE(c.line_discount, 0) = 0
    AND ABS(c.recalc - c.amount) > 100
    AND c.new_price <> c.unit_price
+   AND NOT (c.pm = 'AREA' AND c.width > 0 AND c.height > 0 AND c.width <= 10 AND c.height <= 10)
  ORDER BY ABS(c.recalc - c.amount) DESC
  LIMIT 200`
 
@@ -118,15 +119,25 @@ SELECT COUNT(*) AS n, COALESCE(SUM(ABS(recalc - amount)), 0) AS gap_abs,
   FROM calc
  WHERE quantity IS NOT NULL AND quantity <> 0 AND amount IS NOT NULL AND amount <> 0
    AND COALESCE(price_status, '') <> 'PENDING' AND COALESCE(line_discount, 0) = 0
-   AND ABS(recalc - amount) > 100 AND new_price = unit_price`
+   AND ABS(recalc - amount) > 100 AND new_price = unit_price
+   AND NOT (pm = 'AREA' AND width > 0 AND height > 0 AND width <= 10 AND height <= 10)`
+
+/** 자(尺) 규격이 cm 로 잘못 저장된 라인 — 되나누면 100배가 된다. 조용히 빼지 않고 센다. */
+const SQL_RULER = `
+SELECT COUNT(*) AS n, COALESCE(SUM(oi.amount), 0) AS amt
+  FROM order_items oi JOIN items i ON i.id = oi.item_id
+ WHERE i.pricing_method = 'AREA'
+   AND oi.width > 0 AND oi.height > 0 AND oi.width <= 10 AND oi.height <= 10`
 
 const won = (n) => Number(n).toLocaleString('ko-KR')
 
 const rows = d1(SQL)
 const floor = d1(SQL_FLOOR)[0] || { n: 0, gap_abs: 0, gap_max: 0 }
+const ruler = d1(SQL_RULER)[0] || { n: 0, amt: 0 }
 
 console.log(`${C.b}단가 의미 감사${C.x} ${C.d}(${REMOTE ? 'prod' : '로컬'} D1)${C.x}`)
 console.log(`  ${C.d}반올림 한계 ${floor.n}건 · 격차 합 ${won(floor.gap_abs)}원 · 최대 ${won(floor.gap_max)}원 — 정정 불가, 정상${C.x}`)
+if (ruler.n) console.log(`  ${C.y}자(尺) 규격 오저장 ${ruler.n}건 제외${C.x} ${C.d}(3x6·4x8 등 — 되나누면 100배가 된다. 규격 자체를 고쳐야 한다)${C.x}`)
 
 if (!rows.length) {
   console.log(`${C.g}✅ 정정 가능한 단가 의미 불일치 없음${C.x}`)

@@ -85,7 +85,14 @@ SELECT id, unit_price AS old_price, new_price
    AND COALESCE(price_status, '') <> 'PENDING'
    AND COALESCE(line_discount, 0) = 0
    AND ABS(recalc - amount) > 100          -- 지금 어긋나 있는 라인만
-   AND new_price <> unit_price;            -- ★멱등: 목표값과 같으면 제외
+   AND new_price <> unit_price             -- ★멱등: 목표값과 같으면 제외
+   -- ★자(尺) 판재 규격이 cm 로 잘못 저장된 라인은 **되나누면 안 된다**.
+   --   `3x6`·`4x8` 은 3자×6자(약 90×180cm)인데 cm 로 들어와 있다(포맥스·폼보드 계열).
+   --   최소청구 1m 시절엔 청구면적이 1㎡ 로 뭉개져 `unit_price` 가 사실상 장당금액이었는데,
+   --   UV 판재가 실면적 청구(min_billing_side_cm=0)로 바뀌자 분모가 0.01㎡ 가 되어
+   --   되나눈 값이 **정확히 100배**로 튄다(2026-09-09 실측: 13,930,000 → 1,393,000,000원/㎡).
+   --   판정 기준은 새로 만들지 않는다 — `routes/prices.ts` 의 `AREA_USABLE_SQL` 과 **같은 조건**이다.
+   AND NOT (pm = 'AREA' AND width > 0 AND height > 0 AND width <= 10 AND height <= 10);
 
 -- 원본 보존 — 재실행해도 처음 값만 남는다(이미 백업된 id 는 다시 넣지 않는다)
 INSERT INTO _bak_0575_unit_price_semantics (id, unit_price)
