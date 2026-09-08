@@ -4,10 +4,12 @@
  */
 import { RECEIVING_ZONE_JOIN_SQL, RECEIVING_ZONE_EXPR_SQL } from '../../utils/inventoryZone'
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import type { PurchaseOrder, PurchaseOrderItem, ApiResponse, PaginatedResponse } from '../../types/models'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
+import { isSupervisor } from '../../utils/zoneAccess'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../../utils/sequenceGenerator'
 import { getEntityCompanyInfo } from '../../utils/entitySettings'
@@ -580,7 +582,32 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
 // ============================================================================
 // PATCH /:id/status - 상태 변경
 // ============================================================================
-poCoreRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => {
+/**
+ * 이 발주에 **내가 담당하는 구역의 라인**이 하나라도 있나.
+ * 귀속 축은 입고 큐·입고 게이트와 **같은 문장**(`RECEIVING_ZONE_JOIN_SQL`)을 쓴다.
+ */
+async function ownsAnyLineZone(c: Context<HonoEnv>, poId: string | number): Promise<boolean> {
+  const user = c.get('user')
+  if (!user?.id) return false
+  const row = await c.env.DB.prepare(`
+    SELECT 1 AS ok
+    FROM purchase_order_items poi
+    JOIN purchase_orders po ON po.id = poi.po_id
+    LEFT JOIN items i ON i.id = poi.item_id
+    ${RECEIVING_ZONE_JOIN_SQL}
+    WHERE poi.po_id = ? AND sz.manager_id = ?
+    LIMIT 1
+  `).bind(poId, user.id).first<{ ok: number }>()
+  return !!row
+}
+
+// ★상태 전이 — 종전엔 `requireRole('ADMIN','MANAGER')` 였다. 발주 확정을 **현장 오퍼레이터가**
+//   하기로 해(용준님 2026-09-08) 역할 게이트를 **전이별 규칙**으로 바꾼다:
+//     · 관리자(ADMIN/MANAGER) — 종전 그대로 모든 전이
+//     · 그 외 — **`DRAFT` → `CONFIRMED` 하나만**, 그것도 내 담당 구역 라인이 있는 발주만
+//   취소·되돌리기·입고완료 강제는 열지 않는다. 라우터 가드가 이미
+//   `requireAnyPagePermission('/purchase-orders','/receiving')` 라 DESIGNER·SALES 는 애초에 못 온다.
+poCoreRouter.patch('/:id/status', async (c) => {
   try {
     const user = c.get('user')
     const id = c.req.param('id')
@@ -606,6 +633,19 @@ poCoreRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => 
       'PARTIAL_RECEIVED': ['RECEIVED', 'CANCELLED'],
       'RECEIVED':         [],
       'CANCELLED':        ['DRAFT'],
+    }
+
+    // 비관리자는 「현장 확정」만 — 위 주석 참조
+    if (!isSupervisor(c)) {
+      if (!(po.status === 'DRAFT' && newStatus === 'CONFIRMED')) {
+        return c.json({
+          success: false,
+          error: '발주 확정(대기 → 확정)만 가능합니다. 다른 상태 변경은 관리자에게 요청하세요.',
+        }, 403)
+      }
+      if (!(await ownsAnyLineZone(c, id))) {
+        return c.json({ success: false, error: '담당 구역 자재가 포함된 발주만 확정할 수 있습니다.' }, 403)
+      }
     }
 
     const allowed = validTransitions[po.status] || []

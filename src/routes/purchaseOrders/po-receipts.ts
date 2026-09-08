@@ -392,7 +392,12 @@ poReceiptsRouter.get('/receiving-queue', async (c) => {
       LEFT JOIN users u_mgr ON u_mgr.id = sz.manager_id
       LEFT JOIN users u_rcv ON u_rcv.id = poi.received_by
       WHERE poi.line_status IN ('PENDING','PARTIAL')
-        AND po.status IN ('CONFIRMED','PARTIAL_RECEIVED')
+        -- DRAFT 포함 (2026-09-08) — 발주 확정을 현장 오퍼레이터가 하기로 했다(용준님).
+        --   확정 화면이 발주관리(ADMIN 전용)에만 있으면 담당자는 확정도 입고도 못 한다.
+        --   여기 DRAFT 를 넣어 같은 화면에서 확정 → 입고가 이어지게 한다.
+        --   응답의 po_status 로 확정대기/입고대기를 가른다.
+        --   주의: 이 문자열은 템플릿 리터럴 안이다 — 주석에 백틱을 쓰면 리터럴이 끊긴다.
+        AND po.status IN ('DRAFT','CONFIRMED','PARTIAL_RECEIVED')
         ${lineFilter}${entityFilter(c, 'po').clause}
       ORDER BY po.order_date ASC, po.id ASC, poi.sort_order ASC, poi.id ASC
       LIMIT 500

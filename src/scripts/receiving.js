@@ -1021,9 +1021,13 @@ function renderPoCards(groups) {
               (g.expected_date ? ' · 예정 ' + escapeHtml(g.expected_date) : '') +
             '</div>' +
           '</div>' +
-          '<button onclick="openReceiveModal(' + g.po_id + ', \'' + currentScope + '\')" class="ds-btn ds-btn-primary">' +
+          (g.po_status === 'DRAFT'
+            ? '<button onclick="confirmPo(' + g.po_id + ')" class="ds-btn ds-btn-primary">' +
+                '<i class="fas fa-file-signature mr-1"></i>발주 확정' +
+              '</button>'
+            : '<button onclick="openReceiveModal(' + g.po_id + ', \'' + currentScope + '\')" class="ds-btn ds-btn-primary">' +
             '<i class="fas fa-check mr-1"></i>입고 처리' +
-          '</button>' +
+          '</button>') +
         '</div>' +
         '<div class="mb-2">' +
           '<div class="flex justify-between text-xs text-gray-500 mb-1">' +
@@ -1032,11 +1036,34 @@ function renderPoCards(groups) {
           '</div>' +
           '<div class="w-full bg-gray-200 rounded-full h-1.5"><div class="bg-blue-500 h-1.5 rounded-full" style="width:' + pct + '%"></div></div>' +
         '</div>' +
+        (g.po_status === 'DRAFT'
+          ? '<div class="mt-2 text-xs text-gray-500 bg-gray-50 rounded px-2 py-1.5">' +
+              '<i class="fas fa-info-circle mr-1"></i>아직 확정되지 않은 발주입니다. ' +
+              '물건이 온 것을 확인하고 <b>발주 확정</b>을 누르면 입고 처리로 넘어갑니다.' +
+            '</div>'
+          : '') +
         '<div class="mt-2">' + lineRows + '</div>' +
       '</div>' +
     '</div>';
   }).join('');
 }
+
+// ── 발주 확정 (2026-09-08) ──
+// 확정을 **현장 오퍼레이터가** 한다(용준님). 발주관리 화면은 ADMIN 전용이라 여기서 처리한다.
+// 서버는 비관리자에게 DRAFT → CONFIRMED **하나만** 허용하고, 담당 구역 라인이 있는 발주만 통과시킨다.
+window.confirmPo = async function(poId) {
+  if (!confirm('이 발주를 확정합니다.\n확정하면 입고 처리를 할 수 있습니다.')) return;
+  try {
+    var res = await axios.patch('/api/purchase-orders/' + poId + '/status', { status: 'CONFIRMED' });
+    if (!res.data || !res.data.success) throw new Error((res.data && res.data.error) || '확정 실패');
+    showToast('발주를 확정했습니다. 이제 입고 처리를 할 수 있습니다.', 'success');
+    loadPendingStats();
+    loadReceivingQueue();
+  } catch (e) {
+    console.error('[receiving] confirmPo error:', e);
+    showToast((e.response && e.response.data && e.response.data.error) || '확정하지 못했습니다.', 'error');
+  }
+};
 
 // ── 초기화 ──
 (async function init() {
