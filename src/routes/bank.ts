@@ -1358,10 +1358,14 @@ async function runAutoMatchEngine(
     //   ★이걸 안 읽어서 만기일시 대출의 월 이자 44건 40,233,462 가 「차입금상환」에 들어가
     //     손익에서 빠져 있었다(0588 정정). 계좌번호 표기는 아래 isNonCounterpartName 이
     //     IGNORED 로 떨구므로 **그보다 먼저** 갈라야 한다.
+    //   ★식별 키 정본 = `loan_match_keys`(0591). 계좌번호만 컬럼에 두면 캐피탈·할부처럼
+    //     **적요 이름으로만 불리는 대출**을 담을 자리가 없다(실측 11건 중 9건이 그쪽이었다).
+    //     여기서는 ACCOUNT 키만 쓴다 — 이름 앵커는 금액 배정이 필요해 감사(audit:loan-bank)가 맡는다.
     const efLoan = entityFilter(c, 'l')
     const { results: loanRows } = await c.env.DB.prepare(`
-      SELECT l.id, l.account_no, l.repayment_type, l.monthly_payment_amount, l.entity_id
-      FROM loans l WHERE l.is_active = 1 AND COALESCE(l.account_no,'') != ''${efLoan.clause}
+      SELECT l.id, k.key_text AS account_no, l.repayment_type, l.monthly_payment_amount, l.entity_id
+      FROM loan_match_keys k JOIN loans l ON l.id = k.loan_id
+      WHERE k.key_type = 'ACCOUNT' AND l.is_active = 1${efLoan.clause}
     `).bind(...efLoan.params).all<{
       id: number; account_no: string; repayment_type: string | null
       monthly_payment_amount: number | null; entity_id: number | null

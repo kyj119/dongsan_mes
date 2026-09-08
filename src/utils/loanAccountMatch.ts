@@ -76,3 +76,74 @@ export const LOAN_KIND_LABEL: Record<LoanTxKind, string> = {
   INTEREST: '대출 이자',
   PRINCIPAL: '원금 상환',
 }
+
+// ---------------------------------------------------------------------------
+// 앵커 매칭 — 계좌번호가 안 찍히는 대출(캐피탈·할부·CMS)을 적요 이름으로 잡는다
+// ---------------------------------------------------------------------------
+
+/** 월 납입액에서 이만큼까지 벗어나도 같은 대출로 본다 — 변동금리 실측 −8.2%~+6.2%(중진공 #4). */
+export const MONTHLY_DEVIATION_MAX = 0.12
+
+export interface LoanCandidate {
+  id: number
+  /** 월 납입액. 0·null 이면 후보에서 빠진다(비교할 눈금이 없다). */
+  monthly_payment_amount?: number | null
+}
+
+export interface MonthlyAssignment {
+  /** payments 배열의 인덱스 */
+  paymentIndex: number
+  loanId: number
+  /** 월납액 대비 이탈률(부호 있음) */
+  deviation: number
+}
+
+export interface MonthlyMatchResult {
+  assigned: MonthlyAssignment[]
+  /** 어느 대출에도 못 붙은 출금 인덱스 — **미등록 대출 후보**다. */
+  unassigned: number[]
+}
+
+/**
+ * 한 달치 출금을 후보 대출에 **1:1 로** 배정한다.
+ *
+ * ★왜 「가장 가까운 금액」이 아니라 1:1 배정인가
+ *   같은 적요에 대출이 여럿이면 금액 근사만으로는 **엉뚱한 대출이 먼저 가져간다**.
+ *   실측 2026-09-08 「현대캐피탈」 1월: 출금 427,744 · 446,341 · 505,225 에 등록 대출은
+ *   #12(882,236) · #15(428,968) 둘뿐이다. 근사만 보면 446,341 도 #15 에 붙지만(+4.05%),
+ *   427,744(−0.3%)가 더 가깝다. **1:1 이면 427,744 가 #15 를 가져가고 나머지 둘이 남는다** —
+ *   그 남은 둘이 바로 미등록 할부다(505,225 는 1~8월 매월, 446,341 은 1~6월 매월).
+ *
+ * ★전제: **한 대출은 한 달에 한 번 낸다.** 이게 금액 근사보다 강한 식별 축이다.
+ *   그래서 「앵커별 월 출금 건수 > 등록 대출 수」면 그 차이가 곧 미등록 건수다.
+ *
+ * 배정은 이탈률이 작은 쌍부터 확정하는 그리디다 — 결정적이고(입력 순서 무관) 설명 가능하다.
+ */
+export function matchMonthlyPayments(
+  loans: LoanCandidate[],
+  payments: number[]
+): MonthlyMatchResult {
+  const usable = loans.filter(l => Number(l.monthly_payment_amount) > 0)
+  const pairs: { p: number; l: number; dev: number; abs: number }[] = []
+  for (let p = 0; p < payments.length; p++) {
+    const v = Math.abs(Number(payments[p]) || 0)
+    for (const l of usable) {
+      const mp = Number(l.monthly_payment_amount)
+      const dev = (v - mp) / mp
+      if (Math.abs(dev) > MONTHLY_DEVIATION_MAX) continue
+      pairs.push({ p, l: l.id, dev, abs: Math.abs(dev) })
+    }
+  }
+  // 이탈률 오름차순 → 같으면 인덱스·id 로 tie-break(입력 순서에 흔들리지 않게)
+  pairs.sort((a, b) => a.abs - b.abs || a.p - b.p || a.l - b.l)
+  const takenP = new Set<number>(), takenL = new Set<number>()
+  const assigned: MonthlyAssignment[] = []
+  for (const q of pairs) {
+    if (takenP.has(q.p) || takenL.has(q.l)) continue
+    takenP.add(q.p); takenL.add(q.l)
+    assigned.push({ paymentIndex: q.p, loanId: q.l, deviation: q.dev })
+  }
+  const unassigned: number[] = []
+  for (let p = 0; p < payments.length; p++) if (!takenP.has(p)) unassigned.push(p)
+  return { assigned, unassigned }
+}

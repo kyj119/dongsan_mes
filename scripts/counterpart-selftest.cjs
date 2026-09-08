@@ -30,7 +30,7 @@ const { mod: roleMod, cleanup: roleCleanup } = compileTs(ROLE_SRC)
 const { normalizeRole, canAttachToDeposit, countsAsExpense } = roleMod
 const LOAN_SRC = path.join(__dirname, '..', 'src', 'utils', 'loanAccountMatch.ts')
 const { mod: loanMod, cleanup: loanCleanup } = compileTs(LOAN_SRC)
-const { parseLoanAccountRef, classifyLoanTransaction } = loanMod
+const { parseLoanAccountRef, classifyLoanTransaction, matchMonthlyPayments } = loanMod
 const { resolveInternalEntityMatch, buildSettlementClientMap, resolveHistoryMatch, allowAmountOnlyMatch,
         shouldPromoteSuggestion, isWeakSuggestion, SUGGESTION_WEAK_BELOW } = policy
 const cleanup = () => { nameCleanup?.(); policyCleanup?.(); roleCleanup?.(); loanCleanup?.() }
@@ -237,7 +237,48 @@ check('관계사는 이 정책 대상 아님', resolveInternalEntityMatch(1655, 
   check('원금균등은 판정 안 함', classifyLoanTransaction('WITHDRAWAL', 2624763, eq), null)
   check('원리금균등도 판정 안 함', classifyLoanTransaction('WITHDRAWAL', 745630, { repayment_type: 'EQUAL_INSTALLMENT', monthly_payment_amount: 745630 }), null)
   check('월납액이 없으면 판정 안 함', classifyLoanTransaction('WITHDRAWAL', 100000, { repayment_type: 'INTEREST_ONLY', monthly_payment_amount: 0 }), null)
-  check('대출을 못 찾으면 출금은 판정 안 함', classifyLoanTransaction('WITHDRAWAL', 100000, null), null)
+  check('대출을 못 찾으면 출금은 판정 안 함', classifyLoanTransaction('WITHDRAWAL', 100000, null), null)}
+
+// ---------------------------------------------------------------------------
+// 앵커 매칭 — 같은 적요에 대출이 여럿일 때 **월별 1:1 배정**이 답이다
+//   실측 2026-09-08: 「현대캐피탈」 한 달 출금 3건에 등록 대출은 2건뿐이었다.
+//   금액 근사만 보면 446,341 이 #15(428,968)를 +4.05% 로 가져가지만,
+//   427,744(-0.3%)가 더 가깝다 → 1:1 이면 남는 둘이 **미등록 할부**로 드러난다.
+// ---------------------------------------------------------------------------
+{
+  const HD = [{ id: 12, monthly_payment_amount: 882236 }, { id: 15, monthly_payment_amount: 428968 }]
+  const r1 = matchMonthlyPayments(HD, [446341, 427744, 505225])
+  check('현대캐피탈 1월 — 배정 1건', r1.assigned.length, 1)
+  check('427,744 가 #15 를 가져간다', r1.assigned[0].loanId, 15)
+  check('그 출금은 두 번째 항목', r1.assigned[0].paymentIndex, 1)
+  check('나머지 둘은 미배정(미등록 후보)', JSON.stringify(r1.unassigned), JSON.stringify([0, 2]))
+
+  // 6월 — #12 가 등장하면 둘 다 붙는다
+  const r2 = matchMonthlyPayments(HD, [882236, 447660, 428968, 505225])
+  check('6월 배정 2건', r2.assigned.length, 2)
+  check('882,236 → #12', r2.assigned.find(a => a.paymentIndex === 0).loanId, 12)
+  check('428,968 → #15', r2.assigned.find(a => a.paymentIndex === 2).loanId, 15)
+  check('447,660·505,225 는 남는다', JSON.stringify(r2.unassigned), JSON.stringify([1, 3]))
+
+  // 중진공 — 세 대출이 금액대로 갈린다(변동금리라 실측이 흔들려도)
+  const JJ = [{ id: 4, monthly_payment_amount: 661917 }, { id: 7, monthly_payment_amount: 310245 }, { id: 16, monthly_payment_amount: 2624763 }]
+  const r3 = matchMonthlyPayments(JJ, [2644233, 702808, 326136])
+  check('중진공 8월 3건 전부 배정', r3.assigned.length, 3)
+  check('2,644,233 → #16', r3.assigned.find(a => a.paymentIndex === 0).loanId, 16)
+  check('702,808 → #4 (+6.2%)', r3.assigned.find(a => a.paymentIndex === 1).loanId, 4)
+  check('326,136 → #7 (+5.1%)', r3.assigned.find(a => a.paymentIndex === 2).loanId, 7)
+
+  // 한 대출은 한 달에 한 번 — 같은 대출이 두 번 가져가지 않는다
+  const r4 = matchMonthlyPayments([{ id: 1, monthly_payment_amount: 100000 }], [100000, 101000])
+  check('한 대출은 한 건만', r4.assigned.length, 1)
+  check('둘째는 미배정', JSON.stringify(r4.unassigned), JSON.stringify([1]))
+
+  // 이탈 한도 밖·눈금 없음
+  check('한도 밖은 안 붙는다', matchMonthlyPayments([{ id: 1, monthly_payment_amount: 100000 }], [130000]).assigned.length, 0)
+  check('월납액 0 은 후보 아님', matchMonthlyPayments([{ id: 1, monthly_payment_amount: 0 }], [100000]).assigned.length, 0)
+  check('출금이 없으면 빈 결과', matchMonthlyPayments(JJ, []).assigned.length, 0)
+  // 입력 순서가 결과를 바꾸지 않는다(결정적)
+  check('순서 무관', JSON.stringify(matchMonthlyPayments([HD[1], HD[0]], [446341, 427744, 505225]).assigned), JSON.stringify(r1.assigned))
 }
 
 cleanup()
