@@ -53,6 +53,19 @@ const TARGETS = [
   // 자금계획 통합 화면 — buildCashflowDays(무거운 하이브리드 엔진)를 한 요청에 2회 돌린다.
   // 응답에 달력 items + 90일 시계열이 실려 KB가 크다. 여기가 부풀면 계획 탭 진입이 통째로 느려진다.
   { path: '/api/cash-flow/schedule/overview',                name: 'cashSchedule.overview',   budgetMs: 2000, maxKB: 800 },
+  // 생산 칸반 — 화면 1주기(60초)마다 이 4개가 연달아 나간다. 이 프로젝트에서 가장 자주 호출되는 경로인데
+  // 2026-08 과금 사고(폴링 × 무거운 집계) 뒤에도 감사 밖에 있었다. limit=500 을 보내도 서버가 200 으로 자르지만
+  // (safeLimit) 카드마다 card_items 조인 + order progress 집계가 80개 청크로 붙어 목록 API 중 읽기량이 가장 크다.
+  // ⚠️ budgetMs·maxKB 는 아직 prod 실측이 아니라 추정치다 — `PROBE_URL=https://webapp-9i0.pages.dev npm run audit:query-cost -- --save`
+  //    로 기준선을 뜬 뒤 실측의 3~5배로 조정할 것.
+  { path: '/api/cards?kanban_column=rip_waiting&sort=delivery_asc&limit=500', name: 'cards.kanbanWaiting',  budgetMs: 2500, maxKB: 2000 },
+  { path: '/api/cards?kanban_column=printing&sort=delivery_asc&limit=500',    name: 'cards.kanbanPrinting', budgetMs: 2500, maxKB: 2000 },
+  { path: '/api/cards?kanban_column=print_done&exclude_order_status=SHIPPED&sort=delivery_asc&limit=500',
+                                                             name: 'cards.kanbanDone',        budgetMs: 2500, maxKB: 2000 },
+  { path: '/api/cards?status=HOLD&sort=delivery_asc&limit=500', name: 'cards.kanbanHold',      budgetMs: 2500, maxKB: 2000 },
+  // 생산 일정 화면 — 60초 폴링 2연타.
+  { path: '/api/cards/schedule/queues',                      name: 'cards.scheduleQueues',    budgetMs: 2000, maxKB: 1000 },
+  { path: '/api/cards/schedule/unassigned',                  name: 'cards.scheduleUnassigned', budgetMs: 2000, maxKB: 1000 },
 ]
 
 const C = { reset: '\x1b[0m', red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m', dim: '\x1b[2m', cyan: '\x1b[36m' }

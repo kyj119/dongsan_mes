@@ -241,8 +241,11 @@ async function cardBulkChangeStatus() {
 
     restoreKanbanFilters();
     loadKanban();
-    setInterval(function() { loadKanban(); }, 30000);
-    setInterval(function() { renderTodayShip(); }, 60000);
+    // 폴링 규약(shell.js · dashboard.js · tasks.js): 60초 + 숨은 탭 스킵.
+    // 종전 30초·가드 없음은 1주기당 /api/cards 4연타라 현장 모니터에 띄워 둔 탭 하나가
+    // 하루 11,520 요청을 쳤다 — 2026-08 nav-badge 과금 사고와 같은 형태(폴링 × 무거운 집계).
+    setInterval(function() { if (document.hidden) return; loadKanban(); }, 60000);
+    setInterval(function() { if (document.hidden) return; renderTodayShip(); }, 60000);
 })();
 
 // ===== 드래그앤드롭 =====

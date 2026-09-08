@@ -286,5 +286,6 @@ document.head.appendChild(style);
 // ── 초기화 ──
 loadSchedule();
 
-// 30초마다 자동 새로고침
-setInterval(loadSchedule, 30000);
+// 폴링 규약(shell.js · dashboard.js · tasks.js): 60초 + 숨은 탭 스킵.
+// loadSchedule 은 /api/cards/schedule/queues + /unassigned 2연타다.
+setInterval(function() { if (document.hidden) return; loadSchedule(); }, 60000);
