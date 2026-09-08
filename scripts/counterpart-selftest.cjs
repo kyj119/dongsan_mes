@@ -28,9 +28,12 @@ const { mod: policy, cleanup: policyCleanup } = compileTs(POLICY_SRC, { bundle: 
 const ROLE_SRC = path.join(__dirname, '..', 'src', 'utils', 'expenseRole.ts')
 const { mod: roleMod, cleanup: roleCleanup } = compileTs(ROLE_SRC)
 const { normalizeRole, canAttachToDeposit, countsAsExpense } = roleMod
+const LOAN_SRC = path.join(__dirname, '..', 'src', 'utils', 'loanAccountMatch.ts')
+const { mod: loanMod, cleanup: loanCleanup } = compileTs(LOAN_SRC)
+const { parseLoanAccountRef, classifyLoanTransaction } = loanMod
 const { resolveInternalEntityMatch, buildSettlementClientMap, resolveHistoryMatch, allowAmountOnlyMatch,
         shouldPromoteSuggestion, isWeakSuggestion, SUGGESTION_WEAK_BELOW } = policy
-const cleanup = () => { nameCleanup?.(); policyCleanup?.(); roleCleanup?.() }
+const cleanup = () => { nameCleanup?.(); policyCleanup?.(); roleCleanup?.(); loanCleanup?.() }
 
 let pass = 0
 const fails = []
@@ -200,7 +203,41 @@ check('관계사는 이 정책 대상 아님', resolveInternalEntityMatch(1655, 
   check('입금에 이자비용(NONOP) 금지', canAttachToDeposit('NONOP'), false)
   check('입금에 법인세(TAX) 금지', canAttachToDeposit('TAX'), false)
   check('차입금 입금은 허용', canAttachToDeposit('NOT_EXPENSE'), true)
-  check('역할 없는 계정은 금지', canAttachToDeposit(null), false)
+  check('역할 없는 계정은 금지', canAttachToDeposit(null), false)}
+
+// ---------------------------------------------------------------------------
+// 대출계좌 적요 판정 — 이자를 원금상환으로 잡으면 손익에서 통째로 사라진다
+//   실측 2026-09-08: 만기일시 대출 이자 44건 40,233,462 가 「차입금상환」(NOT_EXPENSE)에
+//   들어가 MES 이자비용이 3,187,533(세무장부 정본 56,960,000 의 5.6%)이었다.
+// ---------------------------------------------------------------------------
+{
+  const ref = parseLoanAccountRef
+  check('계좌-일련 형식을 가른다', JSON.stringify(ref('60298020073142-00012')), JSON.stringify({ accountNo: '60298020073142', tranche: '00012' }))
+  check('계좌번호만도 인정(실행 입금)', JSON.stringify(ref('60298020073142')), JSON.stringify({ accountNo: '60298020073142', tranche: null }))
+  check('상호는 대출계좌가 아니다', ref('(주)동산기획'), null)
+  check('짧은 숫자는 대출계좌가 아니다', ref('12345'), null)
+  check('숫자+한글 혼합도 아니다', ref('60298020073142대출'), null)
+  check('빈값', ref(''), null)
+
+  const io = { repayment_type: 'INTEREST_ONLY', monthly_payment_amount: 2302191 }
+  const eq = { repayment_type: 'EQUAL_PRINCIPAL', monthly_payment_amount: 2624763 }
+  // 입금은 종류 무관 실행이다
+  check('입금 = 차입 실행', classifyLoanTransaction('DEPOSIT', 47298438, io), 'DRAWDOWN')
+  check('원금혼재형 입금도 실행', classifyLoanTransaction('DEPOSIT', 50000000, eq), 'DRAWDOWN')
+  check('대출을 못 찾아도 입금은 실행', classifyLoanTransaction('DEPOSIT', 1000, null), 'DRAWDOWN')
+  // 만기일시 = 월 납입이 전액 이자
+  check('월납 근처는 이자', classifyLoanTransaction('WITHDRAWAL', 2418000, io), 'INTEREST')
+  check('월납 정확값도 이자', classifyLoanTransaction('WITHDRAWAL', 2302191, io), 'INTEREST')
+  check('월납보다 작아도 이자(회전 tranche)', classifyLoanTransaction('WITHDRAWAL', 615325, io), 'INTEREST')
+  // 회전대출의 원금 상환 — 실측 최소 8,321,611 (월납 802,245 의 10배)
+  check('월납 3배 이상은 원금', classifyLoanTransaction('WITHDRAWAL', 8321611, { repayment_type: 'INTEREST_ONLY', monthly_payment_amount: 802245 }), 'PRINCIPAL')
+  check('경계 3배는 원금', classifyLoanTransaction('WITHDRAWAL', 2302191 * 3, io), 'PRINCIPAL')
+  check('1.5배~3배 사이는 판정 안 함', classifyLoanTransaction('WITHDRAWAL', 2302191 * 2, io), null)
+  // 원금·이자가 섞이는 유형은 통장 한 줄로 못 가른다
+  check('원금균등은 판정 안 함', classifyLoanTransaction('WITHDRAWAL', 2624763, eq), null)
+  check('원리금균등도 판정 안 함', classifyLoanTransaction('WITHDRAWAL', 745630, { repayment_type: 'EQUAL_INSTALLMENT', monthly_payment_amount: 745630 }), null)
+  check('월납액이 없으면 판정 안 함', classifyLoanTransaction('WITHDRAWAL', 100000, { repayment_type: 'INTEREST_ONLY', monthly_payment_amount: 0 }), null)
+  check('대출을 못 찾으면 출금은 판정 안 함', classifyLoanTransaction('WITHDRAWAL', 100000, null), null)
 }
 
 cleanup()

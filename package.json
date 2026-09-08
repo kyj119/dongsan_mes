@@ -116,7 +116,8 @@
     "audit:expense-category": "node scripts/expense-category-audit.cjs --remote",
     "audit:query-cost": "node scripts/query-cost-audit.cjs",
     "audit:subquery": "node scripts/correlated-subquery-audit.cjs",
-    "test:ap-candidate": "node scripts/ap-candidate-selftest.cjs"
+    "test:ap-candidate": "node scripts/ap-candidate-selftest.cjs",
+    "audit:loan-bank": "node scripts/loan-bank-audit.cjs"
   },
   "dependencies": {
     "hono": "^4.13.2"

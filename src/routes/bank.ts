@@ -13,6 +13,7 @@ import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
 import { resolveInternalEntityMatch, buildSettlementClientMap, resolveHistoryMatch, allowAmountOnlyMatch, shouldPromoteSuggestion, SUGGESTION_WEAK_BELOW } from '../utils/bankMatchPolicy'
 import { canAttachToDeposit } from '../utils/expenseRole'
+import { parseLoanAccountRef, classifyLoanTransaction, LOAN_KIND_CATEGORY, LOAN_KIND_LABEL } from '../utils/loanAccountMatch'
 import { getEntityCorpNum, getEntityBarobillSenderId } from '../utils/entitySettings'
 import { loadProvision, agingCategoryToBucket, effectiveLossRate } from '../utils/provisionMatrix'
 import { buildOldestUnpaidJoin, agingDaysFromOldest, getAgingCategory } from './ledger/ar-helpers'
@@ -1347,6 +1348,28 @@ async function runAutoMatchEngine(
       .filter(r => (r.match_type ?? 'EXACT') === 'CONTAINS' && r.counterpart_name.trim())
       .map(r => ({ key: r.counterpart_name.trim(), clientId: r.matched_client_id, categoryId: r.matched_category_id, categoryRole: r.category_role }))
 
+    // 3-a2. 대출계좌 맵 — 적요 `{계좌번호}-{일련번호}` 로 차입금 거래를 가른다(0589).
+    //   ★이걸 안 읽어서 만기일시 대출의 월 이자 44건 40,233,462 가 「차입금상환」에 들어가
+    //     손익에서 빠져 있었다(0588 정정). 계좌번호 표기는 아래 isNonCounterpartName 이
+    //     IGNORED 로 떨구므로 **그보다 먼저** 갈라야 한다.
+    const efLoan = entityFilter(c, 'l')
+    const { results: loanRows } = await c.env.DB.prepare(`
+      SELECT l.id, l.account_no, l.repayment_type, l.monthly_payment_amount, l.entity_id
+      FROM loans l WHERE l.is_active = 1 AND COALESCE(l.account_no,'') != ''${efLoan.clause}
+    `).bind(...efLoan.params).all<{
+      id: number; account_no: string; repayment_type: string | null
+      monthly_payment_amount: number | null; entity_id: number | null
+    }>()
+    const loanByAccount = new Map(loanRows.map(l => [String(l.account_no), l]))
+
+    // 대출 판정이 쓰는 계정(차입금·이자비용·차입금상환)의 id — 법인별.
+    const { results: loanCatRows } = await c.env.DB.prepare(`
+      SELECT id, name, entity_id FROM expense_categories
+      WHERE is_active = 1 AND name IN ('차입금', '이자비용', '차입금상환')
+    `).all<{ id: number; name: string; entity_id: number | null }>()
+    const loanCatId = (name: string, entityId: number | null) =>
+      loanCatRows.find(r => r.name === name && Number(r.entity_id) === Number(entityId))?.id ?? null
+
     // 3-b. 활성 고정비 로드 (출금 → 고정비 제안용). 적요 변동 무관: 거래처/키워드 + 금액대로 앵커.
     const efFixed = entityFilter(c, 'fixed_expenses')
     const { results: fixedExpenses } = await c.env.DB.prepare(`
@@ -1389,6 +1412,27 @@ async function runAutoMatchEngine(
     for (const tx of unmatchedTxs) {
       const txName = (tx.counterpart_name ?? '').trim()
       if (!txName) continue
+
+      // 대출계좌 적요(`{계좌번호}-{일련번호}`)는 차입금 축이다 — 아래 계좌번호 규칙보다 먼저 본다.
+      //   판정 = utils/loanAccountMatch(순수 모듈). 모르면 아무것도 안 하고 다음 규칙으로 넘긴다.
+      const loanRef = parseLoanAccountRef(txName)
+      const loan = loanRef ? loanByAccount.get(loanRef.accountNo) : undefined
+      if (loan) {
+        const kind = classifyLoanTransaction(tx.transaction_type, tx.amount, loan)
+        const catId = kind ? loanCatId(LOAN_KIND_CATEGORY[kind], tx.entity_id) : null
+        if (kind && catId) {
+          matchUpdateStmts.push(c.env.DB.prepare(`
+            UPDATE bank_transactions
+            SET match_status = 'SUGGESTED', matched_category_id = ?, matched_fixed_expense_id = NULL,
+                matched_client_id = NULL, match_confidence = 0.9, match_reason = ?
+            WHERE id = ?
+          `).bind(catId, `${LOAN_KIND_LABEL[kind]} — 대출계좌 ${loanRef!.accountNo}`, tx.id))
+          matchedCount++
+          continue
+        }
+        // 판정이 안 서면(원금·이자 혼재형) 계좌번호 규칙으로 떨구지 않고 사람에게 남긴다.
+        continue
+      }
 
       // 가맹점번호·계좌번호 표기는 일반 거래처 매칭 대상이 아니다 — 먼저 갈라 낸다.
       //   prod 실측 2026-09-06: 이 형태 460건이 UNMATCHED 에 쌓여 사람이 읽을 목록을 가리고 있었다.
