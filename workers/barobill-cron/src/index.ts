@@ -59,7 +59,7 @@ async function triggerBudget(env: Env): Promise<{ status: number; body: string }
 export default {
   // 정기 스케줄 — wrangler.jsonc triggers.crons
   //   "0 21 * * *"        = 06:00 KST 전체(카드+계좌 → 일일정비 → 예산점검)
-  //   "0 0-20,22-23 * * *" = 매시 정각 계좌만. 21 시를 뺀 이유는 전체 회차와 겹치지 않게 하려는 것뿐이다
+  //   "0 0-20,22-23 * * *" = 매시 정각 계좌 + **예산점검**. 21 시를 뺀 이유는 전체 회차와 겹치지 않게 하려는 것뿐이다
   //                          (겹쳐도 멱등이라 사고는 아니지만 로그가 두 벌 남는다).
   async scheduled(event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     if (event.cron !== '0 21 * * *') {
@@ -68,6 +68,15 @@ export default {
         console.log(`[barobill-cron] bank-only ${b.status} ${b.body}`)
       } catch (err) {
         console.error('[barobill-cron] bank-only failed', err instanceof Error ? err.message : String(err))
+      }
+      // 예산 점검도 **매시** 돈다(2026-09-08). 하루 1회면 사고가 나도 최대 24시간을 그대로 쓴다 —
+      // 2026-08-07 $125.70 이 정확히 그 모양이었다. 점검 자체는 GraphQL 3회라 비용이 사실상 0이고,
+      // 하드 상한을 넘기면 여기서 차단기가 걸려 **사람 없이** 폴링·무거운 조회가 멈춘다.
+      try {
+        const g = await triggerBudget(env)
+        console.log(`[barobill-cron] budget-check(hourly) ${g.status} ${g.body}`)
+      } catch (err) {
+        console.error('[barobill-cron] budget-check(hourly) failed', err instanceof Error ? err.message : String(err))
       }
       return
     }

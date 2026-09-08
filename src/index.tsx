@@ -4,6 +4,7 @@ import type { HonoEnv } from './types/env'
 import { authMiddleware, requireAdmin, pageAuthMiddleware } from './middleware/auth'
 import { requirePagePermission, requireAdminPage } from './middleware/permissions'
 import { rateLimitMiddleware } from './middleware/rateLimit'
+import { costGuardMiddleware } from './middleware/costGuard'
 import { faviconBytes } from './assets/favicon'
 
 // API Routers
@@ -233,7 +234,8 @@ app.use('/api/*', cors({
     return null
   },
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Authorization', 'X-SPA-Request', 'X-Agent-Key'],
+  // X-Poll = 자동 반복 호출 표식(비용 차단기 판정 근거). 빠뜨리면 교차 출처(로컬 개발)에서 폴링이 CORS 로 죽는다.
+  allowHeaders: ['Content-Type', 'Authorization', 'X-SPA-Request', 'X-Agent-Key', 'X-Poll'],
   maxAge: 86400,
 }))
 
@@ -262,6 +264,12 @@ app.use('/api/portal/verify-document', rateLimitMiddleware(10, 60000))  // #314 
 app.use('/api/portal/verify-token', rateLimitMiddleware(30, 60000))  // #314 분당 30회
 // 수신거부는 무인증(§50⑧ 무료·간편 수단) → 토큰 스캔 방지용 레이트리밋만 건다
 app.use('/api/public/unsubscribe/*', rateLimitMiddleware(20, 60000))  // 분당 20회
+
+// 비용 차단기 — Cloudflare 에 지출 하드 상한이 없어서 앱 안에 둔 한도(services/costGuard.ts).
+//   한도 초과 시 **자동 폴링(X-Poll)과 무거운 읽기 집계만** 503 으로 끊는다. 쓰기·로그인·화면 진입·
+//   에이전트 연동은 통과 — 비용 사고를 업무 사고로 바꾸지 않기 위해서다.
+//   판정은 대상 경로일 때만 D1 을 1회(isolate 당 60초 캐시) 읽는다.
+app.use('/api/*', costGuardMiddleware)
 
 // Mount API routers (hrSelf는 인증 미들웨어 없이 먼저 마운트)
 // 수신거부 API도 인증 없음 — 로그인을 요구하면 그 자체가 수신거부 방해(§50⑤)가 된다

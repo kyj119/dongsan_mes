@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId } from '../utils/entityFilter'
 import { getCreditPolicy, queryCreditImpact, CREDIT_POLICY_DEFAULTS } from './ledger/credit-helpers'
+import { getGuardState, releaseGuard } from '../services/costGuard'
 
 const settingsRouter = new Hono<HonoEnv>()
 settingsRouter.use('/*', authMiddleware)
@@ -296,6 +297,22 @@ settingsRouter.post('/barobill-test', requireRole('ADMIN'), async (c) => {
       error: `바로빌 연결 실패: ${error.message}`,
     }, 500)
   }
+})
+
+// ── 비용 보호(차단기) 상태·해제 ──
+//
+// Cloudflare 에 지출 하드 상한이 없어 앱 안에 둔 한도(services/costGuard.ts).
+// 임계값 자체(`budget_cf_*`·`cost_guard_enabled`)는 settings KV 라 제네릭 `GET/PATCH /api/settings` 로 바꾼다.
+// 여기 있는 건 **지금 걸려 있나 / 지금 푼다** 두 가지뿐이다.
+settingsRouter.get('/cost-guard', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  const state = await getGuardState(c.env.DB)
+  return c.json({ success: true, data: state })
+})
+
+// 해제는 ADMIN 만. ★원인을 안 고치고 풀면 다음 점검(매시)에서 다시 걸린다 — 그게 의도된 동작이다.
+settingsRouter.post('/cost-guard/release', requireRole('ADMIN'), async (c) => {
+  await releaseGuard(c.env.DB)
+  return c.json({ success: true, message: '비용 보호를 해제했습니다. 원인이 남아 있으면 다음 예산 점검에서 다시 걸립니다.' })
 })
 
 export default settingsRouter

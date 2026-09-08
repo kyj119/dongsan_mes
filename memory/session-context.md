@@ -1,107 +1,43 @@
-# 세션 컨텍스트 — 2026-09-04 작업지시서 인쇄 정본 + 스모크 상세 프로브
+# 세션 컨텍스트 — 2026-09-08 Cloudflare 과금: 실측 도구 + 비용 차단기
 
-> ⚠️ 이 파일에 **두 세션의 인계가 같이 있다.** 아래 「2026-09-04 IA 재단 판짜기」는 재단 세션 것이고
-> 그 세션은 `session/cut-butt` 워크트리에서 계속 진행 중이라 지우지 않았다. 자기 것만 갱신할 것.
+> 이 세션은 **원격(claude.ai/code) 세션**이라 prod 접속·wrangler·실측을 못 했다.
+> 브랜치 `claude/cloudflare-billing-limit-3t5up3` (미배포). 로컬에서 배포하려면 아래 「남은 일」 순서대로.
 
-## 완료 (전부 prod 반영)
-- **작업지시서 = 주문 단위 정본 1벌**(`6ae1f554`·`6020713b`). 칸반·카드 공용 `scripts/shared/workOrderPrint.js`,
-  카드 페이지는 **화면 전용**. QR 축소=출고검수 링크 + 주문번호 바코드 · 라인별 `□ __/N EA` ·
-  거래처 연락처 제거→**담당자 직통** · 원단 = `product_materials` **이름 계열**(`is_default` 는 80%가 공백) ·
-  시안 1200px(`@lg`, 없으면 sm 자동 폴백).
-- **발주 상세 500 정정**(`5217cc12`). `RECEIVING_ZONE_*` 이 `po.entity_id` 를 보는데 상세 라인 쿼리에만
-  `purchase_orders` 조인이 빠져 **전 법인 500** 이었다(형제 5곳은 전부 있었다). prod 실측 #705·#699·#693 등 5/5 → 200.
-- **스모크 단건 상세 자동 프로브**(`26783e19`). 목록 응답의 첫 행 id 로 `<컬렉션>/<id>` 를 2차 배치로 때린다.
-  prod 실측 **14개 파생 · 128/128**. 500 을 삼키던 catch **97곳**에 `파일 METHOD /경로` 라벨 로그.
-- **수성 부직포 ↔ 부직포 5폭 연결**(`0570`, prod 적용·주문 #11234 검증).
-- 로컬 main 미푸시 **10건 회수**(`fa17f82e`) — 선명 8월 이관·출력 5,498 링크·재단 5건. 마이그 0564 중복 → **0569**.
+## 이 세션이 한 일 (코드·게이트 완료 · **미배포**)
+- `scripts/cf-usage-report.cjs` (**`npm run audit:cf-usage`**) — CF GraphQL 30일 실측: 일자별 D1 읽기/쓰기 ·
+  요청(Pages Functions + Workers **양쪽 합산**) · R2 ops/저장 → **축별 달러 환산 + 월말 추정 + 지배 축 1줄**.
+- `src/services/costGuard.ts` + `src/middleware/costGuard.ts` — **비용 차단기**(Cloudflare 에 지출 상한이 없어서).
+- `src/services/budgetAlert.ts` — **월 누적 축** 추가 + 하드 상한 초과 시 차단기 발동.
+- `workers/barobill-cron` — 예산 점검 **하루 1회 → 매시**.
+- `src/scripts/layout/shell.js` — 폴링 정본 **`MES_POLL`**(숨은 탭 스킵 + 유휴 백오프 + 차단 시 전역 정지·배너).
+  칸반(`cards/misc.js`)·스케줄(`schedule.js`)도 여기에 붙였다.
+- 설정 화면 **비용 보호 카드**(작동 중·꺼짐일 때만 노출 + 「지금 해제」).
+- 게이트 `npm run test:cost-guard` **33항목** → `test:calc` 체인(CI 가 배포 전 실행).
 
-## owner 결정 (반영됨 — 다시 묻지 말 것)
-- **고해상도 소급 백필 안 함**(확정). 기존 카드는 sm 유지, IA 축1 반영 이후 **새 잡부터** 개선.
-- 게릴라 = **판단 보류**. 표본 20건 제출까지가 이번 범위. 소급 교체는 과금축이 `AREA`→`FIXED` 로 바뀌어
-  과거 청구 금액 의미까지 달라진다 — 그 점을 반드시 같이 알릴 것.
-- 원단 = **명확한 것만**. `UV 광확산PC 4.5T 유백` 은 자재가 1.8/2/3/5T **백색**뿐이라 **연결하지 않았다**
-  (두께·색이 다른 것을 걸면 틀린 연결). 억지로 잇자고 제안하지 말 것.
+## 판단 근거 (다시 묻지 말 것)
+- **$50 은 「또 샜다」가 아닐 가능성이 크다** — 9월 청구 = **8월 사용분**인데, nav-badge 는 08-10,
+  D1 실행계획(ANALYZE)은 **08-25** 에 고쳐졌다. 8월에는 수리 이전 구간이 그대로 들어 있다.
+  ★단 이건 **추론이지 측정이 아니다**. 확정은 `audit:cf-usage` 의 일자별 곡선에 **08-10·08-25 계단**이 보이는지.
+- **일 사용량으로는 달러가 안 나온다** — 무료 포함량이 전부 **월** 단위(요청 10M·D1 읽기 25B·쓰기 50M·CPU 30M ms).
+- **Cloudflare 에 계정 지출 하드 상한은 없다**(AI Gateway 만 예외). 대시보드 알림은 「알림」이지 상한이 아니다.
 
-## 남은 일 (다음 세션)
-1. **IA 축1 에이전트 재빌드** ← 용준님이 직접 실행. 이게 되기 전까지 **고해상도는 서버에 도달하지 않는다**
-   (굽기 트리거 `pngOutputHi` 와 인테이크 전송 `thumb_hi_base64` 가 둘 다 `Program.cs` 에 있다).
-   ```
-   Stop-Process -Name IllustratorAutomat -Force
-   dotnet build IllustratorAutomat/IllustratorAutomat.csproj -c Release -r win-x64
-   Start-Process "C:\Users\user\dongsan_mes\IllustratorAutomat\bin\Release\net8.0\win-x64\IllustratorAutomat.exe"
-   ```
-   반영 확인 = `npm run audit:ia-jsx` 4/4 + 새 잡 R2 에 `@lg` 키 생성.
-2. **게릴라 판정** — `AQ-BANNER` 단가 900원 미만 **229라인(5,126만)**. 표본은 500~700×90cm 를 100~1,000장씩,
-   아파트 분양·선거·지역 현수막(전형적 게릴라). ★기록의 전제였던 「`AQ-GERILLA` 판매 0라인」은 **사실이 아니다**
-   — 2026 매월 11~31라인 실사용(138라인 1억 9,424만). 문제는 「전부」가 아니라 **일부가 샌다**.
-   ⚠️규격 `null`·단가 0 인 2건(희망나눔제작소)은 게릴라가 아니라 **뭉침 청구**라 섞지 말 것.
-3. **원단 미연결 5종 21라인** — 광확산PC 4.5T 유백·타공시트·머리띠·투명패트·UV텐트천. 자재 판단 필요.
-   ★미연결 726라인 중 **87%(631)는 기류 완제품·간판·용역** 으로 원단 개념 자체가 없다 — 「빈칸 채우기」로 접근하면 틀린다.
-   인쇄는 이미 빈 줄을 숨긴다(`workOrderPrint.js:171`).
-4. P3 바코드 리더기(`/pack` 포커스+Enter) — 용준님 검토 중.
+## owner 결정 (2026-09-08)
+- 차단기 = **자동 차단 + 기본 ON**. 끊는 것 = 자동 폴링(`X-Poll`)·무거운 리포트. 남기는 것 = **쓰기·로그인·
+  화면 진입·에이전트**. 「비용 사고를 업무 사고로 바꾸지 않는다」가 이 설계의 전부다.
+- 폴링 = **유휴 백오프만**. 기본 주기(칸반 30초·배지 60초)는 **건드리지 않는다**(현장 반응성 유지).
 
-## 주의 (이번에 실제로 당한 것)
-- ⚠️**공유 체크아웃에서 rebase/checkout 금지.** `git rebase --onto origin/main` 한 번에 다른 세션의 패널 작업이
-  워킹트리에서 통째로 사라졌다(`mes-cut-host.jsx` 297줄). `git branch -vv` 의 **ahead N 은 미푸시 작업량**이고
-  HEAD 를 옮기면 그게 디스크에서 없어진다. 새 작업은 **반드시** `.\scripts\new-session.ps1`.
-- ⚠️**doc-diet 훅은 cwd 기준으로 현황판을 잰다.** 메인 체크아웃이 뒤처져 한도를 넘고 있으면 워크트리 커밋이
-  엉뚱하게 막힌다 → `cd <worktree> && git commit` 로 실행할 것.
-- ⚠️`wrangler d1 execute --remote --file` 은 이 환경에서 **차단**된다. `--command` 는 된다(읽기·쓰기 모두).
-- ⚠️`npm run smoke` / `smoke:write` 는 기본 대상이 **localhost** 다. 배포 검증은 `SMOKE_URL` 을 명시할 것.
-  특히 `smoke:write` 를 로컬로 돌리면 **품목 판매가가 1,000원으로 덮인다**(원격이면 그 구간을 건너뛴다).
-- ⚠️상세 프로브는 **행이 0건인 컬렉션을 못 본다**(견적·반품·전자세금계산서 등 다수가 prod 에서 비어 있다).
-  「128/128 통과」가 「모든 상세가 멀쩡하다」는 뜻이 아니다.
-- ⚠️`String.replace` 의 치환 문자열에 `$'` 가 들어가면 **뒤 문자열 전체가 삽입**된다(이번에 파일을 한 번 깨먹었다).
-  코드 패치는 치환 함수를 쓰거나, 조각을 **파일로 써서 줄 단위로 끼워 넣을 것**.
-- 리포 전체가 **CRLF**다. node 패치 시 개행을 감지해 되돌려 쓸 것.
-- 안전망 태그 = `rescue/main-2026-09-04` · `rescue/wop-2026-09-04` · `rescue/cut-plate-gate`.
-
-## 검증 명령 (PowerShell)
-```powershell
-npx tsc --noEmit ; npm run build
-$env:SMOKE_URL='https://webapp-9i0.pages.dev' ; npm run smoke        # 상세 프로브 포함 128/128
-$env:SMOKE_URL='https://webapp-9i0.pages.dev' ; npm run smoke:write  # 5/5 (로컬로 돌리지 말 것)
-npm run audit:ia-jsx ; node scripts/doc-diet-audit.cjs
-```
-
----
-
-# 세션 컨텍스트 — 2026-09-04 IA 재단 판짜기 속도 (99.4 → 31.4초)
-
-## 완료 (전부 배포됨 · 축2 호스트만, 패널 무변경)
-- **호스트 0.34.0 → 0.37.0**. 실물 판 실측 **140.2 → 31.4초**, 적용 **111.9 → 14.1초**(`fast=15 masters=3`·폴백 0).
-  세 결함이 겹쳐 있었다: ①export 는 **호출당 고정비**(46회→2회) ②격자가 **PDF 200인치 한계** 초과로 조용히 죽음
-  ③굳힌 조각 배정이 **최근접 중심**이라 크기 편차에서 옆 조각으로 넘어감 → **셀 상자 포함**으로.
-- 커밋 `9bbcc9c9`(0.35.0) · `99a3c77b`(0.36.0) · `fd4d3592`(포함 검사) · `83b316f7`(0.37.0).
-- 게이트 = `cut:e2e --only=K` 신설(굽기 두 경로 대조·되돌리면 FAIL 확인) · `cut:smoke` **488** · `panel:smoke` 142.
-- 경위 전문 = `PROJECT_STATUS_ARCHIVE.md` §2026-09-04 IA 재단.
-
-## owner 결정 (반영됨)
-- **「간격 0 + 도련 3 → 3mm 간격」은 정상 동작 — 코드 0**(용준님 「이대로 유지」). 도련도 3→1.5mm 로 같이 줄고
-  칼선 간격 실보장 4.00mm 라 **잉크는 안 겹친다**. 보이던 겹침은 도련 PNG **사각**(그 구간 알파 0).
-  ⚠️결과창 괄호 문구가 「지금 겹친다」로 읽히는 건 **알고 남겨 둔 것** — 다시 고치자고 제안하지 말 것.
-- 20초 목표는 **미달(31.4초)**. 용준님 판단 = 여기서 멈추고 **실사용 판정 먼저**.
-
-## 남은 일 (다음 세션)
-1. **재단 패널 = 정소은 님 실사용 판정** ← 유일한 후속. 코드·게이트는 끝.
-2. 더 줄이려면 남은 덩어리는 **굽기 10.7초**(래스터 마스크)와 **칼선 실루엣 7.6초**(0.33초/조각). 적용은 이미 접혔다.
-3. storageZones 재고단위 표시(반쪽) · 간판 BOM PER_AREA_ROLL·PER_LED · autodeduct prod 실측 · 보안강화(전환 시 예약).
+## 남은 일 (다음 세션 · 순서 중요)
+1. **실측 1회** — `$env:CF_ANALYTICS_TOKEN='...'; $env:CF_ACCOUNT_ID='...'; npm run audit:cf-usage`
+   → 지배 축 확정. 계단이 안 보이면 **남은 누수가 따로 있다**(그때 지배 축이 화면에 뜬다).
+2. **배포** — `npm run build && npm run smoke` → `/deploy-verify`.
+   ⚠️ **`barobill-cron` 워커는 따로 배포**해야 매시 예산 점검이 켜진다(Pages 배포로는 안 따라온다):
+   `cd workers/barobill-cron; npx wrangler deploy`
+3. 배포 후 확인 — `POST /api/cron/budget-check`(X-Agent-Key) 응답의 `cfRowsReadMonth`·`guard` 실측,
+   `GET /api/settings/cost-guard` 가 `active:false`인지.
+4. 대시보드 **Billing usage alert** 설정(앱 차단기와 이중화).
+5. (선택) 실측 결과에 따라 임계 조정 — settings `budget_cf_rows_read_monthly` 등.
 
 ## 주의
-- **패널은 호스트를 일러 켤 때 1회만 읽는다.** 배포 후 **일러 재시작 전엔 반영 안 된다**(패널이 ⚠ 경고 + 판짜기 차단).
-  ⚠️`$.evalFile` 로 로컬본을 밀어 넣어도 **포커스 때 패널이 Z: 를 다시 읽어 덮어쓴다** — 배포 전 검증은 COM 경로로.
-- **일러를 내가 켰고 켜 둔 채 끝난다.** 문서 = 상상인테리어 원본 + 판 1장(전부 미저장·원본 무변경).
-  패널 설정 = 평판 1200×2400 · 여백3 간격3 도련3.
-- 진단 도구: 호스트 결과 문자열에 **`ms=`(적용 단계별)·`hardenwhy=`(폴백 이유)·`hardenskip=`** 이 실려 나온다.
-  패널 화면엔 안 나오므로 CDP(8888)로 `CSInterface.prototype.evalScript` 를 감싸 가로챈다(`scratchpad/tap.mjs` 방식).
-- ⚠️`mes-cut-host.jsx` 는 **CRLF**다. 파이썬 패치 시 개행 변환을 빠뜨리면 앵커가 안 맞고, 실수하면 파일이 잘린다
-  (한 번 겪었다 — `git checkout` 으로 복구). 패치 후 **길이·핵심 함수 존재**를 반드시 확인할 것.
-- 다른 세션이 `migrations/0564_*.sql`·`scripts/print-order-backfill.py` 를 작업 중(untracked). 건드리지 말 것.
-
-## 검증 명령 (PowerShell)
-```powershell
-npm run audit:ia-jsx                 # 축1~5 드리프트 (배포 후 필수)
-npm run cut:smoke ; npm run panel:smoke
-npm run cut:e2e -- --require         # 일러 실행 중이어야 함 (K=굽기 · S=칼선 · D/E·B/C=동등)
-node scripts/doc-diet-audit.cjs
-```
+- 차단기 상태는 **만료 시각**(`cost_guard_until`)이다. 「오늘 차단됨」 플래그로 바꾸지 말 것 — 푸는 사람이 없으면 영구히 남는다.
+- 차단 판정은 **`X-Poll` 헤더**로 사람/자동을 가른다. 경로로만 막으면 화면 진입까지 죽는다.
+- 새 화면에서 `setInterval` 로 직접 폴링 금지 → `window.MES_POLL.every(fn, baseMs)`.

@@ -85,6 +85,14 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 - **「지금 빠르다」≠「안전하다」** — 데이터가 비어서 안 터지는 것과 구조가 안전한 것은 다르다(`/ai/credit-risk/summary`가 42ms인 건 등급이 1건뿐이라서였다).
 - **타입체크·smoke는 이걸 절대 못 잡는다** — 14초 응답도 200이다. 게이트 = `npm run audit:query-cost`(예산 초과 시 exit 1, 기준선=`scripts/query-cost-baseline.json`). 진단은 `EXPLAIN QUERY PLAN` + 응답의 `rows_read`.
 
+### 과금 = 반복되는 읽기 × 「상한이 없다」 (`npm run audit:cf-usage` · `npm run test:cost-guard`)
+**Cloudflare 에는 계정 지출 하드 상한이 없다**(2026-09 기준 AI Gateway 만 예외). 그래서 폴링 하나가 무거운 집계에 붙으면 **아무도 안 막는 채 청구서까지 간다** — 2026-08-07 **$125.70**(nav-badge 쿼리 1개가 D1 읽기의 98%) · 2026-09 **$50**.
+- **일 사용량으로는 달러가 안 나온다** — 무료 포함량이 **월** 단위다(요청 10M · D1 읽기 25B · 쓰기 50M · CPU 30M ms). 「오늘은 임계 이하」가 30일 쌓이면 초과다. 실측 = **`npm run audit:cf-usage`**(30일 일자별 + 축별 달러 환산 + 월말 추정). 정답은 대시보드 Billing → Usage.
+- **한도는 앱 안에 만든다** = `src/services/costGuard.ts`. 하드 상한(월 20B행·일 8억행·일 800만 요청) 초과 시 **`X-Poll` 자동 폴링과 무거운 읽기 집계만** 503, **쓰기·로그인·화면 진입·에이전트(X-Agent-Key)는 통과** — 비용 사고를 업무 사고로 바꾸지 않는다. 만료 시각으로 **스스로 풀린다**(일=KST 자정 · 월=다음 달 1일). 「오늘 차단됨」 플래그였다면 푸는 사람이 없어 영구히 남는다.
+- **점검은 매시**(`barobill-cron` 시간당 회차). 하루 1회면 사고가 나도 **최대 24시간을 그대로 쓴다** — $125 사고가 정확히 그 모양이었다.
+- **폴링 정본 = `MES_POLL`**(`src/scripts/layout/shell.js`). 숨은 탭 스킵 + **유휴 백오프**(마지막 조작 5분↑ ×4 · 20분↑ ×10) + 차단 시 전역 정지. 새 화면에서 `setInterval` 로 직접 폴링하지 말 것 — 현장 대형 화면은 **아무도 안 만져도 종일 도는** 기본 상태다.
+- 게이트 = **`npm run test:cost-guard`**(만료 시각 KST 경계 · 차단 대상 · 상한 기본값, `test:calc` 체인). ⚠️타입체크·smoke 는 과금을 **절대** 못 잡는다 — 14초 응답도, 2,530만 행 읽기도 200 이다.
+
 ### 누적 캐시 = 수정·삭제가 안 따라온다 (`npm run test:symmetry`)
 **이벤트 시점에 `col = col ± ?` 로 누적해 놓고, 수정·삭제 경로가 그걸 모르는 것** — 이 프로젝트에서 가장 자주 재발한 결함이다. 2026-08-31 전수 점검에서 **5개 축이 동시에 걸렸다**: 주문↔재고 · 차입금 상환 · 자동차감 2종 · `clients.purchase_balance` · `quotations.converted_count`.
 

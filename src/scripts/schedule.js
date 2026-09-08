@@ -286,5 +286,6 @@ document.head.appendChild(style);
 // ── 초기화 ──
 loadSchedule();
 
-// 30초마다 자동 새로고침
-setInterval(loadSchedule, 30000);
+// 30초마다 자동 새로고침 — 숨은 탭·유휴 백오프·비용 차단기는 MES_POLL(shell.js) 정본이 맡는다.
+if (window.MES_POLL) window.MES_POLL.every(loadSchedule, 30000);
+else setInterval(function() { if (!document.hidden) loadSchedule(); }, 30000);

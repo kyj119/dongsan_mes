@@ -241,8 +241,15 @@ async function cardBulkChangeStatus() {
 
     restoreKanbanFilters();
     loadKanban();
-    setInterval(function() { loadKanban(); }, 30000);
-    setInterval(function() { renderTodayShip(); }, 60000);
+    // 자동 갱신은 MES_POLL(shell.js) 정본에 맡긴다 — 숨은 탭 스킵·유휴 백오프·비용 차단기 정지가 한 곳에 있다.
+    // ★칸반은 현장 대형 화면에 종일 떠 있다 = **아무도 안 만져도 30초마다 도는** 대표 화면(2026-09 과금 축).
+    if (window.MES_POLL) {
+        window.MES_POLL.every(function() { loadKanban(); }, 30000);
+        window.MES_POLL.every(function() { renderTodayShip(); }, 60000);
+    } else {
+        setInterval(function() { if (!document.hidden) loadKanban(); }, 30000);
+        setInterval(function() { if (!document.hidden) renderTodayShip(); }, 60000);
+    }
 })();
 
 // ===== 드래그앤드롭 =====

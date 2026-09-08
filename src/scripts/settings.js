@@ -884,3 +884,55 @@ async function saveCreditPolicy() {
     btn.disabled = false;
   }
 }
+
+// ── 비용 보호(차단기) 상태 ──
+//
+// 평소에는 카드를 아예 숨긴다 — 정상 상태를 늘 띄우면 아무도 안 읽고, 정작 걸렸을 때도 안 읽는다.
+// 걸렸을 때만 나타나서 **왜 · 언제까지 · 어떻게 푸는가** 셋을 보여준다.
+async function loadCostGuard() {
+  var card = document.getElementById('costGuardCard');
+  if (!card) { console.warn('[settings] #costGuardCard not found'); return; }
+  try {
+    var res = await axios.get('/api/settings/cost-guard');
+    var g = (res.data && res.data.data) || {};
+    var stateEl = document.getElementById('costGuardState');
+    var reasonEl = document.getElementById('costGuardReason');
+    var iconEl = document.getElementById('costGuardIcon');
+    var btn = document.getElementById('costGuardRelease');
+
+    if (g.active) {
+      card.classList.remove('hidden');
+      iconEl.className = 'fas fa-shield-alt text-amber-600 mt-1';
+      stateEl.className = 'ml-1 text-xs font-bold text-amber-700';
+      stateEl.textContent = '작동 중 — 자동 갱신·무거운 리포트 조회 차단';
+      reasonEl.textContent = (g.reason || '사용량 한도 초과')
+        + (g.until ? ' · 자동 해제 ' + (window.formatKST ? window.formatKST(g.until) : new Date(g.until).toLocaleString('ko-KR')) : '');
+      btn.classList.remove('hidden');
+    } else if (!g.enabled) {
+      // 꺼져 있는 것도 보여준다 — "보호되고 있다"는 오해가 제일 비싸다.
+      card.classList.remove('hidden');
+      iconEl.className = 'fas fa-shield-alt text-red-500 mt-1';
+      stateEl.className = 'ml-1 text-xs font-bold text-red-600';
+      stateEl.textContent = '꺼짐 — 한도를 넘겨도 아무것도 멈추지 않습니다';
+      reasonEl.textContent = 'cost_guard_enabled 를 1 로 두면 다시 작동합니다.';
+      btn.classList.add('hidden');
+    } else {
+      card.classList.add('hidden');
+    }
+  } catch (e) {
+    card.classList.add('hidden');
+  }
+}
+
+async function releaseCostGuard() {
+  if (!confirm('비용 보호를 지금 해제할까요?\n\n원인이 남아 있으면 다음 예산 점검(매시)에서 다시 걸립니다.')) return;
+  try {
+    await axios.post('/api/settings/cost-guard/release');
+    await loadCostGuard();
+    alert('해제했습니다.');
+  } catch (err) {
+    alert('해제 실패: ' + ((err.response && err.response.data && err.response.data.error) || err.message));
+  }
+}
+
+document.addEventListener('DOMContentLoaded', loadCostGuard);

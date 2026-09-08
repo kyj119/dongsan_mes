@@ -755,12 +755,99 @@ function initSidebarState() {
 }
 initSidebarState();
 
+// === 폴링 스케줄러 (MES_POLL) — 전역 정본 ===
+//
+// 왜 있나 (2026-09-08): 자동 갱신은 **사람이 없어도 계속 돈다**. 밤새 켜둔 현황판·아무도 안 보는 탭이
+//   초 단위로 D1 을 읽어 Cloudflare 청구를 만든 전례가 두 번 있다(2026-08-07 $125.70 → 2026-09 $50).
+//   숨은 탭 스킵은 이미 했지만 **「보이지만 아무도 안 만지는 화면」** 이 남아 있었다 — 그게 현장 PC 의 기본 상태다.
+//
+// 규칙 세 가지. 여기서만 정하고 각 화면은 base 주기만 신고한다(사본을 두면 또 갈라진다).
+//   ① 숨은 탭 = 아예 안 돈다.
+//   ② 유휴 백오프 = 마지막 조작 이후 5분까지 원래 주기, 20분까지 ×4, 그 뒤 ×10.
+//      ★조작 재개·탭 복귀 시에는 **base 만큼 지난 잡만** 즉시 1회 돌린다(전부 강제로 돌리면
+//        활발히 쓰는 사람이 오히려 더 자주 폴링하게 된다 — 완화가 아니라 악화다).
+//   ③ 비용 차단기(서버 503 `cost_guard`)가 걸리면 만료 시각까지 **전부 정지**하고 배너를 띄운다.
+window.MES_POLL = (function () {
+  var jobs = [];
+  var lastAct = Date.now();
+  var pausedUntil = 0;
+  var IDLE_SOFT = 5 * 60000, IDLE_HARD = 20 * 60000;
+
+  function bump() {
+    var wasIdle = Date.now() - lastAct > 60000;
+    lastAct = Date.now();
+    if (wasIdle) tick(true);
+  }
+  ['mousedown', 'keydown', 'touchstart', 'wheel'].forEach(function (ev) {
+    document.addEventListener(ev, bump, { passive: true });
+  });
+
+  function factor() {
+    var idle = Date.now() - lastAct;
+    if (idle < IDLE_SOFT) return 1;
+    if (idle < IDLE_HARD) return 4;
+    return 10;
+  }
+
+  function tick(resumed) {
+    if (document.hidden) return;
+    if (Date.now() < pausedUntil) return;
+    var now = Date.now(), f = resumed ? 1 : factor();
+    jobs.forEach(function (j) {
+      if (now - j.last < j.base * f) return;
+      j.last = now;
+      try { j.fn(); } catch (e) {}
+    });
+  }
+  setInterval(function () { tick(false); }, 10000);
+
+  function showBanner(reason, until) {
+    var el = document.getElementById('costGuardBanner');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'costGuardBanner';
+      el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#b45309;color:#fff;padding:8px 14px;font-size:13px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.2)';
+      document.body.appendChild(el);
+    }
+    el.innerHTML = '<i class="fas fa-shield-alt mr-1"></i> 비용 보호 작동 중 — 자동 갱신을 멈췄습니다. '
+      + '<span style="opacity:.85">' + (reason || 'Cloudflare 사용량 한도 초과') + '</span>'
+      + (until ? ' <span style="opacity:.7">(해제 예정 ' + new Date(until).toLocaleString('ko-KR') + ')</span>' : '')
+      + ' <a href="/settings" style="color:#fde68a;text-decoration:underline">설정</a>';
+  }
+
+  return {
+    /** 폴링 잡 등록. base = 원래 주기(ms). runNow=true 면 등록 즉시 1회 실행. */
+    every: function (fn, base, runNow) {
+      jobs.push({ fn: fn, base: base, last: Date.now() });
+      if (runNow) { try { fn(); } catch (e) {} }
+    },
+    /** 폴링용 fetch — `X-Poll: 1` 을 붙인다. 이 헤더가 **서버가 「사람의 조작」과 「자동 반복」을
+     *  구분하는 유일한 근거**다(같은 URL 이라 경로로는 못 가른다). 차단 응답(503)이면 전역 정지. */
+    fetch: async function (url, options) {
+      var opt = options || {};
+      var headers = Object.assign({ 'Authorization': 'Bearer ' + localStorage.getItem('token'), 'X-Poll': '1' }, opt.headers || {});
+      var res = await fetch(url, Object.assign({}, opt, { headers: headers }));
+      if (res.status === 503) {
+        var body = await res.clone().json().catch(function () { return null; });
+        if (body && body.cost_guard) {
+          pausedUntil = body.until ? Date.parse(body.until) : Date.now() + 3600000;
+          showBanner(body.reason, body.until);
+        }
+      }
+      return res;
+    },
+    isPaused: function () { return Date.now() < pausedUntil; },
+    /** 조작 없이 갱신이 필요할 때(수동 새로고침 버튼 등) 유휴 시계를 리셋. */
+    touch: bump,
+  };
+})();
+
+document.addEventListener('visibilitychange', function () { if (!document.hidden) window.MES_POLL.touch(); });
+
 // === Nav Badge Polling ===
 async function pollNavBadges() {
   try {
-    var res = await fetch('/api/notifications/nav-badges', {
-      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
-    });
+    var res = await window.MES_POLL.fetch('/api/notifications/nav-badges');
     var data = await res.json();
     if (!data.success) return;
     var badges = data.data || {};
@@ -777,10 +864,8 @@ async function pollNavBadges() {
     });
   } catch(e) {}
 }
-pollNavBadges();
-// 숨은 탭은 폴링 스킵 — 밤새 켜둔 PC·현황판 탭이 D1 과금을 쌓는 것을 차단 (2026-08 과금 사고).
-// 탭 복귀 시 visibilitychange 리스너(알림 폴링 옆)가 즉시 갱신한다.
-setInterval(function() { if (!document.hidden) pollNavBadges(); }, 60000); // 1분
+// 숨은 탭 스킵·유휴 백오프·차단기 정지는 전부 MES_POLL 이 맡는다(위 정본 참조).
+window.MES_POLL.every(pollNavBadges, 60000, true); // 1분(유휴 시 4분→10분)
 
 // 401 interceptor — delegates to handleAuthExpired
 axios.interceptors.response.use(
@@ -1551,9 +1636,7 @@ function timeAgo(dateStr) {
 
 async function pollNotifCount() {
   try {
-    var res = await fetch('/api/notifications/unread-count', {
-      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
-    });
+    var res = await window.MES_POLL.fetch('/api/notifications/unread-count');
     var data = await res.json();
     if (data.success) updateNotifBadge(data.count);
   } catch(e) {}
@@ -1562,23 +1645,15 @@ async function pollNotifCount() {
 // Generate scheduled alerts then poll count
 async function generateAndPoll() {
   try {
-    await fetch('/api/notifications/generate', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
-    });
+    await window.MES_POLL.fetch('/api/notifications/generate', { method: 'POST' });
   } catch(e) {}
   pollNotifCount();
 }
 
-// Initial generate + poll, then every 5 minutes for count, every 10 minutes for generate
-// (기존 60초/300초에서 변경 — 45명 동시접속 시 D1 부하 80% 감소)
-generateAndPoll();
-// 숨은 탭은 폴링·알림생성 스킵 (nav-badges와 동일 사유 — 방치 탭의 D1 과금 차단)
-setInterval(function() { if (!document.hidden) pollNotifCount(); }, 300000);
-setInterval(function() { if (!document.hidden) generateAndPoll(); }, 600000);
-document.addEventListener('visibilitychange', function() {
-  if (!document.hidden) { pollNavBadges(); pollNotifCount(); }
-});
+// 알림 = 개수 5분 / 생성 10분 (기존 60초/300초에서 변경 — 45명 동시접속 시 D1 부하 80% 감소).
+// 숨은 탭 스킵·유휴 백오프·차단기 정지 = MES_POLL 이 맡는다. 탭 복귀 즉시 갱신도 거기서 처리된다.
+window.MES_POLL.every(generateAndPoll, 600000, true);
+window.MES_POLL.every(pollNotifCount, 300000);
 
 // === Command Palette (Ctrl+K) ===
 var _cmdActive = -1;

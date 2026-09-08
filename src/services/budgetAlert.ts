@@ -23,12 +23,15 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { notifyRoles } from '../utils/notify'
 import { kstDate, kstDateOf } from '../utils/kstDate'
+import { GUARD_DEFAULTS, tripGuard, getGuardState, nextKstMidnight, nextKstMonthStart } from './costGuard'
 
-/** 임계 기본값 — settings 에 값이 없을 때 쓴다. */
+/** 임계 기본값 — settings 에 값이 없을 때 쓴다.
+ *  soft(`_daily`)=알림만 · hard(`_daily_hard`·`_monthly`)=차단기 발동(services/costGuard.ts). */
 const DEFAULTS = {
   budget_barobill_min_balance: 50_000,
   budget_cf_rows_read_daily: 200_000_000,
   budget_cf_requests_daily: 3_000_000,
+  ...GUARD_DEFAULTS,
 } as const
 
 export interface BudgetAxis {
@@ -45,10 +48,14 @@ export interface BudgetCheckResult {
   barobill: BudgetAxis
   cfRowsRead: BudgetAxis
   cfRequests: BudgetAxis
+  /** 이달 1일~오늘 누적 D1 읽은 행. 청구 주기가 월이라 **달러는 이 축에서 나온다**(일 사용량은 징후일 뿐) */
+  cfRowsReadMonth: BudgetAxis
   /** 실제로 생성된 알림 수(당일 중복은 제외된 뒤의 수) */
   alerts: number
   /** 알림 제목 목록 — cron 로그로 무엇이 걸렸는지 바로 보이게 */
   alertTitles: string[]
+  /** 차단기 상태(발동했으면 사유·만료) */
+  guard: { active: boolean; enabled: boolean; until: string | null; reason: string | null; trippedNow: string[] }
 }
 
 async function getThresholds(db: D1Database): Promise<Record<keyof typeof DEFAULTS, number>> {
@@ -163,11 +170,13 @@ export async function checkBudgets(env: {
   const empty = (why: string): BudgetAxis => ({ value: null, threshold: 0, breached: false, skipped: why })
   let cfRowsRead: BudgetAxis
   let cfRequests: BudgetAxis
+  let cfRowsReadMonth: BudgetAxis
 
   if (!env.CF_ANALYTICS_TOKEN || !env.CF_ACCOUNT_ID) {
     const why = 'CF_ANALYTICS_TOKEN·CF_ACCOUNT_ID 미설정'
     cfRowsRead = empty(why)
     cfRequests = empty(why)
+    cfRowsReadMonth = empty(why)
   } else {
     // Cloudflare 집계는 UTC 기준이다. KST 하루와 9시간 어긋나지만 "일 사용량이 임계를 넘었나"를
     // 보는 목적이라 무해하다 — 경계일에 조금 이르게/늦게 잡힐 뿐 총량 판정은 바뀌지 않는다.
@@ -185,6 +194,22 @@ export async function checkBudgets(env: {
       }
     } catch (e: any) {
       cfRowsRead = empty(`D1 조회 실패: ${String(e?.message || e).slice(0, 120)}`)
+    }
+
+    // 월 누적 — **요금은 여기서 나온다**. 무료 포함량(25B행/월)은 일 단위로 나눠 주지 않으므로
+    // "오늘은 임계 이하"가 30일 쌓이면 초과가 될 수 있다. 청구 주기와 같은 창으로 한 번 더 본다.
+    try {
+      const monthStart = `${new Date().toISOString().slice(0, 7)}-01`
+      const d = await cfGraphQL(env.CF_ANALYTICS_TOKEN, Q_D1, { tag: env.CF_ACCOUNT_ID, d: monthStart })
+      const groups = d?.viewer?.accounts?.[0]?.d1AnalyticsAdaptiveGroups || []
+      const rowsRead = groups.reduce((s: number, g: any) => s + (Number(g?.sum?.rowsRead) || 0), 0)
+      cfRowsReadMonth = {
+        value: rowsRead,
+        threshold: th.budget_cf_rows_read_monthly,
+        breached: rowsRead > th.budget_cf_rows_read_monthly,
+      }
+    } catch (e: any) {
+      cfRowsReadMonth = empty(`D1 월 누적 조회 실패: ${String(e?.message || e).slice(0, 120)}`)
     }
 
     cfRequests = empty('요청 데이터셋 후보 전부 실패')
@@ -230,12 +255,56 @@ export async function checkBudgets(env: {
   //   breached 가 false 라 알림이 안 온다 — "감시 중"이라고 믿는 상태가 가장 위험하다.
   //   미설정(토큰 없음)은 의도된 상태이므로 알리지 않고, **설정했는데 실패한 경우만** 알린다.
   const configured = Boolean(env.CF_ANALYTICS_TOKEN && env.CF_ACCOUNT_ID)
-  const failures = [cfRowsRead, cfRequests].filter((a) => a.skipped && a.value == null)
+  const failures = [cfRowsRead, cfRequests, cfRowsReadMonth].filter((a) => a.skipped && a.value == null)
   if (configured && failures.length) {
     const title = 'Cloudflare 사용량 감시 실패'
     const msg = `토큰은 설정돼 있으나 조회가 실패했습니다 — 이 상태에서는 사용량이 급증해도 알림이 오지 않습니다. 사유: ${failures.map((f) => f.skipped).join(' / ')}`
     if (await notifyOncePerDay(db, title, msg, '/settings')) alertTitles.push(title)
   }
 
-  return { barobill, cfRowsRead, cfRequests, alerts: alertTitles.length, alertTitles }
+  // ── 하드 상한 = 차단기 발동 ────────────────────────────
+  // 알림은 「사람이 볼 때까지」 아무것도 멈추지 않는다. 여기부터는 사람 없이 멈춘다.
+  //   일 상한 → 다음 KST 자정까지 · 월 상한 → 다음 달 1일까지(청구 주기와 같은 창).
+  // ★상한을 넘겨도 **알림은 반드시 남긴다** — 조용히 차단하면 "MES 가 고장났다"로 읽힌다.
+  const trippedNow: string[] = []
+  const trip = async (reason: string, until: string, title: string, msg: string) => {
+    await tripGuard(db, reason, until)
+    trippedNow.push(reason)
+    if (await notifyOncePerDay(db, title, msg, '/settings')) alertTitles.push(title)
+  }
+
+  if ((cfRowsReadMonth.value ?? 0) > th.budget_cf_rows_read_monthly) {
+    await trip(
+      `D1 월 누적 읽기 ${(cfRowsReadMonth.value ?? 0).toLocaleString()}행 (상한 ${th.budget_cf_rows_read_monthly.toLocaleString()})`,
+      nextKstMonthStart(),
+      '🚨 비용 차단기 작동 — D1 월 한도 초과',
+      `이번 달 D1 읽은 행이 상한을 넘어 자동 갱신(배지·칸반·알림)과 무거운 리포트 조회를 **이번 달 남은 기간 동안** 차단했습니다. 주문·출고·입력 등 업무는 정상 동작합니다. 원인 확인 = \`npm run audit:cf-usage\`, 해제 = 설정 화면의 비용 보호 해제.`
+    )
+  } else if ((cfRowsRead.value ?? 0) > th.budget_cf_rows_read_daily_hard) {
+    await trip(
+      `D1 일일 읽기 ${(cfRowsRead.value ?? 0).toLocaleString()}행 (상한 ${th.budget_cf_rows_read_daily_hard.toLocaleString()})`,
+      nextKstMidnight(),
+      '🚨 비용 차단기 작동 — D1 일일 한도 초과',
+      `오늘(UTC) D1 읽은 행이 하드 상한을 넘어 자동 갱신과 무거운 리포트 조회를 **오늘 자정까지** 차단했습니다. 업무 입력은 정상입니다. 원인 확인 = \`npm run audit:cf-usage\`.`
+    )
+  } else if ((cfRequests.value ?? 0) > th.budget_cf_requests_daily_hard) {
+    await trip(
+      `요청 ${(cfRequests.value ?? 0).toLocaleString()}건 (상한 ${th.budget_cf_requests_daily_hard.toLocaleString()})`,
+      nextKstMidnight(),
+      '🚨 비용 차단기 작동 — 요청 일일 한도 초과',
+      `오늘(UTC) 요청 수가 하드 상한을 넘어 자동 갱신을 **오늘 자정까지** 차단했습니다. 재전송 루프(에이전트)나 폴링 이상을 의심하세요.`
+    )
+  }
+
+  const guardState = await getGuardState(db)
+
+  return {
+    barobill,
+    cfRowsRead,
+    cfRequests,
+    cfRowsReadMonth,
+    alerts: alertTitles.length,
+    alertTitles,
+    guard: { ...guardState, trippedNow },
+  }
 }

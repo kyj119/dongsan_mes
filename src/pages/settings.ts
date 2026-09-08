@@ -90,6 +90,22 @@ ${capsSettingsScript}
         <!-- ─── 회사 설정 탭 ─── -->
         <div id="companyTabContent" class="space-y-6">
 
+          <!-- 비용 보호(차단기) — Cloudflare 에 지출 하드 상한이 없어 앱 안에 둔 한도.
+               평소엔 「정상」 한 줄. 걸렸을 때만 사유·만료·해제 버튼이 보인다(services/costGuard.ts). -->
+          <div id="costGuardCard" class="bg-white rounded-lg border border-gray-200 p-4 hidden">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex items-start gap-3">
+                <i id="costGuardIcon" class="fas fa-shield-alt text-gray-400 mt-1"></i>
+                <div>
+                  <div class="text-sm font-bold text-gray-900">비용 보호 <span id="costGuardState" class="ml-1 text-xs font-normal"></span></div>
+                  <div id="costGuardReason" class="text-xs text-gray-600 mt-1"></div>
+                  <div class="text-xs text-gray-400 mt-1">한도 = 설정 키 <code>budget_cf_rows_read_monthly</code> · <code>budget_cf_rows_read_daily_hard</code> · <code>budget_cf_requests_daily_hard</code> · 끄기 = <code>cost_guard_enabled=0</code></div>
+                </div>
+              </div>
+              <button id="costGuardRelease" onclick="releaseCostGuard()" class="hidden shrink-0 px-3 py-1.5 bg-amber-600 text-white text-xs rounded-lg hover:bg-amber-700">지금 해제</button>
+            </div>
+          </div>
+
           <!-- 회사 정보 -->
           <div class="bg-white rounded-lg border border-gray-200 p-6">
             <h2 class="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
