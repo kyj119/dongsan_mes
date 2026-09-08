@@ -25,6 +25,38 @@ export async function getEntityDefaultZone(db: D1Database, entityId: number): Pr
 }
 
 /**
+ * 「이 법인의 재고 행이 있는 활성 구역」 — 배정 축(축2). **게이트·입고·차감이 공유하는 단 하나의 문장.**
+ *
+ * 정렬 = ①실물이 있는 곳(수량>0) ②품목 기본창고(축1) ③최다 보유 ④storage_zone_id 오름차순.
+ *   ②③ 은 `resolveDeductionZone` 의 규칙과 **같다** — 없으면 「입고는 A, 차감은 B」가 되어
+ *   한 구역은 끝없이 늘고 다른 구역은 끝없이 줄어든다(조용한 음수).
+ *   ④ 는 쓰기 대상 tie-break — 없으면 실행마다 다른 구역에 재고가 쌓인다.
+ *
+ * ⚠️축1 비교는 **서브쿼리 안에서 `items` 를 다시 조인**해서 한다(`ai`). 바깥 별칭을 쓰면 안 된다 —
+ *   SQLite 는 **서브쿼리의 ORDER BY 에서 바깥 컬럼을 못 읽는다**(`no such column: i.storage_zone_id`).
+ *   WHERE 는 되는데 ORDER BY 는 안 된다. 중첩 스칼라 서브쿼리로 감싸도 마찬가지다(2026-09-09 실측).
+ * @param itemExpr   품목 id 식 (`i.id` · `poi.item_id`)
+ * @param entityExpr 법인 식 (`?` · `po.entity_id`)
+ * ⚠️`entityExpr` 가 `?` 면 **두 번** 나온다 — 바인드도 두 번, SQLite 는 텍스트 순서로 묶는다
+ *   (memory `feedback-sqlite-placeholder-subquery-order`).
+ */
+function zoneByInventorySql(itemExpr: string, entityExpr: string): string {
+  return `(
+  SELECT v.storage_zone_id
+    FROM inventory v
+    JOIN storage_zones vz ON vz.id = v.storage_zone_id
+                         AND vz.is_active = 1 AND vz.entity_id = ${entityExpr}
+    JOIN items ai ON ai.id = v.item_id
+   WHERE v.item_id = ${itemExpr} AND v.entity_id = ${entityExpr}
+   ORDER BY (CASE WHEN v.quantity > 0 THEN 0 ELSE 1 END),
+            (CASE WHEN v.storage_zone_id = ai.storage_zone_id THEN 0 ELSE 1 END),
+            v.quantity DESC,
+            v.storage_zone_id
+   LIMIT 1
+)`
+}
+
+/**
  * 품목의 기본 재고 창고 id (법인 인식).
  *  - 미배정(items.storage_zone_id NULL) → **요청 법인 기본창고**(없으면 NULL)
  *  - 배정 zone이 요청 법인 소유(활성) → 그 zone
@@ -40,19 +72,37 @@ export async function getEntityDefaultZone(db: D1Database, entityId: number): Pr
  *     그런데 선명2 가 선명의 기본창고라 폴백 결과가 같다 → **동작 변화 0**.
  *     「축1 NULL 인데 기본창고가 아닌 구역에 재고」는 **0건**이었다. 청주·오다플래그는 구역이 0개라
  *     폴백이 NULL 을 돌려준다(종전과 동일).
+ *
+ * ★2026-09-09 변경 — **①「이 법인의 재고 행이 있는 구역」을 축1 보다 먼저 본다.**
+ *   「품목 배정」 화면(`/storage-zones` 배정 탭)이 저장하는 것은 **`inventory` 행**(수량 0)인데
+ *   여기는 `items.storage_zone_id`(축1)만 보고 있었다. 그래서 담당자가 자기 구역 품목을 아무리
+ *   배정해도 **입고는 법인 기본창고로 들어갔다** — 동산 기본창고가 출력실이라, 전사출력실·UV실·
+ *   현수막실 담당자가 배정한 자재가 전부 출력실에 쌓이고 **그 구역 실사표에 안 뜬다**.
+ *   ⇒ 소모량(기초+매입−기말)이 구역별로 통째로 어긋난다.
+ *
+ *   ★게이트(`RECEIVING_ZONE_JOIN_SQL`)는 2026-09-08 에 이미 이 단계를 받았다. **게이트만 열리고
+ *     목적지가 안 따라온** 상태였다 — 「입고 버튼은 눌리는데 재고는 남의 구역에 쌓인다」.
+ *     그래서 순서·정렬을 게이트와 **글자 그대로 같게** 맞춘다(`zoneByInventorySql`).
+ *     두 축이 갈리면 그 틈이 정확히 회귀가 지나가는 자리다.
+ *
+ *   ⚠️적용 전 실측(2026-09-09, prod): 매입품목 1,106종 × 법인 1·2 에서 신·구 규칙 결과가
+ *     **바뀌는 건 0건**이었다. 지금 동작을 바꾸지 않고, 오늘 배정할 571종을 받아내는 변경이다.
+ *     (UV 잉크 5종은 출력실 실물 + UV실 배정행을 둘 다 가지는데, 수량>0 우선이라 출력실 유지)
  */
 export async function getItemDefaultZone(db: D1Database, itemId: number, entityId: number): Promise<number | null> {
   const row = await db
     .prepare(
-      `SELECT i.storage_zone_id AS zid, sz.entity_id AS zent, sz.is_active AS zact
+      `SELECT i.storage_zone_id AS zid, sz.entity_id AS zent, sz.is_active AS zact,
+              ${zoneByInventorySql('i.id', '?')} AS invz
          FROM items i LEFT JOIN storage_zones sz ON sz.id = i.storage_zone_id
         WHERE i.id = ?`
     )
-    .bind(itemId)
-    .first<{ zid: number | null; zent: number | null; zact: number | null }>()
+    .bind(entityId, entityId, itemId)
+    .first<{ zid: number | null; zent: number | null; zact: number | null; invz: number | null }>()
   // ⚠️「행이 없다」와 「행은 있는데 축1 이 NULL」을 구분한다 — 없는 품목에 창고를 돌려주면
   //    호출부가 유령 재고 행을 만든다(자체검증이 첫 실행에서 잡았다).
   if (!row) return null
+  if (row.invz != null) return Number(row.invz)   // 축2 = 배정 행. 축1 보다 먼저(게이트와 동일 순서)
   if (row.zid == null) return getEntityDefaultZone(db, entityId)
   if (row.zent === entityId && row.zact === 1) return row.zid
   return getEntityDefaultZone(db, entityId)
@@ -67,18 +117,22 @@ export async function getItemDefaultZones(db: D1Database, itemIds: number[], ent
   for (let i = 0; i < itemIds.length; i += 80) {
     const chunk = itemIds.slice(i, i + 80)
     const ph = chunk.map(() => '?').join(',')
+    // ⚠️바인드 순서 = 서브쿼리의 ? 두 개가 **텍스트상 IN 절보다 앞**이라 entityId 를 먼저 넘긴다.
+    //   (memory `feedback-sqlite-placeholder-subquery-order` — 이 순서를 틀리면 한 칸씩 밀린다)
     const { results } = await db
       .prepare(
-        `SELECT i.id AS iid, i.storage_zone_id AS zid, sz.entity_id AS zent, sz.is_active AS zact
+        `SELECT i.id AS iid, i.storage_zone_id AS zid, sz.entity_id AS zent, sz.is_active AS zact,
+                  ${zoneByInventorySql('i.id', '?')} AS invz
            FROM items i LEFT JOIN storage_zones sz ON sz.id = i.storage_zone_id
           WHERE i.id IN (${ph})`
       )
-      .bind(...chunk)
-      .all<{ iid: number; zid: number | null; zent: number | null; zact: number | null }>()
+      .bind(entityId, entityId, ...chunk)
+      .all<{ iid: number; zid: number | null; zent: number | null; zact: number | null; invz: number | null }>()
     for (const r of results || []) {
       let resolved: number | null
       // 단수판(getItemDefaultZone)과 **같은 규칙**이어야 한다 — 갈리면 배치 입고만 미배정이 된다.
-      if (r.zid == null) resolved = entDefault
+      if (r.invz != null) resolved = Number(r.invz)
+      else if (r.zid == null) resolved = entDefault
       else if (r.zent === entityId && r.zact === 1) resolved = r.zid
       else resolved = entDefault
       map.set(Number(r.iid), resolved)
@@ -106,6 +160,9 @@ export async function getItemDefaultZones(db: D1Database, itemIds: number[], ent
  *      (동률은 `storage_zone_id` 오름차순 — 정렬에 tie-break 가 없으면 어느 구역에서 빠지는지가
  *       실행마다 달라진다. 표시가 아니라 **쓰기 대상**이므로 반드시 고정한다).
  *   ③ 재고가 어디에도 없으면 입고 규칙(`getItemDefaultZone`)을 그대로 쓴다 — 음수는 거기 생긴다.
+ *      ★2026-09-09 — 그 입고 규칙이 이제 **배정 행(수량 0·음수 포함)** 을 먼저 본다. 즉 양수 재고가
+ *        없는 품목의 음수는 법인 기본창고가 아니라 **배정한 구역**에 생긴다. 담당자가 자기 실사표에서
+ *        바로 본다는 뜻이라 의도된 방향이다.
  *
  * ⚠️적용 시점 실측(2026-09-04): 양수 재고를 가진 203품목이 **전부 단일 구역**이고,
  *   축1(또는 폴백)이 가리키는 구역과 실제 보유 구역이 **어긋난 사례가 0건**이었다.
@@ -143,6 +200,10 @@ export async function resolveDeductionZone(
 //   ①발주 라인 지정 ②**이 법인의 재고 행이 있는 구역** ③품목 기본창고가 이 법인 활성 구역이면 그것
 //   ④타법인 구역이면 이 법인 기본창고.
 //
+// ★②의 문장은 `zoneByInventorySql` 하나뿐이다(2026-09-09) — **입고 목적지(`getItemDefaultZone*`)와
+//   같은 텍스트**를 쓴다. 종전엔 게이트에만 ②가 있고 목적지는 축1 만 봐서, 담당자가 배정을 해도
+//   「입고 버튼은 눌리는데 재고는 법인 기본창고(동산=출력실)에 쌓이는」 상태였다.
+//
 // ★②를 왜 넣었나 — 「품목 배정」 화면(`/storage-zones` 배정 탭)이 저장하는 것은
 //   **`inventory` 행**인데(수량 0), 담당자 판정은 `items.storage_zone_id` 만 보고 있었다.
 //   그래서 담당자가 자기 구역 품목을 아무리 골라도 **입고에는 반영되지 않았다**.
@@ -164,13 +225,7 @@ export const RECEIVING_ZONE_JOIN_SQL = `
       LEFT JOIN storage_zones iz ON iz.id = i.storage_zone_id
       LEFT JOIN storage_zones sz ON sz.id = COALESCE(
         poi.storage_zone_id,
-        (SELECT v.storage_zone_id
-           FROM inventory v
-           JOIN storage_zones vz ON vz.id = v.storage_zone_id
-                                AND vz.is_active = 1 AND vz.entity_id = po.entity_id
-          WHERE v.item_id = poi.item_id AND v.entity_id = po.entity_id
-          ORDER BY (CASE WHEN v.quantity > 0 THEN 0 ELSE 1 END), v.storage_zone_id
-          LIMIT 1),
+        ${zoneByInventorySql('poi.item_id', 'po.entity_id')},
         CASE WHEN iz.entity_id = po.entity_id AND iz.is_active = 1 THEN iz.id END,
         CASE WHEN iz.id IS NOT NULL THEN (
           SELECT dz.id FROM storage_zones dz
@@ -182,13 +237,7 @@ export const RECEIVING_ZONE_JOIN_SQL = `
 /** 같은 규칙의 SELECT 절 표현 — `effective_zone_id` 로 쓰는 곳용. */
 export const RECEIVING_ZONE_EXPR_SQL = `COALESCE(
         poi.storage_zone_id,
-        (SELECT v.storage_zone_id
-           FROM inventory v
-           JOIN storage_zones vz ON vz.id = v.storage_zone_id
-                                AND vz.is_active = 1 AND vz.entity_id = po.entity_id
-          WHERE v.item_id = poi.item_id AND v.entity_id = po.entity_id
-          ORDER BY (CASE WHEN v.quantity > 0 THEN 0 ELSE 1 END), v.storage_zone_id
-          LIMIT 1),
+        ${zoneByInventorySql('poi.item_id', 'po.entity_id')},
         CASE WHEN iz.entity_id = po.entity_id AND iz.is_active = 1 THEN iz.id END,
         CASE WHEN iz.id IS NOT NULL THEN (
           SELECT dz.id FROM storage_zones dz
