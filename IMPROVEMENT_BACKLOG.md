@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-09-08T01:20:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-09-08T10:40:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,32 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **20** (`list_issues(state:OPEN,label:auto-improve)` 실측, 19→20) |
+| 🆕 new | **20** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **542** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 5 보안 + 인프라 (2026-09-08T10:40):**
+> - **방법**: 세션 시작 시 detached HEAD `8c752b2`(origin/main과 동일 커밋이나 얕은 clone) → `git checkout main` → `git pull`이 divergent-history로 실패(50/52커밋 분기, shallow-clone 앵커 유실 함정) → `git fetch --unshallow` + `git merge --ff-only origin/main`으로 정합(변동 없음, 이미 최신). `npm ci`(0→81), `npx tsc --noEmit` clean, `npm audit --omit=dev` 0건(변동없음, `npm ci` 직후 dev 포함 집계는 11건이나 이건 매 사이클 동일한 devDependency 사안=#613).
+> - **churn 확인(앵커 = 직전 Area5 방법 라인 HEAD `af61e7e`)**: 웹앱 범위 diff **30커밋** — Area1·2·3·4·6이 이번 세션 안에서 이미 각자 렌즈로 정독한 은행매칭 확장(잔여 제안 승격·카드정산 계정·계좌 잔액/경과일 표시)·cashflow(차입/상환 분리)·계정마스터 대정리(0576~0585)·원가축 보정·신규 매입후보 큐(`purchaseCandidates`)·입고 OPERATOR 권한개방(`0585`) 웨이브 + XSS 자체수정(`3bf7427`/`b16fafb`, 직전 Area5가 이미 커밋한 산출물). **보안 렌즈로는 이번이 최초 통과** — 특히 입고 권한개방 2단계(`8f55dd0e`·`573ea40c`)는 role 게이트를 실제로 낮춘 변경이라 최우선 직독.
+> - **입고 OPERATOR 권한개방 2단계 코드 직접 대조 — 회귀 없음 확인**: ① `8f55dd0e`(POST `/:id/receive`)가 `canTouchZone`(실사 `loadOwnedCount`와 동일 헬퍼) 게이트를 페이지권한 개방과 **같은 커밋**에 추가(구역 NULL=거부·관리자=통과·그 외 manager_id 일치) — 개방과 게이트가 분리배포될 창 없음. ② `573ea40c`(PATCH `/:id/status`)는 종전 `requireRole('ADMIN','MANAGER')` 블랭킷 가드를 **전이별 규칙**으로 교체 — 관리자는 종전대로 전체 전이, 그 외는 `DRAFT→CONFIRMED` 단 하나만 + `ownsAnyLineZone`(같은 `RECEIVING_ZONE_JOIN_SQL` 재사용)으로 담당 구역 라인 보유 확인. **PO 단건 조회 자체가 `entityFilter(c)` 유지**(법인 격리 훼손 없음), 라우터 `.use('/*', authMiddleware, requireAnyPagePermission('/purchase-orders','/receiving'))`가 DESIGNER·SALES 진입 자체를 막음 — 취소·되돌리기·강제RECEIVED는 비관리자에 안 열림. `isSupervisor`/`canTouchZone`(`utils/zoneAccess.ts`)도 직접 Read해 zoneId 미검증·법인교차 허용 같은 구멍 없음 확인. Area4가 데이터정합성 렌즈로 이미 본 것과 별개로 **인가 로직 자체가 안전**함을 보안 렌즈로 재확인.
+> - **신규 라우터·엔드포인트 인가 전수 대조**: `purchaseCandidates.ts`(read-only GET 1개, `authMiddleware+requireAccessOrRole` 게이트, 쓰기 경로 없음 — Area4가 지적한 cross-entity 스캔은 read-only라 IDOR 아님) · `barobill.ts GET /registration-audit`(신규, 라우터 전체 `.use('/*', authMiddleware, requireRole('ADMIN','MANAGER'))` 상속 + `getEntityId(c)` 0 거부 — 전체모드 차단 확인) 둘 다 clean.
+> - **은행매칭 엔진 신규 SQL 전수(`bank.ts` +229줄) — 인젝션·격리 회귀 0건**: `sort` 쿼리파라미터는 화이트리스트 맵(`sortOptions[...] ?? sortOptions.date`) 경유라 임의 SQL 삽입 불가, `limit`/`offset`은 `Number.isFinite` 검증 후 삽입. `promoteSuggestionsFromHistory`·`applyExpenseCategory`(입금-비용계정 방지 게이트 신규)·`efHist`/`efRules` 전부 파라미터 바인딩 + `entityFilter` 별칭(`c`,`r`,`bank_transactions`) 일관 유지. 신규 util 6종(`bankMatchPolicy`·`counterpartName`·`expenseRole`·`loanSettlement`·`overdueSpread`·`apCandidate`/`apSettlement`) 전부 **순수 함수**(`grep DB.prepare` 0건) — SQL/DB 공격면 자체가 없음.
+> - **XSS — 신규/변경 프론트 파일 직접 Read(11개 churn 파일)**: `purchaseCandidates.js`(신규 168줄, 전 sink `pcqEsc` 일관), `bank.js`(+243줄, 신규 바로빌 등록현황 패널·잔액표시 전 sink `escHtml` 일관), `receiving.js`(발주확정 버튼 신설, innerHTML 신규 sink 0건 — 네이티브 `confirm()` 텍스트뿐), `cardExpenses.js`/`reports.js`(역할배지·커버리지 안내, 신규 sink 0건) — **net-new XSS 0건**.
+> - **`node scripts/check-xss.mjs` 재실행(직전 Area5가 문서화 정규식으로 교체한 버전)** — 117→110건(직전 사이클 10건 fix 반영, 순감 -7은 파일 diff로 라인 이동). 이번 churn 파일(`bank.js`·`cardExpenses.js`·`purchaseCandidates.js`·`receiving.js` 등) 후보를 개별 대조 — 전부 이미 `escHtml`/`escapeHtml`/`pcqEsc`/`hrEscape` 적용됐거나 기존 FP 클래스(에러메시지 `e.message`·enum 라벨·정의-지점 escape 변수 재사용 `contentStr`/`opts`/`names`)에 해당, 신규 미이스케이프 0건.
+> - **standing scan 1: 시크릿 폴백** `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43` 1건뿐(기존 FP, 변동없음).
+> - **standing scan 2: CSV Formula Injection** `grep -rn "includes(','" src` → `csv.ts:83` 1건(기존 헬퍼, 신규 CSV export 없음, 변동없음).
+> - **standing scan 3: `npm run audit:entity`** — 검사 134파일·entity테이블 SELECT 73건·**누락 0건**(변동없음).
+> - **standing scan 4: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지.
+> - **standing scan 5: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 8런(HEAD `8c752b2` 포함) 전부 `conclusion:success`.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **20**(변동없음, #613·#616·#617·#622·#624~639 전건 일치). #626(레거시 평문비번·JWT_SECRET, owner 결정 대기)·#631(cashSchedule check-overdue entity필터 누락, IDOR=owner 워크플로) 재확인 — 둘 다 정상 open.
+> - **backlog↔GitHub 절대값 재동기화**: open **20**(변동없음) · done **542**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — 이번 사이클은 기존 FP 카탈로그(page-permission gating·IDOR 비대칭 판별·XSS FP 클래스)가 정확히 의도대로 작동(입고 권한개방이 처음부터 "개방+게이트 동일커밋" 패턴을 지켜 신규 codify 대상 없음)한 실증. area-5-security-infra.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: 사이클 로그 10건 → 이번 로그 추가 후 11건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(30커밋 churn 전체가 보안 렌즈로 clean — 입고 권한개방이 가장 위험한 변경이었으나 개방과 게이트가 매번 같은 커밋에 묶여 배포됨), 자동수정 0건(고칠 결함 없음), done-sync: open 20(변동없음)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-09-08T01:20):**
 > - **방법**: 세션 시작 시 detached HEAD `8f55dd0`(origin/main과 동일 커밋이나 얕은 clone) → `git checkout main` → `git pull`이 divergent-history(unrelated histories)로 실패 → `git fetch --unshallow` + `git merge --ff-only origin/main`으로 정합(변동 없음, 이미 최신). `npm ci`(0→81), `npx tsc --noEmit` clean, `npm audit --omit=dev` 0건.
