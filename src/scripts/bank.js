@@ -69,6 +69,18 @@
     document.getElementById('filterDateEnd').value = lastStr;
   })();
 
+  // 기간 해제 — 탭 숫자가 기간에 종속되므로, 전체 잔량으로 되돌아갈 길이 필요하다.
+  window.clearTxPeriod = function() {
+    var a = document.getElementById('filterDateStart');
+    var b = document.getElementById('filterDateEnd');
+    if (!a || !b) { console.warn('[bank] #filterDateStart/#filterDateEnd not found'); return; }
+    // flatpickr 가 붙어 있으면 인스턴스로 지워야 화면 표기까지 비워진다
+    if (a._flatpickr) a._flatpickr.clear(); else a.value = '';
+    if (b._flatpickr) b._flatpickr.clear(); else b.value = '';
+    a.value = ''; b.value = '';
+    loadTransactions();
+  };
+
   // Status tab switch
   var currentStatusTab = '';
   window.switchStatusTab = function(tab) {
@@ -96,7 +108,10 @@
   // Load stats
   var autoSyncTriggered = false;
   function loadStats() {
-    axios.get('/api/bank/stats').then(function(r) {
+    // ★목록과 **같은 범위**로 센다 — 기간을 걸어 놓고 탭 숫자가 전 기간 총계면
+    //   그 달을 닫았는지 알 수 없다(월 마감이 불가능해진다).
+    var scope = buildTxScopeParams().join('&');
+    axios.get('/api/bank/stats' + (scope ? '?' + scope : '')).then(function(r) {
       var d = r.data.data || {};
       document.getElementById('kpiUnmatched').textContent = d.unmatched_count || 0;
       document.getElementById('kpiSuggested').textContent = d.suggested_count || 0;
@@ -176,18 +191,27 @@
     }).catch(function() { accounts = []; });
   }
 
-  // 현재 필터 → 쿼리 파라미터. 목록·「더 보기」가 같은 조건을 쓰도록 한 곳에서 만든다.
-  function buildTxFilterParams() {
+  // 현재 필터의 **범위**(계좌·기간·입출금) — 목록과 탭 숫자가 같은 범위를 보도록 한 곳에서 만든다.
+  //   상태(match_status)·정렬은 여기 넣지 않는다: 탭 숫자는 이 범위 안의 상태별 분해다.
+  function buildTxScopeParams() {
     var accountId = document.getElementById('filterAccount').value;
     var dateStart = document.getElementById('filterDateStart').value;
     var dateEnd = document.getElementById('filterDateEnd').value;
-    var status = document.getElementById('filterStatus').value;
     var txType = document.getElementById('filterTxType').value;
 
     var params = [];
     if (accountId) params.push('account_id=' + encodeURIComponent(accountId));
     if (dateStart) params.push('date_start=' + encodeURIComponent(dateStart));
     if (dateEnd) params.push('date_end=' + encodeURIComponent(dateEnd));
+    if (txType) params.push('transaction_type=' + encodeURIComponent(txType));
+    return params;
+  }
+
+  // 현재 필터 → 쿼리 파라미터. 목록·「더 보기」가 같은 조건을 쓰도록 한 곳에서 만든다.
+  function buildTxFilterParams() {
+    var status = document.getElementById('filterStatus').value;
+
+    var params = buildTxScopeParams();
     // PENDING = UNMATCHED + SUGGESTED + CONFIRMED (미반영)
     if (status === 'PENDING') {
       params.push('match_status=UNMATCHED');
@@ -196,7 +220,6 @@
     } else if (status) {
       params.push('match_status=' + encodeURIComponent(status));
     }
-    if (txType) params.push('transaction_type=' + encodeURIComponent(txType));
     var sortEl = document.getElementById('filterTxSort');
     if (!sortEl) console.warn('[bank] #filterTxSort not found');
     else if (sortEl.value) params.push('sort=' + encodeURIComponent(sortEl.value));

@@ -233,6 +233,8 @@ export const bankPageContent = `
                 <input type="text" id="filterDateStart" class="js-fp form-input text-sm" style="width:130px;" onchange="loadTransactions()" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
                 <span class="text-gray-300">~</span>
                 <input type="text" id="filterDateEnd" class="js-fp form-input text-sm" style="width:130px;" onchange="loadTransactions()" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15">
+                <!-- 탭 숫자가 기간에 종속되므로(2026-09-09) 전체 잔량으로 되돌아갈 길을 둔다 -->
+                <button onclick="clearTxPeriod()" class="ml-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded" title="기간 조건을 지우고 전체 기간을 봅니다">전체기간</button>
               </div>
               <select id="filterTxType" class="form-select text-sm" style="width:80px;" onchange="loadTransactions()">
                 <option value="">전체</option>
@@ -255,7 +257,7 @@ export const bankPageContent = `
             </div>
             <!-- Row 2: 상태 필터 + 액션 -->
             <div class="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
-              <div class="flex gap-1">
+              <div class="flex gap-1" title="숫자는 위 필터(계좌·기간·입출금) 범위 기준입니다">
                 <button onclick="switchStatusTab('')" id="statusTabAll" class="px-3 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200">
                   전체 <span id="statusCountAll" class="opacity-80"></span>
                 </button>

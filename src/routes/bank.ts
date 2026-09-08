@@ -549,10 +549,45 @@ bankRouter.get('/barobill-manage-url', requireRole('ADMIN'), async (c) => {
 // 거래내역 조회
 // ---------------------------------------------------------------------------
 
+/**
+ * 거래내역 **범위** 필터 — 계좌·기간·입출금 구분 + 법인 격리. 목록(`/transactions`)과
+ * 집계(`/stats`)가 같은 조건을 보도록 한 곳에서 만든다.
+ *
+ * ★상태(match_status)는 일부러 뺀다 — 탭 숫자는 「이 범위 안의 상태별 분해」라
+ *   상태로 먼저 거르면 고른 탭이 자기 자신만 세게 된다. 상태 조건은 목록 쪽에서만 덧붙인다.
+ * (2026-09-09: 기간을 걸어도 탭 숫자가 전 기간 총계였다 — 월 마감 때 그 달의 진척을 볼 수 없었다.)
+ */
+function buildTxScope(c: Context<HonoEnv>): { clause: string; params: (string | number)[] } {
+  const { account_id, date_start, date_end, transaction_type } = c.req.query()
+  // 법인 격리를 이 안에 접어 넣는다. 반환 이름을 `clause`로 두는 건 취향이 아니라
+  // 정적 감사(scripts/entity-audit.mjs 규칙①)가 SQL 본문의 `.clause}` 보간으로
+  // 격리 여부를 판정하기 때문 — 이름을 바꾸면 게이트가 이 쿼리를 못 본다.
+  const ef = entityFilter(c, 'bt')
+  let clause = ef.clause
+  const params: (string | number)[] = [...ef.params]
+
+  if (account_id) {
+    clause += ' AND bt.bank_account_id = ?'
+    params.push(account_id)
+  }
+  if (date_start) {
+    clause += ' AND bt.transaction_date >= ?'
+    params.push(date_start.replace(/-/g, ''))
+  }
+  if (date_end) {
+    clause += ' AND bt.transaction_date <= ?'
+    params.push(date_end.replace(/-/g, ''))
+  }
+  if (transaction_type) {
+    clause += ' AND bt.transaction_type = ?'
+    params.push(transaction_type)
+  }
+  return { clause, params }
+}
+
 // GET /api/bank/transactions — 거래내역 목록
 bankRouter.get('/transactions', requireRole('ADMIN'), async (c) => {
   try {
-    const { account_id, date_start, date_end, transaction_type } = c.req.query()
     // match_status는 복수 값 지원 (?match_status=A&match_status=B)
     const matchStatuses = c.req.queries('match_status') || []
     const singleStatus = c.req.query('match_status')
@@ -573,22 +608,10 @@ bankRouter.get('/transactions', requireRole('ADMIN'), async (c) => {
     }
     const orderBy = sortOptions[c.req.query('sort') || 'date'] ?? sortOptions.date
 
-    const ef = entityFilter(c, 'bt')
-    let where = `WHERE 1=1${ef.clause}`
-    const params: (string | number)[] = [...ef.params]
+    const scope = buildTxScope(c)
+    let where = `WHERE 1=1${scope.clause}`
+    const params: (string | number)[] = [...scope.params]
 
-    if (account_id) {
-      where += ' AND bt.bank_account_id = ?'
-      params.push(account_id)
-    }
-    if (date_start) {
-      where += ' AND bt.transaction_date >= ?'
-      params.push(date_start.replace(/-/g, ''))
-    }
-    if (date_end) {
-      where += ' AND bt.transaction_date <= ?'
-      params.push(date_end.replace(/-/g, ''))
-    }
     if (matchStatuses.length > 1) {
       const ph = matchStatuses.map(() => '?').join(', ')
       where += ` AND bt.match_status IN (${ph})`
@@ -596,10 +619,6 @@ bankRouter.get('/transactions', requireRole('ADMIN'), async (c) => {
     } else if (singleStatus) {
       where += ' AND bt.match_status = ?'
       params.push(singleStatus)
-    }
-    if (transaction_type) {
-      where += ' AND bt.transaction_type = ?'
-      params.push(transaction_type)
     }
 
     const query = `
@@ -2767,18 +2786,20 @@ bankRouter.post('/transactions/:id/unlink-transfer', requireRole('ADMIN'), async
 // GET /api/bank/stats
 bankRouter.get('/stats', requireRole('ADMIN'), async (c) => {
   try {
-    const ef = entityFilter(c, 'bank_transactions')
+    // 화면의 필터(계좌·기간·입출금)와 **같은 범위**를 센다 — 목록과 탭 숫자가 어긋나면
+    // 어느 쪽이 맞는지 사람이 알 수 없다. 범위 조건은 목록과 같은 헬퍼에서 나온다.
+    const scope = buildTxScope(c)
     const stats = await c.env.DB.prepare(`
       SELECT
         COUNT(*) as total_count,
-        SUM(CASE WHEN match_status = 'UNMATCHED'  THEN 1 ELSE 0 END) as unmatched_count,
-        SUM(CASE WHEN match_status = 'SUGGESTED'  THEN 1 ELSE 0 END) as suggested_count,
-        SUM(CASE WHEN match_status = 'CONFIRMED'  THEN 1 ELSE 0 END) as confirmed_count,
-        SUM(CASE WHEN match_status = 'APPLIED'    THEN 1 ELSE 0 END) as applied_count,
-        SUM(CASE WHEN match_status = 'IGNORED'    THEN 1 ELSE 0 END) as ignored_count
-      FROM bank_transactions
-      WHERE 1=1${ef.clause}
-    `).bind(...ef.params).first<{
+        SUM(CASE WHEN bt.match_status = 'UNMATCHED'  THEN 1 ELSE 0 END) as unmatched_count,
+        SUM(CASE WHEN bt.match_status = 'SUGGESTED'  THEN 1 ELSE 0 END) as suggested_count,
+        SUM(CASE WHEN bt.match_status = 'CONFIRMED'  THEN 1 ELSE 0 END) as confirmed_count,
+        SUM(CASE WHEN bt.match_status = 'APPLIED'    THEN 1 ELSE 0 END) as applied_count,
+        SUM(CASE WHEN bt.match_status = 'IGNORED'    THEN 1 ELSE 0 END) as ignored_count
+      FROM bank_transactions bt
+      WHERE 1=1${scope.clause}
+    `).bind(...scope.params).first<{
       total_count: number
       unmatched_count: number
       suggested_count: number
