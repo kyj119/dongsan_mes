@@ -104,6 +104,92 @@ interface TodaySummaryRow { ok_count: number; error_count: number; cancel_count:
 
 // ─── 카드 매칭 헬퍼 ───
 // 파일명에서 order_number + file_seq를 추출하고, print_file_map → fallback regex 순으로 카드 조회
+/** 카드가 이미 끝난 상태 — 재주문 후보 판별에 쓴다 */
+const DONE_CARD_STATUSES = new Set(['PRINT_DONE', 'SHIPPED'])
+
+interface FileMapCandidate extends FileMapRow { id: number }
+
+/**
+ * order_item_id → card_id 역추적.
+ *
+ * ★왜 필요한가 — 흡수 학습 행은 `card_id` 가 **NULL** 이다. 파일을 주문 라인에 붙이는 시점에는
+ *   카드가 아직 없기 때문이고(workbench.ts 흡수 경로 주석), 카드는 주문 저장 때 생기는데
+ *   그때 print_file_map 을 되채우는 코드가 **전 코드베이스에 없다**. 그 결과
+ *   `applyEventToCard` 가 `!cardId && !cardNumber` 에서 즉시 빠져나가
+ *   **출력완료가 와도 카드가 안 바뀌고**, card_items·shipment_ready·자동차감까지 통째로 멈춰 있었다.
+ *
+ * ★되채우지 않고 **읽는 쪽에서 푼다** — print_file_map.card_id 를 채우면 그건 새 누적 캐시라
+ *   카드 재생성·주문 수정 때 또 어긋난다(CLAUDE.md §누적 캐시). 여기서 매번 조회하면 항상 맞다.
+ *   `idx_card_items_order_item_id`(0007) 가 있어 비용도 작다.
+ *
+ * ⚠️ 한 라인이 여러 카드에 걸리면 어느 카드인지 알 수 없다 → **null(미매칭)**. 조용히 한쪽에 찍으면
+ *    실적과 자동차감이 엉뚱한 카드로 간다. 같은 모호성 처리 선례 = POST /link 의 `LIMIT 2`.
+ */
+async function cardIdsForOrderItems(db: D1Database, orderItemIds: number[]): Promise<Map<number, number | null>> {
+  const out = new Map<number, number | null>()
+  if (orderItemIds.length === 0) return out
+  const ph = orderItemIds.map(() => '?').join(',')
+  const rows = await db.prepare(
+    `SELECT order_item_id, card_id FROM card_items WHERE order_item_id IN (${ph})`
+  ).bind(...orderItemIds).all<{ order_item_id: number; card_id: number }>()
+  const seen = new Map<number, Set<number>>()
+  for (const r of rows.results || []) {
+    if (!seen.has(r.order_item_id)) seen.set(r.order_item_id, new Set())
+    seen.get(r.order_item_id)!.add(r.card_id)
+  }
+  for (const [itemId, cards] of seen) out.set(itemId, cards.size === 1 ? [...cards][0] : null)
+  return out
+}
+
+/**
+ * 파일명 후보 여러 건 중 **어느 주문 것인지** 고른다.
+ *
+ * ★같은 파일명이 여러 주문에 등록될 수 있다 — `file_name` 에는 UNIQUE 가 없고(0079),
+ *   **같은 품목을 재주문하면 디자이너가 같은 파일을 그대로 쓴다.** 파일명 규칙(2026-09-07)에도
+ *   날짜가 없어 `순번-거래처-건명(규격-수량)` 이 그대로 반복될 수 있다.
+ *   종전에는 `ORDER BY` 없이 `.first()` 였다 → rowid 순 = **가장 오래된 주문**이 잡혔다.
+ *   0569 주석이 경고한 "같은 파일명이 다른 주문으로 다시 들어올 때 옛 주문에 조용히 붙는다"가
+ *   바로 이 경로다(그 주석은 소급 백필만 막았고, 정상 등록끼리의 충돌은 열려 있었다).
+ *
+ * 규칙 — ①아직 안 끝난 카드가 **하나면** 그것 ②전부 끝났으면 **가장 최근 등록분**(재출력으로 본다)
+ *        ③안 끝난 후보가 **둘 이상이면 붙이지 않는다**. 파일명만으로는 판별이 불가능하므로
+ *        미매칭으로 남겨 사람이 화면에서 확정한다(POST /print-events/link — 후보 추천+1클릭 확정).
+ *        틀린 카드에 조용히 찍는 것보다 안 찍는 편이 낫다.
+ */
+async function pickFileMapCandidate(db: D1Database, rows: FileMapCandidate[]): Promise<ResolvedCard | null> {
+  if (rows.length === 0) return null
+  const needIds = rows.filter((r) => r.card_id == null && r.order_item_id != null).map((r) => r.order_item_id as number)
+  const byItem = await cardIdsForOrderItems(db, needIds)
+  const resolvedIds = rows.map((r) => r.card_id ?? (r.order_item_id != null ? byItem.get(r.order_item_id) ?? null : null))
+  const pick = (i: number): ResolvedCard => ({
+    cardId: resolvedIds[i], cardNumber: rows[i].card_number,
+    orderNumber: rows[i].order_number, orderItemId: rows[i].order_item_id || null,
+  })
+  if (rows.length === 1) return pick(0)
+
+  // 후보 다건 — 카드 상태로 가른다. 카드 미생성(null)도 '진행 중'으로 본다(아직 출력 전).
+  const ids = resolvedIds.filter((v): v is number => v != null)
+  const statuses = new Map<number, string>()
+  if (ids.length > 0) {
+    const ph = ids.map(() => '?').join(',')
+    const st = await db.prepare(`SELECT id, status FROM cards WHERE id IN (${ph})`).bind(...ids).all<CardRow>()
+    for (const s of st.results || []) statuses.set(s.id, s.status)
+  }
+  const open: number[] = []
+  for (let i = 0; i < rows.length; i++) {
+    const cid = resolvedIds[i]
+    const st = cid != null ? statuses.get(cid) : undefined
+    if (st == null || !DONE_CARD_STATUSES.has(st)) open.push(i)
+  }
+  if (open.length === 1) return pick(open[0])
+  if (open.length === 0) return pick(0) // 전부 완료 → 최신(ORDER BY id DESC) = 재출력
+  console.warn(
+    '[printEvents] 같은 파일명의 진행 중 주문이 %d건 — 미매칭으로 남긴다(사람이 확정). file=%s orders=%s',
+    open.length, rows[0].file_name || '', open.map((i) => rows[i].order_number).join(',')
+  )
+  return null
+}
+
 async function resolveCard(db: D1Database, extractedName: string, entityId?: number): Promise<{
   cardId: number | null, cardNumber: string | null, orderNumber: string | null, orderItemId: number | null
 }> {
@@ -123,7 +209,13 @@ async function resolveCard(db: D1Database, extractedName: string, entityId?: num
     const map = await db.prepare(
       `SELECT card_id, card_number, order_item_id FROM print_file_map WHERE order_number = ? AND file_seq = ?${entClause}`
     ).bind(...binds).first<FileMapRow>()
-    if (map) return { cardId: map.card_id, cardNumber: map.card_number, orderNumber: orderNum, orderItemId: map.order_item_id || null }
+    if (map) {
+      // 흡수 학습 행은 card_id 가 NULL 이라 여기서도 역추적이 필요하다(1차·2차 동일).
+      const cardId = map.card_id ?? (await cardIdsForOrderItems(
+        db, map.order_item_id != null ? [map.order_item_id] : []
+      )).get(map.order_item_id as number) ?? null
+      return { cardId, cardNumber: map.card_number, orderNumber: orderNum, orderItemId: map.order_item_id || null }
+    }
   }
   // 2차: 파일명 직접 매칭 (entity 한정 시 교차 매칭 방지)
   // file_map에는 확장자 포함(.eps 등) 저장, LogWatcher 추출명은 확장자 제거본일 수 있어 양쪽 허용
@@ -136,12 +228,16 @@ async function resolveCard(db: D1Database, extractedName: string, entityId?: num
     const charLen = [...nameNoExt].length
     const fnBinds: any[] = [extractedName, nameNoExt, charLen, nameNoExt, charLen]
     if (entityId != null) fnBinds.push(entityId)
-    const fnMap = await db.prepare(
-      `SELECT card_id, card_number, order_number, order_item_id FROM print_file_map
+    // ⚠️ 한 건만 뽑으면 안 된다 — 같은 파일명이 여러 주문에 등록될 수 있다(재주문).
+    //    최신 우선으로 소수만 뽑아 pickFileMapCandidate 가 진행 중인 것을 고른다.
+    const fnRows = await db.prepare(
+      `SELECT id, card_id, card_number, order_number, order_item_id, file_name FROM print_file_map
        WHERE (file_name = ? OR file_name = ?
-              OR (substr(file_name, 1, ?) = ? AND substr(file_name, ? + 1, 1) = '.'))${entClause}`
-    ).bind(...fnBinds).first<FileMapRow>()
-    if (fnMap) return { cardId: fnMap.card_id, cardNumber: fnMap.card_number, orderNumber: fnMap.order_number, orderItemId: fnMap.order_item_id || null }
+              OR (substr(file_name, 1, ?) = ? AND substr(file_name, ? + 1, 1) = '.'))${entClause}
+       ORDER BY id DESC LIMIT 3`
+    ).bind(...fnBinds).all<FileMapCandidate>()
+    const picked = await pickFileMapCandidate(db, fnRows.results || [])
+    if (picked) return picked
   } catch (e: any) {
     console.warn('[printEvents] resolveCard 2nd-pass failed (continuing): %s | len=%d head=%s', e?.message || e, nameNoExt.length, nameNoExt.slice(0, 80))
   }
