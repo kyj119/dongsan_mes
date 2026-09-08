@@ -1363,10 +1363,11 @@ async function runAutoMatchEngine(
     const loanByAccount = new Map(loanRows.map(l => [String(l.account_no), l]))
 
     // 대출 판정이 쓰는 계정(차입금·이자비용·차입금상환)의 id — 법인별.
+    const efLoanCat = entityFilter(c, 'expense_categories')
     const { results: loanCatRows } = await c.env.DB.prepare(`
       SELECT id, name, entity_id FROM expense_categories
-      WHERE is_active = 1 AND name IN ('차입금', '이자비용', '차입금상환')
-    `).all<{ id: number; name: string; entity_id: number | null }>()
+      WHERE is_active = 1 AND name IN ('차입금', '이자비용', '차입금상환')${efLoanCat.clause}
+    `).bind(...efLoanCat.params).all<{ id: number; name: string; entity_id: number | null }>()
     const loanCatId = (name: string, entityId: number | null) =>
       loanCatRows.find(r => r.name === name && Number(r.entity_id) === Number(entityId))?.id ?? null
 
