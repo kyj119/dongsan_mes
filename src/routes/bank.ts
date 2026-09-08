@@ -1342,8 +1342,14 @@ async function runAutoMatchEngine(
     const ruleMap = new Map(
       matchRules
         .filter(r => (r.match_type ?? 'EXACT') !== 'CONTAINS')
-        .map(r => [r.counterpart_name, { clientId: r.matched_client_id, categoryId: r.matched_category_id }])
+        .map(r => [r.counterpart_name, { clientId: r.matched_client_id, categoryId: r.matched_category_id, categoryRole: r.category_role }])
     )
+    // ★입금에 비용 계정을 붙여도 되는가 — **모든 비용분류 경로가 이 한 줄을 지난다**.
+    //   2026-09-08: CONTAINS 규칙만 막고 EXACT 규칙을 안 막아, 되돌린 행(입금 운반비 32,670)이
+    //   다음 스윕에서 **그 형제 경로로 되살아났다**. 감사가 같은 행을 두 번 지목해서야 드러났다.
+    const categoryAllowedFor = (txType: string, role: string | null | undefined) =>
+      txType !== 'DEPOSIT' || canAttachToDeposit(role)
+
     const containsRules = matchRules
       .filter(r => (r.match_type ?? 'EXACT') === 'CONTAINS' && r.counterpart_name.trim())
       .map(r => ({ key: r.counterpart_name.trim(), clientId: r.matched_client_id, categoryId: r.matched_category_id, categoryRole: r.category_role }))
@@ -1365,11 +1371,11 @@ async function runAutoMatchEngine(
     // 대출 판정이 쓰는 계정(차입금·이자비용·차입금상환)의 id — 법인별.
     const efLoanCat = entityFilter(c, 'expense_categories')
     const { results: loanCatRows } = await c.env.DB.prepare(`
-      SELECT id, name, entity_id FROM expense_categories
+      SELECT id, name, entity_id, role FROM expense_categories
       WHERE is_active = 1 AND name IN ('차입금', '이자비용', '차입금상환')${efLoanCat.clause}
-    `).bind(...efLoanCat.params).all<{ id: number; name: string; entity_id: number | null }>()
+    `).bind(...efLoanCat.params).all<{ id: number; name: string; entity_id: number | null; role: string | null }>()
     const loanCatId = (name: string, entityId: number | null) =>
-      loanCatRows.find(r => r.name === name && Number(r.entity_id) === Number(entityId))?.id ?? null
+      loanCatRows.find(r => r.name === name && Number(r.entity_id) === Number(entityId)) ?? null
 
     // 3-b. 활성 고정비 로드 (출금 → 고정비 제안용). 적요 변동 무관: 거래처/키워드 + 금액대로 앵커.
     const efFixed = entityFilter(c, 'fixed_expenses')
@@ -1420,7 +1426,8 @@ async function runAutoMatchEngine(
       const loan = loanRef ? loanByAccount.get(loanRef.accountNo) : undefined
       if (loan) {
         const kind = classifyLoanTransaction(tx.transaction_type, tx.amount, loan)
-        const catId = kind ? loanCatId(LOAN_KIND_CATEGORY[kind], tx.entity_id) : null
+        const loanCat = kind ? loanCatId(LOAN_KIND_CATEGORY[kind], tx.entity_id) : null
+        const catId = loanCat && categoryAllowedFor(tx.transaction_type, loanCat.role) ? loanCat.id : null
         if (kind && catId) {
           matchUpdateStmts.push(c.env.DB.prepare(`
             UPDATE bank_transactions
@@ -1485,7 +1492,7 @@ async function runAutoMatchEngine(
           WHERE counterpart_name = ?
         `).bind(txName))
 
-        if (rule.categoryId) {
+        if (rule.categoryId && categoryAllowedFor(tx.transaction_type, rule.categoryRole)) {
           // 비용 카테고리 규칙 → 바로 APPLIED
           matchUpdateStmts.push(c.env.DB.prepare(`
             UPDATE bank_transactions
@@ -1518,10 +1525,9 @@ async function runAutoMatchEngine(
       } else {
         // Step 1-b: CONTAINS 규칙(부분일치) — 적요가 매달 달라도 키워드로 제안
         const cRule = containsRules.find(r => txName.includes(r.key) || r.key.includes(txName))
-        // ★입금에 **비용** 계정을 붙이지 않는다 — 규칙 학습은 입출금을 안 가린다.
-        //   지우기만 하면 스윕이 다시 만든다(0583 이 거둔 입금 운반비가 그대로 되살아났다).
+        // 입금에 비용 계정을 붙이지 않는다 — 규칙 학습은 입출금을 안 가린다.
         const catAllowed = cRule?.categoryId
-          ? (tx.transaction_type !== 'DEPOSIT' || canAttachToDeposit(cRule.categoryRole))
+          ? categoryAllowedFor(tx.transaction_type, cRule.categoryRole)
           : false
         if (cRule && cRule.categoryId && catAllowed) {
           // 부분일치 비용분류 → 제안(SUGGESTED, 사람 확정)
