@@ -43,6 +43,7 @@ interface WdRow {
   bank_name: string | null
 }
 interface ClientRow { id: number; client_name: string; po_count: number; last_po: string | null }
+interface OwnerRow { entity_id: number; client_id: number; owner_id: number | null; owner_name: string | null }
 interface PoSumRow { supplier_id: number; po_count: number; po_amount: number; last_po: string | null }
 
 /** `YYYY-MM-DD` → `YYYYMMDD`. bank_transactions.transaction_date 가 구분자 없는 문자열이다. */
@@ -89,6 +90,16 @@ purchaseCandidatesRouter.get('/', async (c) => {
     `).all<ClientRow>()
     const pool = buildClientPool((clients || []) as ApClient[])
 
+    // ── ②-b 거래처별 발주 담당자 (0586) ──────────────────────────────────
+    //   자재를 **받는** 사람(구역 담당)과 다른 축이다 — 이 거래처에 **주문하는** 사람.
+    //   후보를 사람에게 붙여 주면 「전부 경리 몫」이 아니라 담당자별로 갈린다.
+    const { results: owners } = await c.env.DB.prepare(`
+      SELECT so.entity_id, so.client_id, so.user_id AS owner_id, u.name AS owner_name
+        FROM supplier_owners so LEFT JOIN users u ON u.id = so.user_id
+    `).all<OwnerRow>()
+    const ownerMap = new Map<string, OwnerRow>()
+    for (const o of owners || []) ownerMap.set(`${o.entity_id}:${o.client_id}`, o)
+
     // ── ③ 같은 기간 발주 합계 (거래처별) — 차액의 반대편 ──────────────────
     const efPo = entityFilter(c, 'po')
     const { results: poSums } = await c.env.DB.prepare(`
@@ -109,6 +120,7 @@ purchaseCandidatesRouter.get('/', async (c) => {
         category_name: w.category_name,
         entity_id: w.entity_id,
       }, pool)
+      const owner = r.client_id ? ownerMap.get(`${w.entity_id}:${r.client_id}`) : undefined
       return {
         id: w.id,
         date: w.transaction_date,
@@ -122,6 +134,8 @@ purchaseCandidatesRouter.get('/', async (c) => {
         client_id: r.client_id,
         client_name: r.client_name,
         po_count: r.po_count,
+        owner_id: owner?.owner_id ?? null,
+        owner_name: owner?.owner_name ?? '',
       }
     })
     const candidates = rows.filter((r) => isCandidate(r.verdict as ApVerdict))
@@ -130,7 +144,7 @@ purchaseCandidatesRouter.get('/', async (c) => {
     interface Agg {
       key: string; client_id: number | null; name: string; paid: number; n: number
       entities: Set<number>; last: string; verdict: ApVerdict; memos: string[]
-      po_count: number; po_amount: number
+      po_count: number; po_amount: number; owner_name: string
     }
     const RANK: Record<string, number> = { STRONG: 3, LIKELY: 2, UNKNOWN: 1 }
     const aggMap = new Map<string, Agg>()
@@ -143,6 +157,7 @@ purchaseCandidatesRouter.get('/', async (c) => {
           key, client_id: r.client_id, name: r.client_name || r.memo || '(무명)',
           paid: 0, n: 0, entities: new Set(), last: '', verdict: 'UNKNOWN', memos: [],
           po_count: Number(po?.po_count) || 0, po_amount: Math.round(Number(po?.po_amount) || 0),
+          owner_name: r.owner_name || '',
         }
         aggMap.set(key, a)
       }
@@ -152,12 +167,13 @@ purchaseCandidatesRouter.get('/', async (c) => {
       if (r.date > a.last) a.last = r.date
       if ((RANK[r.verdict] || 0) > (RANK[a.verdict] || 0)) a.verdict = r.verdict as ApVerdict
       if (a.memos.length < 4 && r.memo && !a.memos.includes(r.memo)) a.memos.push(r.memo)
+      if (!a.owner_name && r.owner_name) a.owner_name = r.owner_name
     }
     const suppliers = [...aggMap.values()]
       .map((a) => ({
         client_id: a.client_id, name: a.name, paid: a.paid, lines: a.n,
         entities: [...a.entities].sort(), last: a.last, verdict: a.verdict, memos: a.memos,
-        po_count: a.po_count, po_amount: a.po_amount,
+        po_count: a.po_count, po_amount: a.po_amount, owner_name: a.owner_name,
         // ★차액 = 통장에서 나간 돈 − 같은 기간 등록된 발주. 양수면 「발주가 모자라다」
         gap: a.paid - a.po_amount,
       }))
@@ -176,6 +192,7 @@ purchaseCandidatesRouter.get('/', async (c) => {
       unknown: { lines: byV('UNKNOWN').length, amount: sum(byV('UNKNOWN')) },
       excluded: { lines: rows.length - candidates.length, amount: sum(rows) - sum(candidates) },
       supplier_count: suppliers.length,
+      owned_suppliers: suppliers.filter((x) => x.owner_name).length,
       total_gap: suppliers.reduce((s, x) => s + Math.max(0, x.gap), 0),
     }
 

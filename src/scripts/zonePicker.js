@@ -18,7 +18,10 @@
 
 var _zp = {
   zoneId: null, mount: null, onCount: null,
-  tree: [], items: [], groups: [], cats: [], cat: '', sel: {}, timer: null, loading: false
+  tree: [], items: [], groups: [], cats: [], cat: '', sel: {}, timer: null, loading: false,
+  // 보기 모드 (2026-09-08) — 규격 칩만 보면 「무엇을 고르는지」를 모른다는 지적(용준님).
+  //   chip = 규격을 가로로 펴 형제를 훑는 화면(종전) · list = 코드·품목명·규격·현재 구역을 한 줄씩.
+  view: 'chip'
 };
 
 /** 선택된 품목 id 배열 — 호스트(실사 모달 · 배정 탭)가 이걸 읽어 POST 한다. */
@@ -55,7 +58,40 @@ function zpToolbarHtml() {
     +   '<input type="text" id="zpSearch" placeholder="품목명 · 코드 · 규격" oninput="zpSearchInput()"'
     +     ' style="flex:1;min-width:160px;padding:6px 10px;border:1px solid var(--c-border,#d1d5db);border-radius:6px;font-size:13px;">'
     +   '<span id="zpCount" style="font-size:12px;color:#6b7280;white-space:nowrap;"></span>'
+    +   '<span style="display:inline-flex;border:1px solid var(--c-border,#d1d5db);border-radius:6px;overflow:hidden;">'
+    +     zpViewBtn('chip', '규격') + zpViewBtn('list', '목록')
+    +   '</span>'
     + '</div>';
+}
+
+/** 보기 전환 버튼 한 칸. */
+function zpViewBtn(mode, label) {
+  var on = _zp.view === mode;
+  return '<button type="button" onclick="zpSetView(\'' + mode + '\')"'
+    + ' style="padding:6px 11px;border:0;font-size:12px;cursor:pointer;'
+    +   (on ? 'background:#2563eb;color:#fff;font-weight:600;' : 'background:#fff;color:#6b7280;') + '">'
+    + label + '</button>';
+}
+
+function zpSetView(mode) {
+  if (_zp.view === mode) return;
+  _zp.view = mode;
+  var el = document.getElementById(_zp.mount);
+  if (el) {
+    // 툴바만 다시 그리면 select/input 의 값이 날아간다 → 버튼 상태만 갱신하고 본문을 다시 그린다.
+    var bar = el.querySelector('div');
+    if (bar) {
+      var btns = bar.querySelectorAll('button');
+      for (var i = 0; i < btns.length; i++) {
+        var isChip = btns[i].textContent.indexOf('규격') >= 0;
+        var on = (isChip && mode === 'chip') || (!isChip && mode === 'list');
+        btns[i].style.background = on ? '#2563eb' : '#fff';
+        btns[i].style.color = on ? '#fff' : '#6b7280';
+        btns[i].style.fontWeight = on ? '600' : '400';
+      }
+    }
+  }
+  zpRender(false);
 }
 
 function zpSearchInput() {
@@ -151,8 +187,11 @@ function zpRender(truncated) {
     var missing = g.rows.length - g.held;
     return ''
       + '<div style="border-bottom:1px solid #f1f5f9;padding:8px 0;">'
-      +   '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">'
+      +   '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap;">'
       +     '<span style="font-size:13px;font-weight:600;">' + window.escapeHtml(g.name) + '</span>'
+      // 그룹 이름이 두루뭉술하면 무엇을 고르는지 모른다 → 대표 품목명을 옆에 붙인다.
+      //   이름이 그룹명과 같으면 중복이라 생략한다.
+      +     (zpLeadName(g) ? '<span style="font-size:11px;color:#6b7280;">' + window.escapeHtml(zpLeadName(g)) + '</span>' : '')
       +     '<span style="font-size:11px;color:#9ca3af;">' + g.rows.length + '개'
       +       (g.held ? ' · 보유 ' + g.held : '') + (missing ? ' · <b style="color:#2563eb">없음 ' + missing + '</b>' : '') + '</span>'
       +     '<span style="margin-left:auto;display:flex;gap:4px;">'
@@ -160,14 +199,56 @@ function zpRender(truncated) {
       +       '<button onclick="zpClearGroup(' + gi + ')" style="padding:2px 8px;border:1px solid #e5e7eb;border-radius:4px;background:#fff;font-size:11px;cursor:pointer;color:#6b7280;">해제</button>'
       +     '</span>'
       +   '</div>'
-      // ★가로 스크롤은 **그룹마다 독립**이다 — 한 축으로 묶으면 긴 그룹이 짧은 그룹을 끌고 다닌다.
-      +   '<div style="display:flex;gap:5px;overflow-x:auto;padding-bottom:4px;">'
-      +     g.rows.map(function (it) { return zpChipHtml(it); }).join('')
-      +   '</div>'
+      // 보기 모드 (2026-09-08) — 목록은 코드·품목명·규격·현재 구역을 한 줄씩, 칩은 규격만 가로로.
+      //   ★가로 스크롤은 **그룹마다 독립**이다 — 한 축으로 묶으면 긴 그룹이 짧은 그룹을 끌고 다닌다.
+      +   (_zp.view === 'list'
+            ? '<div>' + g.rows.map(function (it) { return zpRowHtml(it); }).join('') + '</div>'
+            : '<div style="display:flex;gap:5px;overflow-x:auto;padding-bottom:4px;">'
+                + g.rows.map(function (it) { return zpChipHtml(it); }).join('')
+                + '</div>')
       + '</div>';
   }).join('')
   + (truncated ? '<div style="font-size:11px;color:#b45309;padding:6px 0;">※ 결과가 잘렸습니다. 분류를 좁히거나 검색하세요.</div>' : '');
   zpSyncCount();
+}
+
+/** 그룹의 대표 품목명 — 그룹명과 다를 때만. 가장 많이 나오는 이름을 쓴다. */
+function zpLeadName(g) {
+  if (!g.rows.length) return '';
+  var cnt = {}, best = '', bestN = 0;
+  for (var i = 0; i < g.rows.length; i++) {
+    var nm = String(g.rows[i].item_name || '').trim();
+    if (!nm) continue;
+    cnt[nm] = (cnt[nm] || 0) + 1;
+    if (cnt[nm] > bestN) { bestN = cnt[nm]; best = nm; }
+  }
+  return (best && best !== g.name) ? best : '';
+}
+
+/** 목록 보기 한 줄 — 코드 · 품목명 · 규격 · 현재 구역. 「무엇을 고르는지」가 보여야 한다. */
+function zpRowHtml(it) {
+  var held = Number(it.in_zone);
+  var on = !!_zp.sel[it.id];
+  var bg = held ? '#f9fafb' : (on ? '#eff6ff' : '#fff');
+  var click = held ? '' : ' onclick="zpToggle(' + it.id + ')"';
+  var mark = held
+    ? '<span style="color:#9ca3af;font-size:11px;white-space:nowrap;">보유중</span>'
+    : '<span style="width:16px;height:16px;flex:0 0 auto;border-radius:4px;display:inline-flex;align-items:center;'
+      + 'justify-content:center;font-size:11px;border:1px solid ' + (on ? '#2563eb;background:#2563eb;color:#fff;' : '#d1d5db;background:#fff;color:transparent;')
+      + '">✓</span>';
+  return '<div' + click + ' style="display:flex;align-items:center;gap:9px;padding:6px 8px;border-top:1px solid #f1f5f9;'
+    + 'background:' + bg + ';font-size:12.5px;' + (held ? 'cursor:default;' : 'cursor:pointer;') + '">'
+    +   mark
+    +   '<span style="flex:0 0 108px;color:#9ca3af;font-size:11px;font-family:ui-monospace,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
+    +     window.escapeHtml(it.item_code || '') + '</span>'
+    +   '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
+    +     (held ? 'color:#9ca3af;' : 'color:#111827;') + '">' + window.escapeHtml(it.item_name || '') + '</span>'
+    +   '<span style="flex:0 0 auto;font-weight:600;' + (held ? 'color:#9ca3af;' : 'color:#374151;') + '">'
+    +     window.escapeHtml(it.specification || '') + '</span>'
+    +   (it.current_zones
+        ? '<span style="flex:0 0 auto;font-size:11px;color:#b45309;white-space:nowrap;">현재 ' + window.escapeHtml(it.current_zones) + '</span>'
+        : '<span style="flex:0 0 auto;font-size:11px;color:#d1d5db;">미배정</span>')
+    + '</div>';
 }
 
 function zpChipHtml(it) {

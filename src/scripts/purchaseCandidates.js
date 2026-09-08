@@ -75,7 +75,7 @@ function pcqRenderSuppliers() {
   note.textContent = list.length + '곳 · 차액 ' + pcqNum(list.reduce(function(a, s) {
     return a + Math.max(0, s.gap); }, 0)) + '원';
   if (!list.length) {
-    body.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-gray-400">'
+    body.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-gray-400">'
       + '해당하는 거래처가 없습니다.</td></tr>';
     return;
   }
@@ -141,7 +141,7 @@ window.pcqLoad = async function() {
   var sel = document.getElementById('pcqMonths');
   if (!sel) { console.warn('[purchaseCandidates] #pcqMonths not found'); return; }
   var body = document.getElementById('pcqSupBody');
-  if (body) body.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-gray-400">불러오는 중…</td></tr>';
+  if (body) body.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-gray-400">불러오는 중…</td></tr>';
   try {
     var res = await axios.get('/api/purchase-candidates?months=' + encodeURIComponent(sel.value));
     if (!res.data || !res.data.success) throw new Error((res.data && res.data.error) || '조회 실패');
@@ -153,7 +153,7 @@ window.pcqLoad = async function() {
   } catch (e) {
     console.error('[purchaseCandidates] load error:', e);
     if (body) {
-      body.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-red-500">'
+      body.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-red-500">'
         + pcqEsc((e.response && e.response.data && e.response.data.error) || '불러오지 못했습니다.')
         + '</td></tr>';
     }

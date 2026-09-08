@@ -53,6 +53,7 @@ export function purchaseCandidatesPage(c: Context<HonoEnv>) {
               <tr>
                 <th class="px-4 py-2 text-left font-medium">거래처 · 통장 적요</th>
                 <th class="px-4 py-2 text-left font-medium">법인</th>
+                <th class="px-4 py-2 text-left font-medium">발주 담당</th>
                 <th class="px-4 py-2 text-right font-medium">통장 지급</th>
                 <th class="px-4 py-2 text-right font-medium">등록 발주</th>
                 <th class="px-4 py-2 text-right font-medium">차액</th>

@@ -139,17 +139,38 @@ export async function resolveDeductionZone(
 // nav 배지)이었고 전부 `COALESCE(poi.storage_zone_id, i.storage_zone_id)` 사본이었다.
 // 그 식은 **법인을 안 본다** — 선명 발주 991건이 동산기획 출력실 담당자에게 귀속돼 있었다.
 //
-// ★규칙은 `getItemDefaultZone` 과 같아야 한다:
-//   ①발주 라인 지정 ②품목 기본창고가 이 법인의 활성 구역이면 그것 ③타법인 구역이면 이 법인 기본창고.
-//   ⚠️`items.storage_zone_id` 가 NULL 이면 NULL 로 둔다 — 미배정 입고에는 담당자가 없다.
-//      (헬퍼는 법인 기본창고로 폴백하지만, 그건 **행을 만들 때**의 규칙이고 여기는 **담당자 귀속**이다.
-//       담당자 없는 라인을 기본창고 담당자에게 떠넘기지 않는다.)
+// ★순서 (2026-09-08 개정)
+//   ①발주 라인 지정 ②**이 법인의 재고 행이 있는 구역** ③품목 기본창고가 이 법인 활성 구역이면 그것
+//   ④타법인 구역이면 이 법인 기본창고.
+//
+// ★②를 왜 넣었나 — 「품목 배정」 화면(`/storage-zones` 배정 탭)이 저장하는 것은
+//   **`inventory` 행**인데(수량 0), 담당자 판정은 `items.storage_zone_id` 만 보고 있었다.
+//   그래서 담당자가 자기 구역 품목을 아무리 골라도 **입고에는 반영되지 않았다**.
+//   실측(2026-09-08): 매입품목 1,106종 중 457종만 `items.storage_zone_id` 를 가졌고,
+//   **78종은 재고 행이 있는데 담당자가 안 잡혔다**. 나머지 571종은 아직 어느 축도 없다.
+//   ⇒ ②가 없으면 내일 배정 작업 전체가 실사표에만 반영되고 입고는 그대로 막힌다.
+//
+// ★`items.storage_zone_id`(③)를 남겨 둔 이유 — 그 칸은 **법인 공유**라 선명 품목이 동산 구역을
+//   가리키는 일이 생기지만, 재고 행이 없는 품목에는 그거라도 있어야 한다. 순서가 ②→③인 게 핵심이다.
+//   ⚠️적용 시점 실측: 미입고 90라인에서 신·구 규칙 결과가 **완전히 동일**했다(gained 0·changed 0).
+//     즉 이 변경은 **지금 동작을 바꾸지 않고**, 앞으로 배정되는 것을 받아낸다.
+//
+//   ⚠️여전히 NULL 이면 NULL 로 둔다 — 미배정 입고에는 담당자가 없다.
+//      (`getItemDefaultZone` 은 법인 기본창고로 폴백하지만 그건 **행을 만들 때**의 규칙이고
+//       여기는 **담당자 귀속**이다. 담당자 없는 라인을 기본창고 담당자에게 떠넘기지 않는다.)
 //
 // 요구 별칭 = `poi`(발주 라인) · `i`(품목) · `po`(발주). 결과 별칭 = `sz`(귀속 구역) · `iz`(품목 기본창고).
 export const RECEIVING_ZONE_JOIN_SQL = `
       LEFT JOIN storage_zones iz ON iz.id = i.storage_zone_id
       LEFT JOIN storage_zones sz ON sz.id = COALESCE(
         poi.storage_zone_id,
+        (SELECT v.storage_zone_id
+           FROM inventory v
+           JOIN storage_zones vz ON vz.id = v.storage_zone_id
+                                AND vz.is_active = 1 AND vz.entity_id = po.entity_id
+          WHERE v.item_id = poi.item_id AND v.entity_id = po.entity_id
+          ORDER BY (CASE WHEN v.quantity > 0 THEN 0 ELSE 1 END), v.storage_zone_id
+          LIMIT 1),
         CASE WHEN iz.entity_id = po.entity_id AND iz.is_active = 1 THEN iz.id END,
         CASE WHEN iz.id IS NOT NULL THEN (
           SELECT dz.id FROM storage_zones dz
@@ -161,6 +182,13 @@ export const RECEIVING_ZONE_JOIN_SQL = `
 /** 같은 규칙의 SELECT 절 표현 — `effective_zone_id` 로 쓰는 곳용. */
 export const RECEIVING_ZONE_EXPR_SQL = `COALESCE(
         poi.storage_zone_id,
+        (SELECT v.storage_zone_id
+           FROM inventory v
+           JOIN storage_zones vz ON vz.id = v.storage_zone_id
+                                AND vz.is_active = 1 AND vz.entity_id = po.entity_id
+          WHERE v.item_id = poi.item_id AND v.entity_id = po.entity_id
+          ORDER BY (CASE WHEN v.quantity > 0 THEN 0 ELSE 1 END), v.storage_zone_id
+          LIMIT 1),
         CASE WHEN iz.entity_id = po.entity_id AND iz.is_active = 1 THEN iz.id END,
         CASE WHEN iz.id IS NOT NULL THEN (
           SELECT dz.id FROM storage_zones dz
