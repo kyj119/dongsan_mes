@@ -453,19 +453,19 @@ export interface LineMaterialResolution<T> {
  * 인식하는 `usage_type`. 여기 없는 값은 휴리스틱으로 흘러가지 않고 **unsupported 로 표시**된다.
  *
  * ★소요량의 **단위 축**이 `avg_unit_cost` 의 축과 같아야 한다 — 이게 구현/미구현을 가르는 기준이다.
- *   구현분은 전부 축이 맞는다: FIXED_QTY·PER_AREA·PER_PERIMETER·PER_WIDTH = **개(EA)**,
- *   PER_AREA_SHEET = **장** (판재 단가가 장당이라 BOARD 휴리스틱과 같은 축이다).
+ *   구현분은 축이 맞는다: FIXED_QTY·PER_AREA·PER_PERIMETER·PER_WIDTH = **개(EA)**,
+ *   PER_AREA_SHEET = **장**(판재 단가가 장당), PER_AREA_ROLL = **미터**(원단 단가가 m 당).
  *
- * ⚠️ 미구현 2종 — 조용히 0으로 만들지 않고 `unsupported` 로 올려 PARTIAL 로 보고한다.
+ * ★`PER_AREA_ROLL` 은 2026-09-08 에 구현했다. 종전엔 「param 65㎡ 에서 폭을 역산할 수 없다」는
+ *   이유로 비워 뒀는데, 역산할 필요가 없었다 — `items.width_mm`·`pack_size` 에 실제 값이 있다.
+ *   그 둘로 미터를 내고 param 은 **검산**에만 쓴다(폭×길이 ≠ param 이면 null → unsupported 유지).
+ *   이걸 비워 두는 동안 프레임간판의 후렉스가 통째로 원가에서 빠져 있었다 —
+ *   특히 원단교체(SIGN-FRN-R·FRL-R)는 후렉스가 유일한 자재라 **원가가 0** 이었다(매출 1,857만).
+ *
+ * ⚠️ 미구현 1종 — 조용히 0으로 만들지 않고 `unsupported` 로 올려 PARTIAL 로 보고한다.
  *   · `PER_LED` — 「LED 몇 개」가 **다른 BOM 행**(PER_AREA 로 잡히는 LED 모듈)에서 나오는데
  *     「어느 행이 LED 인가」가 데이터에 없다. 품목코드로 추측하면 그게 또 하나의 숨은 규칙이 된다.
  *     해당 = SIGN-CH·SIGN-PRT 의 SMPS·LED바.
- *   · `PER_AREA_ROLL` — 결과가 **롤 수**인데 원단 `avg_unit_cost` 는 **base 단위(m/yd)당**이다.
- *     그대로 곱하면 pack_size 배(= 50m 롤이면 **50배**) 어긋난다 —
- *     [[design-stock-base-unit-rebase]] 의 50배 사고와 **같은 축**이다.
- *     환산하려면 롤당 길이가 확정돼야 하는데(param 65㎡ 는 폭×길이를 이미 곱한 값이다)
- *     폭 변종이 대체 가능하다고 0508 주석에 적혀 있어 역산이 유일하지 않다.
- *     해당 = SIGN-FRL·SIGN-FRN·-R 의 후렉스 원단. 값을 확정하기 전엔 **틀린 숫자보다 공백이 낫다.**
  */
 const USAGE_TYPES = new Set([
   'FIXED_QTY', 'PER_AREA', 'PER_AREA_SHEET', 'PER_PERIMETER', 'PER_WIDTH',
@@ -492,7 +492,22 @@ function usageRequired(m: LineMaterialSpec, wCm: number, hCm: number, qty: numbe
     case 'PER_AREA_SHEET': return hasParam ? Math.ceil(areaSqm / param) : null
     case 'PER_WIDTH':      return hasParam ? Math.ceil((wCm / 100) / param) * qty : null
     case 'PER_PERIMETER':  return hasParam ? Math.ceil((2 * (wCm + hCm) / 100) / param) * qty : null
-    // PER_LED(교차행 의존) · PER_AREA_ROLL(단위 축 불일치) = 미구현. 위 주석 참조.
+    case 'PER_AREA_ROLL': {
+      // param = **롤 1개의 면적(㎡)** = 폭(m) × 롤길이(m). 0508 주석이 그렇게 적어 뒀다("1.3m×50m=65㎡").
+      // ★결과를 「롤 수」로 두면 `avg_unit_cost`(=base 단위당)와 축이 어긋나 pack_size 배(50배) 틀어진다.
+      //   그래서 **미터로 환산해서** 돌려준다: 면적 ÷ 롤면적 × 롤길이 = 면적 ÷ 폭.
+      // ★폭을 param 에서 역산하지 않는다 — 그게 종전에 미구현으로 둔 이유였다(폭 변종이 대체 가능해서
+      //   65㎡ 하나로는 1.3×50 인지 다른 조합인지 정해지지 않는다). 대신 `items` 의 width_mm·pack_size
+      //   **실제 값**을 쓰고, param 이 그 둘의 곱과 맞는지 **검산**한다. 어긋나면 어느 폭인지 확정할 수
+      //   없으므로 null 로 두어 unsupported 로 보고한다 — 틀린 숫자보다 공백이 낫다.
+      const rollLenM = Number(m.pack_size)
+      const widthM = (Number(m.width_mm) || 0) / 1000
+      if (!hasParam || !(rollLenM > 0) || !(widthM > 0)) return null
+      const impliedArea = widthM * rollLenM
+      if (Math.abs(impliedArea - param) / param > 0.05) return null
+      return areaSqm / widthM
+    }
+    // PER_LED(교차행 의존) = 미구현. 위 주석 참조.
     default:               return null
   }
 }

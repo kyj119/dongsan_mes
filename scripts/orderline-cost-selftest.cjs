@@ -353,6 +353,31 @@ const U = function (id, name, qty, type, param, price) {
     { item_id: 400, width: 200, height: 100, quantity: 1, category: '간판' },
     { inkCostByCategory: INK }, { coverage: 'FULL', material_cost: 113000, ink_cost: 0 })
 
+  // ── PER_AREA_ROLL — 프레임간판 원단(2026-09-08 구현) ─────────────────────
+  // param = 롤 1개의 면적(㎡). 결과는 **미터**여야 한다 — 롤 수로 두면 avg_unit_cost(m 당)와
+  // 축이 어긋나 pack_size 배(50배) 틀어진다. 폭은 param 에서 역산하지 않고 width_mm 을 쓴다.
+  const ROLLU = function (id, name, widthMm, packM, param, price) {
+    return {
+      material_item_id: id, material_name: name, width_mm: widthMm, deduction_method: 'ROLL',
+      sheet_spec: null, waste_factor: 1, base_unit: 'M', unit: '롤', pack_size: packM,
+      avg_unit_cost: price, quantity: null, usage_type: 'PER_AREA_ROLL', usage_param: param,
+    }
+  }
+  // 프레임간판 200×100cm 1개 = 2㎡ · 후렉스 130폭(1.3m) 50m 롤 = 65㎡ · 2,275원/m
+  //   소요 = 2 ÷ 1.3 = 1.538m → 1.538 × 2,275 = 3,500원
+  cost('PER_AREA_ROLL — 면적÷폭 을 미터로 (롤 수 아님)', [ROLLU(701, '비조명 후렉스', 1300, 50, 65, 2275)],
+    { item_id: 401, width: 200, height: 100, quantity: 1, category: '간판' },
+    { inkCostByCategory: INK }, { coverage: 'FULL', material_cost: 3500, ink_cost: 0 })
+
+  // param 이 폭×롤길이와 어긋나면 **어느 폭인지 확정할 수 없다** → 계산하지 않고 unsupported 로 남긴다.
+  //   (1.3m × 50m = 65㎡ 인데 param 이 100 이면 그 롤이 뭔지 모른다)
+  const badParam = computeLineCost([ROLLU(702, '후렉스(param 불일치)', 1300, 50, 100, 2275)],
+    { item_id: 401, width: 200, height: 100, quantity: 1, category: '간판' }, { inkCostByCategory: INK })
+  if (badParam.detail.unsupported.indexOf('PER_AREA_ROLL') < 0 || badParam.material_cost !== 0) {
+    fails.push('PER_AREA_ROLL param 불일치는 unsupported 여야 한다 · mat=' + badParam.material_cost
+      + ' unsupported=' + JSON.stringify(badParam.detail.unsupported))
+  } else pass++
+
   // 미구현 규칙(PER_LED)은 **조용히 빠지지 않는다** — FULL 이 아니라 PARTIAL 로 보고된다.
   const withSmps = SIGN.concat([U(605, 'SMPS', null, 'PER_LED', 300, 25000)])
   const partial = computeLineCost(withSmps,
@@ -370,16 +395,21 @@ const U = function (id, name, qty, type, param, price) {
   if (signPlan.picks.length !== 4) fails.push('간판 계획 소요 4종 기대 · 실제 ' + signPlan.picks.length)
   else pass++
 
-  // PER_AREA_ROLL 은 **일부러** 미구현이다 — 결과가 「롤 수」인데 원단 단가는 base 단위(m/yd)당이라
-  // 그대로 곱하면 pack_size 배(50m 롤이면 50배) 어긋난다. 틀린 숫자보다 공백이 낫다.
-  // 그래도 폭 휴리스틱으로 **새면 안 된다** — usage_type 이 붙은 행은 usage 축에서만 다룬다.
+  // PER_AREA_ROLL 은 **미터**로 나와야 한다 — 「롤 수」로 두면 원단 단가(base 단위=m 당)와 축이
+  // 어긋나 pack_size 배(50m 롤이면 50배) 틀어진다. 2026-09-08 구현 전까지 비어 있던 자리다.
+  //   200×100cm = 2㎡ · 폭 1.3m → 2 ÷ 1.3 = 1.538m · × 3,000 = 4,615원
   const flexRoll = Object.assign(U(610, '조명 후렉스', null, 'PER_AREA_ROLL', 65, 3000),
     { width_mm: 1300, deduction_method: 'ROLL', base_unit: 'M', pack_size: 50 })
   const rollLine = computeLineCost([flexRoll],
     { item_id: 401, width: 200, height: 100, quantity: 1, category: '간판' }, { inkCostByCategory: INK })
-  if (rollLine.material_cost !== 0 || rollLine.detail.unsupported.indexOf('PER_AREA_ROLL') < 0) {
-    fails.push('PER_AREA_ROLL 은 폭 휴리스틱으로 새지 않고 미상으로 남아야 한다 · 실제 재료비='
+  if (rollLine.material_cost !== 4615 || rollLine.detail.unsupported.length > 0) {
+    fails.push('PER_AREA_ROLL 은 면적÷폭 을 미터로 내야 한다(기대 4615) · 실제 재료비='
       + rollLine.material_cost + ' unsupported=' + JSON.stringify(rollLine.detail.unsupported))
+  } else pass++
+
+  // ★롤 수로 내면 50배가 된다 — 그 사고를 막았는지 못을 박아 둔다.
+  if (rollLine.material_cost > 100000) {
+    fails.push('PER_AREA_ROLL 이 롤 수 축으로 샜다(pack_size 배) · ' + rollLine.material_cost)
   } else pass++
 }
 
