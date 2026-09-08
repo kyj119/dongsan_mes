@@ -15,6 +15,7 @@ import { isSupervisor, canTouchZone } from '../../utils/zoneAccess'
 import { packFactor } from '../../utils/unitConvert'
 import { getNextEntitySeqNumber } from '../../utils/sequenceGenerator'
 import { kstYmd, kstYmdCompact, kstDate, kstDateOf } from '../../utils/kstDate'
+import { judgeBasePriceSync } from '../../utils/purchasePriceSync'
 
 const poReceiveRouter = new Hono<HonoEnv>()
 poReceiveRouter.use('/*', authMiddleware, requireAnyPagePermission('/purchase-orders', '/receiving'))
@@ -392,6 +393,8 @@ poReceiveRouter.post('/:id/receive', async (c) => {
     // ① 매입처 단가 upsert → ② base_price 갱신 → ③ 그룹 연쇄 → ④ 이력
     // ============================================================================
     const priceUpdates: Array<{ itemId: number; name: string; old: number; new_: number }> = []
+    // ★판매품목이라 보존한 것들 — 조용히 넘기지 않고 응답에 남긴다(안 하면 「왜 단가가 안 바뀌지」가 된다)
+    const priceKept: string[] = []
     try {
       for (const p of perItemPrep) {
         if (!p.itemId || p.unitPrice <= 0) continue
@@ -405,12 +408,19 @@ poReceiveRouter.post('/:id/receive', async (c) => {
           `).bind(po.supplier_id, p.itemId, p.unitPrice, p.unitPrice).run()
         }
 
-        // ② items.base_price 갱신
+        // ② items.base_price 갱신 — **판매품목은 건드리지 않는다**(`judgeBasePriceSync`).
+        //    그 칸이 고객 노출 단가라, 매입가로 덮으면 판매가가 원가로 내려앉는다.
+        //    실측 2026-09-09: 발주에 있는 판매품목 367종 중 135종이 10%+ 이동(115종 하락, 대부분 −40%).
         const oldItem = await c.env.DB.prepare(
-          'SELECT base_price, item_group, item_name FROM items WHERE id = ?'
-        ).bind(p.itemId).first<{ base_price: number; item_group: string | null; item_name: string }>()
+          'SELECT base_price, item_group, item_name, is_sales_item FROM items WHERE id = ?'
+        ).bind(p.itemId).first<{ base_price: number; item_group: string | null; item_name: string; is_sales_item: number }>()
 
-        if (!oldItem || oldItem.base_price === p.unitPrice) continue
+        if (!oldItem) continue   // 타입 좁히기용 — 판정 자체도 NOT_FOUND 를 낸다
+        const verdict = judgeBasePriceSync(oldItem, p.unitPrice)
+        if (!verdict.sync) {
+          if (verdict.reason === 'SALES_ITEM') priceKept.push(oldItem.item_name)
+          continue
+        }
 
         // 직접 입고 품목 갱신
         await c.env.DB.prepare(
@@ -431,13 +441,18 @@ poReceiveRouter.post('/:id/receive', async (c) => {
           ).bind(oldItem.item_group).first<{ price_linked: number }>()
 
           if (linked?.price_linked) {
+            // 연쇄도 **같은 판정**을 통과해야 한다 — 여기만 빠뜨리면 그룹을 타고 판매가가 덮인다.
             const { results: groupItems } = await c.env.DB.prepare(
-              'SELECT id, base_price, item_name FROM items WHERE item_group = ? AND id != ? AND is_active = 1'
-            ).bind(oldItem.item_group, p.itemId).all<{ id: number; base_price: number; item_name: string }>()
+              'SELECT id, base_price, item_name, is_sales_item FROM items WHERE item_group = ? AND id != ? AND is_active = 1'
+            ).bind(oldItem.item_group, p.itemId).all<{ id: number; base_price: number; item_name: string; is_sales_item: number }>()
 
             const updateStmts = []
             for (const gi of groupItems) {
-              if (gi.base_price === p.unitPrice) continue
+              const gv = judgeBasePriceSync(gi, p.unitPrice)
+              if (!gv.sync) {
+                if (gv.reason === 'SALES_ITEM') priceKept.push(gi.item_name)
+                continue
+              }
               updateStmts.push(
                 c.env.DB.prepare('UPDATE items SET base_price = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
                   .bind(p.unitPrice, gi.id)
@@ -480,6 +495,9 @@ poReceiveRouter.post('/:id/receive', async (c) => {
     const priceMsg = priceUpdates.length
       ? ` 단가 변경: ${priceUpdates.length}건 (${priceUpdates.map(u => u.name + ' ' + u.old.toLocaleString() + '→' + u.new_.toLocaleString()).join(', ')})`
       : ''
+    // 보존은 **건수만** 알린다 — 품목이 많으면 메시지가 길어져 정작 변경 내역을 가린다.
+    const keptUniq = [...new Set(priceKept)]
+    const keptMsg = keptUniq.length ? ` 판매단가 보존: ${keptUniq.length}종` : ''
 
     return c.json({
       success: true,
@@ -488,9 +506,10 @@ poReceiveRouter.post('/:id/receive', async (c) => {
         receipt_id: receiptId,
         po_status: newStatus,
         inspection_status: inspectionStatusForReceipt,
-        price_updates: priceUpdates.length ? priceUpdates : undefined
+        price_updates: priceUpdates.length ? priceUpdates : undefined,
+        price_kept_sales_items: keptUniq.length ? keptUniq : undefined
       },
-      message: `입고 처리 완료. 발주 상태: ${newStatus}${priceMsg}`
+      message: `입고 처리 완료. 발주 상태: ${newStatus}${priceMsg}${keptMsg}`
     })
   } catch (error: any) {
     console.error('purchaseOrders receive error:', error)
