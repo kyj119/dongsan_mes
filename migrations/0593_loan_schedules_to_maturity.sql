@@ -1,0 +1,103 @@
+-- 0593: 차량·리스 할부의 **만기까지 납입 예정** 생성
+--
+-- 0592 에서 세무장부 역산으로 잔액·금리·만기를 확정했으므로 스케줄을 만들 수 있다.
+-- ★`generate-schedule` 은 분할상환을 400 으로 막는다 — 회차수가 안 정해지기 때문이다(0517).
+--   여기서는 **잔액·정액납입·금리를 다 알아서** 회차가 결정된다: n = -log(1 - 잔액·r/납입액)/log(1+r).
+-- ★기준 시점은 2026-08 납입 직후이고 스케줄은 **2026-09 부터**다. 과거 회차는 만들지 않는다 —
+--   이미 통장에 있고, 실적은 파생으로 읽는다(utils/loanSettlement).
+-- ★원리금균등이라 total 은 정액이고 원금·이자만 매월 바뀐다. 마지막 회차는 잔액에 맞춰 줄어든다.
+--
+-- 멱등: 대상 대출의 2026-09 이후 스케줄을 지우고 다시 넣는다.
+
+DELETE FROM loan_payments WHERE loan_id = 15 AND scheduled_date >= '2026-09-01';
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (15, 1, '2026-09-25', 482575, 22650, 505225, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (15, 2, '2026-10-25', 484425, 20800, 505225, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (15, 3, '2026-11-25', 486282, 18943, 505225, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (15, 4, '2026-12-25', 488146, 17079, 505225, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (15, 5, '2027-01-25', 490017, 15208, 505225, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (15, 6, '2027-02-25', 491895, 13330, 505225, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (15, 7, '2027-03-25', 493781, 11444, 505225, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (15, 8, '2027-04-25', 495674, 9551, 505225, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (15, 9, '2027-05-25', 497574, 7651, 505225, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (15, 10, '2027-06-25', 499481, 5744, 505225, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (15, 11, '2027-07-25', 501396, 3829, 505225, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (15, 12, '2027-08-25', 497502, 1907, 499409, 'SCHEDULED', 1);
+DELETE FROM loan_payments WHERE loan_id = 12 AND scheduled_date >= '2026-09-01';
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 1, '2026-09-18', 746537, 135699, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 2, '2026-10-18', 749324, 132912, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 3, '2026-11-18', 752122, 130114, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 4, '2026-12-18', 754930, 127306, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 5, '2027-01-18', 757748, 124488, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 6, '2027-02-18', 760577, 121659, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 7, '2027-03-18', 763416, 118820, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 8, '2027-04-18', 766267, 115969, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 9, '2027-05-18', 769127, 113109, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 10, '2027-06-18', 771999, 110237, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 11, '2027-07-18', 774881, 107355, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 12, '2027-08-18', 777774, 104462, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 13, '2027-09-18', 780677, 101559, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 14, '2027-10-18', 783592, 98644, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 15, '2027-11-18', 786517, 95719, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 16, '2027-12-18', 789454, 92782, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 17, '2028-01-18', 792401, 89835, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 18, '2028-02-18', 795359, 86877, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 19, '2028-03-18', 798329, 83907, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 20, '2028-04-18', 801309, 80927, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 21, '2028-05-18', 804301, 77935, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 22, '2028-06-18', 807303, 74933, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 23, '2028-07-18', 810317, 71919, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 24, '2028-08-18', 813342, 68894, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 25, '2028-09-18', 816379, 65857, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 26, '2028-10-18', 819427, 62809, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 27, '2028-11-18', 822486, 59750, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 28, '2028-12-18', 825556, 56680, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 29, '2029-01-18', 828639, 53597, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 30, '2029-02-18', 831732, 50504, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 31, '2029-03-18', 834837, 47399, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 32, '2029-04-18', 837954, 44282, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 33, '2029-05-18', 841082, 41154, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 34, '2029-06-18', 844222, 38014, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 35, '2029-07-18', 847374, 34862, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 36, '2029-08-18', 850538, 31698, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 37, '2029-09-18', 853713, 28523, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 38, '2029-10-18', 856900, 25336, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 39, '2029-11-18', 860099, 22137, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 40, '2029-12-18', 863310, 18926, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 41, '2030-01-18', 866533, 15703, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 42, '2030-02-18', 869768, 12468, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 43, '2030-03-18', 873016, 9220, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 44, '2030-04-18', 876275, 5961, 882236, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (12, 45, '2030-05-18', 720461, 2690, 723151, 'SCHEDULED', 1);
+DELETE FROM loan_payments WHERE loan_id = 13 AND scheduled_date >= '2026-09-01';
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (13, 1, '2026-09-26', 694316, 51314, 745630, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (13, 2, '2026-10-26', 698135, 47495, 745630, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (13, 3, '2026-11-26', 701974, 43656, 745630, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (13, 4, '2026-12-26', 705835, 39795, 745630, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (13, 5, '2027-01-26', 709717, 35913, 745630, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (13, 6, '2027-02-26', 713621, 32009, 745630, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (13, 7, '2027-03-26', 717546, 28084, 745630, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (13, 8, '2027-04-26', 721492, 24138, 745630, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (13, 9, '2027-05-26', 725460, 20170, 745630, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (13, 10, '2027-06-26', 729450, 16180, 745630, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (13, 11, '2027-07-26', 733462, 12168, 745630, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (13, 12, '2027-08-26', 737496, 8134, 745630, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (13, 13, '2027-09-26', 741355, 4077, 745432, 'SCHEDULED', 1);
+DELETE FROM loan_payments WHERE loan_id = 11 AND scheduled_date >= '2026-09-01';
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (11, 1, '2026-09-20', 2282807, 287233, 2570040, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (11, 2, '2026-10-20', 2298350, 271690, 2570040, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (11, 3, '2026-11-20', 2313998, 256042, 2570040, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (11, 4, '2026-12-20', 2329752, 240288, 2570040, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (11, 5, '2027-01-20', 2345614, 224426, 2570040, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (11, 6, '2027-02-20', 2361583, 208457, 2570040, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (11, 7, '2027-03-20', 2377662, 192378, 2570040, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (11, 8, '2027-04-20', 2393850, 176190, 2570040, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (11, 9, '2027-05-20', 2410148, 159892, 2570040, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (11, 10, '2027-06-20', 2426557, 143483, 2570040, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (11, 11, '2027-07-20', 2443078, 126962, 2570040, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (11, 12, '2027-08-20', 2459711, 110329, 2570040, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (11, 13, '2027-09-20', 2476458, 93582, 2570040, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (11, 14, '2027-10-20', 2493318, 76722, 2570040, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (11, 15, '2027-11-20', 2510294, 59746, 2570040, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (11, 16, '2027-12-20', 2527384, 42656, 2570040, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (11, 17, '2028-01-20', 2544592, 25448, 2570040, 'SCHEDULED', 1);
+INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, status, entity_id) VALUES (11, 18, '2028-02-20', 1193219, 8124, 1201343, 'SCHEDULED', 1);
