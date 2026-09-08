@@ -11,6 +11,7 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { entityFilter } from './entityFilter'
+import { baselineTopUps, monthsInWindow, monthDay } from './baselineFlow'
 import { computeExpectedPaymentDate } from './paymentSchedule'
 import { buildExpenseEstimator, type EstimateMethod } from './expenseEstimator'
 import { cardNetAmountSql, cardSpendFilterSql } from './cardSpend'
@@ -58,7 +59,10 @@ export interface CashflowOptions {
    *    곡선이 「첫날 급등 후 우하향」이 되어 고치기 전보다 더 오해를 부른다. */
   spreadOverdue?: boolean
   /** 진단 out-param — 엔진이 채워 준다. 엔진을 두 번 부르지 않고 대사 결과를 꺼내기 위한 통로. */
-  diagnostics?: { ap?: ApDiagnostics; ar?: ArDiagnostics }
+  /** 아직 주문·발주로 안 잡힌 앞으로의 매출·매입을 실적 월평균으로 깔지(§6).
+   *  ★매출·매입을 **한 스위치로 함께** 깐다 — 한쪽만 켜면 순현금이 통째로 뒤집힌다. */
+  baseline?: boolean
+  diagnostics?: { ap?: ApDiagnostics; ar?: ArDiagnostics; baseline?: BaselineDiagnostics }
 }
 
 /** 매입 지급예정 ↔ 실제 지급 대사 결과. 숫자를 화면에 그대로 적기 위한 것이라 전부 원 단위. */
@@ -164,6 +168,15 @@ function monthsBetween(from: string, to: string): { y: number; m: number; lastDa
  * 기간 내 일별 자금 흐름(입/출 + 항목)을 합성해 반환.
  * @returns { 'YYYY-MM-DD': CashflowDay } — 항목이 있는 날짜만 채워짐
  */
+export interface BaselineDiagnostics {
+  applied: boolean
+  reason?: string
+  ar_rate: number; ar_months: number; ar_basis: string
+  ap_rate: number; ap_months: number; ap_basis: string
+  ar_added: number; ap_added: number
+  months: { month: string; ar: number; ap: number; ar_existing: number; ap_existing: number }[]
+}
+
 export async function buildCashflowDays(
   c: Context<HonoEnv>,
   from: string,
@@ -1006,6 +1019,81 @@ export async function buildCashflowDays(
         name: `${e.type === 'PAYROLL' ? '급여' : '4대보험·원천세'} ${e.period} (${e.cnt}명)`,
         amount: e.sum, materialized: false,
       })
+    }
+  }
+
+  // ── 6) 베이스라인: 아직 안 잡힌 앞으로의 매출·매입을 실적 월평균으로 깐다 ──────────
+  //   §4a(미청구 수주잔고)·§4b(미수)·§4.5(확정 발주)는 **지금 있는 것**만 본다. 그게 소진되면
+  //   유입이 0 이 되는데 유출은 고정비·차입금이 계속 남아, 매월 5.3억 들어오는 회사가
+  //   90일 뒤 −3.97억으로 찍힌다(prod 2026-09-08 실측). 위험이 아니라 계산 구조의 산물이다.
+  //   ★판정은 utils/baselineFlow(순수 모듈) — 「그 달에 얼마를 더할까」가 하네스에 닿는다.
+  //   ★이중계상은 구조로 막는다: topUp = max(0, 런레이트 − 그 달 확정분). 확정이 늘면 저절로 줄어든다.
+  //   ★매출·매입을 **같은 스위치로 함께** 깐다(대칭). 한쪽만 켜면 반대로 틀린다.
+  if (opts.baseline) {
+    const win = monthsInWindow(from, to)
+    const inByMonth = new Map<string, number>(), outByMonth = new Map<string, number>()
+    for (const [d, day] of Object.entries(days)) {
+      const m = d.slice(0, 7)
+      if (day.in) inByMonth.set(m, (inByMonth.get(m) || 0) + day.in)
+      if (day.out) outByMonth.set(m, (outByMonth.get(m) || 0) + day.out)
+    }
+
+    // 런레이트·중앙일 — 연체분산(§4.6·§4.7)과 **같은 근거**를 쓴다. doSpread 가 꺼져 있어도 필요하므로 여기서 조회한다.
+    const efArM = entityFilter(c), efArD = entityFilter(c), efApM = entityFilter(c, 'pp'), efApD = entityFilter(c, 'pp')
+    const [arM, arD, apM, apD] = await Promise.all([
+      c.env.DB.prepare(`SELECT substr(payment_date,1,7) AS m, COALESCE(SUM(amount),0) AS v FROM payments
+                        WHERE payment_date IS NOT NULL${efArM.clause}${arExcl('client_id')} GROUP BY 1`).bind(...efArM.params).all<{ m: string; v: number }>(),
+      c.env.DB.prepare(`SELECT CAST(substr(payment_date,9,2) AS INTEGER) AS d, COUNT(*) AS n FROM payments
+                        WHERE payment_date IS NOT NULL${efArD.clause}${arExcl('client_id')} GROUP BY 1`).bind(...efArD.params).all<{ d: number; n: number }>(),
+      c.env.DB.prepare(`SELECT substr(pp.payment_date,1,7) AS m, COALESCE(SUM(pp.amount),0) AS v FROM purchase_payments pp
+                        WHERE pp.payment_date IS NOT NULL${efApM.clause}${apExcl('pp.supplier_id')} GROUP BY 1`).bind(...efApM.params).all<{ m: string; v: number }>(),
+      c.env.DB.prepare(`SELECT CAST(substr(pp.payment_date,9,2) AS INTEGER) AS d, COUNT(*) AS n FROM purchase_payments pp
+                        WHERE pp.payment_date IS NOT NULL${efApD.clause}${apExcl('pp.supplier_id')} GROUP BY 1`).bind(...efApD.params).all<{ d: number; n: number }>(),
+    ])
+    const toMap = (rows: { m: string; v: number }[]) => {
+      const mm = new Map<string, number>()
+      for (const r of rows) if (r.m && r.m.length === 7) mm.set(r.m, Number(r.v) || 0)
+      return mm
+    }
+    const toDayCounts = (rows: { d: number; n: number }[]) => {
+      const dc = new Map<number, number>()
+      for (const r of rows) if (r.d >= 1 && r.d <= 31) dc.set(r.d, Number(r.n) || 0)
+      return dc
+    }
+    const arRr: RunRate = runRateFromMonthly(toMap(arM.results))
+    const apRr: RunRate = runRateFromMonthly(toMap(apM.results))
+    const arDay = medianDayFromCounts(toDayCounts(arD.results))
+    const apDay = medianDayFromCounts(toDayCounts(apD.results))
+
+    const arTops = baselineTopUps(arRr.rate, arRr.months, inByMonth, win)
+    const apTops = baselineTopUps(apRr.rate, apRr.months, outByMonth, win)
+    for (const t of arTops) {
+      add(monthDay(t.month, arDay), {
+        flow: 'IN', type: 'ORDER_BASELINE',
+        name: `예상 매출 회수 (실적 월평균 ${arRr.months}개월 기준)`,
+        amount: t.amount, materialized: false, estimated: true,
+      })
+    }
+    for (const t of apTops) {
+      add(monthDay(t.month, apDay), {
+        flow: 'OUT', type: 'PURCHASE_BASELINE',
+        name: `예상 매입 지급 (실적 월평균 ${apRr.months}개월 기준)`,
+        amount: t.amount, materialized: false, estimated: true,
+      })
+    }
+    if (opts.diagnostics) {
+      const byM = new Map(win.map(m => [m, { month: m, ar: 0, ap: 0, ar_existing: Math.round(inByMonth.get(m) || 0), ap_existing: Math.round(outByMonth.get(m) || 0) }]))
+      for (const t of arTops) { const e = byM.get(t.month); if (e) e.ar = t.amount }
+      for (const t of apTops) { const e = byM.get(t.month); if (e) e.ap = t.amount }
+      opts.diagnostics.baseline = {
+        applied: arTops.length > 0 || apTops.length > 0,
+        reason: (arTops.length || apTops.length) ? undefined : '실적 월평균 근거 부족(완결월 3개월 미만) 또는 확정분이 이미 평균 이상',
+        ar_rate: arRr.rate, ar_months: arRr.months, ar_basis: arRr.basis,
+        ap_rate: apRr.rate, ap_months: apRr.months, ap_basis: apRr.basis,
+        ar_added: arTops.reduce((a, x) => a + x.amount, 0),
+        ap_added: apTops.reduce((a, x) => a + x.amount, 0),
+        months: [...byM.values()],
+      }
     }
   }
 

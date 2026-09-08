@@ -60,6 +60,12 @@ export async function getCashPlanStartBalance(c: Context<HonoEnv>): Promise<{
   account_count: number
   excluded_balance: number
   excluded_count: number
+  /** 계획에서 뺀 계좌의 한도 합(0597). 한 곳이라도 미입력이면 합계를 신뢰할 수 없다 → 아래 플래그를 본다. */
+  credit_limit_total: number
+  /** 한도 − 사용액. 「예측 잔액이 마이너스여도 한도 안이면 위험이 아니다」를 판단하는 값. */
+  credit_available: number
+  /** 한도가 비어 있는 제외 계좌 수. 0 이 아니면 credit_available 은 **과소**다 — 화면이 그렇게 말해야 한다. */
+  credit_limit_missing: number
 }> {
   const ef = entityFilter(c, 'ba')
   const row = await c.env.DB.prepare(
@@ -67,16 +73,27 @@ export async function getCashPlanStartBalance(c: Context<HonoEnv>): Promise<{
        COALESCE(SUM(CASE WHEN ${IN_CASH_PLAN} THEN ${LATEST_BALANCE_SUBQUERY} ELSE 0 END), 0) AS start_balance,
        COALESCE(SUM(CASE WHEN ${IN_CASH_PLAN} THEN 1 ELSE 0 END), 0) AS account_count,
        COALESCE(SUM(CASE WHEN ${IN_CASH_PLAN} THEN 0 ELSE ${LATEST_BALANCE_SUBQUERY} END), 0) AS excluded_balance,
-       COALESCE(SUM(CASE WHEN ${IN_CASH_PLAN} THEN 0 ELSE 1 END), 0) AS excluded_count
+       COALESCE(SUM(CASE WHEN ${IN_CASH_PLAN} THEN 0 ELSE 1 END), 0) AS excluded_count,
+       COALESCE(SUM(CASE WHEN ${IN_CASH_PLAN} THEN 0 ELSE COALESCE(ba.credit_limit, 0) END), 0) AS credit_limit_total,
+       COALESCE(SUM(CASE WHEN ${IN_CASH_PLAN} OR ba.credit_limit IS NOT NULL THEN 0 ELSE 1 END), 0) AS credit_limit_missing
      FROM bank_accounts ba
      WHERE ba.is_active = 1 AND ${NOT_PERSONAL_ACCOUNT}${ef.clause}`
   )
     .bind(...ef.params)
-    .first<{ start_balance: number; account_count: number; excluded_balance: number; excluded_count: number }>()
+    .first<{
+      start_balance: number; account_count: number; excluded_balance: number; excluded_count: number
+      credit_limit_total: number; credit_limit_missing: number
+    }>()
+  const limit = Number(row?.credit_limit_total) || 0
+  // 제외 계좌 잔액은 음수(빌려 쓴 돈)다. 여유 = 한도 − 사용액 = 한도 + (음수 잔액).
+  const used = Math.abs(Math.min(0, Number(row?.excluded_balance) || 0))
   return {
     start_balance: Number(row?.start_balance) || 0,
     account_count: Number(row?.account_count) || 0,
     excluded_balance: Number(row?.excluded_balance) || 0,
     excluded_count: Number(row?.excluded_count) || 0,
+    credit_limit_total: limit,
+    credit_available: limit > 0 ? Math.max(0, limit - used) : 0,
+    credit_limit_missing: Number(row?.credit_limit_missing) || 0,
   }
 }

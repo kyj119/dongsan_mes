@@ -6,7 +6,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { requireEditOrRole } from '../middleware/permissions'
 import { requirePagePermission } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
-import { buildCashflowDays, type CashflowItem, type ApDiagnostics, type ArDiagnostics } from '../utils/cashflowEngine'
+import { buildCashflowDays, type CashflowItem, type ApDiagnostics, type ArDiagnostics, type BaselineDiagnostics } from '../utils/cashflowEngine'
 import { computeExpectedPaymentDate } from '../utils/paymentSchedule'
 import { kstYm, kstYmd } from '../utils/kstDate'
 import { getTotalBankBalance, getCashPlanStartBalance } from '../utils/bankBalance'
@@ -215,10 +215,13 @@ cashScheduleRouter.get('/schedule/overview', requireEditOrRole('/cash-schedule',
 
     // 진단(매입 대사)은 B 패스에서만 받는다 — A(달력 월뷰)는 연체를 원래 날짜에 두는 화면이라
     // 분산을 켜면 안 되고, 같은 숫자를 두 번 계산할 이유도 없다.
-    const diag: { ap?: ApDiagnostics; ar?: ArDiagnostics } = {}
+    const diag: { ap?: ApDiagnostics; ar?: ArDiagnostics; baseline?: BaselineDiagnostics } = {}
+    // ★베이스라인(§6)은 **예측 패스에만** 켠다 — 달력 월뷰는 「그날 무엇이 잡혀 있나」를 보는 화면이라
+    //   추정 매출을 얹으면 실제 예정과 구분이 안 된다. `?baseline=0` 으로 끌 수 있다(비교용).
+    const useBaseline = c.req.query('baseline') !== '0'
     const [calMap, fcMap, bank] = await Promise.all([
       buildCashflowDays(c, monthStart, monthEnd, { carryOverdueToStart: false }),
-      buildCashflowDays(c, today, horizonEnd, { spreadOverdue: true, diagnostics: diag }),
+      buildCashflowDays(c, today, horizonEnd, { spreadOverdue: true, baseline: useBaseline, diagnostics: diag }),
       getCashPlanStartBalance(c),
     ])
 
@@ -331,6 +334,11 @@ cashScheduleRouter.get('/schedule/overview', requireEditOrRole('/cash-schedule',
           account_count: bank.account_count || 0,
           excluded_balance: bank.excluded_balance || 0,   // 계획에서 뺀 계좌 합(주로 마이너스통장 사용액)
           excluded_count: bank.excluded_count || 0,
+          // 마이너스통장 여력(0597) — 예측 잔액이 마이너스여도 **한도 안이면 위험이 아니다**.
+          //   ⚠️ credit_limit_missing > 0 이면 한도 미입력 계좌가 있어 available 이 과소다.
+          credit_limit_total: bank.credit_limit_total || 0,
+          credit_available: bank.credit_available || 0,
+          credit_limit_missing: bank.credit_limit_missing || 0,
           end_balance: running,
           min_balance: series.length ? Math.min(...series.map((d) => d.balance)) : startBalance,
           max_balance: series.length ? Math.max(...series.map((d) => d.balance)) : startBalance,
@@ -347,6 +355,7 @@ cashScheduleRouter.get('/schedule/overview', requireEditOrRole('/cash-schedule',
         // 매입 지급예정 ↔ 실제 지급 대사. 곡선의 숫자가 왜 그 값인지를 화면이 스스로 설명하게 하는 근거다.
         ap: diag.ap || null,
         ar: diag.ar || null,
+        baseline: diag.baseline || null,
       },
     })
   } catch (error) {
@@ -696,9 +705,14 @@ cashScheduleRouter.get('/schedule/monthly', requireEditOrRole('/cash-schedule', 
 //   전체 현금(getTotalBankBalance)을 돌려주면 화면과 어긋난다. 전체 현금은 /api/bank/fund-summary 가 준다.
 cashScheduleRouter.get('/schedule/bank-balance', requireEditOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
-    const { start_balance, account_count, excluded_balance, excluded_count } = await getCashPlanStartBalance(c)
+    const b = await getCashPlanStartBalance(c)
     // total_balance 키는 기존 응답계약 유지(값의 기준만 계획 포함분으로 좁혀졌다).
-    return c.json({ success: true, data: { total_balance: start_balance, account_count, excluded_balance, excluded_count } })
+    return c.json({ success: true, data: {
+      total_balance: b.start_balance, account_count: b.account_count,
+      excluded_balance: b.excluded_balance, excluded_count: b.excluded_count,
+      credit_limit_total: b.credit_limit_total, credit_available: b.credit_available,
+      credit_limit_missing: b.credit_limit_missing,
+    } })
   } catch (error) {
     console.error('cashSchedule bank-balance error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

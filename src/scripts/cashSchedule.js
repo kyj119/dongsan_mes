@@ -234,8 +234,15 @@ function renderForecastPanel(fc, carried, ap, ar) {
   var exEl = document.getElementById('schExcludedNote');
   if (exEl) {
     if (fc.excluded_count > 0 && fc.excluded_balance !== 0) {
-      exEl.innerHTML = '<i class="fas fa-circle-info mr-1"></i>계좌 ' + fc.excluded_count + '개(' + fmt(fc.excluded_balance) +
+      var msg = '<i class="fas fa-circle-info mr-1"></i>계좌 ' + fc.excluded_count + '개(' + fmt(fc.excluded_balance) +
         ')는 시작잔액에서 제외했습니다. 마이너스통장 사용액은 갚아야 할 돈이라 예측 출발점에 넣지 않습니다.';
+      // 한도 여력(0597) — 예측 잔액이 마이너스여도 **한도 안이면 위험이 아니다**. 그 판단에 필요한 값이다.
+      if (fc.credit_limit_missing > 0) {
+        msg += ' <b class="text-amber-700">한도 미입력 ' + fc.credit_limit_missing + '개</b> — 얼마나 더 쓸 수 있는지 알 수 없습니다(계좌 관리에서 입력).';
+      } else if (fc.credit_limit_total > 0) {
+        msg += ' 한도 ' + fmt(fc.credit_limit_total) + ' 중 <b>여유 ' + fmt(fc.credit_available) + '</b>.';
+      }
+      exEl.innerHTML = msg;
       exEl.classList.remove('hidden');
     } else {
       exEl.classList.add('hidden');

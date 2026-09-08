@@ -97,7 +97,7 @@
     "test:inventory-zone": "node scripts/inventory-zone-selftest.cjs",
     "test:orderline-cost": "node scripts/orderline-cost-selftest.cjs",
     "test:stock-valuation": "node scripts/stock-valuation-selftest.cjs",
-    "test:calc": "npm run test:orderline && npm run test:unit-price-display && npm run test:finishing-label && npm run test:delivery-slot && npm run test:file-dims && npm run test:credit && npm run test:cash-settle && npm run test:ap-settle && npm run test:loan-settle && npm run test:counterpart && npm run test:stock-unit && npm run test:inventory-zone && npm run test:orderline-cost && npm run test:stock-valuation && npm run audit:items:selftest && npm run test:csv-guard && npm run test:expense-month && npm run test:year-end && npm run test:card-spend && npm run test:tax-discount && npm run test:ap-candidate",
+    "test:calc": "npm run test:orderline && npm run test:unit-price-display && npm run test:finishing-label && npm run test:delivery-slot && npm run test:file-dims && npm run test:credit && npm run test:cash-settle && npm run test:ap-settle && npm run test:loan-settle && npm run test:counterpart && npm run test:stock-unit && npm run test:inventory-zone && npm run test:orderline-cost && npm run test:stock-valuation && npm run audit:items:selftest && npm run test:csv-guard && npm run test:expense-month && npm run test:year-end && npm run test:card-spend && npm run test:tax-discount && npm run test:ap-candidate && npm run test:baseline-flow",
     "test:all": "npm run test:calc && npm run test:hookguard && npm run test:auth-boundary",
     "test:csv-guard": "node scripts/csv-guard-selftest.cjs",
     "test:expense-month": "node scripts/expense-month-key-selftest.cjs",
@@ -119,7 +119,8 @@
     "audit:query-cost": "node scripts/query-cost-audit.cjs",
     "audit:subquery": "node scripts/correlated-subquery-audit.cjs",
     "test:ap-candidate": "node scripts/ap-candidate-selftest.cjs",
-    "audit:loan-bank": "node scripts/loan-bank-audit.cjs"
+    "audit:loan-bank": "node scripts/loan-bank-audit.cjs",
+    "test:baseline-flow": "node scripts/baseline-flow-selftest.cjs"
   },
   "dependencies": {
     "hono": "^4.13.2"

@@ -75,7 +75,7 @@ bankRouter.get('/accounts', requireRole('ADMIN'), async (c) => {
     //   잔액은 자금현황·자금계획과 같은 정본식(LATEST_BALANCE_SUBQUERY)을 쓴다 — 화면마다 다른 잔액이 나오면 안 된다.
     const { results } = await c.env.DB.prepare(
       `SELECT ba.id, ba.bank_code, ba.bank_name, ba.account_number, ba.account_holder, ba.account_alias,
-              ba.is_overdraft, ba.is_personal, ba.include_in_cash_plan, ba.connected_id, ba.is_active,
+              ba.is_overdraft, ba.is_personal, ba.include_in_cash_plan, ba.credit_limit, ba.connected_id, ba.is_active,
               ba.last_synced_at, ba.last_synced_date, ba.entity_id, ba.created_at,
               ba.barobill_registered, ba.collect_cycle, ba.barobill_registered_at,
               ${LATEST_BALANCE_SUBQUERY} AS balance,
@@ -112,7 +112,7 @@ bankRouter.get('/fund-summary', requireRole('ADMIN'), async (c) => {
     const { results } = await c.env.DB.prepare(
       `SELECT
         ba.id, ba.bank_name, ba.account_number, ba.account_holder, ba.account_alias,
-        ba.is_overdraft, ba.is_personal, ba.include_in_cash_plan, ba.barobill_registered, ba.last_synced_at,
+        ba.is_overdraft, ba.is_personal, ba.include_in_cash_plan, ba.credit_limit, ba.barobill_registered, ba.last_synced_at,
         ${LATEST_BALANCE_SUBQUERY} AS current_balance,
         (SELECT MAX(bt.transaction_date) FROM bank_transactions bt
           WHERE bt.bank_account_id = ba.id) AS last_tx_date
@@ -120,7 +120,7 @@ bankRouter.get('/fund-summary', requireRole('ADMIN'), async (c) => {
       WHERE ba.is_active = 1${ef.clause}
       ORDER BY ba.created_at DESC, ba.id DESC`
     ).bind(...ef.params).all<{
-      current_balance: number | null; is_overdraft: number; is_personal: number; include_in_cash_plan: number | null
+      current_balance: number | null; is_overdraft: number; is_personal: number; include_in_cash_plan: number | null; credit_limit: number | null
     }>()
 
     // 개인통장은 어떤 합계에도 넣지 않는다. 화면에는 별도 줄로 보여준다.
@@ -403,7 +403,7 @@ bankRouter.put('/accounts/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json()
-    const { bank_code, bank_name, account_number, account_holder, account_alias, is_overdraft, is_personal, include_in_cash_plan } = body
+    const { bank_code, bank_name, account_number, account_holder, account_alias, is_overdraft, is_personal, include_in_cash_plan, credit_limit } = body
 
     // #437: entity 격리 — 형제 DELETE/refresh와 동일. 미적용 시 타 법인 계좌 master(계좌번호 등) cross-tenant 덮어쓰기(IDOR)
     const ef = entityFilter(c, 'bank_accounts')
@@ -427,7 +427,10 @@ bankRouter.put('/accounts/:id', requireRole('ADMIN'), async (c) => {
           account_alias = CASE WHEN ? = 1 THEN ? ELSE account_alias END,
           is_overdraft = COALESCE(?, is_overdraft),
           is_personal = COALESCE(?, is_personal),
-          include_in_cash_plan = COALESCE(?, include_in_cash_plan)
+          include_in_cash_plan = COALESCE(?, include_in_cash_plan),
+          -- 마이너스통장 한도(0597). '' 를 보내면 **해제**(NULL)한다 — 잘못 입력한 한도가 굳으면
+          -- 「여유 있다」는 거짓 안심이 영구히 남는다. 키 미포함이면 기존값 유지.
+          credit_limit = CASE WHEN ? = 1 THEN ? ELSE credit_limit END
       WHERE id = ?${ef.clause}
     `).bind(
       bank_code ?? null,
@@ -439,6 +442,8 @@ bankRouter.put('/accounts/:id', requireRole('ADMIN'), async (c) => {
       is_overdraft != null ? (is_overdraft ? 1 : 0) : null,
       is_personal != null ? (is_personal ? 1 : 0) : null,
       include_in_cash_plan != null ? (include_in_cash_plan ? 1 : 0) : null,
+      Object.prototype.hasOwnProperty.call(body, 'credit_limit') ? 1 : 0,
+      credit_limit === '' || credit_limit == null ? null : (Number(credit_limit) || null),
       id,
       ...ef.params
     ).run()
