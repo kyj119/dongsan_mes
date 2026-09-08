@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-09-08T17:05:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-09-09T03:45:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,33 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **20** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음) |
+| 🆕 new | **21** (`list_issues(state:OPEN,label:auto-improve)` 실측, 20→21 #640 신규) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **542** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-09-09T03:45):**
+> - **방법**: 세션 시작 시 detached HEAD `9bc875c`(origin/main과 동일)였으나 얕은 clone(50커밋) → `git checkout main`(4커밋 뒤처짐) + `git merge --ff-only origin/main`으로 정합 + `git fetch --unshallow`(2,840여 커밋 확보). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area2 방법 라인 HEAD `0eb0c4d`)**: 웹앱 범위 diff **24커밋** — 대부분(af9606e0까지)은 Area1이 이미 이번 세션 안에서 응답시간/CI 렌즈로, Area5/6이 보안·자기진화 렌즈로 정독한 은행매칭·계정마스터·입고권한개방 웨이브와 동일 창. Area1이 이번 사이클 처음 본 신선 구간(`eecca71..9bc875c`, 3커밋)에 집중: `47ffce49`(은행매칭 잔여 13건 분류, 리터럴 UPDATE)·`18e22902`(feat: cashflow §6 베이스라인 + 마이너스통장 한도)·`9bc875c`(가격축 정정, migrations+audit script만).
+> - **`18e22902` 전문 직독(신규 코드 있는 유일한 커밋, entity_id·N+1·authMiddleware·dead code·SELECT* 7클래스 점검)**:
+>   - entity_id — `cashflowEngine.ts` §6 신규 4쿼리(AR/AP 런레이트·중앙일) 전부 `entityFilter(c)`/`entityFilter(c,'pp')` 정상 바인딩, `bankBalance.ts`·`bank.ts` PUT `/accounts/:id`도 기존 `ef.clause`/`ef.params` 패턴 유지 — net-new 갭 0.
+>   - dead code — `baselineFlow.ts`(순수모듈 4export) 전부 `cashflowEngine.ts`가 import해 소비, `bank.ts`/`cashSchedule.ts`의 `credit_limit` 신규 필드도 응답에 다 실림 — dead export 0.
+>   - authMiddleware — 신규 라우트 0(기존 엔드포인트에 필드만 추가) — 대상 없음.
+>   - N+1/SELECT* — §6은 월단위 집계 SELECT 4개(GROUP BY, 루프 없음), `IN (${ph})` 동적 바인드 신규 0 — 해당 없음.
+>   - 계산 규칙 게이트 — `test:baseline-flow`(25항목, 이 커밋이 자신을 `test:calc`에 편입, package.json 확인) 재실행 = **전항목 통과**. CLAUDE.md "계산 규칙은 값 대조 게이트로만 잡힌다" 원칙 준수 확인.
+> - **🔴 신규 발견 → #640 — 마이너스통장 한도(`credit_limit`) 백엔드 계약 완성, 프론트 입력경로 0건("백엔드 먼저·화면 나중" 신규 사례)**: `bank.ts:406-449` `PUT /accounts/:id`가 `credit_limit`을 받아 저장하고, `cashSchedule.js:240-243`은 미입력 계좌가 있으면 "계좌 관리에서 입력"이라 안내하는데, `grep -n credit_limit src/scripts/bank.js` **0건** — 계좌 수정 모달(`editAccount()`/`saveAccount()`)에 그 필드 자체가 없어 `saveAccount()`가 서버로 보내는 `body`에 키가 없다. 서버는 `hasOwnProperty` 존재 여부로 갱신을 결정하므로(`bank.ts:445`) **UI 경로로는 영구 입력 불가** — 화면이 안내하는 조작 경로가 실재하지 않는다. 신규 기능(한도여력 표시) 전체가 이 때문에 항상 "미입력" 상태로만 남는다. UI 신규 필드 추가라 자동수정 금지 대상 → issue-only(#640, S).
+> - **`47ffce49`·`9bc875c` 재확인**: `47ffce49`는 리터럴 UPDATE 13건 전부 `WHERE id IN (...) AND matched_category_id IS NULL AND EXISTS(...)`로 멱등·entity 범위 자체정합(서브쿼리가 `bank_transactions.entity_id`로 스코프) — 코드 변경 없음, 점검 대상 아님. `9bc875c`는 `migrations/0596`·`0599`(리터럴 데이터 정정)와 `scripts/unit-price-semantics-audit.cjs`(감사 스크립트, `db.prepare` 없는 판정 로직) — 라우트/유틸 코드 변경 0, Area2 스캔 대상 밖.
+> - **standing scan 1: `npm run audit:entity`** — 검사 134파일·entity테이블 SELECT 74건·**누락 0건**(변동없음).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **20**(신규 등록 전) 기존 20건 전건 일치(#613·#616·#617·#622·#624~639) 확인 후 #640 신규 생성.
+> - **backlog↔GitHub 절대값 재동기화**: open **21**(20→21, #640 신규) · done **542**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — 이번 사이클은 기존 entity_id/dead-code/계산규칙 게이트 스캔이 정확히 의도대로 작동(net-new 갭 0, 유일한 신규 코드 커밋의 계산 규칙이 자체 게이트 보유+통과)한 실증. area-2-code-quality.md `line N` 잔여참조는 이미 서술식 각주(「컬럼-diff bridge」 등)만 존재 — 이번 사이클도 재확인 0건.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 **8→9건**(직전 Area1 사이클이 이미 트림 완료한 상태에서 이번 로그 추가분), 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 1건(#640 마이너스통장 한도 UI 입력경로 부재 — 신규 기능의 화면 안내가 가리키는 경로 자체가 없음, S), 자동수정 0건(entity_id/dead-code/N+1 net-new 갭 0, #640은 UI 신규필드라 issue-only), done-sync: open 20(20→21)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 6 자기 진화 (2026-09-08T16:10):**
 > - **방법**: 세션 시작 시 detached HEAD `a1c943d`(origin/main과 동일)였으나 로컬 `main` 브랜치 ref는 `abc38eb`(2026-09-05, Claude co-author 체인)로 **50커밋 실분기**(단순 stale이 아니라 `main ^origin/main`이 실제 50건 반환) — 얕은 clone(50커밋)이라 처음엔 원인 판별 불가, `git fetch --unshallow`(2,836커밋 확보) 후 대조해 로컬 main이 이미 대체된 구버전 체인임을 확인 → 되돌릴 로컬 고유 작업 없음을 `git log main ^origin/main` 전건 검사(전부 Claude 커밋, origin에 없음)로 확인 후 `git reset --hard origin/main`으로 정합. `npm ci`(0→81), `npx tsc --noEmit` clean, `npm audit --omit=dev` 0건.
