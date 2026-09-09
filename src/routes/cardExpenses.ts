@@ -737,6 +737,9 @@ cardExpRouter.get('/payment-schedule', requireEditOrRole('/card-expenses', 'MANA
     const nextMonth = (y: number, m1: number) => (m1 === 12 ? { y: y + 1, m: 1 } : { y, m: m1 + 1 })
 
     const schedule: any[] = []
+    const efTx = entityFilter(c, 'ct')
+    const cycles: { card: any; cycleStart: string; cycleEnd: string; paymentDate: string }[] = []
+    const stmts: D1PreparedStatement[] = []
     for (const card of cards as any[]) {
       const cutoff = card.cutoff_day, payment = card.payment_day
 
@@ -760,15 +763,20 @@ cardExpRouter.get('/payment-schedule', requireEditOrRole('/card-expenses', 'MANA
       csDate.setDate(csDate.getDate() + 1)
       const cycleStart = ymd(csDate.getFullYear(), csDate.getMonth() + 1, csDate.getDate())
 
-      // 해당 사이클 누적 사용액(net = 승인 - 취소, 상계건 제외)
-      const efTx = entityFilter(c, 'ct')
-      const agg = await c.env.DB.prepare(`
+      // 해당 사이클 누적 사용액(net = 승인 - 취소, 상계건 제외) — 카드마다 왕복하지 않고 아래에서 batch 1회
+      cycles.push({ card, cycleStart, cycleEnd, paymentDate })
+      stmts.push(c.env.DB.prepare(`
         SELECT COUNT(*) as tx_count,
                COALESCE(SUM(CASE WHEN approval_type != 'CANCEL' THEN amount ELSE -amount END), 0) as net_amount
         FROM card_transactions ct
         WHERE ct.card_id = ? AND ct.is_offset = 0 AND ct.transaction_date >= ? AND ct.transaction_date <= ?${efTx.clause}
-      `).bind(card.card_id, cycleStart, cycleEnd, ...efTx.params).first<{ tx_count: number; net_amount: number }>()
+      `).bind(card.card_id, cycleStart, cycleEnd, ...efTx.params))
+    }
 
+    // 카드 수(≤수십)만큼 순차 await 하던 것을 batch 1회로(2026-09-09). 결과 순서 = 문장 순서.
+    const aggRows = stmts.length ? await c.env.DB.batch<{ tx_count: number; net_amount: number }>(stmts) : []
+    cycles.forEach(({ card, cycleStart, cycleEnd, paymentDate }, i) => {
+      const agg = aggRows[i]?.results?.[0]
       const net = agg?.net_amount || 0
       schedule.push({
         card_id: card.card_id, card_name: card.card_name, card_company: card.card_company,
@@ -778,7 +786,7 @@ cardExpRouter.get('/payment-schedule', requireEditOrRole('/card-expenses', 'MANA
         net_amount: net, tx_count: agg?.tx_count || 0,
         limit_usage_pct: card.monthly_limit > 0 ? Math.round((net / card.monthly_limit) * 100) : null,
       })
-    }
+    })
 
     const totalNet = schedule.reduce((s, r) => s + r.net_amount, 0)
     const nextPay = schedule.map(r => r.payment_date).sort()[0] || '-'

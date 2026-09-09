@@ -423,24 +423,24 @@ pricesRouter.get('/item-supplier-prices', async (c) => {
 
     // Enrich with recent purchase prices
     const efPo = entityFilter(c, 'po')  // #449: 타법인 매입단가 cross-tenant read 차단
-    const enriched = await Promise.all(
-      results.map(async (row) => {
-        const recentPurchase = await c.env.DB.prepare(`
+    // 공급처마다 왕복하던 최근 매입가 조회를 batch 1회로(2026-09-09). 결과 순서 = 문장 순서.
+    const recentStmts = results.map((row) => c.env.DB.prepare(`
           SELECT poi.unit_price, po.order_date
           FROM purchase_order_items poi
           JOIN purchase_orders po ON poi.po_id = po.id
           WHERE poi.item_id = ? AND po.supplier_id = ? AND po.status != 'CANCELLED'${efPo.clause}
           ORDER BY po.order_date DESC, po.id DESC
           LIMIT 1
-        `).bind(item_id, row.client_id, ...efPo.params).first<RecentPriceRow>()
-
-        return {
-          ...row,
-          recent_price: recentPurchase ? recentPurchase.unit_price : null,
-          recent_date: recentPurchase ? recentPurchase.order_date : null
-        }
-      })
-    )
+        `).bind(item_id, row.client_id, ...efPo.params))
+    const recentRows = recentStmts.length ? await c.env.DB.batch<RecentPriceRow>(recentStmts) : []
+    const enriched = results.map((row, i) => {
+      const recentPurchase = recentRows[i]?.results?.[0]
+      return {
+        ...row,
+        recent_price: recentPurchase ? recentPurchase.unit_price : null,
+        recent_date: recentPurchase ? recentPurchase.order_date : null
+      }
+    })
 
     return c.json({
       item: {

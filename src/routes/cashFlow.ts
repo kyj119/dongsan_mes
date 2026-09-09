@@ -701,8 +701,9 @@ cashFlowRouter.get('/calendar', requireRole('ADMIN'), async (c) => {
         id: number; card_company: string; cutoff_day: number; payment_day: number
       }>()
 
-      // 카드별 마감 기간 내 거래액 합산
-      for (const card of (activeCards || [])) {
+      // 카드별 마감 기간 내 거래액 합산 — 카드마다 순차 await 하던 것을 batch 1회로(2026-09-09). 결과 순서 = 문장 순서.
+      const efTxSum = entityFilter(c)
+      const cardStmts = (activeCards || []).map((card) => {
         const cutoff = card.cutoff_day || 15
         // 마감 기간: 전월 cutoff+1 ~ 당월 cutoff
         const prevMonth = new Date(y, m - 2, 1) // m is 1-based, Date month is 0-based
@@ -710,14 +711,15 @@ cashFlowRouter.get('/calendar', requireRole('ADMIN'), async (c) => {
         const prevM = prevMonth.getMonth() + 1
         const billingStart = `${prevY}-${String(prevM).padStart(2, '0')}-${String(Math.min(cutoff + 1, 28)).padStart(2, '0')}`
         const billingEnd = `${y}-${String(m).padStart(2, '0')}-${String(Math.min(cutoff, lastDay)).padStart(2, '0')}`
-
-        const efTxSum = entityFilter(c)
-        const txSum = await c.env.DB.prepare(`
+        return c.env.DB.prepare(`
           SELECT COALESCE(SUM(${cardNetAmountSql()}), 0) as total
           FROM card_transactions
           WHERE card_id = ? AND transaction_date >= ? AND transaction_date <= ?${efTxSum.clause}${cardSpendFilterSql()}
-        `).bind(card.id, billingStart.replace(/-/g, ''), billingEnd.replace(/-/g, ''), ...efTxSum.params).first<{ total: number }>()
-
+        `).bind(card.id, billingStart.replace(/-/g, ''), billingEnd.replace(/-/g, ''), ...efTxSum.params)
+      })
+      const cardSums = cardStmts.length ? await c.env.DB.batch<{ total: number }>(cardStmts) : []
+      ;(activeCards || []).forEach((card, i) => {
+        const txSum = cardSums[i]?.results?.[0]
         if (txSum && txSum.total > 0) {
           cardPaymentItems.push({
             card_company: card.card_company,
@@ -725,7 +727,7 @@ cashFlowRouter.get('/calendar', requireRole('ADMIN'), async (c) => {
             total: txSum.total
           })
         }
-      }
+      })
     } catch (e) {
       // cutoff_day 칼럼 미존재 시 무시
       console.error('Card payment calendar error:', e)
