@@ -10,6 +10,7 @@ import { triggerLowStockAlert } from '../utils/inventoryAlert'
 import { getItemDefaultZone, getItemDefaultZones } from '../utils/inventoryZone'
 import { resolveStockUnit } from '../utils/rollConsumption'
 import { packFactor } from '../utils/unitConvert'
+import { judgeAvgCostFill, AVG_COST_FILL_SQL } from '../utils/avgCostFill'
 import { escapeCsvField } from '../utils/csv'
 import { TX_TYPE_LABELS, TX_REF_LABELS, TX_REASON_LABELS } from '../constants/inventoryTx'
 
@@ -527,13 +528,16 @@ inventoryRouter.post('/receipts', requireEditOrRole('/receiving', 'ADMIN', 'MANA
     //   ★환산 여부는 packFactor() 가 정한다(base_unit 이 있어야 환산). 2026-08-27 전수조사.
     const packMap = new Map<number, number>()
     const unitMap = new Map<number, string>()
+    // 평균원가 **공백만** 채운다 — 발주 입고(po-receive)와 **같은 판정**. 형제 경로라 갈리면 한쪽만 채워진다.
+    const avgCostMap = new Map<number, number | null>()
     {
       const { results: psRows } = await c.env.DB.prepare(
-        `SELECT id, pack_size, unit, base_unit FROM items WHERE id IN (${itemIds.map(() => '?').join(',')})`
-      ).bind(...itemIds).all<{ id: number; pack_size: number | null; unit: string | null; base_unit: string | null }>()
+        `SELECT id, pack_size, unit, base_unit, avg_unit_cost FROM items WHERE id IN (${itemIds.map(() => '?').join(',')})`
+      ).bind(...itemIds).all<{ id: number; pack_size: number | null; unit: string | null; base_unit: string | null; avg_unit_cost: number | null }>()
       for (const r of psRows || []) {
         packMap.set(Number(r.id), packFactor(r))
         unitMap.set(Number(r.id), r.unit || 'EA')
+        avgCostMap.set(Number(r.id), r.avg_unit_cost)
       }
     }
     const ps = (id: number) => packMap.get(id) || 1
@@ -588,6 +592,11 @@ inventoryRouter.post('/receipts', requireEditOrRole('/receiving', 'ADMIN', 'MANA
           receiptId, item_id, entityId, zoneId, user?.id || 1, entityId, zoneId
         )
       )
+      // ★평균원가 공백 채우기 — 원장과 **같은 batch**(원자성)·같은 (base 수량, 총액) 축.
+      const avgVerdict = judgeAvgCostFill({ avg_unit_cost: avgCostMap.get(item_id) ?? null }, agg.qtyBase, agg.amount)
+      if (avgVerdict.fill) {
+        receiptStmts.push(c.env.DB.prepare(AVG_COST_FILL_SQL).bind(avgVerdict.value, item_id))
+      }
     }
     try {
       await c.env.DB.batch(receiptStmts)

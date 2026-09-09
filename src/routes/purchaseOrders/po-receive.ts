@@ -16,6 +16,7 @@ import { packFactor } from '../../utils/unitConvert'
 import { getNextEntitySeqNumber } from '../../utils/sequenceGenerator'
 import { kstYmd, kstYmdCompact, kstDate, kstDateOf } from '../../utils/kstDate'
 import { judgeBasePriceSync } from '../../utils/purchasePriceSync'
+import { judgeAvgCostFill, AVG_COST_FILL_SQL } from '../../utils/avgCostFill'
 
 const poReceiveRouter = new Hono<HonoEnv>()
 poReceiveRouter.use('/*', authMiddleware, requireAnyPagePermission('/purchase-orders', '/receiving'))
@@ -170,6 +171,8 @@ poReceiveRouter.post('/:id/receive', async (c) => {
     }> = []
     let summaryAccepted = 0
     let summaryRejected = 0
+    // 평균원가를 새로 등록한 품목 — Phase 3 batch 에서 채우고 응답에서 보고한다(try 밖에 둬야 읽힌다)
+    const costFilled: number[] = []
 
     // #389: items 건별 조회 N+1 제거 — item_ids로 IN-prefetch (루프 내 재고 쓰기 없음 → 등가)
     //   ★재고 잔량은 여기서 읽지 않는다 — 락(#420) 이전에 읽은 값으로 `SET quantity = ?` 덮어쓰면
@@ -187,14 +190,17 @@ poReceiveRouter.post('/:id/receive', async (c) => {
     //   ★판정은 packFactor() 하나뿐이다 — `pack_size>0` 만 보면 base_unit 없는 현수막 원단(AQ*)이
     //     130배로 들어온다(2026-08-27 전수조사).
     const packMap = new Map<number, number>()
+    // 평균원가 **공백만** 채운다(`avgCostFill`) — 값이 있으면 손대지 않는다. 축은 base 당.
+    const avgCostMap = new Map<number, number | null>()
     if (recvItemIds.length > 0) {
       itemZoneMap = await getItemDefaultZones(c.env.DB, recvItemIds, poEntityIdPrefetch)
       const iph = recvItemIds.map(() => '?').join(',')
       const { results: zoneRows } = await c.env.DB.prepare(
-        `SELECT id, pack_size, unit, base_unit FROM items WHERE id IN (${iph})`
-      ).bind(...recvItemIds).all<{ id: number; pack_size: number | null; unit: string | null; base_unit: string | null }>()
+        `SELECT id, pack_size, unit, base_unit, avg_unit_cost FROM items WHERE id IN (${iph})`
+      ).bind(...recvItemIds).all<{ id: number; pack_size: number | null; unit: string | null; base_unit: string | null; avg_unit_cost: number | null }>()
       for (const r of (zoneRows || [])) {
         packMap.set(Number(r.id), packFactor(r))
+        avgCostMap.set(Number(r.id), r.avg_unit_cost)
       }
     }
 
@@ -356,6 +362,14 @@ poReceiveRouter.post('/:id/receive', async (c) => {
           agg.amount, receiptId, itemId, poEntityIdPrefetch, agg.zoneId, user?.id || 1,
           poEntityIdPrefetch, agg.zoneId
         ))
+
+        // ★평균원가 공백 채우기 — **같은 batch**(원자성). 원장과 같은 (base 수량, 총액) 축을 그대로 넘긴다.
+        //   이미 값이 있으면 판정이 ALREADY_SET 이고, SQL 조건에도 같은 가드가 걸려 있다(자기교정).
+        const avgVerdict = judgeAvgCostFill({ avg_unit_cost: avgCostMap.get(itemId) ?? null }, agg.qtyBase, agg.amount)
+        if (avgVerdict.fill) {
+          stmts.push(c.env.DB.prepare(AVG_COST_FILL_SQL).bind(avgVerdict.value, itemId))
+          costFilled.push(itemId)
+        }
       }
 
       // inventory_receipts.inspection_status 업데이트 (사전계산값 사용)
@@ -498,6 +512,7 @@ poReceiveRouter.post('/:id/receive', async (c) => {
     // 보존은 **건수만** 알린다 — 품목이 많으면 메시지가 길어져 정작 변경 내역을 가린다.
     const keptUniq = [...new Set(priceKept)]
     const keptMsg = keptUniq.length ? ` 판매단가 보존: ${keptUniq.length}종` : ''
+    const costMsg = costFilled.length ? ` 평균원가 신규 등록: ${costFilled.length}종` : ''
 
     return c.json({
       success: true,
@@ -509,7 +524,7 @@ poReceiveRouter.post('/:id/receive', async (c) => {
         price_updates: priceUpdates.length ? priceUpdates : undefined,
         price_kept_sales_items: keptUniq.length ? keptUniq : undefined
       },
-      message: `입고 처리 완료. 발주 상태: ${newStatus}${priceMsg}${keptMsg}`
+      message: `입고 처리 완료. 발주 상태: ${newStatus}${priceMsg}${keptMsg}${costMsg}`
     })
   } catch (error: any) {
     console.error('purchaseOrders receive error:', error)

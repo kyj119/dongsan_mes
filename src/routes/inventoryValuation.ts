@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
+import { judgeAvgCostFill, AVG_COST_FILL_SQL } from '../utils/avgCostFill'
 
 const inventoryValuation = new Hono<HonoEnv>()
 inventoryValuation.use('*', authMiddleware)
@@ -144,30 +145,63 @@ inventoryValuation.post('/fifo-layer', requireRole('ADMIN', 'MANAGER'), async (c
   return c.json({ success: true })
 })
 
-// ─── 이동평균 단가 재계산 ────────────────────────────────────────────────────
+// ─── 평균원가 채우기 (구 「이동평균 재계산」) ───────────────────────────────
+//
+// ★2026-09-09 — **덮어쓰기에서 채우기로 바꿨다.**
+//   종전엔 원장 IN 행만으로 평균을 내 `items.avg_unit_cost` 를 **무조건 덮었다.** 그런데
+//   ①원장은 이관 재고를 담고 있지 않고(잔고 합계 132,121 vs 원장 순합 72,873, CLAUDE.md)
+//   ②지금 값의 상당수는 `0555`·`0559`·`0576` 이 **손으로 넣은 것**이라 원장에 근거가 없다.
+//   ⇒ 그대로 두면 **부분 이력으로 전체를 덮어** 손입력값이 복원 불가능하게 사라진다.
+//
+//   ⚠️`items` 에는 entity 가 없다(법인 공유). 그런데 집계는 법인별로 걸린다 —
+//     즉 종전 동작은 「동산에서 눌러 선명 원가까지 바꾸는」 것이었다. 채우기로 바뀌면서
+//     이 문제도 같이 줄었다(공백만 채우므로 서로 덮지 않는다).
+//
+//   ★실측(2026-09-09 prod): 대상이 **0건**이었다 — 원장 IN 행이 전체에 1건이고 그마저 단가 0이라
+//     `unit_price > 0` 을 통과하지 못한다. 즉 이 엔드포인트는 **한 번도 무언가를 바꾼 적이 없다.**
+//     입고가 돌기 시작하면 그때부터 대상이 생기고, 그 시점에 종전 코드였다면 덮기 시작했을 것이다.
+//
+//   판정은 입고 경로(`po-receive`·수기입고)와 **같은 함수**(`judgeAvgCostFill`) 다 —
+//   갈리면 「입고로는 보존되는데 이 버튼으로는 덮이는」 구멍이 생긴다.
 inventoryValuation.post('/recalculate-avg', requireRole('ADMIN', 'MANAGER'), async (c) => {
-  // #158: 현재 법인의 이동평균 단가를 재계산
   const entityId = getEntityId(c)
-  const entityClause = entityId > 0 ? 'AND entity_id = ?' : ''
+  const entityClause = entityId > 0 ? 'AND t.entity_id = ?' : ''
   const entityParams = entityId > 0 ? [entityId] : []
   const { results: items } = await c.env.DB.prepare(`
-    SELECT item_id,
-      SUM(CASE WHEN transaction_type='IN' THEN quantity ELSE 0 END) as total_in,
-      SUM(CASE WHEN transaction_type='IN' THEN total_amount ELSE 0 END) as total_cost
-    FROM inventory_transactions
-    WHERE transaction_type = 'IN' AND unit_price > 0 ${entityClause}
-    GROUP BY item_id
+    SELECT t.item_id,
+      SUM(t.quantity) as total_in,
+      SUM(t.total_amount) as total_cost,
+      i.avg_unit_cost as avg_unit_cost
+    FROM inventory_transactions t
+    JOIN items i ON i.id = t.item_id
+    WHERE t.transaction_type = 'IN' AND t.unit_price > 0 ${entityClause}
+    GROUP BY t.item_id, i.avg_unit_cost
     HAVING total_in > 0
-  `).bind(...entityParams).all<{ item_id: number; total_in: number; total_cost: number }>()
+  `).bind(...entityParams).all<{ item_id: number; total_in: number; total_cost: number; avg_unit_cost: number | null }>()
 
-  const stmts = items.map(item => {
-    const avgCost = Math.round((item.total_cost / item.total_in) * 100) / 100
-    return c.env.DB.prepare(`UPDATE items SET avg_unit_cost = ? WHERE id = ?`).bind(avgCost, item.item_id)
+  const stmts: ReturnType<typeof c.env.DB.prepare>[] = []
+  const skipped: Record<string, number> = {}
+  for (const it of items || []) {
+    const v = judgeAvgCostFill({ avg_unit_cost: it.avg_unit_cost }, it.total_in, it.total_cost)
+    if (!v.fill) { skipped[v.reason] = (skipped[v.reason] || 0) + 1; continue }
+    // 원(₩) 단위 소수 2자리 — 종전과 같은 반올림
+    stmts.push(c.env.DB.prepare(AVG_COST_FILL_SQL).bind(Math.round(v.value * 100) / 100, it.item_id))
+  }
+
+  // D1 바인드 한도 → 80 청크 (종전엔 통째로 넘겨 품목이 늘면 터질 자리였다)
+  for (let i = 0; i < stmts.length; i += 80) {
+    await c.env.DB.batch(stmts.slice(i, i + 80))
+  }
+
+  return c.json({
+    success: true,
+    data: {
+      updated: stmts.length,
+      candidates: (items || []).length,
+      skipped,
+      note: '공백(avg_unit_cost=0)만 채웁니다. 원장에 이관 재고가 없어 기존 값을 덮으면 복원할 수 없습니다.',
+    },
   })
-
-  if (stmts.length > 0) await c.env.DB.batch(stmts)
-
-  return c.json({ success: true, data: { updated: stmts.length } })
 })
 
 // ─── #158 Option C: 법인 간 동일 품목 단가 차이 경고 ─────────────────────────
