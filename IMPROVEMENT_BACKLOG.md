@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-09-09T09:20:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-09-09T15:55:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,31 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **22** (`list_issues(state:OPEN,label:auto-improve)` 실측, 21→22 #641 신규) |
+| 🆕 new | **23** (`list_issues(state:OPEN,label:auto-improve)` 실측, 22→23 #642 신규) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **542** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 4 데이터 정합성 (2026-09-09T15:55):**
+> - **방법**: 세션 시작 시 detached HEAD `bd57b39`(origin/main과 동일 커밋이나 얕은 clone, 50커밋) → `git checkout main` + `git merge --ff-only origin/main`(변동 없음, 이미 최신) + `git fetch --unshallow`(2,860여 커밋 확보). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area4 방법 라인 HEAD `8f55dd0`)**: 웹앱 범위 diff **29커밋** — Area1·2·3·5·6이 이번 세션 이미 각자 렌즈(응답시간·코드품질·UX·보안·자기진화)로 정독한 은행매칭/차입금/차량자산/청구단가 웨이브와 동일 창. **데이터정합성 렌즈로는 신규 마이그 18건(`0586`~`0601`) 전수 직독이 이번이 최초**.
+> - **`db:bootstrap:ci` 전량 재적용** — 이번 사이클 신규 18건 포함 전체 마이그레이션 **전건 ✅**(CHECK/FK 위반 0). 차량할부 스케줄(0593)의 `INSERT ... SELECT ... WHERE EXISTS(loans.id)` 가드(2c20b546/9954d32f)가 빈 부트스트랩 DB에서 의도대로 no-op 확인(Area6가 이미 확인한 자체수정과 동일 메커니즘, 데이터정합성 렌즈로 재확인).
+> - **entity_id 표본 검증(로컬 D1 직접 쿼리)**: `loans`/`loan_payments`/`fixed_assets` 전부 NULL·0 없음, `loan_payments.entity_id` vs 부모 `loans.entity_id` 불일치 0건(스포티지 8488=entity2, 나머지 entity1 전부 일치) — 신규 loans/vehicle 웨이브 net-new entity 오기록 0.
+> - **0586 supplier_owners 신설 — CLAUDE.md 두 원칙을 스스로 준수**: 시드 쿼리의 `ROW_NUMBER() OVER (... ORDER BY SUM(poi.amount) DESC, sz.id ASC)`가 처음부터 고유키 tie-break(`sz.id`)를 포함(「목록 정렬」 원칙), 귀속 구역 산식이 `utils/inventoryZone.RECEIVING_ZONE_JOIN_SQL`과 동일해야 함을 주석에 명시(마이그가 TS를 못 불러 사본이 생긴 것일 뿐 정본은 TS쪽) — net-new 결함 없음.
+> - **0600 order_line_pricing_snapshot 백필 완전성 확인 + 소비처 대조 중 🔴 신규 발견**: 마이그 자체(컬럼 추가+백필)는 안전(금액 미변경, item_id NULL 340건은 NULL=FIXED 의미로 문서화). 소비처 전수(`grep -rn pricing_method src/routes src/utils`) 대조 결과 `orders/core.ts:433`은 `COALESCE(oi.pricing_method, i.pricing_method)`로 스냅샷을 정확히 우선하는데, **`utils/costCalculator.ts:112-123` `recalculateOrderCosts()`는 스냅샷 컬럼을 전혀 SELECT하지 않고 `i.pricing_method`(품목의 오늘 축)만 읽는다**. 이 함수는 `order_items.amount`가 NULL/공백인 옛 라인에 한해 `computeLineAmount()`로 금액을 재구성해 `margin_rate`를 계산(DB에는 amount 자체가 아니라 cost/margin만 쓰기)하는데, 이때 넘기는 축이 라인 스냅샷이 아니라 품목 현재 축이라 **0600이 막으려던 시나리오(품목 축 변경 후 과거 라인이 "오늘의 축"으로 재구성)가 마진 계산에서 재현**된다. 호출처가 주문 생성·수정·복사·견적전환·상태전이·`POST /costs/backfill` 전부(9곳)라 파급 범위가 넓고, 백필은 정확히 "amount 없는 옛 행"을 표적으로 삼는 기능이라 0600의 실제 유발 사례(UV판재·거치대 재배치)와 같은 품목이 지나가면 마진 리포트가 조용히 틀어짐 — **issue-only(비즈니스 로직=마진 산식 변경, #642 등록)**. `routes/prices.ts`·`quotations.ts`·`items.ts` 등 나머지 소비처는 라인 스냅샷 개념이 아직 없던 견적/품목 자체 조회라 해당 없음(정상).
+> - **중복 마이그레이션 번호 재발 확인(#639)**: 이번 18건에서도 2쌍 추가(`0587` 차입금계정↔구역담당권한, `0596` 단가축정정↔QM6대출) — 대상 테이블·컬럼 비겹침으로 우연히 무해(부트스트랩 전건 통과로 확인). 신규 이슈 대신 **#639에 재발 코멘트 등록**(누적 9쌍, 근본수정 미착수 상태 유지 확인).
+> - **standing scan 1: `npm run audit:entity`** — 검사 134파일·entity테이블 SELECT 74건·**누락 0건**(변동없음).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 4: `npm audit --omit=dev`** — 🔴 **1건 신규**(변동, 직전까지 0건 유지) — `hono@<4.13.5` moderate CVE 3종(toSSG 경로탈출 불완전수정·parseBody 무제한 중첩→메모리고갈·쿼리파서 URL fragment 이후 파라미터 읽기). `npm audit fix`는 wrangler↔workers-types peer 충돌(#613, 기존 known)로 막혀 **`npm install hono@^4.13.5`로 hono만 단독 승격**(4.13.7, package.json 범위 `^4.13.2` 내). typecheck·build·`test:orderline`(30/30) 확인 후 **직접 커밋+push**(`6c31919b`) — 재적용 후 `npm audit --omit=dev` 0건 재확인.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 6런(직전 HEAD `bd57b39` 포함) 전부 `conclusion:success`. 이번 사이클 자동수정 커밋(`6c31919b`)의 배포는 조회 시점 `in_progress` — 다음 사이클(Area5)이 착수 시 재확인.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` totalCount **22**(신규 등록 전) 기존 22건 전건 일치(#613·#616·#617·#622·#624~641) 확인 후 #642 신규 생성.
+> - **backlog↔GitHub 절대값 재동기화**: open **23**(22→23, #642 신규) · done **542**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 이번 발견(라인 스냅샷 도입 후 소비처 일부 미적용)은 기존 「축 드리프트 sweep」·「형제 미완결」 클래스의 변형(스냅샷 컬럼 자체는 신설이 완전했으나 *소비처* sweep이 미완결)이라 별도 codify 불요 — 기존 sweep 레시피("신규 컬럼 추가 시 grep으로 소비처 전수 대조")가 이번에도 그대로 작동해 발견함.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 10→11건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 1건(#642 recalculateOrderCosts가 0600 라인 과금축 스냅샷 미반영 — margin_rate가 옛 라인에서 품목 현재축으로 재구성됨, S, 마진 산식 변경이라 issue-only), 자동수정 1건(hono 4.13.2→4.13.7 dependency bump, moderate CVE 3종 해소, `6c31919b`), done-sync: open 22(22→23)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-09-09T09:20):**
 > - **방법**: 세션 시작 시 detached HEAD `57891a1`였으나 얕은 clone(50커밋) → 로컬 `main`은 `eecca71`(10커밋 뒤처짐) → `git fetch --unshallow`(2,850여 커밋 확보) + `git checkout main` + `git merge --ff-only origin/main`으로 정합. `npm ci`(0→81), `npx tsc --noEmit` clean.
