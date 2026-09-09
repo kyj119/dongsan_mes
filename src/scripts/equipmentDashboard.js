@@ -22,12 +22,12 @@ async function loadEquipmentData() {
     const fromDate = document.getElementById('fFromDate').value;
     const toDate = document.getElementById('fToDate').value;
 
-    // 병렬 로드: 용량 분석, 장비 로드, 금일 생산, 주간 트렌드
-    const [capacityRes, loadRes, todayRes, weeklyRes] = await Promise.all([
+    // 병렬 로드: 용량 분석, 장비 로드, 금일 생산 (주간 트렌드는 capacity-analysis 응답에서 추출 —
+    //   같은 URL 을 한 번 더 받던 4번째 요청 제거, 2026-09-09)
+    const [capacityRes, loadRes, todayRes] = await Promise.all([
       authFetch('/api/forecast/capacity-analysis?months=3'),
       authFetch('/api/dashboard/equipment-load'),
-      authFetch('/api/dashboard/stats/production-today'),
-      authFetch('/api/forecast/capacity-analysis?months=3') // weekly trend는 capacity-analysis에서 추출
+      authFetch('/api/dashboard/stats/production-today')
     ]);
 
     capacityData = (await capacityRes.json()).data || {};
@@ -210,4 +210,7 @@ function renderWeeklyTrend() {
 }
 
 // ===== 페이지 로드 시 실행 =====
-loadEquipmentData();
+// 대시보드 탭 데이터는 eqSwitchTab('dashboard') 가 로드한다(equipment.js). 여기서 무조건 선로드하면
+//   ?tab=dashboard 딥링크에서 2회, 기본(목록) 탭에서는 안 보이는 패널을 위해 3건이 헛되이 나간다(2026-09-09 실측).
+//   equipment.js 없이 단독으로 쓰일 때(currentTab 미정의)만 직접 로드.
+if (typeof currentTab === 'undefined') loadEquipmentData();

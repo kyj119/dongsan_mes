@@ -12,7 +12,11 @@ let migrationEntityId = parseInt(localStorage.getItem('entityId') || '1');
 
 // 법인 선택 드롭다운 초기화
 (function initMigrationEntitySelect() {
-  axios.get('/api/auth/entities').then(function(res) {
+  // shell.js 캐시 재사용(window.loadEntities) — /auth/entities 2회 → 1회(2026-09-09)
+  (typeof window.loadEntities === 'function'
+    ? window.loadEntities().then(function(list) { return { data: { success: true, data: list } }; })
+    : axios.get('/api/auth/entities')
+  ).then(function(res) {
     if (!res.data.success) return;
     var sel = document.getElementById('migrationEntitySelect');
     if (!sel) return;

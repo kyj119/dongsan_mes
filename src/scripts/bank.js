@@ -185,10 +185,15 @@
       });
 
       // 자동 동기화: 마지막 동기화가 1시간 이상 지났으면 백그라운드 실행
+      // ⚠️ last_sync 는 D1 CURRENT_TIMESTAMP(UTC, tz 표식 없음). new Date('YYYY-MM-DD HH:MM:SS') 는
+      //    브라우저 로컬(KST)로 읽어 elapsed 가 항상 9시간 이상 → 가드가 죽어 **매 진입마다** 바로빌 전계좌
+      //    수집(10~20초)이 돌았다(2026-09-09 실측). UTC 로 읽는 전역 헬퍼(shell.js toKstDate)를 쓴다.
       if (!autoSyncTriggered && d.last_sync) {
-        var lastSyncTime = new Date(d.last_sync).getTime();
+        var lastSyncDate = (typeof window.toKstDate === 'function') ? window.toKstDate(d.last_sync) : null;
+        var lastSyncTime = lastSyncDate ? lastSyncDate.getTime() : Date.parse(String(d.last_sync).replace(' ', 'T') + 'Z');
         var elapsed = Date.now() - lastSyncTime;
-        if (elapsed > 60 * 60 * 1000) { // 1시간
+        // 파싱 실패(NaN)면 트리거하지 않는다 — 무인 수집은 별도 워커(cron)가 맡고 있어 놓쳐도 복구된다.
+        if (!isNaN(lastSyncTime) && elapsed > 60 * 60 * 1000) { // 1시간
           autoSyncTriggered = true;
           triggerAutoSync();
         }

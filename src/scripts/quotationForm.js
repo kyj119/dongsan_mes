@@ -15,9 +15,15 @@ function entityAssignOptions() {
     });
     return opts;
 }
-function loadEntities() {
+// ⚠️ 이름을 loadEntities 로 두면 top-level 함수 선언이 shell.js 의 window.loadEntities(전역 캐시)를 덮어쓴다
+//    (classic script 의 전역 함수 선언 = window 프로퍼티). qf 접두로 분리(2026-09-09).
+function qfLoadEntities() {
     if (typeof axios === 'undefined') return;
-    axios.get('/api/auth/entities').then(function(res) {
+    // shell.js 캐시 재사용(window.loadEntities) — 견적서 진입마다 /auth/entities 2회 → 1회(2026-09-09)
+    (typeof window.loadEntities === 'function'
+        ? window.loadEntities().then(function(list) { return { data: { success: true, data: list } }; })
+        : axios.get('/api/auth/entities')
+    ).then(function(res) {
         if (!res.data || !res.data.success) return;
         window.__entities = res.data.data || [];
         // entities 로드 전 생성된 행의 담당 셀렉트 갱신 (첫 행/수정 prefill 타이밍 대응)
@@ -543,7 +549,7 @@ document.getElementById('addItemBtn').addEventListener('click', function() {
 
 (function init() {
     // 법인 목록 로드 (품목 담당 셀렉트용)
-    loadEntities();
+    qfLoadEntities();
     // 유효기한 기본값: 오늘 + 30일
     var d = new Date();
     d.setDate(d.getDate() + 30);

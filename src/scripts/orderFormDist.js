@@ -23,7 +23,11 @@
             }
             (function loadEntities() {
                 if (typeof axios === 'undefined') return;
-                axios.get('/api/auth/entities').then(function(res) {
+                // shell.js 캐시 재사용(window.loadEntities) — /auth/entities 중복 호출 제거(2026-09-09)
+                (typeof window.loadEntities === 'function'
+                    ? window.loadEntities().then(function(list) { return { data: { success: true, data: list } }; })
+                    : axios.get('/api/auth/entities')
+                ).then(function(res) {
                     if (!res.data || !res.data.success) return;
                     window.__entities = res.data.data || [];
                     // entities 로드 전 생성된 행의 담당 셀렉트 갱신 (첫 행 타이밍 대응)

@@ -876,8 +876,11 @@ function hrdEsc(s) {
 }
 
 function hrdLoadSelectMasters() {
-  // 소속법인 — entities 마스터
-  axios.get('/api/auth/entities').then(function (res) {
+  // 소속법인 — entities 마스터 (shell.js 캐시 window.loadEntities 재사용 — 페이지 2회 호출 → 1회, 2026-09-09)
+  (typeof window.loadEntities === 'function'
+    ? window.loadEntities().then(function (list) { return { data: { success: true, data: list } }; })
+    : axios.get('/api/auth/entities')
+  ).then(function (res) {
     var list = (res.data && res.data.data) || [];
     if (!list.length) return;
     var sel = document.querySelector('#hrdManageCard [data-field="entity_id"]');

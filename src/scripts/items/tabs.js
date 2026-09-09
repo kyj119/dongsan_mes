@@ -9,7 +9,8 @@ window.initItemTabs = async function() {
     var bar = document.getElementById('itemMainTabs');
     if (!bar) { console.warn('[items] #itemMainTabs not found'); return; }
     try {
-        var res = await axios.get('/api/items/categories');
+        // core.js 가 만든 공유 요청을 재사용(초기화 시 categories 2회 → 1회). 단독 로드 시엔 직접 GET.
+        var res = await (typeof window.fetchItemCategories === 'function' ? window.fetchItemCategories() : axios.get('/api/items/categories'));
         ITEM_CATS = (res.data && res.data.data) ? res.data.data.filter(function(c){ return c.is_active !== 0; }) : [];
     } catch (e) { ITEM_CATS = []; }
     var tabs = ITEM_CATS.filter(function(c){ return c.category_code !== 'ETC'; }); // 기타=fallback, 탭 숨김

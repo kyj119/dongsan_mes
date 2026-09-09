@@ -328,7 +328,11 @@ function hrLoadDeptOptions() {
   hrLoadDeptOptions();
 
   // 셀렉트 마스터 동적 로드 — 하드코딩 옵션은 API 실패 시 폴백 (감사 2026-06-12)
-  axios.get('/api/auth/entities').then(function (res) {
+  // shell.js 캐시(window.loadEntities) 재사용 — 페이지 진입마다 /auth/entities 를 2회 받던 것을 1회로(2026-09-09)
+  (typeof window.loadEntities === 'function'
+    ? window.loadEntities().then(function (list) { return { data: { success: true, data: list } }; })
+    : axios.get('/api/auth/entities')
+  ).then(function (res) {
     var list = (res.data && res.data.data) || [];
     if (!list.length) return;
     ENTITY_NAMES = {};

@@ -616,6 +616,8 @@ function accIetTypeBadge(t) {
 var accIetEntities = null; // [{id, name, short_name}] 캐시
 async function accIetLoadEntities() {
   if (accIetEntities) return accIetEntities;
+  // shell.js 가 이미 /auth/entities 를 받아 캐시한다(window.loadEntities) — 페이지가 또 받지 않는다(2026-09-09)
+  if (typeof window.loadEntities === 'function') { accIetEntities = (await window.loadEntities()) || []; return accIetEntities; }
   var res = await axios.get('/api/auth/entities');
   accIetEntities = res.data.data || [];
   return accIetEntities;

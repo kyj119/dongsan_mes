@@ -26,7 +26,10 @@ async function loadStorageZones() {
     var [zonesRes, usersRes, entRes] = await Promise.all([
       axios.get('/api/storage-zones', { params: { include_inactive: '1', all_entities: '1' } }),
       axios.get('/api/users'),
-      axios.get('/api/auth/entities')
+      // shell.js 캐시 재사용(window.loadEntities) — /storage-zones·/settings 진입 시 /auth/entities 2회 → 1회(2026-09-09)
+      (typeof window.loadEntities === 'function'
+        ? window.loadEntities().then(function(list) { return { data: { success: true, data: list } }; })
+        : axios.get('/api/auth/entities'))
     ]);
     storageZones = zonesRes.data.success ? zonesRes.data.data : [];
     allUsers = usersRes.data.success ? usersRes.data.data : [];

@@ -22,10 +22,19 @@ var TYPE_CONFIG = {
     MATERIAL:{ label: '원자재', badgeClass: 'bg-green-50 text-green-700' }
 };
 
+// 카테고리 응답은 페이지 안에서 공유한다 — core.js(필터)와 tabs.js(탭)가 각각 GET 해 초기화 때 2회 나가던 것을 1회로.
+// (2026-09-09 실측) 같은 페이지 번들이라 전역 1개로 묶는다. 실패 시 캐시를 비워 재시도 가능.
+window.fetchItemCategories = window.fetchItemCategories || function() {
+    if (!window.__itemCategoriesReq) {
+        window.__itemCategoriesReq = axios.get('/api/items/categories').catch(function(e) { window.__itemCategoriesReq = null; throw e; });
+    }
+    return window.__itemCategoriesReq;
+};
+
 // 카테고리 목록 동적 로딩 (DB에서)
 async function loadCategories() {
     try {
-        var response = await axios.get('/api/items/categories');
+        var response = await window.fetchItemCategories();
         if (response.data.success) {
             var cats = response.data.data;
             var filterSel = document.getElementById('itemCategoryFilter');

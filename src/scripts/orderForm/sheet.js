@@ -107,7 +107,11 @@
             // 법인 목록 로드 (품목 담당·청구 법인 셀렉트용)
             (function loadEntities() {
                 if (typeof axios === 'undefined') return;
-                axios.get('/api/auth/entities').then(function(res) {
+                // shell.js 캐시 재사용(window.loadEntities) — 주문서 진입마다 /auth/entities 2회 → 1회(2026-09-09)
+                (typeof window.loadEntities === 'function'
+                    ? window.loadEntities().then(function(list) { return { data: { success: true, data: list } }; })
+                    : axios.get('/api/auth/entities')
+                ).then(function(res) {
                     if (!res.data || !res.data.success) return;
                     window.__entities = res.data.data || [];
                     // split billing P2: 주문 레벨 '청구 법인' 셀렉트 폐기 → 품목 담당별 도출 표시(updateBillingHint)

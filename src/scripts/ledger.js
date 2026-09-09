@@ -2524,7 +2524,7 @@ async function sendLedgerFax() {
 }
 
 // Initial load
+// loadAgingData() 는 setQuickDate → applyDateFilter 안에서 이미 불린다 — 여기서 또 부르면 /ledger/receivables 가 2회 나간다(2026-09-09 실측)
 setQuickDate('thisMonth');
 loadOverdueWarning();
-loadAgingData();
 loadBillingPending();

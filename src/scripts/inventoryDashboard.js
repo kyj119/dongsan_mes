@@ -20,7 +20,10 @@ async function loadDashboard() {
     //   이걸 표시하지 않으면 같은 자재를 매주 중복 발주하게 된다(2026-08-26).
     var [dashRes, entRes, openRes] = await Promise.all([
       axios.get('/api/inventory/dashboard/zones', { params: { zone_id: selectedZoneId || undefined } }),
-      axios.get('/api/auth/entities'),
+      // shell.js 캐시 재사용(window.loadEntities) — 진입·구역 전환마다 /auth/entities 를 다시 받지 않는다(2026-09-09)
+      (typeof window.loadEntities === 'function'
+        ? window.loadEntities().then(function(list) { return { data: { success: true, data: list } }; })
+        : axios.get('/api/auth/entities')),
       axios.get('/api/purchase-requests/open-items').catch(function() { return { data: { success: false } }; })
     ]);
     dashData = dashRes.data.success ? dashRes.data.data : null;

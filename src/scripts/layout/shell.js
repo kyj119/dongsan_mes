@@ -1560,7 +1560,20 @@ async function pollNotifCount() {
 }
 
 // Generate scheduled alerts then poll count
+// 알림 생성(POST /generate = 읽기 4 + 쓰기 최대 5)은 **브라우저당 10분에 1회**로 제한한다.
+// 페이지가 전부 full document 라 진입마다 shell 이 다시 돌고, 그때마다 generate 가 직렬 큐 맨 앞에 서서
+// 페이지 데이터를 밀어냈다(2026-09-09 실측: 68/72 페이지·중앙 72ms·p90 164ms·최대 474ms).
+// 스탬프는 localStorage 라 탭 간 공유 — 탭 10개가 각자 생성하지 않는다. 실패해도 10분 뒤 재시도.
+var NOTIF_GEN_GAP_MS = 600000;
+function notifGenDue() {
+  try {
+    var at = parseInt(localStorage.getItem('notifGenAt') || '0', 10) || 0;
+    return (Date.now() - at) >= NOTIF_GEN_GAP_MS;
+  } catch(e) { return true; }
+}
 async function generateAndPoll() {
+  if (!notifGenDue()) { pollNotifCount(); return; }
+  try { localStorage.setItem('notifGenAt', String(Date.now())); } catch(e) {}
   try {
     await fetch('/api/notifications/generate', {
       method: 'POST',

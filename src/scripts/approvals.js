@@ -122,13 +122,24 @@ async function loadPending() {
   } catch (e) { console.error(e); }
 }
 
+// 내 요청/전체 요청은 같은 GET /api/approvals 를 쓴다. 초기화에서 둘이 동시에 불려 같은 응답을 2번 받아 오던 것을
+// 진행 중 요청 1건으로 합친다(2026-09-09 실측). 완료 후엔 캐시를 비워 이후 갱신은 매번 새로 받는다.
+let _approvalsListPromise = null;
+function fetchApprovalsList() {
+  if (!_approvalsListPromise) {
+    _approvalsListPromise = axios.get('/api/approvals')
+      .then(res => res.data.data || [])
+      .finally(() => { _approvalsListPromise = null; });
+  }
+  return _approvalsListPromise;
+}
+
 async function loadMyRequests() {
   try {
     // #421: 로딩 표시(일관 포맷)
     const _mt = document.getElementById('my-requests-tbody');
     if (_mt && window.dsSkeleton) _mt.innerHTML = window.dsSkeleton.loadingRow(6);
-    const res = await axios.get('/api/approvals');
-    myRequests = res.data.data || [];
+    myRequests = (await fetchApprovalsList()).slice(); // 두 목록이 한 배열을 공유하지 않도록 복사
     renderMyRequests();
   } catch (e) { console.error(e); }
 }
@@ -138,8 +149,7 @@ async function loadAllRequests() {
     // #421: 로딩 표시(일관 포맷)
     const _at = document.getElementById('all-requests-tbody');
     if (_at && window.dsSkeleton) _at.innerHTML = window.dsSkeleton.loadingRow(7);
-    const res = await axios.get('/api/approvals');
-    allRequests = res.data.data || [];
+    allRequests = (await fetchApprovalsList()).slice();
     renderAllRequests();
   } catch (e) { console.error(e); }
 }

@@ -52,7 +52,9 @@ var LOG_TYPE_MAP = {
 
 // ─── 탭 전환 ────────────────────────────────────────────────────────────────
 
-function eqSwitchTab(tab) {
+// opts.skipLayoutLoad: 딥링크 초기화 전용 — loadEquipment() 완료 시점에 loadLayout() 이 한 번 더 불리므로
+//   여기서도 부르면 layout-data·background 가 2회씩 나간다(2026-09-09 실측). 탭 클릭 경로는 그대로 로드.
+function eqSwitchTab(tab, opts) {
     currentTab = tab;
     document.getElementById('panelList').classList.toggle('hidden', tab !== 'list');
     document.getElementById('panelLayout').classList.toggle('hidden', tab !== 'layout');
@@ -85,7 +87,7 @@ function eqSwitchTab(tab) {
     closeDetail(); // 탭 전환 시 상세 패널 닫기 (다른 탭으로 새어나오는 것 방지)
 
     if (tab === 'layout') {
-        loadLayout();
+        if (!(opts && opts.skipLayoutLoad)) loadLayout();
     } else if (tab === 'dashboard') {
         loadEquipmentData();
     } else if (tab === 'queue') {
@@ -1506,6 +1508,7 @@ document.addEventListener('click', function(e) {
     loadEquipment();
     if (tab === 'dashboard' || tab === 'layout' || tab === 'queue') {
         currentTab = tab;
-        eqSwitchTab(tab);
+        // layout 은 loadEquipment() 완료 시 loadLayout() 이 실행되므로 여기서 또 부르지 않는다(중복 2회 차단)
+        eqSwitchTab(tab, { skipLayoutLoad: tab === 'layout' });
     }
 })();
