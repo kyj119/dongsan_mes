@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-09-09T03:45:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-09-09T09:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,31 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **21** (`list_issues(state:OPEN,label:auto-improve)` 실측, 20→21 #640 신규) |
+| 🆕 new | **22** (`list_issues(state:OPEN,label:auto-improve)` 실측, 21→22 #641 신규) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **542** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 3 UX/기능 감사 (2026-09-09T09:20):**
+> - **방법**: 세션 시작 시 detached HEAD `57891a1`였으나 얕은 clone(50커밋) → 로컬 `main`은 `eecca71`(10커밋 뒤처짐) → `git fetch --unshallow`(2,850여 커밋 확보) + `git checkout main` + `git merge --ff-only origin/main`으로 정합. `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area3 방법 라인 HEAD `d4b9528`)**: 웹앱 범위 diff **44커밋** — `src/scripts`+`src/pages` 좁힌 화면 churn은 **8커밋**(cashflow §6 화면 힌트·청구서 단가표기 전환·폴링 가시성 게이팅·매입 후보 큐 신설 3단계·입고 DRAFT확정 흐름·구역선택기 목록보기 토글·은행/카드 역할데이터 표시). 나머지는 회계축(계정 표준화·차입금 분리) 데이터 정정으로 화면 변경 없음(Area1/2/5/6이 이미 각자 렌즈로 정독).
+> - **신규 페이지 「매입 후보 큐」(`purchaseCandidates.ts`/`.js`, 3커밋에 걸쳐 신설) 전문 직독 — 🔴 확정 결함 발견**: `a606cdf6`(09-08)이 「거래처별 대조」 표 헤더에 `<th>발주 담당</th>`을 추가하며 `colspan`을 8→9로만 고치고 **행 렌더 함수(`pcqRenderSuppliers`)에 셀을 추가하지 않아** 헤더 9칸·데이터 8칸 불일치가 남음 → 3번째 컬럼(발주 담당)부터 **통장지급·등록발주·차액·최근·판정·링크가 전부 한 칸씩 밀려 표시**(통장지급 금액이 "발주 담당" 헤더 아래, 등록발주가 "통장 지급" 아래 식). API는 `owner_name`을 이미 응답에 내려주고 있어(`routes/purchaseCandidates.ts:177`) 데이터는 있으나 화면에 셀 자체가 없음. 바로 다음 커밋(`7c1cf06f`)이 별도 하단 표(「거래처 담당」, `pcqOwnBody`)를 새로 만들면서 위 결함을 못 알아챈 것으로 보임 — CLAUDE.md 「조용한 격하」 클래스(200 뜨고 화면도 정상처럼 보이지만 숫자가 잘못된 헤더 아래 표시)와 동형. 재무 대조 화면이라 통장지급/발주액/차액을 오독할 위험 → **#641 등록**(colspan 수정이 아니라 `<td>` 1개 추가라 공수 S, 하지만 UI 마크업 변경이라 정책상 issue-only).
+> - 나머지 owner-테이블(`pcqOwnBody`, 6헤더/6셀)·행별 명세(`pcqRowBody`, 6헤더/6셀)는 헤더-데이터 칸수 일치 확인, 빈 상태·로딩·에러 메시지·XSS escapeHtml(`pcqEsc`) 전부 일관 적용 확인 — 정상.
+> - **입고 DRAFT→확정 흐름(`573ea40c`, `receiving.js`)**: `confirmPo()`가 네이티브 `confirm()` → `axios.patch` → `showToast` 정상 패턴, 서버가 전이 규칙(비관리자는 DRAFT→CONFIRMED 1개만) + 구역 소유 검증을 함께 게이트(같은 커밋) — 더블서브밋 가드는 없으나 서버가 상태전이형이라 두 번째 호출은 자연히 실패하는 구조, 신규 결함 없음.
+> - **청구서 단가표기 전환(`a1c943dc`, 12파일)**: 전용 게이트 `test:unit-price-display`(29항목, `test:calc` 편입)를 이 커밋 자신이 신설 — Area1/2가 이미 재실행 확인(전항목 통과), 이번 사이클은 화면 노출면(invoice/orderForm/orders/portal/quotation)만 스팟 확인, 표시 형식 불일치 없음.
+> - **폴링 가시성 게이팅(`4bdf8b39`)**: `document.hidden` 가드 추가는 성능 목적이라 UX 결함 클래스 대상 아님, 화면 동작 변화 없음(숨김 탭에서만 스킵).
+> - **구역선택기 목록보기 토글(`a606cdf6`, `zonePicker.js`)**: 칩/목록 전환 시 버튼 상태만 갱신하고 본문 재렌더 — 상태 불일치 없음, XSS escapeHtml 일관.
+> - **은행/카드 역할데이터(`bb172eb6`)**: 신규 mutate 없음(표시 전용 필드 추가), showConfirm 오용·더블서브밋 대상 아님.
+> - **standing scan 1: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 2: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 6런(HEAD `57891a1` 포함) 전부 `conclusion:success`.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` totalCount **21**(신규 등록 전) 기존 21건 전건 일치(#613·#616·#617·#622·#624~640) 확인 후 #641 신규 생성.
+> - **backlog↔GitHub 절대값 재동기화**: open **22**(21→22, #641 신규) · done **542**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 이번 발견(헤더-데이터 칸수 불일치)은 기존 「?raw concat 스코프」·「백엔드 먼저·화면 나니」류와 결이 다른 신규 클래스이나, 발생이 이번 1건뿐이라 아직 standing scan으로 승격하지 않음 — 재발 시 「신규 `<th>` 추가 커밋은 같은 커밋에서 행 렌더 `<td>` 개수를 diff로 대조」레시피를 codify.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 9→10건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 1건(#641 매입 후보 큐 거래처별 대조 표 헤더-데이터 칸수 불일치 — 재무 화면 숫자가 잘못된 헤더 아래 표시, S), 자동수정 0건(표 마크업 변경이라 정책상 issue-only), done-sync: open 21(21→22)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-09-09T03:45):**
 > - **방법**: 세션 시작 시 detached HEAD `9bc875c`(origin/main과 동일)였으나 얕은 clone(50커밋) → `git checkout main`(4커밋 뒤처짐) + `git merge --ff-only origin/main`으로 정합 + `git fetch --unshallow`(2,840여 커밋 확보). `npm ci`(0→81), `npx tsc --noEmit` clean.
