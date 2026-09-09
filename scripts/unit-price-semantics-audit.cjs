@@ -141,7 +141,13 @@ SELECT COUNT(*) AS n, COUNT(DISTINCT oi.item_id) AS items, COALESCE(SUM(oi.amoun
  WHERE oi.pricing_method IS NOT NULL
    AND oi.pricing_method <> COALESCE(i.pricing_method, 'FIXED')`
 
-/** 자(尺) 규격이 cm 로 잘못 저장된 라인 — 되나누면 100배가 된다. 조용히 빼지 않고 센다. */
+/**
+ * 10cm 이하 규격 라인 — 되나누면 분모가 0.01㎡ 수준이라 ㎡단가가 폭주한다(2026-09-09 실측 100배).
+ * ★두 종류가 섞여 있고 코드는 구분할 수 없다:
+ *   ① 자(尺) 규격 오저장 — 판재 `3*6`·`4*8` 이 cm 칸에 들어간 것. **규격을 고쳐야 한다**(0601 이 18건 처리).
+ *   ② 진짜 소형 — 락커번호 9×3cm 445장·명패 7×2cm 500장 같은 실제 소품. **건드리면 안 된다**.
+ * 판별은 장당가를 정가×면적과 대조해 사람이 한다. 그래서 자동 정정에서 빼고 **세기만** 한다.
+ */
 const SQL_RULER = `
 SELECT COUNT(*) AS n, COALESCE(SUM(oi.amount), 0) AS amt
   FROM order_items oi JOIN items i ON i.id = oi.item_id
@@ -157,7 +163,7 @@ const drift = d1(SQL_DRIFT)[0] || { n: 0, items: 0, amt: 0 }
 
 console.log(`${C.b}단가 의미 감사${C.x} ${C.d}(${REMOTE ? 'prod' : '로컬'} D1)${C.x}`)
 console.log(`  ${C.d}반올림 한계 ${floor.n}건 · 격차 합 ${won(floor.gap_abs)}원 · 최대 ${won(floor.gap_max)}원 — 정정 불가, 정상${C.x}`)
-if (ruler.n) console.log(`  ${C.y}자(尺) 규격 오저장 ${ruler.n}건 제외${C.x} ${C.d}(3x6·4x8 등 — 되나누면 100배가 된다. 규격 자체를 고쳐야 한다)${C.x}`)
+if (ruler.n) console.log(`  ${C.y}10cm 이하 규격 ${ruler.n}건 제외${C.x} ${C.d}(되나누면 ㎡단가가 폭주 — 자 규격 오저장이면 규격을 고치고, 진짜 소품이면 그대로 둔다)${C.x}`)
 if (drift.n) console.log(`  ${C.y}축 드리프트 ${drift.n}라인 / 품목 ${drift.items}종${C.x} ${C.d}(라인 스냅샷 ≠ 품목 현재 축 — 정정인지 정책변경인지 사람이 고른다)${C.x}`)
 
 if (!rows.length) {
