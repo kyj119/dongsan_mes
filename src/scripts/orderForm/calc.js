@@ -625,7 +625,15 @@
                         quantity: parseInt(document.querySelector(`[name="quantity_${id}"]`)?.value || 1),
                         unit: document.querySelector(`[name="item_unit_${id}"]`)?.value || 'EA',
                         unit_price: parseMoney(document.querySelector(`[name="unit_price_${id}"]`)?.value),
+                        // 과금 규칙 스냅샷(0600) — 이 둘이 라인에 저장되어, 품목 축을 나중에 바꿔도
+                        //   이 주문은 그때 규칙으로 계산된다. 히든이 편집 화면에서 값을 되돌려 준다.
                         pricing_method: pmItem,
+                        min_billing_side_cm: (function() {
+                            var v = document.querySelector(`[name="min_billing_side_${id}"]`)?.value;
+                            if (v === undefined || v === null || v === '') return undefined;  // 0 은 유효값
+                            var n = parseFloat(v);
+                            return isFinite(n) && n >= 0 ? n : undefined;
+                        })(),
                         // 에누리 = 금액을 손으로 고친 행만 전송한다. 안 보내면 서버가 자동값을 쓴다
                         //   (utils/orderLineAmount 의 hasManual 판정과 짝). 전엔 amount 를 아예 안 보내
                         //   수동 수정이 조용히 유실됐다.

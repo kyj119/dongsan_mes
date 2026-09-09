@@ -38,6 +38,39 @@ function getCardGroup(item: any): string | null {
 // 법인 ID: 동산기획=1, 선명=2 (entities 시드 기준 고정).
 const ENTITY_DONGSAN = 1
 const ENTITY_SEONMYEONG = 2
+/**
+ * 라인의 **과금 규칙**을 정한다 — `pricing_method` · `min_billing_side_cm` (0600 스냅샷).
+ *
+ * ★라인 스냅샷이 품목보다 우선이다. `order_items` 는 원래 스냅샷 테이블인데(`item_name`·`unit` 을 복사한다)
+ *   `unit_price` 를 해석하는 과금 규칙만 빠져 있어서, 재계산할 때마다 `items` 를 조인해
+ *   **오늘의 축으로 과거를 다시 읽고** 있었다. 품목 축을 한 번 건드리면 과거 주문 전량의 단가 뜻이
+ *   조용히 바뀐다 — 2026-09-08~09 에 실제로 두 번 겪었다(UV 판재 501건 · 거치대 6종 231건).
+ *   견적은 이미 라인 스냅샷으로 계산하고 있었다(`quotations.ts:293`) — 주문만 예외였다.
+ *
+ * 품목값은 **폴백**이다: 새 라인이거나 품목을 바꾼 라인은 폼이 축을 모르므로 품목 현재값을 쓴다.
+ * ⚠️ `min_billing_side_cm` 은 **0 이 유효값**이다(최소청구 없음 = UV 판재). `||` 로 쓰면 0 이 되살아난다.
+ */
+export function resolveLineAxis(
+  item: any,
+  pricingMethodMap: Map<number, string>,
+  minSideMap: Map<number, number>
+): { pricingMethod: string; minSide: number | null } {
+  const raw = item?.pricing_method
+  const pricingMethod = (typeof raw === 'string' && raw.trim())
+    ? raw.trim().toUpperCase()
+    : (item?.item_id ? (pricingMethodMap.get(item.item_id) || 'FIXED') : 'FIXED')
+
+  const rawMs = item?.min_billing_side_cm
+  let minSide: number | null
+  if (rawMs === null || rawMs === undefined || rawMs === '') {
+    minSide = item?.item_id ? (minSideMap.get(item.item_id) ?? null) : null
+  } else {
+    const n = Number(rawMs)
+    minSide = Number.isFinite(n) && n >= 0 ? n : null
+  }
+  return { pricingMethod, minSide }
+}
+
 export function recommendAssignedEntity(item: any, billingEntityId: number | null): number | null {
   const group = getCardGroup(item)
   let entity: number | null = null

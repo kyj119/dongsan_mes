@@ -19,7 +19,7 @@ import { getEntityId, entityFilter, findForeignAnalysisIds, foreignAnalysisError
 import { kstYmd, kstYmdCompact } from '../../utils/kstDate'
 import { ORDER_STATUS_LABELS } from '../../utils/statusLabels'
 import { thumbRef, resolveGroupByAiIndex, type AnalysisGroup } from '../../utils/thumbnailStore'
-import { recommendAssignedEntity, recalcOrderBillingGroups, generateCardsForOrder } from './helpers'
+import { recommendAssignedEntity, recalcOrderBillingGroups, generateCardsForOrder, resolveLineAxis } from './helpers'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { evaluateClientCredit } from '../ledger/credit-helpers'
 
@@ -144,11 +144,12 @@ ordersCreateRouter.post('/', async (c) => {
     let vatAmount = 0
     for (const item of orderData.items) {
       if (item.price_status === 'PENDING') { continue }
-      const pricingMethod = item.item_id ? (pricingMethodMap.get(item.item_id) || 'FIXED') : 'FIXED'
+      // 과금 규칙 = 라인 스냅샷 우선(0600). 품목값은 새 라인의 폴백이다.
+      const { pricingMethod, minSide } = resolveLineAxis(item, pricingMethodMap, minSideMap)
       // 금액 산식 = utils/orderLineAmount 단일 소스. 수동 금액(에누리)이 오면 final 이 그 값이 된다.
       //   총액·부가세는 **최종 청구액 기준**이어야 한다 — 자동값으로 잡으면 에누리가 총액에 반영되지 않아
       //   행 합계와 주문 총액이 갈린다(화면에서 이미 그렇게 어긋나 있었다).
-      const itemAmount = computeLineAmount({ ...item, min_billing_side_cm: item.item_id ? minSideMap.get(item.item_id) : null }, pricingMethod).final
+      const itemAmount = computeLineAmount({ ...item, min_billing_side_cm: minSide }, pricingMethod).final
       totalAmount += itemAmount
       if (item.vat_included) {
         vatAmount += itemAmount * vatRatePost
@@ -258,7 +259,7 @@ ordersCreateRouter.post('/', async (c) => {
     // Insert order items — two-pass batch for parent_item_id support (#63 원자화)
     // Pre-resolve: item detail lookups for items missing name
     // amt = 금액 3종(자동·최종·에누리). INSERT 에서 auto_amount·line_discount 를 기록해야 하므로 함께 들고 간다.
-    const parentItems: Array<{ idx: number; item: any; itemName: string | null; categoryName: string | null; unit: string; itemAmount: number; amt: LineAmount }> = []
+    const parentItems: Array<{ idx: number; item: any; itemName: string | null; categoryName: string | null; unit: string; itemAmount: number; amt: LineAmount; axis: { pricingMethod: string; minSide: number | null } }> = []
     const itemIdsToLookup: number[] = []
     const lookupIndices: number[] = []
 
@@ -266,12 +267,13 @@ ordersCreateRouter.post('/', async (c) => {
       const item = orderData.items[i]
       if (item.parent_client_id) continue
 
-      const itemPricingMethod = item.item_id ? (pricingMethodMap.get(item.item_id) || 'FIXED') : 'FIXED'
+      const axis = resolveLineAxis(item, pricingMethodMap, minSideMap)
+      const itemPricingMethod = axis.pricingMethod
       // 금액 3종(자동·최종·에누리)을 함께 들고 다닌다 — INSERT 에서 전부 기록해야 하기 때문.
-      const amt = computeLineAmount({ ...item, min_billing_side_cm: item.item_id ? minSideMap.get(item.item_id) : null }, itemPricingMethod)
+      const amt = computeLineAmount({ ...item, min_billing_side_cm: axis.minSide }, itemPricingMethod)
       const itemAmount = amt.final
 
-      const entry = { idx: i, item, itemName: item.item_name || null, categoryName: item.category_name || null, unit: item.unit || 'EA', itemAmount, amt }
+      const entry = { idx: i, item, itemName: item.item_name || null, categoryName: item.category_name || null, unit: item.unit || 'EA', itemAmount, amt, axis }
       parentItems.push(entry)
 
       if (item.item_id && !entry.itemName) {
@@ -299,7 +301,7 @@ ordersCreateRouter.post('/', async (c) => {
 
     // Pass 1: batch insert parent/regular rows
     const orderEntityId = billingEntityId
-    const pass1Stmts = parentItems.map(({ idx, item, itemName, categoryName, unit, itemAmount, amt }) => {
+    const pass1Stmts = parentItems.map(({ idx, item, itemName, categoryName, unit, itemAmount, amt, axis }) => {
       // 담당 법인: 요청 명시값 우선, 없으면 카드그룹 기반 추천. NULL=청구 법인 담당(투명)
       const assignedEntity = (item.assigned_entity_id !== undefined && item.assigned_entity_id !== null)
         ? item.assigned_entity_id
@@ -313,8 +315,10 @@ ordersCreateRouter.post('/', async (c) => {
           post_processing, content, specification, sort_order,
           ai_group_index, scale_factor, ai_analysis_id, parent_item_id, finishing, price_status,
           assigned_entity_id, assignment_status,
-          auto_amount, line_discount, discount_reason, discount_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+          auto_amount, line_discount, discount_reason, discount_by,
+          -- 과금 규칙 스냅샷(0600) — 품목 축이 나중에 바뀌어도 이 라인은 그때 규칙으로 재현된다
+          pricing_method, min_billing_side_cm
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         orderId,
         item.item_id || null,
@@ -344,7 +348,9 @@ ordersCreateRouter.post('/', async (c) => {
         item.price_status === 'PENDING' ? 0 : amt.auto,
         item.price_status === 'PENDING' ? 0 : amt.discount,
         amt.manual ? ((item as { discount_reason?: string }).discount_reason || null) : null,
-        amt.manual ? (user?.id ?? null) : null
+        amt.manual ? (user?.id ?? null) : null,
+        axis.pricingMethod,
+        axis.minSide
       )
     })
 
@@ -824,10 +830,11 @@ ordersCreateRouter.post('/:id/items', async (c) => {
       const itemName = item.item_name || lookup?.item_name || 'Unknown'
       const categoryName = item.category_name || lookup?.category || null
       const unit = item.unit || lookup?.unit || 'EA'
-      const pm = item.item_id ? (pricingMethodMap.get(item.item_id) || 'FIXED') : 'FIXED'
+      const lineAxis = resolveLineAxis(item, pricingMethodMap, minSideMap)
+      const pm = lineAxis.pricingMethod
       const isPending = item.price_status === 'PENDING'
       // 금액 산식 = utils/orderLineAmount 단일 소스(라인 추가 경로도 동일 규칙·에누리 지원)
-      const amt = computeLineAmount({ ...item, min_billing_side_cm: item.item_id ? minSideMap.get(item.item_id) : null }, pm)
+      const amt = computeLineAmount({ ...item, min_billing_side_cm: lineAxis.minSide }, pm)
       const amount = amt.final
       const vatIncluded = item.vat_included !== undefined ? (item.vat_included ? 1 : 0) : 1
       if (!isPending) {
@@ -846,8 +853,10 @@ ordersCreateRouter.post('/:id/items', async (c) => {
           post_processing, content, specification, sort_order,
           ai_group_index, scale_factor, ai_analysis_id, parent_item_id, finishing, price_status,
           assigned_entity_id, assignment_status,
-          auto_amount, line_discount, discount_reason, discount_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+          auto_amount, line_discount, discount_reason, discount_by,
+          -- 과금 규칙 스냅샷(0600) — 품목 축이 나중에 바뀌어도 이 라인은 그때 규칙으로 재현된다
+          pricing_method, min_billing_side_cm
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         orderId, item.item_id || null, itemName, categoryName,
         item.width_mm || item.width || null, item.height_mm || item.height || null,
@@ -859,7 +868,8 @@ ordersCreateRouter.post('/:id/items', async (c) => {
         assignedEntity, assignmentStatus,
         isPending ? 0 : amt.auto, isPending ? 0 : amt.discount,
         amt.manual ? ((item as { discount_reason?: string }).discount_reason || null) : null,
-        amt.manual ? (user?.id ?? null) : null
+        amt.manual ? (user?.id ?? null) : null,
+        lineAxis.pricingMethod, lineAxis.minSide
       ))
     }
 

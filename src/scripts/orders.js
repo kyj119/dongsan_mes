@@ -1226,9 +1226,10 @@ function showOrderModal(order, cards, autoJobs) {
         <td class="px-4 py-2" title="${escapeHtml(item.item_name || '')}">${namePrefix}${escapeHtml(item.item_name || '-')}${lineFileHtml}</td>
         <td class="px-4 py-2 text-center">${sizeStr}</td>
         <td class="px-4 py-2 text-center tabular-nums">${item.quantity || 1} ${item.unit || 'EA'}</td>
-        <!-- 내부 화면이라 장당가 + ㎡단가 병기 — 영업·디자이너는 두 축을 다 봐야 한다.
-             대외 문서(거래명세서·견적서·고객포털)는 장당가 단독. 정본 = shared/displayUnitPrice.js -->
-        <td class="px-4 py-2 text-right tabular-nums">${isChild ? '-' : window.MES_UP.dual(item)}</td>
+        <!-- ★보이는 화면은 **개수 단가만** 찍는다(2026-09-09 용준님 확정). ㎡ 축은 계산·저장에만 남는다
+             (order_items.unit_price + pricing_method 스냅샷) — 화면에 두 축을 같이 띄우면
+             읽는 사람이 어느 쪽으로 검산해야 할지 매번 고르게 된다. 정본 = shared/displayUnitPrice.js -->
+        <td class="px-4 py-2 text-right tabular-nums">${isChild ? '-' : (window.MES_UP.perUnit(item).toLocaleString() + '원')}</td>
         <td class="px-4 py-2 text-right tabular-nums">${isChild ? '-' : (item.amount?.toLocaleString() || 0) + '원'}</td>
         <td class="px-4 py-2" title="${escapeHtml(item.content || '')}">${escapeHtml(item.content || '-')}</td>
         <td class="px-4 py-2" title="${escapeHtml(ppText)}">${ppText}</td>

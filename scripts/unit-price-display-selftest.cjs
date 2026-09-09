@@ -48,14 +48,17 @@ function eq(name, got, want) {
 const REAL = { pricing_method: 'AREA', unit_price: 2778, quantity: 30, width: 60, height: 180, amount: 150000 }
 eq('E2-20260831-041: 장당가', UP.perUnit(REAL), 5000)
 eq('E2-20260831-041: ㎡단가', UP.perSqm(REAL), 2778)
-eq('E2-20260831-041: 병기', UP.dual(REAL), '5,000원 (2,778원/㎡)')
+// ★화면은 개수 단가만 찍는다(2026-09-09). 병기(dual)는 폐기했다 — 두 축을 같이 띄우면
+//   읽는 사람이 어느 쪽으로 검산할지 매번 고르게 된다. ㎡ 축은 저장·계산에만 남는다.
+eq('E2-20260831-041: 표시는 개수 단가', UP.perUnit(REAL).toLocaleString('ko-KR') + '원', '5,000원')
+eq('dual 은 제거됐다', typeof UP.dual, 'undefined')
 
 eq('FIXED: 저장 단가가 곧 장당가',
   UP.perUnit({ pricing_method: 'FIXED', unit_price: 9000, quantity: 2, amount: 18000 }), 9000)
 eq('FIXED: 병기할 ㎡단가 없음',
   UP.perSqm({ pricing_method: 'FIXED', unit_price: 9000, quantity: 2, amount: 18000 }), null)
-eq('FIXED: 병기 문자열은 장당가 단독',
-  UP.dual({ pricing_method: 'FIXED', unit_price: 9000, quantity: 2, amount: 18000 }), '9,000원')
+eq('FIXED: 표시도 장당가',
+  UP.perUnit({ pricing_method: 'FIXED', unit_price: 9000, quantity: 2, amount: 18000 }), 9000)
 
 // 에누리 — 표기는 **최종 청구액** 기준이어야 명세서와 맞는다
 eq('에누리: 자동 100,000 → 실청구 90,000 · 10장',
@@ -105,7 +108,7 @@ const SITES = [
   ['거래명세서', 'src/scripts/invoice.js', 'MES_UP.perUnit(it)'],
   ['견적서', 'src/scripts/quotation.js', 'MES_UP.perUnit(it)'],
   ['고객포털', 'src/pages/portal/portalDocument.ts', 'MES_UP.perUnit(r)'],
-  ['주문상세(병기)', 'src/scripts/orders.js', 'MES_UP.dual(item)'],
+  ['주문상세(개수 단가)', 'src/scripts/orders.js', 'MES_UP.perUnit(item)'],
   ['주문서 입력칸', 'src/scripts/orderForm/calc.js', 'MES_UP.perUnit('],
 ]
 for (const [label, rel, needle] of SITES) {

@@ -696,15 +696,22 @@ quotationsRouter.post('/:id/convert-to-order', requireEditOrRole('/quotations', 
           width, height, quantity, unit, unit_price, amount, vat_included,
           post_processing, content, sort_order,
           ai_group_index, scale_factor, parent_item_id, finishing,
-          assigned_entity_id, assignment_status
-        ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, NULL, ?, ?, NULL)
+          assigned_entity_id, assignment_status,
+          -- ★견적의 과금 규칙을 주문으로 **넘긴다**(0600). 견적서는 원래 immutable snapshot 인데
+          --   주문에 받을 칸이 없어 변환 시점에 축이 소실되고 있었다 — 그러면 주문을 나중에 저장할 때
+          --   품목의 오늘 축으로 다시 계산되어 견적과 금액이 갈린다.
+          pricing_method, min_billing_side_cm
+        ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, ?, ?)
       `).bind(
         orderId, qi.item_id, qi.item_name,
         qi.width, qi.height, qi.quantity, qi.unit,
         qi.unit_price, qi.amount,
         qi.post_processing, qi.content, qi.sort_order,
         qi.ai_group_index, qi.scale_factor, qi.finishing,
-        qi.assigned_entity_id ?? null
+        qi.assigned_entity_id ?? null,
+        qi.pricing_method || null,
+        // 견적 라인엔 최소청구 칸이 없다 — 품목값을 그대로 쓰라는 뜻으로 NULL 을 남긴다.
+        null
       ))
       parentQIds.push(qi.id as number)
     }

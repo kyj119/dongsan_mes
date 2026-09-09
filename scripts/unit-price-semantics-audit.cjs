@@ -55,11 +55,15 @@ function d1(sql) {
  *   그 외            → 단가 × 수량, 100원 반올림
  * 청구 치수 = 10cm 올림 후 `items.min_billing_side_cm`(기본 100). ★UV 판재는 0 이라 하드코딩 금지.
  */
+// ★축은 **라인 스냅샷 우선**(0600) — 서버 계산(orders/helpers.resolveLineAxis)과 같은 우선순위여야 한다.
+//   품목값으로 재면 축을 바꾼 직후 과거 라인이 전부 오탐으로 뜬다.
+// ⚠️ 이 파일의 d1() 은 SQL 의 공백을 접는다 — SQL 문자열 안에 `--` 주석을 넣으면 뒤가 통째로 삼켜진다.
 const SQL = `
 WITH base AS (
   SELECT oi.id, oi.order_id, oi.item_name, oi.unit_price, oi.quantity, oi.amount,
          oi.width, oi.height, oi.price_status, oi.line_discount,
-         i.pricing_method AS pm, COALESCE(i.min_billing_side_cm, 100) AS ms
+         COALESCE(oi.pricing_method, i.pricing_method) AS pm,
+         COALESCE(oi.min_billing_side_cm, i.min_billing_side_cm, 100) AS ms
     FROM order_items oi LEFT JOIN items i ON i.id = oi.item_id
 ),
 dim AS (
@@ -96,7 +100,8 @@ const SQL_FLOOR = `
 WITH base AS (
   SELECT oi.id, oi.unit_price, oi.quantity, oi.amount, oi.width, oi.height,
          oi.price_status, oi.line_discount,
-         i.pricing_method AS pm, COALESCE(i.min_billing_side_cm, 100) AS ms
+         COALESCE(oi.pricing_method, i.pricing_method) AS pm,
+         COALESCE(oi.min_billing_side_cm, i.min_billing_side_cm, 100) AS ms
     FROM order_items oi LEFT JOIN items i ON i.id = oi.item_id
 ),
 dim AS (
@@ -122,6 +127,20 @@ SELECT COUNT(*) AS n, COALESCE(SUM(ABS(recalc - amount)), 0) AS gap_abs,
    AND ABS(recalc - amount) > 100 AND new_price = unit_price
    AND NOT (pm = 'AREA' AND width > 0 AND height > 0 AND width <= 10 AND height <= 10)`
 
+/**
+ * 축 드리프트 — 라인 스냅샷과 품목 현재 축이 다른 라인.
+ *
+ * 이건 **결함이 아니라 결정 대기**다. 둘 중 하나이고, 사람만 구분할 수 있다:
+ *   ① 정정      = 원래 그 축이 아니었다        → 과거도 다시 읽는 게 맞다(0596 재실행)
+ *   ② 정책 변경 = 오늘부터 다르게 청구한다      → 과거는 그대로 둔다(아무것도 안 함)
+ * 스냅샷이 없던 동안은 이 구분 자체가 불가능해서 **늘 ①로 처리**됐다.
+ */
+const SQL_DRIFT = `
+SELECT COUNT(*) AS n, COUNT(DISTINCT oi.item_id) AS items, COALESCE(SUM(oi.amount), 0) AS amt
+  FROM order_items oi JOIN items i ON i.id = oi.item_id
+ WHERE oi.pricing_method IS NOT NULL
+   AND oi.pricing_method <> COALESCE(i.pricing_method, 'FIXED')`
+
 /** 자(尺) 규격이 cm 로 잘못 저장된 라인 — 되나누면 100배가 된다. 조용히 빼지 않고 센다. */
 const SQL_RULER = `
 SELECT COUNT(*) AS n, COALESCE(SUM(oi.amount), 0) AS amt
@@ -134,10 +153,12 @@ const won = (n) => Number(n).toLocaleString('ko-KR')
 const rows = d1(SQL)
 const floor = d1(SQL_FLOOR)[0] || { n: 0, gap_abs: 0, gap_max: 0 }
 const ruler = d1(SQL_RULER)[0] || { n: 0, amt: 0 }
+const drift = d1(SQL_DRIFT)[0] || { n: 0, items: 0, amt: 0 }
 
 console.log(`${C.b}단가 의미 감사${C.x} ${C.d}(${REMOTE ? 'prod' : '로컬'} D1)${C.x}`)
 console.log(`  ${C.d}반올림 한계 ${floor.n}건 · 격차 합 ${won(floor.gap_abs)}원 · 최대 ${won(floor.gap_max)}원 — 정정 불가, 정상${C.x}`)
 if (ruler.n) console.log(`  ${C.y}자(尺) 규격 오저장 ${ruler.n}건 제외${C.x} ${C.d}(3x6·4x8 등 — 되나누면 100배가 된다. 규격 자체를 고쳐야 한다)${C.x}`)
+if (drift.n) console.log(`  ${C.y}축 드리프트 ${drift.n}라인 / 품목 ${drift.items}종${C.x} ${C.d}(라인 스냅샷 ≠ 품목 현재 축 — 정정인지 정책변경인지 사람이 고른다)${C.x}`)
 
 if (!rows.length) {
   console.log(`${C.g}✅ 정정 가능한 단가 의미 불일치 없음${C.x}`)

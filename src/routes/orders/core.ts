@@ -427,11 +427,14 @@ ordersCoreRouter.get('/:id', async (c) => {
     const { results: items } = await c.env.DB.prepare(`
       SELECT oi.*, ar.file_path AS ai_file_path,
              ar.groups_json AS ai_groups_json,
-             i.pricing_method AS pricing_method,
+             -- ★라인 스냅샷 우선(0600). oi.* 가 앞에 있어 같은 이름이면 **뒤가 덮는다** —
+             --   COALESCE 를 안 쓰면 스냅샷이 조용히 품목 현재값으로 바뀌어, 폼이 되돌려주는 축도
+             --   품목값이 되어 스냅샷이 있으나 마나가 된다.
+             COALESCE(oi.pricing_method, i.pricing_method) AS pricing_method,
              i.sub_category AS item_subcategory,
              -- 품목별 최소청구 변(cm). 수정·복사 화면이 이 값을 히든에 되돌려야 청구면적 자동계산이
              --   기본 100 으로 되돌아가지 않는다(orderForm/calc.js MIN_SIDE ↔ utils/orderLineAmount.ts).
-             i.min_billing_side_cm AS min_billing_side_cm,
+             COALESCE(oi.min_billing_side_cm, i.min_billing_side_cm) AS min_billing_side_cm,
              ci.card_id AS card_id,
              ca.card_number AS card_number,
              -- 라인 부가 파일(0516) = "kind|이름|경로" 줄 단위. 화면(orders.js)이 칩으로 그린다.

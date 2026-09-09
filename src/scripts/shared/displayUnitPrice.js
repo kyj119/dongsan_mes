@@ -21,10 +21,11 @@
 //    전부 800원/㎡ 로 수렴)이 있고, 여기를 뒤집으면 **규격을 바꿔도 금액이 안 따라온다**.
 //    금액 산식 정본 = `src/utils/orderLineAmount.ts` ↔ `src/scripts/orderForm/calc.js`.
 //
-// 표기 규칙(2026-09-08 용준님 확정):
-//   대외 문서(거래명세서·견적서·고객포털) → **장당가 단독**
-//   내부 화면(주문 상세)                  → **장당가 + ㎡단가 병기** `5,000원 (2,778원/㎡)`
-//   주문서 입력칸                          → ㎡단가 입력 유지 + 장당가 **실시간 병기**
+// 표기 규칙(2026-09-09 용준님 확정 — 09-08 의 병기안을 대체한다):
+//   **보이는 화면은 전부 개수(장당) 단가만** — 대외 문서·주문 상세 모두.
+//   ㎡ 축은 **백그라운드에만** 남는다: `order_items.unit_price` + 과금 규칙 스냅샷(0600).
+//   주문서 입력칸만 예외 — 영업이 ㎡단가로 값을 매기므로 입력은 ㎡ 유지하고, 필드 밑에
+//   장당가 한 줄(`= 5,000원/EA`)을 띄운다. ★패널을 새로 만들지 않는다(화면이 지저분해진다).
 //
 // 게이트 = `npm run test:unit-price-display`
 //
@@ -62,22 +63,11 @@
         return isArea(line) ? num(line.unit_price) : null;
     }
 
-    /**
-     * 내부 화면용 병기 문자열 — `5,000원 (2,778원/㎡)`
-     * AREA 가 아니거나 ㎡단가가 0이면 장당가만 돌려준다(빈 괄호를 만들지 않는다).
-     */
-    function dual(line) {
-        var ea = perUnit(line);
-        var sqm = perSqm(line);
-        var text = ea.toLocaleString() + '원';
-        if (sqm) text += ' (' + sqm.toLocaleString() + '원/㎡)';
-        return text;
-    }
-
     window.MES_UP = {
         perUnit: perUnit,
+        // ★perSqm·isArea 는 **표시용이 아니다** — 화면은 개수 단가만 찍는다(아래 표기 규칙).
+        //   저장된 ㎡단가를 읽어야 하는 진단·감사 코드를 위해 남긴다.
         perSqm: perSqm,
-        isArea: isArea,
-        dual: dual
+        isArea: isArea
     };
 })();
