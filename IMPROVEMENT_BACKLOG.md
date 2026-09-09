@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-09-09T15:55:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-09-09T21:47:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,31 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **23** (`list_issues(state:OPEN,label:auto-improve)` 실측, 22→23 #642 신규) |
+| 🆕 new | **24** (`list_issues(state:OPEN,label:auto-improve)` 실측, 23→24 #643 신규) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **542** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 5 보안 + 인프라 (2026-09-09T21:47):**
+> - **방법**: 세션 시작 시 detached HEAD `a6d9753`(origin/main과 동일)였으나 로컬 `main`은 `eecca71`(25커밋 뒤처짐) → `git checkout main` + `git merge --ff-only origin/main`으로 정합 + `git fetch --unshallow`(2,860여 커밋 확보). `npm ci`(0→81), `npx tsc --noEmit` clean, `npm audit --omit=dev` 0건.
+> - **churn 확인(앵커 = 직전 Area5 방법 라인 HEAD `8c752b2`)**: 웹앱 범위(src/migrations/scripts) diff **27커밋** — Area1~4·6이 이번 세션 이미 각자 렌즈로 정독한 대출/차량자산·청구단가축·cashflow §6 웨이브와 동일 창(보안 렌즈로는 이번이 최초 통과). 신규 파일 diff는 마이그레이션 18건 + `src/scripts/shared/displayUnitPrice.js`(순수 표시 포맷터, DB 접근 0) 뿐 — **신규 라우터 파일은 0건**, 기존 라우터(`bank.ts`·`purchaseCandidates.ts`·`cashSchedule.ts`·`inventory.ts`·`inventoryValuation.ts`·`orders/*`·`printEvents.ts`·`purchaseOrders/po-receive.ts`·`quotations.ts`)의 증분만 직독.
+> - **🔴 신규 발견 → #643 — `PUT /api/purchase-candidates/owners`가 `body.entity_id`를 검증 없이 INSERT/UPDATE에 사용, MANAGER가 타법인 발주담당을 임의 지정 가능(IDOR)**: `7c1cf06f`(09-08)이 신설한 이 엔드포인트는 `requireRole('ADMIN','MANAGER')`만 게이트하고 `entityFilter`/`getEntityId(c)`를 전혀 참조하지 않은 채 `Number(body.entity_id)`를 그대로 `supplier_owners` PK(entity_id, client_id)의 일부로 써서 `ON CONFLICT DO UPDATE`까지 수행 — 같은 파일 `GET /owners`가 `entityFilter(c,'po')`로 자기 법인만 조회하는 것과 강한 비대칭(형제가 격리하면 격리 의도 증거, Area5 기존 규칙). MANAGER는 `getEntityId(c)`가 항상 구체값이라(0은 ADMIN 전체모드 전용) 정상 UI 경로(프론트가 서버 제공 `r.entity_id`만 재전송)로는 안 열리지만, API 직접 호출로는 자기 법인이 아닌 `entity_id`를 넣어 타법인 거래처의 담당자 배정을 덮어쓸 수 있음. **`npm run audit:entity`가 이 클래스를 못 잡는 이유를 스크립트 자신이 이미 명시**(`entity-audit.mjs:27` "이 스크립트는 SELECT만 검사한다") — INSERT/UPDATE에 attacker-controlled entity_id를 직접 바인딩하는 패턴은 정적 게이트의 기존 문서화된 사각. 기존 codify된 「하위자원 append 엔드포인트 write-isolation」(2026-06-19, `POST /:id/items`류 — 자식 INSERT의 entity는 entityFilter-검증된 부모값에서 파생, body 신뢰 금지)과 같은 원리가 URL param이 아닌 **평평한 body 필드** 형태에도 적용됨을 재확인한 사례 — 별도 신규 클래스는 아니라 SKILL 신규 codify는 보류(기존 규칙이 이미 커버, 사각은 이미 스크립트 자체가 인지). **issue-only(#643, S)** — IDOR 클래스는 이 프로젝트 컨벤션상 owner 검토 후 반영(egress 차단으로 런타임 검증 불가 + 기존 IDOR=owner 워크플로).
+> - **`bank.ts` +186줄(대출계좌 자동매칭·미반영사유 칩·마이너스통장 한도) 전문 직독 — net-new 취약점 0건**: 신규 SQL 전부 `requireRole('ADMIN')` 라우터 상속 + `entityFilter(c,'l')`/`(c,'expense_categories')` 일관 적용. `pendingReasonSql('bt')`/`reasonCountSql`(PENDING_REASON_KEYS 상수 기반 인터폴레이션, 주석이 스스로 "키 목록은 상수라 인터폴레이션 안전"이라 명시)과 `pending_reason` 쿼리파라미터는 화이트리스트(`isPendingReasonKey`) 통과 후 `?` 바인딩 — SQL 인젝션 표면 없음. `credit_limit` PUT은 `hasOwnProperty` 존재판정 + `Number()` 강제, entity 격리는 기존 `ef.clause`(#437에서 이미 픽스된 패턴) 유지. `loanAccountMatch.ts`/`bankPendingReason.ts` 신규 유틸 둘 다 순수함수(`grep DB.prepare` 0건).
+> - **XSS standing scan**: `node scripts/check-xss.mjs`(문서화된 레시피 버전, 2026-09-06부터 매 사이클 편입) 재실행 후 이번 churn 파일(bank.js/cards/misc.js/orders.js/purchaseCandidates.js/zonePicker.js) 후보 전수 대조 — 전부 이미 escape 적용됐거나(escapeHtml/escHtml/pcqEsc/window.escapeHtml) 이번 churn 밖(FP 기존 라인, `git diff 8c752b2..HEAD`로 미변경 확인) — **net-new 미이스케이프 sink 0건**. 신규 owner 배정 UI(`purchaseCandidates.js` `pcqRenderOwners`)의 `<option>` value/텍스트·client_name/entity_name/note 전부 `pcqEsc` 일관.
+> - **standing scan 1: 시크릿 폴백** `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43` 1건뿐(기존 FP, 변동없음).
+> - **standing scan 2: `body.password ||` 기본값** → 0건.
+> - **standing scan 3: `npm run audit:entity`** — 검사 134파일·entity테이블 SELECT 74건·**누락 0건**(변동없음, 위 #643은 이 스캔의 문서화된 사각 밖 클래스).
+> - **standing scan 4: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지.
+> - **standing scan 5: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 6: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 8런(HEAD `a6d9753` 포함) 전부 `conclusion:success`.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` totalCount **23**(신규 등록 전) 기존 23건 전건 일치(#613·#616·#617·#622·#624~642) 확인 후 #643 신규 생성.
+> - **backlog↔GitHub 절대값 재동기화**: open **24**(23→24, #643 신규) · done **542**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-5-security-infra.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). #643은 기존 「하위자원 append 엔드포인트 write-isolation」·「형제 비대칭 IDOR」 두 클래스의 합성 사례라 별도 codify 불요(원리는 이미 문서화, `entity-audit.mjs`의 SELECT-only 사각도 스크립트 자신이 이미 주석으로 인지).
+> - **백로그 트림 체크**: 아래 실행.
+> - 신규 이슈 1건(#643 purchase-candidates owners PUT의 body.entity_id 미검증 IDOR, S, issue-only), 자동수정 0건(IDOR=owner 워크플로 대상), done-sync: open 23(23→24)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-09-09T15:55):**
 > - **방법**: 세션 시작 시 detached HEAD `bd57b39`(origin/main과 동일 커밋이나 얕은 clone, 50커밋) → `git checkout main` + `git merge --ff-only origin/main`(변동 없음, 이미 최신) + `git fetch --unshallow`(2,860여 커밋 확보). `npm ci`(0→81), `npx tsc --noEmit` clean.
