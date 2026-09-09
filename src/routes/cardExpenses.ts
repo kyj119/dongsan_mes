@@ -1061,27 +1061,47 @@ cardExpRouter.post('/transactions/import-csv', requireRole('ADMIN'), async (c) =
       return c.json({ success: false, error: '해당 법인에 등록된 카드가 아닙니다.' }, 400)
     }
 
+    // 행마다 「중복 확인 SELECT + INSERT」 2회 왕복이던 것을 3단계로 접는다(2026-09-09):
+    //   ①유효 행 정규화(파일 안 중복 refKey 는 첫 행만) ②기존 refKey 를 80개 청크 IN 으로 한 번에 조회
+    //   ③INSERT 를 80개 청크 batch. 500행 CSV 가 1,000회 왕복(subrequest 한도 근접)에서 ~14회로 준다.
+    const CHUNK = 80
+    const candidates: { txDate: string; amount: number; refKey: string; row: any }[] = []
+    const seenInFile = new Set<string>()
     for (const row of rows) {
       const txDate = (row.date || '').replace(/-/g, '')
       if (!txDate || txDate.length !== 8) continue
       const amount = Math.abs(parseFloat(row.amount || '0'))
       if (!amount) continue
-
       const refKey = `csv_${txDate}_${amount}_${row.merchant || ''}`
-      const dup = await c.env.DB.prepare(
-        'SELECT id FROM card_transactions WHERE card_id = ? AND codef_transaction_id = ?'
-      ).bind(card_id, refKey).first()
-      if (dup) continue
+      if (seenInFile.has(refKey)) continue
+      seenInFile.add(refKey)
+      candidates.push({ txDate, amount, refKey, row })
+    }
 
-      await c.env.DB.prepare(`
+    const existing = new Set<string>()
+    for (let i = 0; i < candidates.length; i += CHUNK) {
+      const keys = candidates.slice(i, i + CHUNK).map((x) => x.refKey)
+      const { results } = await c.env.DB.prepare(
+        `SELECT codef_transaction_id FROM card_transactions WHERE card_id = ? AND codef_transaction_id IN (${keys.map(() => '?').join(',')})`
+      ).bind(card_id, ...keys).all<{ codef_transaction_id: string }>()
+      for (const r of results || []) existing.add(r.codef_transaction_id)
+    }
+
+    const toInsert = candidates.filter((x) => !existing.has(x.refKey))
+    const insertSql = `
         INSERT INTO card_transactions (card_id, transaction_date, transaction_time, merchant_name, amount, installments, codef_transaction_id, status, created_by, entity_id, approval_type)
         VALUES (?, ?, ?, ?, ?, ?, ?, 'UNCLASSIFIED', ?, ?, 'APPROVED')
-      `).bind(
-        card_id, txDate, row.time || null, row.merchant || null,
-        amount, parseInt(row.installments || '1') || 1,
-        refKey, user?.id ?? 1, entityId || 1
-      ).run()
-      imported++
+      `
+    for (let i = 0; i < toInsert.length; i += CHUNK) {
+      const stmts = toInsert.slice(i, i + CHUNK).map(({ txDate, amount, refKey, row }) =>
+        c.env.DB.prepare(insertSql).bind(
+          card_id, txDate, row.time || null, row.merchant || null,
+          amount, parseInt(row.installments || '1') || 1,
+          refKey, user?.id ?? 1, entityId || 1
+        )
+      )
+      await c.env.DB.batch(stmts)
+      imported += stmts.length
     }
 
     return c.json({ success: true, data: { imported, total: rows.length }, message: `${imported}건 가져오기 완료` })
