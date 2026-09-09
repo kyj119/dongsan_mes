@@ -126,7 +126,7 @@
     "test:baseline-flow": "node scripts/baseline-flow-selftest.cjs"
   },
   "dependencies": {
-    "hono": "^4.13.2"
+    "hono": "^4.13.7"
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-x64-gnu": "^4.60.1"
