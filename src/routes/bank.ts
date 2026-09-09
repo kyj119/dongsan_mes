@@ -13,6 +13,7 @@ import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
 import { resolveInternalEntityMatch, buildSettlementClientMap, resolveHistoryMatch, allowAmountOnlyMatch, shouldPromoteSuggestion, SUGGESTION_WEAK_BELOW } from '../utils/bankMatchPolicy'
 import { canAttachToDeposit } from '../utils/expenseRole'
+import { pendingReasonSql, isPendingReasonKey, PENDING_REASON_KEYS } from '../utils/bankPendingReason'
 import { parseLoanAccountRef, classifyLoanTransaction, LOAN_KIND_CATEGORY, LOAN_KIND_LABEL } from '../utils/loanAccountMatch'
 import { getEntityCorpNum, getEntityBarobillSenderId } from '../utils/entitySettings'
 import { loadProvision, agingCategoryToBucket, effectiveLossRate } from '../utils/provisionMatrix'
@@ -620,6 +621,13 @@ bankRouter.get('/transactions', requireRole('ADMIN'), async (c) => {
       where += ' AND bt.match_status = ?'
       params.push(singleStatus)
     }
+    // 미반영 사유로 좁히기. 모르는 값은 **조용히 무시**한다 — 오타 하나로 목록이 비면
+    // 「거래가 없다」로 읽혀서 더 위험하다.
+    const pendingReason = c.req.query('pending_reason')
+    if (isPendingReasonKey(pendingReason)) {
+      where += ` AND ${pendingReasonSql('bt')} = ?`
+      params.push(pendingReason)
+    }
 
     const query = `
       SELECT
@@ -633,6 +641,8 @@ bankRouter.get('/transactions', requireRole('ADMIN'), async (c) => {
         -- 약한 제안 표식: 화면·일괄적용이 확정 버튼을 내주면 안 되는 근거인지(판정 기준 = 서버 한 곳).
         CASE WHEN bt.match_status = 'SUGGESTED' AND COALESCE(bt.match_confidence, 0) < ${SUGGESTION_WEAK_BELOW}
              THEN 1 ELSE 0 END AS match_weak,
+        -- 「왜 미반영인가」 — 판정은 이미 DB 에 있는데 화면이 안 쓰고 있었다(2026-09-09).
+        ${pendingReasonSql('bt')} AS pending_reason,
         ba.bank_name, ba.account_number, ba.account_holder, ba.account_alias,
         c.client_name as matched_client_name, c.representative as matched_client_representative,
         ec.name as matched_category_name, ec.icon as matched_category_icon, ec.color as matched_category_color,
@@ -2789,6 +2799,11 @@ bankRouter.get('/stats', requireRole('ADMIN'), async (c) => {
     // 화면의 필터(계좌·기간·입출금)와 **같은 범위**를 센다 — 목록과 탭 숫자가 어긋나면
     // 어느 쪽이 맞는지 사람이 알 수 없다. 범위 조건은 목록과 같은 헬퍼에서 나온다.
     const scope = buildTxScope(c)
+    // 사유별 건수 — 목록의 계산 컬럼과 **같은 식**을 쓴다(키 목록은 상수라 인터폴레이션 안전).
+    const reasonExpr = pendingReasonSql('bt')
+    const reasonCountSql = PENDING_REASON_KEYS
+      .map(k => `SUM(CASE WHEN ${reasonExpr} = '${k}' THEN 1 ELSE 0 END) as pr_${k.toLowerCase()}`)
+      .join(', ')
     const stats = await c.env.DB.prepare(`
       SELECT
         COUNT(*) as total_count,
@@ -2796,17 +2811,13 @@ bankRouter.get('/stats', requireRole('ADMIN'), async (c) => {
         SUM(CASE WHEN bt.match_status = 'SUGGESTED'  THEN 1 ELSE 0 END) as suggested_count,
         SUM(CASE WHEN bt.match_status = 'CONFIRMED'  THEN 1 ELSE 0 END) as confirmed_count,
         SUM(CASE WHEN bt.match_status = 'APPLIED'    THEN 1 ELSE 0 END) as applied_count,
-        SUM(CASE WHEN bt.match_status = 'IGNORED'    THEN 1 ELSE 0 END) as ignored_count
+        SUM(CASE WHEN bt.match_status = 'IGNORED'    THEN 1 ELSE 0 END) as ignored_count,
+        ${reasonCountSql}
       FROM bank_transactions bt
       WHERE 1=1${scope.clause}
-    `).bind(...scope.params).first<{
-      total_count: number
-      unmatched_count: number
-      suggested_count: number
-      confirmed_count: number
-      applied_count: number
-      ignored_count: number
-    }>()
+    `)
+      // 고정 컬럼(*_count)에 사유별 pr_* 가 섞여 나오므로 인덱스 시그니처로 받는다
+      .bind(...scope.params).first<Record<string, number>>()
 
     const efAcc = entityFilter(c, 'bank_accounts')
     const lastSync = await c.env.DB.prepare(
@@ -2822,6 +2833,10 @@ bankRouter.get('/stats', requireRole('ADMIN'), async (c) => {
         confirmed_count: stats?.confirmed_count ?? 0,
         applied_count:   stats?.applied_count   ?? 0,
         ignored_count:   stats?.ignored_count   ?? 0,
+        // 미반영 사유별 건수 — 화면의 사유 칩이 이걸 그대로 쓴다
+        pending_reasons: Object.fromEntries(
+          PENDING_REASON_KEYS.map(k => [k, Number(stats?.[`pr_${k.toLowerCase()}`]) || 0])
+        ),
         last_sync:       lastSync?.last_sync     ?? null,
       }
     })

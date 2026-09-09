@@ -69,6 +69,43 @@
     document.getElementById('filterDateEnd').value = lastStr;
   })();
 
+  // 미반영 사유 칩. 라벨·색·설명은 **페이지가 utils/bankPendingReason 로 그려 둔** data-* 에서 읽는다
+  //   (여기에 라벨을 또 적으면 두 벌이 되어 조용히 갈라진다).
+  //   ★키 목록도 여기 적지 않고 **그려진 칩에서 읽는다** — 사유가 늘어도 화면이 저절로 따라온다.
+  function pendingReasonKeys() {
+    var out = [];
+    var els = document.querySelectorAll('[id^="prChip"]');
+    for (var i = 0; i < els.length; i++) {
+      var k = els[i].id.slice('prChip'.length);
+      if (k && k !== 'All') out.push(k);
+    }
+    if (!out.length) console.warn('[bank] 사유 칩(#prChip*)을 찾지 못했습니다');
+    return out;
+  }
+
+  function reasonChipEl(key) { return document.getElementById('prChip' + (key || 'All')); }
+
+  window.switchPendingReason = function(key) {
+    var el = document.getElementById('filterPendingReason');
+    if (!el) { console.warn('[bank] #filterPendingReason not found'); return; }
+    // 같은 칩을 다시 누르면 해제 — 좁혀 놓고 못 빠져나오는 상태를 막는다
+    el.value = (el.value === key) ? '' : key;
+    paintReasonChips();
+    loadTransactions();
+  };
+
+  function paintReasonChips() {
+    var cur = (document.getElementById('filterPendingReason') || {}).value || '';
+    var keys = [''].concat(pendingReasonKeys());
+    keys.forEach(function(k) {
+      var btn = reasonChipEl(k);
+      if (!btn) return;
+      var on = (cur === k);
+      var base = 'px-2 py-0.5 text-[11px] font-medium rounded-full ';
+      btn.className = base + (on ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200');
+    });
+  }
+
   // 기간 해제 — 탭 숫자가 기간에 종속되므로, 전체 잔량으로 되돌아갈 길이 필요하다.
   window.clearTxPeriod = function() {
     var a = document.getElementById('filterDateStart');
@@ -102,6 +139,14 @@
         btn.className = 'px-3 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200';
       }
     });
+    // 사유 칩은 미반영 탭에서만. 탭을 떠나면 사유를 푼다 — 안 그러면 다른 탭이 조용히 좁혀진 채로 열린다.
+    var bar = document.getElementById('pendingReasonBar');
+    var reasonEl = document.getElementById('filterPendingReason');
+    if (!bar) console.warn('[bank] #pendingReasonBar not found');
+    if (tab !== 'PENDING' && reasonEl) reasonEl.value = '';
+    // hidden(display:none) 과 flex 의 우선순위에 기대지 않는다 — 인라인으로 못 박는다
+    if (bar) bar.style.display = (tab === 'PENDING') ? 'flex' : 'none';
+    paintReasonChips();
     loadTransactions();
   };
 
@@ -128,6 +173,16 @@
       if (el) el.textContent = d.applied_count ? '(' + d.applied_count + ')' : '';
       el = document.getElementById('statusCountIgnored');
       if (el) el.textContent = d.ignored_count ? '(' + d.ignored_count + ')' : '';
+
+      // 사유별 건수 — 서버가 준 그대로. 0 이면 비워 두지 말고 (0) 을 보여 준다:
+      //   「0건」과 「아직 안 셈」이 같아 보이면 다 처리했는지 알 수 없다.
+      var pr = d.pending_reasons || {};
+      el = document.getElementById('prCountAll');
+      if (el) el.textContent = '(' + pending + ')';
+      pendingReasonKeys().forEach(function(k) {
+        var c = document.getElementById('prCount' + k);
+        if (c) c.textContent = '(' + (pr[k] || 0) + ')';
+      });
 
       // 자동 동기화: 마지막 동기화가 1시간 이상 지났으면 백그라운드 실행
       if (!autoSyncTriggered && d.last_sync) {
@@ -220,6 +275,10 @@
     } else if (status) {
       params.push('match_status=' + encodeURIComponent(status));
     }
+    // 사유는 미반영 탭에서만 의미가 있다(반영된 행에는 사유가 없다)
+    var reasonEl = document.getElementById('filterPendingReason');
+    if (!reasonEl) console.warn('[bank] #filterPendingReason not found');
+    else if (status === 'PENDING' && reasonEl.value) params.push('pending_reason=' + encodeURIComponent(reasonEl.value));
     var sortEl = document.getElementById('filterTxSort');
     if (!sortEl) console.warn('[bank] #filterTxSort not found');
     else if (sortEl.value) params.push('sort=' + encodeURIComponent(sortEl.value));
@@ -373,10 +432,19 @@
       html += '<td class="text-right text-xs text-gray-500 tabular-nums">' + bal + '</td>';
       // 약한 제안(신뢰도 0.7 미만) — 대표자명·부분일치는 오탐 17.6% 라 일괄확정에서 뺀다.
       //   제안 자체는 지우지 않는다. 한 건씩 보면 유용한 단서다.
+      // 사유 뱃지: 「매입 전표 없음」·「내부거래」처럼 **행만 봐서는 알 수 없는** 것만 단다
+      //   (약한 제안은 아래 weakMark 가, 근거 없음은 빈 거래처칸이 이미 말해 준다).
+      var reasonMark = '';
+      var rChip = tx.pending_reason ? reasonChipEl(tx.pending_reason) : null;
+      if (rChip && rChip.dataset.badge === '1') {
+        var rc = rChip.dataset.color || '#6b7280';
+        reasonMark = '<span class="ml-1 text-[10px] px-1 py-0.5 rounded" style="background:' + rc + '1a;color:' + rc + '"'
+          + ' title="' + escHtml(rChip.getAttribute('title') || '') + '">' + escHtml(rChip.dataset.label || '') + '</span>';
+      }
       var weakMark = tx.match_weak
         ? '<span class="ml-1 text-[10px] px-1 py-0.5 rounded bg-rose-50 text-rose-600" title="근거가 약합니다(' + (tx.match_reason || '') + '). 한 건씩 확인하세요 — 전체선택·일괄적용에서 제외됩니다">약함</span>'
         : '';
-      html += '<td class="text-center">' + badge + weakMark + '</td>';
+      html += '<td class="text-center">' + badge + weakMark + reasonMark + '</td>';
       // ds-wrap: td 기본 overflow:hidden이 셀 내 절대배치 드롭다운(거래처/비용분류)을 잘라버림 → 해제
       html += '<td class="ds-wrap">' + matchedClient + '</td>';
       html += '<td class="text-center">' + actionCell + '</td>';

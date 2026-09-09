@@ -2,6 +2,7 @@ import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import bankScript from '../scripts/bank.js?raw'
+import { PENDING_REASONS } from '../utils/bankPendingReason'
 
 // P3 자금 허브(/cash-schedule) 이식용 단일소스 export. 표준 /bank 라우트와 공유(HTML 중복 방지).
 export const bankPageCSS = `
@@ -221,6 +222,7 @@ export const bankPageContent = `
         <!-- Tab 1: 거래내역 매칭 -->
         <div id="tabContentTx" class="tab-content">
           <input type="hidden" id="filterStatus" value="PENDING">
+          <input type="hidden" id="filterPendingReason" value="">
 
           <!-- 통합 필터 바: 필터 + 상태탭 + KPI 인라인 -->
           <div class="ds-card px-4 py-3 mb-3">
@@ -288,6 +290,17 @@ export const bankPageContent = `
                   <i class="fas fa-download text-gray-400"></i>
                 </button>
               </div>
+            </div>
+            <!-- Row 3: 미반영 사유 — 「왜 안 붙었나」는 이미 DB 에 있는데 화면이 안 쓰고 있었다(2026-09-09).
+                 라벨·색·설명은 utils/bankPendingReason 한 곳에서 온다. 스크립트는 여기 data-* 를 읽어 쓴다. -->
+            <div id="pendingReasonBar" class="hidden flex-wrap items-center gap-1 mt-2 pt-2 border-t border-gray-100">
+              <span class="text-[11px] text-gray-400 mr-1">왜 미반영인가</span>
+              <button onclick="switchPendingReason('')" id="prChipAll" class="px-2 py-0.5 text-[11px] font-medium rounded-full bg-gray-800 text-white">
+                전체 <span id="prCountAll" class="opacity-80"></span>
+              </button>
+${PENDING_REASONS.map(r => `              <button onclick="switchPendingReason('${r.key}')" id="prChip${r.key}" data-label="${r.label}" data-color="${r.color}"${r.rowBadge ? ' data-badge="1"' : ''} title="${r.hint}" class="px-2 py-0.5 text-[11px] font-medium rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200">
+                ${r.label} <span id="prCount${r.key}" class="opacity-80"></span>
+              </button>`).join(String.fromCharCode(10))}
             </div>
           </div>
 
