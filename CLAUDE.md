@@ -204,7 +204,7 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 - **`ship:gate`**: verify(tsc+build) · entity-audit · **test:calc** · canary:write
 - **`/deploy-verify`**: Phase 1 tsc·build·**test:calc** → Phase 2 entity-audit → Phase 2-B `audit:migration-drift`(스키마 변경 시) → Phase 4 `smoke:prod`
 > ⚠️`verify.yml` 은 `on: pull_request` 다 — 이 프로젝트(main 직접 push)에서는 **생성 이래 0회 실행**.
-> ⚠️여기 **없는** 감사는 사람이 부를 때만 돈다: `sort-audit` · `audit:query-cost` · `audit:subquery` · `audit:unit-price-semantics` · `audit:migration-drift` · `audit:stock-ledger` · `test:symmetry` · `test:ship-stock` · `test:autodeduct` · `cut:quality`.
+> ⚠️여기 **없는** 감사는 사람이 부를 때만 돈다: `sort-audit` · `audit:query-cost` · `audit:subquery` · `audit:unit-price-semantics` · `audit:migration-drift` · `audit:stock-ledger` · `test:symmetry` · `test:ship-stock` · `test:autodeduct` · `cut:quality` · **`test:journey`**(업무 여정 J1~J4 16단계 — 로컬 D1 전용·서버 기동 필요, 정본=`/journey-loop` 스킬. 병행테스트 진입 조건 충족 시 `ship:gate`·`/deploy-verify` 편입 예정).
 > **게이트를 새로 만들면 이 목록에 줄을 추가한다. 추가할 자리가 없으면 그건 게이트가 아니라 스크립트다.**
 
 > 사업 도메인·역할·아키텍처·에이전트 팀·참조 문서 → `.claude/references/project-context.md`
