@@ -13,14 +13,23 @@ description: 프로덕션 배포 실행 + 자동 검증 체인 (빌드→타입�
 ```bash
 npx tsc --noEmit    # 타입체크
 npm run build       # 빌드
+npm run test:calc   # 계산 규칙 값 대조 (deploy.yml 이 CI 에서 돌리는 것과 동일)
 ```
 하나라도 실패하면 중단 + 에러 보고.
 
+> ⚠️ `test:calc` 를 여기 두는 이유 — 문법이 멀쩡한 계산 오류는 tsc·build·smoke 를 **전부 통과한다**.
+> 2026-08-25 여신 리팩터링에서 파라미터가 한 칸 밀렸는데 모든 게이트가 초록불이었고 prod 배포 후
+> 숫자를 대조해서야 잡혔다. CI(`deploy.yml`)에만 있으면 로컬 `deploy:prod` 는 통째로 우회한다.
+
 ### Phase 2: entity 필터 감사
 배포 전에 반드시 entity 필터 감사를 실행한다:
-1. `src/routes/*.ts`의 모든 SELECT 쿼리를 탐색
-2. `bank_transactions`, `card_transactions`, `corporate_cards`, `bank_accounts`, `bank_match_rules`, `card_fee_rates`, `expense_auto_rules` 테이블 참조 시 entityFilter 호출 여부 검사
-3. 누락 건이 있으면 배포 전에 수정
+```bash
+node scripts/entity-audit.mjs    # deploy.yml·ship:gate 가 돌리는 것과 동일
+```
+누락 건이 있으면 배포 전에 수정.
+
+> 손으로 SELECT 를 탐색하지 말 것 — 재현되지 않는다. 검사 대상 테이블 목록의 정본은
+> `scripts/entity-audit.mjs` 안에 있고, 스크립트가 그걸 유지한다.
 
 ### Phase 2-B: 마이그레이션 드리프트 감사 (스키마를 건드린 배포면 필수)
 ```bash
@@ -64,7 +73,7 @@ npm run deploy:prod
 
 1. **API 스모크 (정본·자동)** — 하드코딩 목록을 만들지 말고 기존 러너를 쓴다:
    ```bash
-   npm run smoke      # scripts/smoke.cjs — 엔드포인트 111개 자동 호출
+   npm run smoke:prod # scripts/smoke.cjs — ENDPOINTS 전량 + 목록 응답에서 뽑은 상세 단건 자동 호출(개수 가변). ⚠️`npm run smoke` 는 기본 대상이 localhost 다
    ```
    - 엔드포인트 목록의 **단일 소스는 `scripts/smoke.cjs`의 `ENDPOINTS`**. 신규 라우트를 추가했으면 이 스킬이 아니라 그 배열에 등록한다.
    - 통과 기준: `PASS n / n` (예: 102/102). 1건이라도 FAIL이면 롤백 판단.

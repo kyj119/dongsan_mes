@@ -15,7 +15,7 @@
 1. **배포 요청 시** → `/deploy-verify` 스킬 자동 실행 (빌드→타입체크→entity감사→배포→스모크)
 2. **routes/*.ts 수정 시** → hook이 entity 필터 감사 리마인더 표시
 3. **migrations/*.sql 생성 시** → hook이 `/migration-check` 실행 리마인더 표시
-4. **배포 후** → `npm run smoke`(엔드포인트 111개, 목록 정본=`scripts/smoke.cjs`) + 주요/변경 페이지 로드 + 변경분 prod 마커 실측
+4. **배포 후** → `npm run smoke:prod`(목록 정본=`scripts/smoke.cjs` — 상세 단건은 목록 응답에서 자동 확장되므로 **개수는 고정이 아니다**. ⚠️`npm run smoke` 는 기본 대상이 **localhost** 라 dev 서버가 떠 있으면 배포 검증이 조용히 로컬을 통과한다) + 주요/변경 페이지 로드 + 변경분 prod 마커 실측
 
 ### 멀티세션 워크플로우 (동시 작업 시 필수)
 - **동시 세션은 git worktree로 격리**: 새 작업은 `.\scripts\new-session.ps1 <이름>` → `dongsan_mes-worktrees\<이름>`에서 진행(빌드·배포·커밋 격리). 메인 체크아웃은 상태판/조율용 — 직접 코드작업 지양. 종료=`.\scripts\end-session.ps1 <이름> -DeleteBranch`.
@@ -62,6 +62,13 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 ```
 **pages/*.ts 변경 시 scripts/*.js getElementById 참조 대조** (review-checklist §12).
 
+### 마이그레이션 번호는 유일하지 않다
+`migrations/` 에 **같은 4자리 번호가 20쌍** 있다 — `0080`·`0193`·`0327`·`0412`·`0416`·`0420`·`0453`·`0555`·`0563`·`0569`·`0570`·`0576`·`0577`·`0578`·`0579`·`0580`·`0584`·`0585`·`0587`·`0596`. 병렬 worktree 세션이 각자 다음 번호를 딴 결과다.
+- **문서·메모리가 번호만으로 지목하면 어느 쪽인지 알 수 없다** — `0596` = `0596_fix_unit_price_semantics.sql` + `0596_qm6_loan.sql` 이다. 번호를 쓸 때는 **파일명을 병기**한다.
+- 적용 순서는 번호가 아니라 **전체 파일명 사전순**이다. 같은 번호 둘의 선후는 뒷부분 이름이 정한다 — 의존이 있으면 번호를 다시 딴다.
+- **wrangler 는 번호가 아니라 전체 파일명으로 추적한다**(`d1_migrations.name`). 이미 prod 에 적용된 파일을 **재번호하면 그 마이그레이션이 한 번 더 실행된다** — 다른 브랜치에서 회수할 때 파일명을 보존해야 하는 이유다.
+- 게이트 없음(미구현). 새 마이그레이션을 만들 때 `ls migrations/ | cut -c1-4 | sort | uniq -d` 로 직접 확인.
+
 ### 목록 정렬 = 고유키 tie-break 필수 (`ORDER BY`)
 목록 쿼리의 `ORDER BY`에 **고유 컬럼(`id`) tie-break를 반드시 마지막에** 붙인다. 이관·배치 INSERT 데이터는 `created_at`이 초 단위까지 동일해(발주 258건 중 241건 동일) 동값 구간이 rowid ASC=**오래된 순으로 뒤집혀 표시**되고, `LIMIT/OFFSET` 페이징도 페이지 간 중복·누락이 난다.
 ```sql
@@ -71,7 +78,7 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 - **기본 정렬 키는 업무일자**(`order_date`·`receipt_date`·`issue_date`) 우선. `created_at`은 이관 데이터에서 "이관 실행 시각"이라 업무상 무의미 → 단독 기본 정렬 금지.
 - 정렬 옵션 맵(`sortOptions`)은 **모든 항목**에 tie-break 포함. NULL 처리는 `col IS NULL, col ASC` (D1 `NULLS LAST` 의존 회피).
 - 라벨은 기준을 명시("발주일 최신순"·"등록 최신순") — "최신순"만 쓰면 어느 날짜 기준인지 불명확.
-- **감사 도구 = `node scripts/sort-audit.cjs`** (P1 발견 시 exit 1). grep 패턴은 다항 ORDER BY를 못 잡으니 쓰지 말 것.
+- **감사 도구 = `node scripts/sort-audit.cjs`** (P1 발견 시 exit 1). grep 패턴은 다항 ORDER BY를 못 잡으니 쓰지 말 것. ⚠️**npm alias 도 없고 어떤 실행 경로에도 안 물려 있다** — 사람이 부를 때만 돈다.
 - **쓰기·선택 경로가 더 위험**: `UPDATE ... WHERE id=(SELECT ... LIMIT 1)`·`ROW_NUMBER() OVER(ORDER BY ...)`·자재 선택 `ORDER BY ... LIMIT 1` 은 표시가 아니라 **어느 행이 처리되는지**가 바뀐다.
 - tie-break 키는 **최외곽 FROM(행 grain)의 PK**. `DISTINCT`/`UNION` 은 출력 컬럼만 참조 가능하고, `id` 없는 복합PK 테이블에 `id`를 붙이면 500. 수정 후 로컬 D1 `prepare()` 확인 필수(타입체크는 SQL 오류를 못 잡음).
 
@@ -83,7 +90,7 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 - **갱신 = `cron/daily-maintenance` 마지막 단계**(자동). 대량 이관 직후엔 `POST /api/cron/analyze` 수동. 되돌리기=`DROP TABLE sqlite_stat1`(통계는 힌트라 결과 불변).
 - **통계는 만능이 아니다** — 상관 스칼라 서브쿼리(`(SELECT MAX(..) FROM orders WHERE client_id=c.id)`)·`clients`를 바깥에 둔 조인은 애초에 쓰지 말 것. **큰 쪽을 먼저 GROUP BY로 접고 작은 쪽을 조인**한다(`reports.ts` client-revenue·`clients.ts` last_order_date 정본). 상시 감사 = **`npm run audit:subquery`**(SELECT절 상관 서브쿼리만 분류·규모 가중=`scripts/table-rows.json`). ⚠️`[바깥×서브]`는 **테이블 전체 행수 상한**이라 WHERE로 걸러진 실제 행수가 아니다 — 순위용 눈금이지 측정값이 아니고, 판정은 `EXPLAIN QUERY PLAN`으로.
 - **「지금 빠르다」≠「안전하다」** — 데이터가 비어서 안 터지는 것과 구조가 안전한 것은 다르다(`/ai/credit-risk/summary`가 42ms인 건 등급이 1건뿐이라서였다).
-- **타입체크·smoke는 이걸 절대 못 잡는다** — 14초 응답도 200이다. 게이트 = `npm run audit:query-cost`(예산 초과 시 exit 1, 기준선=`scripts/query-cost-baseline.json`). 진단은 `EXPLAIN QUERY PLAN` + 응답의 `rows_read`.
+- **타입체크·smoke는 이걸 절대 못 잡는다** — 14초 응답도 200이다. 게이트 = `npm run audit:query-cost`(예산 초과 시 exit 1, 기준선=`scripts/query-cost-baseline.json` — ⚠️실행 경로 미배선, 수동). 진단은 `EXPLAIN QUERY PLAN` + 응답의 `rows_read`.
 
 ### 누적 캐시 = 수정·삭제가 안 따라온다 (`npm run test:symmetry`)
 **이벤트 시점에 `col = col ± ?` 로 누적해 놓고, 수정·삭제 경로가 그걸 모르는 것** — 이 프로젝트에서 가장 자주 재발한 결함이다. 2026-08-31 전수 점검에서 **5개 축이 동시에 걸렸다**: 주문↔재고 · 차입금 상환 · 자동차감 2종 · `clients.purchase_balance` · `quotations.converted_count`.
@@ -95,11 +102,11 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 
 **되돌리기는 「역분개」가 아니라 「행 철회」다** — `idx_inventory_tx_unique_ref`(0224·0293, #88)가 `(reference_type, reference_id, item_id, transaction_type, entity_id)` UNIQUE 라 **reference 당 OUT 은 1행**이다. 상쇄 IN 을 더해도 OUT 행이 남아 **재차감 INSERT 가 UNIQUE 위반 500**(재고는 이미 빠진 뒤 INSERT 만 터진다). 그래서 환원 = 재고 복원 + 그 OUT 행 DELETE. 「무슨 일이 있었나」는 `order_status_history` 가 남긴다.
 
-**막을 수 없으면 막는다** — 발주는 재고가 움직인 뒤 수정·삭제가 **차단**된다(`purchaseOrders/core.ts:411`·`:694`). 주문도 같은 정책으로 통일했다: 출고 차감 이력이 있으면 **기성 라인 구성 변경만** 400(배송지·비고 수정은 통과). `PUT /orders/:id` 는 `order_items` 를 **전량 delete+reinsert** 하므로, 라인을 지우면 환원 근거가 사라져 **되돌릴 방법이 없다**.
+**막을 수 없으면 막는다** — 발주는 재고가 움직인 뒤 수정·삭제가 **차단**된다(`purchaseOrders/core.ts:453` 수정 · `:674` DRAFT 복귀 · `:748` 삭제). 주문도 같은 정책으로 통일했다: 출고 차감 이력이 있으면 **기성 라인 구성 변경만** 400(배송지·비고 수정은 통과). `PUT /orders/:id` 는 `order_items` 를 **전량 delete+reinsert** 하므로, 라인을 지우면 환원 근거가 사라져 **되돌릴 방법이 없다**.
 
 **배치는 재고를 움직이지 않는다** — `POST /orders/sync-statuses` 에 차감을 넣지 않은 이유: ①대상이 이미 출고 처리를 거친 주문 ②#478 로 100건 bound(subrequest 한도) ③배치가 재고를 움직이면 "언제 왜 빠졌는지"가 사람 행동과 끊긴다.
 
-**재고를 바꾸면 원장에 남기고, 한 batch 로 묶는다** — `inventory.quantity` 가 정본이고 `inventory_transactions` 는 별개 기록이라 **둘이 조용히 어긋난다**(prod 실측 2026-08-30: 잔고 합계 132,121 vs 원장 순합 72,873). 자동차감 2종은 원장을 아예 안 남겨 증감내역 화면의 사각지대였고, 실사 구역배정 이동도 빠져 있었다 — 셋 다 2026-08-31 에 메웠다. **`UPDATE inventory SET quantity` 를 새로 쓰면 같은 커밋에서 원장 INSERT 도 쓴다**(현재 20곳 전부 짝이 맞다).
+**재고를 바꾸면 원장에 남기고, 한 batch 로 묶는다** — `inventory.quantity` 가 정본이고 `inventory_transactions` 는 별개 기록이라 **둘이 조용히 어긋난다**(prod 실측 2026-08-30: 잔고 합계 132,121 vs 원장 순합 72,873). 자동차감 2종은 원장을 아예 안 남겨 증감내역 화면의 사각지대였고, 실사 구역배정 이동도 빠져 있었다 — 셋 다 2026-08-31 에 메웠다. **`UPDATE inventory SET quantity` 를 새로 쓰면 같은 커밋에서 원장 INSERT 도 쓴다**(현재 18곳 — 환원 2곳은 원장 행 DELETE 라 INSERT 없음이 정상).
 
 **원자성 — 재고와 원장은 같은 batch 에 넣는다**(2026-08-31 전환). 개별 `.run()` 이면 UPDATE 는 되고 INSERT 가 터졌을 때 **재고만 빠지고 원장이 빈다**(UNIQUE 위반 500 이 정확히 그 모습이었다). `balance_after` 는 read-after-write 대신 **서브쿼리**로 읽는다 — batch 는 순서대로 실행되므로 UPDATE 반영값을 본다(`returns.ts` 전례). 부수 효과로 자동차감의 **수동 롤백 코드가 사라졌다**: batch 가 통째로 롤백되므로 UNIQUE 위반 시 되돌릴 것이 없다 — 보상 로직이 없으면 "보상이 또 실패하는" 경로도 없다.
 
@@ -113,8 +120,8 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 
 ### 계산 규칙 = 값 대조 게이트로만 잡힌다 (`npm run test:calc` · CI 배포 차단)
 **문법이 멀쩡한 계산 오류는 기존 게이트 전부를 통과한다.** 2026-08-25 여신 리팩터링에서 공유 SQL을 서브쿼리로 감싸며 바깥에 `?`를 둬 **파라미터가 한 칸씩 밀렸고**(`a.entity_id=6` → adjustments 전량 누락, 초과 37곳이 108곳으로), typecheck·build·check:dom·sort-audit·entity-audit·smoke가 **전부 통과**했다. prod 배포 후 숫자를 대조해서야 잡혔다.
-- **게이트 = `npm run test:calc`** — 청구면적(`test:orderline`)·마감표기(`test:finishing-label`)·파일규격(`test:file-dims`)·여신(`test:credit`)·품목중복(`audit:items:selftest`). **deploy.yml 이 배포 전에 돌린다**(2026-08-25 신설 — 그전엔 npm 스크립트로만 있어 아무도 자동 실행하지 않았다).
-- `test:hookguard`는 제품이 아니라 **개발환경**(Windows 셸 차단)을 검증 → CI 제외, 로컬 `test:all`에만.
+- **게이트 = `npm run test:calc`** — **26항목 체인, 목록 정본=`package.json`**(청구면적 `test:orderline`·마감표기 `test:finishing-label`·파일규격 `test:file-dims`·여신 `test:credit`·품목중복 `audit:items:selftest` 외 21개). **`deploy.yml`(CI) · `ship:gate`(/ship) · `/deploy-verify` Phase 1 세 경로 전부가 배포 전에 돌린다**(2026-08-25 CI 신설 → 2026-09-10 나머지 둘 편입. 그전엔 로컬 `deploy:prod` 로 내보내면 이 게이트가 배포를 못 막고 **이미 나간 뒤** CI 실패로만 드러났다).
+- `test:hookguard`는 제품이 아니라 **개발환경**(Windows 셸 차단)을 검증 → CI 제외. 로컬 `test:all` + **커밋 훅 차단**(`.claude/hooks/`·`settings.json` 이 dirty 인 커밋만 — `pretooluse-bash.cjs`).
 - 새 계산 규칙을 만들면 **픽스처 테스트를 같이 만든다**. ⚠️로컬 D1이 비면 전부 0이라 판별이 안 된다(그래서 `test:credit`은 in-memory SQLite에 픽스처를 심는다). 상세=memory `feedback-sqlite-placeholder-subquery-order`.
 
 ### IA 스크립트 = 웹과 분리된 수동 배포 축 5개 (`npm run audit:ia-jsx`)
@@ -134,7 +141,7 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
   - 안전 순서 = Z:없음/미설치 skip → probe(remove+copy) → 백업(**extensions 밖** `_panel_backups`) → 복사 → 서명 검증 → 실패 시 **백업 롤백** → 2회 실패면 중단. 롤백 성패는 `copyTree` 반환이 아니라 **복구 후 서명**으로 판정한다(잠긴 파일은 애초에 안 바뀐다).
   - 서명 = 셸버전+파일수+총바이트, **`.bak-*` 제외**. 제외를 빼면 개수가 안 맞아 **영원히 수렴하지 않고** 매 부팅 재복사한다.
   - ⚠️ **최초 설치는 여전히 `install-a0-panel.ps1`**(레지스트리·구 확장 제거). 자동 갱신은 **이미 깔린 셸**만 다룬다.
-  - 게이트 = `npm run cut:shellsync`(원본 절취 + File/Folder shim, 24항목).
+  - 게이트 = `npm run cut:shellsync`(원본 절취 + File/Folder shim). **2026-09-10 `ia-deploy.cjs` 의 `GATES` 에 등록** — 그전까지는 게이트라 불리면서 배포 때 아무도 안 돌렸다(아래 §조용한 격하의 `cut:butt` 사고와 같은 형태였다).
 - **축2(호스트 JSX)는 Z: 1개 교체 = 전 PC 즉시 반영** — 백업·실기기 확인 선행. `ia:deploy` 가 축2 포함 시 `--yes` 를 거부하고 **실제 터미널에서** 실기 확인을 묻는다(비대화 실행 불가).
 - JSX 조기 `return` 은 반드시 `_ia_status` 설정. 미설정=에이전트가 **틀린 진단**("JSX 반환 빈값")을 UI에 띄운다.
 
@@ -143,7 +150,7 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 (2026-07-29: SheetLayout 폴백 수정이 exe 폴더에 미복사 → 모아찍기 판 렌더 6일간 실패. 상세 = memory `feedback-ia-jsx-runtime-path`)
 
 ### 조용한 격하 = 게이트가 「성공」으로 센다 (`npm run cut:placement`)
-**폴백은 실패가 아니라 성공처럼 생겼다.** 누적 캐시·계산 규칙·IA 5축과 **같은 형태**다 — 200이 뜨고, 판이 나오고, 화면이 정상이다. 게이트가 모자란 게 아니라(50개 있다) **격하를 성공으로 세고 있는** 것이다.
+**폴백은 실패가 아니라 성공처럼 생겼다.** 누적 캐시·계산 규칙·IA 5축과 **같은 형태**다 — 200이 뜨고, 판이 나오고, 화면이 정상이다. 게이트가 모자란 게 아니라(개수 정본=`package.json` scripts, 2026-09-10 실측 73개) **격하를 성공으로 세고 있는** 것이다.
 
 2026-09-04 실사고: 판 길이 상한을 배치 엔진 **밖**에 뒀는데, 그 지점을 지나는 경로가 **둘**이고 `butt.js` 는 그 제약을 지킬 **능력이 없었다**(길이 무한 전제 → 판 1장). 맞붙임이 조용히 래스터로 격하돼 칼선이 두 줄로 나갔고 — `cut:butt`(엔진 단독)·`cut:smoke`(소스 텍스트)·`cut:e2e`(판이 나오나)가 **전부 통과**했다. 셋 다 「기능이 **켜진 채로** 끝났는가」를 안 본다.
 
@@ -153,7 +160,7 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 - **버전 주석에 「무엇을 잃나」를 한 줄.** 주석이 전부 "무엇을 고쳤나"뿐이다 — 2026-09-04 에 「맞붙임은 판을 못 나눈다」를 적었으면 거기서 걸렸다.
 - **게이트는 배포 경로에 물려야 존재한다** — `cut:butt` 는 2026-08-06부터 있었는데 `ia-deploy.cjs` 의 `GATES` 에 없어 **배포 때 아무도 안 돌렸다**(2026-09-04 에 `cut:placement` 와 함께 등록).
 
-### 단가는 값이 아니라 **축**이다 (`npm run audit:unit-price-semantics`)
+### 단가는 값이 아니라 **축**이다 (`npm run audit:unit-price-semantics` — ⚠️`--remote` 고정·실행 경로 미배선. prod 대상 **수동** 감사다)
 `unit_price` 한 칸이 과금축에 따라 뜻이 다르다 — AREA=㎡단가 · FIXED=장당가 · 발주=포장당 · 재고(`avg_unit_cost`)=base단위당.
 전부 「단가」라는 같은 이름으로 화면에 뜨는데 축 표기가 없다. **5번 재발**했다(`0530`·`0571`·`0572`·`0596`·100배 사고).
 
@@ -174,6 +181,18 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 그 등록 행은 **에이전트가 파일을 만들 때만** 생긴다. 그래서 경로별로 파일명 처리가 **정반대**다 —
 새 주문을 만들면 꼬리를 **새 주문번호로 교체**해야 하고(안 하면 원 주문 카드에 출력완료가 찍혀 실적 오염),
 기존 주문을 유지한 재출력은 **건드리면 안 된다**(그대로여야 매칭이 맞는다).
+
+### 배포를 실제로 막는 게이트 (2026-09-10 실측)
+**「게이트가 있다」와 「게이트가 돈다」는 다른 질문이다.** `cut:butt` 는 2026-08-06부터 있었는데 한 달간 아무도 안 돌렸고, `cut:shellsync` 도 같은 상태였다(2026-09-10 등록) — **목록이 없어서 아무도 그걸 몰랐다.**
+- **CI**(push→main, `.github/workflows/deploy.yml`): tsc · build · `test:calc` · `entity-audit.mjs` · `canary:write:ci` · `smoke.cjs`(prod)
+- **커밋 훅**(`pretooluse-bash.cjs`): tsc(전건 차단) · `skill-audit`·`hook-guard-selftest`·`doc-diet-audit`(해당 파일이 dirty 인 커밋만)
+- **편집 훅**(`posttooluse-edit.cjs`): `node --check`(src/scripts/*.js) · `check:dom` 기준선 회귀 — 둘 다 `exit 2` 차단
+- **`ia:deploy`**(`ia-deploy.cjs` `GATES`): cut:bleed · cut:nest · cut:butt · cut:placement · cut:smoke · **cut:shellsync** · panel:smoke · cut:e2e + ia-jsx 드리프트
+- **`ship:gate`**: verify(tsc+build) · entity-audit · **test:calc** · canary:write
+- **`/deploy-verify`**: Phase 1 tsc·build·**test:calc** → Phase 2 entity-audit → Phase 2-B `audit:migration-drift`(스키마 변경 시) → Phase 4 `smoke:prod`
+> ⚠️`verify.yml` 은 `on: pull_request` 다 — 이 프로젝트(main 직접 push)에서는 **생성 이래 0회 실행**.
+> ⚠️여기 **없는** 감사는 사람이 부를 때만 돈다: `sort-audit` · `audit:query-cost` · `audit:subquery` · `audit:unit-price-semantics` · `audit:migration-drift` · `audit:stock-ledger` · `test:symmetry` · `test:ship-stock` · `test:autodeduct` · `cut:quality`.
+> **게이트를 새로 만들면 이 목록에 줄을 추가한다. 추가할 자리가 없으면 그건 게이트가 아니라 스크립트다.**
 
 > 사업 도메인·역할·아키텍처·에이전트 팀·참조 문서 → `.claude/references/project-context.md`
 > **단일 소스 원칙**: 참조 파일에 코드 값 복사 금지. 구조 변경 시 참조 파일도 동기 업데이트.
