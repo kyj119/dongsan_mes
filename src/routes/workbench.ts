@@ -1031,6 +1031,15 @@ workbenchRouter.post('/intakes/:id/absorb', async (c) => {
     ).bind(orderItemId, absEntity, id).run() // #534: TOCTOU 가드(선행 SELECT 이후 동시 흡수 차단)
     if (upd.meta.changes === 0) return c.json({ success: false, error: '이미 처리된 대기물입니다.' }, 409)
 
+    // ★링크를 못 붙인 흡수는 조용하다 — 흡수 자체는 성공으로 끝나는데, 아래 학습 2종이 둘 다
+    //   `JOIN order_items oi ON oi.id = di.order_item_id` 로 시작해 **0행**이 된다.
+    //   그러면 print_file_map 이 안 생겨 출력완료가 카드에 못 붙는데 응답은 200 이라, 나중에
+    //   "왜 매칭이 안 됐나"를 물을 데가 없었다. 동작은 그대로 둔다 — **보이게만** 한다.
+    if (!orderItemId) {
+      console.warn('[workbench] 흡수했지만 주문 라인을 못 붙였다 — 파일맵·별칭 학습을 건너뛴다. intake=%d analysis=%s order=%s',
+        id, String(analysisId), String(orderId))
+    }
+
     // ── 별칭 학습(2026-08-12) — 같은 일을 두 번 하지 않게 만든다 ──────────────
     // Z: 파일명의 거래처 표기는 마스터 등록명과 자주 다르다(약칭·지점 생략·오타).
     // 스캐너가 자동 해소하는 건 58% 뿐이고 나머지는 사람이 주문서에서 골라야 하는데,
@@ -1115,8 +1124,11 @@ workbenchRouter.post('/intakes/:id/absorb', async (c) => {
            WHERE order_number IS NULL AND (file_name = ? OR file_name = ?)
         `).bind(linkRow.orderNumber, linkRow.entityId, fileName, noExt).run()
       }
-    } catch (_mapErr) {
+    } catch (mapErr) {
       // 매칭 학습 실패가 흡수를 되돌리면 안 된다 — 위 별칭 학습과 같은 원칙.
+      // ⚠️ 되돌리지 않는 것과 **삼키는 것**은 다르다. 응답은 200 이고 화면도 정상이라,
+      //    여기서 조용히 실패하면 출력완료가 카드에 안 붙는 이유가 아무 데도 안 남는다.
+      console.warn('[workbench] 출력완료 매칭 학습 실패(흡수는 유지). intake=%d err=%s', id, String(mapErr))
     }
 
     return c.json({ success: true, data: { id, status: 'absorbed', order_item_id: orderItemId } })
