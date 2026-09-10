@@ -160,8 +160,48 @@ function poReadFilters() {
     overdue: currentStatus === 'OVERDUE',
     supplierId: g('supplierFilter'),
     sort: g('sortSelect') || 'order_date_desc',
+    // 발주일 범위. `datePeriod` 는 **상대 기간**이라 프리셋에 그대로 저장된다 —
+    // 고정 날짜로 저장하면 다음 달에 그 프리셋을 눌러도 지난달 구간이 나온다(주문서와 같은 규약).
+    dateFrom: g('poDateFrom'),
+    dateTo: g('poDateTo'),
+    datePeriod: g('poDatePeriod'),
     includeIc: !!poIncludeIcParam()
   };
+}
+
+// 기간 프리셋 → 시작일 (KST 기준). 주문서 `ordPeriodDateFrom` 과 같은 계산이다.
+function poPeriodDateFrom(months) {
+  var t = (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10)).split('-');
+  var d = new Date(parseInt(t[0]), parseInt(t[1]) - 1, parseInt(t[2]));
+  d.setMonth(d.getMonth() - months);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function poSetVal(id, v) { var el = document.getElementById(id); if (el) el.value = (v == null ? '' : v); else console.warn('[purchaseOrders] #' + id + ' not found'); }
+
+function poApplyDatePeriod(v) {
+  if (v) { poSetVal('poDateFrom', poPeriodDateFrom(parseInt(v) || 1)); poSetVal('poDateTo', ''); }
+  loadPOs(1);
+}
+
+// 날짜를 손으로 고치면 상대 기간을 푼다 — 안 풀면 프리셋 재적용이 손수정을 덮는다.
+function poDateManualChange() {
+  poSetVal('poDatePeriod', '');
+  loadPOs(1);
+}
+
+function poClearDateFilter() {
+  poSetVal('poDatePeriod', ''); poSetVal('poDateFrom', ''); poSetVal('poDateTo', '');
+  loadPOs(1);
+}
+
+function poResetFilters() {
+  poSetVal('searchInput', ''); poSetVal('statusFilter', ''); poSetVal('supplierFilter', '');
+  poSetVal('sortSelect', 'order_date_desc');
+  poSetVal('poDatePeriod', ''); poSetVal('poDateFrom', ''); poSetVal('poDateTo', '');
+  currentStatus = '';
+  var ic = document.getElementById('poIncludeIntercompany'); if (ic) ic.checked = false;
+  loadPOs(1);
 }
 
 function poBuildParams(f, opts) {
@@ -171,6 +211,9 @@ function poBuildParams(f, opts) {
   if (f.status && !opts.omitStatus) p.append('status', f.status);
   if (f.overdue && !opts.omitStatus) p.append('overdue', '1');
   if (f.supplierId) p.append('supplier_id', f.supplierId);
+  // 발주일 범위 — 서버는 `po.order_date >= / <=` 로 건다(`routes/purchaseOrders/listFilter.ts`).
+  if (f.dateFrom) p.append('date_from', f.dateFrom);
+  if (f.dateTo) p.append('date_to', f.dateTo);
   if (f.includeIc) p.append('include_intercompany', '1');
   return p;
 }
@@ -186,6 +229,15 @@ function poRenderChips(f) {
     var sel = document.getElementById('supplierFilter');
     var name = (sel && sel.selectedOptions[0]) ? sel.selectedOptions[0].textContent : f.supplierId;
     items.push({ label: '공급업체 ' + name, onClear: clear(function() { document.getElementById('supplierFilter').value = ''; }) });
+  }
+  if (f.dateFrom || f.dateTo) {
+    var ps = document.getElementById('poDatePeriod');
+    var plabel = ''
+    if (ps && f.datePeriod) for (var pi = 0; pi < ps.options.length; pi++) if (ps.options[pi].value === f.datePeriod) plabel = ps.options[pi].textContent
+    items.push({
+      label: plabel || ('발주일 ' + (f.dateFrom || '처음') + ' ~ ' + (f.dateTo || '오늘')),
+      onClear: clear(function() { poSetVal('poDatePeriod', ''); poSetVal('poDateFrom', ''); poSetVal('poDateTo', ''); }),
+    })
   }
   items.push(f.includeIc
     ? { label: '법인간거래·관계사 포함', tone: 'static' }
@@ -801,6 +853,11 @@ function poApplyFilters(f) {
   setVal('statusFilter', f.status);
   setVal('supplierFilter', f.supplierId);
   setVal('sortSelect', f.sort || 'order_date_desc');
+  // 상대 기간이 저장돼 있으면 **오늘 기준으로 다시 계산**한다. 고정 날짜를 그대로 되살리면
+  // 「최근 3개월」 프리셋이 다음 달에 지난 구간을 보여 준다.
+  setVal('poDatePeriod', f.datePeriod || '');
+  if (f.datePeriod) { setVal('poDateFrom', poPeriodDateFrom(parseInt(f.datePeriod) || 1)); setVal('poDateTo', ''); }
+  else { setVal('poDateFrom', f.dateFrom); setVal('poDateTo', f.dateTo); }
   currentStatus = f.overdue ? 'OVERDUE' : (f.status || '');
   var ic = document.getElementById('poIncludeIntercompany');
   if (ic) ic.checked = !!f.includeIc;

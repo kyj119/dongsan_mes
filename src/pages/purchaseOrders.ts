@@ -30,46 +30,100 @@ export function purchaseOrdersPage(c: Context<HonoEnv>) {
       </div>
       <div id="poFilterChips" class="ds-conds mb-6"></div>
 
-      <!-- 검색/필터 바 -->
-      <div class="ds-card p-4 mb-4 flex items-center gap-3 flex-wrap">
-        <input type="text" id="searchInput" placeholder="발주번호, 공급업체 검색..."
-          class="px-3 py-2 border rounded-lg text-sm flex-1 min-w-[200px]"
-          onkeyup="if(event.key==='Enter')loadPOs(1)">
-        <select id="statusFilter" onchange="loadPOs(1)" class="px-3 py-2 border rounded-lg text-sm">
-          <option value="">전체 상태</option>
-          <option value="DRAFT">임시저장</option>
-          <option value="CONFIRMED">발주확정</option>
-          <option value="PARTIAL_RECEIVED">부분입고</option>
-          <option value="RECEIVED">입고완료</option>
-          <option value="CANCELLED">취소</option>
-        </select>
-        <select id="supplierFilter" onchange="loadPOs(1)" class="px-3 py-2 border border-gray-300 rounded-lg text-sm">
-          <option value="">전체 공급업체</option>
-        </select>
-        <select id="sortSelect" onchange="loadPOs(1)" class="px-3 py-2 border rounded-lg text-sm">
-          <option value="order_date_desc">발주일 최신순</option>
-          <option value="order_date_asc">발주일 오래된순</option>
-          <option value="created_at_desc">등록 최신순</option>
-          <option value="expected_date_asc">납기 임박순</option>
-          <option value="final_amount_desc">금액 큰순</option>
-          <option value="final_amount_asc">금액 작은순</option>
-          <option value="supplier_name_asc">공급업체명 가나다순</option>
-          <option value="po_number_asc">발주번호순</option>
-        </select>
-        <label class="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer whitespace-nowrap"
-          title="내부 법인(동산기획·선명·청주) 간 거래 발주. 기본은 숨김 — 미지급(AP) 집계에서도 제외되며 회계허브 > 법인간거래 탭에서 확인합니다.">
-          <input type="checkbox" id="poIncludeIntercompany" class="h-4 w-4 rounded" onchange="loadPOs(1)">
-          법인간거래·관계사 포함
-        </label>
-        <button onclick="exportPoCsv()" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm font-medium">
-          <i class="fas fa-file-csv mr-1"></i>CSV
-        </button>
-        <button onclick="openTemplateModal()" class="ds-btn ds-btn-primary text-sm font-medium">
-          <i class="fas fa-copy mr-1"></i>템플릿에서 생성
-        </button>
-        <a href="/purchase-order-form" class="ds-btn ds-btn-primary text-sm font-medium">
-          <i class="fas fa-plus mr-1"></i>새 발주
-        </a>
+      <!-- 검색/필터 바 — 주문서(pages/orders.ts)와 **같은 골격**을 쓴다(2026-09-10).
+           종전엔 발주만 라벨 없는 입력칸을 한 줄로 늘어놓아 두 목록의 검색을 따로 익혀야 했고,
+           무엇보다 **발주일로 거를 방법이 아예 없었다** — API 는 date_from/date_to 를 이미
+           받고 있었는데(routes/purchaseOrders/listFilter.ts) 화면에 입력칸만 없던 것이다.
+           ⚠️이 파일은 백틱 템플릿이라 주석에도 백틱을 쓰면 템플릿이 깨진다(CLAUDE.md 함정). -->
+      <div class="ds-filter-bar">
+        <div class="ds-filter-field" style="flex:1;min-width:180px">
+          <label class="ds-label">검색</label>
+          <input type="text" id="searchInput" placeholder="발주번호, 공급업체명..." class="ds-input"
+            onkeydown="if(event.key==='Enter')loadPOs(1)">
+        </div>
+        <div class="ds-filter-field" style="min-width:120px">
+          <label class="ds-label">상태</label>
+          <select id="statusFilter" class="ds-input" onchange="loadPOs(1)">
+            <option value="">전체 상태</option>
+            <option value="DRAFT">임시저장</option>
+            <option value="CONFIRMED">발주확정</option>
+            <option value="PARTIAL_RECEIVED">부분입고</option>
+            <option value="RECEIVED">입고완료</option>
+            <option value="CANCELLED">취소</option>
+          </select>
+        </div>
+        <div class="ds-filter-field" style="min-width:150px">
+          <label class="ds-label">공급업체</label>
+          <select id="supplierFilter" class="ds-input" onchange="loadPOs(1)">
+            <option value="">전체 공급업체</option>
+          </select>
+        </div>
+        <div class="ds-filter-field" style="min-width:130px">
+          <label class="ds-label">기간</label>
+          <select id="poDatePeriod" class="ds-input" onchange="poApplyDatePeriod(this.value)"
+            title="오늘 기준 최근 기간으로 발주일을 설정. 프리셋에는 상대 기간으로 저장되어 언제 적용해도 그날 기준으로 계산">
+            <option value="">직접입력</option>
+            <option value="1">최근 1개월</option>
+            <option value="3">최근 3개월</option>
+            <option value="6">최근 6개월(반기)</option>
+            <option value="12">최근 1년</option>
+          </select>
+        </div>
+        <div class="ds-filter-field">
+          <label class="ds-label">발주일 from</label>
+          <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="poDateFrom"
+            class="js-fp ds-input" onchange="poDateManualChange()">
+        </div>
+        <div class="ds-filter-field">
+          <label class="ds-label">~ to</label>
+          <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="poDateTo"
+            class="js-fp ds-input" onchange="poDateManualChange()">
+        </div>
+        <div class="ds-filter-field" style="align-self:flex-end">
+          <button type="button" onclick="poClearDateFilter()" class="ds-btn ds-btn-secondary ds-btn-sm" title="기간 제한 없이 전체 조회">
+            <i class="fas fa-eraser" style="margin-right:4px"></i>날짜 초기화
+          </button>
+        </div>
+        <div class="ds-filter-field" style="min-width:140px">
+          <label class="ds-label">정렬</label>
+          <!-- 정렬 라벨은 기준을 명시한다(CLAUDE.md 정렬 규약) -->
+          <select id="sortSelect" class="ds-input" onchange="loadPOs(1)">
+            <option value="order_date_desc">발주일 최신순</option>
+            <option value="order_date_asc">발주일 오래된순</option>
+            <option value="created_at_desc">등록 최신순</option>
+            <option value="expected_date_asc">납기 임박순</option>
+            <option value="final_amount_desc">금액 큰순</option>
+            <option value="final_amount_asc">금액 작은순</option>
+            <option value="supplier_name_asc">공급업체명 가나다순</option>
+            <option value="po_number_asc">발주번호순</option>
+          </select>
+        </div>
+        <div class="ds-filter-field" style="min-width:auto">
+          <label class="ds-label">법인간거래</label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;height:36px"
+            title="내부 법인(동산기획·선명·청주) 간 거래 발주. 기본은 숨김 — 미지급(AP) 집계에서도 제외되며 회계허브 > 법인간거래 탭에서 확인합니다.">
+            <input type="checkbox" id="poIncludeIntercompany" onchange="loadPOs(1)" class="rounded border-gray-300">
+            <span style="white-space:nowrap;font-size:13px">포함</span>
+          </label>
+        </div>
+        <div class="ds-filter-divider"></div>
+        <div class="ds-filter-actions">
+          <button onclick="poResetFilters()" class="ds-btn ds-btn-secondary ds-btn-sm">
+            <i class="fas fa-undo" style="margin-right:4px"></i>초기화
+          </button>
+          <button onclick="loadPOs(1)" class="ds-btn ds-btn-primary ds-btn-sm">
+            <i class="fas fa-search" style="margin-right:4px"></i>검색
+          </button>
+          <a href="/purchase-order-form" class="ds-btn ds-btn-sm" style="background:var(--c-success);color:#fff;display:inline-flex;align-items:center;text-decoration:none;">
+            <i class="fas fa-plus" style="margin-right:4px"></i>새 발주
+          </a>
+          <button onclick="openTemplateModal()" class="ds-btn ds-btn-secondary ds-btn-sm">
+            <i class="fas fa-copy" style="margin-right:4px"></i>템플릿에서 생성
+          </button>
+          <button onclick="exportPoCsv()" class="ds-btn ds-btn-secondary ds-btn-sm">
+            <i class="fas fa-file-csv" style="margin-right:4px"></i>CSV
+          </button>
+        </div>
       </div>
 
       <!-- 목록 도구모음: 프리셋 · 열 선택 · 페이지당 건수 -->
