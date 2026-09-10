@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-09-10T21:40:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-09-11T03:52:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,31 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **26** (`list_issues(state:OPEN,label:auto-improve)` 실측, 25→26, #645 신규) |
+| 🆕 new | **14** (`list_issues(state:OPEN,label:auto-improve)` 실측, 26→13(용준님 리뷰로 13건 completed)→14, #646 신규) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **542** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
+| ✔️ done | **555** (`search_issues(reason:completed,label:auto-improve)` 실측, 542→555) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 4 데이터 정합성 (2026-09-11T03:52):**
+> - **방법**: 세션 시작 시 detached HEAD `b0ee03aa`(origin/main과 동일)였으나 얕은 clone → `git checkout main` + `git merge --ff-only origin/main`(79커밋, 이미 최신이라 실질 변동 없음) + `git fetch --unshallow`. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area4 방법 라인 HEAD `bd57b39`)**: 웹앱 범위 diff **22커밋** — 대부분 Area1~3·5·6이 이미 각자 렌즈(코팅원가·가격엔진 리팩터·발주검색바·entity격리·재무축)로 정독. 데이터정합성 렌즈로는 신규 마이그 15건(`0573`~`0576` 회수분 4건 + `0602`~`0612` 신규 11건) 전수 직독이 이번이 최초.
+> - **`db:bootstrap:ci` 전량 재적용** — 627개 전건 ✅(CHECK/FK 위반 0), 직전 세션(`7cbd650f`)의 0573 `WHERE EXISTS` 가드가 로컬에서도 정확히 no-op 확인.
+> - **🔴 신규 발견 → #646 — 롤 발주 입고 취소 시 `purchase_order_items.received_packs` 누적값이 안 줄어들어 검수 대기 큐가 조용히 놓침**: 이번 사이클 신설 기능(0610~0612)이 CLAUDE.md 「누적 캐시」 클래스를 그대로 재현 — 입고 처리(`po-receive.ts:320`)는 `received_packs`를 `COALESCE(...,0) + ?`로 누적하는데, 기존 입고 전량취소 롤백(`inventory.ts:821-833`, #373)은 형제 컬럼 `received_quantity`/`accepted_quantity`/`rejected_quantity`는 정확히 `MAX(0, col-?)`로 역산하면서 **`received_packs`는 전혀 참조하지 않는다**(`grep -rn received_packs src/` = 증가 1곳뿐, 감소 0곳). 소비처는 이번 사이클 신설 검수 대기 판정 정본 `PO_REVIEW_PENDING_SQL`(`listFilter.ts:53-54`, `received_packs <> order_packs`) — 2회 분할입고 중 나중 입고를 취소하면 `received_packs`가 옛값(=order_packs)에 남아 "차이 없음"으로 오판정, 실제로는 부족한데 검수 큐에 안 뜬다. 근본은 스키마 갭이기도 함 — `inventory_receipt_items`에 애초에 "이 건이 몇 롤이었나"를 저장하는 컬럼이 없어 취소 시 이 건의 기여분만 역산할 방법이 없다(단순 UPDATE 추가로 못 고침, 컬럼 신설 선행 필요). 재고 수량·금액 자체는 무영향(그쪽은 `received_quantity` 기반이라 정확) — **검수 큐 판정에만 국한**. **issue-only(#646, M, 입고취소 트랜잭션 변경=비즈니스 로직)**.
+> - **#639(마이그 번호 중복) 재발 확인 + 첫 3중복 발견**: 이번 15건에서 `0573`·`0574`·`0575`가 신규 중복(직전 세션 `7cbd650f`의 prod 회수 작업 부산물, 신규 작성 아님) + **`0576`이 처음으로 3중복**(`_expense_category_mutual_aid_fund`·`_roll_material_unit_axis`·`_uv_board_min_billing`)으로 늘어남 — 셋 다 대상 테이블·컬럼(bank_transactions/expense_categories vs items SVCV-127·KMT-UVONEWAY 한정 vs items UV-* 접두 한정) 비겹침으로 우연히 무해 확인. `#639`에 코멘트로 기록. **CLAUDE.md의 하드코딩 "20쌍" 목록이 이미 실측과 어긋나 있어**(`0080`·`0193`은 현재 단일 파일, 원인 불명) 목록 나열 대신 감사 명령 참조로 교체(안전 문서동기화, `26f...` 예정 커밋 — 아래 자동수정 참고).
+> - **entity_id 표본 검증**: `product_materials.material_role`(0603) 로컬 D1 7건 전부 NULL(신규 컬럼, 정상) — prod 적용 여부는 Area1 #644로 이미 확인·close 완료(owner "이미 적용됨" 코멘트).
+> - **0604(8월 이관 담당법인 정정) 재검증**: 하드코딩 행 id 없이 데이터 조건(`assigned_entity_id=1 AND assignment_status='PENDING' AND entity_id IN (2,3)`)으로 범위를 고정해 빈 DB에서 자연 no-op(0건) — `billed_by=5` 값은 리터럴이나 WHERE 매치 0건이라 FK 위반 없음. 백업 5테이블(`_bak_0910_*`) IF NOT EXISTS로 멱등, `db:bootstrap:ci`에서 정상 통과 확인.
+> - **standing scan 1: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 75건·**누락 0건**(변동없음).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음 — 직전 Area4의 hono 승격 유지 확인).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 6런 중 1건 `failure`(vite5→8 전환 직후 esbuild 미해결, `c0cc5630`)이 있었으나 바로 다음 커밋(`11b767fa`, esbuild 직접 devDep 고정)이 즉시 해결 — 최종 HEAD(`b0ee03aa`) 포함 나머지 전부 `success`. 신규 조치 불요(이미 자기 수정됨).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` totalCount **13**(직전 로그의 26에서 **13건이 용준님 리뷰로 completed 처리**됨 — `search_issues(reason:completed)` 542→555와 정확히 일치) 확인 후 #646 신규 생성.
+> - **backlog↔GitHub 절대값 재동기화**: open **14**(26→13→14, #646 신규) · done **555**(542→555, +13) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 이번 발견(#646)은 기존 「신규 write-path의 denormalized aggregate 증분(delta) 정합성」 standing check(16회차 codify)이 정확히 겨냥한 클래스 — 그 체크리스트가 "delta 공식 일치"만 보고 "취소/역산 경로가 신규 컬럼을 아는지"는 별도 확인 항목이 아니었다. 재발 시를 위해 그 항목에 "증분 컬럼 도입 시 형제 취소/롤백 경로가 같은 컬럼을 역산하는지" 하위 체크를 추가할 가치가 있으나, 이번이 해당 클래스 3번째 사례(#477·#480과 유사 골격)라 기존 「형제 미완결 sweep」 원칙의 재확인으로 충분 — 별도 신규 codify는 보류.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 12건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 1건(#646 롤 입고취소 시 received_packs 미역산 — 검수 큐 오판정, M, 입고취소 트랜잭션 변경이라 issue-only), 자동수정 1건(CLAUDE.md 마이그 중복 번호 하드코딩 목록을 감사 명령 참조로 교체 — 문서 동기화, 안전), done-sync: open 26→13(리뷰 반영)→14(#646)·done 542→555(+13)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-09-10T21:40):**
 > - **방법**: 세션 시작 시 detached HEAD `b1876e0f`(origin/main과 동일)였으나 얕은 clone(50커밋) → `git fetch origin main`이 "forced update" 경고를 냈으나 `git fetch --unshallow` 후 `eecca71`이 `b1876e0f`의 조상임을 재확인(얕은 clone 아티팩트, 실제 force-push 아님) → `git checkout main` + `git merge --ff-only origin/main`(54커밋 fast-forward)으로 정합. `npm ci`(0→81), `npx tsc --noEmit` clean.
