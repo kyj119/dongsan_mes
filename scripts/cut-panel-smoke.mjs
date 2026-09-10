@@ -885,8 +885,17 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     ok('3u 흡수 시 print_file_map 을 배운다', /INSERT INTO print_file_map/.test(wb))
     ok('3u 카드 없이도 배운다(카드 0건 상태)', /VALUES \(\?, \?, NULL, NULL, \?, \?, \?\)/.test(wb))
     ok('3u 과거 이벤트를 소급한다', /UPDATE print_events SET order_number = \?/.test(wb))
-    // ★학습 실패가 흡수를 되돌리면 안 된다 — 별칭 학습과 같은 원칙
-    ok('3u 학습 실패를 삼킨다', /catch \(_mapErr\)/.test(wb))
+    // ★규칙은 **되돌리지 않는 것**이다. 다만 되돌리지 않는 것과 **조용히 삼키는 것**은 다르다 —
+    //   16b9ef33 이 사유를 남기도록 바꿨다(`catch (_mapErr)` → `catch (mapErr)` + console.warn).
+    //   패턴이 아니라 **규칙**을 센다: 흡수는 성공으로 남고, 실패 사유는 어딘가에 남는다.
+    ok('3u 학습 실패가 흡수를 되돌리지 않는다(사유는 남긴다)', (() => {
+      const at = wb.indexOf('} catch (mapErr) {')
+      if (at < 0) return false
+      const tail = wb.slice(at, at + 600)
+      return /console\.(warn|error)/.test(tail)
+        && !/throw/.test(tail)
+        && tail.indexOf("status: 'absorbed'") > 0
+    })(), '학습 실패가 흡수를 되돌리거나, 사유가 아무 데도 안 남는다')
   }
 
   // ── ★조각 속 메우기 (2026-08-27) ─────────────────────────────────
@@ -1369,7 +1378,9 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   //   ①획을 먼저 면으로(Outline Stroke) ②도련 오프셋만 마이터 조인(칼선은 라운드 유지)
   //   실측(길이40·획1·오프셋6, 면적 mm²): 이론 사각 676.0 · 아웃라인+마이터 676.0 정확히 일치.
   //   라운드는 552.0(획 그대로)·604.0(아웃라인 후) 로 곡면이 남는다.
-  ok('3m 도련은 획을 먼저 면으로', /app\.executeMenuCommand\('OffsetPath v22'\);\s*\/\/ = Object > Path > Outline Stroke/.test(hostSrc))
+  //   ⚠️ 2026-09-08(0.39.0): 명령을 **검산 래퍼**로 감쌌다(mesCut_outlineStroke) — 뜻은 그대로,
+  //      호출 형태만 바뀌었다. 생짜 호출이 남지 않는지는 9군이 따로 센다.
+  ok('3m 도련은 획을 먼저 면으로', /var oErr2 = mesCut_outlineStroke\(doc\);\s*\/\/ = Object > Path > Outline Stroke/.test(hostSrc))
   ok('3m 도련 조인은 마이터', /var MESCUT_BLEED_JOIN = 2;/.test(hostSrc))
   ok('3m 칼선 조인은 라운드 유지', /var MESCUT_VEC_JOIN = 0;/.test(hostSrc))
   ok('3m 도련 오프셋이 도련 조인을 쓴다', /jntp ' \+ MESCUT_BLEED_JOIN/.test(hostSrc))
@@ -1765,11 +1776,21 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   //   "무언가 부르긴 한다"가 아니라 **부를 수 있는 형태인가**를 본다.
   ok('3l 폴더는 다이얼로그로 고른다',
     /\.selectDlg\s*\(/.test(hostSrc) || /Folder\.selectDialog\s*\(/.test(hostSrc))
-  // ★EPS 옵션은 A0 와 같아야 한다 — 실물 EPS 가 전부 그 형식이다
+  // ★EPS **형식** 옵션은 A0 와 같아야 한다 — 실물 EPS 가 전부 그 형식이다
   const a0 = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-a0-host.jsx'), 'utf8')
-  const opts = (src) => ['cmykPostScript = true', 'Compatibility.ILLUSTRATOR10', 'EPSPreview.COLORTIFF', 'embedAllFonts = true']
+  const opts = (src) => ['cmykPostScript = true', 'Compatibility.ILLUSTRATOR10', 'EPSPreview.COLORTIFF']
     .filter((k) => src.includes(k)).join('|')
-  ok('3l EPS 옵션이 A0 와 동일', opts(hostSrc) === opts(a0) && opts(hostSrc).split('|').length === 4, opts(hostSrc))
+  ok('3l EPS 형식 옵션이 A0 와 동일', opts(hostSrc) === opts(a0) && opts(hostSrc).split('|').length === 3, opts(hostSrc))
+  // ★폰트 임베드는 **호스트마다 근거가 다르다** (2026-09-09). 같아야 하는 것은 옵션 값이 아니라
+  //   「살아 있는 텍스트가 있으면 폰트가 반드시 실린다」는 결과다 — 안 실리면 RIP 가 폰트를
+  //   대체해 글자가 바뀐다.
+  //   · A0  = 저장 전에 텍스트를 전부 아웃라인한다 → 남은 텍스트가 있을 때만 임베드.
+  //           (true 고정은 폰트 2,159개 PC 에서 저장마다 문서 폰트를 열어 자원을 태웠다)
+  //   · 재단 = 판에 얹힌 아트를 그대로 저장할 뿐 아웃라인을 **보장하지 않는다** → 항상 임베드.
+  ok('3l 살아 있는 텍스트가 있으면 폰트가 실린다',
+    /embedAllFonts = \(outlineFailed \|\| pfRemainingText > 0\)/.test(a0)
+    && (hostSrc.match(/embedAllFonts = true/g) || []).length === 2,
+    'A0=조건부(아웃라인 보장) · 재단=항상(보장 없음)')
   // -- 3s mm 단위 통일 (2026-08-25) --------------------------------------
   // ★`doc.rulerUnits = ...` 는 **예외도 안 던지고 값도 안 바뀐다**(AI 30.7 실측).
   //   SheetLayout.jsx 가 정확히 그렇게 쓰고 있었고 "저장 파일 기본 단위 = mm" 의도가
@@ -1894,6 +1915,165 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     const ub = U.findUseBeforeVar(src)
     ok(`8 var 선언 전 사용 없음 (${f})`, ub.length === 0, ub.map((b) => `${b.fn}() → ${b.name}`).join(', '))
   }
+}
+
+// ── 9. 일러 업데이트에 대한 방어 (2026-09-08) ────────────────────────
+//   전부 **지금 일러에서는 재현되지 않는다** — 명령 ID 가 바뀌거나 조각이 커져야 나온다.
+//   그래서 소스 규약으로 세는 것 말고는 세는 방법이 없다.
+{
+  const hostSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
+  const panelSrc = fs.readFileSync(CUT_MAIN, 'utf8')
+
+  // ★검사는 **개수가 아니라 자리**다 — 2026-09-10 실사고.
+  //   패치가 래퍼 **안**의 `executeMenuCommand` 를 호출부 코드로 바꿔 버려 래퍼가 자기를 부르는
+  //   **무한 재귀**가 됐고, `mesCut_vecSilhouette` 가 예외로 죽어 **칼선이 통째로 안 나왔다**.
+  //   그런데 옛 게이트는 그 재귀 호출을 「호출부 2곳」으로 세어 초록으로 통과시켰다.
+  const grabH = (src, header) => {
+    const i = src.indexOf(header)
+    if (i < 0) return null
+    let d = 0
+    for (let k = src.indexOf('{', i); k < src.length; k++) {
+      if (src[k] === '{') d++
+      else if (src[k] === '}') { d--; if (d === 0) return src.slice(i, k + 1) }
+    }
+    return null
+  }
+  const wrapBody = grabH(hostSrc, 'function mesCut_outlineStroke(doc) {')
+  const outsideWrap = wrapBody ? hostSrc.replace(wrapBody, '') : hostSrc
+  // 버전 번호가 박힌 메뉴 ID 는 조용히 no-op 된다 → 반드시 검산을 통과해서 부른다.
+  ok('9 OffsetPath 는 검산 래퍼 안에서만 불린다', (() => {
+    if (!wrapBody) return false
+    const all = (hostSrc.match(/executeMenuCommand\('OffsetPath v22'\)/g) || []).length
+    const inWrap = (wrapBody.match(/executeMenuCommand\('OffsetPath v22'\)/g) || []).length
+    return all === 1 && inWrap === 1 && /outline-cmd-noop/.test(wrapBody)
+  })(), '생짜 호출이 남았거나, 래퍼가 정작 명령을 안 부른다')
+  ok('9 래퍼가 자기를 부르지 않는다',
+    !!wrapBody && !/mesCut_outlineStroke\s*\(/.test(wrapBody.slice(wrapBody.indexOf('{'))),
+    '무한 재귀 — 실루엣이 예외로 죽어 칼선이 통째로 사라진다')
+  ok('9 호출부는 래퍼 바깥에 둘이다',
+    (outsideWrap.match(/=\s*mesCut_outlineStroke\(doc\)/g) || []).length === 2,
+    '실루엣·도련 두 경로가 모두 래퍼를 지나야 한다')
+  // 안 먹었으면 **틀린 칼선을 만드느니 안 만든다**.
+  ok('9 명령이 안 먹으면 칼선을 만들지 않는다',
+    /if \(oErr\) return \{ n: 0, anchors: 0, err: oErr \}/.test(outsideWrap)
+    && /code: 'outlinecmd'/.test(outsideWrap))
+  ok('9 패널이 그 코드를 사람 말로 옮긴다',
+    /function hostWhy\(/.test(panelSrc) && /outline-cmd-noop/.test(panelSrc)
+    && /cb\(hostWhy\(s\)/.test(panelSrc))
+
+  // 굽기는 **면적이 아니라 변**이 문제다 — 굽기 전에 재고, 실패 사유를 화면까지 나른다.
+  ok('9 굽기 변 길이를 굽기 전에 잰다',
+    /var MESCUT_EFS_MAX_PX_SIDE = \d+/.test(hostSrc)
+    && /px-side-over/.test(hostSrc)
+    && hostSrc.indexOf('MESCUT_EFS_MAX_PX_SIDE') < hostSrc.indexOf('doc.exportForScreens('))
+  ok('9 일괄 굽기 실패 사유가 결과에 실린다',
+    /;efswhy=/.test(hostSrc) && /out\.efswhy = MESCUT_EFS_WHY/.test(hostSrc)
+    && /efswhy=\(\[\^;/.test(panelSrc) && /function efsWhyText\(/.test(panelSrc))
+  // `;k=v` 형식을 깨면 패널이 **다른 키를 잘못 읽는다**.
+  ok('9 사유 문자열이 응답 형식을 깨지 않는다', (() => {
+    const m = /function mesCut_kvSafe\(s\) \{[\s\S]*?\n\}/.exec(hostSrc)
+    if (!m) return false
+    const f = new Function('return ' + m[0] + ';')()
+    const out = f('px-side-over p0=800x32000; 조각이 큽니다\n둘째줄')
+    return !/[;\r\n]/.test(out) && /^[\x20-\x7E]*$/.test(out)
+  })(), 'kvSafe 가 구분자·비ASCII 를 못 걷어냄')
+
+  // 어느 일러에서 나온 산출인지 사후에 잴 수 있어야 한다.
+  ok('9 manifest 가 일러 버전을 남긴다', /"ai_version"/.test(hostSrc))
+
+  // ── 10. 일러가 파일을 못 쓸 때 **누가 쓰는가** (2026-09-09) ──────────────
+  //   가공 축(panel-smoke 10)과 **같은 계약**이다. manifest 쓰기 경로는 CEP 축에 둘이고,
+  //   한쪽만 고치면 나머지 한쪽이 조용히 옛 동작으로 남는다(형제 스윕).
+  const lockSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-lock.jsx'), 'utf8')
+
+  ok('10 인계 창구가 있다(가져가기·놓기)',
+    /function mesCut_manifestPending\(/.test(hostSrc) && /function mesCut_manifestDone\(/.test(hostSrc))
+  ok('10 못 쓰면 물고 간다(파일은 이미 다 나왔다)',
+    /\$\.global\.mesCutMfPending\.push\(\{ path: mfPath, mf: mf \}\)/.test(hostSrc))
+  ok('10 앞 건의 잔여를 끌고 가지 않는다', /\$\.global\.mesCutMfPending = \[\];/.test(hostSrc))
+  // ★구버전 패널이 **성공으로 오해하면 안 된다** — manifest 없는 폴더는 에이전트가 못 읽는다.
+  ok('10 성공으로 보고하지 않는다',
+    /return 'ERROR manifest 쓰기 실패;mfpending=' \+ pend/.test(hostSrc), '조용한 성공 금지')
+  ok('10 패널이 그 분기를 탄다',
+    /;mfpending=/.test(panelSrc) && /function rescueCutManifest\(/.test(panelSrc))
+  ok('10 패널은 cep.fs 로 쓴다(일러를 안 거친다)',
+    /window\.cep\.fs\.writeFile\(p\.items\[i\]\.path/.test(panelSrc))
+  ok('10 하나라도 못 쓰면 실패로 본다',
+    /일러도 패널도 manifest 를 못 썼습니다/.test(panelSrc), '판 일부만 올라가면 더 나쁘다')
+  ok('10 완료 화면은 한 벌이다',
+    (panelSrc.match(/function finishRegister\(/g) || []).length === 1
+    && (panelSrc.match(/finishRegister\(/g) || []).length === 3)
+
+  // ── 잠금 — 「지웠다고 말했는데 안 지워진」 자리 ────────────────────────
+  ok('10 해제가 remove() 반환값을 본다',
+    /gone = !!mesLock_file\(\)\.remove\(\)/.test(lockSrc),
+    'File.remove() 는 예외가 아니라 false 를 돌려준다 — try/catch 로는 못 잡는다')
+  ok('10 못 지우면 만료로 밀어 놓아준다',
+    /f\.write\(owner \+ '\|released\|0'\)/.test(lockSrc) && /return mesLock_read\(\) \? 'stale'/.test(lockSrc),
+    '남의 탭이 TTL 10분 동안 이유 없이 막힌다')
+  ok('10 점유 안내가 한 곳에서 나온다',
+    (panelSrc.match(/function busyMsg\(/g) || []).length === 1
+    && !/다른 쪽이 일러를 점유 중입니다: ' \+ lk/.test(panelSrc)
+    && /mes_host_lock\.txt/.test(panelSrc), '5곳이 각자 문구를 만들면 안내를 못 고친다')
+
+  // ★값 검산 — 인계가 **경로와 원문을 그대로** 되돌리는가. 배포되는 함수를 그대로 돌린다.
+  //   순서가 뒤집히면(폴딩 먼저 → 이스케이프 나중) 경로가 `IA-\uB4F1\uB85D` 글자 그대로가 되어
+  //   아무 데도 못 쓴다. 문자열 검사로는 절대 안 잡히는 자리다.
+  const cutHandoff = (() => {
+    const grabC = (src, header) => {
+      const i = src.indexOf(header)
+      if (i < 0) return null
+      let d = 0
+      for (let k = src.indexOf('{', i); k < src.length; k++) {
+        if (src[k] === '{') d++
+        else if (src[k] === '}') { d--; if (d === 0) return src.slice(i, k + 1) }
+      }
+      return null
+    }
+    const fa = grabC(hostSrc, 'function mesCut_asciiFold(s) {')
+    const fj = grabC(hostSrc, 'function mesCut_jsonEsc(s) {')
+    const fb = grabC(hostSrc, 'function mesCut_bridgeEsc(s) {')
+    const fp = grabC(hostSrc, 'function mesCut_manifestPending() {')
+    if (!fa || !fj || !fb || !fp) return { err: '함수를 못 찾음' }
+    const asciiFold = new Function('return ' + fa + ';')()
+    const jsonEsc = new Function('return ' + fj + ';')()
+    const bridgeEsc = new Function('mesCut_asciiFold', 'mesCut_jsonEsc',
+      'return ' + fb + ';')(asciiFold, jsonEsc)
+    const mfObj = { client_name: '연안애드마트', eps: '코끼리-280x179-1EA.eps', qty: 3 }
+    const mf = JSON.stringify(mfObj)
+    const p0 = 'Z:/DESIGNS/IA-등록/20260909_101936_PC_cut214/manifest.json'
+    // ★배포되는 `mesCut_manifestPending` 본체를 돌린다(사본을 재지 않는다).
+    const G = { global: { mesCutMfPending: [{ path: p0, mf: mf }] } }
+    const manifestPending = new Function('$', 'mesCut_bridgeEsc',
+      fp + '; return mesCut_manifestPending;')(G, bridgeEsc)
+    const pending = manifestPending()
+    if (!/^[\x20-\x7E]*$/.test(pending)) return { err: '브릿지로 못 나가는 문자가 남았다' }
+    let p = null
+    try { p = JSON.parse(pending) } catch (e) { return { err: '패널 파싱 실패: ' + e } }
+    const it = p.items[0]
+    if (it.path !== p0) return { err: '경로가 원문으로 안 돌아옴: ' + it.path }
+    let back = null
+    try { back = JSON.parse(it.mf) } catch (e) { return { err: 'manifest 가 유효 JSON 이 아니다: ' + e } }
+    return { okv: JSON.stringify(back) === JSON.stringify(mfObj) }
+  })()
+  ok('10 인계가 경로·원문을 그대로 되돌린다(값 검산)', cutHandoff.okv === true,
+    cutHandoff.err || '원문 불일치')
+
+  // ── 11. 굽기 전후를 재는 계측 (2026-09-09) ──────────────────────────────
+  ok('11 프로브는 단계마다 다른 파일명을 쓴다', /mes_ciop_' \+ tag/.test(hostSrc))
+  // ★pre_ 와 post_ 가 export 를 **감싸야** 「굽기가 방아쇠인가」를 가를 수 있다.
+  ok('11 굽기를 앞뒤로 감싼다', (() => {
+    const pre = hostSrc.indexOf("mesCut_ioProbe('pre_' + tag)")
+    const exp = hostSrc.indexOf('doc.exportForScreens(fold')
+    const post = hostSrc.indexOf("mesCut_ioProbe('post_' + tag)")
+    return pre > 0 && exp > pre && post > exp
+  })(), 'pre → export → post 순서가 아니다')
+  ok('11 결과에 프로브가 실린다', /;ioprobe=' \+ mesCut_kvSafe\(MESCUT_IOPROBE\)/.test(hostSrc))
+  // ★굽기가 통째로 실패하면 ERROR 로 빠져 응답에 못 싣는다 — 그런데 그게 p0.png 자리다.
+  ok('11 실패 경로에도 꺼낼 창구가 있다',
+    /function mesCut_ioProbeGet\(/.test(hostSrc)
+    && /mesCut_ioProbeGet\(\) : ""/.test(panelSrc),
+    'p0.png 실패에서 정작 아무것도 안 나온다')
 }
 
 // ── 결과 ────────────────────────────────────────────────────────────

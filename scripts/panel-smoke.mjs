@@ -883,6 +883,348 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
     && (wb.match(/absorbEntityOf\(c\.env\.DB/g) || []).length >= 2)
 }
 
+// ── 8. 다른 PC 에서만 깨지던 축 (2026-09-08) ────────────────────────────────
+//   전부 **이 PC 에서는 재현되지 않는다** — 한글 사용자명·Z: 미연결·호스트 사망은
+//   개발 PC 에서 안 일어난다. 그래서 소스 규약으로 세는 것 말고는 세는 방법이 없다.
+{
+  const a0h = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-a0-host.jsx'), 'utf8')
+  const a0m = fs.readFileSync(path.join(path.dirname(PANEL), 'js/main.js'), 'utf8')
+  const cutm = fs.readFileSync(path.join(path.dirname(PANEL), 'js/cut-main.js'), 'utf8')
+  const inst = fs.readFileSync(path.join(REPO, 'scripts', 'install-a0-panel.ps1'), 'utf8')
+
+  // evalScript 실패는 예외가 아니라 `'EvalScript error.'` 라는 평범한 문자열이다 →
+  // 생짜 호출이 하나라도 남으면 그 자리에서 다시 `if (!res)` 가드를 통과한다.
+  ok('8 가공 탭 evalScript 는 래퍼 한 곳만 부른다', (() => {
+    const raw = (a0m.match(/csi\.evalScript\(/g) || []).length
+    return raw === 1 && /function hostEval\(/.test(a0m) && /=== 'EvalScript error\.'/.test(a0m)
+  })(), '생짜 csi.evalScript 잔존')
+  ok('8 재단 탭도 같은 판정을 유지한다',
+    (cutm.match(/cs\.evalScript\(/g) || []).length === 1 && /=== 'EvalScript error\.'/.test(cutm))
+
+  // 원인 1건이 증상 N건으로 번역되지 않게 — 브릿지가 죽으면 남은 건은 '미시도'로 둔다.
+  ok('8 배치·검토는 브릿지 사망 시 중단한다',
+    /function abortBatch\(/.test(a0m) && /function abortLoop\(/.test(a0m)
+    && /err: 'untried'/.test(a0m) && /untried:/.test(a0m))
+
+  // params 는 파일이 안 써지면 인자로 간다(한글 사용자명 PC = cep.fs 실패).
+  ok('8 params 는 cep.fs 실패 시 인자로 넘어간다',
+    /function processExpr\(/.test(a0m)
+    && /return 'mesA0_process\("'/.test(a0m)
+    && /function mesA0_process\(inline\)/.test(a0h)
+    && /\? String\(inline\)/.test(a0h))
+  // 인자·반환 양쪽 다 ASCII 규약 — 한 쌍이라 한쪽만 있으면 의미가 없다.
+  ok('8 브릿지는 양방향 ASCII 로 접는다',
+    /function asciiJson\(/.test(a0m)
+    && /\[\\u007F-\\uFFFF\]/.test(a0m)
+    && /\[\\u007F-\\uFFFF\]/.test(a0h))
+
+  // Z: 미연결·관리자 권한 실행을 `nofolder` 로 뭉개지 않는다(재단 호스트와 같은 문구).
+  ok('8 Z: 루트 판정은 한 곳에서 나온다',
+    /function mesA0_zReady\(/.test(a0h)
+    && (a0h.match(/mesA0_zErrJson\(\)/g) || []).length >= 3   // 정의 1 + 단건 + 배치
+    && /noz:/.test(a0m))
+
+  // config 는 에이전트 PC 1대가 중계한다 — 멈추면 옛 파일이 그대로 남고 아무도 모른다.
+  ok('8 config 나이를 화면에 표시한다',
+    /function cfgAgeText\(/.test(a0m) && /data\.generated_at/.test(a0m) && /cfgAgeText\(gen\)/.test(a0m))
+
+  // 설치기 검증 목록이 코드에 박히면 새 파일이 조용히 검증 밖으로 나간다(bleed·butt·placement 전례).
+  ok('8 설치기 검증은 손목록이 아니다',
+    /Get-ChildItem \$srcDir -Recurse -File/.test(inst)
+    && !/foreach \(\$f in @\('CSXS/.test(inst)
+    && /'13', '14'/.test(inst))
+
+  // ★규약이 있다는 것과 **맞다는 것**은 다르다 — 이스케이프는 순서 하나만 뒤집혀도 조용히
+  //   이중 이스케이프가 되고, 그건 존재 검사로는 절대 안 잡힌다. 실제 함수를 **소스에서 뽑아**
+  //   값으로 돌린다(사본을 손으로 적으면 그 사본이 어긋나는 순간 검산이 거짓말을 한다).
+  const grab = (src, header) => {
+    const i = src.indexOf(header)
+    if (i < 0) return null
+    let d = 0
+    for (let k = src.indexOf('{', i); k < src.length; k++) {
+      if (src[k] === '{') d++
+      else if (src[k] === '}') { d--; if (d === 0) return src.slice(i, k + 1) }
+    }
+    return null
+  }
+  const ASCII = /^[\x20-\x7E]*$/
+  const bridge = (() => {
+    const fa = grab(a0m, 'function asciiJson(o) {')
+    const fp = grab(a0m, 'function processExpr(pp, obj) {')
+    const fe = grab(a0h, 'function mesA0_jsonEsc(s) {')
+    if (!fa || !fp || !fe) return { err: '함수를 못 찾음' }
+    const asciiJson = new Function('return ' + fa + ';')()
+    const jsonEsc = new Function('return ' + fe + ';')()
+    // ★배포되는 `processExpr` **본체**를 돌린다. 이스케이프를 여기 다시 적으면 그 사본이
+    //   맞는지를 재게 되고, 정작 나가는 코드의 순서가 뒤집혀도 게이트는 초록으로 남는다.
+    //   cep.fs 는 항상 실패로 둔다 = 인자 경로 강제(이게 검산 대상이다).
+    const processExpr = new Function('asciiJson', 'cepWriteUtf8',
+      'var paramsViaArg = 0; ' + fp + '; return processExpr;')(asciiJson, () => false)
+    // 값에 브릿지를 깨는 것들을 전부 섞는다: 한글 · 따옴표 · 역슬래시 · 줄바꿈 · 탭
+    const obj = {
+      client_name: '연안애드마트', keyword: '농협공판장 "특가"',
+      post_desc: '사방접어미싱+\\백판', annotation: '줄바꿈\n둘째줄\t탭', qty: 3,
+    }
+    const expr = processExpr(null, obj)
+    const m = /^mesA0_process\("([\s\S]*)"\)$/.exec(expr)
+    if (!m) return { err: '인자 경로 표현식이 아니다: ' + expr.slice(0, 60) }
+    const lit = m[1]
+    // eval 2단 = ExtendScript 가 문자열 리터럴을 푸는 것 + 호스트의 eval('(' + raw + ')')
+    let back = null
+    try { back = eval('(' + eval('("' + lit + '")') + ')') } catch (e) { return { err: '복원 실패: ' + e } }
+    const detail = '등록 폴더 없음(Z: 연결 확인): Z:/DESIGNS/IA-등록 | temp=OK'
+    const res = '{"ok":false,"err":"noz","detail":"' + jsonEsc(detail) + '"}'
+    let parsed = null
+    try { parsed = JSON.parse(res) } catch (e) { parsed = null }
+    return {
+      argOk: ASCII.test(expr) && JSON.stringify(back) === JSON.stringify(obj),
+      resOk: ASCII.test(res) && !!parsed && parsed.detail === detail,
+    }
+  })()
+  ok('8 인자 왕복이 원본을 그대로 되돌린다(값 검산)', bridge.argOk === true, bridge.err || '왕복 불일치')
+  ok('8 실패 응답이 ASCII 로 나가고 원문이 복원된다(값 검산)', bridge.resOk === true, bridge.err || '응답 불일치')
+
+  // ── 9. 「이 PC 가 준비됐는가」를 물어보지 않고 재는 길 (2026-09-08) ──────
+  const idx = fs.readFileSync(PANEL, 'utf8')
+  ok('9 환경 점검 버튼이 탭 밖에 있다',
+    /id="btnEnv"/.test(idx) && /id="envOut"/.test(idx)
+    && idx.indexOf('id="envOut"') < idx.indexOf('data-main-page="a0"'))
+  ok('9 호스트가 환경을 한 번에 잰다', (() => {
+    const need = ['tempAscii', 'tempWrite', 'zWrite', 'cfgAgeH', 'installAscii', 'loadErr']
+    for (let i = 0; i < need.length; i++) if (a0h.indexOf("'" + need[i] + "'") < 0) return false
+    return /function mesA0_envCheck\(/.test(a0h)
+  })(), 'mesA0_envCheck 항목 누락')
+  // 구버전 호스트가 깔린 PC 에서 버튼이 조용히 아무것도 안 하면 안 된다.
+  ok('9 구버전 호스트를 구분해 말한다',
+    /typeof mesA0_envCheck === "function"/.test(a0m) && /구버전/.test(a0m))
+  ok('9 manifest 가 일러 버전을 남긴다', /ai_version:/.test(a0h))
+
+  // ── 10. 일러가 파일을 못 쓸 때 **누가 쓰는가** (2026-09-09) ──────────────
+  //   실기(DESKTOP-6JSH6OL)에서 가공 도중 일러 프로세스의 파일 자원이 고갈된다:
+  //   로컬 temp 와 Z: 가 동시에 I/O 오류이고, 일러 자신의 export 도 실패하며,
+  //   config.json 180KB 가 0바이트로 읽혔다. CEP 는 별도 프로세스라 그 순간에도 멀쩡하다.
+  //   ⇒ 등록의 마지막 한 조각(manifest)을 패널이 쓸 수 있어야 한다. 그 계약을 여기서 센다.
+  ok('10 성공 응답을 쓰기보다 먼저 조립한다',
+    a0h.indexOf('var okRes =') > 0
+    && a0h.indexOf('var okRes =') < a0h.indexOf('if (!mesA0_writeText(mfPath'),
+    '실패 시 성공 필드를 잃으면 패널이 구제해도 완료 화면을 못 만든다')
+  // 정규식으로 형태를 통째로 박으면 필드 하나 늘 때마다 헛돈다 — 뜻(무엇을 물고 있나)만 본다.
+  ok('10 못 쓴 manifest 를 호스트가 물고 있는다',
+    a0m !== null
+    && a0h.indexOf('$.global.mesA0MfPending = { path: mfPath, mf: mfJson, res: okRes') > 0
+    && a0h.indexOf('job: jobFolder.fsName') > 0        // 커밋 뒤 픽업 복사에 필요한 것까지
+    && a0h.indexOf('"mfpending":true') > 0)
+  ok('10 인계 창구가 있다(가져가기·놓기)',
+    /function mesA0_manifestPending\(/.test(a0h) && /function mesA0_manifestDone\(/.test(a0h))
+  ok('10 성공하면 앞 건의 잔여를 지운다', /\$\.global\.mesA0MfPending = null;/.test(a0h))
+  // 텍스트를 전부 아웃라인한 뒤라 임베드할 폰트가 없다 — true 고정은 폰트 2,159개 PC 에서
+  // 저장할 때마다 문서 폰트를 열게 해 자원을 태운다(자원 고갈의 유력 원인).
+  ok('10 EPS 폰트 임베드는 남은 텍스트가 있을 때만',
+    /embedAllFonts = \(outlineFailed \|\| pfRemainingText > 0\)/.test(a0h)
+    && !/embedAllFonts = true/.test(a0h), 'true 고정으로 되돌아갔다')
+  // ⚠️ 닫는 괄호까지 본다 — `r.mfpending` 만 보면 `r.mfpendingX` 도 통과한다(실측 2026-09-09).
+  ok('10 패널이 그 분기를 탄다',
+    /r\.err === 'manifest' && r\.mfpending\)/.test(a0m) && /function rescueManifest\(/.test(a0m))
+  // ★단건만 고치고 배치를 빼면 묶음 등록에서만 조용히 옛 실패로 남는다(형제 스윕).
+  //   `mesA0_process` 를 실제로 등록에 쓰는 경로는 단건과 배치 둘이다(검토는 manifest 를 안 쓴다).
+  ok('10 배치도 같은 구제를 받는다',
+    (a0m.match(/r\.err === 'manifest' && r\.mfpending\)/g) || []).length === 2,
+    '단건만 구제되고 일괄 확정·모아찍기 등록은 그대로 실패한다')
+  ok('10 구제 구현은 한 벌이다',
+    (a0m.match(/function rescuePending\(/g) || []).length === 1
+    && (a0m.match(/rescuePending\(/g) || []).length === 3)
+  ok('10 패널은 cep.fs 로 쓴다(일러를 안 거친다)',
+    (a0m.match(/cepWriteUtf8\(p\.path, p\.mf\)/g) || []).length === 1)
+  // 두 벌이면 한쪽만 고쳐진다 — 구제 경로와 정상 경로가 **같은 화면**을 써야 한다.
+  ok('10 성공 화면은 한 벌이다',
+    (a0m.match(/function renderOk\(/g) || []).length === 1
+    && (a0m.match(/renderOk\(/g) || []).length === 3)
+  ok('10 둘 다 실패하면 실패라고 말한다', /일러도 패널도 못 썼습니다/.test(a0m),
+    '조용한 성공 금지')
+  ok('10 환경 점검이 cep.fs 를 잰다',
+    /function cepProbe\(/.test(a0m) && /cep\.fs 쓰기\(Z: 한글경로\)/.test(a0m),
+    '폴백이 기대는 길을 PC 마다 재지 않으면 추측이 된다')
+
+  // ★값 검산 — 인계가 **원문을 그대로** 되돌리는가. 배포되는 함수를 그대로 돌린다.
+  const handoff = (() => {
+    const fe = grab(a0h, 'function mesA0_jsonEsc(s) {')
+    const fj = grab(a0h, 'function mesA0_toJson(v) {')
+    const fp = grab(a0h, 'function mesA0_manifestPending() {')
+    if (!fe || !fj || !fp) return { err: '함수를 못 찾음' }
+    const jsonEsc = new Function('return ' + fe + ';')()
+    const toJson = new Function('mesA0_jsonEsc', fj + '; return mesA0_toJson;')(jsonEsc)
+    const BS = String.fromCharCode(92)
+    const manifest = {
+      client_name: '연안애드마트', keyword: '농협공판장 "특가"' + BS + '역슬래시',
+      post_desc: '사방접어미싱+백판', qty: 3, measured_cm: { w: 280, h: 179 },
+    }
+    const mf = toJson(manifest)                       // 호스트가 파일에 쓰려던 원문
+    const mfPath = 'Z:/DESIGNS/IA-등록/20260909_101936_PC_214/manifest.json'
+    const res = '{"ok":true,"folder":"20260909_101936_PC_214","w":280,"h":179}'
+    // ★배포되는 `mesA0_manifestPending` **본체**를 돌린다. 조립을 여기 다시 적으면
+    //   그 사본이 맞는지를 재게 되고, 정작 나가는 코드가 틀려도 게이트는 초록으로 남는다.
+    const G = { global: { mesA0MfPending: { path: mfPath, mf: mf, res: res } } }
+    const manifestPending = new Function('$', 'mesA0_jsonEsc',
+      fp + '; return mesA0_manifestPending;')(G, jsonEsc)
+    const pending = manifestPending()
+    if (!ASCII.test(pending)) return { err: '브릿지로 못 나가는 문자가 남았다' }
+    let p = null
+    try { p = JSON.parse(pending) } catch (e) { return { err: '패널 파싱 실패: ' + e } }
+    if (p.path !== mfPath) return { err: '경로가 안 돌아옴: ' + p.path }
+    if (p.res !== res) return { err: '성공 응답이 안 돌아옴' }
+    let back = null
+    try { back = JSON.parse(p.mf) } catch (e) { return { err: 'manifest 가 유효 JSON 이 아니다: ' + e } }
+    return { okv: JSON.stringify(back) === JSON.stringify(manifest) }
+  })()
+  ok('10 인계가 manifest 원문을 그대로 되돌린다(값 검산)', handoff.okv === true,
+    handoff.err || '원문 불일치')
+
+  // ── 11. 「자원이 모자라서인가」를 **재는** 도구 (2026-09-09) ─────────────
+  //   추측을 게이트가 지킬 수는 없다. 지킬 수 있는 것은 **계측이 계측 구실을 하는가**다.
+  ok('11 프로브는 단계마다 다른 파일명을 쓴다',
+    /mes_iop_' \+ tag/.test(a0h),
+    '같은 이름이면 두 번째부터 덮어쓰기다 — 「만들 수 있는가」가 아니라 「고칠 수 있는가」를 재게 된다')
+  ok('11 프로브는 만든 것을 지운다', /if \(f\.exists\) left = !f\.remove\(\)/.test(a0h))
+  // 이등분이 되려면 **호출 순서대로** 박혀 있어야 한다.
+  ok('11 프로브가 호출 흐름을 따라 박혀 있다', (() => {
+    // outcopy 는 **커밋 뒤**로 옮겨져 프로브 대상이 아니다(2026-09-10, 13군 참조)
+    const order = ['start', 'copy', 'outline', 'ai', 'eps', 'thumb']
+    let prev = -1
+    for (let i = 0; i < order.length; i++) {
+      const at = a0h.indexOf("mesA0_ioProbe('" + order[i] + "')")
+      if (at < 0 || at < prev) return false
+      prev = at
+    }
+    return /MESA0_IOPROBE = '';/.test(a0h)
+  })(), '지점 누락 또는 순서 뒤바뀜')
+  ok('11 실패 응답이 프로브를 싣는다',
+    (a0h.match(/"ioprobe":"' \+\s*\n?\s*mesA0_jsonEsc\(MESA0_IOPROBE\)|ioprobe":"' \+ mesA0_jsonEsc\(MESA0_IOPROBE\)/g) || []).length >= 1
+    && /"ioprobe"/.test(a0h))
+  // 정규식으로 쓰면 이스케이프가 한 겹 더 끼어 게이트가 조용히 헛돈다 — 문자열로 본다.
+  ok('11 실패는 항상·성공은 이상할 때만 보여준다',
+    a0m.indexOf('if (r.ioprobe) detail +=') > 0
+    && a0m.indexOf('(r.ioprobe && /X|') > 0,
+    '실패에도 안 띄우거나, 성공에 매번 띄워 사람이 안 읽게 된다')
+  ok('11 부하 시험 버튼이 있고 구버전을 구분한다',
+    /id="btnStress"/.test(idx) && /typeof mesA0_ioStress === "function"/.test(a0m))
+
+  // ★값 검산 — 부하 시험이 **첫 실패에서 멈추고 만든 것을 전부 지우는가**.
+  //   배포되는 함수를 파일 시스템만 갈아끼워 그대로 돌린다.
+  const stress = (() => {
+    const fs2 = grab(a0h, 'function mesA0_ioStress(n) {')
+    if (!fs2) return { err: '함수를 못 찾음' }
+    const existing = {}
+    const removed = []
+    const FolderStub = { temp: { fsName: 'C:/T' } }
+    function FileStub(p) { this.p = p }
+    Object.defineProperty(FileStub.prototype, 'exists', { get: function () { return !!existing[this.p] } })
+    FileStub.prototype.remove = function () { removed.push(this.p); delete existing[this.p]; return true }
+    let n2 = 0
+    const writeText = (p) => { if (n2 >= 37) return false; n2++; existing[p] = 1; return true }
+    const ioStress = new Function('Folder', 'File', 'mesA0_writeText', 'MESA0_IO_ERR', 'mesA0_jsonEsc',
+      fs2 + '; return mesA0_ioStress;')(FolderStub, FileStub, writeText, '디스크가 가득 참', (s) => String(s))
+    let o = null
+    try { o = JSON.parse(ioStress(200)) } catch (e) { return { err: '응답 파싱 실패: ' + e } }
+    if (o.n !== 200) return { err: 'n 불일치: ' + o.n }
+    if (o.made !== 37) return { err: '첫 실패에서 안 멈춤: made=' + o.made }
+    if (o.firstFail !== 37) return { err: '실패 번호가 틀림: ' + o.firstFail }
+    if (removed.length !== 37) return { err: '만든 것을 다 안 지움: ' + removed.length }
+    if (o.left !== 0) return { err: 'left 오계산: ' + o.left }
+    if (o.err !== '디스크가 가득 참') return { err: '사유를 안 실음: ' + o.err }
+    return { okv: true }
+  })()
+  ok('11 부하 시험이 첫 실패에서 멈추고 뒷정리한다(값 검산)', stress.okv === true,
+    stress.err || '동작 불일치')
+
+  // ── 12. 읽기가 죽어도 보낼 길 (2026-09-09) ──────────────────────────────
+  //   파일 경로를 고르는 판단은 「쓸 수 있나」인데 실패하는 것은 「읽을 수 있나」다.
+  ok('12 params 를 못 읽으면 인자로 재시도한다',
+    /function runProcessExpr\(/.test(a0m)
+    && /var PARAMS_UNREADABLE = \{ noparams: 1, emptyparams: 1, badparams: 1 \}/.test(a0m))
+  // ★세 경로가 **전부** 이 길을 지나야 한다 — 하나라도 새면 거기서만 옛 실패로 남는다.
+  ok('12 모든 process 호출이 그 길을 지난다', (() => {
+    const raw = (a0m.match(/hostEval\(processExpr\(/g) || []).length      // runProcessExpr 안 1곳뿐
+    const stale = (a0m.match(/hostEval\(pexpr/g) || []).length            // 배치·검토가 생짜로 부르면 안 된다
+    const routed = (a0m.match(/runProcessExpr\(pexpr, p,/g) || []).length // 검토 + 배치
+    return raw === 1 && stale === 0 && routed === 2 && /runProcess\(pp, params,/.test(a0m)
+  })(), '한 경로가 새면 거기서만 옛 실패로 남는다')
+  ok('12 호스트 미로드를 사람 말로 옮긴다',
+    /function hostNotLoaded\(/.test(a0m) && /function isHostMissing\(/.test(a0m)
+    && /함수가 아닙니다/.test(fs.readFileSync(path.join(path.dirname(PANEL), 'js/cut-main.js'), 'utf8')))
+  // 백슬래시가 든 패턴은 이 파일을 거치며 한 겹 풀려 게이트가 조용히 헛돈다 — 위치로 본다.
+  ok('12 배치 실패 줄에도 프로브가 실린다', (() => {
+    const at = a0m.indexOf("lines.push('#' + (k + 1) + ' ✗ ' + lbl")
+    return at > 0 && a0m.slice(at, at + 300).indexOf('[단계별 파일쓰기]') > 0
+  })(), '일괄에서만 방아쇠를 못 보게 된다')
+
+  // ★값 검산 — 배포되는 `runProcessExpr` 본체를 돌린다.
+  //   ⓐ 파일로 보냈다가 noparams 를 받으면 **인자 경로로** 다시 보내는가
+  //   ⓑ 이미 인자 경로였으면 **재시도하지 않는가**(무한 반복 방지)
+  const flow = (() => {
+    const fr = grab(a0m, 'function runProcessExpr(expr, obj, cb) {')
+    const fpx = grab(a0m, 'function processExpr(pp, obj) {')
+    const fa2 = grab(a0m, 'function asciiJson(o) {')
+    if (!fr || !fpx || !fa2) return { err: '함수를 못 찾음' }
+    const aj = new Function('return ' + fa2 + ';')()
+    // cep.fs 는 **쓰기에 성공**한다 = 파일 경로가 선택된다(실기와 같은 조건)
+    const pe = new Function('asciiJson', 'cepWriteUtf8',
+      'var paramsViaArg = 0; ' + fpx + '; return processExpr;')(aj, () => true)
+    const UNREAD = { noparams: 1, emptyparams: 1, badparams: 1 }
+    const mk = (he) => new Function('hostEval', 'processExpr', 'PARAMS_UNREADABLE', 'paramsUnreadable',
+      fr + '; return runProcessExpr;')(he, pe, UNREAD, 0)
+
+    const seen = []
+    const rp = mk((expr, cb) => {
+      seen.push(expr)
+      cb(seen.length === 1 ? '{"ok":false,"err":"noparams"}' : '{"ok":true,"folder":"F"}', null)
+    })
+    let got = null
+    rp('mesA0_process()', { client_name: '연안애드마트', qty: 3 }, (r) => { got = r })
+    if (seen.length !== 2) return { err: '재시도가 안 일어남(호출 ' + seen.length + '회)' }
+    if (seen[1].indexOf('mesA0_process("') !== 0) return { err: '두 번째가 인자 경로가 아니다: ' + seen[1].slice(0, 40) }
+    if (!got || got.ok !== true) return { err: '재시도 결과를 안 돌려줌' }
+
+    const seen2 = []
+    const rp2 = mk((expr, cb) => { seen2.push(expr); cb('{"ok":false,"err":"noparams"}', null) })
+    rp2('mesA0_process("{}")', {}, () => {})
+    if (seen2.length !== 1) return { err: '인자 경로인데도 재시도했다 — 무한 반복 위험' }
+    return { okv: true }
+  })()
+  ok('12 파일→인자 재시도가 한 번만 일어난다(값 검산)', flow.okv === true, flow.err || '흐름 불일치')
+
+  // ── 13. 커밋 경계 (2026-09-10) ──────────────────────────────────────────
+  //   `_출력` 복사는 산출이 아니라 **「출력해도 된다」는 신호**다. 등록이 확정되기 전에 놓으면
+  //   MES 에 주문이 없는 출력물이 생긴다 — 실측 2026-09-09 에 188MB 2건이 그렇게 놓여 있었다.
+  ok('13 픽업 복사가 커밋 뒤에 있다', (() => {
+    const commit = a0h.indexOf('if (!mesA0_writeText(mfPath')
+    const copy = a0h.indexOf('outCopyErr = mesA0_outCopy(jobFolder.fsName')
+    return commit > 0 && copy > commit
+  })(), '등록 실패인데 출력물이 픽업 폴더에 놓인다')
+  ok('13 옛 인라인 복사가 남아 있지 않다',
+    !/epsFile\.copy\(/.test(a0h) && /function mesA0_outCopy\(/.test(a0h),
+    '복사 경로가 둘이면 한쪽만 고쳐진다')
+  // ★구제 경로(패널이 manifest 를 쓴 경우)도 **같은 순서**여야 한다 — 여기가 새면 절반만 고친 것이다.
+  ok('13 구제 경로도 커밋 뒤에 복사한다', (() => {
+    const f = grab(a0h, 'function mesA0_manifestDone() {')
+    return !!f && /mesA0_outCopy\(P\.job, P\.ymd, P\.eps, P\.dxf\)/.test(f)
+      && /rr\.outcopy = d\.outcopy/.test(a0m)
+  })(), '패널이 구제하면 픽업 복사가 통째로 빠진다')
+  ok('13 manifest 는 커밋 시점의 사실만 담는다', /out_copy_error: null,/.test(a0h))
+
+  // ── 조용히 쌓이는 것을 센다 ─────────────────────────────────────────────
+  ok('13 커밋이 안 끝난 폴더를 센다',
+    /function mesA0_scanRegister\(/.test(a0h)
+    && /o\.orphan\+\+/.test(a0h) && /o\.pending\+\+/.test(a0h))
+  // ⚠️ 나이 하한이 없으면 **지금 쓰는 중인 폴더**를 잔해로 세어 거짓 경보가 된다.
+  ok('13 지금 쓰는 중인 폴더를 잔해로 세지 않는다',
+    /if \(ageH > 1\)/.test(a0h) && /ageH > 0\.2/.test(a0h),
+    '나이 하한이 없으면 다른 PC 가 쓰는 중인 폴더가 잔해로 잡힌다')
+  ok('13 패널이 잔해·미반영을 띄운다',
+    a0m.indexOf("'등록 잔해'") > 0 && a0m.indexOf('e.pendingIngest') > 0
+    && a0m.indexOf('e.scanned !== undefined') > 0,
+    '구버전 호스트에서 0건으로 보이면 안 된다')
+}
+
 await browser.close()
 let pass = 0
 for (const r of results) {
