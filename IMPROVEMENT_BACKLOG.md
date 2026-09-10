@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-09-10T09:50:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-09-10T16:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,25 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **542** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-09-10T16:10):**
+> - **방법**: 세션 시작 시 detached HEAD `485ebf0`(origin/main과 동일)였으나 얕은 clone(50커밋) → `git checkout main`(47커밋 뒤처짐) + `git merge --ff-only origin/main`으로 정합 + `git fetch --unshallow`(2,870여 커밋 확보). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area2 방법 라인 HEAD `9bc875c`)**: 웹앱 범위 diff **26커밋** — Area1(09:50)이 이미 `b8b7c66d`까지 프로덕션 헬스 렌즈로 훑었고, 그중 `97bca6e5`·`3503b3bd`·`c1b381f0`(2026-09-09 11:5x)은 애초에 **Area2 스타일 N+1 배치화 자체 수정 커밋**이라 전문 재검증(entity_id·batch 순서·엔티티 스코프)만 수행. Area1 종료 이후 신선 9커밋(`27dfe634`~`485ebf0`, 09:50~15:27)은 코팅원가/판재/롤소요량 가격엔진 리팩터 + 발주목록 검색바 UI — DB write 없는 순수계산 유틸·마이그(리터럴 UPDATE)·프론트 전용이라 Area2 렌즈(entity_id/N+1/auth/타입) 해당 코드 자체가 없음.
+> - **`97bca6e5`(GET 3경로 순차 await→batch) 전문 재검증**: `cardExpenses.ts` payment-schedule·`cashFlow.ts` calendar·`prices.ts` item-supplier-prices 3곳 전부 `entityFilter` 절 batch 이전과 동일 유지, 결과 배열 인덱스가 stmt push 순서와 1:1 대응(별도 메타 배열로 매핑 보존) 확인 — 회귀 없음. `prices.ts`는 tie-break(`po.order_date DESC, po.id DESC`)도 유지.
+> - **`3503b3bd`+`c1b381f0`(카드 CSV import 행별 SELECT+INSERT → 80청크 batch) 재검증**: 중복확인 SELECT가 `entity_id` 없이 `card_id`만 스코프하지만, 핸들러 상단 `#485` 카드 소속 검증(`cardCheck` — 요청 법인 소속 카드인지 확인 후에만 도달)으로 이미 법인 격리됨 확인, `entity-audit.mjs` ALLOWLIST에 사유 명시(`card_id로 스코프, 직전 cardCheck가 법인 검증`) — 정당한 예외.
+> - **authMiddleware recursive 스캔** — `find src/routes -name '*.ts'` 전체 재실행: 후보 7건(`publicUnsubscribe.ts`·`orders/helpers.ts`·`payroll/shared.ts`·`cron.ts`·`messagesAd.ts`·`hrSelf.ts`·`taxInvoices/helpers.ts`) 전부 기존 클래스와 일치(helpers 3종=Map.get FP·cron=agentKeyMiddleware·hrSelf=scoped-token·public=의도적 공개) — **net-new 0**(25회차 이후 baseline 유지).
+> - **standing scan 1: `npm run audit:entity`** — 검사 134파일·entity테이블 SELECT 75건·**누락 0건**(변동없음).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지.
+> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **standing scan 5: `npm run audit:structure`** — 신규 P1급 없음(정렬 tie-break 미적용·계산로직 밀집·중복 블록 모두 기존 baseline, 이번 churn 파일 미해당).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 8런(HEAD `485ebf0` 포함) 전부 `conclusion:success`.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` totalCount **25**(변동없음, #613~644 전건 일치) — Area2 소관 열린 이슈(#640·#638·#637·#632·#628·#627) 대상 파일 전부 이번 churn 밖(cashSchedule.ts·bankMatchPolicy.ts·ar-helpers.ts·cardSpend.ts·waste.ts·budgets.ts 무변경) 확인 후 재grep 생략.
+> - **backlog↔GitHub 절대값 재동기화**: open **25**(변동없음) · done **542**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md `line N` 잔여참조는 이미 서술식 각주(「컬럼-diff bridge」 등)만 존재, 이번 사이클도 재확인 0건. `messagesAd.ts`(nested sub-router, 부모 `.use('/*', authMiddleware, requireRole)` 상속 + 자체 `requireRole('ADMIN')` 재게이트)는 barrel/scoped-token/public 어디에도 명시 안 된 4번째 정당 클래스이나 단일 사례(코드베이스 전체 1건)라 codify 보류 — 재발 시 codify.
+> - **백로그 트림 체크**: 아래 실행.
+> - 신규 이슈 0건(entity_id/N+1/authMiddleware 스캔 net-new 0, 신선 churn 대부분 DB-write 없는 순수계산·UI 전용이라 Area2 렌즈 해당 코드 없음, 기존 Area2 소관 open 이슈는 이번 churn 밖이라 재검증 불필요), 자동수정 0건(고칠 결함 없음), done-sync: open 25(변동없음)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-09-10T09:50):**
 > - **방법**: 세션 시작 시 detached HEAD `b8b7c66`(origin/main과 동일) → `git checkout main` + `git merge --ff-only origin/main`(34커밋 fast-forward, 로컬 main이 뒤처져 있었음) + `git fetch --unshallow`. `npm ci`(0→81), `npx tsc --noEmit` clean.
