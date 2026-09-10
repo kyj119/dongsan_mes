@@ -99,6 +99,7 @@
 
 ## 🔴 진행 중
 
+- **★이슈 재검토 09-11 (worktree `issues-0911`·`deps-upgrade`)**: close 4(#644·#624·#637·#636)·격하 #629. 수정=#632·#635·#631·#643·#642·#627·#628·#625(`/equipment` 하단 에이전트 표). #613=별도 worktree. 남은 S 급=#645·#641·#640·#622·#634·#633·#630·#638·#639. 현장=#616([2] 2대)·#617(새 census 0건)
 - **★재고실사 실행 + 불편 접수 개설 (08-25)** — 경위 전문=`PROJECT_STATUS_ARCHIVE.md` §2026-08-25 재고실사 · memory `project-employee-adoption-protocol`·`design-weekly-stock-count`. ★병목=옮겨적기 · ★부족경고 판정축=**`reorder_point`**(`safe_stock` 은 판정에 안 쓰인다) · ★차단점=`inventoryCount.ts:10` 한 줄 · ★법인별 취급축=`inventory` 행 · ★**일일 알림 4종이 아무에게도 안 보이고 있었다**(`target_role=MANAGER` 인데 MANAGER 계정 0명 → ADMIN 예외). ✅08-25 완결·배포 `d64a15c3`(5구역·전사 재고 첫 반영 21,652yd·한국엡손 뭉침 4전표 분해·safe/reorder 48행). 남은=카톡방
 - **★MES 실사용 전환 (전략 방향 확정 2026-08-11 — 자체 ERP+MES 일원화, 이카운트 단계적 해지)**: ★**「6월 2,348건 급락」은 오독**(08-25 실측 — 2,275가 `e2e_tester` 로봇, 사람 활동은 전부 `admin`). **급락이 아니라 시작된 적이 없다**. 직원 48명 vs 실직원 계정 6·로그인 3·업무기록 0. 살아 있는 건 **사람 입력이 필요 없는 자동수집 4종뿐**. 구조는 완비돼 있고 **데이터만 비어 있다**(단가표 11테이블 0건). **전환 관문 = 경리가 MES 에 매출을 직접 입력할 수 있는가**. 다음 = 잔여 단가 판단 → 경리 1명 병행입력 → 월말 채권 대사 3개월 오차 0 → 이카운트 해지. **목표선 = 관리회계까지. 복식부기·재무제표·세무신고는 만들지 않는다**(WEHAGO·세무사 유지). 경위·대응 = memory `project-employee-adoption-protocol` · 계획 `~/.claude/plans/greedy-exploring-stroustrup.md`(repo 밖)
 
@@ -132,7 +133,7 @@
 - **간판 조립견적(BOM 2차)**: 간판=구성요소 라인 합·calc_type 4종. 구성요소 전수 확정 선행. spec `2026-06-13-signage-component-estimate-structure`
 - **LogWatcher 장비중심 P4**: '/rip' 권한 정리+prod 배포+LogWatcher 재배포. spec `2026-06-15-logwatcher-equipment-centric`
 - **설계 확정 spec 7종(2026-06-11)**: alimtalk-golive · ontime-kpi · large-file-split · card-cashflow · hanjin-courier · self-order-portal · web-canvas-workbench — 전부 `docs/superpowers/specs/2026-06-11-*.md`
-- **운영 결정(용준님 확정, 유효분)**: #377 활성화=`ia_auto_enabled` 플래그 게이트(기본 OFF) · SMS 대체문자 안 함 · 미수금 독촉=추천+수동승인 · 정적에셋 P0 재시도 금지(옵션 A PoC만) · **★실사용 전환 시 admin 계정 삭제+E2E 데이터 정리(트리거 잊지 말 것)**
+- **운영 결정(용준님 확정, 유효분)**: #377 활성화=`ia_auto_enabled` 플래그 게이트(기본 OFF) · SMS 대체문자 안 함 · 미수금 독촉=추천+수동승인 · 정적에셋 P0 재시도 금지(옵션 A PoC만) · **★실사용 전환 시 admin 계정 삭제+E2E 데이터 정리+평문 비밀번호 잔여 1계정 재설정(#626, 09-11 수용 결정)(트리거 잊지 말 것)**
 
 ## 🗄️ 보류함 (필요성 재확인 전 착수 금지 — 상세=ARCHIVE·spec)
 
