@@ -824,7 +824,19 @@ for (const [grp, rolls] of [...fams].sort((a, b) => a[0].localeCompare(b[0]))) {
   }))
   const widths = [...new Set(rolls.map((r) => Number(r.w)))].sort((a, b) => a - b)
   const maxCm = Math.round(widths[widths.length - 1] / 10)
-  const codes = [...new Set(String(rolls[0].products || '').split(','))].filter(Boolean)
+  // ★이 표는 「폭만 다른 대체재」를 전제로 한다. 한 제품이 그 폭들을 **함께 후보로 들고 있어야**
+  //   「밀린다」는 말이 성립한다 — 「깃발 인쇄원단」처럼 도안이 다른 원단이 한 그룹에 묶여 있으면
+  //   서로 경쟁하지 않는데도 「선택 안 됨」이 뜬다. 그 군은 건너뛴다.
+  const prodSets = rolls.map((r) => new Set(String(r.products || '').split(',').filter(Boolean)))
+  const codes = [...prodSets[0]].filter((c) => prodSets.every((set) => set.has(c)))
+  if (codes.length === 0) {
+    bandRows.push([grp, '', null, null, null,
+      { v: '폭 대체재가 아님 — 건너뜀', s: S.WARN }, null, null, null,
+      '한 제품이 이 폭들을 함께 후보로 갖지 않는다(도안·용도가 다른 원단이 한 그룹에 묶여 있다)',
+      null, null, null, null, null, ''])
+    bandRows.push([])
+    continue
+  }
   const lines = codes.flatMap((c) => byCode.get(c) || [])
 
   // 1cm 씩 훑어 어느 원단이 뽑히는지 — 담당 구간은 그 결과에서 나온다(추정하지 않는다).
