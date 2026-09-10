@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-09-10T06:20:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-09-10T09:50:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,29 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **24** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음) |
+| 🆕 new | **25** (`list_issues(state:OPEN,label:auto-improve)` 실측, 24→25, #644 신규) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **542** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 1 프로덕션 헬스 (2026-09-10T09:50):**
+> - **방법**: 세션 시작 시 detached HEAD `b8b7c66`(origin/main과 동일) → `git checkout main` + `git merge --ff-only origin/main`(34커밋 fast-forward, 로컬 main이 뒤처져 있었음) + `git fetch --unshallow`. `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area1 방법 라인 HEAD `eecca716`)**: 웹앱 범위 diff **16커밋** — 대부분(cashflow §6까지)은 Area2~6이 이미 각자 렌즈로 정독. Area1 고유 렌즈(CI 헬스·응답시간·마이그 드리프트)로 이번 사이클 신규 churn(단가축 정정 마무리·은행 pending·주문 라인 스냅샷·판재 자규격·코팅 BOM원가·N+1 배치화 3건·8월이관 담당법인 정정)에 집중.
+> - **🔴 신규 발견 → #644 — 0603(`product_materials.material_role` 컬럼) prod 미적용 시 주문 원가재계산·자동차감이 무음 실패**: `ab0eae5c`(코팅 BOM 원가 반영)가 신설 컬럼을 `orderLineCost.ts:270`·`autoDeductInventory.ts:124`에서 명시 SELECT — #483/#484 (b)-risk 클래스와 동형(#624 0545/0548과 같은 패턴). 소비처 6곳(`orders/create·update·lifecycle·operations.ts`, `quotations.ts`) 전부 try/catch 비차단이라 **주문 기능 자체는 안 죽고 원가·마진 스냅샷만 조용히 계산 안 됨**(0603이 고치려던 "코팅 원가 0" 문제 재현) — smoke(GET 전용) 구조적으로 무음. `0602`/`0603` 마이그 코멘트에 `0604`(같은 날, 명시적으로 "prod 적용 완료" 기록)와 달리 prod 적용 확인 문구가 없어 egress 제약상 이 세션은 직접 검증 불가 → issue-only(스키마 반영 여부 확인 + 필요 시 `db:migrate:prod`는 owner 실행).
+> - **#636(cashSchedule.overview 응답시간) 4차 측정 — 여전히 재현**: 최신 배포(`b8b7c66d`, job 102698470509) job 로그 직접 대조 = **3850ms**(예산 2000ms 대비 93% 초과, smoke `PASS 129/129`). 3135→3589→3524→**3850ms** 4연속 예산초과, 이번 사이클 신규 churn(코팅 BOM)은 cashflowEngine과 무관 확인 — 신규 이슈 대신 기존 이슈에 코멘트로 누적(재무엔진 로직 변경, 자동수정 대상 아님).
+> - **#624(0545/0548 마이그 드리프트) 부분 재확인**: 0545 대리검증 프로브(`printEvents.agents`)가 최신 smoke에서 `200 177ms PASS` — **0545 prod 적용 확인**(코멘트로 기록, 이슈는 0548 미확인분 남아 open 유지).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 10런 전부 `conclusion:success`. 최종 HEAD(`b8b7c66d`, job 102698470509) 전 단계(typecheck·self-tests·entity audit·write canary·smoke 129/129) success.
+> - **egress 확인**: 이 세션도 prod 직접 fetch 차단 — 배포 job 로그 대리검증 방식(Area1 codify) 재사용.
+> - **standing scan 1: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지.
+> - **standing scan 3: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **24**(신규 등록 전) 기존 24건 전건 일치 확인 후 #644 신규 생성.
+> - **backlog↔GitHub 절대값 재동기화**: open **25**(24→25, #644 신규) · done **542**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-1-production-health.md `line N` 잔여참조 재확인(grep 오탐 1건뿐 — "baseline"의 부분일치, 실제 참조 0건 재확인). 기존 「(a)/(b) 마이그 드리프트」·「CI job 로그=query-cost 대리지표」 패턴이 이번 발견(#644) 모두 그대로 적용, 신규 codify 불요.
+> - **백로그 트림 체크**: 사이클 로그 8건 → 이번 로그 추가 후 9건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 1건(#644 0603 material_role prod 미적용 위험, M, 스키마검증이라 issue-only), 자동수정 0건(전부 owner 확인·재무로직 대상), done-sync: open 24(24→25)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-09-10T06:20):**
 > - **방법**: 세션 시작 시 detached HEAD `9dda3b7`(origin/main과 동일, Area5 종료 시점 백로그 커밋 1개만 더 앞섬) → `git checkout main` + `git merge --ff-only origin/main`(26커밋 fast-forward). `git fetch --unshallow`(shallow clone→2,860여 커밋 확보). `npm ci`(0→81), `npx tsc --noEmit` clean, `npm audit --omit=dev` 0건.
