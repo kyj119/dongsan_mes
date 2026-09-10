@@ -28,6 +28,8 @@
 
 ## ✅ 최근 완료 — 후속 대기 인덱스 (경위·상세 전문 = `PROJECT_STATUS_ARCHIVE.md`)
 
+- **✅ 09-11 이슈 8건 prod 배포(`3f498350`+`11b767fa`)** — close 4(#644·624·637·636)·격하 #629. 배포=법인격리 #632·635·631·643(자금예정 귀속·연체필터·담당 IDOR 403)·마진 라인축 #642·이월=is_voucher #628·고아라우터 제거 #627·에이전트 현황 #625(prod 31대=키트 미보고 27·갱신 4). #613 vite5→8·audit 11→0(★clean `npm ci`=esbuild 미호이스트→devDep 고정). #626 평문PW=수용. 남은 S급 9건=ARCHIVE §09-11
+
 > **✅ 2026-09-10 `7803ff0f`~`3893f417` — 저장소 무결성 회수(미배포)** — ★**main 이 prod 보다 뒤에 있었다**. 마이그 4개 회수 · IA 축2/축3 드리프트 **6→0** · IA 게이트 74건 회수(cut:smoke **548/548**) · `PER_AREA_ROLL` 채택 · 게이트 배선 3건 · 문서 정합성 21건. 경위=ARCHIVE §2026-09-10 무결성. **남은=push · costGuard(폴링 정책 충돌) · sign-estimate 부활 여부**
 
 - **✅ 09-11 일러 패널 한글 IME + 주석 소실 정정(`ia:deploy` 완료·드리프트 0)** — ★IME=CEP 12 결함(CEP-3029): CEF 99 `TSFImeSupport` 기본 ON → manifest `--disable-features=TSFImeSupport` 1줄, 실키로 composition 정상 확인. ★주석=`bL~bB` 가 경계선 `if` 안에 선언돼 **OFF(08-06 기본값)면 NaN→빈 catch** 가 한 달 삼킴 → 호스트 0.12.0·`annotation_error`·게이트 7e. 재시작 재검증=호스트 0.12.0·셸 0.19.0·플래그·주석 상1/하1. 경위=ARCHIVE §2026-09-11. 남은=**각 PC 일러 완전 재시작+한글 1회 타이핑**
@@ -99,7 +101,6 @@
 
 ## 🔴 진행 중
 
-- **★이슈 재검토 09-11 (worktree `issues-0911`·`deps-upgrade`)**: close 4(#644·#624·#637·#636)·격하 #629. 수정=#632·#635·#631·#643·#642·#627·#628·#625(`/equipment` 하단 에이전트 표). #613=별도 worktree. 남은 S 급=#645·#641·#640·#622·#634·#633·#630·#638·#639. 현장=#616([2] 2대)·#617(새 census 0건)
 - **★재고실사 실행 + 불편 접수 개설 (08-25)** — 경위 전문=`PROJECT_STATUS_ARCHIVE.md` §2026-08-25 재고실사 · memory `project-employee-adoption-protocol`·`design-weekly-stock-count`. ★병목=옮겨적기 · ★부족경고 판정축=**`reorder_point`**(`safe_stock` 은 판정에 안 쓰인다) · ★차단점=`inventoryCount.ts:10` 한 줄 · ★법인별 취급축=`inventory` 행 · ★**일일 알림 4종이 아무에게도 안 보이고 있었다**(`target_role=MANAGER` 인데 MANAGER 계정 0명 → ADMIN 예외). ✅08-25 완결·배포 `d64a15c3`(5구역·전사 재고 첫 반영 21,652yd·한국엡손 뭉침 4전표 분해·safe/reorder 48행). 남은=카톡방
 - **★MES 실사용 전환 (전략 방향 확정 2026-08-11 — 자체 ERP+MES 일원화, 이카운트 단계적 해지)**: ★**「6월 2,348건 급락」은 오독**(08-25 실측 — 2,275가 `e2e_tester` 로봇, 사람 활동은 전부 `admin`). **급락이 아니라 시작된 적이 없다**. 직원 48명 vs 실직원 계정 6·로그인 3·업무기록 0. 살아 있는 건 **사람 입력이 필요 없는 자동수집 4종뿐**. 구조는 완비돼 있고 **데이터만 비어 있다**(단가표 11테이블 0건). **전환 관문 = 경리가 MES 에 매출을 직접 입력할 수 있는가**. 다음 = 잔여 단가 판단 → 경리 1명 병행입력 → 월말 채권 대사 3개월 오차 0 → 이카운트 해지. **목표선 = 관리회계까지. 복식부기·재무제표·세무신고는 만들지 않는다**(WEHAGO·세무사 유지). 경위·대응 = memory `project-employee-adoption-protocol` · 계획 `~/.claude/plans/greedy-exploring-stroustrup.md`(repo 밖)
 
