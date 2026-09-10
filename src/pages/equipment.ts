@@ -120,6 +120,44 @@ export function equipmentPage(c: Context<HonoEnv>) {
                         </tbody>
                     </table>
                 </div>
+
+                <!-- LogWatcher 에이전트 현황 (#625) — 31대가 어떤 키트·파서로 도는지 현장 방문 없이 본다 -->
+                <div class="ds-card mt-4">
+                    <div class="flex items-center justify-between px-4 py-3 border-b">
+                        <h2 class="ds-card-title">
+                            <i class="fas fa-satellite-dish" style="color:var(--c-primary);margin-right:8px"></i>LogWatcher 에이전트 현황
+                        </h2>
+                        <div class="flex items-center gap-3 text-xs text-gray-500">
+                            <span id="eqAgentSummary">-</span>
+                            <button onclick="loadAgents()" class="ds-btn ds-btn-ghost ds-btn-sm" title="새로고침"><i class="fas fa-sync-alt"></i></button>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm ds-table ds-table-striped ds-table-compact">
+                            <thead class="bg-gray-50 border-b">
+                                <tr>
+                                    <th class="px-4 py-2 text-left">PC (agent_id)</th>
+                                    <th class="px-4 py-2 text-left">장비</th>
+                                    <th class="px-4 py-2 text-center">신호</th>
+                                    <th class="px-4 py-2 text-left">키트</th>
+                                    <th class="px-4 py-2 text-left">파서</th>
+                                    <th class="px-4 py-2 text-center">에이전트</th>
+                                    <th class="px-4 py-2 text-left">마지막 신호</th>
+                                    <th class="px-4 py-2 text-left">IP</th>
+                                </tr>
+                            </thead>
+                            <tbody id="eqAgentBody">
+                                <tr><td colspan="8" class="text-center py-6 text-gray-400">로딩 중...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="px-4 py-2 text-[11px] text-gray-400 border-t">
+                        키트 = "kit git=&lt;sha&gt; built=&lt;시각&gt;" — 2026-09-01 이후 키트만 보고한다(0545).
+                        <span class="text-amber-600">미보고</span> = 그 이전 키트로 도는 PC(START.bat [2] 갱신 대상) ·
+                        <span class="text-amber-600">구버전</span> = 최신 built 시각보다 오래된 키트 ·
+                        신호 OFF = 2분 이상 heartbeat 없음.
+                    </div>
+                </div>
             </div>
 
             <!-- 현황 탭 -->

@@ -145,6 +145,80 @@ function renderTable() {
     tbody.innerHTML = html;
 }
 
+// ─── LogWatcher 에이전트 현황 (#625) ─────────────────────────────────────────
+// 「그 PC 가 최신 키트로 도는지 / 어떤 파서를 물고 있는지」를 API 직접 호출 없이 본다.
+// kit_version 은 0545(2026-09-01) 이후 키트만 보고한다 — 빈칸 = 그 이전 키트 = START.bat [2] 갱신 대상.
+// 구버전 판정 = 보고된 키트 중 가장 최근 built 시각보다 오래된 것(에이전트가 스스로 말한 값끼리만 비교).
+function eqKitBuilt(v) {
+    var m = /built=(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/.exec(v || '');
+    return m ? m[1] : '';
+}
+function eqAgentActionRank(a, latestBuilt) {
+    // 손봐야 할 순서대로 위에 온다: 키트 미보고 → 구버전 → 오프라인 → 정상
+    if (!a.kit_version) return 0;
+    if (latestBuilt && eqKitBuilt(a.kit_version) < latestBuilt) return 1;
+    if (a.computed_status !== 'online') return 2;
+    return 3;
+}
+async function loadAgents() {
+    var tbody = document.getElementById('eqAgentBody');
+    if (!tbody) { console.warn('[equipment] #eqAgentBody not found'); return; }
+    var sumEl = document.getElementById('eqAgentSummary');
+    try {
+        var res = await axios.get('/api/print-events/agents');
+        var d = (res.data && res.data.data) || {};
+        var agents = d.agents || [];
+        var latestBuilt = '';
+        agents.forEach(function(a) { var b = eqKitBuilt(a.kit_version); if (b && b > latestBuilt) latestBuilt = b; });
+        agents.sort(function(x, y) {
+            var r = eqAgentActionRank(x, latestBuilt) - eqAgentActionRank(y, latestBuilt);
+            return r !== 0 ? r : String(x.agent_id || '').localeCompare(String(y.agent_id || ''));
+        });
+        var unreported = 0, stale = 0;
+        var html = agents.map(function(a) {
+            var online = a.computed_status === 'online';
+            var sigBadge = online
+                ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-xs"><span class="w-2 h-2 rounded-full bg-green-500 inline-block"></span>ON</span>'
+                : '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 text-red-600 text-xs"><span class="w-2 h-2 rounded-full bg-red-400 inline-block"></span>OFF</span>';
+            var kitCell;
+            if (!a.kit_version) {
+                unreported++;
+                kitCell = '<span class="px-2 py-0.5 rounded bg-amber-50 text-amber-700 text-xs">미보고 (09-01 이전 키트)</span>';
+            } else if (latestBuilt && eqKitBuilt(a.kit_version) < latestBuilt) {
+                stale++;
+                kitCell = '<span class="px-2 py-0.5 rounded bg-amber-50 text-amber-700 text-xs">구버전</span> <span class="font-mono text-xs text-gray-600">' + escapeHtml(a.kit_version) + '</span>';
+            } else {
+                kitCell = '<span class="font-mono text-xs text-gray-600">' + escapeHtml(a.kit_version) + '</span>';
+            }
+            var printing = a.is_printing ? ' <span class="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px]">인쇄중</span>' : '';
+            var seen = a.last_seen_at
+                ? '<span title="' + escapeHtml(a.last_seen_at) + '">' + (typeof timeAgo === 'function' ? timeAgo(a.last_seen_at) : escapeHtml(a.last_seen_at)) + '</span>'
+                : '<span class="text-gray-300">-</span>';
+            return '<tr class="border-b' + (online ? '' : ' text-gray-400') + '">'
+                + '<td class="px-4 py-2 font-mono text-xs">' + escapeHtml(a.agent_id || '') + printing + '</td>'
+                + '<td class="px-4 py-2 text-sm">' + (a.equipment_name ? escapeHtml(a.equipment_name) : '<span class="text-gray-300">-</span>')
+                    + (a.equipment_id ? '<div class="text-[10px] text-gray-400 font-mono">' + escapeHtml(a.equipment_id) + '</div>' : '') + '</td>'
+                + '<td class="px-4 py-2 text-center">' + sigBadge + '</td>'
+                + '<td class="px-4 py-2">' + kitCell + '</td>'
+                + '<td class="px-4 py-2 font-mono text-xs">' + (a.parser_type ? escapeHtml(a.parser_type) : '<span class="text-gray-300">-</span>') + '</td>'
+                + '<td class="px-4 py-2 text-center font-mono text-xs">' + escapeHtml(a.agent_version || '-') + '</td>'
+                + '<td class="px-4 py-2 text-xs">' + seen + '</td>'
+                + '<td class="px-4 py-2 font-mono text-xs text-gray-500">' + escapeHtml(a.ip_address || '') + '</td>'
+                + '</tr>';
+        }).join('');
+        tbody.innerHTML = html || '<tr><td colspan="8" class="text-center py-6 text-gray-400">heartbeat 를 보낸 에이전트가 없습니다</td></tr>';
+        if (sumEl) {
+            var s = d.summary || {};
+            sumEl.textContent = '총 ' + (s.total || agents.length) + ' · 온라인 ' + (s.online || 0) + ' · 오프라인 ' + (s.offline || 0)
+                + ' · 키트 미보고 ' + unreported + ' · 구버전 ' + stale
+                + (latestBuilt ? ' · 최신 built ' + latestBuilt : '');
+        }
+    } catch (e) {
+        console.warn('[equipment] 에이전트 현황 로드 실패', e);
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-6 text-red-400">로딩 실패 — <button onclick="loadAgents()" class="underline">다시 시도</button></td></tr>';
+    }
+}
+
 // ─── 배치도 렌더링 ──────────────────────────────────────────────────────────
 
 async function loadLayout() {
@@ -1506,6 +1580,7 @@ document.addEventListener('click', function(e) {
     // equipList는 전 탭 공용(목록 렌더 + 배치도 장비 카드) — 딥링크에서도 항상 로드.
     // (기존: queue만 로드 → ?tab=layout 딥링크(/facility 리다이렉트 포함) 시 장비 카드 미표시 버그)
     loadEquipment();
+    loadAgents();   // #625 목록 탭 하단 에이전트 현황 — 장비 목록과 독립이라 병렬로 부른다
     if (tab === 'dashboard' || tab === 'layout' || tab === 'queue') {
         currentTab = tab;
         // layout 은 loadEquipment() 완료 시 loadLayout() 이 실행되므로 여기서 또 부르지 않는다(중복 2회 차단)

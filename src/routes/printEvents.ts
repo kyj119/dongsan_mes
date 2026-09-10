@@ -1099,14 +1099,31 @@ printEventsRouter.get('/agents', authMiddleware, async (c) => {
       ORDER BY last_seen_at DESC, id DESC
     `).all()
 
-    const online = (results as AgentHeartbeatRow[]).filter((a) => a.computed_status === 'online').length
-    const offline = (results as AgentHeartbeatRow[]).filter((a) => a.computed_status === 'offline').length
+    // #625: 화면(/equipment 에이전트 현황)이 PC 옆에 장비 이름을 보여준다. heartbeat 의 equipment_id 가
+    //   비어 있는 구 에이전트는 equipment.agent_id 역방향으로 잇는다. 둘 다 작은 표라 JS 에서 맵핑한다.
+    const { results: equipRows } = await c.env.DB.prepare(
+      `SELECT id, name, agent_id FROM equipment`
+    ).all<{ id: string; name: string; agent_id: string | null }>()
+    const nameById = new Map<string, string>()
+    const nameByAgent = new Map<string, string>()
+    for (const e of (equipRows || [])) {
+      nameById.set(String(e.id), e.name)
+      if (e.agent_id) nameByAgent.set(String(e.agent_id), e.name)
+    }
+    const agents = (results as AgentHeartbeatRow[]).map((a) => ({
+      ...a,
+      equipment_name: (a.equipment_id && nameById.get(String(a.equipment_id)))
+        || nameByAgent.get(String(a.agent_id)) || null,
+    }))
+
+    const online = agents.filter((a) => a.computed_status === 'online').length
+    const offline = agents.filter((a) => a.computed_status === 'offline').length
 
     return c.json({
       success: true,
       data: {
-        agents: results,
-        summary: { total: results.length, online, offline }
+        agents,
+        summary: { total: agents.length, online, offline }
       }
     })
   } catch (error) {
