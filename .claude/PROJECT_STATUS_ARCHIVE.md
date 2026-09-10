@@ -1,3 +1,60 @@
+## 2026-09-10 저장소 무결성 회수 (`7803ff0f`~`5a02073d`, 미배포)
+
+에이전트 팀 3트랙(브랜치·문서·게이트) 감사에서 나온 것. **브랜치가 지저분한 게 아니라 main 이 prod 보다 뒤에 있었다.**
+
+### P0-1 마이그레이션 4개가 prod 에만 있었다
+`migrations/0605` 가 스스로 「`0574` 가 이카운트 발주가로 83종을 갱신하면서」라고 근거를 대는데, main 의 `0574` 는
+`0574_bank_account_cash_plan_flag.sql` 이었다. 실제 파일 4개(`0573` 재현테크 잉크 색상라인 · `0574` ECOUNT 원가 95종 ·
+`0575` 1520 캔버스 · `0576` UV 판재 실면적)는 worktree 에서 작성돼 **prod 에 적용된 뒤 main 에 오지 않았다**.
+→ baseline 재구축(`db:reset`·`db:bootstrap:ci`)이 prod 와 갈렸다.
+
+- **적용 여부는 데이터로 판정했다** — `d1_migrations` 는 `0313` 에서 추적이 끊겨(312건) 목록으로는 알 수 없다.
+  증거: `0605` 주석의 **출발값이 정확히 `0574` 의 목표값**(2880→3100.6) · `0605` 가 안 건드린 `FLEXL-120`·`SPC031G-137` 은
+  prod 에서 `0574` 값 그대로 · `SVCV-152` 존재 · 바니시 품목 존재 · UV 대상 43건 전량 `min_billing=0`(잔존 0).
+- **파일명을 보존했다** — wrangler 는 번호가 아니라 전체 파일명으로 추적한다. 재번호하면 `0573`(전표 색상 분해)이 한 번 더 돈다.
+  중복번호는 main 에 이미 20쌍 있고, 적용 순서는 전체 파일명 사전순이라 `0574` < `0596` < `0605` 가 유지된다.
+- **`0573` 은 재생 불가였다** — prod 발주 id(489·491·493·494·496·498·517)를 하드코딩해 신규 DB 에서 **FK 위반으로 죽었다**
+  (= CI 의 `canary:write:ci` 경로). INSERT 7블록을 `WHERE EXISTS (purchase_orders.id=…)` 로 감싸 로컬 no-op 으로 만들었다.
+  prod 는 이미 적용됐고 행이 있으므로 동작 불변. `purchase_order_items` 에 INSERT 하는 첫 마이그라 선례가 없었다.
+- 검증 = 격리 DB(`--persist-to`) 재구축에서 **627개 전량 적용 성공** + `audit:migration-drift` 드리프트 0.
+
+### P0-2 IA 호스트가 main 에서 4버전 뒤처져 있었다
+`audit:ia-jsx` main 기준 **드리프트 6건**(mes-a0-host·mes-cut-host·mes-lock·index.html·cut-main.js·main.js).
+디자이너 PC 런타임은 `CUT-CEP-0.42.0`/`A0-CEP-0.11.0` 인데 repo 는 `0.38.2`/`0.7.0` — **수동 배포 축이라 git 에 안 보인다.**
+main 에 없던 것: `mesCut_outlineStroke`(0.39.0 — OffsetPath v22 가 먹었는지 검산하는 래퍼로, **2026-09-04 칼선 두 줄 사고의**
+**방어 그 자체**. main 엔 그 버그가 없는 게 아니라 방어가 없었다) · 굽기 I/O 프로브 · manifest 대리 쓰기 · 판 규격 사전검사 ·
+픽업 사본 순서 정정 · whitering 프로브.
+- `cut-main.js`·`index.html` 은 양쪽이 건드렸다 → 브랜치가 shell **0.85.0** vs main **0.81.0** 이고 0.81.0 이력과 `busy:` 처리
+  6회를 그대로 품은 **상위집합**임을 확인하고 통째로 취했다.
+- **JSX 재배포는 하지 않았다** — 축2 는 Z: 1개 교체 = 전 PC 즉시 반영이라 실기 확인이 선행돼야 한다. 목표는 repo 를 런타임에
+  맞추는 것. 결과 = `audit:ia-jsx` **드리프트 0**.
+
+### 가져오지 않은 것
+`src/` 전량(`rollConsumption.ts`·`orderLineCost.ts`·`autoDeductInventory.ts` 등은 **main 이 더 앞선다**) · 코팅 마이그 2개
+(`main:0603`·`0602` 와 동일) · blob 동일 파일 6개. **prod 동작은 안 바뀐다** — 순수 저장소 무결성 복구.
+
+### 남은 결정 — `PER_AREA_ROLL`
+`feat/work-order-print` 의 `e7cde98f` 만 미회수. main 은 `86c127fc` 로 **명시적 미구현**(롤 수 × base단가 = pack_size 배 어긋남),
+브랜치는 `areaSqm ÷ widthM` 미터 환산 + param 5% 검산으로 반박 구현. 프레임간판 원단교체 매출 **1,857만원**의 원가가 0 이다.
+틀려도 200 이 뜨는 축이라(50배·100배 전례) **prod 실측 선행**(대상 행 수·5% 검산 통과율·원가 변화폭) 후 결정. 그 전까지 브랜치 유지.
+
+### 게이트 배선(같은 날, `7710d3be`)
+`cut:shellsync` → `ia-deploy.cjs` GATES(문서가 게이트라 불렀는데 실행 경로 0곳 — `cut:butt` 사고의 재현) ·
+`test:calc` → `ship:gate` + `/deploy-verify` Phase 1(CI 에만 있어 로컬 배포가 통째로 우회했다) ·
+`/deploy-verify` smoke → `smoke:prod`(기본 대상이 localhost 라 dev 서버가 떠 있으면 조용히 통과) ·
+CLAUDE.md 에 **「배포를 실제로 막는 게이트」 실측표** 신설 + 마이그 번호 중복 20쌍 절 신설.
+
+### 문서 정합성(`7803ff0f`)
+뒤집힌 결정이 38일간 「구현 미착수」로 남아 있던 113KB 재단 spec(2026-08-04 A0 패널 병합) · 2026-07-27 정리가 「유령」이라
+오판해 지운 실재 파일 2건(실제로는 07-07 `archive/` 이동) + 그걸 가리키던 활성 문서 3곳 · 미등록 문서 11건(09-10 배포된
+`PURCHASE_RECEIVING_RULES.md` 포함) · 스테일 인계 3건 archive 이관 · 1.3MB 백로그 아카이브에 「grep 전용·Read 금지」 배너.
+
+### 브랜치 정리
+`session/absorb-log`·`session/perf-bottleneck` 삭제(둘 다 main 조상, 잃은 커밋 0) · `branch-backup-2026-09-05.txt` 삭제
+(단, 미병합 패치가 남은 2해시는 `archive/neostampa-rip-2026-08-05`·`archive/price-sheet-delivery-2026-07-07` 태그로 선제 고정).
+**stash 4건은 손대지 않았다**(3건은 main 에 정식 구현 존재, `stash@{3}` 만 미반영 작업 포함).
+
+---
 ## 📦 2026-09-10 이관분 (자동 트림 — scripts/status-trim.cjs)
 
 > 배포 배너 4건 + 완료 항목 0건. 원본 순서(시간 역순) 보존.
