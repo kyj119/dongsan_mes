@@ -19,7 +19,7 @@
 //   0.1.8 = 마감재단선(여백 위치 검정 실선·4변 한 그룹) + 주석 구조에 후가공 추가
 //           (키워드-식별번호-후가공-수량) (2026-07-30)
 //   0.1.9 = 크로스 패널 잠금 위임 추가(mes-lock.jsx) (2026-07-31)
-var MESA0_VERSION = 'A0-CEP-0.11.0'; // 0.11.0 = ★**커밋 경계**를 세운다 — `_출력` 픽업 복사가 manifest 커밋보다 **120줄 먼저** 일어나고 있었다. 그래서 등록이 실패해도 출력물은 픽업 폴더에 놓였다(2026-09-09 실측: MES 에 주문 없는 EPS 188MB 2건). 이제 복사는 커밋 뒤에만 한다 — 구제 경로(`mesA0_manifestDone`)도 **같은 순서**다 · ★`mesA0_scanRegister` — 커밋이 안 끝난 폴더를 센다(manifest 없음=잔해 · 마커 없음=MES 미반영). 조용히 쌓이는 것을 안 세면 그게 다음 사각지대다(실측 6건이 아무 화면에도 없었다) · ⚠️manifest 의 `out_copy_error` 는 이제 항상 null 이다 — 복사가 그 뒤라 커밋 시점엔 알 수 없다 · 0.10.0 = ★**계측**을 넣는다 — 「자원이 모자라서인가」는 추측이었고 반증이 더 많다(09-07 실패 건은 EPS 1.9MB 소형 · 실패 **직후** 환경 점검은 전부 통과 · 디스크 156GB 여유). ①`mesA0_ioProbe` = 호출 안 7개 지점에서 1바이트 쓰기를 시도해 **어느 동작 뒤부터 못 쓰는지**를 응답에 싣는다(이등분). ②`mesA0_ioStress` = 파일을 몇 개까지 만들 수 있나 — 재시작 직후/1건 후/3건 후를 비교하면 누적 소비인지 상태 전환인지 갈린다. ⚠️프로브는 단계마다 **다른 파일명**을 쓴다(같은 이름이면 덮어쓰기라 「만들 수 있는가」가 아니라 「고칠 수 있는가」를 재게 된다 — 환경 점검이 ✓ 인데 가공이 ✗ 이던 차이일 수 있다) · 0.9.0 = ★manifest 를 못 쓰면 **패널에게 넘긴다**(`mesA0_manifestPending`) — 실기에서 가공 도중 일러 프로세스의 파일 자원이 고갈된다: 로컬 temp 와 Z: 가 **동시에** I/O 오류이고, 일러 자신의 export 마저 실패하며(「p0.png 를 내보낼 수 없음」), config.json 180KB 가 0바이트로 읽혔다. 경로·권한·드라이브·일러 버전 문제가 아니라 **그 순간 그 프로세스**의 문제다. CEP 는 별도 프로세스라 같은 순간에도 멀쩡했으므로(패널 UI 가 뜨고 응답이 왔다) 일러가 못 쓰면 패널이 쓴다 — 일러 버전·폰트 수와 무관한 길이 하나 생긴다 · ★EPS `embedAllFonts` 를 **남은 텍스트가 있을 때만**(:1103) — 텍스트를 전부 아웃라인한 뒤라 임베드할 폰트가 없는데도 true 라, 폰트 2,159개가 깔린 PC 에서 저장할 때마다 문서 폰트를 전부 열게 하고 있었다(자원 고갈의 유력 원인) · ★환경 점검에 잠금 모듈 버전 · 0.8.0 = ★[환경 점검](`mesA0_envCheck`) — 「이 PC 가 준비됐는가」를 한 곳에서 잰다. 준비 안 된 PC 의 증상은 기능마다 다른 말로 흩어져 나왔고(config 없음·nofolder·noparams·응답 파싱 실패가 **전부 같은 원인**일 수 있다), 2026-09-07 에는 결국 probe 스크립트를 손으로 배포해 물었는데 **다른 실행 문맥**이라 아무것도 증명하지 못했다 · ★manifest 에 `ai_version` — 여태 어느 일러에서 나온 등록인지 아무 데도 안 남겨 「어느 버전부터 이상해졌나」를 잴 수 없었다 · 0.7.2 = ★params 를 **인자로도** 받는다(`mesA0_process(inline)`) — `Folder.temp` 가 사용자명을 품는데 **사용자명이 한글인 PC 가 실재**하고 cep.fs 는 한글 경로에서 못 미덥다(config 만 2중화돼 있었다). 그 PC 는 전 건 `noparams` 로 떨어진다. 파일을 못 쓰는 상황에서 파일로 우회하지 않고 **파일을 뺀다**(왕복 추가 0) · ★브릿지로 나가는 문자열을 전부 \\uXXXX 로 접는다(`mesA0_jsonEsc`) — 0.7.1 이 실패 detail 에 실은 경로에 `IA-등록` 이 들어 있어 원인 대신 「응답 파싱 실패」가 뜰 수 있었다. manifest 도 인코딩 무관해진다 · ★Z: 루트 판정을 재단 호스트와 같은 문구로(`mesA0_zErrJson`) — `nofolder` 하나로 뭉개지던 것을 분리 · 0.7.1 = ★파일 I/O 실패 이유를 버리지 않고, 실패한 그 문맥에서 환경을 다시 재다(mesA0_ioDiag — 사람이 [파일▸스크립트]로 돌린 probe 는 전부 OK 인데 CEP 경로에서만 실패했다) — `mesA0_readText`·`mesA0_writeText` 가 `f.error` 를 `MESA0_IO_ERR` 에 담아 응답 `detail` 로 올린다 · `_출력` 복사의 **빈 catch** 제거(폴더만 생기고 안이 비는 무증상 실패가 실기에서 전 건 발생) · params 「없음」과 「0바이트」 분리(`noparams`/`emptyparams`) · 0.7.0 = ★인쇄용 고해상도 썸네일(thumb_hi) 동시 굽기 — 목록용 400px 는 그대로 두고 작업지시서만 1200px 를 쓴다 · 0.6.0 = ★셸 서명에 파일 목록 포함 + 비교를 src 기준으로 — Z: 에서 파일이 하나 빠지면 그 PC 자동갱신이 retrylimit 로 영구 중단됐다 · 0.5.0 = ★수량 단위(조) 표기 전달 — 대기함 「2개 (1조)」 검산용 · 0.4.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.3.0 = ★자동감지 굽기를 imageCapture 로(임시 문서 없음 — 증명 가능할 때만) · 0.2.0 = 셸 자동 갱신(축3/4를 축2가 끌어온다) · 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
+var MESA0_VERSION = 'A0-CEP-0.12.0'; // 0.12.0 = ★주석이 **출력 경계선 OFF 면 사라지던 것** 정정 — 여백 경계 bL~bB 가 경계선 `if` 안에 선언돼 있어 OFF(08-06 부터 기본값)면 undefined → 주석 position NaN → 빈 catch 가 삼켰다. 08-05 「키워드 없이도 주석」은 맞게 들어갔는데 다음 날 경계선 기본값이 꺼지며 **주석 자체가 전 건 사라졌고 한 달간 아무 게이트도 못 봤다**(실기 2026-09-10) · ★주석 실패를 삼키지 않는다 — manifest `annotation_error` + warn 코드 `A`. 잃는 것: 없음(경계선 ON 산출물 불변) · 0.11.0 = ★**커밋 경계**를 세운다 — `_출력` 픽업 복사가 manifest 커밋보다 **120줄 먼저** 일어나고 있었다. 그래서 등록이 실패해도 출력물은 픽업 폴더에 놓였다(2026-09-09 실측: MES 에 주문 없는 EPS 188MB 2건). 이제 복사는 커밋 뒤에만 한다 — 구제 경로(`mesA0_manifestDone`)도 **같은 순서**다 · ★`mesA0_scanRegister` — 커밋이 안 끝난 폴더를 센다(manifest 없음=잔해 · 마커 없음=MES 미반영). 조용히 쌓이는 것을 안 세면 그게 다음 사각지대다(실측 6건이 아무 화면에도 없었다) · ⚠️manifest 의 `out_copy_error` 는 이제 항상 null 이다 — 복사가 그 뒤라 커밋 시점엔 알 수 없다 · 0.10.0 = ★**계측**을 넣는다 — 「자원이 모자라서인가」는 추측이었고 반증이 더 많다(09-07 실패 건은 EPS 1.9MB 소형 · 실패 **직후** 환경 점검은 전부 통과 · 디스크 156GB 여유). ①`mesA0_ioProbe` = 호출 안 7개 지점에서 1바이트 쓰기를 시도해 **어느 동작 뒤부터 못 쓰는지**를 응답에 싣는다(이등분). ②`mesA0_ioStress` = 파일을 몇 개까지 만들 수 있나 — 재시작 직후/1건 후/3건 후를 비교하면 누적 소비인지 상태 전환인지 갈린다. ⚠️프로브는 단계마다 **다른 파일명**을 쓴다(같은 이름이면 덮어쓰기라 「만들 수 있는가」가 아니라 「고칠 수 있는가」를 재게 된다 — 환경 점검이 ✓ 인데 가공이 ✗ 이던 차이일 수 있다) · 0.9.0 = ★manifest 를 못 쓰면 **패널에게 넘긴다**(`mesA0_manifestPending`) — 실기에서 가공 도중 일러 프로세스의 파일 자원이 고갈된다: 로컬 temp 와 Z: 가 **동시에** I/O 오류이고, 일러 자신의 export 마저 실패하며(「p0.png 를 내보낼 수 없음」), config.json 180KB 가 0바이트로 읽혔다. 경로·권한·드라이브·일러 버전 문제가 아니라 **그 순간 그 프로세스**의 문제다. CEP 는 별도 프로세스라 같은 순간에도 멀쩡했으므로(패널 UI 가 뜨고 응답이 왔다) 일러가 못 쓰면 패널이 쓴다 — 일러 버전·폰트 수와 무관한 길이 하나 생긴다 · ★EPS `embedAllFonts` 를 **남은 텍스트가 있을 때만**(:1103) — 텍스트를 전부 아웃라인한 뒤라 임베드할 폰트가 없는데도 true 라, 폰트 2,159개가 깔린 PC 에서 저장할 때마다 문서 폰트를 전부 열게 하고 있었다(자원 고갈의 유력 원인) · ★환경 점검에 잠금 모듈 버전 · 0.8.0 = ★[환경 점검](`mesA0_envCheck`) — 「이 PC 가 준비됐는가」를 한 곳에서 잰다. 준비 안 된 PC 의 증상은 기능마다 다른 말로 흩어져 나왔고(config 없음·nofolder·noparams·응답 파싱 실패가 **전부 같은 원인**일 수 있다), 2026-09-07 에는 결국 probe 스크립트를 손으로 배포해 물었는데 **다른 실행 문맥**이라 아무것도 증명하지 못했다 · ★manifest 에 `ai_version` — 여태 어느 일러에서 나온 등록인지 아무 데도 안 남겨 「어느 버전부터 이상해졌나」를 잴 수 없었다 · 0.7.2 = ★params 를 **인자로도** 받는다(`mesA0_process(inline)`) — `Folder.temp` 가 사용자명을 품는데 **사용자명이 한글인 PC 가 실재**하고 cep.fs 는 한글 경로에서 못 미덥다(config 만 2중화돼 있었다). 그 PC 는 전 건 `noparams` 로 떨어진다. 파일을 못 쓰는 상황에서 파일로 우회하지 않고 **파일을 뺀다**(왕복 추가 0) · ★브릿지로 나가는 문자열을 전부 \\uXXXX 로 접는다(`mesA0_jsonEsc`) — 0.7.1 이 실패 detail 에 실은 경로에 `IA-등록` 이 들어 있어 원인 대신 「응답 파싱 실패」가 뜰 수 있었다. manifest 도 인코딩 무관해진다 · ★Z: 루트 판정을 재단 호스트와 같은 문구로(`mesA0_zErrJson`) — `nofolder` 하나로 뭉개지던 것을 분리 · 0.7.1 = ★파일 I/O 실패 이유를 버리지 않고, 실패한 그 문맥에서 환경을 다시 재다(mesA0_ioDiag — 사람이 [파일▸스크립트]로 돌린 probe 는 전부 OK 인데 CEP 경로에서만 실패했다) — `mesA0_readText`·`mesA0_writeText` 가 `f.error` 를 `MESA0_IO_ERR` 에 담아 응답 `detail` 로 올린다 · `_출력` 복사의 **빈 catch** 제거(폴더만 생기고 안이 비는 무증상 실패가 실기에서 전 건 발생) · params 「없음」과 「0바이트」 분리(`noparams`/`emptyparams`) · 0.7.0 = ★인쇄용 고해상도 썸네일(thumb_hi) 동시 굽기 — 목록용 400px 는 그대로 두고 작업지시서만 1200px 를 쓴다 · 0.6.0 = ★셸 서명에 파일 목록 포함 + 비교를 src 기준으로 — Z: 에서 파일이 하나 빠지면 그 PC 자동갱신이 retrylimit 로 영구 중단됐다 · 0.5.0 = ★수량 단위(조) 표기 전달 — 대기함 「2개 (1조)」 검산용 · 0.4.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.3.0 = ★자동감지 굽기를 imageCapture 로(임시 문서 없음 — 증명 가능할 때만) · 0.2.0 = 셸 자동 갱신(축3/4를 축2가 끌어온다) · 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
 var MESA0_REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
 var MESA0_PT_PER_MM = 72 / 25.4;
 var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];
@@ -1054,8 +1054,12 @@ function mesA0_process(inline) {
       //   ⚠️ 원본에 이미 테두리가 있는 디자인에서는 이 선이 그 바깥(여백만큼 떨어진 곳)에 겹쳐
       //   "사각형 두 줄"로 보인다(2026-07-29 실사용 확인). 패널에서 끌 수 있게 했다.
       //   `!== false` 로 읽는 이유 = 구 패널이 보낸 params 에는 이 키가 없다(기존 동작 = ON 유지).
-      if (P.border_line !== false) {
+      // ★여백 포함 경계(bL~bB)는 경계선뿐 아니라 **주석 위치**도 쓴다 (2026-09-11 정정).
+      //   경계선 if 안에 선언돼 있던 동안, 경계선 OFF(2026-08-06 부터 기본값)면 bL~bB 가 undefined 라
+      //   주석 position 이 NaN → 예외 → 아래 빈 catch 에 삼켜져 **주석이 조용히 사라졌다**.
+      //   (실기 2026-09-10 `20260910_181409_DESKTOP-62VJ5FA_595`: manifest 는 annotation·annot_pos top/bottom 인데 산출물엔 없음)
       var bL = oL - finMargins.left, bT = oT + finMargins.top, bR = oR + finMargins.right, bB = oB - finMargins.bottom;
+      if (P.border_line !== false) {
       var wCol = new CMYKColor(); wCol.cyan = 0; wCol.magenta = 0; wCol.yellow = 0; wCol.black = 0;
       var borderRect = newDoc.pathItems.rectangle(bT, bL, bR - bL, bT - bB); // rectangle(top,left,width,height)
       borderRect.filled = false;
@@ -1130,6 +1134,7 @@ function mesA0_process(inline) {
 
       // 주석: 선택된 각 위치(상/하/좌/우 다중) 여백 밴드에 검정텍스트. 상/하=가로, 좌/우=90도 회전. 첫글자 코너서 5cm
       // 게이트: 해당 변 마감 여백 3cm 이상일 때만 입력(여백 부족 변은 생략)
+      var annotErr = '';   // 주석 그리기 실패 사유(변:예외) — 빈 catch 로 삼키면 「기능이 안 된다」로만 보고된다
       if (annotation) {
         var off5 = 50 * MESA0_PT_PER_MM / sN;
         var apList = ['top', 'bottom', 'left', 'right'];
@@ -1163,7 +1168,7 @@ function mesA0_process(inline) {
               }
             }
             try { atf.createOutline(); } catch (eAo) {} // RIP 안전: 아웃라인
-          } catch (eAnn) {}
+          } catch (eAnn) { annotErr += (annotErr ? ' ' : '') + apos + ':' + eAnn; }
         }
       }
 
@@ -1358,6 +1363,7 @@ function mesA0_process(inline) {
     post_desc: postDesc || null,
     annotation: annotation || null,
     annot_pos: annotation ? annotPos : null,
+    annotation_error: annotErr || null, // 주석을 그리다 실패한 변과 예외(2026-09-11) — null 이면 요청한 변은 전부 그렸다
     identifier: seqNo,
     scale_pct: Math.round(100 / sN),
     measured_cm: { w: Math.round(realW * 10) / 10, h: Math.round(realH * 10) / 10 },
@@ -1380,7 +1386,7 @@ function mesA0_process(inline) {
   // ★성공 응답을 **먼저** 조립한다 — manifest 쓰기가 실패해도 이 값들은 이미 확정이고,
   //   패널이 대신 써서 등록을 완성하면 그대로 성공 메시지가 되어야 하기 때문이다.
   var warn = (pfSourceRGB ? 'R' : '') + (pfRemainingText > 0 ? 'T' : '') + (pfLinkedImages > 0 ? 'L' : '') + (outlineFailed ? 'O' : '') +
-    (pfOversize > 0 ? 'E' : '');
+    (pfOversize > 0 ? 'E' : '') + (annotErr ? 'A' : '');
   var okRes = '{"ok":true,"folder":"' + mesA0_jsonEsc(folderName) + '","eps":' +
     (epsName ? ('"' + mesA0_jsonEsc(epsName) + '"') : 'null') +
     ',"dxf":' + (dxfName ? ('"' + mesA0_jsonEsc(dxfName) + '"') : 'null') +

@@ -1,3 +1,26 @@
+## 2026-09-11 일러 패널 — 한글 IME 플래그 + 주석 소실 정정 (미배포·`ia:deploy` 대기)
+
+용준님 보고 = 「주석 체크했는데 안 나온다 · 내용칸에 한글이 안 들어가고 좌상단에 글자가 뜬다」. 둘은 **다른 결함**이었다.
+
+### ① 한글 IME — CEP 12 결함, 플래그 한 줄로 해소 (실기 검증)
+- 원인 추적: Adobe 커뮤니티 2025-10 동일 보고 → **CEP-3029** 추적 중·미수정. 이 PC = Illustrator 30.7.0 · CEPHtmlEngine **12.1.1** · CEF **99.2.15**(Chromium 99.0.4844.84).
+- Chromium `ui/base/ui_base_features.cc` 대조: `TSFImeSupport` 가 **74(CEP 10)=DISABLED · 88(CEP 11)·99(CEP 12)=ENABLED** by default. 「CEP 9/10 은 정상」과 CEP 11 릴리스노트 「IME is disabled in certain cases」가 이 한 스위치로 설명된다.
+- 조치: `CSXS/manifest.xml` `<CEFCommandLine>` 에 `--disable-features=TSFImeSupport`. manifest 는 **일러 시작 때만** 읽는다(재시작 필수).
+- 검증(실제 키 입력, 이 PC): 플래그 적용 프로세스 인자 확인(base64 디코드) → 패널 입력칸 클릭 → VK_HANGUL → `g k s` 키 → **compositionstart/update 발생 · `isComposing=true` · 조합 중 `value="한"`** · 좌상단 캡처에 박스 없음. 09-02 실측(「composition 이벤트 0건 · isComposing 항상 false」)이 정확히 뒤집혔다.
+- ⚠️CDP `Input.imeSetComposition` 은 OS IME 아래층이라 이 검증에 못 쓴다 — `SetForegroundWindow`+`SetCursorPos`+`keybd_event` 로 **진짜 키**를 보냈다(세션 scratchpad `typing.ps1`).
+
+### ② 주석 소실 — 경계선 OFF 회귀, 빈 catch 가 한 달 삼켰다
+- 실기 흔적: `Z:/DESIGNS/IA-등록/20260910_181409_DESKTOP-62VJ5FA_595/manifest.json` = `annotation="사방접어미싱-1ea"` · `annot_pos top/bottom=true` · `border_line=false` · 산출물엔 주석 없음. 호스트는 **계산까지 다 해 놓고** 그리기에서 죽었다.
+- 원인: 여백 경계 `bL~bB` 가 `if (P.border_line !== false) {` **안에** 선언돼 있었다(`mes-a0-host.jsx:1057`). 08-06 「출력 경계선 기본 OFF」 이후 undefined → 주석 `position=[NaN,NaN]` → `catch (eAnn) {}` 가 삼킴. 08-05 「키워드 없이도 주석」 수정은 옳았고 **다음 날 기본값 변경이 전 건을 지웠다**.
+- A/B(검토모드, Z: 부작용 없음 — `mesA0_reviewPlace` 를 세션에서 가로채 산출 문서를 직접 셈): 0.11.0 = 상·하 밴드 **0개 · 좌표불량 그룹 2개** → 0.12.0(핫스왑) = **상 1·하 1**(81×42pt 아웃라인 그룹) · 좌표불량 0.
+- 조치: 선언을 `if` 밖으로 · 실패를 삼키지 않는다(manifest `annotation_error` + warn `A` → 패널 문구) · 묶음 탭 안내문 「키워드가 비어 안 나옵니다」→「후가공-수량만으로 나갑니다」(옛 문구가 오진을 유도) · 게이트 `panel:smoke` **7e 4항목**(192/192).
+- 교훈(§조용한 격하 그대로): 「기능이 켜진 채로 끝났는가」를 세는 게이트가 없었다. 주석은 manifest 에 값이 있으니 있는 줄 알았다 — **값이 있다≠그려졌다**.
+
+### 남은 것
+- `npm run ia:deploy` (축2 호스트 0.12.0 + 축3 manifest·main.js 0.19.0 — 축2 포함이라 **실제 터미널**에서 확인 필요) → 전 PC 자동갱신 → **일러 재시작** 안내(manifest 는 재시작해야 읽힌다).
+- 이 PC 축4 설치본은 검증용으로 manifest 만 먼저 바꿔 둔 상태(백업 `manifest.xml.bak-tsf-20260911`) — 배포 후 자동갱신이 덮는다.
+- 재시작 때 열려 있던 미저장 문서 2개는 `C:/Users/user/Downloads/*-autosave-20260911.ai` 로 저장해 뒀다.
+
 ## 2026-09-10 저장소 무결성 회수 (`7803ff0f`~`5a02073d`, 미배포)
 
 에이전트 팀 3트랙(브랜치·문서·게이트) 감사에서 나온 것. **브랜치가 지저분한 게 아니라 main 이 prod 보다 뒤에 있었다.**

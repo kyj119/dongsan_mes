@@ -883,6 +883,25 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
     && (wb.match(/absorbEntityOf\(c\.env\.DB/g) || []).length >= 2)
 }
 
+// ── 7e 주석 위치 좌표는 경계선 분기 밖 (2026-09-11) ─────────────────────
+// 경계선 OFF 가 기본값이 된 2026-08-06 부터 한 달간 주석이 **전 건** 사라졌는데 어느 게이트도 못 봤다.
+// 이유 = 여백 경계 bL~bB 가 경계선 `if` 안에 선언돼 OFF 면 undefined → 주석 position NaN → 빈 catch.
+// 「기능이 켜진 채로 끝났는가」를 보는 게이트가 없던 자리다(CLAUDE.md §조용한 격하).
+{
+  const a0h = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-a0-host.jsx'), 'utf8')
+  const a0m = fs.readFileSync(path.join(path.dirname(PANEL), 'js/main.js'), 'utf8')
+  const iB = a0h.indexOf('var bL = oL - finMargins.left')
+  const iBorder = a0h.indexOf('if (P.border_line !== false) {')
+  ok('7e 여백 경계 bL~bB 는 경계선 if 앞에서 선언된다', iB > 0 && iBorder > 0 && iB < iBorder,
+    '경계선 OFF 면 주석 좌표가 NaN')
+  ok('7e 주석 실패를 삼키지 않는다(annotation_error·warn A)',
+    /catch \(eAnn\) \{ annotErr/.test(a0h) && /annotation_error: annotErr \|\| null/.test(a0h) && /\(annotErr \? 'A' : ''\)/.test(a0h))
+  ok('7e 패널이 주석 실패 코드 A 를 사람 말로 띄운다', /A: '주석 그리기 실패/.test(a0m))
+  // 호스트는 키워드 없이도 그린다 — 패널 안내문이 「안 나온다」고 말하면 오진을 만든다(2026-09-10 실기)
+  ok('7e 키워드 없이도 주석이 나간다(호스트) · 패널 문구도 그렇게 말한다',
+    /parts\.push\(qty \+ 'ea'\)/.test(a0h) && !/키워드가 비어 주석이 안 나옵니다/.test(a0m))
+}
+
 // ── 8. 다른 PC 에서만 깨지던 축 (2026-09-08) ────────────────────────────────
 //   전부 **이 PC 에서는 재현되지 않는다** — 한글 사용자명·Z: 미연결·호스트 사망은
 //   개발 PC 에서 안 일어난다. 그래서 소스 규약으로 세는 것 말고는 세는 방법이 없다.

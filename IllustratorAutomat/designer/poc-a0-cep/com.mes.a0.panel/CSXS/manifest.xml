@@ -24,6 +24,12 @@
           <CEFCommandLine>
             <Parameter>--allow-file-access</Parameter>
             <Parameter>--allow-file-access-from-files</Parameter>
+            <!-- ★한글 IME (2026-09-11). CEP 12(CEF 99)는 Chromium 의 TSF 경로가 기본 ON 이라
+                 일러 안에 붙은 패널에서 조합 글자가 화면 좌상단 박스에 뜨고 확정 글자만 한 자씩 들어왔다
+                 (Adobe CEP-3029 미수정 · CEP 10=CEF 74 는 OFF 라 정상이었다). 이 스위치로 IMM32 경로로
+                 되돌리면 조합이 입력칸 안에서 된다 — 실기 검증 2026-09-11(composition 이벤트 0건→정상).
+                 ⚠️manifest 는 일러 시작 때만 읽는다 = 축4 갱신 뒤 **일러 재시작** 필요. -->
+            <Parameter>--disable-features=TSFImeSupport</Parameter>
           </CEFCommandLine>
         </Resources>
         <Lifecycle>
