@@ -747,6 +747,118 @@ specRows.push([])
 specRows.push([{ v: '고를 수 있는 가공 항목 (후가공 시트의 코드)', s: S.BOLD }])
 specRows.push([{ v: ppOptions.map((p) => `${p.name}(${p.code})`).join(' · '), s: S.NOTE }])
 
+// ── 시트 13: 폭구간 원가 (원단 폭이 바뀌는 지점 = 금액이 끊어지는 지점) ────────
+// ★유도: 무분할 1롤이면 원가 = 롤단가 × 길이/914.4 이고 면적 = 폭×길이 이므로
+//   **원가/㎡ = 롤단가 × 1,093.6 ÷ 변길이(mm)** — 긴 변이 약분된다.
+//   즉 원가/㎡ 를 정하는 건 **원단 폭에 눕히는 변 하나**이고, 그 변이 롤 폭을 넘는 순간
+//   한 칸 위 롤로 올라가며 **계단**이 생긴다. 단가 구간을 그 계단에 맞추라는 게 이 시트다.
+// ⚠️ 값은 **엔진을 실제로 불러서** 얻는다(`selectRollPlacement`). 산식을 여기 베끼면 갈린다.
+const { compileTs } = require('./lib/compile-ts.cjs')
+const { mod: rollMod, cleanup: rollCleanup } = compileTs(
+  path.join(__dirname, '..', 'src', 'utils', 'rollConsumption.ts'))
+const { selectRollPlacement } = rollMod
+
+console.log('[9/10] 폭구간 원가 (엔진 실호출)')
+const famRows = q(`
+  SELECT m.item_group AS grp, m.item_code AS code, m.width_mm AS w, m.avg_unit_cost AS cost,
+         m.base_unit AS bu, m.unit, m.pack_size AS pack, m.id AS id,
+         GROUP_CONCAT(DISTINCT p.item_code) AS products
+  FROM items m
+  JOIN product_materials pm ON pm.material_item_id = m.id
+       AND COALESCE(pm.material_role,'BASE') = 'BASE'
+  JOIN items p ON p.id = pm.product_item_id
+  WHERE COALESCE(m.deduction_method,'ROLL') = 'ROLL' AND m.width_mm > 0 AND m.avg_unit_cost > 0
+  GROUP BY m.id ORDER BY m.item_group, m.width_mm`)
+
+// 실측 — 그 원단을 쓰는 제품의 라인을 **짧은 변**으로 묶는다(원가/㎡ 를 정하는 축이 그것이다).
+const sideRows = q(`
+  SELECT i.item_code AS code, CAST(MIN(oi.width, oi.height) AS INT) AS side,
+         COUNT(*) AS lines, ROUND(SUM(oi.amount)) AS sales,
+         ROUND(SUM(oi.width*oi.height/10000.0*oi.quantity), 1) AS sqm,
+         ROUND(SUM(oi.material_cost)) AS mat
+  FROM order_items oi JOIN items i ON i.id = oi.item_id
+  WHERE oi.material_cost > 0 AND oi.width > 0 AND oi.height > 0 AND oi.quantity > 0
+  GROUP BY i.item_code, side`)
+
+const byCode = new Map()
+for (const r of sideRows) {
+  if (!byCode.has(r.code)) byCode.set(r.code, [])
+  byCode.get(r.code).push(r)
+}
+
+const fams = new Map()
+for (const r of famRows) {
+  if (!fams.has(r.grp)) fams.set(r.grp, [])
+  fams.get(r.grp).push(r)
+}
+
+const bandRows = [
+  ...head(
+    '폭 구간별 원가 — 금액이 끊어지는 지점',
+    '무분할 1롤이면 원가/㎡ = 롤단가 × 1,093.6 ÷ 변길이(mm) — 긴 변은 약분된다. 원가를 정하는 건 원단 폭에 눕히는 변 하나다',
+    '★구간이 바뀌는 순간 원가/㎡ 가 튄다(「끊김」 열). 판매 단가 구간을 이 경계에 맞추면 구간마다 마진이 평평해진다'
+  ),
+  hdr(['원단그룹', '구간(변) cm', '선택 원단', '폭cm', '롤단가', '구간시작 원가/㎡', '구간끝 원가/㎡',
+    '끊김(직전끝 대비)', '실측 라인', '실측 매출', '실측 판매 원/㎡', '실측 재료비율', '쓰는 제품'], [3, 4, 5, 6, 7, 8, 9, 10, 11]),
+]
+
+// 엔진에 「이 변을 폭으로 눕혔을 때」를 묻는다 — 긴 변은 아무 값이나 둬도 ㎡단가가 같다(약분).
+const LONG = 10000
+function perSqm(pool, sideMm) {
+  const p = selectRollPlacement(pool, sideMm, LONG, 1, { orientation: 'width-fixed' })
+  if (!p || !(p.qty > 0)) return null
+  const cost = p.qty * (Number(p.mat.avg_unit_cost) || 0)
+  const area = (sideMm / 1000) * (LONG / 1000)
+  return { perSqm: cost / area, mat: p.mat, splits: p.splits, fitted: p.fitted }
+}
+
+let bandCount = 0
+for (const [grp, rolls] of [...fams].sort((a, b) => a[0].localeCompare(b[0]))) {
+  if (rolls.length < 2) continue
+  const pool = rolls.map((r) => ({
+    material_item_id: r.id, material_name: r.code, width_mm: Number(r.w),
+    deduction_method: 'ROLL', sheet_spec: null, waste_factor: 1,
+    base_unit: r.bu, unit: r.unit, pack_size: r.pack, avg_unit_cost: Number(r.cost),
+  }))
+  const widths = [...new Set(rolls.map((r) => Number(r.w)))].sort((a, b) => a - b)
+  const codes = [...new Set(String(rolls[0].products || '').split(','))].filter(Boolean)
+  const lines = codes.flatMap((c) => byCode.get(c) || [])
+  let prevEnd = null
+  for (let i = 0; i < widths.length; i++) {
+    const W = widths[i]
+    // 직전 폭을 1mm 넘긴 순간부터 이 롤이다. 첫 구간만 **10cm 부터** 잰다 — 1cm 로 재면
+    // 원가/㎡ 가 45만원처럼 나와 눈금이 통째로 망가진다(변이 짧을수록 폭이 남아 ㎡단가가 폭증).
+    const lo = i === 0 ? Math.min(100, W) : widths[i - 1] + 1
+    const a = perSqm(pool, lo), b = perSqm(pool, W)
+    if (!a || !b) continue
+    // 실측 — 이 구간에 짧은 변이 들어간 라인
+    const inBand = lines.filter((r) => r.side * 10 > (i === 0 ? 0 : widths[i - 1]) && r.side * 10 <= W)
+    const sSales = inBand.reduce((s, r) => s + Number(r.sales || 0), 0)
+    const sSqm = inBand.reduce((s, r) => s + Number(r.sqm || 0), 0)
+    const sMat = inBand.reduce((s, r) => s + Number(r.mat || 0), 0)
+    const sLines = inBand.reduce((s, r) => s + Number(r.lines || 0), 0)
+    bandRows.push([
+      grp,
+      `${(i === 0 ? Math.round(Math.min(100, W) / 10) : Math.round(widths[i - 1] / 10) + 0.1).toString()}~${Math.round(W / 10)}`,
+      a.mat.material_name, { v: Math.round(W / 10), s: S.INT },
+      { v: Math.round(Number(a.mat.avg_unit_cost)), s: S.INT },
+      { v: Math.round(a.perSqm), s: S.INT },
+      { v: Math.round(b.perSqm), s: S.INT },
+      prevEnd ? { v: a.perSqm / prevEnd, s: S.DEC2 } : null,
+      { v: sLines || null, s: S.INT },
+      { v: sSales ? Math.round(sSales) : null, s: S.INT },
+      { v: sSqm > 0 ? Math.round(sSales / sSqm) : null, s: S.INT },
+      { v: sSales > 0 ? sMat / sSales : null, s: S.PCT },
+      codes.join(' · '),
+    ])
+    prevEnd = b.perSqm
+    bandCount++
+  }
+  bandRows.push([])
+  prevEnd = null
+}
+rollCleanup()
+
 // ── 쓰기 ──────────────────────────────────────────────────────────────────────
 console.log('[10/10] 워크북 쓰기')
 
@@ -815,6 +927,11 @@ const abs = writeSafely(OUT, [
   { name: '잉크단가', rows: inkRows, ...sheetOpts(5, TOP, { tabColor: TAB.PRICE, noFilter: true, widths: [12, 11, 13, 10, 70] }) },
   { name: '장비·잉크', rows: eqRows, ...sheetOpts(8, EHDR, {
     tabColor: TAB.REF, noFilter: true, widths: [24, 9, 13, 11, 12, 14, 15, 60],
+  }) },
+  { name: '폭구간원가', rows: bandRows, ...sheetOpts(13, TOP, {
+    tabColor: TAB.PRICE, freezeCol: 2,
+    widths: [26, 13, 16, 8, 10, 15, 14, 13, 10, 13, 14, 12, 40],
+    condFormat: [{ ref: span('F', bandRows), kind: 'scale' }, { ref: span('L', bandRows), kind: 'scale' }],
   }) },
   { name: '후가공', rows: ppRows, ...sheetOpts(8, PHDR, { tabColor: TAB.PRICE, widths: [14, 18, 13, 11, 11, 12, 8, 28] }) },
 ])
