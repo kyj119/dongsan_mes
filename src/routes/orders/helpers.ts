@@ -82,6 +82,48 @@ export function recommendAssignedEntity(item: any, billingEntityId: number | nul
   return entity
 }
 
+// 담당법인 추천·카드그룹 판정이 읽는 품목 마스터 축 — 요청 본문이 아니라 여기서 온다.
+export type ItemMaster = {
+  item_name: string; category: string | null; unit: string | null
+  item_type: string | null; production_required: number | null
+}
+
+/** 품목 마스터 일괄 조회. 80개 청크 = D1 바인드 한도(~100) 대응 [[d1-bind-param-limit]]. */
+export async function loadItemMasters(db: D1Database, ids: Array<unknown>): Promise<Map<number, ItemMaster>> {
+  const uniq = [...new Set(ids.map(v => Number(v)).filter(n => Number.isFinite(n) && n > 0))]
+  const map = new Map<number, ItemMaster>()
+  for (let i = 0; i < uniq.length; i += 80) {
+    const chunk = uniq.slice(i, i + 80)
+    const { results } = await db.prepare(
+      `SELECT id, item_name, category, unit, item_type, production_required FROM items WHERE id IN (${chunk.map(() => '?').join(',')})`
+    ).bind(...chunk).all<ItemMaster & { id: number }>()
+    for (const r of results || []) map.set(Number(r.id), { item_name: r.item_name, category: r.category, unit: r.unit, item_type: r.item_type, production_required: r.production_required })
+  }
+  return map
+}
+
+/**
+ * 라인의 담당 법인 결정 (POST·PUT·라인 append 공용).
+ *
+ * - `assigned_entity_id` 가 **키로 존재**하면 그 값이 답이다. ★`null` 도 명시값(「담당 없음 = 청구법인 담당」)이다 —
+ *   이관 스크립트(`scripts/ecount-order-import.py`)가 이 값으로 추천을 끈다. 이관 전표는 법인간 거래를
+ *   상대 법인의 전표가 따로 들고 오므로, 여기서 타법인 담당을 붙이면 청구그룹·카드가 **이중**이 된다.
+ *   UI 는 미선택이면 키 자체를 보내지 않는다(orderForm/calc.js·sheet.js → undefined → 추천).
+ * - 키가 없으면 추천하되, 판정 축(category·item_type·production_required)은 **품목 마스터**에서 읽는다.
+ *   2026-09-04 8월 이관이 `item_name` 을 실어 보내 마스터 조회를 건너뛰었고, 축이 빈 라인은
+ *   getCardGroup 기본값 OUTPUT → 동산으로 흘러 선명 749라인 전부(자재·상품 467 포함)가 동산 담당이 됐다
+ *   (동산 청구그룹 1.6억 · 동산 카드 193장). 요청 본문 값이 있으면 그것이 우선이다.
+ */
+export function resolveAssignedEntity(item: any, master: ItemMaster | undefined, billingEntityId: number | null): number | null {
+  if (item.assigned_entity_id !== undefined) return item.assigned_entity_id ?? null
+  return recommendAssignedEntity({
+    ...item,
+    category_name: item.category_name || master?.category || null,
+    item_type: item.item_type ?? master?.item_type ?? null,
+    production_required: item.production_required ?? master?.production_required ?? undefined,
+  }, billingEntityId)
+}
+
 // ── 청구 법인 분할: order_billing_groups 재계산 (split billing P2) ──
 // 설계: docs/superpowers/specs/2026-06-10-split-billing-by-entity.md
 // 품목 assigned_entity_id 별로 청구그룹을 (재)생성. NULL 담당 = 주(主)법인(orders.entity_id) 귀속.

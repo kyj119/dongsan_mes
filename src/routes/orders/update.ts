@@ -12,7 +12,7 @@ import { resolveSlot } from '../../utils/productionDeadline'   // 직배 배차 
 import { requireAnyPagePermission, requireEditOrRole } from '../../middleware/permissions'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { getEntityId, entityFilter, findForeignAnalysisIds, foreignAnalysisError } from '../../utils/entityFilter'
-import { recommendAssignedEntity, recalcOrderBillingGroups, generateCardsForOrder, resolveLineAxis } from './helpers'
+import { resolveAssignedEntity, loadItemMasters, recalcOrderBillingGroups, generateCardsForOrder, resolveLineAxis } from './helpers'
 import { computeLineAmount } from '../../utils/orderLineAmount'
 
 const ordersUpdateRouter = new Hono<HonoEnv>()
@@ -420,19 +420,8 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
     // N+1 제거: 품목 상세 IN(...) 일괄 선조회 + INSERT db.batch(부모 last_row_id는 결과 인덱스로 매핑)
     const putClientIdMap = new Map<string, number>()
 
-    const putLookupIds = [...new Set(
-      (orderData.items as any[])
-        .filter((it: any) => it.item_id && !it.item_name)
-        .map((it: any) => it.item_id as number)
-    )]
-    const putItemDetailMap = new Map<number, { item_name: string; category: string; unit: string }>()
-    if (putLookupIds.length > 0) {
-      const dph = putLookupIds.map(() => '?').join(',')
-      const { results: detailRows } = await c.env.DB.prepare(
-        `SELECT id, item_name, category, unit FROM items WHERE id IN (${dph})`
-      ).bind(...putLookupIds).all<{ id: number; item_name: string; category: string; unit: string }>()
-      for (const dr of detailRows) putItemDetailMap.set(dr.id, { item_name: dr.item_name, category: dr.category, unit: dr.unit })
-    }
+    // 품목 마스터는 item_id 가 있으면 항상 읽는다 — 이름 보충 + 담당법인 추천 축(helpers.resolveAssignedEntity).
+    const putItemDetailMap = await loadItemMasters(c.env.DB, (orderData.items as any[]).map((it: any) => it.item_id))
 
     const putParentStmts: D1PreparedStatement[] = []
     const putParentClientGroupIds: (string | null)[] = []
@@ -452,18 +441,16 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
       let categoryName = item.category_name || null
       let unit = item.unit || 'EA'
 
-      if (item.item_id && !itemName) {
-        const itemDetail = putItemDetailMap.get(item.item_id)
-        if (itemDetail) {
-          itemName = itemDetail.item_name
-          categoryName = itemDetail.category
-          unit = itemDetail.unit
-        }
+      const putMaster = item.item_id ? putItemDetailMap.get(Number(item.item_id)) : undefined
+      if (putMaster && !itemName) {
+        itemName = putMaster.item_name
+        categoryName = putMaster.category
+        unit = putMaster.unit || unit
+      } else if (putMaster && !categoryName) {
+        categoryName = putMaster.category
       }
 
-      const putAssignedEntity = (item.assigned_entity_id !== undefined && item.assigned_entity_id !== null)
-        ? item.assigned_entity_id
-        : recommendAssignedEntity({ ...item, category_name: categoryName }, orderEntityId)
+      const putAssignedEntity = resolveAssignedEntity({ ...item, category_name: categoryName }, putMaster, orderEntityId)
       const putAssignmentStatus = putAssignedEntity ? (item.assignment_status || 'PENDING') : null
       putParentStmts.push(c.env.DB.prepare(`
         INSERT INTO order_items (

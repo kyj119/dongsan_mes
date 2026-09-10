@@ -19,7 +19,7 @@ import { getEntityId, entityFilter, findForeignAnalysisIds, foreignAnalysisError
 import { kstYmd, kstYmdCompact } from '../../utils/kstDate'
 import { ORDER_STATUS_LABELS } from '../../utils/statusLabels'
 import { thumbRef, resolveGroupByAiIndex, type AnalysisGroup } from '../../utils/thumbnailStore'
-import { recommendAssignedEntity, recalcOrderBillingGroups, generateCardsForOrder, resolveLineAxis } from './helpers'
+import { resolveAssignedEntity, loadItemMasters, recalcOrderBillingGroups, generateCardsForOrder, resolveLineAxis } from './helpers'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { evaluateClientCredit } from '../ledger/credit-helpers'
 
@@ -257,11 +257,10 @@ ordersCreateRouter.post('/', async (c) => {
     const orderId = orderResult.meta.last_row_id
 
     // Insert order items — two-pass batch for parent_item_id support (#63 원자화)
-    // Pre-resolve: item detail lookups for items missing name
+    // Pre-resolve: 품목 마스터는 item_id 가 있으면 **항상** 읽는다(이름 누락분만 읽던 것을 2026-09-10 에 바꿈).
+    //   이름은 요청값을 지키고 빈 칸(분류·단위)만 채우며, 담당법인 추천은 마스터 축으로 한다 — helpers.resolveAssignedEntity.
     // amt = 금액 3종(자동·최종·에누리). INSERT 에서 auto_amount·line_discount 를 기록해야 하므로 함께 들고 간다.
     const parentItems: Array<{ idx: number; item: any; itemName: string | null; categoryName: string | null; unit: string; itemAmount: number; amt: LineAmount; axis: { pricingMethod: string; minSide: number | null } }> = []
-    const itemIdsToLookup: number[] = []
-    const lookupIndices: number[] = []
 
     for (let i = 0; i < orderData.items.length; i++) {
       const item = orderData.items[i]
@@ -275,27 +274,19 @@ ordersCreateRouter.post('/', async (c) => {
 
       const entry = { idx: i, item, itemName: item.item_name || null, categoryName: item.category_name || null, unit: item.unit || 'EA', itemAmount, amt, axis }
       parentItems.push(entry)
-
-      if (item.item_id && !entry.itemName) {
-        itemIdsToLookup.push(item.item_id)
-        lookupIndices.push(parentItems.length - 1)
-      }
     }
 
-    // Batch lookup item details
-    if (itemIdsToLookup.length > 0) {
-      const lookupStmts = itemIdsToLookup.map(id =>
-        c.env.DB.prepare('SELECT item_name, category, unit FROM items WHERE id = ?').bind(id)
-      )
-      const lookupResults = await c.env.DB.batch(lookupStmts)
-      for (let k = 0; k < lookupResults.length; k++) {
-        const row = lookupResults[k].results[0] as { item_name: string; category: string; unit: string } | undefined
-        if (row) {
-          const entry = parentItems[lookupIndices[k]]
-          entry.itemName = row.item_name
-          entry.categoryName = row.category
-          entry.unit = row.unit
-        }
+    // Batch lookup item masters (IN 80청크). 이름 없는 라인은 종전대로 마스터로 덮고, 이름 있는 라인은 분류만 보충.
+    const masterMap = await loadItemMasters(c.env.DB, parentItems.map(e => e.item.item_id))
+    for (const entry of parentItems) {
+      const m = entry.item.item_id ? masterMap.get(Number(entry.item.item_id)) : undefined
+      if (!m) continue
+      if (!entry.itemName) {
+        entry.itemName = m.item_name
+        entry.categoryName = m.category
+        entry.unit = m.unit || entry.unit
+      } else if (!entry.categoryName) {
+        entry.categoryName = m.category
       }
     }
 
@@ -303,9 +294,8 @@ ordersCreateRouter.post('/', async (c) => {
     const orderEntityId = billingEntityId
     const pass1Stmts = parentItems.map(({ idx, item, itemName, categoryName, unit, itemAmount, amt, axis }) => {
       // 담당 법인: 요청 명시값 우선, 없으면 카드그룹 기반 추천. NULL=청구 법인 담당(투명)
-      const assignedEntity = (item.assigned_entity_id !== undefined && item.assigned_entity_id !== null)
-        ? item.assigned_entity_id
-        : recommendAssignedEntity({ ...item, category_name: categoryName }, orderEntityId)
+      const assignedEntity = resolveAssignedEntity(
+        { ...item, category_name: categoryName }, item.item_id ? masterMap.get(Number(item.item_id)) : undefined, orderEntityId)
       const assignmentStatus = assignedEntity ? (item.assignment_status || 'PENDING') : null
       return c.env.DB.prepare(`
         INSERT INTO order_items (
@@ -809,14 +799,8 @@ ordersCreateRouter.post('/:id/items', async (c) => {
     const vatRow = await c.env.DB.prepare(`SELECT setting_value FROM settings WHERE setting_key = 'vat_rate'`).first<{ setting_value: string }>()
     const vatRate = vatRow ? parseFloat(vatRow.setting_value) : 0.10
 
-    // 품목명/카테고리/단위 누락분 일괄 조회
-    const lookupIds = [...new Set(items.filter((it) => it.item_id && !it.item_name).map((it) => it.item_id))] as number[]
-    const nameMap = new Map<number, { item_name: string; category: string; unit: string }>()
-    if (lookupIds.length > 0) {
-      const ph = lookupIds.map(() => '?').join(',')
-      const { results } = await c.env.DB.prepare(`SELECT id, item_name, category, unit FROM items WHERE id IN (${ph})`).bind(...lookupIds).all<{ id: number; item_name: string; category: string; unit: string }>()
-      for (const r of results) nameMap.set(r.id, { item_name: r.item_name, category: r.category, unit: r.unit })
-    }
+    // 품목 마스터 일괄 조회 — 이름 누락 보충 + 담당법인 추천 축(helpers.resolveAssignedEntity). item_id 있으면 항상.
+    const nameMap = await loadItemMasters(c.env.DB, items.map((it) => it.item_id))
 
     // 신규 라인 sort_order는 기존 최대값 뒤로
     const maxSort = await c.env.DB.prepare(`SELECT COALESCE(MAX(sort_order), -1) AS m FROM order_items WHERE order_id = ?`).bind(orderId).first<{ m: number }>()
@@ -841,9 +825,7 @@ ordersCreateRouter.post('/:id/items', async (c) => {
         totalDelta += amount
         if (vatIncluded) vatDelta += amount * vatRate
       }
-      const assignedEntity = (item.assigned_entity_id !== undefined && item.assigned_entity_id !== null)
-        ? item.assigned_entity_id
-        : recommendAssignedEntity({ ...item, category_name: categoryName }, billingEntityId)
+      const assignedEntity = resolveAssignedEntity({ ...item, category_name: categoryName }, lookup, billingEntityId)
       const assignmentStatus = assignedEntity ? (item.assignment_status || 'PENDING') : null
       insertStmts.push(c.env.DB.prepare(`
         INSERT INTO order_items (

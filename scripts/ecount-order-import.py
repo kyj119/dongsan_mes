@@ -613,6 +613,10 @@ def main():
                 'content': ln['desc'] or None,
                 'specification': None if mw else (spec or None),
                 'vat_included': 1,
+                # ★담당 법인 추천 OFF (명시 null = 「청구법인 담당」, helpers.resolveAssignedEntity).
+                #   이관 전표는 법인간 거래를 상대 법인 전표가 따로 들고 온다 — 여기서 동산 담당이 붙으면
+                #   동산 청구그룹·카드가 이중이 되고 동산 주문 목록에 선명 주문이 섞인다(2026-09-04 8월분 299건).
+                'assigned_entity_id': None,
             })
 
         # 대기함 물리기 — 라인마다 후보 1건(썸네일 원천). 나머지 파일은 zscan-link-orders 가 칩으로 붙인다.
