@@ -89,6 +89,7 @@
     "test:delivery-slot": "node scripts/delivery-slot-selftest.cjs",
     "test:hookguard": "node scripts/hook-guard-selftest.cjs",
     "test:file-dims": "node scripts/file-dims-selftest.cjs",
+    "test:print-match": "node scripts/e2e-print-match.cjs",
     "test:credit": "node scripts/credit-selftest.cjs",
     "test:cash-settle": "node scripts/cashflow-settle-selftest.cjs",
     "test:loan-settle": "node scripts/loan-settle-selftest.cjs",
