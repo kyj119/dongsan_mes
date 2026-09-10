@@ -18,10 +18,8 @@ import equipmentQueueRouter from './routes/equipmentQueue'
 import claimsRouter from './routes/claims'
 import returnsRouter from './routes/returns'
 import purchaseInvoicesRouter from './routes/purchaseInvoices'
-import wasteRouter from './routes/waste'
 import inventoryValuationRouter from './routes/inventoryValuation'
 import fixedAssetsRouter from './routes/fixedAssets'
-import budgetsRouter from './routes/budgets'
 import aiInsightsRouter from './routes/aiInsights'
 import authRouter from './routes/auth'
 import dashboardRouter from './routes/dashboard'
@@ -286,10 +284,10 @@ app.route('/api/equipment-queue', equipmentQueueRouter)
 app.route('/api/claims', claimsRouter)
 app.route('/api/returns', returnsRouter)
 app.route('/api/purchase-invoices', purchaseInvoicesRouter)
-app.route('/api/waste', wasteRouter)
 app.route('/api/inventory-valuation', inventoryValuationRouter)
 app.route('/api/fixed-assets', fixedAssetsRouter)
-app.route('/api/budgets', budgetsRouter)
+// #627(2026-09-11): `/api/waste`·`/api/budgets` 고아 라우터 제거 — 프론트 호출처 0건·페이지 없음.
+//   테이블(waste_records·budgets)은 남긴다(D1 은 FK 컬럼 제거가 어렵고, orders/update 가 waste_records 를 지운다).
 app.route('/api/ai', aiInsightsRouter)
 app.route('/api/ai-analysis', aiAnalysisRouter)
 app.route('/api/ai-layout', aiLayoutRouter)
