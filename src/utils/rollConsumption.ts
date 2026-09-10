@@ -389,6 +389,14 @@ export interface LineMaterialSpec extends RollWidthSpec {
    * 로더가 안 실어 보내면 `undefined` 이고, 그때 대안 필터는 **아무것도 하지 않는다**(안전 기본값).
    */
   is_default?: number | boolean | null
+  /**
+   * product_materials.material_role — **자재 역할**(0603). NULL/'BASE' = 출력 미디어,
+   * 'LAMINATE' = 코팅지처럼 **미디어와 함께 쓰는 롤**.
+   * 폭 휴리스틱은 롤을 **1종만** 골랐다(그래야 폭만 다른 후보 19개 중 하나가 뽑힌다) — 코팅지를
+   * 그냥 후보에 넣으면 **원단 대신 코팅지가 뽑힌다**. 역할마다 1종씩 고르면 둘 다 잡힌다.
+   * ⚠️`is_default` 와는 축이 다르다: 저 축은 「같은 역할 안의 택1」, 이 축은 「역할 자체가 다름」.
+   */
+  material_role?: string | null
 }
 
 /** 라인 기하 — 규격은 **cm**(`order_items.width/height` 와 같은 축) */
@@ -483,6 +491,28 @@ function usageRequired(m: LineMaterialSpec, wCm: number, hCm: number, qty: numbe
  * @param line  주문 라인(규격 cm)
  * @param opts  ROLL 선택 옵션. 기본값이 주문 라인용이다.
  */
+/** 역할 표기의 정본. NULL·빈값·미지정은 전부 출력 미디어로 본다(기존 데이터가 그렇다). */
+export function materialRole(m: { material_role?: string | null }): string {
+  return String(m.material_role ?? '').trim().toUpperCase() || 'BASE'
+}
+
+/** 출력 미디어만 — 실차감(자동차감)은 인쇄 시점에 **미디어만** 뺀다. 코팅은 뒤 공정이다. */
+export function baseRoleOnly<T extends { material_role?: string | null }>(mats: T[]): T[] {
+  return mats.filter((m) => materialRole(m) === 'BASE')
+}
+
+/** 역할별로 묶는다. 삽입 순서를 유지해 픽 순서가 행 순서에 흔들리지 않게 한다. */
+function groupByRole<T extends LineMaterialSpec>(mats: T[]): Map<string, T[]> {
+  const out = new Map<string, T[]>()
+  for (const m of mats) {
+    const k = materialRole(m)
+    const arr = out.get(k)
+    if (arr) arr.push(m)
+    else out.set(k, [m])
+  }
+  return out
+}
+
 export function resolveLineMaterials<T extends LineMaterialSpec>(
   mats: T[] | undefined | null,
   line: LineGeometry,
@@ -546,8 +576,14 @@ export function resolveLineMaterials<T extends LineMaterialSpec>(
 
   if (rollMats.length > 0) {
     heuristicTried = true
-    const p = selectRollPlacement(rollMats, wCm * 10, hCm * 10, qty, opts)
-    if (p) picks.push({ mat: p.mat, required: p.qty, via: 'ROLL', placement: p })
+    // ★역할마다 1종(0603). 폭만 다른 후보는 같은 역할이므로 역할이 하나뿐인 제품은 종전과 값이
+    //   같다(prod 실측: 롤 후보를 가진 78개 제품 전부 단일 역할) — 무회귀 변경이다.
+    //   코팅지(LAMINATE)를 얹어도 원단(BASE)을 밀어내지 않는다. 밀어내던 것이 롤을 1종만
+    //   고르던 이 자리의 한계였다.
+    for (const group of groupByRole(rollMats).values()) {
+      const p = selectRollPlacement(group, wCm * 10, hCm * 10, qty, opts)
+      if (p) picks.push({ mat: p.mat, required: p.qty, via: 'ROLL', placement: p })
+    }
   }
   // ★종전엔 `else if` 라 **ROLL 후보가 있기만 하면** 판재를 아예 보지 않았다. ROLL 후보가 전부
   //   width_mm ≤ 0 이면 같은 BOM 의 판재가 멀쩡해도 아무것도 안 골랐다.

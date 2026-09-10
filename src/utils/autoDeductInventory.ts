@@ -2,7 +2,7 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { AUTO_DEDUCT_REF } from './autoDeductRestore'
 import { kstDate } from './kstDate'
 import { resolveDeductionZone } from './inventoryZone'
-import { computeRollConsumption, selectBoardMaterial, boardAreaSqm, selectRollPlacement } from './rollConsumption'
+import { computeRollConsumption, selectBoardMaterial, boardAreaSqm, selectRollPlacement, baseRoleOnly } from './rollConsumption'
 
 /**
  * Print event OK 상태 → 원단 재고 자동 차감
@@ -121,7 +121,7 @@ export async function autoDeductInventory(
     // 4. product_materials에서 연결 자재 + 차감설정 조회
     const { results: materialRows } = await db
       .prepare(
-        `SELECT pm.material_item_id, i.width_mm, i.item_name,
+        `SELECT pm.material_item_id, i.width_mm, i.item_name, pm.material_role,
                 COALESCE(i.deduction_method, 'ROLL') AS deduction_method, i.sheet_spec,
                 COALESCE(i.waste_factor, 1.0) AS waste_factor, i.base_unit, i.unit, i.pack_size
          FROM product_materials pm
@@ -139,9 +139,12 @@ export async function autoDeductInventory(
     //    판재 면적·선택 규칙은 `utils/rollConsumption` 정본을 쓴다(사본을 두면 소요량계획과 갈린다).
     // 폭 정렬은 없앴다 — 선택이 `selectRollPlacement` 로 넘어가 **행 순서에 의존하지 않는다**
     // (동점이면 폭 → material_item_id 로 tie-break 한다).
-    const rollMats = materialRows
+    // ★출력 미디어만 본다(0603). 코팅지는 BOM 에 있어도 **인쇄 시점에 빠지지 않는다** —
+    //   코팅은 뒤 공정이고, 여기는 롤을 1종만 고르므로 후보에 섞이면 원단 대신 코팅지가 뽑힌다.
+    const baseRows = baseRoleOnly(materialRows as any[])
+    const rollMats = baseRows
       .filter((m: any) => m.deduction_method === 'ROLL' && m.width_mm != null)
-    const boardMats = materialRows.filter((m: any) => m.deduction_method === 'BOARD')
+    const boardMats = baseRows.filter((m: any) => m.deduction_method === 'BOARD')
 
     let selectedMaterial: any = null
     let deductedLengthYd = 0       // 차감량(base_unit 단위): ROLL=yd 또는 cm, BOARD=장

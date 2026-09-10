@@ -267,7 +267,7 @@ export async function loadCostMaterials(
               i.width_mm, COALESCE(i.deduction_method,'ROLL') AS deduction_method,
               i.sheet_spec, COALESCE(i.waste_factor,1.0) AS waste_factor,
               i.base_unit, i.unit, i.pack_size, i.avg_unit_cost,
-              pm.quantity, pm.usage_type, pm.usage_param, pm.is_default
+              pm.quantity, pm.usage_type, pm.usage_param, pm.is_default, pm.material_role
        FROM product_materials pm JOIN items i ON pm.material_item_id = i.id
        WHERE pm.product_item_id IN (${ph})`
     ).bind(...chunk).all<any>()

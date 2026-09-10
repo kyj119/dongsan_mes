@@ -425,6 +425,44 @@ const U = function (id, name, qty, type, param, price) {
   } else pass++
 }
 
+// ── ⑧ 자재 역할 — 코팅지는 원단을 밀어내지 않는다 (0603) ─────────────────────
+// ⑦ 과 축이 다르다. 저기는 **같은 역할 안의 택1**, 여기는 **역할 자체가 다른 자재**다.
+// 폭 휴리스틱은 롤을 1종만 골랐다(폭만 다른 후보 19개 중 하나를 뽑기 위해서다) — 코팅지를
+// 그냥 후보에 넣으면 원단 대신 코팅지가 뽑히고, 자동차감이 원단이 아니라 코팅지를 뺐다.
+{
+  const ROLLM = function (id, name, widthMm, price, role) {
+    return {
+      material_item_id: id, material_name: name, width_mm: widthMm, deduction_method: 'ROLL',
+      sheet_spec: null, waste_factor: 1, base_unit: 'M', unit: 'M', pack_size: 50,
+      avg_unit_cost: price, quantity: null, usage_type: null, usage_param: null,
+      material_role: role,
+    }
+  }
+  const LINE = { item_id: 504, width: 100, height: 200, quantity: 1, category: '솔벤' }
+
+  const withCoat = computeLineCost(
+    [ROLLM(911, '일반시트 127폭', 1270, 1000, null), ROLLM(912, '무광코팅지 127폭', 1270, 2196, 'LAMINATE')],
+    LINE, { inkCostByCategory: INK })
+  if (withCoat.detail.materials.length !== 2) {
+    fails.push('원단+코팅은 둘 다 잡혀야 한다 · 실제 ' + withCoat.detail.materials.length + '종')
+  } else pass++
+
+  // 역할이 같으면 종전대로 1종만 — 폭만 다른 후보가 다 더해지면 안 된다.
+  const sameRole = computeLineCost(
+    [ROLLM(913, '시트 127폭', 1270, 1000, null), ROLLM(914, '시트 152폭', 1520, 1200, null)],
+    LINE, { inkCostByCategory: INK })
+  if (sameRole.detail.materials.length !== 1) {
+    fails.push('같은 역할은 1종만 골라야 한다 · 실제 ' + sameRole.detail.materials.length + '종')
+  } else pass++
+
+  // 자동차감은 BASE 만 본다 — 코팅은 인쇄 뒤 공정이라 출력 시점에 빠지면 안 된다.
+  const onlyBase = rollMod.baseRoleOnly([
+    { material_role: null }, { material_role: 'LAMINATE' }, { material_role: 'base' },
+  ])
+  if (onlyBase.length !== 2) fails.push('baseRoleOnly 는 NULL·BASE 만 남겨야 한다 · 실제 ' + onlyBase.length)
+  else pass++
+}
+
 // ── 결과 ───────────────────────────────────────────────────────────────────
 rollCleanup(); costCleanup(); calcCleanup()
 if (fails.length) {
