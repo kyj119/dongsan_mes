@@ -119,7 +119,10 @@ export async function recalculateOrderCosts(db: D1Database, orderId: number): Pr
       oi.post_processing,
       COALESCE(oi.category_name, ic.category_name) as category_name,
       i.category as ink_category,
-      i.pricing_method, i.min_billing_side_cm
+      -- #642: 과금축은 라인 스냅샷(0600)이 우선이다. 품목값만 읽으면 품목 축이 바뀐 뒤 옛 라인의
+      --   금액을 「오늘의 축」으로 재구성해 margin_rate 가 틀어진다(orders/core.ts:433 과 같은 COALESCE).
+      COALESCE(oi.pricing_method, i.pricing_method) AS pricing_method,
+      COALESCE(oi.min_billing_side_cm, i.min_billing_side_cm) AS min_billing_side_cm
     FROM order_items oi
     LEFT JOIN items i ON oi.item_id = i.id
     LEFT JOIN item_categories ic ON i.category_id = ic.id

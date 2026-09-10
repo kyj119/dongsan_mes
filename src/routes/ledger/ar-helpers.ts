@@ -167,9 +167,15 @@ export interface FifoOverdueRow {
   oldest_unpaid_at: string | null
 }
 
-/** 이관 기초잔액 전표 판정 — order_number 에 'OPEN'(E1-OPEN-*, ICM-AR-E1-OPEN). */
-export const CARRYOVER_ORDER_NUMBER_LIKE = "'%OPEN%'"
-
+/**
+ * 「이월분」 판정 = `orders.is_voucher`(0563) — 이관 기초잔액·법인간 미러·회계전표 **전부**.
+ *
+ * ★2026-09-11(#628): 종전 `order_number LIKE '%OPEN%'` 은 `voucherOrderSql` 이 이미 겪은 사고의 형제였다 —
+ *   `E1-ACCT-1670 회계매출`(2026-06-30) 같은 회계전표가 이름 규칙에 안 걸려 「이월」에서 조용히 빠졌다.
+ *   carryover_amount 는 breakdown 표시라 미수금 합계(unpaid_total·overdue_amount)엔 영향이 없었지만,
+ *   「이월 vs 신규매출」 구분이 과소로 틀어진다. 전표성 주문 전체를 이월로 본다(용준님 확정 2026-09-11).
+ *   ⚠️ 새 전표성 주문은 플래그를 직접 세운다 — 이름으로 추론하지 않는다(listFilter.ts 와 같은 규칙).
+ */
 export async function queryFifoOverdue(c: Context<HonoEnv>): Promise<FifoOverdueRow[]> {
   const g = entityFilter(c, 'g')
   const p = entityFilter(c, 'p')
@@ -179,7 +185,7 @@ export async function queryFifoOverdue(c: Context<HonoEnv>): Promise<FifoOverdue
        SELECT o.client_id AS cid,
               COALESCE(g.accounting_date, g.billed_at) AS bdate,
               g.billed_amount AS amt,
-              o.order_number AS onum,
+              o.is_voucher AS isv,
               SUM(g.billed_amount) OVER (
                 PARTITION BY o.client_id
                 ORDER BY COALESCE(g.accounting_date, g.billed_at), g.id
@@ -195,7 +201,7 @@ export async function queryFifoOverdue(c: Context<HonoEnv>): Promise<FifoOverdue
        ) GROUP BY cid
      ),
      unpaid AS (
-       SELECT grp.cid, grp.bdate, grp.onum,
+       SELECT grp.cid, grp.bdate, grp.isv,
               MIN(grp.amt, MAX(0, grp.cum - COALESCE(s.settled, 0))) AS un
          FROM grp LEFT JOIN settle s ON s.cid = grp.cid
      )
@@ -206,7 +212,7 @@ export async function queryFifoOverdue(c: Context<HonoEnv>): Promise<FifoOverdue
               COUNT(CASE WHEN date(u.bdate, '+' || COALESCE(c.overdue_alert_days, 30) || ' days') < date('now', '+9 hours')
                          THEN 1 END) AS overdue_count,
               SUM(CASE WHEN date(u.bdate, '+' || COALESCE(c.overdue_alert_days, 30) || ' days') < date('now', '+9 hours')
-                        AND u.onum LIKE ${CARRYOVER_ORDER_NUMBER_LIKE}
+                        AND u.isv = 1
                        THEN u.un ELSE 0 END) AS carryover_amount,
               SUM(u.un) AS unpaid_total,
               MIN(CASE WHEN date(u.bdate, '+' || COALESCE(c.overdue_alert_days, 30) || ' days') < date('now', '+9 hours')
