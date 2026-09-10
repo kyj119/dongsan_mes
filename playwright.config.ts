@@ -21,6 +21,8 @@ import { defineConfig, devices } from '@playwright/test'
  */
 export default defineConfig({
   testDir: './e2e',
+  // 여정(쓰기) 스위트는 별도 설정(playwright.journey.config.ts) — 이 prod 대상 설정이 절대 집어 가면 안 된다
+  testIgnore: ['**/journeys/**'],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

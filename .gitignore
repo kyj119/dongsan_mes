@@ -215,3 +215,4 @@ docs/order-file-matching/*.csv
 docs/order-file-matching/*.bak-*
 .claude/compact-backups/
 .claude/.precompact-state.json
+.journey/
