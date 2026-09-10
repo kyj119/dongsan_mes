@@ -794,22 +794,24 @@ for (const r of famRows) {
 
 const bandRows = [
   ...head(
-    '폭 구간별 원가 — 금액이 끊어지는 지점',
-    '무분할 1롤이면 원가/㎡ = 롤단가 × 1,093.6 ÷ 변길이(mm) — 긴 변은 약분된다. 원가를 정하는 건 원단 폭에 눕히는 변 하나다',
-    '★구간이 바뀌는 순간 원가/㎡ 가 튄다(「끊김」 열). 판매 단가 구간을 이 경계에 맞추면 구간마다 마진이 평평해진다'
+    '원단별 담당 구간과 원가 계단',
+    '원가/㎡ = 롤단가 × 1,093.6 ÷ 원단 폭에 눕히는 변(mm) — 긴 변은 약분된다. 그 변이 롤 폭을 넘는 순간 한 칸 위 롤로 올라가며 계단이 생긴다',
+    '★단가 정책이 「출력비 + 원자재」라 판정 기준은 재료비율이 아니라 **출력마진 원/㎡**(판매 − 재료)다. 구간마다 이 값이 평평해야 정책대로 받고 있는 것이다'
   ),
-  hdr(['원단그룹', '구간(변) cm', '선택 원단', '폭cm', '롤단가', '구간시작 원가/㎡', '구간끝 원가/㎡',
-    '끊김(직전끝 대비)', '실측 라인', '실측 매출', '실측 판매 원/㎡', '실측 재료비율', '쓰는 제품'], [3, 4, 5, 6, 7, 8, 9, 10, 11]),
+  hdr(['원단그룹', '원단코드', '폭cm', '롤단가/yd', '원/㎡(폭 만재)',
+    '담당 구간(변 cm)', '구간시작 원가/㎡', '구간끝 원가/㎡', '끊김(직전끝 대비)', '안 뽑히는 이유',
+    '실측 라인', '실측 매출', '판매 원/㎡', '재료 원/㎡', '출력마진 원/㎡', '쓰는 제품'],
+    [2, 3, 4, 6, 7, 8, 10, 11, 12, 13, 14]),
 ]
 
-// 엔진에 「이 변을 폭으로 눕혔을 때」를 묻는다 — 긴 변은 아무 값이나 둬도 ㎡단가가 같다(약분).
+// 엔진에 「이 변을 폭으로 눕혔을 때」를 1cm 씩 물어 **원단별 담당 구간**을 만든다.
+// ★원단 행에 구간을 붙여야 읽힌다 — 구간 행에 원단을 붙이면 「60.1~70 구간인데 90폭」처럼
+//   보여서 무슨 말인지 알 수 없다(용준님 지적 2026-09-10).
 const LONG = 10000
 function perSqm(pool, sideMm) {
   const p = selectRollPlacement(pool, sideMm, LONG, 1, { orientation: 'width-fixed' })
   if (!p || !(p.qty > 0)) return null
-  const cost = p.qty * (Number(p.mat.avg_unit_cost) || 0)
-  const area = (sideMm / 1000) * (LONG / 1000)
-  return { perSqm: cost / area, mat: p.mat, splits: p.splits, fitted: p.fitted }
+  return { perSqm: (p.qty * (Number(p.mat.avg_unit_cost) || 0)) / ((sideMm / 1000) * (LONG / 1000)), mat: p.mat }
 }
 
 let bandCount = 0
@@ -821,43 +823,64 @@ for (const [grp, rolls] of [...fams].sort((a, b) => a[0].localeCompare(b[0]))) {
     base_unit: r.bu, unit: r.unit, pack_size: r.pack, avg_unit_cost: Number(r.cost),
   }))
   const widths = [...new Set(rolls.map((r) => Number(r.w)))].sort((a, b) => a - b)
+  const maxCm = Math.round(widths[widths.length - 1] / 10)
   const codes = [...new Set(String(rolls[0].products || '').split(','))].filter(Boolean)
   const lines = codes.flatMap((c) => byCode.get(c) || [])
+
+  // 1cm 씩 훑어 어느 원단이 뽑히는지 — 담당 구간은 그 결과에서 나온다(추정하지 않는다).
+  const at = new Map()
+  for (let cm = 10; cm <= maxCm; cm++) at.set(cm, perSqm(pool, cm * 10))
+
   let prevEnd = null
-  for (let i = 0; i < widths.length; i++) {
-    const W = widths[i]
-    // 직전 폭을 1mm 넘긴 순간부터 이 롤이다. 첫 구간만 **10cm 부터** 잰다 — 1cm 로 재면
-    // 원가/㎡ 가 45만원처럼 나와 눈금이 통째로 망가진다(변이 짧을수록 폭이 남아 ㎡단가가 폭증).
-    const lo = i === 0 ? Math.min(100, W) : widths[i - 1] + 1
-    const a = perSqm(pool, lo), b = perSqm(pool, W)
-    if (!a || !b) continue
-    // 실측 — 이 구간에 짧은 변이 들어간 라인
-    const inBand = lines.filter((r) => r.side * 10 > (i === 0 ? 0 : widths[i - 1]) && r.side * 10 <= W)
+  for (const W of widths) {
+    const mine = [...at].filter(([, r]) => r && Number(r.mat.width_mm) === W).map(([cm]) => cm)
+    const anyRow = rolls.find((r) => Number(r.w) === W)
+    const winner = at.get(Math.round(W / 10))
+    const rollPrice = mine.length ? Number(at.get(mine[0]).mat.avg_unit_cost) : Number(anyRow.cost)
+    const code = mine.length ? at.get(mine[0]).mat.material_name : anyRow.code
+
+    if (!mine.length) {
+      // 어떤 변 길이에서도 안 뽑힌다 = 더 싸고 더 넓은 원단에 완전히 밀렸다.
+      bandRows.push([
+        grp, code, { v: Math.round(W / 10), s: S.INT }, { v: Math.round(rollPrice), s: S.INT },
+        { v: Math.round(rollPrice * 1093.6 / W), s: S.INT },
+        { v: '선택 안 됨', s: S.WARN }, null, null, null,
+        winner ? `${winner.mat.material_name}(${Math.round(Number(winner.mat.width_mm) / 10)}폭)가 더 싸다` : '',
+        null, null, null, null, null, codes.join(' · '),
+      ])
+      bandCount++
+      continue
+    }
+    const lo = Math.min(...mine), hi = Math.max(...mine)
+    const a = at.get(lo).perSqm, b = at.get(hi).perSqm
+    const inBand = lines.filter((r) => r.side >= lo && r.side <= hi)
     const sSales = inBand.reduce((s, r) => s + Number(r.sales || 0), 0)
     const sSqm = inBand.reduce((s, r) => s + Number(r.sqm || 0), 0)
     const sMat = inBand.reduce((s, r) => s + Number(r.mat || 0), 0)
     const sLines = inBand.reduce((s, r) => s + Number(r.lines || 0), 0)
+    const sellSqm = sSqm > 0 ? sSales / sSqm : null
+    const matSqm = sSqm > 0 ? sMat / sSqm : null
     bandRows.push([
-      grp,
-      `${(i === 0 ? Math.round(Math.min(100, W) / 10) : Math.round(widths[i - 1] / 10) + 0.1).toString()}~${Math.round(W / 10)}`,
-      a.mat.material_name, { v: Math.round(W / 10), s: S.INT },
-      { v: Math.round(Number(a.mat.avg_unit_cost)), s: S.INT },
-      { v: Math.round(a.perSqm), s: S.INT },
-      { v: Math.round(b.perSqm), s: S.INT },
-      prevEnd ? { v: a.perSqm / prevEnd, s: S.DEC2 } : null,
-      { v: sLines || null, s: S.INT },
-      { v: sSales ? Math.round(sSales) : null, s: S.INT },
-      { v: sSqm > 0 ? Math.round(sSales / sSqm) : null, s: S.INT },
-      { v: sSales > 0 ? sMat / sSales : null, s: S.PCT },
+      grp, code, { v: Math.round(W / 10), s: S.INT }, { v: Math.round(rollPrice), s: S.INT },
+      { v: Math.round(rollPrice * 1093.6 / W), s: S.INT },
+      `${lo}~${hi}`,
+      { v: Math.round(a), s: S.INT }, { v: Math.round(b), s: S.INT },
+      prevEnd ? { v: a / prevEnd, s: S.DEC2 } : null,
+      '',
+      { v: sLines || null, s: S.INT }, { v: sSales ? Math.round(sSales) : null, s: S.INT },
+      { v: sellSqm ? Math.round(sellSqm) : null, s: S.INT },
+      { v: matSqm ? Math.round(matSqm) : null, s: S.INT },
+      { v: sellSqm && matSqm ? Math.round(sellSqm - matSqm) : null, s: S.INT },
       codes.join(' · '),
     ])
-    prevEnd = b.perSqm
+    prevEnd = b
     bandCount++
   }
   bandRows.push([])
   prevEnd = null
 }
 rollCleanup()
+
 
 // ── 쓰기 ──────────────────────────────────────────────────────────────────────
 console.log('[10/10] 워크북 쓰기')
