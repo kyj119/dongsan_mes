@@ -182,6 +182,7 @@ poCoreRouter.get('/:id', async (c) => {
         i.width_mm AS item_width_mm,
         i.specification AS item_specification,
         i.unit AS item_unit,
+        i.pack_size AS item_pack_size,
         ${RECEIVING_ZONE_EXPR_SQL} AS effective_zone_id,
         sz.zone_name AS zone_name,
         sz.manager_id AS zone_manager_id,
@@ -362,8 +363,10 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
           po_id, item_id, item_name, category_name,
           quantity, received_quantity, unit,
           unit_price, price_status, amount, vat_included,
-          sort_order, notes
-        ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
+          sort_order, notes,
+          -- 롤 수(원단 등)와 「수량이 예상치인가」 — 0610. quantity 축은 그대로 매입 단위다.
+          order_packs, qty_is_estimate
+        ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         poId,
         item.item_id || null,
@@ -376,7 +379,9 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
         itemAmount,
         item.vat_included !== undefined ? (item.vat_included ? 1 : 0) : 1,
         i,
-        item.notes || null
+        item.notes || null,
+        Number(item.order_packs) > 0 ? Number(item.order_packs) : null,
+        item.qty_is_estimate ? 1 : 0
       ))
     }
     for (let i = 0; i < poiStmts.length; i += 80) {
@@ -545,8 +550,10 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
           po_id, item_id, item_name, category_name,
           quantity, received_quantity, unit,
           unit_price, price_status, amount, vat_included,
-          sort_order, notes
-        ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
+          sort_order, notes,
+          -- 롤 수(원단 등)와 「수량이 예상치인가」 — 0610. quantity 축은 그대로 매입 단위다.
+          order_packs, qty_is_estimate
+        ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         parseInt(id),
         item.item_id || null,
@@ -559,7 +566,9 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         itemAmount,
         item.vat_included !== undefined ? (item.vat_included ? 1 : 0) : 1,
         i,
-        item.notes || null
+        item.notes || null,
+        Number(item.order_packs) > 0 ? Number(item.order_packs) : null,
+        item.qty_is_estimate ? 1 : 0
       ))
     }
     for (let i = 0; i < poiStmts.length; i += 80) {

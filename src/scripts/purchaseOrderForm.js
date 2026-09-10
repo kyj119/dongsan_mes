@@ -368,6 +368,9 @@ function createItemRowHtml(idx, data) {
   var pricePending = (data.price_status === 'PENDING');
   var vatChecked = (data.vat_included !== undefined) ? (data.vat_included ? ' checked' : '') : ' checked';
   var notes = escapeHtml(data.notes || '');
+  var packSize = Number(data.pack_size) || 0;      // items.pack_size — 롤 1개의 길이(매입 단위)
+  var packs = Number(data.order_packs) || 0;       // 이 라인에 발주한 롤 수
+  var isEst = !!data.qty_is_estimate;              // quantity 가 롤에서 환산한 예상치인가
 
   return '<td style="position:relative">'
     + '<input type="text" id="item_name_' + idx + '" value="' + itemName + '" placeholder="품목 검색..." autocomplete="off"'
@@ -380,9 +383,21 @@ function createItemRowHtml(idx, data) {
     + '<input type="text" id="item_spec_' + idx + '" value="' + spec + '" placeholder="-" class="text-gray-600"'
     + ' style="font-size:12px">'
     + '</td>'
+    // 수량 칸 — 원단처럼 롤로 사는 품목은 **롤 수**로 쓰고 수량(yd 등)은 예상치로 채운다.
+    // 발주 시점엔 롤마다 길이가 달라 정확한 yd 를 모른다. 정확히 쓰라고 요구하면 아무도 안 쓴다.
+    // ★저장 축은 바뀌지 않는다 — `quantity` 는 여전히 매입 단위다. 롤은 **입력 보조**다.
     + '<td>'
+    + '<div id="item_packs_wrap_' + idx + '" class="' + (packSize > 0 ? '' : 'hidden') + '" style="margin-bottom:3px;white-space:nowrap">'
+    + '<input type="number" id="item_packs_' + idx + '" value="' + (packs || '') + '" min="0" step="1" placeholder="롤"'
+    + ' class="text-center" style="width:52px" title="롤(단위) 수를 쓰면 아래 수량이 예상치로 채워집니다. 정확한 값은 입고에서 확정합니다."'
+    + ' oninput="poCalcQtyFromPacks(' + idx + ')">'
+    + '<span style="font-size:11px;color:#6b7280;margin-left:3px">롤</span>'
+    + '</div>'
+    + '<input type="hidden" id="item_pack_size_' + idx + '" value="' + (packSize || '') + '">'
     + '<input type="number" id="item_qty_' + idx + '" value="' + qty + '" min="1" class="text-center"'
-    + ' oninput="calcRowAmount(' + idx + ')">'
+    + ' oninput="poQtyManualEdit(' + idx + ')">'
+    + '<div id="item_est_' + idx + '" class="' + (isEst ? '' : 'hidden') + '"'
+    + ' style="font-size:10px;color:#b45309;text-align:center;margin-top:1px" title="롤 수에서 환산한 예상 수량입니다. 입고 실측이 정본이 됩니다.">예상</div>'
     + '</td>'
     + '<td>'
     + '<input type="text" id="item_unit_' + idx + '" value="' + escapeHtml(unit) + '" class="text-center">'
@@ -466,12 +481,13 @@ async function searchItems(idx) {
       var items = (res.data && res.data.data) ? res.data.data : [];
       if (items.length === 1) {
         var it = items[0];
-        selectItem(idx, it.id, it.item_name || '', it.base_price || 0, it.unit || 'EA', buildSpecStr(it));
+        selectItem(idx, it.id, it.item_name || '', it.base_price || 0, it.unit || 'EA', buildSpecStr(it), it.pack_size);
       } else if (items.length > 1) {
         window.openItemSearchModal({
           type: 'purchase', search: q,
           onSelect: function(item) {
-            selectItem(idx, parseInt(item.id), item.name, parseFloat(item.price) || 0, item.unit, item.specification || '');
+            selectItem(idx, parseInt(item.id), item.name, parseFloat(item.price) || 0, item.unit, item.specification || '', item.pack_size);
+            if (item.pack_size == null) poFetchPackSize(idx, parseInt(item.id));
           }
         });
       }
@@ -479,11 +495,65 @@ async function searchItems(idx) {
   }, 300);
 }
 
-function selectItem(idx, id, name, price, unit, spec) {
+// 롤 수 → 수량(예상). 저장 축은 매입 단위 그대로고 롤은 입력 보조다.
+function poCalcQtyFromPacks(idx) {
+  var packEl = document.getElementById('item_packs_' + idx);
+  var sizeEl = document.getElementById('item_pack_size_' + idx);
+  var qtyEl = document.getElementById('item_qty_' + idx);
+  if (!packEl || !sizeEl || !qtyEl) { console.warn('[poForm] 롤 입력 요소 없음 idx=' + idx); return; }
+  var packs = parseFloat(packEl.value) || 0;
+  var size = parseFloat(sizeEl.value) || 0;
+  if (packs > 0 && size > 0) {
+    qtyEl.value = Math.round(packs * size * 100) / 100;
+    poSetEstimate(idx, true);
+  } else if (!packs) {
+    poSetEstimate(idx, false);
+  }
+  calcRowAmount(idx);
+}
+
+// 수량을 손으로 고치면 예상 표시를 뗀다 — 사람이 아는 값이 롤 환산보다 정확하다.
+// (롤 환산은 값을 코드로 넣으므로 oninput 이 안 뜬다 — 여기 오는 건 사람이 친 것뿐이다)
+function poQtyManualEdit(idx) {
+  poSetEstimate(idx, false)
+  calcRowAmount(idx)
+}
+
+// 모달에서 고른 품목은 payload 에 pack_size 가 없을 수 있다 — 그때만 상세를 한 번 읽는다.
+function poFetchPackSize(idx, itemId) {
+  if (!(itemId > 0)) return
+  axios.get('/api/items/' + itemId).then(function (res) {
+    var it = (res.data && (res.data.data || res.data)) || {}
+    var ps = Number(it.pack_size) || 0
+    var sizeEl = document.getElementById('item_pack_size_' + idx)
+    var wrapEl = document.getElementById('item_packs_wrap_' + idx)
+    if (sizeEl) sizeEl.value = ps || ''
+    if (wrapEl) wrapEl.classList.toggle('hidden', !(ps > 0))
+  }).catch(function (e) { console.warn('[poForm] pack_size 조회 실패', e) })
+}
+
+function poSetEstimate(idx, on) {
+  var badge = document.getElementById('item_est_' + idx);
+  if (badge) badge.classList.toggle('hidden', !on);
+}
+
+function poIsEstimate(idx) {
+  var badge = document.getElementById('item_est_' + idx);
+  return !!(badge && !badge.classList.contains('hidden'));
+}
+
+function selectItem(idx, id, name, price, unit, spec, packSize) {
   document.getElementById('item_id_' + idx).value = id;
   document.getElementById('item_name_' + idx).value = name;
   document.getElementById('item_price_' + idx).value = fmtMoneyInput(price);
   document.getElementById('item_unit_' + idx).value = unit || 'EA';
+  // 롤로 사는 품목이면 롤 입력을 연다. pack_size 가 없으면 종전 그대로 수량만 쓴다.
+  var sizeEl = document.getElementById('item_pack_size_' + idx);
+  var wrapEl = document.getElementById('item_packs_wrap_' + idx);
+  var ps = Number(packSize) || 0;
+  if (sizeEl) sizeEl.value = ps || '';
+  if (wrapEl) wrapEl.classList.toggle('hidden', !(ps > 0));
+  if (!(ps > 0)) poSetEstimate(idx, false);
   var specEl = document.getElementById('item_spec_' + idx);
   if (specEl && spec) specEl.value = spec;
   var dd = document.getElementById('item_dd_' + idx);
@@ -627,7 +697,12 @@ async function loadPOData(id) {
           amount: it.amount || 0,
           vat_included: it.vat_included,
           price_status: it.price_status || 'CONFIRMED',
-          notes: it.notes || ''
+          notes: it.notes || '',
+          // 롤 입력 복원 — pack_size 는 품목마스터에서 오고(라인에 저장 안 함),
+          // 롤 수·예상 표시는 라인에 저장된 값이다(0610).
+          pack_size: it.item_pack_size || 0,
+          order_packs: it.order_packs || 0,
+          qty_is_estimate: it.qty_is_estimate ? 1 : 0
         });
       });
       calcTotals();
@@ -664,6 +739,9 @@ async function savePO(status) {
         item_name: itemName,
         specification: document.getElementById('item_spec_' + idx) ? document.getElementById('item_spec_' + idx).value.trim() || null : null,
         quantity: qty,
+        // 롤 수와 「예상 수량」 표시를 같이 보낸다 — 검수에서 롤 수와 길이를 갈라 봐야 한다
+        order_packs: parseFloat((document.getElementById('item_packs_' + idx) || {}).value) || null,
+        qty_is_estimate: poIsEstimate(idx) ? 1 : 0,
         unit: document.getElementById('item_unit_' + idx).value || 'EA',
         unit_price: price,
         amount: pricePending ? 0 : (qty * price),
@@ -818,6 +896,8 @@ async function saveAsTemplate() {
         item_id: document.getElementById('item_id_' + idx).value || null,
         item_name: itemName,
         quantity: parseFloat(document.getElementById('item_qty_' + idx).value) || 1,
+        order_packs: parseFloat((document.getElementById('item_packs_' + idx) || {}).value) || null,
+        qty_is_estimate: poIsEstimate(idx) ? 1 : 0,
         unit: document.getElementById('item_unit_' + idx).value || 'EA',
         unit_price: parseMoney(document.getElementById('item_price_' + idx).value),
         vat_included: document.getElementById('item_vat_' + idx).checked ? 1 : 0
