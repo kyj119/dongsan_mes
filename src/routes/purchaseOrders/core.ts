@@ -807,4 +807,38 @@ poCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   }
 })
 
+// ============================================================================
+// POST /:id/review — 검수 승인 (Phase 3, 0612)
+// ----------------------------------------------------------------------------
+// 발주 담당자가 「안 들어온 게 있나·금액이 맞나」를 확인했다는 도장. 차이를 시스템이 이미
+// 계산해 두었으므로 담당자가 하는 일은 **확인이 아니라 승인**이다.
+// ⚠️취소는 두지 않는다 — 잘못 눌렀으면 다시 눌러 풀 수 있어야 하므로 `undo` 로 받는다.
+// ============================================================================
+poCoreRouter.post('/:id/review', async (c) => {
+  try {
+    const user = c.get('user')
+    const id = c.req.param('id')
+    const body = await c.req.json().catch(() => ({}))
+    const undo = body?.undo === true
+
+    // 법인 격리 — 남의 법인 발주를 승인하면 안 된다(형제 라우트와 같은 규약)
+    const ef = entityFilter(c, 'po')
+    const po = await c.env.DB.prepare(
+      `SELECT id FROM purchase_orders po WHERE po.id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number }>()
+    if (!po) return c.json({ success: false, error: 'Purchase order not found' }, 404)
+
+    await c.env.DB.prepare(`
+      UPDATE purchase_orders
+         SET reviewed_at = ?, reviewed_by = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?
+    `).bind(undo ? null : new Date().toISOString(), undo ? null : (user?.id || null), id).run()
+
+    return c.json({ success: true, message: undo ? '검수 승인을 해제했습니다.' : '검수 승인했습니다.' })
+  } catch (e) {
+    console.error('[po review] error:', e)
+    return c.json({ success: false, error: (e as Error).message }, 500)
+  }
+})
+
 export default poCoreRouter

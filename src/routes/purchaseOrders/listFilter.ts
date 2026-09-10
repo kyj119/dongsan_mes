@@ -42,6 +42,20 @@ export const PO_SORT_OPTIONS: Record<string, string> = {
   'supplier_name_asc': 'c.client_name IS NULL, c.client_name ASC, po.id DESC',
   'po_number_asc': 'po.po_number ASC, po.id ASC',
 }
+/**
+ * 검수 대기 판정 **정본**. 목록 필터(review=1)와 통계 카운트가 **같은 문장**을 쓴다 —
+ * 두 벌로 두면 「카드엔 3건인데 눌러 보면 5건」이 난다(이 저장소가 여러 번 겪은 형태다).
+ */
+export const PO_REVIEW_PENDING_SQL = `po.reviewed_at IS NULL AND (
+  po.adhoc_source = 'RECEIVING'
+  OR (po.status IN ('RECEIVED', 'PARTIAL_RECEIVED') AND EXISTS (
+    SELECT 1 FROM purchase_order_items x WHERE x.po_id = po.id AND (
+      CASE WHEN x.qty_is_estimate = 1 AND COALESCE(x.order_packs, 0) > 0
+           THEN COALESCE(x.received_packs, 0) <> x.order_packs
+           ELSE COALESCE(x.received_quantity, 0) <> x.quantity END)
+  ))
+)`
+
 export const PO_SORT_DEFAULT = 'order_date_desc'
 
 export function resolvePoSort(sort: string | undefined): string {
@@ -51,7 +65,7 @@ export function resolvePoSort(sort: string | undefined): string {
 export function buildPoListFilter(c: Context<HonoEnv>, opts: PoListFilterOptions = {}): PoListFilterResult {
   const {
     status = '', search = '', date_from = '', date_to = '', supplier_id = '',
-    overdue = '', receiving = '', include_intercompany = '',
+    overdue = '', receiving = '', include_intercompany = '', review = '',
   } = c.req.query()
 
   const clauses: string[] = []
@@ -86,6 +100,14 @@ export function buildPoListFilter(c: Context<HonoEnv>, opts: PoListFilterOptions
   if (overdue === '1') {
     clauses.push("po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED') AND po.expected_date IS NOT NULL AND po.expected_date < ?")
     params.push(kstYmd())
+  }
+
+  // 검수 대기 — 발주 담당자가 「안 들어온 게 있나·금액이 맞나」를 확인해야 하는 건만(0612).
+  //   ①입고가 돌았는데 발주 수량과 입고 수량이 다른 라인이 있다. 단 **예상 수량 라인은 롤 수로** 본다 —
+  //     원단은 길이가 원래 달라지므로 yd 차이는 오류가 아니다(0610·0611).
+  //   ②또는 입고 화면에서 사후 생성된 발주다(전화·현장 발주가 여기로 모인다).
+  if (review === '1') {
+    clauses.push(PO_REVIEW_PENDING_SQL)
   }
 
   // 법인간거래(내부법인 3사) + 관계 사업자 기본 제외 — AP 집계가 이미 전수 제외하고 있어

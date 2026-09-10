@@ -13,7 +13,7 @@ import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { excludePurchaseNonCounterpartiesSql } from '../../constants/intercompany'
 import { getEntityCompanyInfo } from '../../utils/entitySettings'
 import { kstYmd, kstDate } from '../../utils/kstDate'
-import { buildPoListFilter, resolvePoSort, PO_SORT_DEFAULT } from './listFilter'
+import { buildPoListFilter, resolvePoSort, PO_SORT_DEFAULT , PO_REVIEW_PENDING_SQL } from './listFilter'
 
 const poQueriesRouter = new Hono<HonoEnv>()
 poQueriesRouter.use('/*', authMiddleware, requireAnyPagePermission('/purchase-orders', '/receiving'))
@@ -60,6 +60,14 @@ poQueriesRouter.get('/stats', async (c) => {
          AND po.expected_date IS NOT NULL AND po.expected_date >= ? AND po.expected_date <= date(?, '+3 days')`
     ).bind(...f.params, today, today).first<{ count: number }>()
     stats.upcoming = upcoming?.count || 0
+
+    // 검수 대기 — 발주 담당자가 확인해야 할 건. 목록 필터(review=1)와 **같은 문장**을 쓴다.
+    const reviewPending = await c.env.DB.prepare(
+      `SELECT COUNT(*) as count
+       FROM purchase_orders po LEFT JOIN clients c ON po.supplier_id = c.id${f.where}
+         ${f.where ? 'AND' : 'WHERE'} ${PO_REVIEW_PENDING_SQL}`
+    ).bind(...f.params).first<{ count: number }>()
+    stats.review_pending = reviewPending?.count || 0
 
     // 이번 달 발주 금액 합계
     const monthlyAmount = await c.env.DB.prepare(`

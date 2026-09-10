@@ -33,7 +33,7 @@ function getDueBadge(expectedDate, status) {
 
 function filterByStatus(s) {
   currentStatus = s;
-  if (s === 'OVERDUE') {
+  if (s === 'OVERDUE' || s === 'REVIEW') {
     document.getElementById('statusFilter').value = '';
   } else {
     document.getElementById('statusFilter').value = s;
@@ -110,6 +110,8 @@ async function loadStats() {
       if (partialEl) partialEl.textContent = d.PARTIAL_RECEIVED || 0;
       var overdueEl = document.getElementById('statOverdue');
       if (overdueEl) overdueEl.textContent = d.overdue || 0;
+      var reviewEl = document.getElementById('statReview');
+      if (reviewEl) reviewEl.textContent = d.review_pending || 0;
       var monthEl = document.getElementById('statMonthlyAmount');
       if (monthEl) monthEl.textContent = formatAmount(d.monthly_amount || 0) + '원';
     }
@@ -156,8 +158,10 @@ function poReadFilters() {
   return {
     search: g('searchInput'),
     // '납기 지연' 카드는 상태가 아니라 파생 조건이라 status 를 비우고 overdue 로 건다
-    status: currentStatus === 'OVERDUE' ? '' : g('statusFilter'),
+    status: (currentStatus === 'OVERDUE' || currentStatus === 'REVIEW') ? '' : g('statusFilter'),
     overdue: currentStatus === 'OVERDUE',
+    // 검수 대기도 상태가 아니라 파생 조건이다(0612)
+    review: currentStatus === 'REVIEW',
     supplierId: g('supplierFilter'),
     sort: g('sortSelect') || 'order_date_desc',
     // 발주일 범위. `datePeriod` 는 **상대 기간**이라 프리셋에 그대로 저장된다 —
@@ -210,6 +214,7 @@ function poBuildParams(f, opts) {
   if (f.search) p.append('search', f.search);
   if (f.status && !opts.omitStatus) p.append('status', f.status);
   if (f.overdue && !opts.omitStatus) p.append('overdue', '1');
+  if (f.review && !opts.omitStatus) p.append('review', '1');
   if (f.supplierId) p.append('supplier_id', f.supplierId);
   // 발주일 범위 — 서버는 `po.order_date >= / <=` 로 건다(`routes/purchaseOrders/listFilter.ts`).
   if (f.dateFrom) p.append('date_from', f.dateFrom);
@@ -224,6 +229,7 @@ function poRenderChips(f) {
   var clear = function(fn) { return function() { fn(); loadPOs(1); }; };
   if (f.search) items.push({ label: '검색 "' + f.search + '"', onClear: clear(function() { document.getElementById('searchInput').value = ''; }) });
   if (f.overdue) items.push({ label: '납기 지연만', onClear: clear(function() { currentStatus = ''; }) });
+  else if (f.review) items.push({ label: '검수 대기만', onClear: clear(function() { currentStatus = ''; }) });
   else if (f.status) items.push({ label: '상태 ' + poStatusLabel(f.status), onClear: clear(function() { currentStatus = ''; document.getElementById('statusFilter').value = ''; }) });
   if (f.supplierId) {
     var sel = document.getElementById('supplierFilter');
@@ -277,7 +283,7 @@ async function loadPOs(page) {
 
   // 조건 표시는 응답을 기다리지 않는다 — 조회가 실패해도 무슨 조건이 걸렸는지는 보여야 한다
   poRenderChips(f);
-  window.dsListUx.markActiveStat(f.overdue ? 'OVERDUE' : f.status, '#poStatsArea ');
+  window.dsListUx.markActiveStat(f.overdue ? 'OVERDUE' : (f.review ? 'REVIEW' : f.status), '#poStatsArea ');
   loadStats();   // 통계 카드도 같은 조건으로 갱신
 
   try {
@@ -311,6 +317,11 @@ function displayPOs(items) {
       + (statusLabels[po.status] || po.status) + '</span>';
     var actions = '<div class="flex gap-1 justify-center">';
     actions += '<button onclick="viewDetail(' + po.id + ')" class="px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200" title="상세"><i class="fas fa-eye"></i></button>';
+    // 검수 대기로 걸러 본 목록에서만 승인 버튼을 낸다 — 그 화면의 모든 행이 승인 대상이라
+    // 행마다 대상 여부를 다시 물을 필요가 없다. 누르면 목록에서 빠진다.
+    if (currentStatus === 'REVIEW') {
+      actions += '<button onclick="poApproveReview(' + po.id + ')" class="px-2 py-1 text-xs rounded" style="background:#ffedd5;color:#c2410c" title="발주와 입고를 확인했다 — 승인하면 검수 대기에서 빠집니다"><i class="fas fa-clipboard-check"></i></button>';
+    }
     if (po.status !== 'CANCELLED') {
       actions += '<a href="/purchase-order-form?edit=' + po.id + '" class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-200" title="수정"><i class="fas fa-edit"></i></a>';
     }
@@ -575,6 +586,22 @@ async function submitReceive(id) {
     }
   } catch(e) {
     showToast('입고 처리 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
+  }
+}
+
+// 검수 승인 — 발주 담당자가 「안 들어온 게 있나·금액이 맞나」를 확인했다는 도장(0612).
+// 되돌릴 수 있게 서버가 undo 를 받는다(잘못 눌렀을 때 손댈 방법이 없으면 아무도 안 누른다).
+async function poApproveReview(id) {
+  try {
+    var res = await axios.post('/api/purchase-orders/' + id + '/review', {})
+    if (res.data && res.data.success) {
+      showToast(res.data.message || '검수 승인했습니다.', 'success')
+      loadPOs(currentPage)
+    } else {
+      showToast((res.data && res.data.error) || '승인 실패', 'error')
+    }
+  } catch (e) {
+    showToast('승인 실패: ' + (e.response && e.response.data ? (e.response.data.error || e.response.data.message) : e.message), 'error')
   }
 }
 

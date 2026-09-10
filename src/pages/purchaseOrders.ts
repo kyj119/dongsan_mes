@@ -10,7 +10,15 @@ export function purchaseOrdersPage(c: Context<HonoEnv>) {
     pageContent: `
       <!-- 통계 카드 (핵심 4개) — 앞 3개는 현재 조회조건 기준 집계 + 드릴다운.
            '이번달 발주 금액'만 기간 고정 지표라 라벨에 기준을 명시하고 클릭 대상에서 뺀다. -->
-      <div id="poStatsArea" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div id="poStatsArea" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <!-- 검수 대기(0612) — 입고가 발주와 다르거나, 물건이 먼저 와서 사후 생성된 발주.
+             담당자가 「뭐가 안 들어왔지」를 기억으로 찾지 않게 시스템이 차이를 먼저 계산해 둔다. -->
+        <button type="button" class="ds-card ds-stat p-4" style="border-color:#fdba74"
+          data-stat-status="REVIEW" onclick="filterByStatus('REVIEW')"
+          title="입고 수량이 발주와 다르거나(예상 수량은 롤 수 기준), 입고 화면에서 사후 생성된 발주입니다. 확인 후 상세에서 「검수 승인」을 누르면 목록에서 빠집니다.">
+          <div class="text-xs font-semibold uppercase tracking-wider ds-stat-label" style="color:#c2410c">검수 대기</div>
+          <div class="text-3xl font-bold mt-1 tabular-nums" style="color:#ea580c" id="statReview">-</div>
+        </button>
         <button type="button" class="ds-card ds-stat p-4" data-stat-status="CONFIRMED" onclick="filterByStatus('CONFIRMED')">
           <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider ds-stat-label">입고 대기</div>
           <div class="text-3xl font-bold text-blue-600 mt-1 tabular-nums" id="statConfirmed">-</div>
