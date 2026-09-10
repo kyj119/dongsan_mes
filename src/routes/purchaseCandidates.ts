@@ -24,7 +24,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
 import { requireAccessOrRole } from '../middleware/permissions'
 import { requireRole } from '../middleware/auth'
-import { entityFilter, E2E_ENTITY_ID } from '../utils/entityFilter'
+import { entityFilter, getEntityId, E2E_ENTITY_ID } from '../utils/entityFilter'
 import { kstYmd } from '../utils/kstDate'
 import {
   buildClientPool, classifyWithdrawal, isCandidate,
@@ -289,6 +289,12 @@ purchaseCandidatesRouter.put('/owners', requireRole('ADMIN', 'MANAGER'), async (
     }
     if (userId !== null && !(userId > 0)) {
       return c.json({ success: false, error: '유효하지 않은 담당자' }, 400)
+    }
+    // #643: GET /owners 는 entityFilter 로 자기 법인만 보여주는데 쓰기만 body.entity_id 를 그대로 믿었다
+    //   — MANAGER 토큰으로 타법인 거래처의 담당을 덮어쓸 수 있는 형제 비대칭 IDOR. ADMIN 전체 모드(0)만 예외.
+    const myEntity = getEntityId(c)
+    if (myEntity !== 0 && entityId !== myEntity) {
+      return c.json({ success: false, error: '다른 법인의 담당은 지정할 수 없습니다.' }, 403)
     }
     const me = c.get('user')
     // 사람이 정한 값은 「자동 역산」 표시를 지운다 — 다음 재실행이 덮지 않는다는 뜻이기도 하다.

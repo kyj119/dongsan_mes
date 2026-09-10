@@ -5,7 +5,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { requireEditOrRole } from '../middleware/permissions'
 import { requirePagePermission } from '../middleware/permissions'
-import { entityFilter, getEntityId } from '../utils/entityFilter'
+import { entityFilter, getWriteEntityId } from '../utils/entityFilter'
 import { buildCashflowDays, type CashflowItem, type ApDiagnostics, type ArDiagnostics, type BaselineDiagnostics } from '../utils/cashflowEngine'
 import { computeExpectedPaymentDate } from '../utils/paymentSchedule'
 import { kstYm, kstYmd } from '../utils/kstDate'
@@ -27,6 +27,7 @@ interface BilledOrderRow {
 
 interface ConfirmedPORow {
   id: number
+  entity_id: number
   supplier_id: number | null
   final_amount: number
   po_number: string
@@ -395,6 +396,12 @@ cashScheduleRouter.post('/schedule', requireEditOrRole('/cash-schedule', 'MANAGE
     if (!body.schedule_date || !body.flow_type || !body.amount) {
       return c.json({ success: false, error: '필수 항목 누락' }, 400)
     }
+    // #635: `getEntityId(c) || 1` 은 ADMIN 「전체」 모드(0)의 수동 등록을 조용히 동산(1)에 귀속시켰다
+    //   — 법인2/3 담당자가 자기 화면에서 자기가 넣은 예정을 못 봤다. 다른 쓰기 경로와 같은 컨벤션으로 400.
+    const entityId = getWriteEntityId(c)
+    if (entityId === null) {
+      return c.json({ success: false, error: '전체 모드에서는 자금 예정을 등록할 수 없습니다. 상단에서 법인을 선택하세요.' }, 400)
+    }
 
     const result = await c.env.DB.prepare(`
       INSERT INTO cash_schedule (schedule_date, flow_type, source_type, source_id, client_id, amount, description, notes, created_by, entity_id)
@@ -403,7 +410,7 @@ cashScheduleRouter.post('/schedule', requireEditOrRole('/cash-schedule', 'MANAGE
       body.schedule_date, body.flow_type, body.source_type || 'OTHER',
       body.source_id || null, body.client_id || null,
       body.amount, body.description || null, body.notes || null,
-      user?.id || null, getEntityId(c) || 1
+      user?.id || null, entityId
     ).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id }, message: '예정이 등록되었습니다.' })
@@ -531,8 +538,10 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
 
     // 2. 발주 → 지급 예정 (LIMIT 500 안전장치)
     //   공급사 결제조건(MONTHLY 월말/이월결제 포함)을 computeExpectedPaymentDate로 반영 — 매출측과 대칭 (H1a)
+    //   #632: 귀속은 ORDER 블록과 대칭으로 **발주 자신의 entity_id** — 종전 `getEntityId(c) || 1` 은 ADMIN
+    //   「전체」 모드에서 전 법인 발주를 읽어 놓고 전부 동산(1) 자금계획에 넣었다. dedup 도 같은 축을 본다.
     const { results: confirmedPOs } = await c.env.DB.prepare(`
-      SELECT po.id, po.supplier_id, po.final_amount, po.po_number, po.created_at, po.delivery_date,
+      SELECT po.id, po.entity_id, po.supplier_id, po.final_amount, po.po_number, po.created_at, po.delivery_date,
         s.client_name as supplier_name,
         COALESCE(s.payment_terms_days, 30) as payment_days,
         s.payment_cycle_type, s.closing_day, s.payment_month_offset, s.payment_day
@@ -542,6 +551,7 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
         AND NOT EXISTS (
           SELECT 1 FROM cash_schedule cs
           WHERE cs.source_type = 'PURCHASE' AND cs.source_id = po.id AND cs.status != 'CANCELLED'
+            AND cs.entity_id = po.entity_id
         )
       LIMIT 500
     `).bind(...entityFilter(c, 'po').params).all<ConfirmedPORow>()
@@ -564,7 +574,7 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
           dueDateStr, po.id, po.supplier_id,
           po.final_amount,
           `${po.supplier_name || '공급사'} 지급예정 (발주 ${po.po_number})`,
-          user?.id || null, getEntityId(c) || 1
+          user?.id || null, po.entity_id
         )
       )
       inserted++
@@ -592,13 +602,16 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
 cashScheduleRouter.post('/schedule/check-overdue', requireEditOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
     const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().substring(0, 10)  // KST 기준일
+    // #631: 이 파일의 다른 mutate 는 전부 entityFilter 인데 이 UPDATE 만 전 법인 대상이었다 —
+    //   법인 MANAGER 의 버튼 한 번이 다른 법인 자금계획에 연체 표시를 남겼다. 전체 모드(0)는 빈 절 그대로.
+    const ef = entityFilter(c)
     const result = await c.env.DB.prepare(`
       UPDATE cash_schedule SET status = 'OVERDUE', updated_at = CURRENT_TIMESTAMP
-      WHERE status = 'PENDING' AND schedule_date < ?
-    `).bind(today).run()
+      WHERE status = 'PENDING' AND schedule_date < ?${ef.clause}
+    `).bind(today, ...ef.params).run()
     const onTime = await c.env.DB.prepare(
-      `SELECT COUNT(*) AS c FROM cash_schedule WHERE status = 'PENDING' AND schedule_date >= ?`
-    ).bind(today).first<{ c: number }>()
+      `SELECT COUNT(*) AS c FROM cash_schedule WHERE status = 'PENDING' AND schedule_date >= ?${ef.clause}`
+    ).bind(today, ...ef.params).first<{ c: number }>()
     const overdueCount = result.meta.changes || 0
     // 프론트(schCheckOverdue)가 overdue_count/on_time_count를 읽음 → 응답계약 정렬(기존 {updated}만이라 'undefined건' 토스트)
     return c.json({ success: true, data: { updated: overdueCount, overdue_count: overdueCount, on_time_count: onTime?.c || 0 }, message: `${overdueCount}건이 연체로 변경되었습니다.` })
