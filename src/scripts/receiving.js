@@ -426,15 +426,32 @@ async function openReceiveModal(id, scope) {
             var rowClass = isDone ? 'border-t opacity-50' : 'border-t';
             var specLabel = it.item_width_mm ? '<span class="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-medium">' + it.item_width_mm + 'mm</span>' : '';
             var unitLabel = it.item_unit ? ' <span class="text-xs font-medium text-gray-500">' + escapeHtml(it.item_unit) + '</span>' : '';
+            // ★발주 수량이 **예상치**면 그렇게 보여 준다(0610) — 안 그러면 담당자가
+            //   「390 주문인데 385 왔으니 5 부족」으로 읽는다. 원단은 롤마다 길이가 달라
+            //   발주 때 정확한 yd 를 모르고, **실측이 곧 확정**이지 부족이 아니다.
+            var isEst = !!it.qty_is_estimate;
+            var packSize = Number(it.item_pack_size) || 0;
+            var estNote = isEst
+              ? '<div style="font-size:10px;color:#b45309">예상' + (it.order_packs ? ' · ' + it.order_packs + '롤' : '') + '</div>'
+              : (it.order_packs ? '<div style="font-size:10px;color:#6b7280">' + it.order_packs + '롤</div>' : '');
+            // 예상치면 잔여 상한을 걸지 않는다 — 실측이 예상보다 많이 나올 수 있다.
+            var maxAttr = isEst ? '' : ' max="' + remaining + '"';
             return '<tr class="' + rowClass + '">'
               + '<td class="px-3 py-2 text-sm"><div class="font-medium">' + escapeHtml(it.item_name || '-') + '</div>'
               + '<div>' + specLabel + unitLabel + '</div></td>'
-              + '<td class="px-3 py-2 text-center text-sm tabular-nums">' + (it.quantity || 0) + '</td>'
+              + '<td class="px-3 py-2 text-center text-sm tabular-nums">' + (it.quantity || 0) + estNote + '</td>'
               + '<td class="px-3 py-2 text-center text-sm tabular-nums">' + (it.received_quantity || 0) + '</td>'
               + '<td class="px-3 py-2 text-center tabular-nums text-base font-bold text-amber-600">' + Math.max(0, remaining) + '</td>'
               + '<td class="px-3 py-2 text-center">'
+              + (packSize > 0
+                ? '<div style="margin-bottom:3px;white-space:nowrap"><input type="number" id="recvpk_' + it.id + '" value="' + (it.order_packs || '') + '"'
+                  + ' min="0" step="1" placeholder="롤" class="border rounded px-2 py-1 text-sm text-center" style="width:56px"'
+                  + ' title="실제로 받은 롤 수. 길이(실측)는 아래에 넣습니다." oninput="recvPacksChanged(' + it.id + ',' + packSize + ')">'
+                  + '<span style="font-size:11px;color:#6b7280;margin-left:3px">롤</span></div>'
+                : '')
               + '<input type="number" id="recv_' + it.id + '" value="' + defaultRecv + '"'
-              + ' min="0" max="' + remaining + '" class="w-24 border rounded px-3 py-1.5 text-base font-bold text-center tabular-nums recv-input">'
+              + ' min="0"' + maxAttr + ' class="w-24 border rounded px-3 py-1.5 text-base font-bold text-center tabular-nums recv-input"'
+              + (packSize > 0 ? ' title="롤 라벨에 적힌 실측 길이를 그대로 넣으세요. 이 값이 재고·원가의 정본입니다."' : '') + '>'
               + '</td>'
               + '</tr>';
           }).join('');
@@ -489,6 +506,70 @@ function viewDetail(id) {
   openReceiveModal(id, currentScope);
 }
 
+// ── 발주 없이 입고 ────────────────────────────────────────────────────────
+// 물건이 먼저 오는 것을 막지 않는다. 공급처·품목·수량만 받아 발주를 **그 자리에서** 만들고
+// (`adhoc_source='RECEIVING'`) 곧바로 입고 모달을 연다. 현장이 고르는 건 품목과 수량뿐이고
+// 금액·정산은 사무실이 뒤에서 채운다 — 현장에 부담을 얹으면 다시 시스템 밖으로 나간다.
+async function openAdhocReceive() {
+  if (typeof openClientSearchModal !== 'function') { showToast('거래처 검색을 열 수 없습니다.', 'error'); return }
+  openClientSearchModal({
+    search: '',
+    onSelect: function (cl) { adhocPickItem(cl.id, cl.client_name) },
+  })
+}
+
+function adhocPickItem(supplierId, supplierName) {
+  if (typeof window.openItemSearchModal !== 'function') { showToast('품목 검색을 열 수 없습니다.', 'error'); return }
+  window.openItemSearchModal({
+    type: 'purchase', search: '',
+    onSelect: function (item) { adhocCreate(supplierId, supplierName, item) },
+  })
+}
+
+async function adhocCreate(supplierId, supplierName, item) {
+  var qty = window.prompt('[' + (item.name || '') + ']\n받은 수량을 입력하세요 (' + (item.unit || 'EA') + ')', '')
+  var n = parseFloat(qty)
+  if (!(n > 0)) return
+  try {
+    var res = await axios.post('/api/purchase-orders', {
+      supplier_id: supplierId,
+      order_date: window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10),
+      status: 'CONFIRMED',            // 바로 입고해야 하므로 확정 상태로 만든다
+      adhoc_source: 'RECEIVING',      // 사후 생성 표시 — Phase 3 검수 큐가 이걸로 센다
+      notes: '입고 화면에서 사후 생성 (' + supplierName + ')',
+      items: [{
+        item_id: item.id, item_name: item.name, quantity: n,
+        unit: item.unit || 'EA', unit_price: parseFloat(item.price) || 0,
+        amount: n * (parseFloat(item.price) || 0),
+      }],
+    })
+    var poId = res.data && res.data.data && (res.data.data.po_id || res.data.data.id)
+    if (!poId) { showToast('발주 생성 응답을 읽지 못했습니다.', 'error'); return }
+    showToast('발주서를 만들었습니다. 이어서 입고를 확정하세요.', 'success')
+    loadPendingPOs()
+    openReceiveModal(poId, currentScope)
+  } catch (e) {
+    showToast('발주 생성 실패: ' + (e.response && e.response.data ? (e.response.data.error || e.response.data.message) : e.message), 'error')
+  }
+}
+
+// 롤 수를 바꾸면 길이 칸을 **비어 있을 때만** 채운다 — 실측을 이미 넣었으면 덮지 않는다.
+// (롤 × 공칭길이는 어디까지나 출발값이고, 라벨의 실측이 정본이다)
+function recvPacksChanged(poItemId, packSize) {
+  var qtyEl = document.getElementById('recv_' + poItemId)
+  var pkEl = document.getElementById('recvpk_' + poItemId)
+  if (!qtyEl || !pkEl) { console.warn('[receiving] #recv_/#recvpk_ ' + poItemId + ' not found'); return }
+  if (qtyEl.dataset.touched === '1') return
+  var packs = parseFloat(pkEl.value) || 0
+  if (packs > 0 && packSize > 0) qtyEl.value = Math.round(packs * packSize * 100) / 100
+}
+
+// 길이를 사람이 건드리면 그때부터 롤 환산이 덮지 않는다.
+document.addEventListener('input', function (e) {
+  var t = e.target
+  if (t && t.id && t.id.indexOf('recv_') === 0 && t.classList.contains('recv-input')) t.dataset.touched = '1'
+})
+
 // ── 입고 확정 ──
 async function submitReceive() {
   var items = window._receiveItems || [];
@@ -502,9 +583,12 @@ async function submitReceive() {
   var receiveData = items.map(function(it) {
     var recvEl = document.getElementById('recv_' + it.id);
     var recvQty = recvEl ? (parseFloat(recvEl.value) || 0) : 0;
+    var pkEl = document.getElementById('recvpk_' + it.id);
     return {
       po_item_id: it.id,
       received_quantity: recvQty,
+      // 받은 롤 수 — 원단은 롤이 실물 개수라 「몇 롤 왔나」를 길이와 따로 본다(0611)
+      received_packs: pkEl ? (parseFloat(pkEl.value) || null) : null,
       accepted_quantity: recvQty,
       rejected_quantity: 0,
       reject_memo: null

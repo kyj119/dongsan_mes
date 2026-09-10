@@ -38,6 +38,21 @@ export function receivingPage(c: Context<HonoEnv>) {
           </div>
         </div>
 
+        <!-- 발주 없이 들어온 물건 — 막지 않고 그 자리에서 만든다(0611).
+             차단하면 사람은 시스템 밖으로 나간다. 실제로 그렇게 돼서 발주가 2026-08-06 에서
+             멈추고 세무장부 이관만 들어오고 있었다. 표시(adhoc_source)를 남겨 두면
+             한 달 뒤 「전화 발주가 몇 건·얼마인가」가 숫자로 나오고, 그게 규정의 근거가 된다. -->
+        <div class="ds-card mb-4 p-3 flex items-center justify-between" style="background:#fffbeb;border-color:#fde68a">
+          <div style="font-size:13px;color:#92400e">
+            <i class="fas fa-truck-loading" style="margin-right:6px"></i>
+            <b>발주서 없이 물건이 왔나요?</b>
+            <span style="color:#b45309">막지 않습니다 — 여기서 바로 등록하면 발주서가 자동으로 만들어집니다.</span>
+          </div>
+          <button onclick="openAdhocReceive()" class="ds-btn ds-btn-sm" style="background:#d97706;color:#fff;white-space:nowrap">
+            <i class="fas fa-plus" style="margin-right:4px"></i>발주 없이 입고
+          </button>
+        </div>
+
         <!-- 필터 토글: 내 담당 / 전체 -->
         <div class="ds-card mb-4 p-2 flex items-center justify-between">
           <div class="inline-flex rounded-lg border border-gray-200 overflow-hidden" role="tablist">

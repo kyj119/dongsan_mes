@@ -303,8 +303,10 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
         notes, internal_notes, created_by,
         confirmed_at, confirmed_by,
         delivery_date, delivery_location,
-        entity_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        entity_id,
+        -- 입고 화면에서 사후 생성된 발주 표시(0611). NULL = 정상 사전 발주.
+        adhoc_source
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       poNumber,
       data.supplier_id,
@@ -322,7 +324,10 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       initialStatus === 'CONFIRMED' ? (user?.id || 1) : null,
       data.delivery_date || null,
       data.delivery_location || null,
-      poEntityId          // ★ 채번(poNumber)과 **같은 값**이어야 한다 — 갈리면 번호 접두와 행이 어긋난다
+      poEntityId,         // ★ 채번(poNumber)과 **같은 값**이어야 한다 — 갈리면 번호 접두와 행이 어긋난다
+      // 입고 화면에서 물건을 받으며 만든 발주만 표시가 붙는다. 값은 화이트리스트로 제한한다 —
+      // 클라이언트가 아무 문자열이나 넣으면 Phase 3 큐의 판정 기준이 흐려진다.
+      data.adhoc_source === 'RECEIVING' ? 'RECEIVING' : null
     ).run()
 
     const poId = poResult.meta.last_row_id

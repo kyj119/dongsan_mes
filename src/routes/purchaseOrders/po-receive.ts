@@ -73,6 +73,7 @@ poReceiveRouter.post('/:id/receive', async (c) => {
     //     아래 재고 쓰기가 쓰는 `getItemDefaultZones` 는 **행을 어디에 만들까**라 규칙이 다르다.
     const { results: poItems } = await c.env.DB.prepare(`
       SELECT poi.id, poi.item_id, poi.item_name, poi.quantity, poi.received_quantity, poi.unit_price,
+             poi.qty_is_estimate, poi.order_packs, poi.received_packs,
              sz.id AS effective_zone_id
       FROM purchase_order_items poi
       JOIN purchase_orders po ON po.id = poi.po_id
@@ -120,8 +121,13 @@ poReceiveRouter.post('/:id/receive', async (c) => {
         }, 400)
       }
 
+      // ★발주 수량이 **예상치**면 상한을 걸지 않는다(0610·0611). 원단은 롤마다 길이가 달라
+      //   발주 때 정확한 yd 를 모르고, 실측이 예상보다 **많이 나오는 것이 정상**이다.
+      //   여기서 막으면 실측을 넣을 수 없어 담당자가 예상치를 그대로 확정해 버린다 —
+      //   그러면 이 단계를 만든 이유가 사라진다.
+      const isEstimate = Number(poItem.qty_is_estimate || 0) === 1
       const remaining = Number(poItem.quantity) - Number(poItem.received_quantity)
-      if (receiveQty > remaining) {
+      if (!isEstimate && receiveQty > remaining) {
         return c.json({
           success: false,
           error: `품목 '${poItem.item_name}': 입고 가능 수량(${remaining})을 초과했습니다. 요청: ${receiveQty}`
@@ -158,6 +164,7 @@ poReceiveRouter.post('/:id/receive', async (c) => {
       poItemId: number
       itemId: number | null
       receiveQty: number
+      receivePacks: number
       acceptedQty: number
       rejectedQty: number
       unitPrice: number
@@ -209,6 +216,8 @@ poReceiveRouter.post('/:id/receive', async (c) => {
       const receiveQty: number = Number(ri.received_quantity ?? ri.quantity ?? 0)
       const acceptedQty: number = ri.accepted_quantity !== undefined ? Number(ri.accepted_quantity) : receiveQty
       const rejectedQty: number = ri.rejected_quantity !== undefined ? Number(ri.rejected_quantity) : 0
+      // 받은 롤 수 — 원단은 롤이 실물 개수라 길이와 따로 센다(0611). 안 보내면 0.
+      const receivePacks: number = Number(ri.received_packs) > 0 ? Number(ri.received_packs) : 0
       const unitPrice: number = Number(poItem.unit_price) || 0
       const amount = receiveQty * unitPrice
       const qualityStatus = rejectedQty === 0 ? 'PASSED' : acceptedQty === 0 ? 'FAILED' : 'PARTIAL'
@@ -227,7 +236,7 @@ poReceiveRouter.post('/:id/receive', async (c) => {
       perItemPrep.push({
         poItemId: ri.po_item_id,
         itemId: (poItem.item_id as number) || null,
-        receiveQty, acceptedQty, rejectedQty, unitPrice, amount, qualityStatus,
+        receiveQty, receivePacks, acceptedQty, rejectedQty, unitPrice, amount, qualityStatus,
         rejectMemo: ri.reject_memo || null,
         acceptedBase, packSize,
         entityId: poEntityId, zoneId: itemZoneId,
@@ -300,12 +309,18 @@ poReceiveRouter.post('/:id/receive', async (c) => {
         //   - 기존 received_quantity + 이번 receiveQty >= ordered quantity → RECEIVED
         //   - 아니면 PARTIAL
         //   - line_status 는 INSERT/UPDATE 시점에 CASE 문으로 결정
+        // ★예상 수량 라인은 **롤 수로 닫는다**(0611). 발주 3롤에 실측 385yd(예상 390)가 들어오면
+        //   수량 기준으로는 영원히 PARTIAL 이다 — 다 온 건데 「부분입고」로 남는다.
+        //   원단은 롤이 실물 개수이므로 3롤이 다 오면 그 라인은 끝난 것이다.
         stmts.push(c.env.DB.prepare(`
           UPDATE purchase_order_items
           SET received_quantity = received_quantity + ?,
               accepted_quantity = accepted_quantity + ?,
               rejected_quantity = rejected_quantity + ?,
+              received_packs = COALESCE(received_packs, 0) + ?,
               line_status = CASE
+                WHEN qty_is_estimate = 1 AND COALESCE(order_packs, 0) > 0
+                  THEN CASE WHEN (COALESCE(received_packs, 0) + ?) >= order_packs THEN 'RECEIVED' ELSE 'PARTIAL' END
                 WHEN (received_quantity + ?) >= quantity THEN 'RECEIVED'
                 ELSE 'PARTIAL'
               END,
@@ -313,7 +328,8 @@ poReceiveRouter.post('/:id/receive', async (c) => {
               received_at = CURRENT_TIMESTAMP,
               updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
-        `).bind(p.receiveQty, p.acceptedQty, p.rejectedQty, p.receiveQty, user?.id || null, p.poItemId))
+        `).bind(p.receiveQty, p.acceptedQty, p.rejectedQty, p.receivePacks,
+                p.receivePacks, p.receiveQty, user?.id || null, p.poItemId))
 
         // inventory_receipt_items 라인 insert
         stmts.push(c.env.DB.prepare(`
