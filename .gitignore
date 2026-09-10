@@ -205,6 +205,10 @@ sync_clients.sql
 # 분석 문서(.md)·롤백 SQL(백업테이블 참조라 리터럴 PII 없음)·규칙 스크립트(.py)는 추적 대상.
 docs/analysis/*.csv
 docs/analysis/*.xlsx
+# 원가율 워크북 = scripts/cost-rate-workbook.cjs 산출물(재생성 가능·바이너리).
+#   2026-09-10 에 `git add docs/` 로 7개 714KB 가 딸려 들어간 적이 있다.
+docs/price/*.xlsx
+docs/price/~$*
 docs/order-file-matching/*.csv
 # 같은 CSV 의 백업본(scale_table.csv.bak-YYYY-MM-DD 등)은 `*.csv` 패턴을 빠져나가
 # 미추적으로 영구히 남는다. 원본이 애초에 비추적이므로 백업본도 추적하지 않는다.
