@@ -879,6 +879,80 @@ for (const [grp, rolls] of [...fams].sort((a, b) => a[0].localeCompare(b[0]))) {
   bandRows.push([])
   prevEnd = null
 }
+// ── 시트 14: 제품 × 폭구간 ────────────────────────────────────────────────────
+// 「폭구간원가」는 **원단군** 단위라 한 줄에 여러 제품이 섞인다(AQ-BANNER · AQ-WDB).
+// 수성 재료비율이 왜 높은지 보려면 **제품마다** 어느 구간에서 새는지 봐야 한다.
+// 실적이 있는 구간만 낸다 — 없는 구간까지 깔면 수백 줄이 되어 못 읽는다.
+console.log('[9b/10] 제품 × 폭구간')
+const pmRows = q(`
+  SELECT p.item_code AS pcode, p.item_name AS pname, p.category AS cat,
+         m.id AS mid, m.item_code AS mcode, m.width_mm AS w, m.avg_unit_cost AS cost,
+         m.base_unit AS bu, m.unit, m.pack_size AS pack
+  FROM product_materials pm
+  JOIN items p ON p.id = pm.product_item_id
+  JOIN items m ON m.id = pm.material_item_id
+  WHERE COALESCE(pm.material_role,'BASE') = 'BASE'
+    AND COALESCE(m.deduction_method,'ROLL') = 'ROLL'
+    AND m.width_mm > 0 AND m.avg_unit_cost > 0`)
+
+const pools = new Map()
+for (const r of pmRows) {
+  if (!pools.has(r.pcode)) pools.set(r.pcode, { cat: r.cat, name: r.pname, mats: [] })
+  pools.get(r.pcode).mats.push({
+    material_item_id: r.mid, material_name: r.mcode, width_mm: Number(r.w),
+    deduction_method: 'ROLL', sheet_spec: null, waste_factor: 1,
+    base_unit: r.bu, unit: r.unit, pack_size: r.pack, avg_unit_cost: Number(r.cost),
+  })
+}
+
+const pxRows = [
+  ...head(
+    '제품 × 폭 구간 — 어느 제품의 어느 규격에서 새는가',
+    '「폭구간원가」는 원단군 단위라 제품이 섞인다. 여기서는 제품마다 실적이 있는 구간만 뽑았다',
+    '★판정은 출력마진 원/㎡(판매 − 재료). 단가 정책이 「출력비 + 원자재」라 이 값이 구간마다 평평해야 정상이다'
+  ),
+  hdr(['분류', '제품코드', '제품명', '구간(변 cm)', '원단', '라인', '매출', '실면적㎡',
+    '판매 원/㎡', '재료 원/㎡', '출력마진 원/㎡', '재료비율'], [5, 6, 7, 8, 9, 10, 11]),
+]
+
+const prodSales = new Map()
+for (const [code, arr] of byCode) prodSales.set(code, arr.reduce((s, r) => s + Number(r.sales || 0), 0))
+
+const ordered = [...pools.keys()]
+  .filter((c) => (prodSales.get(c) || 0) > 0)
+  .sort((a, b) => (pools.get(a).cat || '').localeCompare(pools.get(b).cat || '') ||
+                  (prodSales.get(b) || 0) - (prodSales.get(a) || 0))
+
+for (const pcode of ordered) {
+  const { cat, name, mats } = pools.get(pcode)
+  const widths = [...new Set(mats.map((m) => Number(m.width_mm)))].sort((a, b) => a - b)
+  const maxCm = Math.round(widths[widths.length - 1] / 10)
+  const lines = byCode.get(pcode) || []
+  // 이 제품 라인의 짧은 변마다 어느 원단이 뽑히는지 → 그 원단으로 묶는다.
+  const bucket = new Map()
+  for (const L of lines) {
+    const side = Number(L.side)
+    const r = side > 0 && side <= maxCm ? perSqm(mats, side * 10) : null
+    const key = r ? r.mat.material_name : `${maxCm}폭 초과(분할)`
+    if (!bucket.has(key)) bucket.set(key, { lo: side, hi: side, lines: 0, sales: 0, sqm: 0, mat: 0 })
+    const b = bucket.get(key)
+    b.lo = Math.min(b.lo, side); b.hi = Math.max(b.hi, side)
+    b.lines += Number(L.lines || 0); b.sales += Number(L.sales || 0)
+    b.sqm += Number(L.sqm || 0); b.mat += Number(L.mat || 0)
+  }
+  for (const [mcode, b] of [...bucket].sort((x, y) => x[1].lo - y[1].lo)) {
+    if (!(b.sqm > 0)) continue
+    const sell = b.sales / b.sqm, matS = b.mat / b.sqm
+    pxRows.push([
+      cat, pcode, name, `${b.lo}~${b.hi}`, mcode,
+      { v: b.lines, s: S.INT }, { v: Math.round(b.sales), s: S.INT }, { v: Math.round(b.sqm), s: S.INT },
+      { v: Math.round(sell), s: S.INT }, { v: Math.round(matS), s: S.INT },
+      { v: Math.round(sell - matS), s: S.INT },
+      { v: b.sales > 0 ? b.mat / b.sales : null, s: S.PCT },
+    ])
+  }
+}
+
 rollCleanup()
 
 
@@ -955,6 +1029,12 @@ const abs = writeSafely(OUT, [
     tabColor: TAB.PRICE, freezeCol: 2,
     widths: [26, 13, 16, 8, 10, 15, 14, 13, 10, 13, 14, 12, 40],
     condFormat: [{ ref: span('F', bandRows), kind: 'scale' }, { ref: span('L', bandRows), kind: 'scale' }],
+  }) },
+  { name: '제품x폭구간', rows: pxRows, ...sheetOpts(12, TOP, {
+    tabColor: TAB.EVIDENCE, freezeCol: 3,
+    widths: [8, 14, 24, 13, 16, 9, 13, 11, 12, 12, 15, 11],
+    condFormat: [{ ref: span('K', pxRows), kind: 'scale', reverse: true },
+                 { ref: span('L', pxRows), kind: 'scale' }],
   }) },
   { name: '후가공', rows: ppRows, ...sheetOpts(8, PHDR, { tabColor: TAB.PRICE, widths: [14, 18, 13, 11, 11, 12, 8, 28] }) },
 ])
