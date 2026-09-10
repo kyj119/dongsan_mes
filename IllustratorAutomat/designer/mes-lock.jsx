@@ -17,7 +17,12 @@
  * ⚠️ 전역 접두사 mesLock_* — 두 호스트가 같은 엔진에 함께 로드돼도 같은 정의라 무해하다.
  */
 
-var MESLOCK_VERSION = 'LOCK-1.0.0';
+var MESLOCK_VERSION = 'LOCK-1.1.0'; // 1.1.0 = ★해제가 **실패해도 'ok'** 를 돌려주던 것 정정.
+//   File.remove() 는 예외가 아니라 **false** 를 돌려주므로 try/catch 는 아무것도 못 잡았다.
+//   2026-09-09 실기: 일러 프로세스의 파일 자원이 고갈돼 잠금 파일이 안 지워졌는데 'ok' 가 나갔고,
+//   재단 탭이 TTL 10분 동안 `busy:a0:single` 로 막혔다 — 아무것도 붙잡고 있지 않은데도.
+//   못 지우면 **시각을 0 으로 밀어** 다음 읽기가 만료로 회수하게 한다(삭제는 안 되는데
+//   덮어쓰기는 되는 상태가 실재한다). 그리고 `busy:` 에 경과 시간을 실어 사람이 판단하게 한다.
 var MESLOCK_TTL_MS = 10 * 60 * 1000; // 배치 가공이 수 분 걸릴 수 있어 넉넉히
 
 function mesLock_now() { return (new Date()).getTime(); }
@@ -60,7 +65,7 @@ function mesLock_write(owner, label) {
  */
 function mesLock_acquire(owner, label) {
     var L = mesLock_read();
-    if (L && L.owner !== owner) return 'busy:' + L.owner + ':' + (L.label || '');
+    if (L && L.owner !== owner) return 'busy:' + L.owner + ':' + (L.label || '') + ':age=' + (mesLock_now() - L.at) + 'ms';
     if (!mesLock_write(owner, label)) return 'busy:io:write-failed';
     var chk = mesLock_read();
     if (!chk || chk.owner !== owner) return 'busy:' + (chk ? chk.owner : 'io') + ':' + (chk ? (chk.label || '') : 'verify-failed');
@@ -79,8 +84,17 @@ function mesLock_release(owner) {
     var L = mesLock_read();
     if (!L) return 'ok';
     if (L.owner !== owner) return 'notowner:' + L.owner;
-    try { mesLock_file().remove(); } catch (e) {}
-    return 'ok';
+    // ★삭제 실패를 성공으로 세지 않는다 (2026-09-09). remove() 는 **false** 를 돌려준다.
+    var gone = false;
+    try { gone = !!mesLock_file().remove(); } catch (e) {}
+    if (!gone) { try { gone = !mesLock_file().exists; } catch (e2) {} }  // 이미 없으면 성공이다
+    if (gone) return 'ok';
+    // ★못 지웠어도 **놓아준다** — 시각을 0 으로 밀면 다음 읽기가 만료로 회수한다(위 TTL 분기).
+    //   실기에서 일러가 파일을 못 만들고 못 지우는데 **덮어쓰기는 됐다**(잠금 파일은 이미 있다).
+    //   여기서 손을 놓으면 남의 탭이 10분간 이유 없이 막힌다.
+    var f = mesLock_file();
+    try { f.open('w'); f.write(owner + '|released|0'); f.close(); } catch (e3) {}
+    return mesLock_read() ? 'stale' : 'ok;forced';
 }
 
 /** 관리자 탈출구 — 영구 잠김일 때만. UI 에서는 확인 후에만 노출할 것. */

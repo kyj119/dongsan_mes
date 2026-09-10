@@ -19,7 +19,7 @@
 //   0.1.8 = 마감재단선(여백 위치 검정 실선·4변 한 그룹) + 주석 구조에 후가공 추가
 //           (키워드-식별번호-후가공-수량) (2026-07-30)
 //   0.1.9 = 크로스 패널 잠금 위임 추가(mes-lock.jsx) (2026-07-31)
-var MESA0_VERSION = 'A0-CEP-0.7.0'; // 0.7.0 = ★인쇄용 고해상도 썸네일(thumb_hi) 동시 굽기 — 목록용 400px 는 그대로 두고 작업지시서만 1200px 를 쓴다 · 0.6.0 = ★셸 서명에 파일 목록 포함 + 비교를 src 기준으로 — Z: 에서 파일이 하나 빠지면 그 PC 자동갱신이 retrylimit 로 영구 중단됐다 · 0.5.0 = ★수량 단위(조) 표기 전달 — 대기함 「2개 (1조)」 검산용 · 0.4.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.3.0 = ★자동감지 굽기를 imageCapture 로(임시 문서 없음 — 증명 가능할 때만) · 0.2.0 = 셸 자동 갱신(축3/4를 축2가 끌어온다) · 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
+var MESA0_VERSION = 'A0-CEP-0.11.0'; // 0.11.0 = ★**커밋 경계**를 세운다 — `_출력` 픽업 복사가 manifest 커밋보다 **120줄 먼저** 일어나고 있었다. 그래서 등록이 실패해도 출력물은 픽업 폴더에 놓였다(2026-09-09 실측: MES 에 주문 없는 EPS 188MB 2건). 이제 복사는 커밋 뒤에만 한다 — 구제 경로(`mesA0_manifestDone`)도 **같은 순서**다 · ★`mesA0_scanRegister` — 커밋이 안 끝난 폴더를 센다(manifest 없음=잔해 · 마커 없음=MES 미반영). 조용히 쌓이는 것을 안 세면 그게 다음 사각지대다(실측 6건이 아무 화면에도 없었다) · ⚠️manifest 의 `out_copy_error` 는 이제 항상 null 이다 — 복사가 그 뒤라 커밋 시점엔 알 수 없다 · 0.10.0 = ★**계측**을 넣는다 — 「자원이 모자라서인가」는 추측이었고 반증이 더 많다(09-07 실패 건은 EPS 1.9MB 소형 · 실패 **직후** 환경 점검은 전부 통과 · 디스크 156GB 여유). ①`mesA0_ioProbe` = 호출 안 7개 지점에서 1바이트 쓰기를 시도해 **어느 동작 뒤부터 못 쓰는지**를 응답에 싣는다(이등분). ②`mesA0_ioStress` = 파일을 몇 개까지 만들 수 있나 — 재시작 직후/1건 후/3건 후를 비교하면 누적 소비인지 상태 전환인지 갈린다. ⚠️프로브는 단계마다 **다른 파일명**을 쓴다(같은 이름이면 덮어쓰기라 「만들 수 있는가」가 아니라 「고칠 수 있는가」를 재게 된다 — 환경 점검이 ✓ 인데 가공이 ✗ 이던 차이일 수 있다) · 0.9.0 = ★manifest 를 못 쓰면 **패널에게 넘긴다**(`mesA0_manifestPending`) — 실기에서 가공 도중 일러 프로세스의 파일 자원이 고갈된다: 로컬 temp 와 Z: 가 **동시에** I/O 오류이고, 일러 자신의 export 마저 실패하며(「p0.png 를 내보낼 수 없음」), config.json 180KB 가 0바이트로 읽혔다. 경로·권한·드라이브·일러 버전 문제가 아니라 **그 순간 그 프로세스**의 문제다. CEP 는 별도 프로세스라 같은 순간에도 멀쩡했으므로(패널 UI 가 뜨고 응답이 왔다) 일러가 못 쓰면 패널이 쓴다 — 일러 버전·폰트 수와 무관한 길이 하나 생긴다 · ★EPS `embedAllFonts` 를 **남은 텍스트가 있을 때만**(:1103) — 텍스트를 전부 아웃라인한 뒤라 임베드할 폰트가 없는데도 true 라, 폰트 2,159개가 깔린 PC 에서 저장할 때마다 문서 폰트를 전부 열게 하고 있었다(자원 고갈의 유력 원인) · ★환경 점검에 잠금 모듈 버전 · 0.8.0 = ★[환경 점검](`mesA0_envCheck`) — 「이 PC 가 준비됐는가」를 한 곳에서 잰다. 준비 안 된 PC 의 증상은 기능마다 다른 말로 흩어져 나왔고(config 없음·nofolder·noparams·응답 파싱 실패가 **전부 같은 원인**일 수 있다), 2026-09-07 에는 결국 probe 스크립트를 손으로 배포해 물었는데 **다른 실행 문맥**이라 아무것도 증명하지 못했다 · ★manifest 에 `ai_version` — 여태 어느 일러에서 나온 등록인지 아무 데도 안 남겨 「어느 버전부터 이상해졌나」를 잴 수 없었다 · 0.7.2 = ★params 를 **인자로도** 받는다(`mesA0_process(inline)`) — `Folder.temp` 가 사용자명을 품는데 **사용자명이 한글인 PC 가 실재**하고 cep.fs 는 한글 경로에서 못 미덥다(config 만 2중화돼 있었다). 그 PC 는 전 건 `noparams` 로 떨어진다. 파일을 못 쓰는 상황에서 파일로 우회하지 않고 **파일을 뺀다**(왕복 추가 0) · ★브릿지로 나가는 문자열을 전부 \\uXXXX 로 접는다(`mesA0_jsonEsc`) — 0.7.1 이 실패 detail 에 실은 경로에 `IA-등록` 이 들어 있어 원인 대신 「응답 파싱 실패」가 뜰 수 있었다. manifest 도 인코딩 무관해진다 · ★Z: 루트 판정을 재단 호스트와 같은 문구로(`mesA0_zErrJson`) — `nofolder` 하나로 뭉개지던 것을 분리 · 0.7.1 = ★파일 I/O 실패 이유를 버리지 않고, 실패한 그 문맥에서 환경을 다시 재다(mesA0_ioDiag — 사람이 [파일▸스크립트]로 돌린 probe 는 전부 OK 인데 CEP 경로에서만 실패했다) — `mesA0_readText`·`mesA0_writeText` 가 `f.error` 를 `MESA0_IO_ERR` 에 담아 응답 `detail` 로 올린다 · `_출력` 복사의 **빈 catch** 제거(폴더만 생기고 안이 비는 무증상 실패가 실기에서 전 건 발생) · params 「없음」과 「0바이트」 분리(`noparams`/`emptyparams`) · 0.7.0 = ★인쇄용 고해상도 썸네일(thumb_hi) 동시 굽기 — 목록용 400px 는 그대로 두고 작업지시서만 1200px 를 쓴다 · 0.6.0 = ★셸 서명에 파일 목록 포함 + 비교를 src 기준으로 — Z: 에서 파일이 하나 빠지면 그 PC 자동갱신이 retrylimit 로 영구 중단됐다 · 0.5.0 = ★수량 단위(조) 표기 전달 — 대기함 「2개 (1조)」 검산용 · 0.4.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.3.0 = ★자동감지 굽기를 imageCapture 로(임시 문서 없음 — 증명 가능할 때만) · 0.2.0 = 셸 자동 갱신(축3/4를 축2가 끌어온다) · 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
 var MESA0_REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
 var MESA0_PT_PER_MM = 72 / 25.4;
 var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];
@@ -58,23 +58,44 @@ function mesA0_newDocMM(wPt, hPt) {
 var MESA0_CUT_LAYER = '재단선';
 
 // ── 유틸 (mes-core 포팅) ──
+// ★파일 I/O 실패 이유를 버리지 않는다(2026-09-07). 여태 두 함수는 null/false 만 돌려줘
+//   호출부가 `err:"manifest"`·`err:"noparams"` 라는 **결과 이름만** 남겼다 — 실기 PC 에서
+//   ExtendScript 의 파일 생성만 실패했을 때(일러 saveAs 는 성공) 원인을 물을 데가 없었다.
+//   ExtendScript File 은 실패 사유를 `f.error` 에 담는다 — 그걸 여기 모아 응답에 싱는다.
+//   ⚠ 다음 I/O 가 값을 덮어쓴다 — 읽을 거면 **실패 직후에** 읽는다.
+var MESA0_IO_ERR = '';
 function mesA0_readText(path) {
+  MESA0_IO_ERR = '';
   var f = new File(path);
-  if (!f.exists) return null;
+  if (!f.exists) { MESA0_IO_ERR = 'not found @ ' + path; return null; }
   f.encoding = 'UTF-8';
-  if (!f.open('r')) return null;
-  var s = f.read(); f.close(); return s;
+  if (!f.open('r')) { MESA0_IO_ERR = "open('r') 실패: " + f.error + ' @ ' + path; return null; }
+  var s;
+  try { s = f.read(); } catch (eR) { MESA0_IO_ERR = 'read 실패: ' + eR + ' @ ' + path; try { f.close(); } catch (eR2) {} return null; }
+  f.close(); return s;
 }
 function mesA0_writeText(path, s) {
+  MESA0_IO_ERR = '';
   var f = new File(path);
   f.encoding = 'UTF-8';
-  if (!f.open('w')) return false;
-  f.write(s); f.close(); return true;
+  if (!f.open('w')) { MESA0_IO_ERR = "open('w') 실패: " + f.error + ' @ ' + path; return false; }
+  try { f.write(s); } catch (eW) { MESA0_IO_ERR = 'write 실패: ' + eW + ' @ ' + path; try { f.close(); } catch (eW2) {} return false; }
+  f.close(); return true;
 }
 function mesA0_jsonEsc(s) {
   s = String(s);
   s = s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   s = s.replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/\t/g, '\\t');
+  // ★비ASCII 를 \uXXXX 로 접는다 (2026-09-08). 두 곳에서 동시에 값을 한다:
+  //   ① **evalScript 반환은 ASCII 만 안전하다** — 0.7.1 이 실패 detail 에 경로를 싣기
+  //      시작했는데 그 경로에 `IA-등록` 이 들어 있어, 정작 원인을 알려 주려던 응답이
+  //      브릿지에서 깨져 패널에 「응답 파싱 실패」로 뜰 수 있었다.
+  //   ② manifest 파일이 **인코딩과 무관**해진다 — JSON 표준 이스케이프라 에이전트의
+  //      JsonNode.Parse 가 그대로 되돌린다(거래처명·마감 표기가 한글이다).
+  //   ⚠ 순서 고정 — 역슬래시를 먼저 접은 뒤에 \u 를 만든다(뒤집으면 이중 이스케이프).
+  s = s.replace(/[\u007F-\uFFFF]/g, function (c) {
+    return '\\u' + ('0000' + c.charCodeAt(0).toString(16)).slice(-4);
+  });
   return s;
 }
 function mesA0_toJson(v) {
@@ -563,6 +584,236 @@ function mesA0_paramsPath() {
   return String(Folder.temp.fsName).replace(/\\/g, '/') + '/mes_a0_cep_params.json';
 }
 
+/**
+ * 이 PC 가 준비됐는가 — **한 곳에서** 잰다 (2026-09-08).
+ *
+ * ★왜 — 준비 안 된 PC 의 증상이 기능마다 다른 말로 흩어져 나왔다: 「config 없음」·
+ *   「nofolder」·「noparams」·「응답 파싱 실패」가 전부 **같은 원인**(Z: 미연결·temp 못 씀·
+ *   호스트 미로드)일 수 있는데, 사람이 그걸 연결지으려면 매번 조사를 해야 했다.
+ *   2026-09-07 에는 결국 별도 probe 스크립트를 손으로 배포해서 물어봤고, 그마저
+ *   **다른 실행 문맥**이라 아무것도 증명하지 못했다. 진단은 실패하는 그 문맥에서 나와야 한다.
+ * ★반환은 ASCII JSON — 경로에 한글이 섞이므로 `mesA0_jsonEsc` 를 통과시킨다.
+ * ★아무것도 바꾸지 않는다 — 시험 파일은 쓰고 즉시 지운다.
+ */
+function mesA0_envCheck() {
+  var o = [], ascii = /^[\x20-\x7E]*$/;
+  function put(k, v) { o.push('"' + k + '":' + v); }
+  function putS(k, v) { put(k, '"' + mesA0_jsonEsc(v == null ? '' : String(v)) + '"'); }
+  function putB(k, v) { put(k, v ? 'true' : 'false'); }
+
+  putS('host', MESA0_VERSION);
+  putS('cut', (typeof MESCUT_VERSION !== 'undefined') ? MESCUT_VERSION : '(미로드)');
+  putS('stub', (typeof MESA0_STUB_VERSION !== 'undefined') ? MESA0_STUB_VERSION : '?');
+  // 잠금은 **별도 파일**(mes-lock.jsx)이라 따로 드리프트한다 — 버전이 안 보이면 못 잡는다.
+  putS('lock', (typeof MESLOCK_VERSION !== 'undefined') ? MESLOCK_VERSION : '(미로드)');
+  putS('ai', app.version);
+  putS('pc', $.getenv('COMPUTERNAME') || '?');
+
+  // temp — params 가 오가는 길. **경로가 ASCII 인지**가 핵심이다(사용자명이 한글인 PC).
+  var tmp = String(Folder.temp.fsName).replace(/\\/g, '/');
+  putS('temp', tmp);
+  putB('tempAscii', ascii.test(tmp));
+  var tf = tmp + '/mes_env_check.txt';
+  putB('tempWrite', mesA0_writeText(tf, 'x'));
+  putS('tempErr', MESA0_IO_ERR);
+  try { var t1 = new File(tf); if (t1.exists) t1.remove(); } catch (e1) {}
+
+  // Z: — 보이는 것과 쓸 수 있는 것은 다르다. 둘 다 잰다.
+  putS('zRoot', MESA0_REGISTER_ROOT);
+  var zOk = mesA0_zReady();
+  putB('z', zOk);
+  if (zOk) {
+    var zf = MESA0_REGISTER_ROOT + '/_config/mes_env_check.txt';
+    putB('zWrite', mesA0_writeText(zf, 'x'));
+    putS('zErr', MESA0_IO_ERR);
+    try { var t2 = new File(zf); if (t2.exists) t2.remove(); } catch (e2) {}
+    var cf = new File(MESA0_REGISTER_ROOT + '/_config/config.json');
+    putB('cfg', cf.exists);
+    if (cf.exists) {
+      put('cfgBytes', cf.length);
+      var ageH = -1;
+      try { ageH = Math.round(((new Date()).getTime() - cf.modified.getTime()) / 36000) / 100; } catch (e3) {}
+      put('cfgAgeH', isNaN(ageH) ? -1 : ageH);
+    }
+  } else {
+    putB('zWrite', false);
+    putS('zErr', '루트가 안 보임');
+    putB('cfg', false);
+  }
+
+  // 등록 루트 — **끝나지 않은 것**을 센다(조용히 쌓이면 그게 다음 사각지대다)
+  var sc = mesA0_scanRegister();
+  put('scanned', sc.scanned);
+  put('orphan', sc.orphan);
+  put('orphanMB', sc.orphanMB);
+  put('pendingIngest', sc.pending);
+  putS('scanErr', sc.err);
+
+  // 설치본 — 셸이 어디에 깔렸고 자동 갱신이 어떤 상태인가
+  var idir = mesPanel_installDir();
+  putS('install', idir ? mesPanel_ascii(idir) : '(APPDATA 없음)');
+  putB('installAscii', !!idir && ascii.test(idir));
+  putS('sync', (typeof MESPANEL_SYNC !== 'undefined') ? MESPANEL_SYNC : '?');
+  putS('loadErr', (MESA0_LOAD_ERROR || '') + ((typeof MESCUT_LOAD_ERROR !== 'undefined' && MESCUT_LOAD_ERROR) ? (' | cut: ' + MESCUT_LOAD_ERROR) : ''));
+
+  return '{' + o.join(',') + '}';
+}
+
+/**
+ * Z: 등록 루트가 보이는가 — **재단 호스트와 같은 판정**(mes-cut-host.jsx:3805).
+ * ★여태 A0 는 이 확인이 없어 `jobFolder.create()` 실패의 `nofolder` 하나로 뭉개졌다.
+ *   같은 상황(드라이브 미연결·관리자 권한 실행으로 매핑 안 보임)인데 탭마다 다른 말이
+ *   나오면 사람이 원인을 못 좁힌다. 문구를 한 곳에서 만든다.
+ */
+function mesA0_zReady() {
+  var f = new Folder(MESA0_REGISTER_ROOT);
+  return f.exists;
+}
+function mesA0_zErrJson() {
+  return '{"ok":false,"err":"noz","detail":"' +
+    mesA0_jsonEsc('등록 폴더 없음(Z: 연결 확인): ' + MESA0_REGISTER_ROOT +
+      ' | ' + mesA0_ioDiag(null)) + '"}';
+}
+
+/** 이번 호출의 단계별 파일 생성 가능 여부. `mesA0_process` 진입 때 비운다. */
+var MESA0_IOPROBE = '';
+
+/**
+ * 이 순간 **파일을 만들 수 있는가** — 한 단계에 한 번, 1바이트 쓰고 지운다 (2026-09-09).
+ *
+ * ★왜 — 「자원이 모자라서」는 추측이었고 반증이 더 많다: 09-07 실패 건은 EPS 1.9MB 로 소형이었고,
+ *   가공 실패 **직후** 환경 점검은 전부 통과했으며(즉시 회복), 디스크는 156GB 여유다.
+ *   실패가 **호출 안 어느 동작 뒤부터** 시작되는지 알면 방아쇠를 지목할 수 있다.
+ *   지금은 「끝에서 실패했다」밖에 모른다 — 그래서는 무엇을 고칠지 정할 수 없다.
+ * ⚠️ 파일명을 단계마다 **다르게** 둔다. 같은 이름이면 두 번째부터 덮어쓰기라
+ *    「만들 수 있는가」가 아니라 「고칠 수 있는가」를 재게 된다(환경 점검이 ✓ 인데 가공이 ✗ 이던
+ *    차이가 정확히 그것일 수 있다 — 환경 점검은 매번 같은 이름을 쓴다).
+ * ⚠️ 만든 것은 즉시 지운다. 지우지 못하면 그것도 기록한다(삭제가 막히는 상태가 실재한다).
+ */
+function mesA0_ioProbe(tag) {
+  var p = String(Folder.temp.fsName).replace(/\\/g, '/') + '/mes_iop_' + tag + '.txt';
+  var okw = mesA0_writeText(p, 'x');
+  var left = false;
+  try { var f = new File(p); if (f.exists) left = !f.remove(); } catch (e) { left = true; }
+  MESA0_IOPROBE += (MESA0_IOPROBE ? ' ' : '') + tag + '=' + (okw ? (left ? 'OK*' : 'OK') : 'X');
+  return okw;
+}
+
+/**
+ * 부하 시험 — 파일을 **몇 개까지** 만들 수 있나 (2026-09-09). 첫 실패 번호가 곧 답이다.
+ *
+ * ★읽는 법 — 일러 재시작 직후 / 가공 1건 후 / 3건 후로 재면 두 그림이 갈린다:
+ *   · 단조 감소(200 → 120 → 40) = **누적 소비**(자원 축)
+ *   · 항상 전량 성공하다가 갑자기 0 = **상태 전환**(자원이 아니다)
+ * ⚠️ 만든 것은 전부 지운다. 못 지운 개수(`left`)도 답의 일부다.
+ */
+function mesA0_ioStress(n) {
+  var N = parseInt(n, 10) || 100;
+  if (N > 500) N = 500;
+  if (N < 1) N = 1;
+  var t = String(Folder.temp.fsName).replace(/\\/g, '/');
+  var made = 0, firstFail = -1, err = '', i;
+  var t0 = (new Date()).getTime();
+  for (i = 0; i < N; i++) {
+    if (mesA0_writeText(t + '/mes_stress_' + i + '.txt', 'x')) made++;
+    else { firstFail = i; err = MESA0_IO_ERR; break; }
+  }
+  var ms = (new Date()).getTime() - t0;
+  var left = 0;
+  for (i = 0; i < N; i++) {
+    try { var f = new File(t + '/mes_stress_' + i + '.txt'); if (f.exists && !f.remove()) left++; }
+    catch (e) { left++; }
+  }
+  return '{"ok":true,"n":' + N + ',"made":' + made + ',"firstFail":' + firstFail +
+    ',"left":' + left + ',"ms":' + ms + ',"err":"' + mesA0_jsonEsc(err) + '"}';
+}
+
+/**
+ * `_출력/<날짜>` 픽업 폴더로 복사 — **manifest 커밋 뒤에만** 부른다 (2026-09-10).
+ *
+ * ★이건 산출이 아니라 **「출력해도 된다」는 신호**다. 재단기·출력 담당자가 이 폴더에서 집어 간다.
+ *   등록이 확정되기 전에 놓으면 MES 에 주문이 없는 출력물이 생긴다(2026-09-09 실측 188MB 2건).
+ * ★복사 실패는 등록을 막지 않는다 — 등록은 이미 끝났고 빠진 것은 픽업뿐이다. 사유는 응답에 싣는다.
+ * @returns 실패 사유(정상은 빈 문자열)
+ */
+function mesA0_outCopy(jobDir, ymd, epsName, dxfName) {
+  if (!epsName) return '';
+  try {
+    var outDir = new Folder(MESA0_REGISTER_ROOT + '/_출력/' + ymd);
+    if (!outDir.exists && !outDir.create()) return 'outdir create 실패 @ ' + outDir.fsName;
+    var ef = new File(jobDir + '/' + epsName);
+    if (!ef.copy(outDir.fsName + '/' + epsName)) return 'eps copy 실패: ' + ef.error;
+    // 재단기 픽업 지점 — EPS와 같은 폴더에 둔다(판짜기 mes-sheet.jsx:485 와 동일 규칙)
+    if (dxfName) {
+      var df = new File(jobDir + '/' + dxfName);
+      if (!df.copy(outDir.fsName + '/' + dxfName)) return 'dxf copy 실패: ' + df.error;
+    }
+  } catch (eCp) { return 'copy 예외: ' + eCp; }
+  return '';
+}
+
+/**
+ * 등록 루트를 훑어 **커밋이 안 끝난 것**을 센다 (2026-09-10).
+ *
+ * ★왜 세나 — 조용히 빠지는 것이 다음 사각지대다. 지금 실측 6건이 아무 화면에도 안 나온다.
+ *   · orphan  = manifest 가 없다 = 커밋 실패 잔해. 에이전트는 **영원히 안 읽는다**
+ *   · pending = manifest 는 있는데 `.ingested`/`.rejected` 가 모자라다 = MES 미반영
+ * ⚠️ 나이 하한을 둔다 — **지금 쓰는 중인 폴더**를 고아로 세면 안 된다(다른 PC 가 쓰고 있을 수 있다).
+ * ⚠️ 이름이 URI 인코딩돼 올 수 있어 `_출력`·`_config` 는 **첫 글자**로 거른다.
+ */
+function mesA0_scanRegister() {
+  var o = { orphan: 0, orphanMB: 0, pending: 0, scanned: 0, err: '' };
+  try {
+    var root = new Folder(MESA0_REGISTER_ROOT);
+    if (!root.exists) { o.err = 'noroot'; return o; }
+    var subs = root.getFiles(function (x) { return x instanceof Folder; });
+    var now = (new Date()).getTime();
+    for (var i = 0; i < subs.length && i < 300; i++) {
+      var nm = String(subs[i].name);
+      if (nm.charAt(0) === '_' || nm.charAt(0) === '.') continue;
+      o.scanned++;
+      var nMf = 0, nMk = 0, bytes = 0, ageH = 999;
+      try {
+        var ff = subs[i].getFiles();
+        for (var j = 0; j < ff.length; j++) {
+          var fn = String(ff[j].name);
+          if (/^manifest.*\.json$/i.test(fn)) nMf++;
+          else if (fn.indexOf('.ingested') === 0 || fn.indexOf('.rejected') === 0) nMk++;
+          try { bytes += ff[j].length; } catch (eL) {}
+        }
+      } catch (eG) {}
+      // 숨김 파일이 목록에 안 잡히는 환경 대비 — 단건 마커는 직접 확인한다
+      if (nMk === 0 && nMf > 0) {
+        try { if (new File(subs[i].fsName + '/.ingested').exists) nMk = nMf; } catch (eI) {}
+        try { if (nMk === 0 && new File(subs[i].fsName + '/.rejected').exists) nMk = nMf; } catch (eR) {}
+      }
+      try { ageH = (now - subs[i].modified.getTime()) / 3600000; } catch (eA) {}
+      if (nMf === 0) { if (ageH > 1) { o.orphan++; o.orphanMB += Math.round(bytes / 1048576); } }
+      else if (nMk < nMf && ageH > 0.2) o.pending++;
+    }
+  } catch (e) { o.err = '' + e; }
+  return o;
+}
+
+// 실패한 **그 문맥에서** 환경을 다시 잰다 — 사후 재현이 안 되는 실기 장애용.
+//   2026-09-07: 사람이 [파일▸스크립트]로 돌린 probe 는 temp·Z: 쓰기 전부 OK 였는데
+//   CEP evalScript 경로에서만 manifest 저장과 params 읽기가 실패했다. 두 문맥이 다르므로
+//   **진단도 실패한 문맥에서 나와야** 한다. 실패 응답의 detail 에 실려 화면까지 올라간다.
+//   ⚠ mesA0_writeText 가 MESA0_IO_ERR 를 덮으므로, 호출부는 **원인을 먼저 확보**하고 부를 것.
+function mesA0_ioDiag(dir) {
+  var r = [];
+  var t = String(Folder.temp.fsName).replace(/[\\]/g, '/') + '/mes_io_diag.txt';
+  r.push('temp=' + (mesA0_writeText(t, 'x') ? 'OK' : ('FAIL[' + MESA0_IO_ERR + ']')));
+  try { var tf = new File(t); if (tf.exists) tf.remove(); } catch (e1) {}
+  if (dir) {
+    var d = String(dir).replace(/[\\]/g, '/') + '/mes_io_diag.txt';
+    r.push('dir=' + (mesA0_writeText(d, 'x') ? 'OK' : ('FAIL[' + MESA0_IO_ERR + ']')));
+    try { var df = new File(d); if (df.exists) df.remove(); } catch (e2) {}
+  }
+  r.push('ai=' + app.version + ' docs=' + app.documents.length);
+  return r.join(' · ');
+}
+
 // 현재 선택 실측 (cm) — ASCII JSON. ink=1 이면 보이는 잉크(클립∩콘텐츠)로 축소.
 function mesA0_measure(ink) {
   $.global.mesA0_inkMode = (ink == 1 || ink === '1' || ink === true);
@@ -584,11 +835,41 @@ function mesA0_measure(ink) {
 }
 
 // 가공 실행 — params 파일(UTF-8) 읽어 mes-core 로직 수행. 반환=ASCII JSON.
-function mesA0_process() {
-  var raw = mesA0_readText(mesA0_paramsPath());
-  if (!raw) return '{"ok":false,"err":"noparams"}';
+/**
+ * 선택을 가공해 Z: 에 등록한다.
+ *
+ * @param inline  (선택) params JSON **원문**. 주면 파일을 읽지 않고 이것을 쓴다.
+ *
+ * ★왜 인자 경로가 있나 (2026-09-08) — 평소 params 는 패널이 `cep.fs` 로
+ *   `Folder.temp` 에 쓰고 여기서 읽는다. 그런데 **그 경로는 사용자명을 품는다**
+ *   (`C:/Users/<사용자>/AppData/Local/Temp`). 사용자명이 한글인 PC 가 실재하고
+ *   (이 파일 :305 의 경고가 바로 그 이유로 쓰였다), cep.fs 가 한글 경로에서 못
+ *   미덥다는 판정도 이미 이 파일에 있다 — `mesA0_config` 가 존재하는 이유가
+ *   「config 읽기의 cep.fs 폴백」이다. **config 만 2중화돼 있고 params 는 아니었다.**
+ *   그 PC 에서는 쓰기가 조용히 실패해 전 건이 `noparams` 로 떨어진다
+ *   (2026-09-07 실기 장애와 **같은 모양**).
+ *   → 폴백을 「호스트가 대신 파일을 쓴다」로 두지 않았다. 파일을 못 쓰는 상황에서
+ *     파일을 쓰는 우회는 왕복만 늘 뿐 같은 자리에서 또 넘어진다. **파일을 아예 빼고**
+ *     인자로 받는다(왕복 추가 0).
+ * ⚠️ 인자는 **ASCII 여야 한다** — 패널이 비ASCII 를 \uXXXX 로 접어 보낸다(브릿지 규약).
+ */
+function mesA0_process(inline) {
+  // ★「없다」와 「비었다」를 가른다(2026-09-07). 전엔 `if (!raw)` 하나로 뭉개서,
+  //   파일이 **아예 안 만들어진 것**과 **0바이트로 만들어진 것**이 같은 `noparams` 로 보고됐다 —
+  //   원인이 패널 쪽 쓰기인지 호스트 쪽 읽기인지 구분할 수 없었다(2026-09-07 실기 장애).
+  var pPath = mesA0_paramsPath();
+  var raw = (inline !== undefined && inline !== null && String(inline) !== '')
+    ? String(inline)               // 인자 경로 — 파일을 아예 거치지 않는다
+    : mesA0_readText(pPath);
+  if (raw === null) {
+    var pe0 = MESA0_IO_ERR;                  // 원인 먼저 — 아래 진단이 덮어쓴다
+    var pf = new File(pPath);
+    var pst = 'exists=' + pf.exists + (pf.exists ? (' len=' + pf.length) : '');
+    return '{"ok":false,"err":"noparams","detail":"' + mesA0_jsonEsc(pe0 + ' | ' + pst + ' | ' + mesA0_ioDiag(null)) + '"}';
+  }
+  if (!raw) return '{"ok":false,"err":"emptyparams","detail":"' + mesA0_jsonEsc('0 bytes @ ' + pPath + ' | ' + mesA0_ioDiag(null)) + '"}';
   var P;
-  try { P = eval('(' + raw + ')'); } catch (e) { return '{"ok":false,"err":"badparams"}'; }
+  try { P = eval('(' + raw + ')'); } catch (e) { return '{"ok":false,"err":"badparams","detail":"' + mesA0_jsonEsc('' + e) + '"}'; }
   var review = !!P.review_only; // 검토문서 모드(D4): 가공만 하고 저장 없이 검토문서 아트보드로 이관
 
   if (app.documents.length === 0) return '{"ok":false,"err":"nodoc"}';
@@ -651,13 +932,20 @@ function mesA0_process() {
   var batchFolder = P.batch_folder ? String(P.batch_folder) : '';
   var folderName = batchFolder || (ymd + '_' + hms + '_' + mesA0_sanitize(pcName) + '_' + (now.getTime() % 1000));
   var jobFolder = new Folder(MESA0_REGISTER_ROOT + '/' + folderName);
-  if (!review && !jobFolder.exists && !jobFolder.create()) return '{"ok":false,"err":"nofolder"}'; // 검토=저장 없음(폴더 미생성)
+  // ★루트를 먼저 본다 — 하위 폴더 생성 실패는 원인이 여럿인데(권한·경로·드라이브 미연결)
+  //   `nofolder` 하나로 뭉개지면 디자이너가 고칠 수 있는 것(Z: 재연결)을 못 알아본다.
+  if (!review && !mesA0_zReady()) return mesA0_zErrJson();
+  if (!review && !jobFolder.exists && !jobFolder.create()) return '{"ok":false,"err":"nofolder","detail":"' + mesA0_jsonEsc('create 실패 @ ' + jobFolder.fsName + ' | ' + mesA0_ioDiag(null)) + '"}'; // 검토=저장 없음(폴더 미생성)
   var sfx = (P.batch_index != null && P.batch_index !== '') ? ('_' + mesA0_sanitize('' + P.batch_index)) : '';
+  MESA0_IOPROBE = '';
+  mesA0_ioProbe('start');            // 여기까지는 폴더 생성이 됐다 = 파일도 될 자리
 
   // 원본 선택을 클립보드로 복사(cross-doc duplicate가 CEP eval 컨텍스트서 0개 실패 → copy/paste 대체)
   // srcDoc 활성·선택 유효 상태에서 먼저 복사(참조 stale 방지). 원본 불가침(복사만·무변경).
   var copyErr = '';
+  var outCopyErr = ''; // `_출력` 복사 실패 사유(비면 정상) — 아래 catch 가 삼키던 것
   try { app.activeDocument = srcDoc; srcDoc.selection = sel; app.copy(); } catch (eCopy) { copyErr = '' + eCopy; }
+  mesA0_ioProbe('copy');             // 클립보드에 아트 전량(수십 MB)이 올라간 뒤
 
   // 캔버스는 겉보기 기준을 유지한다 — 클립 밖 아트까지 담을 자리를 두려는 원래 의도(아트보드는
   //   아래에서 db(클립 존중)로 다시 잡는다). ub 를 클립 기준으로 바꾼 것과 무관하게 기존 동작 보존.
@@ -673,6 +961,7 @@ function mesA0_process() {
 
     try { for (var ti = newDoc.textFrames.length - 1; ti >= 0; ti--) newDoc.textFrames[ti].createOutline(); }
     catch (eOl) { outlineFailed = true; }
+    mesA0_ioProbe('outline');        // 신규 문서 + 붙여넣기 + 텍스트 아웃라인 뒤
     try { pfRemainingText = newDoc.textFrames.length; } catch (ePf1) {}
     try { pfLinkedImages = newDoc.placedItems.length; } catch (ePf2) {}
 
@@ -731,6 +1020,7 @@ function mesA0_process() {
       var workOpts = new IllustratorSaveOptions();
       workOpts.pdfCompatible = false;
       newDoc.saveAs(workFile, workOpts);
+      mesA0_ioProbe('ai');           // work.ai 저장 뒤(수십 MB · 일러 내부 I/O)
       try { workBytes = new File(workFile.fsName).length; } catch (eWb) {}
     }
 
@@ -946,8 +1236,16 @@ function mesA0_process() {
       epsOpts.cmykPostScript = true;
       epsOpts.compatibility = Compatibility.ILLUSTRATOR10;
       epsOpts.preview = EPSPreview.COLORTIFF;
-      epsOpts.embedAllFonts = true;
+      // ★남은 텍스트가 있을 때만 폰트를 임베드한다 (2026-09-09).
+      //   위에서 textFrames 를 **전부 createOutline()** 하므로 정상 경로에는 임베드할 폰트가 없다 —
+      //   true 는 일러에게 "문서 폰트를 전부 열어라"를 시키는 순수 낭비였다. 폰트가 2,159개 깔린
+      //   실기 PC(DESKTOP-6JSH6OL)에서 가공 도중 프로세스 파일 자원이 고갈돼 manifest 저장이
+      //   `I/O 오류` 로 죽고, 이어지는 재단 굽기의 `p0.png` 내보내기까지 실패했다.
+      //   ⚠️ 아웃라인이 실패했거나 텍스트가 남았으면 **반드시 임베드**한다 — 안 그러면 RIP 에서
+      //      폰트가 대체돼 글자가 바뀐다. 판정은 이미 재고 있는 값을 쓴다(:831).
+      epsOpts.embedAllFonts = (outlineFailed || pfRemainingText > 0);
       newDoc.saveAs(epsFile, epsOpts);
+      mesA0_ioProbe('eps');          // EPS 저장 뒤 — 가장 무거운 단계(폰트·미리보기)
 
       // ── DXF (돔보 선택 시만 · 재단선 레이어만) ──
       // 트리거를 돔보로 둔 이유 = 돔보를 쓰는 건이 곧 재단하는 건이다(2026-07-30 지시).
@@ -977,13 +1275,10 @@ function mesA0_process() {
         }
       }
 
-      try {
-        var outDir = new Folder(MESA0_REGISTER_ROOT + '/_출력/' + ymd);
-        if (!outDir.exists) outDir.create();
-        epsFile.copy(outDir.fsName + '/' + epsName);
-        // 재단기 픽업 지점 — EPS와 같은 폴더에 둔다(판짜기 mes-sheet.jsx:485 와 동일 규칙)
-        if (dxfName) new File(jobFolder.fsName + '/' + dxfName).copy(outDir.fsName + '/' + dxfName);
-      } catch (eCp) {}
+      // ★`_출력` 복사는 **manifest 커밋 뒤**로 옮겼다 (2026-09-10) — mesA0_outCopy 참조.
+      //   여기서 복사하면 「출력해도 된다」는 부작용이 **등록 확정보다 먼저** 나간다.
+      //   실측 2026-09-09: manifest 가 실패했는데 _출력\\20260909 에 EPS 2개(188MB)가 놓여 있었다
+      //   — MES 에 주문이 없는 채로 출력될 수 있는 자리다.
       } // !review
     }
 
@@ -1011,6 +1306,7 @@ function mesA0_process() {
       pngOptsHi.horizontalScale = pctHi;
       pngOptsHi.verticalScale = pctHi;
       newDoc.exportFile(pngFileHi, ExportType.PNG24, pngOptsHi);
+      mesA0_ioProbe('thumb');        // 썸네일 2장 굽기 뒤 = manifest 직전
     }
 
     if (review) {
@@ -1026,7 +1322,8 @@ function mesA0_process() {
     okAll = true;
   } catch (eProc) {
     try { newDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCl0) {}
-    return '{"ok":false,"err":"proc:' + mesA0_jsonEsc('' + eProc) + '"}';
+    return '{"ok":false,"err":"proc:' + mesA0_jsonEsc('' + eProc) +
+      '","ioprobe":"' + mesA0_jsonEsc(MESA0_IOPROBE) + '"}';
   }
   try { newDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCl) {}
   if (!okAll) return '{"ok":false,"err":"proc"}';
@@ -1035,6 +1332,10 @@ function mesA0_process() {
   var manifest = {
     manifest_version: 1,
     script_version: MESA0_VERSION,
+    // ★어느 일러에서 나온 등록인가 (2026-09-08). 여태 아무 데도 안 남겼다 — 그래서
+    //   「어느 버전부터 이상해졌나」를 사후에 **잴 방법이 없었다**(실기 장애 때 사람에게
+    //   물어봐야 했다). 등록 폴더는 Z: 에 남으므로 이 한 줄이 그대로 관측 기록이 된다.
+    ai_version: (function () { try { return String(app.version); } catch (eAV) { return ''; } })(),
     registered_by: pcName + '\\' + userName,
     worker_name: P.worker_name || null,
     worker_id: (P.registered_by_id != null) ? P.registered_by_id : null,
@@ -1064,6 +1365,9 @@ function mesA0_process() {
     order_item_id: orderItemId,
     // dxf = 돔보 선택 시 재단선 레이어만 담은 재단 데이터(없으면 null). ingest 는 무시 — 추적용
     files: { work_ai: 'work' + sfx + '.ai', eps: epsName, dxf: dxfName, thumb: 'thumb' + sfx + '.png', thumb_hi: 'thumb_hi' + sfx + '.png', work_bytes: workBytes },
+    // ★항상 null 이다 (2026-09-10) — `_출력` 복사는 이 manifest 가 써진 **뒤**에 일어난다.
+    //   manifest 는 커밋 **시점의 사실**만 담는다. 복사 결과는 응답에 실린다(ingest 는 원래 무시).
+    out_copy_error: null,
     batch_folder: batchFolder || null,
     batch_index: (P.batch_index != null && P.batch_index !== '') ? P.batch_index : null,
     outline_failed: outlineFailed,
@@ -1073,18 +1377,71 @@ function mesA0_process() {
     created_at_kst: now.getFullYear() + '-' + mesA0_pad2(now.getMonth() + 1) + '-' + mesA0_pad2(now.getDate()) +
       ' ' + mesA0_pad2(now.getHours()) + ':' + mesA0_pad2(now.getMinutes()) + ':' + mesA0_pad2(now.getSeconds())
   };
-  if (!mesA0_writeText(jobFolder.fsName + '/manifest' + sfx + '.json', mesA0_toJson(manifest)))
-    return '{"ok":false,"err":"manifest"}';
-
+  // ★성공 응답을 **먼저** 조립한다 — manifest 쓰기가 실패해도 이 값들은 이미 확정이고,
+  //   패널이 대신 써서 등록을 완성하면 그대로 성공 메시지가 되어야 하기 때문이다.
   var warn = (pfSourceRGB ? 'R' : '') + (pfRemainingText > 0 ? 'T' : '') + (pfLinkedImages > 0 ? 'L' : '') + (outlineFailed ? 'O' : '') +
     (pfOversize > 0 ? 'E' : '');
-  return '{"ok":true,"folder":"' + mesA0_jsonEsc(folderName) + '","eps":' +
+  var okRes = '{"ok":true,"folder":"' + mesA0_jsonEsc(folderName) + '","eps":' +
     (epsName ? ('"' + mesA0_jsonEsc(epsName) + '"') : 'null') +
     ',"dxf":' + (dxfName ? ('"' + mesA0_jsonEsc(dxfName) + '"') : 'null') +
     ',"w":' + (Math.round(realW * 10) / 10) + ',"h":' + (Math.round(realH * 10) / 10) +
     ',"items":' + diagItems + ',"normed":' + normed +
     ',"bytes":' + workBytes + ',"oversize":' + pfOversize +
-    ',"mode":"' + mode + '","warn":"' + warn + '"}';
+    ',"mode":"' + mode + '","warn":"' + warn + '"' +
+    ',"ioprobe":"' + mesA0_jsonEsc(MESA0_IOPROBE) + '"';   // ⚠️ 닫는 중괄호 없음 — 복사 뒤에 닫는다
+
+  var mfPath = jobFolder.fsName + '/manifest' + sfx + '.json';
+  var mfJson = mesA0_toJson(manifest);
+  if (!mesA0_writeText(mfPath, mfJson)) {
+    var me0 = MESA0_IO_ERR;                  // 원인 먼저 — 아래 진단이 덮어쓴다
+    // ★여기서 끝내지 않는다 — **패널에게 넘긴다** (2026-09-09).
+    //   실기에서 일러 프로세스의 파일 계층이 통째로 죽는다: 로컬 temp 도 Z: 도 동시에
+    //   `I/O 오류` 이고, 일러 자신의 export 마저 실패하며, config.json(180KB)이 0바이트로 읽혔다.
+    //   경로·권한·드라이브·버전 문제가 아니라 **그 순간 그 프로세스**의 문제다.
+    //   반면 CEP(패널)는 **별도 프로세스**라 멀쩡했다 — 같은 순간에 UI 가 뜨고 응답이 왔다.
+    //   그래서 일러가 못 쓰면 패널이 쓴다. `mesA0_manifestPending()` 로 가져간다.
+    //   ⚠️ 물고 있는 것은 **원문 그대로**다. 이미 ASCII(\uXXXX 폴딩)라 인코딩과도 무관하다.
+    // ★복사에 필요한 것까지 물고 간다 — 패널이 manifest 를 써서 커밋을 끝내면
+    //   그때 `mesA0_manifestDone` 이 픽업 복사를 이어서 한다(순서는 그대로 커밋 → 복사).
+    $.global.mesA0MfPending = { path: mfPath, mf: mfJson, res: okRes + '}',
+      job: jobFolder.fsName, ymd: ymd, eps: epsName, dxf: dxfName };
+    return '{"ok":false,"err":"manifest","mfpending":true,"ioprobe":"' +
+      mesA0_jsonEsc(MESA0_IOPROBE) + '","detail":"' +
+      mesA0_jsonEsc(me0 + ' | ' + mesA0_ioDiag(jobFolder.fsName) +
+        (outCopyErr ? (' | outcopy: ' + outCopyErr) : '')) + '"}';
+  }
+  $.global.mesA0MfPending = null;            // 성공했으면 앞 건의 잔여를 지운다
+  // ★여기서부터가 **커밋 뒤**다 — 등록이 확정됐으니 픽업 폴더에 놓아도 된다.
+  outCopyErr = mesA0_outCopy(jobFolder.fsName, ymd, epsName, dxfName);
+  return okRes + (outCopyErr ? (',"outcopy":"' + mesA0_jsonEsc(outCopyErr) + '"') : '') + '}';
+}
+
+/**
+ * 못 쓴 manifest 를 패널에게 넘긴다 — 등록을 **완성시키기 위한** 인계 창구 (2026-09-09).
+ *
+ * ★왜 패널이 쓰나 — 일러 프로세스의 파일 자원이 고갈되면 ExtendScript 도 일러 자신도 파일을
+ *   못 만든다. CEP 는 별도 프로세스(CEPHtmlEngine)라 그 영향을 안 받는다. 즉 **일러 버전·
+ *   폰트 수·문서 수와 무관한 경로**가 하나 생긴다 — 이것이 「의존을 끊는다」의 실체다.
+ * ★반환은 ASCII JSON. `res` 는 원래 나갔어야 할 성공 응답이라, 패널이 쓰기에 성공하면
+ *   그대로 성공 메시지가 된다(등록은 실제로 완성됐으므로 실패로 보이면 안 된다).
+ */
+function mesA0_manifestPending() {
+  var P = $.global.mesA0MfPending;
+  if (!P) return '{"ok":false,"err":"none"}';
+  return '{"ok":true,"path":"' + mesA0_jsonEsc(P.path) +
+    '","mf":"' + mesA0_jsonEsc(P.mf) +
+    '","res":"' + mesA0_jsonEsc(P.res) + '"}';
+}
+/**
+ * 패널이 manifest 를 다 썼다 = **커밋 완료**. 이제서야 픽업 폴더로 복사한다 (2026-09-10).
+ * ★순서가 핵심이다 — 정상 경로든 구제 경로든 **복사는 언제나 커밋 뒤**여야 한다.
+ *   그래야 「MES 에 없는 출력물」이 생기지 않는다.
+ */
+function mesA0_manifestDone() {
+  var P = $.global.mesA0MfPending;
+  $.global.mesA0MfPending = null;
+  if (!P || !P.job) return '{"ok":true,"outcopy":""}';
+  return '{"ok":true,"outcopy":"' + mesA0_jsonEsc(mesA0_outCopy(P.job, P.ymd, P.eps, P.dxf)) + '"}';
 }
 
 // ── 반자동 큐 (A2) — 선택 보관 = 호스트 전역(같은 파일 열려있는 동안 참조 유효) ──
@@ -1625,6 +1982,7 @@ function mesA0_batchBegin() {
   var pcName = $.getenv('COMPUTERNAME') || 'PC';
   var folderName = ymd + '_' + hms + '_' + mesA0_sanitize(pcName) + '_batch' + (now.getTime() % 1000);
   var f = new Folder(MESA0_REGISTER_ROOT + '/' + folderName);
-  if (!f.exists && !f.create()) return '{"ok":false,"err":"nofolder"}';
+  if (!mesA0_zReady()) return mesA0_zErrJson();   // 배치도 같은 판정 — 첫 건에서 걸러야 14건이 안 흐른다
+  if (!f.exists && !f.create()) return '{"ok":false,"err":"nofolder","detail":"' + mesA0_jsonEsc('create 실패 @ ' + f.fsName) + '"}';
   return '{"ok":true,"folder":"' + mesA0_jsonEsc(folderName) + '"}';
 }

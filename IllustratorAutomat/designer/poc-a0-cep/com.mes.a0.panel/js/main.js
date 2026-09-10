@@ -10,7 +10,7 @@
   //   우상단 표시는 여태 host(mesA0_ping = MESA0_VERSION, 축2 = Z: 1곳)만 보여줬다. 껍데기는 PC 별
   //   복사 설치라서 재설치를 안 한 PC 도 최신 번호로 보였다(2026-07-30 점검에서 확인).
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다.
-  var SHELL_VERSION = '0.11.0';   // 0.11.0 = ★표 헤더가 세로로 쌓이던 것 정정(재단선·주석·여백cm 열 폭) · [1건 등록] 위 중복 문구 제거 · 0.10.0 = ★큐 제거는 호스트가 실제로 지웠을 때만 축소 · seedSilhouette 는 호스트 바쁨에도 done 콜백을 불러 호출자 멈춤 방지 ·「조」 표기 가시성 게이트 · 0.9.0 = ★검색이 공백을 무시한다 — 일러 CEP 는 IME 조합을 웹뷰에 안 넘기고(composition 0건) 마지막 글자를 스페이스로 확정해야 해서 그 공백이 이름 안에 남는다 · 0.8.0 = ★수량 단위 [개|조] — 가로등배너 1조=2개 환산(조용한 절반 청구 방지) · 0.7.0 = ★품목 자동완성(item_id) — 주문서가 품목·단가까지 자동으로 채운다 · 0.6.0 = ★자동감지 캡처 경로 수용(임시문서 없음 표기) + 마스크 픽셀 수를 실제 PNG 에 맞춤(라벨 밀림 방지) · 0.5.3 =「키워드」→「내용」 명칭 통일(MES 품목 마스터와 구분) · 0.5.2 = 재단 탭 [◎ 전체] · 0.5.1 = 도련 방식 칸을 판짜기로 이동(라벨 거짓 정정) · 0.5.0 = 셸 자동 갱신 결과 수신·재시작 안내 · 0.4.1 = 설명 다이어트(cfg 압축·툴팁 이동) + 세로나열 CSS
+  var SHELL_VERSION = '0.18.0';   // 0.18.0 = ★환경 점검이 **등록 잔해·MES 반영 대기**를 센다 — 커밋이 안 끝난 폴더가 조용히 쌓여도 아무 화면에도 안 나왔다 · ★manifest 를 대신 쓴 뒤 픽업 복사까지 이어서 시킨다(정상 경로와 같은 순서: 커밋 → 복사) · 0.17.0 = ★params 를 **파일로 보냈는데 호스트가 못 읽으면 인자로 한 번 더**(`runProcessExpr`) — 파일 경로를 고르는 판단은 「cep.fs 로 쓸 수 있나」인데 정작 실패하는 것은 호스트가 그 파일을 **읽는** 쪽이다(실기 2026-09-09: `open('r') 실패: I/O 오류` · `exists=true len=-1`). 단건·검토·배치 **세 경로 전부** 이 길을 지난다 · ★호스트가 아예 안 실린 경우를 사람 말로(`hostNotLoaded`) — 「함수가 아닙니다」만 뜨면 원인도 조치도 없다. 실기에서 읽기가 죽어 `$.evalFile` 이 Z: 의 호스트를 못 읽었다 · ★배치 실패 줄에도 `[단계별 파일쓰기]`(단건에만 있어 **일괄에서만** 방아쇠를 못 봤다) · 0.16.0 = ★[⏱ 부하 시험] — 파일을 몇 개까지 만들 수 있나. 한 번의 값은 의미가 없고 **비교**가 답이라(재시작 직후→1건 후→3건 후) 화면이 그렇게 읽으라고 말한다 · ★단계별 파일쓰기(`ioprobe`)를 실패에는 **항상**, 성공에는 이상(X·*)이 있을 때만 띄운다 — 전부 정상인 줄을 매번 띄우면 사람이 안 읽는다 · 0.15.0 = ★일러가 manifest 를 못 쓰면 **패널이 대신 쓴다**(`rescuePending`) — **단건과 배치가 공유**한다(일괄 확정·모아찍기 등록도 같이 구제된다). 등록이 실제로 완성되므로 성공 화면이 그대로 나온다(성공 렌더를 `renderOk` 로 빼서 두 경로가 같은 화면을 쓴다) · ★환경 점검에 **cep.fs 쓰기(temp / Z: 한글경로)** — 폴백이 기대는 길이 이 PC 에서 되는지 추측하지 않고 잰다 · 0.14.0 = ★[⚙ 환경 점검] 버튼 — Z: 연결·쓰기 · temp 쓰기·ASCII 여부 · 호스트/재단/셸/스텁 버전 · config 나이 · 설치 경로 · 자동갱신 상태를 한 번에. **탭 밖**에 그린다(준비 안 된 PC 는 어느 탭에서든 증상이 난다) · 0.13.0 = ★`hostEval` 도입 — evalScript 실패가 `'EvalScript error.'` 라는 **평범한 문자열**로 와서 `if (!res)` 가드를 전부 통과하던 것을 한 곳에서 막는다(재단 탭은 처음부터 있었는데 가공 탭만 27곳이 생짜였다) · ★배치·검토가 브릿지 사망 시 **즉시 중단**(2026-09-07 에 원인 1건이 증상 13건으로 번역됐다) · ★params 를 cep.fs 가 못 쓰면 **인자로** 넘긴다(한글 사용자명 PC = 전 건 `noparams`) · ★config 나이 표기(24시간 초과 경고) · 0.12.0 = ★파일 I/O 실패 사유를 화면까지 나른다 — 일괄확정·검토가 `cepWriteUtf8` 반환값을 **안 보고** 있었고(단건만 봤다), 호스트가 준 `detail` 도 버려서 2026-09-07 실기 장애(#1 manifest · #2~14 noparams)에서 원인을 물을 데가 없었다 · `_출력` 복사 실패도 표시 · 0.11.0 = ★표 헤더가 세로로 쌓이던 것 정정(재단선·주석·여백cm 열 폭) · [1건 등록] 위 중복 문구 제거 · 0.10.0 = ★큐 제거는 호스트가 실제로 지웠을 때만 축소 · seedSilhouette 는 호스트 바쁨에도 done 콜백을 불러 호출자 멈춤 방지 ·「조」 표기 가시성 게이트 · 0.9.0 = ★검색이 공백을 무시한다 — 일러 CEP 는 IME 조합을 웹뷰에 안 넘기고(composition 0건) 마지막 글자를 스페이스로 확정해야 해서 그 공백이 이름 안에 남는다 · 0.8.0 = ★수량 단위 [개|조] — 가로등배너 1조=2개 환산(조용한 절반 청구 방지) · 0.7.0 = ★품목 자동완성(item_id) — 주문서가 품목·단가까지 자동으로 채운다 · 0.6.0 = ★자동감지 캡처 경로 수용(임시문서 없음 표기) + 마스크 픽셀 수를 실제 PNG 에 맞춤(라벨 밀림 방지) · 0.5.3 =「키워드」→「내용」 명칭 통일(MES 품목 마스터와 구분) · 0.5.2 = 재단 탭 [◎ 전체] · 0.5.1 = 도련 방식 칸을 판짜기로 이동(라벨 거짓 정정) · 0.5.0 = 셸 자동 갱신 결과 수신·재시작 안내 · 0.4.1 = 설명 다이어트(cfg 압축·툴팁 이동) + 세로나열 CSS
   var STORE_WORKER = 'mes_a0_worker';
   var STORE_SETTINGS = 'mes_a0_settings';
   var CONFIG_PATH = 'Z:/DESIGNS/IA-등록/_config/config.json';
@@ -114,6 +114,33 @@
     } catch (e) { console.warn('[mes-a0-cep] cep.fs.writeFile fail', e); return false; }
   }
 
+  /**
+   * cep.fs 로 정말 쓸 수 있는가 — **일러가 아니라 CEP 프로세스**가 쓰는 길을 잰다 (2026-09-09).
+   * ★이 길이 manifest 폴백의 유일한 근거다. 일러의 파일 자원이 고갈돼도 CEP 는 별도 프로세스라
+   *   살아 있다 — 실기에서 일러가 temp·Z: 양쪽에 I/O 오류를 내는 순간에도 패널 UI 는 떴다.
+   * ★Z: 는 경로에 한글(IA-등록)이 있다. cep.fs 가 한글 경로에서 못 미덥다는 실측이 있어
+   *   (processExpr 주석) **추측하지 않고 PC 마다 잰다**. 쓰고 즉시 지운다.
+   */
+  function cepProbe(path) {
+    if (!(window.cep && window.cep.fs)) return 'cep.fs 없음';
+    try {
+      var w = window.cep.fs.writeFile(path, 'x', UTF8);
+      if (!w || w.err !== 0) return 'err=' + (w ? w.err : '?');
+      try { window.cep.fs.deleteFile(path); } catch (eD) {}
+      return 'ok';
+    } catch (e) { return '예외: ' + e; }
+  }
+
+  /**
+   * JSON 원문을 ASCII 로 접는다 — evalScript 는 **인자도 반환도** ASCII 만 안전하다.
+   * (호스트 `mesA0_jsonEsc` 가 반대 방향으로 같은 일을 한다 — 규약은 한 쌍이다)
+   */
+  function asciiJson(o) {
+    return JSON.stringify(o).replace(/[\u007F-\uFFFF]/g, function (c) {
+      return '\\u' + ('0000' + c.charCodeAt(0).toString(16)).slice(-4);
+    });
+  }
+
   function marginOf(name) {
     for (var i = 0; i < methods.length; i++) if (methods[i].name === name) return methods[i].margin_cm || 0;
     return 0;
@@ -121,6 +148,129 @@
 
   document.addEventListener('DOMContentLoaded', function () {
     var csi = new CSInterface();
+
+    // ── ★evalScript 실패를 거르는 유일한 지점 (2026-09-08) ─────────────────
+    //   실패는 예외가 아니다 — `'EvalScript error.'` 라는 **평범한 문자열**이 온다.
+    //   그래서 `if (!res)` 류의 가드가 전부 통과하고(truthy), 그 문자열이 그대로
+    //   경로·JSON 으로 쓰인다. params 경로 자리에 들어가면 패널은 엉뚱한 곳에 쓰고
+    //   호스트는 진짜 temp 를 읽어 **`noparams`** 가 된다 — 원인 1건이 증상 N건이 된다.
+    //   재단 탭은 처음부터 래퍼에서 걸렀는데(cut-main.js:412) 가공 탭만 27곳이 생짜였다.
+    //   ★res 를 null 로 바꿔 넘긴다 — 호출부의 기존 falsy 가드가 **그대로** 잡는다.
+    //     두 번째 인자(bad)는 **사유**다. 받는 쪽이 없으면 무해하게 무시된다.
+    /**
+     * 호스트 JSX 가 **아예 안 실린** 경우의 문구 (2026-09-09).
+     * ★실기: 파일 **읽기**가 죽어 `$.evalFile` 이 Z: 의 호스트를 못 읽었다. 그러면 함수가 하나도
+     *   정의되지 않아 「mesCut_nestBegin이(가) 함수가 아닙니다」만 뜬다 — 원인도 조치도 없는 말이다.
+     */
+    function hostNotLoaded(s) {
+      return 'Z: 의 호스트 스크립트를 못 읽었습니다 — 이 PC 의 일러가 파일을 못 읽는 상태입니다.\n'
+        + '· 일러스트레이터를 **완전히 종료**했다 다시 켜 주세요(패널만 닫았다 여는 것으로는 안 바뀝니다).\n'
+        + '· 그래도 같으면 Z: 연결을 확인하세요.\n'
+        + '(원문: ' + String(s).slice(0, 120) + ')';
+    }
+    /** 호스트 미로드 신호인가 — 함수가 통째로 없다는 말은 파일을 못 읽었다는 뜻이다. */
+    function isHostMissing(s) {
+      return /is not a function|함수가 아닙니다/.test(s) && /mesA0_|mesCut_/.test(s);
+    }
+
+    var hostDead = '';   // 마지막으로 관측된 브릿지 사망 지점(비면 정상)
+    function hostEval(expr, cb) {
+      csi.evalScript(expr, function (res) {
+        var str = (res === null || res === undefined) ? '' : String(res);
+        if (isHostMissing(str)) { hostDead = expr; cb(null, hostNotLoaded(str)); return; }
+        if (str === 'EvalScript error.') {
+          hostDead = expr;
+          cb(null, 'evalScript 실패 — 호스트가 응답하지 않습니다 (' + expr.slice(0, 40) + ')');
+          return;
+        }
+        cb(str, null);
+      });
+    }
+
+    /** 호스트가 params 를 **못 읽은** 것들. 파일 경로가 무의미하다는 신호다. */
+    var PARAMS_UNREADABLE = { noparams: 1, emptyparams: 1, badparams: 1 };
+    var paramsUnreadable = 0;
+
+    /**
+     * `mesA0_process` 를 부른다 — **params 를 못 읽으면 인자로 한 번 더** (2026-09-09).
+     *
+     * ★왜 — 파일 경로를 고르는 판단은 「cep.fs 로 **쓸 수 있나**」인데, 정작 실패하는 것은
+     *   호스트가 그 파일을 **읽는** 쪽이다. 실기 로그: `open('r') 실패: I/O 오류` ·
+     *   `exists=true len=-1` — 파일은 있다는데 길이를 -1 로 답한다. 쓰기가 됐다고 읽기가
+     *   되는 게 아닌데, 우리는 쓰기 성공만 보고 파일 경로를 택하고 있었다.
+     * ★인자 경로는 **파일을 아예 안 거친다** — 읽기가 죽은 PC 에 남는 유일한 길이다.
+     *   (0.7.2 가 「파일을 못 쓰면 파일로 우회하지 않는다」로 만든 그 길을, 이제 읽기 쪽에서도 쓴다)
+     * ⚠️ 재시도는 **한 번**이다. 인자로 보냈는데 또 noparams 면 원인이 다른 것이므로 그대로 알린다.
+     * cb(결과객체 | null, 브릿지실패사유 | null, 원문)
+     */
+    function runProcessExpr(expr, obj, cb) {
+      var viaFile = (expr === 'mesA0_process()');
+      hostEval(expr, function (res, bad) {
+        if (bad) { cb(null, bad, res); return; }
+        var r = null; try { r = JSON.parse(res); } catch (e) {}
+        if (r && !r.ok && viaFile && PARAMS_UNREADABLE[r.err]) {
+          paramsUnreadable++;
+          hostEval(processExpr(null, obj), function (res2, bad2) {
+            if (bad2) { cb(null, bad2, res2); return; }
+            var r2 = null; try { r2 = JSON.parse(res2); } catch (e2) {}
+            cb(r2, null, res2);
+          });
+          return;
+        }
+        cb(r, null, res);
+      });
+    }
+    function runProcess(pp, obj, cb) { runProcessExpr(processExpr(pp, obj), obj, cb); }
+
+    /**
+     * 호스트가 못 쓴 manifest 를 **패널이 쓴다** — 단건·배치가 **공유**한다 (2026-09-09).
+     *
+     * ★일러 프로세스의 파일 자원이 고갈되면 ExtendScript 도 일러 자신도 파일을 못 만든다
+     *   (실기: 로컬 temp 와 Z: 가 동시에 I/O 오류 · 일러 export 실패 · config 180KB 가 0바이트).
+     *   CEP 는 별도 프로세스라 그 순간에도 쓸 수 있다 — 일러 버전·폰트 수와 무관한 길이다.
+     * ⚠️ 호스트는 **직전 1건**만 물고 있다. 배치에서는 **다음 건이 덮어쓰기 전에 즉시** 부를 것.
+     * ⚠️ 한 곳에 두는 이유 = 단건만 고치고 배치를 빼면, 묶음 등록에서만 조용히 옛 실패로 남는다.
+     *
+     * cb(성공응답객체 | null, 사유)
+     */
+    function rescuePending(cb) {
+      hostEval('mesA0_manifestPending()', function (ps, pbad) {
+        var p = null; try { p = JSON.parse(ps); } catch (e) {}
+        if (!p || !p.ok) { cb(null, pbad || '호스트가 물고 있는 manifest 가 없습니다'); return; }
+        if (!cepWriteUtf8(p.path, p.mf)) { cb(null, 'cep.fs 도 못 씁니다 @ ' + p.path); return; }
+        var rr = null; try { rr = JSON.parse(p.res); } catch (e2) {}
+        if (!rr) { cb(null, '성공 응답 복원 실패'); return; }
+        // ★커밋이 끝났으니 이제 픽업 폴더로 복사한다 — 호스트가 이어서 한다(순서: 커밋 → 복사).
+        //   정상 경로와 **같은 순서**여야 「MES 에 없는 출력물」이 안 생긴다.
+        hostEval('mesA0_manifestDone()', function (ds) {
+          var d = null; try { d = JSON.parse(ds); } catch (e3) {}
+          if (d && d.outcopy) rr.outcopy = d.outcopy;   // 기존 렌더가 경고로 띄운다
+          cb(rr, '');
+        });
+      });
+    }
+
+    /**
+     * `mesA0_process` 호출식 — params 를 **파일로 넘길지 인자로 넘길지** 여기서 정한다.
+     *
+     * ★cep.fs 로 파일이 써지면 여태처럼 파일(진단에 남는다). 안 써지면 **인자**로 직접 넘긴다
+     *   — `Folder.temp` 는 사용자명을 품고, 사용자명이 한글인 PC 가 실재하며
+     *   (mes-a0-host.jsx:305), cep.fs 는 한글 경로에서 못 미덥다(같은 파일 :566 의
+     *   config 폴백이 존재하는 이유). config 만 2중화돼 있고 params 는 아니었다.
+     * ★판정이 **동기**라 왕복이 늘지 않는다 — 폴백인데 비용이 0이다.
+     * ⚠️ 인자는 ASCII 로 접어 보낸다(브릿지 규약). 역슬래시를 먼저 겹치고 따옴표를 나중에
+     *    — 순서를 바꾸면 이중 이스케이프가 된다.
+     */
+    var paramsViaArg = 0;   // 인자 경로를 쓴 횟수 — 화면에 남긴다(아래 주석)
+    function processExpr(pp, obj) {
+      if (pp && cepWriteUtf8(pp, JSON.stringify(obj))) return 'mesA0_process()';
+      // ★다른 길로 갔다는 사실을 **말한다**. 결과가 같아도 조용한 우회는 조용한 격하와
+      //   같은 값을 치른다 — 「이 PC 는 temp 에 못 쓴다」는 사실이 여기서만 보이고,
+      //   그걸 안 남기면 다음에 다른 증상으로 나타날 때 아무도 연결짓지 못한다.
+      paramsViaArg++;
+      var lit = asciiJson(obj).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      return 'mesA0_process("' + lit + '")';
+    }
 
     // ── 탭 전환 = 용도 선택(2026-07-29 리모델) ──
     //   **탭이 곧 용도다.** 이전 `용도` 라디오는 제거했다 — 라디오 하나가 다른 탭을 원격으로 잠그고
@@ -226,19 +376,111 @@
 
     // ── 버전 = 로직(축2) + 화면(축3/축4) 두 축을 함께 보여준다 ──
     //   하나만 보여주면 "Z: 로직은 최신인데 껍데기는 구버전"인 PC 를 구분할 수 없다.
-    csi.evalScript('mesA0_ping()', function (v) {
+    hostEval('mesA0_ping()', function (v) {
       if (elVer) elVer.textContent = '· ' + (v || '(host?)') + ' / 화면 ' + SHELL_VERSION;
       // ★셸 자동 갱신 결과 (2026-08-26) — 갱신 자체는 위 ping 이 이미 끝냈다(호스트 mesPanel_syncShell).
       //   여기서는 **결과만** 읽는다. 다시 부르면 두 번 도는 게 아니라 캐시된 값이 온다.
       //   갱신은 파일만 바꾸고 **이미 로드된 화면은 옛 파일이다** → 재시작을 반드시 알린다.
       //   (구 셸이 깔린 PC 는 이 코드가 없어 메시지가 안 뜬다. 그래도 갱신은 된다 — 다음 실행부터 뜬다)
-      csi.evalScript('typeof mesPanel_syncStatus === "function" ? mesPanel_syncStatus() : "na"', function (sy) {
+      hostEval('typeof mesPanel_syncStatus === "function" ? mesPanel_syncStatus() : "na"', function (sy) {
         var r = String(sy || '');
         if (r.indexOf('updated;') === 0) {
           out('패널이 갱신됐습니다 — 일러스트레이터를 다시 켜 주세요.\n지금 화면은 아직 옛 버전입니다 (' + r + ')', 'okmsg');
         } else if (r.indexOf('ERROR') === 0) {
           out('패널 자동 갱신 실패 — 관리자에게 알려 주세요.\n' + r, 'err');
         }
+      });
+    });
+
+    // ── ★[환경 점검] — 「다른 PC 에서 안 돼요」를 캡처 한 장으로 (2026-09-08) ──────
+    //   준비 안 된 PC 의 증상은 기능마다 다른 말로 흩어져 나온다(config 없음 · nofolder ·
+    //   noparams · 응답 파싱 실패). 전부 같은 원인일 수 있는데 연결지으려면 매번 조사가 필요했다.
+    //   여기 한 번 누르면 호스트가 **실패하는 그 문맥에서** 환경을 재서 돌려준다.
+    var elBtnEnv = $('btnEnv'), elEnvOut = $('envOut');
+    if (elBtnEnv && elEnvOut) elBtnEnv.addEventListener('click', function () {
+      if (!elEnvOut.classList.contains('hidden') ) { elEnvOut.classList.add('hidden'); return; }
+      elEnvOut.classList.remove('hidden');
+      elEnvOut.className = 'out';
+      elEnvOut.textContent = '환경 점검 중…';
+      hostEval('typeof mesA0_envCheck === "function" ? mesA0_envCheck() : "na"', function (res, bad) {
+        if (bad || !res) { elEnvOut.className = 'out err'; elEnvOut.textContent = '환경 점검 실패 — ' + (bad || '호스트 무응답') + '\n(패널을 일러 안에서 열었는지, Z: 가 연결됐는지 확인하세요)'; return; }
+        if (res === 'na') { elEnvOut.className = 'out err'; elEnvOut.textContent = '이 PC 의 Z: 호스트가 구버전입니다(mesA0_envCheck 없음) — 관리자에게 알려 주세요.'; return; }
+        var e = null; try { e = JSON.parse(res); } catch (x) {}
+        if (!e) { elEnvOut.className = 'out err'; elEnvOut.textContent = '환경 점검 응답 파싱 실패:\n' + res; return; }
+        var bad2 = [];
+        var L = [];
+        var mark = function (okv, txt, why) { if (!okv) bad2.push(why || txt); return (okv ? '✓ ' : '✗ ') + txt; };
+        L.push('PC ' + e.pc + ' · 일러 ' + e.ai);
+        L.push('버전  호스트 ' + e.host + ' / 재단 ' + e.cut + ' / 화면 ' + SHELL_VERSION
+          + ' / 스텁 ' + e.stub + ' / 잠금 ' + (e.lock || '?'));
+        L.push(mark(e.z, 'Z: 연결  ' + e.zRoot, 'Z: 가 안 보입니다 — 드라이브 연결을 확인하세요(일러를 관리자 권한으로 켰다면 매핑이 안 보입니다)'));
+        L.push(mark(e.zWrite, 'Z: 쓰기' + (e.zErr ? ('  ' + e.zErr) : ''), 'Z: 에 쓸 수 없습니다 — 권한 또는 연결 문제입니다'));
+        L.push(mark(e.tempWrite, 'temp 쓰기  ' + e.temp + (e.tempErr ? ('  ' + e.tempErr) : ''), 'temp 에 쓸 수 없습니다'));
+        L.push(mark(e.tempAscii, 'temp 경로 ASCII', 'temp 경로에 한글이 있습니다 — params 를 인자 경로로 넘깁니다(동작은 합니다)'));
+        // ★일러가 못 쓸 때 **누가 대신 쓰는가** — 그 길이 살아 있는지 여기서 잰다(2026-09-09).
+        var cepT = cepProbe(e.temp + '/mes_cepfs_check.txt');
+        var cepZ = e.z ? cepProbe(e.zRoot + '/_config/mes_cepfs_check.txt') : 'Z: 미연결';
+        L.push(mark(cepT === 'ok', 'cep.fs 쓰기(temp)' + (cepT === 'ok' ? '' : ('  ' + cepT)),
+          'cep.fs 가 temp 에 못 씁니다'));
+        L.push(mark(cepZ === 'ok', 'cep.fs 쓰기(Z: 한글경로)' + (cepZ === 'ok' ? '' : ('  ' + cepZ)),
+          'cep.fs 가 Z: 에 못 씁니다 — 일러가 파일을 못 쓰는 순간 manifest 를 대신 써 줄 길이 없습니다'));
+        L.push(mark(e.cfg, 'config' + (e.cfg ? ('  ' + Math.round((e.cfgBytes || 0) / 1024) + 'KB · ' + (e.cfgAgeH >= 0 ? (e.cfgAgeH + '시간 전') : '시각미상')) : ''), 'config 가 없습니다 — 에이전트를 확인하세요'));
+        if (e.cfg && e.cfgAgeH > 24) bad2.push('config 가 ' + Math.floor(e.cfgAgeH / 24) + '일 지났습니다 — 에이전트가 멈춘 것 같습니다(신규 거래처·품목이 안 보입니다)');
+        // ★조용히 쌓이는 것을 센다 (2026-09-10) — 안 세면 그게 다음 사각지대다.
+        //   실측 2026-09-09: 커밋 실패 잔해 6건이 아무 화면에도 안 나왔다.
+        if (e.scanned !== undefined) {
+          L.push(mark(!e.orphan, '등록 잔해' + (e.orphan ? ('  ' + e.orphan + '건 · ' + e.orphanMB + 'MB') : ' 없음')
+            + '  (등록폴더 ' + e.scanned + '개 확인)',
+            '등록이 끝나지 않은 폴더가 ' + e.orphan + '건(' + e.orphanMB + 'MB) 남아 있습니다 — 에이전트가 영원히 안 읽습니다'));
+          L.push(mark(!e.pendingIngest, 'MES 반영' + (e.pendingIngest ? ('  대기 ' + e.pendingIngest + '건') : ' 완료'),
+            'MES 에 아직 안 올라간 등록이 ' + e.pendingIngest + '건입니다 — 에이전트가 멈췄을 수 있습니다'));
+        }
+        L.push(mark(e.installAscii, '설치본  ' + e.install, '설치 경로에 한글이 있습니다 — 자동 갱신이 안 될 수 있습니다'));
+        L.push('셸 자동갱신  ' + e.sync);
+        if (e.loadErr) { bad2.push('호스트 로드 오류: ' + e.loadErr); L.push('✗ 호스트 로드  ' + e.loadErr); }
+        elEnvOut.className = 'out' + (bad2.length ? ' err' : ' okmsg');
+        elEnvOut.textContent = L.join('\n') + (bad2.length
+          ? ('\n\n⚠ 고쳐야 할 것 ' + bad2.length + '건\n · ' + bad2.join('\n · '))
+          : '\n\n이상 없음 — 이 PC 는 준비됐습니다.');
+      });
+    });
+
+    // ── ★[부하 시험] — 「자원이 모자라서인가」를 **재서** 답한다 (2026-09-09) ──────
+    //   추측을 멈추기 위한 도구다. 한 번의 값은 의미가 없고 **비교**가 답이다:
+    //   일러 재시작 직후 / 가공 1건 후 / 3건 후로 재면 누적 소비인지 상태 전환인지 갈린다.
+    var elBtnStress = $('btnStress');
+    if (elBtnStress && elEnvOut) elBtnStress.addEventListener('click', function () {
+      elEnvOut.classList.remove('hidden');
+      elEnvOut.className = 'out';
+      elEnvOut.textContent = '부하 시험 중… (파일 200개 만들었다 지우기)';
+      hostEval('typeof mesA0_ioStress === "function" ? mesA0_ioStress(200) : "na"', function (res, bad) {
+        if (bad || !res) {
+          elEnvOut.className = 'out err';
+          elEnvOut.textContent = '부하 시험 실패 — ' + (bad || '호스트 무응답');
+          return;
+        }
+        if (res === 'na') {
+          elEnvOut.className = 'out err';
+          elEnvOut.textContent = '이 PC 의 Z: 호스트가 구버전입니다(mesA0_ioStress 없음) — 관리자에게 알려 주세요.';
+          return;
+        }
+        var e = null; try { e = JSON.parse(res); } catch (x) {}
+        if (!e || !e.ok) { elEnvOut.className = 'out err'; elEnvOut.textContent = '부하 시험 응답 파싱 실패:\n' + res; return; }
+        var okAll = (e.firstFail < 0 && !e.left);
+        var L = [];
+        L.push('부하 시험 — 파일 ' + e.n + '개 만들었다 지우기');
+        L.push((e.firstFail < 0 ? '✓ ' : '✗ ') + '성공 ' + e.made + ' / ' + e.n
+          + (e.firstFail >= 0 ? ('  · ' + (e.firstFail + 1) + '번째에서 실패') : '')
+          + '  (' + e.ms + 'ms)');
+        if (e.err) L.push('사유  ' + e.err);
+        if (e.left) L.push('⚠ 지우지 못한 파일 ' + e.left + '개 — 삭제도 막혀 있습니다');
+        L.push('');
+        L.push('해석 — 이 값 하나로는 모릅니다. **비교**해야 답이 나옵니다.');
+        L.push(' 일러 재시작 직후 → 가공 1건 후 → 3건 후 로 재세요.');
+        L.push(' · 숫자가 점점 줄면          = 누적 소비(자원 축)');
+        L.push(' · 늘 전량 성공하다 갑자기 0 = 상태 전환(자원 문제가 아님)');
+        elEnvOut.className = 'out' + (okAll ? ' okmsg' : ' err');
+        elEnvOut.textContent = L.join('\n');
       });
     });
 
@@ -464,9 +706,19 @@
       };
     }
 
+    /** config 나이 표기 — 24시간을 넘으면 경고. 생성시각이 없으면 그것도 말한다. */
+    function cfgAgeText(gen) {
+      if (!gen) return ' · ⚠ 생성시각 없음(구버전 에이전트?)';
+      var h = (Date.now() - new Date(gen).getTime()) / 3600000;
+      if (!isFinite(h)) return ' · ⚠ 생성시각 해석 불가';
+      if (h < 1) return ' · 방금';
+      if (h < 24) return ' · ' + Math.round(h) + '시간 전';
+      return ' · ⚠ ' + Math.floor(h / 24) + '일 전 — 에이전트가 멈춘 것 같습니다(신규 거래처·품목이 안 보입니다)';
+    }
+
     // ── config 로드 (cep.fs 우선 → host 폴백) ──
     function applyConfig(text) {
-      var ok = false;
+      var ok = false, gen = '';
       try {
         var root = JSON.parse(text);
         var data = (root && root.data) ? root.data : root;
@@ -484,15 +736,20 @@
         workers = (data && data.workers) ? data.workers : [];       // 가공자↔user id
         clientList = (data && data.clients) ? data.clients : [];    // 거래처 자동완성
         itemList = (data && data.items) ? data.items : [];          // 품목 자동완성(단가 자동 반영의 열쇠)
+        gen = (data && data.generated_at) ? String(data.generated_at) : '';
         ok = true;
       } catch (e) { console.warn('[mes-a0-cep] config parse fail', e); }
       fillWorkerSelect(); // 명단 = config 정본(매핑 우선 → 없으면 전량). showSaved 보다 먼저.
       fillMethodSelects();
       fillPresets();
       showSaved(); // 도메인 라벨·미지정 경고 반영
+      // ★신선도를 보여준다(2026-09-08). config 는 **에이전트 PC 1대**가 5분마다 중계하는데,
+      //   그 조회가 실패하면 에이전트는 옛 파일을 그대로 둔다(Program.cs:1141 = 조용한 유지).
+      //   그러면 신규 거래처·품목이 목록에 없어 `itemIdOf` 가 null 을 내고, **주문서에 품목·단가가
+      //   안 붙는다** — 패널 화면은 정상으로 보인다. 나이를 안 보여주면 아무도 못 알아챈다.
       setCfg(ok ? ('config ✓ 마감 ' + methods.length + '종 · 프리셋 ' + presets.length +
         (clientList.length ? (' · 거래처 ' + clientList.length) : '') +
-        (workers.length ? (' · 가공자 ' + workers.length) : '')) : 'config 파싱 실패 — 마감 수동 입력');
+        (workers.length ? (' · 가공자 ' + workers.length) : '') + cfgAgeText(gen)) : 'config 파싱 실패 — 마감 수동 입력');
       restoreSettings();
       updateClientHit();
       updateItemHit();
@@ -504,7 +761,7 @@
       var text = cepReadUtf8(CONFIG_PATH);
       if (text) { applyConfig(text); return; }
       // 폴백: host(ExtendScript)로 한글경로 읽기
-      csi.evalScript('mesA0_config()', function (res) {
+      hostEval('mesA0_config()', function (res) {
         if (res && res.length) applyConfig(res);
         else {
           methods = []; presets = []; workers = [];
@@ -523,7 +780,7 @@
       //   붙이면 새 호출자에서 또 새므로 진입점에서 막는다(호출자 4곳 + 앞으로 추가될 것들).
       if (hostBusy) return;
       var inkOn = elTrimInk && elTrimInk.checked ? 1 : 0;
-      csi.evalScript('mesA0_measure(' + inkOn + ')', function (res) {
+      hostEval('mesA0_measure(' + inkOn + ')', function (res) {
         var r = null; try { r = JSON.parse(res); } catch (e) {}
         if (r && r.ok) {
           var n = parseInt(elScale ? elScale.value : '1', 10) || 1;
@@ -762,29 +1019,69 @@
       saveSettings();
       out('가공 중… (저장 프리즈 중 잠시 대기)');
       setHostBusy(true, '단건 가공');
-      csi.evalScript('mesA0_paramsPath()', function (pp) {
-        if (!pp) { out('호스트 연결 실패(패널을 일러 안에서 열었는지 확인)', 'err'); setHostBusy(false); return; }
-        var wrote = cepWriteUtf8(pp, JSON.stringify(params));
-        if (!wrote) { out('params 파일 쓰기 실패(' + pp + ')', 'err'); setHostBusy(false); return; }
-        csi.evalScript('mesA0_process()', function (res) {
-          setHostBusy(false);
-          var r = null; try { r = JSON.parse(res); } catch (e) {}
-          if (!r) { out('응답 파싱 실패:\n' + res, 'err'); return; }
-          if (!r.ok) {
-            var em = { noparams: 'params 없음', badparams: 'params 손상', nodoc: '열린 문서 없음', nosel: '객체를 선택하세요', nobounds: '크기 측정 불가', nofolder: 'Z: 등록폴더 생성 실패', noart: '디자인 측정 실패(복제 아트 없음)' };
-            var detail = (r.err === 'noart') ? ('\n(붙여넣기 아이템 ' + r.items + '개 · 선택 ' + r.sel + '개' + (r.copyErr ? (' · copy오류: ' + r.copyErr) : '') + ')') : '';
-            out('가공 실패: ' + (em[r.err] || r.err) + detail, 'err');
-            return;
-          }
+      hostEval('mesA0_paramsPath()', function (pp, bad) {
+        if (!pp) { out('호스트 연결 실패 — ' + (bad || '패널을 일러 안에서 열었는지 확인하세요'), 'err'); setHostBusy(false); return; }
+        // ★성공 렌더를 함수로 뺀다 — manifest 를 패널이 대신 쓴 경우에도 **같은 화면**이
+        //   나와야 한다(등록은 실제로 완성됐다). 두 벌로 두면 한쪽만 고쳐지는 자리가 된다.
+        function renderOk(r, extra) {
           var msg = '가공 완료 ✓\n등록: ' + (params.client_name || '(파일명)') + ' · 수량 ' + params.qty +
             '\n실물: ' + r.w + ' × ' + r.h + ' cm' + (params.scale_n > 1 ? (' (파일 1/' + params.scale_n + ')') : '') +
             '\n' + (r.eps ? ('EPS: ' + r.eps) : '(모아찍기용 — work.ai만)') +
             (r.dxf ? ('\nDXF: ' + r.dxf + ' (재단선 — 돔보 선택분)') : '') +
             '\n폴더: ' + r.folder + warnText(r.warn) +
             '\n[diag] 아이템 ' + r.items + ' · 정규화 ' + r.normed + mbText(r.bytes) +
+            (paramsViaArg ? ' · params=인자경로(이 PC 는 temp 에 못 씁니다)' : '') +
+            (paramsUnreadable ? (' · params=인자재시도 ' + paramsUnreadable + '회(호스트가 파일을 못 읽습니다)') : '') +
+            // 성공했어도 중간에 한 번이라도 못 썼으면(X) 또는 못 지웠으면(*) 말한다 —
+            // 그게 다음 건에서 터질 자리다. 전부 정상이면 굳이 안 띄운다(잡음).
+            ((r.ioprobe && /X|\*/.test(r.ioprobe)) ? ('\n[단계별 파일쓰기] ' + r.ioprobe) : '') +
             '\n→ 에이전트 ingest 후 대기함에 표시됩니다.';
-          out(msg + '\n(후가공 설정은 초기화됨 — 다음 건에 상속되지 않습니다)', 'okmsg');
+          out(msg + (r.outcopy ? ('\n⚠ `_출력` 복사 실패: ' + r.outcopy +
+              '\n  (등록은 됐습니다 — 재단기 픽업 폴더에만 안 들어갔습니다)') : '') +
+            '\n(후가공 설정은 초기화됨 — 다음 건에 상속되지 않습니다)' + (extra || ''), r.outcopy ? 'err' : 'okmsg');
           clearFinishing();  // 등록 완료 = 후가공 리셋. 연속 작업에서 앞 건 마감이 뒤 건에 새는 사고 차단.
+          saveSettings();
+        }
+
+        /**
+         * manifest 를 **패널이 대신 쓴다** (2026-09-09) — 「일러 의존을 끊는다」의 실행부.
+         *
+         * ★왜 필요한가 — 실기(DESKTOP-6JSH6OL)에서 가공 도중 일러 프로세스의 파일 자원이
+         *   고갈된다: 로컬 temp 와 Z: 가 **동시에** I/O 오류이고, 일러 자신의 export 마저
+         *   실패하며(「p0.png 를 내보낼 수 없음」), config.json 180KB 가 0바이트로 읽혔다.
+         *   경로·권한·드라이브·일러 버전 문제가 아니라 **그 순간 그 프로세스**의 문제다.
+         * ★CEP 는 별도 프로세스(CEPHtmlEngine)라 같은 순간에도 멀쩡했다 — 패널 UI 가 뜨고
+         *   응답이 왔다. 그래서 일러가 못 쓰면 패널이 쓴다. 일러 버전·폰트 수와 무관한 길이다.
+         * ★호스트가 물고 있는 원문은 이미 ASCII 로 접혀 있어 인코딩과도 무관하다.
+         */
+        function rescueManifest(r) {
+          out('manifest 를 패널이 대신 쓰는 중… (일러가 파일을 못 쓰는 상태입니다)');
+          rescuePending(function (rr, why) {
+            if (rr) {
+              renderOk(rr, '\n※ manifest 를 패널이 대신 썼습니다 — 이 PC 의 일러가 파일을 못 쓰는 상태입니다(등록은 정상).');
+              return;
+            }
+            out('가공 실패: manifest 저장 실패 — 일러도 패널도 못 썼습니다\n(일러) '
+              + (r.detail || '') + '\n(패널) ' + why, 'err');
+          });
+        }
+
+        runProcess(pp, params, function (r, bad2, res) {
+          setHostBusy(false);
+          if (!r) { out(bad2 ? ('가공 실패: ' + bad2) : ('응답 파싱 실패:\n' + res), 'err'); return; }
+          // ★manifest **만** 못 쓴 경우 = 일러가 파일을 못 쓰는 상태. 여기서 끝내지 않는다.
+          if (!r.ok && r.err === 'manifest' && r.mfpending) { rescueManifest(r); return; }
+          if (!r.ok) {
+            var em = { noparams: 'params 파일을 못 읽음', emptyparams: 'params 파일이 비어 있음(패널 쓰기 실패)', paramswrite: 'params 파일 쓰기 실패', badparams: 'params 손상', nodoc: '열린 문서 없음', nosel: '객체를 선택하세요', nobounds: '크기 측정 불가', noz: 'Z: 등록 폴더가 안 보입니다(드라이브 연결 확인 — 일러를 관리자 권한으로 켰다면 매핑이 안 보입니다)', nofolder: 'Z: 등록폴더 생성 실패', untried: '미시도(앞 건에서 중단)', manifest: 'manifest 저장 실패(Z: 파일 쓰기)', noart: '디자인 측정 실패(복제 아트 없음)' };
+            var detail = (r.err === 'noart') ? ('\n(붙여넣기 아이템 ' + r.items + '개 · 선택 ' + r.sel + '개' + (r.copyErr ? (' · copy오류: ' + r.copyErr) : '') + ')') : '';
+            // 호스트가 실은 실패 사유(f.error·경로) — 이름표만 남기고 버리던 것(2026-09-07)
+            if (!detail && r.detail) detail = '\n(' + r.detail + ')';
+            // ★어느 단계부터 파일을 못 만들었나 — 실패는 **항상** 보여준다(방아쇠 지목용).
+            if (r.ioprobe) detail += '\n[단계별 파일쓰기] ' + r.ioprobe;
+            out('가공 실패: ' + (em[r.err] || r.err) + detail, 'err');
+            return;
+          }
+          renderOk(r, '');
           saveSettings();
         });
       });
@@ -901,11 +1198,11 @@
         if (on) {
           // evalScript 인자는 ASCII 만 안전하다(브릿지 한글 깨짐). label 은 한글이므로 코드로 바꾼다 —
           // 그냥 non-ASCII 를 지우면 '단건 가공' 이 공백만 남아 "누가 뭘 하는 중인지" 를 잃는다.
-          csi.evalScript('mesA0_lockAcquire("' + lockLabel(label) + '")', function (r) {
+          hostEval('mesA0_lockAcquire("' + lockLabel(label) + '")', function (r) {
             if (r && String(r).indexOf('busy:') === 0) console.warn('[mes-a0] host lock busy: ' + r);
           });
         } else {
-          csi.evalScript('mesA0_lockRelease()', function () {});
+          hostEval('mesA0_lockRelease()', function () {});
         }
       } catch (eLock) { /* 잠금은 부가 기능 — 실패해도 A0 진행을 막지 않는다 */ }
     }
@@ -1030,7 +1327,7 @@
       if (hostBusy) { done('작업 중입니다 — 끝난 뒤 다시 눌러 주세요.'); return; }
       setHostBusy(true, '분리');
       var src = (source === 'auto') ? 'auto' : 'sel';
-      csi.evalScript('mesA0_seedBegin("' + src + '",' + gap + ')', function (res) {
+      hostEval('mesA0_seedBegin("' + src + '",' + gap + ')', function (res) {
         var r = null; try { r = JSON.parse(res); } catch (e) {}
         if (!r || !r.ok) {
           setHostBusy(false);
@@ -1057,7 +1354,7 @@
           var sp = null;
           try { sp = seedSplit(G, r, img, gap); }
           catch (eG) { setHostBusy(false); done('성분 분리 실패: ' + eG); return; }
-          csi.evalScript('mesA0_seedApply("' + sp.spec + '")', function (res2) {
+          hostEval('mesA0_seedApply("' + sp.spec + '")', function (res2) {
             setHostBusy(false);
             var r2 = null; try { r2 = JSON.parse(res2); } catch (e2) {}
             if (!r2 || !r2.ok) { done('큐 적재 실패: ' + (r2 ? (SEED_ERR[r2.err] || r2.err) : '호스트 연결 안 됨')); return; }
@@ -1301,7 +1598,7 @@
       // P3(2026-07-29): 이 행이 **어느 그룹인지** 일러에서 보여준다 — 원본 조각을 선택.
       //   mesA0_queueSelect 는 검토·확정 루프가 이미 쓰던 함수를 그대로 재사용(재구현 금지).
       //   실패(문서 닫힘·참조 무효)해도 연동은 유지한다 — 폼 편집까지 막을 이유가 없다.
-      csi.evalScript('mesA0_queueSelect(' + i + ')', function (sres) {
+      hostEval('mesA0_queueSelect(' + i + ')', function (sres) {
         var sr = null; try { sr = JSON.parse(sres); } catch (e) {}
         if (sr && sr.ok) { out(baseMsg + '\n· 일러에서 이 행의 조각 ' + sr.n + '개를 표시했습니다'); return; }
         var em = { range: '행 범위 오류', stale: '원본 객체 참조 무효(문서가 수정됨)', docgone: '원본 문서가 닫힘' };
@@ -1413,7 +1710,7 @@
     function queueRemove(i) {
       if (i < 0 || i >= queue.length) return;
       var expect = queue.length - 1;
-      csi.evalScript('mesA0_queueRemove(' + i + ')', function (res) {
+      hostEval('mesA0_queueRemove(' + i + ')', function (res) {
         var n = parseInt(res, 10);
         if (isNaN(n)) {
           out('호스트에서 조각을 지우지 못했습니다 — 목록을 그대로 둡니다.\n'
@@ -1433,7 +1730,7 @@
     }
 
     if (elBtnQAdd) elBtnQAdd.addEventListener('click', function () {
-      csi.evalScript('mesA0_queueAdd()', function (res) {
+      hostEval('mesA0_queueAdd()', function (res) {
         var r = null; try { r = JSON.parse(res); } catch (e) {}
         if (!r || !r.ok) {
           var em = { nodoc: '열린 문서 없음', nosel: '객체를 선택하세요', nobounds: '크기 측정 불가' };
@@ -1492,8 +1789,8 @@
     });
 
     if (elBtnQClear) elBtnQClear.addEventListener('click', function () {
-      csi.evalScript('mesA0_queueClear()', function () {});
-      csi.evalScript('mesA0_reviewDiscard()', function () {}); // 검토문서도 폐기
+      hostEval('mesA0_queueClear()', function () {});
+      hostEval('mesA0_reviewDiscard()', function () {}); // 검토문서도 폐기
       queue = []; bound = -1; bumpRev(); renderQueue(); out('큐 비움');
     });
 
@@ -1535,8 +1832,11 @@
         else { seqForRow[qi] = qi + 1; }
       }
       var i = 0, fails = [];
+      // ★호스트가 응답을 멈추면 **남은 건을 시도하지 않는다**(2026-09-08) — 계속 돌아 봐야
+      //   같은 실패가 N줄 찍힐 뿐이고, 그 N줄이 진짜 원인(첫 줄)을 가린다.
+      function abortLoop(bad) { fails.push('중단: ' + bad); finishReview(); }
       function finishReview() {
-        csi.evalScript('mesA0_reviewEnd()', function (er) {
+        hostEval('mesA0_reviewEnd()', function (er) {
           reviewBusy = false;
           setHostBusy(false);
           var r = null; try { r = JSON.parse(er); } catch (e) {}
@@ -1562,21 +1862,25 @@
         var p = JSON.parse(JSON.stringify(queue[i].params));
         p.review_only = 1;
         p.seq_no = seqForRow[i];
-        csi.evalScript('mesA0_paramsPath()', function (pp) {
+        hostEval('mesA0_paramsPath()', function (pp, bad) {
+          if (bad) { abortLoop(bad); return; }
           if (!pp) { fails.push('#' + (i + 1) + ' nohost'); i++; step(); return; }
-          cepWriteUtf8(pp, JSON.stringify(p));
-          csi.evalScript('mesA0_queueSelect(' + i + ')', function (selRes) {
+          // ★params 를 파일로 넘길지 인자로 넘길지는 processExpr 가 **동기로** 정한다.
+          //   (cep.fs 가 안 되는 PC 가 있다 — processExpr 주석 참조)
+          var pexpr = processExpr(pp, p);
+          hostEval('mesA0_queueSelect(' + i + ')', function (selRes, bad2) {
+            if (bad2) { abortLoop(bad2); return; }
             var sr = null; try { sr = JSON.parse(selRes); } catch (e2) {}
             if (!sr || !sr.ok) { fails.push('#' + (i + 1) + ' sel:' + (sr ? sr.err : '?')); i++; step(); return; }
-            csi.evalScript('mesA0_process()', function (res) {
-              var r2 = null; try { r2 = JSON.parse(res); } catch (e3) {}
+            runProcessExpr(pexpr, p, function (r2, bad3) {
+              if (bad3) { abortLoop(bad3); return; }
               if (!r2 || !r2.ok) fails.push('#' + (i + 1) + ' ' + (r2 ? r2.err : 'parse'));
               i++; step();
             });
           });
         });
       }
-      csi.evalScript('mesA0_reviewBegin()', function () { step(); });
+      hostEval('mesA0_reviewBegin()', function () { step(); });
     });
 
     // 큐 일괄 등록 루프 — [일괄 확정] 과 [모아찍기 추출](P2 자동분리) 이 **공유**한다. 재구현 금지.
@@ -1586,11 +1890,24 @@
       if (!queue.length || hostBusy) return; // hostBusy = 다른 파이프라인 진행 중(params 파일 공유)
       setHostBusy(true, '진행 중');
       function reenable() { setHostBusy(false); }
-      csi.evalScript('mesA0_batchBegin()', function (bres) {
+      hostEval('mesA0_batchBegin()', function (bres, bad0) {
         var bf = null; try { bf = JSON.parse(bres); } catch (e0) {}
-        if (!bf || !bf.ok) { out('배치 폴더 생성 실패: ' + (bf ? bf.err : 'nohost'), 'err'); reenable(); return; }
+        if (!bf || !bf.ok) {
+          out('배치 폴더 생성 실패: ' + (bad0 || (bf ? (bf.err + (bf.detail ? ('\n' + bf.detail) : '')) : 'nohost')), 'err');
+          reenable(); return;
+        }
         var batchFolder = bf.folder, results = [], i = 0;
         var cancelledAt = -1; // 취소로 멈춘 지점(-1 = 취소 없음). 완료 메시지에 함께 남긴다.
+        // ★브릿지가 죽으면 **남은 건을 시도하지 않는다**(2026-09-08). 2026-09-07 실기 장애에서
+        //   #1 이 진짜 실패한 뒤 #2~14 가 전부 `noparams` 로 찍혔다 — 원인 1건이 증상 13건으로
+        //   번역돼 무엇을 고쳐야 하는지가 가려졌다. 남은 건은 'untried' 로 남겨 큐에 보존한다
+        //   (실패분 보존과 같은 규칙 — 성공분만 큐에서 빠진다).
+        var bridgeDead = '';
+        function abortBatch(bad) {
+          bridgeDead = bad;
+          while (results.length < queue.length) results.push({ ok: false, err: 'untried' });
+          finishBatch();
+        }
         // 식별번호 = 키워드별 순번(같은 키워드끼리 1,2,3). 키워드 없으면 전체순번(파일명 유니크)
         var kwCount = {}, seqForRow = [];
         for (var qi = 0; qi < queue.length; qi++) {
@@ -1603,8 +1920,15 @@
           for (var k = 0; k < results.length; k++) {
             var r = results[k];
             // 모아찍기 = 100MB급 work.ai 가 실제로 나온 경로 → 행별로 용량·경고를 반드시 노출한다.
-            if (r && r.ok) { okN++; okIdx.push(k); lines.push('#' + (k + 1) + ' ✓ ' + (r.eps || '(work.ai)') + (r.dxf ? ' +DXF' : '') + mbText(r.bytes) + warnText(r.warn).replace(/\n/g, ' ')); }
-            else { failN++; lines.push('#' + (k + 1) + ' ✗ ' + (r ? r.err : '?')); }
+            if (r && r.ok) { okN++; okIdx.push(k); lines.push('#' + (k + 1) + ' ✓ ' + (r.eps || '(work.ai)') + (r.dxf ? ' +DXF' : '') + mbText(r.bytes) + warnText(r.warn).replace(/\n/g, ' ') + (r.outcopy ? ' ⚠_출력복사실패' : '')); }
+            // ★사유를 버리지 않는다(2026-09-07) — 이름표만 찍혀 14건 전멸의 원인을 물을 데가 없었다
+            else {
+              failN++;
+              var lbl = (r && r.err === 'untried') ? '미시도(앞 건에서 중단)' : (r ? r.err : '?');
+              // ★프로브도 같이 — 단건에만 넣어 두면 **일괄에서만** 방아쇠를 못 본다(형제 스윕).
+              lines.push('#' + (k + 1) + ' ✗ ' + lbl + (r && r.detail ? ('  ← ' + r.detail) : '')
+                + (r && r.ioprobe ? ('\n     [단계별 파일쓰기] ' + r.ioprobe) : ''));
+            }
           }
           // 검토가 선택 사항이 된 뒤로는 '검토 없이 확정했다'는 사실을 결과에 남긴다(추적 수단)
           var unrev = (reviewedRev !== queueRev) && !queueAllImpose();
@@ -1620,7 +1944,7 @@
             if (!list.length) { done(null); return; }
             var ix = list.pop();
             var expect = queue.length - 1;
-            csi.evalScript('mesA0_queueRemove(' + ix + ')', function (res) {
+            hostEval('mesA0_queueRemove(' + ix + ')', function (res) {
               var n = parseInt(res, 10);
               if (isNaN(n)) {
                 done('#' + (ix + 1) + ' 을 호스트에서 지우지 못했습니다(' + String(res).replace(/^ERROR\s*/, '') + ')');
@@ -1634,7 +1958,7 @@
           removeOk(okIdx.slice(), function (rmErr) {
             bound = -1;
             bumpRev(); // 큐가 바뀌었다 → 재검토 표시가 다시 붙는다
-            csi.evalScript('mesA0_reviewDiscard()', function () {}); // 검토문서 정리(저장물과 무관)
+            hostEval('mesA0_reviewDiscard()', function () {}); // 검토문서 정리(저장물과 무관)
             renderQueue(); reenable();
             if (!queue.length) {
               clearFinishing(); // 전건 성공 = 후가공 리셋(단건 경로와 동일 규칙)
@@ -1642,14 +1966,17 @@
             }
             out((cancelledAt >= 0 ? '취소됨 — ' + cancelledAt + '건 처리 후 중단. ' : '') +
               '일괄 확정 완료: 성공 ' + okN + ' / 실패 ' + failN + (unrev ? ' (미검토 확정)' : '') +
+              (paramsViaArg ? ' · params=인자경로(이 PC 는 temp 에 못 씁니다 — 관리자에게 알려 주세요)' : '') +
               '\n폴더: ' + batchFolder + '\n' + lines.join('\n') +
               (failN
                 ? '\n⚠ 실패 ' + failN + '건은 목록에 남겨 뒀습니다 — 원인을 고친 뒤 [일괄 확정]으로 재시도하세요 (성공분은 제거됨)'
                 : (cancelledAt >= 0
                     ? '\n남은 건은 목록에 있습니다 — [일괄 확정]으로 이어서 진행하세요 (성공분은 제거됨)'
                     : '\n→ 에이전트 ingest 후 대기함'))
+              + (bridgeDead ? '\n⛔ 호스트 연결이 끊겨 **중단**했습니다 — ' + bridgeDead +
+                  '\n  일러스트레이터를 다시 켠 뒤 [일괄 확정]으로 재시도하세요(남은 건은 목록에 있습니다).' : '')
               + (rmErr ? '\n⚠ ' + rmErr + '\n  목록과 호스트가 어긋났습니다 — 패널을 닫았다 다시 여세요(그대로 두면 다른 조각이 가공될 수 있습니다).' : ''),
-              (failN || cancelledAt >= 0 || rmErr) ? 'err' : 'okmsg');
+              (failN || cancelledAt >= 0 || rmErr || bridgeDead) ? 'err' : 'okmsg');
             if (typeof onDone === 'function') onDone(okN, failN);
           });
         }
@@ -1669,14 +1996,28 @@
           p.seq_no = seqForRow[i]; // 키워드별 순번
           p.batch_folder = batchFolder;
           p.batch_index = i + 1;   // 폴더 내 파일 유니크(work_N/thumb_N/manifest_N)
-          csi.evalScript('mesA0_paramsPath()', function (pp) {
+          hostEval('mesA0_paramsPath()', function (pp, bad) {
+            if (bad) { abortBatch(bad); return; }
             if (!pp) { results.push({ ok: false, err: 'nohost' }); i++; step(); return; }
-            cepWriteUtf8(pp, JSON.stringify(p));
-            csi.evalScript('mesA0_queueSelect(' + i + ')', function (selRes) {
+            // ★params 를 파일로 넘길지 인자로 넘길지는 processExpr 가 **동기로** 정한다 —
+            //   cep.fs 가 안 되는 PC(한글 사용자명)에서 전 건 `noparams` 로 떨어지던 경로다.
+            var pexpr = processExpr(pp, p);
+            hostEval('mesA0_queueSelect(' + i + ')', function (selRes, bad2) {
+              if (bad2) { abortBatch(bad2); return; }
               var sr = null; try { sr = JSON.parse(selRes); } catch (e2) {}
               if (!sr || !sr.ok) { results.push({ ok: false, err: 'sel:' + (sr ? sr.err : '?') }); i++; step(); return; }
-              csi.evalScript('mesA0_process()', function (res) {
-                var r = null; try { r = JSON.parse(res); } catch (e3) {}
+              runProcessExpr(pexpr, p, function (r, bad3) {
+                if (bad3) { abortBatch(bad3); return; }
+                // ★manifest **만** 못 쓴 건은 패널이 대신 쓴다 — 단건과 같은 구제(형제 스윕).
+                //   호스트는 직전 1건만 물고 있으므로 **다음 건으로 넘어가기 전에** 부른다.
+                if (r && !r.ok && r.err === 'manifest' && r.mfpending) {
+                  rescuePending(function (rr, why) {
+                    results.push(rr || { ok: false, err: 'manifest',
+                      detail: (r.detail || '') + ' | 패널: ' + why });
+                    i++; step();
+                  });
+                  return;
+                }
                 results.push(r || { ok: false, err: 'parse' });
                 i++; step();
               });
@@ -1746,7 +2087,7 @@
     if (elBtnImposeSplit) elBtnImposeSplit.addEventListener('click', function () { imposeSeed('sel', imposeGapValue()); });
     if (elBtnImposeDetect) elBtnImposeDetect.addEventListener('click', function () { imposeSeed('auto', imposeGapValue()); });
     if (elBtnImposeClear) elBtnImposeClear.addEventListener('click', function () {
-      csi.evalScript('mesA0_queueClear()', function () {});
+      hostEval('mesA0_queueClear()', function () {});
       queue = []; bound = -1; bumpRev(); renderQueue(); out('목록 비움');
     });
     if (elBtnImposeRegister) elBtnImposeRegister.addEventListener('click', function () {

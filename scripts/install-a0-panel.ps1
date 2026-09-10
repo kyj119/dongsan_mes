@@ -143,7 +143,10 @@ foreach ($s2 in $strayCut) {
 
 # ── 3) 미서명 확장 허용 (HKCU — 관리자 불요) ──
 $applied = @()
-foreach ($v in @('10', '11', '12')) {
+# ★버전을 넉넉히 잡는다 (2026-09-08). 이 패널은 **미서명**(.debug 동봉)이라 이 키가 없으면
+#   확장 메뉴에 아예 안 뜬다 — 원인 표시가 없는 실패다. 새 일러가 새 CSXS 를 쓰면 그 PC 만
+#   조용히 패널이 사라지는데, 키 두 개를 더 쓰는 비용은 0 이다. 없는 버전 키는 무해하다.
+foreach ($v in @('10', '11', '12', '13', '14')) {
   $key = "HKCU:\Software\Adobe\CSXS.$v"
   try {
     if (-not (Test-Path $key)) { New-Item -Path $key -Force | Out-Null }
@@ -156,10 +159,23 @@ foreach ($v in @('10', '11', '12')) {
 Write-Step "PlayerDebugMode=1 적용: $($applied -join ', ')"
 
 # ── 4) 검증 ──
+# ★손목록을 쓰지 않는다 (2026-09-08). 여기 8개가 박혀 있던 동안 bleed.js(08-23)·butt.js(09-04)·
+#   placement.js(09-04)·CSInterface.js·css\style.css 는 **검증 밖**이었다 — 부분 복사가 나도
+#   「[설치] 완료 — 이상 없음」이 떴다. `ia:deploy` 는 2026-08-06 에 똑같은 병(배포 대상 손목록)을
+#   고쳤는데(CLAUDE.md「배포 대상을 하드코딩하지 않는다」) 설치기가 그 수정을 못 받았다.
+#   → 소스에 실재하는 배포 대상 **전부**를 대조한다. 목록이 코드가 아니라 파일시스템에서 나온다.
+#   `.bak-*` 은 배포 대상이 아니다 — 호스트의 셸 자동갱신과 **같은 규칙**(mesPanel_isDeployable).
 $problems = @()
-foreach ($f in @('CSXS\manifest.xml', 'index.html', 'js\main.js', 'js\cut-main.js', 'js\tabs.js', 'js\geometry.js', 'js\nesting.js', 'jsx\host.jsx')) {
-  if (-not (Test-Path (Join-Path $dest $f))) { $problems += "누락: $f" }
+$srcFiles = @(Get-ChildItem $srcDir -Recurse -File | Where-Object { $_.Name -notmatch '\.bak(-|$)' })
+if ($srcFiles.Count -eq 0) { $problems += '소스에 배포 대상 파일이 없습니다' }
+foreach ($sf in $srcFiles) {
+  $rel = $sf.FullName.Substring($srcDir.Length).TrimStart('\')
+  $dp  = Join-Path $dest $rel
+  if (-not (Test-Path $dp)) { $problems += "누락: $rel" }
+  elseif ((Get-Item $dp).Length -ne $sf.Length) { $problems += "크기 불일치: $rel" }
 }
+Write-Step "검증 $($srcFiles.Count)개 (소스 기준 — 손목록 아님)"
+
 $stub = Get-Content (Join-Path $dest 'jsx\host.jsx') -Raw -EA SilentlyContinue
 if ($stub -and $stub -notmatch 'evalFile') {
   $problems += 'host.jsx가 스텁이 아닙니다(구버전 전체 로직본) — 리포 최신을 복사하세요'

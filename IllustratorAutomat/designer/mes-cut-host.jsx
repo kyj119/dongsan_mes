@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.38.2';  // 0.38.2 = ★판을 **만들기 전에** 판 규격을 검사한다 — 한계를 넘으면 `documents.add` 가 `PARM`(1346458189) 으로 죽는데 그 코드는 어느 인자가 왜 틀렸는지 말해 주지 않는다. 이제 「판 N 이 1050x13442mm 로 일러 한계 5644mm 를 넘습니다」로 거절한다(판=생산 단위=등록 1건이라 애초에 만들면 안 되는 값이다) · 0.38.1 = ★0.38.0 의 원점 정규화가 **틀린 자리**로 옮기고 있었다 — 새 문서의 아트보드는 [0,h,w,0](y 가 0 에서 **위로**)인데 (0,0) 에 맞춰 아트를 아트보드 **아래**로 보냈다. 캔버스는 아트보드 중심 ±2,886mm 뿐이라 조각이 크면 그대로 `AOoC`(실측: 950x2380 조각을 y=-2385 로, 하한 -1,696). 굽기 격자도 **0.38.0 이전부터** 같은 이유로 아트보드 밖에 깔리고 있었다(그래서 일괄이 실패하고 조각별 폴백으로 떨어졌다) → 세 경로 전부 **아트보드 기준**으로 · 0.38.0 = ★굽기가 한 임시문서에 안 들어가면 **문서를 나눈다** — 여태는 여기서 실패해 패널이 조각당 임시문서를 만드는 옛 경로로 떨어졌다(조각당 4초) · 그 옛 경로(rasterizeItem·rasterize)가 복제본을 **원점으로 안 옮겨** 원본에서 원점에서 먼 조각이 `AOoC`(1095724867)로 죽던 것 정정(실사용: 1050폭 세로 1열 파일의 4번째 조각) · 0.37.0 = ★굳힌 조각 배정을 「가장 가까운 중심」에서 **셀 상자 포함**으로 — 굳힌 PDF 는 조각별 그룹이 아니라 낱개 패스로 풀려(4조각=57개) 넓은 조각의 끝쪽이 옆 조각 중심에 더 가까워 어깋나 **검산이 터지고 판 전체가 조각당 6.5초 경로**로 돌았다(적용 111.9초 중 98.1초) · 0.36.0 = ★굳히기 격자가 **PDF 페이지 한계(200인치=5,080mm)**를 넘어 저장이 취소되던 것 정정 — 캔버스 한계(5,644mm)로 재고 있어 조각이 많으면 판이 조용히 조각당 3초 경로로 떨어졌다(23조각 실패→성공) · 적용 단계별 소요(`ms=`)와 굳히기 실패 이유(`hardenwhy=`)를 결과에 실어 보낸다(판은 불변) · 0.35.0 = ★굽기 export 는 **호출당 고정비가 지배**한다 — 조각마다 exportFile 하던 것을 아트보드 N개 + `exportForScreens` 1회로 (실물 23조각 8,263ms ×2 → 4,841 + 695ms). 경로 규약은 그대로 — 파일을 `Folder.temp` 의 옛 이름으로 옮겨 둔다(안 그러면 도련이 조용히 사라진다) · 0.34.0 = ★칼선에서 **자를 수 없는 부스러기**를 걷어낸다(실물 판 131개 중 15개가 0.01x0mm 3점 조각 — 컬파운드 안쪽이라 안 보였다) · 글자는 글자대로 남긴다(감싸기 안 함) · 0.33.0 = ★회전한 조각의 칼선이 **바깥 사각**으로 나가던 것 정정 — PDF 굳히기 임베드가 만든 사각 클립이 실루에을 덮었다(자르는 게 없는 클립만 걷어낸다) · 0.32.0 = ★굳혀서 배치하는 새 법 — **한 판에 1회**(조각 전부를 계자 PDF 로 한 번 굳힌 뒤 회전 값마다 마스턼 하나 → 배치는 duplicate) — 회전만 걸려도 조각당 3.05초가 붙던 것이 조각 수와 무관해진다 · 0.31.0 = ★등록 manifest 가 저장 배율을 반영한다(measured_cm=실물 · scale_pct=100/N) — 여태 1/2 로 짜면 주문 라인 규격이 1/S · 청구면적이 1/S² 였다 · 0.30.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.29.0 = PDF 아트보드 기준을 잉크 경계로(visibleBounds 로 잡으면 마스크로 가린 여분이 되살아나 조각이 커지고 재단선을 넘는다) · 0.28.0 = 회전도 임베드 앞으로 + **회전만 있어도 PDF 경로**(1:1 회전도 마스크가 안 따라와 배경 절반이 회색) + 검산 기대폭에 회전 반영 · 0.27.0 = 배율 기준을 PDF 아트보드로(배치 직후 보고값은 잘려 있어 +23%) · 확대는 임베드 **전**(뒤로 옮기면 마스크가 안 따라와 배경이 죽는다) · 0.26.0 = 배율 확대 크기 계산을 임베드 **후**로(배치 직후 값은 그림 있는 데까지로 잘려 있어 클립 밖 삐짐 조각이 +23% 크게 나왔다) · 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
+var MESCUT_VERSION = 'CUT-CEP-0.42.0';  // 0.42.0 = ★**0.39.0~0.41.0 회귀 정정(P0)** — `mesCut_outlineStroke` 래퍼 **안**의 `executeMenuCommand` 자리에 호출부 코드가 들어가 래퍼가 자기를 부르고 있었다(무한 재귀). `mesCut_vecSilhouette` 가 예외로 죽어 **칼선이 아예 안 나왔고** 도련도 깨졌다. 두 번째 호출부(도련)는 반대로 **생짜 호출 그대로**라 검산을 안 지났다 — 둘 다 제자리로. ⚠️게이트가 재귀 호출을 「호출부 2곳」으로 **세어** 통과시켰다 → 이제 개수가 아니라 **자리**를 본다(래퍼 안/바깥으로 갈라서 검사) · 0.41.0 = ★굽기 **전후**로 파일을 만들 수 있었는지 잰다(`mesCut_ioProbe`) — 「p0.png 를 내보낼 수 없음」이 굽기 탓인지 **이미 못 쓰는 상태로 들어온 탓**인지 갈린다. pre_ 가 X 면 굽기 탓이 아니다 · ★`mesCut_ioProbeGet` — nestBakeAll 의 ERROR 반환은 자리마다 형태가 달라 사유를 실을 자리가 없는데, **정작 그 경로가 p0.png 다**. 패널이 실패 직후 꺼내 간다 · 0.40.0 = ★manifest 를 못 쓰면 **패널에게 넘긴다**(`mesCut_manifestPending`) — A0 0.9.0 과 같은 계약(형제 스윕: CEP 축의 manifest 쓰기는 둘이다). 시트·EPS·썸네일은 이미 다 나왔고 빠진 것은 manifest 한 장뿐이라, 그것만 CEP 가 쓰면 등록이 완성된다. ⚠️그렇다고 성공으로 보고하지 않는다 — `ERROR ...;mfpending=N` 으로 돌려주므로 **구버전 패널은 여태처럼 실패로 본다**(조용한 성공 금지) · ★`mesCut_asciiFold` — 반환은 ASCII 만 안전한데 manifest 에는 거래처명이 한글로 들어 있다 · 0.39.0 = ★`OffsetPath v22`(획→면)가 **먹었는지 검산**한다 — 명령 ID 에 버전 번호가 박혀 있어(v22) 일러가 번호를 올리면 예외도 0개도 없이 **아무것도 안 한다**. 그러면 실루엣 대신 가느다란 고리가 나오고 그대로 칼선이 되어 재단기까지 간다(:1235 가 「가장 나쁜 실패 방식」이라 부른 그것). 안 먹으면 **칼선을 만들지 않는다** · ★굽기 **변 길이** 상한을 굽기 전에 잰다(`MESCUT_EFS_MAX_PX_SIDE`) — 패널 예산은 **면적**만 봐서 200x8,000mm 조각이 800x32,000px 로 통과했다. 넘으면 일러가 「…을(를) 전송할 수 없습니다」 **모달**을 띄우고 CEP 가 거기서 멈춘다(예외가 아니라 catch 로 못 잡는다) · ★일괄 굽기 실패 사유를 `efswhy=` 로 화면까지 — 옛 경로로 떨어져도 판은 나와서 아무도 몰랐다(조용한 격하) · ★`efsPurge` 가 못 지운 개수를 돌려준다(덮어쓰기 거절의 원인) · ★manifest 에 `ai_version` · 0.38.2 = ★판을 **만들기 전에** 판 규격을 검사한다 — 한계를 넘으면 `documents.add` 가 `PARM`(1346458189) 으로 죽는데 그 코드는 어느 인자가 왜 틀렸는지 말해 주지 않는다. 이제 「판 N 이 1050x13442mm 로 일러 한계 5644mm 를 넘습니다」로 거절한다(판=생산 단위=등록 1건이라 애초에 만들면 안 되는 값이다) · 0.38.1 = ★0.38.0 의 원점 정규화가 **틀린 자리**로 옮기고 있었다 — 새 문서의 아트보드는 [0,h,w,0](y 가 0 에서 **위로**)인데 (0,0) 에 맞춰 아트를 아트보드 **아래**로 보냈다. 캔버스는 아트보드 중심 ±2,886mm 뿐이라 조각이 크면 그대로 `AOoC`(실측: 950x2380 조각을 y=-2385 로, 하한 -1,696). 굽기 격자도 **0.38.0 이전부터** 같은 이유로 아트보드 밖에 깔리고 있었다(그래서 일괄이 실패하고 조각별 폴백으로 떨어졌다) → 세 경로 전부 **아트보드 기준**으로 · 0.38.0 = ★굽기가 한 임시문서에 안 들어가면 **문서를 나눈다** — 여태는 여기서 실패해 패널이 조각당 임시문서를 만드는 옛 경로로 떨어졌다(조각당 4초) · 그 옛 경로(rasterizeItem·rasterize)가 복제본을 **원점으로 안 옮겨** 원본에서 원점에서 먼 조각이 `AOoC`(1095724867)로 죽던 것 정정(실사용: 1050폭 세로 1열 파일의 4번째 조각) · 0.37.0 = ★굳힌 조각 배정을 「가장 가까운 중심」에서 **셀 상자 포함**으로 — 굳힌 PDF 는 조각별 그룹이 아니라 낱개 패스로 풀려(4조각=57개) 넓은 조각의 끝쪽이 옆 조각 중심에 더 가까워 어깋나 **검산이 터지고 판 전체가 조각당 6.5초 경로**로 돌았다(적용 111.9초 중 98.1초) · 0.36.0 = ★굳히기 격자가 **PDF 페이지 한계(200인치=5,080mm)**를 넘어 저장이 취소되던 것 정정 — 캔버스 한계(5,644mm)로 재고 있어 조각이 많으면 판이 조용히 조각당 3초 경로로 떨어졌다(23조각 실패→성공) · 적용 단계별 소요(`ms=`)와 굳히기 실패 이유(`hardenwhy=`)를 결과에 실어 보낸다(판은 불변) · 0.35.0 = ★굽기 export 는 **호출당 고정비가 지배**한다 — 조각마다 exportFile 하던 것을 아트보드 N개 + `exportForScreens` 1회로 (실물 23조각 8,263ms ×2 → 4,841 + 695ms). 경로 규약은 그대로 — 파일을 `Folder.temp` 의 옛 이름으로 옮겨 둔다(안 그러면 도련이 조용히 사라진다) · 0.34.0 = ★칼선에서 **자를 수 없는 부스러기**를 걷어낸다(실물 판 131개 중 15개가 0.01x0mm 3점 조각 — 컬파운드 안쪽이라 안 보였다) · 글자는 글자대로 남긴다(감싸기 안 함) · 0.33.0 = ★회전한 조각의 칼선이 **바깥 사각**으로 나가던 것 정정 — PDF 굳히기 임베드가 만든 사각 클립이 실루에을 덮었다(자르는 게 없는 클립만 걷어낸다) · 0.32.0 = ★굳혀서 배치하는 새 법 — **한 판에 1회**(조각 전부를 계자 PDF 로 한 번 굳힌 뒤 회전 값마다 마스턼 하나 → 배치는 duplicate) — 회전만 걸려도 조각당 3.05초가 붙던 것이 조각 수와 무관해진다 · 0.31.0 = ★등록 manifest 가 저장 배율을 반영한다(measured_cm=실물 · scale_pct=100/N) — 여태 1/2 로 짜면 주문 라인 규격이 1/S · 청구면적이 1/S² 였다 · 0.30.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.29.0 = PDF 아트보드 기준을 잉크 경계로(visibleBounds 로 잡으면 마스크로 가린 여분이 되살아나 조각이 커지고 재단선을 넘는다) · 0.28.0 = 회전도 임베드 앞으로 + **회전만 있어도 PDF 경로**(1:1 회전도 마스크가 안 따라와 배경 절반이 회색) + 검산 기대폭에 회전 반영 · 0.27.0 = 배율 기준을 PDF 아트보드로(배치 직후 보고값은 잘려 있어 +23%) · 확대는 임베드 **전**(뒤로 옮기면 마스크가 안 따라와 배경이 죽는다) · 0.26.0 = 배율 확대 크기 계산을 임베드 **후**로(배치 직후 값은 그림 있는 데까지로 잘려 있어 클립 밖 삐짐 조각이 +23% 크게 나왔다) · 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -1069,6 +1069,52 @@ function mesCut_dropCutSlivers(flat) {
     return { flat: keep, dropped: dropped };
 }
 
+/** 선택 안에 **획이 남아 있는가**. 그룹·컴파운드 안까지 본다. */
+function mesCut_hasStroke(items) {
+    if (!items) return false;
+    for (var i = 0; i < items.length; i++) {
+        var it = items[i], t;
+        try { t = it.typename; } catch (e0) { continue; }
+        if (t === 'GroupItem' || t === 'CompoundPathItem') {
+            var kids = null;
+            try { kids = it.pageItems; } catch (e1) { kids = null; }
+            if (!kids) { try { kids = it.pathItems; } catch (e2) { kids = null; } }
+            try { if (kids && mesCut_hasStroke(kids)) return true; } catch (e3) {}
+            continue;
+        }
+        try { if (it.stroked) return true; } catch (e4) {}
+    }
+    return false;
+}
+
+/**
+ * 획 → 면 (Object > Path > Outline Stroke) — **먹었는지 확인하고** 결과를 돌려준다.
+ *
+ * ★왜 검산하나 — 명령 ID 가 `'OffsetPath v22'` 다. **버전 번호가 박혀 있다**(v22 라는 숫자가
+ *   그 증거다). Adobe 가 번호를 올리면 `executeMenuCommand` 는 예외도 안 내고, 0개를 내지도
+ *   않고, **그냥 아무것도 안 한다.** 그러면 획이 면으로 안 바뀌어 실루엣 대신 가느다란 고리가
+ *   나오고(이 파일 :1079 의 실측), 그게 그대로 칼선이 되어 재단기까지 간다 —
+ *   :1235 가 「그럴듯한 오답 = 가장 나쁜 실패 방식」이라 부른 그것이다.
+ * ★검산은 **의미로** 한다 — 경계는 변하지 않으므로(아웃라인은 같은 면적을 덮는다) 크기로는
+ *   못 잡는다. 「전에 획이 있었는데 후에도 획이 있다」면 명령이 안 먹은 것이다.
+ * ★획이 애초에 없었으면 검산하지 않는다 — 그건 정상이다(면으로만 된 도안).
+ * ⚠️ 반환 문자열은 **ASCII** 다(브릿지 규약, 이 파일 :1966). 사람 말 번역은 패널이 한다.
+ * @returns '' = 정상 · 아니면 사유 코드
+ */
+function mesCut_outlineStroke(doc) {
+    var had = false;
+    try { had = mesCut_hasStroke(doc.selection); } catch (e0) {}
+    // ⚠️ 2026-09-10 사고 — 여기에 **호출부 코드가 들어와** 래퍼가 자기를 부르고 있었다(무한 재귀).
+    //   `mesCut_vecSilhouette` 가 예외로 죽어 **칼선이 아예 안 나왔다**. 게이트는 그 재귀 호출을
+    //   「호출부 2곳」으로 세어 통과시켰다 — 개수가 아니라 **자리**를 봐야 한다.
+    app.executeMenuCommand('OffsetPath v22');   // = Object > Path > Outline Stroke
+    if (!had) return '';
+    var still = false;
+    try { still = mesCut_hasStroke(doc.selection); } catch (e1) {}
+    if (!still) return '';
+    return 'outline-cmd-noop ai=' + app.version + ' (menu id "OffsetPath v22" changed?)';
+}
+
 function mesCut_vecSilhouette(doc, items, cutLayer, offsetMm, fillClosed, styleMode) {
     var i, s;
     var dups = [];
@@ -1093,7 +1139,9 @@ function mesCut_vecSilhouette(doc, items, cutLayer, offsetMm, fillClosed, styleM
     doc.selection = null;
     for (i = 0; i < dups.length; i++) { try { dups[i].selected = true; } catch (eS) {} }
     // 선 → 면. 획만 있는 도안(시트컷 실도안)도 이 한 단계로 실루엣이 된다.
-    app.executeMenuCommand('OffsetPath v22');
+    //   ★먹었는지 확인한다 — 안 먹으면 **틀린 칼선을 만드느니 안 만든다**(mesCut_outlineStroke).
+    var oErr = mesCut_outlineStroke(doc);
+    if (oErr) return { n: 0, anchors: 0, err: oErr };
     mesCut_groupSel(doc);
     app.executeMenuCommand('Live Pathfinder Add');
     app.executeMenuCommand('expandStyle');
@@ -1622,7 +1670,8 @@ function mesCut_vecBleedRegions(doc, items, offsetMm, bleedMm, fillClosed) {
     //     **아웃라인+마이터(mlim2) 676.0 = 이론값과 정확히 일치(평평)**
     doc.selection = null;
     for (i = 0; i < dups.length; i++) { try { dups[i].selected = true; } catch (eS0) {} }
-    app.executeMenuCommand('OffsetPath v22');   // = Object > Path > Outline Stroke
+    var oErr2 = mesCut_outlineStroke(doc);   // = Object > Path > Outline Stroke (+ 먹었는지 검산)
+    if (oErr2) return { ok: false, code: 'outlinecmd', err: oErr2 };
     dups = [];
     try { for (i = 0; i < doc.selection.length; i++) dups.push(doc.selection[i]); } catch (eS1) {}
     if (!dups.length) return { ok: false, code: 'outline', err: '획 아웃라인 실패' };
@@ -2184,14 +2233,42 @@ function mesCut_nestSizes() {
  * 실패한 조각은 그 줄이 빠진다 — 호출자가 idx 로 대조한다.
  */
 /** 내보내기 폴더를 비운다 — ★안 비우면 이번에 실패한 조각이 **지난번 그림**으로 조용히 채워진다. */
+/** @returns 못 지운 파일 수 — 남으면 덮어쓰기가 막혀 export 가 통째로 거절될 수 있다. */
+/** 이번 굽기의 단계별 파일 생성 가능 여부. `mesCut_nestBakeAll` 진입 때 비운다. */
+var MESCUT_IOPROBE = '';
+
+/**
+ * 이 순간 **파일을 만들 수 있는가** — A0 의 mesA0_ioProbe 와 같은 계약 (2026-09-09).
+ * ★`p0.png 를 내보낼 수 없음` 이 뜨는 자리가 여기다. 그 실패가 **굽기 때문에 생긴 것**인지
+ *   **이미 못 쓰는 상태로 들어온 것**인지를 갈라야 무엇을 고칠지 정할 수 있다.
+ * ⚠️ 단계마다 파일명을 다르게 둔다(같은 이름이면 덮어쓰기라 「만들 수 있는가」를 못 잰다).
+ */
+function mesCut_ioProbe(tag) {
+    var p = String(Folder.temp.fsName).replace(/\\/g, '/') + '/mes_ciop_' + tag + '.txt';
+    var okw = mesCut_writeTextUtf8(p, 'x');
+    var left = false;
+    try { var f = new File(p); if (f.exists) left = !f.remove(); } catch (e) { left = true; }
+    MESCUT_IOPROBE += (MESCUT_IOPROBE ? ' ' : '') + tag + '=' + (okw ? (left ? 'OK*' : 'OK') : 'X');
+    return okw;
+}
+
+/**
+ * 마지막 굽기의 단계별 결과를 꺼낸다 — **실패 경로용** (2026-09-09).
+ * ★`nestBakeAll` 의 ERROR 반환은 자리마다 형태가 달라 사유를 실을 자리가 없다. 그런데
+ *   `p0.png 를 내보낼 수 없음` 이 바로 그 경로다 — 정작 알아야 할 때 아무것도 안 나온다.
+ */
+function mesCut_ioProbeGet() { return MESCUT_IOPROBE || ''; }
+
 function mesCut_efsPurge(fold) {
+    var left = 0;
     try {
         var fs = fold.getFiles();
         for (var i = 0; i < fs.length; i++) {
-            if (fs[i] instanceof Folder) { mesCut_efsPurge(fs[i]); try { fs[i].remove(); } catch (e1) {} }
-            else { try { fs[i].remove(); } catch (e2) {} }
+            if (fs[i] instanceof Folder) { left += mesCut_efsPurge(fs[i]); try { fs[i].remove(); } catch (e1) {} }
+            else { try { if (!fs[i].remove()) left++; } catch (e2) { left++; } }
         }
-    } catch (e) {}
+    } catch (e) { }
+    return left;
 }
 
 /**
@@ -2218,20 +2295,39 @@ function mesCut_efsPurge(fold) {
  */
 function mesCut_efsRound(doc, rects, names, mmPerPx, aaOn, tag, idx) {
     var i;
-    if (typeof ExportForScreensType === 'undefined') return null;
+    MESCUT_EFS_WHY = '';
+    if (typeof ExportForScreensType === 'undefined') { MESCUT_EFS_WHY = 'no-efs-api'; return null; }
+    // ★굽기 **전에** 변 길이를 잰다 — 넘으면 일러가 모달을 띄우고 CEP 가 거기서 멈춘다.
+    //   조각 번호와 실제 px 를 사유에 실어, 사람에게 "어느 조각이 얼마나 큰가"를 묻지 않아도 되게 한다.
+    var scale = (1 / mmPerPx) * (25.4 / 72);
+    var over = '', maxSide = 0;
+    for (i = 0; i < rects.length; i++) {
+        var rw = Math.abs(rects[i][2] - rects[i][0]) * scale;
+        var rh = Math.abs(rects[i][1] - rects[i][3]) * scale;
+        if (rw > maxSide) maxSide = rw;
+        if (rh > maxSide) maxSide = rh;
+        if ((rw > MESCUT_EFS_MAX_PX_SIDE || rh > MESCUT_EFS_MAX_PX_SIDE) && !over) {
+            over = names[i] + '=' + Math.round(rw) + 'x' + Math.round(rh);
+        }
+    }
+    if (over) {
+        MESCUT_EFS_WHY = 'px-side-over ' + over + ' > ' + MESCUT_EFS_MAX_PX_SIDE + ' (mmpp=' + mmPerPx + ')';
+        return null;
+    }
     while (doc.artboards.length > rects.length) {
-        try { doc.artboards.remove(doc.artboards.length - 1); } catch (eR) { return null; }
+        try { doc.artboards.remove(doc.artboards.length - 1); } catch (eR) { MESCUT_EFS_WHY = 'ab-remove ' + eR; return null; }
     }
     for (i = 0; i < rects.length; i++) {
         try {
             if (i < doc.artboards.length) { doc.artboards[i].artboardRect = rects[i]; doc.artboards[i].name = names[i]; }
             else { doc.artboards.add(rects[i]).name = names[i]; }
-        } catch (eA) { return null; }
+        } catch (eA) { MESCUT_EFS_WHY = 'ab-set ' + eA; return null; }
     }
     var tmpDir = Folder.temp.fsName.replace(/\\/g, '/');
     var fold = new Folder(tmpDir + '/mes_cut_efs_' + tag);
-    if (fold.exists) mesCut_efsPurge(fold);
-    else { try { if (!fold.create()) return null; } catch (eC) { return null; } }
+    // ★남은 파일을 못 지우면 그것도 사유다 — 덮어쓰기가 막히면 일러가 「전송할 수 없습니다」를 띄운다.
+    if (fold.exists) { var left = mesCut_efsPurge(fold); if (left) MESCUT_EFS_WHY = 'purge-left ' + left; }
+    else { try { if (!fold.create()) { MESCUT_EFS_WHY = 'mkdir-fail'; return null; } } catch (eC) { MESCUT_EFS_WHY = 'mkdir ' + eC; return null; } }
     var o, it;
     try {
         o = new ExportForScreensOptionsPNG24();
@@ -2242,8 +2338,10 @@ function mesCut_efsRound(doc, rects, names, mmPerPx, aaOn, tag, idx) {
         it = new ExportForScreensItemToExport();
         it.document = false;
         it.artboards = '1-' + rects.length;
-    } catch (eO) { return null; }
-    try { doc.exportForScreens(fold, ExportForScreensType.SE_PNG24, o, it, ''); } catch (eE) { return null; }
+    } catch (eO) { MESCUT_EFS_WHY = 'opts ' + eO; return null; }
+    mesCut_ioProbe('pre_' + tag);   // export 직전 — 여기가 X 면 굽기 탓이 아니다
+    try { doc.exportForScreens(fold, ExportForScreensType.SE_PNG24, o, it, ''); } catch (eE) { MESCUT_EFS_WHY = 'export ' + eE; return null; }
+    mesCut_ioProbe('post_' + tag);  // export 직후 — 여기서 처음 X 면 **굽기가 방아쇠**다
     var src = null;
     try {
         var subs = fold.getFiles(function (x) { return x instanceof Folder; });
@@ -2252,15 +2350,17 @@ function mesCut_efsRound(doc, rects, names, mmPerPx, aaOn, tag, idx) {
             if (ff && ff.length) { src = subs[i]; break; }
         }
         if (!src) { var flat = fold.getFiles('*.png'); if (flat && flat.length) src = fold; }
-    } catch (eF) { return null; }
-    if (!src) return null;
+    } catch (eF) { MESCUT_EFS_WHY = 'scan ' + eF; return null; }
+    // ★파일이 하나도 안 나온 것과 일부만 나온 것을 가른다 — 일러가 모달로 거절하면
+    //   예외가 없어서 여기까지 조용히 내려온다(그게 2026-09-08 `p0.png` 의 모양이다).
+    if (!src) { MESCUT_EFS_WHY = 'no-output (' + rects.length + 'ab · maxside=' + Math.round(maxSide) + 'px)' + (MESCUT_EFS_WHY ? (' | ' + MESCUT_EFS_WHY) : ''); return null; }
     var base = src.fsName.replace(/\\/g, '/'), out = [];
     for (i = 0; i < rects.length; i++) {
         var from = new File(base + '/' + names[i] + '.png');
-        if (!from.exists) return null;
+        if (!from.exists) { MESCUT_EFS_WHY = 'missing ' + names[i] + '.png (maxside=' + Math.round(maxSide) + 'px)'; return null; }
         var to = tmpDir + '/mes_cut_' + tag + '_' + idx[i] + '.png';
         try { var tf = new File(to); if (tf.exists) tf.remove(); } catch (eD) {}
-        if (!from.copy(to)) return null;
+        if (!from.copy(to)) { MESCUT_EFS_WHY = 'copy-fail ' + names[i] + ': ' + from.error; return null; }
         out.push(to);
     }
     return out;
@@ -2311,6 +2411,8 @@ function mesCut_nestBakeAll(mmPerPx, padMm, fillClosed, tag, bleedTag) {
     //   ASCII 로 강제한다 — 경로가 evalScript 브릿지를 타지는 않지만 파일명이 깨지면 못 찾는다.
     tag = String(tag == null ? 'nest' : tag).replace(/[^A-Za-z0-9_]/g, '');
     if (!tag) tag = 'nest';
+    MESCUT_IOPROBE = '';
+    mesCut_ioProbe('start');       // 굽기에 들어오기 전 — 이미 못 쓰는 상태인가?
     var srcDoc = app.activeDocument;
     var PT = MESCUT_PT_PER_MM;
     var padPt = padMm * PT;
@@ -2342,19 +2444,22 @@ function mesCut_nestBakeAll(mmPerPx, padMm, fillClosed, tag, bleedTag) {
     var groups = mesCut_bakeGroups(cellW, cellH);
     if (!groups.length) return 'ERROR 크기 0';
 
-    var lines = [], nFill = 0, nFast = 0, g;
+    var lines = [], nFill = 0, nFast = 0, g, efsWhy = '';
     for (g = 0; g < groups.length; g++) {
         var r = mesCut_bakeOneDoc(srcDoc, groups[g], srcBB, cellW, cellH, padPt, mmPerPx, fillClosed, tag, bleedTag, n);
         // 한 문서라도 실패하면 통째로 실패시킨다 — 반쪽 결과를 넘기면 패널이 조각 일부만 배치한다
         if (r.err) return 'ERROR nestBakeAll: ' + r.err;
         for (i = 0; i < r.lines.length; i++) lines.push(r.lines[i]);
         nFill += r.nFill; nFast += r.fast;
+        if (!efsWhy && r.efswhy) efsWhy = r.efswhy;   // 첫 사유만 — 같은 원인이 문서마다 반복된다
     }
     if (!lines.length) return 'ERROR 구운 조각 0개';
     // ★`fastbake` 는 **전 문서가 빠른 길로 갔을 때만** 1 이다 — 하네스(cut:e2e [K])가 이 값을 본다.
     var fastBake = (nFast === groups.length) ? 1 : 0;
     return 'ok;n=' + lines.length + ';mmpp=' + mmPerPx + ';filled=' + nFill
         + ';fastbake=' + fastBake + ';docs=' + groups.length
+        + (efsWhy ? (';efswhy=' + mesCut_kvSafe(efsWhy)) : '')
+        + (MESCUT_IOPROBE ? (';ioprobe=' + mesCut_kvSafe(MESCUT_IOPROBE)) : '')
         + '\n' + lines.join('\n');
 }
 
@@ -2485,7 +2590,9 @@ function mesCut_bakeOneDoc(srcDoc, idxs, srcBB, cellW, cellH, padPt, mmPerPx, fi
         //   실패하면 아래 옛 경로가 그대로 받는다(구 일러·상한 초과·API 거부).
         if (!MESCUT_EFS_OFF) {
             try { fastBake = mesCut_bakeScreens(tmp, boxes, srcBB, padPt, mmPerPx, tag, bleedTag, lines, f) ? 1 : 0; }
-            catch (eFS) { fastBake = 0; }
+            catch (eFS) { fastBake = 0; MESCUT_EFS_WHY = 'bake-throw ' + eFS; }
+            // ★조용히 느려지지 않는다 — 왜 옛 경로로 떨어졌는지를 결과까지 나른다.
+            if (!fastBake) out.efswhy = MESCUT_EFS_WHY || 'unknown';
         }
         if (!fastBake) {
             lines = [];   // 부분 성공 잔재를 남기지 않는다
@@ -2904,6 +3011,21 @@ var MESCUT_HARDEN_OFF = false;
 var MESCUT_EFS_OFF = false;
 // 아트보드 상한(일러 1000). 넘으면 옛 경로로 간다 — 쪼개서 여러 번 부르는 복잡도를 살 만한 자리가 아니다.
 var MESCUT_EFS_MAX_AB = 900;
+/**
+ * 굽기 PNG 의 **한 변** 상한(px). 면적이 아니라 변이다.
+ *
+ * ★왜 따로 필요한가 — 패널의 예산(`BAKE_MAX_PX` 32M)은 **면적**만 본다. 200×8,000mm 조각을
+ *   0.25mm/px 로 구우면 800×32,000px = 25.6M px 라 **예산은 통과하는데 한 변이 32,000px** 이다.
+ *   길고 좁은 조각(현수막·띠)이 정확히 그 모양이고, 일러는 그 자산을 못 만들면
+ *   「…을(를) 전송할 수 없습니다」 **대화상자**를 띄운다 — 예외가 아니라서 catch 로 못 잡고,
+ *   모달이라 CEP 콜백이 그 자리에서 멈춘다.
+ * ★그래서 **굽기 전에** 잰다. 0.38.2 가 판 mm 한계를 미리 검사하게 만든 것과 같은 규칙 —
+ *   만들면 안 되는 값은 만들기 전에 거절한다.
+ * ⚠️ 16384 는 일러 래스터의 통상 상한이다. 실측으로 더 낮은 값이 확인되면 여기만 고친다.
+ */
+var MESCUT_EFS_MAX_PX_SIDE = 16384;
+/** 마지막 일괄 굽기가 왜 안 됐나 — 비면 정상. 결과의 `efswhy=` 로 화면까지 올라간다. */
+var MESCUT_EFS_WHY = '';
 
 /**
  * (1) 조각 전부를 임시 문서 하나에 격자로 모아 **PDF 한 번** 굳힌다.
@@ -3779,9 +3901,56 @@ function mesCut_pad2(n) { return (n < 10 ? '0' : '') + n; }
 function mesCut_sanitize(s) {
     return String(s == null ? '' : s).replace(/[\\\/:*?"<>|]/g, '_').replace(/^\s+|\s+$/g, '');
 }
+/**
+ * `;k=v` 응답에 실을 수 있는 형태로 — 구분자(`;`)·줄바꿈·비ASCII 를 없앤다.
+ * ★사유 문자열이 형식을 깨면 패널의 파서가 **다른 키를 잘못 읽는다**(조용한 오독).
+ */
+function mesCut_kvSafe(s) {
+    return String(s == null ? '' : s)
+        .replace(/[^\x20-\x7E]/g, '?')
+        .replace(/[;\r\n]/g, ' ')
+        .substring(0, 200);
+}
+
 function mesCut_jsonEsc(s) {
     return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]/g, ' ');
 }
+/**
+ * 비ASCII 를 \uXXXX 로 접는다 — evalScript **반환은 ASCII 만 안전**하다(브릿지 규약).
+ * manifest 원문에는 거래처명·파일명이 한글로 들어 있어 그대로는 못 보낸다. 접어도 JSON 은
+ * 유효하고(표준 이스케이프), 파일로 쓰면 인코딩과 무관해진다 — A0 의 mesA0_jsonEsc 와 같은 쌍.
+ */
+function mesCut_asciiFold(s) {
+    return String(s == null ? '' : s).replace(/[\u007F-\uFFFF]/g, function (c) {
+        return '\\u' + ('0000' + c.charCodeAt(0).toString(16)).slice(-4);
+    });
+}
+
+/**
+ * 브릿지로 내보낼 문자열 — **순서가 곧 정확성**이다 (A0 의 mesA0_jsonEsc 와 같은 규약).
+ * ⚠️ 역슬래시·따옴표를 **먼저** 접고 그 다음에 \uXXXX 를 만든다. 뒤집으면 방금 만든 \u 의
+ *    역슬래시가 다시 접혀 `\uXXXX` 가 되고, 패널의 JSON.parse 는 그것을 **글자 그대로**
+ *    되돌린다 — 경로가 `Z:/DESIGNS/IA-\uB4F1\uB85D/...` 이 되어 아무 데도 못 쓴다.
+ */
+function mesCut_bridgeEsc(s) { return mesCut_asciiFold(mesCut_jsonEsc(s)); }
+
+/**
+ * 못 쓴 manifest 를 패널에게 넘긴다 (2026-09-09) — A0 의 mesA0_manifestPending 과 같은 계약.
+ * ★일러 프로세스의 파일 자원이 고갈되면 ExtendScript 도 일러 자신도 파일을 못 만든다.
+ *   CEP 는 별도 프로세스라 그 순간에도 쓸 수 있다 → 등록을 완성시킬 유일한 경로다.
+ */
+function mesCut_manifestPending() {
+    var A = $.global.mesCutMfPending || [];
+    var o = [];
+    for (var i = 0; i < A.length; i++) {
+        o.push('{"path":"' + mesCut_bridgeEsc(A[i].path) +
+            '","mf":"' + mesCut_bridgeEsc(A[i].mf) + '"}');
+    }
+    return '{"ok":true,"items":[' + o.join(',') + ']}';
+}
+/** 패널이 다 썼다 — 물고 있던 것을 놓는다. */
+function mesCut_manifestDone() { $.global.mesCutMfPending = []; return 'ok'; }
+
 function mesCut_writeTextUtf8(path, s) {
     var f = new File(path);
     try { f.encoding = 'UTF-8'; f.open('w'); f.write(s); f.close(); return true; }
@@ -3809,6 +3978,7 @@ function mesCut_nestRegister() {
     var userName = '';
     try { userName = $.getenv('USERNAME') || ''; } catch (eU) {}
 
+    $.global.mesCutMfPending = [];   // 앞 건의 잔여를 끌고 가지 않는다
     var srcDoc = app.activeDocument;
     var made = 0, folders = [];
     for (var s = 0; s < MESCUT_NEST_DOCS.length; s++) {
@@ -3819,6 +3989,8 @@ function mesCut_nestRegister() {
         made++;
     }
     try { app.activeDocument = srcDoc; } catch (e1) {}
+    var pend = ($.global.mesCutMfPending || []).length;
+    if (pend) return 'ERROR manifest 쓰기 실패;mfpending=' + pend + ';folders=' + made;
     return 'ok;folders=' + made;
 }
 
@@ -3903,6 +4075,8 @@ function mesCut_saveOneSheet(doc, idx, R, clientName, pcName, userName) {
     var mf = '{'
         + '"manifest_version":1'
         + ',"script_version":"' + mesCut_jsonEsc(MESCUT_VERSION) + '"'
+        // ★어느 일러에서 나온 판인가 — 가공 호스트와 같은 이유(사후 관측 기록)
+        + ',"ai_version":"' + mesCut_jsonEsc(app.version) + '"'
         + ',"registered_by":"' + mesCut_jsonEsc(pcName + '\\' + userName) + '"'
         + ',"worker_name":' + (R.WORKER ? ('"' + mesCut_jsonEsc(R.WORKER) + '"') : 'null')
         + ',"worker_id":' + (R.WORKERID ? R.WORKERID : 'null')
@@ -3946,7 +4120,15 @@ function mesCut_saveOneSheet(doc, idx, R, clientName, pcName, userName) {
         + ',"registered_at":"' + now.getFullYear() + '-' + mesCut_pad2(now.getMonth() + 1) + '-' + mesCut_pad2(now.getDate())
         + ' ' + mesCut_pad2(now.getHours()) + ':' + mesCut_pad2(now.getMinutes()) + ':' + mesCut_pad2(now.getSeconds()) + '"'
         + '}';
-    if (!mesCut_writeTextUtf8(jobFolder.fsName + '/manifest.json', mf)) return 'ERROR manifest 쓰기 실패';
+    // ★못 써도 여기서 끝내지 않는다 — 시트·EPS·썸네일은 **이미 다 나왔고**, 빠진 것은
+    //   manifest 한 장뿐이다. 그것만 패널이 대신 쓰면 등록이 완성된다(2026-09-09).
+    //   ⚠️ 그렇다고 성공으로 보고하지는 않는다 — 아래 mesCut_nestRegister 가 pending 을 세어
+    //      **ERROR 로 돌려준다**. 구버전 패널은 여태처럼 실패로 보고, 새 패널만 구제한다.
+    var mfPath = jobFolder.fsName + '/manifest.json';
+    if (!mesCut_writeTextUtf8(mfPath, mf)) {
+        if (!$.global.mesCutMfPending) $.global.mesCutMfPending = [];
+        $.global.mesCutMfPending.push({ path: mfPath, mf: mf });
+    }
     return folderName;
 }
 

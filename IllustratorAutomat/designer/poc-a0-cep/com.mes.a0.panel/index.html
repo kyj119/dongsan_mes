@@ -32,8 +32,13 @@
         <span id="ver" class="ver"></span>
         <span id="cutVer" class="ver hidden"></span>
       </span>
+      <button id="btnEnv" type="button" class="mini title-btn" title="이 PC 환경 점검 — Z: 연결·temp·버전·config">⚙</button>
+      <button id="btnStress" type="button" class="mini title-btn" title="부하 시험 — 지금 파일을 몇 개까지 만들 수 있나(자원 축인지 판정)">⏱</button>
       <button id="btnHelp" type="button" class="mini title-btn hidden" title="설명 보기/숨기기">?</button>
     </div>
+    <!-- 환경 점검 결과 — **탭 밖**에 둔다. 준비가 안 된 PC 는 어느 탭에서든 증상이 나므로
+         결과도 어느 탭에서든 보여야 한다(가공 탭 #out 에 쓰면 재단 탭에서는 안 보인다). -->
+    <div id="envOut" class="out hidden"></div>
 
     <div class="mainbar">
       <button class="mtab active" data-main-tab="a0" type="button">가공</button>
