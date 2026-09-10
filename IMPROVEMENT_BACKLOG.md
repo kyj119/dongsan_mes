@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-09-10T16:10:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-09-10T21:40:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,28 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **25** (`list_issues(state:OPEN,label:auto-improve)` 실측, 24→25, #644 신규) |
+| 🆕 new | **26** (`list_issues(state:OPEN,label:auto-improve)` 실측, 25→26, #645 신규) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **542** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 3 UX/기능 감사 (2026-09-10T21:40):**
+> - **방법**: 세션 시작 시 detached HEAD `b1876e0f`(origin/main과 동일)였으나 얕은 clone(50커밋) → `git fetch origin main`이 "forced update" 경고를 냈으나 `git fetch --unshallow` 후 `eecca71`이 `b1876e0f`의 조상임을 재확인(얕은 clone 아티팩트, 실제 force-push 아님) → `git checkout main` + `git merge --ff-only origin/main`(54커밋 fast-forward)으로 정합. `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area3 방법 라인 HEAD `57891a1`)**: `src/pages`+`src/scripts` 좁힌 화면 churn **8커밋** — 발주/입고 "롤 단위 발주 + 사후입고 + 검수큐" 4단계 신규 기능(`1c42bb2e`·`6809aaad`·`485ebf0a`·`391c626e`, 09-10 당일 배포) + 은행 탭합계 기간종속 수정(`1fe56196`) + 은행 미반영사유 칩(`3907d501`, Area5가 이미 보안렌즈로 정독) + 주문 라인 과금축 스냅샷 프론트 반영(`79642f82`, Area1/2/4/6이 계산·데이터 렌즈로 이미 정독) + 로딩 성능(`4653bd97`, dedupe on-load fetches — 알림생성 10분 쓰로틀·카테고리 중복요청 제거, prod Playwright 실측 기반).
+> - **🔴 신규 발견 → #645 — 발주 목록 "검수 대기"(REVIEW) 필터를 조건저장/기본값으로 저장하면 복원 시 조용히 풀림**: `purchaseOrders.js` `poReadFilters()`(L164)는 스냅샷에 `overdue`뿐 아니라 이번에 신설된 `review: currentStatus === 'REVIEW'`도 담는데, 복원 함수 `poApplyFilters()`(L888)는 `currentStatus = f.overdue ? 'OVERDUE' : (f.status || '')`로만 복원해 `f.review`를 안 읽는다 — REVIEW로 필터링해 저장한 프리셋을 불러오면 전체 목록으로 조용히 풀린다. 같은 커밋(`391c626e`)의 메시지가 스스로 "한 SQL 문자열을 카드와 목록이 같이 써야 한다, 두 벌로 두면 카드는 3건인데 목록은 5건" 클래스를 경고했는데, 그 경고가 안 미친 두 번째 파생상태(`review`)가 정확히 그 패턴으로 새로 생김 — SQL이 아니라 **프론트 필터 복원 로직**에서. 가장 심각한 경로 = "기본으로"(페이지 진입 시 자동 적용) 프리셋으로 지정하면 매번 검수 대기가 아니라 전체 목록이 뜨는데 에러가 없어 알아채기 어려움 — 신설된 검수 큐(0612, "확인해야 할 걸 기억으로 안 찾게") 기능 목적 자체가 이 경로에서 무력화됨. **issue-only(#645, S, 순수 JS 상태복원 버그이나 Area3 정책상 자동수정 대상 아님)**.
+> - **롤 발주/입고 4단계 나머지 전문 검토 — net-new 결함 0건**: `poCalcQtyFromPacks`/`recvPacksChanged`의 "롤×팩사이즈 자동계산 vs 사람이 손으로 고치면 안 덮음" 가드(`dataset.touched`, `oninput` vs JS `.value=` 직접대입이 이벤트를 안 쏘는 성질 정확히 활용) 확인 — 회귀 없음. `adhocCreate`(발주 없이 입고)는 `window.prompt()`로 수량만 받고 금액은 0으로 둔 채 서버에 위임(커밋 메시지가 명시한 의도적 설계, 현장 부담 최소화) — 버그 아님. `PO_REVIEW_PENDING_SQL`을 목록필터(`listFilter.ts`)·통계(`po-queries.ts`) 양쪽이 동일 상수로 import해 카드=목록 수 불일치 재발은 막혀 있음(SQL 레벨은 정상, 위 #645는 그 위의 프론트 상태 계층에서 발생).
+> - **은행 탭합계 기간종속 수정(`1fe56196`) 재확인**: `buildTxScopeParams()` 분리로 `loadStats()`가 목록과 **같은 범위**(계좌·기간·입출금, 상태 제외)를 쿼리 — 월 마감이 불가능했던 원인(전체기간 합계 vs 필터된 목록) 해소 확인, "전체기간" 리셋 버튼도 flatpickr 인스턴스 유무 분기 정상. UX 결함 없음.
+> - **로딩 성능(`4653bd97`) 재확인**: 알림생성 10분 쓰로틀은 실패 시에도 스탬프를 먼저 찍어(성공/실패 무관 10분 후 재시도) 폭주는 안 나되 실패 시 즉시 재시도는 안 됨 — 코멘트가 명시한 트레이드오프와 일치, 결함 아님. `items/core.js`+`items/tabs.js` 카테고리 공유요청(`window.fetchItemCategories`)도 경쟁조건 없이 정상 폴백.
+> - **standing scan 1: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 2: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 8런(HEAD `b1876e0f` 포함) 전부 `conclusion:success`.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` totalCount **25**(신규 등록 전) 기존 25건 전건 일치(#613~644) 확인 후 #645 신규 생성.
+> - **backlog↔GitHub 절대값 재동기화**: open **26**(25→26, #645 신규) · done **542**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 이번 발견(파생 필터 상태 중 일부만 복원 경로에 반영)은 #641(헤더-데이터 칸수 불일치)과 같은 "형제 요소 미완결 sweep" 결의 변형 — 재발 시(파생 status 3개 이상 되는 페이지에서 유사 패턴) "poApplyFilters류 복원 함수는 poReadFilters류 스냅샷 함수가 반환하는 키 전부를 커버하는지 diff" 레시피로 codify 고려, 이번 1건뿐이라 보류.
+> - **백로그 트림 체크**: 사이클 로그 8건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 1건(#645 발주 검수 대기 필터 프리셋 복원 누락, S, issue-only), 자동수정 0건(정책상 Area3은 issue-only), done-sync: open 25(25→26)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-09-10T16:10):**
 > - **방법**: 세션 시작 시 detached HEAD `485ebf0`(origin/main과 동일)였으나 얕은 clone(50커밋) → `git checkout main`(47커밋 뒤처짐) + `git merge --ff-only origin/main`으로 정합 + `git fetch --unshallow`(2,870여 커밋 확보). `npm ci`(0→81), `npx tsc --noEmit` clean.
