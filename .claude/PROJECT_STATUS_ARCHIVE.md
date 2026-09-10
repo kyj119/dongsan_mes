@@ -33,6 +33,31 @@ main 에 없던 것: `mesCut_outlineStroke`(0.39.0 — OffsetPath v22 가 먹었
 `src/` 전량(`rollConsumption.ts`·`orderLineCost.ts`·`autoDeductInventory.ts` 등은 **main 이 더 앞선다**) · 코팅 마이그 2개
 (`main:0603`·`0602` 와 동일) · blob 동일 파일 6개. **prod 동작은 안 바뀐다** — 순수 저장소 무결성 복구.
 
+### `PER_AREA_ROLL` — 채택함 (2026-09-10, `2ff8e548`)
+prod 실측이 판단을 갈랐다: `PER_AREA_ROLL` 행 **4/4 전부 `1.3m × 50m = 65㎡` 정확 일치(편차 0.0%)** — 폭이 유일하게 확정되므로
+「param 에서 폭을 역산할 수 없다」는 미구현 사유가 성립하지 않는다. 영향 = **298라인 · 196주문 · 1억 2,478만원**.
+- 기존 숫자는 **안 바뀐다** — 지금 `null`(unsupported→PARTIAL)인 것만 채운다. 청구·금액 축은 무관.
+- 픽스처가 커밋에 동봉돼 있었다(`orderline-cost-selftest.cjs`, `test:calc` 체인 · 62건 통과).
+- cherry-pick 이 충돌 없이 붙었고 main 의 개선 5종(`isExplicitNonDefault`·`material_role`·`groupByRole`·`baseRoleOnly`·`number|boolean`)이 전부 살아 있다. 삭제된 코드 줄 0.
+
+### IA 게이트 74건 회수 (`3893f417`)
+호스트를 0.42.0/0.11.0 으로 올렸는데 **그것을 읽는 게이트는 옛 버전**이었다 — `cut-panel-smoke` 28건 · `panel-smoke` 46건 누락.
+누락분에 **9월 4일 칼선 사고 방어의 게이트**가 들어 있었다: 「OffsetPath 는 검산 래퍼 안에서만 불린다」·「래퍼가 자기를 부르지 않는다」·「호출부는 래퍼 바깥에 둘이다」.
+→ **호스트만 옮기고 게이트를 두면 repo 가 검증되지 않는 방어를 서술하게 된다.**
+- main 에만 있던 2건은 **낡은 판**이었다: ①`3u 학습 실패를 삼킨다` — `ee856875` 가 `_mapErr`→`mapErr` 로 바꾼 뒤 **계속 빨간불이었다**
+  (제 작업 전 `b1876e0f` 에서도 실패 확인). 새 판은 철자가 아니라 **규칙**을 센다(흡수는 성공·사유는 남는다·throw 없음).
+  ②`3l EPS 옵션이 A0 와 동일` — 0.11.0 이 `embedAllFonts` 를 **의도적으로 조건부**로 바꿨다(아웃라인 후엔 임베드할 폰트가 없는데 true 면
+  폰트 2,159개 PC 에서 문서 폰트를 전부 열어 프로세스 파일 자원이 고갈됐다). 형식 옵션 3종만 못박고 조건부는 별도 검사로.
+- 결과: cut:smoke **520/522 → 548/548** · panel:smoke **142/142 → 188/188** · 나머지 재단 게이트 5종·`audit:ia-jsx` 전부 통과.
+
+### costGuard — 착수하지 않음 (`origin/claude/cloudflare-billing-limit-3t5up3`)
+설계 자체는 안전하다: `until` 이 설정될 때만 작동(기본 비활성) · 조회 실패 시 **차단 안 함**(fail-open) · 시각 만료로 자동 해제 ·
+로그인·화면진입·쓰기·에이전트는 대상 아님 · 판정이 순수 함수(`guardTarget`)로 분리돼 게이트가 있다.
+**막힌 것은 기술이 아니라 결정이다** — cherry-pick 시 충돌 6건 중 둘(`cards/misc.js`·`schedule.js`)이 **칸반 폴링 주기**다:
+main 은 10일 전 **60초**로 내렸고(30초는 1주기 `/api/cards` 4연타 → 모니터 탭 하나가 하루 11,520 요청) 이 브랜치는 **30초**로 되돌린다
+(`MES_POLL` 이 숨은탭·유휴백오프·차단기를 대신 맡는다는 논거). **$125 사고와 같은 축의 정책 결정이라 사람이 고른다.**
+89 behind 라 방치할수록 `settings.ts`·`shell.js` 충돌면이 커진다 — 다음 세션 우선순위로.
+
 ### 남은 결정 — `PER_AREA_ROLL`
 `feat/work-order-print` 의 `e7cde98f` 만 미회수. main 은 `86c127fc` 로 **명시적 미구현**(롤 수 × base단가 = pack_size 배 어긋남),
 브랜치는 `areaSqm ÷ widthM` 미터 환산 + param 5% 검산으로 반박 구현. 프레임간판 원단교체 매출 **1,857만원**의 원가가 0 이다.

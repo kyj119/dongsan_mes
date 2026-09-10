@@ -68,6 +68,8 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 - 적용 순서는 번호가 아니라 **전체 파일명 사전순**이다. 같은 번호 둘의 선후는 뒷부분 이름이 정한다 — 의존이 있으면 번호를 다시 딴다.
 - **wrangler 는 번호가 아니라 전체 파일명으로 추적한다**(`d1_migrations.name`). 이미 prod 에 적용된 파일을 **재번호하면 그 마이그레이션이 한 번 더 실행된다** — 다른 브랜치에서 회수할 때 파일명을 보존해야 하는 이유다.
 - 게이트 없음(미구현). 새 마이그레이션을 만들 때 `ls migrations/ | cut -c1-4 | sort | uniq -d` 로 직접 확인.
+- **prod 행 id 를 하드코딩한 데이터 마이그는 `WHERE EXISTS` 로 감싼다** — 신규 환경에는 그 행이 없어 **FK 위반으로 죽고**, 그 경로가 `db:bootstrap:ci`(= CI 의 `canary:write:ci`)라 **CI 가 통째로 깨진다**. `0573` 이 발주 id 7개를 박아 정확히 그랬다(2026-09-10 회수 때 발견). `INSERT ... SELECT ... WHERE EXISTS (SELECT 1 FROM <부모> WHERE id=…)` 로 감싸면 로컬은 no-op, prod 는 동작 불변이다.
+- **적용 여부는 `d1_migrations` 로 판정할 수 없다** — 추적이 `0313` 에서 끊겼다(312건이 전부). 「prod 에 들어갔나」는 **그 마이그가 만든 데이터를 직접 조회해서** 확인한다(품목 존재·컬럼값·건수).
 
 ### 목록 정렬 = 고유키 tie-break 필수 (`ORDER BY`)
 목록 쿼리의 `ORDER BY`에 **고유 컬럼(`id`) tie-break를 반드시 마지막에** 붙인다. 이관·배치 INSERT 데이터는 `created_at`이 초 단위까지 동일해(발주 258건 중 241건 동일) 동값 구간이 rowid ASC=**오래된 순으로 뒤집혀 표시**되고, `LIMIT/OFFSET` 페이징도 페이지 간 중복·누락이 난다.
