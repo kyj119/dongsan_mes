@@ -241,15 +241,28 @@ export function selectRollPlacement<T extends RollCandidate>(
       return best
     }
 
-    // 폴백 — 어느 원단에도 통으로 안 들어간다. **최대 폭**으로, **분할 수가 최소**가 되게 나눈다.
-    // (여기서 폭을 더 좁혀 가며 최저가를 찾으면 ★★★ 의 분할 폭주가 그대로 되살아난다)
+    // 폴백 — 어느 원단에도 통으로 안 들어간다. **분할 수는 최대 폭 기준 최소**로 못 박고
+    // (여기서 분할 수를 늘려 가며 최저가를 찾으면 ★★★ 의 분할 폭주가 그대로 되살아난다),
+    // 그 분할 수 안에서 **폭을 균등하게 나눠** 각 패널을 덮는 원단을 고른다.
+    //
+    // ★종전엔 패널을 **전부 최대 폭 롤**로 계산했다. 그래서 자투리 한 조각이 전폭 한 장 값을 받았다 —
+    //   `AQ-WDB 4400×330 ×2장` 은 짧은 변 3,300mm 가 3,200 폭을 **100mm 넘겨** 전폭 2장이 되어
+    //   재료비 91만원(청구 61만원, 원가율 150%)이 나왔다. 실제로는 **165+165 로 균등 분할**해
+    //   1,700 폭 두 장으로 만든다(용준님 확인 2026-09-10) — 18만원이다.
+    //   prod 실측: 폴백 942라인에서 **3,265만원 과다**(수성 2,780만·솔벤 377만).
+    //
+    // ⚠️ 균등 분할은 **분할 조합 탐색이 아니다** — 분할 수는 위에서 이미 정해졌고, 여기서는
+    //   그 수만큼 똑같이 나눈 폭을 덮는 원단을 고를 뿐이다. 「이어붙이면 싸지니까 더 쪼개자」로
+    //   가는 경로는 열리지 않는다(분할 수를 바꾸지 않으므로).
+    //   분할 수가 1 이 되는 경우는 애초에 이 폴백에 오지 않는다(무분할 단계에서 잡힌다).
     const maxW = Math.max(...pool.map((m) => Number(m.width_mm) || 0))
     if (!(maxW > 0)) return null
     const minSplits = Math.min(...orientations.map(([widthMm]) => Math.ceil(widthMm / maxW)))
-    for (const m of pool) {
-      if ((Number(m.width_mm) || 0) !== maxW) continue
-      for (const [widthMm, lengthMm] of orientations) {
-        if (Math.ceil(widthMm / maxW) !== minSplits) continue
+    for (const [widthMm, lengthMm] of orientations) {
+      if (Math.ceil(widthMm / maxW) !== minSplits) continue
+      const panelW = widthMm / minSplits            // 균등 분할된 패널 1장의 폭
+      for (const m of pool) {
+        if ((Number(m.width_mm) || 0) < panelW) continue
         consider(m, widthMm, lengthMm, minSplits, false)
       }
     }
