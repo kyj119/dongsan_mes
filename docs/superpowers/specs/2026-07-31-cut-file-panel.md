@@ -1,7 +1,7 @@
 # 재단 패널 (`com.mes.cut.panel`) — 칼선 제작 자동화
 
 - **작성**: 2026-07-31 (brainstorming 세션, 용준님)
-- **상태**: 🟡 설계 확정 · 구현 미착수
+- **상태**: ✅ 구현 완료 · prod 운영 중. ⚠️ **D1 결정은 뒤집혔다** — 2026-08-04 A0 패널 「재단」 탭으로 병합돼 `com.mes.cut.panel` 은 없어졌다. 현행 사실 = `docs/CUT_PANEL_USAGE.md` · `docs/DEPLOY_MANUAL.md` §3-A · 현행 버전 = shell `0.81.0` / host `CUT-CEP-0.38.2`. 아래 본문은 **2026-08-03 시점 설계 기록**이다
 - **선행 문서**: `docs/HANDOFF-irregular-nesting-spec.md` (§7 분리개발 결정) — 이 spec이 그 후속 정본
 - **관련 메모리**: [[design-irregular-nesting]] · [[design-a0-panel-structure]] · [[feedback-ia-jsx-runtime-path]]
 
@@ -359,7 +359,7 @@ DXF 분류는 이제 **원본 레이어가 1순위**이고, 레이어가 없던 
 
 | # | 결정 |
 |---|---|
-| D1 | **A0 패널에 통합하지 않는다.** 별도 CEP 패널 `com.mes.cut.panel` → 안정화 후 A0 탭으로 병합 |
+| D1 | ~~**A0 패널에 통합하지 않는다.** 별도 CEP 패널 `com.mes.cut.panel`~~ → **뒤집힘(2026-08-04)**: A0 패널의 「재단」 탭으로 병합. 설치·배포 대상은 `com.mes.a0.panel` 하나뿐 |
 | D2 | 패널 정체성 = **재단 파일 제작**. 네스팅은 P3의 한 기능 |
 | D3 | **기본 도형 그리기 UI를 만들지 않는다** — 오프셋 엔진이 커버(§4 실측) |
 | D4 | **돔보 재구현 금지** — A0 기능, 병합 시 자동 흡수 |
@@ -474,7 +474,7 @@ offset=60  → 120        (기대 120)      offset=200 → 구멍 소멸 ✅
 | 축3 패널 배포본 | `IllustratorAutomat/designer/cut-panel/com.mes.cut.panel/**` | `Z:\...\_scripts\cut-panel\com.mes.cut.panel\` |
 | 축4 패널 설치본 | 같은 repo 원본 | `%APPDATA%\Adobe\CEP\extensions\com.mes.cut.panel` |
 
-순서 = **①축3 Z: → ②각 PC 설치**(뒤집으면 구버전이 깔린다). 설치 = `scripts/install-cut-panel.ps1`.
+순서 = **①축3 Z: → ②각 PC 설치**(뒤집으면 구버전이 깔린다). 설치 = `scripts/install-a0-panel.ps1`(2026-08-04 병합 후 설치기는 하나뿐).
 감사 = `npm run audit:ia-jsx` — P0에서 패널 레지스트리(`PANELS`)로 일반화했고, `DESIGNER_JSX` 도 repo 실재 파일만 잡도록 바꿔 **새 호스트가 자동 편입**된다.
 
 **CDP 포트는 A0 8888 / 재단 8889** — 겹치면 둘 중 하나가 원격 디버깅 불가가 된다. `install-cut-panel.ps1` 이 설치 시 확인하고, `cut:smoke` 가 회귀로 잡는다.
@@ -503,7 +503,7 @@ offset=60  → 120        (기대 120)      offset=200 → 구멍 소멸 ✅
 | `scripts/cut-panel-smoke.mjs` | 재단 패널 전용 스위트 **26항목**. `npm run cut:smoke` |
 | `IllustratorAutomat/designer/cut-panel/com.mes.cut.panel/**` | 패널 골격(manifest·`.debug` 8889·index·css·main.js·host 스텁) |
 | `IllustratorAutomat/designer/mes-cut-host.jsx` | 호스트 정본 골격 — 잠금 API·`mesCut_selectionInfo`·`mesCut_docInfo` |
-| `scripts/install-cut-panel.ps1` | 설치(A0 를 지우지 않는 별도 확장) + 포트 충돌 확인 |
+| ~~`scripts/install-cut-panel.ps1`~~ → `scripts/install-a0-panel.ps1` | 설치 — **2026-08-04 병합으로 별도 확장은 없어졌다**(A0 패널 하나) |
 
 검증: `cut:bench` 통과 · `cut:smoke` **26/26** · `panel:smoke` **100/100(A0 회귀 0)** · `verify`(tsc+build) 통과 · `audit:ia-jsx` 가 신규 패널 축3·축4를 인식(미배포라 unreachable, `mes-cut-host.jsx` 는 '런타임없음'으로 정확히 지적).
 

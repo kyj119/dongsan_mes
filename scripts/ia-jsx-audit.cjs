@@ -3,7 +3,7 @@
  * IA 스크립트 런타임 드리프트 감사 (CLAUDE.md "IA JSX 배포 축" · memory feedback-ia-jsx-runtime-path)
  *
  * IA의 JSX/패널은 **웹 배포(CF Pages)와 완전히 분리된 수동 배포 축**이다.
- * `git push`·`npm run deploy` 로는 절대 반영되지 않고, 축이 3개다.
+ * `git push`·`npm run deploy` 로는 절대 반영되지 않고, 축이 5개다(축5 배포도구는 2026-08-06 신설).
  * 그래서 "repo는 고쳤는데 런타임은 옛날 파일"이 조용히 성립한다 — 이 도구가 그걸 잡는다.
  *
  *   축1 에이전트 JSX  : repo IllustratorAutomat/*.jsx        → 실행 중 exe 폴더(BaseDirectory)
@@ -23,7 +23,7 @@
  *   6일간 실패(sheet #20·#21). 브랜치·커밋 기록만 보면 "이미 고침"으로 보였다.
  *
  * 사용법:
- *   node scripts/ia-jsx-audit.cjs             # 3축 대조, 드리프트 시 exit 1
+ *   node scripts/ia-jsx-audit.cjs             # 5축 대조, 드리프트 시 exit 1
  *   node scripts/ia-jsx-audit.cjs --sync-agent  # 축1만 repo→런타임 복사(.bak 백업 후)
  *   node scripts/ia-jsx-audit.cjs --json      # 기계 판독용
  *

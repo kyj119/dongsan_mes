@@ -61,7 +61,7 @@ CEP finishing에 `side_mark` 포함 → `finishing_json`에 이미 실림. 주�
 
 ## 3. 구현 계획 (계층별)
 
-### P1. 스키마 — `migrations/0465_intake_field_carry.sql`
+### P1. 스키마 — `migrations/0472_intake_field_carry.sql`
 ```sql
 ALTER TABLE designer_intakes ADD COLUMN keyword TEXT;
 ALTER TABLE designer_intakes ADD COLUMN post_desc TEXT;

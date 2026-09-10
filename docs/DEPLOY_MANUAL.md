@@ -95,7 +95,7 @@ Cloudflare Pages 대시보드에서 이전 배포 **Rollback**. DB 변경이 섞
 
 ### 3.1 도구 2개
 ```powershell
-npm run audit:ia-jsx                 # 4축 드리프트 (exit 1 = 불일치). 축1은 실행 중 프로세스 실측
+npm run audit:ia-jsx                 # 5축 드리프트 (exit 1 = 불일치). 축1은 실행 중 프로세스 실측
 npm run ia:deploy                    # 미커밋 경고 → 게이트 → 나갈 파일 확인(y/n) → 백업 → 복사 → 재감사
 npm run ia:deploy -- --dry-run       # 뭐가 나갈지만
 npm run ia:deploy -- --install       # 축4(이 PC 설치)까지
@@ -203,7 +203,7 @@ npm run audit:ia-jsx       # 드리프트 없음 = 4축 일치
 | 위치 | 표시 | 무슨 축 |
 |---|---|---|
 | 가공 탭 우상단 | `· A0-CEP-x.y.z / 화면 0.2.0` | 앞=축2 · **뒤(화면)=축3·4** |
-| 재단 탭 우상단 | `shell 0.22.0 · host CUT-CEP-0.14.0` | 앞(shell)=축3·4 · 뒤(host)=축2 |
+| 재단 탭 우상단 | `shell x.y.z · host CUT-CEP-x.y.z` | 앞(shell)=축3·4 · 뒤(host)=축2 |
 
 > ⚠️ **화면(shell) 버전으로 축3·4 반영 여부를 본다.** 호스트 버전은 축2라, 껍데기만 바꾼 배포에서는 안 움직인다.
 

@@ -9,7 +9,7 @@
 
 **창(Window) > 확장(Extensions) > MES 가공·재단** → 상단 **[재단]** 탭
 
-- 우상단에 `shell 0.14.0 · host CUT-CEP-0.9.2` 처럼 뜨면 정상입니다(재단 탭에서만 보입니다).
+- 우상단에 `shell x.y.z · host CUT-CEP-x.y.z` 처럼 뜨면 정상입니다(재단 탭에서만 보입니다).
 - `ERROR ...` 면 Z: 연결 문제입니다(로직 정본이 `Z:\DESIGNS\IA-등록\_scripts\mes-cut-host.jsx`).
 - 설치/갱신 = `Z:\DESIGNS\IA-등록\_scripts\install-a0-panel.ps1` 실행 후 **일러 재시작**.
   - 구 「MES 재단」 확장은 이 스크립트가 **백업 후 지웁니다**(같은 기능이 둘이면 헷갈립니다).

@@ -2,7 +2,7 @@
 
 > 목적: 전사 LogWatcher 세팅의 0단계. 각 **물리 장비 ↔ RIP/제어 SW ↔ 로그 경로 ↔ 파서타입**을 확정해야
 > `equipment.json`을 작성할 수 있다. `?`/`⬜` 칸이 현장에서 채워야 할 부분.
-> 작성: 2026-06-13 · 참조: `docs/UNIVERSAL_LOGWATCHER_DESIGN.md`, `LogWatcher/USAGE.md`
+> 작성: 2026-06-13 · 참조: `docs/archive/UNIVERSAL_LOGWATCHER_DESIGN.md`, `LogWatcher/USAGE.md`
 
 ---
 

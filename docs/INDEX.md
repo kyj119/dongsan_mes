@@ -41,22 +41,27 @@
 | `entity-separation-map.md` | 🟢 | 법인분리 현황 지도 (최종 2026-06-19) |
 | `kakao-alimtalk-templates.md` | 🟢 | 알림톡 템플릿 문안 — 실발송 전환 완료(2026-06) |
 | `WORKTREE_WORKFLOW.md` | 🟢 | 멀티세션 git worktree 표준 (CLAUDE.md가 참조) |
-| `IA_EDITOR_USAGE.md` | ⛔ | **사문화** — `/ia-editor` 페이지가 2026-08-05 폐기됨(웹 모아찍기 sunset S4). 대체 = CEP 패널 → `DEPLOY_MANUAL.md` §3-A · `CUT_PANEL_USAGE.md`. 정리 대상 |
+| `archive/IA_EDITOR_USAGE.md` | 🗄️ | **사문화** — `/ia-editor` 페이지가 2026-08-05 폐기됨(웹 모아찍기 sunset S4). 대체 = CEP 패널 → `DEPLOY_MANUAL.md` §3-A · `CUT_PANEL_USAGE.md`. 2026-09-10 `archive/` 이동 |
 | `A0-panel-designer-deploy.md` | 🗄️ | → `archive/`. 대체 = `DEPLOY_MANUAL.md` §3-A |
 | `CAPS-WORKER-DEPLOY.md` | 🟡 | caps-worker 배포 + 근태 공백 복구 원문. 배포 요약은 `DEPLOY_MANUAL.md` §4 |
 | `REWORK_RULES.md` | 🟢 | **재작업 처리 규칙**(오퍼레이터·디자이너) — 재작업은 기능화하지 않고 규칙으로 처리 확정(2026-08-05). CLAUDE.md가 참조 |
+| `PURCHASE_RECEIVING_RULES.md` | 🟢 | **발주→입고→검수 절차서 정본**(2026-09-10 배포). CLAUDE.md가 참조 |
+| `LOGWATCHER_FIELD_SETUP.md` | 🟡 | LogWatcher 현장 설치 절차 — `DEPLOY_MANUAL.md` 가 참조 |
+| `message-ad-compliance.md` | 🟡 | 광고성 메시지 규정 — 가드 정본은 auto-memory `design-ad-compliance-guard` |
+| `HANDOFF-irregular-nesting-spec.md` | 🟡 | 이형 네스팅 인계 — 스스로 「후속 정본은 `superpowers/specs/2026-07-31-cut-file-panel.md`」라 적음. 죽은 `iaEditor.js` 참조 잔존 |
+| `HANDOFF-phase7b2.md` | 🟡 | IA 웹 sunset 잔여 7b-2 — 삭제된 `iaEditor.js` 를 가리킴. **아직 유효한지 확인 필요**(auto-memory `project-ia-web-sunset` 은 「남은=7b-2」) |
 | `LOGWATCHER_EQUIPMENT_INVENTORY.md` | 🟡 | 장비 인벤토리 매핑표 — 현장 확인 채움 대기 |
 | `BARCODE_INVENTORY_SPEC_PENDING.md` | 🟡 | 바코드 입출고 재고 — 구체화 대기(#412, owner 결정) |
 | `HANDOFF-flexi-nest-tracking.md` | 🟡 | Flexi 네스팅 추적 — 코드 완료·**prod 미배포** 인계 |
 | `HANDOFF-fax-barobill.md` | 🟡 | 바로빌 팩스 FTP — prod 배포완료·**실전 미검증** |
-| `HANDOFF-doc-diet.md` | 🟢 | **상태판·백로그 다이어트 인계** — 복붙용 프롬프트 포함. PROJECT_STATUS가 읽기 상한 초과로 잘리는 현행 장애 해소용 |
+| `archive/HANDOFF-doc-diet.md` | 🗄️ | **완료** — 전제였던 「PROJECT_STATUS 읽기 상한 초과」는 해소(41KB·`doc-diet-audit` 통과). 2026-09-10 `archive/` 이동. 살아 있는 규칙은 CLAUDE.md §세션 종료 시 필수 |
 | `HANDOFF-sunmyung-import-execution.md` | 🟡 | 선명 매입매출 이관 실행 인계 (이관 완결) |
 | `HANDOFF-sunmyung-purchase.md` | 🟡 | 선명 매입 인계 (이관 완결) |
-| `HANDOFF-bleed-repeat-last-pixel.md` | 🟡 | 도련(Repeat Last Pixel) 배선 인계 — 배선·게이트 통과, **실기 검증·축3/축4 배포 대기**. spec = `superpowers/specs/2026-07-31-cut-file-panel.md` |
+| `archive/HANDOFF-bleed-repeat-last-pixel.md` | 🗄️ | **완료** — 인계 당시 shell `0.15.0`/host `CUT-CEP-0.11.0` 「Z: 미배포」였으나 실제로는 `0.81.0`/`0.38.2` 로 수십 회 배포됨. 2026-09-10 `archive/` 이동 |
 | `EQUIPMENT_SURVEY.md` | 🟡 | 장비 전수조사 시트(entity 1, 24대) — 현장 입력 대기. 실물 정본은 `equipment` 테이블 |
 | ~~`bank-review-2026-06-24.md`~~ | 🗄️ | 완결 → `archive/` 이동 (2026-07-02) |
-| ~~`UNIVERSAL_LOGWATCHER_DESIGN.md`~~ | ❌ | **파일 없음** — 인덱스 유령 항목이었음, 2026-07-27 제거 |
-| ~~`integrations/HANJIN_INTEGRATION_ROADMAP.md`~~ | ❌ | **파일·디렉토리 없음** — 유령 항목, 2026-07-27 제거. 한진 관련 현황은 spec `2026-06-11-hanjin-courier-decision.md` |
+| `archive/UNIVERSAL_LOGWATCHER_DESIGN.md` | 🗄️ | **유령 아님 — 2026-07-07 `archive/` 로 이동됐던 것**(2026-07-27 정리가 `docs/` 만 확인하고 오판). LogWatcher 설계 정본, 활성 문서 2곳이 참조 |
+| `archive/HANJIN_INTEGRATION_ROADMAP.md` | 🗄️ | **유령 아님 — 2026-07-07 `archive/` 로 이동**(2026-07-27 정리가 오판). 솔루션 계약은 기각, 재개 시 참조용. 현황은 spec `2026-06-11-hanjin-courier-decision.md` |
 
 ## 3-1. `docs/audits/` — 감사 기록
 
@@ -66,6 +71,7 @@
 | `2026-07-10-kst-english-audit.md` | 🟡 | KST/영문 표기 감사 |
 | `2026-07-29-structure-audit.md` | 🟡 | 코드 구조 전수 감사(src 387파일) — `npm run audit:structure` 산출. 분할 후보·entity 비대칭·tie-break 잠복 목록 |
 | `2026-08-08-list-ux-ecount-gap.md` | 🟡 | 목록 UX 이카운트 갭 감사 |
+| `2026-09-03-full-review.md` + `2026-09-03-full-review/` | 🟢 | 전체 코드 리뷰 요약 + 상세 26파일(290KB). **HIGH 23건의 기각 사유가 여기에만 있다** — 지우면 다음 감사가 같은 오탐을 다시 올린다. ⚠️하위 디렉터리는 Read 전 크기 확인 |
 
 ## 3-2. `docs/receivables/` — 채권 실무 산출물
 
@@ -80,7 +86,7 @@
 
 | 문서 | 상태 | 성격 · 비고 |
 |---|---|---|
-| `*.md` 9건 | 🟡 | 재무·원가·그룹 진단 기록(2026-08). 그룹 진단 정본 = `2026-08-12-group-diagnosis.md` · 최신 = `2026-08-19-장비-고정자산-대조표.md`. **/reports 재무 숫자 인용 금지** 규칙은 auto-memory `design-finance-diagnosis` |
+| `*.md` (건수는 `ls docs/analysis/*.md | wc -l`) | 🟡 | 재무·원가·그룹 진단 기록(2026-08). 그룹 진단 정본 = `2026-08-12-group-diagnosis.md` · 최신 = `2026-08-19-장비-고정자산-대조표.md`. **/reports 재무 숫자 인용 금지** 규칙은 auto-memory `design-finance-diagnosis` |
 | `*-rollback.sql` | 🟡 | prod 일괄 작업 롤백 스크립트(백업 테이블 참조 — PII 리터럴 없음). **삭제 전 적용 여부 확인** |
 | `*.csv` / `*.xlsx` | ⛔ | 통장·카드·거래처 원자료 = PII → **gitignore**(2026-08-18). 로컬 산출물이며 재생성 가능 |
 
@@ -90,15 +96,16 @@
 |---|---|---|
 | `dongsan-import/` | 🟡 | 동산 이카운트 이관 — **완결**(818곳 잔액 오차 0). md 9건 + 규칙 py. csv·`load/`·backup은 PII로 미추적 |
 | `sunmyung-import/` · `cheongju-import/` | 🟡 | 선명·청주 이관 산출물(sql/csv). 실행 이력물 — 삭제 전 확인 |
-| `order-file-matching/` | 🟢 | **파일→주문서 자동생성 백테스트** — 성립(그룹 90.7%). 정본 문서 = `HOW-IT-WORKS.md`. py 36건 = 분석 하네스, csv는 PII로 미추적 |
+| `order-file-matching/` | 🟢 | **파일→주문서 자동생성 백테스트** — 성립(그룹 90.7%). **수치·근거 정본 = `README.md`** · 용어 없는 설명서 = `HOW-IT-WORKS.md`. py 36건 = 분석 하네스, csv는 PII로 미추적 |
 | `price/` · `pricing/` | 🟡 | 단가표 작업 산출물(csv·xlsx) |
 | `mockups/` | 🟡 | 마감 스티커 A5/A6 인쇄 목업 — 프린터 구매 후 실물 테스트 대기 |
 | `design/ASSET_LIABILITY_DESIGN.md` | 🟡 | 자산·부채 설계 초안 |
 | `specs/` 3건 | 🟡 | superpowers 이전 spec 잔여분 |
+| 루트 `specs/` 1건 | 🟡 | `2026-08-10-entity-expense-management.md` — spec 디렉터리가 **3곳**으로 갈려 있다(`docs/superpowers/specs/` · `docs/specs/` · 루트 `specs/`). `docs/specs/` 로 통합 권장 |
 
-## 4. `docs/superpowers/specs/` — 활성 spec **46건** (2026-08-25 실측)
+## 4. `docs/superpowers/specs/` — 활성 spec (건수는 `ls docs/superpowers/specs/*.md | wc -l` 로 확인 — 손으로 센 값은 반드시 낡는다)
 
-> ⚠️ 아래 트랙별 목록은 2026-07-02 기준 발췌라 46건 전수가 아니다. 신규 spec 추가 시 해당 트랙에 한 줄 등록할 것.
+> ⚠️ 아래 트랙별 목록은 2026-07-02 기준 발췌라 전수가 아니다. 신규 spec 추가 시 해당 트랙에 한 줄 등록할 것.
 
 ### 최상위 로드맵·정본
 | 문서 | 상태 |
@@ -145,6 +152,8 @@
 | `2026-08-05-ia-editor-sunset.md` | 🟡 웹 모아찍기 + /ia-editor 폐기 — **설계만**. 실행은 재단 패널 실기 검증 후 |
 | `2026-08-05-work-order-auto-issue.md` | 🟡 작업지시서 자동 발행 — 카드=작업지시서 승격 |
 | `2026-08-05-neostampa-rip-integration.md` | 🟡 전사 8색(Longyin Q2000·neoStampa) RIP 로그 연동 — **prod 미배포**(Topaz 조인키 미검증) |
+| `2026-08-25-unit-unification-and-bleed-split.md` | 🟡 단위 통일 + 도련 분할 (2026-09-10 인덱스 등록) |
+| `2026-08-26-panel-flow-restructure.md` | 🟡 패널 플로우 재구성 (2026-09-10 인덱스 등록) |
 
 ### 결정 대기·보류·가드레일 (🟡)
 `2026-06-11-alimtalk-golive-package.md`(잔여 결정) · `2026-06-11-card-cashflow-forecast.md` · `2026-06-11-hanjin-courier-decision.md`(외부 의존) · `2026-06-11-client-self-order-portal.md`(선행 대기) · `2026-06-11-card-feed-cost-research.md`(⏸️보류) · `2026-06-11-static-assets-rootcause-redesign.md`(**삭제 금지** — decisions-code "재외부화 금지" 해제조건 앵커)

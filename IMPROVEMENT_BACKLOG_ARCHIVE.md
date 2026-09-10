@@ -1,3 +1,7 @@
+> ⛔ **grep 전용 — Read 금지.** 1.3MB(4,100줄+)라 통째로 읽으면 컨텍스트가 날아간다.
+> 쓰는 법 = 커밋 해시·이슈번호 `grep` (레시피 = `.claude/skills/auto-improve/references/area-6-self-evolution.md`).
+> 쓰는 쪽 = `scripts/backlog-trim.cjs` 가 매 사이클 앞에 append. 삭제 금지(`docs/INDEX.md` §정리 원칙 4).
+
 ## 📦 2026-09-09 이관분 (1차 자동 트림 — scripts/backlog-trim.cjs)
 
 > 사이클 로그 5건. 원본 순서(시간 역순) 보존. 활성 파일은 최근 8건 유지.

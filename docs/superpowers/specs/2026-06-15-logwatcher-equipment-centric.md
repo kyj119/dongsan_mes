@@ -6,7 +6,7 @@
 > - P2 LogWatcher: heartbeat에 equipment_name·print_log_path 추가 — 빌드 완료(재배포 필요)
 > - P3 프론트: /equipment 수집PC·로그경로 표시 + /rip 페이지 폐기(/api/rip 유지) — 빌드 완료
 > - P4 남음: permission_pages '/rip' 정리, 스모크, 프로덕션 배포 + LogWatcher 재배포
-> 관련: `docs/UNIVERSAL_LOGWATCHER_DESIGN.md`, `docs/LOGWATCHER_EQUIPMENT_INVENTORY.md`, 메모리 `project-logwatcher-rollout`
+> 관련: `docs/archive/UNIVERSAL_LOGWATCHER_DESIGN.md`, `docs/LOGWATCHER_EQUIPMENT_INVENTORY.md`, 메모리 `project-logwatcher-rollout`
 
 ---
 
