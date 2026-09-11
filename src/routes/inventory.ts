@@ -688,7 +688,7 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
     }
     // #373: CANCELLED 분기에서 PO 롤백 결과를 응답에 노출하기 위해 호이스팅
     let poRollback: {
-      items: Array<{ poItemId: number; recv: number; acc: number; rej: number }>
+      items: Array<{ poItemId: number; recv: number; acc: number; rej: number; packs: number }>
       newStatus: string
       prevStatus: string
     } | null = null
@@ -704,7 +704,7 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
       }
 
       const { results: receiptItems } = await c.env.DB.prepare(
-        `SELECT item_id, quantity, received_quantity, accepted_quantity, rejected_quantity, po_item_id
+        `SELECT item_id, quantity, received_quantity, accepted_quantity, rejected_quantity, po_item_id, received_packs
            FROM inventory_receipt_items WHERE receipt_id = ?`
       ).bind(id).all()
 
@@ -735,17 +735,19 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
       const poId = curReceipt.po_id
       if (poId) {
         // receipt 라인 → po_item별 누적분 집계 (동일 po_item 다중라인 방어)
-        const aggByPoItem: Record<number, { recv: number; acc: number; rej: number }> = {}
+        const aggByPoItem: Record<number, { recv: number; acc: number; rej: number; packs: number }> = {}
         for (const ri of (receiptItems || [])) {
           const pid = ri.po_item_id as number | null
           if (!pid) continue
-          const a = aggByPoItem[pid] || (aggByPoItem[pid] = { recv: 0, acc: 0, rej: 0 })
+          const a = aggByPoItem[pid] || (aggByPoItem[pid] = { recv: 0, acc: 0, rej: 0, packs: 0 })
           a.recv += Number(ri.received_quantity || 0)
           a.acc += Number(ri.accepted_quantity || 0)
           a.rej += Number(ri.rejected_quantity || 0)
+          // #646: 이 입고 건이 기여한 롤 수(0613 스냅샷). 옛 행은 0 이라 no-op.
+          a.packs += Number(ri.received_packs || 0)
         }
         const rollbackItems = Object.entries(aggByPoItem).map(([pid, v]) => ({
-          poItemId: Number(pid), recv: v.recv, acc: v.acc, rej: v.rej,
+          poItemId: Number(pid), recv: v.recv, acc: v.acc, rej: v.rej, packs: v.packs,
         }))
 
         if (rollbackItems.length > 0) {
@@ -822,17 +824,26 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
         for (const r of poRollback.items) {
           ops.push(
             c.env.DB.prepare(
+              // #646: received_packs 도 역산하고, line_status 재계산을 정방향(po-receive)과 같은 축으로 맞춘다 —
+              //   예상 수량 라인(qty_is_estimate=1·order_packs>0)은 롤 수로 닫으므로 롤 수로 판정해야
+              //   부분입고 후 취소가 PO_REVIEW_PENDING_SQL(received_packs<>order_packs)에 다시 뜬다.
               `UPDATE purchase_order_items
                   SET received_quantity = MAX(0, received_quantity - ?),
                       accepted_quantity = MAX(0, accepted_quantity - ?),
                       rejected_quantity = MAX(0, rejected_quantity - ?),
+                      received_packs = MAX(0, COALESCE(received_packs, 0) - ?),
                       line_status = CASE
+                        WHEN qty_is_estimate = 1 AND COALESCE(order_packs, 0) > 0
+                          THEN CASE
+                            WHEN MAX(0, COALESCE(received_packs, 0) - ?) >= order_packs THEN 'RECEIVED'
+                            WHEN MAX(0, COALESCE(received_packs, 0) - ?) > 0 THEN 'PARTIAL'
+                            ELSE 'PENDING' END
                         WHEN MAX(0, received_quantity - ?) >= quantity AND quantity > 0 THEN 'RECEIVED'
                         WHEN MAX(0, received_quantity - ?) > 0 THEN 'PARTIAL'
                         ELSE 'PENDING' END,
                       updated_at = CURRENT_TIMESTAMP
                 WHERE id = ? AND po_id = ?`
-            ).bind(r.recv, r.acc, r.rej, r.recv, r.recv, r.poItemId, poId)
+            ).bind(r.recv, r.acc, r.rej, r.packs, r.packs, r.packs, r.recv, r.recv, r.poItemId, poId)
           )
         }
         // PO 헤더 status 재산정 (사전계산값)

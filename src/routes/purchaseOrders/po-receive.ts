@@ -336,12 +336,14 @@ poReceiveRouter.post('/:id/receive', async (c) => {
           INSERT INTO inventory_receipt_items (
             receipt_id, item_id, quantity, unit_price, amount,
             received_quantity, accepted_quantity, rejected_quantity,
-            quality_status, reject_memo, po_item_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            quality_status, reject_memo, po_item_id, received_packs
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
           receiptId, p.itemId ?? null, p.receiveQty, p.unitPrice, p.amount,
           p.receiveQty, p.acceptedQty, p.rejectedQty,
-          p.qualityStatus, p.rejectMemo, p.poItemId
+          p.qualityStatus, p.rejectMemo, p.poItemId,
+          // #646: 이 건이 기여한 롤 수를 스냅샷 — 전량취소 롤백이 PO 라인 received_packs 를 되돌릴 근거.
+          p.receivePacks
         ))
 
         // inventory stock (합격 수량 있을 때만) — 행 부재 시 0 생성 후 **상대 누적**(절대값 SET 금지)
