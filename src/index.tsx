@@ -250,7 +250,9 @@ app.use('*', async (c, next) => {
 })
 
 // Rate limiting — 로그인 브루트포스 방지
-app.use('/api/auth/login', rateLimitMiddleware(5, 60000))  // 분당 5회
+// 직원 로그인: 계정당 분당 5회(무차별 대입) + IP 당 분당 30회(계정 스프레이).
+//   IP 5회였을 때 사무실 NAT(한 IP) 뒤 직원들이 아침에 3~4명째부터 막혔다(여정 루프 P5, 2026-09-11).
+app.use('/api/auth/login', rateLimitMiddleware(30, 60000, { perAccount: { max: 5 } }))
 app.use('/api/portal/auth/login', rateLimitMiddleware(5, 60000))
 app.use('/api/users/change-password', rateLimitMiddleware(5, 60000))  // 분당 5회
 app.use('/api/portal/auth/change-password', rateLimitMiddleware(5, 60000))  // 분당 5회

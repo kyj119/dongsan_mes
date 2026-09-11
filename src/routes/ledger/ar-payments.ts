@@ -55,6 +55,12 @@ arPaymentsRouter.post('/payment', requireEditOrRole('/ledger', 'MANAGER'), async
       if (err instanceof Error && err.message.startsWith('Client not found')) {
         return c.json({ success: false, error: 'Client not found' }, 404)
       }
+      // 업무 규칙 거부(lib/payments.validatePayment 의 1분 내 중복 차단)는 서버 오류가 아니다.
+      //   여기서 안 받으면 바깥 catch 가 500 「서버 오류가 발생했습니다」로 뭉개 경리는 사유를 못 보고
+      //   모니터링엔 장애로 집계된다(여정 루프 P1, 2026-09-11). 통장 매칭 경로(bank.ts)와 같은 400·문구.
+      if (err instanceof Error && err.message.startsWith('DUPLICATE_PAYMENT')) {
+        return c.json({ success: false, error: '1분 이내 동일한 입금이 이미 등록되었습니다' }, 400)
+      }
       throw err
     }
 

@@ -106,6 +106,34 @@ test.describe.serial('J3 경리: 회계반영 → 원장 → 입금', () => {
     expectClean(signals, '입금 등록')
   })
 
+  test('같은 입금을 1분 안에 또 넣으면 사유가 보이는 거절(400)이어야 한다', async ({ journey: page, signals }) => {
+    test.skip(!orderId, '준비 실패')
+    // P1(2026-09-11): 거절이 500 「서버 오류」로 나가 경리가 사유를 못 봤다 → bank.ts 와 같은 400·문구
+    signals.allow(/\/api\/ledger\/payment$/)
+    signals.allowConsole(/^Add payment error/) // ledger.js 가 거부 응답을 console.error 로도 남긴다 — 기대된 경로
+    await page.goto('/ledger')
+    await page.waitForLoadState('domcontentloaded')
+    const row = page.locator(`#clientsTableBody .client-row[data-id="${clientId}"]`)
+    await expect(row).toBeVisible({ timeout: 15_000 })
+    await row.click()
+    await expect(page.locator('#clientBalance')).toBeVisible({ timeout: 15_000 })
+    const [res] = await Promise.all([
+      page.waitForResponse((r) => /\/api\/ledger\/payment$/.test(r.url()) && r.request().method() === 'POST'),
+      (async () => {
+        await page.locator('#paymentAmount').fill(String(finalAmount))
+        await page.locator('#paymentMethod').selectOption('계좌이체')
+        await page.locator('#paymentNotes').fill(`${MARK} J3 입금 중복`)
+        await page.locator('[onclick="addPayment()"]').first().click()
+      })(),
+    ])
+    expect(res.status(), '업무 규칙 거부는 서버 오류(500)가 아니라 400').toBe(400)
+    const body = await res.json()
+    expect(String(body.error || '')).toContain('1분 이내')
+    await expect(page.getByText('1분 이내 동일한 입금').first(), '경리에게 사유가 보여야 한다').toBeVisible({ timeout: 5_000 })
+    expect(db<{ n: number }>(`SELECT COUNT(*) n FROM payments WHERE client_id=${clientId} AND notes LIKE '%${MARK} J3 입금 중복%'`)[0].n, '중복은 저장되지 않는다').toBe(0)
+    expectClean(signals, '입금 중복 거절')
+  })
+
   test('검산: 파생 미수금·입금 행·법인', async () => {
     test.skip(!orderId, '준비 실패')
     const pay = db<{ amount: number; entity_id: number | null; payment_method: string }>(

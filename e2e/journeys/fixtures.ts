@@ -25,8 +25,10 @@ export type Signals = {
   pageErrors: string[]
   httpErrors: HttpError[]
   degraded: Degraded[]
-  /** 이 패턴에 맞는 URL 의 4xx 는 기대된 것(예: 잘못된 입력 거부 검증) */
+  /** 이 패턴에 맞는 URL 의 4xx 는 기대된 것(예: 잘못된 입력 거부 검증). 그 요청이 남기는 브라우저 「Failed to load resource」도 같이 무시한다 */
   allow: (re: RegExp) => void
+  /** 기대된 거부 경로에서 앱이 찍는 console.error(예: `Add payment error:`) — 텍스트 패턴으로 무시 */
+  allowConsole: (re: RegExp) => void
 }
 
 const DEGRADE_KEYS = ['fallback', 'degraded', 'warning', 'warnings', 'hardenwhy', 'placefail', 'partial']
@@ -67,11 +69,15 @@ async function apiLogin(request: APIRequestContext, user: string, pass: string) 
   throw new Error('[journey] API 로그인 실패')
 }
 
-function attachSignals(page: Page, s: Signals, allowed: RegExp[]) {
+function attachSignals(page: Page, s: Signals, allowed: RegExp[], allowedConsole: RegExp[]) {
   page.on('console', (msg: ConsoleMessage) => {
     if (msg.type() !== 'error') return
     const text = msg.text()
     if (NOISE.some((n) => n.test(text))) return
+    const loc = msg.location()?.url || ''
+    if (allowed.some((re) => re.test(loc))) return
+    if (/^Failed to load resource/.test(text) && allowed.length) return // 기대된 4xx 가 남기는 브라우저 줄
+    if (allowedConsole.some((re) => re.test(text))) return
     s.consoleErrors.push(text)
   })
   page.on('pageerror', (err) => s.pageErrors.push(err.message))
@@ -125,12 +131,18 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
   }, { scope: 'worker' }],
   signals: async ({}, use) => {
     const allowed: RegExp[] = []
-    const s: Signals = { consoleErrors: [], pageErrors: [], httpErrors: [], degraded: [], allow: (re) => allowed.push(re) }
+    const allowedConsole: RegExp[] = []
+    const s: Signals = {
+      consoleErrors: [], pageErrors: [], httpErrors: [], degraded: [],
+      allow: (re) => allowed.push(re),
+      allowConsole: (re) => allowedConsole.push(re),
+    }
     ;(s as any).__allowed = allowed
+    ;(s as any).__allowedConsole = allowedConsole
     await use(s)
   },
   journey: async ({ page, signals, auth }, use, testInfo) => {
-    attachSignals(page, signals, (signals as any).__allowed)
+    attachSignals(page, signals, (signals as any).__allowed, (signals as any).__allowedConsole)
     // 로그인 화면(login.ts)이 하는 일 = localStorage.token/user 저장 → 그대로 심고 들어간다(워커당 로그인 1회)
     await page.addInitScript(({ token, user }) => {
       if (!localStorage.getItem('token')) { localStorage.setItem('token', token); localStorage.setItem('user', JSON.stringify(user)) }

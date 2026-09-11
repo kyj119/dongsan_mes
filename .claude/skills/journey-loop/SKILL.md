@@ -37,8 +37,8 @@ typecheck·smoke 는 「죽지 않는다」만 증명한다. 이 루프는 **사
 통과 조건 = build → 같은 여정 재실행 → `tsc` → `test:calc`. 실패하면 그 파일만 `git checkout` 으로 되돌린다.
 
 ## 함정(실측 2026-09-11)
-- **로그인 API 는 IP 당 10회/분**(`middleware/rateLimit.ts`) — 워커당 1회 로그인해 `localStorage.token/user` 로 심는다. 테스트마다 로그인하면 3번째부터 429.
-- **입금 API 는 1분 내 같은 거래처·같은 금액을 거절**(`DUPLICATE_PAYMENT`, 500 으로 나온다) — 여정은 수량을 실행마다 달리한다.
+- **로그인 API 한도 = 계정당 5회/분 + IP 당 30회/분**(`middleware/rateLimit.ts` `perAccount`, 09-11 P5 로 IP 5회에서 변경) — 그래도 워커당 1회 로그인해 `localStorage.token/user` 로 심는다. J0 가 6번째 429 를 검증하므로 J0 의 더미 계정을 다른 여정에서 쓰지 말 것.
+- **입금 API 는 1분 내 같은 거래처·같은 금액을 거절**(`DUPLICATE_PAYMENT` → 400, 09-11 P1 로 500 에서 변경) — 여정은 수량을 실행마다 달리하고, J3 가 거절 경로를 따로 밟는다(`signals.allow`·`allowConsole`).
 - 거래처·품목 검색은 **1건이면 자동 선택, 여럿이면 공용 모달**(`#clientSearchModal`·`#itemSearchModal`) — 둘 중 무엇이 올지 모르니 `expect.poll` 로 둘 다 기다린다.
 - 출력대기(PRINT_PENDING) 카드에는 개별 버튼이 없다 — 체크 → 하단 `#bulkBar` 「✓ 출력완료」. 출고는 `cards.status` 가 아니라 `shipped_at` 이다.
 - 검수 승인 버튼은 「검수 대기」 카드(`filterByStatus('REVIEW')`)로 들어가야 그려진다. 입고 화면 기본이 「내 담당」이라 `#scopeAllBtn`.
