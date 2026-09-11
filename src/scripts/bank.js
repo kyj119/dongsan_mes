@@ -1759,6 +1759,11 @@
     });
     var odNew = document.getElementById('accOverdraft');
     if (odNew) odNew.checked = false;
+    // #640: 신규 모달은 마통 미체크 → 한도칸 숨기고 비운다(수정 후 남은 값이 딸려가면 안 된다)
+    var clNewWrap = document.getElementById('accCreditLimitWrap');
+    if (clNewWrap) clNewWrap.classList.add('hidden');
+    var clNew = document.getElementById('accCreditLimit');
+    if (clNew) clNew.value = '';
     var psNew = document.getElementById('accPersonal');   // 수정 후 남은 체크가 신규에 딸려가면 안 된다
     if (psNew) psNew.checked = false;
     var cpNew = document.getElementById('accCashPlan');   // 신규 예금계좌 기본 = 계획에 포함
@@ -1782,6 +1787,11 @@
     if (aliasEl) aliasEl.value = acc.account_alias || '';
     var odEl = document.getElementById('accOverdraft');
     if (odEl) odEl.checked = !!acc.is_overdraft;
+    // #640: 마통 한도 입력칸 채우기 + 마통일 때만 노출
+    var clWrap = document.getElementById('accCreditLimitWrap');
+    var clEl = document.getElementById('accCreditLimit');
+    if (clEl) clEl.value = (acc.credit_limit != null && acc.credit_limit !== '') ? Number(acc.credit_limit).toLocaleString() : '';
+    if (clWrap) clWrap.classList.toggle('hidden', !acc.is_overdraft);
     var cpEl = document.getElementById('accCashPlan');
     // 값이 없는 계좌(플래그 도입 전 행)는 마통이면 제외·아니면 포함 — 0574 초기화와 같은 규칙
     if (cpEl) cpEl.checked = acc.include_in_cash_plan != null ? !!acc.include_in_cash_plan : !acc.is_overdraft;
@@ -1821,7 +1831,11 @@
       account_alias: alias,  // 빈 문자열 전송 = 별칭 해제
       is_overdraft: (odChk && odChk.checked) ? 1 : 0,
       is_personal: (psChk && psChk.checked) ? 1 : 0,
-      include_in_cash_plan: (cpChk && cpChk.checked) ? 1 : 0
+      include_in_cash_plan: (cpChk && cpChk.checked) ? 1 : 0,
+      // #640: 마통 한도. 마통이 아니면 한도 개념이 없으니 null(해제). 백엔드는 키 존재 여부로 갱신 판단.
+      credit_limit: (odChk && odChk.checked)
+        ? (function () { var v = document.getElementById('accCreditLimit'); var n = v ? (window.parseMoney ? window.parseMoney(v.value) : parseInt(String(v.value || '').replace(/[^\d.-]/g, ''))) : 0; return n > 0 ? n : null; })()
+        : null
     };
     // 바로빌 자동 연동 (신규 등록 시에만)
     var syncEl = document.getElementById('accBarobillSync');

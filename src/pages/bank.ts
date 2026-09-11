@@ -514,10 +514,16 @@ ${PENDING_REASONS.map(r => `              <button onclick="switchPendingReason('
             </div>
             <div>
               <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                <input type="checkbox" id="accOverdraft" class="w-4 h-4" onchange="if(this.checked){var c=document.getElementById('accCashPlan'); if(c) c.checked=false;}">
+                <input type="checkbox" id="accOverdraft" class="w-4 h-4" onchange="if(this.checked){var c=document.getElementById('accCashPlan'); if(c) c.checked=false;} var cl=document.getElementById('accCreditLimitWrap'); if(cl) cl.classList.toggle('hidden', !this.checked);">
                 마이너스통장(한도대출) 계좌
               </label>
               <p class="text-xs text-gray-400 mt-1">체크하면 자금현황의 총 계좌잔액(예금)에서 제외되고 마이너스통장 사용액으로 따로 집계됩니다.</p>
+              <!-- #640: 마통 한도 입력. 백엔드(PUT/POST accounts)는 이미 credit_limit 를 받는데 입력칸이 없어 자금계획 §6 한도여력이 "한도 미입력"만 떴다. -->
+              <div id="accCreditLimitWrap" class="hidden mt-2">
+                <label class="form-label">마이너스통장 한도(원)</label>
+                <input type="text" id="accCreditLimit" inputmode="numeric" data-money class="form-input" placeholder="예: 50,000,000 (비우면 한도 미설정)">
+                <p class="text-xs text-gray-400 mt-1">자금계획이 "얼마나 더 쓸 수 있는지"(한도 − 사용액)를 계산하는 데 씁니다. 비우면 한도 미설정으로 남습니다.</p>
+              </div>
             </div>
             <div>
               <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
