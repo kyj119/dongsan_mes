@@ -40,7 +40,7 @@ typecheck·smoke 는 「죽지 않는다」만 증명한다. 이 루프는 **사
 - **로그인 API 한도 = 계정당 5회/분 + IP 당 30회/분**(`middleware/rateLimit.ts` `perAccount`, 09-11 P5 로 IP 5회에서 변경) — 그래도 워커당 1회 로그인해 `localStorage.token/user` 로 심는다. J0 가 6번째 429 를 검증하므로 J0 의 더미 계정을 다른 여정에서 쓰지 말 것.
 - **입금 API 는 1분 내 같은 거래처·같은 금액을 거절**(`DUPLICATE_PAYMENT` → 400, 09-11 P1 로 500 에서 변경) — 여정은 수량을 실행마다 달리하고, J3 가 거절 경로를 따로 밟는다(`signals.allow`·`allowConsole`).
 - 거래처·품목 검색은 **1건이면 자동 선택, 여럿이면 공용 모달**(`#clientSearchModal`·`#itemSearchModal`) — 둘 중 무엇이 올지 모르니 `expect.poll` 로 둘 다 기다린다.
-- 출력대기(PRINT_PENDING) 카드에는 개별 버튼이 없다 — 체크 → 하단 `#bulkBar` 「✓ 출력완료」. 출고는 `cards.status` 가 아니라 `shipped_at` 이다.
+- 진행중 카드의 개별 버튼은 「RIP 전송·보류」뿐(출력완료는 출력 이벤트가 찍는다 — 설계, P3) — 사람이 찍는 길은 체크 → 표준 바 `#cardBulkBar` 「상태 선택 → 일괄 변경」(레거시 `#bulkBar` 는 P2 로 제거). 출고는 `cards.status` 가 아니라 `shipped_at`. DB 의 datetime 은 UTC, 표시는 `formatKST`(P4).
 - 검수 승인 버튼은 「검수 대기」 카드(`filterByStatus('REVIEW')`)로 들어가야 그려진다. 입고 화면 기본이 「내 담당」이라 `#scopeAllBtn`.
 - `db()` 는 SQL 을 UTF-8 파일로 넘긴다 — `--command` 인자는 셸 코드페이지가 한글을 깨뜨린다. 품목명은 띄어쓰기가 있다(`게릴라 현수막`) → LIKE.
 - 스냅샷의 `entities` 는 도장·로고 base64(127KB) 가 SQLITE_TOOBIG → 그 두 컬럼만 NULL. FK 닫힘(spec_groups·price_policies·facility_zones…)이 빠지면 배치 전체가 롤백된다.

@@ -52,14 +52,17 @@ test.describe.serial('J2 생산: 카드 보드 → 출력완료 → 출고', () 
     const card = page.locator(`[data-card-id="${cardId}"]`).first()
     await expect(card, '검색한 주문의 카드가 보드에 보여야 한다').toBeVisible({ timeout: 15_000 })
 
-    // 출력대기(PRINT_PENDING) 카드에는 개별 버튼이 없다 — 출력실은 카드를 체크하고 「일괄 변경」으로 출력완료를 찍는다
-    //   체크하면 하단에 고정 바(#bulkBar)가 뜨고 거기 「✓ 출력완료」가 있다(상단 「일괄 변경」은 바에 가려진다).
+    // 진행중 카드의 개별 버튼은 「RIP 전송·보류」뿐이다(설계: 출력완료는 출력 이벤트가 찍는다).
+    //   에이전트 없이 사람이 찍는 길 = 카드 체크 → 하단 표준 바(#cardBulkBar) 「상태 선택 → 일괄 변경」.
+    //   P2(2026-09-11): 레거시 #bulkBar 가 이 표준 바를 덮어 눌리지 않던 것을 제거했다 — 이 단계가 그 회귀 게이트다.
     await page.locator(`input.card-checkbox[data-card-id="${cardId}"]`).first().check()
-    const doneBtn = page.locator(`#bulkBar [onclick="bulkChangeStatus('PRINT_DONE')"]`)
-    await expect(doneBtn, '카드를 체크하면 하단 바에 출력완료 버튼이 떠야 한다').toBeVisible({ timeout: 5_000 })
-    await doneBtn.click()
+    const bar = page.locator('#cardBulkBar')
+    await expect(bar, '카드를 체크하면 표준 일괄 바가 떠야 한다').toBeVisible({ timeout: 5_000 })
+    await page.locator('#cardBulkStatus').selectOption('PRINT_DONE')
+    await bar.locator('[onclick="cardBulkChangeStatus()"]').click({ timeout: 5_000 })
     const ok = page.locator('#__confirmOk')
-    if (await ok.isVisible({ timeout: 2_000 }).catch(() => false)) await ok.click()
+    await expect(ok, '일괄 변경 확인 모달').toBeVisible({ timeout: 5_000 })
+    await ok.click()
 
     await expect
       .poll(() => db<{ status: string }>(`SELECT status FROM cards WHERE id=${cardId}`)[0]?.status, { timeout: 15_000, message: '카드가 PRINT_DONE 이 돼야 한다' })

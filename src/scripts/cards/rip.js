@@ -417,39 +417,20 @@ async function processQrScan(value) {
 }
 
 // ===== 선택/벌크 =====
+// 일괄 바는 misc.js 의 표준 `#cardBulkBar`(ds-bulk-bar) 하나다.
+//   2026-09-11 여정 루프 P2: 여기 있던 레거시 `#bulkBar`(z-40, 고정 하단)가 같은 선택에 같이 떠서
+//   표준 바(z-35)를 **항상 덮었다** — 상태 선택·일괄 변경·선택 해제가 눌리지 않았다. 레거시 DOM 과
+//   bulkChangeStatus 를 없애고, 옛 이름은 표준 바로 위임해 남은 호출처(ESC·전체선택)가 그대로 돈다.
 function toggleCardSelection(cardId, checked) {
     if (checked) selectedCardIds.add(cardId); else selectedCardIds.delete(cardId);
-    updateBulkBar();
-}
-
-function clearSelection() {
-    selectedCardIds.clear();
-    document.querySelectorAll('input[type=checkbox][data-id]').forEach(function(cb) { cb.checked = false; });
-    document.querySelectorAll('.card-checkbox').forEach(function(cb) { cb.checked = false; });
-    updateBulkBar();
     updateCardBulkBar();
 }
 
-function updateBulkBar() {
-    var bar = document.getElementById('bulkBar');
-    if (selectedCardIds.size > 0) bar.classList.add('visible');
-    else bar.classList.remove('visible');
-    document.getElementById('selectedCount').textContent = selectedCardIds.size + '장 선택됨';
+function clearSelection() {
+    clearCardSelection();
 }
 
-async function bulkChangeStatus(status) {
-    if (selectedCardIds.size === 0) return;
-    if (status === 'HOLD') {
-        openHoldModal(Array.from(selectedCardIds), true);
-        return;
-    }
-    var reason = '일괄 변경';
-    try {
-        await axios.patch('/api/cards/bulk/status', { card_ids: Array.from(selectedCardIds), status: status, reason: reason });
-        showToast(selectedCardIds.size + '장 ' + (statusLabels[status] || status) + ' 처리됨', 'success');
-        selectedCardIds.clear();
-        updateBulkBar();
-        loadKanban();
-    } catch (e) { showToast('일괄 변경 실패', 'error'); }
+function updateBulkBar() {
+    updateCardBulkBar();
 }
 

@@ -107,8 +107,6 @@ export function cardsPage(c: Context<HonoEnv>) {
         }
 
         /* 벌크 액션 바 */
-        .bulk-bar { transform: translateY(100%); transition: transform 0.3s; }
-        .bulk-bar.visible { transform: translateY(0); }
 
         /* 카드 모달 */
         .thumbnail-img { cursor: zoom-in; }
@@ -477,17 +475,7 @@ export function cardsPage(c: Context<HonoEnv>) {
         <input type="text" id="qrScanInput" style="position:absolute;left:-9999px"
                onkeydown="if(event.key===\x27Enter\x27){processQrScan(this.value);this.value=\x27\x27;event.preventDefault()}">
 
-        <!-- 벌크 액션 바 -->
-        <div id="bulkBar" class="bulk-bar fixed bottom-0 left-0 right-0 bg-gray-800 text-white px-4 py-3 z-40">
-            <div class="max-w-6xl mx-auto flex items-center justify-between">
-                <span id="selectedCount" class="text-sm">0장 선택됨</span>
-                <div class="flex gap-2">
-                    <button onclick="bulkChangeStatus(\x27PRINT_DONE\x27)" class="action-btn action-btn-done text-xs">&#10003; 출력완료</button>
-                    <button onclick="bulkChangeStatus(\x27HOLD\x27)" class="action-btn action-btn-hold text-xs">&#9208; 보류</button>
-                    <button onclick="clearSelection()" class="action-btn bg-gray-600 text-white text-xs">해제</button>
-                </div>
-            </div>
-        </div>
+        <!-- 일괄 액션 바는 위의 #cardBulkBar(ds-bulk-bar) 하나 — 레거시 #bulkBar 는 표준 바를 덮어 2026-09-11 제거(여정 루프 P2) -->
     `,
     pageScript
   })
