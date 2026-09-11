@@ -3,7 +3,8 @@
 // ES3(ExtendScript)만: arrow/const/let/JSON 금지. 파일 인코딩 = UTF-8.
 // spec: docs/superpowers/specs/2026-07-23-ia-palette-session-loop.md (CEP 승격)
 // 한글은 params 파일(cep.fs UTF-8)로만 전달 — evalScript 인자/반환은 ASCII만.
-// 처리 로직 정본 = IllustratorAutomat/designer/mes-core.jsx (동일 산출물·manifest 스키마 유지).
+// 처리 로직 정본 = **이 파일**. (옛 mes-core.jsx 에서 포팅했고 그 파일은 2026-09-11 은퇴 — Z: `_retired/20260911-legacy-jsx/`.
+//   산출물·manifest 스키마는 그때 그대로라 ingest 계약 불변.)
 
 // 버전은 패널 우상단 표시(mesA0_ping)와 manifest script_version 에 실린다.
 //   ⚠️ 이 파일은 패널 **로드 시점에만** $.evalFile 된다(jsx/host.jsx 스텁) — 고쳐도 패널을
@@ -19,7 +20,7 @@
 //   0.1.8 = 마감재단선(여백 위치 검정 실선·4변 한 그룹) + 주석 구조에 후가공 추가
 //           (키워드-식별번호-후가공-수량) (2026-07-30)
 //   0.1.9 = 크로스 패널 잠금 위임 추가(mes-lock.jsx) (2026-07-31)
-var MESA0_VERSION = 'A0-CEP-0.12.0'; // 0.12.0 = ★주석이 **출력 경계선 OFF 면 사라지던 것** 정정 — 여백 경계 bL~bB 가 경계선 `if` 안에 선언돼 있어 OFF(08-06 부터 기본값)면 undefined → 주석 position NaN → 빈 catch 가 삼켰다. 08-05 「키워드 없이도 주석」은 맞게 들어갔는데 다음 날 경계선 기본값이 꺼지며 **주석 자체가 전 건 사라졌고 한 달간 아무 게이트도 못 봤다**(실기 2026-09-10) · ★주석 실패를 삼키지 않는다 — manifest `annotation_error` + warn 코드 `A`. 잃는 것: 없음(경계선 ON 산출물 불변) · 0.11.0 = ★**커밋 경계**를 세운다 — `_출력` 픽업 복사가 manifest 커밋보다 **120줄 먼저** 일어나고 있었다. 그래서 등록이 실패해도 출력물은 픽업 폴더에 놓였다(2026-09-09 실측: MES 에 주문 없는 EPS 188MB 2건). 이제 복사는 커밋 뒤에만 한다 — 구제 경로(`mesA0_manifestDone`)도 **같은 순서**다 · ★`mesA0_scanRegister` — 커밋이 안 끝난 폴더를 센다(manifest 없음=잔해 · 마커 없음=MES 미반영). 조용히 쌓이는 것을 안 세면 그게 다음 사각지대다(실측 6건이 아무 화면에도 없었다) · ⚠️manifest 의 `out_copy_error` 는 이제 항상 null 이다 — 복사가 그 뒤라 커밋 시점엔 알 수 없다 · 0.10.0 = ★**계측**을 넣는다 — 「자원이 모자라서인가」는 추측이었고 반증이 더 많다(09-07 실패 건은 EPS 1.9MB 소형 · 실패 **직후** 환경 점검은 전부 통과 · 디스크 156GB 여유). ①`mesA0_ioProbe` = 호출 안 7개 지점에서 1바이트 쓰기를 시도해 **어느 동작 뒤부터 못 쓰는지**를 응답에 싣는다(이등분). ②`mesA0_ioStress` = 파일을 몇 개까지 만들 수 있나 — 재시작 직후/1건 후/3건 후를 비교하면 누적 소비인지 상태 전환인지 갈린다. ⚠️프로브는 단계마다 **다른 파일명**을 쓴다(같은 이름이면 덮어쓰기라 「만들 수 있는가」가 아니라 「고칠 수 있는가」를 재게 된다 — 환경 점검이 ✓ 인데 가공이 ✗ 이던 차이일 수 있다) · 0.9.0 = ★manifest 를 못 쓰면 **패널에게 넘긴다**(`mesA0_manifestPending`) — 실기에서 가공 도중 일러 프로세스의 파일 자원이 고갈된다: 로컬 temp 와 Z: 가 **동시에** I/O 오류이고, 일러 자신의 export 마저 실패하며(「p0.png 를 내보낼 수 없음」), config.json 180KB 가 0바이트로 읽혔다. 경로·권한·드라이브·일러 버전 문제가 아니라 **그 순간 그 프로세스**의 문제다. CEP 는 별도 프로세스라 같은 순간에도 멀쩡했으므로(패널 UI 가 뜨고 응답이 왔다) 일러가 못 쓰면 패널이 쓴다 — 일러 버전·폰트 수와 무관한 길이 하나 생긴다 · ★EPS `embedAllFonts` 를 **남은 텍스트가 있을 때만**(:1103) — 텍스트를 전부 아웃라인한 뒤라 임베드할 폰트가 없는데도 true 라, 폰트 2,159개가 깔린 PC 에서 저장할 때마다 문서 폰트를 전부 열게 하고 있었다(자원 고갈의 유력 원인) · ★환경 점검에 잠금 모듈 버전 · 0.8.0 = ★[환경 점검](`mesA0_envCheck`) — 「이 PC 가 준비됐는가」를 한 곳에서 잰다. 준비 안 된 PC 의 증상은 기능마다 다른 말로 흩어져 나왔고(config 없음·nofolder·noparams·응답 파싱 실패가 **전부 같은 원인**일 수 있다), 2026-09-07 에는 결국 probe 스크립트를 손으로 배포해 물었는데 **다른 실행 문맥**이라 아무것도 증명하지 못했다 · ★manifest 에 `ai_version` — 여태 어느 일러에서 나온 등록인지 아무 데도 안 남겨 「어느 버전부터 이상해졌나」를 잴 수 없었다 · 0.7.2 = ★params 를 **인자로도** 받는다(`mesA0_process(inline)`) — `Folder.temp` 가 사용자명을 품는데 **사용자명이 한글인 PC 가 실재**하고 cep.fs 는 한글 경로에서 못 미덥다(config 만 2중화돼 있었다). 그 PC 는 전 건 `noparams` 로 떨어진다. 파일을 못 쓰는 상황에서 파일로 우회하지 않고 **파일을 뺀다**(왕복 추가 0) · ★브릿지로 나가는 문자열을 전부 \\uXXXX 로 접는다(`mesA0_jsonEsc`) — 0.7.1 이 실패 detail 에 실은 경로에 `IA-등록` 이 들어 있어 원인 대신 「응답 파싱 실패」가 뜰 수 있었다. manifest 도 인코딩 무관해진다 · ★Z: 루트 판정을 재단 호스트와 같은 문구로(`mesA0_zErrJson`) — `nofolder` 하나로 뭉개지던 것을 분리 · 0.7.1 = ★파일 I/O 실패 이유를 버리지 않고, 실패한 그 문맥에서 환경을 다시 재다(mesA0_ioDiag — 사람이 [파일▸스크립트]로 돌린 probe 는 전부 OK 인데 CEP 경로에서만 실패했다) — `mesA0_readText`·`mesA0_writeText` 가 `f.error` 를 `MESA0_IO_ERR` 에 담아 응답 `detail` 로 올린다 · `_출력` 복사의 **빈 catch** 제거(폴더만 생기고 안이 비는 무증상 실패가 실기에서 전 건 발생) · params 「없음」과 「0바이트」 분리(`noparams`/`emptyparams`) · 0.7.0 = ★인쇄용 고해상도 썸네일(thumb_hi) 동시 굽기 — 목록용 400px 는 그대로 두고 작업지시서만 1200px 를 쓴다 · 0.6.0 = ★셸 서명에 파일 목록 포함 + 비교를 src 기준으로 — Z: 에서 파일이 하나 빠지면 그 PC 자동갱신이 retrylimit 로 영구 중단됐다 · 0.5.0 = ★수량 단위(조) 표기 전달 — 대기함 「2개 (1조)」 검산용 · 0.4.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.3.0 = ★자동감지 굽기를 imageCapture 로(임시 문서 없음 — 증명 가능할 때만) · 0.2.0 = 셸 자동 갱신(축3/4를 축2가 끌어온다) · 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
+var MESA0_VERSION = 'A0-CEP-0.13.0'; // 0.13.0 = ★빈 catch 전수 분류(2026-09-11 용준님 「나」) — 실물에 닿는 4곳(원점 정렬 이동·주석 아웃라인·재단선 사각·DXF 내보내기)은 삼키지 않고 warn 코드 N/O/C/D + manifest `cutline_error`·`dxf_error`·`norm_fail` 로 올린다. 나머지 52곳은 사유 주석(`ignore:`) — 게이트 `audit:empty-catch`(편집 훅·커밋 훅·ia:deploy). 잃는 것: 없음(산출물 불변, 경고만 늘어난다) · 0.12.0 = ★주석이 **출력 경계선 OFF 면 사라지던 것** 정정 — 여백 경계 bL~bB 가 경계선 `if` 안에 선언돼 있어 OFF(08-06 부터 기본값)면 undefined → 주석 position NaN → 빈 catch 가 삼켰다. 08-05 「키워드 없이도 주석」은 맞게 들어갔는데 다음 날 경계선 기본값이 꺼지며 **주석 자체가 전 건 사라졌고 한 달간 아무 게이트도 못 봤다**(실기 2026-09-10) · ★주석 실패를 삼키지 않는다 — manifest `annotation_error` + warn 코드 `A`. 잃는 것: 없음(경계선 ON 산출물 불변) · 0.11.0 = ★**커밋 경계**를 세운다 — `_출력` 픽업 복사가 manifest 커밋보다 **120줄 먼저** 일어나고 있었다. 그래서 등록이 실패해도 출력물은 픽업 폴더에 놓였다(2026-09-09 실측: MES 에 주문 없는 EPS 188MB 2건). 이제 복사는 커밋 뒤에만 한다 — 구제 경로(`mesA0_manifestDone`)도 **같은 순서**다 · ★`mesA0_scanRegister` — 커밋이 안 끝난 폴더를 센다(manifest 없음=잔해 · 마커 없음=MES 미반영). 조용히 쌓이는 것을 안 세면 그게 다음 사각지대다(실측 6건이 아무 화면에도 없었다) · ⚠️manifest 의 `out_copy_error` 는 이제 항상 null 이다 — 복사가 그 뒤라 커밋 시점엔 알 수 없다 · 0.10.0 = ★**계측**을 넣는다 — 「자원이 모자라서인가」는 추측이었고 반증이 더 많다(09-07 실패 건은 EPS 1.9MB 소형 · 실패 **직후** 환경 점검은 전부 통과 · 디스크 156GB 여유). ①`mesA0_ioProbe` = 호출 안 7개 지점에서 1바이트 쓰기를 시도해 **어느 동작 뒤부터 못 쓰는지**를 응답에 싣는다(이등분). ②`mesA0_ioStress` = 파일을 몇 개까지 만들 수 있나 — 재시작 직후/1건 후/3건 후를 비교하면 누적 소비인지 상태 전환인지 갈린다. ⚠️프로브는 단계마다 **다른 파일명**을 쓴다(같은 이름이면 덮어쓰기라 「만들 수 있는가」가 아니라 「고칠 수 있는가」를 재게 된다 — 환경 점검이 ✓ 인데 가공이 ✗ 이던 차이일 수 있다) · 0.9.0 = ★manifest 를 못 쓰면 **패널에게 넘긴다**(`mesA0_manifestPending`) — 실기에서 가공 도중 일러 프로세스의 파일 자원이 고갈된다: 로컬 temp 와 Z: 가 **동시에** I/O 오류이고, 일러 자신의 export 마저 실패하며(「p0.png 를 내보낼 수 없음」), config.json 180KB 가 0바이트로 읽혔다. 경로·권한·드라이브·일러 버전 문제가 아니라 **그 순간 그 프로세스**의 문제다. CEP 는 별도 프로세스라 같은 순간에도 멀쩡했으므로(패널 UI 가 뜨고 응답이 왔다) 일러가 못 쓰면 패널이 쓴다 — 일러 버전·폰트 수와 무관한 길이 하나 생긴다 · ★EPS `embedAllFonts` 를 **남은 텍스트가 있을 때만**(:1103) — 텍스트를 전부 아웃라인한 뒤라 임베드할 폰트가 없는데도 true 라, 폰트 2,159개가 깔린 PC 에서 저장할 때마다 문서 폰트를 전부 열게 하고 있었다(자원 고갈의 유력 원인) · ★환경 점검에 잠금 모듈 버전 · 0.8.0 = ★[환경 점검](`mesA0_envCheck`) — 「이 PC 가 준비됐는가」를 한 곳에서 잰다. 준비 안 된 PC 의 증상은 기능마다 다른 말로 흩어져 나왔고(config 없음·nofolder·noparams·응답 파싱 실패가 **전부 같은 원인**일 수 있다), 2026-09-07 에는 결국 probe 스크립트를 손으로 배포해 물었는데 **다른 실행 문맥**이라 아무것도 증명하지 못했다 · ★manifest 에 `ai_version` — 여태 어느 일러에서 나온 등록인지 아무 데도 안 남겨 「어느 버전부터 이상해졌나」를 잴 수 없었다 · 0.7.2 = ★params 를 **인자로도** 받는다(`mesA0_process(inline)`) — `Folder.temp` 가 사용자명을 품는데 **사용자명이 한글인 PC 가 실재**하고 cep.fs 는 한글 경로에서 못 미덥다(config 만 2중화돼 있었다). 그 PC 는 전 건 `noparams` 로 떨어진다. 파일을 못 쓰는 상황에서 파일로 우회하지 않고 **파일을 뺀다**(왕복 추가 0) · ★브릿지로 나가는 문자열을 전부 \\uXXXX 로 접는다(`mesA0_jsonEsc`) — 0.7.1 이 실패 detail 에 실은 경로에 `IA-등록` 이 들어 있어 원인 대신 「응답 파싱 실패」가 뜰 수 있었다. manifest 도 인코딩 무관해진다 · ★Z: 루트 판정을 재단 호스트와 같은 문구로(`mesA0_zErrJson`) — `nofolder` 하나로 뭉개지던 것을 분리 · 0.7.1 = ★파일 I/O 실패 이유를 버리지 않고, 실패한 그 문맥에서 환경을 다시 재다(mesA0_ioDiag — 사람이 [파일▸스크립트]로 돌린 probe 는 전부 OK 인데 CEP 경로에서만 실패했다) — `mesA0_readText`·`mesA0_writeText` 가 `f.error` 를 `MESA0_IO_ERR` 에 담아 응답 `detail` 로 올린다 · `_출력` 복사의 **빈 catch** 제거(폴더만 생기고 안이 비는 무증상 실패가 실기에서 전 건 발생) · params 「없음」과 「0바이트」 분리(`noparams`/`emptyparams`) · 0.7.0 = ★인쇄용 고해상도 썸네일(thumb_hi) 동시 굽기 — 목록용 400px 는 그대로 두고 작업지시서만 1200px 를 쓴다 · 0.6.0 = ★셸 서명에 파일 목록 포함 + 비교를 src 기준으로 — Z: 에서 파일이 하나 빠지면 그 PC 자동갱신이 retrylimit 로 영구 중단됐다 · 0.5.0 = ★수량 단위(조) 표기 전달 — 대기함 「2개 (1조)」 검산용 · 0.4.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.3.0 = ★자동감지 굽기를 imageCapture 로(임시 문서 없음 — 증명 가능할 때만) · 0.2.0 = 셸 자동 갱신(축3/4를 축2가 끌어온다) · 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
 var MESA0_REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
 var MESA0_PT_PER_MM = 72 / 25.4;
 var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];
@@ -71,7 +72,7 @@ function mesA0_readText(path) {
   f.encoding = 'UTF-8';
   if (!f.open('r')) { MESA0_IO_ERR = "open('r') 실패: " + f.error + ' @ ' + path; return null; }
   var s;
-  try { s = f.read(); } catch (eR) { MESA0_IO_ERR = 'read 실패: ' + eR + ' @ ' + path; try { f.close(); } catch (eR2) {} return null; }
+  try { s = f.read(); } catch (eR) { MESA0_IO_ERR = 'read 실패: ' + eR + ' @ ' + path; try { f.close(); } catch (eR2) { /* ignore: 오류 경로의 파일 닫기 — 원인은 MESA0_IO_ERR 에 이미 기록됐다 */ } return null; }
   f.close(); return s;
 }
 function mesA0_writeText(path, s) {
@@ -79,7 +80,7 @@ function mesA0_writeText(path, s) {
   var f = new File(path);
   f.encoding = 'UTF-8';
   if (!f.open('w')) { MESA0_IO_ERR = "open('w') 실패: " + f.error + ' @ ' + path; return false; }
-  try { f.write(s); } catch (eW) { MESA0_IO_ERR = 'write 실패: ' + eW + ' @ ' + path; try { f.close(); } catch (eW2) {} return false; }
+  try { f.write(s); } catch (eW) { MESA0_IO_ERR = 'write 실패: ' + eW + ' @ ' + path; try { f.close(); } catch (eW2) { /* ignore: 오류 경로의 파일 닫기 — 원인은 MESA0_IO_ERR 에 이미 기록됐다 */ } return false; }
   f.close(); return true;
 }
 function mesA0_jsonEsc(s) {
@@ -183,12 +184,12 @@ function mesA0_findClipPath(item) {
         if (r) return r;
       }
     }
-  } catch (e) {}
+  } catch (e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
   return null;
 }
 function mesA0_getClipBounds(group) {
   for (var j = 0; j < group.pageItems.length; j++) {
-    try { if (group.pageItems[j].clipping) return group.pageItems[j].geometricBounds; } catch (e) {}
+    try { if (group.pageItems[j].clipping) return group.pageItems[j].geometricBounds; } catch (e) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
   }
   var r = mesA0_findClipPath(group);
   return r ? r : group.geometricBounds;
@@ -216,7 +217,7 @@ function mesA0_getContentUnion(group) { // 클립 패스 제외한 실제 아트
         if (uB === null || cb[3] < uB) uB = cb[3];
       }
     }
-  } catch (e) {}
+  } catch (e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
   return (uL === null) ? null : [uL, uT, uR, uB];
 }
 function mesA0_getVisibleInk(group) { // 클립 ∩ 콘텐츠 = 실제 보이는 잉크. 교집합 없으면 클립.
@@ -243,7 +244,7 @@ function mesA0_getClipRespecting(group) {
         if (uB === null || cb[3] < uB) uB = cb[3];
       }
     }
-  } catch (e) {}
+  } catch (e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
   return (uL === null) ? group.geometricBounds : [uL, uT, uR, uB];
 }
 function mesA0_itemBounds(item) {
@@ -471,7 +472,7 @@ function mesPanel_probeCopy() {
         if (b.exists && !b.remove()) return false;
         if (!a.copy(b.fsName)) return false;
         var okRead = (mesA0_readText(b.fsName) === 'probe');
-        try { a.remove(); b.remove(); } catch (eC) {}
+        try { a.remove(); b.remove(); } catch (eC) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ }
         return okRead;
     } catch (e) { return false; }
 }
@@ -569,7 +570,7 @@ function mesPanel_syncStatus() { return MESPANEL_SYNC; }
 // ★ping 이 트리거인 이유 = 구 셸도 ping 은 부른다. 셸을 고치지 않아도 전 PC 가 붙는다.
 //   갱신 실패가 ping 을 깨뜨리면 패널 전체가 죽으므로 반드시 삼킨다(결과는 mesPanel_syncStatus).
 function mesA0_ping() {
-    try { mesPanel_syncShell(); } catch (eSync) {}
+    try { mesPanel_syncShell(); } catch (eSync) { /* ignore: 갱신 실패는 mesPanel_syncStatus 에 남는다 — 여기서 던지면 ping 이 죽어 패널 전체가 죽는다 */ }
     return MESA0_VERSION;
 }
 
@@ -616,7 +617,7 @@ function mesA0_envCheck() {
   var tf = tmp + '/mes_env_check.txt';
   putB('tempWrite', mesA0_writeText(tf, 'x'));
   putS('tempErr', MESA0_IO_ERR);
-  try { var t1 = new File(tf); if (t1.exists) t1.remove(); } catch (e1) {}
+  try { var t1 = new File(tf); if (t1.exists) t1.remove(); } catch (e1) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ }
 
   // Z: — 보이는 것과 쓸 수 있는 것은 다르다. 둘 다 잰다.
   putS('zRoot', MESA0_REGISTER_ROOT);
@@ -626,13 +627,13 @@ function mesA0_envCheck() {
     var zf = MESA0_REGISTER_ROOT + '/_config/mes_env_check.txt';
     putB('zWrite', mesA0_writeText(zf, 'x'));
     putS('zErr', MESA0_IO_ERR);
-    try { var t2 = new File(zf); if (t2.exists) t2.remove(); } catch (e2) {}
+    try { var t2 = new File(zf); if (t2.exists) t2.remove(); } catch (e2) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ }
     var cf = new File(MESA0_REGISTER_ROOT + '/_config/config.json');
     putB('cfg', cf.exists);
     if (cf.exists) {
       put('cfgBytes', cf.length);
       var ageH = -1;
-      try { ageH = Math.round(((new Date()).getTime() - cf.modified.getTime()) / 36000) / 100; } catch (e3) {}
+      try { ageH = Math.round(((new Date()).getTime() - cf.modified.getTime()) / 36000) / 100; } catch (e3) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
       put('cfgAgeH', isNaN(ageH) ? -1 : ageH);
     }
   } else {
@@ -779,15 +780,15 @@ function mesA0_scanRegister() {
           var fn = String(ff[j].name);
           if (/^manifest.*\.json$/i.test(fn)) nMf++;
           else if (fn.indexOf('.ingested') === 0 || fn.indexOf('.rejected') === 0) nMk++;
-          try { bytes += ff[j].length; } catch (eL) {}
+          try { bytes += ff[j].length; } catch (eL) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         }
-      } catch (eG) {}
+      } catch (eG) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
       // 숨김 파일이 목록에 안 잡히는 환경 대비 — 단건 마커는 직접 확인한다
       if (nMk === 0 && nMf > 0) {
-        try { if (new File(subs[i].fsName + '/.ingested').exists) nMk = nMf; } catch (eI) {}
-        try { if (nMk === 0 && new File(subs[i].fsName + '/.rejected').exists) nMk = nMf; } catch (eR) {}
+        try { if (new File(subs[i].fsName + '/.ingested').exists) nMk = nMf; } catch (eI) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
+        try { if (nMk === 0 && new File(subs[i].fsName + '/.rejected').exists) nMk = nMf; } catch (eR) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
       }
-      try { ageH = (now - subs[i].modified.getTime()) / 3600000; } catch (eA) {}
+      try { ageH = (now - subs[i].modified.getTime()) / 3600000; } catch (eA) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
       if (nMf === 0) { if (ageH > 1) { o.orphan++; o.orphanMB += Math.round(bytes / 1048576); } }
       else if (nMk < nMf && ageH > 0.2) o.pending++;
     }
@@ -804,11 +805,11 @@ function mesA0_ioDiag(dir) {
   var r = [];
   var t = String(Folder.temp.fsName).replace(/[\\]/g, '/') + '/mes_io_diag.txt';
   r.push('temp=' + (mesA0_writeText(t, 'x') ? 'OK' : ('FAIL[' + MESA0_IO_ERR + ']')));
-  try { var tf = new File(t); if (tf.exists) tf.remove(); } catch (e1) {}
+  try { var tf = new File(t); if (tf.exists) tf.remove(); } catch (e1) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ }
   if (dir) {
     var d = String(dir).replace(/[\\]/g, '/') + '/mes_io_diag.txt';
     r.push('dir=' + (mesA0_writeText(d, 'x') ? 'OK' : ('FAIL[' + MESA0_IO_ERR + ']')));
-    try { var df = new File(d); if (df.exists) df.remove(); } catch (e2) {}
+    try { var df = new File(d); if (df.exists) df.remove(); } catch (e2) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ }
   }
   r.push('ai=' + app.version + ' docs=' + app.documents.length);
   return r.join(' · ');
@@ -919,7 +920,7 @@ function mesA0_process(inline) {
   var realW = fileWCm * sN, realH = fileHCm * sN;
 
   var pfSourceRGB = false;
-  try { pfSourceRGB = (srcDoc.documentColorSpace == DocumentColorSpace.RGB); } catch (ePf0) {}
+  try { pfSourceRGB = (srcDoc.documentColorSpace == DocumentColorSpace.RGB); } catch (ePf0) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
   var pfRemainingText = 0, pfLinkedImages = 0;
   var pfRasters = 0, pfOversize = 0, pfOversizeMax = 0, workBytes = 0;
 
@@ -952,6 +953,8 @@ function mesA0_process(inline) {
   var cvB = vbAll || ub;
   var newDoc = mesA0_newDocMM((cvB[2] - cvB[0]) || 100, (cvB[1] - cvB[3]) || 100);
   var okAll = false, outlineFailed = false, epsName = null, dxfName = null, diagItems = 0, normed = 0;
+  // 실물에 닿는 자리의 실패는 삼키지 않는다(2026-09-11 빈 catch 전수 분류) — warn 코드 N/C/D + manifest 로 올린다
+  var normFail = 0, cutErr = '', dxfErr = '';
   try {
     app.activeDocument = newDoc;
     app.paste(); // 신규문서 중앙에 붙음(절대위치는 이후 정규화로 원점 이동)
@@ -962,12 +965,12 @@ function mesA0_process(inline) {
     try { for (var ti = newDoc.textFrames.length - 1; ti >= 0; ti--) newDoc.textFrames[ti].createOutline(); }
     catch (eOl) { outlineFailed = true; }
     mesA0_ioProbe('outline');        // 신규 문서 + 붙여넣기 + 텍스트 아웃라인 뒤
-    try { pfRemainingText = newDoc.textFrames.length; } catch (ePf1) {}
-    try { pfLinkedImages = newDoc.placedItems.length; } catch (ePf2) {}
+    try { pfRemainingText = newDoc.textFrames.length; } catch (ePf1) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
+    try { pfLinkedImages = newDoc.placedItems.length; } catch (ePf2) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
 
     if (pasted.length === 0) { // 폴백: 레이어 top-level 수집
       for (var pl = 0; pl < newDoc.pageItems.length; pl++) {
-        try { var itp = newDoc.pageItems[pl]; if (itp.parent && itp.parent.typename === 'Layer') pasted.push(itp); } catch (ePl) {}
+        try { var itp = newDoc.pageItems[pl]; if (itp.parent && itp.parent.typename === 'Layer') pasted.push(itp); } catch (ePl) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
       }
     }
     diagItems = pasted.length;
@@ -976,13 +979,13 @@ function mesA0_process(inline) {
     if (pre) {
       var dx = -pre[0], dy = -pre[1];
       if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01) {
-        for (var pn = 0; pn < pasted.length; pn++) { try { pasted[pn].translate(dx, dy); normed++; } catch (eTr) {} }
+        for (var pn = 0; pn < pasted.length; pn++) { try { pasted[pn].translate(dx, dy); normed++; } catch (eTr) { normFail++; } } // 못 옮긴 개체는 warn 'N'·응답 norm_fail
       }
     }
     var db = mesA0_clipUnion(pasted); // 클립 마스크 존중(아트보드=정확한 디자인 크기)
     if (!db) db = mesA0_unionBounds(pasted);
     if (!db) { // 복제 실패/측정 불가 — 쓰레기 산출 대신 진단 반환
-      try { newDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (eC0) {}
+      try { newDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (eC0) { /* ignore: 임시 문서 닫기 — 이미 닫혔거나 참조가 무효 */ }
       return '{"ok":false,"err":"noart","items":' + diagItems + ',"sel":' + sel.length + ',"copyErr":"' + mesA0_jsonEsc(copyErr) + '"}';
     }
     newDoc.artboards[0].artboardRect = [db[0], db[1], db[2], db[3]];
@@ -1008,7 +1011,7 @@ function mesA0_process(inline) {
           if (outPctM > pfOversizeMax) pfOversizeMax = outPctM;
         }
       }
-    } catch (ePf3) {}
+    } catch (ePf3) { /* ignore: 임베드 여분 계측(경고 전용) — 못 재면 oversize 0 으로 두고 산출물은 불변 */ }
 
     if (!review) {
       var workFile = new File(jobFolder.fsName + '/work' + sfx + '.ai');
@@ -1021,7 +1024,7 @@ function mesA0_process(inline) {
       workOpts.pdfCompatible = false;
       newDoc.saveAs(workFile, workOpts);
       mesA0_ioProbe('ai');           // work.ai 저장 뒤(수십 MB · 일러 내부 I/O)
-      try { workBytes = new File(workFile.fsName).length; } catch (eWb) {}
+      try { workBytes = new File(workFile.fsName).length; } catch (eWb) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     }
 
     if (mode !== 'impose') {
@@ -1083,7 +1086,7 @@ function mesA0_process(inline) {
         ln.stroked = true; ln.filled = false;
         var kc = new CMYKColor(); kc.cyan = 0; kc.magenta = 0; kc.yellow = 0; kc.black = 100;
         ln.strokeColor = kc; ln.strokeWidth = 0.6;
-        try { ln.moveToBeginning(finCutGrp); } catch (eMv) {}
+        try { ln.moveToBeginning(finCutGrp); } catch (eMv) { /* ignore: z-순서 조정 — 재단선이 그룹 뒤로 가도 출력은 같다 */ }
       }
       var fcL = oL - finMargins.left, fcT = oT + finMargins.top;
       var fcR = oR + finMargins.right, fcB = oB - finMargins.bottom;
@@ -1152,7 +1155,7 @@ function mesA0_process(inline) {
             atf.contents = annotation;
             atf.textRange.characterAttributes.size = fsz;
             atf.textRange.characterAttributes.fillColor = kColA;
-            try { atf.textRange.characterAttributes.textFont = app.textFonts.getByName('MalgunGothic'); } catch (eFn) {} // 한글 폰트
+            try { atf.textRange.characterAttributes.textFont = app.textFonts.getByName('MalgunGothic'); } catch (eFn) { /* ignore: 맑은고딕이 없는 PC 는 기본 폰트 — 바로 아래에서 아웃라인하므로 실물 동일 */ } // 한글 폰트
             if (apos === 'top') atf.position = [bL + off5, (oT + bT) / 2 + fsz * 0.4];
             else if (apos === 'bottom') atf.position = [bL + off5, (bB + oB) / 2 + fsz * 0.4];
             else { // left/right — 세로 밴드 회전(밴드 중앙 정렬)
@@ -1167,7 +1170,7 @@ function mesA0_process(inline) {
                 atf.position = [cx - gwr / 2, bT - off5];
               }
             }
-            try { atf.createOutline(); } catch (eAo) {} // RIP 안전: 아웃라인
+            try { atf.createOutline(); } catch (eAo) { outlineFailed = true; } // RIP 안전: 아웃라인 — 실패는 warn 'O'(살아있는 텍스트)
           } catch (eAnn) { annotErr += (annotErr ? ' ' : '') + apos + ':' + eAnn; }
         }
       }
@@ -1187,7 +1190,7 @@ function mesA0_process(inline) {
           var cCol = new CMYKColor(); cCol.cyan = 0; cCol.magenta = 100; cCol.yellow = 0; cCol.black = 0;
           var cRect = cutLayer.pathItems.rectangle(oT, oL, oR - oL, oT - oB); // rectangle(top,left,width,height)
           cRect.stroked = true; cRect.filled = false; cRect.strokeColor = cCol; cRect.strokeWidth = 0.6;
-        } catch (eCut) {}
+        } catch (eCut) { cutErr = String(eCut); } // 재단선 사각 실패 = warn 'C' + manifest cutline_error (돔보만 있는 파일이 나간다)
 
         var ar = newDoc.artboards[0].artboardRect;
         var tL = ar[0], tT = ar[1], tR = ar[2], tB = ar[3];
@@ -1271,12 +1274,12 @@ function mesA0_process(inline) {
           dxfOpts.version = AutoCADCompatibility.AutoCADRelease21;
           dxfOpts.unit = AutoCADUnit.Millimeters;
           dxfOpts.scaleLineweights = false;
-          try { dxfOpts.exportOption = AutoCADExportOption.MaximumEditability; } catch (eDOpt) {}
+          try { dxfOpts.exportOption = AutoCADExportOption.MaximumEditability; } catch (eDOpt) { /* ignore: 구 일러에 없는 DXF 옵션 — 기본 편집성으로 내보낸다 */ }
           newDoc.exportFile(dxfFile, ExportType.AUTOCAD, dxfOpts);
           dxfName = dxfCand; // 성공했을 때만 채운다 = manifest·반환값이 없는 파일을 가리키지 않게
-        } catch (eDxf) {}
+        } catch (eDxf) { dxfErr = String(eDxf); } // DXF 실패 = warn 'D' + manifest dxf_error (재단기 파일이 없다는 뜻이라 반드시 알린다)
         for (var lr = 0; lr < newDoc.layers.length && lr < visSaved.length; lr++) {
-          try { newDoc.layers[lr].visible = visSaved[lr]; } catch (eVs) {}
+          try { newDoc.layers[lr].visible = visSaved[lr]; } catch (eVs) { /* ignore: 상태·스타일 적용 — 못 받은 개체는 성공 목록(n/keep)에 안 들어가거나 원래 상태로 남는다 */ }
         }
       }
 
@@ -1318,7 +1321,7 @@ function mesA0_process(inline) {
       // 검토문서 이관(D4): 가공 결과(마감·돔보 포함)를 검토문서 타일 아트보드로 옮기고 복제문서를 닫는다.
       var rres = mesA0_reviewPlace(newDoc);
       if (rres !== 'ok') {
-        try { newDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (eRc) {}
+        try { newDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (eRc) { /* ignore: 임시 문서 닫기 — 이미 닫혔거나 참조가 무효 */ }
         return '{"ok":false,"err":"review:' + mesA0_jsonEsc(rres) + '"}';
       }
       return '{"ok":true,"review":1,"w":' + (Math.round(realW * 10) / 10) + ',"h":' + (Math.round(realH * 10) / 10) + ',"mode":"' + mode + '"}';
@@ -1326,11 +1329,11 @@ function mesA0_process(inline) {
 
     okAll = true;
   } catch (eProc) {
-    try { newDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCl0) {}
+    try { newDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCl0) { /* ignore: 임시 문서 닫기 — 이미 닫혔거나 참조가 무효 */ }
     return '{"ok":false,"err":"proc:' + mesA0_jsonEsc('' + eProc) +
       '","ioprobe":"' + mesA0_jsonEsc(MESA0_IOPROBE) + '"}';
   }
-  try { newDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCl) {}
+  try { newDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCl) { /* ignore: 임시 문서 닫기 — 이미 닫혔거나 참조가 무효 */ }
   if (!okAll) return '{"ok":false,"err":"proc"}';
 
   // manifest — mes-core 스키마 유지 + worker/source 필드 추가(ingest 계약 불변)
@@ -1364,6 +1367,9 @@ function mesA0_process(inline) {
     annotation: annotation || null,
     annot_pos: annotation ? annotPos : null,
     annotation_error: annotErr || null, // 주석을 그리다 실패한 변과 예외(2026-09-11) — null 이면 요청한 변은 전부 그렸다
+    cutline_error: cutErr || null,      // 재단선 사각(돔보 짝) 실패 예외 — null 이면 그렸다(돔보 요청 없으면 당연히 null)
+    dxf_error: dxfErr || null,          // DXF 내보내기 실패 예외 — null 이면 dxf 가 있거나 요청이 없었다
+    norm_fail: normFail,                // 원점 정렬에서 못 옮긴 개체 수 — 0 이 정상
     identifier: seqNo,
     scale_pct: Math.round(100 / sN),
     measured_cm: { w: Math.round(realW * 10) / 10, h: Math.round(realH * 10) / 10 },
@@ -1386,12 +1392,12 @@ function mesA0_process(inline) {
   // ★성공 응답을 **먼저** 조립한다 — manifest 쓰기가 실패해도 이 값들은 이미 확정이고,
   //   패널이 대신 써서 등록을 완성하면 그대로 성공 메시지가 되어야 하기 때문이다.
   var warn = (pfSourceRGB ? 'R' : '') + (pfRemainingText > 0 ? 'T' : '') + (pfLinkedImages > 0 ? 'L' : '') + (outlineFailed ? 'O' : '') +
-    (pfOversize > 0 ? 'E' : '') + (annotErr ? 'A' : '');
+    (pfOversize > 0 ? 'E' : '') + (annotErr ? 'A' : '') + (cutErr ? 'C' : '') + (dxfErr ? 'D' : '') + (normFail > 0 ? 'N' : '');
   var okRes = '{"ok":true,"folder":"' + mesA0_jsonEsc(folderName) + '","eps":' +
     (epsName ? ('"' + mesA0_jsonEsc(epsName) + '"') : 'null') +
     ',"dxf":' + (dxfName ? ('"' + mesA0_jsonEsc(dxfName) + '"') : 'null') +
     ',"w":' + (Math.round(realW * 10) / 10) + ',"h":' + (Math.round(realH * 10) / 10) +
-    ',"items":' + diagItems + ',"normed":' + normed +
+    ',"items":' + diagItems + ',"normed":' + normed + ',"norm_fail":' + normFail +
     ',"bytes":' + workBytes + ',"oversize":' + pfOversize +
     ',"mode":"' + mode + '","warn":"' + warn + '"' +
     ',"ioprobe":"' + mesA0_jsonEsc(MESA0_IOPROBE) + '"';   // ⚠️ 닫는 중괄호 없음 — 복사 뒤에 닫는다
@@ -1480,8 +1486,8 @@ function mesA0_cluster(items, gapPt) {
   var rects = [];
   for (var i = 0; i < items.length; i++) {
     var b = null;
-    try { b = mesA0_itemBounds(items[i]); } catch (e) {}
-    if (!b) { try { b = items[i].visibleBounds; } catch (e2) {} }
+    try { b = mesA0_itemBounds(items[i]); } catch (e) { /* ignore: 경계를 못 재는 개체는 visibleBounds 폴백(다음 줄)으로 넘어간다 */ }
+    if (!b) { try { b = items[i].visibleBounds; } catch (e2) { /* ignore: 경계를 못 재는 개체는 건너뛴다 — 후보 목록에서 빠질 뿐 산출물은 남은 개체로 만든다 */ } }
     if (b) rects.push({ item: items[i], L: b[0], T: b[1], R: b[2], B: b[3], cid: i });
   }
   var g = gapPt / 2;
@@ -1521,8 +1527,8 @@ function mesA0_seedKeep(cands) {
   var kept = [];
   for (var i = 0; i < cands.length; i++) {
     var it = cands[i], b = null;
-    try { b = mesA0_itemBounds(it); } catch (eB) {}
-    if (!b) { try { b = it.visibleBounds; } catch (eB2) {} }
+    try { b = mesA0_itemBounds(it); } catch (eB) { /* ignore: 경계를 못 재는 개체는 visibleBounds 폴백(다음 줄)으로 넘어간다 */ }
+    if (!b) { try { b = it.visibleBounds; } catch (eB2) { /* ignore: 경계를 못 재는 개체는 후보에서 빠진다 — 자동감지 후보 수로 드러난다 */ } }
     if (!b) continue;
     if (Math.abs(b[2] - b[0]) >= MIN || Math.abs(b[1] - b[3]) >= MIN) kept.push(it);
   }
@@ -1584,10 +1590,10 @@ function mesA0_seedCands(d, source) {
         if (ly.locked || !ly.visible) return;
         for (var i = 0; i < ly.pageItems.length; i++) {
           var it = ly.pageItems[i];
-          try { if (!it.locked && !it.hidden) tops.push(it); } catch (eIt) {}
+          try { if (!it.locked && !it.hidden) tops.push(it); } catch (eIt) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         }
         for (var s = 0; s < ly.layers.length; s++) collectLayer(ly.layers[s]);
-      } catch (eLy) {}
+      } catch (eLy) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
     };
     try { for (var l = 0; l < d.layers.length; l++) collectLayer(d.layers[l]); }
     catch (eScan) { return 'scan'; }
@@ -1733,7 +1739,7 @@ function mesA0_seedRaster(srcDoc, items) {
     app.activeDocument = srcDoc;
     var n = 0;
     for (var i = 0; i < items.length; i++) {
-      try { items[i].duplicate(lay, ElementPlacement.PLACEATBEGINNING); n++; } catch (eD) {}
+      try { items[i].duplicate(lay, ElementPlacement.PLACEATBEGINNING); n++; } catch (eD) { /* ignore: 복제 실패 개체는 건너뛴다 — 성공 수 n 을 반환해 호출자가 판정 */ }
     }
     app.activeDocument = tmp;
     var u = n ? mesA0_unionBounds(tmp.pageItems) : null;
@@ -1764,8 +1770,8 @@ function mesA0_seedRaster(srcDoc, items) {
     app.activeDocument = srcDoc;
     return res;
   } catch (e) {
-    if (tmp) { try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) {} }
-    try { app.activeDocument = srcDoc; } catch (e3) {}
+    if (tmp) { try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) { /* ignore: 임시 문서 닫기 — 이미 닫혔거나 참조가 무효 */ } }
+    try { app.activeDocument = srcDoc; } catch (e3) { /* ignore: 활성 문서 복귀는 편의 — 원본이 닫혔으면 되돌릴 대상이 없다 */ }
     return null;
   }
 }
@@ -1808,12 +1814,12 @@ function mesA0_seedBegin(source, gapMm) {
   //   개체가 그룹인지는 파일이 아는 사실이므로 이걸 그대로 올려보낸다.
   var grp = 0;
   for (var gi = 0; gi < kept.length; gi++) {
-    try { if (kept[gi].typename === 'GroupItem') grp++; } catch (eT) {}
+    try { if (kept[gi].typename === 'GroupItem') grp++; } catch (eT) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
   }
   var bs = [];
   for (var k = 0; k < kept.length; k++) {
     var b = null;
-    try { b = mesA0_itemBounds(kept[k]); } catch (eB) {}
+    try { b = mesA0_itemBounds(kept[k]); } catch (eB) { /* ignore: 경계를 못 재는 개체는 건너뛴다 — 시드 조각 수로 드러난다 */ }
     if (!b) { try { b = kept[k].visibleBounds; } catch (eB2) { b = null; } }
     if (!b) { bs.push('null'); continue; }
     bs.push('[' + mesA0_r2(b[0] / MESA0_PT_PER_MM) + ',' + mesA0_r2(b[1] / MESA0_PT_PER_MM)
@@ -1890,7 +1896,7 @@ function mesA0_reviewEnsure() {
 
 function mesA0_reviewDiscard() {
   var R = $.global.mesA0Rev;
-  if (R && R.docs) for (var i = 0; i < R.docs.length; i++) { try { R.docs[i].close(SaveOptions.DONOTSAVECHANGES); } catch (e) {} }
+  if (R && R.docs) for (var i = 0; i < R.docs.length; i++) { try { R.docs[i].close(SaveOptions.DONOTSAVECHANGES); } catch (e) { /* ignore: 임시 문서 닫기 — 이미 닫혔거나 참조가 무효 */ } }
   $.global.mesA0Rev = null;
   return 'ok';
 }
@@ -1917,7 +1923,7 @@ function mesA0_reviewPlace(newDoc) {
   var wPt = AB[2] - AB[0], hPt = AB[1] - AB[3];
   var tops = [];
   for (var i = 0; i < newDoc.pageItems.length; i++) {
-    try { var it = newDoc.pageItems[i]; if (it.parent && it.parent.typename === 'Layer') tops.push(it); } catch (e0) {}
+    try { var it = newDoc.pageItems[i]; if (it.parent && it.parent.typename === 'Layer') tops.push(it); } catch (e0) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
   }
   if (!tops.length) return 'empty';
   var ub = mesA0_unionBounds(tops);
@@ -1943,7 +1949,7 @@ function mesA0_reviewPlace(newDoc) {
     newDoc.selection = tops;
     app.copy();
   } catch (eCp) { return 'copy:' + eCp; }
-  try { newDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCl) {}
+  try { newDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCl) { /* ignore: 임시 문서 닫기 — 이미 닫혔거나 참조가 무효 */ }
   var rd = R.docs.length ? R.docs[R.docs.length - 1] : mesA0_reviewNewDoc(R);
   if (R.x > 0 && R.x + advW > lim) { R.x = 0; R.y += R.rowH + gap; R.rowH = 0; } // 줄바꿈
   if (R.y + advH > lim) rd = mesA0_reviewNewDoc(R);                              // 문서 분할(순차 폴백)
@@ -1958,7 +1964,7 @@ function mesA0_reviewPlace(newDoc) {
     // padL/padT = 삐져나온 아트를 캔버스 안으로 들이는 보정. 아트가 아트보드 안이면 0 = 기존 동작 그대로.
     var tileL = R.ox + R.x + padL, tileT = R.oy - R.y - padT;
     var dx = (tileL + relDx) - pb[0], dy = (tileT + relDy) - pb[1];
-    for (var t = 0; t < pasted.length; t++) { try { pasted[t].translate(dx, dy); } catch (eT) {} }
+    for (var t = 0; t < pasted.length; t++) { try { pasted[t].translate(dx, dy); } catch (eT) { /* ignore: 검토 문서 안 배치 — 검토 화면용이라 산출물이 아니다 */ } }
     var abRect = [tileL, tileT, tileL + wPt, tileT - hPt];
     if (R.first) { rd.artboards[0].artboardRect = abRect; R.first = false; }
     else rd.artboards.add(abRect);
@@ -1976,7 +1982,7 @@ function mesA0_reviewEnd() {
   try {
     app.activeDocument = R.docs[R.docs.length - 1];
     app.executeMenuCommand('fitall'); // 전체 보기 — 아트보드 이동/줌으로 검토
-  } catch (e) {}
+  } catch (e) { /* ignore: 전체 보기(fitall) — 검토 편의 */ }
   return '{"ok":true,"docs":' + R.docs.length + ',"count":' + R.count + '}';
 }
 

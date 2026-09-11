@@ -25,7 +25,8 @@ const SCRIPTS = path.join(ROOT, '_scripts')
 // 산출물 종류별 '이 파일이 만들었다' 매핑 — 회귀 판정 기준시각의 출처
 const LOGIC = {
   work: path.join(SCRIPTS, 'mes-a0-host.jsx'), // work*.ai (패널). 은퇴한 mes-core.jsx 도 같은 산출물명
-  sheet: path.join(SCRIPTS, 'mes-sheet.jsx'), // MES판_*.ai
+  // MES판_*.ai — mes-sheet.jsx 는 2026-09-11 은퇴(`_retired/`). 파일이 없으면 mtime=0 이라 판정을 건너뛴다(아래 루프).
+  sheet: path.join(SCRIPTS, 'mes-sheet.jsx'),
 }
 const MB = 1024 * 1024
 

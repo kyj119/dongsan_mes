@@ -66,13 +66,13 @@ function getItemBounds(item) {
                                 return child.geometricBounds;
                             }
                         }
-                    } catch(e) {}
+                    } catch(e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
                 }
             }
             // 마스크 못 찾으면 fallback
             return item.visibleBounds;
         }
-    } catch(e) {}
+    } catch(e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
 
     // 일반 아이템
     return item.visibleBounds;
@@ -117,7 +117,7 @@ function collectAllItems(doc) {
                     vb: [vb[0], vb[1], vb[2], vb[3]],
                     typename: item.typename
                 });
-            } catch(e) {}
+            } catch(e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
         }
     }
 

@@ -39,12 +39,12 @@ function mesLock_read() {
     var f = mesLock_file();
     if (!f.exists) return null;
     var s = '';
-    try { f.open('r'); s = f.read(); f.close(); } catch (e) { try { f.close(); } catch (e2) {} return null; }
+    try { f.open('r'); s = f.read(); f.close(); } catch (e) { try { f.close(); } catch (e2) { /* ignore: 오류 경로의 파일 닫기 — 잠금은 null(없음)로 처리된다 */ } return null; }
     var p = String(s).replace(/[\r\n]/g, '').split('|'); // owner|label|epochMs
     if (p.length < 3) return null;
     var at = parseInt(p[2], 10);
     if (isNaN(at)) return null;
-    if (mesLock_now() - at > MESLOCK_TTL_MS) { try { f.remove(); } catch (e3) {} return null; }
+    if (mesLock_now() - at > MESLOCK_TTL_MS) { try { f.remove(); } catch (e3) { /* ignore: 만료 잠금 파일 정리 — 못 지워도 만료로 판정해 null 을 돌려준다 */ } return null; }
     return { owner: p[0], label: p[1], at: at };
 }
 
@@ -55,7 +55,7 @@ function mesLock_write(owner, label) {
         f.write(owner + '|' + (label || '') + '|' + mesLock_now());
         f.close();
         return true;
-    } catch (e) { try { f.close(); } catch (e2) {} return false; }
+    } catch (e) { try { f.close(); } catch (e2) { /* ignore: 오류 경로의 파일 닫기 — false 반환이 실패를 알린다 */ } return false; }
 }
 
 /**
@@ -86,20 +86,20 @@ function mesLock_release(owner) {
     if (L.owner !== owner) return 'notowner:' + L.owner;
     // ★삭제 실패를 성공으로 세지 않는다 (2026-09-09). remove() 는 **false** 를 돌려준다.
     var gone = false;
-    try { gone = !!mesLock_file().remove(); } catch (e) {}
-    if (!gone) { try { gone = !mesLock_file().exists; } catch (e2) {} }  // 이미 없으면 성공이다
+    try { gone = !!mesLock_file().remove(); } catch (e) { /* ignore: 삭제 실패는 gone=false 로 남아 아래 exists 재확인·released 표기로 이어진다 */ }
+    if (!gone) { try { gone = !mesLock_file().exists; } catch (e2) { /* ignore: 존재 확인 실패는 gone=false 유지 — 아래 released 표기가 최후 수단 */ } }  // 이미 없으면 성공이다
     if (gone) return 'ok';
     // ★못 지웠어도 **놓아준다** — 시각을 0 으로 밀면 다음 읽기가 만료로 회수한다(위 TTL 분기).
     //   실기에서 일러가 파일을 못 만들고 못 지우는데 **덮어쓰기는 됐다**(잠금 파일은 이미 있다).
     //   여기서 손을 놓으면 남의 탭이 10분간 이유 없이 막힌다.
     var f = mesLock_file();
-    try { f.open('w'); f.write(owner + '|released|0'); f.close(); } catch (e3) {}
+    try { f.open('w'); f.write(owner + '|released|0'); f.close(); } catch (e3) { /* ignore: 해제 표기(최후 수단)마저 실패하면 TTL(10분)이 풀어 준다 */ }
     return mesLock_read() ? 'stale' : 'ok;forced';
 }
 
 /** 관리자 탈출구 — 영구 잠김일 때만. UI 에서는 확인 후에만 노출할 것. */
 function mesLock_force() {
-    try { var f = mesLock_file(); if (f.exists) f.remove(); } catch (e) {}
+    try { var f = mesLock_file(); if (f.exists) f.remove(); } catch (e) { /* ignore: 관리자 강제 해제 — 파일이 없으면 이미 풀린 것 */ }
     return 'ok';
 }
 

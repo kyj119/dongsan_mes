@@ -531,7 +531,7 @@
       var enc = (window.cep && window.cep.encoding && window.cep.encoding.Base64) ? window.cep.encoding.Base64 : 'Base64';
       var r = window.cep.fs.readFile(path, enc);
       if (r && r.err === 0) b64 = r.data;
-    } catch (e) { /* 아래 file:// 폴백 */ }
+    } catch (e) { /* ignore: cep.fs 실패는 아래 file:// 폴백이 받는다 */ }
     var img = new Image();
     img.onload = function () {
       var cv = document.createElement('canvas');
@@ -2374,7 +2374,7 @@
               if (selSheet.options[si].value === want) { selSheet.selectedIndex = si; applied = true; break; }
             }
             // change 리스너(폭 표시·프리셋 연동)가 붙어 있을 수 있어 알린다
-            if (applied) { try { selSheet.dispatchEvent(new Event('change')); } catch (eEv) {} }
+            if (applied) { try { selSheet.dispatchEvent(new Event('change')); } catch (eEv) { /* ignore: 구 CEF 에 Event 생성자가 없으면 연동 알림만 건너뛴다(값은 이미 반영됨) */ } }
           }
         }
         txt += qtyNote;
@@ -2552,7 +2552,7 @@
           ev.preventDefault();
           el.value = this.getAttribute('data-name');
           hide(); upd();
-          try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (eD) {}
+          try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (eD) { /* ignore: 구 CEF 에 Event 생성자가 없으면 연동 알림만 건너뛴다(값은 이미 반영됨) */ }
         });
       }
     }
@@ -2763,7 +2763,7 @@
       function rescueCutManifest(res) {
         out('manifest 를 패널이 대신 쓰는 중… (일러가 파일을 못 쓰는 상태입니다)');
         host('mesCut_manifestPending()', function (ps, pbad) {
-          var p = null; try { p = JSON.parse(ps); } catch (e) {}
+          var p = null; try { p = JSON.parse(ps); } catch (e) { /* ignore: 파싱 실패는 null 로 흘러 아래에서 「응답 파싱 실패」로 처리된다 */ }
           if (!p || !p.ok || !p.items || !p.items.length) {
             fin('등록 실패: ' + res + '\n(패널) 호스트가 물고 있는 manifest 가 없습니다' + (pbad ? (' · ' + pbad) : ''), 'err');
             return;
@@ -2771,7 +2771,7 @@
           var ENC = (window.cep && window.cep.encoding && window.cep.encoding.UTF8) ? window.cep.encoding.UTF8 : 'UTF-8';
           for (var i = 0; i < p.items.length; i++) {
             var w = null;
-            try { w = window.cep.fs.writeFile(p.items[i].path, p.items[i].mf, ENC); } catch (eW) {}
+            try { w = window.cep.fs.writeFile(p.items[i].path, p.items[i].mf, ENC); } catch (eW) { /* ignore: w 가 null 로 남아 아래에서 실패로 처리된다 */ }
             if (!w || w.err !== 0) {
               fin('등록 실패 — 일러도 패널도 manifest 를 못 썼습니다\n' + p.items[i].path
                 + '\n(cep.fs err=' + (w ? w.err : '예외') + ')', 'err');
@@ -2845,7 +2845,7 @@
   var btnHelp = $('btnHelp');
   if (btnHelp) btnHelp.addEventListener('click', function () {
     var next = !hintsOn();
-    try { window.localStorage.setItem(HINT_KEY, next ? '1' : '0'); } catch (e) {}
+    try { window.localStorage.setItem(HINT_KEY, next ? '1' : '0'); } catch (e) { /* ignore: CEP 저장소가 막힌 PC 에서도 패널은 떠야 한다 — 기본값으로 진행 */ }
     applyHints(next);
   });
 

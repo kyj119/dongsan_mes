@@ -113,7 +113,9 @@ function uncommittedIa() {
 //   빠지면 조용한 격하(맞붙임이 래스터로 떨어지는 것)가 또 배포를 통과한다(2026-09-04 실사고).
 // ★★★`cut:shellsync` 도 같은 이유로 넣는다(2026-09-10) — CLAUDE.md 가 축4 자동 셸 동기화의
 //   게이트라고 부르는데 이 목록에 없어서 배포 때 아무도 안 돌렸다. `cut:butt` 사고와 같은 형태다.
-const GATES = ['cut:bleed', 'cut:nest', 'cut:butt', 'cut:placement', 'cut:smoke', 'cut:shellsync', 'panel:smoke', 'cut:e2e']
+// ★`audit:empty-catch`(2026-09-11) — 빈 catch 는 「실패를 성공으로 세는」 가장 흔한 형태다(주석 소실이 그것).
+//   사유 없는 빈 catch 가 하나라도 있으면 배포하지 않는다. 편집 훅·커밋 훅에도 같은 게이트가 있다.
+const GATES = ['audit:empty-catch', 'cut:bleed', 'cut:nest', 'cut:butt', 'cut:placement', 'cut:smoke', 'cut:shellsync', 'panel:smoke', 'cut:e2e']
 function runGates() {
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'))
   const list = GATES.filter((g) => pkg.scripts && pkg.scripts[g])

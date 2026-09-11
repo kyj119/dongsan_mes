@@ -198,9 +198,9 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 ### 배포를 실제로 막는 게이트 (2026-09-10 실측)
 **「게이트가 있다」와 「게이트가 돈다」는 다른 질문이다.** `cut:butt` 는 2026-08-06부터 있었는데 한 달간 아무도 안 돌렸고, `cut:shellsync` 도 같은 상태였다(2026-09-10 등록) — **목록이 없어서 아무도 그걸 몰랐다.**
 - **CI**(push→main, `.github/workflows/deploy.yml`): tsc · build · `test:calc` · `entity-audit.mjs` · `audit:migration-number`(#639 같은 번호·같은 테이블 DDL 충돌만 차단) · `canary:write:ci` · `smoke.cjs`(prod)
-- **커밋 훅**(`pretooluse-bash.cjs`): tsc(전건 차단) · `skill-audit`·`hook-guard-selftest`·`doc-diet-audit`(해당 파일이 dirty 인 커밋만)
-- **편집 훅**(`posttooluse-edit.cjs`): `node --check`(src/scripts/*.js) · `check:dom` 기준선 회귀 — 둘 다 `exit 2` 차단
-- **`ia:deploy`**(`ia-deploy.cjs` `GATES`): cut:bleed · cut:nest · cut:butt · cut:placement · cut:smoke · **cut:shellsync** · panel:smoke · cut:e2e + ia-jsx 드리프트
+- **커밋 훅**(`pretooluse-bash.cjs`): tsc(전건 차단) · `skill-audit`·`hook-guard-selftest`·`doc-diet-audit`·**`audit:empty-catch`**(해당 파일이 dirty 인 커밋만)
+- **편집 훅**(`posttooluse-edit.cjs`): `node --check`(src/scripts/*.js) · `check:dom` 기준선 회귀 · **`audit:empty-catch`**(IllustratorAutomat/**.jsx·js — 사유 `ignore:` 없는 빈 catch) — 셋 다 `exit 2` 차단
+- **`ia:deploy`**(`ia-deploy.cjs` `GATES`): **audit:empty-catch** · cut:bleed · cut:nest · cut:butt · cut:placement · cut:smoke · **cut:shellsync** · panel:smoke · cut:e2e + ia-jsx 드리프트
 - **`ship:gate`**: verify(tsc+build) · entity-audit · **test:calc** · canary:write · **journey:gate**(J0~J6 25단계, 로컬 서버 자동 기동·≈2.5분, `SKIP_JOURNEY=1` 로만 명시 건너뜀)
 - **`/deploy-verify`**: Phase 1 tsc·build·**test:calc**·**journey:gate** → Phase 2 entity-audit → Phase 2-B `audit:migration-drift`(스키마 변경 시) → Phase 4 `smoke:prod`
 > ⚠️`verify.yml` 은 `on: pull_request` 다 — 이 프로젝트(main 직접 push)에서는 **생성 이래 0회 실행**.

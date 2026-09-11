@@ -131,7 +131,7 @@ function main() {
         } catch (e) {
             log("  ERROR: " + e.message + " (line " + e.line + ")");
             results.push({ index: r, status: "error", error: e.message });
-            try { app.activeDocument.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) {}
+            try { app.activeDocument.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) { /* ignore: 테스트 스크립트 — 오류 경로 문서 닫기 */ }
         }
     }
 

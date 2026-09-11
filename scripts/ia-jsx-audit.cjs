@@ -53,7 +53,8 @@ const AGENT_JSX = ['SheetLayout.jsx', 'ProcessOrderItem.jsx', 'ExtractGroups.jsx
 // 스텁이 $.evalFile 로 실행하는 Z: 정본 (디자이너 PC엔 스텁만 설치돼 있다)
 //   repo 에 실재하는 것만 감사한다 — 새 호스트(mes-cut-host.jsx 등)를 만들면 **자동으로 편입**된다.
 //   mes-lock.jsx = 두 호스트가 공유하는 잠금 모듈. 이게 낡으면 패널들이 서로의 작업을 못 본다.
-const DESIGNER_JSX = ['mes-core.jsx', 'mes-sheet.jsx', 'mes-a0-host.jsx', 'mes-cut-host.jsx', 'mes-lock.jsx']
+// mes-core.jsx·mes-sheet.jsx 는 2026-09-11 은퇴(스텁은 07-28) — 판짜기는 패널만 쓴다(용준님 확정). Z: 는 `_retired/`.
+const DESIGNER_JSX = ['mes-a0-host.jsx', 'mes-cut-host.jsx', 'mes-lock.jsx']
   .filter((f) => fs.existsSync(path.join(IA, 'designer', f)))
 // ── ★배포 대상을 하드코딩하지 않는다 (2026-08-06 근본수정) ────────────────
 // 여태 패널 파일 목록이 손으로 관리되는 배열이었다. 그래서 **목록에 없는 파일은

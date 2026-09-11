@@ -72,6 +72,10 @@ if (/(^|&&|;|\s)git(\s+-[cC]\s+\S+)*\s+commit/i.test(cmd)) {
     //   그 결과 「✅ 최근 완료 인덱스」 섹션이 16,412자(현황판의 64%)까지 자랐다 — 그 지점만 막는다.
     [/\.claude\/PROJECT_STATUS\.md/, 'node scripts/doc-diet-audit.cjs',
       '현황판 비대화 — 경위는 PROJECT_STATUS_ARCHIVE.md 로, 인덱스 항목은 400자 이내'],
+    // 빈 catch (2026-09-11) — IA 코드가 dirty 인 커밋만. 편집 훅이 이미 막지만 Write 로 통째로 쓰거나
+    //   훅이 꺼진 세션이 남긴 것을 커밋 직전에 한 번 더 본다.
+    [/IllustratorAutomat\/.*\.(jsx|js)\b/, 'node scripts/empty-catch-audit.cjs',
+      '빈 catch 에 사유가 없다 — catch (e) { /* ignore: 이유 */ } 또는 실패를 기록할 것(주석 소실 재발 방지)'],
   ];
   for (const [scope, run, why] of gates) {
     if (!scope.test(dirty)) continue;

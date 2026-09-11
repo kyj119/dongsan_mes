@@ -81,7 +81,7 @@ function findClippingPathBounds(item) {
                 if (result) return result;
             }
         }
-    } catch(e) {}
+    } catch(e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
     return null;
 }
 
@@ -94,7 +94,7 @@ function getClipBounds(group) {
             if (group.pageItems[j].clipping) {
                 return group.pageItems[j].geometricBounds;
             }
-        } catch(e) {}
+        } catch(e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
     }
     var recursiveResult = findClippingPathBounds(group);
     if (recursiveResult) return recursiveResult;
@@ -133,7 +133,7 @@ function getClipRespectingBounds(group) {
                 if (cb[3] < uB) uB = cb[3];
             }
         }
-    } catch(e) {}
+    } catch(e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
     return found ? [uL, uT, uR, uB] : group.geometricBounds;
 }
 
@@ -158,7 +158,7 @@ function collectBounds(item, boundsList) {
         } else {
             boundsList.push(item.geometricBounds);
         }
-    } catch(e) {}
+    } catch(e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -182,6 +182,14 @@ function mergeRects(r1, r2) {
 // ═══════════════════════════════════════════════════════════════════════
 // 메인 함수
 // ═══════════════════════════════════════════════════════════════════════
+// 조용한 실패 기록(2026-09-11 빈 catch 전수 분류) — 출력 폴더 warn.log(append) + 콘솔.
+//   에이전트는 error.log 만 읽으므로 사람이 진단할 때 보는 파일이다.
+function _iaWarn(dir, m) {
+    $.writeln("ExtractGroups WARN: " + m);
+    try { if (dir) { var _wf = new File(String(dir).replace(/[\\\/]+$/, "") + "/warn.log"); _wf.encoding = "UTF-8"; _wf.open("a"); _wf.writeln(m); _wf.close(); } }
+    catch (eWf) { /* ignore: 경고 파일을 못 써도 콘솔(WARN:)에는 이미 남았다 */ }
+}
+
 function main(sourceFile, outputFolder, requestId, thumbSize, epsWidthMm, epsHeightMm) {
     if (!sourceFile || !outputFolder || !requestId) {
         $.writeln("ExtractGroups ERROR: 인수 부족");
@@ -203,7 +211,7 @@ function main(sourceFile, outputFolder, requestId, thumbSize, epsWidthMm, epsHei
         try {
             var _ef = new File(outputFolder + "\\error.log");
             _ef.open("w"); _ef.write("JSError: " + _missingMsg); _ef.close();
-        } catch(e) {}
+        } catch(e) { /* ignore: 오류 로그 자체를 못 쓰면 남길 데가 없다 — _ia_status 가 결과를 나른다 */ }
         return;
     }
 
@@ -218,14 +226,14 @@ function main(sourceFile, outputFolder, requestId, thumbSize, epsWidthMm, epsHei
         if (doc.documentColorSpace !== DocumentColorSpace.CMYK) {
             app.executeMenuCommand('doc-color-cmyk');
         }
-    } catch(e) {}
+    } catch(e) { _iaWarn(outputFolder, "CMYK 변환 실패(RGB 로 나간다): " + e); }
     try {
         if (doc.textFrames.length > 0) {
             for (var _ti = doc.textFrames.length - 1; _ti >= 0; _ti--) {
-                try { doc.textFrames[_ti].createOutline(); } catch(e) {}
+                try { doc.textFrames[_ti].createOutline(); } catch(e) { _iaWarn(outputFolder, "텍스트 아웃라인 실패(살아있는 텍스트가 EPS 에 남는다): " + e); }
             }
         }
-    } catch(e) {}
+    } catch(e) { /* ignore: 아웃라인 루프 바깥 — 개별 실패는 안쪽 catch 가 기록한다 */ }
 
     var origRect = doc.artboards[0].artboardRect;
     var artboardRect = doc.artboards[0].artboardRect;
@@ -248,7 +256,7 @@ function main(sourceFile, outputFolder, requestId, thumbSize, epsWidthMm, epsHei
                 if (item.hidden) continue;
                 if (item.typename === "TextFrame") continue;
                 collectBounds(item, rawBounds);
-            } catch(e) {}
+            } catch(e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
         }
     }
     _diagLog("Step1: " + rawBounds.length + " raw bounds collected");

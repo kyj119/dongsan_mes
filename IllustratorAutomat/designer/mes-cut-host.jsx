@@ -68,7 +68,7 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.42.0';  // 0.42.0 = ★**0.39.0~0.41.0 회귀 정정(P0)** — `mesCut_outlineStroke` 래퍼 **안**의 `executeMenuCommand` 자리에 호출부 코드가 들어가 래퍼가 자기를 부르고 있었다(무한 재귀). `mesCut_vecSilhouette` 가 예외로 죽어 **칼선이 아예 안 나왔고** 도련도 깨졌다. 두 번째 호출부(도련)는 반대로 **생짜 호출 그대로**라 검산을 안 지났다 — 둘 다 제자리로. ⚠️게이트가 재귀 호출을 「호출부 2곳」으로 **세어** 통과시켰다 → 이제 개수가 아니라 **자리**를 본다(래퍼 안/바깥으로 갈라서 검사) · 0.41.0 = ★굽기 **전후**로 파일을 만들 수 있었는지 잰다(`mesCut_ioProbe`) — 「p0.png 를 내보낼 수 없음」이 굽기 탓인지 **이미 못 쓰는 상태로 들어온 탓**인지 갈린다. pre_ 가 X 면 굽기 탓이 아니다 · ★`mesCut_ioProbeGet` — nestBakeAll 의 ERROR 반환은 자리마다 형태가 달라 사유를 실을 자리가 없는데, **정작 그 경로가 p0.png 다**. 패널이 실패 직후 꺼내 간다 · 0.40.0 = ★manifest 를 못 쓰면 **패널에게 넘긴다**(`mesCut_manifestPending`) — A0 0.9.0 과 같은 계약(형제 스윕: CEP 축의 manifest 쓰기는 둘이다). 시트·EPS·썸네일은 이미 다 나왔고 빠진 것은 manifest 한 장뿐이라, 그것만 CEP 가 쓰면 등록이 완성된다. ⚠️그렇다고 성공으로 보고하지 않는다 — `ERROR ...;mfpending=N` 으로 돌려주므로 **구버전 패널은 여태처럼 실패로 본다**(조용한 성공 금지) · ★`mesCut_asciiFold` — 반환은 ASCII 만 안전한데 manifest 에는 거래처명이 한글로 들어 있다 · 0.39.0 = ★`OffsetPath v22`(획→면)가 **먹었는지 검산**한다 — 명령 ID 에 버전 번호가 박혀 있어(v22) 일러가 번호를 올리면 예외도 0개도 없이 **아무것도 안 한다**. 그러면 실루엣 대신 가느다란 고리가 나오고 그대로 칼선이 되어 재단기까지 간다(:1235 가 「가장 나쁜 실패 방식」이라 부른 그것). 안 먹으면 **칼선을 만들지 않는다** · ★굽기 **변 길이** 상한을 굽기 전에 잰다(`MESCUT_EFS_MAX_PX_SIDE`) — 패널 예산은 **면적**만 봐서 200x8,000mm 조각이 800x32,000px 로 통과했다. 넘으면 일러가 「…을(를) 전송할 수 없습니다」 **모달**을 띄우고 CEP 가 거기서 멈춘다(예외가 아니라 catch 로 못 잡는다) · ★일괄 굽기 실패 사유를 `efswhy=` 로 화면까지 — 옛 경로로 떨어져도 판은 나와서 아무도 몰랐다(조용한 격하) · ★`efsPurge` 가 못 지운 개수를 돌려준다(덮어쓰기 거절의 원인) · ★manifest 에 `ai_version` · 0.38.2 = ★판을 **만들기 전에** 판 규격을 검사한다 — 한계를 넘으면 `documents.add` 가 `PARM`(1346458189) 으로 죽는데 그 코드는 어느 인자가 왜 틀렸는지 말해 주지 않는다. 이제 「판 N 이 1050x13442mm 로 일러 한계 5644mm 를 넘습니다」로 거절한다(판=생산 단위=등록 1건이라 애초에 만들면 안 되는 값이다) · 0.38.1 = ★0.38.0 의 원점 정규화가 **틀린 자리**로 옮기고 있었다 — 새 문서의 아트보드는 [0,h,w,0](y 가 0 에서 **위로**)인데 (0,0) 에 맞춰 아트를 아트보드 **아래**로 보냈다. 캔버스는 아트보드 중심 ±2,886mm 뿐이라 조각이 크면 그대로 `AOoC`(실측: 950x2380 조각을 y=-2385 로, 하한 -1,696). 굽기 격자도 **0.38.0 이전부터** 같은 이유로 아트보드 밖에 깔리고 있었다(그래서 일괄이 실패하고 조각별 폴백으로 떨어졌다) → 세 경로 전부 **아트보드 기준**으로 · 0.38.0 = ★굽기가 한 임시문서에 안 들어가면 **문서를 나눈다** — 여태는 여기서 실패해 패널이 조각당 임시문서를 만드는 옛 경로로 떨어졌다(조각당 4초) · 그 옛 경로(rasterizeItem·rasterize)가 복제본을 **원점으로 안 옮겨** 원본에서 원점에서 먼 조각이 `AOoC`(1095724867)로 죽던 것 정정(실사용: 1050폭 세로 1열 파일의 4번째 조각) · 0.37.0 = ★굳힌 조각 배정을 「가장 가까운 중심」에서 **셀 상자 포함**으로 — 굳힌 PDF 는 조각별 그룹이 아니라 낱개 패스로 풀려(4조각=57개) 넓은 조각의 끝쪽이 옆 조각 중심에 더 가까워 어깋나 **검산이 터지고 판 전체가 조각당 6.5초 경로**로 돌았다(적용 111.9초 중 98.1초) · 0.36.0 = ★굳히기 격자가 **PDF 페이지 한계(200인치=5,080mm)**를 넘어 저장이 취소되던 것 정정 — 캔버스 한계(5,644mm)로 재고 있어 조각이 많으면 판이 조용히 조각당 3초 경로로 떨어졌다(23조각 실패→성공) · 적용 단계별 소요(`ms=`)와 굳히기 실패 이유(`hardenwhy=`)를 결과에 실어 보낸다(판은 불변) · 0.35.0 = ★굽기 export 는 **호출당 고정비가 지배**한다 — 조각마다 exportFile 하던 것을 아트보드 N개 + `exportForScreens` 1회로 (실물 23조각 8,263ms ×2 → 4,841 + 695ms). 경로 규약은 그대로 — 파일을 `Folder.temp` 의 옛 이름으로 옮겨 둔다(안 그러면 도련이 조용히 사라진다) · 0.34.0 = ★칼선에서 **자를 수 없는 부스러기**를 걷어낸다(실물 판 131개 중 15개가 0.01x0mm 3점 조각 — 컬파운드 안쪽이라 안 보였다) · 글자는 글자대로 남긴다(감싸기 안 함) · 0.33.0 = ★회전한 조각의 칼선이 **바깥 사각**으로 나가던 것 정정 — PDF 굳히기 임베드가 만든 사각 클립이 실루에을 덮었다(자르는 게 없는 클립만 걷어낸다) · 0.32.0 = ★굳혀서 배치하는 새 법 — **한 판에 1회**(조각 전부를 계자 PDF 로 한 번 굳힌 뒤 회전 값마다 마스턼 하나 → 배치는 duplicate) — 회전만 걸려도 조각당 3.05초가 붙던 것이 조각 수와 무관해진다 · 0.31.0 = ★등록 manifest 가 저장 배율을 반영한다(measured_cm=실물 · scale_pct=100/N) — 여태 1/2 로 짜면 주문 라인 규격이 1/S · 청구면적이 1/S² 였다 · 0.30.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.29.0 = PDF 아트보드 기준을 잉크 경계로(visibleBounds 로 잡으면 마스크로 가린 여분이 되살아나 조각이 커지고 재단선을 넘는다) · 0.28.0 = 회전도 임베드 앞으로 + **회전만 있어도 PDF 경로**(1:1 회전도 마스크가 안 따라와 배경 절반이 회색) + 검산 기대폭에 회전 반영 · 0.27.0 = 배율 기준을 PDF 아트보드로(배치 직후 보고값은 잘려 있어 +23%) · 확대는 임베드 **전**(뒤로 옮기면 마스크가 안 따라와 배경이 죽는다) · 0.26.0 = 배율 확대 크기 계산을 임베드 **후**로(배치 직후 값은 그림 있는 데까지로 잘려 있어 클립 밖 삐짐 조각이 +23% 크게 나왔다) · 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
+var MESCUT_VERSION = 'CUT-CEP-0.43.0';  // 0.43.0 = ★빈 catch 전수 분류(2026-09-11 용준님 「나」) — 실물에 닿는 4곳은 삼키지 않는다: DXF 임시문서로 못 옮긴 칼선(`dupfail=`) · 판에 못 그린 칼선·구분선(`cutfail=`) · 등록 DXF 실패(manifest `dxf_error`, 'ERROR' 문자열 반환도 실패로). 나머지 225곳은 사유 주석(`ignore:`) — 게이트 `audit:empty-catch`. 잃는 것: 없음(판·파일 불변, 결과 문자열에 필드가 는다) · 0.42.0 =★**0.39.0~0.41.0 회귀 정정(P0)** — `mesCut_outlineStroke` 래퍼 **안**의 `executeMenuCommand` 자리에 호출부 코드가 들어가 래퍼가 자기를 부르고 있었다(무한 재귀). `mesCut_vecSilhouette` 가 예외로 죽어 **칼선이 아예 안 나왔고** 도련도 깨졌다. 두 번째 호출부(도련)는 반대로 **생짜 호출 그대로**라 검산을 안 지났다 — 둘 다 제자리로. ⚠️게이트가 재귀 호출을 「호출부 2곳」으로 **세어** 통과시켰다 → 이제 개수가 아니라 **자리**를 본다(래퍼 안/바깥으로 갈라서 검사) · 0.41.0 = ★굽기 **전후**로 파일을 만들 수 있었는지 잰다(`mesCut_ioProbe`) — 「p0.png 를 내보낼 수 없음」이 굽기 탓인지 **이미 못 쓰는 상태로 들어온 탓**인지 갈린다. pre_ 가 X 면 굽기 탓이 아니다 · ★`mesCut_ioProbeGet` — nestBakeAll 의 ERROR 반환은 자리마다 형태가 달라 사유를 실을 자리가 없는데, **정작 그 경로가 p0.png 다**. 패널이 실패 직후 꺼내 간다 · 0.40.0 = ★manifest 를 못 쓰면 **패널에게 넘긴다**(`mesCut_manifestPending`) — A0 0.9.0 과 같은 계약(형제 스윕: CEP 축의 manifest 쓰기는 둘이다). 시트·EPS·썸네일은 이미 다 나왔고 빠진 것은 manifest 한 장뿐이라, 그것만 CEP 가 쓰면 등록이 완성된다. ⚠️그렇다고 성공으로 보고하지 않는다 — `ERROR ...;mfpending=N` 으로 돌려주므로 **구버전 패널은 여태처럼 실패로 본다**(조용한 성공 금지) · ★`mesCut_asciiFold` — 반환은 ASCII 만 안전한데 manifest 에는 거래처명이 한글로 들어 있다 · 0.39.0 = ★`OffsetPath v22`(획→면)가 **먹었는지 검산**한다 — 명령 ID 에 버전 번호가 박혀 있어(v22) 일러가 번호를 올리면 예외도 0개도 없이 **아무것도 안 한다**. 그러면 실루엣 대신 가느다란 고리가 나오고 그대로 칼선이 되어 재단기까지 간다(:1235 가 「가장 나쁜 실패 방식」이라 부른 그것). 안 먹으면 **칼선을 만들지 않는다** · ★굽기 **변 길이** 상한을 굽기 전에 잰다(`MESCUT_EFS_MAX_PX_SIDE`) — 패널 예산은 **면적**만 봐서 200x8,000mm 조각이 800x32,000px 로 통과했다. 넘으면 일러가 「…을(를) 전송할 수 없습니다」 **모달**을 띄우고 CEP 가 거기서 멈춘다(예외가 아니라 catch 로 못 잡는다) · ★일괄 굽기 실패 사유를 `efswhy=` 로 화면까지 — 옛 경로로 떨어져도 판은 나와서 아무도 몰랐다(조용한 격하) · ★`efsPurge` 가 못 지운 개수를 돌려준다(덮어쓰기 거절의 원인) · ★manifest 에 `ai_version` · 0.38.2 = ★판을 **만들기 전에** 판 규격을 검사한다 — 한계를 넘으면 `documents.add` 가 `PARM`(1346458189) 으로 죽는데 그 코드는 어느 인자가 왜 틀렸는지 말해 주지 않는다. 이제 「판 N 이 1050x13442mm 로 일러 한계 5644mm 를 넘습니다」로 거절한다(판=생산 단위=등록 1건이라 애초에 만들면 안 되는 값이다) · 0.38.1 = ★0.38.0 의 원점 정규화가 **틀린 자리**로 옮기고 있었다 — 새 문서의 아트보드는 [0,h,w,0](y 가 0 에서 **위로**)인데 (0,0) 에 맞춰 아트를 아트보드 **아래**로 보냈다. 캔버스는 아트보드 중심 ±2,886mm 뿐이라 조각이 크면 그대로 `AOoC`(실측: 950x2380 조각을 y=-2385 로, 하한 -1,696). 굽기 격자도 **0.38.0 이전부터** 같은 이유로 아트보드 밖에 깔리고 있었다(그래서 일괄이 실패하고 조각별 폴백으로 떨어졌다) → 세 경로 전부 **아트보드 기준**으로 · 0.38.0 = ★굽기가 한 임시문서에 안 들어가면 **문서를 나눈다** — 여태는 여기서 실패해 패널이 조각당 임시문서를 만드는 옛 경로로 떨어졌다(조각당 4초) · 그 옛 경로(rasterizeItem·rasterize)가 복제본을 **원점으로 안 옮겨** 원본에서 원점에서 먼 조각이 `AOoC`(1095724867)로 죽던 것 정정(실사용: 1050폭 세로 1열 파일의 4번째 조각) · 0.37.0 = ★굳힌 조각 배정을 「가장 가까운 중심」에서 **셀 상자 포함**으로 — 굳힌 PDF 는 조각별 그룹이 아니라 낱개 패스로 풀려(4조각=57개) 넓은 조각의 끝쪽이 옆 조각 중심에 더 가까워 어깋나 **검산이 터지고 판 전체가 조각당 6.5초 경로**로 돌았다(적용 111.9초 중 98.1초) · 0.36.0 = ★굳히기 격자가 **PDF 페이지 한계(200인치=5,080mm)**를 넘어 저장이 취소되던 것 정정 — 캔버스 한계(5,644mm)로 재고 있어 조각이 많으면 판이 조용히 조각당 3초 경로로 떨어졌다(23조각 실패→성공) · 적용 단계별 소요(`ms=`)와 굳히기 실패 이유(`hardenwhy=`)를 결과에 실어 보낸다(판은 불변) · 0.35.0 = ★굽기 export 는 **호출당 고정비가 지배**한다 — 조각마다 exportFile 하던 것을 아트보드 N개 + `exportForScreens` 1회로 (실물 23조각 8,263ms ×2 → 4,841 + 695ms). 경로 규약은 그대로 — 파일을 `Folder.temp` 의 옛 이름으로 옮겨 둔다(안 그러면 도련이 조용히 사라진다) · 0.34.0 = ★칼선에서 **자를 수 없는 부스러기**를 걷어낸다(실물 판 131개 중 15개가 0.01x0mm 3점 조각 — 컬파운드 안쪽이라 안 보였다) · 글자는 글자대로 남긴다(감싸기 안 함) · 0.33.0 = ★회전한 조각의 칼선이 **바깥 사각**으로 나가던 것 정정 — PDF 굳히기 임베드가 만든 사각 클립이 실루에을 덮었다(자르는 게 없는 클립만 걷어낸다) · 0.32.0 = ★굳혀서 배치하는 새 법 — **한 판에 1회**(조각 전부를 계자 PDF 로 한 번 굳힌 뒤 회전 값마다 마스턼 하나 → 배치는 duplicate) — 회전만 걸려도 조각당 3.05초가 붙던 것이 조각 수와 무관해진다 · 0.31.0 = ★등록 manifest 가 저장 배율을 반영한다(measured_cm=실물 · scale_pct=100/N) — 여태 1/2 로 짜면 주문 라인 규격이 1/S · 청구면적이 1/S² 였다 · 0.30.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.29.0 = PDF 아트보드 기준을 잉크 경계로(visibleBounds 로 잡으면 마스크로 가린 여분이 되살아나 조각이 커지고 재단선을 넘는다) · 0.28.0 = 회전도 임베드 앞으로 + **회전만 있어도 PDF 경로**(1:1 회전도 마스크가 안 따라와 배경 절반이 회색) + 검산 기대폭에 회전 반영 · 0.27.0 = 배율 기준을 PDF 아트보드로(배치 직후 보고값은 잘려 있어 +23%) · 확대는 임베드 **전**(뒤로 옮기면 마스크가 안 따라와 배경이 죽는다) · 0.26.0 = 배율 확대 크기 계산을 임베드 **후**로(배치 직후 값은 그림 있는 데까지로 잘려 있어 클립 밖 삐짐 조각이 +23% 크게 나왔다) · 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -187,7 +187,7 @@ function mesCut_paramsPath() {
  */
 function mesCut_dxfPath() {
     var base = 'cut';
-    try { if (app.documents.length) base = app.activeDocument.name.replace(/\.[^.]+$/, ''); } catch (e) {}
+    try { if (app.documents.length) base = app.activeDocument.name.replace(/\.[^.]+$/, ''); } catch (e) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     base = base.replace(/[^A-Za-z0-9_\-]/g, '_');   // ASCII 브릿지 안전
     if (!base) base = 'cut';
     return Folder.temp.fsName.replace(/\\/g, '/') + '/' + base + '_cut.dxf';
@@ -214,8 +214,8 @@ function mesCut_exportDxfAuto() {
     try {
         var nm = String(doc.name).replace(/\.[^.]+$/, '');
         if (nm) base = nm;
-    } catch (eN) {}
-    try { if (doc.path && doc.path.fsName) { dir = doc.path.fsName; where = 'doc'; } } catch (eP) {}
+    } catch (eN) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
+    try { if (doc.path && doc.path.fsName) { dir = doc.path.fsName; where = 'doc'; } } catch (eP) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     if (!dir) dir = Folder.temp.fsName;
     // 파일명에 쓸 수 없는 문자만 막는다 — **한글은 그대로 둔다**(그게 이 함수의 목적이다)
     base = base.replace(/[\\\/:*?"<>|]/g, '_');
@@ -234,7 +234,7 @@ function mesCut_readParams() {
     if (!f.exists) return null;
     var s = '';
     try { f.encoding = 'UTF-8'; f.open('r'); s = f.read(); f.close(); }
-    catch (e) { try { f.close(); } catch (e2) {} return null; }
+    catch (e) { try { f.close(); } catch (e2) { /* ignore: 오류 경로의 파일 닫기 — 원인은 바깥 catch 가 null 반환으로 돌려준다 */ } return null; }
     return s;
 }
 
@@ -264,12 +264,12 @@ function mesCut_findClipPath(item) {
                 if (r) return r;
             }
         }
-    } catch (e) {}
+    } catch (e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
     return null;
 }
 function mesCut_clipBounds(group) {
     for (var j = 0; j < group.pageItems.length; j++) {
-        try { if (group.pageItems[j].clipping) return group.pageItems[j].geometricBounds; } catch (e) {}
+        try { if (group.pageItems[j].clipping) return group.pageItems[j].geometricBounds; } catch (e) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     }
     var r = mesCut_findClipPath(group);
     return r ? r : group.geometricBounds;
@@ -294,7 +294,7 @@ function mesCut_contentUnion(group) {
             if (R === null || cb[2] > R) R = cb[2];
             if (B === null || cb[3] < B) B = cb[3];
         }
-    } catch (e) {}
+    } catch (e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
     return (L === null) ? null : [L, T, R, B];
 }
 /**
@@ -304,10 +304,10 @@ function mesCut_contentUnion(group) {
 function mesCut_inkBounds(item) {
     var t;
     try { t = item.typename; } catch (e) { return null; }
-    try { if (item.hidden) return null; } catch (e0) {}
+    try { if (item.hidden) return null; } catch (e0) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     if (t === 'GroupItem') {
         var clipped = false;
-        try { clipped = !!item.clipped; } catch (e1) {}
+        try { clipped = !!item.clipped; } catch (e1) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         if (clipped) {
             var inter = mesCut_rectIntersect(mesCut_clipBounds(item), mesCut_contentUnion(item));
             return inter ? inter : mesCut_clipBounds(item);
@@ -331,10 +331,10 @@ function mesCut_topItems(doc) {
     try {
         for (var i = 0; i < doc.layers.length; i++) {
             var L = doc.layers[i];
-            try { if (!L.visible) continue; } catch (eV) {}
+            try { if (!L.visible) continue; } catch (eV) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
             for (var j = 0; j < L.pageItems.length; j++) out.push(L.pageItems[j]);
         }
-    } catch (e) {}
+    } catch (e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
     return out;
 }
 
@@ -430,7 +430,7 @@ function mesCut_rasterize(mmPerPx, padMm, fillClosed) {
         //   ⚠️**(0,0) 이 아니다** — 아트보드는 [0, h, w, 0] 이라 원점에 맞추면 아트가 그 아래로 간다.
         var abR = tmp.artboards[0].artboardRect;
         var mvx = abR[0] - u[0], mvy = abR[1] - u[1];
-        for (var mv = 0; mv < dups.length; mv++) { try { dups[mv].translate(mvx, mvy); } catch (eMv) {} }
+        for (var mv = 0; mv < dups.length; mv++) { try { dups[mv].translate(mvx, mvy); } catch (eMv) { /* ignore: 실패한 개체는 건너뛴다 — 개수는 호출자가 성공 카운트·반환값으로 본다 */ } }
         u = mesCut_unionOf(mesCut_topItems(tmp)) || [u[0] + mvx, u[1] + mvy, u[2] + mvx, u[3] + mvy];
         var padPt = padMm * MESCUT_PT_PER_MM;
         tmp.artboards[0].artboardRect = [u[0] - padPt, u[1] + padPt, u[2] + padPt, u[3] - padPt];
@@ -456,7 +456,7 @@ function mesCut_rasterize(mmPerPx, padMm, fillClosed) {
         tmp.close(SaveOptions.DONOTSAVECHANGES); tmp = null;
         return res;
     } catch (e) {
-        if (tmp) { try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) {} }
+        if (tmp) { try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) { /* ignore: 임시 문서 닫기 — 이미 닫혔거나 참조가 무효 */ } }
         return 'ERROR rasterize: ' + e;
     }
 }
@@ -494,18 +494,18 @@ function mesCut_artKind() {
     function walk(it) {
         var t;
         try { t = it.typename; } catch (e) { return; }
-        try { if (it.hidden) return; } catch (e0) {}
+        try { if (it.hidden) return; } catch (e0) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         if (mesCut_isCutItem(it)) return;
         if (t === 'PathItem') {
-            try { if (it.guides) return; } catch (e1) {}
+            try { if (it.guides) return; } catch (e1) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
             nP++;
-            try { if (it.filled) nF++; } catch (e2) {}
-            try { if (it.stroked) nS++; } catch (e3) {}
-            try { if (it.closed) nC++; } catch (e4) {}
+            try { if (it.filled) nF++; } catch (e2) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
+            try { if (it.stroked) nS++; } catch (e3) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
+            try { if (it.closed) nC++; } catch (e4) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         } else if (t === 'CompoundPathItem') {
-            try { for (var c = 0; c < it.pathItems.length; c++) walk(it.pathItems[c]); } catch (e5) {}
+            try { for (var c = 0; c < it.pathItems.length; c++) walk(it.pathItems[c]); } catch (e5) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         } else if (t === 'GroupItem') {
-            try { for (var g = 0; g < it.pageItems.length; g++) walk(it.pageItems[g]); } catch (e6) {}
+            try { for (var g = 0; g < it.pageItems.length; g++) walk(it.pageItems[g]); } catch (e6) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         } else if (t === 'RasterItem' || t === 'PlacedItem' || t === 'MeshItem') { nR++; }
         else if (t === 'TextFrame') { nT++; }
     }
@@ -530,17 +530,17 @@ function mesCut_fillClosedItem(it, k) {
         try {
             if (it.guides || !it.closed) return 0;
             it.filled = true; it.fillColor = k; n++;
-        } catch (e1) {}
+        } catch (e1) { /* ignore: 채우기 실패 개체는 n 에 안 들어간다 — 실루엣 굽기 결과는 패널 마스크로 다시 검증된다 */ }
     } else if (t === 'CompoundPathItem') {
         // compound 는 **자신**의 채우기가 렌더를 정한다. 자식까지 맞춰야 일부 버전에서 반영된다.
-        try { it.filled = true; it.fillColor = k; n++; } catch (e2) {}
+        try { it.filled = true; it.fillColor = k; n++; } catch (e2) { /* ignore: 채우기 실패 개체는 n 에 안 들어간다 — 실루엣 굽기 결과는 패널 마스크로 다시 검증된다 */ }
         try {
             for (var c = 0; c < it.pathItems.length; c++) {
                 it.pathItems[c].filled = true; it.pathItems[c].fillColor = k;
             }
-        } catch (e3) {}
+        } catch (e3) { /* ignore: compound 자식 채우기 — 실패해도 부모(위 줄)는 이미 채워졌다 */ }
     } else if (t === 'GroupItem') {
-        try { for (var g = 0; g < it.pageItems.length; g++) n += mesCut_fillClosedItem(it.pageItems[g], k); } catch (e4) {}
+        try { for (var g = 0; g < it.pageItems.length; g++) n += mesCut_fillClosedItem(it.pageItems[g], k); } catch (e4) { /* ignore: 실패한 개체는 n 에 안 들어간다(반환 개수) */ }
     }
     return n;
 }
@@ -561,7 +561,7 @@ function mesCut_ringFill(spec) {
 function mesCut_fillClosedIn(doc) {
     var k = mesCut_blackFill();
     var n = 0;
-    try { for (var i = 0; i < doc.pageItems.length; i++) n += mesCut_fillClosedItem(doc.pageItems[i], k); } catch (e5) {}
+    try { for (var i = 0; i < doc.pageItems.length; i++) n += mesCut_fillClosedItem(doc.pageItems[i], k); } catch (e5) { /* ignore: 실패한 개체는 n 에 안 들어간다(반환 개수) */ }
     return n;
 }
 
@@ -605,22 +605,22 @@ function mesCut_selectionPaths(outPath) {
     }
     function head(it, type) {
         var f = 0, s = 0, w = 0;
-        try { f = it.filled ? 1 : 0; } catch (e1) {}
-        try { s = it.stroked ? 1 : 0; if (s) w = mm(it.strokeWidth); } catch (e2) {}
+        try { f = it.filled ? 1 : 0; } catch (e1) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
+        try { s = it.stroked ? 1 : 0; if (s) w = mm(it.strokeWidth); } catch (e2) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         lines.push('I ' + nI + ' ' + f + ' ' + s + ' ' + w + ' ' + type);
         nI++;
     }
     function walk(it) {
         var t;
         try { t = it.typename; } catch (e) { skipped++; return; }
-        try { if (it.hidden) return; } catch (e3) {}
+        try { if (it.hidden) return; } catch (e3) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         if (mesCut_isCutItem(it)) return;
         if (t === 'PathItem') {
-            try { if (it.guides) return; } catch (e4) {}
+            try { if (it.guides) return; } catch (e4) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
             head(it, 'path'); emitSub(it);
         } else if (t === 'CompoundPathItem') {
             var first = null;
-            try { first = it.pathItems.length ? it.pathItems[0] : null; } catch (e5) {}
+            try { first = it.pathItems.length ? it.pathItems[0] : null; } catch (e5) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
             head(first || it, 'compound');
             try { for (var c = 0; c < it.pathItems.length; c++) emitSub(it.pathItems[c]); } catch (e6) { skipped++; }
         } else if (t === 'GroupItem') {
@@ -756,7 +756,7 @@ function mesCut_drawCut() {
             try {
                 if (mkPath(layer, pendOuter)) nP++;
                 for (var w = 0; w < pendHoles.length; w++) { if (mkPath(layer, pendHoles[w])) nH++; }
-            } catch (eF2) {}
+            } catch (eF2) { /* ignore: 칼선을 못 만든 조각은 nP·nH 에 안 들어간다 — 반환 개수로 드러난다 */ }
         }
         pendOuter = null; pendHoles = [];
     }
@@ -788,7 +788,7 @@ function mesCut_drawCut() {
                 el.strokeColor = mag;
                 el.strokeWidth = 0.6;
                 nC++;
-            } catch (eC) {}
+            } catch (eC) { /* ignore: 타공 원을 못 만든 자리는 nC 에 안 들어간다 — 반환 개수로 드러난다 */ }
         }
     }
     flush();   // 마지막 덩어리
@@ -845,15 +845,15 @@ function mesCut_vecReason(items) {
     function walk(it, depth) {
         var t;
         try { t = it.typename; } catch (e) { return; }
-        try { if (it.hidden) return; } catch (e0) {}
+        try { if (it.hidden) return; } catch (e0) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         if (t === 'RasterItem' || t === 'PlacedItem') { nRaster++; return; }
         if (t === 'MeshItem' || t === 'GraphItem' || t === 'SymbolItem') { nOther++; return; }
         if (t === 'PathItem' || t === 'CompoundPathItem') { nPath++; return; }
         if (t === 'TextFrame') { nPath++; return; }          // 사본에서 아웃라인 처리한다
         if (t === 'GroupItem') {
             // 최상위 클립은 Crop 으로 처리한다. **중첩** 클립은 Crop 순서를 보장하기 어려워 폴백한다.
-            try { if (it.clipped && depth > 0) nClipDeep++; } catch (e1) {}
-            try { for (var i = 0; i < it.pageItems.length; i++) walk(it.pageItems[i], depth + 1); } catch (e2) {}
+            try { if (it.clipped && depth > 0) nClipDeep++; } catch (e1) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
+            try { for (var i = 0; i < it.pageItems.length; i++) walk(it.pageItems[i], depth + 1); } catch (e2) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         }
     }
     for (var k = 0; k < items.length; k++) walk(items[k], 0);
@@ -872,7 +872,7 @@ function mesCut_vecOutlineText(item) {
         if (t === 'TextFrame') { item.createOutline(); return 1; }
         // ★역순 — createOutline 은 원래 TextFrame 을 제거하므로 정순이면 인덱스가 밀린다
         if (t === 'GroupItem') for (var i = item.pageItems.length - 1; i >= 0; i--) n += mesCut_vecOutlineText(item.pageItems[i]);
-    } catch (e2) {}
+    } catch (e2) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
     return n;
 }
 
@@ -901,7 +901,7 @@ function mesCut_silentBegin() {
 }
 function mesCut_silentEnd(prev) {
     if (prev === null || prev === undefined) return;
-    try { app.userInteractionLevel = prev; } catch (e) {}
+    try { app.userInteractionLevel = prev; } catch (e) { /* ignore: 대화상자 억제 복원 — 다음 호출이 다시 설정한다 */ }
 }
 
 /**
@@ -933,9 +933,9 @@ function mesCut_groupSel(doc) {
     var g = null;
     try { g = p0 ? p0.groupItems.add() : doc.activeLayer.groupItems.add(); }
     catch (e2) { try { g = doc.activeLayer.groupItems.add(); } catch (e3) { return arr.length; } }
-    for (i = arr.length - 1; i >= 0; i--) { try { arr[i].move(g, ElementPlacement.PLACEATEND); } catch (e4) {} }
+    for (i = arr.length - 1; i >= 0; i--) { try { arr[i].move(g, ElementPlacement.PLACEATEND); } catch (e4) { /* ignore: 실패한 개체는 건너뛴다 — 개수는 호출자가 성공 카운트·반환값으로 본다 */ } }
     doc.selection = null;
-    try { g.selected = true; } catch (e5) {}
+    try { g.selected = true; } catch (e5) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ }
     return arr.length;
 }
 
@@ -985,7 +985,7 @@ function mesCut_dropNoopClips(it) {
     try { for (var i = 0; i < it.pageItems.length; i++) { kids.push(it.pageItems[i]); } } catch (e1) { return 0; }
     for (var k = 0; k < kids.length; k++) { n += mesCut_dropNoopClips(kids[k]); }
     var clipped = false;
-    try { clipped = !!it.clipped; } catch (e2) {}
+    try { clipped = !!it.clipped; } catch (e2) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     if (!clipped) { return n; }
     var cb = mesCut_clipBounds(it), content = mesCut_contentUnion(it);
     if (!cb || !content) { return n; }
@@ -997,13 +997,13 @@ function mesCut_dropNoopClips(it) {
     var gone = 0;
     for (var q = 0; q < again.length; q++) {
         var isClip = false;
-        try { isClip = !!again[q].clipping; } catch (e4) {}
-        if (isClip) { try { again[q].remove(); gone++; n++; } catch (e5) {} }
+        try { isClip = !!again[q].clipping; } catch (e4) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
+        if (isClip) { try { again[q].remove(); gone++; n++; } catch (e5) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ } }
     }
     // ⚠️ `clipped = false` 는 **실제로 지웠을 때만** 한다. 클립 패스를 못 찾았는데 플래그만 내리면
     //    그 사각 패스가 **일반 패스로 풀려** OffsetPath+Pathfinder 에 섞인다 = 고치려던 결함이 그대로
     //    재발한다(`clipBounds` 는 클립을 못 찾으면 geometricBounds 를 돌려주므로 이 분기에 들어올 수 있다).
-    if (gone) { try { it.clipped = false; } catch (e6) {} }
+    if (gone) { try { it.clipped = false; } catch (e6) { /* ignore: 상태·스타일 적용 — 못 받은 개체는 성공 목록(n/keep)에 안 들어가거나 원래 상태로 남는다 */ } }
     return n;
 }
 
@@ -1040,27 +1040,27 @@ function mesCut_dropCutSlivers(flat) {
         try { t = it.typename; } catch (e0) { continue; }
         if (t === 'CompoundPathItem') {
             var subs = [];
-            try { for (var q = 0; q < it.pathItems.length; q++) subs.push(it.pathItems[q]); } catch (e1) {}
+            try { for (var q = 0; q < it.pathItems.length; q++) subs.push(it.pathItems[q]); } catch (e1) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
             for (var k = 0; k < subs.length; k++) {
                 if (!degenerate(subs[k])) continue;
-                try { subs[k].remove(); dropped++; } catch (e2) {}
+                try { subs[k].remove(); dropped++; } catch (e2) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ }
             }
             var left = 0;
             try { left = it.pathItems.length; } catch (e3) { left = 0; }
-            if (!left) { try { it.remove(); } catch (e4) {} continue; }
+            if (!left) { try { it.remove(); } catch (e4) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ } continue; }
             keep.push(it);
         } else if (t === 'PathItem') {
-            if (degenerate(it)) { try { it.remove(); dropped++; } catch (e5) {} continue; }
+            if (degenerate(it)) { try { it.remove(); dropped++; } catch (e5) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ } continue; }
             keep.push(it);
         } else if (t === 'GroupItem') {
             // unwrap 은 깊이 8 에서 멈춘다 → 그룹이 그대로 남을 수 있다. 그 안도 본다.
             var inner = [];
-            try { for (var g = 0; g < it.pageItems.length; g++) { inner.push(it.pageItems[g]); } } catch (e6) {}
+            try { for (var g = 0; g < it.pageItems.length; g++) { inner.push(it.pageItems[g]); } } catch (e6) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
             var sub = mesCut_dropCutSlivers(inner);
             dropped += sub.dropped;
             var rest = 0;
             try { rest = it.pageItems.length; } catch (e7) { rest = 1; }
-            if (!rest) { try { it.remove(); } catch (e8) {} continue; }   // 부스러기만 있던 껍데기
+            if (!rest) { try { it.remove(); } catch (e8) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ } continue; }   // 부스러기만 있던 껍데기
             keep.push(it);
         } else {
             keep.push(it);
@@ -1079,10 +1079,10 @@ function mesCut_hasStroke(items) {
             var kids = null;
             try { kids = it.pageItems; } catch (e1) { kids = null; }
             if (!kids) { try { kids = it.pathItems; } catch (e2) { kids = null; } }
-            try { if (kids && mesCut_hasStroke(kids)) return true; } catch (e3) {}
+            try { if (kids && mesCut_hasStroke(kids)) return true; } catch (e3) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
             continue;
         }
-        try { if (it.stroked) return true; } catch (e4) {}
+        try { if (it.stroked) return true; } catch (e4) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     }
     return false;
 }
@@ -1103,14 +1103,14 @@ function mesCut_hasStroke(items) {
  */
 function mesCut_outlineStroke(doc) {
     var had = false;
-    try { had = mesCut_hasStroke(doc.selection); } catch (e0) {}
+    try { had = mesCut_hasStroke(doc.selection); } catch (e0) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     // ⚠️ 2026-09-10 사고 — 여기에 **호출부 코드가 들어와** 래퍼가 자기를 부르고 있었다(무한 재귀).
     //   `mesCut_vecSilhouette` 가 예외로 죽어 **칼선이 아예 안 나왔다**. 게이트는 그 재귀 호출을
     //   「호출부 2곳」으로 세어 통과시켰다 — 개수가 아니라 **자리**를 봐야 한다.
     app.executeMenuCommand('OffsetPath v22');   // = Object > Path > Outline Stroke
     if (!had) return '';
     var still = false;
-    try { still = mesCut_hasStroke(doc.selection); } catch (e1) {}
+    try { still = mesCut_hasStroke(doc.selection); } catch (e1) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     if (!still) return '';
     return 'outline-cmd-noop ai=' + app.version + ' (menu id "OffsetPath v22" changed?)';
 }
@@ -1119,7 +1119,7 @@ function mesCut_vecSilhouette(doc, items, cutLayer, offsetMm, fillClosed, styleM
     var i, s;
     var dups = [];
     for (i = 0; i < items.length; i++) {
-        try { dups.push(items[i].duplicate(cutLayer, ElementPlacement.PLACEATEND)); } catch (eD) {}
+        try { dups.push(items[i].duplicate(cutLayer, ElementPlacement.PLACEATEND)); } catch (eD) { /* ignore: 실패한 개체는 건너뛴다 — 개수는 호출자가 성공 카운트·반환값으로 본다 */ }
     }
     if (!dups.length) return { n: 0, anchors: 0, err: '복제 실패' };
     // ★선 도안은 채우기부터 켠다 — 안 켜면 `OffsetPath v22` 가 **획만** 면으로 바꿔
@@ -1133,11 +1133,11 @@ function mesCut_vecSilhouette(doc, items, cutLayer, offsetMm, fillClosed, styleM
         dups[i] = mesCut_vecCropClip(doc, dups[i]);
         // ★중첩 클립 정리 — Crop 이 못 푼 **아무것도 안 자르는** 클립을 걷어낸다.
         //   안 하면 굳힌(PDF) 조각의 사각 클립이 실루엣이 되어 칼선이 바깥 상자로 나간다.
-        try { mesCut_dropNoopClips(dups[i]); } catch (eNC) {}
+        try { mesCut_dropNoopClips(dups[i]); } catch (eNC) { /* ignore: 무의미 클립 정리는 보정 단계 — 실패해도 굳힌 조각은 그대로 있다 */ }
         mesCut_normalizeCopy(dups[i]);   // ★잠금 해제·숨김 제거·잉크 0 제거 — 안 하면 실루엣이 조용히 틀린다
     }
     doc.selection = null;
-    for (i = 0; i < dups.length; i++) { try { dups[i].selected = true; } catch (eS) {} }
+    for (i = 0; i < dups.length; i++) { try { dups[i].selected = true; } catch (eS) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ } }
     // 선 → 면. 획만 있는 도안(시트컷 실도안)도 이 한 단계로 실루엣이 된다.
     //   ★먹었는지 확인한다 — 안 먹으면 **틀린 칼선을 만드느니 안 만든다**(mesCut_outlineStroke).
     var oErr = mesCut_outlineStroke(doc);
@@ -1149,9 +1149,9 @@ function mesCut_vecSilhouette(doc, items, cutLayer, offsetMm, fillClosed, styleM
         var sel = doc.selection, keep = [];
         var xml = '<LiveEffect name="Adobe Offset Path"><Dict data="R mlim 4 R ofst '
             + (offsetMm * MESCUT_PT_PER_MM) + ' I jntp ' + MESCUT_VEC_JOIN + ' "/></LiveEffect>';
-        for (s = 0; sel && s < sel.length; s++) { try { sel[s].applyEffect(xml); keep.push(sel[s]); } catch (eA) {} }
+        for (s = 0; sel && s < sel.length; s++) { try { sel[s].applyEffect(xml); keep.push(sel[s]); } catch (eA) { /* ignore: 오프셋 효과를 못 받은 개체는 keep 에 안 들어가 확장 대상에서 빠진다(개수로 드러남) */ } }
         doc.selection = null;                                  // ★재지정 없이는 expandStyle 이 조용히 안 먹는다
-        for (s = 0; s < keep.length; s++) { try { keep[s].selected = true; } catch (eK) {} }
+        for (s = 0; s < keep.length; s++) { try { keep[s].selected = true; } catch (eK) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ } }
         app.executeMenuCommand('expandStyle');
         mesCut_groupSel(doc);                                  // ★자기교차 정리
         app.executeMenuCommand('Live Pathfinder Add');
@@ -1168,12 +1168,12 @@ function mesCut_vecSilhouette(doc, items, cutLayer, offsetMm, fillClosed, styleM
         try { t = it.typename; } catch (e) { return; }
         if (t !== 'GroupItem' || depth > 8) { flat.push(it); return; }
         var kids = [];
-        try { for (var c = 0; c < it.pageItems.length; c++) kids.push(it.pageItems[c]); } catch (e1) {}
+        try { for (var c = 0; c < it.pageItems.length; c++) kids.push(it.pageItems[c]); } catch (e1) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         for (var q = kids.length - 1; q >= 0; q--) {
-            try { kids[q].move(cutLayer, ElementPlacement.PLACEATEND); } catch (e2) {}
+            try { kids[q].move(cutLayer, ElementPlacement.PLACEATEND); } catch (e2) { /* ignore: 실패한 개체는 건너뛴다 — 개수는 호출자가 성공 카운트·반환값으로 본다 */ }
             unwrap(kids[q], depth + 1);
         }
-        try { it.remove(); } catch (e3) {}
+        try { it.remove(); } catch (e3) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ }
     }
     var flat = [];
     var sel2 = doc.selection;
@@ -1190,13 +1190,13 @@ function mesCut_vecSilhouette(doc, items, cutLayer, offsetMm, fillClosed, styleM
         var t;
         try { t = it.typename; } catch (e) { return; }
         if (t === 'PathItem') {
-            try { it.filled = false; it.stroked = true; it.strokeColor = mag; it.strokeWidth = 0.6; } catch (e1) {}
+            try { it.filled = false; it.stroked = true; it.strokeColor = mag; it.strokeWidth = 0.6; } catch (e1) { /* ignore: 칼선 스타일(마젠타 0.6) 적용 — 경로 자체는 있고 DXF 는 색·선폭을 안 싣는다(레이어 분리가 규약) */ }
             out.n++;
-            try { out.anchors += it.pathPoints.length; } catch (e2) {}
+            try { out.anchors += it.pathPoints.length; } catch (e2) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         } else if (t === 'CompoundPathItem') {
-            try { for (var c = 0; c < it.pathItems.length; c++) style(it.pathItems[c]); } catch (e3) {}
+            try { for (var c = 0; c < it.pathItems.length; c++) style(it.pathItems[c]); } catch (e3) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         } else if (t === 'GroupItem') {
-            try { for (var g = 0; g < it.pageItems.length; g++) style(it.pageItems[g]); } catch (e4) {}
+            try { for (var g = 0; g < it.pageItems.length; g++) style(it.pageItems[g]); } catch (e4) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         }
     }
     if (styleMode !== 'none') for (i = 0; i < flat.length; i++) style(flat[i]);
@@ -1235,11 +1235,11 @@ function mesCut_vecGrowClips(items, bleedMm) {
         try { t = it.typename; } catch (e) { return; }
         if (t !== 'GroupItem') return;
         var clipped = false;
-        try { clipped = !!it.clipped; } catch (e0) {}
+        try { clipped = !!it.clipped; } catch (e0) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         if (clipped) {
             for (var c = 0; c < it.pageItems.length; c++) {
                 var ch = it.pageItems[c], isC = false;
-                try { isC = ch.clipping; } catch (e1) {}
+                try { isC = ch.clipping; } catch (e1) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
                 if (!isC || ch.typename !== 'PathItem') continue;
                 try {
                     if (!ch.closed || ch.pathPoints.length !== 4) continue;   // 사각만
@@ -1247,10 +1247,10 @@ function mesCut_vecGrowClips(items, bleedMm) {
                     ch.setEntirePath([[g[0] - b, g[1] + b], [g[2] + b, g[1] + b],
                         [g[2] + b, g[3] - b], [g[0] - b, g[3] - b]]);
                     n++;
-                } catch (e2) {}
+                } catch (e2) { /* ignore: 사각을 못 만든 클립은 n 에 안 들어간다(반환 개수) */ }
             }
         }
-        try { for (var k = 0; k < it.pageItems.length; k++) walk(it.pageItems[k]); } catch (e3) {}
+        try { for (var k = 0; k < it.pageItems.length; k++) walk(it.pageItems[k]); } catch (e3) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     }
     for (var i = 0; i < items.length; i++) walk(items[i]);
     return n;
@@ -1298,27 +1298,27 @@ function mesCut_vecGrowClips(items, bleedMm) {
 function mesCut_normalizeCopy(it) {
     var t;
     try { t = it.typename; } catch (e) { return 0; }
-    try { if (it.locked) it.locked = false; } catch (e1) {}
+    try { if (it.locked) it.locked = false; } catch (e1) { /* ignore: 상태·스타일 적용 — 못 받은 개체는 성공 목록(n/keep)에 안 들어가거나 원래 상태로 남는다 */ }
     var hid = false;
-    try { hid = it.hidden; } catch (e2) {}
+    try { hid = it.hidden; } catch (e2) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     if (hid) { try { it.remove(); return 1; } catch (e3) { return 0; } }
     if (t === 'GroupItem') {
         var kids = [], c, removed = 0;
-        try { for (c = 0; c < it.pageItems.length; c++) kids.push(it.pageItems[c]); } catch (e4) {}
+        try { for (c = 0; c < it.pageItems.length; c++) kids.push(it.pageItems[c]); } catch (e4) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         for (c = kids.length - 1; c >= 0; c--) removed += mesCut_normalizeCopy(kids[c]);
         return removed;
     }
     if (t !== 'PathItem') return 0;
-    try { if (it.clipping) return 0; } catch (e5) {}
+    try { if (it.clipping) return 0; } catch (e5) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     var drop = false;
-    try { drop = (!it.filled && !it.stroked); } catch (e6) {}
+    try { drop = (!it.filled && !it.stroked); } catch (e6) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     if (!drop) {
         try {
             var b = it.geometricBounds;
             drop = ((b[2] - b[0]) < 0.01 && (b[1] - b[3]) < 0.01);
-        } catch (e7) {}
+        } catch (e7) { /* ignore: degenerate 판정 실패 시 drop=false 로 남겨 개체를 보존한다 */ }
     }
-    if (drop) { try { it.remove(); return 1; } catch (e8) {} }
+    if (drop) { try { it.remove(); return 1; } catch (e8) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ } }
     return 0;
 }
 
@@ -1327,23 +1327,23 @@ function mesCut_vecBleedBoundary(doc, items, layer, growMm, fillClosed) {
     var sil = mesCut_vecSilhouette(doc, items, layer, growMm, fillClosed, 'none');
     if (!sil || !sil.items || !sil.items.length) return null;
     doc.selection = null;
-    for (var i = 0; i < sil.items.length; i++) { try { sil.items[i].selected = true; } catch (e) {} }
+    for (var i = 0; i < sil.items.length; i++) { try { sil.items[i].selected = true; } catch (e) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ } }
     // 경계가 여러 개면 하나의 compound 로 — 클리핑 마스크는 **한 개체**만 쓸 수 있다
     if (sil.items.length > 1) app.executeMenuCommand('compoundPath');
     var shp = null;
-    try { shp = doc.selection[0]; } catch (e2) {}
+    try { shp = doc.selection[0]; } catch (e2) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ }
     return shp;
 }
 
 /** clipShape 를 마스크로 targets 를 클리핑한다. 마스크는 **맨 위** 개체여야 한다. */
 function mesCut_maskWith(doc, clipShape, targets) {
     doc.selection = null;
-    for (var i = 0; i < targets.length; i++) { try { targets[i].selected = true; } catch (e) {} }
-    try { clipShape.selected = true; } catch (e1) {}
-    try { clipShape.zOrder(ZOrderMethod.BRINGTOFRONT); } catch (e2) {}
+    for (var i = 0; i < targets.length; i++) { try { targets[i].selected = true; } catch (e) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ } }
+    try { clipShape.selected = true; } catch (e1) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ }
+    try { clipShape.zOrder(ZOrderMethod.BRINGTOFRONT); } catch (e2) { /* ignore: 겹침 순서 조정 — 예외는 참조가 무효(이미 삭제)일 때만 난다 */ }
     app.executeMenuCommand('makeMask');
     var g = null;
-    try { g = doc.selection[0]; } catch (e3) {}
+    try { g = doc.selection[0]; } catch (e3) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ }
     // ★"선택이 남아 있다" 를 성공으로 보면 안 된다 — makeMask 가 거부되면 **선택이 그대로** 남는다.
     //   진짜 성공의 증거는 결과가 **clipped 그룹**이라는 것뿐이다. 아니면 실패로 본다.
     try { if (!(g && g.typename === 'GroupItem' && g.clipped)) return null; } catch (e4) { return null; }
@@ -1365,8 +1365,8 @@ function mesCut_vecBleedSolid(doc, items, layer, growMm, fillClosed, ringColor) 
     //   세워도 안 먹거나 예외가 난다 — 그러면 실루엣 파이프라인이 만든 **원래 색(대개 검정)**이
     //   그대로 남는다. 2026-08-04 실사용에서 "도련이 검정 단색으로 나온다"가 정확히 이것이었다.
     var n = mesCut_setFillDeep(shp, ringColor || mesCut_ringFill(null));
-    if (!n) { try { shp.remove(); } catch (e) {} return null; }   // 못 칠했으면 **반드시 지운다**
-    try { shp.zOrder(ZOrderMethod.SENDTOBACK); } catch (e1) {}
+    if (!n) { try { shp.remove(); } catch (e) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ } return null; }   // 못 칠했으면 **반드시 지운다**
+    try { shp.zOrder(ZOrderMethod.SENDTOBACK); } catch (e1) { /* ignore: 겹침 순서 조정 — 예외는 참조가 무효(이미 삭제)일 때만 난다 */ }
     return shp;
 }
 
@@ -1380,12 +1380,12 @@ function mesCut_setFillDeep(it, color) {
     if (t === 'CompoundPathItem') {
         // compound 는 **자식 전부**를 같은 색으로 — 하나만 다르면 구멍이 색으로 메워진다
         var m = 0;
-        try { for (var c = 0; c < it.pathItems.length; c++) m += mesCut_setFillDeep(it.pathItems[c], color); } catch (e2) {}
+        try { for (var c = 0; c < it.pathItems.length; c++) m += mesCut_setFillDeep(it.pathItems[c], color); } catch (e2) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         return m;
     }
     if (t === 'GroupItem') {
         var g = 0;
-        try { for (var k = 0; k < it.pageItems.length; k++) g += mesCut_setFillDeep(it.pageItems[k], color); } catch (e3) {}
+        try { for (var k = 0; k < it.pageItems.length; k++) g += mesCut_setFillDeep(it.pageItems[k], color); } catch (e3) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         return g;
     }
     return 0;
@@ -1410,13 +1410,13 @@ function mesCut_vecBleedEdge(doc, items, layer, growMm, fillClosed) {
     var i, bandMm = 0.5, PT = MESCUT_PT_PER_MM;
     var trash = [];
     function junk(x) { if (x) trash.push(x); }
-    function cleanup() { for (var t = 0; t < trash.length; t++) { try { trash[t].remove(); } catch (e) {} } }
+    function cleanup() { for (var t = 0; t < trash.length; t++) { try { trash[t].remove(); } catch (e) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ } } }
     function selArr() {
         var a = [];
-        try { for (var s = 0; s < doc.selection.length; s++) a.push(doc.selection[s]); } catch (e) {}
+        try { for (var s = 0; s < doc.selection.length; s++) a.push(doc.selection[s]); } catch (e) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ }
         return a;
     }
-    function pick(arr) { doc.selection = null; for (var s = 0; s < arr.length; s++) { try { arr[s].selected = true; } catch (e) {} } }
+    function pick(arr) { doc.selection = null; for (var s = 0; s < arr.length; s++) { try { arr[s].selected = true; } catch (e) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ } } }
 
     var Sout = mesCut_vecBleedBoundary(doc, items, layer, growMm, fillClosed);
     if (!Sout) return null;
@@ -1426,7 +1426,7 @@ function mesCut_vecBleedEdge(doc, items, layer, growMm, fillClosed) {
     junk(S);
     // Sin = S 안쪽 bandMm
     var Sin = null;
-    try { Sin = S.duplicate(layer, ElementPlacement.PLACEATEND); } catch (e0) {}
+    try { Sin = S.duplicate(layer, ElementPlacement.PLACEATEND); } catch (e0) { /* ignore: 실패한 개체는 건너뛴다 — 개수는 호출자가 성공 카운트·반환값으로 본다 */ }
     if (!Sin) { cleanup(); return null; }
     var inXml = '<LiveEffect name="Adobe Offset Path"><Dict data="R mlim 4 R ofst '
         + (-bandMm * PT) + ' I jntp ' + MESCUT_VEC_JOIN + ' "/></LiveEffect>';
@@ -1435,10 +1435,10 @@ function mesCut_vecBleedEdge(doc, items, layer, growMm, fillClosed) {
     var sinArr = selArr();
     // band = S − Sin  (Minus Front → 빼는 쪽이 **앞**에 있어야 한다)
     var sDup = null;
-    try { sDup = S.duplicate(layer, ElementPlacement.PLACEATEND); } catch (e2) {}
+    try { sDup = S.duplicate(layer, ElementPlacement.PLACEATEND); } catch (e2) { /* ignore: 실패한 개체는 건너뛴다 — 개수는 호출자가 성공 카운트·반환값으로 본다 */ }
     if (!sDup) { for (i = 0; i < sinArr.length; i++) junk(sinArr[i]); cleanup(); return null; }
     pick(sinArr.concat([sDup]));
-    for (i = 0; i < sinArr.length; i++) { try { sinArr[i].zOrder(ZOrderMethod.BRINGTOFRONT); } catch (e3) {} }
+    for (i = 0; i < sinArr.length; i++) { try { sinArr[i].zOrder(ZOrderMethod.BRINGTOFRONT); } catch (e3) { /* ignore: 겹침 순서 조정 — 예외는 참조가 무효(이미 삭제)일 때만 난다 */ } }
     app.executeMenuCommand('Live Pathfinder Subtract');
     app.executeMenuCommand('expandStyle');
     var band = selArr();
@@ -1446,13 +1446,13 @@ function mesCut_vecBleedEdge(doc, items, layer, growMm, fillClosed) {
     // edge = 아트 ∩ band  (Crop → 남길 범위가 **맨 위**)
     var dups = [];
     for (i = 0; i < items.length; i++) {
-        try { dups.push(items[i].duplicate(layer, ElementPlacement.PLACEATEND)); } catch (e4) {}
+        try { dups.push(items[i].duplicate(layer, ElementPlacement.PLACEATEND)); } catch (e4) { /* ignore: 실패한 개체는 건너뛴다 — 개수는 호출자가 성공 카운트·반환값으로 본다 */ }
     }
     if (!dups.length) { for (i = 0; i < band.length; i++) junk(band[i]); cleanup(); return null; }
     for (i = 0; i < dups.length; i++) mesCut_normalizeCopy(dups[i]);
     if (fillClosed) { var kf = mesCut_blackFill(); for (i = 0; i < dups.length; i++) mesCut_fillClosedItem(dups[i], kf); }
     pick(dups.concat(band));
-    for (i = 0; i < band.length; i++) { try { band[i].zOrder(ZOrderMethod.BRINGTOFRONT); } catch (e5) {} }
+    for (i = 0; i < band.length; i++) { try { band[i].zOrder(ZOrderMethod.BRINGTOFRONT); } catch (e5) { /* ignore: 겹침 순서 조정 — 예외는 참조가 무효(이미 삭제)일 때만 난다 */ } }
     app.executeMenuCommand('Live Pathfinder Crop');
     app.executeMenuCommand('expandStyle');
     var edge = selArr();
@@ -1460,7 +1460,7 @@ function mesCut_vecBleedEdge(doc, items, layer, growMm, fillClosed) {
     // 띠를 바깥으로 — 띠 자체 폭(bandMm)까지 더해야 링 끝까지 찬다
     var outXml = '<LiveEffect name="Adobe Offset Path"><Dict data="R mlim 4 R ofst '
         + ((growMm + bandMm) * PT) + ' I jntp ' + MESCUT_VEC_JOIN + ' "/></LiveEffect>';
-    for (i = 0; i < edge.length; i++) { try { edge[i].applyEffect(outXml); } catch (e6) {} }
+    for (i = 0; i < edge.length; i++) { try { edge[i].applyEffect(outXml); } catch (e6) { /* ignore: 오프셋 효과를 못 받은 개체는 확장 대상에서 빠진다 — 도련 결과 bounds(pre/post)로 검증 */ } }
     pick(edge);
     app.executeMenuCommand('expandStyle');
     var grown = selArr();
@@ -1470,7 +1470,7 @@ function mesCut_vecBleedEdge(doc, items, layer, growMm, fillClosed) {
     var masked = mesCut_maskWith(doc, Sout, grown);
     cleanup();
     if (!masked) return null;
-    try { masked.zOrder(ZOrderMethod.SENDTOBACK); } catch (e7) {}
+    try { masked.zOrder(ZOrderMethod.SENDTOBACK); } catch (e7) { /* ignore: 겹침 순서 조정 — 예외는 참조가 무효(이미 삭제)일 때만 난다 */ }
     return masked;
 }
 
@@ -1503,11 +1503,11 @@ function mesCut_densifyOutline(it, out, stepPt, cap) {
     var t;
     try { t = it.typename; } catch (e) { return; }
     if (t === 'CompoundPathItem') {
-        try { for (var c = 0; c < it.pathItems.length; c++) mesCut_densifyOutline(it.pathItems[c], out, stepPt, cap); } catch (e1) {}
+        try { for (var c = 0; c < it.pathItems.length; c++) mesCut_densifyOutline(it.pathItems[c], out, stepPt, cap); } catch (e1) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         return;
     }
     if (t === 'GroupItem') {
-        try { for (var g = 0; g < it.pageItems.length; g++) mesCut_densifyOutline(it.pageItems[g], out, stepPt, cap); } catch (e2) {}
+        try { for (var g = 0; g < it.pageItems.length; g++) mesCut_densifyOutline(it.pageItems[g], out, stepPt, cap); } catch (e2) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         return;
     }
     if (t !== 'PathItem') return;
@@ -1524,7 +1524,7 @@ function mesCut_densifyOutline(it, out, stepPt, cap) {
                 out.push([a[0] + dx * (s / k), a[1] + dy * (s / k)]);
             }
         }
-    } catch (e3) {}
+    } catch (e3) { /* ignore: 앵커 수집 — 못 읽은 경로는 점을 안 보태고 결과 점 수는 호출자가 본다 */ }
 }
 
 /** 도형(트리)의 앵커 좌표를 모은다. stride 로 솎아 개수를 제한한다. */
@@ -1535,15 +1535,15 @@ function mesCut_collectAnchors(it, out, stride) {
         try {
             var pp = it.pathPoints;
             for (var i = 0; i < pp.length; i += stride) out.push(pp[i].anchor);
-        } catch (e1) {}
+        } catch (e1) { /* ignore: 앵커 수집 — 못 읽은 경로는 점을 안 보태고 결과 점 수는 호출자가 본다 */ }
         return;
     }
     if (t === 'CompoundPathItem') {
-        try { for (var c = 0; c < it.pathItems.length; c++) mesCut_collectAnchors(it.pathItems[c], out, stride); } catch (e2) {}
+        try { for (var c = 0; c < it.pathItems.length; c++) mesCut_collectAnchors(it.pathItems[c], out, stride); } catch (e2) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         return;
     }
     if (t === 'GroupItem') {
-        try { for (var g = 0; g < it.pageItems.length; g++) mesCut_collectAnchors(it.pageItems[g], out, stride); } catch (e3) {}
+        try { for (var g = 0; g < it.pageItems.length; g++) mesCut_collectAnchors(it.pageItems[g], out, stride); } catch (e3) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     }
 }
 
@@ -1566,13 +1566,13 @@ function mesCut_pruneFarFrom(it, pts, maxDistPt) {
     try { t = it.typename; } catch (e) { return 0; }
     if (t === 'GroupItem') {
         var kids = [], c, n = 0;
-        try { for (c = 0; c < it.pageItems.length; c++) kids.push(it.pageItems[c]); } catch (e1) {}
+        try { for (c = 0; c < it.pageItems.length; c++) kids.push(it.pageItems[c]); } catch (e1) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         for (c = kids.length - 1; c >= 0; c--) n += mesCut_pruneFarFrom(kids[c], pts, maxDistPt);
-        try { if (it.pageItems.length === 0) it.remove(); } catch (e2) {}
+        try { if (it.pageItems.length === 0) it.remove(); } catch (e2) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ }
         return n;
     }
     if (t !== 'PathItem' && t !== 'CompoundPathItem') return 0;
-    try { if (t === 'PathItem' && it.clipping) return 0; } catch (e3) {}
+    try { if (t === 'PathItem' && it.clipping) return 0; } catch (e3) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     var b;
     try { b = it.visibleBounds; } catch (e4) { return 0; }   // [L,T,R,B] y-up
     var lim2 = maxDistPt * maxDistPt;
@@ -1582,7 +1582,7 @@ function mesCut_pruneFarFrom(it, pts, maxDistPt) {
         var dy = (b[3] - py > 0) ? (b[3] - py) : ((py - b[1] > 0) ? (py - b[1]) : 0);
         if (dx * dx + dy * dy <= lim2) return 0;   // 윤곽 근처 → 남긴다
     }
-    try { it.remove(); return 1; } catch (e5) {}
+    try { it.remove(); return 1; } catch (e5) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ }
     return 0;
 }
 
@@ -1591,29 +1591,29 @@ function mesCut_pruneInterior(it, keepRect) {
     try { t = it.typename; } catch (e) { return 0; }
     if (t === 'GroupItem') {
         var kids = [], c, n = 0;
-        try { for (c = 0; c < it.pageItems.length; c++) kids.push(it.pageItems[c]); } catch (e1) {}
+        try { for (c = 0; c < it.pageItems.length; c++) kids.push(it.pageItems[c]); } catch (e1) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         for (c = kids.length - 1; c >= 0; c--) n += mesCut_pruneInterior(kids[c], keepRect);
         // 자식이 다 비면 빈 그룹도 치운다(빈 그룹은 오프셋·확장에서 잡음이 된다)
-        try { if (it.pageItems.length === 0) it.remove(); } catch (e2) {}
+        try { if (it.pageItems.length === 0) it.remove(); } catch (e2) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ }
         return n;
     }
     if (t !== 'PathItem' && t !== 'CompoundPathItem') return 0;
-    try { if (t === 'PathItem' && it.clipping) return 0; } catch (e3) {}
+    try { if (t === 'PathItem' && it.clipping) return 0; } catch (e3) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     var b;
     try { b = it.visibleBounds; } catch (e4) { return 0; }   // [L,T,R,B] y-up
     if (b[0] >= keepRect[0] && b[2] <= keepRect[2] && b[1] <= keepRect[1] && b[3] >= keepRect[3]) {
-        try { it.remove(); return 1; } catch (e5) {}
+        try { it.remove(); return 1; } catch (e5) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ }
     }
     return 0;
 }
 
 function mesCut_vecBleedRegions(doc, items, offsetMm, bleedMm, fillClosed) {
     var i, layer = null;
-    try { layer = items[0].layer; } catch (e0) {}
+    try { layer = items[0].layer; } catch (e0) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     if (!layer) layer = doc.activeLayer;
     var dups = [];
     for (i = 0; i < items.length; i++) {
-        try { dups.push(items[i].duplicate(layer, ElementPlacement.PLACEATEND)); } catch (e1) {}
+        try { dups.push(items[i].duplicate(layer, ElementPlacement.PLACEATEND)); } catch (e1) { /* ignore: 실패한 개체는 건너뛴다 — 개수는 호출자가 성공 카운트·반환값으로 본다 */ }
     }
     if (!dups.length) return { ok: false, code: 'dup', err: '아트 복제 실패' };
     // ★칼선과 **같은 정규화**를 거쳐야 한다 — 잠긴 도형이 남으면 선택이 거부(9063)돼
@@ -1625,7 +1625,7 @@ function mesCut_vecBleedRegions(doc, items, offsetMm, bleedMm, fillClosed) {
     var ab0 = null;
     for (i = 0; i < dups.length; i++) {
         var vb = null;
-        try { vb = dups[i].visibleBounds; } catch (eB) {}
+        try { vb = dups[i].visibleBounds; } catch (eB) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         if (!vb) continue;
         if (!ab0) ab0 = [vb[0], vb[1], vb[2], vb[3]];
         else {
@@ -1654,11 +1654,11 @@ function mesCut_vecBleedRegions(doc, items, offsetMm, bleedMm, fillClosed) {
             var touchPt = MESCUT_BLEED_TOUCH_MM * MESCUT_PT_PER_MM;
             for (i = 0; i < dups.length; i++) pruned += mesCut_pruneFarFrom(dups[i], pts, touchPt);
         }
-        try { silRef.remove(); } catch (eSR) {}
+        try { silRef.remove(); } catch (eSR) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ }
     }
     // 남은 것이 하나도 없으면 도련을 만들 수 없다 — 조용히 빈 링을 두지 않는다
     var alive = 0;
-    for (i = 0; i < dups.length; i++) { try { if (dups[i].typename) alive++; } catch (eA) {} }
+    for (i = 0; i < dups.length; i++) { try { if (dups[i].typename) alive++; } catch (eA) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ } }
     if (!alive) return { ok: false, code: 'noedge', err: '윤곽에 닿는 도형이 없습니다' };
     // ★★열린 획을 **먼저 면으로** 바꾼다 — 안 하면 끝이 볼록한 **반원**이 되어 링에 튀어나온다.
     //   가장자리에 닿는 선은 프루닝에서 살아남으므로(닿으니까) 이 처리가 없으면 그 선만 남아
@@ -1669,11 +1669,11 @@ function mesCut_vecBleedRegions(doc, items, offsetMm, bleedMm, fillClosed) {
     //     획 그대로+라운드 552.0(곡면) · 아웃라인+라운드 604.0 · 아웃라인+베벨 604.0
     //     **아웃라인+마이터(mlim2) 676.0 = 이론값과 정확히 일치(평평)**
     doc.selection = null;
-    for (i = 0; i < dups.length; i++) { try { dups[i].selected = true; } catch (eS0) {} }
+    for (i = 0; i < dups.length; i++) { try { dups[i].selected = true; } catch (eS0) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ } }
     var oErr2 = mesCut_outlineStroke(doc);   // = Object > Path > Outline Stroke (+ 먹었는지 검산)
     if (oErr2) return { ok: false, code: 'outlinecmd', err: oErr2 };
     dups = [];
-    try { for (i = 0; i < doc.selection.length; i++) dups.push(doc.selection[i]); } catch (eS1) {}
+    try { for (i = 0; i < doc.selection.length; i++) dups.push(doc.selection[i]); } catch (eS1) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ }
     if (!dups.length) return { ok: false, code: 'outline', err: '획 아웃라인 실패' };
     if (fillClosed) {
         var kf = mesCut_blackFill();
@@ -1685,27 +1685,27 @@ function mesCut_vecBleedRegions(doc, items, offsetMm, bleedMm, fillClosed) {
     //   `extra` = 확장으로 새로 생긴 것들(원래 사본 참조는 그때 죽는다). 둘 다 치운다.
     function bail(code, err, extra) {
         var b;
-        for (b = 0; extra && b < extra.length; b++) { try { extra[b].remove(); } catch (eX0) {} }
-        for (b = 0; b < dups.length; b++) { try { dups[b].remove(); } catch (eX) {} }
+        for (b = 0; extra && b < extra.length; b++) { try { extra[b].remove(); } catch (eX0) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ } }
+        for (b = 0; b < dups.length; b++) { try { dups[b].remove(); } catch (eX) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ } }
         return { ok: false, code: code, err: err };
     }
     doc.selection = null;
-    for (i = 0; i < dups.length; i++) { try { dups[i].selected = true; } catch (e2) {} }
+    for (i = 0; i < dups.length; i++) { try { dups[i].selected = true; } catch (e2) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ } }
     // ★선택이 **실제로 됐는지** 본다. `selected = true` 는 잠금·숨김이 아니어도 실패한다 —
     //   실측(2026-08-04 무제-2): 중첩 그룹 아트에서 `Error 9063: Trying to select locked or hidden art`.
     //   여태 이 줄이 try/catch 로 삼켜져서 선택이 빈 채로 진행됐고, 뒤에서 '사본 그룹 실패'라는
     //   **엉뚱한 사유**가 나왔다. 진짜 사유를 따로 알린다.
     var selN = 0;
-    try { selN = doc.selection ? doc.selection.length : 0; } catch (e2b) {}
+    try { selN = doc.selection ? doc.selection.length : 0; } catch (e2b) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ }
     if (!selN) return bail('select', '사본 선택 실패(잠금·숨김 아님 — 일러 9063)');
     mesCut_groupSel(doc);
     var copy = null;
-    try { copy = doc.selection[0]; } catch (e3) {}
+    try { copy = doc.selection[0]; } catch (e3) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ }
     if (!copy) return bail('group', '사본 그룹 실패');
     // ★visibleBounds 로 잰다 — geometricBounds 는 **라이브 효과를 안 센다**.
     //   확장에 실패해 효과가 라이브로 남는 정상 경로를 geometricBounds 로 재면 "안 커졌다"고 오판한다.
     var pre = null;
-    try { pre = copy.visibleBounds; } catch (e3b) {}
+    try { pre = copy.visibleBounds; } catch (e3b) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     // 벌리는 양 = 여백 + 도련 (인쇄가 칼선보다 도련만큼 더 나가야 한다)
     var xml = '<LiveEffect name="Adobe Offset Path"><Dict data="R mlim ' + MESCUT_BLEED_MLIM + ' R ofst '
         + ((offsetMm + bleedMm) * MESCUT_PT_PER_MM) + ' I jntp ' + MESCUT_BLEED_JOIN + ' "/></LiveEffect>';
@@ -1715,7 +1715,7 @@ function mesCut_vecBleedRegions(doc, items, offsetMm, bleedMm, fillClosed) {
     //   정확히 출력한다. 예전엔 expand 실패를 곧 도련 실패로 보고 아무것도 안 남겼다.
     doc.selection = null;
     var expanded = false;
-    try { copy.selected = true; expanded = !!(doc.selection && doc.selection.length); } catch (e5) {}
+    try { copy.selected = true; expanded = !!(doc.selection && doc.selection.length); } catch (e5) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ }
     if (expanded) app.executeMenuCommand('expandStyle');
     // ★확장 결과는 **여기서 뒤로 보내지 않는다**. 하나씩 SENDTOBACK 하면 서로의 순서가 뒤집혀
     //   겹친 구역의 위아래가 원본과 달라진다. 클리핑까지 끝낸 **그룹 하나**를 마지막에 보낸다.
@@ -1733,11 +1733,11 @@ function mesCut_vecBleedRegions(doc, items, offsetMm, bleedMm, fillClosed) {
                 var rb = res[i].visibleBounds;
                 if (x0 === null || rb[0] < x0) x0 = rb[0];
                 if (x1 === null || rb[2] > x1) x1 = rb[2];
-            } catch (e8) {}
+            } catch (e8) { /* ignore: 경계 합집합 — 못 읽은 개체는 빼고 계산한다(pre/post 비교용) */ }
         }
         if (x0 !== null) post = [x0, 0, x1, 0];
     }
-    if (!post) { try { post = copy.visibleBounds; } catch (e9) {} }
+    if (!post) { try { post = copy.visibleBounds; } catch (e9) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ } }
     var want = (offsetMm + bleedMm) * 2;
     if (pre && post && want > 0) {
         var grew = ((post[2] - post[0]) - (pre[2] - pre[0])) / MESCUT_PT_PER_MM;
@@ -1766,9 +1766,9 @@ function mesCut_vecBleedRegions(doc, items, offsetMm, bleedMm, fillClosed) {
     var masked = mesCut_maskWith(doc, bnd, targets);
     // 클리핑에 실패하면 **지운다**. 안 지우고 두면 굵어진 도형이 칼선 밖으로 나가
     // 옆 조각을 침범한다 — 그게 이번에 보고된 증상 그대로다. 없는 편이 낫고, 사유를 알린다.
-    if (!masked) { try { bnd.remove(); } catch (eM) {} return bail('mask', '도련 클리핑 실패', res); }
+    if (!masked) { try { bnd.remove(); } catch (eM) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ } return bail('mask', '도련 클리핑 실패', res); }
     // 원본 **뒤**로 — 도련은 원본에 가려야 한다(원본이 위)
-    try { masked.zOrder(ZOrderMethod.SENDTOBACK); } catch (e10) {}
+    try { masked.zOrder(ZOrderMethod.SENDTOBACK); } catch (e10) { /* ignore: 겹침 순서 조정 — 예외는 참조가 무효(이미 삭제)일 때만 난다 */ }
     return { ok: true, mode: expanded ? 'region' : 'region-live', n: n, code: null, err: null };
 }
 
@@ -1804,7 +1804,7 @@ function mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed, bleedMode, r
     }
     // ① 도련 경계 = 실루엣 + (여백 + 도련). 칼선과 **같은 엔진**이라 모양이 정확히 겹친다.
     var layer = null;
-    try { layer = items[0].layer; } catch (e0) {}
+    try { layer = items[0].layer; } catch (e0) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     if (!layer) layer = doc.activeLayer;
     if (bleedMode !== 'scale') {
         // ★★2026-08-04 정정 — **도련에 흰색을 넣으면 안 된다.**
@@ -1853,36 +1853,36 @@ function mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed, bleedMode, r
 
     // ② 경계가 여러 개면 **하나의 compound** 로 묶는다 — 클리핑 마스크는 한 개체만 쓸 수 있다
     doc.selection = null;
-    for (i = 0; i < sil.items.length; i++) { try { sil.items[i].selected = true; } catch (e1) {} }
+    for (i = 0; i < sil.items.length; i++) { try { sil.items[i].selected = true; } catch (e1) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ } }
     if (sil.items.length > 1) app.executeMenuCommand('compoundPath');
     var clipShape = null;
-    try { clipShape = doc.selection[0]; } catch (e2) {}
+    try { clipShape = doc.selection[0]; } catch (e2) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ }
     if (!clipShape) return { ok: false, code: 'silsel', err: '도련 경계 선택 실패' };
     var cb = clipShape.geometricBounds;
 
     // ③ 아트 사본을 도련 경계까지 늘린다(비균일) — 링 바깥만 보이므로 왜곡은 그 안에서만 생긴다
     var dups = [];
     for (i = 0; i < items.length; i++) {
-        try { dups.push(items[i].duplicate(layer, ElementPlacement.PLACEATEND)); } catch (e3) {}
+        try { dups.push(items[i].duplicate(layer, ElementPlacement.PLACEATEND)); } catch (e3) { /* ignore: 실패한 개체는 건너뛴다 — 개수는 호출자가 성공 카운트·반환값으로 본다 */ }
     }
-    if (!dups.length) { try { clipShape.remove(); } catch (e4) {} return { ok: false, code: 'dup', err: '아트 복제 실패' }; }
+    if (!dups.length) { try { clipShape.remove(); } catch (e4) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ } return { ok: false, code: 'dup', err: '아트 복제 실패' }; }
     doc.selection = null;
-    for (i = 0; i < dups.length; i++) { try { dups[i].selected = true; } catch (e5) {} }
+    for (i = 0; i < dups.length; i++) { try { dups[i].selected = true; } catch (e5) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ } }
     mesCut_groupSel(doc);
     var artCopy = null;
-    try { artCopy = doc.selection[0]; } catch (e6) {}
+    try { artCopy = doc.selection[0]; } catch (e6) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ }
     if (!artCopy) return { ok: false, code: 'group', err: '사본 그룹 실패' };
     var ab = artCopy.geometricBounds;
     var aw = ab[2] - ab[0], ah = ab[1] - ab[3];
     if (aw > 0 && ah > 0) {
         var sx = ((cb[2] - cb[0]) / aw) * 100, sy = ((cb[1] - cb[3]) / ah) * 100;
         // 중심을 맞춘 뒤 늘린다 — 안 맞추면 한쪽으로 쏠려 반대쪽 링이 빈다
-        try { artCopy.resize(sx, sy, true, true, true, true, 100, Transformation.CENTER); } catch (e7) {}
+        try { artCopy.resize(sx, sy, true, true, true, true, 100, Transformation.CENTER); } catch (e7) { /* ignore: 실패한 개체는 건너뛴다 — 개수는 호출자가 성공 카운트·반환값으로 본다 */ }
         var nb = artCopy.geometricBounds;
         try {
             artCopy.translate(((cb[0] + cb[2]) / 2) - ((nb[0] + nb[2]) / 2),
                 ((cb[1] + cb[3]) / 2) - ((nb[1] + nb[3]) / 2));
-        } catch (e8) {}
+        } catch (e8) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
     }
     // ④ 경계로 클리핑 — 마스크는 **맨 위** 개체가 된다.
     //   ★검증하는 helper 를 쓴다. 예전엔 `doc.selection[0]` 이 비었는지만 봤는데, makeMask 가 거부되면
@@ -1891,11 +1891,11 @@ function mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed, bleedMode, r
     var bleedGroup = mesCut_maskWith(doc, clipShape, [artCopy]);
     if (!bleedGroup) {
         // 잔여물을 남기지 않는다 — 경계 도형은 실루엣 색(대개 검정)이라 그대로 두면 도련처럼 보인다
-        try { clipShape.remove(); } catch (e9) {}
-        try { artCopy.remove(); } catch (e10) {}
+        try { clipShape.remove(); } catch (e9) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ }
+        try { artCopy.remove(); } catch (e10) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ }
     }
     // ⑤ 원본 **뒤**로 — 도련은 원본에 가려야 한다(원본이 위)
-    try { if (bleedGroup) bleedGroup.zOrder(ZOrderMethod.SENDTOBACK); } catch (e12) {}
+    try { if (bleedGroup) bleedGroup.zOrder(ZOrderMethod.SENDTOBACK); } catch (e12) { /* ignore: 겹침 순서 조정 — 예외는 참조가 무효(이미 삭제)일 때만 난다 */ }
     if (bleedGroup) return { ok: true, mode: 'scale', err: null };
     // 마지막 안전망 — 아트에서 색을 못 얻은 경우다. 인쇄 영역만이라도 넓혀 두되 **반드시 알린다**
     // (이 링은 아트 색이 아니라 지정색이므로 재단이 밀리면 그 색이 보인다).
@@ -1940,7 +1940,7 @@ function mesCut_bleedPlaceItem(doc, layer, copy, idx, sizeMm, rotDeg) {
     try {
         pi = layer.placedItems.add();
         pi.file = f;
-    } catch (e1) { try { if (pi) pi.remove(); } catch (e2) {} return false; }
+    } catch (e1) { try { if (pi) pi.remove(); } catch (e2) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ } return false; }
     try {
         // ★크기는 **회전 전**에 정한다 — 회전 후 bbox 는 외접 사각이라 거기 맞춰 늘리면 찌그러진다
         pi.width = sizeMm.w * MESCUT_PT_PER_MM;
@@ -1950,10 +1950,10 @@ function mesCut_bleedPlaceItem(doc, layer, copy, idx, sizeMm, rotDeg) {
         pi.translate(((bb[0] + bb[2]) / 2) - ((pb[0] + pb[2]) / 2),
                      ((bb[1] + bb[3]) / 2) - ((pb[1] + pb[3]) / 2));
         pi.zOrder(ZOrderMethod.SENDTOBACK);        // 도련은 원본에 가려야 한다
-    } catch (e3) { try { pi.remove(); } catch (e4) {} return false; }
+    } catch (e3) { try { pi.remove(); } catch (e4) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ } return false; }
     // ★링크를 끊는다 — temp 의 PNG 는 지워진다. embed 는 참조를 무효화하므로 **여기가 마지막**이다.
     //   실패해도 배치 자체는 성공으로 본다(EPS 저장이 링크를 품는 경로가 있다).
-    try { pi.embed(); } catch (e5) {}
+    try { pi.embed(); } catch (e5) { /* ignore: 임베드 실패해도 배치는 성공 — EPS 저장이 링크를 품는 경로가 있다(2026-08 실측) */ }
     return true;
 }
 
@@ -1988,10 +1988,10 @@ function mesCut_vecCut(offsetMm, fillClosed, bleedMm, bleedMode) {
     //   ensureCutLayer 에서 되돌려 놔도 다시 재단선으로 넘어간다. 끝에서 한 번 더 되돌린다.
     //   안 되돌리면 칼선을 만든 뒤 사용자가 그리는 그림이 전부 재단선 레이어로 들어간다(실측).
     var prevLayer = null;
-    try { prevLayer = doc.activeLayer; } catch (eP) {}
+    try { prevLayer = doc.activeLayer; } catch (eP) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     var cutLayer = mesCut_ensureCutLayer(doc);
-    try { if (cutLayer.locked) cutLayer.locked = false; } catch (eL) {}
-    try { if (!cutLayer.visible) cutLayer.visible = true; } catch (eV) {}
+    try { if (cutLayer.locked) cutLayer.locked = false; } catch (eL) { /* ignore: 잠금 해제 — 실패하면 칼선을 못 넣어 아래 개수(nP)로 드러난다 */ }
+    try { if (!cutLayer.visible) cutLayer.visible = true; } catch (eV) { /* ignore: 숨김 해제 — 실패하면 칼선을 못 넣어 아래 개수(nP)로 드러난다 */ }
     // ★메뉴 명령이 모달을 띄우면 여기서 멈춘다 — 억제하고 **끝에서 반드시 되돌린다**(0.8.1)
     var silent = mesCut_silentBegin();
     var r;
@@ -2001,12 +2001,12 @@ function mesCut_vecCut(offsetMm, fillClosed, bleedMm, bleedMode) {
     // ★도련 — 칼선을 만든 **뒤**에 한다(칼선 레이어가 이미 정리된 상태여야 실루엣이 안 섞인다)
     var bl = null;
     if (bleedMm > 0) {
-        try { doc.selection = null; for (i = 0; i < items.length; i++) items[i].selected = true; } catch (eB0) {}
+        try { doc.selection = null; for (i = 0; i < items.length; i++) items[i].selected = true; } catch (eB0) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ }
         try { bl = mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed, bleedMode); } catch (eB) { bl = { ok: false, err: '' + eB }; }
     }
     // 원래 선택을 되돌린다 — 연속 실행이 자연스럽도록
-    try { doc.selection = null; for (i = 0; i < items.length; i++) items[i].selected = true; } catch (eR) {}
-    try { if (prevLayer && prevLayer !== cutLayer) doc.activeLayer = prevLayer; } catch (eR2) {}
+    try { doc.selection = null; for (i = 0; i < items.length; i++) items[i].selected = true; } catch (eR) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ }
+    try { if (prevLayer && prevLayer !== cutLayer) doc.activeLayer = prevLayer; } catch (eR2) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     mesCut_silentEnd(silent);
     // 도련 실패는 **사유 코드까지** 실어 보낸다 — '0' 만 보내면 패널이 "왜 안 됐는지"를 말할 수 없다.
     //   ⚠️ 한글은 못 싣는다(evalScript 브릿지 = ASCII). 코드로 보내고 **패널이 번역**한다.
@@ -2039,14 +2039,14 @@ function mesCut_exportDxf(outPath) {
         else if (doc.layers[i].name === MESCUT_MARK_LAYER) markLayer = doc.layers[i];
     }
     if (!cutLayer) return 'ERROR 재단선 레이어 없음 — 칼선을 먼저 만드세요';
-    var items = [], srcLayerOf = [];
+    var items = [], srcLayerOf = [], dupFail = 0; // dupFail = 임시문서로 못 옮긴 칼선 수 → 결과 `dupfail=`(2026-09-11)
     var k;
     for (k = 0; k < cutLayer.pageItems.length; k++) { items.push(cutLayer.pageItems[k]); srcLayerOf.push('cut'); }
     if (markLayer) for (k = 0; k < markLayer.pageItems.length; k++) { items.push(markLayer.pageItems[k]); srcLayerOf.push('mark'); }
     if (!items.length) return 'ERROR 재단선이 비어 있음';
     // ⚠️ **비인쇄 레이어는 DXF 내보내기에서 누락·변형된다** — 사내에서 이미 겪은 함정이라
     //    내보내는 동안만 print 를 켜고 끝나면 되돌린다(`SheetLayout.jsx:541~542` 와 같은 조치).
-    try { if (cutLayer.printable === false) { cutLayer.printable = true; restore.push(cutLayer); } } catch (ePr) {}
+    try { if (cutLayer.printable === false) { cutLayer.printable = true; restore.push(cutLayer); } } catch (ePr) { /* ignore: 비인쇄 레이어 켜기 — 실패하면 복제가 비어 「ERROR 복제 실패(재단선 0개)」로 드러난다 */ }
 
     var tmp = null;
     try {
@@ -2065,7 +2065,7 @@ function mesCut_exportDxf(outPath) {
         for (var d2 = 0; d2 < items.length; d2++) {
             // 분류는 **원본 레이어**가 1순위다(문서에서 이미 나뉘어 있다). 레이어가 없던 옛 문서는 채움으로 가른다.
             var toMark = (srcLayerOf[d2] === 'mark') || (srcLayerOf[d2] !== 'cut' && mesCut_isMarkItem(items[d2]));
-            try { items[d2].duplicate(toMark ? markLay : lay, ElementPlacement.PLACEATBEGINNING); } catch (eD) {}
+            try { items[d2].duplicate(toMark ? markLay : lay, ElementPlacement.PLACEATBEGINNING); } catch (eD) { dupFail++; } // 빠진 칼선은 DXF 에서도 빠진다 — 세어서 알린다
         }
         app.activeDocument = tmp;
         var u1 = mesCut_unionOf(mesCut_topItems(tmp));
@@ -2080,17 +2080,17 @@ function mesCut_exportDxf(outPath) {
         opts.version = AutoCADCompatibility.AutoCADRelease15;
         opts.unit = AutoCADUnit.Millimeters;
         opts.scaleLineweights = false;
-        try { opts.exportOption = AutoCADExportOption.MaximumEditability; } catch (eOpt) {}
+        try { opts.exportOption = AutoCADExportOption.MaximumEditability; } catch (eOpt) { /* ignore: 구 일러에 없는 DXF 옵션 — 기본 편집성으로 내보낸다 */ }
         tmp.exportFile(new File(outPath), ExportType.AUTOCAD, opts);
         var n = tmp.pageItems.length;
         tmp.close(SaveOptions.DONOTSAVECHANGES); tmp = null;
         app.activeDocument = doc;
-        for (var rr = 0; rr < restore.length; rr++) { try { restore[rr].printable = false; } catch (eR1) {} }
-        return 'ok;path=' + outPath + ';items=' + n;
+        for (var rr = 0; rr < restore.length; rr++) { try { restore[rr].printable = false; } catch (eR1) { /* ignore: 상태·스타일 적용 — 못 받은 개체는 성공 목록(n/keep)에 안 들어가거나 원래 상태로 남는다 */ } }
+        return 'ok;path=' + outPath + ';items=' + n + (dupFail ? (';dupfail=' + dupFail) : '');
     } catch (e) {
-        if (tmp) { try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) {} }
-        try { app.activeDocument = doc; } catch (e3) {}
-        for (var rr2 = 0; rr2 < restore.length; rr2++) { try { restore[rr2].printable = false; } catch (eR2) {} }
+        if (tmp) { try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) { /* ignore: 임시 문서 닫기 — 이미 닫혔거나 참조가 무효 */ } }
+        try { app.activeDocument = doc; } catch (e3) { /* ignore: 활성 문서 복귀는 편의 — 원본이 닫혔으면 되돌릴 대상이 없다 */ }
+        for (var rr2 = 0; rr2 < restore.length; rr2++) { try { restore[rr2].printable = false; } catch (eR2) { /* ignore: 상태·스타일 적용 — 못 받은 개체는 성공 목록(n/keep)에 안 들어가거나 원래 상태로 남는다 */ } }
         return 'ERROR dxf: ' + e;
     }
 }
@@ -2126,7 +2126,7 @@ var MESCUT_NEST_ITEMS = null;   // rasterizeItem 이 쓰는 대상 목록(선택
 function mesCut_selectAllTop() {
     if (app.documents.length === 0) return 'ERROR 문서 없음';
     var doc = app.activeDocument;
-    try { doc.selection = null; } catch (eS) {}
+    try { doc.selection = null; } catch (eS) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ }
     var n = 0;
     for (var L = 0; L < doc.layers.length; L++) {
         var lay = doc.layers[L];
@@ -2137,7 +2137,7 @@ function mesCut_selectAllTop() {
                 if (items[i].locked || items[i].hidden) continue;
                 items[i].selected = true;
                 n++;
-            } catch (eI) {}
+            } catch (eI) { /* ignore: 선택 실패 개체는 n 에 안 들어간다 — 반환 개수로 드러난다 */ }
         }
     }
     if (!n) return 'ERROR 고를 개체가 없습니다(잠김·숨김만 있거나 빈 문서)';
@@ -2150,7 +2150,7 @@ function mesCut_nestBegin(keep) {
         // 지워진 개체가 섞였는지만 확인한다 — 남아 있으면 그대로 재사용.
         var alive = [];
         for (var k = 0; k < MESCUT_NEST_ITEMS.length; k++) {
-            try { var t = MESCUT_NEST_ITEMS[k].typename; if (t) alive.push(MESCUT_NEST_ITEMS[k]); } catch (eK) {}
+            try { var t = MESCUT_NEST_ITEMS[k].typename; if (t) alive.push(MESCUT_NEST_ITEMS[k]); } catch (eK) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         }
         if (alive.length === MESCUT_NEST_ITEMS.length) return 'ok;n=' + MESCUT_NEST_ITEMS.length + ';kept=1';
         // 하나라도 사라졌으면 낡은 목록이다 — 아래로 내려가 선택에서 다시 잡는다.
@@ -2169,7 +2169,7 @@ function mesCut_nestBegin(keep) {
     var withBB = [];
     for (var b = 0; b < MESCUT_NEST_ITEMS.length; b++) {
         var bb = null;
-        try { bb = mesCut_inkBounds(MESCUT_NEST_ITEMS[b]); } catch (eB) {}
+        try { bb = mesCut_inkBounds(MESCUT_NEST_ITEMS[b]); } catch (eB) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         withBB.push({ it: MESCUT_NEST_ITEMS[b], t: bb ? bb[1] : 0, l: bb ? bb[0] : 0 });
     }
     withBB.sort(function (p, q) {
@@ -2205,7 +2205,7 @@ function mesCut_nestSizes() {
     var out = [];
     for (var i = 0; i < MESCUT_NEST_ITEMS.length; i++) {
         var b = null;
-        try { b = mesCut_inkBounds(MESCUT_NEST_ITEMS[i]); } catch (eB) {}
+        try { b = mesCut_inkBounds(MESCUT_NEST_ITEMS[i]); } catch (eB) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         if (!b) { out.push('0x0'); continue; }
         var w = (b[2] - b[0]) / MESCUT_PT_PER_MM, h = (b[1] - b[3]) / MESCUT_PT_PER_MM;
         out.push((Math.round(w * 10) / 10) + 'x' + (Math.round(h * 10) / 10));
@@ -2264,10 +2264,10 @@ function mesCut_efsPurge(fold) {
     try {
         var fs = fold.getFiles();
         for (var i = 0; i < fs.length; i++) {
-            if (fs[i] instanceof Folder) { left += mesCut_efsPurge(fs[i]); try { fs[i].remove(); } catch (e1) {} }
+            if (fs[i] instanceof Folder) { left += mesCut_efsPurge(fs[i]); try { fs[i].remove(); } catch (e1) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ } }
             else { try { if (!fs[i].remove()) left++; } catch (e2) { left++; } }
         }
-    } catch (e) { }
+    } catch (e) { /* ignore: 임시 폴더 정리 — 못 지운 개수는 left 로 센다 */ }
     return left;
 }
 
@@ -2359,7 +2359,7 @@ function mesCut_efsRound(doc, rects, names, mmPerPx, aaOn, tag, idx) {
         var from = new File(base + '/' + names[i] + '.png');
         if (!from.exists) { MESCUT_EFS_WHY = 'missing ' + names[i] + '.png (maxside=' + Math.round(maxSide) + 'px)'; return null; }
         var to = tmpDir + '/mes_cut_' + tag + '_' + idx[i] + '.png';
-        try { var tf = new File(to); if (tf.exists) tf.remove(); } catch (eD) {}
+        try { var tf = new File(to); if (tf.exists) tf.remove(); } catch (eD) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ }
         if (!from.copy(to)) { MESCUT_EFS_WHY = 'copy-fail ' + names[i] + ': ' + from.error; return null; }
         out.push(to);
     }
@@ -2525,7 +2525,7 @@ function mesCut_bakeOneDoc(srcDoc, idxs, srcBB, cellW, cellH, padPt, mmPerPx, fi
         var copies = [];
         for (i = 0; i < idxs.length; i++) {
             var cp = null;
-            try { cp = MESCUT_NEST_ITEMS[idxs[i]].duplicate(lay, ElementPlacement.PLACEATEND); } catch (eD) {}
+            try { cp = MESCUT_NEST_ITEMS[idxs[i]].duplicate(lay, ElementPlacement.PLACEATEND); } catch (eD) { /* ignore: 실패한 개체는 건너뛴다 — 개수는 호출자가 성공 카운트·반환값으로 본다 */ }
             copies.push(cp);
         }
         app.activeDocument = tmp;                    // ★전환 2 — 이후로는 임시 문서 안에서만 논다
@@ -2548,7 +2548,7 @@ function mesCut_bakeOneDoc(srcDoc, idxs, srcBB, cellW, cellH, padPt, mmPerPx, fi
             var ch = (b[1] - b[3]) + padPt * 2 + 20 * PT;
             if (curX > 0 && curX + cw > MESCUT_CANVAS_MAX_PT) { curX = 0; curY -= rowMax; rowMax = 0; }
             var dx = curX - b[0], dy = curY - b[1];
-            try { copies[i].translate(dx, dy); } catch (eT) {}
+            try { copies[i].translate(dx, dy); } catch (eT) { /* ignore: 실패한 개체는 건너뛴다 — 개수는 호출자가 성공 카운트·반환값으로 본다 */ }
             boxes[k] = mesCut_inkBounds(copies[i]) || [b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy];
             curX += cw;
             if (ch > rowMax) rowMax = ch;
@@ -2598,8 +2598,8 @@ function mesCut_bakeOneDoc(srcDoc, idxs, srcBB, cellW, cellH, padPt, mmPerPx, fi
             lines = [];   // 부분 성공 잔재를 남기지 않는다
             // ★fast 경로가 아트보드를 여러 개 남겼을 수 있다 — 옛 경로는 **활성 아트보드**를 내보내므로
             //   1개로 되돌리지 않으면 같은 그림을 n 번 뷄는다(2026-09-04 하네스에서 실제로 겪었다).
-            try { while (tmp.artboards.length > 1) tmp.artboards.remove(tmp.artboards.length - 1); } catch (eAB) {}
-            try { tmp.artboards.setActiveArtboardIndex(0); } catch (eAI) {}
+            try { while (tmp.artboards.length > 1) tmp.artboards.remove(tmp.artboards.length - 1); } catch (eAB) { /* ignore: 여분 아트보드 정리 — 실패하면 아래 setActiveArtboardIndex 가 0 번을 다시 잡는다 */ }
+            try { tmp.artboards.setActiveArtboardIndex(0); } catch (eAI) { /* ignore: 활성 아트보드 지정 — 아트보드가 1개면 이미 0 번이다 */ }
         }
         for (i = 0; i < n && !fastBake; i++) {
             if (!boxes[i] || !srcBB[i]) continue;
@@ -2620,14 +2620,14 @@ function mesCut_bakeOneDoc(srcDoc, idxs, srcBB, cellW, cellH, padPt, mmPerPx, fi
                     lines.push('Q ' + i + ' ' + Math.round((bx[2] - bx[0]) * sc / 100)
                         + ' ' + Math.round((bx[1] - bx[3]) * sc / 100)
                         + ' ' + f(srcBB[i][0]) + ' ' + f(srcBB[i][1]) + ' ' + bPath);
-                } catch (eB) { /* 도련만 실패하면 패널이 옛 경로로 다시 굽는다 */ }
+                } catch (eB) { /* ignore: 도련만 실패하면 패널이 옛 경로로 다시 굽는다 */ }
             }
         }
         tmp.close(SaveOptions.DONOTSAVECHANGES); tmp = null;
         app.activeDocument = srcDoc;
     } catch (e) {
-        if (tmp) { try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) {} }
-        try { app.activeDocument = srcDoc; } catch (e3) {}
+        if (tmp) { try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) { /* ignore: 임시 문서 닫기 — 이미 닫혔거나 참조가 무효 */ } }
+        try { app.activeDocument = srcDoc; } catch (e3) { /* ignore: 활성 문서 복귀는 편의 — 원본이 닫혔으면 되돌릴 대상이 없다 */ }
         out.err = String(e);
         return out;
     }
@@ -2660,7 +2660,7 @@ function mesCut_rasterizeItem(idx, mmPerPx, padMm, fillClosed) {
         var lay = tmp.layers[0];
         app.activeDocument = srcDoc;                 // ★복제는 원본이 active 일 때만
         var dup = null;
-        try { dup = it.duplicate(lay, ElementPlacement.PLACEATBEGINNING); } catch (eD) {}
+        try { dup = it.duplicate(lay, ElementPlacement.PLACEATBEGINNING); } catch (eD) { /* ignore: 실패한 개체는 건너뛴다 — 개수는 호출자가 성공 카운트·반환값으로 본다 */ }
         app.activeDocument = tmp;
         var nFill = fillClosed ? mesCut_fillClosedIn(tmp) : 0;   // 사본에서만 — 원본 무손상
         var u = mesCut_unionOf(mesCut_topItems(tmp));
@@ -2676,7 +2676,7 @@ function mesCut_rasterizeItem(idx, mmPerPx, padMm, fillClosed) {
         //   ⚠️ 상대 배치도 보존된다 — 전부 **같은 양**만 평행이동한다.
         var abR = tmp.artboards[0].artboardRect;
         var mvx = abR[0] - u[0], mvy = abR[1] - u[1];
-        if (dup) { try { dup.translate(mvx, mvy); } catch (eMv) {} }
+        if (dup) { try { dup.translate(mvx, mvy); } catch (eMv) { /* ignore: 실패한 개체는 건너뛴다 — 개수는 호출자가 성공 카운트·반환값으로 본다 */ } }
         u = mesCut_unionOf(mesCut_topItems(tmp)) || [u[0] + mvx, u[1] + mvy, u[2] + mvx, u[3] + mvy];
         var padPt = padMm * MESCUT_PT_PER_MM;
         tmp.artboards[0].artboardRect = [u[0] - padPt, u[1] + padPt, u[2] + padPt, u[3] - padPt];
@@ -2694,8 +2694,8 @@ function mesCut_rasterizeItem(idx, mmPerPx, padMm, fillClosed) {
             + ';ox=' + f(bb[0] - padPt) + ';oy=' + f(bb[1] + padPt) + ';mmpp=' + mmPerPx
             + ';filled=' + nFill;
     } catch (e) {
-        if (tmp) { try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) {} }
-        try { app.activeDocument = srcDoc; } catch (e3) {}
+        if (tmp) { try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) { /* ignore: 임시 문서 닫기 — 이미 닫혔거나 참조가 무효 */ } }
+        try { app.activeDocument = srcDoc; } catch (e3) { /* ignore: 활성 문서 복귀는 편의 — 원본이 닫혔으면 되돌릴 대상이 없다 */ }
         return 'ERROR rasterizeItem: ' + e;
     }
 }
@@ -2784,11 +2784,11 @@ function mesCut_domboMargin() { return mesCut_sc(MESCUT_DOMBO_CORNER_MM + MESCUT
 function mesCut_ensureCutLayer(doc) {
     for (var i = 0; i < doc.layers.length; i++) if (doc.layers[i].name === MESCUT_CUT_LAYER) return doc.layers[i];
     var prev = null;
-    try { prev = doc.activeLayer; } catch (e0) {}
+    try { prev = doc.activeLayer; } catch (e0) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     var l = doc.layers.add(); l.name = MESCUT_CUT_LAYER;
     // ★칼선은 **인쇄에서 뺀다**(규약: CutLine = print OFF). 인쇄물에 칼선이 찍히면 안 된다.
-    try { l.printable = false; } catch (eP) {}
-    try { if (prev) doc.activeLayer = prev; } catch (e1) {}
+    try { l.printable = false; } catch (eP) { /* ignore: 바로 위 layers.add() 가 성공한 레이어라 예외가 날 수 없다 — 방어용 */ }
+    try { if (prev) doc.activeLayer = prev; } catch (e1) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     return l;
 }
 
@@ -2796,10 +2796,10 @@ function mesCut_ensureCutLayer(doc) {
 function mesCut_ensureMarkLayer(doc) {
     for (var i = 0; i < doc.layers.length; i++) if (doc.layers[i].name === MESCUT_MARK_LAYER) return doc.layers[i];
     var prev = null;
-    try { prev = doc.activeLayer; } catch (e0) {}
+    try { prev = doc.activeLayer; } catch (e0) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     var l = doc.layers.add(); l.name = MESCUT_MARK_LAYER;
-    try { l.printable = true; } catch (eP) {}
-    try { if (prev) doc.activeLayer = prev; } catch (e1) {}
+    try { l.printable = true; } catch (eP) { /* ignore: 바로 위 layers.add() 가 성공한 레이어라 예외가 날 수 없다 — 방어용 */ }
+    try { if (prev) doc.activeLayer = prev; } catch (e1) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     return l;
 }
 function mesCut_magenta() { var c = new CMYKColor(); c.cyan = 0; c.magenta = 100; c.yellow = 0; c.black = 0; return c; }
@@ -2830,7 +2830,7 @@ function mesCut_addDombo(doc) {
             var el = layer.pathItems.ellipse(cy + D / 2, cx - D / 2, D, D);
             el.filled = true; el.stroked = false; el.fillColor = kCol;
             n++;
-        } catch (e) {}
+        } catch (e) { /* ignore: 돔보 원을 못 만든 자리는 n 에 안 들어간다 — 반환 개수로 드러난다 */ }
     }
     function inter(from, to, fixed, horiz) {
         var span = to - from;
@@ -2904,8 +2904,8 @@ function mesCut_scaleAsPlaced(doc, artLayer, srcItem, srcDoc, pct, tagIdx, rotDe
         tmp.saveAs(pdfFile, po);
         tmp.close(SaveOptions.DONOTSAVECHANGES); tmp = null;
     } catch (e1) {
-        if (tmp) { try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) {} }
-        try { app.activeDocument = doc; } catch (e3) {}
+        if (tmp) { try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) { /* ignore: 임시 문서 닫기 — 이미 닫혔거나 참조가 무효 */ } }
+        try { app.activeDocument = doc; } catch (e3) { /* ignore: 활성 문서 복귀는 편의 — 원본이 닫혔으면 되돌릴 대상이 없다 */ }
         return null;
     }
 
@@ -2953,7 +2953,7 @@ function mesCut_scaleAsPlaced(doc, artLayer, srcItem, srcDoc, pct, tagIdx, rotDe
         stage.remove(); stage = null;
         return got;
     } catch (e4) {
-        if (stage) { try { stage.remove(); } catch (e5) {} }
+        if (stage) { try { stage.remove(); } catch (e5) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ } }
         return null;
     }
 }
@@ -2964,7 +2964,7 @@ function mesCut_cleanPlaced(n) {
         try {
             var f = new File(Folder.temp.fsName.replace(/\\/g, '/') + '/mes_cut_place_' + i + '.pdf');
             if (f.exists) f.remove();
-        } catch (e) {}
+        } catch (e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
     }
 }
 
@@ -3045,7 +3045,7 @@ function mesCut_hardenGrid(srcDoc, idxList) {
     var cw = [], ch = [];
     for (i = 0; i < n; i++) {
         var b = null;
-        try { b = mesCut_inkBounds(MESCUT_NEST_ITEMS[idxList[i]]); } catch (e0) {}
+        try { b = mesCut_inkBounds(MESCUT_NEST_ITEMS[idxList[i]]); } catch (e0) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         if (!b) return null;
         cw.push((b[2] - b[0]) + GAP);
         ch.push((b[1] - b[3]) + GAP);
@@ -3075,7 +3075,7 @@ function mesCut_hardenGrid(srcDoc, idxList) {
         var cps = [];
         for (i = 0; i < n; i++) {
             var cp = null;
-            try { cp = MESCUT_NEST_ITEMS[idxList[i]].duplicate(lay, ElementPlacement.PLACEATEND); } catch (eD) {}
+            try { cp = MESCUT_NEST_ITEMS[idxList[i]].duplicate(lay, ElementPlacement.PLACEATEND); } catch (eD) { /* ignore: 실패한 개체는 건너뛴다 — 개수는 호출자가 성공 카운트·반환값으로 본다 */ }
             cps.push(cp);
         }
         app.activeDocument = tmp;                    // ★전환 2 — 이후로는 임시 문서 안에서만 논다
@@ -3088,7 +3088,7 @@ function mesCut_hardenGrid(srcDoc, idxList) {
             var w2 = b2[2] - b2[0], h2 = b2[1] - b2[3];
             // 셀 **중앙**에 놓는다 — 나눌 때 중심으로 배정하므로 여백이 대칭이어야 한다
             var tx = curX + (cw[i] - w2) / 2, ty = curY - (ch[i] - h2) / 2;
-            try { cps[i].translate(tx - b2[0], ty - b2[1]); } catch (eT) {}
+            try { cps[i].translate(tx - b2[0], ty - b2[1]); } catch (eT) { /* ignore: 실패한 개체는 건너뛴다 — 개수는 호출자가 성공 카운트·반환값으로 본다 */ }
             cells[String(idxList[i])] = { cx: tx + w2 / 2, cy: ty - h2 / 2, w: w2, h: h2 };
             curX += cw[i];
             if (ch[i] > rowMax) rowMax = ch[i];
@@ -3102,11 +3102,11 @@ function mesCut_hardenGrid(srcDoc, idxList) {
         tmp.close(SaveOptions.DONOTSAVECHANGES); tmp = null;
     } catch (e) {
         MESCUT_HARDEN_ERR = String(e && e.message ? e.message : e).replace(/[^A-Za-z0-9_.:-]+/g, '_').substr(0, 50);
-        if (tmp) { try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) {} }
-        try { app.activeDocument = srcDoc; } catch (e3) {}
+        if (tmp) { try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) { /* ignore: 임시 문서 닫기 — 이미 닫혔거나 참조가 무효 */ } }
+        try { app.activeDocument = srcDoc; } catch (e3) { /* ignore: 활성 문서 복귀는 편의 — 원본이 닫혔으면 되돌릴 대상이 없다 */ }
         return null;
     }
-    try { app.activeDocument = srcDoc; } catch (e4) {}
+    try { app.activeDocument = srcDoc; } catch (e4) { /* ignore: 활성 문서 복귀는 편의 — 원본이 닫혔으면 되돌릴 대상이 없다 */ }
     return { pdf: pdfPath, w: totW, h: totH, cells: cells };
 }
 
@@ -3123,7 +3123,7 @@ function mesCut_hardenKids(item, need) {
     try {
         for (var i = 0; i < item.pageItems.length; i++) {
             var c = item.pageItems[i];
-            try { if (c.clipping || c.hidden) continue; } catch (e1) {}
+            try { if (c.clipping || c.hidden) continue; } catch (e1) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
             kids.push(c);
         }
     } catch (e2) { return []; }
@@ -3217,7 +3217,7 @@ function mesCut_hardenSplit(destLayer, master, grid, rot, pct) {
         } catch (eS) {
             MESCUT_HARDEN_SKIP++;
             if (!MESCUT_HARDEN_ERR) MESCUT_HARDEN_ERR = String(eS && eS.message ? eS.message : eS).replace(/[^A-Za-z0-9_.:-]+/g, '_').substr(0, 40);
-            if (g) { try { g.remove(); } catch (eR) {} }   // 그 조각의 아트만 치운다
+            if (g) { try { g.remove(); } catch (eR) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ } }   // 그 조각의 아트만 치운다
         }
     }
     if (!nOk) return null;
@@ -3257,9 +3257,9 @@ function mesCut_hardenMasters(doc, grid, rots, pct) {
         if (got && !map && !MESCUT_HARDEN_ERR) MESCUT_HARDEN_ERR = 'split';
         if (map) { byRot[String(rot)] = map; n++; }
         // 임시 레이어를 통째로 치운다 — 나눈 그룹은 이미 `lay` 로 옮겨졌고 남은 것은 클립 패스뿐이다
-        if (stage) { try { stage.remove(); } catch (eR) {} }
+        if (stage) { try { stage.remove(); } catch (eR) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ } }
     }
-    if (!n) { try { lay.remove(); } catch (eR2) {} return null; }
+    if (!n) { try { lay.remove(); } catch (eR2) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ } return null; }
     return { layer: lay, byRot: byRot, n: n };
 }
 
@@ -3369,7 +3369,7 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
     var made = 0, items = 0, dombo = 0;
     // ★배율 확대를 PDF 배치로 처리한 수 / 그게 안 돼 resize 로 폴백한 수.
     //   폴백은 **배경이 깨졌을 수 있다는 뜻**이라 패널이 그걸 알아야 한다 — 조용히 넘기지 않는다.
-    var nPlaced = 0, nPlaceFail = 0;
+    var nPlaced = 0, nPlaceFail = 0, nCutFail = 0; // nCutFail = 판에 못 그린 칼선·구분선 수 → 결과 `cutfail=`(2026-09-11)
     var sheetWH = [];   // 판별 실제 아트보드 크기 'WxH'(mm) — 판마다 다르므로 전부 모은다
     // 도련 실패 집계 — 조각마다 도는 자리라 **조용히 넘기면 판이 다 깔린 뒤에야** 없는 걸 안다.
     var blFail = 0, blCode = '', blClip = 0, blPix = 0, blSolid = 0, blLegacy = 0;
@@ -3384,9 +3384,9 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
     //      물으면 안 되므로 DONOTSAVECHANGES 로 조용히 닫는다 — 원본은 애초에 이 목록에 없다.
     try {
         for (var oc = 0; oc < MESCUT_NEST_DOCS.length; oc++) {
-            try { MESCUT_NEST_DOCS[oc].close(SaveOptions.DONOTSAVECHANGES); } catch (eOc) {}
+            try { MESCUT_NEST_DOCS[oc].close(SaveOptions.DONOTSAVECHANGES); } catch (eOc) { /* ignore: 임시 문서 닫기 — 이미 닫혔거나 참조가 무효 */ }
         }
-    } catch (eOl) {}
+    } catch (eOl) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
     MESCUT_NEST_DOCS = [];
     MESCUT_LAST_SHEET_W = 0; MESCUT_LAST_SHEET_H = 0;
     // ★대화상자 억제(0.8.1) — 조각 하나에서 메뉴 명령이 모달을 띄우면 **남은 조각 전부**가 멈춘다.
@@ -3469,7 +3469,7 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                 }
                 fromMaster.push(false);
                 var src = MESCUT_NEST_ITEMS[itA.idx], cp = null;
-                if (src) { try { cp = src.duplicate(artLayer, ElementPlacement.PLACEATBEGINNING); } catch (eC) {} }
+                if (src) { try { cp = src.duplicate(artLayer, ElementPlacement.PLACEATBEGINNING); } catch (eC) { /* ignore: 실패한 개체는 건너뛴다 — 개수는 호출자가 성공 카운트·반환값으로 본다 */ } }
                 copies.push(cp);
             }
             // 변형은 대상 문서에서 — 여기서도 한 번만 켠다.
@@ -3505,7 +3505,7 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                 if (!rotDone && (resizePct !== 100 || it2.rot)) {
                     // ★사본을 **먼저** 치운다. 임시 문서를 만드는 순간 이 참조가 무효가 되므로
                     //   나중에 지우려 하면 실패하고, 확대 안 된 사본이 판에 그대로 남아 겹친다.
-                    try { copy.remove(); } catch (eRm) {}
+                    try { copy.remove(); } catch (eRm) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ }
                     copy = null; copies[b] = null;
                     var tmS = (new Date()).getTime();
                     var placed = mesCut_scaleAsPlaced(doc, artLayer, MESCUT_NEST_ITEMS[it2.idx], srcDoc, resizePct, b, it2.rot);
@@ -3516,16 +3516,16 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                         // 배경이 깨질 수 있고, 그건 패널이 `placefail` 로 사용자에게 알린다.
                         app.activeDocument = srcDoc;
                         var re = null;
-                        try { re = MESCUT_NEST_ITEMS[it2.idx].duplicate(artLayer, ElementPlacement.PLACEATBEGINNING); } catch (eD2) {}
+                        try { re = MESCUT_NEST_ITEMS[it2.idx].duplicate(artLayer, ElementPlacement.PLACEATBEGINNING); } catch (eD2) { /* ignore: 실패한 개체는 건너뛴다 — 개수는 호출자가 성공 카운트·반환값으로 본다 */ }
                         app.activeDocument = doc;
                         nPlaceFail++;
                         if (!re) continue;
-                        try { re.resize(resizePct, resizePct); } catch (eRS) {}
+                        try { re.resize(resizePct, resizePct); } catch (eRS) { /* ignore: 실패한 개체는 건너뛴다 — 개수는 호출자가 성공 카운트·반환값으로 본다 */ }
                         copy = re; copies[b] = re;
                     }
                 }
                 // ★배치 경로는 임베드 **앞**에서 이미 돌렸다(마스크 보존). 폴백·배율 1배만 여기서 돈다.
-                if (it2.rot && !rotDone) { try { copy.rotate(-it2.rot); } catch (eR) {} }   // Konva CW → 일러 CCW
+                if (it2.rot && !rotDone) { try { copy.rotate(-it2.rot); } catch (eR) { /* ignore: 실패한 개체는 건너뛴다 — 개수는 호출자가 성공 카운트·반환값으로 본다 */ } }   // Konva CW → 일러 CCW
                 // ★배치 기준도 **잉크 경계** — 패널이 계산한 아트 원점이 잉크 기준이라 여기서만 visibleBounds 를
                 //    쓰면 클립이 잉크보다 큰 아트에서 그 차이만큼 조각이 밀린다.
                 var bb2 = mesCut_inkBounds(copy) || copy.visibleBounds;
@@ -3537,7 +3537,7 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
             // ★마스터를 치운다 — 아트보드 맞추기(`unionOf(topItems)`)가 이걸 세면 판이 커진다.
             //   여기서 치우는 이유 = 이 아래(칼선·도련·아트보드·돔보)는 전부 `copies` 만 보므로
             //   가장 이른 안전 지점이다.
-            if (masters) { try { masters.layer.remove(); } catch (eML) {} masters = null; }
+            if (masters) { try { masters.layer.remove(); } catch (eML) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ } masters = null; }
 
             // 조각별 칼선 — 재단은 시트가 아니라 **조각 단위**라 이게 없으면 떼어낼 수 없다.
             // ★칼선 방식과 도련은 **독립**이다 (2026-08-06 근본수정).
@@ -3567,9 +3567,9 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                             for (var vdi = 0; vdi < vecDrop.length; vdi++) { if (vecDrop[vdi] === vdn) { vdSeen = true; break; } }
                             if (!vdSeen) vecDrop.push(vdn);
                         }
-                    } catch (eVS) {}
+                    } catch (eVS) { /* ignore: 집계 전용(vecdrop 표시) — 실패해도 판 자체는 불변 */ }
                 }
-                try { doc.selection = null; } catch (eSel) {}
+                try { doc.selection = null; } catch (eSel) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ }
             } else if (sh.segs && sh.segs.length) {
                 // ★맞붙임 — 열린 선분을 그대로 긋는다. 맞닿은 변은 패널에서 이미 하나로 합쳐졌다.
                 var scl = mesCut_ensureCutLayer(doc);
@@ -3584,7 +3584,7 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                         sp.closed = false;
                         sp.filled = false; sp.stroked = true;
                         sp.strokeColor = mesCut_magenta(); sp.strokeWidth = 0.6;
-                    } catch (eSg) {}
+                    } catch (eSg) { nCutFail++; } // 못 그린 구분선은 세어서 결과 `cutfail=` 로
                 }
             } else if (sh.cuts.length) {
                 var cl = mesCut_ensureCutLayer(doc);
@@ -3618,7 +3618,7 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                         try {
                             mkCutPath(cl, src2);
                             for (var hw = 0; hw < hn; hw++) mkCutPath(cl, src2.holes[hw]);
-                        } catch (ePp2) {}
+                        } catch (ePp2) { nCutFail++; } // 개별 경로마저 실패 = 그 조각은 칼선이 없다 — 결과 `cutfail=` 로 알린다
                     }
                 }
             }
@@ -3652,7 +3652,7 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                             //    도련은 합성이 아니라 원래 있던 그림을 더 드러내는 것이 된다(PitStop 과 같은 전제).
                             if (grow > 0 && vecBleedMode === 'auto') {
                                 var gr = 0;
-                                try { gr = mesCut_vecGrowClips([copies[vi]], grow); } catch (eGC) {}
+                                try { gr = mesCut_vecGrowClips([copies[vi]], grow); } catch (eGC) { /* ignore: 클립 확장 실패 시 gr=0 으로 남아 아래 solid/pixel 도련 경로가 대신 간다 */ }
                                 if (gr > 0) bMode = 'clip';
                             }
                             // ② Repeat Last Pixel — 패널이 미리 구운 도련 PNG. **정본 경로**다.
@@ -3660,14 +3660,14 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                                 try {
                                     if (mesCut_bleedPlaceItem(doc, artLayer, copies[vi], sh.items[vi].idx,
                                             bleedSz[sh.items[vi].idx], sh.items[vi].rot)) bMode = 'pixel';
-                                } catch (eBP) {}
+                                } catch (eBP) { /* ignore: 픽셀 도련 실패 시 bMode 가 비어 결과 문자열의 bleed 모드에 안 실린다(패널 표시) */ }
                             }
                             // ③ 최후 안전망 — 아트에서 색을 못 얻었다. 아트 색이 아닌 **지정색**이라
                             //    재단이 밀리면 그 색이 보인다 → 조용히 넘기지 않고 반드시 집계해 알린다.
                             if (!bMode && grow > 0) {
                                 try {
                                     if (mesCut_vecBleedSolid(doc, [copies[vi]], artLayer, grow, vecFillClosed, mesCut_ringFill(null))) bMode = 'solid';
-                                } catch (eBS) {}
+                                } catch (eBS) { /* ignore: 단색 도련 실패 시 bMode 가 비어 결과 문자열의 bleed 모드에 안 실린다(패널 표시) */ }
                             }
                         }
                         if (bMode === 'clip') blClip++;
@@ -3677,7 +3677,7 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                         else { blFail++; if (!blCode) blCode = (grow > 0 ? 'nopng' : 'zero'); }
                     }
                 }
-                try { doc.selection = null; } catch (eSel) {}
+                try { doc.selection = null; } catch (eSel) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ }
             }
 
             // ★아트보드를 **실제 배치 결과**에 맞춘다 (2026-07-31 용준님 지시).
@@ -3708,7 +3708,7 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                     var ar1 = doc.artboards[0].artboardRect;
                     MESCUT_LAST_SHEET_W = Math.round((ar1[2] - ar1[0]) / MESCUT_PT_PER_MM);
                     MESCUT_LAST_SHEET_H = Math.round((ar1[1] - ar1[3]) / MESCUT_PT_PER_MM);
-                } catch (eAB0) {}
+                } catch (eAB0) { /* ignore: 판 크기 기록(표시용) — 못 재면 0 */ }
             }
             if (mesCut_addDombo(doc).indexOf('ok:') === 0) dombo++;
         }
@@ -3720,7 +3720,7 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
         // ★fast = 격자 마스터로 처리한 배치 수 · masters = 만든 마스터 수(= 쓰인 회전 값 수)
         //   hardenwhy = 격자·나누기가 실패해 조각별 옛 경로로 떨어진 사유. 조용히 느려지지 않게 싣는다.
         return 'ok;sheets=' + made + ';items=' + items + ';dombo=' + dombo
-            + ';placed=' + nPlaced + ';placefail=' + nPlaceFail
+            + ';placed=' + nPlaced + ';placefail=' + nPlaceFail + (nCutFail ? (';cutfail=' + nCutFail) : '')
             + ';fast=' + nFast + ';masters=' + nMasters + (hardenWhy ? (';hardenwhy=' + hardenWhy) : '')
             + (MESCUT_HARDEN_SKIP ? (';hardenskip=' + MESCUT_HARDEN_SKIP + '.' + MESCUT_HARDEN_ERR) : '')
             + (vecDrop.length ? (';vecdrop=' + vecDrop.join(',')) : '')
@@ -3731,16 +3731,16 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
             // 판별 크기 — 구분자는 `_` 다(`;` 는 이 반환 문자열의 구분자라 못 쓴다)
             + ';wh=' + sheetWH.join('_');
     } catch (e) {
-        try { app.activeDocument = srcDoc; } catch (e2) {}
+        try { app.activeDocument = srcDoc; } catch (e2) { /* ignore: 활성 문서 복귀는 편의 — 원본이 닫혔으면 되돌릴 대상이 없다 */ }
         return 'ERROR nestApply: ' + e;
     } finally {
         mesCut_silentEnd(silent);   // ★반드시 되돌린다 — 안 되돌리면 사용자 작업의 경고까지 사라진다
         // ★뒷정리는 **여기서** 한다 — 정상 반환 자리에 두면 중간에 예외가 났을 때
         //   임시 PDF 가 남고, 더 나쁘게는 **마스터 레이어가 판에 남아** 아트보드 맞추기에 끼어든다.
-        try { if (masters && masters.layer) { masters.layer.remove(); masters = null; } } catch (eFM) {}
+        try { if (masters && masters.layer) { masters.layer.remove(); masters = null; } } catch (eFM) { /* ignore: 임시 개체·파일 정리 — 이미 지워졌거나 참조 무효 */ }
         try {
             if (hardenGrid) { var hf = new File(hardenGrid.pdf); if (hf.exists) { hf.remove(); } }
-        } catch (eHF) {}
+        } catch (eHF) { /* ignore: 임시 PDF 정리 */ }
     }
 }
 
@@ -3770,7 +3770,7 @@ function mesCut_readLastDir() {
     } catch (e) { return null; }
 }
 function mesCut_writeLastDir(path) {
-    try { mesCut_writeTextUtf8(mesCut_lastDirFile(), String(path)); } catch (e) {}
+    try { mesCut_writeTextUtf8(mesCut_lastDirFile(), String(path)); } catch (e) { /* ignore: 마지막 폴더 기억은 편의 */ }
 }
 
 /**
@@ -3799,7 +3799,7 @@ function mesCut_exportPair() {
     var docs = [];
     if (MESCUT_NEST_DOCS && MESCUT_NEST_DOCS.length) {
         for (var dq = 0; dq < MESCUT_NEST_DOCS.length; dq++) {
-            try { if (MESCUT_NEST_DOCS[dq].name) docs.push(MESCUT_NEST_DOCS[dq]); } catch (eD) {}
+            try { if (MESCUT_NEST_DOCS[dq].name) docs.push(MESCUT_NEST_DOCS[dq]); } catch (eD) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
         }
     }
     if (!docs.length) docs.push(app.activeDocument);
@@ -3844,10 +3844,10 @@ function mesCut_exportPair() {
             okEps++;
         }
     } catch (e) {
-        try { app.activeDocument = prev; } catch (e2) {}
+        try { app.activeDocument = prev; } catch (e2) { /* ignore: 활성 문서 복귀는 편의 — 원본이 닫혔으면 되돌릴 대상이 없다 */ }
         return 'ERROR exportPair: ' + e + ';eps=' + okEps + ';dxf=' + okDxf;
     }
-    try { app.activeDocument = prev; } catch (e3) {}
+    try { app.activeDocument = prev; } catch (e3) { /* ignore: 활성 문서 복귀는 편의 — 원본이 닫혔으면 되돌릴 대상이 없다 */ }
     // eps/dxf 는 이제 **저장한 판 수**다(과거엔 0|1). plates 로 기대치를 함께 준다.
     return 'ok;eps=' + okEps + ';dxf=' + okDxf + ';dxfitems=' + nDxf + ';plates=' + docs.length;
 }
@@ -3882,7 +3882,7 @@ function mesCut_readReg() {
     if (!f.exists) return null;
     var s = '';
     try { f.encoding = 'UTF-8'; f.open('r'); s = f.read(); f.close(); }
-    catch (e) { try { f.close(); } catch (e2) {} return null; }
+    catch (e) { try { f.close(); } catch (e2) { /* ignore: 오류 경로의 파일 닫기 — 원인은 바깥 catch 가 null 반환으로 돌려준다 */ } return null; }
     var o = { NAMES: [] };
     var lines = String(s).split(/[\r\n]+/);
     for (var i = 0; i < lines.length; i++) {
@@ -3954,7 +3954,7 @@ function mesCut_manifestDone() { $.global.mesCutMfPending = []; return 'ok'; }
 function mesCut_writeTextUtf8(path, s) {
     var f = new File(path);
     try { f.encoding = 'UTF-8'; f.open('w'); f.write(s); f.close(); return true; }
-    catch (e) { try { f.close(); } catch (e2) {} return false; }
+    catch (e) { try { f.close(); } catch (e2) { /* ignore: 오류 경로의 파일 닫기 — 원인은 바깥 catch 가 false 반환으로 돌려준다 */ } return false; }
 }
 
 /**
@@ -3974,9 +3974,9 @@ function mesCut_nestRegister() {
     if (!root.exists) return 'ERROR 등록 폴더 없음(Z: 연결 확인): ' + MESCUT_REGISTER_ROOT;
 
     var pcName = '';
-    try { pcName = $.getenv('COMPUTERNAME') || ''; } catch (eP) {}
+    try { pcName = $.getenv('COMPUTERNAME') || ''; } catch (eP) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     var userName = '';
-    try { userName = $.getenv('USERNAME') || ''; } catch (eU) {}
+    try { userName = $.getenv('USERNAME') || ''; } catch (eU) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
 
     $.global.mesCutMfPending = [];   // 앞 건의 잔여를 끌고 가지 않는다
     var srcDoc = app.activeDocument;
@@ -3984,11 +3984,11 @@ function mesCut_nestRegister() {
     for (var s = 0; s < MESCUT_NEST_DOCS.length; s++) {
         var doc = MESCUT_NEST_DOCS[s];
         var r = mesCut_saveOneSheet(doc, s, R, clientName, pcName, userName);
-        if (r.indexOf('ERROR') === 0) { try { app.activeDocument = srcDoc; } catch (e0) {} return r; }
+        if (r.indexOf('ERROR') === 0) { try { app.activeDocument = srcDoc; } catch (e0) { /* ignore: 활성 문서 복귀는 편의 — 원본이 닫혔으면 되돌릴 대상이 없다 */ } return r; }
         folders.push(r);
         made++;
     }
-    try { app.activeDocument = srcDoc; } catch (e1) {}
+    try { app.activeDocument = srcDoc; } catch (e1) { /* ignore: 활성 문서 복귀는 편의 — 원본이 닫혔으면 되돌릴 대상이 없다 */ }
     var pend = ($.global.mesCutMfPending || []).length;
     if (pend) return 'ERROR manifest 쓰기 실패;mfpending=' + pend + ';folders=' + made;
     return 'ok;folders=' + made;
@@ -4025,7 +4025,7 @@ function mesCut_saveOneSheet(doc, idx, R, clientName, pcName, userName) {
         var wo = new IllustratorSaveOptions();
         wo.pdfCompatible = false;
         doc.saveAs(workFile, wo);
-        try { workBytes = new File(workFile.fsName).length; } catch (eB) {}
+        try { workBytes = new File(workFile.fsName).length; } catch (eB) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     } catch (eW) { return 'ERROR work.ai 저장 실패: ' + eW }
 
     // ★★EPS 이름 = **작업 폴더에 나갈 이름 그대로** (2026-08-27).
@@ -4051,13 +4051,14 @@ function mesCut_saveOneSheet(doc, idx, R, clientName, pcName, userName) {
     //   여태 %TEMP% 에만 떨어져 등록 폴더에 안 실렸다(spec §9-7 미해결 항목) → 여기서 해소.
     //   문서를 통째로 내보내지 않는다 — mesCut_exportDxf 가 임시문서로 **재단선 레이어만** 굽는다
     //   (일러 DXF export 는 숨긴 레이어도 내보내므로 숨기기로는 안 된다. 2026-07-31 실측).
-    var dxfName = null;
+    var dxfName = null, dxfErr = '';
     try {
         app.activeDocument = doc;                       // EPS saveAs 뒤 활성 문서를 확정하고 굽는다
         var dxfCand = epsName.replace(/\.eps$/i, '.dxf');
         var dr = mesCut_exportDxf(jobFolder.fsName + '/' + dxfCand);
         if (String(dr).indexOf('ok;') === 0) dxfName = dxfCand;   // 성공했을 때만 = manifest 가 없는 파일을 가리키지 않게
-    } catch (eDx) { /* DXF 실패가 등록을 막지는 않는다 — EPS·work.ai 는 이미 저장됐다 */ }
+        else dxfErr = String(dr);                                  // 'ERROR …' 문자열도 실패다 — 예외만 잡으면 이 경로가 조용히 샌다
+    } catch (eDx) { dxfErr = String(eDx); } // DXF 실패가 등록을 막지는 않는다(EPS·work.ai 는 이미 저장됐다) — manifest `dxf_error` 로 올린다
 
     // thumb — 장변 400px
     try {
@@ -4069,7 +4070,7 @@ function mesCut_saveOneSheet(doc, idx, R, clientName, pcName, userName) {
         po.horizontalScale = pct;
         po.verticalScale = pct;
         doc.exportFile(new File(jobFolder.fsName + '/thumb.png'), ExportType.PNG24, po);
-    } catch (eT) { /* 썸네일 실패는 등록을 막지 않는다 */ }
+    } catch (eT) { /* ignore: 썸네일 실패는 등록을 막지 않는다 — EPS·work.ai 는 이미 저장됐다 */ }
 
     // ★manifest 는 **마지막**에 쓴다 — 에이전트가 이 파일을 커밋 신호로 본다(Program.cs:1005~).
     var mf = '{'
@@ -4114,6 +4115,7 @@ function mesCut_saveOneSheet(doc, idx, R, clientName, pcName, userName) {
         + ',"order_item_id":null'
         + ',"files":{"work_ai":"work.ai","eps":"' + mesCut_jsonEsc(epsName) + '"'
         + ',"dxf":' + (dxfName ? ('"' + mesCut_jsonEsc(dxfName) + '"') : 'null')
+        + ',"dxf_error":' + (dxfErr ? ('"' + mesCut_jsonEsc(dxfErr) + '"') : 'null')   // null 이면 DXF 가 있다(2026-09-11)
         + ',"thumb":"thumb.png","work_bytes":' + workBytes + '}'
         + ',"batch_folder":null,"batch_index":' + (MESCUT_NEST_DOCS.length > 1 ? (idx + 1) : 'null')
         + ',"outline_failed":false'

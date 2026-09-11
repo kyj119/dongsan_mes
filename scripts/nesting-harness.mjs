@@ -9,7 +9,7 @@
 //   R5 에러정당성 — '폭보다 큽니다' 에러는 실제 폭초과 항목이 있을 때만
 // 판정(경고):
 //   W1 total_height_cm ≠ max(y+h) (재료 소요 길이 과소/과대 보고)
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -50,20 +50,27 @@ const packers = factory()
 // 어댑터가 iaEditor 계약(x_cm·width_cm·error)으로 정규화 → 동일 판정기(R1~R5)를 그대로 적용.
 // skipped ⟺ 폭초과(infeasible)이므로 error로 매핑해야 R5(에러정당성)가 성립한다.
 // ⚠️ 회전 잠금(allowRotate=false)은 판짜기에 없는 기능 → 이 패커는 항상 회전 허용으로 판정.
+// ⚠️ mes-sheet.jsx 는 2026-09-11 은퇴했다(판짜기는 패널만 쓴다 — 용준님 확정). repo 에서 지웠으므로
+//    기본 경로에는 없다. 옛 패커를 다시 비교하려면 `_retired/` 사본을 `--sheet-src=` 로 준다. 없으면 건너뛴다.
 const SHEET_SRC = (process.argv.find((a) => a.startsWith('--sheet-src=')) || '').slice('--sheet-src='.length)
   || path.join(__dirname, '..', 'IllustratorAutomat', 'designer', 'mes-sheet.jsx')
-const sheetRaw = new Function(extractFrom(readFileSync(SHEET_SRC, 'utf8'), 'sheetShelfBinPack') + '\nreturn sheetShelfBinPack;')()
-packers.sheetShelf = function (items, W, gap) {
-  const r = sheetRaw(items, W, gap)
-  if (r.skipped && r.skipped.length) return { error: true, msg: '항목이 폭보다 큽니다 (skip ' + r.skipped.length + '개)' }
-  return {
-    error: false,
-    placements: (r.placements || []).map((p) => ({ id: p.id, x_cm: p.x, y_cm: p.y, width_cm: p.w, height_cm: p.h, rotated: p.rotated })),
-    total_height_cm: r.total_height,
-    shelves: []
+const HAS_SHEET = existsSync(SHEET_SRC)
+if (HAS_SHEET) {
+  const sheetRaw = new Function(extractFrom(readFileSync(SHEET_SRC, 'utf8'), 'sheetShelfBinPack') + '\nreturn sheetShelfBinPack;')()
+  packers.sheetShelf = function (items, W, gap) {
+    const r = sheetRaw(items, W, gap)
+    if (r.skipped && r.skipped.length) return { error: true, msg: '항목이 폭보다 큽니다 (skip ' + r.skipped.length + '개)' }
+    return {
+      error: false,
+      placements: (r.placements || []).map((p) => ({ id: p.id, x_cm: p.x, y_cm: p.y, width_cm: p.w, height_cm: p.h, rotated: p.rotated })),
+      total_height_cm: r.total_height,
+      shelves: []
+    }
   }
+} else {
+  console.log('ℹ sheetShelf 패커 생략 — mes-sheet.jsx 없음(은퇴). 비교하려면 --sheet-src=<_retired 사본 경로>')
 }
-const PACKERS = ['shelf', 'maxrects', 'sheetShelf']
+const PACKERS = HAS_SHEET ? ['shelf', 'maxrects', 'sheetShelf'] : ['shelf', 'maxrects']
 const ALWAYS_ROTATE = new Set(['sheetShelf'])
 
 // ── 검증기 ──

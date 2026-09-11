@@ -51,7 +51,7 @@ function _tr(msg) {
     try {
         var f = new File(_traceFile);
         f.open("a"); f.writeln("" + msg); f.close();
-    } catch (e_tr) {}
+    } catch (e_tr) { /* ignore: 트레이스 로그를 못 써도 _ia_status 가 결과를 나른다 */ }
 }
 _tr("--- SheetLayout start ---");
 
@@ -152,8 +152,8 @@ function _slOpenPrep(path) {
         if (d.documentColorSpace !== DocumentColorSpace.CMYK) app.executeMenuCommand('doc-color-cmyk');
     } catch(e_cmyk) { $.writeln("AUTO-FIX WARNING: CMYK 변환 실패 - " + e_cmyk); }
     try {
-        for (var _ti = d.textFrames.length - 1; _ti >= 0; _ti--) { try { d.textFrames[_ti].createOutline(); } catch(e_tf) {} }
-    } catch(e_tf2) {}
+        for (var _ti = d.textFrames.length - 1; _ti >= 0; _ti--) { try { d.textFrames[_ti].createOutline(); } catch(e_tf) { _tr("  WARN 텍스트 아웃라인 실패(살아있는 텍스트가 판에 남는다): " + e_tf); } }
+    } catch(e_tf2) { /* ignore: 아웃라인 루프 바깥 — 개별 실패는 안쪽 catch 가 기록한다 */ }
     var gs = [];
     for (var _gpi = 0; _gpi < d.pageItems.length; _gpi++) {
         var it = d.pageItems[_gpi];
@@ -176,10 +176,10 @@ function _slOpenPrep(path) {
                 // 역순 이동 — 컬렉션이 변하므로 앞에서부터 돌면 항목을 건너뛴다.
                 for (var _mi = _tops.length - 1; _mi >= 0; _mi--) {
                     if (_tops[_mi] === _wrap) continue;
-                    try { _tops[_mi].move(_wrap, ElementPlacement.PLACEATBEGINNING); } catch (e_mv) {}
+                    try { _tops[_mi].move(_wrap, ElementPlacement.PLACEATBEGINNING); } catch (e_mv) { _tr("  WARN 폴백 그룹화 이동 실패(그 개체는 판에서 빠진다): " + e_mv); }
                 }
                 if (_wrap.pageItems.length > 0) { gs.push(_wrap); _tr("  [폴백] 최상위 아트 " + _wrap.pageItems.length + "개를 1그룹으로 묶음: " + path); }
-                else { try { _wrap.remove(); } catch (e_rm) {} }
+                else { try { _wrap.remove(); } catch (e_rm) { /* ignore: 빈 폴백 그룹 정리 */ } }
             }
         } catch (e_wrap) { _tr("  [폴백] 그룹화 실패: " + e_wrap); }
     }
@@ -197,7 +197,7 @@ if (sourcesArr && sourcesArr.length) {
         // ★ 멀티소스는 열기 실패를 조용히 건너뛰고 있었다(로그·return 없음) → 원인 추적 불가의
         //   한 축. 실패를 명시 기록한다(2026-07-28).
         var _exists = false;
-        try { _exists = new File(_s.path).exists; } catch (e_ex) {}
+        try { _exists = new File(_s.path).exists; } catch (e_ex) { /* ignore: 파일 존재 확인 실패 = 없음으로 취급하고 아래에서 명시 기록한다 */ }
         var _prep = _slOpenPrep(_s.path);
         if (_prep) {
             srcDocs.push(_prep.doc);
@@ -219,7 +219,7 @@ if (sourcesArr && sourcesArr.length) {
             var _errDir = resultJson ? resultJson.replace(/[^\\\/]*$/, "") : _scriptDir + "/";
             var _ef = new File(_errDir + "error.log");
             _ef.open("w"); _ef.write("JSError: 파일 없음: " + sourceFile); _ef.close();
-        } catch(e_ef) {}
+        } catch(e_ef) { /* ignore: 오류 로그 자체를 못 쓰면 남길 데가 없다 — _ia_status 가 결과를 나른다 */ }
         _ia_status = "ERR: 소스 파일 없음 — " + sourceFile;
         _tr(_ia_status);
         return;
@@ -234,7 +234,7 @@ if (!defaultGroups || defaultGroups.length === 0) {
     // 위 _slOpenPrep 폴백(최상위 아트 자동 그룹화)까지 실패 = 소스 문서에 아트 자체가 없음.
     _ia_status = "ERR: 소스에 조각 0개 — 소스 .ai 에 아트워크가 없거나 열기 실패(경로/권한 확인)";
     _tr(_ia_status);
-    for (var _ci = 0; _ci < srcDocs.length; _ci++) { try { srcDocs[_ci].close(SaveOptions.DONOTSAVECHANGES); } catch(e_c){} }
+    for (var _ci = 0; _ci < srcDocs.length; _ci++) { try { srcDocs[_ci].close(SaveOptions.DONOTSAVECHANGES); } catch(e_c){ /* ignore: 임시 문서 닫기 — 이미 닫혔거나 참조가 무효 */ } }
     return;
 }
 
@@ -287,7 +287,7 @@ function expandClipInGroup(grp, dirs, bleedPt) {
                 if (expandClipInGroup(child, dirs, bleedPt)) return true;
             }
         }
-    } catch(e) {}
+    } catch(e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 */ }
     return false;
 }
 
@@ -553,7 +553,7 @@ layerC.visible = true;
 if (previewOnly) {
     $.writeln("SheetLayout: preview_only → JPG만 생성(EPS/DXF·검증 스킵)");
     newDoc.close(SaveOptions.DONOTSAVECHANGES);
-    for (var _pvc = 0; _pvc < srcDocs.length; _pvc++) { try { srcDocs[_pvc].close(SaveOptions.DONOTSAVECHANGES); } catch (e_pvc) {} }
+    for (var _pvc = 0; _pvc < srcDocs.length; _pvc++) { try { srcDocs[_pvc].close(SaveOptions.DONOTSAVECHANGES); } catch (e_pvc) { /* ignore: 미리보기 모드 소스 문서 닫기 */ } }
     _ia_status = "done(preview)";   // 정상 종료인데도 ""(빈값)이라 실패로 오독되던 경로
     _tr(_ia_status);
     return;
@@ -630,7 +630,7 @@ if (dxfPath) {
     dxfOpts.version = AutoCADCompatibility.AutoCADRelease21;
     dxfOpts.unit = AutoCADUnit.Millimeters;
     dxfOpts.scaleLineweights = false; // 선 두께 스케일링 비활성화 (0으로 축소 방지)
-    try { dxfOpts.exportOption = AutoCADExportOption.MaximumEditability; } catch(e_dxf) {}
+    try { dxfOpts.exportOption = AutoCADExportOption.MaximumEditability; } catch(e_dxf) { /* ignore: 구 일러에 없는 DXF 옵션 — 기본 편집성으로 내보낸다 */ }
     newDoc.exportFile(dxfFile, ExportType.AUTOCAD, dxfOpts);
     $.writeln("SheetLayout: DXF → " + dxfPath);
     $.writeln("SheetLayout: DXF layers - CutLine(printable=" + layerB.printable + "), Dombo");
@@ -638,7 +638,7 @@ if (dxfPath) {
 
 // ── 11. 정리 ──────────────────────────────────────────────────────────────
 newDoc.close(SaveOptions.DONOTSAVECHANGES);
-for (var _sdc = 0; _sdc < srcDocs.length; _sdc++) { try { srcDocs[_sdc].close(SaveOptions.DONOTSAVECHANGES); } catch(e_sdc){} }
+for (var _sdc = 0; _sdc < srcDocs.length; _sdc++) { try { srcDocs[_sdc].close(SaveOptions.DONOTSAVECHANGES); } catch(e_sdc){ /* ignore: 소스 문서 닫기 — 이미 닫혔으면 무해 */ } }
 
 // ── 12. 결과 JSON ─────────────────────────────────────────────────────────
 // (사후 검증은 10-2.5 로 옮겼다 — 여기서는 문서가 이미 닫혀 있어 읽을 수 없다)
@@ -675,7 +675,7 @@ _ia_status = "done";
     //   JsxDiag() 가 "JSX 반환 빈값(미실행/조기종료 의심 — 일러 모달 확인)" 이라는 **틀린 진단**을 UI 에 띄웠다
     //   (Program.cs:3729). 진짜 원인(원래 예외)은 그 자리에서 사라진다.
     _ia_status = "ERR: " + e.message + " (line " + e.line + ")";
-    try { $.writeln("SheetLayout EXCEPTION: " + e.message + " (line " + e.line + ")"); } catch (e_w) {}
+    try { $.writeln("SheetLayout EXCEPTION: " + e.message + " (line " + e.line + ")"); } catch (e_w) { /* ignore: 콘솔 출력 실패 — _ia_status 가 결과를 나른다 */ }
     // 로그는 **부가 기능**이다 — 실패해도 status 를 덮지 않는다.
     try {
         var _errTxt = "JSError: " + e.message + " (line " + e.line + ")";
@@ -693,7 +693,7 @@ _ia_status = "done";
             var _logF2 = new File(_sd + "/ia_error.log");
             _logF2.open("w"); _logF2.write(_errTxt); _logF2.close();
         }
-    } catch (e_log) { /* 로그를 못 남겨도 status 는 위에서 이미 잡았다 */ }
+    } catch (e_log) { /* ignore: 로그를 못 남겨도 status 는 위에서 이미 잡았다 */ }
 }
 // ★ 마지막 표현식 = DoJavaScript 반환값. 에이전트가 이 문자열을 render_error 에 실어
 //   "왜 산출물이 없는지"를 남긴다. 문자열이 아니면 COM 이 빈값으로 넘기므로 String() 고정.

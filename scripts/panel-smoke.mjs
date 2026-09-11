@@ -202,7 +202,12 @@ async function pickWorker(p) {
 const page = await browser.newPage()
 const errors = []
 page.on('pageerror', (e) => errors.push(String(e)))
-page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()) })
+// warn 도 모은다(2026-09-11 S4) — 없는 요소를 찾는 `#x not found` 경고가 매 로드마다 남으면 진짜 경고가 묻힌다
+const warns = []
+page.on('console', (m) => {
+  if (m.type() === 'error') errors.push('console: ' + m.text())
+  if (m.type() === 'warning') warns.push(m.text())
+})
 
 await page.addInitScript(hostStub)
 await page.goto(pathToFileURL(PANEL).href)
@@ -210,6 +215,8 @@ await page.waitForTimeout(300)
 
 // 1) 초기화 무예외 + 기본 탭 = 단건
 ok('초기화 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
+const initNotFound = warns.filter((w) => /not found/.test(w))
+ok('초기화 때 없는 요소 경고 0 (S4: 모아찍기 잔재가 남기던 #imposeBox)', initNotFound.length === 0, initNotFound.join(' | '))
 // 첫 사용은 가공자 미선택이 정상 → 이후 등록 케이스를 위해 골라 둔다(가드 자체는 17c 에서 검증)
 ok('신규 패널은 가공자 미선택', (await page.locator('#worker').inputValue()) === '')
 await pickWorker(page)
@@ -953,6 +960,18 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   ok('7f 비면 규칙 안내가 남는다', /펀칭 = 변마다 개수/.test(empty), empty)
   // 행 연동 복원에서도 결과가 따라온다 — applyRowToForm 이 updatePunchResult 를 부른다
   ok('7f 행→폼 복원·초기화가 결과를 갱신한다', (a0m.match(/updatePunchResult\(\);/g) || []).length >= 3)
+}
+
+// ── 7g 모아찍기 잔재 정리 = S4 (2026-09-11) ─────────────────────────────────
+// S2(08-05)는 입구(탭 버튼·화면)만 막고 로직은 「S4 에서」라고 적어 두었다. 그 뒤 한 달간 없는 버튼 6개를
+// 찾는 코드가 매 로드마다 경고를 남기고, `mode:'impose'` 분기 43줄이 살아 있었다. 입구가 사라진 기능의
+// 로직이 되살아나지 않도록 심볼 자체가 없음을 본다.
+{
+  const a0m = fs.readFileSync(path.join(path.dirname(PANEL), 'js/main.js'), 'utf8')
+  // 정의·호출만 본다 — SHELL_VERSION 변경 이력 문구에는 이름이 남아 있어도 된다
+  ok('7g 모아찍기 로직 심볼 없음', !/(function |\b)(imposeSeed|queueAllImpose|updateImposeBar|stripFinishing|keepRowMode|setMode)\(/.test(a0m))
+  ok('7g 없는 요소 참조 없음', !/\$\('(imposeBox|imposeGap|btnImpose\w+)'\)/.test(a0m))
+  ok('7g 용도는 single 하나', /function modeValue\(\) \{ return 'single'; \}/.test(a0m))
 }
 
 // ── 8. 다른 PC 에서만 깨지던 축 (2026-09-08) ────────────────────────────────

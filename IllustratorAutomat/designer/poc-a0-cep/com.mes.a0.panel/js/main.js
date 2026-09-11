@@ -10,7 +10,7 @@
   //   우상단 표시는 여태 host(mesA0_ping = MESA0_VERSION, 축2 = Z: 1곳)만 보여줬다. 껍데기는 PC 별
   //   복사 설치라서 재설치를 안 한 PC 도 최신 번호로 보였다(2026-07-30 점검에서 확인).
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다.
-  var SHELL_VERSION = '0.20.0';   // 0.20.0 = ★펀칭 결과를 패널이 센다 「펀칭 8개(모서리 4, 4변 1)」(호스트와 같은 양끝포함 규칙·웹 라벨과 같은 문장) · 「꼭짓점」→「모서리」 · 파일명 세그먼트에 총개수(사방펀칭8·모서리펀칭4) — 잃는 것: 위치어가 입력 변이 아니라 **모서리 사이에 구멍이 있는 변**이라 상3·하3·좌2·우2 는 「상하펀칭6」 · 0.19.0 = ★주석 실패 코드 `A` 표시(호스트 0.12.0 `annotation_error`) — 「주석이 안 나온다」가 한 달간 빈 catch 에 삼켜져 있었다 · ★묶음 안내문 정정: 키워드가 비어도 주석은 「후가공-수량」으로 나간다(옛 문구가 오진을 유도했다) · 0.18.0 = ★환경 점검이 **등록 잔해·MES 반영 대기**를 센다 — 커밋이 안 끝난 폴더가 조용히 쌓여도 아무 화면에도 안 나왔다 · ★manifest 를 대신 쓴 뒤 픽업 복사까지 이어서 시킨다(정상 경로와 같은 순서: 커밋 → 복사) · 0.17.0 = ★params 를 **파일로 보냈는데 호스트가 못 읽으면 인자로 한 번 더**(`runProcessExpr`) — 파일 경로를 고르는 판단은 「cep.fs 로 쓸 수 있나」인데 정작 실패하는 것은 호스트가 그 파일을 **읽는** 쪽이다(실기 2026-09-09: `open('r') 실패: I/O 오류` · `exists=true len=-1`). 단건·검토·배치 **세 경로 전부** 이 길을 지난다 · ★호스트가 아예 안 실린 경우를 사람 말로(`hostNotLoaded`) — 「함수가 아닙니다」만 뜨면 원인도 조치도 없다. 실기에서 읽기가 죽어 `$.evalFile` 이 Z: 의 호스트를 못 읽었다 · ★배치 실패 줄에도 `[단계별 파일쓰기]`(단건에만 있어 **일괄에서만** 방아쇠를 못 봤다) · 0.16.0 = ★[⏱ 부하 시험] — 파일을 몇 개까지 만들 수 있나. 한 번의 값은 의미가 없고 **비교**가 답이라(재시작 직후→1건 후→3건 후) 화면이 그렇게 읽으라고 말한다 · ★단계별 파일쓰기(`ioprobe`)를 실패에는 **항상**, 성공에는 이상(X·*)이 있을 때만 띄운다 — 전부 정상인 줄을 매번 띄우면 사람이 안 읽는다 · 0.15.0 = ★일러가 manifest 를 못 쓰면 **패널이 대신 쓴다**(`rescuePending`) — **단건과 배치가 공유**한다(일괄 확정·모아찍기 등록도 같이 구제된다). 등록이 실제로 완성되므로 성공 화면이 그대로 나온다(성공 렌더를 `renderOk` 로 빼서 두 경로가 같은 화면을 쓴다) · ★환경 점검에 **cep.fs 쓰기(temp / Z: 한글경로)** — 폴백이 기대는 길이 이 PC 에서 되는지 추측하지 않고 잰다 · 0.14.0 = ★[⚙ 환경 점검] 버튼 — Z: 연결·쓰기 · temp 쓰기·ASCII 여부 · 호스트/재단/셸/스텁 버전 · config 나이 · 설치 경로 · 자동갱신 상태를 한 번에. **탭 밖**에 그린다(준비 안 된 PC 는 어느 탭에서든 증상이 난다) · 0.13.0 = ★`hostEval` 도입 — evalScript 실패가 `'EvalScript error.'` 라는 **평범한 문자열**로 와서 `if (!res)` 가드를 전부 통과하던 것을 한 곳에서 막는다(재단 탭은 처음부터 있었는데 가공 탭만 27곳이 생짜였다) · ★배치·검토가 브릿지 사망 시 **즉시 중단**(2026-09-07 에 원인 1건이 증상 13건으로 번역됐다) · ★params 를 cep.fs 가 못 쓰면 **인자로** 넘긴다(한글 사용자명 PC = 전 건 `noparams`) · ★config 나이 표기(24시간 초과 경고) · 0.12.0 = ★파일 I/O 실패 사유를 화면까지 나른다 — 일괄확정·검토가 `cepWriteUtf8` 반환값을 **안 보고** 있었고(단건만 봤다), 호스트가 준 `detail` 도 버려서 2026-09-07 실기 장애(#1 manifest · #2~14 noparams)에서 원인을 물을 데가 없었다 · `_출력` 복사 실패도 표시 · 0.11.0 = ★표 헤더가 세로로 쌓이던 것 정정(재단선·주석·여백cm 열 폭) · [1건 등록] 위 중복 문구 제거 · 0.10.0 = ★큐 제거는 호스트가 실제로 지웠을 때만 축소 · seedSilhouette 는 호스트 바쁨에도 done 콜백을 불러 호출자 멈춤 방지 ·「조」 표기 가시성 게이트 · 0.9.0 = ★검색이 공백을 무시한다 — 일러 CEP 는 IME 조합을 웹뷰에 안 넘기고(composition 0건) 마지막 글자를 스페이스로 확정해야 해서 그 공백이 이름 안에 남는다 · 0.8.0 = ★수량 단위 [개|조] — 가로등배너 1조=2개 환산(조용한 절반 청구 방지) · 0.7.0 = ★품목 자동완성(item_id) — 주문서가 품목·단가까지 자동으로 채운다 · 0.6.0 = ★자동감지 캡처 경로 수용(임시문서 없음 표기) + 마스크 픽셀 수를 실제 PNG 에 맞춤(라벨 밀림 방지) · 0.5.3 =「키워드」→「내용」 명칭 통일(MES 품목 마스터와 구분) · 0.5.2 = 재단 탭 [◎ 전체] · 0.5.1 = 도련 방식 칸을 판짜기로 이동(라벨 거짓 정정) · 0.5.0 = 셸 자동 갱신 결과 수신·재시작 안내 · 0.4.1 = 설명 다이어트(cfg 압축·툴팁 이동) + 세로나열 CSS
+  var SHELL_VERSION = '0.21.0';   // 0.21.0 = ★모아찍기(impose) 잔재 정리 = S4(08-05 에 미뤄 둔 것) — 없는 버튼 6개 참조·imposeSeed·queueAllImpose·stripFinishing·mode 'impose' 분기 제거, 용도는 'single' 하나. 로드마다 남던 `#imposeBox not found` 경고 0 · ★호스트 0.13.0 warn 코드 C/D/N 을 사람 말로 · ★빈 catch 25곳에 사유 주석(게이트 `audit:empty-catch`). 잃는 것: 옛 저장분 `st.mode` 복원(무시) · 0.20.0 = ★펀칭 결과를 패널이 센다 「펀칭 8개(모서리 4, 4변 1)」(호스트와 같은 양끝포함 규칙·웹 라벨과 같은 문장) · 「꼭짓점」→「모서리」 · 파일명 세그먼트에 총개수(사방펀칭8·모서리펀칭4) — 잃는 것: 위치어가 입력 변이 아니라 **모서리 사이에 구멍이 있는 변**이라 상3·하3·좌2·우2 는 「상하펀칭6」 · 0.19.0 = ★주석 실패 코드 `A` 표시(호스트 0.12.0 `annotation_error`) — 「주석이 안 나온다」가 한 달간 빈 catch 에 삼켜져 있었다 · ★묶음 안내문 정정: 키워드가 비어도 주석은 「후가공-수량」으로 나간다(옛 문구가 오진을 유도했다) · 0.18.0 = ★환경 점검이 **등록 잔해·MES 반영 대기**를 센다 — 커밋이 안 끝난 폴더가 조용히 쌓여도 아무 화면에도 안 나왔다 · ★manifest 를 대신 쓴 뒤 픽업 복사까지 이어서 시킨다(정상 경로와 같은 순서: 커밋 → 복사) · 0.17.0 = ★params 를 **파일로 보냈는데 호스트가 못 읽으면 인자로 한 번 더**(`runProcessExpr`) — 파일 경로를 고르는 판단은 「cep.fs 로 쓸 수 있나」인데 정작 실패하는 것은 호스트가 그 파일을 **읽는** 쪽이다(실기 2026-09-09: `open('r') 실패: I/O 오류` · `exists=true len=-1`). 단건·검토·배치 **세 경로 전부** 이 길을 지난다 · ★호스트가 아예 안 실린 경우를 사람 말로(`hostNotLoaded`) — 「함수가 아닙니다」만 뜨면 원인도 조치도 없다. 실기에서 읽기가 죽어 `$.evalFile` 이 Z: 의 호스트를 못 읽었다 · ★배치 실패 줄에도 `[단계별 파일쓰기]`(단건에만 있어 **일괄에서만** 방아쇠를 못 봤다) · 0.16.0 = ★[⏱ 부하 시험] — 파일을 몇 개까지 만들 수 있나. 한 번의 값은 의미가 없고 **비교**가 답이라(재시작 직후→1건 후→3건 후) 화면이 그렇게 읽으라고 말한다 · ★단계별 파일쓰기(`ioprobe`)를 실패에는 **항상**, 성공에는 이상(X·*)이 있을 때만 띄운다 — 전부 정상인 줄을 매번 띄우면 사람이 안 읽는다 · 0.15.0 = ★일러가 manifest 를 못 쓰면 **패널이 대신 쓴다**(`rescuePending`) — **단건과 배치가 공유**한다(일괄 확정·모아찍기 등록도 같이 구제된다). 등록이 실제로 완성되므로 성공 화면이 그대로 나온다(성공 렌더를 `renderOk` 로 빼서 두 경로가 같은 화면을 쓴다) · ★환경 점검에 **cep.fs 쓰기(temp / Z: 한글경로)** — 폴백이 기대는 길이 이 PC 에서 되는지 추측하지 않고 잰다 · 0.14.0 = ★[⚙ 환경 점검] 버튼 — Z: 연결·쓰기 · temp 쓰기·ASCII 여부 · 호스트/재단/셸/스텁 버전 · config 나이 · 설치 경로 · 자동갱신 상태를 한 번에. **탭 밖**에 그린다(준비 안 된 PC 는 어느 탭에서든 증상이 난다) · 0.13.0 = ★`hostEval` 도입 — evalScript 실패가 `'EvalScript error.'` 라는 **평범한 문자열**로 와서 `if (!res)` 가드를 전부 통과하던 것을 한 곳에서 막는다(재단 탭은 처음부터 있었는데 가공 탭만 27곳이 생짜였다) · ★배치·검토가 브릿지 사망 시 **즉시 중단**(2026-09-07 에 원인 1건이 증상 13건으로 번역됐다) · ★params 를 cep.fs 가 못 쓰면 **인자로** 넘긴다(한글 사용자명 PC = 전 건 `noparams`) · ★config 나이 표기(24시간 초과 경고) · 0.12.0 = ★파일 I/O 실패 사유를 화면까지 나른다 — 일괄확정·검토가 `cepWriteUtf8` 반환값을 **안 보고** 있었고(단건만 봤다), 호스트가 준 `detail` 도 버려서 2026-09-07 실기 장애(#1 manifest · #2~14 noparams)에서 원인을 물을 데가 없었다 · `_출력` 복사 실패도 표시 · 0.11.0 = ★표 헤더가 세로로 쌓이던 것 정정(재단선·주석·여백cm 열 폭) · [1건 등록] 위 중복 문구 제거 · 0.10.0 = ★큐 제거는 호스트가 실제로 지웠을 때만 축소 · seedSilhouette 는 호스트 바쁨에도 done 콜백을 불러 호출자 멈춤 방지 ·「조」 표기 가시성 게이트 · 0.9.0 = ★검색이 공백을 무시한다 — 일러 CEP 는 IME 조합을 웹뷰에 안 넘기고(composition 0건) 마지막 글자를 스페이스로 확정해야 해서 그 공백이 이름 안에 남는다 · 0.8.0 = ★수량 단위 [개|조] — 가로등배너 1조=2개 환산(조용한 절반 청구 방지) · 0.7.0 = ★품목 자동완성(item_id) — 주문서가 품목·단가까지 자동으로 채운다 · 0.6.0 = ★자동감지 캡처 경로 수용(임시문서 없음 표기) + 마스크 픽셀 수를 실제 PNG 에 맞춤(라벨 밀림 방지) · 0.5.3 =「키워드」→「내용」 명칭 통일(MES 품목 마스터와 구분) · 0.5.2 = 재단 탭 [◎ 전체] · 0.5.1 = 도련 방식 칸을 판짜기로 이동(라벨 거짓 정정) · 0.5.0 = 셸 자동 갱신 결과 수신·재시작 안내 · 0.4.1 = 설명 다이어트(cfg 압축·툴팁 이동) + 세로나열 CSS
   var STORE_WORKER = 'mes_a0_worker';
   var STORE_SETTINGS = 'mes_a0_settings';
   var CONFIG_PATH = 'Z:/DESIGNS/IA-등록/_config/config.json';
@@ -167,7 +167,7 @@
     try {
       var w = window.cep.fs.writeFile(path, 'x', UTF8);
       if (!w || w.err !== 0) return 'err=' + (w ? w.err : '?');
-      try { window.cep.fs.deleteFile(path); } catch (eD) {}
+      try { window.cep.fs.deleteFile(path); } catch (eD) { /* ignore: 쓰기 프로브의 임시 파일 정리 — 산출물과 무관 */ }
       return 'ok';
     } catch (e) { return '예외: ' + e; }
   }
@@ -248,12 +248,12 @@
       var viaFile = (expr === 'mesA0_process()');
       hostEval(expr, function (res, bad) {
         if (bad) { cb(null, bad, res); return; }
-        var r = null; try { r = JSON.parse(res); } catch (e) {}
+        var r = null; try { r = JSON.parse(res); } catch (e) { /* ignore: 파싱 실패는 null 로 흘러 아래에서 「응답 파싱 실패」로 처리된다 */ }
         if (r && !r.ok && viaFile && PARAMS_UNREADABLE[r.err]) {
           paramsUnreadable++;
           hostEval(processExpr(null, obj), function (res2, bad2) {
             if (bad2) { cb(null, bad2, res2); return; }
-            var r2 = null; try { r2 = JSON.parse(res2); } catch (e2) {}
+            var r2 = null; try { r2 = JSON.parse(res2); } catch (e2) { /* ignore: 파싱 실패는 null 로 흘러 아래에서 「응답 파싱 실패」로 처리된다 */ }
             cb(r2, null, res2);
           });
           return;
@@ -276,15 +276,15 @@
      */
     function rescuePending(cb) {
       hostEval('mesA0_manifestPending()', function (ps, pbad) {
-        var p = null; try { p = JSON.parse(ps); } catch (e) {}
+        var p = null; try { p = JSON.parse(ps); } catch (e) { /* ignore: 파싱 실패는 null 로 흘러 아래에서 「응답 파싱 실패」로 처리된다 */ }
         if (!p || !p.ok) { cb(null, pbad || '호스트가 물고 있는 manifest 가 없습니다'); return; }
         if (!cepWriteUtf8(p.path, p.mf)) { cb(null, 'cep.fs 도 못 씁니다 @ ' + p.path); return; }
-        var rr = null; try { rr = JSON.parse(p.res); } catch (e2) {}
+        var rr = null; try { rr = JSON.parse(p.res); } catch (e2) { /* ignore: 파싱 실패는 null 로 흘러 아래에서 「응답 파싱 실패」로 처리된다 */ }
         if (!rr) { cb(null, '성공 응답 복원 실패'); return; }
         // ★커밋이 끝났으니 이제 픽업 폴더로 복사한다 — 호스트가 이어서 한다(순서: 커밋 → 복사).
         //   정상 경로와 **같은 순서**여야 「MES 에 없는 출력물」이 안 생긴다.
         hostEval('mesA0_manifestDone()', function (ds) {
-          var d = null; try { d = JSON.parse(ds); } catch (e3) {}
+          var d = null; try { d = JSON.parse(ds); } catch (e3) { /* ignore: 파싱 실패는 null 로 흘러 아래에서 「응답 파싱 실패」로 처리된다 */ }
           if (d && d.outcopy) rr.outcopy = d.outcopy;   // 기존 렌더가 경고로 띄운다
           cb(rr, '');
         });
@@ -316,7 +316,7 @@
     // ── 탭 전환 = 용도 선택(2026-07-29 리모델) ──
     //   **탭이 곧 용도다.** 이전 `용도` 라디오는 제거했다 — 라디오 하나가 다른 탭을 원격으로 잠그고
     //   실행 버튼의 의미까지 바꾸던 구조가 "모아찍기인데 전체가 1건으로 등록"의 뿌리였다.
-    //   single=단건 · impose=모아찍기 · bundle=묶음(단건 여러 건).
+    //   single=단건 · bundle=묶음(단건 여러 건). (impose=웹 모아찍기 탭은 2026-08-05 폐기, 로직은 09-11 정리)
     var tabs = document.getElementsByClassName('tab');
     var pages = document.getElementsByClassName('tabpage');
     function activeTab() {
@@ -338,7 +338,7 @@
         //     H1) 모아찍기 행 연동 → 단건 탭 → 입력 하나 → 그 행이 single 로 변질돼 [등록]이
         //         잠기고 "단건 용도 행이 섞여 있습니다"가 뜬다. 비우고 재분리 외엔 복구 불가.
         //     H2) 묶음 행 연동 → 모아찍기 탭(clearFinishing) → 입력 하나 → 그 행의 마감이 소실.
-        //   ⚠️ activateTab() 안에 두면 안 된다 — toggleBind → applyRowToForm → setMode 가
+        //   ⚠️ activateTab() 안에 두면 안 된다 — toggleBind → applyRowToForm 경로가 (옛 setMode 를 거쳐)
         //      activateTab 을 부르므로 방금 맺은 연동이 즉시 끊긴다.
         if (target !== activeTab()) unbindRow();
         activateTab(target);
@@ -376,12 +376,7 @@
       host.appendChild(elFinToggleRow);
       host.appendChild(elFinBody);
     }
-    // 모아찍기 탭 전용
-    var elImposeBox = $('imposeBox'), elImposeGap = $('imposeGap');
-    var elBtnImposeSplit = $('btnImposeSplit'), elBtnImposeDetect = $('btnImposeDetect');
-    var elBtnImposeRegister = $('btnImposeRegister'), elBtnImposeClear = $('btnImposeClear');
     if (!elWorker) { warnMissing('worker'); return; }
-    if (!elImposeBox) warnMissing('imposeBox');
     if (!elFinBody) warnMissing('finBody');
 
     if (elFinToggle && elFinBody) {
@@ -472,7 +467,7 @@
       hostEval('typeof mesA0_envCheck === "function" ? mesA0_envCheck() : "na"', function (res, bad) {
         if (bad || !res) { elEnvOut.className = 'out err'; elEnvOut.textContent = '환경 점검 실패 — ' + (bad || '호스트 무응답') + '\n(패널을 일러 안에서 열었는지, Z: 가 연결됐는지 확인하세요)'; return; }
         if (res === 'na') { elEnvOut.className = 'out err'; elEnvOut.textContent = '이 PC 의 Z: 호스트가 구버전입니다(mesA0_envCheck 없음) — 관리자에게 알려 주세요.'; return; }
-        var e = null; try { e = JSON.parse(res); } catch (x) {}
+        var e = null; try { e = JSON.parse(res); } catch (x) { /* ignore: 파싱 실패는 null 로 흘러 아래에서 「응답 파싱 실패」로 처리된다 */ }
         if (!e) { elEnvOut.className = 'out err'; elEnvOut.textContent = '환경 점검 응답 파싱 실패:\n' + res; return; }
         var bad2 = [];
         var L = [];
@@ -531,7 +526,7 @@
           elEnvOut.textContent = '이 PC 의 Z: 호스트가 구버전입니다(mesA0_ioStress 없음) — 관리자에게 알려 주세요.';
           return;
         }
-        var e = null; try { e = JSON.parse(res); } catch (x) {}
+        var e = null; try { e = JSON.parse(res); } catch (x) { /* ignore: 파싱 실패는 null 로 흘러 아래에서 「응답 파싱 실패」로 처리된다 */ }
         if (!e || !e.ok) { elEnvOut.className = 'out err'; elEnvOut.textContent = '부하 시험 응답 파싱 실패:\n' + res; return; }
         var okAll = (e.firstFail < 0 && !e.left);
         var L = [];
@@ -562,7 +557,7 @@
       if (!elWorker) return;
       var prev = elWorker.value;
       var stored = null;
-      try { stored = window.localStorage.getItem(STORE_WORKER); } catch (e) {}
+      try { stored = window.localStorage.getItem(STORE_WORKER); } catch (e) { /* ignore: CEP 저장소가 막힌 PC 에서도 패널은 떠야 한다 — 기본값으로 진행 */ }
       var mapped = [];
       for (var i = 0; i < workers.length; i++) if (workerDomains[workers[i].name]) mapped.push(workers[i]);
       var list = mapped.length ? mapped : workers;
@@ -598,7 +593,7 @@
     function requireWorker() {
       if (elWorker && elWorker.value) return true;
       out('가공자를 먼저 고르세요 — 등록물이 "내 작업"에서 빠지지 않도록 필요합니다.', 'err');
-      if (elWorker) { try { elWorker.focus(); } catch (e) {} }
+      if (elWorker) { try { elWorker.focus(); } catch (e) { /* ignore: 포커스 이동은 편의 */ } }
       return false;
     }
     function showSaved() {
@@ -618,7 +613,7 @@
       elSaved.className = 'saved';
     }
     elWorker.addEventListener('change', function () {
-      try { window.localStorage.setItem(STORE_WORKER, elWorker.value); } catch (e) {}
+      try { window.localStorage.setItem(STORE_WORKER, elWorker.value); } catch (e) { /* ignore: CEP 저장소가 막힌 PC 에서도 패널은 떠야 한다 — 기본값으로 진행 */ }
       showSaved();
       fillMethodSelects(); fillPresets(); updateAnnotGates(); // 도메인 전환 → 방식·프리셋 재로드
     });
@@ -655,7 +650,7 @@
           hideClientSug();
           updateClientHit();
           saveSettings();
-          try { elClient.dispatchEvent(new Event('change', { bubbles: true })); } catch (eD) {} // 연동 행 반영
+          try { elClient.dispatchEvent(new Event('change', { bubbles: true })); } catch (eD) { /* ignore: 구 CEF 에 Event 생성자가 없으면 연동 알림만 건너뛴다(값은 이미 반영됨) */ } // 연동 행 반영
         }
       });
     }
@@ -848,7 +843,7 @@
       if (hostBusy) return;
       var inkOn = elTrimInk && elTrimInk.checked ? 1 : 0;
       hostEval('mesA0_measure(' + inkOn + ')', function (res) {
-        var r = null; try { r = JSON.parse(res); } catch (e) {}
+        var r = null; try { r = JSON.parse(res); } catch (e) { /* ignore: 파싱 실패는 null 로 흘러 아래에서 「응답 파싱 실패」로 처리된다 */ }
         if (r && r.ok) {
           var n = parseInt(elScale ? elScale.value : '1', 10) || 1;
           var txt = r.w + ' × ' + r.h + ' cm' + (r.n > 1 ? (' · ' + r.n + '개') : '');
@@ -886,9 +881,9 @@
         item: elItem ? elItem.value : '',
         annot: elAnnot ? elAnnot.value : '' };
     }
-    function saveSettings() { try { window.localStorage.setItem(STORE_SETTINGS, JSON.stringify(gatherSettings())); } catch (e) {} }
+    function saveSettings() { try { window.localStorage.setItem(STORE_SETTINGS, JSON.stringify(gatherSettings())); } catch (e) { /* ignore: CEP 저장소가 막힌 PC 에서도 패널은 떠야 한다 — 기본값으로 진행 */ } }
     function restoreSettings() {
-      var raw = null; try { raw = window.localStorage.getItem(STORE_SETTINGS); } catch (e) {}
+      var raw = null; try { raw = window.localStorage.getItem(STORE_SETTINGS); } catch (e) { /* ignore: CEP 저장소가 막힌 PC 에서도 패널은 떠야 한다 — 기본값으로 진행 */ }
       if (!raw) return;
       var st = null; try { st = JSON.parse(raw); } catch (e) { return; }
       if (!st) return;
@@ -900,21 +895,15 @@
       if (elClient && st.client) elClient.value = st.client;
       if (elItem && st.item) elItem.value = st.item; // 가공자는 보통 같은 품목을 연달아 친다 — 직전값 유지
       if (elAnnot && st.annot != null) elAnnot.value = st.annot;
-      if (st.mode) setMode(st.mode);
-      // st.punch·st.annotPos·st.fin(구버전 저장분)은 의도적으로 무시 — 위 gatherSettings 주석 참조.
+      // st.mode(구버전 모아찍기 탭 복원)·st.punch·st.annotPos·st.fin(구버전 저장분)은 의도적으로 무시 — 위 gatherSettings 주석 참조.
       updateAnnotGates();
     }
-    // 용도 = 활성 탭에서 파생(2026-07-29). 묶음 탭은 '단건 여러 건'이라 single.
-    //   레거시 'both'는 single 로 흡수한다(선택지 자체가 없어진 지 오래).
-    function modeValue() { return activeTab() === 'impose' ? 'impose' : 'single'; }
-    function setMode(v) {
-      var want = (v === 'impose') ? 'impose' : 'single';
-      // 이미 같은 용도면 탭을 옮기지 않는다 — 묶음 탭에서 행을 클릭할 때마다
-      //   단건 탭으로 튕겨 나가는 것을 막는다(행 mode 는 전부 single).
-      if (modeValue() !== want) activateTab(want);
-    }
+    // 용도(mode)는 이제 'single' 하나다(2026-09-11 S4 잔재 정리). 묶음 탭도 '단건 여러 건'이라 single 이고,
+    //   'impose'(웹 모아찍기 탭, 2026-08-05 폐기)·레거시 'both' 는 사라졌다. 호스트 계약(`mode` 키)은 그대로 —
+    //   호스트의 `mode !== 'impose'` 게이트는 축2라 손대지 않았고 'single' 에서 항상 통과한다.
+    function modeValue() { return 'single'; }
 
-    // 후가공 초기화(2026-07-29) — ⓐ모아찍기 전환 시 즉시 ⓑ등록 1건이 끝날 때마다.
+    // 후가공 초기화(2026-07-29) — 등록 1건이 끝날 때마다.
     //   ⚠️ disabled 입력도 `.value` 는 그대로 읽힌다 → 화면만 잠가서는 manifest 에 실리는 걸 못 막는다.
     //   실증: intake #28 은 mode=impose 인데 finishing.left=접어미싱 4cm · post_desc=접쫑접어미싱 이 기록됐다.
     //   키워드(주석)는 파일명·식별번호 축이라 지우지 않는다.
@@ -943,28 +932,21 @@
       updateAnnotGates();
     }
 
-    // 탭 전환 후 UI 정합(2026-07-29). 후가공은 이제 단건 탭 안 접이식이라 잠글 대상이 없다 —
-    //   모아찍기 탭에서는 화면에 보이지도 않는다. 다만 **값은 반드시 비운다**:
-    //   host.jsx 는 `mode !== 'impose'` 에서만 후가공을 쓰므로, 값이 남아 있으면 manifest 에만
-    //   실려 "기록됐는데 안 먹는" 상태가 된다(intake #28 실증).
+    // 탭 전환 후 UI 정합(2026-07-29). 후가공 폼은 단건·묶음 공용 1벌이라 '어느 탭을 보고 있나'(activeTab)로
+    //   자리만 옮긴다 — 용도(modeValue)는 두 탭 모두 'single' 이라 판단 근거가 못 된다.
     function applyTabUi() {
-      var mv = modeValue();
-      if (mv === 'impose') clearFinishing();
-      // ⚠️ 폼 위치는 modeValue() 로 판단하면 안 된다 — 묶음 탭도 modeValue()='single' 이다(:407,
-      //    행 mode 가 전부 single 이라 그렇게 설계됨). 위치는 '어느 탭을 보고 있나'라서 activeTab().
-      else moveFinishingTo(activeTab() === 'bundle' ? elFinHostBundle : elFinHostSingle);
+      moveFinishingTo(activeTab() === 'bundle' ? elFinHostBundle : elFinHostSingle);
       // 주석 키워드 칸: 묶음에선 행별 키워드가 정본이라 중복 → 숨긴다. 단건은 유일한 입력 경로라 유지.
       // ⚠️ class 'hidden' 을 쓰지 않는다 — `.row`(display:flex)와 `.hidden` 이 같은 명시도라
       //    stylesheet 순서에 따라 .row 가 이겨 안 숨는다(#finBody 때와 같은 함정, 스모크가 잡았다).
       if (elAnnotKwRow) elAnnotKwRow.style.display = (activeTab() === 'bundle') ? 'none' : '';
       // (2026-09-04) 주석 힌트 행은 없앴다 — 3cm 규칙은 `updateAnnotGates` 가 체크박스를
       //   막아 **동작으로** 알리고, 설명은 위 힌트 블록에 한 번만 둔다.
-      // config 로드(restoreSettings→setMode)가 큐 초기화보다 먼저 도는 경로가 있다 —
+      // config 로드(restoreSettings)가 큐 초기화보다 먼저 도는 경로가 있다 —
       //   그때 queue 는 아직 undefined 다. 여기서 막지 않으면 패널이 통째로 죽는다.
       //   이후 DOMContentLoaded 끝의 renderQueue() 가 게이트·버튼을 정리한다.
       if (!queue) return;
       updateGate();
-      updateImposeBar();
       // 적용 버튼은 '어느 탭인가'에 따라 잠긴다(묶음 전용) → 탭이 바뀌면 반드시 다시 계산해야 한다.
       //   스모크가 이 누락을 잡았다: updateApplyBar 를 고쳐도 탭 전환 경로에서 호출되지 않아
       //   단건 탭에서 여전히 활성인 채였다.
@@ -1040,35 +1022,17 @@
         annot_pos: annotPos,
         finishing: finishing, order_item_id: null
       };
-      // 모아찍기는 후가공이 없다(host.jsx `mode !== 'impose'` 게이트). UI 초기화(clearFinishing)와
-      // **별개로 전송 단계에서도 잘라낸다** — 화면 경로가 하나라도 새면 manifest 에 그대로 실린다.
-      if (ret.mode === 'impose') stripFinishing(ret);
       return ret;
-    }
-    // 후가공 제거 = 한 규칙(2026-07-30). 전엔 gatherParams 안에만 있어서, 행에 적용하는 경로들이
-    //   각자 판단해야 했다. 규칙이 둘이면 갈린다(services/messageBulkLimit 선례와 같은 정리).
-    function stripFinishing(p) {
-      p.finishing = {};
-      p.punch = { top: 0, bottom: 0, left: 0, right: 0, corners: { tl: false, tr: false, bl: false, br: false } };
-      p.annot_pos = { top: false, bottom: false, left: false, right: false };
-      p.post_desc = ''; // 파일명 세그먼트도 빈 finishing 기준으로 되돌린다
-      return p;
-    }
-    // ★행의 용도(mode)는 '담을 때' 확정된 값이 정본이다 — 폼(=현재 탭)이 행의 용도를 바꿔선 안 된다.
-    //   modeValue() 가 활성 탭에서 파생되므로(:407) 이 고정이 없으면 탭을 옮긴 뒤의 어떤 반영도
-    //   행 용도를 뒤집는다. 연동 해제(탭 클릭)와 **둘 다** 있어야 경로가 닫힌다.
-    function keepRowMode(p, e) {
-      var rowMode = (e && e.params && e.params.mode) ? e.params.mode : null;
-      if (!rowMode) return p;
-      p.mode = rowMode;
-      if (rowMode === 'impose') stripFinishing(p);
-      return p;
     }
     // E = 임베드 이미지가 디자인 밖까지 큰 상태(host 계측 warn 'E'). 잘려 안 보이는 부분까지 파일에 저장돼
     //     용량이 급증하는데 스크립트로는 줄일 수 없다 → 디자이너가 원본에서 정리해야 한다(유일한 근본 수단).
     var warnKo = { R: '원본 RGB→CMYK 변환', T: '아웃라인 안 된 텍스트', L: '링크(미임베드) 이미지', O: '아웃라인 일부 실패',
       E: '임베드 이미지가 디자인 밖까지 큼 — 원본에서 잘라내면 파일이 크게 줄어듭니다',
-      A: '주석 그리기 실패 — 요청한 변에 주석이 없습니다 (manifest annotation_error 참조)' };
+      A: '주석 그리기 실패 — 요청한 변에 주석이 없습니다 (manifest annotation_error 참조)',
+      // 호스트 0.13.0 (2026-09-11) — 빈 catch 가 삼키던 실물 실패 3종
+      C: '재단선 사각 그리기 실패 — 돔보만 있는 파일입니다 (manifest cutline_error 참조)',
+      D: 'DXF(칼선) 내보내기 실패 — 재단기 파일이 없습니다 (manifest dxf_error 참조)',
+      N: '개체 일부를 원점으로 옮기지 못함 — 파일에서 위치를 확인하세요 (응답 norm_fail)' };
     function mbText(bytes) { // 용량을 눈에 보이게 = 커지는 걸 알아채는 유일한 지점
       if (!bytes) return '';
       return ' · work.ai ' + (Math.round(bytes / 1048576 * 10) / 10) + 'MB';
@@ -1159,9 +1123,8 @@
     // ── 반자동 큐 (A2) + 행↔폼 연동 (A안: 분해 → 행 선택 → 행별 후가공 세팅 → 검토문서 → 확정) ──
     var queue = []; // [{params, client, keyword, qty, w, h}]
     var bound = -1; // 폼과 연동 중인 행 인덱스(-1=없음). 연동 중 폼 변경=그 행에만 반영
-    // 큐를 그리는 컨테이너들 — 묶음 탭과 모아찍기 탭이 **같은 큐를 각자 화면에서** 본다.
-    //   자료구조를 둘로 쪼개면 host($.global.mesA0Q)까지 갈라야 해서 Z: 축을 건드리게 된다.
-    //   대신 "다른 용도의 행이 섞이면 거부"하는 가드로 혼선을 막는다(아래 imposeGuard).
+    // 큐를 그리는 컨테이너 — 지금은 묶음 탭 하나다(모아찍기 탭은 2026-09-11 S4 로 정리).
+    //   큐 자료구조는 host($.global.mesA0Q)와 인덱스가 맞물려 있어 화면이 늘어도 하나를 유지한다.
     var queueBoxes = [];
     var elQueueBox = $('queueBox'), elBtnQAdd = $('btnQueueAdd'), elBtnQBatch = $('btnQueueBatch'), elBtnConfirm = $('btnConfirm'), elBtnQClear = $('btnQueueClear'), elBtnApplyAll = $('btnApplyAll'), elBtnApplySel = $('btnApplySel');
     // 수량 3분화(2026-07-29) — 한 칸이 탭마다 다른 의미를 갖던 구조를 끊는다.
@@ -1222,8 +1185,6 @@
       'btnProcess',                                    // 단건 가공
       'btnReview', 'btnConfirm', 'btnQueueClear',      // 묶음: 검토·확정·비우기
       'btnQueueAdd', 'btnQueueBatch', 'btnAutoDetect', // 묶음: 담기·분리·자동감지
-      'btnImposeSplit', 'btnImposeDetect',             // 모아찍기: 분리·자동감지
-      'btnImposeRegister', 'btnImposeClear',           // 모아찍기: 등록·비우기
       'btnMeasure'                                     // 실측(호스트 호출)
     ];
     var elBtnCancel = $('btnCancel');
@@ -1249,7 +1210,7 @@
         elBtnCancel.textContent = '취소' + (label ? (' (' + label + ')') : '');
       }
       // 끝난 뒤에는 각 버튼의 고유 게이트(큐 비었는지·용도 섞였는지)를 다시 적용해야 한다
-      if (!on && queue) { updateGate(); updateImposeBar(); updateApplyBar(); }
+      if (!on && queue) { updateGate(); updateApplyBar(); }
 
       // ── 크로스 패널 잠금 (2026-07-31 신설) ──
       // 이 잠금은 **패널 밖**을 향한다. 위의 disabled 처리는 이 패널 버튼만 막을 뿐,
@@ -1273,7 +1234,7 @@
         } else {
           hostEval('mesA0_lockRelease()', function () {});
         }
-      } catch (eLock) { /* 잠금은 부가 기능 — 실패해도 A0 진행을 막지 않는다 */ }
+      } catch (eLock) { /* ignore: 잠금은 부가 기능 — 실패해도 A0 진행을 막지 않는다 */ }
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -1296,7 +1257,7 @@
         var enc = (window.cep && window.cep.encoding && window.cep.encoding.Base64) ? window.cep.encoding.Base64 : 'Base64';
         var rf = window.cep.fs.readFile(path, enc);
         if (rf && rf.err === 0) b64 = rf.data;
-      } catch (e) { /* 아래 file:// 폴백 */ }
+      } catch (e) { /* ignore: cep.fs 실패는 아래 file:// 폴백이 받는다 */ }
       var img = new Image();
       img.onload = function () {
         var cv = document.createElement('canvas');
@@ -1397,7 +1358,7 @@
       setHostBusy(true, '분리');
       var src = (source === 'auto') ? 'auto' : 'sel';
       hostEval('mesA0_seedBegin("' + src + '",' + gap + ')', function (res) {
-        var r = null; try { r = JSON.parse(res); } catch (e) {}
+        var r = null; try { r = JSON.parse(res); } catch (e) { /* ignore: 파싱 실패는 null 로 흘러 아래에서 「응답 파싱 실패」로 처리된다 */ }
         if (!r || !r.ok) {
           setHostBusy(false);
           done('분리 실패: ' + (r ? (SEED_ERR[r.err] || r.err) : '호스트 연결 안 됨'));
@@ -1425,7 +1386,7 @@
           catch (eG) { setHostBusy(false); done('성분 분리 실패: ' + eG); return; }
           hostEval('mesA0_seedApply("' + sp.spec + '")', function (res2) {
             setHostBusy(false);
-            var r2 = null; try { r2 = JSON.parse(res2); } catch (e2) {}
+            var r2 = null; try { r2 = JSON.parse(res2); } catch (e2) { /* ignore: 파싱 실패는 null 로 흘러 아래에서 「응답 파싱 실패」로 처리된다 */ }
             if (!r2 || !r2.ok) { done('큐 적재 실패: ' + (r2 ? (SEED_ERR[r2.err] || r2.err) : '호스트 연결 안 됨')); return; }
             r2.mmpp = r.mmpp;
             r2.via = r.via;        // 'capture'=임시 문서 없이 구움 · 'bake'=임시 문서 복제(오늘까지의 유일한 경로)
@@ -1455,20 +1416,12 @@
         '일러 화면에 모달/진행이 없는지 확인한 뒤 다시 실행하세요.\n' +
         'Z: 등록 폴더에 중간 산출물이 남았을 수 있습니다.', 'err');
     });
-    // 큐 전 행이 모아찍기인가 — 검토문서 게이트 면제 판정(P2). 빈 큐는 false.
-    function queueAllImpose() {
-      if (!queue.length) return false;
-      for (var qi = 0; qi < queue.length; qi++) {
-        if (!queue[qi].params || queue[qi].params.mode !== 'impose') return false;
-      }
-      return true;
-    }
     function updateGate() {
       // 검토는 **선택 사항**이다(2026-07-30 지시). 이전엔 검토 없이는 확정이 불가능해
       //   N행이면 검토 N회 + 확정 N회 = 2N회 가공을 강제했다(10건이면 20회).
       // ⚠️ 안전망을 없앤 것이므로 대신 상태를 눈에 남긴다:
       //   버튼 라벨에 '· 미검토'(renderQueue) + 확정 완료 메시지에 미검토 명기.
-      var stale = (reviewedRev !== queueRev) && !queueAllImpose();
+      var stale = (reviewedRev !== queueRev);
       if (elBtnConfirm) {
         elBtnConfirm.disabled = queue.length === 0 || reviewBusy;
         elBtnConfirm.title = (queue.length && stale)
@@ -1477,15 +1430,14 @@
       }
       if (elBtnReview) {
         elBtnReview.disabled = queue.length === 0 || reviewBusy;
-        // ✓ 는 "실제로 검토했는가"만 표시한다 — stale 로 판정하면 게이트가 면제된 모아찍기 큐가
-        //   검토한 적 없는데도 ✓ 로 보인다(2026-07-29).
+        // ✓ 는 "실제로 검토했는가"만 표시한다(2026-07-29).
         elBtnReview.textContent = (queue.length && reviewedRev === queueRev) ? '검토문서 ✓' : '검토문서';
       }
     }
     function bumpRev() { queueRev++; updateGate(); }
 
-    // 큐 1개를 여러 컨테이너에 그린다(묶음 탭·모아찍기 탭). 컨테이너별로 이벤트를 다시 붙인다.
-    //   showQty=false 면 행 수량칸을 아예 그리지 않는다(모아찍기 — 수량을 받지 않는 경로).
+    // 큐를 컨테이너에 그린다(지금은 묶음 탭 하나 — 모아찍기 탭은 2026-09-11 S4 로 정리). 이벤트를 다시 붙인다.
+    //   showQty/showSel 인자는 남겨 둔다 — 수량칸·체크박스를 안 그리는 컨테이너가 다시 생길 때 쓴다.
     function renderQueueInto(box, emptyMsg, showQty, showSel) {
       if (box) {
         if (!queue.length) {
@@ -1603,7 +1555,6 @@
         var e = queue[idx[k]];
         if (!e) continue;
         var p = JSON.parse(JSON.stringify(base));
-        keepRowMode(p, e); // 행 용도 보존 — 모아찍기 행에 후가공이 실리지 않게
         setRowQty(p, e.qty);
         if (!e.keyword && formKw) e.keyword = formKw; // 행 표시(qkw)도 같이 정합
         p.keyword = e.keyword || '';
@@ -1630,26 +1581,12 @@
       return n ? ('\nℹ ' + n + '행은 키워드가 비어 주석이 「후가공-수량」만으로 나갑니다 (키워드를 넣으면 앞에 붙습니다)') : '';
     }
 
-    // 큐 상태 → 모아찍기 탭 등록 버튼. 단건 행이 섞이면 비활성(용도가 다른 걸 같이 등록하지 않는다).
-    function updateImposeBar() {
-      if (!elBtnImposeRegister) return;
-      var n = queue.length, allImpose = queueAllImpose();
-      elBtnImposeRegister.textContent = '조각 ' + n + '건 등록'; // 라벨 어간 '등록' 통일(P3)
-      elBtnImposeRegister.disabled = (n === 0) || !allImpose;
-      elBtnImposeRegister.title = (n && !allImpose)
-        ? '단건 용도 행이 섞여 있습니다 — [묶음] 탭에서 확정하거나 비우고 다시 분리하세요'
-        : '';
-    }
-
     function renderQueue() {
-      // 체크박스는 묶음 탭에만 — 모아찍기는 후가공이 없어 '체크한 행 적용'의 대상이 될 게 없다
       renderQueueInto(elQueueBox, '목록 비어있음 — 일러에서 디자인을 고른 뒤 [＋ 개별] 또는 [＋ 묶음분리]', true, true);
-      renderQueueInto(elImposeBox, '조각 없음 — 일러에서 디자인을 고른 뒤 [선택분 분리] 또는 [◎ 자동감지]', false, false);
       if (elBtnConfirm) elBtnConfirm.textContent = queue.length + '건 등록' +
-        (((reviewedRev !== queueRev) && !queueAllImpose() && queue.length) ? ' · 미검토' : '');
+        (((reviewedRev !== queueRev) && queue.length) ? ' · 미검토' : '');
       updateApplyBar();
       updateGate();
-      updateImposeBar();
     }
 
     // 행 클릭=폼 연동 토글: 행 params를 가공·후가공 탭에 로드, 이후 폼 변경은 그 행에만 반영
@@ -1659,18 +1596,15 @@
       bound = i;
       applyRowToForm(queue[i]);
       renderQueue();
-      // 문구를 행 용도에 맞춘다 — 모아찍기 행에 "후가공 수정이 반영됩니다"는 거짓이고(후가공 없음),
-      //   후가공 폼은 이제 묶음 탭에도 있으므로 "[단건] 탭의"도 사실과 다르다.
-      //   탭을 옮기면 연동이 끊기므로(위 탭 클릭 핸들러) 그 사실도 함께 알린다.
-      var baseMsg = (queue[i].params && queue[i].params.mode === 'impose')
-        ? '#' + (i + 1) + ' 행 — 일러에 이 조각을 표시했습니다 (모아찍기는 후가공이 없습니다 · 다시 클릭=해제)'
-        : '#' + (i + 1) + ' 행 연동 중 — 후가공 폼의 수정이 이 행에 반영됩니다 (다시 클릭=해제 · 탭을 옮기면 자동 해제)';
+      // 후가공 폼은 묶음 탭에도 있으므로 "[단건] 탭의"라고 쓰지 않는다. 탭을 옮기면 연동이 끊기므로
+      //   (위 탭 클릭 핸들러) 그 사실도 함께 알린다.
+      var baseMsg = '#' + (i + 1) + ' 행 연동 중 — 후가공 폼의 수정이 이 행에 반영됩니다 (다시 클릭=해제 · 탭을 옮기면 자동 해제)';
       out(baseMsg);
       // P3(2026-07-29): 이 행이 **어느 그룹인지** 일러에서 보여준다 — 원본 조각을 선택.
       //   mesA0_queueSelect 는 검토·확정 루프가 이미 쓰던 함수를 그대로 재사용(재구현 금지).
       //   실패(문서 닫힘·참조 무효)해도 연동은 유지한다 — 폼 편집까지 막을 이유가 없다.
       hostEval('mesA0_queueSelect(' + i + ')', function (sres) {
-        var sr = null; try { sr = JSON.parse(sres); } catch (e) {}
+        var sr = null; try { sr = JSON.parse(sres); } catch (e) { /* ignore: 파싱 실패는 null 로 흘러 아래에서 「응답 파싱 실패」로 처리된다 */ }
         if (sr && sr.ok) { out(baseMsg + '\n· 일러에서 이 행의 조각 ' + sr.n + '개를 표시했습니다'); return; }
         var em = { range: '행 범위 오류', stale: '원본 객체 참조 무효(문서가 수정됨)', docgone: '원본 문서가 닫힘' };
         out(baseMsg + '\n· 일러 선택 실패: ' + (sr ? (em[sr.err] || sr.err) : '호스트 연결 안 됨'));
@@ -1683,7 +1617,6 @@
       var p = e.params || {};
       // 행 수량은 폼(#qty)으로 끌어오지 않는다 — 정본이 행이므로 왕복시키면 다시 두 곳이 된다.
       if (elScale && p.scale_n) elScale.value = String(p.scale_n);
-      if (p.mode) setMode(p.mode);
       if (elTrim) elTrim.checked = !!p.trim;
       if (elBorderLine) elBorderLine.checked = (p.border_line !== false); // 구 행(키 없음)=ON
       if (elTrimInk) elTrimInk.checked = !!p.trim_ink;
@@ -1721,7 +1654,7 @@
     function syncBoundRow() {
       if (bound < 0 || bound >= queue.length) return;
       var e = queue[bound];
-      var p = keepRowMode(gatherParams(), e); // 행 용도는 폼이 바꾸지 않는다
+      var p = gatherParams();
       setRowQty(p, e.qty);   // 행 수량 보존 — 폼(#qty)은 단건 전용이라 행을 덮어쓰면 안 된다
       // 주석 키워드 칸이 **숨어 있으면 행에 쓰지 않는다**(2026-07-30 P2). 묶음 탭에선 행별 키워드가
       //   정본이고, 숨은 칸엔 지난번 값이 남아 있어(localStorage 복원) 그대로 쓰면 조용히 덮인다.
@@ -1743,7 +1676,6 @@
     function isRowSyncTarget(t) {
       if (!t) return false;
       if (elQueueBox && elQueueBox.contains(t)) return false;   // 큐 내부 인라인 편집은 자기 경로가 있다
-      if (elImposeBox && elImposeBox.contains(t)) return false;
       if (elFinBody && elFinBody.contains(t)) return true;      // 마감·펀칭·주석위치 전체
       if (elFinToggleRow && elFinToggleRow.contains(t)) return true;
       if (t.id && ROW_SYNC_IDS.indexOf(t.id) !== -1) return true;
@@ -1803,7 +1735,7 @@
 
     if (elBtnQAdd) elBtnQAdd.addEventListener('click', function () {
       hostEval('mesA0_queueAdd()', function (res) {
-        var r = null; try { r = JSON.parse(res); } catch (e) {}
+        var r = null; try { r = JSON.parse(res); } catch (e) { /* ignore: 파싱 실패는 null 로 흘러 아래에서 「응답 파싱 실패」로 처리된다 */ }
         if (!r || !r.ok) {
           var em = { nodoc: '열린 문서 없음', nosel: '객체를 선택하세요', nobounds: '크기 측정 불가' };
           out('큐 추가 실패: ' + (r ? (em[r.err] || r.err) : '호스트 연결 안 됨'), 'err');
@@ -1911,7 +1843,7 @@
         hostEval('mesA0_reviewEnd()', function (er) {
           reviewBusy = false;
           setHostBusy(false);
-          var r = null; try { r = JSON.parse(er); } catch (e) {}
+          var r = null; try { r = JSON.parse(er); } catch (e) { /* ignore: 파싱 실패는 null 로 흘러 아래에서 「응답 파싱 실패」로 처리된다 */ }
           if (!fails.length && r && r.ok) {
             if (queueRev === revAtStart) reviewedRev = queueRev; // 생성 중 큐가 안 바뀐 경우만 해제
             out('검토문서 ✓ — 아트보드 ' + r.count + '개' + (r.docs > 1 ? (' · 문서 ' + r.docs + '개(대지 한도 분할)') : '') +
@@ -1942,7 +1874,7 @@
           var pexpr = processExpr(pp, p);
           hostEval('mesA0_queueSelect(' + i + ')', function (selRes, bad2) {
             if (bad2) { abortLoop(bad2); return; }
-            var sr = null; try { sr = JSON.parse(selRes); } catch (e2) {}
+            var sr = null; try { sr = JSON.parse(selRes); } catch (e2) { /* ignore: 파싱 실패는 null 로 흘러 아래에서 「응답 파싱 실패」로 처리된다 */ }
             if (!sr || !sr.ok) { fails.push('#' + (i + 1) + ' sel:' + (sr ? sr.err : '?')); i++; step(); return; }
             runProcessExpr(pexpr, p, function (r2, bad3) {
               if (bad3) { abortLoop(bad3); return; }
@@ -1963,7 +1895,7 @@
       setHostBusy(true, '진행 중');
       function reenable() { setHostBusy(false); }
       hostEval('mesA0_batchBegin()', function (bres, bad0) {
-        var bf = null; try { bf = JSON.parse(bres); } catch (e0) {}
+        var bf = null; try { bf = JSON.parse(bres); } catch (e0) { /* ignore: 파싱 실패는 null 로 흘러 아래에서 「응답 파싱 실패」로 처리된다 */ }
         if (!bf || !bf.ok) {
           out('배치 폴더 생성 실패: ' + (bad0 || (bf ? (bf.err + (bf.detail ? ('\n' + bf.detail) : '')) : 'nohost')), 'err');
           reenable(); return;
@@ -2003,7 +1935,7 @@
             }
           }
           // 검토가 선택 사항이 된 뒤로는 '검토 없이 확정했다'는 사실을 결과에 남긴다(추적 수단)
-          var unrev = (reviewedRev !== queueRev) && !queueAllImpose();
+          var unrev = (reviewedRev !== queueRev);
           // ★성공분만 큐에서 뺀다(2026-07-30 점검). 전엔 실패해도 큐를 통째로 비워
           //   조각 참조(host $.global.mesA0Q)까지 사라져 **재시도 수단이 없었다** — 3건 실패 시
           //   처음부터 다시 선택·분리해야 했다(#574 '실패자만 재선택'과 같은 클래스).
@@ -2076,7 +2008,7 @@
             var pexpr = processExpr(pp, p);
             hostEval('mesA0_queueSelect(' + i + ')', function (selRes, bad2) {
               if (bad2) { abortBatch(bad2); return; }
-              var sr = null; try { sr = JSON.parse(selRes); } catch (e2) {}
+              var sr = null; try { sr = JSON.parse(selRes); } catch (e2) { /* ignore: 파싱 실패는 null 로 흘러 아래에서 「응답 파싱 실패」로 처리된다 */ }
               if (!sr || !sr.ok) { results.push({ ok: false, err: 'sel:' + (sr ? sr.err : '?') }); i++; step(); return; }
               runProcessExpr(pexpr, p, function (r, bad3) {
                 if (bad3) { abortBatch(bad3); return; }
@@ -2099,75 +2031,6 @@
         step();
       });
     }
-
-    // ── 모아찍기 탭 — 분리 → 목록 → 등록(자체 완결) ──────────────────────────
-    //   분리는 `seedSilhouette`(잉크 실루엣), 등록은 `runBatchConfirm`
-    //   (= [일괄 확정])을 **그대로 재사용**한다. 산출 구조가 묶음 확정과 동일하다.
-    //   결과는 항상 목록으로 보인 뒤 별도 버튼으로 등록한다 — 1덩어리로 뭉쳐도 눈에 먼저 띈다.
-    function imposeSeed(source, gap) {
-      if (queue.length) { // 남은 큐를 휩쓸어 등록하는 사고 차단
-        out('목록에 ' + queue.length + '건이 남아 있습니다 — [등록]하거나 [비우기] 후 다시 분리하세요.', 'err');
-        return;
-      }
-      seedSilhouette(source, gap, function (errMsg, r, note) {
-        if (errMsg) { out(errMsg, 'err'); return; }
-        // 모아찍기는 수량을 받지 않는다 — 판에 몇 개 앉힐지는 ia-editor 판짜기가 조각별로 정한다
-        //   (iaEditor.js:1892 는 intake.qty 를 쓰지 않고 qty:1 로 담는다). 여기서 받아봐야 표시용 메모다.
-        var qtyN = 1;
-        var client = elClient ? (elClient.value || '').replace(/^\s+|\s+$/g, '') : '';
-        var keyword = seedKeyword(); // 보이는 칸만 시드(숨은 값 주입 차단)
-        var base = gatherParams(); // impose 탭이라 finishing·punch·annot_pos는 이미 비어 있다
-        setRowQty(base, qtyN);
-        var lines = [];
-        for (var s = 0; s < r.sizes.length; s++) {
-          var pRow = JSON.parse(JSON.stringify(base)); setRowQty(pRow, qtyN);
-          queue.push({ params: pRow, client: client, keyword: keyword, qty: qtyN, w: r.sizes[s].w, h: r.sizes[s].h });
-          lines.push('#' + (s + 1) + ' ' + r.sizes[s].w + '×' + r.sizes[s].h + 'cm');
-        }
-        bumpRev();
-        renderQueue();
-        // ★ 1덩어리 경고 — 여러 디자인인데 하나로 뭉치는 전형적 원인이 "선택이 그룹 1개"다.
-        //   이 경고가 없어서 전체(539×243.3cm·work.ai 110MB)가 조각 1건으로 등록된 적이 있다.
-        //   ⚠️ 실루엣으로 바꿔도 이 경고는 그대로 필요하다 — 배정 단위가 **개체**이기 때문이다.
-        //      원인 판정은 **개체 사실**로 한다. 잉크 덩어리 수(comps)로 추정하면 틀린다 —
-        //      흰 요소·투명 간격 때문에 한 디자인도 여러 덩어리로 보이기 때문(2026-07-31 용준님 지적).
-        if (r.added === 1) {
-          var why;
-          if (r.cands === 1 && r.grp === 1) {
-            why = '\n원인 = **선택이 그룹 1개**입니다. Ctrl+Shift+G 로 푼 뒤 다시 분리하세요.';
-          } else if (r.cands > 1) {
-            // 개체는 여럿인데 1건 = 잉크가 전부 이어졌다. 전면을 덮는 배경 판이 섞인 것이 전형적이다.
-            why = '\n개체는 ' + r.cands + '개인데 잉크가 전부 이어져 1건이 됐습니다.'
-              + '\n→ 전체를 덮는 **배경 판**(흰 판·테두리 등)이 선택에 섞였는지 확인하고 빼주세요.';
-          } else {
-            why = '\n여러 디자인이라면: ①분리 간격을 음수로 낮춰 더 잘게 나누기 ②[◎ 자동감지]로 문서 전체 스캔';
-          }
-          out((note || '') + '⚠ 1개로만 인식됐습니다 — ' + lines[0] + why +
-            '\n진짜 1개 디자인이면 그대로 [등록]하세요.', 'err');
-          return;
-        }
-        out((note || '') + '분리됨: ' + r.added + '개 (잉크 실루엣 · 분리간격 ' + gap + 'mm · 50mm↓ 제외'
-          + (r.mmpp ? ' · 해상도 ' + r.mmpp + 'mm/px' : '') + ')\n' + lines.join(' · ') +
-          '\n→ 행 클릭 = 일러에서 그 조각 선택 · 수량은 행에서 직접 수정 · [등록]으로 조각별 등록',
-          note ? 'err' : 'okmsg');
-      });
-    }
-    function imposeGapValue() {
-      var g = elImposeGap ? parseFloat(elImposeGap.value) : 0;
-      return isNaN(g) ? 0 : g;
-    }
-    if (elBtnImposeSplit) elBtnImposeSplit.addEventListener('click', function () { imposeSeed('sel', imposeGapValue()); });
-    if (elBtnImposeDetect) elBtnImposeDetect.addEventListener('click', function () { imposeSeed('auto', imposeGapValue()); });
-    if (elBtnImposeClear) elBtnImposeClear.addEventListener('click', function () {
-      hostEval('mesA0_queueClear()', function () {});
-      queue = []; bound = -1; bumpRev(); renderQueue(); out('목록 비움');
-    });
-    if (elBtnImposeRegister) elBtnImposeRegister.addEventListener('click', function () {
-      if (!queue.length || !queueAllImpose()) return;
-      if (!requireWorker()) return;
-      out('모아찍기 등록 중… ' + queue.length + '건');
-      runBatchConfirm();
-    });
 
     if (elBtnConfirm) elBtnConfirm.addEventListener('click', function () {
       if (!queue.length) return;

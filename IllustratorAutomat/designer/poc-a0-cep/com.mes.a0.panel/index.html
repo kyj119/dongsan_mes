@@ -210,7 +210,8 @@
          spec = docs/superpowers/specs/2026-08-05-ia-editor-sunset.md
          재단 탭이 같은 일을 더 정확히 한다(true-shape 네스팅·칼선·도련·맞붙임).
          탭 버튼과 화면을 **함께** 지운다 — 버튼만 지우면 저장된 탭 상태로 복원될 때 화면이 되살아난다.
-         로직(imposeSeed 등)은 S4 에서 지운다. 여기서는 입구만 막는다. -->
+         S4(2026-09-11) — main.js 의 로직(imposeSeed·queueAllImpose·stripFinishing·mode 'impose')도 지웠다.
+         남은 것 = 호스트(Z: mes-a0-host)의 `mode !== 'impose'` 게이트뿐 — 축2라 손대지 않았고 무해하다. -->
 
     <!-- ── 묶음 탭 — 단건 여러 건을 행별로 세팅 → 검토문서 → 일괄 확정 ── -->
     <div class="tabpage hidden" data-page="bundle">

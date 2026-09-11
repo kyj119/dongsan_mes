@@ -68,6 +68,15 @@ function main() {
     var offsetCfg   = _p.offset      || null;
     var finishingCfg = _p.finishing   || null;
     var passthroughThumb = _p.passthroughThumb || false;  // 완성본 직접연결: 가공 없이 PNG 썸네일만 생성
+    // ── 조용한 실패를 기록한다(2026-09-11 빈 catch 전수 분류) — 실물(EPS)에 닿는 자리의 실패는 삼키지 않고
+    //    EPS 옆 warn.log(append) + 콘솔에 남긴다. 에이전트는 error.log 만 읽으므로 사람이 진단할 때 보는 파일이다.
+    var _warnDir = "";
+    try { _warnDir = outputEps ? new File(outputEps).parent.fsName : ""; } catch (eWd) { /* ignore: 경로를 못 풀면 콘솔에만 남긴다 */ }
+    function _iaWarn(m) {
+        $.writeln("ProcessOrderItem WARN: " + m);
+        try { if (_warnDir) { var _wf = new File(_warnDir + "/warn.log"); _wf.encoding = "UTF-8"; _wf.open("a"); _wf.writeln(m); _wf.close(); } }
+        catch (eWf) { /* ignore: 경고 파일을 못 써도 콘솔(WARN:)에는 이미 남았다 */ }
+    }
     var trim         = _p.trim       || false;  // N5: 단일 그룹 돔보 마크 (출력 둘레)
     var rotation     = _p.rotation   || 0;       // ⑥ 디자인 아트워크 회전 (0/90/180/270, 0=무동작)
     var targetW      = _p.targetW    || 0;       // N4 fidelity: 목표 너비(cm, 캔버스 리사이즈). 0=스케일 안 함
@@ -103,14 +112,14 @@ function main() {
         if (doc.documentColorSpace !== DocumentColorSpace.CMYK) {
             app.executeMenuCommand('doc-color-cmyk');
         }
-    } catch(e) {}
+    } catch(e) { _iaWarn("CMYK 변환 실패(RGB 로 나간다): " + e); }
     try {
         if (doc.textFrames.length > 0) {
             for (var _ti = doc.textFrames.length - 1; _ti >= 0; _ti--) {
-                try { doc.textFrames[_ti].createOutline(); } catch(e) {}
+                try { doc.textFrames[_ti].createOutline(); } catch(e) { _iaWarn("텍스트 아웃라인 실패(살아있는 텍스트가 EPS 에 남는다): " + e); }
             }
         }
-    } catch(e) {}
+    } catch(e) { /* ignore: 아웃라인 루프 바깥 — 개별 실패는 안쪽 catch 가 기록한다 */ }
 
     // ── 2. 아트보드에서 디자인 바운드 읽기 ──
     if (abIndex < 0 || abIndex >= doc.artboards.length) {
@@ -147,7 +156,7 @@ function main() {
                 }
             }
         } catch (ePt) { $.writeln("passthroughThumb 오류: " + ePt); }
-        try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch (e) {}
+        try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch (e) { /* ignore: 통과 썸네일 임시 문서 닫기 — 이미 닫혔으면 무해 */ }
         return;
     }
 
@@ -197,10 +206,10 @@ function main() {
 
     // 현재 아트보드 아이템만 표시, 나머지 숨기기
     for (var hi = 0; hi < allMappedItems.length; hi++) {
-        try { allMappedItems[hi].hidden = true; } catch(e) {}
+        try { allMappedItems[hi].hidden = true; } catch(e) { _iaWarn("다른 아트보드 개체 숨기기 실패(EPS 에 섞일 수 있다) #" + hi + ": " + e); }
     }
     for (var si = 0; si < artboardTopItems[abIndex].length; si++) {
-        try { artboardTopItems[abIndex][si].hidden = false; } catch(e) {}
+        try { artboardTopItems[abIndex][si].hidden = false; } catch(e) { _iaWarn("아트보드 개체 표시 실패(EPS 에서 빠질 수 있다) #" + si + ": " + e); }
     }
 
     $.writeln("ProcessOrderItem: " + allMappedItems.length + " total items, "
@@ -228,9 +237,10 @@ function main() {
                 //   executeMenuCommand('group')은 selection을 그룹으로 갱신하지 못해(414 path 중 1개만 스케일되던 버그)
                 //   각 아이템에 직접 적용. 상대 위치 보존(모두 같은 앵커로 이동·복귀).
                 var _ri;
-                for (_ri = 0; _ri < _rsSel.length; _ri++) { try { _rsSel[_ri].translate(-uL, -uT); } catch (e1) {} }
-                for (_ri = 0; _ri < _rsSel.length; _ri++) { try { _rsSel[_ri].resize(_rsPct, _rsPct, true, true, true, true, _rsPct, Transformation.DOCUMENTORIGIN); } catch (e2) {} }
-                for (_ri = 0; _ri < _rsSel.length; _ri++) { try { _rsSel[_ri].translate(uL, uT); } catch (e3) {} }
+                // 3-pass 중 한 개체라도 빠지면 그 개체만 다른 위치·크기로 나간다 — 삼키지 않고 기록한다(2026-09-11)
+                for (_ri = 0; _ri < _rsSel.length; _ri++) { try { _rsSel[_ri].translate(-uL, -uT); } catch (e1) { _iaWarn("배율 1단계(앵커 이동) 실패 #" + _ri + ": " + e1); } }
+                for (_ri = 0; _ri < _rsSel.length; _ri++) { try { _rsSel[_ri].resize(_rsPct, _rsPct, true, true, true, true, _rsPct, Transformation.DOCUMENTORIGIN); } catch (e2) { _iaWarn("배율 2단계(스케일) 실패 #" + _ri + ": " + e2); } }
+                for (_ri = 0; _ri < _rsSel.length; _ri++) { try { _rsSel[_ri].translate(uL, uT); } catch (e3) { _iaWarn("배율 3단계(앵커 복귀) 실패 #" + _ri + ": " + e3); } }
                 doc.selection = null;
                 app.redraw();
                 // 스케일된 실제 지오메트리로 바운드 재계산(자기보정)
@@ -279,9 +289,10 @@ function main() {
                 }
                 var _rcx = (rpL + rpR) / 2, _rcy = (rpT + rpB) / 2;   // union 중심
                 var _rr;
-                for (_rr = 0; _rr < _rotSel.length; _rr++) { try { _rotSel[_rr].translate(-_rcx, -_rcy); } catch (e1) {} }
-                for (_rr = 0; _rr < _rotSel.length; _rr++) { try { _rotSel[_rr].rotate(-_rotNorm, true, true, true, true, Transformation.DOCUMENTORIGIN); } catch (e2) {} }
-                for (_rr = 0; _rr < _rotSel.length; _rr++) { try { _rotSel[_rr].translate(_rcx, _rcy); } catch (e3) {} }
+                // 회전 3-pass 도 같다 — 한 개체만 빠지면 그 개체만 안 돌아간 채 나간다
+                for (_rr = 0; _rr < _rotSel.length; _rr++) { try { _rotSel[_rr].translate(-_rcx, -_rcy); } catch (e1) { _iaWarn("회전 1단계(중심 이동) 실패 #" + _rr + ": " + e1); } }
+                for (_rr = 0; _rr < _rotSel.length; _rr++) { try { _rotSel[_rr].rotate(-_rotNorm, true, true, true, true, Transformation.DOCUMENTORIGIN); } catch (e2) { _iaWarn("회전 2단계 실패 #" + _rr + ": " + e2); } }
+                for (_rr = 0; _rr < _rotSel.length; _rr++) { try { _rotSel[_rr].translate(_rcx, _rcy); } catch (e3) { _iaWarn("회전 3단계(중심 복귀) 실패 #" + _rr + ": " + e3); } }
                 doc.selection = null;
                 app.redraw();
                 // 회전 결과로 아트보드 바운드 재계산 (좌상단 앵커 유지)
@@ -312,7 +323,7 @@ function main() {
                         doc.artboards.setActiveArtboardIndex(abIndex);
                         doc.selectObjectsOnActiveArtboard();
                         for (var rmi = 0; rmi < doc.selection.length; rmi++) {
-                            try { doc.selection[rmi].translate(_dx, _dy); } catch (eT) {}
+                            try { doc.selection[rmi].translate(_dx, _dy); } catch (eT) { _iaWarn("아트보드 원점 정렬 이동 실패 #" + rmi + ": " + eT); }
                         }
                         doc.selection = null;
                     }
@@ -578,7 +589,7 @@ function main() {
                 cr.closed = true; cr.clipping = true;
                 cr.filled = false; cr.stroked = false;
                 for (var di = items.length - 1; di >= 0; di--) {
-                    try { items[di].duplicate(grp, ElementPlacement.PLACEATEND); } catch(e) {}
+                    try { items[di].duplicate(grp, ElementPlacement.PLACEATEND); } catch(e) { _iaWarn("여백 클립 그룹 복제 실패(그 개체는 EPS 에서 빠진다) #" + di + ": " + e); }
                 }
                 grp.clipped = true;
 
@@ -620,13 +631,13 @@ function main() {
                 for (var oi = 0; oi < sel.length; oi++) {
                     try {
                         var parentName = '';
-                        try { parentName = sel[oi].parent.name || ''; } catch(e) {}
+                        try { parentName = sel[oi].parent.name || ''; } catch(e) { /* ignore: 부모 이름은 진단 표시용 */ }
                         if (parentName.indexOf('_tmp_') === 0) continue;
                         var dup = sel[oi].duplicate();
                         dup.zOrder(ZOrderMethod.SENDBACKWARD);
                         dup.resize(scX, scY, true, true, true, true, scX);
                         dup.translate(shiftX, shiftY);
-                    } catch(e) {}
+                    } catch(e) { _iaWarn("오프셋(외곽 확장) 복제 실패 #" + oi + ": " + e); }
                 }
             }
             doc.selection = null;
@@ -777,7 +788,7 @@ function main() {
                         tf.top = oT;
                     }
 
-                    try { tf.createOutline(); } catch(e) {}
+                    try { tf.createOutline(); } catch(e) { _iaWarn("주석 아웃라인 실패(살아있는 텍스트): " + e); }
                     _annoLog += " -> OK";
                 } else {
                     _annoLog += " -> SKIP(margin<" + Math.round(annoPad*2) + ")";
@@ -801,7 +812,7 @@ function main() {
             + " " + _annoLog
             + " eps=" + outputEps + "\n");
         _dbgFile.close();
-    } catch(e) {}
+    } catch(e) { /* ignore: 디버그 로그를 못 써도 EPS 는 이미 저장됐다 */ }
 
     // ── 9. PNG 썸네일 ──
     if (outputPng) {
@@ -918,7 +929,7 @@ function main() {
             dxfOpts.version = AutoCADCompatibility.AutoCADRelease21;
             dxfOpts.unit = AutoCADUnit.Millimeters;
             dxfOpts.scaleLineweights = false; // 선 두께 스케일링 비활성화 (0으로 축소 방지)
-            try { dxfOpts.exportOption = AutoCADExportOption.MaximumEditability; } catch (eDxfOpt) {}
+            try { dxfOpts.exportOption = AutoCADExportOption.MaximumEditability; } catch (eDxfOpt) { /* ignore: 구 일러에 없는 DXF 옵션 — 기본 편집성으로 내보낸다 */ }
             doc.exportFile(dxfFile, ExportType.AUTOCAD, dxfOpts);
             $.writeln("ProcessOrderItem: DXF -> " + outputDxf);
         } catch (eDxf) { $.writeln("ProcessOrderItem DXF WARNING: " + eDxf); }
@@ -927,12 +938,12 @@ function main() {
     // ── 11. 정리: 임시 레이어 삭제 + 아트보드 원복 + 아이템 가시성 복원 ──
     tmpTopLayer.remove();
     tmpBotLayer.remove();
-    if (tmpOffsetLayer) { try { tmpOffsetLayer.remove(); } catch(e) {} }
+    if (tmpOffsetLayer) { try { tmpOffsetLayer.remove(); } catch(e) { /* ignore: 임시 오프셋 레이어 정리 — 이미 없으면 무해 */ } }
     ab.artboardRect = [oL, oT, oR, oB];
 
     // 아이템 가시성 복원
     for (var ri = 0; ri < allMappedItems.length; ri++) {
-        try { allMappedItems[ri].hidden = false; } catch(e) {}
+        try { allMappedItems[ri].hidden = false; } catch(e) { /* ignore: 가시성 복원은 원본 문서 편의 — 저장하지 않는 문서다 */ }
     }
 
     doc.close(SaveOptions.DONOTSAVECHANGES);

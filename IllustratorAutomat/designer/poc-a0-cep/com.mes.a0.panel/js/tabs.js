@@ -43,7 +43,7 @@
     //   "설명이 어디 갔냐"가 되는 구조다. 버튼을 항상 띄운다.
     var help = document.getElementById('btnHelp');
     if (help) help.className = 'mini title-btn';
-    try { window.localStorage.setItem(KEY, want); } catch (e) {}
+    try { window.localStorage.setItem(KEY, want); } catch (e) { /* ignore: CEP 저장소가 막힌 PC 에서도 패널은 떠야 한다 — 기본값으로 진행 */ }
     if (fire) {
       // cut-main.js 가 이걸 듣고 첫 진입 때만 문서 정보를 갱신한다(안 보이는 탭은 호스트를 안 찌른다)
       var ev;
@@ -69,7 +69,7 @@
   });
 
   var saved = null;
-  try { saved = window.localStorage.getItem(KEY); } catch (e3) {}
+  try { saved = window.localStorage.getItem(KEY); } catch (e3) { /* ignore: CEP 저장소가 막힌 PC 에서도 패널은 떠야 한다 — 기본값으로 진행 */ }
   apply(saved || 'a0', false);   // 첫 적용은 이벤트를 쏘지 않는다 — 각 main.js 가 아직 초기화 전이다
 
   window.MesMainTab = { get: function () { return document.body.getAttribute('data-main'); }, set: function (n) { apply(n, true); } };

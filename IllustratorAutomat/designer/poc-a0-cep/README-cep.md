@@ -5,7 +5,7 @@
 **호스트**: Illustrator (ILST) · CEP 12(일러 2026, CSXS.12 확인).
 
 ## 무엇이 되는가 (A1 사용가능 수준)
-기존 `mes-core.jsx`(프로덕션 가공 로직)를 **CEP 패널에서 파라미터로 호출** — ScriptUI 다이얼로그를 네이티브 도킹 HTML 폼으로 대체:
+옛 `mes-core.jsx`(File>Scripts 가공 로직, **2026-09-11 은퇴** — 본체 `Z:\…\_scripts\_retired\20260911-legacy-jsx\`)를 **CEP 패널의 호스트(`mes-a0-host.jsx`)로 포팅**해 파라미터로 호출 — ScriptUI 다이얼로그를 네이티브 도킹 HTML 폼으로 대체:
 - **가공자 드롭다운**(인호동·김보연·정소은·김영주) + **localStorage 영속**(재시작 유지 = 신원 태깅, spec §3.5)
 - **실측**(현재 선택 객체 크기, 배율 연동 실물환산)
 - **수량 · 파일 배율(1/N) · 용도(단건/모아찍기/둘다)**
@@ -27,8 +27,8 @@ Z:\DESIGNS\IA-등록\_scripts\mes-a0-host.jsx      (repo: IllustratorAutomat/des
 ```
 
 스텁이 이 파일을 `$.evalFile`로 전역 로드한다. 따라서 **로직 수정 = Z: 정본 1개 교체**로 끝나고,
-각 PC를 다시 돌 필요가 없다(반영 시점 = 다음 패널 로드/일러 재시작). `mes-core.jsx`·`mes-sheet.jsx`가
-쓰는 스텁 모델과 동일하다.
+각 PC를 다시 돌 필요가 없다(반영 시점 = 다음 패널 로드/일러 재시작). 옛 `mes-core.jsx`·`mes-sheet.jsx`
+스텁 모델과 같은 구조다(그 둘은 2026-09-11 은퇴 — 판짜기는 패널만 쓴다).
 
 - ⚠️ **IIFE 금지** — `$.evalFile`은 반드시 전역 스코프에서. 감싸면 `mesA0_*`가 지역에 갇혀
   evalScript에서 "함수가 아닙니다"가 난다(2026-07-27 실제 발생). 검증 = `typeof mesA0_process`.
@@ -80,7 +80,7 @@ Z:\DESIGNS\IA-등록\_scripts\mes-a0-host.jsx      (repo: IllustratorAutomat/des
 | `css/style.css` | 일러 다크 테마 |
 | `js/CSInterface.js` | 최소 CEP 브릿지 shim(공식 SDK 아님) |
 | `js/main.js` | 폼 로직·config 로드·가공 실행 |
-| `jsx/host.jsx` | ExtendScript 호스트 = **mes-core 처리 포팅**(ping/config/measure/process) |
+| `jsx/host.jsx` | ExtendScript 부트스트랩 스텁 — Z: 의 `mes-a0-host.jsx`·`mes-cut-host.jsx` 를 evalFile(로직은 여기 없다) |
 | `.debug` | 원격 디버그 포트 |
 
 ## 남은 것(후속)

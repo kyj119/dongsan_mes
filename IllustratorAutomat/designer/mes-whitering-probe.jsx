@@ -42,7 +42,7 @@ function isWhite(it) {
         if (t === 'CMYKColor') return (c.cyan + c.magenta + c.yellow + c.black) < 2;
         if (t === 'RGBColor') return (c.red > 248 && c.green > 248 && c.blue > 248);
         if (t === 'GrayColor') return c.gray < 2;
-    } catch (e) {}
+    } catch (e) { /* ignore: 진단 프로브 — 색을 못 읽는 개체는 흰 링 후보에서 뺀다 */ }
     return false;
 }
 
@@ -56,7 +56,7 @@ function walk(items, depth, path) {
 
         var mark = '';
         var clipped = false;
-        try { clipped = !!it.clipping; } catch (e1) {}
+        try { clipped = !!it.clipping; } catch (e1) { /* ignore: 진단 프로브 — 개체 종류에 따라 없는 속성 */ }
         if (clipped) { clips++; mark += ' [클립패스]'; }
         if (isWhite(it)) { whites++; mark += ' ★흰색'; }
         var f = fillOf(it);

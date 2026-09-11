@@ -837,7 +837,8 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     ok('3t 도련은 AA OFF', /bOpts\.antiAliasing = false/.test(h))
     ok('3t 도련 줄은 Q', /lines\.push\('Q ' \+ i/.test(h))
     // ★도련만 실패해도 마스크는 나가야 한다 — 패널이 옛 경로로 다시 구우면 된다
-    ok('3t 도련 실패가 마스크를 막지 않는다', /catch \(eB\) \{ \/\* 도련만 실패하면/.test(h))
+    // (2026-09-11) 빈 catch 사유 규약으로 본문이 `/* ignore: 도련만 …` 이 됐다 — 접두는 선택
+    ok('3t 도련 실패가 마스크를 막지 않는다', /catch \(eB\) \{ \/\* (ignore: )?도련만 실패하면/.test(h))
     // ★이전 판 문서 정리 — 안 닫으면 조정할 때마다 문서가 쌓인다
     ok('3t 이전 판 문서를 닫는다', /MESCUT_NEST_DOCS\[oc\]\.close\(SaveOptions\.DONOTSAVECHANGES\)/.test(h))
     ok('3t 호스트 버전이 0.23.0 이상', /MESCUT_VERSION = 'CUT-CEP-0\.(2[3-9]|[3-9]\d)\./.test(h))

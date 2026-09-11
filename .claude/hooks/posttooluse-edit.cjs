@@ -26,6 +26,20 @@ if (/IllustratorAutomat\/.*\.(jsx|js|html|css|xml)$/i.test(file)) {
     + '        축1(에이전트 JSX)=실행 중 exe 폴더 · 축2(디자이너 JSX)/축3(CEP 패널)=Z:\\DESIGNS\\IA-등록\\_scripts.');
 }
 
+// 빈 catch 게이트 (2026-09-11 용준님 「나」 — 개발 단계부터 잡는다). IA 패널·호스트·에이전트 JSX 에서
+//   사유(`ignore:`) 없는 빈 catch 를 만들면 그 자리에서 차단한다. 주석 소실(빈 catch 가 한 달 삼킴)의 재발 방지.
+//   ⚠️ 차단이다(exit 2) — 경고로 두면 무시하고 커밋되고, 커밋 훅은 IA 파일이 dirty 일 때만 돈다.
+if (/IllustratorAutomat\/.*\.(jsx|js)$/i.test(file) && !/\/(bin|obj|publish[^/]*)\//.test(file)) {
+  try {
+    const abs = path.isAbsolute(file) ? file : path.join(ROOT, file)
+    execSync(`node scripts/empty-catch-audit.cjs "${abs}"`, { cwd: ROOT, stdio: 'pipe' });
+  } catch (e) {
+    console.error('[HOOK-FAIL] 빈 catch 에 사유가 없습니다 — catch (e) { /* ignore: 왜 무시해도 되는지 */ } 또는 실패를 기록할 것:\n'
+      + ((e.stderr || e.stdout || e.message).toString().slice(0, 1200)));
+    process.exit(2);
+  }
+}
+
 // 문서 다이어트 게이트 — 현황판/메모리 인덱스 비대화 즉시 경고 (2026-08-10, 90K자 사고 재발 방지)
 if (/(PROJECT_STATUS|memory\/MEMORY)\.md$/.test(file)) {
   try {

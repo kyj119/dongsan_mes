@@ -29,15 +29,22 @@ var _savedResultJson = ""; // catch 블록에서 접근할 수 있도록 IIFE �
 /** 스크립트 폴더 — 에이전트가 주입한 경로를 먼저 본다. `$.fileName` 은 DoJavaScript 실행에서
  *  파일을 안 가리키고 **예외를 던질 수 있다**(그래서 감싼다). 못 구하면 임시폴더로 떨어진다 —
  *  로그 위치가 덜 좋을 뿐, 여기서 죽어서 증거가 통째로 사라지는 것보다 낫다. */
+// 조용한 실패 기록(2026-09-11 빈 catch 전수 분류) — 결과 폴더 warn.log(append) + 콘솔.
+//   에이전트는 error.log 만 읽으므로 사람이 진단할 때 보는 파일이다.
+function _iaWarn(dir, m) {
+    $.writeln("PackGroups WARN: " + m);
+    try { if (dir) { var _wf = new File(String(dir).replace(/[\\\/]+$/, "") + "/warn.log"); _wf.encoding = "UTF-8"; _wf.open("a"); _wf.writeln(m); _wf.close(); } }
+    catch (eWf) { /* ignore: 경고 파일을 못 써도 콘솔(WARN:)에는 이미 남았다 */ }
+}
 function _iaScriptDir() {
     if (typeof _ia_trace_path !== "undefined" && _ia_trace_path) {
-        try { return new File(_ia_trace_path).parent.fsName; } catch (e1) {}
+        try { return new File(_ia_trace_path).parent.fsName; } catch (e1) { /* ignore: 경로 후보 1 — 실패하면 다음 후보로 */ }
     }
     if (typeof _ia_params_override_path !== "undefined" && _ia_params_override_path) {
-        try { return new File(_ia_params_override_path).parent.fsName; } catch (e2) {}
+        try { return new File(_ia_params_override_path).parent.fsName; } catch (e2) { /* ignore: 경로 후보 2 — 실패하면 다음 후보로 */ }
     }
-    try { return new File($.fileName).parent.fsName; } catch (e3) {}
-    try { return Folder.temp.fsName; } catch (e4) {}
+    try { return new File($.fileName).parent.fsName; } catch (e3) { /* ignore: 경로 후보 3 — 실패하면 temp 로 */ }
+    try { return Folder.temp.fsName; } catch (e4) { /* ignore: 마지막 후보 — 실패하면 아래 기본값 */ }
     return ".";
 }
 
@@ -84,7 +91,7 @@ if (!srcFile.exists) {
         _ef.open("w");
         _ef.write("JSError: " + _missingMsg);
         _ef.close();
-    } catch(e) {}
+    } catch(e) { /* ignore: 오류 로그 자체를 못 쓰면 남길 데가 없다 — _ia_status 가 결과를 나른다 */ }
     return;
 }
 
@@ -155,7 +162,7 @@ try {
     if (doc.textFrames.length > 0) {
         $.writeln("AUTO-FIX: " + doc.textFrames.length + "개 텍스트 아웃라인 처리 중...");
         for (var _ti = doc.textFrames.length - 1; _ti >= 0; _ti--) {
-            try { doc.textFrames[_ti].createOutline(); } catch(e_tf) {}
+            try { doc.textFrames[_ti].createOutline(); } catch(e_tf) { _iaWarn(resultJson.replace(/[^\\\/]*$/, ""), "텍스트 아웃라인 실패(살아있는 텍스트가 판에 남는다): " + e_tf); }
         }
         $.writeln("AUTO-FIX: 아웃라인 처리 완료");
     }
@@ -601,8 +608,8 @@ function applyOutlineRecursive(item, black) {
             _logFile2.write(_errTxt);
             _logFile2.close();
         }
-    } catch (e_log) {}
-    try { $.writeln("PackGroups EXCEPTION: " + e.message + " (line " + e.line + ")"); } catch (e_w) {}
+    } catch (e_log) { /* ignore: 오류 로그 자체를 못 쓰면 남길 데가 없다 — _ia_status 가 결과를 나른다 */ }
+    try { $.writeln("PackGroups EXCEPTION: " + e.message + " (line " + e.line + ")"); } catch (e_w) { /* ignore: 콘솔 출력 실패 — _ia_status 가 결과를 나른다 */ }
 }
 // app.quit() 제거 — COM 자동화 시 Illustrator가 계속 실행되어야 함
 // (직접 실행 시에도 문서는 doc.close()로 이미 닫힘)

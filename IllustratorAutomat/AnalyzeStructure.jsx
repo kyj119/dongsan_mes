@@ -248,10 +248,10 @@ function getClipMaskInfo(item) {
                         result.clipMaskBounds_mm = boundsToMm(child.geometricBounds);
                         break;
                     }
-                } catch(e) {}
+                } catch(e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
             }
         }
-    } catch(e) {}
+    } catch(e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
 
     return result;
 }
@@ -289,9 +289,9 @@ function countChildren(item, maxDepth) {
                 } else {
                     counts.others++;
                 }
-            } catch(e) {}
+            } catch(e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
         }
-    } catch(e) {}
+    } catch(e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
 
     return counts;
 }
@@ -405,7 +405,7 @@ var layers = [];
 for (var li = 0; li < doc.layers.length; li++) {
     var layer = doc.layers[li];
     var itemCount = 0;
-    try { itemCount = layer.pageItems.length; } catch(e) {}
+    try { itemCount = layer.pageItems.length; } catch(e) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
     layers.push({
         index: li,
         name: layer.name,
@@ -528,7 +528,7 @@ try {
             if (tf.hidden) continue;
 
             var tfContent = "";
-            try { tfContent = tf.contents; } catch(e) {}
+            try { tfContent = tf.contents; } catch(e) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
 
             // 빈 텍스트 건너뛰기
             if (!tfContent || tfContent.replace(/\s/g, '').length === 0) continue;
@@ -544,7 +544,7 @@ try {
                     fontSize = tf.textRange.characterAttributes.size;
                     fontSize = Math.round(ptToMm(fontSize) * 100) / 100;
                 }
-            } catch(e) {}
+            } catch(e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
 
             textFrames.push({
                 index: textFrames.length,
@@ -552,13 +552,13 @@ try {
                 bounds_mm: boundsToMm(tf.visibleBounds),
                 fontSize_mm: fontSize
             });
-        } catch(e) {}
+        } catch(e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
     }
-} catch(e) {}
+} catch(e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
 
 // ── 10. 메타 정보 ─────────────────────────────────────────────────────
 var fileSize = 0;
-try { fileSize = srcFile.length; } catch(e) {}
+try { fileSize = srcFile.length; } catch(e) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
 
 var meta = {
     fileType: fileType,
@@ -619,7 +619,7 @@ $.writeln("AnalyzeStructure: 완료 - " + allItems.length + " items, "
             _ef.open("w");
             _ef.write(jsonStringify(_errResult));
             _ef.close();
-        } catch(e2) {}
+        } catch(e2) { /* ignore: 오류 로그 자체를 못 쓰면 남길 데가 없다 */ }
     }
     $.writeln("AnalyzeStructure EXCEPTION: " + e.message + " (line " + e.line + ")");
 }
