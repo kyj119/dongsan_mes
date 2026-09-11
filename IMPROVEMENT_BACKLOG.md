@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-09-11T06:10:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-09-11T15:46:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,24 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **555** (`search_issues(reason:completed,label:auto-improve)` 실측, 542→555) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 6 자기 진화 (2026-09-11T15:46):**
+> - **방법**: 세션 시작 시 detached HEAD `d835ef8`(origin/main과 동일)였으나 로컬 `main`은 `eecca71`(전전 세션 잔재, unrelated-histories로 merge 거부) → `git checkout -B main origin/main`으로 정합(작업트리 clean, 유실 없음). `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area6 방법 라인 HEAD `a1c943d`)**: 웹앱 범위 diff **29커밋** — Area1~5가 이번 세션 각자 렌즈(롤발주/사후입고/검수큐 4단계·entity IDOR 4건·LogWatcher 패널·오펀라우터·코팅원가 리팩터 9건)로 이미 정독. `#600` 브리지(「churn 목록에 나열됨 ≠ Read됨」) 적용 — 29개 해시를 두 백로그 파일에서 grep해 개별 문단 커버리지 대조, **18개 해시가 목록 나열 없음**(0건 매치) 확인 후 성격별 분류·직독.
+> - **분류 ①(9건, 09:50~15:27, `27dfe63`~`e8c89f3`) = Area2가 이미 "순수계산 유틸, entity_id/N+1/auth 코드 자체 없음"으로 블랭킷 판정한 가격엔진 리팩터 구간** — 개별 grep 매치가 0이어도 Area2 로그의 구조적 논거(DB write 없음)가 전체 범위를 커버. 형제인 `6b9c9fe`(PER_AREA_ROLL, 09-08 날짜라 병합 지연되어 같은 구간에 섞여 들어옴)도 diff 직접 확인 = `scripts/orderline-cost-selftest.cjs`+`src/utils/rollConsumption.ts`뿐, DB 접근 0 → 동일 클래스로 판정.
+> - **분류 ②(IA/문서/게이트 축, `2f84b8a`·`7e13c50`·`a0b2474`·`102e939`·`3219ed3`·`a5c3815`·`ee85687`… 일부는 CLAUDE.md §IA 자체가 이미 반영)** — `3219ed3`("make the gates the docs name actually run")는 CLAUDE.md의 「조용한 격하」절이 이미 2026-09-10 기록한 `cut:shellsync` GATES 등록 그 자체(문서가 코드와 동기화된 상태 확인). `102e939`+`7cbd650`은 각각 "실제 실행 중인 JSX/prod 마이그와 repo 정합" 복구 커밋(Area4가 7cbd650의 0573 WHERE EXISTS 가드는 이미 검증) — 신규 결함 아니라 드리프트 자기교정. 62회차 비-웹앱 축 스캔(`LogWatcher/IllustratorAutomat/caps-worker/workers/queue`) 별도 실행 = 이 축의 실행코드 churn은 IA 2건(`2f84b8a`·`102e939`)뿐, 둘 다 위와 동일 판정.
+> - **분류 ③(직독 필요 — 순수 계산도 IA도 아닌 2건) 전문 검토, net-new 결함 0건**: **`41cd6e3`**(`ar-helpers.ts`+`costCalculator.ts`, #642·#628 닫음) = `recalculateOrderCosts`가 `i.pricing_method`만 읽어 품목 축이 바뀐 뒤 옛 라인을 "오늘의 축"으로 재구성하던 결함을 `orders/core.ts`와 동형인 `COALESCE(oi.pricing_method, i.pricing_method)`로 정정(0600 스냅샷 원칙 준수) + `queryFifoOverdue`의 이월판정을 `order_number LIKE '%OPEN%'`(전표명 패턴, `E{n}-ACCT-*` 회계전표 누락)에서 `orders.is_voucher`로 교체 — `CARRYOVER_ORDER_NUMBER_LIKE` export 잔여참조 `grep` 0건 확인. `#642`/`#628` 둘 다 현재 open 목록에 없음(정상 종결, close-pending 아님). **`ee85687`**(`workbench.ts` 흡수 핸들러) = 파일맵 학습 2종이 `order_item_id` 미확보 시 조용히 0행으로 끝나는 경로에 `console.warn` 2곳 추가 — 동작 변경 없음(순수 가시성), catch 삼킴 방지 원칙과 일치.
+> - **open≠unfixed 재확인**: `list_issues(state:OPEN,label:auto-improve)` **14**(변동없음, #613·#617·#622·#626·#629·#630·#633·#634·#638~641·#645·#646 전건 일치) — 이번 churn이 건드린 파일 중 이 14건의 대상 파일과 겹치는 것 없음(close-pending 캐시, 32회차 규칙) 확인 후 개별 재grep 생략.
+> - **close-pending 재확인**: #616·#617은 여전히 owner "실기 확인 대기" 코멘트가 최신(64회차 FP룰 유지) — 재통지 불요.
+> - **standing scan 1: done-sync 절대값 재동기화(리터럴 쿼리)** — `search_issues("repo:kyj119/dongsan_mes label:auto-improve is:closed reason:completed")` **555**(변동없음) · `reason:not_planned` **4** + `reason:duplicate` **2** = rejected **6**(변동없음) · `list_issues(state:OPEN,label:auto-improve)` **14**(변동없음).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 8런(HEAD `d835ef8` 포함) 중 1건 `failure`(vite5→8 전환 직후 esbuild 미해결, `c0cc5630`, Area1/4/5가 이미 확인)는 다음 커밋이 즉시 해결 — 나머지 전부 `success`.
+> - **🧬 SKILL 강화**: 없음 — area-6-self-evolution.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 이번 사이클은 #600 브리지가 29커밋 중 18개 미개별화 해시를 식별→성격별 3분류(계산엔진 블랭킷/IA-문서 자기교정/직독 2건)로 효율적으로 처리한 실증 — 새 클래스 발견 없이 기존 레시피(Area2 블랭킷 판정·#600 브리지·close-pending 캐시)가 그대로 적중.
+> - **백로그 트림 체크**: 아래 실행.
+> - 신규 이슈 0건(29커밋 churn 전량 #600 브리지+3분류로 clean 확정, 비-웹앱 축 IA 2건 포함 신규 결함 0, open 재확인 14건 전부 close-pending 캐시로 재grep 불요), 자동수정 0건(고칠 결함 없음), done-sync: open 14(변동없음)·done 555(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 + 인프라 (2026-09-11T06:10):**
 > - **방법**: 세션 시작 시 HEAD `7806623`(origin/main과 동일, 얕은 clone) → `git fetch --unshallow`(전체 이력 확보), `git merge --ff-only origin/main` 변동 없음(이미 최신). `npm ci`(0→89), `npx tsc --noEmit` clean.
