@@ -332,7 +332,7 @@
                         html += '<button type="button" class="pp-punch-preset px-2 py-0.5 text-xs border rounded bg-gray-100 hover:bg-gray-200" data-preset="top_bottom" data-row="' + rowId + '">\uc0c1\ud558</button>';
                         html += '<button type="button" class="pp-punch-preset px-2 py-0.5 text-xs border rounded bg-gray-100 hover:bg-gray-200" data-preset="left_right" data-row="' + rowId + '">\uc88c\uc6b0</button>';
                         html += '<button type="button" class="pp-punch-preset px-2 py-0.5 text-xs border rounded bg-gray-100 hover:bg-gray-200" data-preset="all_sides" data-row="' + rowId + '">\uc0c1\ud558\uc88c\uc6b0</button>';
-                        html += '<button type="button" class="pp-punch-preset px-2 py-0.5 text-xs border rounded bg-gray-100 hover:bg-gray-200" data-preset="corners" data-row="' + rowId + '">4\ubaa8\uc11c\ub9ac</button>';
+                        html += '<button type="button" class="pp-punch-preset px-2 py-0.5 text-xs border rounded bg-gray-100 hover:bg-gray-200" data-preset="corners" data-row="' + rowId + '">\ubaa8\uc11c\ub9ac 4</button>';
                         html += '<button type="button" class="pp-punch-preset px-2 py-0.5 text-xs border rounded bg-gray-100 hover:bg-gray-200" data-preset="reset" data-row="' + rowId + '">\ucd08\uae30\ud654</button>';
                         html += '</div>';
                         // 접수 단계는 프리셋 + 요약까지. 위치별 개수(8칸)는 접어 둔다(2026-08-19 간소화).
@@ -352,6 +352,9 @@
                         html += '<label class="flex flex-col items-center"><span>\ud558</span><input type="number" min="0" value="0" class="pp-punch-val w-12 border rounded text-center py-0.5" data-key="side_bottom" data-row="' + rowId + '"></label>';
                         html += '<label class="flex flex-col items-center"><span>\uc6b0\ud558</span><input type="number" min="0" max="1" value="0" class="pp-punch-val w-12 border rounded text-center py-0.5" data-key="corner_br" data-row="' + rowId + '"></label>';
                         html += '</div>';   // grid
+                        // 변 개수는 **양 끝 포함**(패널·에이전트와 같은 규칙, 2026-09-11) — 2 이상이면 양 끝이 모서리 자리, 1이면 가운데.
+                        //   요약(.pp-punching-summary = MES_FIN.punching)이 실제 뚫리는 자리를 다시 세어 보여 준다.
+                        html += '<div class="text-[10px] text-gray-400 mt-1">변 개수는 양 끝(모서리)을 포함합니다 — 상 3 = 좌상·가운데·우상. 1은 가운데 하나.</div>';
                         html += '</div>';   // pp_punch_grid (접힘 래퍼)
                         html += '<span class="pp-punching-cost text-xs text-orange-600 font-medium mt-1 block"></span>';
                         html += '</div>';

@@ -10,7 +10,7 @@
   //   우상단 표시는 여태 host(mesA0_ping = MESA0_VERSION, 축2 = Z: 1곳)만 보여줬다. 껍데기는 PC 별
   //   복사 설치라서 재설치를 안 한 PC 도 최신 번호로 보였다(2026-07-30 점검에서 확인).
   //   ⚠️ 껍데기 3파일 중 하나라도 고치면 여기를 올린다.
-  var SHELL_VERSION = '0.19.0';   // 0.19.0 = ★주석 실패 코드 `A` 표시(호스트 0.12.0 `annotation_error`) — 「주석이 안 나온다」가 한 달간 빈 catch 에 삼켜져 있었다 · ★묶음 안내문 정정: 키워드가 비어도 주석은 「후가공-수량」으로 나간다(옛 문구가 오진을 유도했다) · 0.18.0 = ★환경 점검이 **등록 잔해·MES 반영 대기**를 센다 — 커밋이 안 끝난 폴더가 조용히 쌓여도 아무 화면에도 안 나왔다 · ★manifest 를 대신 쓴 뒤 픽업 복사까지 이어서 시킨다(정상 경로와 같은 순서: 커밋 → 복사) · 0.17.0 = ★params 를 **파일로 보냈는데 호스트가 못 읽으면 인자로 한 번 더**(`runProcessExpr`) — 파일 경로를 고르는 판단은 「cep.fs 로 쓸 수 있나」인데 정작 실패하는 것은 호스트가 그 파일을 **읽는** 쪽이다(실기 2026-09-09: `open('r') 실패: I/O 오류` · `exists=true len=-1`). 단건·검토·배치 **세 경로 전부** 이 길을 지난다 · ★호스트가 아예 안 실린 경우를 사람 말로(`hostNotLoaded`) — 「함수가 아닙니다」만 뜨면 원인도 조치도 없다. 실기에서 읽기가 죽어 `$.evalFile` 이 Z: 의 호스트를 못 읽었다 · ★배치 실패 줄에도 `[단계별 파일쓰기]`(단건에만 있어 **일괄에서만** 방아쇠를 못 봤다) · 0.16.0 = ★[⏱ 부하 시험] — 파일을 몇 개까지 만들 수 있나. 한 번의 값은 의미가 없고 **비교**가 답이라(재시작 직후→1건 후→3건 후) 화면이 그렇게 읽으라고 말한다 · ★단계별 파일쓰기(`ioprobe`)를 실패에는 **항상**, 성공에는 이상(X·*)이 있을 때만 띄운다 — 전부 정상인 줄을 매번 띄우면 사람이 안 읽는다 · 0.15.0 = ★일러가 manifest 를 못 쓰면 **패널이 대신 쓴다**(`rescuePending`) — **단건과 배치가 공유**한다(일괄 확정·모아찍기 등록도 같이 구제된다). 등록이 실제로 완성되므로 성공 화면이 그대로 나온다(성공 렌더를 `renderOk` 로 빼서 두 경로가 같은 화면을 쓴다) · ★환경 점검에 **cep.fs 쓰기(temp / Z: 한글경로)** — 폴백이 기대는 길이 이 PC 에서 되는지 추측하지 않고 잰다 · 0.14.0 = ★[⚙ 환경 점검] 버튼 — Z: 연결·쓰기 · temp 쓰기·ASCII 여부 · 호스트/재단/셸/스텁 버전 · config 나이 · 설치 경로 · 자동갱신 상태를 한 번에. **탭 밖**에 그린다(준비 안 된 PC 는 어느 탭에서든 증상이 난다) · 0.13.0 = ★`hostEval` 도입 — evalScript 실패가 `'EvalScript error.'` 라는 **평범한 문자열**로 와서 `if (!res)` 가드를 전부 통과하던 것을 한 곳에서 막는다(재단 탭은 처음부터 있었는데 가공 탭만 27곳이 생짜였다) · ★배치·검토가 브릿지 사망 시 **즉시 중단**(2026-09-07 에 원인 1건이 증상 13건으로 번역됐다) · ★params 를 cep.fs 가 못 쓰면 **인자로** 넘긴다(한글 사용자명 PC = 전 건 `noparams`) · ★config 나이 표기(24시간 초과 경고) · 0.12.0 = ★파일 I/O 실패 사유를 화면까지 나른다 — 일괄확정·검토가 `cepWriteUtf8` 반환값을 **안 보고** 있었고(단건만 봤다), 호스트가 준 `detail` 도 버려서 2026-09-07 실기 장애(#1 manifest · #2~14 noparams)에서 원인을 물을 데가 없었다 · `_출력` 복사 실패도 표시 · 0.11.0 = ★표 헤더가 세로로 쌓이던 것 정정(재단선·주석·여백cm 열 폭) · [1건 등록] 위 중복 문구 제거 · 0.10.0 = ★큐 제거는 호스트가 실제로 지웠을 때만 축소 · seedSilhouette 는 호스트 바쁨에도 done 콜백을 불러 호출자 멈춤 방지 ·「조」 표기 가시성 게이트 · 0.9.0 = ★검색이 공백을 무시한다 — 일러 CEP 는 IME 조합을 웹뷰에 안 넘기고(composition 0건) 마지막 글자를 스페이스로 확정해야 해서 그 공백이 이름 안에 남는다 · 0.8.0 = ★수량 단위 [개|조] — 가로등배너 1조=2개 환산(조용한 절반 청구 방지) · 0.7.0 = ★품목 자동완성(item_id) — 주문서가 품목·단가까지 자동으로 채운다 · 0.6.0 = ★자동감지 캡처 경로 수용(임시문서 없음 표기) + 마스크 픽셀 수를 실제 PNG 에 맞춤(라벨 밀림 방지) · 0.5.3 =「키워드」→「내용」 명칭 통일(MES 품목 마스터와 구분) · 0.5.2 = 재단 탭 [◎ 전체] · 0.5.1 = 도련 방식 칸을 판짜기로 이동(라벨 거짓 정정) · 0.5.0 = 셸 자동 갱신 결과 수신·재시작 안내 · 0.4.1 = 설명 다이어트(cfg 압축·툴팁 이동) + 세로나열 CSS
+  var SHELL_VERSION = '0.20.0';   // 0.20.0 = ★펀칭 결과를 패널이 센다 「펀칭 8개(모서리 4, 4변 1)」(호스트와 같은 양끝포함 규칙·웹 라벨과 같은 문장) · 「꼭짓점」→「모서리」 · 파일명 세그먼트에 총개수(사방펀칭8·모서리펀칭4) — 잃는 것: 위치어가 입력 변이 아니라 **모서리 사이에 구멍이 있는 변**이라 상3·하3·좌2·우2 는 「상하펀칭6」 · 0.19.0 = ★주석 실패 코드 `A` 표시(호스트 0.12.0 `annotation_error`) — 「주석이 안 나온다」가 한 달간 빈 catch 에 삼켜져 있었다 · ★묶음 안내문 정정: 키워드가 비어도 주석은 「후가공-수량」으로 나간다(옛 문구가 오진을 유도했다) · 0.18.0 = ★환경 점검이 **등록 잔해·MES 반영 대기**를 센다 — 커밋이 안 끝난 폴더가 조용히 쌓여도 아무 화면에도 안 나왔다 · ★manifest 를 대신 쓴 뒤 픽업 복사까지 이어서 시킨다(정상 경로와 같은 순서: 커밋 → 복사) · 0.17.0 = ★params 를 **파일로 보냈는데 호스트가 못 읽으면 인자로 한 번 더**(`runProcessExpr`) — 파일 경로를 고르는 판단은 「cep.fs 로 쓸 수 있나」인데 정작 실패하는 것은 호스트가 그 파일을 **읽는** 쪽이다(실기 2026-09-09: `open('r') 실패: I/O 오류` · `exists=true len=-1`). 단건·검토·배치 **세 경로 전부** 이 길을 지난다 · ★호스트가 아예 안 실린 경우를 사람 말로(`hostNotLoaded`) — 「함수가 아닙니다」만 뜨면 원인도 조치도 없다. 실기에서 읽기가 죽어 `$.evalFile` 이 Z: 의 호스트를 못 읽었다 · ★배치 실패 줄에도 `[단계별 파일쓰기]`(단건에만 있어 **일괄에서만** 방아쇠를 못 봤다) · 0.16.0 = ★[⏱ 부하 시험] — 파일을 몇 개까지 만들 수 있나. 한 번의 값은 의미가 없고 **비교**가 답이라(재시작 직후→1건 후→3건 후) 화면이 그렇게 읽으라고 말한다 · ★단계별 파일쓰기(`ioprobe`)를 실패에는 **항상**, 성공에는 이상(X·*)이 있을 때만 띄운다 — 전부 정상인 줄을 매번 띄우면 사람이 안 읽는다 · 0.15.0 = ★일러가 manifest 를 못 쓰면 **패널이 대신 쓴다**(`rescuePending`) — **단건과 배치가 공유**한다(일괄 확정·모아찍기 등록도 같이 구제된다). 등록이 실제로 완성되므로 성공 화면이 그대로 나온다(성공 렌더를 `renderOk` 로 빼서 두 경로가 같은 화면을 쓴다) · ★환경 점검에 **cep.fs 쓰기(temp / Z: 한글경로)** — 폴백이 기대는 길이 이 PC 에서 되는지 추측하지 않고 잰다 · 0.14.0 = ★[⚙ 환경 점검] 버튼 — Z: 연결·쓰기 · temp 쓰기·ASCII 여부 · 호스트/재단/셸/스텁 버전 · config 나이 · 설치 경로 · 자동갱신 상태를 한 번에. **탭 밖**에 그린다(준비 안 된 PC 는 어느 탭에서든 증상이 난다) · 0.13.0 = ★`hostEval` 도입 — evalScript 실패가 `'EvalScript error.'` 라는 **평범한 문자열**로 와서 `if (!res)` 가드를 전부 통과하던 것을 한 곳에서 막는다(재단 탭은 처음부터 있었는데 가공 탭만 27곳이 생짜였다) · ★배치·검토가 브릿지 사망 시 **즉시 중단**(2026-09-07 에 원인 1건이 증상 13건으로 번역됐다) · ★params 를 cep.fs 가 못 쓰면 **인자로** 넘긴다(한글 사용자명 PC = 전 건 `noparams`) · ★config 나이 표기(24시간 초과 경고) · 0.12.0 = ★파일 I/O 실패 사유를 화면까지 나른다 — 일괄확정·검토가 `cepWriteUtf8` 반환값을 **안 보고** 있었고(단건만 봤다), 호스트가 준 `detail` 도 버려서 2026-09-07 실기 장애(#1 manifest · #2~14 noparams)에서 원인을 물을 데가 없었다 · `_출력` 복사 실패도 표시 · 0.11.0 = ★표 헤더가 세로로 쌓이던 것 정정(재단선·주석·여백cm 열 폭) · [1건 등록] 위 중복 문구 제거 · 0.10.0 = ★큐 제거는 호스트가 실제로 지웠을 때만 축소 · seedSilhouette 는 호스트 바쁨에도 done 콜백을 불러 호출자 멈춤 방지 ·「조」 표기 가시성 게이트 · 0.9.0 = ★검색이 공백을 무시한다 — 일러 CEP 는 IME 조합을 웹뷰에 안 넘기고(composition 0건) 마지막 글자를 스페이스로 확정해야 해서 그 공백이 이름 안에 남는다 · 0.8.0 = ★수량 단위 [개|조] — 가로등배너 1조=2개 환산(조용한 절반 청구 방지) · 0.7.0 = ★품목 자동완성(item_id) — 주문서가 품목·단가까지 자동으로 채운다 · 0.6.0 = ★자동감지 캡처 경로 수용(임시문서 없음 표기) + 마스크 픽셀 수를 실제 PNG 에 맞춤(라벨 밀림 방지) · 0.5.3 =「키워드」→「내용」 명칭 통일(MES 품목 마스터와 구분) · 0.5.2 = 재단 탭 [◎ 전체] · 0.5.1 = 도련 방식 칸을 판짜기로 이동(라벨 거짓 정정) · 0.5.0 = 셸 자동 갱신 결과 수신·재시작 안내 · 0.4.1 = 설명 다이어트(cfg 압축·툴팁 이동) + 세로나열 CSS
   var STORE_WORKER = 'mes_a0_worker';
   var STORE_SETTINGS = 'mes_a0_settings';
   var CONFIG_PATH = 'Z:/DESIGNS/IA-등록/_config/config.json';
@@ -87,14 +87,55 @@
       mSides[m][sd] = true;
     }
     for (var o = 0; o < order.length; o++) segs.push(posWord(mSides[order[o]]) + order[o]);
-    var pc = punch || {};
-    var ps = { top: pc.top > 0, bottom: pc.bottom > 0, left: pc.left > 0, right: pc.right > 0 };
-    if (ps.top || ps.bottom || ps.left || ps.right) segs.push(posWord(ps) + '펀칭');
-    var cn = pc.corners || {}, cs = [];
-    if (cn.tl) cs.push('좌상'); if (cn.tr) cs.push('우상'); if (cn.bl) cs.push('좌하'); if (cn.br) cs.push('우하');
-    if (cs.length === 4) segs.push('꼭짓점펀칭');
-    else if (cs.length) segs.push(cs.join('') + '펀칭');
+    // 펀칭 = 위치어 + 총개수(2026-09-11): 사방펀칭8 · 상하펀칭6 · 양옆펀칭6 · 모서리펀칭4 · 상펀칭4.
+    //   위치어는 **모서리 사이에 구멍이 있는 변**으로 정한다(상3·하3·좌2·우2 도 실물은 상하 3개씩이라 「상하」).
+    //   모서리 사이가 하나도 없으면 「모서리펀칭N」. 총개수는 실제 뚫리는 자리 수(punchLayout).
+    var L = punchLayout(punch);
+    if (L.total) {
+      var ps = { top: L.inner.top > 0, bottom: L.inner.bottom > 0, left: L.inner.left > 0, right: L.inner.right > 0 };
+      var pw = (ps.top || ps.bottom || ps.left || ps.right) ? posWord(ps) : '모서리';
+      segs.push(pw + '펀칭' + L.total);
+    }
     return segs.join('+');
+  }
+
+  // ── 펀칭 개수 규칙 = 호스트(mes-a0-host.jsx)와 같은 규칙, 좌표 없이 개수만 (2026-09-11 용준님 「나」 확정) ──
+  //   변 N 은 **양 끝을 포함해** 균등 분배 → N≥2 면 양 끝이 모서리 자리, N=1 이면 가운데 1개.
+  //   모서리 체크가 그 자리와 겹치면 하나(호스트 dedupe 0.1mm). 그래서 상3·하3·좌3·우3 = 12 가 아니라 **8**.
+  //   ★잃는 것: 이 함수는 호스트를 **흉내낼 뿐** 호스트가 아니다 — 호스트 규칙을 바꾸면 여기도 바꿔야 한다
+  //     (게이트 panel:smoke 7f 가 호스트 소스의 분배식·dedupe 존재를 같이 본다).
+  function punchLayout(pc) {
+    pc = pc || {};
+    var cn = pc.corners || {};
+    var n = function (v) { var k = parseInt(v, 10); return (isNaN(k) || k < 0) ? 0 : k; };
+    var t = n(pc.top), b = n(pc.bottom), l = n(pc.left), r = n(pc.right);
+    var c = { tl: !!cn.tl || t >= 2 || l >= 2, tr: !!cn.tr || t >= 2 || r >= 2, bl: !!cn.bl || b >= 2 || l >= 2, br: !!cn.br || b >= 2 || r >= 2 };
+    var mid = function (k) { return k >= 2 ? k - 2 : k; };   // 모서리 사이 개수
+    var inner = { top: mid(t), bottom: mid(b), left: mid(l), right: mid(r) };
+    var cc = (c.tl ? 1 : 0) + (c.tr ? 1 : 0) + (c.bl ? 1 : 0) + (c.br ? 1 : 0);
+    return { corners: c, cornerCount: cc, inner: inner, total: cc + inner.top + inner.bottom + inner.left + inner.right };
+  }
+  // 실물 표기 「8개(모서리 4, 4변 1)」 — 웹 MES_FIN.punching(shared/finishingLabel.js)과 **같은 문장**.
+  //   패널·카드·주문서가 한 문장을 쓰게 하려는 것이라 형식을 바꾸면 웹 쪽도 같이 바꾼다(게이트 7f 가 대조).
+  function punchLabel(pc) {
+    var L = punchLayout(pc);
+    if (!L.total) return '';
+    var parts = [];
+    if (L.cornerCount === 4) parts.push('모서리 4');
+    else if (L.cornerCount) {
+      var cs = [];
+      if (L.corners.tl) cs.push('좌상'); if (L.corners.tr) cs.push('우상'); if (L.corners.bl) cs.push('좌하'); if (L.corners.br) cs.push('우하');
+      parts.push('모서리 ' + cs.join('·'));
+    }
+    var i = L.inner;
+    if (i.top && i.top === i.bottom && i.top === i.left && i.top === i.right) parts.push('4변 ' + i.top);
+    else {
+      if (i.top && i.top === i.bottom) parts.push('상하 ' + i.top);
+      else { if (i.top) parts.push('상 ' + i.top); if (i.bottom) parts.push('하 ' + i.bottom); }
+      if (i.left && i.left === i.right) parts.push('좌우 ' + i.left);
+      else { if (i.left) parts.push('좌 ' + i.left); if (i.right) parts.push('우 ' + i.right); }
+    }
+    return L.total + '개(' + parts.join(', ') + ')';
   }
 
   // ── cep.fs helpers (guarded) ──
@@ -317,6 +358,7 @@
     var elBorderLine = $('borderLine'); // 출력 경계선(백색 테두리) on/off — 기본 OFF(2026-08-06 용준님)
     var elPTop = $('pTop'), elPBottom = $('pBottom'), elPLeft = $('pLeft'), elPRight = $('pRight');
     var elPcTL = $('pcTL'), elPcTR = $('pcTR'), elPcBL = $('pcBL'), elPcBR = $('pcBR');
+    var elPunchResult = $('punchResult'); // 입력 → 실제 뚫리는 자리 수(2026-09-11) — 「상하3 좌우3 = 8」을 화면이 말한다
     var elAnnot = $('annot'), elAnnotKwRow = $('annotKwRow');
     var elATop = $('aTop'), elABottom = $('aBottom'), elALeft = $('aLeft'), elARight = $('aRight');
     var elBtnProcess = $('btnProcess'), elOut = $('out'), elCfg = $('cfgStatus');
@@ -370,6 +412,31 @@
       }
     }
     for (var fci = 0; fci < finCm.length; fci++) finCm[fci].addEventListener('input', updateAnnotGates);
+
+    // ── 펀칭 결과 표시: 칸 값 → 「펀칭 8개(모서리 4, 4변 1)」. 비면 입력 규칙 안내가 남는다 ──
+    //   변 개수가 모서리 자리를 겹쳐 쓰는 규칙(상2 = 좌상·우상)은 머리로 세면 헷갈린다(2026-09-11 용준님) —
+    //   그래서 파일에 찍힐 개수를 패널이 미리 센다. 파일명 세그먼트(finishDesc)와 같은 punchLayout 을 쓴다.
+    var PUNCH_HINT = '펀칭 = 변마다 개수 · 2개 이상이면 양 끝이 모서리 자리';
+    function currentPunch() {
+      var pInt0 = function (el) { var n = parseInt(el ? el.value : '0', 10); return (isNaN(n) || n < 0) ? 0 : n; };
+      return {
+        top: pInt0(elPTop), bottom: pInt0(elPBottom), left: pInt0(elPLeft), right: pInt0(elPRight),
+        corners: { tl: elPcTL ? !!elPcTL.checked : false, tr: elPcTR ? !!elPcTR.checked : false, bl: elPcBL ? !!elPcBL.checked : false, br: elPcBR ? !!elPcBR.checked : false }
+      };
+    }
+    function updatePunchResult() {
+      if (!elPunchResult) return;
+      var lab = punchLabel(currentPunch());
+      elPunchResult.textContent = lab ? '펀칭 ' + lab : PUNCH_HINT;
+      elPunchResult.className = lab ? 'cfg punchres' : 'cfg';
+    }
+    var punchEls = [elPTop, elPBottom, elPLeft, elPRight, elPcTL, elPcTR, elPcBL, elPcBR];
+    for (var pei = 0; pei < punchEls.length; pei++) {
+      if (!punchEls[pei]) continue;
+      punchEls[pei].addEventListener('input', updatePunchResult);
+      punchEls[pei].addEventListener('change', updatePunchResult);
+    }
+    updatePunchResult();
 
     function out(t, cls) { if (elOut) { elOut.textContent = t; elOut.className = 'out' + (cls ? ' ' + cls : ''); } }
     function setCfg(t) { if (elCfg) elCfg.textContent = t; }
@@ -866,6 +933,7 @@
       if (elPcTR) elPcTR.checked = false;
       if (elPcBL) elPcBL.checked = false;
       if (elPcBR) elPcBR.checked = false;
+      updatePunchResult();
       if (elATop) elATop.checked = false;
       if (elABottom) elABottom.checked = false;
       if (elALeft) elALeft.checked = false;
@@ -1629,6 +1697,7 @@
       if (elPcTR) elPcTR.checked = !!cn.tr;
       if (elPcBL) elPcBL.checked = !!cn.bl;
       if (elPcBR) elPcBR.checked = !!cn.br;
+      updatePunchResult();
       if (elAnnot) elAnnot.value = e.keyword || p.keyword || '';
       var ap = p.annot_pos || {};
       if (elATop) elATop.checked = !!ap.top;

@@ -4,7 +4,7 @@
 //    한쪽만 고치지 말 것 (서버 게이트 = npm run test:finishing-label).
 //
 // 표기 규칙: 4변 동일 → `4방열재단` / 그 외 → `상하좌 열재단`·`좌우 줄미싱+상하 봉미싱`
-//            펀칭 → `4개(상 2, 모서리 좌상·우상)`
+//            펀칭 → `8개(모서리 4, 4변 1)` — 총개수 → 모서리 → 변마다 **모서리 사이** 개수(실물 표기, 2026-09-11)
 //
 // ?raw 결합 스크립트라 전역이 한 스코프에 쏟아진다 — 같은 페이지에 두 번 실려도 죽지 않게 IIFE + 존재 가드.
 (function() {
@@ -47,21 +47,37 @@
         }).join('+');
     }
 
-    // 펀칭 params → `4개(상 2, 모서리 좌상·우상)` (PP 이름은 호출부가 붙임)
+    // 펀칭 params → 실물 표기 `8개(모서리 4, 4변 1)` (PP 이름은 호출부가 붙임)
+    //   ★개수 규칙 = 호스트·에이전트와 같다(2026-09-11): 변 N 은 **양 끝 포함** 균등 분배 → N≥2 면 양 끝이
+    //     모서리 자리, N=1 이면 가운데 1개. 모서리 체크와 겹치면 하나. 상3·하3·좌3·우3 = 12 가 아니라 **8**.
+    //   표기 = 총개수 → 모서리 → 변마다 「모서리 사이」 개수(같은 값은 상하·좌우·4변으로 묶음).
+    //   ★잃는 것: 「모서리 따로 + 변 안쪽 N」 옛 해석(side_top=2 가 안쪽 2개) — 이제 양 끝 2개다.
+    //   ⚠️ 패널 main.js punchLabel 이 같은 문장을 만든다 — 게이트 panel:smoke 7f 가 대조.
     function formatPunching(params) {
         var p = parseMaybeJson(params);
         if (!p || typeof p !== 'object') return '';
         var num = function(k) { return Math.max(0, Math.floor(Number(p[k]) || 0)); };
-        var corners = PUNCH_CORNERS.map(function(e) { return { ko: e[1], n: num(e[0]) }; }).filter(function(x) { return x.n > 0; });
-        var sides = PUNCH_SIDES.map(function(e) { return { ko: e[1], n: num(e[0]) }; }).filter(function(x) { return x.n > 0; });
-        var total = corners.concat(sides).reduce(function(s, x) { return s + x.n; }, 0);
+        var t = num('side_top'), b = num('side_bottom'), l = num('side_left'), r = num('side_right');
+        var corners = [
+            ['좌상', num('corner_tl') > 0 || t >= 2 || l >= 2],
+            ['우상', num('corner_tr') > 0 || t >= 2 || r >= 2],
+            ['좌하', num('corner_bl') > 0 || b >= 2 || l >= 2],
+            ['우하', num('corner_br') > 0 || b >= 2 || r >= 2]
+        ];
+        var inner = function(n) { return n >= 2 ? n - 2 : n; };   // 모서리 사이 개수
+        var it = inner(t), ib = inner(b), il = inner(l), ir = inner(r);
+        var cornerNames = corners.filter(function(c) { return c[1]; }).map(function(c) { return c[0]; });
+        var total = cornerNames.length + it + ib + il + ir;
         if (total === 0) return '';
         var parts = [];
-        var allCorners = corners.length === 4 && corners.every(function(c) { return c.n === 1; });
-        if (allCorners) parts.push('4모서리');
-        sides.forEach(function(s) { parts.push(s.ko + ' ' + s.n); });
-        if (!allCorners && corners.length > 0) {
-            parts.push('모서리 ' + corners.map(function(c) { return c.n === 1 ? c.ko : c.ko + ' ' + c.n; }).join('·'));
+        if (cornerNames.length === 4) parts.push('모서리 4');
+        else if (cornerNames.length > 0) parts.push('모서리 ' + cornerNames.join('·'));
+        if (it > 0 && it === ib && it === il && it === ir) parts.push('4변 ' + it);
+        else {
+            if (it > 0 && it === ib) parts.push('상하 ' + it);
+            else { if (it > 0) parts.push('상 ' + it); if (ib > 0) parts.push('하 ' + ib); }
+            if (il > 0 && il === ir) parts.push('좌우 ' + il);
+            else { if (il > 0) parts.push('좌 ' + il); if (ir > 0) parts.push('우 ' + ir); }
         }
         return total + '개(' + parts.join(', ') + ')';
     }

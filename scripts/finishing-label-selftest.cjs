@@ -55,23 +55,36 @@ eq('빈 값', formatFinishing({ top: '', bottom: null }), '')
 eq('null', formatFinishing(null), '')
 eq('깨진 JSON', formatFinishing('{oops'), '')
 
-// ── 펀칭 ──
-// 실제 저장 데이터(로컬 D1) — 좌상1·우상1·상변2. 예전 라벨은 `펀칭 1cm 1cm 2cm 0cm 0cm 0cm 0cm 0cm`
-eq('모서리 일부 + 변',
+// ── 펀칭 ── 개수 규칙 = 호스트·에이전트와 같은 「양 끝 포함」(2026-09-11 용준님 「나」 확정).
+//   변 N≥2 → 양 끝이 모서리 자리 · N=1 → 가운데 · 모서리 체크와 겹치면 하나. 표기는 실제 뚫리는 자리.
+eq('상하좌우 3 = 8개(모서리 4 + 변 가운데 1)  ← 12 가 아니다',
+  formatPunching({ side_top: 3, side_bottom: 3, side_left: 3, side_right: 3 }), '8개(모서리 4, 4변 1)')
+eq('상하 3 = 모서리 4 + 상하 가운데 1',
+  formatPunching({ side_top: 3, side_bottom: 3 }), '6개(모서리 4, 상하 1)')
+eq('좌우 3', formatPunching({ side_left: 3, side_right: 3 }), '6개(모서리 4, 좌우 1)')
+eq('모서리 4 체크만', formatPunching({ corner_tl: 1, corner_tr: 1, corner_bl: 1, corner_br: 1 }), '4개(모서리 4)')
+eq('상하 2 = 양 끝이 모서리라 모서리 4 와 같은 실물',
+  formatPunching({ side_top: 2, side_bottom: 2 }), '4개(모서리 4)')
+eq('모서리 4 체크 + 상하 2 = 겹치는 자리는 하나',
+  formatPunching({ corner_tl: 1, corner_tr: 1, corner_bl: 1, corner_br: 1, side_top: 2, side_bottom: 2 }), '4개(모서리 4)')
+eq('상 4 = 모서리 좌상·우상 + 사이 2',
+  formatPunching({ side_top: 4 }), '4개(모서리 좌상·우상, 상 2)')
+// 실제 저장 데이터(로컬 D1) — 좌상1·우상1·상변2. 옛 해석은 안쪽 2 + 모서리 2 = 4 였다(라벨 `4개(상 2, 모서리 좌상·우상)`)
+eq('모서리 일부 체크 + 상 2 = 양 끝과 겹쳐 2개',
   formatPunching({ corner_tl: 1, corner_tr: 1, side_top: 2, side_bottom: 0, side_left: 0, side_right: 0, corner_bl: 0, corner_br: 0 }),
-  '4개(상 2, 모서리 좌상·우상)')
-eq('4모서리 + 상하',
-  formatPunching({ corner_tl: 1, corner_tr: 1, corner_bl: 1, corner_br: 1, side_top: 2, side_bottom: 2 }),
-  '8개(4모서리, 상 2, 하 2)')
-eq('좌우만', formatPunching({ side_left: 3, side_right: 3 }), '6개(좌 3, 우 3)')
+  '2개(모서리 좌상·우상)')
+eq('상하 1 = 가운데 1개씩', formatPunching({ side_top: 1, side_bottom: 1 }), '2개(상하 1)')
+eq('한 변 1', formatPunching({ side_top: 1 }), '1개(상 1)')
+eq('값이 다른 변은 따로 · 모서리는 좌상·우상·좌하·우하 순',
+  formatPunching({ side_top: 5, side_left: 3 }), '7개(모서리 좌상·우상·좌하, 상 3, 좌 1)')
 eq('전부 0 = 빈 문자열', formatPunching({ corner_tl: 0, side_top: 0 }), '')
 eq('margin_* 는 개수에 안 섞인다',
-  formatPunching({ side_top: 2, margin_top: 3, margin_left: 1.5 }), '2개(상 2)')
+  formatPunching({ side_top: 3, margin_top: 3, margin_left: 1.5 }), '3개(모서리 좌상·우상, 상 1)')
 
 // ── 후가공 라벨 ──
 eq('펀칭 PP',
-  formatPP({ code: 'PUNCHING', name: '펀칭', params: { corner_tl: 1, corner_tr: 1, side_top: 2 } }),
-  '펀칭 4개(상 2, 모서리 좌상·우상)')
+  formatPP({ code: 'PUNCHING', name: '펀칭', params: { side_top: 3, side_bottom: 3 } }),
+  '펀칭 6개(모서리 4, 상하 1)')
 eq('펀칭인데 개수 0 = 이름만',
   formatPP({ code: 'PUNCHING', name: '펀칭', params: { corner_tl: 0 } }), '펀칭')
 eq('부직포(이름 겹침 제거 + cm)',
@@ -88,9 +101,37 @@ eq('params 없음', formatPP({ code: 'X', name: '코팅' }), '코팅')
 eq('문자열 PP', formatPP('아일렛'), '아일렛')
 eq('PP 목록',
   formatPPList('[{"code":"PUNCHING","name":"펀칭","params":{"side_left":3,"side_right":3}},{"code":"PP-NONWOVEN","name":"부직포","params":{"type":"부직포","size":7}}]'),
-  '펀칭 6개(좌 3, 우 3), 부직포 7cm')
+  '펀칭 6개(모서리 4, 좌우 1), 부직포 7cm')
 eq('PP 목록 빈값', formatPPList('[]'), '')
 eq('PP 목록 깨진 JSON', formatPPList('nope'), '')
+
+// ── 클라 사본 대조 ── shared/finishingLabel.js 를 가짜 window 에 실어 서버 정본과 같은 문장인지 본다.
+//   「클라 사본은 여기서 못 잡는다」였던 자리(2026-08-19) — 펀칭 규칙을 바꾸면서 닫았다(2026-09-11).
+{
+  const fs = require('fs')
+  const js = fs.readFileSync(path.join(__dirname, '..', 'src', 'scripts', 'shared', 'finishingLabel.js'), 'utf8')
+  const win = {}
+  new Function('window', js)(win)
+  const cli = win.MES_FIN
+  eq('클라 사본이 MES_FIN 을 노출한다', !!(cli && cli.punching && cli.finishing && cli.pp && cli.ppList), true)
+  const punchFixtures = [
+    { side_top: 3, side_bottom: 3, side_left: 3, side_right: 3 },
+    { side_top: 3, side_bottom: 3 }, { side_left: 3, side_right: 3 },
+    { corner_tl: 1, corner_tr: 1, corner_bl: 1, corner_br: 1 },
+    { side_top: 2, side_bottom: 2 }, { corner_tl: 1, corner_tr: 1, side_top: 2 },
+    { side_top: 4 }, { side_top: 1, side_bottom: 1 }, { side_top: 1 }, { side_top: 5, side_left: 3 },
+    { side_top: 3, margin_top: 3 }, { corner_tl: 0, side_top: 0 }, '{"side_left":3,"side_right":3}', null, '{oops',
+  ]
+  for (const f of punchFixtures) eq('클라 사본 punching 동일: ' + JSON.stringify(f), cli.punching(f), formatPunching(f))
+  const finFixtures = [
+    { top: '열재단', bottom: '열재단', left: '열재단', right: '열재단' },
+    { top: '봉미싱', bottom: '봉미싱', left: '줄미싱', right: '줄미싱', charged: false },
+    { top: '접어미싱', bottom: '열재단', left: '줄미싱', right: '줄미싱' }, { top: '' }, null,
+  ]
+  for (const f of finFixtures) eq('클라 사본 finishing 동일: ' + JSON.stringify(f), cli.finishing(f), formatFinishing(f))
+  const ppList = '[{"code":"PUNCHING","name":"펀칭","params":{"side_left":3,"side_right":3}},{"code":"PP-NONWOVEN","name":"부직포","params":{"type":"부직포","size":7}},{"code":"CUT","name":"열재단","params":{"directions":{"top":0,"left":3}}}]'
+  eq('클라 사본 ppList 동일', cli.ppList(ppList), formatPPList(ppList))
+}
 
 if (fails.length > 0) {
   console.error(`\n✗ 마감·후가공 표기 자체검증 실패 ${fails.length}건 (통과 ${pass})\n`)

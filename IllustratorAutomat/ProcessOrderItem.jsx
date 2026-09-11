@@ -11,6 +11,8 @@
  *     - 여백 0인 변은 재단선 생략
  *   - EPS 저장: saveMultipleArtboards + artboardRange
  *   - 펀칭/주석 기존 로직 유지
+ * 2026-09-11: 펀칭 변 개수 = **양 끝 포함** 균등 분배 + 같은 자리 dedupe(디자이너 호스트·주문서 라벨과 규칙 통일).
+ *   잃는 것 = 「코너 따로 + 변 안쪽 N」 옛 해석(side_top=2 → 안쪽 2개). 이제 양 끝 2개 = 코너 자리.
  *
  * 파라미터 (ia_params.json):
  *   source       소스 AI/EPS 파일 전체 경로 (ExtractGroups가 아트보드 생성 후 저장한 파일)
@@ -666,23 +668,32 @@ function main() {
         if (punching.corner_bl) marks.push([oL + markOffPt, oB + markOffPt]);
         if (punching.corner_br) marks.push([oR - markOffPt, oB + markOffPt]);
 
-        // 변: 디자인 안쪽으로 offset
+        // 변: **양 끝 포함** 균등 분배 — 디자이너 호스트(designer/mes-a0-host.jsx)와 같은 규칙(2026-09-11 통일).
+        //   N≥2 면 양 끝이 코너 자리에 정확히 놓이고, N=1 이면 가운데. 코너 체크와 겹치면 아래 dedupe 가 하나로 만든다.
+        //   ★잃는 것: 「코너 따로 + 변 안쪽 N」 이던 옛 해석 — side_top=2 는 이제 안쪽 2개가 아니라 양 끝 2개다.
+        //     주문서 라벨(utils/finishingLabel.ts)이 같은 규칙으로 개수를 세므로 카드에 적힌 수 = 여기서 찍는 수.
+        var hx0 = oL + markOffPt, hx1 = oR - markOffPt, hy0 = oT - markOffPt, hy1 = oB + markOffPt;
+        var spread = function (n, a, b, i) { return (n === 1) ? (a + b) / 2 : a + (b - a) * i / (n - 1); };
         var sideTop = punching.side_top || 0;
-        for (var ti = 0; ti < sideTop; ti++) {
-            marks.push([oL + designW * (ti+1) / (sideTop+1), oT - markOffPt]);
-        }
+        for (var ti = 0; ti < sideTop; ti++) marks.push([spread(sideTop, hx0, hx1, ti), oT - markOffPt]);
         var sideBot = punching.side_bottom || 0;
-        for (var bi = 0; bi < sideBot; bi++) {
-            marks.push([oL + designW * (bi+1) / (sideBot+1), oB + markOffPt]);
-        }
+        for (var bi = 0; bi < sideBot; bi++) marks.push([spread(sideBot, hx0, hx1, bi), oB + markOffPt]);
         var sideLeft = punching.side_left || 0;
-        for (var li = 0; li < sideLeft; li++) {
-            marks.push([oL + markOffPt, oT - designH * (li+1) / (sideLeft+1)]);
-        }
+        for (var li = 0; li < sideLeft; li++) marks.push([oL + markOffPt, spread(sideLeft, hy0, hy1, li)]);
         var sideRight = punching.side_right || 0;
-        for (var ri = 0; ri < sideRight; ri++) {
-            marks.push([oR - markOffPt, oT - designH * (ri+1) / (sideRight+1)]);
+        for (var ri = 0; ri < sideRight; ri++) marks.push([oR - markOffPt, spread(sideRight, hy0, hy1, ri)]);
+
+        // 같은 자리 중복 제거(0.1mm) — 겹친 원은 눈에 안 보이는데 타공은 **두 번** 뚫린다(호스트 2026-08-06 과 같은 처리)
+        var TOLP = 0.1 * ptPerMm;
+        var uniqMarks = [];
+        for (var ui = 0; ui < marks.length; ui++) {
+            var dupM = false;
+            for (var uj = 0; uj < uniqMarks.length; uj++) {
+                if (Math.abs(uniqMarks[uj][0] - marks[ui][0]) <= TOLP && Math.abs(uniqMarks[uj][1] - marks[ui][1]) <= TOLP) { dupM = true; break; }
+            }
+            if (!dupM) uniqMarks.push(marks[ui]);
         }
+        marks = uniqMarks;
 
         var blackColor = new CMYKColor();
         blackColor.cyan = 0; blackColor.magenta = 0;

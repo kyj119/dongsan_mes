@@ -10,7 +10,7 @@
  * 현장 표기 규칙:
  *   - 4변 전부 같은 방식 → `4방열재단`
  *   - 그 외          → 방향을 그대로 적는다 `상하좌 열재단` · `좌우 줄미싱+상하 봉미싱`
- *   - 펀칭          → `4개(상 2, 모서리 좌상·우상)` — 총 개수 먼저, 위치는 괄호
+ *   - 펀칭          → `8개(모서리 4, 4변 1)` — 총 개수 → 모서리 → 변마다 **모서리 사이** 개수(실물 표기, 2026-09-11)
  *
  * ⚠️ 클라 사본 = `src/scripts/shared/finishingLabel.js` (카드 상세·모달·봉제 지시표가 씀).
  *    한쪽만 고치면 "화면 표기 ≠ 체크리스트 라벨"이 된다 — 반드시 쌍으로 수정.
@@ -62,26 +62,46 @@ function sideRank(dirs: string[]): number {
 }
 
 /**
- * 펀칭 params → `4개(상 2, 모서리 좌상·우상)`.
- * 개수 0인 위치·margin_* 는 뺀다(여백은 카드 규격에 이미 반영 — 지시문에선 잡음).
+ * 펀칭 params → 실물 표기 `8개(모서리 4, 4변 1)` · `4개(모서리 좌상·우상, 상 2)`.
+ *
+ * ★개수 규칙 = 호스트(`mes-a0-host.jsx`)·에이전트(`ProcessOrderItem.jsx`)와 같다(2026-09-11 용준님 확정 「나」):
+ *   변 N 은 **양 끝을 포함해** 균등 분배 → N≥2 면 양 끝이 모서리 자리, N=1 이면 가운데 1개.
+ *   모서리 체크가 그 자리와 겹치면 하나로 센다(호스트 dedupe 0.1mm). 그래서 상3·하3·좌3·우3 = 12 가 아니라 **8**.
+ * 표기는 입력값이 아니라 **실제 뚫리는 자리**로 적는다 — 총개수 → 모서리 → 변마다 「모서리 사이」 개수.
+ *   같은 값인 변은 묶는다(상하 · 좌우 · 4변). 개수 0인 위치·margin_* 는 뺀다(여백은 카드 규격에 이미 반영).
+ * ★잃는 것: 「모서리 따로 + 변 안쪽 N」 이던 옛 해석(side_top=2 가 안쪽 2개) — 이제 양 끝 2개다.
+ *   그 뜻으로 저장된 옛 라인은 라벨이 달라진다(카드 라벨은 발행 시점 스냅샷이라 기존 카드는 불변).
  * 반환값에 「펀칭」은 안 붙는다(PP 이름은 호출부가 붙임).
+ * ⚠️ 패널(`a0-panel/js/main.js` punchLabel)이 같은 문장을 만든다 — 게이트 `panel:smoke` 7f 가 둘을 대조한다.
  */
 export function formatPunching(params: any): string {
   const p = parseMaybeJson(params)
   if (!p || typeof p !== 'object') return ''
 
   const num = (k: string) => Math.max(0, Math.floor(Number(p[k]) || 0))
-  const corners = PUNCH_CORNERS.map(([k, ko]) => ({ ko, n: num(k) })).filter((x) => x.n > 0)
-  const sides = PUNCH_SIDES.map(([k, ko]) => ({ ko, n: num(k) })).filter((x) => x.n > 0)
-  const total = [...corners, ...sides].reduce((s, x) => s + x.n, 0)
+  const t = num('side_top'), b = num('side_bottom'), l = num('side_left'), r = num('side_right')
+  // 모서리 = 체크했거나, 이웃한 변의 개수가 2 이상이라 양 끝이 그 자리에 놓이거나
+  const corners: Array<[string, boolean]> = [
+    ['좌상', num('corner_tl') > 0 || t >= 2 || l >= 2],
+    ['우상', num('corner_tr') > 0 || t >= 2 || r >= 2],
+    ['좌하', num('corner_bl') > 0 || b >= 2 || l >= 2],
+    ['우하', num('corner_br') > 0 || b >= 2 || r >= 2],
+  ]
+  const inner = (n: number) => (n >= 2 ? n - 2 : n)   // 모서리 사이 개수
+  const it = inner(t), ib = inner(b), il = inner(l), ir = inner(r)
+  const cornerNames = corners.filter((c) => c[1]).map((c) => c[0])
+  const total = cornerNames.length + it + ib + il + ir
   if (total === 0) return ''
 
   const parts: string[] = []
-  const allCorners = corners.length === 4 && corners.every((c) => c.n === 1)
-  if (allCorners) parts.push('4모서리')
-  for (const s of sides) parts.push(`${s.ko} ${s.n}`)
-  if (!allCorners && corners.length > 0) {
-    parts.push('모서리 ' + corners.map((c) => (c.n === 1 ? c.ko : `${c.ko} ${c.n}`)).join('·'))
+  if (cornerNames.length === 4) parts.push('모서리 4')
+  else if (cornerNames.length > 0) parts.push('모서리 ' + cornerNames.join('·'))
+  if (it > 0 && it === ib && it === il && it === ir) parts.push(`4변 ${it}`)
+  else {
+    if (it > 0 && it === ib) parts.push(`상하 ${it}`)
+    else { if (it > 0) parts.push(`상 ${it}`); if (ib > 0) parts.push(`하 ${ib}`) }
+    if (il > 0 && il === ir) parts.push(`좌우 ${il}`)
+    else { if (il > 0) parts.push(`좌 ${il}`); if (ir > 0) parts.push(`우 ${ir}`) }
   }
   return `${total}개(${parts.join(', ')})`
 }

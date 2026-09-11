@@ -135,7 +135,7 @@
           <select id="preset"><option value="">(직접 지정)</option></select>
         </div>
         <!-- ★변별 설정 = 한 표 (2026-08-06 단순화)
-             전에는 같은 '상하좌우' 개념이 **4벌**로 흩어져 있었다 — 마감 표 + 펀칭 행 + 꼭짓점 행 + 주석 행.
+             전에는 같은 '상하좌우' 개념이 **4벌**로 흩어져 있었다 — 마감 표 + 펀칭 행 + 모서리 행 + 주석 행.
              한 변에 무엇을 걸었는지 보려면 화면 네 군데를 오가야 했고, 세로도 그만큼 먹었다.
              ⚠️ id·class·data-side 는 **그대로 유지**한다. main.js 는 getElementsByClassName('finM'…)
                 + data-side 로만 찾으므로 표 구조에는 의존하지 않는다(스모크도 같은 선택자를 쓴다). -->
@@ -163,12 +163,15 @@
               <td class="fc"><input id="aRight" type="checkbox" /></td></tr>
         </table>
         <div class="row punchrow">
-          <label>꼭짓점</label>
+          <label>모서리</label>
           <label class="rad"><input id="pcTL" type="checkbox" /> 좌상</label>
           <label class="rad"><input id="pcTR" type="checkbox" /> 우상</label>
           <label class="rad"><input id="pcBL" type="checkbox" /> 좌하</label>
           <label class="rad"><input id="pcBR" type="checkbox" /> 우하</label>
-          <span class="cfg">펀칭 = 변마다 개수</span>
+        </div>
+        <div class="row punchrow">
+          <!-- 입력 → 실제 뚫리는 자리(2026-09-11). 변 N 은 양 끝 포함이라 상3·하3·좌3·우3 = 8. 비면 규칙 안내 -->
+          <span id="punchResult" class="cfg">펀칭 = 변마다 개수 · 2개 이상이면 양 끝이 모서리 자리</span>
         </div>
         <div class="row">
           <label class="rad"><input id="trim" type="checkbox" /> 돔보(재단마크)</label>

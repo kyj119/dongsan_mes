@@ -902,6 +902,59 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
     /parts\.push\(qty \+ 'ea'\)/.test(a0h) && !/키워드가 비어 주석이 안 나옵니다/.test(a0m))
 }
 
+// ── 7f 펀칭 개수 = 실제 뚫리는 자리 (2026-09-11 용준님 「나」) ─────────────────
+// 호스트는 변 N 을 **양 끝 포함**으로 분배해 상2 가 좌상·우상 자리와 겹친다. 사람이 머리로 세면 틀리므로
+// 패널이 결과를 센다 — 그리고 그 문장은 웹 라벨(shared/finishingLabel.js `MES_FIN.punching`)과 **같아야** 한다.
+// 셋(호스트 좌표 · 패널 개수 · 웹 라벨)이 각자 규칙을 갖던 것이 이 결함의 뿌리라, 셋을 한 번에 대조한다.
+{
+  const a0h = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-a0-host.jsx'), 'utf8')
+  const a0m = fs.readFileSync(path.join(path.dirname(PANEL), 'js/main.js'), 'utf8')
+  const a0i = fs.readFileSync(PANEL, 'utf8')
+  const agent = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'ProcessOrderItem.jsx'), 'utf8')
+  const sharedJs = path.join(REPO, 'src', 'scripts', 'shared', 'finishingLabel.js')
+  // 호스트 규칙이 그대로인가 — 양 끝 포함 분배식 + dedupe. 여기가 바뀌면 패널 punchLayout 도 같이 바꿔야 한다.
+  ok('7f 호스트 변 분배 = 양 끝 포함(N=1 가운데)', /\(iTop === 1\) \? \(\(hx0 \+ hx1\) \/ 2\) : \(hx0 \+ \(hx1 - hx0\) \* hi \/ \(iTop - 1\)\)/.test(a0h)
+    && /var TOLP = 0\.1 \* MESA0_PT_PER_MM \/ sN/.test(a0h))
+  // 에이전트(축1)도 같은 규칙 — 전엔 「코너 따로 + 안쪽 N」(W*(i+1)/(N+1)) 이라 같은 입력이 다른 판을 만들었다
+  ok('7f 에이전트 변 분배 = 양 끝 포함 + dedupe', /\(n === 1\) \? \(a \+ b\) \/ 2 : a \+ \(b - a\) \* i \/ \(n - 1\)/.test(agent)
+    && /var TOLP = 0\.1 \* ptPerMm/.test(agent) && !/designW \* \(ti\+1\) \/ \(sideTop\+1\)/.test(agent))
+  ok('7f 「꼭짓점」은 화면·파일명에서 사라졌다(=모서리)', !/꼭짓점/.test(a0i) && !/'꼭짓점펀칭'/.test(a0m))
+  ok('7f 파일명 세그먼트 = 위치어+총개수', /segs\.push\(pw \+ '펀칭' \+ L\.total\)/.test(a0m))
+
+  // DOM: 칸에 넣은 값 → 결과 문장. 웹 라벨과 같은 입력을 넣어 **같은 문장**인지 본다.
+  await page.click('.tab[data-tab="single"]')
+  if (await page.locator('#finBody').isHidden()) await page.click('#finToggle')
+  await page.addScriptTag({ path: sharedJs })
+  const setPunch = async (v) => {
+    for (const [id, k] of [['#pTop', 'top'], ['#pBottom', 'bottom'], ['#pLeft', 'left'], ['#pRight', 'right']]) await page.fill(id, String(v[k] || 0))
+    for (const [id, k] of [['#pcTL', 'tl'], ['#pcTR', 'tr'], ['#pcBL', 'bl'], ['#pcBR', 'br']]) await page.setChecked(id, !!(v.corners && v.corners[k]))
+    return page.locator('#punchResult').innerText()
+  }
+  const webParams = (v) => ({ side_top: v.top || 0, side_bottom: v.bottom || 0, side_left: v.left || 0, side_right: v.right || 0,
+    corner_tl: v.corners && v.corners.tl ? 1 : 0, corner_tr: v.corners && v.corners.tr ? 1 : 0, corner_bl: v.corners && v.corners.bl ? 1 : 0, corner_br: v.corners && v.corners.br ? 1 : 0 })
+  const cases = [
+    [{ top: 3, bottom: 3, left: 3, right: 3 }, '펀칭 8개(모서리 4, 4변 1)'],
+    [{ top: 3, bottom: 3 }, '펀칭 6개(모서리 4, 상하 1)'],
+    [{ top: 2, bottom: 2, left: 3, right: 1 }, '펀칭 6개(모서리 4, 좌우 1)'],   // 용준님 예시: 좌 3 의 가운데 + 우 1 = 가운데 → 「좌우 1」
+    [{ corners: { tl: true, tr: true, bl: true, br: true } }, '펀칭 4개(모서리 4)'],
+    [{ top: 2, bottom: 2, corners: { tl: true, tr: true, bl: true, br: true } }, '펀칭 4개(모서리 4)'],
+    [{ top: 4, corners: { tl: true, tr: true } }, '펀칭 4개(모서리 좌상·우상, 상 2)'],
+    [{ left: 3, right: 3 }, '펀칭 6개(모서리 4, 좌우 1)'],
+    [{ top: 1, bottom: 1 }, '펀칭 2개(상하 1)'],
+    [{ top: 5, left: 3 }, '펀칭 7개(모서리 좌상·우상·좌하, 상 3, 좌 1)'],
+  ]
+  for (const [v, want] of cases) {
+    const got = await setPunch(v)
+    ok('7f 패널 결과 ' + JSON.stringify(v), got === want, `실제 「${got}」`)
+    const web = await page.evaluate((p) => window.MES_FIN.punching(p), webParams(v))
+    ok('7f 웹 라벨과 같은 문장 ' + JSON.stringify(v), '펀칭 ' + web === got, `웹 「펀칭 ${web}」 ≠ 패널 「${got}」`)
+  }
+  const empty = await setPunch({})
+  ok('7f 비면 규칙 안내가 남는다', /펀칭 = 변마다 개수/.test(empty), empty)
+  // 행 연동 복원에서도 결과가 따라온다 — applyRowToForm 이 updatePunchResult 를 부른다
+  ok('7f 행→폼 복원·초기화가 결과를 갱신한다', (a0m.match(/updatePunchResult\(\);/g) || []).length >= 3)
+}
+
 // ── 8. 다른 PC 에서만 깨지던 축 (2026-09-08) ────────────────────────────────
 //   전부 **이 PC 에서는 재현되지 않는다** — 한글 사용자명·Z: 미연결·호스트 사망은
 //   개발 PC 에서 안 일어난다. 그래서 소스 규약으로 세는 것 말고는 세는 방법이 없다.
