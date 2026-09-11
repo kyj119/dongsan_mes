@@ -735,7 +735,9 @@ function clearErrors() {
   document.getElementById('schAddAmountErr').textContent = '';
 }
 
+var schSaveBusy = false;   // #633: 더블클릭·느린 응답 재클릭 시 동일 예정 중복 INSERT 방지
 window.schSave = async function() {
+  if (schSaveBusy) return;
   clearErrors();
   var date = document.getElementById('schAddDate').value;
   var type = document.getElementById('schAddType').value;
@@ -746,6 +748,9 @@ window.schSave = async function() {
   if (!date) { showFieldError('schAddDate', '필수 입력'); return; }
   if (amount <= 0) { showFieldError('schAddAmount', '0보다 큰 금액 입력'); return; }
 
+  schSaveBusy = true;
+  var schSaveBtn = document.getElementById('schSaveBtn');
+  if (schSaveBtn) schSaveBtn.disabled = true;
   try {
     var res = await axios.post('/api/cash-flow/schedule', {
       schedule_date: date,
@@ -764,6 +769,9 @@ window.schSave = async function() {
     }
   } catch (e) {
     showToast('오류: ' + (e.response?.data?.error || e.message), 'error');
+  } finally {
+    schSaveBusy = false;
+    if (schSaveBtn) schSaveBtn.disabled = false;
   }
 };
 

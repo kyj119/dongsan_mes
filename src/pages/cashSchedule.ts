@@ -414,7 +414,7 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
             </div>
             <div class="flex gap-2 justify-end pt-2">
               <button onclick="schCloseAddModal()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50">취소</button>
-              <button onclick="schSave()" class="ds-btn ds-btn-primary text-xs">저장</button>
+              <button id="schSaveBtn" onclick="schSave()" class="ds-btn ds-btn-primary text-xs">저장</button>
             </div>
           </div>
         </div>

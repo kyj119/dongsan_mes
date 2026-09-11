@@ -1912,7 +1912,10 @@ window.dsSkeleton = {
     });
 
     // Set initial state
-    history.replaceState({ spaUrl: window.location.pathname + window.location.search }, '', window.location.pathname + window.location.search);
+    // #622: URL 인자에 hash 를 포함한다. 빼면 이 줄이 파싱 시점에 주소창의 #tab=... 을 지워,
+    //   DOMContentLoaded 에서 hash 로 탭을 복원하는 6개 페이지가 풀 로드(새로고침·직접진입·로그인 리다이렉트)
+    //   때 항상 기본 탭으로 떨어진다. state 의 spaUrl 은 SPA 내비 비교키라 종전대로 hash 없이 둔다.
+    history.replaceState({ spaUrl: window.location.pathname + window.location.search }, '', window.location.pathname + window.location.search + window.location.hash);
 
     // 페이지 스크립트에서 코드로 이동할 때 쓰는 전역 진입점.
     //   spaNavigate 는 이 IIFE 안에 갇혀 있어 `window.spaNavigate` 를 부르던 호출부(hr.js 등)가

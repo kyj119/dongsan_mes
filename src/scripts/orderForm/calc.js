@@ -180,6 +180,10 @@
                     el.dataset.autoAmount = String(amt);
                 }
                 updateUnitPricePerEa(id);
+                // #634: 가로/세로가 바뀌면 마감 여백·서비스 참고값(calcFinishing)도 다시 그린다.
+                //   calcFinishing 은 width_/height_ 를 직접 읽는데 종전엔 여기서 안 불러 옛 규격 값이 남았다.
+                //   내부에서 마감 미선택이면 스스로 숨으므로 무조건 호출해도 안전(멱등).
+                if (typeof calcFinishing === 'function') calcFinishing(id);
                 calculateTotal();
             };
 

@@ -622,9 +622,19 @@ async function szAssignInit() {
         o.textContent = (z.zone_name || '') + (z.manager_name ? ' · ' + z.manager_name : ' · 담당 미지정');
         sel.appendChild(o);
       });
-    } catch (e) { console.warn('[storageZones] 구역 목록 로드 실패', e); }
+    } catch (e) {
+      // #630: 태블릿/키오스크 환경이라 이 GET 하나가 실패하면 종전엔 에러도 안내도 없이 빈 패널이었다.
+      console.warn('[storageZones] 구역 목록 로드 실패', e);
+      if (typeof showToast === 'function') showToast('구역 목록을 불러오지 못했습니다. 새로고침해 주세요.', 'error');
+      return;
+    }
   }
-  if (sel.options.length > 0) await szAssignLoad();
+  if (sel.options.length > 0) {
+    await szAssignLoad();
+  } else {
+    // 구역이 0개인 정상 케이스도 목록 탭처럼 안내한다(실패↔빈 상태 구분).
+    if (typeof showToast === 'function') showToast('등록된 구역이 없습니다. 먼저 구역을 추가해 주세요.', 'info');
+  }
 }
 
 async function szAssignLoad() {

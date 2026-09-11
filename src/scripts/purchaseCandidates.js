@@ -90,6 +90,8 @@ function pcqRenderSuppliers() {
         ? '<div class="text-xs text-gray-400 break-all">' + s.memos.map(pcqEsc).join(' · ') + '</div>' : '')
       + '</td>'
       + '<td class="px-4 py-2 text-xs text-gray-600">' + s.entities.map(pcqEnt).join(', ') + '</td>'
+      // #641: 헤더에 「발주 담당」(a606cdf6)이 들어갔는데 행에 셀이 없어 통장지급부터 전 컬럼이 한 칸씩 밀려 있었다.
+      + '<td class="px-4 py-2 text-xs text-gray-600">' + (s.owner_name ? pcqEsc(s.owner_name) : '<span class="text-gray-300">—</span>') + '</td>'
       + '<td class="px-4 py-2 text-right">' + pcqNum(s.paid) + '</td>'
       + '<td class="px-4 py-2 text-right text-gray-500">' + pcqNum(s.po_amount)
       + (s.po_count ? '<span class="text-xs text-gray-400"> (' + s.po_count + '건)</span>' : '') + '</td>'

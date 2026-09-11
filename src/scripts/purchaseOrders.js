@@ -885,7 +885,9 @@ function poApplyFilters(f) {
   setVal('poDatePeriod', f.datePeriod || '');
   if (f.datePeriod) { setVal('poDateFrom', poPeriodDateFrom(parseInt(f.datePeriod) || 1)); setVal('poDateTo', ''); }
   else { setVal('poDateFrom', f.dateFrom); setVal('poDateTo', f.dateTo); }
-  currentStatus = f.overdue ? 'OVERDUE' : (f.status || '');
+  // #645: overdue·review 둘 다 파생 상태다. review 를 빠뜨리면 "검수 대기만" 프리셋·기본값이
+  //   복원 때 조용히 전체 목록으로 풀린다(0612 검수 큐가 이 경로로 무력화). poReadFilters 와 대칭.
+  currentStatus = f.overdue ? 'OVERDUE' : (f.review ? 'REVIEW' : (f.status || ''));
   var ic = document.getElementById('poIncludeIntercompany');
   if (ic) ic.checked = !!f.includeIc;
   poPresetApplied = true;
