@@ -32,6 +32,13 @@ export function cardNetAmount(row: { amount: number | string | null; approval_ty
 }
 
 // ---------------------------------------------------------------------------
+// ⚠️ 미배선(WIP) — 아래 청구축 3종(NON_BILLED_REASONS·cardBillingFilterSql·cardBillingAmount)은
+//   아직 라우트가 소비하지 않는다(2026-09-11 #638 확인). 죽은 코드가 아니라 **카드사 청구액↔통장 출금액
+//   대사** 화면을 위한 인프라다: 마이그 0575 의 offset_reason 컬럼은 prod 에 있고 OFFSET_REASON_LABEL 은
+//   이미 화면에서 쓰인다. 순지출축(cardSpendFilterSql)과 뜻이 달라 한 함수로 겸할 수 없어 분리해 둔 것으로,
+//   할부·마감주기 대사(memory design-card-billing-cycle)가 배선될 때 소비한다. 테스트는 test:card-spend 에 있다.
+//   ★소비처가 계속 0 이면 이 주석부터 의심할 것 — 대사 기능이 취소됐다면 그때 함께 제거한다.
+// ---------------------------------------------------------------------------
 // 청구 기준 — 카드사가 실제로 **청구**하는 금액 (위의 순지출과 다른 축이다)
 //
 // 위 `cardSpendFilterSql` 은 「우리 장부의 비용」이라 카드로 결제한 매입(매입전표로 따로 계상)을
