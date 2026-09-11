@@ -182,12 +182,13 @@ export { expect }
 /** 신호 1~3 = 0 이어야 통과. 격하(6)는 여기서 안 본다. */
 export function expectClean(s: Signals, label = '') {
   const tag = label ? `[${label}] ` : ''
-  expect(s.pageErrors, `${tag}pageerror`).toEqual([])
-  expect(s.consoleErrors, `${tag}console.error`).toEqual([])
+  // HTTP 오류를 먼저 — 같은 사고가 콘솔엔 「Failed to load resource: 500」으로만 남아 어느 요청인지 안 보인다
   expect(
     s.httpErrors.map((e) => `${e.method} ${e.url} → ${e.status} ${e.body}`),
     `${tag}HTTP 4xx/5xx`,
   ).toEqual([])
+  expect(s.pageErrors, `${tag}pageerror`).toEqual([])
+  expect(s.consoleErrors, `${tag}console.error`).toEqual([])
 }
 
 /** 신호 4 — 화면에 새어 나온 코드 값. 「정상처럼 보이는 결함」의 가장 흔한 형태다. */
@@ -211,10 +212,20 @@ export function db<T = any>(sql: string): T[] {
   fs.writeFileSync(file, sql + '\n', 'utf8')
   let raw = ''
   try {
-    raw = execSync(
-      `npx wrangler d1 execute webapp-production --local --json --file="${file}"`,
-      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], cwd: ROOT, maxBuffer: 16 * 1024 * 1024 },
-    )
+    // 서버(workerd)와 같은 sqlite 파일을 여는 별도 프로세스라 가끔 SQLITE_BUSY(database is locked) — 짧게 물러섰다 다시
+    for (let attempt = 1; ; attempt++) {
+      try {
+        raw = execSync(
+          `npx wrangler d1 execute webapp-production --local --json --file="${file}"`,
+          { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], cwd: ROOT, maxBuffer: 16 * 1024 * 1024 },
+        )
+        break
+      } catch (e: any) {
+        const text = String(e.stderr || e.stdout || e.message)
+        if (attempt < 4 && /database is locked|SQLITE_BUSY/.test(text)) { execSync(`node -e "setTimeout(()=>{}, ${300 * attempt})"`); continue }
+        throw e
+      }
+    }
   } catch (e: any) {
     const err = String(e.stderr || e.stdout || e.message).replace(/\x1b\[[0-9;]*m/g, '').split('\n').filter((l) => /ERROR|error|SQLITE/.test(l)).join(' ').slice(0, 300)
     throw new Error(`[db] ${err || e.message}\n  SQL: ${sql}`)

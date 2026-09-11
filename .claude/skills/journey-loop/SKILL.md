@@ -1,6 +1,6 @@
 ---
 name: journey-loop
-description: 업무 여정(J0 로그인·J1 영업 주문서·J2 생산 카드 보드·J3 경리 회계반영/입금·J4 구매 발주→입고→검수·J5 재고 실사·J6 견적→주문)을 로컬 prod 스냅샷 위에서 사람처럼 실행·판정하고, 안전 수정만 자동 적용해 브랜치에 커밋하는 재귀 루프. "여정 테스트", "journey", "여정 돌려", "사람처럼 테스트", "journey:cycle" 요청 시. 한 화면 변경 검증은 verify-changes · 전 페이지 순회는 qa-audit.
+description: 업무 여정(J0 로그인·J1 영업 주문서·J1b 예외 경로·J2 생산 카드 보드 출고/취소/재출고·J3 경리 회계반영/입금·J4 구매 발주→입고→검수·J5 재고 실사·J6 견적→주문)을 로컬 prod 스냅샷 위에서 사람처럼 실행·판정하고, 안전 수정만 자동 적용해 브랜치에 커밋하는 재귀 루프. "여정 테스트", "journey", "여정 돌려", "사람처럼 테스트", "journey:cycle" 요청 시. 한 화면 변경 검증은 verify-changes · 전 페이지 순회는 qa-audit.
 ---
 
 # journey-loop — 「업무가 끝까지 되는가」를 한 명령으로 반복 확인한다
@@ -51,3 +51,6 @@ npm run journey:cycle -- --snapshot   # 로컬 D1 을 스냅샷으로 되돌리�
 - `db()` 는 SQL 을 UTF-8 파일로 넘긴다(`--command` 는 한글이 깨진다). 품목명은 띄어쓰기(`게릴라 현수막`) → LIKE.
 - 스냅샷 `entities` 는 도장·로고 base64 가 SQLITE_TOOBIG → NULL. FK 닫힘이 빠지면 배치 전체 롤백. `.wrangler` 공유라 **모든 worktree 의 로컬 D1** 이 바뀐다.
 - 러너에 `--reporter=json` 을 주면 설정 리포터가 대체돼 last.json 이 안 갱신된다. 필터 `j5|j6` 는 따옴표(셸 파이프).
+- 스냅샷엔 `permission_pages`·`role_page_permissions` 가 있어야 한다 — 없으면 ADMIN 외 계정이 전부 403. **/orders 접근권 있는 비관리자 = DESIGNER·SALES 뿐**(MANAGER 는 없음) — 「직원이 주문 넣는다」 여정은 디자이너 계정으로.
+- `db()` 는 서버와 같은 sqlite 를 다른 프로세스로 여는 것이라 가끔 `SQLITE_BUSY` — 재시도 3회. 그 순간 서버 요청이 500 을 낼 수도 있다(앱 결함이 아니라 테스트 환경).
+- 완전 출고된 주문은 보드에서 사라져 **화면에서 출고 취소에 닿을 수 없다**(P9, 판정 대기) — J2 는 API 로 환원만 검산한다. 주문서에서 거래처 없이 저장하면 앱 문구 대신 「선불/착불」 required 말풍선이 먼저 뜬다(P10) — J1b 는 선불을 고른 뒤 누른다.

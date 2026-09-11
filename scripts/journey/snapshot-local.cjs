@@ -34,6 +34,8 @@ const MASTER_TABLES = [
   'item_group_settings', 'cost_standards', 'pp_material_deductions',
   'billing_groups', 'price_policies', 'clients', 'client_item_prices', 'credit_overrides',
   'facility_zones', 'storage_zones', 'inventory', 'equipment',
+  // 역할별 페이지 권한 — 없으면 ADMIN 외 계정이 전부 403(J1b 의 MANAGER 경로가 「권한 없음」으로 막혔다, 2026-09-11)
+  'permission_pages', 'role_page_permissions',
 ]
 
 function sh(cmd, opts = {}) {
