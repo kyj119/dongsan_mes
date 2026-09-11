@@ -197,7 +197,7 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 
 ### 배포를 실제로 막는 게이트 (2026-09-10 실측)
 **「게이트가 있다」와 「게이트가 돈다」는 다른 질문이다.** `cut:butt` 는 2026-08-06부터 있었는데 한 달간 아무도 안 돌렸고, `cut:shellsync` 도 같은 상태였다(2026-09-10 등록) — **목록이 없어서 아무도 그걸 몰랐다.**
-- **CI**(push→main, `.github/workflows/deploy.yml`): tsc · build · `test:calc` · `entity-audit.mjs` · `canary:write:ci` · `smoke.cjs`(prod)
+- **CI**(push→main, `.github/workflows/deploy.yml`): tsc · build · `test:calc` · `entity-audit.mjs` · `audit:migration-number`(#639 같은 번호·같은 테이블 DDL 충돌만 차단) · `canary:write:ci` · `smoke.cjs`(prod)
 - **커밋 훅**(`pretooluse-bash.cjs`): tsc(전건 차단) · `skill-audit`·`hook-guard-selftest`·`doc-diet-audit`(해당 파일이 dirty 인 커밋만)
 - **편집 훅**(`posttooluse-edit.cjs`): `node --check`(src/scripts/*.js) · `check:dom` 기준선 회귀 — 둘 다 `exit 2` 차단
 - **`ia:deploy`**(`ia-deploy.cjs` `GATES`): cut:bleed · cut:nest · cut:butt · cut:placement · cut:smoke · **cut:shellsync** · panel:smoke · cut:e2e + ia-jsx 드리프트

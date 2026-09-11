@@ -69,6 +69,20 @@ foreach ($l in @(".dev.vars")) {
   }
 }
 
+# #639: 병렬 worktree 가 같은 마이그레이션 번호를 채번하는 사고를 막기 위해, origin/main 기준
+#   가장 큰 번호와 다음 번호를 안내한다(사람이 눈으로 채번할 때 참고). 같은 번호 자체는 무해할 때가
+#   많지만 같은 테이블 충돌은 배포를 막는다 — 감사 = npm run audit:migration-number.
+$migDir = Join-Path $wtPath "migrations"
+if (Test-Path $migDir) {
+  $nums = Get-ChildItem $migDir -Filter "*.sql" | ForEach-Object { if ($_.Name -match '^(\d{4})') { [int]$Matches[1] } } | Sort-Object
+  if ($nums.Count -gt 0) {
+    $maxNum = $nums[-1]
+    $next = '{0:D4}' -f ($maxNum + 1)
+    Write-Host ""
+    Write-Host ("  MIGRATIONS: 최신 번호 {0:D4} · 새 마이그는 {1} 부터. 채번 후 반드시 npm run audit:migration-number" -f $maxNum, $next) -ForegroundColor DarkYellow
+  }
+}
+
 Write-Host ""
 Write-Host "[new-session] ready" -ForegroundColor Green
 Write-Host "  open:    code `"$wtPath`"      # open a new VS Code / Claude session here"

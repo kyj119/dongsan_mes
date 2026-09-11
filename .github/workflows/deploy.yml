@@ -70,6 +70,12 @@ jobs:
       - name: Entity filter audit
         run: node scripts/entity-audit.mjs
 
+      # #639: 병렬 worktree 가 같은 4자리 번호를 채번한다(현재 23쌍, 대부분 무해). 같은 번호 두 파일이
+      #   같은 테이블에 같은 컬럼을 ADD / 같은 테이블을 CREATE 하면 `migrations apply` 가 둘째에서 죽어
+      #   배포가 막힌다. 무해한 중복은 통과, 그 충돌만 배포 전에 차단한다.
+      - name: Migration number collision audit
+        run: npm run audit:migration-number
+
       # #430/#608: write-path 카나리 — read-only 스모크가 구조적으로 못 잡는 부류를 막는다
       #   (0335 FK-drop 이 items INSERT 를 전면 차단했는데 SELECT 가 멀쩡해 smoke green 으로 배포된 전례).
       #

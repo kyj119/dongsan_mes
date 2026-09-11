@@ -35,6 +35,7 @@
     "audit:ia-storage": "node scripts/ia-storage-audit.cjs",
     "audit:new-items": "node scripts/new-item-audit.cjs",
     "audit:migration-drift": "node scripts/migration-drift-audit.cjs",
+    "audit:migration-number": "node scripts/migration-number-audit.cjs",
     "audit:orderform-roundtrip": "node scripts/orderform-roundtrip.cjs",
     "diagnose:finance": "node scripts/finance-diagnose.cjs",
     "diagnose:group": "node scripts/finance-diagnose.cjs --group",
