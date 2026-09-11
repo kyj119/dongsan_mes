@@ -201,10 +201,10 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 - **커밋 훅**(`pretooluse-bash.cjs`): tsc(전건 차단) · `skill-audit`·`hook-guard-selftest`·`doc-diet-audit`(해당 파일이 dirty 인 커밋만)
 - **편집 훅**(`posttooluse-edit.cjs`): `node --check`(src/scripts/*.js) · `check:dom` 기준선 회귀 — 둘 다 `exit 2` 차단
 - **`ia:deploy`**(`ia-deploy.cjs` `GATES`): cut:bleed · cut:nest · cut:butt · cut:placement · cut:smoke · **cut:shellsync** · panel:smoke · cut:e2e + ia-jsx 드리프트
-- **`ship:gate`**: verify(tsc+build) · entity-audit · **test:calc** · canary:write
-- **`/deploy-verify`**: Phase 1 tsc·build·**test:calc** → Phase 2 entity-audit → Phase 2-B `audit:migration-drift`(스키마 변경 시) → Phase 4 `smoke:prod`
+- **`ship:gate`**: verify(tsc+build) · entity-audit · **test:calc** · canary:write · **journey:gate**(J0~J6 25단계, 로컬 서버 자동 기동·≈2.5분, `SKIP_JOURNEY=1` 로만 명시 건너뜀)
+- **`/deploy-verify`**: Phase 1 tsc·build·**test:calc**·**journey:gate** → Phase 2 entity-audit → Phase 2-B `audit:migration-drift`(스키마 변경 시) → Phase 4 `smoke:prod`
 > ⚠️`verify.yml` 은 `on: pull_request` 다 — 이 프로젝트(main 직접 push)에서는 **생성 이래 0회 실행**.
-> ⚠️여기 **없는** 감사는 사람이 부를 때만 돈다: `sort-audit` · `audit:query-cost` · `audit:subquery` · `audit:unit-price-semantics` · `audit:migration-drift` · `audit:stock-ledger` · `test:symmetry` · `test:ship-stock` · `test:autodeduct` · `cut:quality` · **`test:journey`**(업무 여정 J1~J4 16단계 — 로컬 D1 전용·서버 기동 필요, 정본=`/journey-loop` 스킬. 병행테스트 진입 조건 충족 시 `ship:gate`·`/deploy-verify` 편입 예정).
+> ⚠️여기 **없는** 감사는 사람이 부를 때만 돈다: `sort-audit` · `audit:query-cost` · `audit:subquery` · `audit:unit-price-semantics` · `audit:migration-drift` · `audit:stock-ledger` · `test:symmetry` · `test:ship-stock` · `test:autodeduct` · `cut:quality`. (`test:journey` 는 2026-09-11 `ship:gate`·`/deploy-verify` 에 편입 — 정본=`/journey-loop`, 한 사이클=`npm run journey:cycle`.)
 > **게이트를 새로 만들면 이 목록에 줄을 추가한다. 추가할 자리가 없으면 그건 게이트가 아니라 스크립트다.**
 
 > 사업 도메인·역할·아키텍처·에이전트 팀·참조 문서 → `.claude/references/project-context.md`

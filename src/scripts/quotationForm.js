@@ -189,28 +189,41 @@ function setupAutocomplete(id) {
         }
     }
 
+    async function doQuotSearch() {
+        var q = input.value.trim();
+        if (!q) return;
+        try {
+            var res = await axios.get('/api/items?search=' + encodeURIComponent(q) + '&type=sales&limit=50');
+            var items = res.data.data || [];
+            if (items.length === 1) {
+                var it = items[0];
+                applyQuotItem({
+                    id: it.id, name: it.item_name, price: it.base_price || 0,
+                    unit: it.unit || 'EA', category: it.category || it.category_direct || '',
+                    pricing_method: it.pricing_method || 'FIXED',
+                    specification: it.specification || ''
+                });
+            } else if (items.length > 1) {
+                window.openItemSearchModal({ type: 'sales', search: q, onSelect: applyQuotItem });
+            }
+        } catch(e) { console.error('Item search error:', e); }
+    }
+
     input.addEventListener('input', function() {
         clearTimeout(searchTimers[id]);
         hidId.value = '';
-        var q = input.value.trim();
-        if (!q) return;
-        searchTimers[id] = setTimeout(async function() {
-            try {
-                var res = await axios.get('/api/items?search=' + encodeURIComponent(q) + '&type=sales&limit=50');
-                var items = res.data.data || [];
-                if (items.length === 1) {
-                    var it = items[0];
-                    applyQuotItem({
-                        id: it.id, name: it.item_name, price: it.base_price || 0,
-                        unit: it.unit || 'EA', category: it.category || it.category_direct || '',
-                        pricing_method: it.pricing_method || 'FIXED',
-                        specification: it.specification || ''
-                    });
-                } else if (items.length > 1) {
-                    window.openItemSearchModal({ type: 'sales', search: q, onSelect: applyQuotItem });
-                }
-            } catch(e) { console.error('Item search error:', e); }
-        }, 300);
+        if (!input.value.trim()) return;
+        searchTimers[id] = setTimeout(doQuotSearch, 300);
+    });
+
+    // Enter = 검색 실행. 주문서(itemRow.js)와 같은 규약. 이게 없으면 Enter 가 <form> 을 제출해
+    // 단가 0원 확인창이 뜨고, 「확인」을 누르면 반쯤 채운 견적이 저장된다(여정 루프 P7, 2026-09-11).
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            clearTimeout(searchTimers[id]);
+            doQuotSearch();
+        }
     });
 }
 

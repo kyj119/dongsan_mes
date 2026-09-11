@@ -14,8 +14,12 @@ description: 프로덕션 배포 실행 + 자동 검증 체인 (빌드→타입�
 npx tsc --noEmit    # 타입체크
 npm run build       # 빌드
 npm run test:calc   # 계산 규칙 값 대조 (deploy.yml 이 CI 에서 돌리는 것과 동일)
+npm run journey:gate  # 업무 여정 J0~J6(25단계) — 로컬 D1 스냅샷 위에서 사람처럼 밟는다(≈2.5분). 서버가 없으면 스스로 띄운다
 ```
 하나라도 실패하면 중단 + 에러 보고.
+
+> `journey:gate` 는 CI 에 없다(로컬 서버·스냅샷 D1 필요) — 여기와 `ship:gate` 가 유일한 배선이다. 핫픽스로 건너뛰려면
+> `SKIP_JOURNEY=1` 을 **명시**한다(찍힌다). 서버가 없어서 안 돌았는데 통과로 세는 일은 없다(exit 2). 정본 = `/journey-loop`.
 
 > ⚠️ `test:calc` 를 여기 두는 이유 — 문법이 멀쩡한 계산 오류는 tsc·build·smoke 를 **전부 통과한다**.
 > 2026-08-25 여신 리팩터링에서 파라미터가 한 칸 밀렸는데 모든 게이트가 초록불이었고 prod 배포 후
