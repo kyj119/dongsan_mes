@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-09-11T15:46:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-09-11T18:40:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,28 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **14** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음 — 이번 사이클 신규 이슈 0건) |
+| 🆕 new | **5** (`list_issues(state:OPEN,label:auto-improve)` 실측, 14→5 — 용준님이 9건 리뷰·완료 처리, 이번 사이클 신규 이슈 0건) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **555** (`search_issues(reason:completed,label:auto-improve)` 실측, 542→555) |
+| ✔️ done | **564** (`search_issues(reason:completed,label:auto-improve)` 실측, 555→564) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 1 프로덕션 헬스 (2026-09-11T18:40):**
+> - **방법**: 세션 시작 시 detached HEAD `6557073`(origin/main과 동일) → 로컬 `main`은 `eecca71`(stale, unrelated-histories) → `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인**: 직전 Area1 로그의 앵커 HEAD(`b8b7c66d`)가 이 세션 히스토리에 없음(과거 세션 간 shallow-clone/rebase 아티팩트, 실제 force-push 아님 — 같은 클래스가 이전 세션들 로그에도 반복 기록됨) → 커밋 타임스탬프 기준(`--since "2026-09-10 09:50"`)으로 대체 탐색, Area6의 최신 로그(15:46, HEAD `3e69c08`)가 그 시점까지의 전체 churn을 이미 커버했으므로 **`3e69c08..HEAD` 11커밋**을 이번 사이클 신선 churn으로 확정: UI 결함 6건 수정(`baf5b0a`, #645/#641/#634/#633/#630/#622 close) · 은행 한도입력(`ed00592`, #640 close) · cardSpend 문서(`b76c4ee`, #638 close) · **마이그 번호 충돌 게이트 신설(`908c7e5`, #639)** · 여정루프 스킬화 2건(`94e9405`·`3b5e39b`) · 로그인 한도/중복결제 수정(`681417f`) · 카드 일괄바 중복 제거(`04a9a8e`) · 여정루프 P6 발견 기록(`6557073`) · 문서 동기화 2건(`e3a22a8`·`dfc5ff5`).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 10런 전부 `conclusion:success`. 최종 HEAD(`6557073`, job 103210938953) 전 단계(typecheck·self-tests·entity audit·**migration-number 충돌 audit**·write canary·smoke) 전부 success — `908c7e5`가 신설한 게이트가 CI에 실제로 물려 즉시 통과 확인(#608류 "만들었지만 안 도는 게이트" 재발 아님).
+> - **smoke 프로브 129/129 PASS**(로그 직접 확인) — 이번 churn의 신규 UI(은행 한도입력)는 기존 `PUT/POST /api/bank/accounts` 재사용이라 신규 라우트 없음, 프로브 갭 없음. 마이그레이션 신규 0건(이번 churn은 코드/문서/게이트 스크립트뿐) — (a)/(b) 드리프트 분류 대상 없음.
+> - **#636(cashSchedule.overview 응답시간) 재확인 — 이미 owner가 해소, 재이슈 불필요**: 이번 배포 smoke 로그 = **4552ms**(예산 2000ms 대비 128% 초과, 3135→3589→3524→3850→**4552ms** 5연속 상승). 그러나 owner가 2026-09-10 close 시 **국내 직접 측정(`PROBE_URL=prod npm run audit:query-cost`) 421~424ms**를 근거로 "CI 수치는 GitHub 러너(해외)→Worker→D1 왕복거리가 순차 await 체인(15쿼리)에 곱해진 인공적 값, 실사용자 체감 아님"으로 판정·close 완료. 새 측정치도 이전 배수(약 9~14배)와 일관된 범위라 판정을 뒤집을 근거 없음 — **재이슈 대신 이 판정을 area 파일에 codify**(아래).
+> - **standing scan 1: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지.
+> - **standing scan 2: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 3: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **egress 확인**: 이 세션도 prod 직접 fetch 차단(`connect_rejected`) — 배포 job 로그 대리검증 방식(기존 codify) 재사용.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` totalCount **5**(직전 14에서 **9건이 용준님 리뷰로 completed 처리**됨 — `search_issues(reason:completed)` 555→564와 정확히 일치, `baf5b0a`가 6건·`ed00592`/`b76c4ee`가 각 1건·나머지 1건은 별도 리뷰). 잔여 5건(#646·#629·#626·#617·#616) 전부 Area1 관할 밖(Area3/4/5/6) — 재grep 불요.
+> - **backlog↔GitHub 절대값 재동기화**: open **5**(14→5) · done **564**(555→564) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화 → area-1-production-health.md에 codify**: "CI job 로그 응답시간이 예산 초과 + 상승 추세여도, owner의 국내 직접측정(PROBE_URL=prod)이 이미 정상 범위를 확인하고 판정을 닫았다면 재이슈하지 않는다 — CI 러너의 지리적 왕복거리가 순차 다중쿼리 체인에서 실측치를 9~14배까지 부풀릴 수 있고, 이 배수 자체는 owner가 이미 검증한 상수다. 판정을 뒤집으려면 배수 자체가 깨졌다는 증거(국내 재측정 필요, egress 차단 시 owner에게 요청)가 있어야 한다." — 아래 Area 파일에 추가.
+> - **백로그 트림 체크**: 사이클 로그 9건 → 이번 로그 추가 후 10건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(11커밋 churn 전부 CI green·smoke 129/129·마이그 0건·#636은 owner 기결정 재확인으로 clean), 자동수정 0건(고칠 결함 없음), done-sync: open 14→5(용준님 리뷰 9건)·done 555→564(+9)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-09-11T15:46):**
 > - **방법**: 세션 시작 시 detached HEAD `d835ef8`(origin/main과 동일)였으나 로컬 `main`은 `eecca71`(전전 세션 잔재, unrelated-histories로 merge 거부) → `git checkout -B main origin/main`으로 정합(작업트리 clean, 유실 없음). `npm ci`(0→89), `npx tsc --noEmit` clean.
