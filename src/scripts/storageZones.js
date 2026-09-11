@@ -528,7 +528,10 @@ function szCloseZoneInv() {
 }
 
 // 구역 기반 재고 실사 진입 (구 equipment 배치도 eqStartZoneCount 이관)
+var _szStartZoneCountBusy = false;   // #629: 더블탭이 DRAFT 실사 2건 만드는 것 방지
 async function szStartZoneCount(storageZoneId) {
+  if (_szStartZoneCountBusy) return;
+  _szStartZoneCountBusy = true;
   try {
     var res = await axios.post('/api/inventory-counts', { storage_zone_id: storageZoneId });
     if (res.data && res.data.success && res.data.data) {
@@ -542,6 +545,8 @@ async function szStartZoneCount(storageZoneId) {
     var msg = e.response?.data?.error || e.message;
     if (e.response && e.response.status === 403) msg = '권한이 없습니다 (관리자/매니저 전용).';
     showToast('구역 실사 생성 실패: ' + msg, 'error');
+  } finally {
+    _szStartZoneCountBusy = false;
   }
 }
 

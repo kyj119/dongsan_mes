@@ -166,13 +166,16 @@ function onCountZoneChange() {
   }
 }
 
+var _submitNewCountBusy = false;   // #629: 1초 간격 더블탭이 DRAFT 실사 2건을 만들던 것 방지
 async function submitNewCount() {
+  if (_submitNewCountBusy) return;
   var zoneEl = document.getElementById('countZone');
   var zoneId = zoneEl ? zoneEl.value : '';
   var category = zoneId ? '' : document.getElementById('countCategory').value;
   var notes = document.getElementById('countNotes').value;
   var modal = document.getElementById('countCreateModal');
 
+  _submitNewCountBusy = true;
   try {
     var res = await axios.post('/api/inventory-counts', {
       count_type: zoneId ? 'ZONE' : (category ? 'PERIODIC' : 'FULL'),
@@ -193,7 +196,11 @@ async function submitNewCount() {
     }
   } catch (e) {
     var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+    // #629: UNIQUE(count_number) 위반(연속 생성)은 원시 제약 문자열 대신 사람이 읽을 안내로.
+    if (/unique|constraint/i.test(String(msg))) msg = '방금 실사를 생성했습니다. 잠시 후 다시 시도해 주세요.';
     showToast('생성 실패: ' + msg, 'error');
+  } finally {
+    _submitNewCountBusy = false;
   }
 }
 
@@ -522,10 +529,13 @@ function icToggleAllUnassigned(master) {
   document.querySelectorAll('.ic-unassigned-chk').forEach(function(chk) { chk.checked = master.checked; });
 }
 
+var _icAssignBusy = false;   // #629: 더블탭 중복 배정 방지
 async function icAssignUnassigned(countId) {
+  if (_icAssignBusy) return;
   var ids = [];
   document.querySelectorAll('.ic-unassigned-chk:checked').forEach(function(chk) { ids.push(parseInt(chk.value, 10)); });
   if (ids.length === 0) { showToast('배정할 품목을 선택하세요.', 'info'); return; }
+  _icAssignBusy = true;
   try {
     var res = await axios.post('/api/inventory-counts/' + countId + '/add-items', { item_ids: ids, assign_zone: true });
     if (res.data && res.data.success) {
@@ -537,6 +547,8 @@ async function icAssignUnassigned(countId) {
   } catch (e) {
     var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
     showToast('배정 실패: ' + msg, 'error');
+  } finally {
+    _icAssignBusy = false;
   }
 }
 
@@ -880,11 +892,14 @@ function icCloseCandidates() {
   if (m) m.classList.add('hidden');
 }
 
+var _icCandApplyBusy = false;   // #629: 터치 더블탭 시 같은 품목 중복 편입 방지(SELECT+INSERT 사이 경합)
 async function icCandApply() {
+  if (_icCandApplyBusy) return;
   var ids = zpSelectedIds();
   if (!ids.length) return;
   var zoneId = (_icDetailData && _icDetailData.storage_zone_id) ? Number(_icDetailData.storage_zone_id) : null;
   if (!zoneId) return;
+  _icCandApplyBusy = true;
   try {
     // ①구역에 편입(재고 0 행 생성) → ②열린 실사에도 라인 추가. **둘 다** 해야 지금 화면에서 셀 수 있다.
     //   ①만 하면 다음 실사부터 뜨고, ②만 하면 이번 실사에만 있고 구역에는 안 남는다.
@@ -897,5 +912,7 @@ async function icCandApply() {
   } catch (e) {
     var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
     showToast('추가 실패: ' + msg, 'error');
+  } finally {
+    _icCandApplyBusy = false;
   }
 }
