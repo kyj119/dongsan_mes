@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-09-11T18:40:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-09-11T19:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,35 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **5** (`list_issues(state:OPEN,label:auto-improve)` 실측, 14→5 — 용준님이 9건 리뷰·완료 처리, 이번 사이클 신규 이슈 0건) |
+| 🆕 new | **3** (`list_issues(state:OPEN,label:auto-improve)` 실측, 5→3 — 용준님이 #646·#629 리뷰·완료 처리, 이번 사이클 신규 이슈 0건) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **564** (`search_issues(reason:completed,label:auto-improve)` 실측, 555→564) |
+| ✔️ done | **566** (`search_issues(reason:completed,label:auto-improve)` 실측, 564→566) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-09-11T19:20):**
+> - **방법**: 세션 시작 시 detached HEAD `5276767`(origin/main과 동일)였으나 로컬 `main`은 `eecca71`(stale, 50커밋 뒤처짐) → `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area2 방법 라인 HEAD `485ebf0`)**: 웹앱 범위(`src/routes`·`src/utils`) diff **18커밋** — 롤 발주 검수큐 3단계(1c42bb2e·6809aaad·391c626e)·#646 received_packs 역산 수정(68bca294)·entity IDOR 4건 수정(c2c9b771)·과금축 COALESCE 정정(41cd6e3, #642/#628)·로그인 계정별 rate limit+중복결제 400화(681417f8)·워크벤치 흡수실패 가시화(ee856875)·LogWatcher 패널(3862fe92)·오펀 라우터 제거(3f498350)·UI 결함 묶음(baf5b0a)·은행 한도입력(ed00592)·PER_AREA_ROLL 원가(6b9c9fe1) 등 — **전 커밋이 Area1/3/4/5/6이 이미 각자 렌즈로 정독한 구간과 겹침**(로그 대조 확인). Area2 고유 렌즈(entity_id INSERT/N+1/authMiddleware/타입불일치/dead code/`SELECT *`)로 17개 변경 파일 diff를 처음부터 직접 재확인.
+> - **`purchaseOrders/core.ts` 신설 `POST /:id/review`(검수 승인, 0612) 재검증**: `entityFilter(c,'po')`로 법인 격리 적용 확인(Area5가 이미 검증한 것과 동일 결론) — entity_id 누락 아님. `requireRole` 미적용은 같은 파일의 형제 상태전이 엔드포인트와 동형(page-permission이 실질 게이트, 기존 FP 클래스와 일치) — net-new 아님.
+> - **`inventory.ts`·`po-receive.ts` received_packs 역산(#646 수정, 68bca294) 컬럼존재성·바인드 순서 대조**: `UPDATE purchase_order_items SET ... received_packs = MAX(0, COALESCE(received_packs,0) - ?) ...` 바인드 배열(`r.recv, r.acc, r.rej, r.packs, r.packs, r.packs, r.recv, r.recv, r.poItemId, poId`)을 SQL의 `?` 순서와 1:1 대조 — CASE 분기 3개(`qty_is_estimate` 분기 2개 + quantity 분기 2개)가 각각 `packs`/`packs`/`recv`/`recv`를 정확히 소비, 개수 일치(10개 `?` = 10개 바인드). 컬럼 `received_packs`는 0610 마이그로 실재 확인(`grep -rn received_packs migrations` 매치).
+> - **`cashSchedule.ts` `getWriteEntityId` 전환(c2c9b771) 재검증**: `entityId === null` 분기가 ADMIN 전체모드(0)를 400으로 명시 차단 — 형제 mutate(`ar-payments.ts` 등)와 같은 컨벤션. auto-generate 블록의 `SELECT po.entity_id` 추가 + INSERT 바인드가 `po.entity_id`로 정확히 교체(구 `getEntityId(c)||1` 잔존 0건, `grep -n "getEntityId(c) || 1" src/routes/cashSchedule.ts` 매치 없음).
+> - **`purchaseCandidates.ts` `PUT /owners`(#643) 신규 entity 비교 재검증**: `getWriteEntityId` 아닌 `getEntityId(c)`를 써서 `myEntity !== 0`(전체모드 제외) 조건이 ADMIN 전체모드에서 타법인 담당 지정을 허용 — 같은 라우트가 `requireRole('ADMIN','MANAGER')`라 MANAGER는 자기 법인으로 막히고 ADMIN 전체모드만 예외, 의도된 설계(주석 "ADMIN 전체모드만 예외"와 일치) — 갭 아님.
+> - **`printEvents.ts` `/agents`(#625) 신규 JOIN성 매핑 N+1 확인**: `equipment` 테이블을 루프 밖에서 1회 SELECT 후 `Map`으로 in-memory 매핑(`nameById`/`nameByAgent`) — heartbeat 행마다 쿼리하는 N+1 아님, 정상 패턴.
+> - **`costCalculator.ts` `recalculateOrderCosts`(#642) COALESCE 정정 재검증**: `COALESCE(oi.pricing_method, i.pricing_method) AS pricing_method`가 `orders/core.ts:433`와 동일 별칭 순서(라인 우선) — "뒤가 앞을 덮는다" 함정(CLAUDE.md 단가축 절 명시) 재발 없음 확인.
+> - **`rateLimitMiddleware` 계정별 한도(681417f8) 재확인**: `hit()` 분리 후 IP 버킷 우선 체크 → 미초과 시에만 `perAccount` 체크, `c.req.json()` 파싱 실패는 catch로 흡수해 계정 한도만 스킵(IP 한도는 유지) — 예외 경로 안전. entity_id 무관(로그인 전 단계라 격리 대상 아님).
+> - **`workbench.ts` 흡수실패 `console.warn` 2곳(ee856875) 재확인**: 동작 변경 없이 로깅만 추가 — 타입/컴파일 영향 없음(`npx tsc --noEmit` clean에 포함 확인).
+> - **standing scan 1: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 75건·**누락 0건**(변동없음).
+> - **standing scan 2: authMiddleware recursive 스캔** — `find src/routes -name '*.ts'` 전체 재실행, 후보 7건(`publicUnsubscribe.ts`·`orders/helpers.ts`·`payroll/shared.ts`·`cron.ts`·`messagesAd.ts`·`hrSelf.ts`·`taxInvoices/helpers.ts`) 전부 기존 클래스와 일치 — **net-new 0**.
+> - **standing scan 3: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 4: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 5: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 10런 전부 `conclusion:success`(최종 HEAD `5276767` 포함).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **3**(직전 5에서 **#646·#629가 완료 처리**됨 — `search_issues(reason:completed)` 564→566과 일치) = #626(Area5)·#617·#616(Area6), 전건 Area2 관할 밖.
+> - **backlog↔GitHub 절대값 재동기화**: open **3**(5→3) · done **566**(564→566) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 이번 사이클은 새 클래스 발견 없이 기존 레시피(entity_id/N+1/authMiddleware/컬럼존재성 표준 스캔)가 18커밋 churn 전량에 그대로 적중 — owner가 같은 커밋에서 이미 정정한 항목(received_packs·entity IDOR·과금축 COALESCE)을 Area2 렌즈로 재검증해 회귀 없음만 확인.
+> - **백로그 트림 체크**: 로그 10건 → 이번 추가 후 11건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(18커밋 churn 전량 entity_id/N+1/auth/타입/dead-code 렌즈로 재확인, net-new 0 — 전부 owner가 이미 정정했거나 기존 FP 클래스와 동형), 자동수정 0건(고칠 결함 없음), done-sync: open 5→3(#646·#629 완료)·done 564→566(+2)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-09-11T18:40):**
 > - **방법**: 세션 시작 시 detached HEAD `6557073`(origin/main과 동일) → 로컬 `main`은 `eecca71`(stale, unrelated-histories) → `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
