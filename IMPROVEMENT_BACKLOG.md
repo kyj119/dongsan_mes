@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-09-12T10:35:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-09-12T11:40:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -30,6 +30,28 @@
 > - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 이번 사이클은 새 클래스 발견 없이 직전 사이클이 issue-only로 낸 발견(#646)의 수정을 데이터정합성 렌즈(바인드 순서·no-op 하위호환·정방향 대칭)로 재검증 — 기존 「증분 컬럼 도입 시 형제 취소/롤백 경로 재확인」 원칙이 정확히 적중.
 > - **백로그 트림 체크**: 사이클 로그 13건 → 임계(13건) 도달 → `npm run backlog:trim -- --check` 실행 후 트림.
 > - 신규 이슈 0건(churn 4커밋 전량 clean, #646 수정 재검증 완료), 자동수정 0건(고칠 결함 없음), done-sync: open 6(변동없음)·done 566(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
+
+> **Area 5 보안 + 인프라 (2026-09-12T11:40):**
+> - **방법**: 세션 시작 시 detached HEAD `4b60c53`였으나 로컬 `main`은 `eecca71`(stale, unrelated-histories — shallow-clone 앵커 유실 클래스, force-push 아님) → `git fetch origin main`으로 origin이 `4b60c53`로 갱신 확인 후 `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area5 방법 라인 HEAD `7806623`)**: 웹앱 보안범위(`src/routes`·`src/utils`·`src/middleware`·`index.tsx`·`wrangler.toml`·`.github/workflows`) diff **5커밋**(전체 26커밋 중) — `681417f`(로그인 rate-limit 계정별 분리+중복결제 400화)·`68bca29`(#646 수정, Area4가 이미 데이터정합성 렌즈로 바인드순서까지 검증)·`b87e8f1`(펀칭 계산축 통일, Area2/3가 이미 "순수계산·DB/인증 접근 0"으로 판정)·`908c7e5`(마이그 번호 충돌 게이트, 스크립트 신설)·`b76c4ee`(문서만). 보안 렌즈 우선순위 = ①신규 rate-limit 로직 자체 검증 ②#646 수정의 entity 격리 회귀 여부 ③GitHub Actions 워크플로 재확인.
+> - **`681417f` rate-limit 변경 전문 검증**: `rateLimitMiddleware`에 `perAccount` 옵션 추가 — 직원 로그인이 IP 5/분(NAT 뒤 여러 직원이 아침에 막히던 문제)에서 **IP 30/분 + 계정별 5/분**으로 전환. 위협모델 재확인: 단일 IP에서 여러 계정 대입은 IP 한도(30/분)로 여전히 제한, 특정 계정 무차별 대입은 계정 한도(5/분)로 그대로 제한 — 완화가 아니라 두 축으로 분리한 것(계정 스프레이 내성은 30/분으로 완화됐으나 브루트포스 내성은 불변). `c.req.json()` 파싱 실패 시 계정 한도만 스킵하고 IP 한도는 유지(catch 흡수, 안전). 포털 로그인·비밀번호변경·refresh는 기존 IP-only 한도 유지(호출 IP가 서로 다르다는 전제, 회귀 없음). `ar-payments.ts`의 `DUPLICATE_PAYMENT` 400 처리는 내부 에러 상세 노출 없이 고정 문구만 반환 — 정보노출 없음.
+> - **`68bca29`(#646 수정) 보안 렌즈 재확인**: entity 격리 로직 자체는 변경 없음(기존 `entityFilter` 게이트 상위 유지, 이번 diff는 `received_packs` 컬럼 추가 로직만) — 회귀 0.
+> - **GitHub Actions 워크플로 4종 재확인(`deploy.yml`·`verify.yml`·`e2e.yml`·`backup.yml`)** — `pull_request_target`/`workflow_run`이 포크 PR의 신뢰되지 않은 코드를 시크릿과 함께 실행하는 클래스 0건(`verify.yml`은 일반 `pull_request`라 포크에 시크릿 미노출·게다가 이 프로젝트는 PR 자체를 안 씀). `deploy.yml`은 `push:[main]`+`workflow_dispatch`만이라 직접 push 권한자만 트리거 — 시크릿(`CLOUDFLARE_*`·`SMOKE_*`) 참조 전부 `${{ secrets.X }}` 정상 패턴, 하드코딩 폴백 0건. `permissions:` 블록 미선언은 default token이 checkout(읽기)에만 쓰이고 이 워크플로들이 `GITHUB_TOKEN`으로 쓰기 작업(이슈/PR 생성 등)을 하지 않아 실질 위험 없음(신규 이슈 아님, 명시적 최소권한 선언은 개선 여지지만 현재 실질 노출 없음 — 자동수정 대상 아님).
+> - **#626(fix-auth 세션 보류 보안항목 2건, Area5 소관) 상태 확인**: 코멘트 확인 — (1) 평문 비밀번호는 owner가 prod 실측(활성 1계정)으로 위험수용 결정 완료(PROJECT_STATUS 실사용전환 트리거 목록 편입) (2) PII 키 분리는 결정 대기 유지. 이슈가 이미 트래킹 중이고 owner 판정이 최신이라 이번 사이클 추가 조치 없음(재이슈·중복코멘트 금지).
+> - **XSS standing scan**: `node scripts/check-xss.mjs` 재실행 — **108건**(직전 사이클 117건에서 9건 감소, owner의 UI 결함 일괄수정 커밋(`baf5b0a` 등)이 형제 escapeHtml도 같이 정리한 부수효과로 추정). 이번 churn 5커밋이 건드린 파일(`src/scripts/orderForm/finishing.js`·`src/scripts/shared/finishingLabel.js`·`src/routes/inventory.ts`·`po-receive.ts`·`rateLimit.ts`·`ar-payments.ts`) 중 후보 목록에 매치 0건 — net-new sink 없음.
+> - **standing scan 1: 시크릿 폴백** `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43` 1건뿐(기존 FP, 변동없음).
+> - **standing scan 2: `body.password ||` 기본값** → 0건.
+> - **standing scan 3: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 75건·**누락 0건**(변동없음).
+> - **standing scan 4: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 5: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 6: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 10런 전부 `conclusion:success`(최종 HEAD `4b60c53` 포함).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **6**(#649·#648·#647·#626·#617·#616, 변동없음) — #626만 Area5 관할(위에서 상태 재확인 완료), 나머지는 Area3/6 관할.
+> - **backlog↔GitHub 절대값 재동기화**: open **6**(변동없음) · done **566**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-5-security-infra.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 이번 사이클은 새 클래스 발견 없이 기존 레시피(rate-limit 변경 검증·부분픽스 완전성·GitHub Actions 신뢰경계 확인)가 그대로 적중.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 9건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(5커밋 churn 전량 rate-limit/entity/XSS/시크릿 렌즈로 재확인, net-new 0), 자동수정 0건(고칠 결함 없음), done-sync: open 6(변동없음)·done 566(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
 >
 
 > **Area 3 UX/기능 감사 (2026-09-12T09:48):**
