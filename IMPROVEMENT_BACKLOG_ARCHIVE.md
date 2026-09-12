@@ -1,3 +1,103 @@
+## 📦 2026-09-12 이관분 (1차 자동 트림 — scripts/backlog-trim.cjs)
+
+> 사이클 로그 5건. 원본 순서(시간 역순) 보존. 활성 파일은 최근 8건 유지.
+
+> **Area 2 코드 품질 심층 분석 (2026-09-10T16:10):**
+> - **방법**: 세션 시작 시 detached HEAD `485ebf0`(origin/main과 동일)였으나 얕은 clone(50커밋) → `git checkout main`(47커밋 뒤처짐) + `git merge --ff-only origin/main`으로 정합 + `git fetch --unshallow`(2,870여 커밋 확보). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area2 방법 라인 HEAD `9bc875c`)**: 웹앱 범위 diff **26커밋** — Area1(09:50)이 이미 `b8b7c66d`까지 프로덕션 헬스 렌즈로 훑었고, 그중 `97bca6e5`·`3503b3bd`·`c1b381f0`(2026-09-09 11:5x)은 애초에 **Area2 스타일 N+1 배치화 자체 수정 커밋**이라 전문 재검증(entity_id·batch 순서·엔티티 스코프)만 수행. Area1 종료 이후 신선 9커밋(`27dfe634`~`485ebf0`, 09:50~15:27)은 코팅원가/판재/롤소요량 가격엔진 리팩터 + 발주목록 검색바 UI — DB write 없는 순수계산 유틸·마이그(리터럴 UPDATE)·프론트 전용이라 Area2 렌즈(entity_id/N+1/auth/타입) 해당 코드 자체가 없음.
+> - **`97bca6e5`(GET 3경로 순차 await→batch) 전문 재검증**: `cardExpenses.ts` payment-schedule·`cashFlow.ts` calendar·`prices.ts` item-supplier-prices 3곳 전부 `entityFilter` 절 batch 이전과 동일 유지, 결과 배열 인덱스가 stmt push 순서와 1:1 대응(별도 메타 배열로 매핑 보존) 확인 — 회귀 없음. `prices.ts`는 tie-break(`po.order_date DESC, po.id DESC`)도 유지.
+> - **`3503b3bd`+`c1b381f0`(카드 CSV import 행별 SELECT+INSERT → 80청크 batch) 재검증**: 중복확인 SELECT가 `entity_id` 없이 `card_id`만 스코프하지만, 핸들러 상단 `#485` 카드 소속 검증(`cardCheck` — 요청 법인 소속 카드인지 확인 후에만 도달)으로 이미 법인 격리됨 확인, `entity-audit.mjs` ALLOWLIST에 사유 명시(`card_id로 스코프, 직전 cardCheck가 법인 검증`) — 정당한 예외.
+> - **authMiddleware recursive 스캔** — `find src/routes -name '*.ts'` 전체 재실행: 후보 7건(`publicUnsubscribe.ts`·`orders/helpers.ts`·`payroll/shared.ts`·`cron.ts`·`messagesAd.ts`·`hrSelf.ts`·`taxInvoices/helpers.ts`) 전부 기존 클래스와 일치(helpers 3종=Map.get FP·cron=agentKeyMiddleware·hrSelf=scoped-token·public=의도적 공개) — **net-new 0**(25회차 이후 baseline 유지).
+> - **standing scan 1: `npm run audit:entity`** — 검사 134파일·entity테이블 SELECT 75건·**누락 0건**(변동없음).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지.
+> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **standing scan 5: `npm run audit:structure`** — 신규 P1급 없음(정렬 tie-break 미적용·계산로직 밀집·중복 블록 모두 기존 baseline, 이번 churn 파일 미해당).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 8런(HEAD `485ebf0` 포함) 전부 `conclusion:success`.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` totalCount **25**(변동없음, #613~644 전건 일치) — Area2 소관 열린 이슈(#640·#638·#637·#632·#628·#627) 대상 파일 전부 이번 churn 밖(cashSchedule.ts·bankMatchPolicy.ts·ar-helpers.ts·cardSpend.ts·waste.ts·budgets.ts 무변경) 확인 후 재grep 생략.
+> - **backlog↔GitHub 절대값 재동기화**: open **25**(변동없음) · done **542**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md `line N` 잔여참조는 이미 서술식 각주(「컬럼-diff bridge」 등)만 존재, 이번 사이클도 재확인 0건. `messagesAd.ts`(nested sub-router, 부모 `.use('/*', authMiddleware, requireRole)` 상속 + 자체 `requireRole('ADMIN')` 재게이트)는 barrel/scoped-token/public 어디에도 명시 안 된 4번째 정당 클래스이나 단일 사례(코드베이스 전체 1건)라 codify 보류 — 재발 시 codify.
+> - **백로그 트림 체크**: 아래 실행.
+> - 신규 이슈 0건(entity_id/N+1/authMiddleware 스캔 net-new 0, 신선 churn 대부분 DB-write 없는 순수계산·UI 전용이라 Area2 렌즈 해당 코드 없음, 기존 Area2 소관 open 이슈는 이번 churn 밖이라 재검증 불필요), 자동수정 0건(고칠 결함 없음), done-sync: open 25(변동없음)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
+
+> **Area 1 프로덕션 헬스 (2026-09-10T09:50):**
+> - **방법**: 세션 시작 시 detached HEAD `b8b7c66`(origin/main과 동일) → `git checkout main` + `git merge --ff-only origin/main`(34커밋 fast-forward, 로컬 main이 뒤처져 있었음) + `git fetch --unshallow`. `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area1 방법 라인 HEAD `eecca716`)**: 웹앱 범위 diff **16커밋** — 대부분(cashflow §6까지)은 Area2~6이 이미 각자 렌즈로 정독. Area1 고유 렌즈(CI 헬스·응답시간·마이그 드리프트)로 이번 사이클 신규 churn(단가축 정정 마무리·은행 pending·주문 라인 스냅샷·판재 자규격·코팅 BOM원가·N+1 배치화 3건·8월이관 담당법인 정정)에 집중.
+> - **🔴 신규 발견 → #644 — 0603(`product_materials.material_role` 컬럼) prod 미적용 시 주문 원가재계산·자동차감이 무음 실패**: `ab0eae5c`(코팅 BOM 원가 반영)가 신설 컬럼을 `orderLineCost.ts:270`·`autoDeductInventory.ts:124`에서 명시 SELECT — #483/#484 (b)-risk 클래스와 동형(#624 0545/0548과 같은 패턴). 소비처 6곳(`orders/create·update·lifecycle·operations.ts`, `quotations.ts`) 전부 try/catch 비차단이라 **주문 기능 자체는 안 죽고 원가·마진 스냅샷만 조용히 계산 안 됨**(0603이 고치려던 "코팅 원가 0" 문제 재현) — smoke(GET 전용) 구조적으로 무음. `0602`/`0603` 마이그 코멘트에 `0604`(같은 날, 명시적으로 "prod 적용 완료" 기록)와 달리 prod 적용 확인 문구가 없어 egress 제약상 이 세션은 직접 검증 불가 → issue-only(스키마 반영 여부 확인 + 필요 시 `db:migrate:prod`는 owner 실행).
+> - **#636(cashSchedule.overview 응답시간) 4차 측정 — 여전히 재현**: 최신 배포(`b8b7c66d`, job 102698470509) job 로그 직접 대조 = **3850ms**(예산 2000ms 대비 93% 초과, smoke `PASS 129/129`). 3135→3589→3524→**3850ms** 4연속 예산초과, 이번 사이클 신규 churn(코팅 BOM)은 cashflowEngine과 무관 확인 — 신규 이슈 대신 기존 이슈에 코멘트로 누적(재무엔진 로직 변경, 자동수정 대상 아님).
+> - **#624(0545/0548 마이그 드리프트) 부분 재확인**: 0545 대리검증 프로브(`printEvents.agents`)가 최신 smoke에서 `200 177ms PASS` — **0545 prod 적용 확인**(코멘트로 기록, 이슈는 0548 미확인분 남아 open 유지).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 10런 전부 `conclusion:success`. 최종 HEAD(`b8b7c66d`, job 102698470509) 전 단계(typecheck·self-tests·entity audit·write canary·smoke 129/129) success.
+> - **egress 확인**: 이 세션도 prod 직접 fetch 차단 — 배포 job 로그 대리검증 방식(Area1 codify) 재사용.
+> - **standing scan 1: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지.
+> - **standing scan 3: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(OPEN,label:auto-improve)` totalCount **24**(신규 등록 전) 기존 24건 전건 일치 확인 후 #644 신규 생성.
+> - **backlog↔GitHub 절대값 재동기화**: open **25**(24→25, #644 신규) · done **542**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-1-production-health.md `line N` 잔여참조 재확인(grep 오탐 1건뿐 — "baseline"의 부분일치, 실제 참조 0건 재확인). 기존 「(a)/(b) 마이그 드리프트」·「CI job 로그=query-cost 대리지표」 패턴이 이번 발견(#644) 모두 그대로 적용, 신규 codify 불요.
+> - **백로그 트림 체크**: 사이클 로그 8건 → 이번 로그 추가 후 9건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 1건(#644 0603 material_role prod 미적용 위험, M, 스키마검증이라 issue-only), 자동수정 0건(전부 owner 확인·재무로직 대상), done-sync: open 24(24→25)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
+
+> **Area 6 자기 진화 (2026-09-10T06:20):**
+> - **방법**: 세션 시작 시 detached HEAD `9dda3b7`(origin/main과 동일, Area5 종료 시점 백로그 커밋 1개만 더 앞섬) → `git checkout main` + `git merge --ff-only origin/main`(26커밋 fast-forward). `git fetch --unshallow`(shallow clone→2,860여 커밋 확보). `npm ci`(0→81), `npx tsc --noEmit` clean, `npm audit --omit=dev` 0건.
+> - **churn 확인(앵커 = 직전 Area6 방법 라인 HEAD `a1c943d`)**: 웹앱 범위 diff **11커밋**(eecca716~4a13e0fb) — 전부 Area1~5가 이번 세션 이미 각자 렌즈로 정독한 대출/cashflow §6/은행매칭/청구단가축/입고평균원가·구역·판매가 웨이브와 동일 창(신선 churn 0). 비-웹앱 축(LogWatcher/IllustratorAutomat/caps-worker/workers/queue) churn = **0커밋**(62회차 규칙 대상 없음).
+> - **「churn 목록에 나열됨 ≠ Read됨」(#600) 브리지 적용 — 11커밋 개별 문단 커버리지 대조**: 각 해시를 두 백로그 파일에서 grep해 자기 문단(구체 로직·라인 인용)으로 다뤄졌는지 확인. `eecca716`(대출 QM6)·`18e22902`(cashflow §6, #640 발견)·`47ffce49`(bank 리터럴 UPDATE)·`9bc875c2`(가격축, migrations)·`3907d501`(bankPendingReason.ts, Area5 "bank.ts +186줄" 문단)·`79642f82`(0600 라인 스냅샷, #642 발견) = 기존 로그에 개별 언급 확인. **`5a73dffa`(inventoryZone 배정 구역 입고 목적지 반영)·`e3eb6c20`(판매품목 base_price 입고 시 원가로 덮어쓰기 방지)·`ee78cf97`(평균원가 공백 채우기, recalculate-avg 덮어쓰기→채우기 전환)·`1fe56196`(bank 탭 숫자가 기간필터 무시)·`4a13e0fb`(판재 자 규격 cm 오저장, 0601)는 목록 나열만 있고 개별 Read 흔적 없음** → Area6가 5건 전문 직접 diff Read.
+> - **5건 직독 결과 — net-new 결함 0, 전부 사전에 CLAUDE.md 원칙(자기교정 산식·조용한 격하 인지·단일 정본화)을 스스로 준수**: ① `zoneByInventorySql` 공유 함수화로 게이트(축2)와 목적지(입고/차감)가 갈라질 여지 제거, prod 사전측정 1,106품목×2법인 결과변화 0건 확인 후 적용 + `test:inventory-zone` 26→39케이스. ② `judgeBasePriceSync` 순수함수로 판매품목 `base_price`(고객노출단가)를 매입단가로 덮지 않게 격리, prod 사전측정 367개 판매품목 중 135종 10%+ 이동(115종 하락, 대부분 정확히 −40%=매입가÷0.6) 확인 후 적용 + `client_item_prices`는 별도로 항상 기록(매입이력 손실 없음) + `test:purchase-price` 29케이스. ③ `judgeAvgCostFill`이 `avg<=0`일 때만 채우는 자기교정 조건(재실행 2회차 무동작) + SQL WHERE 이중가드 + 발주입고·수동입고 두 형제 경로 동시 적용(한쪽만 고치면 나머지 조용히 공백 잔존하는 #377류 위험을 이 커밋 자신이 피함) + `recalculate-avg` 무조건 덮어쓰기(entity 없는 items 테이블에 entity 필터를 걸어 "동산에서 눌러 선명 원가까지 바꾸는" 버그 동반)도 같은 판정으로 교체, prod 실측상 그 엔드포인트가 지금까지 0건 변경(원장 IN행 1건뿐+단가0) 확인 + `test:avg-cost` 30케이스. ④ `buildTxScope` 단일 헬퍼로 목록·집계(`/stats`)가 같은 범위(계좌·기간·입출금)를 보게 통일, 반환필드명을 `clause`로 유지해 `entity-audit.mjs` 정적감사가 격리 인식하도록 명시 주석. ⑤ 0601 마이그레이션 — 3*6/4*8(자) 오저장 18건을 cm로 환산, `amount` 불변·`unit_price`만 새 면적으로 되나눔(0596과 동일 규칙), 의심 3건(전표뭉침·A2모순·부착명패)을 용준님께 개별 보고 후 18건 전부 진행 확정된 근거가 마이그 주석에 기록됨, `_bak_0601_board_spec` 백업 + 재실행 멱등(`unit_price <> 목표값` 가드). **5건 모두 prod 영향치를 사전 실측하고 자기교정/원자적 batch/형제 경로 동시적용을 스스로 지킨 사례** — 기존 「누적 캐시」·「단가는 축이다」·「조용한 격하」 원칙이 코드 작성 시점에 이미 내재화된 것으로 판단, 신규 codify 대상 아님(원칙이 예방한 사례이지 원칙이 빠진 사례가 아님).
+> - **open≠unfixed 재확인(close-pending 캐시 + 거울 규칙)**: `cashSchedule.ts`는 이번 11커밋 중 `18e22902`(cashflow §6)에서 변경됐으나(32회차 캐시 무효화 조건 충족) 직접 재grep — `getEntityId(c) || 1`이 여전히 406·567줄 잔존(#632/#635 대상 라인 이동, 로직 동일), `POST /schedule/check-overdue`(592줄)의 UPDATE/COUNT도 여전히 entity 절 없음(#631) = **#631/#632/#635/#636 전부 정상 open(미픽스), 오탐 아님**. `orderForm/itemRow.js`는 이번 churn에 없음(단가표기 커밋은 `calc.js`/`parent.js`만) → `width_${id}`/`height_${id}` oninput이 여전히 `calcItem(id)`만 호출 = **#634 정상 open(미픽스)**. #627/#628/#629/#630 대상 파일도 이번 churn 0건(close-pending 캐시, 32회차) 확인 후 재grep 생략.
+> - **close-pending 재확인**: #616·#617은 owner 코멘트가 "실기 확인 대기"를 명시(64회차 FP룰) — 사이클 수와 무관하게 정상 open, 재통지 불요. #639(마이그 번호 중복)는 이번 신규 마이그 5건(0597~0601)에 중복 재유입 0건(`ls migrations | sort | uniq -d` 대조) 확인.
+> - **standing scan 1: done-sync 절대값 재동기화(리터럴 쿼리)** — `search_issues("repo:kyj119/dongsan_mes label:auto-improve is:closed reason:completed")` **542**(변동없음) · `reason:not_planned` **4** + `reason:duplicate` **2** = rejected **6**(변동없음) · `list_issues(state:OPEN,label:auto-improve)` **24**(변동없음, #613·#616·#617·#622·#624~643 전건 일치).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 8런(HEAD `9dda3b7` 포함) 전부 `conclusion:success`.
+> - **🧬 SKILL 강화**: 없음 — 이번 사이클은 #600 브리지가 정확히 의도대로 작동(목록엔 있으나 미개별화된 5커밋을 식별→직독→net-new 0 확정)한 실증. area-6-self-evolution.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재).
+> - **백로그 트림 체크**: 아래 처리.
+> - 신규 이슈 0건(11커밋 churn 전체가 #600 브리지+기존 로그 대조로 clean 확정, 비-웹앱 축 churn 0, open 재검증분(#631/#632/#634/#635/#636/#627~630) 전부 정상 미픽스, #639 마이그 중복 재유입 0), 자동수정 0건(고칠 결함 없음), done-sync: open 24(변동없음)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
+
+> **Area 5 보안 + 인프라 (2026-09-09T21:47):**
+> - **방법**: 세션 시작 시 detached HEAD `a6d9753`(origin/main과 동일)였으나 로컬 `main`은 `eecca71`(25커밋 뒤처짐) → `git checkout main` + `git merge --ff-only origin/main`으로 정합 + `git fetch --unshallow`(2,860여 커밋 확보). `npm ci`(0→81), `npx tsc --noEmit` clean, `npm audit --omit=dev` 0건.
+> - **churn 확인(앵커 = 직전 Area5 방법 라인 HEAD `8c752b2`)**: 웹앱 범위(src/migrations/scripts) diff **27커밋** — Area1~4·6이 이번 세션 이미 각자 렌즈로 정독한 대출/차량자산·청구단가축·cashflow §6 웨이브와 동일 창(보안 렌즈로는 이번이 최초 통과). 신규 파일 diff는 마이그레이션 18건 + `src/scripts/shared/displayUnitPrice.js`(순수 표시 포맷터, DB 접근 0) 뿐 — **신규 라우터 파일은 0건**, 기존 라우터(`bank.ts`·`purchaseCandidates.ts`·`cashSchedule.ts`·`inventory.ts`·`inventoryValuation.ts`·`orders/*`·`printEvents.ts`·`purchaseOrders/po-receive.ts`·`quotations.ts`)의 증분만 직독.
+> - **🔴 신규 발견 → #643 — `PUT /api/purchase-candidates/owners`가 `body.entity_id`를 검증 없이 INSERT/UPDATE에 사용, MANAGER가 타법인 발주담당을 임의 지정 가능(IDOR)**: `7c1cf06f`(09-08)이 신설한 이 엔드포인트는 `requireRole('ADMIN','MANAGER')`만 게이트하고 `entityFilter`/`getEntityId(c)`를 전혀 참조하지 않은 채 `Number(body.entity_id)`를 그대로 `supplier_owners` PK(entity_id, client_id)의 일부로 써서 `ON CONFLICT DO UPDATE`까지 수행 — 같은 파일 `GET /owners`가 `entityFilter(c,'po')`로 자기 법인만 조회하는 것과 강한 비대칭(형제가 격리하면 격리 의도 증거, Area5 기존 규칙). MANAGER는 `getEntityId(c)`가 항상 구체값이라(0은 ADMIN 전체모드 전용) 정상 UI 경로(프론트가 서버 제공 `r.entity_id`만 재전송)로는 안 열리지만, API 직접 호출로는 자기 법인이 아닌 `entity_id`를 넣어 타법인 거래처의 담당자 배정을 덮어쓸 수 있음. **`npm run audit:entity`가 이 클래스를 못 잡는 이유를 스크립트 자신이 이미 명시**(`entity-audit.mjs:27` "이 스크립트는 SELECT만 검사한다") — INSERT/UPDATE에 attacker-controlled entity_id를 직접 바인딩하는 패턴은 정적 게이트의 기존 문서화된 사각. 기존 codify된 「하위자원 append 엔드포인트 write-isolation」(2026-06-19, `POST /:id/items`류 — 자식 INSERT의 entity는 entityFilter-검증된 부모값에서 파생, body 신뢰 금지)과 같은 원리가 URL param이 아닌 **평평한 body 필드** 형태에도 적용됨을 재확인한 사례 — 별도 신규 클래스는 아니라 SKILL 신규 codify는 보류(기존 규칙이 이미 커버, 사각은 이미 스크립트 자체가 인지). **issue-only(#643, S)** — IDOR 클래스는 이 프로젝트 컨벤션상 owner 검토 후 반영(egress 차단으로 런타임 검증 불가 + 기존 IDOR=owner 워크플로).
+> - **`bank.ts` +186줄(대출계좌 자동매칭·미반영사유 칩·마이너스통장 한도) 전문 직독 — net-new 취약점 0건**: 신규 SQL 전부 `requireRole('ADMIN')` 라우터 상속 + `entityFilter(c,'l')`/`(c,'expense_categories')` 일관 적용. `pendingReasonSql('bt')`/`reasonCountSql`(PENDING_REASON_KEYS 상수 기반 인터폴레이션, 주석이 스스로 "키 목록은 상수라 인터폴레이션 안전"이라 명시)과 `pending_reason` 쿼리파라미터는 화이트리스트(`isPendingReasonKey`) 통과 후 `?` 바인딩 — SQL 인젝션 표면 없음. `credit_limit` PUT은 `hasOwnProperty` 존재판정 + `Number()` 강제, entity 격리는 기존 `ef.clause`(#437에서 이미 픽스된 패턴) 유지. `loanAccountMatch.ts`/`bankPendingReason.ts` 신규 유틸 둘 다 순수함수(`grep DB.prepare` 0건).
+> - **XSS standing scan**: `node scripts/check-xss.mjs`(문서화된 레시피 버전, 2026-09-06부터 매 사이클 편입) 재실행 후 이번 churn 파일(bank.js/cards/misc.js/orders.js/purchaseCandidates.js/zonePicker.js) 후보 전수 대조 — 전부 이미 escape 적용됐거나(escapeHtml/escHtml/pcqEsc/window.escapeHtml) 이번 churn 밖(FP 기존 라인, `git diff 8c752b2..HEAD`로 미변경 확인) — **net-new 미이스케이프 sink 0건**. 신규 owner 배정 UI(`purchaseCandidates.js` `pcqRenderOwners`)의 `<option>` value/텍스트·client_name/entity_name/note 전부 `pcqEsc` 일관.
+> - **standing scan 1: 시크릿 폴백** `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43` 1건뿐(기존 FP, 변동없음).
+> - **standing scan 2: `body.password ||` 기본값** → 0건.
+> - **standing scan 3: `npm run audit:entity`** — 검사 134파일·entity테이블 SELECT 74건·**누락 0건**(변동없음, 위 #643은 이 스캔의 문서화된 사각 밖 클래스).
+> - **standing scan 4: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지.
+> - **standing scan 5: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 6: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 8런(HEAD `a6d9753` 포함) 전부 `conclusion:success`.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` totalCount **23**(신규 등록 전) 기존 23건 전건 일치(#613·#616·#617·#622·#624~642) 확인 후 #643 신규 생성.
+> - **backlog↔GitHub 절대값 재동기화**: open **24**(23→24, #643 신규) · done **542**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-5-security-infra.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). #643은 기존 「하위자원 append 엔드포인트 write-isolation」·「형제 비대칭 IDOR」 두 클래스의 합성 사례라 별도 codify 불요(원리는 이미 문서화, `entity-audit.mjs`의 SELECT-only 사각도 스크립트 자신이 이미 주석으로 인지).
+> - **백로그 트림 체크**: 아래 실행.
+> - 신규 이슈 1건(#643 purchase-candidates owners PUT의 body.entity_id 미검증 IDOR, S, issue-only), 자동수정 0건(IDOR=owner 워크플로 대상), done-sync: open 23(23→24)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
+
+> **Area 4 데이터 정합성 (2026-09-09T15:55):**
+> - **방법**: 세션 시작 시 detached HEAD `bd57b39`(origin/main과 동일 커밋이나 얕은 clone, 50커밋) → `git checkout main` + `git merge --ff-only origin/main`(변동 없음, 이미 최신) + `git fetch --unshallow`(2,860여 커밋 확보). `npm ci`(0→81), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area4 방법 라인 HEAD `8f55dd0`)**: 웹앱 범위 diff **29커밋** — Area1·2·3·5·6이 이번 세션 이미 각자 렌즈(응답시간·코드품질·UX·보안·자기진화)로 정독한 은행매칭/차입금/차량자산/청구단가 웨이브와 동일 창. **데이터정합성 렌즈로는 신규 마이그 18건(`0586`~`0601`) 전수 직독이 이번이 최초**.
+> - **`db:bootstrap:ci` 전량 재적용** — 이번 사이클 신규 18건 포함 전체 마이그레이션 **전건 ✅**(CHECK/FK 위반 0). 차량할부 스케줄(0593)의 `INSERT ... SELECT ... WHERE EXISTS(loans.id)` 가드(2c20b546/9954d32f)가 빈 부트스트랩 DB에서 의도대로 no-op 확인(Area6가 이미 확인한 자체수정과 동일 메커니즘, 데이터정합성 렌즈로 재확인).
+> - **entity_id 표본 검증(로컬 D1 직접 쿼리)**: `loans`/`loan_payments`/`fixed_assets` 전부 NULL·0 없음, `loan_payments.entity_id` vs 부모 `loans.entity_id` 불일치 0건(스포티지 8488=entity2, 나머지 entity1 전부 일치) — 신규 loans/vehicle 웨이브 net-new entity 오기록 0.
+> - **0586 supplier_owners 신설 — CLAUDE.md 두 원칙을 스스로 준수**: 시드 쿼리의 `ROW_NUMBER() OVER (... ORDER BY SUM(poi.amount) DESC, sz.id ASC)`가 처음부터 고유키 tie-break(`sz.id`)를 포함(「목록 정렬」 원칙), 귀속 구역 산식이 `utils/inventoryZone.RECEIVING_ZONE_JOIN_SQL`과 동일해야 함을 주석에 명시(마이그가 TS를 못 불러 사본이 생긴 것일 뿐 정본은 TS쪽) — net-new 결함 없음.
+> - **0600 order_line_pricing_snapshot 백필 완전성 확인 + 소비처 대조 중 🔴 신규 발견**: 마이그 자체(컬럼 추가+백필)는 안전(금액 미변경, item_id NULL 340건은 NULL=FIXED 의미로 문서화). 소비처 전수(`grep -rn pricing_method src/routes src/utils`) 대조 결과 `orders/core.ts:433`은 `COALESCE(oi.pricing_method, i.pricing_method)`로 스냅샷을 정확히 우선하는데, **`utils/costCalculator.ts:112-123` `recalculateOrderCosts()`는 스냅샷 컬럼을 전혀 SELECT하지 않고 `i.pricing_method`(품목의 오늘 축)만 읽는다**. 이 함수는 `order_items.amount`가 NULL/공백인 옛 라인에 한해 `computeLineAmount()`로 금액을 재구성해 `margin_rate`를 계산(DB에는 amount 자체가 아니라 cost/margin만 쓰기)하는데, 이때 넘기는 축이 라인 스냅샷이 아니라 품목 현재 축이라 **0600이 막으려던 시나리오(품목 축 변경 후 과거 라인이 "오늘의 축"으로 재구성)가 마진 계산에서 재현**된다. 호출처가 주문 생성·수정·복사·견적전환·상태전이·`POST /costs/backfill` 전부(9곳)라 파급 범위가 넓고, 백필은 정확히 "amount 없는 옛 행"을 표적으로 삼는 기능이라 0600의 실제 유발 사례(UV판재·거치대 재배치)와 같은 품목이 지나가면 마진 리포트가 조용히 틀어짐 — **issue-only(비즈니스 로직=마진 산식 변경, #642 등록)**. `routes/prices.ts`·`quotations.ts`·`items.ts` 등 나머지 소비처는 라인 스냅샷 개념이 아직 없던 견적/품목 자체 조회라 해당 없음(정상).
+> - **중복 마이그레이션 번호 재발 확인(#639)**: 이번 18건에서도 2쌍 추가(`0587` 차입금계정↔구역담당권한, `0596` 단가축정정↔QM6대출) — 대상 테이블·컬럼 비겹침으로 우연히 무해(부트스트랩 전건 통과로 확인). 신규 이슈 대신 **#639에 재발 코멘트 등록**(누적 9쌍, 근본수정 미착수 상태 유지 확인).
+> - **standing scan 1: `npm run audit:entity`** — 검사 134파일·entity테이블 SELECT 74건·**누락 0건**(변동없음).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 4: `npm audit --omit=dev`** — 🔴 **1건 신규**(변동, 직전까지 0건 유지) — `hono@<4.13.5` moderate CVE 3종(toSSG 경로탈출 불완전수정·parseBody 무제한 중첩→메모리고갈·쿼리파서 URL fragment 이후 파라미터 읽기). `npm audit fix`는 wrangler↔workers-types peer 충돌(#613, 기존 known)로 막혀 **`npm install hono@^4.13.5`로 hono만 단독 승격**(4.13.7, package.json 범위 `^4.13.2` 내). typecheck·build·`test:orderline`(30/30) 확인 후 **직접 커밋+push**(`6c31919b`) — 재적용 후 `npm audit --omit=dev` 0건 재확인.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 6런(직전 HEAD `bd57b39` 포함) 전부 `conclusion:success`. 이번 사이클 자동수정 커밋(`6c31919b`)의 배포는 조회 시점 `in_progress` — 다음 사이클(Area5)이 착수 시 재확인.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` totalCount **22**(신규 등록 전) 기존 22건 전건 일치(#613·#616·#617·#622·#624~641) 확인 후 #642 신규 생성.
+> - **backlog↔GitHub 절대값 재동기화**: open **23**(22→23, #642 신규) · done **542**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 이번 발견(라인 스냅샷 도입 후 소비처 일부 미적용)은 기존 「축 드리프트 sweep」·「형제 미완결」 클래스의 변형(스냅샷 컬럼 자체는 신설이 완전했으나 *소비처* sweep이 미완결)이라 별도 codify 불요 — 기존 sweep 레시피("신규 컬럼 추가 시 grep으로 소비처 전수 대조")가 이번에도 그대로 작동해 발견함.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 10→11건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 1건(#642 recalculateOrderCosts가 0600 라인 과금축 스냅샷 미반영 — margin_rate가 옛 라인에서 품목 현재축으로 재구성됨, S, 마진 산식 변경이라 issue-only), 자동수정 1건(hono 4.13.2→4.13.7 dependency bump, moderate CVE 3종 해소, `6c31919b`), done-sync: open 22(22→23)·done 542(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
+
+
+---
 ## 📦 2026-09-11 이관분 (1차 자동 트림 — scripts/backlog-trim.cjs)
 
 > 사이클 로그 5건. 원본 순서(시간 역순) 보존. 활성 파일은 최근 8건 유지.
