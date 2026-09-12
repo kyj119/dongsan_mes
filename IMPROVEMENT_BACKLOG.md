@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-09-11T19:20:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-09-12T09:48:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,30 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **3** (`list_issues(state:OPEN,label:auto-improve)` 실측, 5→3 — 용준님이 #646·#629 리뷰·완료 처리, 이번 사이클 신규 이슈 0건) |
+| 🆕 new | **6** (`list_issues(state:OPEN,label:auto-improve)` 실측, 3→6 — 이번 사이클 신규 #647·#648·#649) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **566** (`search_issues(reason:completed,label:auto-improve)` 실측, 564→566) |
+| ✔️ done | **566** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 3 UX/기능 감사 (2026-09-12T09:48):**
+> - **방법**: 세션 시작 시 detached HEAD `8d2666c`(origin/main과 동일)였으나 로컬 `main`은 `eecca71`(stale, 104커밋 뒤처짐, shallow clone) → `git fetch --unshallow` 후 `eecca71`이 `8d2666c`의 조상임을 재확인(얕은 clone 아티팩트, 실제 force-push 아님) → `git checkout main` + `git merge --ff-only origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area3 방법 라인 HEAD `b1876e0f`)**: `src/pages`+`src/scripts` 좁힌 화면 churn **7커밋**(전부 09-11 당일) — 대부분이 **Area3 자신이 지난 사이클 발견한 항목의 수정 커밋**: `baf5b0ac`(#645/#641/#634/#633/#630/#622 6건 일괄수정)·`efcce156`(#629 더블탭 가드)·`04a9a8e6`(카드 일괄바 통합, journey-loop P2)·`ed005925`(#640 마통 한도입력). 순수 신규 기능은 `3862fe92`(장비 LogWatcher 패널, #625 필드 소비)·`b87e8f1d`(펀칭 계산축 통일 — 카드 라벨/주문서/패널/에이전트)·`6356cf9c`(journey-loop 도구, 비-사용자화면) 3건.
+> - **6건 수정 전문 재검증 — 전부 정확히 고쳐짐, 회귀 0**: `poApplyFilters`가 이제 `f.review`도 복원(`purchaseOrders.js:890`, `poReadFilters`와 대칭 확인) = #645 확정 해소. `purchaseCandidates.js:94` `owner_name` 셀이 헤더(`purchaseCandidates.ts:56` "발주 담당")와 열 순서 일치 = #641 해소. `orderForm/calc.js:186` `calcItem`이 `calcFinishing`도 호출 = #634 해소. `cashSchedule.js:738-774` `schSaveBusy` 플래그+버튼 disable = #633 해소. `storageZones.js:633,641` 로드 실패/빈 목록 각각 다른 토스트 = #630 해소. `shell.js:1918` `history.replaceState`가 `location.hash` 보존 = #622 해소. `inventoryCount.js`/`storageZones.js` 4개 버튼(`submitNewCount`·`icAssignUnassigned`·`icCandApply`·`szStartZoneCount`) 전부 `_xxxBusy` 가드 확인 = #629 해소. `bank.js:1793,1836-1838` 마통 한도 입력이 수정 시 채워지고(`toLocaleString`) 저장 시 `parseMoney`로 역파싱 + 마통 해제 시 `null` 전송, `bank.ts:517` 체크박스 `onchange`가 입력칸 hidden 토글 = #640 해소, 신규 갭 없음.
+> - **신규 기능 3건 UX 점검 — net-new 결함 0건**: `equipment.js:163-218` 에이전트 패널 = 로딩 스피너·에러 시 "다시 시도" 버튼·빈 목록 안내 문구·우선순위 정렬(`eqAgentActionRank`) 전부 구현, `escapeHtml` 일관 적용. 펀칭(`b87e8f1d`) = 주문서 그리드에 "변 개수는 양 끝(모서리) 포함" 안내 문구 신설 + `finishing-label-selftest` 60케이스 + `panel-smoke` 216/216 자체 검증 포함 — 사용자 오인 여지를 커밋 자체가 막음. journey-loop 도구는 개발자 전용(`npm run journey:cycle`)이라 UX 감사 대상 아님.
+> - **새 axios 호출 전수 확인(`git log -p b1876e0f..HEAD -- src/scripts src/pages`)**: 신규 2건 전부 GET(`items?...type=sales`·`print-events/agents`) — 신규 destructive write/confirm 커버리지 갭 없음.
+> - **standing scan 1: `showConfirm(msg, function(){...})` 콜백 오용(#426 클래스)** — `grep -rn "showConfirm(" src/scripts` 전수 재확인, 오용 0건(전부 `await`/`.then()`/`resolve()` 정상 패턴, 변동없음).
+> - **🔴 journey-loop 미결(⏳) 항목 3건 발견 → GitHub Issue로 승격**: `docs/journeys/PROPOSALS.md`(journey-loop 스킬이 여정 실행 중 발견해 용준님 판정 대기 중이던 항목, auto-improve 큐에는 없었음)에서 판정 `⏳`(보류 아닌 미결) 3건을 검토해 중복 확인(`search_issues` 3건 전부 무매치) 후 신규 이슈 등록:
+>   - **#647(M) — 완전 출고된 주문의 출고 취소 UI 부재**: 카드 보드가 `SHIPPED` 카드를 숨기고, 보드 모달 "출고 취소"는 부분출고 건에만 노출, `/cards/:id`엔 취소 버튼 없음. 환원 로직(`restoreStockLinesOnUnship`)은 세 경로 다 있는데 완전출고 건에 닿을 화면이 없음(P9).
+>   - **#648(S) — 주문서 필수입력 브라우저 말풍선이 엉뚱한 필드(선불/착불) 지목**: 거래처 미선택 시 앱 메시지 대신 배송방법 하위 select의 native required 말풍선이 먼저 떠 앱 자체 검증 체인이 아예 안 돎(P10).
+>   - **#649(S) — 견적서 품목 검색이 자재 필터 누락**: `type=sales`만 걸고 `excludeType=MATERIAL` 미적용 — 주문서 6행 vs 견적서 50행, 영업 확인 필요(P8).
+>   - 판정 ①고침 완료된 P1/P2/P5/P7(같은 사이클) 및 ③유지 확정 P3/P4/P6은 이미 코드/문서에 반영됐거나 owner 판정 완료라 재등록 대상 아님 — `⏳`만 승격.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **3**(#626·#617·#616, 신규 등록 전) 전건 일치, 전부 Area3 관할 밖(Area5/Area6) 확인 후 #647~649 신규 생성.
+> - **backlog↔GitHub 절대값 재동기화**: open **6**(3→6, #647·#648·#649 신규) · done **566**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md 상단 `line N` 경고 각주 재확인(이미 서술식 참조만 존재, 잔여 0건). 이번 사이클은 새 오탐 클래스 발견 없이 기존 레시피(6건 수정 재검증·showConfirm 오용 scan·axios 신규호출 전수)가 그대로 적중 + **journey-loop(별도 스킬)의 미결 발견을 auto-improve 큐로 브리지**한 최초 사례 — 두 시스템이 각자 발견을 쌓다 한쪽(PROPOSALS.md ⏳)이 리뷰 사이클을 못 타는 사각지대를 이번에 메움. 재발 방지 codify 검토: 다음 Area3 사이클부터 `docs/journeys/PROPOSALS.md`의 `⏳` 행을 standing scan 항목으로 추가할 가치 있으나, 이번이 1회차라 패턴 확정 전 — 다음 사이클에 journey-loop가 새 `⏳`를 남기면 그때 codify.
+> - **백로그 트림 체크**: 아래 실행.
+> - 신규 이슈 3건(#647 출고취소 UI 부재 M·#648 검증 말풍선 오지목 S·#649 견적 자재필터 누락 S, 전부 journey-loop `⏳` 브리지 승격, issue-only), 자동수정 0건(전부 UI/UX 결정 동반이라 정책상 제안), done-sync: open 3→6(#647~649 신규)·done 566(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-09-11T19:20):**
 > - **방법**: 세션 시작 시 detached HEAD `5276767`(origin/main과 동일)였으나 로컬 `main`은 `eecca71`(stale, 50커밋 뒤처짐) → `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
