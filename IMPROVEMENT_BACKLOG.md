@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-09-12T11:40:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-09-12T13:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,26 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **566** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 6 자기 진화 (2026-09-12T13:10):**
+> - **방법**: 세션 시작 시 HEAD `e155373`(origin/main과 동일) → `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area6 방법 라인 HEAD `3e69c08`)**: 웹앱 범위 diff **26커밋**. `#600` 브리지(「churn 목록에 나열됨 ≠ Read됨」) 적용 — 26개 해시를 백로그에서 grep해 개별 커버리지 대조: 5건은 Area1~5 자신의 사이클 로그 커밋(자기참조, 검토 대상 아님) · 17건은 다른 Area가 이미 구체 로직(파일·라인)으로 정독 완료(`b87e8f1`펀칭축 통일·`68bca29`#646수정·`681417f`rate-limit·`908c7e5`마이그게이트 등) · **4건이 어느 로그에도 언급 0건**: `d0b5b6b`(문서만, PROJECT_STATUS 배너)·`8b49fdb`(journey e2e 테스트+스냅샷 fixture만, 프로덕션 코드 0)·`f659a1a`·`7a23c95`(IA 축, 아래 직접 검토).
+> - **`f659a1a`(레거시 JSX 폐기+empty-catch 게이트 367곳) 직접 검토 — net-new 결함 0건**: 구 `mes-core.jsx`/`mes-sheet.jsx`(07-28 진입점 폐기 후에도 9월까지 편집이 이어지던 죽은 코드)를 저장소에서 제거(Z: `_retired/`로 이동, git 이력 보존) + impose 탭 잔재(43줄 분기·6개 lookup 경고) 제거 + 신설 `audit:empty-catch` 게이트(사유 없는 빈 catch 차단)를 편집훅·커밋훅·`ia:deploy` GATES 3곳에 배선 — 이 세션에서 `npm run audit:empty-catch` 재실행 = **367곳 전부 사유 있음, 통과**. `cut:butt`(53건)·`cut:placement`(38건) 재실행 전부 PASS(회귀 0). `cut:smoke`/`panel:smoke`는 이 샌드박스의 Playwright가 `chromium_headless_shell-1194`만 보유(프로젝트 요구=1217, 리비전 불일치)라 미실행 — 코드 결함이 아니라 이 원격 환경의 브라우저 버전 고정 한계(README 기존 안내와 동일 클래스), owner PC 실행 시 커밋 메시지에 이미 기록된 자체검증(367/367·220·548)을 신뢰.
+> - **`7a23c95`(cut 배포 도구 버전 미스매치 수정) 직접 검토**: `cut-main.js`/`mes-lock.jsx`가 사유 주석만 바뀌고 버전번호가 그대로라 `ia:deploy`가 배포 거부하던 것을 버전 bump(0.85.0→0.86.0, 1.1.0→1.1.1)로 해소 — 동작 변경 없음, `npm run cut:shellsync` 재실행 30/30 PASS.
+> - **비-웹앱 축 standing scan(#616/#617 클래스)**: `git log 3e69c08..HEAD -- LogWatcher IllustratorAutomat caps-worker workers queue`로 별도 재확인 — 이번 사이클 신규 churn은 위에서 이미 직접 검토한 IA 2건(`f659a1a`·`7a23c95`)뿐, LogWatcher(C#/PowerShell 축) 신규 커밋 0건. 직전 62회차가 발견한 #616/#617(LogWatcher 파서 클래스)은 이번 churn과 무관, 재검토 대상 아님.
+> - **close-pending 캐시 재확인**: #616·#617 — `updated_at` 08-31 이후 변동 없음(코멘트 수 2건 그대로), owner가 "장비 롤아웃+실기 확인 대기"를 이미 명시했으므로 64회차 FP룰대로 재통지 불요. #626 — Area5가 이번 사이클 직전(11:40)에 이미 owner 판정 최신 확인 완료, 추가 조치 없음.
+> - **standing scan 1: done-sync 절대값 재동기화(리터럴 쿼리)** — `search_issues("repo:kyj119/dongsan_mes label:auto-improve is:closed reason:completed")` **566**(변동없음) · `reason:not_planned` **4** + `reason:duplicate` **2** = rejected **6**(변동없음) · `list_issues(state:OPEN,label:auto-improve)` **6**(#649·#648·#647·#626·#617·#616, 변동없음).
+> - **standing scan 2: `npm run test:calc`** 26항목 체인 — 전항목 PASS(회귀 0, 이번 churn에 계산축 변경 없음).
+> - **standing scan 3: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 75건·**누락 0건**(변동없음).
+> - **standing scan 4: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 5: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 6: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 10런 전부 `conclusion:success`(최종 HEAD `e155373` 포함).
+> - **backlog↔GitHub 절대값 재동기화**: open **6**(변동없음) · done **566**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-6-self-evolution.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 이번 사이클은 새 클래스 발견 없이 기존 3개 레시피(#600 브리지·비-웹앱 축 scan·close-pending 캐시)가 그대로 적중 — #600 브리지가 26커밋 중 4건의 미검토 후보를 정확히 골라냈고, 그중 IA 2건은 이미 자체 게이트(empty-catch/cut:butt/cut:placement/cut:shellsync)로 커밋 시점에 검증되어 있었음을 재확인.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 10건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(26커밋 churn 전량 #600 브리지+비웹앱축 scan으로 clean 확정, IA 2건 직접검토 net-new 0), 자동수정 0건(고칠 결함 없음), done-sync: open 6(변동없음)·done 566(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 4 데이터 정합성 (2026-09-12T10:35):**
 > - **방법**: 세션 시작 시 detached HEAD `fa55ecc`(origin/main과 동일) → `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
