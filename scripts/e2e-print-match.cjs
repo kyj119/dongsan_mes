@@ -50,6 +50,9 @@ const PROD_NAME = 'E2E 출력매칭 테스트 제품'
 const RUN = Date.now().toString(36).toUpperCase()
 const FILE_NAME = `E2EMATCH-${RUN}.pdf`
 const FILE_PATH = `Z:/e2e/${FILE_NAME}`
+// E 시나리오는 **다른 파일명**을 쓴다 — A~D 는 같은 이름을 일부러 공유해 모호 판정을 시험하므로,
+// 같은 이름을 쓰면 「수정해도 살아남는가」가 그 모호 판정에 가려 판별이 안 된다.
+const FILE_NAME_E = `E2EEDIT-${RUN}.pdf`
 
 let TOKEN = ''
 let KEY = ''
@@ -116,9 +119,10 @@ function nextTime() {
   clock += 1
   return `2026-09-08 ${String(9 + clock).padStart(2, '0')}:00:00`
 }
-async function postPrint() {
+async function postPrint(fileName) {
+  const fn = fileName || FILE_NAME
   return api('POST', '/api/print-events', {
-    agent_id: 'e2e-agent', equipment_id: 1, file_path: FILE_PATH, file_name: FILE_NAME,
+    agent_id: 'e2e-agent', equipment_id: 1, file_path: `Z:/e2e/${fn}`, file_name: fn,
     print_status: 'OK', print_completed_at: nextTime(),
     output_width: 1000, output_height: 2000, copy_total: 1, event_kind: 'PRINT',
   }, { 'X-Agent-Key': KEY })
@@ -196,6 +200,29 @@ async function shipmentReady(orderId) {
     const e4 = await postPrint()
     check('★남은 하나에 붙는다', e4.data?.data?.card_number === D.card?.card_number,
       `matched=${e4.data?.data?.card_number} expected=${D.card?.card_number}`)
+    // ── E. 주문서 수정 — 라인이 통째로 교체돼도 링크가 살아남는가 ────────
+    //   `PUT /orders/:id` 는 무관한 필드만 고쳐도 `order_items` 를 **전량 delete+reinsert** 한다.
+    //   종전에는 파일맵의 라인 참조를 끊기만 하고 되붙이지 않아, 주문서를 한 번 수정하면
+    //   그 파일의 출력완료가 영영 카드에 안 붙었다(2026-09-14 수정 · CLAUDE.md §파일↔주문 연결).
+    console.log(`${C.d}  E. 주문서를 수정해도 링크가 살아남는가${C.x}`)
+    const E = await makeOrder(prod.id, 'E'); made.push(E)
+    await api('POST', '/api/print-events/file-map', {
+      order_number: E.orderNumber, file_seq: '001', file_name: FILE_NAME_E, order_item_id: E.orderItemId,
+    }, { 'X-Agent-Key': KEY })
+    const putRes = await api('PUT', `/api/orders/${E.orderId}`, {
+      client_id: 1, delivery_date: future(), notes: 'e2e 출력매칭 E (수정됨)',
+      items: [{ item_id: prod.id, item_name: PROD_NAME, quantity: 1, unit_price: 1000, width: 100, height: 200 }],
+    })
+    check('주문서 수정 성공', putRes.data?.success === true, `${putRes.status} ${putRes.text.slice(0, 120)}`)
+    const eItems = arr((await api('GET', `/api/orders/${E.orderId}`)).data?.data?.items)
+    check('라인이 실제로 교체됐다(id 변경)', eItems[0]?.id !== E.orderItemId,
+      `old=${E.orderItemId} new=${eItems[0]?.id}`)
+    const eCard = arr((await api('GET', `/api/cards?order_id=${E.orderId}&limit=10`)).data?.data)[0]
+    const e5 = await postPrint(FILE_NAME_E)
+    check('★주문서를 수정해도 출력완료가 카드에 붙는다', e5.data?.data?.card_matched === true,
+      `matched=${e5.data?.data?.card_matched} card=${e5.data?.data?.card_number}`)
+    check('수정된 주문의 카드가 출력완료', (await cardStatus(eCard?.id)) === 'PRINT_DONE',
+      `status=${await cardStatus(eCard?.id)}`)
   } finally {
     // ── 정리 ────────────────────────────────────────────────────────────
     for (const o of made.reverse()) {

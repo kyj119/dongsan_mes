@@ -15,6 +15,7 @@ npx tsc --noEmit    # 타입체크
 npm run build       # 빌드
 npm run test:calc   # 계산 규칙 값 대조 (deploy.yml 이 CI 에서 돌리는 것과 동일)
 npm run journey:gate  # 업무 여정 J0~J6(25단계) — 로컬 D1 스냅샷 위에서 사람처럼 밟는다(≈2.5분). 서버가 없으면 스스로 띄운다
+npm run test:local-e2e  # 서버가 필요한 게이트 4종(수정·삭제 대칭 / 출고 재고 / 자동차감 원장 / 출력→카드 매칭). journey 가 띄운 서버를 그대로 쓴다
 ```
 하나라도 실패하면 중단 + 에러 보고.
 

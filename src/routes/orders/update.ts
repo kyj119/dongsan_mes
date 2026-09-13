@@ -305,6 +305,21 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
       ORDER BY oi.sort_order ASC, oi.id ASC, f.id ASC
     `).bind(id).all()
 
+    // ★파일맵 재연결(2026-09-14) — #597 과 같은 이유지만 더 중요한 축이다.
+    //   `print_file_map.order_item_id` 는 **이력이 아니라 동작하는 배선**이다: 출력완료 이벤트가
+    //   카드에 닿는 역추적(`printEvents.cardIdsForOrderItems`)이 이 값 하나에 걸려 있다.
+    //   종전에는 라인 교체가 NULL 로 끊기만 하고(아래) 되붙이는 코드가 없어, 주문서를 한 번 수정하면
+    //   그 파일의 출력완료가 **영영 카드에 안 붙었다**. 카드 보존 경로는 끊지도 않아 **죽은 id** 가
+    //   그대로 남았다(AUTOINCREMENT 라 오폭은 없지만 링크는 똑같이 죽는다).
+    //   → 두 경로 모두 여기서 미리 잡아 둔다. 정본 = CLAUDE.md §파일↔주문 연결.
+    const { results: savedFileMaps } = await c.env.DB.prepare(`
+      SELECT m.id AS map_id, m.order_item_id AS old_item_id, oi.item_id, oi.sort_order
+      FROM print_file_map m
+      JOIN order_items oi ON oi.id = m.order_item_id
+      WHERE oi.order_id = ?
+      ORDER BY oi.sort_order ASC, oi.id ASC, m.id ASC
+    `).bind(id).all()
+
     // #601: 반품(RMA) 라인 — return_items.order_item_id 는 NOT NULL + RESTRICT(NO ACTION)라
     //   #597식 NULL 해제가 불가 → 전량 백업→삭제 후 신규 라인에 재삽입(#124/#597과 같은
     //   item_id+sort_order 매칭). 안 하면 라인 재작성 DELETE가 FK로 500(반품 걸린 주문 수정 불가).
@@ -381,7 +396,8 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
         c.env.DB.prepare('UPDATE designer_intakes SET order_item_id = NULL WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').bind(id),
         // #597: order_ai_files.order_item_id RESTRICT(0516) 해제 — 행 보존, 신규 라인 삽입 후 재연결
         c.env.DB.prepare('UPDATE order_ai_files SET order_item_id = NULL WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').bind(id),
-        // 파일맵의 라인 참조도 끊는다 (core.ts:687 하드삭제와 대칭) — 죽은 order_item_id 는 autoCheckCardItem 이 아무 라인도 못 찾게 만든다
+        // 파일맵의 라인 참조도 끊는다 (core.ts:687 하드삭제와 대칭) — 죽은 order_item_id 는 autoCheckCardItem 이 아무 라인도 못 찾게 만든다.
+        //   ★끊는 코드의 짝 = 아래 파일맵 재연결(2026-09-14). 여기만 있고 짝이 없으면 배선이 이력으로 격하된다.
         c.env.DB.prepare('UPDATE print_file_map SET order_item_id = NULL WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').bind(id),
         c.env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(id),
       ])
@@ -639,6 +655,36 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
       if (fileStmts.length > 0) {
         await c.env.DB.batch(fileStmts)
       }
+    }
+
+    // ★파일맵 재연결 — #597 과 같은 매칭 규칙(item_id+sort_order → item_id 폴백).
+    //   다만 **매칭 실패는 DELETE 가 아니라 NULL** 이다: `print_file_map` 행은 파일명↔주문번호 학습
+    //   인덱스라 라인이 사라져도 `resolveCard` 2차(file_name)가 여전히 읽는다. 지우면 그 학습이 사라져
+    //   같은 파일이 다시 와도 아무 데도 못 붙는다(order_ai_files 는 라인이 없으면 유령 행이라 지우는 게 맞다).
+    if ((savedFileMaps || []).length > 0) {
+      const { results: newItemsForMaps } = await c.env.DB.prepare(`
+        SELECT id, item_id, sort_order FROM order_items WHERE order_id = ? ORDER BY sort_order, id
+      `).bind(id).all()
+      const mapClaimedIds = new Set<number>()
+      const mapResolvedByOldItem = new Map<number, number | null>()
+      const mapStmts: D1PreparedStatement[] = []
+      for (const m of (savedFileMaps as any[])) {
+        if (!mapResolvedByOldItem.has(m.old_item_id)) {
+          let mapMatched = (newItemsForMaps || []).find(
+            (oi: any) => !mapClaimedIds.has(oi.id) && oi.item_id === m.item_id && oi.sort_order === m.sort_order
+          )
+          if (!mapMatched) {
+            mapMatched = (newItemsForMaps || []).find((oi: any) => !mapClaimedIds.has(oi.id) && oi.item_id === m.item_id)
+          }
+          if (mapMatched) mapClaimedIds.add((mapMatched as any).id as number)
+          mapResolvedByOldItem.set(m.old_item_id, mapMatched ? ((mapMatched as any).id as number) : null)
+        }
+        const newMapItemId = mapResolvedByOldItem.get(m.old_item_id)
+        mapStmts.push(
+          c.env.DB.prepare('UPDATE print_file_map SET order_item_id = ? WHERE id = ?').bind(newMapItemId ?? null, m.map_id)
+        )
+      }
+      if (mapStmts.length > 0) await c.env.DB.batch(mapStmts)
     }
 
     // #601: 반품(RMA) 재삽입 — 신규 라인 매칭(item_id+sort_order → item_id 폴백, #124/#597 규칙)

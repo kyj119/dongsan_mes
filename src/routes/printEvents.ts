@@ -377,6 +377,17 @@ async function autoCheckCardItem(db: D1Database, cardId: number, orderItemId: nu
       // 주문 상태 동기화
       if (card.order_id) {
         try {
+          // ★출고 준비 전파(2026-09-14) — 정본 = `cards/lifecycle.ts:107` 의 같은 UPDATE.
+          //   여기가 그 로직을 복사해 오면서 **이 한 단계만 빠뜨렸다**: 웹에서 카드를 PRINT_DONE 으로
+          //   바꾸면 라인이 출고 준비로 서는데, 같은 전환이 **에이전트(LogWatcher) 경로**로 들어오면
+          //   서지 않았다. 그러면 `cards/queries.ts:954` 의 「카드 안 붙은 제작 라인」 판정에 계속 걸려
+          //   출력이 끝난 주문이 출고 단계에서 미완성으로 남는다. 게이트 = `test:print-match` A'.
+          await db.prepare(`
+            UPDATE order_items SET shipment_ready = 1
+            WHERE order_id = ?
+              AND COALESCE(shipment_ready, 0) = 0
+              AND id IN (SELECT ci.order_item_id FROM card_items ci JOIN cards c ON c.id = ci.card_id WHERE c.order_id = ? AND c.status = 'PRINT_DONE')
+          `).bind(card.order_id, card.order_id).run()
           // syncOrderStatus는 cards.ts 내부 함수라 직접 호출 불가 → 동일 로직 적용
           const { results: siblingCards } = await db.prepare(
             "SELECT status FROM cards WHERE order_id = ? AND status != 'CANCELLED'"
@@ -523,9 +534,20 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
     const primaryIdxRaw = resolvedList.findIndex((r) => r.cardId || r.cardNumber)
     const primaryIdx = primaryIdxRaw >= 0 ? primaryIdxRaw : 0
     const primary = resolvedList[primaryIdx] || { cardId: null, cardNumber: null, orderNumber: null, orderItemId: null }
-    const cardNumber = primary.cardNumber
     const orderNumber = primary.orderNumber
     const cardId = appliedIds[primaryIdx] ?? primary.cardId ?? null
+    // ★흡수 학습 행은 `card_number` 가 NULL 이다 — 파일을 주문 라인에 붙이는 시점에는 카드가 아직
+    //   없기 때문이다(workbench.ts 흡수 경로). cardId 는 `cardIdsForOrderItems` 역추적으로 풀리는데
+    //   번호만 비어서, `print_events` 행과 응답이 **카드번호를 잃은 채** 저장됐다(목록·검색
+    //   `pe.card_number LIKE` 가 통째로 사각). 번호의 정본은 카드이므로 여기서 채운다(2026-09-14).
+    //   ⚠️합판 멤버(`nest_members`)의 번호는 아직 비워 둔다 — 멤버는 `card_id` 를 함께 싣고 있어
+    //   읽는 쪽에서 풀 수 있고, 멤버마다 조회를 더하면 한 이벤트가 N+1 이 된다.
+    let cardNumber = primary.cardNumber
+    if (!cardNumber && cardId != null) {
+      const cnRow = await c.env.DB.prepare('SELECT card_number FROM cards WHERE id = ?')
+        .bind(cardId).first<{ card_number: string | null }>()
+      cardNumber = cnRow?.card_number ?? null
+    }
 
     // 멤버별 매칭 결과를 nest_members 에 실어 저장 — 미매칭 멤버를 웹에서 집어낼 수 있어야
     // "판에 들어갔는데 주문에 안 붙은 건"을 회수할 수 있다 (P3 연결 UI 의 입력).
