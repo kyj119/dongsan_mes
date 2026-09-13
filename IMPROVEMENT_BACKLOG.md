@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-09-13T09:43:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-09-13T10:35:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,22 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **566** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-09-13T10:35):**
+> - **방법**: 세션 시작 시 detached HEAD `288d0be`(origin/main과 동일) → 로컬 `main`은 stale(`eecca71`) → `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area2 방법 라인 HEAD `5276767`)**: `git log 5276767..288d0be`가 **7커밋**이지만 `src/`·`migrations/` 전체에 대한 `git diff --stat`이 **완전 공백** — 이번 윈도우는 auto-improve 자기순환 chore 커밋(Area1·3·4·5·6) 5건 + journey-loop 문서 커밋(`4b60c53`, PROJECT_STATUS만) 1건뿐, 코드 변경 자체가 0건. Area2 고유 렌즈(entity_id/N+1/authMiddleware/타입불일치/dead code/`SELECT *`)를 적용할 신규 diff가 없음.
+> - **standing scan 1: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 75건·**누락 0건**(변동없음).
+> - **standing scan 2: authMiddleware recursive 스캔** — `find src/routes -name '*.ts'` 전체 재실행, 후보 7건(`publicUnsubscribe.ts`·`orders/helpers.ts`·`payroll/shared.ts`·`cron.ts`·`messagesAd.ts`·`hrSelf.ts`·`taxInvoices/helpers.ts`) 직전 사이클과 정확히 동일 목록 — **net-new 0**.
+> - **standing scan 3: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 4: `npm run branch:clean`** — 최초 실행 시 로컬 `main`이 stale이라 SAFE-absorbed 1건으로 오탐(직전 사이클엔 없던 값) → `git checkout -B main origin/main` 정합 후 재실행하니 SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 로컬 브랜치 stale 아티팩트였을 뿐 실제 정리 대상 아님(다른 Area 로그가 반복 기록한 "세션 시작 시 로컬 main stale" 클래스와 동형, 이번엔 branch:clean 판정에도 영향을 준다는 점만 신규 확인).
+> - **standing scan 5: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 10런 전부 `conclusion:success`(최종 HEAD `288d0be` 포함).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **6**(#649·#648·#647·#626·#617·#616, 변동없음) — 전건 Area2 관할 밖(Area3/5/6).
+> - **backlog↔GitHub 절대값 재동기화**: open **6**(변동없음) · done **566**(`search_issues(reason:completed)` 재확인, 변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 이번 사이클은 코드 churn 0건이라 새 클래스 발견 기회 자체가 없었음 — `branch:clean`이 세션 시작 시 로컬 `main` stale 상태에 민감하다는 점만 확인(다른 standing scan은 영향 없음).
+> - **백로그 트림 체크**: 사이클 로그 11건 → 이번 추가 후 12건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(코드 churn 0건, 재확인할 diff 자체가 없음), 자동수정 0건, done-sync: open 6(변동없음)·done 566(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-09-13T09:43):**
 > - **방법**: 세션 시작 시 detached HEAD `dbfc031`(origin/main과 동일) → 로컬 `main`은 stale → `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
