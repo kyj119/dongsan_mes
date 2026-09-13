@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-09-13T11:52:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-09-13T13:05:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,22 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **566** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 4 데이터 정합성 (2026-09-13T13:05):**
+> - **방법**: 세션 시작 시 detached HEAD `6d7239f`(origin/main과 동일) → 로컬 `main`은 stale(`eecca71`) → `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area4 사이클 최종 HEAD `fa55ecc`)**: `git log fa55ecc..HEAD` = 7커밋이지만 전부 auto-improve 자기순환 chore(Area1·2·3·5·6) + journey-loop round2 문서 커밋(`4b60c53`, `PROJECT_STATUS.md`만) — `git diff --stat fa55ecc..HEAD -- src/routes src/utils migrations`가 **완전 공백**. Area4 렌즈(고아 레코드·상태 불일치·중복·entity_id NULL·인덱스)를 적용할 신규 데이터/스키마 diff 자체가 없음.
+> - **standing scan 1: `npm run audit:migration-number`** — 파일 628개, 중복 번호 **23쌍**(직전 사이클 기록 20쌍에서 증가 — 병렬 worktree 채번 충돌, #639에서 이미 codify된 무해 클래스), **같은 테이블 DDL 충돌 0건**(배포 차단 대상 없음).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **prod 직접조회 축(`--remote` 스크립트)**: 이 세션엔 `CLOUDFLARE_API_TOKEN` 미설정 — prod 데이터 직접조회 불가(직전 사이클과 동일 제약). 코드/마이그 diff 분석(공백 확인)으로 대체.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 10런 전부 `conclusion:success`(최종 HEAD `6d7239f` 포함).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **6**(#649·#648·#647·#626·#617·#616, 변동없음) — 전건 Area4 관할 밖(Area3/5/6).
+> - **backlog↔GitHub 절대값 재동기화**: `search_issues` 리터럴 쿼리 재확인 — open **6**(변동없음) · done **566**(변동없음) · rejected **6**(`not_planned` 4 + `duplicate` 2, 변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md 서술 참조 재확인(이미 서술식, `line N` 잔여 없음). 이번 사이클은 데이터/스키마 churn 0건이라 새 클래스 발견 기회 자체가 없었음.
+> - **백로그 트림 체크**: 사이클 로그 8건 → 이번 추가 후 9건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(데이터/스키마 churn 0건, standing scan 전부 기존 baseline 유지), 자동수정 0건(고칠 결함 없음), done-sync: open 6(변동없음)·done 566(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-09-13T11:52):**
 > - **방법**: 세션 시작 시 detached HEAD `5df88fc`(origin/main과 동일) → 로컬 `main`은 stale(`eecca71`) → `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
