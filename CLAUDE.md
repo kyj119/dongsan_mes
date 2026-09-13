@@ -144,6 +144,8 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
   - 서명 = 셸버전+파일수+총바이트, **`.bak-*` 제외**. 제외를 빼면 개수가 안 맞아 **영원히 수렴하지 않고** 매 부팅 재복사한다.
   - ⚠️ **최초 설치는 여전히 `install-a0-panel.ps1`**(레지스트리·구 확장 제거). 자동 갱신은 **이미 깔린 셸**만 다룬다.
   - 게이트 = `npm run cut:shellsync`(원본 절취 + File/Folder shim). **2026-09-10 `ia-deploy.cjs` 의 `GATES` 에 등록** — 그전까지는 게이트라 불리면서 배포 때 아무도 안 돌렸다(아래 §조용한 격하의 `cut:butt` 사고와 같은 형태였다).
+- **「패널은 뜨는데 동작만 실패」는 설치 문제가 아닐 수 있다** — 그 PC 에 있는 건 셸(축4)뿐이고 **호스트 로직은 패널을 열 때마다 `Z:`(축2)에서 `$.evalFile` 로 읽는다**(`jsx/host.jsx` 는 스텁). 그래서 그 증상은 설치본보다 **Z: 접근 실패·구버전 호스트**를 먼저 가리킨다. 1차 판정은 패널 **[⚙ 환경 점검]** 하나로 끝난다(호스트·재단·셸·스텁·잠금 버전 · 일러 버전 · Z: 연결/쓰기 · temp 쓰기와 **ASCII 여부**(한글 사용자명) · config 나이 · 자동갱신 상태). **사람에게 「뭐가 안 되나요」를 묻기 전에 이 출력부터 받는다.**
+- **자동 갱신은 실패하면 조용히 멈춘다** — 같은 셸 서명으로 2회 실패하면 `skip;why=retrylimit` 로 **그 PC 는 그 버전을 영영 안 받는다**(`mes-a0-host.jsx:529`. 다음 버전이 나오면 다시 시도한다). 표식 = `%TEMP%\mes_panel_sync.txt`, 지우면 재시도. 화면에는 아무 말도 안 나오므로 **「축4는 스스로 따라온다」가 이미 멈춘 PC 에는 해당하지 않는다.**
 - **축2(호스트 JSX)는 Z: 1개 교체 = 전 PC 즉시 반영** — 백업·실기기 확인 선행. `ia:deploy` 가 축2 포함 시 `--yes` 를 거부하고 **실제 터미널에서** 실기 확인을 묻는다(비대화 실행 불가).
 - JSX 조기 `return` 은 반드시 `_ia_status` 설정. 미설정=에이전트가 **틀린 진단**("JSX 반환 빈값")을 UI에 띄운다.
 
@@ -195,6 +197,15 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
   그래서 유상·출고 후 재작업도 **재등록(경로 A) 하나로 끝난다**(에이전트 축 경로 C에 해당하는 수작업이 없다).
   ⚠️같은 날 재등록하면 픽업 사본(`_출력\<날짜>\`)이 **같은 이름이라 덮어써진다**.
 
+### 파일↔주문 연결 = 「붙어 있다」로 동작을 판정하면 틀린다 (2026-09-11 실측)
+**배선은 고장 나 있지 않았다 — 쓸 기회가 거의 없었고, 어쩌다 붙은 한 건은 주문이 지워지며 설계대로 끊겼다.** 아래 §게이트의 「있다 vs 돈다」와 같은 형태다.
+- **경로 표식이 없으면 영영 구분 못 한다** — 주문번호가 붙은 `print_events` 5,498건 중 **5,497건이 `match_method='BACKFILL_%'`**(소급 스크립트)이고 **라이브 경로로 붙은 것은 전 기간 1건**이다. 「9/4까지 붙다가 9/5에 끊겼다」는 오독 — 그 스크립트를 마지막으로 돌린 지점일 뿐이다. **새 매칭 경로를 만들면 어느 경로로 붙었는지를 행에 남긴다**(`match_method` 가 없었으면 이 구분 자체가 불가능했다).
+- **0건을 결함으로 읽기 전에 그 축에 입력이 있었는지부터 센다** — `orders` 11,670건 중 11,669건의 `created_at` 이 `09:00:00`(=전량 이관)이고 주문서 화면에서 태어난 주문은 **1건**이다. `order_items.ai_group_index` 0건·흡수 링크 0건은 결함이 아니라 **채울 주체가 없었던 것**이다(§원가 0 의 「성격을 먼저」와 같은 규칙).
+- **패널 축은 1차 매칭에 원리상 도달하지 못한다** — 파일명에 `주문번호-순번` 이 없으므로(§재작업) `resolveCard` 1차(order_number+file_seq)는 늘 빗나가고 **2차(file_name)만이 유일한 길**이다. 그 2차가 읽는 행은 **흡수가 넣는다**(`workbench.ts:1114`) → **흡수가 안 되면 출력완료도 안 붙는다.** 파일명 규칙을 손봐도 안 살아난다(디자이너가 주문보다 파일을 먼저 만든다).
+- **끊는 코드와 되붙이는 코드는 짝이다** — `PUT /orders/:id` 는 라인 전량 교체 때 참조 3개를 NULL 로 끊는데 **짝이 있는 건 `order_ai_files` 하나뿐**이다(`update.ts:611` item_id+sort_order 재매칭, #124 규칙). `print_file_map.order_item_id`(`:385`)·`designer_intakes.order_item_id`(`:381`)는 끊고 끝이고, **카드 보존 경로(`:412`·`:414`)는 `print_file_map` 을 아예 안 건드려 죽은 id 가 그대로 남는다**(AUTOINCREMENT 라 오폭은 없지만 링크는 똑같이 죽는다). 흡수 **이력**은 존치가 맞지만 **`print_file_map` 은 이력이 아니라 동작하는 배선**이라, 주문서를 한 번 수정하면 그 파일은 카드에 영영 못 닿는다 — 읽는 쪽 역추적(`printEvents.cardIdsForOrderItems`)도 `order_item_id` 가 살아 있을 때만 돈다.
+- 실증 — 9/3 intake #485 흡수 1초 뒤 `print_file_map` 에 `order_item_id=24388` 이 학습됐고, 그 주문이 삭제되며 끊겼다. **absorbed 32건이 전부 `order_item_id IS NULL` 인 것은 "한 번도 안 걸렸다"는 뜻이 아니다.**
+- 게이트 = **`npm run test:print-match`**(출력 이벤트가 카드까지 닿는가·서버 기동 필요). ⚠️**만들어 놓고 어떤 실행 경로에도 안 물렸다**(2026-09-11 — 같은 날 같은 문서에 「게이트는 배포 경로에 물려야 존재한다」를 적으면서 그랬다). 아래 §「사람이 부를 때만 돈다」 목록에 있다.
+
 ### 배포를 실제로 막는 게이트 (2026-09-10 실측)
 **「게이트가 있다」와 「게이트가 돈다」는 다른 질문이다.** `cut:butt` 는 2026-08-06부터 있었는데 한 달간 아무도 안 돌렸고, `cut:shellsync` 도 같은 상태였다(2026-09-10 등록) — **목록이 없어서 아무도 그걸 몰랐다.**
 - **CI**(push→main, `.github/workflows/deploy.yml`): tsc · build · `test:calc` · `entity-audit.mjs` · `audit:migration-number`(#639 같은 번호·같은 테이블 DDL 충돌만 차단) · `canary:write:ci` · `smoke.cjs`(prod)
@@ -204,7 +215,7 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 - **`ship:gate`**: verify(tsc+build) · entity-audit · **test:calc** · canary:write · **journey:gate**(J0~J6 25단계, 로컬 서버 자동 기동·≈2.5분, `SKIP_JOURNEY=1` 로만 명시 건너뜀)
 - **`/deploy-verify`**: Phase 1 tsc·build·**test:calc**·**journey:gate** → Phase 2 entity-audit → Phase 2-B `audit:migration-drift`(스키마 변경 시) → Phase 4 `smoke:prod`
 > ⚠️`verify.yml` 은 `on: pull_request` 다 — 이 프로젝트(main 직접 push)에서는 **생성 이래 0회 실행**.
-> ⚠️여기 **없는** 감사는 사람이 부를 때만 돈다: `sort-audit` · `audit:query-cost` · `audit:subquery` · `audit:unit-price-semantics` · `audit:migration-drift` · `audit:stock-ledger` · `test:symmetry` · `test:ship-stock` · `test:autodeduct` · `cut:quality`. (`test:journey` 는 2026-09-11 `ship:gate`·`/deploy-verify` 에 편입 — 정본=`/journey-loop`, 한 사이클=`npm run journey:cycle`.)
+> ⚠️여기 **없는** 감사는 사람이 부를 때만 돈다: `sort-audit` · `audit:query-cost` · `audit:subquery` · `audit:unit-price-semantics` · `audit:migration-drift` · `audit:stock-ledger` · `test:symmetry` · `test:ship-stock` · `test:autodeduct` · **`test:print-match`** · `cut:quality`. (`test:journey` 는 2026-09-11 `ship:gate`·`/deploy-verify` 에 편입 — 정본=`/journey-loop`, 한 사이클=`npm run journey:cycle`.)
 > **게이트를 새로 만들면 이 목록에 줄을 추가한다. 추가할 자리가 없으면 그건 게이트가 아니라 스크립트다.**
 
 > 사업 도메인·역할·아키텍처·에이전트 팀·참조 문서 → `.claude/references/project-context.md`
