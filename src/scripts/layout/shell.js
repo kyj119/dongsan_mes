@@ -1195,6 +1195,33 @@ function showFieldError(fieldOrId, message) {
 window.showFieldError = showFieldError;
 window.showToast = showToast;
 
+// === 품목 검색 「원자재 포함」 토글 — 계정별 기억 (주문서·견적서 공용) ===
+//   2026-09-14 P8: 영업은 자재를 유통하므로 기본 ON. 토글은 주문마다 정할 일이 아니라 「누가 검색하느냐」라
+//   user-prefs(orderform.includeMaterials)에 저장하고 어느 PC 에서 열어도 같은 값. 빈 값(미설정)=ON.
+//   화면은 마크업의 checked 로 먼저 켜지고, 저장값이 '0' 일 때만 끈다(요청 실패해도 기본값 유지).
+(function () {
+    var KEY = 'orderform.includeMaterials';
+    function init() {
+        var el = document.getElementById('includeMaterials');
+        if (!el || el.dataset.prefBound) return;
+        el.dataset.prefBound = '1';
+        if (window.axios) {
+            axios.get('/api/user-prefs').then(function (r) {
+                var v = r && r.data && r.data.data ? r.data.data[KEY] : undefined;
+                if (v === '0') el.checked = false;
+                else if (v === '1') el.checked = true;
+            }).catch(function () { /* ignore: 저장값 조회 실패면 마크업 기본(ON) 유지 */ });
+        }
+        el.addEventListener('change', function () {
+            if (!window.axios) return;
+            axios.put('/api/user-prefs/' + KEY, { value: el.checked ? '1' : '0' })
+                .catch(function () { showToast('검색 설정을 저장하지 못했습니다(이번 화면에만 적용)', 'warning'); });
+        });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+})();
+
 // === Confirm Modal (confirm() 대체) ===
 window.showConfirm = function(message, options) {
   options = options || {};

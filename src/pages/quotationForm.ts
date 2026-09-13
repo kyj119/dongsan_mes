@@ -52,6 +52,10 @@ export async function quotationFormPage(c: Context<HonoEnv>) {
                   <i class="fas fa-plus mr-2"></i>품목 추가
                 </button>
               </div>
+              <!-- 주문서와 같은 토글·같은 기억(user-prefs orderform.includeMaterials) — 견적→주문 전환 때 규칙이 바뀌지 않게 -->
+              <label class="flex items-center gap-1.5 text-xs text-gray-500 mb-2 cursor-pointer w-fit">
+                <input type="checkbox" id="includeMaterials" class="rounded border-gray-300" checked> 품목 검색에 <b class="text-gray-700">원자재</b> 포함 <span class="text-gray-400">(계정별로 기억됩니다)</span>
+              </label>
               <div id="itemsContainer"></div>
 
               <!-- 합계 -->

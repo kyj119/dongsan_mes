@@ -193,7 +193,10 @@ function setupAutocomplete(id) {
         var q = input.value.trim();
         if (!q) return;
         try {
-            var res = await axios.get('/api/items?search=' + encodeURIComponent(q) + '&type=sales&limit=50');
+            // 주문서(itemRow.js)와 같은 규칙: 「원자재 포함」 토글이 꺼져 있을 때만 자재 제외
+            var incMat = document.getElementById('includeMaterials');
+            var typeQ = (incMat && !incMat.checked) ? '&exclude_type=MATERIAL' : '';
+            var res = await axios.get('/api/items?search=' + encodeURIComponent(q) + '&type=sales' + typeQ + '&limit=50');
             var items = res.data.data || [];
             if (items.length === 1) {
                 var it = items[0];

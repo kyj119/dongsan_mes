@@ -25,6 +25,13 @@ const PORT = Number(new URL(BASE).port || 3000)
 const sh = (cmd, extra = {}) => execSync(cmd, { cwd: ROOT, stdio: 'inherit', ...extra })
 const quiet = (cmd) => { try { return execSync(cmd, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) } catch (e) { return String(e.stdout || '') } }
 
+// dev 서버 정리 — `taskkill` 은 Git Bash 셸에 없을 때가 있고, workerd 만 죽이면 wrangler(node)가 옛 번들로 다시 띄운다.
+//   명령줄에 `wrangler … pages dev` 가 있는 프로세스(bash/cmd 래퍼·node)와 workerd 를 전부 정리한다.
+function killDevServer() {
+  const ps = "Get-CimInstance Win32_Process | Where-Object { ($_.CommandLine -match 'wrangler.*pages dev') -or ($_.Name -eq 'workerd.exe') } | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop } catch {} }"
+  try { execSync(`powershell -NoProfile -NonInteractive -Command "${ps.replace(/"/g, '\\"')}"`, { stdio: 'ignore' }) } catch { /* ignore: 이미 없거나 권한 — 아래 health 로 판정 */ }
+}
+
 function health() {
   return new Promise((res) => {
     const req = http.get(`${BASE}/api/health`, { timeout: 3000 }, (r) => { r.resume(); res(r.statusCode === 200) })
@@ -49,9 +56,19 @@ function newestMtime(dir, exts) {
   // 1) build — dist/_worker.js 가 src 보다 오래됐을 때만
   const worker = path.join(ROOT, 'dist', '_worker.js')
   const stale = !fs.existsSync(worker) || newestMtime(path.join(ROOT, 'src'), ['.ts', '.tsx', '.js', '.css']) > fs.statSync(worker).mtimeMs
+  let rebuilt = false
   if (opt('no-build')) console.log('[cycle] build 생략(--no-build)')
-  else if (stale) { console.log('[cycle] src 가 dist 보다 새롭다 → npm run build'); sh('npm run build', { stdio: 'ignore' }) }
+  else if (stale) { console.log('[cycle] src 가 dist 보다 새롭다 → npm run build'); sh('npm run build', { stdio: 'ignore' }); rebuilt = true }
   else console.log('[cycle] dist 최신 — build 생략')
+
+  // 빌드했으면 서버를 다시 띄운다 — wrangler pages dev 가 새 _worker.js 를 안 읽고 옛 번들을 계속 서빙한 적이 있다
+  //   (2026-09-14: dist 엔 있는 `checked` 가 화면엔 없었다). 재기동이 확실하고 10초면 된다.
+  if (rebuilt && (await health())) {
+    console.log('[cycle] 새 빌드 → 서버 재기동')
+    killDevServer()
+    for (let i = 0; i < 20 && (await health()); i++) await sleep(500)
+    if (await health()) { console.error('[cycle] 옛 서버가 안 죽는다 — 포트 3000 프로세스를 직접 정리할 것'); process.exit(2) }
+  }
 
   // 2) server — 없으면 이 프로세스가 백그라운드로 띄운다(사이클이 끝나도 남긴다: 다음 사이클이 재사용)
   if (!(await health())) {

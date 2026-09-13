@@ -111,6 +111,38 @@ test.describe.serial('J1 영업: 주문서 작성', () => {
     expect(r.data?.success).toBeTruthy()
   })
 
+  test('자재 포함 토글 — 기본 ON, 끄면 계정별로 기억된다(P8·나안)', async ({ journey: page, signals }) => {
+    // 영업은 자재를 유통한다 → 기본 ON. 토글은 user-prefs 에 저장돼 다시 열어도 그대로여야 한다.
+    await page.goto('/order-form')
+    const t = page.locator('#includeMaterials')
+    await expect(t, '주문서에 「원자재 포함」 토글').toBeVisible({ timeout: 10_000 })
+    await page.waitForTimeout(600) // 저장값 조회 반영
+    await expect(t, '기본은 ON').toBeChecked()
+    // 자재 검색이 실제로 되는가: 「원단」 → 자동 선택 또는 모달 결과
+    const s = page.locator('[name="item_search_1"]')
+    await s.fill('원단')
+    await s.press('Enter')
+    await expect
+      .poll(() => page.evaluate(() => (document.querySelector('[name="item_id_1"]') as HTMLInputElement)?.value || (document.getElementById('itemSearchModal') ? 'MODAL' : '')), { timeout: 15_000 })
+      .not.toBe('')
+    if (await page.locator('#itemSearchModal').isVisible().catch(() => false)) {
+      await expect(page.locator('#itemSearchModalBody [data-id]').first(), '자재 검색 결과').toBeAttached({ timeout: 10_000 })
+      await page.locator('#itemSearchModal button:has-text("닫기")').first().click().catch(() => {})
+    }
+    // 끄고 다시 열면 꺼진 채여야 한다 → 다시 켜서 원복
+    await t.uncheck()
+    await page.waitForTimeout(600)
+    await page.goto('/order-form')
+    await page.waitForTimeout(800)
+    await expect(page.locator('#includeMaterials'), '끈 상태가 기억돼야 한다').not.toBeChecked()
+    await page.locator('#includeMaterials').check()
+    await page.waitForTimeout(600)
+    await page.goto('/quotation-form')
+    await page.waitForTimeout(800)
+    await expect(page.locator('#includeMaterials'), '견적서도 같은 토글·같은 값').toBeChecked()
+    expectClean(signals, '자재 토글')
+  })
+
   test('검산: 라인 금액·카드 자동 생성', async () => {
     test.skip(!orderId, '앞 단계 실패')
     const items = db<{ amount: number; quantity: number; unit_price: number; pricing_method: string }>(
