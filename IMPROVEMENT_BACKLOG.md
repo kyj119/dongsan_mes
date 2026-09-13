@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-09-12T13:10:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-09-13T09:43:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,22 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **566** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 1 프로덕션 헬스 (2026-09-13T09:43):**
+> - **방법**: 세션 시작 시 detached HEAD `dbfc031`(origin/main과 동일) → 로컬 `main`은 stale → `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area1 방법 라인 HEAD `6557073`)**: 웹앱 헬스범위(`src/routes`·`src/utils`·`index.tsx`·`wrangler.toml`·`.github/workflows`·`scripts/smoke.cjs`) diff **2커밋뿐**(전체 16커밋 중) — `b87e8f1`(펀칭 계산축 통일, Area2/3/5/6이 이미 "순수계산·DB/인증 접근 0"으로 판정) · `68bca29`(#646 수정, Area2/4/5가 바인드순서·entity격리까지 이미 검증). 신규 검토 대상 없음(둘 다 재확인만).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 10런 전부 `conclusion:success`(최종 HEAD `dbfc031` 포함). 최신 배포 job(`103603010749`) 전 단계(typecheck·build·self-tests·entity audit·migration-number audit·write canary·deploy·smoke) 전부 success.
+> - **smoke 129/129 PASS**(job 로그 직접 확인) — 이번 churn(펀칭·#646)에 신규 라우트 없어 프로브 갭 없음. 마이그레이션 신규 0건(0613이 마지막, 직전 사이클에 이미 분류 완료) — (a)/(b) 드리프트 분류 대상 없음.
+> - **#636(cashSchedule.overview) 재확인 — 배수 유지, 재이슈 불필요**: 이번 배포 smoke = **4571ms**(예산 2000ms 대비 초과, 직전 4552ms에서 소폭 상승). owner 국내 실측(421~424ms) 대비 배수 ≈10.9배로 기존에 owner가 검증한 9~14배 범위 안 — area 파일 codify된 규칙대로 배수 자체가 깨졌다는 증거 없이는 재이슈하지 않음.
+> - **standing scan 1: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 2: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 3: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **6**(#649·#648·#647·#626·#617·#616, 변동없음) — 전건 Area1 관할 밖(Area3/5/6), 재조치 불요.
+> - **backlog↔GitHub 절대값 재동기화**: open **6**(변동없음) · done **566**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-1-production-health.md 기존 codify 규칙(배수 판정)이 이번 사이클에 그대로 재적중, 새 클래스 발견 없음.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` 대상 — 사이클 로그 11건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(2커밋 churn 전량 타 Area 재확인 완료, CI green·smoke 129/129·#636 배수 유지), 자동수정 0건(고칠 결함 없음), done-sync: open 6(변동없음)·done 566(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-09-12T13:10):**
 > - **방법**: 세션 시작 시 HEAD `e155373`(origin/main과 동일) → `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
