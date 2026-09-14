@@ -13,7 +13,7 @@ test.describe.serial('J6 영업: 견적 → 주문 전환', () => {
   let quotAmount = 0
   let orderId = 0
 
-  async function pickClientAndItem(page: import('@playwright/test').Page) {
+  async function pickClientAndItem(page: import('@playwright/test').Page, itemQuery = '현수막') {
     await page.locator('#clientSearch').fill('대전')
     await page.locator('#clientSearch').press('Enter')
     await expect
@@ -23,7 +23,7 @@ test.describe.serial('J6 영업: 견적 → 주문 전환', () => {
       await page.locator('#clientSearchModalBody [data-id], #clientSearchModalBody [onclick]').first().click()
     }
     const search = page.locator('[name="item_search_1"]')
-    await search.fill('현수막')
+    await search.fill(itemQuery)
     await search.press('Enter')
     await expect
       .poll(() => page.evaluate(() => (document.querySelector('[name="item_id_1"]') as HTMLInputElement)?.value || (document.getElementById('itemSearchModal') ? 'MODAL' : '')), { timeout: 15_000 })
@@ -110,5 +110,46 @@ test.describe.serial('J6 영업: 견적 → 주문 전환', () => {
     expect(Number(q.amt), '견적 라인 금액 불변').toBe(quotAmount)
     const linked = db<{ n: number }>(`SELECT COUNT(*) n FROM orders WHERE quotation_id=${quotationId}`)[0].n
     expect(linked, '견적 1:N 주문 — 이 견적에서 난 주문 1건').toBe(1)
+  })
+
+  test('규격 텍스트 왕복 — FIXED 제작품 견적 → 전환 프리필 → 주문(P12·0614)', async ({ journey: page, signals }) => {
+    // 견적 라인에 specification 컬럼이 없어 입간판·아크릴 박스 규격이 전환에서 소실됐다(2026-09-15, spec ①).
+    await page.goto('/quotation-form')
+    await pickClientAndItem(page, '아크릴 가공')
+    const spec = page.locator('[name="spec_1"]')
+    await expect(spec, '견적서에도 규격 텍스트 칸').toBeVisible({ timeout: 5_000 })
+    await spec.fill('30*20*15')
+    await page.locator('[name="quantity_1"]').fill('1')
+    await page.locator('[name="unit_price_1"]').fill('210000')
+    await page.locator('[name="quantity_1"]').press('Tab')
+    await page.waitForTimeout(300)
+    await page.locator('#notes').fill(`${MARK} J6 규격`)
+    await page.locator('#submitBtn').click()
+    await page.waitForURL(/\/quotations/, { timeout: 30_000 })
+    await page.waitForLoadState('domcontentloaded')
+    const q = db<{ id: number }>(`SELECT id FROM quotations WHERE notes LIKE '%${MARK} J6 규격%' ORDER BY id DESC LIMIT 1`)[0]
+    expect(q, '견적이 생겨야 한다').toBeTruthy()
+    const qi = db<{ specification: string | null }>(`SELECT specification FROM quotation_items WHERE quotation_id=${q.id}`)[0]
+    expect(qi.specification, '견적 라인에 규격 텍스트가 저장된다(0614)').toBe('30*20*15')
+
+    // 상세 모달에 규격 텍스트 → 주문 전환 → 프리필된 규격 → 저장
+    const view = page.locator(`[onclick*="viewQuotation(${q.id})"]`).first()
+    await expect(view).toBeVisible({ timeout: 15_000 })
+    await view.click()
+    await expect(page.locator('#quotDetailModal')).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('#quotDetailModal').getByText('30*20*15').first(), '견적 상세에 규격 텍스트').toBeVisible()
+    await page.locator(`#quotDetailModal [onclick*="convertToOrder(${q.id})"]`).first().click()
+    await page.waitForURL(/\/order-form\?quotation_id=/, { timeout: 15_000 })
+    await expect(page.locator('[name="spec_1"]'), '규격 텍스트 프리필').toHaveValue('30*20*15', { timeout: 15_000 })
+    await expect(page.locator('[name="spec_1"]')).toBeVisible()
+    await page.locator('#notes').fill(`${MARK} J6 규격주문`)
+    await page.locator('#submitBtn').click()
+    await page.waitForURL(/\/orders/, { timeout: 30_000 })
+    const o = db<{ id: number }>(`SELECT id FROM orders WHERE notes LIKE '%${MARK} J6 규격주문%' ORDER BY id DESC LIMIT 1`)[0]
+    expect(o, '전환 주문').toBeTruthy()
+    const line = db<{ specification: string | null; amount: number }>(`SELECT specification, amount FROM order_items WHERE order_id=${o.id}`)[0]
+    expect(line.specification, '주문 라인까지 규격 텍스트가 살아온다').toBe('30*20*15')
+    expect(Number(line.amount)).toBe(210000)
+    expectClean(signals, '규격 왕복')
   })
 })

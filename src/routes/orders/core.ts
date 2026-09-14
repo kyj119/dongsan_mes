@@ -432,6 +432,8 @@ ordersCoreRouter.get('/:id', async (c) => {
              --   품목값이 되어 스냅샷이 있으나 마나가 된다.
              COALESCE(oi.pricing_method, i.pricing_method) AS pricing_method,
              i.sub_category AS item_subcategory,
+             -- 수정화면이 유통 행(가로·세로 비활성)을 규격 유무가 아니라 품목 종류로 판정한다(2026-09-15)
+             i.item_type AS item_type,
              -- 품목별 최소청구 변(cm). 수정·복사 화면이 이 값을 히든에 되돌려야 청구면적 자동계산이
              --   기본 100 으로 되돌아가지 않는다(orderForm/calc.js MIN_SIDE ↔ utils/orderLineAmount.ts).
              COALESCE(oi.min_billing_side_cm, i.min_billing_side_cm) AS min_billing_side_cm,

@@ -93,9 +93,9 @@ function buildQuotationHalf(data, copyLabel, fullPage, validUntil, isExpired) {
         var vat = it.vat_included ? Math.round(supply * 0.1) : 0;
         totalSupply += supply;
         totalVat += vat;
-        var spec = '';
-        if (it.width && it.height) spec = it.width + 'x' + it.height + 'cm';
-        // #399: 사용자 입력 free-text는 escapeHtml로 stored XSS 차단 (spec=width/height 숫자라 제외)
+        // 규격 = 텍스트(specification, 0614) 우선, 없으면 W×H — 주문 문서(taxInvoices/helpers · orders.js)와 같은 규칙(2026-09-15).
+        //   #399: specification 은 사람이 친 free-text 라 escapeHtml 을 거친다(치수는 숫자라 제외).
+        var spec = it.specification ? escapeHtml(it.specification) : ((it.width && it.height) ? it.width + 'x' + it.height + 'cm' : '');
         var nameWithSpec = escapeHtml(it.item_name || '') + (spec ? '-' + spec : '');
         var remark = escapeHtml(it.item_name || '') + (spec ? '[' + spec + ']' : '') + (it.content ? '-' + escapeHtml(it.content) : '');
         itemRows += '<tr>'

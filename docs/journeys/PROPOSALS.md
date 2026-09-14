@@ -29,8 +29,16 @@
 | P8 | 관찰→결정 | 견적서 품목 검색은 `type=sales` 만 걸어 「현수막」 결과가 **50행**(주문서는 `excludeType=MATERIAL` 로 6행). 세 화면(제작 주문서=체크박스 기본 OFF·유통 주문서=전부·견적서=전부)이 자재를 다르게 다뤘다 | 같은 검색어를 두 화면에서 | **영업은 자재를 유통한다**(용준님 09-14) — prod 6월 이후 라인의 27%·금액 31%가 자재·상품. 「자재를 보여줄까」는 주문마다 정할 일이 아니라 누가 검색하느냐 | ✅ 고침(09-14, **나안**) — 주문서·견적서 같은 토글 「원자재 포함」, 기본 ON, `user-prefs orderform.includeMaterials` 로 계정별 기억(shell.js 공용). 회귀 = J1 「자재 포함 토글」 |
 | P11 | 구조 제안 | **유통 주문서(`/order-form?type=dist`)는 한 번도 안 쓰였다** — prod 주문 11,670건 전부 `PRODUCTION`, `DISTRIBUTION` 0건. 제작 주문서가 이미 라인별로 유통 모드를 탄다(`applyDistRowMode`: 규격 텍스트·가로세로 잠금·후가공 숨김) + 부속품 행도 있다. 유통 주문서만의 실효 차이는 **`order_type=DISTRIBUTION` → 카드 미생성·shipment_ready·자재 갭 미계산** 셋뿐 | `/order-form` 상단 「유통(상품) 주문서로 전환」 링크 | 같은 사람이 「이건 제작인가 유통인가」를 화면 고르기로 매번 결정한다 — 결정은 라인에 있다 | ✅ 고침(09-14, 용준님 「①②③ 순서대로」) — **①** 유통 주문서 페이지·`orderFormDist.js` 삭제, `?type=dist` 는 주문서로 302, 주문 목록 「새 주문」 링크 고정 **②** `helpers.deriveOrderType`: 라인 전부 `production_required=0` 이면 DISTRIBUTION(카드 미생성·shipment_ready), 하나라도 제작이면 PRODUCTION, 마스터에 없는 라인=제작. 명시 `order_type` 은 API 호환 **③** `/api/items?with_stock=1` → 자재·상품 행에 「재고(이 법인 합계, base 단위)·최근단가(금액÷수량, 판매일)」 — 검색 모달 열 2개 추가(id 로 묶어 2쿼리, 상관 서브쿼리 없음). 회귀 = **J7**(리다이렉트·자재만 주문=DISTRIBUTION·카드 0·모달 재고 칸·일괄 출고→SHIPPED·OUT 원장·재고 −수량) |
 
+## 2026-09-14 규격 축 질문에서 (「규격 1칸 상품·3축 품목은 어떻게 입력하나」)
+
+| # | 축 | 현상 | 재현 | 판단 근거 | 판정 |
+|---|---|---|---|---|---|
+| P12 | 구조 결정 + 결함 3 | **3축 품목(아크릴 박스·큐브간판·입간판 `W*D*H`)에 과금축이 없다** — 그리고 ② 주문서 FIXED 제작품 행엔 규격 텍스트 칸이 없고(유통 행에만) ① 견적 라인엔 `specification` 컬럼 자체가 없어 전환에서 소실 ③ 09-04 소급 분해가 3숫자 규격을 두 칸 cm 로 넣어 광학산PC 큐브 2건의 단가가 6,333,333·1,166,667원/㎡(직전가 제안 오염) | prod 2026년 `order_items.specification LIKE '%*%*%'` | 진짜 3축은 **9건/8개월**, 전부 간판 계열·건별 손 단가·7만~48만 → 전개면적/부피 축을 만들면 산식 쌍·픽스처·스냅샷·문서 5곳이 늘고 쓰는 라인이 없다. 「면적 판정=규격 종류 수」로도 3축 품목은 규격이 1회성 → **FIXED + 규격 텍스트 1칸이 정본**. 되돌릴 조건 = 월 5건 이상 반복 + 실제 ㎡×전개면적 규칙 | ✅ 고침(09-15, 용준님 「①②③ 전부」) — **②** 주문서 규격 텍스트 칸을 품목칸 아래로 옮기고 표시 조건을 「유통」→「`pricing_method !== 'AREA'`」(`itemRow.js syncSpecField`), 가로·세로는 참고 입력 유지, 수정화면의 유통 판정은 규격 유무가 아니라 `item_type`(`core.ts`) **①** `0614` `quotation_items.specification` + 견적서 같은 칸·INSERT/SELECT/전환 복사·프리필·견적 문서 표기(specification 우선) **③** `0615` 오분해 5라인 정정(width/height NULL, AREA 2건은 라인 축 FIXED + 단가=금액/수량). 회귀 = J1 「FIXED 제작품 3축 규격」 · J6 「규격 텍스트 왕복」. 설계 = `docs/superpowers/specs/2026-09-14-three-axis-and-single-spec-lines.md` |
+
 ## 판정 기록
 (용준님 판정 후 여기로 옮긴다: 날짜 · 번호 · 결정 · 반영 커밋)
+
+- 2026-09-15 · P12 · 결정=새 과금축 없음(FIXED+규격 텍스트) + ①②③ 고침 — `0614`·`0615`, `itemRow.js`·`parent.js`·`quotationForm.js`·`quotations.ts`·`core.ts`·견적 뷰 2곳. 회귀 = J1·J6 각 1단계(36단계).
 
 - 2026-09-11 · P1 · ①고침 — `routes/ledger/ar-payments.ts` DUPLICATE_PAYMENT → 400 「1분 이내 동일한 입금이 이미 등록되었습니다」(bank.ts 와 동일). 회귀 = J3 「같은 입금을 1분 안에 또 넣으면 …」
 - 2026-09-11 · P5 · ①고침 — `middleware/rateLimit.ts` 에 `perAccount` 옵션(요청 body 의 username 버킷), `index.tsx` 직원 로그인 = IP 30/분 + 계정 5/분. 회귀 = J0 「한 계정을 5번 틀리면 6번째는 429, 다른 계정은 통과」. 포털 로그인·비밀번호 변경·refresh 는 종전 그대로(외부 IP 분산).

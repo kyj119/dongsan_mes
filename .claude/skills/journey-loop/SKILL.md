@@ -11,7 +11,7 @@ typecheck·smoke 는 「죽지 않는다」만 증명한다. 이 루프는 **사
 
 ## 세션 부담을 낮추는 규칙 — **한 명령, 짧은 출력만 읽는다**
 ```
-npm run journey:cycle                 # 빌드(필요할 때만)→서버(없으면 기동)→25단계→요약. 통과=3줄, 실패=실패 여정 블록만
+npm run journey:cycle                 # 빌드(필요할 때만)→서버(없으면 기동)→36단계→요약. 통과=3줄, 실패=실패 여정 블록만
 npm run journey:cycle -- --only=j3    # 한 여정만(정규식: "j5|j6")
 npm run journey:cycle -- --snapshot   # 로컬 D1 을 스냅샷으로 되돌리고 시작(캐시)
 ```

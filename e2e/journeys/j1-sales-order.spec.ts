@@ -143,6 +143,58 @@ test.describe.serial('J1 영업: 주문서 작성', () => {
     expectClean(signals, '자재 토글')
   })
 
+  test('FIXED 제작품 3축 규격 — 규격 텍스트 1칸으로 저장(P12)', async ({ journey: page, signals }) => {
+    // 아크릴 박스·입간판처럼 W*D*H 로 적는 주문제작품 — 새 과금축 없이 FIXED + 규격 텍스트가 정본(2026-09-14 결정).
+    //   전엔 규격 텍스트 칸이 유통 행에만 있어 제작품엔 적을 곳이 없었다(spec 2026-09-14-three-axis ②).
+    await page.goto('/order-form')
+    await page.locator('#clientSearch').fill('대전')
+    await page.locator('#clientSearch').press('Enter')
+    await expect
+      .poll(() => page.evaluate(() => (document.getElementById('clientId') as HTMLInputElement)?.value || (document.getElementById('clientSearchModal') ? 'MODAL' : '')), { timeout: 15_000 })
+      .not.toBe('')
+    if (await page.locator('#clientSearchModal').isVisible().catch(() => false)) {
+      await page.locator('#clientSearchModalBody [data-id], #clientSearchModalBody [onclick]').first().click()
+    }
+    const search = page.locator('[name="item_search_1"]')
+    await search.fill('아크릴 가공')
+    await search.press('Enter')
+    await expect(page.locator('[name="item_id_1"]'), '「아크릴 가공(레이져/도색)」 1건 → 자동 선택').not.toHaveValue('', { timeout: 15_000 })
+    const spec = page.locator('[name="spec_1"]')
+    await expect(spec, 'FIXED 제작품 행에 규격 텍스트 칸이 보인다').toBeVisible({ timeout: 5_000 })
+    await expect(page.locator('[name="width_1"]'), '가로·세로는 참고 입력으로 살아 있다').toBeEnabled()
+    await spec.fill('30*20*15')
+    await page.locator('[name="quantity_1"]').fill('1')
+    await page.locator('[name="unit_price_1"]').fill('210000')
+    await page.locator('[name="quantity_1"]').press('Tab')
+    await page.waitForTimeout(400)
+    expect(Number((await page.locator('[name="amount_1"]').inputValue()).replace(/[^\d]/g, '')), 'FIXED = 단가×수량').toBe(210000)
+    await page.locator('#notes').fill(`${MARK} J1 3축`)
+    await page.locator('#submitBtn').click()
+    await page.waitForURL(/\/orders/, { timeout: 30_000 })
+    await page.waitForLoadState('domcontentloaded')
+
+    const o = db<{ id: number; order_number: string }>(`SELECT id, order_number FROM orders WHERE notes LIKE '%${MARK} J1 3축%' ORDER BY id DESC LIMIT 1`)[0]
+    expect(o, '3축 주문이 DB 에 생겨야 한다').toBeTruthy()
+    const line = db<{ specification: string | null; width: number | null; height: number | null; amount: number; pricing_method: string }>(
+      `SELECT specification, width, height, amount, pricing_method FROM order_items WHERE order_id=${o.id}`,
+    )[0]
+    expect(line.specification, '규격 텍스트가 라인에 저장된다').toBe('30*20*15')
+    expect(Number(line.width) || 0, '3축은 2칸으로 뜯지 않는다').toBe(0)
+    expect(Number(line.height) || 0).toBe(0)
+    expect(Number(line.amount)).toBe(210000)
+    expect(line.pricing_method).toBe('FIXED')
+
+    // 상세는 W×H 대신 규격 텍스트를 보여 준다(orders.js sizeStr)
+    await page.goto('/orders')
+    await page.locator('#searchQuery').fill(o.order_number)
+    await page.locator('#searchQuery').press('Enter')
+    const row = page.locator(`[onclick*="viewOrder(${o.id})"]`).first()
+    await expect(row).toBeVisible({ timeout: 15_000 })
+    await row.click()
+    await expect(page.getByText('30*20*15').first(), '상세에 규격 텍스트').toBeVisible({ timeout: 10_000 })
+    expectClean(signals, '3축 규격')
+  })
+
   test('검산: 라인 금액·카드 자동 생성', async () => {
     test.skip(!orderId, '앞 단계 실패')
     const items = db<{ amount: number; quantity: number; unit_price: number; pricing_method: string }>(

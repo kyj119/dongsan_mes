@@ -1202,15 +1202,16 @@
                             if (dxfChipE) dxfChipE.classList.remove('hidden');
                         }
 
-                        // 유통품목 규격 복원: specification이 있으면 규격칸 표시 + 인쇄 전용칸 비활성 (수정 시 규격 손실 방지)
-                        if (item.specification) {
-                            applyDistRowMode(id, true);
-                            var specEdit = document.querySelector('[name="spec_' + id + '"]');
-                            if (specEdit) specEdit.value = item.specification;
-                        }
+                        // 규격 텍스트 복원 — 있으면 무조건 되살린다(수정 시 규격 손실 방지).
+                        //   유통 행 판정은 「규격이 있나」가 아니라 **품목 종류**다(core.ts 가 i.item_type 을 싣는다).
+                        //   전엔 규격 있는 라인을 전부 유통으로 봐서 FIXED 제작품·이관 AREA 라인의 가로·세로까지 지웠다(2026-09-15).
+                        var specEdit = document.querySelector('[name="spec_' + id + '"]');
+                        if (specEdit && item.specification) specEdit.value = item.specification;
+                        if (/^(GOODS|MATERIAL)$/i.test(String(item.item_type || ''))) applyDistRowMode(id, true);
 
                         var pmRestoreVal = item.pricing_method || 'FIXED';
                         set('pricing_method', pmRestoreVal);
+                        if (window.syncSpecField) window.syncSpecField(id);
                         if (pmRestoreVal === 'AREA') {
                             var wRestoreEl = document.querySelector('[name="width_' + id + '"]');
                             var hRestoreEl = document.querySelector('[name="height_' + id + '"]');
@@ -1299,8 +1300,8 @@
 
                         // 마감방식 복원 — 없으면 수정 화면의 fin 셀렉트가 빈 채로 남고, 저장 시
                         //   calc.js가 빈 finishing을 보내 기존 마감이 조용히 소실된다(update.ts는
-                        //   delete+reinsert). 유통 라인(specification)은 마감 섹션 자체가 숨김이라 제외.
-                        if (!item.specification) await window.restoreFinishingForRow(id, item.finishing);
+                        //   delete+reinsert). 유통 라인(GOODS·MATERIAL)은 마감 섹션 자체가 숨김이라 제외 — 규격 유무로 가르지 않는다.
+                        if (!/^(GOODS|MATERIAL)$/i.test(String(item.item_type || ''))) await window.restoreFinishingForRow(id, item.finishing);
                     }
 
                     // Pass 2: 자식 행 (묶음)
@@ -1583,8 +1584,8 @@
                         if (item.post_processing) restorePostProcessing(id, item.post_processing);
                     }
 
-                    // 재주문도 마감방식 승계 (수정모드와 동일 — 없으면 섹션이 placeholder로 남는다)
-                    if (!item.specification) await window.restoreFinishingForRow(id, item.finishing);
+                    // 재주문도 마감방식 승계 (수정모드와 동일 — 없으면 섹션이 placeholder로 남는다). 유통 라인만 제외.
+                    if (!/^(GOODS|MATERIAL)$/i.test(String(item.item_type || ''))) await window.restoreFinishingForRow(id, item.finishing);
                 }
 
                 // Pass 2: 자식 행
@@ -1878,6 +1879,9 @@
                             setVal('[name="quantity_' + id + '"]', it.quantity);
                             setVal('[name="unit_price_' + id + '"]', it.unit_price);
                             setVal('[name="content_' + id + '"]', it.content);
+                            // 규격 텍스트(0614) — 유통·FIXED 제작품의 규격이 견적에서 주문으로 넘어온다.
+                            setVal('[name="spec_' + id + '"]', it.specification);
+                            if (window.syncSpecField) window.syncSpecField(id);
                             if (typeof window.calcItem === 'function') window.calcItem(id);
                             // 후가공·마감 승계 — 견적 items에 post_processing/finishing이 저장돼 있다.
                             //   소분류·카테고리는 품목 마스터에서 보충(후가공 옵션 로드·마감 그룹 판별용).
@@ -1898,6 +1902,7 @@
                                     //   AREA 품목이 FIXED 로 계산된다.
                                     var qPmEl = document.querySelector('[name="pricing_method_' + id + '"]');
                                     if (qPmEl) qPmEl.value = qiData.pricing_method || 'FIXED';
+                                    if (window.syncSpecField) window.syncSpecField(id);
                                     var qMsEl = document.querySelector('[name="min_billing_side_' + id + '"]');
                                     if (qMsEl) qMsEl.value = (qiData.min_billing_side_cm == null ? '' : qiData.min_billing_side_cm);
                                     if (typeof window.calcItem === 'function') window.calcItem(id);

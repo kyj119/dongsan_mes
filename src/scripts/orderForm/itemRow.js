@@ -67,13 +67,16 @@
                                    class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500">
                             <input type="hidden" name="pricing_method_${id}" value="FIXED">
                     <input type="hidden" name="min_billing_side_${id}" value="">
-                            <div id="item_spec_info_${id}" class="hidden text-xs text-blue-600 mt-0.5"></div>
+                            <!-- 규격 텍스트 1칸 — 축은 pricing_method 가 정한다(2026-09-04): AREA 는 가로·세로가 규격이라 숨기고,
+                                 FIXED(유통·제작 완제품·3축 주문제작 W*D*H)는 여기가 규격이다. 마스터 규격 프리필·수정 가능.
+                                 전엔 유통 행에만 있어 입간판 800x500x2200·아크릴 박스는 적을 곳이 없었다(2026-09-15).
+                                 문서·목록은 specification 을 W×H 보다 먼저 쓴다(taxInvoices/helpers · orders.js). -->
+                            <input type="text" name="spec_${id}" placeholder="규격 (예: 30*20*15 · 2T 백색)" title="규격 텍스트 — 3축은 가로*깊이*높이(cm, mm 면 mm 접미). 청구 계산엔 쓰이지 않습니다" class="hidden w-full px-2 py-1 border border-gray-300 rounded text-xs mt-1">
                             <div id="item_dd_${id}" class="item-dd hidden"></div>
                         </div>
                         <div>
                             <label id="dim_label_${id}" class="block text-xs font-medium text-gray-600 mb-0.5">가로(cm)</label>
                             <input type="number" name="width_${id}" min="0" step="0.1" placeholder="90" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" oninput="calcItem(${id})" onchange="refreshPriceSuggestion(${id})">
-                            <input type="text" name="spec_${id}" placeholder="폭 등 규격" class="hidden w-full px-2 py-1.5 border border-gray-300 rounded text-sm">
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-gray-600 mb-0.5">세로(cm)</label>
@@ -197,17 +200,18 @@
                 if (finSec) finSec.classList.toggle('hidden', isDist);
                 var badge = document.getElementById('item_dist_badge_' + id);
                 if (badge) badge.classList.toggle('hidden', !isDist);
-                // 유통품목: 가로(cm) 숨기고 규격(폭 등) 자유 텍스트 입력 표시 (생산품목 복귀 시 원복)
-                var widthEl = document.querySelector('[name="width_' + id + '"]');
-                var specEl = document.querySelector('[name="spec_' + id + '"]');
-                var dimLbl = document.getElementById('dim_label_' + id);
-                if (specEl && widthEl) {
-                    specEl.classList.toggle('hidden', !isDist);
-                    widthEl.classList.toggle('hidden', isDist);
-                    if (dimLbl) dimLbl.textContent = isDist ? '규격' : '가로(cm)';
-                    if (!isDist) specEl.value = '';
-                }
+                // 규격 텍스트 칸은 여기서 안 만진다 — 유통 여부가 아니라 과금축이 정한다(syncSpecField).
             }
+
+            // 규격 텍스트 칸 표시 = pricing_method !== 'AREA'. 값은 건드리지 않는다(수정화면·견적 프리필 복원값 보존).
+            //   AREA 라인도 이관분은 specification 원문을 갖고 있다 — 숨긴 채 값을 살려 두면 재저장에 그대로 실린다.
+            function syncSpecField(id) {
+                var pmEl = document.querySelector('[name="pricing_method_' + id + '"]');
+                var specEl = document.querySelector('[name="spec_' + id + '"]');
+                if (!specEl) return;
+                specEl.classList.toggle('hidden', (pmEl ? pmEl.value : 'FIXED') === 'AREA');
+            }
+            window.syncSpecField = syncSpecField;
 
             function setupAutocomplete(id) {
                 const input = document.querySelector(`[name="item_search_${id}"]`);
@@ -248,16 +252,13 @@
                         if (hInp) { hInp.classList.remove('border-blue-500'); hInp.classList.add('border-gray-300'); }
                         if (priceLbl) priceLbl.textContent = '단가 (원)';
                     }
-                    // FIXED 품목에 규격 정보 표시
-                    var specInfo = document.getElementById('item_spec_info_' + id);
-                    if (specInfo) {
-                        if (pm === 'FIXED' && item.specification) {
-                            specInfo.textContent = '규격: ' + item.specification;
-                            specInfo.classList.remove('hidden');
-                        } else {
-                            specInfo.classList.add('hidden');
-                        }
+                    // 규격 텍스트 — 품목을 고르면 그 품목의 마스터 규격으로 덮는다(없으면 롤 폭 cm).
+                    //   AREA 는 비운다: 가로·세로가 규격이고, 마스터 「2T 투명」이 남으면 문서에 W×H 대신 그게 찍힌다.
+                    var specInp = document.querySelector('[name="spec_' + id + '"]');
+                    if (specInp) {
+                        specInp.value = pm === 'AREA' ? '' : (item.specification || (item.width_mm ? (parseInt(item.width_mm, 10) / 10) + 'cm' : ''));
                     }
+                    syncSpecField(id);
                     // 체크 아이콘 표시
                     var checkEl = document.getElementById('item_check_' + id);
                     if (checkEl) checkEl.classList.remove('hidden');
@@ -274,12 +275,6 @@
                     var itType = (item.item_type || '').toUpperCase();
                     var isDistItem = itType === 'GOODS' || itType === 'MATERIAL';
                     applyDistRowMode(id, isDistItem);
-                    // 유통품목이면 품목 마스터 규격을 규격칸에 자동채움(수정 가능)
-                    if (isDistItem) {
-                        var specSel = document.querySelector('[name="spec_' + id + '"]');
-                        // 규격 자동채움: 마스터 규격 우선, 없으면 폭(width_mm→cm) — 원단 동일명 식별 (이름은 불변)
-                        if (specSel && !specSel.value) specSel.value = item.specification || (item.width_mm ? (parseInt(item.width_mm, 10) / 10) + 'cm' : '');
-                    }
 
                     // 기성품/유통 재고 부족 경고 (Phase 3) — 차단 X, 안내만. 출고 시 마이너스 허용
                     if (item.id) {

@@ -247,7 +247,7 @@ quotationsRouter.get('/:id', async (c) => {
     await markExpiredIfNeeded(c.env.DB, quotation)
 
     const { results: items } = await c.env.DB.prepare(`
-      SELECT id, quotation_id, item_id, item_name, width, height, scale_factor, quantity, unit, unit_price, amount, content, post_processing, finishing, pricing_method, parent_id, sort_order, ai_group_index, assigned_entity_id, created_at FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order ASC, id ASC
+      SELECT id, quotation_id, item_id, item_name, width, height, scale_factor, quantity, unit, unit_price, amount, content, specification, post_processing, finishing, pricing_method, parent_id, sort_order, ai_group_index, assigned_entity_id, created_at FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order ASC, id ASC
     `).bind(id).all()
 
     const { results: convertedOrders } = await c.env.DB.prepare(`
@@ -350,16 +350,16 @@ quotationsRouter.post('/', async (c) => {
       parentInsertStmts.push(c.env.DB.prepare(`
         INSERT INTO quotation_items (
           quotation_id, item_id, item_name, width, height, scale_factor,
-          quantity, unit, unit_price, amount, content, post_processing,
+          quantity, unit, unit_price, amount, content, specification, post_processing,
           finishing, pricing_method, sort_order, ai_group_index,
           entity_id, assigned_entity_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         quotationId, item.item_id || null, item.item_name || 'Unknown',
         w, h, item.scale_factor || 1,
         item.quantity || 1, item.unit || 'EA',
         item.unit_price || 0, amount,
-        item.content || null, item.post_processing || null,
+        item.content || null, item.specification || null, item.post_processing || null,
         item.finishing || null, pricingMethod, i,
         item.ai_group_index != null ? item.ai_group_index : null,
         getEntityId(c) || 1,
@@ -489,15 +489,15 @@ quotationsRouter.put('/:id', async (c) => {
       parentInsertStmts.push(c.env.DB.prepare(`
         INSERT INTO quotation_items (
           quotation_id, item_id, item_name, width, height, scale_factor,
-          quantity, unit, unit_price, amount, content, post_processing,
+          quantity, unit, unit_price, amount, content, specification, post_processing,
           finishing, pricing_method, sort_order, entity_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         Number(id), item.item_id || null, item.item_name || 'Unknown',
         w, h, item.scale_factor || 1,
         item.quantity || 1, item.unit || 'EA',
         item.unit_price || 0, amount,
-        item.content || null, item.post_processing || null,
+        item.content || null, item.specification || null, item.post_processing || null,
         item.finishing || null, pricingMethod, i,
         getEntityId(c) || 1
       ))
@@ -622,7 +622,7 @@ quotationsRouter.post('/:id/convert-to-order', requireEditOrRole('/quotations', 
     }
 
     const { results: qItems } = await c.env.DB.prepare(
-      `SELECT id, quotation_id, item_id, item_name, width, height, scale_factor, quantity, unit, unit_price, amount, content, post_processing, finishing, pricing_method, parent_id, sort_order, ai_group_index, assigned_entity_id, created_at FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order, id`
+      `SELECT id, quotation_id, item_id, item_name, width, height, scale_factor, quantity, unit, unit_price, amount, content, specification, post_processing, finishing, pricing_method, parent_id, sort_order, ai_group_index, assigned_entity_id, created_at FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order, id`
     ).bind(id).all<Record<string, unknown>>()
     if (!qItems || qItems.length === 0) {
       return c.json({ success: false, error: '견적서에 품목이 없습니다.' }, 400)
@@ -694,19 +694,20 @@ quotationsRouter.post('/:id/convert-to-order', requireEditOrRole('/quotations', 
         INSERT INTO order_items (
           order_id, item_id, item_name, category_name,
           width, height, quantity, unit, unit_price, amount, vat_included,
-          post_processing, content, sort_order,
+          post_processing, content, specification, sort_order,
           ai_group_index, scale_factor, parent_item_id, finishing,
           assigned_entity_id, assignment_status,
           -- ★견적의 과금 규칙을 주문으로 **넘긴다**(0600). 견적서는 원래 immutable snapshot 인데
           --   주문에 받을 칸이 없어 변환 시점에 축이 소실되고 있었다 — 그러면 주문을 나중에 저장할 때
           --   품목의 오늘 축으로 다시 계산되어 견적과 금액이 갈린다.
           pricing_method, min_billing_side_cm
-        ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, ?, ?)
+        ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, ?, ?)
       `).bind(
         orderId, qi.item_id, qi.item_name,
         qi.width, qi.height, qi.quantity, qi.unit,
         qi.unit_price, qi.amount,
-        qi.post_processing, qi.content, qi.sort_order,
+        // 규격 텍스트(0614)도 과금축과 같은 이유로 넘긴다 — 유통·FIXED 제작품은 이게 규격의 전부다.
+        qi.post_processing, qi.content, qi.specification ?? null, qi.sort_order,
         qi.ai_group_index, qi.scale_factor, qi.finishing,
         qi.assigned_entity_id ?? null,
         qi.pricing_method || null,

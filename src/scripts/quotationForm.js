@@ -90,6 +90,9 @@ function buildItemHtml(id) {
                 <input type="hidden" name="category_name_${id}">
                 <input type="text" name="item_search_${id}" placeholder="품목명 검색..." autocomplete="off"
                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                <!-- 규격 텍스트 1칸(0614) — 주문서 itemRow.js 와 같은 규칙: AREA 는 가로·세로가 규격이라 숨긴다.
+                     전엔 견적 라인에 칸도 컬럼도 없어 입간판·아크릴 박스 규격이 견적→주문 전환에서 소실됐다(2026-09-15). -->
+                <input type="text" name="spec_${id}" placeholder="규격 (예: 30*20*15 · 2T 백색)" title="규격 텍스트 — 3축은 가로*깊이*높이(cm, mm 면 mm 접미). 청구 계산엔 쓰이지 않습니다" class="hidden w-full px-3 py-1.5 border border-gray-300 rounded-lg text-xs mt-1">
                 <div id="item_dd_${id}" class="item-dd hidden"></div>
             </div>
             <div>
@@ -173,6 +176,10 @@ function setupAutocomplete(id) {
             if (hInp) { hInp.classList.remove('border-blue-500'); hInp.classList.add('border-gray-300'); }
             if (priceLbl) priceLbl.textContent = '단가 (원)';
         }
+        // 규격 텍스트 — 품목을 고르면 마스터 규격으로 덮는다. AREA 는 비운다(문서에 W×H 대신 찍히는 사고 방지).
+        var specInp = document.querySelector('[name="spec_' + id + '"]');
+        if (specInp) specInp.value = pm === 'AREA' ? '' : (item.specification || '');
+        syncQuotSpecField(id);
         calcItem(id);
         var clientId = document.getElementById('clientId').value;
         if (clientId && item.id) {
@@ -258,6 +265,15 @@ window.removeItem = function(id) {
     var el = document.getElementById('item-' + id);
     if (el) { el.remove(); renumberDisplay(); calculateTotal(); }
 };
+
+// ── 규격 텍스트 칸 ──────────────────────────────────────────
+// 표시 = pricing_method !== 'AREA' (주문서 itemRow.js syncSpecField 와 같은 규칙). 값은 건드리지 않는다.
+function syncQuotSpecField(id) {
+    var pmEl = document.querySelector('[name="pricing_method_' + id + '"]');
+    var specEl = document.querySelector('[name="spec_' + id + '"]');
+    if (!specEl) return;
+    specEl.classList.toggle('hidden', (pmEl ? pmEl.value : 'FIXED') === 'AREA');
+}
 
 // ── 금액 계산 ──────────────────────────────────────────────
 
@@ -422,6 +438,9 @@ async function loadQuotation(id) {
             }
             var pmEl = document.querySelector('[name="pricing_method_' + rowId + '"]');
             if (pmEl) pmEl.value = item.pricing_method || 'FIXED';
+            var specRestoreEl = document.querySelector('[name="spec_' + rowId + '"]');
+            if (specRestoreEl && item.specification) specRestoreEl.value = item.specification;
+            syncQuotSpecField(rowId);
             calcItem(rowId);
         });
 
@@ -485,6 +504,7 @@ document.getElementById('quotationForm').addEventListener('submit', async functi
             pricing_method: pm,
             vat_included: (document.querySelector('[name="vat_' + id + '"]') || {}).checked ? 1 : 0,
             content: (document.querySelector('[name="content_' + id + '"]') || {}).value || '',
+            specification: ((document.querySelector('[name="spec_' + id + '"]') || {}).value || '').trim() || null,
             post_processing: '[]',
             assigned_entity_id: (function() { var v = (document.querySelector('[name="assigned_entity_' + id + '"]') || {}).value; return v ? parseInt(v) : undefined; })(),
             sort_order: idx + 1
