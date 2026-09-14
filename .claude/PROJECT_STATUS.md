@@ -2,6 +2,8 @@
 
 > **운영 규칙(2026-08-10 확정)**: ①완료(✅)=아래 인덱스 1줄(제목+남은 것)만, 경위 전문은 `PROJECT_STATUS_ARCHIVE.md`에 직접 쓴다 (**「✅ 최근 완료」 항목 400자 상한** — 2026-08-19 게이트 강제, 초과 시 큰 것부터 지목) ②의미 없는 대기=보류함으로 과감히 이관 ③대기 항목=빠른 처리 우선 ④"커밋·미배포" 기록은 믿지 말고 prod 실측(deploy.yml=main push 자동배포). 게이트=`node scripts/doc-diet-audit.cjs`(훅·세션 시작 배너 연동).
 
+> **✅ prod 데이터 2026-09-14 — 동산 6~8월 주문 회계반영(BILLED) 1,301건 / 525,179,143원** — 이관분(이카운트 기인식)이라 이중계상 없이 반영. 8월 1,257(배송8월 1,246+8월주문·7월배송 11)·7월 40·6월 4, 전부 SHIPPED·미반영 → billing_status BILLED(order_billing_groups+orders 미러, accounting_date=배송일 기준 06-29~08-31), 반영자 김용준(9). 잔여 미반영 0. 표준 bulk-bill 동일 로직·부수효과 없음(AR=그룹 파생). 롤백=대상 주문(entity1·delivery 2026-06~08·billed_by 9) billing_status→NULL.
+
 > **✅ prod 2026-09-14 `6fc6035f` — 출력→카드 매칭 게이트 배선 + 그 게이트가 잡은 결함 3건** — ★`test:print-match` 는 등록 후 **한 번도 안 돌아 4일간 빨간불**이었다: ①에이전트 경로 PRINT_DONE 이 `shipment_ready` 를 안 세웠다(`lifecycle.ts:107` 을 복사하며 한 단계 누락 → 출력 끝난 주문이 출고에서 미완성) ②흡수 학습 링크는 `card_number` 가 NULL 이라 `print_events`·검색이 **패널 경로에 장님** ③`PUT /orders/:id` 가 파일맵을 끊고 되붙이지 않아 **주문서 한 번 수정하면 출력완료가 영영 카드에 못 닿았다**(시나리오 E 신설·수정 전 빨간불 확인). 배선=`test:local-e2e`(서버 필요 4종 → `ship:gate`). 검증=journey 31/31·local-e2e 4/4·smoke:prod 129/129·쓰기 5/5. 남은=**기존 `shipment_ready=0` 소급 판단**
 
 > **✅ prod 2026-09-11 `7a23c954` — 펀칭 라벨 실물 표기(웹 축) + IA 구조 정리 3건** — 카드·주문서 펀칭 문장 `8개(모서리 4, 4변 1)`(라벨 쌍 실물 계산·selftest 60·클라 사본 대조), 주문서 프리셋 「모서리 4」+안내 1줄. IA 축(호스트 0.13.0·패널 0.21.0·재단 0.43.0)은 같은 날 `ia:deploy` 로 별도 배포·실측. 검증=tsc·build·test:calc 26종·entity 0·journey:gate 25/25(1회 재시도: 다른 세션 서버와 로컬 D1 잠금 경합)·smoke:prod 129/129·마커=`pageScript` 실측(옛 「4모서리」 소멸). 남은=**첫 실등록 warn.log 확인 · 에이전트 warn.log UI 미구현 · P3(백업 잔재·용어)**
