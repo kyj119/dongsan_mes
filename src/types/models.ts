@@ -234,6 +234,7 @@ export interface QuotationItem {
   unit_price: number;
   amount: number;
   content?: string;
+  specification?: string;
   post_processing?: string;
   finishing?: string;
   pricing_method?: string;
@@ -303,6 +304,7 @@ export interface OrderItem {
   vat_included: number;
   post_processing?: string; // JSON array
   content?: string;
+  specification?: string;
   sort_order: number;
   created_at: string;
   updated_at: string;
