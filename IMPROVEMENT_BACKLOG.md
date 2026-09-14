@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-09-13T13:05:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-09-14T10:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,33 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **6** (`list_issues(state:OPEN,label:auto-improve)` 실측, 3→6 — 이번 사이클 신규 #647·#648·#649) |
+| 🆕 new | **7** (`list_issues(state:OPEN,label:auto-improve)` 실측, 6→7 — 이번 사이클 신규 #650) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **566** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 5 보안 + 인프라 (2026-09-14T10:20):**
+> - **방법**: 세션 시작 시 detached HEAD `569b0b5`(origin/main과 동일) → 로컬 `main`은 stale(`eecca71`, shallow-clone 앵커 유실 클래스) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area5 방법 라인 HEAD `4b60c53`)**: 웹앱 보안범위(`src/routes`·`src/utils`·`src/middleware`·`index.tsx`·`wrangler.toml`·`.github/workflows`) diff **2커밋**(전체 13커밋 중, 나머지는 auto-improve 자기순환 chore 6건 + 문서 3건 + journey-loop 도구 등) — `9212dfe`(print-match 파일맵 재연결+게이트 배선)·`3e23e87`(유통 주문서 폐지+order_type 라인파생+품목검색 재고/최근단가).
+> - **`9212dfe` 보안 렌즈 검증**: `PUT /orders/:id`에 추가된 `print_file_map` 재연결 로직·`printEvents.ts`의 `shipment_ready` 전파·`card_number` 백필 전부 파라미터 바인딩 정상(문자열 결합 SQL 0건), 기존 `requireEditOrRole`/`agentKeyMiddleware` 게이트 변경 없음, 신규 SELECT/UPDATE 전부 같은 함수 스코프의 `order_id`/`card_id`로 한정 — 회귀 0.
+> - **🔴 `3e23e87` 신규 `GET /api/items?with_stock=1` 형제쿼리 entity 격리 비대칭 발견 → #650 등록**: 같은 함수에서 `stock` 서브쿼리는 `inventory.entity_id = ?`로 격리하는데 바로 옆 `last`(최근 판매단가/일자) 서브쿼리는 `orders` JOIN에 entity 필터가 전혀 없음 — `clients.ts`의 `lastOrderJoin`(동일 형태에 `entityFilter(c)` 적용)과 대조해 확립된 컨벤션 위반 확인. `authMiddleware`만 있고 role 제한 없는 라우터라 전 법인 사용자가 신규 품목검색 모달("최근단가" 컬럼, `shell.js` 신규 UI)에서 타법인 실거래 단가를 그대로 봄. `npm run audit:entity`는 서브쿼리+윈도우함수 내부라 이 케이스를 못 잡음(0건 보고, 정적감사 사각 재확인). IDOR 비대칭 탐지 규칙(형제 쿼리 하나만 격리=격리 의도 증거)에 정확히 부합 — **자동수정 금지**(프로젝트 IDOR=owner 워크플로 선례 #349/#356/#437과 동일 처리), issue-only.
+> - **`orders/create.ts`·`helpers.ts deriveOrderType` 검토**: `items`(entity_id 없는 전역 마스터) 대상 COUNT 쿼리만, 바인딩 정상, 인증/격리 변경 없음 — 회귀 0.
+> - **XSS standing scan**: `node scripts/check-xss.mjs` 재실행 — **102건**(직전 108건에서 6건 감소). 이번 churn 파일(`orders.js`·`layout/shell.js`) 매치 후보 확인 — `shell.js:1801/1807`은 로딩 스피너 리터럴(sink 아님), `orders.js` 기존 sink 전부 `escapeHtml` 적용 확인 — net-new sink 0건.
+> - **standing scan 1: 시크릿 폴백** `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43` 1건뿐(기존 FP, 변동없음).
+> - **standing scan 2: `body.password ||` 기본값** → 0건.
+> - **standing scan 3: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 75건·**누락 0건**(#650은 이 정적감사 패턴 밖의 서브쿼리/윈도우함수 케이스라 별도 육안 검증으로 발견).
+> - **standing scan 4: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지.
+> - **standing scan 5: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 6: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 10런 전부 `conclusion:success`(최종 HEAD `569b0b5` 포함).
+> - **#626 재확인**: `updated_at` 2026-09-10 이후 변동 없음(코멘트 1건 그대로) — owner 판정 대기 유지, 재조치 불요.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **6**(#649·#648·#647·#626·#617·#616, #650 등록 전) 전건 재확인 후 #650 신규 생성.
+> - **backlog↔GitHub 절대값 재동기화**: open **6→7**(#650 신규) · done **566**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-5-security-infra.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 이번 사이클은 기존 「IDOR 비대칭 탐지 규칙」(형제 쿼리 대조)이 그대로 새 클래스(신규기능 내 stock/last 형제쿼리 비대칭)를 적중 — 별도 codify 불요, 기존 레시피의 정확한 적용 사례.
+> - **백로그 트림 체크**: 사이클 로그 9건 → 이번 추가 후 10건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 1건(#650 items with_stock 최근단가 entity 격리 누락, IDOR 비대칭, issue-only), 자동수정 0건(IDOR=owner 워크플로), done-sync: open 6→7(#650 신규)·done 566(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-09-13T13:05):**
 > - **방법**: 세션 시작 시 detached HEAD `6d7239f`(origin/main과 동일) → 로컬 `main`은 stale(`eecca71`) → `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
