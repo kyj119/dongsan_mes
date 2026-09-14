@@ -199,6 +199,41 @@ itemsRouter.get('/', async (c) => {
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
+    // with_stock=1 (품목 검색 모달, 2026-09-14 P11-③): 자재·상품 행에 「이 법인 재고 합계」와 「최근 판매 장당가」를 붙인다.
+    //   유통의 본질은 재고 판매라 영업이 검색 결과에서 바로 견적한다. 제품(PRODUCT)은 재고 개념이 없어 건드리지 않는다.
+    //   상관 서브쿼리 대신 결과 id 로 두 번 묶어 조회한다(CLAUDE.md §D1 실행계획). 최근가 = 금액÷수량(표기 정본 = 금액 파생).
+    if (c.req.query('with_stock') === '1' && (results || []).length) {
+      const rows = results as any[]
+      const ids = rows.filter((r) => r.item_type === 'MATERIAL' || r.item_type === 'GOODS').map((r) => Number(r.id))
+      if (ids.length) {
+        const ph = ids.map(() => '?').join(',')
+        const entityId = Number((c.get('user') as any)?.entityId) || 1
+        const stock = await c.env.DB.prepare(
+          `SELECT item_id, SUM(quantity) AS q FROM inventory WHERE entity_id = ? AND item_id IN (${ph}) GROUP BY item_id`,
+        ).bind(entityId, ...ids).all<{ item_id: number; q: number }>()
+        const last = await c.env.DB.prepare(
+          `SELECT item_id, unit_price, sold_at FROM (
+             SELECT oi.item_id,
+                    CASE WHEN oi.quantity > 0 THEN ROUND(oi.amount / oi.quantity) ELSE oi.unit_price END AS unit_price,
+                    o.order_date AS sold_at,
+                    ROW_NUMBER() OVER (PARTITION BY oi.item_id ORDER BY o.order_date DESC, oi.id DESC) AS rn
+             FROM order_items oi JOIN orders o ON o.id = oi.order_id
+             WHERE oi.item_id IN (${ph}) AND o.status != 'CANCELLED' AND oi.amount > 0
+           ) WHERE rn = 1`,
+        ).bind(...ids).all<{ item_id: number; unit_price: number; sold_at: string }>()
+        const stockMap = new Map((stock.results || []).map((s) => [Number(s.item_id), Number(s.q)]))
+        const lastMap = new Map((last.results || []).map((l) => [Number(l.item_id), l]))
+        for (const r of rows) {
+          if (!ids.includes(Number(r.id))) continue
+          r.stock_qty = stockMap.has(Number(r.id)) ? stockMap.get(Number(r.id)) : 0
+          r.stock_unit = r.base_unit || r.unit || ''
+          const l = lastMap.get(Number(r.id))
+          r.last_unit_price = l ? Number(l.unit_price) : null
+          r.last_sold_at = l ? l.sold_at : null
+        }
+      }
+    }
+
     // Get total count
     let countQuery = `SELECT COUNT(*) as count FROM items i LEFT JOIN item_categories ic ON i.category_id = ic.id WHERE ${activeClause}`
     const countParams: any[] = []

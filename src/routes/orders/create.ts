@@ -19,7 +19,7 @@ import { getEntityId, entityFilter, findForeignAnalysisIds, foreignAnalysisError
 import { kstYmd, kstYmdCompact } from '../../utils/kstDate'
 import { ORDER_STATUS_LABELS } from '../../utils/statusLabels'
 import { thumbRef, resolveGroupByAiIndex, type AnalysisGroup } from '../../utils/thumbnailStore'
-import { resolveAssignedEntity, loadItemMasters, recalcOrderBillingGroups, generateCardsForOrder, resolveLineAxis } from './helpers'
+import { resolveAssignedEntity, loadItemMasters, recalcOrderBillingGroups, generateCardsForOrder, resolveLineAxis, deriveOrderType } from './helpers'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { evaluateClientCredit } from '../ledger/credit-helpers'
 
@@ -184,7 +184,8 @@ ordersCreateRouter.post('/', async (c) => {
     }
 
     // Insert order
-    const orderType = orderData.order_type === 'DISTRIBUTION' ? 'DISTRIBUTION' : 'PRODUCTION'
+    // 주문 성격은 라인에서 파생한다(P11-②, helpers.deriveOrderType). 명시 DISTRIBUTION 은 API 호환으로 그대로 받는다.
+    const orderType = orderData.order_type === 'DISTRIBUTION' ? 'DISTRIBUTION' : await deriveOrderType(c.env.DB, orderData.items)
     // Phase 3.2: source_quotation_id 받으면 orders.quotation_id에 저장 (견적서 → 주문 prefill 흐름)
     const sourceQuotationId = orderData.source_quotation_id || orderData.quotation_id || null
     // billingEntityId는 위(채번 전)에서 계산됨 — 번호 접두와 entity_id 일치 보장

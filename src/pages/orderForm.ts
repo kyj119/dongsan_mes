@@ -16,12 +16,12 @@ import sSheet from '../scripts/orderForm/sheet.js?raw'
 import sParent from '../scripts/orderForm/parent.js?raw'
 import sIntake from '../scripts/orderForm/intake.js?raw'
 const pageScript = [finishingLabel, deliverySlot, displayUnitPrice, sClient, sItemRow, sFinishing, sCalc, sSheet, sParent, sIntake].join('\n')
-import distPageScript from '../scripts/orderFormDist.js?raw'
 
 export async function orderFormPage(c: Context<HonoEnv>) {
-  const type = c.req.query('type')
-  if (type === 'dist') {
-    return orderFormDistPage(c)
+  // 유통 주문서(?type=dist)는 폐지(2026-09-14, PROPOSALS P11) — prod 주문 11,670건 중 DISTRIBUTION 0건.
+  //   주문 성격은 화면이 아니라 라인에서 파생한다(routes/orders/helpers.deriveOrderType). 북마크는 주문서로 보낸다.
+  if (c.req.query('type') === 'dist') {
+    return c.redirect('/order-form', 302)
   }
   // 부가세율 = settings 단일 정본을 화면에 주입한다(2026-07-30). 정본 조회 = utils/vatRate.ts
   const vatRate = await readVatRate(c.env.DB)
@@ -46,10 +46,8 @@ export async function orderFormPage(c: Context<HonoEnv>) {
         <div class="max-w-7xl mx-auto">
             <div class="ds-card p-6">
                 <div class="flex items-center justify-between mb-4 pb-3 border-b">
-                    <h1 class="text-xl font-bold text-gray-800"><i class="fas fa-industry mr-2 text-blue-600"></i>생산 주문서 등록</h1>
-                    <a href="/order-form?type=dist" class="text-sm text-green-600 hover:text-green-800 hover:underline">
-                        <i class="fas fa-exchange-alt mr-1"></i>유통(상품) 주문서로 전환
-                    </a>
+                    <h1 class="text-xl font-bold text-gray-800"><i class="fas fa-industry mr-2 text-blue-600"></i>주문서 등록</h1>
+                    <span class="text-xs text-gray-400">제작·유통 구분은 품목 라인에서 자동으로 정해집니다</span>
                 </div>
                 <form id="orderForm">
                     <!-- 기본 정보 -->
@@ -389,193 +387,5 @@ export async function orderFormPage(c: Context<HonoEnv>) {
     `,
     // 스크립트보다 앞서 주입해야 calc.js 가 로드 시점부터 올바른 세율을 쓴다
     pageScript: `window.VAT_RATE = ${vatRate};\n` + pageScript
-  })
-}
-
-async function orderFormDistPage(c: Context<HonoEnv>) {
-  // 생산 주문서와 같은 규칙 — 합계의 부가세율은 settings 정본을 주입한다(하드코딩 0.1 해소)
-  const vatRate = await readVatRate(c.env.DB)
-  return renderPage(c, {
-    title: '유통 주문 등록',
-    activePage: '/orders',
-    pageCSS: `
-            .item-dd { position:absolute; z-index:50; background:var(--c-surface); border:1px solid var(--c-border); border-radius:0.5rem; max-height:220px; overflow-y:auto; width:100%; box-shadow:0 4px 12px rgba(0,0,0,.12); top:100%; left:0; margin-top:2px; }
-            .item-dd-entry:hover { background:var(--c-primary-light); }
-            .client-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:100; display:flex; align-items:center; justify-content:center; }
-            .client-modal { background:var(--c-surface); border-radius:0.75rem; width:90%; max-width:500px; max-height:80vh; box-shadow:0 20px 60px rgba(0,0,0,.3); overflow:hidden; }
-            .client-modal-row { padding:10px 16px; cursor:pointer; border-bottom:1px solid var(--c-border-light); }
-            .client-modal-row:hover { background:var(--c-primary-light); }
-    `,
-    pageContent: `
-        <div class="max-w-7xl mx-auto">
-            <div class="ds-card p-6">
-                <div class="flex items-center justify-between mb-6 border-b pb-3">
-                    <h1 class="text-xl font-bold text-gray-800">
-                        <i class="fas fa-truck mr-2 text-green-600"></i>유통 주문서 등록
-                    </h1>
-                    <a href="/order-form" class="text-sm text-blue-600 hover:text-blue-800 hover:underline">
-                        <i class="fas fa-exchange-alt mr-1"></i>생산 주문서로 전환
-                    </a>
-                </div>
-
-                <form id="distOrderForm">
-                    <!-- 기본 정보 (생산 주문서와 동일 레이아웃) -->
-                    <div class="mb-6">
-                        <h2 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2">
-                            <i class="fas fa-info-circle mr-2"></i>기본 정보
-                        </h2>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div style="position:relative">
-                                <label class="block text-sm font-medium text-gray-700 mb-2">거래처 <span class="text-red-500">*</span></label>
-                                <input type="text" id="clientSearch" placeholder="거래처명 입력 후 Enter" autocomplete="off"
-                                    onkeydown="handleClientEnter(event)"
-                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                <input type="hidden" id="clientId">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">우선순위</label>
-                                <select id="distPriority" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                    <option value="NORMAL">일반</option>
-                                    <option value="URGENT">긴급</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">전화번호</label>
-                                <input type="tel" id="contactPhone" placeholder="거래처 선택 시 자동 입력"
-                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">휴대전화</label>
-                                <input type="tel" id="contactMobile" placeholder="거래처 선택 시 자동 입력"
-                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">배송처</label>
-                                <input type="text" id="receptionLocation" placeholder="예: 동산인쇄" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                            </div>
-                            <div>
-                                <label id="deliveryAddressLabel" class="block text-sm font-medium text-gray-700 mb-2">배송처 주소</label>
-                                <div class="flex flex-wrap gap-2">
-                                    <input type="text" id="distDeliveryPostal" maxlength="5" inputmode="numeric" placeholder="우편번호" oninput="this.value=this.value.replace(/[^0-9]/g,'')" class="w-24 px-3 py-2 border border-gray-300 rounded-lg text-center text-sm focus:ring-2 focus:ring-blue-500">
-                                    <button type="button" onclick="openPostcodeSearch({ postalId: 'distDeliveryPostal', addressId: 'deliveryAddress', detailFocusId: 'distDeliveryDetail' })" class="px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 whitespace-nowrap">
-                                        <i class="fas fa-search mr-1"></i>주소 검색
-                                    </button>
-                                    <input type="text" id="deliveryAddress" placeholder="예: 서울시 중구 을지로 123" class="basis-full sm:basis-0 sm:flex-1 min-w-0 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                </div>
-                                <input type="text" id="distDeliveryDetail" placeholder="상세주소 (예: 3층 301호, 동산인쇄 앞)" class="w-full mt-2 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">출고방법</label>
-                                <select id="distDeliveryMethod" onchange="onDistDeliveryMethodChange()" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                    ${deliveryMethodOptionsHtml()}
-                                </select>
-                            </div>
-                            <div>
-                                <label id="distShippingPaymentLabel" class="block text-sm font-medium text-gray-700 mb-2">선불/착불</label>
-                                <select id="distShippingPayment" disabled class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                    <option value="">해당없음</option>
-                                    <option value="PREPAID">선불</option>
-                                    <option value="COLLECT">착불</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">납품일</label>
-                                <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="distDeliveryDate" class="js-fp w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">납품시간</label>
-                                <div id="distDeliverySlotWrap" class="hidden">
-                                    <select id="distDeliverySlot" onchange="onDistDeliverySlotChange()" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                        <option value="">미정</option>
-                                        <option value="AM">오전</option>
-                                        <option value="PM">오후</option>
-                                    </select>
-                                    <p id="distDeliverySlotHint" class="mt-1 text-xs text-gray-500"></p>
-                                </div>
-                                <div id="distDeliveryTimeWrap" class="flex items-center gap-2">
-                                    <select id="distDeliveryTimeHour" onchange="onDistDeliveryTimeHourChange()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                    </select>
-                                    <span class="text-gray-500 font-medium">:</span>
-                                    <select id="distDeliveryTimeMinute" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 품목 테이블 -->
-                    <div class="mb-6">
-                        <div class="flex items-center justify-between mb-4 border-b pb-2">
-                            <h2 class="text-xl font-bold text-gray-800"><i class="fas fa-box mr-2"></i>주문 품목</h2>
-                            <div class="flex gap-2">
-                                <button type="button" onclick="addItemRow()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
-                                    <i class="fas fa-plus mr-1"></i>품목 추가
-                                </button>
-                                <button type="button" onclick="addAccessoryRow()" class="px-3 py-2 bg-amber-100 text-amber-700 rounded-lg text-sm hover:bg-amber-200" title="부속품(깃대, 삼발이 등) 추가">
-                                    <i class="fas fa-puzzle-piece mr-1"></i>부속품
-                                </button>
-                            </div>
-                        </div>
-                        <div class="overflow-x-auto">
-                            <table class="w-full" style="table-layout:fixed;min-width:920px">
-                                <colgroup><col><col style="width:20%"><col style="width:130px"><col style="width:90px"><col style="width:130px"><col style="width:130px"><col style="width:50px"></colgroup>
-                                <thead>
-                                    <tr class="bg-gray-50 border-b border-gray-200">
-                                        <th class="text-left py-3 px-3 font-medium text-gray-600">품목명</th>
-                                        <th class="text-left py-3 px-3 font-medium text-gray-600">규격</th>
-                                        <th class="text-left py-3 px-3 font-medium text-gray-600">담당</th>
-                                        <th class="text-center py-3 px-3 font-medium text-gray-600">수량</th>
-                                        <th class="text-right py-3 px-3 font-medium text-gray-600">단가</th>
-                                        <th class="text-right py-3 px-3 font-medium text-gray-600">금액</th>
-                                        <th class="text-center py-3 px-3 font-medium text-gray-600"></th>
-                                    </tr>
-                                </thead>
-                                <tbody id="distItemsBody"></tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <!-- 합계 -->
-                    <div class="mb-6 bg-gray-50 rounded-lg p-4">
-                        <div class="flex flex-wrap items-center justify-between gap-4">
-                            <div class="flex items-center gap-4">
-                                <label class="flex items-center gap-2 text-sm cursor-pointer">
-                                    <input type="checkbox" id="distVatIncluded" checked onchange="calculateDistTotal()" class="rounded border-gray-300 text-blue-600">
-                                    <span class="text-gray-700 font-medium">부가세 포함</span>
-                                </label>
-                                <div class="flex items-center gap-2 text-sm">
-                                    <span class="text-gray-600">할인:</span>
-                                    <input type="text" inputmode="numeric" data-money id="distDiscount" value="0" class="w-24 px-2 py-1 border border-gray-300 rounded text-right text-sm" oninput="calculateDistTotal()">
-                                    <span class="text-gray-500">원</span>
-                                </div>
-                            </div>
-                            <div class="flex items-center gap-6 text-sm">
-                                <div><span class="text-gray-600">공급가액:</span> <span id="distSubtotal" class="font-bold text-blue-700">0원</span></div>
-                                <div><span class="text-gray-600">부가세:</span> <span id="distVatAmount" class="font-bold text-blue-700">0원</span></div>
-                                <div class="text-base"><span class="font-bold text-gray-800">최종금액:</span> <span id="distGrandTotal" class="font-bold text-red-600">0원</span></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 비고 -->
-                    <div class="mb-6">
-                        <label class="block text-sm font-medium text-gray-700 mb-1">비고</label>
-                        <textarea id="distNotes" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="특이사항을 입력하세요"></textarea>
-                    </div>
-
-                    <!-- 버튼 -->
-                    <div class="flex justify-end space-x-3">
-                        <button type="button" onclick="history.back()" class="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100">
-                            <i class="fas fa-times mr-2"></i>취소
-                        </button>
-                        <button type="submit" id="distSubmitBtn" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">
-                            <i class="fas fa-save mr-2"></i>등록
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    `,
-    pageScript: `window.VAT_RATE = ${vatRate};\n` + [deliverySlot, distPageScript].join(String.fromCharCode(10))
   })
 }

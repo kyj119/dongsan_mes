@@ -2602,7 +2602,8 @@ window.openItemSearchModal = function(opts) {
 };
 
 function _doItemSearch(q) {
-  var url = '/api/items?search=' + encodeURIComponent(q) + '&type=' + _itemSearchType + (_itemSearchExcludeType ? '&exclude_type=' + _itemSearchExcludeType : '') + (_itemSearchForUser ? '&for_user=1' : '') + '&limit=50';
+  // with_stock=1: 자재·상품 행에 재고 잔량·최근 판매단가를 같이 받는다(2026-09-14 P11-③ — 유통의 본질은 재고 판매)
+  var url = '/api/items?search=' + encodeURIComponent(q) + '&type=' + _itemSearchType + (_itemSearchExcludeType ? '&exclude_type=' + _itemSearchExcludeType : '') + (_itemSearchForUser ? '&for_user=1' : '') + '&with_stock=1&limit=50';
   var body = document.getElementById('itemSearchModalBody');
   if (!body) return;
   body.innerHTML = '<div class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>검색 중...</div>';
@@ -2629,15 +2630,17 @@ function _doItemSearch(q) {
       + '<th class="px-4 py-2">분류</th>'
       + '<th class="px-4 py-2">단위</th>'
       + '<th class="px-4 py-2 text-right">단가</th>'
+      + '<th class="px-4 py-2 text-right" title="자재·상품만. 이 법인 재고 합계(base 단위)">재고</th>'
+      + '<th class="px-4 py-2 text-right" title="최근 판매 라인의 장당가 = 금액÷수량">최근단가</th>'
       + '</tr></thead><tbody>';
 
     if (favItems.length > 0) {
-      html += '<tr><td colspan="6" class="px-4 py-1 text-xs font-semibold text-amber-600 bg-amber-50/50 border-b border-amber-100"><i class="fas fa-star text-amber-400 mr-1"></i>즐겨찾기</td></tr>';
+      html += '<tr><td colspan="8" class="px-4 py-1 text-xs font-semibold text-amber-600 bg-amber-50/50 border-b border-amber-100"><i class="fas fa-star text-amber-400 mr-1"></i>즐겨찾기</td></tr>';
     }
 
     sorted.forEach(function(it, i) {
       if (i === favItems.length && favItems.length > 0) {
-        html += '<tr><td colspan="6" class="border-b-2 border-gray-200"></td></tr>';
+        html += '<tr><td colspan="8" class="border-b-2 border-gray-200"></td></tr>';
       }
       var pm = it.pricing_method || 'FIXED';
       var pmBadge = pm === 'AREA' ? ' <span class="text-xs text-blue-600 font-medium">[㎡]</span>' : '';
@@ -2672,6 +2675,11 @@ function _doItemSearch(q) {
         + '<td class="px-4 py-2 text-xs text-gray-500">' + window.escapeHtml(catStr) + '</td>'
         + '<td class="px-4 py-2 text-gray-500">' + (it.unit || 'EA') + '</td>'
         + '<td class="px-4 py-2 text-right tabular-nums">' + priceStr + '</td>'
+        // 재고·최근단가 — with_stock=1 응답에만 있다. 제품(PRODUCT)은 재고 개념이 없어 빈칸.
+        + '<td class="px-4 py-2 text-right tabular-nums text-xs ' + (it.stock_qty != null && Number(it.stock_qty) <= 0 ? 'text-red-500' : 'text-gray-700') + '">'
+        +   (it.stock_qty == null ? '' : Number(it.stock_qty).toLocaleString() + ' ' + window.escapeHtml(it.stock_unit || it.unit || '')) + '</td>'
+        + '<td class="px-4 py-2 text-right tabular-nums text-xs text-gray-700">'
+        +   (it.last_unit_price == null ? '' : Number(it.last_unit_price).toLocaleString() + '원' + (it.last_sold_at ? '<span class="text-gray-400"> ' + String(it.last_sold_at).slice(2, 10) + '</span>' : '')) + '</td>'
         + '</tr>';
     });
     html += '</tbody></table>';

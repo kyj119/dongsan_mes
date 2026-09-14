@@ -27,8 +27,13 @@ const quiet = (cmd) => { try { return execSync(cmd, { cwd: ROOT, encoding: 'utf8
 
 // dev 서버 정리 — `taskkill` 은 Git Bash 셸에 없을 때가 있고, workerd 만 죽이면 wrangler(node)가 옛 번들로 다시 띄운다.
 //   명령줄에 `wrangler … pages dev` 가 있는 프로세스(bash/cmd 래퍼·node)와 workerd 를 전부 정리한다.
+//   ⚠️**내 포트의 서버만** 죽인다 — 다른 세션이 :3000 에 `dev:d1` 을 띄워 두는 일이 흔하다(2026-09-14 실측: 메인 체크아웃의
+//   서버가 내 worktree 서버를 밀어내고 옛 번들을 서빙했다). 그 경우 이 러너는 `JOURNEY_BASE_URL=http://localhost:3001` 로 띄운다.
 function killDevServer() {
-  const ps = "Get-CimInstance Win32_Process | Where-Object { ($_.CommandLine -match 'wrangler.*pages dev') -or ($_.Name -eq 'workerd.exe') } | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop } catch {} }"
+  const ps = `$mine = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'wrangler.*pages dev' -and $_.CommandLine -match '--port ${PORT}( |$)' }; ` +
+    `$ids = @($mine | ForEach-Object { $_.ProcessId }); ` +
+    `$kids = Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'workerd.exe' -and ($ids -contains $_.ParentProcessId) }; ` +
+    `($mine + $kids) | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop } catch {} }`
   try { execSync(`powershell -NoProfile -NonInteractive -Command "${ps.replace(/"/g, '\\"')}"`, { stdio: 'ignore' }) } catch { /* ignore: 이미 없거나 권한 — 아래 health 로 판정 */ }
 }
 
@@ -61,13 +66,22 @@ function newestMtime(dir, exts) {
   else if (stale) { console.log('[cycle] src 가 dist 보다 새롭다 → npm run build'); sh('npm run build', { stdio: 'ignore' }); rebuilt = true }
   else console.log('[cycle] dist 최신 — build 생략')
 
-  // 빌드했으면 서버를 다시 띄운다 — wrangler pages dev 가 새 _worker.js 를 안 읽고 옛 번들을 계속 서빙한 적이 있다
-  //   (2026-09-14: dist 엔 있는 `checked` 가 화면엔 없었다). 재기동이 확실하고 10초면 된다.
-  if (rebuilt && (await health())) {
-    console.log('[cycle] 새 빌드 → 서버 재기동')
-    killDevServer()
-    for (let i = 0; i < 20 && (await health()); i++) await sleep(500)
-    if (await health()) { console.error('[cycle] 옛 서버가 안 죽는다 — 포트 3000 프로세스를 직접 정리할 것'); process.exit(2) }
+  // 서버가 서빙 중인 번들이 dist 보다 오래됐으면 재기동 — wrangler pages dev 가 새 _worker.js 를 안 읽고 옛 번들을 계속
+  //   서빙한 적이 있다(2026-09-14: dist 엔 있는 `checked` 가 화면엔 없었다). 이 러너가 띄운 서버는 그때의 dist mtime 을
+  //   `.journey/server.json` 에 적어 두고, 다른 곳(verify·수동)에서 빌드가 돼 dist 가 더 새로우면 다시 띄운다.
+  //   마커가 없는 서버(다른 세션·수동 기동)는 무엇을 서빙하는지 모르므로 한 번 재기동한다(10초).
+  const markerFile = path.join(ROOT, '.journey', 'server.json')
+  const distMtime = fs.existsSync(worker) ? fs.statSync(worker).mtimeMs : 0
+  const readMarker = () => { try { return JSON.parse(fs.readFileSync(markerFile, 'utf8')) } catch { return null } }
+  if (await health()) {
+    const m = readMarker()
+    const why = rebuilt ? '새 빌드' : !m ? '이 러너가 띄운 서버가 아님' : m.distMtime < distMtime ? 'dist 가 서버보다 새로움' : ''
+    if (why) {
+      console.log(`[cycle] ${why} → 서버 재기동`)
+      killDevServer()
+      for (let i = 0; i < 20 && (await health()); i++) await sleep(500)
+      if (await health()) { console.error('[cycle] 옛 서버가 안 죽는다 — 포트 3000 프로세스를 직접 정리할 것'); process.exit(2) }
+    }
   }
 
   // 2) server — 없으면 이 프로세스가 백그라운드로 띄운다(사이클이 끝나도 남긴다: 다음 사이클이 재사용)
@@ -80,6 +94,7 @@ function newestMtime(dir, exts) {
     let up = false
     for (let i = 0; i < 40 && !up; i++) { await sleep(1500); up = await health() }
     if (!up) { console.error('[cycle] 서버가 60초 안에 안 떴다 — .journey/dev-server.log 확인'); process.exit(2) }
+    fs.writeFileSync(markerFile, JSON.stringify({ distMtime: fs.existsSync(worker) ? fs.statSync(worker).mtimeMs : 0, startedAt: new Date().toISOString() }))
     console.log('[cycle] 서버 기동 완료')
   } else console.log('[cycle] 서버 응답 OK')
 

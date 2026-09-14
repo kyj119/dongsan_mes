@@ -232,6 +232,8 @@ export function db<T = any>(sql: string): T[] {
   } finally {
     try { fs.unlinkSync(file) } catch {}
   }
+  // 쓰기 직후 서버 요청이 SQLITE_BUSY(500)를 맞은 적이 있다 — 다른 프로세스가 잠금을 놓을 시간을 준다
+  if (/^\s*(UPDATE|INSERT|DELETE)/i.test(sql)) execSync('node -e "setTimeout(()=>{}, 400)"')
   return JSON.parse(raw.slice(raw.indexOf('[')))[0].results
 }
 

@@ -525,6 +525,25 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
   return cardStatements.length
 }
 
+/**
+ * 주문 성격(order_type)을 **라인에서 파생**한다 — 2026-09-14 P11-②.
+ *   유통 주문서(?type=dist)는 prod 11,670건 중 0건 사용이라 폐지했다. 「이건 제작인가 유통인가」는 화면을 고르는 일이 아니라
+ *   라인이 이미 답하고 있다: 제작이 필요한 라인(items.production_required=1, 기본값)이 하나라도 있으면 PRODUCTION,
+ *   전부 기성/유통(production_required=0)이면 DISTRIBUTION(카드 미생성·shipment_ready=1·자재 갭 미계산 — create.ts).
+ *   판정 축은 출고 차감(utils/stockShip.ts)이 쓰는 것과 **같은 컬럼**이라 「유통 주문 = 출고 때 재고를 빼는 라인만 있는 주문」이 된다.
+ *   품목 마스터에 없는 자유 입력 라인은 제작으로 본다(카드가 생기는 종전 동작 유지). 라인이 없으면 PRODUCTION.
+ */
+export async function deriveOrderType(db: D1Database, items: Array<{ item_id?: number | string | null }> | undefined): Promise<'PRODUCTION' | 'DISTRIBUTION'> {
+  const ids = Array.from(new Set((items || []).map((it) => Number(it?.item_id)).filter((n) => Number.isFinite(n) && n > 0)))
+  if (!items || !items.length || ids.length !== items.length) return 'PRODUCTION'
+  const ph = ids.map(() => '?').join(',')
+  const row = await db.prepare(
+    `SELECT COUNT(*) AS n, SUM(CASE WHEN IFNULL(production_required, 1) = 0 THEN 1 ELSE 0 END) AS stock_only FROM items WHERE id IN (${ph})`,
+  ).bind(...ids).first<{ n: number; stock_only: number }>()
+  if (!row || Number(row.n) !== ids.length) return 'PRODUCTION'
+  return Number(row.stock_only) === ids.length ? 'DISTRIBUTION' : 'PRODUCTION'
+}
+
 // ── (은퇴 2026-08-19) 자동가공 잡 생성 enqueueAutoProcessJobsForItems ──
 // 웹 그룹분석(orderForm IA_WEB_INTAKE_ENABLED=false)과 함께 사문화된 경로였다. prod auto_process_jobs =
 // 총 1건·마지막 2026-07-03이고, 라이브 에이전트 큐는 tasks(AI_PROCESS)다(Program.cs /api/tasks/claim).

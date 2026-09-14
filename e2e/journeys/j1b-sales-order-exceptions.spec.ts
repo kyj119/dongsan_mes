@@ -45,7 +45,7 @@ test.describe.serial('J1b 영업: 주문서 예외 경로', () => {
     // P10(실측): 배송방법 기본값(대신택배)이면 「선불/착불」 select 가 required 인데 기본이 빈값이라 브라우저 말풍선이
     //   거래처 검사보다 먼저 막는다(제출 이벤트 자체가 안 뜬다). 사람처럼 선불을 고르고 나서 저장을 누른다.
     const sp = page.locator('#shippingPayment')
-    if ((await sp.count()) && !(await sp.inputValue())) await sp.selectOption({ index: 1 })
+    if ((await sp.isVisible().catch(() => false)) && (await sp.isEnabled().catch(() => false)) && !(await sp.inputValue())) await sp.selectOption({ index: 1 })
     await page.locator('#submitBtn').click()
     await expect(page.locator('#toast-container'), '거부 사유가 화면에 보여야 한다').toContainText('거래처를 선택하세요', { timeout: 5_000 })
     await page.waitForTimeout(800)

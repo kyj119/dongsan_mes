@@ -6,12 +6,9 @@ var selectedOrderIds = new Set();
 (function() {
   var tbody = document.getElementById('ordersTable');
   if (tbody && window.dsSkeleton) tbody.innerHTML = dsSkeleton.table(8, 9);
-  // 새 주문 버튼: 마지막 사용한 주문서 형식으로 링크 설정
+  // 새 주문 버튼: 주문서는 하나(유통 주문서 폐지 2026-09-14, P11) — 옛 lastOrderFormType 기억은 무시한다
   var link = document.getElementById('newOrderLink');
-  if (link) {
-    var lastType = localStorage.getItem('lastOrderFormType');
-    link.href = lastType === 'dist' ? '/order-form?type=dist' : '/order-form';
-  }
+  if (link) link.href = '/order-form';
 })();
 
 // 일괄 선택 관련
