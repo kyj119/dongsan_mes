@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-09-14T10:20:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-09-14T11:35:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,32 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **7** (`list_issues(state:OPEN,label:auto-improve)` 실측, 6→7 — 이번 사이클 신규 #650) |
+| 🆕 new | **7** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음 — #649는 fixed-in-tree·close-pending으로 코멘트만, open 카운트엔 유지) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **566** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 6 자기 진화 (2026-09-14T11:35):**
+> - **방법**: 세션 시작 시 detached HEAD `c3be81d`(origin/main과 동일) → 로컬 `main`은 stale(`eecca71`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합(origin이 force-update로 표시됐으나 실제로는 앵커 유실 클래스, unrelated-histories 아님). `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area6 방법 라인 HEAD `e155373`)**: 웹앱 범위 diff **13커밋**. `#600` 브리지 적용 — 각 해시를 백로그에서 grep 대조: 5건은 auto-improve 자기순환 chore(Area1~6, 자기참조)·4건은 docs-only(`569b0b5`·`95c1c82`·`6fc6035`·`3ff6659`)·`9212dfe`·`3e23e87`은 직전 Area5가 이미 구체 로직(라인 인용)으로 정독 완료(#650 발견). **`685ea40`(주문서·견적서 "원자재 포함" 토글 통합) 1건만 미검토 — Area 6가 직접 정독**.
+> - **`685ea40` 직접 검토 — net-new 결함 0, #649 근본원인 해소 확인**: `orderForm.ts`/`quotationForm.ts`의 `includeMaterials` 체크박스 기본값을 OFF→ON 전환 + `shell.js` 공용 초기화 함수(`user-prefs orderform.includeMaterials` GET/PUT)로 계정별 기억. XSS/entity 관점 = `axios.get/put('/api/user-prefs...')`는 기존 라우트(변경 없음) 재사용, `quotationForm.js`의 `exclude_type=MATERIAL` 파라미터는 `items.ts`의 화이트리스트 체크(`['PRODUCT','GOODS','MATERIAL'].includes(...)`)를 거치는 기존 파라미터 바인딩 — net-new sink/격리갭 0.
+> - **이 커밋이 #649("견적서 품목 검색이 자재를 걸러내지 않아 주문서와 결과가 다름")를 fixed-in-tree로 해소함을 확인 → open≠unfixed 거울(30회차) 적용**: 견적서가 이제 주문서와 동일한 토글+동일 저장키를 공유해 두 폼의 결과 건수 불일치가 사라짐. 형제완전성 재검증 — `itemRow.js`(주문서)·`quotationForm.js`(견적서) 양쪽의 `includeMaterials` 분기 로직 대조, 자재 필터 축은 동일 패턴 공유 확인. **#649에 fixed-in-tree/close-pending 코멘트 게시**(코드 수정 없이 close 가능, 용준님 확인 대기) — 이슈 자체는 close하지 않음(32회차 규칙: 재검증은 이 세션이, close는 owner).
+> - **관찰(미확정, 이슈화 보류)**: `itemRow.js:319`의 체크 시 분기가 `exclude_type=MATERIAL`뿐 아니라 `type=sales` 필터까지 함께 생략(주석은 "원자재 포함"만 언급) — 기본값이 OFF→ON으로 바뀌며 이 분기가 이제 전 사용자 기본 경로가 됨. `is_sales_item=0`(매입전용) 품목이 실제로 몇 건인지 이 세션엔 DB 접근 수단이 없어 확인 불가(`CLOUDFLARE_API_TOKEN` 미설정, 로컬 D1도 미부트스트랩) — 데이터 없이 이슈화하면 원가-0 섹션이 경계하는 "금액순 헛짚기"와 같은 오탐 위험. 다음 사이클에 prod 접근 가능하면 `SELECT COUNT(*) FROM items WHERE is_sales_item=0 AND item_type!='MATERIAL'`로 1차 확인 권장.
+> - **비-웹앱 축 standing scan(#616/#617 클래스)**: `git log e155373..HEAD -- LogWatcher IllustratorAutomat caps-worker workers queue` = **0커밋**, 이번 사이클 재검토 대상 없음.
+> - **close-pending 캐시 재확인**: #616·#617·#626 — `updated_at` 각각 08-31·08-31·09-10 이후 변동 없음, 코드축(LogWatcher) churn도 0이라 재검증 불필요(캐시 신뢰, 32회차 규칙). owner가 이미 대기 사유를 명시했으므로 재통지 불요(64회차 FP룰).
+> - **standing scan 1: done-sync 절대값 재동기화(리터럴 쿼리)** — `search_issues("repo:kyj119/dongsan_mes label:auto-improve is:closed reason:completed")` **566**(변동없음) · `reason:not_planned` **4** + `reason:duplicate` **2** = rejected **6**(변동없음) · `list_issues(state:OPEN,label:auto-improve)` **7**(#650·#649·#648·#647·#626·#617·#616, 변동없음 — #649는 위에서 fixed-in-tree 코멘트만).
+> - **standing scan 2: `npm run test:calc`** 26항목 체인 — 전항목 PASS(exit 0, 회귀 0).
+> - **standing scan 3: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 75건·**누락 0건**(변동없음).
+> - **standing scan 4: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 5: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 6: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 10런 전부 `conclusion:success`(최종 HEAD `c3be81d` 포함).
+> - **backlog↔GitHub 절대값 재동기화**: open **7**(변동없음, #649는 open 유지+close-pending 코멘트) · done **566**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-6-self-evolution.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 이번 사이클은 기존 레시피(#600 브리지·open≠unfixed 거울·close-pending 캐시)가 그대로 적중 — 새 클래스로 codify할 만한 확정 사례는 없었음(`itemRow.js` 관찰은 데이터 미확인이라 보류).
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 11건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(13커밋 churn 중 미검토 1건 직접 정독, net-new 0 — 대신 #649 fixed-in-tree 코멘트 게시), 자동수정 0건(고칠 결함 없음), done-sync: open 7(변동없음)·done 566(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 + 인프라 (2026-09-14T10:20):**
 > - **방법**: 세션 시작 시 detached HEAD `569b0b5`(origin/main과 동일) → 로컬 `main`은 stale(`eecca71`, shallow-clone 앵커 유실 클래스) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
