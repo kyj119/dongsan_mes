@@ -115,7 +115,9 @@ function uncommittedIa() {
 //   게이트라고 부르는데 이 목록에 없어서 배포 때 아무도 안 돌렸다. `cut:butt` 사고와 같은 형태다.
 // ★`audit:empty-catch`(2026-09-11) — 빈 catch 는 「실패를 성공으로 세는」 가장 흔한 형태다(주석 소실이 그것).
 //   사유 없는 빈 catch 가 하나라도 있으면 배포하지 않는다. 편집 훅·커밋 훅에도 같은 게이트가 있다.
-const GATES = ['audit:empty-catch', 'cut:bleed', 'cut:nest', 'cut:butt', 'cut:placement', 'cut:smoke', 'cut:shellsync', 'panel:smoke', 'cut:e2e']
+// ★`test:outcopy`(2026-09-15) — 픽업 복사는 **재단기가 집어 가는 곳**이라, 여기가 비면 등록이 멀쩡해도
+//   현장에 파일이 없다. 실기에서 `File.copy` 한 번이 I/O 오류로 떨어져 정확히 그랬다.
+const GATES = ['audit:empty-catch', 'cut:bleed', 'cut:nest', 'cut:butt', 'cut:placement', 'cut:smoke', 'cut:shellsync', 'panel:smoke', 'test:outcopy', 'cut:e2e']
 function runGates() {
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'))
   const list = GATES.filter((g) => pkg.scripts && pkg.scripts[g])

@@ -211,7 +211,7 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 - **CI**(push→main, `.github/workflows/deploy.yml`): tsc · build · `test:calc` · `entity-audit.mjs` · `audit:migration-number`(#639 같은 번호·같은 테이블 DDL 충돌만 차단) · `canary:write:ci` · `smoke.cjs`(prod)
 - **커밋 훅**(`pretooluse-bash.cjs`): tsc(전건 차단) · `skill-audit`·`hook-guard-selftest`·`doc-diet-audit`·**`audit:empty-catch`**(해당 파일이 dirty 인 커밋만)
 - **편집 훅**(`posttooluse-edit.cjs`): `node --check`(src/scripts/*.js) · `check:dom` 기준선 회귀 · **`audit:empty-catch`**(IllustratorAutomat/**.jsx·js — 사유 `ignore:` 없는 빈 catch) — 셋 다 `exit 2` 차단
-- **`ia:deploy`**(`ia-deploy.cjs` `GATES`): **audit:empty-catch** · cut:bleed · cut:nest · cut:butt · cut:placement · cut:smoke · **cut:shellsync** · panel:smoke · cut:e2e + ia-jsx 드리프트
+- **`ia:deploy`**(`ia-deploy.cjs` `GATES`): **audit:empty-catch** · cut:bleed · cut:nest · cut:butt · cut:placement · cut:smoke · **cut:shellsync** · panel:smoke · **test:outcopy** · cut:e2e + ia-jsx 드리프트
 - **`ship:gate`**: verify(tsc+build) · entity-audit · **test:calc** · canary:write · **journey:gate**(J0~J7 40단계, 로컬 서버 자동 기동·≈4.5분, `SKIP_JOURNEY=1` 로만 명시 건너뜀) · **`test:local-e2e`**(서버가 필요한 4종을 journey 뒤에 묶어 세운다 — symmetry·ship-stock·autodeduct·print-match. 같은 `SKIP_JOURNEY=1` 로 함께 건너뛴다)
 - **`/deploy-verify`**: Phase 1 tsc·build·**test:calc**·**journey:gate** → Phase 2 entity-audit → Phase 2-B `audit:migration-drift`(스키마 변경 시) → Phase 4 `smoke:prod`
 > ⚠️`verify.yml` 은 `on: pull_request` 다 — 이 프로젝트(main 직접 push)에서는 **생성 이래 0회 실행**.
