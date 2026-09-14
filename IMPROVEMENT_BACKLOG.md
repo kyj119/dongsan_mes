@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-09-14T11:35:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-09-14T13:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,28 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **7** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음 — #649는 fixed-in-tree·close-pending으로 코멘트만, open 카운트엔 유지) |
+| 🆕 new | **6** (`list_issues(state:OPEN,label:auto-improve)` 실측 — #649는 owner가 직접 close, 7→6) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **566** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
+| ✔️ done | **567** (`search_issues(reason:completed,label:auto-improve)` 실측, #649 반영 566→567) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 1 프로덕션 헬스 (2026-09-14T13:10):**
+> - **방법**: 세션 시작 시 detached HEAD `ca4d9d4`(origin/main과 동일) → 로컬 `main`은 stale(`eecca71`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area1 방법 라인 HEAD `dbfc031`)**: 웹앱 헬스범위(`src/routes`·`src/utils`·`index.tsx`·`wrangler.toml`·`.github/workflows`·`scripts/smoke.cjs`) diff **2커밋**(전체 13커밋 중) — `9212dfe`(print-match 파일맵 재연결, Area5가 이미 보안 렌즈로 검증)·`3e23e87`(유통 주문서 폐지+order_type 라인파생+품목검색 재고/최근단가, Area5가 entity 격리 렌즈로 검증해 #650 등록). 둘 다 신규 API 라우트 제거/추가 없음(프론트 페이지만 폐지) — smoke 프로브 대상 변경 없음 확인(`grep -n "dist" scripts/smoke.cjs` 0건).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 10런 전부 `conclusion:success`(최종 HEAD `ca4d9d4` 포함). 최신 배포 job(`103883551953`) 전 단계(typecheck·build·self-tests·entity audit·migration-number audit·write canary·deploy·smoke) 전부 success.
+> - **smoke 129/129 PASS**(job 로그 직접 확인) — 신규 라우트 없어 프로브 갭 없음. 마이그레이션 신규 0건(0613이 마지막) — (a)/(b) 드리프트 분류 대상 없음.
+> - **#636(cashSchedule.overview) 재확인 — 배수 유지, 재이슈 불필요**: 이번 배포 smoke = **5334ms**(예산 2000ms 초과, 직전 4571ms에서 추가 상승). owner 국내 실측(421~424ms) 대비 배수 ≈12.7배로 기존 owner 검증 범위(9~14배) 안 — 배수 자체가 깨졌다는 증거 없이는 재이슈하지 않음(codify 규칙 그대로 적중).
+> - **standing scan 1: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 2: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 3: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **#649 owner 직접 close 확인**: Area6가 남긴 fixed-in-tree/close-pending 코멘트 직후 owner가 `state_reason:completed`로 close(`closed_at` 06:47:27, Area6 커밋 push와 동일 시각) — 코드 수정 없이 문서 커밋만으로 실제 해소 확인된 사례.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **6**(#650·#648·#647·#626·#617·#616, #649 제외) — 전건 Area1 관할 밖(Area3/5/6), 재조치 불요.
+> - **backlog↔GitHub 절대값 재동기화**: open **7→6**(#649 owner close) · done **566→567**(#649 반영) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-1-production-health.md 기존 codify 규칙(배수 판정)이 이번 사이클에 그대로 재적중, 새 클래스 발견 없음.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` 대상 — 사이클 로그 12건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(2커밋 churn 전량 타 Area 재확인 완료, CI green·smoke 129/129·#636 배수 유지), 자동수정 0건(고칠 결함 없음), done-sync: open 7→6(#649 owner close)·done 566→567(#649 반영)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-09-14T11:35):**
 > - **방법**: 세션 시작 시 detached HEAD `c3be81d`(origin/main과 동일) → 로컬 `main`은 stale(`eecca71`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합(origin이 force-update로 표시됐으나 실제로는 앵커 유실 클래스, unrelated-histories 아님). `npm ci`(0→89), `npx tsc --noEmit` clean.
