@@ -20,7 +20,7 @@ import { setOrderBillingStatus } from './helpers'
 // 여기서 deriveClientBalance·isInternalEntityClient 를 따로 부르지 않는다.
 import { evaluateClientCredit } from '../ledger/credit-helpers'
 import { ensureShipmentForOrder } from '../../utils/shipmentHelper'
-import { deductStockLinesOnShip } from '../../utils/stockShip'
+import { deductStockLinesOnShip, restoreStockLinesOnUnship } from '../../utils/stockShip'
 
 const ordersLifecycleRouter = new Hono<HonoEnv>()
 ordersLifecycleRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
@@ -373,6 +373,56 @@ ordersLifecycleRouter.patch('/:id/status', requireEditOrRole('/orders', 'MANAGER
 // ============================================================================
 // PATCH /:id/cancel - 주문 취소 (별도 버튼, 이유 필수)
 // ============================================================================
+// 주문 출고 취소 — 완전 출고된 주문을 화면에서 되돌리는 유일한 문(P9, 2026-09-15).
+//   카드 단위 취소(cards/lifecycle.ts PATCH /:id/unship)는 주문이 SHIPPED 가 되면 보드가 카드를 숨겨
+//   (`exclude_order_status=SHIPPED`) 닿을 수 없었고, 상태 전이표도 'SHIPPED': [] 라 status 로는 못 내려온다.
+//   규칙은 카드 취소와 같다: 재고 환원(OUT 행 철회 + STOCK_RESTORE 로그, utils/stockShip) → 카드 shipped_at 전부 NULL
+//   → 주문 상태 복원(카드가 있으면 PRINT_DONE, 카드 없는 유통 주문은 CONFIRMED) + status_history. 카드·주문은 한 batch.
+//   회계반영(BILLED/PAID)된 주문은 막는다 — 출고를 되돌리면 청구·미수금과 어긋난다(회계 취소가 먼저다).
+ordersLifecycleRouter.patch('/:id/unship', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const id = Number(c.req.param('id'))
+    const user = c.get('user')
+    const efUn = entityFilter(c, 'orders')
+    const order = await c.env.DB.prepare(
+      `SELECT id, status, entity_id, order_number, billing_status FROM orders WHERE id = ?${efUn.clause}`
+    ).bind(id, ...efUn.params).first<{ id: number; status: string; entity_id: number | null; order_number: string; billing_status: string | null }>()
+    if (!order) return c.json({ success: false, error: 'Order not found' }, 404)
+    if (order.status !== 'SHIPPED') return c.json({ success: false, error: '출고된 주문만 출고 취소할 수 있습니다.' }, 400)
+    if (order.billing_status === 'BILLED' || order.billing_status === 'PAID') {
+      return c.json({ success: false, error: '회계반영된 주문은 출고 취소할 수 없습니다. 회계 상태를 먼저 되돌려 주세요.' }, 400)
+    }
+
+    const cardRow = await c.env.DB.prepare(
+      `SELECT COUNT(*) AS n, SUM(CASE WHEN shipped_at IS NOT NULL THEN 1 ELSE 0 END) AS shipped FROM cards WHERE order_id = ?`
+    ).bind(id).first<{ n: number; shipped: number | null }>()
+    const toStatus = Number(cardRow?.n) > 0 ? 'PRINT_DONE' : 'CONFIRMED'
+
+    const actor = { userId: user?.id ?? null, userName: user?.username ?? null, entityId: getEntityId(c) }
+    await restoreStockLinesOnUnship(c.env.DB, id, order.entity_id || getEntityId(c) || 1, actor)
+    await c.env.DB.batch([
+      c.env.DB.prepare(`UPDATE cards SET shipped_at = NULL WHERE order_id = ? AND shipped_at IS NOT NULL`).bind(id),
+      c.env.DB.prepare(`UPDATE orders SET status = ?, shipped_at = NULL, updated_at = datetime('now') WHERE id = ?`).bind(toStatus, id),
+      c.env.DB.prepare(`
+        INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
+        VALUES (?, 'SHIPPED', ?, ?, '주문 출고 취소')
+      `).bind(id, toStatus, user?.id ?? null),
+    ])
+
+    await logActivity({
+      db: c.env.DB, userId: user?.id, userName: user?.username,
+      action: 'UNSHIP', entityType: 'ORDER',
+      entityId: id, entityLabel: order.order_number,
+      actorEntityId: getEntityId(c)
+    })
+
+    return c.json({ success: true, data: { status: toStatus, cards_unshipped: Number(cardRow?.shipped) || 0 } })
+  } catch (error) {
+    console.error('orders.unship error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 ordersLifecycleRouter.patch('/:id/cancel', requireEditOrRole('/orders', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')

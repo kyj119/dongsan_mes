@@ -318,7 +318,10 @@
                 if (spSelect) {
                     var needsPayment = ['대신택배','대신화물','한진택배','용차','퀵'].indexOf(method) >= 0;
                     spSelect.disabled = !needsPayment;
-                    spSelect.required = needsPayment;
+                    // 브라우저 required 를 걸지 않는다(P10, 2026-09-15) — 걸면 submit 이벤트가 아예 안 떠서 앱 검증
+                    //   (거래처→납기→품목→선불/착불)이 한 번도 안 돌고, 진짜 빠진 게 거래처인데 말풍선은 이 칸을 가리킨다.
+                    //   필수 여부는 data 속성으로 남기고 calc.js 제출 검증이 같은 자리에서 앱 문구로 막는다.
+                    spSelect.dataset.needsPayment = needsPayment ? '1' : '';
                     if (!needsPayment) spSelect.value = '';
                     if (spLabel) spLabel.innerHTML = needsPayment ? '선불/착불 <span class="text-red-500">*</span>' : '선불/착불';
                 }

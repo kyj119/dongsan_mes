@@ -133,27 +133,29 @@ test.describe.serial('J2 생산: 카드 보드 → 출력완료 → 출고', () 
     expect(stockNow(), '출고 = 기성 라인 수량만큼 재고 차감').toBe(stockBefore - STOCK_QTY)
   })
 
-  test('출고 취소 — 재고 환원(OUT 행 철회)·주문 되돌림·시스템 로그', async ({ journey: page, api, signals }, testInfo) => {
+  test('출고 취소 — 재고 환원(OUT 행 철회)·주문 되돌림·시스템 로그', async ({ journey: page, signals }, testInfo) => {
     test.skip(!cardId, '준비 실패')
     // 환원은 역분개가 아니라 **OUT 행 철회**(UNIQUE idx 때문) + 재고 복원 + activity_log STOCK_RESTORE (CLAUDE.md §누적 캐시)
     // ⚠️P9(2026-09-11): 주문이 SHIPPED 가 되면 보드가 카드를 숨기고(`exclude_order_status=SHIPPED`) /cards/:id 엔 출고 버튼만 있어
     //   **화면에서 출고 취소에 닿는 길이 없다**. 보드 모달의 「출고 취소」는 아직 보드에 남은(부분 출고) 카드에서만 보인다.
     //   여정은 그 길이 생기면 화면으로, 없으면 API(PATCH /api/cards/:id/unship — 보드 모달이 부르는 것)로 환원 검산만 한다.
-    await page.goto('/cards')
+    // P9(2026-09-15 고침): 주문 상세의 「출고 취소」(PATCH /api/orders/:id/unship — 재고 환원·카드 해제·상태 복원을 한 번에).
+    //   사람이 가는 길 = 주문 목록 → 상세 → 출고 취소 → 확인. 카드 단위 API 폴백은 더 이상 두지 않는다(화면 경로가 회귀 대상).
+    await page.goto('/orders')
     await page.waitForLoadState('domcontentloaded')
-    await page.locator('#kanbanSearch').fill(orderNumber)
-    await page.locator('#kanbanSearch').press('Enter')
-    const unship = page.locator(`[onclick*="unshipCard(${cardId})"]`).first()
-    if (await unship.isVisible({ timeout: 5_000 }).catch(() => false)) {
-      await unship.click()
-      const ok = page.locator('#__confirmOk')
-      await expect(ok, '출고 취소 확인 모달').toBeVisible({ timeout: 5_000 })
-      await ok.click()
-    } else {
-      testInfo.annotations.push({ type: 'P9', description: '출고 취소 화면 진입점 없음 → API 로 환원 검산' })
-      const r = await api.patch(`/api/cards/${cardId}/unship`, {})
-      expect(r.status, `출고 취소 API ${JSON.stringify(r.data).slice(0, 160)}`).toBe(200)
-    }
+    await page.locator('#searchQuery').fill(orderNumber)
+    await page.locator('#searchQuery').press('Enter')
+    const row = page.locator(`[onclick*="viewOrder(${orderId})"]`).first()
+    await expect(row, '목록에 출고된 주문').toBeVisible({ timeout: 15_000 })
+    await row.click()
+    // onclick 은 (id, '주문번호') 두 인자라 닫는 괄호가 아니라 쉼표까지 맞춘다
+    const unship = page.locator(`[onclick*="unshipOrder(${orderId},"]`).first()
+    await expect(unship, '주문 상세에 「출고 취소」 버튼(P9)').toBeVisible({ timeout: 10_000 })
+    await unship.click()
+    const ok = page.locator('#__confirmOk')
+    await expect(ok, '출고 취소 확인 모달').toBeVisible({ timeout: 5_000 })
+    await ok.click()
+    testInfo.annotations.push({ type: 'P9', description: '주문 상세 「출고 취소」 화면 경로' })
     await expect
       .poll(() => db<{ s: string | null }>(`SELECT shipped_at s FROM cards WHERE id=${cardId}`)[0]?.s ?? null, { timeout: 15_000, message: '카드 shipped_at 이 비워져야 한다' })
       .toBeNull()

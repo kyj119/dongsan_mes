@@ -722,7 +722,7 @@
 
                 // 선불/착불 필수 검증
                 var spEl = document.getElementById('shippingPayment');
-                if (spEl && !spEl.disabled && spEl.required && !spEl.value) {
+                if (spEl && !spEl.disabled && spEl.dataset.needsPayment === '1' && !spEl.value) {
                     showToast('선불/착불을 선택하세요.', 'warning');
                     return;
                 }

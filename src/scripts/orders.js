@@ -1327,6 +1327,7 @@ function showOrderModal(order, cards, autoJobs) {
             <button onclick="openInvoice(${order.id})" class="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"><i class="fas fa-file-invoice mr-1"></i>명세서</button>
             ${canEdit ? '<button onclick="copyOrder(' + order.id + ')" class="px-4 py-2 border border-gray-300 text-gray-700 bg-white rounded text-sm hover:bg-gray-50"><i class="fas fa-copy mr-1"></i>복사</button>' : ''}
             ${canEdit && order.status !== 'CANCELLED' && order.status !== 'SHIPPED' ? `<button onclick="showCancelModal(${order.id}, '${order.order_number}')" class="px-4 py-2 bg-amber-500 text-white rounded text-sm hover:bg-amber-600"><i class="fas fa-ban mr-1"></i>취소</button>` : ''}
+            ${(currentUserRole === 'ADMIN' || currentUserRole === 'MANAGER') && order.status === 'SHIPPED' && !(order.billing_status === 'BILLED' || order.billing_status === 'PAID') ? `<button onclick="unshipOrder(${order.id}, '${order.order_number}')" class="px-4 py-2 bg-amber-500 text-white rounded text-sm hover:bg-amber-600" title="재고 환원 · 카드 출고 해제 · 주문 상태 복원"><i class="fas fa-undo mr-1"></i>출고 취소</button>` : ''}
             ${canEdit && order.status === 'CANCELLED' ? `<button onclick="restoreOrder(${order.id}, '${order.order_number}')" class="px-4 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700"><i class="fas fa-undo mr-1"></i>복구</button>` : ''}
             ${canEdit && (order.status === 'QUOTATION' || order.status === 'CANCELLED') ? `<button onclick="deleteOrder(${order.id}, '${order.order_number}', '${order.status}')" class="px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700"><i class="fas fa-trash-alt mr-1"></i>삭제</button>` : ''}
             ${['CONFIRMED','PRINTING','PRINT_DONE','SHIPPED'].includes(order.status) ? (
@@ -1672,6 +1673,26 @@ async function deleteOrder(orderId, orderNumber, status) {
 }
 
 // 주문 취소 (이유 선택 모달)
+// 주문 출고 취소(P9, 2026-09-15) — 완전 출고된 주문은 보드에서 사라져 카드 단위 「출고 취소」에 닿을 수 없었다.
+//   서버(PATCH /api/orders/:id/unship)가 재고 환원·카드 해제·상태 복원을 한 번에 한다. 회계반영된 주문은 버튼 자체를 숨긴다.
+async function unshipOrder(orderId, orderNumber) {
+  if (!(await showConfirm('주문 ' + orderNumber + ' 의 출고를 취소합니다. 재고가 환원되고 카드는 출고 전으로 돌아갑니다. 계속하시겠습니까?'))) return;
+  try {
+    var res = await axios.patch('/api/orders/' + orderId + '/unship', {});
+    if (res.data && res.data.success) {
+      var n = (res.data.data && res.data.data.cards_unshipped) || 0;
+      showToast('출고를 취소했습니다.' + (n ? ' (카드 ' + n + '장 해제)' : ''), 'success');
+      var m = document.getElementById('orderModal');
+      if (m) m.remove();
+      loadOrders();
+    } else {
+      showToast((res.data && res.data.error) || '출고 취소에 실패했습니다.', 'error');
+    }
+  } catch (e) {
+    showToast((e.response && e.response.data && e.response.data.error) || '출고 취소에 실패했습니다.', 'error');
+  }
+}
+
 function showCancelModal(orderId, orderNumber) {
   var modal = document.getElementById('cancelReasonModal');
   if (!modal) return;

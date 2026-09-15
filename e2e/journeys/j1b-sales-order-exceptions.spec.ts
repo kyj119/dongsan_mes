@@ -42,10 +42,12 @@ test.describe.serial('J1b 영업: 주문서 예외 경로', () => {
     await page.locator('[name="width_1"]').fill('300')
     await page.locator('[name="height_1"]').fill('90')
     await page.locator('[name="quantity_1"]').fill('1')
-    // P10(실측): 배송방법 기본값(대신택배)이면 「선불/착불」 select 가 required 인데 기본이 빈값이라 브라우저 말풍선이
-    //   거래처 검사보다 먼저 막는다(제출 이벤트 자체가 안 뜬다). 사람처럼 선불을 고르고 나서 저장을 누른다.
+    // P10(2026-09-15 고침): 「선불/착불」은 브라우저 required 가 아니라 앱 검증이다 — 비워 둔 채 저장해도
+    //   말풍선이 아니라 앱 문구(거래처 → …)가 먼저 나와야 한다. 여기서는 일부러 비워 둔다.
     const sp = page.locator('#shippingPayment')
-    if ((await sp.isVisible().catch(() => false)) && (await sp.isEnabled().catch(() => false)) && !(await sp.inputValue())) await sp.selectOption({ index: 1 })
+    if ((await sp.isVisible().catch(() => false)) && (await sp.isEnabled().catch(() => false))) {
+      await expect(sp, '선불/착불에 브라우저 required 가 없어야 한다(P10)').not.toHaveAttribute('required', /.*/)
+    }
     await page.locator('#submitBtn').click()
     await expect(page.locator('#toast-container'), '거부 사유가 화면에 보여야 한다').toContainText('거래처를 선택하세요', { timeout: 5_000 })
     await page.waitForTimeout(800)
