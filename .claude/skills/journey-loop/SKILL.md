@@ -23,7 +23,7 @@ npm run journey:cycle -- --snapshot   # 로컬 D1 을 스냅샷으로 되돌리�
 ## 사이클(한 바퀴)
 1. `npm run journey:cycle` → 요약 읽기
 2. 실패/격하를 **분류**: ①선택자·테스트 결함 ②안전 수정 ③제안
-3. ②는 고친다 → 같은 여정만 `--only` 재실행 → 통과 → `npm run verify`·`test:calc`·`check:dom` → 브랜치 커밋
+3. ②는 고친다 → 같은 여정만 `--only` 재실행 → 통과 → `npm run verify`·`test:calc`·`check:dom`·`check:fn` → 브랜치 커밋
 4. ③은 `docs/journeys/PROPOSALS.md` 에 1건 1줄(현상·재현·판단 근거) — 코드는 건드리지 않는다
 5. 탐색 30분(다른 화면을 사람처럼) → 새로 본 결함은 **여정 단계로 승격**(재현 없는 제안은 남지 않는다)
 6. 현황판 1줄
@@ -36,7 +36,7 @@ npm run journey:cycle -- --snapshot   # 로컬 D1 을 스냅샷으로 되돌리�
 ## 안전 수정 화이트리스트(자동) — 이 밖은 전부 제안
 허용: `getElementById` id 불일치(silent fail) · bind 개수/컬럼 오타 등 500 원인 · `undefined/NaN` 표시 가드 · 라우트가 실재하는 경로 오타 · `entity_id` 누락 · `escapeHtml` 누락 · **화면 간 규약 불일치**(P2 중복 바·P7 Enter 제출처럼 한쪽 화면만 다른 것).
 금지: 금액 계산 · 상태 전이 · 스키마 · UI 구조 신설 · 라우트 신설 · 응답 형식 · 「어색함」.
-통과 조건 = build → 같은 여정 재실행 → `verify` → `test:calc` → `check:dom`. 실패하면 그 파일만 `git checkout`.
+통과 조건 = build → 같은 여정 재실행 → `verify` → `test:calc` → `check:dom` → `check:fn`. 실패하면 그 파일만 `git checkout`.
 
 ## 게이트 배선
 `ship:gate` 와 `/deploy-verify` Phase 1 이 `npm run journey:gate` 를 돈다(=cycle --gate). CI 에는 없다(로컬 서버·스냅샷 D1).

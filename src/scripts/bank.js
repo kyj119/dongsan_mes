@@ -4,6 +4,10 @@
   if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(8, 10);
 })();
 
+// 허브(/cash-schedule)가 정의하는 hubGoto 가 /bank 단독에서는 없다 — .hub-only 버튼은 숨겨지지만 정의는 두어
+// 어디서 눌러도 허브로 간다(check:fn 미정의 호출 게이트). 허브 안에서는 허브의 정의가 이긴다.
+if (typeof window.hubGoto !== 'function') window.hubGoto = function () { location.href = '/cash-schedule'; };
+
 (function() {
   // State
   var transactions = [];
@@ -1376,9 +1380,8 @@
         : '계좌 수정에서 마이너스통장으로 표시하면 분리됩니다';
     }
     var ln = document.getElementById('fundLoanNote');
-    var manageLink = (typeof window.hubGoto === 'function')
-      ? '<a href="#" onclick="hubGoto(\'plan\',\'loans\');return false;" class="text-blue-500 hover:underline">대출 관리 →</a>'
-      : '<a href="/cash-schedule" class="text-blue-500 hover:underline">대출 관리 →</a>';
+    // hubGoto 는 허브 안에서는 탭 이동, /bank 단독에서는 파일 상단 폴백이 /cash-schedule 로 보낸다
+    var manageLink = '<a href="#" onclick="hubGoto(\'plan\',\'loans\');return false;" class="text-blue-500 hover:underline">대출 관리 →</a>';
     if (ln) ln.innerHTML = (d.loan_count || 0) + '건 · ' + manageLink;
     var lml = document.getElementById('fundLoansManageLink');
     if (lml) lml.innerHTML = manageLink;

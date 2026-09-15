@@ -39,12 +39,13 @@
 
 | # | 축 | 현상 | 재현 | 판단 근거 | 판정 |
 |---|---|---|---|---|---|
-| P13 | 결함 | **「발주 없이 입고」가 발주만 만들고 입고 모달을 못 연다** — 수량 prompt 뒤 「발주서를 만들었습니다」 직후 「발주 생성 실패: loadPendingPOs is not defined」. 발주(`adhoc_source='RECEIVING'`)는 CONFIRMED 로 남고 입고는 사람이 목록에서 다시 찾아야 한다 | /receiving → 발주 없이 입고 → 공급처·품목·수량 | `receiving.js adhocCreate` 가 #328 에서 지워진 `loadPendingPOs()` 를 부른다(같은 파일 140줄에 「dead … 실경로는 loadReceivingQueue」 주석이 있다). 0611 기능이 붙을 때 옛 이름을 썼고 **어떤 게이트도 안 잡았다** — `check:dom` 은 getElementById 만 본다 | ✅ 고침(09-15) — `loadReceivingQueue()` 로. 회귀 = J4b(모달이 곧바로 열려 입고 확정까지). 제안: `?raw` 스크립트의 **미정의 전역 함수 호출 감사**(check:dom 의 함수판) — 다음 게이트 후보 |
+| P13 | 결함 | **「발주 없이 입고」가 발주만 만들고 입고 모달을 못 연다** — 수량 prompt 뒤 「발주서를 만들었습니다」 직후 「발주 생성 실패: loadPendingPOs is not defined」. 발주(`adhoc_source='RECEIVING'`)는 CONFIRMED 로 남고 입고는 사람이 목록에서 다시 찾아야 한다 | /receiving → 발주 없이 입고 → 공급처·품목·수량 | `receiving.js adhocCreate` 가 #328 에서 지워진 `loadPendingPOs()` 를 부른다(같은 파일 140줄에 「dead … 실경로는 loadReceivingQueue」 주석이 있다). 0611 기능이 붙을 때 옛 이름을 썼고 **어떤 게이트도 안 잡았다** — `check:dom` 은 getElementById 만 본다 | ✅ 고침(09-15) — `loadReceivingQueue()` 로. 회귀 = J4b(모달이 곧바로 열려 입고 확정까지). **게이트 = `npm run check:fn`**(09-15 밤 신설, `scripts/check-fn-refs.cjs`) — `?raw` bare 호출·`on*` 핸들러를 **페이지 번들** 기준으로 대조(TypeScript 파서·typeof 가드 제외·자가시험 7건). 편집 훅·커밋 훅·CI·`ship:gate` 배선. 첫 실측 잔여 2건은 고침: `settings.ts` 가 `storageZones.js` 만 싣고 의존 `zonePicker.js` 는 안 실었다 → 동반 적재 · `/bank` 단독에 허브 함수 `hubGoto` 없음 → `bank.js` 폴백(허브로 이동) |
 
 ## 판정 기록
 (용준님 판정 후 여기로 옮긴다: 날짜 · 번호 · 결정 · 반영 커밋)
 
 - 2026-09-15 · P13 · ①고침 — `receiving.js adhocCreate` `loadPendingPOs`→`loadReceivingQueue`. 회귀 = J4b.
+- 2026-09-15 밤 · P13 · ②게이트 — `check:fn`(미정의 전역 함수 호출, 페이지 번들 기준). 정규식 프로토타입은 5건 보고 → 5건 전부 오탐이라 파서로 갔다. 전역 집합만 보면 P13 은 잡히지만 「다른 페이지에만 실리는 함수」는 통과하므로 pages 의 `?raw` import 로 번들을 만들어 대조. 잔여 2건(settings↔zonePicker 동반 적재 · bank hubGoto 폴백) 고침 → 0건, 기준선 없음.
 
 - 2026-09-15 · P12 · 결정=새 과금축 없음(FIXED+규격 텍스트) + ①②③ 고침 — `0614`·`0615`, `itemRow.js`·`parent.js`·`quotationForm.js`·`quotations.ts`·`core.ts`·견적 뷰 2곳. 회귀 = J1·J6 각 1단계(36단계).
 

@@ -93,6 +93,22 @@ if (/src\/(pages|scripts)\/.*\.(ts|js)$/.test(file)) {
   }
 }
 
+// 미정의 전역 함수 호출 게이트 (P13, 2026-09-15) — src 의 .ts/.js 편집 시. 기준선 없이 0건이 정상이라 발견 즉시 차단.
+//   ?raw 스크립트의 bare 호출·on*="fn(" 핸들러가 그 페이지 번들 어디에도 정의돼 있지 않으면 런타임 ReferenceError 뿐이고
+//   try/catch 가 삼키면 토스트 한 줄로 격하된다 — tsc·check:dom·smoke 전부 못 본다. 게이트 자체 오류(exit≠1)는 차단하지 않음.
+if (/src\/.*\.(ts|js)$/.test(file)) {
+  try {
+    execSync('node scripts/check-fn-refs.cjs --strict', { cwd: ROOT, stdio: 'pipe' });
+  } catch (e) {
+    const out = ((e.stdout || '') + (e.stderr || '')).toString();
+    if (e.status === 1 && /정의처 없는 함수 호출/.test(out)) {
+      console.error('[HOOK-FAIL] check:fn — 정의 없는 함수를 부른다(ReferenceError → 조용한 격하):\n' + out.slice(0, 1500));
+      process.exit(2);
+    }
+    /* 게이트 자체 오류(typescript 미가용 등)는 차단하지 않음 */
+  }
+}
+
 // 편집 카운터 (개인 넛지) — 같은 파일 3회 수정 시 체크포인트 권장
 try {
   const cf = path.join(ROOT, '.claude', '.edit_counter');

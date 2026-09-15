@@ -61,6 +61,7 @@ var el = document.getElementById('someId');
 if (!el) { console.warn('[pageName] #someId not found'); return; }
 ```
 **pages/*.ts 변경 시 scripts/*.js getElementById 참조 대조** (review-checklist §12).
+**함수 호출판 = `npm run check:fn`**(2026-09-15, P13) — `?raw` 스크립트의 bare 호출·`on*="fn("` 핸들러가 **그 페이지 번들**(pages 의 `?raw` import + 레이아웃 + 리터럴 안 정의) 어디에도 없으면 잡는다. 파서(TypeScript API) 기반이라 주석·문자열·정규식은 안 속고, `typeof fn` 가드가 있는 선택적 호출은 제외. 잡힌 P13 = 지워진 `loadPendingPOs()` 를 부르는데 try/catch 가 삼켜 **모든 게이트가 통과**했던 것. 기준선 없이 0건이 정상 · 자가시험 `check:fn:selftest`(잡아야 할 7건·잡으면 안 되는 것) · 외부 라이브러리 전역은 스크립트의 `EXTERNAL` 목록.
 
 ### 마이그레이션 번호는 유일하지 않다
 `migrations/` 에 같은 4자리 번호가 반복해서 생긴다(2026-09-10 실측 21개 번호 — 그중 `0576`은 3중복). 병렬 worktree 세션이 각자 다음 번호를 딴 결과라 계속 늘어난다 — **하드코딩된 목록은 매 사이클 바로 낡으므로 여기 나열하지 않는다.** 현재 목록은 `ls migrations | sed -E 's/^([0-9]+)_.*/\1/' | sort | uniq -c | awk '$1>1'` 로 직접 확인. **번호 중복 자체는 무해할 때가 많고**(서로 다른 테이블/컬럼이면 둘 다 적용된다) 위험한 건 같은 번호가 같은 테이블에 같은 컬럼 ADD / 같은 테이블 CREATE 하는 경우다(#639, 09-11 해소).
@@ -211,11 +212,11 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 
 ### 배포를 실제로 막는 게이트 (2026-09-10 실측)
 **「게이트가 있다」와 「게이트가 돈다」는 다른 질문이다.** `cut:butt` 는 2026-08-06부터 있었는데 한 달간 아무도 안 돌렸고, `cut:shellsync` 도 같은 상태였다(2026-09-10 등록) — **목록이 없어서 아무도 그걸 몰랐다.**
-- **CI**(push→main, `.github/workflows/deploy.yml`): tsc · build · `test:calc` · `entity-audit.mjs` · `audit:migration-number`(#639 같은 번호·같은 테이블 DDL 충돌만 차단) · `canary:write:ci` · `smoke.cjs`(prod)
-- **커밋 훅**(`pretooluse-bash.cjs`): tsc(전건 차단) · `skill-audit`·`hook-guard-selftest`·`doc-diet-audit`·**`audit:empty-catch`**(해당 파일이 dirty 인 커밋만)
-- **편집 훅**(`posttooluse-edit.cjs`): `node --check`(src/scripts/*.js) · `check:dom` 기준선 회귀 · **`audit:empty-catch`**(IllustratorAutomat/**.jsx·js — 사유 `ignore:` 없는 빈 catch) — 셋 다 `exit 2` 차단
+- **CI**(push→main, `.github/workflows/deploy.yml`): tsc · **`check:fn`**(selftest+strict) · build · `test:calc` · `entity-audit.mjs` · `audit:migration-number`(#639 같은 번호·같은 테이블 DDL 충돌만 차단) · `canary:write:ci` · `smoke.cjs`(prod)
+- **커밋 훅**(`pretooluse-bash.cjs`): tsc(전건 차단) · `skill-audit`·`hook-guard-selftest`·`doc-diet-audit`·**`audit:empty-catch`**·**`check:fn`**(해당 파일이 dirty 인 커밋만 — `check:fn` 은 src/**)
+- **편집 훅**(`posttooluse-edit.cjs`): `node --check`(src/scripts/*.js) · `check:dom` 기준선 회귀 · **`check:fn`**(src/**.ts·js — 미정의 전역 함수 호출, 기준선 없음) · **`audit:empty-catch`**(IllustratorAutomat/**.jsx·js — 사유 `ignore:` 없는 빈 catch) — 넷 다 `exit 2` 차단
 - **`ia:deploy`**(`ia-deploy.cjs` `GATES`): **audit:empty-catch** · cut:bleed · cut:nest · cut:butt · cut:placement · cut:smoke · **cut:shellsync** · panel:smoke · cut:e2e + ia-jsx 드리프트 (⚠️`test:outcopy` 는 2026-09-15 **하루 만에 은퇴** — 지키던 코드가 에이전트로 넘어갔다. **없어진 코드를 지키는 게이트는 초록불이 아무 뜻도 없다** → 성질은 `panel:smoke` §13 으로 옮겨 실었다)
-- **`ship:gate`**: verify(tsc+build) · entity-audit · **test:calc** · canary:write · **journey:gate**(J0~J7 40단계, 로컬 서버 자동 기동·≈4.5분, `SKIP_JOURNEY=1` 로만 명시 건너뜀) · **`test:local-e2e`**(서버가 필요한 4종을 journey 뒤에 묶어 세운다 — symmetry·ship-stock·autodeduct·print-match. 같은 `SKIP_JOURNEY=1` 로 함께 건너뛴다)
+- **`ship:gate`**: verify(tsc+build) · **check:fn** · entity-audit · **test:calc** · canary:write · **journey:gate**(J0~J7 40단계, 로컬 서버 자동 기동·≈4.5분, `SKIP_JOURNEY=1` 로만 명시 건너뜀) · **`test:local-e2e`**(서버가 필요한 4종을 journey 뒤에 묶어 세운다 — symmetry·ship-stock·autodeduct·print-match. 같은 `SKIP_JOURNEY=1` 로 함께 건너뛴다)
 - **`/deploy-verify`**: Phase 1 tsc·build·**test:calc**·**journey:gate** → Phase 2 entity-audit → Phase 2-B `audit:migration-drift`(스키마 변경 시) → Phase 4 `smoke:prod`
 > ⚠️`verify.yml` 은 `on: pull_request` 다 — 이 프로젝트(main 직접 push)에서는 **생성 이래 0회 실행**.
 > ⚠️여기 **없는** 감사는 사람이 부를 때만 돈다: `sort-audit` · `audit:query-cost` · `audit:subquery` · `audit:unit-price-semantics` · `audit:migration-drift` · `audit:stock-ledger` · `cut:quality`. (`test:symmetry`·`test:ship-stock`·`test:autodeduct`·`test:print-match` 는 2026-09-14 `test:local-e2e` 로 묶여 `ship:gate` 에 편입 — 그전까지 넷 다 미배선이었고, `test:print-match` 는 **빨간 채로** 있었다.) (`test:journey` 는 2026-09-11 `ship:gate`·`/deploy-verify` 에 편입 — 정본=`/journey-loop`, 한 사이클=`npm run journey:cycle`.)

@@ -50,6 +50,9 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      - name: Undefined global call audit (check:fn — ?raw scripts + on* handlers, P13 class)
+        run: npm run check:fn:selftest && npm run check:fn
+
       - name: Build
         run: npx vite build
 

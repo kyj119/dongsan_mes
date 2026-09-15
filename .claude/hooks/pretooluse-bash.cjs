@@ -76,6 +76,10 @@ if (/(^|&&|;|\s)git(\s+-[cC]\s+\S+)*\s+commit/i.test(cmd)) {
     //   훅이 꺼진 세션이 남긴 것을 커밋 직전에 한 번 더 본다.
     [/IllustratorAutomat\/.*\.(jsx|js)\b/, 'node scripts/empty-catch-audit.cjs',
       '빈 catch 에 사유가 없다 — catch (e) { /* ignore: 이유 */ } 또는 실패를 기록할 것(주석 소실 재발 방지)'],
+    // 미정의 전역 함수 호출 (P13, 2026-09-15) — src 가 dirty 인 커밋만. 편집 훅이 막지만 Write 로 통째로 쓰거나
+    //   훅이 꺼진 세션이 남긴 것을 커밋 직전에 한 번 더 본다. 기준선 없음 — 0건이 정상.
+    [/\bsrc\/.*\.(ts|tsx|js)\b/, 'node scripts/check-fn-refs.cjs --strict',
+      '정의 없는 함수를 부른다(?raw 스크립트 bare 호출·on* 핸들러) — ReferenceError 가 try/catch 에 삼켜지면 조용한 격하'],
   ];
   for (const [scope, run, why] of gates) {
     if (!scope.test(dirty)) continue;

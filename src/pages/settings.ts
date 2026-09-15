@@ -4,6 +4,7 @@ import { renderPage } from '../layout'
 import settingsScript from '../scripts/settings.js?raw'
 // costSettingsScript 제거 — settings.js의 loadCostStandards가 동일 기능 수행. costBody ID 불일치 에러 원인.
 import storageZonesScript from '../scripts/storageZones.js?raw'
+import zonePickerScript from '../scripts/zonePicker.js?raw' // storageZones.js 의 의존(zpOpen·zpSelectedIds) — 스크립트는 의존과 같이 싣는다(check:fn)
 import capsSettingsScript from '../scripts/capsSettings.js?raw'
 
 export function settingsPage(c: Context<HonoEnv>) {
@@ -61,6 +62,8 @@ document.addEventListener('DOMContentLoaded', function() {
 ${settingsScript}
 
 // costSettingsScript 제거됨 (settings.js loadCostStandards로 통합)
+
+${zonePickerScript}
 
 ${storageZonesScript}
 
