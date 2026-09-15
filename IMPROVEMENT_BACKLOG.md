@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-09-15T09:55:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-09-15T10:40:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,29 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **6** (`list_issues(state:OPEN,label:auto-improve)` 실측 — #647·#648에 fixed-in-tree 코멘트만, close는 owner 대기) |
+| 🆕 new | **7** (`list_issues(state:OPEN,label:auto-improve)` 실측 — #651 신규, #647·#648에 fixed-in-tree 코멘트만 close는 owner 대기) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **567** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 4 데이터 정합성 (2026-09-15T10:40):**
+> - **방법**: 세션 시작 시 detached HEAD `837b718`(origin/main과 동일) → 로컬 `main`은 stale(`eecca71`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area4 사이클 세션시작 HEAD `6d7239f`)**: `git log 6d7239f..HEAD` 21커밋, `git diff --stat -- src/routes src/utils migrations`는 **공백 아님**(직전 사이클 2연속 공백과 달리 이번엔 실 diff 10파일) — `migrations/0614·0615`(견적 규격텍스트)·`items.ts`(+35, with_stock)·`orders/{core,create,helpers,lifecycle,update}.ts`·`printEvents.ts`·`quotations.ts`. 전부 4개 feature 커밋(`685ea40`·`9212dfe`·`3e23e87`·`588eb19`·`fd92227`)에서 파생 — 각각 Area1/2/3/5/6가 이미 자기 렌즈(보안·타입·UX)로 검토했으나 **Area4 고유 렌즈(고아/dangling·상태정합·파생로직 오류)로는 미검토** → 직접 정독.
+> - **`9212dfe`(print-match 파일맵 재연결) 데이터정합성 검증**: `orders/update.ts`의 `print_file_map` 재연결 로직을 라인 단위로 추적 — `savedFileMaps`를 두 분기(카드보존/카드재생성) 이전에 공통 선조회, 재연결 UPDATE도 두 분기 이후 공통 코드에서 실행되어 **카드보존 경로도 포함**(커밋 메시지가 명시한 "카드 보존 경로는 끊지도 않아 죽은 id가 남았다" 결함이 정확히 이 공통화로 해소됨 확인). 매칭 규칙(item_id+sort_order→item_id 폴백, claimed-set으로 중복 item_id 오매칭 방지)이 기존 `#124`(card_items)·`#597`(order_ai_files) 패턴과 동일. `CLAUDE.md` §게이트 목록도 같은 커밋에서 `test:local-e2e` 편입을 정확히 반영 — 문서·코드 불일치 0. 결함 0건(이미 올바르게 고쳐진 상태).
+> - **🔴 신규 발견 — `helpers.ts:536 deriveOrderType` Set dedup 부작용으로 순수 유통 주문 오판정 → #651 등록**: 주문 성격(PRODUCTION/DISTRIBUTION)을 라인에서 파생하는 신설 로직(`3e23e87`, P11)이 `ids = Array.from(new Set(...))`로 dedup한 배열 길이를 원본 `items.length`와 비교해 "자유입력 라인 존재"를 판정하는데, **같은 item_id를 가진 정상 중복 라인**(같은 유통품목을 두 줄로 주문)도 이 비교에서 걸려 무조건 `PRODUCTION`으로 오판정됨(재현: `items=[{item_id:5},{item_id:5}]` → `ids.length=1≠items.length=2` → PRODUCTION, 실제론 둘 다 `production_required=0`이라 DISTRIBUTION이 맞음). `order_type`은 카드 생성·`shipment_ready` 초기값·자재 갭 계산에 직결 — 순수 유통 주문에 불필요한 카드가 생길 수 있음. 수정 방향(dedup 전 배열로 길이비교, dedup은 IN절에만 사용) 포함해 이슈 등록. **비즈니스 로직 변경이라 issue-only**(자동수정 금지 목록 해당).
+> - **standing scan 1: `npm run audit:migration-number`** — 파일 630개, 중복 번호 **23쌍**(직전 사이클과 동일, 병렬 worktree 채번 충돌 무해 클래스), **같은 테이블 DDL 충돌 0건**.
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **prod 직접조회 축(`--remote` 스크립트)**: 이 세션도 `CLOUDFLARE_API_TOKEN` 미설정 — prod 데이터 직접조회 불가(3연속 동일 제약). 코드/마이그 diff 분석으로 대체.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 10런 전부 `conclusion:success`(최종 HEAD `837b718` 포함).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **6→7**(#651 신규 등록, 나머지 #650·#648·#647·#626·#617·#616 변동없음) — 신규 외 전건 Area4 관할 밖.
+> - **backlog↔GitHub 절대값 재동기화**: open **6→7**(#651 신규) · done **567**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md 서술 참조 재확인(이미 서술식, `line N` 잔여 없음). 이번 사이클은 기존 레시피(파생로직 정독)가 새 결함(#651)을 잡아낸 정상 적중 — 새 클래스로 codify할 만한 탐지 패턴 추가는 아직 판단 이름(사례 1건뿐).
+> - **백로그 트림 체크**: 사이클 로그 9건 → 이번 추가 후 10건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 1건(`#651` deriveOrderType Set dedup 오판정), 자동수정 0건(비즈니스 로직이라 issue-only), done-sync: open 6→7(#651)·done 567(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-09-15T09:55):**
 > - **방법**: 세션 시작 시 detached HEAD `3bf7a94`(origin/main과 동일) → 로컬 `main`은 stale(`eecca71`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
