@@ -12,10 +12,15 @@ export const portalLoginPage = (c: Context) => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>고객포털 로그인 - 동산기획</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <style>
-    body { background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 50%, #1e40af 100%); min-height: 100vh; }
+    body { background: linear-gradient(135deg, #152A44 0%, #1E3A5F 50%, #24486E 100%); min-height: 100vh; font-family: 'Pretendard Variable', Pretendard, -apple-system, 'Malgun Gothic', sans-serif; }
+    .bg-blue-600 { background-color: #1E3A5F !important; }
+    .hover\\:bg-blue-700:hover { background-color: #16304F !important; }
+    .bg-blue-100 { background-color: #E9EEF4 !important; }
+    .text-blue-600 { color: #1E3A5F !important; }
   </style>
 </head>
 <body class="flex items-center justify-center">

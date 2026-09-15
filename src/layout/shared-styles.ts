@@ -14,8 +14,9 @@ export const SHARED_CSS = `
     --c-warning-light: #fef3c7;
     --c-danger: #dc2626;
     --c-danger-light: #fee2e2;
-    --c-info: #2563eb;
-    --c-info-light: #dbeafe;
+    /* info = 감청 계열로 통일(2026-09-15) — 밝은 파랑(#2563eb) 잔재 제거. ds-alert-info·ds-badge-blue·토스트 info */
+    --c-info: #1E3A5F;
+    --c-info-light: #E9EEF4;
     --c-purple: #7c3aed;
     --c-purple-light: #f5f3ff;
     --c-orange: #ea580c;
@@ -72,8 +73,8 @@ export const SHARED_CSS = `
     --c-warning-light: rgba(251,191,36,0.1);
     --c-danger: #f87171;
     --c-danger-light: rgba(248,113,113,0.1);
-    --c-info: #60a5fa;
-    --c-info-light: rgba(96,165,250,0.1);
+    --c-info: #7FA6CE;
+    --c-info-light: rgba(127,166,206,0.12);
     --c-purple: #a78bfa;
     --c-purple-light: rgba(167,139,250,0.1);
     --c-orange: #fb923c;
@@ -583,7 +584,7 @@ export const SHARED_CSS = `
 
   /* 실사표 한 줄 (inventoryCount.js icItemRowHtml). 인라인 onmouseover 로는 따옴표 이스케이프가
      깨지므로 hover 는 여기서 준다 — CSS 는 layout 전역이 정본이다. */
-  .ic-row:hover { background: #eff6ff !important; }
+  .ic-row:hover { background: var(--c-primary-light) !important; }
   .ds-table tbody tr:last-child td { border-bottom: none; }
   .ds-table-compact thead th { padding: 6px 8px; }
   .ds-table-compact tbody td { padding: 6px 8px; font-size: var(--fs-xs); }
@@ -935,7 +936,7 @@ export const SHARED_CSS = `
      페이지/모달이 토큰을 우회해 blue-500/600/700 을 직접 쓴 곳을 전역에서 감청으로 통일한다.
      (다크모드 그레이 오버라이드와 같은 단일-소스 전략 — 감사에서 빠진 페이지도 자동 반영.)
      ⚠️ 인라인 hex(#3b82f6 등)와 차트 팔레트(CHART_COLORS)는 클래스가 아니라 여기 안 걸린다 → 개별 수정. */
-  .bg-blue-600, .bg-blue-500, .bg-blue-700 { background-color: var(--c-primary) !important; }
+  .bg-blue-400, .bg-blue-500, .bg-blue-600, .bg-blue-700 { background-color: var(--c-primary) !important; }
   .hover\\:bg-blue-500:hover, .hover\\:bg-blue-600:hover, .hover\\:bg-blue-700:hover { background-color: var(--c-primary-hover) !important; }
   .text-blue-500, .text-blue-600, .text-blue-700, .text-blue-800 { color: var(--c-primary) !important; }
   .border-blue-500, .border-blue-600 { border-color: var(--c-primary) !important; }
@@ -943,6 +944,17 @@ export const SHARED_CSS = `
   .focus\\:ring-blue-500:focus, .focus\\:ring-blue-600:focus, .ring-blue-500 { --tw-ring-color: var(--c-primary) !important; }
   .bg-blue-50, .bg-blue-100 { background-color: var(--c-primary-light) !important; }
   html.dark .bg-blue-50, html.dark .bg-blue-100 { background-color: var(--c-primary-light) !important; }
+  /* 테이블 행 hover(공용 유틸)도 감청 틴트로 — 웜뉴트럴 위 파랑 잔재 제거 */
+  .hover\\:bg-blue-50\\/30:hover { background-color: var(--c-primary-light) !important; }
+  /* 추가 파랑 셰이드(2026-09-15 2차 감사) — ⚠️ sky/indigo(시맨틱 카테고리색)는 의도적 제외, blue-*만 */
+  .text-blue-300, .text-blue-400, .text-blue-900 { color: var(--c-primary) !important; }
+  .hover\\:text-blue-600:hover, .hover\\:text-blue-700:hover, .hover\\:text-blue-800:hover, .hover\\:text-blue-900:hover { color: var(--c-primary-dark) !important; }
+  /* 밝은 셰이드(어두운 글씨 동반)=틴트 / 진한 셰이드(흰 글씨 동반)=진한 감청 — 대비 보존 */
+  .bg-blue-200, .bg-blue-300 { background-color: var(--c-primary-light) !important; }
+  .bg-blue-800, .bg-blue-900 { background-color: var(--c-primary) !important; }
+  .border-blue-200, .border-blue-300, .border-blue-400 { border-color: var(--c-primary) !important; }
+  .hover\\:border-blue-300:hover, .hover\\:border-blue-400:hover, .hover\\:border-blue-500:hover { border-color: var(--c-primary) !important; }
+  .ring-blue-200, .ring-blue-300, .ring-blue-400 { --tw-ring-color: var(--c-primary) !important; }
 
   /* === Dark Mode: Glasstop top-bar === */
   .top-bar.scrolled { box-shadow: 0 1px 8px rgba(0,0,0,0.08); border-bottom-color: transparent; }
@@ -1001,7 +1013,7 @@ export const SHARED_CSS = `
       --c-success: #16a34a; --c-success-light: #dcfce7;
       --c-warning: #d97706; --c-warning-light: #fef3c7;
       --c-danger: #dc2626; --c-danger-light: #fee2e2;
-      --c-info: #2563eb; --c-info-light: #dbeafe;
+      --c-info: #1E3A5F; --c-info-light: #E9EEF4;
       --c-purple: #7c3aed; --c-purple-light: #f5f3ff;
       --c-orange: #ea580c; --c-orange-light: #fff7ed;
       --c-teal: #0d9488; --c-teal-light: #f0fdfa;

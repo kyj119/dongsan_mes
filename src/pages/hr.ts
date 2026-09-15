@@ -28,7 +28,7 @@ export function hrPage(c: Context<HonoEnv>) {
           </div>
           <div class="ds-card p-5">
             <div class="text-xs text-gray-500">금일 출근</div>
-            <div class="text-3xl font-bold text-green-600 mt-1" id="hrTodayAttendance">-</div>
+            <div class="text-3xl font-bold mt-1" id="hrTodayAttendance">-</div>
             <div class="text-xs text-gray-400 mt-1">오늘 출근 인원</div>
           </div>
           <div class="ds-card p-5">

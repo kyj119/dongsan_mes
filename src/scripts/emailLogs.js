@@ -77,7 +77,7 @@
         var failed = total - sent;
 
         document.getElementById('statsArea').innerHTML =
-            '<div class="bg-white rounded-lg shadow p-4 text-center"><div class="text-2xl font-bold text-blue-600">' + total + '</div><div class="text-xs text-gray-500">전체</div></div>' +
+            '<div class="bg-white rounded-lg shadow p-4 text-center"><div class="text-2xl font-bold text-gray-800">' + total + '</div><div class="text-xs text-gray-500">전체</div></div>' +
             '<div class="bg-white rounded-lg shadow p-4 text-center"><div class="text-2xl font-bold text-green-600">' + sent + '</div><div class="text-xs text-gray-500">성공</div></div>' +
             '<div class="bg-white rounded-lg shadow p-4 text-center"><div class="text-2xl font-bold text-red-600">' + failed + '</div><div class="text-xs text-gray-500">실패</div></div>';
     }

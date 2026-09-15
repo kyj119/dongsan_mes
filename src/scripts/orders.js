@@ -238,7 +238,7 @@ function getOrderUrgency(deliveryDate, status) {
   if (diffDays < 0) return { label: '지연', color: '#dc2626', bg: '#fef2f2' };
   if (diffDays === 0) return { label: 'D-Day', color: 'var(--c-orange)', bg: 'var(--c-orange-light)' };
   if (diffDays === 1) return { label: 'D-1', color: '#d97706', bg: '#fffbeb' };
-  if (diffDays <= 3) return { label: 'D-' + diffDays, color: '#2563eb', bg: '#eff6ff' };
+  if (diffDays <= 3) return { label: 'D-' + diffDays, color: 'var(--c-primary)', bg: '#E9EEF4' };
   return null;
 }
 
@@ -308,7 +308,7 @@ function ordRenderPagination(pagination) {
   const endPage = Math.min(total_pages, startPage + 4);
   for (let p = startPage; p <= endPage; p++) {
     const activeStyle = p === page
-      ? 'padding:6px 12px;border:1px solid #2563eb;border-radius:6px;font-size:13px;cursor:pointer;background:#2563eb;color:#fff;font-weight:600;'
+      ? 'padding:6px 12px;border:1px solid var(--c-primary);border-radius:6px;font-size:13px;cursor:pointer;background:var(--c-primary);color:#fff;font-weight:600;'
       : btnStyle;
     pageButtons += `<button onclick="goToPage(${p})" style="${activeStyle}">${p}</button>`;
   }
@@ -1523,7 +1523,7 @@ async function loadOrderTimeline(orderId) {
     // 완료 구간 선
     if (currentIdx >= 0) {
       var linePct = (currentIdx / (steps.length - 1)) * 100;
-      var lineColor = isCancelled ? '#9ca3af' : '#3b82f6';
+      var lineColor = isCancelled ? '#9ca3af' : 'var(--c-primary)';
       html += '<div class="absolute top-5 left-10 h-0.5 transition-all" style="width:calc((100% - 80px) * ' + linePct + ' / 100);background:' + lineColor + ';"></div>';
     }
 
@@ -1544,7 +1544,7 @@ async function loadOrderTimeline(orderId) {
         circleStyle = 'background:#d97706;';
         iconColor = '#fff';
       } else if (completed) {
-        circleStyle = 'background:#2563eb;';
+        circleStyle = 'background:var(--c-primary);';
         iconColor = '#fff';
       } else {
         circleStyle = 'background:#e5e7eb;';
@@ -1874,11 +1874,11 @@ function openInvoicePanel(url, title, orderId) {
     : '';
   overlay.innerHTML =
     '<div style="background:#fff;width:95vw;max-width:900px;height:92vh;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 25px 60px rgba(0,0,0,.3);">'
-    + '<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;background:#1e40af;color:#fff;">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;background:var(--c-primary-dark);color:#fff;">'
     + '<span style="font-weight:700;font-size:15px;"><i class="fas fa-file-invoice" style="margin-right:8px;"></i>' + title + '</span>'
     + '<div style="display:flex;gap:8px;">'
     + emailBtn
-    + '<button onclick="document.getElementById(\'invoicePanel\').querySelector(\'iframe\').contentWindow.print()" style="padding:6px 16px;border:none;border-radius:6px;background:#fff;color:#1e40af;font-size:13px;font-weight:600;cursor:pointer;"><i class="fas fa-print" style="margin-right:4px;"></i>인쇄</button>'
+    + '<button onclick="document.getElementById(\'invoicePanel\').querySelector(\'iframe\').contentWindow.print()" style="padding:6px 16px;border:none;border-radius:6px;background:#fff;color:var(--c-primary-dark);font-size:13px;font-weight:600;cursor:pointer;"><i class="fas fa-print" style="margin-right:4px;"></i>인쇄</button>'
     + '<button onclick="document.getElementById(\'invoicePanel\').remove()" style="padding:6px 16px;border:none;border-radius:6px;background:#ef4444;color:#fff;font-size:13px;font-weight:600;cursor:pointer;"><i class="fas fa-times" style="margin-right:4px;"></i>닫기</button>'
     + '</div></div>'
     + '<iframe src="' + url + '" style="flex:1;border:none;width:100%;"></iframe>'
@@ -1897,12 +1897,12 @@ function openInvoiceEmail(orderId) {
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:20000;display:flex;align-items:center;justify-content:center;';
   modal.innerHTML =
     '<div style="background:#fff;border-radius:12px;padding:28px;width:400px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,.3);">'
-    + '<h3 style="font-size:18px;font-weight:700;margin-bottom:16px;color:#1f2937;"><i class="fas fa-envelope" style="color:#1e40af;margin-right:8px;"></i>이메일 발송</h3>'
+    + '<h3 style="font-size:18px;font-weight:700;margin-bottom:16px;color:#1f2937;"><i class="fas fa-envelope" style="color:var(--c-primary-dark);margin-right:8px;"></i>이메일 발송</h3>'
     + '<label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">수신 이메일</label>'
     + '<input type="email" id="invoiceEmailTo" placeholder="example@company.com" style="width:100%;padding:10px 14px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;margin-bottom:16px;">'
     + '<div style="display:flex;gap:8px;justify-content:flex-end;">'
     + '<button onclick="document.getElementById(\'invoiceEmailModal\').remove()" style="padding:8px 20px;border:none;border-radius:6px;font-size:14px;cursor:pointer;font-weight:600;background:#e5e7eb;color:#374151;">취소</button>'
-    + '<button id="invoiceEmailSendBtn" onclick="sendInvoiceEmail(' + orderId + ')" style="padding:8px 20px;border:none;border-radius:6px;font-size:14px;cursor:pointer;font-weight:600;background:#1e40af;color:#fff;"><i class="fas fa-paper-plane" style="margin-right:4px;"></i>발송</button>'
+    + '<button id="invoiceEmailSendBtn" onclick="sendInvoiceEmail(' + orderId + ')" style="padding:8px 20px;border:none;border-radius:6px;font-size:14px;cursor:pointer;font-weight:600;background:var(--c-primary-dark);color:#fff;"><i class="fas fa-paper-plane" style="margin-right:4px;"></i>발송</button>'
     + '</div></div>';
   modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
   document.body.appendChild(modal);

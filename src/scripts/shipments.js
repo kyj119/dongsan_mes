@@ -353,7 +353,7 @@ async function loadConsolidationCandidates(date) {
         return '<span style="white-space:nowrap">' + escapeHtml(o.client_name || '') + ' [' + escapeHtml(o.entity_name || ('법인' + o.entity_id)) + '·' + escapeHtml(o.delivery_method || '-') + ']</span>';
       });
       html += '<div class="flex items-start gap-2">'
-        + '<span style="background:#dbeafe;color:#1e40af;font-size:11px;padding:2px 8px;border-radius:9999px;white-space:nowrap;flex-shrink:0">권역 ' + escapeHtml(g.postal_prefix || '') + '**</span>'
+        + '<span style="background:#E9EEF4;color:#14273F;font-size:11px;padding:2px 8px;border-radius:9999px;white-space:nowrap;flex-shrink:0">권역 ' + escapeHtml(g.postal_prefix || '') + '**</span>'
         + '<div><span class="text-gray-600">' + parts.join(' · ') + '</span> '
         + '<span class="text-xs text-blue-700">→ 동선 묶음 검토</span></div>'
         + '</div>';
@@ -1578,10 +1578,10 @@ function renderShipCheckModal() {
   var scIsMerged = scReadonly.length > 0 || shipCheckState.entries.some(function(en) { return en._offscreen || (en.group || []).length > 1; });
   if (scIsMerged) {
     var scGroupSize = shipCheckState.entries.length + scReadonly.length;
-    html += '<div class="mb-3 px-3 py-2 rounded-lg text-sm" style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8">'
+    html += '<div class="mb-3 px-3 py-2 rounded-lg text-sm" style="background:#E9EEF4;border:1px solid #C7D6E8;color:#14273F">'
       + '<i class="fas fa-boxes-stacked mr-1"></i>합포장 묶음 — 주문 ' + scGroupSize + '건이 한 박스로 나갑니다. 검수도 묶음 전체 기준으로 확인하세요.';
     if (scReadonly.length > 0) {
-      html += '<div class="mt-1 text-xs" style="color:#1e40af">'
+      html += '<div class="mt-1 text-xs" style="color:#14273F">'
         + scReadonly.map(function(g) {
             var prog = (g.line_total || g.chk_total) ? (' 검수 ' + (g.chk_done || 0) + '/' + (g.line_total || g.chk_total)) : '';
             return '· ' + (g.entity_name ? escapeHtml(g.entity_name) + ' ' : '') + escapeHtml(g.order_number || ('#' + g.order_id)) + prog + ' <span class="text-gray-400">(타법인 — 해당 법인에서 검수)</span>';
@@ -1595,7 +1595,7 @@ function renderShipCheckModal() {
     var done = lines.filter(function(l) { return l._checked; }).length;
     var shippedBadge = en.order && en.order.shipped_at ? ' <span class="ds-badge ds-badge-blue text-xs">출고됨</span>' : '';
     var partnerBadge = en._offscreen
-      ? ' <span class="text-xs px-1.5 py-0.5 rounded" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe" title="합포장으로 묶인 화면 밖 주문 — 함께 검수">합포장 파트너' + (en.order.entity_name ? ' · ' + escapeHtml(en.order.entity_name) : '') + '</span>'
+      ? ' <span class="text-xs px-1.5 py-0.5 rounded" style="background:#E9EEF4;color:#14273F;border:1px solid #C7D6E8" title="합포장으로 묶인 화면 밖 주문 — 함께 검수">합포장 파트너' + (en.order.entity_name ? ' · ' + escapeHtml(en.order.entity_name) : '') + '</span>'
       : '';
     html += '<div class="mb-4 border rounded-lg overflow-hidden">'
       + '<div class="flex items-center justify-between px-3 py-2 bg-gray-50 border-b">'
@@ -1908,7 +1908,7 @@ function histRenderPagination(p) {
   var end = Math.min(p.total_pages, start + 4);
   for (var i = start; i <= end; i++) {
     var active = i === p.page
-      ? 'padding:6px 12px;border:1px solid #2563eb;border-radius:6px;font-size:13px;cursor:pointer;background:#2563eb;color:#fff;font-weight:600;'
+      ? 'padding:6px 12px;border:1px solid var(--c-primary);border-radius:6px;font-size:13px;cursor:pointer;background:var(--c-primary);color:#fff;font-weight:600;'
       : btn;
     nums += '<button onclick="loadShipHistory(' + i + ')" style="' + active + '">' + i + '</button>';
   }
@@ -1947,7 +1947,7 @@ function histRenderRows(rows) {
     if (o.consolidation_child_count > 0) {
       consBadge = ' <span class="px-1.5 py-0.5 text-[10px] rounded font-bold" style="background:#ecfeff;color:#0e7490" title="' + escapeHtml(o.consolidation_child_numbers || '') + '">합배송 +' + o.consolidation_child_count + '</span>';
     } else if (o.consolidate_root_number) {
-      consBadge = ' <span class="px-1.5 py-0.5 text-[10px] rounded" style="background:#f1f5f9;color:#475569" title="대표 주문 ' + escapeHtml(o.consolidate_root_number) + '">합배송 자식</span>';
+      consBadge = ' <span class="px-1.5 py-0.5 text-[10px] rounded" style="background:var(--c-border-light);color:var(--c-text-secondary)" title="대표 주문 ' + escapeHtml(o.consolidate_root_number) + '">합배송 자식</span>';
     }
 
     // ⚠️ getBillingStatus* 는 orders.js 전용이라 여기서 부르면 ReferenceError 다 — 로컬 맵을 쓴다

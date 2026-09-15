@@ -48,7 +48,7 @@
     var startPage = Math.max(1, page - 2);
     var endPage = Math.min(totalPages, startPage + 4);
     for (var p = startPage; p <= endPage; p++) {
-      var active = p === page ? 'padding:6px 12px;border:1px solid #2563eb;border-radius:6px;font-size:13px;cursor:pointer;background:#2563eb;color:#fff;font-weight:600;' : btnStyle;
+      var active = p === page ? 'padding:6px 12px;border:1px solid var(--c-primary);border-radius:6px;font-size:13px;cursor:pointer;background:var(--c-primary);color:#fff;font-weight:600;' : btnStyle;
       buttons += '<button onclick="' + goFn + '(' + p + ')" style="' + active + '">' + p + '</button>';
     }
     container.innerHTML =

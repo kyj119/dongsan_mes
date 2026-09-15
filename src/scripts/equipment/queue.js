@@ -75,7 +75,7 @@
       var speed = (w.avg_print_minutes_per_sqm != null && w.avg_print_minutes_per_sqm > 0)
         ? (Math.round(w.avg_print_minutes_per_sqm * 10) / 10) + '분/㎡' : '미측정';
       return '<div onclick="window.eqqSelect(\'' + esc(String(w.id)) + '\')" class="ds-card ds-card-compact cursor-pointer transition-shadow hover:shadow-md" '
-        + 'style="border:1px solid ' + (sel ? '#3b82f6' : 'var(--c-border)') + ';' + (sel ? 'box-shadow:0 0 0 2px rgba(59,130,246,0.15);' : '') + '">'
+        + 'style="border:1px solid ' + (sel ? 'var(--c-primary)' : 'var(--c-border)') + ';' + (sel ? 'box-shadow:0 0 0 2px rgba(30,58,95,0.15);' : '') + '">'
         + '<div class="flex items-center justify-between mb-1 gap-2">'
         + '<span class="font-semibold text-sm text-gray-800 truncate" title="' + esc(w.name) + '">' + esc(w.name) + '</span>'
         + '<span class="text-[11px] px-1.5 py-0.5 rounded-full flex-shrink-0 ' + (qc > 0 ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-400') + '">' + qc + '건 대기</span>'

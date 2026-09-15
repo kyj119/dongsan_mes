@@ -95,7 +95,7 @@ async function printWorkOrder(orderId) {
             + '.spec { font-size: 14px; color: #374151; margin-top: 3px; }'
             + '.fabric { font-size: 13px; margin-top: 4px; }'
             + '.fabric b { color: #6b7280; font-weight: 600; }'
-            + '.memo { font-size: 12px; color: #2563eb; margin-top: 3px; }'
+            + '.memo { font-size: 12px; color: #1E3A5F; margin-top: 3px; }'
             + '.badges { margin-top: 6px; }'
             + '.pp-badge { display: inline-block; padding: 2px 9px; font-size: 12px; border-radius: 12px; background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; margin: 0 4px 4px 0; }'
             + '.fin-badge { display: inline-block; padding: 2px 9px; font-size: 12px; border-radius: 12px; background: #fef3c7; color: #92400e; border: 1px solid #fde68a; margin: 0 4px 4px 0; }'

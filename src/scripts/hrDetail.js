@@ -124,11 +124,11 @@ function hrdFmtMoneyShort(n) {
 
 function hrdStatusBadge(status) {
   var map = {
-    PENDING: '<span class="px-2 py-0.5 text-xs rounded-full bg-amber-50 text-amber-700">작성중</span>',
-    APPROVED: '<span class="px-2 py-0.5 text-xs rounded-full bg-blue-50 text-blue-700">승인</span>',
-    PAID: '<span class="px-2 py-0.5 text-xs rounded-full bg-green-50 text-green-700">지급완료</span>',
+    PENDING: '<span class="px-2 py-0.5 text-xs rounded bg-amber-50 text-amber-700">작성중</span>',
+    APPROVED: '<span class="px-2 py-0.5 text-xs rounded bg-blue-50 text-blue-700">승인</span>',
+    PAID: '<span class="px-2 py-0.5 text-xs rounded bg-green-50 text-green-700">지급완료</span>',
   };
-  return map[status] || '<span class="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-700">' + (status || '-') + '</span>';
+  return map[status] || '<span class="px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-700">' + (status || '-') + '</span>';
 }
 
 function hrdAttendanceCellClass(type) {
@@ -179,10 +179,10 @@ window.hrdLoadDetail = async function() {
     document.getElementById('hrdEmploymentType').textContent = EMPLOYMENT_NAMES[emp.employment_type] || emp.employment_type || '-';
     var statusEl = document.getElementById('hrdStatus');
     if (emp.status === 'ACTIVE') {
-      statusEl.className = 'px-2.5 py-0.5 text-xs rounded-full bg-green-50 text-green-700';
+      statusEl.className = 'px-2.5 py-0.5 text-xs rounded bg-green-50 text-green-700';
       statusEl.textContent = '재직';
     } else {
-      statusEl.className = 'px-2.5 py-0.5 text-xs rounded-full bg-gray-100 text-gray-700';
+      statusEl.className = 'px-2.5 py-0.5 text-xs rounded bg-gray-100 text-gray-700';
       statusEl.textContent = '퇴사';
     }
 
@@ -682,16 +682,16 @@ window.hrdSave = async function() {
 // ============================================================================
 var HRD_CONTRACT_TYPE = { HOURLY: '시급제', MONTHLY: '월급제', DAILY: '일급제' };
 var HRD_CONTRACT_STATUS = {
-  DRAFT: '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600"><i class="fas fa-pen text-[7px] mr-1"></i>작성중</span>',
-  PENDING_SIGNATURE: '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-amber-50 text-amber-700"><i class="fas fa-clock text-[7px] mr-1"></i>서명 대기</span>',
-  ACTIVE: '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-green-50 text-green-700"><i class="fas fa-check-circle text-[7px] mr-1"></i>활성</span>',
-  SIGNED: '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-green-50 text-green-700"><i class="fas fa-check-circle text-[7px] mr-1"></i>서명 완료</span>',
-  CONFIRMED: '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-blue-50 text-blue-700"><i class="fas fa-check-double text-[7px] mr-1"></i>확정</span>',
-  EXPIRED: '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-red-50 text-red-700"><i class="fas fa-times-circle text-[7px] mr-1"></i>만료</span>',
+  DRAFT: '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-600"><i class="fas fa-pen text-[7px] mr-1"></i>작성중</span>',
+  PENDING_SIGNATURE: '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-amber-50 text-amber-700"><i class="fas fa-clock text-[7px] mr-1"></i>서명 대기</span>',
+  ACTIVE: '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-green-50 text-green-700"><i class="fas fa-check-circle text-[7px] mr-1"></i>활성</span>',
+  SIGNED: '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-green-50 text-green-700"><i class="fas fa-check-circle text-[7px] mr-1"></i>서명 완료</span>',
+  CONFIRMED: '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-blue-50 text-blue-700"><i class="fas fa-check-double text-[7px] mr-1"></i>확정</span>',
+  EXPIRED: '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-red-50 text-red-700"><i class="fas fa-times-circle text-[7px] mr-1"></i>만료</span>',
 };
 
 function hrdContractStatusBadge(status) {
-  return HRD_CONTRACT_STATUS[status] || '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">' + (status || '-') + '</span>';
+  return HRD_CONTRACT_STATUS[status] || '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-600">' + (status || '-') + '</span>';
 }
 
 function hrdFmtDateShort(d) {

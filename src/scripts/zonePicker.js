@@ -69,7 +69,7 @@ function zpViewBtn(mode, label) {
   var on = _zp.view === mode;
   return '<button type="button" onclick="zpSetView(\'' + mode + '\')"'
     + ' style="padding:6px 11px;border:0;font-size:12px;cursor:pointer;'
-    +   (on ? 'background:#2563eb;color:#fff;font-weight:600;' : 'background:#fff;color:#6b7280;') + '">'
+    +   (on ? 'background:var(--c-primary);color:#fff;font-weight:600;' : 'background:#fff;color:#6b7280;') + '">'
     + label + '</button>';
 }
 
@@ -85,7 +85,7 @@ function zpSetView(mode) {
       for (var i = 0; i < btns.length; i++) {
         var isChip = btns[i].textContent.indexOf('규격') >= 0;
         var on = (isChip && mode === 'chip') || (!isChip && mode === 'list');
-        btns[i].style.background = on ? '#2563eb' : '#fff';
+        btns[i].style.background = on ? 'var(--c-primary)' : '#fff';
         btns[i].style.color = on ? '#fff' : '#6b7280';
         btns[i].style.fontWeight = on ? '600' : '400';
       }
@@ -193,7 +193,7 @@ function zpRender(truncated) {
       //   이름이 그룹명과 같으면 중복이라 생략한다.
       +     (zpLeadName(g) ? '<span style="font-size:11px;color:#6b7280;">' + window.escapeHtml(zpLeadName(g)) + '</span>' : '')
       +     '<span style="font-size:11px;color:#9ca3af;">' + g.rows.length + '개'
-      +       (g.held ? ' · 보유 ' + g.held : '') + (missing ? ' · <b style="color:#2563eb">없음 ' + missing + '</b>' : '') + '</span>'
+      +       (g.held ? ' · 보유 ' + g.held : '') + (missing ? ' · <b style="color:var(--c-primary)">없음 ' + missing + '</b>' : '') + '</span>'
       +     '<span style="margin-left:auto;display:flex;gap:4px;">'
       +       (missing ? '<button onclick="zpPickMissing(' + gi + ')" style="padding:2px 8px;border:1px solid #d1d5db;border-radius:4px;background:#fff;font-size:11px;cursor:pointer;">없는 것 전체</button>' : '')
       +       '<button onclick="zpClearGroup(' + gi + ')" style="padding:2px 8px;border:1px solid #e5e7eb;border-radius:4px;background:#fff;font-size:11px;cursor:pointer;color:#6b7280;">해제</button>'
@@ -229,12 +229,12 @@ function zpLeadName(g) {
 function zpRowHtml(it) {
   var held = Number(it.in_zone);
   var on = !!_zp.sel[it.id];
-  var bg = held ? '#f9fafb' : (on ? '#eff6ff' : '#fff');
+  var bg = held ? '#f9fafb' : (on ? '#E9EEF4' : '#fff');
   var click = held ? '' : ' onclick="zpToggle(' + it.id + ')"';
   var mark = held
     ? '<span style="color:#9ca3af;font-size:11px;white-space:nowrap;">보유중</span>'
     : '<span style="width:16px;height:16px;flex:0 0 auto;border-radius:4px;display:inline-flex;align-items:center;'
-      + 'justify-content:center;font-size:11px;border:1px solid ' + (on ? '#2563eb;background:#2563eb;color:#fff;' : '#d1d5db;background:#fff;color:transparent;')
+      + 'justify-content:center;font-size:11px;border:1px solid ' + (on ? 'var(--c-primary);background:var(--c-primary);color:#fff;' : '#d1d5db;background:#fff;color:transparent;')
       + '">✓</span>';
   return '<div' + click + ' style="display:flex;align-items:center;gap:9px;padding:6px 8px;border-top:1px solid #f1f5f9;'
     + 'background:' + bg + ';font-size:12.5px;' + (held ? 'cursor:default;' : 'cursor:pointer;') + '">'
@@ -262,7 +262,7 @@ function zpChipHtml(it) {
   }
   var on = !!_zp.sel[it.id];
   return '<button onclick="zpToggle(' + it.id + ')" title="' + window.escapeHtml((it.item_code || '') + (it.current_zones ? ' · 현재 ' + it.current_zones : '')) + '"'
-    + ' style="' + base + (on ? '#2563eb;background:#dbeafe;color:#1d4ed8;font-weight:600;' : '#d1d5db;background:#fff;color:#374151;') + 'cursor:pointer;">'
+    + ' style="' + base + (on ? 'var(--c-primary);background:#E9EEF4;color:#14273F;font-weight:600;' : '#d1d5db;background:#fff;color:#374151;') + 'cursor:pointer;">'
     + (on ? '✓ ' : '') + window.escapeHtml(label)
     + (it.current_zones ? '<span style="color:#b45309;font-size:10px;"> ●</span>' : '')
     + '</button>';

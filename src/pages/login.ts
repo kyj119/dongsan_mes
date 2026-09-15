@@ -13,6 +13,17 @@ export function loginPage(c: Context<HonoEnv>) {
         <title>로그인 - ERP+MES</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+        <style>
+          /* 감청 톤 통일(2026-09-15): 독립 페이지라 앱 토큰이 안 온다 → 여기서 파랑→감청 */
+          body { font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, 'Malgun Gothic', sans-serif;
+                 background: linear-gradient(135deg, #152A44 0%, #1E3A5F 60%, #24486E 100%) !important; }
+          .bg-blue-600 { background-color: #1E3A5F !important; }
+          .hover\\:bg-blue-700:hover { background-color: #16304F !important; }
+          .bg-blue-100 { background-color: #E9EEF4 !important; }
+          .text-blue-600 { color: #1E3A5F !important; }
+          .focus\\:ring-blue-500:focus { --tw-ring-color: #1E3A5F !important; }
+        </style>
     </head>
     <body class="bg-gradient-to-br from-blue-500 to-blue-700 min-h-screen flex items-center justify-center">
         <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-md">

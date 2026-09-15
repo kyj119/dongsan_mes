@@ -113,7 +113,7 @@ export function payrollPage(c: Context<HonoEnv>) {
           </div>
           <div class="ds-card p-4">
             <div class="text-xs text-gray-500">실지급 총액</div>
-            <div class="text-3xl font-bold text-green-600 mt-1 tabular-nums" id="prSumNet">-</div>
+            <div class="text-3xl font-bold mt-1 tabular-nums" id="prSumNet">-</div>
           </div>
         </div>
 

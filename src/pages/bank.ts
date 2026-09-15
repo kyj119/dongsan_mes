@@ -27,8 +27,8 @@ export const bankPageCSS = `
       .form-input { width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:13px; outline:none; }
       .form-input:focus { border-color:var(--c-primary); box-shadow:0 0 0 2px var(--c-primary-light); }
       .form-select { width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:13px; background:var(--c-surface); outline:none; }
-      .btn-primary { background:#2563eb; color:#fff; border:none; border-radius:6px; padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer; }
-      .btn-primary:hover { background:#1d4ed8; }
+      .btn-primary { background:var(--c-primary); color:#fff; border:none; border-radius:6px; padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer; }
+      .btn-primary:hover { background:var(--c-primary-hover); }
       .btn-secondary { background:var(--c-surface); color:var(--c-text); border:1px solid var(--c-border); border-radius:6px; padding:8px 16px; font-size:13px; cursor:pointer; }
       .btn-secondary:hover { background:var(--c-surface-secondary); }
       .btn-sm { padding:4px 10px; font-size:12px; border-radius:4px; cursor:pointer; border:none; font-weight:500; }
@@ -84,12 +84,12 @@ export const bankPageContent = `
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
             <div class="kpi-card bg-white border border-gray-200 rounded-lg">
               <div class="text-xs font-medium text-gray-500"><i class="fas fa-university mr-1"></i>총 계좌잔액 <span class="text-[10px] text-gray-400">(마이너스통장 제외)</span></div>
-              <div class="text-2xl font-bold text-blue-600" id="fundTotalBalance">-</div>
+              <div class="text-2xl font-bold" id="fundTotalBalance">-</div>
               <div class="text-[11px] text-gray-400" id="fundAccountCount"></div>
             </div>
             <div class="kpi-card bg-white border border-gray-200 rounded-lg">
               <div class="text-xs font-medium text-gray-500"><i class="fas fa-minus-circle mr-1"></i>마이너스통장</div>
-              <div class="text-2xl font-bold text-orange-500" id="fundOverdraftBalance">-</div>
+              <div class="text-2xl font-bold" id="fundOverdraftBalance">-</div>
               <div class="text-[11px] text-gray-400" id="fundOverdraftNote"></div>
             </div>
             <div class="kpi-card bg-white border border-gray-200 rounded-lg">
@@ -99,7 +99,7 @@ export const bankPageContent = `
             </div>
             <div class="kpi-card bg-blue-50 border border-blue-200 rounded-lg">
               <div class="text-xs font-medium text-blue-700"><i class="fas fa-wallet mr-1"></i>순자금</div>
-              <div class="text-2xl font-bold text-blue-700" id="fundNetFunds">-</div>
+              <div class="text-2xl font-bold" id="fundNetFunds">-</div>
               <div class="text-[11px] text-blue-400">예금+마이너스통장−대출</div>
             </div>
           </div>
@@ -252,9 +252,9 @@ export const bankPageContent = `
               <div class="border-l border-gray-200 h-5 mx-1"></div>
               <!-- 인라인 KPI 뱃지 -->
               <div class="flex items-center gap-2 text-xs">
-                <span class="px-2 py-1 rounded-full bg-orange-50 text-orange-700 font-medium">미매칭 <b id="kpiUnmatched">-</b></span>
-                <span class="px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-medium">제안 <b id="kpiSuggested">-</b></span>
-                <span class="px-2 py-1 rounded-full bg-green-50 text-green-700 font-medium">적용 <b id="kpiApplied">-</b></span>
+                <span class="px-2 py-1 rounded bg-orange-50 text-orange-700 font-medium">미매칭 <b id="kpiUnmatched">-</b></span>
+                <span class="px-2 py-1 rounded bg-blue-50 text-blue-700 font-medium">제안 <b id="kpiSuggested">-</b></span>
+                <span class="px-2 py-1 rounded bg-green-50 text-green-700 font-medium">적용 <b id="kpiApplied">-</b></span>
               </div>
             </div>
             <!-- Row 2: 상태 필터 + 액션 -->

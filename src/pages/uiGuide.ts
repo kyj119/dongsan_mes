@@ -66,8 +66,8 @@ export function uiGuidePage(c: Context<HonoEnv>) {
       </div>
       <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
         <div class="text-center">
-          <div class="token-swatch" style="background:#2563eb; color:#fff;">#2563EB</div>
-          <div class="text-xs font-medium" style="color:#374151;">Primary</div>
+          <div class="token-swatch" style="background:#1E3A5F; color:#fff;">#1E3A5F</div>
+          <div class="text-xs font-medium" style="color:#374151;">Primary (감청)</div>
           <div class="text-[10px]" style="color:#9ca3af;">CTA, 링크, 활성</div>
         </div>
         <div class="text-center">
@@ -91,9 +91,9 @@ export function uiGuidePage(c: Context<HonoEnv>) {
           <div class="text-[10px]" style="color:#9ca3af;">비활성, 기본</div>
         </div>
       </div>
-      <div class="p-3 rounded text-xs" style="background:#eff6ff; color:#1e40af;">
+      <div class="p-3 rounded text-xs" style="background:#E9EEF4; color:#14273F;">
         <i class="fas fa-info-circle mr-1"></i>
-        <strong>규칙:</strong> 보라·핑크·틸은 차트 전용. 카드 숫자는 기본 <code style="color:#1e40af;">#212529</code>, 위험/이상치만 시맨틱 컬러.
+        <strong>규칙:</strong> 보라·핑크·틸은 차트 전용. 카드 숫자는 기본 <code style="color:#14273F;">#212529</code>, 위험/이상치만 시맨틱 컬러.
       </div>
     </div>
   </div>
@@ -215,9 +215,9 @@ export function uiGuidePage(c: Context<HonoEnv>) {
           <div class="text-[10px] mt-1" style="color:#9ca3af;">neutral</div>
         </div>
       </div>
-      <div class="p-3 rounded text-xs" style="background:#eff6ff; color:#1e40af;">
+      <div class="p-3 rounded text-xs" style="background:#E9EEF4; color:#14273F;">
         <i class="fas fa-universal-access mr-1"></i>
-        <strong>접근성:</strong> 색상 + 아이콘 + 텍스트 3요소로 색맹 사용자도 구분 가능 (WCAG 1.4.1). 배경은 <code style="color:#1e40af;">bg-*-50</code> 은은하게.
+        <strong>접근성:</strong> 색상 + 아이콘 + 텍스트 3요소로 색맹 사용자도 구분 가능 (WCAG 1.4.1). 배경은 <code style="color:#14273F;">bg-*-50</code> 은은하게.
       </div>
     </div>
   </div>
@@ -251,7 +251,7 @@ export function uiGuidePage(c: Context<HonoEnv>) {
           </div>
         </div>
       </div>
-      <div class="p-3 rounded text-xs" style="background:#eff6ff; color:#1e40af;">
+      <div class="p-3 rounded text-xs" style="background:#E9EEF4; color:#14273F;">
         <i class="fas fa-info-circle mr-1"></i>
         레이아웃: [검색(flex-1)] [필터] | [초기화(Ghost)] [검색(Primary)]. 검색 버튼 텍스트는 항상 "검색".
       </div>
@@ -417,9 +417,9 @@ export function uiGuidePage(c: Context<HonoEnv>) {
   </div>
 
   <!-- 개선사항 요약 -->
-  <div class="p-4 rounded-lg border-2 border-blue-200" style="background:#eff6ff;">
-    <div class="text-sm font-semibold mb-2" style="color:#1e40af;"><i class="fas fa-clipboard-check mr-2"></i>적용된 개선사항 요약</div>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs" style="color:#1e40af;">
+  <div class="p-4 rounded-lg border-2 border-blue-200" style="background:#E9EEF4;">
+    <div class="text-sm font-semibold mb-2" style="color:#14273F;"><i class="fas fa-clipboard-check mr-2"></i>적용된 개선사항 요약</div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs" style="color:#14273F;">
       <div><i class="fas fa-check mr-1 text-green-600"></i> 배경 #FFFFFF → #F8F9FA (눈부심↓)</div>
       <div><i class="fas fa-check mr-1 text-green-600"></i> 텍스트 #111827 → #212529 (대비 완화)</div>
       <div><i class="fas fa-check mr-1 text-green-600"></i> 카드 숫자 위험/이상치만 색상</div>

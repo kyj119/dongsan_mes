@@ -34,7 +34,7 @@ export function accountingPage(c: Context<HonoEnv>) {
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
           <div class="acc-kpi ds-card-compact bg-blue-50/40" style="border-color:var(--c-primary);padding:12px 14px">
             <div class="ds-label mb-1"><i class="fas fa-arrow-down text-blue-500 mr-1"></i>수입 (기간 매출)</div>
-            <div class="text-2xl font-bold text-blue-700 tabular-nums text-right" id="accKpiRevenue">-</div>
+            <div class="text-2xl font-bold tabular-nums text-right" id="accKpiRevenue">-</div>
           </div>
           <div class="acc-kpi ds-card-compact bg-red-50/40" style="border-color:var(--c-danger);padding:12px 14px">
             <div class="ds-label mb-1"><i class="fas fa-arrow-up text-red-500 mr-1"></i>지출 (카드+매입)</div>

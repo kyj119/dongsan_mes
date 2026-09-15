@@ -16,11 +16,19 @@ export function renderPortalPage(options: {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${options.title} - 동산기획 고객포털</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <style>
-    body { background: #f3f4f6; }
-    .portal-nav { background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); }
+    /* 감청 톤 통일(2026-09-15): 포털은 자체 Tailwind2 CDN이라 앱 shared-styles 리맵이 안 온다 → 여기서 파랑→감청 */
+    body { background: #EFEEEA; color: #1E1C18; font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, 'Malgun Gothic', sans-serif; }
+    .portal-nav { background: linear-gradient(135deg, #152A44 0%, #1E3A5F 100%); }
+    .bg-blue-600, .bg-blue-700 { background-color: #1E3A5F !important; }
+    .hover\\:bg-blue-600:hover, .hover\\:bg-blue-700:hover { background-color: #16304F !important; }
+    .text-blue-600, .text-blue-700, .text-blue-800 { color: #1E3A5F !important; }
+    .hover\\:text-blue-800:hover { color: #14273F !important; }
+    .hover\\:text-blue-200:hover { color: #C7D6E8 !important; }
+    .bg-blue-50, .bg-blue-100, .hover\\:bg-blue-50:hover { background-color: #E9EEF4 !important; }
   </style>
 </head>
 <body class="min-h-screen">

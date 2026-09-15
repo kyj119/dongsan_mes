@@ -502,8 +502,8 @@ async function loadPortalAccount() {
         + '</div>';
     } else {
       var statusBadge = account.is_active
-        ? '<span class="px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">활성</span>'
-        : '<span class="px-1.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700">비활성</span>';
+        ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700">활성</span>'
+        : '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700">비활성</span>';
       var lastLogin = account.last_login_at ? account.last_login_at.replace('T', ' ').substring(0, 16) : '없음';
 
       el.innerHTML = '<div class="space-y-2">'

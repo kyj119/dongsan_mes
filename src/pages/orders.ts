@@ -25,7 +25,7 @@ export function ordersPage(c: Context<HonoEnv>) {
           </button>
           <button type="button" class="ds-card ds-card-compact ds-stat" data-stat-status="PRINTING,PRINT_DONE" onclick="ordStatDrilldown('PRINTING,PRINT_DONE')" title="출력중 + 출력완료 주문만 조회">
             <div class="text-sm ds-stat-label" style="color:var(--c-text-secondary)">생산중</div>
-            <div class="text-3xl font-bold" style="color:var(--c-orange)" id="statProduction">-</div>
+            <div class="text-3xl font-bold" id="statProduction">-</div>
           </button>
           <button type="button" class="ds-card ds-card-compact ds-stat" data-stat-status="SHIPPED" onclick="ordStatDrilldown('SHIPPED')" title="출고완료 주문만 조회">
             <div class="text-sm ds-stat-label" style="color:var(--c-text-secondary)">출고완료</div>

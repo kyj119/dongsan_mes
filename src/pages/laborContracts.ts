@@ -18,7 +18,7 @@ export function laborContractsPage(c: Context<HonoEnv>) {
           </div>
           <div class="ds-card p-4">
             <div class="text-xs text-gray-500">서명 대기</div>
-            <div class="text-3xl font-bold text-amber-600 mt-1 tabular-nums" id="lcKpiPending">-</div>
+            <div class="text-3xl font-bold mt-1 tabular-nums" id="lcKpiPending">-</div>
           </div>
           <div class="ds-card p-4">
             <div class="text-xs text-gray-500">만료 임박 (30일)</div>

@@ -310,10 +310,10 @@ function renderResultCard(r) {
 
 function getStatusBadge(status) {
     const map = {
-        pending: '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700">대기</span>',
-        processing: '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">처리중</span>',
-        done: '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">완료</span>',
-        error: '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700">에러</span>',
+        pending: '<span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700">대기</span>',
+        processing: '<span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">처리중</span>',
+        done: '<span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700">완료</span>',
+        error: '<span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700">에러</span>',
     };
     return map[status] || `<span class="text-xs text-gray-500">${status}</span>`;
 }

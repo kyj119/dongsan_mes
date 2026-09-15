@@ -857,7 +857,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6" id="compareSummary">
           <div class="kpi-card bg-blue-50 border border-blue-200">
             <div class="text-xs font-medium text-blue-700">홈택스 건수</div>
-            <div class="text-2xl font-bold text-blue-600" id="hometaxCount">-</div>
+            <div class="text-2xl font-bold" id="hometaxCount">-</div>
           </div>
           <div class="kpi-card bg-gray-50 border border-gray-200">
             <div class="text-xs font-medium text-gray-700">시스템 건수</div>
@@ -865,7 +865,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
           </div>
           <div class="kpi-card bg-green-50 border border-green-200">
             <div class="text-xs font-medium text-green-700">매칭 완료</div>
-            <div class="text-2xl font-bold text-green-600" id="matchedCount">-</div>
+            <div class="text-2xl font-bold" id="matchedCount">-</div>
           </div>
           <div class="kpi-card bg-red-50 border border-red-200">
             <div class="text-xs font-medium text-red-700">불일치</div>

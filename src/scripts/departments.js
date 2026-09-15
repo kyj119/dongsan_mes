@@ -55,11 +55,11 @@ function renderDeptTree() {
     var indent = d.parent_id ? 'padding-left:1.5rem' : '';
     var prefix = d.parent_id ? '<span class="text-gray-300 mr-1">└</span>' : '';
     var typeBadge = d.dept_type === 'PRODUCTION'
-      ? '<span class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">생산</span>'
-      : '<span class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">지원</span>';
+      ? '<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">생산</span>'
+      : '<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">지원</span>';
     var stat = d.is_active
-      ? '<span class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">활성</span>'
-      : '<span class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">비활성</span>';
+      ? '<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700">활성</span>'
+      : '<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">비활성</span>';
     return '<tr class="border-b border-gray-100 hover:bg-gray-50">'
       + '<td class="px-3 py-2 text-sm font-medium text-gray-900" style="' + indent + '">' + prefix + deptEscAttr(d.name) + '</td>'
       + '<td class="px-3 py-2 text-center">' + typeBadge + '</td>'

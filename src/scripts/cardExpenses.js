@@ -172,7 +172,7 @@ async function loadTransactions() {
       row.className = 'tx-row' + (selectedTxIds.has(tx.id) ? ' selected' : '') + (isOffset ? ' offset-row' : '');
       var statusColors = {
         UNCLASSIFIED: 'background:#fef3c7;color:#92400e',
-        CLASSIFIED: 'background:#dbeafe;color:#1e40af',
+        CLASSIFIED: 'background:#E9EEF4;color:#14273F',
         REQUESTED: 'background:#ede9fe;color:#5b21b6',
         APPROVED: 'background:#dcfce7;color:#166534'
       };
@@ -677,7 +677,7 @@ async function quickClassify(txId, catId) {
     var sel = document.querySelector('[data-cat-select="' + txId + '"]');
     var pill = sel ? sel.closest('tr').querySelector('.status-pill') : null;
     if (pill) {
-      if (catId) { pill.textContent = '분류'; pill.setAttribute('style', 'background:#dbeafe;color:#1e40af;font-size:10px'); }
+      if (catId) { pill.textContent = '분류'; pill.setAttribute('style', 'background:#E9EEF4;color:#14273F;font-size:10px'); }
       else { pill.textContent = '미분류'; pill.setAttribute('style', 'background:#fef3c7;color:#92400e;font-size:10px'); }
     }
     loadSummary();

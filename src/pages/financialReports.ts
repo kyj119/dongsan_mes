@@ -211,7 +211,7 @@ export const financialReportsContent = `
               <div class="ds-card p-4 text-center">
                 <i class="fas fa-chart-pie text-green-600 text-2xl mb-2 block"></i>
                 <div class="text-sm text-gray-500 mb-1">순자산</div>
-                <div class="text-2xl font-bold text-green-600" style="font-variant-numeric:tabular-nums;" id="snapshotNetAssets">-</div>
+                <div class="text-2xl font-bold" style="font-variant-numeric:tabular-nums;" id="snapshotNetAssets">-</div>
               </div>
             </div>
 

@@ -314,7 +314,7 @@ function szRenderLayout() {
     var topRight;
     if (szEditMode) {
       topRight = '<span style="position:absolute;right:3px;top:3px;display:flex;gap:2px;">'
-        + '<button data-sz-btn onclick="event.stopPropagation();openEditZoneModal(' + z.id + ')" title="이름·색상 편집" style="font-size:9px;background:rgba(255,255,255,0.95);border:1px solid #e5e7eb;border-radius:3px;width:18px;height:18px;line-height:1;cursor:pointer;color:#475569;"><i class="fas fa-pen"></i></button>'
+        + '<button data-sz-btn onclick="event.stopPropagation();openEditZoneModal(' + z.id + ')" title="이름·색상 편집" style="font-size:9px;background:rgba(255,255,255,0.95);border:1px solid var(--c-border);border-radius:3px;width:18px;height:18px;line-height:1;cursor:pointer;color:var(--c-text-secondary);"><i class="fas fa-pen"></i></button>'
         + '<button data-sz-btn onclick="event.stopPropagation();szUnplaceZone(' + z.id + ')" title="도면에서 내리기 (창고는 유지)" style="font-size:9px;background:rgba(255,255,255,0.95);border:1px solid #fde68a;border-radius:3px;width:18px;height:18px;line-height:1;cursor:pointer;color:#d97706;"><i class="fas fa-arrow-down"></i></button>'
         + '</span>';
     } else {
@@ -328,7 +328,7 @@ function szRenderLayout() {
       ? '<div data-sz-resize style="position:absolute;right:-1px;bottom:-1px;width:14px;height:14px;background:' + color + ';border:2px solid #fff;border-radius:3px;cursor:se-resize;"></div>'
       : '';
     var label = escapeAttr(z.zone_name)
-      + (multiEntity && z.entity_name ? ' <span style="font-weight:400;color:#94a3b8;">· ' + escapeAttr(z.entity_name) + '</span>' : '');
+      + (multiEntity && z.entity_name ? ' <span style="font-weight:400;color:var(--c-text-muted);">· ' + escapeAttr(z.entity_name) + '</span>' : '');
     return '<div data-sz-box style="position:absolute;'
       + 'left:' + b.x + '%;top:' + b.y + '%;width:' + b.width + '%;height:' + b.height + '%;'
       + 'border:2px solid ' + color + ';background:' + szHexToRgba(color, fillAlpha) + ';border-radius:6px;'
@@ -357,7 +357,7 @@ function szRenderUnplacedTray(filtered) {
   tray.innerHTML = '<div class="text-xs font-semibold text-gray-500 mb-1.5"><i class="fas fa-inbox mr-1"></i>미배치 창고 (' + unplaced.length + ')</div>'
     + '<div class="flex flex-wrap gap-1.5">'
     + unplaced.map(function(z) {
-      return '<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs" style="border-color:' + (z.color || '#3B82F6') + ';color:#475569;">'
+      return '<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs" style="border-color:' + (z.color || '#3B82F6') + ';color:var(--c-text-secondary);">'
         + '<span class="w-2 h-2 rounded-full inline-block" style="background:' + (z.color || '#3B82F6') + ';"></span>'
         + escapeAttr(z.zone_name)
         + (z.entity_name ? '<span class="text-gray-400">' + escapeAttr(z.entity_name) + '</span>' : '')

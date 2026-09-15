@@ -34,11 +34,11 @@ export function insuranceReportsPage(c: Context<HonoEnv>) {
           </div>
           <div class="bg-white border border-gray-200 rounded-lg p-5">
             <div class="text-xs text-gray-500 font-medium">근로자 부담 합계</div>
-            <div class="text-3xl font-bold text-blue-600 tabular-nums mt-1" id="irStatEmployee">-</div>
+            <div class="text-3xl font-bold tabular-nums mt-1" id="irStatEmployee">-</div>
           </div>
           <div class="bg-white border border-gray-200 rounded-lg p-5">
             <div class="text-xs text-gray-500 font-medium">회사 부담 합계</div>
-            <div class="text-3xl font-bold text-amber-600 tabular-nums mt-1" id="irStatEmployer">-</div>
+            <div class="text-3xl font-bold tabular-nums mt-1" id="irStatEmployer">-</div>
           </div>
           <div class="bg-white border border-gray-200 rounded-lg p-5">
             <div class="text-xs text-gray-500 font-medium">전체 합계</div>

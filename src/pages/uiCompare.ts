@@ -13,7 +13,7 @@ export function uiComparePage(c: Context<HonoEnv>) {
       .panel-after { border: 2px solid #3b82f6; border-radius: 8px; overflow: hidden; }
       .panel-label { padding: 6px 12px; font-size: 11px; font-weight: 600; text-align: center; }
       .panel-before .panel-label { background: #f3f4f6; color: #6b7280; }
-      .panel-after .panel-label { background: #eff6ff; color: #2563eb; }
+      .panel-after .panel-label { background: #E9EEF4; color: #2563eb; }
       .panel-body { padding: 16px; }
       .panel-after .panel-body { background: #F8F9FA; }
     `,

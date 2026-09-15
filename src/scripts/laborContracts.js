@@ -520,7 +520,7 @@ function lcInitEmpSearch() {
       groups[dept].forEach(function(e) {
         var pos = LC_POS[e.position] || e.position || '';
         var ent = e.entity_id && window.entityName ? window.entityName(e.entity_id) : '';
-        html += '<div class="lc-emp-item" data-id="' + e.id + '" style="padding:6px 12px;cursor:pointer;font-size:13px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #f3f4f6" onmouseover="this.style.background=\'#eff6ff\'" onmouseout="this.style.background=\'\'">';
+        html += '<div class="lc-emp-item" data-id="' + e.id + '" style="padding:6px 12px;cursor:pointer;font-size:13px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #f3f4f6" onmouseover="this.style.background=\'#E9EEF4\'" onmouseout="this.style.background=\'\'">';
         html += '<span><strong>' + escapeHtml(e.name || '') + '</strong> <span style="color:#9ca3af">' + escapeHtml(e.employee_code || '') + '</span></span>';
         html += '<span style="font-size:11px;color:#6b7280">' + pos + (ent ? ' · ' + ent : '') + '</span>';
         html += '</div>';

@@ -36,7 +36,7 @@
       tbody.innerHTML = items.map(function (fe) {
         return '<tr class="border-b hover:bg-gray-50">'
           + '<td class="px-3 py-2 font-medium" title="' + esc(fe.name) + '">' + esc(fe.name) + '</td>'
-          + '<td class="px-3 py-2"><span class="px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700">' + (CATEGORY_MAP[fe.category] || fe.category) + '</span></td>'
+          + '<td class="px-3 py-2"><span class="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700">' + (CATEGORY_MAP[fe.category] || fe.category) + '</span></td>'
           + '<td class="px-3 py-2 text-right font-medium">' + fmt(fe.amount) + '원</td>'
           + '<td class="px-3 py-2 text-center">' + (FREQUENCY_MAP[fe.frequency] || fe.frequency) + '</td>'
           + '<td class="px-3 py-2 text-center">' + (fe.payment_day || 1) + '일</td>'

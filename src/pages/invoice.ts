@@ -22,7 +22,7 @@ export function invoicePage(c: Context<HonoEnv>) {
                정의 없는 var(--c-primary) 는 CSS 규칙상 unset 이라 배경이 사라지고 흰 글씨만 남는다
                (툴바 제목·버튼이 실제로 안 보였다). 쓰는 토큰만 여기서 선언한다.
                ⚠️ 값은 src/layout/shared-styles.ts 의 --c-primary 와 같아야 한다. */
-            :root { --c-primary: #3b82f6; }
+            :root { --c-primary: #1E3A5F; }
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; background: #e5e7eb; }
 

@@ -373,8 +373,8 @@ function buildGridCard(card, columnType) {
     var hasThumbnail = cardHasThumb(card);
 
     // 긴급도 보더 색상
-    var borderColor = '#e5e7eb';
-    if (isHold) borderColor = '#94a3b8';
+    var borderColor = 'var(--c-border)';
+    if (isHold) borderColor = 'var(--c-text-muted)';
     else if (urg.diff <= 0) borderColor = '#ef4444';
     else if (urg.diff <= 1) borderColor = '#f97316';
     else if (urg.diff <= 3) borderColor = '#eab308';
@@ -487,7 +487,7 @@ function buildGridCard(card, columnType) {
     // 액션 버튼 (UI가이드: Primary=파랑, Danger=빨강테두리, Secondary=회색테두리)
     html += '<div class="flex gap-1 mt-1.5">';
     if (columnType === 'printing') {
-        html += '<button class="grid-action-btn" style="background:#2563eb;color:#fff;border:1px solid #2563eb;flex:1" onclick="event.stopPropagation();completeCard(' + card.id + ')">출력완료</button>';
+        html += '<button class="grid-action-btn" style="background:var(--c-primary);color:#fff;border:1px solid var(--c-primary);flex:1" onclick="event.stopPropagation();completeCard(' + card.id + ')">출력완료</button>';
         html += '<button class="grid-action-btn" style="background:#fff;color:#dc2626;border:1px solid #fca5a5" onclick="event.stopPropagation();quickHold(' + card.id + ')">보류</button>';
     } else if (columnType === 'done') {
         if (card.pp_status === 'PENDING') {
@@ -498,7 +498,7 @@ function buildGridCard(card, columnType) {
         if (card.shipped_at) {
             html += '<button class="grid-action-btn" style="background:#fff;color:#374151;border:1px solid #d1d5db;flex:1" onclick="event.stopPropagation();unshipCard(' + card.id + ')">&#10003; 출고됨</button>';
         } else {
-            html += '<button class="grid-action-btn" style="background:#2563eb;color:#fff;border:1px solid #2563eb;flex:1" onclick="event.stopPropagation();shipCard(' + card.id + ')">출고</button>';
+            html += '<button class="grid-action-btn" style="background:var(--c-primary);color:#fff;border:1px solid var(--c-primary);flex:1" onclick="event.stopPropagation();shipCard(' + card.id + ')">출고</button>';
             html += '<button class="grid-action-btn" style="background:#fff;color:#6b7280;border:1px solid #d1d5db" onclick="event.stopPropagation();revertCard(' + card.id + ')" title="진행중으로 되돌리기"><i class="fas fa-undo" style="font-size:10px"></i></button>';
         }
     }
@@ -619,7 +619,7 @@ function buildKanbanCard(card, columnType) {
         // 진행률 바 (주문번호 옆 인라인)
         html += '<div style="flex:1;display:flex;align-items:center;gap:6px">';
         html += '<div style="flex:1;height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden">';
-        html += '<div style="height:100%;width:' + pct + '%;background:' + (pct === 100 ? '#16a34a' : '#3b82f6') + ';border-radius:3px;transition:width 0.3s"></div>';
+        html += '<div style="height:100%;width:' + pct + '%;background:' + (pct === 100 ? '#16a34a' : 'var(--c-primary)') + ';border-radius:3px;transition:width 0.3s"></div>';
         html += '</div>';
         html += '<span class="text-[10px] font-bold ' + (pct === 100 ? 'text-green-600' : 'text-blue-600') + ' flex-shrink-0">' + pct + '%</span>';
         html += '</div>';
@@ -654,7 +654,7 @@ function buildKanbanCard(card, columnType) {
             if (item.width && item.height) ispec = Math.round(item.width) + 'x' + Math.round(item.height);
 
             // 2줄 구조: 1줄=품목명+내용+규격+수량, 2줄=후가공+마감
-            html += '<div class="rounded" style="padding:3px 2px' + (idx > 0 ? ';margin-top:3px;border-top:1px solid #f1f5f9' : '') + '">';
+            html += '<div class="rounded" style="padding:3px 2px' + (idx > 0 ? ';margin-top:3px;border-top:1px solid var(--c-border-light)' : '') + '">';
 
             // 1줄: [완료아이콘] 품목명 — 내용 — 규격 x수량
             html += '<div class="flex items-center gap-1.5" style="min-height:22px">';
@@ -724,7 +724,7 @@ function buildKanbanCard(card, columnType) {
     // 마감방식: 품목 라인별로 이동됨 (카드 레벨 제거)
 
     // ── 구분선 ──
-    html += '<div style="border-top:1px solid #f1f5f9;margin:8px 0 6px"></div>';
+    html += '<div style="border-top:1px solid var(--c-border-light);margin:8px 0 6px"></div>';
 
     // ── 하단: 마감 카운트다운 + 액션 버튼 ──
     html += '<div class="flex items-center justify-between">';

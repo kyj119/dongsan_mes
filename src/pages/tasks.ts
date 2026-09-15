@@ -42,7 +42,7 @@ export function tasksPage(c: Context<HonoEnv>) {
         </div>
         <div class="bg-white rounded-lg border border-gray-200 p-5">
           <p class="text-gray-500 text-sm">진행중</p>
-          <p id="statProcessing" class="text-3xl font-bold text-blue-600">-</p>
+          <p id="statProcessing" class="text-3xl font-bold">-</p>
         </div>
         <div class="bg-white rounded-lg border border-gray-200 p-5">
           <p class="text-gray-500 text-sm">실패</p>
@@ -50,7 +50,7 @@ export function tasksPage(c: Context<HonoEnv>) {
         </div>
         <div class="bg-white rounded-lg border border-gray-200 p-5">
           <p class="text-gray-500 text-sm">24시간 완료</p>
-          <p id="statCompleted" class="text-3xl font-bold text-green-600">-</p>
+          <p id="statCompleted" class="text-3xl font-bold">-</p>
         </div>
       </div>
 

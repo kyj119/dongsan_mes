@@ -100,11 +100,11 @@ export function reportsPage(c: Context<HonoEnv>) {
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div class="ds-card p-4">
             <div class="text-sm text-gray-500">기간 총 매출</div>
-            <div class="text-2xl font-bold text-blue-600" id="rptTotalRevenue">-</div>
+            <div class="text-2xl font-bold" id="rptTotalRevenue">-</div>
           </div>
           <div class="ds-card p-4">
             <div class="text-sm text-gray-500">기간 총 입금</div>
-            <div class="text-2xl font-bold text-green-600" id="rptTotalPayments">-</div>
+            <div class="text-2xl font-bold" id="rptTotalPayments">-</div>
           </div>
           <div class="ds-card p-4">
             <div class="text-sm text-gray-500">총 주문 수</div>
@@ -255,7 +255,7 @@ export function reportsPage(c: Context<HonoEnv>) {
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div class="ds-card p-4">
             <div class="text-sm text-gray-500">커버 매출</div>
-            <div class="text-2xl font-bold text-blue-600" id="mgTotalRevenue">-</div>
+            <div class="text-2xl font-bold" id="mgTotalRevenue">-</div>
           </div>
           <div class="ds-card p-4">
             <div class="text-sm text-gray-500">추정 원가</div>
@@ -263,7 +263,7 @@ export function reportsPage(c: Context<HonoEnv>) {
           </div>
           <div class="ds-card p-4">
             <div class="text-sm text-gray-500">추정 이익</div>
-            <div class="text-2xl font-bold text-green-600" id="mgTotalProfit">-</div>
+            <div class="text-2xl font-bold" id="mgTotalProfit">-</div>
           </div>
           <div class="ds-card p-4">
             <div class="text-sm text-gray-500">추정 마진율</div>
@@ -374,15 +374,15 @@ export function reportsPage(c: Context<HonoEnv>) {
           </div>
           <div class="ds-card p-4">
             <div class="text-sm text-gray-500">미수금 거래처</div>
-            <div class="text-2xl font-bold text-orange-600" id="rcARClients">-</div>
+            <div class="text-2xl font-bold" id="rcARClients">-</div>
           </div>
           <div class="ds-card p-4">
             <div class="text-sm text-gray-500">당월 매출 발생</div>
-            <div class="text-2xl font-bold text-blue-600" id="rcMonthBilled">-</div>
+            <div class="text-2xl font-bold" id="rcMonthBilled">-</div>
           </div>
           <div class="ds-card p-4">
             <div class="text-sm text-gray-500">당월 수금</div>
-            <div class="text-2xl font-bold text-green-600" id="rcMonthCollected">-</div>
+            <div class="text-2xl font-bold" id="rcMonthCollected">-</div>
           </div>
         </div>
 
@@ -480,12 +480,12 @@ export function reportsPage(c: Context<HonoEnv>) {
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div class="ds-card p-4">
             <div class="text-sm text-gray-500">다음달 예측 매출</div>
-            <div class="text-2xl font-bold text-blue-600" id="fcRevenue">-</div>
+            <div class="text-2xl font-bold" id="fcRevenue">-</div>
             <div class="text-xs text-gray-400 mt-1" id="fcMethod"></div>
           </div>
           <div class="ds-card p-4">
             <div class="text-sm text-gray-500">다음달 예측 주문수</div>
-            <div class="text-2xl font-bold text-green-600" id="fcOrders">-</div>
+            <div class="text-2xl font-bold" id="fcOrders">-</div>
           </div>
           <div class="ds-card p-4">
             <div class="text-sm text-gray-500">성장률 (3개월)</div>

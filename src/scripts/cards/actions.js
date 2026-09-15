@@ -208,9 +208,9 @@ function renderKanbanKpi() {
         var ov = (summary && summary.overdue) || 0;
         overdueEl.textContent = '지연 ' + ov + '건';
         if (ov > 0) {
-            overdueEl.className = 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700';
+            overdueEl.className = 'inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold bg-red-100 text-red-700';
         } else {
-            overdueEl.className = 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-400';
+            overdueEl.className = 'inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold bg-gray-100 text-gray-400';
         }
     }
     // KPI 2: 컬럼별 카드 수
@@ -226,9 +226,9 @@ function renderKanbanKpi() {
         var hv = (summary && summary.hold) || 0;
         holdEl.textContent = '보류 ' + hv + '건';
         if (hv > 0) {
-            holdEl.className = 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-700';
+            holdEl.className = 'inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold bg-orange-100 text-orange-700';
         } else {
-            holdEl.className = 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-400';
+            holdEl.className = 'inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold bg-gray-100 text-gray-400';
         }
     }
 }
@@ -245,7 +245,7 @@ function renderProgressGauge() {
     var pct = total > 0 ? Math.round(done / total * 100) : 0;
     var circumference = 2 * Math.PI * 24;
     var offset = circumference * (1 - pct / 100);
-    var color = pct >= 80 ? '#22c55e' : pct >= 50 ? '#eab308' : '#3b82f6';
+    var color = pct >= 80 ? '#22c55e' : pct >= 50 ? '#eab308' : 'var(--c-primary)';
     var gaugeEl = document.getElementById('progressGauge');
     if (gaugeEl) {
         gaugeEl.innerHTML = '<svg width="60" height="60" viewBox="0 0 60 60">'

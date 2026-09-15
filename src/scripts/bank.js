@@ -1573,7 +1573,7 @@
         if (!inPlan && !a.is_overdraft) {
           connBadge += ' <span class="ml-1 inline-block px-2 py-0.5 rounded text-xs font-medium" style="background:#f3f4f6;color:#4b5563;" title="자금계획 예측의 시작잔액에서 제외됩니다">계획 제외</span>';
         } else if (inPlan && a.is_overdraft) {
-          connBadge += ' <span class="ml-1 inline-block px-2 py-0.5 rounded text-xs font-medium" style="background:#dbeafe;color:#1e40af;" title="마이너스통장이지만 자금계획 시작잔액에 포함됩니다">계획 포함</span>';
+          connBadge += ' <span class="ml-1 inline-block px-2 py-0.5 rounded text-xs font-medium" style="background:#E9EEF4;color:#14273F;" title="마이너스통장이지만 자금계획 시작잔액에 포함됩니다">계획 포함</span>';
         }
       }
       html += '<div class="account-card">';

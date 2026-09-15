@@ -81,22 +81,22 @@ export const productionReportsContent = `
                 <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
                   <div class="ds-card p-4">
                     <div class="text-xs text-gray-500 mb-1">출력 건수</div>
-                    <div class="text-2xl font-bold text-blue-700" id="kpiPrints">-</div>
+                    <div class="text-2xl font-bold" id="kpiPrints">-</div>
                     <div class="text-xs text-gray-400 mt-1"><span id="prodAnaKpiOk">0</span> OK / <span id="prodAnaKpiError">0</span> 에러</div>
                   </div>
                   <div class="ds-card p-4">
                     <div class="text-xs text-gray-500 mb-1">출력 면적</div>
-                    <div class="text-2xl font-bold text-green-700" id="kpiSqm">-</div>
+                    <div class="text-2xl font-bold" id="kpiSqm">-</div>
                     <div class="text-xs text-gray-400 mt-1">㎡</div>
                   </div>
                   <div class="ds-card p-4">
                     <div class="text-xs text-gray-500 mb-1">카드 처리율</div>
-                    <div class="text-2xl font-bold text-purple-700" id="kpiRate">-</div>
+                    <div class="text-2xl font-bold" id="kpiRate">-</div>
                     <div class="text-xs text-gray-400 mt-1"><span id="kpiCardDone">0</span> / <span id="kpiCardTotal">0</span> 카드</div>
                   </div>
                   <div class="ds-card p-4">
                     <div class="text-xs text-gray-500 mb-1">장비 가동</div>
-                    <div class="text-2xl font-bold text-amber-700" id="kpiEquipCount">-</div>
+                    <div class="text-2xl font-bold" id="kpiEquipCount">-</div>
                     <div class="text-xs text-gray-400 mt-1">대</div>
                   </div>
                   <div class="ds-card p-4">
@@ -177,11 +177,11 @@ export const productionReportsContent = `
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                     <div class="ds-card p-4 text-center">
                         <div class="text-sm text-gray-500">총 출력</div>
-                        <div class="text-2xl font-bold text-blue-600" id="prodTotal">-</div>
+                        <div class="text-2xl font-bold" id="prodTotal">-</div>
                     </div>
                     <div class="ds-card p-4 text-center">
                         <div class="text-sm text-gray-500">정상 출력</div>
-                        <div class="text-2xl font-bold text-green-600" id="prodOk">-</div>
+                        <div class="text-2xl font-bold" id="prodOk">-</div>
                     </div>
                     <div class="ds-card p-4 text-center">
                         <div class="text-sm text-gray-500">에러/취소</div>
@@ -189,7 +189,7 @@ export const productionReportsContent = `
                     </div>
                     <div class="ds-card p-4 text-center">
                         <div class="text-sm text-gray-500">카드 수</div>
-                        <div class="text-2xl font-bold text-purple-600" id="prodCards">-</div>
+                        <div class="text-2xl font-bold" id="prodCards">-</div>
                     </div>
                 </div>
                 <div class="grid grid-cols-2 gap-6">
@@ -295,15 +295,15 @@ export const productionReportsContent = `
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                     <div class="ds-card p-4 text-center">
                         <div class="text-sm text-gray-500">평균 인쇄시간</div>
-                        <div class="text-2xl font-bold text-blue-600" id="durAvg">-</div>
+                        <div class="text-2xl font-bold" id="durAvg">-</div>
                     </div>
                     <div class="ds-card p-4 text-center">
                         <div class="text-sm text-gray-500">총 가동시간</div>
-                        <div class="text-2xl font-bold text-green-600" id="durTotalHours">-</div>
+                        <div class="text-2xl font-bold" id="durTotalHours">-</div>
                     </div>
                     <div class="ds-card p-4 text-center">
                         <div class="text-sm text-gray-500">총 인쇄 건수</div>
-                        <div class="text-2xl font-bold text-purple-600" id="durCount">-</div>
+                        <div class="text-2xl font-bold" id="durCount">-</div>
                     </div>
                 </div>
                 <div class="grid grid-cols-2 gap-6">

@@ -60,10 +60,10 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
             <input type="text" id="filterSearch" placeholder="가맹점..." class="ds-input" style="width:110px;font-size:12px">
             <div class="border-l border-gray-200 h-5 mx-1"></div>
             <div class="flex items-center gap-2 text-xs">
-              <span class="px-2 py-1 rounded-full bg-amber-50 text-amber-700 font-medium">미분류 <b id="kpiUnclassified">-</b></span>
-              <span class="px-2 py-1 rounded-full bg-gray-100 text-gray-600 font-medium">대기 <b id="kpiClassified">-</b></span>
-              <span class="px-2 py-1 rounded-full bg-green-50 text-green-700 font-medium">승인 <b id="kpiApproved">-</b></span>
-              <span class="px-2 py-1 rounded-full bg-red-50 text-red-700 font-medium cursor-pointer hover:bg-red-100" onclick="switchCardTab('schedule')" title="결제 예정 탭으로 이동">결제예정 <b id="kpiPaymentDue">-</b></span>
+              <span class="px-2 py-1 rounded bg-amber-50 text-amber-700 font-medium">미분류 <b id="kpiUnclassified">-</b></span>
+              <span class="px-2 py-1 rounded bg-gray-100 text-gray-600 font-medium">대기 <b id="kpiClassified">-</b></span>
+              <span class="px-2 py-1 rounded bg-green-50 text-green-700 font-medium">승인 <b id="kpiApproved">-</b></span>
+              <span class="px-2 py-1 rounded bg-red-50 text-red-700 font-medium cursor-pointer hover:bg-red-100" onclick="switchCardTab('schedule')" title="결제 예정 탭으로 이동">결제예정 <b id="kpiPaymentDue">-</b></span>
             </div>
           </div>
           <!-- Row 2: 상태 필터 탭 + 액션 -->

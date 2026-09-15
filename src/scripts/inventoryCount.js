@@ -62,14 +62,14 @@ function renderTable(list) {
     var zoneBadge = c.storage_zone_name
       ? '<div style="margin-top:3px;"><span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;background:#ecfdf5;color:#047857;" title="' + escapeHtml(c.storage_zone_name) + (c.zone_manager_name ? ' — 담당 ' + escapeHtml(c.zone_manager_name) : ' — 담당 미지정') + '"><i class="fas fa-map-marker-alt" style="margin-right:2px;"></i>' + escapeHtml(c.storage_zone_name) + zoneMgr + '</span></div>'
       : '';
-    return '<tr style="cursor:pointer;transition:background 0.15s;" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'\'" onclick="openDetail(' + c.id + ')">'
+    return '<tr style="cursor:pointer;transition:background 0.15s;" onmouseover="this.style.background=\'var(--c-surface-secondary)\'" onmouseout="this.style.background=\'\'" onclick="openDetail(' + c.id + ')">'
       + '<td style="padding:10px 12px;font-family:monospace;font-weight:600;" title="' + escapeHtml(c.count_number || '') + '">' + escapeHtml(c.count_number) + '</td>'
       + '<td style="padding:10px 12px;text-align:center;font-size:13px;">' + (c.count_date || '') + '</td>'
       + '<td style="padding:10px 12px;text-align:center;font-size:13px;">' + typeLabel + zoneBadge + '</td>'
       + '<td style="padding:10px 12px;text-align:center;">' + badge + '</td>'
       + '<td style="padding:10px 12px;text-align:center;color:#666;font-size:13px;">' + (c.item_count != null ? c.item_count : '-') + '</td>'
       + '<td style="padding:10px 12px;text-align:center;font-size:12px;color:#666;" title="' + escapeHtml(submittedBy) + '">' + escapeHtml(submittedBy) + '</td>'
-      + '<td style="padding:10px 12px;text-align:center;"><a href="javascript:" onclick="event.stopPropagation(); openDetail(' + c.id + ')" style="color:#3b82f6;font-size:13px;text-decoration:none;">열기</a></td>'
+      + '<td style="padding:10px 12px;text-align:center;"><a href="javascript:" onclick="event.stopPropagation(); openDetail(' + c.id + ')" style="color:var(--c-primary);font-size:13px;text-decoration:none;">열기</a></td>'
       + '</tr>';
   }).join('');
 }
@@ -144,7 +144,7 @@ async function createNewCount() {
     + '<input id="countNotes" type="text" placeholder="예: 월말 정기 실사" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;margin-bottom:16px">'
     + '<div style="display:flex;gap:8px;justify-content:flex-end">'
     + '<button onclick="document.getElementById(\'countCreateModal\').remove()" style="padding:8px 16px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer">취소</button>'
-    + '<button onclick="submitNewCount()" style="padding:8px 16px;border:none;border-radius:8px;background:#2563eb;color:#fff;font-weight:600;cursor:pointer">생성</button>'
+    + '<button onclick="submitNewCount()" style="padding:8px 16px;border:none;border-radius:8px;background:var(--c-primary);color:#fff;font-weight:600;cursor:pointer">생성</button>'
     + '</div></div></div>';
 
   document.body.insertAdjacentHTML('beforeend', modalHtml);
@@ -286,7 +286,7 @@ function icUpdateProgress(items) {
   if (total === 0) { progressEl.innerHTML = ''; return; }
   var filled = (items || []).filter(function(it) { return it.counted_quantity !== null && it.counted_quantity !== undefined; }).length;
   progressEl.innerHTML = '<span style="font-size:12px;color:#6b7280">입력: </span>'
-    + '<span style="font-size:12px;font-weight:700;color:' + (filled === total ? '#16a34a' : '#2563eb') + '">' + filled + '/' + total + '</span>';
+    + '<span style="font-size:12px;font-weight:700;color:' + (filled === total ? '#16a34a' : 'var(--c-primary)') + '">' + filled + '/' + total + '</span>';
 }
 
 function icRenderSummary() {
@@ -309,7 +309,7 @@ function icRenderSummary() {
   var chip = function(text, bg, color) {
     return '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;background:' + bg + ';color:' + color + ';margin-right:4px;">' + text + '</span>';
   };
-  el.innerHTML = chip('입력 ' + filled + '/' + items.length, '#eff6ff', '#1d4ed8')
+  el.innerHTML = chip('입력 ' + filled + '/' + items.length, '#E9EEF4', '#14273F')
     // '건' 을 붙인다 — 종전 '차이 +1 / −2' 는 수량 증감으로 읽혔다(실제는 품목 건수)
     + chip('차이 +' + plus + '건 / −' + minus + '건', (plus + minus) > 0 ? '#fef3c7' : '#f3f4f6', (plus + minus) > 0 ? '#92400e' : '#6b7280')
     + (changed > 0 ? chip('⚠ 재고변동 ' + changed + '건', '#fee2e2', '#dc2626') : '');
@@ -383,11 +383,11 @@ function icRenderItems() {
     var gdone = (gf === g.rows.length);
     return '<div style="margin-bottom:14px;">'
       // 그룹 헤더는 sticky — 71줄을 내리는 동안 「지금 어느 계열인지」가 사라지면 안 된다.
-      + '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#f1f5f9;'
-        + 'border-left:3px solid ' + (gdone ? '#16a34a' : '#94a3b8') + ';border-radius:3px;'
+      + '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--c-border-light);'
+        + 'border-left:3px solid ' + (gdone ? '#16a34a' : 'var(--c-text-muted)') + ';border-radius:3px;'
         + 'position:sticky;top:42px;z-index:3;">'
         + '<span style="font-size:13px;font-weight:700;">' + escapeHtml(g.name) + '</span>'
-        + '<span style="font-size:11px;font-weight:600;color:' + (gdone ? '#16a34a' : '#64748b') + ';">'
+        + '<span style="font-size:11px;font-weight:600;color:' + (gdone ? '#16a34a' : 'var(--c-text-secondary)') + ';">'
           + gf + '/' + g.rows.length + '</span>'
       + '</div>'
       + g.rows.map(function (r, ri) { return icItemRowHtml(r, ri); }).join('')
@@ -432,7 +432,7 @@ function icRenderItems() {
         + ' style="width:56px;' + inS + '" onchange="updateItemPack(' + item.id + ', this.value, null, ' + item.count_id + ')" />'
         + ' <span style="color:#9ca3af;">×</span> '
         + '<input type="number" step="any" value="' + perPack + '" title="포장당 수량 — 이 줄에만 적용"'
-        + ' style="width:56px;' + inS + 'background:#f8fafc;" onchange="updateItemPack(' + item.id + ', null, this.value, ' + item.count_id + ')" />'
+        + ' style="width:56px;' + inS + 'background:var(--c-surface-secondary);" onchange="updateItemPack(' + item.id + ', null, this.value, ' + item.count_id + ')" />'
         + ' <span style="font-size:11px;color:#6b7280;">' + escapeHtml(item.base_unit || item.unit || '') + '</span>'
         + '<div id="icCalc' + item.id + '" style="font-size:11px;color:#6b7280;margin-top:2px;">' + (notCounted ? '' : '= ' + countedQty + ' ' + escapeHtml(item.base_unit || item.unit || '')) + '</div>';
     } else if (isEditable) {
@@ -453,12 +453,12 @@ function icRenderItems() {
     //   ⚠️승인 후(비편집)에는 기록이므로 항상 보여준다.
     var bookCell;
     if (isEditable && notCounted) {
-      bookCell = '<span style="color:#cbd5e1;">장부 —</span>';
+      bookCell = '<span style="color:var(--c-text-muted);">장부 —</span>';
     } else {
       var diffQty = countedQty - systemQty;
       var dTxt = (diffQty === 0)
         ? '<span style="color:#16a34a;">일치</span>'
-        : '<span style="color:' + (diffQty > 0 ? '#2563eb' : '#ea580c') + ';font-weight:600;">'
+        : '<span style="color:' + (diffQty > 0 ? 'var(--c-primary)' : '#ea580c') + ';font-weight:600;">'
             + (diffQty > 0 ? '+' : '') + window.uomFormatStock(diffQty, icUomItem(item)) + '</span>';
       bookCell = '장부 <strong>' + window.uomFormatStock(systemQty, icUomItem(item)) + '</strong> · ' + dTxt;
     }
@@ -472,7 +472,7 @@ function icRenderItems() {
       : '실사를 만든 시점의 재고입니다. 지금 재고가 아니며, 그 뒤 입출고가 있으면 ⚠️재고변동으로 표시됩니다.';
     // hover 는 CSS 클래스로 — 인라인 onmouseover 에 따옴표를 넣으면 이스케이프가 깨진다(알려진 함정).
     return '<div class="ic-row" style="display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:7px 8px;'
-        + 'border-bottom:1px solid #e5e7eb;background:' + zebra + ';">'
+        + 'border-bottom:1px solid var(--c-border);background:' + zebra + ';">'
       // 규격 — 이 줄이 무엇인지 정하는 축이다. 없으면 품목명이 그 자리에 온다.
       + '<div style="flex:0 0 110px;font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"'
         + ' title="' + escapeHtml(item.item_name || '') + '">'
@@ -557,7 +557,7 @@ function renderDetailActions(status) {
 
   if (status === 'DRAFT') {
     actionsEl.innerHTML = ''
-      + '<button onclick="submitCount(' + _detailCountId + ')" class="ds-btn ds-btn-primary" style="background:#3b82f6;">'
+      + '<button onclick="submitCount(' + _detailCountId + ')" class="ds-btn ds-btn-primary">'
         + '<i class="fas fa-check" style="margin-right:4px"></i>제출'
       + '</button>'
       + '<button onclick="deleteCount(' + _detailCountId + ')" class="ds-btn ds-btn-secondary" style="color:#dc2626;">'

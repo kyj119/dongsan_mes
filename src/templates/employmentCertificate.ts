@@ -47,7 +47,7 @@ export function renderEmploymentCertificateHTML(data: {
 
     .no-print {
       position: sticky; top: 0; z-index: 100;
-      background: #1e40af; color: #fff;
+      background: #1E3A5F; color: #fff;
       padding: 12px 24px; display: flex; gap: 12px; align-items: center;
       box-shadow: 0 2px 8px rgba(0,0,0,.2);
     }
@@ -56,7 +56,7 @@ export function renderEmploymentCertificateHTML(data: {
       padding: 8px 18px; border: none; border-radius: 6px;
       font-size: 14px; cursor: pointer; font-weight: 600;
     }
-    .no-print .btn-print { background: #fff; color: #1e40af; }
+    .no-print .btn-print { background: #fff; color: #1E3A5F; }
     .no-print .btn-print:hover { background: #dbeafe; }
     .no-print .btn-close { background: #ef4444; color: #fff; }
     .no-print .btn-close:hover { background: #dc2626; }

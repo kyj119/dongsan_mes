@@ -270,8 +270,8 @@ window.editCapacity = async function(equipmentId, currentCapacity) {
 var style = document.createElement('style');
 style.textContent = `
   .drag-over {
-    background-color: #dbeafe !important;
-    border: 2px dashed #3b82f6;
+    background-color: #E9EEF4 !important;
+    border: 2px dashed var(--c-primary);
     border-radius: 0.375rem;
   }
   .schedule-card {

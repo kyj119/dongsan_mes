@@ -37,7 +37,7 @@ export function yearEndPage(c: Context<HonoEnv>) {
 
     .no-print {
       position: sticky; top: 0; z-index: 100;
-      background: #1e40af; color: #fff;
+      background: #1E3A5F; color: #fff;
       padding: 12px 24px; display: flex; gap: 12px; align-items: center; justify-content: space-between;
       box-shadow: 0 2px 8px rgba(0,0,0,.2);
     }
@@ -46,7 +46,7 @@ export function yearEndPage(c: Context<HonoEnv>) {
       padding: 8px 18px; border: none; border-radius: 6px;
       font-size: 14px; cursor: pointer; font-weight: 600;
     }
-    .no-print .btn-print { background: #fff; color: #1e40af; }
+    .no-print .btn-print { background: #fff; color: #1E3A5F; }
     .no-print .btn-close { background: #dc2626; color: #fff; }
 
     .page-wrapper { max-width: 820px; margin: 0 auto; padding: 24px 16px; }
@@ -98,9 +98,9 @@ export function yearEndPage(c: Context<HonoEnv>) {
       font-variant-numeric: tabular-nums;
     }
     table.amount tr.total td {
-      background: #eff6ff;
+      background: #E9EEF4;
       font-weight: 700;
-      color: #1e40af;
+      color: #1E3A5F;
     }
 
     table.monthly { width: 100%; border-collapse: collapse; font-size: 10px; margin-top: 0; }

@@ -60,7 +60,7 @@ export function productionPage(c: Context<HonoEnv>) {
         <button id="tabBtnLink" onclick="switchProdTab('link')"
           class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 -mb-px transition-colors">
           <i class="fas fa-link mr-1.5"></i>출력파일 연결
-          <span id="linkBadge" class="ml-1 hidden text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full">0</span>
+          <span id="linkBadge" class="ml-1 hidden text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">0</span>
         </button>
       </div>
 
@@ -266,7 +266,7 @@ export function productionPage(c: Context<HonoEnv>) {
           </div>
           <div class="ds-card p-4">
             <div class="text-sm text-gray-600 mb-1">미배정 카드</div>
-            <div class="text-2xl font-bold text-amber-600" id="statUnassigned">-</div>
+            <div class="text-2xl font-bold" id="statUnassigned">-</div>
           </div>
           <div class="ds-card p-4">
             <div class="text-sm text-gray-600 mb-1">오늘 납기</div>

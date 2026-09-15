@@ -52,7 +52,7 @@ async function showRipSendModal(cardId) {
 
     // 헤더
     html += '<div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between">';
-    html += '<div style="display:flex;align-items:center;gap:8px"><i class="fas fa-satellite-dish" style="color:#2563eb"></i><span style="font-size:16px;font-weight:600;color:#111827">RIP 전송</span></div>';
+    html += '<div style="display:flex;align-items:center;gap:8px"><i class="fas fa-satellite-dish" style="color:var(--c-primary)"></i><span style="font-size:16px;font-weight:600;color:#111827">RIP 전송</span></div>';
     html += '<button onclick="closeRipSendModal()" style="background:none;border:none;cursor:pointer;padding:4px;color:#6b7280;font-size:18px">&times;</button>';
     html += '</div>';
 
@@ -86,8 +86,8 @@ async function showRipSendModal(cardId) {
         html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
         html += '<div style="font-size:13px;font-weight:600;color:#111827">' + escapeHtml(item.item_name) + '</div>';
         if (isSent) {
-            var badgeBg = item.rip_status === 'QUEUED' ? '#dbeafe' : '#d1fae5';
-            var badgeColor = item.rip_status === 'QUEUED' ? '#1d4ed8' : '#15803d';
+            var badgeBg = item.rip_status === 'QUEUED' ? '#E9EEF4' : '#d1fae5';
+            var badgeColor = item.rip_status === 'QUEUED' ? '#14273F' : '#15803d';
             var badgeText = item.rip_status === 'QUEUED' ? 'RIP 대기중' : 'RIP 전송됨';
             html += '<span style="font-size:11px;padding:2px 8px;border-radius:9999px;background:' + badgeBg + ';color:' + badgeColor + '">' + badgeText + '</span>';
         }
@@ -130,7 +130,7 @@ async function showRipSendModal(cardId) {
 
             // 개별 전송 버튼
             html += '<button id="ripSendBtn_' + idx + '" onclick="sendRipItem(' + item.card_item_id + ',' + idx + ')" ';
-            html += 'style="width:100%;padding:7px;font-size:12px;font-weight:600;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer" disabled>';
+            html += 'style="width:100%;padding:7px;font-size:12px;font-weight:600;background:var(--c-primary);color:#fff;border:none;border-radius:6px;cursor:pointer" disabled>';
             html += '<i class="fas fa-satellite-dish" style="margin-right:4px"></i>전송</button>';
         }
 
@@ -141,7 +141,7 @@ async function showRipSendModal(cardId) {
     var unsent = items.filter(function(it) { return !it.rip_status; });
     if (unsent.length > 1) {
         html += '<div style="margin-top:16px;padding:14px;border:1px solid #e5e7eb;border-radius:8px;background:#f0f7ff">';
-        html += '<div style="font-size:13px;font-weight:600;color:#111827;margin-bottom:10px"><i class="fas fa-layer-group" style="margin-right:6px;color:#2563eb"></i>일괄 전송</div>';
+        html += '<div style="font-size:13px;font-weight:600;color:#111827;margin-bottom:10px"><i class="fas fa-layer-group" style="margin-right:6px;color:var(--c-primary)"></i>일괄 전송</div>';
 
         html += '<div style="display:flex;gap:8px;margin-bottom:10px">';
         html += '<div style="flex:1">';
@@ -163,7 +163,7 @@ async function showRipSendModal(cardId) {
         html += '</div>';
 
         html += '<button id="ripBulkSendBtn" onclick="sendRipBulk(' + cardId + ')" ';
-        html += 'style="width:100%;padding:8px;font-size:13px;font-weight:600;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer" disabled>';
+        html += 'style="width:100%;padding:8px;font-size:13px;font-weight:600;background:var(--c-primary);color:#fff;border:none;border-radius:6px;cursor:pointer" disabled>';
         html += '<i class="fas fa-satellite-dish" style="margin-right:4px"></i>미전송 ' + unsent.length + '건 일괄 전송</button>';
         html += '</div>';
     }
@@ -323,7 +323,7 @@ async function sendRipItem(cardItemId, idx) {
             var itemName = (window._ripItems[idx] || {}).item_name || '';
             row.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center">' +
                 '<div style="font-size:13px;font-weight:600;color:#111827">' + escapeHtml(itemName) + '</div>' +
-                '<span style="font-size:11px;padding:2px 8px;border-radius:9999px;background:#dbeafe;color:#1d4ed8">RIP 대기중</span>' +
+                '<span style="font-size:11px;padding:2px 8px;border-radius:9999px;background:#E9EEF4;color:#14273F">RIP 대기중</span>' +
                 '</div>';
         }
 

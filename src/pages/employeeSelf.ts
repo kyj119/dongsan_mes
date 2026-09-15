@@ -41,7 +41,7 @@ export function employeeSelfPage(c: Context<HonoEnv>) {
     }
     .logo i {
       font-size: 48px;
-      color: #2563eb;
+      color: #1E3A5F;
     }
     .logo h1 {
       font-size: 20px;
@@ -74,13 +74,13 @@ export function employeeSelfPage(c: Context<HonoEnv>) {
       transition: border-color 0.15s;
     }
     .form-group input:focus {
-      border-color: #2563eb;
+      border-color: #1E3A5F;
       box-shadow: 0 0 0 3px rgba(37,99,235,.1);
     }
     .btn-primary {
       width: 100%;
       padding: 12px;
-      background: #2563eb;
+      background: #1E3A5F;
       color: #fff;
       border: none;
       border-radius: 8px;
@@ -89,8 +89,8 @@ export function employeeSelfPage(c: Context<HonoEnv>) {
       cursor: pointer;
       transition: background 0.15s;
     }
-    .btn-primary:hover { background: #1d4ed8; }
-    .btn-primary:disabled { background: #93c5fd; cursor: not-allowed; }
+    .btn-primary:hover { background: #16304F; }
+    .btn-primary:disabled { background: #A9BBD0; cursor: not-allowed; }
     .error-msg {
       color: #dc2626;
       font-size: 13px;
@@ -103,7 +103,7 @@ export function employeeSelfPage(c: Context<HonoEnv>) {
     .menu-section { display: none; }
     .menu-section.active { display: block; }
     .user-info {
-      background: #eff6ff;
+      background: #E9EEF4;
       border-radius: 8px;
       padding: 16px;
       margin-bottom: 20px;
@@ -112,7 +112,7 @@ export function employeeSelfPage(c: Context<HonoEnv>) {
     .user-info .name {
       font-size: 18px;
       font-weight: 700;
-      color: #1e40af;
+      color: #14273F;
     }
     .user-info .detail {
       font-size: 13px;
@@ -139,18 +139,18 @@ export function employeeSelfPage(c: Context<HonoEnv>) {
       font-size: inherit;
     }
     .menu-item:hover {
-      background: #eff6ff;
-      border-color: #bfdbfe;
+      background: #E9EEF4;
+      border-color: #C7D6E8;
     }
     .menu-item:focus-visible {
-      outline: 2px solid #2563eb;
+      outline: 2px solid #1E3A5F;
       outline-offset: 2px;
     }
     .menu-item i {
       font-size: 20px;
       width: 28px;
       text-align: center;
-      color: #2563eb;
+      color: #1E3A5F;
     }
     .menu-item .label {
       font-size: 14px;
@@ -188,9 +188,9 @@ export function employeeSelfPage(c: Context<HonoEnv>) {
       cursor: pointer;
       transition: all 0.15s;
     }
-    .payslip-item:hover { background: #eff6ff; border-color: #bfdbfe; }
+    .payslip-item:hover { background: #E9EEF4; border-color: #C7D6E8; }
     .payslip-item .pi-period { font-weight: 600; font-size: 14px; }
-    .payslip-item .pi-net { font-size: 13px; color: #1e40af; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .payslip-item .pi-net { font-size: 13px; color: #14273F; font-weight: 700; font-variant-numeric: tabular-nums; }
 
     /* 계약서 서명 */
     .sign-section { display: none; }
@@ -208,20 +208,20 @@ export function employeeSelfPage(c: Context<HonoEnv>) {
     .btn-secondary {
       width: 100%;
       padding: 10px;
-      background: #eff6ff;
-      color: #1e40af;
-      border: 1px solid #bfdbfe;
+      background: #E9EEF4;
+      color: #14273F;
+      border: 1px solid #C7D6E8;
       border-radius: 8px;
       font-size: 13px;
       font-weight: 600;
       cursor: pointer;
     }
-    .btn-secondary:hover { background: #dbeafe; }
+    .btn-secondary:hover { background: #E9EEF4; }
     .contract-item .sign-btn {
       display: inline-block;
       margin-top: 8px;
       padding: 6px 14px;
-      background: #2563eb;
+      background: #1E3A5F;
       color: #fff;
       border: none;
       border-radius: 6px;
@@ -229,7 +229,7 @@ export function employeeSelfPage(c: Context<HonoEnv>) {
       font-weight: 600;
       cursor: pointer;
     }
-    .contract-item .sign-btn:hover { background: #1d4ed8; }
+    .contract-item .sign-btn:hover { background: #16304F; }
     .status-pending-sign { background: #fef3c7; color: #92400e; }
 
     /* 계약서 목록 */
@@ -240,7 +240,7 @@ export function employeeSelfPage(c: Context<HonoEnv>) {
     .leave-section.active { display: block; }
     .lv-balance { display:flex; gap:8px; margin-bottom:14px; }
     .lv-stat { flex:1; background:#f8fafc; border:1px solid #e5e7eb; border-radius:8px; padding:10px; text-align:center; }
-    .lv-stat .v { font-size:20px; font-weight:700; color:#1e40af; font-variant-numeric:tabular-nums; }
+    .lv-stat .v { font-size:20px; font-weight:700; color:#14273F; font-variant-numeric:tabular-nums; }
     .lv-stat .l { font-size:11px; color:#9ca3af; margin-top:2px; }
     .lv-field { margin-bottom:10px; }
     .lv-field label { display:block; font-size:12px; font-weight:600; color:#374151; margin-bottom:4px; }
@@ -288,7 +288,7 @@ export function employeeSelfPage(c: Context<HonoEnv>) {
       align-items: center;
       gap: 4px;
       font-size: 13px;
-      color: #2563eb;
+      color: #1E3A5F;
       cursor: pointer;
       margin-bottom: 12px;
       border: none;

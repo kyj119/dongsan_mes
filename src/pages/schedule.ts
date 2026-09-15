@@ -16,7 +16,7 @@ export function schedulePage(c: Context<HonoEnv>) {
                 </div>
                 <div class="ds-card p-4">
                     <div class="text-sm text-gray-600 mb-1">미배정 카드</div>
-                    <div class="text-2xl font-bold text-amber-600" id="statUnassigned">-</div>
+                    <div class="text-2xl font-bold" id="statUnassigned">-</div>
                 </div>
                 <div class="ds-card p-4">
                     <div class="text-sm text-gray-600 mb-1">오늘 납기</div>

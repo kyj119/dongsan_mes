@@ -123,9 +123,9 @@ function renderTable() {
         var st = STATUS_MAP[eq.equipment_status] || STATUS_MAP.IDLE;
         var isOnline = eq.agent_status === 'ONLINE';
         var agentBadge = isOnline
-            ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-xs"><span class="w-2 h-2 rounded-full bg-green-500 inline-block"></span>ON</span>'
-            : '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-xs"><span class="w-2 h-2 rounded-full bg-gray-400 inline-block"></span>OFF</span>';
-        var statusBadge = '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full ' + st.bg + ' text-xs font-medium"><span class="w-2 h-2 rounded-full ' + st.dot + ' inline-block"></span>' + st.label + '</span>';
+            ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-green-50 text-green-700 text-xs"><span class="w-2 h-2 rounded-full bg-green-500 inline-block"></span>ON</span>'
+            : '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gray-100 text-gray-500 text-xs"><span class="w-2 h-2 rounded-full bg-gray-400 inline-block"></span>OFF</span>';
+        var statusBadge = '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded ' + st.bg + ' text-xs font-medium"><span class="w-2 h-2 rounded-full ' + st.dot + ' inline-block"></span>' + st.label + '</span>';
         var headInfo = eq.head_count ? eq.head_count + '개' : '-';
 
         html += '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="openDetail(\'' + eq.id + '\')">'
@@ -178,8 +178,8 @@ async function loadAgents() {
         var html = agents.map(function(a) {
             var online = a.computed_status === 'online';
             var sigBadge = online
-                ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-xs"><span class="w-2 h-2 rounded-full bg-green-500 inline-block"></span>ON</span>'
-                : '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 text-red-600 text-xs"><span class="w-2 h-2 rounded-full bg-red-400 inline-block"></span>OFF</span>';
+                ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-green-50 text-green-700 text-xs"><span class="w-2 h-2 rounded-full bg-green-500 inline-block"></span>ON</span>'
+                : '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-50 text-red-600 text-xs"><span class="w-2 h-2 rounded-full bg-red-400 inline-block"></span>OFF</span>';
             var kitCell;
             if (!a.kit_version) {
                 unreported++;
@@ -269,7 +269,7 @@ function renderZones() {
         var topRight = '';
         if (editMode) {
             topRight = '<span style="position:absolute;right:3px;top:3px;display:flex;gap:2px;pointer-events:auto;">'
-                + '<button data-zone-btn onclick="event.stopPropagation();editZone(' + z.id + ')" title="이름·색상 편집" style="font-size:9px;background:rgba(255,255,255,0.95);border:1px solid #e5e7eb;border-radius:3px;width:18px;height:18px;line-height:1;cursor:pointer;color:#475569;"><i class="fas fa-pen"></i></button>'
+                + '<button data-zone-btn onclick="event.stopPropagation();editZone(' + z.id + ')" title="이름·색상 편집" style="font-size:9px;background:rgba(255,255,255,0.95);border:1px solid var(--c-border);border-radius:3px;width:18px;height:18px;line-height:1;cursor:pointer;color:var(--c-text-secondary);"><i class="fas fa-pen"></i></button>'
                 + '<button data-zone-btn onclick="event.stopPropagation();deleteZone(' + z.id + ')" title="구역 삭제" style="font-size:9px;background:rgba(255,255,255,0.95);border:1px solid #fecaca;border-radius:3px;width:18px;height:18px;line-height:1;cursor:pointer;color:#dc2626;"><i class="fas fa-trash"></i></button>'
                 + '</span>';
         }

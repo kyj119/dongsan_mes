@@ -161,7 +161,7 @@ function renderEquipmentTable() {
     html += '<tr>';
     html += '  <td style="font-weight:600;color:#374151;" title="' + escapeHtml(eq.name) + '">' + escapeHtml(eq.name) + '</td>';
     html += '  <td style="text-align:center;">' + statusBadge + '</td>';
-    html += '  <td style="text-align:right;color:#3b82f6;font-weight:600;">' + eq.totalPrints.toLocaleString() + '</td>';
+    html += '  <td style="text-align:right;color:var(--c-primary);font-weight:600;">' + eq.totalPrints.toLocaleString() + '</td>';
     html += '  <td style="text-align:center;color:#10b981;font-weight:600;">' + eq.successRate + '%</td>';
     html += '  <td style="text-align:right;color:#666;">-</td>';
     html += '  <td style="text-align:center;">';

@@ -20,7 +20,7 @@ export function myLeavePage(c: Context<HonoEnv>) {
         <div id="mlBody" class="space-y-4">
           <!-- 연차 요약 -->
           <div class="grid grid-cols-3 gap-2">
-            <div class="ds-card p-3 text-center"><div class="text-2xl font-bold tabular-nums text-blue-700" id="mlRemaining">-</div><div class="text-[11px] text-gray-400 mt-0.5">올해 잔여(일)</div></div>
+            <div class="ds-card p-3 text-center"><div class="text-2xl font-bold tabular-nums" id="mlRemaining">-</div><div class="text-[11px] text-gray-400 mt-0.5">올해 잔여(일)</div></div>
             <div class="ds-card p-3 text-center"><div class="text-2xl font-bold tabular-nums text-gray-900" id="mlUsed">-</div><div class="text-[11px] text-gray-400 mt-0.5">올해 사용(일)</div></div>
             <div class="ds-card p-3 text-center"><div class="text-2xl font-bold tabular-nums text-gray-900" id="mlExpected">-</div><div class="text-[11px] text-gray-400 mt-0.5">예상 부여(일)</div></div>
           </div>

@@ -90,10 +90,10 @@ export function iaBatchTestPage(c: Context<HonoEnv>) {
 
                 <!-- 필터 -->
                 <div class="flex gap-2 mb-4">
-                    <button onclick="filterResults('all')" class="filter-btn px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">전체</button>
-                    <button onclick="filterResults('done')" class="filter-btn px-3 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700">완료</button>
-                    <button onclick="filterResults('pending')" class="filter-btn px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700">대기</button>
-                    <button onclick="filterResults('error')" class="filter-btn px-3 py-1 rounded-full text-xs font-medium bg-red-50 text-red-700">에러</button>
+                    <button onclick="filterResults('all')" class="filter-btn px-3 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700">전체</button>
+                    <button onclick="filterResults('done')" class="filter-btn px-3 py-1 rounded text-xs font-medium bg-green-50 text-green-700">완료</button>
+                    <button onclick="filterResults('pending')" class="filter-btn px-3 py-1 rounded text-xs font-medium bg-amber-50 text-amber-700">대기</button>
+                    <button onclick="filterResults('error')" class="filter-btn px-3 py-1 rounded text-xs font-medium bg-red-50 text-red-700">에러</button>
                 </div>
 
                 <!-- 결과 그리드 -->

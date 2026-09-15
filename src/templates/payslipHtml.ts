@@ -91,12 +91,12 @@ export function renderPayslipHTML(p: PayslipRow, issueDate: string): string {
       .slip { box-shadow: none; margin: 0; }
     }
     .no-print {
-      position: sticky; top: 0; z-index: 100; background: #1e40af; color: #fff;
+      position: sticky; top: 0; z-index: 100; background: #1E3A5F; color: #fff;
       padding: 12px 24px; display: flex; gap: 12px; align-items: center; justify-content: space-between;
     }
     .no-print .title { font-size: 16px; font-weight: 600; }
     .no-print button { padding: 8px 18px; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 600; }
-    .no-print .btn-print { background: #fff; color: #1e40af; }
+    .no-print .btn-print { background: #fff; color: #1E3A5F; }
     .page-wrapper { max-width: 800px; margin: 0 auto; padding: 24px 16px; }
     .slip { background: #fff; padding: 24px 32px; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,.08); border: 1px solid #e5e7eb; border-radius: 4px; }
     .slip-header { text-align: center; padding-bottom: 16px; border-bottom: 2px solid #1f2937; margin-bottom: 20px; }
@@ -109,16 +109,16 @@ export function renderPayslipHTML(p: PayslipRow, issueDate: string): string {
     .meta-label { background: #f9fafb; padding: 6px 10px; font-size: 11px; font-weight: 600; color: #4b5563; width: 90px; border-right: 1px solid #e5e7eb; }
     .meta-value { padding: 6px 10px; font-size: 12px; flex: 1; }
     .slip-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
-    .sec-title { font-size: 13px; font-weight: 700; padding: 6px 10px; background: #f3f4f6; border-left: 3px solid #1e40af; }
+    .sec-title { font-size: 13px; font-weight: 700; padding: 6px 10px; background: #f3f4f6; border-left: 3px solid #1E3A5F; }
     .sec-title.deduct { border-left-color: #dc2626; }
     .line-table { width: 100%; border-collapse: collapse; font-size: 12px; }
     .line-table td { padding: 5px 10px; border-bottom: 1px solid #f3f4f6; }
     .line-table td.label { color: #4b5563; width: 60%; }
     .line-table td.value { text-align: right; font-variant-numeric: tabular-nums; }
     .line-table tr.subtotal td { background: #f9fafb; font-weight: 600; border-top: 1px solid #d1d5db; border-bottom: 1px solid #d1d5db; }
-    .net-pay-box { background: #eff6ff; border: 2px solid #1e40af; padding: 12px 16px; text-align: right; margin-top: 12px; }
+    .net-pay-box { background: #eff6ff; border: 2px solid #1E3A5F; padding: 12px 16px; text-align: right; margin-top: 12px; }
     .net-pay-box .label { font-size: 13px; color: #1e3a8a; margin-bottom: 2px; }
-    .net-pay-box .value { font-size: 24px; font-weight: 700; color: #1e40af; }
+    .net-pay-box .value { font-size: 24px; font-weight: 700; color: #1E3A5F; }
     .slip-footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #e5e7eb; font-size: 11px; color: #6b7280; display: flex; justify-content: space-between; }
     .signature-box { margin-top: 20px; text-align: right; font-size: 12px; }
     .signature-box .company-name { font-size: 14px; font-weight: 600; margin-right: 12px; }

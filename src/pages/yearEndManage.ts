@@ -28,11 +28,11 @@ export function yearEndManagePage(c: Context<HonoEnv>) {
           </div>
           <div class="bg-white border border-gray-200 rounded-lg p-5">
             <div class="text-xs text-gray-500 font-medium">정산 완료</div>
-            <div class="text-3xl font-bold text-green-600 tabular-nums mt-1" id="yeStatDone">-</div>
+            <div class="text-3xl font-bold tabular-nums mt-1" id="yeStatDone">-</div>
           </div>
           <div class="bg-white border border-gray-200 rounded-lg p-5">
             <div class="text-xs text-gray-500 font-medium">환급 예정</div>
-            <div class="text-3xl font-bold text-blue-600 tabular-nums mt-1" id="yeStatRefund">-</div>
+            <div class="text-3xl font-bold tabular-nums mt-1" id="yeStatRefund">-</div>
           </div>
           <div class="bg-white border border-gray-200 rounded-lg p-5">
             <div class="text-xs text-gray-500 font-medium">추징 예정</div>

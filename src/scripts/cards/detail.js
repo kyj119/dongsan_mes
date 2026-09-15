@@ -107,7 +107,7 @@ function showCardModal(card, history, defects, siblingCards) {
     var stLabel = statusLabels[card.status] || card.status;
     var statusBg = card.status === 'PRINT_DONE' ? 'background:#f0fdf4;color:#166534'
         : card.status === 'HOLD' ? 'background:#fef2f2;color:#991b1b'
-        : 'background:#eff6ff;color:#1d4ed8';
+        : 'background:#E9EEF4;color:#14273F';
     var deliveryMethod = card.delivery_method || '';
     var deliveryTime = card.delivery_time || '';
     var itemsArr = cardItems(card);
@@ -149,7 +149,7 @@ function showCardModal(card, history, defects, siblingCards) {
             itemsHtml += '<div class="card-modal-item-info">';
             itemsHtml += '<div style="display:flex;align-items:center;gap:8px">';
             itemsHtml += '<span style="font-size:14px;font-weight:600;color:' + (isDone ? '#9ca3af' : '#111827') + ';' + (isDone ? 'text-decoration:line-through;' : '') + '">' + escapeHtml(it.item_name || '품목') + '</span>';
-            itemsHtml += '<span style="font-size:13px;font-weight:700;color:#2563eb">x' + (it.quantity || 1) + (it.unit || 'EA') + '</span>';
+            itemsHtml += '<span style="font-size:13px;font-weight:700;color:var(--c-primary)">x' + (it.quantity || 1) + (it.unit || 'EA') + '</span>';
             itemsHtml += '</div>';
 
             // 규격
@@ -159,7 +159,7 @@ function showCardModal(card, history, defects, siblingCards) {
 
             // 내용
             if (it.content) {
-                itemsHtml += '<div style="font-size:12px;color:#2563eb;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(it.content) + '</div>';
+                itemsHtml += '<div style="font-size:12px;color:var(--c-primary);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(it.content) + '</div>';
             }
 
             // 후가공 뱃지
@@ -194,7 +194,7 @@ function showCardModal(card, history, defects, siblingCards) {
             // 체크박스 (출력 완료 토글)
             if (ciId && card.status !== 'PRINT_DONE') {
                 itemsHtml += '<div style="display:flex;align-items:center;flex-shrink:0;padding-left:8px" onclick="event.stopPropagation()">';
-                itemsHtml += '<input type="checkbox" style="width:20px;height:20px;accent-color:#2563eb;cursor:pointer" '
+                itemsHtml += '<input type="checkbox" style="width:20px;height:20px;accent-color:var(--c-primary);cursor:pointer" '
                     + (isDone ? 'checked' : '') + ' onchange="toggleItemPrint(' + card.id + ',' + ciId + ')">';
                 itemsHtml += '</div>';
             } else if (isDone) {
@@ -210,12 +210,12 @@ function showCardModal(card, history, defects, siblingCards) {
     // ── 상태 이력 타임라인 ──
     var histHtml = '';
     if (history.length > 0) {
-        histHtml += '<div style="border-top:1px solid #f1f5f9;margin:14px 0 10px"></div>';
+        histHtml += '<div style="border-top:1px solid var(--c-border-light);margin:14px 0 10px"></div>';
         histHtml += '<div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">상태 이력</div>';
         history.forEach(function(h) {
             var fromLabel = h.from_status ? (statusLabels[h.from_status] || h.from_status) : '-';
             var toLabel = statusLabels[h.to_status] || h.to_status;
-            var dotColor = h.to_status === 'PRINT_DONE' ? '#16a34a' : h.to_status === 'HOLD' ? '#ef4444' : '#3b82f6';
+            var dotColor = h.to_status === 'PRINT_DONE' ? '#16a34a' : h.to_status === 'HOLD' ? '#ef4444' : 'var(--c-primary)';
             histHtml += '<div style="display:flex;align-items:flex-start;gap:8px;padding:4px 0;font-size:11px">';
             histHtml += '<div style="width:8px;height:8px;border-radius:50%;background:' + dotColor + ';margin-top:4px;flex-shrink:0"></div>';
             histHtml += '<span style="color:#9ca3af;white-space:nowrap;flex-shrink:0;width:84px">' + formatKST(h.created_at, null, {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}) + '</span>';
@@ -299,17 +299,17 @@ function showCardModal(card, history, defects, siblingCards) {
             ? '<div style="margin-bottom:14px">'
             + '  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
             + '    <span style="font-size:12px;font-weight:600;color:#6b7280">출력 진행</span>'
-            + '    <span style="font-size:12px;font-weight:700;color:' + (pct === 100 ? '#16a34a' : '#2563eb') + '">' + pct + '% (' + doneItems + '/' + totalItems + ')</span>'
+            + '    <span style="font-size:12px;font-weight:700;color:' + (pct === 100 ? '#16a34a' : 'var(--c-primary)') + '">' + pct + '% (' + doneItems + '/' + totalItems + ')</span>'
             + '  </div>'
             + '  <div style="height:6px;background:#e5e7eb;border-radius:4px;overflow:hidden">'
-            + '    <div style="height:100%;width:' + pct + '%;background:' + (pct === 100 ? '#16a34a' : '#3b82f6') + ';border-radius:4px;transition:width 0.3s"></div>'
+            + '    <div style="height:100%;width:' + pct + '%;background:' + (pct === 100 ? '#16a34a' : 'var(--c-primary)') + ';border-radius:4px;transition:width 0.3s"></div>'
             + '  </div>'
             + '</div>'
             : '')
         // 아이템 리스트
         + itemsHtml
         // 메타 정보
-        + '<div style="border-top:1px solid #f1f5f9;margin:14px 0 10px"></div>'
+        + '<div style="border-top:1px solid var(--c-border-light);margin:14px 0 10px"></div>'
         + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
         + '  <div style="font-size:12px"><span style="color:#9ca3af">납기일:</span> <span style="color:#111827;font-weight:500">' + (card.delivery_date || '미정') + '</span></div>'
         + '  <div style="font-size:12px"><span style="color:#9ca3af">납품:</span> <span style="color:#111827;font-weight:500">' + (window.MES_SLOT ? (window.MES_SLOT.timing(card) || '-') : ((deliveryMethod || '-') + (deliveryTime ? ' ' + deliveryTime : ''))) + '</span></div>'
@@ -317,7 +317,7 @@ function showCardModal(card, history, defects, siblingCards) {
         + '  <div style="font-size:12px"><span style="color:#9ca3af">접수자:</span> <span style="color:#111827;font-weight:500">' + escapeHtml(card.created_by_name || '-') + '</span></div>'
         + '</div>'
         // 메모/보류
-        + (card.order_notes ? '<div style="margin-top:8px;padding:8px 10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:12px;color:#1e40af"><i class="fas fa-clipboard" style="margin-right:4px"></i><b>주문 메모:</b> ' + escapeHtml(card.order_notes) + '</div>' : '')
+        + (card.order_notes ? '<div style="margin-top:8px;padding:8px 10px;background:#E9EEF4;border:1px solid #C7D6E8;border-radius:8px;font-size:12px;color:#14273F"><i class="fas fa-clipboard" style="margin-right:4px"></i><b>주문 메모:</b> ' + escapeHtml(card.order_notes) + '</div>' : '')
         + (card.client_notes && card.client_notes.length > 0 ? '<div style="margin-top:6px;padding:8px 10px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;font-size:12px;color:#854d0e"><i class="fas fa-user-tag" style="margin-right:4px"></i><b>거래처 참고:</b><ul style="margin:4px 0 0 16px;padding:0">' + card.client_notes.map(function(cn) { return '<li>' + escapeHtml(cn.content || '') + '</li>'; }).join('') + '</ul></div>' : '')
         + (card.notes ? '<div style="margin-top:6px;padding:8px 10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;font-size:12px;color:#6b7280"><i class="far fa-sticky-note" style="margin-right:4px"></i>' + escapeHtml(card.notes) + '</div>' : '')
         + (card.hold_reason ? '<div style="margin-top:6px;padding:8px 10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:12px;color:#991b1b"><i class="fas fa-pause-circle" style="margin-right:4px"></i>보류: ' + escapeHtml(card.hold_reason) + '</div>' : '')
@@ -447,7 +447,7 @@ async function printSewingWorkOrder(cardId) {
             + '.design-item .qty { font-size: 18px; font-weight: 700; color: #dc2626; margin-top: 4px; }'
             + '.design-item .spec { font-size: 12px; color: #6b7280; }'
             + '.fabric-spec { display: flex; justify-content: space-between; align-items: baseline; margin: 8px 0; }'
-            + '.fabric-name { font-size: 20px; font-weight: 700; color: #1d4ed8; }'
+            + '.fabric-name { font-size: 20px; font-weight: 700; color: #14273F; }'
             + '.spec-size { font-size: 24px; font-weight: 900; text-align: right; }'
             + '.spec-price { font-size: 11px; color: #6b7280; }'
             + '.info-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }'

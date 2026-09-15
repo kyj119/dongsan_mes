@@ -9,8 +9,8 @@
   var style = document.createElement('style');
   style.textContent = `
     .drag-over {
-      background-color: #dbeafe !important;
-      border: 2px dashed #3b82f6;
+      background-color: #E9EEF4 !important;
+      border: 2px dashed var(--c-primary);
       border-radius: 0.375rem;
     }
     .schedule-card {
@@ -1372,7 +1372,7 @@ function poRenderPagination(p) {
   var end = Math.min(p.total_pages, start + 4);
   for (var i = start; i <= end; i++) {
     var active = i === p.page
-      ? 'padding:6px 12px;border:1px solid #2563eb;border-radius:6px;font-size:13px;cursor:pointer;background:#2563eb;color:#fff;font-weight:600;'
+      ? 'padding:6px 12px;border:1px solid var(--c-primary);border-radius:6px;font-size:13px;cursor:pointer;background:var(--c-primary);color:#fff;font-weight:600;'
       : btn;
     nums += '<button onclick="loadOutputHistory(' + i + ')" style="' + active + '">' + i + '</button>';
   }

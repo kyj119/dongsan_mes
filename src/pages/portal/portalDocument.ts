@@ -9,22 +9,23 @@ export const portalDocumentPage = (c: Context) => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>동산기획 - 거래 문서 확인</title>
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Malgun Gothic', sans-serif; background: #f3f4f6; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    body { font-family: 'Pretendard Variable', Pretendard, -apple-system, 'Malgun Gothic', sans-serif; background: #EFEEEA; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
     .card { background: #fff; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,.1); width: 100%; max-width: 440px; padding: 40px; margin: 20px; }
     .logo { text-align: center; margin-bottom: 24px; }
-    .logo h1 { font-size: 22px; color: #1e40af; font-weight: 800; }
+    .logo h1 { font-size: 22px; color: #1E3A5F; font-weight: 800; }
     .logo p { font-size: 13px; color: #6b7280; margin-top: 4px; }
     .field { margin-bottom: 20px; }
     .field label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
     .field input { width: 100%; padding: 12px 16px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 15px; letter-spacing: 2px; text-align: center; transition: border-color .2s; }
-    .field input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,.15); }
+    .field input:focus { outline: none; border-color: #1E3A5F; box-shadow: 0 0 0 3px rgba(30,58,95,.15); }
     .field .hint { font-size: 11px; color: #9ca3af; margin-top: 4px; text-align: center; }
-    .btn { width: 100%; padding: 14px; background: #2563eb; color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; transition: background .2s; }
-    .btn:hover { background: #1d4ed8; }
-    .btn:disabled { background: #93c5fd; cursor: not-allowed; }
+    .btn { width: 100%; padding: 14px; background: #1E3A5F; color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; transition: background .2s; }
+    .btn:hover { background: #16304F; }
+    .btn:disabled { background: #A9BBD0; cursor: not-allowed; }
     .error { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; display: none; text-align: center; }
     .expired { text-align: center; padding: 40px 20px; }
     .expired i { font-size: 48px; color: #d1d5db; margin-bottom: 16px; }
@@ -39,7 +40,7 @@ export const portalDocumentPage = (c: Context) => {
     .doc-content th { background: #f9fafb; padding: 10px 14px; text-align: left; font-weight: 600; color: #374151; border-bottom: 1px solid #e5e7eb; }
     .doc-content td { padding: 10px 14px; border-bottom: 1px solid #f3f4f6; color: #4b5563; }
     .doc-content .row-order { background: #f0fdf4; }
-    .doc-content .row-payment { background: #eff6ff; }
+    .doc-content .row-payment { background: #E9EEF4; }
     .doc-content .row-adjustment { background: #fefce8; }
     .doc-content .right { text-align: right; }
     .summary-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }

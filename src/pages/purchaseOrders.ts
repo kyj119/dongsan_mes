@@ -21,11 +21,11 @@ export function purchaseOrdersPage(c: Context<HonoEnv>) {
         </button>
         <button type="button" class="ds-card ds-stat p-4" data-stat-status="CONFIRMED" onclick="filterByStatus('CONFIRMED')">
           <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider ds-stat-label">입고 대기</div>
-          <div class="text-3xl font-bold text-blue-600 mt-1 tabular-nums" id="statConfirmed">-</div>
+          <div class="text-3xl font-bold mt-1 tabular-nums" id="statConfirmed">-</div>
         </button>
         <button type="button" class="ds-card ds-stat p-4" data-stat-status="PARTIAL_RECEIVED" onclick="filterByStatus('PARTIAL_RECEIVED')">
           <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider ds-stat-label">부분 입고</div>
-          <div class="text-3xl font-bold text-amber-500 mt-1 tabular-nums" id="statPartial">-</div>
+          <div class="text-3xl font-bold mt-1 tabular-nums" id="statPartial">-</div>
         </button>
         <button type="button" class="ds-card ds-stat p-4 border-red-200" data-stat-status="OVERDUE" onclick="filterByStatus('OVERDUE')">
           <div class="text-xs font-semibold text-red-500 uppercase tracking-wider ds-stat-label">납기 지연</div>

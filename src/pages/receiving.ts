@@ -26,11 +26,11 @@ export function receivingPage(c: Context<HonoEnv>) {
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
           <div class="ds-card p-4">
             <div class="text-sm text-gray-600"><i class="fas fa-clock text-blue-400 mr-1"></i>입고대기 PO</div>
-            <div class="text-2xl font-bold text-blue-600" id="pendingCount">-</div>
+            <div class="text-2xl font-bold" id="pendingCount">-</div>
           </div>
           <div class="ds-card p-4">
             <div class="text-sm text-gray-600"><i class="fas fa-box-open text-amber-400 mr-1"></i>부분입고</div>
-            <div class="text-2xl font-bold text-amber-600" id="partialCount">-</div>
+            <div class="text-2xl font-bold" id="partialCount">-</div>
           </div>
           <div class="ds-card p-4 border-l-4 border-red-500">
             <div class="text-sm text-gray-600"><i class="fas fa-exclamation-triangle text-red-400 mr-1"></i>납기지연</div>

@@ -65,8 +65,8 @@ window.hrLoadEmployees = async function() {
     for (var i = 0; i < employees.length; i++) {
       var e = employees[i];
       var statusBadge = e.status === 'ACTIVE'
-        ? '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-green-50 text-green-700"><i class="fas fa-check-circle text-[7px] mr-1"></i>재직</span>'
-        : '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600"><i class="fas fa-power-off text-[7px] mr-1"></i>퇴사</span>';
+        ? '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-green-50 text-green-700"><i class="fas fa-check-circle text-[7px] mr-1"></i>재직</span>'
+        : '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-600"><i class="fas fa-power-off text-[7px] mr-1"></i>퇴사</span>';
       var payBadge = e.pay_type === 'FIXED'
         ? '<span class="ml-1 px-1.5 py-0.5 text-[10px] rounded bg-gray-200 text-gray-600">고정급</span>'
         : '';

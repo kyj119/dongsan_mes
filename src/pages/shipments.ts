@@ -340,7 +340,7 @@ export function shipmentsPage(c: Context<HonoEnv>) {
       <!-- 배송 중 (출고 처리됨, SHIPPED 대기) -->
       <div id="sectionInTransit" class="mb-6 ds-card overflow-hidden hidden">
         <div class="flex items-center justify-between px-4 py-3 bg-blue-50 border-b border-blue-100">
-          <h3 class="text-sm font-semibold text-blue-700"><i class="fas fa-truck-moving mr-1"></i>배송 중 <span id="badgeInTransit" class="ml-1 px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700">0건</span></h3>
+          <h3 class="text-sm font-semibold text-blue-700"><i class="fas fa-truck-moving mr-1"></i>배송 중 <span id="badgeInTransit" class="ml-1 px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700">0건</span></h3>
           <div class="flex items-center gap-2">
             <span id="syncLastTime" class="text-xs text-gray-400"></span>
             <button onclick="runSyncStatuses()" class="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">

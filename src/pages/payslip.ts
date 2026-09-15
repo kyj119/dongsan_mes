@@ -38,7 +38,7 @@ export function payslipPage(c: Context<HonoEnv>) {
 
     .no-print {
       position: sticky; top: 0; z-index: 100;
-      background: #1e40af; color: #fff;
+      background: #1E3A5F; color: #fff;
       padding: 12px 24px; display: flex; gap: 12px; align-items: center; justify-content: space-between;
       box-shadow: 0 2px 8px rgba(0,0,0,.2);
     }
@@ -47,7 +47,7 @@ export function payslipPage(c: Context<HonoEnv>) {
       padding: 8px 18px; border: none; border-radius: 6px;
       font-size: 14px; cursor: pointer; font-weight: 600;
     }
-    .no-print .btn-print { background: #fff; color: #1e40af; }
+    .no-print .btn-print { background: #fff; color: #1E3A5F; }
     .no-print .btn-print:hover { background: #dbeafe; }
     .no-print .btn-close { background: #ef4444; color: #fff; }
     .no-print .btn-close:hover { background: #dc2626; }
@@ -108,7 +108,7 @@ export function payslipPage(c: Context<HonoEnv>) {
       font-weight: 700;
       padding: 6px 10px;
       background: #f3f4f6;
-      border-left: 3px solid #1e40af;
+      border-left: 3px solid #1E3A5F;
       margin-bottom: 0;
     }
     .sec-title.deduct { border-left-color: #dc2626; }
@@ -129,13 +129,13 @@ export function payslipPage(c: Context<HonoEnv>) {
 
     .net-pay-box {
       background: #eff6ff;
-      border: 2px solid #1e40af;
+      border: 2px solid #1E3A5F;
       padding: 12px 16px;
       text-align: right;
       margin-top: 12px;
     }
-    .net-pay-box .label { font-size: 13px; color: #1e3a8a; margin-bottom: 2px; }
-    .net-pay-box .value { font-size: 24px; font-weight: 700; color: #1e40af; }
+    .net-pay-box .label { font-size: 13px; color: #14273F; margin-bottom: 2px; }
+    .net-pay-box .value { font-size: 24px; font-weight: 700; color: #1E3A5F; }
 
     .slip-footer {
       margin-top: 24px;

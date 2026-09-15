@@ -14,7 +14,7 @@ export function purchaseRequestsPage(c: Context<HonoEnv>) {
           <div class="flex items-center gap-1.5 text-xs text-gray-500 font-medium mb-1">
             <i class="fas fa-clock text-amber-500"></i>승인 대기
           </div>
-          <div class="text-3xl font-bold text-amber-600 tabular-nums" id="prStatPending">
+          <div class="text-3xl font-bold tabular-nums" id="prStatPending">
             <div class="ds-skeleton h-8 w-12 rounded"></div>
           </div>
         </div>
@@ -22,7 +22,7 @@ export function purchaseRequestsPage(c: Context<HonoEnv>) {
           <div class="flex items-center gap-1.5 text-xs text-gray-500 font-medium mb-1">
             <i class="fas fa-check text-blue-500"></i>승인됨
           </div>
-          <div class="text-3xl font-bold text-blue-600 tabular-nums" id="prStatApproved">
+          <div class="text-3xl font-bold tabular-nums" id="prStatApproved">
             <div class="ds-skeleton h-8 w-12 rounded"></div>
           </div>
         </div>
@@ -30,7 +30,7 @@ export function purchaseRequestsPage(c: Context<HonoEnv>) {
           <div class="flex items-center gap-1.5 text-xs text-gray-500 font-medium mb-1">
             <i class="fas fa-exchange-alt text-green-500"></i>변환 완료
           </div>
-          <div class="text-3xl font-bold text-green-600 tabular-nums" id="prStatConverted">
+          <div class="text-3xl font-bold tabular-nums" id="prStatConverted">
             <div class="ds-skeleton h-8 w-12 rounded"></div>
           </div>
         </div>
