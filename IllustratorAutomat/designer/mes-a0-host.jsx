@@ -20,7 +20,7 @@
 //   0.1.8 = 마감재단선(여백 위치 검정 실선·4변 한 그룹) + 주석 구조에 후가공 추가
 //           (키워드-식별번호-후가공-수량) (2026-07-30)
 //   0.1.9 = 크로스 패널 잠금 위임 추가(mes-lock.jsx) (2026-07-31)
-var MESA0_VERSION = 'A0-CEP-0.15.0'; // 0.15.0 = ★계측기가 **원인을 버리던 것** 정정 — `mesA0_ioProbe` 가 `MESA0_IO_ERR`(=`open('w') 실패: <f.error> @ <경로>`)를 읽지도 않고 `X` 한 글자만 남겨, 실기 2026-09-15 의 `outline=X ai=X` 를 받고도 **왜 못 썼는지 물을 데가 없었다**. 이제 `X{사유}` 로 싣는다 · ★프로브 파일명에 **실행 접미사** — 이름이 실행마다 같아 이전 실행이 못 지운 파일이 잠겨 있으면 `open('w')` 가 실패하는데, 그건 「지금 못 쓴다」가 아니라 「그때 못 지웠다」다. `outline=X ai=X` 가 **계측기의 허상**일 수 있었다 · ★첫 호출에 `res=N`(temp 에 남은 `mes_iop_*` 잔해 수) — 쌓이는 PC 면 그 자체가 답이다. 잃는 것: 없음(산출물 불변) · 0.14.0 = ★픽업 복사를 **검증하고 3회까지 다시** 한다(`mesA0_copyVerify`) — 실기 2026-09-15: 등록·EPS(8.0MB)·work.ai(1.7MB)·manifest 전부 정상인데 `_출력` 복사만 `I/O 오류` 로 떨어져 **재단기 픽업 폴더가 비었다**. 같은 실행의 ioprobe 가 `outline=X ai=X` → `eps=OK thumb=OK` 로 **회복**했으므로 자원 고갈(누적)이 아니라 **구간 실패**다 — 한 번만 시도하는 게 문제였다. 성공 판정도 반환값이 아니라 **목적지 바이트 수**로 바꾼다(불완전 사본은 지운다 — 남기면 재단기가 잘린 파일을 집어 간다) · ★`work.ai` 크기를 저장 직후 한 번만 읽던 것 정정 — 공유에 쓴 길이가 아직 안 보여 1.7MB 가 **`0MB` 로 보고**됐다(실물 정상). 3회 재시도 + 못 읽으면 `-1`(확인 못 함), `0` 은 진짜 0바이트로 남긴다. 잃는 것: 복사 실패 시 최대 2.4초 대기 · 0.13.0 = ★빈 catch 전수 분류(2026-09-11 용준님 「나」) — 실물에 닿는 4곳(원점 정렬 이동·주석 아웃라인·재단선 사각·DXF 내보내기)은 삼키지 않고 warn 코드 N/O/C/D + manifest `cutline_error`·`dxf_error`·`norm_fail` 로 올린다. 나머지 52곳은 사유 주석(`ignore:`) — 게이트 `audit:empty-catch`(편집 훅·커밋 훅·ia:deploy). 잃는 것: 없음(산출물 불변, 경고만 늘어난다) · 0.12.0 = ★주석이 **출력 경계선 OFF 면 사라지던 것** 정정 — 여백 경계 bL~bB 가 경계선 `if` 안에 선언돼 있어 OFF(08-06 부터 기본값)면 undefined → 주석 position NaN → 빈 catch 가 삼켰다. 08-05 「키워드 없이도 주석」은 맞게 들어갔는데 다음 날 경계선 기본값이 꺼지며 **주석 자체가 전 건 사라졌고 한 달간 아무 게이트도 못 봤다**(실기 2026-09-10) · ★주석 실패를 삼키지 않는다 — manifest `annotation_error` + warn 코드 `A`. 잃는 것: 없음(경계선 ON 산출물 불변) · 0.11.0 = ★**커밋 경계**를 세운다 — `_출력` 픽업 복사가 manifest 커밋보다 **120줄 먼저** 일어나고 있었다. 그래서 등록이 실패해도 출력물은 픽업 폴더에 놓였다(2026-09-09 실측: MES 에 주문 없는 EPS 188MB 2건). 이제 복사는 커밋 뒤에만 한다 — 구제 경로(`mesA0_manifestDone`)도 **같은 순서**다 · ★`mesA0_scanRegister` — 커밋이 안 끝난 폴더를 센다(manifest 없음=잔해 · 마커 없음=MES 미반영). 조용히 쌓이는 것을 안 세면 그게 다음 사각지대다(실측 6건이 아무 화면에도 없었다) · ⚠️manifest 의 `out_copy_error` 는 이제 항상 null 이다 — 복사가 그 뒤라 커밋 시점엔 알 수 없다 · 0.10.0 = ★**계측**을 넣는다 — 「자원이 모자라서인가」는 추측이었고 반증이 더 많다(09-07 실패 건은 EPS 1.9MB 소형 · 실패 **직후** 환경 점검은 전부 통과 · 디스크 156GB 여유). ①`mesA0_ioProbe` = 호출 안 7개 지점에서 1바이트 쓰기를 시도해 **어느 동작 뒤부터 못 쓰는지**를 응답에 싣는다(이등분). ②`mesA0_ioStress` = 파일을 몇 개까지 만들 수 있나 — 재시작 직후/1건 후/3건 후를 비교하면 누적 소비인지 상태 전환인지 갈린다. ⚠️프로브는 단계마다 **다른 파일명**을 쓴다(같은 이름이면 덮어쓰기라 「만들 수 있는가」가 아니라 「고칠 수 있는가」를 재게 된다 — 환경 점검이 ✓ 인데 가공이 ✗ 이던 차이일 수 있다) · 0.9.0 = ★manifest 를 못 쓰면 **패널에게 넘긴다**(`mesA0_manifestPending`) — 실기에서 가공 도중 일러 프로세스의 파일 자원이 고갈된다: 로컬 temp 와 Z: 가 **동시에** I/O 오류이고, 일러 자신의 export 마저 실패하며(「p0.png 를 내보낼 수 없음」), config.json 180KB 가 0바이트로 읽혔다. 경로·권한·드라이브·일러 버전 문제가 아니라 **그 순간 그 프로세스**의 문제다. CEP 는 별도 프로세스라 같은 순간에도 멀쩡했으므로(패널 UI 가 뜨고 응답이 왔다) 일러가 못 쓰면 패널이 쓴다 — 일러 버전·폰트 수와 무관한 길이 하나 생긴다 · ★EPS `embedAllFonts` 를 **남은 텍스트가 있을 때만**(:1103) — 텍스트를 전부 아웃라인한 뒤라 임베드할 폰트가 없는데도 true 라, 폰트 2,159개가 깔린 PC 에서 저장할 때마다 문서 폰트를 전부 열게 하고 있었다(자원 고갈의 유력 원인) · ★환경 점검에 잠금 모듈 버전 · 0.8.0 = ★[환경 점검](`mesA0_envCheck`) — 「이 PC 가 준비됐는가」를 한 곳에서 잰다. 준비 안 된 PC 의 증상은 기능마다 다른 말로 흩어져 나왔고(config 없음·nofolder·noparams·응답 파싱 실패가 **전부 같은 원인**일 수 있다), 2026-09-07 에는 결국 probe 스크립트를 손으로 배포해 물었는데 **다른 실행 문맥**이라 아무것도 증명하지 못했다 · ★manifest 에 `ai_version` — 여태 어느 일러에서 나온 등록인지 아무 데도 안 남겨 「어느 버전부터 이상해졌나」를 잴 수 없었다 · 0.7.2 = ★params 를 **인자로도** 받는다(`mesA0_process(inline)`) — `Folder.temp` 가 사용자명을 품는데 **사용자명이 한글인 PC 가 실재**하고 cep.fs 는 한글 경로에서 못 미덥다(config 만 2중화돼 있었다). 그 PC 는 전 건 `noparams` 로 떨어진다. 파일을 못 쓰는 상황에서 파일로 우회하지 않고 **파일을 뺀다**(왕복 추가 0) · ★브릿지로 나가는 문자열을 전부 \\uXXXX 로 접는다(`mesA0_jsonEsc`) — 0.7.1 이 실패 detail 에 실은 경로에 `IA-등록` 이 들어 있어 원인 대신 「응답 파싱 실패」가 뜰 수 있었다. manifest 도 인코딩 무관해진다 · ★Z: 루트 판정을 재단 호스트와 같은 문구로(`mesA0_zErrJson`) — `nofolder` 하나로 뭉개지던 것을 분리 · 0.7.1 = ★파일 I/O 실패 이유를 버리지 않고, 실패한 그 문맥에서 환경을 다시 재다(mesA0_ioDiag — 사람이 [파일▸스크립트]로 돌린 probe 는 전부 OK 인데 CEP 경로에서만 실패했다) — `mesA0_readText`·`mesA0_writeText` 가 `f.error` 를 `MESA0_IO_ERR` 에 담아 응답 `detail` 로 올린다 · `_출력` 복사의 **빈 catch** 제거(폴더만 생기고 안이 비는 무증상 실패가 실기에서 전 건 발생) · params 「없음」과 「0바이트」 분리(`noparams`/`emptyparams`) · 0.7.0 = ★인쇄용 고해상도 썸네일(thumb_hi) 동시 굽기 — 목록용 400px 는 그대로 두고 작업지시서만 1200px 를 쓴다 · 0.6.0 = ★셸 서명에 파일 목록 포함 + 비교를 src 기준으로 — Z: 에서 파일이 하나 빠지면 그 PC 자동갱신이 retrylimit 로 영구 중단됐다 · 0.5.0 = ★수량 단위(조) 표기 전달 — 대기함 「2개 (1조)」 검산용 · 0.4.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.3.0 = ★자동감지 굽기를 imageCapture 로(임시 문서 없음 — 증명 가능할 때만) · 0.2.0 = 셸 자동 갱신(축3/4를 축2가 끌어온다) · 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
+var MESA0_VERSION = 'A0-CEP-0.16.0'; // 0.16.0 = ★**플로우 축소** — 이 호스트가 Z: 에 쓰는 것을 `EPS + thumb(2) + manifest` 넷으로 줄인다(2026-09-15 용준님 「work.ai 는 없어도 될 것 같아」). ①`work.ai` 저장 = **모아찍기에서만**. 소비자를 다시 전수로 셌더니 읽는 코드가 없다(판짜기 `mes-sheet.jsx` 09-11 은퇴 · 웹은 `eps_path || work_ai_path` 표시용 폴백 · 에이전트는 경로/바이트만). 모아찍기는 EPS 를 안 만들어 work.ai 가 산출물 자신이라 거기만 남긴다. ②`_출력` 픽업 복사 = **에이전트로 이관**(`EnsurePickupCopy`/`SweepPickupRecent`, 09-15). 8MB EPS 의 Z:→Z: 왕복이 이 호스트에서 가장 큰 파일 I/O 였고 실기에서 죽던 자리가 정확히 거기였다 — **ExtendScript 가 못 하는 일을 .NET 이 한다**가 요지다. 커밋 순서는 불변(에이전트는 manifest 를 읽은 뒤에만 복사). ③응답 `bytes`·manifest `out_bytes` 가 이제 **EPS**(모아찍기는 work.ai) 크기다 — 용량 회귀를 알아채는 지점은 그대로 유지하되 재는 대상이 산출물로 바뀌었다. 잃는 것: 단건 가공의 편집 가능 `.ai`(= 나중에 사람이 열어 고치는 용도) · `mesA0_copyVerify`/`mesA0_outCopy` 와 그 게이트 `test:outcopy`(코드가 사라져 함께 은퇴) · 0.15.0 = ★계측기가 **원인을 버리던 것** 정정 — `mesA0_ioProbe` 가 `MESA0_IO_ERR`(=`open('w') 실패: <f.error> @ <경로>`)를 읽지도 않고 `X` 한 글자만 남겨, 실기 2026-09-15 의 `outline=X ai=X` 를 받고도 **왜 못 썼는지 물을 데가 없었다**. 이제 `X{사유}` 로 싣는다 · ★프로브 파일명에 **실행 접미사** — 이름이 실행마다 같아 이전 실행이 못 지운 파일이 잠겨 있으면 `open('w')` 가 실패하는데, 그건 「지금 못 쓴다」가 아니라 「그때 못 지웠다」다. `outline=X ai=X` 가 **계측기의 허상**일 수 있었다 · ★첫 호출에 `res=N`(temp 에 남은 `mes_iop_*` 잔해 수) — 쌓이는 PC 면 그 자체가 답이다. 잃는 것: 없음(산출물 불변) · 0.14.0 = ★픽업 복사를 **검증하고 3회까지 다시** 한다(`mesA0_copyVerify`) — 실기 2026-09-15: 등록·EPS(8.0MB)·work.ai(1.7MB)·manifest 전부 정상인데 `_출력` 복사만 `I/O 오류` 로 떨어져 **재단기 픽업 폴더가 비었다**. 같은 실행의 ioprobe 가 `outline=X ai=X` → `eps=OK thumb=OK` 로 **회복**했으므로 자원 고갈(누적)이 아니라 **구간 실패**다 — 한 번만 시도하는 게 문제였다. 성공 판정도 반환값이 아니라 **목적지 바이트 수**로 바꾼다(불완전 사본은 지운다 — 남기면 재단기가 잘린 파일을 집어 간다) · ★`work.ai` 크기를 저장 직후 한 번만 읽던 것 정정 — 공유에 쓴 길이가 아직 안 보여 1.7MB 가 **`0MB` 로 보고**됐다(실물 정상). 3회 재시도 + 못 읽으면 `-1`(확인 못 함), `0` 은 진짜 0바이트로 남긴다. 잃는 것: 복사 실패 시 최대 2.4초 대기 · 0.13.0 = ★빈 catch 전수 분류(2026-09-11 용준님 「나」) — 실물에 닿는 4곳(원점 정렬 이동·주석 아웃라인·재단선 사각·DXF 내보내기)은 삼키지 않고 warn 코드 N/O/C/D + manifest `cutline_error`·`dxf_error`·`norm_fail` 로 올린다. 나머지 52곳은 사유 주석(`ignore:`) — 게이트 `audit:empty-catch`(편집 훅·커밋 훅·ia:deploy). 잃는 것: 없음(산출물 불변, 경고만 늘어난다) · 0.12.0 = ★주석이 **출력 경계선 OFF 면 사라지던 것** 정정 — 여백 경계 bL~bB 가 경계선 `if` 안에 선언돼 있어 OFF(08-06 부터 기본값)면 undefined → 주석 position NaN → 빈 catch 가 삼켰다. 08-05 「키워드 없이도 주석」은 맞게 들어갔는데 다음 날 경계선 기본값이 꺼지며 **주석 자체가 전 건 사라졌고 한 달간 아무 게이트도 못 봤다**(실기 2026-09-10) · ★주석 실패를 삼키지 않는다 — manifest `annotation_error` + warn 코드 `A`. 잃는 것: 없음(경계선 ON 산출물 불변) · 0.11.0 = ★**커밋 경계**를 세운다 — `_출력` 픽업 복사가 manifest 커밋보다 **120줄 먼저** 일어나고 있었다. 그래서 등록이 실패해도 출력물은 픽업 폴더에 놓였다(2026-09-09 실측: MES 에 주문 없는 EPS 188MB 2건). 이제 복사는 커밋 뒤에만 한다 — 구제 경로(`mesA0_manifestDone`)도 **같은 순서**다 · ★`mesA0_scanRegister` — 커밋이 안 끝난 폴더를 센다(manifest 없음=잔해 · 마커 없음=MES 미반영). 조용히 쌓이는 것을 안 세면 그게 다음 사각지대다(실측 6건이 아무 화면에도 없었다) · ⚠️manifest 의 `out_copy_error` 는 이제 항상 null 이다 — 복사가 그 뒤라 커밋 시점엔 알 수 없다 · 0.10.0 = ★**계측**을 넣는다 — 「자원이 모자라서인가」는 추측이었고 반증이 더 많다(09-07 실패 건은 EPS 1.9MB 소형 · 실패 **직후** 환경 점검은 전부 통과 · 디스크 156GB 여유). ①`mesA0_ioProbe` = 호출 안 7개 지점에서 1바이트 쓰기를 시도해 **어느 동작 뒤부터 못 쓰는지**를 응답에 싣는다(이등분). ②`mesA0_ioStress` = 파일을 몇 개까지 만들 수 있나 — 재시작 직후/1건 후/3건 후를 비교하면 누적 소비인지 상태 전환인지 갈린다. ⚠️프로브는 단계마다 **다른 파일명**을 쓴다(같은 이름이면 덮어쓰기라 「만들 수 있는가」가 아니라 「고칠 수 있는가」를 재게 된다 — 환경 점검이 ✓ 인데 가공이 ✗ 이던 차이일 수 있다) · 0.9.0 = ★manifest 를 못 쓰면 **패널에게 넘긴다**(`mesA0_manifestPending`) — 실기에서 가공 도중 일러 프로세스의 파일 자원이 고갈된다: 로컬 temp 와 Z: 가 **동시에** I/O 오류이고, 일러 자신의 export 마저 실패하며(「p0.png 를 내보낼 수 없음」), config.json 180KB 가 0바이트로 읽혔다. 경로·권한·드라이브·일러 버전 문제가 아니라 **그 순간 그 프로세스**의 문제다. CEP 는 별도 프로세스라 같은 순간에도 멀쩡했으므로(패널 UI 가 뜨고 응답이 왔다) 일러가 못 쓰면 패널이 쓴다 — 일러 버전·폰트 수와 무관한 길이 하나 생긴다 · ★EPS `embedAllFonts` 를 **남은 텍스트가 있을 때만**(:1103) — 텍스트를 전부 아웃라인한 뒤라 임베드할 폰트가 없는데도 true 라, 폰트 2,159개가 깔린 PC 에서 저장할 때마다 문서 폰트를 전부 열게 하고 있었다(자원 고갈의 유력 원인) · ★환경 점검에 잠금 모듈 버전 · 0.8.0 = ★[환경 점검](`mesA0_envCheck`) — 「이 PC 가 준비됐는가」를 한 곳에서 잰다. 준비 안 된 PC 의 증상은 기능마다 다른 말로 흩어져 나왔고(config 없음·nofolder·noparams·응답 파싱 실패가 **전부 같은 원인**일 수 있다), 2026-09-07 에는 결국 probe 스크립트를 손으로 배포해 물었는데 **다른 실행 문맥**이라 아무것도 증명하지 못했다 · ★manifest 에 `ai_version` — 여태 어느 일러에서 나온 등록인지 아무 데도 안 남겨 「어느 버전부터 이상해졌나」를 잴 수 없었다 · 0.7.2 = ★params 를 **인자로도** 받는다(`mesA0_process(inline)`) — `Folder.temp` 가 사용자명을 품는데 **사용자명이 한글인 PC 가 실재**하고 cep.fs 는 한글 경로에서 못 미덥다(config 만 2중화돼 있었다). 그 PC 는 전 건 `noparams` 로 떨어진다. 파일을 못 쓰는 상황에서 파일로 우회하지 않고 **파일을 뺀다**(왕복 추가 0) · ★브릿지로 나가는 문자열을 전부 \\uXXXX 로 접는다(`mesA0_jsonEsc`) — 0.7.1 이 실패 detail 에 실은 경로에 `IA-등록` 이 들어 있어 원인 대신 「응답 파싱 실패」가 뜰 수 있었다. manifest 도 인코딩 무관해진다 · ★Z: 루트 판정을 재단 호스트와 같은 문구로(`mesA0_zErrJson`) — `nofolder` 하나로 뭉개지던 것을 분리 · 0.7.1 = ★파일 I/O 실패 이유를 버리지 않고, 실패한 그 문맥에서 환경을 다시 재다(mesA0_ioDiag — 사람이 [파일▸스크립트]로 돌린 probe 는 전부 OK 인데 CEP 경로에서만 실패했다) — `mesA0_readText`·`mesA0_writeText` 가 `f.error` 를 `MESA0_IO_ERR` 에 담아 응답 `detail` 로 올린다 · `_출력` 복사의 **빈 catch** 제거(폴더만 생기고 안이 비는 무증상 실패가 실기에서 전 건 발생) · params 「없음」과 「0바이트」 분리(`noparams`/`emptyparams`) · 0.7.0 = ★인쇄용 고해상도 썸네일(thumb_hi) 동시 굽기 — 목록용 400px 는 그대로 두고 작업지시서만 1200px 를 쓴다 · 0.6.0 = ★셸 서명에 파일 목록 포함 + 비교를 src 기준으로 — Z: 에서 파일이 하나 빠지면 그 PC 자동갱신이 retrylimit 로 영구 중단됐다 · 0.5.0 = ★수량 단위(조) 표기 전달 — 대기함 「2개 (1조)」 검산용 · 0.4.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.3.0 = ★자동감지 굽기를 imageCapture 로(임시 문서 없음 — 증명 가능할 때만) · 0.2.0 = 셸 자동 갱신(축3/4를 축2가 끌어온다) · 0.1.10 = 묶음분리·자동감지를 **잉크 실루엣**으로 대체(bbox 겹침 폐기)
 var MESA0_REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
 var MESA0_PT_PER_MM = 72 / 25.4;
 var MESA0_SIDES = ['top', 'bottom', 'left', 'right'];
@@ -750,58 +750,20 @@ function mesA0_ioStress(n) {
 }
 
 /**
- * 복사 + **검증** — 성공을 반환값이 아니라 **목적지 바이트 수**로 판정하고, 실패하면 다시 시도한다 (2026-09-15).
+ * 방금 쓴 파일의 길이를 **가라앉을 때까지** 읽는다 (2026-09-15).
  *
- * ★왜 — 실기에서 `File.copy` 가 `I/O 오류` 로 떨어졌는데 **원본은 멀쩡했다**(EPS 8.0MB·work.ai 1.7MB·
- *   manifest·썸네일 전부 정상 저장). 같은 실행의 `ioprobe` 가 `outline=X ai=X` 였다가 `eps=OK thumb=OK` 로
- *   **회복**한 것과 같은 축이다 — 일러 프로세스의 파일 I/O 가 무거운 구간 전후로 잠깐 죽었다 살아난다.
- *   한 번만 시도하면 그 창에 걸린 건이 통째로 픽업에서 빠지고, **등록은 됐는데 재단기에 파일이 없다**가 된다.
- * ★반환값만 믿지 않는다 — 「폴더만 생기고 안이 비는」 무증상 실패 전례가 있다(0.7.1).
- *   불완전 사본은 지우고 다시 — 남겨 두면 재단기가 **잘린 파일**을 집어 간다.
- * @returns 실패 사유(정상은 빈 문자열)
+ * ★저장 직후 한 번만 읽으면 안 된다 — 공유(Z:)에 쓴 길이가 아직 안 보여, 실기에서 1.7MB 파일이
+ *   `0MB` 로 보고됐다(실물은 정상). 사람이 그걸 보고 산출물이 깨진 줄 안다.
+ * @returns 바이트 수 · 못 읽으면 **-1**(확인 못 함). `0` 은 「진짜 0바이트」로 남긴다.
  */
-function mesA0_copyVerify(src, dstPath) {
-    var srcLen = -1;
-    try { srcLen = src.length; } catch (eSl) { /* ignore: 원본 길이 불명 — 목적지가 0보다 크면 성공으로 본다 */ }
-    var last = '';
-    for (var att = 1; att <= 3; att++) {
-        var ok = false;
-        try { ok = src.copy(dstPath); } catch (eCv) { ok = false; last = '' + eCv; }
-        if (!ok) { try { if (src.error) last = String(src.error); } catch (eEr) { /* ignore: 오류 문자열을 못 읽어도 아래에서 크기로 판정한다 */ } }
-        var dst = new File(dstPath), dLen = -1;
-        try { if (dst.exists) dLen = dst.length; } catch (eDl) { /* ignore: 목적지 길이 불명 — 실패로 떨어뜨린다 */ }
-        if (ok && dLen > 0 && (srcLen <= 0 || dLen === srcLen)) return '';
-        try { if (dst.exists) dst.remove(); } catch (eRm) { /* ignore: 불완전 사본 제거 실패 — 다음 시도의 copy 가 덮어쓴다 */ }
-        if (!last) last = 'dst=' + dLen + ' src=' + srcLen;
-        $.sleep(400 * att);
-    }
-    return last || '알 수 없음';
-}
-
-/**
- * `_출력/<날짜>` 픽업 폴더로 복사 — **manifest 커밋 뒤에만** 부른다 (2026-09-10).
- *
- * ★이건 산출이 아니라 **「출력해도 된다」는 신호**다. 재단기·출력 담당자가 이 폴더에서 집어 간다.
- *   등록이 확정되기 전에 놓으면 MES 에 주문이 없는 출력물이 생긴다(2026-09-09 실측 188MB 2건).
- * ★복사 실패는 등록을 막지 않는다 — 등록은 이미 끝났고 빠진 것은 픽업뿐이다. 사유는 응답에 싣는다.
- * @returns 실패 사유(정상은 빈 문자열)
- */
-function mesA0_outCopy(jobDir, ymd, epsName, dxfName) {
-  if (!epsName) return '';
-  try {
-    var outDir = new Folder(MESA0_REGISTER_ROOT + '/_출력/' + ymd);
-    if (!outDir.exists && !outDir.create()) return 'outdir create 실패 @ ' + outDir.fsName;
-    var ef = new File(jobDir + '/' + epsName);
-    var epsErr = mesA0_copyVerify(ef, outDir.fsName + '/' + epsName);
-    if (epsErr) return 'eps copy 실패(3회): ' + epsErr;
-    // 재단기 픽업 지점 — EPS와 같은 폴더에 둔다(판짜기 mes-sheet.jsx:485 와 동일 규칙)
-    if (dxfName) {
-      var df = new File(jobDir + '/' + dxfName);
-      var dxfErr2 = mesA0_copyVerify(df, outDir.fsName + '/' + dxfName);
-      if (dxfErr2) return 'dxf copy 실패(3회): ' + dxfErr2;
-    }
-  } catch (eCp) { return 'copy 예외: ' + eCp; }
-  return '';
+function mesA0_settleLen(fsPath) {
+  var n = -1;
+  for (var t = 0; t < 3; t++) {
+    try { n = new File(fsPath).length; } catch (eSl) { n = -1; }
+    if (n > 0) return n;
+    $.sleep(250);
+  }
+  return n;
 }
 
 /**
@@ -973,7 +935,7 @@ function mesA0_process(inline) {
   var pfSourceRGB = false;
   try { pfSourceRGB = (srcDoc.documentColorSpace == DocumentColorSpace.RGB); } catch (ePf0) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
   var pfRemainingText = 0, pfLinkedImages = 0;
-  var pfRasters = 0, pfOversize = 0, pfOversizeMax = 0, workBytes = 0;
+  var pfRasters = 0, pfOversize = 0, pfOversizeMax = 0, outBytes = 0, workAiName = null;
 
   var now = new Date();
   var ymd = '' + now.getFullYear() + mesA0_pad2(now.getMonth() + 1) + mesA0_pad2(now.getDate());
@@ -995,7 +957,6 @@ function mesA0_process(inline) {
   // 원본 선택을 클립보드로 복사(cross-doc duplicate가 CEP eval 컨텍스트서 0개 실패 → copy/paste 대체)
   // srcDoc 활성·선택 유효 상태에서 먼저 복사(참조 stale 방지). 원본 불가침(복사만·무변경).
   var copyErr = '';
-  var outCopyErr = ''; // `_출력` 복사 실패 사유(비면 정상) — 아래 catch 가 삼키던 것
   try { app.activeDocument = srcDoc; srcDoc.selection = sel; app.copy(); } catch (eCopy) { copyErr = '' + eCopy; }
   mesA0_ioProbe('copy');             // 클립보드에 아트 전량(수십 MB)이 올라간 뒤
 
@@ -1064,26 +1025,23 @@ function mesA0_process(inline) {
       }
     } catch (ePf3) { /* ignore: 임베드 여분 계측(경고 전용) — 못 재면 oversize 0 으로 두고 산출물은 불변 */ }
 
-    if (!review) {
+    // ★`work.ai` 는 **모아찍기에서만** 쓴다 (2026-09-15 용준님 「없어도 될 것 같다」).
+    //   왜 뺐나 — 소비자를 전수로 다시 셌더니 **읽는 코드가 없다**: 판짜기 `mes-sheet.jsx` 는 09-11 은퇴,
+    //   웹은 `eps_path || work_ai_path` 를 **표시용 파일명 폴백**으로만 쓰고, 에이전트는 경로/바이트만 만진다.
+    //   남은 용도는 「사람이 나중에 열어서 고친다」 하나인데, 그 값어치보다 **작업당 Z: 쓰기의 20~90%** 가 크다.
+    //   실측 2026-09-15: EPS 8.0MB 짜리 한 건에 work.ai 1.7MB — 그 쓰기 직후가 `ai=X`(못 씀) 가 뜨던 구간이다.
+    //   ⚠️ 모아찍기(`impose`)는 **EPS 를 안 만든다** — 거기서는 work.ai 가 산출물 자신이라 그대로 둔다.
+    //   되돌리려면 이 조건을 `!review` 로 되돌리면 된다(형식·옵션 불변).
+    if (!review && mode === 'impose') {
       var workFile = new File(jobFolder.fsName + '/work' + sfx + '.ai');
       // PDF 합성부 제외 — 기본값(pdfCompatible=true)은 같은 그림을 AI 편집부와 PDF 복사본으로 2벌 쓴다
-      // (실측 107MB = PDF 55.7MB + AI 51.3MB). work.ai 소비자는 전수 확인 결과 전부 일러 app.open
-      // (mes-sheet.jsx:237 · SheetLayout.jsx:150 · 에이전트 Program.cs:1547 은 경로/바이트만)이고
-      // place(링크) 배치가 0건이라 PDF 스트림이 불필요하다. 잃는 것 = 탐색기 미리보기·Bridge 썸네일
-      // (같은 폴더 thumb.png 로 대체). ⚠️work.ai 를 링크 배치·InDesign·Acrobat 로 여는 소비자가 생기면 재검토.
+      // (실측 107MB = PDF 55.7MB + AI 51.3MB). 잃는 것 = 탐색기 미리보기·Bridge 썸네일(thumb.png 로 대체).
       var workOpts = new IllustratorSaveOptions();
       workOpts.pdfCompatible = false;
       newDoc.saveAs(workFile, workOpts);
+      workAiName = 'work' + sfx + '.ai';
       mesA0_ioProbe('ai');           // work.ai 저장 뒤(수십 MB · 일러 내부 I/O)
-      // ★저장 **직후** 한 번만 읽으면 안 된다 (2026-09-15) — 공유(Z:)에 쓴 길이가 아직 안 보여
-      //   실기에서 1.7MB 파일이 `work.ai 0MB` 로 보고됐다(실물은 정상). 사람이 그걸 보고 산출물이
-      //   깨진 줄 안다. 못 읽으면 **0 이 아니라 -1**(확인 못 함) — 0 은 「진짜 0바이트」로 남긴다.
-      workBytes = -1;
-      for (var wbT = 0; wbT < 3; wbT++) {
-        try { workBytes = new File(workFile.fsName).length; } catch (eWb) { workBytes = -1; }
-        if (workBytes > 0) break;
-        $.sleep(250);
-      }
+      outBytes = mesA0_settleLen(workFile.fsName);
     }
 
     if (mode !== 'impose') {
@@ -1313,6 +1271,9 @@ function mesA0_process(inline) {
       epsOpts.embedAllFonts = (outlineFailed || pfRemainingText > 0);
       newDoc.saveAs(epsFile, epsOpts);
       mesA0_ioProbe('eps');          // EPS 저장 뒤 — 가장 무거운 단계(폰트·미리보기)
+      // ★용량을 재는 대상이 **산출물**로 바뀌었다 (2026-09-15) — work.ai 를 안 쓰기 때문이다.
+      //   재는 이유는 그대로다: 커지는 걸 알아채는 유일한 지점(107MB 회귀를 5건 524MB 쌓인 뒤에 봤다).
+      outBytes = mesA0_settleLen(epsFile.fsName);
 
       // ── DXF (돔보 선택 시만 · 재단선 레이어만) ──
       // 트리거를 돔보로 둔 이유 = 돔보를 쓰는 건이 곧 재단하는 건이다(2026-07-30 지시).
@@ -1342,10 +1303,13 @@ function mesA0_process(inline) {
         }
       }
 
-      // ★`_출력` 복사는 **manifest 커밋 뒤**로 옮겼다 (2026-09-10) — mesA0_outCopy 참조.
-      //   여기서 복사하면 「출력해도 된다」는 부작용이 **등록 확정보다 먼저** 나간다.
-      //   실측 2026-09-09: manifest 가 실패했는데 _출력\\20260909 에 EPS 2개(188MB)가 놓여 있었다
-      //   — MES 에 주문이 없는 채로 출력될 수 있는 자리다.
+      // ★`_출력` 픽업 복사는 **이 축에서 사라졌다** (2026-09-15) — 에이전트가 `.ingested` 직후에
+      //   하고(`Program.cs EnsurePickupCopy`), 오늘·어제 폴더를 다시 훑어 빠진 것도 메운다(`SweepPickupRecent`).
+      //   왜 옮겼나 — 8MB EPS 의 Z:→Z: 왕복이 이 호스트에서 가장 큰 파일 I/O 였고, 실기에서 죽던 자리가
+      //   정확히 거기였다(2026-09-15: 등록·EPS·manifest 전부 정상인데 복사만 `I/O 오류`).
+      //   순서 규칙은 그대로다 — 에이전트는 **커밋(manifest)을 읽은 뒤에만** 복사하므로
+      //   「MES 에 주문이 없는 출력물」이 생기지 않는다(2026-09-09 실측 188MB 2건 재발 방지).
+      //   ⚠️ 에이전트가 안 돌면 픽업도 안 된다 — 그때는 **등록 자체가 MES 에 안 올라간다**(새 실패 아님).
       } // !review
     }
 
@@ -1435,7 +1399,9 @@ function mesA0_process(inline) {
     mode: mode,
     order_item_id: orderItemId,
     // dxf = 돔보 선택 시 재단선 레이어만 담은 재단 데이터(없으면 null). ingest 는 무시 — 추적용
-    files: { work_ai: 'work' + sfx + '.ai', eps: epsName, dxf: dxfName, thumb: 'thumb' + sfx + '.png', thumb_hi: 'thumb_hi' + sfx + '.png', work_bytes: workBytes },
+    // ★`work_ai` 는 모아찍기에서만 값이 있다 (2026-09-15). 에이전트 `Abs()` 는 파일이 없으면 null 을
+    //   넘기므로 옛 manifest 와도 호환되지만, **안 쓴 것과 못 쓴 것**을 구분하려고 여기서 명시한다.
+    files: { work_ai: workAiName, eps: epsName, dxf: dxfName, thumb: 'thumb' + sfx + '.png', thumb_hi: 'thumb_hi' + sfx + '.png', out_bytes: outBytes },
     // ★항상 null 이다 (2026-09-10) — `_출력` 복사는 이 manifest 가 써진 **뒤**에 일어난다.
     //   manifest 는 커밋 **시점의 사실**만 담는다. 복사 결과는 응답에 실린다(ingest 는 원래 무시).
     out_copy_error: null,
@@ -1457,7 +1423,7 @@ function mesA0_process(inline) {
     ',"dxf":' + (dxfName ? ('"' + mesA0_jsonEsc(dxfName) + '"') : 'null') +
     ',"w":' + (Math.round(realW * 10) / 10) + ',"h":' + (Math.round(realH * 10) / 10) +
     ',"items":' + diagItems + ',"normed":' + normed + ',"norm_fail":' + normFail +
-    ',"bytes":' + workBytes + ',"oversize":' + pfOversize +
+    ',"bytes":' + outBytes + ',"oversize":' + pfOversize +
     ',"mode":"' + mode + '","warn":"' + warn + '"' +
     ',"ioprobe":"' + mesA0_jsonEsc(MESA0_IOPROBE) + '"';   // ⚠️ 닫는 중괄호 없음 — 복사 뒤에 닫는다
 
@@ -1472,19 +1438,15 @@ function mesA0_process(inline) {
     //   반면 CEP(패널)는 **별도 프로세스**라 멀쩡했다 — 같은 순간에 UI 가 뜨고 응답이 왔다.
     //   그래서 일러가 못 쓰면 패널이 쓴다. `mesA0_manifestPending()` 로 가져간다.
     //   ⚠️ 물고 있는 것은 **원문 그대로**다. 이미 ASCII(\uXXXX 폴딩)라 인코딩과도 무관하다.
-    // ★복사에 필요한 것까지 물고 간다 — 패널이 manifest 를 써서 커밋을 끝내면
-    //   그때 `mesA0_manifestDone` 이 픽업 복사를 이어서 한다(순서는 그대로 커밋 → 복사).
-    $.global.mesA0MfPending = { path: mfPath, mf: mfJson, res: okRes + '}',
-      job: jobFolder.fsName, ymd: ymd, eps: epsName, dxf: dxfName };
+    // ★픽업 복사에 필요한 것은 더 이상 안 물고 간다 (2026-09-15) — 복사가 에이전트로 넘어가
+    //   manifest 만 써지면 나머지는 저절로 따라온다.
+    $.global.mesA0MfPending = { path: mfPath, mf: mfJson, res: okRes + '}' };
     return '{"ok":false,"err":"manifest","mfpending":true,"ioprobe":"' +
       mesA0_jsonEsc(MESA0_IOPROBE) + '","detail":"' +
-      mesA0_jsonEsc(me0 + ' | ' + mesA0_ioDiag(jobFolder.fsName) +
-        (outCopyErr ? (' | outcopy: ' + outCopyErr) : '')) + '"}';
+      mesA0_jsonEsc(me0 + ' | ' + mesA0_ioDiag(jobFolder.fsName)) + '"}';
   }
   $.global.mesA0MfPending = null;            // 성공했으면 앞 건의 잔여를 지운다
-  // ★여기서부터가 **커밋 뒤**다 — 등록이 확정됐으니 픽업 폴더에 놓아도 된다.
-  outCopyErr = mesA0_outCopy(jobFolder.fsName, ymd, epsName, dxfName);
-  return okRes + (outCopyErr ? (',"outcopy":"' + mesA0_jsonEsc(outCopyErr) + '"') : '') + '}';
+  return okRes + '}';
 }
 
 /**
@@ -1504,15 +1466,14 @@ function mesA0_manifestPending() {
     '","res":"' + mesA0_jsonEsc(P.res) + '"}';
 }
 /**
- * 패널이 manifest 를 다 썼다 = **커밋 완료**. 이제서야 픽업 폴더로 복사한다 (2026-09-10).
- * ★순서가 핵심이다 — 정상 경로든 구제 경로든 **복사는 언제나 커밋 뒤**여야 한다.
- *   그래야 「MES 에 없는 출력물」이 생기지 않는다.
+ * 패널이 manifest 를 다 썼다 = **커밋 완료**. 인계 상태만 비운다 (2026-09-15).
+ * ★예전엔 여기서 픽업 복사를 이어서 했다. 이제 복사는 에이전트가 하므로 할 일이 없다 —
+ *   그래도 **호출은 남긴다**: 패널이 이걸 불러야 `mesA0MfPending` 이 비고, 안 비우면
+ *   다음 건의 실패 판정이 앞 건의 잔여를 본다.
  */
 function mesA0_manifestDone() {
-  var P = $.global.mesA0MfPending;
   $.global.mesA0MfPending = null;
-  if (!P || !P.job) return '{"ok":true,"outcopy":""}';
-  return '{"ok":true,"outcopy":"' + mesA0_jsonEsc(mesA0_outCopy(P.job, P.ymd, P.eps, P.dxf)) + '"}';
+  return '{"ok":true,"outcopy":""}';
 }
 
 // ── 반자동 큐 (A2) — 선택 보관 = 호스트 전역(같은 파일 열려있는 동안 참조 유효) ──

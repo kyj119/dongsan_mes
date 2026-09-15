@@ -341,7 +341,7 @@ ok('단건에선 주석 키워드칸 표시', await page.locator('#annotKwRow').
   const fn = /function mesA0_annotText\([\s\S]*?\n\}/.exec(a0)
   ok('주석: 키워드 없어도 생성', !!fn && !/if \(!keyword\) return ''/.test(fn[0]))
   ok('주석: 수량은 항상 붙는다', !!fn && /parts\.push\(qty \+ 'ea'\)/.test(fn[0]))
-}ok('등록 결과에 work.ai 용량 표시', doneMsg.includes('work.ai 51.2MB'), doneMsg.slice(0, 140))
+}ok('등록 결과에 산출물 용량 표시', doneMsg.includes('산출물 51.2MB'), doneMsg.slice(0, 140))
 ok('임베드 여분 경고 표시', doneMsg.includes('임베드 이미지가 디자인 밖까지 큼'), doneMsg.slice(0, 200))
 ok('돔보 등록분 DXF 표시', doneMsg.includes('DXF: a.dxf'), doneMsg.slice(0, 220))
 
@@ -1103,7 +1103,8 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   ok('10 못 쓴 manifest 를 호스트가 물고 있는다',
     a0m !== null
     && a0h.indexOf('$.global.mesA0MfPending = { path: mfPath, mf: mfJson, res: okRes') > 0
-    && a0h.indexOf('job: jobFolder.fsName') > 0        // 커밋 뒤 픽업 복사에 필요한 것까지
+    // ★픽업 복사에 필요한 것은 더 이상 안 물고 간다 (2026-09-15) — 복사가 에이전트로 넘어가
+    //   manifest 만 써지면 나머지는 따라온다. 물고 갈 것은 **쓸 것(path·mf)과 돌려줄 것(res)** 뿐이다.
     && a0h.indexOf('"mfpending":true') > 0)
   ok('10 인계 창구가 있다(가져가기·놓기)',
     /function mesA0_manifestPending\(/.test(a0h) && /function mesA0_manifestDone\(/.test(a0h))
@@ -1283,24 +1284,33 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   })()
   ok('12 파일→인자 재시도가 한 번만 일어난다(값 검산)', flow.okv === true, flow.err || '흐름 불일치')
 
-  // ── 13. 커밋 경계 (2026-09-10) ──────────────────────────────────────────
+  // ── 13. 커밋 경계 (2026-09-10 · 2026-09-15 축 이동) ─────────────────────
   //   `_출력` 복사는 산출이 아니라 **「출력해도 된다」는 신호**다. 등록이 확정되기 전에 놓으면
   //   MES 에 주문이 없는 출력물이 생긴다 — 실측 2026-09-09 에 188MB 2건이 그렇게 놓여 있었다.
-  ok('13 픽업 복사가 커밋 뒤에 있다', (() => {
-    const commit = a0h.indexOf('if (!mesA0_writeText(mfPath')
-    const copy = a0h.indexOf('outCopyErr = mesA0_outCopy(jobFolder.fsName')
-    return commit > 0 && copy > commit
-  })(), '등록 실패인데 출력물이 픽업 폴더에 놓인다')
-  ok('13 옛 인라인 복사가 남아 있지 않다',
-    !/epsFile\.copy\(/.test(a0h) && /function mesA0_outCopy\(/.test(a0h),
-    '복사 경로가 둘이면 한쪽만 고쳐진다')
-  // ★구제 경로(패널이 manifest 를 쓴 경우)도 **같은 순서**여야 한다 — 여기가 새면 절반만 고친 것이다.
-  ok('13 구제 경로도 커밋 뒤에 복사한다', (() => {
-    const f = grab(a0h, 'function mesA0_manifestDone() {')
-    return !!f && /mesA0_outCopy\(P\.job, P\.ymd, P\.eps, P\.dxf\)/.test(f)
-      && /rr\.outcopy = d\.outcopy/.test(a0m)
-  })(), '패널이 구제하면 픽업 복사가 통째로 빠진다')
+  //   ★2026-09-15 복사가 **에이전트(.NET)** 로 넘어갔다. 지켜야 할 성질은 그대로이므로
+  //     검사 대상만 옮긴다 — 성질을 지우면 사고가 조용히 돌아온다.
+  const agentCs = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'Program.cs'), 'utf8')
+  //   ⚠️ 이름만으로 찾으면 **버전 이력 주석**이 걸린다(0.16.0 이 무엇을 뺐는지 적어 둔 그 줄).
+  //      지워진 것은 코드이므로 호출·정의 형태(`(`)로만 센다.
+  ok('13 픽업 복사가 JSX 축에 없다',
+    !/mesA0_outCopy\(|mesA0_copyVerify\(/.test(a0h) && !/epsFile\.copy\(/.test(a0h),
+    '복사 경로가 둘이면 한쪽만 고쳐진다 — 픽업 정본은 에이전트다')
+  ok('13 패널이 못 보는 실패를 화면에 안 남긴다', !/r\.outcopy|rr\.outcopy/.test(a0m),
+    '알 수 없는 것을 띄우면 다음 사람이 그걸 증상으로 읽는다')
+  // ★에이전트 축의 같은 성질 — 복사는 **manifest 를 읽은 뒤**이고 `.ingested` 기록 뒤다.
+  ok('13 에이전트 픽업이 커밋 뒤에 있다', (() => {
+    const ing = agentCs.indexOf('".ingested"')
+    const cp = agentCs.indexOf('EnsurePickupCopy(folder, manifestPath, sfx)')
+    return ing > 0 && cp > ing
+  })(), '등록이 확정되기 전에 출력물이 픽업 폴더에 놓인다')
+  ok('13 에이전트 픽업은 빠진 것을 다시 메운다',
+    /static void SweepPickupRecent\(/.test(agentCs) && /SweepPickupRecent\(root\);/.test(agentCs),
+    '한 번 실패하면 영영 비는 자리가 된다')
   ok('13 manifest 는 커밋 시점의 사실만 담는다', /out_copy_error: null,/.test(a0h))
+  // ★`work.ai` 는 모아찍기에서만 (2026-09-15) — 단건에서 되살아나면 Z: 쓰기가 조용히 2배가 된다.
+  ok('13 work.ai 는 모아찍기에서만 쓴다',
+    /if \(!review && mode === 'impose'\) \{/.test(a0h) && /files: \{ work_ai: workAiName,/.test(a0h),
+    '단건이 다시 work.ai 를 쓰면 아무도 안 읽는 파일에 Z: 쓰기를 쓴다')
 
   // ── 조용히 쌓이는 것을 센다 ─────────────────────────────────────────────
   ok('13 커밋이 안 끝난 폴더를 센다',
