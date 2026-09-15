@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-09-15T00:55:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-09-15T09:55:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,29 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **6** (`list_issues(state:OPEN,label:auto-improve)` 실측 — #649는 owner가 직접 close, 7→6) |
+| 🆕 new | **6** (`list_issues(state:OPEN,label:auto-improve)` 실측 — #647·#648에 fixed-in-tree 코멘트만, close는 owner 대기) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **567** (`search_issues(reason:completed,label:auto-improve)` 실측, #649 반영 566→567) |
+| ✔️ done | **567** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 3 UX/기능 감사 (2026-09-15T09:55):**
+> - **방법**: 세션 시작 시 detached HEAD `3bf7a94`(origin/main과 동일) → 로컬 `main`은 stale(`eecca71`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area3 방법 라인 HEAD `5df88fc`)**: `git log 5df88fc..HEAD -- src/pages src/scripts` = 4 feature 커밋. `685ea40`(자재포함 토글)·`3e23e87`(유통주문서 폐지)·`588eb19`(견적 규격텍스트)는 Area1/2/5/6가 이미 각자 렌즈로 검토 완료 — **`fd92227`(P9 주문 출고취소·P10 선불/착불 검증)만 전 Area 미검토**, Area3가 직접 정독.
+> - **`fd92227` 직접 검토**: `PATCH /api/orders/:id/unship`(`orders/lifecycle.ts`)이 카드 unship과 동일한 검증된 헬퍼(`restoreStockLinesOnUnship`, OUT 행 철회+STOCK_RESTORE 로그)를 재사용, 카드/주문 상태 갱신은 한 batch, 회계반영(BILLED/PAID) 차단 서버·프론트 이중 게이트. 프론트 버튼(`orders.js unshipOrder`)은 role 조건부 노출 + `showConfirm` await 패턴(#426 규칙 준수) + 성공/실패 토스트. P10은 `required`→`data-needs-payment` 전환이 커밋 메시지와 정확히 일치, `calc.js`·`client.js` 양쪽 대조 확인. 결함 0건.
+> - **🔗 open 이슈 대조 — #647·#648이 바로 이 커밋으로 해소됨을 확인**: 두 이슈 다 직전 journey-loop 사이클(2026-09-11)이 Area3발 ⏳ 항목을 승격한 것이었고, `docs/journeys/PROPOSALS.md` P9·P10에 owner 판정(P9="남은 부분 진행")과 함께 이번 커밋으로 반영됨. 이슈 본문의 재현 증상·제안 방향(안 2 각각)이 실제 구현과 정확히 일치 — **#647·#648에 fixed-in-tree 코멘트 게시**(코드 재수정 없이 close 가능, close는 owner 대기 — 32회차 규칙: 재검증은 이 세션이, close는 owner).
+> - **journey-loop PROPOSALS.md 전수 재확인**: P1~P12 전 항목이 ✅고침 또는 ③유지(설계/정상)로 판정 완료, 신규 ⏳ 0건 — 승격 대상 없음.
+> - **standing scan 1: showConfirm 콜백 오용(#426 클래스)** — `grep -rn "showConfirm(" src/scripts`에서 오용 패턴(2번째 인자=함수) **0건**(변동없음).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 10런 중 9건 success·1건(최신, 이 세션 자체가 만든 HEAD) in_progress — 직전 완료런(`27fdfeb`)까지 전부 success.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **6**(#650·#648·#647·#626·#617·#616, 변동없음) — #647·#648에 fixed-in-tree 코멘트 게시(위), 나머지는 Area3 관할 밖.
+> - **backlog↔GitHub 절대값 재동기화**: open **6**(변동없음, close는 owner 대기) · done **567**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 이번 사이클은 「open≠unfixed 거울」(다른 Area가 codify한 기존 레시피)이 Area3 자신의 승격 이슈에 정확히 적중 — 새 클래스 발견 없음.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` 대상 — 사이클 로그 9건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(4커밋 churn 중 3건 타 Area 재확인 완료·1건(`fd92227`) 직접 정독해 net-new 0 — 대신 #647·#648 fixed-in-tree 코멘트 게시), 자동수정 0건(고칠 결함 없음), done-sync: open 6(변동없음)·done 567(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-09-15T00:55):**
 > - **방법**: 세션 시작 시 detached HEAD `bd36b92`(origin/main과 동일) → 로컬 `main`은 stale(`eecca71`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
