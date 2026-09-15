@@ -3,10 +3,11 @@ export const SHARED_CSS = `
 <style>
   /* === Design Tokens === */
   :root {
-    --c-primary: #3b82f6;
-    --c-primary-hover: #2563eb;
-    --c-primary-light: #eff6ff;
-    --c-primary-dark: #1e40af;
+    /* 강조색 = 감청(紺靑, prussian navy). 파랑 #3b82f6에서 전환(2026-09-15) — "AI 기본색" 제거 */
+    --c-primary: #1E3A5F;
+    --c-primary-hover: #16304F;
+    --c-primary-light: #E9EEF4;
+    --c-primary-dark: #14273F;
     --c-success: #16a34a;
     --c-success-light: #dcfce7;
     --c-warning: #d97706;
@@ -21,24 +22,25 @@ export const SHARED_CSS = `
     --c-orange-light: #fff7ed;
     --c-teal: #0d9488;
     --c-teal-light: #f0fdfa;
-    --c-bg: #F0F1F3;
+    /* 중립색 = 웜뉴트럴. 슬레이트(Tailwind 기본)에서 전환 — "고른 회색"으로 AI티 제거 */
+    --c-bg: #EFEEEA;
     --c-surface: #ffffff;
-    --c-surface-secondary: #f9fafb;
-    --c-surface-stripe: #f8fafc;
-    --c-border: #e2e8f0;
-    --c-border-light: #f1f5f9;
-    --c-text: #1e293b;
-    --c-text-secondary: #64748b;
-    --c-text-muted: #94a3b8;
-    --c-sidebar: #1e293b;
-    --c-sidebar-hover: #334155;
-    --c-sidebar-border: #334155;
-    --c-sidebar-text: #94a3b8;
+    --c-surface-secondary: #F5F4F0;
+    --c-surface-stripe: #F7F6F2;
+    --c-border: #E4E1DA;
+    --c-border-light: #EDEBE4;
+    --c-text: #1E1C18;
+    --c-text-secondary: #57534B;
+    --c-text-muted: #8B867B;
+    --c-sidebar: #1B2A3D;
+    --c-sidebar-hover: #26384E;
+    --c-sidebar-border: #2C3E54;
+    --c-sidebar-text: #9DA7B4;
     --c-sidebar-text-active: #ffffff;
     --sidebar-w: 60px;
     --sidebar-w-expanded: 240px;
     --topbar-h: 48px;
-    --font-family: 'Inter', 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    --font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, 'Malgun Gothic', sans-serif;
     --fs-xs: 11px; --fs-sm: 13px; --fs-base: 14px; --fs-lg: 16px; --fs-xl: 18px; --fs-2xl: 24px; --fs-3xl: 30px;
     --space-xs: 4px; --space-sm: 8px; --space-md: 12px; --space-lg: 16px; --space-xl: 24px; --space-2xl: 32px;
     --radius-sm: 6px; --radius-md: 8px; --radius-lg: 12px; --radius-full: 9999px;
@@ -60,10 +62,10 @@ export const SHARED_CSS = `
     --c-text-muted: #64748b;
     --c-border: #334155;
     --c-border-light: #1e293b;
-    --c-primary: #60a5fa;
-    --c-primary-hover: #3b82f6;
-    --c-primary-light: rgba(96,165,250,0.1);
-    --c-primary-dark: #2563eb;
+    --c-primary: #7FA6CE;
+    --c-primary-hover: #6E97C2;
+    --c-primary-light: rgba(127,166,206,0.12);
+    --c-primary-dark: #4A6C90;
     --c-success: #4ade80;
     --c-success-light: rgba(74,222,128,0.1);
     --c-warning: #fbbf24;
@@ -323,7 +325,7 @@ export const SHARED_CSS = `
     background: var(--c-bg); outline: none;
     transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
   }
-  .topbar-search-input:focus { border-color: var(--c-primary); box-shadow: 0 0 0 3px rgba(59,130,246,0.1); background: var(--c-surface); }
+  .topbar-search-input:focus { border-color: var(--c-primary); box-shadow: 0 0 0 3px rgba(30,58,95,0.12); background: var(--c-surface); }
   .topbar-search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--c-text-muted); font-size: 13px; pointer-events: none; }
   .topbar-search-kbd {
     position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
@@ -519,9 +521,11 @@ export const SHARED_CSS = `
   #notifPanel .notif-item .notif-time { color: var(--c-text-muted); font-size: var(--fs-xs); margin-top: 2px; }
 
   /* === DS Card === */
-  .ds-card { background: var(--c-surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); padding: var(--space-xl); border: 1px solid var(--c-border-light); transition: box-shadow var(--transition-fast); }
-  .ds-card:hover { box-shadow: var(--shadow-lg); }
-  .ds-card-compact { padding: var(--space-lg); }
+  /* 평탄화(2026-09-15): 그림자 상시 부양 = "카드 수프" AI티 → hairline 기본, 그림자는 모달·드롭다운 등 오버레이에만.
+     밀도: 종일 쓰는 도구라 24px→16px. radius 12px→8px(덜 물렁하게). */
+  .ds-card { background: var(--c-surface); border-radius: var(--radius-md); box-shadow: none; padding: var(--space-lg); border: 1px solid var(--c-border); transition: border-color var(--transition-fast), box-shadow var(--transition-fast); }
+  .ds-card:hover { box-shadow: var(--shadow-sm); }
+  .ds-card-compact { padding: var(--space-md); }
   .ds-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-lg); padding-bottom: var(--space-md); border-bottom: 1px solid var(--c-border-light); }
   .ds-card-title { font-size: var(--fs-lg); font-weight: 600; color: var(--c-text); }
 
@@ -540,13 +544,19 @@ export const SHARED_CSS = `
   .ds-btn-secondary:hover:not(:disabled) { background: var(--c-bg); }
   .ds-btn-danger { background: var(--c-danger); color: #fff; }
   .ds-btn-danger:hover:not(:disabled) { background: #b91c1c; }
+  /* 외곽선 변형(2026-09-15) = 버튼 위계용. 강조-보조(승인 등)=outline, 파괴적(삭제)=danger-outline */
+  .ds-btn-outline { background: transparent; color: var(--c-primary); border-color: var(--c-primary); }
+  .ds-btn-outline:hover:not(:disabled) { background: var(--c-primary-light); }
+  .ds-btn-danger-outline { background: transparent; color: var(--c-danger); border-color: var(--c-danger); }
+  .ds-btn-danger-outline:hover:not(:disabled) { background: var(--c-danger-light); }
   .ds-btn-ghost { background: transparent; color: var(--c-text-secondary); }
   .ds-btn-ghost:hover:not(:disabled) { background: var(--c-bg); color: var(--c-text); }
   .ds-btn-sm { padding: 4px 10px; font-size: var(--fs-xs); min-height: 28px; }
   .ds-btn-lg { padding: 10px 20px; font-size: var(--fs-base); min-height: 44px; }
 
   /* === DS Badge === */
-  .ds-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; font-size: var(--fs-xs); font-weight: 600; border-radius: var(--radius-full); line-height: 1.4; }
+  /* 알약(9999px) → 각진 태그(2026-09-15). 상태색은 뚜렷하게 유지 = 가독성 우선 */
+  .ds-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; font-size: var(--fs-xs); font-weight: 600; border-radius: var(--radius-sm); line-height: 1.4; }
   .ds-badge-blue { background: var(--c-info-light); color: var(--c-primary-dark); }
   .ds-badge-green { background: var(--c-success-light); color: #166534; }
   .ds-badge-yellow { background: var(--c-warning-light); color: #92400e; }
@@ -834,7 +844,7 @@ export const SHARED_CSS = `
   .ds-stat { width: 100%; text-align: center; cursor: pointer; border: 1px solid var(--c-border); background: var(--c-surface);
              transition: border-color var(--transition-fast), box-shadow var(--transition-fast); }
   .ds-stat:hover { border-color: var(--c-primary); box-shadow: var(--shadow-md); }
-  .ds-stat-active { border-color: var(--c-primary); box-shadow: 0 0 0 2px rgba(37,99,235,.18); }
+  .ds-stat-active { border-color: var(--c-primary); box-shadow: 0 0 0 2px rgba(30,58,95,.18); }
   .ds-stat-active .ds-stat-label::after { content: ' · 조회중'; font-size: 11px; color: var(--c-primary); font-weight: 600; }
 
   /* 활성 조회조건 칩 — 접힌 필터 안의 조건(기본 기간 포함)을 항상 보이게 하고 원클릭 해제.
@@ -921,6 +931,19 @@ export const SHARED_CSS = `
   /* FOUC 방지: 권한 체크 중에는 콘텐츠 숨김 (비-ADMIN). ADMIN/체크 완료 시 즉시 노출. */
   body.perm-checking .page-body { visibility: hidden; }
 
+  /* === Tailwind 파랑 유틸 → 감청 primary 일괄 리맵(2026-09-15) ===
+     페이지/모달이 토큰을 우회해 blue-500/600/700 을 직접 쓴 곳을 전역에서 감청으로 통일한다.
+     (다크모드 그레이 오버라이드와 같은 단일-소스 전략 — 감사에서 빠진 페이지도 자동 반영.)
+     ⚠️ 인라인 hex(#3b82f6 등)와 차트 팔레트(CHART_COLORS)는 클래스가 아니라 여기 안 걸린다 → 개별 수정. */
+  .bg-blue-600, .bg-blue-500, .bg-blue-700 { background-color: var(--c-primary) !important; }
+  .hover\\:bg-blue-500:hover, .hover\\:bg-blue-600:hover, .hover\\:bg-blue-700:hover { background-color: var(--c-primary-hover) !important; }
+  .text-blue-500, .text-blue-600, .text-blue-700, .text-blue-800 { color: var(--c-primary) !important; }
+  .border-blue-500, .border-blue-600 { border-color: var(--c-primary) !important; }
+  .focus\\:border-blue-500:focus, .focus\\:border-blue-600:focus { border-color: var(--c-primary) !important; }
+  .focus\\:ring-blue-500:focus, .focus\\:ring-blue-600:focus, .ring-blue-500 { --tw-ring-color: var(--c-primary) !important; }
+  .bg-blue-50, .bg-blue-100 { background-color: var(--c-primary-light) !important; }
+  html.dark .bg-blue-50, html.dark .bg-blue-100 { background-color: var(--c-primary-light) !important; }
+
   /* === Dark Mode: Glasstop top-bar === */
   .top-bar.scrolled { box-shadow: 0 1px 8px rgba(0,0,0,0.08); border-bottom-color: transparent; }
   html.dark .top-bar { background: rgba(15,23,42,0.85); }
@@ -971,10 +994,10 @@ export const SHARED_CSS = `
 
     html.dark {
       color-scheme: light;
-      --c-bg: #F0F1F3; --c-surface: #ffffff; --c-surface-secondary: #f9fafb; --c-surface-stripe: #f8fafc;
-      --c-text: #1e293b; --c-text-secondary: #64748b; --c-text-muted: #94a3b8;
-      --c-border: #e2e8f0; --c-border-light: #f1f5f9;
-      --c-primary: #3b82f6; --c-primary-hover: #2563eb; --c-primary-light: #eff6ff; --c-primary-dark: #1e40af;
+      --c-bg: #EFEEEA; --c-surface: #ffffff; --c-surface-secondary: #F5F4F0; --c-surface-stripe: #F7F6F2;
+      --c-text: #1E1C18; --c-text-secondary: #57534B; --c-text-muted: #8B867B;
+      --c-border: #E4E1DA; --c-border-light: #EDEBE4;
+      --c-primary: #1E3A5F; --c-primary-hover: #16304F; --c-primary-light: #E9EEF4; --c-primary-dark: #14273F;
       --c-success: #16a34a; --c-success-light: #dcfce7;
       --c-warning: #d97706; --c-warning-light: #fef3c7;
       --c-danger: #dc2626; --c-danger-light: #fee2e2;

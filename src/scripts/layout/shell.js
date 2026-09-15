@@ -1427,40 +1427,40 @@ async function doGlobalSearch() {
     var html = '';
     var statusLabels = { CONFIRMED:'확정', PRINTING:'출력중', PRINT_DONE:'출력완료', SHIPPED:'출고완료', HOLD:'보류' };
     if (d.orders.length > 0) {
-      html += '<div style="padding:8px 12px;font-size:11px;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">주문</div>';
+      html += '<div style="padding:8px 12px;font-size:11px;color:var(--c-text-secondary);font-weight:600;border-bottom:1px solid var(--c-border-light);">주문</div>';
       html += d.orders.map(function(o) {
         // 카드와 같은 규약 — 결과를 누르면 그 주문의 상세가 열린다(목록만 띄우면 다시 찾아야 한다)
-        return '<a href="/orders?view=' + encodeURIComponent(o.id) + '" style="display:flex;justify-content:space-between;padding:8px 12px;text-decoration:none;color:#1e293b;font-size:13px;border-bottom:1px solid #f8fafc;cursor:pointer;" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'\'">'
-          + '<div><span style="font-weight:500;">' + window.escapeHtml(o.order_number || '') + '</span> <span style="color:#64748b;font-size:12px;">' + window.escapeHtml(o.client_name || '') + '</span></div>'
-          + '<span style="font-size:11px;color:#94a3b8;">' + window.escapeHtml(statusLabels[o.status] || o.status || '') + '</span></a>';
+        return '<a href="/orders?view=' + encodeURIComponent(o.id) + '" style="display:flex;justify-content:space-between;padding:8px 12px;text-decoration:none;color:var(--c-text);font-size:13px;border-bottom:1px solid var(--c-border-light);cursor:pointer;" onmouseover="this.style.background=\'var(--c-surface-secondary)\'" onmouseout="this.style.background=\'\'">'
+          + '<div><span style="font-weight:500;">' + window.escapeHtml(o.order_number || '') + '</span> <span style="color:var(--c-text-secondary);font-size:12px;">' + window.escapeHtml(o.client_name || '') + '</span></div>'
+          + '<span style="font-size:11px;color:var(--c-text-muted);">' + window.escapeHtml(statusLabels[o.status] || o.status || '') + '</span></a>';
       }).join('');
     }
     if (d.clients.length > 0) {
-      html += '<div style="padding:8px 12px;font-size:11px;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">거래처</div>';
+      html += '<div style="padding:8px 12px;font-size:11px;color:var(--c-text-secondary);font-weight:600;border-bottom:1px solid var(--c-border-light);">거래처</div>';
       html += d.clients.map(function(c) {
-        return '<a href="/clients/' + encodeURIComponent(c.id) + '" style="display:flex;justify-content:space-between;padding:8px 12px;text-decoration:none;color:#1e293b;font-size:13px;border-bottom:1px solid #f8fafc;cursor:pointer;" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'\'">'
+        return '<a href="/clients/' + encodeURIComponent(c.id) + '" style="display:flex;justify-content:space-between;padding:8px 12px;text-decoration:none;color:var(--c-text);font-size:13px;border-bottom:1px solid var(--c-border-light);cursor:pointer;" onmouseover="this.style.background=\'var(--c-surface-secondary)\'" onmouseout="this.style.background=\'\'">'
           + '<span style="font-weight:500;">' + window.escapeHtml(c.client_name || '') + '</span>'
           + '</a>';
       }).join('');
     }
     if (d.cards.length > 0) {
-      html += '<div style="padding:8px 12px;font-size:11px;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">카드</div>';
+      html += '<div style="padding:8px 12px;font-size:11px;color:var(--c-text-secondary);font-weight:600;border-bottom:1px solid var(--c-border-light);">카드</div>';
       html += d.cards.map(function(ca) {
         // 카드번호로 검색은 이미 되는데 결과가 목록으로만 가서 도달이 안 됐다 → 그 카드로 직행.
-        return '<a href="/cards/' + encodeURIComponent(ca.id) + '" style="display:flex;justify-content:space-between;padding:8px 12px;text-decoration:none;color:#1e293b;font-size:13px;border-bottom:1px solid #f8fafc;cursor:pointer;" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'\'">'
+        return '<a href="/cards/' + encodeURIComponent(ca.id) + '" style="display:flex;justify-content:space-between;padding:8px 12px;text-decoration:none;color:var(--c-text);font-size:13px;border-bottom:1px solid var(--c-border-light);cursor:pointer;" onmouseover="this.style.background=\'var(--c-surface-secondary)\'" onmouseout="this.style.background=\'\'">'
           + '<span style="font-weight:500;">' + window.escapeHtml(ca.card_number || 'Card #' + ca.id) + '</span>'
-          + '<span style="font-size:11px;color:#94a3b8;">' + window.escapeHtml(statusLabels[ca.status] || ca.status || '') + '</span></a>';
+          + '<span style="font-size:11px;color:var(--c-text-muted);">' + window.escapeHtml(statusLabels[ca.status] || ca.status || '') + '</span></a>';
       }).join('');
     }
     if (d.quotations && d.quotations.length > 0) {
-      html += '<div style="padding:8px 12px;font-size:11px;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">견적서</div>';
+      html += '<div style="padding:8px 12px;font-size:11px;color:var(--c-text-secondary);font-weight:600;border-bottom:1px solid var(--c-border-light);">견적서</div>';
       html += d.quotations.map(function(qt) {
-        return '<a href="/quotations?view=' + encodeURIComponent(qt.id) + '" style="display:flex;justify-content:space-between;padding:8px 12px;text-decoration:none;color:#1e293b;font-size:13px;border-bottom:1px solid #f8fafc;cursor:pointer;" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'\'">'
-          + '<div><span style="font-weight:500;">' + window.escapeHtml(qt.quotation_number || '') + '</span> <span style="color:#64748b;font-size:12px;">' + window.escapeHtml(qt.client_name || '') + '</span></div>'
-          + '<span style="font-size:11px;color:#94a3b8;">' + window.escapeHtml(qt.status || '') + '</span></a>';
+        return '<a href="/quotations?view=' + encodeURIComponent(qt.id) + '" style="display:flex;justify-content:space-between;padding:8px 12px;text-decoration:none;color:var(--c-text);font-size:13px;border-bottom:1px solid var(--c-border-light);cursor:pointer;" onmouseover="this.style.background=\'var(--c-surface-secondary)\'" onmouseout="this.style.background=\'\'">'
+          + '<div><span style="font-weight:500;">' + window.escapeHtml(qt.quotation_number || '') + '</span> <span style="color:var(--c-text-secondary);font-size:12px;">' + window.escapeHtml(qt.client_name || '') + '</span></div>'
+          + '<span style="font-size:11px;color:var(--c-text-muted);">' + window.escapeHtml(qt.status || '') + '</span></a>';
       }).join('');
     }
-    if (!html) html = '<div style="text-align:center;color:#9ca3af;padding:16px;font-size:13px;">검색 결과 없음</div>';
+    if (!html) html = '<div style="text-align:center;color:var(--c-text-muted);padding:16px;font-size:13px;">검색 결과 없음</div>';
     panel.innerHTML = html;
     panel.style.display = 'block';
   } catch(e) { console.error('Search error:', e); }

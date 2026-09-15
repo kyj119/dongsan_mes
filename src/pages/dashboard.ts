@@ -10,15 +10,13 @@ export function dashboardPage(c: Context<HonoEnv>) {
     pageContent: `
             <!-- 이카운트 병행 기간 안내 (겹칠 때만 채워진다 — shell.js) -->
             <div id="dashCompletenessNotice"></div>
-            <!-- Quick Stats — Bento Grid -->
+            <!-- Quick Stats — 절제된 지표(2026-09-15): 무지개색·장식아이콘·좌측레일 제거. 숫자는 먹색,
+                 색은 예외(미수금 위험)에만. 매출 하나만 크기로 강조. JS가 ID로 값을 채우므로 ID·onclick 전부 보존. -->
             <div id="kpiArea" class="ds-bento mb-6">
                 <!-- Hero: 이번 달 매출 (2col × 2row) -->
-                <div class="ds-card ds-bento-hero cursor-pointer" style="border-left:4px solid var(--c-primary);" onclick="location.href='/ledger'" title="거래처 원장으로 이동">
-                    <div class="flex items-center justify-between mb-2">
-                        <div class="text-sm font-medium" style="color:var(--c-text-secondary)">이번 달 매출</div>
-                        <i class="fas fa-won-sign" style="color:var(--c-primary);opacity:0.5"></i>
-                    </div>
-                    <div style="font-size:36px;font-weight:800;color:var(--c-text);font-variant-numeric:tabular-nums;line-height:1.1" id="statMonthRevenue">-</div>
+                <div class="ds-card ds-bento-hero cursor-pointer" onclick="location.href='/ledger'" title="거래처 원장으로 이동">
+                    <div class="text-sm font-medium mb-2" style="color:var(--c-text-secondary)">이번 달 매출</div>
+                    <div style="font-size:34px;font-weight:700;color:var(--c-text);font-variant-numeric:tabular-nums;line-height:1.1;letter-spacing:-0.02em" id="statMonthRevenue">-</div>
                     <div class="flex items-center gap-2 mt-3" id="statMonthChange" style="color:var(--c-text-muted);font-size:var(--fs-sm)">-</div>
                     <div class="flex items-center gap-4 mt-auto pt-4" style="border-top:1px solid var(--c-border-light)">
                         <div><div class="text-xs" style="color:var(--c-text-muted)">오늘</div><div class="font-bold tabular-nums" style="color:var(--c-text)" id="statTodayRevenueSub">-</div></div>
@@ -26,64 +24,43 @@ export function dashboardPage(c: Context<HonoEnv>) {
                 </div>
                 <!-- 오늘 주문 -->
                 <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/orders'" title="주문 관리로 이동">
-                    <div class="flex items-center justify-between mb-1">
-                        <div class="text-sm" style="color:var(--c-text-secondary)">오늘 주문</div>
-                        <i class="fas fa-shopping-cart text-xs" style="color:var(--c-primary);opacity:0.6"></i>
-                    </div>
-                    <div class="text-3xl font-bold tabular-nums" style="color:var(--c-primary)" id="statTodayOrders">-</div>
+                    <div class="text-sm mb-1" style="color:var(--c-text-secondary)">오늘 주문</div>
+                    <div class="text-3xl font-bold tabular-nums" style="color:var(--c-text)" id="statTodayOrders">-</div>
                 </div>
                 <!-- 긴급 주문 -->
                 <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/orders?priority=URGENT'" id="kpiUrgentCard">
-                    <div class="flex items-center justify-between mb-1">
-                        <div class="text-sm" style="color:var(--c-text-secondary)">긴급 주문</div>
-                        <i class="fas fa-bolt text-xs" style="color:var(--c-orange);opacity:0.6"></i>
-                    </div>
-                    <div class="text-3xl font-bold tabular-nums" style="color:var(--c-orange)" id="statUrgentCount">-</div>
+                    <div class="text-sm mb-1" style="color:var(--c-text-secondary)">긴급 주문</div>
+                    <div class="text-3xl font-bold tabular-nums" style="color:var(--c-text)" id="statUrgentCount">-</div>
                     <div class="text-xs mt-1" style="color:var(--c-text-muted)">진행 중 긴급건</div>
                 </div>
                 <!-- 생산 현황 -->
                 <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/cards'" title="현장 대시보드로 이동">
-                    <div class="flex items-center justify-between mb-1">
-                        <div class="text-sm" style="color:var(--c-text-secondary)">생산 현황</div>
-                        <i class="fas fa-print text-xs" style="color:var(--c-success);opacity:0.6"></i>
-                    </div>
-                    <div class="text-3xl font-bold tabular-nums" style="color:var(--c-success)" id="statProductionOrders">-</div>
-                    <div class="text-xs mt-1" style="color:var(--c-text-muted)">출고대기 <span class="font-semibold tabular-nums" style="color:var(--c-warning)" id="statShipmentReady">-</span>건</div>
+                    <div class="text-sm mb-1" style="color:var(--c-text-secondary)">생산 현황</div>
+                    <div class="text-3xl font-bold tabular-nums" style="color:var(--c-text)" id="statProductionOrders">-</div>
+                    <div class="text-xs mt-1" style="color:var(--c-text-muted)">출고대기 <span class="font-semibold tabular-nums" id="statShipmentReady">-</span>건</div>
                 </div>
                 <!-- 오늘 출고 -->
                 <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/shipments'">
-                    <div class="flex items-center justify-between mb-1">
-                        <div class="text-sm" style="color:var(--c-text-secondary)">오늘 출고</div>
-                        <i class="fas fa-truck text-xs" style="color:var(--c-warning);opacity:0.6"></i>
-                    </div>
-                    <div class="text-3xl font-bold tabular-nums" style="color:var(--c-warning)" id="statTodayShipment">-</div>
+                    <div class="text-sm mb-1" style="color:var(--c-text-secondary)">오늘 출고</div>
+                    <div class="text-3xl font-bold tabular-nums" style="color:var(--c-text)" id="statTodayShipment">-</div>
                     <div class="text-xs mt-1 tabular-nums" id="statTodayShipmentSub" style="color:var(--c-text-muted)">-</div>
                 </div>
-                <!-- 미수금 -->
+                <!-- 미수금 (유일한 예외 색 = 봐야 하는 지표) -->
                 <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/receivables'" title="미수금 현황으로 이동">
-                    <div class="flex items-center justify-between mb-1">
-                        <div class="text-sm" style="color:var(--c-text-secondary)">미수금</div>
-                        <i class="fas fa-exclamation-triangle text-xs" style="color:var(--c-danger);opacity:0.6"></i>
-                    </div>
+                    <div class="text-sm mb-1" style="color:var(--c-text-secondary)">미수금</div>
                     <div class="text-3xl font-bold tabular-nums" style="color:var(--c-danger)" id="statKpiReceivables">-</div>
                     <div class="text-xs mt-1 tabular-nums" id="statKpiOver30" style="color:var(--c-text-muted)">30일+ -</div>
                 </div>
                 <!-- 수금률 -->
                 <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/receivables'" title="미수금 현황으로 이동">
-                    <div class="flex items-center justify-between mb-1">
-                        <div class="text-sm" style="color:var(--c-text-secondary)">수금률</div>
-                        <i class="fas fa-hand-holding-usd text-xs" style="color:var(--c-success);opacity:0.6"></i>
-                    </div>
+                    <div class="text-sm mb-1" style="color:var(--c-text-secondary)">수금률</div>
                     <div class="text-3xl font-bold tabular-nums" style="color:var(--c-text)" id="statCollectionRate">-</div>
                     <div class="text-xs mt-1 tabular-nums" style="color:var(--c-text-muted)" id="statCollectionDetail">이번 달</div>
                 </div>
                 <!-- 납기 준수율 -->
                 <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/orders'" title="이번 달 납기(delivery_date) 주문 중 완전출고일이 납기일 이내인 비율 — 클릭: 주문 관리">
-                    <div class="flex items-center justify-between mb-1">
-                        <div class="text-sm" style="color:var(--c-text-secondary)">납기 준수율</div>
-                        <i class="fas fa-calendar-check text-xs" style="color:var(--c-success);opacity:0.6"></i>
-                    </div>
-                    <div class="text-3xl font-bold tabular-nums" id="statOnTimeRate">-</div>
+                    <div class="text-sm mb-1" style="color:var(--c-text-secondary)">납기 준수율</div>
+                    <div class="text-3xl font-bold tabular-nums" style="color:var(--c-text)" id="statOnTimeRate">-</div>
                     <div class="text-xs mt-1" style="color:var(--c-text-muted)">이번 달 납기 기준</div>
                 </div>
             </div>

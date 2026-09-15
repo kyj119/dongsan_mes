@@ -38,7 +38,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
               <span id="billingPendingCount" class="bg-blue-600 text-white px-2 py-0.5 rounded-full text-xs font-bold">0</span>
               <span class="text-sm text-blue-600 font-medium" id="billingPendingAmount"></span>
             </div>
-            <a href="/tax-invoices#unbilled" class="ds-btn ds-btn-primary ds-btn-sm" style="background:#2563eb">
+            <a href="/tax-invoices#unbilled" class="ds-btn ds-btn-primary ds-btn-sm">
               <i class="fas fa-file-invoice mr-1"></i>계산서 발행
             </a>
           </div>
