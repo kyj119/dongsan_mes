@@ -64,5 +64,6 @@
 - **orphan 라우터의 entity_id 격리 갭** (프론트 호출처 0건) → 보안 아니라 dead code. 격리 갭 보고 전 도달성 선검증 필수 (#334). **단 예외**: 클라 제공 키로 raw 리소스 서빙하는 범용 프록시(R2 파일 등)는 0-refs여도 직접 HTTP 호출이 공격표면 → 보안 이슈 (#365)
 - **`SELECT DISTINCT` 프로젝션의 `ORDER BY`가 그 프로젝션 전 컬럼을 나열** → sort-audit P2가 "tie-break 없음"으로 잡아도 FP. DISTINCT는 정의상 출력 행 조합 자체를 유일하게 만들므로, 정렬키가 SELECT한 전 컬럼과 일치하면 동값 구간이 애초에 존재할 수 없다(64회차, `workbench.ts:577` `SELECT DISTINCT pm.product_item_id AS p, m.item_name AS m ... ORDER BY p, m` 실증). 정렬키가 SELECT 컬럼의 **부분집합**이면 이 논리가 깨지니 매번 전체 일치 여부 확인.
 - **이슈 코멘트가 "검증 전까지 열어둡니다"를 명시** → close-pending 적체(32회차 룰) 오경보 금지. owner가 최근 코멘트에서 열어두는 이유(실기 검증 대기 등)를 스스로 밝혔으면, 사이클 수와 무관하게 정상 open — "N사이클 미close"로 집계하지 않는다(64회차, #616/#617 — 코드는 `28f2dc83`로 병합됐으나 "장비 롤아웃+실기 확인" 대기임을 owner가 직접 명시).
+- **파일 수가 많은 프론트 커밋이라도 diff가 순수 색상값/클래스명 치환이면 XSS bridge 재감사 대상에서 제외** — 「XSS bridge」(16회차)가 요구하는 "post-Area5 churn의 innerHTML sink 재감사"는 **데이터 보간이 늘어난 diff**를 대상으로 한다. hex 색상 리터럴(`#3b82f6`→`#1E3A5F`)·CSS 변수(`var(--c-primary)`)·클래스명(`rounded-full`→`rounded`) 치환만 있고 새 변수 보간·신규 innerHTML 라인이 0이면, 파일 수(68개)·라인 수(300+)가 커도 sink 재감사는 불요 — `git show <hash> -- <file>`로 몇 개 파일만 표본 확인해 전부 리터럴 값 치환인지 보면 충분하다(65회차, `b8ff917` 감청 리디자인 68파일 전수 성격이 색상 전용임을 표본 3파일로 확인, XSS 사이드이펙트 0).
 
 ---

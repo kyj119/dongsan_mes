@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-09-15T11:20:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-09-15T16:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,17 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **567** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 6 자기 진화 (2026-09-15T16:10, 65회차):**
+> - **방법**: 세션 시작 시 로컬 `main`이 이미 `origin/main`과 동일(`02eb83e`) — fetch로 정합 재확인만. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area6 65회차 이전 HEAD `e155373`, 2026-09-14T11:35)**: 웹앱범위 `git log e155373..HEAD -- src migrations scripts .github` **11커밋**. 그중 5건(`685ea40`·`9212dfe`·`3e23e87`·`588eb19`·`fd92227`)은 Area1~5가 이번 사이클에서 이미 각자 렌즈로 라인 인용까지 정독 완료(백로그 로그에 구체 서술 확인) — 재검증 skip. **나머지 6건은 어느 로그에도 해시 언급 0건**(#600 "나열조차 안 된 커밋" 케이스) → Area6가 직접 Read: `c6634a1`(Area2 자동수정 models.ts specification 필드, 해시 미언급이었을 뿐 내용은 이미 동일 사실 확인) · `b8f8548`(check:fn 게이트 신설, CLAUDE.md·CI 배선 그대로 반영, 신규 위험 0) · `5ae34ad`(journey-loop 자체발견 P13 dead call `loadPendingPOs`→`loadReceivingQueue` 수정, 원인·수정 정확) · `b8ff917`(감청 UI 리디자인 68파일 — 표본 확인 결과 순색상값/클래스 치환뿐, 데이터 보간·신규 innerHTML sink 0). **비웹앱 축**(`git log e155373..HEAD -- LogWatcher IllustratorAutomat caps-worker workers queue`, #616/#617 62회차 룰)도 대조 — `c002a9e`·`4cbcbc2`·`d3e41e4`·`ac93554`·`9e7f6be` 5건 전부 미언급 → 직접 Read: `c002a9e`(픽업복사를 에이전트 .NET으로 이관 — `EnsurePickupCopy`가 바이트수 대조 멱등·크기0 스킵·불완전 사본 삭제, `SweepPickupRecent`가 오늘·어제로 스코프 제한해 과거 작업 되살아남 방지, 예외 전부 catch) 결함 0 · `4cbcbc2`(IO 프로브가 실패 사유 문자열을 버리던 결함 자체수정 + 파일명 충돌 방지) · `d3e41e4`(work.ai 0MB 오탐 수정 — read-after-write 타이밍 문제, retry+재측정으로 해결, `-1`=미확인과 `0`=실제0 구분) · `ac93554`(dashboard.ts 등 UI 절제화, ID·onclick 보존 명시 주석 — check:dom 게이트 커버) 전부 자기설명적 수정, net-new 결함 0.
+> - **done-sync 절대값 재동기화**(리터럴 쿼리): `search_issues("label:auto-improve is:closed reason:completed")` **567**(변동없음) · `reason:"not planned"` **4** + `reason:duplicate` **2** = rejected **6**(변동없음) · `list_issues(state:OPEN,label:auto-improve)` **7**(변동없음, #651·#650·#648·#647·#626·#617·#616).
+> - **open≠unfixed 재확인**: #626 코멘트 재조회 — owner가 2026-09-10에 "PII 키분리는 결정 대기, 트래킹용으로 열어둠" 명시 → 정상 open(64회차 FP 룰 그대로 적용, staleness 통지 대상 아님). #616/#617도 기존 owner 코멘트로 예외 유지(변동없음). #647·#648은 Area3가 이번 사이클에 막 fixed-in-tree 코멘트를 게시했으므로 close-pending 신규 진입(적체 판정 대상 아님, 32회차 룰).
+> - **standing scan**: `audit:migration-number`(중복 24쌍, 같은테이블 충돌 0) · `sort-audit.cjs`(P1 0, P2 3 기존 FP 유지) · `branch:clean`(삭제대상 0) · `npm audit --omit=dev`(0건) · CI 최근 5런 전부 success(최종 HEAD `02eb83e` 포함).
+> - **🧬 SKILL 강화**: area-6-self-evolution.md에 신규 FP 패턴 1건 추가 — "파일수 많은 프론트 커밋도 diff가 순수 색상값/클래스명 치환뿐이면 XSS bridge 재감사 불요, 표본 파일로 리터럴 치환 여부만 확인"(`b8ff917` 68파일 실증). `line N` 잔여참조 재확인(0건, 이미 서술식).
+> - **백로그 트림 체크**: 사이클 로그 11건 → 이번 추가 후 12건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(11커밋 churn 전건 검토 완료, net-new 0), 자동수정 0건(고칠 결함 없음), done-sync: open 7(변동없음)·done 567(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 + 인프라 (2026-09-15T11:20):**
 > - **방법**: 세션 시작 시 detached HEAD `c002a9e`(origin/main과 동일) → 로컬 `main`은 stale(`eecca71`, shallow-clone 앵커 유실 클래스 — `eecca71`은 `c002a9e`의 조상이 아님, force-update 아닌 로컬 캐시 stale) → `git fetch --unshallow` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
