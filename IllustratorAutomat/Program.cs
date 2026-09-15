@@ -1048,6 +1048,7 @@ namespace IllustratorAutomation
                         await IngestDesignerFolderAsync(sub, mf, sfx);
                     }
                 }
+                SweepPickupRecent(root);
             }
             catch (Exception ex) { Console.WriteLine($"[디자이너등록] 스캔 오류: {ex.Message}"); }
         }
@@ -1108,6 +1109,7 @@ namespace IllustratorAutomation
                 if (res.IsSuccessStatusCode)
                 {
                     File.WriteAllText(Path.Combine(folder, ".ingested" + sfx), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                    EnsurePickupCopy(folder, manifestPath, sfx);   // ★픽업 복사 — 아래 함수 주석 참조
                     WriteAgentLog($"디자이너 등록 ingest OK: {Path.GetFileName(folder)}{sfx}");
                     Console.WriteLine($"[디자이너등록] 등록 완료: {Path.GetFileName(folder)}{sfx}");
                     // 등록 직후 config 즉시 갱신 — "등록 → 바로 판짜기" 동선에서 5분 주기 대기 제거
@@ -1125,6 +1127,85 @@ namespace IllustratorAutomation
                 }
             }
             catch (Exception ex) { Console.WriteLine($"[디자이너등록] ingest 오류: {ex.Message}"); }
+        }
+
+        // ═══ `_출력` 픽업 복사 (2026-09-15) ═══
+        //
+        // ★왜 에이전트가 하는가 — 여태 이 복사는 **디자이너 PC 의 일러(ExtendScript `File.copy`)** 가 했다.
+        //   그런데 Z: 등록 20건을 PC 별로 가르면 실패가 한쪽에만 쏠려 있다(30.7.0 PC 잔해 0/9 ·
+        //   30.3.0 PC 잔해 9/11). ExtendScript 파일 I/O 는 일러 **버전마다 깨지는 레거시 층**이라,
+        //   그 층에 8MB 왕복(NAS 읽기+쓰기)을 얹어 둔 것이 가장 무거우면서 가장 약한 자리였다.
+        //   → .NET 이 중앙 1대에서 한다. 디자이너 PC·패널·JSX 어디에도 의존하지 않는다.
+        //
+        // ★순서가 오히려 정확해진다 — 종전 규칙은 "manifest 커밋 뒤에만"이었는데, 여기서는
+        //   **MES 가 등록을 실제로 받아들인 뒤**(`.ingested` 직후)다. 픽업 폴더는 "출력해도 된다"는
+        //   신호이므로 후자가 맞는 조건이다(2026-09-09: MES 에 주문 없는 EPS 188MB 가 픽업에 놓인 전례).
+        //
+        // ⚠️ **날짜는 작업 폴더 이름에서 딴다**(`YYYYMMDD_...`). 오늘 날짜로 때우면 **옛 작업이
+        //    오늘 픽업 폴더에 나타나** 아무도 시키지 않은 출력이 나간다. 규약을 안 따르는 이름은 건너뛴다.
+        /// <returns>실제로 새로 복사했으면 true</returns>
+        private static bool EnsurePickupCopy(string folder, string manifestPath, string sfx)
+        {
+            try
+            {
+                var name = Path.GetFileName(folder);
+                if (name.Length < 8 || !name.Substring(0, 8).All(char.IsDigit)) return false;
+                var ymd = name.Substring(0, 8);
+                var root = ResolveRegisterDir();
+                var node = JsonNode.Parse(File.ReadAllText(manifestPath));
+                var copied = false;
+                foreach (var key in new[] { "eps", "dxf" })
+                {
+                    var rel = node?["files"]?[key]?.GetValue<string>();
+                    if (string.IsNullOrWhiteSpace(rel)) continue;
+                    var src = Path.Combine(folder, rel);
+                    if (!File.Exists(src)) continue;
+                    var srcLen = new FileInfo(src).Length;
+                    if (srcLen <= 0) continue;                     // 0바이트는 산출물이 아니다
+                    var outDir = Path.Combine(root, "_출력", ymd);
+                    Directory.CreateDirectory(outDir);
+                    var dst = Path.Combine(outDir, Path.GetFileName(rel));
+                    if (File.Exists(dst) && new FileInfo(dst).Length == srcLen) continue;  // 이미 온전 = 멱등
+                    File.Copy(src, dst, true);
+                    // ★성공을 반환값이 아니라 **바이트 수**로 판정한다 — 잘린 사본을 남기면
+                    //   재단기가 그걸 집어 간다(호스트 `mesA0_copyVerify` 와 같은 규칙).
+                    if (new FileInfo(dst).Length != srcLen)
+                    {
+                        try { File.Delete(dst); } catch { /* 지우기 실패해도 아래 경고가 남는다 */ }
+                        Console.WriteLine($"[픽업] 복사 불완전 → 제거: {Path.GetFileName(rel)}");
+                        continue;
+                    }
+                    copied = true;
+                    Console.WriteLine($"[픽업] {ymd}/{Path.GetFileName(rel)} ({srcLen / 1024}KB)");
+                }
+                if (copied) WriteAgentLog($"픽업 복사: {name}{sfx}");
+                return copied;
+            }
+            catch (Exception ex) { Console.WriteLine($"[픽업] 오류({Path.GetFileName(folder)}): {ex.Message}"); return false; }
+        }
+
+        // 최근분만 훑어 빠진 픽업을 메운다 — 일러 쪽 복사가 실패했거나 에이전트가 멈춰 있던 구간 복구용.
+        // ⚠️ **오늘·어제로 묶는다.** 과거 전체를 메우면 2주 전 작업이 픽업 폴더에 되살아난다 =
+        //    아무도 지시하지 않은 출력. 오래된 누락은 기록으로 남기지, 신호로 되살리지 않는다.
+        private static void SweepPickupRecent(string root)
+        {
+            try
+            {
+                var okDays = new HashSet<string> { DateTime.Now.ToString("yyyyMMdd"), DateTime.Now.AddDays(-1).ToString("yyyyMMdd") };
+                foreach (var sub in Directory.GetDirectories(root))
+                {
+                    var name = Path.GetFileName(sub);
+                    if (name.StartsWith("_") || name.StartsWith(".") || name.Length < 8) continue;
+                    if (!okDays.Contains(name.Substring(0, 8))) continue;
+                    foreach (var mf in Directory.GetFiles(sub, "manifest*.json"))
+                    {
+                        var sfx = Path.GetFileNameWithoutExtension(mf).Substring("manifest".Length);
+                        if (!File.Exists(Path.Combine(sub, ".ingested" + sfx))) continue;   // 등록 확정분만
+                        EnsurePickupCopy(sub, mf, sfx);
+                    }
+                }
+            }
+            catch (Exception ex) { Console.WriteLine($"[픽업] 스윕 오류: {ex.Message}"); }
         }
 
         // _config\config.json 브로드캐스트: JSX(ExtendScript)는 HTTPS 호출 불가 → 에이전트가
