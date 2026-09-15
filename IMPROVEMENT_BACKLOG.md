@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-09-15T10:40:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-09-15T11:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,26 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **567** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 5 보안 + 인프라 (2026-09-15T11:20):**
+> - **방법**: 세션 시작 시 detached HEAD `c002a9e`(origin/main과 동일) → 로컬 `main`은 stale(`eecca71`, shallow-clone 앵커 유실 클래스 — `eecca71`은 `c002a9e`의 조상이 아님, force-update 아닌 로컬 캐시 stale) → `git fetch --unshallow` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area5 사이클 세션시작 HEAD `569b0b5`)**: `git log 569b0b5..HEAD` 21커밋, 웹앱 보안범위(`src/routes`·`src/utils`·`src/middleware`·`index.tsx`·`wrangler.toml`·`.github/workflows`) diff는 **3파일**(`orders/core.ts`+2·`orders/lifecycle.ts`+52·`quotations.ts` 컬럼추가) — 나머지 18커밋은 IA 에이전트(.NET 파일카피, Area5 웹보안 스코프 밖)·auto-improve 자기순환 chore·journey-loop 문서.
+> - **`orders/lifecycle.ts` 신규 `PATCH /:id/unship`(P9, 주문 레벨 출고취소) 보안 검증**: 조회에 `entityFilter(c,'orders')` 적용(cross-tenant 차단) · `requireRole('ADMIN','MANAGER')` · `billing_status IN(BILLED,PAID)` 가드 · 재고환원(`restoreStockLinesOnUnship`, 기존 검증필 유틸·이번 커밋에서 수정 없음)+카드/주문상태 갱신을 **하나의 `db.batch`**로 묶어 원자성 확보(누적캐시 원칙 §재고-원장 batch 준수) · SQL 전부 파라미터 바인딩. `orders.js` 버튼의 `order.order_number` 보간은 시스템 채번코드(XSS FP 카탈로그 기 등재)라 안전. 결함 0건.
+> - **`orders/core.ts`(item_type 컬럼 추가)·`quotations.ts`(specification 컬럼 추가·전파)**: 전부 기존 파라미터 바인딩 INSERT/SELECT에 컬럼 하나씩 추가하는 형태, `?`/바인드 개수 1:1 대응 확인(0596류 파라미터 밀림 없음) — 회귀 0.
+> - **standing scan 1: 시크릿 폴백** `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43` 1건(기존 FP, 변동없음).
+> - **standing scan 2: `body.password ||`/CI `secrets.X || '...'` 기본값** → 0건.
+> - **standing scan 3: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 75건·누락 **0건**(변동없음).
+> - **standing scan 4: `node scripts/check-xss.mjs`** — **102건**(직전 사이클과 동일, net-new 0 — 이번 churn이 `src/scripts/*.js`를 건드리지 않아 예상대로 불변).
+> - **standing scan 5: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지.
+> - **standing scan 6: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 7: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 10런 전부 `conclusion:success`(최종 HEAD `c002a9e` 포함).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **7**(#651·#650·#648·#647·#626·#617·#616, 변동없음) — #650(직전 Area5 발견, items with_stock entity 격리)·#626 모두 owner 판정 대기 유지, 재조치 불요.
+> - **backlog↔GitHub 절대값 재동기화**: open **7**(변동없음) · done **567**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-5-security-infra.md `line N` 잔여참조 재확인(0건, 이미 서술식). 이번 사이클은 신규 라우트(`PATCH /:id/unship`)가 기존 「IDOR 비대칭 탐지 규칙」·「누적 캐시 batch 원자성」 컨벤션을 처음부터 올바르게 준수 — 새 결함도 새 클래스도 없음.
+> - **백로그 트림 체크**: 사이클 로그 10건 → 이번 추가 후 11건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(churn 3파일 전부 보안 렌즈 clean), 자동수정 0건(고칠 결함 없음), done-sync: open 7(변동없음)·done 567(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-09-15T10:40):**
 > - **방법**: 세션 시작 시 detached HEAD `837b718`(origin/main과 동일) → 로컬 `main`은 stale(`eecca71`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
