@@ -168,6 +168,27 @@ async function ledgerNet(itemId, orderId) {
   const stock4 = await stockOf(stockItem.id)
   check('★중복 출고는 재차감 없음 (멱등)', stock4 === stock3, `before=${stock3} after=${stock4}`)
 
+  // ── 6b) 주문 단위 출고 취소(P9, 2026-09-15) — 카드 전부 해제 + 환원 + 상태 복원 ──
+  //    완전 출고된 주문은 보드에서 사라져 카드 단위 취소에 닿을 수 없어 주문 상세에 문을 냈다(PATCH /api/orders/:id/unship).
+  const orderUnship = await api('PATCH', `/api/orders/${orderId}/unship`, {})
+  check('주문 출고 취소 200', orderUnship.status === 200 && orderUnship.data?.success, `${orderUnship.status} ${orderUnship.text.slice(0, 140)}`)
+  const orderAfterOU = (await api('GET', `/api/orders/${orderId}`)).data?.data
+  check('주문 취소 후 PRINT_DONE', orderAfterOU?.status === 'PRINT_DONE', `status=${orderAfterOU?.status}`)
+  const cardsAfterOU = arr((await api('GET', `/api/cards?order_id=${orderId}&limit=50`)).data?.data)
+  check('★주문 취소 후 카드 shipped_at 전부 NULL', cardsAfterOU.length > 0 && cardsAfterOU.every((cd) => !cd.shipped_at), `cards=${cardsAfterOU.map((cd) => cd.shipped_at || 'null').join(',')}`)
+  const stockOU = await stockOf(stockItem.id)
+  check('★주문 취소 후 재고 원복', stockOU === stock0, `expected=${stock0} actual=${stockOU}`)
+  const ledOU = await ledgerNet(stockItem.id, orderId)
+  check('주문 취소 후 OUT 행 철회', ledOU.out === 0 && ledOU.net === 0, `out=${ledOU.out} net=${ledOU.net}`)
+  const orderUnship2 = await api('PATCH', `/api/orders/${orderId}/unship`, {})
+  check('출고 안 된 주문의 출고 취소는 400', orderUnship2.status === 400, `${orderUnship2.status} ${orderUnship2.text.slice(0, 100)}`)
+  // 7) 이 출고 취소를 검사하려면 다시 출고해 둔다
+  for (const cd of cards) await api('PATCH', `/api/cards/${cd.id}/status`, { status: 'PRINT_DONE' })
+  const reship2 = await api('POST', '/api/cards/bulk-ship', { card_ids: cards.map((cd) => cd.id) })
+  check('주문 취소 후 재출고 200', reship2.status === 200 && reship2.data?.success, `${reship2.status} ${reship2.text.slice(0, 140)}`)
+  const stockR2 = await stockOf(stockItem.id)
+  check(`재출고 후 재고 −${QTY} (주문 취소가 재차감을 막지 않는다)`, stockR2 === stock0 - QTY, `expected=${stock0 - QTY} actual=${stockR2}`)
+
   // ── 7) 출고(shipments) 취소도 환원해야 한다 ─────────────────────────────
   //    카드 출고가 ensureShipmentForOrder 로 shipment 를 만들어 두므로 그걸 취소한다.
   const shipList = arr((await api('GET', `/api/shipments?search=${encodeURIComponent(orderNumber)}&limit=20`)).data?.data)

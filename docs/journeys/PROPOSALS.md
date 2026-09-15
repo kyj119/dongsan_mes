@@ -35,8 +35,16 @@
 |---|---|---|---|---|---|
 | P12 | 구조 결정 + 결함 3 | **3축 품목(아크릴 박스·큐브간판·입간판 `W*D*H`)에 과금축이 없다** — 그리고 ② 주문서 FIXED 제작품 행엔 규격 텍스트 칸이 없고(유통 행에만) ① 견적 라인엔 `specification` 컬럼 자체가 없어 전환에서 소실 ③ 09-04 소급 분해가 3숫자 규격을 두 칸 cm 로 넣어 광학산PC 큐브 2건의 단가가 6,333,333·1,166,667원/㎡(직전가 제안 오염) | prod 2026년 `order_items.specification LIKE '%*%*%'` | 진짜 3축은 **9건/8개월**, 전부 간판 계열·건별 손 단가·7만~48만 → 전개면적/부피 축을 만들면 산식 쌍·픽스처·스냅샷·문서 5곳이 늘고 쓰는 라인이 없다. 「면적 판정=규격 종류 수」로도 3축 품목은 규격이 1회성 → **FIXED + 규격 텍스트 1칸이 정본**. 되돌릴 조건 = 월 5건 이상 반복 + 실제 ㎡×전개면적 규칙 | ✅ 고침(09-15, 용준님 「①②③ 전부」) — **②** 주문서 규격 텍스트 칸을 품목칸 아래로 옮기고 표시 조건을 「유통」→「`pricing_method !== 'AREA'`」(`itemRow.js syncSpecField`), 가로·세로는 참고 입력 유지, 수정화면의 유통 판정은 규격 유무가 아니라 `item_type`(`core.ts`) **①** `0614` `quotation_items.specification` + 견적서 같은 칸·INSERT/SELECT/전환 복사·프리필·견적 문서 표기(specification 우선) **③** `0615` 오분해 5라인 정정(width/height NULL, AREA 2건은 라인 축 FIXED + 단가=금액/수량). 회귀 = J1 「FIXED 제작품 3축 규격」 · J6 「규격 텍스트 왕복」. 설계 = `docs/superpowers/specs/2026-09-14-three-axis-and-single-spec-lines.md` |
 
+## 2026-09-15 J4b 「발주 없이 입고」 신설 중 발견
+
+| # | 축 | 현상 | 재현 | 판단 근거 | 판정 |
+|---|---|---|---|---|---|
+| P13 | 결함 | **「발주 없이 입고」가 발주만 만들고 입고 모달을 못 연다** — 수량 prompt 뒤 「발주서를 만들었습니다」 직후 「발주 생성 실패: loadPendingPOs is not defined」. 발주(`adhoc_source='RECEIVING'`)는 CONFIRMED 로 남고 입고는 사람이 목록에서 다시 찾아야 한다 | /receiving → 발주 없이 입고 → 공급처·품목·수량 | `receiving.js adhocCreate` 가 #328 에서 지워진 `loadPendingPOs()` 를 부른다(같은 파일 140줄에 「dead … 실경로는 loadReceivingQueue」 주석이 있다). 0611 기능이 붙을 때 옛 이름을 썼고 **어떤 게이트도 안 잡았다** — `check:dom` 은 getElementById 만 본다 | ✅ 고침(09-15) — `loadReceivingQueue()` 로. 회귀 = J4b(모달이 곧바로 열려 입고 확정까지). 제안: `?raw` 스크립트의 **미정의 전역 함수 호출 감사**(check:dom 의 함수판) — 다음 게이트 후보 |
+
 ## 판정 기록
 (용준님 판정 후 여기로 옮긴다: 날짜 · 번호 · 결정 · 반영 커밋)
+
+- 2026-09-15 · P13 · ①고침 — `receiving.js adhocCreate` `loadPendingPOs`→`loadReceivingQueue`. 회귀 = J4b.
 
 - 2026-09-15 · P12 · 결정=새 과금축 없음(FIXED+규격 텍스트) + ①②③ 고침 — `0614`·`0615`, `itemRow.js`·`parent.js`·`quotationForm.js`·`quotations.ts`·`core.ts`·견적 뷰 2곳. 회귀 = J1·J6 각 1단계(36단계).
 

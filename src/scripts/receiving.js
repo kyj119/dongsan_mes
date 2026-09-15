@@ -546,7 +546,10 @@ async function adhocCreate(supplierId, supplierName, item) {
     var poId = res.data && res.data.data && (res.data.data.po_id || res.data.data.id)
     if (!poId) { showToast('발주 생성 응답을 읽지 못했습니다.', 'error'); return }
     showToast('발주서를 만들었습니다. 이어서 입고를 확정하세요.', 'success')
-    loadPendingPOs()
+    // ★loadPendingPOs 는 #328 에서 지워진 이름이다(위 140줄 주석). 여기가 그 이름을 부르는 바람에 ReferenceError 가
+    //   try 에 잡혀 「발주 생성 실패」 토스트가 뜨고 입고 모달이 영영 안 열렸다 — 발주만 남고 입고는 사람이 다시 찾아야 했다.
+    //   J4b 여정(2026-09-15, P13)이 잡았다. 실경로 = loadReceivingQueue.
+    loadReceivingQueue()
     openReceiveModal(poId, currentScope)
   } catch (e) {
     showToast('발주 생성 실패: ' + (e.response && e.response.data ? (e.response.data.error || e.response.data.message) : e.message), 'error')

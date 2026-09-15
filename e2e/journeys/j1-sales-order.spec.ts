@@ -12,6 +12,7 @@ test.describe.serial('J1 영업: 주문서 작성', () => {
   let clientId = 0
   let uiAmount = 0
   let uiTotal = 0
+  let axisOrderId = 0
 
   test('거래처 검색 → 품목 → 규격·수량 → 저장', async ({ journey: page, signals }) => {
     await page.goto('/order-form')
@@ -175,6 +176,7 @@ test.describe.serial('J1 영업: 주문서 작성', () => {
 
     const o = db<{ id: number; order_number: string }>(`SELECT id, order_number FROM orders WHERE notes LIKE '%${MARK} J1 3축%' ORDER BY id DESC LIMIT 1`)[0]
     expect(o, '3축 주문이 DB 에 생겨야 한다').toBeTruthy()
+    axisOrderId = o.id
     const line = db<{ specification: string | null; width: number | null; height: number | null; amount: number; pricing_method: string }>(
       `SELECT specification, width, height, amount, pricing_method FROM order_items WHERE order_id=${o.id}`,
     )[0]
@@ -193,6 +195,28 @@ test.describe.serial('J1 영업: 주문서 작성', () => {
     await row.click()
     await expect(page.getByText('30*20*15').first(), '상세에 규격 텍스트').toBeVisible({ timeout: 10_000 })
     expectClean(signals, '3축 규격')
+  })
+
+  test('수정 왕복 — 3축 주문을 수정 화면에서 열어 재저장해도 규격 텍스트가 산다', async ({ journey: page, signals }) => {
+    test.skip(!axisOrderId, '앞 단계 실패')
+    // P12 ② 가 수정화면 복원을 바꿨다(유통 판정 = 규격 유무 → item_type). PUT /orders/:id 는 라인 전량 delete+reinsert 라
+    //   폼이 복원 못 한 값은 재저장에서 조용히 사라진다 — 저장 경로만 보던 회귀에 수정 경로를 더한다(2026-09-15).
+    await page.goto(`/order-form?edit=${axisOrderId}`)
+    await page.waitForLoadState('domcontentloaded')
+    const spec = page.locator('[name="spec_1"]')
+    await expect(spec, '수정화면에 규격 텍스트 복원').toHaveValue('30*20*15', { timeout: 15_000 })
+    await expect(spec, 'FIXED 제작품이라 규격 칸이 보인다').toBeVisible()
+    await expect(page.locator('[name="width_1"]'), '제작품이라 가로·세로는 잠기지 않는다').toBeEnabled()
+    await expect(page.locator('#item_dist_badge_1'), '유통 뱃지가 붙으면 안 된다').toBeHidden()
+    await page.locator('#submitBtn').click()
+    await page.waitForURL(/\/orders/, { timeout: 30_000 })
+    await page.waitForLoadState('domcontentloaded')
+    const lines = db<{ specification: string | null; width: number | null; amount: number }>(`SELECT specification, width, amount FROM order_items WHERE order_id=${axisOrderId}`)
+    expect(lines.length, '라인 수 불변').toBe(1)
+    expect(lines[0].specification, '재저장 후에도 규격 텍스트 유지').toBe('30*20*15')
+    expect(Number(lines[0].width) || 0, '3축은 여전히 2칸으로 안 뜯긴다').toBe(0)
+    expect(Number(lines[0].amount), '금액 불변').toBe(210000)
+    expectClean(signals, '수정 왕복')
   })
 
   test('검산: 라인 금액·카드 자동 생성', async () => {
