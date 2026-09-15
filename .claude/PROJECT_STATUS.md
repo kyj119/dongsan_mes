@@ -2,6 +2,8 @@
 
 > **운영 규칙(2026-08-10 확정)**: ①완료(✅)=아래 인덱스 1줄(제목+남은 것)만, 경위 전문은 `PROJECT_STATUS_ARCHIVE.md`에 직접 쓴다 (**「✅ 최근 완료」 항목 400자 상한** — 2026-08-19 게이트 강제, 초과 시 큰 것부터 지목) ②의미 없는 대기=보류함으로 과감히 이관 ③대기 항목=빠른 처리 우선 ④"커밋·미배포" 기록은 믿지 말고 prod 실측(deploy.yml=main push 자동배포). 게이트=`node scripts/doc-diet-audit.cjs`(훅·세션 시작 배너 연동).
 
+> **✅ prod 2026-09-15 `b8ff9170` — 감청(navy) 리디자인(앱·포털 de-AI 톤 통일)** — 파랑#3b82f6→감청#1E3A5F·슬레이트→웜뉴트럴·Inter→Pretendard·카드 평탄화·알약→각진뱃지·무지개KPI→먹색(위험·심각도색만). 전역토큰(`--c-primary`·`--c-info`·Tailwind blue 전셰이드 리맵)+인라인 hex/그라디언트/틴트 통일(독립페이지·인쇄문서·포털 자체셸). 검증=journey40/40·local-e2e4/4·smoke:prod129/129·라이브 12화면(라·다크) Playwright 이상0·옛`#3b82f6`=0. 정본=`shared-styles.ts`. 남은=없음
+
 > **✅ prod 데이터 2026-09-14 — 동산 6~8월 주문 회계반영(BILLED) 1,301건 / 525,179,143원** — 이관분(이카운트 기인식)이라 이중계상 없이 반영. 8월 1,257(배송8월 1,246+8월주문·7월배송 11)·7월 40·6월 4, 전부 SHIPPED·미반영 → billing_status BILLED(order_billing_groups+orders 미러, accounting_date=배송일 기준 06-29~08-31), 반영자 김용준(9). 잔여 미반영 0. 표준 bulk-bill 동일 로직·부수효과 없음(AR=그룹 파생). 롤백=대상 주문(entity1·delivery 2026-06~08·billed_by 9) billing_status→NULL.
 
 > **✅ prod 2026-09-14 `6fc6035f` — 출력→카드 매칭 게이트 배선 + 그 게이트가 잡은 결함 3건** — ★`test:print-match` 는 등록 후 **한 번도 안 돌아 4일간 빨간불**이었다: ①에이전트 경로 PRINT_DONE 이 `shipment_ready` 를 안 세웠다(`lifecycle.ts:107` 을 복사하며 한 단계 누락 → 출력 끝난 주문이 출고에서 미완성) ②흡수 학습 링크는 `card_number` 가 NULL 이라 `print_events`·검색이 **패널 경로에 장님** ③`PUT /orders/:id` 가 파일맵을 끊고 되붙이지 않아 **주문서 한 번 수정하면 출력완료가 영영 카드에 못 닿았다**(시나리오 E 신설·수정 전 빨간불 확인). 배선=`test:local-e2e`(서버 필요 4종 → `ship:gate`). 검증=journey 31/31·local-e2e 4/4·smoke:prod 129/129·쓰기 5/5. 남은=**기존 `shipment_ready=0` 소급 판단**
@@ -22,9 +24,6 @@
 
 
 > **📋 2026-09-04 조사 — 게릴라·원단 두 건 다 「전제가 바뀌었다」** — 경위 전문 = `PROJECT_STATUS_ARCHIVE.md` §2026-09-04 게릴라·원단 조사. 남은=**배너 900원 미만 229라인 업무판단** · 타공시트·머리띠·투명패트·UV텐트천 **4종 자재 판단**
-
-
-> **🗑️ prod 데이터 2026-08-13 — 8월 주문 510건 전량 삭제(용준님 요청)** — 백업 `_bak_0813_aug_*` prod 상주 · **롤백 SQL=`docs/analysis/2026-08-13-aug-orders-delete-rollback.sql`**. 경위 전문 = ARCHIVE §2026-08-13 8월 주문 삭제 · 그 데이터를 만든 08-12 적재·소급보정 전문 = ARCHIVE §2026-08-12 2건(★`POST /api/orders` 가 `created_at`·`order_number`·`status` 를 안 받아 **소급은 후처리가 유일**). 남은=**재적재 여부 미정**(재적재 시 8/12 이후분 재수출 필요 · 정리 SQL 24건 `prune_links.sql` 미실행)
 
 
 ## ✅ 최근 완료 — 후속 대기 인덱스 (경위·상세 전문 = `PROJECT_STATUS_ARCHIVE.md`)
