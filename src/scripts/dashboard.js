@@ -43,15 +43,22 @@ async function loadDashboardStats() {
             // Restore KPI cards from skeleton (Bento Grid)
             var kpiArea = document.getElementById('kpiArea');
             if (kpiArea && kpiArea.querySelector('.ds-skeleton')) {
+              // C안 하이브리드(2026-09-16) — dashboard.ts 와 동일 구조. stat* ID·onclick 보존.
               kpiArea.innerHTML =
-                '<div class="ds-card ds-bento-hero"><div class="text-sm font-medium mb-2" style="color:var(--c-text-secondary)">이번 달 매출</div><div style="font-size:34px;font-weight:700;color:var(--c-text);font-variant-numeric:tabular-nums;line-height:1.1;letter-spacing:-0.02em" id="statMonthRevenue">-</div><div class="flex items-center gap-2 mt-3" id="statMonthChange" style="color:var(--c-text-muted);font-size:var(--fs-sm)">-</div><div class="flex items-center gap-4 mt-auto pt-4" style="border-top:1px solid var(--c-border-light)"><div><div class="text-xs" style="color:var(--c-text-muted)">오늘</div><div class="font-bold tabular-nums" style="color:var(--c-text)" id="statTodayRevenueSub">-</div></div></div></div>'
-                + '<div class="ds-card ds-card-compact"><div class="text-sm mb-1" style="color:var(--c-text-secondary)">오늘 주문</div><div class="text-3xl font-bold tabular-nums" style="color:var(--c-text)" id="statTodayOrders">-</div></div>'
-                + '<div class="ds-card ds-card-compact cursor-pointer" onclick="location.href=\'/orders?priority=URGENT\'" id="kpiUrgentCard"><div class="text-sm mb-1" style="color:var(--c-text-secondary)">긴급 주문</div><div class="text-3xl font-bold tabular-nums" style="color:var(--c-text)" id="statUrgentCount">-</div><div class="text-xs mt-1" style="color:var(--c-text-muted)">진행 중 긴급건</div></div>'
-                + '<div class="ds-card ds-card-compact"><div class="text-sm mb-1" style="color:var(--c-text-secondary)">생산 현황</div><div class="text-3xl font-bold tabular-nums" style="color:var(--c-text)" id="statProductionOrders">-</div><div class="text-xs mt-1" style="color:var(--c-text-muted)">출고대기 <span class="font-semibold tabular-nums" id="statShipmentReady">-</span>건</div></div>'
-                + '<div class="ds-card ds-card-compact cursor-pointer" onclick="location.href=\'/shipments\'"><div class="text-sm mb-1" style="color:var(--c-text-secondary)">오늘 출고</div><div class="text-3xl font-bold tabular-nums" style="color:var(--c-text)" id="statTodayShipment">-</div><div class="text-xs mt-1 tabular-nums" id="statTodayShipmentSub" style="color:var(--c-text-muted)">-</div></div>'
-                + '<div class="ds-card ds-card-compact"><div class="text-sm mb-1" style="color:var(--c-text-secondary)">미수금</div><div class="text-3xl font-bold tabular-nums" style="color:var(--c-danger)" id="statKpiReceivables">-</div><div class="text-xs mt-1 tabular-nums" id="statKpiOver30" style="color:var(--c-text-muted)">30일+ -</div></div>'
-                + '<div class="ds-card ds-card-compact"><div class="text-sm mb-1" style="color:var(--c-text-secondary)">수금률</div><div class="text-3xl font-bold tabular-nums" style="color:var(--c-text)" id="statCollectionRate">-</div><div class="text-xs mt-1 tabular-nums" style="color:var(--c-text-muted)" id="statCollectionDetail">이번 달</div></div>'
-                + '<div class="ds-card ds-card-compact cursor-pointer" onclick="location.href=\'/orders\'"><div class="text-sm mb-1" style="color:var(--c-text-secondary)">납기 준수율</div><div class="text-3xl font-bold tabular-nums" style="color:var(--c-text)" id="statOnTimeRate">-</div><div class="text-xs mt-1" style="color:var(--c-text-muted)">이번 달 납기 기준</div></div>';
+                '<div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">'
+                + '<div class="ds-card lg:col-span-2 cursor-pointer" style="display:flex;flex-direction:column" onclick="location.href=\'/ledger\'"><div class="ds-hero-metric"><span class="hm-label">이번 달 매출</span><span class="hm-value" id="statMonthRevenue">-</span><div class="flex items-center gap-2 mt-2" id="statMonthChange" style="color:var(--c-text-muted);font-size:var(--fs-sm)">-</div></div><div class="flex items-center gap-8 mt-auto pt-4" style="border-top:1px solid var(--c-border-light)"><div><div class="text-xs" style="color:var(--c-text-muted)">오늘</div><div class="font-bold tabular-nums" style="color:var(--c-text)" id="statTodayRevenueSub">-</div></div><div><div class="text-xs" style="color:var(--c-text-muted)">오늘 주문</div><div class="font-bold tabular-nums" style="color:var(--c-text)" id="statTodayOrders">-</div></div><div><div class="text-xs" style="color:var(--c-text-muted)">납기 준수</div><div class="font-bold tabular-nums" style="color:var(--c-text)" id="statOnTimeRate">-</div></div></div></div>'
+                + '<div class="ds-card"><div class="ds-card-header" style="margin-bottom:var(--space-sm);padding-bottom:var(--space-sm)"><h3 class="ds-card-title" style="font-size:var(--fs-base)">주의가 필요한 것</h3></div><div class="ds-attn">'
+                + '<div class="ds-attn-item" id="kpiUrgentCard" onclick="location.href=\'/orders?priority=URGENT\'"><span class="ds-dot st-red"></span>긴급 주문<span class="aa-n" id="statUrgentCount">-</span></div>'
+                + '<div class="ds-attn-item hidden" id="dashPendingReview" onclick="location.href=\'/inspections\'"><span class="ds-dot st-amber"></span>검수 대기<span class="aa-n warn" id="dashPendingReviewCount">0</span></div>'
+                + '<div class="ds-attn-item" onclick="location.href=\'/shipments\'"><span class="ds-dot st-blue"></span>출고 대기<span class="aa-n" id="statShipmentReady">-</span></div>'
+                + '<div class="ds-attn-item" onclick="location.href=\'/receivables\'"><span class="ds-dot st-red"></span>미수 30일+<span class="aa-n" id="statKpiOver30">-</span></div>'
+                + '</div></div></div>'
+                + '<div class="ds-minikpi">'
+                + '<div class="mk" onclick="location.href=\'/cards\'"><div class="mk-l">생산 현황</div><div class="mk-v" id="statProductionOrders">-</div></div>'
+                + '<div class="mk" onclick="location.href=\'/shipments\'"><div class="mk-l">오늘 출고</div><div class="mk-v" id="statTodayShipment">-</div></div>'
+                + '<div class="mk" onclick="location.href=\'/receivables\'"><div class="mk-l">미수금</div><div class="mk-v" style="color:var(--c-danger)" id="statKpiReceivables">-</div></div>'
+                + '<div class="mk" onclick="location.href=\'/receivables\'"><div class="mk-l">수금률</div><div class="mk-v" id="statCollectionRate">-</div><div style="font-size:10px;color:var(--c-text-muted);margin-top:2px" class="tabular-nums" id="statCollectionDetail">이번 달</div></div>'
+                + '</div>';
             }
             // 오늘 주문 KPI (with count-up animation)
             var todayOrders = stats.today_order_count || 0;
@@ -78,21 +85,14 @@ async function loadDashboardStats() {
             // 오늘 출고 예정 KPI
             var todayShipEl = document.getElementById('statTodayShipment');
             animateNumber(todayShipEl, stats.today_shipment_due || 0, { suffix: '건' });
-            var todayShipSub = document.getElementById('statTodayShipmentSub');
-            if (todayShipSub) todayShipSub.textContent = '출고대기 ' + (stats.shipment_ready_count || 0) + '건';
 
             // KPI 5: 긴급 주문 건수
             var urgentCount = stats.urgent_count || 0;
             var urgentEl = document.getElementById('statUrgentCount');
-            animateNumber(urgentEl, urgentCount, { suffix: '건' });
-            var urgentCard = document.getElementById('kpiUrgentCard');
-            if (urgentCard) {
-                if (urgentCount > 0) {
-                    urgentCard.style.borderLeft = '3px solid var(--c-orange)';
-                } else {
-                    urgentCard.style.borderLeft = '';
-                }
-            }
+            if (urgentEl) urgentEl.textContent = urgentCount + '건';
+            // 긴급 0건이면 주의 항목 톤 다운(빨강 유지하되 흐리게)
+            var urgentItem = document.getElementById('kpiUrgentCard');
+            if (urgentItem) urgentItem.style.opacity = urgentCount > 0 ? '1' : '0.5';
 
             // KPI 6: 이번 달 수금률
             var monthBilled = stats.month_billed || 0;
@@ -234,14 +234,16 @@ async function loadReceivables() {
         // KPI 카드 미수금 업데이트
         var kpiRecEl = document.getElementById('statKpiReceivables');
         if (kpiRecEl) kpiRecEl.textContent = fmtAmtShort(d.total_receivables || 0);
+        // 주의 항목 "미수 30일+" 의 금액(aa-n). 라벨은 HTML, 여기선 금액만. over30 있으면 빨강.
         var over30El = document.getElementById('statKpiOver30');
         if (over30El) {
             var over30 = (d.aging && d.aging.over_30 || 0) + (d.aging && d.aging.over_60 || 0) + (d.aging && d.aging.over_90 || 0);
-            var over30Text = '30일+ ' + over30.toLocaleString() + '원';
             if (over30 > 0) {
-                over30El.innerHTML = '<span class="text-red-500 font-semibold"><i class="fas fa-triangle-exclamation mr-0.5"></i>' + over30Text + '</span>';
+                over30El.textContent = fmtAmtShort(over30);
+                over30El.style.color = 'var(--c-danger)';
             } else {
-                over30El.textContent = '연체 없음';
+                over30El.textContent = '없음';
+                over30El.style.color = '';
             }
         }
 

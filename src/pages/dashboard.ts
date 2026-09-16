@@ -10,59 +10,47 @@ export function dashboardPage(c: Context<HonoEnv>) {
     pageContent: `
             <!-- 이카운트 병행 기간 안내 (겹칠 때만 채워진다 — shell.js) -->
             <div id="dashCompletenessNotice"></div>
-            <!-- Quick Stats — 절제된 지표(2026-09-15): 무지개색·장식아이콘·좌측레일 제거. 숫자는 먹색,
-                 색은 예외(미수금 위험)에만. 매출 하나만 크기로 강조. JS가 ID로 값을 채우므로 ID·onclick 전부 보존. -->
-            <div id="kpiArea" class="ds-bento mb-6">
-                <!-- Hero: 이번 달 매출 (2col × 2row) -->
-                <div class="ds-card ds-bento-hero cursor-pointer" onclick="location.href='/ledger'" title="거래처 원장으로 이동">
-                    <div class="text-sm font-medium mb-2" style="color:var(--c-text-secondary)">이번 달 매출</div>
-                    <div style="font-size:34px;font-weight:700;color:var(--c-text);font-variant-numeric:tabular-nums;line-height:1.1;letter-spacing:-0.02em" id="statMonthRevenue">-</div>
-                    <div class="flex items-center gap-2 mt-3" id="statMonthChange" style="color:var(--c-text-muted);font-size:var(--fs-sm)">-</div>
-                    <div class="flex items-center gap-4 mt-auto pt-4" style="border-top:1px solid var(--c-border-light)">
-                        <div><div class="text-xs" style="color:var(--c-text-muted)">오늘</div><div class="font-bold tabular-nums" style="color:var(--c-text)" id="statTodayRevenueSub">-</div></div>
-                    </div>
+            <!-- 대시보드 C안: 하이브리드(2026-09-16) — 매출 hero + 주의 요약 + 미니 KPI 행.
+                 JS가 ID로 값을 채우므로 stat* ID·onclick 전부 보존(위치만 재배치). -->
+            <div id="kpiArea" class="mb-6">
+              <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+                <!-- 매출 hero (2col) -->
+                <div class="ds-card lg:col-span-2 cursor-pointer" style="display:flex;flex-direction:column" onclick="location.href='/ledger'" title="거래처 원장으로 이동">
+                  <div class="ds-hero-metric">
+                    <span class="hm-label">이번 달 매출</span>
+                    <span class="hm-value" id="statMonthRevenue">-</span>
+                    <div class="flex items-center gap-2 mt-2" id="statMonthChange" style="color:var(--c-text-muted);font-size:var(--fs-sm)">-</div>
+                  </div>
+                  <div class="flex items-center gap-8 mt-auto pt-4" style="border-top:1px solid var(--c-border-light)">
+                    <div><div class="text-xs" style="color:var(--c-text-muted)">오늘</div><div class="font-bold tabular-nums" style="color:var(--c-text)" id="statTodayRevenueSub">-</div></div>
+                    <div><div class="text-xs" style="color:var(--c-text-muted)">오늘 주문</div><div class="font-bold tabular-nums" style="color:var(--c-text)" id="statTodayOrders">-</div></div>
+                    <div><div class="text-xs" style="color:var(--c-text-muted)">납기 준수</div><div class="font-bold tabular-nums" style="color:var(--c-text)" id="statOnTimeRate">-</div></div>
+                  </div>
                 </div>
-                <!-- 오늘 주문 -->
-                <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/orders'" title="주문 관리로 이동">
-                    <div class="text-sm mb-1" style="color:var(--c-text-secondary)">오늘 주문</div>
-                    <div class="text-3xl font-bold tabular-nums" style="color:var(--c-text)" id="statTodayOrders">-</div>
+                <!-- 주의 요약 -->
+                <div class="ds-card">
+                  <div class="ds-card-header" style="margin-bottom:var(--space-sm);padding-bottom:var(--space-sm)">
+                    <h3 class="ds-card-title" style="font-size:var(--fs-base)">주의가 필요한 것</h3>
+                  </div>
+                  <div class="ds-attn">
+                    <div class="ds-attn-item" id="kpiUrgentCard" onclick="location.href='/orders?priority=URGENT'" title="긴급 주문">
+                      <span class="ds-dot st-red"></span>긴급 주문<span class="aa-n" id="statUrgentCount">-</span></div>
+                    <div class="ds-attn-item hidden" id="dashPendingReview" onclick="location.href='/inspections'" title="검수 대기">
+                      <span class="ds-dot st-amber"></span>검수 대기<span class="aa-n warn" id="dashPendingReviewCount">0</span></div>
+                    <div class="ds-attn-item" onclick="location.href='/shipments'" title="출고 대기">
+                      <span class="ds-dot st-blue"></span>출고 대기<span class="aa-n" id="statShipmentReady">-</span></div>
+                    <div class="ds-attn-item" onclick="location.href='/receivables'" title="30일 초과 미수">
+                      <span class="ds-dot st-red"></span>미수 30일+<span class="aa-n" id="statKpiOver30">-</span></div>
+                  </div>
                 </div>
-                <!-- 긴급 주문 -->
-                <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/orders?priority=URGENT'" id="kpiUrgentCard">
-                    <div class="text-sm mb-1" style="color:var(--c-text-secondary)">긴급 주문</div>
-                    <div class="text-3xl font-bold tabular-nums" style="color:var(--c-text)" id="statUrgentCount">-</div>
-                    <div class="text-xs mt-1" style="color:var(--c-text-muted)">진행 중 긴급건</div>
-                </div>
-                <!-- 생산 현황 -->
-                <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/cards'" title="현장 대시보드로 이동">
-                    <div class="text-sm mb-1" style="color:var(--c-text-secondary)">생산 현황</div>
-                    <div class="text-3xl font-bold tabular-nums" style="color:var(--c-text)" id="statProductionOrders">-</div>
-                    <div class="text-xs mt-1" style="color:var(--c-text-muted)">출고대기 <span class="font-semibold tabular-nums" id="statShipmentReady">-</span>건</div>
-                </div>
-                <!-- 오늘 출고 -->
-                <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/shipments'">
-                    <div class="text-sm mb-1" style="color:var(--c-text-secondary)">오늘 출고</div>
-                    <div class="text-3xl font-bold tabular-nums" style="color:var(--c-text)" id="statTodayShipment">-</div>
-                    <div class="text-xs mt-1 tabular-nums" id="statTodayShipmentSub" style="color:var(--c-text-muted)">-</div>
-                </div>
-                <!-- 미수금 (유일한 예외 색 = 봐야 하는 지표) -->
-                <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/receivables'" title="미수금 현황으로 이동">
-                    <div class="text-sm mb-1" style="color:var(--c-text-secondary)">미수금</div>
-                    <div class="text-3xl font-bold tabular-nums" style="color:var(--c-danger)" id="statKpiReceivables">-</div>
-                    <div class="text-xs mt-1 tabular-nums" id="statKpiOver30" style="color:var(--c-text-muted)">30일+ -</div>
-                </div>
-                <!-- 수금률 -->
-                <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/receivables'" title="미수금 현황으로 이동">
-                    <div class="text-sm mb-1" style="color:var(--c-text-secondary)">수금률</div>
-                    <div class="text-3xl font-bold tabular-nums" style="color:var(--c-text)" id="statCollectionRate">-</div>
-                    <div class="text-xs mt-1 tabular-nums" style="color:var(--c-text-muted)" id="statCollectionDetail">이번 달</div>
-                </div>
-                <!-- 납기 준수율 -->
-                <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/orders'" title="이번 달 납기(delivery_date) 주문 중 완전출고일이 납기일 이내인 비율 — 클릭: 주문 관리">
-                    <div class="text-sm mb-1" style="color:var(--c-text-secondary)">납기 준수율</div>
-                    <div class="text-3xl font-bold tabular-nums" style="color:var(--c-text)" id="statOnTimeRate">-</div>
-                    <div class="text-xs mt-1" style="color:var(--c-text-muted)">이번 달 납기 기준</div>
-                </div>
+              </div>
+              <!-- 미니 KPI 행 -->
+              <div class="ds-minikpi">
+                <div class="mk" onclick="location.href='/cards'" title="현장 대시보드"><div class="mk-l">생산 현황</div><div class="mk-v" id="statProductionOrders">-</div></div>
+                <div class="mk" onclick="location.href='/shipments'" title="출고 관리"><div class="mk-l">오늘 출고</div><div class="mk-v" id="statTodayShipment">-</div></div>
+                <div class="mk" onclick="location.href='/receivables'" title="미수금 현황"><div class="mk-l">미수금</div><div class="mk-v" style="color:var(--c-danger)" id="statKpiReceivables">-</div></div>
+                <div class="mk" onclick="location.href='/receivables'" title="수금률"><div class="mk-l">수금률</div><div class="mk-v" id="statCollectionRate">-</div><div style="font-size:10px;color:var(--c-text-muted);margin-top:2px" class="tabular-nums" id="statCollectionDetail">이번 달</div></div>
+              </div>
             </div>
 
             <!-- 계약 만료 임박 경고 카드 -->
@@ -70,13 +58,6 @@ export function dashboardPage(c: Context<HonoEnv>) {
               <div class="text-sm" style="color:var(--c-text-secondary)"><i class="fas fa-file-contract" style="color:var(--c-warning);margin-right:4px"></i>계약 만료 임박</div>
               <div class="text-2xl font-bold" style="color:var(--c-warning)" id="dashContractExpiringCount">0</div>
               <div class="text-xs" style="color:var(--c-text-muted)">30일 이내 만료 — 클릭하여 확인</div>
-            </div>
-
-            <!-- 검수 대기 경고 카드 (PENDING_REVIEW 건수 > 0 시 노출) -->
-            <div id="dashPendingReview" class="hidden bg-white rounded-lg border border-red-200 shadow-sm hover:shadow-md transition-shadow p-4 mb-6 cursor-pointer" onclick="location.href='/inspections'">
-                <div class="text-sm text-gray-600"><i class="fas fa-exclamation-triangle text-red-400 mr-1"></i>검수 대기</div>
-                <div class="text-2xl font-bold text-red-600 tabular-nums" id="dashPendingReviewCount">0</div>
-                <div class="text-xs text-gray-400 mt-1">관리자 확인 필요 — 클릭하여 검수 페이지 이동</div>
             </div>
 
             <!-- 금일 납기 경고 + 주문 추이 + 카드 분포 -->

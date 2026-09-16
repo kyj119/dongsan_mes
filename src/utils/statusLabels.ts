@@ -144,12 +144,19 @@ window.MES_STATUS = (function(){
     chipClass: function(kind, s){ return toneChip[api.tone(kind, s)] || toneChip.gray; },
     dotClass: function(kind, s){ return toneDot[api.tone(kind, s)] || toneDot.gray; },
     dotBgClass: function(kind, s){ return toneDotBg[api.tone(kind, s)] || toneDotBg.gray; },
+    label: function(kind, s){ return pick(kind).l[s] || s; },
     badge: function(kind, s){
       var p = pick(kind);
       return '<span class="' + api.badgeClass(kind, s) + '"><i class="' + api.icon(kind, s) + ' text-[9px] mr-1"></i>' + (p.l[s] || s) + '</span>';
+    },
+    // Linear형 목록용 상태(2026-09-16): 색 배경 뱃지 대신 점+글자. 상세/카드엔 badge 유지.
+    dot: function(kind, s){
+      var p = pick(kind);
+      return '<span class="ds-status st-' + api.tone(kind, s) + '"><span class="ds-dot"></span>' + (p.l[s] || s) + '</span>';
     }
   };
   return api;
 })();
 window.dsStatusBadge = window.MES_STATUS.badge;
+window.dsStatusDot = window.MES_STATUS.dot;
 `

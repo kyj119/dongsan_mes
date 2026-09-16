@@ -3,11 +3,11 @@ export const SHARED_CSS = `
 <style>
   /* === Design Tokens === */
   :root {
-    /* 강조색 = 감청(紺靑, prussian navy). 파랑 #3b82f6에서 전환(2026-09-15) — "AI 기본색" 제거 */
-    --c-primary: #1E3A5F;
-    --c-primary-hover: #16304F;
-    --c-primary-light: #E9EEF4;
-    --c-primary-dark: #14273F;
+    /* 강조색 = 감청(紺靑). 채도↑(2026-09-16) — 너무 어두워 안 보인다는 피드백 → 또렷한 코발트-네이비 */
+    --c-primary: #23528C;
+    --c-primary-hover: #1C4577;
+    --c-primary-light: #E6EDF6;
+    --c-primary-dark: #163A66;
     --c-success: #16a34a;
     --c-success-light: #dcfce7;
     --c-warning: #d97706;
@@ -15,8 +15,8 @@ export const SHARED_CSS = `
     --c-danger: #dc2626;
     --c-danger-light: #fee2e2;
     /* info = 감청 계열로 통일(2026-09-15) — 밝은 파랑(#2563eb) 잔재 제거. ds-alert-info·ds-badge-blue·토스트 info */
-    --c-info: #1E3A5F;
-    --c-info-light: #E9EEF4;
+    --c-info: #23528C;
+    --c-info-light: #E6EDF6;
     --c-purple: #7c3aed;
     --c-purple-light: #f5f3ff;
     --c-orange: #ea580c;
@@ -24,15 +24,15 @@ export const SHARED_CSS = `
     --c-teal: #0d9488;
     --c-teal-light: #f0fdfa;
     /* 중립색 = 웜뉴트럴. 슬레이트(Tailwind 기본)에서 전환 — "고른 회색"으로 AI티 제거 */
-    --c-bg: #EFEEEA;
+    --c-bg: #F3F3F2;
     --c-surface: #ffffff;
-    --c-surface-secondary: #F5F4F0;
-    --c-surface-stripe: #F7F6F2;
-    --c-border: #E4E1DA;
-    --c-border-light: #EDEBE4;
-    --c-text: #1E1C18;
-    --c-text-secondary: #57534B;
-    --c-text-muted: #8B867B;
+    --c-surface-secondary: #F6F6F5;
+    --c-surface-stripe: #F8F8F7;
+    --c-border: #E5E4E0;
+    --c-border-light: #EDECE8;
+    --c-text: #16140F;
+    --c-text-secondary: #46423A;
+    --c-text-muted: #6E6960;
     --c-sidebar: #1B2A3D;
     --c-sidebar-hover: #26384E;
     --c-sidebar-border: #2C3E54;
@@ -57,33 +57,35 @@ export const SHARED_CSS = `
     /* 다크 = 웜뉴트럴 + 대비/채도 완화(2026-09-16) — 눈부심(halation) 해소.
        배경을 순흑에서 띄우고(#1a1917), 텍스트는 순백 대신 웜 오프화이트로 낮추고(#d4d0c7),
        시맨틱 색은 형광에서 톤다운. 라이트(웜뉴트럴)와 한 계열. */
-    --c-bg: #1a1917;
-    --c-surface: #232120;
-    --c-surface-secondary: #1f1e1c;
-    --c-surface-stripe: #201f1d;
-    --c-text: #d4d0c7;
-    --c-text-secondary: #a49e90;
-    --c-text-muted: #78726a;
-    --c-border: #34312c;
-    --c-border-light: #282521;
-    --c-primary: #86A9CE;
-    --c-primary-hover: #97B6D8;
-    --c-primary-light: rgba(134,169,206,0.12);
-    --c-primary-dark: #5A7BA0;
-    --c-success: #6FBF8E;
-    --c-success-light: rgba(111,191,142,0.12);
-    --c-warning: #D9B45C;
-    --c-warning-light: rgba(217,180,92,0.12);
-    --c-danger: #E0897E;
-    --c-danger-light: rgba(224,137,126,0.12);
-    --c-info: #86A9CE;
-    --c-info-light: rgba(134,169,206,0.12);
-    --c-purple: #A596D0;
-    --c-purple-light: rgba(165,150,208,0.12);
-    --c-orange: #D49A6A;
-    --c-orange-light: rgba(212,154,106,0.12);
-    --c-teal: #5FBFB0;
-    --c-teal-light: rgba(95,191,176,0.12);
+    /* 다크 재조정(2026-09-16) — 「안 보인다」 피드백: 배경↔카드 대비↑·텍스트 밝기↑·
+       버튼(primary)은 흰 글씨가 읽히는 중간 블루로(연한 하늘색이면 흰 글씨가 묻힌다)·상태색 채도↑ */
+    --c-bg: #161513;
+    --c-surface: #24221f;
+    --c-surface-secondary: #1d1b19;
+    --c-surface-stripe: #1f1d1b;
+    --c-text: #ece8df;
+    --c-text-secondary: #b8b2a5;
+    --c-text-muted: #857f74;
+    --c-border: #3a362f;
+    --c-border-light: #2a2723;
+    --c-primary: #4C7DB8;
+    --c-primary-hover: #5C8CC6;
+    --c-primary-light: rgba(76,125,184,0.18);
+    --c-primary-dark: #6E9BD0;
+    --c-success: #52C081;
+    --c-success-light: rgba(82,192,129,0.15);
+    --c-warning: #E5B84A;
+    --c-warning-light: rgba(229,184,74,0.15);
+    --c-danger: #EC8272;
+    --c-danger-light: rgba(236,130,114,0.15);
+    --c-info: #4C7DB8;
+    --c-info-light: rgba(76,125,184,0.18);
+    --c-purple: #B29BEA;
+    --c-purple-light: rgba(178,155,234,0.15);
+    --c-orange: #E5A45E;
+    --c-orange-light: rgba(229,164,94,0.15);
+    --c-teal: #48CBB6;
+    --c-teal-light: rgba(72,203,182,0.15);
     --c-sidebar: #151412;
     --c-sidebar-hover: rgba(255,255,255,0.06);
     --c-sidebar-border: #282521;
@@ -558,6 +560,39 @@ export const SHARED_CSS = `
   .ds-btn-sm { padding: 4px 10px; font-size: var(--fs-xs); min-height: 28px; }
   .ds-btn-lg { padding: 10px 20px; font-size: var(--fs-base); min-height: 44px; }
 
+  /* === DS Status Dot (Linear형 2026-09-16) === 목록의 상태 = 색 배경 뱃지 대신 점+글자.
+     한 화면에 상태가 많아도 조용하다. 상세/카드엔 ds-badge 유지. 점 색은 MES_STATUS.dotBgClass 재사용. */
+  .ds-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--c-text); white-space: nowrap; }
+  .ds-status .ds-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--c-text-muted); }
+  .ds-status.st-blue .ds-dot, .ds-dot.st-blue { background: var(--c-primary); }
+  .ds-status.st-green .ds-dot, .ds-dot.st-green { background: var(--c-success); }
+  .ds-status.st-amber .ds-dot, .ds-dot.st-amber { background: var(--c-warning); }
+  .ds-status.st-red .ds-dot, .ds-dot.st-red { background: var(--c-danger); }
+  .ds-status.st-gray .ds-dot, .ds-dot.st-gray { background: var(--c-text-muted); }
+
+  /* 행 호버 액션 — 평소 숨김, 행 hover 시 노출(시야 비움). 부모 tr 에 .ds-row */
+  .ds-row-action { opacity: 0; transition: opacity var(--transition-fast); }
+  tr.ds-row:hover .ds-row-action, .ds-row:hover .ds-row-action { opacity: 1; }
+  @media (hover: none) { .ds-row-action { opacity: 1; } }
+
+  /* === DS Attention Panel (대시보드 C안 = 하이브리드) === 매출 hero + 주의요약 + 미니 KPI */
+  .ds-hero-metric { display: flex; flex-direction: column; }
+  .ds-hero-metric .hm-label { font-size: var(--fs-sm); color: var(--c-text-secondary); }
+  .ds-hero-metric .hm-value { font-size: 34px; font-weight: 700; letter-spacing: -0.025em; line-height: 1; margin-top: 6px; color: var(--c-text); font-variant-numeric: tabular-nums; }
+  .ds-attn { display: flex; flex-direction: column; }
+  .ds-attn-item { display: flex; align-items: center; gap: 9px; padding: 9px 0; border-bottom: 1px solid var(--c-border-light); font-size: var(--fs-sm); cursor: pointer; transition: color var(--transition-fast); }
+  .ds-attn-item:last-child { border-bottom: none; }
+  .ds-attn-item:hover { color: var(--c-primary); }
+  .ds-attn-item .ds-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .ds-attn-item .aa-n { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--c-text); }
+  .ds-attn-item .aa-n.warn { color: var(--c-danger); }
+  .ds-minikpi { display: flex; border: 1px solid var(--c-border); border-radius: var(--radius-md); overflow: hidden; background: var(--c-surface); }
+  .ds-minikpi .mk { flex: 1; padding: 11px 14px; border-left: 1px solid var(--c-border-light); min-width: 0; cursor: pointer; transition: background var(--transition-fast); }
+  .ds-minikpi .mk:first-child { border-left: none; }
+  .ds-minikpi .mk:hover { background: var(--c-surface-secondary); }
+  .ds-minikpi .mk-l { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.04em; color: var(--c-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ds-minikpi .mk-v { font-size: 16px; font-weight: 600; margin-top: 5px; letter-spacing: -0.01em; color: var(--c-text); font-variant-numeric: tabular-nums; }
+
   /* === DS Badge === */
   /* 알약(9999px) → 각진 태그(2026-09-15). 상태색은 뚜렷하게 유지 = 가독성 우선 */
   .ds-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; font-size: var(--fs-xs); font-weight: 600; border-radius: var(--radius-sm); line-height: 1.4; }
@@ -572,13 +607,15 @@ export const SHARED_CSS = `
   /* === DS Table === */
   .ds-table-wrap { overflow-x: auto; border-radius: var(--radius-lg); border: 1px solid var(--c-border-light); background: var(--c-surface); }
   .ds-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); table-layout: fixed; }
+  /* Linear형(2026-09-16): 헤더=고정폭 소문자 라벨(데이터와 구분), 구분선=hairline(border-light) */
   .ds-table thead th {
     position: sticky; top: 0; z-index: 5;
-    background: var(--c-surface-secondary); padding: 10px 12px; font-size: var(--fs-xs); font-weight: 600;
-    color: var(--c-text-secondary); text-align: left; border-bottom: 1px solid var(--c-border); white-space: nowrap;
+    background: var(--c-surface-secondary); padding: 8px 12px; font-size: 10.5px; font-weight: 500;
+    font-family: var(--font-mono, 'IBM Plex Mono', ui-monospace, monospace); letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--c-text-muted); text-align: left; border-bottom: 1px solid var(--c-border-light); white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis;
   }
-  .ds-table tbody td { padding: 10px 12px; border-bottom: 1px solid var(--c-border-light); vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ds-table tbody td { padding: 9px 12px; border-bottom: 1px solid var(--c-border-light); vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ds-table tbody td.ds-wrap { white-space: normal; overflow: visible; }
   .ds-table tbody td[title] { cursor: default; }
   .ds-table tbody tr { transition: background var(--transition-fast); }
@@ -593,9 +630,10 @@ export const SHARED_CSS = `
   .ds-table-compact tbody td { padding: 6px 8px; font-size: var(--fs-xs); }
   .ds-table-striped { width: 100%; border-collapse: collapse; }
   .ds-table-striped thead th {
-    padding: 10px 12px; font-size: var(--fs-xs); font-weight: 600;
-    color: var(--c-text-secondary); text-align: left; white-space: nowrap;
-    background: var(--c-surface-secondary); border-bottom: 1px solid var(--c-border);
+    padding: 8px 12px; font-size: 10.5px; font-weight: 500;
+    font-family: var(--font-mono, 'IBM Plex Mono', ui-monospace, monospace); letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--c-text-muted); text-align: left; white-space: nowrap;
+    background: var(--c-surface-secondary); border-bottom: 1px solid var(--c-border-light);
     position: sticky; top: 0; z-index: 5;
   }
   .ds-table-striped tbody td {
