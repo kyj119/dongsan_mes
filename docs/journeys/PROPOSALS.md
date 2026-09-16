@@ -45,6 +45,7 @@
 (용준님 판정 후 여기로 옮긴다: 날짜 · 번호 · 결정 · 반영 커밋)
 
 - 2026-09-15 · P13 · ①고침 — `receiving.js adhocCreate` `loadPendingPOs`→`loadReceivingQueue`. 회귀 = J4b.
+- 2026-09-16 밤 · 관찰(제안 아님) — 전체 사이클 38/40, J6 「견적 저장」·J7 「일괄 출고」가 **GET 500** 으로 실패(`/api/prices?…context=sales`·`/api/notifications/unread-count`). 라우트 변경 없음·직후 curl 200·`--only=j6|j7` 재실행 7/7 → 로컬 D1 잠금 경합(다른 세션 :3000 서버와 같은 로컬 DB)의 일시 오류. prod 영향 없음. 재발하면 러너에 「HTTP 500 1회 재시도」를 넣을지 판정.
 - 2026-09-15 밤 · P13 · ②게이트 — `check:fn`(미정의 전역 함수 호출, 페이지 번들 기준). 정규식 프로토타입은 5건 보고 → 5건 전부 오탐이라 파서로 갔다. 전역 집합만 보면 P13 은 잡히지만 「다른 페이지에만 실리는 함수」는 통과하므로 pages 의 `?raw` import 로 번들을 만들어 대조. 잔여 2건(settings↔zonePicker 동반 적재 · bank hubGoto 폴백) 고침 → 0건, 기준선 없음.
 
 - 2026-09-15 · P12 · 결정=새 과금축 없음(FIXED+규격 텍스트) + ①②③ 고침 — `0614`·`0615`, `itemRow.js`·`parent.js`·`quotationForm.js`·`quotations.ts`·`core.ts`·견적 뷰 2곳. 회귀 = J1·J6 각 1단계(36단계).
