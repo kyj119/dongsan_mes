@@ -25,12 +25,7 @@
 | 한두선 | 기존 | 변경 없음 — OPERATOR 는 `/inventory` 가 열리고 출력실 구역 담당이라 실사·승인 가능 |
 | 출고 취소 | 용준님 | 관리자 전용 그대로 |
 
-⚠️ 신설 3계정의 초기 비밀번호는 용준님이 구두로 전달하고, 첫 로그인 후 본인이 변경(우측 상단) — 문서에 적지 않는다. ⚠️ 신설 계정 3개는 **직원 레코드와 아직 안 묶였다**(`employees.user_id` — API 가 없어 수동 SQL): 묶어야 카드 처리자 표기·급여명세 셀프교부가 본인으로 잡힌다.
-```
-UPDATE employees SET user_id=26 WHERE name='김용덕' AND user_id IS NULL;
-UPDATE employees SET user_id=27 WHERE name='신현서' AND user_id IS NULL;
-UPDATE employees SET user_id=28 WHERE name='김진수과장' AND user_id IS NULL;
-```
+⚠️ 신설 3계정의 초기 비밀번호는 용준님이 구두로 전달하고, 첫 로그인 후 본인이 변경(우측 상단) — 문서에 적지 않는다. ✅ 신설 계정 3개 ↔ 직원 레코드 연결 완료(09-16 03:11, 용준님 `!` 실행 — `employees.user_id` 26·27·28, 읽기 실측). API 가 없어 수동 SQL 이었다(`.journey/tmp/link-users.sql`, 재실행해도 no-op). 카드 처리자 표기·급여명세 셀프교부가 본인으로 잡힌다.
 권한 매트릭스 = `/settings` 권한 탭(`role_page_permissions`). 계정 = `/users`. ★API 로 한글 계정을 만들 땐 Node `fetch`(curl 은 Git Bash 에서 한글이 깨져 아이디가 「����」로 들어갔다 — 하드 삭제 후 재생성).
 
 ## 2. 결함 기록 — 이 네 줄이면 여정이 된다
