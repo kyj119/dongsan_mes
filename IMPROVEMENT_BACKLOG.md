@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-09-16T12:40:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-09-16T15:50:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,29 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **7** (`list_issues(state:OPEN,label:auto-improve)` 실측 — #651 신규, #647·#648에 fixed-in-tree 코멘트만 close는 owner 대기) |
+| 🆕 new | **7** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음 — #647·#648에 fixed-in-tree 코멘트만 close는 owner 대기) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **567** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
+| ✔️ done | **567** (`search_issues(label:auto-improve is:closed reason:completed)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 3 UX/기능 감사 (2026-09-16T15:50):**
+> - **방법**: 세션 시작 시 detached HEAD `1b74c7c`(origin/main과 동일) → 로컬 `main`은 stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area3 방법 라인 HEAD `3bf7a94`)**: `git log 3bf7a94..HEAD -- src/pages src/scripts` **6커밋** — `b8f8548`·`ac93554`·`5ae34ad`·`b8ff917`은 이미 Area1/2/6가 이번 순환에서 해시 인용까지 정독 완료(백로그 로그 확인) → skip. **`85bca8c`+`31c90d0`(Linear형 UI 리디자인 2연속, 대시보드 C안+전 목록 상태점화+다크 재조정)만 전 Area 어느 로그에도 해시 미언급** — Area3가 직접 정독(대시보드 KPI 재구성은 스킬 파일이 명시하는 Area3 핵심 점검항목).
+> - **`85bca8c`+`31c90d0` 직접 검토**: ① `dashboard.ts`/`dashboard.js` 신규 마크업(`ds-attn-item`·`ds-minikpi`·`ds-hero-metric`)의 `stat*`/`dashPendingReview*` ID 전부 보존 확인 — 제거된 `statTodayShipmentSub` 는 JS 참조도 같은 커밋에서 동반 삭제(고아 참조 0). ② 신규 `window.dsDot(tone,label)`(statusLabels.ts) 호출처 3곳(purchaseOrders.js·quotations.js·receiving.js)의 tone 값(`gray/blue/amber/green/red`)이 CSS `.st-{tone}`(shared-styles.ts:569-573) 전부와 매칭, `window.dsStatusDot('order',...)`(orders.js)도 `ORDER_STATUS_TONES` SSOT 값과 매칭 — 정의 안 된 tone 없음(전부 gray 폴백 안전). ③ `check:fn` 클래스(P13 미정의 전역 호출) 재확인: `dsDot`/`dsStatusDot` 둘 다 `statusLabels.ts`에서 전역 `window.*`로 정의되고 이 함수를 쓰는 4개 페이지 전부 `?raw` 번들에 동일 파일 포함 — 미정의 호출 0건. ④ 다크 팔레트 재조정은 색상값 치환뿐(구조·클래스명 불변), 커밋 메시지 자체가 "웜기 과조정 피드백→재조정"이라는 자기 발견·자기 수정 사이클 — net-new 결함 아님. 결함 0건.
+> - **PROJECT_STATUS.md 교차확인**: 두 커밋 모두 배포 기록에 `journey40/40·local-e2e4/4·smoke:prod129/129·라이트/다크 실측·마커 실측` 검증 완료로 기재, 유일한 미결 항목("견적 EXPIRED 색=현재 red 유지, gray 원하면 조정")은 이미 owner 결정 대기로 명시적 기록됨 — Area3가 새로 발견할 결함이 아니라 기존에 인지된 디자인 선택지. 신규 이슈화 불필요.
+> - **journey-loop PROPOSALS.md 전수 재확인**: P1~P13 전 항목 ✅고침 또는 ③유지(설계/정상), 신규 ⏳ 0건 — 승격 대상 없음(변동없음).
+> - **standing scan 1: showConfirm 콜백 오용(#426 클래스)** — `grep -rn "showConfirm(" src/scripts` 오용 패턴(2번째 인자=함수) **0건**(변동없음, 2곳 모두 await/Promise 정상 패턴).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 10런 전부 `conclusion:success`(두 UI 리디자인 배포 포함, 최종 HEAD `1b74c7c` 포함).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **7**(#651·#650·#648·#647·#626·#617·#616, 변동없음) — 전건 Area3 관할 밖(#647·#648은 직전 Area3 사이클이 이미 fixed-in-tree 코멘트 게시, close는 owner 대기).
+> - **backlog↔GitHub 절대값 재동기화**: open **7**(변동없음) · done **567**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md `line N` 잔여참조 재확인(0건, 이미 서술식 각주만 존재). 이번 사이클은 대규모 UI 리디자인(2커밋, 5파일+6파일)이었으나 저자가 이미 journey:gate·local-e2e·smoke:prod·prod 실측까지 자체 검증 완료한 상태라 Area3 고유 렌즈(ID 보존·tone-CSS 매칭·전역함수 정의)로도 새 결함 없음 — 기존 체크리스트가 새 클래스 없이 적중.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` 대상 — 사이클 로그 9건 → 이번 추가 후 10건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(6커밋 churn 중 4건 타 Area 재확인 완료·2건(`85bca8c`+`31c90d0`) 직접 정독해 net-new 0 — 대규모 UI 변경이었으나 저자 자체검증+Area3 고유렌즈 모두 clean), 자동수정 0건(고칠 결함 없음), done-sync: open 7(변동없음)·done 567(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-09-16T12:40):**
 > - **방법**: 세션 시작 시 detached HEAD `c54f68c`(origin/main과 동일) → 로컬 `main` 부재 → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
