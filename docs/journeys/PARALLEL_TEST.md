@@ -13,19 +13,25 @@
 | 구매 | 용준님 · 강지영 | (진행 중인 2주 테스트 그대로) 발주 → 입고 → 검수. 발주 없이 온 물건은 「발주 없이 입고」 | `/purchase-order-form` `/receiving` `/purchase-orders` | J4·J4b |
 | 재고 | 동산 **한두선** · 선명 **강지영** | 주간 실사 1회 | `/inventory-counts` | J5 |
 
-### 1-a. 시작 전 계정·권한 (prod 실측 2026-09-16 — 이게 안 되면 첫날부터 못 센다)
+### 1-a. 계정·권한 — 2026-09-16 새벽 prod 반영 완료(로그인·화면 200 실측)
 
-| 누구 | 지금 | 해야 할 것 |
+| 누구 | 로그인 | 반영한 것 |
 |---|---|---|
-| 정송엽 | 계정 있음, 역할 OPERATOR → 주문서·주문 목록이 안 열린다 | `job_role` → **SALES** |
-| 강지영 | 계정 있음, SALES → 주문서·견적서·입고 OK. 실사 화면은 안 열린다 | SALES 에 `/inventory-counts` 권한 |
-| 정보람 · 모니르 | 계정 있음, OPERATOR → **카드 보드(/cards)가 안 열린다**(출고 /shipments 는 열린다) | OPERATOR 에 `/cards` 권한(역할은 그대로) |
-| 김용덕 | **계정 없음**(생산부 직원) | OPERATOR 계정 신설 |
-| 신현서 · 김진수(과장) | **계정 없음**(관리부) | ACCOUNTANT 계정 신설 + ACCOUNTANT 에 `/orders` 권한(회계반영 버튼이 주문 목록에 있다 — 원장·회계는 이미 열린다) |
-| 한두선 | 계정 있음, OPERATOR → 실사 화면이 안 열린다 | OPERATOR 에 `/inventory-counts` 권한 |
-| 출고 취소 | 관리자 전용(주문 목록 자체가 DESIGNER·SALES·ADMIN) | 용준님 계정으로 — 역할 확장은 하지 않는다 |
+| 정송엽 | 아이디 **`1234`**(기존) | 역할 OPERATOR → **SALES**(주문서·견적서가 열린다) |
+| 강지영 | 기존 | SALES 에 `/inventory`(실사는 재고 화면의 실사 탭·선명2 구역 담당이라 승인까지 본인) |
+| 정보람 · 모니르 | 기존 | OPERATOR 에 `/cards`(카드 보드, 역할은 그대로). 출고 `/shipments` 는 원래 열림 |
+| 김용덕 | 아이디 **`김용덕`** 신설(OPERATOR, 동산) | 카드 보드·출고 200 확인 |
+| 신현서 · 김진수(과장) | 아이디 **`신현서` · `김진수과장`** 신설(ACCOUNTANT, 동산) | ACCOUNTANT 에 `/orders`(회계반영 버튼) — 주문 목록·원장 200 확인 |
+| 한두선 | 기존 | 변경 없음 — OPERATOR 는 `/inventory` 가 열리고 출력실 구역 담당이라 실사·승인 가능 |
+| 출고 취소 | 용준님 | 관리자 전용 그대로 |
 
-권한 매트릭스 = `/settings` 권한 탭(`role_page_permissions`). 계정 = `/users`.
+⚠️ 신설 3계정의 초기 비밀번호는 용준님이 구두로 전달하고, 첫 로그인 후 본인이 변경(우측 상단) — 문서에 적지 않는다. ⚠️ 신설 계정 3개는 **직원 레코드와 아직 안 묶였다**(`employees.user_id` — API 가 없어 수동 SQL): 묶어야 카드 처리자 표기·급여명세 셀프교부가 본인으로 잡힌다.
+```
+UPDATE employees SET user_id=26 WHERE name='김용덕' AND user_id IS NULL;
+UPDATE employees SET user_id=27 WHERE name='신현서' AND user_id IS NULL;
+UPDATE employees SET user_id=28 WHERE name='김진수과장' AND user_id IS NULL;
+```
+권한 매트릭스 = `/settings` 권한 탭(`role_page_permissions`). 계정 = `/users`. ★API 로 한글 계정을 만들 땐 Node `fetch`(curl 은 Git Bash 에서 한글이 깨져 아이디가 「����」로 들어갔다 — 하드 삭제 후 재생성).
 
 ## 2. 결함 기록 — 이 네 줄이면 여정이 된다
 
