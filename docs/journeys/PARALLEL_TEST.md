@@ -25,7 +25,7 @@
 | 한두선 | 기존 | 변경 없음 — OPERATOR 는 `/inventory` 가 열리고 출력실 구역 담당이라 실사·승인 가능 |
 | 출고 취소 | 용준님 | 관리자 전용 그대로 |
 | 인호동 · 정소은 · 김보연 · 김영주 · 임선미 | 기존(DESIGNER) | 변경 없음 — DESIGNER 는 주문서·주문 목록·거래처가 열린다(견적서는 안 열림 → 견적은 SALES 담당이) |
-| 정해선(동산) · 최상호(선명) | **계정 없음 → SALES 신설 대기** | 분류기가 자동 생성을 막아 용준님이 `!` 로 실행: `node "C:/Users/user/AppData/Local/Temp/claude/C--Users-user-dongsan-mes/40f676df-fe26-4788-91fe-d3a0f8630bac/scratchpad/add-order-entry-accounts.cjs"` — 생성·로그인·주문서/견적서 200 을 스스로 확인하고 직원 연결 SQL 을 출력한다 |
+| 정해선(동산) · 최상호(선명) | 아이디 **`정해선`(E1) · `최상호`(E2)** 신설 완료(SALES, 용준님 `!` 실행 09-16) | 주문서·견적서·거래처 200 실측. 직원 연결은 `.journey/tmp/link-users-2.sql`(user_id 29·30) — 용준님 `!` 실행 대기 |
 
 ⚠️ 신설 3계정의 초기 비밀번호는 용준님이 구두로 전달하고, 첫 로그인 후 본인이 변경(우측 상단) — 문서에 적지 않는다. ✅ 신설 계정 3개 ↔ 직원 레코드 연결 완료(09-16 03:11, 용준님 `!` 실행 — `employees.user_id` 26·27·28, 읽기 실측). API 가 없어 수동 SQL 이었다(`.journey/tmp/link-users.sql`, 재실행해도 no-op). 카드 처리자 표기·급여명세 셀프교부가 본인으로 잡힌다.
 권한 매트릭스 = `/settings` 권한 탭(`role_page_permissions`). 계정 = `/users`. ★API 로 한글 계정을 만들 땐 Node `fetch`(curl 은 Git Bash 에서 한글이 깨져 아이디가 「����」로 들어갔다 — 하드 삭제 후 재생성).
