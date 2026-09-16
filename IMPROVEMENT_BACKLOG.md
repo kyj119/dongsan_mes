@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-09-16T09:45:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-09-16T12:40:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,24 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **567** (`search_issues(reason:completed,label:auto-improve)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-09-16T12:40):**
+> - **방법**: 세션 시작 시 detached HEAD `c54f68c`(origin/main과 동일) → 로컬 `main` 부재 → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area2 방법 라인 HEAD `bd36b92`)**: `git log bd36b92..HEAD` **35커밋**(대부분 journey/IA-에이전트/문서/perf-index/UI리디자인, Area2 스코프 밖) — `git diff --stat -- src/routes src/types src/utils migrations index.tsx`는 **3파일뿐**: `migrations/0616_idx_cards_equipment_id.sql`(인덱스 전용, Area1이 이미 기록)·`src/types/models.ts`+2(직전 Area2 사이클 `c6634a1` 자기 자동수정, 이번 churn 아님)·`orders/lifecycle.ts`+52(`fd92227` P9 출고취소, Area3·Area5가 이미 각자 렌즈로 검증 완료).
+> - **`fd92227`(orders/lifecycle.ts PATCH /:id/unship) Area2 고유 렌즈 재확인**: `entityFilter(c,'orders')`로 조회 스코프 정상(entity_id 누락 없음) · cards UPDATE는 이미 entity 검증된 `order_id`로 범위 한정 · 재고환원+카드+주문상태+이력이 단일 `db.batch`(N+1 없음) · 라우터 레벨 `authMiddleware`+`requireAnyPagePermission` 위에 `requireRole('ADMIN','MANAGER')` 중첩 · 타입 불일치·dead code 없음. 결함 0건(Area3/5 판정과 합치).
+> - **`0616` 인덱스 마이그 확인**: `CREATE INDEX IF NOT EXISTS idx_cards_equipment_id ON cards(equipment_id, status)` — 순수 인덱스 추가, 컬럼/제약 변경 없음, 스키마 드리프트 리스크 0.
+> - **standing scan 1: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 75건·누락 **0건**(변동없음).
+> - **standing scan 2: authMiddleware recursive 스캔** — 후보 7건(`publicUnsubscribe.ts`·`orders/helpers.ts`·`payroll/shared.ts`·`cron.ts`·`messagesAd.ts`·`hrSelf.ts`·`taxInvoices/helpers.ts`) 직전 사이클과 동일 — **net-new 0**(전건 기존 FP 클래스: barrel/scoped-token/public/helpers).
+> - **standing scan 3: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 4: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 5: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 5런 — 4 success + 1 cancelled(연속 push로 즉시 superseded된 정상 취소, `8f49f5a`→37초 뒤 `3026af3`), 최종 HEAD `c54f68c` success.
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **7**(#651·#650·#648·#647·#626·#617·#616, 변동없음) — 전건 Area2 관할 밖.
+> - **backlog↔GitHub 절대값 재동기화**: open **7**(변동없음) · done **567**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md `line N` 잔여참조 재확인(0건, 이미 서술식). 이번 사이클은 churn이 극히 얇고(3파일) 전부 타 Area 기록 완료 또는 자기 직전 자동수정이라, 표준 레시피가 새 클래스 없이 적중 — codify 불요.
+> - **백로그 트림 체크**: 사이클 로그 8건 → 이번 추가 후 9건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(3파일 churn 전건 net-new 0 — 인덱스뿐·자기 직전 자동수정·타 Area 검증 재확인), 자동수정 0건(고칠 결함 없음), done-sync: open 7(변동없음)·done 567(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-09-16T09:45):**
 > - **방법**: 세션 시작 시 detached HEAD `6eae801`(origin/main과 동일) → 로컬 `main`은 없음 → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
