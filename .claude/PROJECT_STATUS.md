@@ -2,6 +2,8 @@
 
 > **운영 규칙(2026-08-10 확정)**: ①완료(✅)=아래 인덱스 1줄(제목+남은 것)만, 경위 전문은 `PROJECT_STATUS_ARCHIVE.md`에 직접 쓴다 (**「✅ 최근 완료」 항목 400자 상한** — 2026-08-19 게이트 강제, 초과 시 큰 것부터 지목) ②의미 없는 대기=보류함으로 과감히 이관 ③대기 항목=빠른 처리 우선 ④"커밋·미배포" 기록은 믿지 말고 prod 실측(deploy.yml=main push 자동배포). 게이트=`node scripts/doc-diet-audit.cjs`(훅·세션 시작 배너 연동).
 
+> **✅ prod 2026-09-16 `85bca8cc` — Linear형 구조 도입(대시보드 C안 + 목록 정보설계)** — 벤치마크 Linear. 색·폰트(감청·Pretendard) 유지, 구조/밀도만. 대시보드 C안=매출 hero+주의 요약(긴급·검수·출고대기·미수)+미니 KPI 행. 전역=테이블 헤더 고정폭 소라벨·hairline·컴팩트→전 목록 자동. 상태 점 `dsStatusDot`(order/card/equip) 신설·주문 목록 알약→점. 발주·견적 등 자체 상태축은 이미 아이콘+색텍스트라 유지. 검증=journey40/40(오염 스냅샷 재적재 후)·local-e2e4/4·smoke:prod129/129·라·다크 실측·마커 실측. 정본=`shared-styles.ts`·`statusLabels.ts dsStatusDot`. 남은=없음
+
 > **✅ prod 2026-09-16 `8cb06223`(`0616`) — cards.equipment_id 커버링 인덱스** — 장비 목록의 「장비당 카드 COUNT」 상관 서브쿼리가 인덱스 부재로 equipment 행마다 cards 전량(1,245) SCAN(≈4.1만 rows_read/쿼리). `(equipment_id, status)` 커버링으로 SCAN→SEARCH(prod EXPLAIN 실측 확인). `audit:subquery` 후보 EXPLAIN 판정에서 나온 유일한 진짜 건(저긴급·성장형)·결과 불변. prod 적용 완료(rows_written 1,246). 남은=없음
 
 > **✅ prod 2026-09-16 `190a6426` — 다크모드 눈부심 완화(웜 다크 팔레트)** — halation(대비 과다)·형광 채도·쿨슬레이트 3원인 해소: 배경 순흑→웜차콜(`#0f172a`→`#1a1917`)·텍스트 순백→웜오프화이트(`#e2e8f0`→`#d4d0c7`)·시맨틱 톤다운·Tailwind 다크 오버라이드/상단바/입력칸/스켈레톤 통일. 전부 `html.dark`—라이트 무영향. 검증=journey40/40·local-e2e4/4·smoke:prod129/129·다크 실측·마커 실측. 남은=없음
