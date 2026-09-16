@@ -34,6 +34,11 @@ var inspStatusColors = {
   'PARTIAL': 'bg-amber-50 text-amber-700',
   'FAILED': 'bg-red-50 text-red-700'
 };
+// Linear형 목록 상태 점(dsDot)용 tone — inspStatusColors 와 같은 색을 tone 으로 매핑. 모달 검수이력은 뱃지 유지.
+var inspStatusTones = {
+  'NORMAL': 'green', 'PENDING_REVIEW': 'amber', 'WAITING_RESHIP': 'blue', 'CANCELLED': 'red',
+  'PASSED': 'green', 'PARTIAL': 'amber', 'FAILED': 'red'
+};
 
 var rcvToolbarMounted = false;
 var rcvPresetApplied = false;
@@ -213,9 +218,8 @@ async function loadReceiptHistory(page) {
       return;
     }
     tbody.innerHTML = items.map(function(r) {
-      var badge = '<span class="px-2 py-0.5 rounded text-xs font-medium '
-        + (inspStatusColors[r.inspection_status] || 'bg-gray-100 text-gray-700') + '">'
-        + (inspStatusLabels[r.inspection_status] || r.inspection_status || '-') + '</span>';
+      // Linear형 목록(2026-09-16): 검수 상태 색 뱃지 → 상태 점(dot). 모달 검수이력은 뱃지 유지.
+      var badge = window.dsDot(inspStatusTones[r.inspection_status] || 'gray', inspStatusLabels[r.inspection_status] || r.inspection_status || '-');
       return '<tr class="border-t hover:bg-gray-50">'
         + '<td class="px-4 py-3 font-medium">#' + (r.id || '-') + '</td>'
         + '<td class="px-4 py-3 text-center">' + (r.receipt_date ? r.receipt_date.substring(0, 10) : '-') + '</td>'

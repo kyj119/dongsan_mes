@@ -12,6 +12,8 @@
 // 증감률 뱃지 HTML 반환
 function changeRateBadge(current, prev) {
   if (!prev || prev === 0) return '';
+  // 이번 달 매출 0 = 대개 월초/집계 전이라 "▼100%"는 오해(급감처럼 보임) → delta 숨김
+  if (!current || current === 0) return '<span class="text-xs" style="color:var(--c-text-muted)">이번 달 집계 전</span>';
   var rate = Math.round(((current - prev) / prev) * 100);
   if (rate > 0) return '<span class="text-green-600 text-xs font-semibold tabular-nums">▲ ' + rate + '%</span><span class="text-xs text-gray-400 ml-1">전월 대비</span>';
   if (rate < 0) return '<span class="text-red-500 text-xs font-semibold tabular-nums">▼ ' + Math.abs(rate) + '%</span><span class="text-xs text-gray-400 ml-1">전월 대비</span>';
@@ -94,14 +96,19 @@ async function loadDashboardStats() {
             var urgentItem = document.getElementById('kpiUrgentCard');
             if (urgentItem) urgentItem.style.opacity = urgentCount > 0 ? '1' : '0.5';
 
-            // KPI 6: 이번 달 수금률
+            // KPI 6: 이번 달 수금률. 이번 달 청구(billed)가 0이면 비율이 무의미(분모 0) →
+            //   "0%"가 아니라 "-". 전월분 입금이 이번 달에 들어온 경우가 흔해 상세를 맥락으로 표시.
             var monthBilled = stats.month_billed || 0;
             var monthPaid = stats.month_paid || 0;
-            var collRate = monthBilled > 0 ? Math.round(monthPaid / monthBilled * 100) : 0;
             var collEl = document.getElementById('statCollectionRate');
-            animateNumber(collEl, collRate, { suffix: '%' });
             var collDetail = document.getElementById('statCollectionDetail');
-            if (collDetail) collDetail.textContent = fmtAmtShort(monthPaid) + ' / ' + fmtAmtShort(monthBilled);
+            if (monthBilled > 0) {
+                animateNumber(collEl, Math.round(monthPaid / monthBilled * 100), { suffix: '%' });
+                if (collDetail) collDetail.textContent = fmtAmtShort(monthPaid) + ' / ' + fmtAmtShort(monthBilled);
+            } else {
+                if (collEl) collEl.textContent = '-';
+                if (collDetail) collDetail.textContent = monthPaid > 0 ? '입금 ' + fmtAmtShort(monthPaid) + ' (전월분)' : '이번 달 청구 없음';
+            }
 
             // KPI 7: 납기 준수율
             var onTimeEl = document.getElementById('statOnTimeRate');

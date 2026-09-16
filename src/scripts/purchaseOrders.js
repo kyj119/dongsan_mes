@@ -19,6 +19,14 @@ var statusIcons = {
   'RECEIVED': 'fa-check-circle',
   'CANCELLED': 'fa-times-circle'
 };
+// Linear형 목록 상태 점(dsDot)용 tone 매핑 — 발주 상태 축(자체 axis). 모달·인쇄는 statusColors 뱃지 유지.
+var statusTones = {
+  'DRAFT': 'gray',
+  'CONFIRMED': 'blue',
+  'PARTIAL_RECEIVED': 'amber',
+  'RECEIVED': 'green',
+  'CANCELLED': 'gray'
+};
 
 function getDueBadge(expectedDate, status) {
   if (!expectedDate || status === 'RECEIVED' || status === 'CANCELLED' || status === 'DRAFT') return '';
@@ -310,11 +318,8 @@ function displayPOs(items) {
     return;
   }
   tbody.innerHTML = items.map(function(po) {
-    var icon = statusIcons[po.status] || 'fa-file';
-    var badge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium '
-      + (statusColors[po.status] || 'bg-gray-100 text-gray-700') + '">'
-      + '<i class="fas ' + icon + ' text-[7px] mr-1"></i>'
-      + (statusLabels[po.status] || po.status) + '</span>';
+    // Linear형 목록(2026-09-16): 색 배경 알약 → 상태 점(dot). 모달·인쇄는 뱃지 유지.
+    var badge = window.dsDot(statusTones[po.status] || 'gray', statusLabels[po.status] || po.status);
     var actions = '<div class="flex gap-1 justify-center">';
     actions += '<button onclick="viewDetail(' + po.id + ')" class="px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200" title="상세"><i class="fas fa-eye"></i></button>';
     // 검수 대기로 걸러 본 목록에서만 승인 버튼을 낸다 — 그 화면의 모든 행이 승인 대상이라
@@ -345,7 +350,7 @@ function displayPOs(items) {
         + '<div class="bg-blue-500 h-1 rounded-full" style="width:' + pct + '%"></div>'
         + '</div>';
     }
-    return '<tr class="' + rowClass + '" ondblclick="viewDetail(' + po.id + ')">'
+    return '<tr class="ds-row ' + rowClass + '" ondblclick="viewDetail(' + po.id + ')">'
       // 이관분에 34자짜리 발주번호(E1-PO-BK-PENDING-...)가 섞여 있어 열 폭으로는 못 담는다 → title 로 전체를 남긴다.
       // escapeHtml 은 옆 열들과 맞춘 것(여기만 원문 삽입이었다).
       + '<td class="px-4 py-3 font-medium" title="' + escapeHtml(po.po_number || '') + '">' + escapeHtml(po.po_number || '-') + '</td>'
@@ -354,7 +359,7 @@ function displayPOs(items) {
       + '<td class="px-4 py-3 text-center">' + (po.expected_date || '-') + getDueBadge(po.expected_date, po.status) + '</td>'
       + '<td class="px-4 py-3 text-right tabular-nums">' + ((po.final_amount || 0).toLocaleString()) + '원</td>'
       + '<td class="px-4 py-3 text-center"><div>' + badge + '</div>' + progressBar + '</td>'
-      + '<td class="px-4 py-3">' + actions + '</td>'
+      + '<td class="px-4 py-3 ds-row-action">' + actions + '</td>'
       + '</tr>';
   }).join('');
 }

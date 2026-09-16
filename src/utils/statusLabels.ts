@@ -159,4 +159,10 @@ window.MES_STATUS = (function(){
 })();
 window.dsStatusBadge = window.MES_STATUS.badge;
 window.dsStatusDot = window.MES_STATUS.dot;
+// 범용 상태 점(2026-09-16) — MES_STATUS 밖 자체 상태축(발주·견적·입고 등)용.
+//   tone = 'blue'|'green'|'amber'|'red'|'gray', label = 표시 문자열. 목록 상태 셀을 점+글자로.
+window.dsDot = function(tone, label){
+  var t = ['blue','green','amber','red','gray'].indexOf(tone) >= 0 ? tone : 'gray';
+  return '<span class="ds-status st-' + t + '"><span class="ds-dot"></span>' + (label == null ? '' : label) + '</span>';
+};
 `

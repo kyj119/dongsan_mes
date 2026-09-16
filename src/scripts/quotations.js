@@ -19,6 +19,15 @@ function getQuotStatusBadge(q) {
   return '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700"><i class="fas fa-check-circle text-[9px] mr-1"></i>유효</span>';
 }
 
+// Linear형 목록용 상태 점(dsDot) — getQuotStatusBadge 와 같은 색/라벨을 tone 으로 매핑(모달은 뱃지 유지).
+function getQuotStatusDot(q) {
+  var s = getQuotStatus(q);
+  if (s === 'cancelled') return window.dsDot('gray', '취소');
+  if (s === 'partial')   return window.dsDot('blue', '주문생성 ' + (q.actual_order_count || q.converted_count || 0) + '건');
+  if (s === 'expired')   return window.dsDot('red', '만료');
+  return window.dsDot('green', '유효');
+}
+
 function filterByQuotStatus(s) {
   quotCurrentStatusFilter = s;
   document.getElementById('quotStatusFilter').value = s;
@@ -174,7 +183,7 @@ function renderQuotationTable(orders) {
   }
   tbody.innerHTML = orders.map(function(q) {
     var quotStat = getQuotStatus(q);
-    var badge = getQuotStatusBadge(q);
+    var badge = getQuotStatusDot(q);
     var validUntilCell = q.valid_until
       ? '<span class="' + (quotStat === 'expired' ? 'text-red-500 font-medium' : 'text-blue-700') + '">' + q.valid_until + '</span>'
       : '<span class="text-gray-400">-</span>';
@@ -197,7 +206,7 @@ function renderQuotationTable(orders) {
     }
     actions += '</div>';
 
-    return '<tr class="border-t hover:bg-gray-50 cursor-pointer" ondblclick="viewQuotation(' + q.id + ')">'
+    return '<tr class="ds-row border-t hover:bg-gray-50 cursor-pointer" ondblclick="viewQuotation(' + q.id + ')">'
       + '<td class="font-medium text-blue-700">' + escapeHtml(q.quotation_number || '-') + '</td>'
       + '<td>' + escapeHtml(q.client_name || '-') + '</td>'
       + '<td>' + itemCell + '</td>'
@@ -205,7 +214,7 @@ function renderQuotationTable(orders) {
       + '<td class="text-center">' + validUntilCell + '</td>'
       + '<td class="text-center">' + badge + '</td>'
       + '<td class="text-center text-gray-500">' + createdDate + '</td>'
-      + '<td class="quot-act">' + actions + '</td>'
+      + '<td class="quot-act ds-row-action">' + actions + '</td>'
       + '</tr>';
   }).join('');
 }

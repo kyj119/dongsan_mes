@@ -59,15 +59,17 @@ export const SHARED_CSS = `
        시맨틱 색은 형광에서 톤다운. 라이트(웜뉴트럴)와 한 계열. */
     /* 다크 재조정(2026-09-16) — 「안 보인다」 피드백: 배경↔카드 대비↑·텍스트 밝기↑·
        버튼(primary)은 흰 글씨가 읽히는 중간 블루로(연한 하늘색이면 흰 글씨가 묻힌다)·상태색 채도↑ */
-    --c-bg: #161513;
-    --c-surface: #24221f;
-    --c-surface-secondary: #1d1b19;
-    --c-surface-stripe: #1f1d1b;
-    --c-text: #ece8df;
-    --c-text-secondary: #b8b2a5;
-    --c-text-muted: #857f74;
-    --c-border: #3a362f;
-    --c-border-light: #2a2723;
+    /* 중립 차콜(2026-09-16 재조정) — 웜기 과해서 갈색/세피아로 보인다는 피드백 → 거의 중립(미세 쿨),
+       감청 강조와 조화. 눈부심 방지는 유지(배경 ≠ 순흑, 텍스트 ≠ 순백). */
+    --c-bg: #17181B;
+    --c-surface: #1F2025;
+    --c-surface-secondary: #1A1B1F;
+    --c-surface-stripe: #1C1D21;
+    --c-text: #E8E9EC;
+    --c-text-secondary: #ABABB4;
+    --c-text-muted: #76767F;
+    --c-border: #303139;
+    --c-border-light: #23242A;
     --c-primary: #4C7DB8;
     --c-primary-hover: #5C8CC6;
     --c-primary-light: rgba(76,125,184,0.18);
@@ -86,11 +88,11 @@ export const SHARED_CSS = `
     --c-orange-light: rgba(229,164,94,0.15);
     --c-teal: #48CBB6;
     --c-teal-light: rgba(72,203,182,0.15);
-    --c-sidebar: #151412;
+    --c-sidebar: #141519;
     --c-sidebar-hover: rgba(255,255,255,0.06);
-    --c-sidebar-border: #282521;
-    --c-sidebar-text: #a49e90;
-    --c-sidebar-text-active: #ece8e0;
+    --c-sidebar-border: #23242A;
+    --c-sidebar-text: #9A9AA4;
+    --c-sidebar-text-active: #ECECF0;
     --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
     --shadow-md: 0 4px 6px rgba(0,0,0,0.4);
     --shadow-lg: 0 10px 15px rgba(0,0,0,0.5);
@@ -590,7 +592,8 @@ export const SHARED_CSS = `
   .ds-minikpi .mk { flex: 1; padding: 11px 14px; border-left: 1px solid var(--c-border-light); min-width: 0; cursor: pointer; transition: background var(--transition-fast); }
   .ds-minikpi .mk:first-child { border-left: none; }
   .ds-minikpi .mk:hover { background: var(--c-surface-secondary); }
-  .ds-minikpi .mk-l { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.04em; color: var(--c-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* mono 는 한글에서 흐리게만 보여 제거(2026-09-16). 일반 볼드 소라벨로 가독성↑ */
+  .ds-minikpi .mk-l { font-size: 11px; font-weight: 600; letter-spacing: -0.005em; color: var(--c-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ds-minikpi .mk-v { font-size: 16px; font-weight: 600; margin-top: 5px; letter-spacing: -0.01em; color: var(--c-text); font-variant-numeric: tabular-nums; }
 
   /* === DS Badge === */
@@ -760,7 +763,7 @@ export const SHARED_CSS = `
     border-left: none;
   }
   html.dark .ds-input-group-suffix,
-  html.dark .ds-input-group-prefix { background: #1e1d1b; border-color: #45413a; }
+  html.dark .ds-input-group-prefix { background: #1D1E22; border-color: #3A3B43; }
 
   /* === Skip Link (Accessibility) === */
   .ds-skip-link {
@@ -999,7 +1002,7 @@ export const SHARED_CSS = `
 
   /* === Dark Mode: Glasstop top-bar === */
   .top-bar.scrolled { box-shadow: 0 1px 8px rgba(0,0,0,0.08); border-bottom-color: transparent; }
-  html.dark .top-bar { background: rgba(26,25,23,0.85); }
+  html.dark .top-bar { background: rgba(23,24,27,0.85); }
   html.dark .top-bar.scrolled { box-shadow: 0 1px 8px rgba(0,0,0,0.3); }
 
   /* === Dark Mode: Modal backdrop === */
@@ -1008,12 +1011,12 @@ export const SHARED_CSS = `
   /* === Dark Mode: Tailwind utility overrides === */
   html.dark .bg-white { background-color: var(--c-surface) !important; }
   html.dark .bg-gray-50 { background-color: var(--c-surface-secondary) !important; }
-  html.dark .bg-gray-100 { background-color: #2c2a26 !important; }
+  html.dark .bg-gray-100 { background-color: #2A2B31 !important; }
   html.dark .text-gray-900 { color: var(--c-text) !important; }
   html.dark .text-gray-800 { color: var(--c-text) !important; }
-  html.dark .text-gray-700 { color: #bdb8ae !important; }
+  html.dark .text-gray-700 { color: #C4C4CC !important; }
   html.dark .text-gray-600 { color: var(--c-text-secondary) !important; }
-  html.dark .text-gray-500 { color: #8a8479 !important; }
+  html.dark .text-gray-500 { color: #85858E !important; }
   html.dark .text-gray-400 { color: var(--c-text-muted) !important; }
   html.dark .border-gray-200,
   html.dark .border-gray-100,
@@ -1021,7 +1024,7 @@ export const SHARED_CSS = `
   html.dark .border { border-color: var(--c-border) !important; }
   html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
   html.dark select,
-  html.dark textarea { background-color: #1e1d1b; color: var(--c-text); border-color: #45413a; }
+  html.dark textarea { background-color: #1D1E22; color: var(--c-text); border-color: #3A3B43; }
   html.dark .shadow-sm { box-shadow: var(--shadow-sm) !important; }
   html.dark .shadow { box-shadow: var(--shadow-md) !important; }
   html.dark .shadow-lg { box-shadow: var(--shadow-lg) !important; }
@@ -1032,7 +1035,7 @@ export const SHARED_CSS = `
   html.dark .ds-table-striped thead th { background: var(--c-surface-secondary); }
   html.dark .hover\\:bg-gray-50:hover { background-color: var(--c-surface-secondary) !important; }
   /* 다크 스켈레톤 — 라이트 그레이 shimmer 가 다크에서 번쩍이지 않게 */
-  html.dark .ds-skeleton { background: linear-gradient(90deg, #232120 25%, #2f2c28 50%, #232120 75%); background-size: 200% 100%; }
+  html.dark .ds-skeleton { background: linear-gradient(90deg, #1F2025 25%, #2A2B31 50%, #1F2025 75%); background-size: 200% 100%; }
   html.dark .hover\\:bg-blue-50\\/30:hover { background-color: var(--c-primary-light) !important; }
 
   /* === 인쇄 공통 = 셸 제거 + 라이트 팔레트 === */
