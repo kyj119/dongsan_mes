@@ -54,38 +54,41 @@ export const SHARED_CSS = `
   }
   html.dark {
     color-scheme: dark;
-    --c-bg: #0f172a;
-    --c-surface: #1e293b;
-    --c-surface-secondary: #162032;
-    --c-surface-stripe: #1a2332;
-    --c-text: #e2e8f0;
-    --c-text-secondary: #94a3b8;
-    --c-text-muted: #64748b;
-    --c-border: #334155;
-    --c-border-light: #1e293b;
-    --c-primary: #7FA6CE;
-    --c-primary-hover: #6E97C2;
-    --c-primary-light: rgba(127,166,206,0.12);
-    --c-primary-dark: #4A6C90;
-    --c-success: #4ade80;
-    --c-success-light: rgba(74,222,128,0.1);
-    --c-warning: #fbbf24;
-    --c-warning-light: rgba(251,191,36,0.1);
-    --c-danger: #f87171;
-    --c-danger-light: rgba(248,113,113,0.1);
-    --c-info: #7FA6CE;
-    --c-info-light: rgba(127,166,206,0.12);
-    --c-purple: #a78bfa;
-    --c-purple-light: rgba(167,139,250,0.1);
-    --c-orange: #fb923c;
-    --c-orange-light: rgba(251,146,60,0.1);
-    --c-teal: #2dd4bf;
-    --c-teal-light: rgba(45,212,191,0.1);
-    --c-sidebar: #0c1222;
-    --c-sidebar-hover: rgba(255,255,255,0.08);
-    --c-sidebar-border: #1e293b;
-    --c-sidebar-text: #94a3b8;
-    --c-sidebar-text-active: #f1f5f9;
+    /* 다크 = 웜뉴트럴 + 대비/채도 완화(2026-09-16) — 눈부심(halation) 해소.
+       배경을 순흑에서 띄우고(#1a1917), 텍스트는 순백 대신 웜 오프화이트로 낮추고(#d4d0c7),
+       시맨틱 색은 형광에서 톤다운. 라이트(웜뉴트럴)와 한 계열. */
+    --c-bg: #1a1917;
+    --c-surface: #232120;
+    --c-surface-secondary: #1f1e1c;
+    --c-surface-stripe: #201f1d;
+    --c-text: #d4d0c7;
+    --c-text-secondary: #a49e90;
+    --c-text-muted: #78726a;
+    --c-border: #34312c;
+    --c-border-light: #282521;
+    --c-primary: #86A9CE;
+    --c-primary-hover: #97B6D8;
+    --c-primary-light: rgba(134,169,206,0.12);
+    --c-primary-dark: #5A7BA0;
+    --c-success: #6FBF8E;
+    --c-success-light: rgba(111,191,142,0.12);
+    --c-warning: #D9B45C;
+    --c-warning-light: rgba(217,180,92,0.12);
+    --c-danger: #E0897E;
+    --c-danger-light: rgba(224,137,126,0.12);
+    --c-info: #86A9CE;
+    --c-info-light: rgba(134,169,206,0.12);
+    --c-purple: #A596D0;
+    --c-purple-light: rgba(165,150,208,0.12);
+    --c-orange: #D49A6A;
+    --c-orange-light: rgba(212,154,106,0.12);
+    --c-teal: #5FBFB0;
+    --c-teal-light: rgba(95,191,176,0.12);
+    --c-sidebar: #151412;
+    --c-sidebar-hover: rgba(255,255,255,0.06);
+    --c-sidebar-border: #282521;
+    --c-sidebar-text: #a49e90;
+    --c-sidebar-text-active: #ece8e0;
     --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
     --shadow-md: 0 4px 6px rgba(0,0,0,0.4);
     --shadow-lg: 0 10px 15px rgba(0,0,0,0.5);
@@ -719,7 +722,7 @@ export const SHARED_CSS = `
     border-left: none;
   }
   html.dark .ds-input-group-suffix,
-  html.dark .ds-input-group-prefix { background: #0f172a; border-color: #475569; }
+  html.dark .ds-input-group-prefix { background: #1e1d1b; border-color: #45413a; }
 
   /* === Skip Link (Accessibility) === */
   .ds-skip-link {
@@ -958,7 +961,7 @@ export const SHARED_CSS = `
 
   /* === Dark Mode: Glasstop top-bar === */
   .top-bar.scrolled { box-shadow: 0 1px 8px rgba(0,0,0,0.08); border-bottom-color: transparent; }
-  html.dark .top-bar { background: rgba(15,23,42,0.85); }
+  html.dark .top-bar { background: rgba(26,25,23,0.85); }
   html.dark .top-bar.scrolled { box-shadow: 0 1px 8px rgba(0,0,0,0.3); }
 
   /* === Dark Mode: Modal backdrop === */
@@ -966,21 +969,21 @@ export const SHARED_CSS = `
 
   /* === Dark Mode: Tailwind utility overrides === */
   html.dark .bg-white { background-color: var(--c-surface) !important; }
-  html.dark .bg-gray-50 { background-color: #1e293b !important; }
-  html.dark .bg-gray-100 { background-color: #334155 !important; }
+  html.dark .bg-gray-50 { background-color: var(--c-surface-secondary) !important; }
+  html.dark .bg-gray-100 { background-color: #2c2a26 !important; }
   html.dark .text-gray-900 { color: var(--c-text) !important; }
-  html.dark .text-gray-800 { color: #e2e8f0 !important; }
-  html.dark .text-gray-700 { color: #cbd5e1 !important; }
-  html.dark .text-gray-600 { color: #94a3b8 !important; }
-  html.dark .text-gray-500 { color: #64748b !important; }
-  html.dark .text-gray-400 { color: #475569 !important; }
+  html.dark .text-gray-800 { color: var(--c-text) !important; }
+  html.dark .text-gray-700 { color: #bdb8ae !important; }
+  html.dark .text-gray-600 { color: var(--c-text-secondary) !important; }
+  html.dark .text-gray-500 { color: #8a8479 !important; }
+  html.dark .text-gray-400 { color: var(--c-text-muted) !important; }
   html.dark .border-gray-200,
   html.dark .border-gray-100,
-  html.dark .border-gray-300 { border-color: #334155 !important; }
-  html.dark .border { border-color: #334155 !important; }
+  html.dark .border-gray-300 { border-color: var(--c-border) !important; }
+  html.dark .border { border-color: var(--c-border) !important; }
   html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
   html.dark select,
-  html.dark textarea { background-color: #0f172a; color: var(--c-text); border-color: #475569; }
+  html.dark textarea { background-color: #1e1d1b; color: var(--c-text); border-color: #45413a; }
   html.dark .shadow-sm { box-shadow: var(--shadow-sm) !important; }
   html.dark .shadow { box-shadow: var(--shadow-md) !important; }
   html.dark .shadow-lg { box-shadow: var(--shadow-lg) !important; }
@@ -989,8 +992,10 @@ export const SHARED_CSS = `
   html.dark .ds-table-striped tbody tr:nth-child(even):hover { background: var(--c-bg); }
   html.dark .ds-table thead th { background: var(--c-surface-secondary); }
   html.dark .ds-table-striped thead th { background: var(--c-surface-secondary); }
-  html.dark .hover\\:bg-gray-50:hover { background-color: #1e293b !important; }
-  html.dark .hover\\:bg-blue-50\\/30:hover { background-color: rgba(96,165,250,0.1) !important; }
+  html.dark .hover\\:bg-gray-50:hover { background-color: var(--c-surface-secondary) !important; }
+  /* 다크 스켈레톤 — 라이트 그레이 shimmer 가 다크에서 번쩍이지 않게 */
+  html.dark .ds-skeleton { background: linear-gradient(90deg, #232120 25%, #2f2c28 50%, #232120 75%); background-size: 200% 100%; }
+  html.dark .hover\\:bg-blue-50\\/30:hover { background-color: var(--c-primary-light) !important; }
 
   /* === 인쇄 공통 = 셸 제거 + 라이트 팔레트 === */
   @media print {
