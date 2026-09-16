@@ -2,6 +2,8 @@
 
 > **운영 규칙(2026-08-10 확정)**: ①완료(✅)=아래 인덱스 1줄(제목+남은 것)만, 경위 전문은 `PROJECT_STATUS_ARCHIVE.md`에 직접 쓴다 (**「✅ 최근 완료」 항목 400자 상한** — 2026-08-19 게이트 강제, 초과 시 큰 것부터 지목) ②의미 없는 대기=보류함으로 과감히 이관 ③대기 항목=빠른 처리 우선 ④"커밋·미배포" 기록은 믿지 말고 prod 실측(deploy.yml=main push 자동배포). 게이트=`node scripts/doc-diet-audit.cjs`(훅·세션 시작 배너 연동).
 
+> **✅ prod 2026-09-16 `8cb06223`(`0616`) — cards.equipment_id 커버링 인덱스** — 장비 목록의 「장비당 카드 COUNT」 상관 서브쿼리가 인덱스 부재로 equipment 행마다 cards 전량(1,245) SCAN(≈4.1만 rows_read/쿼리). `(equipment_id, status)` 커버링으로 SCAN→SEARCH(prod EXPLAIN 실측 확인). `audit:subquery` 후보 EXPLAIN 판정에서 나온 유일한 진짜 건(저긴급·성장형)·결과 불변. prod 적용 완료(rows_written 1,246). 남은=없음
+
 > **✅ prod 2026-09-16 `190a6426` — 다크모드 눈부심 완화(웜 다크 팔레트)** — halation(대비 과다)·형광 채도·쿨슬레이트 3원인 해소: 배경 순흑→웜차콜(`#0f172a`→`#1a1917`)·텍스트 순백→웜오프화이트(`#e2e8f0`→`#d4d0c7`)·시맨틱 톤다운·Tailwind 다크 오버라이드/상단바/입력칸/스켈레톤 통일. 전부 `html.dark`—라이트 무영향. 검증=journey40/40·local-e2e4/4·smoke:prod129/129·다크 실측·마커 실측. 남은=없음
 
 > **✅ prod 2026-09-15 `b8ff9170` — 감청(navy) 리디자인(앱·포털 de-AI 톤 통일)** — 파랑#3b82f6→감청#1E3A5F·슬레이트→웜뉴트럴·Inter→Pretendard·카드 평탄화·알약→각진뱃지·무지개KPI→먹색(위험·심각도색만). 전역토큰(`--c-primary`·`--c-info`·Tailwind blue 전셰이드 리맵)+인라인 hex/그라디언트/틴트 통일(독립페이지·인쇄문서·포털 자체셸). 검증=journey40/40·local-e2e4/4·smoke:prod129/129·라이브 12화면(라·다크) Playwright 이상0·옛`#3b82f6`=0. 정본=`shared-styles.ts`. 남은=없음
