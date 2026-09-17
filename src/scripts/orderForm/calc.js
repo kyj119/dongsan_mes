@@ -876,14 +876,14 @@
                         // 디자이너 가공 대기물 흡수 (intake.js — 실패해도 주문 등록에 영향 없음)
                         // 저장된 주문 id를 넘겨 서버 order_item 역추적 범위를 이 주문으로 축소(§4.2 라인별 매핑)
                         if (typeof ofIntakeAbsorbAll === 'function') { try { await ofIntakeAbsorbAll(id); } catch (e) { /* best-effort */ } }
-                        // 대신화물 터미널이 거래처 기본값과 다르면 거래처 기본 터미널 자동 갱신
+                        // ★거래처 기본 터미널은 **고정**이다 (2026-09-18 용준님 결정).
+                        //   종전엔 주문서에서 터미널을 고치면 `PATCH /api/clients/:id` 로 **거래처 기본값까지 덮어써**
+                        //   그 다음 주문부터 전부 바뀌었다 — 「한 건만 다른 터미널로 보낸다」가 불가능했다.
+                        //   이제 수정은 **그 주문에만**(orders.delivery_info) 남고, 거래처 터미널은 거래처 화면에서 바꾼다.
                         var _dm = document.getElementById('deliveryMethod').value;
                         var _term = (document.getElementById('deliveryInfo').value || '').trim();
-                        if (_dm === '대신화물' && orderData.client_id && _term && _term !== (_clientDeliveryAddress || '').trim()) {
-                            try {
-                                await axios.patch('/api/clients/' + orderData.client_id, { delivery_address: _term });
-                                showToast('거래처 기본 터미널을 갱신했습니다: ' + _term, 'info');
-                            } catch (e) { /* 거래처 갱신 실패는 주문 등록에 영향 없음 */ }
+                        if (_dm === '대신화물' && _term && _term !== (_clientDeliveryAddress || '').trim()) {
+                            showToast('이 주문만 터미널이 「' + _term + '」로 저장됩니다 (거래처 기본 터미널은 그대로)', 'info');
                         }
                         // 견적서 폼이면 견적서 관리로, 아니면 주문 관리로
                         if (window.location.pathname.includes('quotation-form')) {

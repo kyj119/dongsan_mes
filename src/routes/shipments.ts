@@ -10,6 +10,7 @@ import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { autoDeductPostProcessingMaterials } from '../utils/autoDeductPostProcessingMaterials'
 import { deductStockLinesOnShip, restoreStockLinesOnUnship } from '../utils/stockShip'
 import { clearShipBillingStmt } from '../utils/shipBilling'
+import { resolveShipmentNotice } from '../utils/shipmentNotice'
 import { restorePpDeductionsByOrder } from '../utils/autoDeductRestore'
 import { ensureShipmentForOrder } from '../utils/shipmentHelper'
 import { kstYmd, kstYmdCompact, kstDate } from '../utils/kstDate'
@@ -374,8 +375,30 @@ shipmentsRouter.get('/pending-confirm', requireAccessOrRole('/shipments', 'MANAG
          ${ef.clause}
        ORDER BY o.shipped_at DESC, o.id DESC
        LIMIT 200
-    `).bind(days, ...ef.params).all()
-    return c.json({ success: true, data: results || [] })
+    `).bind(days, ...ef.params).all<{
+      order_id: number; delivery_method: string | null; box_count: number
+      tracking_number: string; notified: number; has_mobile: number
+    }>()
+
+    // 2026-09-18: 알림 판정은 `utils/shipmentNotice` 한 곳에서 한다(화면 배지도 같은 값을 쓴다).
+    //   ★직배·퀵·용차는 **알림 대상이 아니다**(용준님 결정) — 「미발송」으로 세면 이 목록이
+    //     영영 안 줄어드는 건들로 가득 찬다. 그래서 「미발송」때문에만 걸린 비대상 행은 빼 버린다.
+    //     박스·송장이 비어서 걸린 행은 그대로 남는다(그건 알림과 무관한 사유다).
+    const rows = (results || []).map((r) => {
+      const d = resolveShipmentNotice({
+        deliveryMethod: r.delivery_method,
+        hasMobile: Number(r.has_mobile) === 1,
+        trackingNumber: r.tracking_number,
+        alreadySent: Number(r.notified) === 1,
+      })
+      return { ...r, notice_target: d.isTarget ? 1 : 0, notice_can_send: d.canSendNow ? 1 : 0,
+               notice_block: d.blockedReason, notice_channel: d.channel, notice_template: d.template }
+    }).filter((r) => {
+      const needsBoxOrTrack = Number(r.box_count) === 0
+        || ((r.delivery_method || '').trim() === '한진택배' && !String(r.tracking_number || '').trim())
+      return needsBoxOrTrack || (r.notice_target === 1 && Number(r.notified) !== 1)
+    })
+    return c.json({ success: true, data: rows })
   } catch (error) {
     console.error('shipments pending-confirm error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

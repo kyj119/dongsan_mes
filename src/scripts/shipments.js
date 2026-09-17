@@ -717,16 +717,27 @@ async function saveTrackingNumber(key) {
 // 출고 확정 경로가 10개라 어디서 내보냈든 여기로 모인다 — 「출고 처리」와 「출고 확정」을 나눈 두 번째 단계.
 // 날짜 필터와 무관하게(최근 14일) 남아 있는 잔여를 보여 준다.
 var _pendingConfirmRows = [];
-// 확정 대기 행의 배송 알림 상태 — 발송됨 / 미발송 / 연락처 없음 셋을 구분한다.
+// 확정 대기 행의 배송 알림 상태. 판정은 서버(`utils/shipmentNotice`)가 하고 여기선 **그리기만** 한다 —
+//   화면이 따로 판정하면 「화면엔 보낼 수 있다고 뜨는데 서버가 거절」이 생긴다.
 function pendingNotifyBadge(r) {
   var st = 'font-size:10px;padding:1px 6px;border-radius:8px;white-space:nowrap';
-  if (Number(r.notified) === 1) {
-    return '<span style="' + st + ';background:#dcfce7;color:#166534" title="배송 알림 발송 완료">발송됨</span>';
+  var pill = function (bg, fg, text, tip) {
+    return '<span style="' + st + ';background:' + bg + ';color:' + fg + '" title="' + escapeHtml(tip) + '">' + escapeHtml(text) + '</span>';
+  };
+  if (Number(r.notified) === 1) return pill('#dcfce7', '#166534', '발송됨', '배송 알림 발송 완료');
+  switch (r.notice_block) {
+    case 'not_target':
+      return pill('#f3f4f6', '#6b7280', '대상 아님', '직배·퀵·용차는 알림을 보내지 않습니다(2026-09-18 결정)');
+    case 'no_mobile':
+      return pill('#f3f4f6', '#6b7280', '연락처 없음', '거래처 휴대폰이 없어 보낼 수단이 없습니다');
+    case 'needs_tracking':
+      return pill('#fef3c7', '#92400e', '송장 대기', '한진택배는 승인 템플릿이 없어 문자로 보냅니다 — 송장번호를 넣어야 보낼 수 있습니다');
+    case 'unknown_method':
+      return pill('#fee2e2', '#991b1b', '배송수단 확인', '알림 정책이 정해지지 않은 배송수단입니다');
+    default:
+      return pill('#ffedd5', '#9a3412', '미발송',
+        '보낼 수 있습니다' + (r.notice_template ? ' — 알림톡 「' + r.notice_template + '」' : ' — 문자'));
   }
-  if (Number(r.has_mobile) !== 1) {
-    return '<span style="' + st + ';background:#f3f4f6;color:#6b7280" title="거래처 휴대폰이 없어 보낼 수단이 없습니다">연락처 없음</span>';
-  }
-  return '<span style="' + st + ';background:#ffedd5;color:#9a3412" title="배송 알림이 아직 안 나갔습니다 — 아래 섹션에서 체크 후 발송">미발송</span>';
 }
 
 async function loadPendingConfirm() {

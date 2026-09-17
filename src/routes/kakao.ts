@@ -7,6 +7,7 @@ import { BarobillSmsProvider } from '../services/barobillSms'
 import { getEntityCorpNum } from '../utils/entitySettings'
 import { BAROBILL_UNIT_COST_VAT_EXCL } from '../constants/barobillCodes'
 import { resolveKakaoIdentity } from '../utils/kakaoIdentity'
+import { resolveShipmentNotice, NOTICE_BLOCK_LABEL } from '../utils/shipmentNotice'
 import { checkBulkLimit } from '../services/messageBulkLimit'
 import { applyAudienceGuards, describeGuardResult, recordBulkRecipients } from '../services/messageAudience'
 import type { SMSMessage, ATSMessage } from '../services/barobillSms'
@@ -618,13 +619,14 @@ kakaoRouter.post('/send-shipment', async (c) => {
     let templateCode: string = body.template_code || ''
     const deliveryMethod = ((shipment.delivery_method as string) || '').trim()
     if (!templateCode) {
-      const AUTO_TEMPLATE_BY_METHOD: Record<string, string> = {
-        '대신화물': '대신화물 출고',
-        '대신택배': '대신택배 출고',
-        '방문수령': '방문 수령 준비 완료',
-        '직접수령': '방문 수령 준비 완료',
-      }
-      const resolved = AUTO_TEMPLATE_BY_METHOD[deliveryMethod]
+      // 2026-09-18: 판정 정본 = `utils/shipmentNotice`. 종전엔 여기 하드코딩 맵이 따로 있어
+      //   화면 기본값(DB·섹션 축)과 어긋났다(퀵 섹션에 「방문 수령 준비 완료」가 걸려 있었다).
+      const decision = resolveShipmentNotice({
+        deliveryMethod,
+        hasMobile: !!shipment.mobile,
+        trackingNumber: shipment.tracking_number as string | null,
+      })
+      const resolved = decision.template || ''
       if (!resolved) {
         await db.prepare(
           `INSERT INTO kakao_send_logs (
@@ -635,10 +637,10 @@ kakaoRouter.post('/send-shipment', async (c) => {
         ).bind(
           deliveryMethod || '(미지정)', shipment.mobile, shipment.client_name,
           shipmentId, shipment.client_id,
-          `자동발송 skip: 미매핑 배송수단(${deliveryMethod || '미지정'})`,
+          `자동발송 skip: ${NOTICE_BLOCK_LABEL[decision.blockedReason || 'unknown_method']}(${deliveryMethod || '미지정'})`,
           userId, getEntityId(c)
         ).run()
-        return c.json({ success: true, data: { status: 'SKIPPED', reason: 'unmapped_delivery_method', delivery_method: deliveryMethod } })
+        return c.json({ success: true, data: { status: 'SKIPPED', reason: decision.blockedReason || 'unmapped_delivery_method', delivery_method: deliveryMethod } })
       }
       templateCode = resolved
     }

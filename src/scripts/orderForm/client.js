@@ -326,7 +326,9 @@
                     if (spLabel) spLabel.innerHTML = needsPayment ? '선불/착불 <span class="text-red-500">*</span>' : '선불/착불';
                 }
 
-                // 대신화물: 배송처 주소를 "화물 터미널"로 안내 (저장 시 거래처 기본 터미널 갱신)
+                // 대신화물: 배송처 주소를 "화물 터미널"로 안내.
+                //   2026-09-18 — 거래처 기본 터미널은 **고정**이고, 여기 고친 값은 **이 주문에만** 적용된다.
+                //   (종전엔 저장 시 거래처 기본값까지 갱신해 다음 주문부터 전부 바뀌었다.)
                 var addrLabel = document.getElementById('deliveryInfoLabel');
                 var addrInput = document.getElementById('deliveryInfo');
                 var addrDetail = document.getElementById('deliveryDetail');
@@ -335,7 +337,12 @@
                 if (addrLabel) {
                     if (isFreightAddr) {
                         addrLabel.textContent = '화물 터미널';
-                        if (addrInput) addrInput.placeholder = '예: 대전 대신화물 터미널';
+                        // 거래처 기본 터미널을 placeholder 로 보여 준다 — 비우면 그 값으로 나간다는 뜻이다.
+                        if (addrInput) {
+                            addrInput.placeholder = (_clientDeliveryAddress || '').trim()
+                                ? ('거래처 기본: ' + _clientDeliveryAddress + ' (이 주문만 바꾸려면 입력)')
+                                : '예: 대전 대신화물 터미널';
+                        }
                     } else {
                         addrLabel.textContent = '배송처 주소';
                         if (addrInput) addrInput.placeholder = '예: 서울시 중구 을지로 123';
