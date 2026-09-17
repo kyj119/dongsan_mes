@@ -1036,6 +1036,127 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
 })
 
 // ============================================================================
+// API: 공제만 재계산 (지급 항목은 손대지 않는다)
+// POST /api/payroll/recalc-deductions   body: { pay_period, dry_run?, employee_ids? }
+//
+// 왜 sync-attendance 로는 안 되는가 (2026-09-17):
+//   간이세액표를 고시표로 교체한 뒤 소득세를 다시 계산해야 했는데, sync-attendance 는 **근태를
+//   다시 집계**하므로 이카운트에서 손으로 맞춰 둔 야간·휴일·결근이 통째로 되돌아간다
+//   (dry_run 으로 실측: 24명 변동 — 니나잉 휴일수당 493,360 → 0). 「공제만 다시」가 필요하다.
+//   저장된 taxable_pay 를 그대로 쓰고 calcDeductions 한 곳만 다시 태우므로
+//   4대보험은 같은 요율·같은 과세급여라 값이 그대로 나오고, 바뀌는 것은 소득세·지방세뿐이다.
+//   오버라이드(📌)는 calcDeductions 안에서 재적용되므로 여기서도 살아남는다.
+// ============================================================================
+coreRouter.post('/recalc-deductions', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const body = await c.req.json<any>()
+    const payPeriod = String(body.pay_period || '')
+    if (!/^\d{4}-\d{2}$/.test(payPeriod)) return c.json({ success: false, error: 'pay_period(YYYY-MM) 필요' }, 400)
+    const dryRun = body.dry_run === true
+    const employeeIds: number[] = Array.isArray(body.employee_ids) ? body.employee_ids : []
+
+    // #470: entity 필터 = 쓰기 게이트. 여기서 고른 id 로만 UPDATE 한다.
+    const efP = entityFilter(c, 'p')
+    let q = `
+      SELECT p.id, p.employee_id, p.taxable_pay, p.total_salary, p.other_deduction, p.deduction_overrides,
+             p.income_tax AS old_it, p.local_tax AS old_lt, p.total_deduction AS old_total, p.net_pay AS old_net,
+             p.national_pension AS old_np, p.health_insurance AS old_hi,
+             p.long_term_care_insurance AS old_ltc, p.employment_insurance AS old_ei,
+             e.name, e.dependents_count, e.children_under_20_count, e.income_tax_table_option
+      FROM payroll p
+      JOIN employees e ON e.id = p.employee_id
+      WHERE p.pay_period = ? AND p.status != 'PAID' AND p.published_at IS NULL${efP.clause}
+    `
+    const binds: any[] = [payPeriod, ...efP.params]
+    if (employeeIds.length) {
+      q += ` AND p.employee_id IN (${employeeIds.map(() => '?').join(',')})`
+      binds.push(...employeeIds)
+    }
+    const targets = (await c.env.DB.prepare(q).bind(...binds).all<any>()).results || []
+
+    const year = Number(payPeriod.slice(0, 4))
+    const ratesCache = await loadInsuranceRates(c.env.DB, rateRefDate(payPeriod, year))
+    const stmts: D1PreparedStatement[] = []
+    const details: any[] = []
+    let taxChanged = 0, insChanged = 0
+
+    for (const t of targets) {
+      const empDefaults = await loadEmployeeDefaults(c.env.DB, t.employee_id)
+      const d = await calcDeductions(c.env.DB, {
+        taxablePay: Number(t.taxable_pay || 0),
+        dependents: Math.max(1, Number(t.dependents_count || 1)),
+        childrenUnder20: Math.max(0, Number(t.children_under_20_count || 0)),
+        taxOption: String(t.income_tax_table_option || '100'),
+        year, payPeriod,
+        deductionOverrides: parseDeductionOverrides(t.deduction_overrides),
+        applyNationalPension: empDefaults.insurance_apply_national_pension,
+        applyHealth: empDefaults.insurance_apply_health,
+        applyLongTermCare: empDefaults.insurance_apply_long_term_care,
+        applyEmployment: empDefaults.insurance_apply_employment,
+        applyIndustrialAccident: empDefaults.insurance_apply_industrial_accident,
+        pensionBaseOverride: empDefaults.pension_base,
+        ratesCache,
+      })
+      const otherDeduction = Number(t.other_deduction || 0)
+      const total_deduction = d.total_deduction + otherDeduction
+      const net_pay = Number(t.total_salary || 0) - total_deduction
+
+      const dIt = d.income_tax - Number(t.old_it || 0)
+      const dIns = (d.national_pension - Number(t.old_np || 0)) + (d.health_insurance - Number(t.old_hi || 0)) +
+        (d.long_term_care_insurance - Number(t.old_ltc || 0)) + (d.employment_insurance - Number(t.old_ei || 0))
+      if (dIt !== 0) taxChanged++
+      if (dIns !== 0) insChanged++
+
+      details.push({
+        payroll_id: t.id, employee_id: t.employee_id, name: t.name,
+        taxable_pay: Number(t.taxable_pay || 0),
+        income_tax: { before: Number(t.old_it || 0), after: d.income_tax, diff: dIt },
+        local_tax: { before: Number(t.old_lt || 0), after: d.local_tax },
+        insurance_diff: dIns,
+        net_pay: { before: Number(t.old_net || 0), after: net_pay, diff: net_pay - Number(t.old_net || 0) },
+      })
+
+      if (!dryRun) {
+        stmts.push(c.env.DB.prepare(`
+          UPDATE payroll
+             SET national_pension = ?, health_insurance = ?, long_term_care_insurance = ?,
+                 employment_insurance = ?, income_tax = ?, local_tax = ?,
+                 employer_national_pension = ?, employer_health_insurance = ?, employer_long_term_care = ?,
+                 employer_employment_insurance = ?, employer_industrial_accident = ?,
+                 total_deduction = ?, net_pay = ?, updated_at = datetime('now')
+           WHERE id = ?
+        `).bind(
+          d.national_pension, d.health_insurance, d.long_term_care_insurance,
+          d.employment_insurance, d.income_tax, d.local_tax,
+          d.employer_national_pension, d.employer_health_insurance, d.employer_long_term_care,
+          d.employer_employment_insurance, d.employer_industrial_accident,
+          total_deduction, net_pay, t.id
+        ))
+      }
+    }
+
+    if (!dryRun) {
+      for (let i = 0; i < stmts.length; i += 80) await c.env.DB.batch(stmts.slice(i, i + 80))
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        pay_period: payPeriod, dry_run: dryRun,
+        total_targets: targets.length,
+        updated: dryRun ? 0 : stmts.length,
+        income_tax_changed: taxChanged,
+        insurance_changed: insChanged,   // 0 이어야 정상 — 지급액도 요율도 안 건드렸으므로
+        details,
+      },
+    })
+  } catch (err: any) {
+    console.error('Failed to recalc deductions:', err)
+    return c.json({ success: false, error: '공제 재계산 실패', detail: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
+// ============================================================================
 // API: 4대보험 요율 수정/추가 (upsert)
 // PUT /api/payroll/rates
 // body: { year, insurance_type, total_rate, employee_rate, employer_rate, base, min_base, max_base, effective_from, effective_to }
