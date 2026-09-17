@@ -30,7 +30,7 @@ const SKIP_EXPORT = process.argv.includes('--skip-export')
 const MASTER_TABLES = [
   'entities', 'settings', 'holidays', 'expense_categories', 'bank_accounts',
   'item_categories', 'item_subcategories', 'spec_groups', 'price_groups', 'print_methods', 'print_media',
-  'items', 'product_materials', 'post_processing_options', 'finishing_methods',
+  'items', 'item_units', 'product_materials', 'post_processing_options', 'finishing_methods',
   'item_group_settings', 'cost_standards', 'pp_material_deductions',
   'billing_groups', 'price_policies', 'clients', 'client_item_prices', 'credit_overrides',
   'facility_zones', 'storage_zones', 'inventory', 'equipment',
