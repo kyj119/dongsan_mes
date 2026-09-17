@@ -9,6 +9,7 @@ import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { autoDeductPostProcessingMaterials } from '../utils/autoDeductPostProcessingMaterials'
 import { deductStockLinesOnShip, restoreStockLinesOnUnship } from '../utils/stockShip'
+import { clearShipBillingStmt } from '../utils/shipBilling'
 import { restorePpDeductionsByOrder } from '../utils/autoDeductRestore'
 import { ensureShipmentForOrder } from '../utils/shipmentHelper'
 import { kstYmd, kstYmdCompact, kstDate } from '../utils/kstDate'
@@ -1376,6 +1377,8 @@ shipmentsRouter.patch('/:id/status', requireEditOrRole('/shipments', 'MANAGER'),
             stmts.push(c.env.DB.prepare(
               `UPDATE orders SET status = 'PRINT_DONE', auto_complete_date = NULL, shipped_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
             ).bind(orderRow.order_id))
+            // `billable_after` 는 여기서 안 지워졌었다 — 자동 회계반영 조건이 그 칸이라 되살아난 주문이 청구까지 갔다.
+            stmts.push(clearShipBillingStmt(c.env.DB, orderRow.order_id))
             // 4) 상태 이력 기록
             stmts.push(c.env.DB.prepare(`
               INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
@@ -1466,6 +1469,7 @@ shipmentsRouter.patch('/:id/status', requireEditOrRole('/shipments', 'MANAGER'),
             stmts.push(c.env.DB.prepare(
               `UPDATE orders SET status = 'PRINT_DONE', shipped_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'SHIPPED'`
             ).bind(orderRow.order_id))
+            stmts.push(clearShipBillingStmt(c.env.DB, orderRow.order_id))
           }
         }
       }

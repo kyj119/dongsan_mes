@@ -267,6 +267,8 @@ storageZonesRouter.get('/:id/stock', async (c) => {
 
     const { results: items } = await c.env.DB.prepare(`
       SELECT i.id as item_id, i.item_code, i.item_name, i.category, i.unit,
+        -- 0619 단위표: 화면이 base 수량을 관리단위로 환산해 표기하려면 이 3열이 필요하다(없으면 종전 표기로 폴백).
+        i.base_unit, i.pack_size, i.stock_mode,
         COALESCE(inv.quantity, 0) as quantity, COALESCE(inv.safe_stock, 0) as safe_stock
       FROM inventory inv
       JOIN items i ON i.id = inv.item_id AND i.is_active = 1

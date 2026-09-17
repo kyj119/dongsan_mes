@@ -15,7 +15,11 @@
  *   ① 지연일수 규칙 — 퀵·방문·직접 계열 1일, 그 외 2일(공백·널 포함)
  *   ② **소스 스캔** — `UPDATE orders SET status = 'SHIPPED'` 를 쓰는 모든 라우트가
  *      같은 파일에서 `billable_after` 를 직접 세우거나 `applyShipBillingDates` 를 부르는가
- *   ③ 스탬프 동작 — 새로 SHIPPED 된 주문에만 찍고, 이미 값이 있는 `auto_complete_date` 는 보존
+ *   ③ **되돌리기 소스 스캔** — `UPDATE orders SET ... shipped_at = NULL`(출고 취소)을 쓰는 모든 라우트가
+ *      같은 파일에서 `clearShipBillingStmt` 를 부르는가. 안 지우면 **`auto_complete_date` 만으로
+ *      동기화가 주문을 다시 SHIPPED 로 올린다**(카드 없는 주문은 동기화 조건이 무조건 참 · 09-17 재현)
+ *   ④ 스탬프 동작 — 새로 SHIPPED 된 주문에만 찍고, 이미 값이 있는 `auto_complete_date` 는 보존
+ *   ⑤ 되돌리기 동작 — 되돌린 주문은 두 칸이 비고, 아직 SHIPPED 인 주문은 안 건드린다
  *
  * 실행: node scripts/ship-billing-selftest.cjs   (실패 시 exit 1) — test:calc 편입
  */
@@ -31,7 +35,7 @@ try { ({ DatabaseSync } = require('node:sqlite')) } catch (_) {
 
 const ROOT = path.join(__dirname, '..')
 const { mod, cleanup } = compileTs(path.join(ROOT, 'src', 'utils', 'shipBilling.ts'), { bundle: true })
-const { shipDelayDays, applyShipBillingDates } = mod
+const { shipDelayDays, applyShipBillingDates, clearShipBillingStmt } = mod
 
 let fails = 0
 const check = (name, cond, detail) => {
@@ -76,10 +80,39 @@ console.log('[ship-billing] ② 소스 스캔 — 출고 전이 경로가 전부
   check('스탬프 없는 소스는 검출된다', RE_SHIP.test(fake) && !/billable_after\s*=|applyShipBillingDates\s*\(/.test(fake))
 }
 
-console.log('[ship-billing] ③ 스탬프 동작')
+console.log('[ship-billing] ③ 되돌리기 소스 스캔 — 출고 취소가 청구 타이밍을 지우는가')
+{
+  function walkR(dir, out = []) {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name)
+      if (e.isDirectory()) walkR(p, out)
+      else if (e.name.endsWith('.ts')) out.push(p)
+    }
+    return out
+  }
+  // `UPDATE orders SET ... shipped_at = NULL` = 주문을 출고 이전으로 되돌리는 문장
+  const RE_UNSHIP = /UPDATE\s+orders\s+SET[\s\S]{0,200}?shipped_at\s*=\s*NULL/g
+  const HAS_CLEAR = /clearShipBillingStmt\s*\(|billable_after\s*=\s*NULL/
+  const bad = []
+  let n = 0
+  for (const f of walkR(path.join(ROOT, 'src', 'routes'))) {
+    const src = fs.readFileSync(f, 'utf8')
+    RE_UNSHIP.lastIndex = 0
+    if (!RE_UNSHIP.test(src)) continue
+    n++
+    if (!HAS_CLEAR.test(src)) bad.push(path.relative(ROOT, f).split(path.sep).join('/'))
+  }
+  check(`출고를 되돌리는 라우트 ${n}개 전부 청구 타이밍을 지운다`, bad.length === 0, bad)
+  check('되돌리기 스캔 대상이 실제로 잡혔다', n >= 3, n)
+  const fakeUn = `UPDATE orders SET status = 'PRINT_DONE', shipped_at = NULL WHERE id = ?`
+  RE_UNSHIP.lastIndex = 0
+  check('안 지우는 소스는 검출된다', RE_UNSHIP.test(fakeUn) && !HAS_CLEAR.test(fakeUn))
+}
+
+console.log('[ship-billing] ④ 스탬프 동작')
 {
   const db = new DatabaseSync(':memory:')
-  db.exec(`CREATE TABLE orders (id INTEGER PRIMARY KEY, status TEXT, delivery_method TEXT, billable_after TEXT, auto_complete_date TEXT);
+  db.exec(`CREATE TABLE orders (id INTEGER PRIMARY KEY, status TEXT, delivery_method TEXT, billable_after TEXT, auto_complete_date TEXT, updated_at TEXT);
            INSERT INTO orders (id, status, delivery_method, billable_after, auto_complete_date) VALUES
              (1, 'SHIPPED', '한진택배', NULL, NULL),
              (2, 'SHIPPED', '퀵', NULL, '2020-01-01'),
@@ -107,8 +140,18 @@ console.log('[ship-billing] ③ 스탬프 동작')
     check('auto_complete_date 는 오늘로', rows[0].auto_complete_date === today, rows[0])
     check('이미 있는 auto_complete_date 는 보존', rows[1].auto_complete_date === '2020-01-01', rows[1])
     check('SHIPPED 가 아닌 주문은 안 찍는다', rows[2].billable_after === null && rows[2].auto_complete_date === null, rows[2])
+
+    // ⑤ 되돌리기 — 상태를 먼저 되돌린 주문(1)은 두 칸이 비고, 아직 SHIPPED 인 주문(2)은 그대로여야 한다.
+    db.prepare(`UPDATE orders SET status = 'CONFIRMED' WHERE id = 1`).run()
+    await clearShipBillingStmt(shim, 1).run()
+    await clearShipBillingStmt(shim, 2).run()
+    const back = db.prepare('SELECT id, status, billable_after, auto_complete_date FROM orders ORDER BY id').all()
+    check('되돌린 주문은 billable_after·auto_complete_date 가 비었다',
+      back[0].billable_after === null && back[0].auto_complete_date === null, back[0])
+    check('아직 SHIPPED 인 주문은 안 건드린다',
+      back[1].billable_after === plus(2) && back[1].auto_complete_date === '2020-01-01', back[1])
     cleanup && cleanup()
-    console.log(fails ? `[ship-billing] FAIL ${fails}건` : '[ship-billing] OK — 지연일수·소스 스캔·스탬프 동작 전부 통과')
+    console.log(fails ? `[ship-billing] FAIL ${fails}건` : '[ship-billing] OK — 지연일수·소스 스캔(출고·되돌리기)·스탬프·되돌리기 동작 전부 통과')
     process.exit(fails ? 1 : 0)
   })().catch((e) => { console.error('[ship-billing] ERR', e); process.exit(1) })
 }

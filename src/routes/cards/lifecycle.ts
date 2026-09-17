@@ -21,6 +21,7 @@ import { ensureShipmentForOrder } from '../../utils/shipmentHelper'
 import { deductStockLinesOnShip, restoreStockLinesOnUnship } from '../../utils/stockShip'
 import { restoreAutoDeductionsByCards } from '../../utils/autoDeductRestore'
 import { applyShipBillingDates } from '../../utils/shipBilling'
+import { clearShipBillingStmt } from '../../utils/shipBilling'
 
 const cardsLifecycleRouter = new Hono<HonoEnv>()
 cardsLifecycleRouter.use('/*', authMiddleware, requireAnyPagePermission('/cards', '/orders'))
@@ -1017,6 +1018,8 @@ cardsLifecycleRouter.patch('/:id/unship', requireRole('ADMIN', 'MANAGER'), async
         c.env.DB.prepare(
           `UPDATE orders SET status = 'PRINT_DONE', shipped_at = NULL, updated_at = datetime('now') WHERE id = ?`
         ).bind(card.order_id),
+        // ★되돌리기의 짝 — 청구 타이밍을 남기면 동기화가 주문을 다시 SHIPPED 로 올린다.
+        clearShipBillingStmt(c.env.DB, card.order_id),
         c.env.DB.prepare(`
           INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
           VALUES (?, 'SHIPPED', 'PRINT_DONE', ?, '카드 출고 취소로 주문 상태 복원')

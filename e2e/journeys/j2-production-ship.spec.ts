@@ -164,6 +164,12 @@ test.describe.serial('J2 생산: 카드 보드 → 출력완료 → 출고', () 
     expect(stockNow(), '환원 = 재고 복원').toBe(stockBefore)
     const logs = db<{ n: number }>(`SELECT COUNT(*) n FROM activity_logs WHERE action='STOCK_RESTORE' AND entity_id=${orderId}`)[0].n
     expect(logs, '환원 흔적은 시스템 로그(STOCK_RESTORE)에 남아야 한다').toBeGreaterThan(0)
+    // 2026-09-17: 청구 타이밍도 같이 지워져야 한다. 남겨 두면 `auto_complete_date` 하나만으로
+    //   [상태 동기화]가 주문을 다시 SHIPPED 로 올리고(카드 없는 주문은 동기화 조건이 무조건 참),
+    //   남은 `billable_after` 로 자동 회계반영까지 간다 — 재고는 환원됐는데 출고·청구된 주문이 된다.
+    const dates = db<{ b: string | null; a: string | null }>(`SELECT billable_after b, auto_complete_date a FROM orders WHERE id=${orderId}`)[0]
+    expect(dates.b, '출고 취소 = billable_after 도 지운다').toBeNull()
+    expect(dates.a, '출고 취소 = auto_complete_date 도 지운다(안 지우면 동기화가 되살린다)').toBeNull()
     await page.waitForTimeout(600)
     await expectNoGarbage(page, '출고 취소 후')
     expectClean(signals, '출고 취소')

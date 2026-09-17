@@ -3,6 +3,18 @@
 > 한 건 1줄: 현상 · 재현 · 판단 근거. 코드는 여기서 안 고친다 — 용준님이 ①고침 ②정책 유지 ③보류를 고른다.
 > 정본 절차 = `/journey-loop` 스킬. 자동 수정 화이트리스트에 드는 것은 여기 오지 않고 바로 커밋된다.
 
+## 2026-09-17 미판정 4건 상세점검 (병행 직전)
+
+> 넷을 다시 재니 **다섯**이었다. 새로 나온 P22 는 **화면 경로**이고 로컬에서 재현됐다.
+
+| # | 축 | 무엇 | 판정 |
+|---|---|---|---|
+| P22 | 결함 | **출고 취소가 [상태 동기화] 한 번에 되살아난다** — `PATCH /orders/:id/unship`(P9 로 만든 화면 버튼)이 `auto_complete_date`·`billable_after` 를 안 지운다. `sync-statuses` Step 1 은 `auto_complete_date` 하나만 보고 다시 SHIPPED 로 올리는데, 조건의 `NOT EXISTS(미출고 카드)` 가 **카드 없는 주문(유통·기성·이관)에서는 무조건 참**이다. 재현: 출고→취소(CONFIRMED)→동기화→**SHIPPED 부활**, `billable_after` 는 09-21→**09-19 로 당겨짐** → 재고는 환원됐는데 출고·청구된 주문이 되고 `auto_billing` 거래처는 자동 회계반영까지 간다. 동기화는 출고/배송·세금계산서 화면의 버튼이라 경리가 매일 누른다 | ✅ 고침(09-17) — `utils/shipBilling.clearShipBillingStmt` 정본 + 되돌리는 문 **4곳** 배선(주문 출고취소·카드 출고취소·출고 CANCELLED·출고 PREPARING 복귀). CANCELLED 분기는 `auto_complete_date` 만 지우고 **`billable_after` 를 빠뜨리고 있었다**. 게이트 = `test:ship-billing` ③ 되돌리기 소스 스캔 + ⑤ 동작 · 회귀 = J2 출고 취소 2줄 |
+| P16 | 읽기·표기 | 실측으로 다시 보니 **넷 중 둘은 이미 닫혀 있었다** — 실사 단위 라벨(`count_unit`)·실사 기본 포장수(서버가 `role_count` 계수로 스탬프)는 0620 에서 처리됨 | ✅ 부분 고침(09-17) — **구역 재고 라벨**만 고쳤다: `routes/storageZones.ts` `/:id/stock` SELECT 에 `base_unit·pack_size·stock_mode` 3열 + `pages/storageZones.ts` 에 `UOM_JS` 주입(가드가 있어 회귀 0). 실측: 「비조명용 후렉스 50」이 롤/M×50 이라 종전엔 **「50 롤」로 읽혔다**. ③ **재고 입력 단위 셀렉트 2택 고정은 보류** — prod 에 3단위 품목이 **0개**(1단위 1,228·2단위 185)라 지금은 실화가 아니다. 세 번째 단위를 만드는 날 함께 |
+| — | 관찰 | **`salesQtyLabel` 미적용 7곳은 지금 효과 0** — prod `item_units.forms=0` · `order_items.sales_unit` **0행** · `quotation_items.sales_unit` 0행 · `purchase_order_items.unit_factor` 0행. 전 화면이 같은 폴백(그냥 수량)으로 보인다 | ③ 보류 — 폼 스위치를 켜는 날 한 번에 |
+| — | 관찰 | **출고 알림 축 실측**(B안 판정 대기) — `shipments` **0행**(출고/배송 화면 미사용) · PP 자재매핑 5건인데 `pp_material_deductions` **0행**(한 번도 안 돌았다) · 알림톡 33건 중 **실패 22**, 출고 템플릿은 성공 1·실패 4 · 이메일은 `RESEND_API_KEY` 미설정 + 도메인 미인증으로 전부 실패. **지금 자동 발송을 켜면 조용히 실패한다**(fire-and-forget + catch). 게다가 출고 확정 시점엔 **송장번호가 아직 없다** | **판정 대기** — 가=송장 확정 시점 자동 / 나=수동 유지 + 미발송 표시 / 다=출고 즉시 자동(`ensureShipmentForOrder` 가 11경로 공통 관문) |
+| — | 관찰 | `PATCH /shipments/:id/status` PREPARING 복귀의 **재고 미환원**은 그대로 남았다(화면 호출처 0건). 날짜 두 칸은 P22 에서 같이 지워진다 | **판정 대기** |
+
 ## 2026-09-17 출고·배송비 축 (용준님 결정 「나」 → 1~5 진행)
 
 > 전수 조사 결과 **출고 확정 경로는 3개가 아니라 10개**였고, 같은 「출고」인데 경로마다 부작용이 달랐다.

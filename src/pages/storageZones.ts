@@ -4,6 +4,7 @@ import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import storageZonesScript from '../scripts/storageZones.js?raw'
 import zonePickerScript from '../scripts/zonePicker.js?raw'
+import { UOM_JS } from '../utils/unitConvert'
 
 export function storageZonesPage(c: Context<HonoEnv>) {
   const pageContent = `

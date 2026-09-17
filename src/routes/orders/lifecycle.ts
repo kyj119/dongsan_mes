@@ -22,6 +22,7 @@ import { evaluateClientCredit } from '../ledger/credit-helpers'
 import { ensureShipmentForOrder } from '../../utils/shipmentHelper'
 import { deductStockLinesOnShip, restoreStockLinesOnUnship } from '../../utils/stockShip'
 import { applyShipBillingDates } from '../../utils/shipBilling'
+import { clearShipBillingStmt } from '../../utils/shipBilling'
 
 const ordersLifecycleRouter = new Hono<HonoEnv>()
 ordersLifecycleRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
@@ -411,6 +412,9 @@ ordersLifecycleRouter.patch('/:id/unship', requireRole('ADMIN', 'MANAGER'), asyn
     await c.env.DB.batch([
       c.env.DB.prepare(`UPDATE cards SET shipped_at = NULL WHERE order_id = ? AND shipped_at IS NOT NULL`).bind(id),
       c.env.DB.prepare(`UPDATE orders SET status = ?, shipped_at = NULL, updated_at = datetime('now') WHERE id = ?`).bind(toStatus, id),
+      // ★청구 타이밍도 같이 지운다 — 안 지우면 `auto_complete_date` 만으로 동기화가 다시 SHIPPED 로 올린다
+      //   (카드 없는 주문은 동기화 조건의 「미출고 카드 없음」이 무조건 참이라 그대로 되살아난다).
+      clearShipBillingStmt(c.env.DB, id),
       c.env.DB.prepare(`
         INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
         VALUES (?, 'SHIPPED', ?, ?, '주문 출고 취소')

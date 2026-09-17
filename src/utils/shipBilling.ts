@@ -15,9 +15,11 @@
 //   `billable_after` = 오늘 + (지연일수 × 2)  ← 옛 2단 지연(출고→완료, 완료→청구)의 총합을 한 칸에 보존한다.
 //   `auto_complete_date` = 오늘(이미 도래 처리). 이미 값이 있으면 보존한다.
 //
-// ⚠️ 되돌리기(`unship`)는 이 두 칸을 **안 지운다** — 재출고 때 이 함수가 다시 덮으므로 타이밍은 재계산된다.
+// ★ 되돌리기는 짝이 있다 — `clearShipBillingStmt`(아래). 예전엔 「재출고 때 다시 덮으니 안 지워도 된다」고 적어 둔
+//   자리인데, 그건 「재출고가 일어난다」는 전제를 검사하지 않은 문장이었다 — 실제로는 `auto_complete_date` 하나만
+//   남아도 동기화가 주문을 **스스로 다시 SHIPPED 로 올린다**(2026-09-17 재현).
 
-import type { D1Database } from '@cloudflare/workers-types'
+import type { D1Database, D1PreparedStatement } from '@cloudflare/workers-types'
 
 /** 청구 지연일수 — 배송방법이 즉시 수령 계열이면 1일, 나머지는 2일. */
 export function shipDelayDays(deliveryMethod: string | null | undefined): number {
@@ -46,4 +48,26 @@ export async function applyShipBillingDates(
   } catch (e) {
     console.warn('[shipBilling] 청구 타이밍 스탬프 실패 order=' + orderId + ':', e)
   }
+}
+
+/**
+ * 출고를 **되돌린** 주문의 청구 타이밍을 지운다 — `applyShipBillingDates` 의 짝.
+ * batch 안에 넣을 문장을 돌려준다(되돌리기와 같은 batch 여야 한다 — 쪼개지면 한쪽만 남는다).
+ *
+ * ★왜 필요한가 (2026-09-17 로컬 재현)
+ *   `sync-statuses` Step 1 은 **`auto_complete_date` 하나만으로** 주문을 다시 SHIPPED 로 올린다.
+ *   조건에 `NOT EXISTS(미출고 카드)` 가 있지만 **카드 없는 주문(유통·기성·이관)은 그게 무조건 참**이다.
+ *   → 출고 취소 후 경리가 [상태 동기화]를 한 번 누르면 상태가 되살아나고, 남아 있던 `billable_after`
+ *     로 자동 회계반영까지 간다. **재고는 환원됐는데 출고·청구된 주문**이 된다.
+ *   되돌리는 문이 넷이라(주문 출고취소·카드 출고취소·출고 CANCELLED·출고 PREPARING 복귀) 식을 여기 둔다.
+ *
+ * `status <> 'SHIPPED'` 가드 = 되돌리기 UPDATE 가 실제로 먹었을 때만 지운다.
+ *   (다른 활성 출고가 남아 주문이 SHIPPED 로 유지되면 청구 타이밍도 유지돼야 한다.)
+ */
+export function clearShipBillingStmt(db: D1Database, orderId: number): D1PreparedStatement {
+  return db.prepare(
+    `UPDATE orders
+        SET billable_after = NULL, auto_complete_date = NULL, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND status <> 'SHIPPED'`
+  ).bind(orderId)
 }
