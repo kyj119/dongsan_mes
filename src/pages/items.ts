@@ -7,7 +7,8 @@ import sCore from '../scripts/items/core.js?raw'
 import sModals from '../scripts/items/modals.js?raw'
 import sTabs from '../scripts/items/tabs.js?raw'
 import sBulk from '../scripts/items/bulk.js?raw'
-const pageScript = [sCore, sModals, sTabs, sBulk].join('\n')
+import sUnits from '../scripts/items/units.js?raw' // 단위표 편집기(item_units, 2026-09-17)
+const pageScript = [sCore, sModals, sTabs, sBulk, sUnits].join('\n')
 
 export function itemsPage(c: Context<HonoEnv>) {
   return renderPage(c, {
@@ -145,10 +146,9 @@ export function itemsPage(c: Context<HonoEnv>) {
                                     <p class="text-xs text-gray-400 mt-1">화면에는 표시되지 않고 검색에만 사용됩니다 (현장 호칭·공급사명 등)</p>
                                 </div>
 
-                                <!-- 3. 단위 -->
-                                <div>
-                                    <label class="block text-sm font-semibold text-gray-700 mb-1">단위</label>
-                                    <select id="itemUnit" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">${unitOptions({ selected: 'EA' })}</select>
+                                <!-- 3. 단위 — 2026-09-17 단위표(아래 11-3)로 대체. #itemUnit 은 표의 「발주·입고」 행을 비추는 숨은 값(saveItem 이 items.unit 으로 보낸다) -->
+                                <div class="hidden">
+                                    <select id="itemUnit">${unitOptions({ selected: 'EA' })}</select>
                                 </div>
 
                                 <!-- 4. 원자재 분류 (MATERIAL만) -->
@@ -254,30 +254,40 @@ export function itemsPage(c: Context<HonoEnv>) {
                                     </div>
                                 </div>
 
-                                <!-- 11-3. 다단위(multi-UOM) (MATERIAL만) — MU1 -->
-                                <div id="rmUomArea" class="hidden border-t pt-3 mt-3">
-                                    <label class="block text-sm font-semibold text-gray-700 mb-1">다단위 <span class="text-xs text-gray-400 font-normal">(포장↔차감/저장 단위 분리, 비우면 단일단위)</span></label>
-                                    <div class="grid grid-cols-3 gap-2">
-                                        <div>
-                                            <label class="block text-xs font-semibold text-gray-600 mb-1">차감/저장 단위(base)</label>
-                                            <select id="itemBaseUnit" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                                                <option value="">— (관리단위와 동일)</option>
-                                                ${unitOptions({})}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label class="block text-xs font-semibold text-gray-600 mb-1">환산 (1관리 = N base)</label>
-                                            <input type="number" id="itemPackSize" min="0" step="0.0001" placeholder="예 20 (1통=20L)" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                                        </div>
-                                        <div>
-                                            <label class="block text-xs font-semibold text-gray-600 mb-1">재고 유형</label>
-                                            <select id="itemStockMode" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                                                <option value="CONTINUOUS">연속(롤/시트 — cm/yd)</option>
-                                                <option value="PACK">포장(미개봉 — 개봉=소모)</option>
-                                            </select>
-                                        </div>
+                                <!-- 11-3. 단위표 (item_units, 2026-09-17) — 모든 품목. 기본단위 1행 = 재고·소모·단가 축, 나머지 = 환산 단위 -->
+                                <div id="itemUnitsArea" class="border-t pt-3 mt-3">
+                                    <div class="flex items-center justify-between mb-1">
+                                        <label class="block text-sm font-semibold text-gray-700">단위 <span class="text-xs text-gray-400 font-normal">(기본단위 1개 + 환산 단위 — 예: 장(기본)·단=10장(발주) / EA(기본)·조=2EA(판매))</span></label>
+                                        <button type="button" onclick="itemUnitsAddRow()" class="text-xs text-blue-600 hover:underline"><i class="fas fa-plus mr-1"></i>단위 추가</button>
                                     </div>
-                                    <p class="text-xs text-gray-400 mt-1">예: 잉크 통=L·PACK·환산=통용량 / 시트 롤=cm·CONTINUOUS·환산=롤길이. 비우면 현행(단일단위).</p>
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full text-xs">
+                                            <thead>
+                                                <tr class="text-gray-500">
+                                                    <th class="text-left py-1 font-medium">단위</th>
+                                                    <th class="text-left py-1 font-medium">환산</th>
+                                                    <th class="py-1 font-medium" title="재고·소모·단가 축">기본</th>
+                                                    <th class="py-1 font-medium" title="발주서·입고 기본 단위">발주·입고</th>
+                                                    <th class="py-1 font-medium" title="주문서·견적서 기본 단위">판매</th>
+                                                    <th class="py-1 font-medium" title="실사 입력(포장) 단위">실사</th>
+                                                    <th></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="itemUnitsBody"></tbody>
+                                        </table>
+                                    </div>
+                                    <datalist id="itemUnitsPresetList">
+                                        <option value="EA"></option><option value="장"></option><option value="단"></option><option value="조"></option><option value="롤"></option><option value="M"></option><option value="yd"></option><option value="cm"></option><option value="L"></option><option value="통"></option><option value="BOX"></option><option value="세트"></option><option value="㎡"></option>
+                                    </datalist>
+                                    <p id="itemUnitsHint" class="text-xs text-gray-400 mt-1"></p>
+                                    <!-- 재고 유형(MATERIAL 만) — core.js 가 #rmUomArea 를 유형별로 토글한다 -->
+                                    <div id="rmUomArea" class="hidden mt-2">
+                                        <label class="block text-xs font-semibold text-gray-600 mb-1">재고 유형</label>
+                                        <select id="itemStockMode" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                            <option value="CONTINUOUS">연속(롤/시트 — cm/yd)</option>
+                                            <option value="PACK">포장(미개봉 — 개봉=소모)</option>
+                                        </select>
+                                    </div>
                                 </div>
 
                                 <!-- 12. 품목 그룹 -->

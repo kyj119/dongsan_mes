@@ -4,6 +4,7 @@ import type { Item, ItemCategory, ApiResponse, PaginatedResponse } from '../type
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter, isZoneOwnedByEntity } from '../utils/entityFilter'
 import { validateUpload } from '../utils/uploadValidation'
+import { loadItemUnits, normalizeUnitSet, replaceItemUnits, syncUnitsFromPair } from '../utils/itemUnits'
 
 const itemsRouter = new Hono<HonoEnv>()
 
@@ -837,9 +838,46 @@ itemsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       `UPDATE items SET ${setClauses.join(', ')} WHERE id = ?`
     ).bind(...params).run()
 
+    // 레거시 단위 열을 직접 쓴 호출자(이관·bulk)면 단위표를 열에 맞춘다(정본=item_units, utils/itemUnits.ts)
+    if (updates.unit !== undefined || updates.base_unit !== undefined || updates.pack_size !== undefined) {
+      try { await syncUnitsFromPair(c.env.DB, parseInt(id)) } catch (e) { console.warn('[items] item_units sync (PATCH) 실패:', e) }
+    }
+
     return c.json({ success: true })
   } catch (error) {
     console.error('src/routes/items.ts PATCH error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
+// ── 품목 단위표 (item_units, 2026-09-17) — spec docs/superpowers/specs/2026-09-17-item-units.md ──
+// GET  /:id/units  표 읽기
+// PUT  /:id/units  { units:[{unit,factor,is_base,role_purchase,role_sales,role_count}] } 표 통째 교체 → items.unit/base_unit/pack_size 파생
+itemsRouter.get('/:id/units', async (c) => {
+  try {
+    const id = Number(c.req.param('id'))
+    if (!Number.isFinite(id)) return c.json({ success: false, error: 'invalid id' }, 400)
+    const units = await loadItemUnits(c.env.DB, id)
+    return c.json({ success: true, data: units })
+  } catch (error) {
+    console.error('src/routes/items.ts units GET error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
+itemsRouter.put('/:id/units', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const id = Number(c.req.param('id'))
+    if (!Number.isFinite(id)) return c.json({ success: false, error: 'invalid id' }, 400)
+    const item = await c.env.DB.prepare('SELECT id, item_code FROM items WHERE id = ?').bind(id).first<{ id: number; item_code: string | null }>()
+    if (!item) return c.json({ success: false, error: 'Item not found' }, 404)
+    const body = await c.req.json<{ units?: any[] }>().catch(() => ({} as { units?: any[] }))
+    const norm = normalizeUnitSet(body.units || [], item.item_code)
+    if (norm.error || !norm.rows) return c.json({ success: false, error: norm.error || '단위 검증 실패' }, 400)
+    const pair = await replaceItemUnits(c.env.DB, id, norm.rows)
+    return c.json({ success: true, data: { units: norm.rows, derived: pair } })
+  } catch (error) {
+    console.error('src/routes/items.ts units PUT error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
   }
 })
@@ -873,6 +911,8 @@ itemsRouter.get('/:id', async (c) => {
         error: 'Item not found'
       }, 404)
     }
+    // 단위표(item_units) — 품목 상세 편집기가 읽는다. 표가 비어 있으면(마이그 전 생성 등) 빈 배열.
+    try { (item as any).units = await loadItemUnits(c.env.DB, Number(id)) } catch { (item as any).units = [] }
 
     return c.json({
       success: true,
@@ -1137,6 +1177,9 @@ itemsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       (itemData.search_keywords || '').trim() || null
     ).run()
 
+    // 단위표 생성 — 레거시 열(unit/base_unit/pack_size)로 기본단위·발주단위 행을 만든다(정본=item_units)
+    try { await syncUnitsFromPair(c.env.DB, Number(result.meta.last_row_id)) } catch (e) { console.warn('[items] item_units sync (POST) 실패:', e) }
+
     return c.json({
       success: true,
       data: { id: result.meta.last_row_id },
@@ -1226,6 +1269,10 @@ itemsRouter.post('/bulk', requireRole('ADMIN', 'MANAGER'), async (c) => {
       ).run()
 
       created.push(result.meta.last_row_id as number)
+    }
+    // 단위표 생성(정본=item_units) — 실패해도 생성 자체는 유지
+    for (const cid of created) {
+      try { await syncUnitsFromPair(c.env.DB, cid) } catch (e) { console.warn('[items] item_units sync (bulk) 실패:', cid, e) }
     }
 
     return c.json({
@@ -1418,6 +1465,11 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
            VALUES ('ITEM', ?, 'base_price', ?, ?, ?, ?)`
         ).bind(parseInt(id), existing.base_price || 0, newPrice, (c.get('user'))?.username || 'system', getEntityId(c) || 1).run()
       } catch (_) { /* 이력 실패해도 메인 로직 영향 없음 */ }
+    }
+
+    // 레거시 단위 열이 바뀌었을 수 있다 → 단위표를 열에 맞춘다(편집기는 이어서 PUT /:id/units 로 표를 확정한다)
+    if (itemData.unit !== undefined || itemData.base_unit !== undefined || itemData.pack_size !== undefined) {
+      try { await syncUnitsFromPair(c.env.DB, parseInt(id)) } catch (e) { console.warn('[items] item_units sync (PUT) 실패:', e) }
     }
 
     return c.json({

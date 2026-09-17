@@ -49,6 +49,7 @@ async function showCreateModal() {
     document.getElementById('itemForm').reset();
     document.getElementById('itemId').value = '';
     document.getElementById('itemUnit').value = 'EA';
+    if (typeof itemUnitsReset === 'function') itemUnitsReset('EA'); // 단위표: 기본단위 EA 1행
     document.getElementById('itemPrice').value = fmtMoneyInput(0);
     document.getElementById('itemPricingMethod').value = 'FIXED';
     document.getElementById('itemGroup').value = '';
@@ -165,11 +166,8 @@ async function editItem(id) {
                 if (ssEl && item.sheet_spec) ssEl.value = item.sheet_spec;
                 var wfEl = document.getElementById('itemWasteFactor');
                 if (wfEl) wfEl.value = (item.waste_factor != null) ? item.waste_factor : 1.0;
-                // MU1: 다단위 복원
-                var buEl = document.getElementById('itemBaseUnit');
-                if (buEl) buEl.value = item.base_unit || '';
-                var psEl = document.getElementById('itemPackSize');
-                if (psEl) psEl.value = (item.pack_size != null) ? item.pack_size : '';
+                // 단위표 복원(item_units) — 레거시 base_unit/pack_size 칸은 2026-09-17 표로 대체
+                if (typeof itemUnitsLoad === 'function') itemUnitsLoad(item);
                 var smEl = document.getElementById('itemStockMode');
                 if (smEl) smEl.value = item.stock_mode || 'CONTINUOUS';
                 // 롤 폭 직접 필드 복원 (DB 현재값 = 저장될 값, 규격과 불일치도 그대로 노출)
@@ -278,11 +276,7 @@ async function saveItem(event) {
                 data.waste_factor = 1.0;
             }
         }
-        // MU1: 다단위 (비우면 단일단위·현행)
-        var buEl2 = document.getElementById('itemBaseUnit');
-        data.base_unit = (buEl2 && buEl2.value) ? buEl2.value : null;
-        var psEl2 = document.getElementById('itemPackSize');
-        data.pack_size = (psEl2 && psEl2.value !== '') ? Number(psEl2.value) : null;
+        // 단위(base_unit/pack_size)는 저장 뒤 PUT /units 로 표가 확정한다 — 여기서는 보내지 않는다(보내면 서버가 표를 열에 맞춰 되돌린다)
         var smEl2 = document.getElementById('itemStockMode');
         data.stock_mode = (smEl2 && smEl2.value) ? smEl2.value : 'CONTINUOUS';
     }
@@ -290,9 +284,14 @@ async function saveItem(event) {
     try {
         if (id) {
             await axios.put('/api/items/' + id, data);
+            // 단위표(item_units) — 표가 바뀌었을 때만 PUT /units (서버가 items.unit/base_unit/pack_size 를 파생)
+            if (typeof itemUnitsSave === 'function') await itemUnitsSave(id, false);
             showToast('품목이 수정되었습니다.', 'success');
         } else {
-            await axios.post('/api/items', data);
+            var created = await axios.post('/api/items', data);
+            var newId = created && created.data && created.data.data && created.data.data.id;
+            // 신규는 서버가 레거시 열로 기본단위 행만 만들었으므로 편집기 표(환산 단위 포함)를 그대로 확정한다
+            if (newId && typeof itemUnitsSave === 'function') await itemUnitsSave(newId, true);
             showToast('품목이 추가되었습니다.', 'success');
         }
         closeModal();
