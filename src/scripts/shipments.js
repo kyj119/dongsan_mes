@@ -198,6 +198,7 @@ async function loadShipmentsByDate() {
     renderAllSections();
     updateBadges();
     loadConsolidationCandidates(date); // P2: 합배송 후보 (비동기, 실패해도 본 화면 무관)
+    loadPendingConfirm();              // 확정 대기(2026-09-17) — 날짜와 무관한 잔여 목록
   } catch (e) {
     console.error('loadShipmentsByDate error:', e);
     showToast('로드 오류: ' + (e.message || ''), 'error');
@@ -707,6 +708,75 @@ async function saveTrackingNumber(key) {
     showToast(boxCount !== null ? ('송장번호·박스 ' + boxCount + '개 저장 완료') : '송장번호 저장 완료', 'success');
   } catch (e) {
     showToast('저장 실패: ' + (e.message || ''), 'error');
+  }
+}
+
+
+// ========== 확정 대기 (2026-09-17) ==========
+// 출고는 끝났는데 **청구에 필요한 값**(박스 수 = 배송비 청구 수량 · 송장번호)이 안 들어온 건.
+// 출고 확정 경로가 10개라 어디서 내보냈든 여기로 모인다 — 「출고 처리」와 「출고 확정」을 나눈 두 번째 단계.
+// 날짜 필터와 무관하게(최근 14일) 남아 있는 잔여를 보여 준다.
+var _pendingConfirmRows = [];
+async function loadPendingConfirm() {
+  var card = document.getElementById('pendingConfirmCard');
+  var body = document.getElementById('pendingConfirmBody');
+  var cnt = document.getElementById('pendingConfirmCount');
+  if (!card || !body) { console.warn('[shipments] #pendingConfirmCard not found'); return; }
+  try {
+    var res = await axios.get('/api/shipments/pending-confirm');
+    var rows = (res.data && res.data.success) ? (res.data.data || []) : [];
+    _pendingConfirmRows = rows;
+    if (!rows.length) { card.classList.add('hidden'); return; }
+    if (cnt) cnt.textContent = rows.length + '건';
+    body.innerHTML = rows.map(function (r, i) {
+      var needTrack = r.delivery_method === '한진택배';
+      var merged = Number(r.merged_count) || 0;
+      return '<tr class="border-t">'
+        + '<td class="px-3 py-2 font-medium">' + escapeHtml(r.client_name || '-')
+        + (r.entity_name ? '<span style="background:#eef2ff;color:#4338ca;font-size:10px;padding:1px 5px;border-radius:8px;margin-left:4px">' + escapeHtml(r.entity_name) + '</span>' : '')
+        + (merged > 0 ? '<span style="background:#fef3c7;color:#92400e;font-size:10px;padding:1px 5px;border-radius:8px;margin-left:4px" title="합포장 대표 — 박스 수는 이 주문에만 청구됩니다">합포장 ' + (merged + 1) + '건</span>' : '')
+        + '</td>'
+        + '<td class="px-3 py-2 text-gray-600">' + escapeHtml(r.order_number || '') + '</td>'
+        + '<td class="px-3 py-2 text-gray-600">' + escapeHtml(r.delivery_method || '-') + '</td>'
+        + '<td class="px-3 py-2 text-gray-500 text-xs">' + escapeHtml(String(r.shipped_at || '').slice(0, 10)) + '</td>'
+        + '<td class="px-3 py-2 text-center">'
+        + '<input type="number" id="pc-bc-' + i + '" value="' + (Number(r.box_count) > 0 ? r.box_count : 1) + '" min="1" max="99"'
+        + ' class="ds-input w-14 px-1 py-1 text-center text-sm border rounded"'
+        + (Number(r.fee_lines) > 0 ? ' title="이 주문의 배송비 라인 수량이 이 값으로 확정됩니다"' : ' title="박스 수"') + '>'
+        + '</td>'
+        + '<td class="px-3 py-2">'
+        + (needTrack
+            ? '<input type="text" id="pc-tk-' + i + '" value="' + escapeHtml(r.tracking_number || '') + '" class="ds-input px-2 py-1 text-sm w-44 border rounded" placeholder="송장번호">'
+            : '<span class="text-xs text-gray-400">-</span>')
+        + '</td>'
+        + '<td class="px-3 py-2 text-center">'
+        + '<button onclick="confirmPendingRow(' + i + ')" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">'
+        + '<i class="fas fa-check mr-1"></i>확정</button>'
+        + '</td>'
+        + '</tr>';
+    }).join('');
+    card.classList.remove('hidden');
+  } catch (e) {
+    console.warn('[shipments] 확정 대기 조회 실패', e);
+    card.classList.add('hidden');
+  }
+}
+
+// 한 행 확정 — 기존 by-order 라우트를 그대로 쓴다(서버가 배송비 라인·청구그룹까지 맞춘다).
+async function confirmPendingRow(idx) {
+  var r = _pendingConfirmRows[idx];
+  if (!r) return;
+  var bcEl = document.getElementById('pc-bc-' + idx);
+  var tkEl = document.getElementById('pc-tk-' + idx);
+  var payload = { box_count: bcEl ? (parseInt(bcEl.value) || 1) : 1 };
+  if (tkEl) payload.tracking_number = tkEl.value.trim();
+  try {
+    await axios.patch('/api/shipments/by-order/' + r.order_id, payload);
+    showToast(escapeHtml(r.order_number) + ' 확정 — 박스 ' + payload.box_count + '개'
+      + (Number(r.fee_lines) > 0 ? ' · 배송비 수량 반영' : ''), 'success');
+    loadPendingConfirm();
+  } catch (e) {
+    showToast('확정 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message || ''), 'error');
   }
 }
 

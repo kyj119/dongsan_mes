@@ -272,6 +272,104 @@ shipmentsRouter.get('/daily', async (c) => {
 // 직배/용차/퀵)으로 겹치는 건을 탐지 — 합짐·합포장 후보 가시화.
 // ⚠️ 목적상 entityFilter 미적용(명시적 cross-entity 조회) — ADMIN·MANAGER 한정.
 // 권역 키 = delivery_info의 '[12345]' 프리픽스를 쿼리 시점 파생 (컬럼 추가 없이 상시 동기)
+// ============================================================================
+// POST /consolidation-pending — 이 주문들을 지금 내보내면 **묶인 파트너가 남는가** (2026-09-17)
+//
+// 합배송은 「박스 하나」가 전제다. 한쪽만 출고되면 ①박스는 함께 나갔는데 한쪽이 미출고로 남고
+// ②배송비가 각 주문에 따로 청구된다(0621 의 박스 수 확정도 대표 기준이라 갈린다).
+// 출고 페이지는 이미 동반 출고 프롬프트가 있지만 **주문 목록 일괄 출고에는 없었다** — 같은 판정을 공유한다.
+//
+// 판정 = 예약 포인터(`orders.consolidate_with_order_id`) root 기준 형제 중 **아직 미출고**인 주문.
+//   (`shipmentHelper.applyConsolidationIntents` 와 같은 축 — 실제 묶임도 이 포인터로 이행된다)
+// ※ /:id 보다 먼저 등록
+// ============================================================================
+shipmentsRouter.post('/consolidation-pending', requireAccessOrRole('/shipments', 'MANAGER', 'DESIGNER'), async (c) => {
+  try {
+    const { order_ids } = await c.req.json<{ order_ids: number[] }>()
+    const ids = (Array.isArray(order_ids) ? order_ids : []).map(Number).filter((n) => Number.isFinite(n) && n > 0)
+    if (!ids.length) return c.json({ success: true, data: [] })
+    const partners: Record<string, unknown>[] = []
+    for (let i = 0; i < ids.length; i += 60) {
+      const chunk = ids.slice(i, i + 60)
+      const ph = chunk.map(() => '?').join(',')
+      const { results } = await c.env.DB.prepare(`
+        SELECT DISTINCT p.id, p.order_number, p.delivery_date, p.entity_id,
+               en.short_name AS entity_name, cl.client_name
+          FROM orders me
+          JOIN orders p ON p.id <> me.id
+                       AND p.client_id = me.client_id
+                       AND COALESCE(p.consolidate_with_order_id, p.id) = COALESCE(me.consolidate_with_order_id, me.id)
+          LEFT JOIN entities en ON en.id = p.entity_id
+          LEFT JOIN clients cl ON cl.id = p.client_id
+         WHERE me.id IN (${ph})
+           AND p.shipped_at IS NULL
+           AND p.status NOT IN ('CANCELLED', 'DELETED', 'DRAFT', 'QUOTATION')
+           AND p.id NOT IN (${ph})
+      `).bind(...chunk, ...chunk).all<Record<string, unknown>>()
+      partners.push(...(results || []))
+    }
+    // 같은 파트너가 여러 주문에서 나올 수 있다 — id 로 한 번만
+    const seen = new Set<number>()
+    const uniq = partners.filter((p) => {
+      const id = Number(p.id)
+      if (seen.has(id)) return false
+      seen.add(id)
+      return true
+    })
+    return c.json({ success: true, data: uniq })
+  } catch (error) {
+    console.error('shipments consolidation-pending error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ============================================================================
+// GET /pending-confirm — 「확정 대기」 (2026-09-17)
+//
+// 출고는 됐는데 **청구에 필요한 값이 아직 안 들어온** 건. 출고 확정 경로가 10개라 어디서 내보냈든
+// 결국 여기로 모인다 — 박스 수(배송비 청구 수량)·송장번호(택배)가 비어 있으면 이 목록에 남는다.
+// 「출고 처리」(현장)와 「출고 확정」(청구에 영향을 주는 값)을 나눈 두 번째 단계의 화면 근거.
+//
+//  · 대표 출고만 센다(합포장 부속은 대표가 대신 받는다 — 쓰기도 대표로 리다이렉트된다)
+//  · 박스 수가 필요한 건 = 배송비 라인이 `fee_source='SHIPMENT_BOX'` 인 주문 **또는** 아직 안 센 택배·화물
+//  · 송장이 필요한 건 = 한진택배만(나머지는 라벨·터미널만 쓴다 — DELIVERY_TYPE_MAP 축)
+// ※ /:id 보다 먼저 등록
+// ============================================================================
+shipmentsRouter.get('/pending-confirm', requireAccessOrRole('/shipments', 'MANAGER'), async (c) => {
+  try {
+    const days = Math.min(Math.max(Number(c.req.query('days')) || 14, 1), 90)
+    const ef = entityFilter(c, 'o')
+    const { results } = await c.env.DB.prepare(`
+      SELECT o.id AS order_id, o.order_number, o.delivery_method, o.shipped_at, o.entity_id,
+             en.short_name AS entity_name,
+             cl.client_name,
+             sp.id AS shipment_id,
+             COALESCE(sp.box_count, 0) AS box_count,
+             COALESCE(sp.tracking_number, '') AS tracking_number,
+             (SELECT COUNT(*) FROM shipments ch WHERE ch.merged_into_id = sp.id) AS merged_count,
+             (SELECT COUNT(*) FROM order_items fi WHERE fi.order_id = o.id AND fi.fee_source = 'SHIPMENT_BOX') AS fee_lines
+        FROM orders o
+        JOIN shipments sp ON sp.order_id = o.id AND sp.merged_into_id IS NULL
+                         AND COALESCE(sp.status, '') <> 'CANCELLED'
+        LEFT JOIN clients cl ON cl.id = o.client_id
+        LEFT JOIN entities en ON en.id = o.entity_id
+       WHERE o.status = 'SHIPPED'
+         AND o.shipped_at >= datetime('now', '-' || ? || ' days')
+         AND (
+               COALESCE(sp.box_count, 0) = 0
+               OR (o.delivery_method = '한진택배' AND COALESCE(sp.tracking_number, '') = '')
+             )
+         ${ef.clause}
+       ORDER BY o.shipped_at DESC, o.id DESC
+       LIMIT 200
+    `).bind(days, ...ef.params).all()
+    return c.json({ success: true, data: results || [] })
+  } catch (error) {
+    console.error('shipments pending-confirm error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // ※ /:id 보다 먼저 등록
 // ============================================================================
 shipmentsRouter.get('/consolidation-candidates', requireAccessOrRole('/shipments', 'MANAGER'), async (c) => {

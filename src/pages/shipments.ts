@@ -152,6 +152,33 @@ export function shipmentsPage(c: Context<HonoEnv>) {
         </div>
       </div>
 
+      <!-- 확정 대기 (2026-09-17) — 출고는 됐는데 청구에 필요한 값(박스 수·송장)이 안 들어온 건.
+           출고 확정 경로가 10개라 어디서 내보냈든 여기로 모인다. 건이 있을 때만 표시. -->
+      <div id="pendingConfirmCard" class="mb-6 ds-card overflow-hidden hidden">
+        <div class="flex items-center justify-between px-4 py-3 bg-blue-50 border-b border-blue-200">
+          <h3 class="text-sm font-semibold text-blue-800">
+            <i class="fas fa-clipboard-check mr-1"></i>확정 대기 <span id="pendingConfirmCount" class="ml-1 text-xs font-normal"></span>
+          </h3>
+          <span class="text-xs text-blue-700">출고는 끝났고 박스 수·송장이 아직 안 들어온 건 — 채우면 배송비 청구 수량이 확정됩니다</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="ds-table w-full text-sm">
+            <thead>
+              <tr>
+                <th class="text-left px-3 py-2">거래처</th>
+                <th class="text-left px-3 py-2" style="width:150px">주문번호</th>
+                <th class="text-left px-3 py-2" style="width:110px">배송</th>
+                <th class="text-left px-3 py-2" style="width:110px">출고일</th>
+                <th class="text-center px-3 py-2" style="width:90px">박스</th>
+                <th class="text-left px-3 py-2" style="width:190px">송장번호</th>
+                <th class="text-center px-3 py-2" style="width:80px">확정</th>
+              </tr>
+            </thead>
+            <tbody id="pendingConfirmBody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- 합배송 후보 (법인 통합, P2) — 후보 있을 때만 표시 -->
       <div id="consolidationCard" class="mb-6 ds-card overflow-hidden hidden">
         <div class="flex items-center justify-between px-4 py-3 bg-amber-50 border-b border-amber-200">

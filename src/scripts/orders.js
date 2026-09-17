@@ -91,9 +91,34 @@ function clearBulkSelection() {
 
 async function bulkShipSelected() {
   if (selectedOrderIds.size === 0) return;
-  if (!(await showConfirm(selectedOrderIds.size + '건의 주문을 일괄 출고 처리하시겠습니까?\n(출력완료 상태의 카드만 출고됩니다)'))) return;
+  var shipIds = Array.from(selectedOrderIds);
+
+  // 합배송 파트너 사전 확인(2026-09-17) — 출고 페이지엔 있던 프롬프트가 여기엔 없었다.
+  //   박스는 함께 나가는데 한쪽만 SHIPPED 되면 ①파트너가 미출고로 남고 ②배송비가 각각 청구된다(0621).
+  //   조회 실패는 경고 없이 진행 — 사전 확인이 출고를 막을 이유는 없다.
   try {
-    var res = await axios.patch('/api/orders/bulk-ship', { order_ids: Array.from(selectedOrderIds) });
+    var pres = await axios.post('/api/shipments/consolidation-pending', { order_ids: shipIds });
+    var partners = (pres.data && pres.data.success) ? (pres.data.data || []) : [];
+    if (partners.length > 0) {
+      var plist = partners.map(function (p) {
+        return '· ' + (p.entity_name ? p.entity_name + ' ' : '') + (p.order_number || ('#' + p.id))
+          + (p.client_name ? ' / ' + p.client_name : '')
+          + (p.delivery_date ? ' (납품 ' + String(p.delivery_date).substring(5) + ')' : '');
+      }).join('\n');
+      if (await showConfirm('합배송으로 묶인 미출고 주문 ' + partners.length + '건이 있습니다:\n' + plist
+            + '\n\n함께 출고 처리할까요?\n(따로 내보내면 배송비가 주문마다 따로 청구됩니다)')) {
+        partners.forEach(function (p) { if (shipIds.indexOf(p.id) < 0) shipIds.push(p.id); });
+      } else if (!(await showConfirm('합배송 파트너를 빼고 선택한 주문만 출고합니다.\n박스가 실제로 함께 나갔다면 파트너도 같이 출고해야 배송비가 한 번만 청구됩니다. 계속할까요?'))) {
+        return;
+      }
+    }
+  } catch (e) {
+    console.warn('[orders] 합배송 파트너 조회 실패 — 경고 없이 진행', e);
+  }
+
+  if (!(await showConfirm(shipIds.length + '건의 주문을 일괄 출고 처리하시겠습니까?\n(출력완료 상태의 카드만 출고됩니다)'))) return;
+  try {
+    var res = await axios.patch('/api/orders/bulk-ship', { order_ids: shipIds });
     if (res.data.success) {
       var results = res.data.data || [];
       var totalShipped = 0, failCount = 0, remainingCards = [];
