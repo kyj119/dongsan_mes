@@ -1324,6 +1324,38 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
     a0m.indexOf("'등록 잔해'") > 0 && a0m.indexOf('e.pendingIngest') > 0
     && a0m.indexOf('e.scanned !== undefined') > 0,
     '구버전 호스트에서 0건으로 보이면 안 된다')
+  // ── 14. 픽업 이름 충돌을 **사람에게** 알린다 (2026-09-18) ────────────────
+  //   픽업 폴더 `_출력/<날짜>` 는 **날짜당 한 자리**이고 에이전트는 크기가 다르면 덮어쓴다.
+  //   같은 날 같은 이름으로 두 번 등록하면 **재단기에 가는 실물만 나중 것 하나**가 되는데,
+  //   등록·주문·카드는 둘 다 멀쩡해서 아무 화면에도 안 나왔다(09-11·09-15 실측 2건).
+  //   ★검사하는 것은 **성질**이다 — 「충돌을 재서 사람에게 말이 닿는가」. 어떻게 재는지는 묻지 않는다.
+  const cuth = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
+  const cutm2 = fs.readFileSync(path.join(path.dirname(PANEL), 'js/cut-main.js'), 'utf8')
+  ok('14 픽업 이름 충돌을 등록 시점에 잰다(가공)', (() => {
+    const save = a0h.indexOf('outBytes = mesA0_settleLen(')
+    const meas = a0h.indexOf('pickClash = mesA0_pickupClash(')
+    const mf = a0h.indexOf('pickup_clash: pickClash')
+    return save > 0 && meas > save && mf > meas
+  })(), 'EPS 를 저장한 뒤·manifest 를 쓰기 전에 재야 그 등록의 사실이 된다')
+  ok('14 충돌이 경고 코드로 나간다(가공)', a0h.indexOf("(pickClash ? 'P' : '')") > 0,
+    '재고도 응답에 안 실으면 패널이 알 길이 없다')
+  ok('14 가공 패널이 그 코드를 사람 말로 옮긴다',
+    /P: '[^']*덮/.test(a0m) && a0m.indexOf('warnKo') > 0,
+    '코드만 뜨면 원인도 조치도 없다 — 덮어쓴다는 사실과 고치는 법이 문장에 있어야 한다')
+  // ★형제 스윕 — 호스트가 둘이면 같은 결정도 둘이다(work.ai·embedAllFonts 가 같은 형태였다).
+  ok('14 재단 호스트도 같은 결정을 한다',
+    cuth.indexOf('function mesCut_pickupClash(') > 0
+    && cuth.indexOf('mesCut_pickupClash(ymd, epsName') > 0
+    && cuth.split(";pickdup=' + dup").length - 1 >= 2,   // ⚠️버전·규약 주석에 안 걸리게 실제 반환식으로 센다
+    '한쪽만 고치면 재단에서만 실물이 조용히 사라진다')
+  ok('14 재단 패널이 두 경로 모두에 붙인다',
+    (cutm2.match(/pickDupText[(]k/g) || []).length >= 2,
+    '정상 경로에만 붙이면 manifest 구제 경로에서만 조용해진다')
+  // ⚠️ 시스템이 **이름을 바꾸지 않는다** — 이 파일명이 그대로 RIP 에 나가는 이름이고,
+  //    그 규약이 08-27 에 출력완료 매칭 0% 를 되살린 근거다. 접미사를 붙이면 그게 깨진다.
+  ok('14 픽업 파일 이름은 등록 이름 그대로다',
+    agentCs.indexOf('Path.Combine(outDir, Path.GetFileName(rel))') > 0,
+    '에이전트가 이름을 바꾸면 RIP 가 보는 이름이 달라져 출력완료 매칭이 끊긴다')
 }
 
 await browser.close()

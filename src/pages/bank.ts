@@ -319,7 +319,9 @@ ${PENDING_REASONS.map(r => `              <button onclick="switchPendingReason('
                     <th class="col-amount px-2 py-2 text-right text-[10px] font-medium text-gray-500 uppercase">입금</th>
                     <th class="col-amount px-2 py-2 text-right text-[10px] font-medium text-gray-500 uppercase">출금</th>
                     <th class="col-amount px-2 py-2 text-right text-[10px] font-medium text-gray-500 uppercase">잔액</th>
-                    <th class="col-status px-2 py-2 text-center text-[10px] font-medium text-gray-500 uppercase">상태</th>
+                    <!-- 상태 배지 + 「약함」 + 사유 배지(「매입 전표 없음」 등)가 세로로 쌓인다.
+                         표준 col-status(96px)로는 사유 배지가 잘렸다 -->
+                    <th class="col-status px-2 py-2 text-center text-[10px] font-medium text-gray-500 uppercase" style="width:124px">상태</th>
                     <th class="col-flex px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase">거래처</th>
                     <th class="col-action px-2 py-2 text-center text-[10px] font-medium text-gray-500 uppercase"></th>
                   </tr>

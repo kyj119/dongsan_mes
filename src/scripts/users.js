@@ -37,8 +37,8 @@
         '<td class="px-4 py-3">' + getRoleBadge(u.role) + '</td>' +
         '<td class="px-4 py-3 text-center">' + statusBadge + '</td>' +
         '<td class="px-4 py-3 text-gray-500 text-sm">' + formatDate(u.last_login_at) + '</td>' +
-        '<td class="px-4 py-3 text-center">' +
-          '<div class="flex gap-3 items-center justify-center">' +
+        '<td class="px-3 py-3 text-center">' +
+          '<div class="flex gap-2 items-center justify-center whitespace-nowrap">' +
             '<button data-user-json="' + JSON.stringify(u).replace(/"/g, '&quot;') + '" onclick="showEditModal(JSON.parse(this.getAttribute(\'data-user-json\')))" class="text-blue-600 hover:text-blue-700 text-sm font-medium">수정</button>' +
             '<button onclick="showResetModal(' + u.id + ', \'' + jsStr(u.name || u.username) + '\')" class="text-orange-500 hover:text-orange-700 text-sm font-medium">비번 초기화</button>' +
             '<button onclick="toggleActive(' + u.id + ', ' + (u.is_active ? 'false' : 'true') + ')" class="' + toggleClass + ' text-sm font-medium">' + toggleLabel + '</button>' +
@@ -55,10 +55,15 @@
           '<tr>' +
             '<th class="col-name px-4 py-3 text-sm font-medium text-gray-500">이름</th>' +
             '<th class="col-code px-4 py-3 text-sm font-medium text-gray-500">아이디</th>' +
-            '<th class="col-tag px-4 py-3 text-sm font-medium text-gray-500">역할</th>' +
+            // 표준 col-tag(92px)는 아이콘+「오퍼레이터」 배지(실측 84px)에 td 여백 32px 를 더한
+            // 116px 를 못 담아 배지 오른쪽이 잘렸다
+            '<th class="col-tag px-4 py-3 text-sm font-medium text-gray-500" style="width:124px">역할</th>' +
             '<th class="col-status px-4 py-3 text-sm font-medium text-gray-500 text-center">상태</th>' +
             '<th class="col-datetime px-4 py-3 text-sm font-medium text-gray-500">마지막 로그인</th>' +
-            '<th class="col-action px-4 py-3 text-sm font-medium text-gray-500 text-center">액션</th>' +
+            // 액션 5개(수정·비번 초기화·활성토글·품목배정·완전삭제) = 실측 289px(14px·gap-2·px-3).
+            // .ds-table 은 table-layout:fixed + td{overflow:hidden} 이라 표준 col-action(100px)
+            // 에서는 뒤 3개가 **경고 없이 사라졌다**. 라벨을 늘리면 이 폭도 같이 늘려야 한다.
+            '<th class="col-action px-3 py-3 text-sm font-medium text-gray-500 text-center" style="width:312px">액션</th>' +
           '</tr>' +
         '</thead>' +
         '<tbody>' + rows + '</tbody>' +

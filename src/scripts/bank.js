@@ -447,13 +447,17 @@ if (typeof window.hubGoto !== 'function') window.hubGoto = function () { navigat
       var rChip = tx.pending_reason ? reasonChipEl(tx.pending_reason) : null;
       if (rChip && rChip.dataset.badge === '1') {
         var rc = rChip.dataset.color || '#6b7280';
-        reasonMark = '<span class="ml-1 text-[10px] px-1 py-0.5 rounded" style="background:' + rc + '1a;color:' + rc + '"'
+        reasonMark = '<span class="text-[10px] px-1 py-0.5 rounded whitespace-nowrap" style="background:' + rc + '1a;color:' + rc + '"'
           + ' title="' + escHtml(rChip.getAttribute('title') || '') + '">' + escHtml(rChip.dataset.label || '') + '</span>';
       }
       var weakMark = tx.match_weak
-        ? '<span class="ml-1 text-[10px] px-1 py-0.5 rounded bg-rose-50 text-rose-600" title="근거가 약합니다(' + (tx.match_reason || '') + '). 한 건씩 확인하세요 — 전체선택·일괄적용에서 제외됩니다">약함</span>'
+        ? '<span class="text-[10px] px-1 py-0.5 rounded bg-rose-50 text-rose-600 whitespace-nowrap" title="근거가 약합니다(' + (tx.match_reason || '') + '). 한 건씩 확인하세요 — 전체선택·일괄적용에서 제외됩니다">약함</span>'
         : '';
-      html += '<td class="text-center">' + badge + weakMark + reasonMark + '</td>';
+      // 배지가 최대 3개(상태 + 약함 + 사유)까지 붙는데 가로로 늘어놓으면 ≈200px 라
+      //   고정폭 열에서 뒤쪽이 **조용히 잘린다**(.ds-table = table-layout:fixed + overflow:hidden).
+      //   세로로 쌓아 어느 조합이든 다 보이게 한다. ds-wrap = td 의 nowrap/hidden 해제.
+      html += '<td class="text-center ds-wrap"><span class="inline-flex flex-col items-center gap-1">'
+        + badge + weakMark + reasonMark + '</span></td>';
       // ds-wrap: td 기본 overflow:hidden이 셀 내 절대배치 드롭다운(거래처/비용분류)을 잘라버림 → 해제
       html += '<td class="ds-wrap">' + matchedClient + '</td>';
       html += '<td class="text-center">' + actionCell + '</td>';
