@@ -554,14 +554,17 @@ inventoryRouter.post('/receipts', requireEditOrRole('/receiving', 'ADMIN', 'MANA
       const { item_id, quantity, unit_price, location } = item
       const amount = quantity * unit_price
       const zoneId = zoneMap.get(item_id) ?? null
+      // 0618 단위표: 라인이 단위·계수를 명시하면(단위 셀렉트) 그것이 정본, 아니면 품목 마스터 계수(현행).
+      const lineFactor = Number(item.unit_factor) > 0 ? Number(item.unit_factor) : ps(item_id)
+      const lineUnit = (typeof item.unit === 'string' && item.unit.trim()) ? item.unit.trim() : (unitMap.get(item_id) || 'EA')
 
       receiptStmts.push(
         c.env.DB.prepare(`
           INSERT INTO inventory_receipt_items (receipt_id, item_id, quantity, unit_price, amount, location, unit,
-                                               received_quantity, accepted_quantity, rejected_quantity)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-        `).bind(receiptId, item_id, quantity, unit_price, amount, location || null, unitMap.get(item_id) || 'EA',  // MU5: 입고 단위 스냅샷(관리단위)
-          quantity, quantity),  // 검수 없는 직접입고 = 전량 합격. 취소 역분개가 accepted_quantity 기준이라 필수
+                                               received_quantity, accepted_quantity, rejected_quantity, unit_factor)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+        `).bind(receiptId, item_id, quantity, unit_price, amount, location || null, lineUnit,  // MU5: 입고 단위 스냅샷 + 0618 계수
+          quantity, quantity, lineFactor),  // 검수 없는 직접입고 = 전량 합격. 취소 역분개가 accepted_quantity 기준이라 필수
         c.env.DB.prepare(`
           INSERT OR IGNORE INTO inventory (item_id, quantity, entity_id, storage_zone_id, last_updated)
           VALUES (?, 0, ?, ?, CURRENT_TIMESTAMP)
@@ -569,10 +572,10 @@ inventoryRouter.post('/receipts', requireEditOrRole('/receiving', 'ADMIN', 'MANA
         c.env.DB.prepare(`
           UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP
           WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)
-        `).bind(quantity * ps(item_id), item_id, entityId, zoneId)  // MU3: base 환산 누적
+        `).bind(quantity * lineFactor, item_id, entityId, zoneId)  // MU3: base 환산 누적 (0618: 라인 계수 우선)
       )
       const agg = ledgerAgg.get(item_id) || { qtyBase: 0, amount: 0 }
-      agg.qtyBase += quantity * ps(item_id)
+      agg.qtyBase += quantity * lineFactor
       agg.amount += amount
       ledgerAgg.set(item_id, agg)
     }
@@ -704,7 +707,7 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
       }
 
       const { results: receiptItems } = await c.env.DB.prepare(
-        `SELECT item_id, quantity, received_quantity, accepted_quantity, rejected_quantity, po_item_id, received_packs
+        `SELECT item_id, quantity, received_quantity, accepted_quantity, rejected_quantity, po_item_id, received_packs, unit_factor
            FROM inventory_receipt_items WHERE receipt_id = ?`
       ).bind(id).all()
 
@@ -797,7 +800,9 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
       const cancelAgg = new Map<number, number>()
       for (const ri of invItems) {
         const iid = ri.item_id as number
-        cancelAgg.set(iid, (cancelAgg.get(iid) || 0) + accOf(ri) * cps(iid))
+        // 0618: 입고 라인이 계수 스냅샷(unit_factor)을 갖고 있으면 그것으로 되돌린다 — 정방향과 같은 계수(대칭).
+        const lineFactor = Number((ri as any).unit_factor)
+        cancelAgg.set(iid, (cancelAgg.get(iid) || 0) + accOf(ri) * (lineFactor > 0 ? lineFactor : cps(iid)))
       }
       const ops: D1PreparedStatement[] = []
       for (const [itemId, accBase] of cancelAgg) {

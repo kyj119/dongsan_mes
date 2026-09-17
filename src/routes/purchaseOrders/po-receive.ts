@@ -74,6 +74,7 @@ poReceiveRouter.post('/:id/receive', async (c) => {
     const { results: poItems } = await c.env.DB.prepare(`
       SELECT poi.id, poi.item_id, poi.item_name, poi.quantity, poi.received_quantity, poi.unit_price,
              poi.qty_is_estimate, poi.order_packs, poi.received_packs,
+             poi.unit, poi.unit_factor,
              sz.id AS effective_zone_id
       FROM purchase_order_items poi
       JOIN purchase_orders po ON po.id = poi.po_id
@@ -165,6 +166,7 @@ poReceiveRouter.post('/:id/receive', async (c) => {
       itemId: number | null
       receiveQty: number
       receivePacks: number
+      unit: string | null
       acceptedQty: number
       rejectedQty: number
       unitPrice: number
@@ -223,7 +225,10 @@ poReceiveRouter.post('/:id/receive', async (c) => {
       const qualityStatus = rejectedQty === 0 ? 'PASSED' : acceptedQty === 0 ? 'FAILED' : 'PARTIAL'
 
       // #462 MU3: 관리단위 → base 환산. inventory/tx는 base 단위.
-      const packSize = poItem.item_id ? (packMap.get(poItem.item_id as number) || 1) : 1
+      //   0618 단위표: 발주 라인이 계수 스냅샷(unit_factor)을 들고 있으면 **그것이 정본**이다 — 발주 뒤 품목 마스터의
+      //   단위표가 바뀌어도 이 라인은 발주 당시 단위로 들어온다(단가 축 0600 과 같은 원리). 없으면 종전대로 packFactor(item).
+      const lineFactor = Number((poItem as any).unit_factor)
+      const packSize = lineFactor > 0 ? lineFactor : (poItem.item_id ? (packMap.get(poItem.item_id as number) || 1) : 1)
       const acceptedBase = acceptedQty * packSize
       const poEntityId = poEntityIdPrefetch
 
@@ -239,6 +244,7 @@ poReceiveRouter.post('/:id/receive', async (c) => {
         receiveQty, receivePacks, acceptedQty, rejectedQty, unitPrice, amount, qualityStatus,
         rejectMemo: ri.reject_memo || null,
         acceptedBase, packSize,
+        unit: ((poItem as any).unit as string) || null,
         entityId: poEntityId, zoneId: itemZoneId,
       })
       summaryAccepted += acceptedQty
@@ -336,14 +342,17 @@ poReceiveRouter.post('/:id/receive', async (c) => {
           INSERT INTO inventory_receipt_items (
             receipt_id, item_id, quantity, unit_price, amount,
             received_quantity, accepted_quantity, rejected_quantity,
-            quality_status, reject_memo, po_item_id, received_packs
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            quality_status, reject_memo, po_item_id, received_packs,
+            unit, unit_factor
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
           receiptId, p.itemId ?? null, p.receiveQty, p.unitPrice, p.amount,
           p.receiveQty, p.acceptedQty, p.rejectedQty,
           p.qualityStatus, p.rejectMemo, p.poItemId,
           // #646: 이 건이 기여한 롤 수를 스냅샷 — 전량취소 롤백이 PO 라인 received_packs 를 되돌릴 근거.
-          p.receivePacks
+          p.receivePacks,
+          // 0618: 입고 단위·계수 스냅샷 — 입고 취소가 같은 계수로 되돌리고, 문서가 당시 단위로 표기한다.
+          p.unit ?? null, p.packSize
         ))
 
         // inventory stock (합격 수량 있을 때만) — 행 부재 시 0 생성 후 **상대 누적**(절대값 SET 금지)

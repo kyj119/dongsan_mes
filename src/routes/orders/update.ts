@@ -14,6 +14,7 @@ import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { getEntityId, entityFilter, findForeignAnalysisIds, foreignAnalysisError } from '../../utils/entityFilter'
 import { resolveAssignedEntity, loadItemMasters, recalcOrderBillingGroups, generateCardsForOrder, resolveLineAxis } from './helpers'
 import { computeLineAmount } from '../../utils/orderLineAmount'
+import { applySalesUnitSnapshots } from '../../utils/itemUnits'
 
 const ordersUpdateRouter = new Hono<HonoEnv>()
 ordersUpdateRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
@@ -581,6 +582,10 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
     if (putChildStmts.length > 0) await c.env.DB.batch(putChildStmts)
 
     // split billing P2: 품목 담당법인별 청구그룹 재계산(BILLED/PAID 동결은 헬퍼가 처리)
+    // 0618 단위표: 판매단위 스냅샷 — PUT 은 라인을 지우고 다시 넣으므로 매번 다시 남긴다(sort_order = items 인덱스)
+    await applySalesUnitSnapshots(c.env.DB, parseInt(id),
+      (orderData.items as any[]).map((item: any, i: number) => ({ sort_order: i, item })).filter((l) => !l.item?.parent_client_id))
+
     await recalcOrderBillingGroups(c.env.DB, parseInt(id))
 
     // #124: 카드 보존 경로 — card_items 재매핑 (item_id + sort_order 기준)

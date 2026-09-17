@@ -29,6 +29,7 @@ import { buildQuotListFilter, resolveQuotSort, QUOT_SORT_DEFAULT } from './quota
 //   주문만 고치면 견적·주문 금액이 갈리는 상태가 됐다 → 단일 소스로 통합.
 //   `.auto` 를 쓰는 이유 = 견적은 수동 금액(에누리) 개념이 없어 늘 자동값을 저장해 왔다. 기존 동작 유지.
 import { computeLineAmount } from '../utils/orderLineAmount'
+import { applySalesUnitSnapshots } from '../utils/itemUnits'
 import { resolveSlot } from '../utils/productionDeadline'   // 직배 배차 슬롯(오전/오후) 정규화
 import { generateCardsForOrder } from './orders/helpers'    // 견적 → 주문 전환 시 생산 카드 생성(create.ts 와 동일 규칙)
 
@@ -247,7 +248,7 @@ quotationsRouter.get('/:id', async (c) => {
     await markExpiredIfNeeded(c.env.DB, quotation)
 
     const { results: items } = await c.env.DB.prepare(`
-      SELECT id, quotation_id, item_id, item_name, width, height, scale_factor, quantity, unit, unit_price, amount, content, specification, post_processing, finishing, pricing_method, parent_id, sort_order, ai_group_index, assigned_entity_id, created_at FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order ASC, id ASC
+      SELECT id, quotation_id, item_id, item_name, width, height, scale_factor, quantity, unit, unit_price, amount, content, specification, post_processing, finishing, pricing_method, parent_id, sort_order, ai_group_index, assigned_entity_id, sales_unit, sales_qty, unit_factor, created_at FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order ASC, id ASC
     `).bind(id).all()
 
     const { results: convertedOrders } = await c.env.DB.prepare(`
@@ -375,6 +376,9 @@ quotationsRouter.post('/', async (c) => {
         const cgId = parentClientGroupIds[i]
         if (cgId) clientIdMap.set(cgId, parentResults[i].meta.last_row_id as number)
       }
+      // 0618 단위표: 판매단위 스냅샷(sales_unit/sales_qty/unit_factor) — sort_order = items 인덱스
+      await applySalesUnitSnapshots(c.env.DB, quotationId,
+        (body.items as any[]).map((item: any, i: number) => ({ sort_order: i, item })).filter((l) => !l.item?.parent_client_id), 'quotation_items')
     }
 
     const parentCount = parentInsertStmts.length
@@ -513,6 +517,9 @@ quotationsRouter.put('/:id', async (c) => {
       const cgId = parentClientGroupIds[i]
       if (cgId) clientIdMap.set(cgId, parentResults[i + 1].meta.last_row_id as number)
     }
+    // 0618 단위표: 판매단위 스냅샷 — PUT 은 라인을 지우고 다시 넣으므로 매번 다시 남긴다
+    await applySalesUnitSnapshots(c.env.DB, Number(c.req.param('id')),
+      (body.items as any[]).map((item: any, i: number) => ({ sort_order: i, item })).filter((l) => !l.item?.parent_client_id), 'quotation_items')
 
     // 자식 품목 INSERT (parent_id 참조 필요 → 부모 batch 이후 실행)
     const parentCount = parentInsertStmts.length
@@ -622,7 +629,7 @@ quotationsRouter.post('/:id/convert-to-order', requireEditOrRole('/quotations', 
     }
 
     const { results: qItems } = await c.env.DB.prepare(
-      `SELECT id, quotation_id, item_id, item_name, width, height, scale_factor, quantity, unit, unit_price, amount, content, specification, post_processing, finishing, pricing_method, parent_id, sort_order, ai_group_index, assigned_entity_id, created_at FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order, id`
+      `SELECT id, quotation_id, item_id, item_name, width, height, scale_factor, quantity, unit, unit_price, amount, content, specification, post_processing, finishing, pricing_method, parent_id, sort_order, ai_group_index, assigned_entity_id, sales_unit, sales_qty, unit_factor, created_at FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order, id`
     ).bind(id).all<Record<string, unknown>>()
     if (!qItems || qItems.length === 0) {
       return c.json({ success: false, error: '견적서에 품목이 없습니다.' }, 400)
@@ -721,6 +728,9 @@ quotationsRouter.post('/:id/convert-to-order', requireEditOrRole('/quotations', 
       for (let i = 0; i < parentQIds.length; i++) {
         qParentToOrderId.set(parentQIds[i], parentResults[i].meta.last_row_id as number)
       }
+      // 0618 단위표: 견적 라인의 판매단위 스냅샷을 주문 라인으로 넘긴다(과금축·규격과 같은 이유 — 전환 시점에 소실되면 안 된다)
+      await applySalesUnitSnapshots(c.env.DB, orderId,
+        qItems.filter((qi) => qi.parent_id == null).map((qi) => ({ sort_order: Number(qi.sort_order), item: { sales_unit: qi.sales_unit, sales_qty: qi.sales_qty, unit_factor: qi.unit_factor } })))
     }
 
     const convChildStmts: D1PreparedStatement[] = []

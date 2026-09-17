@@ -15,7 +15,8 @@ import sCalc from '../scripts/orderForm/calc.js?raw'
 import sSheet from '../scripts/orderForm/sheet.js?raw'
 import sParent from '../scripts/orderForm/parent.js?raw'
 import sIntake from '../scripts/orderForm/intake.js?raw'
-const pageScript = [finishingLabel, deliverySlot, displayUnitPrice, sClient, sItemRow, sFinishing, sCalc, sSheet, sParent, sIntake].join('\n')
+import sUnits from '../scripts/orderForm/units.js?raw'   // 판매단위(0618 단위표)
+const pageScript = [finishingLabel, deliverySlot, displayUnitPrice, sClient, sItemRow, sFinishing, sCalc, sSheet, sParent, sIntake, sUnits].join('\n')
 
 export async function orderFormPage(c: Context<HonoEnv>) {
   // 유통 주문서(?type=dist)는 폐지(2026-09-14, PROPOSALS P11) — prod 주문 11,670건 중 DISTRIBUTION 0건.

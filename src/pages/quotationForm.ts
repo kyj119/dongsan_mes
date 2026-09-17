@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import { readVatRate } from '../utils/vatRate'
 import pageScript from '../scripts/quotationForm.js?raw'
+import sUnitsShared from '../scripts/orderForm/units.js?raw'   // 판매단위(0618 단위표) — 주문서와 같은 스크립트
 
 export async function quotationFormPage(c: Context<HonoEnv>) {
   // 주문서와 같은 규칙 — 합계의 부가세율은 settings 정본을 주입한다(quotations.ts:283 이 읽는 것과 동일 값)
@@ -98,6 +99,6 @@ export async function quotationFormPage(c: Context<HonoEnv>) {
         </div>
       </div>
     `,
-    pageScript: `window.VAT_RATE = ${vatRate};\n` + pageScript
+    pageScript: `window.VAT_RATE = ${vatRate};\n` + pageScript + '\n' + sUnitsShared
   })
 }

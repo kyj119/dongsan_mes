@@ -56,6 +56,17 @@ itemsRouter.get('/price-history', async (c) => {
 })
 
 // Get all item categories
+// 단위표 폼 스위칭 스위치(0618) — settings.item_units.forms. OFF 면 발주·주문서 라인 단위 셀렉트를 숨긴다(저장 경로는 그대로).
+itemsRouter.get('/units-flag', async (c) => {
+  try {
+    const row = await c.env.DB.prepare(`SELECT setting_value FROM settings WHERE setting_key = 'item_units.forms'`).first<{ setting_value: string | null }>()
+    const on = !!row && ['1', 'true', 'on', 'ON', 'TRUE'].includes(String(row.setting_value ?? '').trim())
+    return c.json({ success: true, data: { forms: on } })
+  } catch {
+    return c.json({ success: true, data: { forms: false } })
+  }
+})
+
 itemsRouter.get('/categories', async (c) => {
   try {
     const { results } = await c.env.DB.prepare(

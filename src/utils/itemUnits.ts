@@ -117,6 +117,37 @@ export function unitsFromLegacyPair(pair: LegacyPair, existing: ItemUnitRow[]): 
   return [...rows, ...keep.map((r, i) => ({ ...r, sort_order: rows.length + i }))]
 }
 
+// ── 라인 계수 해석(발주·입고·주문 라인 스냅샷용, 0618) ──────────────────────────
+/** 여러 품목의 단위표를 한 번에 — item_id → (unit → factor). 80개 청크 = D1 바인드 한도. */
+export async function loadUnitFactorMap(db: D1Database, itemIds: Array<unknown>): Promise<Map<number, Map<string, number>>> {
+  const uniq = [...new Set(itemIds.map((v) => Number(v)).filter((n) => Number.isFinite(n) && n > 0))]
+  const map = new Map<number, Map<string, number>>()
+  for (let i = 0; i < uniq.length; i += 80) {
+    const chunk = uniq.slice(i, i + 80)
+    const ph = chunk.map(() => '?').join(',')
+    const { results } = await db.prepare(`SELECT item_id, unit, factor FROM item_units WHERE item_id IN (${ph})`)
+      .bind(...chunk).all<{ item_id: number; unit: string; factor: number }>()
+    for (const r of results || []) {
+      if (!map.has(r.item_id)) map.set(r.item_id, new Map())
+      map.get(r.item_id)!.set(r.unit, Number(r.factor) || 1)
+    }
+  }
+  return map
+}
+
+/**
+ * 라인 단위의 계수. 요청이 명시한 값(>0) → 단위표의 그 단위 → 없으면 null(= 입고 시 packFactor(item) 현행 폴백).
+ *   단위표에 없는 단위 이름(오타·레거시)은 추측하지 않는다 — null 로 두면 종전과 똑같이 동작한다.
+ */
+export function resolveLineFactor(map: Map<number, Map<string, number>>, itemId: unknown, unit: unknown, explicit?: unknown): number | null {
+  const ex = Number(explicit)
+  if (Number.isFinite(ex) && ex > 0) return ex
+  const units = map.get(Number(itemId))
+  if (!units) return null
+  const f = units.get(String(unit ?? '').trim())
+  return f && f > 0 ? f : null
+}
+
 // ── D1 ────────────────────────────────────────────────────────────────────────
 export async function loadItemUnits(db: D1Database, itemId: number): Promise<ItemUnitRow[]> {
   const { results } = await db.prepare(
@@ -158,4 +189,33 @@ export async function syncUnitsFromPair(db: D1Database, itemId: number): Promise
     ).bind(itemId, r.unit, r.factor, r.is_base, r.role_purchase, r.role_sales, r.role_count, r.sort_order ?? 0))
   }
   await db.batch(stmts)
+}
+
+// ── 판매단위 스냅샷(주문서·견적서 라인, 0618) ─────────────────────────────────
+/**
+ * 라인의 quantity(기본단위) 는 이미 INSERT 됐다. 판매단위(조 등)로 입력했으면 그 입력값을 라인에 남긴다 —
+ *   sales_unit·sales_qty·unit_factor. 문서는 「10조(20EA)」로 표기하고, 재계산은 quantity 축 그대로다.
+ *   sales_unit 이 없거나 기본단위와 같으면 아무것도 쓰지 않는다(현행 라인과 byte-identical).
+ * table = 'order_items' | 'quotation_items', key = (parent id, sort_order). 실패해도 호출부를 막지 않는다.
+ */
+export async function applySalesUnitSnapshots(
+  db: D1Database,
+  parentId: number,
+  lines: Array<{ sort_order: number; item: any }>,
+  table: 'order_items' | 'quotation_items' = 'order_items',
+): Promise<number> {
+  const parentCol = table === 'order_items' ? 'order_id' : 'quotation_id'
+  const stmts: D1PreparedStatement[] = []
+  for (const { sort_order, item } of lines) {
+    const su = typeof item?.sales_unit === 'string' ? item.sales_unit.trim() : ''
+    const sq = Number(item?.sales_qty)
+    const f = Number(item?.unit_factor)
+    if (!su || !(sq > 0) || !(f > 0)) continue
+    stmts.push(db.prepare(
+      `UPDATE ${table} SET sales_unit = ?, sales_qty = ?, unit_factor = ? WHERE ${parentCol} = ? AND sort_order = ?`
+    ).bind(su, sq, f, parentId, sort_order))
+  }
+  if (!stmts.length) return 0
+  try { await db.batch(stmts) } catch (e) { console.warn('[itemUnits] sales-unit snapshot 실패:', e) }
+  return stmts.length
 }

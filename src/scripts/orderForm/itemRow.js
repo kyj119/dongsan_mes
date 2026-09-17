@@ -99,6 +99,14 @@
                         <div>
                             <label class="block text-xs font-medium text-gray-600 mb-0.5">수량 <span class="text-red-500">*</span></label>
                             <input type="number" name="quantity_${id}" value="1" min="1" required class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" oninput="calcItem(${id})">
+                            <!-- 0618 단위표: 판매단위(조 등) 입력 — 스위치(item_units.forms) ON + 품목에 환산 단위가 있을 때만 보인다.
+                                 quantity(기본단위) = sales_qty × factor. 저장은 quantity 축 그대로, 판매단위는 스냅샷·표기용. -->
+                            <div id="sales_unit_wrap_${id}" class="hidden mt-1 flex items-center gap-1">
+                                <input type="number" name="sales_qty_${id}" min="0" step="1" placeholder="조" class="w-14 px-1.5 py-1 border border-blue-300 rounded text-xs text-right" oninput="ofSalesQtyChanged(${id})" title="판매단위 수량 — 아래 수량(EA)이 자동 환산됩니다">
+                                <select name="sales_unit_${id}" class="px-1 py-1 border border-blue-300 rounded text-xs" onchange="ofSalesUnitChanged(${id})" title="판매단위"></select>
+                                <input type="hidden" name="unit_factor_${id}" value="">
+                            </div>
+                            <div id="sales_unit_hint_${id}" class="hidden text-[10px] text-gray-500 mt-0.5"></div>
                         </div>
                         <div>
                             <label id="unit_price_label_${id}" class="block text-xs font-medium text-gray-600 mb-0.5">단가</label>
@@ -231,6 +239,7 @@
                     hidCat.value = item.category;
                     if (hidSubcat) hidSubcat.value = item.sub_category || '';
                     unitDisp.value = item.unit;
+                    if (window.ofUnitsApply) window.ofUnitsApply(id, item.id, item.unit); // 0618 단위표: 판매단위(조 등) 칸
                     priceInp.value = fmtMoneyInput(item.price);
                     priceInp.dataset.basePrice = item.price || 0;  // #426: 거래처 특약 단가 제안 비교 기준
                     var pm = item.pricing_method || 'FIXED';

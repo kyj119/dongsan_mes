@@ -399,8 +399,12 @@ function createItemRowHtml(idx, data) {
     + '<div id="item_est_' + idx + '" class="' + (isEst ? '' : 'hidden') + '"'
     + ' style="font-size:10px;color:#b45309;text-align:center;margin-top:1px" title="롤 수에서 환산한 예상 수량입니다. 입고 실측이 정본이 됩니다.">예상</div>'
     + '</td>'
+    // 단위 — 0618 단위표: 스위치(item_units.forms)가 켜지면 품목의 단위표 셀렉트가 이 칸을 대신하고 계수(unit_factor)를 같이 보낸다.
+    //   꺼져 있으면 종전 텍스트 칸 그대로. 저장 축(quantity=라인 단위)은 어느 쪽이든 같다.
     + '<td>'
     + '<input type="text" id="item_unit_' + idx + '" value="' + escapeHtml(unit) + '" class="text-center">'
+    + '<select id="item_unit_sel_' + idx + '" class="hidden text-center" onchange="poUnitChanged(' + idx + ')" title="이 품목의 단위표에서 고릅니다 — 수량은 고른 단위 기준"></select>'
+    + '<input type="hidden" id="item_unit_factor_' + idx + '" value="' + (Number(data.unit_factor) > 0 ? Number(data.unit_factor) : '') + '">'
     + '</td>'
     + '<td>'
     + '<input type="text" inputmode="numeric" data-money id="item_price_' + idx + '" value="' + (pricePending ? '' : (Number(price) || 0).toLocaleString('ko-KR')) + '" class="text-right"' + (pricePending ? ' disabled style="background:#f3f4f6"' : '')
@@ -450,6 +454,8 @@ function addItemRow(data) {
     });
     if (!data) nameInput.focus();
   }
+  // 0618: 수정 모드로 실린 행도 단위표 셀렉트를 붙인다(스위치 ON 일 때만 보인다)
+  if (data && data.item_id) poUnitsApply(idx, data.item_id, data.unit || 'EA');
   updateItemCount();
   return idx;
 }
@@ -532,6 +538,64 @@ function poFetchPackSize(idx, itemId) {
   }).catch(function (e) { console.warn('[poForm] pack_size 조회 실패', e) })
 }
 
+// ══════════════════════════════════════════════════════
+// 단위표 셀렉트 (0618, settings.item_units.forms) — 품목의 단위표에서 라인 단위를 고르고 계수를 같이 보낸다.
+//   저장 축 = quantity 는 고른 단위 기준(종전과 같다), unit_factor = 1 단위가 기본단위 몇 개(입고 환산 정본).
+//   스위치가 꺼져 있으면 아무것도 바꾸지 않는다(텍스트 단위 칸 그대로).
+// ══════════════════════════════════════════════════════
+var _poUnitsFlag = null;           // null=미조회 · true/false
+var _poUnitsCache = {};            // itemId → units[]
+function poUnitsFlag() {
+  if (_poUnitsFlag !== null) return Promise.resolve(_poUnitsFlag);
+  return axios.get('/api/items/units-flag').then(function (res) {
+    _poUnitsFlag = !!(res.data && res.data.data && res.data.data.forms);
+    return _poUnitsFlag;
+  }).catch(function () { _poUnitsFlag = false; return false; });
+}
+function poUnitsFor(itemId) {
+  if (_poUnitsCache[itemId]) return Promise.resolve(_poUnitsCache[itemId]);
+  return axios.get('/api/items/' + itemId + '/units').then(function (res) {
+    var rows = (res.data && res.data.data) || [];
+    _poUnitsCache[itemId] = rows;
+    return rows;
+  }).catch(function () { return []; });
+}
+function poUnitsApply(idx, itemId, unit) {
+  if (!(itemId > 0)) return;
+  poUnitsFlag().then(function (on) {
+    if (!on) return;
+    return poUnitsFor(itemId).then(function (rows) {
+      var sel = document.getElementById('item_unit_sel_' + idx);
+      var txt = document.getElementById('item_unit_' + idx);
+      var facEl = document.getElementById('item_unit_factor_' + idx);
+      if (!sel || !txt || !rows.length) return;
+      var base = rows.filter(function (r) { return r.is_base; })[0] || rows[0];
+      var chosen = unit || (rows.filter(function (r) { return r.role_purchase; })[0] || base).unit;
+      sel.innerHTML = rows.map(function (r) {
+        var label = r.is_base ? r.unit : (r.unit + ' (=' + r.factor + base.unit + ')');
+        return '<option value="' + escapeHtml(r.unit) + '" data-factor="' + r.factor + '"' + (r.unit === chosen ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
+      }).join('');
+      if (!rows.some(function (r) { return r.unit === chosen; })) {
+        // 라인 단위가 단위표에 없다(레거시) — 그 값을 보존 옵션으로 앞에 둔다. 계수는 서버가 해석(null).
+        sel.insertAdjacentHTML('afterbegin', '<option value="' + escapeHtml(chosen) + '" data-factor="" selected>' + escapeHtml(chosen) + '</option>');
+      }
+      sel.classList.remove('hidden');
+      txt.classList.add('hidden');
+      var opt = sel.options[sel.selectedIndex];
+      if (facEl && opt) facEl.value = opt.getAttribute('data-factor') || '';
+    });
+  });
+}
+function poUnitChanged(idx) {
+  var sel = document.getElementById('item_unit_sel_' + idx);
+  var txt = document.getElementById('item_unit_' + idx);
+  var facEl = document.getElementById('item_unit_factor_' + idx);
+  if (!sel) return;
+  var opt = sel.options[sel.selectedIndex];
+  if (txt) txt.value = sel.value;
+  if (facEl && opt) facEl.value = opt.getAttribute('data-factor') || '';
+}
+
 function poSetEstimate(idx, on) {
   var badge = document.getElementById('item_est_' + idx);
   if (badge) badge.classList.toggle('hidden', !on);
@@ -547,6 +611,7 @@ function selectItem(idx, id, name, price, unit, spec, packSize) {
   document.getElementById('item_name_' + idx).value = name;
   document.getElementById('item_price_' + idx).value = fmtMoneyInput(price);
   document.getElementById('item_unit_' + idx).value = unit || 'EA';
+  poUnitsApply(idx, id, unit || 'EA'); // 0618: 스위치가 켜져 있으면 단위표 셀렉트로 교체
   // 롤로 사는 품목이면 롤 입력을 연다. pack_size 가 없으면 종전 그대로 수량만 쓴다.
   var sizeEl = document.getElementById('item_pack_size_' + idx);
   var wrapEl = document.getElementById('item_packs_wrap_' + idx);
@@ -702,7 +767,8 @@ async function loadPOData(id) {
           // 롤 수·예상 표시는 라인에 저장된 값이다(0610).
           pack_size: it.item_pack_size || 0,
           order_packs: it.order_packs || 0,
-          qty_is_estimate: it.qty_is_estimate ? 1 : 0
+          qty_is_estimate: it.qty_is_estimate ? 1 : 0,
+          unit_factor: it.unit_factor || null
         });
       });
       calcTotals();
@@ -743,6 +809,7 @@ async function savePO(status) {
         order_packs: parseFloat((document.getElementById('item_packs_' + idx) || {}).value) || null,
         qty_is_estimate: poIsEstimate(idx) ? 1 : 0,
         unit: document.getElementById('item_unit_' + idx).value || 'EA',
+        unit_factor: parseFloat((document.getElementById('item_unit_factor_' + idx) || {}).value) || null, // 0618 계수 스냅샷(없으면 서버가 단위표에서 해석)
         unit_price: price,
         amount: pricePending ? 0 : (qty * price),
         vat_included: document.getElementById('item_vat_' + idx).checked ? 1 : 0,
@@ -899,6 +966,7 @@ async function saveAsTemplate() {
         order_packs: parseFloat((document.getElementById('item_packs_' + idx) || {}).value) || null,
         qty_is_estimate: poIsEstimate(idx) ? 1 : 0,
         unit: document.getElementById('item_unit_' + idx).value || 'EA',
+        unit_factor: parseFloat((document.getElementById('item_unit_factor_' + idx) || {}).value) || null, // 0618 계수 스냅샷(없으면 서버가 단위표에서 해석)
         unit_price: parseMoney(document.getElementById('item_price_' + idx).value),
         vat_included: document.getElementById('item_vat_' + idx).checked ? 1 : 0
       });

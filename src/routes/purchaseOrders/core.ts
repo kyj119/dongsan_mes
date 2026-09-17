@@ -16,6 +16,7 @@ import { getEntityCompanyInfo } from '../../utils/entitySettings'
 import { kstYmd, kstYmdCompact } from '../../utils/kstDate'
 import { excludePurchaseNonCounterpartiesSql } from '../../constants/intercompany'
 import { validateUpload } from '../../utils/uploadValidation'
+import { loadUnitFactorMap, resolveLineFactor } from '../../utils/itemUnits'
 import { buildPoListFilter, resolvePoSort, PO_SORT_DEFAULT } from './listFilter'
 
 const poCoreRouter = new Hono<HonoEnv>()
@@ -344,6 +345,8 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       ).bind(...poiLookupIds).all<{ id: number; item_name: string; category: string; unit: string }>()
       for (const m of (metaRows || [])) poiItemMeta[m.id as number] = m
     }
+    // 0618 단위표: 라인 단위의 계수를 스냅샷한다(요청 unit_factor > 단위표의 그 단위 > null=입고 시 packFactor 폴백)
+    const unitFactorMap = await loadUnitFactorMap(c.env.DB, data.items.map((it: any) => it.item_id)).catch(() => new Map())
 
     const poiStmts: D1PreparedStatement[] = []
     for (let i = 0; i < data.items.length; i++) {
@@ -362,6 +365,7 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       }
 
       const itemAmount = (item.unit_price || 0) * (item.quantity || 1)
+      const unitFactor = resolveLineFactor(unitFactorMap, item.item_id, unit, item.unit_factor)
 
       poiStmts.push(c.env.DB.prepare(`
         INSERT INTO purchase_order_items (
@@ -370,8 +374,10 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
           unit_price, price_status, amount, vat_included,
           sort_order, notes,
           -- 롤 수(원단 등)와 「수량이 예상치인가」 — 0610. quantity 축은 그대로 매입 단위다.
-          order_packs, qty_is_estimate
-        ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          order_packs, qty_is_estimate,
+          -- 0618 단위표: 이 라인 unit 1개 = 기본단위 몇 개(스냅샷). NULL = 입고 시 품목 마스터 계수(현행).
+          unit_factor
+        ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         poId,
         item.item_id || null,
@@ -386,7 +392,8 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
         i,
         item.notes || null,
         Number(item.order_packs) > 0 ? Number(item.order_packs) : null,
-        item.qty_is_estimate ? 1 : 0
+        item.qty_is_estimate ? 1 : 0,
+        unitFactor
       ))
     }
     for (let i = 0; i < poiStmts.length; i += 80) {
@@ -531,6 +538,8 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       ).bind(...poiLookupIds).all<{ id: number; item_name: string; category: string; unit: string }>()
       for (const m of (metaRows || [])) poiItemMeta[m.id as number] = m
     }
+    // 0618 단위표: 라인 단위의 계수를 스냅샷한다(요청 unit_factor > 단위표의 그 단위 > null=입고 시 packFactor 폴백)
+    const unitFactorMap = await loadUnitFactorMap(c.env.DB, data.items.map((it: any) => it.item_id)).catch(() => new Map())
 
     const poiStmts: D1PreparedStatement[] = []
     for (let i = 0; i < data.items.length; i++) {
@@ -549,6 +558,7 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       }
 
       const itemAmount = (item.unit_price || 0) * (item.quantity || 1)
+      const unitFactor = resolveLineFactor(unitFactorMap, item.item_id, unit, item.unit_factor)
 
       poiStmts.push(c.env.DB.prepare(`
         INSERT INTO purchase_order_items (
@@ -557,8 +567,10 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
           unit_price, price_status, amount, vat_included,
           sort_order, notes,
           -- 롤 수(원단 등)와 「수량이 예상치인가」 — 0610. quantity 축은 그대로 매입 단위다.
-          order_packs, qty_is_estimate
-        ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          order_packs, qty_is_estimate,
+          -- 0618 단위표: 이 라인 unit 1개 = 기본단위 몇 개(스냅샷). NULL = 입고 시 품목 마스터 계수(현행).
+          unit_factor
+        ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         parseInt(id),
         item.item_id || null,
@@ -573,7 +585,8 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         i,
         item.notes || null,
         Number(item.order_packs) > 0 ? Number(item.order_packs) : null,
-        item.qty_is_estimate ? 1 : 0
+        item.qty_is_estimate ? 1 : 0,
+        unitFactor
       ))
     }
     for (let i = 0; i < poiStmts.length; i += 80) {

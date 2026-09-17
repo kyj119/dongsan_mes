@@ -13,6 +13,7 @@ import { getNextEntitySeqNumber } from '../../utils/sequenceGenerator'
 import { resolveSlot } from '../../utils/productionDeadline'   // 직배 배차 슬롯(오전/오후) 정규화
 import { computeLineAmount, type LineAmount } from '../../utils/orderLineAmount'
 import { logActivity } from '../../utils/activityLog'
+import { applySalesUnitSnapshots } from '../../utils/itemUnits'
 import { notifyRoles } from '../../utils/notify'
 import { checkMaterialCoverage, describeGap, type CoverageGap } from '../../utils/materialShortageCheck'
 import { getEntityId, entityFilter, findForeignAnalysisIds, foreignAnalysisError } from '../../utils/entityFilter'
@@ -419,6 +420,9 @@ ordersCreateRouter.post('/', async (c) => {
     if (pass2Stmts.length > 0) {
       await c.env.DB.batch(pass2Stmts)
     }
+
+    // 0618 단위표: 판매단위 스냅샷(sales_unit/sales_qty/unit_factor) — quantity(기본단위) 축은 위 INSERT 그대로
+    await applySalesUnitSnapshots(c.env.DB, orderId, parentItems.map((p) => ({ sort_order: p.idx, item: p.item })))
 
     // split billing P2: 품목 담당법인별 청구그룹 생성/재계산
     await recalcOrderBillingGroups(c.env.DB, orderId)
