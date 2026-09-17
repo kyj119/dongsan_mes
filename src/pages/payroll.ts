@@ -507,6 +507,9 @@ export function payrollPage(c: Context<HonoEnv>) {
             <button onclick="payrollPasteApply()" id="prPasteApplyBtn" class="ds-btn ds-btn-primary text-xs" disabled><i class="fas fa-check mr-1"></i>적용</button>
           </div>
         </div>
+      </div><!-- /prPasteModal — 이 닫는 태그가 없어서 아래 모달이 여기 안에 중첩됐다(2026-09-17).
+             부모가 hidden 이라 JS 는 30행을 다 그렸는데 화면 크기가 0 이었다. -->
+
       <!-- 이카운트 대조 (0623) — 붙여넣기 → 차이 + 원인 판정. 읽기 전용. -->
       <div id="prReconcileModal" class="ds-modal-overlay hidden">
         <div class="ds-modal" style="max-width:82rem">
