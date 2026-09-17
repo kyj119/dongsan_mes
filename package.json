@@ -28,6 +28,7 @@
     "ship": "npm run ship:gate && npm run deploy:prod",
     "verify:items": "node scripts/verify-items.mjs",
     "check:dom": "node scripts/check-dom-refs.cjs",
+    "audit:jwt-decode": "node scripts/jwt-decode-audit.cjs",
     "check:fn": "node scripts/check-fn-refs.cjs --strict",
     "check:fn:selftest": "node scripts/check-fn-refs.cjs --selftest",
     "audit:entity": "node scripts/entity-audit.mjs",

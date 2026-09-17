@@ -12,9 +12,8 @@ var _icUser = { id: null, role: null };
   try {
     var tok = localStorage.getItem('token');
     if (!tok) return;
-    var parts = tok.split('.');
-    if (parts.length < 2) return;
-    var p = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    var p = mesJwtPayload(tok);   // 정본 = shell.js (base64url + 패딩 + 한글 UTF-8)
+    if (!p) return;
     _icUser.id = p.id;
     _icUser.role = p.role;
   } catch (e) { /* silent */ }

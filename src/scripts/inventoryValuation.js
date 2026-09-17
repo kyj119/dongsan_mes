@@ -17,9 +17,9 @@ var _ivUser = { role: null };
   try {
     var tok = localStorage.getItem('token');
     if (!tok) return;
-    var parts = tok.split('.');
-    if (parts.length < 2) return;
-    _ivUser.role = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))).role;
+    var p = mesJwtPayload(tok);   // 정본 = shell.js (base64url + 패딩 + 한글 UTF-8)
+    if (!p) return;
+    _ivUser.role = p.role;
   } catch (e) { /* silent */ }
 })();
 

@@ -105,7 +105,8 @@ async function loadClientDetail() {
 
     // 여신 & 사업자 그룹 (ADMIN only)
     var userRole = '';
-    try { var t = localStorage.getItem('token'); if(t) { var p = JSON.parse(atob(t.split('.')[1])); userRole = p.role || ''; } } catch(e2){}
+    // JWT 디코드 정본 = shell.js `mesJwtPayload`(base64url + 한글 UTF-8). 생짜 atob 은 던진다.
+    try { var p = mesJwtPayload(localStorage.getItem('token')); if (p) userRole = p.role || ''; } catch(e2){ /* ignore: 역할 미상이면 아래 기본 권한으로 흐른다 */ }
     if (userRole === 'ADMIN') {
       document.getElementById('cdCreditSection').classList.remove('hidden');
       document.getElementById('cdCreditLimit').value = fmtMoneyInput(cl.credit_limit || 0);

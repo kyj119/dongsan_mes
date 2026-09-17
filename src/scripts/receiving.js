@@ -965,10 +965,9 @@ async function detectUserScope() {
   try {
     var tok = localStorage.getItem('token');
     if (!tok) return;
-    // JWT payload 디코딩 (verify 없음 — 표시 용도)
-    var parts = tok.split('.');
-    if (parts.length < 2) return;
-    var payload = JSON.parse(atob(parts[1].replace(/-/g,'+').replace(/_/g,'/')));
+    // JWT payload 디코딩 (verify 없음 — 표시 용도). 정본 = shell.js mesJwtPayload
+    var payload = mesJwtPayload(tok);
+    if (!payload) return;
     currentUserId = payload.id;
     currentUserRole = payload.role;
     // OPERATOR → mine, ADMIN/MANAGER → all

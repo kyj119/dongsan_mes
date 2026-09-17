@@ -568,6 +568,39 @@ window.openPostcodeSearch = function(arg) {
 };
 
 // === Auth Check ===
+/**
+ * ★JWT 페이로드 디코드 **정본** (2026-09-17 실기 재현).
+ *
+ * `atob(parts[1])` 로 바로 읽으면 안 된다 — JWT 는 **base64url**(`-`·`_`·패딩 없음)이고
+ * `atob` 는 표준 base64 만 받는다. 게다가 이 시스템의 페이로드에는 `"username":"인호동"` 처럼
+ * **한글이 들어간다**. 인코딩 결과에 `-`/`_` 가 섞이거나 길이가 4의 배수가 아니면
+ * `atob` 가 `InvalidCharacterError` 로 **던진다**.
+ *
+ * ★왜 치명적이었나 — 아래 로컬 exp 체크의 catch 가 그 예외를 「손상된 토큰」으로 읽고
+ *   **토큰을 지우고 `/login` 으로 보냈다**. 로그인 API 는 200 이었고 토큰도 발급됐는데
+ *   다음 화면에서 조용히 로그아웃된 것이라, 증상은 「로그인했는데 바로 로그인창으로 되돌아온다」였다.
+ *   `exp` 가 로그인마다 달라 페이로드 바이트가 바뀌므로 **같은 사람도 될 때가 있고 안 될 때가 있었다**.
+ * ★디코드 실패는 **로그아웃 사유가 아니다** — 로컬 파싱은 서버 왕복을 아끼는 최적화일 뿐이고,
+ *   토큰이 진짜 무효면 첫 API 호출의 401 인터셉터가 처리한다. 그래서 여기서는 **null 을 돌려주고
+ *   판단을 서버에 맡긴다**(던지지 않는다).
+ * ⚠️이 프로젝트에 JWT 를 손으로 까는 자리가 7곳 있었고 정확도가 제각각이었다(생짜 3 · 패딩 누락 3).
+ *   새로 까는 코드를 만들지 말고 **이 함수를 쓴다**. 게이트 = `npm run audit:jwt-decode`.
+ */
+function mesJwtPayload(token) {
+    try {
+        var parts = String(token || '').split('.');
+        if (parts.length !== 3) return null;
+        var s = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        while (s.length % 4) s += '=';
+        var bin = atob(s);
+        // UTF-8 복원 — ASCII 만 가정하면 한글 사용자명이 깨진다(role·exp 만 읽어도 JSON.parse 가 터진다)
+        var bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return JSON.parse(new TextDecoder('utf-8').decode(bytes));
+    } catch (e) { return null; }
+}
+window.mesJwtPayload = mesJwtPayload;
+
 var __authExpiredShown = false;
 var __redirecting = false;
 function handleAuthExpired() {
@@ -585,23 +618,15 @@ if (!token) {
     throw new Error('No auth token');
 }
 // 로컬 exp 빠른 체크 (시계 오차 60초 여유)
-try {
-    var __parts = token.split('.');
-    if (__parts.length === 3) {
-        var __payload = JSON.parse(atob(__parts[1]));
-        if (__payload.exp && __payload.exp <= Math.floor(Date.now() / 1000) - 60) {
-            handleAuthExpired();
-            throw new Error('Token expired');
-        }
-    }
-} catch(e) {
-    if (e.message === 'Token expired' || e.message === 'No auth token') throw e;
-    // JWT 파싱 실패 시 (corrupt token) — 토큰 제거 후 로그인으로
-    console.warn('[Auth] Token parse error, clearing:', e.message);
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    window.location.href = '/login';
-    throw new Error('Token parse error');
+// ★못 읽으면 **통과시킨다** (2026-09-17) — 여기서 로그아웃시키면 안 된다.
+//   종전에는 파싱 실패를 「손상된 토큰」으로 단정해 지우고 /login 으로 보냈는데, 실제로는
+//   멀쩡한 토큰을 `atob` 이 못 읽은 것이었다(base64url + 한글). 로컬 체크는 **서버 왕복을 아끼는
+//   최적화**일 뿐이므로, 못 읽었을 때의 정답은 「모르겠으니 서버에게 묻는다」다 —
+//   진짜 무효면 첫 API 호출에서 401 인터셉터가 같은 일을 해 준다. 조용한 로그아웃만 사라진다.
+var __payload = mesJwtPayload(token);
+if (__payload && __payload.exp && __payload.exp <= Math.floor(Date.now() / 1000) - 60) {
+    handleAuthExpired();
+    throw new Error('Token expired');
 }
 
 axios.defaults.headers.common['Authorization'] = 'Bearer ' + token;
@@ -897,14 +922,8 @@ document.addEventListener('DOMContentLoaded', function() { window.hrInitDatePick
 var __currentEntityId = 1;
 (function initEntitySwitcher() {
     try {
-        var t = localStorage.getItem('token');
-        if (t) {
-            var parts = t.split('.');
-            if (parts.length === 3) {
-                var p = JSON.parse(atob(parts[1]));
-                __currentEntityId = (p.entityId != null) ? p.entityId : 1;
-            }
-        }
+        var p = mesJwtPayload(localStorage.getItem('token'));
+        if (p) __currentEntityId = (p.entityId != null) ? p.entityId : 1;
     } catch(e) {}
     localStorage.setItem('entityId', String(__currentEntityId));
 
@@ -1083,9 +1102,8 @@ async function checkTokenRefresh() {
     var t = localStorage.getItem('token');
     if (!t) return;
     try {
-        var parts = t.split('.');
-        if (parts.length !== 3) return;
-        var payload = JSON.parse(atob(parts[1]));
+        var payload = mesJwtPayload(t);
+        if (!payload || !payload.exp) return;   // 못 읽으면 갱신 판단을 쉰다 — 로그아웃시키지 않는다
         var now = Math.floor(Date.now() / 1000);
         var timeLeft = payload.exp - now;
 
