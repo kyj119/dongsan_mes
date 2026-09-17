@@ -137,11 +137,11 @@ Case 4: 모든 실패 → group.visibleBounds
 
 ---
 
-## I. UI/UX 디자인 시스템 (2026-04-04)
+## I. UI/UX 디자인 시스템 (2026-04-04 → **2026-09-16 감청·Linear형 리디자인**)
 
-- **상세 가이드**: `mes-ui-consistency` 스킬 참조
-- **핵심**: 비주얼 8개(호버쉐도우, 트랜지션, 글래스톱, #F0F1F3, Inter, tabular-nums, 포커스링, 호버전용액션) + UX 5개(스켈레톤, 빈상태, 밀도토글, 줄무늬, 헤더고정)
-- **제외**: 라운드 코너, 다크 액센트
+- **상세 가이드**: `mes-ui-consistency` 스킬 + 메모리 `design-ui-system-navy-linear`. 값 정본 = `src/layout/shared-styles.ts`.
+- **핵심**: 강조=**감청(`--c-primary` #23528C)**·중립=웜뉴트럴·폰트=**Pretendard**·카드 **평탄화(hairline)**·뱃지 **각진**·목록 상태 **점(dsStatusDot/dsDot)**·테이블 소라벨 헤더·호버 액션·대시보드 C안(hero+주의요약+미니KPI)·다크=중립 차콜.
+- ⛔ **폐기값**: 옛 파랑 #3b82f6, Inter, 알약 뱃지, 상시 그림자, 무지개 KPI, #F0F1F3(슬레이트 배경) — 되돌리지 말 것.
 
 ---
 

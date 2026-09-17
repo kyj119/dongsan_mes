@@ -3,6 +3,8 @@
 이 문서는 공통 컴포넌트의 상세 구현 스펙입니다.
 새 컴포넌트를 만들기 전에 여기에 해당하는 것이 있는지 먼저 확인하세요.
 
+> ⚠️ 2026-09 리디자인(감청 navy·Linear형) 반영. **값 정본 = `src/layout/shared-styles.ts`** — 아래 hex/px 는 참고이며 낡을 수 있다. 토큰(`--c-*`)·`ds-*` 클래스 이름을 값보다 우선한다.
+
 ---
 
 ## SummaryCard
@@ -24,26 +26,26 @@ interface SummaryCardProps {
 
 ### Variant → Color 매핑
 
-| variant | 숫자 색상 | 용도 |
-|---------|-----------|------|
-| `default` | `text-gray-900` | 일반 집계 (전체 주문, 거래처 수 등) |
-| `success` | `text-green-600` | 완료, 정상 (출고완료, 입고완료) |
-| `warning` | `text-amber-600` | 주의 (대기, 보류, 30~60일) |
-| `danger` | `text-red-600` | 긴급/위험 (납기 지연, 미수금, 60일 초과) |
-| `info` | `text-blue-600` | 진행중 (생산중, 입고대기) |
+| variant | 숫자 색상 (토큰) | 용도 |
+|---------|-----------------|------|
+| `default` | `--c-text` | 일반 집계 (전체 주문, 거래처 수 등) |
+| `success` | `--c-success` (초록) | 완료, 정상 (출고완료, 입고완료) |
+| `warning` | `--c-warning` (앰버) | 주의 (대기, 보류, 30~60일) |
+| `danger` | `--c-danger` (빨강) | 긴급/위험 (납기 지연, 미수금, 60일 초과) |
+| `info` | `--c-primary` (감청) | 진행중 (생산중, 입고대기) |
 
 ### 렌더링 규칙
 
 ```
 ┌────────────────────────────┐
-│ label          (13px, gray-500, font-medium)
+│ label          (13px, --c-text-secondary, font-medium)
 │ value + unit   (32px, bold, variant color)
-│ description    (12px, gray-400)
+│ description    (12px, --c-text-muted)
 └────────────────────────────┘
 ```
 
-- **`ds-card` 클래스 사용이 정본** (radius 12px·패딩 24px·shadow md→hover lg 자동). 수제 시: `bg-white border border-gray-200 rounded-xl`(12px)
-- 밀집형은 `ds-card-compact`(패딩 16px)
+- **`ds-card` 클래스 사용이 정본** (평탄화 2026-09: hairline 테두리 `--c-border`·radius 8px `--radius-md`·패딩 16px `--space-lg`·**상시 그림자 없음**, hover 시에만 약한 `--shadow-sm`). 수제 시: `bg-white border border-gray-200 rounded-lg`(8px) — **그림자 클래스 붙이지 말 것**(그림자는 모달·드롭다운 등 오버레이 전용)
+- 밀집형은 `ds-card-compact`(패딩 12px `--space-md`)
 - 그리드: `grid grid-cols-4 gap-4` (부모에서)
 - 3개 카드면 `grid-cols-4` 유지, 마지막 칸 비움
 - 5개면 `grid-cols-5` 또는 4+1 별도 행
@@ -52,7 +54,9 @@ interface SummaryCardProps {
 
 ## StatusBadge
 
-상태를 나타내는 Pill 뱃지.
+상태를 나타내는 **각진 태그** 뱃지 (2026-09: 알약 `rounded-full` → `--radius-sm`, 상태색은 유지). **상세 화면·카드보드(칸반)·모달**에서 사용.
+
+> **목록/테이블 행의 상태는 뱃지가 아니라 점+글자(Linear형).** 색 배경 뱃지를 한 행에 여러 개 띄우면 시끄러우므로, 목록은 `window.dsStatusDot(kind, status)`(kind=`order`/`card`/`equip`) 또는 자체 상태축은 `window.dsDot(tone, label)`(tone=`blue`/`green`/`amber`/`red`/`gray`)를 쓴다. 뱃지(`window.dsStatusBadge`)는 **상세·카드보드·모달에만** 유지.
 
 ### Props
 
@@ -69,15 +73,16 @@ interface StatusBadgeProps {
 | variant | 배경 | 텍스트 | dot 색 |
 |---------|------|--------|--------|
 | `success` | `bg-green-50` | `text-green-700` | `bg-green-500` |
-| `info` | `bg-blue-50` | `text-blue-700` | `bg-blue-500` |
+| `info` | `--c-info-light` | `--c-primary-dark` | `--c-primary` (감청) |
 | `warning` | `bg-amber-50` | `text-amber-700` | `bg-amber-500` |
 | `danger` | `bg-red-50` | `text-red-700` | `bg-red-500` |
 | `neutral` | `bg-gray-100` | `text-gray-700` | `bg-gray-500` |
 
 ### 공통 스타일
 ```
-rounded-full px-2.5 py-0.5 text-xs font-medium inline-flex items-center gap-1.5
+rounded px-2.5 py-0.5 text-xs font-medium inline-flex items-center gap-1.5   /* 각진 = --radius-sm, 알약 아님 */
 ```
+- `rounded-full`(알약) 금지 → `rounded`(`--radius-sm`, 각진 태그). `ds-badge` 클래스를 쓰면 자동 적용.
 
 ### 상태 매핑 (시스템 전체 통일)
 
@@ -118,14 +123,15 @@ interface ButtonProps {
 
 ### Variant 스타일
 
+**클래스 우선** (수제 시 파랑 hex/`blue-*` 금지 — 강조색은 `var(--c-primary)`):
 ```
-primary:   bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500
-danger:    bg-red-600 text-white hover:bg-red-700 focus:ring-red-500
-secondary: bg-white text-gray-700 border border-gray-300 hover:bg-gray-50
-ghost:     text-gray-500 hover:text-gray-700 hover:bg-gray-100
+primary:   ds-btn ds-btn-primary    → 감청 var(--c-primary), 흰 글씨, hover var(--c-primary-hover)
+danger:    ds-btn ds-btn-danger     → var(--c-danger), 흰 글씨
+secondary: ds-btn ds-btn-secondary  → var(--c-surface) 배경, var(--c-border) 테두리, var(--c-text)
+ghost:     ds-btn ds-btn-ghost      → 배경 없음, var(--c-text-secondary)
 ```
 
-모든 버튼: `rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2`
+모든 버튼: radius `--radius-md`(8px, `rounded-lg`) · `font-medium transition-colors focus:outline-none`
 
 ---
 
@@ -287,20 +293,23 @@ danger:  text-gray-400 hover:text-red-600 hover:bg-red-50
 </td>
 ```
 
+- **호버 시에만 노출**(2026-09): 부모 `tr`에 `ds-row`, 액션 셀에 `ds-row-action` 클래스 → 평소 숨김·행 hover 시 표시(모바일 `hover:none`은 항상 표시). 커스텀 `.group-hover-actions` 대신 표준 클래스 사용.
+
 ---
 
 ## 현장 카드(칸반) 칼럼
 
 ### 칼럼 헤더
 
-| 칼럼 | 배경색 | 뱃지색 |
-|------|--------|--------|
-| RIP 대기 | `bg-amber-50` | `bg-amber-500 text-white` |
-| 출력중 | `bg-blue-50` | `bg-blue-500 text-white` |
-| 출력완료 | `bg-green-50` | `bg-green-500 text-white` |
+| 칼럼 | 배경색 (토큰) | 카운트 뱃지 |
+|------|--------------|------------|
+| RIP 대기 | `--c-warning-light` | `--c-warning` + `text-white` (앰버) |
+| 출력중 | `--c-primary-light` | `--c-primary` + `text-white` (감청) |
+| 출력완료 | `--c-success-light` | `--c-success` + `text-white` (초록) |
 
 - 칼럼 제목: `text-sm font-semibold text-gray-700`
-- 카운트 뱃지: 해당 칼럼 색상의 `rounded-full px-2 py-0.5 text-xs font-bold`
+- 카운트 뱃지는 **숫자 카운터**라 `rounded-full`(원형) 유지 가능 — 상태 태그 뱃지(각진)와 다르다. `rounded-full px-2 py-0.5 text-xs font-bold`
+- 카드보드(칸반)는 카드에 상태 **뱃지**(`dsStatusBadge`)를 유지한다(목록의 점+글자 규칙과 별개).
 - 칼럼 최소 높이: `min-h-[200px]` (빈 상태에서도 드롭 가능 영역 확보)
 
 ---
@@ -326,6 +335,20 @@ danger:  text-gray-400 hover:text-red-600 hover:bg-red-50
 | `.ds-bento-hero` | `grid-column: span 2; grid-row: span 2` (첫 번째 카드 강조) |
 
 반응형: `@media ≤1024px` → 3열, `≤768px` → 2열, `≤640px` → 1열 (hero span 해제)
+
+---
+
+## 대시보드 (C안 하이브리드, 2026-09)
+
+메인 대시보드 레이아웃 = **매출 hero + 주의 요약 + 미니 KPI 행**. (Bento는 서브 KPI 격자로 병존)
+
+| 클래스 | 역할 |
+|--------|------|
+| `.ds-hero-metric` | 대표 지표(월 매출 등) 큰 숫자 hero — `.hm-label`(소라벨) + `.hm-value`(34px bold, `tabular-nums`) |
+| `.ds-attn` / `.ds-attn-item` | 주의 요약 리스트 — 점(`.ds-dot` + tone) + 라벨 + 우측 건수(`.aa-n`, 위험은 `.aa-n.warn`) |
+| `.ds-minikpi` / `.mk` | 미니 KPI 가로 행 — `.mk-l`(소라벨) + `.mk-v`(값), 칸마다 hairline 구분 |
+
+- 강조는 감청 `--c-primary`, 위험 수치만 `--c-danger`. 리스트 상태는 점(`ds-dot`) 사용.
 
 ---
 

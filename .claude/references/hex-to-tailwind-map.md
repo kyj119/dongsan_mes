@@ -3,6 +3,7 @@
 > **정책 (CLAUDE.md / mes-ui-consistency)**: 하드코딩 hex는 **신규·수정 코드부터** Tailwind 클래스로 교체.
 > 전체 일괄치환(~1,394건)은 시각 회귀 위험으로 **보류**. 이 표는 코드를 만질 때 참조용.
 > 측정일: 2026-06-10 (`rg -o "#[0-9a-f]{6}" src | sort | uniq -c`)
+> ⚠️ **2026-09 감청 리디자인 이후**: Primary = **감청 토큰 `--c-primary`**(#23528C). 아래 `blue-*` Tailwind 유틸은 shared-styles.ts 전역 리맵으로 **감청으로 렌더**되므로 "blue-*로 교체"는 여전히 안전. 단 **신규 코드는 hex/blue-* 대신 `--c-*` 토큰·`ds-*` 클래스 우선**. 정본 = mes-ui-consistency 스킬 + `design-ui-system-navy-linear` 메모리.
 
 ## 그대로 Tailwind로 (Tailwind 기본 팔레트의 hex 표기)
 
@@ -24,8 +25,8 @@
 ### Primary / Blue
 | hex | 빈도 | → 클래스 |
 |-----|----:|---------|
-| `#2563eb` | 56 | `blue-600` (Primary 정본) |
-| `#3b82f6` | 47 | `blue-500` |
+| `#2563eb` | 56 | `blue-600` (→ 리맵으로 감청 렌더) |
+| `#3b82f6` | 47 | `blue-500` (→ 감청. ⛔ Primary 정본 아님, `--c-primary`가 정본) |
 | `#1e40af` | 42 | `blue-800` |
 | `#dbeafe` | 20 | `blue-100` |
 | `#eff6ff` | 32 | `blue-50` |
