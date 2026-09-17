@@ -667,26 +667,14 @@
                     }
                 } catch (e) { /* 썸네일 실패는 프리필을 막지 않음 */ }
 
-                // 마감: 옵션 로드 후 값 주입 (intake finishing_json = {top:방식명, top_cm:수치} — calc.js 직렬화와 동일 스키마)
+                // 마감 — **정본 `restoreFinishingForRow` 하나로** (2026-09-18). 여기에 사본이 있었다:
+                //   옵션 로드·값 주입·요약 갱신을 따로 구현해 두 경로가 갈렸고(사본 쪽만 4변 상세를 펼쳤다),
+                //   프리셋 선택 표시를 붙이는 코드는 **어느 쪽에도 없었다** — 값은 들어갔는데 프리셋 줄이
+                //   비어 있어 사람이 「마감이 안 들어왔다」로 읽었다(실기 2026-09-18).
+                //   정본은 `loadFinishingForOrder` 를 await 하고, 값·cm 을 넣고, 요약과 프리셋 표시까지 맞춘다.
+                //   ⚠️대기물 `finishing_json` 은 `calc.js` 직렬화와 **같은 스키마**라 그대로 넘기면 된다.
                 try {
-                    if (typeof loadFinishingForOrder === 'function') await loadFinishingForOrder(id);
-                    var fj2 = r.finishing_json ? JSON.parse(r.finishing_json) : null;
-                    if (fj2) {
-                        var vals = [];
-                        ['top', 'bottom', 'left', 'right'].forEach(function(dir) {
-                            var sel = document.querySelector('[name="fin_' + dir + '_' + id + '"]');
-                            if (sel && fj2[dir]) sel.value = fj2[dir];
-                            var cmIn = document.querySelector('[name="fin_cm_' + dir + '_' + id + '"]');
-                            if (cmIn && fj2[dir + '_cm'] != null) cmIn.value = fj2[dir + '_cm'];
-                            vals.push(fj2[dir] || '');
-                        });
-                        var allSame = vals[0] === vals[1] && vals[0] === vals[2] && vals[0] === vals[3];
-                        if (!allSame) {
-                            var sides = document.getElementById('finishing_sides_' + id);
-                            if (sides) sides.classList.remove('hidden');
-                        }
-                        if (typeof calcFinishing === 'function') calcFinishing(id);
-                    }
+                    if (typeof restoreFinishingForRow === 'function') await restoreFinishingForRow(id, r.finishing_json);
                 } catch (e) { console.warn('[orderForm] 대기물 마감 주입 실패', e); }
 
                 // 펀칭 — 품목 선택 후 PP 섹션이 생길 때 반영된다(ofStashPunch 주석)
@@ -807,25 +795,10 @@
                 var hEl = document.querySelector('[name="height_' + parentId + '"]');
                 if (hEl) { hEl.value = r0.height_cm; hEl.dataset.origMm = String(r0.height_cm * 10 / sf); }
 
-                // 마감: 부모 행에 주입(자식 카드 상속) — ofIntakePrefillOne과 동일 스키마
+                // 마감: 부모 행에 주입(자식 카드 상속) — 단건과 **같은 정본**을 쓴다(2026-09-18 사본 통합).
+                //   세 번째 사본이 여기 있었다. 프리셋 선택 표시가 세 경로 어디에도 없던 이유다.
                 try {
-                    if (typeof loadFinishingForOrder === 'function') await loadFinishingForOrder(parentId);
-                    var fj2 = r0.finishing_json ? JSON.parse(r0.finishing_json) : null;
-                    if (fj2) {
-                        var vals = [];
-                        ['top', 'bottom', 'left', 'right'].forEach(function(dir) {
-                            var sel = document.querySelector('[name="fin_' + dir + '_' + parentId + '"]');
-                            if (sel && fj2[dir]) sel.value = fj2[dir];
-                            var cmIn = document.querySelector('[name="fin_cm_' + dir + '_' + parentId + '"]');
-                            if (cmIn && fj2[dir + '_cm'] != null) cmIn.value = fj2[dir + '_cm'];
-                            vals.push(fj2[dir] || '');
-                        });
-                        if (!(vals[0] === vals[1] && vals[0] === vals[2] && vals[0] === vals[3])) {
-                            var sides = document.getElementById('finishing_sides_' + parentId);
-                            if (sides) sides.classList.remove('hidden');
-                        }
-                        if (typeof calcFinishing === 'function') calcFinishing(parentId);
-                    }
+                    if (typeof restoreFinishingForRow === 'function') await restoreFinishingForRow(parentId, r0.finishing_json);
                 } catch (e) { console.warn('[orderForm] 묶음 마감 주입 실패', e); }
 
                 // 펀칭도 마감과 같이 **부모 행에만** 얹는다 — 자식 카드가 상속한다(묶음 키가 마감을 보는 이유와 동일)

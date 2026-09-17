@@ -76,7 +76,10 @@
                     var presetsEl = document.getElementById('finishing_presets_' + id);
                     if (presetsEl && presets.length > 0) {
                         presetsEl.innerHTML = presets.map(function(p) {
-                            return '<button type="button" data-preset-id="' + id + '" onclick="applyFinPresetToOrder(' + id + ',\'' + escapeJsAttr(p.config) + '\',this)" '
+                            // ★config 를 **data 속성으로도** 싣는다 — onclick 문자열을 파싱해 되읽는 코드를
+                            //   만들면 따옴표 이스케이프가 두 벌이 된다. 표시 동기화(syncFinPresetHighlight)가 이걸 읽는다.
+                            return '<button type="button" data-preset-id="' + id + '" data-preset-config="' + escapeHtml(p.config) + '" '
+                                + 'onclick="applyFinPresetToOrder(' + id + ',\'' + escapeJsAttr(p.config) + '\',this)" '
                                 + 'class="fin-preset-btn px-2 py-0.5 text-[10px] bg-gray-100 text-gray-600 rounded hover:bg-blue-100 hover:text-blue-700 border border-transparent">'
                                 + escapeHtml(p.name) + '</button>';
                         }).join('');
@@ -105,8 +108,48 @@
                     if (finAny) {
                         // 복원해도 4변 상세는 펼치지 않는다 — 요약(finishing_summary_)이 방향·방식을 그대로 보여준다(2026-08-19 간소화).
                         calcFinishing(id);
+                        syncFinPresetHighlight(id);
                     }
                 } catch(eFin) { console.warn('[orderForm] finishing 복원 실패', eFin); }
+            };
+
+            /**
+             * ★현재 마감 값과 **같은 프리셋 버튼에 선택 표시**를 붙인다 (2026-09-18 실기).
+             *
+             * 종전에는 활성 표시(`bg-blue-600`)를 `applyFinPresetToOrder` 가 **버튼을 눌렀을 때만** 칠했다.
+             * 그래서 대기함에서 불러오거나 주문을 수정해 값이 프로그램으로 들어오면, 셀렉트·요약에는
+             * 값이 있는데 **프리셋 줄은 전부 회색**이었다 — 사람은 평소 프리셋으로 마감을 넣으므로
+             * 그 줄이 비어 있으면 「마감이 안 들어왔다」로 읽는다(실기 2026-09-18 보고).
+             * ⚠️저장은 원래부터 정상이었다(`calc.js` 가 셀렉트를 직렬화한다) — **표시만** 비어 있었다.
+             *   그래도 고쳐야 한다: 상태를 안 보여주는 화면은 사람이 값을 다시 넣게 만든다.
+             *
+             * 판정은 **정확 일치**다 — 프리셋이 말하는 변은 값이 같아야 하고, 말하지 않는 변은 비어 있어야
+             * 한다. 그래야 「사방 열재단 + 양옆 게시대미싱」 같은 섞인 상태에 거짓 표시가 안 붙는다.
+             */
+            window.syncFinPresetHighlight = function(id) {
+                try {
+                    var cur = {};
+                    ['top','bottom','left','right'].forEach(function(d) {
+                        var el = document.querySelector('[name="fin_' + d + '_' + id + '"]');
+                        cur[d] = (el && el.value) ? el.value : '';
+                    });
+                    var btns = document.querySelectorAll('[data-preset-id="' + id + '"]');
+                    for (var i = 0; i < btns.length; i++) {
+                        var b = btns[i], cfg = null;
+                        try { cfg = JSON.parse(b.getAttribute('data-preset-config') || 'null'); } catch (e) { cfg = null; }
+                        var hit = false;
+                        if (cfg) {
+                            hit = true;
+                            ['top','bottom','left','right'].forEach(function(d) {
+                                var want = cfg[d] ? cfg[d] : '';
+                                if (want !== cur[d]) hit = false;
+                            });
+                        }
+                        b.className = hit
+                            ? 'fin-preset-btn px-2 py-0.5 text-[10px] bg-blue-600 text-white rounded border border-blue-600'
+                            : 'fin-preset-btn px-2 py-0.5 text-[10px] bg-gray-100 text-gray-600 rounded hover:bg-blue-100 hover:text-blue-700 border border-transparent';
+                    }
+                } catch (e) { /* ignore: 표시 전용 — 실패해도 값·저장에는 영향이 없다 */ }
             };
 
             window.applyFinPresetToOrder = function(itemId, configStr, btnEl) {
