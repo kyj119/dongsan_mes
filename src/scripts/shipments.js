@@ -717,6 +717,18 @@ async function saveTrackingNumber(key) {
 // 출고 확정 경로가 10개라 어디서 내보냈든 여기로 모인다 — 「출고 처리」와 「출고 확정」을 나눈 두 번째 단계.
 // 날짜 필터와 무관하게(최근 14일) 남아 있는 잔여를 보여 준다.
 var _pendingConfirmRows = [];
+// 확정 대기 행의 배송 알림 상태 — 발송됨 / 미발송 / 연락처 없음 셋을 구분한다.
+function pendingNotifyBadge(r) {
+  var st = 'font-size:10px;padding:1px 6px;border-radius:8px;white-space:nowrap';
+  if (Number(r.notified) === 1) {
+    return '<span style="' + st + ';background:#dcfce7;color:#166534" title="배송 알림 발송 완료">발송됨</span>';
+  }
+  if (Number(r.has_mobile) !== 1) {
+    return '<span style="' + st + ';background:#f3f4f6;color:#6b7280" title="거래처 휴대폰이 없어 보낼 수단이 없습니다">연락처 없음</span>';
+  }
+  return '<span style="' + st + ';background:#ffedd5;color:#9a3412" title="배송 알림이 아직 안 나갔습니다 — 아래 섹션에서 체크 후 발송">미발송</span>';
+}
+
 async function loadPendingConfirm() {
   var card = document.getElementById('pendingConfirmCard');
   var body = document.getElementById('pendingConfirmBody');
@@ -749,6 +761,9 @@ async function loadPendingConfirm() {
             ? '<input type="text" id="pc-tk-' + i + '" value="' + escapeHtml(r.tracking_number || '') + '" class="ds-input px-2 py-1 text-sm w-44 border rounded" placeholder="송장번호">'
             : '<span class="text-xs text-gray-400">-</span>')
         + '</td>'
+        // 2026-09-18 알림 열 — 「보냈나」를 이 목록에서 바로 본다. 종전엔 보냈는지 알 길이 화면에 없었다.
+        //   휴대폰이 없으면 보낼 수단이 없으므로 「연락처 없음」으로 구분한다(미발송과 다른 상태다).
+        + '<td class="px-3 py-2 text-center">' + pendingNotifyBadge(r) + '</td>'
         + '<td class="px-3 py-2 text-center">'
         + '<button onclick="confirmPendingRow(' + i + ')" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">'
         + '<i class="fas fa-check mr-1"></i>확정</button>'

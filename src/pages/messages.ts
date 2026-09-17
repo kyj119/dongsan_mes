@@ -453,6 +453,30 @@ export function messagesPage(c: Context<HonoEnv>) {
     </div>
   </div>
 
+  <!-- 월별 발송·비용 (2026-09-18) — 로그는 전건 있었는데 「한 달에 얼마 나가나」를 합산해 주는 곳이 없었다 -->
+  <div class="bg-white border border-gray-200 rounded-lg p-4 mb-6">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-sm font-bold text-gray-700">월별 발송·비용</h3>
+      <span class="text-xs text-gray-400" id="msgCostNote">성공 건수 × 채널 단가(부가세 별도) · 이메일은 건당 과금 없음</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="ds-table w-full text-sm">
+        <thead>
+          <tr>
+            <th class="text-left px-3 py-2" style="width:110px">월</th>
+            <th class="text-right px-3 py-2" style="width:90px">성공</th>
+            <th class="text-right px-3 py-2" style="width:90px">실패</th>
+            <th class="text-right px-3 py-2" style="width:90px">스킵</th>
+            <th class="text-right px-3 py-2" style="width:110px">출고 알림</th>
+            <th class="text-right px-3 py-2" style="width:110px">비용</th>
+            <th class="text-left px-3 py-2">채널</th>
+          </tr>
+        </thead>
+        <tbody id="msgMonthlyBody"><tr><td colspan="7" class="px-3 py-4 text-center text-gray-400 text-xs">불러오는 중…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- 하단: 업무별 + 주요 수신자 -->
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
     <div class="bg-white border border-gray-200 rounded-lg p-4">

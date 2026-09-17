@@ -159,7 +159,7 @@ export function shipmentsPage(c: Context<HonoEnv>) {
           <h3 class="text-sm font-semibold text-blue-800">
             <i class="fas fa-clipboard-check mr-1"></i>확정 대기 <span id="pendingConfirmCount" class="ml-1 text-xs font-normal"></span>
           </h3>
-          <span class="text-xs text-blue-700">출고는 끝났고 박스 수·송장이 아직 안 들어온 건 — 채우면 배송비 청구 수량이 확정됩니다</span>
+          <span class="text-xs text-blue-700">출고는 끝났는데 박스 수·송장·배송 알림이 아직 안 들어온 건 — 채우면 배송비 청구 수량이 확정됩니다</span>
         </div>
         <div class="overflow-x-auto">
           <table class="ds-table w-full text-sm">
@@ -171,6 +171,7 @@ export function shipmentsPage(c: Context<HonoEnv>) {
                 <th class="text-left px-3 py-2" style="width:110px">출고일</th>
                 <th class="text-center px-3 py-2" style="width:90px">박스</th>
                 <th class="text-left px-3 py-2" style="width:190px">송장번호</th>
+                <th class="text-center px-3 py-2" style="width:90px">알림</th>
                 <th class="text-center px-3 py-2" style="width:80px">확정</th>
               </tr>
             </thead>

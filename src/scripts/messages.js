@@ -1770,7 +1770,47 @@ var statsDays = 30;
 var statDailyChart = null;
 var statChannelChart = null;
 
+// 월별 발송 건수·비용 — 통계 탭과 함께 로드한다(기간 버튼과 무관하게 최근 6개월 고정).
+//   「한 달에 얼마 나가나」를 추정이 아니라 로그로 답하기 위한 표다. 비용은 성공 건만 센다(실패는 과금 안 된다).
+async function loadMonthlyCost() {
+  var body = document.getElementById('msgMonthlyBody');
+  if (!body) { console.warn('[messages] #msgMonthlyBody not found'); return; }
+  try {
+    var res = await axios.get('/api/kakao/stats/monthly', { params: { months: 6 } });
+    var d = (res.data && res.data.success) ? res.data.data : null;
+    var rows = (d && d.months) || [];
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-400 text-xs">발송 기록이 없습니다</td></tr>';
+      return;
+    }
+    var CH_LABEL = { kakao: '알림톡', sms: '문자', lms: '장문', mms: 'MMS', fax: '팩스', email: '이메일' };
+    body.innerHTML = rows.map(function (m) {
+      var chs = Object.keys(m.channels || {}).map(function (k) {
+        return (CH_LABEL[k] || k) + ' ' + m.channels[k];
+      }).join(' · ');
+      return '<tr class="border-t">'
+        + '<td class="px-3 py-2 font-medium">' + escapeHtml(m.ym) + '</td>'
+        + '<td class="px-3 py-2 text-right tabular-nums">' + (m.sent || 0).toLocaleString() + '</td>'
+        + '<td class="px-3 py-2 text-right tabular-nums ' + (m.failed > 0 ? 'text-red-600' : 'text-gray-400') + '">' + (m.failed || 0).toLocaleString() + '</td>'
+        + '<td class="px-3 py-2 text-right tabular-nums text-gray-400">' + (m.skipped || 0).toLocaleString() + '</td>'
+        + '<td class="px-3 py-2 text-right tabular-nums">' + (m.shipment_sent || 0).toLocaleString() + '</td>'
+        + '<td class="px-3 py-2 text-right tabular-nums font-semibold">' + (m.cost || 0).toLocaleString() + '원</td>'
+        + '<td class="px-3 py-2 text-xs text-gray-500">' + escapeHtml(chs) + '</td>'
+        + '</tr>';
+    }).join('');
+    var note = document.getElementById('msgCostNote');
+    if (note && d.unit_cost) {
+      note.textContent = '알림톡 ' + d.unit_cost.alimtalk + '원 · 문자 ' + d.unit_cost.sms + '원 · 장문 ' + d.unit_cost.lms
+        + '원 · MMS ' + d.unit_cost.mms + '원 (부가세 별도, 성공 건만)';
+    }
+  } catch (e) {
+    console.warn('[messages] 월별 비용 조회 실패', e);
+    body.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-400 text-xs">불러오지 못했습니다</td></tr>';
+  }
+}
+
 function loadStats(days) {
+  loadMonthlyCost();
   statsDays = days || statsDays || 30;
   // 기간 버튼 활성화
   [7, 30, 90].forEach(function(d) {

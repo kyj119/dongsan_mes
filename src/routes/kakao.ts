@@ -6,6 +6,7 @@ import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { BarobillSmsProvider } from '../services/barobillSms'
 import { getEntityCorpNum } from '../utils/entitySettings'
 import { BAROBILL_UNIT_COST_VAT_EXCL } from '../constants/barobillCodes'
+import { resolveKakaoIdentity } from '../utils/kakaoIdentity'
 import { checkBulkLimit } from '../services/messageBulkLimit'
 import { applyAudienceGuards, describeGuardResult, recordBulkRecipients } from '../services/messageAudience'
 import type { SMSMessage, ATSMessage } from '../services/barobillSms'
@@ -128,9 +129,10 @@ export async function getKakaoSettings(db: D1Database, entityId?: number): Promi
         `SELECT setting_key, setting_value FROM entity_settings
          WHERE entity_id = ? AND setting_key IN ('kakao_enabled', 'kakao_sender_num', 'kakao_channel_id', 'kakao_alt_send_type')`
       ).bind(entityId).all<SettingKVRow>()
-      for (const r of entRows) {
-        if (r.setting_value != null && r.setting_value !== '') map[r.setting_key] = r.setting_value
-      }
+      const entMap: Record<string, string> = {}
+      for (const r of entRows) entMap[r.setting_key] = r.setting_value || ''
+      Object.assign(map, resolveKakaoIdentity(map, entMap))
+      // ★정체성(번호·채널)은 법인 간에 상속하지 않는다 — 규칙 정본 = `utils/kakaoIdentity` (2026-09-18)
     } catch {
       // entity_settings 미존재 시 전역값 유지
     }
@@ -285,6 +287,74 @@ kakaoRouter.get('/templates', async (c) => {
 })
 
 // ────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────
+// GET /stats/monthly — 월별 발송 건수·비용 집계 (2026-09-18)
+//   왜: 발송 로그는 전건 남는데 **합산해 보여주는 곳이 없었다**. 「한 달에 얼마 나가나」를
+//       추정으로만 말할 수 있었고, 추정이 맞는지 나중에 검산할 방법도 없었다.
+//   비용 = 건수 × 채널 단가(계약 상수 `BAROBILL_UNIT_COST_VAT_EXCL`, 부가세 별도).
+//   ⚠️ 성공 건만 센다 — 실패·스킵은 과금되지 않는다(건수는 따로 돌려준다).
+// ─────────────────────────────────────────────────
+kakaoRouter.get('/stats/monthly', async (c) => {
+  try {
+    const months = Math.min(Math.max(Number(c.req.query('months')) || 6, 1), 24)
+    const ef = entityFilter(c)
+    const { results } = await c.env.DB.prepare(`
+      SELECT substr(created_at, 1, 7) AS ym,
+             COALESCE(NULLIF(channel, ''), 'kakao') AS channel,
+             CASE WHEN UPPER(COALESCE(template_code, '')) = 'LMS' THEN 1 ELSE 0 END AS is_lms,
+             SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) AS sent,
+             SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS failed,
+             SUM(CASE WHEN status = 'SKIPPED' THEN 1 ELSE 0 END) AS skipped,
+             SUM(CASE WHEN COALESCE(related_type, '') = 'shipments' AND status = 'SUCCESS' THEN 1 ELSE 0 END) AS shipment_sent
+        FROM kakao_send_logs
+       WHERE created_at >= date('now', '+9 hours', '-' || ? || ' months')
+         ${ef.clause}
+       GROUP BY ym, channel, is_lms
+       ORDER BY ym DESC
+    `).bind(months, ...ef.params).all<{
+      ym: string; channel: string; is_lms: number
+      sent: number; failed: number; skipped: number; shipment_sent: number
+    }>()
+
+    const uc = BAROBILL_UNIT_COST_VAT_EXCL
+    const unitCost = (channel: string, isLms: number): number => {
+      switch (channel) {
+        case 'kakao': return uc.alimtalk
+        case 'sms': return isLms ? uc.lms : uc.sms
+        case 'mms': return uc.mms
+        case 'fax': return uc.fax
+        default: return 0   // email 은 Resend 정액이라 건당 과금이 없다
+      }
+    }
+
+    // 월 단위로 접는다 — 화면은 「9월 412건 2,884원」 한 줄이면 된다.
+    const byMonth = new Map<string, { ym: string; sent: number; failed: number; skipped: number; shipment_sent: number; cost: number; channels: Record<string, number> }>()
+    for (const r of results || []) {
+      const m = byMonth.get(r.ym) || { ym: r.ym, sent: 0, failed: 0, skipped: 0, shipment_sent: 0, cost: 0, channels: {} }
+      m.sent += r.sent || 0
+      m.failed += r.failed || 0
+      m.skipped += r.skipped || 0
+      m.shipment_sent += r.shipment_sent || 0
+      m.cost += (r.sent || 0) * unitCost(r.channel, r.is_lms)
+      const label = r.channel === 'sms' && r.is_lms ? 'lms' : r.channel
+      m.channels[label] = (m.channels[label] || 0) + (r.sent || 0)
+      byMonth.set(r.ym, m)
+    }
+    const rows = Array.from(byMonth.values()).sort((a, b) => (a.ym < b.ym ? 1 : -1))
+    return c.json({
+      success: true,
+      data: {
+        months: rows,
+        unit_cost: { alimtalk: uc.alimtalk, sms: uc.sms, lms: uc.lms, mms: uc.mms, fax: uc.fax },
+        note: '비용 = 성공 건수 × 채널 단가(부가세 별도). 이메일은 건당 과금 없음.',
+      },
+    })
+  } catch (error) {
+    console.error('src/routes/kakao.ts GET /stats/monthly error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // GET /balance — 포인트 잔액(실시간) + 발송 단가(정적 상수)
 //   #466: 단가는 계약 기준 정적값이라 매 로드 SOAP fan-out(5콜) 제거 → 상수 반환.
 //         잔액만 라이브(getBalance 2콜). 라이브 단가 갱신은 GET /unit-cost('단가 새로고침' 전용).

@@ -348,7 +348,13 @@ shipmentsRouter.get('/pending-confirm', requireAccessOrRole('/shipments', 'MANAG
              COALESCE(sp.box_count, 0) AS box_count,
              COALESCE(sp.tracking_number, '') AS tracking_number,
              (SELECT COUNT(*) FROM shipments ch WHERE ch.merged_into_id = sp.id) AS merged_count,
-             (SELECT COUNT(*) FROM order_items fi WHERE fi.order_id = o.id AND fi.fee_source = 'SHIPMENT_BOX') AS fee_lines
+             (SELECT COUNT(*) FROM order_items fi WHERE fi.order_id = o.id AND fi.fee_source = 'SHIPMENT_BOX') AS fee_lines,
+             -- 2026-09-18: 배송 알림을 보냈는가. 알림 정본은 **대표 출고 1건**이라 sp.id 로 본다(부속은 원래 skip).
+             CASE WHEN EXISTS (
+               SELECT 1 FROM kakao_send_logs kl
+                WHERE kl.related_type = 'shipments' AND kl.related_id = sp.id AND kl.status = 'SUCCESS'
+             ) THEN 1 ELSE 0 END AS notified,
+             CASE WHEN COALESCE(cl.mobile, '') <> '' THEN 1 ELSE 0 END AS has_mobile
         FROM orders o
         JOIN shipments sp ON sp.order_id = o.id AND sp.merged_into_id IS NULL
                          AND COALESCE(sp.status, '') <> 'CANCELLED'
@@ -359,6 +365,11 @@ shipmentsRouter.get('/pending-confirm', requireAccessOrRole('/shipments', 'MANAG
          AND (
                COALESCE(sp.box_count, 0) = 0
                OR (o.delivery_method = '한진택배' AND COALESCE(sp.tracking_number, '') = '')
+               -- 알림 미발송도 「손이 더 가야 하는 출고」다. 휴대폰이 없으면 보낼 수단이 없으니 제외한다.
+               OR (COALESCE(cl.mobile, '') <> '' AND NOT EXISTS (
+                     SELECT 1 FROM kakao_send_logs kl2
+                      WHERE kl2.related_type = 'shipments' AND kl2.related_id = sp.id AND kl2.status = 'SUCCESS'
+                   ))
              )
          ${ef.clause}
        ORDER BY o.shipped_at DESC, o.id DESC
