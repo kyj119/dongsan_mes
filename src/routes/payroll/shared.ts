@@ -88,6 +88,23 @@ export interface InclusivePayResult {
   night_pay: number
   holiday_pay: number
 }
+/**
+ * 결근 공제 (0621) — 통상시급 × 8시간 × 결근일수.
+ *
+ * ★왜 한 곳인가: 계산 경로가 4개(save/batch/sync/leaves)라 각자 산식을 두면 한 곳을 고칠 때
+ *   다른 곳이 빠진다. 시급은 **호출부가 이미 구한 값**(연장·야간수당에 쓰는 것과 동일)을 받는다 —
+ *   여기서 따로 구하면 포괄임금 직원의 ÷225.5 와 어긋난다.
+ *
+ * 2026-09-17 이전에는 `absent_days` 가 저장만 되고 계산에 안 쓰여, 근무 0일·결근 22일인 직원에게
+ * 급여가 전액 나갔다(킨뚜자소 7월). 과다 지급 방향이라 급여 정본으로 쓰면 바로 사고다.
+ */
+export function calcAbsentDeduction(hourlyWage: number, absentDays: number): number {
+  const h = Number(hourlyWage) || 0
+  const d = Number(absentDays) || 0
+  if (h <= 0 || d <= 0) return 0
+  return Math.floor(h * DAILY_REGULAR_HOURS * d / 10) * 10
+}
+
 export function calcInclusivePay(input: InclusivePayInput): InclusivePayResult {
   const otPremiumHours = input.fixedOTHours * input.overtimeMul       // 11 × 1.5 = 16.5
   const divisor = input.baseMonthlyHours + otPremiumHours             // 209 + 16.5 = 225.5

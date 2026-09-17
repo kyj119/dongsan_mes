@@ -34,7 +34,7 @@ const path = require('path')
 
 const SRC = path.join(__dirname, '..', 'src', 'routes', 'payroll', 'shared.ts')
 const { mod, cleanup } = compileTs(SRC, { bundle: true })
-const { calcDeductions, parseDeductionOverrides, applyDeductionOverrides } = mod
+const { calcDeductions, parseDeductionOverrides, applyDeductionOverrides, calcAbsentDeduction, calcInclusivePay } = mod
 
 function makeDbShim(db) {
   return {
@@ -150,6 +150,24 @@ function check(label, actual, expected) {
     plain.national_pension + plain.health_insurance + plain.long_term_care_insurance
     + plain.employment_insurance - 527930 - 52790)
   check('4대보험은 그대로', refund.national_pension, plain.national_pension)
+
+  console.log('── 결근 공제 (0621) ──')
+  // 통상시급 × 8h × 결근일수. 2026-09-17 이전에는 absent_days 가 계산에 안 쓰여
+  // 근무 0일·결근 22일인 직원에게 급여가 전액 나갔다(킨뚜자소 7월).
+  check('시급 10,000 · 1일', calcAbsentDeduction(10000, 1), 80000)
+  check('시급 10,000 · 4일', calcAbsentDeduction(10000, 4), 320000)
+  check('반일(0.5일)', calcAbsentDeduction(10000, 0.5), 40000)
+  check('결근 0일 = 차감 없음', calcAbsentDeduction(10000, 0), 0)
+  check('시급 0 = 차감 없음', calcAbsentDeduction(0, 5), 0)
+  check('음수 결근 = 차감 없음', calcAbsentDeduction(10000, -3), 0)
+  check('10원 미만 절사', calcAbsentDeduction(9567, 1), 76530)   // 9567×8=76,536 → 76,530
+  // 포괄임금 직원은 ÷225.5 시급을 쓴다 — 연장수당과 같은 값이어야 서로 어긋나지 않는다
+  const inc = calcInclusivePay({
+    inclusiveBase: 2367800, baseMonthlyHours: 209, fixedOTHours: 11, extraOTHours: 0,
+    nightHours: 0, holidayHours: 0, overtimeMul: 1.5, nightMul: 0.5, holidayMul: 1.5, holidayOverMul: 2,
+  })
+  check('포괄임금 시급(÷225.5)', inc.hourly_wage, 10500)
+  check('그 시급으로 22일 결근', calcAbsentDeduction(inc.hourly_wage, 22), 1848000)
 
   console.log('── 순수 함수 직접 ──')
   const fake = {

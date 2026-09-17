@@ -17,6 +17,7 @@ import {
   loadInsuranceRates,
   rateRefDate,
   parseDeductionOverrides,
+  calcAbsentDeduction,
   getProrationContext,
   calcProratedInclusive,
 } from './shared'
@@ -160,13 +161,16 @@ coreRouter.post('/preview', async (c) => {
     const tax_transport = transport_total - nontax_transport
     const tax_childcare = childcare_total - nontax_childcare
 
+    // 0621: 결근은 지급에서 뺀다(공제가 아니라 지급 차감 — 과세·4대보험 base 도 함께 내려간다)
+    const absent_deduction = calcAbsentDeduction(ot.hourly_wage, Number(body.absent_days || 0))
+
     const total_salary =
       base_salary + overtime_pay + night_pay + holiday_pay + annual_leave_pay + bonus +
-      meal_total + transport_total + childcare_total + other_allowance
+      meal_total + transport_total + childcare_total + other_allowance - absent_deduction
 
     const taxable_pay =
       base_salary + overtime_pay + night_pay + holiday_pay + annual_leave_pay + bonus +
-      tax_meal + tax_transport + tax_childcare + other_allowance
+      tax_meal + tax_transport + tax_childcare + other_allowance - absent_deduction
 
     const dependents = Math.max(1, Number(emp.dependents_count || 1))
     const taxOption = String(emp.income_tax_table_option || '100')
@@ -382,9 +386,12 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const meal_allowance = meal_total
     const transportation_allowance = transport_total
 
+    // 0621: 결근은 지급에서 뺀다. 시급은 연장·야간과 **같은 값**(ot.hourly_wage)을 쓴다.
+    const absent_deduction = calcAbsentDeduction(ot.hourly_wage, Number(body.absent_days || 0))
+
     const total_salary =
       base_salary + overtime_pay + night_pay + holiday_pay + annual_leave_pay + bonus +
-      meal_total + transport_total + childcare_total + other_allowance
+      meal_total + transport_total + childcare_total + other_allowance - absent_deduction
 
     const taxable_pay = total_salary - nontax_meal - nontax_transport - nontax_childcare
 
@@ -465,6 +472,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
         total_deduction, net_pay,
         work_days, overtime_hours, extra_overtime_hours, absent_days, late_count, leave_used_days,
         deduction_overrides, deduction_overrides_at, deduction_overrides_by,
+        absent_deduction,
         status, notes, created_by, entity_id, created_at, updated_at
       ) VALUES (
         ?, ?, ?,
@@ -480,6 +488,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
         ?, ?,
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?,
+        ?,
         'PENDING', ?, ?, ?, datetime('now'), datetime('now')
       )
       ON CONFLICT(employee_id, pay_period) DO UPDATE SET
@@ -508,6 +517,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
         deduction_overrides=excluded.deduction_overrides,
         deduction_overrides_at=excluded.deduction_overrides_at,
         deduction_overrides_by=excluded.deduction_overrides_by,
+        absent_deduction=excluded.absent_deduction,
         employer_national_pension=excluded.employer_national_pension,
         employer_health_insurance=excluded.employer_health_insurance,
         employer_long_term_care=excluded.employer_long_term_care,
@@ -541,6 +551,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
       ovJson,
       ovJson == null ? null : (ovChanged ? new Date().toISOString() : (existingOvMeta?.at ?? new Date().toISOString())),
       ovJson == null ? null : (ovChanged ? (user?.id || null) : (existingOvMeta?.by ?? user?.id ?? null)),
+      absent_deduction,
       // 귀속 법인 = 직원의 entity (전체모드 ADMIN 이 세션값 0→1 로 찍으면 선명·청주 급여가 동산 귀속)
       notes, user?.id || null, emp.entity_id || getEntityId(c) || 1
     ).run()
@@ -817,7 +828,10 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
           SUM(CASE WHEN is_hol = 0 AND attendance_type = 'LATE' THEN 1 ELSE 0 END) as late_count,
           SUM(CASE WHEN attendance_type = 'VACATION' OR status = 'VACATION' THEN 1 ELSE 0 END) as leave_used_days,
           -- 추가연장 = 비휴일의 연장근무(퇴근 후) + 조기출근(출근 전) 합산. 조기출근도 연장수당으로 지급(정책 2026-07-12).
-          SUM(CASE WHEN is_hol = 0 THEN COALESCE(overtime_hours, 0) + COALESCE(early_hours, 0) ELSE 0 END) as total_overtime,
+          -- 0621: **결근으로 찍힌 날은 제외**한다. 결근일에 남아 있는 연장 기록까지 더해져
+          --   "결근 4일인데 추가연장 24~26시간"이 나왔다(2026-09-17 이명순·김기섭 7월 실측).
+          SUM(CASE WHEN is_hol = 0 AND attendance_type != 'ABSENT' AND COALESCE(status,'') != 'ABSENT'
+                   THEN COALESCE(overtime_hours, 0) + COALESCE(early_hours, 0) ELSE 0 END) as total_overtime,
           SUM(CASE WHEN is_hol = 1 THEN COALESCE(work_hours, 0) ELSE 0 END) as total_holiday,
           SUM(COALESCE(caps_night_min, 0)) / 60.0 as total_night,
           SUM(COALESCE(work_hours, 0)) as total_work_hours
@@ -851,6 +865,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
         const prCtx = getProrationContext(payPeriod, t.hire_date ?? null, t.resignation_date ?? null)
         let newBase: number, overtime_pay: number, overtime_hours: number
         let nightPay: number, holidayPay: number
+        let hourlyWage = 0    // 0621: 결근 공제도 연장·야간과 **같은 시급**을 쓴다
         if (prCtx.isPartial) {
           const pro = calcProratedInclusive({
             inclusiveBase: empBase,
@@ -890,6 +905,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
           overtime_hours = inc.overtime_hours
           nightPay = inc.night_pay
           holidayPay = inc.holiday_pay
+          hourlyWage = inc.hourly_wage
         } else {
           // 일반 직원: 기본급 그대로 + 근태 연장/야간/휴일 가산
           const ot = calcOvertimePay({
@@ -908,6 +924,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
           overtime_hours = extraOT
           nightPay = ot.night_pay
           holidayPay = ot.holiday_pay
+          hourlyWage = ot.hourly_wage
         }
 
         // 총급여/과세/공제/실지급 일관 재계산 (고정수당 + 재계산 연장/야간/휴일)
@@ -916,7 +933,10 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
         const otherAllow = Number(t.other_allowance || 0)
         const annual = Number(t.annual_leave_pay || 0)
         const bonusVal = Number(t.bonus || 0)
+        // 0621: 결근은 지급에서 뺀다(공제가 아니라 지급 차감 — 4대보험·소득세 base 도 함께 내려간다)
+        const absent_deduction = calcAbsentDeduction(hourlyWage, absent_days)
         const total_salary = newBase + overtime_pay + nightPay + holidayPay + meal + transport + otherAllow + annual + bonusVal
+          - absent_deduction
         const nontax = Number(t.nontax_meal || 0) + Number(t.nontax_transport || 0) + Number(t.nontax_childcare || 0)
         const taxable_pay = total_salary - nontax
 
@@ -946,6 +966,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
             SET base_salary = ?, overtime_hours = ?, extra_overtime_hours = ?, overtime_pay = ?,
                 night_pay = ?, holiday_pay = ?,
                 work_days = ?, absent_days = ?, late_count = ?, leave_used_days = ?,
+                absent_deduction = ?,
                 taxable_pay = ?, total_salary = ?,
                 national_pension = ?, health_insurance = ?, long_term_care_insurance = ?,
                 employment_insurance = ?, income_tax = ?, local_tax = ?,
@@ -958,6 +979,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
             newBase, overtime_hours, extraOT, overtime_pay,
             nightPay, holidayPay,
             work_days, absent_days, late_count, leave_used_days,
+            absent_deduction,
             taxable_pay, total_salary,
             d.national_pension, d.health_insurance, d.long_term_care_insurance,
             d.employment_insurance, d.income_tax, d.local_tax,
@@ -972,7 +994,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
         details.push({
           payroll_id: t.id,
           employee_id: t.employee_id,
-          work_days, absent_days, late_count, leave_used_days,
+          work_days, absent_days, late_count, leave_used_days, absent_deduction,
           overtime_hours, extra_overtime_hours: extraOT, overtime_pay, base_salary: newBase, total_salary, net_pay
         })
       }
