@@ -158,7 +158,7 @@ function check(label, actual, expected) {
   check('그 판정의 taxOption', diagnoseIncomeTax(r350, Math.floor(127220 * 1.2 / 10) * 10, cur100).taxOption, '120')
   // 김기섭 형태: 같은 100% 인데 가족수가 다르다
   check('부양가족을 짚는다', diagnoseIncomeTax(r350, 62460, cur100).label, '부양가족 3인 이면 일치')
-  check('자녀도 짚는다', diagnoseIncomeTax(r350, 49340 - 45830, { taxOption: '100', dependents: 4, children: 0 }).label, '20세이하 자녀 2명 이면 일치')
+  check('자녀도 짚는다', diagnoseIncomeTax(r350, 49340 - 45830, { taxOption: '100', dependents: 4, children: 0 }).label, '자녀 2명 이면 일치')
   // 어떤 조합으로도 안 나오는 값 = 지급액이 다른 것 (인호동·한두선 형태)
   check('지급액 차이로 분류', diagnoseIncomeTax(r350, 123456, cur100).kind, 'pay')
   check('표 구간 밖은 판정 안 한다', diagnoseIncomeTax(null, 999, cur100).kind, 'unknown')

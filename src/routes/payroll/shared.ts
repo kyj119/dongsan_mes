@@ -511,7 +511,8 @@ export function diagnoseIncomeTax(
   const parts: string[] = []
   if (s.taxOption !== String(current.taxOption)) parts.push(`적용비율 ${s.taxOption}%`)
   if (s.dependents !== current.dependents) parts.push(`부양가족 ${s.dependents}인`)
-  if (s.children !== current.children) parts.push(`20세이하 자녀 ${s.children}명`)
+  // 표 한 칸에 들어가야 하므로 짧게. 두 항목이 겹치면 「부양가족 2인 · 자녀 1명 이면 일치」가 된다.
+  if (s.children !== current.children) parts.push(`자녀 ${s.children}명`)
   return { kind: 'setting', taxOption: s.taxOption, dependents: s.dependents, children: s.children,
     label: parts.join(' · ') + ' 이면 일치' }
 }
