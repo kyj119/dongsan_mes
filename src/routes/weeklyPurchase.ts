@@ -9,6 +9,7 @@ import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { kstYmdCompact } from '../utils/kstDate'
 import { getConsumptionForecast } from '../utils/consumptionForecast'
+import { computePurchaseSuggestion } from '../utils/purchaseSuggestion'
 import { computeMaterialRequirements } from '../utils/materialRequirement'
 import { buildWeeklyPurchaseSMS } from '../utils/inventoryAlert'
 import { getKakaoProvider, getKakaoSettings } from './kakao'
@@ -125,17 +126,28 @@ weeklyPurchaseRouter.get('/analyze', async (c) => {
     // 5. 제안 목록 생성
     const suggestions = forecast.map(f => {
       const mrp = mrpMap[f.item_id] || { demand: 0 }
-      const onOrder = onOrderMap[f.item_id] || 0
       const supplier = supplierMap[f.item_id] || null
 
-      // 예상 소진량 = (주간소모 × 리드타임) + MRP 소요
-      const expectedDemand = (f.weekly_avg * LEAD_TIME_WEEKS) + mrp.demand
-      // 가용재고 = 현재고 + 발주중
-      const available = f.current_stock + onOrder
-      // 부족량 = 예상소진 + 안전재고 - 가용재고
-      const shortage = Math.max(0, expectedDemand + f.safe_stock - available)
-      // 권장 발주량 = 부족량 (올림)
-      const recommended_qty = Math.ceil(shortage)
+      // ★축 정리 (2026-09-18) — 이 화면에는 **두 단위**가 섞여 있다.
+      //   · 재고·소모·안전재고·MRP 소요 = **base**(재고 저장 단위, 예 'M')
+      //   · 발주 수량(`purchase_order_items.quantity`) = **관리단위**(예 '롤') — 입고가 ×pack_size 로 base 에 넣는다
+      //   종전엔 발주중(관리단위)을 base 재고에 그대로 더하고, base 로 계산한 부족량을 **관리단위 라벨로** 내보냈다
+      //   → 부족량 과대(헛경고) + `/create-prs` 가 만드는 발주요청이 최대 pack_size 배 과다(코팅지 61배).
+      const onOrderPack = onOrderMap[f.item_id] || 0     // 발주중 = 관리단위
+      const sg = computePurchaseSuggestion({
+        currentStock: f.current_stock,
+        safeStock: f.safe_stock,
+        weeklyAvg: f.weekly_avg,
+        mrpDemand: mrp.demand,
+        onOrderPack,
+        leadTimeWeeks: LEAD_TIME_WEEKS,
+      }, f)
+      const factor = sg.factor
+      const onOrder = sg.onOrderBase
+      const expectedDemand = sg.expectedDemandBase
+      const shortage = sg.shortageBase
+      const recommended_qty = sg.recommendedPack       // 관리단위 — 발주서에 그대로 들어간다
+      const recommended_qty_base = sg.recommendedBase
 
       // 발주 필요 여부
       const needs_order = recommended_qty > 0 && (f.auto_pr_enabled || f.safe_stock > 0)
@@ -148,12 +160,15 @@ weeklyPurchaseRouter.get('/analyze', async (c) => {
         item_id: f.item_id,
         item_name: f.item_name,
         category: f.category,
-        unit: f.unit,
+        unit: f.unit,                                   // 발주 단위(관리단위) — PR·PO 가 쓰는 축
+        base_unit: f.base_unit,                         // 재고·소모 수량의 단위
+        pack_size: factor > 1 ? factor : null,          // 관리단위 1 = base 몇 개 (단일단위면 null)
         entity_id: f.entity_id,
-        // 재고 상태
+        // 재고 상태 [base]
         current_stock: f.current_stock,
         safe_stock: f.safe_stock,
-        on_order: onOrder,
+        on_order: onOrder,                              // base 로 환산된 값
+        on_order_pack: onOrderPack,                     // 원본(관리단위) — 화면에서 「3롤」로 보여 줄 때
         // 소모 예측
         weekly_avg: f.weekly_avg,
         active_weeks: f.active_weeks,
@@ -162,7 +177,8 @@ weeklyPurchaseRouter.get('/analyze', async (c) => {
         // 계산 결과
         expected_demand: Math.round(expectedDemand * 100) / 100,
         shortage: Math.round(shortage * 100) / 100,
-        recommended_qty,
+        recommended_qty,                                // 관리단위(발주 단위)
+        recommended_qty_base,                           // base — 「26롤 (1,586 M)」 병기용
         // 공급처
         supplier_id: supplier?.supplier_id || null,
         supplier_name: supplier?.supplier_name || null,

@@ -3,6 +3,7 @@
 //   #465: 구 bom_items(동결) → 신모델(product_materials + 차감설정, autoDeduct 산식)로 재배선.
 // ============================================================================
 import { computeMaterialCoverage, type UnresolvedLine, type UnresolvedReason } from './materialRequirement'
+import { packFactor } from './unitConvert'
 
 export interface ShortageWarning {
   material_item_id: number
@@ -70,17 +71,26 @@ export async function checkMaterialCoverage(
   const invParams = entityId && entityId > 0 ? [entityId] : []
 
   // UP4 백로그: inventory.id(행PK)≠item_id. item_id 기준 + 다중행 SUM 집계로 교정.
+  // ★단위 축 (2026-09-18) — `inv.quantity` 는 **base**(예 'M')다. 종전엔 라벨로 `i.unit`(관리단위 '롤')을
+  //   썼고, 아래 발주중도 관리단위 그대로 더해 **부족량이 과대**하게 나왔다(코팅지 1롤=61M → 1 로 셈).
+  //   환산 계수는 `packFactor()` 가 정한다 — base_unit 이 없는 편의계수 품목(AQ)은 1 이라 안 건드린다.
   const { results: stocks } = await db.prepare(`
-    SELECT inv.item_id, SUM(inv.quantity) AS quantity, MAX(i.unit) AS unit
+    SELECT inv.item_id, SUM(inv.quantity) AS quantity,
+           MAX(i.unit) AS unit, MAX(i.base_unit) AS base_unit, MAX(i.pack_size) AS pack_size
     FROM inventory inv
     LEFT JOIN items i ON inv.item_id = i.id
     WHERE inv.item_id IN (${ph}) ${invCondition}
     GROUP BY inv.item_id
   `).bind(...materialIds, ...invParams).all()
 
-  const stockMap: Record<number, { qty: number; itemId: number | null; unit: string }> = {}
+  const stockMap: Record<number, { qty: number; itemId: number | null; unit: string; factor: number }> = {}
   for (const s of stocks as any[]) {
-    stockMap[s.item_id] = { qty: s.quantity || 0, itemId: s.item_id, unit: s.unit || 'EA' }
+    stockMap[s.item_id] = {
+      qty: s.quantity || 0,
+      itemId: s.item_id,
+      unit: s.unit || 'EA',
+      factor: packFactor({ unit: s.unit, base_unit: s.base_unit, pack_size: s.pack_size }),
+    }
   }
 
   // 발주중 수량 (inventory.item_id 기준)
@@ -98,14 +108,16 @@ export async function checkMaterialCoverage(
     `).bind(...realItemIds).all()
 
     for (const o of onOrder as any[]) {
-      onOrderMap[o.item_id] = Math.max(0, o.pending_qty || 0)
+      // 발주 수량은 **관리단위**다(입고가 ×pack_size 로 base 재고에 넣는다) → 여기서 base 로 맞춘다.
+      const f = stockMap[o.item_id]?.factor || 1
+      onOrderMap[o.item_id] = Math.max(0, (o.pending_qty || 0) * f)
     }
   }
 
   // 5. 부족량 계산
   const warnings: ShortageWarning[] = []
   for (const [matId, mat] of materialMap) {
-    const stock = stockMap[matId] || { qty: 0, itemId: null, unit: 'EA' }
+    const stock = stockMap[matId] || { qty: 0, itemId: null, unit: 'EA', factor: 1 }
     const onOrder = stock.itemId ? (onOrderMap[stock.itemId] || 0) : 0
     const shortfall = Math.max(0, mat.required - stock.qty - onOrder)
 
@@ -118,7 +130,9 @@ export async function checkMaterialCoverage(
         current_stock: stock.qty,
         on_order: onOrder,
         shortfall: Math.round(shortfall * 100) / 100,
-        unit: stock.itemId ? stock.unit : mat.base_unit,
+        // 표시 단위 = **재고 단위**(base). `mat.base_unit` 은 `resolveStockUnit` 이 낸 정본 라벨이고,
+        //   required·current_stock·shortfall 이 전부 그 축이다. 관리단위(`stock.unit`)를 쓰면 값과 라벨이 어긋난다.
+        unit: mat.base_unit,
       })
     }
   }

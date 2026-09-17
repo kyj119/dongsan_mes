@@ -119,14 +119,18 @@
         '<td class="px-3 py-2">' + urgBadge + '</td>' +
         '<td class="px-3 py-2 font-medium text-gray-900" title="' + escHtml(s.item_name) + '">' + escHtml(s.item_name) + zoneInfo + '</td>' +
         '<td class="px-3 py-2 text-gray-500">' + escHtml(s.category || '-') + '</td>' +
-        '<td class="px-3 py-2 text-right ' + stockClass + '">' + fmt(s.current_stock) + '</td>' +
-        '<td class="px-3 py-2 text-right text-gray-600">' + fmt(s.safe_stock) + '</td>' +
+        '<td class="px-3 py-2 text-right ' + stockClass + '">' + wpBase(s.current_stock, s) + '</td>' +
+        '<td class="px-3 py-2 text-right text-gray-600">' + wpBase(s.safe_stock, s) + '</td>' +
         '<td class="px-3 py-2 text-right text-blue-600">' + fmt(s.weekly_avg) + '/w</td>' +
         '<td class="px-3 py-2 text-right text-blue-600">' + fmt(s.mrp_demand) + '</td>' +
-        '<td class="px-3 py-2 text-right text-gray-500">' + fmt(s.on_order) + '</td>' +
+        '<td class="px-3 py-2 text-right text-gray-500">' + wpBase(s.on_order, s) + '</td>' +
         '<td class="px-3 py-2 text-right">' +
           '<input type="number" class="qty-input w-20 border border-gray-300 rounded px-2 py-1 text-right text-sm" ' +
           'data-item-id="' + s.item_id + '" value="' + s.recommended_qty + '" min="0">' +
+          // 발주는 **관리단위**로 나간다(입고가 ×pack_size 로 base 재고에 넣는다). 단위를 안 적으면 M 로 착각한다.
+          ' <span class="text-xs text-gray-500">' + escHtml(s.unit || '') +
+            (s.pack_size > 0 ? '<span class="text-gray-400"> =' + fmt(s.recommended_qty_base) + escHtml(s.base_unit || '') + '</span>' : '') +
+          '</span>' +
         '</td>' +
         '<td class="px-3 py-2 text-gray-600 text-xs" title="' + escHtml(s.supplier_name || '') + '">' + escHtml(s.supplier_name || '미지정') + '</td>' +
         '</tr>';
@@ -242,6 +246,16 @@
       })
       .catch(function(err) { alert('알림 발송 실패: ' + (err.response?.data?.error || err.message)); });
   };
+
+  // 재고·소모 수량은 **base**(예 'M')다. 다단위 품목은 관리단위(롤) 환산을 괄호로 병기한다 —
+  //   숫자만 보면 「1,586 롤」로 읽힌다(실제 1,586 M = 26 롤).
+  function wpBase(n, s) {
+    var v = fmt(n);
+    var bu = s.base_unit || s.unit || '';
+    var out = v + (bu ? ' ' + escHtml(bu) : '');
+    if (s.pack_size > 0) out += ' <span class="text-gray-400">(' + fmt(Math.round((Number(n) || 0) / s.pack_size * 10) / 10) + escHtml(s.unit || '') + ')</span>';
+    return out;
+  }
 
   function fmt(n) {
     if (n === null || n === undefined) return '-';

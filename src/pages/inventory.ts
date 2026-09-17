@@ -700,13 +700,20 @@ export function inventoryPage(c: Context<HonoEnv>) {
                             <div class="px-3 py-2 bg-gray-100 rounded text-sm font-medium" id="settingsCurrentStock">-</div>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">안전재고</label>
-                            <input type="number" id="settingsSafeStock" class="w-full px-3 py-2 border rounded" min="0" step="0.01">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">안전재고 <span class="text-xs font-normal text-blue-700" id="settingsSafeUnit"></span></label>
+                            <div class="relative">
+                                <input type="number" id="settingsSafeStock" class="w-full px-3 py-2 border rounded pr-14" min="0" step="0.01">
+                                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500" id="settingsSafeSuffix"></span>
+                            </div>
                             <div class="text-xs text-gray-500 mt-1">이 수량 이하이면 부족 경고 표시</div>
+                            <div class="text-xs text-blue-700 mt-0.5 hidden" id="settingsSafeHint"></div>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">재주문점 (ROP)</label>
-                            <input type="number" id="settingsReorderPoint" class="w-full px-3 py-2 border rounded" min="0" step="0.01">
+                            <div class="relative">
+                                <input type="number" id="settingsReorderPoint" class="w-full px-3 py-2 border rounded pr-14" min="0" step="0.01">
+                                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500" id="settingsRopSuffix"></span>
+                            </div>
                             <div class="text-xs text-gray-500 mt-1">이 수량 이하이면 발주 검토 필요</div>
                         </div>
                     </div>

@@ -8,6 +8,10 @@ export interface ConsumptionData {
   item_name: string
   category: string | null
   unit: string
+  /** 재고·소모 수량의 실제 단위(= base). 화면·계산이 관리단위로 착각하지 않도록 같이 싣는다. */
+  base_unit: string | null
+  /** 관리단위 1 = base 몇 개. 다단위가 아니면 의미 없음(packFactor 가 판정한다). */
+  pack_size: number | null
   current_stock: number
   safe_stock: number
   reorder_point: number
@@ -59,6 +63,7 @@ export async function getConsumptionForecast(
   const { results: items } = await db.prepare(`
     SELECT
       i.id as item_id, i.item_name, i.category, i.unit,
+      i.base_unit, i.pack_size,
       COALESCE(SUM(inv.quantity), 0) as current_stock,
       COALESCE(MAX(inv.safe_stock), 0) as safe_stock,
       COALESCE(MAX(inv.reorder_point), 0) as reorder_point,
@@ -115,6 +120,8 @@ export async function getConsumptionForecast(
       item_name: it.item_name,
       category: it.category,
       unit: it.unit,
+      base_unit: it.base_unit ?? null,
+      pack_size: it.pack_size ?? null,
       current_stock: it.current_stock,
       safe_stock: it.safe_stock,
       reorder_point: it.reorder_point,

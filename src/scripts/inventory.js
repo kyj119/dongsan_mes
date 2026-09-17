@@ -328,9 +328,32 @@ function updateAdjustSelect(items) {
 window.openSettings = function(itemId, itemName, stock, safety, rop) {
     document.getElementById('settingsItemId').value = itemId;
     document.getElementById('settingsItemName').textContent = itemName;
-    document.getElementById('settingsCurrentStock').textContent = stock;
     document.getElementById('settingsSafeStock').value = safety;
     document.getElementById('settingsReorderPoint').value = rop;
+    // 안전재고·ROP 는 **재고 단위(base)** 로 저장·비교된다. 칸에 단위가 없으면 사람이 관리단위(롤)로 넣고,
+    //   그러면 임계가 pack_size 배 낮아져 **부족 경고가 영영 안 뜬다**. 단위와 환산을 칸에 적는다.
+    var mu = (allItems || []).find(function(it) { return it.id === itemId; }) || null;
+    var baseUnit = (mu && (mu.base_unit || mu.unit)) || '';
+    // 현재고도 같은 축으로 — 숫자만 띄우면 바로 밑 입력칸과 단위가 달라 보인다.
+    document.getElementById('settingsCurrentStock').textContent = mu ? uomFmt(stock, mu) : stock;
+    var suffix = document.getElementById('settingsSafeSuffix');
+    var ropSuffix = document.getElementById('settingsRopSuffix');
+    var unitTag = document.getElementById('settingsSafeUnit');
+    var hint = document.getElementById('settingsSafeHint');
+    if (suffix) suffix.textContent = baseUnit;
+    if (ropSuffix) ropSuffix.textContent = baseUnit;
+    if (unitTag) unitTag.textContent = baseUnit ? '(' + baseUnit + ' 기준)' : '';
+    if (hint) {
+        var multi = mu && window.uomIsMulti && window.uomIsMulti(mu);
+        if (multi) {
+            hint.textContent = '이 품목은 ' + mu.unit + ' 1 = ' + mu.pack_size + ' ' + mu.base_unit
+                + ' 입니다 — ' + mu.unit + ' 수가 아니라 ' + mu.base_unit + ' 로 넣어 주세요.';
+            hint.classList.remove('hidden');
+        } else {
+            hint.textContent = '';
+            hint.classList.add('hidden');
+        }
+    }
     document.getElementById('settingsModal').classList.remove('hidden');
 };
 
