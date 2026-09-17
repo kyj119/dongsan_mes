@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-09-16T15:50:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-09-17T09:44:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,27 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **7** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음 — #647·#648에 fixed-in-tree 코멘트만 close는 owner 대기) |
+| 🆕 new | **7** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음 — #647·#648에 fixed-in-tree 코멘트만 close는 owner 대기, Area4 재확인) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **567** (`search_issues(label:auto-improve is:closed reason:completed)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 4 데이터 정합성 (2026-09-17T09:44):**
+> - **방법**: 세션 시작 시 detached HEAD `429792a`(origin/main과 동일) → 로컬 `main`은 stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area4 사이클 세션시작 HEAD `837b718`)**: `git log 837b718..HEAD` 30커밋, `git diff --stat -- src/routes src/utils migrations`는 8파일 — `migrations/0616`(인덱스, Area1 기록완료)·`migrations/0617`+`src/routes/{hr,leaves,payroll/core,payroll/settings,payroll/shared}.ts`+`statusLabels.ts`(전부 `429792a` 4대보험 기간축 전환 단일 커밋). 나머지 22커밋(UI 리디자인 2종·check:fn 게이트·IA 에이전트 이관 5건·journey 문서화)은 Area1/2/3/5/6가 이번 순환에서 이미 각자 렌즈로 정독 완료(백로그 로그 확인) → Area4 고유 미검토 대상은 `429792a` 하나.
+> - **`429792a`(insurance_rates 기간축 전환 + 가입예외 메모) 데이터정합성 직접 검증**: ① 마이그(`0617`) — `UNIQUE(year,type)→UNIQUE(type,effective_from)` 재생성이 CREATE v2→`INSERT OR IGNORE ... SELECT`→DROP→RENAME 정석 패턴, `insurance_rates.id`를 참조하는 FK 0건(재생성 안전) · 2026 국민연금 상/하반기 분리 INSERT·UPDATE 둘 다 `WHERE insurance_type=... AND year=... AND effective_from=...` 값기반 조건이라 빈 DB에서 no-op(prod row-id 하드코딩 위험군 아님, CI bootstrap 안전). ② `loadInsuranceRates(db, refDate)` — `ORDER BY insurance_type, effective_from DESC, id DESC` 후 첫 행만 채택하는 로직이 "과거연도 행이 effective_to NULL이어도 최신이 이긴다" 주석과 정확히 일치. ③ **호출부 전수 대조**(`grep -rn "loadInsuranceRates\|calcDeductions("`) — `payroll/core.ts` 4곳(174/389/574/646/796/887)·`leaves.ts`(1186/1218) 전부 신 시그니처 `rateRefDate(payPeriod, year)`로 마이그레이션 완료, 구 시그니처(`loadInsuranceRates(db, year)`) 잔존 호출 0건 — leaves.ts는 이번 커밋에서 정확히 그 구시그니처를 고쳤고 `payPeriod` 필드도 함께 추가(반쪽 마이그레이션 없음). ④ `settings.ts` PUT/DELETE/COPY — 조회·수정·삭제 키를 `(type, effective_from)`으로 통일(설명 주석 "year+type으로 찾으면 하반기 저장이 상반기 행을 덮어쓴다" 그대로 구현), DELETE는 기간 미지정+복수행이면 400 가드, COPY는 `substr(effective_from,5)` 로 연도만 치환(날짜 포맷 불변). 결함 0건 — 이미 올바르게 설계·구현된 상태(§4대보험 CLAUDE.md 서술과 코드 100% 일치, 자체 게이트 `test:insurance-period` 24항목 보유).
+> - **standing scan 1: `npm run audit:migration-number`** — 파일 630+개, 중복 번호 20쌍(기존과 동일 클래스), **같은 테이블 DDL 충돌 0건**(0617 신규 번호 충돌 없음).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 3건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`).
+> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 10런 전부 `conclusion:success`(최종 HEAD `429792a` = 이번 4대보험 배포 포함).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **7**(#651·#650·#648·#647·#626·#617·#616, 변동없음) — #651은 Area4 자신의 직전 발견(deriveOrderType), 나머지 Area4 관할 밖.
+> - **backlog↔GitHub 절대값 재동기화**: open **7**(변동없음) · done **567**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md 서술 참조 재확인(이미 서술식, `line N` 잔여 없음). 이번 사이클은 대형 단일 커밋(429792a)이었으나 저자가 이미 「저장 컬럼 재생성 시 FK 확인」·「호출부 전수 시그니처 이관」·「빈 DB no-op 데이터 마이그」 같은 기존 Area4 codify 원칙을 스스로 준수해 신 결함·신 클래스 모두 0.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` 대상 — 사이클 로그 10건 → 이번 추가 후 11건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(단일 대상 커밋 직접 정독, net-new 0 — 자체설계·자체게이트 완비), 자동수정 0건(고칠 결함 없음), done-sync: open 7(변동없음)·done 567(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-09-16T15:50):**
 > - **방법**: 세션 시작 시 detached HEAD `1b74c7c`(origin/main과 동일) → 로컬 `main`은 stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
