@@ -39,9 +39,23 @@
                 var opts = '<option value="">없음</option>' + methods.map(function(m) {
                     return '<option value="' + escapeHtml(m.name || '') + '">' + escapeHtml(m.name || '') + (m.margin > 0 ? ' (' + m.margin + 'cm)' : '') + '</option>';
                 }).join('');
+                // ★옵션을 다시 그리면 **선택값이 날아간다** — 그래서 되살린다 (2026-09-17 실기).
+                //   대기함 프리필이 값을 넣은 **뒤에** 이 함수가 한 번 더 도는 경로가 있다:
+                //   `applyItemSelection`(itemRow.js:304)이 이걸 **await 없이** 던져서, 늦게 도착한
+                //   응답이 `innerHTML = opts` 로 방금 넣은 마감을 지운다. 실기 2026-09-17 에
+                //   「양옆 게시대미싱」이 그렇게 사라졌다 — 안 들어온 게 아니라 들어왔다가 지워졌다.
+                //   호출부에 await 를 붙이는 건 그 한 경로만 고친다(경로는 4곳이다). 값 보존은
+                //   **모든 호출부**를 한 번에 고치고, 앞으로 생길 호출부도 안전하다.
                 ['fin_top_','fin_bottom_','fin_left_','fin_right_'].forEach(function(prefix) {
                     var sel = document.querySelector('[name="' + prefix + id + '"]');
-                    if (sel) sel.innerHTML = opts;
+                    if (!sel) return;
+                    var keep = sel.value;
+                    sel.innerHTML = opts;
+                    // 새 목록에 그 값이 있을 때만 되살린다(품목이 바뀌어 방식군이 달라졌으면 비운다)
+                    if (keep) {
+                        sel.value = keep;
+                        if (sel.value !== keep) sel.value = '';
+                    }
                 });
 
                 // 전사(봉제)는 여백 개념이 없다(방식 margin 전부 0·프리셋=방향 조합) → cm(길이) 칸을 숨기고
