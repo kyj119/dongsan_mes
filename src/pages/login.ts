@@ -169,12 +169,18 @@ export function loginPage(c: Context<HonoEnv>) {
                 }
             });
 
-            // Enter key support
-            document.getElementById('password').addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    loginForm.dispatchEvent(new Event('submit'));
-                }
-            });
+            // ★Enter 처리기를 **두지 않는다** (2026-09-17 실기 재현).
+            //   여기 있던 핸들러가 loginForm.dispatchEvent(new Event('submit')) 를 했는데,
+            //   new Event() 는 **cancelable 이 아니라** 위 submit 리스너의 preventDefault() 가
+            //   조용히 무효가 된다. 그러면 axios 로그인이 시작된 **직후 브라우저의 네이티브 제출이
+            //   그대로 진행돼 페이지가 새로고침**되고, 응답(성공이든 401이든)은 렌더될 화면이 없다.
+            //   → 증상 = 「Enter 를 눌렀는데 아무 말 없이 로그인창으로 되돌아온다」.
+            //     비밀번호가 맞아도 같다(토큰은 저장되는데 화면은 로그인 폼으로 리셋된다) —
+            //     그래서 **되기도 하고 안 되기도 하는** 것처럼 보였다. 버튼 클릭은 멀쩡했다
+            //     (네이티브 submit 이벤트는 cancelable 이라 preventDefault 가 먹는다).
+            //   ⚠️핸들러가 없어야 Enter 가 **정상 동작**한다 — form 에 type=submit 버튼이
+            //     있으므로 브라우저가 알아서 submit 이벤트를 발생시키고, 그건 취소 가능하다.
+            //     「Enter 지원」을 손으로 다시 넣지 말 것. 넣는 순간 같은 사고가 돌아온다.
         </script>
     </body>
     </html>
