@@ -164,6 +164,14 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 
 (2026-07-29: SheetLayout 폴백 수정이 exe 폴더에 미복사 → 모아찍기 판 렌더 6일간 실패. 상세 = memory `feedback-ia-jsx-runtime-path`)
 
+### ExtendScript 는 중첩 삼항을 **거꾸로** 파싱한다 (`npm run audit:jsx-ternary`)
+**일러 안에서만 값이 다르다.** 실측(일러 30.7, 2026-09-18): `true ? 'A' : false ? 'B' : 'C'` → **`'B'`**. 사양(ECMAScript)은 오른쪽 결합이라 `'A'` 여야 하는데 이 엔진은 **왼쪽 결합**으로 읽는다. 괄호를 치면 정상이다.
+- **예외도 경고도 없이 값만 틀린다** — 타입체크·게이트·사람 눈 전부를 통과한다. Node 에서 짜고 검증한 로직이 일러에 들어가면 **거기서만** 다른 값을 낸다.
+- 실사고 = 주석 밴드 선택 4단 삼항. `apos` 가 `'top'` 이어도 결과가 **좌/우 변의 여백**이 됐다 → 좌우가 0이면 `annBand=0` 으로 **주석이 통째로 사라지고**, 0이 아니면(실기의 **양옆 게시대미싱 12cm**) 엉뚱한 변의 큰 여백이 글자 크기가 된다. 보고는 「주석이 너무 크게 생성」이었고, 그 한 줄 때문에 **한 달간 주석 기능 전체가 틀린 변을 보고 있었다**.
+- 고치는 법 = **뒤쪽 삼항을 괄호로 감싼다**: `a ? b : (c ? d : (e ? f : g))`.
+- 게이트 = **`npm run audit:jsx-ternary`**(JSX 전수·`ia:deploy` 배선·자가시험 양방향). 전수 결과 위반은 **그 한 줄뿐**이었다 — 드물지만 걸리면 조용하다.
+- ⚠️**이 엔진의 다른 사양 이탈도 의심한다** — `doc.rulerUnits` 무시(§mm 단위), `OffsetPath v22` 무동작이 이미 같은 계열이다. 「Node 에서 되니까 일러에서도 된다」가 성립하지 않는 축이 있다.
+
 ### 조용한 격하 = 게이트가 「성공」으로 센다 (`npm run cut:placement`)
 **폴백은 실패가 아니라 성공처럼 생겼다.** 누적 캐시·계산 규칙·IA 5축과 **같은 형태**다 — 200이 뜨고, 판이 나오고, 화면이 정상이다. 게이트가 모자란 게 아니라(개수 정본=`package.json` scripts, 2026-09-10 실측 73개) **격하를 성공으로 세고 있는** 것이다.
 
@@ -247,7 +255,7 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 - **CI**(push→main, `.github/workflows/deploy.yml`): tsc · **`check:fn`**(selftest+strict) · **`audit:jwt-decode`** · build · `test:calc` · `entity-audit.mjs` · `audit:migration-number`(#639 같은 번호·같은 테이블 DDL 충돌만 차단) · `canary:write:ci` · `smoke.cjs`(prod)
 - **커밋 훅**(`pretooluse-bash.cjs`): tsc(전건 차단) · `skill-audit`·`hook-guard-selftest`·`doc-diet-audit`·**`audit:empty-catch`**·**`check:fn`**(해당 파일이 dirty 인 커밋만 — `check:fn` 은 src/**)
 - **편집 훅**(`posttooluse-edit.cjs`): `node --check`(src/scripts/*.js) · `check:dom` 기준선 회귀 · **`check:fn`**(src/**.ts·js — 미정의 전역 함수 호출, 기준선 없음) · **`audit:empty-catch`**(IllustratorAutomat/**.jsx·js — 사유 `ignore:` 없는 빈 catch) — 넷 다 `exit 2` 차단
-- **`ia:deploy`**(`ia-deploy.cjs` `GATES`): **audit:empty-catch** · cut:bleed · cut:nest · cut:butt · cut:placement · cut:smoke · **cut:shellsync** · panel:smoke · cut:e2e + ia-jsx 드리프트 (⚠️`test:outcopy` 는 2026-09-15 **하루 만에 은퇴** — 지키던 코드가 에이전트로 넘어갔다. **없어진 코드를 지키는 게이트는 초록불이 아무 뜻도 없다** → 성질은 `panel:smoke` §13 으로 옮겨 실었다)
+- **`ia:deploy`**(`ia-deploy.cjs` `GATES`): **audit:empty-catch** · **audit:jsx-ternary** · cut:bleed · cut:nest · cut:butt · cut:placement · cut:smoke · **cut:shellsync** · panel:smoke · cut:e2e + ia-jsx 드리프트 (⚠️`test:outcopy` 는 2026-09-15 **하루 만에 은퇴** — 지키던 코드가 에이전트로 넘어갔다. **없어진 코드를 지키는 게이트는 초록불이 아무 뜻도 없다** → 성질은 `panel:smoke` §13 으로 옮겨 실었다)
 - **`ship:gate`**: verify(tsc+build) · **check:fn** · **audit:jwt-decode** · entity-audit · **test:calc** · canary:write · **journey:gate**(J0~J7 40단계, 로컬 서버 자동 기동·≈4.5분, `SKIP_JOURNEY=1` 로만 명시 건너뜀) · **`test:local-e2e`**(서버가 필요한 4종을 journey 뒤에 묶어 세운다 — symmetry·ship-stock·autodeduct·print-match. 같은 `SKIP_JOURNEY=1` 로 함께 건너뛴다)
 - **`/deploy-verify`**: Phase 1 tsc·build·**test:calc**·**journey:gate** → Phase 2 entity-audit → Phase 2-B `audit:migration-drift`(스키마 변경 시) → Phase 4 `smoke:prod`
 > ⚠️`verify.yml` 은 `on: pull_request` 다 — 이 프로젝트(main 직접 push)에서는 **생성 이래 0회 실행**.
