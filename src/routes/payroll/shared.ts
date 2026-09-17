@@ -499,7 +499,7 @@ export function diagnoseIncomeTax(
       }
     }
   }
-  if (!sols.length) return { kind: 'pay', label: '지급액(과세급여) 자체가 다름 — 소득세 설정 문제 아님' }
+  if (!sols.length) return { kind: 'pay', label: '지급액이 다름 (소득세 설정 아님)' }
   // 지금 설정과 가장 가까운 해를 고른다. 바꿀 칸이 적을수록 실제 원인일 가능성이 높다.
   const cost = (s: typeof sols[number]) =>
     (s.taxOption === String(current.taxOption) ? 0 : 1) +

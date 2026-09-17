@@ -2016,7 +2016,7 @@ window.payrollReconcileRender = function() {
       cause = '<span class="text-amber-700">' + escapeHtml(r.diagnosis.label) + '</span>';
       act = '<a href="/hr/' + r.employee_id + '" target="_blank" class="text-indigo-600 hover:underline whitespace-nowrap">직원 설정</a>';
     } else if (r.diagnosis && r.diagnosis.kind === 'pay') {
-      cause = '<span class="text-gray-500">' + escapeHtml(r.diagnosis.label) + '</span>';
+      cause = '<span class="text-gray-500" title="같은 과세급여에서 적용비율·부양가족·자녀를 전부 풀어도 이 값이 안 나옵니다. 소득세가 아니라 지급 항목(수당 산정)을 보세요.">' + escapeHtml(r.diagnosis.label) + '</span>';
     } else if (r.diagnosis) {
       cause = '<span class="text-gray-400">' + escapeHtml(r.diagnosis.label) + '</span>';
     }
