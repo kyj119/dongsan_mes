@@ -336,8 +336,11 @@ kakaoRouter.get('/stats/monthly', async (c) => {
       m.skipped += r.skipped || 0
       m.shipment_sent += r.shipment_sent || 0
       m.cost += (r.sent || 0) * unitCost(r.channel, r.is_lms)
-      const label = r.channel === 'sms' && r.is_lms ? 'lms' : r.channel
-      m.channels[label] = (m.channels[label] || 0) + (r.sent || 0)
+      // 0건 채널은 싣지 않는다 — 화면에 「lms 0」 같은 빈 항목이 뜬다(실패만 있던 달).
+      if ((r.sent || 0) > 0) {
+        const label = r.channel === 'sms' && r.is_lms ? 'lms' : r.channel
+        m.channels[label] = (m.channels[label] || 0) + (r.sent || 0)
+      }
       byMonth.set(r.ym, m)
     }
     const rows = Array.from(byMonth.values()).sort((a, b) => (a.ym < b.ym ? 1 : -1))
