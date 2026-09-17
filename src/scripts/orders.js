@@ -93,7 +93,12 @@ async function bulkShipSelected() {
   if (selectedOrderIds.size === 0) return;
   var shipIds = Array.from(selectedOrderIds);
 
-  // 합배송 파트너 사전 확인(2026-09-17) — 출고 페이지엔 있던 프롬프트가 여기엔 없었다.
+  // ★확인창 순서 — **주 확인이 먼저다.** 파트너 조회는 서버 왕복이라, 이걸 앞에 두면 버튼을 누르고도
+  //   확인창이 한 박자 늦게 뜬다(여정 J7 이 그 갭에서 실패했다 — 클릭 직후 #__confirmOk 를 본다).
+  //   사람에게도 「눌렀는데 아무 일도 안 일어나는」 구간이 생긴다. 의도 확인 → 파트너 보강 순서가 맞다.
+  if (!(await showConfirm(shipIds.length + '건의 주문을 일괄 출고 처리하시겠습니까?\n(출력완료 상태의 카드만 출고됩니다)'))) return;
+
+  // 합배송 파트너 확인(2026-09-17) — 출고 페이지엔 있던 프롬프트가 여기엔 없었다.
   //   박스는 함께 나가는데 한쪽만 SHIPPED 되면 ①파트너가 미출고로 남고 ②배송비가 각각 청구된다(0621).
   //   조회 실패는 경고 없이 진행 — 사전 확인이 출고를 막을 이유는 없다.
   try {
@@ -116,7 +121,6 @@ async function bulkShipSelected() {
     console.warn('[orders] 합배송 파트너 조회 실패 — 경고 없이 진행', e);
   }
 
-  if (!(await showConfirm(shipIds.length + '건의 주문을 일괄 출고 처리하시겠습니까?\n(출력완료 상태의 카드만 출고됩니다)'))) return;
   try {
     var res = await axios.patch('/api/orders/bulk-ship', { order_ids: shipIds });
     if (res.data.success) {
