@@ -305,11 +305,11 @@ async function convertToOrder() {
                 showToastSuccess('주문으로 전환되었습니다.');
                 setTimeout(function() {
                     alert('자재 부족 경고 ' + res.data.material_warnings.length + '건\n\n' + warnLines.join('\n') + '\n\n주간 발주 분석에서 확인해주세요.');
-                    window.location.href = '/orders';
+                    navigateTo('/orders');
                 }, 300);
             } else {
                 showToastSuccess('주문으로 전환되었습니다. 주문 목록으로 이동합니다.');
-                setTimeout(function() { window.location.href = '/orders'; }, 1500);
+                setTimeout(function() { navigateTo('/orders'); }, 1500);
             }
         } else {
             showToastError('전환 실패: ' + (res.data.error || '알 수 없는 오류'));

@@ -83,6 +83,30 @@ inventoryCountRouter.get('/', async (c) => {
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
+    // with_loss=1 — 로스율(차이합/장부합)만 얹는다. 재고 화면은 이 **숫자 하나** 때문에 종전에는
+    //   `/:id` 로 실사 상세 전량(실측 357KB)을 받아 브라우저에서 합산했다(2026-09-18 감사).
+    //   상관 서브쿼리를 늘리지 않으려고 목록 id 로 **한 번만 GROUP BY** 한다. 바인드 한도(80) 때문에 상한을 둔다.
+    if (c.req.query('with_loss') === '1' && (results || []).length) {
+      const ids = (results as any[]).map(r => Number(r.id)).filter(Boolean).slice(0, 50)
+      if (ids.length) {
+        const ph = ids.map(() => '?').join(',')
+        const { results: agg } = await c.env.DB.prepare(
+          `SELECT count_id,
+                  COALESCE(SUM(system_quantity), 0) AS loss_system_total,
+                  COALESCE(SUM(ABS(difference)), 0) AS loss_diff_total
+             FROM inventory_count_items
+            WHERE count_id IN (${ph})
+            GROUP BY count_id`
+        ).bind(...ids).all<{ count_id: number; loss_system_total: number; loss_diff_total: number }>()
+        const byId = new Map((agg || []).map(a => [Number(a.count_id), a]))
+        for (const r of results as any[]) {
+          const a = byId.get(Number(r.id))
+          r.loss_system_total = a ? Number(a.loss_system_total) || 0 : 0
+          r.loss_diff_total = a ? Number(a.loss_diff_total) || 0 : 0
+        }
+      }
+    }
+
     // 전체 개수 — 본 쿼리와 **같은 절**을 재조립한다(LIMIT/OFFSET 만 제외 → params.slice(0, -2)).
     //   scope=mine 절(sz.manager_id)이 빠져 있으면 플레이스홀더보다 바인드가 1개 많아 D1 오류 → 목록 500(2026-09-03).
     let countQuery = `SELECT COUNT(*) as cnt FROM inventory_counts ic

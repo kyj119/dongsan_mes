@@ -148,7 +148,7 @@
                 if (!o) return;
                 var no = o.order_number || ('#' + o.id);
                 if (await showConfirm('주문 ' + no + ' 수정 화면으로 이동해 품목을 추가합니다.\n(새 주문서를 만들지 않으며, 지금 입력 중인 내용은 저장되지 않습니다)')) {
-                    window.location.href = '/order-form?edit=' + o.id;
+                    navigateTo('/order-form?edit=' + o.id);
                 }
             }
 

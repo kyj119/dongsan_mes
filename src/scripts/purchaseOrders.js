@@ -84,7 +84,9 @@ async function loadSupplierFilter() {
     //   ([[feedback-ap-client-type-filter]]). 종전 'PURCHASES' 는 enum(SALES/PURCHASE/BOTH)에 없어 무효였다.
     // fields=picker + limit=5000 — 기본 limit 50 이면 이름순 앞 50곳 외에는 선택 자체가 불가능했다.
     //   (라우트 파라미터명은 is_active 가 아니라 active. picker 상한 5000, 응답은 id·이름·코드만)
-    var res = await axios.get('/api/clients', { params: { fields: 'picker', limit: 5000, active: 1 } });
+    // has_po=1 — 이건 **목록을 거르는 필터**라 발주 이력이 있는 곳만 있으면 된다.
+    //   활성 전량이면 prod 2,890곳 218KB 인데 실제 고를 수 있는 건 123곳뿐이다(2026-09-18 실측).
+    var res = await axios.get('/api/clients', { params: { fields: 'picker', limit: 5000, active: 1, has_po: 1 } });
     if (res.data.success) {
       var sel = document.getElementById('supplierFilter');
       if (!sel) return;

@@ -97,7 +97,7 @@ window.hrOpenDetail = function(id) {
   if (window.spaNavigate) {
     window.spaNavigate('/hr/' + id);
   } else {
-    window.location.href = '/hr/' + id;
+    navigateTo('/hr/' + id);
   }
 };
 

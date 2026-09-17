@@ -357,7 +357,7 @@ async function deleteQuotation(id) {
 // 사용자가 납품일 등 추가 정보를 폼에서 입력/검토 후 저장하면 주문이 생성되고,
 // orders.quotation_id로 견적서와 자동 연결된다 (orderForm: loadQuotationForPrefill).
 function convertToOrder(id) {
-  window.location.href = '/order-form?quotation_id=' + id;
+  navigateTo('/order-form?quotation_id=' + id);
 }
 
 // 모달 외부 클릭 시 닫기

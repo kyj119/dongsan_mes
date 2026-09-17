@@ -858,7 +858,7 @@ async function savePO(status) {
     }
     if (res.data.success) {
       showToast(editMode ? '발주가 수정되었습니다.' : '발주가 등록되었습니다.', 'success');
-      setTimeout(function() { window.location.href = '/purchase-orders'; }, 800);
+      setTimeout(function() { navigateTo('/purchase-orders'); }, 800);
     } else {
       showToast('저장 실패: ' + (res.data.error || ''), 'error');
     }

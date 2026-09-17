@@ -904,7 +904,7 @@ function showMaterialShortageWarning(warnings) {
       onclick: function() {
         closeShellModal();
         if (window.spaNavigate) window.spaNavigate('/weekly-purchase');
-        else window.location.href = '/weekly-purchase';
+        else navigateTo('/weekly-purchase');
       }
     },
     { text: '확인', class: 'ds-btn ds-btn-ghost', onclick: function() { closeShellModal(); } },
@@ -1352,7 +1352,7 @@ function showOrderModal(order, cards, autoJobs) {
             </div>
           </div>
           <div class="mt-6 flex flex-wrap justify-end gap-2">
-            ${canEdit ? `<button onclick="location.href='/order-form?edit=${order.id}'" class="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"><i class="fas fa-edit mr-1"></i>수정</button>` : ''}
+            ${canEdit ? `<button onclick="navigateTo('/order-form?edit=${order.id}')" class="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"><i class="fas fa-edit mr-1"></i>수정</button>` : ''}
             <button onclick="openInvoice(${order.id})" class="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"><i class="fas fa-file-invoice mr-1"></i>명세서</button>
             ${canEdit ? '<button onclick="copyOrder(' + order.id + ')" class="px-4 py-2 border border-gray-300 text-gray-700 bg-white rounded text-sm hover:bg-gray-50"><i class="fas fa-copy mr-1"></i>복사</button>' : ''}
             ${canEdit && order.status !== 'CANCELLED' && order.status !== 'SHIPPED' ? `<button onclick="showCancelModal(${order.id}, '${order.order_number}')" class="px-4 py-2 bg-amber-500 text-white rounded text-sm hover:bg-amber-600"><i class="fas fa-ban mr-1"></i>취소</button>` : ''}
@@ -1665,7 +1665,7 @@ async function copyOrder(orderId) {
     const res = await axios.get('/api/orders/' + orderId);
     if (res.data.success) {
       sessionStorage.setItem('copyOrderData', JSON.stringify(res.data.data));
-      window.location.href = '/order-form?copy=1';
+      navigateTo('/order-form?copy=1');
     } else {
       showToast('주문 정보 조회 실패: ' + res.data.error, 'error');
     }

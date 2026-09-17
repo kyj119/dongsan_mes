@@ -26,7 +26,7 @@ async function loadPREditData(id) {
     var pr = res.data.request;
     if (pr.status !== 'PENDING') {
       showToast('PENDING 상태의 요청만 수정 가능합니다.', 'warning');
-      window.location.href = '/purchase-requests';
+      navigateTo('/purchase-requests');
       return;
     }
     if (pr.supplier_id) {
@@ -276,7 +276,7 @@ async function submitPRRequest() {
     }
     if (res.data.success) {
       showToast(prEditMode ? '수정되었습니다.' : '발주 요청이 제출되었습니다.', 'success');
-      setTimeout(function() { window.location.href = '/purchase-requests'; }, 800);
+      setTimeout(function() { navigateTo('/purchase-requests'); }, 800);
     } else {
       showToast('저장 실패: ' + (res.data.error || ''), 'error');
     }

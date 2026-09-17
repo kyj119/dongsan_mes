@@ -94,7 +94,7 @@ window.hrdConfirmDelete = async function() {
     showToast('직원이 삭제되었습니다: ' + name, 'success');
     setTimeout(function() {
       if (window.spaNavigate) window.spaNavigate('/hr');
-      else window.location.href = '/hr';
+      else navigateTo('/hr');
     }, 600);
   } catch (e) {
     var rd = (e.response && e.response.data) || {};

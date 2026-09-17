@@ -538,7 +538,7 @@ async function convertToPO(id) {
       loadPurchaseRequests(prCurrentPage);
       if (poId) {
         setTimeout(function() {
-          window.location.href = '/purchase-order-form?edit=' + poId;
+          navigateTo('/purchase-order-form?edit=' + poId);
         }, 800);
       }
     } else {

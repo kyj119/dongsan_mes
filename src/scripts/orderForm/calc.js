@@ -887,9 +887,9 @@
                         }
                         // 견적서 폼이면 견적서 관리로, 아니면 주문 관리로
                         if (window.location.pathname.includes('quotation-form')) {
-                            window.location.href = '/quotations';
+                            navigateTo('/quotations');
                         } else {
-                            window.location.href = '/orders?view=' + id;
+                            navigateTo('/orders?view=' + id);
                         }
                     } else {
                         showToast((editMode ? '수정' : '등록') + ' 실패: ' + (res.data.error || '알 수 없는 오류'), 'error');

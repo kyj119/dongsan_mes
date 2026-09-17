@@ -82,11 +82,18 @@ purchaseCandidatesRouter.get('/', async (c) => {
     `).bind(fromC, toC, ...ef.params).all<WdRow>()
 
     // ── ② 거래처 풀 — **전체 활성 거래처**(발주 이력이 있는데 SALES 인 곳이 있다) ──
+    //   집계는 **큰 쪽을 먼저 GROUP BY 로 접고** 작은 쪽에 붙인다 — 상관 서브쿼리로 두면
+    //   활성 거래처(3천) 마다 purchase_orders 를 훑어 최악 2.7M 행이다(2026-09-18 감사).
     const { results: clients } = await c.env.DB.prepare(`
       SELECT c.id, c.client_name,
-             (SELECT COUNT(*) FROM purchase_orders po WHERE po.supplier_id = c.id) AS po_count,
-             (SELECT MAX(po.order_date) FROM purchase_orders po WHERE po.supplier_id = c.id) AS last_po
+             COALESCE(a.po_count, 0) AS po_count,
+             a.last_po AS last_po
         FROM clients c
+        LEFT JOIN (
+          SELECT supplier_id, COUNT(*) AS po_count, MAX(order_date) AS last_po
+            FROM purchase_orders
+           GROUP BY supplier_id
+        ) a ON a.supplier_id = c.id
        WHERE c.is_active = 1
     `).all<ClientRow>()
     const pool = buildClientPool((clients || []) as ApClient[])

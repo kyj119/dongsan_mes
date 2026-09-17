@@ -571,7 +571,7 @@ document.getElementById('quotationForm').addEventListener('submit', async functi
         if (res.data.success) {
             showToast(editMode ? '견적서가 수정되었습니다.' : '견적서가 저장되었습니다.', 'success');
             setTimeout(function() {
-                window.location.href = '/quotations';
+                navigateTo('/quotations');
             }, 800);
         } else {
             showToast((editMode ? '수정' : '저장') + ' 실패: ' + (res.data.error || '알 수 없는 오류'), 'error');

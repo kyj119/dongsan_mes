@@ -58,27 +58,21 @@ async function loadStats() {
             if (lowEl) lowEl.textContent = d.low_stock_items;
         }
         // 로스율 + 마지막 실사일 로드
-        var countRes = await axios.get('/api/inventory-counts?limit=1&status=APPROVED');
+        //   with_loss=1 로 합계를 **서버에서 받는다**. 종전에는 로스율 숫자 하나 때문에 `/:id` 로
+        //   실사 상세 전량(실측 357KB)을 받아 여기서 합산했다 — 화면이 쓰는 건 비율 하나뿐이다(2026-09-18).
+        var countRes = await axios.get('/api/inventory-counts?limit=1&status=APPROVED&with_loss=1');
         if (countRes.data.success && countRes.data.data.length > 0) {
             var lastCount = countRes.data.data[0];
             var dateEl = document.getElementById('lastCountDate');
             if (dateEl) dateEl.textContent = lastCount.count_date || '-';
-            // 로스율 계산: 전체 차이 합 / 전체 시스템 재고 합
-            var detailRes = await axios.get('/api/inventory-counts/' + lastCount.id);
-            if (detailRes.data.success) {
-                var items = detailRes.data.data.items || [];
-                var totalSystem = 0, totalDiff = 0;
-                items.forEach(function(it) {
-                    totalSystem += (it.system_quantity || 0);
-                    totalDiff += Math.abs(it.difference || 0);
-                });
-                var lossEl = document.getElementById('lossRate');
-                if (lossEl) {
-                    if (totalSystem > 0) {
-                        lossEl.textContent = (totalDiff / totalSystem * 100).toFixed(1) + '%';
-                    } else {
-                        lossEl.textContent = '-';
-                    }
+            var totalSystem = lastCount.loss_system_total || 0;
+            var totalDiff = lastCount.loss_diff_total || 0;
+            var lossEl = document.getElementById('lossRate');
+            if (lossEl) {
+                if (totalSystem > 0) {
+                    lossEl.textContent = (totalDiff / totalSystem * 100).toFixed(1) + '%';
+                } else {
+                    lossEl.textContent = '-';
                 }
             }
         } else {

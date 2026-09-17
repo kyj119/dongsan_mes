@@ -707,7 +707,7 @@ function setProcessFilter(code) {
 }
 
 function goToProductionHistory(id) {
-    window.location.href = '/production?equipment_ids=' + encodeURIComponent(id);
+    navigateTo('/production?equipment_ids=' + encodeURIComponent(id));
 }
 
 // 장비 핀 90° 회전 (배치도 편집) — 0→90→180→270→0

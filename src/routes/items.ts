@@ -512,9 +512,17 @@ itemsRouter.get('/variant-bases', async (c) => {
     let q = `
       SELECT b.id, b.item_code, b.item_name, b.item_group, b.spec_group_id, b.pricing_method,
         sg.name AS spec_group_name, sg.unit AS spec_unit,
-        (SELECT COUNT(*) FROM items v WHERE v.item_group = b.item_group AND v.spec_value IS NOT NULL AND v.is_active = 1) AS variant_count
+        COALESCE(vc.variant_count, 0) AS variant_count
       FROM items b
       LEFT JOIN spec_groups sg ON sg.id = b.spec_group_id
+      -- 변종 수는 **먼저 item_group 으로 접고** 붙인다 — 상관 서브쿼리면 기준품목마다 items 전량을
+      -- 훑어 최악 1.9M 행이다(2026-09-18 감사). NULL 은 0 이라 아래 variant_count>0 필터 결과는 같다.
+      LEFT JOIN (
+        SELECT item_group, COUNT(*) AS variant_count
+          FROM items
+         WHERE spec_value IS NOT NULL AND is_active = 1
+         GROUP BY item_group
+      ) vc ON vc.item_group = b.item_group
       WHERE b.spec_group_id IS NOT NULL AND b.spec_value IS NULL
     `
     const params: any[] = []

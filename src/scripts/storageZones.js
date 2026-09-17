@@ -537,7 +537,7 @@ async function szStartZoneCount(storageZoneId) {
     if (res.data && res.data.success && res.data.data) {
       var d = res.data.data;
       showToast('구역 실사 생성: ' + (d.storage_zone_name || d.count_number || '') + (d.item_count != null ? ' (' + d.item_count + '건)' : ''), 'success');
-      window.location.href = '/inventory?openCount=' + d.id + '#tab=count';
+      navigateTo('/inventory?openCount=' + d.id + '#tab=count');
     } else {
       showToast('구역 실사 생성 실패', 'error');
     }

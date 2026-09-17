@@ -1890,6 +1890,13 @@ window.dsSkeleton = {
                     document.head.appendChild(style);
                 }
 
+                // ★URL 을 **스크립트 실행 전에** 바꾼다 — 페이지 스크립트는 location.search 로 자기 인자를
+                //   읽는다(`/orders?view=`·`/order-form?edit=`). 종전엔 pushState 가 실행 뒤라 스크립트가
+                //   **이전 페이지의 주소**를 봤다. 사이드바 링크는 쿼리가 없어 이 결함이 드러나지 않았다(2026-09-18).
+                if (pushState) {
+                    history.pushState({ spaUrl: url }, '', url);
+                }
+
                 if (data.pageScript) {
                     const s = document.createElement('script');
                     s.id = 'page-script';
@@ -1927,10 +1934,6 @@ window.dsSkeleton = {
                 try { window.hrInitDatePickers(); } catch(e) {}
             }
 
-            if (pushState) {
-                history.pushState({ spaUrl: url }, '', url);
-            }
-
             document.querySelector('.main-content')?.scrollTo(0, 0);
 
         } catch (err) {
@@ -1938,6 +1941,25 @@ window.dsSkeleton = {
             window.location.href = url;
         }
     }
+
+    // 본문 안의 내부 링크도 SPA 로 보낸다 — 사이드바만 가로채고 있어서 화면 안에서 눌러 이동하면
+    //   전체 내비게이션(165~279ms)이었다. 사이드바로 가면 62~102ms 인 같은 화면이다(2026-09-18 실측).
+    //   보수적으로: 좌클릭·수식키 없음·같은 창·다운로드 아님·내부 절대경로·해시 없음·다른 pathname 일 때만.
+    //   /api/ 는 파일 내려받기 링크라 제외한다(설령 새 경로가 생겨도 spaNavigate 가 비-JSON 응답이면
+    //   스스로 전체 내비게이션으로 폴백하므로 깨지지 않는다).
+    document.addEventListener('click', function(e) {
+        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        const a = e.target.closest('a[href]');
+        if (!a || a.closest('.sidebar')) return;          // 사이드바는 아래 핸들러가 맡는다
+        if (a.hasAttribute('download')) return;
+        if (a.target && a.target !== '_self') return;
+        const h = a.getAttribute('href');
+        if (!h || h.charAt(0) !== '/' || h.slice(0, 2) === '//') return;
+        if (h.indexOf('#') >= 0 || h.indexOf('/api/') === 0) return;
+        if (h.split('?')[0] === window.location.pathname) return;
+        e.preventDefault();
+        spaNavigate(h);
+    });
 
     // Intercept sidebar navigation clicks
     document.addEventListener('click', function(e) {
@@ -1967,9 +1989,20 @@ window.dsSkeleton = {
     //   전부 undefined 폴백을 타고 있었고, `window.navigateTo` 는 아예 정의된 적이 없어
     //   weeklyPurchase/scan/orders 의 "이동" 동작이 TypeError 로 죽어 있었다.
     window.spaNavigate = spaNavigate;
+    // 코드로 화면을 옮길 때의 정본. SPA 로 가면 62~102ms, 전체 내비게이션이면 165~279ms 다(2026-09-18 실측).
+    //   다만 **SPA 로 가면 안 되는 세 경우**는 그대로 전체 내비게이션으로 보낸다:
+    //     ① 외부/비내부 주소 ② 같은 pathname 재진입(페이지 스크립트가 두 번 돌면 ?raw 전역 스코프에서
+    //        재선언이 충돌한다 — 게다가 같은 화면이라 SPA 이득도 없다) ③ 해시가 붙은 주소
+    //        (pushState 는 hashchange 를 발화시키지 않아 hash 로 탭을 여는 6개 페이지가 기본 탭에 머문다 — #622 와 같은 축)
     window.navigateTo = function(url) {
         if (!url) return;
-        try { spaNavigate(url); } catch (e) { window.location.href = url; }
+        try {
+            if (typeof url !== 'string' || url.charAt(0) !== '/' || url.slice(0, 2) === '//' || url.indexOf('#') >= 0) {
+                window.location.href = url; return;
+            }
+            if (url.split('?')[0] === window.location.pathname) { window.location.href = url; return; }
+            spaNavigate(url);
+        } catch (e) { window.location.href = url; }
     };
 })();
 
@@ -2912,14 +2945,28 @@ window.dsAmountBreakdownNote = function(summary) {
 window.dsListPrefs = (function() {
   var cache = null;          // { key: value } — 페이지당 한 번만 읽는다
   var loading = null;
+  var presetCache = {};      // pageKey -> [프리셋] — 설정과 **같은 응답**으로 받아 둔 것
 
-  function load() {
+  // pageKey 를 주면 프리셋까지 한 번에 받는다(왕복 2→1). 안 주면 종전과 같다.
+  function load(pageKey) {
     if (cache) return Promise.resolve(cache);
     if (loading) return loading;
-    loading = axios.get('/api/user-prefs')
-      .then(function(res) { cache = (res.data && res.data.data) || {}; return cache; })
+    loading = axios.get('/api/user-prefs' + (pageKey ? '?presets=' + encodeURIComponent(pageKey) : ''))
+      .then(function(res) {
+        cache = (res.data && res.data.data) || {};
+        if (pageKey && res.data && res.data.presets) presetCache[pageKey] = res.data.presets;
+        return cache;
+      })
       .catch(function(e) { console.warn('[dsListPrefs] 설정 로드 실패 — 기본값 사용', e); cache = {}; return cache; });
     return loading;
+  }
+
+  // 같은 응답으로 받아 둔 프리셋을 한 번만 꺼내 쓴다(두 번째부터는 서버에 다시 묻는다 — 저장·삭제 후 갱신 경로).
+  function takePresets(pageKey) {
+    if (!Object.prototype.hasOwnProperty.call(presetCache, pageKey)) return null;
+    var v = presetCache[pageKey];
+    delete presetCache[pageKey];
+    return v;
   }
 
   function get(key, fallback) {
@@ -2935,7 +2982,7 @@ window.dsListPrefs = (function() {
       .catch(function(e) { console.warn('[dsListPrefs] 설정 저장 실패', key, e); });
   }
 
-  return { load: load, get: get, set: set };
+  return { load: load, get: get, set: set, takePresets: takePresets };
 })();
 
 window.dsListToolbar = (function() {
@@ -3032,7 +3079,11 @@ window.dsListToolbar = (function() {
       });
     }
     function loadPresets(applyDefault) {
-      return axios.get('/api/user-prefs/presets/' + encodeURIComponent(opts.pageKey))
+      // 진입 직후의 첫 호출은 dsListPrefs.load(pageKey) 가 **같은 응답에** 실어 온 것을 쓴다(왕복 2→1).
+      //   저장·삭제 뒤의 갱신 호출은 캐시가 비어 있어 종전대로 서버에 묻는다.
+      var pre = window.dsListPrefs && window.dsListPrefs.takePresets ? window.dsListPrefs.takePresets(opts.pageKey) : null;
+      var got = pre ? Promise.resolve({ data: { data: pre } }) : axios.get('/api/user-prefs/presets/' + encodeURIComponent(opts.pageKey));
+      return got
         .then(function(res) {
           presets = (res.data && res.data.data) || [];
           renderPresets();
@@ -3176,7 +3227,7 @@ window.dsListToolbar = (function() {
 
     // 저장된 설정을 반영한 뒤 기본 프리셋을 적용한다 — 순서가 중요하다.
     // (설정을 모르는 채로 먼저 조회하면 건수/열이 틀린 화면을 한 번 보여주고 다시 조회하게 된다)
-    return window.dsListPrefs.load().then(function() {
+    return window.dsListPrefs.load(opts.pageKey).then(function() {
       hidden = readHidden();
       applyHidden(styleEl, opts.tableSelector, cols, hidden);
       syncColBtn();

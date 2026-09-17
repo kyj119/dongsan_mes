@@ -92,7 +92,7 @@
 
                     if (res.data.success) {
                         showToast('견적서 ' + (res.data.data.quotation_number || '') + ' 이(가) 저장되었습니다.', 'success');
-                        window.location.href = '/quotations';
+                        navigateTo('/quotations');
                     } else {
                         showToast('견적서 저장 실패: ' + (res.data.error || '알 수 없는 오류'), 'error');
                     }

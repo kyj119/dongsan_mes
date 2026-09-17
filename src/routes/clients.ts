@@ -56,7 +56,7 @@ clientsRouter.get('/check-brn/:brn', async (c) => {
 // Get all clients
 clientsRouter.get('/', async (c) => {
   try {
-    const { page = '1', limit = '50', search = '', client_type = '', active = '', invoice_method = '', delivery_method = '', sort = 'name', dormant = '', has_balance = '', credit_hold = '' } = c.req.query()
+    const { page = '1', limit = '50', search = '', client_type = '', active = '', invoice_method = '', delivery_method = '', sort = 'name', dormant = '', has_balance = '', credit_hold = '', has_po = '' } = c.req.query()
 
     // fields=picker — 선택 목록(드롭다운·자동완성)용 축소 응답.
     //   목록 화면은 46개 컬럼(`c.*`)이 다 필요하지만 드롭다운은 id·이름뿐이다.
@@ -68,7 +68,7 @@ clientsRouter.get('/', async (c) => {
     const offset = (parseInt(page) - 1) * safeLimit
 
     // WHERE 절 + params를 한 번만 빌드 (alias c. 사용, 카운트 쿼리도 FROM clients c로 통일)
-    function buildClientFilters(q: { active: string; search: string; client_type: string; invoice_method: string; delivery_method: string; has_balance: string; credit_hold: string }) {
+    function buildClientFilters(q: { active: string; search: string; client_type: string; invoice_method: string; delivery_method: string; has_balance: string; credit_hold: string; has_po: string }) {
       let where = ' WHERE 1=1'
       const fp: any[] = []
 
@@ -131,10 +131,18 @@ clientsRouter.get('/', async (c) => {
         where += ' AND c.credit_hold = 1'
       }
 
+      // has_po=1 — 발주 이력이 있는 거래처만. 발주 화면의 **공급처 필터**가 쓰는 축이다.
+      //   그 드롭다운은 종전에 활성 거래처 전량(prod 2,890곳·218KB)을 받았는데
+      //   실제로 고를 수 있는 건 발주가 있었던 123곳뿐이다(2026-09-18 실측).
+      //   IN 은 서브쿼리를 한 번만 평가한다 — 거래처마다 도는 EXISTS 상관 서브쿼리와 다르다.
+      if (q.has_po === '1') {
+        where += ' AND c.id IN (SELECT supplier_id FROM purchase_orders WHERE supplier_id IS NOT NULL)'
+      }
+
       return { where, params: fp }
     }
 
-    const { where: filterWhere, params: filterParams } = buildClientFilters({ active, search, client_type, invoice_method, delivery_method, has_balance, credit_hold })
+    const { where: filterWhere, params: filterParams } = buildClientFilters({ active, search, client_type, invoice_method, delivery_method, has_balance, credit_hold, has_po })
 
     // Sort option — 정렬 규약(CLAUDE.md): 고유키(c.id) tie-break 필수.
     //   client_name은 동명 거래처가 존재해 비고유. NULL 처리는 D1 방언(NULLS LAST) 대신 IS NULL.

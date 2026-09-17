@@ -34,6 +34,20 @@ userPrefsRouter.get('/', async (c) => {
     ).bind(uid).all<{ pref_key: string; pref_value: string }>()
     const data: Record<string, string> = {}
     for (const r of results || []) data[r.pref_key] = r.pref_value
+
+    // ?presets=<pageKey> — 그 페이지의 조회조건 프리셋을 **같은 응답에** 실어 준다.
+    //   목록 도구모음은 「설정을 반영한 뒤 기본 프리셋 적용」이라 두 요청이 반드시 직렬이었고,
+    //   전 목록 화면이 진입할 때마다 왕복을 2번 했다(2026-09-18 감사). 순서 보장은 그대로 두고 왕복만 줄인다.
+    const pageKey = c.req.query('presets')
+    if (pageKey) {
+      const { results: presets } = await c.env.DB.prepare(
+        `SELECT id, name, params_json, is_default
+           FROM user_filter_presets
+          WHERE user_id = ? AND page_key = ?
+          ORDER BY is_default DESC, name ASC, id ASC`   // 정렬 규약: /presets/:pageKey 와 같은 절
+      ).bind(uid, pageKey).all()
+      return c.json({ success: true, data, presets: presets || [] })
+    }
     return c.json({ success: true, data })
   } catch (error) {
     console.error('userPrefs.list error:', error)

@@ -6,7 +6,7 @@
 
 // 허브(/cash-schedule)가 정의하는 hubGoto 가 /bank 단독에서는 없다 — .hub-only 버튼은 숨겨지지만 정의는 두어
 // 어디서 눌러도 허브로 간다(check:fn 미정의 호출 게이트). 허브 안에서는 허브의 정의가 이긴다.
-if (typeof window.hubGoto !== 'function') window.hubGoto = function () { location.href = '/cash-schedule'; };
+if (typeof window.hubGoto !== 'function') window.hubGoto = function () { navigateTo('/cash-schedule'); };
 
 (function() {
   // State
