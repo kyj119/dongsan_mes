@@ -183,7 +183,11 @@ poCoreRouter.get('/:id', async (c) => {
         i.width_mm AS item_width_mm,
         i.specification AS item_specification,
         i.unit AS item_unit,
-        i.pack_size AS item_pack_size,
+        -- 롤 보조칸(0611)용 계수 — **AQ 형(실사 편의계수)에만** 준다.
+        --   진짜 다단위(롤=50M)는 발주 수량 축이 이미 관리단위(롤)라, 이 칸이 열리면
+        --   수량이 M 로 채워지고 입고가 다시 ×pack_size 해서 50배가 된다(2026-09-17 감사 P14).
+        CASE WHEN i.base_unit IS NOT NULL AND i.base_unit <> '' AND i.base_unit <> i.unit
+             THEN NULL ELSE i.pack_size END AS item_pack_size,
         ${RECEIVING_ZONE_EXPR_SQL} AS effective_zone_id,
         sz.zone_name AS zone_name,
         sz.manager_id AS zone_manager_id,

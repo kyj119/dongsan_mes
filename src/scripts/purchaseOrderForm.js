@@ -487,18 +487,31 @@ async function searchItems(idx) {
       var items = (res.data && res.data.data) ? res.data.data : [];
       if (items.length === 1) {
         var it = items[0];
-        selectItem(idx, it.id, it.item_name || '', it.base_price || 0, it.unit || 'EA', buildSpecStr(it), it.pack_size);
+        selectItem(idx, it.id, it.item_name || '', it.base_price || 0, it.unit || 'EA', buildSpecStr(it), poRollPack(it));
       } else if (items.length > 1) {
         window.openItemSearchModal({
           type: 'purchase', search: q,
           onSelect: function(item) {
-            selectItem(idx, parseInt(item.id), item.name, parseFloat(item.price) || 0, item.unit, item.specification || '', item.pack_size);
-            if (item.pack_size == null) poFetchPackSize(idx, parseInt(item.id));
+            selectItem(idx, parseInt(item.id), item.name, parseFloat(item.price) || 0, item.unit, item.specification || '', 0);
+            poFetchPackSize(idx, parseInt(item.id)); // 모달 payload 엔 base_unit 이 없다 → 상세로 판정
           }
         });
       }
     } catch(e) { console.error('searchItems error:', e); }
   }, 300);
+}
+
+// 롤 보조칸을 열 계수 — **AQ 형(pack_size=실사 편의계수, base_unit 없음)에만** 연다.
+//   진짜 다단위(unit=롤 · base_unit=M · pack=50)는 발주 수량 축이 이미 롤이라, 이 칸이 열리면
+//   수량칸이 M 로 채워지고 입고가 다시 ×50 한다(2026-09-17 감사 P14). base_unit 을 모르면 0(닫힘) —
+//   `poFetchPackSize` 가 품목 상세를 읽어 열어 준다.
+function poRollPack(src) {
+  if (!src || !('base_unit' in src)) return 0;
+  var ps = Number(src.pack_size) || 0;
+  if (!(ps > 0)) return 0;
+  var bu = src.base_unit;
+  if (bu && bu !== src.unit) return 0;
+  return ps;
 }
 
 // 롤 수 → 수량(예상). 저장 축은 매입 단위 그대로고 롤은 입력 보조다.
@@ -530,7 +543,7 @@ function poFetchPackSize(idx, itemId) {
   if (!(itemId > 0)) return
   axios.get('/api/items/' + itemId).then(function (res) {
     var it = (res.data && (res.data.data || res.data)) || {}
-    var ps = Number(it.pack_size) || 0
+    var ps = poRollPack(it)
     var sizeEl = document.getElementById('item_pack_size_' + idx)
     var wrapEl = document.getElementById('item_packs_wrap_' + idx)
     if (sizeEl) sizeEl.value = ps || ''

@@ -2,6 +2,7 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { resolveDeductionZone } from './inventoryZone'
 import { kstDate } from './kstDate'
 import { logActivity } from './activityLog'
+import { salesBaseQtySql } from './salesBaseQty'
 
 /**
  * 재고를 움직인 주체 — 환원 흔적을 `activity_log` 에 남기기 위해 호출처가 넘긴다.
@@ -24,7 +25,13 @@ async function selectShippableLines(db: D1Database, orderId: number) {
   const { results } = await db.prepare(`
     SELECT oi.item_id as item_id,
            COALESCE(oi.assigned_entity_id, o.entity_id) as entity_id,
-           SUM(oi.quantity) as qty
+           SUM(CASE
+                 -- 0620 판매단위 스냅샷이 있으면 quantity 는 **이미 base** 다(= sales_qty × unit_factor).
+                 --   여기서 계수를 또 곱하면 두 번 환산된다.
+                 WHEN oi.sales_unit IS NOT NULL AND COALESCE(oi.unit_factor, 0) > 0 THEN oi.quantity
+                 -- 스냅샷 없는 라인(현행 대부분)은 관리단위일 수 있다 → 원가 축이 쓰는 **같은 판정**으로 base 환산.
+                 ELSE ${salesBaseQtySql('oi', 'i')}
+               END) as qty
     FROM order_items oi
     JOIN items i ON oi.item_id = i.id
     JOIN orders o ON oi.order_id = o.id

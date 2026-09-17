@@ -46,7 +46,7 @@ function makeDbShim(db) {
 function seed() {
   const db = new DatabaseSync(':memory:')
   db.exec(`
-    CREATE TABLE items (id INTEGER PRIMARY KEY, item_code TEXT, item_name TEXT, unit TEXT, base_unit TEXT, pack_size REAL, sheet_spec TEXT, updated_at TEXT);
+    CREATE TABLE items (id INTEGER PRIMARY KEY, item_code TEXT, item_name TEXT, unit TEXT, base_unit TEXT, pack_size REAL, sheet_spec TEXT, avg_unit_cost REAL DEFAULT 0, updated_at TEXT);
     INSERT INTO items (id, item_code, item_name, unit, base_unit, pack_size, sheet_spec) VALUES
       (1, 'SPM011G-127', '일반시트 롤', '롤', 'M', 50, NULL),          -- 다단위: 롤=50M
       (2, 'AQ-STB-60', '수성 현수막원단', 'yd', NULL, 130, NULL),     -- 단일 + 실사 편의계수 130 (환산 아님)
@@ -196,6 +196,29 @@ console.log('[item-units] ④ 마이그 백필 SQL (0619)')
     await backfillPoLineFactors(shim, 7)
     const po7b = db.prepare('SELECT unit_factor FROM purchase_order_items WHERE po_id=7 ORDER BY id').all()
     check('멱등(두 번 돌려도 같다)', JSON.stringify(po7b.map((r) => r.unit_factor)) === JSON.stringify(po7.map((r) => r.unit_factor)), po7b)
+    // ⑩ 출고 차감 수량 환산(P15) — 스냅샷 있으면 quantity 그대로, 없으면 원가 축과 같은 판정
+    console.log('[item-units] ⑩ 출고 차감 base 환산')
+    const { compileTs: ct2 } = require('./lib/compile-ts.cjs')
+    const shipSrc = require('path').join(__dirname, '..', 'src', 'utils', 'salesBaseQty.ts')
+    const { mod: sbq, cleanup: sbqClean } = ct2(shipSrc, { bundle: true })
+    const sql = sbq.salesBaseQtySql('oi', 'i')
+    // ★앞 단계(⑤)가 item 6 의 단위를 바꿔 놨다 — 출고 환산은 **깨끗한 픽스처**로 본다.
+    db.exec(`INSERT INTO items (id, item_code, item_name, unit, base_unit, pack_size, avg_unit_cost) VALUES (20, 'TRB-PO-CLEAN', '가로등배너', 'EA', NULL, NULL, 0)`)
+    db.exec(`CREATE TABLE ship_items (id INTEGER PRIMARY KEY, item_id INTEGER, quantity REAL, unit_price REAL, sales_unit TEXT, unit_factor REAL);
+             INSERT INTO ship_items (item_id, quantity, unit_price, sales_unit, unit_factor) VALUES
+               (1, 2, 115000, NULL, NULL),   -- 롤 판매(단가 롤급) → 2 × 50 = 100 M
+               (1, 60, 2500, NULL, NULL),    -- 절단 판매(단가 base급) → 60 M 그대로
+               (1, 100, 115000, '롤', 50),   -- 판매단위 스냅샷 → quantity 가 이미 base(100) — 또 곱하면 5,000
+               (20, 20, 5000, '조', 2),      -- EA 품목 + 조 스냅샷 → 20 EA
+               (20, 7, 5000, NULL, NULL);    -- 단일단위 → 7 그대로`)
+    db.exec(`UPDATE items SET avg_unit_cost = 2325 WHERE id = 1`)
+    const shipRows = db.prepare(`SELECT oi.id, (CASE WHEN oi.sales_unit IS NOT NULL AND COALESCE(oi.unit_factor,0) > 0 THEN oi.quantity ELSE ${sql} END) q
+                             FROM ship_items oi JOIN items i ON i.id = oi.item_id ORDER BY oi.id`).all()
+    sbqClean && sbqClean()
+    const got = shipRows.map((r) => r.q)
+    check('롤 판매 2 → 100M · 절단 60 → 60 · 스냅샷 100 → 100(이중환산 없음) · 조 20 → 20 · 단일 7 → 7',
+      JSON.stringify(got) === JSON.stringify([100, 60, 100, 20, 7]), got)
+
     cleanup && cleanup()
     console.log(fails ? `[item-units] FAIL ${fails}건` : '[item-units] OK — 검증·파생·보정·백필·라인 계수·판매 스냅샷 전부 통과')
     process.exit(fails ? 1 : 0)
