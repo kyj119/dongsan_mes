@@ -43,6 +43,19 @@ if (!fs.existsSync(ROOT)) {
   process.exit(2)
 }
 
+// ── 에이전트가 살아 있나 (2026-09-17) ────────────────────────────────────
+// ★왜 여기서 재나 — 커밋(manifest) 뒤의 모든 관문이 에이전트 하나에 달려 있다. 그게 멈추면
+//   증상은 「수령 대기」로 보이는데, 그건 **기다리면 되는 상태와 글자가 같다**. 2026-09-16 에
+//   실제로 하루 넘게 멈춰 있었고 아무 화면에도 안 나왔다 — 테스트를 시작하기 전에 이것부터 본다.
+// 하트비트 = `_config/config.json` 의 수정시각. 에이전트가 ~5분 주기로 다시 쓴다
+//   (`Program.cs:213` `_heartbeatTick % 30`). 등록 직후에도 한 번 쓰므로 하한만 보면 된다.
+function agentHeartbeat() {
+  try {
+    const ageMin = (Date.now() - fs.statSync(path.join(ROOT, '_config', 'config.json')).mtimeMs) / 60000
+    return { ageMin, alive: ageMin < 15 }   // 5분 주기 × 3 — 한 번 걸러도 죽었다고 하지 않는다
+  } catch { return { ageMin: -1, alive: false } }
+}
+
 // 폴더명 규약 = `<YYYYMMDD>_<HHMMSS>_<PC>_<일련>` (mes-a0-host / mes-cut-host 공통)
 // ★전체 목록을 따로 들고 있는다 — 픽업 이름 충돌의 **상대**는 화면에 안 뜨는 폴더일 수 있다.
 const jobsAll = fs.readdirSync(ROOT).filter((n) => /^\d{8}_\d{6}_/.test(n)).sort()
@@ -62,7 +75,14 @@ const size = (p) => { try { return fs.statSync(p).size } catch { return -1 } }
 let broken = 0
 const totals = { eps: 0, thumb: 0, workai: 0, manifest: 0, n: 0 }
 
-console.log(`\nA0 가공 플로우 — ${ROOT}  (${jobs.length}건)\n`)
+const hb = agentHeartbeat()
+const hbTxt = hb.ageMin < 0 ? C.r('하트비트 없음')
+  : hb.alive ? C.g(`살아 있음 (${Math.round(hb.ageMin)}분 전)`)
+    : C.r(`멈춤 — 마지막 ${hb.ageMin < 120 ? Math.round(hb.ageMin) + '분' : (hb.ageMin / 60).toFixed(1) + '시간'} 전`)
+console.log(`\nA0 가공 플로우 — ${ROOT}  (${jobs.length}건)`)
+console.log(`에이전트: ${hbTxt}`)
+if (!hb.alive) console.log(C.d('  → 커밋 뒤 관문(MES 등록·픽업 복사)이 전부 멈춘다. 「수령 대기」는 고장이 아니라 이것 때문일 수 있다.'))
+console.log('')
 
 for (const name of jobs) {
   const dir = path.join(ROOT, name)
@@ -118,7 +138,10 @@ for (const name of jobs) {
   for (const p of pick) {
     if (p.state === 'ok') continue
     // 커밋 전이면 아직 차례가 아니다 — 픽업은 에이전트가 커밋을 읽은 뒤에 한다.
-    if (!(mf && (ingested || rejected))) { notes.push(C.d('픽업 대기(커밋 전)')); continue }
+    if (!(mf && (ingested || rejected))) {
+      notes.push(C.d(hb.alive ? '픽업 대기(커밋 전)' : '픽업 대기 — 에이전트가 멈춰 있다'))
+      continue
+    }
     if (p.state === 'clash') {
       clashed = true
       notes.push(C.y(`픽업 이름 충돌 — _출력\\${ymd}\\${p.f} 는 ${p.rival} 것이다(이 건은 덮였다)`))
