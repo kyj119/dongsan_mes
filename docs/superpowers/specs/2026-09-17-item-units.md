@@ -22,6 +22,13 @@ item_units(item_id, unit, factor, is_base, role_purchase, role_sales, role_count
 3. **주문서·견적서 판매단위**: `order_items`/`quotation_items` 에 `sales_unit`·`sales_qty`·`unit_factor`. `quantity` 는 기본단위(EA) 유지, 단가는 EA 당 + 판매단위당 병기. 가로등배너 「조=2EA」가 첫 사례. 같은 설정 키.
 4. **표기·감사·이카운트**: 거래명세서·견적서·작업지시서 「10조(20EA)」, 재고 화면 표기 일반화, `audit:items` F7(표↔파생 불일치)·`test:item-units`, 이카운트 수출은 기본단위.
 
+## 진행 (2026-09-17)
+- **1~4단계 코드 완료**(브랜치 `session/spec-lines`: `b8797699` 1단계 · `f40046ed` 2·3단계 · `4d3d28a9` 4단계). 배포 순서 = **용준님 `!` 로 0617·0618 prod 적용 → push**. 폼 스위칭은 `settings.item_units.forms=0`(OFF) 으로 나간다 — 병행테스트 종료 후 `1` 로.
+- 2단계 구현 편차: 입고 화면은 단위를 고르지 않는다(발주 라인 단위·계수를 그대로 쓴다). 수기입고는 서버가 라인 `unit/unit_factor` 를 받지만 화면 셀렉트는 아직 없다(후속). 실사는 `role_count` 단위가 포장 라벨·`per_pack_qty` 기본값(pack_size 폴백으로 AQ 130 보존).
+- 3단계 구현 편차: 라인 INSERT 7곳을 건드리지 않고 저장 직후 `applySalesUnitSnapshots` 가 `(parent, sort_order)` 로 UPDATE 한다. 단가는 EA 당 그대로(판매단위당 단가 입력은 안 넣음 — 힌트만).
+- 4단계: 표기 정본 `shell.js salesQtyLabel`(주문 상세·카드 상세·거래명세서·견적서). 이카운트 수출 경로는 단위를 내보내지 않아 변경 없음. 감사 `audit:items` **F7**(게이트) 신설.
+- 검증: `test:item-units` 33+8 · tsc · check:fn · check:dom · 편집기 프로브 · 2·3단계 프로브(발주 단 2 → 라인 계수 10 → 입고 +20장 → 취소 −20장 · 주문 10조=20EA 저장/수정 · 견적 3조 → 전환 승계 · 발주서 셀렉트·주문서 판매단위 칸) · F7 로컬 0/1,230 · 여정 40단계.
+
 ## 하지 않는 것
 - 기본단위를 바꾸는 편집(재고 수량 축이 바뀐다) — 별도 절차(재고 0 상태에서만).
 - 소수 계수 강요 — 큰 단위→기본단위 정수, 표시에서만 2.5단.
