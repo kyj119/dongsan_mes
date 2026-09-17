@@ -795,6 +795,32 @@
                 var hEl = document.querySelector('[name="height_' + parentId + '"]');
                 if (hEl) { hEl.value = r0.height_cm; hEl.dataset.origMm = String(r0.height_cm * 10 / sf); }
 
+                // ★품목도 부모 행에 넣는다 (2026-09-18) — 단건 경로에는 있는데 묶음에는 **없었다**.
+                //   묶음 부모가 청구 라인인데 품목이 비어 나와, 사람이 매번 다시 골라야 했고
+                //   단가(최근거래가·특약가)도 안 따라왔다. 대기물은 셋 다 `item_id` 를 갖고 있었다.
+                //   정본은 `itemRow.js applyItemSelection`(= `__ofApplyItem`) — 재구현하면 두 벌이 갈린다.
+                if (r0.item_id && window.__ofApplyItem && window.__ofApplyItem[parentId]) {
+                    try {
+                        var itRes0 = await axios.get('/api/items/' + r0.item_id);
+                        var itD0 = (itRes0.data && itRes0.data.data) || null;
+                        if (itD0) {
+                            window.__ofApplyItem[parentId]({
+                                id: itD0.id, name: itD0.item_name, price: itD0.base_price || 0,
+                                unit: itD0.unit || 'EA',
+                                category: itD0.category || itD0.category_direct || '',
+                                sub_category: itD0.sub_category || itD0.sub_category_direct || '',
+                                pricing_method: itD0.pricing_method || 'FIXED',
+                                specification: itD0.specification || '',
+                                width_mm: itD0.width_mm || '',
+                                item_type: itD0.item_type || ''
+                            });
+                            // applyItemSelection 이 규격칸을 건드릴 수 있어 대기물 실측을 다시 얹는다(단건과 동일)
+                            if (wEl) wEl.value = r0.width_cm;
+                            if (hEl) hEl.value = r0.height_cm;
+                        }
+                    } catch (e) { console.warn('[orderForm] 묶음 품목 프리필 실패 (intake #' + r0.id + ')', e); }
+                }
+
                 // 마감: 부모 행에 주입(자식 카드 상속) — 단건과 **같은 정본**을 쓴다(2026-09-18 사본 통합).
                 //   세 번째 사본이 여기 있었다. 프리셋 선택 표시가 세 경로 어디에도 없던 이유다.
                 try {
@@ -919,9 +945,23 @@
                 for (var i = 0; i < marks.length; i++) {
                     var iid = parseInt(marks[i].value, 10);
                     if (!iid) continue;
-                    var rowId = marks[i].name.slice('intake_id_'.length);
-                    var aidEl = document.querySelector('[name="ai_analysis_id_' + rowId + '"]')
-                        || document.querySelector('[name="child_ai_analysis_id_' + rowId + '"]'); // 묶음 자식 행
+                    // ★분석 id 는 **같은 행 안에서** 찾는다 (2026-09-18 실기 정정).
+                    //   종전에는 마커 이름에서 행 번호를 떼어 `ai_analysis_id_<번호>` 를 전역에서 찾았는데,
+                    //   묶음 자식 행과 일반 라인이 **같은 id 네임스페이스**(itemCount)를 쓰면서
+                    //   `claimItemRow` 가 이미 자식이 가져간 번호를 재사용해 **같은 이름이 둘** 생겼다
+                    //   (실측: `intake_id_3` 이 #498(자식)·#499(라인) 두 개). querySelector 는 첫 번째를
+                    //   돌려주므로 **#498 이 #499 의 분석 id 로 흡수**된다 = 파일이 엉뚱한 라인에 붙는다.
+                    //   DOM 근접으로 묶으면 번호가 겹쳐도 짝이 어긋나지 않는다.
+                    //   ⚠️번호 재사용 자체는 남아 있다 — 다른 이름 기반 조회를 새로 만들지 말 것.
+                    var ownerRow = marks[i].closest ? marks[i].closest('[id^="item_row_"], [id^="item-"]') : null;
+                    var aidEl = ownerRow
+                        ? (ownerRow.querySelector('[name^="child_ai_analysis_id_"]') || ownerRow.querySelector('[name^="ai_analysis_id_"]'))
+                        : null;
+                    if (!aidEl) {   // 행을 못 찾으면 종전 방식으로 내려간다(구형 DOM 대비)
+                        var rowId = marks[i].name.slice('intake_id_'.length);
+                        aidEl = document.querySelector('[name="ai_analysis_id_' + rowId + '"]')
+                            || document.querySelector('[name="child_ai_analysis_id_' + rowId + '"]');
+                    }
                     var aid = (aidEl && aidEl.value !== '') ? parseInt(aidEl.value, 10) : null;
                     var payload = {};
                     if (orderId) payload.order_id = orderId;
