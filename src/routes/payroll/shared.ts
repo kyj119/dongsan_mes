@@ -450,6 +450,72 @@ export function calcOfficialMonthlyTax(monthlyPay: number, dependents: number): 
   return monthly
 }
 
+/**
+ * 간이세액표에서 그 급여구간 **한 행 전체**(1~11인)를 읽는다. 대조 진단용.
+ * 구간 밖이면 null — 폴백 근사값으로 진단하면 엉뚱한 원인을 짚게 되므로 계산하지 않는다.
+ */
+export async function lookupIncomeTaxRow(db: D1Database, year: number, monthlyPay: number): Promise<number[] | null> {
+  const cols = Array.from({ length: 11 }, (_, i) => `dependents_${i + 1}`).join(', ')
+  const row = await db.prepare(
+    `SELECT ${cols} FROM income_tax_table
+      WHERE year = ? AND monthly_pay_min <= ? AND monthly_pay_max > ?
+      ORDER BY monthly_pay_min DESC, id DESC LIMIT 1`
+  ).bind(year, monthlyPay, monthlyPay).first<Record<string, number>>().catch(() => null)
+  if (!row) return null
+  return Array.from({ length: 11 }, (_, i) => Number(row[`dependents_${i + 1}`] || 0))
+}
+
+export type TaxDiagnosis =
+  | { kind: 'match' }
+  | { kind: 'setting'; taxOption: string; dependents: number; children: number; label: string }
+  | { kind: 'pay'; label: string }
+  | { kind: 'unknown'; label: string }
+
+/**
+ * 「이 사람 소득세가 왜 다른가」를 짚는다 — 원인은 셋 중 하나다.
+ *   ① 적용비율(80/100/120%)  ② 공제대상가족·자녀 수  ③ 지급액(과세급여) 자체
+ * 같은 과세급여 구간에서 ①②를 전부 풀어 실제값이 나오면 **설정 문제**(고치면 맞는다),
+ * 어떤 조합으로도 안 나오면 **지급액이 다른 것**이라 소득세 축에서 할 일이 없다.
+ *
+ * 2026-09-17 실측: 이 판정이 외국인 5명의 120% 적용과 김기섭의 부양가족 3인을 짚어냈고,
+ * 남은 13건은 전부 ③(인호동 ±278,110·한두선 ±172,880)이었다.
+ * ⚠️ 표 자체가 고시표가 아니면 ①②가 그럴듯한 오답을 낸다 — 표 교체 전에는 가족수가 3~5인으로
+ * 부풀어 보였다. 진단은 `income_tax_table` 이 원본일 때만 뜻이 있다.
+ */
+export function diagnoseIncomeTax(
+  tableRow: number[] | null,
+  actualTax: number,
+  current: { taxOption: string; dependents: number; children: number }
+): TaxDiagnosis {
+  if (!tableRow) return { kind: 'unknown', label: '간이세액표 구간 밖 — 판정 불가' }
+  const RATIOS: Array<[string, number]> = [['100', 1.0], ['120', 1.2], ['80', 0.8]]
+  const sols: Array<{ taxOption: string; dependents: number; children: number }> = []
+  for (const [opt, mul] of RATIOS) {
+    for (let n = 1; n <= 11; n++) {
+      for (let k = 0; k <= 3; k++) {
+        if (k > n - 1) continue                      // 자녀는 공제대상가족에 포함된다
+        const v = Math.floor(Math.max(0, tableRow[n - 1] - childTaxCredit(k)) * mul / 10) * 10
+        if (v === actualTax) sols.push({ taxOption: opt, dependents: n, children: k })
+      }
+    }
+  }
+  if (!sols.length) return { kind: 'pay', label: '지급액(과세급여) 자체가 다름 — 소득세 설정 문제 아님' }
+  // 지금 설정과 가장 가까운 해를 고른다. 바꿀 칸이 적을수록 실제 원인일 가능성이 높다.
+  const cost = (s: typeof sols[number]) =>
+    (s.taxOption === String(current.taxOption) ? 0 : 1) +
+    (s.dependents === current.dependents ? 0 : 1) +
+    (s.children === current.children ? 0 : 1)
+  sols.sort((a, b) => cost(a) - cost(b) || Math.abs(a.dependents - current.dependents) - Math.abs(b.dependents - current.dependents))
+  const s = sols[0]
+  if (cost(s) === 0) return { kind: 'match' }        // 설정은 같은데 값이 다르다 = 계산 시점 차이
+  const parts: string[] = []
+  if (s.taxOption !== String(current.taxOption)) parts.push(`적용비율 ${s.taxOption}%`)
+  if (s.dependents !== current.dependents) parts.push(`부양가족 ${s.dependents}인`)
+  if (s.children !== current.children) parts.push(`20세이하 자녀 ${s.children}명`)
+  return { kind: 'setting', taxOption: s.taxOption, dependents: s.dependents, children: s.children,
+    label: parts.join(' · ') + ' 이면 일치' }
+}
+
 /** 소득세 간이세액표 lookup. 부양가족 11명 이상은 dependents_11. */
 export async function lookupIncomeTax(db: D1Database, year: number, monthlyPay: number, dependents: number): Promise<{ tax: number; rowId: number | null }> {
   const safeDeps = Math.max(1, Math.min(11, dependents))

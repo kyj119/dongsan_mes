@@ -1849,3 +1849,191 @@ window.payrollLedgerPrint = function(){
   // 급여대장이 기본 뷰 → 로드 시 이번 달 자동 조회(데이터 즉시 표시, 빈 화면 방지)
   if (typeof window.payrollLoad === 'function') window.payrollLoad();
 })();
+
+// ============================================================================
+// 이카운트 대조 (0623) — 붙여넣기 → 사람별 차이 + 원인 판정. 읽기 전용.
+//   차이의 원인이 셋(적용비율·부양가족·지급액)인데 화면이 구분해 주지 않아 매달 사람이
+//   스크립트로 풀어야 했다. 4대보험처럼 규칙 경고를 달 수 없는 이유는 「100%인지 120%인지」가
+//   MES 데이터만으로는 판정 불가라서다 — 그래서 경고가 아니라 대조를 화면에 올린다.
+// ============================================================================
+var PR_REC_COLS = [
+  { key: 'employee_code', names: ['사번', '사원번호', '직원코드', 'code'] },
+  { key: 'name',  names: ['성명', '이름', '직원명', 'name'] },
+  { key: 'total', names: ['지급총액', '지급액계', '총지급액', '지급계', '급여총액'] },
+  { key: 'np',    names: ['국민연금'] },
+  { key: 'hi',    names: ['건강보험'] },
+  { key: 'ltc',   names: ['장기요양', '장기요양보험'] },
+  { key: 'ei',    names: ['고용보험'] },
+  { key: 'it',    names: ['소득세'] },
+  { key: 'lt',    names: ['지방소득세', '지방세'] },
+];
+var prRecRows = [];      // 파싱된 EC 행
+var prRecResult = null;  // 서버 응답
+
+window.payrollOpenReconcileModal = function() {
+  var periodEl = document.getElementById('prPeriod');
+  var period = periodEl ? periodEl.value : '';
+  if (!period) { showToast('먼저 급여 기간을 선택하세요', 'warning'); return; }
+  var m = document.getElementById('prReconcileModal');
+  if (!m) { console.warn('[payroll] #prReconcileModal not found'); return; }
+  var lbl = document.getElementById('prRecPeriod');
+  if (lbl) lbl.textContent = period;
+  m.classList.remove('hidden'); m.classList.add('flex');
+  payrollReconcileClear();
+};
+
+window.payrollCloseReconcile = function() {
+  var m = document.getElementById('prReconcileModal');
+  if (!m) return;
+  m.classList.add('hidden'); m.classList.remove('flex');
+};
+
+window.payrollReconcileClear = function() {
+  prRecRows = []; prRecResult = null;
+  var a = document.getElementById('prRecArea'); if (a) a.value = '';
+  ['prRecWrap', 'prRecSummary', 'prRecErrors'].forEach(function(id) {
+    var el = document.getElementById(id); if (el) el.classList.add('hidden');
+  });
+  var b = document.getElementById('prRecRunBtn'); if (b) b.disabled = true;
+};
+
+window.payrollReconcileFile = function(input) {
+  var f = input && input.files && input.files[0]; if (!f) return;
+  var rd = new FileReader();
+  rd.onload = function(e) {
+    var a = document.getElementById('prRecArea');
+    if (a) { a.value = e.target.result; payrollReconcileParse(); }
+  };
+  rd.readAsText(f, 'utf-8');
+  input.value = '';
+};
+
+window.payrollReconcileParse = function() {
+  var a = document.getElementById('prRecArea');
+  var errEl = document.getElementById('prRecErrors');
+  var btn = document.getElementById('prRecRunBtn');
+  if (!a || !btn) { console.warn('[payroll] #prRecArea/#prRecRunBtn not found'); return; }
+  var text = String(a.value || '').trim();
+  prRecRows = [];
+  if (!text) { btn.disabled = true; if (errEl) errEl.classList.add('hidden'); return; }
+
+  var lines = text.split(/\r?\n/).filter(function(l) { return l.trim(); });
+  // 구분자 자동 판별 — 엑셀 복사는 탭, 파일은 쉼표
+  var sep = (lines[0].indexOf('\t') >= 0) ? '\t' : ',';
+  var head = lines[0].split(sep).map(prPasteNorm);
+  var colOf = {};
+  for (var c = 0; c < head.length; c++) {
+    for (var d = 0; d < PR_REC_COLS.length; d++) {
+      var def = PR_REC_COLS[d];
+      for (var n = 0; n < def.names.length; n++) {
+        if (head[c] === prPasteNorm(def.names[n]) && colOf[def.key] == null) colOf[def.key] = c;
+      }
+    }
+  }
+  var errs = [];
+  if (colOf.name == null && colOf.employee_code == null) errs.push('머리글에 「성명」 또는 「사번」이 없습니다.');
+  if (colOf.it == null) errs.push('머리글에 「소득세」가 없습니다 — 원인 판정에 반드시 필요합니다.');
+
+  if (!errs.length) {
+    for (var i = 1; i < lines.length; i++) {
+      var cells = lines[i].split(sep);
+      var row = {};
+      for (var k in colOf) if (Object.prototype.hasOwnProperty.call(colOf, k)) {
+        var raw = cells[colOf[k]];
+        row[k] = (k === 'name' || k === 'employee_code') ? String(raw == null ? '' : raw).trim() : prPasteNum(raw);
+      }
+      if (!row.name && !row.employee_code) continue;   // 합계행·빈 줄
+      prRecRows.push(row);
+    }
+    if (!prRecRows.length) errs.push('읽을 수 있는 데이터 행이 없습니다.');
+  }
+
+  if (errEl) {
+    errEl.classList.toggle('hidden', !errs.length);
+    errEl.innerHTML = errs.map(function(e) { return '<div>• ' + escapeHtml(e) + '</div>'; }).join('');
+  }
+  btn.disabled = !!errs.length || !prRecRows.length;
+  if (!errs.length) showToast(prRecRows.length + '명 읽었습니다 — 「대조 실행」을 누르세요', 'info');
+};
+
+window.payrollReconcileRun = async function() {
+  var periodEl = document.getElementById('prPeriod');
+  var period = periodEl ? periodEl.value : '';
+  if (!period || !prRecRows.length) return;
+  var btn = document.getElementById('prRecRunBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>대조 중...'; }
+  try {
+    var res = await axios.post('/api/payroll/reconcile', { pay_period: period, rows: prRecRows });
+    prRecResult = res.data.data;
+    payrollReconcileRender();
+  } catch (e) {
+    showToast('대조 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message), 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-play mr-1"></i>대조 실행'; }
+  }
+};
+
+function prRecMoney(v) {
+  if (v == null) return '<span class="text-gray-300">-</span>';
+  if (v === 0) return '<span class="text-gray-400">0</span>';
+  var cls = v > 0 ? 'text-rose-600' : 'text-blue-600';
+  return '<span class="' + cls + ' tabular-nums">' + (v > 0 ? '+' : '') + v.toLocaleString() + '</span>';
+}
+
+window.payrollReconcileRender = function() {
+  if (!prRecResult) return;
+  var onlyDiff = document.getElementById('prRecOnlyDiff');
+  var body = document.getElementById('prRecBody');
+  var wrap = document.getElementById('prRecWrap');
+  var sum = document.getElementById('prRecSummary');
+  if (!body || !wrap || !sum) { console.warn('[payroll] reconcile 표 요소 없음'); return; }
+
+  var s = prRecResult.summary;
+  var parts = [
+    '<span class="px-2 py-1 rounded bg-gray-100">대조 <b>' + prRecResult.matched_count + '</b>명</span>',
+    '<span class="px-2 py-1 rounded bg-emerald-50 text-emerald-700">소득세 일치 <b>' + s.tax_exact + '</b></span>',
+    '<span class="px-2 py-1 rounded bg-amber-50 text-amber-700">설정으로 해결 <b>' + s.tax_setting + '</b></span>',
+    '<span class="px-2 py-1 rounded bg-slate-100 text-slate-700">지급액 차이 <b>' + s.tax_pay + '</b></span>',
+    '<span class="px-2 py-1 rounded bg-gray-100">실지급 절대차 합계 <b>' + s.net_abs_sum.toLocaleString() + '</b>원</span>',
+  ];
+  if (prRecResult.unmatched && prRecResult.unmatched.length) {
+    parts.push('<span class="px-2 py-1 rounded bg-red-50 text-red-700" title="이카운트 이름이 MES와 다르면 직원 상세의 「이카운트 이름」에 넣어 두세요">매칭 실패 <b>'
+      + prRecResult.unmatched.length + '</b> — ' + escapeHtml(prRecResult.unmatched.join(', ')) + '</span>');
+  }
+  sum.innerHTML = '<div class="flex flex-wrap gap-2 items-center">' + parts.join('') + '</div>';
+  sum.classList.remove('hidden');
+
+  var rows = prRecResult.rows.slice();
+  if (onlyDiff && onlyDiff.checked) rows = rows.filter(function(r) { return r.diff.net !== 0 || r.diff.it !== 0; });
+  rows.sort(function(a, b) { return Math.abs(b.diff.net || 0) - Math.abs(a.diff.net || 0); });
+
+  body.innerHTML = rows.map(function(r) {
+    var ins = ['np', 'hi', 'ltc', 'ei'].reduce(function(t, k) { return t + (r.diff[k] == null ? 0 : r.diff[k]); }, 0);
+    var cause = '', act = '';
+    if (r.diff.it === 0) {
+      cause = '<span class="text-emerald-600">소득세 일치</span>';
+    } else if (r.diagnosis && r.diagnosis.kind === 'setting') {
+      cause = '<span class="text-amber-700">' + escapeHtml(r.diagnosis.label) + '</span>';
+      act = '<a href="/hr/' + r.employee_id + '" target="_blank" class="text-indigo-600 hover:underline whitespace-nowrap">직원 설정</a>';
+    } else if (r.diagnosis && r.diagnosis.kind === 'pay') {
+      cause = '<span class="text-gray-500">' + escapeHtml(r.diagnosis.label) + '</span>';
+    } else if (r.diagnosis) {
+      cause = '<span class="text-gray-400">' + escapeHtml(r.diagnosis.label) + '</span>';
+    }
+    var pin = r.current.pinned ? ' <span title="공제 오버라이드가 걸려 있습니다">📌</span>' : '';
+    var cur = r.current.taxOption + '%' + (r.current.dependents > 1 ? ' · ' + r.current.dependents + '인' : '');
+    return '<tr>'
+      + '<td class="whitespace-nowrap">' + escapeHtml(r.name) + pin
+        + '<div class="text-[10px] text-gray-400">현재 ' + escapeHtml(cur) + '</div></td>'
+      + '<td class="text-right">' + prRecMoney(r.diff.total) + '</td>'
+      + '<td class="text-right">' + prRecMoney(ins) + '</td>'
+      + '<td class="text-right tabular-nums">' + r.mes.it.toLocaleString()
+        + ' <span class="text-gray-400">→</span> ' + (r.ec.it == null ? '-' : r.ec.it.toLocaleString())
+        + '<div class="text-[10px]">' + prRecMoney(r.diff.it) + '</div></td>'
+      + '<td class="text-right">' + prRecMoney(r.diff.net) + '</td>'
+      + '<td>' + cause + '</td>'
+      + '<td class="text-right">' + act + '</td>'
+      + '</tr>';
+  }).join('') || '<tr><td colspan="7" class="text-center text-gray-400 py-6">차이 없음</td></tr>';
+  wrap.classList.remove('hidden');
+};

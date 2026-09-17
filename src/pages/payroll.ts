@@ -60,6 +60,9 @@ export function payrollPage(c: Context<HonoEnv>) {
           <button onclick="payrollOpenAttendModal()" class="px-3 py-1.5 text-xs border border-amber-300 text-amber-700 bg-amber-50 rounded hover:bg-amber-100" title="저장된 근무일수·연장·야간·휴일·결근을 표에서 직접 수정">
             <i class="fas fa-user-clock mr-1"></i>근태 수정
           </button>
+          <button onclick="payrollOpenReconcileModal()" class="px-3 py-1.5 text-xs border border-indigo-300 text-indigo-700 bg-indigo-50 rounded hover:bg-indigo-100" title="이카운트 급여대장을 붙여넣어 사람별 차이와 그 원인을 확인 — 아무것도 덮어쓰지 않습니다">
+            <i class="fas fa-code-compare mr-1"></i>이카운트 대조
+          </button>
           <button onclick="payrollOpenPasteModal()" class="px-3 py-1.5 text-xs border border-emerald-300 text-emerald-700 bg-emerald-50 rounded hover:bg-emerald-100" title="엑셀에서 셀을 복사해 붙여넣거나 파일을 올려 지급·공제를 직접 입력">
             <i class="fas fa-file-excel mr-1"></i>엑셀 입력
           </button>
@@ -504,6 +507,55 @@ export function payrollPage(c: Context<HonoEnv>) {
             <button onclick="payrollPasteApply()" id="prPasteApplyBtn" class="ds-btn ds-btn-primary text-xs" disabled><i class="fas fa-check mr-1"></i>적용</button>
           </div>
         </div>
+      <!-- 이카운트 대조 (0623) — 붙여넣기 → 차이 + 원인 판정. 읽기 전용. -->
+      <div id="prReconcileModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal" style="max-width:82rem">
+          <div class="px-5 py-3 border-b flex items-center justify-between">
+            <h3 class="text-base font-semibold"><i class="fas fa-code-compare mr-1 text-indigo-600"></i>이카운트 대조
+              <span id="prRecPeriod" class="ml-2 text-xs font-normal text-gray-500"></span></h3>
+            <button onclick="payrollCloseReconcile()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+          </div>
+          <div class="p-5 space-y-3">
+            <div class="text-xs text-gray-600 bg-indigo-50 border border-indigo-200 rounded p-2.5 space-y-1">
+              <div><i class="fas fa-info-circle mr-1 text-indigo-600"></i><b>이카운트 급여대장을 머리글 행까지 포함해 복사</b>한 뒤 아래에 <b>Ctrl+V</b> 하세요. 파일(.csv/.tsv)도 됩니다.</div>
+              <div>인식하는 머리글: <b>성명</b>(또는 사번) · <b>지급총액</b> · 국민연금 · 건강보험 · 장기요양 · 고용보험 · <b>소득세</b> · 지방소득세</div>
+              <div><b>아무것도 덮어쓰지 않습니다.</b> 차이와 그 원인만 보여 줍니다 — 고치는 것은 직원 설정(적용비율·부양가족)이나 엑셀 입력입니다.</div>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <label class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50 cursor-pointer">
+                <i class="fas fa-upload mr-1"></i>파일 선택
+                <input type="file" id="prRecFile" accept=".csv,.tsv,.txt" class="hidden" onchange="payrollReconcileFile(this)">
+              </label>
+              <button onclick="payrollReconcileRun()" id="prRecRunBtn" class="ds-btn ds-btn-primary text-xs" disabled><i class="fas fa-play mr-1"></i>대조 실행</button>
+              <button onclick="payrollReconcileClear()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50"><i class="fas fa-eraser mr-1"></i>지우기</button>
+              <div class="flex-1"></div>
+              <label class="flex items-center gap-1 text-xs text-gray-600"><input type="checkbox" id="prRecOnlyDiff" checked onchange="payrollReconcileRender()"> 차이 있는 사람만</label>
+            </div>
+            <textarea id="prRecArea" rows="4" placeholder="여기를 클릭하고 Ctrl+V — 이카운트 급여대장을 머리글 포함해 붙여넣으세요"
+              class="w-full border border-gray-300 rounded px-2 py-2 text-xs font-mono" oninput="payrollReconcileParse()"></textarea>
+            <div id="prRecSummary" class="hidden text-xs"></div>
+            <div id="prRecWrap" class="hidden overflow-auto border border-gray-200 rounded" style="max-height:26rem">
+              <table class="ds-table text-xs w-full">
+                <thead class="sticky top-0 bg-gray-50"><tr>
+                  <th class="text-left">성명</th>
+                  <th class="text-right">지급총액 차이</th>
+                  <th class="text-right">4대보험 차이</th>
+                  <th class="text-right">소득세 (MES→EC)</th>
+                  <th class="text-right">실지급 차이</th>
+                  <th class="text-left">원인</th>
+                  <th></th>
+                </tr></thead>
+                <tbody id="prRecBody"></tbody>
+              </table>
+            </div>
+            <div id="prRecErrors" class="hidden text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2.5"></div>
+          </div>
+          <div class="px-5 py-3 border-t flex justify-end">
+            <button onclick="payrollCloseReconcile()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50">닫기</button>
+          </div>
+        </div>
+      </div>
+
       </div><!-- /prHubPayroll -->
 
         <!-- 요율 관리 탭 (payrollRates 단일소스 이식, lazy) -->

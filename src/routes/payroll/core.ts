@@ -20,6 +20,8 @@ import {
   calcAbsentDeduction,
   getProrationContext,
   calcProratedInclusive,
+  lookupIncomeTaxRow,
+  diagnoseIncomeTax,
 } from './shared'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 
@@ -1032,6 +1034,124 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
   } catch (err: any) {
     console.error('Failed to sync attendance:', err)
     return c.json({ success: false, error: '근태 동기화 실패', detail: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
+// ============================================================================
+// API: 이카운트 대조 — 급여대장을 받아 사람별 차이 + **원인**을 짚는다 (읽기 전용)
+// POST /api/payroll/reconcile  body: { pay_period, rows: [{ employee_code?, name, total?, np?,hi?,ltc?,ei?,it?,lt? }] }
+//
+// 왜 필요한가 (2026-09-17):
+//   차이가 나는 원인이 셋인데(적용비율·부양가족·지급액) 화면이 그걸 구분해 주지 않아,
+//   매달 사람이 붙어서 스크립트로 풀어야 했다. 4대보험은 생년월일·직급으로 규칙 경고를 달 수
+//   있었지만 **적용비율이 80 인지 120 인지는 이카운트와 대조해야만 안다** — 그래서 경고가 아니라
+//   대조를 화면에 올린다. 판정만 하고 **아무것도 덮어쓰지 않는다**(고치는 건 엑셀 입력·직원 설정).
+// ============================================================================
+coreRouter.post('/reconcile', async (c) => {
+  try {
+    const body = await c.req.json<any>()
+    const payPeriod = String(body.pay_period || '')
+    if (!/^\d{4}-\d{2}$/.test(payPeriod)) return c.json({ success: false, error: 'pay_period(YYYY-MM) 필요' }, 400)
+    const rows: any[] = Array.isArray(body.rows) ? body.rows : []
+    if (!rows.length) return c.json({ success: false, error: '대조할 행이 없습니다' }, 400)
+
+    const efP = entityFilter(c, 'p')
+    const mesRows = (await c.env.DB.prepare(`
+      SELECT p.id, p.employee_id, p.total_salary, p.taxable_pay, p.other_deduction,
+             p.national_pension AS np, p.health_insurance AS hi, p.long_term_care_insurance AS ltc,
+             p.employment_insurance AS ei, p.income_tax AS it, p.local_tax AS lt,
+             p.net_pay, p.deduction_overrides,
+             e.name, e.external_name, e.employee_code,
+             e.dependents_count, e.children_under_20_count, e.income_tax_table_option
+        FROM payroll p JOIN employees e ON e.id = p.employee_id
+       WHERE p.pay_period = ?${efP.clause}
+    `).bind(payPeriod, ...efP.params).all<any>()).results || []
+
+    // 매칭 — 성명 · 이카운트 이름(별칭) · 사번. 공백은 무시한다(「MAUNG MAUNG」↔「MAUNGMAUNG」).
+    const norm = (s: any) => String(s ?? '').replace(/\s+/g, '').toLowerCase()
+    const byKey = new Map<string, any>()
+    for (const m of mesRows) {
+      for (const k of [m.name, m.external_name, m.employee_code]) {
+        if (k && !byKey.has(norm(k))) byKey.set(norm(k), m)
+      }
+    }
+
+    const year = Number(payPeriod.slice(0, 4))
+    // 같은 과세급여 구간을 여러 번 조회하지 않는다
+    const rowCache = new Map<number, number[] | null>()
+    const getRow = async (taxable: number) => {
+      if (!rowCache.has(taxable)) rowCache.set(taxable, await lookupIncomeTaxRow(c.env.DB, year, taxable))
+      return rowCache.get(taxable) ?? null
+    }
+
+    const DED = ['np', 'hi', 'ltc', 'ei', 'it', 'lt'] as const
+    const matched: any[] = []
+    const unmatched: string[] = []
+    for (const r of rows) {
+      const key = norm(r.employee_code) || norm(r.name)
+      const m = byKey.get(norm(r.name)) || byKey.get(norm(r.employee_code)) || byKey.get(key)
+      if (!m) { unmatched.push(String(r.name || r.employee_code || '(이름 없음)')); continue }
+
+      const num = (v: any) => (v == null || v === '' ? null : Number(v))
+      const ec: Record<string, number | null> = { total: num(r.total) }
+      for (const k of DED) ec[k] = num((r as any)[k])
+
+      const diff: Record<string, number | null> = {}
+      diff.total = ec.total == null ? null : ec.total - Number(m.total_salary || 0)
+      for (const k of DED) diff[k] = ec[k] == null ? null : (ec[k] as number) - Number(m[k] || 0)
+
+      // 실지급 = 지급총액 − (4대보험+소득세+지방세) − 기타공제. 기타공제는 이카운트 대장에 없으므로 MES 값을 쓴다.
+      let ecNet: number | null = null
+      if (ec.total != null && DED.every(k => ec[k] != null)) {
+        ecNet = (ec.total as number) - DED.reduce((s, k) => s + (ec[k] as number), 0) - Number(m.other_deduction || 0)
+      }
+
+      let diagnosis: any = null
+      if (ec.it != null && diff.it !== 0) {
+        diagnosis = diagnoseIncomeTax(await getRow(Number(m.taxable_pay || 0)), ec.it as number, {
+          taxOption: String(m.income_tax_table_option || '100'),
+          dependents: Math.max(1, Number(m.dependents_count || 1)),
+          children: Math.max(0, Number(m.children_under_20_count || 0)),
+        })
+      }
+
+      matched.push({
+        employee_id: m.employee_id, name: m.name, ec_name: r.name,
+        taxable_pay: Number(m.taxable_pay || 0),
+        current: {
+          taxOption: String(m.income_tax_table_option || '100'),
+          dependents: Math.max(1, Number(m.dependents_count || 1)),
+          children: Math.max(0, Number(m.children_under_20_count || 0)),
+          pinned: !!m.deduction_overrides,
+        },
+        mes: { total: Number(m.total_salary || 0), net: Number(m.net_pay || 0), ...Object.fromEntries(DED.map(k => [k, Number(m[k] || 0)])) },
+        ec: { ...ec, net: ecNet },
+        diff: { ...diff, net: ecNet == null ? null : Number(m.net_pay || 0) - ecNet },
+        diagnosis,
+      })
+    }
+
+    const absSum = (f: (x: any) => number | null) =>
+      matched.reduce((s, x) => { const v = f(x); return s + (v == null ? 0 : Math.abs(v)) }, 0)
+    return c.json({
+      success: true,
+      data: {
+        pay_period: payPeriod,
+        matched_count: matched.length,
+        unmatched,
+        summary: {
+          tax_exact: matched.filter(x => x.diff.it === 0).length,
+          tax_setting: matched.filter(x => x.diagnosis?.kind === 'setting').length,
+          tax_pay: matched.filter(x => x.diagnosis?.kind === 'pay').length,
+          net_abs_sum: absSum(x => x.diff.net),
+          net_exact: matched.filter(x => x.diff.net === 0).length,
+        },
+        rows: matched,
+      },
+    })
+  } catch (err: any) {
+    console.error('Failed to reconcile payroll:', err)
+    return c.json({ success: false, error: '대조 실패', detail: '서버 오류가 발생했습니다' }, 500)
   }
 })
 

@@ -36,7 +36,7 @@ const path = require('path')
 
 const SRC = path.join(__dirname, '..', 'src', 'routes', 'payroll', 'shared.ts')
 const { mod, cleanup } = compileTs(SRC, { bundle: true })
-const { calcDeductions, childTaxCredit, lookupIncomeTax } = mod
+const { calcDeductions, childTaxCredit, lookupIncomeTax, lookupIncomeTaxRow, diagnoseIncomeTax } = mod
 
 function makeDbShim(db) {
   return {
@@ -145,7 +145,27 @@ function check(label, actual, expected) {
   // 사고 당시 값: 350만·4인 이 146,260 이었다. 앵커가 하나라도 어긋나면 위 ③⑥ 이 먼저 터진다.
   check('350만/4인이 146,260(근사표)이 아니다', (await lookupIncomeTax(DB, 2026, 3510000, 4)).tax !== 146260, true)
 
+  console.log('── ⑧ 이카운트 대조 원인 판정 (diagnoseIncomeTax) ──')
+  // 실측 사례를 그대로 쓴다. 이 판정이 외국인 5명의 120% 와 김기섭의 부양가족 3인을 짚어냈다.
+  const row237 = await lookupIncomeTaxRow(DB, 2026, 2376900)
+  const row800 = await lookupIncomeTaxRow(DB, 2026, 8000000)
+  const cur100 = { taxOption: '100', dependents: 1, children: 0 }
+  check('표 한 행 전체(237만)', JSON.stringify(row237.slice(0, 3)), '[31410,24410,13940]')
+  check('설정이 맞으면 match', diagnoseIncomeTax(row800, 959500, cur100).kind, 'match')
+  // 서민쎌 2026-08 실측: 표 1인 32,050 인데 이카운트 실제 38,460 = ×1.2
+  const r350 = await lookupIncomeTaxRow(DB, 2026, 3510000)
+  check('120% 를 짚는다', diagnoseIncomeTax(r350, Math.floor(127220 * 1.2 / 10) * 10, cur100).label, '적용비율 120% 이면 일치')
+  check('그 판정의 taxOption', diagnoseIncomeTax(r350, Math.floor(127220 * 1.2 / 10) * 10, cur100).taxOption, '120')
+  // 김기섭 형태: 같은 100% 인데 가족수가 다르다
+  check('부양가족을 짚는다', diagnoseIncomeTax(r350, 62460, cur100).label, '부양가족 3인 이면 일치')
+  check('자녀도 짚는다', diagnoseIncomeTax(r350, 49340 - 45830, { taxOption: '100', dependents: 4, children: 0 }).label, '20세이하 자녀 2명 이면 일치')
+  // 어떤 조합으로도 안 나오는 값 = 지급액이 다른 것 (인호동·한두선 형태)
+  check('지급액 차이로 분류', diagnoseIncomeTax(r350, 123456, cur100).kind, 'pay')
+  check('표 구간 밖은 판정 안 한다', diagnoseIncomeTax(null, 999, cur100).kind, 'unknown')
+  // ★바꿀 칸이 적은 해를 고른다 — 120%/1인 과 100%/N 이 같은 값을 낼 때 현재 설정에 가까운 쪽
+  check('현재 설정에 가까운 해 우선', diagnoseIncomeTax(r350, 62460, { taxOption: '100', dependents: 3, children: 0 }).kind, 'match')
+
   cleanup?.()
-  console.log(failed === 0 ? '\n✓ 간이세액표·자녀세액공제 전 항목 통과' : `\n✗ ${failed}건 실패`)
+  console.log(failed === 0 ? '\n✓ 간이세액표·자녀세액공제·대조 판정 전 항목 통과' : `\n✗ ${failed}건 실패`)
   process.exit(failed === 0 ? 0 : 1)
 })().catch((e) => { console.error(e); process.exit(1) })
