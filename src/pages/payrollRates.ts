@@ -61,6 +61,7 @@ export const payrollRatesContent = `
             <th class="text-right" style="width:100px">회사 부담</th>
             <th class="text-left" style="width:110px">기준</th>
             <th class="text-right" style="width:130px">하한/상한</th>
+            <th class="text-left" style="width:170px">적용기간</th>
             <th class="text-center" style="width:70px">액션</th>
           </tr>
         </thead>
@@ -76,7 +77,7 @@ export const payrollRatesContent = `
         <li>요율이 변경되면 <strong>"요율 추가"</strong>로 새 연도 데이터를 등록하거나 기존 행을 수정하세요.</li>
         <li>전년도 요율을 복사하려면 우측 상단 <strong>"연도 복사"</strong> 사용.</li>
         <li>장기요양 보험은 건강보험료(HEALTH_INSURANCE) 기준으로 계산됩니다.</li>
-        <li>국민연금 상·하한 기준소득월액은 2026년 기준 하한 39만원, 상한 617만원입니다 (매년 7월 갱신).</li>
+        <li>국민연금 기준소득월액 상·하한은 <strong>매년 7월 갱신</strong>됩니다. 같은 보험이라도 <strong>적용기간이 다르면 행을 나눠</strong> 등록하세요 — 한 행으로 두면 7월 변경값이 상반기 급여에도 소급됩니다. (2026: 상반기 하한 40만·상한 637만 / 하반기 하한 41만·상한 659만)</li>
       </ul>
     </div>
   </div>

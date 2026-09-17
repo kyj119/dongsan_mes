@@ -244,7 +244,10 @@ export interface CalcInput {
   taxablePay: number       // 과세 급여 (총급여 - 비과세)
   dependents: number       // 부양가족 수 (본인 포함)
   taxOption: string        // '80' | '100' | '120'
-  year: number
+  year: number             // 소득세 간이세액표 조회용(연 단위)
+  // 0617: 4대보험 요율 조회 기준(YYYY-MM). 국민연금 상·하한이 7월에 바뀌므로 연도만으로는 부족하다.
+  //   미지정 시 `${year}-01-01`로 폴백 — 하반기 급여를 상반기 요율로 계산하게 되므로 반드시 넘길 것.
+  payPeriod?: string
   // 4대보험 적용 토글 (employees.insurance_apply_*)
   // undefined는 "적용"으로 간주하여 하위 호환 유지
   applyNationalPension?: boolean
@@ -354,14 +357,34 @@ export async function lookupIncomeTax(db: D1Database, year: number, monthlyPay: 
   return { tax: calcOfficialMonthlyTax(monthlyPay, safeDeps), rowId: null }
 }
 
-/** #389: 연도별 4대보험 요율 맵 로드(일괄 처리 시 루프 밖 1회 호출 후 calcDeductions input.ratesCache로 주입). */
-export async function loadInsuranceRates(db: D1Database, year: number): Promise<Record<string, InsuranceRate>> {
+/**
+ * 급여월(YYYY-MM) → 요율 조회 기준일(YYYY-MM-01).
+ * 국민연금 기준소득월액 상·하한이 7월에 바뀌므로 "연도"가 아니라 "그 달"로 골라야 한다(0617).
+ */
+export function rateRefDate(payPeriod: string | null | undefined, fallbackYear: number): string {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(payPeriod || ''))
+  if (m) return `${m[1]}-${m[2]}-01`
+  // payPeriod가 없으면 연초로 폴백(하위호환) — 호출부는 모두 payPeriod를 넘기는 것이 정상.
+  return `${fallbackYear}-01-01`
+}
+
+/**
+ * #389: 4대보험 요율 맵 로드(일괄 처리 시 루프 밖 1회 호출 후 calcDeductions input.ratesCache로 주입).
+ * 0617: year 단일 조회 → effective_from/effective_to 기간 조회.
+ *   같은 보험이 여러 기간 행을 가지므로 effective_from DESC 정렬 후 **첫 행만** 채택한다
+ *   (2025 행이 effective_to NULL 이어도 2026 행이 이긴다).
+ */
+export async function loadInsuranceRates(db: D1Database, refDate: string): Promise<Record<string, InsuranceRate>> {
   const ratesRow = await db.prepare(
     `SELECT insurance_type, total_rate, employee_rate, employer_rate, base, min_base, max_base
-     FROM insurance_rates WHERE year = ?`
-  ).bind(year).all<InsuranceRate>().catch(() => ({ results: [] as InsuranceRate[] }))
+     FROM insurance_rates
+     WHERE effective_from <= ? AND (effective_to IS NULL OR effective_to >= ?)
+     ORDER BY insurance_type, effective_from DESC, id DESC`
+  ).bind(refDate, refDate).all<InsuranceRate>().catch(() => ({ results: [] as InsuranceRate[] }))
   const rates: Record<string, InsuranceRate> = {}
-  for (const r of (ratesRow.results || [])) rates[r.insurance_type] = r
+  for (const r of (ratesRow.results || [])) {
+    if (!rates[r.insurance_type]) rates[r.insurance_type] = r   // 첫 행 = 그 시점 최신
+  }
   return rates
 }
 
@@ -375,7 +398,9 @@ export async function calcDeductions(db: D1Database, input: CalcInput): Promise<
   const applyIa = input.applyIndustrialAccident !== false
 
   // 1) 4대보험 요율 조회 (#389: 주입된 ratesCache 우선, 미지정 시 조회 — 하위호환·동일 결과)
-  const rates: Record<string, InsuranceRate> = input.ratesCache ?? await loadInsuranceRates(db, year)
+  //    0617: 급여월 기준으로 기간 요율을 고른다(국민연금 7월 상·하한 재조정).
+  const rates: Record<string, InsuranceRate> =
+    input.ratesCache ?? await loadInsuranceRates(db, rateRefDate(input.payPeriod, year))
 
   // 2) 국민연금 — 기준소득월액(설정 시) 또는 당월 과세급여를 base로 상하한 적용
   //    pension_base(>0)가 있으면 국민연금공단 고정 기준액 사용(당월급여 변동 무관), 없으면 당월 과세급여(하위호환).

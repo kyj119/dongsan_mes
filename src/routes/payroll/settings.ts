@@ -17,7 +17,7 @@ settingsRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 settingsRouter.get('/rates/:year', async (c) => {
   const year = Number(c.req.param('year'))
   const rows = await c.env.DB.prepare(
-    `SELECT id, year, insurance_type, total_rate, employee_rate, employer_rate, base, min_base, max_base, effective_from, effective_to, notes, created_at FROM insurance_rates WHERE year = ? ORDER BY insurance_type, id`
+    `SELECT id, year, insurance_type, total_rate, employee_rate, employer_rate, base, min_base, max_base, effective_from, effective_to, notes, created_at FROM insurance_rates WHERE year = ? ORDER BY insurance_type, effective_from, id`
   ).bind(year).all()
   return c.json({ success: true, data: rows.results || [] })
 })
@@ -44,18 +44,19 @@ settingsRouter.put('/rates', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const effective_from = String(body.effective_from || `${year}-01-01`)
     const effective_to = body.effective_to ? String(body.effective_to) : null
 
-    // 기존 레코드 확인
+    // 기존 레코드 확인 — 0617: 같은 year+type이 상/하반기 2행일 수 있어 effective_from까지 키로 쓴다.
+    //   (year, type)만으로 찾으면 하반기 저장이 상반기 행을 덮어쓴다.
     const existing = await c.env.DB.prepare(
-      `SELECT id FROM insurance_rates WHERE year = ? AND insurance_type = ?`
-    ).bind(year, insurance_type).first<{ id: number }>()
+      `SELECT id FROM insurance_rates WHERE insurance_type = ? AND effective_from = ?`
+    ).bind(insurance_type, effective_from).first<{ id: number }>()
 
     if (existing) {
       await c.env.DB.prepare(
         `UPDATE insurance_rates SET
-          total_rate = ?, employee_rate = ?, employer_rate = ?, base = ?,
-          min_base = ?, max_base = ?, effective_from = ?, effective_to = ?
+          year = ?, total_rate = ?, employee_rate = ?, employer_rate = ?, base = ?,
+          min_base = ?, max_base = ?, effective_to = ?
          WHERE id = ?`
-      ).bind(total_rate, employee_rate, employer_rate, base, min_base, max_base, effective_from, effective_to, existing.id).run()
+      ).bind(year, total_rate, employee_rate, employer_rate, base, min_base, max_base, effective_to, existing.id).run()
     } else {
       await c.env.DB.prepare(
         `INSERT INTO insurance_rates (year, insurance_type, total_rate, employee_rate, employer_rate, base, min_base, max_base, effective_from, effective_to)
@@ -76,6 +77,21 @@ settingsRouter.put('/rates', requireRole('ADMIN', 'MANAGER'), async (c) => {
 settingsRouter.delete('/rates/:year/:type', requireRole('ADMIN'), async (c) => {
   const year = Number(c.req.param('year'))
   const type = c.req.param('type')
+  // 0617: 같은 year+type이 여러 기간 행을 가질 수 있다. effective_from이 오면 그 행만,
+  //   없는데 2행 이상이면 통째 삭제를 막는다(상반기 요율이 함께 지워지는 사고 방지).
+  const from = c.req.query('effective_from')
+  if (from) {
+    await c.env.DB.prepare(
+      `DELETE FROM insurance_rates WHERE year = ? AND insurance_type = ? AND effective_from = ?`
+    ).bind(year, type, from).run()
+    return c.json({ success: true })
+  }
+  const cnt = await c.env.DB.prepare(
+    `SELECT COUNT(*) as n FROM insurance_rates WHERE year = ? AND insurance_type = ?`
+  ).bind(year, type).first<{ n: number }>()
+  if ((cnt?.n || 0) > 1) {
+    return c.json({ success: false, error: '적용기간이 여러 개입니다. 삭제할 기간(effective_from)을 지정하세요.' }, 400)
+  }
   await c.env.DB.prepare(
     `DELETE FROM insurance_rates WHERE year = ? AND insurance_type = ?`
   ).bind(year, type).run()
@@ -104,9 +120,11 @@ settingsRouter.post('/rates/copy', requireRole('ADMIN', 'MANAGER'), async (c) =>
 
     await c.env.DB.prepare(
       `INSERT INTO insurance_rates (year, insurance_type, total_rate, employee_rate, employer_rate, base, min_base, max_base, effective_from, effective_to)
-       SELECT ?, insurance_type, total_rate, employee_rate, employer_rate, base, min_base, max_base, ? || '-01-01', NULL
+       SELECT ?, insurance_type, total_rate, employee_rate, employer_rate, base, min_base, max_base,
+              CAST(? AS TEXT) || substr(effective_from, 5),
+              CASE WHEN effective_to IS NULL THEN NULL ELSE CAST(? AS TEXT) || substr(effective_to, 5) END
        FROM insurance_rates WHERE year = ?`
-    ).bind(to_year, to_year, from_year).run()
+    ).bind(to_year, to_year, to_year, from_year).run()
     return c.json({ success: true })
   } catch (err: any) {
     console.error('Payroll copy insurance rates error:', err)

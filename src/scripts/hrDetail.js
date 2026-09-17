@@ -392,6 +392,92 @@ async function hrdLoadLeaveBalance() {
 }
 
 // ============================================================================
+// 4대보험 가입 설정 규칙 경고 (0617)
+//   왜: insurance_apply_* 토글이 전 직원 기본값 1인 채 몇 달간 방치돼 월 1,712,980원이
+//       과다공제됐다(2026-09-17 이카운트 대조로 발견). 편집 UI는 있었지만 "틀렸다"고
+//       말해 주는 것이 없어 아무도 몰랐다. 새 데이터 없이 기존 컬럼만으로 판정한다.
+// ============================================================================
+function hrdInsuranceWarnings(emp) {
+  if (!emp) return [];
+  var on = function(k) { return emp[k] === 1 || emp[k] === '1' || emp[k] === true; };
+  var warns = [];
+
+  // 만 나이 (생일 지났는지까지 반영)
+  var age = null;
+  var bd = String(emp.birth_date || '');
+  var bm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(bd);
+  if (bm) {
+    var t = new Date();
+    age = t.getFullYear() - parseInt(bm[1], 10);
+    var mo = t.getMonth() + 1, dy = t.getDate();
+    if (mo < parseInt(bm[2], 10) || (mo === parseInt(bm[2], 10) && dy < parseInt(bm[3], 10))) age--;
+  }
+  if (age != null && age >= 60 && on('insurance_apply_national_pension')) {
+    warns.push('만 ' + age + '세 — 국민연금은 60세부터 상실 대상입니다. 가입 여부를 확인하세요.');
+  }
+
+  // 외국인: 주민등록번호 뒷자리 첫 숫자 5~8 (내국인 1~4)
+  var rrn = String(emp.resident_number || '').replace(/\D/g, '');
+  if (rrn.length >= 7) {
+    var g = rrn.charAt(6);
+    if (g >= '5' && g <= '8' && on('insurance_apply_national_pension')) {
+      warns.push('외국인(주민번호 뒷자리 ' + g + ') — 국적에 따라 국민연금 적용제외 대상일 수 있습니다.');
+    }
+  }
+
+  if (String(emp.position || '') === 'CEO' && on('insurance_apply_employment')) {
+    warns.push('대표이사 — 고용보험은 가입 대상이 아닙니다.');
+  }
+
+  // 토글을 껐는데 사유가 비어 있으면 다음 사람이 이유를 알 수 없다
+  var offList = [];
+  if (!on('insurance_apply_national_pension')) offList.push('국민연금');
+  if (!on('insurance_apply_health')) offList.push('건강보험');
+  if (!on('insurance_apply_employment')) offList.push('고용보험');
+  if (offList.length && !String(emp.insurance_exempt_note || '').trim()) {
+    warns.push(offList.join('·') + ' 미가입인데 사유가 비어 있습니다.');
+  }
+  return warns;
+}
+
+/** 편집 중인 폼 값으로 경고 재판정 (저장 전 즉시 반영) */
+function hrdRefreshInsuranceWarnings() {
+  var base = HRD_EMP_CACHE || {};
+  var cur = {};
+  for (var k in base) if (Object.prototype.hasOwnProperty.call(base, k)) cur[k] = base[k];
+  var checks = document.querySelectorAll('#hrdManageCard .hrd-check');
+  for (var i = 0; i < checks.length; i++) {
+    cur[checks[i].getAttribute('data-field')] = checks[i].checked ? 1 : 0;
+  }
+  var note = document.querySelector('#hrdManageCard [data-field="insurance_exempt_note"]');
+  if (note) cur.insurance_exempt_note = note.value;
+  hrdRenderInsuranceWarnings(cur);
+}
+
+var HRD_EMP_CACHE = null;
+
+function hrdRenderInsuranceWarnings(emp) {
+  if (emp && emp.id != null) HRD_EMP_CACHE = emp;
+  var box = document.getElementById('hrdInsWarn');
+  if (!box) { console.warn('[hrDetail] #hrdInsWarn not found'); return; }
+  var warns = hrdInsuranceWarnings(emp);
+  if (!warns.length) { box.className = 'mt-3 hidden'; box.innerHTML = ''; return; }
+  var items = '';
+  for (var i = 0; i < warns.length; i++) {
+    items += '<li>' + hrdEscapeHtml(warns[i]) + '</li>';
+  }
+  box.className = 'mt-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900';
+  box.innerHTML = '<div class="font-semibold mb-1"><i class="fas fa-triangle-exclamation mr-1"></i>가입 설정 확인 필요</div>'
+    + '<ul class="list-disc pl-4 space-y-0.5">' + items + '</ul>';
+}
+
+function hrdEscapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+  });
+}
+
+// ============================================================================
 // 포맷 헬퍼 (주민번호/전화/휴대폰/금액)
 // ============================================================================
 function hrdFmtRRN(v) {
@@ -511,6 +597,7 @@ function hrdPopulateForm(emp) {
     var cf = checks[j].getAttribute('data-field');
     checks[j].checked = !!(emp[cf] === 1 || emp[cf] === '1' || emp[cf] === true);
   }
+  hrdRenderInsuranceWarnings(emp);
   // 소속법인 select 동적 채우기 + 현재값 선택 (DB entities 기반)
   var hrdEntSel = document.querySelector('#hrdManageCard [data-field="entity_id"]');
   if (hrdEntSel && window.fillEntitySelect) window.fillEntitySelect(hrdEntSel, emp.entity_id);
@@ -524,6 +611,13 @@ function hrdPopulateForm(emp) {
 function hrdBindFormatters() {
   if (HRD_FORMATTERS_BOUND) return;
   HRD_FORMATTERS_BOUND = true;
+
+  // 0617: 보험 토글·사유를 편집하는 즉시 경고를 다시 판정 (저장 전에 보이게)
+  var insEls = document.querySelectorAll('#hrdManageCard .hrd-check, #hrdManageCard [data-field="insurance_exempt_note"]');
+  for (var k = 0; k < insEls.length; k++) {
+    insEls[k].addEventListener('change', hrdRefreshInsuranceWarnings);
+    insEls[k].addEventListener('input', hrdRefreshInsuranceWarnings);
+  }
 
   var inputs = document.querySelectorAll('#hrdManageCard .hrd-input');
   for (var i = 0; i < inputs.length; i++) {

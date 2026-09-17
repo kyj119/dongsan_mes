@@ -15,6 +15,7 @@ import {
   loadEmployeeDefaults,
   loadAllEmployeeDefaults,
   loadInsuranceRates,
+  rateRefDate,
   getProrationContext,
   calcProratedInclusive,
 } from './shared'
@@ -175,6 +176,7 @@ coreRouter.post('/preview', async (c) => {
       dependents,
       taxOption,
       year,
+      payPeriod,
       applyNationalPension: empDefaults.insurance_apply_national_pension,
       applyHealth: empDefaults.insurance_apply_health,
       applyLongTermCare: empDefaults.insurance_apply_long_term_care,
@@ -385,7 +387,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const year = Number(payPeriod.slice(0, 4)) || new Date().getFullYear()
 
     const d = await calcDeductions(c.env.DB, {
-      taxablePay: taxable_pay, dependents, taxOption, year,
+      taxablePay: taxable_pay, dependents, taxOption, year, payPeriod,
       applyNationalPension: empDefaults.insurance_apply_national_pension,
       applyHealth: empDefaults.insurance_apply_health,
       applyLongTermCare: empDefaults.insurance_apply_long_term_care,
@@ -569,7 +571,7 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
     }
     // #389: 직원별 N+1(PRAGMA+SELECT) 제거 — 고정수당/보험토글·요율을 루프 밖 1회 prefetch
     const batchDefaultsMap = await loadAllEmployeeDefaults(c.env.DB, empIds)
-    const batchRatesCache = await loadInsuranceRates(c.env.DB, Number(payPeriod.slice(0, 4)))
+    const batchRatesCache = await loadInsuranceRates(c.env.DB, rateRefDate(payPeriod, Number(payPeriod.slice(0, 4))))
     for (const emp of list) {
       // 이미 있으면 스킵
       if (existsSet.has(emp.id)) { skipped++; continue }
@@ -642,7 +644,7 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
       const taxable_pay = payBase + batch_overtime_pay + bonus_fixed + other_allowance_fixed_total + tax_meal
 
       const d = await calcDeductions(c.env.DB, {
-        taxablePay: taxable_pay, dependents, taxOption, year,
+        taxablePay: taxable_pay, dependents, taxOption, year, payPeriod,
         applyNationalPension: empDefaults.insurance_apply_national_pension,
         applyHealth: empDefaults.insurance_apply_health,
         applyLongTermCare: empDefaults.insurance_apply_long_term_care,
@@ -791,7 +793,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
       const syncYear = Number(payPeriod.slice(0, 4)) || new Date().getFullYear()
       // #389: 직원별 N+1(PRAGMA+SELECT·요율) 제거 — 루프 밖 1회 prefetch
       const syncDefaultsMap = await loadAllEmployeeDefaults(c.env.DB, targetList.map((t: any) => Number(t.employee_id)))
-      const syncRatesCache = await loadInsuranceRates(c.env.DB, syncYear)
+      const syncRatesCache = await loadInsuranceRates(c.env.DB, rateRefDate(payPeriod, syncYear))
       const syncStmts: D1PreparedStatement[] = []
       for (const t of targetList) {
         const agg = aggMap[t.employee_id as number]
@@ -887,6 +889,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
           dependents: Math.max(1, Number(t.dependents_count || 1)),
           taxOption: String(t.income_tax_table_option || '100'),
           year: syncYear,
+          payPeriod,
           applyNationalPension: empDefaults.insurance_apply_national_pension,
           applyHealth: empDefaults.insurance_apply_health,
           applyLongTermCare: empDefaults.insurance_apply_long_term_care,

@@ -9,7 +9,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { markLeaveAttendance, clearLeaveAttendance, enumerateDates } from '../utils/leaveAttendance'
-import { calcInclusivePay, loadOvertimeSettings, calcDeductions, loadInsuranceRates, loadAllEmployeeDefaults } from './payroll/shared'
+import { calcInclusivePay, loadOvertimeSettings, calcDeductions, loadInsuranceRates, rateRefDate, loadAllEmployeeDefaults } from './payroll/shared'
 import { kstYear, kstYmd } from '../utils/kstDate'
 import { sendEmail } from '../services/emailProvider'
 
@@ -1183,7 +1183,7 @@ leavesRouter.post('/apply-unused-allowance', requireRole('ADMIN', 'MANAGER'), as
     const ot = await loadOvertimeSettings(c.env.DB)
     const baseHours = ot.monthlyWorkHours || 209
     // #469: 공제 재계산용 요율/직원 보험토글 prefetch (루프 밖 1회)
-    const ratesCache = await loadInsuranceRates(c.env.DB, year)
+    const ratesCache = await loadInsuranceRates(c.env.DB, rateRefDate(payPeriod, year))
     const empDefaultsMap = await loadAllEmployeeDefaults(c.env.DB, results.map((r) => Number(r.employee_id)))
 
     const stmts: any[] = []
@@ -1220,6 +1220,7 @@ leavesRouter.post('/apply-unused-allowance', requireRole('ADMIN', 'MANAGER'), as
         dependents: Math.max(1, Number(r.dependents_count || 1)),
         taxOption: String(r.income_tax_table_option || '100'),
         year,
+        payPeriod,
         applyNationalPension: empDef?.insurance_apply_national_pension,
         applyHealth: empDef?.insurance_apply_health,
         applyLongTermCare: empDef?.insurance_apply_long_term_care,

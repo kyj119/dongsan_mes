@@ -123,9 +123,10 @@ window.prRLoadRates = async function() {
         '<td class="px-4 py-2 text-right">' + r.employer_rate + '%</td>' +
         '<td class="px-4 py-2 text-xs text-gray-600">' + (r.base === 'HEALTH_INSURANCE' ? '건강보험료' : '과세급여') + '</td>' +
         '<td class="px-4 py-2 text-right text-xs text-gray-600">' + minMax + '</td>' +
+        '<td class="px-4 py-2 text-xs text-gray-600 whitespace-nowrap">' + (r.effective_from || '-') + ' ~ ' + (r.effective_to || '') + '</td>' +
         '<td class="px-4 py-2 text-center whitespace-nowrap">' +
-          '<button onclick="prROpenRateModal(\'' + r.insurance_type + '\')" class="text-blue-600 hover:text-blue-800 mx-1" title="수정"><i class="fas fa-edit"></i></button>' +
-          '<button onclick="prRDeleteRate(\'' + r.insurance_type + '\')" class="text-red-600 hover:text-red-800 mx-1" title="삭제"><i class="fas fa-trash"></i></button>' +
+          '<button onclick="prROpenRateModal(\'' + r.insurance_type + '\', \'' + (r.effective_from || '') + '\')" class="text-blue-600 hover:text-blue-800 mx-1" title="수정"><i class="fas fa-edit"></i></button>' +
+          '<button onclick="prRDeleteRate(\'' + r.insurance_type + '\', \'' + (r.effective_from || '') + '\')" class="text-red-600 hover:text-red-800 mx-1" title="삭제"><i class="fas fa-trash"></i></button>' +
         '</td>' +
         '</tr>';
     }
@@ -135,7 +136,7 @@ window.prRLoadRates = async function() {
   }
 };
 
-window.prROpenRateModal = async function(type) {
+window.prROpenRateModal = async function(type, effectiveFrom) {
   document.getElementById('prREditModal').classList.remove('hidden');
   document.getElementById('prREditModal').classList.add('flex');
   var year = parseInt(document.getElementById('prRYear').value);
@@ -148,7 +149,8 @@ window.prROpenRateModal = async function(type) {
     try {
       var res = await axios.get('/api/payroll/rates/' + year);
       var rows = res.data.data || [];
-      var row = rows.find(function(r) { return r.insurance_type === type; });
+      var row = rows.find(function(r) { return r.insurance_type === type && (!effectiveFrom || r.effective_from === effectiveFrom); })
+        || rows.find(function(r) { return r.insurance_type === type; });
       if (row) {
         document.getElementById('prREditTotal').value = row.total_rate;
         document.getElementById('prREditEmp').value = row.employee_rate;
@@ -207,11 +209,13 @@ window.prRSaveRate = async function() {
   }
 };
 
-window.prRDeleteRate = async function(type) {
-  if (!(await showConfirm((prRInsuranceLabels[type] || type) + ' 요율을 삭제하시겠습니까?', { danger: true }))) return;
+window.prRDeleteRate = async function(type, effectiveFrom) {
+  var label = (prRInsuranceLabels[type] || type) + (effectiveFrom ? ' (' + effectiveFrom + '~)' : '');
+  if (!(await showConfirm(label + ' 요율을 삭제하시겠습니까?', { danger: true }))) return;
   var year = document.getElementById('prRYear').value;
   try {
-    await axios.delete('/api/payroll/rates/' + year + '/' + type);
+    await axios.delete('/api/payroll/rates/' + year + '/' + type
+      + (effectiveFrom ? '?effective_from=' + encodeURIComponent(effectiveFrom) : ''));
     prRLoadRates();
   } catch (e) { showToast('삭제 실패', 'error'); }
 };

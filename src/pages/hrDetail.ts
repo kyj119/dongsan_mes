@@ -230,6 +230,11 @@ export function hrDetailPage(c: Context<HonoEnv>) {
                 <label class="flex items-center gap-2 text-sm"><input type="checkbox" data-field="insurance_apply_employment" class="hrd-check" disabled> 고용보험</label>
                 <label class="flex items-center gap-2 text-sm"><input type="checkbox" data-field="insurance_apply_industrial_accident" class="hrd-check" disabled> 산재보험</label>
               </div>
+              <div class="mt-3">
+                <label class="block text-xs text-gray-500 mb-1">미가입 사유 <span class="text-gray-400">(체크 해제한 보험이 있으면 이유를 남겨 주세요 — 예: 고용=친인척, 국민연금=60세 초과)</span></label>
+                <input data-field="insurance_exempt_note" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" placeholder="예: 고용보험 = 대표이사 / 국민연금 = 외국인 적용제외" disabled>
+              </div>
+              <div id="hrdInsWarn" class="mt-3 hidden"></div>
             </section>
 
             <!-- CAPS 연동 -->

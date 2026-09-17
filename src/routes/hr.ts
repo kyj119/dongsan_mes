@@ -438,7 +438,7 @@ hrRouter.post('/employees', async (c) => {
       'insurance_grade',
       'insurance_apply_national_pension', 'insurance_apply_health',
       'insurance_apply_long_term_care', 'insurance_apply_employment',
-      'insurance_apply_industrial_accident',
+      'insurance_apply_industrial_accident', 'insurance_exempt_note',
       'caps_id', 'caps_site_id', 'caps_sync_enabled',
       'pay_type',
       'emergency_contact', 'emergency_phone', 'notes',
@@ -525,7 +525,7 @@ hrRouter.put('/employees/:id', async (c) => {
       // 4대보험 토글
       'insurance_apply_national_pension', 'insurance_apply_health',
       'insurance_apply_long_term_care', 'insurance_apply_employment',
-      'insurance_apply_industrial_accident',
+      'insurance_apply_industrial_accident', 'insurance_exempt_note',
       // CAPS 매핑
       'caps_id', 'caps_site_id', 'caps_sync_enabled',
       // 급여유형
@@ -684,7 +684,7 @@ hrRouter.put('/employees/:id', async (c) => {
 
     // 반환: 업데이트된 행
     const updated = await c.env.DB.prepare(
-      `SELECT id, employee_code, user_id, name, name_eng, resident_number, email, phone, mobile, address, postal_code, address_detail, department, position, job_title, employment_type, hire_date, resignation_date, status, base_salary, hourly_rate, bank_name, bank_account, bank_holder, emergency_contact, emergency_phone, notes, entity_id, pay_type, position_allowance, vehicle_allowance, meal_allowance_fixed, special_bonus_fixed, other_allowance_fixed, mutual_aid_fee, other_deduction_fixed, dependents_count, children_under_20_count, income_tax_table_option, insurance_grade, insurance_apply_national_pension, insurance_apply_health, insurance_apply_long_term_care, insurance_apply_employment, insurance_apply_industrial_accident, caps_employee_code, caps_id, caps_site_id, caps_sync_enabled, caps_last_synced_at, birth_date, overtime_daily_hours, overtime_work_days, created_at, updated_at FROM employees WHERE id = ?`
+      `SELECT id, employee_code, user_id, name, name_eng, resident_number, email, phone, mobile, address, postal_code, address_detail, department, position, job_title, employment_type, hire_date, resignation_date, status, base_salary, hourly_rate, bank_name, bank_account, bank_holder, emergency_contact, emergency_phone, notes, entity_id, pay_type, position_allowance, vehicle_allowance, meal_allowance_fixed, special_bonus_fixed, other_allowance_fixed, mutual_aid_fee, other_deduction_fixed, dependents_count, children_under_20_count, income_tax_table_option, insurance_grade, insurance_apply_national_pension, insurance_apply_health, insurance_apply_long_term_care, insurance_apply_employment, insurance_apply_industrial_accident, insurance_exempt_note, caps_employee_code, caps_id, caps_site_id, caps_sync_enabled, caps_last_synced_at, birth_date, overtime_daily_hours, overtime_work_days, created_at, updated_at FROM employees WHERE id = ?`
     ).bind(id).first<any>()
 
     // RRN 복호화 + 마스킹
