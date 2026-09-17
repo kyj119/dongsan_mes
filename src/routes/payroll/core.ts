@@ -16,6 +16,7 @@ import {
   loadAllEmployeeDefaults,
   loadInsuranceRates,
   rateRefDate,
+  parseDeductionOverrides,
   getProrationContext,
   calcProratedInclusive,
 } from './shared'
@@ -171,12 +172,17 @@ coreRouter.post('/preview', async (c) => {
     const taxOption = String(emp.income_tax_table_option || '100')
     const year = Number(payPeriod.slice(0, 4)) || new Date().getFullYear()
 
+    const previewOvRow = await c.env.DB.prepare(
+      `SELECT deduction_overrides FROM payroll WHERE employee_id = ? AND pay_period = ?`
+    ).bind(employeeId, payPeriod).first<{ deduction_overrides: string | null }>().catch(() => null)
+
     const deductions = await calcDeductions(c.env.DB, {
       taxablePay: taxable_pay,
       dependents,
       taxOption,
       year,
       payPeriod,
+      deductionOverrides: parseDeductionOverrides(previewOvRow?.deduction_overrides),
       applyNationalPension: empDefaults.insurance_apply_national_pension,
       applyHealth: empDefaults.insurance_apply_health,
       applyLongTermCare: empDefaults.insurance_apply_long_term_care,
@@ -386,8 +392,28 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const taxOption = String(emp.income_tax_table_option || '100')
     const year = Number(payPeriod.slice(0, 4)) || new Date().getFullYear()
 
+    // 0618(T2): 사람이 고정한 공제가 있으면 계산을 이긴다. 재계산해도 살아남아야 하므로 여기서 읽는다.
+    //   body 에 키가 명시되면 그 값으로 교체(null = 해제), 없으면 DB 값을 그대로 유지한다.
+    //   UPSERT 에는 **항상** 최종값을 쓴다 — 조건부 SET 을 만들면 "유지"와 "해제"가 구분되지 않는다.
+    const ovRow = await c.env.DB.prepare(
+      `SELECT deduction_overrides, deduction_overrides_at, deduction_overrides_by
+         FROM payroll WHERE employee_id = ? AND pay_period = ?`
+    ).bind(employeeId, payPeriod).first<{
+      deduction_overrides: string | null
+      deduction_overrides_at: string | null
+      deduction_overrides_by: number | null
+    }>().catch(() => null)
+    const existingOvMeta = ovRow ? { at: ovRow.deduction_overrides_at, by: ovRow.deduction_overrides_by } : null
+    const ovKeyGiven = Object.prototype.hasOwnProperty.call(body, 'deduction_overrides')
+    const deductionOverrides = ovKeyGiven
+      ? (body.deduction_overrides == null ? {} : parseDeductionOverrides(body.deduction_overrides))
+      : parseDeductionOverrides(ovRow?.deduction_overrides)
+    const ovJson = Object.keys(deductionOverrides).length ? JSON.stringify(deductionOverrides) : null
+    const ovChanged = ovJson !== (ovRow?.deduction_overrides ?? null)
+
     const d = await calcDeductions(c.env.DB, {
       taxablePay: taxable_pay, dependents, taxOption, year, payPeriod,
+      deductionOverrides,
       applyNationalPension: empDefaults.insurance_apply_national_pension,
       applyHealth: empDefaults.insurance_apply_health,
       applyLongTermCare: empDefaults.insurance_apply_long_term_care,
@@ -438,6 +464,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
         employer_employment_insurance, employer_industrial_accident,
         total_deduction, net_pay,
         work_days, overtime_hours, extra_overtime_hours, absent_days, late_count, leave_used_days,
+        deduction_overrides, deduction_overrides_at, deduction_overrides_by,
         status, notes, created_by, entity_id, created_at, updated_at
       ) VALUES (
         ?, ?, ?,
@@ -452,6 +479,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
         ?, ?,
         ?, ?,
         ?, ?, ?, ?, ?, ?,
+        ?, ?, ?,
         'PENDING', ?, ?, ?, datetime('now'), datetime('now')
       )
       ON CONFLICT(employee_id, pay_period) DO UPDATE SET
@@ -477,6 +505,9 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
         income_tax=excluded.income_tax,
         local_tax=excluded.local_tax,
         other_deduction=excluded.other_deduction,
+        deduction_overrides=excluded.deduction_overrides,
+        deduction_overrides_at=excluded.deduction_overrides_at,
+        deduction_overrides_by=excluded.deduction_overrides_by,
         employer_national_pension=excluded.employer_national_pension,
         employer_health_insurance=excluded.employer_health_insurance,
         employer_long_term_care=excluded.employer_long_term_care,
@@ -505,6 +536,11 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
       d.employer_employment_insurance, d.employer_industrial_accident,
       total_deduction, net_pay,
       work_days, overtime_hours, extra_overtime_hours, absent_days, late_count, leave_used_days,
+      // 0618: 오버라이드 본문 + 누가/언제 고정했는지. 내용이 바뀐 경우에만 시각·작성자를 갱신한다
+      //   (재계산 때마다 찍히면 "언제 사람이 손댔나"를 잃는다).
+      ovJson,
+      ovJson == null ? null : (ovChanged ? new Date().toISOString() : (existingOvMeta?.at ?? new Date().toISOString())),
+      ovJson == null ? null : (ovChanged ? (user?.id || null) : (existingOvMeta?.by ?? user?.id ?? null)),
       // 귀속 법인 = 직원의 entity (전체모드 ADMIN 이 세션값 0→1 로 찍으면 선명·청주 급여가 동산 귀속)
       notes, user?.id || null, emp.entity_id || getEntityId(c) || 1
     ).run()
@@ -732,6 +768,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
              p.meal_allowance, p.transportation_allowance, p.other_allowance,
              p.annual_leave_pay, p.bonus, p.night_pay, p.holiday_pay,
              p.nontax_meal, p.nontax_transport, p.nontax_childcare, p.other_deduction,
+             p.deduction_overrides,
              e.base_salary AS emp_base,
              COALESCE(e.overtime_daily_hours, 0) AS odh,
              COALESCE(e.overtime_work_days, 22) AS owd,
@@ -890,6 +927,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
           taxOption: String(t.income_tax_table_option || '100'),
           year: syncYear,
           payPeriod,
+          deductionOverrides: parseDeductionOverrides((t as any).deduction_overrides),
           applyNationalPension: empDefaults.insurance_apply_national_pension,
           applyHealth: empDefaults.insurance_apply_health,
           applyLongTermCare: empDefaults.insurance_apply_long_term_care,

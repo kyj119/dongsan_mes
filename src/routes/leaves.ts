@@ -9,7 +9,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { markLeaveAttendance, clearLeaveAttendance, enumerateDates } from '../utils/leaveAttendance'
-import { calcInclusivePay, loadOvertimeSettings, calcDeductions, loadInsuranceRates, rateRefDate, loadAllEmployeeDefaults } from './payroll/shared'
+import { calcInclusivePay, loadOvertimeSettings, calcDeductions, loadInsuranceRates, rateRefDate, parseDeductionOverrides, loadAllEmployeeDefaults } from './payroll/shared'
 import { kstYear, kstYmd } from '../utils/kstDate'
 import { sendEmail } from '../services/emailProvider'
 
@@ -1170,7 +1170,8 @@ leavesRouter.post('/apply-unused-allowance', requireRole('ADMIN', 'MANAGER'), as
         (COALESCE(lb.accrued,0)+COALESCE(lb.granted_extra,0)+COALESCE(lb.carried_over,0)-COALESCE(lb.used,0)-COALESCE(lb.expired,0)) as remaining_annual,
         p.id as payroll_id, p.base_salary as p_base, p.overtime_pay, p.night_pay, p.holiday_pay,
         p.meal_allowance, p.transportation_allowance, p.other_allowance, p.bonus,
-        p.nontax_meal, p.nontax_transport, p.nontax_childcare, p.other_deduction
+        p.nontax_meal, p.nontax_transport, p.nontax_childcare, p.other_deduction,
+        p.deduction_overrides
       FROM employees e
       LEFT JOIN (
         SELECT employee_id, SUM(accrued) accrued, SUM(granted_extra) granted_extra, SUM(used) used, SUM(carried_over) carried_over, SUM(expired) expired
@@ -1227,6 +1228,7 @@ leavesRouter.post('/apply-unused-allowance', requireRole('ADMIN', 'MANAGER'), as
         applyEmployment: empDef?.insurance_apply_employment,
         applyIndustrialAccident: empDef?.insurance_apply_industrial_accident,
         pensionBaseOverride: empDef?.pension_base,
+        deductionOverrides: parseDeductionOverrides((r as any).deduction_overrides),
         ratesCache,
       })
       const total_deduction = d.total_deduction + Number(r.other_deduction || 0)

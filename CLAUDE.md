@@ -123,7 +123,7 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 
 ### 계산 규칙 = 값 대조 게이트로만 잡힌다 (`npm run test:calc` · CI 배포 차단)
 **문법이 멀쩡한 계산 오류는 기존 게이트 전부를 통과한다.** 2026-08-25 여신 리팩터링에서 공유 SQL을 서브쿼리로 감싸며 바깥에 `?`를 둬 **파라미터가 한 칸씩 밀렸고**(`a.entity_id=6` → adjustments 전량 누락, 초과 37곳이 108곳으로), typecheck·build·check:dom·sort-audit·entity-audit·smoke가 **전부 통과**했다. prod 배포 후 숫자를 대조해서야 잡혔다.
-- **게이트 = `npm run test:calc`** — **27항목 체인, 목록 정본=`package.json`**(청구면적 `test:orderline`·마감표기 `test:finishing-label`·파일규격 `test:file-dims`·여신 `test:credit`·품목중복 `audit:items:selftest`·4대보험 기간요율 `test:insurance-period` 외 21개). **`deploy.yml`(CI) · `ship:gate`(/ship) · `/deploy-verify` Phase 1 세 경로 전부가 배포 전에 돌린다**(2026-08-25 CI 신설 → 2026-09-10 나머지 둘 편입. 그전엔 로컬 `deploy:prod` 로 내보내면 이 게이트가 배포를 못 막고 **이미 나간 뒤** CI 실패로만 드러났다).
+- **게이트 = `npm run test:calc`** — **28항목 체인, 목록 정본=`package.json`**(청구면적 `test:orderline`·마감표기 `test:finishing-label`·파일규격 `test:file-dims`·여신 `test:credit`·품목중복 `audit:items:selftest`·4대보험 기간요율 `test:insurance-period`·공제 오버라이드 `test:payroll-override` 외 21개). **`deploy.yml`(CI) · `ship:gate`(/ship) · `/deploy-verify` Phase 1 세 경로 전부가 배포 전에 돌린다**(2026-08-25 CI 신설 → 2026-09-10 나머지 둘 편입. 그전엔 로컬 `deploy:prod` 로 내보내면 이 게이트가 배포를 못 막고 **이미 나간 뒤** CI 실패로만 드러났다).
 - `test:hookguard`는 제품이 아니라 **개발환경**(Windows 셸 차단)을 검증 → CI 제외. 로컬 `test:all` + **커밋 훅 차단**(`.claude/hooks/`·`settings.json` 이 dirty 인 커밋만 — `pretooluse-bash.cjs`).
 - 새 계산 규칙을 만들면 **픽스처 테스트를 같이 만든다**. ⚠️로컬 D1이 비면 전부 0이라 판별이 안 된다(그래서 `test:credit`은 in-memory SQLite에 픽스처를 심는다). 상세=memory `feedback-sqlite-placeholder-subquery-order`.
 
@@ -174,6 +174,7 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 - **입·퇴사월은 토글로 표현할 수 없다** — 중도입사 첫 달은 미부과지만 다음 달부터는 가입이다. 토글로 끄면 영구 미공제가 된다. **상태를 속성 칸에 적지 않는다**(§누적 캐시의 「파생으로 뺀다」와 같은 축).
 - **요율은 연 단위가 아니다** — 국민연금 기준소득월액 상·하한은 **매년 7월 재조정**된다. `insurance_rates`가 `UNIQUE(year, insurance_type)`이라 연 1행뿐이어서, 7월 상한 UPDATE가 **상반기 급여에 소급**됐다(6월 재계산 시 302,570 → **313,020**). `effective_from`/`effective_to`는 처음부터 있었는데 **제약이 사용을 막고 있었다**(0617에서 `UNIQUE(insurance_type, effective_from)`로 전환). 조회는 `loadInsuranceRates(db, refDate)` — 같은 보험의 여러 기간 행 중 **`effective_from DESC` 첫 행**을 쓴다(과거 연도 행이 `effective_to` NULL이어도 최신이 이긴다).
 - **공단 고지와 100% 맞출 수는 없다** — 건강보험 4월 연말정산·두루누리 감면·등급 소급은 공단만 아는 값이다. 실무 정석은 *계산*이 아니라 **고지금액 그대로 공제**. 남은 축 = 보수월액(공단은 전년도 기준 1년 고정, MES는 당월 과세급여).
+- **맞출 수 없는 축은 사람이 고정한다** — 공제액에 수동 오버라이드가 있다(0618 `payroll.deduction_overrides` JSON). 기존 컬럼에는 **최종값**이 들어가 집계·명세서 경로를 하나도 안 고친다. 적용 지점은 `calcDeductions` **한 곳뿐**이라 재계산(근태 불러오기)을 해도 살아남는다 — 화면은 📌 로 표시하고 해제는 전용 버튼(빈칸이 아니라 `deduction_overrides:null`). 입력은 `/payroll` **엑셀 입력**(셀 붙여넣기 TSV · 파일). 게이트 = **`test:payroll-override`**.
 - **타입체크·smoke·build 는 이걸 절대 못 잡는다** — 공제가 틀려도 200이다. 게이트 = **`test:insurance-period`**(in-memory 픽스처 24항목, `test:calc` 체인 → CI·`ship:gate`·`/deploy-verify` 전부에 물려 있다). ⚠️로컬 D1이 비면 요율 0행이라 전부 0이 나온다 — 그래서 픽스처를 심는다.
 
 ### 단가는 값이 아니라 **축**이다 (`npm run audit:unit-price-semantics` — ⚠️`--remote` 고정·실행 경로 미배선. prod 대상 **수동** 감사다)

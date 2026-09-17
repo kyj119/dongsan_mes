@@ -57,6 +57,9 @@ export function payrollPage(c: Context<HonoEnv>) {
           <button onclick="payrollSyncAttendance()" class="px-3 py-1.5 text-xs border border-blue-300 text-blue-700 bg-blue-50 rounded hover:bg-blue-100" title="해당 월 attendance 테이블의 연장근무/근무일수/지각/결근을 급여에 반영">
             <i class="fas fa-sync-alt mr-1"></i>근태 불러오기
           </button>
+          <button onclick="payrollOpenPasteModal()" class="px-3 py-1.5 text-xs border border-emerald-300 text-emerald-700 bg-emerald-50 rounded hover:bg-emerald-100" title="엑셀에서 셀을 복사해 붙여넣거나 파일을 올려 지급·공제를 직접 입력">
+            <i class="fas fa-file-excel mr-1"></i>엑셀 입력
+          </button>
           <button onclick="payrollOpenBatchSlip()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50" title="해당 월 전 직원 급여명세서를 새 창에서 일괄 인쇄">
             <i class="fas fa-print mr-1"></i>일괄 명세서
           </button>
@@ -173,6 +176,9 @@ export function payrollPage(c: Context<HonoEnv>) {
           /* 4단 구조: 라벨+금액 셀 / 병합 계 셀 / 근태 메타 */
           .ds-ledger td.lv .lv-l { float: left; color: var(--c-text-muted); font-size: 10px; }
           .ds-ledger td.lv .lv-v { float: right; font-variant-numeric: tabular-nums; }
+          /* 0618: 수동 고정된 공제 — 계산값이 아님을 한눈에 */
+          .ds-ledger td.lv.pr-ov { background: rgba(244, 63, 94, 0.07); box-shadow: inset 2px 0 0 rgba(244, 63, 94, 0.55); }
+          .ds-ledger td.lv.pr-ov .lv-v { font-weight: 700; }
           .ds-ledger td.sumcell { font-size: 12.5px; font-weight: 700; text-align: right; }
           .ds-ledger td.meta { color: var(--c-text-muted); font-size: 10px; }
           .ds-ledger .grp-emp { background: var(--c-success-light); }
@@ -398,6 +404,53 @@ export function payrollPage(c: Context<HonoEnv>) {
           <div class="px-5 py-3 border-t flex justify-end gap-2">
             <button onclick="payrollCloseBulkEdit()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50">취소</button>
             <button onclick="payrollBulkEditApply()" class="ds-btn ds-btn-primary text-xs"><i class="fas fa-pen mr-1"></i>적용</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 엑셀 입력 (0618 · T2) — 붙여넣기/파일 → 미리보기 → 적용 -->
+      <div id="prPasteModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal" style="max-width:72rem">
+          <div class="px-5 py-3 border-b flex items-center justify-between">
+            <h3 class="text-base font-semibold"><i class="fas fa-file-excel mr-1 text-emerald-600"></i>엑셀 입력</h3>
+            <button onclick="payrollClosePaste()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+          </div>
+          <div class="p-5 space-y-3">
+            <div class="text-xs text-gray-600 bg-emerald-50 border border-emerald-200 rounded p-2.5 space-y-1">
+              <div><i class="fas fa-info-circle mr-1 text-emerald-600"></i><b>엑셀에서 머리글 행까지 포함해 복사</b>한 뒤 아래 표를 클릭하고 <b>Ctrl+V</b> 하세요. 파일(.csv/.tsv)을 올려도 됩니다.</div>
+              <div>첫 열은 <b>사번</b> 또는 <b>성명</b>이어야 합니다. 나머지 열은 머리글 이름으로 자동 인식하며, <b>모르는 열은 무시</b>합니다.</div>
+              <div><b>공제(국민연금·건강보험·장기요양·고용보험·소득세·지방소득세)를 입력하면 계산값 대신 그 값이 고정</b>되어 근태 불러오기를 해도 유지됩니다. 해제하려면 빈칸이 아니라 <b>해제</b> 버튼을 쓰세요.</div>
+              <div class="text-gray-500">인식하는 머리글: 사번·성명 / 기본급·연장수당·야간수당·휴일수당·상여금·식대·자가운전·기타수당·연차수당 / 국민연금·건강보험·장기요양·고용보험·소득세·지방소득세·기타공제</div>
+            </div>
+
+            <div class="flex items-center gap-2 flex-wrap">
+              <label class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50 cursor-pointer">
+                <i class="fas fa-upload mr-1"></i>파일 선택
+                <input type="file" id="prPasteFile" accept=".csv,.tsv,.txt" class="hidden" onchange="payrollPasteFile(this)">
+              </label>
+              <button onclick="payrollPasteCopyTemplate()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50"><i class="fas fa-clipboard mr-1"></i>양식 복사</button>
+              <button onclick="payrollPasteClear()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50"><i class="fas fa-eraser mr-1"></i>지우기</button>
+              <div class="flex-1"></div>
+              <span id="prPasteSummary" class="text-xs text-gray-600"></span>
+            </div>
+
+            <textarea id="prPasteArea" rows="5" placeholder="여기를 클릭하고 Ctrl+V — 엑셀에서 복사한 셀 범위를 그대로 붙여넣으세요"
+              class="w-full border border-gray-300 rounded px-2 py-2 text-xs font-mono" oninput="payrollPasteParse()"></textarea>
+
+            <div id="prPastePreviewWrap" class="hidden">
+              <div class="text-xs font-semibold text-gray-700 mb-1">미리보기 <span class="text-gray-400 font-normal">— 변경되는 값만 표시합니다</span></div>
+              <div class="overflow-auto border border-gray-200 rounded" style="max-height:22rem">
+                <table class="ds-table text-xs w-full">
+                  <thead class="sticky top-0 bg-gray-50"><tr id="prPastePreviewHead"></tr></thead>
+                  <tbody id="prPastePreviewBody"></tbody>
+                </table>
+              </div>
+            </div>
+            <div id="prPasteErrors" class="hidden text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2.5"></div>
+          </div>
+          <div class="px-5 py-3 border-t flex justify-end gap-2">
+            <button onclick="payrollClosePaste()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50">취소</button>
+            <button onclick="payrollPasteApply()" id="prPasteApplyBtn" class="ds-btn ds-btn-primary text-xs" disabled><i class="fas fa-check mr-1"></i>적용</button>
           </div>
         </div>
       </div><!-- /prHubPayroll -->

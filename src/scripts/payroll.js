@@ -59,6 +59,10 @@ function prActionsHtml(r) {
     ? '<span class="text-indigo-600 mx-0.5" title="직원 교부됨 (' + escapeHtml(String(r.published_at)) + ')"><i class="fas fa-share-square"></i></span>'
     : '';
   actions += '<button onclick="payrollSyncOne(' + r.id + ')" class="text-amber-600 hover:text-amber-800 mx-0.5" title="이 직원 근태 동기화"><i class="fas fa-sync-alt"></i></button>';
+  // 0618: 공제 고정값이 걸린 행만 해제 버튼을 보여 준다(없으면 누를 일도 없다)
+  if (r.deduction_overrides && r.status === 'PENDING') {
+    actions += '<button onclick="payrollClearOverrides(' + r.id + ')" class="text-rose-600 hover:text-rose-800 mx-0.5" title="공제 고정값 해제 — 계산값으로 되돌립니다"><i class="fas fa-thumbtack"></i></button>';
+  }
   actions += '<button onclick="payrollOpenEditModal(' + r.id + ')" class="text-blue-600 hover:text-blue-800 mx-0.5" title="수정"><i class="fas fa-edit"></i></button>';
   actions += '<button onclick="payrollOpenSlip(' + r.id + ')" class="text-gray-600 hover:text-gray-800 mx-0.5" title="명세서"><i class="fas fa-file-invoice-dollar"></i></button>';
   actions += '<button onclick="payrollOpenYearEnd(' + r.employee_id + ',\'' + year + '\')" class="text-blue-600 hover:text-blue-800 mx-0.5" title="연말정산"><i class="fas fa-file-contract"></i></button>';
@@ -447,6 +451,308 @@ window.payrollSave = async function() {
     window.payrollLoad();
   } catch (e) {
     showToast('저장 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message), 'error');
+  }
+};
+
+// ── 엑셀 입력 (0618 · T2) ─────────────────────────────────────────────────
+//   왜: 공제액은 계산 결과만 저장되고 수동 입력 경로가 없었다(other_deduction 만 예외).
+//   공단 고지·이카운트 대장과 값이 다를 때 맞출 방법이 아예 없었다.
+//   기존 "선택 일괄수정"은 전원에게 **같은 값**만 넣을 수 있어 직원별로 다른 값을 못 넣는다.
+//
+//   입력 경로 2개 — ①엑셀에서 셀 복사 → 붙여넣기(클립보드 TSV, 기본) ②파일(.csv/.tsv)
+//   붙여넣기 → 파싱 → 현재값과 대조(미리보기) → 확인 후 행마다 /api/payroll/save 호출.
+//   미리보기는 이미 화면에 있는 currentPayrollData 로 하므로 서버 왕복이 없다.
+
+// 머리글 → 내부 키. 공백·괄호·단위는 떼고 비교한다(엑셀 머리글이 제각각이라).
+var PR_PASTE_COLS = [
+  { key: 'employee_code', names: ['사번', '사원번호', '직원코드', 'employeecode', 'code'] },
+  { key: 'name',          names: ['성명', '이름', '직원명', 'name'] },
+  // 지급
+  { key: 'base_salary',   names: ['기본급', '급여'], pay: true },
+  { key: 'overtime_pay',  names: ['연장수당', '연장근로수당', '추가근무수당', '연장'], pay: true },
+  { key: 'night_pay',     names: ['야간수당', '야간근로수당', '야간'], pay: true },
+  { key: 'holiday_pay',   names: ['휴일수당', '휴일근로수당', '휴일'], pay: true },
+  { key: 'bonus',         names: ['상여금', '상여', '특별상여'], pay: true },
+  { key: 'meal',          names: ['식대'], pay: true },
+  { key: 'transport',     names: ['자가운전', '차량유지비', '교통비'], pay: true },
+  { key: 'other_allowance', names: ['기타수당', '직책수당'], pay: true },
+  { key: 'annual_leave_pay', names: ['연차수당'], pay: true },
+  { key: 'other_deduction',  names: ['기타공제'], pay: true },
+  // 공제(오버라이드)
+  { key: 'np',  names: ['국민연금'], ded: true },
+  { key: 'hi',  names: ['건강보험'], ded: true },
+  { key: 'ltc', names: ['장기요양', '장기요양보험'], ded: true },
+  { key: 'ei',  names: ['고용보험'], ded: true },
+  { key: 'it',  names: ['소득세'], ded: true },
+  { key: 'lt',  names: ['지방소득세', '지방세'], ded: true },
+];
+var PR_PASTE_LABEL = {
+  base_salary: '기본급', overtime_pay: '연장수당', night_pay: '야간수당', holiday_pay: '휴일수당',
+  bonus: '상여금', meal: '식대', transport: '자가운전', other_allowance: '기타수당',
+  annual_leave_pay: '연차수당', other_deduction: '기타공제',
+  np: '국민연금', hi: '건강보험', ltc: '장기요양', ei: '고용보험', it: '소득세', lt: '지방소득세',
+};
+// payroll 행에서 현재값을 읽는 필드명 (지급 항목은 저장 컬럼명이 입력 키와 다른 것이 있다)
+var PR_PASTE_CURRENT_FIELD = {
+  meal: 'meal_allowance', transport: 'transportation_allowance',
+  np: 'national_pension', hi: 'health_insurance', ltc: 'long_term_care_insurance',
+  ei: 'employment_insurance', it: 'income_tax', lt: 'local_tax',
+};
+var prPasteRows = [];   // [{row, emp, changes:{key:{from,to}}, ded:{...}}]
+
+function prPasteNorm(s) {
+  return String(s == null ? '' : s).replace(/[\s()（）[\]]/g, '').replace(/[·.]/g, '').toLowerCase();
+}
+function prPasteNum(s) {
+  var t = String(s == null ? '' : s).replace(/[^\d.-]/g, '');
+  if (t === '' || t === '-') return null;
+  var n = Number(t);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+window.payrollOpenPasteModal = function() {
+  if (!currentPayrollData || !currentPayrollData.length) {
+    showToast('먼저 급여 목록을 조회하세요', 'warning'); return;
+  }
+  document.getElementById('prPasteModal').classList.remove('hidden');
+  document.getElementById('prPasteModal').classList.add('flex');
+  payrollPasteClear();
+};
+window.payrollClosePaste = function() {
+  var m = document.getElementById('prPasteModal');
+  if (!m) return;
+  m.classList.add('hidden'); m.classList.remove('flex');
+};
+window.payrollPasteClear = function() {
+  var ta = document.getElementById('prPasteArea');
+  if (ta) ta.value = '';
+  prPasteRows = [];
+  payrollPasteRenderPreview();
+};
+window.payrollPasteFile = function(input) {
+  var f = input && input.files && input.files[0];
+  if (!f) return;
+  var rd = new FileReader();
+  rd.onload = function() {
+    document.getElementById('prPasteArea').value = String(rd.result || '');
+    payrollPasteParse();
+  };
+  rd.readAsText(f, 'utf-8');
+  input.value = '';
+};
+window.payrollPasteCopyTemplate = function() {
+  var head = ['사번', '성명', '기본급', '연장수당', '상여금', '식대', '국민연금', '건강보험', '장기요양', '고용보험', '소득세', '지방소득세'];
+  var lines = [head.join('\t')];
+  for (var i = 0; i < (currentPayrollData || []).length; i++) {
+    var r = currentPayrollData[i];
+    lines.push([r.employee_code || '', r.employee_name || '', '', '', '', '', '', '', '', '', '', ''].join('\t'));
+  }
+  var text = lines.join('\r\n');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() { showToast('양식을 클립보드에 복사했습니다 — 엑셀에 붙여넣어 채운 뒤 다시 복사해 오세요', 'success'); },
+      function() { document.getElementById('prPasteArea').value = text; });
+  } else {
+    document.getElementById('prPasteArea').value = text;
+  }
+};
+
+window.payrollPasteParse = function() {
+  var raw = (document.getElementById('prPasteArea') || {}).value || '';
+  prPasteRows = [];
+  var errors = [];
+  var lines = raw.replace(/\r\n/g, '\n').split('\n').filter(function(l) { return l.trim() !== ''; });
+  if (!lines.length) { payrollPasteRenderPreview(errors); return; }
+
+  var split = function(l) { return l.indexOf('\t') >= 0 ? l.split('\t') : l.split(','); };
+  var head = split(lines[0]).map(prPasteNorm);
+  // 머리글 → 열 인덱스
+  var colOf = {};
+  for (var c = 0; c < head.length; c++) {
+    for (var d = 0; d < PR_PASTE_COLS.length; d++) {
+      var def = PR_PASTE_COLS[d];
+      for (var n = 0; n < def.names.length; n++) {
+        if (head[c] === prPasteNorm(def.names[n])) { if (colOf[def.key] == null) colOf[def.key] = c; }
+      }
+    }
+  }
+  if (colOf.employee_code == null && colOf.name == null) {
+    errors.push('첫 행에서 "사번" 또는 "성명" 열을 찾지 못했습니다. 엑셀의 머리글 행까지 포함해 복사했는지 확인하세요.');
+    payrollPasteRenderPreview(errors); return;
+  }
+
+  for (var i = 1; i < lines.length; i++) {
+    var cells = split(lines[i]);
+    var code = colOf.employee_code != null ? String(cells[colOf.employee_code] || '').trim() : '';
+    var nm = colOf.name != null ? String(cells[colOf.name] || '').trim() : '';
+    if (!code && !nm) continue;
+    var emp = null;
+    for (var k = 0; k < currentPayrollData.length; k++) {
+      var r = currentPayrollData[k];
+      if (code && String(r.employee_code || '').trim() === code) { emp = r; break; }
+    }
+    if (!emp && nm) {
+      var hits = currentPayrollData.filter(function(r) { return String(r.employee_name || '').trim() === nm; });
+      if (hits.length === 1) emp = hits[0];
+      else if (hits.length > 1) { errors.push((i + 1) + '행: 성명 "' + nm + '" 이 여러 명입니다 — 사번 열을 넣어 주세요.'); continue; }
+    }
+    if (!emp) { errors.push((i + 1) + '행: ' + (code || nm) + ' — 이 달 급여 목록에 없습니다.'); continue; }
+    if (emp.status !== 'PENDING') { errors.push((i + 1) + '행: ' + (emp.employee_name || '') + ' — 작성중(PENDING)이 아니라 건너뜁니다.'); continue; }
+
+    var changes = {};
+    for (var key in colOf) {
+      if (key === 'employee_code' || key === 'name') continue;
+      var v = prPasteNum(cells[colOf[key]]);
+      if (v == null) continue;                       // 빈칸 = 변경 없음
+      var field = PR_PASTE_CURRENT_FIELD[key] || key;
+      var cur = Number(emp[field] || 0);
+      if (cur === v) continue;                       // 같으면 변경 아님
+      changes[key] = { from: cur, to: v };
+    }
+    if (Object.keys(changes).length) prPasteRows.push({ emp: emp, changes: changes });
+  }
+  payrollPasteRenderPreview(errors);
+};
+
+function payrollPasteRenderPreview(errors) {
+  var wrap = document.getElementById('prPastePreviewWrap');
+  var head = document.getElementById('prPastePreviewHead');
+  var body = document.getElementById('prPastePreviewBody');
+  var errBox = document.getElementById('prPasteErrors');
+  var btn = document.getElementById('prPasteApplyBtn');
+  var sum = document.getElementById('prPasteSummary');
+  if (!wrap || !head || !body) { console.warn('[payroll] paste preview 요소 없음'); return; }
+
+  errors = errors || [];
+  if (errors.length) { errBox.classList.remove('hidden'); errBox.innerHTML = errors.map(prEsc).join('<br>'); }
+  else { errBox.classList.add('hidden'); errBox.innerHTML = ''; }
+
+  if (!prPasteRows.length) {
+    wrap.classList.add('hidden'); body.innerHTML = '';
+    if (btn) btn.disabled = true;
+    if (sum) sum.textContent = '';
+    return;
+  }
+  // 등장한 항목만 열로 세운다
+  var keys = [];
+  prPasteRows.forEach(function(r) { for (var k in r.changes) if (keys.indexOf(k) < 0) keys.push(k); });
+  keys.sort(function(a, b) {
+    var order = Object.keys(PR_PASTE_LABEL);
+    return order.indexOf(a) - order.indexOf(b);
+  });
+  head.innerHTML = '<th class="text-left">사번</th><th class="text-left">성명</th>'
+    + keys.map(function(k) {
+        var isDed = ['np','hi','ltc','ei','it','lt'].indexOf(k) >= 0;
+        return '<th class="text-right' + (isDed ? ' text-rose-700' : '') + '">' + prEsc(PR_PASTE_LABEL[k] || k) + (isDed ? ' <i class="fas fa-thumbtack" title="고정(오버라이드)"></i>' : '') + '</th>';
+      }).join('');
+  body.innerHTML = prPasteRows.map(function(r) {
+    return '<tr>'
+      + '<td>' + prEsc(r.emp.employee_code || '') + '</td>'
+      + '<td>' + prEsc(r.emp.employee_name || '') + '</td>'
+      + keys.map(function(k) {
+          var ch = r.changes[k];
+          if (!ch) return '<td class="text-right text-gray-300">·</td>';
+          return '<td class="text-right whitespace-nowrap"><span class="text-gray-400 line-through">' + ch.from.toLocaleString() + '</span> '
+            + '<span class="font-semibold">' + ch.to.toLocaleString() + '</span></td>';
+        }).join('')
+      + '</tr>';
+  }).join('');
+  wrap.classList.remove('hidden');
+  if (btn) btn.disabled = false;
+  if (sum) sum.textContent = prPasteRows.length + '명 변경 예정';
+}
+
+function prEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+  });
+}
+
+window.payrollPasteApply = async function() {
+  if (!prPasteRows.length) return;
+  var btn = document.getElementById('prPasteApplyBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> 적용 중...'; }
+  var DED = ['np','hi','ltc','ei','it','lt'];
+  var done = 0, failed = 0;
+  for (var i = 0; i < prPasteRows.length; i++) {
+    var r = prPasteRows[i], emp = r.emp, ch = r.changes;
+    var pick = function(key, cur) { return ch[key] != null ? ch[key].to : cur; };
+    // 공제 오버라이드: 기존 것 + 이번에 들어온 것 (빈칸은 기존 유지)
+    var ov = {};
+    try { ov = emp.deduction_overrides ? JSON.parse(emp.deduction_overrides) : {}; } catch (e) { ov = {}; }
+    var touched = false;
+    for (var d = 0; d < DED.length; d++) {
+      if (ch[DED[d]] != null) { ov[DED[d]] = ch[DED[d]].to; touched = true; }
+    }
+    var body = {
+      employee_id: emp.employee_id,
+      pay_period: emp.pay_period,
+      pay_date: emp.pay_date || '',
+      base_salary: pick('base_salary', Number(emp.base_salary) || 0),
+      overtime_hours: parseFloat(emp.overtime_hours) || 0,
+      overtime_pay: pick('overtime_pay', Number(emp.overtime_pay) || 0),
+      night_pay: pick('night_pay', Number(emp.night_pay) || 0),
+      holiday_pay: pick('holiday_pay', Number(emp.holiday_pay) || 0),
+      annual_leave_pay: pick('annual_leave_pay', Number(emp.annual_leave_pay) || 0),
+      bonus: pick('bonus', Number(emp.bonus) || 0),
+      other_allowance: pick('other_allowance', Number(emp.other_allowance) || 0),
+      meal: pick('meal', Number(emp.meal_allowance) || 0),
+      transport: pick('transport', Number(emp.transportation_allowance) || 0),
+      childcare: Number(emp.nontax_childcare) || 0,
+      work_days: parseFloat(emp.work_days) || 0,
+      absent_days: parseFloat(emp.absent_days) || 0,
+      late_count: parseInt(emp.late_count) || 0,
+      leave_used_days: parseFloat(emp.leave_used_days) || 0,
+      other_deduction: pick('other_deduction', Number(emp.other_deduction) || 0),
+      notes: emp.notes || '',
+    };
+    if (touched) body.deduction_overrides = ov;   // 키가 없으면 서버가 기존 값을 유지한다
+    try { await axios.post('/api/payroll/save', body); done++; }
+    catch (e) { failed++; console.error('[payroll] paste save 실패', emp.employee_name, e); }
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check mr-1"></i>적용'; }
+  payrollClosePaste();
+  showToast('엑셀 입력: ' + done + '명 적용' + (failed ? ' · 실패 ' + failed + '명' : ''), failed ? 'warning' : 'success');
+  payrollLoad();
+};
+
+/** 공제 고정값 해제 → 계산값으로 되돌린다 (0618) */
+window.payrollClearOverrides = async function(id) {
+  var row = (currentPayrollData || []).find(function(x) { return x.id === id; });
+  if (!row) { showToast('급여 행을 찾을 수 없습니다', 'error'); return; }
+  var names = [];
+  try {
+    var ov = JSON.parse(row.deduction_overrides || '{}');
+    for (var k in ov) names.push(PR_PASTE_LABEL[k] || k);
+  } catch (e) { /* ignore: 깨진 JSON은 어차피 해제 대상 */ }
+  if (!(await showConfirm((row.employee_name || '') + ' — 고정된 공제(' + (names.join('·') || '전체') + ')를 해제하고 계산값으로 되돌립니다. 계속할까요?'))) return;
+  try {
+    await axios.post('/api/payroll/save', {
+      employee_id: row.employee_id,
+      pay_period: row.pay_period,
+      pay_date: row.pay_date || '',
+      base_salary: Number(row.base_salary) || 0,
+      overtime_hours: parseFloat(row.overtime_hours) || 0,
+      overtime_pay: Number(row.overtime_pay) || 0,
+      night_pay: Number(row.night_pay) || 0,
+      holiday_pay: Number(row.holiday_pay) || 0,
+      annual_leave_pay: Number(row.annual_leave_pay) || 0,
+      bonus: Number(row.bonus) || 0,
+      other_allowance: Number(row.other_allowance) || 0,
+      meal: Number(row.meal_allowance) || 0,
+      transport: Number(row.transportation_allowance) || 0,
+      childcare: Number(row.nontax_childcare) || 0,
+      work_days: parseFloat(row.work_days) || 0,
+      absent_days: parseFloat(row.absent_days) || 0,
+      late_count: parseInt(row.late_count) || 0,
+      leave_used_days: parseFloat(row.leave_used_days) || 0,
+      other_deduction: Number(row.other_deduction) || 0,
+      notes: row.notes || '',
+      deduction_overrides: null,   // 명시적 null = 해제 (키를 안 보내면 유지된다)
+    });
+    showToast('공제 고정값을 해제했습니다', 'success');
+    payrollLoad();
+  } catch (e) {
+    showToast('해제 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message), 'error');
   }
 };
 
@@ -1043,10 +1349,24 @@ function prBandWidth(withUi){
   return w;
 }
 // 라벨+금액 셀. item=null → 빈 자리(공제 4단째 우측)
+// 0618: 공제 오버라이드(사람이 고정한 값)는 계산값이 아니므로 화면에서 구분되어야 한다.
+//   구분이 없으면 "왜 재계산해도 안 바뀌지?"를 영원히 못 찾는다.
+var PR_OV_FIELD_KEY = {
+  national_pension: 'np', health_insurance: 'hi', long_term_care_insurance: 'ltc',
+  employment_insurance: 'ei', income_tax: 'it', local_tax: 'lt',
+};
+function prOverrides(src) {
+  if (!src || !src.deduction_overrides) return {};
+  try { return JSON.parse(src.deduction_overrides) || {}; } catch (e) { return {}; }
+}
 function prBandLvCell(item, src, tint){
   if (!item) return '<td class="lv '+tint+' z"></td>';
   var v = Math.round(prNum(src, item.key)) || 0;
-  return '<td class="lv '+tint+(v===0?' z':'')+'"><span class="lv-l">'+item.label+'</span><span class="lv-v">'+prLC(v)+'</span></td>';
+  var ovKey = PR_OV_FIELD_KEY[item.key];
+  var pinned = ovKey && prOverrides(src)[ovKey] != null;
+  return '<td class="lv '+tint+(v===0?' z':'')+(pinned?' pr-ov':'')+'"'
+    + (pinned ? ' title="수동 고정값 — 근태 불러오기를 해도 바뀌지 않습니다"' : '')
+    + '><span class="lv-l">'+item.label+(pinned?' <i class="fas fa-thumbtack" style="font-size:9px;opacity:.75"></i>':'')+'</span><span class="lv-v">'+prLC(v)+'</span></td>';
 }
 function prBandItemCells(src, rowIdx, tintPay, tintDed){
   var html = '';

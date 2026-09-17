@@ -260,6 +260,9 @@ export interface CalcInput {
   pensionBaseOverride?: number | null
   // #389: 일괄 처리 시 year별 요율을 미리 1회 로드해 주입(루프 N+1 제거). 미지정이면 매 호출 조회(하위호환).
   ratesCache?: Record<string, InsuranceRate>
+  // 0618(T2): 사람이 고정한 공제액. 계산 결과를 덮는다 — 재계산(근태 불러오기)이 돌아도 살아남는다.
+  //   호출부가 payroll.deduction_overrides 를 parseDeductionOverrides 로 읽어 넘긴다.
+  deductionOverrides?: DeductionOverrides
 }
 
 export interface CalcResult {
@@ -278,6 +281,67 @@ export interface CalcResult {
   // 디버그 정보
   applied_tax_row_id?: number | null
   notes?: string
+}
+
+// ============================================================================
+// 공제 수동 오버라이드 (0618 · T2)
+//   계산값을 사람이 고정한 값으로 덮는다. 공단 고지·이카운트 대장과 맞출 때 쓴다.
+//   ★ 계산 경로가 여러 개이므로(save/batch/sync/leaves) **덮어쓰기는 여기 한 곳**에서만 한다.
+//     각 경로가 제 나름대로 덮으면 한 곳을 고칠 때 다른 곳이 빠진다(형제 스윕 사고의 전형).
+// ============================================================================
+export const DEDUCTION_OVERRIDE_KEYS = ['np', 'hi', 'ltc', 'ei', 'it', 'lt'] as const
+export type DeductionOverrideKey = typeof DEDUCTION_OVERRIDE_KEYS[number]
+export type DeductionOverrides = Partial<Record<DeductionOverrideKey, number>>
+
+/** CalcResult 필드명 ↔ 오버라이드 키 */
+const OVERRIDE_FIELD: Record<DeductionOverrideKey, keyof CalcResult> = {
+  np: 'national_pension',
+  hi: 'health_insurance',
+  ltc: 'long_term_care_insurance',
+  ei: 'employment_insurance',
+  it: 'income_tax',
+  lt: 'local_tax',
+}
+
+/**
+ * DB(TEXT)에 저장된 오버라이드를 파싱. 형태가 깨졌으면 **무시**한다(오버라이드 없음으로 동작).
+ * 깨진 JSON 때문에 급여 계산 전체가 죽는 것이 더 나쁘다.
+ */
+export function parseDeductionOverrides(raw: unknown): DeductionOverrides {
+  if (raw == null || raw === '') return {}
+  let obj: any = raw
+  if (typeof raw === 'string') {
+    try { obj = JSON.parse(raw) } catch { return {} }   // ignore: 깨진 JSON = 오버라이드 없음
+  }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return {}
+  const out: DeductionOverrides = {}
+  for (const k of DEDUCTION_OVERRIDE_KEYS) {
+    const v = obj[k]
+    if (v == null || v === '') continue
+    const n = Number(v)
+    if (!Number.isFinite(n) || n < 0) continue          // 음수·NaN은 버린다
+    out[k] = Math.round(n)
+  }
+  return out
+}
+
+/**
+ * 계산 결과에 오버라이드를 적용하고 total_deduction 을 다시 합산한다.
+ * 회사부담분(employer_*)은 건드리지 않는다 — 직원 공제액과 별개 축이고,
+ * 고지서를 보고 맞추는 대상은 직원분이다.
+ */
+export function applyDeductionOverrides(calc: CalcResult, ov: DeductionOverrides): CalcResult {
+  if (!ov || Object.keys(ov).length === 0) return calc
+  const out: CalcResult = { ...calc }
+  for (const k of DEDUCTION_OVERRIDE_KEYS) {
+    const v = ov[k]
+    if (v == null) continue
+    ;(out as any)[OVERRIDE_FIELD[k]] = v
+  }
+  out.total_deduction =
+    out.national_pension + out.health_insurance + out.long_term_care_insurance +
+    out.employment_insurance + out.income_tax + out.local_tax
+  return out
 }
 
 /**
@@ -448,7 +512,7 @@ export async function calcDeductions(db: D1Database, input: CalcInput): Promise<
     national_pension + health_insurance + long_term_care_insurance +
     employment_insurance + income_tax + local_tax
 
-  return {
+  const result: CalcResult = {
     national_pension,
     health_insurance,
     long_term_care_insurance,
@@ -463,6 +527,8 @@ export async function calcDeductions(db: D1Database, input: CalcInput): Promise<
     total_deduction,
     applied_tax_row_id: rowId,
   }
+  // 0618: 수동 오버라이드가 계산을 이긴다(적용 지점은 여기 한 곳뿐).
+  return applyDeductionOverrides(result, input.deductionOverrides || {})
 }
 
 // ============================================================================
