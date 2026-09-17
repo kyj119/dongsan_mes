@@ -433,6 +433,8 @@ export function payrollPage(c: Context<HonoEnv>) {
                     <th class="text-left" style="width:70px">부서</th>
                     <th class="text-right" style="width:86px">근무일수</th>
                     <th class="text-right" style="width:96px">연장시간</th>
+                    <th class="text-right" style="width:82px">야간시간</th>
+                    <th class="text-right" style="width:82px">휴일시간</th>
                     <th class="text-right" style="width:86px">결근</th>
                     <th class="text-right" style="width:86px">지각</th>
                     <th class="text-right" style="width:96px">연차사용</th>
@@ -473,6 +475,7 @@ export function payrollPage(c: Context<HonoEnv>) {
               </label>
               <button onclick="payrollPasteCopyTemplate()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50"><i class="fas fa-clipboard mr-1"></i>양식 복사</button>
               <button onclick="payrollPasteClear()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50"><i class="fas fa-eraser mr-1"></i>지우기</button>
+              <button onclick="payrollPasteUndo()" id="prPasteUndoBtn" class="hidden px-3 py-1.5 text-xs border border-rose-300 text-rose-700 bg-rose-50 rounded hover:bg-rose-100"><i class="fas fa-rotate-left mr-1"></i>직전 적용 취소</button>
               <div class="flex-1"></div>
               <span id="prPasteSummary" class="text-xs text-gray-600"></span>
             </div>

@@ -472,7 +472,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
         total_deduction, net_pay,
         work_days, overtime_hours, extra_overtime_hours, absent_days, late_count, leave_used_days,
         deduction_overrides, deduction_overrides_at, deduction_overrides_by,
-        absent_deduction,
+        absent_deduction, night_hours, holiday_hours,
         status, notes, created_by, entity_id, created_at, updated_at
       ) VALUES (
         ?, ?, ?,
@@ -488,7 +488,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
         ?, ?,
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?,
-        ?,
+        ?, ?, ?,
         'PENDING', ?, ?, ?, datetime('now'), datetime('now')
       )
       ON CONFLICT(employee_id, pay_period) DO UPDATE SET
@@ -518,6 +518,8 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
         deduction_overrides_at=excluded.deduction_overrides_at,
         deduction_overrides_by=excluded.deduction_overrides_by,
         absent_deduction=excluded.absent_deduction,
+        night_hours=excluded.night_hours,
+        holiday_hours=excluded.holiday_hours,
         employer_national_pension=excluded.employer_national_pension,
         employer_health_insurance=excluded.employer_health_insurance,
         employer_long_term_care=excluded.employer_long_term_care,
@@ -551,7 +553,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
       ovJson,
       ovJson == null ? null : (ovChanged ? new Date().toISOString() : (existingOvMeta?.at ?? new Date().toISOString())),
       ovJson == null ? null : (ovChanged ? (user?.id || null) : (existingOvMeta?.by ?? user?.id ?? null)),
-      absent_deduction,
+      absent_deduction, night_hours_in, holiday_hours_in,
       // 귀속 법인 = 직원의 entity (전체모드 ADMIN 이 세션값 0→1 로 찍으면 선명·청주 급여가 동산 귀속)
       notes, user?.id || null, emp.entity_id || getEntityId(c) || 1
     ).run()
@@ -966,7 +968,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
             SET base_salary = ?, overtime_hours = ?, extra_overtime_hours = ?, overtime_pay = ?,
                 night_pay = ?, holiday_pay = ?,
                 work_days = ?, absent_days = ?, late_count = ?, leave_used_days = ?,
-                absent_deduction = ?,
+                absent_deduction = ?, night_hours = ?, holiday_hours = ?,
                 taxable_pay = ?, total_salary = ?,
                 national_pension = ?, health_insurance = ?, long_term_care_insurance = ?,
                 employment_insurance = ?, income_tax = ?, local_tax = ?,
@@ -979,7 +981,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
             newBase, overtime_hours, extraOT, overtime_pay,
             nightPay, holidayPay,
             work_days, absent_days, late_count, leave_used_days,
-            absent_deduction,
+            absent_deduction, nightHrs, holidayHrs,
             taxable_pay, total_salary,
             d.national_pension, d.health_insurance, d.long_term_care_insurance,
             d.employment_insurance, d.income_tax, d.local_tax,

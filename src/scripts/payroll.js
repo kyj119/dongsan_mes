@@ -461,6 +461,9 @@ window.payrollSave = async function() {
 var PR_ATTEND_FIELDS = [
   { key: 'work_days',       type: 'float', step: '0.5', min: '0' },
   { key: 'overtime_hours',  type: 'float', step: '0.5', min: '0' },
+  // 0622: 야간·휴일은 금액만 저장돼 화면에서 편집할 방법이 없었다(시간 컬럼 신설로 왕복 가능)
+  { key: 'night_hours',     type: 'float', step: '0.5', min: '0' },
+  { key: 'holiday_hours',   type: 'float', step: '0.5', min: '0' },
   { key: 'absent_days',     type: 'float', step: '0.5', min: '0' },
   { key: 'late_count',      type: 'int',   step: '1',   min: '0' },
   { key: 'leave_used_days', type: 'float', step: '0.5', min: '0' },
@@ -567,8 +570,8 @@ window.payrollAttendApply = async function() {
         pay_period: r.pay_period,
         pay_date: r.pay_date || '',
         overtime_hours: v.overtime_hours,
-        night_pay: Number(r.night_pay) || 0,
-        holiday_pay: Number(r.holiday_pay) || 0,
+        night_hours: v.night_hours,       // 금액(night_pay)은 시간에서 파생되므로 보내지 않는다
+        holiday_hours: v.holiday_hours,
         annual_leave_pay: Number(r.annual_leave_pay) || 0,
         bonus: Number(r.bonus) || 0,
         other_allowance: Number(r.other_allowance) || 0,
@@ -657,6 +660,11 @@ window.payrollOpenPasteModal = function() {
   document.getElementById('prPasteModal').classList.remove('hidden');
   document.getElementById('prPasteModal').classList.add('flex');
   payrollPasteClear();
+  var ub = document.getElementById('prPasteUndoBtn');
+  if (ub) {
+    ub.classList.toggle('hidden', !PR_UNDO);
+    if (PR_UNDO) ub.title = PR_UNDO.period + ' · ' + PR_UNDO.rows.length + '명 (' + PR_UNDO.at.toLocaleTimeString() + ' 적용)';
+  }
 };
 window.payrollClosePaste = function() {
   var m = document.getElementById('prPasteModal');
@@ -731,7 +739,10 @@ window.payrollPasteParse = function() {
       if (code && String(r.employee_code || '').trim() === code) { emp = r; break; }
     }
     if (!emp && nm) {
+      // 0622: MES 성명 → 없으면 external_name(이카운트 이름)으로 매칭.
+      //   두 시스템 표기가 다르면 그 직원만 조용히 빠진다(꾸웅 ↔ NGUYEN THUY CUONG 실측).
       var hits = currentPayrollData.filter(function(r) { return String(r.employee_name || '').trim() === nm; });
+      if (!hits.length) hits = currentPayrollData.filter(function(r) { return String(r.external_name || '').trim() === nm; });
       if (hits.length === 1) emp = hits[0];
       else if (hits.length > 1) { errors.push((i + 1) + '행: 성명 "' + nm + '" 이 여러 명입니다 — 사번 열을 넣어 주세요.'); continue; }
     }
@@ -813,6 +824,11 @@ window.payrollPasteApply = async function() {
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> 적용 중...'; }
   var DED = ['np','hi','ltc','ei','it','lt'];
   var done = 0, failed = 0;
+  // 0622: 적용 **전** 상태를 통째로 담아 둔다 — 잘못 붙여넣었을 때 되돌릴 유일한 근거.
+  //   세션 메모리라 새로고침하면 사라진다(실수 직후 복구가 목적, 영구 이력이 아니다).
+  PR_UNDO = { at: new Date(), period: prPasteRows[0].emp.pay_period, rows: prPasteRows.map(function(r) {
+    return JSON.parse(JSON.stringify(r.emp));
+  }) };
   for (var i = 0; i < prPasteRows.length; i++) {
     var r = prPasteRows[i], emp = r.emp, ch = r.changes;
     var pick = function(key, cur) { return ch[key] != null ? ch[key].to : cur; };
@@ -851,7 +867,48 @@ window.payrollPasteApply = async function() {
   }
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check mr-1"></i>적용'; }
   payrollClosePaste();
-  showToast('엑셀 입력: ' + done + '명 적용' + (failed ? ' · 실패 ' + failed + '명' : ''), failed ? 'warning' : 'success');
+  showToast('엑셀 입력: ' + done + '명 적용' + (failed ? ' · 실패 ' + failed + '명' : '')
+    + (done ? ' — 되돌리려면 [엑셀 입력] 안의 「직전 적용 취소」' : ''), failed ? 'warning' : 'success');
+  payrollLoad();
+};
+
+// ── 직전 적용 취소 (0622) ────────────────────────────────────────────────
+var PR_UNDO = null;
+
+window.payrollPasteUndo = async function() {
+  if (!PR_UNDO || !PR_UNDO.rows.length) { showToast('되돌릴 적용 내역이 없습니다', 'warning'); return; }
+  var when = PR_UNDO.at.toLocaleTimeString();
+  if (!(await showConfirm(PR_UNDO.period + ' · ' + PR_UNDO.rows.length + '명을 ' + when + ' 적용 **이전** 값으로 되돌립니다. 계속할까요?'))) return;
+  var btn = document.getElementById('prPasteUndoBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> 되돌리는 중...'; }
+  var done = 0, failed = 0;
+  for (var i = 0; i < PR_UNDO.rows.length; i++) {
+    var r = PR_UNDO.rows[i];
+    var ov = null;
+    try { ov = r.deduction_overrides ? JSON.parse(r.deduction_overrides) : null; } catch (e) { ov = null; }
+    try {
+      await axios.post('/api/payroll/save', {
+        employee_id: r.employee_id, pay_period: r.pay_period, pay_date: r.pay_date || '',
+        base_salary: Number(r.base_salary) || 0,
+        overtime_hours: parseFloat(r.overtime_hours) || 0,
+        overtime_pay: Number(r.overtime_pay) || 0,
+        night_pay: Number(r.night_pay) || 0, holiday_pay: Number(r.holiday_pay) || 0,
+        annual_leave_pay: Number(r.annual_leave_pay) || 0, bonus: Number(r.bonus) || 0,
+        other_allowance: Number(r.other_allowance) || 0,
+        meal: Number(r.meal_allowance) || 0, transport: Number(r.transportation_allowance) || 0,
+        childcare: Number(r.nontax_childcare) || 0,
+        work_days: parseFloat(r.work_days) || 0, absent_days: parseFloat(r.absent_days) || 0,
+        late_count: parseInt(r.late_count) || 0, leave_used_days: parseFloat(r.leave_used_days) || 0,
+        other_deduction: Number(r.other_deduction) || 0, notes: r.notes || '',
+        deduction_overrides: ov,   // 적용 전 고정값 그대로 복원(없었으면 null = 해제)
+      });
+      done++;
+    } catch (e) { failed++; console.error('[payroll] undo 실패', r.employee_name, e); }
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate-left mr-1"></i>직전 적용 취소'; }
+  PR_UNDO = null;
+  payrollClosePaste();
+  showToast('되돌리기: ' + done + '명' + (failed ? ' · 실패 ' + failed + '명' : ''), failed ? 'warning' : 'success');
   payrollLoad();
 };
 
