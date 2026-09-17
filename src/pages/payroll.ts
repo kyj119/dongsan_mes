@@ -54,10 +54,10 @@ export function payrollPage(c: Context<HonoEnv>) {
           <button onclick="payrollBatch()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50" title="해당 월 전 직원 급여를 기본급 기준으로 일괄 생성 (PENDING)">
             <i class="fas fa-bolt mr-1"></i>일괄 생성
           </button>
-          <button onclick="payrollSyncAttendance()" class="px-3 py-1.5 text-xs border border-blue-300 text-blue-700 bg-blue-50 rounded hover:bg-blue-100" title="해당 월 attendance 테이블의 연장근무/근무일수/지각/결근을 급여에 반영">
-            <i class="fas fa-sync-alt mr-1"></i>근태 불러오기
+          <button onclick="payrollSyncAttendance()" class="px-3 py-1.5 text-xs border border-blue-300 text-blue-700 bg-blue-50 rounded hover:bg-blue-100" title="근태(attendance)를 집계해 표에 불러옵니다. 확인·수정 후 저장해야 급여에 반영됩니다">
+            <i class="fas fa-download mr-1"></i>근태 불러오기
           </button>
-          <button onclick="payrollOpenAttendModal()" class="px-3 py-1.5 text-xs border border-amber-300 text-amber-700 bg-amber-50 rounded hover:bg-amber-100" title="근태에서 넘어온 근무일수·연장시간·지각·결근을 표에서 바로 수정">
+          <button onclick="payrollOpenAttendModal()" class="px-3 py-1.5 text-xs border border-amber-300 text-amber-700 bg-amber-50 rounded hover:bg-amber-100" title="저장된 근무일수·연장·야간·휴일·결근을 표에서 직접 수정">
             <i class="fas fa-user-clock mr-1"></i>근태 수정
           </button>
           <button onclick="payrollOpenPasteModal()" class="px-3 py-1.5 text-xs border border-emerald-300 text-emerald-700 bg-emerald-50 rounded hover:bg-emerald-100" title="엑셀에서 셀을 복사해 붙여넣거나 파일을 올려 지급·공제를 직접 입력">
@@ -419,8 +419,13 @@ export function payrollPage(c: Context<HonoEnv>) {
             <button onclick="payrollCloseAttend()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
           </div>
           <div class="p-5 space-y-3">
+            <div class="flex items-center gap-2 flex-wrap">
+              <button onclick="payrollAttendLoad()" id="prAttendLoadBtn" class="px-3 py-1.5 text-xs border border-amber-300 text-amber-700 bg-amber-50 rounded hover:bg-amber-100"><i class="fas fa-download mr-1"></i>근태에서 불러오기</button>
+              <button onclick="payrollAttendReset()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50"><i class="fas fa-rotate-left mr-1"></i>되돌리기</button>
+              <span class="text-xs text-gray-400">불러와도 <b>저장 전까지 급여는 바뀌지 않습니다</b></span>
+            </div>
             <div class="text-xs text-gray-600 bg-amber-50 border border-amber-200 rounded p-2.5 space-y-1">
-              <div><i class="fas fa-info-circle mr-1 text-amber-600"></i><b>근태 불러오기</b>로 들어온 값입니다. 여기서 고치면 <b>지급액·공제가 다시 계산</b>됩니다.</div>
+              <div><i class="fas fa-info-circle mr-1 text-amber-600"></i><b>불러오기 → 확인·수정 → 저장</b> 순서입니다. 저장하면 <b>지급액·공제가 다시 계산</b>됩니다.</div>
               <div><b>연장시간은 총시간</b>(고정+추가)입니다 — 포괄임금 직원은 고정연장이 이미 포함돼 있어, 총시간을 고정연장보다 크게 넣은 만큼만 추가 가산됩니다.</div>
               <div class="text-gray-500">작성중(PENDING)만 수정됩니다. 공제를 <b>고정(📌)</b>해 둔 직원은 그 항목이 그대로 유지됩니다.</div>
             </div>

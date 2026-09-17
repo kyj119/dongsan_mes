@@ -770,6 +770,10 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
     if (!payPeriod) return c.json({ success: false, error: 'pay_period 필요' }, 400)
 
     const employeeIds: number[] = Array.isArray(body.employee_ids) ? body.employee_ids : []
+    // 0622: dry_run=true 면 **집계만 하고 저장하지 않는다**.
+    //   「불러오기 → 검토·수정 → 확정」 흐름을 위해. 근태를 바로 급여에 덮어쓰면
+    //   틀린 값(결근 과다·휴일 누락)이 그대로 들어가고 되돌릴 근거가 남지 않는다.
+    const dryRun = body.dry_run === true
 
     // 대상 급여 레코드 조회 — 직원 포괄총액(emp_base)·고정연장 설정 + 저장된 수당/비과세 함께 로드
     // (sync에서 total_salary/공제/실지급까지 일관 재계산하기 위함)
@@ -997,22 +1001,28 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
           payroll_id: t.id,
           employee_id: t.employee_id,
           work_days, absent_days, late_count, leave_used_days, absent_deduction,
+          night_hours: nightHrs, holiday_hours: holidayHrs,
           overtime_hours, extra_overtime_hours: extraOT, overtime_pay, base_salary: newBase, total_salary, net_pay
         })
       }
 
-      // UPDATE 배치 실행 (D1 batch 한도 고려 80개씩 분할)
-      for (let i = 0; i < syncStmts.length; i += 80) {
-        await c.env.DB.batch(syncStmts.slice(i, i + 80))
+      // UPDATE 배치 실행 (D1 batch 한도 고려 80개씩 분할). dry_run 이면 쓰지 않는다.
+      if (!dryRun) {
+        for (let i = 0; i < syncStmts.length; i += 80) {
+          await c.env.DB.batch(syncStmts.slice(i, i + 80))
+        }
       }
     }
 
     return c.json({
       success: true,
       data: {
-        synced,
+        synced: dryRun ? 0 : synced,
+        dry_run: dryRun,
+        preview_count: synced,
         total_targets: (targets || []).length,
-        details: details.slice(0, 50)  // 처음 50개만
+        // dry_run 은 화면이 표를 채워야 하므로 전량 반환(급여 인원은 수십 명 규모)
+        details: dryRun ? details : details.slice(0, 50)
       }
     })
   } catch (err: any) {

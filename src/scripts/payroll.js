@@ -516,6 +516,55 @@ function payrollAttendRender() {
 }
 
 /** 변경된 셀을 표시하고 저장 버튼 활성화 */
+/**
+ * 근태에서 불러오기 (dry-run) — 집계 결과를 표에 채운다. **저장하지 않는다.**
+ *   바뀐 셀은 강조되므로 무엇이 달라지는지 보고 고친 뒤 [변경분 저장]으로 확정한다.
+ */
+/** 표를 저장된 급여값으로 되돌린다(불러온 값 폐기) */
+window.payrollAttendReset = function() {
+  payrollAttendRender();
+  var msg = document.getElementById('prAttendMsg');
+  if (msg) msg.textContent = '저장된 값으로 되돌렸습니다.';
+};
+
+window.payrollAttendLoad = async function() {
+  var period = document.getElementById('prPeriod').value;
+  var btn = document.getElementById('prAttendLoadBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> 불러오는 중...'; }
+  try {
+    var res = await axios.post('/api/payroll/sync-attendance', { pay_period: period, dry_run: true });
+    var list = (res.data.data && res.data.data.details) || [];
+    var byEmp = {};
+    for (var i = 0; i < list.length; i++) byEmp[list[i].employee_id] = list[i];
+    var filled = 0, skipped = 0;
+    var trs = document.querySelectorAll('#prAttendBody tr');
+    for (var t = 0; t < trs.length; t++) {
+      var pid = Number(trs[t].getAttribute('data-pid'));
+      var row = (currentPayrollData || []).find(function(x) { return x.id === pid; });
+      if (!row) continue;
+      var a = byEmp[row.employee_id];
+      if (!a) { skipped++; continue; }
+      var ins = trs[t].querySelectorAll('input[data-af]');
+      for (var k = 0; k < ins.length; k++) {
+        var key = ins[k].getAttribute('data-af');
+        if (a[key] == null) continue;
+        ins[k].value = a[key];
+        payrollAttendTouch(ins[k]);
+      }
+      filled++;
+    }
+    var msg = document.getElementById('prAttendMsg');
+    if (msg) msg.textContent = '근태 집계 ' + filled + '명 불러옴'
+      + (skipped ? ' · 근태기록 없음 ' + skipped + '명(기존값 유지)' : '')
+      + ' — 확인·수정 후 [변경분 저장]을 누르세요. 저장 전에는 급여가 바뀌지 않습니다.';
+    payrollAttendTouch(null);
+  } catch (e) {
+    showToast('근태 불러오기 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message), 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-download mr-1"></i>근태에서 불러오기'; }
+  }
+};
+
 window.payrollAttendTouch = function(el) {
   if (el) {
     var changed = String(el.value) !== String(el.getAttribute('data-orig'));
@@ -1239,18 +1288,18 @@ window.payrollBatch = async function() {
   } catch (e) { showToast('일괄 생성 실패: ' + e.message, 'error'); }
 };
 
+/**
+ * 0622: 「근태 불러오기」는 이제 **바로 반영하지 않는다**.
+ *   근태를 집계해 표에 채워 주고, 사람이 보고 고친 뒤 확정한다.
+ *   왜: 2026-09-17 대조에서 CAPS 집계가 결근을 과다(킨뚜자소 22일)로, 휴일근로를
+ *   전부 0으로 잡고 있었다. 바로 덮어쓰면 틀린 값이 급여가 되고 되돌릴 근거도 안 남는다.
+ */
 window.payrollSyncAttendance = async function() {
   var period = document.getElementById('prPeriod').value;
   if (!period) { showToast('급여 월을 먼저 선택하세요', 'warning'); return; }
-  if (!(await showConfirm(period + ' 전 직원 근태 데이터를 급여에 반영합니다. 계속할까요?'))) return;
-  try {
-    var res = await axios.post('/api/payroll/sync-attendance', { pay_period: period });
-    var d = res.data.data || {};
-    showToast('근태 동기화 완료: ' + (d.synced || 0) + '/' + (d.total_targets || 0) + '명', 'success');
-    window.payrollLoad();
-  } catch (e) {
-    showToast('근태 동기화 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message), 'error');
-  }
+  if (!currentPayrollData || !currentPayrollData.length) { showToast('먼저 급여 목록을 조회하세요', 'warning'); return; }
+  window.payrollOpenAttendModal();
+  await window.payrollAttendLoad();
 };
 
 window.payrollSyncOne = async function(id) {
