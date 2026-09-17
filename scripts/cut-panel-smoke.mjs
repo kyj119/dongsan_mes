@@ -1787,11 +1787,25 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   //   대체해 글자가 바뀐다.
   //   · A0  = 저장 전에 텍스트를 전부 아웃라인한다 → 남은 텍스트가 있을 때만 임베드.
   //           (true 고정은 폰트 2,159개 PC 에서 저장마다 문서 폰트를 열어 자원을 태웠다)
-  //   · 재단 = 판에 얹힌 아트를 그대로 저장할 뿐 아웃라인을 **보장하지 않는다** → 항상 임베드.
-  ok('3l 살아 있는 텍스트가 있으면 폰트가 실린다',
-    /embedAllFonts = \(outlineFailed \|\| pfRemainingText > 0\)/.test(a0)
-    && (hostSrc.match(/embedAllFonts = true/g) || []).length === 2,
-    'A0=조건부(아웃라인 보장) · 재단=항상(보장 없음)')
+  //   · 재단 = 아웃라인을 **보장하지 않는다**. 2026-09-17 까지는 그래서 `true` 고정이었는데,
+  //           같은 대가(폰트 2,159개 PC 에서 저장마다 전체 폰트 열기)를 **재단만 계속 치르고 있었다**
+  //           — A0 0.9.0 정정이 여기까지 안 온 형제 스윕 미완이다.
+  //           이제 `mesCut_needFontEmbed(doc)` 가 **보수적으로** 판정한다: 살아 있는 텍스트가 있거나,
+  //           속을 못 보는 링크 아트(placedItems)가 있거나, 세다가 실패하면 **임베드**.
+  // ★이 어서션은 **구현이 아니라 성질**을 본다 — 예전엔 `embedAllFonts = true` 개수를 세어
+  //   「그 자리에 그 글자가 있는가」를 물었고, 그래서 더 나은 구현이 게이트에 막혔다.
+  ok('3l 살아 있는 텍스트가 있으면 폰트가 실린다', (() => {
+    if (!/embedAllFonts = \(outlineFailed \|\| pfRemainingText > 0\)/.test(a0)) return false
+    // 재단의 두 저장 지점이 **모두** 판정 함수를 거친다(생짜 true/false 고정이 남으면 안 된다)
+    const viaFn = (hostSrc.match(/embedAllFonts = mesCut_needFontEmbed\(doc\)/g) || []).length === 2
+    const noHardcode = !/embedAllFonts\s*=\s*(true|false)\s*;/.test(hostSrc)
+    const fn = /function mesCut_needFontEmbed\(doc\)\s*\{[\s\S]*?\n\}/.exec(hostSrc)
+    if (!fn || !viaFn || !noHardcode) return false
+    // 판정 함수가 **안전 쪽으로** 기울어 있는가 — 텍스트·링크아트·예외 셋 다 임베드로 간다
+    return /textFrames\.length > 0\) return true/.test(fn[0])
+      && /placedItems\.length > 0\) return true/.test(fn[0])
+      && /catch \(e\) \{ return true;/.test(fn[0])
+  })(), 'A0=조건부(아웃라인 보장) · 재단=보수적 판정(텍스트·링크아트·예외 → 임베드)')
   // -- 3s mm 단위 통일 (2026-08-25) --------------------------------------
   // ★`doc.rulerUnits = ...` 는 **예외도 안 던지고 값도 안 바뀐다**(AI 30.7 실측).
   //   SheetLayout.jsx 가 정확히 그렇게 쓰고 있었고 "저장 파일 기본 단위 = mm" 의도가

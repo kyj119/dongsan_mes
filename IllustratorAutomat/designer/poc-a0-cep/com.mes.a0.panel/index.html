@@ -507,6 +507,19 @@
         <span id="regClientHit" class="achit"></span>
         <datalist id="clientList"></datalist>
       </div>
+      <!-- ★품목은 **거래처 바로 뒤**다 (2026-09-17 용준님 「두 탭 순서 통일」) — 가공 탭이
+           `거래처 → 품목` 이라 재단만 사이에 수량·가공자·후가공 셋이 끼어 있었다.
+           두 탭을 오가며 쓰는 사람이 매번 눈으로 찾게 되고, 둘 다 자동완성+`✓등록` 칸이라
+           **같은 동작을 다른 자리에서** 하게 된다. 칸의 id·로직은 그대로고 자리만 옮겼다. -->
+      <div class="row">
+        <label for="regProduct">품목</label>
+        <div class="acwrap grow">
+          <input id="regProduct" type="text" placeholder="예: 솔벤 시트 (비우면 주문서에서 선택)" autocomplete="off" />
+          <div id="regProductSug" class="sug hidden"></div>
+        </div>
+        <span id="regProductHit" class="achit"></span>
+        <datalist id="productList"></datalist>
+      </div>
       <div class="row">
         <label for="regQty">수량</label>
         <input id="regQty" type="number" value="1" min="1" step="1" />
@@ -527,15 +540,6 @@
         </div>
         <span id="regFinishHit" class="achit"></span>
         <datalist id="finishList"></datalist>
-      </div>
-      <div class="row">
-        <label for="regProduct">품목</label>
-        <div class="acwrap grow">
-          <input id="regProduct" type="text" placeholder="예: 솔벤 시트 (비우면 주문서에서 선택)" autocomplete="off" />
-          <div id="regProductSug" class="sug hidden"></div>
-        </div>
-        <span id="regProductHit" class="achit"></span>
-        <datalist id="productList"></datalist>
       </div>
       <div class="row">
         <label for="regItem">내용</label>
