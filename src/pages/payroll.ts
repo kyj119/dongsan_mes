@@ -57,6 +57,9 @@ export function payrollPage(c: Context<HonoEnv>) {
           <button onclick="payrollSyncAttendance()" class="px-3 py-1.5 text-xs border border-blue-300 text-blue-700 bg-blue-50 rounded hover:bg-blue-100" title="해당 월 attendance 테이블의 연장근무/근무일수/지각/결근을 급여에 반영">
             <i class="fas fa-sync-alt mr-1"></i>근태 불러오기
           </button>
+          <button onclick="payrollOpenAttendModal()" class="px-3 py-1.5 text-xs border border-amber-300 text-amber-700 bg-amber-50 rounded hover:bg-amber-100" title="근태에서 넘어온 근무일수·연장시간·지각·결근을 표에서 바로 수정">
+            <i class="fas fa-user-clock mr-1"></i>근태 수정
+          </button>
           <button onclick="payrollOpenPasteModal()" class="px-3 py-1.5 text-xs border border-emerald-300 text-emerald-700 bg-emerald-50 rounded hover:bg-emerald-100" title="엑셀에서 셀을 복사해 붙여넣거나 파일을 올려 지급·공제를 직접 입력">
             <i class="fas fa-file-excel mr-1"></i>엑셀 입력
           </button>
@@ -404,6 +407,46 @@ export function payrollPage(c: Context<HonoEnv>) {
           <div class="px-5 py-3 border-t flex justify-end gap-2">
             <button onclick="payrollCloseBulkEdit()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50">취소</button>
             <button onclick="payrollBulkEditApply()" class="ds-btn ds-btn-primary text-xs"><i class="fas fa-pen mr-1"></i>적용</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 근태 수정 — 근태에서 넘어온 수치를 표에서 직접 고친다 -->
+      <div id="prAttendModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal" style="max-width:64rem">
+          <div class="px-5 py-3 border-b flex items-center justify-between">
+            <h3 class="text-base font-semibold"><i class="fas fa-user-clock mr-1 text-amber-600"></i>근태 수정 <span id="prAttendPeriod" class="text-xs font-normal text-gray-500 ml-1"></span></h3>
+            <button onclick="payrollCloseAttend()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+          </div>
+          <div class="p-5 space-y-3">
+            <div class="text-xs text-gray-600 bg-amber-50 border border-amber-200 rounded p-2.5 space-y-1">
+              <div><i class="fas fa-info-circle mr-1 text-amber-600"></i><b>근태 불러오기</b>로 들어온 값입니다. 여기서 고치면 <b>지급액·공제가 다시 계산</b>됩니다.</div>
+              <div><b>연장시간은 총시간</b>(고정+추가)입니다 — 포괄임금 직원은 고정연장이 이미 포함돼 있어, 총시간을 고정연장보다 크게 넣은 만큼만 추가 가산됩니다.</div>
+              <div class="text-gray-500">작성중(PENDING)만 수정됩니다. 공제를 <b>고정(📌)</b>해 둔 직원은 그 항목이 그대로 유지됩니다.</div>
+            </div>
+            <div class="overflow-auto border border-gray-200 rounded" style="max-height:26rem">
+              <table class="ds-table text-xs w-full">
+                <thead class="sticky top-0 bg-gray-50">
+                  <tr>
+                    <th class="text-left" style="width:70px">사번</th>
+                    <th class="text-left" style="width:90px">성명</th>
+                    <th class="text-left" style="width:70px">부서</th>
+                    <th class="text-right" style="width:86px">근무일수</th>
+                    <th class="text-right" style="width:96px">연장시간</th>
+                    <th class="text-right" style="width:86px">결근</th>
+                    <th class="text-right" style="width:86px">지각</th>
+                    <th class="text-right" style="width:96px">연차사용</th>
+                    <th class="text-right" style="width:104px">현재 지급계</th>
+                  </tr>
+                </thead>
+                <tbody id="prAttendBody"></tbody>
+              </table>
+            </div>
+            <div id="prAttendMsg" class="text-xs text-gray-600"></div>
+          </div>
+          <div class="px-5 py-3 border-t flex justify-end gap-2">
+            <button onclick="payrollCloseAttend()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50">취소</button>
+            <button onclick="payrollAttendApply()" id="prAttendApplyBtn" class="ds-btn ds-btn-primary text-xs" disabled><i class="fas fa-check mr-1"></i>변경분 저장</button>
           </div>
         </div>
       </div>

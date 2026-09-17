@@ -12,7 +12,9 @@
  *   ② total_deduction 이 덮은 값으로 **다시 합산**된다 (여기가 틀리면 실지급액이 조용히 어긋난다)
  *   ③ 회사부담분(employer_*)은 건드리지 않는다 — 직원 공제와 별개 축
  *   ④ 0 은 유효한 오버라이드다(= 공제 안 함). "해제"는 키를 빼는 것이지 0 이 아니다
- *   ⑤ 깨진 JSON·음수·NaN 은 버린다 — 오버라이드 하나 때문에 급여 계산이 죽으면 안 된다
+ *   ⑤ 깨진 JSON·NaN 은 버린다 — 오버라이드 하나 때문에 급여 계산이 죽으면 안 된다
+ *   ⑧ **음수는 소득세·지방세만** 허용한다(연말정산 환급이 음수로 온다 — 이카운트 −527,930 실측).
+ *      4대보험 음수는 존재할 수 없으므로 오타로 보고 버린다
  *   ⑥ calcDeductions 를 통과해도 유지된다(적용 지점이 한 곳인지 확인)
  *   ⑦ 가입 토글 OFF 보다 오버라이드가 우선한다(사람이 명시한 값이 최종)
  *
@@ -95,7 +97,9 @@ function check(label, actual, expected) {
   check('깨진 JSON = 빈 객체', JSON.stringify(parseDeductionOverrides('{oops')), '{}')
   check('null = 빈 객체', JSON.stringify(parseDeductionOverrides(null)), '{}')
   check('배열 = 빈 객체', JSON.stringify(parseDeductionOverrides('[1,2]')), '{}')
-  check('음수는 버린다', JSON.stringify(parseDeductionOverrides('{"np":-5}')), '{}')
+  check('4대보험 음수는 버린다', JSON.stringify(parseDeductionOverrides('{"np":-5,"hi":-1,"ltc":-1,"ei":-1}')), '{}')
+  check('소득세 음수는 허용(연말정산 환급)', JSON.stringify(parseDeductionOverrides('{"it":-527930}')), '{"it":-527930}')
+  check('지방세 음수도 허용', JSON.stringify(parseDeductionOverrides('{"lt":-52790}')), '{"lt":-52790}')
   check('NaN 은 버린다', JSON.stringify(parseDeductionOverrides('{"np":"abc"}')), '{}')
   check('0 은 유효', JSON.stringify(parseDeductionOverrides('{"ei":0}')), '{"ei":0}')
   check('모르는 키는 무시', JSON.stringify(parseDeductionOverrides('{"zz":1,"it":10}')), '{"it":10}')
@@ -137,6 +141,15 @@ function check(label, actual, expected) {
     ...base, applyNationalPension: false, deductionOverrides: { np: 150000 },
   })
   check('토글 OFF + 고정값 → 고정값', offThenOv.national_pension, 150000)
+
+  console.log('── 연말정산 환급(음수 소득세) ──')
+  const refund = await calcDeductions(DB, { ...base, deductionOverrides: { it: -527930, lt: -52790 } })
+  check('소득세 음수', refund.income_tax, -527930)
+  check('지방세 음수', refund.local_tax, -52790)
+  check('공제계가 음수로 내려간다', refund.total_deduction,
+    plain.national_pension + plain.health_insurance + plain.long_term_care_insurance
+    + plain.employment_insurance - 527930 - 52790)
+  check('4대보험은 그대로', refund.national_pension, plain.national_pension)
 
   console.log('── 순수 함수 직접 ──')
   const fake = {

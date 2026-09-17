@@ -454,6 +454,146 @@ window.payrollSave = async function() {
   }
 };
 
+// ── 근태 수정 ─────────────────────────────────────────────────────────────
+//   왜: 「근태 불러오기」가 attendance 에서 값을 끌어오는데, 틀린 값을 고치려면
+//   직원을 하나씩 수정 모달로 열어야 했다. 한 화면에서 표로 고치고 한 번에 저장한다.
+//   지급액은 이 값들로 다시 계산되고, 공제를 고정(📌)해 둔 직원은 그 항목이 유지된다.
+var PR_ATTEND_FIELDS = [
+  { key: 'work_days',       type: 'float', step: '0.5', min: '0' },
+  { key: 'overtime_hours',  type: 'float', step: '0.5', min: '0' },
+  { key: 'absent_days',     type: 'float', step: '0.5', min: '0' },
+  { key: 'late_count',      type: 'int',   step: '1',   min: '0' },
+  { key: 'leave_used_days', type: 'float', step: '0.5', min: '0' },
+];
+
+window.payrollOpenAttendModal = function() {
+  if (!currentPayrollData || !currentPayrollData.length) {
+    showToast('먼저 급여 목록을 조회하세요', 'warning'); return;
+  }
+  var m = document.getElementById('prAttendModal');
+  if (!m) { console.warn('[payroll] #prAttendModal not found'); return; }
+  m.classList.remove('hidden'); m.classList.add('flex');
+  var per = document.getElementById('prAttendPeriod');
+  if (per) per.textContent = (currentPayrollData[0].pay_period || '') + ' · ' + currentPayrollData.length + '명';
+  payrollAttendRender();
+};
+window.payrollCloseAttend = function() {
+  var m = document.getElementById('prAttendModal');
+  if (!m) return;
+  m.classList.add('hidden'); m.classList.remove('flex');
+};
+
+function payrollAttendRender() {
+  var body = document.getElementById('prAttendBody');
+  if (!body) { console.warn('[payroll] #prAttendBody not found'); return; }
+  var html = '';
+  for (var i = 0; i < currentPayrollData.length; i++) {
+    var r = currentPayrollData[i];
+    var locked = r.status !== 'PENDING';
+    var pinned = !!r.deduction_overrides;
+    html += '<tr data-pid="' + r.id + '"' + (locked ? ' class="bg-gray-50 text-gray-400"' : '') + '>'
+      + '<td>' + prEsc(r.employee_code || '') + '</td>'
+      + '<td class="whitespace-nowrap">' + prEsc(r.employee_name || '')
+        + (pinned ? ' <i class="fas fa-thumbtack text-rose-500" title="공제 고정 있음 — 유지됩니다" style="font-size:9px"></i>' : '')
+        + (locked ? ' <span class="text-[10px]">(잠금)</span>' : '') + '</td>'
+      + '<td class="whitespace-nowrap">' + prEsc(r.department || '') + '</td>';
+    for (var f = 0; f < PR_ATTEND_FIELDS.length; f++) {
+      var def = PR_ATTEND_FIELDS[f];
+      var v = def.type === 'int' ? (parseInt(r[def.key]) || 0) : (parseFloat(r[def.key]) || 0);
+      html += '<td class="text-right"><input type="number" step="' + def.step + '" min="' + def.min + '"'
+        + ' data-af="' + def.key + '" data-orig="' + v + '" value="' + v + '"' + (locked ? ' disabled' : '')
+        + ' class="w-full border border-gray-200 rounded px-1.5 py-1 text-xs text-right tabular-nums"'
+        + ' oninput="payrollAttendTouch(this)"></td>';
+    }
+    html += '<td class="text-right tabular-nums text-gray-500">' + (Number(r.total_salary) || 0).toLocaleString() + '</td>'
+      + '</tr>';
+  }
+  body.innerHTML = html;
+  payrollAttendTouch(null);
+}
+
+/** 변경된 셀을 표시하고 저장 버튼 활성화 */
+window.payrollAttendTouch = function(el) {
+  if (el) {
+    var changed = String(el.value) !== String(el.getAttribute('data-orig'));
+    el.classList.toggle('border-amber-400', changed);
+    el.classList.toggle('bg-amber-50', changed);
+    el.classList.toggle('font-semibold', changed);
+  }
+  var n = payrollAttendCollect().length;
+  var btn = document.getElementById('prAttendApplyBtn');
+  if (btn) btn.disabled = n === 0;
+  var msg = document.getElementById('prAttendMsg');
+  if (msg) msg.textContent = n ? (n + '명 변경됨 — 저장하면 지급액·공제가 다시 계산됩니다') : '';
+};
+
+/** 바뀐 행만 추려 낸다 */
+function payrollAttendCollect() {
+  var out = [];
+  var trs = document.querySelectorAll('#prAttendBody tr');
+  for (var i = 0; i < trs.length; i++) {
+    var tr = trs[i];
+    var pid = Number(tr.getAttribute('data-pid'));
+    var row = (currentPayrollData || []).find(function(x) { return x.id === pid; });
+    if (!row || row.status !== 'PENDING') continue;
+    var vals = {}, changed = false;
+    var ins = tr.querySelectorAll('input[data-af]');
+    for (var k = 0; k < ins.length; k++) {
+      var key = ins[k].getAttribute('data-af');
+      var num = parseFloat(ins[k].value);
+      if (!isFinite(num) || num < 0) num = 0;
+      vals[key] = key === 'late_count' ? Math.round(num) : num;
+      if (String(vals[key]) !== String(ins[k].getAttribute('data-orig'))) changed = true;
+    }
+    if (changed) out.push({ row: row, vals: vals });
+  }
+  return out;
+}
+
+window.payrollAttendApply = async function() {
+  var list = payrollAttendCollect();
+  if (!list.length) return;
+  var btn = document.getElementById('prAttendApplyBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> 저장 중...'; }
+  var done = 0, failed = 0;
+  for (var i = 0; i < list.length; i++) {
+    var r = list[i].row, v = list[i].vals;
+    try {
+      // 지급 항목은 그대로 두고 근태 수치만 바꿔 재계산시킨다.
+      //   base_salary 는 넘기지 않는다 — 포괄임금 직원은 서버가 emp.base_salary 원본으로 다시 분해하므로
+      //   저장된 분해값을 되돌려주면 이중분해된다(core.ts save 주석 참조).
+      await axios.post('/api/payroll/save', {
+        employee_id: r.employee_id,
+        pay_period: r.pay_period,
+        pay_date: r.pay_date || '',
+        overtime_hours: v.overtime_hours,
+        night_pay: Number(r.night_pay) || 0,
+        holiday_pay: Number(r.holiday_pay) || 0,
+        annual_leave_pay: Number(r.annual_leave_pay) || 0,
+        bonus: Number(r.bonus) || 0,
+        other_allowance: Number(r.other_allowance) || 0,
+        meal: Number(r.meal_allowance) || 0,
+        transport: Number(r.transportation_allowance) || 0,
+        childcare: Number(r.nontax_childcare) || 0,
+        work_days: v.work_days,
+        absent_days: v.absent_days,
+        late_count: v.late_count,
+        leave_used_days: v.leave_used_days,
+        other_deduction: Number(r.other_deduction) || 0,
+        notes: r.notes || '',
+      });
+      done++;
+    } catch (e) {
+      failed++;
+      console.error('[payroll] 근태 수정 저장 실패', r.employee_name, e);
+    }
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check mr-1"></i>변경분 저장'; }
+  payrollCloseAttend();
+  showToast('근태 수정: ' + done + '명 저장' + (failed ? ' · 실패 ' + failed + '명' : ''), failed ? 'warning' : 'success');
+  payrollLoad();
+};
+
 // ── 엑셀 입력 (0618 · T2) ─────────────────────────────────────────────────
 //   왜: 공제액은 계산 결과만 저장되고 수동 입력 경로가 없었다(other_deduction 만 예외).
 //   공단 고지·이카운트 대장과 값이 다를 때 맞출 방법이 아예 없었다.

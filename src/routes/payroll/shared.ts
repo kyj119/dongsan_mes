@@ -290,6 +290,8 @@ export interface CalcResult {
 //     각 경로가 제 나름대로 덮으면 한 곳을 고칠 때 다른 곳이 빠진다(형제 스윕 사고의 전형).
 // ============================================================================
 export const DEDUCTION_OVERRIDE_KEYS = ['np', 'hi', 'ltc', 'ei', 'it', 'lt'] as const
+/** 음수를 받는 항목 — 연말정산 환급은 소득세·지방소득세가 마이너스로 찍힌다. */
+const NEGATIVE_ALLOWED_KEYS = new Set<string>(['it', 'lt'])
 export type DeductionOverrideKey = typeof DEDUCTION_OVERRIDE_KEYS[number]
 export type DeductionOverrides = Partial<Record<DeductionOverrideKey, number>>
 
@@ -319,7 +321,10 @@ export function parseDeductionOverrides(raw: unknown): DeductionOverrides {
     const v = obj[k]
     if (v == null || v === '') continue
     const n = Number(v)
-    if (!Number.isFinite(n) || n < 0) continue          // 음수·NaN은 버린다
+    if (!Number.isFinite(n)) continue                   // NaN은 버린다
+    // 음수는 소득세·지방소득세만 허용한다 — 연말정산 환급이 음수로 온다(이카운트 −527,930 실측).
+    //   4대보험은 음수가 존재할 수 없으므로(환급은 별도 정산 전표) 오타·부호실수로 보고 버린다.
+    if (n < 0 && !NEGATIVE_ALLOWED_KEYS.has(k)) continue
     out[k] = Math.round(n)
   }
   return out
