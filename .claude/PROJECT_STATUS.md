@@ -2,7 +2,7 @@
 
  PROJECT_STATUS.md — 프로젝트 현황판
 
-> **✅ prod 2026-09-17 `4a4b4f3f`(`0621`) — 출고·배송비 축 5건**(CI 전 단계·smoke:prod·여정 40/40·`test:ship-stock` 20/20·prod 마커 실측) — 출고 확정 경로가 **3개가 아니라 10개**였고 경로마다 부작용이 달랐다. ①**결함**: 카드·주문상태 경로가 `billable_after` 를 안 세워 `auto_billing` 거래처 주문이 **자동 회계반영에서 영영 빠졌다** → `utils/shipBilling` 정본 + 게이트 `test:ship-billing`(소스 스캔) ②한진 섹션 박스 칸(배송비의 73%인데 없었다) ③**배송비 = 출고 박스 수**(`0621` `items.is_shipping_fee`·`order_items.fee_source`, 대표=박스 수·부속=0·청구분 제외·멱등, 게이트 `test:shipping-fee`) ④**「확정 대기」 섹션**(출고 페이지, `pending-confirm`) — 「출고 처리」와 「출고 확정」을 두 단계로 ⑤주문 목록 일괄 출고에 합배송 파트너 사전 확인(`consolidation-pending`). **차단은 안 넣었다** — 8곳에 걸어야 하고 묶음 해제 우회로가 남는다. 판정 기록=PROPOSALS P17~P21
+> **✅ prod 2026-09-17 `1e50a2e2`(`0621`) — 출고·배송비 축 5건**(CI 전 단계·smoke:prod·여정 40/40·`test:ship-stock` 20/20·prod 마커 실측) — 출고 확정 경로가 **3개가 아니라 10개**였고 경로마다 부작용이 달랐다. ①**결함**: 카드·주문상태 경로가 `billable_after` 를 안 세워 `auto_billing` 거래처 주문이 **자동 회계반영에서 영영 빠졌다** → `utils/shipBilling` 정본 + 게이트 `test:ship-billing`(소스 스캔) ②한진 섹션 박스 칸(배송비의 73%인데 없었다) ③**배송비 = 출고 박스 수**(`0621` `items.is_shipping_fee`·`order_items.fee_source`, 대표=박스 수·부속=0·청구분 제외·멱등, 게이트 `test:shipping-fee`) ④**「확정 대기」 섹션**(출고 페이지, `pending-confirm`) — 「출고 처리」와 「출고 확정」을 두 단계로 ⑤주문 목록 일괄 출고에 합배송 파트너 사전 확인(`consolidation-pending`). **차단은 안 넣었다** — 8곳에 걸어야 하고 묶음 해제 우회로가 남는다. 판정 기록=PROPOSALS P17~P21. ⑥검증 재실행이 1건 더 잡았다 — 배송비 칸이 **자동완성 경로**(「배송비」는 결과 1건이라 모달을 안 거친다)에 안 붙어 영영 안 열렸다
 
 > **운영 규칙(2026-08-10 확정)**: ①완료(✅)=아래 인덱스 1줄(제목+남은 것)만, 경위 전문은 `PROJECT_STATUS_ARCHIVE.md`에 직접 쓴다 (**「✅ 최근 완료」 항목 400자 상한** — 2026-08-19 게이트 강제, 초과 시 큰 것부터 지목) ②의미 없는 대기=보류함으로 과감히 이관 ③대기 항목=빠른 처리 우선 ④"커밋·미배포" 기록은 믿지 말고 prod 실측(deploy.yml=main push 자동배포). 게이트=`node scripts/doc-diet-audit.cjs`(훅·세션 시작 배너 연동).
 

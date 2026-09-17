@@ -25,8 +25,8 @@
 
 | # | 축 | 현상 | prod 실측 | 고치는 방향 | 판정 |
 |---|---|---|---|---|---|
-| P14 | 발주·입고 (50배) | 발주서·입고 화면의 **「롤」 보조칸이 `pack_size>0` 이면 무조건 열린다**. 그 칸은 현수막 AQ 형(`pack_size`=실사 편의계수, `base_unit` 없음)용인데, 진짜 다단위(`롤`=50`M`)에도 열려 **수량칸이 M 로 채워지고 입고가 다시 ×50** 한다 | 다단위 품목 발주 라인 **643건/195발주**, 그중 **롤칸 사용 0건** → 과거 손상 없음. 병행 구매 트랙이 이 칸을 쓰는 순간 발생 | 보조칸을 `packFactor(item)===1` 일 때만 연다(= AQ 형만). 다단위는 롤수↔수량 1:1 | **판정 대기** |
-| P15 | 출고 차감 (pack배) | `stockShip.selectShippableLines` 가 `SUM(oi.quantity)` 를 **환산 없이** base 재고에서 뺀다. 유통 롤 판매 라인의 수량은 관리단위라 pack_size 배 **과소 차감** | `reference_type='ORDER'` OUT 원장 **전 기간 0행** → 과거 손상 없음. 2026 유통 다단위 판매 라인 **1,140건/583주문** 이 대기 중 | 라인 `unit_factor` 우선, 없으면 `utils/salesBaseQty` 와 **같은 규칙**(원가 축이 이미 쓰는 판정)으로 base 환산. 환원은 원장값 되짚기라 자동 대칭. 게이트 `test:ship-stock` | **판정 대기** |
+| P14 | 발주·입고 (50배) | 발주서·입고 화면의 **「롤」 보조칸이 `pack_size>0` 이면 무조건 열린다**. 그 칸은 현수막 AQ 형(`pack_size`=실사 편의계수, `base_unit` 없음)용인데, 진짜 다단위(`롤`=50`M`)에도 열려 **수량칸이 M 로 채워지고 입고가 다시 ×50** 한다 | 다단위 품목 발주 라인 **643건/195발주**, 그중 **롤칸 사용 0건** → 과거 손상 없음. 병행 구매 트랙이 이 칸을 쓰는 순간 발생 | 보조칸을 `packFactor(item)===1` 일 때만 연다(= AQ 형만). 다단위는 롤수↔수량 1:1 | ✅ 고침(09-17) — `poRollPack()` 가드: 보조칸은 `base_unit` 이 없거나 `unit` 과 같은 AQ 형에서만 연다. 모달 경로는 payload 에 `base_unit` 이 없어 `poFetchPackSize` 로 항상 조회. 다단위는 롤수↔수량 1:1 |
+| P15 | 출고 차감 (pack배) | `stockShip.selectShippableLines` 가 `SUM(oi.quantity)` 를 **환산 없이** base 재고에서 뺀다. 유통 롤 판매 라인의 수량은 관리단위라 pack_size 배 **과소 차감** | `reference_type='ORDER'` OUT 원장 **전 기간 0행** → 과거 손상 없음. 2026 유통 다단위 판매 라인 **1,140건/583주문** 이 대기 중 | 라인 `unit_factor` 우선, 없으면 `utils/salesBaseQty` 와 **같은 규칙**(원가 축이 이미 쓰는 판정)으로 base 환산. 환원은 원장값 되짚기라 자동 대칭. 게이트 `test:ship-stock` | ✅ 고침(09-17) — 라인 `unit_factor` 스냅샷(0620)이 있으면 `quantity` 가 이미 base, 없으면 `salesBaseQtySql` 로 환산. 환원은 원장값 되짚기라 자동 대칭. 게이트 `test:ship-stock` 20/20 |
 | P16 | 읽기·표기 | 재고 입력 단위 셀렉트·실사 기본 포장수·구역 재고 라벨이 `item_units` 를 안 본다(`inventory.js` 셀렉트 2개 고정 · `inventoryCount.js` 기본값이 `pack_size` 고정인데 서버는 `role_count` 계수 우선 · `storageZones.ts` SELECT 3열 누락으로 base 수량에 관리단위 라벨). 숫자는 맞고 **표기·기본값만** 어긋난다 | 표기 축이라 금액·재고 영향 없음 | 각 SELECT 에 단위 열 추가 + `/api/items/:id/units` 로 셀렉트 채움 | **판정 대기** |
 
 - 같이 나온 **표기 누락**(숫자는 맞음): 작업지시서·출고/포장 라인·세금계산서 품목·고객 포털·견적 목록 펼침·카드 보드 수량·분할청구 자식 라인이 아직 `salesQtyLabel`(「10조(20EA)」)을 안 쓴다. 판매단위를 실제로 쓰기 시작할 때 한 번에.
@@ -72,6 +72,9 @@
 
 ## 판정 기록
 (용준님 판정 후 여기로 옮긴다: 날짜 · 번호 · 결정 · 반영 커밋)
+
+- 2026-09-17 · P14·P15 · ①고침(용준님 「단위표 4단계 다 진행」에 포함) — P14=`purchaseOrderForm.js poRollPack()` 가드(보조칸은 AQ 형만·모달은 `poFetchPackSize` 필수)+`purchaseOrders/core.ts` 가 다단위면 `item_pack_size` 를 NULL 로 내린다. P15=`utils/stockShip.selectShippableLines` 가 라인 `unit_factor` 스냅샷 우선·없으면 `salesBaseQtySql`. 둘 다 과거 손상 0 이었고 **병행테스트가 켜는 기능**이라 선제 수정. 회귀 = `test:ship-stock` 20/20 · `test:item-units`. prod `4f3330c5`~`1e50a2e2`.
+- 2026-09-17 · P17~P21 · 위 표 참조(전부 ①고침, prod `4a4b4f3f` → 자동완성 경로 보정 `1e50a2e2`). **미판정으로 남은 것 = 출고 비대칭 2건**(`PATCH /shipments/:id/status` PREPARING 복귀 재고 미환원 · 후가공 자재차감·출고 이메일·알림톡이 호출처 0건인 `POST /api/shipments` 한 경로에만 = **지금 자동 출고 알림이 안 나간다**)와 **P16**(읽기·표기).
 
 - 2026-09-15 · P13 · ①고침 — `receiving.js adhocCreate` `loadPendingPOs`→`loadReceivingQueue`. 회귀 = J4b.
 - 2026-09-16 밤 · 관찰(제안 아님) — 전체 사이클 38/40, J6 「견적 저장」·J7 「일괄 출고」가 **GET 500** 으로 실패(`/api/prices?…context=sales`·`/api/notifications/unread-count`). 라우트 변경 없음·직후 curl 200·`--only=j6|j7` 재실행 7/7 → 로컬 D1 잠금 경합(다른 세션 :3000 서버와 같은 로컬 DB)의 일시 오류. prod 영향 없음. 재발하면 러너에 「HTTP 500 1회 재시도」를 넣을지 판정.
