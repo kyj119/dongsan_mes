@@ -107,6 +107,14 @@
                                 <input type="hidden" name="unit_factor_${id}" value="">
                             </div>
                             <div id="sales_unit_hint_${id}" class="hidden text-[10px] text-gray-500 mt-0.5"></div>
+                            <!-- 0621 배송비 축 — 배송비 품목을 고른 행에만 뜬다. 켜면 출고에서 입력한 **박스 수**가
+                                 이 라인의 수량을 확정한다(합포장이면 대표 주문에만, 부속은 0). 기본 ON. -->
+                            <div id="fee_box_wrap_${id}" class="hidden mt-1">
+                                <label class="flex items-center gap-1 text-[11px] text-amber-800 cursor-pointer" title="출고/배송 페이지에서 입력한 박스 수가 이 라인의 수량이 됩니다. 합배송이면 대표 주문에만 청구됩니다">
+                                    <input type="checkbox" name="fee_box_${id}" checked class="rounded border-amber-300">
+                                    <span>출고 박스 수로 확정</span>
+                                </label>
+                            </div>
                         </div>
                         <div>
                             <label id="unit_price_label_${id}" class="block text-xs font-medium text-gray-600 mb-0.5">단가</label>
@@ -240,6 +248,9 @@
                     if (hidSubcat) hidSubcat.value = item.sub_category || '';
                     unitDisp.value = item.unit;
                     if (window.ofUnitsApply) window.ofUnitsApply(id, item.id, item.unit); // 0620 단위표: 판매단위(조 등) 칸
+                    // 0621: 배송비 품목이면 「출고 박스 수로 확정」 칸을 연다
+                    var feeWrap = document.getElementById('fee_box_wrap_' + id);
+                    if (feeWrap) feeWrap.classList.toggle('hidden', !item.is_shipping_fee);
                     priceInp.value = fmtMoneyInput(item.price);
                     priceInp.dataset.basePrice = item.price || 0;  // #426: 거래처 특약 단가 제안 비교 기준
                     var pm = item.pricing_method || 'FIXED';

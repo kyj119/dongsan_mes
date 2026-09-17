@@ -21,6 +21,7 @@ import { setOrderBillingStatus } from './helpers'
 import { evaluateClientCredit } from '../ledger/credit-helpers'
 import { ensureShipmentForOrder } from '../../utils/shipmentHelper'
 import { deductStockLinesOnShip, restoreStockLinesOnUnship } from '../../utils/stockShip'
+import { applyShipBillingDates } from '../../utils/shipBilling'
 
 const ordersLifecycleRouter = new Hono<HonoEnv>()
 ordersLifecycleRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
@@ -172,7 +173,7 @@ ordersLifecycleRouter.patch('/:id/status', requireEditOrRole('/orders', 'MANAGER
 
     // Get current status (#381: 소유 법인만 상태 변경)
     const efSt = entityFilter(c, 'orders')
-    const order = await c.env.DB.prepare(`SELECT status, client_id, final_amount, order_number, delivery_date, entity_id, order_type FROM orders WHERE id = ?${efSt.clause}`).bind(id, ...efSt.params).first<{ status: string; client_id: number; final_amount: number; order_number: string; delivery_date: string | null; entity_id: number | null; order_type: string | null }>()
+    const order = await c.env.DB.prepare(`SELECT status, client_id, final_amount, order_number, delivery_date, entity_id, order_type, delivery_method FROM orders WHERE id = ?${efSt.clause}`).bind(id, ...efSt.params).first<{ status: string; client_id: number; final_amount: number; order_number: string; delivery_date: string | null; entity_id: number | null; order_type: string | null }>()
 
     if (!order) {
       return c.json({
@@ -278,6 +279,13 @@ ordersLifecycleRouter.patch('/:id/status', requireEditOrRole('/orders', 'MANAGER
         shipped_at = CASE WHEN ? = 'SHIPPED' THEN COALESCE(shipped_at, CURRENT_TIMESTAMP) ELSE shipped_at END
       WHERE id = ?
     `).bind(status, status, status, id).run()
+
+    // 청구 타이밍 스탬프(2026-09-17) — 주문 일괄 출고·출고준비 단건과 **같은 식**.
+    //   이 경로(주문 상태변경 → 출고완료)는 종전에 `billable_after` 를 안 세워, auto_billing 거래처 주문이
+    //   자동 회계반영 대상에서 빠졌다. 전이가 실제로 일어난 경우에만 찍는다.
+    if (status === 'SHIPPED' && order.status !== 'SHIPPED') {
+      await applyShipBillingDates(c.env.DB, Number(id), (order as { delivery_method?: string | null }).delivery_method)
+    }
 
     // balance는 경리 확인(BILLED) 시점에만 반영 — QUOTATION→CONFIRMED 전환 시 미반영
 

@@ -20,6 +20,7 @@ import { entityFilter, getEntityId } from '../../utils/entityFilter'
 import { ensureShipmentForOrder } from '../../utils/shipmentHelper'
 import { deductStockLinesOnShip, restoreStockLinesOnUnship } from '../../utils/stockShip'
 import { restoreAutoDeductionsByCards } from '../../utils/autoDeductRestore'
+import { applyShipBillingDates } from '../../utils/shipBilling'
 
 const cardsLifecycleRouter = new Hono<HonoEnv>()
 cardsLifecycleRouter.use('/*', authMiddleware, requireAnyPagePermission('/cards', '/orders'))
@@ -439,7 +440,7 @@ cardsLifecycleRouter.post('/bulk-ship', async (c) => {
       }
 
       if (progress && progress.total > 0 && progress.total === progress.shipped_count) {
-        const order = await c.env.DB.prepare('SELECT status, entity_id FROM orders WHERE id = ?').bind(orderId).first<{ status: string; entity_id: number | null }>()
+        const order = await c.env.DB.prepare('SELECT status, entity_id, delivery_method FROM orders WHERE id = ?').bind(orderId).first<{ status: string; entity_id: number | null; delivery_method: string | null }>()
         if (order && order.status !== 'SHIPPED' && order.status !== 'CANCELLED') {
           // 기성/유통 라인 재고 차감 — 카드 경로도 주문 bulk-ship 과 동일 규칙(멱등).
           //   2026-08-30: 이 호출이 없어 카드 화면에서 출고하면 재고가 안 빠지고 있었다.
@@ -454,6 +455,8 @@ cardsLifecycleRouter.post('/bulk-ship', async (c) => {
               VALUES (?, ?, 'SHIPPED', ?, '카드 전체 출고 완료 자동 처리')
             `).bind(orderId, order.status, user?.id ?? null)
           ])
+          // 청구 타이밍 스탬프(2026-09-17) — 주문 일괄 출고와 **같은 식**. 없으면 auto_billing 자동 회계반영에서 영영 빠진다.
+          await applyShipBillingDates(c.env.DB, Number(orderId), order.delivery_method)
           orderShippedCount++
         }
       }
@@ -532,8 +535,8 @@ cardsLifecycleRouter.post('/:id/ship', async (c) => {
     let orderShipped = false
     if (progress && progress.total > 0 && progress.total === progress.shipped_count) {
       const order = await c.env.DB.prepare(
-        'SELECT status, entity_id FROM orders WHERE id = ?'
-      ).bind(card.order_id).first<{ status: string; entity_id: number | null }>()
+        'SELECT status, entity_id, delivery_method FROM orders WHERE id = ?'
+      ).bind(card.order_id).first<{ status: string; entity_id: number | null; delivery_method: string | null }>()
 
       if (order && order.status !== 'SHIPPED' && order.status !== 'CANCELLED') {
         // 기성/유통 라인 재고 차감 (멱등) — 위 bulk-ship 과 같은 규칙
@@ -547,6 +550,8 @@ cardsLifecycleRouter.post('/:id/ship', async (c) => {
             VALUES (?, ?, 'SHIPPED', ?, '카드 전체 출고 완료 자동 처리')
           `).bind(card.order_id, order.status, user?.id ?? null),
         ])
+        // 청구 타이밍 스탬프(2026-09-17) — 주문 일괄 출고와 **같은 식**.
+        await applyShipBillingDates(c.env.DB, Number(card.order_id), order.delivery_method)
 
         orderShipped = true
       }
@@ -912,8 +917,8 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
     // 5. 모두 출고되었으면 주문 상태를 SHIPPED로 변경
     if (allShipped) {
       const order = await c.env.DB.prepare(
-        'SELECT status, entity_id FROM orders WHERE id = ?'
-      ).bind(card.order_id).first<{ status: string; entity_id: number | null }>()
+        'SELECT status, entity_id, delivery_method FROM orders WHERE id = ?'
+      ).bind(card.order_id).first<{ status: string; entity_id: number | null; delivery_method: string | null }>()
 
       if (order && order.status !== 'SHIPPED' && order.status !== 'CANCELLED') {
         prevOrderStatus = order.status
@@ -928,6 +933,8 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
             VALUES (?, ?, 'SHIPPED', ?, '카드 전체 출고 완료 자동 처리')
           `).bind(card.order_id, order.status, user?.id ?? null),
         ])
+        // 청구 타이밍 스탬프(2026-09-17) — 주문 일괄 출고와 **같은 식**.
+        await applyShipBillingDates(c.env.DB, Number(card.order_id), order.delivery_method)
 
         orderShipped = true
       }
@@ -998,8 +1005,8 @@ cardsLifecycleRouter.patch('/:id/unship', requireRole('ADMIN', 'MANAGER'), async
 
     // 4. 주문이 SHIPPED 상태였으면 PRINT_DONE으로 되돌림
     const order = await c.env.DB.prepare(
-      'SELECT status, entity_id FROM orders WHERE id = ?'
-    ).bind(card.order_id).first<{ status: string; entity_id: number | null }>()
+      'SELECT status, entity_id, delivery_method FROM orders WHERE id = ?'
+    ).bind(card.order_id).first<{ status: string; entity_id: number | null; delivery_method: string | null }>()
 
     if (order && order.status === 'SHIPPED') {
       // ★출고 차감 환원 — 이게 없으면 출고취소가 곧 재고 증발이다.

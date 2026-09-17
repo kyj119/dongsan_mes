@@ -1156,6 +1156,15 @@
                         set('item_unit', item.unit || 'EA');
                     // 0620 단위표: 판매단위(조 등) 복원 — 스위치 ON + 환산 단위 있는 품목만 칸이 열린다
                     if (window.ofUnitsApply && item.item_id) window.ofUnitsApply(id, item.item_id, item.unit || 'EA', { sales_unit: item.sales_unit || '', sales_qty: Number(item.sales_qty) || 0, unit_factor: Number(item.unit_factor) || 0 });
+                    // 0621 배송비 축: 「출고 박스 수로 확정」 복원 — 라인에 표시가 있으면 칸을 열고 체크한다
+                    (function () {
+                        var w = document.getElementById('fee_box_wrap_' + id);
+                        var cb = document.querySelector('[name="fee_box_' + id + '"]');
+                        if (!w || !cb) return;
+                        var on = item.fee_source === 'SHIPMENT_BOX';
+                        w.classList.toggle('hidden', !on);
+                        cb.checked = on;
+                    })();
                         set('unit_price', fmtMoneyInput(item.unit_price || 0));
                         set('content', item.content || '');
                         set('ai_group_index', item.ai_group_index != null ? item.ai_group_index : '');
@@ -1511,6 +1520,15 @@
                     set('item_unit', item.unit || 'EA');
                     // 0620 단위표: 판매단위(조 등) 복원 — 스위치 ON + 환산 단위 있는 품목만 칸이 열린다
                     if (window.ofUnitsApply && item.item_id) window.ofUnitsApply(id, item.item_id, item.unit || 'EA', { sales_unit: item.sales_unit || '', sales_qty: Number(item.sales_qty) || 0, unit_factor: Number(item.unit_factor) || 0 });
+                    // 0621 배송비 축: 「출고 박스 수로 확정」 복원 — 라인에 표시가 있으면 칸을 열고 체크한다
+                    (function () {
+                        var w = document.getElementById('fee_box_wrap_' + id);
+                        var cb = document.querySelector('[name="fee_box_' + id + '"]');
+                        if (!w || !cb) return;
+                        var on = item.fee_source === 'SHIPMENT_BOX';
+                        w.classList.toggle('hidden', !on);
+                        cb.checked = on;
+                    })();
                     set('unit_price', fmtMoneyInput(item.unit_price || 0));
                     set('content', item.content || '');
                     // 재주문: ai_group_index, ai_analysis_id 복사 (같은 디자인 파일 재사용)

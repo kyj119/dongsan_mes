@@ -309,8 +309,10 @@ ordersCreateRouter.post('/', async (c) => {
           assigned_entity_id, assignment_status,
           auto_amount, line_discount, discount_reason, discount_by,
           -- 과금 규칙 스냅샷(0600) — 품목 축이 나중에 바뀌어도 이 라인은 그때 규칙으로 재현된다
-          pricing_method, min_billing_side_cm
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          pricing_method, min_billing_side_cm,
+          -- 0621: 'SHIPMENT_BOX' 면 출고 박스 수가 이 라인의 수량을 확정한다
+          fee_source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         orderId,
         item.item_id || null,
@@ -342,7 +344,9 @@ ordersCreateRouter.post('/', async (c) => {
         amt.manual ? ((item as { discount_reason?: string }).discount_reason || null) : null,
         amt.manual ? (user?.id ?? null) : null,
         axis.pricingMethod,
-        axis.minSide
+        axis.minSide,
+        // 0621: 배송비를 출고 박스 수로 확정하는 라인 표시. 화이트리스트 — 임의 문자열을 받지 않는다.
+        item.fee_source === 'SHIPMENT_BOX' ? 'SHIPMENT_BOX' : null
       )
     })
 

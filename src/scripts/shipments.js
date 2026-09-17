@@ -533,12 +533,13 @@ function renderHanjinSection() {
   var tbody = document.getElementById('tbody-hanjin');
   var keys = Object.keys(hanjinGroups);
   if (!keys.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8"><i class="fas fa-truck text-2xl mb-2 block text-gray-300"></i><div class="text-sm text-gray-400">출고 건 없음</div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8"><i class="fas fa-truck text-2xl mb-2 block text-gray-300"></i><div class="text-sm text-gray-400">출고 건 없음</div></td></tr>';
     return;
   }
   tbody.innerHTML = keys.map(function(key) {
     var grp = hanjinGroups[key];
     var tracking = getDefaultTrackingNumber(grp);
+    var boxCount = getDefaultBoxCount(grp);   // 0621: 배송비 청구 수량의 근거
     var addr = grp.receiver_address;
     var isChecked = selectedShipments['hanjin'] && selectedShipments['hanjin'].has(key);
     return '<tr class="border-t hover:bg-orange-50">'
@@ -548,6 +549,10 @@ function renderHanjinSection() {
       + '<td class="px-3 py-2">'
       + '<input type="text" id="track-' + escapeHtml(key) + '" value="' + escapeHtml(tracking) + '"'
       + ' class="ds-input px-2 py-1 text-sm w-48 border rounded" placeholder="송장번호 입력">'
+      + '</td>'
+      + '<td class="px-3 py-2 text-center">'
+      + '<input type="number" id="h-bc-' + escapeHtml(key) + '" value="' + boxCount + '" min="1" max="99"'
+      + ' class="ds-input w-14 px-1 py-1 text-center text-sm border rounded" title="박스 수 — 저장하면 배송비 청구 수량에 반영됩니다"> 개'
       + '</td>'
       + '<td class="px-3 py-2 text-center">'
       + '<button onclick="saveTrackingNumber(\'' + escapeHtml(key) + '\')" class="px-3 py-1.5 text-xs bg-orange-600 text-white rounded hover:bg-orange-700">'
@@ -686,15 +691,20 @@ async function saveTrackingNumber(key) {
   if (!grp) return;
   var trackEl = document.getElementById('track-' + key);
   var tracking = trackEl ? trackEl.value.trim() : '';
+  // 0621: 박스 수도 같이 저장한다 — 서버가 이 값으로 배송비 라인 수량을 확정한다.
+  var boxEl = document.getElementById('h-bc-' + key);
+  var boxCount = boxEl ? (parseInt(boxEl.value) || 1) : null;
   var ids = getShipmentIds(grp);
   try {
     for (var i = 0; i < ids.length; i++) {
       // by-order 라우트: ids는 주문 ID (shipment PK 오매칭 방지)
-      await axios.patch('/api/shipments/by-order/' + ids[i], { tracking_number: tracking });
+      var payload = { tracking_number: tracking };
+      if (boxCount !== null) payload.box_count = boxCount;
+      await axios.patch('/api/shipments/by-order/' + ids[i], payload);
     }
     // P1: 로컬 상태 동기 (재렌더 시 유지 — 서버 재조회 없이도 값 보존)
-    grp.shipments.forEach(function(s) { s.tracking_number = tracking; });
-    showToast('송장번호 저장 완료', 'success');
+    grp.shipments.forEach(function(s) { s.tracking_number = tracking; if (boxCount !== null) s.box_count = boxCount; });
+    showToast(boxCount !== null ? ('송장번호·박스 ' + boxCount + '개 저장 완료') : '송장번호 저장 완료', 'success');
   } catch (e) {
     showToast('저장 실패: ' + (e.message || ''), 'error');
   }

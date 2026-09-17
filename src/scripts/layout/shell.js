@@ -2668,7 +2668,8 @@ function _doItemSearch(q) {
         + 'data-pricing-method="' + pm + '" '
         + 'data-spec="' + (it.specification || '').replace(/"/g, '') + '" '
         + 'data-width-mm="' + (it.width_mm || '') + '" '
-        + 'data-item-type="' + (it.item_type || '') + '">'
+        + 'data-item-type="' + (it.item_type || '') + '"'
+        + 'data-shipping-fee="' + (it.is_shipping_fee ? '1' : '') + '">'
         + '<td class="px-4 py-2 font-mono text-xs text-blue-600">' + window.escapeHtml(it.item_code || '') + '</td>'
         + '<td class="px-4 py-2 font-medium">' + window.escapeHtml(it.item_name || '') + pmBadge + (it.width_mm ? ' <span class="text-xs font-semibold text-emerald-600">' + (parseInt(it.width_mm, 10) / 10) + 'cm</span>' : '') + typeBadge + '</td>'
         + '<td class="px-4 py-2 text-xs text-gray-600 whitespace-nowrap">' + window.escapeHtml(it.specification || '') + '</td>'
@@ -2698,7 +2699,9 @@ function _doItemSearch(q) {
             pricing_method: this.dataset.pricingMethod,
             specification: this.dataset.spec,
             width_mm: this.dataset.widthMm,
-            item_type: this.dataset.itemType
+            item_type: this.dataset.itemType,
+            // 0621: 배송비 품목이면 주문서가 「출고 박스 수로 확정」 체크박스를 띄운다
+            is_shipping_fee: this.dataset.shippingFee === '1'
           });
         }
         document.getElementById('itemSearchModal').remove();

@@ -15,6 +15,8 @@ import { kstYmd, kstYmdCompact, kstDate } from '../utils/kstDate'
 import { CONSOLIDATABLE_ORDER_STATUSES } from '../utils/statusLabels'
 import { getEntityCompanyInfo } from '../utils/entitySettings'
 import { escapeCsvField } from '../utils/csv'
+import { syncShippingFeeFromBoxes } from '../utils/shippingFee'
+import { recalcOrderBillingGroups } from './orders/helpers'
 
 const shipmentsRouter = new Hono<HonoEnv>()
 // v2 P4: /pack(모바일 출고 검수) 권한 보유자도 출고 데이터 API 사용 (orders 라우터의 '/orders','/cards' 패턴)
@@ -1098,7 +1100,20 @@ async function applyShipmentFieldPatch(db: HonoEnv['Bindings']['DB'], shipmentId
   params.push(shipmentId)
   // #477: 리다이렉트 대상(대표)이 삭제됐으면 0행 → true 반환 시 무성 write 손실. meta.changes로 판정.
   const res = await db.prepare(`UPDATE shipments SET ${updates.join(', ')} WHERE id = ?`).bind(...params).run()
-  return (res.meta.changes ?? 0) > 0
+  const ok = (res.meta.changes ?? 0) > 0
+
+  // 0621 배송비 축 — 박스 수가 저장되면 그 묶음의 배송비 라인(`fee_source='SHIPMENT_BOX'`) 수량을 맞춘다.
+  //   대표 주문 = 박스 수, 부속 주문 = 0(박스는 하나고 청구도 한 번이다). 청구된 주문은 건드리지 않는다.
+  //   라인이 바뀌면 청구그룹을 다시 센다 — 안 하면 주문 총액과 그룹 금액이 갈린다.
+  if (ok && body.box_count !== undefined) {
+    try {
+      const sync = await syncShippingFeeFromBoxes(db, shipmentId)
+      for (const oid of sync.orderIds) await recalcOrderBillingGroups(db, oid)
+    } catch (e) {
+      console.warn('[shipments] 배송비 박스 동기 실패 shipment=' + shipmentId + ':', e)
+    }
+  }
+  return ok
 }
 
 // ============================================================================

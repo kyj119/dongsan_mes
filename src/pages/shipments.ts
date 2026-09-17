@@ -254,11 +254,13 @@ export function shipmentsPage(c: Context<HonoEnv>) {
               <th class="col-name text-left">거래처</th>
               <th class="col-flex text-left">배송주소</th>
               <th class="text-left" style="width:220px">송장번호</th>
+              <!-- 박스 수 = 배송비 청구 수량의 근거(0621). 대신화물·대신택배엔 있었는데 한진에만 없었다. -->
+              <th class="text-center" style="width:80px" title="박스 수 — 배송비를 「출고 박스 수로 확정」한 라인의 청구 수량이 됩니다">박스</th>
               <th class="col-action text-center" style="width:70px">저장</th>
             </tr>
           </thead>
           <tbody id="tbody-hanjin">
-            <tr><td colspan="5" class="px-4 py-6 text-center text-gray-400 text-sm">로딩 중...</td></tr>
+            <tr><td colspan="6" class="px-4 py-6 text-center text-gray-400 text-sm">로딩 중...</td></tr>
           </tbody>
         </table>
       </div>

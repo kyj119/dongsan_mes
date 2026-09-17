@@ -479,8 +479,10 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
           assigned_entity_id, assignment_status,
           auto_amount, line_discount, discount_reason, discount_by,
           -- 과금 규칙 스냅샷(0600)
-          pricing_method, min_billing_side_cm
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          pricing_method, min_billing_side_cm,
+          -- 0621: 'SHIPMENT_BOX' 면 출고 박스 수가 이 라인의 수량을 확정한다
+          fee_source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         id,
         item.item_id || null,
@@ -508,7 +510,9 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
         item.price_status === 'PENDING' ? 0 : putAmt.discount,
         putAmt.manual ? ((item as { discount_reason?: string }).discount_reason || null) : null,
         putAmt.manual ? (user?.id ?? null) : null,
-        putAxis.pricingMethod, putAxis.minSide
+        putAxis.pricingMethod, putAxis.minSide,
+        // 0621: 배송비를 출고 박스 수로 확정하는 라인 표시. 화이트리스트 — 임의 문자열을 받지 않는다.
+        item.fee_source === 'SHIPMENT_BOX' ? 'SHIPMENT_BOX' : null
       ))
       putParentClientGroupIds.push(item.client_group_id || null)
       putParentItems.push(item)

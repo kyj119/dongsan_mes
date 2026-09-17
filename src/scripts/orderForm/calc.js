@@ -659,6 +659,13 @@
                         sales_unit: (function() { var e = document.querySelector('[name="sales_unit_' + id + '"]'); return (e && e.value) ? e.value : undefined; })(),
                         sales_qty: (function() { var e = document.querySelector('[name="sales_qty_' + id + '"]'); var n = e ? parseFloat(e.value) : NaN; return (isFinite(n) && n > 0) ? n : undefined; })(),
                         unit_factor: (function() { var e = document.querySelector('[name="unit_factor_' + id + '"]'); var n = e ? parseFloat(e.value) : NaN; return (isFinite(n) && n > 0) ? n : undefined; })(),
+                        // 0621: 배송비를 출고 박스 수로 확정할지 — 칸이 열려 있고 체크된 행만 보낸다
+                        fee_source: (function() {
+                            var w = document.getElementById('fee_box_wrap_' + id);
+                            if (!w || w.classList.contains('hidden')) return undefined;
+                            var cb = document.querySelector('[name="fee_box_' + id + '"]');
+                            return (cb && cb.checked) ? 'SHIPMENT_BOX' : null;
+                        })(),
                         post_processing: (function() {
                             // 후가공 컨트롤이 아예 안 그려진 행(소분류 미지정·옵션 부재)에서 빈 []를
                             // 보내면 수정 저장(delete+reinsert)이 후가공을 소실시킨다 → 복원 때 스태시한
