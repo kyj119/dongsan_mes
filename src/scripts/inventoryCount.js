@@ -321,7 +321,8 @@ function icRenderSummary() {
 //   표시용으로 품목의 관리단위(item_unit = items.unit, 예 '롤')를 끼워 넣는다.
 function icUomItem(item) {
   return {
-    unit: item.item_unit || item.unit || '',
+    // 0618 단위표: 실사 역할 단위(count_unit, 예 '단')가 있으면 그것이 포장 라벨 — 없으면 종전 관리단위
+    unit: item.count_unit || item.item_unit || item.unit || '',
     base_unit: item.base_unit,
     pack_size: item.pack_size,
     stock_mode: item.stock_mode
@@ -428,7 +429,8 @@ function icRenderItems() {
 
     var countedCell;
     if (isEditable && usePack) {
-      countedCell = '<input type="number" step="any" value="' + packVal + '" placeholder="포장수" title="롤·통 수"'
+      // 0618 단위표: 실사 역할 단위 이름(단·롤·통)을 포장 칸 라벨로 — 없으면 종전 「포장수」
+      countedCell = '<input type="number" step="any" value="' + packVal + '" placeholder="' + escapeHtml(item.count_unit || '포장수') + '" title="' + escapeHtml(item.count_unit ? item.count_unit + ' 수' : '롤·통 수') + '"'
         + ' style="width:56px;' + inS + '" onchange="updateItemPack(' + item.id + ', this.value, null, ' + item.count_id + ')" />'
         + ' <span style="color:#9ca3af;">×</span> '
         + '<input type="number" step="any" value="' + perPack + '" title="포장당 수량 — 이 줄에만 적용"'

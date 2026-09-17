@@ -333,7 +333,7 @@ cardsQueriesRouter.get('/', async (c) => {
         const { results: part } = await c.env.DB.prepare(`
           SELECT ci.card_id, ci.id as card_item_id, ci.print_completed,
                  oi.item_name, oi.width, oi.height,
-                 oi.scale_factor, oi.quantity, oi.unit, oi.content, oi.post_processing, oi.finishing,
+                 oi.scale_factor, oi.quantity, oi.unit, oi.sales_unit, oi.sales_qty, oi.content, oi.post_processing, oi.finishing,
                  mat.item_name AS print_media_name
           FROM card_items ci
           JOIN order_items oi ON ci.order_item_id = oi.id

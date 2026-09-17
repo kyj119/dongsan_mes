@@ -1222,7 +1222,7 @@ function showOrderModal(order, cards, autoJobs) {
         <td class="px-4 py-2 text-center">${rowNum}</td>
         <td class="px-4 py-2" title="${escapeHtml(item.item_name || '')}">${namePrefix}${escapeHtml(item.item_name || '-')}${lineFileHtml}</td>
         <td class="px-4 py-2 text-center">${sizeStr}</td>
-        <td class="px-4 py-2 text-center tabular-nums">${item.quantity || 1} ${item.unit || 'EA'}</td>
+        <td class="px-4 py-2 text-center tabular-nums">${window.salesQtyLabel ? salesQtyLabel(item) : ((item.quantity || 1) + ' ' + (item.unit || 'EA'))}</td>
         <!-- ★보이는 화면은 **개수 단가만** 찍는다(2026-09-09 용준님 확정). ㎡ 축은 계산·저장에만 남는다
              (order_items.unit_price + pricing_method 스냅샷) — 화면에 두 축을 같이 띄우면
              읽는 사람이 어느 쪽으로 검산해야 할지 매번 고르게 된다. 정본 = shared/displayUnitPrice.js -->

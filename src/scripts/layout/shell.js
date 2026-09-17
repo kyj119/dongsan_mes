@@ -3172,3 +3172,16 @@ window.dsListToolbar = (function() {
 
   return { mount: mount, pageSize: pageSize };
 })();
+
+// ── 판매단위 표기 정본 (0618 단위표, 2026-09-17) ─────────────────────────────
+// 라인에 판매단위 스냅샷(sales_unit·sales_qty)이 있으면 「10조(20EA)」, 없으면 「20 EA」.
+// 주문 상세·카드 상세·거래명세서·견적서가 전부 이 한 함수를 쓴다 — 표기가 갈리면 여기만 고친다.
+function salesQtyLabel(line) {
+    var q = Number(line && line.quantity) || 0;
+    var u = (line && line.unit) || 'EA';
+    var su = line && line.sales_unit;
+    var sq = Number(line && line.sales_qty) || 0;
+    if (su && sq > 0) return sq + su + '(' + q + u + ')';
+    return q + ' ' + u;
+}
+window.salesQtyLabel = salesQtyLabel;

@@ -24,8 +24,9 @@
  *   F4 무효한 ROLL        개수 단위인데 `deduction_method=ROLL` — 라벨이 `yd` 로 나온다 (게이트)
  *   F5 기준단가 축 오류    `base_price` 가 관리단위(롤)가 아니라 재고단위(M) 당 값이다 (게이트)
  *   F6 판재 규격 없음      `BOARD` 인데 `sheet_spec` 이 비어 4x8 로 조용히 폴백한다 (게이트)
+ *   F7 단위표↔파생 열     item_units(정본)와 unit/base_unit/pack_size(파생)가 어긋났다 · 표 없는 활성 품목 (게이트, 0617)
  *
- * ★ 등급을 나눈다 — **C1·D·F1·F4·F5·F6·G1·H4a 만 게이트(exit 1)**, A·B·C2·F2·F3 는 참고(exit 0).
+ * ★ 등급을 나눈다 — **C1·D·F1·F4·F5·F6·F7·G1·H4a 만 게이트(exit 1)**, A·B·C2·F2·F3 는 참고(exit 0).
  *   A·B 를 게이트로 두면 매번 빨개져 감사 자체가 무뎌진다(기존 audit 들이 같은 이유로 강/약을 나눴다).
  *   실제로 A 는 `BUJIK-*` 의 `50m` 처럼 **남겨야 하는 롤 사양**까지 잡는다 — 「그 계열 전원이 공유한다」는
  *   기계적 사실일 뿐, 빼도 되는지는 사람이 안다(트러스바의 7m 는 빼도 되고 원단의 50m 는 아니다).
@@ -382,7 +383,36 @@ const h3 = [...byName].filter(([, t]) => t.has('PRODUCT') && t.has('MATERIAL'))
 // ★H1·H2 를 게이트로 두지 않는 이유는 H4a 주석 참조 — 「아직 안 팔린 제품」과 구분이 안 된다.
 // ★C2(수량 없는 매입)도 게이트가 아니다 — 용역·1식 매입은 정상이고, 뭉친 전표는 공급처
 //   청구서 없이는 못 푼다. 고칠 수 없는 항목을 게이트에 두면 감사 전체가 무뎌진다(C 분리 주석 참조).
-const GATE_KIND = /^(C1|D|F1|F4|F5|F6|G1|H4a) /
+// ── F7 (게이트) — 단위표(item_units)와 파생 열(unit/base_unit/pack_size)이 어긋났다 (0617 · 2026-09-17)
+//   정본 = 표. 파생 규칙(utils/itemUnits.deriveLegacyPair): 발주 역할 단위 ≠ 기본단위 이고 factor>1 이면
+//   unit=발주단위·base_unit=기본단위·pack_size=factor, 아니면 unit=기본단위·base_unit NULL(pack_size 는 유지 — AQ 130).
+//   표가 없는 활성 품목도 잡는다(마이그 뒤 어떤 생성 경로가 sync 를 안 탔다는 뜻). 어긋나면 packFactor() 가
+//   엉뚱한 계수로 입고를 쌓는다 — 50배·130배 사고의 축이라 게이트다.
+{
+  const f7 = d1(`SELECT i.item_code, COALESCE(i.unit,'') unit, COALESCE(i.base_unit,'') base_unit, COALESCE(i.pack_size,0) pack_size,
+    (SELECT b.unit FROM item_units b WHERE b.item_id = i.id AND b.is_base = 1) b_unit,
+    (SELECT p.unit FROM item_units p WHERE p.item_id = i.id AND p.role_purchase = 1) p_unit,
+    (SELECT p.factor FROM item_units p WHERE p.item_id = i.id AND p.role_purchase = 1) p_factor
+    FROM items i WHERE i.is_active = 1`)
+  let f7n = 0
+  for (const r of f7) {
+    if (!r.b_unit) { add(r.item_code, 'F7 단위표 없음', '활성 품목인데 item_units 기본단위 행이 없다 — 생성 경로가 syncUnitsFromPair 를 안 탔다'); f7n++; continue }
+    const purchase = r.p_unit || r.b_unit
+    const factor = Number(r.p_factor) || 1
+    const multi = purchase !== r.b_unit && factor > 1
+    const expUnit = multi ? purchase : r.b_unit
+    const expBase = multi ? r.b_unit : ''
+    const packOk = !multi || Math.abs(Number(r.pack_size) - factor) < 1e-9
+    if (r.unit !== expUnit || (r.base_unit || '') !== expBase || !packOk) {
+      add(r.item_code, 'F7 단위표↔파생 열 불일치',
+        `표: 기본 ${r.b_unit}${multi ? ` · 발주 ${purchase} = ${factor}${r.b_unit}` : ' (단일)'} / 열: unit ${r.unit || '∅'} · base ${r.base_unit || '∅'} · pack ${r.pack_size || '∅'}`)
+      f7n++
+    }
+  }
+  console.log(`[item-audit] F7 단위표↔파생 열: ${f7n}건`)
+}
+
+const GATE_KIND = /^(C1|D|F1|F4|F5|F6|F7|G1|H4a) /
 if (!METRICS_ONLY) {
   if (violations.length) {
     const byKind = new Map()

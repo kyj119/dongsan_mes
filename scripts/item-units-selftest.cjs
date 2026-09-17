@@ -145,8 +145,32 @@ console.log('[item-units] ④ 마이그 백필 SQL (0617)')
     const u2 = await loadItemUnits(shim, 2)
     const it2 = db.prepare('SELECT pack_size FROM items WHERE id=2').get()
     check('AQ 단일 sync 는 pack_size 130 을 건드리지 않는다', u2.length === 1 && it2.pack_size === 130, { u2, it2 })
+    // ⑥ 라인 계수 해석(0618) — 요청 명시 > 단위표 > null(현행 폴백)
+    console.log('[item-units] ⑥ resolveLineFactor / loadUnitFactorMap')
+    const { resolveLineFactor, loadUnitFactorMap } = mod
+    const fmap = await loadUnitFactorMap(shim, [1, 4, 2, 999])
+    check('롤=50M 품목: unit 롤 → 50', resolveLineFactor(fmap, 1, '롤') === 50)
+    check('기본단위 M → 1', resolveLineFactor(fmap, 1, 'M') === 1)
+    check('요청 명시 unit_factor 가 우선', resolveLineFactor(fmap, 1, '롤', 7) === 7)
+    check('표에 없는 단위 이름 → null(추측 안 함)', resolveLineFactor(fmap, 1, '박스') === null)
+    check('표 없는 품목 → null', resolveLineFactor(fmap, 999, 'EA') === null)
+    check('AQ yd → 1 (130 은 계수가 아니다)', resolveLineFactor(fmap, 2, 'yd') === 1)
+    // ⑦ 판매단위 스냅샷(0618) — 있는 라인만 UPDATE, 없으면 byte-identical
+    console.log('[item-units] ⑦ applySalesUnitSnapshots')
+    const { applySalesUnitSnapshots } = mod
+    db.exec(`CREATE TABLE order_items (id INTEGER PRIMARY KEY, order_id INTEGER, sort_order INTEGER, quantity REAL, sales_unit TEXT, sales_qty REAL, unit_factor REAL);
+             INSERT INTO order_items (order_id, sort_order, quantity) VALUES (10, 0, 20), (10, 1, 5), (11, 0, 3);`)
+    const n = await applySalesUnitSnapshots(shim, 10, [
+      { sort_order: 0, item: { sales_unit: '조', sales_qty: 10, unit_factor: 2 } },
+      { sort_order: 1, item: { sales_unit: '', sales_qty: 0 } },
+    ])
+    const r0 = db.prepare('SELECT sales_unit, sales_qty, unit_factor FROM order_items WHERE order_id=10 AND sort_order=0').get()
+    const r1 = db.prepare('SELECT sales_unit FROM order_items WHERE order_id=10 AND sort_order=1').get()
+    const r11 = db.prepare('SELECT sales_unit FROM order_items WHERE order_id=11').get()
+    check('판매단위 있는 라인만 1건 UPDATE', n === 1 && r0.sales_unit === '조' && r0.sales_qty === 10 && r0.unit_factor === 2, { n, r0 })
+    check('판매단위 없는 라인·다른 주문은 그대로 NULL', r1.sales_unit === null && r11.sales_unit === null, { r1, r11 })
     cleanup && cleanup()
-    console.log(fails ? `[item-units] FAIL ${fails}건` : '[item-units] OK — 검증·파생·보정·백필 전부 통과')
+    console.log(fails ? `[item-units] FAIL ${fails}건` : '[item-units] OK — 검증·파생·보정·백필·라인 계수·판매 스냅샷 전부 통과')
     process.exit(fails ? 1 : 0)
   })().catch((e) => { console.error('[item-units] ERR', e); process.exit(1) })
 }
