@@ -260,6 +260,9 @@ export interface InsuranceRate {
 export interface CalcInput {
   taxablePay: number       // 과세 급여 (총급여 - 비과세)
   dependents: number       // 부양가족 수 (본인 포함)
+  // 공제대상가족 중 8세 이상 20세 이하 자녀 수(employees.children_under_20_count).
+  // 간이세액표 값에서 자녀수별 금액을 **뺀다** — 미지정이면 0(자녀공제 없음).
+  childrenUnder20?: number
   taxOption: string        // '80' | '100' | '120'
   year: number             // 소득세 간이세액표 조회용(연 단위)
   // 0617: 4대보험 요율 조회 기준(YYYY-MM). 국민연금 상·하한이 7월에 바뀌므로 연도만으로는 부족하다.
@@ -367,8 +370,27 @@ export function applyDeductionOverrides(calc: CalcResult, ov: DeductionOverrides
 }
 
 /**
- * 근로소득세 공식 계산 (간이세액표 빈 구간 fallback 용도)
- * 국세청 "근로소득 간이세액표" 계산 방식 (2023년 개정 이후):
+ * 8세 이상 20세 이하 자녀 세액공제 (소득세법 시행령 별표2, 2026-03-01 시행).
+ * 「간이세액표의 금액에서 자녀수별로 아래 금액을 공제한 금액으로 함. 공제 후 음수면 0원」
+ *   1명 20,830 · 2명 45,830 · 3명부터 45,830 + (2명 초과 1명당) 33,330
+ * 홈택스 예시로 검산: 월급여 3,500천원·공제대상가족 4명·자녀 2명 → 49,340 − 45,830 = 3,510원.
+ * ⚠️ 80/100/120% 선택은 **자녀공제를 뺀 뒤** 곱한다(규정상 「간이세액표에 따른 세액」이 공제 후 금액).
+ */
+export function childTaxCredit(children: number): number {
+  const k = Math.max(0, Math.floor(Number(children) || 0))
+  if (k <= 0) return 0
+  if (k === 1) return 20830
+  return 45830 + 33330 * (k - 2)
+}
+
+/**
+ * ⚠️ **국세청 간이세액표가 아니다 — 근사값이고 실제보다 크게 나온다.**
+ * 특별소득공제·특별세액공제 간주액과 연금보험료공제가 빠져 있어 실측 2~3배까지 벌어진다
+ * (2026-09-17: 월 350만·4인 이 146,260 ↔ 고시표 49,340). 이 함수로 표를 채우면 안 된다 —
+ * `income_tax_table` 은 홈택스 「근로소득 간이세액표(조견표)」 엑셀을 CSV 임포트로 넣는다.
+ * 여기 남겨 둔 이유는 표 구간 **밖**(1,000만원 초과 등)에서 0을 반환하지 않기 위한 최후 폴백뿐이다.
+ *
+ * 계산 방식 (국세청 산식의 일부만 반영):
  * 1) 연간 급여 = 월급 × 12
  * 2) 근로소득공제 차감 → 근로소득금액
  * 3) 인적공제 (150만 × 공제대상가족수) 차감 → 과세표준
@@ -522,10 +544,12 @@ export async function calcDeductions(db: D1Database, input: CalcInput): Promise<
   const ia = rates['INDUSTRIAL_ACCIDENT']
   const employer_industrial_accident = (applyIa && ia) ? Math.floor(taxablePay * ia.employer_rate / 100 / 10) * 10 : 0
 
-  // 7) 소득세 — 간이세액표 lookup
+  // 7) 소득세 — 간이세액표 lookup → 자녀세액공제 차감 → 80/100/120% 적용
+  //    순서가 규정이다: 자녀공제는 **표값에서** 빼고(음수면 0), 비율은 그 뒤에 곱한다.
   const { tax: rawTax, rowId } = await lookupIncomeTax(db, year, taxablePay, dependents)
+  const tableTax = Math.max(0, rawTax - childTaxCredit(input.childrenUnder20 || 0))
   const optionMul = taxOption === '80' ? 0.8 : taxOption === '120' ? 1.2 : 1.0
-  const income_tax = Math.floor(rawTax * optionMul / 10) * 10
+  const income_tax = Math.floor(tableTax * optionMul / 10) * 10
 
   // 8) 지방세 — 소득세의 10%
   const local_tax = Math.floor(income_tax * 0.1 / 10) * 10

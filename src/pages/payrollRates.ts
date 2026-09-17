@@ -92,9 +92,8 @@ export const payrollRatesContent = `
         </div>
         <div class="flex items-center gap-2">
           <input type="file" id="prRCsvFile" accept=".csv" class="hidden" onchange="prRImportCsv(event)" />
-          <button onclick="prRGenerateTable()" class="border border-gray-300 bg-white text-gray-700 rounded-lg px-3 py-1.5 text-sm hover:bg-gray-50">
-            <i class="fas fa-magic mr-1"></i>전구간 자동생성
-          </button>
+          <!-- 「전구간 자동생성」 제거(2026-09-17) — 근사 산식이 고시표보다 2~3배 높은 값을 900행 채워 넣었고,
+               화면·게이트 어디에도 티가 나지 않아 반년 넘게 그대로 돌았다. 정본은 홈택스 조견표 CSV 임포트뿐이다. -->
           <button onclick="document.getElementById('prRCsvFile').click()" class="border border-gray-300 bg-white text-gray-700 rounded-lg px-3 py-1.5 text-sm hover:bg-gray-50">
             <i class="fas fa-upload mr-1"></i>CSV 임포트
           </button>
@@ -138,10 +137,11 @@ export const payrollRatesContent = `
     <div class="mt-4 p-4 bg-amber-50 border border-amber-100 rounded-lg text-sm text-amber-900">
       <div class="font-semibold mb-1"><i class="fas fa-exclamation-triangle mr-1"></i>간이세액표 업데이트 안내</div>
       <ul class="list-disc ml-5 space-y-1 text-xs text-amber-800">
-        <li><strong>전구간 자동생성</strong>: 국세청 공식 계산식(근로소득공제 + 인적공제 + 누진세율 + 세액공제)으로 1만원 단위 전체 구간 900행을 자동 생성합니다.</li>
-        <li><strong>CSV 임포트</strong>: 국세청 공식 간이세액표를 CSV로 저장 후 업로드하여 정확한 값으로 덮어쓰기 가능.</li>
-        <li>CSV 헤더: <code class="bg-white px-1 rounded">monthly_pay_min,monthly_pay_max,dependents_1,...,dependents_11</code></li>
-        <li>표에 없는 구간은 공식 계산식으로 자동 fallback 처리됩니다.</li>
+        <li><strong>이 표는 반드시 국세청 원본이어야 합니다.</strong> 홈택스 → 세금신고 → 원천세 신고 → <strong>근로소득 간이세액표</strong> → 「조견표」 <strong>엑셀 다운로드</strong> 후 CSV로 저장해 임포트하세요. 로그인 없이 받을 수 있습니다.</li>
+        <li>CSV 헤더: <code class="bg-white px-1 rounded">monthly_pay_min,monthly_pay_max,dependents_1,...,dependents_11</code> (금액은 <strong>원</strong> 단위 — 조견표는 천원 단위라 ×1,000)</li>
+        <li><strong>구간 폭이 균일하면 원본이 아닙니다.</strong> 고시표는 5천·1만·2만원 폭이 섞여 있고 2026.3.1 시행분은 <strong>646행</strong>(77만~1,000만원)입니다. 2026-09-17 이전에는 근사 산식으로 만든 900행(1만원 균일)이 들어 있었고 세액이 2~3배 높았습니다.</li>
+        <li>8세 이상 20세 이하 자녀가 있으면 표값에서 <strong>자녀수별 금액</strong>을 뺍니다(1명 20,830 · 2명 45,830 · 3명부터 +33,330/명). 직원별 <code class="bg-white px-1 rounded">8~20세 자녀수</code>로 자동 반영됩니다.</li>
+        <li>표에 없는 구간(1,000만원 초과 등)은 근사 계산식으로 fallback 되며 <strong>정확하지 않습니다</strong>. 해당자가 생기면 급여대장에서 엑셀 입력으로 덮으세요.</li>
       </ul>
     </div>
   </div>

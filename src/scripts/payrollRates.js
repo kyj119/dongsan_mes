@@ -401,21 +401,9 @@ window.prRImportCsv = function(ev) {
 };
 
 // ========== 전구간 자동생성 ==========
-window.prRGenerateTable = async function() {
-  var year = parseInt(document.getElementById('prRYear').value);
-  if (!(await showConfirm(year + '년 간이세액표를 공식 계산식으로 전구간(100만~1000만, 1만원 단위 900행) 자동 생성합니다.\n\n※ 기존 ' + year + '년 데이터는 모두 삭제됩니다. 계속할까요?', { danger: true }))) return;
-  var tbody = document.getElementById('prRTaxBody');
-  tbody.innerHTML = '<tr><td colspan="8" class="text-center text-gray-400 py-6"><i class="fas fa-spinner fa-spin mr-2"></i>생성 중... (약 10~20초 소요)</td></tr>';
-  try {
-    var res = await axios.post('/api/payroll/tax-table/generate', { year: year, min: 1000000, max: 10000000, step: 10000 });
-    showToast('생성 완료: ' + res.data.data.inserted + '행', 'success');
-    prRTaxOffset = 0;
-    prRLoadTaxTable();
-  } catch (e) {
-    showToast('생성 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message), 'error');
-    prRLoadTaxTable();
-  }
-};
+// prRGenerateTable 제거 (2026-09-17). 이 함수가 부르던 /tax-table/generate 는 근사 산식으로 900행을
+// 채웠고, 그 값이 고시표보다 2~3배 높았다(350만·4인 146,260 ↔ 49,340). 화면에는 "생성 완료 900행"만
+// 뜨고 게이트도 전부 초록이라 반년 넘게 그대로 돌았다 — 정본은 홈택스 조견표 CSV 임포트뿐이다.
 
 // ========== 연도 복사 ==========
 window.prROpenCopyModal = function() {

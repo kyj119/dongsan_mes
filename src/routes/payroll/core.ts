@@ -183,6 +183,7 @@ coreRouter.post('/preview', async (c) => {
     const deductions = await calcDeductions(c.env.DB, {
       taxablePay: taxable_pay,
       dependents,
+      childrenUnder20: Math.max(0, Number(emp.children_under_20_count || 0)),
       taxOption,
       year,
       payPeriod,
@@ -259,7 +260,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const empEf = entityFilter(c)
     const emp = await c.env.DB.prepare(
       `SELECT id, entity_id, base_salary, hourly_rate, overtime_daily_hours, overtime_work_days,
-              dependents_count, income_tax_table_option, hire_date, resignation_date
+              dependents_count, children_under_20_count, income_tax_table_option, hire_date, resignation_date
        FROM employees WHERE id = ?${empEf.clause}`
     ).bind(employeeId, ...empEf.params).first<any>()
     if (!emp) return c.json({ success: false, error: '직원 없음' }, 404)
@@ -420,6 +421,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     const d = await calcDeductions(c.env.DB, {
       taxablePay: taxable_pay, dependents, taxOption, year, payPeriod,
+      childrenUnder20: Math.max(0, Number(emp.children_under_20_count || 0)),
       deductionOverrides,
       applyNationalPension: empDefaults.insurance_apply_national_pension,
       applyHealth: empDefaults.insurance_apply_health,
@@ -614,7 +616,7 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
       for (const r of existRows || []) existsSet.add(r.employee_id)
       const { results: empRows } = await c.env.DB.prepare(
         `SELECT id, entity_id, base_salary, hourly_rate, overtime_daily_hours, overtime_work_days,
-                dependents_count, income_tax_table_option, hire_date, resignation_date FROM employees WHERE id IN (${ph})`
+                dependents_count, children_under_20_count, income_tax_table_option, hire_date, resignation_date FROM employees WHERE id IN (${ph})`
       ).bind(...empIds).all<any>()
       for (const r of empRows || []) empRowMap.set(r.id, r)
     }
@@ -630,6 +632,7 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
       const empDefaults = batchDefaultsMap.get(emp.id) || await loadEmployeeDefaults(c.env.DB, emp.id)
       const base_salary = Number(empRow?.base_salary || 0)
       const dependents = Math.max(1, Number(empRow?.dependents_count || 1))
+      const childrenUnder20 = Math.max(0, Number(empRow?.children_under_20_count || 0))
       const taxOption = String(empRow?.income_tax_table_option || '100')
       const year = Number(payPeriod.slice(0, 4))
 
@@ -693,7 +696,7 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
       const taxable_pay = payBase + batch_overtime_pay + bonus_fixed + other_allowance_fixed_total + tax_meal
 
       const d = await calcDeductions(c.env.DB, {
-        taxablePay: taxable_pay, dependents, taxOption, year, payPeriod,
+        taxablePay: taxable_pay, dependents, childrenUnder20, taxOption, year, payPeriod,
         applyNationalPension: empDefaults.insurance_apply_national_pension,
         applyHealth: empDefaults.insurance_apply_health,
         applyLongTermCare: empDefaults.insurance_apply_long_term_care,
@@ -789,7 +792,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
              e.base_salary AS emp_base,
              COALESCE(e.overtime_daily_hours, 0) AS odh,
              COALESCE(e.overtime_work_days, 22) AS owd,
-             e.dependents_count, e.income_tax_table_option,
+             e.dependents_count, e.children_under_20_count, e.income_tax_table_option,
              e.hire_date, e.resignation_date
       FROM payroll p
       JOIN employees e ON e.id = p.employee_id
@@ -950,6 +953,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
         const d = await calcDeductions(c.env.DB, {
           taxablePay: taxable_pay,
           dependents: Math.max(1, Number(t.dependents_count || 1)),
+          childrenUnder20: Math.max(0, Number(t.children_under_20_count || 0)),
           taxOption: String(t.income_tax_table_option || '100'),
           year: syncYear,
           payPeriod,

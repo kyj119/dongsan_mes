@@ -261,6 +261,17 @@ settingsRouter.post('/tax-table/generate', requireRole('ADMIN', 'MANAGER'), asyn
     const step = Number(body.step || 10000)
     if (!year) return c.json({ success: false, error: 'year 필요' }, 400)
 
+    // 2026-09-17: 이 경로가 낸 표는 **국세청 고시표가 아니다**. calcOfficialMonthlyTax 에 특별소득공제·
+    //   특별세액공제 간주액과 연금보험료공제가 빠져 있어 2~3배 높은 값이 나온다(350만·4인 146,260 ↔ 49,340).
+    //   그런데도 "생성 완료 900행"만 뜨고 200이라 아무도 몰랐다 — 호출자가 그 사실을 명시해야만 실행한다.
+    if (body.confirm_approximate !== true) {
+      return c.json({
+        success: false,
+        error: '이 기능은 국세청 간이세액표를 만들지 않습니다',
+        detail: '근사 계산식이라 실제 고시표보다 2~3배 높은 세액이 나옵니다. 홈택스 「근로소득 간이세액표(조견표)」 엑셀을 CSV 임포트로 넣으세요. 근사표가 정말 필요하면 confirm_approximate:true 로 호출하세요.',
+      }, 400)
+    }
+
     // 기존 삭제
     await c.env.DB.prepare(`DELETE FROM income_tax_table WHERE year = ?`).bind(year).run()
 

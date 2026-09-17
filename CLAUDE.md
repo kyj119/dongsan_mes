@@ -130,7 +130,7 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 
 ### 계산 규칙 = 값 대조 게이트로만 잡힌다 (`npm run test:calc` · CI 배포 차단)
 **문법이 멀쩡한 계산 오류는 기존 게이트 전부를 통과한다.** 2026-08-25 여신 리팩터링에서 공유 SQL을 서브쿼리로 감싸며 바깥에 `?`를 둬 **파라미터가 한 칸씩 밀렸고**(`a.entity_id=6` → adjustments 전량 누락, 초과 37곳이 108곳으로), typecheck·build·check:dom·sort-audit·entity-audit·smoke가 **전부 통과**했다. prod 배포 후 숫자를 대조해서야 잡혔다.
-- **게이트 = `npm run test:calc`** — **28항목 체인, 목록 정본=`package.json`**(청구면적 `test:orderline`·마감표기 `test:finishing-label`·파일규격 `test:file-dims`·여신 `test:credit`·품목중복 `audit:items:selftest`·4대보험 기간요율 `test:insurance-period`·공제 오버라이드 `test:payroll-override` 외 21개). **`deploy.yml`(CI) · `ship:gate`(/ship) · `/deploy-verify` Phase 1 세 경로 전부가 배포 전에 돌린다**(2026-08-25 CI 신설 → 2026-09-10 나머지 둘 편입. 그전엔 로컬 `deploy:prod` 로 내보내면 이 게이트가 배포를 못 막고 **이미 나간 뒤** CI 실패로만 드러났다).
+- **게이트 = `npm run test:calc`** — **32항목 체인, 목록 정본=`package.json`**(청구면적 `test:orderline`·마감표기 `test:finishing-label`·파일규격 `test:file-dims`·여신 `test:credit`·품목중복 `audit:items:selftest`·4대보험 기간요율 `test:insurance-period`·공제 오버라이드 `test:payroll-override`·간이세액표/자녀공제 `test:income-tax` 외 24개). **`deploy.yml`(CI) · `ship:gate`(/ship) · `/deploy-verify` Phase 1 세 경로 전부가 배포 전에 돌린다**(2026-08-25 CI 신설 → 2026-09-10 나머지 둘 편입. 그전엔 로컬 `deploy:prod` 로 내보내면 이 게이트가 배포를 못 막고 **이미 나간 뒤** CI 실패로만 드러났다).
 - `test:hookguard`는 제품이 아니라 **개발환경**(Windows 셸 차단)을 검증 → CI 제외. 로컬 `test:all` + **커밋 훅 차단**(`.claude/hooks/`·`settings.json` 이 dirty 인 커밋만 — `pretooluse-bash.cjs`).
 - 새 계산 규칙을 만들면 **픽스처 테스트를 같이 만든다**. ⚠️로컬 D1이 비면 전부 0이라 판별이 안 된다(그래서 `test:credit`은 in-memory SQLite에 픽스처를 심는다). 상세=memory `feedback-sqlite-placeholder-subquery-order`.
 
@@ -185,7 +185,12 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 - **공단 고지와 100% 맞출 수는 없다** — 건강보험 4월 연말정산·두루누리 감면·등급 소급은 공단만 아는 값이다. 실무 정석은 *계산*이 아니라 **고지금액 그대로 공제** → 매달 **엑셀 입력**으로 대장 값을 덮는다(2026-06 은 45명 1회로 4종 전부 차이 0 달성).
 - ★**순합은 상쇄된다 — 어긋남은 절대값으로 센다**: 건강보험 차이 합계 −143,580 을 「그 정도면 작다」고 읽었는데, 실제로는 **20명이 −288,480 · 19명이 +119,210 으로 서로를 지운 것**이고 어긋난 크기는 **407,690**(46명 중 39명)이었다. 방향이 갈리는 축(보수월액이 당월급여보다 높은 사람 ↔ 낮은 사람)에서 합계만 보면 **문제가 없어 보인다** — §원가 0 의 「금액순으로 고르면 ①이 항상 1등이다」와 같은 함정이다.
 - **맞출 수 없는 축은 사람이 고정한다** — 공제액에 수동 오버라이드가 있다(0618 `payroll.deduction_overrides` JSON). 기존 컬럼에는 **최종값**이 들어가 집계·명세서 경로를 하나도 안 고친다. 적용 지점은 `calcDeductions` **한 곳뿐**이라 재계산(근태 불러오기)을 해도 살아남는다 — 화면은 📌 로 표시하고 해제는 전용 버튼(빈칸이 아니라 `deduction_overrides:null`). 입력은 `/payroll` **엑셀 입력**(셀 붙여넣기 TSV · 파일). 게이트 = **`test:payroll-override`**.
-- **타입체크·smoke·build 는 이걸 절대 못 잡는다** — 공제가 틀려도 200이다. 게이트 = **`test:insurance-period`**(in-memory 픽스처 24항목, `test:calc` 체인 → CI·`ship:gate`·`/deploy-verify` 전부에 물려 있다). ⚠️로컬 D1이 비면 요율 0행이라 전부 0이 나온다 — 그래서 픽스처를 심는다.
+- ★**참조표는 「있다」가 아니라 「원본인가」를 봐야 한다** (2026-09-17) — `income_tax_table` 2026 에 **국세청 고시표가 아니라 자체 근사 산식으로 만든 900행**이 들어 있었다. 「전구간 자동생성」 버튼(`/tax-table/generate` → `calcOfficialMonthlyTax`)이 채운 값인데 **특별소득공제·특별세액공제 간주액과 연금보험료공제가 빠져 2~3배 높았다**(350만·4인 146,260 ↔ 고시표 49,340). 화면엔 "생성 완료 900행", 응답 200, 전 게이트 초록 — **§조용한 격하 그대로**다.
+  - **가짜는 모양으로 드러난다** — 열 간 차이가 **정확히 18,750 고정**(=150만×15%÷12)이었다. 고시표는 특별공제 간주액 때문에 **일정할 수 없다.** 구간 폭도 고시표는 5천·1만·2만원 혼합(646행)인데 자체 표는 **1만원 균일 900행**이었다. 「값이 그럴듯한가」보다 **「형태가 산식을 닮았는가」가 먼저 보인다.**
+  - ⚠️**표가 과대하면 역산이 원인을 가린다** — 처음엔 「부양가족 미입력」으로 오진했다. 표가 높으니 실측 세액에 맞추려면 열을 오른쪽으로 밀게 되어 가족수가 3~5인으로 **부풀어 그럴듯해 보였다.** 실제로는 31명 중 **23명이 본인 1인**(=기본값)이었다. 파생 추정치로 입력값을 채우기 전에 **참조표부터 의심한다.**
+  - 정본 = 홈택스 → 세금신고 → 원천세 신고 → 근로소득 간이세액표 → **조견표 엑셀**(로그인 불요, **천원 단위라 ×1,000**). 넣는 길은 `/settings/payroll-rates` **CSV 임포트** 하나뿐 — 자동생성 버튼은 제거했고 엔드포인트는 `confirm_approximate:true` 없이는 거부한다.
+  - **자녀세액공제는 표값에서 뺀다**(1명 20,830·2명 45,830·3명부터 +33,330/명, 2026-03-01 시행). **순서가 규정이다** — 자녀공제 먼저, 80/100/120% 는 그 뒤. 뒤집으면 홈택스 예시(49,340−45,830=3,510)가 재현되지 않는다.
+- **타입체크·smoke·build 는 이걸 절대 못 잡는다** — 공제가 틀려도 200이다. 게이트 = **`test:income-tax`**(고시표 앵커·자녀공제·적용 순서 19항목) · **`test:insurance-period`**(in-memory 픽스처 24항목, `test:calc` 체인 → CI·`ship:gate`·`/deploy-verify` 전부에 물려 있다). ⚠️로컬 D1이 비면 요율 0행이라 전부 0이 나온다 — 그래서 픽스처를 심는다.
 
 ### 단가는 값이 아니라 **축**이다 (`npm run audit:unit-price-semantics` — ⚠️`--remote` 고정·실행 경로 미배선. prod 대상 **수동** 감사다)
 `unit_price` 한 칸이 과금축에 따라 뜻이 다르다 — AREA=㎡단가 · FIXED=장당가 · 발주=포장당 · 재고(`avg_unit_cost`)=base단위당.
