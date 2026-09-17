@@ -344,7 +344,10 @@
                                 pricing_method: it.pricing_method || 'FIXED',
                                 specification: it.specification || '',
                                 width_mm: it.width_mm || '',
-                                item_type: it.item_type || ''
+                                item_type: it.item_type || '',
+                                // 0621: 배송비 품목이면 「출고 박스 수로 확정」 칸을 연다.
+                                //   ★이 자동완성 경로가 주 경로다 — 「배송비」는 결과가 1건이라 모달을 안 거친다.
+                                is_shipping_fee: !!it.is_shipping_fee
                             });
                         } else if (items.length > 1 && openModal) {
                             window.openItemSearchModal({ type: (incMat && incMat.checked) ? '' : 'sales', excludeType: (incMat && incMat.checked) ? '' : 'MATERIAL', search: q, forUser: true, onSelect: applyItemSelection });
