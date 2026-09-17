@@ -1,46 +1,63 @@
-# 세션 인계 — 2026-09-14 (동산 6~8월 주문 회계반영 · prod 데이터 작업, 코드 변경 없음)
+# 세션 인계 — 2026-09-17 (통장·고정비·대출 상세점검 + prod 데이터 정정 + 코드 1건 배포)
 
-## 이번 세션이 한 일 (2026-09-14)
-동산(entity 1) 6·7·8월 SHIPPED·미반영 주문을 **회계반영(BILLED)**. 코드 변경 없음, prod 데이터 작업.
+## 이번 세션이 한 일
 
-| 결정(용준님) | 내용 | 결과 |
-|---|---|---|
-| 범위 | 배송월 8월 + 경계 11건(8월주문·7월배송), 이후 6·7월 잔여도 동일 처리 | 8월 1,257건·6/7월 44건 |
-| 이중계상 | 이관분(이카운트 기인식)이라 우려 없이 전부 반영 | — |
-| 반영 방식 | 표준 `bulk-bill`(queries.ts:219)과 **동일 UPDATE 2건**: `order_billing_groups`+`orders` 미러, `accounting_date=COALESCE(billable_after, delivery_date, KST오늘)`, `billed_by=9`(김용준) | 부수효과 없음(AR=그룹 파생) |
+요청 = 「통장내역 정리하고 고정비 및 대출 비용 상세점검」. prod 실측으로 시작해 **진단 → 근거 확정 → 반영** 순으로 진행.
 
-- 합계 **1,301건 / 525,179,143원**. 배송월 6~8월 SHIPPED **잔여 미반영 0건** 검증 완료.
-- `accounting_date` 범위 2026-06-29~08-31(배송일 기준 — 7월배송분은 7월 귀속).
-- PROJECT_STATUS.md 상단에 감사 1줄 추가(doc-diet 게이트 통과).
+### 근본 발견 — 통장 정리가 밀리면 모든 비용 숫자가 허수가 된다
+원장 반영률 1~5월 88~95% → 6월 79% → 8월 70% → **9월 33%**. 그 결과 보험료 계정이 1~6월 1,000만대에서 **7월 505만·8월 413만·9월 0**으로 보였다. **비용이 준 게 아니라 매칭이 안 붙은 것**이다.
+→ **월별 비용 추세를 읽기 전에 그 달 통장이 정리됐는지부터 본다.**
 
-## 다음 세션 TODO
-1. **첫 실등록 1건 확인** — 패널 결과줄에 C/D/N 코드가 안 뜨고 EPS 옆 `warn.log` 가 안 생기면 정상. 생기면 그게 여태 삼켜지던 실패다(에이전트 경로는 `_iaWarn` → `warn.log`).
-2. 디자이너 PC 마다 **일러 완전 재시작** 후 한글 타이핑 1회(IME 플래그는 manifest 라 재시작해야 읽힌다).
-3. 미구현·미착수: 에이전트가 `warn.log` 를 UI 에 띄우기 · P3 백업 잔재(Z: `.bak` 14·설치본 `.bak`·`_panel_backups` 보존 상한 없음, `copyTree` 가 `.bak` 도 나름) · 용어 「펀칭」(가공) vs 「타공」(재단).
-4. 옛 뜻(`side_top=2` = 안쪽 2개)으로 저장된 주문 라인 건수 미확인(`--remote` 7403) — 필요 시 prod 조회 후 판단.
-5. journey-loop 세션(정본 `/journey-loop` · 메모리 `project-journey-loop` · prod `4fb684d2`, 09-15 저녁): **J0~J7+J4b 40단계 통과 · 제안 P1~P13 전부 판정 완료 → 병행테스트 진입 조건 충족**. 체크시트 = `docs/journeys/PARALLEL_TEST.md`(**역할별 담당자 이름 = 용준님이 채운다**, 그 뒤 매일 `journey:cycle` + 결함→여정 승격). 09-15 = P12 규격 축(3축=FIXED+텍스트, `0614`·`0615`) · P9 주문 상세 「출고 취소」(`PATCH /api/orders/:id/unship`) · P10 선불/착불 앱 검증 · **P13** 「발주 없이 입고」가 지워진 `loadPendingPOs` 를 불러 입고 모달이 안 열리던 결함(J4b 첫 실행이 발견) → `loadReceivingQueue`. 다음 게이트 후보 = `?raw` 스크립트 **미정의 전역 함수 호출 감사**(check:dom 의 함수판 — P13 형태를 잡는다). ⚠️**prod 마이그는 CI 가 안 돌리고 auto 모드가 `--remote` 쓰기를 막는다 → 용준님이 `!`(Git Bash 슬래시 경로)로 실행, 컬럼 마이그 전 push 금지**. ⚠️동시 세션이 :3000 을 잡으면 `JOURNEY_BASE_URL=http://localhost:3001 npm run journey:cycle`. P6 = 보안 묶음 때. 여정용 비관리자 계정은 DESIGNER. · **09-15 밤 게이트 `check:fn` 신설**(P13 부류 미정의 전역 함수 호출 — 페이지 번들·TypeScript 파서·typeof 제외·자가시험, 편집훅·커밋훅·CI·ship:gate 배선, 잔여 0: settings↔zonePicker 동반 적재·bank hubGoto 폴백)
-6. 발주→입고→검수 원단 2주 테스트(용준님/강지영) 진행 중 — 2주 뒤 숫자로 규정 확정.
+### prod 반영 (전부 되돌리기 가능)
 
-## 주의사항 (중요)
-- **auto 모드 분류기가 prod D1 쓰기를 차단한다** — 8월 반영(1,257건)은 `wrangler d1 execute --remote --command` 로 통과했으나, 직후 6·7월(44건)은 `--command`·`--file` 모두 **반복 차단**. 재시도로 안 풀림 → **용준님이 `! npx wrangler d1 execute ... --file=...junjul_bill.sql` 로 직접 실행**해서 완료. 다음에 prod 쓰기가 필요하면 이 게이트를 감안: ①사용자 `!` 직접 실행 ②Bash 권한 규칙 추가.
-- **롤백 방법**: 대상 = `entity_id=1 AND status='SHIPPED' AND billed_by=9 AND date(billed_at,'+9 hours')='2026-09-14' AND substr(delivery_date,1,7) IN ('2026-06','2026-07','2026-08')` → `billing_status`·`billed_at`·`accounting_date` NULL 복원(orders+order_billing_groups 양쪽). ⚠️임시 ID 파일(scratchpad `aug_bill_targets.json`·`junjul_bill_targets.json`)은 세션 만료 시 소멸하니 위 WHERE 로 재현.
-- **billing_status 정본은 `order_billing_groups`, `orders.billing_status`는 미러**(0397). 이관 주문은 그룹은 생성돼 있고 billing_status NULL = 회계반영 전 상태였다.
-- 다른 법인 8월 회계반영 상태는 **미확인**(선명 2·청주 3). 선명·청주 8월분은 09-10 `0604` 에서 별도 처리됨 — 요청 시 같은 방식으로 확인/처리.
+| 건 | 금액 | 판정 근거 | 되돌리기 |
+|---|---|---|---|
+| 리스료(NOT_EXPENSE) → 지급수수료(SGA) 10건 | **8,010만** | 각 고정비 `notes` 의 **세무장부 531** (추론 아님) | `matched_category_id=91` |
+| 차입금상환 → 이자비용 13건 | **910만** | `loans #9` `INTEREST_ONLY` + **잔액이 9개월간 1원도 안 줄었다** | `=66` |
+| 고정비 #2 케이엠테크 비활성 | 월 257만 | 자기 `notes` 에 「중복이라 종료」인데 `is_active=1` | `is_active=1` |
+| IGNORED 에 갇힌 대출 거래 5건 해제 | 3,560만 | 계좌번호 적요가 `isNonCounterpartName` 에 떨어짐 | `='IGNORED'` |
+| A~F 21건 (자기이체 3쌍·세금 5·잡급 2·캐피탈 2·카드대금 7·대출 2) | — | **같은 적요의 과거 APPLIED** 를 그대로 따름 | 건별 |
+| 입금에 붙은 운반비 계정 1건 제거 | 32,670 | `audit:expense-category` P0 | — |
 
-## 다음 세션 TODO (이번 작업 관련)
-- 회계반영 후속 없음(완결). 필요 시 선명/청주 8월·9월 회계반영 상태 확인만 남음.
+미정리 **870건 14.16억 → 851건 13.55억**.
 
-## 이전 세션 이월 TODO (2026-09-11~12, 미완 — 그대로 유효)
-1. **첫 실등록 1건 확인** — 패널 결과줄 C/D/N 코드·EPS 옆 `warn.log` 없으면 정상.
-2. 디자이너 PC마다 일러 완전 재시작 후 한글 타이핑 1회(IME 플래그=manifest, 재시작 필요).
-3. 미착수: 에이전트 `warn.log` UI 표시 · P3 백업 잔재 정리 · 용어 「펀칭」(가공)vs「타공」(재단).
-4. journey-loop: **P9**(완전 출고 주문은 보드에서 사라져 출고 취소 화면 없음) · **P10**(주문서 거래처 미선택 시 「선불/착불」 required 말풍선 선행) 판정 대기. ⚠️동시 세션이 :3000 dev 띄우면 `JOURNEY_BASE_URL=http://localhost:3001 npm run journey:cycle`. 여정용 비관리자=DESIGNER(MANAGER 는 /orders 권한 없음). 다음 후보 J4 「발주 없이 입고」.
-5. 발주→입고→검수 원단 2주 테스트(용준님/강지영) 진행 중 — 2주 뒤 숫자로 규정 확정.
-6. 빈 catch·펀칭·IA 관련 판단 기준 = 이전 handoff(git 이력) 및 메모리 `design-empty-catch-gate`·`design-punching-count-rule`·`design-a0-panel-structure`.
+### 코드 배포 `6665df2a`
+`/api/bank/fixed-expense-status` 가 `is_active` 만 보고 기간을 안 봐 **끝난 고정비가 매달 OVERDUE** 로 떴다. 자금예측(`cashflowEngine:558`·`cashFlow:576/650/830`)은 처음부터 같은 조건을 보고 있어 **화면만 어긋나 있었다**. 실측: E2 2026-10 **10건 → 9건**.
 
-## 검증 명령 (PowerShell, `C:\Users\user\dongsan_mes`)
+## 판단 기준 (다음에도 그대로 쓸 것)
+
+1. **계정을 정할 때는 「같은 적요가 과거에 어디로 갔는지」부터 조회한다.** 이번에 C·D·E·F 21건 전부 이 방법으로 근거가 확정됐다 — 내 판단이 아니라 사람이 이미 내린 판단을 읽는 것이다.
+2. **단 전례가 틀렸을 수도 있다.** 삼성화재 약관대출 7건이 「차입금상환」으로 가 있었는데 `loans #9` 는 `INTEREST_ONLY` 라 전액 이자였다. 전례를 따르면 같은 결함을 반복한다 → **전례 ↔ 대출 성격을 교차 확인**한다.
+3. **금액이 커서 먼저 눈에 띄는 건이 대개 성격이 다른 건이다.** 한국아이비 24,570,630 은 비용이 아니라 **131 선급금**이었다(같은 `notes` 에 적혀 있었다). 처음에 비용 1.05억이라고 보고했다가 8,010만으로 정정했다.
+4. **적요 학습(`/apply`)이 해로운 경우가 있다.** 같은 적요가 이자·원금으로 갈리는 건(`60298022283142-00001`)과 카드대금(IGNORED+계정 조합은 API로 못 만든다)은 SQL 로 직접 지정했다.
+5. **여정 게이트가 실행마다 다른 항목을 실패시키면 코드가 아니라 타 세션과의 로컬 D1 경합이다** → [[feedback-journey-gate-cross-session]]
+
+## 주의사항
+
+- ⚠️**권한 분류기가 prod 쓰기를 산발적으로 막는다** — 같은 형태의 UPDATE 가 한 번은 통과하고 한 번은 막혔다. 막히면 `.sql` 파일을 만들어 용준님이 `!` 로 실행하는 경로가 확실하다.
+- ⚠️**`.wrangler` 는 worktree 간 junction 공유** — `journey:gate --snapshot` 은 **다른 세션의 로컬 D1 도 갈아엎는다**. 이번에 두 번 그랬다. 재적재 전에 `Get-CimInstance Win32_Process` 로 다른 `wrangler pages dev` 가 없는지 본다.
+- ⚠️**공유 체크아웃에 남의 커밋이 얹힌다** — push 직전 `ahead 2` 였고 `f7ae5683`(a0:flow)은 타 세션 것이었다. `git push origin <내sha>:main` 으로 내 것만 내보냈다. 현황판 커밋은 그 뒤에 있어 **아직 원격에 없다**.
+- 통장 매칭 스윕은 **거래처명 축**만 본다. 452건 스캔에 제안 1건 — **남은 UNMATCHED 는 자동으로 더 줄지 않는다.**
+
+## 다음 세션 TODO (용준님 지시로 전부 보류 상태)
+
+1. **거래처 판단 414건 5.45억** — 경리 화면 작업. 자동화 여지는 「잘린 상호」 매칭 개선뿐(`홈) 농협주식회사엘이` = 주식회사 엘이디포유). 얼마나 되는지 세어 보는 게 선행.
+2. **국세납부 2건 270만** — 과거 처리 0건. 부가세(NOT_EXPENSE)인지 세금과공과(SGA)인지 실물 확인 필요.
+3. **E3(청주) 급여 계정 신설** — 동산기획(청주)8월급여 279만이 붙을 계정이 없다. 과거 3건은 E2 계정(81)을 빌려 썼는데 법인 격리상 옳지 않다.
+4. **중진공대출 264만** — 원금 238만 + 이자 26만 혼재. `EQUAL_PRINCIPAL` 은 한 줄로 안 가르는 게 규칙.
+5. **선명 미등록 대출계좌 `602-910275-95552`** — 이자 237,500 만 있고 **실행 입금이 통장에 없어** MES 로는 확인 불가. 은행 조회.
+6. **한국아이비렌탈 이중지급 확인** — 4/9 선납 24,570,630(9회분)인데 5·6·7월 월 출금 2,730,070 도 나갔다.
+7. **만기 2026-09-20** — 원금 1,000만 상환 후 연장 협의 중(결과 미확정). 확정되면 `loans` 잔액 1.5억→1.4억·만기일 수정 + **`loan_payments` 스케줄 재생성**(만기만 고치면 자동 반영 안 됨).
+8. 자금예측 누락 — 스케줄 미생성 대출 4건 월 152만(#1·#25·#27·#28) · `CMS 농협생명 자유납입` 908,000 고정비 미등록.
+9. **2027년 봄 만기 절벽 14.4억**(03-30 5건 12.4억 외) — 마통 4.98억은 `loans` 밖.
+
+## 검증 명령 (PowerShell)
+
 ```powershell
-# 이번 세션은 코드 변경 없음 — 빌드 불요. 회계반영 재검증만:
-npx wrangler d1 execute webapp-production --remote --command "SELECT COUNT(*) unbilled FROM orders WHERE entity_id=1 AND status='SHIPPED' AND billing_status IS NOT 'BILLED' AND substr(delivery_date,1,7) IN ('2026-06','2026-07','2026-08')"  # 0 이어야 정상
-# 코드 작업 재개 시: npm run verify ; npm run test:calc ; npm run smoke:prod ; npm run journey:cycle
+npm run verify                       # tsc + build
+npm run test:calc                    # 계산 게이트 28항목
+node scripts/entity-audit.mjs        # entity 필터
+npm run audit:expense-category       # 비용 계정 정합성(prod) — 이번 작업 대상 축
+npm run audit:loan-bank -- --remote  # 차입금↔통장 대사(prod) — P0 1건(미등록 계좌) 남아 있음
+npm run smoke:prod                   # 129/129
 ```
