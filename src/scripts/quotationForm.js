@@ -432,7 +432,7 @@ async function loadQuotation(id) {
             var unitEl = document.querySelector('[name="unit_display_' + rowId + '"]');
             if (unitEl) unitEl.value = item.unit || 'EA';
             // 0620 단위표: 판매단위(조 등) 복원
-            if (window.ofUnitsApply && item.item_id) window.ofUnitsApply(rowId, item.item_id, item.unit || 'EA', { sales_unit: item.sales_unit || '', sales_qty: Number(item.sales_qty) || 0 });
+            if (window.ofUnitsApply && item.item_id) window.ofUnitsApply(rowId, item.item_id, item.unit || 'EA', { sales_unit: item.sales_unit || '', sales_qty: Number(item.sales_qty) || 0, unit_factor: Number(item.unit_factor) || 0 });
             var unitHidEl = document.querySelector('[name="item_unit_' + rowId + '"]');
             if (unitHidEl) unitHidEl.value = item.unit || 'EA';
             var priceEl = document.querySelector('[name="unit_price_' + rowId + '"]');

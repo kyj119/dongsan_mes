@@ -477,6 +477,16 @@ itemsRouter.patch('/groups/:groupName', requireRole('ADMIN', 'MANAGER'), async (
       WHERE item_group = ? AND is_active = 1
     `).bind(...params).run()
 
+    // 0619 단위표: 그룹 전체 unit 을 갈아치웠으면 각 품목의 표를 열에 맞춘다(정본=item_units)
+    if (updates.unit !== undefined) {
+      try {
+        const { results: gRows } = await c.env.DB.prepare(
+          'SELECT id FROM items WHERE item_group = ? AND is_active = 1'
+        ).bind(groupName).all<{ id: number }>()
+        for (const g of gRows || []) await syncUnitsFromPair(c.env.DB, Number(g.id))
+      } catch (e) { console.warn('[items] item_units sync (group patch) 실패:', e) }
+    }
+
     return c.json({
       success: true,
       message: `${result.meta.changes} items updated`,
@@ -606,6 +616,10 @@ itemsRouter.post('/:id/generate-variants', requireRole('ADMIN', 'MANAGER'), asyn
         ).run()
         created.push({ id: res.meta.last_row_id, item_code: variantCode, item_name: variantName })
       }
+    }
+    // 0619 단위표: 변종도 기본단위 행을 갖는다 — 없으면 감사 F7 「단위표 없음」으로 뜬다
+    for (const cr of created) {
+      try { await syncUnitsFromPair(c.env.DB, Number(cr.id)) } catch (e) { console.warn('[items] item_units sync (variants) 실패:', cr.item_code, e) }
     }
 
     // base에 item_group 보강 (묶음 가시화)

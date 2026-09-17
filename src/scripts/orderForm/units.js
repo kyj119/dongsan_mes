@@ -33,6 +33,14 @@
                 // 초기화(품목 바뀜) — 판매단위 없음
                 wrap.classList.add('hidden'); if (hint) hint.classList.add('hidden');
                 sel.innerHTML = ''; qtyS.value = ''; fac.value = '';
+                // ★복원값은 **플래그와 무관하게 먼저 넣는다**. PUT 은 라인을 지우고 다시 넣으므로,
+                //   여기서 비우고 조기 반환하면 수정 한 번에 기존 스냅샷(견적에서 넘어온 「10조」 포함)이 사라진다.
+                //   스위치는 「셀렉트를 보여줄지」만 가른다 — 저장값 보존은 스위치와 무관하다.
+                if (restore && restore.sales_unit && restore.sales_qty > 0) {
+                    sel.innerHTML = '<option value="' + escapeHtml(restore.sales_unit) + '" data-factor="' + (Number(restore.unit_factor) || '') + '" selected>' + escapeHtml(restore.sales_unit) + '</option>';
+                    qtyS.value = restore.sales_qty;
+                    fac.value = Number(restore.unit_factor) || '';
+                }
                 if (!(itemId > 0)) return;
                 ofUnitsFlag().then(function (on) {
                     if (!on) return;

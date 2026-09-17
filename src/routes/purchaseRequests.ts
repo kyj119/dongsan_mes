@@ -6,6 +6,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { kstYmdCompact, kstYmd } from '../utils/kstDate'
+import { backfillPoLineFactors } from '../utils/itemUnits'
 
 const prRouter = new Hono<HonoEnv>()
 
@@ -723,6 +724,8 @@ prRouter.post('/:id/convert', requireRole('ADMIN'), async (c) => {
       INSERT INTO po_status_history (po_id, to_status, changed_by, change_reason)
       VALUES (?, 'DRAFT', ?, ?)
     `).bind(poId, user?.id || 1, `발주 요청 #${pr.request_number} 변환`).run()
+    // 0620 단위표: 라인 계수 스냅샷 보정(비어 있는 라인만) — 입고 환산의 정본
+    await backfillPoLineFactors(c.env.DB, poId as number)
 
     await c.env.DB.prepare(`
       UPDATE purchase_requests SET status = 'CONVERTED', converted_po_id = ?,
@@ -895,6 +898,8 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
         INSERT INTO po_status_history (po_id, to_status, changed_by, change_reason)
         VALUES (?, 'DRAFT', ?, ?)
       `).bind(poId, user?.id || 1, `발주요청 #${pr.request_number} 자동 분리`).run()
+      // 0620 단위표: 라인 계수 스냅샷 보정(비어 있는 라인만) — 입고 환산의 정본
+      await backfillPoLineFactors(c.env.DB, poId as number)
 
       createdPOs.push({ po_id: poId as number, po_number: poNumber, supplier_name: group.supplierName, item_count: poItems.length }) // TODO: #17 poId as number - D1 meta.last_row_id 타입
     }

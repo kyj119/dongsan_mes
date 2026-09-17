@@ -9,6 +9,7 @@ import { authMiddleware, requireRole } from '../../middleware/auth'
 import { getEntityId } from '../../utils/entityFilter'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../../utils/sequenceGenerator'
 import { kstYmdCompact } from '../../utils/kstDate'
+import { backfillPoLineFactors } from '../../utils/itemUnits'
 
 const templatesRouter = new Hono<HonoEnv>()
 templatesRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
@@ -273,6 +274,8 @@ templatesRouter.post('/from-template/:templateId', async (c) => {
       INSERT INTO po_status_history (po_id, to_status, changed_by, change_reason)
       VALUES (?, 'DRAFT', ?, ?)
     `).bind(poId, user?.id || 1, `템플릿 "${template.name}"에서 생성`).run()
+    // 0620 단위표: 라인 계수 스냅샷 보정(비어 있는 라인만) — 입고 환산의 정본
+    await backfillPoLineFactors(c.env.DB, poId as number)
 
     if (initialStatus === 'CONFIRMED') {
       await c.env.DB.prepare(`

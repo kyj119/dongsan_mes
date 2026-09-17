@@ -169,6 +169,33 @@ console.log('[item-units] ④ 마이그 백필 SQL (0619)')
     const r11 = db.prepare('SELECT sales_unit FROM order_items WHERE order_id=11').get()
     check('판매단위 있는 라인만 1건 UPDATE', n === 1 && r0.sales_unit === '조' && r0.sales_qty === 10 && r0.unit_factor === 2, { n, r0 })
     check('판매단위 없는 라인·다른 주문은 그대로 NULL', r1.sales_unit === null && r11.sales_unit === null, { r1, r11 })
+    // ⑧ 레거시 열 경로의 잉크·AQ 차단(0619 감사 결과) — 편집기만 막으면 이관 API 로 130 이 환산 행이 된다
+    console.log('[item-units] ⑧ unitsFromLegacyPair 차단 규칙')
+    const aqRows = unitsFromLegacyPair({ unit: 'yd', base_unit: '롤', pack_size: 130 }, [], 'AQ-STB-60')
+    check('AQ 에 base_unit 이 채워져도 단일 단위로 강제(130 환산 행 없음)', aqRows.length === 1 && aqRows[0].unit === 'yd' && aqRows[0].is_base === 1, aqRows)
+    const inkRows = unitsFromLegacyPair({ unit: '통', base_unit: 'L', pack_size: 20 }, [], 'RM-I0001')
+    check('잉크도 단일 단위로 강제', inkRows.length === 1 && inkRows[0].unit === '통', inkRows)
+    const okRows = unitsFromLegacyPair({ unit: '롤', base_unit: 'M', pack_size: 50 }, [], 'SPM011G-127')
+    check('일반 다단위는 그대로 2행', okRows.length === 2 && okRows[1].factor === 50, okRows)
+    // ⑨ 발주 라인 계수 보정(backfillPoLineFactors) — 비어 있는 라인만, 단위표에 있는 단위만
+    console.log('[item-units] ⑨ backfillPoLineFactors')
+    const { backfillPoLineFactors } = mod
+    db.exec(`CREATE TABLE purchase_order_items (id INTEGER PRIMARY KEY, po_id INTEGER, item_id INTEGER, unit TEXT, unit_factor REAL);
+             INSERT INTO purchase_order_items (po_id, item_id, unit, unit_factor) VALUES
+               (7, 1, '롤', NULL),    -- 단위표에 있음 → 50 으로 채움
+               (7, 1, 'M', NULL),     -- 기본단위 → 1
+               (7, 1, '박스', NULL),  -- 표에 없는 단위 → NULL 유지(입고가 packFactor 폴백)
+               (7, 1, '롤', 7),       -- 이미 값 있음 → 보존
+               (7, NULL, '롤', NULL), -- 품목 미연결 → NULL
+               (8, 1, '롤', NULL);    -- 다른 발주 → 손대지 않음`)
+    await backfillPoLineFactors(shim, 7)
+    const po7 = db.prepare('SELECT unit, unit_factor FROM purchase_order_items WHERE po_id=7 ORDER BY id').all()
+    const po8 = db.prepare('SELECT unit_factor FROM purchase_order_items WHERE po_id=8').get()
+    check('롤→50 · M→1 · 미등록 단위 NULL · 기존값 7 보존 · 품목없음 NULL', po7[0].unit_factor === 50 && po7[1].unit_factor === 1 && po7[2].unit_factor === null && po7[3].unit_factor === 7 && po7[4].unit_factor === null, po7)
+    check('다른 발주는 안 건드린다', po8.unit_factor === null, po8)
+    await backfillPoLineFactors(shim, 7)
+    const po7b = db.prepare('SELECT unit_factor FROM purchase_order_items WHERE po_id=7 ORDER BY id').all()
+    check('멱등(두 번 돌려도 같다)', JSON.stringify(po7b.map((r) => r.unit_factor)) === JSON.stringify(po7.map((r) => r.unit_factor)), po7b)
     cleanup && cleanup()
     console.log(fails ? `[item-units] FAIL ${fails}건` : '[item-units] OK — 검증·파생·보정·백필·라인 계수·판매 스냅샷 전부 통과')
     process.exit(fails ? 1 : 0)

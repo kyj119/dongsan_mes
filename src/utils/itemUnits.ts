@@ -98,10 +98,17 @@ export function deriveLegacyPair(rows: ItemUnitRow[], current: LegacyPair): Lega
   return { unit: base.unit, base_unit: null, pack_size: hadPair ? null : current.pack_size }
 }
 
-/** 파생 열 → 표(레거시 쓰기 뒤 보정). 기본단위 행·발주 행만 맞추고 그 밖의 행(단·조)은 보존한다. */
-export function unitsFromLegacyPair(pair: LegacyPair, existing: ItemUnitRow[]): ItemUnitRow[] {
+/**
+ * 파생 열 → 표(레거시 쓰기 뒤 보정). 기본단위 행·발주 행만 맞추고 그 밖의 행(단·조)은 보존한다.
+ *
+ * ★`itemCode` 를 받는 이유 — 편집기 경로(`normalizeUnitSet`)만 잉크·AQ 다단위를 막으면,
+ *   **레거시 열 경로**(PATCH 의 `base_unit`·`pack_size`, 이관 API)로 AQ 에 `base_unit` 이 채워지는 순간
+ *   `pack_size=130`(실사 편의계수)이 환산 행으로 표에 들어간다 → 원가·재고 130배.
+ *   `salesBaseQty.ts` 가 경고한 바로 그 경로라 여기서도 같은 규칙으로 단일 단위를 강제한다.
+ */
+export function unitsFromLegacyPair(pair: LegacyPair, existing: ItemUnitRow[], itemCode?: string | null): ItemUnitRow[] {
   const unit = String(pair.unit || 'EA').trim() || 'EA'
-  const multi = !!(pair.base_unit && pair.base_unit !== unit && (pair.pack_size || 0) > 1)
+  const multi = !multiUnitBlockReason(itemCode) && !!(pair.base_unit && pair.base_unit !== unit && (pair.pack_size || 0) > 1)
   const baseUnit = multi ? String(pair.base_unit) : unit
   // 옛 기본단위 행은 버린다 — 계수가 옛 기본단위 기준이라 새 기본단위 아래서는 뜻이 없다. 환산 행(단·조)만 보존.
   const keep = existing.filter((r) => !r.is_base && r.unit !== baseUnit && r.unit !== unit)
@@ -177,10 +184,11 @@ export async function replaceItemUnits(db: D1Database, itemId: number, rows: Ite
 
 /** 레거시 열(unit/base_unit/pack_size)이 직접 쓰인 뒤 표를 열에 맞춘다. 실패해도 호출부를 막지 않는다. */
 export async function syncUnitsFromPair(db: D1Database, itemId: number): Promise<void> {
-  const pair = await db.prepare(`SELECT unit, base_unit, pack_size FROM items WHERE id = ?`).bind(itemId).first<LegacyPair>()
+  const pair = await db.prepare(`SELECT unit, base_unit, pack_size, item_code FROM items WHERE id = ?`).bind(itemId)
+    .first<LegacyPair & { item_code: string | null }>()
   if (!pair) return
   const existing = await loadItemUnits(db, itemId)
-  const rows = unitsFromLegacyPair(pair, existing)
+  const rows = unitsFromLegacyPair(pair, existing, pair.item_code)
   const stmts: D1PreparedStatement[] = [db.prepare(`DELETE FROM item_units WHERE item_id = ?`).bind(itemId)]
   for (const r of rows) {
     stmts.push(db.prepare(
@@ -189,6 +197,33 @@ export async function syncUnitsFromPair(db: D1Database, itemId: number): Promise
     ).bind(itemId, r.unit, r.factor, r.is_base, r.role_purchase, r.role_sales, r.role_count, r.sort_order ?? 0))
   }
   await db.batch(stmts)
+}
+
+/**
+ * 발주 라인의 계수 스냅샷 보정 — 라인을 넣은 **뒤** 한 번 부른다(0620).
+ *
+ * 발주를 만드는 경로가 여럿이다(신규·복사·재발주·특별발주·템플릿·발주요청 전환 ×2). 각 INSERT 에
+ * `unit_factor` 를 손으로 끼우면 바인드 개수가 어긋나기 쉬워, **비어 있는 라인만 채우는 UPDATE 한 문장**으로 모은다.
+ *   · 계수는 그 라인의 `unit` 이 품목 단위표에 있을 때만 채운다 — 없으면 NULL 로 두어 입고가 `packFactor()` 로 폴백한다(현행).
+ *   · 이미 값이 있으면 건드리지 않는다(신규 발주는 `resolveLineFactor` 가 이미 넣었다).
+ *   · 복사·재발주는 **오늘 주문하는 새 발주**이므로 오늘의 단위표로 다시 해석하는 것이 맞다.
+ * 멱등. 실패해도 발주 저장을 막지 않는다.
+ */
+export async function backfillPoLineFactors(db: D1Database, poId: number): Promise<void> {
+  try {
+    await db.prepare(
+      `UPDATE purchase_order_items
+          SET unit_factor = (SELECT iu.factor FROM item_units iu
+                              WHERE iu.item_id = purchase_order_items.item_id
+                                AND iu.unit = purchase_order_items.unit)
+        WHERE po_id = ? AND unit_factor IS NULL AND item_id IS NOT NULL
+          AND EXISTS (SELECT 1 FROM item_units iu2
+                       WHERE iu2.item_id = purchase_order_items.item_id
+                         AND iu2.unit = purchase_order_items.unit)`
+    ).bind(poId).run()
+  } catch (e) {
+    console.warn('[itemUnits] 발주 라인 계수 보정 실패 po=' + poId + ':', e)
+  }
 }
 
 // ── 판매단위 스냅샷(주문서·견적서 라인, 0620) ─────────────────────────────────

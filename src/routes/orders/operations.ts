@@ -26,6 +26,9 @@ interface OrderCopyRow {
   contact_phone: string | null; contact_mobile: string | null; shipping_payment: string | null
 }
 interface OrderItemCopyRow {
+  sales_unit?: string | null
+  sales_qty?: number | null
+  unit_factor?: number | null
   id: number; order_id: number; item_id: number | null
   item_name: string; category_name: string | null
   width: number | null; height: number | null; quantity: number; unit: string
@@ -146,7 +149,8 @@ ordersOpsRouter.post('/:id/copy', requireEditOrRole('/orders', 'MANAGER', 'DESIG
              post_processing, content, specification, sort_order, parent_item_id,
              scale_factor, ai_group_index, assigned_entity_id, assignment_status,
              finishing, price_status, auto_amount, line_discount, discount_reason,
-             ai_analysis_id, shipment_ready
+             ai_analysis_id, shipment_ready,
+             sales_unit, sales_qty, unit_factor
       FROM order_items WHERE order_id = ? ORDER BY sort_order ASC, id ASC
     `).bind(id).all<OrderItemCopyRow>()
 
@@ -212,8 +216,10 @@ ordersOpsRouter.post('/:id/copy', requireEditOrRole('/orders', 'MANAGER', 'DESIG
           scale_factor, ai_group_index, parent_item_id,
           assigned_entity_id, assignment_status,
           finishing, price_status, auto_amount, line_discount, discount_reason,
-          ai_analysis_id, shipment_ready
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ai_analysis_id, shipment_ready,
+          -- 0620 단위표: 판매단위 스냅샷도 복사본으로 넘긴다(전환·수정과 같은 규칙)
+          sales_unit, sales_qty, unit_factor
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         newOrderId,
         item.item_id || null,
@@ -240,7 +246,10 @@ ordersOpsRouter.post('/:id/copy', requireEditOrRole('/orders', 'MANAGER', 'DESIG
         item.line_discount ?? null,
         item.discount_reason || null,
         item.ai_analysis_id ?? null,
-        item.shipment_ready ?? 0
+        item.shipment_ready ?? 0,
+        item.sales_unit ?? null,
+        item.sales_qty ?? null,
+        item.unit_factor ?? null
       ).run()
 
       copyIdMap.set(item.id as number, insertResult.meta.last_row_id as number)
@@ -261,8 +270,10 @@ ordersOpsRouter.post('/:id/copy', requireEditOrRole('/orders', 'MANAGER', 'DESIG
           scale_factor, ai_group_index, parent_item_id,
           assigned_entity_id, assignment_status,
           finishing, price_status, auto_amount, line_discount, discount_reason,
-          ai_analysis_id, shipment_ready
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ai_analysis_id, shipment_ready,
+          -- 0620 단위표: 판매단위 스냅샷도 복사본으로 넘긴다(전환·수정과 같은 규칙)
+          sales_unit, sales_qty, unit_factor
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         newOrderId,
         item.item_id || null,
@@ -290,7 +301,10 @@ ordersOpsRouter.post('/:id/copy', requireEditOrRole('/orders', 'MANAGER', 'DESIG
         item.line_discount ?? null,
         item.discount_reason || null,
         item.ai_analysis_id ?? null,
-        item.shipment_ready ?? 0
+        item.shipment_ready ?? 0,
+        item.sales_unit ?? null,
+        item.sales_qty ?? null,
+        item.unit_factor ?? null
       ).run()
     }
 

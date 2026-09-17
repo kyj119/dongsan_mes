@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId } from '../utils/entityFilter'
 import { getNextEntitySeqNumber } from '../utils/sequenceGenerator'
+import { syncUnitsFromPair } from '../utils/itemUnits'
 
 const migrationRouter = new Hono<HonoEnv>()
 
@@ -268,6 +269,11 @@ migrationRouter.post('/items/import', async (c) => {
             row.unit || 'EA', row.unit_price || 0, row.unit_price || 0,
             row.item_code
           ).run()
+          // 0619 단위표: 레거시 열을 직접 썼으므로 표를 열에 맞춘다(정본=item_units)
+          try {
+            const up = await db.prepare('SELECT id FROM items WHERE item_code = ?').bind(row.item_code).first<{ id: number }>()
+            if (up) await syncUnitsFromPair(db, up.id)
+          } catch (e) { console.warn('[migration] item_units sync (update) 실패:', e) }
         } else {
           // category_id 매칭 시도
           let categoryId = row.category_id || null
@@ -285,6 +291,11 @@ migrationRouter.post('/items/import', async (c) => {
             row.item_code, row.item_name, categoryId,
             row.specification || null, row.unit || 'EA', row.unit_price || 0
           ).run()
+          // 0619 단위표: 신규 품목의 기본단위 행 생성 — 없으면 감사 F7 「단위표 없음」
+          try {
+            const ins = await db.prepare('SELECT id FROM items WHERE item_code = ?').bind(row.item_code).first<{ id: number }>()
+            if (ins) await syncUnitsFromPair(db, ins.id)
+          } catch (e) { console.warn('[migration] item_units sync (insert) 실패:', e) }
         }
         imported++
       } catch (err) {

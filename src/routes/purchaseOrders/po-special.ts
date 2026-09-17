@@ -12,6 +12,7 @@ import { requireAnyPagePermission } from '../../middleware/permissions'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { getNextEntitySeqNumber } from '../../utils/sequenceGenerator'
 import { kstYmdCompact, kstDate } from '../../utils/kstDate'
+import { backfillPoLineFactors } from '../../utils/itemUnits'
 
 const poSpecialRouter = new Hono<HonoEnv>()
 poSpecialRouter.use('/*', authMiddleware, requireAnyPagePermission('/purchase-orders', '/receiving'))
@@ -105,6 +106,8 @@ poSpecialRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER'), async (c) => 
     for (let i = 0; i < poiStmts.length; i += 80) {
       await c.env.DB.batch(poiStmts.slice(i, i + 80))
     }
+    // 0620 단위표: 라인 계수 스냅샷 보정(비어 있는 라인만) — 입고 환산의 정본
+    await backfillPoLineFactors(c.env.DB, newPoId as number)
 
     return c.json({
       success: true,
@@ -197,6 +200,8 @@ poSpecialRouter.post('/:id/reorder', requireRole('ADMIN', 'MANAGER'), async (c) 
       INSERT INTO po_status_history (po_id, from_status, to_status, changed_by, change_reason)
       VALUES (?, NULL, ?, ?, ?)
     `).bind(newPoId, targetStatus, user.id, `재발주 생성 (원본: ${originalPo.po_number})`).run()
+    // 0620 단위표: 라인 계수 스냅샷 보정(비어 있는 라인만) — 입고 환산의 정본
+    await backfillPoLineFactors(c.env.DB, newPoId as number)
 
     // AP 잔액은 파생(발주−지급−조정) — purchase_balance 캐시 갱신 제거(2026-08-31)
 
@@ -303,6 +308,8 @@ poSpecialRouter.post('/quick', requireRole('ADMIN', 'MANAGER'), async (c) => {
       INSERT INTO po_status_history (po_id, from_status, to_status, changed_by, change_reason)
       VALUES (?, NULL, ?, ?, ?)
     `).bind(newPoId, status, user.id, canAutoApprove ? '빠른 발주 (자동승인)' : '빠른 발주 생성').run()
+    // 0620 단위표: 라인 계수 스냅샷 보정(비어 있는 라인만) — 입고 환산의 정본
+    await backfillPoLineFactors(c.env.DB, newPoId as number)
 
     // AP 잔액은 파생(발주−지급−조정) — purchase_balance 캐시 갱신 제거(2026-08-31)
 
