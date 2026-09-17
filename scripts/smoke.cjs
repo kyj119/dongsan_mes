@@ -89,6 +89,9 @@ const ENDPOINTS = [
   // items.detail — 명시 컬럼리스트 SELECT(image_key 등 신규 ADD COLUMN 참조)라 items.list(GROUP BY 집계)가 못 잡는
   // no-such-column 드리프트를 500으로 노출(#484). allow404=행 부재 허용, 컬럼 미존재 500은 FAIL로 격리.
   { path: '/api/items/1', name: 'items.detail', allow404: true },
+  // item_units(0619 신규 테이블, 2026-09-17) — 목록/detail 자동추출로 안 닿는 하위 경로라 별도 프로브(#484 (b)-risk 클래스)
+  { path: '/api/items/units-flag', name: 'items.unitsFlag' },
+  { path: '/api/items/1/units', name: 'items.units', allow404: true },
   { path: '/api/price-lists', name: 'priceLists.list' },
   { path: '/api/prices?item_id=1&client_id=1&context=sales', name: 'prices.lookup', allow404: true },
   { path: '/api/bom/overview', name: 'bom.overview' },
@@ -186,6 +189,9 @@ const ENDPOINTS = [
   // 광고성 발송 가드(§50) — ADMIN 전용. smoke는 admin 계정이라 200을 기대한다.
   { path: '/api/messages/ad/banned-words', name: 'messagesAd.bannedWords' },
   { path: '/api/messages/ad/opt-outs', name: 'messagesAd.optOuts' },
+  // kakao 알림 신기능(2026-09-18) — DB전용 2종만(templates/balance는 바로빌 실호출이라 제외)
+  { path: '/api/kakao/settings', name: 'kakao.settings' },
+  { path: '/api/kakao/stats/monthly?months=1', name: 'kakao.statsMonthly' },
   { path: '/api/tasks?limit=10', name: 'tasks.list' },
   { path: '/api/activity-logs?limit=10', name: 'activityLogs.list' },
   { path: '/api/approvals?limit=10', name: 'approvals.list' },

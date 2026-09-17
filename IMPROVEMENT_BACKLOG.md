@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-09-17T15:40:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-09-17T17:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,24 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **567** (`search_issues(label:auto-improve is:closed reason:completed)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 1 프로덕션 헬스 (2026-09-17T17:00):**
+> - **방법**: 세션 시작 시 detached HEAD `0949a01`(origin/main과 동일) → 로컬 `main` 부재 → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. shallow clone(depth 50)이라 `git fetch --unshallow` 먼저 필요했음(앵커가 depth 밖). `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area1 방법 라인 HEAD `6eae801`)**: 82커밋, 웹앱 헬스범위(`src/routes`·`src/utils`·`index.tsx`·`wrangler.toml`·`.github/workflows`·`scripts/smoke.cjs`·`migrations`) diff **46파일**. 대부분 Area2~6가 이번 순환에서 이미 각자 렌즈로 정독 완료(item_units·배송비박스청구·급여엑셀입력·4대보험기간축·kakao신기능 — 백로그 로그에 서술 확인). Area1 고유 확인 = `.github/workflows/deploy.yml`(+6, JWT decode audit 게이트 신설 — CLAUDE.md 서술과 일치, smoke 프로브·라우트 변경 없음, 리스크 0) + **smoke 커버리지 자체 점검**.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 10런 전부 `conclusion:success`(최종 HEAD `0949a01` 포함). 최신 job(`105291624109`) 전 단계(typecheck·check:fn·jwt-decode·build·self-tests·entity audit·migration-number audit·write canary·deploy·smoke) 전부 success, 총 소요 2분29초.
+> - **smoke 129/129 PASS**(job 로그 직접 확인, 로그인 정상·프론트 부트스트랩 정상).
+> - **#636(cashSchedule.overview) 재확인**: 이번 배포 3503ms, owner 국내 실측(421~424ms) 대비 배수 ≈8.3배 — 기존 확인 범위(9~14배)보다 오히려 낮음(악화 아님), 재이슈 불필요.
+> - **🔧 자동수정 — kakao·item_units 신기능이 smoke 커버리지 0인 사각 발견 + 메움**: churn 46파일 중 `kakao.ts`(+99, 알림 발송 통계/정체성 분리 신기능)와 `items.ts`(+77, item_units 단위표 신기능, 0619 신규 테이블)에 신규 GET 라우트가 여럿 생겼는데 `scripts/smoke.cjs`에 `kakao`·`units` 문자열이 **0건**(`grep` 확인) — #484 (b)-risk 클래스(신규 테이블/컬럼을 참조하는 핸들러가 smoke 사각). DB전용 4개만 추가(바로빌 실호출 하는 `/templates`·`/balance`는 제외): `kakao.settings`(`GET /api/kakao/settings`)·`kakao.statsMonthly`(`GET /api/kakao/stats/monthly?months=1`)·`items.unitsFlag`(`GET /api/items/units-flag`)·`items.units`(`GET /api/items/1/units`, allow404). `node --check` 통과, `npx tsc --noEmit`+`npm run build` clean. 커밋해 반영.
+> - **standing scan 1: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 4건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`·`itemUnits.ts:162`).
+> - **standing scan 2: `npm run audit:migration-number`** — 파일 630+개, 중복 번호 다수(기존과 동일 클래스, 신규 `0621`×2 무해), **같은 테이블 DDL 충돌 0건**.
+> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **8**(변동없음, #652·#651·#650·#648·#647·#626·#617·#616) — 전건 Area1 관할 밖.
+> - **backlog↔GitHub 절대값 재동기화**: open **8**(변동없음) · done **567**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — 기존 #484 (b)-risk 규칙을 신규 사례(kakao/item_units)에 그대로 적용한 것으로 새 클래스 아님. area-1-production-health.md `line N` 패턴 재확인(2건 모두 ms 수치 숫자열 FP, 잔여 0건, 변동없음).
+> - **백로그 트림 체크**: 사이클 로그 8건(직전 66회차 트림 직후) → 이번 추가 후 9건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(smoke 사각은 issue 아닌 직접 자동수정으로 처리), 자동수정 1건(smoke.cjs 프로브 4종 추가, verify clean), done-sync: open 8(변동없음)·done 567(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-09-17T15:40, 66회차):**
 > - **방법**: 세션 시작 시 detached HEAD `6f8261a`(origin/main과 동일) → 로컬 `main` 부재 → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
