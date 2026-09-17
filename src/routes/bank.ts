@@ -178,15 +178,22 @@ bankRouter.get('/fund-summary', requireRole('ADMIN'), async (c) => {
 bankRouter.get('/fixed-expense-status', requireRole('ADMIN'), async (c) => {
   try {
     const period = c.req.query('period') || kstYmd().slice(0, 7) // YYYY-MM
+    // ★기간 경계를 봐야 한다 — `is_active` 만 보면 **끝난 고정비가 매달 미납으로 뜬다**(prod 실측
+    //   2026-09-17: 케이엠테크 리스가 종료일 2026-07-31 을 넘기고도 OVERDUE). 자금예측
+    //   (cashflowEngine·cashFlow)은 처음부터 이 조건을 보고 있어 **화면만 어긋나 있었다**.
+    //   말일은 '-31' 로 충분하다 — 사전순 비교라 그 달의 어떤 날짜보다 크거나 같다.
+    const monthStart = `${period}-01`
+    const monthEnd = `${period}-31`
     const ef = entityFilter(c, 'fe')
     const { results } = await c.env.DB.prepare(`
       SELECT fe.id, fe.name, fe.category, fe.amount AS base_amount, fe.payment_day, fe.amount_type,
         rea.estimated_amount, rea.actual_amount, rea.actual_source
       FROM fixed_expenses fe
       LEFT JOIN recurring_expense_actuals rea ON rea.fixed_expense_id = fe.id AND rea.period = ?
-      WHERE fe.is_active = 1 AND fe.frequency = 'MONTHLY'${ef.clause}
+      WHERE fe.is_active = 1 AND fe.frequency = 'MONTHLY'
+        AND fe.start_date <= ? AND (fe.end_date IS NULL OR fe.end_date >= ?)${ef.clause}
       ORDER BY fe.payment_day, fe.name
-    `).bind(period, ...ef.params).all<{
+    `).bind(period, monthEnd, monthStart, ...ef.params).all<{
       id: number; name: string; category: string; base_amount: number
       payment_day: number | null; amount_type: string | null
       estimated_amount: number | null; actual_amount: number | null; actual_source: string | null
