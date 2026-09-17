@@ -2031,7 +2031,7 @@ window.payrollReconcileRender = function() {
         + ' <span class="text-gray-400">→</span> ' + (r.ec.it == null ? '-' : r.ec.it.toLocaleString())
         + '<div class="text-[10px]">' + prRecMoney(r.diff.it) + '</div></td>'
       + '<td class="text-right">' + prRecMoney(r.diff.net) + '</td>'
-      + '<td>' + cause + '</td>'
+      + '<td class="ds-wrap">' + cause + '</td>'
       + '<td class="text-right">' + act + '</td>'
       + '</tr>';
   }).join('') || '<tr><td colspan="7" class="text-center text-gray-400 py-6">차이 없음</td></tr>';
