@@ -222,13 +222,21 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 - 실증 — 9/3 intake #485 흡수 1초 뒤 `print_file_map` 에 `order_item_id=24388` 이 학습됐고, 그 주문이 삭제되며 끊겼다. **absorbed 32건이 전부 `order_item_id IS NULL` 인 것은 "한 번도 안 걸렸다"는 뜻이 아니다.**
 - 게이트 = **`npm run test:print-match`**(출력 이벤트가 카드까지 닿는가·서버 기동 필요). ⚠️**만들어 놓고 어떤 실행 경로에도 안 물렸다**(2026-09-11 — 같은 날 같은 문서에 「게이트는 배포 경로에 물려야 존재한다」를 적으면서 그랬다). 아래 §「사람이 부를 때만 돈다」 목록에 있다.
 
+### 로컬 검증 실패를 「무효」로 단정하면 멀쩡한 사용자를 쫓아낸다 (`npm run audit:jwt-decode`)
+**「확인 못 했다」와 「틀렸다」는 다른 값이다.** 2026-09-17 실기: 로그인 API 는 **200** 이고 토큰도 발급됐는데 다음 화면에서 조용히 로그아웃돼, 증상이 「로그인했는데 바로 로그인창으로 되돌아온다」였다.
+- 원인 = `shell.js` 의 로컬 exp 체크가 `atob(parts[1])` 로 JWT 를 깠다. **JWT 는 base64url**(`-`·`_`·패딩 없음)이고 `atob` 은 표준 base64 만 받는다. 게다가 이 시스템 페이로드에는 **한글 사용자명**이 들어간다(`"username":"인호동"`) → 바이트에 따라 `InvalidCharacterError` 로 **던진다**. 그 예외를 catch 가 「손상된 토큰」으로 읽고 **토큰을 지우고 `/login` 으로 보냈다**(화면엔 `console.warn` 뿐).
+- **`exp` 가 로그인마다 달라 페이로드 바이트가 바뀐다 → 같은 사람도 될 때가 있고 안 될 때가 있다.** 「가끔 된다」는 대개 **입력에 따라 갈리는 디코딩·파싱**이지 서버 상태가 아니다.
+- **고치는 자리는 두 곳이다** — ①디코더를 제대로(base64url+패딩+UTF-8, 실패 시 **null 반환·던지지 않음**) ②**실패의 뜻을 바꾼다**: 로컬 체크는 서버 왕복을 아끼는 **최적화**이므로 못 읽었을 때의 정답은 「모르겠으니 서버에게 묻는다」다. 진짜 무효면 첫 API 401 인터셉터가 같은 일을 한다. ①만 고치면 다음 인코딩 함정에서 같은 사고가 난다.
+- 정본 = `shell.js mesJwtPayload()`. 당시 손으로 까는 자리가 **7곳**이었고 정확도가 제각각이었다(생짜 3 · 패딩만 치환 3). 게이트 = **`npm run audit:jwt-decode`**(CI `deploy.yml` · `ship:gate` 배선 · 자가시험으로 발화 확인).
+- ⚠️**증언과 데이터가 어긋나 보이면 증언이 가리키는 단계부터 맞춘다** — 「아무 말 없이 돌아갔다」면 로그인 API 는 **성공**한 것이라 `last_login_at` 기록과 **일치**한다. 나는 그걸 「재현 안 됨」으로 적었고, 그 직전에 **내 손에서 같은 `InvalidCharacterError` 가 났는데** 연결하지 못했다.
+
 ### 배포를 실제로 막는 게이트 (2026-09-10 실측)
 **「게이트가 있다」와 「게이트가 돈다」는 다른 질문이다.** `cut:butt` 는 2026-08-06부터 있었는데 한 달간 아무도 안 돌렸고, `cut:shellsync` 도 같은 상태였다(2026-09-10 등록) — **목록이 없어서 아무도 그걸 몰랐다.**
-- **CI**(push→main, `.github/workflows/deploy.yml`): tsc · **`check:fn`**(selftest+strict) · build · `test:calc` · `entity-audit.mjs` · `audit:migration-number`(#639 같은 번호·같은 테이블 DDL 충돌만 차단) · `canary:write:ci` · `smoke.cjs`(prod)
+- **CI**(push→main, `.github/workflows/deploy.yml`): tsc · **`check:fn`**(selftest+strict) · **`audit:jwt-decode`** · build · `test:calc` · `entity-audit.mjs` · `audit:migration-number`(#639 같은 번호·같은 테이블 DDL 충돌만 차단) · `canary:write:ci` · `smoke.cjs`(prod)
 - **커밋 훅**(`pretooluse-bash.cjs`): tsc(전건 차단) · `skill-audit`·`hook-guard-selftest`·`doc-diet-audit`·**`audit:empty-catch`**·**`check:fn`**(해당 파일이 dirty 인 커밋만 — `check:fn` 은 src/**)
 - **편집 훅**(`posttooluse-edit.cjs`): `node --check`(src/scripts/*.js) · `check:dom` 기준선 회귀 · **`check:fn`**(src/**.ts·js — 미정의 전역 함수 호출, 기준선 없음) · **`audit:empty-catch`**(IllustratorAutomat/**.jsx·js — 사유 `ignore:` 없는 빈 catch) — 넷 다 `exit 2` 차단
 - **`ia:deploy`**(`ia-deploy.cjs` `GATES`): **audit:empty-catch** · cut:bleed · cut:nest · cut:butt · cut:placement · cut:smoke · **cut:shellsync** · panel:smoke · cut:e2e + ia-jsx 드리프트 (⚠️`test:outcopy` 는 2026-09-15 **하루 만에 은퇴** — 지키던 코드가 에이전트로 넘어갔다. **없어진 코드를 지키는 게이트는 초록불이 아무 뜻도 없다** → 성질은 `panel:smoke` §13 으로 옮겨 실었다)
-- **`ship:gate`**: verify(tsc+build) · **check:fn** · entity-audit · **test:calc** · canary:write · **journey:gate**(J0~J7 40단계, 로컬 서버 자동 기동·≈4.5분, `SKIP_JOURNEY=1` 로만 명시 건너뜀) · **`test:local-e2e`**(서버가 필요한 4종을 journey 뒤에 묶어 세운다 — symmetry·ship-stock·autodeduct·print-match. 같은 `SKIP_JOURNEY=1` 로 함께 건너뛴다)
+- **`ship:gate`**: verify(tsc+build) · **check:fn** · **audit:jwt-decode** · entity-audit · **test:calc** · canary:write · **journey:gate**(J0~J7 40단계, 로컬 서버 자동 기동·≈4.5분, `SKIP_JOURNEY=1` 로만 명시 건너뜀) · **`test:local-e2e`**(서버가 필요한 4종을 journey 뒤에 묶어 세운다 — symmetry·ship-stock·autodeduct·print-match. 같은 `SKIP_JOURNEY=1` 로 함께 건너뛴다)
 - **`/deploy-verify`**: Phase 1 tsc·build·**test:calc**·**journey:gate** → Phase 2 entity-audit → Phase 2-B `audit:migration-drift`(스키마 변경 시) → Phase 4 `smoke:prod`
 > ⚠️`verify.yml` 은 `on: pull_request` 다 — 이 프로젝트(main 직접 push)에서는 **생성 이래 0회 실행**.
 > ⚠️여기 **없는** 감사는 사람이 부를 때만 돈다: `sort-audit` · `audit:query-cost` · `audit:subquery` · `audit:unit-price-semantics` · `audit:migration-drift` · `audit:stock-ledger` · `cut:quality`. (`test:symmetry`·`test:ship-stock`·`test:autodeduct`·`test:print-match` 는 2026-09-14 `test:local-e2e` 로 묶여 `ship:gate` 에 편입 — 그전까지 넷 다 미배선이었고, `test:print-match` 는 **빨간 채로** 있었다.) (`test:journey` 는 2026-09-11 `ship:gate`·`/deploy-verify` 에 편입 — 정본=`/journey-loop`, 한 사이클=`npm run journey:cycle`.)

@@ -53,6 +53,12 @@ jobs:
       - name: Undefined global call audit (check:fn — ?raw scripts + on* handlers, P13 class)
         run: npm run check:fn:selftest && npm run check:fn
 
+      # JWT 를 손으로 까는 자리 — atob 은 base64url(-·_·패딩 없음)을 못 읽고, 이 시스템의
+      # 페이로드에는 한글 사용자명이 들어가 던진다. 그 예외를 「손상된 토큰」으로 읽어
+      # 멀쩡한 사용자를 로그아웃시킨 전례(2026-09-17 실기). 정본 = shell.js mesJwtPayload
+      - name: JWT decode audit (audit:jwt-decode)
+        run: npm run audit:jwt-decode
+
       - name: Build
         run: npx vite build
 
