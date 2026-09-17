@@ -478,7 +478,7 @@ inventoryCountRouter.post('/', async (c) => {
           items.map((item) =>
             // 0540: per_pack_qty 기본값 = items.pack_size. 규격품(시트 50m·잉크 1.5L)은 이 값 그대로 쓰고
             //   현수막 원단처럼 롤마다 다른 것만 실사 때 손으로 고친다. 없으면 NULL(=환산 없는 자재).
-            //   0618 단위표: 실사 역할(role_count) 단위가 기본단위와 다르면 그 계수가 우선 — 없으면 종전 pack_size(AQ 130 편의계수 포함).
+            //   0620 단위표: 실사 역할(role_count) 단위가 기본단위와 다르면 그 계수가 우선 — 없으면 종전 pack_size(AQ 130 편의계수 포함).
             c.env.DB.prepare(`
               INSERT INTO inventory_count_items (count_id, item_id, system_quantity, unit, storage_zone_id, per_pack_qty)
               VALUES (?, ?, ?, ?, ?, COALESCE((SELECT iu.factor FROM item_units iu WHERE iu.item_id = ? AND iu.role_count = 1 AND iu.is_base = 0 LIMIT 1), ?))
@@ -541,7 +541,7 @@ inventoryCountRouter.get('/:id', async (c) => {
              ci.storage_zone_id, sz.zone_name AS storage_zone_name,
              i.item_code, i.item_name, COALESCE(i.specification, '') AS specification,
              i.item_group, i.unit AS item_unit, i.base_unit, i.pack_size, i.stock_mode,
-             -- 0618 단위표: 실사 입력 단위 이름(기본단위와 다를 때만) — 화면의 「롤」 고정 라벨을 대체할 값
+             -- 0620 단위표: 실사 입력 단위 이름(기본단위와 다를 때만) — 화면의 「롤」 고정 라벨을 대체할 값
              (SELECT iu.unit FROM item_units iu WHERE iu.item_id = i.id AND iu.role_count = 1 AND iu.is_base = 0 LIMIT 1) AS count_unit,
              (SELECT inv.quantity FROM inventory inv
                WHERE inv.item_id = ci.item_id AND inv.entity_id = ?

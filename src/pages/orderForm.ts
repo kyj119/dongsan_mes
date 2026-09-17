@@ -15,7 +15,7 @@ import sCalc from '../scripts/orderForm/calc.js?raw'
 import sSheet from '../scripts/orderForm/sheet.js?raw'
 import sParent from '../scripts/orderForm/parent.js?raw'
 import sIntake from '../scripts/orderForm/intake.js?raw'
-import sUnits from '../scripts/orderForm/units.js?raw'   // 판매단위(0618 단위표)
+import sUnits from '../scripts/orderForm/units.js?raw'   // 판매단위(0620 단위표)
 const pageScript = [finishingLabel, deliverySlot, displayUnitPrice, sClient, sItemRow, sFinishing, sCalc, sSheet, sParent, sIntake, sUnits].join('\n')
 
 export async function orderFormPage(c: Context<HonoEnv>) {

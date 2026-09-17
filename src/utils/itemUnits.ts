@@ -117,7 +117,7 @@ export function unitsFromLegacyPair(pair: LegacyPair, existing: ItemUnitRow[]): 
   return [...rows, ...keep.map((r, i) => ({ ...r, sort_order: rows.length + i }))]
 }
 
-// ── 라인 계수 해석(발주·입고·주문 라인 스냅샷용, 0618) ──────────────────────────
+// ── 라인 계수 해석(발주·입고·주문 라인 스냅샷용, 0620) ──────────────────────────
 /** 여러 품목의 단위표를 한 번에 — item_id → (unit → factor). 80개 청크 = D1 바인드 한도. */
 export async function loadUnitFactorMap(db: D1Database, itemIds: Array<unknown>): Promise<Map<number, Map<string, number>>> {
   const uniq = [...new Set(itemIds.map((v) => Number(v)).filter((n) => Number.isFinite(n) && n > 0))]
@@ -191,7 +191,7 @@ export async function syncUnitsFromPair(db: D1Database, itemId: number): Promise
   await db.batch(stmts)
 }
 
-// ── 판매단위 스냅샷(주문서·견적서 라인, 0618) ─────────────────────────────────
+// ── 판매단위 스냅샷(주문서·견적서 라인, 0620) ─────────────────────────────────
 /**
  * 라인의 quantity(기본단위) 는 이미 INSERT 됐다. 판매단위(조 등)로 입력했으면 그 입력값을 라인에 남긴다 —
  *   sales_unit·sales_qty·unit_factor. 문서는 「10조(20EA)」로 표기하고, 재계산은 quantity 축 그대로다.

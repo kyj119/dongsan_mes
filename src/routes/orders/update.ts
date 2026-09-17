@@ -582,7 +582,7 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
     if (putChildStmts.length > 0) await c.env.DB.batch(putChildStmts)
 
     // split billing P2: 품목 담당법인별 청구그룹 재계산(BILLED/PAID 동결은 헬퍼가 처리)
-    // 0618 단위표: 판매단위 스냅샷 — PUT 은 라인을 지우고 다시 넣으므로 매번 다시 남긴다(sort_order = items 인덱스)
+    // 0620 단위표: 판매단위 스냅샷 — PUT 은 라인을 지우고 다시 넣으므로 매번 다시 남긴다(sort_order = items 인덱스)
     await applySalesUnitSnapshots(c.env.DB, parseInt(id),
       (orderData.items as any[]).map((item: any, i: number) => ({ sort_order: i, item })).filter((l) => !l.item?.parent_client_id))
 

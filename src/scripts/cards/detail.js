@@ -149,7 +149,7 @@ function showCardModal(card, history, defects, siblingCards) {
             itemsHtml += '<div class="card-modal-item-info">';
             itemsHtml += '<div style="display:flex;align-items:center;gap:8px">';
             itemsHtml += '<span style="font-size:14px;font-weight:600;color:' + (isDone ? '#9ca3af' : '#111827') + ';' + (isDone ? 'text-decoration:line-through;' : '') + '">' + escapeHtml(it.item_name || '품목') + '</span>';
-            // 0618: 판매단위 스냅샷이 있으면 「x10조(20EA)」 — 현장은 EA 로 만들지만 주문이 조 단위였음을 같이 본다
+            // 0620: 판매단위 스냅샷이 있으면 「x10조(20EA)」 — 현장은 EA 로 만들지만 주문이 조 단위였음을 같이 본다
             itemsHtml += '<span style="font-size:13px;font-weight:700;color:var(--c-primary)">x' + (window.salesQtyLabel ? salesQtyLabel(it).replace(/\s+/g, '') : ((it.quantity || 1) + (it.unit || 'EA'))) + '</span>';
             itemsHtml += '</div>';
 

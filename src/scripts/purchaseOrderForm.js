@@ -399,7 +399,7 @@ function createItemRowHtml(idx, data) {
     + '<div id="item_est_' + idx + '" class="' + (isEst ? '' : 'hidden') + '"'
     + ' style="font-size:10px;color:#b45309;text-align:center;margin-top:1px" title="롤 수에서 환산한 예상 수량입니다. 입고 실측이 정본이 됩니다.">예상</div>'
     + '</td>'
-    // 단위 — 0618 단위표: 스위치(item_units.forms)가 켜지면 품목의 단위표 셀렉트가 이 칸을 대신하고 계수(unit_factor)를 같이 보낸다.
+    // 단위 — 0620 단위표: 스위치(item_units.forms)가 켜지면 품목의 단위표 셀렉트가 이 칸을 대신하고 계수(unit_factor)를 같이 보낸다.
     //   꺼져 있으면 종전 텍스트 칸 그대로. 저장 축(quantity=라인 단위)은 어느 쪽이든 같다.
     + '<td>'
     + '<input type="text" id="item_unit_' + idx + '" value="' + escapeHtml(unit) + '" class="text-center">'
@@ -454,7 +454,7 @@ function addItemRow(data) {
     });
     if (!data) nameInput.focus();
   }
-  // 0618: 수정 모드로 실린 행도 단위표 셀렉트를 붙인다(스위치 ON 일 때만 보인다)
+  // 0620: 수정 모드로 실린 행도 단위표 셀렉트를 붙인다(스위치 ON 일 때만 보인다)
   if (data && data.item_id) poUnitsApply(idx, data.item_id, data.unit || 'EA');
   updateItemCount();
   return idx;
@@ -539,7 +539,7 @@ function poFetchPackSize(idx, itemId) {
 }
 
 // ══════════════════════════════════════════════════════
-// 단위표 셀렉트 (0618, settings.item_units.forms) — 품목의 단위표에서 라인 단위를 고르고 계수를 같이 보낸다.
+// 단위표 셀렉트 (0620, settings.item_units.forms) — 품목의 단위표에서 라인 단위를 고르고 계수를 같이 보낸다.
 //   저장 축 = quantity 는 고른 단위 기준(종전과 같다), unit_factor = 1 단위가 기본단위 몇 개(입고 환산 정본).
 //   스위치가 꺼져 있으면 아무것도 바꾸지 않는다(텍스트 단위 칸 그대로).
 // ══════════════════════════════════════════════════════
@@ -611,7 +611,7 @@ function selectItem(idx, id, name, price, unit, spec, packSize) {
   document.getElementById('item_name_' + idx).value = name;
   document.getElementById('item_price_' + idx).value = fmtMoneyInput(price);
   document.getElementById('item_unit_' + idx).value = unit || 'EA';
-  poUnitsApply(idx, id, unit || 'EA'); // 0618: 스위치가 켜져 있으면 단위표 셀렉트로 교체
+  poUnitsApply(idx, id, unit || 'EA'); // 0620: 스위치가 켜져 있으면 단위표 셀렉트로 교체
   // 롤로 사는 품목이면 롤 입력을 연다. pack_size 가 없으면 종전 그대로 수량만 쓴다.
   var sizeEl = document.getElementById('item_pack_size_' + idx);
   var wrapEl = document.getElementById('item_packs_wrap_' + idx);
@@ -809,7 +809,7 @@ async function savePO(status) {
         order_packs: parseFloat((document.getElementById('item_packs_' + idx) || {}).value) || null,
         qty_is_estimate: poIsEstimate(idx) ? 1 : 0,
         unit: document.getElementById('item_unit_' + idx).value || 'EA',
-        unit_factor: parseFloat((document.getElementById('item_unit_factor_' + idx) || {}).value) || null, // 0618 계수 스냅샷(없으면 서버가 단위표에서 해석)
+        unit_factor: parseFloat((document.getElementById('item_unit_factor_' + idx) || {}).value) || null, // 0620 계수 스냅샷(없으면 서버가 단위표에서 해석)
         unit_price: price,
         amount: pricePending ? 0 : (qty * price),
         vat_included: document.getElementById('item_vat_' + idx).checked ? 1 : 0,
@@ -966,7 +966,7 @@ async function saveAsTemplate() {
         order_packs: parseFloat((document.getElementById('item_packs_' + idx) || {}).value) || null,
         qty_is_estimate: poIsEstimate(idx) ? 1 : 0,
         unit: document.getElementById('item_unit_' + idx).value || 'EA',
-        unit_factor: parseFloat((document.getElementById('item_unit_factor_' + idx) || {}).value) || null, // 0618 계수 스냅샷(없으면 서버가 단위표에서 해석)
+        unit_factor: parseFloat((document.getElementById('item_unit_factor_' + idx) || {}).value) || null, // 0620 계수 스냅샷(없으면 서버가 단위표에서 해석)
         unit_price: parseMoney(document.getElementById('item_price_' + idx).value),
         vat_included: document.getElementById('item_vat_' + idx).checked ? 1 : 0
       });

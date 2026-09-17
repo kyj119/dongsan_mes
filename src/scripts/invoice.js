@@ -109,7 +109,7 @@ function buildInvoiceHalf(data, copyLabel, fullPage) {
             + '<td>' + (i+1) + '</td>'
             + '<td class="left">' + itemNameDisplay + '</td>'
             + '<td class="left" style="font-size:9px">' + spec + '</td>'
-            + '<td>' + (window.salesQtyLabel ? salesQtyLabel(it) : (it.quantity || 0)) + '</td>'  // 0618: 「10조(20EA)」 표기 정본(shell.js)
+            + '<td>' + (window.salesQtyLabel ? salesQtyLabel(it) : (it.quantity || 0)) + '</td>'  // 0620: 「10조(20EA)」 표기 정본(shell.js)
             + '<td>' + escapeHtml(it.unit || 'EA') + '</td>'
             // ★단가는 저장값이 아니라 **장당가 파생**이다 — AREA 품목의 unit_price 는 ㎡단가라
             //   그대로 찍으면 `수량 × 단가 ≠ 공급가` 가 되어 거래처가 검산할 수 없다.

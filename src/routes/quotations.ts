@@ -376,7 +376,7 @@ quotationsRouter.post('/', async (c) => {
         const cgId = parentClientGroupIds[i]
         if (cgId) clientIdMap.set(cgId, parentResults[i].meta.last_row_id as number)
       }
-      // 0618 단위표: 판매단위 스냅샷(sales_unit/sales_qty/unit_factor) — sort_order = items 인덱스
+      // 0620 단위표: 판매단위 스냅샷(sales_unit/sales_qty/unit_factor) — sort_order = items 인덱스
       await applySalesUnitSnapshots(c.env.DB, quotationId,
         (body.items as any[]).map((item: any, i: number) => ({ sort_order: i, item })).filter((l) => !l.item?.parent_client_id), 'quotation_items')
     }
@@ -517,7 +517,7 @@ quotationsRouter.put('/:id', async (c) => {
       const cgId = parentClientGroupIds[i]
       if (cgId) clientIdMap.set(cgId, parentResults[i + 1].meta.last_row_id as number)
     }
-    // 0618 단위표: 판매단위 스냅샷 — PUT 은 라인을 지우고 다시 넣으므로 매번 다시 남긴다
+    // 0620 단위표: 판매단위 스냅샷 — PUT 은 라인을 지우고 다시 넣으므로 매번 다시 남긴다
     await applySalesUnitSnapshots(c.env.DB, Number(c.req.param('id')),
       (body.items as any[]).map((item: any, i: number) => ({ sort_order: i, item })).filter((l) => !l.item?.parent_client_id), 'quotation_items')
 
@@ -728,7 +728,7 @@ quotationsRouter.post('/:id/convert-to-order', requireEditOrRole('/quotations', 
       for (let i = 0; i < parentQIds.length; i++) {
         qParentToOrderId.set(parentQIds[i], parentResults[i].meta.last_row_id as number)
       }
-      // 0618 단위표: 견적 라인의 판매단위 스냅샷을 주문 라인으로 넘긴다(과금축·규격과 같은 이유 — 전환 시점에 소실되면 안 된다)
+      // 0620 단위표: 견적 라인의 판매단위 스냅샷을 주문 라인으로 넘긴다(과금축·규격과 같은 이유 — 전환 시점에 소실되면 안 된다)
       await applySalesUnitSnapshots(c.env.DB, orderId,
         qItems.filter((qi) => qi.parent_id == null).map((qi) => ({ sort_order: Number(qi.sort_order), item: { sales_unit: qi.sales_unit, sales_qty: qi.sales_qty, unit_factor: qi.unit_factor } })))
     }

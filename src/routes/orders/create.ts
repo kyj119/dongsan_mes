@@ -421,7 +421,7 @@ ordersCreateRouter.post('/', async (c) => {
       await c.env.DB.batch(pass2Stmts)
     }
 
-    // 0618 단위표: 판매단위 스냅샷(sales_unit/sales_qty/unit_factor) — quantity(기본단위) 축은 위 INSERT 그대로
+    // 0620 단위표: 판매단위 스냅샷(sales_unit/sales_qty/unit_factor) — quantity(기본단위) 축은 위 INSERT 그대로
     await applySalesUnitSnapshots(c.env.DB, orderId, parentItems.map((p) => ({ sort_order: p.idx, item: p.item })))
 
     // split billing P2: 품목 담당법인별 청구그룹 생성/재계산

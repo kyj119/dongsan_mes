@@ -24,7 +24,7 @@
  *   F4 무효한 ROLL        개수 단위인데 `deduction_method=ROLL` — 라벨이 `yd` 로 나온다 (게이트)
  *   F5 기준단가 축 오류    `base_price` 가 관리단위(롤)가 아니라 재고단위(M) 당 값이다 (게이트)
  *   F6 판재 규격 없음      `BOARD` 인데 `sheet_spec` 이 비어 4x8 로 조용히 폴백한다 (게이트)
- *   F7 단위표↔파생 열     item_units(정본)와 unit/base_unit/pack_size(파생)가 어긋났다 · 표 없는 활성 품목 (게이트, 0617)
+ *   F7 단위표↔파생 열     item_units(정본)와 unit/base_unit/pack_size(파생)가 어긋났다 · 표 없는 활성 품목 (게이트, 0619)
  *
  * ★ 등급을 나눈다 — **C1·D·F1·F4·F5·F6·F7·G1·H4a 만 게이트(exit 1)**, A·B·C2·F2·F3 는 참고(exit 0).
  *   A·B 를 게이트로 두면 매번 빨개져 감사 자체가 무뎌진다(기존 audit 들이 같은 이유로 강/약을 나눴다).
@@ -383,7 +383,7 @@ const h3 = [...byName].filter(([, t]) => t.has('PRODUCT') && t.has('MATERIAL'))
 // ★H1·H2 를 게이트로 두지 않는 이유는 H4a 주석 참조 — 「아직 안 팔린 제품」과 구분이 안 된다.
 // ★C2(수량 없는 매입)도 게이트가 아니다 — 용역·1식 매입은 정상이고, 뭉친 전표는 공급처
 //   청구서 없이는 못 푼다. 고칠 수 없는 항목을 게이트에 두면 감사 전체가 무뎌진다(C 분리 주석 참조).
-// ── F7 (게이트) — 단위표(item_units)와 파생 열(unit/base_unit/pack_size)이 어긋났다 (0617 · 2026-09-17)
+// ── F7 (게이트) — 단위표(item_units)와 파생 열(unit/base_unit/pack_size)이 어긋났다 (0619 · 2026-09-17)
 //   정본 = 표. 파생 규칙(utils/itemUnits.deriveLegacyPair): 발주 역할 단위 ≠ 기본단위 이고 factor>1 이면
 //   unit=발주단위·base_unit=기본단위·pack_size=factor, 아니면 unit=기본단위·base_unit NULL(pack_size 는 유지 — AQ 130).
 //   표가 없는 활성 품목도 잡는다(마이그 뒤 어떤 생성 경로가 sync 를 안 탔다는 뜻). 어긋나면 packFactor() 가

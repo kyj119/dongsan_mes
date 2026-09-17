@@ -225,7 +225,7 @@ poReceiveRouter.post('/:id/receive', async (c) => {
       const qualityStatus = rejectedQty === 0 ? 'PASSED' : acceptedQty === 0 ? 'FAILED' : 'PARTIAL'
 
       // #462 MU3: 관리단위 → base 환산. inventory/tx는 base 단위.
-      //   0618 단위표: 발주 라인이 계수 스냅샷(unit_factor)을 들고 있으면 **그것이 정본**이다 — 발주 뒤 품목 마스터의
+      //   0620 단위표: 발주 라인이 계수 스냅샷(unit_factor)을 들고 있으면 **그것이 정본**이다 — 발주 뒤 품목 마스터의
       //   단위표가 바뀌어도 이 라인은 발주 당시 단위로 들어온다(단가 축 0600 과 같은 원리). 없으면 종전대로 packFactor(item).
       const lineFactor = Number((poItem as any).unit_factor)
       const packSize = lineFactor > 0 ? lineFactor : (poItem.item_id ? (packMap.get(poItem.item_id as number) || 1) : 1)
@@ -351,7 +351,7 @@ poReceiveRouter.post('/:id/receive', async (c) => {
           p.qualityStatus, p.rejectMemo, p.poItemId,
           // #646: 이 건이 기여한 롤 수를 스냅샷 — 전량취소 롤백이 PO 라인 received_packs 를 되돌릴 근거.
           p.receivePacks,
-          // 0618: 입고 단위·계수 스냅샷 — 입고 취소가 같은 계수로 되돌리고, 문서가 당시 단위로 표기한다.
+          // 0620: 입고 단위·계수 스냅샷 — 입고 취소가 같은 계수로 되돌리고, 문서가 당시 단위로 표기한다.
           p.unit ?? null, p.packSize
         ))
 

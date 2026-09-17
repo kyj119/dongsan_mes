@@ -1154,7 +1154,7 @@
                         set('scale_factor', item.scale_factor || 1);
                         set('quantity', item.quantity || 1);
                         set('item_unit', item.unit || 'EA');
-                    // 0618 단위표: 판매단위(조 등) 복원 — 스위치 ON + 환산 단위 있는 품목만 칸이 열린다
+                    // 0620 단위표: 판매단위(조 등) 복원 — 스위치 ON + 환산 단위 있는 품목만 칸이 열린다
                     if (window.ofUnitsApply && item.item_id) window.ofUnitsApply(id, item.item_id, item.unit || 'EA', { sales_unit: item.sales_unit || '', sales_qty: Number(item.sales_qty) || 0 });
                         set('unit_price', fmtMoneyInput(item.unit_price || 0));
                         set('content', item.content || '');
@@ -1509,7 +1509,7 @@
                     set('scale_factor', item.scale_factor || 1);
                     set('quantity', item.quantity || 1);
                     set('item_unit', item.unit || 'EA');
-                    // 0618 단위표: 판매단위(조 등) 복원 — 스위치 ON + 환산 단위 있는 품목만 칸이 열린다
+                    // 0620 단위표: 판매단위(조 등) 복원 — 스위치 ON + 환산 단위 있는 품목만 칸이 열린다
                     if (window.ofUnitsApply && item.item_id) window.ofUnitsApply(id, item.item_id, item.unit || 'EA', { sales_unit: item.sales_unit || '', sales_qty: Number(item.sales_qty) || 0 });
                     set('unit_price', fmtMoneyInput(item.unit_price || 0));
                     set('content', item.content || '');

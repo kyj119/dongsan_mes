@@ -429,7 +429,7 @@ async function openReceiveModal(id, scope) {
             var isDone = remaining <= 0;
             var rowClass = isDone ? 'border-t opacity-50' : 'border-t';
             var specLabel = it.item_width_mm ? '<span class="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-medium">' + it.item_width_mm + 'mm</span>' : '';
-            // 0618: 발주 라인이 고른 단위(poi.unit)가 우선 — 품목 마스터 단위와 다를 수 있다(단위표 스위칭)
+            // 0620: 발주 라인이 고른 단위(poi.unit)가 우선 — 품목 마스터 단위와 다를 수 있다(단위표 스위칭)
             var lineUnit = it.unit || it.item_unit;
             var unitLabel = lineUnit ? ' <span class="text-xs font-medium text-gray-500">' + escapeHtml(lineUnit) + '</span>' : '';
             // ★발주 수량이 **예상치**면 그렇게 보여 준다(0610) — 안 그러면 담당자가

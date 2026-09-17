@@ -1,4 +1,4 @@
--- 0617 품목 단위표 (2026-09-17) — spec docs/superpowers/specs/2026-09-17-item-units.md
+-- 0619 품목 단위표 (2026-09-17) — spec docs/superpowers/specs/2026-09-17-item-units.md
 -- 두 단계 고정(unit/base_unit/pack_size) → N단위 표. 재고·소모·단가는 기본단위 고정.
 -- items.unit/base_unit/pack_size 는 표에서 파생되는 호환 열로 남는다(정본=item_units, 동기=utils/itemUnits.ts).
 -- 멱등: CREATE IF NOT EXISTS + INSERT OR IGNORE(UNIQUE(item_id, unit)).

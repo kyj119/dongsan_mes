@@ -655,7 +655,7 @@
                         })(),
                         vat_included: document.querySelector(`[name="vat_${id}"]`)?.checked ? 1 : 0,
                         assigned_entity_id: (document.querySelector(`[name="assigned_entity_${id}"]`)?.value ? parseInt(document.querySelector(`[name="assigned_entity_${id}"]`).value) : undefined),
-                        // 0618 단위표: 판매단위로 입력했으면(조 등) 그 입력을 스냅샷으로 보낸다 — quantity 는 위에서 EA(기본단위)로 이미 환산됨
+                        // 0620 단위표: 판매단위로 입력했으면(조 등) 그 입력을 스냅샷으로 보낸다 — quantity 는 위에서 EA(기본단위)로 이미 환산됨
                         sales_unit: (function() { var e = document.querySelector('[name="sales_unit_' + id + '"]'); return (e && e.value) ? e.value : undefined; })(),
                         sales_qty: (function() { var e = document.querySelector('[name="sales_qty_' + id + '"]'); var n = e ? parseFloat(e.value) : NaN; return (isFinite(n) && n > 0) ? n : undefined; })(),
                         unit_factor: (function() { var e = document.querySelector('[name="unit_factor_' + id + '"]'); var n = e ? parseFloat(e.value) : NaN; return (isFinite(n) && n > 0) ? n : undefined; })(),

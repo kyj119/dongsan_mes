@@ -17,13 +17,13 @@ item_units(item_id, unit, factor, is_base, role_purchase, role_sales, role_count
 - 단일단위 품목의 `pack_size` 는 건드리지 않는다(AQ 편의계수 보존). 다단위일 때만 `pack_size = 발주단위 계수`.
 
 ## 단계
-1. **표 + 편집기 + 파생 동기**(동작 변화 0): 마이그 `0617_item_units.sql`(표·백필·포맥스 「단」 후보 role 0) · `utils/itemUnits.ts` · `GET/PUT /api/items/:id/units` · 품목 모달 단위표(모든 품목 유형) · 셀프테스트. 포맥스 67종은 `sheet_spec` 로 단 계수 프리필(3x6=10·4x8=5), 발주 역할은 사람이 켠다.
+1. **표 + 편집기 + 파생 동기**(동작 변화 0): 마이그 `0619_item_units.sql`(표·백필·포맥스 「단」 후보 role 0) · `utils/itemUnits.ts` · `GET/PUT /api/items/:id/units` · 품목 모달 단위표(모든 품목 유형) · 셀프테스트. 포맥스 67종은 `sheet_spec` 로 단 계수 프리필(3x6=10·4x8=5), 발주 역할은 사람이 켠다.
 2. **발주·입고·실사 단위 선택**: 라인 단위 드롭다운(품목의 단위표) + 스냅샷(`unit_factor`). 발주 수량 축은 관리단위 그대로, 입고는 라인 계수로 base 환산. 실사 두 칸의 포장 단위 = role_count. **설정 키 `item_units.forms`(OFF 기본)** 뒤에 두고 병행 종료 후 켠다.
 3. **주문서·견적서 판매단위**: `order_items`/`quotation_items` 에 `sales_unit`·`sales_qty`·`unit_factor`. `quantity` 는 기본단위(EA) 유지, 단가는 EA 당 + 판매단위당 병기. 가로등배너 「조=2EA」가 첫 사례. 같은 설정 키.
 4. **표기·감사·이카운트**: 거래명세서·견적서·작업지시서 「10조(20EA)」, 재고 화면 표기 일반화, `audit:items` F7(표↔파생 불일치)·`test:item-units`, 이카운트 수출은 기본단위.
 
 ## 진행 (2026-09-17)
-- **1~4단계 코드 완료**(브랜치 `session/spec-lines`: `b8797699` 1단계 · `f40046ed` 2·3단계 · `4d3d28a9` 4단계). 배포 순서 = **용준님 `!` 로 0617·0618 prod 적용 → push**. 폼 스위칭은 `settings.item_units.forms=0`(OFF) 으로 나간다 — 병행테스트 종료 후 `1` 로.
+- **1~4단계 코드 완료**(브랜치 `session/spec-lines`: `b8797699` 1단계 · `f40046ed` 2·3단계 · `4d3d28a9` 4단계). 배포 순서 = **용준님 `!` 로 0619·0620 prod 적용 → push**. 폼 스위칭은 `settings.item_units.forms=0`(OFF) 으로 나간다 — 병행테스트 종료 후 `1` 로.
 - 2단계 구현 편차: 입고 화면은 단위를 고르지 않는다(발주 라인 단위·계수를 그대로 쓴다). 수기입고는 서버가 라인 `unit/unit_factor` 를 받지만 화면 셀렉트는 아직 없다(후속). 실사는 `role_count` 단위가 포장 라벨·`per_pack_qty` 기본값(pack_size 폴백으로 AQ 130 보존).
 - 3단계 구현 편차: 라인 INSERT 7곳을 건드리지 않고 저장 직후 `applySalesUnitSnapshots` 가 `(parent, sort_order)` 로 UPDATE 한다. 단가는 EA 당 그대로(판매단위당 단가 입력은 안 넣음 — 힌트만).
 - 4단계: 표기 정본 `shell.js salesQtyLabel`(주문 상세·카드 상세·거래명세서·견적서). 이카운트 수출 경로는 단위를 내보내지 않아 변경 없음. 감사 `audit:items` **F7**(게이트) 신설.

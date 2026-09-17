@@ -109,7 +109,7 @@ function buildItemHtml(id) {
                 <label class="block text-xs font-medium text-gray-600 mb-1">수량 <span class="text-red-500">*</span></label>
                 <input type="number" name="quantity_${id}" value="1" min="1" required
                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" oninput="calcItem(${id})">
-                <!-- 0618 단위표: 판매단위(조 등) — 주문서와 같은 이름·같은 스크립트(orderForm/units.js) -->
+                <!-- 0620 단위표: 판매단위(조 등) — 주문서와 같은 이름·같은 스크립트(orderForm/units.js) -->
                 <div id="sales_unit_wrap_${id}" class="hidden mt-1 flex items-center gap-1">
                     <input type="number" name="sales_qty_${id}" min="0" step="1" placeholder="조" class="w-14 px-1.5 py-1 border border-blue-300 rounded text-xs text-right" oninput="ofSalesQtyChanged(${id})" title="판매단위 수량 — 수량(EA)이 자동 환산됩니다">
                     <select name="sales_unit_${id}" class="px-1 py-1 border border-blue-300 rounded text-xs" onchange="ofSalesUnitChanged(${id})" title="판매단위"></select>
@@ -167,7 +167,7 @@ function setupAutocomplete(id) {
         hidUnit.value = item.unit;
         if (hidCat) hidCat.value = item.category;
         unitDisp.value = item.unit;
-        if (window.ofUnitsApply) window.ofUnitsApply(id, item.id, item.unit); // 0618 단위표: 판매단위 칸
+        if (window.ofUnitsApply) window.ofUnitsApply(id, item.id, item.unit); // 0620 단위표: 판매단위 칸
         priceInp.value = fmtMoneyInput(item.price);
         var pm = item.pricing_method || 'FIXED';
         var pmInp = document.querySelector('[name="pricing_method_' + id + '"]');
@@ -431,7 +431,7 @@ async function loadQuotation(id) {
             if (qEl) qEl.value = item.quantity || 1;
             var unitEl = document.querySelector('[name="unit_display_' + rowId + '"]');
             if (unitEl) unitEl.value = item.unit || 'EA';
-            // 0618 단위표: 판매단위(조 등) 복원
+            // 0620 단위표: 판매단위(조 등) 복원
             if (window.ofUnitsApply && item.item_id) window.ofUnitsApply(rowId, item.item_id, item.unit || 'EA', { sales_unit: item.sales_unit || '', sales_qty: Number(item.sales_qty) || 0 });
             var unitHidEl = document.querySelector('[name="item_unit_' + rowId + '"]');
             if (unitHidEl) unitHidEl.value = item.unit || 'EA';
@@ -509,7 +509,7 @@ document.getElementById('quotationForm').addEventListener('submit', async functi
             width: wVal ? parseFloat(wVal) : null,
             height: hVal ? parseFloat(hVal) : null,
             quantity: parseInt((document.querySelector('[name="quantity_' + id + '"]') || {}).value || 1),
-            // 0618 단위표: 판매단위 스냅샷(조 등) — quantity 는 EA(기본단위)로 이미 환산됨
+            // 0620 단위표: 판매단위 스냅샷(조 등) — quantity 는 EA(기본단위)로 이미 환산됨
             sales_unit: (function() { var e = document.querySelector('[name="sales_unit_' + id + '"]'); return (e && e.value) ? e.value : undefined; })(),
             sales_qty: (function() { var e = document.querySelector('[name="sales_qty_' + id + '"]'); var n = e ? parseFloat(e.value) : NaN; return (isFinite(n) && n > 0) ? n : undefined; })(),
             unit_factor: (function() { var e = document.querySelector('[name="unit_factor_' + id + '"]'); var n = e ? parseFloat(e.value) : NaN; return (isFinite(n) && n > 0) ? n : undefined; })(),

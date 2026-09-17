@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 품목 단위표 자체검증 — `src/utils/itemUnits.ts` + 마이그 `0617_item_units.sql` 백필
+ * 품목 단위표 자체검증 — `src/utils/itemUnits.ts` + 마이그 `0619_item_units.sql` 백필
  *
  * 왜 있는가: 단위 축이 어긋나면 재고가 50배·130배 튀는 부류다(memory design-stock-base-unit-rebase).
  *   표(item_units)와 파생 열(items.unit/base_unit/pack_size)이 서로 어긋나는 순간 unitConvert.packFactor()
@@ -101,10 +101,10 @@ console.log('[item-units] ③ unitsFromLegacyPair (열 → 표, 보정)')
   check("unit '' → EA", empty.length === 1 && empty[0].unit === 'EA')
 }
 
-console.log('[item-units] ④ 마이그 백필 SQL (0617)')
+console.log('[item-units] ④ 마이그 백필 SQL (0619)')
 {
   const db = seed()
-  const sql = fs.readFileSync(path.join(__dirname, '..', 'migrations', '0617_item_units.sql'), 'utf8')
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'migrations', '0619_item_units.sql'), 'utf8')
   db.exec(sql)
   db.exec(sql) // 멱등
   const cnt = db.prepare('SELECT COUNT(*) n FROM item_units').get().n
@@ -145,7 +145,7 @@ console.log('[item-units] ④ 마이그 백필 SQL (0617)')
     const u2 = await loadItemUnits(shim, 2)
     const it2 = db.prepare('SELECT pack_size FROM items WHERE id=2').get()
     check('AQ 단일 sync 는 pack_size 130 을 건드리지 않는다', u2.length === 1 && it2.pack_size === 130, { u2, it2 })
-    // ⑥ 라인 계수 해석(0618) — 요청 명시 > 단위표 > null(현행 폴백)
+    // ⑥ 라인 계수 해석(0620) — 요청 명시 > 단위표 > null(현행 폴백)
     console.log('[item-units] ⑥ resolveLineFactor / loadUnitFactorMap')
     const { resolveLineFactor, loadUnitFactorMap } = mod
     const fmap = await loadUnitFactorMap(shim, [1, 4, 2, 999])
@@ -155,7 +155,7 @@ console.log('[item-units] ④ 마이그 백필 SQL (0617)')
     check('표에 없는 단위 이름 → null(추측 안 함)', resolveLineFactor(fmap, 1, '박스') === null)
     check('표 없는 품목 → null', resolveLineFactor(fmap, 999, 'EA') === null)
     check('AQ yd → 1 (130 은 계수가 아니다)', resolveLineFactor(fmap, 2, 'yd') === 1)
-    // ⑦ 판매단위 스냅샷(0618) — 있는 라인만 UPDATE, 없으면 byte-identical
+    // ⑦ 판매단위 스냅샷(0620) — 있는 라인만 UPDATE, 없으면 byte-identical
     console.log('[item-units] ⑦ applySalesUnitSnapshots')
     const { applySalesUnitSnapshots } = mod
     db.exec(`CREATE TABLE order_items (id INTEGER PRIMARY KEY, order_id INTEGER, sort_order INTEGER, quantity REAL, sales_unit TEXT, sales_qty REAL, unit_factor REAL);

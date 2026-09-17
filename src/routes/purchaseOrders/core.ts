@@ -345,7 +345,7 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       ).bind(...poiLookupIds).all<{ id: number; item_name: string; category: string; unit: string }>()
       for (const m of (metaRows || [])) poiItemMeta[m.id as number] = m
     }
-    // 0618 단위표: 라인 단위의 계수를 스냅샷한다(요청 unit_factor > 단위표의 그 단위 > null=입고 시 packFactor 폴백)
+    // 0620 단위표: 라인 단위의 계수를 스냅샷한다(요청 unit_factor > 단위표의 그 단위 > null=입고 시 packFactor 폴백)
     const unitFactorMap = await loadUnitFactorMap(c.env.DB, data.items.map((it: any) => it.item_id)).catch(() => new Map())
 
     const poiStmts: D1PreparedStatement[] = []
@@ -375,7 +375,7 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
           sort_order, notes,
           -- 롤 수(원단 등)와 「수량이 예상치인가」 — 0610. quantity 축은 그대로 매입 단위다.
           order_packs, qty_is_estimate,
-          -- 0618 단위표: 이 라인 unit 1개 = 기본단위 몇 개(스냅샷). NULL = 입고 시 품목 마스터 계수(현행).
+          -- 0620 단위표: 이 라인 unit 1개 = 기본단위 몇 개(스냅샷). NULL = 입고 시 품목 마스터 계수(현행).
           unit_factor
         ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
@@ -538,7 +538,7 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       ).bind(...poiLookupIds).all<{ id: number; item_name: string; category: string; unit: string }>()
       for (const m of (metaRows || [])) poiItemMeta[m.id as number] = m
     }
-    // 0618 단위표: 라인 단위의 계수를 스냅샷한다(요청 unit_factor > 단위표의 그 단위 > null=입고 시 packFactor 폴백)
+    // 0620 단위표: 라인 단위의 계수를 스냅샷한다(요청 unit_factor > 단위표의 그 단위 > null=입고 시 packFactor 폴백)
     const unitFactorMap = await loadUnitFactorMap(c.env.DB, data.items.map((it: any) => it.item_id)).catch(() => new Map())
 
     const poiStmts: D1PreparedStatement[] = []
@@ -568,7 +568,7 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
           sort_order, notes,
           -- 롤 수(원단 등)와 「수량이 예상치인가」 — 0610. quantity 축은 그대로 매입 단위다.
           order_packs, qty_is_estimate,
-          -- 0618 단위표: 이 라인 unit 1개 = 기본단위 몇 개(스냅샷). NULL = 입고 시 품목 마스터 계수(현행).
+          -- 0620 단위표: 이 라인 unit 1개 = 기본단위 몇 개(스냅샷). NULL = 입고 시 품목 마스터 계수(현행).
           unit_factor
         ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
