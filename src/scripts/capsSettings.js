@@ -420,16 +420,22 @@ async function triggerCapsSync() {
 //   2026-09-18 실측: SM 사이트 미매핑 6명(김경수 포함)·DJ 사이트에 선명 직원 다수.
 // ============================================================================
 var capsEmpCache = [];      // MES 직원 목록
-var capsMapCache = [];      // 현재 매핑
+var capsMapCache = [];      // 현재 사이트 매핑
+var capsAllMapCache = [];   // 전 사이트 매핑 (미매핑 잡음 판별용)
 
 async function capsLoadEmployeeOptions() {
   if (capsEmpCache.length) return capsEmpCache;
   try {
     var res = await axios.get('/api/hr/employees', { params: { limit: 500, status: 'ACTIVE' } });
+    // 응답은 { success, data: { employees, pagination } } 다 — `items` 가 아니다(0624 실측).
     var d = res.data && res.data.data;
-    capsEmpCache = (d && (d.items || d)) || [];
+    capsEmpCache = (d && (d.employees || d.items)) || (Array.isArray(d) ? d : []);
     if (!Array.isArray(capsEmpCache)) capsEmpCache = [];
-  } catch (e) { capsEmpCache = []; }
+  } catch (e) {
+    capsEmpCache = [];
+    console.warn('[capsSettings] 직원 목록 로드 실패', e);
+  }
+  if (!capsEmpCache.length) console.warn('[capsSettings] 직원 목록이 비었다 — 드롭다운이 빈 채로 뜬다');
   return capsEmpCache;
 }
 
@@ -444,11 +450,15 @@ window.loadCapsEmployeeMap = async function() {
   if (!capsCurrentSiteId) return;
   await capsLoadEmployeeOptions();
 
-  // 1) 현재 매핑
+  // 1) 현재 사이트 매핑 + 전체 사이트 매핑(잡음 판별용)
+  //    ★DJ 와 SM 이 같은 릴레이 DB(nOutput)를 본다 — 각 워커가 **전 직원 펀치**를 긁으므로
+  //      내 사이트 직원이 아닌 사람은 영구히 미매핑으로 뜬다. 그건 결함이 아니라 잡음이고,
+  //      진짜 미매핑(신규 입사자)이 그 속에 묻히면 그 사람 근태가 통째로 사라진다(2026-09-18 실측).
   try {
-    var res = await axios.get('/api/caps/employee-map', { params: { site_id: capsCurrentSiteId } });
-    capsMapCache = ((res.data && res.data.data) || []).filter(function(m) { return m.is_active === 1 || m.is_active === '1'; });
-  } catch (e) { capsMapCache = []; }
+    var all = await axios.get('/api/caps/employee-map');
+    capsAllMapCache = ((all.data && all.data.data) || []).filter(function(m) { return m.is_active === 1 || m.is_active === '1'; });
+  } catch (e) { capsAllMapCache = []; }
+  capsMapCache = capsAllMapCache.filter(function(m) { return m.site_id === capsCurrentSiteId; });
   renderCapsMapped();
 
   // 2) 미매핑 + 무시목록은 사이트 레코드에서 (동기화가 남긴 값)
@@ -472,30 +482,58 @@ function renderCapsUnmappedRows(rawJson) {
   var cnt = document.getElementById('capsMapUnmappedCount');
   if (!wrap || !empty || !cnt) { console.warn('[capsSettings] 미매핑 요소 없음'); return; }
   var rows = capsParseJson(rawJson);
-  // 이미 매핑된 지문번호는 목록에서 뺀다(동기화 이후 매핑했을 수 있다)
-  var mapped = {};
-  capsMapCache.forEach(function(m) { mapped[String(m.caps_e_idno)] = true; });
-  rows = rows.filter(function(r) { return !mapped[String(r.fpid || r.e_idno)]; });
+  // ① 이미 이 사이트에 매핑된 지문번호는 뺀다(동기화 이후 매핑했을 수 있다)
+  var mappedHere = {};
+  capsMapCache.forEach(function(m) { mappedHere[String(m.caps_e_idno)] = true; });
+  rows = rows.filter(function(r) { return !mappedHere[String(r.fpid || r.e_idno)]; });
 
-  cnt.textContent = rows.length;
-  empty.classList.toggle('hidden', rows.length > 0);
-  wrap.innerHTML = rows.map(function(r, i) {
+  // ② 다른 사이트에 이미 매핑된 사람은 **잡음**이다 — 지문번호는 사이트마다 달라 이름으로 본다
+  var otherSite = {};
+  capsAllMapCache.forEach(function(m) {
+    if (m.site_id === capsCurrentSiteId) return;
+    if (m.caps_e_name) otherSite[String(m.caps_e_name).replace(/\s+/g, '')] = m.site_id;
+    if (m.employee_name) otherSite[String(m.employee_name).replace(/\s+/g, '')] = m.site_id;
+  });
+  var real = [], noise = [];
+  rows.forEach(function(r) {
+    var key = String(r.e_name || '').replace(/\s+/g, '');
+    if (key && otherSite[key]) { r.__other = otherSite[key]; noise.push(r); } else real.push(r);
+  });
+
+  cnt.textContent = real.length;
+  empty.classList.toggle('hidden', real.length + noise.length > 0);
+
+  var rowHtml = function(r, i, isNoise) {
     var fp = String(r.fpid || r.e_idno || '');
     var nm = r.e_name || '';
     var dept = r.c_dept || '';
-    return '<div class="flex items-center gap-2 flex-wrap bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5">'
-      + '<span class="font-mono text-xs text-amber-900">' + escapeHtml(fp) + '</span>'
+    var cls = isNoise ? 'bg-gray-50 border-gray-200' : 'bg-amber-50 border-amber-200';
+    return '<div class="flex items-center gap-2 flex-wrap border rounded px-2.5 py-1.5 ' + cls + '">'
+      + '<span class="font-mono text-xs ' + (isNoise ? 'text-gray-500' : 'text-amber-900') + '">' + escapeHtml(fp) + '</span>'
       + '<span class="text-xs text-gray-700">' + escapeHtml(nm || '(이름 없음)') + '</span>'
       + (dept ? '<span class="text-[10px] text-gray-400">' + escapeHtml(dept) + '</span>' : '')
+      + (isNoise ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-white border border-gray-300 text-gray-500">'
+          + escapeHtml(r.__other) + ' 에 매핑됨</span>' : '')
       + '<div class="flex-1"></div>'
       + capsEmpSelectHtml('capsMapSel' + i)
       + '<button onclick="capsMapAssign(\'' + escapeJsAttr(fp) + '\',\'' + escapeJsAttr(nm) + '\',\'' + escapeJsAttr(dept) + '\',' + i + ')" '
-      + 'class="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">매핑</button>'
+      + 'class="px-2 py-1 text-xs ' + (isNoise ? 'border border-gray-300 text-gray-600 bg-white hover:bg-gray-50' : 'bg-blue-600 text-white hover:bg-blue-700') + ' rounded">매핑</button>'
       + '<button onclick="capsMapIgnore(\'' + escapeJsAttr(fp) + '\')" '
       + 'class="px-2 py-1 text-xs border border-gray-300 text-gray-600 bg-white rounded hover:bg-gray-50" '
       + 'title="관리자·테스트 지문 등 직원이 아닌 번호">무시</button>'
       + '</div>';
-  }).join('');
+  };
+
+  var html = real.map(function(r, i) { return rowHtml(r, i, false); }).join('');
+  if (noise.length) {
+    html += '<details class="mt-2">'
+      + '<summary class="text-xs text-gray-500 cursor-pointer select-none py-1">'
+      + '다른 사이트 소속 ' + noise.length + '건 — 이 사이트에서는 매핑하지 않아도 됩니다 <span class="text-gray-400">(펼치기)</span></summary>'
+      + '<div class="space-y-1.5 mt-1.5">'
+      + noise.map(function(r, i) { return rowHtml(r, real.length + i, true); }).join('')
+      + '</div></details>';
+  }
+  wrap.innerHTML = html;
 }
 
 window.capsMapAssign = async function(fpid, name, dept, idx) {
