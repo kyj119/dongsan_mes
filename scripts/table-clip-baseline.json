@@ -1,0 +1,185 @@
+{
+  "base": "https://webapp-9i0.pages.dev",
+  "width": 1920,
+  "minShort": 4,
+  "updated": "2026-09-18",
+  "note": "이미 알려진 잘림. 새로 생긴 것만 잡기 위한 출발점이지 「정상」이 아니다.",
+  "known": {
+    "/activity-log|일시": {
+      "short": 34,
+      "title": false
+    },
+    "/activity-log|작업": {
+      "short": 61,
+      "title": false
+    },
+    "/activity-log|대상": {
+      "short": 32,
+      "title": true
+    },
+    "/attendance|#1": {
+      "short": 9,
+      "title": false
+    },
+    "/attendance|직원": {
+      "short": 28,
+      "title": false
+    },
+    "/bank|월 납입": {
+      "short": 12,
+      "title": false
+    },
+    "/bank|만기": {
+      "short": 8,
+      "title": true
+    },
+    "/bank|#1": {
+      "short": 10,
+      "title": false
+    },
+    "/bank|최근 90일 입금": {
+      "short": 21,
+      "title": false
+    },
+    "/bank|거래처": {
+      "short": 75,
+      "title": true
+    },
+    "/bank|방식": {
+      "short": 13,
+      "title": false
+    },
+    "/bom|차감방식": {
+      "short": 21,
+      "title": false
+    },
+    "/bom|연결 자재": {
+      "short": 21,
+      "title": false
+    },
+    "/card-expenses|#1": {
+      "short": 9,
+      "title": false
+    },
+    "/card-expenses|상태": {
+      "short": 16,
+      "title": false
+    },
+    "/card-expenses|#10": {
+      "short": 8,
+      "title": true
+    },
+    "/cash-schedule|월 납입": {
+      "short": 12,
+      "title": false
+    },
+    "/cash-schedule|만기": {
+      "short": 8,
+      "title": true
+    },
+    "/cash-schedule|#1": {
+      "short": 10,
+      "title": false
+    },
+    "/cash-schedule|최근 90일 입금": {
+      "short": 21,
+      "title": false
+    },
+    "/cash-schedule|거래처": {
+      "short": 75,
+      "title": true
+    },
+    "/cash-schedule|방식": {
+      "short": 13,
+      "title": false
+    },
+    "/equipment|키트": {
+      "short": 147,
+      "title": false
+    },
+    "/financial-reports|수량/비율": {
+      "short": 18,
+      "title": false
+    },
+    "/inventory-dashboard|현재고": {
+      "short": 15,
+      "title": false
+    },
+    "/items|작업": {
+      "short": 23,
+      "title": false
+    },
+    "/messages|관련 업무": {
+      "short": 4,
+      "title": false
+    },
+    "/messages|수신번호": {
+      "short": 51,
+      "title": false
+    },
+    "/post-processing|상태": {
+      "short": 12,
+      "title": false
+    },
+    "/post-processing|카드": {
+      "short": 16,
+      "title": true
+    },
+    "/post-processing|관리": {
+      "short": 46,
+      "title": false
+    },
+    "/post-processing|코드": {
+      "short": 23,
+      "title": false
+    },
+    "/post-processing|파라미터": {
+      "short": 12,
+      "title": false
+    },
+    "/post-processing|적용 소분류": {
+      "short": 27,
+      "title": false
+    },
+    "/price-list|코드": {
+      "short": 15,
+      "title": false
+    },
+    "/production|장비": {
+      "short": 101,
+      "title": false
+    },
+    "/production|출력정보": {
+      "short": 34,
+      "title": false
+    },
+    "/purchase-orders|발주번호": {
+      "short": 128,
+      "title": true
+    },
+    "/settings/payroll-rates|하한/상한": {
+      "short": 8,
+      "title": false
+    },
+    "/shipments|라벨": {
+      "short": 26,
+      "title": false
+    },
+    "/shipments|박스": {
+      "short": 26,
+      "title": false
+    },
+    "/shipments|출력": {
+      "short": 25,
+      "title": false
+    },
+    "/storage-zones|법인": {
+      "short": 50,
+      "title": false
+    },
+    "/users|마지막 로그인": {
+      "short": 11,
+      "title": false
+    }
+  }
+}

@@ -216,6 +216,27 @@ grep -n "new Blob\|function renderPagination\|function switchTab\|toLocaleString
 grep -n "statusColors\s*=\|statusLabels\s*=\s*{" src/scripts/CHANGED.js
 ```
 
+### 16. 표 열 잘림 검사 (표·목록 화면 변경 시)
+
+`.ds-table` 은 `table-layout:fixed` + `td{overflow:hidden}` 이라 **배정 폭을 넘긴 값이 경고 없이 사라진다**.
+응답은 200 이고 tsc·build·smoke·check:dom 이 전부 통과한다 — 리뷰에서 잡지 못하면 사용자가 화면에서 발견한다.
+2026-09-18 prod 실측 = 56화면 중 **41열이 잘려 있었고 35열은 title 조차 없었다**.
+
+diff 에 아래가 있으면 폭도 같이 봤는지 확인한다:
+- **액션 셀에 버튼 추가** → `col-action`(표준 100px) 그대로면 반려. 버튼 5개 = 약 290px 필요하고,
+  잘린 버튼은 「짧아 보이는」 게 아니라 **아예 없어 보인다**(사용자는 기능이 빠진 줄 안다).
+- **셀에 배지·부가정보 추가** → 붙는 개수가 가변이면 폭이 아니라 `ds-wrap` + 세로 스택.
+- **고정폭 열에 `<span>` 배지** → `inline` 에는 td 의 ellipsis 가 **안 걸려** 「…」도 없이 끊긴다. `.ds-chip` 사용.
+- **평문 텍스트 셀 신설** → `dsTd()` 를 쓰면 title 이 자동으로 붙는다(직접 조립하면 누락된다).
+- **열 폭 숫자를 새로 쓸 때** → 근거는 스키마가 아니라 **실측**(`ORDER BY LENGTH(x) DESC LIMIT 3`).
+
+```bash
+npm run audit:table-clip          # prod 56화면·탭 포함. 기준선 대비 새 잘림만 exit 1
+npm run audit:table-clip -- --update   # 고쳐서 해소했으면 기준선을 줄인다
+```
+
+> 개발 중에는 로컬·사설망에서 잘린 셀에 **빨간 점선 + ✂부족px** 이 자동 표시된다(`shell.js` 감시자).
+
 ### 15. 목록 정렬 tie-break 검사 (라우트 변경 시)
 
 `ORDER BY`가 **비고유 컬럼(날짜/시각/금액/상태)으로 끝나면 반려** — 고유키(`id`) tie-break 필수.

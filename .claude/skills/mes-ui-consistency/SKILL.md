@@ -90,6 +90,16 @@ description: "동산기획 ERP+MES UI 일관성 가이드. 프론트엔드 작�
 - 밀도 토글: `ds-table-compact`
 - **고정형(table-layout: fixed) 원칙 (필수)**: 컬럼이 많거나 금액(가변 자릿수) 위주인 표는 반드시 `table-layout: fixed` + 명시적 컬럼 너비(`<colgroup><col style="width:..">` 또는 `th` width)로 만든다. 기본 auto-layout(=내용에 따라 너비가 변하는 "움직이는 형식")은 **금지** — 셀 값이 `0`↔큰 숫자로 바뀔 때 컬럼 폭이 출렁여 정렬/헤더가 어긋난다. 넘치는 셀은 `white-space:nowrap; overflow:hidden; text-overflow:ellipsis`로 클립하고, 전체 폭은 가로 스크롤(`overflow-x-auto`)로 처리. 컬럼이 너무 많으면 **탭/섹션으로 분리**(예: 급여대장=지급·공제 / 회사부담금=별도 탭).
 
+### 6.1 잘림은 조용하다 — 폭을 정할 때 4가지 (2026-09-18 prod 전수 실측)
+위 고정형 원칙의 대가다. 넘친 값은 **경고 없이 사라지고** 응답은 200, tsc·build·smoke·check:dom 이 전부 통과한다.
+실측 56화면에서 **41열이 잘려 있었고 그중 35열은 `title` 조차 없어** 마우스오버로도 복구되지 않았다.
+1. **열 폭은 그 열 데이터의 실측 최댓값에서 정한다** — 스키마가 아니라 실제 값(`ORDER BY LENGTH(x) DESC LIMIT 3`). 이관 데이터가 표준보다 길다(발주번호 32자).
+2. **액션 버튼을 추가하면 `col-action` 폭도 같은 커밋에서 올린다** — 잘린 버튼은 「짧아 보이는」 게 아니라 **아예 없어 보인다**(사용자는 기능이 빠진 줄 안다).
+3. **한 칸에 정보 둘이면 가로로 늘이지 말고 `ds-wrap` + 세로 스택** — 붙는 배지 수가 가변이면 폭으로는 못 담는다.
+4. **평문 셀은 `dsTd()`, 배지는 `.ds-chip`** — `inline` 배지에는 td 의 ellipsis 가 **안 걸려** 「…」도 없이 글자가 통째로 끊긴다.
+- 게이트 = `npm run audit:table-clip`(기준선 대비 **새** 잘림만 exit 1 · `/deploy-verify` Phase 4 배선).
+- 개발 중에는 로컬·사설망에서 **잘린 셀에 빨간 점선 + ✂부족px** 이 자동으로 뜬다(끄기 = `localStorage.mesClipDebug='0'`).
+
 ## 6.5 XSS / 이스케이프 (필수)
 - 사용자 입력 필드(`*name`, `*_name`, `notes`, `description`, `memo`, `message`, `*_message`, `content`)를 innerHTML / 템플릿 리터럴 / `+=` HTML에 삽입할 땐 **전역 `window.escapeHtml(...)`로 반드시 감쌀 것**.
 - URL/속성(href, src, query) 컨텍스트는 `encodeURIComponent` 사용.
@@ -108,6 +118,8 @@ description: "동산기획 ERP+MES UI 일관성 가이드. 프론트엔드 작�
 
 | 용도 | 전역 헬퍼 (window.*) | 금지 패턴 |
 |------|---------------------|----------|
+| 표 평문 셀 | `dsTd(value, cls)` — title 자동 부착 | `'<td>' + esc(v) + '</td>'` 직접 조립(title 누락) |
+| 표 안 배지·칩 | `dsChip(html, full, cls)` / `.ds-chip` | 고정폭 열에 맨 `<span>` 배지(ellipsis 안 걸림) |
 | HTML 이스케이프 | `escapeHtml` | 로컬 esc 재구현 (가드형 `window.escapeHtml \|\| fallback`만 허용) |
 | 금액 표시 | `fmtMoney`(null→'-') / 숫자 콤마 `fmtNum`(null→'0') | 로컬 `fmt()`/`accWon`류 재정의 |
 | 금액 입력 | `data-money` + `bindMoneyInputs`/`readMoney`/`fmtMoneyInput` | `type="number"` 금액 입력 |
