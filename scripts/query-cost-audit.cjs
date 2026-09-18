@@ -66,6 +66,18 @@ const TARGETS = [
   // 생산 일정 화면 — 60초 폴링 2연타.
   { path: '/api/cards/schedule/queues',                      name: 'cards.scheduleQueues',    budgetMs: 2000, maxKB: 1000 },
   { path: '/api/cards/schedule/unassigned',                  name: 'cards.scheduleUnassigned', budgetMs: 2000, maxKB: 1000 },
+
+  // ── 페이로드 회귀 감시 (2026-09-18 성능 감사) ─────────────────────────────
+  //   이 셋은 **느려서가 아니라 커서** 문제였다. 응답시간은 셋 다 200ms 안쪽이라
+  //   smoke·typecheck·journey 어디에도 안 걸렸고, 사람이 화면을 봐도 알 수 없었다.
+  //   maxKB 가 이 감사에서 유일하게 그걸 잡는 눈금이다 — 값을 늘릴 때는 화면이 그걸 다 쓰는지 먼저 본다.
+  //   ⚠️ 여기 budgetMs 는 prod 실측(2026-09-18)의 3~5배다. 기준선 갱신 = `--save`.
+  // 재고 화면 — 로스율 숫자 하나 때문에 실사 상세 전량(357KB)을 받던 자리. 지금은 목록이 합계를 싣는다.
+  { path: '/api/inventory-counts?limit=1&status=APPROVED&with_loss=1', name: 'inventoryCounts.lastWithLoss', budgetMs: 1000, maxKB: 20 },
+  // 발주 화면 공급처 필터 — 활성 전량(2,890곳·218KB) → 발주 이력이 있는 123곳.
+  { path: '/api/clients?fields=picker&limit=5000&active=1&has_po=1',   name: 'clients.supplierPicker',      budgetMs: 1000, maxKB: 40 },
+  // 목록 도구모음 — 설정과 프리셋을 한 응답으로. 왕복이 2로 돌아가면 이 경로가 먼저 깨진다.
+  { path: '/api/user-prefs?presets=orders',                            name: 'userPrefs.withPresets',       budgetMs: 800,  maxKB: 30 },
 ]
 
 const C = { reset: '\x1b[0m', red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m', dim: '\x1b[2m', cyan: '\x1b[36m' }
