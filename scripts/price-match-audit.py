@@ -179,7 +179,7 @@ def variant_backtest(rows):
     rows.sort(key=lambda r: (r['od'] or '', r['oid'] or 0))
     hist = defaultdict(list)          # (cid,iid) -> [(rate,q,w,h)]
     res = {k: {'n': 0, 'err': [], 'strict_n': 0, 'strict_err': []}
-           for k in ('V0 직전가(현행)', 'V1 +수량대', 'V2 +규격', 'V3 +수량대+규격')}
+           for k in ('V0 직전가(현행)', 'V1 +수량대', 'V2 +규격', 'V2R +규격(회전포함)', 'V3 +수량대+규격')}
     for r in rows:
         v = rate_of(r)
         if not v:
@@ -194,6 +194,11 @@ def variant_backtest(rows):
                 'V0 직전가(현행)': base,
                 'V1 +수량대': next((x[0] for x in reversed(h) if qband(x[1]) == band), None),
                 'V2 +규격': next((x[0] for x in reversed(h) if (x[2], x[3]) == spec), None),
+                # V2R = 가로세로가 뒤집힌 이력도 같은 규격으로 본다. 같은 물건을 돌려 놓은 것이고
+                #       청구면적도 같다(10cm 올림·최소 1m 은 두 변에 대칭). 품목이 이미 같으므로
+                #       폭 구간이 다른 건(현수막 3분할)은 애초에 다른 item_id 라 섞이지 않는다.
+                'V2R +규격(회전포함)': next((x[0] for x in reversed(h)
+                                      if (x[2], x[3]) in (spec, (spec[1], spec[0]))), None),
                 'V3 +수량대+규격': next((x[0] for x in reversed(h)
                                     if qband(x[1]) == band and (x[2], x[3]) == spec), None),
             }

@@ -1755,7 +1755,11 @@
                     priceInp.value = fmtMoneyInput(d.suggested_price);
                     priceInp.dataset.basePrice = d.suggested_price;  // 특약 저장 제안의 비교 기준
                     if (srcEl) {
-                        var label = d.price_source === 'recent_same_spec' ? '같은 규격 최근가'
+                        // ★회전 이력에서 온 값이면 **밝힌다** — 같은 규격이 맞지만(청구면적 동일)
+                        //   백테스트상 빗나갈 때 더 크게 빗나간다(중앙 11.1% vs 정확일치 0.0%).
+                        //   조용히 쓰면 아무도 못 걸러낸다(prices.ts 주석 참조).
+                        var rot = d.details && d.details.recent_rotated;
+                        var label = d.price_source === 'recent_same_spec' ? ('같은 규격 최근가' + (rot ? '(가로세로 바뀐 이력)' : ''))
                                   : d.price_source === 'recent_transaction' ? '최근 거래가'
                                   : d.price_source === 'client_item_price' ? '거래처 특약가'
                                   : d.price_source === 'price_list' ? '단가표'
