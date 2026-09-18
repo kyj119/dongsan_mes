@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-09-18T10:20:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-09-18T15:46:16+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,28 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **8** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음) |
+| 🆕 new | **6** (`list_issues(state:OPEN,label:auto-improve)` 실측, -2 — #647·#648 close) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **567** (`search_issues(label:auto-improve is:closed reason:completed)` 실측, 변동없음) |
+| ✔️ done | **569** (`search_issues(label:auto-improve is:closed reason:completed)` 실측, +2) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 3 UX/기능 감사 (2026-09-18T15:46):**
+> - **방법**: 세션 시작 시 detached HEAD `73b8c0e`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. shallow clone이라 `git fetch --unshallow` 필요(앵커가 depth 밖). `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area3 방법 라인 HEAD `1b74c7c`)**: 98커밋, `src/pages`+`src/scripts` diff 46커밋. 대부분(item_units·배송비-박스청구·급여 엑셀입력/이카운트 대조/4대보험 기간축·notify SSOT·CAPS 매핑 화면)은 Area1·2·4·5·6가 이미 각자 렌즈(entity·보안·계산정합성)로 정독 완료(로그 해시 대조 확인) → Area3 고유 렌즈(빈 상태·로딩·검색/필터·cross-page 링크)로 미검토였던 두 신규 화면을 직접 재점검.
+> - **CAPS 사원 매핑 화면(`94850e9d`+3 후속 fix) Area3 렌즈 검토**: `capsSettings.js` 전 렌더 함수(미매핑/무시/매핑됨 3개 목록)가 빈 상태 토글(`empty.classList.toggle`)·escapeHtml·로딩 스피너(동기화 버튼)를 전부 갖춤. cross-site 잡음(DJ/SM 공유 릴레이 DB)은 주석으로 설계 사유 명시. 배정/무시/무시해제/매핑해제 4개 액션 함수 전부 존재(반쪽 CRUD 없음). 당일 4연속 fix 커밋(a6745ecb·1e789451·8e9e80ed)이 이미 드롭다운 공백·타법인 매핑·무시목록 미갱신을 잡아 현재 상태는 clean. 결함 0건.
+> - **출고 「확정 대기」 섹션(`a130c8dd`) Area3 렌즈 검토**: `loadPendingConfirm()` 빈 목록이면 카드 자체를 숨김(별도 빈 상태 문구 불요 — 카드 존재 자체가 "대기 있음" 신호라 숨김이 맞는 설계), 로드 실패 시도 카드 숨김으로 graceful degrade, 합포장 배지·알림 가능여부 배지·박스수 입력 전부 반영. 「알림」·「확정」 버튼을 의도적으로 분리(주석: 합치면 실수 발송, 발송은 되돌릴 수 없음) — UX 설계 근거 명확. 결함 0건.
+> - **🔍 cross-area 발견 — Area5 #652 "수정 완료" 코멘트가 실제로는 push 안 됨(live IDOR 잔존)**: CAPS·shipping 신규 코드를 보던 중 `shipments.ts:288 POST /consolidation-pending`을 재확인하게 됐고, owner가 #652에 "`entityFilter(c,'me')`를 붙였다, 게이트 통과"라고 코멘트했는데 **현재 `origin/main`(`73b8c0e`) 코드에 그 변경이 없음**을 발견 — `git log --all -S"entityFilter(c, 'me')"`가 main·feat/dept-pnl·claude/cloudflare-billing-limit-3t5up3 전 브랜치에서 **0건**. `requireAccessOrRole` 도 여전히 DESIGNER 포함(코멘트는 "제외"라 했음), SQL도 `me` 측 entityFilter 없음. **후속 #653이 "#652는 수정 완료"를 전제로 쓰여 있어 이중으로 상태가 어긋난 상태** — 로컬 커밋이 push 안 됐거나 다른 세션 작업트리의 변경이 유실된 것으로 추정. Area3 소관 밖(Area5 IDOR 클래스, 자동수정 금지)이라 직접 수정은 안 하고 **#652에 근거(커밋 해시·grep 결과)를 첨부한 정정 코멘트만 게시**, 사용자에게 별도 알림. 다음 Area5 사이클 또는 owner 재확인 필요.
+> - **standing scan 1: showConfirm 콜백 오용(#426 클래스)** — 오용 패턴 **0건**(변동없음).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 4건 전부 기존 FP 유지(`attendance.ts:171`·`dashboard.ts:420`·`workbench.ts:577`·`itemUnits.ts:162`).
+> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **CI 헬스**: 최근 배포 전부 성공(현재 HEAD `73b8c0e` 포함, 세션 시작 전 최근 배포 기록 PROJECT_STATUS.md 기준).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **6**(-2, #647·#648 close 반영) — #652(재확인 결과 실제 미수정, 코멘트로 정정)·#651·#650·#626·#617·#616, 전건 Area3 관할 밖.
+> - **backlog↔GitHub 절대값 재동기화**: open **6**(8→6) · done **569**(567→569, +2) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md `line N` 잔여참조 재확인(0건, 이미 서술식). 이번 사이클 핵심 교훈(owner "수정 완료" 코멘트도 검증 없이 신뢰하면 안 된다)은 Area3 고유 클래스가 아니라 기존 "open≠unfixed" 원칙의 확장이라 별도 codify 불요 — 각 Area가 매 사이클 하는 open 이슈 재확인에 "코멘트가 완료를 주장해도 코드로 재검증"을 암묵 포함.
+> - **백로그 트림 체크**: 사이클 로그 10건 → 이번 추가 후 11건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(CAPS·확정대기 UX 렌즈 net-new 0, #652는 신규 발견이 아니라 기존 이슈의 상태 정정), 자동수정 0건(고칠 결함 없음, #652는 IDOR이라 애초 Area5 소관+자동수정 금지), done-sync: open 8→6(#647·#648 close)·done 567→569(+2)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-09-18T10:20):**
 > - **방법**: 세션 시작 시 detached HEAD `8cf8cd6`(origin/main과 동일) → 로컬 `main` 부재 → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. shallow clone이라 `git fetch --unshallow` 필요(앵커가 depth 밖). `npm ci`(0→89), `npx tsc --noEmit` clean.
