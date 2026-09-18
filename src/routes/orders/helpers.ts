@@ -534,8 +534,12 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
  *   품목 마스터에 없는 자유 입력 라인은 제작으로 본다(카드가 생기는 종전 동작 유지). 라인이 없으면 PRODUCTION.
  */
 export async function deriveOrderType(db: D1Database, items: Array<{ item_id?: number | string | null }> | undefined): Promise<'PRODUCTION' | 'DISTRIBUTION'> {
-  const ids = Array.from(new Set((items || []).map((it) => Number(it?.item_id)).filter((n) => Number.isFinite(n) && n > 0)))
-  if (!items || !items.length || ids.length !== items.length) return 'PRODUCTION'
+  // dedup 은 IN 절 구성에만 쓴다 — 「자유 입력 라인(item_id 없음)이 섞였나」는 **dedup 이전** 길이로 판정한다.
+  // Set 을 먼저 씌우면 같은 품목을 두 줄로 나눈 정상 주문(규격·비고가 달라 라인을 나누는 흔한 패턴)까지
+  // 자유 입력과 같은 조건에 걸려 무조건 PRODUCTION 이 된다(#651).
+  const rawIds = (items || []).map((it) => Number(it?.item_id)).filter((n) => Number.isFinite(n) && n > 0)
+  if (!items || !items.length || rawIds.length !== items.length) return 'PRODUCTION'
+  const ids = Array.from(new Set(rawIds))
   const ph = ids.map(() => '?').join(',')
   const row = await db.prepare(
     `SELECT COUNT(*) AS n, SUM(CASE WHEN IFNULL(production_required, 1) = 0 THEN 1 ELSE 0 END) AS stock_only FROM items WHERE id IN (${ph})`,

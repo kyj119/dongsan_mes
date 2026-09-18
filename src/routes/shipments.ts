@@ -285,11 +285,14 @@ shipmentsRouter.get('/daily', async (c) => {
 //   (`shipmentHelper.applyConsolidationIntents` 와 같은 축 — 실제 묶임도 이 포인터로 이행된다)
 // ※ /:id 보다 먼저 등록
 // ============================================================================
-shipmentsRouter.post('/consolidation-pending', requireAccessOrRole('/shipments', 'MANAGER', 'DESIGNER'), async (c) => {
+shipmentsRouter.post('/consolidation-pending', requireAccessOrRole('/shipments', 'MANAGER'), async (c) => {
   try {
     const { order_ids } = await c.req.json<{ order_ids: number[] }>()
     const ids = (Array.isArray(order_ids) ? order_ids : []).map(Number).filter((n) => Number.isFinite(n) && n > 0)
     if (!ids.length) return c.json({ success: true, data: [] })
+    // #652: `me`(호출자가 지정한 주문)는 **자법인 것만** 받는다 — 임의 id 로 남의 합배송 그룹을 탐침하는 경로를 막는다.
+    //   파트너 `p` 에는 붙이지 않는다: 합배송은 목적 자체가 cross-entity 다(/consolidation-candidates 와 같은 축).
+    const meEf = entityFilter(c, 'me')
     const partners: Record<string, unknown>[] = []
     for (let i = 0; i < ids.length; i += 60) {
       const chunk = ids.slice(i, i + 60)
@@ -303,11 +306,11 @@ shipmentsRouter.post('/consolidation-pending', requireAccessOrRole('/shipments',
                        AND COALESCE(p.consolidate_with_order_id, p.id) = COALESCE(me.consolidate_with_order_id, me.id)
           LEFT JOIN entities en ON en.id = p.entity_id
           LEFT JOIN clients cl ON cl.id = p.client_id
-         WHERE me.id IN (${ph})
+         WHERE me.id IN (${ph})${meEf.clause}
            AND p.shipped_at IS NULL
            AND p.status NOT IN ('CANCELLED', 'DELETED', 'DRAFT', 'QUOTATION')
            AND p.id NOT IN (${ph})
-      `).bind(...chunk, ...chunk).all<Record<string, unknown>>()
+      `).bind(...chunk, ...meEf.params, ...chunk).all<Record<string, unknown>>()
       partners.push(...(results || []))
     }
     // 같은 파트너가 여러 주문에서 나올 수 있다 — id 로 한 번만
