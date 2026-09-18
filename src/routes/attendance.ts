@@ -150,13 +150,19 @@ attendanceRouter.get('/month', async (c) => {
       } catch (_) { /* 테이블 없으면 무시 */ }
     }
 
-    // 해당 월 법정공휴일 (그리드에 휴일 컬럼 표시용)
-    let holidays: { holiday_date: string; name: string }[] = []
+    // 해당 월 공휴일 (그리드에 휴일 컬럼 표시용)
+    //   0623: 전 법인 공통(entity_id=0) + 이 화면이 보고 있는 법인의 휴무. 세션 법인이 없으면(ADMIN 전체)
+    //   전사 것만 — 법인이 섞인 목록에 특정 법인 휴무를 칠하면 다른 법인 사람에게 거짓말이 된다.
+    let holidays: { holiday_date: string; name: string; entity_id?: number }[] = []
     try {
+      const entId = getEntityId(c) || 0
       const { results: hrows } = await c.env.DB.prepare(
         // substr() 로 감싸면 인덱스를 못 탄다 — 같은 반열림 구간을 쓴다(holidays 는 작지만 규칙은 하나로)
-        `SELECT holiday_date, name FROM holidays WHERE holiday_date >= ? AND holiday_date < ? ORDER BY holiday_date`
-      ).bind(mStart, mEnd).all<{ holiday_date: string; name: string }>()
+        `SELECT holiday_date, name, entity_id FROM holidays
+          WHERE holiday_date >= ? AND holiday_date < ?
+            AND (entity_id = 0 OR entity_id = ?)
+          ORDER BY holiday_date`
+      ).bind(mStart, mEnd, entId).all<{ holiday_date: string; name: string; entity_id: number }>()
       holidays = hrows || []
     } catch (_) { /* holidays 테이블 미적용 환경 — 주말만 표시 */ }
 

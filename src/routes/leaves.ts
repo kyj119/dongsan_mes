@@ -75,12 +75,17 @@ function kstNow(): Date {
  * C2/B4: start~end(YYYY-MM-DD, 포함) 사이 소정근로일 수 — 토·일 및 공휴일(holidays) 제외.
  * 연차는 달력일이 아닌 소정근로일 기준으로 차감해야 함(근로기준법).
  */
-export async function countWorkingDays(db: D1Database, start: string, end: string): Promise<number> {
+export async function countWorkingDays(db: D1Database, start: string, end: string, employeeId?: number): Promise<number> {
   const dates = enumerateDates(start, end)
   if (dates.length === 0) return 0
+  // 0623: 법인별 휴무(선명 여름휴가 등)가 생겼다. 직원을 주면 그 법인 휴무까지 소정근로일에서 뺀다.
+  //   employeeId 미지정이면 전 법인 공통(entity_id=0)만 — 축이 생기기 전과 같은 동작.
   const { results } = await db.prepare(
-    `SELECT holiday_date FROM holidays WHERE holiday_date BETWEEN ? AND ?`
-  ).bind(dates[0], dates[dates.length - 1]).all<{ holiday_date: string }>()
+    `SELECT h.holiday_date FROM holidays h
+      WHERE h.holiday_date BETWEEN ? AND ?
+        AND (h.entity_id = 0${employeeId ? ` OR h.entity_id = (SELECT entity_id FROM employees WHERE id = ?)` : ''})`
+  ).bind(...(employeeId ? [dates[0], dates[dates.length - 1], employeeId] : [dates[0], dates[dates.length - 1]]))
+   .all<{ holiday_date: string }>()
   const holidaySet = new Set((results || []).map(h => String(h.holiday_date)))
   let n = 0
   for (const d of dates) {
@@ -530,7 +535,7 @@ leavesRouter.post('/requests', requireRole('ADMIN', 'MANAGER'), async (c) => {
     if (lt && lt.deduction_days < 1) {
       days = lt.deduction_days // 반차/반반차: 1일 내 사용(날짜 무관)
     } else {
-      const workingDays = await countWorkingDays(c.env.DB, body.start_date, body.end_date)
+      const workingDays = await countWorkingDays(c.env.DB, body.start_date, body.end_date, body.employee_id)
       days = workingDays * (lt?.deduction_days ?? 1)
       if (days <= 0) {
         return c.json({ success: false, error: '선택한 기간에 소정근로일이 없습니다(주말·공휴일만 포함).' }, 400)

@@ -45,17 +45,17 @@ window.prRLoadHolidays = async function() {
   try {
     var res = await axios.get('/api/payroll/holidays', { params: { year: year } });
     var rows = (res.data && res.data.data) || [];
-    if (!rows.length) { body.innerHTML = '<tr><td colspan="4" class="text-center text-gray-400 py-6">등록된 공휴일이 없습니다. "기본 공휴일 불러오기"를 눌러주세요.</td></tr>'; return; }
+    if (!rows.length) { body.innerHTML = '<tr><td colspan="5" class="text-center text-gray-400 py-6">등록된 휴일이 없습니다. "기본 공휴일 불러오기"를 눌러주세요.</td></tr>'; return; }
     body.innerHTML = rows.map(function(r){
       var d = new Date(r.holiday_date + 'T00:00:00');
       var wd = PR_WEEKDAY[d.getDay()] || '';
       var wkend = (d.getDay() === 0 || d.getDay() === 6);
       return '<tr><td class="px-4 py-2 tabular-nums">' + escapeHtml(r.holiday_date) + '</td>' +
         '<td class="px-4 py-2 ' + (wkend ? 'text-red-500' : '') + '">' + wd + '</td>' +
-        '<td class="px-4 py-2">' + escapeHtml(r.name || '') + '</td>' +
+        '<td class="px-4 py-2">' + (Number(r.entity_id||0) === 0 ? '<span class="text-gray-500">전 법인</span>' : '<span class="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 text-xs">' + escapeHtml(r.entity_name || ('법인 ' + r.entity_id)) + '</span>') + '</td>' + '<td class="px-4 py-2">' + escapeHtml(r.name || '') + '</td>' +
         '<td class="px-4 py-2 text-center"><button onclick="prRDeleteHoliday(\'' + r.holiday_date + '\')" class="text-red-500 hover:text-red-700"><i class="fas fa-trash"></i></button></td></tr>';
     }).join('');
-  } catch (e) { body.innerHTML = '<tr><td colspan="4" class="text-center text-red-500 py-6">로드 실패</td></tr>'; }
+  } catch (e) { body.innerHTML = '<tr><td colspan="5" class="text-center text-red-500 py-6">로드 실패</td></tr>'; }
 };
 window.prRLoadDefaultHolidays = async function() {
   var year = Number(document.getElementById('prRHolYearInput').value || '2026');
@@ -79,7 +79,9 @@ window.prRSaveHoliday = async function() {
   var name = document.getElementById('prRHolName').value.trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { showToast('날짜 형식 YYYY-MM-DD', 'warning'); return; }
   try {
-    await axios.post('/api/payroll/holidays', { holiday_date: date, name: name || '공휴일' });
+    var entSel = document.getElementById('prRHolEntity');
+    var entId = entSel ? Number(entSel.value || 0) : 0;
+    await axios.post('/api/payroll/holidays', { holiday_date: date, name: name || '공휴일', entity_id: entId });
     prRCloseAddHoliday(); showToast('추가되었습니다', 'success'); prRLoadHolidays();
   } catch (e) { showToast('추가 실패', 'error'); }
 };
@@ -437,3 +439,22 @@ window.__prRInit = function() {
   prRLoadAll();
 };
 if (!window.__prRDefer) { window.__prRInit(); }
+
+// 0623: 휴일 추가 모달의 법인 선택 — 「전 법인」 + 실제 법인 목록.
+//   특정 법인만 쉬는 날(여름휴가·창립기념일)을 전사로 넣으면 다른 법인 급여까지 바뀐다.
+async function prRFillHolEntities() {
+  var sel = document.getElementById('prRHolEntity');
+  if (!sel) { console.warn('[payrollRates] #prRHolEntity not found'); return; }
+  if (sel.options.length > 1) return;   // 이미 채움
+  try {
+    var res = await axios.get('/api/auth/entities');
+    var list = (res.data && (res.data.data || res.data)) || [];
+    if (!Array.isArray(list)) list = [];
+    list.forEach(function(e) {
+      var o = document.createElement('option');
+      o.value = e.id;
+      o.textContent = (e.short_name || e.name || ('법인 ' + e.id)) + ' 만';
+      sel.appendChild(o);
+    });
+  } catch (e) { console.warn('[payrollRates] 법인 목록 로드 실패', e); }
+}

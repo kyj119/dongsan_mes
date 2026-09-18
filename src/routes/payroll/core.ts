@@ -824,13 +824,19 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
       //   → attendance 레코드 mutate(재분류) 불필요. 달력만 바꾸면 자동 반영.
       const { results: aggRows } = await c.env.DB.prepare(`
         WITH att AS (
-          SELECT *,
-            (CASE WHEN work_date IN (SELECT holiday_date FROM holidays)
-                    OR CAST(strftime('%w', work_date) AS INTEGER) IN (0, 6)
+          SELECT a.*,
+            (CASE WHEN EXISTS (
+                      -- 0623: 법인별 휴무. entity_id=0 은 전 법인 공통(법정공휴일),
+                      --   >0 은 그 법인만(선명 여름휴가 2026-08-03~05 등).
+                      SELECT 1 FROM holidays h
+                       WHERE h.holiday_date = a.work_date
+                         AND (h.entity_id = 0 OR h.entity_id = e.entity_id))
+                    OR CAST(strftime('%w', a.work_date) AS INTEGER) IN (0, 6)
                   THEN 1 ELSE 0 END) AS is_hol
-          FROM attendance
-          WHERE employee_id IN (${aggPh})
-            AND strftime('%Y-%m', work_date) = ?
+          FROM attendance a
+          JOIN employees e ON e.id = a.employee_id
+          WHERE a.employee_id IN (${aggPh})
+            AND strftime('%Y-%m', a.work_date) = ?
         )
         SELECT employee_id,
           COUNT(*) as total_days,

@@ -311,10 +311,12 @@ settingsRouter.post('/tax-table/generate', requireRole('ADMIN', 'MANAGER'), asyn
 settingsRouter.get('/holidays', async (c) => {
   try {
     const year = c.req.query('year')
-    let q = `SELECT holiday_date, name FROM holidays`
+    // 0623: entity_id 0 = 전 법인, >0 = 그 법인만. 목록은 전부 주고 화면이 구분해 보여 준다.
+    let q = `SELECT h.id, h.holiday_date, h.entity_id, h.name, ent.short_name AS entity_name
+               FROM holidays h LEFT JOIN entities ent ON ent.id = h.entity_id`
     const binds: any[] = []
-    if (year) { q += ` WHERE substr(holiday_date,1,4) = ?`; binds.push(String(year)) }
-    q += ` ORDER BY holiday_date`
+    if (year) { q += ` WHERE substr(h.holiday_date,1,4) = ?`; binds.push(String(year)) }
+    q += ` ORDER BY h.holiday_date, h.entity_id`
     const { results } = await c.env.DB.prepare(q).bind(...binds).all()
     return c.json({ success: true, data: results || [] })
   } catch (err) {
@@ -326,13 +328,16 @@ settingsRouter.get('/holidays', async (c) => {
 // POST /api/payroll/holidays  body: { holiday_date, name }
 settingsRouter.post('/holidays', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
-    const body = await c.req.json<{ holiday_date?: string; name?: string }>()
+    const body = await c.req.json<{ holiday_date?: string; name?: string; entity_id?: number }>()
     const date = String(body.holiday_date || '').trim()
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return c.json({ success: false, error: '날짜 형식 YYYY-MM-DD' }, 400)
+    // 0623: entity_id 0 = 전 법인(법정공휴일), >0 = 그 법인만(여름휴가·창립기념일).
+    //   ⚠️ 여기 0 은 '전사'를 뜻하는 저장값이다 — falsy 로 보고 기본값 대입하면 안 된다.
+    const entityId = body.entity_id == null ? 0 : Math.max(0, Number(body.entity_id) || 0)
     await c.env.DB.prepare(
-      `INSERT INTO holidays (holiday_date, name) VALUES (?, ?)
-       ON CONFLICT(holiday_date) DO UPDATE SET name = excluded.name`
-    ).bind(date, String(body.name || '공휴일').trim() || '공휴일').run()
+      `INSERT INTO holidays (holiday_date, entity_id, name) VALUES (?, ?, ?)
+       ON CONFLICT(holiday_date, entity_id) DO UPDATE SET name = excluded.name`
+    ).bind(date, entityId, String(body.name || '공휴일').trim() || '공휴일').run()
     return c.json({ success: true })
   } catch (err) {
     console.error('holidays add error:', err)
@@ -343,7 +348,12 @@ settingsRouter.post('/holidays', requireRole('ADMIN', 'MANAGER'), async (c) => {
 // DELETE /api/payroll/holidays/:date
 settingsRouter.delete('/holidays/:date', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
-    await c.env.DB.prepare(`DELETE FROM holidays WHERE holiday_date = ?`).bind(c.req.param('date')).run()
+    // 0623: 같은 날짜에 법인별 행이 여럿일 수 있다 — entity_id 를 주면 그 행만, 없으면 전사(0) 행만 지운다.
+    //   조건 없이 날짜로만 지우면 다른 법인의 휴무까지 날아간다.
+    const ent = c.req.query('entity_id')
+    const entityId = ent == null || ent === '' ? 0 : Math.max(0, Number(ent) || 0)
+    await c.env.DB.prepare(`DELETE FROM holidays WHERE holiday_date = ? AND entity_id = ?`)
+      .bind(c.req.param('date'), entityId).run()
     return c.json({ success: true })
   } catch (err) {
     console.error('payroll/settings DELETE /holidays/:date error:', err)
@@ -374,7 +384,8 @@ settingsRouter.post('/holidays/load-defaults', requireRole('ADMIN', 'MANAGER'), 
       list.push(...lunar)
     }
     const stmts = list.map(([d, nm]) =>
-      c.env.DB.prepare(`INSERT OR IGNORE INTO holidays (holiday_date, name) VALUES (?, ?)`).bind(d, nm)
+      // 기본 공휴일은 법정공휴일이므로 전 법인(entity_id=0)으로 적재한다(0623).
+      c.env.DB.prepare(`INSERT OR IGNORE INTO holidays (holiday_date, entity_id, name) VALUES (?, 0, ?)`).bind(d, nm)
     )
     for (let i = 0; i < stmts.length; i += 50) await c.env.DB.batch(stmts.slice(i, i + 50))
     return c.json({ success: true, data: { year, count: list.length } })

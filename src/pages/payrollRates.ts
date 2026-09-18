@@ -150,7 +150,7 @@ export const payrollRatesContent = `
   <div id="prRPane3" class="hidden">
     <div class="bg-white border border-gray-200 rounded-lg">
       <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 flex-wrap gap-2">
-        <div class="font-semibold text-gray-900">법정공휴일 달력</div>
+        <div class="font-semibold text-gray-900">휴일 달력 <span class="text-xs font-normal text-gray-400">법정공휴일 + 법인별 휴무</span></div>
         <div class="flex items-center gap-2">
           <input type="number" id="prRHolYearInput" value="2026" class="w-24 border rounded px-2 py-1.5 text-sm text-right" />
           <button onclick="prRLoadHolidays()" class="border border-gray-300 bg-white text-gray-700 rounded-lg px-3 py-1.5 text-sm hover:bg-gray-50"><i class="fas fa-search mr-1"></i>검색</button>
@@ -161,7 +161,7 @@ export const payrollRatesContent = `
       <div class="overflow-x-auto">
         <table class="w-full ds-table-striped ds-table-fixed text-sm">
           <thead class="bg-gray-50 text-xs text-gray-600">
-            <tr><th class="text-left px-4 py-2" style="width:150px">날짜</th><th class="text-left px-4 py-2" style="width:80px">요일</th><th class="text-left px-4 py-2">명칭</th><th class="text-center px-4 py-2" style="width:70px">삭제</th></tr>
+            <tr><th class="text-left px-4 py-2" style="width:150px">날짜</th><th class="text-left px-4 py-2" style="width:80px">요일</th><th class="text-left px-4 py-2" style="width:130px">적용 범위</th><th class="text-left px-4 py-2">명칭</th><th class="text-center px-4 py-2" style="width:70px">삭제</th></tr>
           </thead>
           <tbody id="prRHolBody"><tr><td colspan="4" class="text-center text-gray-400 py-6">검색을 눌러주세요</td></tr></tbody>
         </table>
@@ -188,6 +188,13 @@ export const payrollRatesContent = `
     <div class="p-5 space-y-3">
       <div><label class="text-xs text-gray-600">날짜 (YYYY-MM-DD)</label><input type="text" id="prRHolDate" placeholder="2026-08-15" class="w-full border rounded px-2 py-1.5 text-sm" /></div>
       <div><label class="text-xs text-gray-600">명칭</label><input type="text" id="prRHolName" placeholder="광복절" class="w-full border rounded px-2 py-1.5 text-sm" /></div>
+      <div>
+        <label class="text-xs text-gray-600">적용 범위</label>
+        <select id="prRHolEntity" class="w-full border rounded px-2 py-1.5 text-sm">
+          <option value="0">전 법인 (법정공휴일)</option>
+        </select>
+        <p class="text-[11px] text-gray-500 mt-1">특정 법인만 쉬는 날(여름휴가·창립기념일)은 그 법인을 고르세요. 다른 법인 급여에는 영향이 없습니다.</p>
+      </div>
     </div>
     <div class="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
       <button onclick="prRCloseAddHoliday()" class="px-3 py-1.5 text-sm text-gray-600">취소</button>

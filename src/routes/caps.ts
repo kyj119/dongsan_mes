@@ -127,12 +127,19 @@ capsRouter.post('/ingest', async (c) => {
 
     let ignoredCount = 0
 
-    // 공휴일(법정공휴일) 집합 — 토·일 외에 이 날짜도 휴일근로로 분류
+    // 공휴일 집합 — 토·일 외에 이 날짜도 휴일근로로 분류
+    //   0623: 법인별 휴무가 생겼다. 키는 `법인|날짜`, 전 법인 공통은 `0|날짜`.
+    //   ⚠️ 이건 **수집 시점 표시용**이다 — 급여 집계는 core.ts 가 달력에서 다시 파생하므로
+    //     여기서 틀려도 급여는 안 틀린다(그래도 화면이 거짓말하지 않게 맞춘다).
     const holidaySet = new Set<string>()
     try {
-      const { results: hdays } = await c.env.DB.prepare(`SELECT holiday_date FROM holidays`).all<{ holiday_date: string }>()
-      for (const h of (hdays || [])) holidaySet.add(String(h.holiday_date))
+      const { results: hdays } = await c.env.DB.prepare(
+        `SELECT holiday_date, entity_id FROM holidays`
+      ).all<{ holiday_date: string; entity_id: number }>()
+      for (const h of (hdays || [])) holidaySet.add(String(h.entity_id ?? 0) + '|' + String(h.holiday_date))
     } catch (_) { /* holidays 테이블 미적용 환경 — 토/일만 휴일 처리 */ }
+    const isHolidayFor = (entityId: number | null | undefined, ymd: string) =>
+      holidaySet.has('0|' + ymd) || (entityId != null && holidaySet.has(String(entityId) + '|' + ymd))
 
     // ========== 헬퍼 함수 (루프 밖) ==========
     const parseTime = (t: any): string | null => {
@@ -285,7 +292,7 @@ capsRouter.post('/ingest', async (c) => {
         else if (inMinVal < 0) attType = 'ABSENT'
 
         const dayOfWeek = new Date(workDate).getDay()
-        if (dayOfWeek === 0 || dayOfWeek === 6 || holidaySet.has(workDate)) {
+        if (dayOfWeek === 0 || dayOfWeek === 6 || isHolidayFor(empEntityMap[employeeId], workDate)) {
           attType = 'HOLIDAY'
           holidayWorkHours = workHours
           overtimeHours = 0
