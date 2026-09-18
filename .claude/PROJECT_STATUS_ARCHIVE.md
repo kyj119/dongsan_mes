@@ -4383,3 +4383,49 @@ PAID 처리하는 구조인데 아무도 안 하니 지난 회차 **15건 19,251
 ### 09-17 추가 이관(출고·배송비 축 기록 자리)
 - **✅ 08-31 간판 견적 화면 — 리플레이 + 동종 계산기 벤치마크 (`session/sign-estimate`·미배포)** — 막히던 5곳(직접입력·이름·순서·**가산은 단가에**·**규격 mm→㎡**) 수정 후 DSPSIGN 구조로 **사양을 한 줄 한 축**으로 폄. ★그게 **시드의 축 뭉침**을 드러냄 — LED `KPL/전구색3000k` 는 **금액이 틀리고 있었다**(선택이 어느 행에도 안 맞아 0원·25,000 누락). 아크릴·돌출간판도 분리. 지주간판 신설 → 커버리지 **100%**(203/203). ⛔제작방식 10종=실측 0건 미채택. 게이트 42+8항목. 근거=spec 부록 F. 남은=**주문서 병합**·0544~0547 미적용
 - **★재고실사 실행 + 불편 접수 개설 (08-25)** — 경위 전문=`PROJECT_STATUS_ARCHIVE.md` §2026-08-25 재고실사 · memory `project-employee-adoption-protocol`·`design-weekly-stock-count`. ★병목=옮겨적기 · ★부족경고 판정축=**`reorder_point`**(`safe_stock` 은 판정에 안 쓰인다) · ★차단점=`inventoryCount.ts:10` 한 줄 · ★법인별 취급축=`inventory` 행 · ★**일일 알림 4종이 아무에게도 안 보이고 있었다**(`target_role=MANAGER` 인데 MANAGER 계정 0명 → ADMIN 예외). ✅08-25 완결·배포 `d64a15c3`(5구역·전사 재고 첫 반영 21,652yd·한국엡손 뭉침 4전표 분해·safe/reorder 48행). 남은=카톡방
+
+## 2026-09-18 성능 전수 감사 — 느린 게 아니라 컸다 (`ec0d709f`)
+
+**요청**: 「페이지간 병목 혹은 기능간 속도 개선 방법을 전수 점검」.
+
+**측정**: 라우트 맵에서 무파라미터 GET 654개를 뽑아 부작용 의심 경로 12개를 뺀 **430개**를 2회씩 호출(빠른 쪽 채택),
+페이지는 Playwright 로 **33개**를 실제로 열어 XHR 타임라인·직렬 체인·중복·콘솔 오류를 기록.
+
+**결론은 예상과 반대였다** — 전환·응답시간은 이미 건강했다: SPA 62~102ms · 전체 내비 165~279ms ·
+API 중앙값 ~60ms(최악 735ms) · 500 **0건** · `sqlite_stat1` 508행(ANALYZE 정상) · GET 경로 N+1 실질 3건 ·
+같은 페이지 중복 요청 0건. 낭비는 **화면이 쓰지도 않는 페이로드**와 **클릭이 타는 내비게이션 경로**였다.
+
+**고친 것**
+- 재고 로스율(`inventory.js`): 비율 하나를 위해 실사 상세 **357KB** 를 받아 브라우저에서 합산 → 목록이 합계를 싣는다(`with_loss=1`). 요청도 1개 감소.
+- 공급처 필터(`purchaseOrders.js`): 활성 거래처 **전량 2,890곳 218KB** → 발주 이력이 있는 **123곳**(`has_po=1`).
+- 설정·프리셋(`shell.js`): 전 목록 화면에서 **직렬 2왕복** → `?presets=<pageKey>` 한 응답(순서 보장 유지).
+- ★**`pushState` 가 페이지 스크립트 실행 뒤**였다 — 스크립트가 `location.search` 로 자기 인자를 읽으면 **이전 페이지 주소**를 봤다.
+  사이드바 링크엔 쿼리가 없어 한 번도 드러나지 않은 **선행 결함**. 스크립트 삽입 전으로 이동.
+- `navigateTo()` 를 코드 이동의 정본으로: 21곳 교체 + 본문 링크 인터셉트. 같은 pathname 재진입·해시·외부는 전체 내비로 폴백
+  (`?raw` 전역 재선언 충돌·`hashchange` 미발화 회피). 로그인·권한 리다이렉트와 단독 레이아웃은 그대로.
+- 상관 서브쿼리 2건(`purchaseCandidates.ts:87` 2.7M · `items.ts:515` 1.9M) → GROUP BY 선집계.
+
+**일부러 안 고친 것**: `bank.ts` 계좌 신선도(바깥 행이 구조적으로 17개 — 선집계면 거래 6천 행을 접어 손해) ·
+`/settings/entity` 124KB(도장·로고를 **화면이 실제로 쓴다**) · `price-overview`·`attendance/month`(그 화면의 본 데이터).
+
+**절감 실측(prod 배포 후)**: 33페이지 XHR **2,170.2→1,641.3KB(−528.9KB, 24.4%)** · 요청 211→203건 ·
+`/inventory` 377.6→**20.1KB** · `/purchase-orders` 233.6→**24.1KB** · 콘솔 에러 1→1(기존 `/my-leave` 404).
+
+**게이트**: 새로 만들지 않고 `audit:query-cost` `TARGETS` 에 3줄 추가. ★**`maxKB` 가 이 저장소에서 페이로드 회귀를 잡는 유일한 눈금**이다 —
+두 덩어리 다 **141ms·124ms** 라 `budgetMs` 로는 영영 안 걸린다. 배포 후 22/22 통과.
+
+**검증**: CI 전량 통과(tsc·check:fn·audit:jwt-decode·build·test:calc·entity-audit·migration-number·canary·smoke) ·
+prod 마커 6/6(**C1 순서까지 번들에서 확인**) · test:calc 32항목 · entity 75/75 · migration-drift 0 · 표적검증 API 9 + 브라우저 4.
+⚠️**journey 는 판정 불가였다** — 3회 실행의 실패 항목이 전부 달랐고 `no such table: purchase_order_items`·`ECONNREFUSED` 까지 나왔다.
+worktree 가 `.wrangler` 를 junction 공유하는데 **다른 세션 3개가 동시 작업 중**이었다(memory `feedback-journey-gate-cross-session` 의 증상 그대로).
+
+**측정 함정 2개**
+- ⚠️Playwright `page.click()` 의 actionability 대기가 섞이면 「SPA 가 전체 내비보다 2~3배 느리다」는 **정반대 결과**가 나온다.
+  `el.click()` 으로 직접 누르고 판정을 「데이터가 화면에 보일 때까지」로 통일해야 한다.
+- ⚠️`cashSchedule.overview` 가 콜드에서 **6,553ms**(기준선 26.5배)로 찍혔다가 재측정 582ms. 변동성 자체가 신호라 감시 대상으로 남긴다.
+
+**Tailwind Play CDN — 전환 보류(사용자 판단)**: 차단하면 최초 방문 load 가 **1,064→287ms** 지만
+**캐시된 재방문은 162↔163ms 로 차이가 없다**. 반면 `iaBatchTest.js:229` `grid-cols-${Math.min(groups.length,4)}` 처럼
+**런타임 생성 클래스가 조용히 깨지고**(safelist 영구 관리), 폭발반경이 전 화면이며, `dist/` 가 `_worker.js` 뿐이라
+CSS 라우트 서빙 배선이 따로 필요하고, `node_modules` junction 공유라 devDependency 추가가 타 세션에 영향을 준다.
+시험 생성은 정상이었다(60KB minified). 재개하려면 **빌드 CSS 화면 ↔ 현재 화면 시각 비교**가 선행 조건이다.
