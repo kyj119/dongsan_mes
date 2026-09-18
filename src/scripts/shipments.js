@@ -717,6 +717,81 @@ async function saveTrackingNumber(key) {
 // 출고 확정 경로가 10개라 어디서 내보냈든 여기로 모인다 — 「출고 처리」와 「출고 확정」을 나눈 두 번째 단계.
 // 날짜 필터와 무관하게(최근 14일) 남아 있는 잔여를 보여 준다.
 var _pendingConfirmRows = [];
+// ── 배송 알림 발송(한 건) — 단계 2, 2026-09-18 ──────────────────────────
+//   확정 대기 행의 [알림] 버튼이 연다. 「확정」과 **버튼을 나눠 둔다**(용준님 결정 A) —
+//   확정만 하고 싶을 때가 있고, 합치면 실수로 발송된다. 발송은 되돌릴 수 없다.
+var _noticeSendOrderId = null;
+
+async function openNoticeSend(idx) {
+  var r = _pendingConfirmRows[idx];
+  if (!r) return;
+  _noticeSendOrderId = r.order_id;
+  var modal = document.getElementById('noticeSendModal');
+  if (!modal) { console.warn('[shipments] #noticeSendModal not found'); return; }
+  document.getElementById('noticeSendTo').textContent = (r.client_name || '-') + '  ' + (r.mobile || '');
+  document.getElementById('noticeSendChannel').textContent = '조회 중…';
+  document.getElementById('noticeSendBody').textContent = '';
+  document.getElementById('noticeSendCost').textContent = '-';
+  document.getElementById('noticeSendNote').classList.add('hidden');
+  document.getElementById('noticeSendBtn').disabled = true;
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+
+  try {
+    // 본문은 **서버가 만든다** — 미리보기와 실제 발송이 같은 함수를 써야 한다.
+    var res = await axios.post('/api/kakao/shipment-notice/preview', { order_ids: [r.order_id] });
+    var it = (res.data && res.data.data && res.data.data.items || [])[0];
+    if (!it) { showToast('발송 대상을 찾지 못했습니다', 'warning'); closeNoticeSendModal(); return; }
+    document.getElementById('noticeSendTo').textContent = (it.client_name || '-') + '  ' + (it.mobile || '');
+    document.getElementById('noticeSendChannel').textContent =
+      it.channel === 'kakao' ? ('알림톡 「' + (it.template || '') + '」') : (it.channel === 'sms' ? '문자(LMS)' : '-');
+    document.getElementById('noticeSendBody').textContent = it.preview || '';
+    document.getElementById('noticeSendCost').textContent = it.cost ? (it.cost + '원') : '-';
+    var note = document.getElementById('noticeSendNote');
+    if (it.channel === 'sms' && it.can_send) {
+      note.textContent = '이 배송수단은 승인된 알림톡 템플릿이 없어 문자로 나갑니다.';
+      note.classList.remove('hidden');
+    } else if (!it.can_send) {
+      note.textContent = '보낼 수 없습니다 — ' + (it.blocked_label || '사유 미상');
+      note.classList.remove('hidden');
+    }
+    document.getElementById('noticeSendBtn').disabled = !it.can_send;
+  } catch (e) {
+    console.warn('[shipments] 알림 미리보기 실패', e);
+    showToast('미리보기를 불러오지 못했습니다', 'error');
+    closeNoticeSendModal();
+  }
+}
+
+function closeNoticeSendModal() {
+  var modal = document.getElementById('noticeSendModal');
+  if (!modal) return;
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+  _noticeSendOrderId = null;
+}
+
+async function doNoticeSend() {
+  if (!_noticeSendOrderId) return;
+  var btn = document.getElementById('noticeSendBtn');
+  btn.disabled = true;
+  try {
+    var res = await axios.post('/api/kakao/shipment-notice/send', { order_ids: [_noticeSendOrderId] });
+    var d = (res.data && res.data.data) || {};
+    var one = (d.results || [])[0] || {};
+    if (d.sent > 0) {
+      showToast('배송 알림을 보냈습니다', 'success');
+    } else {
+      showToast('발송하지 못했습니다 — ' + (one.error || one.reason_label || '사유 미상'), 'error');
+    }
+    closeNoticeSendModal();
+    loadPendingConfirm();   // 배지가 「발송됨」으로 바뀐다
+  } catch (e) {
+    showToast('발송 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message), 'error');
+    btn.disabled = false;
+  }
+}
+
 // 확정 대기 행의 배송 알림 상태. 판정은 서버(`utils/shipmentNotice`)가 하고 여기선 **그리기만** 한다 —
 //   화면이 따로 판정하면 「화면엔 보낼 수 있다고 뜨는데 서버가 거절」이 생긴다.
 function pendingNotifyBadge(r) {
@@ -775,8 +850,15 @@ async function loadPendingConfirm() {
         // 2026-09-18 알림 열 — 「보냈나」를 이 목록에서 바로 본다. 종전엔 보냈는지 알 길이 화면에 없었다.
         //   휴대폰이 없으면 보낼 수단이 없으므로 「연락처 없음」으로 구분한다(미발송과 다른 상태다).
         + '<td class="px-3 py-2 text-center">' + pendingNotifyBadge(r) + '</td>'
-        + '<td class="px-3 py-2 text-center">'
-        + '<button onclick="confirmPendingRow(' + i + ')" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">'
+        + '<td class="px-3 py-2 text-center whitespace-nowrap">'
+        // [알림]·[확정]을 **나눠 둔다**(2026-09-18 결정 A) — 확정만 하고 싶을 때가 있고,
+        //   합치면 실수로 발송된다. 발송은 되돌릴 수 없다.
+        + '<button onclick="openNoticeSend(' + i + ')"' + (Number(r.notice_can_send) === 1 ? '' : ' disabled')
+        + ' class="px-2 py-1.5 mr-1 text-xs rounded ' + (Number(r.notice_can_send) === 1
+            ? 'bg-amber-500 text-white hover:bg-amber-600' : 'bg-gray-100 text-gray-400 cursor-not-allowed')
+        + '" title="' + escapeHtml(Number(r.notice_can_send) === 1 ? '배송 알림을 보냅니다(본문 확인 후)' : '지금은 보낼 수 없습니다') + '">'
+        + '<i class="fas fa-paper-plane mr-1"></i>알림</button>'
+        + '<button onclick="confirmPendingRow(' + i + ')" class="px-2 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">'
         + '<i class="fas fa-check mr-1"></i>확정</button>'
         + '</td>'
         + '</tr>';

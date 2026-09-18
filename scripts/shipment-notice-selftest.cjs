@@ -24,6 +24,8 @@
 const path = require('path')
 const { compileTs } = require('./lib/compile-ts.cjs')
 
+const ROOT_DIR = path.join(__dirname, '..')
+const fs = require('fs')
 const { mod, cleanup } = compileTs(path.join(__dirname, '..', 'src', 'utils', 'shipmentNotice.ts'), { bundle: true })
 const { resolveShipmentNotice, noticePolicyFor, NOTICE_POLICY, NOTICE_BLOCK_LABEL } = mod
 
@@ -108,6 +110,38 @@ console.log('[shipment-notice] ⑥ 화면 문구')
   }
 }
 
+console.log('[shipment-notice] \u2467 \ubcf8\ubb38 \uc0dd\uc131 \u2014 \ubbf8\ub9ac\ubcf4\uae30\uc640 \ubc1c\uc1a1\uc774 \uac19\uc740 \ud568\uc218\ub97c \uc4f0\ub294\uac00')
+{
+  const body = require('path').join(ROOT_DIR, 'src', 'utils', 'shipmentNoticeBody.ts')
+  const bodyMod = compileTs(body, { bundle: true })
+  const { fillNoticeBody, buildSmsNoticeBody } = bodyMod.mod
+  const V = {
+    clientName: '하우사인', itemSummary: '현수막 외 2건', terminal: '대전복합터미널',
+    trackingNumber: '1234567890', deliveryMethod: '대신화물', dateStr: '2026-09-18',
+  }
+  const tpl = '#{고객명}님, 동산기획입니다.\n\n■ 품목: #{품목}\n■ 터미널: #{터미널}\n■ 출고일: #{날짜}'
+  const out = fillNoticeBody(tpl, V)
+  check('템플릿 변수가 전부 치환된다', out.indexOf('#{') < 0, out)
+  check('고객명·품목·터미널·날짜가 들어간다',
+    out.indexOf('하우사인') >= 0 && out.indexOf('현수막 외 2건') >= 0 && out.indexOf('대전복합터미널') >= 0 && out.indexOf('2026-09-18') >= 0, out)
+  check('★본문 자체는 손대지 않는다(등록본과 글자 단위로 일치해야 발송된다)',
+    out.split('\n').length === tpl.split('\n').length, { a: out.split('\n').length, b: tpl.split('\n').length })
+
+  const sms = buildSmsNoticeBody(V)
+  check('문자 본문에는 송장번호가 들어간다(승인 템플릿이 없는 한진 축)', sms.indexOf('1234567890') >= 0, sms)
+  const smsNoTrack = buildSmsNoticeBody({ ...V, trackingNumber: '' })
+  check('송장이 없으면 그 줄 자체를 빼고 빈칸을 남기지 않는다', smsNoTrack.indexOf('송장번호') < 0, smsNoTrack)
+
+  // ★소스 스캔 — 미리보기와 발송이 각자 본문을 만들면 「보여준 것과 나간 것」이 갈린다.
+  const routeSrc = fs.readFileSync(require('path').join(ROOT_DIR, 'src', 'routes', 'kakao.ts'), 'utf8')
+  const preview = routeSrc.slice(routeSrc.indexOf("'/shipment-notice/preview'"), routeSrc.indexOf("'/shipment-notice/send'"))
+  const send = routeSrc.slice(routeSrc.indexOf("'/shipment-notice/send'"))
+  check('미리보기가 공용 본문 생성을 쓴다', /buildNotice\s*\(/.test(preview), preview.length)
+  check('발송도 같은 공용 본문 생성을 쓴다', /buildNotice\s*\(/.test(send), send.length)
+  check('★라우트가 본문을 직접 치환하지 않는다(치환은 utils 한 곳)',
+    !/replace\(\/#\\\{/.test(preview + send))
+  bodyMod.cleanup && bodyMod.cleanup()
+}
 cleanup && cleanup()
 console.log(fails ? `[shipment-notice] FAIL ${fails}건` : '[shipment-notice] OK — 템플릿명·송장 조건·대상 분류·우선순위 전부 통과')
 process.exit(fails ? 1 : 0)

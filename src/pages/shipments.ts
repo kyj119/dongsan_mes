@@ -172,11 +172,37 @@ export function shipmentsPage(c: Context<HonoEnv>) {
                 <th class="text-center px-3 py-2" style="width:90px">박스</th>
                 <th class="text-left px-3 py-2" style="width:190px">송장번호</th>
                 <th class="text-center px-3 py-2" style="width:90px">알림</th>
-                <th class="text-center px-3 py-2" style="width:80px">확정</th>
+                <th class="text-center px-3 py-2" style="width:140px">발송·확정</th>
               </tr>
             </thead>
             <tbody id="pendingConfirmBody"></tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- 배송 알림 발송(한 건) — 단계 2, 2026-09-18.
+           ★본문 미리보기가 핵심이다: 변수 치환 뒤를 보여줘 빈칸이 그대로 나가는 사고를 막는다.
+           여러 건 일괄은 아래 섹션 발송이 담당한다(여기서 겸하지 않는다). -->
+      <div id="noticeSendModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4">
+          <div class="flex items-center justify-between px-5 py-3 border-b">
+            <h3 class="text-sm font-semibold text-gray-800"><i class="fas fa-paper-plane mr-1"></i>배송 알림 발송</h3>
+            <button onclick="closeNoticeSendModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+          </div>
+          <div class="px-5 py-4 space-y-3 text-sm">
+            <div class="flex justify-between"><span class="text-gray-500">받는 곳</span><span id="noticeSendTo" class="font-medium">-</span></div>
+            <div class="flex justify-between"><span class="text-gray-500">채널</span><span id="noticeSendChannel">-</span></div>
+            <div>
+              <div class="text-xs text-gray-500 mb-1">본문 (실제 나가는 내용)</div>
+              <div id="noticeSendBody" class="p-3 bg-gray-50 rounded text-xs whitespace-pre-wrap max-h-60 overflow-y-auto">-</div>
+            </div>
+            <div id="noticeSendNote" class="text-xs text-amber-700 hidden"></div>
+            <div class="flex justify-between"><span class="text-gray-500">비용</span><span id="noticeSendCost" class="tabular-nums">-</span></div>
+          </div>
+          <div class="px-5 py-3 border-t flex justify-end gap-2">
+            <button onclick="closeNoticeSendModal()" class="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">닫기</button>
+            <button id="noticeSendBtn" onclick="doNoticeSend()" class="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">발송</button>
+          </div>
         </div>
       </div>
 

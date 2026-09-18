@@ -121,6 +121,41 @@ async function bulkShipSelected() {
     console.warn('[orders] 합배송 파트너 조회 실패 — 경고 없이 진행', e);
   }
 
+  // ── 배송 알림 사전 확인 (단계 2, 2026-09-18) ──────────────────────────
+  //   ★기본은 **안 보냄**이다(결정 B). 발송은 되돌릴 수 없고, 잘못 출고한 건도 그대로 나간다.
+  //     그래서 「보낼까요?」를 따로 물어 **명시적으로 예**를 받아야만 보낸다.
+  //   ★순서 — 주 확인 → 파트너 보강 → **여기**. 미리보기를 주 확인 앞에 두면 클릭 후 죽은 순간이
+  //     생긴다(J7 이 그 갭에서 실패했다). 대화창 사이라 왕복이 보이지 않는다.
+  //   ★대상 판정은 서버(`utils/shipmentNotice`)가 한다 — 화면이 배송수단을 다시 해석하지 않는다.
+  var noticeWanted = false;
+  try {
+    var nres = await axios.post('/api/kakao/shipment-notice/preview', { order_ids: shipIds });
+    var nd = (nres.data && nres.data.success) ? (nres.data.data || {}) : {};
+    var sum = nd.summary || {};
+    if ((sum.sendable || 0) > 0) {
+      var byMethod = {};
+      (nd.items || []).forEach(function (it) {
+        if (!it.can_send) return;
+        var k = (it.delivery_method || '기타').trim();
+        byMethod[k] = (byMethod[k] || 0) + 1;
+      });
+      var mlist = Object.keys(byMethod).map(function (k) { return k + ' ' + byMethod[k]; }).join(' · ');
+      var extra = [];
+      if (sum.waiting_tracking > 0) extra.push('송장 입력 후 ' + sum.waiting_tracking + '건 (확정 대기로 갑니다)');
+      if (sum.not_target > 0) extra.push('알림 안 보냄 ' + sum.not_target + '건 (직배·퀵 등)');
+      if (sum.no_mobile > 0) extra.push('연락처 없음 ' + sum.no_mobile + '건');
+      if (sum.already_sent > 0) extra.push('이미 발송 ' + sum.already_sent + '건');
+      noticeWanted = await showConfirm(
+        '출고와 함께 배송 알림을 보낼까요?\n\n'
+        + '· 즉시 알림 ' + sum.sendable + '건  (' + mlist + ')   약 ' + (sum.cost || 0) + '원\n'
+        + (extra.length ? extra.map(function (x) { return '· ' + x; }).join('\n') + '\n' : '')
+        + '\n보내지 않으려면 취소를 누르세요 — 출고는 그대로 진행됩니다.'
+      );
+    }
+  } catch (e) {
+    console.warn('[orders] 알림 미리보기 실패 — 발송 없이 출고만 진행', e);
+  }
+
   try {
     var res = await axios.patch('/api/orders/bulk-ship', { order_ids: shipIds });
     if (res.data.success) {
@@ -138,6 +173,24 @@ async function bulkShipSelected() {
       if (remainingCards.length > 0) msg += '\n미출고 카드 ' + remainingCards.length + '건: ' + remainingCards.join(', ');
       if (failCount > 0) msg += ', ' + failCount + '건 실패';
       showToast(msg, remainingCards.length > 0 ? 'warning' : (failCount > 0 ? 'warning' : 'success'));
+
+      // 알림은 **실제로 출고된 주문에만** 보낸다 — 출고가 실패한 건에 「발송되었습니다」가 가면 안 된다.
+      //   발송 실패가 출고를 되돌리지는 않는다(출고는 이미 끝났고, 알림은 확정 대기에서 다시 보낼 수 있다).
+      if (noticeWanted) {
+        var okIds = results.filter(function (r) { return r.success; }).map(function (r) { return r.id; });
+        if (okIds.length > 0) {
+          try {
+            var sres = await axios.post('/api/kakao/shipment-notice/send', { order_ids: okIds });
+            var sd = (sres.data && sres.data.data) || {};
+            if (sd.sent > 0) showToast('배송 알림 ' + sd.sent + '건 발송' + (sd.failed > 0 ? ' · ' + sd.failed + '건 실패' : ''), sd.failed > 0 ? 'warning' : 'success');
+            else if (sd.failed > 0) showToast('배송 알림 ' + sd.failed + '건 발송 실패 — 확정 대기에서 다시 보낼 수 있습니다', 'error');
+          } catch (e) {
+            showToast('배송 알림 발송 실패 — 확정 대기에서 다시 보낼 수 있습니다', 'error');
+            console.warn('[orders] 알림 발송 실패', e);
+          }
+        }
+      }
+
       clearBulkSelection();
       loadOrders();
     } else {
