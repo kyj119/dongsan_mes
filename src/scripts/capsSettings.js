@@ -467,7 +467,7 @@ window.loadCapsEmployeeMap = async function() {
   // 2) 미매핑 + 무시목록은 사이트 레코드에서 (동기화가 남긴 값)
   var site = null;
   for (var i = 0; i < capsSitesCache.length; i++) if (capsSitesCache[i].id === capsCurrentSiteId) site = capsSitesCache[i];
-  renderCapsUnmappedRows(site && site.last_unmapped);
+  renderCapsUnmappedRows(site && site.last_unmapped, site && site.ignored_fpids);
   renderCapsIgnored(site && site.ignored_fpids);
 };
 
@@ -479,7 +479,7 @@ function capsParseJson(raw) {
 }
 
 // ───────── 미매핑 행 (매핑 / 무시) ─────────
-function renderCapsUnmappedRows(rawJson) {
+function renderCapsUnmappedRows(rawJson, ignoredJson) {
   var wrap = document.getElementById('capsMapUnmappedList');
   var empty = document.getElementById('capsMapUnmappedEmpty');
   var cnt = document.getElementById('capsMapUnmappedCount');
@@ -489,6 +489,12 @@ function renderCapsUnmappedRows(rawJson) {
   var mappedHere = {};
   capsMapCache.forEach(function(m) { mappedHere[String(m.caps_e_idno)] = true; });
   rows = rows.filter(function(r) { return !mappedHere[String(r.fpid || r.e_idno)]; });
+
+  // ①-b 무시 목록에 넣은 번호도 뺀다. `last_unmapped` 는 **그 동기화 시점의 샘플**이라
+  //   무시 처리를 해도 다음 동기화 전까지 그대로 남는다 — 「무시」를 눌러도 안 사라지는 것처럼 보였다(0624).
+  var ignoredSet = {};
+  capsParseJson(ignoredJson).forEach(function(f) { ignoredSet[String(f)] = true; });
+  rows = rows.filter(function(r) { return !ignoredSet[String(r.fpid || r.e_idno)]; });
 
   // ② 다른 사이트 소속인 사람은 **잡음**이다 — 지문번호는 사이트마다 달라(이성용 DJ 0071 ↔ SM 0010)
   //    이름으로 본다. 판별 근거는 둘: caps_employee_map 과 employees.caps_site_id.
@@ -529,7 +535,7 @@ function renderCapsUnmappedRows(rawJson) {
       + capsEmpSelectHtml('capsMapSel' + i)
       + '<button onclick="capsMapAssign(\'' + escapeJsAttr(fp) + '\',\'' + escapeJsAttr(nm) + '\',\'' + escapeJsAttr(dept) + '\',' + i + ')" '
       + 'class="px-2 py-1 text-xs ' + (isNoise ? 'border border-gray-300 text-gray-600 bg-white hover:bg-gray-50' : 'bg-blue-600 text-white hover:bg-blue-700') + ' rounded">매핑</button>'
-      + '<button onclick="capsMapIgnore(\'' + escapeJsAttr(fp) + '\')" '
+      + '<button onclick="capsMapIgnore(\'' + escapeJsAttr(fp) + '\',\'' + escapeJsAttr(nm) + '\')" '
       + 'class="px-2 py-1 text-xs border border-gray-300 text-gray-600 bg-white rounded hover:bg-gray-50" '
       + 'title="관리자·테스트 지문 등 직원이 아닌 번호">무시</button>'
       + '</div>';
@@ -568,8 +574,9 @@ window.capsMapAssign = async function(fpid, name, dept, idx) {
   }
 };
 
-window.capsMapIgnore = async function(fpid) {
-  if (!(await showConfirm('지문번호 ' + fpid + ' 를 무시 목록에 넣습니다.\n앞으로 이 번호의 펀치는 미매핑으로 뜨지 않습니다.'))) return;
+window.capsMapIgnore = async function(fpid, name) {
+  var who = fpid + (name ? ' (' + name + ')' : '');
+  if (!(await showConfirm('지문번호 ' + who + ' 를 무시 목록에 넣습니다.\n앞으로 이 번호의 펀치는 미매핑으로 뜨지 않습니다.\n\n계약 전 퇴사·중복 지문·테스트 번호일 때만 쓰세요 — 실제 직원이면 근태가 통째로 사라집니다.'))) return;
   try {
     await axios.post('/api/caps/ignore-fpids', { site_id: capsCurrentSiteId, fpids: [fpid] });
     showToast('무시 목록에 넣었습니다', 'success');
@@ -589,9 +596,20 @@ function renderCapsIgnored(rawJson) {
   var list = capsParseJson(rawJson);
   cnt.textContent = list.length;
   empty.classList.toggle('hidden', list.length > 0);
+  // 번호만 남으면 「이게 누구였더라」가 된다 — 동기화가 남긴 미매핑 샘플에서 이름을 찾아 붙인다(0624).
+  var nameOf = {};
+  for (var si = 0; si < capsSitesCache.length; si++) {
+    if (capsSitesCache[si].id !== capsCurrentSiteId) continue;
+    capsParseJson(capsSitesCache[si].last_unmapped).forEach(function(u) {
+      var k = String(u.fpid || u.e_idno || '');
+      if (k && u.e_name) nameOf[k] = u.e_name;
+    });
+  }
   wrap.innerHTML = list.map(function(f) {
+    var nm = nameOf[String(f)];
     return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-gray-100 border border-gray-200 text-gray-700">'
       + '<span class="font-mono">' + escapeHtml(String(f)) + '</span>'
+      + (nm ? '<span class="text-gray-500">' + escapeHtml(nm) + '</span>' : '')
       + '<button onclick="capsMapUnignore(\'' + escapeJsAttr(String(f)) + '\')" class="text-gray-400 hover:text-red-600" title="무시 해제">&times;</button>'
       + '</span>';
   }).join('');
