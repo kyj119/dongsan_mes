@@ -172,7 +172,7 @@ export function shipmentsPage(c: Context<HonoEnv>) {
                 <th class="text-center px-3 py-2" style="width:90px">박스</th>
                 <th class="text-left px-3 py-2" style="width:190px">송장번호</th>
                 <th class="text-center px-3 py-2" style="width:90px">알림</th>
-                <th class="text-center px-3 py-2" style="width:80px">확정</th>
+                <th class="text-center px-3 py-2" style="width:96px">확정</th>
               </tr>
             </thead>
             <tbody id="pendingConfirmBody"></tbody>

@@ -89,7 +89,7 @@ export function quotationsPage(c: Context<HonoEnv>) {
                 <th data-col="item">품목</th>
                 <th style="width:110px;text-align:right" data-col="amount">금액</th>
                 <th style="width:95px;text-align:center" data-col="valid_until">유효기한</th>
-                <th style="width:85px;text-align:center" data-col="status">상태</th>
+                <th style="width:108px;text-align:center" data-col="status">상태</th>
                 <th style="width:90px;text-align:center" data-col="created">작성일</th>
                 <th style="width:118px;text-align:center">액션</th>
               </tr>

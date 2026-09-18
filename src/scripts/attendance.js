@@ -245,7 +245,7 @@
     // 헤더: 체크박스 | 직원 | 1일~N일 | 집계
     var headHtml = '';
     headHtml += '<th class="py-2 border-b border-gray-200 bg-gray-50 sticky left-0 z-20" style="width:32px"><input type="checkbox" id="attSelectAll" onchange="attendanceToggleAll(this.checked)"></th>';
-    headHtml += '<th class="px-2 py-2 border-b border-gray-200 bg-gray-50 sticky left-8 z-20 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider" style="width:120px">직원</th>';
+    headHtml += '<th class="px-2 py-2 border-b border-gray-200 bg-gray-50 sticky left-8 z-20 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider" style="width:168px">직원</th>';
     for (var d = 1; d <= 31; d++) {
       if (d <= state.daysInMonth) {
         var dateStr = state.month + '-' + pad(d);

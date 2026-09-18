@@ -276,7 +276,7 @@ function pmRenderSummaryBar() {
 function buildItemTable(items, linked) {
   var canEdit = pmCanEditPrice();
   var html = '<table class="w-full text-sm ds-table"><thead class="bg-gray-50"><tr>';
-  html += '<th class="col-code px-4 py-2 text-left text-xs font-medium text-gray-500">코드</th>';
+  html += '<th class="col-code px-4 py-2 text-left text-xs font-medium text-gray-500" style="width:176px">코드</th>';
   html += '<th class="col-name px-4 py-2 text-left text-xs font-medium text-gray-500">품목명</th>';
   html += '<th class="col-amount px-4 py-2 text-right text-xs font-medium text-gray-500">매입단가</th>';
   html += '<th class="col-amount px-4 py-2 text-right text-xs font-medium text-gray-500">판매단가</th>';
@@ -559,7 +559,7 @@ function renderSalesTable() {
     html += '<div class="bg-white rounded-lg shadow overflow-hidden"><div class="px-4 py-3 bg-gray-50 border-b flex items-center gap-2">';
     html += '<span class="text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700">출력 미디어</span>';
     html += '<h3 class="font-bold text-gray-800">' + esc(mg) + '</h3></div>';
-    html += '<table class="w-full ds-table"><thead><tr class="text-xs text-gray-500 border-b bg-gray-50/50"><th class="col-code text-left py-2 px-4 font-medium">코드</th><th class="col-name text-left py-2 px-4 font-medium">미디어명</th><th class="col-qty text-center py-2 px-4 font-medium">단위</th><th class="col-amount text-right py-2 px-4 font-medium">단가</th></tr></thead><tbody>';
+    html += '<table class="w-full ds-table"><thead><tr class="text-xs text-gray-500 border-b bg-gray-50/50"><th class="col-code text-left py-2 px-4 font-medium" style="width:176px">코드</th><th class="col-name text-left py-2 px-4 font-medium">미디어명</th><th class="col-qty text-center py-2 px-4 font-medium">단위</th><th class="col-amount text-right py-2 px-4 font-medium">단가</th></tr></thead><tbody>';
     data.mediaGroups[mg].forEach(function(m, idx) {
       html += '<tr class="border-b border-gray-50' + (idx % 2 ? ' bg-gray-50/30' : '') + '"><td class="py-2.5 px-4 text-sm text-gray-500 font-mono">' + esc(m.code || '') + '</td><td class="py-2.5 px-4 text-sm font-medium text-gray-800" title="' + esc(m.name || '') + '">' + esc(m.name) + '</td><td class="py-2.5 px-4 text-sm text-gray-500 text-center">' + esc(m.unit || '㎡') + '</td><td class="py-2.5 px-4 text-sm text-right font-medium">' + (m.price_per_unit ? m.price_per_unit.toLocaleString() + '원' : '-') + '</td></tr>';
     });

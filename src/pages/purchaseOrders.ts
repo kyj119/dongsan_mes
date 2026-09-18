@@ -144,10 +144,12 @@ export function purchaseOrdersPage(c: Context<HonoEnv>) {
           <thead class="bg-gray-50">
             <tr>
               <!-- data-col = '열 선택'(dsListToolbar) 대상. 작업 열은 숨김 대상에서 제외 -->
-              <th class="col-code px-4 py-3 text-left" data-col="po_number">발주번호</th>
+              <!-- 표준 15자 코드는 col-code(148) 로 충분하지만 이관분은 32자 276px — 다 담으면 표가 기운다.
+                   여기까지만 넓히고 나머지는 … + title 호버로 본다 -->
+              <th class="col-code px-4 py-3 text-left" style="width:200px" data-col="po_number">발주번호</th>
               <th class="col-name px-4 py-3 text-left" data-col="supplier">공급업체</th>
               <th class="col-date px-4 py-3 text-center" data-col="order_date">발주일</th>
-              <th class="col-date px-4 py-3 text-center" data-col="expected">납기예정</th>
+              <th class="col-date px-4 py-3 text-center" style="width:140px" data-col="expected">납기예정</th>
               <th class="col-amount px-4 py-3 text-right" data-col="amount">금액</th>
               <th class="col-status px-4 py-3 text-center" data-col="status">상태</th>
               <th class="col-action px-4 py-3 text-center">작업</th>

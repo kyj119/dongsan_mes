@@ -197,7 +197,8 @@ export function productionPage(c: Context<HonoEnv>) {
               <thead>
                 <tr>
                   <th class="text-left" style="width:100px">시간</th>
-                  <th class="text-left" style="width:90px">장비</th>
+                  <!-- 장비명 실측 최장 191px(전사 8색 1호기 (Longyin Q2000)) — 90px 로는 절반이 사라졌다 -->
+                  <th class="text-left" style="width:148px">장비</th>
                   <th class="text-left">파일명</th>
                   <th class="text-left" style="width:120px">규격(cm)</th>
                   <th class="text-left" style="width:64px">소요</th>

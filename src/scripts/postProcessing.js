@@ -66,9 +66,9 @@ async function loadList() {
                 <td class="px-4 py-3 font-mono text-xs text-gray-600">${escapeHtml(p.option_code)}</td>
                 <td class="px-4 py-3 font-medium">${escapeHtml(p.option_name)}</td>
                 <td class="px-4 py-3 text-sm tabular-nums">${pricingMap[p.pricing_type]||'-'}<br><span class="text-gray-500 text-xs">${priceInfo}</span></td>
-                <td class="px-4 py-3 text-sm text-gray-600">${paramSummary}</td>
+                <td class="px-4 py-3 text-sm text-gray-600" title="${escapeHtml(paramSummary)}">${paramSummary}</td>
                 <td class="px-4 py-3 text-sm">${hasMargin ? margins.join(' / ')+' cm' : '-'}</td>
-                <td class="px-4 py-3 text-sm">${subcatNames}</td>
+                <td class="px-4 py-3 text-sm" title="${escapeHtml(subcatNames)}">${subcatNames}</td>
                 <td class="px-4 py-3 text-center">
                     <span class="inline-flex items-center px-2 py-1 rounded-full text-xs ${p.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}">
                         <i class="${p.is_active ? 'fas fa-check-circle' : 'fas fa-times-circle'} text-[7px] mr-1"></i>${p.is_active ? '활성' : '비활성'}
