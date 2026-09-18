@@ -116,7 +116,14 @@ attendanceRouter.get('/month', async (c) => {
     //  ② employees 조인 = 위 목록에 없는 직원(퇴사·고정급·타부서)의 기록은 화면이 쓰지도 않으면서
     //     페이로드만 키운다(부서 필터 시 특히). 클라는 recordsMap[employee_id|work_date] 로만 소비한다.
     const { start: mStart, end: mEnd } = monthRange(month)
-    const efAtt = entityFilter(c, 'a')
+    // 0624: entity 필터를 `a`(근태 행)가 아니라 **`e`(직원)** 에 건다.
+    //   attendance.entity_id 는 **저장 시점의 스냅샷**이라 직원이 법인을 옮기면 과거 근태가
+    //   옛 법인에 남아 화면에서 통째로 사라진다(2026-09-18 실측: 이성용·박운옥 8월 행이
+    //   빈 줄로 보여 결근일을 확인할 수 없었다. 전사 11명 506건).
+    //   근태는 「그 법인의 기록」이 아니라 **「그 사람의 기록」**이므로 직원을 따라가는 것이 맞다.
+    //   ⚠️급여 집계(payroll/core.ts)는 employee_id 목록으로 읽어 이 칸을 안 본다 — 그래서
+    //     급여는 내내 정상이었고 **화면만** 비어 있었다.
+    const efAtt = entityFilter(c, 'e')
     const { results: records } = await c.env.DB.prepare(`
       SELECT
         a.id, a.employee_id, a.work_date,
@@ -192,7 +199,8 @@ attendanceRouter.get('/', async (c) => {
     const { employee_id, start_date, end_date, limit = '100' } = c.req.query()
     const safeLimit = Math.min(parseInt(limit) || 100, 500)
 
-    const efList = entityFilter(c, 'a')
+    // 0624: 위와 같은 이유로 직원 기준. 근태는 「그 사람의 기록」이다.
+    const efList = entityFilter(c, 'e')
     let query = `
       SELECT
         a.id, a.employee_id, a.work_date,
