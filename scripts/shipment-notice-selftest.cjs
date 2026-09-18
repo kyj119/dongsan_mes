@@ -85,10 +85,20 @@ console.log('[shipment-notice] ⑤ 이름 변형 · 부분일치 순서')
   check('「동산으로 방문수령」 → 방문 수령 준비 완료', ok('동산으로 방문수령').template === '방문 수령 준비 완료')
   check('「택배(한진)」 → 문자', ok('택배(한진)').channel === 'sms')
   check('★「직접배송」이 정확일치로 먼저 잡힌다(대상 아님)', ok('직접배송').blockedReason === 'not_target')
-  check('모르는 배송수단 = unknown_method(사람이 정한다) · 대상 아님으로 세지 않는다',
-    ok('배송').blockedReason === 'unknown_method' && ok('배송').isTarget === false, ok('배송'))
+  // ★「배송」은 이카운트에 손으로 적던 시절의 직접배송이다(2026-09-18 용준님 확인, prod 78건).
+  //   SSOT(`constants/deliveryMethod` ALIASES)가 풀어 주므로 여기서 또 판정하지 않는다.
+  check('「배송」 = 직접배송 = 대상 아님', ok('배송').blockedReason === 'not_target', ok('배송'))
+  check('「직배」·「자차배송」도 SSOT 가 풀어 준다',
+    ok('직배').blockedReason === 'not_target' && ok('자차배송').blockedReason === 'not_target')
+  check('진짜 모르는 배송수단 = unknown_method(사람이 정한다) · 대상 아님으로 세지 않는다',
+    ok('드론배송').blockedReason === 'unknown_method' && ok('드론배송').isTarget === false, ok('드론배송'))
   check('빈 배송수단도 unknown_method', ok('').blockedReason === 'unknown_method' && ok(null).blockedReason === 'unknown_method')
   check('정책 조회 자체는 null 을 돌려준다', noticePolicyFor('없는수단') === null)
+
+  // 셀렉트 고정 7종이 **전부** 정책에 걸린다 — 새 값이 늘면 여기서 걸린다.
+  const CANON = ['대신택배', '대신화물', '한진택배', '직접배송', '용차', '퀵', '방문수령']
+  const uncovered = CANON.filter((m) => noticePolicyFor(m) === null)
+  check('★주문서 셀렉트 7종 전부 정책이 있다', uncovered.length === 0, uncovered)
 }
 
 console.log('[shipment-notice] ⑥ 화면 문구')

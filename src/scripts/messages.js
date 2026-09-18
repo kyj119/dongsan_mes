@@ -234,6 +234,28 @@ async function viewLogDetail(receiptNum, channel) {
         return;
       }
 
+      // 알림톡(ATS) 단건 응답 — 필드가 `SendStatus`/`ResultCode` 이고 `receiveNum` 이 없다.
+      //   종전엔 아래 배열 판정에 걸리지 않아 **항상 「결과 정보가 없습니다」**로 떴다(2026-09-18 실측).
+      //   ⚠️ SendStatus 코드표는 아직 등록 전이라 **해석하지 않고 원값 그대로** 보여 준다 —
+      //      모르는 코드를 「성공」으로 단정하는 것보다 모른다고 적는 쪽이 낫다.
+      if (!Array.isArray(d) && d && d.SendStatus !== undefined && d.receiveNum === undefined) {
+        var rc = String(d.ResultCode);
+        var rcOk = (rc === '0' || rc === '0.0');
+        el.innerHTML = '<div class="mb-3 p-3 bg-gray-50 rounded-lg"><div class="text-xs text-gray-500">접수번호</div>'
+          + '<div class="font-mono text-sm">' + escapeHtml(receiptNum) + '</div></div>'
+          + '<div class="space-y-2 text-sm">'
+          + '<div class="flex justify-between"><span class="text-gray-500">접수 결과</span>'
+          + '<span class="px-2 py-0.5 rounded text-xs font-medium ' + (rcOk ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700') + '">'
+          + (rcOk ? '정상 접수' : '코드 ' + escapeHtml(rc)) + '</span></div>'
+          + '<div class="flex justify-between"><span class="text-gray-500">전송 상태 코드</span>'
+          + '<span class="font-mono">' + escapeHtml(String(d.SendStatus)) + '</span></div>'
+          + '<div class="flex justify-between"><span class="text-gray-500">예약 발송</span><span>' + (String(d.ReserveYN) === 'true' ? '예' : '아니오') + '</span></div>'
+          + '<div class="flex justify-between"><span class="text-gray-500">광고성</span><span>' + (String(d.AdYN) === 'true' ? '예' : '아니오') + '</span></div>'
+          + '</div>'
+          + '<div class="mt-3 text-xs text-gray-400">전송 상태 코드의 해석표가 아직 등록되지 않았습니다 — 도착 여부는 수신자 확인이 필요합니다.</div>';
+        return;
+      }
+
       var messages = Array.isArray(d) ? d : (d.messages && Array.isArray(d.messages)) ? d.messages : d.receiveNum ? [d] : [];
 
       if (messages.length === 0) {

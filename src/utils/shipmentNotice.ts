@@ -19,6 +19,8 @@
 //   따로 알릴 필요가 없다 — 「문구가 없다」가 아니라 **「대상이 아니다」**로 분류한다.
 //   (이 둘을 섞으면 확정 대기 목록이 영영 안 줄어드는 미발송 건으로 가득 찬다.)
 
+import { normalizeDeliveryMethod } from '../constants/deliveryMethod'
+
 /** 알림 정책 — 배송방법이 기준이다(화면 섹션이 아니다). */
 export type NoticeChannel = 'kakao' | 'sms'
 export type NoticeBlock =
@@ -52,27 +54,32 @@ export const NOTICE_POLICY: Record<string, MethodPolicy> = {
   '한진택배': { notify: true, needsTracking: true },
 
   // ── 알림 대상 아님 (2026-09-18 용준님 결정) — 우리가 직접 가져다 준다 ──
-  '직배': { notify: false },
+  //   키는 **정본 표기**만 둔다. 「직배」·「자차배송」·「배송」은 SSOT ALIASES 가 「직접배송」으로 풀어 준다.
   '직접배송': { notify: false },
-  '직접 배송': { notify: false },
-  '자차배송': { notify: false },
   '퀵': { notify: false },
   '용차': { notify: false },
 }
 
-/** 배송방법 문자열 → 정책. 못 찾으면 null(=사람이 정해야 한다). */
+/**
+ * 배송방법 문자열 → 정책. 못 찾으면 null(=사람이 정해야 한다).
+ *
+ * ★별칭 판정은 **여기서 하지 않는다** — `constants/deliveryMethod` 가 배송방법 SSOT 다(7종 + ALIASES).
+ *   여기서 또 `includes()` 로 흩뿌리면 「직배」를 두 곳이 다르게 읽는 날이 온다.
+ *   SSOT 로 정규화한 뒤 그 값으로만 찾고, 정규화가 못 푸는 옛 표기만 마지막에 좁게 흡수한다.
+ */
 export function noticePolicyFor(deliveryMethod: string | null | undefined): MethodPolicy | null {
-  const m = String(deliveryMethod || '').trim()
-  if (!m) return null
+  const raw = String(deliveryMethod || '').trim()
+  if (!raw) return null
+  const m = normalizeDeliveryMethod(raw)
   if (NOTICE_POLICY[m]) return NOTICE_POLICY[m]
-  // 이름 변형 흡수 — prod 에 「동산에서 화물」·「동산으로 방문수령」 같은 표기가 남아 있다.
-  //   ⚠️ 부분일치는 **정확일치가 실패했을 때만** 쓴다(「직접배송」이 「배송」에 먼저 걸리면 안 된다).
-  if (m.includes('방문수령') || m.includes('방문 수령')) return NOTICE_POLICY['방문수령']
+  // SSOT 가 못 푸는 이관 표기 — 「동산에서 대신화물」·「동산으로 방문수령」처럼 말이 섞인 것들.
+  //   ⚠️ 정확일치가 실패했을 때만 쓴다.
+  if (m.includes('방문수령') || m.includes('방문 수령') || m.includes('직접수령')) return NOTICE_POLICY['방문수령']
   if (m.includes('대신화물')) return NOTICE_POLICY['대신화물']
   if (m.includes('대신택배')) return NOTICE_POLICY['대신택배']
   if (m.includes('한진')) return NOTICE_POLICY['한진택배']
   if (m.includes('퀵') || m.includes('용차')) return NOTICE_POLICY['퀵']
-  if (m.includes('직배') || m.includes('직접배송')) return NOTICE_POLICY['직배']
+  if (m.includes('직접배송') || m.includes('직배')) return NOTICE_POLICY['직접배송']
   return null
 }
 
