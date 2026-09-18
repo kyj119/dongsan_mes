@@ -375,9 +375,12 @@ export class BarobillSmsProvider {
   /** 발송 결과 조회 */
   async getMessages(receiptNum: string): Promise<any> {
     try {
+      // ★파라미터 이름은 `SendKey` 다 (2026-09-18 레퍼런스 대조).
+      //   종전엔 `{ID:'', ReceiptNum}` 을 보냈다 — SOAP 는 이름·순서를 따지므로 SendKey 가 빈 채로 가
+      //   서버가 **-10101(해당 발송정보가 없습니다)** 를 돌려줬고, 화면은 그걸 「전송 상태」로 읽었다.
+      //   실제로 도착한 메시지인데도 상태를 영영 확인할 수 없었던 이유다.
       const result = await barobillCall(this.config, 'KakaoTalk' as any, 'GetSendKakaotalk', {
-        ID: '',
-        ReceiptNum: receiptNum,
+        SendKey: receiptNum,
       })
       return parseXmlValues(result)
     } catch (err) {

@@ -8,6 +8,7 @@ import { getEntityCorpNum } from '../utils/entitySettings'
 import { BAROBILL_UNIT_COST_VAT_EXCL } from '../constants/barobillCodes'
 import { resolveKakaoIdentity } from '../utils/kakaoIdentity'
 import { resolveShipmentNotice, NOTICE_BLOCK_LABEL } from '../utils/shipmentNotice'
+import { interpretSendStatus } from '../constants/barobillMessagingCodes'
 import { checkBulkLimit } from '../services/messageBulkLimit'
 import { applyAudienceGuards, describeGuardResult, recordBulkRecipients } from '../services/messageAudience'
 import type { SMSMessage, ATSMessage } from '../services/barobillSms'
@@ -1539,16 +1540,25 @@ kakaoRouter.get('/logs/:receiptNum/status', async (c) => {
 
     // 채널별 조회 API가 다르다: 알림톡=GetSendKakaotalk, 문자(SMS/LMS/MMS)=GetSMSSendMessage.
     // channel 미지정 시 알림톡 먼저 조회하고 비면 문자로 폴백(레거시 호출 하위호환).
+    // 2026-09-18: 상태값 해석을 **서버에서** 붙인다. 화면이 코드표를 따로 갖고 있으면 또 어긋난다
+    //   (문자 라벨이 한 칸씩 밀려 있던 게 그 결과였다 — 1 은 전송중이 아니라 전송완료다).
+    const withStatus = (data: Record<string, unknown> | null, ch: 'kakao' | 'sms') => {
+      if (!data) return data
+      const rawStatus = ch === 'kakao' ? (data.SendStatus as string) : (data.SendState as string)
+      const s = interpretSendStatus(rawStatus, ch)
+      return s ? { ...data, status_label: s.label, status_kind: s.kind, status_code: s.code } : data
+    }
+
     const channel = (c.req.query('channel') || '').toLowerCase()
     if (channel === 'sms' || channel === 'mms') {
       const sms = await provider.getSmsSendMessage(receiptNum)
-      return c.json({ success: true, data: sms })
+      return c.json({ success: true, data: withStatus(sms, 'sms') })
     }
     const messages = await provider.getMessages(receiptNum)
     if (messages && Object.keys(messages).length > 0) {
-      return c.json({ success: true, data: messages })
+      return c.json({ success: true, data: withStatus(messages, 'kakao') })
     }
-    return c.json({ success: true, data: await provider.getSmsSendMessage(receiptNum) })
+    return c.json({ success: true, data: withStatus(await provider.getSmsSendMessage(receiptNum), 'sms') })
   } catch (error) {
     console.error('src/routes/kakao.ts GET /logs/:receiptNum/status error:', error)
     return c.json({ success: false, error: '발송 결과 조회 실패' }, 500)

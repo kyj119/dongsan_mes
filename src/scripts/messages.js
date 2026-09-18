@@ -197,6 +197,20 @@ function renderLogsPagination(totalPages) {
   el.innerHTML = html;
 }
 
+// 발송 상태 알약 — 라벨·분류는 **서버가 해석해서** status_label/status_kind 로 내려준다.
+//   화면이 코드표를 또 갖고 있으면 어긋난다(문자 라벨이 한 칸 밀려 있던 게 그 결과였다).
+var MSG_STATUS_COLOR = { sending: 'blue', done: 'green', failed: 'red', reserved: 'yellow', cancelled: 'gray', unknown: 'gray' };
+function statusPillHtml(d) {
+  var kind = d.status_kind || 'unknown';
+  var label = d.status_label || '알 수 없음';
+  var color = MSG_STATUS_COLOR[kind] || 'gray';
+  return '<span class="px-2 py-0.5 rounded text-xs font-medium bg-' + color + '-100 text-' + color + '-700">'
+    + escapeHtml(label) + '</span>';
+}
+function smsStatePill(d) {
+  return { label: d.status_label || ('상태 ' + d.SendState), color: MSG_STATUS_COLOR[d.status_kind || 'unknown'] || 'gray' };
+}
+
 async function viewLogDetail(receiptNum, channel) {
   var el = document.getElementById('logDetailContent');
   document.getElementById('logDetailModal').classList.remove('hidden');
@@ -221,8 +235,10 @@ async function viewLogDetail(receiptNum, channel) {
           el.innerHTML = '<div class="text-center py-4 text-gray-500">결과 정보가 없습니다.<br><span class="text-xs text-gray-400">접수번호: ' + escapeHtml(receiptNum) + '</span></div>';
           return;
         }
-        var smsState = { '0': { label: '대기', color: 'blue' }, '1': { label: '전송중', color: 'blue' }, '2': { label: '성공', color: 'green' }, '3': { label: '실패', color: 'red' } };
-        var ss = smsState[String(d.SendState)] || { label: '상태 ' + d.SendState, color: 'gray' };
+        // 2026-09-18: 상태 해석은 **서버**(constants/barobillMessagingCodes)가 한다.
+        //   종전 하드코딩 { 0:대기, 1:전송중, 2:성공, 3:실패 } 는 공식값과 **한 칸씩 밀려 있었다** —
+        //   바로빌 문자는 0=전송중 · 1=전송완료 · 나머지는 전부 실패코드다(-10107 잘못된 전화번호 등).
+        var ss = smsStatePill(d);
         el.innerHTML = '<div class="mb-3 p-3 bg-gray-50 rounded-lg"><div class="text-xs text-gray-500">접수번호</div><div class="font-mono text-sm">' + escapeHtml(receiptNum) + '</div></div>'
           + '<div class="space-y-2 text-sm">'
           + '<div class="flex justify-between"><span class="text-gray-500">전송 상태</span><span class="px-2 py-0.5 rounded text-xs font-medium bg-' + ss.color + '-50 text-' + ss.color + '-700">' + ss.label + '</span></div>'
@@ -247,12 +263,12 @@ async function viewLogDetail(receiptNum, channel) {
           + '<div class="flex justify-between"><span class="text-gray-500">접수 결과</span>'
           + '<span class="px-2 py-0.5 rounded text-xs font-medium ' + (rcOk ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700') + '">'
           + (rcOk ? '정상 접수' : '코드 ' + escapeHtml(rc)) + '</span></div>'
-          + '<div class="flex justify-between"><span class="text-gray-500">전송 상태 코드</span>'
-          + '<span class="font-mono">' + escapeHtml(String(d.SendStatus)) + '</span></div>'
+          + '<div class="flex justify-between"><span class="text-gray-500">전송 상태</span>'
+          + statusPillHtml(d) + '</div>'
           + '<div class="flex justify-between"><span class="text-gray-500">예약 발송</span><span>' + (String(d.ReserveYN) === 'true' ? '예' : '아니오') + '</span></div>'
           + '<div class="flex justify-between"><span class="text-gray-500">광고성</span><span>' + (String(d.AdYN) === 'true' ? '예' : '아니오') + '</span></div>'
           + '</div>'
-          + '<div class="mt-3 text-xs text-gray-400">전송 상태 코드의 해석표가 아직 등록되지 않았습니다 — 도착 여부는 수신자 확인이 필요합니다.</div>';
+          + (d.status_kind === 'unknown' ? '<div class="mt-3 text-xs text-gray-400">처음 보는 상태값입니다 — 도착 여부는 수신자 확인이 필요합니다.</div>' : '');
         return;
       }
 
