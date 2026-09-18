@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-09-18T15:46:16+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-09-18T21:45:39+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,31 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **6** (`list_issues(state:OPEN,label:auto-improve)` 실측, -2 — #647·#648 close) |
+| 🆕 new | **4** (`list_issues(state:OPEN,label:auto-improve)` 실측, -2 — #651·#652 close) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **569** (`search_issues(label:auto-improve is:closed reason:completed)` 실측, +2) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 4 데이터 정합성 (2026-09-18T21:45):**
+> - **방법**: 세션 시작 시 detached HEAD `597144d`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. shallow clone(depth 50, 이번엔 앵커가 그 안이라 `git log 429792a..HEAD`는 즉시 됐으나 `73b8c0e..HEAD` 비교 등에서 `git fetch --unshallow` 필요). `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area4 사이클 세션시작 HEAD `429792a`)**: 118커밋, `src/routes`+`src/utils`+`migrations` diff 55파일. 대부분(item_units·배송비-박스청구·급여 엑셀입력/오버라이드/이카운트 대조·kakao·CAPS·표 잘림 감시·IA 패널 5종)은 Area1·2·3·5·6가 이번 순환에서 이미 각자 렌즈로 정독 완료(백로그 로그 확인) → **직전 Area3 사이클(15:46) 세션 HEAD `73b8c0e` 이후 신규분만 재교차**(`git diff 73b8c0e..HEAD -- src/routes src/utils migrations` = 3파일: `orders/helpers.ts`·`shipments.ts`·`migrations/0623_coating_unify_watermedia.sql`) + **어느 Area 로그에도 해시/내용 미언급인 4개 커밋**(`76e2b382`·`3f3c2fdf`·`eefd23a7`·`7fc2e4b0` — grep으로 `item_units`류 8개 키워드 전수 대조해 미등장 확인)을 Area4가 직접 정독.
+> - **🔍 cross-area 발견 — #651·#652 실제로 fix-in-tree, close 처리**: `c7b02c8c`(주문유형 dedup + 합배송 entity 필터)가 두 open 이슈의 제안 코드를 **그대로** 적용한 것을 `git diff 73b8c0e..HEAD`로 직접 확인. `orders/helpers.ts:deriveOrderType` — dedup 이전 `rawIds.length`로 자유입력 판정 후 `Set`은 IN절에만 사용(#651 제안 diff와 100% 일치). `shipments.ts:consolidation-pending` — `entityFilter(c,'me')` 추가 + `requireAccessOrRole`에서 DESIGNER 제거(#652 제안과 일치, 추가로 `shippable` 플래그까지 얹음 — #653 형제 커밋). 직전 Area3 사이클(9f54497f)이 "owner 코멘트는 있었지만 실제 미push"라고 정정했던 바로 그 항목이 **그 이후 커밋에서 실제로 push됨** → 코드 재확인 후 두 이슈에 근거(커밋 해시·diff 대조) 코멘트 남기고 **close**(completed).
+> - **`76e2b382`(휴일 법인 축) 데이터정합성 직접 검증**: 마이그(`0623_holidays_entity_scope.sql`) — `CREATE holidays_v2(id PK, entity_id NOT NULL DEFAULT 0, UNIQUE(date,entity))` → `INSERT OR IGNORE ... SELECT` → `DROP`→`RENAME` 정석 재생성 패턴(#454 규칙과 일치), `holidays.id`를 참조하는 FK 0건(재생성 안전, `PRAGMA foreign_key_list` 확인). entity_id=0을 "전사"로 쓰는 설계는 NULL-UNIQUE 허점(SQLite가 UNIQUE에서 NULL을 서로 다른 값으로 취급) 회피가 목적이라고 주석에 명시, falsy 체크 금지 경고도 코드에 반영됨(`Math.max(0, Number(entity_id)||0)` 형태로 실수 0과 미지정 0을 같은 값으로 안전 처리). **읽는 쪽 5곳 전수 대조**(`payroll/core.ts`·`settings.ts`·`leaves.ts`·`attendance.ts`·`caps.ts`) — 커밋 메시지가 주장한 배선과 코드 diff 100% 일치. **DELETE 핸들러**(`settings.ts`)가 `WHERE holiday_date=? AND entity_id=?`로 법인 스코프 — 날짜만으로 지우면 타법인 휴무까지 삭제되는 실수를 코드가 이미 방지. 결함 0건.
+> - **`eefd23a7`(근태 entity를 직원 소속으로) 데이터정합성 직접 검증 — 이 사이클의 핵심 대상**: `attendance.entity_id`가 "저장 시점 스냅샷"이라 직원 법인 이동 시 과거 근태가 옛 법인에 남아 화면에서 통째로 실종되던 결함의 수정. ① 마이그(`0625`) — `UPDATE attendance SET entity_id=(SELECT e.entity_id FROM employees e WHERE e.id=attendance.employee_id) WHERE EXISTS(... AND e.entity_id != attendance.entity_id)`로 기존 506건(선명4명268·오다플래그6명204·동산1명34) 백필, 멱등(재실행해도 이미 일치하는 행은 WHERE EXISTS가 걸러 no-op). ② **자기교정 여부 확인이 핵심** — `attendance.ts` 읽기 경로 2곳을 `entityFilter(c,'a')`(근태 행 자체의 스냅샷)에서 `entityFilter(c,'e')`(JOIN된 employees의 현재 소속)로 전환해, **앞으로 직원이 또 법인을 옮겨도 같은 증상이 재발하지 않는 파생 구조**로 바뀜(CLAUDE.md "파생으로 뺀다" 원칙과 합치 — 백필은 과거분 정리일 뿐, 재발 방지는 읽기 쪽 구조 변경이 담당). ③ **형제 완전성 sweep** — `attendance` 테이블을 읽는 전 지점(`hr.ts` 4곳·`payroll/core.ts` 1곳·`leaves.ts`)을 grep해 대조한 결과 **전부 이미 `entityFilter(c,'e')` 또는 명시적 `employee_id IN (...)` 목록 기반**이라 이번 버그(a.entity_id 스냅샷 의존)의 대상이 아니었음 확인 — 절반 마이그레이션 잔재(#436 클래스) 없음. ④ 급여 집계는 employee_id 목록으로 근태를 읽어 애초에 이 컬럼을 참조하지 않는다는 커밋 주장을 `payroll/core.ts:837` 직접 대조로 검증(정확). 결함 0건(오히려 재발 방지 설계까지 완비).
+> - **`3f3c2fdf`(조기출근 미인정 옵션)·`7fc2e4b0`(엑셀 입력 3건)**: 둘 다 `ALTER TABLE ... ADD COLUMN`(NOT NULL DEFAULT 0 또는 nullable+DEFAULT 0) 단순 확장, FK·CHECK 없음, 기존 행 기본값 안전(§NOT NULL no-default 자동diff 스캔 대상 아님 — 전부 default 有). `0622`의 `employees.external_name`(이카운트 별칭 매칭용)·`payroll.night_hours/holiday_hours`(금액→시간 원본 전환, 기존 행 0 유지·재동기화 시 채워짐 명시) 전부 raw 컬럼 추가뿐 데이터 손상 경로 없음. 결함 0건.
+> - **`2f22594c`(코팅 옵션 통일)**: `post_processing_options` UPDATE 2건(이름 변경 1 + `is_active=0` 비활성 1), `material_item_group`(자동차감 유일 키) 무변경 명시, prod 실측 과거 사용 0건 근거로 안전 주장 — UPDATE뿐이라 멱등, 되돌릴 방법(`is_active=1`)도 남김. 결함 0건.
+> - **standing scan 1: `npm run audit:migration-number`** — 파일 642개, 중복 번호 25쌍(기존 20쌍+신규 `0621`·`0623` 2쌍), **같은 테이블 DDL 충돌 0건**.
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 4건 전부 기존 FP 유지(`attendance.ts:171`·`dashboard.ts:420`·`workbench.ts:577`·`itemUnits.ts:162`).
+> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 10런 전부 `conclusion:success`(#651/#652 fix 커밋을 포함한 merge `1acb580d` 및 최종 HEAD `597144d` 포함).
+> - **open 이슈 재확인(open≠unfixed) + close**: `list_issues(state:OPEN,label:auto-improve)` 세션 시작 시 6건 → **#651·#652를 코드 재검증 후 close**(completed, 근거 코멘트 첨부) → **4**(#650·#626·#617·#616, 전건 Area4 관할 밖).
+> - **backlog↔GitHub 절대값 재동기화**: open **4**(-2, #651·#652 close) · done **569**(변동없음 — close는 completed 사유로 done에 이미 반영되는 시점 차, 다음 집계에서 +2 확정) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md 서술 참조 재확인(이미 서술식, `line N` 잔여 없음). 이번 사이클 핵심 사례(근태 entity 스냅샷 vs 파생)는 기존 원칙(§누적 캐시의 "파생으로 뺀다")의 재확인이라 새 클래스 아님. cross-area #651/#652 close는 기존 "open≠unfixed, 코드로 재검증" 원칙의 적용일 뿐 — 별도 codify 불요.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` 대상 — 사이클 로그 11건 → 이번 추가 후 12건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(churn 전수 재확인 net-new 0, 4개 미검토 커밋 전부 clean+자기설계 완비), 자동수정 0건(고칠 결함 없음), 이슈 close 2건(#651·#652, 코드 재검증 후 completed), done-sync: open 6→4(#651·#652 close)·done 569(다음 집계 +2 예정)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-09-18T15:46):**
 > - **방법**: 세션 시작 시 detached HEAD `73b8c0e`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. shallow clone이라 `git fetch --unshallow` 필요(앵커가 depth 밖). `npm ci`(0→89), `npx tsc --noEmit` clean.
