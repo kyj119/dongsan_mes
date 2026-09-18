@@ -110,8 +110,15 @@ npm run deploy:prod
    ```
    `.ds-table` 은 `table-layout:fixed` + `td{overflow:hidden}` 이라 **넘친 값이 경고 없이 사라진다** —
    응답은 200 이고 tsc·build·smoke·check:dom 이 전부 통과한다. 기준선(`scripts/table-clip-baseline.json`)에
-   없는 (화면, 열)이 잘리면 실패. 열을 고쳐서 해소했으면 `-- --update` 로 기준선을 **줄인다**
-   (안 줄이면 다음에 되돌아가도 안 잡힌다).
+   없는 (화면, 열)이 잘리면 실패. 열을 고쳐서 해소했으면 기준선을 **줄인다**
+   (안 줄이면 다음에 되돌아가도 안 잡힌다) — ⚠️**`--base` 를 반드시 같이 준다**:
+   ```bash
+   npm run audit:table-clip -- --base https://webapp-9i0.pages.dev --update
+   ```
+   기본 대상이 **localhost** 라 `--base` 를 빼면 prod 기준선 위에 로컬 측정치가 덮인다.
+   로컬은 데이터가 적어 잘림이 덜 잡히므로 기준선이 조용히 줄고 prod 의 알려진 잘림이
+   「해소됨」으로 사라진다(2026-09-18 실제로 44→14). 지금은 대상이 다르면 스크립트가
+   덮어쓰지 않고 exit 2 한다.
    > 2026-08-09 에도 같은 목록을 실측해 두고 **게이트가 아니라서** 한 달간 방치됐다.
 
 ### Phase 5: 현황판 갱신 + 자동 트림
