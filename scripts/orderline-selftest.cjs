@@ -103,6 +103,19 @@ check('음수 → 기본 100', { unit_price: 3000, quantity: 1, width: 50, heigh
 // ── width_mm 별칭 (필드명은 mm 지만 값은 cm) ──────────────────
 check('width_mm 별칭도 cm 로 읽는다', { unit_price: 3000, quantity: 1, width_mm: 50, height_mm: 70 }, 'AREA', { auto: 3000 })
 
+// ── ★청구면적은 **두 변에 대칭**이다 (2026-09-18) ──────────────
+//   `/api/prices` 의 「같은 규격 최근가」가 가로세로 뒤집힌 이력도 같은 규격으로 보는 근거가 이것이다.
+//   10cm 올림도 최소 1m 도 변마다 따로 걸리고 결과는 곱이라 순서를 안 탄다 — 그래서 100×50 과
+//   50×100 은 **금액이 같아야** 한다. 여기가 깨지면 그 제안은 다른 금액의 단가를 가져오는 것이 된다.
+//   ⚠️규칙(올림·최소변)을 바꿀 때 대칭이 깨지면 제안 축이 조용히 틀어진다 — 그래서 값으로 고정한다.
+check('대칭: 100×50', { unit_price: 3500, quantity: 2, width: 100, height: 50 }, 'AREA', { auto: 7000 })
+check('대칭: 50×100 은 같은 금액', { unit_price: 3500, quantity: 2, width: 50, height: 100 }, 'AREA', { auto: 7000 })
+check('대칭: 600×90', { unit_price: 2000, quantity: 1, width: 600, height: 90 }, 'AREA', { auto: 12000 })
+check('대칭: 90×600 은 같은 금액', { unit_price: 2000, quantity: 1, width: 90, height: 600 }, 'AREA', { auto: 12000 })
+// 최소청구 없는 품목(UV 판재)에서도 대칭이어야 한다
+check('대칭: 30×15 실규격', { unit_price: 100000, quantity: 1, width: 30, height: 15, min_billing_side_cm: 0 }, 'AREA', { auto: 6000 })
+check('대칭: 15×30 실규격', { unit_price: 100000, quantity: 1, width: 15, height: 30, min_billing_side_cm: 0 }, 'AREA', { auto: 6000 })
+
 _cleanup()
 
 if (fails.length) {

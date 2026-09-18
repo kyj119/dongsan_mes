@@ -152,10 +152,30 @@ pricesRouter.get('/', async (c) => {
 
         let recentSales: RecentSalesRow | null = null
         let recentBySpec = false
+        let recentRotated = false
         if (wNum > 0 && hNum > 0) {
           recentSales = await c.env.DB.prepare(RECENT_SQL(true))
             .bind(item_id, client_id, wNum, hNum, ...efSales.params).first<RecentSalesRow>()
           recentBySpec = !!recentSales
+          // ★가로세로가 뒤집힌 이력도 **같은 규격**으로 본다 (2026-09-18).
+          //   같은 물건을 돌려 놓은 것이고 청구면적도 같다 — 10cm 올림·최소 1m 은 두 변에 대칭이고
+          //   곱이라 순서를 안 탄다. 폭 구간이 다른 건(현수막 3분할)은 **애초에 다른 item_id** 라
+          //   이 조회(`oi.item_id = ?`)에 섞이지 않는다.
+          // ★순서가 규칙이다 — **정확 일치가 먼저**고, 없을 때만 회전을 본다. 백테스트(2026년 전 라인
+          //   재생, 19,490건)에서 정확 일치는 중앙오차 **0.00%** 라 그 등급은 건드리면 안 된다.
+          //   회전이 새로 잡는 것은 **81건(0.4%)** 뿐이고, 그 81건에서
+          //     회전 적용 = 중앙 11.11% · 정확적중 44%   ↔   현행 폴백(규격무관 직전가) = 중앙 5.83% · 정확적중 28%
+          //     건별로는 회전이 더 정확 37 · 더 부정확 23 · 동률 21.
+          //   **적중은 늘지만 빗나갈 때 더 크게 빗나간다** → 값은 쓰되 **회전에서 왔다고 화면에 밝힌다**
+          //   (`recent_rotated`). 조용히 쓰면 더 크게 빗나간 값을 아무도 못 걸러낸다.
+          //   재측정 = `python scripts/price-match-audit.py` 의 `V2R +규격(회전포함)` 행.
+          // ★SQL 을 새로 만들지 않는다 — **같은 문장에 w·h 를 바꿔 바인딩**한다. 자리표시자가 한 칸
+          //   밀리는 사고(2026-08-25 여신)가 이 계열에서 이미 났다. 문장이 하나면 밀릴 자리가 없다.
+          if (!recentSales && wNum !== hNum) {
+            recentSales = await c.env.DB.prepare(RECENT_SQL(true))
+              .bind(item_id, client_id, hNum, wNum, ...efSales.params).first<RecentSalesRow>()
+            if (recentSales) { recentBySpec = true; recentRotated = true }
+          }
         }
         if (!recentSales) {
           recentSales = await c.env.DB.prepare(RECENT_SQL(false))
@@ -169,6 +189,8 @@ pricesRouter.get('/', async (c) => {
             reference: recentSales.order_number
           }
           ;(details as any).recent_by_spec = recentBySpec
+          // 회전 이력에서 온 값 — 화면이 라벨로 밝힌다(위 주석: 빗나갈 때 더 크게 빗나간다).
+          ;(details as any).recent_rotated = recentRotated
         }
 
         // #75: 3개월 평균 판매단가 (전체 거래처 대상, 원가 미노출)
