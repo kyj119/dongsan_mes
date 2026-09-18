@@ -91,9 +91,22 @@ for (const name of jobs) {
   let files = []
   try { files = fs.readdirSync(dir) } catch { /* ignore: 읽는 도중 지워질 수 있다 — 아래 빈 목록으로 흘러 "잔해"로 잡힌다 */ }
 
-  const mf = files.includes('manifest.json')
-  const ingested = files.some((f) => f.startsWith('.ingested'))
-  const rejected = files.some((f) => f.startsWith('.rejected'))
+  // ★배치(묶음)는 manifest 가 **여러 장**이고 이름에 접미사가 붙는다 — `manifest_1.json`·`.ingested_1`
+  //   (호스트 sfx = '_' + batch_index). 에이전트도 `manifest*.json` 로 훑어 짝이 되는 마커를 본다
+  //   (`Program.cs SweepPickupRecent`). 여기서 `manifest.json` **한 이름만** 보고 있어서
+  //   **정상 배치가 전부 「커밋 없음(잔해)」로** 떴다(2026-09-18 실측: 2장짜리 배치가 커밋·수령
+  //   모두 끝났는데 ✗커밋). 없는 고장을 만들어 사람을 움직이는 오탐이라 관문 자체를 다시 센다.
+  const mfs = files.filter((f) => /^manifest.*.json$/i.test(f))
+  const mf = mfs.length > 0
+  const sfxOf = (f) => f.replace(/^manifest/i, '').replace(/.json$/i, '')
+  const marks = mfs.map((f) => {
+    const sx = sfxOf(f)
+    return { sx, ing: files.includes('.ingested' + sx), rej: files.includes('.rejected' + sx) }
+  })
+  const anyMarked = marks.some((m) => m.ing || m.rej)
+  const allMarked = mf && marks.every((m) => m.ing || m.rej)
+  const rejected = marks.some((m) => m.rej)
+  const ingested = allMarked && !rejected
   const eps = files.filter((f) => /\.eps$/i.test(f))
   const dxf = files.filter((f) => /\.dxf$/i.test(f))
   const workai = files.filter((f) => /\.ai$/i.test(f))
@@ -102,7 +115,7 @@ for (const name of jobs) {
   // manifest 가 선언한 mode — 모아찍기(impose)만 work.ai 가 정상이다.
   let mode = '?'
   if (mf) {
-    try { mode = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8')).mode || '?' } catch { /* ignore: 깨진 manifest 는 아래 커밋 관문에서 잡힌다 */ }
+    try { mode = JSON.parse(fs.readFileSync(path.join(dir, mfs[0]), 'utf8')).mode || '?' } catch { /* ignore: 깨진 manifest 는 아래 커밋 관문에서 잡힌다 */ }
   }
 
   // 픽업 = `_출력/<날짜>/<EPS 이름>`. **바이트까지** 같아야 한다 — 잘린 사본을 재단기가 집어 간다.
@@ -122,15 +135,21 @@ for (const name of jobs) {
   const epsB = eps.reduce((a, f) => a + Math.max(0, size(path.join(dir, f))), 0)
   const thB = thumbs.reduce((a, f) => a + Math.max(0, size(path.join(dir, f))), 0)
   const aiB = workai.reduce((a, f) => a + Math.max(0, size(path.join(dir, f))), 0)
-  const mfB = mf ? Math.max(0, size(path.join(dir, 'manifest.json'))) : 0
+  const mfB = mfs.reduce((a, f) => a + Math.max(0, size(path.join(dir, f))), 0)
   totals.eps += epsB; totals.thumb += thB; totals.workai += aiB; totals.manifest += mfB; totals.n++
 
   // ── 관문 판정 ──
   const notes = []
   let bad = false
   if (!mf) { notes.push(C.r('커밋 없음(잔해) — 에이전트는 영원히 안 읽는다')); bad = true }
-  else if (!ingested && !rejected) notes.push(C.y('MES 미반영 — 에이전트 수령 대기'))
   else if (rejected) { notes.push(C.r('에이전트가 거절')); bad = true }
+  else if (!allMarked) {
+    // 배치 일부만 반영된 상태 — 「전부 대기」와 다르다. 몇 장 중 몇 장인지 말해야 찾아볼 데가 생긴다.
+    const done = marks.filter((m) => m.ing || m.rej).length
+    notes.push(C.y(done === 0
+      ? 'MES 미반영 — 에이전트 수령 대기'
+      : `MES 부분 반영 — manifest ${marks.length}장 중 ${done}장만 수령`))
+  }
 
   if (mf && eps.length === 0 && mode !== 'impose') { notes.push(C.r('EPS 없음 — 출력할 것이 없다')); bad = true }
 
@@ -138,7 +157,7 @@ for (const name of jobs) {
   for (const p of pick) {
     if (p.state === 'ok') continue
     // 커밋 전이면 아직 차례가 아니다 — 픽업은 에이전트가 커밋을 읽은 뒤에 한다.
-    if (!(mf && (ingested || rejected))) {
+    if (!(mf && anyMarked)) {
       notes.push(C.d(hb.alive ? '픽업 대기(커밋 전)' : '픽업 대기 — 에이전트가 멈춰 있다'))
       continue
     }
@@ -160,9 +179,10 @@ for (const name of jobs) {
 
   if (bad) broken++
   const gate = !mf ? C.r('✗커밋') : (rejected ? C.r('✗거절') : (ingested ? C.g('✓수령') : C.y('…대기')))
+  // ⚠️ 픽업 표기도 같은 축을 쓴다 — 부분 반영은 아직 「…픽업」이다(차례가 안 온 장이 있다).
   const pickTxt = pick.length === 0 ? C.d('—')
     : pick.every((p) => p.state === 'ok') ? C.g('✓픽업')
-      : !(mf && ingested) ? C.d('…픽업')
+      : !(mf && allMarked && !rejected) ? C.d('…픽업')
         : clashed && !bad ? C.y('~픽업') : C.r('✗픽업')
 
   const zB = epsB + thB + aiB + mfB
