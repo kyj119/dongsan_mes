@@ -18,11 +18,7 @@
       "title": true
     },
     "/attendance|#1": {
-      "short": 9,
-      "title": false
-    },
-    "/attendance|직원": {
-      "short": 28,
+      "short": 10,
       "title": false
     },
     "/bank|월 납입": {
@@ -93,20 +89,12 @@
       "short": 13,
       "title": false
     },
-    "/equipment|키트": {
-      "short": 147,
-      "title": false
-    },
     "/financial-reports|수량/비율": {
       "short": 18,
       "title": false
     },
     "/inventory-dashboard|현재고": {
       "short": 15,
-      "title": false
-    },
-    "/items|작업": {
-      "short": 23,
       "title": false
     },
     "/messages|관련 업무": {
@@ -118,43 +106,27 @@
       "title": false
     },
     "/post-processing|상태": {
-      "short": 12,
+      "short": 23,
       "title": false
     },
     "/post-processing|카드": {
       "short": 16,
       "title": true
     },
-    "/post-processing|관리": {
-      "short": 46,
-      "title": false
-    },
-    "/post-processing|코드": {
-      "short": 23,
-      "title": false
-    },
     "/post-processing|파라미터": {
-      "short": 12,
-      "title": false
+      "short": 36,
+      "title": true
     },
     "/post-processing|적용 소분류": {
-      "short": 27,
-      "title": false
-    },
-    "/price-list|코드": {
-      "short": 15,
-      "title": false
+      "short": 51,
+      "title": true
     },
     "/production|장비": {
-      "short": 101,
-      "title": false
-    },
-    "/production|출력정보": {
-      "short": 34,
-      "title": false
+      "short": 43,
+      "title": true
     },
     "/purchase-orders|발주번호": {
-      "short": 128,
+      "short": 76,
       "title": true
     },
     "/settings/payroll-rates|하한/상한": {

@@ -148,7 +148,23 @@ async function auditPage(page, target) {
   return { ...target, note, hits: [...byCol.values()] };
 }
 
+// 기준선을 **다른 대상**으로 덮어쓰지 않는다. 로컬은 데이터가 적어 잘림이 덜 잡히므로,
+// prod 기준선 위에 로컬 측정치를 쓰면 기준선이 조용히 줄어들고 prod 의 알려진 잘림이
+// 「해소됨」으로 사라진다(2026-09-18 실제로 44→14 로 깎았다). 대조 경로에는 경고가 있었는데
+// 쓰기 경로가 무방비였던 것이 원인 — 되돌릴 수 없는 쪽을 막는다. 재기 전에 판정한다(측정 2분).
+function assertUpdateTarget() {
+  if (!UPDATE) return;
+  let prev = null;
+  try { prev = JSON.parse(fs.readFileSync(BASELINE, 'utf8')); } catch (e) { /* ignore: 최초 생성이면 없다 */ }
+  if (!prev || !prev.base || prev.base === BASE || has('--force-base')) return;
+  console.error(`[table-clip] 기준선은 ${prev.base} 것인데 지금 측정 대상은 ${BASE} 입니다 — 덮어쓰지 않았습니다.`);
+  console.error(`  같은 대상으로 다시 재세요:  npm run audit:table-clip -- --base ${prev.base} --update`);
+  console.error('  대상을 정말 바꾸려면 --force-base 를 붙이세요(기준선 전체가 새 대상 기준으로 다시 만들어집니다).');
+  process.exit(2);
+}
+
 (async () => {
+  assertUpdateTarget();
   const { chromium } = require('@playwright/test');
   const token = await login();
   const targets = menuPaths();
