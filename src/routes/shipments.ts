@@ -321,7 +321,16 @@ shipmentsRouter.post('/consolidation-pending', requireAccessOrRole('/shipments',
       seen.add(id)
       return true
     })
-    return c.json({ success: true, data: uniq })
+    // #653: 이 호출자가 **실제로 출고할 수 있는** 파트너인지 표시한다. 판정 축은 후속 `PATCH /orders/bulk-ship`
+    //   이 쓰는 것과 **같은 규칙**(entityFilter — queries.ts:322)이어야 한다. 합배송 자체는 법인을 넘지만
+    //   출고 처리는 자법인만 되므로, 구분 없이 「함께 출고」를 권하면 **동의한 뒤에 그 건만 실패한다**.
+    //   타법인 파트너는 대상에서 빼고 화면이 안내만 한다(그쪽 법인에서 출고해야 한 박스·배송비 1회가 지켜진다).
+    const callerEntity = getEntityId(c)
+    const data = uniq.map((p) => ({
+      ...p,
+      shippable: callerEntity === 0 || Number(p.entity_id) === callerEntity,
+    }))
+    return c.json({ success: true, data })
   } catch (error) {
     console.error('shipments consolidation-pending error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

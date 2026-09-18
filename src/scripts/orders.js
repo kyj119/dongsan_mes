@@ -104,16 +104,31 @@ async function bulkShipSelected() {
   try {
     var pres = await axios.post('/api/shipments/consolidation-pending', { order_ids: shipIds });
     var partners = (pres.data && pres.data.success) ? (pres.data.data || []) : [];
-    if (partners.length > 0) {
-      var plist = partners.map(function (p) {
-        return '· ' + (p.entity_name ? p.entity_name + ' ' : '') + (p.order_number || ('#' + p.id))
-          + (p.client_name ? ' / ' + p.client_name : '')
-          + (p.delivery_date ? ' (납품 ' + String(p.delivery_date).substring(5) + ')' : '');
-      }).join('\n');
-      if (await showConfirm('합배송으로 묶인 미출고 주문 ' + partners.length + '건이 있습니다:\n' + plist
+    // #653: 파트너는 법인을 넘어 묶일 수 있지만 **출고 처리는 자법인만** 된다(bulk-ship 의 entityFilter).
+    //   구분 없이 「함께 출고」를 권하면 동의한 뒤에 그 건만 실패한다 — 서버가 `shippable` 로 갈라 준다.
+    //   타법인은 대상에서 빼고 **안내만** 한다(그쪽 법인이 출고해야 한 박스·배송비 1회가 지켜진다).
+    var fmtPartner = function (p) {
+      return '· ' + (p.entity_name ? p.entity_name + ' ' : '') + (p.order_number || ('#' + p.id))
+        + (p.client_name ? ' / ' + p.client_name : '')
+        + (p.delivery_date ? ' (납품 ' + String(p.delivery_date).substring(5) + ')' : '');
+    };
+    var mine = partners.filter(function (p) { return p.shippable !== false; });
+    var others = partners.filter(function (p) { return p.shippable === false; });
+    var otherNote = others.length
+      ? '\n\n⚠ 타법인 ' + others.length + '건은 같은 박스로 묶여 있지만 여기서 출고할 수 없습니다 — 해당 법인에 요청하세요:\n'
+        + others.map(fmtPartner).join('\n')
+      : '';
+    if (mine.length > 0) {
+      if (await showConfirm('합배송으로 묶인 미출고 주문 ' + mine.length + '건이 있습니다:\n' + mine.map(fmtPartner).join('\n') + otherNote
             + '\n\n함께 출고 처리할까요?\n(따로 내보내면 배송비가 주문마다 따로 청구됩니다)')) {
-        partners.forEach(function (p) { if (shipIds.indexOf(p.id) < 0) shipIds.push(p.id); });
+        mine.forEach(function (p) { if (shipIds.indexOf(p.id) < 0) shipIds.push(p.id); });
       } else if (!(await showConfirm('합배송 파트너를 빼고 선택한 주문만 출고합니다.\n박스가 실제로 함께 나갔다면 파트너도 같이 출고해야 배송비가 한 번만 청구됩니다. 계속할까요?'))) {
+        return;
+      }
+    } else if (others.length > 0) {
+      // 함께 내보낼 수 있는 건이 하나도 없다 — 권할 것이 없으므로 안내하고 계속할지만 묻는다.
+      if (!(await showConfirm('합배송으로 묶인 미출고 주문이 있습니다.' + otherNote
+            + '\n\n이대로 선택한 주문만 출고할까요?'))) {
         return;
       }
     }
