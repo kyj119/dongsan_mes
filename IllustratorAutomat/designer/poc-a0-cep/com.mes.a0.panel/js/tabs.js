@@ -15,11 +15,26 @@
 
   var KEY = 'mes_main_tab';
 
+  /**
+   * 탭 정의 — 이름과 버전 표시 id 를 **한 곳에** 둔다.
+   * ★2026-09-18 전사(tr) 추가. 종전엔 `(name === 'cut') ? 'cut' : 'a0'` 삼항이라 셋째 탭을
+   *   넣으면 조용히 'a0' 로 떨어졌다. 표로 바꿔 두면 다음 탭도 한 줄로 끝난다.
+   */
+  var TABS = [
+    { id: 'a0', ver: 'ver' },
+    { id: 'cut', ver: 'cutVer' },
+    { id: 'tr', ver: 'trVer' }
+  ];
+  function known(name) {
+    for (var i = 0; i < TABS.length; i++) if (TABS[i].id === name) return TABS[i].id;
+    return TABS[0].id;
+  }
+
   function pages() { return document.querySelectorAll('[data-main-page]'); }
   function tabs() { return document.querySelectorAll('.mtab'); }
 
   function apply(name, fire) {
-    var want = (name === 'cut') ? 'cut' : 'a0';
+    var want = known(name);
     var i, el;
     var ps = pages();
     for (i = 0; i < ps.length; i++) {
@@ -33,10 +48,11 @@
       el.className = (el.getAttribute('data-main-tab') === want) ? 'mtab active' : 'mtab';
     }
     document.body.setAttribute('data-main', want);
-    // 버전 표시는 보고 있는 쪽만 — 둘 다 띄우면 좁은 패널에서 제목이 두 줄이 된다
-    var v = document.getElementById('ver'), cv = document.getElementById('cutVer');
-    if (v) v.className = (want === 'a0') ? 'ver' : 'ver hidden';
-    if (cv) cv.className = (want === 'cut') ? 'ver' : 'ver hidden';
+    // 버전 표시는 보고 있는 쪽만 — 전부 띄우면 좁은 패널에서 제목이 두 줄이 된다
+    for (i = 0; i < TABS.length; i++) {
+      var ve = document.getElementById(TABS[i].ver);
+      if (ve) ve.className = (TABS[i].id === want) ? 'ver' : 'ver hidden';
+    }
     // 설명 토글(?)은 **두 탭 공용**이다 (2026-08-06).
     //   CSS 가 `.panel.no-hints .hint` 로 패널 전체에 걸리므로 접힘 상태는 원래 공용이었는데,
     //   버튼만 재단 쪽에 있어서 **가공 탭에서는 설명을 켤 수단이 없었다** — 접힌 줄도 모른 채

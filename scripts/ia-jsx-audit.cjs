@@ -54,8 +54,16 @@ const AGENT_JSX = ['SheetLayout.jsx', 'ProcessOrderItem.jsx', 'ExtractGroups.jsx
 //   repo 에 실재하는 것만 감사한다 — 새 호스트(mes-cut-host.jsx 등)를 만들면 **자동으로 편입**된다.
 //   mes-lock.jsx = 두 호스트가 공유하는 잠금 모듈. 이게 낡으면 패널들이 서로의 작업을 못 본다.
 // mes-core.jsx·mes-sheet.jsx 는 2026-09-11 은퇴(스텁은 07-28) — 판짜기는 패널만 쓴다(용준님 확정). Z: 는 `_retired/`.
-const DESIGNER_JSX = ['mes-a0-host.jsx', 'mes-cut-host.jsx', 'mes-lock.jsx']
+// ★★목록이 아니라 **열거**다 (2026-09-18 정정) — 위 주석은 "새 호스트를 만들면 자동으로 편입된다"고
+//   적어 놓고 실제로는 하드코딩 배열이었다. filter 는 **없어진 것을 빼줄 뿐 새 것을 넣지 않는다.**
+//   그래서 새로 만든 mes-tr-host.jsx 가 감사망 밖에 있었다 — 아래 ③(배포 도구 자신이 감사망 밖)과
+//   **같은 형태의 ④**다. 이제 `mes-*-host.jsx` 를 전부 집고, 호스트가 아닌 공유 모듈만 따로 더한다.
+const DESIGNER_EXTRA = ['mes-lock.jsx']   // 호스트는 아니지만 Z: 정본인 공유 모듈
+const DESIGNER_JSX = fs.readdirSync(path.join(IA, 'designer'))
+  .filter((f) => /^mes-.+-host.jsx$/.test(f))
+  .concat(DESIGNER_EXTRA)
   .filter((f) => fs.existsSync(path.join(IA, 'designer', f)))
+  .sort()
 // ── ★배포 대상을 하드코딩하지 않는다 (2026-08-06 근본수정) ────────────────
 // 여태 패널 파일 목록이 손으로 관리되는 배열이었다. 그래서 **목록에 없는 파일은
 // 바뀌어도 아무도 모른다** — 같은 사고를 세 번 냈다:

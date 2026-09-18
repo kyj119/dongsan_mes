@@ -190,3 +190,10 @@ button.danger { border-color: #7a4a4a; color: #e0b0b0; }
 [data-main="cut"] button:hover:not(:disabled) { border-color: #6e9fd8; }
 [data-main="cut"] button:disabled { opacity: .45; }
 #cutOut { min-height: 46px; max-height: 160px; overflow: auto; line-height: 1.5; }
+
+/* 전사 탭 안쪽 탭 — ★.tab/.tabpage 를 쓰면 안 된다. main.js 가 getElementsByClassName('tab') 으로
+   **전역 수집**하므로 가공 탭 핸들러가 전사 페이지까지 집어 뒤바꾼다(tabs.js 주석의 그 함정, 2026-09-18). */
+.trtab { flex: 1; background: #2b2b2b; border: 1px solid #444; border-bottom: none; border-radius: 4px 4px 0 0; color: #a0a0a0; padding: 5px 4px; font-size: 12px; }
+.trtab.active { background: #3a3a3a; color: #ededed; border-color: #6e9fd8; }
+.trtab:hover { color: #ededed; }
+.trpage { display: flex; flex-direction: column; gap: 7px; }

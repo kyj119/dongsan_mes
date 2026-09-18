@@ -1,0 +1,103 @@
+{
+  "_": "전사 가로등배너 판 기준선 — 2026-08 완성본 실측(Z:\\메인1\\메인1\\2026\\8월) + 작업지시서 대조",
+  "_규칙": [
+    "measured = 사람이 짠 판에서 실제로 잰 값. computed = plate.js 산식 출력.",
+    "게이트는 두 가지를 본다 ① computed 가 frozen 과 같은가(회귀) ② computed↔measured 차이가 maxDiffMm 이내인가(드리프트).",
+    "★measured 가 정답이 아니다 — 현행 작업은 세로 보정을 비율이 아니라 +30.36 고정으로 준 흔적이 있다(60-150 에서 특히).",
+    "  용준님 확인(2026-09-18): 인수인계에 180↔150 차이가 고지되지 않아 3cm 로 통일하거나 2cm 만 늘린 사례가 있었고, 앞으로는 비율로 간다.",
+    "  그래서 산식을 measured 에 맞추지 않는다. 차이는 기록하고, 기록을 벗어날 때만 잡는다(stock-ledger-baseline 과 같은 방식).",
+    "sewCm 은 밴드 실측에서 역산했다 — sewCm = (bandH / 1.016 - 10) / 10. 작업지시서로 확인된 건에는 order 를 적었다."
+  ],
+  "_허용오차근거": [
+    "1.5mm — 임의로 정한 값이 아니라 **현행 관행과 규칙의 구조적 차이**다.",
+    "현행은 세로 보정을 비율이 아니라 판 높이 +30.00 또는 +30.36 **고정**으로 줬다(실측 8건: 30.00×4 · 30.36×3 · 0×1).",
+    "규칙(×1.016)이 주는 증가량은 1단계 높이에 비례한다 — 1870→29.92 · 1960→31.36.",
+    "그래서 차이는 **봉미싱이 길수록 커진다**: 3cm 0.08 → 7cm 0.54 → 10cm 1.04 → 12cm 1.27(벌 기준).",
+    "⚠️ 12cm 를 넘는 봉미싱이 들어오면 이 오차도 커진다. 그때 허용치를 올리지 말고 **왜 아직도 현행이 고정 보정인지**를 먼저 물어라.",
+    "이 검사의 목적은 이 알려진 차이를 통과시키는 게 아니라, **그 밖의 새로운 어긋남**을 잡는 것이다."
+  ],
+  "maxDiffMm": 1.5,
+  "cases": [
+    {
+      "name": "태백안전산업 강릉ITS세계총회(60-180-321조)",
+      "order": "260811 태백안전산업 강릉ITS세계총회-가로등배너.ai — 「상단 3cm 봉미싱 · 3면쌍침」",
+      "input": { "specW": 600, "specH": 1800, "vup": 2, "seam": "쌍침", "sewCm": 3, "band": "top", "media": "60폭" },
+      "measured": { "plateW": 1294, "plateH": 1900, "bandH": 40.64, "panelH": 1859.36 },
+      "frozen": { "plateW": 1294, "plateH": 1899.92, "bandH": 40.64, "panelH": 1859.28, "seamActual": 23.25 }
+    },
+    {
+      "name": "소울디자인 보건대학교1(60-180-8조)",
+      "order": null,
+      "input": { "specW": 600, "specH": 1800, "vup": 2, "seam": "쌍침", "sewCm": 4, "band": "top", "media": "60폭" },
+      "measured": { "plateW": 1294, "plateH": 1910, "bandH": 50.8, "panelH": 1859.2 },
+      "frozen": { "plateW": 1294, "plateH": 1910.08, "bandH": 50.8, "panelH": 1859.28, "seamActual": 23.25 }
+    },
+    {
+      "name": "다인광고기획(계룡) 현수막게시금지(60-180-2조)",
+      "order": null,
+      "input": { "specW": 600, "specH": 1800, "vup": 2, "seam": "쌍침", "sewCm": 5, "band": "top", "media": "60폭" },
+      "measured": { "plateW": 1294, "plateH": 1920, "bandH": 60.95, "panelH": 1859.05 },
+      "frozen": { "plateW": 1294, "plateH": 1920.24, "bandH": 60.96, "panelH": 1859.28, "seamActual": 23.25 }
+    },
+    {
+      "name": "21세기기획 고구마체험행사(60-180-40조)",
+      "order": "0820 21세기기획 고구마체험행사-가로등배너.ai — 「상단 7cm, 봉미싱 · 3면쌍침」",
+      "input": { "specW": 600, "specH": 1800, "vup": 2, "seam": "쌍침", "sewCm": 7, "band": "top", "media": "60폭" },
+      "measured": { "plateW": 1294.36, "plateH": 1940.36, "bandH": 81.25, "panelH": 1858.74 },
+      "frozen": { "plateW": 1294, "plateH": 1940.56, "bandH": 81.28, "panelH": 1859.28, "seamActual": 23.25 }
+    },
+    {
+      "name": "홍익(익산) 군산북페어(60-180-30조)",
+      "order": "260807 홍익(익산) 군산북페어-가로등배너.ai — 「상단 10cm 봉미싱 · 3면쌍침」",
+      "input": { "specW": 600, "specH": 1800, "vup": 2, "seam": "쌍침", "sewCm": 10, "band": "top", "media": "60폭" },
+      "measured": { "plateW": 1294.36, "plateH": 1970.36, "bandH": 111.7, "panelH": 1858.3 },
+      "frozen": { "plateW": 1294, "plateH": 1971.04, "bandH": 111.76, "panelH": 1859.28, "seamActual": 23.25 }
+    },
+    {
+      "name": "홍익(익산) 전주교육대학교(60-180-38조)",
+      "order": "260824 홍익(익산) 전주교육대학교-가로등배너.ai — 「상단 10cm 봉미싱 · 3면쌍침」",
+      "input": { "specW": 600, "specH": 1800, "vup": 2, "seam": "쌍침", "sewCm": 10, "band": "top", "media": "60폭" },
+      "measured": { "plateW": 1294, "plateH": 1970, "bandH": 111.7, "panelH": 1858.3 },
+      "frozen": { "plateW": 1294, "plateH": 1971.04, "bandH": 111.76, "panelH": 1859.28, "seamActual": 23.25 }
+    },
+    {
+      "name": "미술교류-12cm봉미싱(60-180-2조)",
+      "order": "파일명에 「12cm봉미싱」",
+      "input": { "specW": 600, "specH": 1800, "vup": 2, "seam": "쌍침", "sewCm": 12, "band": "top", "media": "60폭" },
+      "measured": { "plateW": 1294.36, "plateH": 1990.36, "bandH": 131.99, "panelH": 1858.01 },
+      "frozen": { "plateW": 1294, "plateH": 1991.36, "bandH": 132.08, "panelH": 1859.28, "seamActual": 23.25 }
+    },
+    {
+      "name": "로운시스템 새만금오토레저캠핑쇼(60-180-150조)",
+      "order": null,
+      "input": { "specW": 600, "specH": 1800, "vup": 2, "seam": "쌍침", "sewCm": 3.5, "band": "top", "media": "60폭" },
+      "measured": { "plateW": 1294, "plateH": 1905, "bandH": 45.72, "panelH": 1859.28 },
+      "frozen": { "plateW": 1294, "plateH": 1905, "bandH": 45.72, "panelH": 1859.28, "seamActual": 23.25 }
+    }
+  ],
+  "deviations": [
+    {
+      "name": "신신홍보기획 IBK기업은행(60-150-4조) · 홍익(익산) 코레일(60-150-4조)",
+      "input": { "specW": 600, "specH": 1500, "vup": 2, "seam": "쌍침", "sewCm": 5, "band": "top", "media": "60폭" },
+      "measured": { "plateW": 1294.18, "plateH": 1620.36, "bandH": 61.13, "panelH": 1558.87 },
+      "why": "세로 보정이 비율(×1.016 → 판 1615.44)이 아니라 +30.36 고정으로 들어갔다. 용준님 확인 = 인수인계에 180↔150 차이가 고지되지 않은 탓. 앞으로는 비율이 맞으므로 산식을 여기 맞추지 않는다.",
+      "diffMm": 4.92
+    }
+  ],
+  "rejected": [
+    {
+      "name": "솜씨(익산) 원광대학교(45-120-6조)",
+      "input": { "specW": 450, "specH": 1200, "vup": 2, "seam": "쌍침", "sewCm": 6, "band": "top", "media": "45폭" },
+      "measured": { "plateW": 1001.18, "plateH": 1320.36, "bandH": 71.07, "panelH": 1248.92, "seamActual": 25 },
+      "expectCode": "media",
+      "why": "45폭은 전체가로폭 축소가 없었다(1001 = 500×2+1, 시접 25 그대로). plateW 를 추측해 넣지 않는다 — 폭마다 다르다."
+    },
+    {
+      "name": "사거리인쇄광고기획 공주시도서관책축제(60-180-100조) · 보급형배너",
+      "input": { "specW": 600, "specH": 1800, "vup": 2, "seam": "쌍침", "sewCm": 0, "band": "보급형", "media": "60폭" },
+      "measured": { "plateW": 1294, "plateH": 1860 },
+      "expectCode": "band",
+      "why": "보급형은 판 높이가 벌+밴드로 떨어지지 않는다(가이드 3.60-150: 1530+40=1570인데 판 1603.68). 규칙 미확정."
+    }
+  ]
+}

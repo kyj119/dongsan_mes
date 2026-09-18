@@ -227,6 +227,42 @@ console.log('\n── 8 ★소프트 에지(블렌드 밴드)는 링으로 확�
   }
 }
 
+console.log('\n── 9 비대칭 도련 (전사 축, 2026-09-18) ──')
+// 가로등배너는 좌우 23.25 · 밴드 쪽 0 · 반대쪽 30.48 처럼 변마다 다르다.
+// ★숫자를 넘겼을 때 동작이 **종전과 완전히 같아야** 재단 축이 안 흔들린다 — 그것부터 고정한다.
+{
+  const src = make(30, 20, (x, y) => (x >= 5 && x < 25 && y >= 4 && y < 16) ? [10, 200, 90] : null)
+
+  const a = repeatLastPixel(src, 5)
+  const b = repeatLastPixel(src, { t: 5, r: 5, b: 5, l: 5 })
+  ok('① 숫자 5 와 {5,5,5,5} 가 같은 크기', a.W === b.W && a.H === b.H, `${a.W}x${a.H} vs ${b.W}x${b.H}`)
+  let diff = 0
+  for (let i = 0; i < a.data.length; i++) if (a.data[i] !== b.data[i]) diff++
+  ok('② ★픽셀까지 동일 — 대칭 경로가 안 바뀌었다', diff === 0, `${diff}px`)
+  ok('③ 대칭이면 pad 가 그대로 숫자', a.pad === 5, String(a.pad))
+
+  const c = repeatLastPixel(src, { t: 0, r: 8, b: 3, l: 2 })
+  ok('④ 캔버스가 변마다 다르게 커진다', c.W === 30 + 2 + 8 && c.H === 20 + 0 + 3, `${c.W}x${c.H}`)
+  ok('⑤ pads 를 돌려준다', c.pads.t === 0 && c.pads.r === 8 && c.pads.b === 3 && c.pads.l === 2, JSON.stringify(c.pads))
+  ok('⑥ ★비대칭이면 pad 는 null — 옛 호출부가 조용히 어긋나지 않는다', c.pad === null, String(c.pad))
+
+  // 원본은 (padL, padT) = (2, 0) 에 놓인다. 잉크 사각은 원본 좌표 x 5..24 · y 4..15
+  const ix0 = 5 + 2, ix1 = 24 + 2, iy0 = 4 + 0, iy1 = 15 + 0
+  ok('⑦ 원본 색 보존', px(c, ix0, iy0).join() === '10,200,90,255', px(c, ix0, iy0).join())
+  ok('⑧ ★위로는 안 자란다 (t=0)', px(c, ix0 + 3, iy0 - 1)[3] === 0, String(px(c, ix0 + 3, iy0 - 1)[3]))
+  ok('⑨ 오른쪽으로 8px 자란다', px(c, ix1 + 8, 10).join() === '10,200,90,255', px(c, ix1 + 8, 10).join())
+  ok('⑩ 오른쪽 9px 은 안 자란다', px(c, ix1 + 9, 10)[3] === 0, String(px(c, ix1 + 9, 10)[3]))
+  // 왼쪽 l=2 → 잉크 왼쪽 2px(x=5,6)만 채워지고 그 바깥(x=4)은 투명이다.
+  ok('⑪ 왼쪽은 2px 만 (그 바깥은 투명)', px(c, ix0 - 2, 10)[3] === 255 && px(c, ix0 - 3, 10)[3] === 0,
+    px(c, ix0 - 2, 10).join() + ' / ' + px(c, ix0 - 3, 10).join())
+  ok('⑫ 아래로 3px 자란다', px(c, ix0 + 3, iy1 + 3).join() === '10,200,90,255', px(c, ix0 + 3, iy1 + 3).join())
+
+  // 자가시험 — 한 변을 0 으로 만들면 그쪽이 사라지고, 되돌리면 돌아온다
+  const d = repeatLastPixel(src, { t: 4, r: 8, b: 3, l: 2 })
+  ok('⑬ 자가시험 — t 를 4 로 주면 위로 자란다', px(d, ix0 + 3 + 0, 4 + 4 - 1)[3] === 255,
+    String(px(d, ix0 + 3, 4 + 4 - 1)[3]))
+}
+
 console.log(`\n── 판정 ──`)
 if (fails) { console.log(`  ❌ ${fails}건 실패`); process.exit(1) }
-console.log('  ✅ 전 항목 통과 (링 색 보존·내부 선 차단·위치별 색·오목 홈·성능·반투명 가장자리·소프트 에지·겹침 분할)')
+console.log('  ✅ 전 항목 통과 (링 색 보존·내부 선 차단·위치별 색·오목 홈·성능·반투명 가장자리·소프트 에지·겹침 분할·비대칭)')

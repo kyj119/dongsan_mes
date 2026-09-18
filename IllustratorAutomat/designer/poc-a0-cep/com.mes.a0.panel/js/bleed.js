@@ -73,15 +73,27 @@
     opt = opt || {};
     var aMin = opt.alphaMin;
     var inset = (typeof opt.srcInsetPx === 'number') ? Math.max(0, Math.round(opt.srcInsetPx)) : 2;
-    var pad = Math.max(0, Math.ceil(growPx));
+
+    // ★growPx 는 숫자(사방 같음) 또는 {t,r,b,l}(변마다 다름)이다 — 2026-09-18 전사 축에서 필요해졌다.
+    //   가로등배너는 좌우 23.25 · 밴드 쪽 0 · 반대쪽 30.48 처럼 **비대칭**이라 단일 값으로 표현할 수 없다.
+    //   ⚠️ 숫자를 넘기면 동작은 **종전과 완전히 같다**(아래 한계식이 원으로 퇴화한다) — 재단 축이 흔들리지 않는다.
+    var sym = (typeof growPx === 'number');
+    var gL = sym ? growPx : (growPx && growPx.l) || 0;
+    var gR = sym ? growPx : (growPx && growPx.r) || 0;
+    var gT = sym ? growPx : (growPx && growPx.t) || 0;
+    var gB = sym ? growPx : (growPx && growPx.b) || 0;
+    var padL = Math.max(0, Math.ceil(gL)), padR = Math.max(0, Math.ceil(gR));
+    var padT = Math.max(0, Math.ceil(gT)), padB = Math.max(0, Math.ceil(gB));
+    var pad = padL;   // 하위호환 — 대칭일 때만 뜻이 있다. 비대칭이면 아래에서 null 로 바꾼다.
+
     var W = src.W, H = src.H, s = src.data;
-    var NW = W + pad * 2, NH = H + pad * 2;
+    var NW = W + padL + padR, NH = H + padT + padB;
     var n = NW * NH;
     var out = new Uint8ClampedArray(n * 4);
 
-    // ① 확장 캔버스에 원본을 pad 만큼 안쪽으로 놓는다
+    // ① 확장 캔버스에 원본을 (padL, padT) 위치에 놓는다
     for (var y = 0; y < H; y++) {
-      var so = y * W * 4, to = ((y + pad) * NW + pad) * 4;
+      var so = y * W * 4, to = ((y + padT) * NW + padL) * 4;
       for (var x = 0; x < W * 4; x++) out[to + x] = s[so + x];
     }
 
@@ -127,14 +139,25 @@
     }
 
     // ③ grow 안쪽 빈 픽셀에 **가장 가까운 불투명 픽셀의 색**을 그대로 복사(반복)
-    var lim2 = growPx * growPx, filled = 0;
+    //   ★한계는 **방향별**이다. (a,b) 는 공급원 → 나 의 변위이므로 a>0 이면 오른쪽, b>0 이면 아래쪽 성장이다.
+    //     (a/gx)² + (b/gy)² <= 1 로 재면 네 값이 같을 때 a²+b² <= g² 로 **정확히 퇴화**한다(종전 동작 보존).
+    var filled = 0;
+    function within(a, b) {
+      var gx = (a >= 0) ? gR : gL;
+      var gy = (b >= 0) ? gB : gT;
+      if (a !== 0 && gx <= 0) return false;
+      if (b !== 0 && gy <= 0) return false;
+      var u = (gx > 0) ? (a / gx) : 0;
+      var v = (gy > 0) ? (b / gy) : 0;
+      return (u * u + v * v) <= 1;
+    }
     for (py = 0; py < NH; py++) {
       for (px = 0; px < NW; px++) {
         i = py * NW + px;
         if (out[i * 4 + 3] >= aMin) continue;      // 원본 잉크는 그대로
         var a = dx[i], b = dy[i];
         if (a === SENT) continue;                   // 공급원 없음
-        if (a * a + b * b > lim2) continue;        // 도련 범위 밖
+        if (!within(a, b)) continue;                // 도련 범위 밖(방향별)
         var sx = px - a, sy = py - b;              // (dx,dy) 는 "나 → 공급원" 의 반대 방향 누적
         if (sx < 0 || sy < 0 || sx >= NW || sy >= NH) continue;
         var j = (sy * NW + sx) * 4, k = i * 4;
@@ -160,7 +183,9 @@
         filled++;
       }
     }
-    return { W: NW, H: NH, data: out, pad: pad, filled: filled };
+    // ⚠️비대칭이면 pad 를 null 로 돌려준다 — 하나의 숫자로 원점을 표현할 수 없기 때문이다.
+    //   옛 호출부가 그대로 쓰면 **조용히 어긋나는 대신 눈에 띄게 깨진다**. 새 호출부는 pads 를 본다.
+    return { W: NW, H: NH, data: out, pad: (sym ? pad : null), pads: { t: padT, r: padR, b: padB, l: padL }, filled: filled };
   }
 
   var api = { repeatLastPixel: repeatLastPixel };
