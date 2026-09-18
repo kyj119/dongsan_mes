@@ -63,6 +63,7 @@ function selectCapsSite(siteId) {
   renderCapsSiteCards();
   loadCapsSiteSettings(siteId);
   loadCapsSyncLog();
+  if (typeof loadCapsEmployeeMap === 'function') loadCapsEmployeeMap();
 }
 
 // ?raw 전역 스코프 — 종전 이름이 `timeAgo` 라 셸 전역(shell.js:1440)을 덮어써
@@ -410,3 +411,186 @@ async function triggerCapsSync() {
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sync-alt mr-1"></i>지금 동기화'; }
   }
 }
+
+// ============================================================================
+// 사원 매핑 관리 (0624)
+//   API(`/caps/employee-map`, `/caps/ignore-fpids`)는 처음부터 있었는데 **화면이 없었다.**
+//   그래서 미매핑을 손댈 방법이 없었고, 미매핑 펀치는 ingest 가 조용히 skip 해서
+//   그 직원은 그날 출근 기록이 없는 사람이 된다 → 결근으로 계산 → 급여 공제.
+//   2026-09-18 실측: SM 사이트 미매핑 6명(김경수 포함)·DJ 사이트에 선명 직원 다수.
+// ============================================================================
+var capsEmpCache = [];      // MES 직원 목록
+var capsMapCache = [];      // 현재 매핑
+
+async function capsLoadEmployeeOptions() {
+  if (capsEmpCache.length) return capsEmpCache;
+  try {
+    var res = await axios.get('/api/hr/employees', { params: { limit: 500, status: 'ACTIVE' } });
+    var d = res.data && res.data.data;
+    capsEmpCache = (d && (d.items || d)) || [];
+    if (!Array.isArray(capsEmpCache)) capsEmpCache = [];
+  } catch (e) { capsEmpCache = []; }
+  return capsEmpCache;
+}
+
+function capsEmpSelectHtml(id) {
+  var opts = ['<option value="">— 직원 선택 —</option>'].concat(capsEmpCache.map(function(e) {
+    return '<option value="' + e.id + '">' + escapeHtml(e.name + (e.employee_code ? ' (' + e.employee_code + ')' : '')) + '</option>';
+  }));
+  return '<select id="' + id + '" class="px-2 py-1 border border-gray-300 rounded text-xs">' + opts.join('') + '</select>';
+}
+
+window.loadCapsEmployeeMap = async function() {
+  if (!capsCurrentSiteId) return;
+  await capsLoadEmployeeOptions();
+
+  // 1) 현재 매핑
+  try {
+    var res = await axios.get('/api/caps/employee-map', { params: { site_id: capsCurrentSiteId } });
+    capsMapCache = ((res.data && res.data.data) || []).filter(function(m) { return m.is_active === 1 || m.is_active === '1'; });
+  } catch (e) { capsMapCache = []; }
+  renderCapsMapped();
+
+  // 2) 미매핑 + 무시목록은 사이트 레코드에서 (동기화가 남긴 값)
+  var site = null;
+  for (var i = 0; i < capsSitesCache.length; i++) if (capsSitesCache[i].id === capsCurrentSiteId) site = capsSitesCache[i];
+  renderCapsUnmappedRows(site && site.last_unmapped);
+  renderCapsIgnored(site && site.ignored_fpids);
+};
+
+function capsParseJson(raw) {
+  try {
+    var v = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : [];
+    return Array.isArray(v) ? v : [];
+  } catch (e) { return []; }
+}
+
+// ───────── 미매핑 행 (매핑 / 무시) ─────────
+function renderCapsUnmappedRows(rawJson) {
+  var wrap = document.getElementById('capsMapUnmappedList');
+  var empty = document.getElementById('capsMapUnmappedEmpty');
+  var cnt = document.getElementById('capsMapUnmappedCount');
+  if (!wrap || !empty || !cnt) { console.warn('[capsSettings] 미매핑 요소 없음'); return; }
+  var rows = capsParseJson(rawJson);
+  // 이미 매핑된 지문번호는 목록에서 뺀다(동기화 이후 매핑했을 수 있다)
+  var mapped = {};
+  capsMapCache.forEach(function(m) { mapped[String(m.caps_e_idno)] = true; });
+  rows = rows.filter(function(r) { return !mapped[String(r.fpid || r.e_idno)]; });
+
+  cnt.textContent = rows.length;
+  empty.classList.toggle('hidden', rows.length > 0);
+  wrap.innerHTML = rows.map(function(r, i) {
+    var fp = String(r.fpid || r.e_idno || '');
+    var nm = r.e_name || '';
+    var dept = r.c_dept || '';
+    return '<div class="flex items-center gap-2 flex-wrap bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5">'
+      + '<span class="font-mono text-xs text-amber-900">' + escapeHtml(fp) + '</span>'
+      + '<span class="text-xs text-gray-700">' + escapeHtml(nm || '(이름 없음)') + '</span>'
+      + (dept ? '<span class="text-[10px] text-gray-400">' + escapeHtml(dept) + '</span>' : '')
+      + '<div class="flex-1"></div>'
+      + capsEmpSelectHtml('capsMapSel' + i)
+      + '<button onclick="capsMapAssign(\'' + escapeJsAttr(fp) + '\',\'' + escapeJsAttr(nm) + '\',\'' + escapeJsAttr(dept) + '\',' + i + ')" '
+      + 'class="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">매핑</button>'
+      + '<button onclick="capsMapIgnore(\'' + escapeJsAttr(fp) + '\')" '
+      + 'class="px-2 py-1 text-xs border border-gray-300 text-gray-600 bg-white rounded hover:bg-gray-50" '
+      + 'title="관리자·테스트 지문 등 직원이 아닌 번호">무시</button>'
+      + '</div>';
+  }).join('');
+}
+
+window.capsMapAssign = async function(fpid, name, dept, idx) {
+  var sel = document.getElementById('capsMapSel' + idx);
+  var empId = sel && sel.value;
+  if (!empId) { showToast('직원을 먼저 고르세요', 'warning'); return; }
+  var emp = capsEmpCache.filter(function(e) { return String(e.id) === String(empId); })[0];
+  var msg = '지문번호 ' + fpid + (name ? ' (' + name + ')' : '') + ' → ' + (emp ? emp.name : empId) + ' 로 매핑합니다.\n'
+    + '⚠️ 이 직원이 다른 사이트에 매핑돼 있으면 그 매핑은 해제됩니다.';
+  if (!(await showConfirm(msg))) return;
+  try {
+    await axios.post('/api/caps/employee-map', {
+      site_id: capsCurrentSiteId, caps_e_idno: fpid, caps_e_name: name || null, caps_c_dept: dept || null,
+      employee_id: Number(empId),
+    });
+    showToast('매핑했습니다 — 다음 동기화부터 근태가 들어옵니다', 'success');
+    await loadCapsSites();
+    loadCapsEmployeeMap();
+  } catch (e) {
+    showToast('매핑 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message), 'error');
+  }
+};
+
+window.capsMapIgnore = async function(fpid) {
+  if (!(await showConfirm('지문번호 ' + fpid + ' 를 무시 목록에 넣습니다.\n앞으로 이 번호의 펀치는 미매핑으로 뜨지 않습니다.'))) return;
+  try {
+    await axios.post('/api/caps/ignore-fpids', { site_id: capsCurrentSiteId, fpids: [fpid] });
+    showToast('무시 목록에 넣었습니다', 'success');
+    await loadCapsSites();
+    loadCapsEmployeeMap();
+  } catch (e) {
+    showToast('실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message), 'error');
+  }
+};
+
+// ───────── 무시 목록 ─────────
+function renderCapsIgnored(rawJson) {
+  var wrap = document.getElementById('capsIgnoredList');
+  var empty = document.getElementById('capsIgnoredEmpty');
+  var cnt = document.getElementById('capsIgnoredCount');
+  if (!wrap || !empty || !cnt) return;
+  var list = capsParseJson(rawJson);
+  cnt.textContent = list.length;
+  empty.classList.toggle('hidden', list.length > 0);
+  wrap.innerHTML = list.map(function(f) {
+    return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-gray-100 border border-gray-200 text-gray-700">'
+      + '<span class="font-mono">' + escapeHtml(String(f)) + '</span>'
+      + '<button onclick="capsMapUnignore(\'' + escapeJsAttr(String(f)) + '\')" class="text-gray-400 hover:text-red-600" title="무시 해제">&times;</button>'
+      + '</span>';
+  }).join('');
+}
+
+window.capsMapUnignore = async function(fpid) {
+  try {
+    await axios.delete('/api/caps/ignore-fpids', { data: { site_id: capsCurrentSiteId, fpids: [fpid] } });
+    showToast('무시 해제했습니다', 'success');
+    await loadCapsSites();
+    loadCapsEmployeeMap();
+  } catch (e) {
+    showToast('실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message), 'error');
+  }
+};
+
+// ───────── 매핑됨 ─────────
+function renderCapsMapped() {
+  var body = document.getElementById('capsMappedBody');
+  var empty = document.getElementById('capsMappedEmpty');
+  var cnt = document.getElementById('capsMappedCount');
+  if (!body || !empty || !cnt) return;
+  cnt.textContent = capsMapCache.length;
+  empty.classList.toggle('hidden', capsMapCache.length > 0);
+  body.innerHTML = capsMapCache.map(function(m) {
+    var recent = Number(m.recent_attendance || 0);
+    // ★매핑돼 있어도 근태가 0이면 실제로는 안 붙는 것이다 — 그 사람은 결근으로 잡힌다
+    var recentCell = recent > 0
+      ? '<span class="text-gray-700 tabular-nums">' + recent + '건</span>'
+      : '<span class="text-rose-600 font-semibold" title="매핑은 살아 있지만 최근 30일 근태가 없습니다. 단말을 안 쓰거나 다른 사이트에서 찍고 있을 수 있습니다.">0건 ⚠</span>';
+    return '<tr>'
+      + '<td class="font-mono text-gray-500">' + escapeHtml(m.site_id || '') + '</td>'
+      + '<td class="font-mono">' + escapeHtml(String(m.caps_e_idno || '')) + '</td>'
+      + '<td class="text-gray-600">' + escapeHtml(m.caps_e_name || '-') + '</td>'
+      + '<td>' + escapeHtml(m.employee_name || '(삭제된 직원)') + (m.employee_code ? ' <span class="text-[10px] text-gray-400">' + escapeHtml(m.employee_code) + '</span>' : '') + '</td>'
+      + '<td class="text-right">' + recentCell + '</td>'
+      + '<td class="text-right"><button onclick="capsMapRemove(' + m.id + ')" class="text-gray-400 hover:text-red-600" title="매핑 해제"><i class="fas fa-unlink"></i></button></td>'
+      + '</tr>';
+  }).join('');
+}
+
+window.capsMapRemove = async function(id) {
+  if (!(await showConfirm('이 매핑을 해제합니다.\n해제하면 그 지문번호의 펀치는 버려지고, 해당 직원은 결근으로 잡힙니다.', { danger: true }))) return;
+  try {
+    await axios.delete('/api/caps/employee-map/' + id);
+    showToast('매핑을 해제했습니다', 'success');
+    loadCapsEmployeeMap();
+  } catch (e) {
+    showToast('실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message), 'error');
+  }
+};

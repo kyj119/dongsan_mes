@@ -495,7 +495,7 @@ ${capsSettingsScript}
                 <div class="text-sm font-semibold text-amber-800 mb-1">
                   최근 동기화에서 매핑되지 않은 사원번호 <span id="capsUnmappedCount" class="tabular-nums">0</span>건
                 </div>
-                <div class="text-xs text-amber-700 mb-2">아래 항목을 클릭하면 매핑 폼에 자동 입력됩니다.</div>
+                <div class="text-xs text-amber-700 mb-2">이 번호들의 펀치는 <b>버려집니다</b> — 해당 직원은 결근으로 잡혀 급여가 깎입니다. 아래 <b>「사원 매핑」</b> 섹션에서 직원과 연결하거나 무시 처리하세요.</div>
                 <div id="capsUnmappedList" class="flex flex-wrap gap-1.5"></div>
               </div>
             </div>
@@ -586,6 +586,67 @@ ${capsSettingsScript}
               <button onclick="saveCapsSiteSettings()" id="saveCapsSettingsBtn" class="ds-btn ds-btn-primary">저장</button>
             </div>
             <div id="capsSettingsMsg" class="mt-3 text-center text-sm hidden"></div>
+          </div>
+
+          <!-- 사원 매핑 관리 (0624) — API 는 처음부터 있었는데 화면이 없어 미매핑을 손댈 방법이 없었다.
+               미매핑 펀치는 조용히 버려지므로(ingest 가 skip) 그 사람은 결근으로 잡힌다. -->
+          <div class="bg-white rounded-lg border border-gray-200 p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <i class="fas fa-user-check text-gray-500"></i>
+                사원 매핑
+                <span class="text-xs font-normal text-gray-400">단말 지문번호 ↔ 직원</span>
+              </h2>
+              <button onclick="loadCapsEmployeeMap()" class="text-gray-500 hover:text-gray-700 text-sm">
+                <i class="fas fa-redo mr-1"></i>새로고침
+              </button>
+            </div>
+
+            <div class="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded p-2.5 mb-4 space-y-1">
+              <div><b>매핑되지 않은 펀치는 버려집니다.</b> 그 직원은 그날 출근 기록이 없어 <b>결근으로 계산</b>되고, 급여에서 공제됩니다.</div>
+              <div>⚠️ 한 직원은 <b>사이트 하나에만</b> 매핑됩니다 — 다른 사이트에 매핑하면 기존 매핑이 자동 해제됩니다(#90). 두 사무실을 오가는 직원은 주로 찍는 곳으로 두세요.</div>
+            </div>
+
+            <!-- 미매핑 -->
+            <div class="mb-5">
+              <div class="text-sm font-semibold text-gray-700 mb-2">
+                미매핑 <span id="capsMapUnmappedCount" class="text-amber-700 tabular-nums">0</span>건
+                <span class="text-xs font-normal text-gray-400 ml-1">— 마지막 동기화 기준. 매핑하거나 무시하세요</span>
+              </div>
+              <div id="capsMapUnmappedList" class="space-y-1.5"></div>
+              <div id="capsMapUnmappedEmpty" class="text-xs text-gray-400 py-3 hidden">미매핑 없음</div>
+            </div>
+
+            <!-- 무시 목록 -->
+            <div class="mb-5">
+              <div class="text-sm font-semibold text-gray-700 mb-2">
+                무시 중 <span id="capsIgnoredCount" class="text-gray-500 tabular-nums">0</span>건
+                <span class="text-xs font-normal text-gray-400 ml-1">— 관리자·테스트 지문 등. 매핑 대상에서 제외됩니다</span>
+              </div>
+              <div id="capsIgnoredList" class="flex flex-wrap gap-1.5"></div>
+              <div id="capsIgnoredEmpty" class="text-xs text-gray-400 py-2 hidden">무시 목록 없음</div>
+            </div>
+
+            <!-- 현재 매핑 -->
+            <div>
+              <div class="text-sm font-semibold text-gray-700 mb-2">
+                매핑됨 <span id="capsMappedCount" class="text-emerald-700 tabular-nums">0</span>건
+              </div>
+              <div class="overflow-auto border border-gray-200 rounded" style="max-height:18rem">
+                <table class="ds-table text-xs w-full">
+                  <thead class="sticky top-0 bg-gray-50"><tr>
+                    <th class="text-left">사이트</th>
+                    <th class="text-left">지문번호</th>
+                    <th class="text-left">단말 이름</th>
+                    <th class="text-left">MES 직원</th>
+                    <th class="text-right">최근 30일 근태</th>
+                    <th></th>
+                  </tr></thead>
+                  <tbody id="capsMappedBody"></tbody>
+                </table>
+              </div>
+              <div id="capsMappedEmpty" class="text-xs text-gray-400 py-3 hidden">매핑 없음</div>
+            </div>
           </div>
 
           <!-- 동기화 이력 -->

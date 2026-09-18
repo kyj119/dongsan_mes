@@ -650,7 +650,13 @@ capsRouter.post('/sites/:id/regenerate-key', async (c) => {
 capsRouter.get('/employee-map', async (c) => {
   try {
     const siteId = c.req.query('site_id')
-    let query = `SELECT m.*, e.employee_code, e.name AS employee_name, e.department
+    // 0624: 「매핑돼 있다」와 「근태가 실제로 들어온다」는 다른 질문이다.
+    //   매핑이 살아 있어도 단말에서 안 찍거나 사이트가 바뀌면 근태는 0건이고,
+    //   그 사람은 결근으로 잡혀 급여가 깎인다. 최근 30일 건수를 같이 준다.
+    let query = `SELECT m.*, e.employee_code, e.name AS employee_name, e.department,
+        (SELECT COUNT(*) FROM attendance a
+          WHERE a.employee_id = m.employee_id
+            AND a.work_date >= date('now', '-30 days')) AS recent_attendance
       FROM caps_employee_map m
       LEFT JOIN employees e ON m.employee_id = e.id`
     const bindings: any[] = []
