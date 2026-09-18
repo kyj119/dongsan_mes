@@ -1428,9 +1428,10 @@ function poRenderRows(rows) {
       + '<td>' + escapeHtml(e.order_number || '-') + '</td>'
       + '<td style="text-align:right">' + (w ? Math.round(w) + '×' + Math.round(h) : '-') + '</td>'
       + '<td style="text-align:right">' + copies.toLocaleString()
-      // 과다 기록 의심 — 파일명 주문수량(N조/장) 대비 같은 날 누적 매수 2배 이상 (서버 계산)
+      // 과다 기록 의심 — 이 출력까지의 같은 날 누계가 파일명 주문수량(N조/장)을 넘은 행부터 (서버 계산)
+      // 배지 숫자는 그날 총계가 아니라 **이 행까지의 누계**다. 정상이던 앞 행에는 붙지 않는다.
       + (e.over_declared
-        ? '<div><span class="text-[10px] bg-orange-100 text-orange-700 px-1 py-0.5 rounded" style="white-space:nowrap" title="같은 날 이 파일이 ' + e.over_day_rows + '회 출력 · 누적 ' + e.over_day_copies + '매 기록 — 파일명 주문수량(' + e.over_declared + ')의 2배 이상. FLEXI 계열은 전송 후 취소가 로그에 안 남아 취소→재전송이 그대로 실적에 쌓입니다.">과다 ' + e.over_day_copies + '/' + e.over_declared + '</span></div>'
+        ? '<div><span class="text-[10px] bg-orange-100 text-orange-700 px-1 py-0.5 rounded" style="white-space:nowrap" title="이 출력까지 같은 날 누적 ' + e.over_cum_copies + '매 — 파일명 주문수량(' + e.over_declared + ') 초과. 같은 날 전체는 ' + e.over_day_rows + '회 출력 · ' + e.over_day_copies + '매입니다. FLEXI 계열은 전송 후 취소가 로그에 안 남아 취소→재전송이 그대로 실적에 쌓입니다.">과다 ' + e.over_cum_copies + '/' + e.over_declared + '</span></div>'
         : '')
       + '</td>'
       + '<td style="text-align:right">' + (area ? area.toFixed(1) : '-') + '</td>'

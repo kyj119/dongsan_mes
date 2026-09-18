@@ -1023,8 +1023,18 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
     const { results } = await c.env.DB.prepare(selectQuery).bind(...params).all()
 
     // ─── 과다 기록 의심 (파일명 주문수량 대비, 페이지 행에만 표시) ───
-    // 파일명 꼬리 "(폭-높이-N조|N장)"의 N 대비 같은 날(KST)·같은 파일의 OK 기록 매수 합이
-    // 2배 이상 && 2행 이상이면 의심. '양면'은 앞뒤 2매가 정상이라 N×2.
+    // 파일명 꼬리 "(폭-높이-N조|N장)"의 N 대비 같은 날(KST)·같은 파일의 OK 기록 매수를 **행 순서대로 누적**해,
+    // 누계가 N 을 넘는 행부터 표시한다. '양면'은 앞뒤 2매가 정상이라 N×2.
+    //
+    // ★판정 단위는 「행」이다 — 묶음이 아니다 (2026-09-18 수정).
+    //   종전엔 (파일명×날) 묶음 합계로 판정해 조건이 서면 **그날 그 파일의 모든 행**에 배지를 찍었다.
+    //   그래서 1장 주문을 두 번 출력하면 정상이던 **첫 출력 행까지 소급해서** 과다로 칠해졌다.
+    //   누계 판정이면 "언제부터 넘었나"가 행에 그대로 드러난다(선언 5 · 2,3,5매 → 셋째 행만 · 2,5,5 → 둘째부터).
+    //   ⚠️무엇을 잃나: 임계가 2배→초과로 내려가 경고가 늘어난다(prod 120일 실측: 묶음 521→734).
+    //     대신 표시되는 행은 1,368→1,089 로 줄어든다 — "정상이던 행에 찍히던 배지"가 빠진 몫이다.
+    //   ⚠️`rows >= 2`(2행 이상) 조건도 뺐다. 1장 주문에 한 번에 4매를 뽑은 **단일 행 초과**도 과다이고,
+    //     그건 종전 규칙이 원리상 못 잡던 구멍이다(실측 10건).
+    //
     // FLEXI(RIPLOG)는 전송 로그 — 전송 완료 후 취소는 기록에 안 남아 취소→재전송이 전부 '정상'으로
     // 쌓인다(2026-08-12 양구군 5조 주문/25매 기록). ⚠️"30분 내 동일파일 반복" 휴리스틱은 대형 조수
     // 작업의 분할 반복 출력(예: 100조를 2~4매씩)과 구분 불가로 기각 — 백테스트 FLEXI 34.7% 오염.
@@ -1042,21 +1052,30 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
       }
       if (names.length > 0) {
         // 바인드 100 한도 → 80개 청크 (memory d1-bind-param-limit)
-        const dayMap = new Map<string, { copies: number; rows: number }>()
+        const cumMap = new Map<number, { cum: number; dayCopies: number; dayPrints: number }>()
         for (let i = 0; i < names.length; i += 80) {
           const chunk = names.slice(i, i + 80)
           // ⚠️타일 정규화: 분할출력은 타일 1장 = 1행이라 그대로 합치면 "1장 주문 3타일 = 3매"로
           //   오탐한다(2026-08-12 prod 실측 TOPM-01). 각 행을 copy/tile_count 로 환산해 출력 1회 = 1로 센다.
+          // 누계는 윈도우 함수 — 프레임을 ROWS 로 명시한다(기본 RANGE 는 동값 peer 를 통째로 포함한다).
+          const matCopies = `COALESCE(pe.copy_total, 1) * 1.0 / (CASE WHEN COALESCE(pe.tile_count, 0) > 0 THEN pe.tile_count ELSE 1 END)`
+          const matPrints = `1.0 / (CASE WHEN COALESCE(pe.tile_count, 0) > 0 THEN pe.tile_count ELSE 1 END)`
+          const part = `PARTITION BY pe.file_name, ${printEventKstDay('pe')}`
           const grp = await c.env.DB.prepare(`
-            SELECT file_name, ${printEventKstDay()} as kst_day,
-              SUM(COALESCE(copy_total, 1) * 1.0 / (CASE WHEN COALESCE(tile_count, 0) > 0 THEN tile_count ELSE 1 END)) as day_copies,
-              SUM(1.0 / (CASE WHEN COALESCE(tile_count, 0) > 0 THEN tile_count ELSE 1 END)) as day_prints
-            FROM print_events
-            WHERE event_kind = 'PRINT' AND print_status = 'OK' AND file_name IN (${chunk.map(() => '?').join(',')})
-            GROUP BY file_name, kst_day
-          `).bind(...chunk).all<{ file_name: string; kst_day: string; day_copies: number; day_prints: number }>()
+            SELECT pe.id as id,
+              SUM(${matCopies}) OVER (${part} ORDER BY ${printEventAt('pe')}, pe.id
+                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) as cum_copies,
+              SUM(${matCopies}) OVER (${part}) as day_copies,
+              SUM(${matPrints}) OVER (${part}) as day_prints
+            FROM print_events pe
+            WHERE pe.event_kind = 'PRINT' AND pe.print_status = 'OK' AND pe.file_name IN (${chunk.map(() => '?').join(',')})
+          `).bind(...chunk).all<{ id: number; cum_copies: number; day_copies: number; day_prints: number }>()
           for (const g of grp.results || []) {
-            dayMap.set(g.file_name + '|' + g.kst_day, { copies: Number(g.day_copies) || 0, rows: Number(g.day_prints) || 0 })
+            cumMap.set(Number(g.id), {
+              cum: Number(g.cum_copies) || 0,
+              dayCopies: Number(g.day_copies) || 0,
+              dayPrints: Number(g.day_prints) || 0
+            })
           }
         }
         for (const r of pageRows) {
@@ -1066,11 +1085,13 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
           if (!m) continue
           let declared = parseInt(m[1], 10)
           if (fn.includes('양면')) declared *= 2
-          const g = dayMap.get(fn + '|' + String(r.kst_day || ''))
-          if (declared >= 1 && g && g.rows >= 2 && g.copies >= declared * 2) {
+          const g = cumMap.get(Number(r.id))
+          // 타일 환산이 분수라 누계가 0.9999… 로 떨어진다 — 정확히 채운 경우를 초과로 읽지 않도록 여유를 둔다.
+          if (declared >= 1 && g && g.cum > declared + 1e-6) {
             r.over_declared = declared
-            r.over_day_copies = Math.round(g.copies)
-            r.over_day_rows = Math.round(g.rows)   // 타일 정규화 후 = 출력 횟수
+            r.over_cum_copies = Math.round(g.cum)       // 이 행까지의 누계 = 배지 숫자
+            r.over_day_copies = Math.round(g.dayCopies)
+            r.over_day_rows = Math.round(g.dayPrints)   // 타일 정규화 후 = 출력 횟수
           }
         }
       }
