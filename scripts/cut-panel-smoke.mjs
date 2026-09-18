@@ -1768,6 +1768,23 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // ★자재를 뺀 뒤에는 후가공이 없으면 괄호 자체가 사라진다(빈 괄호를 남기지 않는다)
   ok('3l 후가공이 없으면 괄호가 없다', rows.noFinish === '쓰레기불법투기(103x206-6장)', rows.noFinish)
   ok('3l 파일명 금지문자 치환(한글은 유지)', rows.sanitized === '테스트_이름_주의(103x206-6장)', rows.sanitized)
+
+  // ★판이 나뉘면 「N장」은 **그 판의 조각 수**다 (2026-09-18 용준님).
+  //   여태 판마다 총수를 달아, 조각 2장뿐인 판에도 `-6장` 이 붙었다 — 그 판에 대해 **거짓**이고
+  //   RIP 오퍼레이터에게는 **출력 매수**로 읽혀 실물이 배로 나갈 수 있다.
+  const multi = await p.evaluate(() => {
+    const P = window.__mesCutPair
+    document.getElementById('regFinish').value = ''
+    document.getElementById('regItem').value = '쓰레기불법투기'
+    // 조각 6개가 판 3장에 2/3/1 로 나뉜 상태
+    P.setNest({ wCm: 103, hCm: 206, n: 6, sheets: 3, wh: ['103x206', '103x150', '103x80'], per: [2, 3, 1] })
+    return { p1: P.name(0), p2: P.name(1), p3: P.name(2), noIdx: P.name() }
+  })
+  ok('3l 판1 = 그 판의 조각 수', multi.p1 === '쓰레기불법투기(103x206-2장)-1p', multi.p1)
+  ok('3l 판2 = 그 판의 조각 수·그 판의 규격', multi.p2 === '쓰레기불법투기(103x150-3장)-2p', multi.p2)
+  ok('3l 판3 = 그 판의 조각 수', multi.p3 === '쓰레기불법투기(103x80-1장)-3p', multi.p3)
+  // 판별 값이 없으면 총수로 폴백한다(이름이 비는 것보다 낫다)
+  ok('3l 판 지정 없으면 총수로 폴백', multi.noIdx === '쓰레기불법투기(103x206-6장)', multi.noIdx)
   await p.close()
 }
 {
