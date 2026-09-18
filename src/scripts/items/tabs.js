@@ -110,7 +110,7 @@ function loadCatTable(code) {
             + (isMat ? '<th class="col-qty p-2 text-right cursor-pointer select-none" onclick="sortCat(\'width_mm\')">폭(mm)' + sortIcon('width_mm') + '</th>' : '')
             + '<th class="col-tag p-2 cursor-pointer select-none" onclick="sortCat(\'item_type\')">타입' + sortIcon('item_type') + '</th>'
             + '<th class="col-amount p-2 text-right cursor-pointer select-none" onclick="sortCat(\'base_price\')">단가' + sortIcon('base_price') + '</th>'
-            + '<th class="col-status p-2">상태</th><th class="col-action p-2">작업</th></tr></thead><tbody>';
+            + '<th class="col-status p-2">상태</th><th class="col-action p-2" style="width:132px">작업</th></tr></thead><tbody>';
         items.forEach(function(it) {
             var en = (it.item_name || '').replace(/['"]/g, '');
             html += '<tr class="border-t hover:bg-gray-50">'
@@ -170,7 +170,7 @@ function buildGroupedHtml(items, expand) {
             + '<div class="font-medium text-sm"><i class="fas ' + chevron + ' text-gray-400 mr-2 text-xs"></i>' + escapeHtml(g) + '</div>'
             + '<span class="text-xs text-gray-400">' + sub + '</span></div>'
             + '<div class="mat-grp-body' + bodyHidden + '"><table class="w-full text-sm ds-table ds-table-striped"><thead><tr class="text-left text-gray-500 text-xs">'
-            + '<th class="col-code p-2">코드</th><th class="col-name p-2">품목명</th><th class="col-tag p-2">타입</th><th class="col-amount p-2 text-right">단가</th><th class="col-status p-2">상태</th><th class="col-action p-2">작업</th>'
+            + '<th class="col-code p-2">코드</th><th class="col-name p-2">품목명</th><th class="col-tag p-2">타입</th><th class="col-amount p-2 text-right">단가</th><th class="col-status p-2">상태</th><th class="col-action p-2" style="width:132px">작업</th>'
             + '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
     });
     html += '</div>';

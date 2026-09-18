@@ -186,9 +186,12 @@ async function loadAgents() {
                 kitCell = '<span class="px-2 py-0.5 rounded bg-amber-50 text-amber-700 text-xs">미보고 (09-01 이전 키트)</span>';
             } else if (latestBuilt && eqKitBuilt(a.kit_version) < latestBuilt) {
                 stale++;
-                kitCell = '<span class="px-2 py-0.5 rounded bg-amber-50 text-amber-700 text-xs">구버전</span> <span class="font-mono text-xs text-gray-600">' + escapeHtml(a.kit_version) + '</span>';
+                // 배지 + 버전 문자열을 가로로 붙이면 331px 가 필요해 184px 열에서 **뒷부분이 통째로 사라졌다**
+                //   (2026-09-18 실측). 배지는 윗줄, 버전은 아랫줄에서 스스로 … 로 줄인다(전체는 td title).
+                kitCell = '<span class="px-2 py-0.5 rounded bg-amber-50 text-amber-700 text-xs">구버전</span>'
+                    + '<div>' + dsChip(escapeHtml(a.kit_version), '', 'font-mono text-xs text-gray-600') + '</div>';
             } else {
-                kitCell = '<span class="font-mono text-xs text-gray-600">' + escapeHtml(a.kit_version) + '</span>';
+                kitCell = dsChip(escapeHtml(a.kit_version), '', 'font-mono text-xs text-gray-600');
             }
             var printing = a.is_printing ? ' <span class="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px]">인쇄중</span>' : '';
             var seen = a.last_seen_at
@@ -199,7 +202,7 @@ async function loadAgents() {
                 + '<td class="px-4 py-2 text-sm">' + (a.equipment_name ? escapeHtml(a.equipment_name) : '<span class="text-gray-300">-</span>')
                     + (a.equipment_id ? '<div class="text-[10px] text-gray-400 font-mono">' + escapeHtml(a.equipment_id) + '</div>' : '') + '</td>'
                 + '<td class="px-4 py-2 text-center">' + sigBadge + '</td>'
-                + '<td class="px-4 py-2">' + kitCell + '</td>'
+                + '<td class="px-4 py-2" title="' + escapeHtml(a.kit_version || '미보고 (09-01 이전 키트)') + '">' + kitCell + '</td>'
                 + '<td class="px-4 py-2 font-mono text-xs">' + (a.parser_type ? escapeHtml(a.parser_type) : '<span class="text-gray-300">-</span>') + '</td>'
                 + '<td class="px-4 py-2 text-center font-mono text-xs">' + escapeHtml(a.agent_version || '-') + '</td>'
                 + '<td class="px-4 py-2 text-xs">' + seen + '</td>'

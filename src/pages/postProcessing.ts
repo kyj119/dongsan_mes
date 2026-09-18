@@ -28,15 +28,18 @@ export function postProcessingPage(c: Context<HonoEnv>) {
                     <table class="w-full text-sm ds-table-striped ds-table-fixed">
                         <thead>
                             <tr>
-                                <th style="width:80px">코드</th>
+                                <th style="width:112px">코드</th>
                                 <th style="width:120px">이름</th>
                                 <th style="width:100px">단가 방식</th>
                                 <th>파라미터</th>
-                                <th style="width:160px">여백 (상/하/좌/우 cm)</th>
+                                <!-- 값은 「0 / 0 / 0 / 0 cm」 꼴로 짧다. 코드·관리 열을 넓힌 재원을 여기서 회수한다
+                                     — 안 그러면 나열형 auto 열(파라미터·적용 소분류)이 그만큼 눌린다 -->
+                                <th style="width:124px">여백 (상/하/좌/우 cm)</th>
                                 <th>적용 소분류</th>
                                 <th style="width:70px" class="text-center">상태</th>
                                 <th style="width:50px" class="text-center" title="현장 카드에 표시 여부">카드</th>
-                                <th style="width:80px" class="text-center">관리</th>
+                                <!-- 버튼 2개(수정·비활성화) 실측 126px — 80px 에서는 둘째 버튼이 통째로 사라졌다 -->
+                                <th style="width:132px" class="text-center">관리</th>
                             </tr>
                         </thead>
                         <tbody id="ppTableBody">

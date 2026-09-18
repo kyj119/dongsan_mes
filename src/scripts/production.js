@@ -475,7 +475,7 @@ async function loadRecentEvents() {
 
       return '<tr class="hover:bg-blue-50/30 border-b border-gray-100 transition-colors align-middle">'
         + '<td class="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">' + timeStr + '</td>'
-        + '<td class="px-3 py-2.5 text-xs font-medium text-gray-700 whitespace-nowrap">' + printerName + '</td>'
+        + '<td class="px-3 py-2.5 text-xs font-medium text-gray-700 whitespace-nowrap" title="' + printerName + '">' + printerName + '</td>'
         + fileTd
         + '<td class="px-3 py-2.5 text-xs tabular-nums text-gray-600 whitespace-nowrap">' + sizeStr + '</td>'
         + '<td class="px-3 py-2.5 text-xs tabular-nums text-gray-500 whitespace-nowrap">' + durStr + '</td>'
