@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-09-17T17:00:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-09-18T10:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,26 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **567** (`search_issues(label:auto-improve is:closed reason:completed)` 실측, 변동없음) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-09-18T10:20):**
+> - **방법**: 세션 시작 시 detached HEAD `8cf8cd6`(origin/main과 동일) → 로컬 `main` 부재 → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. shallow clone이라 `git fetch --unshallow` 필요(앵커가 depth 밖). `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area2 방법 라인 HEAD `c54f68c`)**: 90커밋, 웹앱범위(`src/routes`·`src/types`·`src/utils`·`migrations`·`index.tsx`) diff 48파일 — 대부분(item_units·배송비박스청구·급여엑셀입력/오버라이드·4대보험기간축·kakao신기능·XSS bridge)은 Area1·4·5·6가 이번 순환에서 이미 각자 렌즈로 정독 완료(백로그 로그 확인). **Area1의 직전 사이클(HEAD `0949a01`) 이후 신규 5커밋**(`667a2ed8` perf·`899a020e` notify SSOT·`94850e9d`+`1e789451` caps 매핑화면·`8cf8cd66` barobill 코드표)만 전 Area 어느 로그에도 미등장 — Area2가 직접 정독.
+> - **`667a2ed8`(perf: 페이로드/왕복/N+1) Area2 렌즈 검증**: `clients.ts` `has_po=1`·`purchaseCandidates.ts` 거래처-발주 집계·`items.ts` variant_count 전부 **상관 서브쿼리 → GROUP BY 선접기 → LEFT JOIN**으로 전환(CLAUDE.md "큰 쪽을 먼저 GROUP BY" 규칙과 코드 일치), N+1 아님(단발 집계 쿼리). `inventoryCount.ts` with_loss=1의 IN절은 `ids.slice(0,50)`로 D1 바인드 한도(100) 안전 확보(#458 클래스 자기예방). `userPrefs.ts` presets 병합은 user_id+page_key 스코프 유지, 응답형식 확장(하위호환, 기존 필드 불변)이라 API 변경 아님. entity_id 관련 테이블(clients/items) 전부 기존 스코프 유지, 신규 INSERT 없음. 결함 0건.
+> - **`899a020e`(notify SSOT 일원화)·`8cf8cd66`(barobill 코드표) 검증**: 둘 다 순수 로직/상수 파일(라우트 SQL·auth 변경 없음), `noticePolicyFor`가 `constants/deliveryMethod` SSOT로 위임 리팩터링(중복 판정 로직 제거 = dead code 정리 방향과 합치), `kakao.ts`의 `withStatus` 헬퍼는 응답 필드 추가(`status_label`/`status_kind`/`status_code`)뿐 기존 필드 보존. 결함 0건.
+> - **`94850e9d`+`1e789451`(CAPS 매핑 화면 + 전법인 드롭다운) entity 격리 렌즈 검증**: 신규 `GET /api/caps/map-employees`가 `entityFilter` 없이 **전 법인** 직원을 반환하지만, 커밍 메시지·주석이 명시하듯 CAPS 사이트 자체가 법인횡단 개념이고 `authMiddleware+requireRole('ADMIN','MANAGER')` 게이트 + 응답필드 최소화(급여/주민번호 제외)로 설계된 의도적 예외(기존 FP클래스 "정당한 cross-entity" 해당, #652 IDOR 클래스와 달리 read 자체가 인가된 화면 전용 액션이고 신원 열람 범위가 최소). 신규 이슈화 불필요.
+> - **dead code 스캔(신규 유틸 8개 export 전수)**: `kakaoIdentity.ts`·`shipBilling.ts`·`shipmentNotice.ts`·`itemUnits.ts`·`barobillMessagingCodes.ts` 등에서 grep 0-refs로 뜬 심볼(`KAKAO_IDENTITY_KEYS`·`shipDelayDays`·`NOTICE_POLICY`·`noticePolicyFor`·`deriveLegacyPair`·`unitsFromLegacyPair`·`KAKAO_SEND_STATUS` 등) 전수 재확인 = **전부 FP**(grep이 자기 파일 내부 참조를 제외했거나 `scripts/*-selftest.cjs` 전용 소비자를 `--include` 밖에 뒀던 것 — 실제로는 자기 파일 내 사용 또는 전용 픽스처 테스트(`test:calc` 체인 소속)가 import). 신규 계산규칙마다 픽스처 테스트를 같이 만드는 이 프로젝트 관행(CLAUDE.md)과 합치 — codify 불요(기존 dead-code 레시피가 이미 이 클래스를 전제).
+> - **standing scan 1: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 75건·누락 **0건**(변동없음). item_units/shipping_fee_by_boxes 신규 테이블 = items/order_items 종속(entity_id 자체 없음, 기존 FP클래스⑤) 확인.
+> - **standing scan 2: authMiddleware recursive 스캔** — 후보 7건(`publicUnsubscribe.ts`·`orders/helpers.ts`·`payroll/shared.ts`·`cron.ts`·`messagesAd.ts`·`hrSelf.ts`·`taxInvoices/helpers.ts`) 직전 사이클과 동일 — **net-new 0**.
+> - **standing scan 3: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 4건 전부 기존 FP 유지(`attendance.ts:158`·`dashboard.ts:420`·`workbench.ts:577`·`itemUnits.ts:162`).
+> - **standing scan 4: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 5: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최근 8런 — 7 success + 1 cancelled(연속 push로 즉시 superseded, 정상) + 1 in_progress(현재 HEAD `0ccd0dc` 문서커밋).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **8**(변동없음) — 전건 Area2 관할 밖.
+> - **backlog↔GitHub 절대값 재동기화**: open **8**(변동없음) · done **567**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md `line N` 잔여참조 재확인(0건, 이미 서술식). 신규 5커밋이 기존 레시피(GROUP BY 선접기·D1 바인드 청크·정당 cross-entity·dead-code FP)로 전부 커버돼 새 클래스 없음.
+> - **백로그 트림 체크**: 사이클 로그 9건 → 이번 추가 후 10건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(5커밋 직접 정독 + 나머지 43파일 타 Area 재확인 완료, net-new 0), 자동수정 0건(고칠 결함 없음), done-sync: open 8(변동없음)·done 567(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-09-17T17:00):**
 > - **방법**: 세션 시작 시 detached HEAD `0949a01`(origin/main과 동일) → 로컬 `main` 부재 → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. shallow clone(depth 50)이라 `git fetch --unshallow` 먼저 필요했음(앵커가 depth 밖). `npm ci`(0→89), `npx tsc --noEmit` clean.
