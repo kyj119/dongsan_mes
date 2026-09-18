@@ -442,7 +442,7 @@ hrRouter.post('/employees', async (c) => {
       'caps_id', 'caps_site_id', 'caps_sync_enabled',
       'pay_type',
       'emergency_contact', 'emergency_phone', 'notes',
-      'overtime_daily_hours', 'overtime_work_days',
+      'overtime_daily_hours', 'overtime_work_days', 'exclude_early_from_overtime',
     ]
 
     // 실제 테이블 컬럼 조회 (없는 컬럼은 제외)
@@ -535,7 +535,7 @@ hrRouter.put('/employees/:id', async (c) => {
       // 소속 법인 — #349: mass-assignment 차단을 위해 ALLOWED에서 제외.
       //   body로 임의 entity_id 변경 불가. 아래 ADMIN 전체모드(0) 가드로만 변경 허용.
       // 고정연장
-      'overtime_daily_hours', 'overtime_work_days',
+      'overtime_daily_hours', 'overtime_work_days', 'exclude_early_from_overtime',
     ]
 
     // ⚠️ pay_type enum 검증
@@ -1324,7 +1324,7 @@ hrRouter.put('/contracts/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       'contract_type', 'contract_date', 'contract_start_date', 'contract_end_date',
       'wage_start_date', 'wage_end_date', 'hourly_rate', 'work_type',
       'job_description', 'probation_months',
-      'overtime_daily_hours', 'overtime_work_days', 'base_hours_monthly'
+      'overtime_daily_hours', 'overtime_work_days', 'exclude_early_from_overtime', 'base_hours_monthly'
     ]
 
     const setCols: string[] = []

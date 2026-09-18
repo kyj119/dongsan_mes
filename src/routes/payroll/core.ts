@@ -833,6 +833,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
                          AND (h.entity_id = 0 OR h.entity_id = e.entity_id))
                     OR CAST(strftime('%w', a.work_date) AS INTEGER) IN (0, 6)
                   THEN 1 ELSE 0 END) AS is_hol
+            , e.exclude_early_from_overtime AS exclude_early
           FROM attendance a
           JOIN employees e ON e.id = a.employee_id
           WHERE a.employee_id IN (${aggPh})
@@ -848,7 +849,11 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
           -- 0621: **결근으로 찍힌 날은 제외**한다. 결근일에 남아 있는 연장 기록까지 더해져
           --   "결근 4일인데 추가연장 24~26시간"이 나왔다(2026-09-17 이명순·김기섭 7월 실측).
           SUM(CASE WHEN is_hol = 0 AND attendance_type != 'ABSENT' AND COALESCE(status,'') != 'ABSENT'
-                   THEN COALESCE(overtime_hours, 0) + COALESCE(early_hours, 0) ELSE 0 END) as total_overtime,
+                   -- 0624: 조기출근을 연장으로 인정하지 않기로 합의한 직원은 early_hours 를 뺀다.
+                   --   근태 기록(early_hours)은 사실 그대로 두고 **지급 반영 여부만** 사람 축에서 정한다.
+                   THEN COALESCE(overtime_hours, 0)
+                        + (CASE WHEN COALESCE(exclude_early, 0) = 1 THEN 0 ELSE COALESCE(early_hours, 0) END)
+                   ELSE 0 END) as total_overtime,
           SUM(CASE WHEN is_hol = 1 THEN COALESCE(work_hours, 0) ELSE 0 END) as total_holiday,
           SUM(COALESCE(caps_night_min, 0)) / 60.0 as total_night,
           SUM(COALESCE(work_hours, 0)) as total_work_hours

@@ -699,7 +699,9 @@ window.hrdSave = async function() {
     }
     // 체크박스: overtime_daily_hours → 0.5 or 0
     if (el.type === 'checkbox') {
-      var checkNum = el.checked ? 0.5 : 0;
+      // overtime_daily_hours 는 **시간**(0.5/0), 그 외 플래그는 1/0 (0624)
+      var onVal = (field === 'overtime_daily_hours') ? 0.5 : 1;
+      var checkNum = el.checked ? onVal : 0;
       var origNum = Number(orig[field]) || 0;
       if (checkNum !== origNum) payload[field] = checkNum;
       continue;

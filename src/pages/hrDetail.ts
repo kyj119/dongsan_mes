@@ -180,6 +180,11 @@ export function hrDetailPage(c: Context<HonoEnv>) {
                   <input data-field="overtime_work_days" type="hidden" value="22">
                   <label for="hrdOvertimeToggle" class="text-sm text-gray-700 cursor-pointer">고정연장 적용 <span class="text-gray-400">(아침 30분)</span></label>
                 </div>
+                <div class="flex items-center gap-2 pt-5">
+                  <input data-field="exclude_early_from_overtime" type="checkbox" id="hrdExcludeEarly" class="hrd-input w-4 h-4 rounded" disabled>
+                  <label for="hrdExcludeEarly" class="text-sm text-gray-700 cursor-pointer">조기출근 연장 <b>미인정</b>
+                    <span class="text-gray-400 block text-xs">일찍 나와도 초과근무로 안 치기로 합의한 경우</span></label>
+                </div>
               </div>
               <div id="hrdOvertimePreview" class="mt-2"></div>
               <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
