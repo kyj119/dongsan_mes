@@ -426,10 +426,10 @@ var capsAllMapCache = [];   // 전 사이트 매핑 (미매핑 잡음 판별용)
 async function capsLoadEmployeeOptions() {
   if (capsEmpCache.length) return capsEmpCache;
   try {
-    var res = await axios.get('/api/hr/employees', { params: { limit: 500, status: 'ACTIVE' } });
-    // 응답은 { success, data: { employees, pagination } } 다 — `items` 가 아니다(0624 실측).
-    var d = res.data && res.data.data;
-    capsEmpCache = (d && (d.employees || d.items)) || (Array.isArray(d) ? d : []);
+    // /api/hr/employees 는 entityFilter 가 걸려 **현재 법인만** 준다 — CAPS 사이트는
+    // 법인을 가로지르므로 전용 조회를 쓴다(0624).
+    var res = await axios.get('/api/caps/map-employees');
+    capsEmpCache = (res.data && res.data.data) || [];
     if (!Array.isArray(capsEmpCache)) capsEmpCache = [];
   } catch (e) {
     capsEmpCache = [];
@@ -440,8 +440,11 @@ async function capsLoadEmployeeOptions() {
 }
 
 function capsEmpSelectHtml(id) {
+  // 법인을 같이 보여 준다 — 같은 이름이 법인별로 있고, 엉뚱한 법인에 붙이면 근태가 사라진다
   var opts = ['<option value="">— 직원 선택 —</option>'].concat(capsEmpCache.map(function(e) {
-    return '<option value="' + e.id + '">' + escapeHtml(e.name + (e.employee_code ? ' (' + e.employee_code + ')' : '')) + '</option>';
+    var tag = [e.employee_code, e.entity_name].filter(Boolean).join(' · ');
+    var cur = e.caps_site_id && e.caps_site_id !== capsCurrentSiteId ? ' ← 현재 ' + e.caps_site_id : '';
+    return '<option value="' + e.id + '">' + escapeHtml(e.name + (tag ? ' (' + tag + ')' : '') + cur) + '</option>';
   }));
   return '<select id="' + id + '" class="px-2 py-1 border border-gray-300 rounded text-xs">' + opts.join('') + '</select>';
 }
@@ -487,12 +490,20 @@ function renderCapsUnmappedRows(rawJson) {
   capsMapCache.forEach(function(m) { mappedHere[String(m.caps_e_idno)] = true; });
   rows = rows.filter(function(r) { return !mappedHere[String(r.fpid || r.e_idno)]; });
 
-  // ② 다른 사이트에 이미 매핑된 사람은 **잡음**이다 — 지문번호는 사이트마다 달라 이름으로 본다
+  // ② 다른 사이트 소속인 사람은 **잡음**이다 — 지문번호는 사이트마다 달라(이성용 DJ 0071 ↔ SM 0010)
+  //    이름으로 본다. 판별 근거는 둘: caps_employee_map 과 employees.caps_site_id.
+  //    ★후자가 중요하다 — 매핑 테이블 행이 없어도 employees.caps_id 로 붙는 직원이 대부분이다
+  //      (선명 13명 중 map 행이 있는 사람은 1명뿐인데 근태는 다 들어온다).
   var otherSite = {};
   capsAllMapCache.forEach(function(m) {
     if (m.site_id === capsCurrentSiteId) return;
     if (m.caps_e_name) otherSite[String(m.caps_e_name).replace(/\s+/g, '')] = m.site_id;
     if (m.employee_name) otherSite[String(m.employee_name).replace(/\s+/g, '')] = m.site_id;
+  });
+  capsEmpCache.forEach(function(e) {
+    if (!e.caps_site_id || e.caps_site_id === capsCurrentSiteId) return;
+    var k = String(e.name || '').replace(/\s+/g, '');
+    if (k && !otherSite[k]) otherSite[k] = e.caps_site_id;
   });
   var real = [], noise = [];
   rows.forEach(function(r) {

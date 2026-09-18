@@ -529,6 +529,34 @@ capsRouter.use('/employee-map/*', authMiddleware, requireRole('ADMIN', 'MANAGER'
 capsRouter.use('/sync-log', authMiddleware)
 capsRouter.use('/sync/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 capsRouter.use('/ignore-fpids', authMiddleware, requireRole('ADMIN', 'MANAGER'))
+capsRouter.use('/map-employees', authMiddleware, requireRole('ADMIN', 'MANAGER'))
+
+// ============================================================================
+// GET /api/caps/map-employees — 매핑 드롭다운용 직원 목록 (전 법인)
+//
+// 왜 /api/hr/employees 를 쓰지 않는가 (0624):
+//   그쪽은 entityFilter 가 걸려 **현재 법인 직원만** 준다. 그런데 CAPS 사이트는
+//   법인을 가로지르는 개념이다 — 선명 세션으로 들어와 있으면 DJ(동산) 사이트의
+//   미매핑을 동산 직원과 연결할 수 없어 매핑 자체가 불가능했다(실측: 드롭다운 14명).
+//   여기서는 ADMIN/MANAGER 권한으로 전 법인을 준다. 반환 필드는 매핑에 필요한
+//   최소한(이름·사번·법인·현재 CAPS 배정)뿐 — 급여·주민번호 같은 건 주지 않는다.
+// ============================================================================
+capsRouter.get('/map-employees', async (c) => {
+  try {
+    const { results } = await c.env.DB.prepare(`
+      SELECT e.id, e.name, e.employee_code, e.entity_id, e.caps_id, e.caps_site_id,
+             e.caps_sync_enabled, ent.short_name AS entity_name
+        FROM employees e
+        LEFT JOIN entities ent ON ent.id = e.entity_id
+       WHERE e.status = 'ACTIVE' AND (e.is_deleted IS NULL OR e.is_deleted = 0)
+       ORDER BY e.entity_id, e.name, e.id
+    `).all()
+    return c.json({ success: true, data: results || [] })
+  } catch (err) {
+    console.error('CAPS map-employees error:', err)
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
 
 // ============================================================================
 // 사이트 CRUD
