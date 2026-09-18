@@ -63,7 +63,7 @@
             // 액션 5개(수정·비번 초기화·활성토글·품목배정·완전삭제) = 실측 289px(14px·gap-2·px-3).
             // .ds-table 은 table-layout:fixed + td{overflow:hidden} 이라 표준 col-action(100px)
             // 에서는 뒤 3개가 **경고 없이 사라졌다**. 라벨을 늘리면 이 폭도 같이 늘려야 한다.
-            '<th class="col-action px-3 py-3 text-sm font-medium text-gray-500 text-center" style="width:312px">액션</th>' +
+            '<th class="col-action px-3 py-3 text-sm font-medium text-gray-500 text-center" style="width:336px">액션</th>' +
           '</tr>' +
         '</thead>' +
         '<tbody>' + rows + '</tbody>' +

@@ -314,7 +314,9 @@ ${PENDING_REASONS.map(r => `              <button onclick="switchPendingReason('
                       <input type="checkbox" id="checkAll" onchange="toggleCheckAll(this)">
                     </th>
                     <th class="col-date px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase">날짜</th>
-                    <th class="col-tag px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase">계좌</th>
+                    <!-- 라벨이 「별칭 · 은행명」이라 표준 col-tag(92px)로는 은행명조차 안 보인다.
+                         「대표자 · 농협은행」(10자·실측 94px)까지 담는 최소 폭. 더 긴 별칭은 배지가 …로 줄이고 title 로 -->
+                    <th class="col-tag px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase" style="width:132px">계좌</th>
                     <th class="col-name px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase">적요</th>
                     <th class="col-amount px-2 py-2 text-right text-[10px] font-medium text-gray-500 uppercase">입금</th>
                     <th class="col-amount px-2 py-2 text-right text-[10px] font-medium text-gray-500 uppercase">출금</th>

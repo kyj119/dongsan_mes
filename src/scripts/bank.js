@@ -433,7 +433,12 @@ if (typeof window.hubGoto !== 'function') window.hubGoto = function () { navigat
         + ' data-dir="' + (isDeposit ? 'IN' : 'OUT') + '"'
         + (tx.match_weak ? ' data-weak="1"' : '') + '></td>';
       html += '<td class="text-gray-600 text-xs whitespace-nowrap">' + dateStr + '</td>';
-      html += '<td><span class="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">' + escHtml(accountLabel) + '</span></td>';
+      // 계좌 라벨은 「별칭 · 은행명」이라 25자(실측 최장 = 하나은행-보증서담보대출(1500) · 하나은행)까지
+      //   간다. 배지가 inline 이면 td 의 ellipsis 가 안 걸려 **글자가 통째로 잘린 채** 끝나므로
+      //   배지 자신이 줄이고(…), 전체는 title 로 남긴다.
+      html += '<td title="' + escHtml(accountLabel) + '">'
+        + '<span class="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 inline-block max-w-full truncate align-middle">'
+        + escHtml(accountLabel) + '</span></td>';
       html += '<td class="font-medium text-gray-800" title="' + escHtml(tx.counterpart_name || tx.description || '') + '">' + escHtml(tx.counterpart_name || tx.description || '') + '</td>';
       html += '<td class="text-right font-semibold tabular-nums ' + (isDeposit ? 'text-blue-600' : '') + '">' + (isDeposit ? '+' + amt.toLocaleString() : '') + '</td>';
       html += '<td class="text-right tabular-nums ' + (!isDeposit ? 'text-red-600' : '') + '">' + (!isDeposit ? '-' + amt.toLocaleString() : '') + '</td>';
