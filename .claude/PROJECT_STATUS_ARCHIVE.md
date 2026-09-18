@@ -1,3 +1,37 @@
+## 📝 2026-09-18 합배송 「함께 출고」가 타법인 파트너에서만 실패 (#653, prod `73e3968e`)
+
+**형태** — 조회와 쓰기가 **entity 정책이 반대**였다. `POST /shipments/consolidation-pending` 은 파트너를 법인 구분 없이 돌려준다(합배송은 목적 자체가 cross-entity — `shipments.ts:275` 「목적상 entityFilter 미적용」). 그런데 화면이 그 파트너를 그대로 출고 대상에 밀어 넣고(`orders.js:115`), 받는 `PATCH /orders/bulk-ship` 은 `entityFilter` 선조회로 자법인만 처리한다(`queries.ts:322~334`). → 「함께 출고 처리할까요?」에 **동의한 뒤에 그 건만 「대상 주문이 없거나 접근 권한이 없습니다」로 실패**하고, 프롬프트가 막으려던 **배송비 이중청구**가 그대로 난다. ADMIN 전체모드(`entityId=0`)에서만 정상이라 **개발·관리자 손에서는 재현되지 않는다.**
+
+**조치 (선택지 「나」)** — 서버가 파트너마다 `shippable` 을 싣는다. 판정 축은 후속 `bulk-ship` 이 쓰는 것과 **같은 규칙**(`entityFilter`): `callerEntity === 0 || p.entity_id === callerEntity`. ADMIN 전체모드는 전부 true 로 빈 clause 와 일치하고, `entity_id` NULL 은 false 로 SQL `entity_id = ?` 와 일치한다. 화면은 `mine`/`others` 로 갈라 `mine` 만 「함께 출고」 대상에 넣고 `others` 는 **안내만** 한다(그쪽 법인이 출고해야 한 박스·배송비 1회가 지켜진다). 함께 낼 수 있는 게 하나도 없으면 안내 후 계속할지만 묻는다. `shippable !== false` 로 읽어 **구 서버 응답은 종전 동작**으로 떨어진다.
+
+**대안 「가」를 고르지 않은 이유** — `bulk-ship` 이 합배송 형제에 한해 타법인을 받는 방향은 **IDOR 가드를 푸는 보안 결정**이고, 아래 실측대로 운용 실적이 0이라 근거가 없다. 포인터가 0이 아니게 된 뒤 재론한다.
+
+**★prod 실측 — 이 축은 입력이 0이다**
+
+| 축 | prod |
+|---|---|
+| `orders` | 11,672 (SHIPPED 11,670 · `shipped_at` 11,669) |
+| `orders.consolidate_with_order_id` | **0** |
+| `shipments` 테이블 | **0행** (`MIN(created_at)` NULL · `merged_into_id` 0) |
+| `order_status_history` 의 SHIPPED 전이 | **0** (전체 이력 1,604건) |
+| 2026-09-01 이후 생성 주문 | 2 |
+
+이관이 `orders.status`·`shipped_at` 을 **직접 UPDATE** 했고 그 경로는 `order_status_history` 도 `shipments` 도 남기지 않는다 → **MES 출고 경로가 prod 에서 한 번도 실행된 적이 없다.** 따라서 이 결함은 **발생한 적 없는 잠복**이고, `consolidation-pending` 은 지금 구조상 **항상 빈 배열**이라 합배송 프롬프트가 뜬 적도 없다. 같은 이유로 #652(같은 엔드포인트의 `me` entity 미검증)의 **실제 노출량도 0**이었다 — 수정 자체는 옳다. 덤으로 `GET /shipments/pending-confirm`(확정 대기)도 `JOIN shipments` 라 **항상 빈 화면**이다. ⚠️그래서 이 축은 **배포 후 prod 실측으로 확정할 수 없는** 드문 영역이다(판정 근거 = 코드 경로).
+
+**쓰기 경로 확인** — 데이터가 0이라고 구조가 막힌 건 아니다. 합배송 포인터를 쓰는 세 곳이 전부 **거래처만 검증하고 법인을 안 본다**: `orders/create.ts:69` · `orders/update.ts:150` · `utils/shipmentHelper.ts:154`(`applyConsolidationIntents` 파트너 조회가 `o.client_id = ?` 뿐). 즉 합배송 서브시스템은 **의도적으로 client 축**이고, 법인 경계를 보는 건 `bulk-ship` 하나뿐 — 그 불일치가 이 이슈였다.
+
+⚠️**`shippable` 판정 규칙이 두 파일에 나뉘어 있다**(여기와 `bulk-ship` 의 `entityFilter`). 한쪽만 바꾸면 조용히 어긋난다 — 「가」로 옮길 때는 반드시 둘을 같이 본다. 양쪽 주석에 서로를 적어 뒀다.
+
+**함께 나간 커밋** — `2dffc881` chore(cut-panel): SHELL_VERSION 0.89.0→0.90.0. 다른 세션 것이고 `IllustratorAutomat/**` 1파일 1줄이라 웹 번들 무영향(확인: 커밋의 `src/` 변경 0건). ⚠️그 커밋은 **IA 수동 배포축**이라 push 로는 반영되지 않는다 — `npm run ia:deploy` 는 그 세션이 맡는다(현재 `audit:ia-jsx` 드리프트 15건, 축2 포함이라 실기 확인 필요).
+
+**검증** — Phase1 tsc·build·`test:calc`·`journey:gate` **40/40**·`test:local-e2e` 4/4 / Phase2 entity **75/75**(스키마 변경 0건이라 2-B 생략) / Phase3 배포 `73e3968e`, 빌드 모듈 **476** = 사전검증과 동일(미추적 파일 혼입 없음) / Phase4 `smoke:prod` **133/133** · `smoke:write` 5/5 · prod 마커 3/3(`shippable`·`mine.length`·타법인 안내 문구, 전부 `pageScript` 112KB) · 페이지 7/7 · `audit:table-clip --base prod` **새 잘림 없음**.
+
+⚠️배포 시점에 워킹트리가 dirty 였다(타 세션 IA WIP 4파일). 스킬 규칙은 「남의 것이면 stash」지만 **활발히 편집 중인 파일을 stash 하면 그 세션이 깨진다** → 대신 dirty 중 `src/` 0건임을 확인하고 빌드 모듈 수로 혼입 없음을 실증했다.
+
+**남은 것** — ①「가」 재론 근거는 `consolidate_with_order_id` 가 0이 아니게 될 때 ②`audit:table-clip` 기준선 **해소 7건 미반영**(줄이지 않으면 되돌아가도 안 잡힌다 — 이번 배포와 무관한 앞선 열폭 수정분) ③`deriveOrderType` 의 `IN` 절 80청크 미적용(단일 주문 라인수는 「자연 bounded」 분류라 우선순위 낮음)
+
+---
+
 ## 📦 2026-09-18 이관분 (자동 트림 — scripts/status-trim.cjs)
 
 > 배포 배너 4건 + 완료 항목 0건. 원본 순서(시간 역순) 보존.
