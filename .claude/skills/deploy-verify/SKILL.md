@@ -104,6 +104,16 @@ npm run deploy:prod
 
 4. **콘솔 에러 수집**: 각 페이지에서 error 레벨 메시지 확인
 
+5. **표 열 잘림 감사 (UI·목록을 건드린 배포면 필수)**
+   ```bash
+   npm run audit:table-clip    # prod 56화면·탭 포함, 새 잘림만 exit 1 (≈2분)
+   ```
+   `.ds-table` 은 `table-layout:fixed` + `td{overflow:hidden}` 이라 **넘친 값이 경고 없이 사라진다** —
+   응답은 200 이고 tsc·build·smoke·check:dom 이 전부 통과한다. 기준선(`scripts/table-clip-baseline.json`)에
+   없는 (화면, 열)이 잘리면 실패. 열을 고쳐서 해소했으면 `-- --update` 로 기준선을 **줄인다**
+   (안 줄이면 다음에 되돌아가도 안 잡힌다).
+   > 2026-08-09 에도 같은 목록을 실측해 두고 **게이트가 아니라서** 한 달간 방치됐다.
+
 ### Phase 5: 현황판 갱신 + 자동 트림
 
 `.claude/PROJECT_STATUS.md` 상단에 배포 배너를 추가한 뒤 **반드시** 실행:

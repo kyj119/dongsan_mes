@@ -145,6 +145,7 @@
     "audit:expense-category": "node scripts/expense-category-audit.cjs --remote",
     "audit:unit-price-semantics": "node scripts/unit-price-semantics-audit.cjs --remote",
     "audit:query-cost": "node scripts/query-cost-audit.cjs",
+    "audit:table-clip": "node scripts/table-clip-audit.cjs",
     "audit:subquery": "node scripts/correlated-subquery-audit.cjs",
     "test:ap-candidate": "node scripts/ap-candidate-selftest.cjs",
     "audit:loan-bank": "node scripts/loan-bank-audit.cjs",

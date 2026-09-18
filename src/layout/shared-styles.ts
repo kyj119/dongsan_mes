@@ -658,6 +658,10 @@ export const SHARED_CSS = `
   .ds-table thead th.text-left, .ds-table-striped thead th.text-left { text-align: left; }
   /* 고정 열너비 모드 — th에 width/style 지정 시 사용 */
   .ds-table-fixed { table-layout: fixed; }
+  /* 고정폭 열 안의 배지·칩 — **inline 요소에는 td 의 ellipsis 가 안 걸린다.**
+     그래서 배지가 열보다 길면 「…」도 없이 글자가 통째로 끊긴다(2026-09-18 전수 조사에서
+     /bank 계좌 25자 라벨이 그랬다). 자기 폭 안에서 스스로 줄이게 하고, 전체 값은 td 의 title 로 남긴다. */
+  .ds-chip { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
   /* === 표 열 폭 표준 (table-layout:fixed 전제 = .ds-table 또는 .ds-table-fixed 동반) ===
      콘텐츠 유형별 적정 규격. 가변 주열(.col-name/.col-flex)만 남는 폭 흡수, 나머지는 고정폭
      → 한 열이 일방적으로 커지지 않음. 긴 값은 td의 ellipsis(…) + title(마우스오버 풀텍스트).

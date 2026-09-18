@@ -3257,3 +3257,104 @@ function salesQtyLabel(line) {
     return q + ' ' + u;
 }
 window.salesQtyLabel = salesQtyLabel;
+
+// ── [개발 전용] 표 셀 잘림 감시자 ────────────────────────────────────────────
+// 왜 있나(2026-09-18 전수 조사): `.ds-table` 은 table-layout:fixed + td{overflow:hidden}
+// 이라 배정 폭을 넘긴 값이 **경고 없이 사라진다**. 56화면에서 41건이 나왔고 그중 35건은
+// title 조차 없어 마우스오버로도 복구되지 않았다. 화면을 봐도 「짧은 값」인지 「잘린 값」인지
+// 구분이 안 되는 것이 근본 문제라, 개발 중에는 **눈에 보이게** 만든다.
+//
+// prod 에서는 절대 켜지지 않는다 — 로컬·사설망에서만, 또는 localStorage.mesClipDebug='1' 일 때.
+(function mesClipWatch() {
+  function enabled() {
+    try {
+      if (localStorage.getItem('mesClipDebug') === '1') return true;
+      if (localStorage.getItem('mesClipDebug') === '0') return false;
+    } catch (e) { /* ignore: 저장소를 못 읽으면 아래 호스트 판정만으로 정한다 */ }
+    var h = location.hostname;
+    return h === 'localhost' || h === '127.0.0.1' || /^192\.168\./.test(h) || /^10\./.test(h);
+  }
+  if (!enabled()) return;
+
+  var STYLE_ID = 'mes-clip-watch-style';
+  if (!document.getElementById(STYLE_ID)) {
+    var st = document.createElement('style');
+    st.id = STYLE_ID;
+    // 배경이 아니라 테두리로 표시한다 — 셀 내용을 가리지 않아야 무엇이 잘렸는지 보인다
+    st.textContent = '[data-clip]{outline:1px dashed #dc2626;outline-offset:-1px;position:relative}'
+      + '[data-clip]::after{content:"✂" attr(data-clip);position:absolute;right:0;top:0;'
+      + 'font-size:8px;line-height:1;padding:1px 2px;background:#dc2626;color:#fff;border-radius:0 0 0 3px;pointer-events:none}';
+    document.head.appendChild(st);
+  }
+
+  var timer = null;
+  function scan() {
+    var hits = [];
+    var tds = document.querySelectorAll('.ds-table td, .ds-table-striped td, .ds-table-fixed td');
+    for (var i = 0; i < tds.length; i++) {
+      var td = tds[i];
+      if (td.colSpan > 1) { td.removeAttribute('data-clip'); continue; }
+      // ds-wrap 은 overflow:visible 이라 넘쳐도 화면에 보인다 — 잘림이 아니다
+      var cs = getComputedStyle(td);
+      if (cs.overflowX !== 'hidden' && cs.overflow !== 'hidden') { td.removeAttribute('data-clip'); continue; }
+      var short = td.scrollWidth - td.clientWidth;
+      if (short < 4) { td.removeAttribute('data-clip'); continue; }
+      td.setAttribute('data-clip', short);
+      // title 이 없으면 값이 **완전히** 사라진다 — 그 셀만 따로 센다
+      var covered = td.hasAttribute('title') || !!td.querySelector('[title]');
+      hits.push({ 부족: short + 'px', 열: colLabel(td), title: covered ? '있음' : '없음',
+                  값: (td.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 30) });
+    }
+    if (hits.length) {
+      var lost = hits.filter(function(h) { return h.title === '없음'; }).length;
+      console.warn('[clip] 잘린 셀 ' + hits.length + '개' + (lost ? ' — 그중 ' + lost + '개는 title 도 없어 값이 사라진다' : ''));
+      if (console.table) console.table(hits);
+    }
+  }
+
+  function colLabel(td) {
+    var tbl = td.closest('table');
+    var tr = td.parentElement;
+    if (!tbl || !tr) return '?';
+    var idx = Array.prototype.indexOf.call(
+      Array.prototype.filter.call(tr.children, function(c) { return c.tagName === 'TD'; }), td);
+    var th = tbl.querySelectorAll('thead th')[idx];
+    return th ? (th.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 14) : '#' + (idx + 1);
+  }
+
+  function schedule() { clearTimeout(timer); timer = setTimeout(scan, 400); }
+  window.mesClipScan = scan; // 콘솔에서 손으로 부를 수 있게
+
+  // 표는 API 응답으로 나중에 그려진다 — DOM 이 바뀔 때마다 debounce 로 다시 잰다
+  if (window.MutationObserver) {
+    new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', schedule);
+  else schedule();
+  window.addEventListener('resize', schedule);
+})();
+
+// ── 표 셀 정본 헬퍼 (2026-09-18) ────────────────────────────────────────────
+// `.ds-table` 은 table-layout:fixed + td{overflow:hidden} 이라 배정 폭을 넘긴 값이 조용히 사라진다.
+// title 이 있으면 최소한 호버로 복구되는데, 전수 조사에서 잘린 41열 중 **35열에 title 이 없었다**
+// — 손으로 달아야 했기 때문이다. 새 표는 이 헬퍼로 셀을 만들어 title 을 **빠뜨릴 수 없게** 한다.
+//
+//   dsTd('선명커뮤니케이션(주)', 'px-3 py-3 text-sm')   → <td class="…" title="…">선명커뮤니케이션(주)</td>
+//   dsChip(html, '전체 값')                            → 배지가 자기 폭 안에서 … 로 줄고 값은 title 에
+window.dsTd = function(value, cls, opts) {
+  var o = opts || {};
+  var raw = (value === null || value === undefined || value === '') ? (o.empty || '-') : String(value);
+  var esc = window.escapeHtml || function(s) { return String(s); };
+  var attrs = ' class="' + (cls || '') + '"';
+  // 빈 값·짧은 기호에 title 을 달면 호버가 성가시기만 하다
+  if (raw !== '-' && raw !== '' && o.title !== false) attrs += ' title="' + esc(raw) + '"';
+  if (o.attrs) attrs += ' ' + o.attrs;
+  return '<td' + attrs + '>' + (o.html ? raw : esc(raw)) + '</td>';
+};
+
+// 배지/칩 한 개. fullText 를 주면 배지 자신에게 title 이 붙는다(td 에 title 을 못 줄 때).
+window.dsChip = function(innerHtml, fullText, cls) {
+  var esc = window.escapeHtml || function(s) { return String(s); };
+  return '<span class="ds-chip ' + (cls || '') + '"'
+    + (fullText ? ' title="' + esc(fullText) + '"' : '') + '>' + innerHtml + '</span>';
+};
