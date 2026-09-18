@@ -1673,7 +1673,8 @@
   window.__mesCutLineMode = resolveLineMode;
   // 스모크에서 파일명 규칙을 직접 검증 — 저장 직전에야 이름을 알면 회귀를 못 잡는다
   window.__mesCutPair = {
-    name: function () { return pairBaseName(); },
+    // idx 를 받는다 — 판이 나뉘면 이름이 판마다 달라지므로(그 판의 규격·조각 수) 그걸 검증해야 한다
+    name: function (idx) { return pairBaseName(idx === undefined ? null : idx); },
     setNest: function (o) { lastNest = o; refreshPairName(); },
   };
   window.__mesCutNest = {
@@ -2025,8 +2026,15 @@
                 if (wp.length === 2) whList.push(Math.round(R(parseFloat(wp[0])) / 10) + 'x' + Math.round(R(parseFloat(wp[1])) / 10));
               }
             }
+            // ★판별 조각 수 — 파일명의 「N장」은 **그 판에 실제로 든 수**여야 한다(2026-09-18 용준님).
+            //   여태 판이 여럿이어도 전부 총수(placed)를 달아, 조각 2장뿐인 판에도 `-6장` 이 붙었다.
+            //   RIP 오퍼레이터에게는 그게 **출력 매수**로 읽혀 실물이 배로 나갈 수 있다.
+            var perList = [];
+            for (var pi2 = 0; pi2 < res.sheets.length; pi2++) {
+              perList.push(((res.sheets[pi2] || {}).placements || []).length);
+            }
             lastNest = (swMm > 0 && shMm > 0)
-              ? { wCm: Math.round(R(swMm) / 10), hCm: Math.round(R(shMm) / 10), n: placed, sheets: res.sheets.length, wh: whList }
+              ? { wCm: Math.round(R(swMm) / 10), hCm: Math.round(R(shMm) / 10), n: placed, sheets: res.sheets.length, wh: whList, per: perList }
               : null;
             refreshPairName();
             setNestReady(true);
@@ -2624,7 +2632,10 @@
     if (idx != null && lastNest.wh && lastNest.wh[idx]) spec = lastNest.wh[idx];
     else spec = lastNest.wCm + 'x' + lastNest.hCm;
     var seq = (lastNest.sheets > 1 && idx != null) ? ('-' + (idx + 1) + 'p') : '';
-    return head + item + '(' + spec + '-' + lastNest.n + '장)' + seq + (sN > 1 ? ('_1-' + sN) : '');
+    // ★「N장」 = **그 판의 조각 수**. 판을 안 나눴으면 총수와 같다(판이 하나이므로).
+    //   판별 값이 없는 호출(구 setNest·외부 주입)은 총수로 폴백한다 — 이름이 비는 것보다 낫다.
+    var cnt = (idx != null && lastNest.per && lastNest.per[idx] != null) ? lastNest.per[idx] : lastNest.n;
+    return head + item + '(' + spec + '-' + cnt + '장)' + seq + (sN > 1 ? ('_1-' + sN) : '');
   }
 
   function refreshPairName() {
