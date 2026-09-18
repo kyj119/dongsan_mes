@@ -161,11 +161,18 @@ const AXIS_LABEL = { agent: '축1 에이전트', designer: '축2 호스트(Z:)',
 // 2026-08-27 실제로 `cut-main.js` 가 **0.57.0 하나로 세 상태**를 가리키게 됐다
 // (등록 파라미터 · 굽기 통합 · [◎ 전체] 세 번이 번호 없이 들어갔다).
 // ⚠️ 셸 자동갱신 서명은 바이트도 보므로 **동기화 자체는 된다** — 그래서 조용하고, 그래서 위험하다.
+// ★2026-09-18 **손목록 → 규칙**. 종전 4줄(a0·재단 셸 + a0·재단 호스트)은 이름을 하나씩 적어서,
+//   나중에 들어온 **전사 셸(tr-main.js) · 전사 호스트(mes-tr-host.jsx) · 스텁(jsx/host.jsx)** 이
+//   전부 이 게이트 밖에 있었다. 같은 날 스텁이 전사 호스트를 목록에 안 넣어 낸 사고와 **같은 병**이고,
+//   `ia:deploy` 가 배포 대상을 손목록으로 두다 세 번 사고를 낸 뒤 열거로 바꾼 것과도 같은 형태다.
+//   → 파일 **종류**로 규칙을 쓴다. 새 탭·새 호스트가 생겨도 이 파일을 고칠 필요가 없다.
 const VERSION_MARKS = [
-  { rel: /js\/cut-main\.js$/, re: /var\s+SHELL_VERSION\s*=\s*'([^']+)'/, label: '재단 셸 SHELL_VERSION' },
-  { rel: /js\/main\.js$/, re: /var\s+SHELL_VERSION\s*=\s*'([^']+)'/, label: 'A0 셸 SHELL_VERSION' },
-  { rel: /mes-cut-host\.jsx$/, re: /var\s+MESCUT_VERSION\s*=\s*'([^']+)'/, label: '재단 호스트 MESCUT_VERSION' },
-  { rel: /mes-a0-host\.jsx$/, re: /var\s+MESA0_VERSION\s*=\s*'([^']+)'/, label: 'A0 호스트 MESA0_VERSION' },
+  // 패널 셸 — js/main.js · js/cut-main.js · js/tr-main.js …
+  { rel: /js\/[a-z0-9-]*main\.js$/, re: /var\s+[A-Z0-9_]*SHELL_VERSION\s*=\s*'([^']+)'/, label: '패널 셸 SHELL_VERSION' },
+  // 축2 호스트 — mes-*-host.jsx 는 전부 자기 MES*_VERSION 을 가진다
+  { rel: /mes-[a-z0-9-]+-host\.jsx$/, re: /var\s+MES[A-Z0-9]+_VERSION\s*=\s*'([^']+)'/, label: '호스트 MES*_VERSION' },
+  // 스텁 — 이것도 코드다. 2026-09-18 에 여기가 바뀌면서 전사 호스트가 비로소 실렸다.
+  { rel: /jsx\/host\.jsx$/, re: /var\s+MESA0_STUB_VERSION\s*=\s*'([^']+)'/, label: '스텁 MESA0_STUB_VERSION' },
 ]
 function readVer(file, re) {
   try { const m = fs.readFileSync(file, 'utf8').match(re); return m ? m[1] : null } catch { return null }
@@ -178,6 +185,9 @@ function staleVersions(plan) {
     const mark = VERSION_MARKS.find((v) => v.rel.test(rel))
     if (!mark) continue
     const repoV = readVer(path.join(p.repoRoot, p.rel), mark.re)
+    // ★규칙에 걸리는 파일인데 **번호가 아예 없으면** 그것도 막는다. 종전에는 repoV 가 null 이라
+    //   조용히 건너뛰었다 — 번호를 안 붙인 새 셸이 게이트를 통과하는 길이었다(§조용한 격하).
+    if (!repoV) { out.push({ rel, label: mark.label, v: '(번호가 없다)' }); continue }
     const runV = readVer(path.join(p.runRoot, p.rel.replace(/\//g, path.sep)), mark.re)
     // 런타임에 파일이 없으면(신규) 비교 대상이 없다 — 막을 이유도 없다.
     if (repoV && runV && repoV === runV) out.push({ rel, label: mark.label, v: repoV })

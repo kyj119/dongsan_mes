@@ -4,6 +4,7 @@ import { chromium } from 'playwright'
 import fs from 'fs'
 import path from 'path'
 import { pathToFileURL, fileURLToPath } from 'url'
+import stubScope from './lib/stub-scope.cjs'
 
 // 패널 레지스트리 — 패널은 여러 개다(A0 + 재단). 경로 하드코딩이던 동안은 이 PC 밖에서 깨졌고,
 // 새 패널은 아예 스모크 사각지대였다(spec 2026-07-31-cut-file-panel §5.2-③).
@@ -1356,6 +1357,94 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   ok('14 픽업 파일 이름은 등록 이름 그대로다',
     agentCs.indexOf('Path.Combine(outDir, Path.GetFileName(rel))') > 0,
     '에이전트가 이름을 바꾸면 RIP 가 보는 이름이 달라져 출력완료 매칭이 끊긴다')
+}
+
+// ── §15 스텁이 축2 호스트를 **전부** 읽는가 ───────────────────────────
+// ★2026-09-18 실기 — 스텁(jsx/host.jsx)이 a0·cut **둘만 이름으로** 읽어, Z: 에 배포까지 끝난
+//   `mes-tr-host.jsx` 를 아무도 evalFile 하지 않았다. mesTr_* 가 전역에 안 생기고 패널은
+//   「Z: 의 전사 호스트를 못 읽었습니다」를 띄웠다 — **Z: 는 멀쩡했다**. 사람은 드라이브를 보러 갔다.
+//   `ia:deploy` 가 손목록 때문에 같은 사고를 세 번 낸 뒤 열거로 바꾼 것과 **같은 형태이자 네 번째**다.
+// ★그래서 「그 자리에 그 이름이 있는가」가 아니라 **「손목록이 아닌가」**를 묻는다
+//   (§게이트가 구현을 못박으면 개선을 막는다 — 이름을 세면 네 번째 호스트에서 또 같은 일이 난다).
+{
+  const stub = fs.readFileSync(path.join(PANEL_DIRS.a0, 'jsx', 'host.jsx'), 'utf8')
+  // ★주석을 걷어내고 센다 — 이 스텁의 머리말은 「이렇게 하면 안 된다」를 **예시 코드로** 적어 놓았다.
+  //   그대로 세면 경고문이 위반으로 잡힌다(첫 시도에서 실제로 그랬다).
+  const stubCode = stub.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n')
+  const a0h15 = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-a0-host.jsx'), 'utf8')
+  const trm15 = fs.readFileSync(path.join(PANEL_DIRS.a0, 'js', 'tr-main.js'), 'utf8')
+  const dDir = path.join(REPO, 'IllustratorAutomat', 'designer')
+  const hosts = fs.readdirSync(dDir).filter((f) => /^mes-.+-host\.jsx$/i.test(f)).sort()
+
+  ok('15 축2 에 호스트가 셋 이상 있다(가공·재단·전사)', hosts.length >= 3, hosts.join(','))
+
+  // ⓐ 손목록이 아니다 — 폴더를 열거한다
+  ok('15 ★스텁이 호스트를 손목록이 아니라 열거로 읽는다',
+    /getFiles\(function/.test(stubCode) && stubCode.indexOf('/^mes-.+-host\\.jsx$/i') > 0,
+    '이름을 하나씩 적으면 네 번째 호스트가 또 조용히 빠진다')
+  // ★「앞에 함수가 있나」가 아니라 **「호출이 함수 본문 안에 있나」**를 센다 — 정본 = lib/stub-scope.cjs.
+  //   `for`·`try` 는 ES3 에서 스코프를 만들지 않으므로 반복문 안의 호출은 여전히 전역이다.
+  const sc15 = stubScope.evalFileScope(stub)
+  ok('15 evalFile 호출 지점이 하나다(반복문 안)', sc15.calls === 1,
+    JSON.stringify(sc15) + ' — 지점이 늘면 거기서부터 다시 손목록이 된다')
+  ok('15 함수 본문 안에서 부르지 않는다(전역 선언이어야 한다)',
+    sc15.nested === 0,
+    '지역에 갇히면 evalScript 에서 「함수가 아닙니다」가 난다(2026-07-27 전례)')
+
+  // ★검사기 자가시험 — **잡아야 할 것과 잡으면 안 되는 것**을 양방향으로 건다.
+  //   이 검사기가 낡으면 위의 초록불이 아무 뜻도 없어진다(종전 정규식이 정확히 그렇게 낡았다).
+  const SELF = [
+    ['IIFE 로 감싼 것', 'var a=1;(function(){ $.evalFile(x); })();', 1, 1],
+    ['함수 안', 'function load(){ $.evalFile(x); } load();', 1, 1],
+    ['try 안은 전역이다', 'try { $.evalFile(x); } catch(e){}', 1, 0],
+    ['for 안도 전역이다(ES3 는 블록 스코프가 없다)', 'for(var i=0;i<2;i++){ $.evalFile(x); }', 1, 0],
+    ['콜백을 지나친 뒤의 전역 호출', 'd.getFiles(function(f){ return f; }); $.evalFile(x);', 1, 0],
+    ['주석 속 「하지 말라」 예시는 안 센다', '// (function(){ $.evalFile(y); })()\n$.evalFile(x);', 1, 0],
+  ]
+  const selfBad = SELF.filter(([, code, c, n]) => {
+    const r = stubScope.evalFileScope(code)
+    return r.calls !== c || r.nested !== n
+  }).map(([n]) => n)
+  ok('15 ★검사기 자가시험(양방향)', selfBad.length === 0, selfBad.join(' / '))
+
+  // ⓑ 자가시험 — 그 규칙이 축2 파일을 **전부** 집고, 이웃은 안 집는가 (양방향)
+  const rx15 = /^mes-.+-host\.jsx$/i
+  ok('15 그 규칙이 축2 호스트를 전부 집는다', hosts.every((h) => rx15.test(h)), hosts.join(','))
+  ok('15 자가시험 — 이웃 파일은 안 집는다',
+    !rx15.test('mes-lock.jsx') && !rx15.test('mes-whitering-probe.jsx')
+    && !rx15.test('mes-cut-host.jsx.bak-20260918'),
+    '잠금·프로브·백업까지 evalFile 하면 안 된다')
+
+  // ⓒ 호스트마다 폴백 ping — 미로드 사유를 사람 말로 옮길 자리
+  const pingMissing = hosts.map((h) => {
+    const t = h.replace(/^mes-/, '').replace(/-host\.jsx$/i, '')
+    return 'mes' + t.charAt(0).toUpperCase() + t.slice(1) + '_ping'
+  }).filter((fn) => stubCode.indexOf(fn) < 0)
+  ok('15 ★호스트마다 폴백 ping 이 있다', pingMissing.length === 0, pingMissing.join(','))
+
+  // ⓓ 이름으로 읽는 쪽을 안 깬다 — cut-main.js 의 구호스트 감지, 환경 점검의 *_LOAD_ERROR
+  ok('15 MESCUT_CORE_PATH 가 그대로 있다', /var MESCUT_CORE_PATH = /.test(stubCode),
+    'cut-main.js 가 구 호스트 감지에 이 이름을 읽는다')
+  ok('15 전사도 같은 이름 규약을 따른다',
+    /var MESTR_CORE_PATH = /.test(stubCode) && /var MESTR_LOAD_ERROR/.test(stubCode))
+
+  // ⓔ 1차 판정 도구가 전 축을 본다 — 여기 없으면 다음에도 엉뚱한 곳을 고친다
+  ok('15 ★환경 점검이 전사 호스트 버전을 보여 준다', /putS\('tr',/.test(a0h15),
+    '증상이 「Z: 연결 확인」으로 읽힌 근본 이유가 이 줄의 부재였다')
+  ok('15 ★환경 점검이 **실제로 읽은** 파일 이름을 보여 준다',
+    /putS\('hosts',/.test(a0h15) && /MESPANEL_HOSTS_LOADED/.test(stubCode),
+    '「읽으려 했다」와 「읽었다」는 다른 값이다')
+  ok('15 loadErr 이 전사 사유까지 합친다', /MESTR_LOAD_ERROR/.test(a0h15))
+
+  // ⓕ 조용한 격하 — 미로드를 부팅 때 말한다 · 원인을 단정하지 않는다
+  ok('15 ★전사 패널이 호스트 미로드를 부팅 때 알린다',
+    /reason=oldstub/.test(trm15) && /hostMissingWhy\(/.test(trm15),
+    '종전엔 none 을 조용히 넘겨 [판 만들기] 를 누르고서야 알았다')
+  ok('15 사유가 조치가 다른 갈래로 나뉜다',
+    /reason=loaderr/.test(trm15) && /reason=notloaded/.test(trm15))
+  ok('15 ★문구가 Z: 를 범인으로 단정하지 않는다',
+    trm15.indexOf('Z: 의 전사 호스트를 못 읽었습니다') < 0,
+    '그 문구가 멀쩡한 Z: 를 지목해 사람이 드라이브를 보러 갔다')
 }
 
 await browser.close()

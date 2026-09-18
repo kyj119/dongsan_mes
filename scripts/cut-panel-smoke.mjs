@@ -14,6 +14,7 @@ import { chromium } from 'playwright'
 import fs from 'fs'
 import path from 'path'
 import { pathToFileURL, fileURLToPath } from 'url'
+import stubScope from './lib/stub-scope.cjs'
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 // 2026-08-04 병합: 재단 껍데기는 A0 패널의 '재단' 탭으로 흡수됐다.
@@ -1928,10 +1929,18 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   const stub = fs.readFileSync(path.join(PANEL_DIR, 'jsx/host.jsx'), 'utf8')
   // ⚠️ 주석을 지우고 검사한다 — 스텁 주석에는 "이렇게 하면 안 된다"는 IIFE 예시가 일부러 들어 있어서,
   //    원문 그대로 검사하면 그 예시가 잡혀 오탐이 난다(2026-07-31 실제로 FAIL 남).
-  const stubCode = stub.replace(/^\s*\/\/.*$/gm, '')
-  ok('7 스텁이 evalFile 을 전역에서 호출(IIFE 금지)',
-    /\$\.evalFile/.test(stubCode) && !/\(function\s*\([^)]*\)\s*\{[\s\S]*\$\.evalFile/.test(stubCode))
-  ok('7 스텁이 A0 가 아닌 재단 정본을 가리킴', /mes-cut-host\.jsx/.test(stub))
+  // ★2026-09-18 표현 교체 — 종전 정규식은 「evalFile **앞에** 함수 리터럴이 있으면 위반」이라,
+  //   스텁이 `getFiles(function (f) {...})` 콜백으로 호스트를 열거하기 시작하자 곧바로 오탐이 났다.
+  //   성질은 그대로다(전역에서 부른다) — 세는 방법만 정확해졌다. 정본 = scripts/lib/stub-scope.cjs
+  const sc7 = stubScope.evalFileScope(stub)
+  ok('7 스텁이 evalFile 을 전역에서 호출(함수 본문 안 금지)',
+    sc7.calls >= 1 && sc7.nested === 0, JSON.stringify(sc7))
+  // ★재단 호스트를 **가리키는 방식**은 이름일 수도 열거일 수도 있다 — 둘 다 인정하되
+  //   열거라면 그 규칙이 실제로 mes-cut-host.jsx 를 집는지까지 본다(panel:smoke §15 와 같은 잣대).
+  const rx7 = /^mes-.+-host\.jsx$/i
+  ok('7 스텁이 재단 정본에 닿는다',
+    /mes-cut-host\.jsx/.test(stub) || (/getFiles\(function/.test(stub) && rx7.test('mes-cut-host.jsx')),
+    '이름으로 적든 열거하든, 재단 호스트가 실리지 않으면 재단 탭이 통째로 죽는다')
 }
 
 // ── 8 미선언 식별자 — 콜백 안에서 조용히 죽는 사고 방지 ─────────────

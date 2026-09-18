@@ -17,7 +17,7 @@
 (function () {
   'use strict';
 
-  var TR_SHELL_VERSION = '0.2.0';   // 0.2.0 = 원본 측정(mesTr_measure) → 도련 경로 결정 → 배치·클리핑까지 · 0.1.0 = 신설
+  var TR_SHELL_VERSION = '0.2.1';   // 0.2.1 = ★호스트 미로드를 **부팅 때** 알린다. 종전엔 `none` 을 조용히 넘겨 `host ?` 만 떴고 사람은 [판 만들기] 를 누르고서야 알았다. 그리고 그때 뜨는 문구가 **Z: 를 범인으로 단정**했는데(2026-09-18 실기) 진짜 원인은 이 PC 의 스텁이 전사 호스트를 목록에 안 넣은 것이었다 — Z: 는 멀쩡했고 사람은 드라이브를 보러 갔다. → 사유를 스텁에게 되묻고(oldstub·loaderr·notloaded) **조치가 다른 세 갈래**로 나눠 말한다. 잃는 것: 없음(산식·판·payload 불변) · 0.2.0 = 원본 측정(mesTr_measure) → 도련 경로 결정 → 배치·클리핑까지 · 0.1.0 = 신설
   // ★호스트 최소 버전 — `mesTr_measure` 와 도련 색 전달은 **0.2.0 부터**다.
   //   구 호스트(0.1.0)는 `M:solid,c,m,y,k` 의 색을 조용히 무시하고 자리 표시 선만 그린다
   //   → 판은 나오는데 도련이 없다. 조용한 격하라서 버전을 못박는다.
@@ -77,13 +77,34 @@
       if (s === 'EvalScript error.') { cb('ERROR evalScript 실패', true); return; }
       // 호스트가 아예 안 실린 경우 — 「함수가 아닙니다」만으로는 원인도 조치도 알 수 없다(cut-main.js 전례)
       if (/is not a function|함수가 아닙니다/.test(s) && /mesTr_/.test(s)) {
-        cb('ERROR Z: 의 전사 호스트를 못 읽었습니다.\n'
+        // ★원인을 단정하지 않는다 — 2026-09-18 실기에서 이 문구가 **Z: 를 지목했는데 Z: 는 멀쩡했고**
+        //   진짜 원인은 이 PC 의 스텁이 전사 호스트를 목록에 안 넣은 것이었다. 사람이 엉뚱한 곳을 고친다.
+        cb('ERROR 전사 호스트(mesTr_*)가 안 실렸습니다.\n'
           + '· 일러스트레이터를 **완전히 종료**했다 다시 켜 주세요(패널만 닫았다 여는 것으로는 안 바뀝니다).\n'
-          + '· 그래도 같으면 Z: 연결을 확인하세요.', true);
+          + '· 그래도 같으면 가공 탭 [⚙ 환경 점검] 의 hosts · loadErr 두 줄을 보내 주세요 —\n'
+          + '  Z: 연결인지 이 PC 의 스텁인지는 그 두 줄이 가릅니다.', true);
         return;
       }
       cb(s, s.indexOf('ERROR') === 0);
     });
+  }
+
+  /**
+   * 호스트가 안 실린 사유를 **조치가 다른 세 갈래**로 옮긴다.
+   * ★「Z: 연결을 확인하세요」로 뭉치지 않는다 — 2026-09-18 에 그 문구가 멀쩡한 Z: 를 지목했다.
+   */
+  function hostMissingWhy(v) {
+    if (/reason=oldstub/.test(v)) {
+      return '⚠ 이 PC 의 패널 스텁이 낡아 전사 호스트를 아예 안 읽습니다.\n'
+        + '· 일러스트레이터를 완전히 종료했다 다시 켜면 패널이 스스로 갱신됩니다(Z: 연결 필요).\n'
+        + '· 두 번 해도 같으면 자동 갱신이 멈춘 PC 입니다 — 관리자에게 알려 주세요.';
+    }
+    if (/reason=loaderr/.test(v)) {
+      return '⚠ Z: 에서 전사 호스트를 못 읽었습니다 — Z: 연결을 확인하세요.\n'
+        + '· 자세한 사유는 가공 탭 [⚙ 환경 점검] 의 loadErr 줄에 있습니다.';
+    }
+    return '⚠ 전사 호스트가 안 실렸습니다(' + v + ').\n'
+      + '· 일러스트레이터를 완전히 종료했다 다시 켜 주세요.';
   }
 
   function verGE(v, min) {
@@ -336,9 +357,20 @@
     if (el.btnFrame) el.btnFrame.addEventListener('click', openFrame);
 
     if (el.ver) el.ver.textContent = 'shell ' + TR_SHELL_VERSION;
-    host('(typeof mesTr_version === "function") ? mesTr_version() : "none"', function (v, bad) {
-      if (el.ver) el.ver.textContent = 'shell ' + TR_SHELL_VERSION + ' · host ' + (bad ? '?' : v);
-      if (!bad && v !== 'none' && !verGE(v, TR_MIN_HOST)) {
+    // ★미로드를 **부팅 때** 말한다. 종전에는 `none` 을 조용히 넘겨 `host ?` 만 떴고,
+    //   사람은 [판 만들기] 를 누르고 나서야 알았다(§조용한 격하).
+    // ★사유를 스텁에게 되묻는다 — 「Z: 에 없다」와 「이 PC 스텁이 안 읽는다」는 조치가 완전히 다르다.
+    //   ⚠️중첩 삼항은 **ExtendScript 가 왼쪽 결합으로 파싱**하므로 전부 괄호를 친다(audit:jsx-ternary
+    //   는 .jsx 만 훑어 이 문자열은 못 본다). ⚠️반환도 ASCII 로 — 사유 원문에 한글 경로가 섞인다.
+    host('(typeof mesTr_version === "function") ? mesTr_version()'
+      + ' : ((typeof MESPANEL_HOSTS_LOADED !== "string") ? "none reason=oldstub"'
+      + ' : ((typeof MESTR_LOAD_ERROR === "string" && MESTR_LOAD_ERROR) ? "none reason=loaderr"'
+      + ' : ("none reason=notloaded hosts=" + MESPANEL_HOSTS_LOADED)))', function (v, bad) {
+      var miss = String(v).indexOf('none') === 0;
+      if (el.ver) el.ver.textContent = 'shell ' + TR_SHELL_VERSION + ' · host ' + ((bad || miss) ? '?' : v);
+      if (bad) return;                         // host() 가 이미 사유와 조치를 띄웠다
+      if (miss) { el.out.textContent = hostMissingWhy(v); return; }
+      if (!verGE(v, TR_MIN_HOST)) {
         el.out.textContent = '⚠ 전사 호스트가 낮습니다(' + v + ') — 판 만들기가 동작하지 않을 수 있습니다';
       }
     });
