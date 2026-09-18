@@ -1307,7 +1307,10 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   const diam = +(/MESCUT_DOMBO_DIAM_MM = (\d+)/.exec(hostSrc) || [])[1]
   const panelMargin = +(/DOMBO_MARGIN_MM = (\d+)/.exec(panelSrc) || [])[1]
   ok('3n 패널·호스트 여백 값 일치', corner + diam / 2 === panelMargin, `host ${corner}+${diam}/2=${corner + diam / 2} vs panel ${panelMargin}`)
-  ok('3n 여백이 20mm', panelMargin === 20, String(panelMargin))
+  // ★값이 아니라 **성질**을 본다(2026-09-18) — 예전엔 `=== 20` 이라, 이격을 실측값 7mm 로
+  //   고치자 성질(호스트↔패널 일치·:1309)이 지켜졌는데도 FAIL 했다. 숫자를 못박으면 개선을 막는다.
+  //   여백은 돔보 원을 다 덮어야 한다 — 안 그러면 조각이 돔보 위에 얹힌다.
+  ok('3n 여백이 돔보 원을 덮는다', panelMargin >= diam, `margin ${panelMargin} vs diam ${diam}`)
 }
 
 // ── 3m ★도련 — 칼선 바깥까지 인쇄 (spec §2.11) ────────────────────────
