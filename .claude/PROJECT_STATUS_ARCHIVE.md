@@ -26,6 +26,50 @@
 > **✅ prod 2026-09-16 `8cb06223`(`0616`) — cards.equipment_id 커버링 인덱스** — 장비 목록의 「장비당 카드 COUNT」 상관 서브쿼리가 인덱스 부재로 equipment 행마다 cards 전량(1,245) SCAN(≈4.1만 rows_read/쿼리). `(equipment_id, status)` 커버링으로 SCAN→SEARCH(prod EXPLAIN 실측 확인). `audit:subquery` 후보 EXPLAIN 판정에서 나온 유일한 진짜 건(저긴급·성장형)·결과 불변. prod 적용 완료(rows_written 1,246). 남은=없음
 
 ---
+## 2026-09-18 성능 전수 감사 + 수정 6묶음 (`session/perf`·미배포)
+
+> 현황판 인덱스에서 무손실 이관(doc-diet 400자 상한). 원문 그대로.
+
+- **✅ 09-18 성능 전수 감사 + 수정 6묶음(`session/perf`·미배포)** — ★**느린 게 아니라 컸다**: 전환·응답시간은 이미 건강(SPA 62~102ms·API 중앙값 ~60ms·500 0건)이고 낭비는 **화면이 안 쓰는 바이트**였다. 재고 로스율이 실사 상세 **357KB** 를 받아 브라우저에서 합산 · 공급처 필터가 거래처 **2,890곳 218KB**(고를 수 있는 건 123곳) · 설정·프리셋 **직렬 2왕복** · ★**`pushState` 가 스크립트 실행 뒤**라 쿼리 화면이 이전 주소를 읽던 선행 결함 · `location.href` 21곳이 SPA 를 비껴감(165~279ms↔62~102ms) · 상관 서브쿼리 2.7M·1.9M 행. 게이트=`audit:query-cost` 에 `maxKB` 3줄 추가. ⚠️journey 는 **타세션 D1 경합**으로 판정 불가(3회 실패항목 전부 다름·`no such table` 까지) → test:calc 32·표적검증 9+4 로 검증. 정본=`docs/audits/2026-09-18-performance-audit.md`. 남은=**Tailwind Play CDN 전환 판단**(최초방문만 725ms·동적클래스 깨짐)·prod 배포
+
+## 2026-09-18 고정폭 표에서 액션 버튼·상태 배지가 조용히 잘리던 것 — prod `e29624f4`
+
+`.ds-table` 은 `table-layout:fixed` + `td{overflow:hidden;white-space:nowrap}`(`shared-styles.ts:612,621`)
+이라 **표준 열폭을 넘긴 콘텐츠가 경고 없이 사라진다.** 응답은 200 이고 tsc·build·smoke·check:dom 이
+전부 통과한다 — 사람이 화면을 봐야만 보이는 축이다(§조용한 격하 계열).
+
+- **`/users` 액션 100 → 336px** — 버튼이 5개(수정·비번 초기화·활성토글·품목배정·완전삭제, 실측 289px)인데
+  표준 `col-action` 이 100px 이라 **뒤 3개가 「짧아 보이는」 게 아니라 아예 없는 것처럼** 보였다.
+  사용자는 기능이 빠진 줄 안다. `gap-3→gap-2`·`px-4→px-3` 으로 내용도 줄였다.
+- **`/users` 역할 92 → 124px** — 「오퍼레이터」 배지(실측 73px) + td 여백 32px 를 `col-tag`(92)가 못 담았다.
+- **`/bank` 매칭 상태 96 → 124px + 세로 스택** — 배지가 최대 3개(상태 + 약함 + 사유)라 가로로 ~200px 가 필요하고,
+  **사유 라벨 길이가 가변**(「매입 전표 없음」·「내부거래」)이라 폭만 늘리면 조합에 따라 또 잘린다.
+  `ds-wrap` + `inline-flex flex-col` 로 쌓아 어느 조합이든 다 보이게 했다.
+- **`/bank` 매칭 계좌 92 → 132px + 배지 truncate** — 라벨이 「별칭 · 은행명」이라 최장 25자
+  (`하나은행-보증서담보대출(1500) · 하나은행`)다. **배지가 `inline` 이면 td 의 ellipsis 가 안 걸려
+  「…」도 없이 글자가 통째로 끊긴다** → 배지 자신에게 `inline-block max-w-full truncate` + td 에 `title`.
+  148px 로 잡았다가 1078px 화면에서 적요·거래처가 99px 로 눌려 **132px 로 되돌렸다**(10자 라벨은 그대로 다 보인다).
+
+★**이 잘림은 2026-08-09 실측이 이미 잡아 놓고 한 달간 방치돼 있었다** — 메모리
+`project-table-spec-sweep` 에 「`col-tag`(92)에 계좌번호(179 필요·10/10행 잘림·title 없음)」가 적혀 있었는데,
+**그 메모리가 `MEMORY.md` 인덱스에 없어 세션에 로드조차 안 됐다.** 인덱스에 없는 메모리는 없는 것과 같다 → 훅 추가.
+
+**검증** — 로그인·브라우저 락 없이 실측하는 법을 썼다: `shared-styles.ts` 의 `SHARED_CSS` 를 추출해
+Tailwind·Pretendard·FontAwesome CDN 과 함께 정적 HTML 로 만들고 임시 서버(`127.0.0.1:4173`)로 띄운다.
+⚠️`dist/` 에 두면 `_routes.json` 이 `include:["/*"]` 라 모든 요청이 worker 로 가 **빈 200** 이 온다.
+canvas `measureText` 는 padding·아이콘·flex 가 빠져 순위용이지 판정용이 아니다(오퍼레이터 배지 canvas 84 vs 실제 73).
+1920/1280/1078px 세 폭에서 해당 열 전부 `CLIPPED:false`.
+
+⚠️**journey 게이트는 타세션 D1 경합으로 판정 불가**였다 — `journey-loop`·`perf` worktree 세션이 같은 로컬 D1 에
+동시에 여정을 돌리는 중이었고(PID 확인), **로그인 자체가 500** 이었다. 내 변경은 CSS 폭·마크업뿐이라 그 축과 무관 →
+`test:calc`·`entity 75/75`·`smoke:prod 133/133`·prod HTML 마커 5/5 로 대신 검증했다([[feedback-journey-gate-cross-session]] 지침).
+
+⚠️**작업 중 다른 세션이 내 편집 3파일을 자기 IA 커밋(`da51aa51`)에 휩쓸어 갔다** — 내용 손실은 없었지만
+IA 커밋에 UI 변경이 붙은 이력이 남았다([[feedback-shared-checkout-git]] 5번의 재발).
+
+**남은 것**: `/equipment` 이름 · `/activity-log` 일시 · `/tasks` · `/storage-zones` 의 `col-tag` 초과
+(2026-08-09 실측분, 미해결). 잘림을 잡는 **자동 게이트는 여전히 없다.**
+
 ## 2026-09-18 ExtendScript 중첩 삼항 — 주석이 「엉뚱한 변」으로 그려지던 근본 원인
 
 실기 보고는 「가공 주석이 너무 크게 생성된다」였다. 원인은 주석 코드가 아니라 **언어**였다.
