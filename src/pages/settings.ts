@@ -34,6 +34,9 @@ function switchSettingsTab(tab) {
   if (tab === 'caps' && typeof initCapsTab === 'function' && !window.__capsTabInitialized) {
     window.__capsTabInitialized = true;
     initCapsTab();
+  } else if (tab === 'caps' && typeof loadCapsEmployeeMap === 'function') {
+    // 미매핑은 동기화가 돌 때마다 바뀐다 — 최초 1회 가드 안에 두면 탭을 다시 열어도 옛 값이 남는다(0624).
+    loadCapsEmployeeMap();
   }
   // 메시지 탭 최초 진입 시 lazy 초기화
   if (tab === 'messages' && typeof loadMsgSettings === 'function' && !window.__msgTabInitialized) {
