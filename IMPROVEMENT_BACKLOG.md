@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-09-18T23:20:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-09-19T00:15:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **4** (`list_issues(state:OPEN,label:auto-improve)` 실측, -2 — #651·#652 close) |
+| 🆕 new | **4** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **569** (`search_issues(label:auto-improve is:closed reason:completed)` 실측, +2) |
+| ✔️ done | **571** (`search_issues(label:auto-improve is:closed reason:completed)` 실측, +2 — #651·#652) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 6 자기 진화 (2026-09-19T00:15, 67회차):**
+> - **방법**: 세션 시작 시 detached HEAD `a8b6c20`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. shallow clone이라 앵커(`6f8261a`) 조회 시 `git fetch --unshallow` 필요(depth 밖). `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area6 66회차 세션 HEAD `6f8261a`)**: `git log 6f8261a..HEAD` **93커밋** — item_units/배송비-박스청구/급여 엑셀입력·오버라이드/4대보험 기간축/kakao 알림톡/CAPS 매핑화면/합배송 entity필터는 이번 순환 Area1~5가 이미 각자 렌즈로 서술 정독(로그 확인). 그 외 다수(단가 회전규격 매칭·uom 관리단위 혼입 5곳·출고취소 청구시각 미정리·출력과다 행별누계·표 열잘림 감시·JWT atob·Enter submit·간이세액표 교체·IA 5건[돔보/펀칭/클리핑패스/굽기폴더/전사패널])는 어느 Area 로그에도 해시·키워드로 안 뜸(#600 "나열≠Read" 후보) → **직접 표본 검증**: 각 커밋 메시지 자체가 원인·백테스트/prod실측·게이트 신설을 포함한 자기완결 postmortem이고(`test:ship-billing`·`price-match-audit.py` 19,490건 백테스트·`test:income-tax`·`audit:jwt-decode`·`table-clip-baseline` 등 기존 게이트 체인에 실제로 편입됨, CLAUDE.md 본문에 다수가 이미 정본 서술로 흡수), 코드 diff 직접 대조 결과 entity 격리·인젝션·N+1 새 클래스 0건. IA 5건은 62회차 비웹앱축 룰 대상 — 전부 issue-only 축이나 CLAUDE.md에 이미 원인·수정·게이트 상세 기록, `audit:jsx-ternary`(0건)·`cut:bleed`(13/13)·`cut:placement`(38/38)·`cut:butt`(53건)·`cut:shellsync`(30/30) 전부 통과 확인.
+> - **비웹앱 축 standing scan(62회차 룰)**: `git log 6f8261a..HEAD -- LogWatcher IllustratorAutomat caps-worker workers queue` = IA 12커밋(전부 위에서 검증), LogWatcher/caps-worker/workers/queue 변경 0건.
+> - **panel:smoke·cut:smoke 미실행**: 이 세션(원격 컨테이너)의 Playwright 헤드리스셸이 `chromium_headless_shell-1194`인데 스크립트 요구 버전은 `-1217` — 버전 불일치로 실행 불가(환경 제약, 코드 결함 아님). `cut:e2e`는 Windows 전용이라 정상 skip. 다음 로컬(Windows) 세션에서 확인 필요.
+> - **done-sync 절대값 재동기화**(리터럴 쿼리): `search_issues("repo:kyj119/dongsan_mes label:auto-improve is:closed reason:completed")` **571**(+2, #651·#652) · `reason:"not planned"` **4** + `reason:duplicate` **2** = rejected **6**(변동없음) · `list_issues(state:OPEN,label:auto-improve)` **4**(#650·#626·#617·#616, 변동없음).
+> - **open≠unfixed 재확인**: #650 — `items.ts:226-235 GET /:id? with_stock=1`의 `last` 서브쿼리(order_items JOIN orders)에 여전히 entity 필터 없음(코드 직접 대조) = 정상 open. #626 — owner 코멘트(09-10) "PII 키 분리는 결정 대기, 트래킹용으로 열어둠" 그대로 unchanged. #617·#616(LogWatcher) — owner 코멘트가 각각 "코드수정 완료(`28f2dc83`)했으나 실기(PC/장비) 배포·확인 전까지 열어둠"을 명시(64회차 FP룰 — 열어두는 이유를 owner가 직접 밝힌 경우 사이클수 집계 금지) = unchanged, 재이슈 불필요.
+> - **standing scan**: `audit:migration-number`(신규 중복 없음, 같은테이블 충돌 0) · `sort-audit.cjs`(P1 0, P2 4건 기존 FP 유지) · `branch:clean`(삭제대상 0) · `npm audit --omit=dev`(0건) · `audit:skills`(OK) · `audit:empty-catch`(28파일·372곳 전부 사유 있음) · CI 최근 8런 전부 success(최종 HEAD `a8b6c20` 포함).
+> - **🧬 SKILL 강화**: 없음 — area-6-self-evolution.md `line N` 잔여참조 재확인(0건, 이미 서술식). 이번 사이클은 기존 원칙(#600 나열≠Read, 62회차 비웹앱축, 64회차 owner-대기 FP)의 재확인일 뿐 새 클래스 없음 — 다만 "커밋 메시지 자체가 백테스트/게이트 신설을 포함한 자기완결 postmortem이면 Area 로그에 해시가 없어도 실질 검증완료로 볼 수 있다"는 관찰은 기존 규칙(각 Area가 그 렌즈로 직접 diff 확인)의 적용 사례일 뿐 별도 서브클래스로 codify할 만큼 일반화되지 않아 보류.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 9건(임계 13건 미만), 트림 불요.
+> - 신규 이슈 0건(93커밋 중 미언급분 표본 직접 검증 net-new 0, IA 5건 포함 전부 clean), 자동수정 0건(고칠 결함 없음), done-sync: open 4(변동없음)·done 571(+2)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 + 인프라 (2026-09-18T23:20):**
 > - **방법**: 세션 시작 시 detached HEAD `2d0f08c`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. shallow clone이라 앵커(`1e50a2e`) 조회 시 `git fetch --unshallow` 필요(depth 밖). `npm ci`(0→89), `npx tsc --noEmit` clean.
