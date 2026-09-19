@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-09-19T00:15:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-09-19T01:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,21 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **571** (`search_issues(label:auto-improve is:closed reason:completed)` 실측, +2 — #651·#652) |
 | ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+
+> **Area 1 프로덕션 헬스 (2026-09-19T01:10):**
+> - **방법**: 세션 시작 시 detached HEAD `9750e74`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area1 사이클 세션시작 HEAD `0949a01`)**: 57커밋, 웹앱 헬스범위(`src/routes`·`src/utils`·`index.tsx`·`wrangler.toml`·`.github/workflows`·`scripts/smoke.cjs`·`migrations`) diff 23파일 — 전부 Area2~6가 이번 순환에서 이미 각자 렌즈로 정독 완료(caps.ts map-employees·kakao 신기능·item_units·holidays entity-scope·attendance entity-follow·printEvents 행별누계 등, 백로그 로그 확인). `scripts/smoke.cjs`(+6, kakao/item_units 프로브 4종 추가)는 **직전 Area1 사이클(0949a01 세션) 자신이 이미 자동수정으로 추가한 것**이 이번 churn 윈도에 포함된 것 — 신규 사각 없음, 재작업 불요.
+> - **CI 헬스**: `actions_list(deploy.yml, branch:main)` 최근 10런 전부 `conclusion:success`(최종 HEAD `9750e74` 포함). 최신 job(`105809543015`) 전 단계(typecheck·check:fn·jwt-decode·build·self-tests·entity audit·migration-number audit·write canary·deploy·smoke) 전부 success, 총 소요 2분36초.
+> - **smoke 133/133 PASS**(job 로그 직접 확인 — 이전 129에서 kakao/units 4종 반영해 133으로 증가). 느린 프로브 3개: `cashSchedule.overview` 5279ms·`orders.detail` 2137ms·`hr.stats` 1780ms.
+> - **#636(cashSchedule.overview) 재확인**: 5279ms ÷ owner 국내 실측(421~424ms) ≈ 배수 12.4~12.5배 — 기존 확인된 배수 범위(9~14배) 안쪽, 배수 이탈 증거 없음 → 재이슈 불필요(codify된 「owner 실측 판정 우선」 규칙 적용).
+> - **LogWatcher 하트비트**: `scripts/smoke.cjs`에 heartbeat 프로브 없음 + 이 세션은 prod로 직접 fetch 불가(egress 차단, `curl` 확인 — connect timeout). LogWatcher 축은 Area6 관할(#617·#616 이미 open, owner 코멘트로 실기 확인 대기 중) — Area1이 중복 보고하지 않음.
+> - **standing scan**: `sort-audit.cjs`(P1 0, P2 4건 기존 FP 유지: `attendance.ts:171`·`dashboard.ts:420`·`workbench.ts:577`·`itemUnits.ts:162`) · `audit:migration-number`(신규 중복 없음, 같은 테이블 DDL 충돌 0건) · `branch:clean`(삭제대상 0) · `npm audit --omit=dev`(0건).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **4**(변동없음, #650·#626·#617·#616) — 전건 Area1 관할 밖.
+> - **backlog↔GitHub 절대값 재동기화**: open **4**(변동없음) · done **571**(`search_issues` 리터럴 쿼리 재확인, 변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-1-production-health.md `line N` 잔여참조 재확인(2건 모두 ms 수치 숫자열 FP, 실참조 0건, 변동없음). 이번 사이클 신규 클래스 없음.
+> - **백로그 트림 체크**: 사이클 로그 9건 → 이번 추가 후 10건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(churn 전량 타 Area 재확인 완료, net-new 0), 자동수정 0건(고칠 결함 없음), done-sync: open 4(변동없음)·done 571(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-09-19T00:15, 67회차):**
 > - **방법**: 세션 시작 시 detached HEAD `a8b6c20`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. shallow clone이라 앵커(`6f8261a`) 조회 시 `git fetch --unshallow` 필요(depth 밖). `npm ci`(0→89), `npx tsc --noEmit` clean.
