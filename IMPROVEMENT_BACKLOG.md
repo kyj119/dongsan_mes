@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-09-19T01:10:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-09-19T07:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,29 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **4** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음) |
+| 🆕 new | **5** (`list_issues(state:OPEN,label:auto-improve)` 실측, +1 — #654) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **571** (`search_issues(label:auto-improve is:closed reason:completed)` 실측, +2 — #651·#652) |
-| ❌ rejected | **6** (`not_planned` 4 + `duplicate` 2, 실측, 변동없음) |
+| ✔️ done | **571** (변동없음) |
+| ❌ rejected | **6** (변동없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-09-19T07:20):**
+> - **방법**: 세션 시작 시 detached HEAD `6a837c8`(origin/main과 동일, Area1 직전 사이클 커밋) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. shallow clone → `git fetch --unshallow`(앵커가 depth 밖). `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area2 사이클 세션시작 HEAD `c54f68c`)**: `git log c54f68c..HEAD` 133커밋, Area2 스코프(`src/routes`·`src/types`·`src/utils`·`migrations`·`index.tsx`) diff **57파일**. 대부분(kakao 알림톡·CAPS 매핑화면·holidays entity-scope·attendance entity-follow·coating unify·합배송 entity필터·#651/#652 dedup)은 Area1·3·4·5·6가 이번 순환에서 이미 각자 렌즈로 정독 완료(백로그 로그 커밋해시 대조 확인) → **Area2 고유 렌즈(entity_id INSERT·N+1·authMiddleware·타입불일치·dead code·SELECT *)로 미검토였던 신규 유틸 클러스터**를 직접 정독: `itemUnits.ts`(256신규, 0619/0620)·`shippingFee.ts`(98신규, 0621)·`shipBilling.ts`(73신규)·`payroll/shared.ts`(+228).
+> - **`itemUnits.ts` 단위 변환계수(factor) 형제완전성 — #462 클래스 정밀 대조**: 발주 라인 계수(`backfillPoLineFactors`) 호출처를 파일 자신의 주석("발주를 만드는 경로가 여럿이다: 신규·복사·재발주·특별발주·템플릿·발주요청전환×2")과 실제 라우트 7개(core.ts POST '/'·PUT '/:id' [resolveLineFactor 직접 삽입, backfill 불필요]·po-special.ts '/:id/copy'·'/:id/reorder'·'/quick'·templates.ts '/from-template/:templateId'·purchaseRequests.ts 전환 2곳)를 1:1 대조 — **전 경로 커버, 형제 누락 0건**. `applySalesUnitSnapshots`(주문/견적 판매단위 스냅샷)도 orders/create·update·quotations(3곳) 전량 호출 확인, `orders/operations.ts`(주문 복사)는 원본 라인의 `sales_unit/sales_qty/unit_factor`를 직접 컬럼 복사(주석에 "0620 단위표: 판매단위 스냅샷도 복사본으로 넘긴다" 명시)라 헬퍼 미호출이 정상. 결함 0건 — 이 클러스터는 개발자가 이미 형제완전성을 자체 검증하며 만든 사례.
+> - **`shipBilling.ts` 되돌리기 짝(clearShipBillingStmt) 형제완전성**: 파일 주석 "되돌리는 문이 넷이라(주문 출고취소·카드 출고취소·출고 CANCELLED·출고 PREPARING 복귀)"를 실제 호출처와 대조 — `shipments.ts`(2, CANCELLED+PREPARING복귀)·`orders/lifecycle.ts`(1, 주문출고취소)·`cards/lifecycle.ts`(1, 카드출고취소) = 정확히 4곳. 일치.
+> - **🔍 신규 발견 #654 — `shipments.ts` `PATCH /:id/status`가 고아 라우트 + (살아있었다면) `applyShipBillingDates` 형제 누락**: `src/scripts`+`src/pages` 전수 grep으로 이 라우트를 호출하는 프론트 코드 0건 확인(실제 사용 경로는 `by-order/:id`·`:orderId/ship`·`orders/:id/status` 셋뿐) — `git log -S`로 도입 시점이 2026-05-08 squash 이전임도 확인, `#334` 도달성 규칙(호출 0건=dead code)에 해당. **부수 발견**: 이 라우트가 살아 있었다면 `status==='SHIPPED'/'IN_TRANSIT'` UPDATE(라인 1489-1492·1504-1508)가 바로 위 주석("이 경로로 SHIPPED 올라가면 재고차감·상태이력도 다른 출고 경로와 같아야 한다")대로 재고차감·상태이력은 맞췄는데 `applyShipBillingDates` 호출만 빠져 있어, `shipBilling.ts` 도입 당시 놓친 형제 후보였을 것 — 죽어 있어 현재 영향은 없음. 라우트 삭제/로직변경 둘 다 자동수정 금지 대상이라 **이슈로만 등록**(#654, 라벨 auto-improve+improvement+30분).
+> - **standing scan 1: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 75건·누락 **0건**(변동없음).
+> - **standing scan 2: authMiddleware recursive 스캔** — 후보 7건(`publicUnsubscribe.ts`·`orders/helpers.ts`·`payroll/shared.ts`·`cron.ts`·`messagesAd.ts`·`hrSelf.ts`·`taxInvoices/helpers.ts`) 직전 사이클과 동일 — **net-new 0**(전건 기존 FP 클래스: barrel/scoped-token/public/helpers).
+> - **standing scan 3: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 4건 전부 기존 FP 유지(`attendance.ts:171`·`dashboard.ts:420`·`workbench.ts:577`·`itemUnits.ts:162` — 신규 P2는 실사 편의계수 정렬용 ORDER BY라 페이징 무관, FP).
+> - **standing scan 4: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 1(고유커밋 0 브랜치, 코드 영향 없음)·REVIEW 0, SKIP 1(main).
+> - **standing scan 5: `npm audit --omit=dev`** — 0건(prod 청정, 변동없음).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` 세션 시작 시 **4**(#650·#626·#617·#616, 변동없음) — 전건 Area2 관할 밖, **+#654 신규 등록**으로 **5**.
+> - **backlog↔GitHub 절대값 재동기화**: open **5**(+1, #654) · done **571**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md `line N` 잔여참조 재확인(이미 서술식, 잔여 없음). 이번 발견(#654)은 기존 원칙(#334 도달성 + shipBilling 형제완전성) 두 개를 그대로 적용한 사례 — 새 클래스 아님.
+> - **백로그 트림 체크**: 사이클 로그 10건 → 이번 추가 후 11건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 1건(#654, 고아 라우트+형제누락 이중발견), 자동수정 0건(라우트 삭제/로직변경은 SKILL.md 금지 항목이라 이슈로만), done-sync: open 4→5(#654)·done 571(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-09-19T01:10):**
 > - **방법**: 세션 시작 시 detached HEAD `9750e74`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
