@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-09-19T07:20:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-09-19T13:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,29 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **5** (`list_issues(state:OPEN,label:auto-improve)` 실측, +1 — #654) |
+| 🆕 new | **5** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **571** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 3 UX/기능 감사 (2026-09-19T13:10):**
+> - **방법**: 세션 시작 시 detached HEAD `291d930`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area3 사이클 세션시작 HEAD `73b8c0e`)**: `git log 73b8c0e..HEAD` 28커밋, `src/pages`+`src/scripts` diff **3커밋**(`5a65ef2`·`3610549`·`095a7af`) — 웹앱 UX 표면 변화가 이례적으로 적은 사이클. `5a65ef2`(합배송 타법인 파트너 출고 실패 수정)는 Area4·5가 이미 IDOR/entity 렌즈로 정독 완료(로그 확인).
+> - **`095a7af`+`3610549`(표 잘림 감시자+실제 수정 12곳) Area3 고유 렌즈 검증 — 정확히 이 영역 소관**: prod 56화면 전수 실측(52건 잘림·35건 title 부재)→구조적 해결(`dsTd` 자동 title 부착·`.ds-chip` 자기축소·`npm run audit:table-clip` 기준선 게이트, `/deploy-verify` Phase 4 배선)+실제 12개 열 폭 수정(실측 데이터 기반)을 커밋 메시지 자체가 원인·조치·게이트를 전부 서술하는 자기완결 postmortem으로 기록. **직접 diff 확인**: `dsTd()` 헬퍼가 실제로 title 속성을 자동 부착(`shared-styles.ts`), `table-clip-audit.cjs`가 기준선(44건) 대비 회귀만 잡는 구조(누적 총량이 아닌 신규만 차단, `audit:stock-ledger`와 동일 패턴)로 CLAUDE.md 서술과 일치. 결함 0건 — 오히려 이 영역이 스스로 발견해야 했을 결함군(빈 상태·잘림)을 코드가 자체 감사했다.
+> - **보류 항목(`/bank 거래처`) 재확인**: 커밋이 명시적으로 "성격이 다르다(열 폭 아니라 데이터 축)"로 보류했는데, 기준선(`table-clip-baseline.json:44`)에 이미 등재돼 있고 title 속성 보유(정보 손실 없음, 호버로 복구 가능) 확인 — 신규 이슈화 불필요(이미 알려진·완화된 상태).
+> - **standing scan 1: showConfirm 콜백 오용(#426 클래스)** — `grep -rn "showConfirm(" src/scripts`로 2번째 인자가 함수인 오용 패턴 **0건**(변동없음).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 4건 전부 기존 FP 유지(`attendance.ts:171`·`dashboard.ts:420`·`workbench.ts:577`·`itemUnits.ts:162`).
+> - **standing scan 3: `npm run branch:clean`** — SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, SKIP 1(main) — 삭제대상 0건.
+> - **standing scan 4: 로딩 표시 커버리지 재확인(15회차·31회차 갭 목록)** — 당시 누락으로 지목된 7페이지(orders/clients/inventory/purchaseOrders/quotations/approvals/cardExpenses) + #498에서 지목된 quality.js/hometaxInvoices.js 전부 `dsSkeleton`/로딩 표시 적용 확인(코드 직접 대조) — 갭 **전량 이미 해소**(과거 사이클의 자동수정이 누적 반영된 결과로 보임), 재이슈 불필요.
+> - **standing scan 5: 신규 axios 호출 dead-button 스캔** — `git diff 73b8c0e..HEAD -- src/pages src/scripts`에 신규 axios 호출 **0건**(churn이 UI 폭 조정뿐이라 신규 API 소비 없음) — 27·29회차 전수 스캔(net-new 0) 이후 재검증 불요.
+> - **CI 헬스**: `actions_list(deploy.yml, branch:main)` 최근 5런 전부 `conclusion:success`(최종 HEAD `291d930` 포함).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **5**(#654·#650·#626·#617·#616, 변동없음) — 전건 Area3 관할 밖.
+> - **backlog↔GitHub 절대값 재동기화**: open **5**(변동없음) · done **571**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md `line N` 잔여참조 재확인(0건, 이미 서술식). 이번 사이클(표 잘림 감시자)은 Area3 고유 클래스의 실제 사례이나 이미 코드 자체가 원인·게이트·기준선을 완비해 새로 codify할 오탐 패턴·탐지 레시피 없음.
+> - **백로그 트림 체크**: 사이클 로그 11건 → 이번 추가 후 12건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(3커밋 전수 직접 정독, table-clip 클러스터는 이미 자기완결 해결+게이트 보유, 로딩표시 과거 갭 전량 해소 재확인, dead-button 신규 0), 자동수정 0건(고칠 결함 없음), done-sync: open 5(변동없음)·done 571(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-09-19T07:20):**
 > - **방법**: 세션 시작 시 detached HEAD `6a837c8`(origin/main과 동일, Area1 직전 사이클 커밋) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. shallow clone → `git fetch --unshallow`(앵커가 depth 밖). `npm ci`(0→89), `npx tsc --noEmit` clean.
