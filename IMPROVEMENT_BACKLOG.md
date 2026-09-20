@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-09-20T21:45:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-09-21T02:15:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,22 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **571** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 1 프로덕션 헬스 (2026-09-21T02:15):**
+> - **방법**: 세션 시작 시 detached HEAD `ee5dc9d`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area1 사이클 세션시작 HEAD `9750e74`)**: `git log 9750e74..HEAD` 6커밋 — 전부 이번 순환(Area1→2→3→4→5→6) 자신들의 북키핑 커밋뿐, `git diff --stat 9750e74..HEAD -- src/routes src/utils index.tsx wrangler.toml .github/workflows scripts/smoke.cjs migrations` = **0파일**. Area4·5·6가 이미 각자 렌즈로 "이번 순환 전체 애플리케이션 코드 churn 0"을 확인했고, Area1 헬스범위로도 동일 재확인 — 신규 검토 대상 없음.
+> - **CI 헬스**: `actions_list(deploy.yml, branch:main)` 최근 10런 전부 `conclusion:success`(최종 HEAD `ee5dc9d`, run #2018). 최신 job(`106080143015`) 전 15단계(typecheck·check:fn·jwt-decode·build·self-tests·entity audit·migration-number audit·write canary·deploy·smoke) 전부 success, 총 소요 2분36초.
+> - **smoke 결과**: `PASS 133/133`(GitHub Actions job 로그 직접 확인, `smoke.cjs` prod 대상). 느린 엔드포인트 3건 — `cashSchedule.overview` 3650ms·`orders.detail` 1949ms·`hr.stats` 1289ms. `cashSchedule.overview`(3650÷421~424ms owner 실측 ≈ **8.6~8.7배**)는 기존 codify된 "9~14배 배수 유지 구간"에 근접·직전 측정치(4552ms)보다 오히려 개선 — 배수 자체가 깨진 증거 없어 재이슈 불요(owner 실측 판정 우선 원칙 유지). `orders.detail`·`hr.stats`는 상시 관측되던 무거운 엔드포인트로 신규 아님.
+> - **standing scan 1: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 4건 전부 기존 FP 유지(`attendance.ts:171`·`dashboard.ts:420`·`workbench.ts:577`·`itemUnits.ts:162`).
+> - **standing scan 2: `npm run audit:migration-number`** — 같은 테이블 DDL 충돌 **0건**(변동없음, 기존 중복쌍만).
+> - **standing scan 3: `npm run branch:clean`** — 삭제대상 0건(SKIP 1=main).
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(변동없음).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **5**(#654·#650·#626·#617·#616, 변동없음) — 전건 Area1 관할 밖(Area2/5/6).
+> - **backlog↔GitHub 절대값 재동기화**: open **5**(변동없음) · done **571**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-1-production-health.md `line N` 잔여참조 재확인(0건, 이미 서술식 완료). 이번 사이클은 기존 FP 클래스(CI green·smoke 배수 유지)를 그대로 적용한 사례일 뿐 새 클래스 없음.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 10건 → 이번 추가 후 11건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(0-churn 재확인, CI/smoke 전건 healthy), 자동수정 0건, done-sync: open 5(변동없음)·done 571(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-09-20T21:45):**
 > - **방법**: 세션 시작 시 detached HEAD `051cb9e`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
