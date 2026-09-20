@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-09-20T13:00:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-09-20T21:45:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,18 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **571** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 6 자기 진화 (2026-09-20T21:45):**
+> - **방법**: 세션 시작 시 detached HEAD `051cb9e`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area6 67회차 사이클의 결과 커밋 `9750e74`)**: `git diff --stat 9750e74..HEAD -- src migrations scripts .github wrangler.toml index.tsx` = **0파일**, `git log 9750e74..HEAD -- LogWatcher IllustratorAutomat caps-worker workers queue` = **0커밋**. `git log --oneline 9750e74..HEAD` 6커밋 전부 이번 순환(Area6→1→2→3→4→5) 자신들의 북키핑 커밋뿐 — **Area4·5가 이미 각자 로그에 적었던 "이번 순환 전체 애플리케이션 코드 churn 0"이 Area6 렌즈로도 재확인됨**. 컬럼-diff bridge·XSS bridge·비웹앱축 스캔(「비-웹앱 런타임 축」) 전부 대상 churn 자체가 없어 신선 각도 재검토 대상 0건.
+> - **done-sync 절대값 재동기화**(리터럴 쿼리): `search_issues("repo:kyj119/dongsan_mes label:auto-improve is:closed reason:completed")` **571**(변동없음) · `reason:"not planned"` **4** + `reason:duplicate` **2** = rejected **6**(변동없음) · `list_issues(state:OPEN,label:auto-improve)` **5**(#654·#650·#626·#617·#616, 변동없음).
+> - **open≠unfixed 재확인**: 코드 churn 0이라 5건 전부 상태 불변. `#654`(shipBilling 고아라우트+형제누락)·`#650`(items.ts with_stock=1 entity 격리 누락) — 관련 파일(`shipments.ts`·`items.ts`) 이번 churn에 없음 = 안티패턴 그대로 잔존, 재검증 불요(캐시 신뢰, 32회차 규칙). `#626`(PII키 분리 결정대기) — owner 코멘트 unchanged. `#617`·`#616`(LogWatcher) — owner가 09-08-31 각각 "실기 확인 대기"·"exe 재빌드+PC 롤아웃 대기"를 직접 명시해 열어둔 상태 → 64회차 FP룰(owner가 열어두는 이유를 스스로 밝히면 사이클수 집계 금지) 적용, staleness 통지 불요.
+> - **standing scan**: `npm run audit:migration-number`(파일수 불변, 신규 중복 없음, 같은테이블 DDL충돌 0) · `node scripts/sort-audit.cjs`(P1 0, P2 4건 기존 FP 유지) · `npm run branch:clean`(SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, 삭제대상 0) · `npm audit --omit=dev`(0건) · `npm run audit:skills`(OK, 스킬 19개 상주비용 ~2,662자).
+> - **CI 헬스**: `actions_list(deploy.yml, branch:main)` 최근 8런 전부 `conclusion:success`(최종 HEAD `051cb9e` 포함, run #2017).
+> - **🧬 SKILL 강화**: 없음 — area-6-self-evolution.md `line N` 잔여참조 재확인(0건, 이미 서술식). 이번 사이클은 "코드 churn 0"이 **2회 연속**(직전 Area4·Area5도 각자 렌즈에서 동일 관측) 관측된 것 — 한 사이클의 우연이 아니라 이번 순환(Area6→5) 전체가 조용했던 것으로 확인되나, 원인이 개발활동 소강(외부 요인)이지 탐지 로직 결함이 아니라 별도 규칙화는 여전히 불요(37회차 이후 "0-churn 자체는 codify 대상 아님" 판단 유지).
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 9건 → 이번 추가 후 10건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(전 영역 churn 0이라 재검토 대상 자체가 없음), 자동수정 0건, done-sync: open 5(변동없음)·done 571(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 + 인프라 (2026-09-20T13:00):**
 > - **방법**: 세션 시작 시 detached HEAD `0862373`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. shallow clone → 직전 Area5 앵커(`1e50a2e`)가 depth 밖이라 `git fetch --unshallow` 필요(기존 codify된 함정 그대로 재현·대응). `npm ci`(0→89), `npx tsc --noEmit` clean.
