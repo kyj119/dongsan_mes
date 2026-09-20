@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-09-20T06:30:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-09-20T13:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,23 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **571** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 5 보안 + 인프라 (2026-09-20T13:00):**
+> - **방법**: 세션 시작 시 detached HEAD `0862373`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. shallow clone → 직전 Area5 앵커(`1e50a2e`)가 depth 밖이라 `git fetch --unshallow` 필요(기존 codify된 함정 그대로 재현·대응). `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area5 사이클 세션시작 HEAD `1e50a2e`)**: `git diff --stat 1e50a2e..HEAD -- src/routes src/middleware src/utils index.tsx wrangler.toml .github/workflows` **29파일**. `kakao.ts`·`kakaoIdentity.ts`·`shipmentNotice*.ts`·`shipBilling.ts`는 **바로 그 직전 Area5 사이클 자신**이 이미 이 앵커~그 사이클 종료 시점까지 정독 완료한 클러스터(로그 확인) — 재검토 불요. `payroll/shared.ts`·`itemUnits.ts` 형제완전성은 Area2(09-19)가 이미 코드 대조 완료.
+> - **Area5 고유 미검토분 직접 정독** (holidays entity축·attendance entity-follow·caps map-employees·shipments #652/#653·payroll reconcile/recalc-deductions·clients has_po·leaves countWorkingDays·items variant-bases·purchaseCandidates/weeklyPurchase N+1접기·printEvents 누계판정·userPrefs presets 등, `orders/helpers.ts`·`orders/lifecycle.ts`·`cards/lifecycle.ts`·`storageZones.ts` 포함): 전 파일 diff 직접 Read, IDOR·SQL 인젝션·authMiddleware 누락·XSS 렌즈로 대조. **결함 0건** — 전부 바인드 파라미터, entity_id 축 변경(attendance `a`→`e`, holidays `entity_id=0 OR entity_id=?`)은 기존 FP클래스와 동형(파생 스코프 정상), `payroll/core.ts` 신규 `/reconcile` 라우트는 router-wide `requireRole('ADMIN','MANAGER')`(`:30`)+`entityFilter(c,'p')` 이미 적용, `payroll/settings.ts` holidays CRUD도 router-wide 인증 확인. `caps.ts GET /map-employees`는 문서화된 의도적 cross-entity(전 법인 매핑 필요)+ADMIN/MANAGER 게이트+PII 최소필드(급여·주민번호 제외)로 기존 FP클래스("문서화된 cross-entity 기능") 그대로.
+> - **standing scan 1: 시크릿 폴백** `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43` 1건뿐(빈 문자열 폴백, 기존 FP, 변동없음). 하드코딩 기본 비밀번호·CI 시크릿 폴백 0건.
+> - **standing scan 2: `node scripts/check-xss.mjs`**(advisory) — 108건 중 이번 churn 관련 파일(messages.js/messagesAd.js/payroll.js/shipments.js/shipmentsDashboard.js/purchaseCandidates.js/storageZones.js/weeklyPurchase.js) 16건 전수 직접 대조 — 전부 기존 FP 클래스(에러메시지 reflected·escapeHtml/escapeAttr/pcqEsc 이미 적용·숫자집계 only). net-new 미이스케이프 0건.
+> - **standing scan 3: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 75건·누락 **0건**(변동없음).
+> - **standing scan 4: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 4건 전부 기존 FP 유지.
+> - **standing scan 5: `npm run branch:clean`** — 삭제대상 0건. **standing scan 6: `npm audit --omit=dev`** — 0건.
+> - **CI 헬스**: `actions_list(deploy.yml, branch:main)` 최근 5런 전부 `conclusion:success`(최종 HEAD `0862373` 포함).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **5**(변동없음). `#650`(items.ts `with_stock=1` 최근판매단가 entity 격리 누락) — `items.ts:226-235` 직접 재확인, `last` 서브쿼리(order_items JOIN orders) 여전히 entity 필터 없음 = 정상 open, 재보고 불필요. `#626`(fix-auth 보류 보안 항목 트래킹) — owner 결정 대기 unchanged.
+> - **backlog↔GitHub 절대값 재동기화**: open **5**(변동없음) · done **571**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-5-security-infra.md `line N` 잔여참조 재확인(0건, 이미 서술식 완료). 이번 사이클은 기존 FP 카탈로그(entity 파생축 변경·문서화된 cross-entity·router-wide 인증)를 그대로 적용한 사례일 뿐 새 클래스 없음.
+> - **백로그 트림 체크**: 사이클 로그 8건 → 이번 추가 후 9건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(29파일 전수 직접 Read, IDOR·인젝션·XSS·인증누락 렌즈 전부 clean), 자동수정 0건(고칠 결함 없음), done-sync: open 5(변동없음)·done 571(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-09-20T06:30):**
 > - **방법**: 세션 시작 시 detached HEAD `762a212`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`, 실은 실제 force-push가 아니라 이 세션 클론이 들고 있던 낡은 캐시 ref — `git log`로 `02eb83e`가 762a212의 조상임을 확인해 안전 판정) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
