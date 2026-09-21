@@ -1,183 +1,203 @@
 {
-  "note": "이미 알려진 미청크 IN 절. 「정상」이 아니라 새로 생긴 것만 잡기 위한 출발점이다. reason 에 왜 안전한지(자연 bounded 근거)를 적을 것.",
+  "note": "이미 알려진 미청크 IN 절. 「정상」이 아니라 새로 생긴 것만 잡기 위한 출발점이다. risk: low=한 건의 하위 행·고정 상수 / limit=목록 LIMIT 이 100 을 넘으면 그때 터진다(#409 형태) / input=호출자가 개수를 정하는데 상한 가드가 없다. input·limit 은 「안전 판정」이 아니라 「아직 안 터진 것」이다.",
   "updated": "2026-09-21",
   "limit": 100,
   "known": {
     "src/routes/aiAnalysis.ts|ids": {
       "line": 172,
-      "reason": ""
-    },
-    "src/routes/cardExpenses.ts|keys": {
-      "line": 1093,
-      "reason": ""
+      "reason": "★결함 #655 — ids 상한이 200 인데 D1 한도는 ~100. 101개부터 확정 500. 청크 필요",
+      "risk": "input"
     },
     "src/routes/cards/queries.ts|idArr": {
       "line": 1094,
-      "reason": ""
+      "reason": "카드 목록 한 페이지의 analysis id 집합 — 카드 LIMIT 종속(#409 와 같은 축)",
+      "risk": "limit"
     },
     "src/routes/costs.ts|ids": {
       "line": 125,
-      "reason": ""
+      "reason": "원가 목록 조회 결과의 id — 그 쿼리 LIMIT 종속",
+      "risk": "limit"
     },
     "src/routes/inventory.ts|itemIds": {
       "line": 535,
-      "reason": ""
+      "reason": "입고 요청 본문 items 의 품목 id — 상한 가드 없음. 한 입고에 100줄 이상이면 500",
+      "risk": "input"
     },
     "src/routes/inventory.ts|cancelItemIds": {
       "line": 728,
-      "reason": ""
+      "reason": "취소 대상 입고 1건의 라인 품목 — 한 전표의 하위 행",
+      "risk": "low"
     },
     "src/routes/inventory.ts|cIds": {
       "line": 790,
-      "reason": ""
+      "reason": "입고 1건의 라인 품목 — 한 전표의 하위 행",
+      "risk": "low"
     },
     "src/routes/inventory.ts|releaseItemIds": {
       "line": 965,
-      "reason": ""
+      "reason": "출고 요청 본문 items 의 품목 id — 상한 가드 없음",
+      "risk": "input"
     },
     "src/routes/inventory.ts|lowItemIds": {
       "line": 1031,
-      "reason": ""
+      "reason": "저재고 조회 결과 — 그 쿼리 LIMIT 종속",
+      "risk": "limit"
     },
     "src/routes/inventoryCount.ts|ids": {
       "line": 211,
-      "reason": ""
+      "reason": "실사 목록 조회 결과의 count id — 목록 LIMIT 종속",
+      "risk": "limit"
     },
     "src/routes/items.ts|ids": {
       "line": 221,
-      "reason": ""
+      "reason": "품목검색 한 페이지의 자재·상품 id — safeLimit 종속(기본 100 이하)",
+      "risk": "limit"
     },
     "src/routes/leaves.ts|employeeIds": {
       "line": 226,
-      "reason": ""
-    },
-    "src/routes/leaves.ts|sources": {
-      "line": 784,
-      "reason": ""
-    },
-    "src/routes/ledger/credit-helpers.ts|keys": {
-      "line": 63,
-      "reason": ""
+      "reason": "호출부가 넘기는 직원 id — 재직 직원 규모(46명 대)",
+      "risk": "low"
     },
     "src/routes/orders/create.ts|newItemIds": {
       "line": 883,
-      "reason": ""
+      "reason": "한 주문에 새로 넣은 라인 — 주문 1건의 하위 행",
+      "risk": "low"
     },
     "src/routes/orders/helpers.ts|ids": {
       "line": 347,
-      "reason": ""
+      "reason": "한 주문에서 카드가 안 생긴 라인 — 주문 1건의 하위 행",
+      "risk": "low"
     },
     "src/routes/orders/lifecycle.ts|(confirmed_card_ids as number[])": {
       "line": 224,
-      "reason": ""
+      "reason": "요청 본문 — 다만 한 주문의 카드라 실질 bounded",
+      "risk": "input"
     },
     "src/routes/orders/lifecycle.ts|(cancelled_card_ids as number[])": {
       "line": 233,
-      "reason": ""
-    },
-    "src/routes/orders/queries.ts|ORDER_SALES_REP_ROLES": {
-      "line": 35,
-      "reason": ""
+      "reason": "요청 본문 — 다만 한 주문의 카드라 실질 bounded",
+      "risk": "input"
     },
     "src/routes/orders/queries.ts|CONSOLIDATABLE_ORDER_STATUSES": {
       "line": 118,
-      "reason": ""
+      "reason": "고정 enum(utils/statusLabels) — 주문 상태 목록",
+      "risk": "low"
     },
     "src/routes/orders/update.ts|(savedReturnItems as any[])": {
       "line": 345,
-      "reason": ""
+      "reason": "한 주문의 반품 라인 — 주문 1건의 하위 행",
+      "risk": "low"
     },
     "src/routes/payroll/core.ts|aggEmpIds": {
       "line": 821,
-      "reason": ""
+      "reason": "급여 대상 직원 — 재직 직원 규모(46명 대)",
+      "risk": "low"
     },
     "src/routes/payroll/shared.ts|keys": {
       "line": 12,
-      "reason": ""
+      "reason": "호출부가 넘기는 설정 키 — 고정 목록",
+      "risk": "low"
     },
     "src/routes/payroll/shared.ts|ids": {
       "line": 731,
-      "reason": ""
+      "reason": "직원 id dedup — 재직 직원 규모",
+      "risk": "low"
     },
     "src/routes/printEvents.ts|orderItemIds": {
       "line": 131,
-      "reason": ""
+      "reason": "호출부가 넘기는 주문 라인 id — 주문 단위",
+      "risk": "low"
     },
     "src/routes/purchaseInvoices.ts|poItemIds": {
       "line": 136,
-      "reason": ""
+      "reason": "매입계산서 1건의 발주 라인 — 전표 1건의 하위 행",
+      "risk": "low"
     },
     "src/routes/shipments.ts|CONSOLIDATABLE_ORDER_STATUSES": {
       "line": 461,
-      "reason": ""
+      "reason": "고정 enum(utils/statusLabels)",
+      "risk": "low"
     },
     "src/routes/shipments.ts|order_ids": {
       "line": 546,
-      "reason": ""
+      "reason": "POST /shipments/merge 요청 본문 — 하한(2건)만 있고 상한 가드 없음",
+      "risk": "input"
     },
     "src/routes/tasks.ts|ids": {
       "line": 169,
-      "reason": ""
+      "reason": "작업 목록 조회 결과 — 그 쿼리 LIMIT 종속",
+      "risk": "limit"
     },
     "src/routes/taxInvoices/batch.ts|orderIds": {
       "line": 96,
-      "reason": ""
+      "reason": "묶음 그룹의 order_ids — 상한 가드 없음. prod tax_invoices 0행이라 잠복",
+      "risk": "input"
     },
     "src/routes/taxInvoices/helpers.ts|agg.groupIds": {
       "line": 455,
-      "reason": ""
+      "reason": "한 계산서의 청구그룹 id",
+      "risk": "low"
     },
     "src/routes/taxInvoices/issue.ts|orderIds": {
       "line": 331,
-      "reason": ""
+      "reason": "★body.order_ids 직결·상한 가드 없음. prod tax_invoices 0행이라 아직 잠복(2026-09-21 실측)",
+      "risk": "input"
     },
     "src/routes/taxInvoices/issue.ts|groupIds": {
       "line": 731,
-      "reason": ""
+      "reason": "한 계산서의 청구그룹 id",
+      "risk": "low"
     },
     "src/routes/workbench.ts|ids": {
       "line": 353,
-      "reason": ""
+      "reason": "대기함 목록 조회 결과 — 그 쿼리 LIMIT 종속",
+      "risk": "limit"
     },
     "src/routes/workbench.ts|sts": {
       "line": 831,
-      "reason": ""
+      "reason": "쿼리 status 콤마 split — 상한 가드 없지만 실제 값은 상태 enum 수만큼",
+      "risk": "input"
     },
     "src/routes/workbench.ts|modes": {
       "line": 860,
-      "reason": ""
-    },
-    "src/services/budgetAlert.ts|keys": {
-      "line": 57,
-      "reason": ""
+      "reason": "화이트리스트 필터(single/impose/both) — 최대 3",
+      "risk": "low"
     },
     "src/utils/cashflowEngine.ts|ids": {
       "line": 406,
-      "reason": ""
+      "reason": "미적용 상위 N 건 — 상위 절단된 목록",
+      "risk": "low"
     },
     "src/utils/intercompany.ts|entityIds": {
       "line": 41,
-      "reason": ""
+      "reason": "법인 id 상수 [1,2,3]",
+      "risk": "low"
     },
     "src/utils/intercompany.ts|clientIds": {
       "line": 42,
-      "reason": ""
+      "reason": "내부 법인 거래처 id 상수 3건",
+      "risk": "low"
     },
     "src/utils/inventoryAlert.ts|itemIds": {
       "line": 29,
-      "reason": ""
+      "reason": "알림 대상 품목 조회 결과 — 그 쿼리 LIMIT 종속",
+      "risk": "limit"
     },
     "src/utils/materialShortageCheck.ts|materialIds": {
       "line": 65,
-      "reason": ""
+      "reason": "한 주문의 자재 소요 품목 — 주문 1건의 BOM 전개",
+      "risk": "low"
     },
     "src/utils/notify.ts|roles": {
       "line": 9,
-      "reason": ""
+      "reason": "호출부가 넘기는 역할 목록 — 고정 enum",
+      "risk": "low"
     },
     "src/utils/shipmentHelper.ts|childIds": {
       "line": 172,
-      "reason": ""
+      "reason": "합배송 묶음의 자식 출고 — 한 묶음의 하위 행",
+      "risk": "low"
     }
-  }
+  },
+  "reviewed": "2026-09-21"
 }

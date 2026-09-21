@@ -72,8 +72,13 @@ function constNumValue(node, sf) {
 
 /** `…slice(a, b)` 에서 b 가 `i + N` 이거나 N (N ≤ LIMIT) 이면 청크로 본다. N 은 상수 식별자도 허용. */
 function sliceIsChunked(node, sf) {
+  node = unwrap(node);
   if (!ts.isCallExpression(node)) return false;
   const ex = node.expression;
+  // `ids.slice(i, i + 80).map(x => x.k)` — 청크 뒤에 map/filter 를 물린 형태. 밑단으로 내려간다.
+  if (ts.isPropertyAccessExpression(ex) && ['map', 'filter', 'flatMap'].includes(ex.name.text)) {
+    return sliceIsChunked(ex.expression, sf);
+  }
   if (!ts.isPropertyAccessExpression(ex) || ex.name.text !== 'slice') return false;
   const args = node.arguments;
   if (args.length < 2) return false;
@@ -139,8 +144,47 @@ function hasLengthGuard(sf, recvText) {
   return guarded;
 }
 
-/** 원소 수가 정적으로 ≤ LIMIT 임이 보이는가 (배열 리터럴 / Array.from({length: K})). */
-function isStaticallySmall(node) {
+/** `x as const` · 괄호 같은 껍데기를 벗긴다. */
+function unwrap(node) {
+  while (node && (ts.isAsExpression(node) || ts.isParenthesizedExpression(node)
+                  || ts.isNonNullExpression(node) || ts.isSatisfiesExpression?.(node))) {
+    node = node.expression;
+  }
+  return node;
+}
+
+/**
+ * 같은 파일의 `const X = { … }` 를 찾아 프로퍼티 수를 센다 — `Object.keys(X)`/`values(X)` 의 상한.
+ */
+function objectLiteralSize(sf, name) {
+  let size = null;
+  const visit = (n) => {
+    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.name.text === name && n.initializer) {
+      const init = unwrap(n.initializer);
+      if (ts.isObjectLiteralExpression(init)) size = init.properties.length;
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return size;
+}
+
+/** 원소 수가 정적으로 ≤ LIMIT 임이 보이는가 (배열 리터럴 / Array.from({length: K}) / as const / 삼항 / Object.keys). */
+function isStaticallySmall(node, sf) {
+  node = unwrap(node);
+  if (!node) return false;
+  // `cond ? ['A'] : ['B','C']` — 양쪽 다 작으면 작다
+  if (ts.isConditionalExpression(node)) {
+    return isStaticallySmall(node.whenTrue, sf) && isStaticallySmall(node.whenFalse, sf);
+  }
+  // `Object.keys(X)` / `Object.values(X)` — X 가 같은 파일의 객체 리터럴이면 그 크기가 상한
+  if (sf && ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+      && ['keys', 'values'].includes(node.expression.name.text)
+      && node.expression.expression.getText() === 'Object'
+      && node.arguments.length === 1 && ts.isIdentifier(node.arguments[0])) {
+    const size = objectLiteralSize(sf, node.arguments[0].text);
+    if (size !== null) return size <= LIMIT;
+  }
   if (ts.isArrayLiteralExpression(node)) return node.elements.length <= LIMIT;
   if (ts.isCallExpression(node) && node.expression.getText().endsWith('Array.from')) {
     const a = node.arguments[0];
@@ -177,11 +221,11 @@ function analyze(file, text) {
       let safe = false;
       let why = '';
       if (sliceIsChunked(recv, sf)) { safe = true; why = '인라인 slice 청크'; }
-      else if (isStaticallySmall(recv)) { safe = true; why = '정적 소형 배열'; }
+      else if (isStaticallySmall(recv, sf)) { safe = true; why = '정적 소형 배열'; }
       else if (ts.isIdentifier(recv)) {
         const init = findDeclInit(sf, recv.text, node.getStart());
         if (init && sliceIsChunked(init, sf)) { safe = true; why = `${recv.text} = slice 청크`; }
-        else if (init && isStaticallySmall(init)) { safe = true; why = '정적 소형 배열'; }
+        else if (init && isStaticallySmall(init, sf)) { safe = true; why = '정적 소형 배열'; }
         else if (isForOfChunk(sf, recv.text, node.getStart())) { safe = true; why = 'for-of 청크 배열'; }
       }
       if (!safe && hasLengthGuard(sf, recv.getText())) { safe = true; why = '명시적 길이 가드'; }
@@ -226,6 +270,10 @@ function selftest() {
     ['명시적 길이 가드 → 잡으면 안 된다', "if (body.item_ids.length > 90) return bad()\nconst ph = body.item_ids.map(() => '?')", 0],
     ['가드가 한도 초과 → 잡아야 한다', "if (ids.length > 500) return bad()\nconst ph = ids.map(() => '?')", 1],
     ['다른 배열의 가드 → 잡아야 한다', "if (other.length > 90) return bad()\nconst ph = ids.map(() => '?')", 1],
+    ['as const 리터럴 → 잡으면 안 된다', "const R = ['A','B'] as const\nconst ph = R.map(() => '?')", 0],
+    ['삼항 리터럴 → 잡으면 안 된다', "const s = x ? ['A'] : ['B','C']\nconst ph = s.map(() => '?')", 0],
+    ['청크 뒤 map 체인 → 잡으면 안 된다', "const keys = cands.slice(i, i + 80).map((x) => x.k)\nconst ph = keys.map(() => '?')", 0],
+    ['Object.keys(객체리터럴) → 잡으면 안 된다', "const D = { a: 1, b: 2 }\nconst keys = Object.keys(D)\nconst ph = keys.map(() => '?')", 0],
   ];
   let fail = 0;
   for (const [name, code, expect] of cases) {
