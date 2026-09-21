@@ -1566,6 +1566,38 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
     '사람이 이미 그어 둔 경계가 있으면 추측할 것이 없다')
   ok('17d 왜 그런지가 코드 옆에 적혀 있다', /PARM/.test(trh) && /1346458189/.test(trh),
     '코드번호만 뜨는 오류다 — 사유가 없으면 다음 사람이 처음부터 다시 찾는다')
+
+  // ── §17e 클립을 존중하는 잉크 경계 — **호스트 셋을 대조한다** ──
+  // ★A0 와 재단은 이미 「클립 ∩ 콘텐츠」로 통일했는데 **전사만 안 따라왔다**(2026-09-21 실기).
+  //   공유 결정이 한 호스트에만 들어가면 나머지는 조용히 옛 값을 쓴다 — §형제 스윕의 호스트판이다.
+  //   그래서 개별 호스트가 아니라 **셋이 같은 결정을 갖고 있는지**를 묻는다.
+  const a0h = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-a0-host.jsx'), 'utf8')
+  const cuth = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
+  ok('17e 호스트 셋 다 클립을 존중하는 경계를 갖고 있다',
+    a0h.indexOf('function mesA0_itemBounds(') > 0
+    && cuth.indexOf('function mesCut_inkBounds(') > 0
+    && trh.indexOf('function mesTr_inkBounds(') > 0,
+    '하나만 빠져도 그 탭만 클립 밖까지 재어 다른 크기를 낸다')
+  // 경계를 재는 자리가 **전부** 잉크를 지나는가 — 한 곳만 생짜로 남아도 그 경로가 틀린다.
+  const bodyOf = (src, name) => {
+    const s = src.replace(/\r\n/g, '\n')
+    const at = s.indexOf('function ' + name + '(')
+    if (at < 0) return ''
+    const rest = s.slice(at)
+    const end = rest.indexOf('\n}\n')
+    return end < 0 ? rest : rest.slice(0, end + 2)
+  }
+  for (const fn of ['mesTr_measureItems', 'mesTr_autoPick', 'mesTr_makePlate']) {
+    ok('17e ' + fn + ' 가 잉크로 잰다', bodyOf(trh, fn).indexOf('mesTr_inkBounds(') > 0,
+      '겉보기로 재면 클립이 잘라 낸 부분까지 들어간다(실측 60x180 → 214.74x242.83)')
+  }
+  ok('17e 못 그리는 개체를 빼고 그 수를 알린다',
+    trh.indexOf('function mesTr_draws(') > 0 && /blind=/.test(trh),
+    '조용히 빼면 그게 다음 사각지대다 — 거절은 센다')
+  ok('17e position 으로 앉히지 않는다',
+    bodyOf(trh, 'mesTr_makePlate').indexOf('grp.position') < 0
+    && bodyOf(trh, 'mesTr_makePlate').indexOf('grp.translate(') > 0,
+    'position 은 클립 밖까지 포함한 개체 상자를 보므로 그만큼 어긋난다')
 }
 
 await browser.close()

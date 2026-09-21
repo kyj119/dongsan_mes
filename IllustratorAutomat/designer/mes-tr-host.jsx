@@ -23,7 +23,7 @@
  * ⚠️ 반환은 ASCII 만 — 한글을 돌려주면 CEP 브릿지에서 깨진다.
  */
 
-var MESTR_VERSION = 'TR-CEP-0.4.0';   // 0.4.0 = ★둘. ①**자동 분석**(`mesTr_autoPick`) — 문서의 맨 위 개체를 가로 간격으로 갈라 벌에 대응시킨다. 판정 잣대는 가공의 `mesA0_seedCands(d,'auto')` 와 **같게** 뒀다(두 탭이 같은 파일을 다르게 읽으면 디자이너가 「가공은 2개인데 전사는 3개」를 만난다). 덩어리 수가 벌 수와 다르면 **아무것도 지정하지 않고** 개수만 돌려준다. ②**자르는 게 없는 클립은 만들지 않는다** — 실기 보고 「클리핑이 추출된다」. 실측(2026-09-21): 벌 646x1859mm 안에 원본 600x1829mm 이 통째로 들어가 **클립 2개 중 2개가 무의미**했고, 레이어 패널에 `<Clipping Path>` 만 남겼다. 재단이 CUT-CEP-0.49.0 에서 배운 것과 **같은 자리**다(형제 스윕). 전제를 하기 **전에** 재고, 안 서면 하지 않는다 — 거절은 `clipskip=` 으로 **센다**. ⚠️진짜로 삐져나오면 반드시 자른다(안 자르면 도련이 옆 벌을 덮는다). 잃는 것: 없음(그리는 그림·도련·산식 불변, 레이어 구조만 깔끔해진다) · 0.3.0 = ★**1조의 두 벌은 서로 다른 그림이다.** 2026-08 완성판 22건 실측(60-180·60-150 조 단위): 완전 동일 복제 **0건** · 명백히 다른 그림 16건 · 틀만 같고 내용이 다른 것 6건 · **거울상 0건**(거울 겹침 0~7%). 주니그래픽 미래엔1 은 좌반 바탕이 별색 MiraeN Purple_New, 우반이 백색이다. 그런데 0.2.x 까지는 **선택 하나를 두 벌에 복제**했다 — 측정된 22건 전부에서 틀린 판이 나온다. → 벌마다 원본을 따로 받는다(mesTr_pick/picks/swapPicks/clearPicks). 좌우 순서는 **디자이너가 정한다**(용준님 2026-09-21). 슬롯은 패널이 열려 있는 동안만 살고, 쓰기 전에 살아 있는지 확인한다(지운 개체·닫은 문서). 딸려 오는 것 둘 — ①**도련이 벌마다 갈린다**(payload `M:idx,mode[,cmyk]` · 옛 `M:mode` 는 판 전체로 계속 먹는다) ②**밴드 색도 벌마다** 이어야 한다(한 색이면 종전처럼 통째로, 다르면 벌 구간으로 나눠 깐다). 슬롯을 하나도 안 쓰면 현재 선택을 **벌①에만** 넣고 `slot=none` 을 남긴다 — 두 벌 복제로 되돌아가지 않는다. 잃는 것: 지정 없이 [판 만들기] 를 누르면 벌②가 빈다(그 사실을 `empty=2` 와 확인 목록 must 로 알린다) · 0.2.2 = ★[판 만들기] 가 `PARM` 으로 죽던 것. **문서를 넘나드는 `duplicate` 은 그룹을 받으면 안 된다** — 일러 30.7 최소 재현(2026-09-21): 다른 문서의 groupItem 으로 복제 → `1346458189 ('PARM')` · 다른 문서의 **layer** 로 복제 → ok · copy/paste → ok. 원본은 srcDoc 에 있고 그룹은 `documents.add` 로 막 만든 새 문서에 있어 매번 걸렸다. 오류 문구가 코드번호 하나뿐이라 무엇이 틀렸는지 안 알려 준다. → 레이어로 복제한 뒤 **같은 문서 안에서** 그룹으로 모은다(이동은 동일 문서라 안전). 잃는 것: 없음(배치·클리핑·산식 불변) · 0.2.1 = ★이 파일이 **한 번도 안 실렸다**. 머리말 주석의 `const/let/화살표/**JSON**/Array.map` 에서 `**/` 가 블록 주석을 닫아, 뒤 문장이 코드로 파싱되며 파일 전체가 구문 오류였다(ExtendScript: 「구문 오류: 필요 항목: ;」). 0.1.0·0.2.0 둘 다 Z: 에 나갔지만 스텁이 애초에 이 파일을 안 읽어(손목록) **증상이 가려져 있었고**, 스텁을 열거로 고치자(stub-3.0.0) 비로소 드러났다. 고친 것은 주석 한 줄뿐 — 로직·산식·payload 전부 불변. 게이트 = `npm run audit:jsx-syntax`(IA 의 .jsx·패널 js 를 실제로 파싱한다 — 여태 **아무 게이트도 파싱하지 않았다**). 잃는 것: 없음 · 0.2.0 = 
+var MESTR_VERSION = 'TR-CEP-0.5.0';   // 0.5.0 = ★**클립을 존중하는 잉크 경계**(`mesTr_inkBounds`) — 용준님이 신고한 두 증상이 **한 원인**이었다(2026-09-21 실기, 일러 30.7, 「260918_고양 소노 가로등배너 20조 발주」). `visibleBounds` 는 **클립이 잘라 낸 부분까지 합쳐서** 답한다: 그룹 clipped=true · 클립 60x180mm · 안의 배치이미지 214.74x163.93mm → **214.74x242.83mm**. ⓐ「자동 분석이 제대로 안 된다」 = 폭이 3.58배로 부풀어 이웃과 겹치니 가로 간격이 사라져 군집이 **10 → 1**(문서 전체가 한 덩어리). ⓑ「만들기 하면 보이지 않는 공백이 많이 나온다」 = 배율·위치를 그 부푼 상자로 잡아 그림이 28%로 줄고 나머지가 빈자리. → 잰다: 클립된 그룹 = **클립 ∩ 콘텐츠**, 아니면 자식 합집합. A0(`mesA0_itemBounds`)·재단(`mesCut_inkBounds`)은 이미 이렇게 하고 있었다 — **전사만 안 따라온 형제 스윕**이다. ★겸해서 **안 그리는 개체를 안 센다**(채움·획 둘 다 없는 패스 · 안내선): 같은 문서에 2점짜리 **5,779mm** 패스가 있어 혼자 문서 전체를 가로질렀다 — 눈에는 안 보이는데 경계에는 들어가 **어떤 군집도 갈라지지 않았다**. 거절은 `blind=` 로 **센다**. ★`position` 은 개체 상자를 보므로 안 쓴다 — 키운 **뒤에** 잉크를 다시 재서 그 차이만큼 `translate` 한다. ⚠️판정이 안 서면 **남긴다**(잘못 버리면 그림이 잘리고, 잘못 남기면 여백이 는다 — 잘리는 쪽이 나쁘다). 잃는 것: 그룹에 **그룹 단위로 건 효과**(그림자 등)가 있으면 자식 합집합이 그만큼 작게 잡힌다(클립·안 그리는 개체가 없는 아트는 종전과 동일). · 0.4.0 = ★둘. ①**자동 분석**(`mesTr_autoPick`) — 문서의 맨 위 개체를 가로 간격으로 갈라 벌에 대응시킨다. 판정 잣대는 가공의 `mesA0_seedCands(d,'auto')` 와 **같게** 뒀다(두 탭이 같은 파일을 다르게 읽으면 디자이너가 「가공은 2개인데 전사는 3개」를 만난다). 덩어리 수가 벌 수와 다르면 **아무것도 지정하지 않고** 개수만 돌려준다. ②**자르는 게 없는 클립은 만들지 않는다** — 실기 보고 「클리핑이 추출된다」. 실측(2026-09-21): 벌 646x1859mm 안에 원본 600x1829mm 이 통째로 들어가 **클립 2개 중 2개가 무의미**했고, 레이어 패널에 `<Clipping Path>` 만 남겼다. 재단이 CUT-CEP-0.49.0 에서 배운 것과 **같은 자리**다(형제 스윕). 전제를 하기 **전에** 재고, 안 서면 하지 않는다 — 거절은 `clipskip=` 으로 **센다**. ⚠️진짜로 삐져나오면 반드시 자른다(안 자르면 도련이 옆 벌을 덮는다). 잃는 것: 없음(그리는 그림·도련·산식 불변, 레이어 구조만 깔끔해진다) · 0.3.0 = ★**1조의 두 벌은 서로 다른 그림이다.** 2026-08 완성판 22건 실측(60-180·60-150 조 단위): 완전 동일 복제 **0건** · 명백히 다른 그림 16건 · 틀만 같고 내용이 다른 것 6건 · **거울상 0건**(거울 겹침 0~7%). 주니그래픽 미래엔1 은 좌반 바탕이 별색 MiraeN Purple_New, 우반이 백색이다. 그런데 0.2.x 까지는 **선택 하나를 두 벌에 복제**했다 — 측정된 22건 전부에서 틀린 판이 나온다. → 벌마다 원본을 따로 받는다(mesTr_pick/picks/swapPicks/clearPicks). 좌우 순서는 **디자이너가 정한다**(용준님 2026-09-21). 슬롯은 패널이 열려 있는 동안만 살고, 쓰기 전에 살아 있는지 확인한다(지운 개체·닫은 문서). 딸려 오는 것 둘 — ①**도련이 벌마다 갈린다**(payload `M:idx,mode[,cmyk]` · 옛 `M:mode` 는 판 전체로 계속 먹는다) ②**밴드 색도 벌마다** 이어야 한다(한 색이면 종전처럼 통째로, 다르면 벌 구간으로 나눠 깐다). 슬롯을 하나도 안 쓰면 현재 선택을 **벌①에만** 넣고 `slot=none` 을 남긴다 — 두 벌 복제로 되돌아가지 않는다. 잃는 것: 지정 없이 [판 만들기] 를 누르면 벌②가 빈다(그 사실을 `empty=2` 와 확인 목록 must 로 알린다) · 0.2.2 = ★[판 만들기] 가 `PARM` 으로 죽던 것. **문서를 넘나드는 `duplicate` 은 그룹을 받으면 안 된다** — 일러 30.7 최소 재현(2026-09-21): 다른 문서의 groupItem 으로 복제 → `1346458189 ('PARM')` · 다른 문서의 **layer** 로 복제 → ok · copy/paste → ok. 원본은 srcDoc 에 있고 그룹은 `documents.add` 로 막 만든 새 문서에 있어 매번 걸렸다. 오류 문구가 코드번호 하나뿐이라 무엇이 틀렸는지 안 알려 준다. → 레이어로 복제한 뒤 **같은 문서 안에서** 그룹으로 모은다(이동은 동일 문서라 안전). 잃는 것: 없음(배치·클리핑·산식 불변) · 0.2.1 = ★이 파일이 **한 번도 안 실렸다**. 머리말 주석의 `const/let/화살표/**JSON**/Array.map` 에서 `**/` 가 블록 주석을 닫아, 뒤 문장이 코드로 파싱되며 파일 전체가 구문 오류였다(ExtendScript: 「구문 오류: 필요 항목: ;」). 0.1.0·0.2.0 둘 다 Z: 에 나갔지만 스텁이 애초에 이 파일을 안 읽어(손목록) **증상이 가려져 있었고**, 스텁을 열거로 고치자(stub-3.0.0) 비로소 드러났다. 고친 것은 주석 한 줄뿐 — 로직·산식·payload 전부 불변. 게이트 = `npm run audit:jsx-syntax`(IA 의 .jsx·패널 js 를 실제로 파싱한다 — 여태 **아무 게이트도 파싱하지 않았다**). 잃는 것: 없음 · 0.2.0 = 
 //   0.2.0 = ★원본 배치 + 도련 + 클리핑(2026-09-18). 0.1.0 은 자리 표시 선만 그렸다.
 //           · `mesTr_measure` — 고른 원본의 크기와 **바탕이 단색인가**를 잰다.
 //             ExtendScript 는 픽셀을 못 읽으므로 **맨 뒤 도형이 전체를 덮는 단색 채움인가**로 본다
@@ -106,6 +106,115 @@ function mesTr_rectOk(r) {
 /** pt → mm */
 function mesTr_mm(pt) { return pt / MESTR_MM; }
 
+// ── ★클립을 존중하는 「보이는 잉크」 경계 ───────────────────────────────
+//
+// **`visibleBounds` 는 클립이 잘라 낸 부분까지 합쳐서 답한다.**
+// 실기 실측(2026-09-21 · 일러 30.7 · 「260918_고양 소노 가로등배너 20조 발주」):
+//     그룹 clipped=true · 클립 패스 60x180mm · 안의 배치이미지 214.74x163.93mm
+//     → visibleBounds = **214.74x242.83mm**(둘의 합집합). 화면에 보이는 것은 60x180 뿐이다.
+// 이 거짓말 하나가 용준님이 신고한 두 증상 **둘 다**였다:
+//   ⓐ 「자동 분석이 제대로 안 된다」 — 폭이 3.58배로 부풀어 이웃과 겹치니 가로 간격이 사라진다.
+//      실측: 같은 문서에서 군집이 **10 → 1**(문서 전체가 한 덩어리)이 됐다.
+//   ⓑ 「만들기 하면 보이지 않는 공백이 많이 나온다」 — 배치 배율·위치를 이 부푼 상자로 잡으니
+//      그림은 28%로 줄어 한쪽에 몰리고 나머지가 전부 빈자리가 된다.
+//
+// ★A0(`mesA0_itemBounds`)·재단(`mesCut_inkBounds`)은 **이미** 클립 ∩ 콘텐츠로 통일했는데
+//   전사만 안 따라왔다(§형제 스윕 — 호스트가 셋이면 같은 결정도 셋이다).
+//
+// ★여기에 하나 더 있다 — **아무것도 그리지 않는 개체**. 같은 문서에 채움도 획도 없는 2점짜리
+//   **5,779mm** 패스가 하나 있어 혼자서 문서 전체를 가로질렀다. 눈에는 안 보이는데 경계에는
+//   들어가므로 **어떤 군집도 갈라지지 않는다.** 안 그리는 것은 세지 않는다(안내선도 같다).
+//
+// ⚠️판정이 안 서면 **남긴다.** 잘못 버리면 그림이 잘리고, 잘못 남기면 여백이 는다 — 잘리는 쪽이 나쁘다.
+
+function mesTr_rectIntersect(a, b) {
+  if (!a) return b; if (!b) return a;
+  var iL = Math.max(a[0], b[0]), iR = Math.min(a[2], b[2]);
+  var iT = Math.min(a[1], b[1]), iB = Math.max(a[3], b[3]);
+  return (iL < iR && iB < iT) ? [iL, iT, iR, iB] : null;
+}
+
+/** 클립 패스의 경계 — 중첩 그룹까지 내려가며 찾는다 */
+function mesTr_findClipPath(item) {
+  try {
+    if (item.clipping) return item.geometricBounds;
+    if (item.typename === 'GroupItem') {
+      for (var j = 0; j < item.pageItems.length; j++) {
+        var r = mesTr_findClipPath(item.pageItems[j]);
+        if (r) return r;
+      }
+    }
+  } catch (e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계는 남은 개체로 계산한다 */ }
+  return null;
+}
+
+function mesTr_clipBounds(group) {
+  for (var j = 0; j < group.pageItems.length; j++) {
+    try { if (group.pageItems[j].clipping) return group.pageItems[j].geometricBounds; } catch (e) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
+  }
+  var r = mesTr_findClipPath(group);
+  return r ? r : group.geometricBounds;
+}
+
+/** 이 개체가 **무언가를 그리는가**. 판정이 안 서면 true(남긴다). */
+function mesTr_draws(item) {
+  try {
+    if (item.guides) return false;                 // 안내선은 인쇄되지 않는다
+    if (item.typename === 'PathItem') return !!(item.filled || item.stroked);
+    if (item.typename === 'CompoundPathItem') {
+      var ps = item.pathItems;
+      if (!ps || !ps.length) return true;          // 못 세면 남긴다
+      for (var j = 0; j < ps.length; j++) {
+        if (ps[j].filled || ps[j].stroked) return true;
+      }
+      return false;
+    }
+  } catch (e) { return true; }                     // 못 물어보면 남긴다
+  return true;
+}
+
+/** 클립 패스를 뺀 실제 콘텐츠 경계 */
+function mesTr_contentUnion(group) {
+  var L = null, T = null, R = null, B = null;
+  try {
+    for (var j = 0; j < group.pageItems.length; j++) {
+      var c = group.pageItems[j];
+      if (c.clipping || c.hidden) continue;
+      var cb = mesTr_inkBounds(c);
+      if (!cb) continue;
+      if (L === null || cb[0] < L) L = cb[0];
+      if (T === null || cb[1] > T) T = cb[1];
+      if (R === null || cb[2] > R) R = cb[2];
+      if (B === null || cb[3] < B) B = cb[3];
+    }
+  } catch (e) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계는 남은 개체로 계산한다 */ }
+  return (L === null) ? null : [L, T, R, B];
+}
+
+/**
+ * ★개체의 **보이는 잉크** 경계 — 클립된 그룹이면 클립 ∩ 콘텐츠, 아니면 자식들의 합집합.
+ * 클립도 안 그리는 개체도 없는 보통 아트는 `visibleBounds` 그대로다(회귀 0).
+ * @return [l, t, r, b] 또는 **null**(= 아무것도 안 그린다). null 은 세되 경계에는 넣지 않는다.
+ */
+function mesTr_inkBounds(item) {
+  var t;
+  try { t = item.typename; } catch (e) { return null; }
+  try { if (item.hidden) return null; } catch (e0) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
+  if (t === 'GroupItem') {
+    var clipped = false;
+    try { clipped = !!item.clipped; } catch (e1) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
+    if (clipped) {
+      var inter = mesTr_rectIntersect(mesTr_clipBounds(item), mesTr_contentUnion(item));
+      return inter ? inter : mesTr_clipBounds(item);
+    }
+    // ★그리는 자식이 하나도 없으면 **null** 이다 — 재단은 여기서 visibleBounds 로 떨어지는데,
+    //   그러면 방금 걷어낸 부푼 상자가 되살아난다.
+    return mesTr_contentUnion(item);
+  }
+  if (!mesTr_draws(item)) return null;
+  try { return item.visibleBounds; } catch (e2) { return null; }
+}
+
 /**
  * 고른 원본을 잰다 — 크기와 **바탕이 단색인가**.
  *
@@ -165,7 +274,8 @@ function mesTr_pickAlive(p) {
 function mesTr_measureItems(items) {
   var i, b, x0 = null, y0 = null, x1 = null, y1 = null;
   for (i = 0; i < items.length; i++) {
-    b = items[i].visibleBounds;   // [left, top, right, bottom] (y 는 위가 큼)
+    b = mesTr_inkBounds(items[i]);   // [left, top, right, bottom] (y 는 위가 큼) — ★클립을 존중한다
+    if (!b) continue;                // 아무것도 안 그리는 개체는 크기에 넣지 않는다
     if (x0 === null || b[0] < x0) x0 = b[0];
     if (y0 === null || b[1] > y0) y0 = b[1];
     if (x1 === null || b[2] > x1) x1 = b[2];
@@ -258,9 +368,12 @@ function mesTr_autoPick(vup, gapMm) {
     var tops = mesTr_topItems(app.activeDocument);
     if (!tops.length) return 'ERROR no art';
 
-    var rows = [], i, b;
+    // ★겉보기가 아니라 **보이는 잉크**로 가른다. 실측(2026-09-21): 같은 문서에서 군집 1 → 10.
+    //   안 그리는 개체는 군집에 넣지 않되 **센다**(`blind=`) — 조용히 빼면 그게 다음 사각지대다.
+    var rows = [], i, b, blind = 0;
     for (i = 0; i < tops.length; i++) {
-      try { b = tops[i].visibleBounds; } catch (eB) { continue; }
+      b = mesTr_inkBounds(tops[i]);
+      if (!b) { blind++; continue; }
       rows.push({ it: tops[i], l: b[0], r: b[2], cx: (b[0] + b[2]) / 2 });
     }
     if (!rows.length) return 'ERROR no art';
@@ -295,7 +408,7 @@ function mesTr_autoPick(vup, gapMm) {
         }
         if (ok2) {
           MESTR_PICK = pa;
-          return 'OK auto=yes by=artboard found=' + bag.length
+          return 'OK auto=yes by=artboard found=' + bag.length + ' blind=' + blind
             + ' ' + mesTr_pickLine(0) + ' ' + mesTr_pickLine(1);
         }
       }
@@ -315,7 +428,7 @@ function mesTr_autoPick(vup, gapMm) {
     cl.push(cur);
 
     if (cl.length !== want) {
-      return 'OK auto=no by=gap found=' + cl.length + ' want=' + want
+      return 'OK auto=no by=gap found=' + cl.length + ' want=' + want + ' blind=' + blind
         + ' ' + mesTr_pickLine(0) + ' ' + mesTr_pickLine(1);
     }
     var next = [];
@@ -325,7 +438,7 @@ function mesTr_autoPick(vup, gapMm) {
       next[i] = { items: cl[i].items, m: m };
     }
     MESTR_PICK = next;   // ★전부 잰 뒤에 갈아끼운다 — 도중에 실패하면 옛 지정이 살아 있어야 한다
-    return 'OK auto=yes by=gap found=' + cl.length
+    return 'OK auto=yes by=gap found=' + cl.length + ' blind=' + blind
       + ' ' + mesTr_pickLine(0) + ' ' + mesTr_pickLine(1);
   } catch (e) { return 'ERROR autoPick ' + mesTr_ascii(e && e.message ? e.message : e); }
 }
@@ -510,14 +623,32 @@ function mesTr_makePlate(payload) {
           notes.push('dupfail=' + i);
         } else {
           // 원본을 자리에 맞춘다 — ★가로는 그대로, 세로만 늘어난다(수축보정은 des.h 에 이미 들어 있다)
-          var vb = grp.visibleBounds;                 // [l, t, r, b]
+          // ★배율·위치의 기준은 **보이는 잉크**다. `visibleBounds` 로 재면 클립이 잘라 낸 부분까지
+          //   상자에 들어가 그림이 작게 줄고 나머지가 **보이지 않는 여백**이 된다(2026-09-21 실기).
+          var vb = mesTr_inkBounds(grp);
+          if (!vb) vb = grp.visibleBounds;             // 못 재면 여태 하던 대로 — 판은 나와야 한다
           var curW = vb[2] - vb[0], curH = vb[1] - vb[3];
           var g2 = place(des);
           if (curW > 0 && curH > 0) {
             grp.resize((g2[2] / curW) * 100, (g2[3] / curH) * 100,
               true, true, true, true, 100, Transformation.TOPLEFT);
           }
-          grp.position = [g2[0], g2[1]];
+          // ★키운 뒤에 **다시 재서 한 번 더 맞춘다.** 획 두께는 배율을 안 따라가므로
+          //   한 번의 resize 로는 정확히 안 떨어진다(실측 2026-09-21: 1829mm 자리에 **1829.6mm**).
+          //   그 0.6mm 때문에 잉크가 벌 경계를 샐져나가 **쓸데없는 클립이 생긴다**.
+          var ib = mesTr_inkBounds(grp);
+          if (!ib) ib = grp.visibleBounds;
+          var w2 = ib[2] - ib[0], h2 = ib[1] - ib[3];
+          if (w2 > 0 && h2 > 0) {
+            var fx = (g2[2] / w2) * 100, fy = (g2[3] / h2) * 100;
+            if (Math.abs(fx - 100) > 0.01 || Math.abs(fy - 100) > 0.01) {   // 0.01% ≈ 클립 판정 여유(0.5pt)
+              grp.resize(fx, fy, true, true, true, true, 100, Transformation.TOPLEFT);
+              ib = mesTr_inkBounds(grp);
+              if (!ib) ib = grp.visibleBounds;
+            }
+          }
+          // ★`position` 은 **개체 상자**(클립 밖까지)를 보므로 쓰지 않는다 — 잉크를 재서 그만큼 민다.
+          grp.translate(g2[0] - ib[0], g2[1] - ib[1]);
           placed++;
 
           // 클리핑 — 벌 경계로 자른다(도련이 옆 벌을 침범하지 않게).
@@ -526,7 +657,8 @@ function mesTr_makePlate(payload) {
           //   실측(2026-09-21): 벌 646x1859mm 안에 원본 600x1829mm 이 통째로 들어가
           //   **2개 중 2개가 무의미**했다. 전제를 **하기 전에** 재고, 안 서면 하지 않는다.
           // ⚠️진짜로 삐져나올 때는 반드시 자른다 — 안 자르면 도련이 옆 벌을 덮는다.
-          var vb2 = grp.visibleBounds;              // [l, t, r, b]
+          var vb2 = mesTr_inkBounds(grp);           // [l, t, r, b] — ★잉크 기준(클립 밖 여분은 안 보인다)
+          if (!vb2) vb2 = grp.visibleBounds;
           var pg = place(pan);                      // [left, top, w, h]
           var ctol = 0.5;                           // pt — 반올림·헤어라인 여유
           var needClip = (vb2[0] < pg[0] - ctol) || (vb2[1] > pg[1] + ctol)

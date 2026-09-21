@@ -213,6 +213,50 @@ const base = (over = {}) => Object.assign(
     '판 하나로 뭉치면 두 벌 중 한쪽이 남의 색이 된다')
   ok('㊱ ★단색이 아니면 채우지 않고 센다', /bleedskip=/.test(host))
 
+  // ★클립을 존중하는 「보이는 잉크」 경계 — 글자를 세지 말고 **돌려 본다**.
+  //   `mesTr_inkBounds` 는 일러 객체의 속성만 읽으므로 가짜 객체로 그대로 실행된다.
+  //   실기 실측(2026-09-21 · 일러 30.7 · 고양 소노 20조)의 **그 숫자**를 그대로 넣는다 —
+  //   `visibleBounds` 는 클립 60x180 짜리 그룹을 **214.74x242.83** 으로 답했고,
+  //   그 하나가 「자동 분석이 안 된다」와 「보이지 않는 공백」 **둘 다**였다.
+  const inkAt = hostLF.indexOf('function mesTr_rectIntersect(')
+  const inkFn = hostLF.indexOf('function mesTr_inkBounds(')
+  const inkEnd = inkFn < 0 ? -1 : hostLF.slice(inkFn).indexOf('\n}\n')
+  if (inkAt < 0 || inkFn < 0 || inkEnd < 0) throw new Error('mesTr_inkBounds 묶음을 못 잘랐다 — 함수 순서가 바뀌었는지 보라')
+  const mesTr_inkBounds = new Function(hostLF.slice(inkAt, inkFn + inkEnd + 2) + '; return mesTr_inkBounds;')()
+
+  const clipPath = { typename: 'PathItem', clipping: true, filled: false, stroked: false,
+    geometricBounds: [487, 0, 547, -180], visibleBounds: [487, 0, 547, -180] }
+  const raster = { typename: 'RasterItem', visibleBounds: [418.55, -78.9, 633.29, -242.83] }
+  const clippedGrp = { typename: 'GroupItem', clipped: true, pageItems: [clipPath, raster],
+    geometricBounds: [418.55, 0, 633.29, -242.83], visibleBounds: [418.55, 0, 633.29, -242.83] }
+  const ink = mesTr_inkBounds(clippedGrp)
+  ok('㊴ ★클립된 그룹은 **클립 ∩ 콘텐츠**로 잰다',
+    !!ink && ink[0] === 487 && ink[2] === 547 && ink[1] === -78.9 && ink[3] === -180,
+    '겉보기 214.74x242.83 이 그대로 나오면 판에 보이지 않는 여백이 깔린다 — 받은 값 ' + JSON.stringify(ink))
+
+  const stray = { typename: 'PathItem', filled: false, stroked: false,
+    visibleBounds: [-2859.62, -173.52, 2919.94, -173.52] }
+  ok('㊴ ★아무것도 안 그리는 패스는 세지 않는다', mesTr_inkBounds(stray) === null,
+    '실기 문서에 5,779mm 짜리 빈 패스가 있어 혼자서 모든 군집을 붙여 놓았다')
+  ok('㊴ 안내선도 세지 않는다',
+    mesTr_inkBounds({ typename: 'PathItem', guides: true, stroked: true, visibleBounds: [0, 9, 9, 0] }) === null)
+  ok('㊴ 그리는 자식이 하나도 없는 그룹은 null',
+    mesTr_inkBounds({ typename: 'GroupItem', clipped: false, pageItems: [stray],
+      visibleBounds: [-2859.62, 0, 2919.94, -1] }) === null,
+    '여기서 visibleBounds 로 떨어지면 방금 걷어낸 상자가 되살아난다')
+
+  // ★클립도 안 그리는 개체도 없는 보통 아트는 **종전과 똑같아야 한다**(회귀 0).
+  const plain = { typename: 'PathItem', filled: true, stroked: false, visibleBounds: [0, 180, 60, 0] }
+  const pb = mesTr_inkBounds(plain)
+  ok('㊵ 보통 아트는 겉보기 그대로다 (회귀 0)',
+    !!pb && pb[0] === 0 && pb[1] === 180 && pb[2] === 60 && pb[3] === 0, JSON.stringify(pb))
+  const nest = { typename: 'GroupItem', clipped: false, visibleBounds: [0, 0, 0, 0],
+    pageItems: [plain, { typename: 'TextFrame', visibleBounds: [70, 200, 90, 150] }] }
+  const nb = mesTr_inkBounds(nest)
+  ok('㊵ 글자는 남긴다 (판정이 안 서면 버리지 않는다)',
+    !!nb && nb[2] === 90 && nb[1] === 200,
+    '잘못 버리면 그림이 잘린다 — 잘못 남기는 쪽보다 나쁘다. 받은 값 ' + JSON.stringify(nb))
+
   // 최소 호스트 버전 ≤ 실제 호스트 버전
   const minM = panel.match(/TR_MIN_HOST\s*=\s*\[(\d+),\s*(\d+),\s*(\d+)\]/)
   const hostM = host.match(/MESTR_VERSION\s*=\s*'TR-CEP-(\d+)\.(\d+)\.(\d+)'/)
