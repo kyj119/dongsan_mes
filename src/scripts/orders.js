@@ -144,7 +144,7 @@ async function bulkShipSelected() {
   //   ★대상 판정은 서버(`utils/shipmentNotice`)가 한다 — 화면이 배송수단을 다시 해석하지 않는다.
   var noticeWanted = false;
   try {
-    var nres = await axios.post('/api/kakao/shipment-notice/preview', { order_ids: shipIds });
+    var nres = await axios.post('/api/shipments/notice/preview', { order_ids: shipIds });
     var nd = (nres.data && nres.data.success) ? (nres.data.data || {}) : {};
     var sum = nd.summary || {};
     if ((sum.sendable || 0) > 0) {
@@ -195,7 +195,7 @@ async function bulkShipSelected() {
         var okIds = results.filter(function (r) { return r.success; }).map(function (r) { return r.id; });
         if (okIds.length > 0) {
           try {
-            var sres = await axios.post('/api/kakao/shipment-notice/send', { order_ids: okIds });
+            var sres = await axios.post('/api/shipments/notice/send', { order_ids: okIds });
             var sd = (sres.data && sres.data.data) || {};
             if (sd.sent > 0) showToast('배송 알림 ' + sd.sent + '건 발송' + (sd.failed > 0 ? ' · ' + sd.failed + '건 실패' : ''), sd.failed > 0 ? 'warning' : 'success');
             else if (sd.failed > 0) showToast('배송 알림 ' + sd.failed + '건 발송 실패 — 확정 대기에서 다시 보낼 수 있습니다', 'error');

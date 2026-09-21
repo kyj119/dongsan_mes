@@ -739,7 +739,7 @@ async function openNoticeSend(idx) {
 
   try {
     // 본문은 **서버가 만든다** — 미리보기와 실제 발송이 같은 함수를 써야 한다.
-    var res = await axios.post('/api/kakao/shipment-notice/preview', { order_ids: [r.order_id] });
+    var res = await axios.post('/api/shipments/notice/preview', { order_ids: [r.order_id] });
     var it = (res.data && res.data.data && res.data.data.items || [])[0];
     if (!it) { showToast('발송 대상을 찾지 못했습니다', 'warning'); closeNoticeSendModal(); return; }
     document.getElementById('noticeSendTo').textContent = (it.client_name || '-') + '  ' + (it.mobile || '');
@@ -776,7 +776,7 @@ async function doNoticeSend() {
   var btn = document.getElementById('noticeSendBtn');
   btn.disabled = true;
   try {
-    var res = await axios.post('/api/kakao/shipment-notice/send', { order_ids: [_noticeSendOrderId] });
+    var res = await axios.post('/api/shipments/notice/send', { order_ids: [_noticeSendOrderId] });
     var d = (res.data && res.data.data) || {};
     var one = (d.results || [])[0] || {};
     if (d.sent > 0) {

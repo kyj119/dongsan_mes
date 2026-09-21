@@ -10,7 +10,15 @@ import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { autoDeductPostProcessingMaterials } from '../utils/autoDeductPostProcessingMaterials'
 import { deductStockLinesOnShip, restoreStockLinesOnUnship } from '../utils/stockShip'
 import { clearShipBillingStmt } from '../utils/shipBilling'
+import type { Context } from 'hono'
 import { resolveShipmentNotice } from '../utils/shipmentNotice'
+import { getKakaoProvider, getKakaoSettings } from './kakao'
+import { fillNoticeBody, buildSmsNoticeBody, loadItemSummary } from '../utils/shipmentNoticeBody'
+import { NOTICE_BLOCK_LABEL } from '../utils/shipmentNotice'
+import { BAROBILL_UNIT_COST_VAT_EXCL } from '../constants/barobillCodes'
+import { BAROBILL_MESSAGING_ERROR } from '../constants/barobillMessagingCodes'
+import { checkBulkLimit } from '../services/messageBulkLimit'
+import type { BarobillSmsProvider } from '../services/barobillSms'
 import { restorePpDeductionsByOrder } from '../utils/autoDeductRestore'
 import { ensureShipmentForOrder } from '../utils/shipmentHelper'
 import { kstYmd, kstYmdCompact, kstDate } from '../utils/kstDate'
@@ -348,6 +356,299 @@ shipmentsRouter.post('/consolidation-pending', requireAccessOrRole('/shipments',
 //  · 박스 수가 필요한 건 = 배송비 라인이 `fee_source='SHIPMENT_BOX'` 인 주문 **또는** 아직 안 센 택배·화물
 //  · 송장이 필요한 건 = 한진택배만(나머지는 라벨·터미널만 쓴다 — DELIVERY_TYPE_MAP 축)
 // ※ /:id 보다 먼저 등록
+// ─────────────────────────────────────────────────
+// 배송 알림 — 미리보기 / 발송 (단계 2, 2026-09-18)
+//   ⚠ 여기 있는 이유: `kakaoRouter` 는 라우터 전체가 ADMIN/MANAGER 라(kakao.ts) 출고 담당이 못 쓴다.
+//     권한선은 「확정」 버튼과 같아야 한다 — 확정하는 사람이 알림도 보낸다.
+//   창구는 둘(주문 목록 일괄 출고 확인창 · 확정 대기 알림 버튼)인데 **엔진은 여기 하나**다.
+//   창구마다 발송 로직을 붙이면 「판정이 두 벌」이 또 생긴다(P17·P25 가 그것이었다).
+//
+//   ★미리보기와 발송이 **같은 함수로 본문을 만든다**(`utils/shipmentNoticeBody`) —
+//     화면에서 확인한 것과 고객에게 간 것이 다르면 확인 절차 자체가 무의미해진다.
+//   ★상한은 기존 체계를 그대로 쓴다(`messageBulkLimit` #584, 알림톡 500·문자 500).
+//     바로빌은 `SendATKakaotalks` 로 **한 번의 호출에 수신자 배열**을 받고 접수번호도 건별로 준다 —
+//     건당 SOAP 1회가 아니므로 subrequest 한도와 무관하다.
+// ─────────────────────────────────────────────────
+
+interface NoticeTargetRow {
+  order_id: number
+  order_number: string
+  delivery_method: string | null
+  entity_id: number | null
+  client_id: number | null
+  client_name: string | null
+  mobile: string | null
+  shipment_id: number
+  tracking_number: string | null
+  receiver_address: string | null
+  notified: number
+}
+
+/** 주문 id 목록 → 알림 판정에 필요한 행(대표 출고 기준). 합포장 부속은 애초에 제외된다. */
+async function loadNoticeTargets(c: Context<HonoEnv>, orderIds: number[]): Promise<NoticeTargetRow[]> {
+  const ef = entityFilter(c, 'o')
+  const rows: NoticeTargetRow[] = []
+  for (let i = 0; i < orderIds.length; i += 80) {   // D1 바인드 한도
+    const chunk = orderIds.slice(i, i + 80)
+    const ph = chunk.map(() => '?').join(',')
+    const { results } = await c.env.DB.prepare(`
+      SELECT o.id AS order_id, o.order_number, o.delivery_method, o.entity_id,
+             cl.id AS client_id, cl.client_name, cl.mobile,
+             sp.id AS shipment_id, sp.tracking_number, sp.receiver_address,
+             CASE WHEN EXISTS (
+               SELECT 1 FROM kakao_send_logs kl
+                WHERE kl.related_type = 'shipments' AND kl.related_id = sp.id AND kl.status = 'SUCCESS'
+             ) THEN 1 ELSE 0 END AS notified
+        FROM orders o
+        JOIN shipments sp ON sp.order_id = o.id AND sp.merged_into_id IS NULL
+                         AND COALESCE(sp.status, '') <> 'CANCELLED'
+        LEFT JOIN clients cl ON cl.id = o.client_id
+       WHERE o.id IN (${ph})${ef.clause}
+    `).bind(...chunk, ...ef.params).all<NoticeTargetRow>()
+    rows.push(...(results || []))
+  }
+  return rows
+}
+
+/** 승인 템플릿 본문 맵 — 요청당 1회만 조회한다(SOAP 왕복이라 건별로 부르면 느리다). */
+async function loadTemplateBodies(provider: BarobillSmsProvider): Promise<Record<string, string>> {
+  try {
+    const list = await provider.listATSTemplate()
+    const map: Record<string, string> = {}
+    for (const t of list || []) {
+      const key = (t.templateName || t.templateCode || '').trim()
+      if (key) map[key] = t.template || ''
+    }
+    return map
+  } catch {
+    return {}   // 조회 실패 시 폴백 본문으로 미리보기는 계속 보여 준다
+  }
+}
+
+interface NoticeResolved {
+  row: NoticeTargetRow
+  decision: ReturnType<typeof resolveShipmentNotice>
+  body: string
+  cost: number
+}
+
+/** 행 + 템플릿 → 발송 판정과 본문. 미리보기·발송이 공유한다. */
+async function buildNotice(
+  db: HonoEnv['Bindings']['DB'],
+  row: NoticeTargetRow,
+  templates: Record<string, string>,
+  dateStr: string
+): Promise<NoticeResolved> {
+  const decision = resolveShipmentNotice({
+    deliveryMethod: row.delivery_method,
+    hasMobile: !!(row.mobile || '').trim(),
+    trackingNumber: row.tracking_number,
+    alreadySent: Number(row.notified) === 1,
+  })
+  const vars = {
+    clientName: row.client_name || '고객',
+    itemSummary: await loadItemSummary(db, row.shipment_id),
+    terminal: row.receiver_address || '',
+    trackingNumber: row.tracking_number || '',
+    deliveryMethod: (row.delivery_method || '').trim(),
+    dateStr,
+  }
+  let body = ''
+  if (decision.channel === 'kakao' && decision.template) {
+    body = fillNoticeBody(templates[decision.template] || '', vars)
+  } else if (decision.channel === 'sms') {
+    body = buildSmsNoticeBody(vars)
+  }
+  // ★본문이 비면 **보낼 수 있다고 하지 않는다** — 템플릿 조회(SOAP)가 실패하면 본문이 빈다.
+  //   그대로 두면 확인창엔 「즉시 알림 N건」이 뜨는데 실제로는 바로빌이 -31324(내용 없음)로 전부 거절한다.
+  //   모르는 상태를 「보낼 수 있음」으로 만들지 않는다(코드표에서 배운 것과 같은 규칙).
+  if (decision.canSendNow && !body.trim()) {
+    return { row, decision: { ...decision, canSendNow: false, blockedReason: 'no_template_body' as never }, body: '', cost: 0 }
+  }
+  const cost = decision.channel === 'kakao'
+    ? BAROBILL_UNIT_COST_VAT_EXCL.alimtalk
+    : decision.channel === 'sms' ? BAROBILL_UNIT_COST_VAT_EXCL.lms : 0
+  return { row, decision, body, cost }
+}
+
+// POST /shipment-notice/preview — 보낼 수 있는가 · 본문은 무엇인가 (발송하지 않는다)
+// 미리보기에도 거래처 연락처가 실린다 → 발송과 같은 권한선을 쓴다.
+shipmentsRouter.post('/notice/preview', requireAccessOrRole('/shipments', 'MANAGER', 'OPERATOR'), async (c) => {
+  try {
+    const { order_ids } = await c.req.json<{ order_ids: number[] }>()
+    const ids = (order_ids || []).map(Number).filter((n) => Number.isFinite(n) && n > 0)
+    if (ids.length === 0) return c.json({ success: true, data: { items: [], summary: { sendable: 0, cost: 0 } } })
+
+    const rows = await loadNoticeTargets(c, ids)
+    const provider = await getKakaoProvider(c)
+    const templates = provider ? await loadTemplateBodies(provider) : {}
+    const dateRow = await c.env.DB.prepare(`SELECT date('now','+9 hours') AS d`).first<{ d: string }>()
+    const dateStr = dateRow?.d || ''
+
+    const items = []
+    for (const row of rows) {
+      const n = await buildNotice(c.env.DB, row, templates, dateStr)
+      items.push({
+        order_id: row.order_id,
+        order_number: row.order_number,
+        client_name: row.client_name,
+        mobile: row.mobile,
+        delivery_method: row.delivery_method,
+        can_send: n.decision.canSendNow,
+        is_target: n.decision.isTarget,
+        blocked_reason: n.decision.blockedReason,
+        blocked_label: n.decision.blockedReason ? NOTICE_BLOCK_LABEL[n.decision.blockedReason] : null,
+        channel: n.decision.channel,
+        template: n.decision.template,
+        preview: n.decision.canSendNow ? n.body : '',
+        cost: n.decision.canSendNow ? n.cost : 0,
+      })
+    }
+    const sendable = items.filter((i) => i.can_send)
+    return c.json({
+      success: true,
+      data: {
+        items,
+        summary: {
+          sendable: sendable.length,
+          cost: sendable.reduce((s, i) => s + i.cost, 0),
+          // 화면 요약용 분류 — 「송장 대기」와 「대상 아님」은 전혀 다른 상태다
+          waiting_tracking: items.filter((i) => i.blocked_reason === 'needs_tracking').length,
+          not_target: items.filter((i) => i.blocked_reason === 'not_target').length,
+          no_mobile: items.filter((i) => i.blocked_reason === 'no_mobile').length,
+          already_sent: items.filter((i) => i.blocked_reason === 'already_sent').length,
+        },
+      },
+    })
+  } catch (error) {
+    console.error('src/routes/kakao.ts POST /shipment-notice/preview error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// POST /shipment-notice/send — 실제 발송. 보낼 수 있는 건만 보내고 나머지는 사유와 함께 돌려준다.
+// ★권한은 **「확정」 버튼과 같은 선**이다 — 확정 대기 목록을 보고 확정까지 하는 사람이
+//   알림도 보낸다. 종전엔 발송만 ADMIN/MANAGER 라 배송 담당(OPERATOR)에게 **버튼은 보이는데
+//   누르면 403** 이었다(`PATCH /shipments/by-order/:orderId` 와 맞춘다).
+shipmentsRouter.post('/notice/send', requireEditOrRole('/shipments', 'MANAGER', 'OPERATOR'), async (c) => {
+  try {
+    const user = c.get('user')
+    const { order_ids } = await c.req.json<{ order_ids: number[] }>()
+    const ids = (order_ids || []).map(Number).filter((n) => Number.isFinite(n) && n > 0)
+    if (ids.length === 0) return c.json({ success: false, error: '발송할 주문을 선택하세요.' }, 400)
+
+    const settings = await getKakaoSettings(c.env.DB, getEntityId(c) || 1)
+    if (!settings.enabled) return c.json({ success: false, error: '카카오톡이 비활성화되어 있습니다.' }, 400)
+    if (!settings.senderNum) return c.json({ success: false, error: '발신번호가 설정되지 않았습니다. (법인 설정 확인)' }, 400)
+    const provider = await getKakaoProvider(c)
+    if (!provider) return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
+
+    const rows = await loadNoticeTargets(c, ids)
+    const templates = await loadTemplateBodies(provider)
+    const dateRow = await c.env.DB.prepare(`SELECT date('now','+9 hours') AS d`).first<{ d: string }>()
+    const dateStr = dateRow?.d || ''
+
+    const resolved: NoticeResolved[] = []
+    for (const row of rows) resolved.push(await buildNotice(c.env.DB, row, templates, dateStr))
+    const sendable = resolved.filter((r) => r.decision.canSendNow)
+    const skipped = resolved.filter((r) => !r.decision.canSendNow).map((r) => ({
+      order_id: r.row.order_id, order_number: r.row.order_number,
+      status: 'SKIPPED', reason: r.decision.blockedReason,
+      reason_label: r.decision.blockedReason ? NOTICE_BLOCK_LABEL[r.decision.blockedReason] : null,
+    }))
+    if (sendable.length === 0) return c.json({ success: true, data: { sent: 0, failed: 0, results: skipped } })
+
+    // 상한 — 기존 대량 발송 가드를 그대로 쓴다(채널별 settings 로 조정 가능).
+    const kakaoCount = sendable.filter((r) => r.decision.channel === 'kakao').length
+    const smsCount = sendable.length - kakaoCount
+    for (const [ch, n] of [['kakao', kakaoCount], ['sms', smsCount]] as const) {
+      if (n > 0) {
+        const over = await checkBulkLimit(c.env.DB, ch, n)
+        if (over) return c.json({ success: false, error: over }, 400)
+      }
+    }
+
+    // 템플릿별로 묶는다 — `SendATKakaotalks` 는 호출당 템플릿 1개이고 수신자는 배열이다.
+    const groups = new Map<string, NoticeResolved[]>()
+    for (const r of sendable) {
+      const key = r.decision.channel === 'kakao' ? 'K:' + r.decision.template : 'S:'
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(r)
+    }
+
+    const results: Array<Record<string, unknown>> = [...skipped]
+    let sent = 0, failed = 0
+    const logStmts: ReturnType<typeof c.env.DB.prepare>[] = []
+
+    for (const [key, list] of groups) {
+      const isKakao = key.startsWith('K:')
+      const templateCode = isKakao ? key.slice(2) : (list.length && list[0].body.length > 90 ? 'LMS' : 'SMS')
+      let per: Array<{ ok: boolean; receiptNum: string; code: number }> = []
+      let bulkErr = ''
+      try {
+        if (isKakao) {
+          const res = await provider.sendATS({
+            templateCode: key.slice(2),
+            snd: settings.senderNum,
+            content: list[0].body,
+            altSendType: settings.altSendType,
+            messages: list.map((r) => ({
+              rcv: (r.row.mobile || '').trim(), rcvnm: r.row.client_name || '고객',
+              msg: r.body, altmsg: r.body,
+            })),
+          })
+          per = res.results && res.results.length === list.length
+            ? res.results
+            : list.map(() => ({ ok: !!res.receiptNum, receiptNum: res.receiptNum, code: res.code }))
+        } else {
+          // 문자는 본문이 건마다 다르므로 단건 루프(한진 한 축뿐이라 건수가 적다).
+          for (const r of list) {
+            const one = await provider.sendSMS({
+              snd: settings.senderNum, content: r.body,
+              messages: [{ rcv: (r.row.mobile || '').trim(), rcvnm: r.row.client_name || '고객' }],
+            })
+            per.push({ ok: !!one.receiptNum, receiptNum: one.receiptNum, code: one.code })
+          }
+        }
+      } catch (e) {
+        bulkErr = e instanceof Error ? e.message : '발송 오류'
+        per = list.map(() => ({ ok: false, receiptNum: '', code: 0 }))
+      }
+
+      list.forEach((r, i) => {
+        const p = per[i] || { ok: false, receiptNum: '', code: 0 }
+        if (p.ok) sent++; else failed++
+        results.push({
+          order_id: r.row.order_id, order_number: r.row.order_number,
+          status: p.ok ? 'SUCCESS' : 'FAILED',
+          channel: r.decision.channel, template: r.decision.template,
+          receipt_num: p.receiptNum,
+          error: p.ok ? null : (bulkErr || BAROBILL_MESSAGING_ERROR[String(p.code)] || '발송 실패'),
+        })
+        logStmts.push(c.env.DB.prepare(
+          `INSERT INTO kakao_send_logs (
+             receipt_num, template_code, receiver_num, receiver_name,
+             related_type, related_id, client_id, content, alt_content,
+             status, result_code, result_message, sent_by, channel, entity_id, message_type
+           ) VALUES (?, ?, ?, ?, 'shipments', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'INFO')`
+        ).bind(
+          p.receiptNum || '', templateCode, (r.row.mobile || '').trim(), r.row.client_name,
+          r.row.shipment_id, r.row.client_id, r.body, r.body,
+          p.ok ? 'SUCCESS' : 'FAILED', p.code,
+          p.ok ? `접수완료 (${p.receiptNum})` : (bulkErr || BAROBILL_MESSAGING_ERROR[String(p.code)] || '발송 실패'),
+          user?.id || null, isKakao ? 'kakao' : 'sms', r.row.entity_id || getEntityId(c) || 1
+        ))
+      })
+    }
+
+    for (let i = 0; i < logStmts.length; i += 40) await c.env.DB.batch(logStmts.slice(i, i + 40))
+    return c.json({ success: true, data: { sent, failed, results } })
+  } catch (error) {
+    console.error('src/routes/kakao.ts POST /shipment-notice/send error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // ============================================================================
 shipmentsRouter.get('/pending-confirm', requireAccessOrRole('/shipments', 'MANAGER'), async (c) => {
   try {

@@ -133,9 +133,9 @@ console.log('[shipment-notice] \u2467 \ubcf8\ubb38 \uc0dd\uc131 \u2014 \ubbf8\ub
   check('송장이 없으면 그 줄 자체를 빼고 빈칸을 남기지 않는다', smsNoTrack.indexOf('송장번호') < 0, smsNoTrack)
 
   // ★소스 스캔 — 미리보기와 발송이 각자 본문을 만들면 「보여준 것과 나간 것」이 갈린다.
-  const routeSrc = fs.readFileSync(require('path').join(ROOT_DIR, 'src', 'routes', 'kakao.ts'), 'utf8')
-  const preview = routeSrc.slice(routeSrc.indexOf("'/shipment-notice/preview'"), routeSrc.indexOf("'/shipment-notice/send'"))
-  const send = routeSrc.slice(routeSrc.indexOf("'/shipment-notice/send'"))
+  const routeSrc = fs.readFileSync(require('path').join(ROOT_DIR, 'src', 'routes', 'shipments.ts'), 'utf8')
+  const preview = routeSrc.slice(routeSrc.indexOf("'/notice/preview'"), routeSrc.indexOf("'/notice/send'"))
+  const send = routeSrc.slice(routeSrc.indexOf("'/notice/send'"))
   check('미리보기가 공용 본문 생성을 쓴다', /buildNotice\s*\(/.test(preview), preview.length)
   check('발송도 같은 공용 본문 생성을 쓴다', /buildNotice\s*\(/.test(send), send.length)
   check('★라우트가 본문을 직접 치환하지 않는다(치환은 utils 한 곳)',

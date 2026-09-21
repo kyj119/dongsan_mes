@@ -126,7 +126,9 @@ export function resolveShipmentNotice(input: NoticeInput): NoticeDecision {
 }
 
 /** 화면 문구 — 배지·모달이 같은 말을 쓰게 한다. */
-export const NOTICE_BLOCK_LABEL: Record<NoticeBlock, string> = {
+export const NOTICE_BLOCK_LABEL: Record<string, string> = {
+  // 템플릿 본문을 못 받아온 경우(바로빌 조회 실패) — 판정은 라우트에서 붙인다.
+  no_template_body: '문구 조회 실패',
   not_target: '대상 아님',
   no_mobile: '연락처 없음',
   needs_tracking: '송장 대기',
