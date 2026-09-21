@@ -600,6 +600,18 @@
 
       <!-- ── 가로등배너 (산식) ── -->
       <div class="trpage" data-trpage="plate">
+        <!-- ★1조의 두 벌은 **서로 다른 그림**이다(2026-08 완성판 22건 실측: 동일 복제 0건).
+             그래서 벌마다 원본을 따로 지정한다. 좌·우 순서는 디자이너가 정한다. -->
+        <div class="row">
+          <label>원본</label>
+          <button id="trPick1" type="button" class="mini">벌① 좌 지정</button>
+          <button id="trPick2" type="button" class="mini">벌② 우 지정</button>
+          <button id="trPickSwap" type="button" class="mini" title="좌우를 바꿉니다">⇄</button>
+          <button id="trPickClear" type="button" class="mini" title="지정을 비웁니다">비우기</button>
+        </div>
+        <div class="row">
+          <span id="trPickState" class="pickstate">일러에서 그림을 고르고 [벌① 좌 지정] 을 누르세요. 한 문서에 그림이 둘이면 각각 골라 지정합니다.</span>
+        </div>
         <div class="row">
           <label for="trSpecW">규격 cm</label>
           <input id="trSpecW" type="number" step="1" value="60" style="width:56px" />

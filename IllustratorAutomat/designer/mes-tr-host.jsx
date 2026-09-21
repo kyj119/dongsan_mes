@@ -23,7 +23,7 @@
  * ⚠️ 반환은 ASCII 만 — 한글을 돌려주면 CEP 브릿지에서 깨진다.
  */
 
-var MESTR_VERSION = 'TR-CEP-0.2.2';   // 0.2.2 = ★[판 만들기] 가 `PARM` 으로 죽던 것. **문서를 넘나드는 `duplicate` 은 그룹을 받으면 안 된다** — 일러 30.7 최소 재현(2026-09-21): 다른 문서의 groupItem 으로 복제 → `1346458189 ('PARM')` · 다른 문서의 **layer** 로 복제 → ok · copy/paste → ok. 원본은 srcDoc 에 있고 그룹은 `documents.add` 로 막 만든 새 문서에 있어 매번 걸렸다. 오류 문구가 코드번호 하나뿐이라 무엇이 틀렸는지 안 알려 준다. → 레이어로 복제한 뒤 **같은 문서 안에서** 그룹으로 모은다(이동은 동일 문서라 안전). 잃는 것: 없음(배치·클리핑·산식 불변) · 0.2.1 = ★이 파일이 **한 번도 안 실렸다**. 머리말 주석의 `const/let/화살표/**JSON**/Array.map` 에서 `**/` 가 블록 주석을 닫아, 뒤 문장이 코드로 파싱되며 파일 전체가 구문 오류였다(ExtendScript: 「구문 오류: 필요 항목: ;」). 0.1.0·0.2.0 둘 다 Z: 에 나갔지만 스텁이 애초에 이 파일을 안 읽어(손목록) **증상이 가려져 있었고**, 스텁을 열거로 고치자(stub-3.0.0) 비로소 드러났다. 고친 것은 주석 한 줄뿐 — 로직·산식·payload 전부 불변. 게이트 = `npm run audit:jsx-syntax`(IA 의 .jsx·패널 js 를 실제로 파싱한다 — 여태 **아무 게이트도 파싱하지 않았다**). 잃는 것: 없음 · 0.2.0 = 
+var MESTR_VERSION = 'TR-CEP-0.3.0';   // 0.3.0 = ★**1조의 두 벌은 서로 다른 그림이다.** 2026-08 완성판 22건 실측(60-180·60-150 조 단위): 완전 동일 복제 **0건** · 명백히 다른 그림 16건 · 틀만 같고 내용이 다른 것 6건 · **거울상 0건**(거울 겹침 0~7%). 주니그래픽 미래엔1 은 좌반 바탕이 별색 MiraeN Purple_New, 우반이 백색이다. 그런데 0.2.x 까지는 **선택 하나를 두 벌에 복제**했다 — 측정된 22건 전부에서 틀린 판이 나온다. → 벌마다 원본을 따로 받는다(mesTr_pick/picks/swapPicks/clearPicks). 좌우 순서는 **디자이너가 정한다**(용준님 2026-09-21). 슬롯은 패널이 열려 있는 동안만 살고, 쓰기 전에 살아 있는지 확인한다(지운 개체·닫은 문서). 딸려 오는 것 둘 — ①**도련이 벌마다 갈린다**(payload `M:idx,mode[,cmyk]` · 옛 `M:mode` 는 판 전체로 계속 먹는다) ②**밴드 색도 벌마다** 이어야 한다(한 색이면 종전처럼 통째로, 다르면 벌 구간으로 나눠 깐다). 슬롯을 하나도 안 쓰면 현재 선택을 **벌①에만** 넣고 `slot=none` 을 남긴다 — 두 벌 복제로 되돌아가지 않는다. 잃는 것: 지정 없이 [판 만들기] 를 누르면 벌②가 빈다(그 사실을 `empty=2` 와 확인 목록 must 로 알린다) · 0.2.2 = ★[판 만들기] 가 `PARM` 으로 죽던 것. **문서를 넘나드는 `duplicate` 은 그룹을 받으면 안 된다** — 일러 30.7 최소 재현(2026-09-21): 다른 문서의 groupItem 으로 복제 → `1346458189 ('PARM')` · 다른 문서의 **layer** 로 복제 → ok · copy/paste → ok. 원본은 srcDoc 에 있고 그룹은 `documents.add` 로 막 만든 새 문서에 있어 매번 걸렸다. 오류 문구가 코드번호 하나뿐이라 무엇이 틀렸는지 안 알려 준다. → 레이어로 복제한 뒤 **같은 문서 안에서** 그룹으로 모은다(이동은 동일 문서라 안전). 잃는 것: 없음(배치·클리핑·산식 불변) · 0.2.1 = ★이 파일이 **한 번도 안 실렸다**. 머리말 주석의 `const/let/화살표/**JSON**/Array.map` 에서 `**/` 가 블록 주석을 닫아, 뒤 문장이 코드로 파싱되며 파일 전체가 구문 오류였다(ExtendScript: 「구문 오류: 필요 항목: ;」). 0.1.0·0.2.0 둘 다 Z: 에 나갔지만 스텁이 애초에 이 파일을 안 읽어(손목록) **증상이 가려져 있었고**, 스텁을 열거로 고치자(stub-3.0.0) 비로소 드러났다. 고친 것은 주석 한 줄뿐 — 로직·산식·payload 전부 불변. 게이트 = `npm run audit:jsx-syntax`(IA 의 .jsx·패널 js 를 실제로 파싱한다 — 여태 **아무 게이트도 파싱하지 않았다**). 잃는 것: 없음 · 0.2.0 = 
 //   0.2.0 = ★원본 배치 + 도련 + 클리핑(2026-09-18). 0.1.0 은 자리 표시 선만 그렸다.
 //           · `mesTr_measure` — 고른 원본의 크기와 **바탕이 단색인가**를 잰다.
 //             ExtendScript 는 픽셀을 못 읽으므로 **맨 뒤 도형이 전체를 덮는 단색 채움인가**로 본다
@@ -61,7 +61,7 @@ function mesTr_ascii(s) {
  * 좌표계 = **좌상단 원점 · y 아래로**(패널과 같다). 일러 문서 좌표로는 y 를 뒤집어 쓴다.
  */
 function mesTr_parse(payload) {
-  var out = { plate: null, panels: [], design: [], bands: [], mode: 'none', color: null };
+  var out = { plate: null, panels: [], design: [], bands: [], mode: 'none', color: null, modes: [] };
   var recs = String(payload || '').split(';');
   var i, r, k, v, n;
   for (i = 0; i < recs.length; i++) {
@@ -70,12 +70,20 @@ function mesTr_parse(payload) {
     k = r.substring(0, 1);
     v = r.substring(2);
     if (k === 'M') {
-      // `M:solid,0,0,100,0` 또는 `M:repeat` / `M:skip` / `M:none`
+      // 벌마다:  `M:0,solid,0,0,100,0` · `M:1,repeat`
+      // 옛 형식: `M:solid,0,0,100,0`   (첫 칸이 숫자가 아니면 판 전체에 적용 — 구 패널 호환)
       var mp = v.split(',');
-      out.mode = mp[0];
-      if (mp.length >= 5) {
-        out.color = { c: parseFloat(mp[1]), m: parseFloat(mp[2]), y: parseFloat(mp[3]), k: parseFloat(mp[4]) };
+      var idx = -1, off = 0;
+      if (/^[0-9]+$/.test(mp[0])) { idx = parseInt(mp[0], 10); off = 1; }
+      var one = { mode: mp[off], color: null };
+      if (mp.length >= off + 5) {
+        one.color = {
+          c: parseFloat(mp[off + 1]), m: parseFloat(mp[off + 2]),
+          y: parseFloat(mp[off + 3]), k: parseFloat(mp[off + 4])
+        };
       }
+      if (idx >= 0) out.modes[idx] = one;
+      else { out.mode = one.mode; out.color = one.color; }
       continue;
     }
     n = v.split(',');
@@ -115,30 +123,104 @@ function mesTr_measure() {
     var sel = doc.selection;
     if (!sel || sel.length === 0) return 'ERROR nothing selected';
 
-    // 선택 전체의 가시 경계
-    var i, b, x0 = null, y0 = null, x1 = null, y1 = null;
-    for (i = 0; i < sel.length; i++) {
-      b = sel[i].visibleBounds;   // [left, top, right, bottom] (y 는 위가 큼)
-      if (x0 === null || b[0] < x0) x0 = b[0];
-      if (y0 === null || b[1] > y0) y0 = b[1];
-      if (x1 === null || b[2] > x1) x1 = b[2];
-      if (y1 === null || b[3] < y1) y1 = b[3];
-    }
-    var wMm = mesTr_mm(x1 - x0), hMm = mesTr_mm(y0 - y1);
-
-    // 바탕 후보 = 선택 중 **맨 뒤**이면서 전체를 덮는 단색 채움 패스
-    var bg = mesTr_findBackdrop(sel, x0, y0, x1, y1);
-    if (!bg) return 'OK w=' + mesTr_r2(wMm) + ' h=' + mesTr_r2(hMm) + ' edge=unknown';
-    var c = bg.fillColor;
-    return 'OK w=' + mesTr_r2(wMm) + ' h=' + mesTr_r2(hMm) + ' edge=solid'
-      + ' c=' + mesTr_r2(c.cyan) + ' m=' + mesTr_r2(c.magenta)
-      + ' y=' + mesTr_r2(c.yellow) + ' k=' + mesTr_r2(c.black);
+    // 판정은 mesTr_measureItems 한 곳에서 한다 — 슬롯과 **같은 잣대**여야 한다.
+    var mm = mesTr_measureItems(sel);
+    if (!mm.ok) return 'ERROR ' + mm.err;
+    return 'OK w=' + mm.w + ' h=' + mm.h + ' edge=' + mm.edge
+      + (mm.edge === 'solid' ? (' c=' + mm.c + ' m=' + mm.m + ' y=' + mm.y + ' k=' + mm.k) : '');
   } catch (e) {
     return 'ERROR measure ' + mesTr_ascii(e && e.message ? e.message : e);
   }
 }
 
 function mesTr_r2(v) { return Math.round(v * 100) / 100; }
+
+// ── 원본 슬롯 — 벌마다 다른 그림 ────────────────────────────────────
+/**
+ * ★**가로등 1조의 두 벌은 서로 다른 그림이다.**
+ *   2026-08 완성판 22건 실측(60-180·60-150, 조 단위):
+ *     완전 동일 복제 **0건** · 명백히 다른 그림 16건 · 틀만 같고 내용이 다른 것 6건 · 거울상 0건.
+ *   (주니그래픽 미래엔1 은 좌반 바탕이 별색 MiraeN Purple_New, 우반은 백색이다.)
+ *   그래서 **선택 하나를 두 벌에 복제하면 측정된 22건 전부에서 틀린 판이 나온다** —
+ *   0.2.x 까지가 정확히 그랬다. 벌마다 원본을 따로 받는다.
+ *
+ * ★바탕색이 벌마다 다르므로 **도련도 벌마다 따로** 정해야 한다(payload 의 `M:idx,...`).
+ *
+ * ★슬롯은 **패널이 열려 있는 동안만** 산다 — 스텁이 이 파일을 다시 읽으면 비워진다.
+ *   그게 맞다. 다른 작업으로 넘어갔는데 지난 선택이 남아 있으면 그게 더 위험하다.
+ * ★참조를 들고 있으므로 **쓰기 전에 살아 있는지 확인한다**(지워졌거나 문서가 닫혔을 수 있다).
+ */
+var MESTR_PICK = [];
+
+function mesTr_pickAlive(p) {
+  try {
+    if (!p || !p.items || !p.items.length) return false;
+    var i;
+    for (i = 0; i < p.items.length; i++) { if (!p.items[i].typename) return false; }
+    return true;
+  } catch (e) { return false; }
+}
+
+/** 고른 개체들의 크기와 「바탕이 단색인가」. 선택이든 슬롯이든 **같은 잣대**를 쓴다. */
+function mesTr_measureItems(items) {
+  var i, b, x0 = null, y0 = null, x1 = null, y1 = null;
+  for (i = 0; i < items.length; i++) {
+    b = items[i].visibleBounds;   // [left, top, right, bottom] (y 는 위가 큼)
+    if (x0 === null || b[0] < x0) x0 = b[0];
+    if (y0 === null || b[1] > y0) y0 = b[1];
+    if (x1 === null || b[2] > x1) x1 = b[2];
+    if (y1 === null || b[3] < y1) y1 = b[3];
+  }
+  if (x0 === null) return { ok: false, err: 'no bounds' };
+  var o = { ok: true, w: mesTr_r2(mesTr_mm(x1 - x0)), h: mesTr_r2(mesTr_mm(y0 - y1)), edge: 'unknown' };
+  var bg = mesTr_findBackdrop(items, x0, y0, x1, y1);
+  if (bg) {
+    var col = bg.fillColor;
+    o.edge = 'solid';
+    o.c = mesTr_r2(col.cyan); o.m = mesTr_r2(col.magenta);
+    o.y = mesTr_r2(col.yellow); o.k = mesTr_r2(col.black);
+  }
+  return o;
+}
+
+/** 슬롯 한 칸의 상태를 **접두사 붙은 키**로 — 패널이 공백으로 쪼개 읽는다(키가 겹치면 안 된다). */
+function mesTr_pickLine(i) {
+  var t = 's' + (i + 1), p = MESTR_PICK[i];
+  if (!p) return t + '=none';
+  if (!mesTr_pickAlive(p)) return t + '=lost';
+  var m = p.m, out = t + '=ok ' + t + 'n=' + p.items.length
+    + ' ' + t + 'w=' + m.w + ' ' + t + 'h=' + m.h + ' ' + t + 'edge=' + m.edge;
+  if (m.edge === 'solid') {
+    out += ' ' + t + 'c=' + m.c + ' ' + t + 'm=' + m.m + ' ' + t + 'y=' + m.y + ' ' + t + 'k=' + m.k;
+  }
+  return out;
+}
+
+/** 지금 고른 것을 슬롯에 넣는다. slot = 1(좌) | 2(우) — 좌우는 **디자이너가 정한다**. */
+function mesTr_pick(slot) {
+  try {
+    var n = parseInt(slot, 10);
+    if (!(n === 1 || n === 2)) return 'ERROR slot must be 1 or 2';
+    if (app.documents.length === 0) return 'ERROR no document';
+    var sel = app.activeDocument.selection;
+    if (!sel || sel.length === 0) return 'ERROR nothing selected';
+    var items = [], i;
+    for (i = 0; i < sel.length; i++) items.push(sel[i]);
+    var m = mesTr_measureItems(items);
+    if (!m.ok) return 'ERROR ' + m.err;
+    MESTR_PICK[n - 1] = { items: items, m: m };
+    return 'OK ' + mesTr_pickLine(0) + ' ' + mesTr_pickLine(1);
+  } catch (e) { return 'ERROR pick ' + mesTr_ascii(e && e.message ? e.message : e); }
+}
+
+function mesTr_picks() { return 'OK ' + mesTr_pickLine(0) + ' ' + mesTr_pickLine(1); }
+
+function mesTr_swapPicks() {
+  var t = MESTR_PICK[0]; MESTR_PICK[0] = MESTR_PICK[1]; MESTR_PICK[1] = t;
+  return mesTr_picks();
+}
+
+function mesTr_clearPicks() { MESTR_PICK = []; return mesTr_picks(); }
 
 /**
  * 전체를 덮는 단색 CMYK 채움 패스를 찾는다. 없으면 null.
@@ -174,6 +256,13 @@ function mesTr_findBackdrop(sel, x0, y0, x1, y1) {
  * @param payload  mesTr_parse 가 읽는 줄 기반 문자열
  * @return ASCII 결과 문자열. 실패는 'ERROR ' 로 시작한다.
  */
+/** 벌별 도련 모드를 한 줄로 — `solid|repeat` 처럼 벌 순서대로 찍는다(뭉개지 않는다). */
+function mesTr_modeSummary(p) {
+  var out = [], i;
+  for (i = 0; i < p.panels.length; i++) out.push(p.modes[i] ? p.modes[i].mode : p.mode);
+  return out.length ? out.join('|') : p.mode;
+}
+
 function mesTr_makePlate(payload) {
   var p = mesTr_parse(payload);
   if (!p.plate || !mesTr_num(p.plate.w) || !mesTr_num(p.plate.h)) {
@@ -248,21 +337,44 @@ function mesTr_makePlate(payload) {
       return it;
     }
 
-    // ── ① 도련 — 바탕색 사각을 **벌 크기**로 깐다
+    // ── ① 도련 — 바탕색 사각을 **벌 크기**로 깐다. ★벌마다 따로 정한다.
+    //    실측(2026-08, 22건)에서 두 벌의 바탕색이 다른 판이 흔하다 — 미래엔1 은 좌반 별색·우반 백색.
     //    ★단색일 때만 한다. 아니면 **하지 않고 센다** — 전제가 안 서면 실행하지 않는다(§조용한 격하).
-    var bgCol = null;
-    if (p.mode === 'solid' && p.color) bgCol = cmyk(p.color.c, p.color.m, p.color.y, p.color.k);
-    if (p.mode === 'solid' && !p.color) notes.push('bleedskip=nocolor');
-    if (p.mode !== 'solid' && p.mode !== 'none') notes.push('bleedskip=' + mesTr_ascii(p.mode));
+    var panelCol = [];
+    for (i = 0; i < p.panels.length; i++) {
+      var md = p.modes[i] ? p.modes[i] : { mode: p.mode, color: p.color };
+      if (md.mode === 'solid' && md.color) {
+        panelCol[i] = cmyk(md.color.c, md.color.m, md.color.y, md.color.k);
+      } else {
+        panelCol[i] = null;
+        if (md.mode === 'solid') notes.push('bleedskip=' + (i + 1) + ':nocolor');
+        else if (md.mode !== 'none') notes.push('bleedskip=' + (i + 1) + ':' + mesTr_ascii(md.mode));
+      }
+    }
 
     // ── ② 벌마다: 도련 → 원본 배치 → 클리핑
     for (i = 0; i < p.panels.length; i++) {
       var pan = p.panels[i];
       var des = (i < p.design.length) ? p.design[i] : null;
+      var bgCol = panelCol[i];
 
       if (bgCol) { filled(lyArt, pan, bgCol); bled++; }
 
-      if (srcSel && des) {
+      // ★벌마다 원본이 다르다 — 슬롯에서 가져온다(mesTr_pick). 슬롯을 하나도 안 썼으면
+      //   옛 방식대로 **현재 선택**을 쓰되 **벌①에만** 넣는다. 종전처럼 두 벌에 같은 것을
+      //   복제하지 않는다 — 실측 22건 중 그게 맞는 경우가 **0건**이었다.
+      var slot = MESTR_PICK[i];
+      var srcItems = null;
+      if (slot) {
+        if (mesTr_pickAlive(slot)) srcItems = slot.items;
+        else notes.push('slotlost=' + (i + 1));
+      } else if (!MESTR_PICK.length && i === 0 && srcSel) {
+        srcItems = srcSel;
+        notes.push('slot=none');
+      }
+      if (!srcItems && des) notes.push('empty=' + (i + 1));
+
+      if (srcItems && des) {
         // ★**문서를 넘나드는 duplicate 은 그룹을 받으면 PARM 으로 죽는다.**
         //   일러 30.7 실측(2026-09-21): 같은 원본을
         //     · 다른 문서의 **groupItem** 으로 → ERR 1346458189 ('PARM')
@@ -270,8 +382,8 @@ function mesTr_makePlate(payload) {
         //   증상은 「ERROR makePlate an Illustrator error occurred: 1346458189 ('PARM')」 하나뿐이라
         //   무엇이 틀렸는지 말해 주지 않는다. → **레이어로 복제한 뒤 같은 문서 안에서 그룹으로 모은다.**
         var j, dup, dups = [];
-        for (j = 0; j < srcSel.length; j++) {
-          dup = srcSel[j].duplicate(lyArt, ElementPlacement.PLACEATEND);
+        for (j = 0; j < srcItems.length; j++) {
+          dup = srcItems[j].duplicate(lyArt, ElementPlacement.PLACEATEND);
           if (dup) dups.push(dup);
         }
         var grp = null;
@@ -306,9 +418,28 @@ function mesTr_makePlate(payload) {
     }
 
     // ── ③ 밴드 — 봉미싱 접힘부. 바탕색이 있으면 같은 색으로 이어 준다
+    // ★두 벌의 바탕색이 다르면 밴드도 **벌마다 그 색으로** 이어야 한다 — 한 색으로 깔면
+    //   한쪽 벌의 접힘부가 남의 색이 된다. 색이 하나뿐이면 종전처럼 통째로 깐다(벌 사이 1mm 간격까지).
+    var uni = null, allSame = true;
+    for (i = 0; i < panelCol.length; i++) {
+      if (!panelCol[i]) { allSame = false; break; }
+      if (uni === null) uni = panelCol[i];
+      else if (uni.cyan !== panelCol[i].cyan || uni.magenta !== panelCol[i].magenta
+        || uni.yellow !== panelCol[i].yellow || uni.black !== panelCol[i].black) { allSame = false; break; }
+    }
     for (i = 0; i < p.bands.length; i++) {
-      if (bgCol) filled(lyArt, p.bands[i], bgCol);
-      stroked(lyGuide, p.bands[i], 0, 100, 100, 0, 0.5);
+      var bd = p.bands[i];
+      if (allSame && uni) {
+        filled(lyArt, bd, uni);
+      } else {
+        for (var q = 0; q < p.panels.length; q++) {
+          if (!panelCol[q]) continue;
+          var pq = p.panels[q];
+          var bx0 = Math.max(bd.x, pq.x), bx1 = Math.min(bd.x + bd.w, pq.x + pq.w);
+          if (bx1 - bx0 > 0.01) filled(lyArt, { x: bx0, y: bd.y, w: bx1 - bx0, h: bd.h }, panelCol[q]);
+        }
+      }
+      stroked(lyGuide, bd, 0, 100, 100, 0, 0.5);
     }
 
     // ── ④ 자리 표시(비인쇄)
@@ -319,7 +450,7 @@ function mesTr_makePlate(payload) {
     return 'OK plate=' + p.plate.w + 'x' + p.plate.h
       + ' panels=' + p.panels.length + ' bands=' + p.bands.length
       + ' placed=' + placed + ' bleed=' + bled + ' clipped=' + clipped
-      + ' bleedmode=' + mesTr_ascii(p.mode)
+      + ' bleedmode=' + mesTr_ascii(mesTr_modeSummary(p))
       + (srcSel ? '' : ' src=none')
       + (notes.length ? ' ' + notes.join(' ') : '')
       + ' ver=' + MESTR_VERSION;

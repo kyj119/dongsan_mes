@@ -17,7 +17,7 @@
 (function () {
   'use strict';
 
-  var TR_SHELL_VERSION = '0.2.2';   // 0.2.2 = ★안쪽 탭이 **전환되지 않고 있었다**. `.trpage`(style.css L199)가 `.hidden`(L21)보다 뒤에 있어 특정도가 같으면 이겼고, 숨겨야 할 페이지가 계속 보였다 — 가로등·윈드 입력이 동시에 렌더돼 실기에서 「입력창이 동일하다」로 보고됐다. `.trpage.hidden` 로 못박았다(`.mainpage.hidden` 과 같은 방식). 겸해서 **탭마다 쓰는 버튼만** 남긴다 — 가로등의 「틀 열기」·윈드의 「판 만들기」는 눌러도 거절 문구만 나오는 선택지였다. 게이트 = `panel:smoke` §16(브라우저에서 실제 가시성을 잰다 — 텍스트 게이트로는 영원히 못 잡는 종류다). 잃는 것: 없음(산식·payload 불변) · 0.2.1 = ★호스트 미로드를 **부팅 때** 알린다. 종전엔 `none` 을 조용히 넘겨 `host ?` 만 떴고 사람은 [판 만들기] 를 누르고서야 알았다. 그리고 그때 뜨는 문구가 **Z: 를 범인으로 단정**했는데(2026-09-18 실기) 진짜 원인은 이 PC 의 스텁이 전사 호스트를 목록에 안 넣은 것이었다 — Z: 는 멀쩡했고 사람은 드라이브를 보러 갔다. → 사유를 스텁에게 되묻고(oldstub·loaderr·notloaded) **조치가 다른 세 갈래**로 나눠 말한다. 잃는 것: 없음(산식·판·payload 불변) · 0.2.0 = 원본 측정(mesTr_measure) → 도련 경로 결정 → 배치·클리핑까지 · 0.1.0 = 신설
+  var TR_SHELL_VERSION = '0.3.0';   // 0.3.0 = ★벌마다 원본을 지정한다([벌① 좌 지정]·[벌② 우 지정]·[⇄]·[비우기]). 1조의 두 벌은 서로 다른 그림이라(2026-08 완성판 22건 실측, 동일 복제 0건) 종전처럼 하나를 두 벌에 복제하면 **전부 틀린 판**이 나왔다. 좌우는 디자이너가 정한다. 도련도 **벌마다** 계산해 `M:idx,...` 로 보낸다 — 두 벌의 바탕색이 다른 판이 흔하다. 지정이 비면 확인 목록에 **must** 로 올린다(조용히 빈 자리로 내보내지 않는다). ⚠️최악 도련을 고르는 비교에 `RANK[m] || 9` 를 쓰면 안 된다 — **skip 이 0 이라 falsy** 다(review.js 의 `ORDER[level] || 9` 와 같은 함정, 여기서도 한 번 걸렸다). 잃는 것: [계산] 전에 지정이 필요하다(안 하면 벌①에만 현재 선택이 들어간다) · 0.2.2 = ★안쪽 탭이 **전환되지 않고 있었다**. `.trpage`(style.css L199)가 `.hidden`(L21)보다 뒤에 있어 특정도가 같으면 이겼고, 숨겨야 할 페이지가 계속 보였다 — 가로등·윈드 입력이 동시에 렌더돼 실기에서 「입력창이 동일하다」로 보고됐다. `.trpage.hidden` 로 못박았다(`.mainpage.hidden` 과 같은 방식). 겸해서 **탭마다 쓰는 버튼만** 남긴다 — 가로등의 「틀 열기」·윈드의 「판 만들기」는 눌러도 거절 문구만 나오는 선택지였다. 게이트 = `panel:smoke` §16(브라우저에서 실제 가시성을 잰다 — 텍스트 게이트로는 영원히 못 잡는 종류다). 잃는 것: 없음(산식·payload 불변) · 0.2.1 = ★호스트 미로드를 **부팅 때** 알린다. 종전엔 `none` 을 조용히 넘겨 `host ?` 만 떴고 사람은 [판 만들기] 를 누르고서야 알았다. 그리고 그때 뜨는 문구가 **Z: 를 범인으로 단정**했는데(2026-09-18 실기) 진짜 원인은 이 PC 의 스텁이 전사 호스트를 목록에 안 넣은 것이었다 — Z: 는 멀쩡했고 사람은 드라이브를 보러 갔다. → 사유를 스텁에게 되묻고(oldstub·loaderr·notloaded) **조치가 다른 세 갈래**로 나눠 말한다. 잃는 것: 없음(산식·판·payload 불변) · 0.2.0 = 원본 측정(mesTr_measure) → 도련 경로 결정 → 배치·클리핑까지 · 0.1.0 = 신설
   // ★호스트 최소 버전 — `mesTr_measure` 와 도련 색 전달은 **0.2.0 부터**다.
   //   구 호스트(0.1.0)는 `M:solid,c,m,y,k` 의 색을 조용히 무시하고 자리 표시 선만 그린다
   //   → 판은 나오는데 도련이 없다. 조용한 격하라서 버전을 못박는다.
@@ -28,7 +28,8 @@
 
   var el = {};
   var lastPlan = null;              // 마지막 계산 결과 — [판 만들기] 가 쓴다
-  var lastEdge = null;              // 마지막 원본 측정 — 도련 경로가 여기서 갈린다
+  var lastEdges = [];               // 벌별 원본 측정 — 도련 경로가 **벌마다** 갈린다
+  var lastPickRaw = '';             // 마지막 슬롯 상태 원문(화면 표시용)
   var booted = false;
 
   /**
@@ -199,14 +200,34 @@
     });
     if (!r.ok) return { err: '만들지 않습니다 — ' + r.reason, code: r.code };
 
-    // 도련은 바탕색을 알아야 정한다 — 안 재었으면 **모른다고 둔다**(추측해서 solid 로 만들지 않는다).
-    var edge = lastEdge || {};
-    var bleed = RV.planBleed({ design: r.design[0], panel: r.panels[0], edge: edge });
+    // ★도련은 **벌마다** 정한다 — 두 벌의 바탕색이 다른 판이 흔하다(2026-08 실측).
+    //   안 재었으면 **모른다고 둔다**(추측해서 solid 로 만들지 않는다).
+    var bleeds = [], worst = null, i;
+    var RANK = { skip: 0, repeat: 1, clip: 2, solid: 3, none: 4 };
+    function rank(m) { return (typeof RANK[m] === 'number') ? RANK[m] : 9; }
+    for (i = 0; i < r.panels.length; i++) {
+      var e = lastEdges[i] || {};
+      var b = RV.planBleed({ design: r.design[i], panel: r.panels[i], edge: e });
+      bleeds.push(b);
+      // ⚠️`RANK[x] || 9` 로 쓰면 안 된다 — **skip 이 0 이라 falsy** 라 가장 나쁜 것이 9로 밀린다.
+      //   review.js 의 `ORDER[level] || 9` 에서 같은 함정에 이미 한 번 걸렸다.
+      if (worst === null || rank(b.mode) < rank(bleeds[worst].mode)) worst = i;
+    }
+    var wEdge = lastEdges[worst] || {};
     var review = RV.build({
-      mode: 'plate', bleed: bleed, edge: edge, trace: r.trace,
+      mode: 'plate', bleed: bleeds[worst], edge: wEdge, trace: r.trace,
       nonwoven: !!(el.nonwoven && el.nonwoven.checked)
     });
-    return { plate: r, bleed: bleed, review: review, mode: 'plate', edge: edge };
+    // ★비어 있는 벌을 조용히 넘기지 않는다 — 그 자리는 **빈 채로** 나간다.
+    for (i = 0; i < r.panels.length; i++) {
+      if (!lastEdges[i]) {
+        review.unshift({
+          code: 'slot-empty-' + (i + 1), level: 'must',
+          msg: '벌' + (i + 1) + ' 에 앉힐 원본이 지정되지 않았습니다 — 그 자리는 비워 둡니다'
+        });
+      }
+    }
+    return { plate: r, bleed: bleeds[worst], bleeds: bleeds, review: review, mode: 'plate', edge: wEdge };
   }
 
   function calcFrame() {
@@ -224,23 +245,83 @@
     return { framePlan: fp, review: review, mode: 'frame' };
   }
 
-  /** 일러에서 고른 원본을 잰다 — 크기와 바탕색. 못 재면 lastEdge 를 비워 **모르는 상태**로 둔다. */
+  /** 일러에서 고른 원본을 잰다 — 크기와 바탕색. 못 재면 그 벌을 비워 **모르는 상태**로 둔다. */
+  /** 슬롯 한 칸(`s1=ok s1w=.. s1edge=solid s1c=..`)을 review.js 가 먹는 edge 로 옮긴다. */
+  function edgeOf(kv, t) {
+    if (kv[t] !== 'ok') return null;
+    var e;
+    if (kv[t + 'edge'] === 'solid') {
+      var col = {
+        c: parseFloat(kv[t + 'c']), m: parseFloat(kv[t + 'm']),
+        y: parseFloat(kv[t + 'y']), k: parseFloat(kv[t + 'k'])
+      };
+      e = { solid: true, color: [col.c, col.m, col.y, col.k], light: isLight(col), outside: false };
+    } else {
+      // ★「단색이 아니다」가 아니라 **「모르겠다」**이다 — solid=false 로 단정하면
+      //   review.js 가 edge-multicolor 로 확정해 버린다. 판정은 사람에게 남긴다.
+      e = { outside: false };
+    }
+    e.w = parseFloat(kv[t + 'w']);
+    e.h = parseFloat(kv[t + 'h']);
+    e.n = parseInt(kv[t + 'n'], 10) || 0;
+    return e;
+  }
+
+  /** 슬롯 상태를 받아 벌별 측정을 채운다. 종전의 단일 measure 를 대신한다. */
   function measure(done) {
     if (!cs || activeTrTab() === 'frame') { done(); return; }
-    host('mesTr_measure()', function (res, bad) {
-      if (bad || String(res).indexOf('OK') !== 0) { lastEdge = null; done(String(res)); return; }
+    host('mesTr_picks()', function (res, bad) {
+      if (bad || String(res).indexOf('OK') !== 0) { lastEdges = []; done(String(res)); return; }
+      lastPickRaw = String(res);
       var kv = parseKv(res);
-      if (kv.edge === 'solid') {
-        var col = { c: parseFloat(kv.c), m: parseFloat(kv.m), y: parseFloat(kv.y), k: parseFloat(kv.k) };
-        lastEdge = { solid: true, color: [col.c, col.m, col.y, col.k], light: isLight(col), outside: false };
-      } else {
-        // ★「단색이 아니다」가 아니라 **「모르겠다」**이다 — solid=false 로 단정하면
-        //   review.js 가 edge-multicolor 로 확정해 버린다. 판정은 사람에게 남긴다.
-        lastEdge = { outside: false };
-      }
-      lastEdge.w = parseFloat(kv.w);
-      lastEdge.h = parseFloat(kv.h);
+      lastEdges = [edgeOf(kv, 's1'), edgeOf(kv, 's2')];
+      renderPicks(kv);
       done();
+    });
+  }
+
+  /** 지정 상태를 사람 말로. 「비어 있다」를 조용히 넘기지 않는다. */
+  function renderPicks(kv) {
+    if (!el.pickState) return;
+    var vup = parseInt(el.vup ? el.vup.value : '1', 10) || 1;
+    var txt = [], i, t, e;
+    for (i = 0; i < vup; i++) {
+      t = 's' + (i + 1);
+      e = lastEdges[i];
+      if (kv[t] === 'lost') txt.push('벌' + (i + 1) + ' ✕ 지정이 사라졌습니다(지웠거나 문서를 닫았습니다) — 다시 지정하세요');
+      else if (!e) txt.push('벌' + (i + 1) + ' — 지정 안 됨');
+      else {
+        txt.push('벌' + (i + 1) + ' ✓ ' + e.n + '개 · ' + e.w + '×' + e.h + 'mm · 바탕 '
+          + (e.solid ? ('단색 ' + e.color.join('/')) : '모름'));
+      }
+    }
+    show(el.pick2, vup > 1);
+    show(el.pickSwap, vup > 1);
+    el.pickState.textContent = txt.join('   |   ');
+  }
+
+  function pick(slot) {
+    host('mesTr_pick(' + slot + ')', function (res, bad) {
+      if (bad) { el.out.textContent = res; return; }
+      lastPickRaw = String(res);
+      var kv = parseKv(res);
+      lastEdges = [edgeOf(kv, 's1'), edgeOf(kv, 's2')];
+      renderPicks(kv);
+      lastPlan = null;
+      if (el.btnMake) el.btnMake.disabled = true;
+      el.out.textContent = '지정했습니다 — [계산] 을 다시 누르세요';
+    });
+  }
+
+  function pickCmd(expr) {
+    host(expr, function (res, bad) {
+      if (bad) { el.out.textContent = res; return; }
+      lastPickRaw = String(res);
+      var kv = parseKv(res);
+      lastEdges = [edgeOf(kv, 's1'), edgeOf(kv, 's2')];
+      renderPicks(kv);
+      lastPlan = null;
+      if (el.btnMake) el.btnMake.disabled = true;
     });
   }
 
@@ -315,11 +396,14 @@
     for (i = 0; i < p.panels.length; i++) rec.push('N:' + rectStr(p.panels[i]));
     for (i = 0; i < p.design.length; i++) rec.push('D:' + rectStr(p.design[i]));
     for (i = 0; i < p.bands.length; i++) rec.push('B:' + rectStr(p.bands[i]));
-    // 도련 모드 — solid 면 바탕색까지 실어 보낸다(호스트가 그 색으로 벌 크기 사각을 깐다)
-    var bl = lastPlan.bleed;
-    var mrec = 'M:' + (bl ? bl.mode : 'none');
-    if (bl && bl.mode === 'solid' && bl.color) mrec += ',' + bl.color.join(',');
-    rec.push(mrec);
+    // 도련 모드 — **벌마다** 보낸다(`M:idx,mode[,c,m,y,k]`). 두 벌의 바탕색이 다를 수 있다.
+    var bls = lastPlan.bleeds || [lastPlan.bleed];
+    for (i = 0; i < bls.length; i++) {
+      var bl = bls[i];
+      var mrec = 'M:' + i + ',' + (bl ? bl.mode : 'none');
+      if (bl && bl.mode === 'solid' && bl.color) mrec += ',' + bl.color.join(',');
+      rec.push(mrec);
+    }
     var expr = 'mesTr_makePlate(' + asciiStr(rec.join(';')) + ')';
     el.out.textContent = '판 만드는 중…';
     host(expr, function (res, bad) {
@@ -347,6 +431,8 @@
       nonwoven: $('trNonwoven'), nonwovenCm: $('trNonwovenCm'), hwSize: $('trHwSize'), hwHoles: $('trHwHoles'),
       frame: $('trFrame'), client: $('trClient'),
       btnCalc: $('trBtnCalc'), btnMake: $('trBtnMake'), btnFrame: $('trBtnFrame'),
+      pick1: $('trPick1'), pick2: $('trPick2'), pickSwap: $('trPickSwap'),
+      pickClear: $('trPickClear'), pickState: $('trPickState'),
       out: $('trOut'), review: $('trReview'), ver: $('trVer')
     };
     if (!el.out) { return; }   // 전사 페이지가 없는 빌드 — 조용히 물러난다
@@ -359,6 +445,13 @@
     if (el.btnCalc) el.btnCalc.addEventListener('click', calc);
     if (el.btnMake) el.btnMake.addEventListener('click', make);
     if (el.btnFrame) el.btnFrame.addEventListener('click', openFrame);
+    if (el.pick1) el.pick1.addEventListener('click', function () { pick(1); });
+    if (el.pick2) el.pick2.addEventListener('click', function () { pick(2); });
+    if (el.pickSwap) el.pickSwap.addEventListener('click', function () { pickCmd('mesTr_swapPicks()'); });
+    if (el.pickClear) el.pickClear.addEventListener('click', function () { pickCmd('mesTr_clearPicks()'); });
+    // 벌 수를 바꾸면 벌② 칸의 노출이 달라진다
+    if (el.vup) el.vup.addEventListener('change', function () { renderPicks(parseKv(lastPickRaw)); });
+    renderPicks(parseKv(lastPickRaw));
 
     if (el.ver) el.ver.textContent = 'shell ' + TR_SHELL_VERSION;
     // ★미로드를 **부팅 때** 말한다. 종전에는 `none` 을 조용히 넘겨 `host ?` 만 떴고,

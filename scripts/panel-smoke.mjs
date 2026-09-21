@@ -1502,6 +1502,20 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   ok('16 가로등으로 돌아오면 「판 만들기」가 있다', await vis('#trBtnMake'))
   ok('16 ★가로등에는 「틀 열기」가 없다', (await vis('#trBtnFrame')) === false)
 
+  // ★벌마다 원본을 지정하는 칸이 있는가 — 1조의 두 벌은 **서로 다른 그림**이다
+  //   (2026-08 완성판 22건 실측: 완전 동일 복제 0건 · 거울상 0건). 하나를 두 벌에 복제하면
+  //   측정된 22건 전부에서 틀린 판이 나온다 — 0.2.x 까지가 그랬다.
+  ok('16 ★벌마다 원본을 지정하는 칸이 있다', (await vis('#trPick1')) && (await vis('#trPick2')))
+  ok('16 좌우를 바꾸는 수단이 있다', await vis('#trPickSwap'),
+    '좌우 순서는 디자이너가 정한다 — 바꿀 수 없으면 다시 지정해야 한다')
+  ok('16 지정 상태가 화면에 보인다', await vis('#trPickState'))
+  ok('16 1벌이면 벌② 칸이 사라진다', await p16.evaluate(() => {
+    const v = document.getElementById('trVup'); v.value = '1'
+    v.dispatchEvent(new Event('change'))
+    const b = document.getElementById('trPick2')
+    return getComputedStyle(b).display === 'none'
+  }), '1벌짜리에 벌② 지정은 고를 수 없는 선택지다')
+
   ok('16 콘솔 에러 0', p16.__errs.length === 0, p16.__errs.join(' | '))
   await p16.close()
 }
@@ -1516,6 +1530,18 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   const dupArgs = [...trh.matchAll(/\.duplicate\(\s*([A-Za-z_$][\w$]*)/g)].map((m) => m[1])
   ok('17d duplicate 대상이 레이어다', dupArgs.length > 0 && dupArgs.every((a) => /^ly/.test(a)),
     '받은 인자: ' + dupArgs.join(',') + ' — 그룹(grp)을 주면 새 문서에서 PARM 으로 죽는다')
+  // ★두 벌에 **같은 선택을 복제하지 않는다** — 실측 22건 중 그게 맞는 경우가 0건이었다.
+  // ⚠️정규식을 셸로 주입하다 역슬래시가 삼켜져 한 번 깨졌다(CLAUDE.md §Bash 함정).
+  //    괄호·대괄호가 든 패턴은 indexOf 로 쓰는 편이 읽기도 쉽고 안 깨진다.
+  ok('17d 벌마다 원본을 따로 받는다',
+    trh.indexOf('function mesTr_pick(') > 0 && trh.indexOf('MESTR_PICK[i]') > 0,
+    '슬롯이 없으면 한 그림이 두 벌에 복제된다 — 실측 22건 중 그게 맞는 경우가 0건이었다')
+  ok('17d 쓰기 전에 슬롯이 살아 있는지 본다', trh.indexOf('mesTr_pickAlive(') > 0,
+    '지운 개체·닫은 문서를 그대로 쓰면 PARM 으로 죽는다')
+  ok('17d 도련을 벌마다 정한다',
+    trh.indexOf('panelCol[i]') > 0 && trh.indexOf('out.modes[idx]') > 0,
+    '두 벌의 바탕색이 다른 판이 흔하다(미래엔1 = 좌 별색·우 백색)')
+  ok('17d 빈 벌을 조용히 넘기지 않는다', trh.indexOf("'empty=' + (i + 1)") > 0)
   ok('17d 왜 그런지가 코드 옆에 적혀 있다', /PARM/.test(trh) && /1346458189/.test(trh),
     '코드번호만 뜨는 오류다 — 사유가 없으면 다음 사람이 처음부터 다시 찾는다')
 }

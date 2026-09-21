@@ -185,8 +185,32 @@ const base = (over = {}) => Object.assign(
   const read = ['P', 'N', 'D', 'B', 'M'].filter((k) => new RegExp("k === '" + k + "'").test(host))
   ok('㉝ ★호스트가 그 5종을 전부 읽는다', read.length === 5, read.join(' '))
 
-  ok('㉞ 호스트가 M 레코드의 색 5필드를 읽는다', /mp\.length >= 5/.test(host))
-  ok('㉟ 호스트가 도련 색으로 벌을 채운다', /p\.mode === 'solid'/.test(host) && /filled\(lyArt, pan, bgCol\)/.test(host))
+  // ★글자를 세지 말고 **돌려 본다.** `mesTr_parse` 는 일러 API 를 안 쓰는 순수 함수라
+  //   여기서 그대로 실행할 수 있다. 종전엔 `/mp\.length >= 5/` 같은 **구현을 못박는 정규식**이라,
+  //   도련을 벌마다 나누는 개선(0.3.0)이 성질을 더 잘 지키는데도 FAIL 로 막혔다
+  //   (CLAUDE.md §게이트가 구현을 못박으면 개선을 막는다 — 2026-09-21 실제로 걸렸다).
+  // ⚠️호스트는 CRLF 다 — 정규화하지 않으면 `\n}\n` 이 안 맞아 함수가 잘린 채 eval 된다.
+  const hostLF = host.replace(/\r\n/g, '\n')
+  const parseSrc = hostLF.slice(hostLF.indexOf('function mesTr_parse('))
+  const parseEnd = parseSrc.indexOf('\n}\n')
+  if (parseEnd < 0) throw new Error('mesTr_parse 의 끝을 못 찾았다 — 들여쓰기가 바뀌었는지 보라')
+  const mesTr_parse = new Function(parseSrc.slice(0, parseEnd + 2) + '; return mesTr_parse;')()
+
+  const legacy = mesTr_parse('P:100,200;N:0,0,50,200;M:solid,0,0,100,0')
+  ok('㉞ 옛 형식 `M:solid,c,m,y,k` 가 판 전체 색으로 읽힌다',
+    legacy.mode === 'solid' && legacy.color && legacy.color.y === 100 && legacy.color.k === 0,
+    JSON.stringify(legacy.color))
+
+  const perPanel = mesTr_parse('P:100,200;N:0,0,50,200;N:50,0,50,200;M:0,solid,90,70,0,0;M:1,repeat')
+  ok('㉞ ★벌마다 다른 도련을 읽는다 (두 벌의 바탕색이 다른 판이 흔하다)',
+    perPanel.modes[0].mode === 'solid' && perPanel.modes[0].color.c === 90
+    && perPanel.modes[0].color.m === 70 && perPanel.modes[1].mode === 'repeat'
+    && perPanel.modes[1].color === null,
+    JSON.stringify(perPanel.modes))
+
+  ok('㉟ 호스트가 도련 색으로 벌을 채운다', /filled\(lyArt, pan, bgCol\)/.test(host))
+  ok('㉟ ★그 색을 벌마다 따로 정한다', host.indexOf('panelCol[i]') > 0,
+    '판 하나로 뭉치면 두 벌 중 한쪽이 남의 색이 된다')
   ok('㊱ ★단색이 아니면 채우지 않고 센다', /bleedskip=/.test(host))
 
   // 최소 호스트 버전 ≤ 실제 호스트 버전

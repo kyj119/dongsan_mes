@@ -202,3 +202,6 @@ button.danger { border-color: #7a4a4a; color: #e0b0b0; }
    같아 보였다(2026-09-21 실기 보고 「입력창이 동일하다」). `.mainpage.hidden`(L155)이 이미 같은 방식이다.
    ⚠️새 페이지 클래스를 `.hidden` **뒤에** 정의하면 같은 함정을 다시 판다. 게이트 = panel:smoke §16 */
 .trpage.hidden { display: none; }
+/* ★지정 상태는 **설명이 아니라 상태**다 — `.hint` 를 쓰면 설명 접기(.panel.no-hints)에 같이 숨어
+   「벌②가 비었다」를 못 보게 된다. 접어도 보여야 하므로 클래스를 따로 둔다(2026-09-21 게이트가 잡음). */
+.pickstate { color: #c8c8c8; font-size: 11px; line-height: 1.45; word-break: keep-all; overflow-wrap: anywhere; }
