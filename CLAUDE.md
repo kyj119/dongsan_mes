@@ -99,6 +99,8 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 - prod는 통계가 **한 번도 만들어진 적 없었다**(2026-08-25 최초 ANALYZE). `/reports` 13.9초·`/api/clients?dormant` **36초 뒤 500**(D1 한도 초과 → 그 isolate의 후속 요청까지 전멸) → ANALYZE 후 123ms·83ms. rows_read 2,530만→8.8만.
 - **갱신 = `cron/daily-maintenance` 마지막 단계**(자동). 대량 이관 직후엔 `POST /api/cron/analyze` 수동. 되돌리기=`DROP TABLE sqlite_stat1`(통계는 힌트라 결과 불변).
 - **통계는 만능이 아니다** — 상관 스칼라 서브쿼리(`(SELECT MAX(..) FROM orders WHERE client_id=c.id)`)·`clients`를 바깥에 둔 조인은 애초에 쓰지 말 것. **큰 쪽을 먼저 GROUP BY로 접고 작은 쪽을 조인**한다(`reports.ts` client-revenue·`clients.ts` last_order_date 정본). 상시 감사 = **`npm run audit:subquery`**(SELECT절 상관 서브쿼리만 분류·규모 가중=`scripts/table-rows.json`). ⚠️`[바깥×서브]`는 **테이블 전체 행수 상한**이라 WHERE로 걸러진 실제 행수가 아니다 — 순위용 눈금이지 측정값이 아니고, 판정은 `EXPLAIN QUERY PLAN`으로.
+  - ★**위험한 건 바깥이 자라는 경우다** — 재실행 횟수 = **바깥 행수**다. 2026-08-25 사고는 바깥이 `clients` **2,890** 이었다. 2026-09-21 P1 **27건 전수 실측 결과 전부 무해**했고 이유가 같은 축이다: 바깥이 죄다 **마스터·설정 테이블**이라 거래량이 늘어도 안 자란다(prod 실측 `bank_accounts` **14** · `corporate_cards` 22 · `spec_groups` 18 · `loans` 27 · `storage_zones` 5 · `departments` 10 · `price_policies` 1 · `price_sheets` **0**). 엔드포인트 12개 prod 실측 **20~41ms·전부 200**, `audit:query-cost` 22/22 통과.
+  - 그래서 **P1 개수를 줄이는 리팩터링은 하지 않는다**(재론 금지). 다시 볼 조건은 딱 하나 — **그 바깥 테이블이 성격을 바꿔 자라기 시작할 때**다(예: `price_sheets`·`contact_groups` 가 거래처별로 생기면 바깥이 2,890 축이 된다).
 - **「지금 빠르다」≠「안전하다」** — 데이터가 비어서 안 터지는 것과 구조가 안전한 것은 다르다(`/ai/credit-risk/summary`가 42ms인 건 등급이 1건뿐이라서였다).
 - **타입체크·smoke는 이걸 절대 못 잡는다** — 14초 응답도 200이다. 게이트 = `npm run audit:query-cost`(예산 초과 시 exit 1, 기준선=`scripts/query-cost-baseline.json` — ⚠️실행 경로 미배선, 수동). 진단은 `EXPLAIN QUERY PLAN` + 응답의 `rows_read`.
 
