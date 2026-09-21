@@ -23,7 +23,7 @@
  * ⚠️ 반환은 ASCII 만 — 한글을 돌려주면 CEP 브릿지에서 깨진다.
  */
 
-var MESTR_VERSION = 'TR-CEP-0.3.0';   // 0.3.0 = ★**1조의 두 벌은 서로 다른 그림이다.** 2026-08 완성판 22건 실측(60-180·60-150 조 단위): 완전 동일 복제 **0건** · 명백히 다른 그림 16건 · 틀만 같고 내용이 다른 것 6건 · **거울상 0건**(거울 겹침 0~7%). 주니그래픽 미래엔1 은 좌반 바탕이 별색 MiraeN Purple_New, 우반이 백색이다. 그런데 0.2.x 까지는 **선택 하나를 두 벌에 복제**했다 — 측정된 22건 전부에서 틀린 판이 나온다. → 벌마다 원본을 따로 받는다(mesTr_pick/picks/swapPicks/clearPicks). 좌우 순서는 **디자이너가 정한다**(용준님 2026-09-21). 슬롯은 패널이 열려 있는 동안만 살고, 쓰기 전에 살아 있는지 확인한다(지운 개체·닫은 문서). 딸려 오는 것 둘 — ①**도련이 벌마다 갈린다**(payload `M:idx,mode[,cmyk]` · 옛 `M:mode` 는 판 전체로 계속 먹는다) ②**밴드 색도 벌마다** 이어야 한다(한 색이면 종전처럼 통째로, 다르면 벌 구간으로 나눠 깐다). 슬롯을 하나도 안 쓰면 현재 선택을 **벌①에만** 넣고 `slot=none` 을 남긴다 — 두 벌 복제로 되돌아가지 않는다. 잃는 것: 지정 없이 [판 만들기] 를 누르면 벌②가 빈다(그 사실을 `empty=2` 와 확인 목록 must 로 알린다) · 0.2.2 = ★[판 만들기] 가 `PARM` 으로 죽던 것. **문서를 넘나드는 `duplicate` 은 그룹을 받으면 안 된다** — 일러 30.7 최소 재현(2026-09-21): 다른 문서의 groupItem 으로 복제 → `1346458189 ('PARM')` · 다른 문서의 **layer** 로 복제 → ok · copy/paste → ok. 원본은 srcDoc 에 있고 그룹은 `documents.add` 로 막 만든 새 문서에 있어 매번 걸렸다. 오류 문구가 코드번호 하나뿐이라 무엇이 틀렸는지 안 알려 준다. → 레이어로 복제한 뒤 **같은 문서 안에서** 그룹으로 모은다(이동은 동일 문서라 안전). 잃는 것: 없음(배치·클리핑·산식 불변) · 0.2.1 = ★이 파일이 **한 번도 안 실렸다**. 머리말 주석의 `const/let/화살표/**JSON**/Array.map` 에서 `**/` 가 블록 주석을 닫아, 뒤 문장이 코드로 파싱되며 파일 전체가 구문 오류였다(ExtendScript: 「구문 오류: 필요 항목: ;」). 0.1.0·0.2.0 둘 다 Z: 에 나갔지만 스텁이 애초에 이 파일을 안 읽어(손목록) **증상이 가려져 있었고**, 스텁을 열거로 고치자(stub-3.0.0) 비로소 드러났다. 고친 것은 주석 한 줄뿐 — 로직·산식·payload 전부 불변. 게이트 = `npm run audit:jsx-syntax`(IA 의 .jsx·패널 js 를 실제로 파싱한다 — 여태 **아무 게이트도 파싱하지 않았다**). 잃는 것: 없음 · 0.2.0 = 
+var MESTR_VERSION = 'TR-CEP-0.4.0';   // 0.4.0 = ★둘. ①**자동 분석**(`mesTr_autoPick`) — 문서의 맨 위 개체를 가로 간격으로 갈라 벌에 대응시킨다. 판정 잣대는 가공의 `mesA0_seedCands(d,'auto')` 와 **같게** 뒀다(두 탭이 같은 파일을 다르게 읽으면 디자이너가 「가공은 2개인데 전사는 3개」를 만난다). 덩어리 수가 벌 수와 다르면 **아무것도 지정하지 않고** 개수만 돌려준다. ②**자르는 게 없는 클립은 만들지 않는다** — 실기 보고 「클리핑이 추출된다」. 실측(2026-09-21): 벌 646x1859mm 안에 원본 600x1829mm 이 통째로 들어가 **클립 2개 중 2개가 무의미**했고, 레이어 패널에 `<Clipping Path>` 만 남겼다. 재단이 CUT-CEP-0.49.0 에서 배운 것과 **같은 자리**다(형제 스윕). 전제를 하기 **전에** 재고, 안 서면 하지 않는다 — 거절은 `clipskip=` 으로 **센다**. ⚠️진짜로 삐져나오면 반드시 자른다(안 자르면 도련이 옆 벌을 덮는다). 잃는 것: 없음(그리는 그림·도련·산식 불변, 레이어 구조만 깔끔해진다) · 0.3.0 = ★**1조의 두 벌은 서로 다른 그림이다.** 2026-08 완성판 22건 실측(60-180·60-150 조 단위): 완전 동일 복제 **0건** · 명백히 다른 그림 16건 · 틀만 같고 내용이 다른 것 6건 · **거울상 0건**(거울 겹침 0~7%). 주니그래픽 미래엔1 은 좌반 바탕이 별색 MiraeN Purple_New, 우반이 백색이다. 그런데 0.2.x 까지는 **선택 하나를 두 벌에 복제**했다 — 측정된 22건 전부에서 틀린 판이 나온다. → 벌마다 원본을 따로 받는다(mesTr_pick/picks/swapPicks/clearPicks). 좌우 순서는 **디자이너가 정한다**(용준님 2026-09-21). 슬롯은 패널이 열려 있는 동안만 살고, 쓰기 전에 살아 있는지 확인한다(지운 개체·닫은 문서). 딸려 오는 것 둘 — ①**도련이 벌마다 갈린다**(payload `M:idx,mode[,cmyk]` · 옛 `M:mode` 는 판 전체로 계속 먹는다) ②**밴드 색도 벌마다** 이어야 한다(한 색이면 종전처럼 통째로, 다르면 벌 구간으로 나눠 깐다). 슬롯을 하나도 안 쓰면 현재 선택을 **벌①에만** 넣고 `slot=none` 을 남긴다 — 두 벌 복제로 되돌아가지 않는다. 잃는 것: 지정 없이 [판 만들기] 를 누르면 벌②가 빈다(그 사실을 `empty=2` 와 확인 목록 must 로 알린다) · 0.2.2 = ★[판 만들기] 가 `PARM` 으로 죽던 것. **문서를 넘나드는 `duplicate` 은 그룹을 받으면 안 된다** — 일러 30.7 최소 재현(2026-09-21): 다른 문서의 groupItem 으로 복제 → `1346458189 ('PARM')` · 다른 문서의 **layer** 로 복제 → ok · copy/paste → ok. 원본은 srcDoc 에 있고 그룹은 `documents.add` 로 막 만든 새 문서에 있어 매번 걸렸다. 오류 문구가 코드번호 하나뿐이라 무엇이 틀렸는지 안 알려 준다. → 레이어로 복제한 뒤 **같은 문서 안에서** 그룹으로 모은다(이동은 동일 문서라 안전). 잃는 것: 없음(배치·클리핑·산식 불변) · 0.2.1 = ★이 파일이 **한 번도 안 실렸다**. 머리말 주석의 `const/let/화살표/**JSON**/Array.map` 에서 `**/` 가 블록 주석을 닫아, 뒤 문장이 코드로 파싱되며 파일 전체가 구문 오류였다(ExtendScript: 「구문 오류: 필요 항목: ;」). 0.1.0·0.2.0 둘 다 Z: 에 나갔지만 스텁이 애초에 이 파일을 안 읽어(손목록) **증상이 가려져 있었고**, 스텁을 열거로 고치자(stub-3.0.0) 비로소 드러났다. 고친 것은 주석 한 줄뿐 — 로직·산식·payload 전부 불변. 게이트 = `npm run audit:jsx-syntax`(IA 의 .jsx·패널 js 를 실제로 파싱한다 — 여태 **아무 게이트도 파싱하지 않았다**). 잃는 것: 없음 · 0.2.0 = 
 //   0.2.0 = ★원본 배치 + 도련 + 클리핑(2026-09-18). 0.1.0 은 자리 표시 선만 그렸다.
 //           · `mesTr_measure` — 고른 원본의 크기와 **바탕이 단색인가**를 잰다.
 //             ExtendScript 는 픽셀을 못 읽으므로 **맨 뒤 도형이 전체를 덮는 단색 채움인가**로 본다
@@ -215,6 +215,121 @@ function mesTr_pick(slot) {
 
 function mesTr_picks() { return 'OK ' + mesTr_pickLine(0) + ' ' + mesTr_pickLine(1); }
 
+/**
+ * 문서의 **맨 위 개체**를 모은다 — 잠기거나 숨은 것은 뺀다.
+ * ★가공의 `mesA0_seedCands(d, 'auto')` 와 **같은 잣대**다. 두 탭이 같은 파일을 다르게 읽으면
+ *   디자이너가 「가공에서는 2개로 보이는데 전사에서는 3개」를 만나게 된다.
+ * ⚠️블록 안 함수 '선언' 은 ES3 규격 밖이라 var 표현식으로 못박는다(가공 쪽 주석과 같은 이유).
+ */
+function mesTr_topItems(d) {
+  var tops = [];
+  var collect = function (ly) {
+    try {
+      if (ly.locked || !ly.visible) return;
+      for (var i = 0; i < ly.pageItems.length; i++) {
+        var it = ly.pageItems[i];
+        try { if (!it.locked && !it.hidden) tops.push(it); } catch (eIt) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
+      }
+      for (var s2 = 0; s2 < ly.layers.length; s2++) collect(ly.layers[s2]);
+    } catch (eLy) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계는 남은 개체로 계산한다 */ }
+  };
+  try { for (var l = 0; l < d.layers.length; l++) collect(d.layers[l]); }
+  catch (eScan) { return []; }
+  return tops;
+}
+
+/**
+ * 파일을 보고 **좌·우를 스스로 가른다.** 사람은 순서만 바꾸면 된다(용준님 2026-09-21).
+ *
+ * ★가로 간격으로 덩어리를 나눈다 — 한 디자인 안의 요소들은 붙어 있고, 두 디자인 사이는 떨어져 있다.
+ * ★**덩어리 수가 벌 수와 다르면 아무것도 지정하지 않는다.** 억지로 가르면 반쪽짜리 판이 조용히
+ *   나간다(§조용한 격하). 몇 덩어리로 보이는지만 돌려주고 사람이 [벌① 지정] 으로 직접 고른다.
+ * ★왼쪽이 벌① 이다 — 좌우 순서는 디자이너가 [⇄] 로 바꾼다.
+ *
+ * @param vup   벌 수(1|2)
+ * @param gapMm 이만큼 떨어지면 다른 덩어리로 본다
+ */
+function mesTr_autoPick(vup, gapMm) {
+  try {
+    var want = parseInt(vup, 10) || 2;
+    var gap = parseFloat(gapMm);
+    if (!(gap >= 0)) gap = 5;
+    if (app.documents.length === 0) return 'ERROR no document';
+    var tops = mesTr_topItems(app.activeDocument);
+    if (!tops.length) return 'ERROR no art';
+
+    var rows = [], i, b;
+    for (i = 0; i < tops.length; i++) {
+      try { b = tops[i].visibleBounds; } catch (eB) { continue; }
+      rows.push({ it: tops[i], l: b[0], r: b[2], cx: (b[0] + b[2]) / 2 });
+    }
+    if (!rows.length) return 'ERROR no art';
+    rows.sort(function (a, c) { return a.l - c.l; });
+
+    // ★**아트보드를 먼저 본다.** 간격으로만 가르면 두 그림이 **딱 붙어 있을 때 한 덩어리**가 된다
+    //   (2026-09-21 실측에서 실제로 그랬다 — 600mm 짜리 둘이 경계에서 맞닿으면 간격이 0이다).
+    //   아트보드가 벌 수와 같으면 그게 사람이 이미 그어 둔 경계다 — 추측할 것이 없다.
+    var abs = null;
+    try { abs = app.activeDocument.artboards; } catch (eA) { abs = null; }
+    if (abs && abs.length === want) {
+      var box = [], q;
+      for (q = 0; q < abs.length; q++) box.push({ i: q, r: abs[q].artboardRect });   // [l, t, r, b]
+      box.sort(function (a, c) { return a.r[0] - c.r[0]; });                          // 왼쪽이 벌①
+      var bag = [], ok2 = true;
+      for (q = 0; q < box.length; q++) bag.push([]);
+      for (i = 0; i < rows.length; i++) {
+        var hit = -1;
+        for (q = 0; q < box.length; q++) {
+          if (rows[i].cx >= box[q].r[0] && rows[i].cx <= box[q].r[2]) { hit = q; break; }
+        }
+        if (hit < 0) { ok2 = false; break; }      // 어느 아트보드에도 안 들어가는 개체가 있다 → 간격으로 간다
+        bag[hit].push(rows[i].it);
+      }
+      for (q = 0; ok2 && q < bag.length; q++) if (!bag[q].length) ok2 = false;   // 빈 아트보드가 있으면 못 믿는다
+      if (ok2) {
+        var pa = [];
+        for (q = 0; q < bag.length && q < 2; q++) {
+          var ma = mesTr_measureItems(bag[q]);
+          if (!ma.ok) { ok2 = false; break; }
+          pa[q] = { items: bag[q], m: ma };
+        }
+        if (ok2) {
+          MESTR_PICK = pa;
+          return 'OK auto=yes by=artboard found=' + bag.length
+            + ' ' + mesTr_pickLine(0) + ' ' + mesTr_pickLine(1);
+        }
+      }
+    }
+
+    var gpt = mesTr_pt(gap);
+    var cl = [], cur = { r: rows[0].r, items: [rows[0].it] };
+    for (i = 1; i < rows.length; i++) {
+      if (rows[i].l <= cur.r + gpt) {
+        cur.items.push(rows[i].it);
+        if (rows[i].r > cur.r) cur.r = rows[i].r;
+      } else {
+        cl.push(cur);
+        cur = { r: rows[i].r, items: [rows[i].it] };
+      }
+    }
+    cl.push(cur);
+
+    if (cl.length !== want) {
+      return 'OK auto=no by=gap found=' + cl.length + ' want=' + want
+        + ' ' + mesTr_pickLine(0) + ' ' + mesTr_pickLine(1);
+    }
+    var next = [];
+    for (i = 0; i < cl.length && i < 2; i++) {
+      var m = mesTr_measureItems(cl[i].items);
+      if (!m.ok) return 'ERROR measure cluster ' + (i + 1);
+      next[i] = { items: cl[i].items, m: m };
+    }
+    MESTR_PICK = next;   // ★전부 잰 뒤에 갈아끼운다 — 도중에 실패하면 옛 지정이 살아 있어야 한다
+    return 'OK auto=yes by=gap found=' + cl.length
+      + ' ' + mesTr_pickLine(0) + ' ' + mesTr_pickLine(1);
+  } catch (e) { return 'ERROR autoPick ' + mesTr_ascii(e && e.message ? e.message : e); }
+}
+
 function mesTr_swapPicks() {
   var t = MESTR_PICK[0]; MESTR_PICK[0] = MESTR_PICK[1]; MESTR_PICK[1] = t;
   return mesTr_picks();
@@ -292,7 +407,7 @@ function mesTr_makePlate(payload) {
 
   var saveAlerts = null;
   var doc = null;
-  var placed = 0, bled = 0, clipped = 0;
+  var placed = 0, bled = 0, clipped = 0, clipskip = 0;
   var notes = [];
   try {
     saveAlerts = app.userInteractionLevel;
@@ -405,14 +520,28 @@ function mesTr_makePlate(payload) {
           grp.position = [g2[0], g2[1]];
           placed++;
 
-          // 클리핑 — 벌 경계로 자른다(도련이 옆 벌을 침범하지 않게)
-          var holder = lyArt.groupItems.add();
-          grp.move(holder, ElementPlacement.PLACEATEND);
-          var cr = rect(holder, pan);
-          cr.move(holder, ElementPlacement.PLACEATBEGINNING);
-          cr.clipping = true;
-          holder.clipped = true;
-          clipped++;
+          // 클리핑 — 벌 경계로 자른다(도련이 옆 벌을 침범하지 않게).
+          // ★**자르는 게 없으면 만들지 않는다.** 재단이 같은 자리에서 배운 것이다(CUT-CEP-0.49.0):
+          //   아무것도 안 자르는 클립은 레이어 패널에 `<Clipping Path>` 만 남기고 하는 일이 없다.
+          //   실측(2026-09-21): 벌 646x1859mm 안에 원본 600x1829mm 이 통째로 들어가
+          //   **2개 중 2개가 무의미**했다. 전제를 **하기 전에** 재고, 안 서면 하지 않는다.
+          // ⚠️진짜로 삐져나올 때는 반드시 자른다 — 안 자르면 도련이 옆 벌을 덮는다.
+          var vb2 = grp.visibleBounds;              // [l, t, r, b]
+          var pg = place(pan);                      // [left, top, w, h]
+          var ctol = 0.5;                           // pt — 반올림·헤어라인 여유
+          var needClip = (vb2[0] < pg[0] - ctol) || (vb2[1] > pg[1] + ctol)
+            || (vb2[2] > pg[0] + pg[2] + ctol) || (vb2[3] < pg[1] - pg[3] - ctol);
+          if (needClip) {
+            var holder = lyArt.groupItems.add();
+            grp.move(holder, ElementPlacement.PLACEATEND);
+            var cr = rect(holder, pan);
+            cr.move(holder, ElementPlacement.PLACEATBEGINNING);
+            cr.clipping = true;
+            holder.clipped = true;
+            clipped++;
+          } else {
+            clipskip++;                             // 거절을 **센다** — 실행 횟수로 성공을 말하지 않는다
+          }
         }
       }
     }
@@ -449,7 +578,7 @@ function mesTr_makePlate(payload) {
     app.userInteractionLevel = saveAlerts;
     return 'OK plate=' + p.plate.w + 'x' + p.plate.h
       + ' panels=' + p.panels.length + ' bands=' + p.bands.length
-      + ' placed=' + placed + ' bleed=' + bled + ' clipped=' + clipped
+      + ' placed=' + placed + ' bleed=' + bled + ' clipped=' + clipped + ' clipskip=' + clipskip
       + ' bleedmode=' + mesTr_ascii(mesTr_modeSummary(p))
       + (srcSel ? '' : ' src=none')
       + (notes.length ? ' ' + notes.join(' ') : '')
