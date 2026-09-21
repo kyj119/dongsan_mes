@@ -159,6 +159,9 @@ aiAnalysisRouter.get('/batch-results', async (c) => {
 
     let query: string
     let binds: any[]
+    // #655: ids 분기는 바인드가 배열 길이에 비례한다 — 청크로 나눠 조회한 뒤 합친다.
+    //   (from/to·기본 경로는 LIMIT 을 **SQL 에** 써서 바인드가 행수에 비례하지 않는다 — 그래서 안전하다)
+    let idChunks: number[][] | null = null
     let idsTruncated = false
     const ef = entityFilter(c)  // #339: 법인 격리 (admin 글로벌 entity 0 → 빈 절)
     // #502: 행당 groups_json 하이드레이션이 그룹마다 R2 get 1회 → 행수 무제한이면 CF Workers
@@ -169,10 +172,16 @@ aiAnalysisRouter.get('/batch-results', async (c) => {
       let ids = idsParam.split(',').map(Number).filter(n => !isNaN(n))
       if (ids.length === 0) return c.json({ success: false, error: 'ids 파라미터 오류' }, 400)
       if (ids.length > MAX_BATCH_ROWS) { idsTruncated = true; ids = ids.slice(0, MAX_BATCH_ROWS) }
-      const placeholders = ids.map(() => '?').join(',')
-      query = `SELECT id, file_path, status, groups_json, error_message, created_at, updated_at
-               FROM ai_analysis_requests WHERE id IN (${placeholders})${ef.clause} ORDER BY id ASC`
-      binds = [...ids, ...ef.params]
+      // ⚠️MAX_BATCH_ROWS(200)는 **R2 subrequest 예산**을 보고 정한 수다(#502). D1 바인드 한도(~100)는
+      //   그것과 **다른 한도**인데 종전엔 이 수 하나로 둘 다 막으려 해서, 101개부터 확정 500 이었다(#655).
+      //   200 은 근거가 있으니 낮추지 않고, 여기서만 80 청크로 나눈다.
+      //   ★중복 id 는 먼저 없앤다 — `IN (5,5)` 는 1행이지만, 5 가 서로 다른 청크에 들어가면 2행이 되어
+      //   응답 행수와 R2 하이드레이션이 늘어난다(청크로 쪼갤 때만 생기는 차이라 놓치기 쉽다).
+      const uniqIds = Array.from(new Set(ids))
+      idChunks = []
+      for (let i = 0; i < uniqIds.length; i += 80) idChunks.push(uniqIds.slice(i, i + 80))
+      query = ''
+      binds = []
     } else if (fromId && toId) {
       query = `SELECT id, file_path, status, groups_json, error_message, created_at, updated_at
                FROM ai_analysis_requests WHERE id >= ? AND id <= ?${ef.clause} ORDER BY id ASC LIMIT 200`
@@ -185,8 +194,25 @@ aiAnalysisRouter.get('/batch-results', async (c) => {
     }
 
     type AnalysisRow = { id: number; file_path: string; status: string; groups_json: string | null; error_message: string | null; created_at: string; updated_at: string }
-    const stmt = c.env.DB.prepare(query)
-    const { results } = binds.length > 0 ? await stmt.bind(...binds).all<AnalysisRow>() : await stmt.all<AnalysisRow>()
+    let results: AnalysisRow[]
+    if (idChunks) {
+      const acc: AnalysisRow[] = []
+      for (const chunk of idChunks) {
+        const ph = chunk.map(() => '?').join(',')
+        const r = await c.env.DB.prepare(
+          `SELECT id, file_path, status, groups_json, error_message, created_at, updated_at
+           FROM ai_analysis_requests WHERE id IN (${ph})${ef.clause}`
+        ).bind(...chunk, ...ef.params).all<AnalysisRow>()
+        acc.push(...(r.results || []))
+      }
+      // 청크 경계를 넘는 전체 정렬 — 종전 `ORDER BY id ASC` 와 같은 순서를 보존한다
+      acc.sort((a, b) => a.id - b.id)
+      results = acc
+    } else {
+      const stmt = c.env.DB.prepare(query)
+      const r = binds.length > 0 ? await stmt.bind(...binds).all<AnalysisRow>() : await stmt.all<AnalysisRow>()
+      results = r.results || []
+    }
 
     // R2 이관: groups_json 썸네일을 emit 직전 base64로 복원(프론트 무수정). r2_key 없으면 no-op.
     // #502: 순차 await(N+1) → 유한 동시성 배치로 전환(행수는 위에서 상한). r2_key 없는 행은 no-op라 저렴.

@@ -4,11 +4,6 @@
   "reviewed": "2026-09-21",
   "limit": 100,
   "known": {
-    "src/routes/aiAnalysis.ts|ids": {
-      "line": 172,
-      "risk": "edge",
-      "reason": "★#655 — ids 상한이 200 인데 D1 한도는 ~100. 101개부터 확정 500. 청크 필요"
-    },
     "src/routes/costs.ts|ids": {
       "line": 125,
       "risk": "edge",
