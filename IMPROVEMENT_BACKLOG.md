@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-09-21T10:40:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-09-21T14:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,31 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **6** (`list_issues(state:OPEN,label:auto-improve)` 실측, +1 = #656) |
+| 🆕 new | **6** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **571** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 4 데이터 정합성 (2026-09-21T14:20):**
+> - **방법**: 세션 시작 시 detached HEAD `27787e8`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area4 사이클 세션시작 HEAD `762a212`)**: `git log 762a212..HEAD` **22커밋** — 이번 순환(Area4→5→6→1→2→3) 자신들의 북키핑 6건 + **실제 애플리케이션 수정 16건**. Area4 스코프(`src/routes`·`src/utils`·`migrations`·`index.tsx`) diff = **9파일**(`aiAnalysis.ts`·`cards/queries.ts`·`inventory.ts`·`items.ts`·`kakao.ts`·`orders/helpers.ts`·`shipments.ts`·`utils/inventoryAlert.ts`·`utils/shipmentNotice.ts`), `migrations` diff = **0파일**(스키마 변경 없음, ground-truth 재구성 불요).
+> - **churn 내용 분류**: 대부분이 `audit:bind-limit` 신설(258bbe7)과 그 감사가 잡은 실결함 청크수정(#650 후속·#655·deriveOrderType·cards/queries.ts·inventory.ts 2곳)이고, `kakao.ts→shipments.ts` 285줄 이관은 **Area3(이번 순환 직전 사이클)가 이미 자기 렌즈로 정독+검증 완료**(#656 등록). Area2/5도 이 클러스터의 entity 격리(#650)·bind-limit(#655/#651) 축을 각자 리뷰 완료 기록.
+> - **Area4 고유 렌즈로 직접 재검증(다른 Area가 안 보는 각도)** — 청크 분할이 만드는 **집계 정합성**(고아·중복·부분집계 오류) 관점: (1) `items.ts` stock/last 두 쿼리 — 청크마다 독립 `GROUP BY`/`ROW_NUMBER()` 실행 후 Map에 축적, ids가 `rows.map(r=>r.id)`(품목 PK, 자연 unique)라 청크 간 중복·누락 불가 = 정합. (2) `cards/queries.ts` analysisCache — `Array.from(analysisIds)`(Set, 이미 dedup) 기반 청크 = 정합. (3) `inventory.ts` 입고/출고 두 곳 — 단순 SELECT 결과 concat, 집계 연산 없음 = 정합. (4) `orders/helpers.ts deriveOrderType` — COUNT/SUM 을 청크별로 구해 **합산**(`found +=`·`stockOnly +=`), `ids`가 `Array.from(new Set(rawIds))`로 사전 dedup되어 청크 간 겹침 자체가 없음 = 이중계상 불가, 정합. **결함 0건** — #655 커밋 메시지가 스스로 지적한 "청크 분할 시 dedup·순서보존 필요"라는 교훈이 나머지 4개 신규 청크 자리에도 전부 지켜져 있음(자체-교정 확인).
+> - **kakao_send_logs.related_id(=shipments.id) dangling 후보 재확인** — 비-FK 참조 컬럼(#443/#454 클래스)이라 부모(shipments) 하드삭제(`orders/core.ts:712 DELETE FROM shipments WHERE order_id=?`) 시 정리 안 되면 고아. `git log -S"related_type = 'shipments'"` 로 도입 시점 확인 = `6cc92ae`(2026-09-18, 이번 churn 이전) — **이번 사이클 신규 아님**, 이관(`59ddd34`)은 참조 패턴 자체를 안 바꿈(파일만 이동) → churn-트리거 재스캔(#477 레시피) 대상 아님, 재보고 불필요.
+> - **entity_id 바인딩 재확인**: `shipments.ts` 신규 `kakao_send_logs` INSERT의 `entity_id` 바인드가 `r.row.entity_id || getEntityId(c) || 1`(주문 자신의 entity_id 우선, 컨텍스트는 폴백) — bare `getEntityId(c)` 전체모드 0-sentinel 오기록(Area4 #487 축) 패턴 아님, 정상.
+> - **standing scan 1: `npm run audit:migration-number`** — 파일수 불변(migrations diff 0), 같은 테이블 DDL 충돌 **0건**(변동없음, 기존 중복쌍만).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 4건 전부 기존 FP 유지(`attendance.ts:171`·`dashboard.ts:420`·`workbench.ts:577`·`itemUnits.ts:162`).
+> - **standing scan 3: `npm run branch:clean`** — 삭제대상 0건(SKIP 1=main).
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(변동없음).
+> - **prod 데이터 직접조회 불가 재확인**: 이 세션도 egress 차단(Cloudflare 자격증명 없음) — 고아 레코드·상태 불일치 등 실 데이터 기반 점검은 이번에도 불가(기존 제약 재확인, 신규 아님).
+> - **CI 헬스**: `actions_list(deploy.yml, branch:main)` 최근 5런 전부 `conclusion:success`(최종 HEAD `27787e8` 포함, run #2032).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **6**(#656·#654·#650·#626·#617·#616, 변동없음) — 전건 Area4 관할 밖.
+> - **backlog↔GitHub 절대값 재동기화**: open **6**(변동없음) · done **571**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md 잔여참조 재확인(이미 서술식). 이번 사이클(청크분할 집계정합성 재검증)은 기존 원칙(#454/#477 dangling 판별축·#487 entity 오기록축)을 새 코드에 그대로 적용한 사례 — 새 클래스 없음.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 8건 → 이번 추가 후 9건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(9파일 전수 직접 검증, 청크분할 집계정합성·dangling 참조·entity 바인딩 전부 clean), 자동수정 0건(고칠 결함 없음), done-sync: open 6(변동없음)·done 571(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-09-21T10:40):**
 > - **방법**: 세션 시작 시 detached HEAD `9bbe9d5`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
