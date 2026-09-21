@@ -29,6 +29,8 @@
     "verify:items": "node scripts/verify-items.mjs",
     "check:dom": "node scripts/check-dom-refs.cjs",
     "audit:jsx-ternary": "node scripts/jsx-ternary-audit.cjs",
+    "audit:jsx-syntax": "node scripts/jsx-syntax-audit.cjs",
+    "audit:jsx-syntax:selftest": "node scripts/jsx-syntax-audit.cjs --selftest",
     "audit:bind-limit": "node scripts/bind-limit-audit.cjs",
     "audit:bind-limit:selftest": "node scripts/bind-limit-audit.cjs --selftest",
     "audit:jwt-decode": "node scripts/jwt-decode-audit.cjs",

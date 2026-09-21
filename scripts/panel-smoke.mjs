@@ -53,6 +53,16 @@ window.__splitCount = 3;
 window.__failProcess = false;
 window.__lockBusy = false;   // true = 재단 패널이 일러를 점유 중인 상황 재현
 window.__processDelay = 0;   // 느린 호스트 재현 — 진행 중 잠금·취소를 관찰하려면 필요
+// ★붙들기 — 「진행 중」을 관찰하는 시험은 **시계에 기대면 안 된다**(2026-09-21 실패).
+//   종전엔 __processDelay 600ms 안에 시험 단계를 끝내야 했는데, ia:deploy 는 앞에서
+//   게이트 12개(cut:smoke 도 Playwright)를 돌린 뒤라 기계가 바빴고, 배치가 먼저 끝나
+//   취소 버튼이 사라져 클릭이 20초 타임아웃으로 죽었다. 붙들면 그 창이 무한해진다.
+window.__processHold = false;   // true = process 응답을 붙들어 둔다 — 놓아 줄 때까지 안 끝난다
+window.__held = [];             // 붙들린 콜백
+window.__releaseProcess = function () {
+  var h = window.__held; window.__held = []; window.__processHold = false;
+  for (var i = 0; i < h.length; i++) h[i]();
+};
 // ── 실루엣 시드(2026-07-31) ────────────────────────────────────────────
 // 호스트가 구운 PNG 를 **캔버스로 실제 생성**한다. 마스크를 흉내내지 않고 진짜 픽셀을 주므로
 // inkMask→offsetMask→components→배정 경로가 스모크에서 그대로 돈다(계산부를 JS 에 둔 이유).
@@ -171,7 +181,8 @@ window.__adobe_cep__ = {
       : JSON.stringify({ ok: true, w: 87, h: 197, folder: 'Z:/test', items: 1, normed: 0, bytes: 53687091, oversize: 2, warn: 'E', eps: 'a.eps', dxf: 'a.dxf' });
     else res = JSON.stringify({ ok: true });
     var delay = /^mesA0_process/.test(script) ? (window.__processDelay || 0) : 0;
-    if (cb) setTimeout(function () { cb(res); }, delay);
+    if (cb && window.__processHold && /^mesA0_process/.test(script)) window.__held.push(function () { cb(res); });
+    else if (cb) setTimeout(function () { cb(res); }, delay);
   }
 };
 `
@@ -507,9 +518,10 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   await p7.click('.tab[data-tab="bundle"]')
   await p7.click('#btnQueueBatch')
   await p7.waitForTimeout(400)
-  await p7.evaluate(() => { window.__processDelay = 500 }) // 느린 호스트 재현
+  await p7.evaluate(() => { window.__processHold = true }) // 느린 호스트 재현 — 놓아 줄 때까지 안 끝난다
   await p7.click('#btnConfirm')
-  await p7.waitForTimeout(250)
+  // ★시계가 아니라 **상태**를 기다린다 — 첫 건이 실제로 호스트에 들어간 순간이 관찰 창의 시작이다.
+  await p7.waitForFunction(() => window.__held.length > 0)
   const mid = await p7.evaluate(() => ({
     process: document.getElementById('btnProcess').disabled,
     queueBatch: document.getElementById('btnQueueBatch').disabled,
@@ -525,7 +537,9 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   ok('배치 중 취소 버튼 노출', mid.cancelShown)
   // 취소 → 남은 건은 큐에 남고 잠금이 풀려야 한다
   await p7.click('#btnCancel')
-  await p7.waitForTimeout(2500)
+  // 붙들었던 첫 건을 놓아 준다 → 정상 취소가 마무리된다(2건째는 취소 플래그로 안 들어가야 한다).
+  await p7.evaluate(() => window.__releaseProcess())
+  await p7.waitForTimeout(1500)
   const after = await p7.evaluate(() => ({
     out: document.getElementById('out').textContent,
     rows: document.querySelectorAll('#queueBox .qrow').length,
@@ -579,9 +593,11 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   await p10.click('.tab[data-tab="bundle"]')
   await p10.click('#btnQueueBatch')
   await p10.waitForTimeout(400)
-  await p10.evaluate(() => { window.__processDelay = 600 })
+  // ★ⓑ 의 전제 = 「호스트 콜백이 **끝내 안 돌아온다**」. 그러니 여기서는 놓아 주지 않는다 —
+  //   종전의 600ms 타이머는 그 전제를 흉내 낸 것이라, 기계가 바쁘면 전제가 깨져 시험이 죽었다.
+  await p10.evaluate(() => { window.__processHold = true })
   await p10.click('#btnConfirm')
-  await p10.waitForTimeout(250)
+  await p10.waitForFunction(() => window.__held.length > 0)
   const callsBefore = await p10.evaluate(() => window.__calls.filter((c) => /mesA0_measure/.test(c)).length)
   await p10.selectOption('#scale', '10')                 // 배치 중 배율 변경
   await p10.evaluate(() => document.getElementById('trimInk').click())
