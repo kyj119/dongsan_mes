@@ -312,15 +312,20 @@ export async function issueTaxInvoice(
     // 직접 연결된 order_id도 포함
     if (updated?.order_id && !orderIds.includes(updated.order_id)) orderIds.push(updated.order_id)
     if (orderIds.length > 0 && invEntity) {
-      const ph = orderIds.map(() => '?').join(',')
-      await db.batch([
+      // 80 청크 (#657) - 묶음 발행이면 이 계산서의 주문 수만큼 붙는다(prod 실측 한 거래처 한 달 최대 118).
+      //   ★문장만 나누고 batch 는 하나로 둔다 - 청구확정이 절반만 되면 어느 그룹이 확정됐는지 알 수 없다.
+      const stmts: any[] = []
+      for (let oi = 0; oi < orderIds.length; oi += 80) {
+      const oChunk = orderIds.slice(oi, oi + 80)
+      const ph = oChunk.map(() => '?').join(',')
+      stmts.push(
         // 이 법인 그룹만 청구확정 + 발행 계산서 연결
         db.prepare(
           // 회계반영일 = 이 계산서 작성일자(issue_date) — 출고월과 다른 달로 발행 시 매출인식/입금예정이 작성일자 기준으로 따라감
           `UPDATE order_billing_groups SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, tax_invoice_id = ?,
              accounting_date = COALESCE((SELECT issue_date FROM tax_invoices WHERE id = ?), date('now','+9 hours'))
            WHERE order_id IN (${ph}) AND entity_id = ? AND billing_status IS NOT 'BILLED' AND billing_status IS NOT 'PAID'`
-        ).bind(userId, taxInvoiceId, taxInvoiceId, ...orderIds, invEntity),
+        ).bind(userId, taxInvoiceId, taxInvoiceId, ...oChunk, invEntity),
         // orders 미러: 그 주문의 모든 그룹이 청구완료된 경우에만 BILLED (회계반영일도 계산서 작성일자로 동기화)
         db.prepare(
           `UPDATE orders SET billing_status = 'BILLED',
@@ -328,8 +333,10 @@ export async function issueTaxInvoice(
              updated_at = CURRENT_TIMESTAMP
            WHERE id IN (${ph}) AND billing_status IS NOT 'BILLED'
              AND NOT EXISTS (SELECT 1 FROM order_billing_groups g WHERE g.order_id = orders.id AND COALESCE(g.billing_status,'') NOT IN ('BILLED','PAID'))`
-        ).bind(taxInvoiceId, ...orderIds)
-      ])
+        ).bind(taxInvoiceId, ...oChunk)
+      )
+      }
+      await db.batch(stmts)
     }
   } catch (_billingErr) {
     console.error('[taxInvoices] billing_status 업데이트 실패 — 수동 확인 필요 (invoice:', taxInvoiceId, '):', _billingErr)
@@ -371,18 +378,25 @@ export async function createSplitInvoices(
 ): Promise<Array<{ entity_id: number; invoice_id: number; invoice_number: string; supply: number; tax: number; total: number; issued: boolean; error?: string }>> {
   const { orderIds, buyer, issueDate } = params
   if (!orderIds.length) return []
-  const ph = orderIds.map(() => '?').join(',')
+  // 80 청크 (#657) - params.orderIds 는 묶음 발행 본문에서 그대로 내려온다(상한 가드 없음).
+  const orderIdChunks: number[][] = []
+  for (let i = 0; i < orderIds.length; i += 80) orderIdChunks.push(orderIds.slice(i, i + 80))
 
   // 청구그룹 → 법인별 집계 (supply/tax는 recalc·마이그가 채운 값). 그룹별 group_id 보유.
   //   에누리(orders.discount_amount)는 그룹에 별도 컬럼이 없고 billed_amount = supply + tax − discount 로만 남는다
   //   (orders/helpers.ts recalcBillingGroups). 그래서 그룹 에누리 = supply + tax − billed 로 복원한다.
-  const { results: grows } = await db.prepare(
-    `SELECT g.id AS group_id, g.order_id, g.entity_id,
-            CAST(COALESCE(g.supply_amount,0) AS INTEGER) AS supply,
-            CAST(COALESCE(g.tax_amount,0)    AS INTEGER) AS tax,
-            CAST(COALESCE(g.billed_amount, COALESCE(g.supply_amount,0) + COALESCE(g.tax_amount,0)) AS INTEGER) AS billed
-     FROM order_billing_groups g WHERE g.order_id IN (${ph})`
-  ).bind(...orderIds).all<{ group_id: number; order_id: number; entity_id: number; supply: number; tax: number; billed: number }>()
+  const grows: Array<{ group_id: number; order_id: number; entity_id: number; supply: number; tax: number; billed: number }> = []
+  for (const oChunk of orderIdChunks) {
+    const ph = oChunk.map(() => '?').join(',')
+    const gr = await db.prepare(
+      `SELECT g.id AS group_id, g.order_id, g.entity_id,
+              CAST(COALESCE(g.supply_amount,0) AS INTEGER) AS supply,
+              CAST(COALESCE(g.tax_amount,0)    AS INTEGER) AS tax,
+              CAST(COALESCE(g.billed_amount, COALESCE(g.supply_amount,0) + COALESCE(g.tax_amount,0)) AS INTEGER) AS billed
+       FROM order_billing_groups g WHERE g.order_id IN (${ph})`
+    ).bind(...oChunk).all<{ group_id: number; order_id: number; entity_id: number; supply: number; tax: number; billed: number }>()
+    grows.push(...(gr.results || []))
+  }
 
   // 법인별 그룹화
   const byEntity = new Map<number, { supply: number; tax: number; discount: number; orderIds: Set<number>; groupIds: number[] }>()

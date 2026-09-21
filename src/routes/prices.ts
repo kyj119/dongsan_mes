@@ -338,8 +338,10 @@ pricesRouter.get('/client-item-prices', async (c) => {
     const purchaseMap: Record<number, { unit_price: number; order_date: string }> = {}
     const salesMap: Record<number, { unit_price: number; order_date: string }> = {}
 
-    if (itemIds.length > 0) {
-      const ph = itemIds.map(() => '?').join(',')
+    // 80 청크 - 이 목록 쿼리에는 **LIMIT 이 없다**(거래처 단가표 전량). 품목이 100 을 넘으면 그대로 500.
+    for (let ci = 0; ci < itemIds.length; ci += 80) {
+      const itemChunk = itemIds.slice(ci, ci + 80)
+      const ph = itemChunk.map(() => '?').join(',')
 
       // 매입 최근 거래 (품목별 최신 1건)
       // ★MAX 서브쿼리에도 같은 법인 필터 — 바깥만 걸면 최신 거래가 타법인 것일 때 만나는 행이 0 이 되어
@@ -357,7 +359,7 @@ pricesRouter.get('/client-item-prices', async (c) => {
             WHERE poi2.item_id = poi.item_id AND po2.supplier_id = po.supplier_id AND po2.status != 'CANCELLED'${efPo2.clause}
           )
         GROUP BY poi.item_id
-      `).bind(...itemIds, client_id, ...efPo.params, ...efPo2.params).all<RecentTransactionRow>()
+      `).bind(...itemChunk, client_id, ...efPo.params, ...efPo2.params).all<RecentTransactionRow>()
       for (const r of purchaseRows) {
         purchaseMap[r.item_id] = { unit_price: r.unit_price, order_date: r.order_date }
       }
@@ -376,7 +378,7 @@ pricesRouter.get('/client-item-prices', async (c) => {
             WHERE oi2.item_id = oi.item_id AND o2.client_id = o.client_id AND o2.status != 'CANCELLED'${efO2.clause}
           )
         GROUP BY oi.item_id
-      `).bind(...itemIds, client_id, ...efO.params, ...efO2.params).all<RecentTransactionRow>()
+      `).bind(...itemChunk, client_id, ...efO.params, ...efO2.params).all<RecentTransactionRow>()
       for (const r of salesRows) {
         salesMap[r.item_id] = { unit_price: r.unit_price, order_date: r.order_date }
       }

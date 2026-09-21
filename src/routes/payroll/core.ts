@@ -610,16 +610,18 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const empIds = list.map((e) => e.id)
     const existsSet = new Set<number>()
     const empRowMap = new Map<number, any>()
-    if (empIds.length > 0) {
-      const ph = empIds.map(() => '?').join(',')
+    // 80 청크 - 활성 직원 전원(prod 실측 46, 전체 113)에 pay_period 가 한 칸 더 붙는다. 인원이 늘면 닿는다.
+    for (let ei = 0; ei < empIds.length; ei += 80) {
+      const empChunk = empIds.slice(ei, ei + 80)
+      const ph = empChunk.map(() => '?').join(',')
       const { results: existRows } = await c.env.DB.prepare(
         `SELECT employee_id FROM payroll WHERE pay_period = ? AND employee_id IN (${ph})`
-      ).bind(payPeriod, ...empIds).all<{ employee_id: number }>()
+      ).bind(payPeriod, ...empChunk).all<{ employee_id: number }>()
       for (const r of existRows || []) existsSet.add(r.employee_id)
       const { results: empRows } = await c.env.DB.prepare(
         `SELECT id, entity_id, base_salary, hourly_rate, overtime_daily_hours, overtime_work_days,
                 dependents_count, children_under_20_count, income_tax_table_option, hire_date, resignation_date FROM employees WHERE id IN (${ph})`
-      ).bind(...empIds).all<any>()
+      ).bind(...empChunk).all<any>()
       for (const r of empRows || []) empRowMap.set(r.id, r)
     }
     // #389: 직원별 N+1(PRAGMA+SELECT) 제거 — 고정수당/보험토글·요율을 루프 밖 1회 prefetch
@@ -800,12 +802,20 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
       JOIN employees e ON e.id = p.employee_id
       WHERE p.pay_period = ? AND p.status != 'PAID' AND p.published_at IS NULL${efP.clause}
     `
-    const targetParams: any[] = [payPeriod, ...efP.params]
-    if (employeeIds.length > 0) {
-      targetQuery += ` AND p.employee_id IN (${employeeIds.map(() => '?').join(',')})`
-      targetParams.push(...employeeIds)
+    // 80 청크 - body.employee_ids 는 호출자가 정한다(상한 가드 없음). 청크별로 같은 조건을 돌려
+    //   결과를 잇는다 - WHERE 의 나머지가 동일하므로 합집합은 원래 결과와 같다.
+    const targets: any[] = []
+    for (let ei = 0; ei < Math.max(employeeIds.length, 1); ei += 80) {
+      let qy = targetQuery
+      const targetParams: any[] = [payPeriod, ...efP.params]
+      if (employeeIds.length > 0) {
+        const empChunk = employeeIds.slice(ei, ei + 80)
+        qy += ` AND p.employee_id IN (${empChunk.map(() => '?').join(',')})`
+        targetParams.push(...empChunk)
+      }
+      const tr = await c.env.DB.prepare(qy).bind(...targetParams).all<any>()
+      targets.push(...(tr.results || []))
     }
-    const { results: targets } = await c.env.DB.prepare(targetQuery).bind(...targetParams).all<any>()
 
     let synced = 0
     const details: any[] = []
@@ -1198,12 +1208,20 @@ coreRouter.post('/recalc-deductions', requireRole('ADMIN', 'MANAGER'), async (c)
       JOIN employees e ON e.id = p.employee_id
       WHERE p.pay_period = ? AND p.status != 'PAID' AND p.published_at IS NULL${efP.clause}
     `
-    const binds: any[] = [payPeriod, ...efP.params]
-    if (employeeIds.length) {
-      q += ` AND p.employee_id IN (${employeeIds.map(() => '?').join(',')})`
-      binds.push(...employeeIds)
+    // 80 청크 - body.employee_ids 는 호출자가 정한다(상한 가드 없음). 청크별로 같은 조건을 돌려
+    //   결과를 잇는다 - WHERE 의 나머지가 동일하므로 합집합은 원래 결과와 같다.
+    const targets: any[] = []
+    for (let ei = 0; ei < Math.max(employeeIds.length, 1); ei += 80) {
+      let qy = q
+      const binds: any[] = [payPeriod, ...efP.params]
+      if (employeeIds.length) {
+        const empChunk = employeeIds.slice(ei, ei + 80)
+        qy += ` AND p.employee_id IN (${empChunk.map(() => '?').join(',')})`
+        binds.push(...empChunk)
+      }
+      const tr = await c.env.DB.prepare(qy).bind(...binds).all<any>()
+      targets.push(...(tr.results || []))
     }
-    const targets = (await c.env.DB.prepare(q).bind(...binds).all<any>()).results || []
 
     const year = Number(payPeriod.slice(0, 4))
     const ratesCache = await loadInsuranceRates(c.env.DB, rateRefDate(payPeriod, year))

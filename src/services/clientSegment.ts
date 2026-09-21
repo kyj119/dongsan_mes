@@ -153,9 +153,12 @@ function sanitizeSegments(v: unknown): SegmentKey[] {
 
 function sanitizeEntityIds(v: unknown): number[] {
   if (!Array.isArray(v)) return []
+  // 형제 sanitizeSegments 는 고정 enum 으로 걸러 개수가 저절로 bounded 인데, 여기는 DB 행(법인)이라
+  //   거를 목록이 없다 - 호출자가 준 배열이 그대로 IN 절이 된다. 법인은 prod 4곳이므로 50 이면
+  //   실무상 무손실이고, 없으면 바인드 한도(~100)에 그대로 닿는다(CLAUDE.md §IN 절).
   return Array.from(new Set(
     v.map(x => Math.floor(Number(x))).filter(n => Number.isFinite(n) && n > 0)
-  ))
+  )).slice(0, 50)
 }
 
 /** 저장된 filter_json(또는 요청 body)을 안전한 형태로 정규화한다. */

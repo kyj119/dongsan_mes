@@ -123,25 +123,93 @@ function isForOfChunk(sf, name, pos) {
 }
 
 /**
- * 같은 파일에 `if (X.length > N)` / `>= N` 형태의 **명시적 길이 가드**(N ≤ LIMIT)가 있는가.
- * 예) `if (body.item_ids.length > 90) return c.json(... 400)` — 400 으로 막으니 IN 절이 한도를 못 넘는다.
+ * 같은 파일에 `if (X.length > N) return ...` 형태의 **명시적 길이 가드**(2 <= N <= LIMIT)가 있는가.
+ * 예) `if (body.item_ids.length > 90) return c.json(... 400)` - 400 으로 막으니 IN 절이 한도를 못 넘는다.
  * 텍스트 동일성으로 대상을 맞춘다(같은 식을 쓰는 게 관례라 실용상 충분하고, 놓치면 보고 쪽으로 기운다).
+ *
+ * 두 조건을 **같이** 봐야 한다 - 종전엔 `>`/`>=` 이기만 하면 가드로 세서, 「비었나」를 묻는
+ *   `if (orderIds.length > 0)` 가 **상한 가드로 둔갑**했다(2026-09-21 실기: taxInvoices/helpers.ts 의
+ *   3자리가 그래서 감사망 밖에 있었다 - 기준선에 이름조차 없었다). 상한 가드의 성질은 둘이다:
+ *   (1) 넘치면 **빠져나간다**(return/throw/continue/break) (2) N 이 실제 상한이다(0/1 은 빈 배열/단건 분기).
  */
-function hasLengthGuard(sf, recvText) {
+function hasLengthGuard(sf, recvText, useNode) {
   let guarded = false;
   const visit = (n) => {
     if (ts.isBinaryExpression(n)
-        && (n.operatorToken.kind === ts.SyntaxKind.GreaterThanToken
-            || n.operatorToken.kind === ts.SyntaxKind.GreaterThanEqualsToken)
         && ts.isPropertyAccessExpression(n.left) && n.left.name.text === 'length'
         && n.left.expression.getText() === recvText) {
+      const k = n.operatorToken.kind;
       const v = constNumValue(n.right, sf);
-      if (v !== null && v <= LIMIT) guarded = true;
+      // 거부형 - `if (X.length > N) return 400`. 파일 어디에 있든 그 배열의 상한이 된다.
+      if (v !== null && v >= 2 && v <= LIMIT
+          && (k === ts.SyntaxKind.GreaterThanToken || k === ts.SyntaxKind.GreaterThanEqualsToken)
+          && rejectsWhenTrue(n)) guarded = true;
+      // 허용형 - `if (X.length > 0 && X.length <= 90) { ...IN 절... }`. 이건 then 가지 **안에서만** 유효하다
+      //   (다른 곳의 `length <= 5` 특수분기를 상한으로 오인하지 않게 한다).
+      const ub = k === ts.SyntaxKind.LessThanEqualsToken ? v
+        : k === ts.SyntaxKind.LessThanToken && v !== null ? v - 1 : null;
+      if (ub !== null && ub >= 2 && ub <= LIMIT && useNode && usedInsideThen(n, useNode)) guarded = true;
     }
     ts.forEachChild(n, visit);
   };
   visit(sf);
   return guarded;
+}
+
+/** 이 비교를 담은 if 를 찾는다(`||`/`&&` 중 지정한 연산자만 타고 올라간다). */
+function enclosingIf(cmp, joinKind) {
+  let cond = cmp;
+  let n = cmp.parent;
+  while (n && !ts.isIfStatement(n)) {
+    if (ts.isParenthesizedExpression(n)
+        || (ts.isBinaryExpression(n) && n.operatorToken.kind === joinKind)) {
+      cond = n; n = n.parent; continue;
+    }
+    return null;
+  }
+  return n && n.expression === cond ? n : null;
+}
+
+/**
+ * 이 비교가 참일 때 **빠져나가는가** - 가장 가까운 if 의 then 가지가 return/throw/continue/break 로 끝나는가.
+ * `&&` 로 묶인 조건은 가드로 안 센다(둘 다 참일 때만 막히므로 상한 보장이 아니다). `||` 는 센다.
+ */
+function rejectsWhenTrue(cmp) {
+  const iff = enclosingIf(cmp, ts.SyntaxKind.BarBarToken);
+  if (!iff) return false;
+  const then = iff.thenStatement;
+  const last = ts.isBlock(then) ? then.statements[then.statements.length - 1] : then;
+  return !!last && (ts.isReturnStatement(last) || ts.isThrowStatement(last)
+    || ts.isContinueStatement(last) || ts.isBreakStatement(last));
+}
+
+/** 허용형 가드 - 이 비교가 참일 때만 실행되는 자리(then 가지)에 그 IN 절이 들어 있는가. */
+function usedInsideThen(cmp, useNode) {
+  const iff = enclosingIf(cmp, ts.SyntaxKind.AmpersandAmpersandToken);
+  if (!iff) return false;
+  const then = iff.thenStatement;
+  return useNode.getStart() >= then.getStart() && useNode.getEnd() <= then.getEnd();
+}
+
+/**
+ * 이 비교가 참일 때 **빠져나가는가** - 가장 가까운 if 의 then 가지가 return/throw/continue/break 로 끝나는가.
+ * `&&` 로 묶인 조건은 가드로 안 센다(둘 다 참일 때만 막히므로 상한 보장이 아니다). `||` 는 센다.
+ */
+function rejectsWhenTrue(cmp) {
+  let cond = cmp;
+  let n = cmp.parent;
+  while (n && !ts.isIfStatement(n)) {
+    if (ts.isParenthesizedExpression(n)
+        || (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.BarBarToken)) {
+      cond = n; n = n.parent; continue;
+    }
+    return false;
+  }
+  if (!n || n.expression !== cond) return false;
+  const then = n.thenStatement;
+  const last = ts.isBlock(then) ? then.statements[then.statements.length - 1] : then;
+  return !!last && (ts.isReturnStatement(last) || ts.isThrowStatement(last)
+    || ts.isContinueStatement(last) || ts.isBreakStatement(last));
 }
 
 /** `x as const` · 괄호 같은 껍데기를 벗긴다. */
@@ -212,6 +280,63 @@ function findDeclInit(sourceFile, name, beforePos) {
   return best;
 }
 
+/** 공용 청크 헬퍼의 이름과 정의 파일. 이름만 믿지 않고 **그 파일의 실제 청크 폭을 읽어** 검증한다. */
+const CHUNK_HELPER = 'chunk80';
+const CHUNK_HELPER_FILE = path.join(SRC, 'utils', 'chunk.ts');
+
+/**
+ * `src/utils/chunk.ts` 의 chunk80 이 정말 LIMIT 이하로 자르는가.
+ * 게이트가 **이름만 보고 안전하다고 세는 것**을 막는다 - 누가 80 을 500 으로 올리면 여기서 죽는다.
+ */
+function verifyChunkHelper() {
+  if (!fs.existsSync(CHUNK_HELPER_FILE)) return null;
+  const sf = ts.createSourceFile(CHUNK_HELPER_FILE, fs.readFileSync(CHUNK_HELPER_FILE, 'utf8'), ts.ScriptTarget.Latest, true);
+  let width = null;
+  const visit = (n) => {
+    if (ts.isFunctionDeclaration(n) && n.name && n.name.text === CHUNK_HELPER && n.body) {
+      const inner = (m) => {
+        if (ts.isCallExpression(m) && ts.isPropertyAccessExpression(m.expression)
+            && m.expression.name.text === 'slice' && m.arguments.length === 2) {
+          const end = m.arguments[1];
+          let w = constNumValue(end, sf);
+          if (w === null && ts.isBinaryExpression(end) && end.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+            w = constNumValue(end.right, sf);
+          }
+          if (w !== null) width = width === null ? w : Math.max(width, w);
+        }
+        ts.forEachChild(m, inner);
+      };
+      inner(n.body);
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return width;
+}
+
+/** 이 식별자가 `chunk80(...)` 이 만든 배열의 **원소**인가 - for-of 바인딩 또는 .map/.forEach 콜백 인자. */
+function isChunkHelperElement(sf, name) {
+  let found = false;
+  const isHelperCall = (e) => e && ts.isCallExpression(e) && ts.isIdentifier(e.expression) && e.expression.text === CHUNK_HELPER;
+  const visit = (n) => {
+    if (ts.isForOfStatement(n) && isHelperCall(n.expression)
+        && n.initializer && ts.isVariableDeclarationList(n.initializer)
+        && n.initializer.declarations.some((d) => ts.isIdentifier(d.name) && d.name.text === name)) found = true;
+    if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression)
+        && (n.expression.name.text === 'map' || n.expression.name.text === 'forEach')
+        && isHelperCall(n.expression.expression) && n.arguments.length >= 1) {
+      const fn = n.arguments[0];
+      if ((ts.isArrowFunction(fn) || ts.isFunctionExpression(fn)) && fn.parameters.length >= 1) {
+        const p = fn.parameters[0].name;
+        if (ts.isIdentifier(p) && p.text === name) found = true;
+      }
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return found;
+}
+
 function analyze(file, text) {
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
   const hits = [];
@@ -227,8 +352,9 @@ function analyze(file, text) {
         if (init && sliceIsChunked(init, sf)) { safe = true; why = `${recv.text} = slice 청크`; }
         else if (init && isStaticallySmall(init, sf)) { safe = true; why = '정적 소형 배열'; }
         else if (isForOfChunk(sf, recv.text, node.getStart())) { safe = true; why = 'for-of 청크 배열'; }
+        else if (isChunkHelperElement(sf, recv.text)) { safe = true; why = `${CHUNK_HELPER} 청크 원소`; }
       }
-      if (!safe && hasLengthGuard(sf, recv.getText())) { safe = true; why = '명시적 길이 가드'; }
+      if (!safe && hasLengthGuard(sf, recv.getText(), node)) { safe = true; why = '명시적 길이 가드'; }
       if (!safe) {
         const { line } = sf.getLineAndCharacterOfPosition(node.getStart());
         hits.push({
@@ -268,6 +394,15 @@ function selftest() {
     ['상수 식별자가 한도 초과 → 잡아야 한다', "const N = 500\nconst c = a.slice(i, i + N)\nconst ph = c.map(() => '?')", 1],
     ['for-of 청크 배열 → 잡으면 안 된다', "const chunks = []\nfor (let i=0;i<ids.length;i+=50) chunks.push(ids.slice(i, i + 50))\nfor (const chunk of chunks) { const ph = chunk.map(() => '?') }", 0],
     ['명시적 길이 가드 → 잡으면 안 된다', "if (body.item_ids.length > 90) return bad()\nconst ph = body.item_ids.map(() => '?')", 0],
+    ['chunk80 for-of 원소 → 잡으면 안 된다', "for (const cc of chunk80(ids)) { const ph = cc.map(() => '?') }", 0],
+    ['chunk80 map 인자 → 잡으면 안 된다', "const st = chunk80(ids).map((cc) => q(`IN (${cc.map(() => '?').join(',')})`))", 0],
+    ['다른 함수가 만든 배열 원소 → 잡아야 한다', "for (const cc of splitAll(ids)) { const ph = cc.map(() => '?') }", 1],
+    ['허용형 가드(<= 90) 토막 안 → 잡으면 안 된다', "if (a.length > 0 && a.length <= 90) { const ph = a.map(() => '?') }", 0],
+    ['허용형 가드 밖에서 쓰면 → 잡아야 한다', "if (a.length <= 90) { ok() } const ph = a.map(() => '?')", 1],
+    ['비었나 검사(> 0)는 상한 가드가 아니다 → 잡아야 한다', "if (ids.length > 0) { const ph = ids.map(() => '?') }", 1],
+    ['빠져나가지 않는 비교는 가드가 아니다 → 잡아야 한다', "if (ids.length > 90) { warn() } const ph = ids.map(() => '?')", 1],
+    ['&& 로 묶인 가드는 상한 보장이 아니다 → 잡아야 한다', "if (ids.length > 90 && strict) return bad(); const ph = ids.map(() => '?')", 1],
+    ['|| 로 묶인 가드는 유효 → 잡으면 안 된다', "if (ids.length > 90 || bad2) return bad(); const ph = ids.map(() => '?')", 0],
     ['가드가 한도 초과 → 잡아야 한다', "if (ids.length > 500) return bad()\nconst ph = ids.map(() => '?')", 1],
     ['다른 배열의 가드 → 잡아야 한다', "if (other.length > 90) return bad()\nconst ph = ids.map(() => '?')", 1],
     ['as const 리터럴 → 잡으면 안 된다', "const R = ['A','B'] as const\nconst ph = R.map(() => '?')", 0],
@@ -289,6 +424,12 @@ function selftest() {
 function main() {
   const argv = process.argv.slice(2);
   if (argv.includes('--selftest')) return selftest();
+
+  const w = verifyChunkHelper();
+  if (w !== null && w > LIMIT) {
+    console.log(`[bind-limit] ★청크 헬퍼 ${CHUNK_HELPER} 의 폭이 ${w} — 한도(${LIMIT})를 넘습니다. src/utils/chunk.ts 를 고치세요.`);
+    process.exit(1);
+  }
 
   const hits = collect();
   const byKey = new Map(hits.map((h) => [keyOf(h), h]));

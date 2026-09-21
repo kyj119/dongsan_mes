@@ -1041,15 +1041,21 @@ inventoryRouter.post('/releases', requireEditOrRole('/inventory', 'ADMIN', 'MANA
       if (lowItems.length > 0) {
         // 안전재고 정보 조회 — 품목 총재고(SUM) vs 안전재고(MAX=기본창고) 집계
         const lowItemIds = lowItems.map((i: any) => i.item_id)
-        const lowPh = lowItemIds.map(() => '?').join(',')
-        const { results: lowDetails } = await c.env.DB.prepare(`
-          SELECT i.id as item_id, i.item_name, i.unit, i.base_unit, i.pack_size, i.deduction_method,
-                 COALESCE(SUM(inv.quantity), 0) as current_stock,
-                 COALESCE(MAX(inv.safe_stock), 0) as safe_stock
-          FROM items i LEFT JOIN inventory inv ON i.id = inv.item_id AND inv.entity_id = ?
-          WHERE i.id IN (${lowPh})
-          GROUP BY i.id
-        `).bind(entityId, ...lowItemIds).all()
+        // 80 청크 - 출고 본문 라인 수에 종속이고 entity_id 가 한 칸 더 붙는다(80 이어도 81).
+        const lowDetails: any[] = []
+        for (let li = 0; li < lowItemIds.length; li += 80) {
+          const lowChunk = lowItemIds.slice(li, li + 80)
+          const lowPh = lowChunk.map(() => '?').join(',')
+          const lr = await c.env.DB.prepare(`
+            SELECT i.id as item_id, i.item_name, i.unit, i.base_unit, i.pack_size, i.deduction_method,
+                   COALESCE(SUM(inv.quantity), 0) as current_stock,
+                   COALESCE(MAX(inv.safe_stock), 0) as safe_stock
+            FROM items i LEFT JOIN inventory inv ON i.id = inv.item_id AND inv.entity_id = ?
+            WHERE i.id IN (${lowPh})
+            GROUP BY i.id
+          `).bind(entityId, ...lowChunk).all()
+          lowDetails.push(...(lr.results || []))
+        }
         await triggerLowStockAlert(c.env.DB, (lowDetails || []).map((d: any) => ({
           item_id: d.item_id, item_name: d.item_name, current_stock: d.current_stock,
           // #462/0496 대칭: current_stock/safe_stock 은 base_unit 저장값 — 표시 라벨도

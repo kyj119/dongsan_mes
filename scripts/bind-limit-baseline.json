@@ -4,10 +4,25 @@
   "reviewed": "2026-09-21",
   "limit": 100,
   "known": {
-    "src/routes/costs.ts|ids": {
-      "line": 125,
-      "risk": "edge",
-      "reason": "상한 Math.min(body.limit||30,1..100) = **정확히 100**(:107). 이 쿼리에 상수 바인드가 하나만 더 붙으면 101 로 터진다 — 2026-09-21 items.ts 가 그 실물"
+    "src/routes/bank.ts|matchStatuses": {
+      "line": 2885,
+      "risk": "low",
+      "reason": "쿼리 match_status 콤마 split — bank_transactions.match_status enum 이라 값이 한 자릿수. 읽기 필터"
+    },
+    "src/routes/cards/queries.ts|cardIds": {
+      "line": 860,
+      "risk": "bound",
+      "reason": "/board 페이지 카드 id — 지배 limit = Math.min(limit||20, **50**)(:773). 다른 상수 바인드 없음"
+    },
+    "src/routes/cards/queries.ts|mainItemIds": {
+      "line": 1141,
+      "risk": "low",
+      "reason": "한 카드의 카드라인 id — prod card_items **카드당 최대 22**(2026-09-21 실측) + order_id 1"
+    },
+    "src/routes/clients.ts|dmValues": {
+      "line": 110,
+      "risk": "low",
+      "reason": "deliveryMethodMatchValues() 반환 — 정본값 1 + ALIASES 역인덱스(고정 상수표). 한 자릿수"
     },
     "src/routes/inventory.ts|cancelItemIds": {
       "line": 734,
@@ -18,11 +33,6 @@
       "line": 796,
       "risk": "low",
       "reason": "입고 1건의 라인 품목 — 한 전표의 하위 행"
-    },
-    "src/routes/inventory.ts|lowItemIds": {
-      "line": 1044,
-      "risk": "input",
-      "reason": "출고 라인 중 안전재고 이하만 — 출고 본문 라인 수에 종속. 상한 가드 없음(형제 releaseItemIds 는 2026-09-21 청크 적용)"
     },
     "src/routes/inventoryCount.ts|ids": {
       "line": 211,
@@ -54,6 +64,16 @@
       "risk": "low",
       "reason": "한 주문의 카드 id — prod 실측 **주문당 카드 최대 2장**(2026-09-21). 요청 본문이지만 실질 bounded"
     },
+    "src/routes/orders/listFilter.ts|wanted": {
+      "line": 127,
+      "risk": "low",
+      "reason": "쿼리 status 콤마 split — orders.status enum. 읽기 필터라 최악도 500 1회"
+    },
+    "src/routes/orders/listFilter.ts|excludes": {
+      "line": 156,
+      "risk": "low",
+      "reason": "쿼리 exclude_status 콤마 split — orders.status enum"
+    },
     "src/routes/orders/queries.ts|CONSOLIDATABLE_ORDER_STATUSES": {
       "line": 118,
       "risk": "low",
@@ -65,7 +85,7 @@
       "reason": "한 주문의 반품 라인 — 주문 1건의 하위 행"
     },
     "src/routes/payroll/core.ts|aggEmpIds": {
-      "line": 821,
+      "line": 831,
       "risk": "low",
       "reason": "급여 대상 직원 — 재직 직원 규모(46명 대)"
     },
@@ -84,38 +104,58 @@
       "risk": "low",
       "reason": "호출부가 넘기는 주문 라인 id — 주문 단위"
     },
+    "src/routes/printEvents.ts|ids": {
+      "line": 174,
+      "risk": "low",
+      "reason": "같은 파일명의 print_file_map 후보 카드 — prod **파일명당 최대 1행**(2026-09-21 실측)"
+    },
+    "src/routes/printEvents.ts|equipmentIdList": {
+      "line": 952,
+      "risk": "bound",
+      "reason": "쿼리 equipment_ids 콤마 split — 값 축이 equipment 테이블이고 prod **33행**(2026-09-21 실측)"
+    },
     "src/routes/purchaseInvoices.ts|poItemIds": {
       "line": 136,
       "risk": "low",
       "reason": "매입계산서 1건의 발주 라인 — 전표 1건의 하위 행"
     },
+    "src/routes/purchaseOrders/listFilter.ts|wanted": {
+      "line": 83,
+      "risk": "low",
+      "reason": "쿼리 status 콤마 split — purchase_orders.status enum"
+    },
+    "src/routes/purchaseRequests.ts|wanted": {
+      "line": 41,
+      "risk": "low",
+      "reason": "쿼리 status 콤마 split — purchase_requests.status enum"
+    },
+    "src/routes/quotationsListFilter.ts|wanted": {
+      "line": 58,
+      "risk": "low",
+      "reason": "쿼리 status 콤마 split — quotations.status enum"
+    },
+    "src/routes/rip.ts|eqIds": {
+      "line": 280,
+      "risk": "bound",
+      "reason": "장비 목록 조회 결과 — prod equipment **33행**(2026-09-21 실측)"
+    },
     "src/routes/shipments.ts|CONSOLIDATABLE_ORDER_STATUSES": {
-      "line": 461,
+      "line": 462,
       "risk": "low",
       "reason": "고정 enum(utils/statusLabels)"
+    },
+    "src/routes/shipments.ts|body.card_ids": {
+      "line": 997,
+      "risk": "low",
+      "reason": "한 주문의 카드 id(본문) — prod **주문당 카드 최대 2장**(2026-09-21 실측)"
     },
     "src/routes/tasks.ts|ids": {
       "line": 169,
       "risk": "bound",
       "reason": "지배 LIMIT = Math.min(body.limit ?? 5, 20)(:149) → 최대 20"
     },
-    "src/routes/taxInvoices/batch.ts|orderIds": {
-      "line": 96,
-      "risk": "input",
-      "reason": "★가드 없음 — group.order_ids(body). 한 거래처 한 달 주문이면 100 을 넘길 수 있다. prod tax_invoices 0행이라 **잠복**(2026-09-21 실측)"
-    },
     "src/routes/taxInvoices/helpers.ts|agg.groupIds": {
-      "line": 455,
-      "risk": "low",
-      "reason": "한 계산서의 청구그룹 id"
-    },
-    "src/routes/taxInvoices/issue.ts|orderIds": {
-      "line": 331,
-      "risk": "input",
-      "reason": "★가드 없음 — body.order_ids 직결. 같은 함수에서 여러 번 쓰여 청크가 단순 치환이 아니다. prod tax_invoices 0행이라 **잠복**"
-    },
-    "src/routes/taxInvoices/issue.ts|groupIds": {
-      "line": 731,
+      "line": 469,
       "risk": "low",
       "reason": "한 계산서의 청구그룹 id"
     },
@@ -134,10 +174,25 @@
       "risk": "low",
       "reason": "화이트리스트 필터(single/impose/both) — 최대 3"
     },
+    "src/services/clientSegment.ts|filter.entity_ids": {
+      "line": 190,
+      "risk": "bound",
+      "reason": "sanitizeEntityIds 가 **50 으로 자른다**(2026-09-21 추가). prod 법인 4곳이라 실무상 무손실"
+    },
+    "src/services/clientSegment.ts|filter.segments": {
+      "line": 196,
+      "risk": "low",
+      "reason": "sanitizeSegments 가 고정 SEGMENT_KEYS 로 거른다 — 개수가 enum 크기로 bounded"
+    },
     "src/utils/cashflowEngine.ts|ids": {
       "line": 406,
       "risk": "low",
       "reason": "미적용 상위 N 건 — 상위 절단된 목록"
+    },
+    "src/utils/consumptionForecast.ts|options.itemIds": {
+      "line": 51,
+      "risk": "low",
+      "reason": "선택 인자. **유일 호출부(weeklyPurchase /analyze)가 안 넘긴다**(2026-09-21 전수) — 넘기는 호출부가 생기면 청크할 것"
     },
     "src/utils/intercompany.ts|entityIds": {
       "line": 41,
@@ -153,6 +208,11 @@
       "line": 65,
       "risk": "low",
       "reason": "한 주문의 자재 소요 품목 — 주문 1건의 BOM 전개"
+    },
+    "src/utils/materialShortageCheck.ts|realItemIds": {
+      "line": 100,
+      "risk": "low",
+      "reason": "형제 materialIds 의 부분집합(한 주문의 자재 소요 품목) — 같은 근거"
     },
     "src/utils/notify.ts|roles": {
       "line": 9,

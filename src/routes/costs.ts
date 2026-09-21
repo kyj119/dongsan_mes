@@ -122,12 +122,19 @@ costsRouter.post('/backfill', requireRole('ADMIN'), async (c) => {
     if (dryRun) {
       // 쓰지 않고 커버리지만 — 「원가 0」과 「원가 미상」을 갈라 보기 위한 것이다.
       const ids = list.map((o) => o.id)
-      const ph = ids.map(() => '?').join(',')
-      const { results: lines } = await c.env.DB.prepare(
-        `SELECT oi.id, oi.item_id, oi.width, oi.height, oi.quantity, i.category
-         FROM order_items oi LEFT JOIN items i ON oi.item_id = i.id
-         WHERE oi.order_id IN (${ph}) AND oi.parent_item_id IS NULL`
-      ).bind(...ids).all<any>()
+      // 80 청크 - limit 상한이 **정확히 100** 이라 상수 바인드가 하나만 붙으면 101 로 터진다
+      //   (2026-09-21 items.ts 가 품목 100 + entity 1 = 101 로 prod 500 이었다).
+      const lines: any[] = []
+      for (let i = 0; i < ids.length; i += 80) {
+        const chunk = ids.slice(i, i + 80)
+        const ph = chunk.map(() => '?').join(',')
+        const r = await c.env.DB.prepare(
+          `SELECT oi.id, oi.item_id, oi.width, oi.height, oi.quantity, i.category
+           FROM order_items oi LEFT JOIN items i ON oi.item_id = i.id
+           WHERE oi.order_id IN (${ph}) AND oi.parent_item_id IS NULL`
+        ).bind(...chunk).all<any>()
+        lines.push(...(r.results || []))
+      }
       // ★계산 경로는 저장 경로(`recalculateOrderCosts`)와 **같은 함수**다 — 종전엔 같은 3단
       //   레시피가 양쪽에 인라인돼 있어, 한쪽만 고치면 「백필이 보고하는 커버리지」와
       //   「실제로 저장되는 원가」가 조용히 갈릴 수 있었다(2026-09-03 리뷰).

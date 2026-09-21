@@ -67,6 +67,15 @@ const TARGETS = [
   { path: '/api/cards/schedule/queues',                      name: 'cards.scheduleQueues',    budgetMs: 2000, maxKB: 1000 },
   { path: '/api/cards/schedule/unassigned',                  name: 'cards.scheduleUnassigned', budgetMs: 2000, maxKB: 1000 },
 
+  // AI 배치 결과(#655 후속, 2026-09-21) — 여기는 「줄여야 할 낭비」가 아니라 **천장**이다.
+  //   prod 실측: 기본 50건 = **1,122KB / 1,096ms**, from=1&to=200(189건) = **13,234KB / 5,647ms**.
+  //   화면(`iaBatchTest.js`)이 그룹마다 썸네일을 실제로 그리므로 base64 를 안 보내면 화면이 빈다 —
+  //   §「화면이 이 필드를 다 쓰는가」에 **쓴다**로 답이 나온 드문 경우다. 그래서 줄이지 않고 **재발만 막는다**:
+  //   행당 ~22KB 가 늘어나면(그룹 수·썸네일 해상도) 여기가 먼저 빨개진다.
+  //   ⚠️from/to 경로(13MB)는 일부러 **감사 대상에 안 넣었다** — 감사 한 번이 13MB 를 끌어온다.
+  //   다시 볼 조건 = 이 화면이 운영 동선에 들어올 때(지금은 IA 배치 시험용 진단 화면이다).
+  { path: '/api/ai-analysis/batch-results',                  name: 'aiAnalysis.batchRecent',  budgetMs: 3500, maxKB: 1600 },
+
   // ── 페이로드 회귀 감시 (2026-09-18 성능 감사) ─────────────────────────────
   //   이 셋은 **느려서가 아니라 커서** 문제였다. 응답시간은 셋 다 200ms 안쪽이라
   //   smoke·typecheck·journey 어디에도 안 걸렸고, 사람이 화면을 봐도 알 수 없었다.

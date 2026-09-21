@@ -328,16 +328,23 @@ taxInvoicesIssueRouter.post('/', requireEditOrRole('/tax-invoices', 'MANAGER'), 
       const orderIds = body.order_ids!
 
       // 주문 목록 조회
-      const placeholders = orderIds.map(() => '?').join(', ')
-      const { results: orders } = await c.env.DB.prepare(`
-        SELECT o.*, c.client_name, c.business_registration_number,
-          c.representative, c.address, c.business_type, c.business_item,
-          c.email as client_email, c.id as client_id,
-          (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM order_items WHERE order_id = o.id AND price_status = 'PENDING') as has_pending_prices
-        FROM orders o
-        LEFT JOIN clients c ON o.client_id = c.id
-        WHERE o.id IN (${placeholders})
-      `).bind(...orderIds).all()
+      // 80 청크 (#657) - body.order_ids 직결이고 상한 가드가 없다. prod 실측 한 거래처 한 달 최대 118건이라
+      //   가드로 막으면 실제 청구가 막힌다. 아래 개수 대조는 누적 후에 하므로 뜻이 그대로다.
+      const orders: any[] = []
+      for (let oi = 0; oi < orderIds.length; oi += 80) {
+        const oChunk = orderIds.slice(oi, oi + 80)
+        const placeholders = oChunk.map(() => '?').join(', ')
+        const orow = await c.env.DB.prepare(`
+          SELECT o.*, c.client_name, c.business_registration_number,
+            c.representative, c.address, c.business_type, c.business_item,
+            c.email as client_email, c.id as client_id,
+            (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM order_items WHERE order_id = o.id AND price_status = 'PENDING') as has_pending_prices
+          FROM orders o
+          LEFT JOIN clients c ON o.client_id = c.id
+          WHERE o.id IN (${placeholders})
+        `).bind(...oChunk).all()
+        orders.push(...(orow.results || []))
+      }
 
       if (orders.length === 0) {
         return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)
@@ -716,11 +723,17 @@ taxInvoicesIssueRouter.post('/:id/cancel', requireRole('ADMIN'), async (c) => {
         ).bind(id, id).all<{ order_id: number }>()
         const oids = linkedOrders.map(r => r.order_id).filter(Boolean)
         if (oids.length > 0 && inv?.entity_id) {
-          const ph = oids.map(() => '?').join(',')
-          groups = (await c.env.DB.prepare(
-            `SELECT g.id as group_id, g.order_id, o.order_type FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
-             WHERE g.order_id IN (${ph}) AND g.entity_id = ?`
-          ).bind(...oids, inv.entity_id).all<{ group_id: number; order_id: number; order_type: string | null }>()).results
+          // 80 청크 (#657) - 이 계산서에 묶인 주문 수만큼이다. prod 실측 한 거래처 한 달 최대 118건.
+          groups = []
+          for (let oi = 0; oi < oids.length; oi += 80) {
+            const oChunk = oids.slice(oi, oi + 80)
+            const ph = oChunk.map(() => '?').join(',')
+            const gr = await c.env.DB.prepare(
+              `SELECT g.id as group_id, g.order_id, o.order_type FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+               WHERE g.order_id IN (${ph}) AND g.entity_id = ?`
+            ).bind(...oChunk, inv.entity_id).all<{ group_id: number; order_id: number; order_type: string | null }>()
+            groups.push(...(gr.results || []))
+          }
         }
       }
 
@@ -728,15 +741,18 @@ taxInvoicesIssueRouter.post('/:id/cancel', requireRole('ADMIN'), async (c) => {
         const groupIds = groups.map(g => g.group_id)
         const affectedOrders = [...new Set(groups.map(g => g.order_id))]
         const directBackup = [...new Set(groups.filter(g => g.order_type === 'DIRECT_INVOICE').map(g => g.order_id))]
-        const gph = groupIds.map(() => '?').join(',')
-        const oph = affectedOrders.map(() => '?').join(',')
-        const cancelStmts: any[] = [
-          // 그룹 청구 초기화 + 계산서 연결 해제
-          c.env.DB.prepare(
+        // 80 청크 (#657) - 「한 계산서의 청구그룹 id」는 상한이 아니다. 묶음 발행이면 주문 수만큼 붙는다.
+        //   ★청크를 **문장으로만** 나누고 batch 는 그대로 하나로 둔다 - 취소는 전부 되거나 전부 안 돼야 한다.
+        const cancelStmts: any[] = []
+        for (let i = 0; i < groupIds.length; i += 80) {
+          const gph = groupIds.slice(i, i + 80).map(() => '?').join(',')
+          cancelStmts.push(c.env.DB.prepare(
             `UPDATE order_billing_groups SET billing_status = NULL, billed_at = NULL, billed_by = NULL, tax_invoice_id = NULL, accounting_date = NULL WHERE id IN (${gph})`
-          ).bind(...groupIds),
-          // orders 미러: 그 주문 전 그룹이 청구완료된 경우만 BILLED 유지, 아니면 NULL (부분 취소 반영). accounting_date도 동일 동기화.
-          c.env.DB.prepare(
+          ).bind(...groupIds.slice(i, i + 80)))
+        }
+        for (let i = 0; i < affectedOrders.length; i += 80) {
+          const oph = affectedOrders.slice(i, i + 80).map(() => '?').join(',')
+          cancelStmts.push(c.env.DB.prepare(
             `UPDATE orders SET billing_status = CASE WHEN NOT EXISTS (
                  SELECT 1 FROM order_billing_groups g WHERE g.order_id = orders.id AND COALESCE(g.billing_status,'') NOT IN ('BILLED','PAID')
                ) THEN 'BILLED' ELSE NULL END,
@@ -744,16 +760,16 @@ taxInvoicesIssueRouter.post('/:id/cancel', requireRole('ADMIN'), async (c) => {
                  SELECT 1 FROM order_billing_groups g WHERE g.order_id = orders.id AND COALESCE(g.billing_status,'') NOT IN ('BILLED','PAID')
                ) THEN accounting_date ELSE NULL END,
                updated_at = CURRENT_TIMESTAMP WHERE id IN (${oph})`
-          ).bind(...affectedOrders),
-        ]
+          ).bind(...affectedOrders.slice(i, i + 80)))
+        }
         // 직접발행(#310) 백업 주문은 주문 자체 CANCELLED → 미수금 파생에서 자동 제외
-        if (directBackup.length > 0) {
-          const dph = directBackup.map(() => '?').join(',')
+        for (let i = 0; i < directBackup.length; i += 80) {
+          const dph = directBackup.slice(i, i + 80).map(() => '?').join(',')
           cancelStmts.push(c.env.DB.prepare(
             `UPDATE orders SET status = 'CANCELLED', billing_status = NULL, updated_at = CURRENT_TIMESTAMP WHERE id IN (${dph})`
-          ).bind(...directBackup))
+          ).bind(...directBackup.slice(i, i + 80)))
         }
-        await c.env.DB.batch(cancelStmts)
+        if (cancelStmts.length > 0) await c.env.DB.batch(cancelStmts)
       }
     } catch (_err) {
       console.warn('세금계산서 취소 - 청구그룹 초기화 오류:', _err)

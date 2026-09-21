@@ -27,6 +27,7 @@ import { getEntityCompanyInfo } from '../utils/entitySettings'
 import { escapeCsvField } from '../utils/csv'
 import { syncShippingFeeFromBoxes } from '../utils/shippingFee'
 import { recalcOrderBillingGroups } from './orders/helpers'
+import { chunk80 } from '../utils/chunk'
 
 const shipmentsRouter = new Hono<HonoEnv>()
 // v2 P4: /pack(모바일 출고 검수) 권한 보유자도 출고 데이터 API 사용 (orders 라우터의 '/orders','/cards' 패턴)
@@ -882,13 +883,17 @@ shipmentsRouter.post('/merge', requireEditOrRole('/shipments', 'MANAGER'), async
         c.env.DB.prepare(`UPDATE shipments SET merged_into_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(primaryId, sid)
       ),
       // 부속이 기존에 다른 묶음의 대표였다면 그 자식들도 새 대표로 재지정 (체인 방지)
-      ...(childIds.length > 0
-        ? [c.env.DB.prepare(`UPDATE shipments SET merged_into_id = ? WHERE merged_into_id IN (${childIds.map(() => '?').join(',')})`).bind(primaryId, ...childIds)]
-        : []),
+      // ⚠️80 청크 — childIds/childOrderIds 는 order_ids(요청 본문)에서 나오므로 상한이 없다.
+      //   ★문장만 나누고 batch 는 하나로 둔다 — 묶음이 절반만 걸리면 어느 주문이 어디에 붙었는지 알 수 없다.
+      ...chunk80(childIds).map((cc) =>
+        c.env.DB.prepare(`UPDATE shipments SET merged_into_id = ? WHERE merged_into_id IN (${cc.map(() => '?').join(',')})`).bind(primaryId, ...cc)
+      ),
       ...(rootOrderId && childOrderIds.length > 0
         ? [
             c.env.DB.prepare(`UPDATE orders SET consolidate_with_order_id = NULL WHERE id = ?`).bind(rootOrderId),
-            c.env.DB.prepare(`UPDATE orders SET consolidate_with_order_id = ? WHERE id IN (${childOrderIds.map(() => '?').join(',')})`).bind(rootOrderId, ...childOrderIds),
+            ...chunk80(childOrderIds).map((cc) =>
+              c.env.DB.prepare(`UPDATE orders SET consolidate_with_order_id = ? WHERE id IN (${cc.map(() => '?').join(',')})`).bind(rootOrderId, ...cc)
+            ),
           ]
         : []),
     ]
@@ -928,10 +933,13 @@ shipmentsRouter.post('/unmerge', requireEditOrRole('/shipments', 'MANAGER'), asy
     ).bind(primaryId).run()
 
     if (groupOrderIds.length > 0) {
-      const gph = groupOrderIds.map(() => '?').join(',')
+      // ⚠️80 청크 — 묶음 크기 = 합포장한 주문 수라 merge 쪽과 같은 축이다(상한 없음).
+      for (const gc of chunk80(groupOrderIds)) {
+      const gph = gc.map(() => '?').join(',')
       await c.env.DB.prepare(
         `UPDATE orders SET consolidate_with_order_id = NULL WHERE id IN (${gph}) AND consolidate_with_order_id IS NOT NULL`
-      ).bind(...groupOrderIds).run()
+      ).bind(...gc).run()
+      }
     }
 
     return c.json({ success: true, data: { released: res.meta.changes ?? 0 }, message: '합포장이 해제되었습니다.' })

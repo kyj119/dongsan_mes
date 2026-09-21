@@ -99,8 +99,12 @@ quotationsRouter.get('/', async (c) => {
     const today = kstYmd()
     const toExpire = results.filter(q => q.status === 'ACTIVE' && q.valid_until && q.valid_until < today).map(q => q.id)
     if (toExpire.length > 0) {
-      const ph = toExpire.map(() => '?').join(',')
-      await c.env.DB.prepare(`UPDATE quotations SET status='EXPIRED' WHERE id IN (${ph})`).bind(...toExpire).run().catch(() => {})
+      // 80 청크 - safeLimit 이 200 이라 한 페이지에서 만료 대상이 200 까지 나올 수 있다.
+      for (let i = 0; i < toExpire.length; i += 80) {
+        const chunk = toExpire.slice(i, i + 80)
+        const ph = chunk.map(() => '?').join(',')
+        await c.env.DB.prepare(`UPDATE quotations SET status='EXPIRED' WHERE id IN (${ph})`).bind(...chunk).run().catch(() => {})
+      }
       for (const q of results) {
         if (toExpire.includes(q.id)) q.status = 'EXPIRED'
       }

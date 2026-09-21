@@ -93,20 +93,28 @@ taxInvoicesBatchRouter.post('/batch-create', requireEditOrRole('/tax-invoices', 
         }
 
         const orderIds = group.order_ids
-        const placeholders = orderIds.map(() => '?').join(', ')
         // #581 크로스엔티티 발행 차단: order_ids는 body 그대로라 entity 검증 없이는 타법인 주문을
         //   지정해 그 법인 사업자번호로 실제 계산서가 발행된다(auto_issue면 국세청 전송까지).
         //   가드는 이 id의 출처인 GET /eligible-orders(queries.ts)와 동일한 entityFilter(c,'o') →
         //   목록에 나온 id는 전부 통과, 구조적 회귀 0. 미통과분은 아래 개수 대조에서 걸러진다.
         const efOrders = entityFilter(c, 'o')
-        const { results: orders } = await c.env.DB.prepare(`
-          SELECT o.*, c.client_name, c.business_registration_number,
-            c.representative, c.address, c.business_type, c.business_item,
-            c.email as client_email, c.id as client_id
-          FROM orders o
-          LEFT JOIN clients c ON o.client_id = c.id
-          WHERE o.id IN (${placeholders}) AND o.client_id = ?${efOrders.clause}
-        `).bind(...orderIds, group.client_id, ...efOrders.params).all()
+        // 80 청크 (#657) - order_ids 는 요청 본문이고 상한 가드가 없다. prod 실측 **한 거래처 한 달
+        //   최대 118건**(90 초과 4건)이라 길이 가드로 막으면 실제 월말 청구가 막힌다 - 그래서 청크다.
+        //   개수 대조(orders.length !== orderIds.length)는 누적 후에 하므로 뜻이 그대로다.
+        const orders: any[] = []
+        for (let oi = 0; oi < orderIds.length; oi += 80) {
+          const oChunk = orderIds.slice(oi, oi + 80)
+          const placeholders = oChunk.map(() => '?').join(', ')
+          const orow = await c.env.DB.prepare(`
+            SELECT o.*, c.client_name, c.business_registration_number,
+              c.representative, c.address, c.business_type, c.business_item,
+              c.email as client_email, c.id as client_id
+            FROM orders o
+            LEFT JOIN clients c ON o.client_id = c.id
+            WHERE o.id IN (${placeholders}) AND o.client_id = ?${efOrders.clause}
+          `).bind(...oChunk, group.client_id, ...efOrders.params).all()
+          orders.push(...(orow.results || []))
+        }
 
         if (orders.length !== orderIds.length) {
           results.push({ client_id: group.client_id, client_name: client.client_name, success: false, error: '일부 주문이 존재하지 않거나 거래처·법인이 다릅니다.' })
@@ -180,20 +188,30 @@ taxInvoicesBatchRouter.post('/monthly-create', requireEditOrRole('/tax-invoices'
     const issueDate = `${body.year}-${body.month}-${new Date(parseInt(body.year), parseInt(body.month), 0).getDate()}`
 
     // 월합산 대상 조회
-    let clientFilter = ''
-    const params: any[] = [dateFrom, dateTo]
+    // 80 청크 (#657) - client_ids 는 아래 MONTHLY_MAX_GROUPS 잔여분(remaining)이 그대로 다시 실려 오는
+    //   자리다. MONTHLY 거래처가 100곳을 넘으면 **재호출 자체가 500** 이 되어 월정산이 완주하지 못한다.
+    const clientIdChunks: Array<number[] | null> = []
     if (body.client_ids && body.client_ids.length > 0) {
-      clientFilter = `AND c.id IN (${body.client_ids.map(() => '?').join(',')})`
-      params.push(...body.client_ids)
+      for (let i = 0; i < body.client_ids.length; i += 80) clientIdChunks.push(body.client_ids.slice(i, i + 80))
+    } else {
+      clientIdChunks.push(null)
     }
 
     // #581 크로스엔티티 발행 차단: client_ids만 지정하면 그 거래처의 전 법인 주문이 조회돼
     //   법인별로 실제 계산서가 자동 발행됐다(order_id를 몰라도 되는 경로). 미리보기인
     //   GET /monthly-eligible에도 동일 필터를 넣어 대상 집합을 일치시킨다.
     const efMonthly = entityFilter(c, 'o')
-    if (efMonthly.params.length > 0) params.push(...efMonthly.params)
 
-    const { results } = await c.env.DB.prepare(`
+    const results: any[] = []
+    for (const cidChunk of clientIdChunks) {
+      const params: any[] = [dateFrom, dateTo]
+      let clientFilter = ''
+      if (cidChunk) {
+        clientFilter = `AND c.id IN (${cidChunk.map(() => '?').join(',')})`
+        params.push(...cidChunk)
+      }
+      if (efMonthly.params.length > 0) params.push(...efMonthly.params)
+      const mrow = await c.env.DB.prepare(`
       SELECT c.id as client_id, c.client_name, c.business_registration_number,
              c.representative, c.address, c.business_type, c.business_item,
              c.email as buyer_email,
@@ -210,7 +228,9 @@ taxInvoicesBatchRouter.post('/monthly-create', requireEditOrRole('/tax-invoices'
         )
         ${clientFilter}${efMonthly.clause}
       ORDER BY c.id, o.order_date, o.id
-    `).bind(...params).all()
+      `).bind(...params).all()
+      results.push(...(mrow.results || []))
+    }
 
     // 거래처별 그룹핑
     type MonthlyCreateRow = MonthlyEligibleRow & { order_id: number }
@@ -232,7 +252,9 @@ taxInvoicesBatchRouter.post('/monthly-create', requireEditOrRole('/tax-invoices'
     //   Worker 서브요청 한도(1000) 소진 → 반쪽 월정산 위험. 그룹당 상한을 두고 나머지는 remaining으로 반환,
     //   프론트가 client_ids=remaining으로 재호출해 완주(이미 발행된 주문은 SELECT NOT IN으로 자동 제외).
     const MONTHLY_MAX_GROUPS = 30 // 30 × K(≤14) ≈ 420 < 1000 (헤드룸 확보)
-    const allGroups = Object.values(grouped)
+    // client_id 오름차순 고정 - 청크로 나눠 조회하면 삽입 순서가 청크 순서를 타므로, 위 ORDER BY c.id 의
+    //   뜻(어느 30곳이 먼저 처리되는가)을 여기서 되살린다.
+    const allGroups = Object.values(grouped).sort((a, b) => a.client_id - b.client_id)
     const groupsToProcess = allGroups.slice(0, MONTHLY_MAX_GROUPS)
     const remainingClientIds = allGroups.slice(MONTHLY_MAX_GROUPS).map((g) => g.client_id)
 

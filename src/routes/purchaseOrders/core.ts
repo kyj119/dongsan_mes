@@ -343,10 +343,16 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       .map((it: any) => it.item_id)
     const poiItemMeta: Record<number, { item_name: string; category: string; unit: string }> = {}
     if (poiLookupIds.length > 0) {
-      const ph = poiLookupIds.map(() => '?').join(',')
-      const { results: metaRows } = await c.env.DB.prepare(
-        `SELECT id, item_name, category, unit FROM items WHERE id IN (${ph})`
-      ).bind(...poiLookupIds).all<{ id: number; item_name: string; category: string; unit: string }>()
+      // 80 청크 - 발주 요청 본문의 라인 수에 종속(prod 최대 31, 상한 가드는 없다).
+      const metaRows: Array<{ id: number; item_name: string; category: string; unit: string }> = []
+      for (let i = 0; i < poiLookupIds.length; i += 80) {
+        const chunk = poiLookupIds.slice(i, i + 80)
+        const ph = chunk.map(() => '?').join(',')
+        const mr = await c.env.DB.prepare(
+          `SELECT id, item_name, category, unit FROM items WHERE id IN (${ph})`
+        ).bind(...chunk).all<{ id: number; item_name: string; category: string; unit: string }>()
+        metaRows.push(...(mr.results || []))
+      }
       for (const m of (metaRows || [])) poiItemMeta[m.id as number] = m
     }
     // 0620 단위표: 라인 단위의 계수를 스냅샷한다(요청 unit_factor > 단위표의 그 단위 > null=입고 시 packFactor 폴백)
@@ -536,10 +542,16 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       .map((it: any) => it.item_id)
     const poiItemMeta: Record<number, { item_name: string; category: string; unit: string }> = {}
     if (poiLookupIds.length > 0) {
-      const ph = poiLookupIds.map(() => '?').join(',')
-      const { results: metaRows } = await c.env.DB.prepare(
-        `SELECT id, item_name, category, unit FROM items WHERE id IN (${ph})`
-      ).bind(...poiLookupIds).all<{ id: number; item_name: string; category: string; unit: string }>()
+      // 80 청크 - 발주 요청 본문의 라인 수에 종속(prod 최대 31, 상한 가드는 없다).
+      const metaRows: Array<{ id: number; item_name: string; category: string; unit: string }> = []
+      for (let i = 0; i < poiLookupIds.length; i += 80) {
+        const chunk = poiLookupIds.slice(i, i + 80)
+        const ph = chunk.map(() => '?').join(',')
+        const mr = await c.env.DB.prepare(
+          `SELECT id, item_name, category, unit FROM items WHERE id IN (${ph})`
+        ).bind(...chunk).all<{ id: number; item_name: string; category: string; unit: string }>()
+        metaRows.push(...(mr.results || []))
+      }
       for (const m of (metaRows || [])) poiItemMeta[m.id as number] = m
     }
     // 0620 단위표: 라인 단위의 계수를 스냅샷한다(요청 unit_factor > 단위표의 그 단위 > null=입고 시 packFactor 폴백)

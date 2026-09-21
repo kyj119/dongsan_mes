@@ -777,9 +777,11 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
     // #341 품목별 recentPO 공급업체 N+1 → item_id IN절 단일 window 쿼리 prefetch (ROW_NUMBER로 "최근 1건" 동일 의미)
     const riItemIds = requestItems.filter((ri) => ri.item_id).map((ri) => ri.item_id as number)
     const recentSupplierMap: Record<number, { supplier_id: number | null; client_name: string | null }> = {}
-    if (riItemIds.length > 0) {
+    // 80 청크 - 구매요청 품목 수에 종속. item_id 는 한 청크에만 들어가므로 PARTITION rn=1 결과는 불변이다.
+    for (let ri0 = 0; ri0 < riItemIds.length; ri0 += 80) {
+      const riChunk = riItemIds.slice(ri0, ri0 + 80)
       const efPo = entityFilter(c, 'po')
-      const ph = riItemIds.map(() => '?').join(',')
+      const ph = riChunk.map(() => '?').join(',')
       const { results: recentRows } = await c.env.DB.prepare(`
         WITH ranked AS (
           SELECT poi.item_id AS item_id, po.supplier_id AS supplier_id, c.client_name AS client_name,
@@ -790,7 +792,7 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
           WHERE poi.item_id IN (${ph}) AND poi.received_quantity > 0${efPo.clause}
         )
         SELECT item_id, supplier_id, client_name FROM ranked WHERE rn = 1
-      `).bind(...riItemIds, ...efPo.params).all<{ item_id: number; supplier_id: number | null; client_name: string | null }>()
+      `).bind(...riChunk, ...efPo.params).all<{ item_id: number; supplier_id: number | null; client_name: string | null }>()
       for (const r of (recentRows || [])) recentSupplierMap[r.item_id] = { supplier_id: r.supplier_id, client_name: r.client_name }
     }
     // pr.supplier_id 공급업체명 (루프 불변) 1회 조회 → 매 품목 재조회 제거
