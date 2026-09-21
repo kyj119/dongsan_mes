@@ -1,0 +1,183 @@
+{
+  "note": "이미 알려진 미청크 IN 절. 「정상」이 아니라 새로 생긴 것만 잡기 위한 출발점이다. reason 에 왜 안전한지(자연 bounded 근거)를 적을 것.",
+  "updated": "2026-09-21",
+  "limit": 100,
+  "known": {
+    "src/routes/aiAnalysis.ts|ids": {
+      "line": 172,
+      "reason": ""
+    },
+    "src/routes/cardExpenses.ts|keys": {
+      "line": 1093,
+      "reason": ""
+    },
+    "src/routes/cards/queries.ts|idArr": {
+      "line": 1094,
+      "reason": ""
+    },
+    "src/routes/costs.ts|ids": {
+      "line": 125,
+      "reason": ""
+    },
+    "src/routes/inventory.ts|itemIds": {
+      "line": 535,
+      "reason": ""
+    },
+    "src/routes/inventory.ts|cancelItemIds": {
+      "line": 728,
+      "reason": ""
+    },
+    "src/routes/inventory.ts|cIds": {
+      "line": 790,
+      "reason": ""
+    },
+    "src/routes/inventory.ts|releaseItemIds": {
+      "line": 965,
+      "reason": ""
+    },
+    "src/routes/inventory.ts|lowItemIds": {
+      "line": 1031,
+      "reason": ""
+    },
+    "src/routes/inventoryCount.ts|ids": {
+      "line": 211,
+      "reason": ""
+    },
+    "src/routes/items.ts|ids": {
+      "line": 221,
+      "reason": ""
+    },
+    "src/routes/leaves.ts|employeeIds": {
+      "line": 226,
+      "reason": ""
+    },
+    "src/routes/leaves.ts|sources": {
+      "line": 784,
+      "reason": ""
+    },
+    "src/routes/ledger/credit-helpers.ts|keys": {
+      "line": 63,
+      "reason": ""
+    },
+    "src/routes/orders/create.ts|newItemIds": {
+      "line": 883,
+      "reason": ""
+    },
+    "src/routes/orders/helpers.ts|ids": {
+      "line": 347,
+      "reason": ""
+    },
+    "src/routes/orders/lifecycle.ts|(confirmed_card_ids as number[])": {
+      "line": 224,
+      "reason": ""
+    },
+    "src/routes/orders/lifecycle.ts|(cancelled_card_ids as number[])": {
+      "line": 233,
+      "reason": ""
+    },
+    "src/routes/orders/queries.ts|ORDER_SALES_REP_ROLES": {
+      "line": 35,
+      "reason": ""
+    },
+    "src/routes/orders/queries.ts|CONSOLIDATABLE_ORDER_STATUSES": {
+      "line": 118,
+      "reason": ""
+    },
+    "src/routes/orders/update.ts|(savedReturnItems as any[])": {
+      "line": 345,
+      "reason": ""
+    },
+    "src/routes/payroll/core.ts|aggEmpIds": {
+      "line": 821,
+      "reason": ""
+    },
+    "src/routes/payroll/shared.ts|keys": {
+      "line": 12,
+      "reason": ""
+    },
+    "src/routes/payroll/shared.ts|ids": {
+      "line": 731,
+      "reason": ""
+    },
+    "src/routes/printEvents.ts|orderItemIds": {
+      "line": 131,
+      "reason": ""
+    },
+    "src/routes/purchaseInvoices.ts|poItemIds": {
+      "line": 136,
+      "reason": ""
+    },
+    "src/routes/shipments.ts|CONSOLIDATABLE_ORDER_STATUSES": {
+      "line": 461,
+      "reason": ""
+    },
+    "src/routes/shipments.ts|order_ids": {
+      "line": 546,
+      "reason": ""
+    },
+    "src/routes/tasks.ts|ids": {
+      "line": 169,
+      "reason": ""
+    },
+    "src/routes/taxInvoices/batch.ts|orderIds": {
+      "line": 96,
+      "reason": ""
+    },
+    "src/routes/taxInvoices/helpers.ts|agg.groupIds": {
+      "line": 455,
+      "reason": ""
+    },
+    "src/routes/taxInvoices/issue.ts|orderIds": {
+      "line": 331,
+      "reason": ""
+    },
+    "src/routes/taxInvoices/issue.ts|groupIds": {
+      "line": 731,
+      "reason": ""
+    },
+    "src/routes/workbench.ts|ids": {
+      "line": 353,
+      "reason": ""
+    },
+    "src/routes/workbench.ts|sts": {
+      "line": 831,
+      "reason": ""
+    },
+    "src/routes/workbench.ts|modes": {
+      "line": 860,
+      "reason": ""
+    },
+    "src/services/budgetAlert.ts|keys": {
+      "line": 57,
+      "reason": ""
+    },
+    "src/utils/cashflowEngine.ts|ids": {
+      "line": 406,
+      "reason": ""
+    },
+    "src/utils/intercompany.ts|entityIds": {
+      "line": 41,
+      "reason": ""
+    },
+    "src/utils/intercompany.ts|clientIds": {
+      "line": 42,
+      "reason": ""
+    },
+    "src/utils/inventoryAlert.ts|itemIds": {
+      "line": 29,
+      "reason": ""
+    },
+    "src/utils/materialShortageCheck.ts|materialIds": {
+      "line": 65,
+      "reason": ""
+    },
+    "src/utils/notify.ts|roles": {
+      "line": 9,
+      "reason": ""
+    },
+    "src/utils/shipmentHelper.ts|childIds": {
+      "line": 172,
+      "reason": ""
+    }
+  }
+}

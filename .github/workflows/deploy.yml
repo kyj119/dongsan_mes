@@ -58,6 +58,8 @@ jobs:
       # 멀쩡한 사용자를 로그아웃시킨 전례(2026-09-17 실기). 정본 = shell.js mesJwtPayload
       - name: JWT decode audit (audit:jwt-decode)
         run: npm run audit:jwt-decode
+      - name: D1 bind-limit audit (audit:bind-limit — unchunked IN clauses, ~100 param cap)
+        run: npm run audit:bind-limit:selftest && npm run audit:bind-limit
 
       - name: Build
         run: npx vite build

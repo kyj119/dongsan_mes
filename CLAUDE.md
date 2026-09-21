@@ -184,6 +184,15 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 - 게이트 = **`npm run audit:jsx-ternary`**(JSX 전수·`ia:deploy` 배선·자가시험 양방향). 전수 결과 위반은 **그 한 줄뿐**이었다 — 드물지만 걸리면 조용하다.
 - ⚠️**이 엔진의 다른 사양 이탈도 의심한다** — `doc.rulerUnits` 무시(§mm 단위), `OffsetPath v22` 무동작이 이미 같은 계열이다. 「Node 에서 되니까 일러에서도 된다」가 성립하지 않는 축이 있다.
 
+### 변수 길이 `IN (?,?,…)` = 100을 넘으면 500 (`npm run audit:bind-limit`)
+
+D1 은 **쿼리당 바인드 ~100** 이 한도다. `arr.map(() => '?')` + `.bind(...arr)` 로 IN 절을 만드는 자리는 배열이 그 수를 넘는 순간 「too many SQL variables」로 throw 하고 **응답이 500** 이 된다 — 타입체크·빌드·스모크가 **전부 통과한다**(#409 칸반 `limit=100`→200 경계 500 이 그 실물). 표준은 **80 청크**인데, 새로 쓰는 자리가 빠뜨려도 아무도 모른다.
+- **게이트 = `npm run audit:bind-limit`**(CI `deploy.yml` · `ship:gate` 배선 · 자가시험 `audit:bind-limit:selftest` 14항목 양방향). TypeScript 파서 기반이라 주석·문자열에 안 속는다.
+- 안전으로 세는 넷: ①인라인 `slice(i, i + N)` ②그 slice 로 선언된 식별자 ③`chunks.push(slice)` 후 for-of ④**명시적 길이 가드**(`if (arr.length > 90) return 400`). N 은 상수 식별자도 읽는다(`EMP_CHUNK`).
+- **길이를 정적으로 알 수 없다 ≠ 결함**이다 — 자연 bounded(단일 주문 라인·고정 enum)면 기준선(`scripts/bind-limit-baseline.json`, 2026-09-21 기준 44건)에 **사유와 함께** 넣는다. 기준선에 없는 새 자리만 exit 1. 고쳐서 없앴으면 `--update` 로 **줄인다**(안 줄이면 되돌아가도 안 잡힌다).
+- 실물 = `deriveOrderType`(2026-09-21). #651 수정으로 「중복이 섞인 100줄 초과 주문」이 조기 return 되지 않게 되면서 **없던 경로가 열렸다** — 고치면서 옆을 여는 형태라, 이 축은 사람 눈으로 안 잡힌다.
+
+
 ### 조용한 격하 = 게이트가 「성공」으로 센다 (`npm run cut:placement`)
 **폴백은 실패가 아니라 성공처럼 생겼다.** 누적 캐시·계산 규칙·IA 5축과 **같은 형태**다 — 200이 뜨고, 판이 나오고, 화면이 정상이다. 게이트가 모자란 게 아니라(개수 정본=`package.json` scripts, 2026-09-10 실측 73개) **격하를 성공으로 세고 있는** 것이다.
 
@@ -264,11 +273,11 @@ if (!el) { console.warn('[pageName] #someId not found'); return; }
 
 ### 배포를 실제로 막는 게이트 (2026-09-10 실측)
 **「게이트가 있다」와 「게이트가 돈다」는 다른 질문이다.** `cut:butt` 는 2026-08-06부터 있었는데 한 달간 아무도 안 돌렸고, `cut:shellsync` 도 같은 상태였다(2026-09-10 등록) — **목록이 없어서 아무도 그걸 몰랐다.**
-- **CI**(push→main, `.github/workflows/deploy.yml`): tsc · **`check:fn`**(selftest+strict) · **`audit:jwt-decode`** · build · `test:calc` · `entity-audit.mjs` · `audit:migration-number`(#639 같은 번호·같은 테이블 DDL 충돌만 차단) · `canary:write:ci` · `smoke.cjs`(prod)
+- **CI**(push→main, `.github/workflows/deploy.yml`): tsc · **`check:fn`**(selftest+strict) · **`audit:jwt-decode`** · **`audit:bind-limit`** · build · `test:calc` · `entity-audit.mjs` · `audit:migration-number`(#639 같은 번호·같은 테이블 DDL 충돌만 차단) · `canary:write:ci` · `smoke.cjs`(prod)
 - **커밋 훅**(`pretooluse-bash.cjs`): tsc(전건 차단) · `skill-audit`·`hook-guard-selftest`·`doc-diet-audit`·**`audit:empty-catch`**·**`check:fn`**(해당 파일이 dirty 인 커밋만 — `check:fn` 은 src/**)
 - **편집 훅**(`posttooluse-edit.cjs`): `node --check`(src/scripts/*.js) · `check:dom` 기준선 회귀 · **`check:fn`**(src/**.ts·js — 미정의 전역 함수 호출, 기준선 없음) · **`audit:empty-catch`**(IllustratorAutomat/**.jsx·js — 사유 `ignore:` 없는 빈 catch) — 넷 다 `exit 2` 차단
 - **`ia:deploy`**(`ia-deploy.cjs` `GATES`): **audit:empty-catch** · **audit:jsx-ternary** · cut:bleed · cut:nest · cut:butt · cut:placement · cut:smoke · **cut:shellsync** · panel:smoke · cut:e2e + ia-jsx 드리프트 (⚠️`test:outcopy` 는 2026-09-15 **하루 만에 은퇴** — 지키던 코드가 에이전트로 넘어갔다. **없어진 코드를 지키는 게이트는 초록불이 아무 뜻도 없다** → 성질은 `panel:smoke` §13 으로 옮겨 실었다)
-- **`ship:gate`**: verify(tsc+build) · **check:fn** · **audit:jwt-decode** · entity-audit · **test:calc** · canary:write · **journey:gate**(J0~J7 40단계, 로컬 서버 자동 기동·≈4.5분, `SKIP_JOURNEY=1` 로만 명시 건너뜀) · **`test:local-e2e`**(서버가 필요한 4종을 journey 뒤에 묶어 세운다 — symmetry·ship-stock·autodeduct·print-match. 같은 `SKIP_JOURNEY=1` 로 함께 건너뛴다)
+- **`ship:gate`**: verify(tsc+build) · **check:fn** · **audit:jwt-decode** · **audit:bind-limit** · entity-audit · **test:calc** · canary:write · **journey:gate**(J0~J7 40단계, 로컬 서버 자동 기동·≈4.5분, `SKIP_JOURNEY=1` 로만 명시 건너뜀) · **`test:local-e2e`**(서버가 필요한 4종을 journey 뒤에 묶어 세운다 — symmetry·ship-stock·autodeduct·print-match. 같은 `SKIP_JOURNEY=1` 로 함께 건너뛴다)
 - **`/deploy-verify`**: Phase 1 tsc·build·**test:calc**·**journey:gate** → Phase 2 entity-audit → Phase 2-B `audit:migration-drift`(스키마 변경 시) → Phase 4 `smoke:prod` · **`audit:table-clip`**(UI·목록 변경 시 — prod 56화면 열 잘림, 기준선=`scripts/table-clip-baseline.json`)
 > ⚠️`verify.yml` 은 `on: pull_request` 다 — 이 프로젝트(main 직접 push)에서는 **생성 이래 0회 실행**.
 > ⚠️여기 **없는** 감사는 사람이 부를 때만 돈다: `sort-audit` · `audit:query-cost` · `audit:subquery` · `audit:unit-price-semantics` · `audit:migration-drift` · `audit:stock-ledger` · `cut:quality`. (`test:symmetry`·`test:ship-stock`·`test:autodeduct`·`test:print-match` 는 2026-09-14 `test:local-e2e` 로 묶여 `ship:gate` 에 편입 — 그전까지 넷 다 미배선이었고, `test:print-match` 는 **빨간 채로** 있었다.) (`test:journey` 는 2026-09-11 `ship:gate`·`/deploy-verify` 에 편입 — 정본=`/journey-loop`, 한 사이클=`npm run journey:cycle`.)
