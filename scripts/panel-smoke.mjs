@@ -1571,13 +1571,24 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   // ★A0 와 재단은 이미 「클립 ∩ 콘텐츠」로 통일했는데 **전사만 안 따라왔다**(2026-09-21 실기).
   //   공유 결정이 한 호스트에만 들어가면 나머지는 조용히 옛 값을 쓴다 — §형제 스윕의 호스트판이다.
   //   그래서 개별 호스트가 아니라 **셋이 같은 결정을 갖고 있는지**를 묻는다.
-  const a0h = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-a0-host.jsx'), 'utf8')
-  const cuth = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
-  ok('17e 호스트 셋 다 클립을 존중하는 경계를 갖고 있다',
-    a0h.indexOf('function mesA0_itemBounds(') > 0
-    && cuth.indexOf('function mesCut_inkBounds(') > 0
-    && trh.indexOf('function mesTr_inkBounds(') > 0,
-    '하나만 빠져도 그 탭만 클립 밖까지 재어 다른 크기를 낸다')
+  // ⚠️**손으로 셋을 적지 않는다.** 이 저장소가 같은 사고를 세 번 낸 자리가 손목록이다
+  //   (`ia:deploy` 대상 · `ia-jsx-audit` 목록 · 스텁의 호스트 목록). 여기서도 셋을 박아 두면
+  //   **다음에 만드는 틀 호스트는 이 게이트에 안 걸린다** — 그때 이 결함이 통째로 되살아난다.
+  //   → 디렉터리를 **열거해서** 「개체를 재는 호스트는 클립을 존중하는 입구를 갖는다」를 요구한다.
+  const HOST_DIR = path.join(REPO, 'IllustratorAutomat', 'designer')
+  const hostFiles = fs.readdirSync(HOST_DIR).filter((f) => /^mes-[a-z0-9-]+-host\.jsx$/i.test(f))
+  ok('17e 호스트를 열거해서 본다 (손목록 금지)', hostFiles.length >= 3, hostFiles.join(','))
+  for (const hf of hostFiles) {
+    const src = fs.readFileSync(path.join(HOST_DIR, hf), 'utf8').replace(/\r\n/g, '\n')
+    // 주석을 뺀 코드에서만 센다 — 주석 속 설명에 속으면 안 된다.
+    const code = src.split('\n').filter((ln) => !/^\s*(\/\/|\*|\/\*)/.test(ln)).join('\n')
+    const measures = /\.(visibleBounds|geometricBounds)\b/.test(code)
+    if (!measures) continue                    // 개체를 안 재는 호스트는 이 함정 밖이다
+    ok('17e ' + hf + ' 에 클립을 존중하는 입구가 있다',
+      /function\s+mes[A-Za-z0-9]+_(inkBounds|itemBounds)\s*\(/.test(code) && /\.clipping\b/.test(code),
+      '개체를 재는데 클립 입구가 없다 — visibleBounds 는 클립이 잘라 낸 부분까지 합쳐서 답한다'
+      + '(실측 60x180 → 214.74x242.83). 입구 이름은 mes<축>_inkBounds 규약이다')
+  }
   // 경계를 재는 자리가 **전부** 잉크를 지나는가 — 한 곳만 생짜로 남아도 그 경로가 틀린다.
   const bodyOf = (src, name) => {
     const s = src.replace(/\r\n/g, '\n')
