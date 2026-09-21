@@ -219,10 +219,19 @@ itemsRouter.get('/', async (c) => {
       const ids = rows.filter((r) => r.item_type === 'MATERIAL' || r.item_type === 'GOODS').map((r) => Number(r.id))
       if (ids.length) {
         const ph = ids.map(() => '?').join(',')
-        const entityId = Number((c.get('user') as any)?.entityId) || 1
+        // #650: 두 쿼리 **모두** 호출자 법인으로 가둔다. 종전엔 재고만 격리하고 최근단가는 안 해서,
+        //   품목검색 모달에 **타법인의 실거래 단가**가 그대로 떴다(prod 실측 2026-09-21: 판매 이력 있는
+        //   자재·상품 381개 중 132개가 2개 이상 법인에서 팔렸고, **269개는 최근 판매가 동산이 아니었다**
+        //   — 동산 사용자 화면의 「최근단가」 대부분이 선명·청주 값이었다는 뜻이다).
+        //   ⚠️`entityFilter` 를 쓰는 이유는 ADMIN 전체모드(entityId=0)다 — 종전 `|| 1` 은 falsy 함정이라
+        //   전체모드를 **조용히 동산(1)으로 눌러** 재고 합계까지 한 법인 것만 보여 줬다.
+        //   ★ROW_NUMBER() **안쪽**에 넣어야 순위가 법인 안에서 매겨진다(바깥에 두면 타법인 1위가 뽑힌 뒤
+        //   걸러져 그 품목이 통째로 사라진다).
+        const efInv = entityFilter(c)
+        const efOrd = entityFilter(c, 'o')
         const stock = await c.env.DB.prepare(
-          `SELECT item_id, SUM(quantity) AS q FROM inventory WHERE entity_id = ? AND item_id IN (${ph}) GROUP BY item_id`,
-        ).bind(entityId, ...ids).all<{ item_id: number; q: number }>()
+          `SELECT item_id, SUM(quantity) AS q FROM inventory WHERE item_id IN (${ph})${efInv.clause} GROUP BY item_id`,
+        ).bind(...ids, ...efInv.params).all<{ item_id: number; q: number }>()
         const last = await c.env.DB.prepare(
           `SELECT item_id, unit_price, sold_at FROM (
              SELECT oi.item_id,
@@ -230,9 +239,9 @@ itemsRouter.get('/', async (c) => {
                     o.order_date AS sold_at,
                     ROW_NUMBER() OVER (PARTITION BY oi.item_id ORDER BY o.order_date DESC, oi.id DESC) AS rn
              FROM order_items oi JOIN orders o ON o.id = oi.order_id
-             WHERE oi.item_id IN (${ph}) AND o.status != 'CANCELLED' AND oi.amount > 0
+             WHERE oi.item_id IN (${ph}) AND o.status != 'CANCELLED' AND oi.amount > 0${efOrd.clause}
            ) WHERE rn = 1`,
-        ).bind(...ids).all<{ item_id: number; unit_price: number; sold_at: string }>()
+        ).bind(...ids, ...efOrd.params).all<{ item_id: number; unit_price: number; sold_at: string }>()
         const stockMap = new Map((stock.results || []).map((s) => [Number(s.item_id), Number(s.q)]))
         const lastMap = new Map((last.results || []).map((l) => [Number(l.item_id), l]))
         for (const r of rows) {
