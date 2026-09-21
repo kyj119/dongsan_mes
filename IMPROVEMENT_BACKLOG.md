@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-09-21T14:20:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-09-21T18:30:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,29 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **6** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음) |
+| 🆕 new | **7** (`list_issues(state:OPEN,label:auto-improve)` 실측, +1 = #658) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **571** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 5 보안 + 인프라 (2026-09-21T18:30):**
+> - **방법**: 세션 시작 시 detached HEAD `d1b2ec8`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area5 사이클 세션시작 HEAD `0862373`)**: `git diff --stat 0862373..HEAD -- src/routes src/middleware src/utils index.tsx wrangler.toml .github/workflows` **20파일**. `aiAnalysis.ts`·`cards/queries.ts`·`inventory.ts`·`items.ts`·`kakao.ts`·`orders/helpers.ts`·`shipments.ts`·`utils/inventoryAlert.ts`·`utils/shipmentNotice.ts`(9파일)는 **바로 직전 Area4 사이클(같은 날 14:20)**이 집계정합성 렌즈로 이미 전수 정독 완료 — Area5는 그 판정을 재사용하지 않고 **entity 격리·인젝션·인증 렌즈로 별도 재확인**(아래).
+> - **Area5 고유 렌즈로 20파일 전수 정독** — `audit:bind-limit`(258bbe7) 신설이 만든 IN절 청크 분할 커밋 다수(`costs.ts`·`payroll/core.ts`·`prices.ts`·`purchaseOrders/core.ts`·`purchaseRequests.ts`·`quotations.ts`·`taxInvoices/{batch,helpers,issue}.ts`·`utils/chunk.ts`·`.github/workflows/deploy.yml`)를 바인드 파라미터 순서·entityFilter 보존·batch 원자성 관점으로 직접 대조. 전부 `?` 바인드 유지, `taxInvoices/batch.ts`·`payroll/core.ts`·`purchaseOrders/core.ts` 등은 청크 루프 안에서도 기존 `entityFilter`/`ef.clause` 그대로 보존(정합), `taxInvoices/issue.ts:723`·`:733`·`helpers.ts:328` 등 원자적 쓰기(청구확정·계산서취소)는 "문장만 청크, `db.batch()`는 하나로" 원칙 그대로 지켜짐(#657 커밋 스스로 명시한 설계가 실제로 지켜졌는지 재확인 — 위반 0건).
+> - **🆕 신규 발견 #658**: 위 전수 대조 중 `taxInvoices/issue.ts POST /`(레거시 단건·묶음 발행)가 `order_id`/`order_ids` 조회에 **entity 필터가 전혀 없음**을 발견 — 같은 라우터 형제(`batch.ts POST /batch-create`·`POST /monthly-create`, `queries.ts:392`)는 **closed 이슈 #581**("batch.ts entity 필터 전무 — 크로스엔티티 발행")의 수정으로 `entityFilter(c,'o')`를 명시 적용했는데, `issue.ts`의 레거시 발행 진입점만 그 형제픽스에서 빠졌다(SKILL.md "부분픽스 재검증" 클래스의 정확한 재현). entity-scoped MANAGER/edit-role 사용자가 타법인 `order_id`를 직접 지정하면 `createSplitInvoices()`가 그 주문의 **실제 소유 법인**(`order_billing_groups.entity_id`) 설정으로 계산서를 발행하고, `auto_issue:true`면 바로빌/국세청 실전송까지 진행 — 위조 세금계산서 발행급 HIGH. issue로만 등록(IDOR=자동수정 금지 컨벤션), 수정 방향은 batch.ts 패턴 이식(15~30분).
+> - **standing scan 1: 시크릿 폴백** `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43` 1건뿐(빈 문자열 폴백, 기존 FP, 변동없음).
+> - **standing scan 2: `node scripts/check-xss.mjs`**(advisory) — 106건(직전 108, churn이 `src/scripts`를 건드리지 않아 이번 사이클과 무관한 배경값 — 감소는 이전 사이클 자동수정 누적분). 이번 churn(전부 `src/routes` 백엔드)과 겹치는 프론트 파일 없음, 재확인 불요.
+> - **standing scan 3: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 75건·누락 **0건**(변동없음). ⚠️#658은 정적 SELECT 컬럼감사가 아니라 **파라미터 바인딩값**(entity 조건 자체의 부재)이라 이 감사의 탐지범위 밖 — 감사 통과와 #658 발견이 모순 아님(감사는 "entity 테이블을 SELECT하는데 그 필드가 없다"류가 아니라 신뢰 못한 컬럼 존재성만 봄).
+> - **standing scan 4: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 4건 전부 기존 FP 유지(`attendance.ts:171`·`dashboard.ts:420`·`workbench.ts:577`·`itemUnits.ts:162`).
+> - **standing scan 5: `npm run branch:clean`** — 삭제대상 0건(SKIP 1=main). **standing scan 6: `npm audit --omit=dev`** — 0건.
+> - **CI 헬스**: `actions_list(deploy.yml, branch:main)` 최근 5런 전부 `conclusion:success`(최종 HEAD `d1b2ec8` 포함, run #2033).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` 기존 6건(#656·#654·#650·#626·#617·#616) 전건 Area5 관할 밖 또는 이미 알려진 상태 유지(#650은 Area5 자신이 이전 사이클에 등록한 항목, unchanged). 신규 #658 추가로 open **7**.
+> - **backlog↔GitHub 절대값 재동기화**: open **7**(+1) · done **571**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-5-security-infra.md `line N` 잔여참조 재확인(0건, 이미 서술식). #658은 이미 codify된 클래스("부분픽스 재검증 — closed 우산 이슈의 서브모듈 픽스 실재를 재grep", area-5 L38 서술)의 정확한 재적용 — 새 클래스 아님. 다만 이번 실증은 그 레시피가 "같은 파일 내 형제"뿐 아니라 **같은 기능을 구현하는 다른 파일(different router file, 같은 라우터 마운트 경로 하위)** 간에도 유효함을 보여준다 — 기존 서술이 "같은 파일" 위주라 이 변주를 암묵 전제만 했었다.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 9건 → 이번 추가 후 10건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 **1건**(#658, taxInvoices/issue.ts 크로스엔티티 세금계산서 위조발행 — #581 형제픽스 누락), 자동수정 0건(IDOR=issue-only 컨벤션), done-sync: open 7(+1)·done 571(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-09-21T14:20):**
 > - **방법**: 세션 시작 시 detached HEAD `27787e8`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
