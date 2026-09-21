@@ -294,15 +294,28 @@ function main() {
   const byKey = new Map(hits.map((h) => [keyOf(h), h]));
 
   if (argv.includes('--update')) {
+    // ★사람이 적은 reason·risk 는 **보존한다**. 종전엔 매번 빈 문자열로 덮어써서, 해소 1건을 반영하려고
+    //   --update 를 부르면 **나머지 전부의 사유가 조용히 사라졌다**(2026-09-21 실기 — 39건 사유가 한 번에
+    //   날아갔다). 기준선의 값어치는 목록이 아니라 「왜 안전한가」에 있고, 그걸 지우는 갱신은 갱신이 아니다.
+    let prev = { known: {} };
+    if (fs.existsSync(BASELINE)) { try { prev = JSON.parse(fs.readFileSync(BASELINE, 'utf8')); } catch (_) { /* ignore: 처음이면 빈 기준선 */ } }
     const known = {};
-    for (const [k, h] of byKey) known[k] = { line: h.line, reason: '' };
+    let kept = 0;
+    for (const [k, h] of byKey) {
+      const old = (prev.known || {})[k] || {};
+      if (old.reason) kept++;
+      known[k] = { line: h.line, risk: old.risk || '', reason: old.reason || '' };
+    }
+    const dropped = Object.keys(prev.known || {}).filter((k) => !byKey.has(k));
     fs.writeFileSync(BASELINE, JSON.stringify({
-      note: '이미 알려진 미청크 IN 절. 「정상」이 아니라 새로 생긴 것만 잡기 위한 출발점이다. reason 에 왜 안전한지(자연 bounded 근거)를 적을 것.',
+      note: prev.note || '이미 알려진 미청크 IN 절. 「정상」이 아니라 새로 생긴 것만 잡기 위한 출발점이다.',
       updated: new Date().toISOString().slice(0, 10),
+      reviewed: prev.reviewed,
       limit: LIMIT,
       known,
     }, null, 2) + '\n', 'utf8');
-    console.log(`[bind-limit] 기준선 갱신 — ${byKey.size}건`);
+    console.log(`[bind-limit] 기준선 갱신 — ${byKey.size}건 (사유 보존 ${kept}건${dropped.length ? ` · 해소로 제거 ${dropped.length}건` : ''})`);
+    if (byKey.size - kept > 0) console.log(`  ⚠️사유 없는 항목 ${byKey.size - kept}건 — reason 은 「검토했다」는 뜻이지 「안전하다」는 뜻이 아니다.`);
     return;
   }
 

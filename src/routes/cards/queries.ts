@@ -1091,16 +1091,22 @@ cardsQueriesRouter.get('/:id', async (c) => {
     const analysisCache = new Map<number, AnalysisGroup[]>()
     if (analysisIds.size > 0) {
       const idArr = Array.from(analysisIds)
-      const placeholders = idArr.map(() => '?').join(',')
-      const { results: analyses } = await c.env.DB.prepare(
-        `SELECT id, groups_json FROM ai_analysis_requests WHERE id IN (${placeholders})`
-      ).bind(...idArr).all<AnalysisRow>()
-      for (const analysis of analyses || []) {
-        if (analysis.groups_json) {
-          try {
-            analysisCache.set(analysis.id, JSON.parse(analysis.groups_json))
-          } catch (_) {
-            analysisCache.set(analysis.id, [])
+      // ⚠️80 청크 — 카드 목록 `safeLimit` 이 **200**(:232)이라 서로 다른 analysis 를 가리키면 여기 바인드가
+      //   200개까지 간다. D1 은 쿼리당 ~100 이 한도다. #409(칸반 limit 100→200 경계 500)가 바로 이 파일에서
+      //   난 사고인데 **이 자리만 청크가 빠져 있었다** — 같은 축의 형제를 다 훑지 않으면 이렇게 남는다.
+      for (let i = 0; i < idArr.length; i += 80) {
+        const chunk = idArr.slice(i, i + 80)
+        const placeholders = chunk.map(() => '?').join(',')
+        const { results: analyses } = await c.env.DB.prepare(
+          `SELECT id, groups_json FROM ai_analysis_requests WHERE id IN (${placeholders})`
+        ).bind(...chunk).all<AnalysisRow>()
+        for (const analysis of analyses || []) {
+          if (analysis.groups_json) {
+            try {
+              analysisCache.set(analysis.id, JSON.parse(analysis.groups_json))
+            } catch (_) {
+              analysisCache.set(analysis.id, [])
+            }
           }
         }
       }
