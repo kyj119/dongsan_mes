@@ -218,7 +218,6 @@ itemsRouter.get('/', async (c) => {
       const rows = results as any[]
       const ids = rows.filter((r) => r.item_type === 'MATERIAL' || r.item_type === 'GOODS').map((r) => Number(r.id))
       if (ids.length) {
-        const ph = ids.map(() => '?').join(',')
         // #650: 두 쿼리 **모두** 호출자 법인으로 가둔다. 종전엔 재고만 격리하고 최근단가는 안 해서,
         //   품목검색 모달에 **타법인의 실거래 단가**가 그대로 떴다(prod 실측 2026-09-21: 판매 이력 있는
         //   자재·상품 381개 중 132개가 2개 이상 법인에서 팔렸고, **269개는 최근 판매가 동산이 아니었다**
@@ -229,21 +228,30 @@ itemsRouter.get('/', async (c) => {
         //   걸러져 그 품목이 통째로 사라진다).
         const efInv = entityFilter(c)
         const efOrd = entityFilter(c, 'o')
-        const stock = await c.env.DB.prepare(
-          `SELECT item_id, SUM(quantity) AS q FROM inventory WHERE item_id IN (${ph})${efInv.clause} GROUP BY item_id`,
-        ).bind(...ids, ...efInv.params).all<{ item_id: number; q: number }>()
-        const last = await c.env.DB.prepare(
-          `SELECT item_id, unit_price, sold_at FROM (
-             SELECT oi.item_id,
-                    CASE WHEN oi.quantity > 0 THEN ROUND(oi.amount / oi.quantity) ELSE oi.unit_price END AS unit_price,
-                    o.order_date AS sold_at,
-                    ROW_NUMBER() OVER (PARTITION BY oi.item_id ORDER BY o.order_date DESC, oi.id DESC) AS rn
-             FROM order_items oi JOIN orders o ON o.id = oi.order_id
-             WHERE oi.item_id IN (${ph}) AND o.status != 'CANCELLED' AND oi.amount > 0${efOrd.clause}
-           ) WHERE rn = 1`,
-        ).bind(...ids, ...efOrd.params).all<{ item_id: number; unit_price: number; sold_at: string }>()
-        const stockMap = new Map((stock.results || []).map((s) => [Number(s.item_id), Number(s.q)]))
-        const lastMap = new Map((last.results || []).map((l) => [Number(l.item_id), l]))
+        // ⚠️80 청크 — `limit=100` 이면 품목 100개에 entity 1개가 붙어 **101 바인드**가 되어 D1 이 throw 한다
+        //   (prod 실측 2026-09-21: limit 99=200 · **100=500**). `safeLimit` 은 500 까지 허용하고
+        //   화면은 50 만 쓰기 때문에 사람 눈엔 안 보였다. 두 쿼리 다 집계/최상위 1건이라 청크로 나눠 합쳐도 같다.
+        const stockMap = new Map<number, number>()
+        const lastMap = new Map<number, { item_id: number; unit_price: number; sold_at: string }>()
+        for (let i = 0; i < ids.length; i += 80) {
+          const chunk = ids.slice(i, i + 80)
+          const cph = chunk.map(() => '?').join(',')
+          const stock = await c.env.DB.prepare(
+            `SELECT item_id, SUM(quantity) AS q FROM inventory WHERE item_id IN (${cph})${efInv.clause} GROUP BY item_id`,
+          ).bind(...chunk, ...efInv.params).all<{ item_id: number; q: number }>()
+          for (const s of stock.results || []) stockMap.set(Number(s.item_id), Number(s.q))
+          const last = await c.env.DB.prepare(
+            `SELECT item_id, unit_price, sold_at FROM (
+               SELECT oi.item_id,
+                      CASE WHEN oi.quantity > 0 THEN ROUND(oi.amount / oi.quantity) ELSE oi.unit_price END AS unit_price,
+                      o.order_date AS sold_at,
+                      ROW_NUMBER() OVER (PARTITION BY oi.item_id ORDER BY o.order_date DESC, oi.id DESC) AS rn
+               FROM order_items oi JOIN orders o ON o.id = oi.order_id
+               WHERE oi.item_id IN (${cph}) AND o.status != 'CANCELLED' AND oi.amount > 0${efOrd.clause}
+             ) WHERE rn = 1`,
+          ).bind(...chunk, ...efOrd.params).all<{ item_id: number; unit_price: number; sold_at: string }>()
+          for (const l of last.results || []) lastMap.set(Number(l.item_id), l)
+        }
         for (const r of rows) {
           if (!ids.includes(Number(r.id))) continue
           r.stock_qty = stockMap.has(Number(r.id)) ? stockMap.get(Number(r.id)) : 0
