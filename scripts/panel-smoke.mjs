@@ -1463,6 +1463,63 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
     '그 문구가 멀쩡한 Z: 를 지목해 사람이 드라이브를 보러 갔다')
 }
 
+// ── §16 전사 안쪽 탭이 **실제로** 전환되는가 ─────────────────────────
+// ★텍스트 게이트로는 영원히 못 잡는 종류다 — 마크업도 JS 도 옳았고, 진 것은 **CSS 순서**였다.
+//   `.trpage`(style.css L199)가 `.hidden`(L21)보다 뒤에 있어 특정도가 같으면 이겼고,
+//   숨겨야 할 페이지가 계속 보였다. 가로등·윈드 입력이 **동시에 렌더돼** 실기에서
+//   「탭이 나뉘어 있는데 입력창이 동일하다」로 보고됐다(2026-09-21).
+//   그래서 여기서는 소스가 아니라 **브라우저가 계산한 가시성**을 잰다.
+{
+  const p16 = await openPanel(CONFIG)
+  await p16.click('.mtab[data-main-tab="tr"]')
+  await p16.waitForTimeout(150)
+
+  const vis = (sel) => p16.evaluate((s) => {
+    const el = document.querySelector(s)
+    if (!el) return 'missing'
+    return getComputedStyle(el).display !== 'none' && el.offsetParent !== null
+  }, sel)
+
+  ok('16 전사 탭이 열린다', await vis('[data-main-page="tr"]'))
+  ok('16 처음엔 가로등 입력이 보인다', await vis('[data-trpage="plate"]'))
+  ok('16 ★그때 윈드 입력은 **안 보인다**', (await vis('[data-trpage="frame"]')) === false,
+    'CSS 순서가 뒤집히면 둘이 같이 뜬다 — 사람 눈에는 「입력창이 동일」로 보인다')
+  ok('16 규격 입력칸은 가로등 쪽에만 있다', await vis('#trSpecW'))
+  ok('16 ★틀 고르개는 그때 안 보인다', (await vis('#trFrame')) === false)
+
+  await p16.click('.trtab[data-trtab="frame"]')
+  await p16.waitForTimeout(150)
+  ok('16 윈드로 바꾸면 윈드 입력이 보인다', await vis('[data-trpage="frame"]'))
+  ok('16 ★그때 가로등 입력은 사라진다', (await vis('[data-trpage="plate"]')) === false)
+
+  // 고를 수 없는 선택지를 남기지 않는다 — 탭이 곧 용도다
+  ok('16 ★윈드에는 「판 만들기」가 없다', (await vis('#trBtnMake')) === false,
+    '눌러도 거절 문구만 나오는 버튼이다')
+  ok('16 윈드에는 「틀 열기」가 있다', await vis('#trBtnFrame'))
+
+  await p16.click('.trtab[data-trtab="plate"]')
+  await p16.waitForTimeout(150)
+  ok('16 가로등으로 돌아오면 「판 만들기」가 있다', await vis('#trBtnMake'))
+  ok('16 ★가로등에는 「틀 열기」가 없다', (await vis('#trBtnFrame')) === false)
+
+  ok('16 콘솔 에러 0', p16.__errs.length === 0, p16.__errs.join(' | '))
+  await p16.close()
+}
+
+// ── §17d 전사 호스트 — 문서를 넘나드는 duplicate 은 그룹을 못 받는다 ──
+// ★일러 30.7 최소 재현(2026-09-21): 같은 원본을 **다른 문서의 groupItem** 으로 복제하면
+//   `1346458189 ('PARM')`, **다른 문서의 layer** 로 복제하면 ok. 오류는 코드번호 하나뿐이라
+//   무엇이 틀렸는지 말해 주지 않는다 — 실기에서 [판 만들기] 가 매번 이걸로 죽었다.
+//   makePlate 는 documents.add 로 **새 문서**를 만든 뒤 원본을 복제하므로 항상 이 경로를 지난다.
+{
+  const trh = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-tr-host.jsx'), 'utf8')
+  const dupArgs = [...trh.matchAll(/\.duplicate\(\s*([A-Za-z_$][\w$]*)/g)].map((m) => m[1])
+  ok('17d duplicate 대상이 레이어다', dupArgs.length > 0 && dupArgs.every((a) => /^ly/.test(a)),
+    '받은 인자: ' + dupArgs.join(',') + ' — 그룹(grp)을 주면 새 문서에서 PARM 으로 죽는다')
+  ok('17d 왜 그런지가 코드 옆에 적혀 있다', /PARM/.test(trh) && /1346458189/.test(trh),
+    '코드번호만 뜨는 오류다 — 사유가 없으면 다음 사람이 처음부터 다시 찾는다')
+}
+
 await browser.close()
 let pass = 0
 for (const r of results) {

@@ -670,8 +670,10 @@
       <!-- ── 공통 ── -->
       <div class="row buttons">
         <button id="trBtnCalc" type="button">계산</button>
+        <!-- ★탭마다 쓰는 것만 보인다(trTab 이 토글) — 가로등에 「틀 열기」, 윈드에 「판 만들기」는
+             고를 수 없는 선택지다. 윈드는 틀을 열어 디자이너가 앉히는 축이라 판을 만들지 않는다. -->
         <button id="trBtnMake" type="button" class="mini" disabled>판 만들기</button>
-        <button id="trBtnFrame" type="button" class="mini" title="틀 파일을 일러에서 엽니다">틀 열기</button>
+        <button id="trBtnFrame" type="button" class="mini hidden" title="틀 파일을 일러에서 엽니다">틀 열기</button>
       </div>
 
       <div id="trOut" class="out">준비됨</div>

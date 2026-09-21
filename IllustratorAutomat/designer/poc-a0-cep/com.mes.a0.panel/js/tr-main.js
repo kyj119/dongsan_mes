@@ -17,7 +17,7 @@
 (function () {
   'use strict';
 
-  var TR_SHELL_VERSION = '0.2.1';   // 0.2.1 = ★호스트 미로드를 **부팅 때** 알린다. 종전엔 `none` 을 조용히 넘겨 `host ?` 만 떴고 사람은 [판 만들기] 를 누르고서야 알았다. 그리고 그때 뜨는 문구가 **Z: 를 범인으로 단정**했는데(2026-09-18 실기) 진짜 원인은 이 PC 의 스텁이 전사 호스트를 목록에 안 넣은 것이었다 — Z: 는 멀쩡했고 사람은 드라이브를 보러 갔다. → 사유를 스텁에게 되묻고(oldstub·loaderr·notloaded) **조치가 다른 세 갈래**로 나눠 말한다. 잃는 것: 없음(산식·판·payload 불변) · 0.2.0 = 원본 측정(mesTr_measure) → 도련 경로 결정 → 배치·클리핑까지 · 0.1.0 = 신설
+  var TR_SHELL_VERSION = '0.2.2';   // 0.2.2 = ★안쪽 탭이 **전환되지 않고 있었다**. `.trpage`(style.css L199)가 `.hidden`(L21)보다 뒤에 있어 특정도가 같으면 이겼고, 숨겨야 할 페이지가 계속 보였다 — 가로등·윈드 입력이 동시에 렌더돼 실기에서 「입력창이 동일하다」로 보고됐다. `.trpage.hidden` 로 못박았다(`.mainpage.hidden` 과 같은 방식). 겸해서 **탭마다 쓰는 버튼만** 남긴다 — 가로등의 「틀 열기」·윈드의 「판 만들기」는 눌러도 거절 문구만 나오는 선택지였다. 게이트 = `panel:smoke` §16(브라우저에서 실제 가시성을 잰다 — 텍스트 게이트로는 영원히 못 잡는 종류다). 잃는 것: 없음(산식·payload 불변) · 0.2.1 = ★호스트 미로드를 **부팅 때** 알린다. 종전엔 `none` 을 조용히 넘겨 `host ?` 만 떴고 사람은 [판 만들기] 를 누르고서야 알았다. 그리고 그때 뜨는 문구가 **Z: 를 범인으로 단정**했는데(2026-09-18 실기) 진짜 원인은 이 PC 의 스텁이 전사 호스트를 목록에 안 넣은 것이었다 — Z: 는 멀쩡했고 사람은 드라이브를 보러 갔다. → 사유를 스텁에게 되묻고(oldstub·loaderr·notloaded) **조치가 다른 세 갈래**로 나눠 말한다. 잃는 것: 없음(산식·판·payload 불변) · 0.2.0 = 원본 측정(mesTr_measure) → 도련 경로 결정 → 배치·클리핑까지 · 0.1.0 = 신설
   // ★호스트 최소 버전 — `mesTr_measure` 와 도련 색 전달은 **0.2.0 부터**다.
   //   구 호스트(0.1.0)는 `M:solid,c,m,y,k` 의 색을 조용히 무시하고 자리 표시 선만 그린다
   //   → 판은 나오는데 도련이 없다. 조용한 격하라서 버전을 못박는다.
@@ -167,6 +167,10 @@
     var t = document.querySelectorAll('.trtab'), p = document.querySelectorAll('[data-trpage]'), i;
     for (i = 0; i < t.length; i++) t[i].className = (t[i].getAttribute('data-trtab') === name) ? 'trtab active' : 'trtab';
     for (i = 0; i < p.length; i++) p[i].className = (p[i].getAttribute('data-trpage') === name) ? 'trpage' : 'trpage hidden';
+    // ★고를 수 없는 선택지를 남겨 두지 않는다 — 가로등에 「틀 열기」, 윈드에 「판 만들기」는 눌러도
+    //   거절 문구만 나온다(실기 보고 2026-09-21). 탭이 곧 용도다.
+    show(el.btnMake, name === 'plate');
+    show(el.btnFrame, name === 'frame');
     lastPlan = null;
     if (el.btnMake) el.btnMake.disabled = true;
   }

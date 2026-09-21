@@ -23,7 +23,7 @@
  * ⚠️ 반환은 ASCII 만 — 한글을 돌려주면 CEP 브릿지에서 깨진다.
  */
 
-var MESTR_VERSION = 'TR-CEP-0.2.1';   // 0.2.1 = ★이 파일이 **한 번도 안 실렸다**. 머리말 주석의 `const/let/화살표/**JSON**/Array.map` 에서 `**/` 가 블록 주석을 닫아, 뒤 문장이 코드로 파싱되며 파일 전체가 구문 오류였다(ExtendScript: 「구문 오류: 필요 항목: ;」). 0.1.0·0.2.0 둘 다 Z: 에 나갔지만 스텁이 애초에 이 파일을 안 읽어(손목록) **증상이 가려져 있었고**, 스텁을 열거로 고치자(stub-3.0.0) 비로소 드러났다. 고친 것은 주석 한 줄뿐 — 로직·산식·payload 전부 불변. 게이트 = `npm run audit:jsx-syntax`(IA 의 .jsx·패널 js 를 실제로 파싱한다 — 여태 **아무 게이트도 파싱하지 않았다**). 잃는 것: 없음 · 0.2.0 = 
+var MESTR_VERSION = 'TR-CEP-0.2.2';   // 0.2.2 = ★[판 만들기] 가 `PARM` 으로 죽던 것. **문서를 넘나드는 `duplicate` 은 그룹을 받으면 안 된다** — 일러 30.7 최소 재현(2026-09-21): 다른 문서의 groupItem 으로 복제 → `1346458189 ('PARM')` · 다른 문서의 **layer** 로 복제 → ok · copy/paste → ok. 원본은 srcDoc 에 있고 그룹은 `documents.add` 로 막 만든 새 문서에 있어 매번 걸렸다. 오류 문구가 코드번호 하나뿐이라 무엇이 틀렸는지 안 알려 준다. → 레이어로 복제한 뒤 **같은 문서 안에서** 그룹으로 모은다(이동은 동일 문서라 안전). 잃는 것: 없음(배치·클리핑·산식 불변) · 0.2.1 = ★이 파일이 **한 번도 안 실렸다**. 머리말 주석의 `const/let/화살표/**JSON**/Array.map` 에서 `**/` 가 블록 주석을 닫아, 뒤 문장이 코드로 파싱되며 파일 전체가 구문 오류였다(ExtendScript: 「구문 오류: 필요 항목: ;」). 0.1.0·0.2.0 둘 다 Z: 에 나갔지만 스텁이 애초에 이 파일을 안 읽어(손목록) **증상이 가려져 있었고**, 스텁을 열거로 고치자(stub-3.0.0) 비로소 드러났다. 고친 것은 주석 한 줄뿐 — 로직·산식·payload 전부 불변. 게이트 = `npm run audit:jsx-syntax`(IA 의 .jsx·패널 js 를 실제로 파싱한다 — 여태 **아무 게이트도 파싱하지 않았다**). 잃는 것: 없음 · 0.2.0 = 
 //   0.2.0 = ★원본 배치 + 도련 + 클리핑(2026-09-18). 0.1.0 은 자리 표시 선만 그렸다.
 //           · `mesTr_measure` — 고른 원본의 크기와 **바탕이 단색인가**를 잰다.
 //             ExtendScript 는 픽셀을 못 읽으므로 **맨 뒤 도형이 전체를 덮는 단색 채움인가**로 본다
@@ -263,14 +263,23 @@ function mesTr_makePlate(payload) {
       if (bgCol) { filled(lyArt, pan, bgCol); bled++; }
 
       if (srcSel && des) {
-        var grp = lyArt.groupItems.add();
-        var j, dup, any = false;
+        // ★**문서를 넘나드는 duplicate 은 그룹을 받으면 PARM 으로 죽는다.**
+        //   일러 30.7 실측(2026-09-21): 같은 원본을
+        //     · 다른 문서의 **groupItem** 으로 → ERR 1346458189 ('PARM')
+        //     · 다른 문서의 **layer** 로      → ok
+        //   증상은 「ERROR makePlate an Illustrator error occurred: 1346458189 ('PARM')」 하나뿐이라
+        //   무엇이 틀렸는지 말해 주지 않는다. → **레이어로 복제한 뒤 같은 문서 안에서 그룹으로 모은다.**
+        var j, dup, dups = [];
         for (j = 0; j < srcSel.length; j++) {
-          dup = srcSel[j].duplicate(grp, ElementPlacement.PLACEATEND);
-          if (dup) any = true;
+          dup = srcSel[j].duplicate(lyArt, ElementPlacement.PLACEATEND);
+          if (dup) dups.push(dup);
         }
-        if (!any) {
-          grp.remove();
+        var grp = null;
+        if (dups.length) {
+          grp = lyArt.groupItems.add();                       // 그룹 생성·이동은 **같은 문서 안**이라 안전하다
+          for (j = 0; j < dups.length; j++) dups[j].move(grp, ElementPlacement.PLACEATEND);
+        }
+        if (!grp) {
           notes.push('dupfail=' + i);
         } else {
           // 원본을 자리에 맞춘다 — ★가로는 그대로, 세로만 늘어난다(수축보정은 des.h 에 이미 들어 있다)
