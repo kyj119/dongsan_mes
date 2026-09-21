@@ -540,12 +540,23 @@ export async function deriveOrderType(db: D1Database, items: Array<{ item_id?: n
   const rawIds = (items || []).map((it) => Number(it?.item_id)).filter((n) => Number.isFinite(n) && n > 0)
   if (!items || !items.length || rawIds.length !== items.length) return 'PRODUCTION'
   const ids = Array.from(new Set(rawIds))
-  const ph = ids.map(() => '?').join(',')
-  const row = await db.prepare(
-    `SELECT COUNT(*) AS n, SUM(CASE WHEN IFNULL(production_required, 1) = 0 THEN 1 ELSE 0 END) AS stock_only FROM items WHERE id IN (${ph})`,
-  ).bind(...ids).first<{ n: number; stock_only: number }>()
-  if (!row || Number(row.n) !== ids.length) return 'PRODUCTION'
-  return Number(row.stock_only) === ids.length ? 'DISTRIBUTION' : 'PRODUCTION'
+  // D1 바인드 한도(~100)라 80 청크로 나눈다. 한 주문의 distinct 품목 수는 보통 bounded 지만
+  // 라인이 많은 주문에서 100을 넘으면 「too many SQL variables」로 throw 해 **주문 등록이 500** 이 된다.
+  // 집계 둘 다 합이라 청크로 나눠 더해도 결과가 같다(COUNT·SUM — 겹치는 id 가 없으므로 이중계상 없음).
+  let found = 0
+  let stockOnly = 0
+  for (let i = 0; i < ids.length; i += 80) {
+    const chunk = ids.slice(i, i + 80)
+    const ph = chunk.map(() => '?').join(',')
+    const row = await db.prepare(
+      `SELECT COUNT(*) AS n, SUM(CASE WHEN IFNULL(production_required, 1) = 0 THEN 1 ELSE 0 END) AS stock_only FROM items WHERE id IN (${ph})`,
+    ).bind(...chunk).first<{ n: number; stock_only: number }>()
+    if (!row) return 'PRODUCTION'
+    found += Number(row.n) || 0
+    stockOnly += Number(row.stock_only) || 0
+  }
+  if (found !== ids.length) return 'PRODUCTION'
+  return stockOnly === ids.length ? 'DISTRIBUTION' : 'PRODUCTION'
 }
 
 // ── (은퇴 2026-08-19) 자동가공 잡 생성 enqueueAutoProcessJobsForItems ──
