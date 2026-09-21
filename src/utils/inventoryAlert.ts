@@ -26,10 +26,16 @@ export async function triggerLowStockAlert(
 
   // 1. 이미 ACTIVE 알림이 있는 품목은 제외
   const itemIds = items.map(i => i.item_id)
-  const ph = itemIds.map(() => '?').join(',')
-  const { results: existing } = await db.prepare(
-    `SELECT item_id FROM stock_alerts WHERE item_id IN (${ph}) AND status = 'ACTIVE'`
-  ).bind(...itemIds).all()
+  // ⚠️80 청크 — 호출부가 넘기는 저재고 품목 배열이라 상한이 없다(품목 수가 많으면 100 을 넘는다).
+  const existing: any[] = []
+  for (let i = 0; i < itemIds.length; i += 80) {
+    const chunk = itemIds.slice(i, i + 80)
+    const ph = chunk.map(() => '?').join(',')
+    const r = await db.prepare(
+      `SELECT item_id FROM stock_alerts WHERE item_id IN (${ph}) AND status = 'ACTIVE'`
+    ).bind(...chunk).all()
+    existing.push(...(r.results || []))
+  }
   const existingSet = new Set((existing || []).map((e: any) => e.item_id))
 
   const newItems = items.filter(i => !existingSet.has(i.item_id))

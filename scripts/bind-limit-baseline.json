@@ -9,30 +9,20 @@
       "risk": "edge",
       "reason": "상한 Math.min(body.limit||30,1..100) = **정확히 100**(:107). 이 쿼리에 상수 바인드가 하나만 더 붙으면 101 로 터진다 — 2026-09-21 items.ts 가 그 실물"
     },
-    "src/routes/inventory.ts|itemIds": {
-      "line": 535,
-      "risk": "input",
-      "reason": "입고 요청 본문 items 의 품목 id — 상한 가드 없음"
-    },
     "src/routes/inventory.ts|cancelItemIds": {
-      "line": 728,
+      "line": 734,
       "risk": "low",
       "reason": "취소 대상 입고 1건의 라인 품목 — 한 전표의 하위 행"
     },
     "src/routes/inventory.ts|cIds": {
-      "line": 790,
+      "line": 796,
       "risk": "low",
       "reason": "입고 1건의 라인 품목 — 한 전표의 하위 행"
     },
-    "src/routes/inventory.ts|releaseItemIds": {
-      "line": 965,
-      "risk": "input",
-      "reason": "출고 요청 본문 items 의 품목 id — 상한 가드 없음"
-    },
     "src/routes/inventory.ts|lowItemIds": {
-      "line": 1031,
+      "line": 1044,
       "risk": "input",
-      "reason": "저재고 조회 결과 — 지배 LIMIT 미확인. 재검토 대상"
+      "reason": "출고 라인 중 안전재고 이하만 — 출고 본문 라인 수에 종속. 상한 가드 없음(형제 releaseItemIds 는 2026-09-21 청크 적용)"
     },
     "src/routes/inventoryCount.ts|ids": {
       "line": 211,
@@ -56,13 +46,13 @@
     },
     "src/routes/orders/lifecycle.ts|(confirmed_card_ids as number[])": {
       "line": 224,
-      "risk": "input",
-      "reason": "요청 본문 — 다만 한 주문의 카드라 실질 bounded"
+      "risk": "low",
+      "reason": "한 주문의 카드 id — prod 실측 **주문당 카드 최대 2장**(2026-09-21). 요청 본문이지만 실질 bounded"
     },
     "src/routes/orders/lifecycle.ts|(cancelled_card_ids as number[])": {
       "line": 233,
-      "risk": "input",
-      "reason": "요청 본문 — 다만 한 주문의 카드라 실질 bounded"
+      "risk": "low",
+      "reason": "한 주문의 카드 id — prod 실측 **주문당 카드 최대 2장**(2026-09-21). 요청 본문이지만 실질 bounded"
     },
     "src/routes/orders/queries.ts|CONSOLIDATABLE_ORDER_STATUSES": {
       "line": 118,
@@ -104,11 +94,6 @@
       "risk": "low",
       "reason": "고정 enum(utils/statusLabels)"
     },
-    "src/routes/shipments.ts|order_ids": {
-      "line": 546,
-      "risk": "input",
-      "reason": "POST /shipments/merge 요청 본문 — 하한(2건)만 있고 상한 가드 없음"
-    },
     "src/routes/tasks.ts|ids": {
       "line": 169,
       "risk": "bound",
@@ -117,7 +102,7 @@
     "src/routes/taxInvoices/batch.ts|orderIds": {
       "line": 96,
       "risk": "input",
-      "reason": "묶음 그룹의 order_ids — 상한 가드 없음. prod tax_invoices 0행이라 잠복"
+      "reason": "★가드 없음 — group.order_ids(body). 한 거래처 한 달 주문이면 100 을 넘길 수 있다. prod tax_invoices 0행이라 **잠복**(2026-09-21 실측)"
     },
     "src/routes/taxInvoices/helpers.ts|agg.groupIds": {
       "line": 455,
@@ -127,7 +112,7 @@
     "src/routes/taxInvoices/issue.ts|orderIds": {
       "line": 331,
       "risk": "input",
-      "reason": "★body.order_ids 직결·상한 가드 없음. prod tax_invoices 0행이라 아직 잠복(2026-09-21 실측)"
+      "reason": "★가드 없음 — body.order_ids 직결. 같은 함수에서 여러 번 쓰여 청크가 단순 치환이 아니다. prod tax_invoices 0행이라 **잠복**"
     },
     "src/routes/taxInvoices/issue.ts|groupIds": {
       "line": 731,
@@ -141,8 +126,8 @@
     },
     "src/routes/workbench.ts|sts": {
       "line": 831,
-      "risk": "input",
-      "reason": "쿼리 status 콤마 split — 상한 가드 없지만 실제 값은 상태 enum 수만큼"
+      "risk": "low",
+      "reason": "쿼리 status 콤마 split — 대상이 designer_intakes.status enum 이라 실제 값은 한 자릿수. 읽기 필터라 최악도 500 1회"
     },
     "src/routes/workbench.ts|modes": {
       "line": 860,
@@ -163,11 +148,6 @@
       "line": 42,
       "risk": "low",
       "reason": "내부 법인 거래처 id 상수 3건"
-    },
-    "src/utils/inventoryAlert.ts|itemIds": {
-      "line": 29,
-      "risk": "input",
-      "reason": "호출부가 넘기는 품목 배열 — 상한 가드 없음. 재검토 대상"
     },
     "src/utils/materialShortageCheck.ts|materialIds": {
       "line": 65,

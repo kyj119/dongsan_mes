@@ -531,9 +531,15 @@ inventoryRouter.post('/receipts', requireEditOrRole('/receiving', 'ADMIN', 'MANA
     // 평균원가 **공백만** 채운다 — 발주 입고(po-receive)와 **같은 판정**. 형제 경로라 갈리면 한쪽만 채워진다.
     const avgCostMap = new Map<number, number | null>()
     {
-      const { results: psRows } = await c.env.DB.prepare(
-        `SELECT id, pack_size, unit, base_unit, avg_unit_cost FROM items WHERE id IN (${itemIds.map(() => '?').join(',')})`
-      ).bind(...itemIds).all<{ id: number; pack_size: number | null; unit: string | null; base_unit: string | null; avg_unit_cost: number | null }>()
+      // ⚠️80 청크 — itemIds 는 입고 요청 본문의 라인에서 나온다. 100줄 넘는 일괄 입고면 바인드 한도로 500.
+      const psRows: Array<{ id: number; pack_size: number | null; unit: string | null; base_unit: string | null; avg_unit_cost: number | null }> = []
+      for (let i = 0; i < itemIds.length; i += 80) {
+        const chunk = itemIds.slice(i, i + 80)
+        const r = await c.env.DB.prepare(
+          `SELECT id, pack_size, unit, base_unit, avg_unit_cost FROM items WHERE id IN (${chunk.map(() => '?').join(',')})`
+        ).bind(...chunk).all<{ id: number; pack_size: number | null; unit: string | null; base_unit: string | null; avg_unit_cost: number | null }>()
+        psRows.push(...(r.results || []))
+      }
       for (const r of psRows || []) {
         packMap.set(Number(r.id), packFactor(r))
         unitMap.set(Number(r.id), r.unit || 'EA')
@@ -962,10 +968,17 @@ inventoryRouter.post('/releases', requireEditOrRole('/inventory', 'ADMIN', 'MANA
     // 출고 차감 대상 창고 = 품목 기본창고 (UP1). NULL=미배정 행에서 차감.
     const releaseItemIds = items.map((item: any) => item.item_id)
     const relZoneMap = await getItemDefaultZones(c.env.DB, releaseItemIds, entityId)
-    const relPh = releaseItemIds.map(() => '?').join(',')
-    const { results: stockRows } = await c.env.DB.prepare(
-      `SELECT item_id, storage_zone_id, quantity FROM inventory WHERE item_id IN (${relPh}) AND entity_id = ?`
-    ).bind(...releaseItemIds, entityId).all()
+    // ⚠️80 청크 — releaseItemIds 는 출고 요청 본문의 라인에서 나온다. entity_id 가 한 칸 더 붙으므로
+    //   80 이어도 81 이다(2026-09-21 items.ts 가 100+1=101 로 prod 500 이었다 — 여유를 둔다).
+    const stockRows: any[] = []
+    for (let i = 0; i < releaseItemIds.length; i += 80) {
+      const chunk = releaseItemIds.slice(i, i + 80)
+      const relPh = chunk.map(() => '?').join(',')
+      const r = await c.env.DB.prepare(
+        `SELECT item_id, storage_zone_id, quantity FROM inventory WHERE item_id IN (${relPh}) AND entity_id = ?`
+      ).bind(...chunk, entityId).all()
+      stockRows.push(...(r.results || []))
+    }
     const stockMap: Record<string, number> = {}
     for (const s of stockRows) stockMap[`${s.item_id}:${(s.storage_zone_id as number | null) ?? 0}`] = s.quantity as number
     // 품목 기본창고 행 재고

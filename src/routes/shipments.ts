@@ -844,11 +844,17 @@ shipmentsRouter.post('/merge', requireEditOrRole('/shipments', 'MANAGER'), async
     // 실제 출고 시점에 함께 나감). 대기 가시성 = /daily consolidate_partner_pending_date 배지.
     // status 조건은 후보 조회(:300)와 동일 — 취소·삭제·초안·견적 주문이 묶음에 섞이던
     //   형제-비대칭 차단(2026-07-29 구조감사). 법인 조건은 의도적으로 없음(cross-entity 합포장 = 요구사항).
-    const ph = order_ids.map(() => '?').join(',')
-    const { results: orders } = await c.env.DB.prepare(
-      `SELECT id, client_id, delivery_date FROM orders
-       WHERE id IN (${ph}) AND status NOT IN ('CANCELLED', 'DELETED', 'DRAFT', 'QUOTATION')`
-    ).bind(...order_ids).all<{ id: number; client_id: number; delivery_date: string | null }>()
+    // ⚠️80 청크 — order_ids 는 요청 본문이고 상한 가드가 없다(하한 2건만 있다).
+    const orders: Array<{ id: number; client_id: number; delivery_date: string | null }> = []
+    for (let i = 0; i < order_ids.length; i += 80) {
+      const chunk = order_ids.slice(i, i + 80)
+      const ph = chunk.map(() => '?').join(',')
+      const r = await c.env.DB.prepare(
+        `SELECT id, client_id, delivery_date FROM orders
+         WHERE id IN (${ph}) AND status NOT IN ('CANCELLED', 'DELETED', 'DRAFT', 'QUOTATION')`
+      ).bind(...chunk).all<{ id: number; client_id: number; delivery_date: string | null }>()
+      orders.push(...(r.results || []))
+    }
     if (orders.length !== order_ids.length) {
       return c.json({ success: false, error: '취소·삭제·견적 상태이거나 존재하지 않는 주문이 포함되어 있습니다.' }, 404)
     }
