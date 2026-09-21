@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-09-21T02:15:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-09-21T06:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,21 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **571** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-09-21T06:20):**
+> - **방법**: 세션 시작 시 detached HEAD `f24297d`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area2 사이클 세션시작 HEAD `6a837c8`)**: `git log 6a837c8..HEAD` **6커밋** — 전부 이번 순환(Area2→3→4→5→6→1) 자신들의 북키핑 커밋뿐, `git diff --stat 6a837c8..HEAD -- src/routes src/types src/utils migrations index.tsx` = **0파일**. Area1·3·4·5·6가 이번 순환에서 각자 렌즈로 이미 "애플리케이션 코드 churn 0"을 확인했고, Area2 고유 스코프(entity_id INSERT·N+1·authMiddleware·타입불일치·SELECT 컬럼존재성)로도 동일 재확인 — 정독할 신규 코드 자체가 없음.
+> - **standing scan 1: `npm run audit:entity`** — 검사 132파일·entity테이블 SELECT 75건·누락 **0건**(변동없음).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 4건 전부 기존 FP 유지(`attendance.ts:171`·`dashboard.ts:420`·`workbench.ts:577`·`itemUnits.ts:162`).
+> - **standing scan 3: `npm run branch:clean`** — 삭제대상 0건(SKIP 1=main).
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(변동없음).
+> - **CI 헬스**: `actions_list(deploy.yml, branch:main)` 최근 5런 전부 `conclusion:success`(최종 HEAD `f24297d` 포함, run #2019).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **5**(#654·#650·#626·#617·#616, 변동없음). `#654`(Area2 자신이 32회차 전 세션에 등록한 고아 라우트+형제누락)는 reaction 0·comment 0·PR 0 — owner 미검토 상태 그대로, 라우트 삭제/로직변경은 SKILL.md 자동수정 금지 대상이라 재작업 불요.
+> - **backlog↔GitHub 절대값 재동기화**: open **5**(변동없음) · done **571**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md `line N` 잔여참조 재확인(0건, 이미 서술식 완료, 2026-09-19 정리분 유지). 이번 사이클은 6개 Area 전체가 이번 순환에서 관측한 "애플리케이션 코드 churn 0"을 Area2 렌즈로 재확인한 사례일 뿐 새 클래스 없음.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 11건 → 이번 추가 후 12건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(0-churn 재확인, CI healthy, 자동수정 대상 코드 없음), 자동수정 0건, done-sync: open 5(변동없음)·done 571(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-09-21T02:15):**
 > - **방법**: 세션 시작 시 detached HEAD `ee5dc9d`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
