@@ -156,24 +156,63 @@ function Get-TnsRipCandidates {
 
 # ── 립 축이 살아 있나 (설정된 경로가 실제로 자라고 있나) ──────────
 function Test-RipAxis {
-    param([string]$LogPath, [int]$StaleDays = 3)
+    param(
+        [string]$LogPath, [int]$StaleDays = 3,
+        [string]$AppDir, [string]$EquipmentId, [string]$Stamp,
+        [int]$DeadDays = 30      # 이만큼 죽어 있어야 자동 교체 후보로 본다(경고보다 훨씬 보수적)
+    )
 
-    if (-not $LogPath) { return }
+    if (-not $LogPath) { return $false }
     L "립 축 점검(신원)..."
+    $dead = $true
     if (-not (Test-Path -LiteralPath $LogPath)) {
         L ("  ✗ 설정된 립 로그가 없습니다: " + $LogPath)
     } else {
         $fi = [IO.FileInfo]$LogPath
         $age = ((Get-Date) - $fi.LastWriteTime).TotalDays
         L ("  설정 경로: {0}  (마지막 기록 {1:yyyy-MM-dd HH:mm}, {2:N1}일 전)" -f $LogPath, $fi.LastWriteTime, $age)
-        if ($age -lt $StaleDays) { L "  립 축 정상"; return }
+        if ($age -lt $StaleDays) { L "  립 축 정상"; return $false }
         L ("  ⚠ " + $StaleDays + "일 넘게 안 자랐습니다 — 실적이 안 올라오는 원인일 수 있습니다.")
+        if ($age -lt $DeadDays) { $dead = $false }
     }
     $cands = Get-TnsRipCandidates
-    if ($cands.Count -eq 0) { L "  이 PC 에서 다른 TNSRip 설치본을 못 찾았습니다."; return }
+    if ($cands.Count -eq 0) { L "  이 PC 에서 다른 TNSRip 설치본을 못 찾았습니다."; return $false }
     L "  이 PC 의 TNSRip 후보(최근 기록순):"
     foreach ($c in $cands) { L ("    - {0}  ({1:yyyy-MM-dd HH:mm}, {2:N0} bytes)" -f $c.Path, $c.LastWrite, $c.Size) }
-    L "  → 위 목록에 더 최근 파일이 있으면 담당자에게 알리세요(경로 교체는 재적재 위험이 있어 수동입니다)."
+
+    # ── 자동 교체 — 의심의 여지가 없을 때만 ──
+    # 2026-09-22 HSM-05 실물: 설정 C:\TNSRip-X1(2023-10-14, 12KB 잔해) ↔ 실제 D:\TNSRip-X1(당일, 2.5MB).
+    # **드라이브만 다른 같은 경로**라 사람 눈으로도 안 보였고 3년을 그대로 지나왔다.
+    # ★ 처음엔 "재적재 위험이 있어 수동" 으로 두었으나, 그 위험의 원인은 위치 파일이 **옛 파일 기준**이라는
+    #   것 하나뿐이다 — 교체와 함께 위치 파일을 지우면 다음 기동이 first run(EOF 스킵)이라 과거가 안 들어온다.
+    #   위험이 사라졌으므로 조건을 좁혀 자동화한다. 조건 중 하나라도 안 맞으면 **보고만** 하고 손대지 않는다.
+    $fresh = @($cands | Where-Object { $_.Path -ne $LogPath -and ((Get-Date) - $_.LastWrite).TotalDays -lt $StaleDays })
+    if (-not $dead)            { L "  → 죽은 지 $DeadDays 일 미만이라 자동 교체하지 않습니다(일시 중단일 수 있음)."; return $false }
+    if ($fresh.Count -ne 1)    { L ("  → 최근 갱신된 후보가 " + $fresh.Count + "개라 자동 교체하지 않습니다(담당자 판단)."); return $false }
+    if (-not $AppDir -or -not $EquipmentId) { L "  → 설정 파일을 특정할 수 없어 자동 교체하지 않습니다."; return $false }
+
+    $eqPath = Join-Path $AppDir "equipment.json"
+    if (-not (Test-Path -LiteralPath $eqPath)) { L "  → equipment.json 이 없어 자동 교체하지 않습니다(레거시 구성)."; return $false }
+    $eq = $null
+    try { $eq = Read-JsonFile $eqPath } catch { }
+    if (-not $eq -or @($eq.watchers).Count -ne 1) { L "  → watcher 가 1개가 아니라 자동 교체하지 않습니다."; return $false }
+
+    $new = $fresh[0].Path
+    try {
+        Copy-Item $eqPath ($eqPath + ".bak-" + $Stamp) -Force
+        $eq.watchers[0].config.log_path = $new
+        [IO.File]::WriteAllText($eqPath, ($eq | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
+        # ★ 위치 파일 삭제 = 다음 기동이 first run → 새 파일 **끝**에서 시작한다.
+        #   안 지우면 옛 파일 기준 오프셋으로 새 파일을 읽어 과거분이 통째로 소급 전송된다.
+        $pos = Join-Path (Join-Path $AppDir "positions") ($EquipmentId + ".pos")
+        if (Test-Path -LiteralPath $pos) { Remove-Item -LiteralPath $pos -Force; L ("    립 위치 파일 삭제: " + $pos + " (다음 기동 EOF 시작)") }
+        L ("  ★ 립 경로 자동 교체: " + $LogPath + "  →  " + $new)
+        L ("    백업: equipment.json.bak-" + $Stamp)
+        return $true
+    } catch {
+        L ("  ✗ 자동 교체 실패: " + $_.Exception.Message + " — 기존 설정 유지")
+        return $false
+    }
 }
 
 # ── 현재 설정에서 자동 전환 대상(tns 단일 watcher) 판정 ───────────
@@ -188,7 +227,7 @@ function Resolve-TnsWatcher {
         $ws = @($eq.watchers)
         if ($ws.Count -ne 1) { return @{ Ok = $false; Reason = ("watcher " + $ws.Count + "개 — 단일 tns 구성만 자동 전환") } }
         $w = $ws[0]
-        if ($w.parser_type -eq "tns_printexp") { return @{ Ok = $false; Already = $true; Reason = "이미 tns_printexp"; LogPath = $w.config.log_path } }
+        if ($w.parser_type -eq "tns_printexp") { return @{ Ok = $false; Already = $true; Reason = "이미 tns_printexp"; LogPath = $w.config.log_path; EquipmentId = $w.equipment_id } }
         if ($w.parser_type -ne "tns") { return @{ Ok = $false; Reason = ("parser_type=" + $w.parser_type + " — 대상 아님") } }
         if (-not $w.config.log_path) { return @{ Ok = $false; Reason = "config.log_path 없음" } }
         return @{ Ok = $true; EquipmentId = $w.equipment_id; Name = $w.name; LogPath = $w.config.log_path; Source = "equipment.json" }
@@ -362,12 +401,13 @@ if ($svc) {
                 L ("  PrintExp 활성 설치본 " + $cands.Count + "개(모호) — 자동 전환 보류, 목록:")
                 foreach ($c2 in $cands) { L ("    - " + $c2.Dir) }
             }
-            Test-RipAxis -LogPath $tw.LogPath
+            # 방금 만든 equipment.json 을 대상으로 본다(위에서 전환했으면 그 파일이 정본)
+            if (Test-RipAxis -LogPath $tw.LogPath -AppDir $appDir -EquipmentId $tw.EquipmentId -Stamp $Stamp) { $autoApplied = $true }
         } elseif ($tw.Already) {
             L "tns_printexp 이미 적용됨 — 자동 전환 불필요"
             # ★ 전환이 끝난 PC 야말로 립 축이 죽어도 티가 안 난다 — 결과 축만으로 미상 이벤트가
             #   계속 나가기 때문이다(HSM-05 는 71건 전부 미상이었다). 그래서 여기서도 본다.
-            Test-RipAxis -LogPath $tw.LogPath
+            if (Test-RipAxis -LogPath $tw.LogPath -AppDir $appDir -EquipmentId $tw.EquipmentId -Stamp $Stamp) { $autoApplied = $true }
         } else {
             L ("자동 전환 대상 아님: " + $tw.Reason)
         }
