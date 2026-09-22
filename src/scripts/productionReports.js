@@ -220,15 +220,23 @@ function renderOverdueTable(data) {
 
   data.forEach(function(o) {
     var todayStr = (window.kstToday ? window.kstToday() : new Date().toISOString().substring(0, 10));
-    var isOverdue = o.due_date < todayStr;
+    // ⚠️API 가 주는 칸 이름은 `delivery_date` 다. 예전엔 여기서 `o.due_date` 를 읽어
+    //   ①마감일 칸이 「undefined」로 뜨고 ②`undefined < '2026-09-22'` 가 **항상 false** 라
+    //   「(지연)」이 영영 안 붙었다 — 지연을 보라고 만든 표에서 지연 표시만 빠져 있었다.
+    var dueDate = o.delivery_date || '';
+    var isOverdue = !!dueDate && dueDate < todayStr;
     var statusColor = isOverdue ? 'text-red-600 font-bold' : 'text-amber-600';
+    var dueText = (dueDate || '-') + (isOverdue ? ' (지연)' : '');
+    // 품목 수도 같은 축이었다 — API 가 `item_count` 를 아예 안 보내 「undefined」였다.
+    var itemCount = (o.item_count === null || o.item_count === undefined) ? '-' : o.item_count;
+    var orderNo = escapeHtml(o.order_number || '');
 
     html += '<tr class="hover:bg-gray-50">';
-    html += '<td class="px-3 py-2"><a href="/orders?search=' + o.order_number + '" class="text-blue-600 hover:underline">' + o.order_number + '</a></td>';
+    html += '<td class="px-3 py-2" title="' + orderNo + '"><a href="/orders?search=' + encodeURIComponent(o.order_number || '') + '" class="text-blue-600 hover:underline">' + orderNo + '</a></td>';
     html += '<td class="px-3 py-2" title="' + escapeHtml(o.client_name || '-') + '">' + escapeHtml(o.client_name || '-') + '</td>';
-    html += '<td class="px-3 py-2 ' + statusColor + '">' + o.due_date + (isOverdue ? ' (지연)' : '') + '</td>';
+    html += '<td class="px-3 py-2 ' + statusColor + '" title="' + escapeHtml(dueText) + '">' + escapeHtml(dueText) + '</td>';
     html += '<td class="px-3 py-2">' + window.MES_STATUS.orderLabel(o.status) + '</td>';
-    html += '<td class="px-3 py-2 text-right">' + o.item_count + '</td>';
+    html += '<td class="px-3 py-2 text-right">' + escapeHtml(itemCount) + '</td>';
     html += '</tr>';
   });
 

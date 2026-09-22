@@ -63,9 +63,13 @@ productionReportsRouter.get('/daily-summary', async (c) => {
     `).bind(targetDate).all()
 
     // 납기 초과 주문
+    // ★`item_count` 는 화면이 「품목 수」 열로 쓰는데 **여기서 안 보내 「undefined」가 떠 있었다**.
+    //   SELECT 절 상관 서브쿼리지만 바깥이 「납기 초과 + CONFIRMED/PRINTING」로 좁고 LIMIT 20 이라
+    //   재실행 횟수가 그 수를 못 넘는다(prod 실측 2건). 바깥이 자라는 축이 아니다(§audit:subquery).
     const ef = entityFilter(c, 'o')
     const { results: overdue } = await c.env.DB.prepare(`
-      SELECT o.id, o.order_number, o.delivery_date, c.client_name, o.status
+      SELECT o.id, o.order_number, o.delivery_date, c.client_name, o.status,
+             (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS item_count
       FROM orders o
       LEFT JOIN clients c ON o.client_id = c.id
       WHERE o.delivery_date < ? AND o.status IN ('CONFIRMED', 'PRINTING')${ef.clause}
