@@ -283,7 +283,8 @@
     function rank(m) { return (typeof RANK[m] === 'number') ? RANK[m] : 9; }
     for (i = 0; i < r.panels.length; i++) {
       var e = lastEdges[i] || {};
-      var b = RV.planBleed({ design: r.design[i], panel: r.panels[i], edge: e });
+      // ★도련이 덮을 사각은 벌이 아니라 **벌 ∪ 밴드**(plate.js outer) — 밴드에도 비슷한 색이 있어야 한다.
+      var b = RV.planBleed({ design: r.design[i], panel: (r.outer && r.outer[i]) ? r.outer[i] : r.panels[i], edge: e });
       bleeds.push(b);
       // ⚠️`RANK[x] || 9` 로 쓰면 안 된다 — **skip 이 0 이라 falsy** 라 가장 나쁜 것이 9로 밀린다.
       //   review.js 의 `ORDER[level] || 9` 에서 같은 함정에 이미 한 번 걸렸다.

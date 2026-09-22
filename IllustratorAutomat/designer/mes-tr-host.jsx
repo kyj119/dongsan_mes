@@ -807,9 +807,8 @@ function mesTr_makePlate(payload) {
     // 레이어 셋 — 「자리」는 인쇄에서 빠져야 한다(출력파일에 보조선을 남기지 않는 규칙).
     var lyArt = doc.layers[0];
     lyArt.name = 'ART';
-    var lyGuide = doc.layers.add();
-    lyGuide.name = 'GUIDE';
-    lyGuide.printable = false;
+    // ★안내선(GUIDE 레이어)은 만들지 않는다 — 용준님 2026-09-22 「가이드 라인은 없어야 한다」.
+    //   0.1.0 의 「자리 표시」는 판 치수를 사람이 확인하려는 발판이었고 이제 그 확인은 패널 결과창이 한다.
 
     // 좌상단 원점(y 아래로) → 일러 문서 좌표(y 위로). 반환 = [left, top, w, h] (pt)
     function place(r) {
@@ -831,6 +830,17 @@ function mesTr_makePlate(payload) {
       it.strokeColor = cmyk(c, m, y, k);
       it.strokeWidth = wpt;
       return it;
+    }
+    /** 벌 ∪ 그 벌의 밴드 — 도련이 덮을 전체. 패널 plate.js 의 outer 와 같은 기하다. */
+    function outerOf(pan) {
+      var y0 = pan.y, y1 = pan.y + pan.h, q;
+      for (q = 0; q < p.bands.length; q++) {
+        var bd0 = p.bands[q];
+        if (Math.abs(bd0.x - pan.x) > 0.01) continue;
+        if (bd0.y < y0) y0 = bd0.y;
+        if (bd0.y + bd0.h > y1) y1 = bd0.y + bd0.h;
+      }
+      return { x: pan.x, y: y0, w: pan.w, h: y1 - y0 };
     }
     function filled(layer, r, col) {
       var it = rect(layer, r);
@@ -882,12 +892,14 @@ function mesTr_makePlate(payload) {
       // ── 도련 — 원본보다 **먼저** 만든다. 원본 그룹은 `groupItems.add()` 로 레이어 맨 위에
       //   생기므로, 여기서 만든 것은 자동으로 그 아래에 깔린다(0.2.0 이래의 순서 그대로).
       mesTr_trace('panel' + i + ':bleed-start mode=' + panelMode[i]);
+      // ★도련은 **벌 ∪ 밴드**를 덮는다(밴드에도 비슷한 색). 단색은 아래 ③ 밴드 절이 같은 색으로 잇는다.
+      var outer = outerOf(pan);
       if (bgCol) { filled(lyArt, pan, bgCol); bled++; bleedSolid++; }
       else if (panelMode[i] === 'extend') {
-        if (mesTr_bleedExtend(lyArt, preBd[i], pan, place)) { bled++; bleedExt++; }
+        if (mesTr_bleedExtend(lyArt, preBd[i], outer, place)) { bled++; bleedExt++; }
         else notes.push('bleedskip=' + (i + 1) + ':noextend');
       } else if (panelMode[i] === 'repeat') {
-        if (mesTr_bleedPlacePng(lyArt, i, pan, place)) { bled++; bleedPx++; }
+        if (mesTr_bleedPlacePng(lyArt, i, outer, place)) { bled++; bleedPx++; }
         else notes.push('bleedskip=' + (i + 1) + ':nopng');
       }
 
@@ -991,7 +1003,6 @@ function mesTr_makePlate(payload) {
           if (bx1 - bx0 > 0.01) filled(lyArt, { x: bx0, y: bd.y, w: bx1 - bx0, h: bd.h }, panelCol[q]);
         }
       }
-      stroked(lyGuide, bd, 0, 100, 100, 0, 0.5);
     }
 
     // ── ③-b 끈고리·하도매 — **원본 위에 인쇄되는 표시**. 좌표는 패널이 plate.js 로 계산해 보낸다(정본 = plate-rules.marks).
@@ -1025,9 +1036,7 @@ function mesTr_makePlate(payload) {
       mkHole++;
     }
 
-    // ── ④ 자리 표시(비인쇄)
-    for (i = 0; i < p.panels.length; i++) stroked(lyGuide, p.panels[i], 0, 0, 0, 100, 0.5);
-    for (i = 0; i < p.design.length; i++) stroked(lyGuide, p.design[i], 100, 0, 0, 0, 0.5);
+    // (④ 자리 표시는 없다 — 안내선 금지)
 
     app.userInteractionLevel = saveAlerts;
     return 'OK plate=' + p.plate.w + 'x' + p.plate.h

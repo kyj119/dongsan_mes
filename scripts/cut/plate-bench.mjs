@@ -322,6 +322,11 @@ const base = (over = {}) => Object.assign(
     ok('㊹ Ø0.5cm', H0.every((h) => h.r === 2.5))
     ok('㊹ 하도매 0·0 이면 없다', globalThis.MesPlate.computePlate(base({ sewCm: 5, vup: 2 })).holes.length === 0)
     ok('㊹ trace 에 개수·안쪽 기준이 남는다', r.trace.marks.loops === 8 && r.trace.marks.holes === 8 && r.trace.marks.innerSide === 'facing')
+    // ★도련이 덮을 전체 = 벌 ∪ 밴드 (밴드에도 비슷한 색 — 용준님 2026-09-22). 정본은 plate.js outer 한 곳.
+    ok('㊺ outer = 벌 ∪ 밴드 (y=0 부터 벌 아래까지)', r.outer && r.outer.length === 2 && near(r.outer[0].y, 0)
+      && near(r.outer[0].h, r.panels[0].y + r.panels[0].h) && near(r.outer[0].x, r.panels[0].x) && near(r.outer[0].w, r.panels[0].w),
+      JSON.stringify(r.outer))
+    ok('㊺ 상하봉미싱이면 아래 밴드까지', (function () { var t = globalThis.MesPlate.computePlate(base({ band: 'topbottom', sewCm: 5, vup: 2 })); return t.ok && near(t.outer[0].h, t.plate.h) })())
   }
 
   // 최소 호스트 버전 ≤ 실제 호스트 버전

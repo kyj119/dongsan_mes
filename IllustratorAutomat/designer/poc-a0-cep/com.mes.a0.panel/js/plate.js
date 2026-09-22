@@ -67,7 +67,7 @@
       return fail('sides', sides + '면쌍침은 어느 변인지 모른다 — 가로등 실물 사례가 없다 (지원: '
         + Object.keys(R.sewSides).join('/') + '면)');
     }
-    // 3면 = 좌·우·상단이고 상단은 **밴드가 담당**한다. 지금 마감은 둘 다 밴드를 갖지만
+    // 3면 = 좌·우·**하단**이고 상단은 봉미싱 밴드다(2026-09-22 정정). 지금 마감은 둘 다 밴드를 갖지만
     // 상하봉미싱이면 밴드가 둘이라 면 수와 어긋날 수 있다 — 막지 않고 **알린다**(사람 판단).
     var sidesNote = null;
     if (sides === 3 && bandCount === 2) sidesNote = '3면쌍침인데 밴드가 상·하 둘이다 — 면 수를 확인하라';
@@ -113,6 +113,21 @@
       design.push({ x: round2(x + seamActual), y: round2(bandH), w: round2(o.specW), h: round2(designH) });
       bands.push({ x: round2(x), y: 0, w: round2(panelW), h: round2(bandH) });
       if (bandCount === 2) bands.push({ x: round2(x), y: round2(bandH + panelH), w: round2(panelW), h: round2(bandH) });
+    }
+    // ★도련이 덮어야 할 전체 = 벌 ∪ 밴드 (용준님 2026-09-22 「봉미싱 여백에도 도련처럼 비슷한 색이 있어야 한다」).
+    //   종전엔 밴드 색을 단색일 때만 따로 채워, 늘리기·픽셀 경로에서는 밴드가 **비어(백색) 나갔다**.
+    //   이제 도련 경로 셋이 전부 이 사각을 채운다 — 밴드는 접혀 뒤로 넘어가지만 재단 뒤 가장자리에 색이 남아야 한다.
+    var outer = [];
+    for (i = 0; i < vup; i++) {
+      var ob = panels[i];
+      var oy0 = ob.y, oy1 = ob.y + ob.h, q2;
+      for (q2 = 0; q2 < bands.length; q2++) {
+        var bb = bands[q2];
+        if (Math.abs(bb.x - ob.x) > 0.01) continue;
+        if (bb.y < oy0) oy0 = bb.y;
+        if (bb.y + bb.h > oy1) oy1 = bb.y + bb.h;
+      }
+      outer.push({ x: ob.x, y: round2(oy0), w: ob.w, h: round2(oy1 - oy0) });
     }
 
     // ── 끈고리·하도매 — 원본 끝선 기준, 원본 안쪽. 정본 = plate-rules.marks (용준님 2026-09-22)
@@ -162,6 +177,7 @@
       panels: panels,
       design: design,
       bands: bands,
+      outer: outer,                                   // 벌 ∪ 밴드 — 도련이 덮는 전체
       loops: loops,                                   // 끈고리 표시(2.5cm 가로선) — 원본 안쪽
       holes: holes,                                   // 하도매(Ø5mm 원) — 겹침 제거 후
       punches: [],                                    // 봉미싱 계열엔 펀칭이 없다(펀칭 변형은 부직포 축 — 미지원)
