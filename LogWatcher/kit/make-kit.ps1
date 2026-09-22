@@ -31,11 +31,26 @@ if (-not (Test-Path (Join-Path $BuildOut "LogWatcher.exe"))) { throw "빌드 산
 # ★ 여기에 물려야 게이트가 존재한다. 2026-09-22 이전에는 셋 다 문서에만 있어 **조립 때 아무도 안 돌렸다**
 #   (`cut:butt` 가 한 달간 그랬던 것과 같은 형태). 축마다 보는 게 다르므로 하나로 못 줄인다:
 #     pexp=tns 조인·이중계상 · flexi=flexi 조인 · transfer=전사 2축 **규격 축**(TRANS-8C-02 100% 결손)
+# ★ 타임아웃을 건다. 게이트가 매달리면 조립이 영원히 안 끝난다 — 2026-09-22 실기로 당했다:
+#   `-SkipBuild` 로 **구 exe** 를 돌렸더니 모르는 옵션을 무시하고 감시 루프에 진입해 안 죽었고,
+#   그 프로세스가 산출물 DLL 을 잠가 다음 `dotnet publish` 까지 실패시켰다.
+#   (구 exe 의 그 동작 자체는 Program.cs 에서 막았지만, 게이트가 멈출 수 있다는 성질은 남는다.)
 $gates = @("--selftest-pexp", "--selftest-flexi", "--selftest-transfer")
 foreach ($g in $gates) {
     Write-Host "== 게이트 $g =="
-    & (Join-Path $BuildOut "LogWatcher.exe") $g
-    if ($LASTEXITCODE -ne 0) { throw "자가시험 실패: $g — 조립 중단" }
+    # ★ `Start-Process -PassThru` 를 쓰면 안 된다 — 시한부 대기 뒤 `ExitCode` 가 **빈 값**이라
+    #   통과한 게이트를 실패로 읽는다(2026-09-22 실기, `$p.WaitForExit()` 추가로도 안 채워졌다).
+    #   Process API 를 직접 쓰면 타임아웃과 종료코드를 둘 다 정확히 얻는다.
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = (Join-Path $BuildOut "LogWatcher.exe")
+    $psi.Arguments = $g
+    $psi.UseShellExecute = $false      # 출력은 이 콘솔로 그대로 흘린다
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    if (-not $proc.WaitForExit(120000)) {
+        try { $proc.Kill() } catch { }
+        throw "자가시험 무응답(120s): $g — 조립 중단"
+    }
+    if ($proc.ExitCode -ne 0) { throw "자가시험 실패($($proc.ExitCode)): $g — 조립 중단" }
 }
 
 # ── 2. 버전 지문 (현장에서 어느 빌드인지 식별) ──

@@ -75,6 +75,22 @@ namespace LogWatcher
                 return;
             }
 
+            // ★ 모르는 `--옵션` 은 **거부한다** — 서비스 모드로 뜨면 안 된다.
+            //   2026-09-22 실기: 구 exe 에 `--selftest-transfer` 를 주자 인자를 무시하고 **감시 루프에 진입**해
+            //   프로세스가 안 끝났고, 그게 산출물 DLL 을 잠가 다음 publish 가 실패했다. 게이트가 조립을
+            //   영원히 멈추게 하는 형태다 — 몰라서 매달리느니 **모른다고 말하고 죽는 편이 낫다.**
+            //   (인자 없이 부르는 정상 기동과 `--test`·`--list` 류는 아래 모드 안에서 처리된다.)
+            if (args.Length > 0 && args[0].StartsWith("--", StringComparison.Ordinal)
+                && args[0] != "--test" && args[0] != "--list" && args[0] != "--validate")
+            {
+                Console.Error.WriteLine($"[FATAL] 알 수 없는 옵션: {args[0]}");
+                Console.Error.WriteLine("  사용 가능: --discover --learn --analyze --init --probe");
+                Console.Error.WriteLine("            --selftest-pexp --selftest-flexi --selftest-transfer");
+                Console.Error.WriteLine("            --probe-printlog [경로]  --test [장비ID]  --list  --validate");
+                Environment.Exit(2);
+                return;
+            }
+
             var equipmentConfigPath = Path.Combine(AppContext.BaseDirectory, "equipment.json");
 
             // Route: equipment.json exists → new universal mode
