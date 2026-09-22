@@ -142,11 +142,17 @@
     //   ★한계는 **방향별**이다. (a,b) 는 공급원 → 나 의 변위이므로 a>0 이면 오른쪽, b>0 이면 아래쪽 성장이다.
     //     (a/gx)² + (b/gy)² <= 1 로 재면 네 값이 같을 때 a²+b² <= g² 로 **정확히 퇴화**한다(종전 동작 보존).
     var filled = 0;
+    // ★모서리 — 기본(round)은 타원 한계라 **모서리가 빈다**. 실루엣을 따라 부풀리는 재단 조각엔 그게 맞지만
+    //   사각형(가로등배너 벌 · 사각 조각)은 모서리까지 채워야 한다(용준님 2026-09-23 실기 — 「모서리가 채워지지 않아 아쉽다」).
+    //   `opt.corner === 'square'` 면 한계가 **사각**(|a|≤gx · |b|≤gy)이 되고, 모서리 픽셀은 8SSEDT 가 준 가장 가까운
+    //   잉크(= 원본 모서리 픽셀)의 색을 받아 각진 블록으로 채워진다. 기본값은 종전 그대로 — 재단 조각은 안 흔들린다.
+    var square = (opt.corner === 'square');
     function within(a, b) {
       var gx = (a >= 0) ? gR : gL;
       var gy = (b >= 0) ? gB : gT;
       if (a !== 0 && gx <= 0) return false;
       if (b !== 0 && gy <= 0) return false;
+      if (square) return Math.abs(a) <= gx && Math.abs(b) <= gy;
       var u = (gx > 0) ? (a / gx) : 0;
       var v = (gy > 0) ? (b / gy) : 0;
       return (u * u + v * v) <= 1;
@@ -188,7 +194,24 @@
     return { W: NW, H: NH, data: out, pad: (sym ? pad : null), pads: { t: padT, r: padR, b: padB, l: padL }, filled: filled };
   }
 
-  var api = { repeatLastPixel: repeatLastPixel };
+  /**
+   * 이 그림이 **사각형인가** — 불투명 픽셀이 상자를 거의 다 채우고(≥98%) 네 테두리 줄이 각각 ≥95% 불투명하면 사각으로 본다.
+   * 재단이 「사각 조각이면 모서리를 각지게」 정할 때 쓴다(원·로고·글자 덩어리는 false → 종전처럼 둥글게).
+   * ⚠️둥근 모서리 사각은 true 가 될 수 있다 — 각진 도련이 칼선 밖으로 조금 더 나갈 뿐이라 해가 없다(잘려 나간다).
+   */
+  function isRectLike(src, alphaMin) {
+    var W = src.W, H = src.H, d = src.data, aMin = (typeof alphaMin === 'number') ? alphaMin : 128;
+    if (!(W > 2 && H > 2)) return false;
+    var n = W * H, op = 0, i;
+    for (i = 0; i < n; i++) if (d[i * 4 + 3] >= aMin) op++;
+    if (op / n < 0.98) return false;
+    var top = 0, bot = 0, lef = 0, rig = 0, x, y;
+    for (x = 0; x < W; x++) { if (d[x * 4 + 3] >= aMin) top++; if (d[((H - 1) * W + x) * 4 + 3] >= aMin) bot++; }
+    for (y = 0; y < H; y++) { if (d[(y * W) * 4 + 3] >= aMin) lef++; if (d[(y * W + W - 1) * 4 + 3] >= aMin) rig++; }
+    return top / W >= 0.95 && bot / W >= 0.95 && lef / H >= 0.95 && rig / H >= 0.95;
+  }
+
+  var api = { repeatLastPixel: repeatLastPixel, isRectLike: isRectLike };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;   // Node 하네스
   root.MesCutBleed = api;                                                      // 패널
 })(typeof window !== 'undefined' ? window : globalThis);

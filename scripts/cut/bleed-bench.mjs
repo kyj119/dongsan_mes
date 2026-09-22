@@ -9,7 +9,7 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const SRC = path.join(REPO, 'IllustratorAutomat', 'designer', 'poc-a0-cep', 'com.mes.a0.panel', 'js', 'bleed.js')
 const mod = { exports: {} }
 new Function('module', 'globalThis', fs.readFileSync(SRC, 'utf8'))(mod, { })
-const { repeatLastPixel } = mod.exports
+const { repeatLastPixel, isRectLike } = mod.exports
 
 let fails = 0
 const ok = (name, cond, extra = '') => {
@@ -225,6 +225,36 @@ console.log('\n── 8 ★소프트 에지(블렌드 밴드)는 링으로 확�
     }
     ok('간격 축소 0 · 도련x2 <= 간격 · 요청 초과 0 (전수 294조합)', bad === 0, String(bad))
   }
+}
+
+console.log('\n── 10 모서리 — 둥글게(기본) vs 각지게(사각) (2026-09-23) ──')
+// 가로등배너 벌·사각 조각은 모서리까지 채워야 한다. 기본은 종전 그대로(타원 한계)라 재단 실루엣 조각이 안 흔들린다.
+{
+  const src = make(30, 20, (x, y) => (x >= 5 && x < 25 && y >= 4 && y < 16) ? [10, 200, 90] : null)
+  const g = 5
+  const round = repeatLastPixel(src, g)
+  const sq = repeatLastPixel(src, g, { corner: 'square' })
+  // 원본 잉크 x 5..24 · y 4..15 가 (pad,pad)=(5,5) 만큼 밀려 x 10..29 · y 9..20. 모서리 픽셀 = (10-5, 9-5) = (5,4)
+  const at = (r, x, y) => r.data[(y * r.W + x) * 4 + 3]
+  ok('① 기본(round)은 모서리가 빈다 — 종전 동작', at(round, 5, 4) < 128)
+  // 잉크는 캔버스에서 x 10..29 · y 9..20 → 네 모서리 밖 5px 지점 = (5,4) (34,4) (5,25) (34,25) 가 차야 한다.
+  ok('② ★square 는 네 모서리까지 찬다', at(sq, 5, 4) === 255 && at(sq, 34, 4) === 255 && at(sq, 5, 25) === 255 && at(sq, 34, 25) === 255)
+  ok('②-b 도련 범위 밖(원본의 투명 여백 끝)은 square 도 비워 둔다', at(sq, sq.W - 1, sq.H - 1) < 128 && at(sq, 0, 0) < 128)
+  ok('③ square 도 도련 범위 밖은 안 채운다 (캔버스 크기 동일)', sq.W === round.W && sq.H === round.H)
+  const col = [sq.data[(4 * sq.W + 5) * 4], sq.data[(4 * sq.W + 5) * 4 + 1], sq.data[(4 * sq.W + 5) * 4 + 2]]
+  ok('④ 모서리 색 = 원본 모서리 픽셀 색', col.join() === '10,200,90', col.join())
+  let same = 0, tot = 0
+  for (let y = 0; y < sq.H; y++) for (let x = 0; x < sq.W; x++) { if (at(round, x, y) === 255) { tot++; if (at(sq, x, y) === 255) same++ } }
+  ok('⑤ round 가 채운 곳은 square 도 전부 채운다 (상위집합)', same === tot, same + '/' + tot)
+
+  // 사각 판정 — 재단이 「사각 조각만 각지게」 정하는 잣대
+  ok('⑥ 꽉 찬 사각은 사각', isRectLike(make(20, 10, () => [0, 0, 0])) === true)
+  const circle = make(40, 40, (x, y) => ((x - 20) * (x - 20) + (y - 20) * (y - 20) <= 19 * 19) ? [0, 0, 0] : null)
+  ok('⑦ 원은 사각이 아니다', isRectLike(circle) === false)
+  const aa = make(20, 10, (x, y) => (x === 0 || x === 19 || y === 0 || y === 9) ? [0, 0, 0, 120] : [0, 0, 0])
+  ok('⑧ 테두리 한 줄이 반투명(AA)이어도 사각', isRectLike(aa, 200) === false && isRectLike(aa, 100) === true)
+  const holed = make(20, 10, (x, y) => (x >= 8 && x < 12 && y >= 3 && y < 7) ? null : [0, 0, 0])
+  ok('⑨ 안이 뚫린 사각은 사각이 아니다(덮임 98% 미만)', isRectLike(holed) === false)
 }
 
 console.log('\n── 9 비대칭 도련 (전사 축, 2026-09-18) ──')
