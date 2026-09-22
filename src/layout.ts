@@ -12,6 +12,7 @@ import { SHARED_CSS } from './layout/shared-styles'
 // shell.js는 워커 인라인(?raw). 정적 /static 서빙은 CF Pages 자동빌드에서 _routes.json 제외가
 // 불안정해 prod 2회 장애(2026-06-11) → 인라인 복귀. 재시도 시 [[feedback-static-asset-mime]] 참조.
 import SHARED_AUTH_JS from './scripts/layout/shell.js?raw'
+import FEEDBACK_JS from './scripts/layout/feedback.js?raw'   // 전역 문제 신고 모달(0626)
 
 interface AppLayoutOptions {
   title: string
@@ -212,6 +213,60 @@ export function appLayout(opts: AppLayoutOptions): string {
         </div>
       </div>
     </div>
+    <!-- 문제 신고 모달 (전역·0626) — 사람이 쓰는 칸은 분류 + 한 줄, 둘뿐이다. 나머지는 화면이 채운다. -->
+    <div id="feedbackModal" class="hidden fixed inset-0 ds-z-stack flex items-center justify-center bg-black/50" data-esc-close="closeFeedbackModal">
+      <div class="bg-white rounded-lg shadow-xl w-[560px] max-h-[88vh] overflow-y-auto p-6">
+        <div class="flex items-center justify-between mb-1">
+          <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-bug text-amber-600 mr-2"></i>문제 신고</h3>
+          <button onclick="closeFeedbackModal()" class="text-gray-400 hover:text-gray-600" aria-label="닫기"><i class="fas fa-times"></i></button>
+        </div>
+        <p class="text-xs text-gray-500 mb-4">안 되는 게 있으면 그냥 보내 주세요. <b>한 줄이면 충분합니다</b> — 나머지는 화면이 알아서 같이 보냅니다.</p>
+
+        <label class="text-xs font-semibold text-gray-600 mb-1.5 block">어떤 문제입니까?</label>
+        <div class="flex gap-1.5 flex-wrap mb-4" id="fbCatWrap">
+          <button type="button" id="fbCatMISSING" onclick="setFeedbackCategory(&apos;MISSING&apos;)" class="fb-cat px-3 py-1.5 rounded-full text-xs font-medium bg-white border border-gray-300 text-gray-600">기능이 없어요</button>
+          <button type="button" id="fbCatNOTFOUND" onclick="setFeedbackCategory(&apos;NOTFOUND&apos;)" class="fb-cat px-3 py-1.5 rounded-full text-xs font-medium bg-white border border-gray-300 text-gray-600">못 찾겠어요</button>
+          <button type="button" id="fbCatERROR" onclick="setFeedbackCategory(&apos;ERROR&apos;)" class="fb-cat px-3 py-1.5 rounded-full text-xs font-medium bg-white border border-gray-300 text-gray-600">오류가 나요 · 느려요</button>
+          <button type="button" id="fbCatWRONG" onclick="setFeedbackCategory(&apos;WRONG&apos;)" class="fb-cat px-3 py-1.5 rounded-full text-xs font-medium bg-white border border-gray-300 text-gray-600">값이 틀려요</button>
+        </div>
+
+        <label class="text-xs font-semibold text-gray-600 mb-1.5 block">무슨 일이 있었나요?</label>
+        <textarea id="fbBody" rows="3" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="예) 품목을 찾으려는데 같은 이름이 여러 개 떠서 어느 걸 골라야 할지 모르겠어요"></textarea>
+
+        <div id="fbHint" class="hidden text-xs mt-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800"></div>
+
+        <div class="mt-4 border-t pt-3">
+          <label class="text-xs font-semibold text-gray-600 mb-1.5 block">증거 <span class="text-gray-400 font-normal">— 있으면 좋지만 없어도 보내집니다</span></label>
+          <div id="fbPasteZone" class="border-2 border-dashed border-gray-300 rounded-lg px-3 py-3 text-center text-xs text-gray-500 cursor-text hover:border-blue-400" onclick="focusFeedbackPaste()">
+            <i class="fas fa-paste mr-1"></i>여기를 누르고 <b>Ctrl+V</b> — 화면 캡처를 붙여넣으세요
+            <div class="text-gray-400 mt-0.5">Windows 캡처는 <b>Win + Shift + S</b></div>
+          </div>
+          <div id="fbAttachList" class="flex flex-wrap gap-2 mt-2"></div>
+          <div class="flex items-center gap-2 mt-2">
+            <input type="file" id="fbFileInput" class="hidden" multiple onchange="onFeedbackFilePick(this)">
+            <button type="button" onclick="document.getElementById(&apos;fbFileInput&apos;).click()" class="px-3 py-1.5 border border-gray-300 rounded-lg text-xs text-gray-700 hover:bg-gray-50"><i class="fas fa-paperclip mr-1"></i>파일 첨부</button>
+            <span class="text-xs text-gray-400">캡처 10MB · 파일 50MB 까지</span>
+          </div>
+          <div class="mt-2">
+            <label class="text-xs font-semibold text-gray-600 mb-1 block">파일 경로 <span class="text-gray-400 font-normal">— Z: 에 있으면 <b>올리지 말고 경로만</b> 적어 주세요 (더 빠릅니다)</span></label>
+            <input type="text" id="fbFilePath" class="w-full border rounded-lg px-3 py-1.5 text-xs" placeholder="Z:\\DESIGNS\\IA-등록\\... 또는 패널 [복사]로 붙여넣기">
+          </div>
+        </div>
+
+        <details class="mt-3">
+          <summary class="text-xs text-gray-500 cursor-pointer hover:text-gray-700">자동으로 같이 갑니다</summary>
+          <pre id="fbAutoInfo" class="text-xs text-gray-500 bg-gray-50 rounded-lg p-2 mt-1.5 whitespace-pre-wrap"></pre>
+        </details>
+
+        <div class="flex items-center justify-between mt-5">
+          <button type="button" onclick="openMyFeedback()" class="text-xs text-gray-500 hover:text-blue-600"><i class="fas fa-list mr-1"></i>내가 낸 신고 보기</button>
+          <div class="flex gap-2">
+            <button type="button" onclick="closeFeedbackModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">취소</button>
+            <button type="button" id="fbSubmitBtn" onclick="submitFeedback()" class="px-4 py-2 rounded-lg text-sm text-white bg-blue-600 hover:bg-blue-700">보내기</button>
+          </div>
+        </div>
+      </div>
+    </div>
     <script>
 ${STATUS_LABELS_JS}
 ${CSV_UTIL_JS}
@@ -219,6 +274,7 @@ ${HR_ENUMS_JS}
 ${PROCESS_ENUMS_JS}
 ${MMS_IMAGE_JS}
 ${SHARED_AUTH_JS}
+${FEEDBACK_JS}
     </script>
     <script>
 // === Global ESC key handler ===

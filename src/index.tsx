@@ -51,6 +51,7 @@ import cronRouter from './routes/cron'
 import shipmentsRouter from './routes/shipments'
 import reportsRouter from './routes/reports'
 import activityLogsRouter from './routes/activityLogs'
+import feedbackRouter from './routes/feedback'
 import notificationsRouter from './routes/notifications'
 import searchRouter from './routes/search'
 import productionReportsRouter from './routes/productionReports'
@@ -150,6 +151,7 @@ import { reportsPage } from './pages/reports'
 import { managementReportPage } from './pages/managementReport'
 import { clientDetailPage } from './pages/clientDetail'
 import { activityLogPage } from './pages/activityLog'
+import { feedbackPage } from './pages/feedback'
 import { tasksPage } from './pages/tasks'
 import { schedulePage } from './pages/schedule'
 import { productionReportsPage } from './pages/productionReports'
@@ -315,6 +317,7 @@ app.route('/api/cron', cronRouter)  // 무인 자동화(X-Agent-Key) — barobil
 app.route('/api/shipments', shipmentsRouter)
 app.route('/api/reports', reportsRouter)
 app.route('/api/activity-logs', activityLogsRouter)
+app.route('/api/feedback', feedbackRouter)
 app.route('/api/notifications', notificationsRouter)
 app.route('/api/search', searchRouter)
 app.route('/api/production-reports', productionReportsRouter)
@@ -481,6 +484,7 @@ app.get('/reports', pageAuthMiddleware, requirePagePermission('/reports'), repor
 app.get('/management-report', pageAuthMiddleware, requirePagePermission('/management-report'), managementReportPage)
 app.get('/forecast', (c) => c.redirect('/reports?tab=forecast'))
 app.get('/activity-log', pageAuthMiddleware, requirePagePermission('/activity-log'), activityLogPage)
+app.get('/feedback', pageAuthMiddleware, requirePagePermission('/feedback'), feedbackPage)
 app.get('/tasks', pageAuthMiddleware, requirePagePermission('/tasks'), tasksPage)
 app.get('/email-logs', (c) => c.redirect('/activity-log#tab=email'))
 // 이전 /equipment-dashboard 페이지는 /equipment#tab=dashboard로 이동
