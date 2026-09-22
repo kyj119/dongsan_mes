@@ -138,7 +138,7 @@
 ## ⚠️ 잠복·블로커
 
 - **품목 단가 전역(블로커)**: 원가 avg_unit_cost 315개 backfill 완료 — 남은=매출 base_price·무이력 514·자재비 소진연결 → [[project-item-pricing]]
-- **생산현황 장비 31대 전수 진단(2026-09-22)**: ✅**TRANS-8C-02 규격 전 기간 114건 100% 결손** 원인규명+수정(스펙 줄 정규식이 형제 `FlexiPrintExpParser` 보다 엄격 → 완화+립 규격 폴백, `--selftest-transfer` 신설, `make-kit.ps1` 에 셀프테스트 3종 배선 — 그전엔 문서에만 있어 **조립 때 아무도 안 돌렸다**). **현장 회신 반영**: HSM-01·07=**장비 고장 정지**(실적 0 이 정상, 조치 불요 — `equipment.status` 반영 대기) · HSM-05·06=**가동 중인데 립 축 0건 = 수집 결함**(내 「TNSRip 안 씀」·「가동중단」 추정 둘 다 오진). 립 축은 0건일 때 **아무 말도 안 하고** 하트비트는 파일 존재만으로 계속 나가는 게 근본 — ✅`--probe-printlog`(읽기전용 진단, `--test` 와 달리 위치 파일 불변) + `kit-admin.ps1` **립 축 자동 점검**(3일 미갱신 경고 + 그 PC 의 TNSRip 후보 나열, **자동 교체는 안 함**=재적재 위험). 남은=두 PC 진단 실행. **키트 배포 미실시**(축 A=PC 방문). 경위=`docs/LOGWATCHER_FIELD_SETUP.md` §5-1
+- **✅ 생산현황 장비 31대 전수 진단(2026-09-22)** — TRANS-8C-02 규격 100% 결손 수정(형제 파서보다 엄격한 정규식+립 폴백) · `--selftest-transfer`·`--probe-printlog` 신설 · `make-kit.ps1` 게이트 3종 배선 · 립 축 자동 점검. **Z: 키트 갱신 완료**(`07119037`). HSM-01·07=장비 고장 정지(실적 0 이 정상·수리 중). 경위=ARCHIVE §09-22 장비진단. 남은=**HSM-05·06 두 PC 에서 START.bat + `--probe-printlog`**(축 A=PC 방문)
 - 핸드오프 정본=`memory/session-context.md` + [[project-workflow-master-plan]](Phase1~5 잔여)
 
 ## 📌 기존 에러
