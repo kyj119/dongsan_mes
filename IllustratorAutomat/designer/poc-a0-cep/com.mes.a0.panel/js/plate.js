@@ -39,6 +39,8 @@
    * @param o.sewCm  봉미싱 cm (작업지시서 「상단 N cm 봉미싱」)
    * @param o.band   'top' | 'topbottom'
    * @param o.media  원단 — '60폭'
+   * @param o.loops  끈고리 표시를 그리는가(기본 true)
+   * @param o.holesTop / o.holesSide  하도매 상단·측면 개수(기본 0·0 = 없음)
    */
   function computePlate(o) {
     o = o || {};
@@ -113,12 +115,55 @@
       if (bandCount === 2) bands.push({ x: round2(x), y: round2(bandH + panelH), w: round2(panelW), h: round2(bandH) });
     }
 
+    // ── 끈고리·하도매 — 원본 끝선 기준, 원본 안쪽. 정본 = plate-rules.marks (용준님 2026-09-22)
+    //   좌표는 판(mm, 좌상단 원점). 세로는 원본과 같이 수축보정을 먹은 좌표다 — 표시는 원본 위에 인쇄되므로
+    //   원본과 **같은 축**에 있어야 재단 뒤 실물에서 제자리에 온다.
+    var MK = R.marks;
+    var loops = [], holes = [];
+    var wantLoops = (o.loops === undefined || o.loops === null) ? true : !!o.loops;
+    var nTop = Math.max(0, Math.round(o.holesTop || 0)), nSide = Math.max(0, Math.round(o.holesSide || 0));
+    for (i = 0; i < vup; i++) {
+      var d = design[i];
+      // 「안쪽」 = 마주 보는 쪽. 2벌이면 벌①은 오른쪽·벌②는 왼쪽. 1벌이면 오른쪽(가정 — trace 에 남긴다).
+      var inner = (vup >= 2) ? ((i === 0) ? 'right' : 'left') : 'right';
+      var xL = d.x, xR = d.x + d.w;
+      var rowTop = d.y, rowBand = d.y + bandH, rowMid = d.y + d.h / 2;
+      var lineAt = function (row, side) {
+        var x1 = (side === 'left') ? xL : (xR - MK.loop.lenMm);
+        return { panel: i, x: round2(x1), y: round2(row), len: MK.loop.lenMm, side: side, weightPt: MK.loop.weightPt };
+      };
+      if (wantLoops && MK && MK.loop) {
+        loops.push(lineAt(rowTop, 'left'));
+        loops.push(lineAt(rowTop, 'right'));
+        loops.push(lineAt(rowBand, inner));
+        loops.push(lineAt(rowMid, inner));
+      }
+      if (MK && MK.hole && (nTop > 0 || nSide > 0)) {
+        var ins = MK.hole.insetMm, rad = MK.hole.diaMm / 2;
+        var pts = [], q;
+        var put = function (cx, cy) {
+          for (var z = 0; z < pts.length; z++) if (Math.abs(pts[z].cx - cx) < 1 && Math.abs(pts[z].cy - cy) < 1) return;   // 겹침 = 하나
+          pts.push({ panel: i, cx: round2(cx), cy: round2(cy), r: rad });
+        };
+        // 상단 N — 위 끝선 아래 1cm 줄. 2 = 양 모서리(가로도 1cm 안쪽), 1 = 가운데, N≥3 = 모서리 사이 등분
+        if (nTop === 1) put(xL + d.w / 2, d.y + ins);
+        else for (q = 0; q < nTop; q++) put(xL + ins + (d.w - 2 * ins) * q / (nTop - 1), d.y + ins);
+        // 측면 N — 안쪽 변 안쪽 1cm 줄. 3 = 위 모서리·중간·아래 모서리, 2 = 위·아래 모서리, 1 = 중간
+        var xS = (inner === 'left') ? (xL + ins) : (xR - ins);
+        if (nSide === 1) put(xS, d.y + d.h / 2);
+        else for (q = 0; q < nSide; q++) put(xS, d.y + ins + (d.h - 2 * ins) * q / (nSide - 1));
+        for (q = 0; q < pts.length; q++) holes.push(pts[q]);
+      }
+    }
+
     return {
       ok: true,
       plate: { w: round2(plateW), h: round2(plateH) },
       panels: panels,
       design: design,
       bands: bands,
+      loops: loops,                                   // 끈고리 표시(2.5cm 가로선) — 원본 안쪽
+      holes: holes,                                   // 하도매(Ø5mm 원) — 겹침 제거 후
       punches: [],                                    // 봉미싱 계열엔 펀칭이 없다(펀칭 변형은 부직포 축 — 미지원)
       trace: {
         seamNominal: seamMm,                          // 25  ← 인수인계의 「쌍침 2.5cm」
@@ -130,7 +175,8 @@
         sewSides: sides, seamSideCount: sideRule.lr,
         // 산식을 바꾸지 않지만 **판을 만든 조건**으로 남긴다 — 나중에 「왜 이 판이 이런가」를 되짚을 근거다
         fabric: o.fabric || null, nonwovenCm: (o.nonwovenCm === undefined) ? null : o.nonwovenCm,
-        hardware: o.hardware || null, sidesNote: sidesNote
+        hardware: o.hardware || null, sidesNote: sidesNote,
+        marks: { loops: loops.length, holes: holes.length, holesTop: nTop, holesSide: nSide, innerSide: (vup >= 2 ? 'facing' : 'right-assumed') }
       }
     };
   }

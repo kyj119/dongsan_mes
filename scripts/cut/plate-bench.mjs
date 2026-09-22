@@ -296,6 +296,34 @@ const base = (over = {}) => Object.assign(
   ok('㊷ 단색이면 여전히 solid', RV.planBleed({ design: D, panel: P, edge: { solid: true, color: [0, 0, 0, 100] } }).mode === 'solid')
   ok('㊷ 모르면 픽셀 반복(repeat)', RV.planBleed({ design: D, panel: P, edge: {} }).mode === 'repeat')
 
+  // ★끈고리·하도매 — 정본 plate-rules.marks, 산식 plate.js (용준님 2026-09-22 확정 규칙을 숫자로 못박는다)
+  //   60×180 · 상단봉미싱 5cm · 2벌 기준. 세로는 수축보정(k)을 먹은 판 좌표다.
+  {
+    const r = globalThis.MesPlate.computePlate(base({ sewCm: 5, vup: 2, holesTop: 2, holesSide: 3 }))
+    ok('㊸ 끈고리는 벌마다 4개 (①좌우 + ②안쪽 + ③안쪽)', r.ok && r.loops.length === 8, r.ok ? 'loops=' + r.loops.length : r.reason)
+    const d0 = r.design[0], k = r.trace.shrink, band = r.trace.bandH0 * k
+    const L0 = r.loops.filter((l) => l.panel === 0)
+    const near = (a, b) => Math.abs(a - b) < 0.05
+    ok('㊸ ① 원본 위 끝선에 좌·우', L0.filter((l) => near(l.y, d0.y)).map((l) => l.side).sort().join(',') === 'left,right')
+    ok('㊸ ② ①에서 봉미싱 길이(6cm·보정)만큼 아래, 안쪽만', L0.filter((l) => near(l.y, d0.y + band)).map((l) => l.side).join('') === 'right',
+      '벌①의 안쪽은 오른쪽(마주 보는 쪽) — ' + JSON.stringify(L0.filter((l) => near(l.y, d0.y + band))))
+    ok('㊸ ③ 원본 중간(90·보정), 안쪽만', L0.filter((l) => near(l.y, d0.y + d0.h / 2)).map((l) => l.side).join('') === 'right')
+    ok('㊸ 벌②의 안쪽은 왼쪽', r.loops.filter((l) => l.panel === 1 && near(l.y, r.design[1].y + band))[0].side === 'left')
+    ok('㊸ 선은 끝선에서 안쪽으로 2.5cm · 4pt', L0.every((l) => l.len === 25 && l.weightPt === 4)
+      && near(L0.filter((l) => l.side === 'left')[0].x, d0.x) && near(L0.filter((l) => l.side === 'right')[0].x, d0.x + d0.w - 25))
+    ok('㊸ 끈고리를 끄면 0개', globalThis.MesPlate.computePlate(base({ sewCm: 5, vup: 2, loops: false })).loops.length === 0)
+
+    const H0 = r.holes.filter((h) => h.panel === 0)
+    ok('㊹ 하도매 상단 2 + 측면 3 = 겹침 빼고 4구', H0.length === 4, 'holes=' + H0.length + ' ' + JSON.stringify(H0))
+    ok('㊹ 위 안쪽 모서리 = (오른쪽 1cm, 위 1cm) 하나뿐',
+      H0.filter((h) => near(h.cx, d0.x + d0.w - 10) && near(h.cy, d0.y + 10)).length === 1)
+    ok('㊹ 아래 안쪽 모서리 = 아래 끝선에서 1cm (90cm 원본이면 89)', H0.some((h) => near(h.cx, d0.x + d0.w - 10) && near(h.cy, d0.y + d0.h - 10)))
+    ok('㊹ 측면 중간 = 원본 높이 절반', H0.some((h) => near(h.cx, d0.x + d0.w - 10) && near(h.cy, d0.y + d0.h / 2)))
+    ok('㊹ Ø0.5cm', H0.every((h) => h.r === 2.5))
+    ok('㊹ 하도매 0·0 이면 없다', globalThis.MesPlate.computePlate(base({ sewCm: 5, vup: 2 })).holes.length === 0)
+    ok('㊹ trace 에 개수·안쪽 기준이 남는다', r.trace.marks.loops === 8 && r.trace.marks.holes === 8 && r.trace.marks.innerSide === 'facing')
+  }
+
   // 최소 호스트 버전 ≤ 실제 호스트 버전
   const minM = panel.match(/TR_MIN_HOST\s*=\s*\[(\d+),\s*(\d+),\s*(\d+)\]/)
   const hostM = host.match(/MESTR_VERSION\s*=\s*'TR-CEP-(\d+)\.(\d+)\.(\d+)'/)

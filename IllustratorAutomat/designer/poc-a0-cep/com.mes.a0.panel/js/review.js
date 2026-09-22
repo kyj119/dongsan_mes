@@ -134,8 +134,17 @@
       items.push({ code: 'sides-band', level: 'check', msg: o.trace.sidesNote });
     }
 
-    // 하도매 구 수 — 펀칭·끈고리 개수 축. 패널은 아직 안 그리므로 **사람이 넣는다**
-    if (o.trace && o.trace.hardware && o.trace.hardware.holes > 0) {
+    // 끈고리·하도매 — 이제 패널이 그린다(2026-09-22). 몇 개를 어디 기준으로 그렸는지 **확인 항목**으로 남긴다.
+    if (o.trace && o.trace.marks && (o.trace.marks.loops > 0 || o.trace.marks.holes > 0)) {
+      items.push({
+        code: 'marks-drawn', level: 'check',
+        msg: '끈고리 ' + o.trace.marks.loops + '개 · 하도매 ' + o.trace.marks.holes + '개(상단 ' + o.trace.marks.holesTop
+          + ' · 측면 ' + o.trace.marks.holesSide + ') — 원본 끝선 안쪽, 안쪽 = '
+          + (o.trace.marks.innerSide === 'facing' ? '두 벌이 마주 보는 쪽' : '오른쪽(1벌 가정)') + '. 실물 위치를 확인한다'
+      });
+    }
+    // 하도매 구 수만 있고 배치가 없으면(구 패널 입력) — 종전대로 사람이 넣는다
+    if (o.trace && o.trace.hardware && o.trace.hardware.holes > 0 && !(o.trace.marks && o.trace.marks.holes > 0)) {
       items.push({
         code: 'hardware-holes', level: 'must',
         msg: '하도매 ' + o.trace.hardware.size + '호 ' + o.trace.hardware.holes

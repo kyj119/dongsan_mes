@@ -1626,7 +1626,7 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
     '흰 배경으로 굳히면 그림 없는 자리까지 잉크로 읽혀 가장자리가 흰색이 된다')
   ok('17f 실제로 구운 해상도로 되환산한다', /d\.w \/ img\.W/.test(trm),
     '요청한 mm/px 를 그대로 쓰면 반올림이 도련 폭에 실린다')
-  ok('17f extend 는 사진을 거절한다', /kind === 'img'\) return false/.test(bodyOf(trh, 'mesTr_bleedExtend')),
+  ok('17f extend 는 사진을 거절한다', /kind === 'img'[^\n]*return false/.test(bodyOf(trh, 'mesTr_bleedExtend')),
     '사진은 늘리면 흐려진다 — 픽셀 경로가 받아야 한다')
   ok('17e position 으로 앉히지 않는다',
     bodyOf(trh, 'mesTr_makePlate').indexOf('grp.position') < 0

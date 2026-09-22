@@ -664,9 +664,17 @@
         <div class="row">
           <label for="trHwSize">하도매</label>
           <select id="trHwSize"></select>
-          <input id="trHwHoles" type="number" step="1" min="0" value="0" style="width:48px" />
-          <span class="unit">구</span>
-          <span class="cfg" title="작업지시서의 「5호4구」. 펀칭·끈고리 개수 축입니다 — 지금은 기록·확인만 합니다">기록·확인만</span>
+          <span class="unit">상단</span>
+          <input id="trHwTop" type="number" step="1" min="0" max="8" value="0" style="width:40px" title="원본 위 끝선 아래 1cm 줄에 N개 (2 = 양 모서리)" />
+          <span class="unit">측면</span>
+          <input id="trHwSide" type="number" step="1" min="0" max="8" value="0" style="width:40px" title="마주 보는 쪽 변 안쪽 1cm 줄에 N개 (3 = 위 모서리·중간·아래 모서리)" />
+          <span class="unit">→ <b id="trHwTotal">0</b>구</span>
+          <input id="trHwHoles" type="hidden" value="0" />
+        </div>
+        <div class="row">
+          <label>끈고리</label>
+          <label class="rad"><input id="trLoops" type="checkbox" checked /> 표시 넣기</label>
+          <span class="cfg" title="원본 끝선 안쪽 2.5cm 가로선 4pt — ①위 끝선 좌·우 ②봉미싱 길이만큼 아래 안쪽 ③중간 안쪽 = 4개. 색은 그 자리 배경으로 흑/백">4개 · 자리별 흑/백</span>
         </div>
       </div>
 

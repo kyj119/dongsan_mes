@@ -23,7 +23,7 @@
  * ⚠️ 반환은 ASCII 만 — 한글을 돌려주면 CEP 브릿지에서 깨진다.
  */
 
-var MESTR_VERSION = 'TR-CEP-0.6.1';   // 0.6.1 = ★**extend 가 다른 문서의 색 객체를 일절 만지지 않는다(P0)** — 0.6.0 은 원본의 `Gradient` 를 새 사각에 직접 할당했고, PANTONE 별색 스톱이 든 실파일(고양 소노)에서 일러가 CPU 0 으로 멈춰 COM 이 끊겼다(실기 2회, 예외·대화상자 없음). CMYK 스톱 합성 문서는 같은 코드가 8초 — 공통인자는 별색이다. → 판 문서 안에 그라디언트를 새로 만들고 스톱마다 새 CMYKColor 로 옮긴다(`mesTr_toCmyk`, tint 반영). 단일 별색·회색 바탕도 같은 길. 잃는 것: 도련 **띄**의 별색이 CMYK 환산값이 된다(그림은 복제본이라 별색 그대로 · 띄는 재단에서 잘린다). ⚠️실파일 실기 확인은 일러 재시작 뒤 — 배포 전 필수. · 0.6.0 = ★**도련이 3단이 됐다** — 재단은 「무손실 → 자연 → 단색」인데 전사는 ③만 갖고 있었다(형제 스윕 미완). 엔진(`js/bleed.js` Repeat Last Pixel)은 2026-09-18 에 **전사 축 때문에** 변마다 다른 도련(`{t,r,b,l}`)까지 확장돼 게이트(`cut:bleed` §9)까지 붙어 있었는데 **전사 탭이 한 번도 부르지 않았다**. ①**바탕 판정을 바로잡았다(P0)** — `mesTr_findBackdrop` 이 「단색 CMYK 인 패스」만 후보로 보고 **그게 보이는 것인지는 한 번도 안 물었다**. 실기 실측(2026-09-22 · 고양 소노): 벌 전체를 덮는 개체가 위에서부터 [클립패스(칠 없음)] → [**그라디언트** PANTONE 7453 C(57/30/1/0) → 78/81/83/66] → [단색 99/94/59/41] 인데, 가려져 있는 맨 아래 단색을 골라 도련을 깔았다. 아래쪽 실제 그림은 K66 인데 도련은 K41 이라 **연한 띠**가 보였다(용준님 신고). 이제 **맨 위에서 전체를 덮는 불투명한 칠**을 찾고, 그것이 단색이 아니면 `solid` 라고 말하지 않는다(`edge=solid|grad|img|other`). ②**extend** — 바탕이 한 개체면 그것만 벌 크기로 늘린다(`mesTr_bleedExtend`). 벡터라 **무손실**이고 즉시다 — 재단의 「클립 확장」에 해당하는 등급이고, 전사는 클립 밖에 그림이 없는 대신 바탕이 한 개체인 경우가 많아 같은 값을 여기서 얻는다. 늘어나는 비율이 세로 1.7%라 이음매 색차는 램프의 1.7%(실측 그라디언트에서 채널당 0.3 미만)다. ⚠️사진 바탕은 거절하고 ③으로 보낸다 — 늘리면 흐려진다. ③**repeat** — 패널이 `mesTr_bakeSlot` 으로 구운 PNG 의 가장자리 색을 바깥으로 반복해 `Folder.temp/mes_tr_bleed_<i>.png` 에 써 두면 `mesTr_bleedPlacePng` 가 벌 자리에 앉힌다(재단과 **같은 규약** — 경로를 payload 로 주고받지 않는다). ★방식별로 **센다**(`bleedhow=solid:N,ext:N,px:N`) — 합계만 보면 격하가 안 보인다. 잃는 것: `repeat` 는 굽기 왕복이 붙어 벌당 수 초가 든다(단색·늘리기는 즉시). · 0.5.0 = ★**클립을 존중하는 잉크 경계**(`mesTr_inkBounds`) — 용준님이 신고한 두 증상이 **한 원인**이었다(2026-09-21 실기, 일러 30.7, 「260918_고양 소노 가로등배너 20조 발주」). `visibleBounds` 는 **클립이 잘라 낸 부분까지 합쳐서** 답한다: 그룹 clipped=true · 클립 60x180mm · 안의 배치이미지 214.74x163.93mm → **214.74x242.83mm**. ⓐ「자동 분석이 제대로 안 된다」 = 폭이 3.58배로 부풀어 이웃과 겹치니 가로 간격이 사라져 군집이 **10 → 1**(문서 전체가 한 덩어리). ⓑ「만들기 하면 보이지 않는 공백이 많이 나온다」 = 배율·위치를 그 부푼 상자로 잡아 그림이 28%로 줄고 나머지가 빈자리. → 잰다: 클립된 그룹 = **클립 ∩ 콘텐츠**, 아니면 자식 합집합. A0(`mesA0_itemBounds`)·재단(`mesCut_inkBounds`)은 이미 이렇게 하고 있었다 — **전사만 안 따라온 형제 스윕**이다. ★겸해서 **안 그리는 개체를 안 센다**(채움·획 둘 다 없는 패스 · 안내선): 같은 문서에 2점짜리 **5,779mm** 패스가 있어 혼자 문서 전체를 가로질렀다 — 눈에는 안 보이는데 경계에는 들어가 **어떤 군집도 갈라지지 않았다**. 거절은 `blind=` 로 **센다**. ★`position` 은 개체 상자를 보므로 안 쓴다 — 키운 **뒤에** 잉크를 다시 재서 그 차이만큼 `translate` 한다. ⚠️판정이 안 서면 **남긴다**(잘못 버리면 그림이 잘리고, 잘못 남기면 여백이 는다 — 잘리는 쪽이 나쁘다). 잃는 것: 그룹에 **그룹 단위로 건 효과**(그림자 등)가 있으면 자식 합집합이 그만큼 작게 잡힌다(클립·안 그리는 개체가 없는 아트는 종전과 동일). · 0.4.0 = ★둘. ①**자동 분석**(`mesTr_autoPick`) — 문서의 맨 위 개체를 가로 간격으로 갈라 벌에 대응시킨다. 판정 잣대는 가공의 `mesA0_seedCands(d,'auto')` 와 **같게** 뒀다(두 탭이 같은 파일을 다르게 읽으면 디자이너가 「가공은 2개인데 전사는 3개」를 만난다). 덩어리 수가 벌 수와 다르면 **아무것도 지정하지 않고** 개수만 돌려준다. ②**자르는 게 없는 클립은 만들지 않는다** — 실기 보고 「클리핑이 추출된다」. 실측(2026-09-21): 벌 646x1859mm 안에 원본 600x1829mm 이 통째로 들어가 **클립 2개 중 2개가 무의미**했고, 레이어 패널에 `<Clipping Path>` 만 남겼다. 재단이 CUT-CEP-0.49.0 에서 배운 것과 **같은 자리**다(형제 스윕). 전제를 하기 **전에** 재고, 안 서면 하지 않는다 — 거절은 `clipskip=` 으로 **센다**. ⚠️진짜로 삐져나오면 반드시 자른다(안 자르면 도련이 옆 벌을 덮는다). 잃는 것: 없음(그리는 그림·도련·산식 불변, 레이어 구조만 깔끔해진다) · 0.3.0 = ★**1조의 두 벌은 서로 다른 그림이다.** 2026-08 완성판 22건 실측(60-180·60-150 조 단위): 완전 동일 복제 **0건** · 명백히 다른 그림 16건 · 틀만 같고 내용이 다른 것 6건 · **거울상 0건**(거울 겹침 0~7%). 주니그래픽 미래엔1 은 좌반 바탕이 별색 MiraeN Purple_New, 우반이 백색이다. 그런데 0.2.x 까지는 **선택 하나를 두 벌에 복제**했다 — 측정된 22건 전부에서 틀린 판이 나온다. → 벌마다 원본을 따로 받는다(mesTr_pick/picks/swapPicks/clearPicks). 좌우 순서는 **디자이너가 정한다**(용준님 2026-09-21). 슬롯은 패널이 열려 있는 동안만 살고, 쓰기 전에 살아 있는지 확인한다(지운 개체·닫은 문서). 딸려 오는 것 둘 — ①**도련이 벌마다 갈린다**(payload `M:idx,mode[,cmyk]` · 옛 `M:mode` 는 판 전체로 계속 먹는다) ②**밴드 색도 벌마다** 이어야 한다(한 색이면 종전처럼 통째로, 다르면 벌 구간으로 나눠 깐다). 슬롯을 하나도 안 쓰면 현재 선택을 **벌①에만** 넣고 `slot=none` 을 남긴다 — 두 벌 복제로 되돌아가지 않는다. 잃는 것: 지정 없이 [판 만들기] 를 누르면 벌②가 빈다(그 사실을 `empty=2` 와 확인 목록 must 로 알린다) · 0.2.2 = ★[판 만들기] 가 `PARM` 으로 죽던 것. **문서를 넘나드는 `duplicate` 은 그룹을 받으면 안 된다** — 일러 30.7 최소 재현(2026-09-21): 다른 문서의 groupItem 으로 복제 → `1346458189 ('PARM')` · 다른 문서의 **layer** 로 복제 → ok · copy/paste → ok. 원본은 srcDoc 에 있고 그룹은 `documents.add` 로 막 만든 새 문서에 있어 매번 걸렸다. 오류 문구가 코드번호 하나뿐이라 무엇이 틀렸는지 안 알려 준다. → 레이어로 복제한 뒤 **같은 문서 안에서** 그룹으로 모은다(이동은 동일 문서라 안전). 잃는 것: 없음(배치·클리핑·산식 불변) · 0.2.1 = ★이 파일이 **한 번도 안 실렸다**. 머리말 주석의 `const/let/화살표/**JSON**/Array.map` 에서 `**/` 가 블록 주석을 닫아, 뒤 문장이 코드로 파싱되며 파일 전체가 구문 오류였다(ExtendScript: 「구문 오류: 필요 항목: ;」). 0.1.0·0.2.0 둘 다 Z: 에 나갔지만 스텁이 애초에 이 파일을 안 읽어(손목록) **증상이 가려져 있었고**, 스텁을 열거로 고치자(stub-3.0.0) 비로소 드러났다. 고친 것은 주석 한 줄뿐 — 로직·산식·payload 전부 불변. 게이트 = `npm run audit:jsx-syntax`(IA 의 .jsx·패널 js 를 실제로 파싱한다 — 여태 **아무 게이트도 파싱하지 않았다**). 잃는 것: 없음 · 0.2.0 = 
+var MESTR_VERSION = 'TR-CEP-0.7.0';   // 0.7.0 = ★**끈고리·하도매 표시**(용준님 2026-09-22 확정 규칙). payload `L:idx,x,y,len,color`(2.5cm 가로선 4pt) · `H:idx,cx,cy,r,color`(Ø5mm 원)를 받아 원본 **위에** 인쇄되는 표시로 그린다. 위치는 패널(`plate.js`, 정본 `plate-rules.marks`)이 계산한다 — 여기엔 산식이 없다. 색 k|w 는 패널이 표시 자리의 굽기 픽셀로 판정하고, 못 정하면 x = 흑선+백테두리(추측하지 않는다). `marks=loop:N,hole:N,key:N` 으로 **센다**. 구 패널은 L/H 를 안 보내므로 아무것도 안 그린다(무해). 잃는 것: 없음. · 0.6.2 = ★**extend 가 38~41분 걸리던 진짜 원인** — 판 문서를 만든 **뒤에** 비활성 원본의 개체 속성을 읽었다(잉크 상자 재기 = 수천 번 읽기 × 수십 ms). 단계별 시각 기록으로 잡았다(480초 동안 첫 줄에서 다음 줄로 못 넘어감). 같은 루프가 원본 활성일 때는 몇 초(pick·bake). → 바탕 정보(`mesTr_backdropInfo`: 종류·CMYK 스탑·램프·각도)를 **`documents.add` 전에** 읽어 숫자로 넘기고, extend 는 원본 개체를 한 번도 안 만진다. ⚠️0.6.1 이 적은 「별색 문서 간 참조」 원인은 **틀렸다**(0.6.1 로도 41분). 그라디언트 재구성은 무해해서 남긴다. 잃는 것: 없음. · 0.6.1 = ★**extend 가 다른 문서의 색 객체를 일절 만지지 않는다(P0)** — 0.6.0 은 원본의 `Gradient` 를 새 사각에 직접 할당했고, PANTONE 별색 스톱이 든 실파일(고양 소노)에서 일러가 CPU 0 으로 멈춰 COM 이 끊겼다(실기 2회, 예외·대화상자 없음). CMYK 스톱 합성 문서는 같은 코드가 8초 — 공통인자는 별색이다. → 판 문서 안에 그라디언트를 새로 만들고 스톱마다 새 CMYKColor 로 옮긴다(`mesTr_toCmyk`, tint 반영). 단일 별색·회색 바탕도 같은 길. 잃는 것: 도련 **띄**의 별색이 CMYK 환산값이 된다(그림은 복제본이라 별색 그대로 · 띄는 재단에서 잘린다). ⚠️실파일 실기 확인은 일러 재시작 뒤 — 배포 전 필수. · 0.6.0 = ★**도련이 3단이 됐다** — 재단은 「무손실 → 자연 → 단색」인데 전사는 ③만 갖고 있었다(형제 스윕 미완). 엔진(`js/bleed.js` Repeat Last Pixel)은 2026-09-18 에 **전사 축 때문에** 변마다 다른 도련(`{t,r,b,l}`)까지 확장돼 게이트(`cut:bleed` §9)까지 붙어 있었는데 **전사 탭이 한 번도 부르지 않았다**. ①**바탕 판정을 바로잡았다(P0)** — `mesTr_findBackdrop` 이 「단색 CMYK 인 패스」만 후보로 보고 **그게 보이는 것인지는 한 번도 안 물었다**. 실기 실측(2026-09-22 · 고양 소노): 벌 전체를 덮는 개체가 위에서부터 [클립패스(칠 없음)] → [**그라디언트** PANTONE 7453 C(57/30/1/0) → 78/81/83/66] → [단색 99/94/59/41] 인데, 가려져 있는 맨 아래 단색을 골라 도련을 깔았다. 아래쪽 실제 그림은 K66 인데 도련은 K41 이라 **연한 띠**가 보였다(용준님 신고). 이제 **맨 위에서 전체를 덮는 불투명한 칠**을 찾고, 그것이 단색이 아니면 `solid` 라고 말하지 않는다(`edge=solid|grad|img|other`). ②**extend** — 바탕이 한 개체면 그것만 벌 크기로 늘린다(`mesTr_bleedExtend`). 벡터라 **무손실**이고 즉시다 — 재단의 「클립 확장」에 해당하는 등급이고, 전사는 클립 밖에 그림이 없는 대신 바탕이 한 개체인 경우가 많아 같은 값을 여기서 얻는다. 늘어나는 비율이 세로 1.7%라 이음매 색차는 램프의 1.7%(실측 그라디언트에서 채널당 0.3 미만)다. ⚠️사진 바탕은 거절하고 ③으로 보낸다 — 늘리면 흐려진다. ③**repeat** — 패널이 `mesTr_bakeSlot` 으로 구운 PNG 의 가장자리 색을 바깥으로 반복해 `Folder.temp/mes_tr_bleed_<i>.png` 에 써 두면 `mesTr_bleedPlacePng` 가 벌 자리에 앉힌다(재단과 **같은 규약** — 경로를 payload 로 주고받지 않는다). ★방식별로 **센다**(`bleedhow=solid:N,ext:N,px:N`) — 합계만 보면 격하가 안 보인다. 잃는 것: `repeat` 는 굽기 왕복이 붙어 벌당 수 초가 든다(단색·늘리기는 즉시). · 0.5.0 = ★**클립을 존중하는 잉크 경계**(`mesTr_inkBounds`) — 용준님이 신고한 두 증상이 **한 원인**이었다(2026-09-21 실기, 일러 30.7, 「260918_고양 소노 가로등배너 20조 발주」). `visibleBounds` 는 **클립이 잘라 낸 부분까지 합쳐서** 답한다: 그룹 clipped=true · 클립 60x180mm · 안의 배치이미지 214.74x163.93mm → **214.74x242.83mm**. ⓐ「자동 분석이 제대로 안 된다」 = 폭이 3.58배로 부풀어 이웃과 겹치니 가로 간격이 사라져 군집이 **10 → 1**(문서 전체가 한 덩어리). ⓑ「만들기 하면 보이지 않는 공백이 많이 나온다」 = 배율·위치를 그 부푼 상자로 잡아 그림이 28%로 줄고 나머지가 빈자리. → 잰다: 클립된 그룹 = **클립 ∩ 콘텐츠**, 아니면 자식 합집합. A0(`mesA0_itemBounds`)·재단(`mesCut_inkBounds`)은 이미 이렇게 하고 있었다 — **전사만 안 따라온 형제 스윕**이다. ★겸해서 **안 그리는 개체를 안 센다**(채움·획 둘 다 없는 패스 · 안내선): 같은 문서에 2점짜리 **5,779mm** 패스가 있어 혼자 문서 전체를 가로질렀다 — 눈에는 안 보이는데 경계에는 들어가 **어떤 군집도 갈라지지 않았다**. 거절은 `blind=` 로 **센다**. ★`position` 은 개체 상자를 보므로 안 쓴다 — 키운 **뒤에** 잉크를 다시 재서 그 차이만큼 `translate` 한다. ⚠️판정이 안 서면 **남긴다**(잘못 버리면 그림이 잘리고, 잘못 남기면 여백이 는다 — 잘리는 쪽이 나쁘다). 잃는 것: 그룹에 **그룹 단위로 건 효과**(그림자 등)가 있으면 자식 합집합이 그만큼 작게 잡힌다(클립·안 그리는 개체가 없는 아트는 종전과 동일). · 0.4.0 = ★둘. ①**자동 분석**(`mesTr_autoPick`) — 문서의 맨 위 개체를 가로 간격으로 갈라 벌에 대응시킨다. 판정 잣대는 가공의 `mesA0_seedCands(d,'auto')` 와 **같게** 뒀다(두 탭이 같은 파일을 다르게 읽으면 디자이너가 「가공은 2개인데 전사는 3개」를 만난다). 덩어리 수가 벌 수와 다르면 **아무것도 지정하지 않고** 개수만 돌려준다. ②**자르는 게 없는 클립은 만들지 않는다** — 실기 보고 「클리핑이 추출된다」. 실측(2026-09-21): 벌 646x1859mm 안에 원본 600x1829mm 이 통째로 들어가 **클립 2개 중 2개가 무의미**했고, 레이어 패널에 `<Clipping Path>` 만 남겼다. 재단이 CUT-CEP-0.49.0 에서 배운 것과 **같은 자리**다(형제 스윕). 전제를 하기 **전에** 재고, 안 서면 하지 않는다 — 거절은 `clipskip=` 으로 **센다**. ⚠️진짜로 삐져나오면 반드시 자른다(안 자르면 도련이 옆 벌을 덮는다). 잃는 것: 없음(그리는 그림·도련·산식 불변, 레이어 구조만 깔끔해진다) · 0.3.0 = ★**1조의 두 벌은 서로 다른 그림이다.** 2026-08 완성판 22건 실측(60-180·60-150 조 단위): 완전 동일 복제 **0건** · 명백히 다른 그림 16건 · 틀만 같고 내용이 다른 것 6건 · **거울상 0건**(거울 겹침 0~7%). 주니그래픽 미래엔1 은 좌반 바탕이 별색 MiraeN Purple_New, 우반이 백색이다. 그런데 0.2.x 까지는 **선택 하나를 두 벌에 복제**했다 — 측정된 22건 전부에서 틀린 판이 나온다. → 벌마다 원본을 따로 받는다(mesTr_pick/picks/swapPicks/clearPicks). 좌우 순서는 **디자이너가 정한다**(용준님 2026-09-21). 슬롯은 패널이 열려 있는 동안만 살고, 쓰기 전에 살아 있는지 확인한다(지운 개체·닫은 문서). 딸려 오는 것 둘 — ①**도련이 벌마다 갈린다**(payload `M:idx,mode[,cmyk]` · 옛 `M:mode` 는 판 전체로 계속 먹는다) ②**밴드 색도 벌마다** 이어야 한다(한 색이면 종전처럼 통째로, 다르면 벌 구간으로 나눠 깐다). 슬롯을 하나도 안 쓰면 현재 선택을 **벌①에만** 넣고 `slot=none` 을 남긴다 — 두 벌 복제로 되돌아가지 않는다. 잃는 것: 지정 없이 [판 만들기] 를 누르면 벌②가 빈다(그 사실을 `empty=2` 와 확인 목록 must 로 알린다) · 0.2.2 = ★[판 만들기] 가 `PARM` 으로 죽던 것. **문서를 넘나드는 `duplicate` 은 그룹을 받으면 안 된다** — 일러 30.7 최소 재현(2026-09-21): 다른 문서의 groupItem 으로 복제 → `1346458189 ('PARM')` · 다른 문서의 **layer** 로 복제 → ok · copy/paste → ok. 원본은 srcDoc 에 있고 그룹은 `documents.add` 로 막 만든 새 문서에 있어 매번 걸렸다. 오류 문구가 코드번호 하나뿐이라 무엇이 틀렸는지 안 알려 준다. → 레이어로 복제한 뒤 **같은 문서 안에서** 그룹으로 모은다(이동은 동일 문서라 안전). 잃는 것: 없음(배치·클리핑·산식 불변) · 0.2.1 = ★이 파일이 **한 번도 안 실렸다**. 머리말 주석의 `const/let/화살표/**JSON**/Array.map` 에서 `**/` 가 블록 주석을 닫아, 뒤 문장이 코드로 파싱되며 파일 전체가 구문 오류였다(ExtendScript: 「구문 오류: 필요 항목: ;」). 0.1.0·0.2.0 둘 다 Z: 에 나갔지만 스텁이 애초에 이 파일을 안 읽어(손목록) **증상이 가려져 있었고**, 스텁을 열거로 고치자(stub-3.0.0) 비로소 드러났다. 고친 것은 주석 한 줄뿐 — 로직·산식·payload 전부 불변. 게이트 = `npm run audit:jsx-syntax`(IA 의 .jsx·패널 js 를 실제로 파싱한다 — 여태 **아무 게이트도 파싱하지 않았다**). 잃는 것: 없음 · 0.2.0 = 
 //   0.2.0 = ★원본 배치 + 도련 + 클리핑(2026-09-18). 0.1.0 은 자리 표시 선만 그렸다.
 //           · `mesTr_measure` — 고른 원본의 크기와 **바탕이 단색인가**를 잰다.
 //             ExtendScript 는 픽셀을 못 읽으므로 **맨 뒤 도형이 전체를 덮는 단색 채움인가**로 본다
@@ -61,7 +61,7 @@ function mesTr_ascii(s) {
  * 좌표계 = **좌상단 원점 · y 아래로**(패널과 같다). 일러 문서 좌표로는 y 를 뒤집어 쓴다.
  */
 function mesTr_parse(payload) {
-  var out = { plate: null, panels: [], design: [], bands: [], mode: 'none', color: null, modes: [] };
+  var out = { plate: null, panels: [], design: [], bands: [], mode: 'none', color: null, modes: [], loops: [], holes: [] };
   var recs = String(payload || '').split(';');
   var i, r, k, v, n;
   for (i = 0; i < recs.length; i++) {
@@ -88,6 +88,9 @@ function mesTr_parse(payload) {
     }
     n = v.split(',');
     if (k === 'P') { out.plate = { w: parseFloat(n[0]), h: parseFloat(n[1]) }; continue; }
+    // 끈고리 `L:idx,x,y,len,color` · 하도매 `H:idx,cx,cy,r,color` — 색은 k(검정)|w(백)|x(흑선+백테두리)
+    if (k === 'L') { out.loops.push({ i: parseInt(n[0], 10), x: parseFloat(n[1]), y: parseFloat(n[2]), len: parseFloat(n[3]), color: n[4] || 'x' }); continue; }
+    if (k === 'H') { out.holes.push({ i: parseInt(n[0], 10), cx: parseFloat(n[1]), cy: parseFloat(n[2]), r: parseFloat(n[3]), color: n[4] || 'x' }); continue; }
     var rect = { x: parseFloat(n[0]), y: parseFloat(n[1]), w: parseFloat(n[2]), h: parseFloat(n[3]) };
     if (k === 'N') out.panels.push(rect);
     else if (k === 'D') out.design.push(rect);
@@ -520,6 +523,15 @@ function mesTr_findBackdrop(sel, x0, y0, x1, y1) {
 //   ③ solid  — 가장자리가 **진짜로** 단색일 때만. 2026-09-22 까지 이것 하나였고,
 //               바탕 판정이 **가려진 개체**를 골라 실기에서 틀린 색이 나갔다.
 
+/** 진단 훅 — 프로브가 `$.global.MESTR_TRACE_ON = true` 를 켜면 단계별 시각을 temp 파일에 흘린다. 평소에는 무비용. */
+function mesTr_trace(msg) {
+  try {
+    if (!$.global.MESTR_TRACE_ON) return;
+    var f = new File(Folder.temp.fsName.replace(/\\/g, '/') + '/mes_tr_trace.txt');
+    f.encoding = 'UTF-8'; f.open('a'); f.write(new Date().getTime() + ' ' + msg + '\n'); f.close();
+  } catch (e) { /* ignore: 진단 훅 실패는 동작에 영향 없음 */ }
+}
+
 /** 어떤 색이든 **새 CMYKColor** 로 — 별색은 그 환산값(tint 반영), 회색은 K, 못 읽으면 검정. 다른 문서의 객체를 들고 가지 않기 위해서다. */
 function mesTr_toCmyk(col) {
   var o = new CMYKColor();
@@ -544,8 +556,58 @@ function mesTr_toCmyk(col) {
  * ⚠️사진 바탕은 여기로 보내지 않는다 — 늘리면 흐려진다. 그건 ②가 받는다.
  * @return true = 깔았다
  */
-function mesTr_bleedExtend(lyArt, srcItems, pan, place) {
+/**
+ * 원본의 바탕을 **미리 읽어 둔 숫자**로 벌 크기 사각을 그린다 — 원본 개체는 여기서 한 번도 만지지 않는다.
+ *
+ * ★2026-09-22 실측(고양 소노 · 일러 30.7): 판 문서를 `documents.add` 로 만든 **뒤에** 원본(비활성 문서)의
+ *   개체 속성을 읽으면 한 번에 수십 ms 가 든다 — 잉크 상자 재기(수천 번 읽기)가 **38~41분**이었다.
+ *   같은 루프가 원본이 활성일 때(pick·bake)는 몇 초다. 그래서 읽기는 전부 `mesTr_backdropInfo` 로
+ *   **판을 만들기 전에** 끝내고, 여기는 숫자만 받는다. (별색 가설은 틀렸다 — 0.6.1 의 그라디언트
+ *   재구성은 그대로 두되, 느렸던 이유는 이것이다.)
+ * @param info  mesTr_backdropInfo() 결과 · null 이면 만들지 않는다
+ * @return true = 깔았다
+ */
+function mesTr_bleedExtend(lyArt, info, pan, place) {
   var cp = null;
+  try {
+    if (!info || info.kind === 'img' || info.kind === 'none') return false;
+    var g = place(pan);
+    cp = lyArt.pathItems.rectangle(g[1], g[0], g[2], g[3]);
+    cp.stroked = false;
+    cp.filled = true;
+    if (info.kind === 'grad') {
+      var g2 = lyArt.parent.gradients.add();
+      try { g2.type = (info.radial ? GradientType.RADIAL : GradientType.LINEAR); } catch (eT) { /* ignore: 형을 못 놓으면 기본(선형) */ }
+      while (g2.gradientStops.length < info.stops.length) g2.gradientStops.add();
+      for (var si = 0; si < info.stops.length; si++) {
+        var st = info.stops[si], dst = g2.gradientStops[si];
+        var col = new CMYKColor(); col.cyan = st.c; col.magenta = st.m; col.yellow = st.y; col.black = st.k;
+        dst.color = col;
+        try { dst.rampPoint = st.ramp; } catch (eR) { /* ignore: 램프 위치를 못 놓으면 기본 */ }
+        try { dst.midPoint = st.mid; } catch (eM) { /* ignore: 중간점을 못 놓으면 기본 */ }
+      }
+      var gc = new GradientColor();
+      gc.gradient = g2;
+      cp.fillColor = gc;
+      // 각도는 매트릭스에서 읽어 둔 값 — 칠만 회전한다(`.angle` 은 못 믿는다, CLAUDE.md §ExtendScript)
+      if (Math.abs(info.ang) > 0.01) cp.rotate(info.ang, false, false, true, false, Transformation.CENTER);
+    } else {
+      var one = new CMYKColor(); one.cyan = info.c; one.magenta = info.m; one.yellow = info.y; one.black = info.k;
+      cp.fillColor = one;
+    }
+    return true;
+  } catch (e) {
+    try { if (cp) cp.remove(); } catch (e2) { /* ignore: 임시 개체 정리 — 이미 지워졌거나 참조 무효 */ }
+    return false;
+  }
+}
+
+/**
+ * 원본의 바탕을 **원본 문서가 활성일 때** 읽어 숫자로 돌려준다 — 판 문서를 만들기 전에 부른다.
+ * @return { kind:'solid'|'grad'|'img'|'other'|'none', c,m,y,k | stops:[{c,m,y,k,ramp,mid}], ang, radial }
+ */
+function mesTr_backdropInfo(srcItems) {
+  var out = { kind: 'none' };
   try {
     var L = null, T = null, R = null, B = null, i, b;
     for (i = 0; i < srcItems.length; i++) {
@@ -556,53 +618,34 @@ function mesTr_bleedExtend(lyArt, srcItems, pan, place) {
       if (R === null || b[2] > R) R = b[2];
       if (B === null || b[3] < B) B = b[3];
     }
-    if (L === null) return false;
+    if (L === null) return out;
     var bg = mesTr_findBackdrop(srcItems, L, T, R, B);
-    if (!bg || bg.kind === 'img') return false;
-    // ★바탕 개체를 **복제하지 않는다.** 그 개체는 다른 문서의 클립 그룹 **안**에 있고, 그런 것을
-    //   문서 밖으로 duplicate 한 첫 실기(2026-09-22)에서 일러가 응답을 멈췄다(CPU 0 · 25분 · COM 단절).
-    //   대신 벌 자리에 **새 사각**을 그리고 **칠만** 옮긴다 — 그라디언트는 램프·각도를 가져오고
-    //   길이는 새 사각에 맞게 다시 잡힌다(= 벌 크기로 늘린 것과 같다). 별색은 일러가 스와치를 옮겨 준다.
-    var g = place(pan);
-    cp = lyArt.pathItems.rectangle(g[1], g[0], g[2], g[3]);
-    cp.stroked = false;
-    cp.filled = true;
+    if (!bg) return out;
+    out.kind = bg.kind;
+    if (bg.kind === 'img') return out;
     var sc = bg.it.fillColor;
     if (bg.kind === 'grad') {
-      // ★다른 문서의 색 객체를 **직접 쓰지 않는다** — 새 문서 안에 그라디언트를 새로 만들고 스톱을 CMYK 로 옮긴다.
-      //   실기 2회(2026-09-22 고양 소노, PANTONE 7453 C 스톱): 원본 색 객체를 바로 붙이거나 그 패스를 복제하면
-      //   일러가 CPU 0 으로 응답을 멈추고 COM 이 끊겼다(대화상자가 안 보이는 모달로 추정 — DONTDISPLAYALERTS 로 안 막힘).
-      //   합성 문서(CMYK 스톱)에서는 같은 코드가 8초에 끝났다 — 공통인자는 **별색**이다.
-      //   잃는 것: 도련 띄의 별색이 CMYK 환산값이 된다(그림 자체는 복제본이라 별색 그대로). 띄는 재단에서 잘려 나간다.
       var srcG = sc.gradient;
-      var g2 = lyArt.parent.gradients.add();              // lyArt.parent = 판 문서
-      try { g2.type = srcG.type; } catch (eT) { /* ignore: 형을 못 읽으면 기본(선형) */ }
-      var ns = srcG.gradientStops.length, si;
-      while (g2.gradientStops.length < ns) g2.gradientStops.add();
-      for (si = 0; si < ns; si++) {
-        var st = srcG.gradientStops[si], dst = g2.gradientStops[si];
-        dst.color = mesTr_toCmyk(st.color);
-        try { dst.rampPoint = st.rampPoint; } catch (eR) { /* ignore: 람프 위치를 못 읽으면 기본 */ }
-        try { dst.midPoint = st.midPoint; } catch (eM) { /* ignore: 중간점을 못 읽으면 기본 */ }
+      out.stops = [];
+      try { out.radial = (srcG.type === GradientType.RADIAL); } catch (eT) { out.radial = false; }
+      for (var si = 0; si < srcG.gradientStops.length; si++) {
+        var st = srcG.gradientStops[si], cc = mesTr_toCmyk(st.color);
+        var ramp = 0, mid = 50;
+        try { ramp = st.rampPoint; } catch (eR) { /* ignore: 못 읽으면 0 */ }
+        try { mid = st.midPoint; } catch (eM) { /* ignore: 못 읽으면 50 */ }
+        out.stops.push({ c: cc.cyan, m: cc.magenta, y: cc.yellow, k: cc.black, ramp: ramp, mid: mid });
       }
-      var gc = new GradientColor();
-      gc.gradient = g2;
-      cp.fillColor = gc;
-      //   ★각도는 `.angle` 이 아니라 **`.matrix` 에서** 읽는다 — 실측(2026-09-22): 세로 그라디언트가 `.angle=0` 으로
-      //     읽혔고 `.matrix=[0,-1,1,0]` 이 진짜 방향이었다. `matrix`·`angle` 을 색에 직접 넣는 것은 둘 다 무시된다(V1·V2).
       var ang = 0, mx = null;
-      try { mx = sc.matrix; } catch (eM) { mx = null; }
+      try { mx = sc.matrix; } catch (eX) { mx = null; }
       if (mx && typeof mx.mValueA === 'number') ang = Math.atan2(mx.mValueB, mx.mValueA) * 180 / Math.PI;
       else { try { ang = sc.angle || 0; } catch (eA) { ang = 0; } }
-      if (Math.abs(ang) > 0.01) cp.rotate(ang, false, false, true, false, Transformation.CENTER);
+      out.ang = ang;
     } else {
-      cp.fillColor = mesTr_toCmyk(sc);              // 별색·회색 등 — 다른 문서의 색 객체를 들고 오지 않는다(위와 같은 이유)
+      var one = mesTr_toCmyk(sc);
+      out.c = one.cyan; out.m = one.magenta; out.y = one.yellow; out.k = one.black;
     }
-    return true;
-  } catch (e) {
-    try { if (cp) cp.remove(); } catch (e2) { /* ignore: 임시 개체 정리 — 이미 지워졌거나 참조 무효 */ }
-    return false;
-  }
+  } catch (e) { out.kind = 'none'; }
+  return out;
 }
 
 /**
@@ -736,6 +779,18 @@ function mesTr_makePlate(payload) {
     if (srcDoc.selection && srcDoc.selection.length) srcSel = srcDoc.selection;
   }
 
+  // ★판 문서를 만들기 **전에** 벌마다 바탕 정보를 읽어 둔다 — 그 뒤엔 원본이 비활성이라 읽기가 수십 분이 된다.
+  //   슬롯 해소 규칙은 아래 배치 루프와 같다(슬롯 → 없으면 벌①에만 현재 선택).
+  var preBd = [];
+  for (i = 0; i < p.panels.length; i++) {
+    var pm = p.modes[i] ? p.modes[i].mode : p.mode;
+    if (pm !== 'extend') { preBd[i] = null; continue; }
+    var sItems = null;
+    if (MESTR_PICK[i]) { if (mesTr_pickAlive(MESTR_PICK[i])) sItems = MESTR_PICK[i].items; }
+    else if (!MESTR_PICK.length && i === 0 && srcSel) sItems = srcSel;
+    preBd[i] = sItems ? mesTr_backdropInfo(sItems) : null;
+  }
+
   var saveAlerts = null;
   var doc = null;
   var placed = 0, bled = 0, clipped = 0, clipskip = 0;
@@ -826,15 +881,17 @@ function mesTr_makePlate(payload) {
 
       // ── 도련 — 원본보다 **먼저** 만든다. 원본 그룹은 `groupItems.add()` 로 레이어 맨 위에
       //   생기므로, 여기서 만든 것은 자동으로 그 아래에 깔린다(0.2.0 이래의 순서 그대로).
+      mesTr_trace('panel' + i + ':bleed-start mode=' + panelMode[i]);
       if (bgCol) { filled(lyArt, pan, bgCol); bled++; bleedSolid++; }
       else if (panelMode[i] === 'extend') {
-        if (srcItems && mesTr_bleedExtend(lyArt, srcItems, pan, place)) { bled++; bleedExt++; }
+        if (mesTr_bleedExtend(lyArt, preBd[i], pan, place)) { bled++; bleedExt++; }
         else notes.push('bleedskip=' + (i + 1) + ':noextend');
       } else if (panelMode[i] === 'repeat') {
         if (mesTr_bleedPlacePng(lyArt, i, pan, place)) { bled++; bleedPx++; }
         else notes.push('bleedskip=' + (i + 1) + ':nopng');
       }
 
+      mesTr_trace('panel' + i + ':bleed-end');
       if (srcItems && des) {
         // ★**문서를 넘나드는 duplicate 은 그룹을 받으면 PARM 으로 죽는다.**
         //   일러 30.7 실측(2026-09-21): 같은 원본을
@@ -847,6 +904,7 @@ function mesTr_makePlate(payload) {
           dup = srcItems[j].duplicate(lyArt, ElementPlacement.PLACEATEND);
           if (dup) dups.push(dup);
         }
+        mesTr_trace('panel' + i + ':dup-done n=' + dups.length);
         var grp = null;
         if (dups.length) {
           grp = lyArt.groupItems.add();                       // 그룹 생성·이동은 **같은 문서 안**이라 안전하다
@@ -936,6 +994,37 @@ function mesTr_makePlate(payload) {
       stroked(lyGuide, bd, 0, 100, 100, 0, 0.5);
     }
 
+    // ── ③-b 끈고리·하도매 — **원본 위에 인쇄되는 표시**. 좌표는 패널이 plate.js 로 계산해 보낸다(정본 = plate-rules.marks).
+    //   색은 패널이 표시 자리의 굽기 픽셀로 판정해 보낸다(k|w). 판정이 안 서면 x = 흑선 + 백테두리 — 어디서나 보인다.
+    //   `pathItems` 는 레이어 맨 위에 생기므로 여기서 그리면 원본 그룹 위에 온다(도련·원본 다음).
+    var mkLoop = 0, mkHole = 0, mkKey = 0;
+    function markCol(code) { return (code === 'w') ? cmyk(0, 0, 0, 0) : cmyk(0, 0, 0, 100); }
+    for (i = 0; i < p.loops.length; i++) {
+      var lp = p.loops[i];
+      if (!mesTr_num(lp.x) || !mesTr_num(lp.y) || !(lp.len > 0)) { notes.push('markbad=L' + i); continue; }
+      var y0 = H - mesTr_pt(lp.y), x0 = mesTr_pt(lp.x), x1 = mesTr_pt(lp.x + lp.len);
+      if (lp.color === 'x') {
+        var under = lyArt.pathItems.add();
+        under.setEntirePath([[x0, y0], [x1, y0]]);
+        under.filled = false; under.stroked = true; under.strokeColor = cmyk(0, 0, 0, 0); under.strokeWidth = 4 + 2;
+        mkKey++;
+      }
+      var ln = lyArt.pathItems.add();
+      ln.setEntirePath([[x0, y0], [x1, y0]]);
+      ln.filled = false; ln.stroked = true; ln.strokeColor = (lp.color === 'x') ? cmyk(0, 0, 0, 100) : markCol(lp.color); ln.strokeWidth = 4;
+      mkLoop++;
+    }
+    for (i = 0; i < p.holes.length; i++) {
+      var hl = p.holes[i];
+      if (!mesTr_num(hl.cx) || !mesTr_num(hl.cy) || !(hl.r > 0)) { notes.push('markbad=H' + i); continue; }
+      var rr = mesTr_pt(hl.r), cy = H - mesTr_pt(hl.cy), cx = mesTr_pt(hl.cx);
+      var el = lyArt.pathItems.ellipse(cy + rr, cx - rr, rr * 2, rr * 2);   // (top, left, w, h)
+      el.filled = true; el.fillColor = (hl.color === 'x') ? cmyk(0, 0, 0, 100) : markCol(hl.color);
+      if (hl.color === 'x') { el.stroked = true; el.strokeColor = cmyk(0, 0, 0, 0); el.strokeWidth = 1.5; mkKey++; }
+      else el.stroked = false;
+      mkHole++;
+    }
+
     // ── ④ 자리 표시(비인쇄)
     for (i = 0; i < p.panels.length; i++) stroked(lyGuide, p.panels[i], 0, 0, 0, 100, 0.5);
     for (i = 0; i < p.design.length; i++) stroked(lyGuide, p.design[i], 100, 0, 0, 0, 0.5);
@@ -946,6 +1035,7 @@ function mesTr_makePlate(payload) {
       + ' placed=' + placed + ' bleed=' + bled
       + ' bleedhow=solid:' + bleedSolid + ',ext:' + bleedExt + ',px:' + bleedPx
       + ' clipped=' + clipped + ' clipskip=' + clipskip
+      + ' marks=loop:' + mkLoop + ',hole:' + mkHole + ',key:' + mkKey
       + ' bleedmode=' + mesTr_ascii(mesTr_modeSummary(p))
       + (srcSel ? '' : ' src=none')
       + (notes.length ? ' ' + notes.join(' ') : '')
