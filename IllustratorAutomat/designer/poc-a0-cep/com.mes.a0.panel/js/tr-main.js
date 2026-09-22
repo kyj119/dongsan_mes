@@ -17,11 +17,11 @@
 (function () {
   'use strict';
 
-  var TR_SHELL_VERSION = '0.5.0';   // 0.5.0 = ★호스트 0.5.0(클립 존중 잉크 경계) 없이는 **틀린 판이 조용히 나가므로** `TR_MIN_HOST` 를 [0,5,0] 으로 올렸다. 구 호스트는 클립이 잘라 낸 부분까지 크기에 넣어 자동 분석이 문서 전체를 한 덩어리로 보고(실측 10→1), 판에는 보이지 않는 여백이 그림보다 크게 깔린다 — 예외도 경고도 없이 **결과만 틀리다**(§조용한 격하). 잃는 것: Z: 호스트가 아직 0.4.0 인 PC 는 전사 탭이 「호스트가 낡았다」로 막힌다(갱신하면 풀린다). · 0.4.0 = ★**자동 분석이 주 경로**가 됐다(용준님 2026-09-21 「재단 기능처럼, 순서만 바꿀 수 있게」). [자동 분석] 이 문서의 맨 위 개체를 가로 간격으로 갈라 왼쪽을 벌① 로 두고, 사람은 [⇄ 좌우] 로 순서만 바꾼다. 수동 지정은 **자동이 못 가를 때**의 길로 내렸다. [계산] 은 지정이 하나도 없을 때만 자동을 먼저 돌린다 — 사람이 고른 것을 덮지 않는다. ⚠️그 자동 호출을 **await 없이 던지면 안 된다** — 호스트 왕복이라 늦게 온 응답이 방금 읽은 상태를 덮는다(CLAUDE.md §늦게 온 응답이 덮는다). 콜백으로 이어 붙였다. ⚠️덩어리 수가 벌 수와 다르면 **아무것도 지정하지 않고** 몇 덩어리인지 말한다 — 억지로 가르면 반쪽짜리 판이 조용히 나간다. 잃는 것: 없음(수동 경로 그대로) · 0.3.0 = ★벌마다 원본을 지정한다([벌① 좌 지정]·[벌② 우 지정]·[⇄]·[비우기]). 1조의 두 벌은 서로 다른 그림이라(2026-08 완성판 22건 실측, 동일 복제 0건) 종전처럼 하나를 두 벌에 복제하면 **전부 틀린 판**이 나왔다. 좌우는 디자이너가 정한다. 도련도 **벌마다** 계산해 `M:idx,...` 로 보낸다 — 두 벌의 바탕색이 다른 판이 흔하다. 지정이 비면 확인 목록에 **must** 로 올린다(조용히 빈 자리로 내보내지 않는다). ⚠️최악 도련을 고르는 비교에 `RANK[m] || 9` 를 쓰면 안 된다 — **skip 이 0 이라 falsy** 다(review.js 의 `ORDER[level] || 9` 와 같은 함정, 여기서도 한 번 걸렸다). 잃는 것: [계산] 전에 지정이 필요하다(안 하면 벌①에만 현재 선택이 들어간다) · 0.2.2 = ★안쪽 탭이 **전환되지 않고 있었다**. `.trpage`(style.css L199)가 `.hidden`(L21)보다 뒤에 있어 특정도가 같으면 이겼고, 숨겨야 할 페이지가 계속 보였다 — 가로등·윈드 입력이 동시에 렌더돼 실기에서 「입력창이 동일하다」로 보고됐다. `.trpage.hidden` 로 못박았다(`.mainpage.hidden` 과 같은 방식). 겸해서 **탭마다 쓰는 버튼만** 남긴다 — 가로등의 「틀 열기」·윈드의 「판 만들기」는 눌러도 거절 문구만 나오는 선택지였다. 게이트 = `panel:smoke` §16(브라우저에서 실제 가시성을 잰다 — 텍스트 게이트로는 영원히 못 잡는 종류다). 잃는 것: 없음(산식·payload 불변) · 0.2.1 = ★호스트 미로드를 **부팅 때** 알린다. 종전엔 `none` 을 조용히 넘겨 `host ?` 만 떴고 사람은 [판 만들기] 를 누르고서야 알았다. 그리고 그때 뜨는 문구가 **Z: 를 범인으로 단정**했는데(2026-09-18 실기) 진짜 원인은 이 PC 의 스텁이 전사 호스트를 목록에 안 넣은 것이었다 — Z: 는 멀쩡했고 사람은 드라이브를 보러 갔다. → 사유를 스텁에게 되묻고(oldstub·loaderr·notloaded) **조치가 다른 세 갈래**로 나눠 말한다. 잃는 것: 없음(산식·판·payload 불변) · 0.2.0 = 원본 측정(mesTr_measure) → 도련 경로 결정 → 배치·클리핑까지 · 0.1.0 = 신설
+  var TR_SHELL_VERSION = '0.6.0';   // 0.6.0 = ★도련 3단 배선 — 호스트 0.6.0 과 짝이다(`TR_MIN_HOST` [0,6,0]). 가장자리가 `grad` 면 **바탕을 늘리고**(무손실), 그것도 안 되면 **가장자리 색을 바깥으로 반복**한다. 반복은 재단과 **같은 엔진**(`js/bleed.js` `repeatLastPixel`)을 쓰고, 입출구(`readPng`·`writePng`)도 **사본을 만들지 않고** `js/png-io.js` 로 빼서 재단과 공유한다 — 엔진이 공유인데 입출구가 사본이면 한쪽에서 고친 것이 다른 쪽에 안 온다(이 저장소가 형제 스윕으로 여러 번 겪은 형태). ★굽기 해상도는 `TR_BLEED_MAX_PX`(12M) 예산에서 정하고, **실제로 구운 해상도로 되환산**해 도련 폭을 잡는다(요청값을 그대로 쓰면 반올림이 도련 폭에 실린다). 도련 PNG 는 원본 **뒤에** 깔리고 원본은 벡터 그대로라 안쪽 화질은 결과에 영향이 없다. ★못 만든 벌은 **센다** — 그 벌은 도련 없이 나가므로 조용히 넘기지 않는다. 잃는 것: 반복 경로는 벌당 굽기 왕복(수 초)이 붙는다. · 0.5.0 = ★호스트 0.5.0(클립 존중 잉크 경계) 없이는 **틀린 판이 조용히 나가므로** `TR_MIN_HOST` 를 [0,5,0] 으로 올렸다. 구 호스트는 클립이 잘라 낸 부분까지 크기에 넣어 자동 분석이 문서 전체를 한 덩어리로 보고(실측 10→1), 판에는 보이지 않는 여백이 그림보다 크게 깔린다 — 예외도 경고도 없이 **결과만 틀리다**(§조용한 격하). 잃는 것: Z: 호스트가 아직 0.4.0 인 PC 는 전사 탭이 「호스트가 낡았다」로 막힌다(갱신하면 풀린다). · 0.4.0 = ★**자동 분석이 주 경로**가 됐다(용준님 2026-09-21 「재단 기능처럼, 순서만 바꿀 수 있게」). [자동 분석] 이 문서의 맨 위 개체를 가로 간격으로 갈라 왼쪽을 벌① 로 두고, 사람은 [⇄ 좌우] 로 순서만 바꾼다. 수동 지정은 **자동이 못 가를 때**의 길로 내렸다. [계산] 은 지정이 하나도 없을 때만 자동을 먼저 돌린다 — 사람이 고른 것을 덮지 않는다. ⚠️그 자동 호출을 **await 없이 던지면 안 된다** — 호스트 왕복이라 늦게 온 응답이 방금 읽은 상태를 덮는다(CLAUDE.md §늦게 온 응답이 덮는다). 콜백으로 이어 붙였다. ⚠️덩어리 수가 벌 수와 다르면 **아무것도 지정하지 않고** 몇 덩어리인지 말한다 — 억지로 가르면 반쪽짜리 판이 조용히 나간다. 잃는 것: 없음(수동 경로 그대로) · 0.3.0 = ★벌마다 원본을 지정한다([벌① 좌 지정]·[벌② 우 지정]·[⇄]·[비우기]). 1조의 두 벌은 서로 다른 그림이라(2026-08 완성판 22건 실측, 동일 복제 0건) 종전처럼 하나를 두 벌에 복제하면 **전부 틀린 판**이 나왔다. 좌우는 디자이너가 정한다. 도련도 **벌마다** 계산해 `M:idx,...` 로 보낸다 — 두 벌의 바탕색이 다른 판이 흔하다. 지정이 비면 확인 목록에 **must** 로 올린다(조용히 빈 자리로 내보내지 않는다). ⚠️최악 도련을 고르는 비교에 `RANK[m] || 9` 를 쓰면 안 된다 — **skip 이 0 이라 falsy** 다(review.js 의 `ORDER[level] || 9` 와 같은 함정, 여기서도 한 번 걸렸다). 잃는 것: [계산] 전에 지정이 필요하다(안 하면 벌①에만 현재 선택이 들어간다) · 0.2.2 = ★안쪽 탭이 **전환되지 않고 있었다**. `.trpage`(style.css L199)가 `.hidden`(L21)보다 뒤에 있어 특정도가 같으면 이겼고, 숨겨야 할 페이지가 계속 보였다 — 가로등·윈드 입력이 동시에 렌더돼 실기에서 「입력창이 동일하다」로 보고됐다. `.trpage.hidden` 로 못박았다(`.mainpage.hidden` 과 같은 방식). 겸해서 **탭마다 쓰는 버튼만** 남긴다 — 가로등의 「틀 열기」·윈드의 「판 만들기」는 눌러도 거절 문구만 나오는 선택지였다. 게이트 = `panel:smoke` §16(브라우저에서 실제 가시성을 잰다 — 텍스트 게이트로는 영원히 못 잡는 종류다). 잃는 것: 없음(산식·payload 불변) · 0.2.1 = ★호스트 미로드를 **부팅 때** 알린다. 종전엔 `none` 을 조용히 넘겨 `host ?` 만 떴고 사람은 [판 만들기] 를 누르고서야 알았다. 그리고 그때 뜨는 문구가 **Z: 를 범인으로 단정**했는데(2026-09-18 실기) 진짜 원인은 이 PC 의 스텁이 전사 호스트를 목록에 안 넣은 것이었다 — Z: 는 멀쩡했고 사람은 드라이브를 보러 갔다. → 사유를 스텁에게 되묻고(oldstub·loaderr·notloaded) **조치가 다른 세 갈래**로 나눠 말한다. 잃는 것: 없음(산식·판·payload 불변) · 0.2.0 = 원본 측정(mesTr_measure) → 도련 경로 결정 → 배치·클리핑까지 · 0.1.0 = 신설
   // ★호스트 최소 버전 — 자동 분석(`mesTr_autoPick`)·벌별 슬롯·벌별 도련은 **0.3.0 부터**다.
   //   구 호스트는 그 함수가 없어 「함수가 아닙니다」로 떨어지거나(0.2.x), `M:idx,..` 를 조용히
   //   무시해 도련이 없는 판을 낸다(0.1.0). 조용한 격하라서 버전을 못박는다.
-  var TR_MIN_HOST = [0, 5, 0];
+  var TR_MIN_HOST = [0, 6, 0];
 
   var cs = null;
   try { cs = new CSInterface(); } catch (e) { /* ignore: 브라우저에서 열어 본 경우 — 계산까지는 동작해야 한다 */ }
@@ -203,7 +203,8 @@
     // ★도련은 **벌마다** 정한다 — 두 벌의 바탕색이 다른 판이 흔하다(2026-08 실측).
     //   안 재었으면 **모른다고 둔다**(추측해서 solid 로 만들지 않는다).
     var bleeds = [], worst = null, i;
-    var RANK = { skip: 0, repeat: 1, clip: 2, solid: 3, none: 4 };
+    // 나쁜 것이 낮다. `extend` 는 무손실이지만 늘리는 만큼(≤1.7%) 색이 밀리므로 `solid` 아래다.
+    var RANK = { skip: 0, repeat: 1, clip: 2, extend: 3, solid: 4, none: 5 };
     function rank(m) { return (typeof RANK[m] === 'number') ? RANK[m] : 9; }
     for (i = 0; i < r.panels.length; i++) {
       var e = lastEdges[i] || {};
@@ -249,8 +250,11 @@
   /** 슬롯 한 칸(`s1=ok s1w=.. s1edge=solid s1c=..`)을 review.js 가 먹는 edge 로 옮긴다. */
   function edgeOf(kv, t) {
     if (kv[t] !== 'ok') return null;
-    var e;
-    if (kv[t + 'edge'] === 'solid') {
+    var e, ek = kv[t + 'edge'];
+    if (ek === 'grad') {
+      // ★바탕이 **한 개체**다 — 늘리면 그대로 이어진다(무손실). 단색이라고는 말하지 않는다.
+      e = { extend: true, outside: false };
+    } else if (ek === 'solid') {
       var col = {
         c: parseFloat(kv[t + 'c']), m: parseFloat(kv[t + 'm']),
         y: parseFloat(kv[t + 'y']), k: parseFloat(kv[t + 'k'])
@@ -419,6 +423,63 @@
   }
 
   // ── 호스트 실행 ──────────────────────────────────────────────────
+  // ★굽기 예산 — 벌 하나를 이 픽셀 수 안에서 굽는다.
+  //   `repeatLastPixel` 은 결과 픽셀당 8바이트를 쓴다(Int16 2개 + RGBA). 12M 이면 약 100MB 로,
+  //   CEP 패널이 감당하는 선이다(재단 도련 상한 18M 보다 낮게 잡았다 — 전사는 벌이 크다).
+  //   ⚠️해상도가 낮아도 괜찮은 이유가 있다 — **도련 PNG 는 원본 뒤에 깔리고 원본은 벡터 그대로**다.
+  //     화면에 남는 것은 가장자리 밖으로 반복된 띠뿐이고, 그 띠는 어차피 잘려 나간다.
+  var TR_BLEED_MAX_PX = 12e6;
+
+  /**
+   * 가장자리 색을 바깥으로 반복해 도련 PNG 를 만든다 — **재단과 같은 엔진**(`js/bleed.js`).
+   * 호스트가 원본을 굽고(`mesTr_bakeSlot`), 여기서 늘린 뒤, 약속된 자리에 PNG 로 써 둔다.
+   * 판을 만들 때 호스트가 `Folder.temp/mes_tr_bleed_<i>.png` 를 집어 간다(재단과 같은 규약).
+   * @param idxs 픽셀 도련이 필요한 벌 번호들
+   */
+  function buildBleedPngs(idxs, bls, cb) {
+    var B = window.MesCutBleed, IO = window.MesPngIo;
+    if (!B || !IO) { cb('도련 엔진(js/bleed.js·js/png-io.js)이 안 실렸습니다 — 패널 설치본을 확인하세요.'); return; }
+    var made = 0, fail = 0, q = 0;
+    (function step() {
+      if (q >= idxs.length) {
+        // ★못 만든 것은 **센다** — 그 벌은 도련 없이 나가므로 조용히 넘기면 안 된다.
+        cb(fail ? ('※ 벌 ' + fail + '개는 도련 그림을 못 만들었습니다(그 벌은 도련 없이 나갑니다).') : '');
+        return;
+      }
+      var i = idxs[q], bl = bls[i], d = lastPlan.plate.design[i];
+      if (!d || !bl || !bl.grow) { fail++; q++; step(); return; }
+      var mmpp = Math.sqrt((d.w * d.h) / TR_BLEED_MAX_PX);
+      if (!(mmpp > 0)) mmpp = 0.3;
+      // ★굽기 해상도는 **원본 단위**로 준다. 원본이 1/10 배율로 그려져 있으면(고양 소노 파일이 그렇다 — 60x180mm 원본 → 600x1829 벌)
+      //   벌 크기로 재서 맞춘 mm/px 를 그대로 보내면 굽기가 **10배 거칠어진다**(실측: 1984px 예산이 198px 로). 크기 환산은 아래 되환산이 맞춰 주지만 해상도는 되돌릴 수 없다.
+      var srcW = (lastEdges[i] && lastEdges[i].w > 0) ? lastEdges[i].w : d.w;
+      var mmppSrc = mmpp * (srcW / d.w);
+      el.out.textContent = '도련 ' + (q + 1) + '/' + idxs.length + ' — 원본 굽는 중…';
+      host('mesTr_bakeSlot(' + i + ',' + mmppSrc.toFixed(5) + ')', function (rz, bad) {
+        var txt = String(rz);
+        if (bad || txt.indexOf('ok;') !== 0) { fail++; q++; step(); return; }
+        var m = txt.match(/path=(.+)$/);
+        if (!m) { fail++; q++; step(); return; }
+        var path = m[1], dir = path.replace(/[^\/\\]+$/, '');
+        IO.readPng(path, function (err, img) {
+          if (err || !img || !(img.W > 0)) { fail++; q++; step(); return; }
+          // ★**실제로 구운 해상도**로 환산한다 — 요청한 mmpp 와 반올림만큼 다르다.
+          //   요청값을 그대로 쓰면 그 차이가 도련 폭에 그대로 실린다.
+          var mpp = d.w / img.W, g = bl.grow;
+          var gpx = {
+            t: Math.round(g.t / mpp), r: Math.round(g.r / mpp),
+            b: Math.round(g.b / mpp), l: Math.round(g.l / mpp)
+          };
+          var res = null;
+          try { res = B.repeatLastPixel(img, gpx); } catch (e) { res = null; }
+          if (res && IO.writePng(dir + 'mes_tr_bleed_' + i + '.png', res)) made++;
+          else fail++;
+          q++; step();
+        });
+      });
+    })();
+  }
+
   function make() {
     if (!lastPlan || lastPlan.err) { el.out.textContent = '먼저 [계산] 을 누르세요'; return; }
     if (lastPlan.mode !== 'plate') { el.out.textContent = '윈드배너는 [틀 열기] 로 틀을 연 뒤 디자이너가 앉힙니다'; return; }
@@ -439,11 +500,21 @@
       rec.push(mrec);
     }
     var expr = 'mesTr_makePlate(' + asciiStr(rec.join(';')) + ')';
-    el.out.textContent = '판 만드는 중…';
-    host(expr, function (res, bad) {
-      el.out.textContent = res;
-      if (!bad) renderReview(lastPlan.review);
-    });
+
+    // ★`repeat` 이 하나라도 있으면 **판을 만들기 전에** 도련 PNG 를 만들어 둔다.
+    //   호스트는 약속된 자리에서 집어 가므로 경로가 브릿지를 타지 않는다(한글 temp 경로 대비).
+    var need = [];
+    for (i = 0; i < bls.length; i++) if (bls[i] && bls[i].mode === 'repeat') need.push(i);
+    if (!need.length) { go(''); return; }
+    buildBleedPngs(need, bls, go);
+
+    function go(note) {
+      el.out.textContent = '판 만드는 중…';
+      host(expr, function (res, bad) {
+        el.out.textContent = res + (note ? ('\n' + note) : '');
+        if (!bad) renderReview(lastPlan.review);
+      });
+    }
   }
 
   function openFrame() {

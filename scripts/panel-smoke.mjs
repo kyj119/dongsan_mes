@@ -1605,6 +1605,29 @@ ok('전체 콘솔/페이지 에러 0', errors.length === 0, errors.join(' | '))
   ok('17e 못 그리는 개체를 빼고 그 수를 알린다',
     trh.indexOf('function mesTr_draws(') > 0 && /blind=/.test(trh),
     '조용히 빼면 그게 다음 사각지대다 — 거절은 센다')
+  // ── §17f 도련 3단 — 재단과 같은 엔진·같은 입출구 ──
+  // ★엔진(bleed.js)은 2026-09-18 에 전사 축 때문에 비대칭까지 확장됐는데 **전사가 한 번도 안 불렀다**.
+  //   여기서는 「부르는가」와 「사본이 없는가」를 본다 — 사본이 생기면 한쪽만 고쳐져 갈린다.
+  const trm = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'poc-a0-cep', 'com.mes.a0.panel', 'js', 'tr-main.js'), 'utf8')
+  const cutm = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'poc-a0-cep', 'com.mes.a0.panel', 'js', 'cut-main.js'), 'utf8')
+  const idx = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'poc-a0-cep', 'com.mes.a0.panel', 'index.html'), 'utf8')
+  ok('17f 호스트에 도련 세 경로가 다 있다',
+    /function mesTr_bleedExtend\(/.test(trh) && /function mesTr_bleedPlacePng\(/.test(trh) && /function mesTr_bakeSlot\(/.test(trh),
+    '하나만 빠져도 그 모드가 조용히 bleedskip 으로 떨어진다')
+  ok('17f 방식별로 **센다**', /bleedhow=solid:/.test(trh) && /,ext:/.test(trh) && /,px:/.test(trh),
+    '합계만 보면 격하가 안 보인다 — 재단의 bleedHow 와 같은 이유')
+  ok('17f 전사가 재단과 **같은 엔진**을 부른다', /MesCutBleed/.test(trm) && /repeatLastPixel\(/.test(trm))
+  ok('17f PNG 입출구는 공유 한 벌 — 전사·재단 둘 다 png-io 를 쓴다',
+    /MesPngIo\b/.test(trm) && /MesPngIo\b/.test(cutm) && !/new Image\(\)/.test(trm) && !/new Image\(\)/.test(cutm),
+    '사본이 생기면 한쪽에서 고친 것이 다른 쪽에 안 온다')
+  ok('17f png-io 가 두 셸보다 먼저 실린다',
+    idx.indexOf('js/png-io.js') > 0 && idx.indexOf('js/png-io.js') < idx.indexOf('js/cut-main.js') && idx.indexOf('js/png-io.js') < idx.indexOf('js/tr-main.js'))
+  ok('17f 굽기는 투명을 켠다 (알파로 잉크를 가른다)', /opt\.transparency = true/.test(bodyOf(trh, 'mesTr_bakeSlot')),
+    '흰 배경으로 굳히면 그림 없는 자리까지 잉크로 읽혀 가장자리가 흰색이 된다')
+  ok('17f 실제로 구운 해상도로 되환산한다', /d\.w \/ img\.W/.test(trm),
+    '요청한 mm/px 를 그대로 쓰면 반올림이 도련 폭에 실린다')
+  ok('17f extend 는 사진을 거절한다', /kind === 'img'\) return false/.test(bodyOf(trh, 'mesTr_bleedExtend')),
+    '사진은 늘리면 흐려진다 — 픽셀 경로가 받아야 한다')
   ok('17e position 으로 앉히지 않는다',
     bodyOf(trh, 'mesTr_makePlate').indexOf('grp.position') < 0
     && bodyOf(trh, 'mesTr_makePlate').indexOf('grp.translate(') > 0,

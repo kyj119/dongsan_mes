@@ -721,7 +721,17 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   }
   // ★try 는 getImageData 만 감싼다 — cb 까지 넣으면 콜백 안의 예외가 '보안 실패'로 오진된다.
   //   catch 가 return 으로 끝난다는 것이 곧 "성공 경로 cb 는 try 밖"이라는 뜻이다.
-  ok('3r canvas catch 가 cb 를 안 삼킨다', /catch \(eTaint\) \{ cb\('canvas[^}]*return; \}/.test(panelSrc))
+  // ⚠️2026-09-22: 이 코드가 `js/png-io.js` 로 옮겨 **전사와 공유**가 됐다. 성질은 그대로라
+  //   게이트도 따라 옮긴다 — 지킬 것은 파일이 아니라 **성질**이다(§게이트가 구현을 못박으면 개선을 막는다).
+  //   옮긴 김에 **사본이 되살아나지 않았는지**도 본다. 사본이 생기면 한쪽만 고쳐져 갈린다.
+  const ioSrc = fs.readFileSync(path.join(PANEL_DIR, 'js', 'png-io.js'), 'utf8')
+  ok('3r canvas catch 가 cb 를 안 삼킨다', /catch \(eTaint\) \{ cb\('canvas[^}]*return; \}/.test(ioSrc))
+  ok('3r PNG 입출구는 공유 한 벌뿐이다',
+    /MesPngIo\.readPng\(/.test(panelSrc)
+    && !/new Image\(\)/.test(panelSrc) && !/toDataURL\(/.test(panelSrc),
+    '재단이 사본을 들고 있으면 전사와 갈린다 — 정본은 js/png-io.js. '
+    + '①파일→픽셀(new Image) ②픽셀→파일(toDataURL) 둘만 본다 — '
+    + 'canvas 를 쓰는 것 자체는 죄가 아니다(downscaleRgba 는 축소일 뿐 입출구가 아니다)')
 
   // ── 도련 상한 (2026-08-06 실사용) ──────────────────────────────
   // ★상한 초과를 **건너뛰면 단색 링**이 된다 — 아트 색이 아니라 지정색이라 재단이 밀리면 보인다.

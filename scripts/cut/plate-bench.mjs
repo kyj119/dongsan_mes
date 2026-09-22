@@ -257,6 +257,45 @@ const base = (over = {}) => Object.assign(
     !!nb && nb[2] === 90 && nb[1] === 200,
     '잘못 버리면 그림이 잘린다 — 잘못 남기는 쪽보다 나쁘다. 받은 값 ' + JSON.stringify(nb))
 
+  // ★바탕 판정 — 글자를 세지 말고 **돌려 본다**. 2026-09-22 실기 결함을 그대로 재현한다:
+  //   벌 전체를 덮는 개체가 위에서부터 [클립패스(칠 없음)] → [그라디언트] → [단색] 인데
+  //   옛 판정이 「단색 CMYK 인 패스」만 후보로 봐 **가려진 맨 아래 단색**을 골랐고, 그 색으로 깐 도련이
+  //   실제 그림(K66)보다 연해(K41) 띠가 보였다. 판정은 **맨 위에서 전체를 덮는 불투명한 칠**이어야 한다.
+  const fbAt = hostLF.indexOf('function mesTr_findBackdrop(')
+  const fbEnd = fbAt < 0 ? -1 : hostLF.slice(fbAt).indexOf('\n}\n')
+  if (fbAt < 0 || fbEnd < 0) throw new Error('mesTr_findBackdrop 을 못 잘랐다')
+  const mesTr_findBackdrop = new Function('MESTR_MM', hostLF.slice(fbAt, fbAt + fbEnd + 2) + '; return mesTr_findBackdrop;')(72 / 25.4)
+  const BOX = [0, 180, 60, 0]                       // [l,t,r,b] 디자인 상자
+  const fbClip = { typename: 'PathItem', clipping: true, filled: false, geometricBounds: BOX }
+  const fbGrad = { typename: 'PathItem', filled: true, opacity: 100, geometricBounds: BOX, fillColor: { typename: 'GradientColor' } }
+  const fbSolid = { typename: 'PathItem', filled: true, opacity: 100, geometricBounds: BOX, fillColor: { typename: 'CMYKColor', cyan: 99, magenta: 94, yellow: 59, black: 41 } }
+  const fbText = { typename: 'CompoundPathItem', filled: true, opacity: 100, geometricBounds: [10, 100, 30, 90], fillColor: { typename: 'CMYKColor' } }
+  // 페인트 순서 = pageItems[0] 이 맨 위
+  const fbReal = { typename: 'GroupItem', pageItems: [fbText, { typename: 'GroupItem', clipped: true, pageItems: [fbClip, fbGrad] }, fbSolid] }
+  const r1 = mesTr_findBackdrop([fbReal], BOX[0], BOX[1], BOX[2], BOX[3])
+  ok('㊶ ★그라디언트가 단색을 덮고 있으면 바탕은 그라디언트다 (2026-09-22 실기)',
+    !!r1 && r1.kind === 'grad' && r1.it === fbGrad,
+    '가려진 단색을 고르면 그 색으로 깐 도련이 실제 그림과 어긋난다 — 받은 값 ' + (r1 ? r1.kind : 'null'))
+  const r2 = mesTr_findBackdrop([{ typename: 'GroupItem', pageItems: [fbText, fbSolid] }], BOX[0], BOX[1], BOX[2], BOX[3])
+  ok('㊶ 단색만 있으면 solid + 그 색', !!r2 && r2.kind === 'solid' && r2.it.fillColor.black === 41, r2 ? r2.kind : 'null')
+  const half = { typename: 'PathItem', filled: true, opacity: 50, geometricBounds: BOX, fillColor: { typename: 'CMYKColor' } }
+  const r3 = mesTr_findBackdrop([{ typename: 'GroupItem', pageItems: [half, fbSolid] }], BOX[0], BOX[1], BOX[2], BOX[3])
+  ok('㊶ 반투명이 덮고 있으면 단색이라고 말하지 않는다', !!r3 && r3.kind === 'other', r3 ? r3.kind : 'null')
+  const photo = { typename: 'RasterItem', opacity: 100, geometricBounds: [-100, 200, 200, -50] }
+  const r4 = mesTr_findBackdrop([{ typename: 'GroupItem', pageItems: [photo, fbSolid] }], BOX[0], BOX[1], BOX[2], BOX[3])
+  ok('㊶ 사진이 덮고 있으면 img — 늘리지 않고 픽셀로 보낸다', !!r4 && r4.kind === 'img', r4 ? r4.kind : 'null')
+  const r5 = mesTr_findBackdrop([{ typename: 'GroupItem', pageItems: [fbText, fbClip] }], BOX[0], BOX[1], BOX[2], BOX[3])
+  ok('㊶ 칠 없는 클립 패스는 바탕이 아니다', r5 === null, r5 ? r5.kind : 'null')
+
+  // ★패널의 planBleed 도 같은 축을 탄다 — 가장자리 종류가 모드로 이어지는가
+  const RVsrc = fs.readFileSync(path.join(PANEL, 'review.js'), 'utf8')
+  new Function(RVsrc)()                             // review-bench 와 같은 방식 — 파일이 globalThis.MesReview 를 단다
+  const RV = globalThis.MesReview
+  const D = { x: 23, y: 15, w: 600, h: 1829 }, P = { x: 0, y: 0, w: 646, h: 1859 }
+  ok('㊷ ★바탕이 한 개체면 늘린다(extend)', RV.planBleed({ design: D, panel: P, edge: { extend: true } }).mode === 'extend')
+  ok('㊷ 단색이면 여전히 solid', RV.planBleed({ design: D, panel: P, edge: { solid: true, color: [0, 0, 0, 100] } }).mode === 'solid')
+  ok('㊷ 모르면 픽셀 반복(repeat)', RV.planBleed({ design: D, panel: P, edge: {} }).mode === 'repeat')
+
   // 최소 호스트 버전 ≤ 실제 호스트 버전
   const minM = panel.match(/TR_MIN_HOST\s*=\s*\[(\d+),\s*(\d+),\s*(\d+)\]/)
   const hostM = host.match(/MESTR_VERSION\s*=\s*'TR-CEP-(\d+)\.(\d+)\.(\d+)'/)
