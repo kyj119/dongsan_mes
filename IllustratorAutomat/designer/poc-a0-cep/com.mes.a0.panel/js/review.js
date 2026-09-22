@@ -45,21 +45,17 @@
     if (!need) return { mode: 'none', why: 'design-fills-panel', grow: grow };
 
     var e = o.edge || {};
-    // ① 기본 — 가장자리가 단색이면 그 색으로 벌 크기 사각을 깐다(무손실·계산 0)
+    // ★**기본은 픽셀 반복(repeat)이다** — 2026-09-22 실기(고양 소노): 가장자리에 실제로 있는 것은
+    //   사진(래스터)+줄무늬이었고 그라디언트는 위 변 하나뿐이었다. 「전체를 덮는 맨 위 칠」은 가장자리에 보이는
+    //   것이 아니다 — 벡터로는 혼합 가장자리를 표현할 수 없다. 픽셀은 렌더된 가장자리 그 자체를 이어 붙이므로
+    //   사진·그라디언트·단색 어느 경우도 맞는다(bleed.js 머리말 — 업계 도구 전부가 이 방식).
+    //   단색이라도 픽셀이 같은 결과를 낸다. `solid`·`extend` 는 픽셀을 못 만들 때의 폴백으로만 남는다.
+    if (o.allowRepeat !== false) return { mode: 'repeat', grow: grow, fallback: (e.solid && e.color) ? 'solid' : (e.extend ? 'extend' : 'skip') };
+
+    // ── 폴백 (픽셀을 쓸 수 없을 때만) ──
     if (e.solid && e.color) return { mode: 'solid', color: e.color, grow: grow };
-
-    // ② 무손실 — 바탕이 **한 개체**면 그것만 벌 크기로 늘린다(그라디언트·별색이 그대로 이어진다).
-    //    재단의 「클립 확장」에 해당하는 등급이다. 전사는 클립 밖에 그림이 없는 대신
-    //    바탕이 한 개체인 경우가 많아, 같은 값을 여기서 얻는다.
-    //    ★사진 바탕은 여기 오지 않는다 — 늘리면 흐려지므로 호스트가 거절하고 ④로 내려간다.
     if (e.extend === true) return { mode: 'extend', grow: grow };
-
-    // ③ 폴백 A — 클립 밖에 실제 그림이 있을 때만 클립을 넓힌다
-    //    ★전제를 **여기서 검사한다.** 주석으로만 적어 두면 2026-09-17 과 같은 일이 난다.
     if (e.outside === true) return { mode: 'clip', grow: grow };
-
-    // ③ 폴백 B — 래스터 반복. 비대칭이라 bleed.js 에 {t,r,b,l} 을 넘겨야 한다.
-    if (o.allowRepeat !== false) return { mode: 'repeat', grow: grow };
 
     return { mode: 'skip', why: e.solid === false ? 'edge-multicolor' : 'edge-unknown', grow: grow };
   }

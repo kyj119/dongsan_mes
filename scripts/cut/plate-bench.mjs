@@ -292,9 +292,12 @@ const base = (over = {}) => Object.assign(
   new Function(RVsrc)()                             // review-bench 와 같은 방식 — 파일이 globalThis.MesReview 를 단다
   const RV = globalThis.MesReview
   const D = { x: 23, y: 15, w: 600, h: 1829 }, P = { x: 0, y: 0, w: 646, h: 1859 }
-  ok('㊷ ★바탕이 한 개체면 늘린다(extend)', RV.planBleed({ design: D, panel: P, edge: { extend: true } }).mode === 'extend')
-  ok('㊷ 단색이면 여전히 solid', RV.planBleed({ design: D, panel: P, edge: { solid: true, color: [0, 0, 0, 100] } }).mode === 'solid')
-  ok('㊷ 모르면 픽셀 반복(repeat)', RV.planBleed({ design: D, panel: P, edge: {} }).mode === 'repeat')
+  // ★기본은 픽셀 반복 — 가장자리에 보이는 것은 벡터로 알 수 없다(2026-09-22 실기: 사진+줄무늬 가장자리에 그라디언트 도련이 깔렸다)
+  ok('㊷ ★그라디언트 바탕도 픽셀 반복이 기본', RV.planBleed({ design: D, panel: P, edge: { extend: true } }).mode === 'repeat')
+  ok('㊷ ★단색 바탕도 픽셀 반복이 기본 (폴백=solid)', (function () { var r = RV.planBleed({ design: D, panel: P, edge: { solid: true, color: [0, 0, 0, 100] } }); return r.mode === 'repeat' && r.fallback === 'solid' })())
+  ok('㊷ 모르면도 픽셀 반복', RV.planBleed({ design: D, panel: P, edge: {} }).mode === 'repeat')
+  ok('㊷ 픽셀을 못 쓰면 단색 폴백', RV.planBleed({ design: D, panel: P, edge: { solid: true, color: [0, 0, 0, 100] }, allowRepeat: false }).mode === 'solid')
+  ok('㊷ 픽셀을 못 쓰면 늘리기 폴백', RV.planBleed({ design: D, panel: P, edge: { extend: true }, allowRepeat: false }).mode === 'extend')
 
   // ★끈고리·하도매 — 정본 plate-rules.marks, 산식 plate.js (용준님 2026-09-22 확정 규칙을 숫자로 못박는다)
   //   60×180 · 상단봉미싱 5cm · 2벌 기준. 세로는 수축보정(k)을 먹은 판 좌표다.
