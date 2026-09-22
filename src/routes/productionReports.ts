@@ -40,7 +40,11 @@ productionReportsRouter.get('/daily-summary', async (c) => {
         COALESCE(e.name, pe.agent_id) as equipment_name,
         COUNT(CASE WHEN pe.print_status = 'OK' THEN 1 END) as ok_count,
         COUNT(CASE WHEN pe.print_status != 'OK' THEN 1 END) as error_count,
-        COUNT(*) as total
+        COUNT(*) as total,
+        -- 화면의 「면적(㎡)」·「비율」 열이 이걸 읽는데 **여기서 안 보내 항상 0 이었다**.
+        --   산식은 위 기본 통계와 같아야 한다 — 같은 날의 두 숫자가 어긋나면 안 된다.
+        COALESCE(SUM(CASE WHEN pe.print_status = 'OK'
+          THEN CAST(pe.output_width AS REAL) * CAST(pe.output_height AS REAL) * COALESCE(pe.copy_total, 1) / 1000000 END), 0) as sqm
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
       WHERE ${printEventKstDay('pe')} = ?

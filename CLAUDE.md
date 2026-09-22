@@ -280,6 +280,24 @@ D1 은 **쿼리당 바인드 ~100** 이 한도다. `arr.map(() => '?')` + `.bind
 - 정본 = `shell.js mesJwtPayload()`. 당시 손으로 까는 자리가 **7곳**이었고 정확도가 제각각이었다(생짜 3 · 패딩만 치환 3). 게이트 = **`npm run audit:jwt-decode`**(CI `deploy.yml` · `ship:gate` 배선 · 자가시험으로 발화 확인).
 - ⚠️**증언과 데이터가 어긋나 보이면 증언이 가리키는 단계부터 맞춘다** — 「아무 말 없이 돌아갔다」면 로그인 API 는 **성공**한 것이라 `last_login_at` 기록과 **일치**한다. 나는 그걸 「재현 안 됨」으로 적었고, 그 직전에 **내 손에서 같은 `InvalidCharacterError` 가 났는데** 연결하지 못했다.
 
+### 화면이 읽는 칸 이름 ≠ API 가 주는 칸 이름 (`npm run audit:render-junk`)
+**응답은 200 이고 값만 없다.** 2026-09-22 실기: `/production-reports` 의 두 표가 API 가 주지 않는 칸을 읽어
+열이 통째로 **「undefined」**였다 — 「미완료 주문」은 `o.due_date`(실제 `delivery_date`)·`o.item_count`(**없음**),
+「장비별」은 `e.ok`·`e.error`(실제 `ok_count`·`error_count`)·`e.sqm`(**없음**).
+- ★**진짜 피해는 undefined 가 보이는 칸이 아니라 그 옆이다** — `undefined < today` 와 `undefined > 0` 이
+  **항상 false** 라 「(지연)」과 에러 수가 **영영 안 떴다.** 지연을 보라고 만든 표에서 지연 표시만 없었고,
+  `(e.sqm || 0)` 처럼 가드가 있으면 **0 으로 조용히** 떠서 undefined 조차 안 보인다(§조용한 격하와 같은 형태).
+- **tsc·build·smoke·check:dom·check:fn 이 전부 통과한다.** 처음 드러난 경로는 `audit:table-clip` 이었는데
+  그것도 「undefined」라는 **글자가 열보다 넓어서**였다 — 우연이다.
+- ★**정적 대조는 답이 아니었다** — 라우트의 SELECT 별칭과 스크립트의 `o.필드` 를 맞춰 보는 시제품은
+  **후보 566건**을 냈다(스크립트 하나가 여러 라우트를 부르고, 라우트가 조인으로 남의 칸을 실어 나른다).
+  오탐이 그만큼이면 아무도 안 본다(§게이트=고칠 것). **증상을 직접 보는 쪽은 57화면에 1건**이었고
+  그 1건이 진짜 결함이었다. 원인을 좁히지 말고 **사람 눈에 닿는 자리**를 본다.
+- 게이트 = **`npm run audit:render-junk`**(`/deploy-verify` Phase 4 배선 · 기준선 **0건이 정상** ·
+  자가시험 `audit:render-junk:selftest` 양방향 11항목). 잡는 것 = `undefined`·`NaN`·`[object Object]`·
+  `Invalid Date`·`null`, 텍스트와 `title`/`alt` 둘 다. 숨은 요소·`pre`/`code`·낱말 일부는 안 잡는다.
+- ⚠️**「해소」를 그대로 믿지 않는다** — 그 화면에 데이터가 없어서 안 잡힌 것일 수 있다
+  (2026-09-22: `shipments` 1행·장비배정 0건이 table-clip 에서 「해소 4건」으로 보고됐다). 행이 있는지 보고 줄인다.
 ### 배포를 실제로 막는 게이트 (2026-09-10 실측)
 **「게이트가 있다」와 「게이트가 돈다」는 다른 질문이다.** `cut:butt` 는 2026-08-06부터 있었는데 한 달간 아무도 안 돌렸고, `cut:shellsync` 도 같은 상태였다(2026-09-10 등록) — **목록이 없어서 아무도 그걸 몰랐다.**
 - **CI**(push→main, `.github/workflows/deploy.yml`): tsc · **`check:fn`**(selftest+strict) · **`audit:jwt-decode`** · **`audit:bind-limit`** · build · `test:calc` · `entity-audit.mjs` · `audit:migration-number`(#639 같은 번호·같은 테이블 DDL 충돌만 차단) · `canary:write:ci` · `smoke.cjs`(prod)
@@ -287,7 +305,7 @@ D1 은 **쿼리당 바인드 ~100** 이 한도다. `arr.map(() => '?')` + `.bind
 - **편집 훅**(`posttooluse-edit.cjs`): `node --check`(src/scripts/*.js) · `check:dom` 기준선 회귀 · **`check:fn`**(src/**.ts·js — 미정의 전역 함수 호출, 기준선 없음) · **`audit:empty-catch`**(IllustratorAutomat/**.jsx·js — 사유 `ignore:` 없는 빈 catch) — 넷 다 `exit 2` 차단
 - **`ia:deploy`**(`ia-deploy.cjs` `GATES`): **audit:empty-catch** · **audit:jsx-ternary** · **audit:jsx-syntax** · cut:bleed · cut:nest · cut:butt · cut:placement · cut:smoke · **cut:shellsync** · panel:smoke · cut:e2e + ia-jsx 드리프트 (⚠️`test:outcopy` 는 2026-09-15 **하루 만에 은퇴** — 지키던 코드가 에이전트로 넘어갔다. **없어진 코드를 지키는 게이트는 초록불이 아무 뜻도 없다** → 성질은 `panel:smoke` §13 으로 옮겨 실었다)
 - **`ship:gate`**: verify(tsc+build) · **check:fn** · **audit:jwt-decode** · **audit:bind-limit** · entity-audit · **test:calc** · canary:write · **journey:gate**(J0~J7 40단계, 로컬 서버 자동 기동·≈4.5분, `SKIP_JOURNEY=1` 로만 명시 건너뜀) · **`test:local-e2e`**(서버가 필요한 4종을 journey 뒤에 묶어 세운다 — symmetry·ship-stock·autodeduct·print-match. 같은 `SKIP_JOURNEY=1` 로 함께 건너뛴다)
-- **`/deploy-verify`**: Phase 1 tsc·build·**test:calc**·**journey:gate** → Phase 2 entity-audit → Phase 2-B `audit:migration-drift`(스키마 변경 시) → Phase 4 `smoke:prod` · **`audit:table-clip`**(UI·목록 변경 시 — prod 56화면 열 잘림, 기준선=`scripts/table-clip-baseline.json`)
+- **`/deploy-verify`**: Phase 1 tsc·build·**test:calc**·**journey:gate** → Phase 2 entity-audit → Phase 2-B `audit:migration-drift`(스키마 변경 시) → Phase 4 `smoke:prod` · **`audit:table-clip`**(UI·목록 변경 시 — prod 56화면 열 잘림, 기준선=`scripts/table-clip-baseline.json`) · **`audit:render-junk`**(UI·API 응답 변경 시 — prod 57화면에 `undefined`·`NaN`·`[object Object]`·`Invalid Date`·`null` 이 떠 있는가. **기준선 0건이 정상**, 자가시험 `audit:render-junk:selftest`)
 > ⚠️`verify.yml` 은 `on: pull_request` 다 — 이 프로젝트(main 직접 push)에서는 **생성 이래 0회 실행**.
 > ⚠️여기 **없는** 감사는 사람이 부를 때만 돈다: `sort-audit` · `audit:query-cost` · `audit:subquery` · `audit:unit-price-semantics` · `audit:migration-drift` · `audit:stock-ledger` · `cut:quality`. (`test:symmetry`·`test:ship-stock`·`test:autodeduct`·`test:print-match` 는 2026-09-14 `test:local-e2e` 로 묶여 `ship:gate` 에 편입 — 그전까지 넷 다 미배선이었고, `test:print-match` 는 **빨간 채로** 있었다.) (`test:journey` 는 2026-09-11 `ship:gate`·`/deploy-verify` 에 편입 — 정본=`/journey-loop`, 한 사이클=`npm run journey:cycle`.)
 > **게이트를 새로 만들면 이 목록에 줄을 추가한다. 추가할 자리가 없으면 그건 게이트가 아니라 스크립트다.**

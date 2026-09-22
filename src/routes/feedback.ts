@@ -82,9 +82,11 @@ feedbackRouter.post('/', async (c) => {
       clip(body.file_path, 1000)
     ).first<{ id: number; created_at: string }>()
 
-    // ADMIN 에게 알린다. 배지(폴링×집계)는 만들지 않는다 — 이건 이벤트라 비용이 안 붙는다.
+    // 처리할 수 있는 사람 전원에게 알린다. 배지(폴링×집계)는 만들지 않는다 — 이건 이벤트라 비용이 안 붙는다.
+    // ⚠️수신 역할은 **`/feedback` 열람 권한과 같아야 한다**(role_page_permissions = ADMIN·MANAGER).
+    //   0626 에선 ADMIN 만 받아 MANAGER 는 신고가 들어온 걸 알 방법이 없었다(#660).
     await notifyRoles(
-      c.env.DB, ['ADMIN'],
+      c.env.DB, ['ADMIN', 'MANAGER'],
       `문제 신고 — ${CATEGORY_LABEL[category]}`,
       `${text.slice(0, 80)}${text.length > 80 ? '…' : ''}`,
       `/feedback?id=${row!.id}`,

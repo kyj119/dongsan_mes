@@ -154,8 +154,12 @@ function renderEquipmentTable(data) {
     html += '<div class="w-16 bg-gray-200 rounded-full h-2"><div class="bg-blue-600 h-2 rounded-full" style="width:' + pct + '%"></div></div>';
     html += '<span class="text-xs text-gray-500 w-8 text-right">' + pct + '%</span>';
     html += '</div></td>';
-    html += '<td class="px-3 py-2"><span class="text-green-600">' + e.ok + '</span>';
-    if (e.error > 0) html += ' / <span class="text-red-500">' + e.error + '</span>';
+    // ⚠️API 가 주는 이름은 `ok_count`·`error_count` 다. 예전엔 `e.ok`·`e.error` 를 읽어
+    //   ①이 칸이 「undefined」로 떴고 ②`undefined > 0` 이 **항상 false** 라 **에러 수가 영영 안 나왔다**.
+    var okN = (e.ok_count === null || e.ok_count === undefined) ? 0 : e.ok_count;
+    var errN = (e.error_count === null || e.error_count === undefined) ? 0 : e.error_count;
+    html += '<td class="px-3 py-2"><span class="text-green-600">' + escapeHtml(okN) + '</span>';
+    if (errN > 0) html += ' / <span class="text-red-500">' + escapeHtml(errN) + '</span>';
     html += '</td>';
     html += '</tr>';
   });
