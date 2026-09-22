@@ -1,3 +1,4 @@
+import { parseDeclaredQty } from '../utils/printFileName'
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, agentKeyMiddleware } from '../middleware/auth'
@@ -1039,14 +1040,15 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
     // 쌓인다(2026-08-12 양구군 5조 주문/25매 기록). ⚠️"30분 내 동일파일 반복" 휴리스틱은 대형 조수
     // 작업의 분할 반복 출력(예: 100조를 2~4매씩)과 구분 불가로 기각 — 백테스트 FLEXI 34.7% 오염.
     try {
-      const declaredRe = /-(\d+)\s*(조|장)\)/
+      // ★선언 수량 규칙은 `utils/printFileName.parseDeclaredQty` 한 곳이다(패널 축 `-N장)` · 에이전트 축 `-NEA-`).
+      //   게이트 = `npm run test:declared-qty`. 2026-09-22 까지 여기 인라인 정규식이 패널 축만 읽어 에이전트 축 과다를 놓쳤다.
       const pageRows = results as Array<Record<string, unknown>>
       const names: string[] = []
       const nameSeen = new Set<string>()
       for (const r of pageRows) {
         const fn = String(r.file_name || '')
         if (!fn || r.print_status !== 'OK' || (r.event_kind || 'PRINT') !== 'PRINT') continue
-        if (!declaredRe.test(fn) || nameSeen.has(fn)) continue
+        if (parseDeclaredQty(fn) == null || nameSeen.has(fn)) continue
         nameSeen.add(fn)
         names.push(fn)
       }
@@ -1081,13 +1083,9 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
         for (const r of pageRows) {
           const fn = String(r.file_name || '')
           if (!fn || r.print_status !== 'OK' || (r.event_kind || 'PRINT') !== 'PRINT') continue
-          const m = fn.match(declaredRe)
-          if (!m) continue
-          let declared = parseInt(m[1], 10)
-          if (fn.includes('양면')) declared *= 2
+          const declared = parseDeclaredQty(fn)
           const g = cumMap.get(Number(r.id))
-          // 타일 환산이 분수라 누계가 0.9999… 로 떨어진다 — 정확히 채운 경우를 초과로 읽지 않도록 여유를 둔다.
-          if (declared >= 1 && g && g.cum > declared + 1e-6) {
+          if (declared != null && g && g.cum > declared + 1e-6) {
             r.over_declared = declared
             r.over_cum_copies = Math.round(g.cum)       // 이 행까지의 누계 = 배지 숫자
             r.over_day_copies = Math.round(g.dayCopies)
