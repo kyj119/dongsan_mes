@@ -213,7 +213,9 @@ function renderOverdueTable(data) {
   html += '<thead class="bg-gray-50"><tr>';
   html += '<th class="col-code px-3 py-2 text-left text-xs font-semibold text-gray-600">주문번호</th>';
   html += '<th class="col-name px-3 py-2 text-left text-xs font-semibold text-gray-600">거래처</th>';
-  html += '<th class="col-date px-3 py-2 text-left text-xs font-semibold text-gray-600">마감일</th>';
+  // col-date(112px)가 아니라 col-datetime(148px) — 이 칸은 날짜만이 아니라 「2026-09-18 (지연)」
+  // 까지 담는다(실측 144px). 종전엔 「(지연)」이 버그로 영영 안 붙어서 112px 로도 안 잘렸다.
+  html += '<th class="col-datetime px-3 py-2 text-left text-xs font-semibold text-gray-600">마감일</th>';
   html += '<th class="col-status px-3 py-2 text-left text-xs font-semibold text-gray-600">상태</th>';
   html += '<th class="col-qty px-3 py-2 text-right text-xs font-semibold text-gray-600">품목 수</th>';
   html += '</tr></thead><tbody class="divide-y">';
