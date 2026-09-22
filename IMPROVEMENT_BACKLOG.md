@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-09-22T21:45:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-09-22T22:40:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,28 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **8** (`list_issues(state:OPEN,label:auto-improve)` 실측 — Area2 신규 #659 feedback.ts entity 격리 누락) |
+| 🆕 new | **9** (`list_issues(state:OPEN,label:auto-improve)` 실측 — Area3 신규 #660 feedback MANAGER 알림 배선 누락) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **571** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 3 UX/기능 감사 (2026-09-22T22:40):**
+> - **방법**: 세션 시작 시 이미 `main`(`e04c7a9`, origin/main과 동일) — detached HEAD 상태 아님, 별도 checkout 불요. `git fetch origin main` 재확인(diff 0). `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area3 사이클 세션시작 HEAD `291d930`, 2026-09-19T13:10)**: `git log 291d930..HEAD` 41커밋, Area3 스코프(`src/pages`·`src/scripts`·`index.tsx`) diff **4커밋**(`59ddd34` kakao→shipments 알림 이관·`7e4be09` feedback 전역 신고 기능 신설(0626)·`f04d50d`+`ea93492` production-reports undefined/열폭 버그 수정). `59ddd34`는 Area4·6가 이미 자기 렌즈로 정독 완료(백로그 로그 확인), production-reports 2건은 owner 자신이 낸 버그수정 커밋이라 net-new 없음(재확인만).
+> - **`7e4be09`(feedback 전역 신고 기능, 994줄 신설) — Area3 고유 렌즈로 직접 UX 정독**: `src/pages/feedback.ts`·`src/scripts/feedback.js`(관리 목록)·`src/scripts/layout/feedback.js`(전역 신고 모달) 3파일 전문 Read. 빈 상태("해당하는 신고가 없습니다")·로딩 표시("불러오는 중…")·검색(`fblSearch`+Enter키+조회버튼)·필터(상태·분류)·더블클릭 가드(`fbSubmitting`/`btn.disabled`)·에러 메시지(토스트+인라인)·상세모달 접근성(ESC 닫기) 전부 구현 — 기존 15·31회차 codify 항목(로딩표시 갭·중복제출) 기준으로 **결함 0건**, 오히려 이 영역이 스스로 찾아야 했을 패턴들을 코드가 이미 자체 구비.
+> - **🆕 신규 발견 #660 — MANAGER 권한은 있는데 신규 신고 알림·진입 경로가 없음**: `migrations/0626_feedback_reports.sql:69-70`가 `role_page_permissions`에 ADMIN·MANAGER 둘 다 `/feedback` can_access·can_edit=1 부여(런타임도 일치 — `feedback.ts:176` `GET /`·`:277` `PATCH /:id` 둘 다 `requireRole('ADMIN','MANAGER')`)하는데, 신규 신고 알림(`feedback.ts:86-92` `notifyRoles(db,['ADMIN'],...)`)은 **ADMIN에게만** 간다. 이 기능은 설계상 사이드바/메뉴 진입점이 의도적으로 없다(`grep -rn "/feedback" src/layout src/scripts` 전수 확인 — 참조는 topbar 신고버튼과 feedback 자신 파일뿐, 알림 클릭(`/feedback?id=N`)이 유일한 진입 경로) — 그래서 MANAGER는 URL을 몰라 접근 자체가 원천 차단. 커밋 메시지가 직접 명시한 설계원칙("안 알리면 다음부터 신고를 안 한다 — 채택이 죽는 자리")이 **인입 쪽에도 그대로 적용되는 사례** — ADMIN(활성 3명, 커밋 메시지 실측) 부재 시 MANAGER가 대신 처리하라고 권한을 열어 놨는데 그 경로가 배선 누락으로 죽어 있음. 수정 = `notifyRoles` 역할배열에 `'MANAGER'` 추가 한 줄(XS), 신규 권한을 여는 게 아니라 기존 권한과 알림을 정합화. issue-only(누가 알림받는가=비즈니스 동작 변경).
+> - **standing scan 1: showConfirm 콜백 오용(#426 클래스)** — `grep -rn "showConfirm(" src/scripts/feedback.js src/scripts/layout/feedback.js` 0건(해당 없음, feedback은 showConfirm 미사용).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음, `feedback_reports` 목록은 `status,id DESC`로 AUTOINCREMENT 단독 tie-break 이미 정합·마이그 주석에 명시). P2 4건 전부 기존 FP 유지.
+> - **standing scan 3: `npm run branch:clean`** — 삭제대상 0건(SKIP 1=main).
+> - **standing scan 4: 신규 axios 호출 dead-button 스캔** — `feedback.js`·`layout/feedback.js`의 axios 호출(`/api/feedback`·`/api/feedback/:id`·`/api/feedback/:id/attach`·`/api/feedback/:id/attachment/:i`·`/api/feedback/mine`) 전부 `src/routes/feedback.ts`에 실재(`index.tsx:320` 마운트 확인) — net-new 0.
+> - **CI 헬스**: `actions_list(deploy.yml, branch:main)` 최근 5런 전부 `conclusion:success`(최종 HEAD `e04c7a9` 포함).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` 기존 8건(#659·#658·#656·#654·#650·#626·#617·#616) 전건 Area3 관할 밖 또는 상태 유지. 신규 #660 추가로 open **9**.
+> - **backlog↔GitHub 절대값 재동기화**: open **9**(+1) · done **571**(변동없음, `search_issues reason:completed` 571 재확인) · rejected **6**(변동없음, `not planned` 4 + `duplicate` 2 재확인).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md `line N` 잔여참조 재확인(이미 서술식, 잔여 없음). #660은 기존 "🚪 백엔드 먼저·화면 나중"(49회차 codify) 레시피의 변주 — 거기는 "API필드가 있는데 읽는 화면이 없다"였고 이번은 "권한·화면은 있는데 알림 배선이 없어 발견을 못 한다"라 **알림-권한 정합성**이라는 인접 축. 기존 레시피 서술에 흡수하기보다 향후 신규 알림 배선(`notifyRoles`) 도입 시 "이 역할 배열이 `role_page_permissions`가 그 페이지에 부여한 역할 집합과 일치하는가"를 대조하는 체크 한 줄을 area-3 파일에 추가할 가치가 있으나, 표본 1건(신규 기능 1개)뿐이라 이번 사이클엔 codify 보류 — 다음 신규 알림 배선 기능에서 같은 패턴이 재현되면 그때 정식 레시피화.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 8건 → 이번 추가 후 9건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 **1건**(#660, feedback MANAGER 알림·진입경로 배선 누락), 자동수정 0건(알림 수신자 역할 변경=비즈니스 동작 변경, issue-only), done-sync: open 8→9(#660)·done 571(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-09-22T21:45):**
 > - **방법**: 세션 시작 시 detached HEAD `50c0760`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
