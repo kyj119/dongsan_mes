@@ -1,4 +1,4 @@
-import { parseDeclaredQty } from '../utils/printFileName'
+import { parseDeclaredQty, declaredQtyFor } from '../utils/printFileName'
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, agentKeyMiddleware } from '../middleware/auth'
@@ -1048,12 +1048,23 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
       for (const r of pageRows) {
         const fn = String(r.file_name || '')
         if (!fn || r.print_status !== 'OK' || (r.event_kind || 'PRINT') !== 'PRINT') continue
-        if (parseDeclaredQty(fn) == null || nameSeen.has(fn)) continue
+        if ((parseDeclaredQty(fn) == null && r.card_id == null) || nameSeen.has(fn)) continue
         nameSeen.add(fn)
         names.push(fn)
       }
       if (names.length > 0) {
         // 바인드 100 한도 → 80개 청크 (memory d1-bind-param-limit)
+        // ★분모의 정본은 **카드 수량**이다 — 연결된 행은 파일명을 되읽지 않는다(2026-09-22 용준님 「구조개선」).
+        //   파일명은 대리값이고 재작업에서 꼬리가 바뀜다 — 카드는 남는다. 연결된 행은 소수라(패널 축 20%)
+        //   파일명 경로가 계속 주력이고, 이 분기는 연결된 행의 정확도만 올린다. 어느 분모를 썼는지 `over_source` 로 남긴다.
+        const cardQty = new Map<number, number>()
+        const cardIds = Array.from(new Set(pageRows.map((r) => Number(r.card_id)).filter((v) => Number.isFinite(v) && v > 0)))
+        for (let i = 0; i < cardIds.length; i += 80) {   // 바인드 100 한도 → 80 청크
+          const chunk = cardIds.slice(i, i + 80)
+          const cq = await c.env.DB.prepare(`SELECT id, quantity FROM cards WHERE id IN (${chunk.map(() => '?').join(',')})`)
+            .bind(...chunk).all<{ id: number; quantity: number | null }>()
+          for (const row of cq.results || []) if (row.quantity != null) cardQty.set(Number(row.id), Number(row.quantity))
+        }
         const cumMap = new Map<number, { cum: number; dayCopies: number; dayPrints: number }>()
         for (let i = 0; i < names.length; i += 80) {
           const chunk = names.slice(i, i + 80)
@@ -1083,10 +1094,13 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
         for (const r of pageRows) {
           const fn = String(r.file_name || '')
           if (!fn || r.print_status !== 'OK' || (r.event_kind || 'PRINT') !== 'PRINT') continue
-          const declared = parseDeclaredQty(fn)
+          const cid = Number(r.card_id)
+          const dq = declaredQtyFor(fn, Number.isFinite(cid) && cid > 0 ? cardQty.get(cid) : null)
+          const declared = dq.qty
           const g = cumMap.get(Number(r.id))
           if (declared != null && g && g.cum > declared + 1e-6) {
             r.over_declared = declared
+            r.over_source = dq.source
             r.over_cum_copies = Math.round(g.cum)       // 이 행까지의 누계 = 배지 숫자
             r.over_day_copies = Math.round(g.dayCopies)
             r.over_day_rows = Math.round(g.dayPrints)   // 타일 정규화 후 = 출력 횟수
