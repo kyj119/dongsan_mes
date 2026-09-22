@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-09-21T18:30:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-09-22T09:51:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,27 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **7** (`list_issues(state:OPEN,label:auto-improve)` 실측, +1 = #658) |
+| 🆕 new | **7** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음 — #650 fixed-in-tree 코멘트만, close는 owner 대기) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **571** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 6 자기 진화 (2026-09-22T09:51):**
+> - **방법**: 세션 시작 시 detached HEAD `f97cbac`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area6 사이클 결과 커밋 `ee5dc9d`)**: `git log ee5dc9d..HEAD` **28커밋** — 이번 순환(Area6→1→2→3→4→5) 자신들의 북키핑 6건 + 웹앱 스코프(`src/routes`·`src/scripts`·`src/services`·`src/utils`) **19파일**(bind-limit 청크 클러스터·#650/#655/#657 후속·kakao→shipments 알림 이관) + **비-웹앱 축(IllustratorAutomat) 6커밋**(전사=transfer 신규 호스트, `d1b2ec8`·`77f4b42`·`8d28944`·`9e99715`·`8ed9253`·`ae9ed18`).
+> - **웹앱 스코프 19파일**: `search_issues`·본문 대조로 Area4(집계정합성, 09-21 14:20)와 Area5(entity/인젝션/인증, 09-21 18:30)가 이미 파일명+라인 단위로 전수 정독 완료(inventory.ts·items.ts·kakao.ts·orders/helpers.ts·payroll/core.ts·prices.ts·purchaseOrders/core.ts·purchaseRequests.ts·quotations.ts·shipments.ts·taxInvoices/{batch,helpers,issue}.ts·utils/chunk.ts·utils/inventoryAlert.ts·utils/shipmentNotice.ts·services/clientSegment.ts, `src/scripts/{orders,shipments}.js` 4줄은 59ddd34 알림 라우트 이관의 기계적 경로 갱신) — **#600 브리지 재확인: 어느 파일도 "나열만 되고 Read 안 됨" 없음**, Area6 재검토 대상 0.
+> - **🌉 비-웹앱 축(「비-웹앙 런타임 축」, 62회차) — IA 6커밋 직접 정독**: 전부 신규 "전사"(transfer) 호스트(`mes-tr-host.jsx`) 구축 과정 — 좌우 자동분석·클립경계·PARM 오류·주석 자기폐쇄 구문오류·스텁 열거 누락 순으로 자기완결 postmortem(원인 실측+최소재현+수정+게이트). CLAUDE.md §visibleBounds 함정에 이미 정본으로 반영됨(2026-09-21 갱신 확인). **직접 검증**: `npm run audit:jsx-ternary`(15개 .jsx, 괄호 없는 중첩 삼항 0) · `audit:jsx-syntax`(30개, 전부 파싱) · `audit:empty-catch`(28파일·379곳 전부 사유 있음) 전부 통과. `mes-tr-host.jsx`에 `mesTr_inkBounds`(클립∩콘텐츠) 함수 존재 확인(`grep` 8회 호출부) — CLAUDE.md가 요구하는 "A0·재단·전사 3자 대조"를 `panel-smoke.mjs` §17e가 이미 구현(`mesTr_inkBounds`·`mesA0_itemBounds`·`mesCut_inkBounds` 3종 존재 + 각 draw 함수가 그 경계로 재는지 검사) — 새 호스트가 게이트를 스스로 갖추고 착륙한 사례, net-new 결함 0. `npm run audit:ia-jsx`·`panel:smoke`(Playwright 브라우저 미설치로 미실행)는 기존과 동일하게 이 환경에서 NAS/exe 접근 불가로 판정 제외(신규 제약 아님).
+> - **table-clip 감사 도구 자기교정(`9617ee3`, 웹앱·비웹앱 어느 로그에도 미언급 확인 후 직접 정독)**: `--base` 미지정 시 기본 대상(localhost)이 prod 기준선을 조용히 덮어쓰던 버그를 `--force-base` 명시 가드로 차단(대상 불일치 시 exit 2, 측정 전 판정이라 시간 낭비 없음) + 실측 해소분 7건 반영(44→37). `scripts/table-clip-audit.cjs:159-163` 직접 확인 — 가드 존재. 자기완결 수정, net-new 이슈 없음.
+> - **done-sync 절대값 재동기화(리터럴 쿼리)**: `search_issues("repo:kyj119/dongsan_mes label:auto-improve is:closed reason:completed")` **571**(변동없음) · `reason:"not planned"` **4** + `reason:duplicate` **2** = rejected **6**(변동없음) · `list_issues(state:OPEN,label:auto-improve)` **7**(#658·#656·#654·#650·#626·#617·#616, 변동없음).
+> - **🔁 open≠unfixed 거울 — #650 fixed-in-tree 확정, GH 코멘트 게시**: Area5(09-20)가 "여전히 entity 필터 없음, 정상 open"으로 남긴 뒤, 이번 churn의 `9c8c428`+`d1bcd5f`(#650 후속)가 실제로 고쳤다 — `items.ts:229-253` 직접 재확인: 재고합계(`efInv`)·최근판매단가(`efOrd`) **두 쿼리 모두** entity 필터 적용, `ROW_NUMBER() OVER (PARTITION BY item_id ...)`가 서브쿼리 **내부**(entity 필터 적용 후)에서 랭킹 — 형제완전성 충족. Issue #650에 fixed-in-tree 코멘트 게시(https://github.com/kyj119/dongsan_mes/issues/650#issuecomment-5769667391, 32회차 규칙: 재검증은 이 세션이, close는 owner). open 카운트는 7 유지(close 전이라 목록엔 그대로).
+> - **나머지 6건 재확인**: `#658`(taxInvoices/issue.ts) — `issue.ts:344`(bulk `WHERE o.id IN (...)`)·`:415`(단건 `WHERE o.id = ?`) 둘 다 여전히 entity 필터 없음, 이번 churn(`8bcad2f`)은 이 파일의 bind-limit 청크만 건드림 = **정상 open, 미픽스**. `#656`(bulk-ship 알림 TOCTOU) — `orders.js:92 bulkShipSelected()`에 여전히 버튼 비활성 가드 없음(형제 `doNoticeSend`만 있음) = **정상 open**. `#654`(PATCH /:id/status 고아+billable_after) — 프론트 호출 0건 재확인(전수 grep) + SHIPPED 분기(`shipments.ts` PATCH `/:id/status` 논-취소 브랜치)는 여전히 `billable_after` 미설정(CANCELLED 분기만 최근 `clearShipBillingStmt` 추가됨, 반대 방향 짝) = **정상 open, 미픽스**. `#626`·`#617`·`#616` — owner 코멘트 재조회 결과 각각 09-10(PII 결정대기)·08-31×2(LogWatcher 실기 롤아웃 대기) 이후 변동 없음, 64회차 FP룰대로 재통지 불요.
+> - **standing scan**: `npm run audit:migration-number`(파일수 증가분 신규 중복 재유입 없음, 같은테이블 DDL충돌 0) · `node scripts/sort-audit.cjs`(P1 0, P2 4건 기존 FP 유지) · `npm run branch:clean`(SAFE-remote 0·SAFE-absorbed 0·REVIEW 0, 삭제대상 0) · `npm audit --omit=dev`(0건) · `npm run audit:skills`(OK, 스킬 19개 상주비용 ~2,662자).
+> - **CI 헬스**: `actions_list(deploy.yml, branch:main)` 최근 8런 전부 `conclusion:success`(최종 HEAD `f97cbac` 포함, run #2036).
+> - **🧬 SKILL 강화**: 없음 — area-6-self-evolution.md `line N` 잔여참조 재확인(0건, 이미 서술식). 이번 사이클은 기존 4개 레시피(#600 브리지·비-웹앱 축 scan·open≠unfixed 거울·close-pending 코멘트)가 정확히 의도대로 작동 — IA "전사" 신규 호스트가 게이트(§17e)를 자체 구비하고 착륙, table-clip 감사 자기교정도 자기완결이라 새 클래스 없음.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 10건 → 이번 추가 후 11건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(28커밋 전수 브리지 검토, 웹앱 19파일 타 Area 기정독 확인 + 비웹앱 IA 6건 직접 정독 clean + table-clip 도구 수정 clean), 자동수정 0건(코드 결함 없음 — #650 GH 코멘트만), done-sync: open 7(변동없음, #650 close-pending)·done 571(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 + 인프라 (2026-09-21T18:30):**
 > - **방법**: 세션 시작 시 detached HEAD `d1b2ec8`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
