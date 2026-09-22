@@ -61,6 +61,19 @@ namespace LogWatcher
                 Tools.FlexiSelfTest.Run(args);
                 return;
             }
+            // 전사 2축은 규격을 PrintExp 에서 받는다 — 그 줄을 못 읽으면 **규격만** 조용히 빈다.
+            // 위 둘은 그걸 못 본다(조인·이중계상 축만 본다).
+            if (args.Length > 0 && args[0] == "--selftest-transfer")
+            {
+                Tools.TransferSelfTest.Run(args);
+                return;
+            }
+            // 현장 진단 — 읽기 전용. `--test` 와 달리 **서비스 위치 파일을 건드리지 않는다**.
+            if (args.Length > 0 && args[0] == "--probe-printlog")
+            {
+                Tools.PrintLogProbe.Run(args);
+                return;
+            }
 
             var equipmentConfigPath = Path.Combine(AppContext.BaseDirectory, "equipment.json");
 

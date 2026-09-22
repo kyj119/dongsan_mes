@@ -202,15 +202,47 @@ LogWatcher.exe --init              # discover + analyze → equipment.json 초�
 
 ⇒ `#617`(센서스 열거기)은 **축 B 라 PC 방문이 필요 없다.** `#616`(파서)은 축 A 라 대상 PC 를 돌아야 한다.
 
+### 5-0. 「장비는 도는데 실적이 안 올라온다」 — 립 축부터 본다
+
+```
+bin\LogWatcher.exe --probe-printlog                          (기본 C:\TNSRip-X1\Print.log)
+bin\LogWatcher.exe --probe-printlog "D:\TNSRip-X1\Print.log" (경로 지정)
+```
+
+**읽기 전용이다** — 서비스 위치 파일을 건드리지 않으므로 인쇄 중에 돌려도 안전하다.
+⚠️ `--test` 를 대신 쓰면 안 된다: 그건 `ResetPosition()` 을 해 **최근 며칠치를 재전송**시킬 수 있다.
+
+| 출력 | 뜻 | 다음 |
+|---|---|---|
+| 마커 0개 | 그 PC 의 TNSRip 이 우리가 아는 판이 아니다 | Print.log 를 Z: 로 받아 구조 분석 |
+| 마커 있는데 레코드 0 | 레코드 구조가 전제와 다르다 | 〃 |
+| 레코드는 있는데 마지막 기록이 옛날 | **그 경로가 지금 쓰는 TNSRip 이 아니다** | 같은 PC 의 다른 설치본으로 `log_path` 교체 |
+| 레코드 정상·최근 | 립 축은 살아 있다 | 조인·전송 축(`service.log`)을 본다 |
+
+정상 기준선(HSM-06 실측): 헤더 ASCII 에 `PrintLogFile`, 마커 합계 = 레코드 수, 2022년부터 누적.
+
+`kit-admin.ps1` 도 [2] 실행 때마다 **립 축을 스스로 점검**한다(2026-09-22) — 설정 경로가 3일 넘게
+안 자랐으면 경고하고 그 PC 의 다른 TNSRip 설치본을 나열한다(`TNSRip-X1`·`X11`·`X`, C:/D:/E:/F: 실측).
+★ **찾아도 자동 교체하지 않는다** — 립 위치 파일이 그 파일 기준이라 경로를 바꾸면 재적재가 터진다.
+
 ### 5-1. 개발 PC — 게이트 먼저 (실기에서 되돌리는 것보다 싸다)
 
 ```
 dotnet build LogWatcher\LogWatcher.csproj
 dotnet run --project LogWatcher\LogWatcher.csproj -- --selftest-pexp
+dotnet run --project LogWatcher\LogWatcher.csproj -- --selftest-flexi
+dotnet run --project LogWatcher\LogWatcher.csproj -- --selftest-transfer
 powershell -NoProfile -ExecutionPolicy Bypass -File LogWatcher\kit\kit.ps1 -Action census-selftest
 ```
 
+> 셋 다 **`make-kit.ps1` 이 조립 전에 자동으로 돌린다**(2026-09-22 배선). 그전까지는 여기 적혀만 있고
+> 어떤 실행 경로에도 안 물려 **조립 때 아무도 안 돌렸다**. 위 명령은 손으로 확인할 때 쓴다.
+
 - `--selftest-pexp` = 합성 서식지로 조인/폴백 억제 4항목. equipment.json·실기 로그 불요.
+- `--selftest-flexi` = flexi 축 조인 7항목. **pexp 시험은 이걸 못 본다**(축이 다르다).
+- `--selftest-transfer` = 전사 2축 **규격 축** 4항목 — 스펙 줄 뒷부분이 없어도 규격을 읽는가,
+  못 읽으면 립 규격으로 폴백하는가, 근거가 없으면 비우는가. 조인 축 시험 둘은 이걸 못 본다
+  (2026-09-22: TRANS-8C-02 가 전 기간 114건 **100% 규격 결손**인데 세 게이트 전부 통과했다).
 - `census-selftest` = ACL 거부 폴더를 만들어 열거기 4항목. **반드시 `powershell.exe`(5.1)** 로 —
   현장 `START.bat` 이 그 호스트를 쓰고, .NET Framework 와 .NET Core 는 열거 실패 동작이 다르다.
 

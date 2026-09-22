@@ -52,8 +52,15 @@ namespace LogWatcher.Parsers
         public string Name { get; }
 
         private static readonly Regex StartRe = new(@"启动任务", RegexOptions.Compiled);
+        // ★ 뒤 두 필드(颜色数量·打印模式)는 **선택**이다. 필수로 두면 그 줄 형식이 조금만 달라도
+        //   매치가 통째로 실패해 **규격이 빈 채로 나가는데 이벤트는 정상 송출된다** — 200 이고
+        //   이름·매수·취소가 다 맞아서 아무도 모른다(§조용한 격하).
+        //   prod 실측 2026-09-22: TRANS-8C-02(PrintExp 5.7.6.5.103) 전 기간 114건 **100% 규격 결손**,
+        //   같은 기종 1호기(구형 PrintExp)는 356건 중 0건. 형제 파서 `FlexiPrintExpParser` 는
+        //   처음부터 앞 4필드만 요구했고 그쪽 장비는 결손이 없다 — 그 성질을 여기로 옮긴다.
+        //   잃는 것: 뒷부분이 없으면 Mode(打印模式)를 모른다. 규격·DPI 는 앞 4필드로 충분하다.
         private static readonly Regex SpecRe = new(
-            @"任务精度:(\d+)\s*X\s*(\d+),图像大小:([\d.]+)mm\s*X\s*([\d.]+)mm,颜色数量:(\d+),打印模式:(.+)",
+            @"任务精度:(\d+)\s*X\s*(\d+),图像大小:([\d.]+)mm\s*X\s*([\d.]+)mm(?:,颜色数量:(\d+))?(?:,打印模式:(.+))?",
             RegexOptions.Compiled);
         private static readonly Regex DoneRe = new(@"_PrintWait---打印完成", RegexOptions.Compiled);
         private static readonly Regex CancelRe = new(@"打印控制线程---被取消", RegexOptions.Compiled);
@@ -176,7 +183,7 @@ namespace LogWatcher.Parsers
                 _cur.Dpi = $"{sp.Groups[1].Value}x{sp.Groups[2].Value} DPI";
                 _cur.W = NeoStampaJobFile.ParseDouble(sp.Groups[3].Value);
                 _cur.H = NeoStampaJobFile.ParseDouble(sp.Groups[4].Value);
-                _cur.Mode = sp.Groups[6].Value.Trim();
+                _cur.Mode = sp.Groups[6].Success ? sp.Groups[6].Value.Trim() : "";
             }
             if (_cur.Status == null && DoneRe.IsMatch(line)) { _cur.Status = "OK"; _cur.EndAt = TimeOf(line, logDate); }
             if (_cur.Status == null && CancelRe.IsMatch(line)) { _cur.Status = "CANCEL"; _cur.EndAt = TimeOf(line, logDate); }
@@ -215,6 +222,23 @@ namespace LogWatcher.Parsers
             var start = b.Start;
             var end = b.EndAt ?? b.Start;
 
+            // 규격 — PrintExp 값(실제 출력분)이 1순위, 못 읽었으면 립 잡의 배치 규격으로 채운다.
+            // ★ 빈 채로 내보내도 이벤트는 200 이고 화면도 정상으로 보인다. 그런데 실적 면적이
+            //   `width × height × copy_total` 이라 **그 건은 매출·가동 집계에서 0 이 된다**.
+            //   폴백은 조용히 하지 않는다 — 어느 축에서 온 값인지 반드시 남긴다(§조용한 격하).
+            double w = b.W, h = b.H;
+            var sizeSrc = "printexp";
+            if ((w <= 0 || h <= 0) && job != null && job.PrintWidthMM > 0 && job.PrintHeightMM > 0)
+            {
+                w = job.PrintWidthMM; h = job.PrintHeightMM; sizeSrc = "rip";
+                Console.WriteLine($"[{EquipmentId}] 규격 폴백=립 (PrintExp 스펙 줄 미판독, temp={b.Temp}) — {w:0.#} X {h:0.#}");
+            }
+            else if (w <= 0 || h <= 0)
+            {
+                Console.WriteLine($"[{EquipmentId}] ⚠ 규격 없음 — PrintExp·립 양쪽 다 미판독 (temp={b.Temp})");
+                sizeSrc = "none";
+            }
+
             var evt = new PrintEvent
             {
                 EquipmentId = EquipmentId,
@@ -228,9 +252,8 @@ namespace LogWatcher.Parsers
                 StartTime = start.ToString("HH:mm:ss", CultureInfo.InvariantCulture),
                 EndDate = end.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                 EndTime = end.ToString("HH:mm:ss", CultureInfo.InvariantCulture),
-                // 규격은 PrintExp 값(실제 출력분)을 쓴다
-                OutputSize = b.W > 0 && b.H > 0
-                    ? $"{b.W.ToString("0.#", CultureInfo.InvariantCulture)} X {b.H.ToString("0.#", CultureInfo.InvariantCulture)}"
+                OutputSize = w > 0 && h > 0
+                    ? $"{w.ToString("0.#", CultureInfo.InvariantCulture)} X {h.ToString("0.#", CultureInfo.InvariantCulture)}"
                     : "",
                 Dpi = b.Dpi,
             };
@@ -249,7 +272,7 @@ namespace LogWatcher.Parsers
             }
 
             var mins = (end - start).TotalMinutes;
-            Console.WriteLine($"[{EquipmentId}] {b.Status} {mins:0}분  {evt.FileName}"
+            Console.WriteLine($"[{EquipmentId}] {b.Status} {mins:0}분  {evt.FileName}  size={sizeSrc}"
                               + (evt.IsNest ? $"  [합판 {evt.NestMembers.Count}종]" : ""));
             return evt;
         }

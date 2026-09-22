@@ -115,6 +115,67 @@ function Get-PrintExpCandidates {
     return ,@($cands | Sort-Object LastWrite -Descending)
 }
 
+# ── TNSRip(신원 축) 서식지 탐지 ───────────────────────────────────
+# 왜 필요한가 (2026-09-22 prod 실측): PrintExp(결과 축)만 자동 탐지하고 **립 경로는 설정값을 그대로
+# 믿었다.** 그런데 그 경로가 죽어 있으면 파서는 레코드 0건을 **아무 말 없이** 돌려주고, 하트비트는
+# 파일이 존재하기만 하면 계속 나간다 → MES 에서는 「장비는 살아 있는데 실적만 없다」로 보인다.
+# HSM-05 전 기간 0건 · HSM-06 3주 침묵이 이 모양이었고, 실측 변종이 이미 여럿이다
+# (TNSRip-X1 · TNSRip-X11 · TNSRip-X, C:/D:/E:/F: 설치).
+# ★ 찾아도 **자동 전환하지 않는다** — 립 위치 파일이 그 파일 기준이라 경로를 바꾸면 재적재가 터진다.
+#   여기서는 보고만 하고 사람이 정한다(PrintExp 는 없던 축을 켜는 것이라 자동이 안전했다).
+function Get-TnsRipCandidates {
+    $bases = @()
+    foreach ($dv in [IO.DriveInfo]::GetDrives()) {
+        if ($dv.DriveType -ne "Fixed") { continue }
+        $bases += $dv.RootDirectory.FullName
+    }
+    $out = @()
+    foreach ($b in $bases) {
+        $roots = @()
+        try { $roots = [IO.Directory]::GetDirectories($b, "*TNSRip*") } catch { }
+        foreach ($r in $roots) {
+            $p = Join-Path $r "Print.log"
+            if (-not (Test-Path -LiteralPath $p)) { continue }
+            $fi = [IO.FileInfo]$p
+            # 헤더 시그니처로 진짜 Print.log 인지 본다(같은 이름의 다른 로그 배제)
+            $sig = $false
+            try {
+                $fs = [IO.File]::Open($p, "Open", "Read", "ReadWrite")
+                try {
+                    $buf = New-Object byte[] 32
+                    [void]$fs.Read($buf, 0, 32)
+                    $sig = ([Text.Encoding]::ASCII.GetString($buf)).Contains("PrintLogFile")
+                } finally { $fs.Close() }
+            } catch { }
+            if (-not $sig) { continue }
+            $out += [pscustomobject]@{ Path = $p; LastWrite = $fi.LastWriteTime; Size = $fi.Length }
+        }
+    }
+    return ,@($out | Sort-Object LastWrite -Descending)
+}
+
+# ── 립 축이 살아 있나 (설정된 경로가 실제로 자라고 있나) ──────────
+function Test-RipAxis {
+    param([string]$LogPath, [int]$StaleDays = 3)
+
+    if (-not $LogPath) { return }
+    L "립 축 점검(신원)..."
+    if (-not (Test-Path -LiteralPath $LogPath)) {
+        L ("  ✗ 설정된 립 로그가 없습니다: " + $LogPath)
+    } else {
+        $fi = [IO.FileInfo]$LogPath
+        $age = ((Get-Date) - $fi.LastWriteTime).TotalDays
+        L ("  설정 경로: {0}  (마지막 기록 {1:yyyy-MM-dd HH:mm}, {2:N1}일 전)" -f $LogPath, $fi.LastWriteTime, $age)
+        if ($age -lt $StaleDays) { L "  립 축 정상"; return }
+        L ("  ⚠ " + $StaleDays + "일 넘게 안 자랐습니다 — 실적이 안 올라오는 원인일 수 있습니다.")
+    }
+    $cands = Get-TnsRipCandidates
+    if ($cands.Count -eq 0) { L "  이 PC 에서 다른 TNSRip 설치본을 못 찾았습니다."; return }
+    L "  이 PC 의 TNSRip 후보(최근 기록순):"
+    foreach ($c in $cands) { L ("    - {0}  ({1:yyyy-MM-dd HH:mm}, {2:N0} bytes)" -f $c.Path, $c.LastWrite, $c.Size) }
+    L "  → 위 목록에 더 최근 파일이 있으면 담당자에게 알리세요(경로 교체는 재적재 위험이 있어 수동입니다)."
+}
+
 # ── 현재 설정에서 자동 전환 대상(tns 단일 watcher) 판정 ───────────
 function Resolve-TnsWatcher {
     param([string]$AppDir)
@@ -127,7 +188,7 @@ function Resolve-TnsWatcher {
         $ws = @($eq.watchers)
         if ($ws.Count -ne 1) { return @{ Ok = $false; Reason = ("watcher " + $ws.Count + "개 — 단일 tns 구성만 자동 전환") } }
         $w = $ws[0]
-        if ($w.parser_type -eq "tns_printexp") { return @{ Ok = $false; Already = $true; Reason = "이미 tns_printexp" } }
+        if ($w.parser_type -eq "tns_printexp") { return @{ Ok = $false; Already = $true; Reason = "이미 tns_printexp"; LogPath = $w.config.log_path } }
         if ($w.parser_type -ne "tns") { return @{ Ok = $false; Reason = ("parser_type=" + $w.parser_type + " — 대상 아님") } }
         if (-not $w.config.log_path) { return @{ Ok = $false; Reason = "config.log_path 없음" } }
         return @{ Ok = $true; EquipmentId = $w.equipment_id; Name = $w.name; LogPath = $w.config.log_path; Source = "equipment.json" }
@@ -301,8 +362,12 @@ if ($svc) {
                 L ("  PrintExp 활성 설치본 " + $cands.Count + "개(모호) — 자동 전환 보류, 목록:")
                 foreach ($c2 in $cands) { L ("    - " + $c2.Dir) }
             }
+            Test-RipAxis -LogPath $tw.LogPath
         } elseif ($tw.Already) {
             L "tns_printexp 이미 적용됨 — 자동 전환 불필요"
+            # ★ 전환이 끝난 PC 야말로 립 축이 죽어도 티가 안 난다 — 결과 축만으로 미상 이벤트가
+            #   계속 나가기 때문이다(HSM-05 는 71건 전부 미상이었다). 그래서 여기서도 본다.
+            Test-RipAxis -LogPath $tw.LogPath
         } else {
             L ("자동 전환 대상 아님: " + $tw.Reason)
         }

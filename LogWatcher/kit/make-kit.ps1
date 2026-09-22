@@ -27,6 +27,17 @@ if (-not $SkipBuild) {
 }
 if (-not (Test-Path (Join-Path $BuildOut "LogWatcher.exe"))) { throw "빌드 산출물이 없습니다: $BuildOut" }
 
+# ── 1-B. 파서 자가시험 게이트 ──
+# ★ 여기에 물려야 게이트가 존재한다. 2026-09-22 이전에는 셋 다 문서에만 있어 **조립 때 아무도 안 돌렸다**
+#   (`cut:butt` 가 한 달간 그랬던 것과 같은 형태). 축마다 보는 게 다르므로 하나로 못 줄인다:
+#     pexp=tns 조인·이중계상 · flexi=flexi 조인 · transfer=전사 2축 **규격 축**(TRANS-8C-02 100% 결손)
+$gates = @("--selftest-pexp", "--selftest-flexi", "--selftest-transfer")
+foreach ($g in $gates) {
+    Write-Host "== 게이트 $g =="
+    & (Join-Path $BuildOut "LogWatcher.exe") $g
+    if ($LASTEXITCODE -ne 0) { throw "자가시험 실패: $g — 조립 중단" }
+}
+
 # ── 2. 버전 지문 (현장에서 어느 빌드인지 식별) ──
 $rev = ""
 try { $rev = (& git -C $LwDir rev-parse --short HEAD) } catch {}
