@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-09-22T09:51:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-09-22T15:35:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,23 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **571** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 1 프로덕션 헬스 (2026-09-22T15:35):**
+> - **방법**: 세션 시작 시 detached HEAD `d5a2d8f`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area1 사이클 세션시작 HEAD `ee5dc9d`)**: `git log ee5dc9d..HEAD` 35커밋 — 이번 순환(Area1→2→3→4→5→6) 자신들의 북키핑 6건 + Area2~6가 이미 각자 렌즈로 정독한 bind-limit 청크·kakao→shipments 이관·IA 전사 호스트 클러스터(Area6 09-22T09:51 로그가 전수 확인) + **Area6 종료 이후 신규 6커밋**(`ecd2c22`~`d5a2d8f`): 전역 「문제 신고」 기능(migration `0626_feedback_reports.sql` + `feedback.ts` 신규 라우터, 탑바 전역 버튼) + `production-reports` undefined 렌더 버그 2건 수정.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최신 5런 전부 `conclusion:success`(최종 HEAD `d5a2d8f`, run #2042). 최신 job(`106636351367`) 15단계 전부 success(typecheck·check:fn·jwt-decode·bind-limit·build·test:calc·entity-audit·migration-number·write canary·deploy·smoke), 총 소요 2분29초.
+> - **smoke 결과**: `PASS 134/134`(job 로그 직접 확인, prod 대상). 느린 엔드포인트 3건 — `cashSchedule.overview` 4044ms·`orders.list` 1281ms·`hr.stats` 1246ms. `cashSchedule.overview`(4044÷421~424ms owner 실측 ≈ **9.5배**)는 기존 codify된 "9~14배 배수 유지 구간" 안 — 배수 이탈 증거 없어 재이슈 불요(owner 실측 판정 우선 원칙 유지).
+> - **🔍 Area1 고유 렌즈로 신규 churn 직접 재검증 — 마이그레이션 적용 드리프트(#483 (b)-risk 클래스) 여부**: `migrations/0626_feedback_reports.sql`은 `CREATE TABLE IF NOT EXISTS feedback_reports`이고, 같은 커밋의 `feedback.ts`가 그 테이블에 INSERT/SELECT/UPDATE 10곳(`:70`·`:109`·`:149`·`:166`·`:201`·`:207`·`:224`·`:250`·`:284`·`:293`·`:312`)으로 즉시 의존 — `deploy.yml`은 코드만 자동배포하고 마이그는 prod에 자동적용 안 되므로(owner `db:migrate:prod` 수동) 전형적 (b)-risk: 미적용이면 전 사용자에게 노출된 **탑바 전역 버튼**(`topbar.ts:26 feedbackBtn`, 모든 로그인 사용자 대상)을 누르는 순간 `INSERT INTO feedback_reports`가 `no such table`로 500 — smoke는 `/api/feedback` 무프로브라 이 write-path를 구조적으로 못 봄(#430류 맹점). **직접 대조 결과 = 이미 해소됨**: `.claude/PROJECT_STATUS.md` 배포 배너(prod `7e4be09c`)가 이 기능을 "검증=프로브 19/19·여정 40/40·local-e2e 4/4·**드리프트 0**·smoke 133/133"으로 명시 — `드리프트 0`은 `npm run audit:migration-drift`(prod 실제 `sqlite_master` 대조, egress 있는 owner 세션에서 실행)가 0626 포함 전 마이그의 스키마 객체가 prod에 실재함을 확인했다는 뜻. **결론 = 신규 이슈 아님**(배포 세션 자신이 이 정확한 위험을 이미 검증). 이 재확인 자체는 Area1 고유 관할(#483 클래스)의 정상 재적용 — 새 클래스 아님.
+> - **standing scan 1: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 4건 전부 기존 FP 유지(`attendance.ts:171`·`dashboard.ts:420`·`workbench.ts:577`·`itemUnits.ts:162`).
+> - **standing scan 2: `npm run audit:migration-number`** — 같은 테이블 DDL 충돌 **0건**(변동없음, 기존 중복쌍만).
+> - **standing scan 3: `npm run branch:clean`** — 삭제대상 0건(SKIP 1=main).
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(변동없음).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **7**(#658·#656·#654·#650·#626·#617·#616, 변동없음) — 전건 Area1 관할 밖.
+> - **backlog↔GitHub 절대값 재동기화**: open **7**(변동없음) · done **571**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-1-production-health.md `line N` 잔여참조 재확인(정규식 오탐 2건 = "baseline 2026" 뿐, 실제 교차참조 0건). 이번 사이클은 #483 (b)-risk 판정 레시피를 새 코드(feedback.ts+0626)에 그대로 적용한 사례 — 배포 세션이 이미 `audit:migration-drift`로 자체 검증까지 마친 것을 확인, 새 클래스 없음. 다만 "탑바 전역 버튼처럼 전 사용자 노출 신규 기능 + CREATE TABLE 마이그"의 조합은 리스크가 국지적 기능보다 크므로, 이 조합이 다음에도 나오면 PROJECT_STATUS.md 배너의 드리프트 검증 문구를 먼저 찾아보는 순서가 유효함을 실증.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 11건 → 이번 추가 후 12건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(신규 churn 6커밋 전수 검토, feedback 기능의 마이그드리프트 리스크는 배포 세션 자체검증으로 이미 해소 확인), 자동수정 0건, done-sync: open 7(변동없음)·done 571(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-09-22T09:51):**
 > - **방법**: 세션 시작 시 detached HEAD `f97cbac`(origin/main과 동일) → 로컬 `main` stale(`02eb83e`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
