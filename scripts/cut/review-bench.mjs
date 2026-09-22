@@ -41,15 +41,21 @@ const panel = plate.panels[0]
 
 // ── ① 도련 경로 — 전제에 따라 갈린다
 {
+  // ★2026-09-22 정책 전환(용준님 실기): 기본은 **픽셀 반복**이다 — 「전체를 덮는 칠」은 가장자리에 보이는 것이 아니었다
+  //   (고양 소노: 좌·우·하 가장자리는 사진+줄무늬, 그라디언트는 위 변뿐). 단색·늘리기·클립은 픽셀을 못 만들 때의 폴백이다.
   let b = R.planBleed({ design, panel, edge: { solid: true, color: [0, 0, 100, 0] } })
-  ok('① 가장자리가 단색이면 solid (무손실 기본 경로)', b.mode === 'solid', JSON.stringify(b))
+  ok('① 단색 가장자리도 기본은 픽셀 반복 — 폴백은 solid 로 남긴다', b.mode === 'repeat' && b.fallback === 'solid', JSON.stringify(b))
+  ok('①-b 픽셀을 못 쓰면 단색으로 내려간다', R.planBleed({ design, panel, edge: { solid: true, color: [0, 0, 100, 0] }, allowRepeat: false }).mode === 'solid')
   ok('② 확장량이 좌우 23.25 로 나온다', Math.abs(b.grow.l - 23.25) < 0.02 && Math.abs(b.grow.r - 23.25) < 0.02,
     JSON.stringify(b.grow))
   ok('③ 밴드 쪽(위)은 0 · 반대쪽(아래)에 여유', Math.abs(b.grow.t) < 0.02 && b.grow.b > 29,
     JSON.stringify(b.grow))
 
   b = R.planBleed({ design, panel, edge: { solid: false, outside: true } })
-  ok('④ ★클립 밖 그림이 **있을 때만** clip 을 고른다', b.mode === 'clip', JSON.stringify(b))
+  ok('④ 클립 밖 그림이 있어도 기본은 픽셀 반복', b.mode === 'repeat', JSON.stringify(b))
+  ok('④-b ★픽셀을 못 쓰면 클립 밖 그림이 **있을 때만** clip 을 고른다',
+    R.planBleed({ design, panel, edge: { solid: false, outside: true }, allowRepeat: false }).mode === 'clip'
+    && R.planBleed({ design, panel, edge: { solid: false, outside: false }, allowRepeat: false }).mode !== 'clip')
 
   b = R.planBleed({ design, panel, edge: { solid: false, outside: false } })
   ok('⑤ ★클립 밖 그림이 없으면 clip 을 고르지 않는다(래스터로 내려간다)', b.mode === 'repeat', JSON.stringify(b))
