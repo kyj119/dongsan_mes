@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-09-23T00:20:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-09-23T15:40:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,24 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **571** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 5 보안 + 인프라 (2026-09-23T15:40):**
+> - **방법**: 세션 시작 시 detached HEAD `76ff7de`(origin/main과 동일) → 로컬 `main` stale → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area5 사이클 세션시작 HEAD `d1b2ec8`)**: `git diff --stat d1b2ec8..HEAD -- src/routes src/middleware src/utils index.tsx wrangler.toml .github/workflows` **6파일**(`feedback.ts`·`printEvents.ts`·`productionReports.ts`·`workbench.ts`·`finishingLabel.ts`·`printFileName.ts`) — 직전 사이클들에 비해 이례적으로 작음(churn 대부분이 이번 순환에선 비-웹앱 IA 전사(transfer) 호스트 구축·`docs(status)` 배너라 Area5 스코프 밖).
+> - **Area5 고유 렌즈로 6파일 직접 재검증**: `feedback.ts`는 Area2가 이미 #659(entity 격리 누락)로 등록 완료 — 재검증만(아래 open≠unfixed). `printEvents.ts`(`GET /`) 신규 `cards` IN절 조회는 기존 주석("출력 이벤트=장비 로그, 장비는 전 법인 공유 인프라 → 조회는 격리 안 함", 2026-08-11 설계 결정)과 같은 무격리 패턴을 그대로 따름 — 바인드 파라미터화(`?` 청크 80) 정상, 신규 격리 갭 아님. `workbench.ts`(`GET /intake-config`)는 기존 `orderVisibilityFilter(c,'o')`(ovf) 절이 이미 걸린 SELECT에 컬럼만 추가(품목코드·소분류·판매단위 등) — 필터 보존 확인, SQL 인젝션 없음(전부 바인드). `finishingLabel.ts`·`printFileName.ts`는 순수 문자열 포매팅 유틸(DB 접근·사용자 입력 렌더 없음) — 보안 표면 자체가 없음.
+> - **🔁 open≠unfixed 거울 — #658·#659 재검증(둘 다 미해결 확정)**: `taxInvoices/issue.ts` 직접 재확인 — 단건 발행(`:415` `WHERE o.id = ?`, entity 필터 없음)·묶음 발행(`:341` `WHERE o.id IN (...)`, entity 필터 없음) 둘 다 지난 사이클(#658, 09-21) 발견 그대로 잔존. `feedback.ts` 직접 재확인 — 상세(`:115`)·첨부다운로드(`:257`)·처리(`:233`) 3곳 전부 여전히 `isManager` role-only 검사(entity_id 대조 없음), #659(Area2, 09-22) 발견 그대로 잔존. 둘 다 owner 코멘트·PR·fix 커밋 없음(GitHub 직접 조회) — **진짜 미해결**, 재보고 불필요(이미 open).
+> - **standing scan 1: 시크릿 폴백** `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43` 1건(빈 문자열 폴백, 기존 FP, 변동없음).
+> - **standing scan 2: `node scripts/check-xss.mjs`**(advisory) — 107건(직전 106, churn이 `src/scripts`를 건드리지 않아 배경값과 무관한 변동). 이번 churn과 겹치는 프론트 파일 없음(전부 `src/routes`·`src/utils` 백엔드), 재확인 불요.
+> - **standing scan 3: `npm run audit:entity`** — 검사 133파일·entity테이블 SELECT 75건·누락 **0건**(변동없음). #658/#659는 파라미터 바인딩값(entity 조건 부재)이라 이 정적 컬럼감사 범위 밖 — 통과와 두 발견은 모순 아님(기존 인지 사항 재확인).
+> - **standing scan 4: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 4건 전부 기존 FP 유지.
+> - **standing scan 5: `npm run branch:clean`** — 삭제대상 0건(SKIP 1=main). **standing scan 6: `npm audit --omit=dev`** — 0건.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최신 10런 전부 `conclusion:success`(최종 HEAD `76ff7de`, run #2050). ⚠️`branch:"main"` 필터를 준 첫 호출이 5런 전(run #2033, 09-21)에서 멈춘 결과를 반환해 "CI가 이틀간 안 돌았다"로 오독할 뻔함 — 필터 없이 재호출하니 run #2050까지 정상 확인, 프록시/캐시 아티팩트로 판단(레포 문제 아님, 재보고 불필요).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **9**건(#660·#659·#658·#656·#654·#650·#626·#617·#616) — #660·#650은 owner 코드로 fixed-in-tree 확정 상태(직전 사이클들이 코멘트 게시, close는 owner 대기) 유지, 나머지 전건 상태 불변.
+> - **backlog↔GitHub 절대값 재동기화**: open **9**(변동없음) · done **571**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-5-security-infra.md `line N` 잔여참조 재확인(0건, 이미 서술식). 이번 사이클은 기존 레시피("문서화된 무격리 설계 결정 — 장비 로그는 전 법인 공유 인프라", "IDOR 재검증은 closed 우산 이슈뿐 아니라 open 상태도 매 사이클 대조")를 그대로 적용한 사례 — 새 클래스 없음. CI 조회 캐시 아티팩트는 Area5 고유 교훈이 아니라 조회 습관(필터 있는 호출이 의심스러우면 필터 없이 재확인) 메모로 충분, codify 불요.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 10건 → 이번 추가 후 11건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(churn 6파일 전부 clean 또는 이미 등록된 발견의 재확인, #658·#659 둘 다 미해결 확정 재검증), 자동수정 0건(안전 자동수정 대상 없음 — IDOR류는 issue-only 컨벤션), done-sync: open 9(변동없음)·done 571(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-09-23T00:20):**
 > - **방법**: 세션 시작 시 detached HEAD `4cd6542`(origin/main과 동일) → 로컬 `main` stale(`e04c7a9`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
