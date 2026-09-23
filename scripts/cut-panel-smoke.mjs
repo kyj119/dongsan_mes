@@ -837,6 +837,15 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     ok('3s pieces 는 ASCII JSON 배열만 받는다(manifest 가 깨지는 것보다 빠지는 게 낫다)', hostN.includes(String.raw`/^\[[\x20-\x7E]*\]$/`))
     ok('3s 응답에 num·numfail 을 센다(조용히 빠지지 않는다)', /';num=' \+ nNum \+ ';numfail=' \+ nNumFail/.test(hostN))
     ok('3s 패널·호스트 버전 게이트 짝', /NUM_MIN_HOST = \[0, 51, 0\]/.test(panelSrc) && /CUT-CEP-0\.5[1-9]\.\d+|CUT-CEP-0\.[6-9]\d\.\d+|CUT-CEP-[1-9]/.test(hostN.match(/var MESCUT_VERSION = '([^']+)'/)?.[1] || ''))
+    // ── 3w 굳히기 PDF 옵션은 PC 프리셋을 물려받지 않는다 (2026-09-23 실기 — 모서리 검정 「집게」 = 트림 마크) ──
+    //   `new PDFSaveOptions()` 마다 saveAs 전에 mesCut_pdfNoMarks 를 거쳐야 한다. 한 곳만 빠지면 그 경로에서만 마크가 산다.
+    const pdfBlocks = [...hostN.matchAll(/new PDFSaveOptions\(\)([\s\S]{0,1200}?)saveAs\(/g)]
+    ok('3w 굳히기 PDF 저장이 2곳', pdfBlocks.length === 2, `${pdfBlocks.length}곳`)
+    ok('3w 두 곳 모두 mesCut_pdfNoMarks 를 거친다', pdfBlocks.length > 0 && pdfBlocks.every((m) => /mesCut_pdfNoMarks\(po\)/.test(m[1])))
+    ok('3w pdfNoMarks 가 마크 4종·도련 여백을 전부 끈다',
+      ['trimMarks', 'registrationMarks', 'colorBars', 'pageInformation', 'bleedLink'].every((k) => new RegExp('po\\.' + k + ' = false').test(numFnBody(hostN, 'mesCut_pdfNoMarks')))
+      && /po\.bleedOffsetRect = \[0, 0, 0, 0\]/.test(numFnBody(hostN, 'mesCut_pdfNoMarks')))
+    ok('3w viewAfterSaving 도 두 곳 다 명시(0.45.0 유지)', pdfBlocks.every((m) => /po\.viewAfterSaving = false/.test(m[1])))
   }
 
   // ── 도련 상한 (2026-08-06 실사용) ──────────────────────────────
