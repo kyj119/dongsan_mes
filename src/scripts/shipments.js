@@ -848,7 +848,7 @@ function pendingNotifyBadge(r) {
   if (Number(r.notified) === 1) return pill('#dcfce7', '#166534', '발송됨', '배송 알림 발송 완료');
   switch (r.notice_block) {
     case 'not_target':
-      return pill('#f3f4f6', '#6b7280', '대상 아님', '직배·퀵·용차는 알림을 보내지 않습니다(2026-09-18 결정)');
+      return pill('#f3f4f6', '#6b7280', '대상 아님', '직배·퀵·용차·방문수령은 알림을 보내지 않습니다(2026-09-18·09-23 결정)');
     case 'no_mobile':
       return pill('#f3f4f6', '#6b7280', '연락처 없음', '거래처 휴대폰이 없어 보낼 수단이 없습니다');
     case 'needs_tracking':

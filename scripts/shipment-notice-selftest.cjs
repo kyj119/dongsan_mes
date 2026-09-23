@@ -41,8 +41,8 @@ const APPROVED = ['대신화물 출고', '대신택배 출고', '방문 수령 �
 
 console.log('[shipment-notice] ① 승인 템플릿명 일치')
 {
-  check('방문수령 → 방문 수령 준비 완료', ok('방문수령').template === '방문 수령 준비 완료', ok('방문수령'))
-  check('직접수령 → 방문 수령 준비 완료', ok('직접수령').template === '방문 수령 준비 완료')
+  // 방문수령 템플릿은 정책에 남아 있다(2026-09-23 기본값 꺼둠 — 되살릴 때 notify 만 바꾼다)
+  check('방문수령 정책에 승인 템플릿명이 보존돼 있다', noticePolicyFor('방문수령').template === '방문 수령 준비 완료', noticePolicyFor('방문수령'))
   check('대신화물 → 대신화물 출고', ok('대신화물').template === '대신화물 출고')
   check('대신택배 → 대신택배 출고', ok('대신택배').template === '대신택배 출고')
   const used = Object.values(NOTICE_POLICY).map((p) => p.template).filter(Boolean)
@@ -56,20 +56,20 @@ console.log('[shipment-notice] ② 송장이 필요한 건 한진뿐')
   check('한진 = 문자(승인 템플릿 없음)', h.channel === 'sms' && h.template === null, h)
   check('한진 = 송장 없으면 못 보낸다', h.canSendNow === false && h.blockedReason === 'needs_tracking', h)
   check('한진 = 송장 넣으면 보낼 수 있다', ok('한진택배', { trackingNumber: '1234567890' }).canSendNow === true)
-  for (const m of ['대신화물', '대신택배', '방문수령']) {
+  for (const m of ['대신화물', '대신택배']) {
     check(`${m} 은 송장 없이도 즉시 발송 가능(템플릿에 송장 변수가 없다)`, ok(m).canSendNow === true, ok(m))
   }
 }
 
 console.log('[shipment-notice] ③ ★알림 대상이 아닌 배송수단')
 {
-  for (const m of ['직배', '직접배송', '자차배송', '퀵', '용차']) {
+  for (const m of ['직배', '직접배송', '자차배송', '퀵', '용차', '방문수령', '직접수령']) {
     const d = ok(m)
     check(`${m} = 대상 아님(미발송으로 세지 않는다)`,
       d.isTarget === false && d.blockedReason === 'not_target' && d.canSendNow === false, d)
   }
   check('「대상 아님」과 「연락처 없음」은 다른 상태다',
-    ok('직배').blockedReason !== resolveShipmentNotice({ deliveryMethod: '방문수령', hasMobile: false }).blockedReason)
+    ok('직배').blockedReason !== resolveShipmentNotice({ deliveryMethod: '대신택배', hasMobile: false }).blockedReason)
 }
 
 console.log('[shipment-notice] ④ 차단 사유 우선순위')
@@ -84,7 +84,7 @@ console.log('[shipment-notice] ④ 차단 사유 우선순위')
 console.log('[shipment-notice] ⑤ 이름 변형 · 부분일치 순서')
 {
   check('「동산에서 대신화물」 → 대신화물 출고', ok('동산에서 대신화물').template === '대신화물 출고', ok('동산에서 대신화물'))
-  check('「동산으로 방문수령」 → 방문 수령 준비 완료', ok('동산으로 방문수령').template === '방문 수령 준비 완료')
+  check('「동산으로 방문수령」 → 방문수령 정책(대상 아님)', ok('동산으로 방문수령').blockedReason === 'not_target', ok('동산으로 방문수령'))
   check('「택배(한진)」 → 문자', ok('택배(한진)').channel === 'sms')
   check('★「직접배송」이 정확일치로 먼저 잡힌다(대상 아님)', ok('직접배송').blockedReason === 'not_target')
   // ★「배송」은 이카운트에 손으로 적던 시절의 직접배송이다(2026-09-18 용준님 확인, prod 78건).
