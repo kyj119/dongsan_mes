@@ -645,21 +645,14 @@
         </div>
         <div class="row">
           <label for="trBand">마감</label>
-          <select id="trBand">
-            <option value="top">상단 봉미싱</option>
-            <option value="topbottom">상하 봉미싱</option>
-          </select>
+          <select id="trBand"></select>
+          <span class="cfg" title="상단 봉미싱 · 상하단 봉미싱 · 부직포 7cm · 부직포 10cm (정본 plate-rules.FINISH). 부직포는 위 여백·접는선 없이 끈고리만 표시하고 봉미싱 cm 칸을 숨깁니다">4종 · 규칙 파일이 정본</span>
         </div>
-        <div class="row">
+        <div class="row" id="trSewRow">
           <label for="trSew">봉미싱</label>
           <input id="trSew" type="number" step="0.5" value="5" style="width:56px" />
           <span class="unit">cm</span>
           <span class="cfg" title="작업지시서의 「상단 N cm 봉미싱」. 시접은 여기에 1cm 을 더합니다">시접 = 봉미싱 + 1cm</span>
-        </div>
-        <div class="row">
-          <label class="rad"><input id="trNonwoven" type="checkbox" /> 부직포</label>
-          <select id="trNonwovenCm"></select>
-          <span class="cfg" title="부직포는 안쪽으로 덧대므로 글자를 피해 옮겨야 합니다 — 패널은 확인 목록에만 올립니다">자리 표시만</span>
         </div>
         <div class="row">
           <label for="trHwSize">하도매</label>
@@ -672,9 +665,9 @@
           <input id="trHwHoles" type="hidden" value="0" />
         </div>
         <div class="row">
-          <label>끈고리</label>
-          <label class="rad"><input id="trLoops" type="checkbox" checked /> 표시 넣기</label>
-          <span class="cfg" title="원본 끝선 안쪽 2.5cm 가로선 4pt — ①위 끝선 좌·우 ②봉미싱 길이만큼 아래 안쪽 ③중간 안쪽 = 4개. 색은 그 자리 배경으로 흑/백">4개 · 자리별 흑/백</span>
+          <label>표시</label>
+          <label class="rad"><input id="trLoops" type="checkbox" checked /> 끈고리 넣기</label>
+          <span class="cfg" title="접는선 = 밴드가 접히는 자리(원본 위/아래 끝선) 양쪽, 봉미싱이면 항상. 끈고리 = 안쪽 한 개씩(①접는선+봉미싱 길이 ②중간 ③아래 밴드 위 · 부직포는 위 끝선+폭+1cm). 선은 벌 바깥 끝선에서 안쪽 시접 폭 띠 위 4pt, 색은 자리별 흑/백">접는선 자동 · 시접 띠 위</span>
         </div>
       </div>
 

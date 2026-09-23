@@ -86,6 +86,9 @@ const panel = plate.panels[0]
   list = R.build({ mode: 'plate', bleed: b, edge: { solid: true, light: false }, nonwoven: true })
   c = codes(list)
   ok('⑬ ★부직포가 붙으면 「자리를 피해 글자를 옮긴다」가 뜬다', c.indexOf('nonwoven-avoid') >= 0, c.join(','))
+  // 부직포(밴드 0)엔 봉미싱이 없다 — 봉미싱 확인 항목이 뜨면 사람이 없는 것을 찾는다(2026-09-23)
+  const nwc = codes(R.build({ mode: 'plate', bleed: b, edge: {}, nonwoven: true, trace: { bandCount: 0, nonwovenCm: 7 } }))
+  ok('⑬-b ★부직포(밴드 0)면 봉미싱 확인 항목이 안 뜬다', nwc.indexOf('sew-confirm') < 0 && nwc.indexOf('nonwoven-cm') >= 0, nwc.join(','))
 
   ok('⑭ must 가 check 보다 위에 온다', list[0].level === 'must', JSON.stringify(list.map((x) => x.level)))
   ok('⑮ 같은 code 가 두 번 나오지 않는다', new Set(c).size === c.length, c.join(','))

@@ -166,7 +166,7 @@ const base = (over = {}) => Object.assign(
   ok('㊱ 3면인데 밴드가 둘이면 막지 않고 알린다', tb.ok && !!tb.trace.sidesNote, String(tb.trace.sidesNote))
 
   // 작업지시서 축이 trace 에 기록되는가 — 산식을 안 바꿔도 「왜 이 판인가」의 근거다
-  const rec = P.computePlate(base({ fabric: '폰지', nonwovenCm: 7, hardware: { size: 5, holes: 4 } }))
+  const rec = P.computePlate(base({ fabric: '폰지', band: 'nonwoven7', hardware: { size: 5, holes: 4 } }))
   ok('㊲ 원단·부직포·하도매가 trace 에 남는다',
     rec.trace.fabric === '폰지' && rec.trace.nonwovenCm === 7 && rec.trace.hardware.holes === 4,
     JSON.stringify({ f: rec.trace.fabric, n: rec.trace.nonwovenCm, h: rec.trace.hardware }))
@@ -299,22 +299,54 @@ const base = (over = {}) => Object.assign(
   ok('㊷ 픽셀을 못 쓰면 단색 폴백', RV.planBleed({ design: D, panel: P, edge: { solid: true, color: [0, 0, 0, 100] }, allowRepeat: false }).mode === 'solid')
   ok('㊷ 픽셀을 못 쓰면 늘리기 폴백', RV.planBleed({ design: D, panel: P, edge: { extend: true }, allowRepeat: false }).mode === 'extend')
 
-  // ★끈고리·하도매 — 정본 plate-rules.marks, 산식 plate.js (용준님 2026-09-22 확정 규칙을 숫자로 못박는다)
+  // ★접는선·끈고리·하도매 — 정본 plate-rules.marks, 산식 plate.js (용준님 2026-09-22 확정 → 2026-09-23 정정을 숫자로 못박는다)
   //   60×180 · 상단봉미싱 5cm · 2벌 기준. 세로는 수축보정(k)을 먹은 판 좌표다.
+  //   ★선은 원본 안이 아니라 **시접 띠** — 벌 바깥 끝선에서 안쪽으로 시접 폭(23.25). 맨 위 줄은 끈고리가 아니라 **접는선**.
   {
     const r = globalThis.MesPlate.computePlate(base({ sewCm: 5, vup: 2, holesTop: 2, holesSide: 3 }))
-    ok('㊸ 끈고리는 벌마다 4개 (①좌우 + ②안쪽 + ③안쪽)', r.ok && r.loops.length === 8, r.ok ? 'loops=' + r.loops.length : r.reason)
-    const d0 = r.design[0], k = r.trace.shrink, band = r.trace.bandH0 * k
-    const L0 = r.loops.filter((l) => l.panel === 0)
+    const d0 = r.design[0], p0 = r.panels[0], k = r.trace.shrink, band = r.trace.bandH0 * k, seam = r.trace.seamActual
     const near = (a, b) => Math.abs(a - b) < 0.05
-    ok('㊸ ① 원본 위 끝선에 좌·우', L0.filter((l) => near(l.y, d0.y)).map((l) => l.side).sort().join(',') === 'left,right')
-    ok('㊸ ② ①에서 봉미싱 길이(6cm·보정)만큼 아래, 안쪽만', L0.filter((l) => near(l.y, d0.y + band)).map((l) => l.side).join('') === 'right',
-      '벌①의 안쪽은 오른쪽(마주 보는 쪽) — ' + JSON.stringify(L0.filter((l) => near(l.y, d0.y + band))))
-    ok('㊸ ③ 원본 중간(90·보정), 안쪽만', L0.filter((l) => near(l.y, d0.y + d0.h / 2)).map((l) => l.side).join('') === 'right')
+    const F0 = r.folds.filter((l) => l.panel === 0), L0 = r.loops.filter((l) => l.panel === 0)
+    ok('㊸ 상단 봉미싱 = 벌마다 접는선 2 + 끈고리 2', r.ok && r.folds.length === 4 && r.loops.length === 4,
+      r.ok ? 'folds=' + r.folds.length + ' loops=' + r.loops.length : r.reason)
+    ok('㊸ ★접는선 = 원본 위 끝선(밴드 경계)에 좌·우', F0.every((l) => near(l.y, d0.y)) && F0.map((l) => l.side).sort().join(',') === 'left,right')
+    ok('㊸ 끈고리① = 접는선에서 봉미싱 길이(6cm·보정)만큼 아래, 안쪽만', L0.filter((l) => near(l.y, d0.y + band)).map((l) => l.side).join('') === 'right',
+      '벌①의 안쪽은 오른쪽(마주 보는 쪽) — ' + JSON.stringify(L0))
+    ok('㊸ 끈고리② = 원본 중간(90·보정), 안쪽만', L0.filter((l) => near(l.y, d0.y + d0.h / 2)).map((l) => l.side).join('') === 'right')
     ok('㊸ 벌②의 안쪽은 왼쪽', r.loops.filter((l) => l.panel === 1 && near(l.y, r.design[1].y + band))[0].side === 'left')
-    ok('㊸ 선은 끝선에서 안쪽으로 2.5cm · 4pt', L0.every((l) => l.len === 25 && l.weightPt === 4)
-      && near(L0.filter((l) => l.side === 'left')[0].x, d0.x) && near(L0.filter((l) => l.side === 'right')[0].x, d0.x + d0.w - 25))
-    ok('㊸ 끈고리를 끄면 0개', globalThis.MesPlate.computePlate(base({ sewCm: 5, vup: 2, loops: false })).loops.length === 0)
+    const fl = F0.filter((l) => l.side === 'left')[0], fr = F0.filter((l) => l.side === 'right')[0]
+    ok('㊸ ★선은 시접 띠 위 — 길이 = 시접 폭(23.25) · 4pt', F0.concat(L0).every((l) => near(l.len, seam) && l.weightPt === 4), JSON.stringify(F0[0]))
+    ok('㊸ ★왼쪽 선 = [벌 왼 끝, 원본 왼 끝]', near(fl.x, p0.x) && near(fl.x + fl.len, d0.x), JSON.stringify(fl))
+    ok('㊸ ★오른쪽 선 = [원본 오른 끝, 벌 오른 끝] — 원본 안으로 안 들어간다', near(fr.x, d0.x + d0.w) && near(fr.x + fr.len, p0.x + p0.w), JSON.stringify(fr))
+    const off = globalThis.MesPlate.computePlate(base({ sewCm: 5, vup: 2, loops: false }))
+    ok('㊸ 끈고리를 끄면 끈고리만 0 — 접는선은 남는다', off.loops.length === 0 && off.folds.length === 4)
+    ok('㊸ 시접 0(칼재단)이면 선을 그리지 않고 trace 에 남긴다', (function () {
+      const c = globalThis.MesPlate.computePlate(base({ seam: '칼재단', vup: 1 }))
+      return c.ok && c.folds.length === 0 && c.loops.length === 0 && c.trace.marks.noSeam === true
+    })())
+
+    // 상하단 봉미싱 — 아래에도 접는선 2 + 끈고리 1 (용준님 2026-09-23 「동일한 형식으로 하단에도」)
+    const tb = globalThis.MesPlate.computePlate(base({ band: 'topbottom', sewCm: 5, vup: 2 }))
+    const dT = tb.design[0], bT = tb.trace.bandH0 * k
+    ok('㊸ 상하단 봉미싱 = 벌마다 접는선 4 + 끈고리 3 = 7', tb.ok && tb.folds.length === 8 && tb.loops.length === 6,
+      'folds=' + tb.folds.length + ' loops=' + tb.loops.length)
+    ok('㊸ 아래 접는선 = 원본 아래 끝선 좌·우', tb.folds.filter((l) => l.panel === 0 && near(l.y, dT.y + dT.h)).map((l) => l.side).sort().join(',') === 'left,right')
+    ok('㊸ 아래 끈고리 = 아래 접는선에서 봉미싱 길이만큼 위, 안쪽만', tb.loops.filter((l) => l.panel === 0 && near(l.y, dT.y + dT.h - bT)).map((l) => l.side).join('') === 'right')
+    ok('㊸ 중간 끈고리는 상하단에도 하나', tb.loops.filter((l) => l.panel === 0 && near(l.y, dT.y + dT.h / 2)).length === 1)
+
+    // 부직포 — 밴드·접는선 없음 · 끈고리 = 위 끝선 + 폭 + 1cm, 중간 (용준님 2026-09-23 「7cm 라면 8cm 위치」)
+    const nw = globalThis.MesPlate.computePlate(base({ band: 'nonwoven7', vup: 2 }))
+    ok('㊻ 부직포 7cm = 밴드 0 · 접는선 0 · 끈고리 2', nw.ok && nw.bands.length === 0 && nw.folds.length === 0 && nw.loops.length === 4,
+      nw.ok ? JSON.stringify({ b: nw.bands.length, f: nw.folds.length, l: nw.loops.length }) : nw.reason)
+    ok('㊻ 위 여백이 없다 — 원본이 판 위 끝에 붙고 판 높이 = 벌', near(nw.design[0].y, 0) && near(nw.plate.h, nw.panels[0].h) && near(nw.outer[0].h, nw.panels[0].h))
+    ok('㊻ 하단 3cm 쌍침 여유는 유지(1830)', near(nw.trace.panelH0, 1830), nw.trace.panelH0)
+    ok('㊻ ★끈고리① = 위 끝선에서 8cm(보정) 아래, 안쪽', nw.loops.filter((l) => l.panel === 0 && near(l.y, 80 * k)).map((l) => l.side).join('') === 'right', JSON.stringify(nw.loops))
+    ok('㊻ 부직포 10cm → 11cm 자리', globalThis.MesPlate.computePlate(base({ band: 'nonwoven10', vup: 2 })).loops.filter((l) => l.panel === 0 && near(l.y, 110 * k)).length === 1)
+    ok('㊻ 봉미싱 cm 이 없어도 만든다(칸을 숨기므로)', globalThis.MesPlate.computePlate(base({ band: 'nonwoven7', vup: 2, sewCm: NaN })).ok === true)
+    ok('㊻ trace 에 부직포 폭·밴드 0 이 남는다', nw.trace.nonwovenCm === 7 && nw.trace.bandCount === 0 && nw.trace.finish === 'nonwoven7')
+    ok('㊻ 마감 목록은 넷뿐 — 5cm·레자는 없다', Object.keys(R.FINISH).join(',') === 'top,topbottom,nonwoven7,nonwoven10'
+      && !Object.keys(R.FINISH).some((f) => /레자|5cm/.test(R.FINISH[f].label)), Object.keys(R.FINISH).join(','))
+    ok('㊻ 모르는 마감은 거절', globalThis.MesPlate.computePlate(base({ band: 'nonwoven5' })).ok === false)
 
     const H0 = r.holes.filter((h) => h.panel === 0)
     ok('㊹ 하도매 상단 2 + 측면 3 = 겹침 빼고 4구', H0.length === 4, 'holes=' + H0.length + ' ' + JSON.stringify(H0))
@@ -323,8 +355,9 @@ const base = (over = {}) => Object.assign(
     ok('㊹ 아래 안쪽 모서리 = 아래 끝선에서 1cm (90cm 원본이면 89)', H0.some((h) => near(h.cx, d0.x + d0.w - 10) && near(h.cy, d0.y + d0.h - 10)))
     ok('㊹ 측면 중간 = 원본 높이 절반', H0.some((h) => near(h.cx, d0.x + d0.w - 10) && near(h.cy, d0.y + d0.h / 2)))
     ok('㊹ Ø0.5cm', H0.every((h) => h.r === 2.5))
+    ok('㊹ ★하도매는 시접이 아니라 원본 끝선 기준 — 선과 기준이 다르다', H0.every((h) => h.cx >= d0.x && h.cx <= d0.x + d0.w))
     ok('㊹ 하도매 0·0 이면 없다', globalThis.MesPlate.computePlate(base({ sewCm: 5, vup: 2 })).holes.length === 0)
-    ok('㊹ trace 에 개수·안쪽 기준이 남는다', r.trace.marks.loops === 8 && r.trace.marks.holes === 8 && r.trace.marks.innerSide === 'facing')
+    ok('㊹ trace 에 개수·안쪽 기준이 남는다', r.trace.marks.folds === 4 && r.trace.marks.loops === 4 && r.trace.marks.holes === 8 && r.trace.marks.innerSide === 'facing')
     // ★도련이 덮을 전체 = 벌 ∪ 밴드 (밴드에도 비슷한 색 — 용준님 2026-09-22). 정본은 plate.js outer 한 곳.
     ok('㊺ outer = 벌 ∪ 밴드 (y=0 부터 벌 아래까지)', r.outer && r.outer.length === 2 && near(r.outer[0].y, 0)
       && near(r.outer[0].h, r.panels[0].y + r.panels[0].h) && near(r.outer[0].x, r.panels[0].x) && near(r.outer[0].w, r.panels[0].w),
