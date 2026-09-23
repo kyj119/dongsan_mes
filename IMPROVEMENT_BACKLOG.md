@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-09-23T15:40:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-09-23T21:45:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,26 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **9** (`list_issues(state:OPEN,label:auto-improve)` 실측 — #660 fixed-in-tree 코멘트 게시, close는 owner 대기) |
+| 🆕 new | **9** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음 — #660 fixed-in-tree 코멘트 게시, close는 owner 대기) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **571** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 6 자기 진화 (2026-09-23T21:45):**
+> - **방법**: 세션 시작 시 detached HEAD `c978be4`(origin/main과 동일) → 로컬 `main` stale → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area6 사이클 결과 커밋 `6a17e86`)**: `git log 6a17e86..HEAD` **50커밋** — 이번 순환(Area6→1→2→3→4→5) 자신들의 북키핑 6건 + **웹앱 스코프 16파일**(`src/routes`·`src/scripts`·`src/pages`·`src/layout`·`src/utils`·`migrations`) + **비-웹앱 축 17커밋**(IA 전사(transfer) 호스트 구축 14 + LogWatcher 3).
+> - **웹앱 스코프 16파일**: `feedback.ts`·`feedback.js`·`layout/feedback.js`·`printEvents.ts`·`productionReports.ts`·`productionReports.js`·`workbench.ts`·`finishingLabel.ts`·`printFileName.ts`·`menu.ts`·`topbar.ts`·`0626_feedback_reports.sql`은 Area1~5가 이번 순환에서 이미 파일명 단위로 전수 정독(#600 브리지 재확인: 어느 파일도 나열만 되고 Read 안 됨 없음). **나머지 3개(`0627_transfer_streetlight_pp_loop_grommet.sql`·`orderForm/finishing.js`·`shared/finishingLabel.js`)는 백로그 전체 grep(`0627`·`orderForm/finishing.js`·`shared/finishingLabel.js`) 결과 어느 Area 로그에도 등장 0회 — Area6가 직접 정독**.
+> - **미정독 3개 직접 검증**: ① `0627` 마이그(가로등배너 하도매 상단/측면 개수 전환·끈고리 PP-LOOP 신설·봉제 프리셋 method_group 정정, 전부 `UPDATE`/`INSERT OR IGNORE` 멱등) — `.claude/PROJECT_STATUS.md` 배포 배너가 이 마이그를 "prod 적용" + "journey 40/40·local-e2e 4/4·smoke:prod 134/134·prod 마커(cm 토글·PP-LOOP·프리셋) 실측"으로 이미 검증 완료(#483 (b)-risk 클래스, 배포 세션 자신이 드리프트까지 확인) — net-new 없음. ② `orderForm/finishing.js`(`syncTransferSewCm` 신설) — DOM 값(`classList.toggle`·`.value`) 조작만, innerHTML 보간·free-text 렌더 없음 = XSS 표면 없음. ③ `shared/finishingLabel.js`(`formatGrommet`·`formatLoop` 신설) — **sibling-parity 대조**: 정본 `src/utils/finishingLabel.ts`의 동일 함수와 `git diff` 라인 단위 대조 결과 로직 **완전 일치**(숫자 파싱·enum 비교·문자열 조합 전부 동형, "정본과 동일" 주석이 사실과 부합) — 형제 비대칭 없음, net-new 0.
+> - **비-웹앱 축 17커밋 — IA 전사 호스트 14 + LogWatcher 3**: IA 14건은 전부 자기완결 postmortem 커밋(원인 실측→최소재현→수정→게이트, CLAUDE.md §visibleBounds·§비활성문서읽기·§조용한격하에 이미 직접 반영됨 확인) — `audit:jsx-ternary`(15개 .jsx, 괄호없는 중첩삼항 0)·`audit:jsx-syntax`(32개 전부 파싱)·`audit:empty-catch`(30파일·395곳 전부 사유 있음) 3종 직접 재실행 clean. LogWatcher 3건(`ab08a1a`·`0711903`·`fa9cfb5`, 2026-09-22 커밋인데 이번이 첫 등장 — 「비-웹앱 런타임 축」 62회차 레시피의 정확한 재현)도 같은 형태(립 경로 자동교체 근거 실측·게이트 자기결함 2건 발견수정·규격결손 원인분석+폴백+셀프테스트)로, `make-kit.ps1` 배선 주장(`--selftest-pexp/-flexi/-transfer` 3종)을 `grep`으로 직접 확인 — 존재함(`:38`). 셋 다 issue-only 축(dotnet/PowerShell 실행 수단 없음, 기존 원칙) — 코드 결함 없음.
+> - **standing scan**: `npm run audit:migration-number`(같은 테이블 DDL 충돌 0, 변동없음) · `node scripts/sort-audit.cjs`(P1 0, P2 4건 기존 FP 유지) · `npm run branch:clean`(삭제대상 0, SKIP 1=main) · `npm audit --omit=dev`(0건) · `npm run audit:skills`(OK, 스킬 19개 상주비용 ~2,662자).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최신 8런 전부 `conclusion:success`(최종 HEAD `c978be4`, run #2051).
+> - **done-sync 절대값 재동기화(리터럴 쿼리)**: `search_issues("repo:kyj119/dongsan_mes label:auto-improve is:closed reason:completed")` **571**(변동없음) · `reason:"not planned"` **4** + `reason:duplicate` **2** = rejected **6**(변동없음) · `list_issues(state:OPEN,label:auto-improve)` **9**(#660·#659·#658·#656·#654·#650·#626·#617·#616, 변동없음).
+> - **open≠unfixed 재확인**: #660은 Area4가 이미 fixed-in-tree 코멘트 게시(close-pending 유지, 변동없음). #659·#658은 Area5가 이번 순환에서 직접 재확인해 "여전히 미픽스" 확정(코멘트 0건, 재검증 불요). #656·#654·#650·#626·#617·#616 — 각 담당 Area가 이번 순환 중 재확인 완료(로그 상단 참조), Area6 관점에서 추가 변동 없음.
+> - **🧬 SKILL 강화**: 없음 — area-6-self-evolution.md `line N` 잔여참조 재확인(이미 서술식, 잔여 없음). 이번 사이클은 기존 3개 레시피(#600 나열≠Read 브리지·「비-웹앱 런타임 축」 범위 브리지·open≠unfixed 거울)를 새 churn 클러스터(전사 후가공 3파일 + LogWatcher 3커밋)에 그대로 적용한 사례 — 새 클래스 없음. `0627` 마이그가 배포 세션 자신의 드리프트 검증으로 이미 닫혀 있었던 것은 「컬럼-diff bridge SELECT-detail 확장」(33회차) 레시피가 기대하는 "owner가 배포 배너에 검증 근거를 남기면 Area6 재검증 비용 절감"의 정확한 사례.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 11건 → 이번 추가 후 12건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(50커밋 전수 브리지 검토 — 웹앱 16파일 중 13개 타 Area 기정독 확인 + 미정독 3개 직접 정독 clean, 비-웹앱 IA 14건+LogWatcher 3건 전부 자기완결 clean), 자동수정 0건(코드 결함 없음), done-sync: open 9(변동없음)·done 571(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 + 인프라 (2026-09-23T15:40):**
 > - **방법**: 세션 시작 시 detached HEAD `76ff7de`(origin/main과 동일) → 로컬 `main` stale → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
