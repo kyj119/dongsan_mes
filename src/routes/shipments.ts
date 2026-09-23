@@ -21,7 +21,7 @@ import { checkBulkLimit } from '../services/messageBulkLimit'
 import type { BarobillSmsProvider } from '../services/barobillSms'
 import { restorePpDeductionsByOrder } from '../utils/autoDeductRestore'
 import { ensureShipmentForOrder } from '../utils/shipmentHelper'
-import { kstYmd, kstYmdCompact, kstDate } from '../utils/kstDate'
+import { kstYmd, kstYmdCompact, kstDate, kstDateOf } from '../utils/kstDate'
 import { CONSOLIDATABLE_ORDER_STATUSES } from '../utils/statusLabels'
 import { getEntityCompanyInfo } from '../utils/entitySettings'
 import { escapeCsvField } from '../utils/csv'
@@ -1119,118 +1119,134 @@ shipmentsRouter.patch('/checklist/:shipmentId', async (c) => {
 })
 
 // ============================================================================
-// GET /dashboard/counts - 출고 카운트 (사이드바 뱃지용)
-// ※ /:id 보다 먼저 등록해야 "dashboard"가 :id로 매칭되지 않음
-// ============================================================================
+// GET /dashboard · /dashboard/counts — 「출고 예정·실적」(준비상태 탭) · 2026-09-23 재설계
+//
+// 용도(용준님 2026-09-23): ①전날 저녁·당일 아침에 **그날 나갈 주문을 정리**하고
+//   ②점심쯤 **어느 건이 나갔고 어느 건이 안 나갔는지** 판단한다.
+// 종전 화면은 납기=선택일이면서 **아직 안 나간** 주문만 보여서, 출고하는 순간 목록·카운터에서 빠졌다 —
+//   「나간 것」을 볼 수 없으니 ②가 불가능했고 숫자도 하루 동안 계속 줄었다. 그래서:
+//   · 납기=선택일 주문은 **출고 여부와 무관하게 전부** 싣는다(나간 건 「출고완료」로 남는다)
+//   · 납기가 지났는데 안 나간 건(최근 7일)은 **이월**로 같이 싣는다 — 종전엔 날짜가 지나면 어디에도 안 보였다
+//   · 이월분이 선택일에 나갔으면 그것도 싣는다(점심에 「어제 밀린 건 나갔나」를 본다)
+// 전표성 주문(`is_voucher`)은 실제 출고가 아니므로 뺀다.
+const SHIP_PLAN_OPEN = "('CONFIRMED','PRINTING','PRINT_DONE')"
+const SHIP_PLAN_DONE = "('SHIPPED','COMPLETED')"
+const SHIP_PLAN_CARRY_DAYS = 7
+
+type ShipPlanBucket = 'SHIPPED' | 'READY' | 'PREPARING'
+interface ShipPlanItem {
+  order_item_id: number; item_name: string; quantity: number; width: number | null; height: number | null
+  specification: string | null; content: string | null; unit: string | null; shipment_ready: number | null
+  card_number: string | null; card_status: string | null
+}
+interface ShipPlanOrder {
+  order_id: number; order_number: string; client_name: string | null
+  delivery_method: string | null; delivery_date: string | null; delivery_time: string | null; delivery_slot: string | null
+  order_status: string; shipped_at: string | null
+  carried: boolean; bucket: ShipPlanBucket; ready_count: number; total_count: number
+  items: ShipPlanItem[]
+}
+
+async function loadShipPlan(c: Context<HonoEnv>, date: string): Promise<ShipPlanOrder[]> {
+  const ef = entityFilter(c, 'o')
+  const { results } = await c.env.DB.prepare(`
+    SELECT o.id AS order_id, o.order_number, o.delivery_method, o.delivery_date, o.delivery_time, o.delivery_slot,
+           o.status AS order_status, o.shipped_at,
+           cl.client_name,
+           oi.id AS order_item_id, oi.item_name, oi.quantity, oi.width, oi.height,
+           oi.specification, oi.content, oi.unit, oi.shipment_ready,
+           cd.card_number, cd.status AS card_status
+      FROM orders o
+      LEFT JOIN clients cl ON cl.id = o.client_id
+      JOIN order_items oi ON oi.order_id = o.id AND oi.parent_item_id IS NULL
+      -- 라인당 카드 1장(대표) — 조인으로 붙이면 카드가 둘인 라인이 두 줄로 늘어난다
+      LEFT JOIN cards cd ON cd.id = (SELECT MIN(ci.card_id) FROM card_items ci WHERE ci.order_item_id = oi.id)
+     WHERE COALESCE(o.is_voucher, 0) = 0
+       AND (
+             (DATE(o.delivery_date) = ? AND (o.status IN ${SHIP_PLAN_OPEN} OR o.status IN ${SHIP_PLAN_DONE}))
+          OR (DATE(o.delivery_date) >= DATE(?, '-${SHIP_PLAN_CARRY_DAYS} days') AND DATE(o.delivery_date) < ?
+              AND (o.status IN ${SHIP_PLAN_OPEN}
+                   OR (o.status IN ${SHIP_PLAN_DONE} AND ${kstDateOf('o.shipped_at')} = ?)))
+           )
+       ${ef.clause}
+     ORDER BY cl.client_name ASC, o.id ASC, oi.sort_order ASC, oi.id ASC
+  `).bind(date, date, date, date, ...ef.params).all<Omit<ShipPlanOrder, 'carried' | 'bucket' | 'ready_count' | 'total_count' | 'items'> & ShipPlanItem>()
+
+  const byOrder = new Map<number, ShipPlanOrder>()
+  for (const r of results || []) {
+    let o = byOrder.get(r.order_id)
+    if (!o) {
+      o = {
+        order_id: r.order_id, order_number: r.order_number, client_name: r.client_name,
+        delivery_method: r.delivery_method, delivery_date: r.delivery_date, delivery_time: r.delivery_time,
+        delivery_slot: r.delivery_slot, order_status: r.order_status, shipped_at: r.shipped_at,
+        carried: String(r.delivery_date || '').slice(0, 10) < date,
+        bucket: 'PREPARING', ready_count: 0, total_count: 0, items: [],
+      }
+      byOrder.set(r.order_id, o)
+    }
+    o.items.push({
+      order_item_id: r.order_item_id, item_name: r.item_name, quantity: r.quantity, width: r.width, height: r.height,
+      specification: r.specification, content: r.content, unit: r.unit, shipment_ready: r.shipment_ready,
+      card_number: r.card_number, card_status: r.card_status,
+    })
+  }
+  const orders = Array.from(byOrder.values())
+  for (const o of orders) {
+    o.total_count = o.items.length
+    o.ready_count = o.items.filter((i) => Number(i.shipment_ready) === 1).length
+    o.bucket = (o.order_status === 'SHIPPED' || o.order_status === 'COMPLETED') ? 'SHIPPED'
+      : (o.total_count > 0 && o.ready_count === o.total_count) ? 'READY' : 'PREPARING'
+  }
+  return orders
+}
+
+function shipPlanCounts(orders: ShipPlanOrder[]) {
+  const due = orders.filter((o) => !o.carried)
+  const carried = orders.filter((o) => o.carried)
+  return {
+    planned: due.length,                                               // 선택일 납기
+    shipped: due.filter((o) => o.bucket === 'SHIPPED').length,         // 그중 출고완료
+    ready: orders.filter((o) => o.bucket === 'READY').length,          // 준비 끝·미출고(이월 포함)
+    preparing: orders.filter((o) => o.bucket === 'PREPARING').length,  // 준비중(이월 포함)
+    carried: carried.filter((o) => o.bucket !== 'SHIPPED').length,     // 납기 지났는데 아직 안 나감
+    carried_shipped: carried.filter((o) => o.bucket === 'SHIPPED').length, // 이월분 중 선택일에 나감
+  }
+}
+
 shipmentsRouter.get('/dashboard/counts', async (c) => {
   try {
-    // ?date= 를 형제 GET /dashboard 와 같게 받는다 — 고정 오늘이면 화면 날짜를 바꿔도 카운터만 오늘 값으로 남는다.
-    const { date } = c.req.query()
-    const today = date || kstYmd()
-    const ef = entityFilter(c, 'o')
-    const { results } = await c.env.DB.prepare(`
-      SELECT o.id,
-        CASE WHEN MIN(oi.shipment_ready) = 1 THEN 1 ELSE 0 END as all_ready
-      FROM orders o
-      JOIN order_items oi ON oi.order_id = o.id AND oi.parent_item_id IS NULL
-      WHERE o.status IN ('CONFIRMED', 'PRINTING', 'PRINT_DONE')
-        AND DATE(o.delivery_date) = ?
-        ${ef.clause}
-      GROUP BY o.id
-    `).bind(today, ...ef.params).all<{ id: number; all_ready: number }>()
-    const typedResults = results
-    const total = typedResults.length
-    const ready = typedResults.filter(r => r.all_ready === 1).length
-    return c.json({ success: true, data: { total, ready, pending: total - ready } })
+    const date = c.req.query('date') || kstYmd()
+    return c.json({ success: true, data: shipPlanCounts(await loadShipPlan(c, date)) })
   } catch (err) {
     console.error('shipments GET /dashboard/counts error:', err)
     return c.json({ success: false, error: 'Failed to load counts' }, 500)
   }
 })
 
-// ============================================================================
-// GET /dashboard - 출고 대시보드 (거래처별 출고 현황)
-// ============================================================================
 shipmentsRouter.get('/dashboard', async (c) => {
   try {
-    const { date, delivery_method, status = 'all' } = c.req.query()
-    const targetDate = date || kstYmd()
-    const ef = entityFilter(c, 'o')
-    const { results } = await c.env.DB.prepare(`
-      SELECT
-        o.id as order_id, o.order_number, o.delivery_method, o.delivery_date, o.delivery_time,
-        o.status as order_status,
-        c.id as client_id, c.client_name,
-        oi.id as order_item_id, oi.item_name, oi.quantity, oi.width, oi.height,
-        oi.specification, oi.content, oi.unit,
-        oi.amount, oi.shipment_ready,
-        ci.card_id,
-        cd.card_number, cd.status as card_status, cd.category_name as card_category
-      FROM orders o
-      JOIN clients c ON o.client_id = c.id
-      JOIN order_items oi ON oi.order_id = o.id AND oi.parent_item_id IS NULL
-      LEFT JOIN card_items ci ON ci.order_item_id = oi.id
-      LEFT JOIN cards cd ON cd.id = ci.card_id
-      WHERE o.status IN ('CONFIRMED', 'PRINTING', 'PRINT_DONE')
-        AND DATE(o.delivery_date) = ?
-        ${ef.clause}
-      ORDER BY c.client_name ASC, o.id ASC, oi.sort_order ASC, oi.id ASC
-    `).bind(targetDate, ...ef.params).all<{
-      order_id: number; order_number: string; delivery_method: string | null; delivery_date: string | null; delivery_time: string | null; order_status: string;
-      client_id: number; client_name: string;
-      order_item_id: number; item_name: string; quantity: number; width: number | null; height: number | null; specification: string | null; content: string | null; unit: string | null; amount: number | null; shipment_ready: number | null;
-      card_id: number | null; card_number: string | null; card_status: string | null; card_category: string | null;
-    }>()
-
-    interface DashboardItem { order_item_id: number; item_name: string; quantity: number; width: number | null; height: number | null; specification: string | null; content: string | null; unit: string | null; amount: number | null; shipment_ready: number | null; card_id: number | null; card_number: string | null; card_status: string | null; card_category: string | null }
-    interface DashboardOrder { order_id: number; order_number: string; delivery_method: string | null; delivery_date: string | null; delivery_time: string | null; order_status: string; items: DashboardItem[] }
-    interface DashboardClient { client_id: number; client_name: string; orders: Map<number, DashboardOrder> }
-
-    const clientMap = new Map<number, DashboardClient>()
-    for (const row of results) {
-      if (!clientMap.has(row.client_id)) {
-        clientMap.set(row.client_id, { client_id: row.client_id, client_name: row.client_name, orders: new Map() })
-      }
-      const client = clientMap.get(row.client_id)!
-      if (!client.orders.has(row.order_id)) {
-        client.orders.set(row.order_id, {
-          order_id: row.order_id, order_number: row.order_number, delivery_method: row.delivery_method,
-          delivery_date: row.delivery_date, delivery_time: row.delivery_time, order_status: row.order_status, items: []
-        })
-      }
-      client.orders.get(row.order_id)!.items.push({
-        order_item_id: row.order_item_id, item_name: row.item_name, quantity: row.quantity,
-        width: row.width, height: row.height, specification: row.specification, content: row.content, unit: row.unit,
-        amount: row.amount, shipment_ready: row.shipment_ready,
-        card_id: row.card_id, card_number: row.card_number, card_status: row.card_status, card_category: row.card_category
-      })
-    }
-
-    const data = Array.from(clientMap.values()).map(client => {
-      const orders = Array.from(client.orders.values()).map((order) => {
-        const allReady = order.items.every((i) => i.shipment_ready === 1)
-        const readyCount = order.items.filter((i) => i.shipment_ready === 1).length
-        return { ...order, all_ready: allReady, ready_count: readyCount, total_count: order.items.length }
-      })
-      return { client_id: client.client_id, client_name: client.client_name, orders }
-    })
-
-    let filtered = data
-    if (delivery_method) {
-      filtered = data.map(cl => ({ ...cl, orders: cl.orders.filter(o => o.delivery_method === delivery_method) })).filter(cl => cl.orders.length > 0)
-    }
-    if (status === 'ready') {
-      filtered = filtered.map(cl => ({ ...cl, orders: cl.orders.filter(o => o.all_ready) })).filter(cl => cl.orders.length > 0)
-    } else if (status === 'pending') {
-      filtered = filtered.map(cl => ({ ...cl, orders: cl.orders.filter(o => !o.all_ready) })).filter(cl => cl.orders.length > 0)
-    }
-
-    return c.json({ success: true, data: filtered })
+    const { delivery_method, status = 'all' } = c.req.query()
+    const date = c.req.query('date') || kstYmd()
+    const all = await loadShipPlan(c, date)
+    // 카운터는 필터와 무관하게 전체 기준 — 필터를 바꿔도 「오늘 몇 건 중 몇 건 나갔나」는 그대로여야 한다
+    const counts = shipPlanCounts(all)
+    let orders = all
+    if (delivery_method) orders = orders.filter((o) => (o.delivery_method || '') === delivery_method)
+    if (status === 'shipped') orders = orders.filter((o) => o.bucket === 'SHIPPED')
+    else if (status === 'unshipped') orders = orders.filter((o) => o.bucket !== 'SHIPPED')
+    else if (status === 'ready') orders = orders.filter((o) => o.bucket === 'READY')
+    else if (status === 'preparing') orders = orders.filter((o) => o.bucket === 'PREPARING')
+    else if (status === 'carried') orders = orders.filter((o) => o.carried)
+    // 배송방법 선택지 = 그날 실제로 있는 값(고정 목록은 실값과 어긋나 고르면 0건이 됐다)
+    const methods = Array.from(new Set(all.map((o) => o.delivery_method || '').filter(Boolean))).sort()
+    return c.json({ success: true, data: { date, counts, methods, orders } })
   } catch (err) {
     console.error('shipments GET /dashboard error:', err)
     return c.json({ success: false, error: 'Failed to load dashboard' }, 500)
   }
 })
+
 
 // ============================================================================
 // GET /:id - 출고 상세
