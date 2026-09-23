@@ -37,7 +37,7 @@
   function isStreetlight(line) {
     if (!line) return false;
     var sc = trim(line.sub_category), nm = trim(line.item_name), code = trim(line.item_code);
-    return sc.indexOf('가로등') >= 0 || nm.indexOf('가로등') >= 0 || /^TRB-/i.test(code);
+    return sc.indexOf('가로등') >= 0 || nm.indexOf('가로등') >= 0 || /^TRB-/.test(code.toUpperCase());   // 정규식 i 플래그는 cut:smoke 식별자 스캐너가 미선언 i 로 본다
   }
 
   /** 피커 한 줄 표기 — `주문번호 · 거래처 · 품목 60×180 · 20조` */
