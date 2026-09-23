@@ -12,22 +12,6 @@ function woPPHidden(v) { return (typeof isPPHidden === 'function') ? isPPHidden(
 // 데이터는 `/api/orders/:id/work-order` 한 번으로 받는다 — 예전엔 카드 목록 + 카드 상세를
 //   카드 수만큼 개별 GET 하는 N+1 이었다.
 
-/** Code128 바코드 → dataURL. 리더기가 읽는 것은 **주문번호**다. 전역이 없으면 빈 문자열(생략). */
-function woBarcodeDataUrl(text) {
-    if (!text || typeof JsBarcode === 'undefined') return '';
-    try {
-        var canvas = document.createElement('canvas');
-        JsBarcode(canvas, String(text), {
-            format: 'CODE128', width: 1.6, height: 44,
-            displayValue: true, fontSize: 15, textMargin: 1, margin: 2
-        });
-        return canvas.toDataURL('image/png');
-    } catch (e) {
-        console.warn('[cards] 바코드 생성 실패', e);
-        return '';
-    }
-}
-
 async function printWorkOrder(orderId) {
     try {
         var res = await axios.get('/api/orders/' + orderId + '/work-order');
@@ -43,7 +27,7 @@ async function printWorkOrder(orderId) {
         } else {
             console.warn('[cards] QRCode 미로드 — 작업지시서 QR 생략 (layout.ts CDN 확인)');
         }
-        var barDataUrl = woBarcodeDataUrl(order.order_number);
+        // Code128 바코드는 2026-09-23 제거(리더기 없음·도입 예정 없음) — 주문 식별은 QR 하나로 한다.
 
         // XSS 방지 래퍼 (document.write 컨텍스트)
         var esc = window.escapeHtml || function(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
@@ -82,7 +66,6 @@ async function printWorkOrder(orderId) {
             + '.codes { text-align: center; flex-shrink: 0; }'
             + '.codes .qr { width: 20mm; height: 20mm; display: block; margin: 0 auto 2px; }'
             + '.codes .qr-cap { font-size: 9px; color: #6b7280; margin-bottom: 4px; }'
-            + '.codes .bar { height: 14mm; display: block; }'
             + '.notes { background: #fff7ed; border: 1px solid #fdba74; border-radius: 6px; padding: 8px 12px; margin: 8px 0; font-size: 13px; }'
             + '.line-section { margin: 14px 0 6px; font-size: 14px; font-weight: 800; border-bottom: 2px solid #111; padding-bottom: 3px; page-break-after: avoid; break-after: avoid; }'
             + '.line-section .cnt { float: right; font-size: 11px; font-weight: 600; color: #6b7280; }'
@@ -124,7 +107,6 @@ async function printWorkOrder(orderId) {
         html += '</div></div>';
         html += '<div class="codes">';
         if (qrDataUrl) html += '<img src="' + qrDataUrl + '" class="qr"><div class="qr-cap">출고 검수</div>';
-        if (barDataUrl) html += '<img src="' + barDataUrl + '" class="bar">';
         html += '</div></div>';
 
         if (order.internal_notes) {

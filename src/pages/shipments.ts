@@ -5,6 +5,7 @@ import shipmentsScript from '../scripts/shipments.js?raw'
 import deliverySlot from '../scripts/shared/deliverySlot.js?raw'       // 직배 배차 슬롯·완료기한(클라 사본)
 const pageScript = [deliverySlot, shipmentsScript].join(String.fromCharCode(10))
 import shipmentsDashboardScript from '../scripts/shipmentsDashboard.js?raw'
+import { shipPlanMarkup } from './shipmentsDashboard'   // 출고 예정·실적 마크업(독립 페이지와 공용)
 
 export function shipmentsPage(c: Context<HonoEnv>) {
   // ③ 흡수(2026-07-17): 실행/준비상태 탭 전환 + 역할 게이팅(OPERATOR=준비상태 전용)
@@ -118,7 +119,7 @@ export function shipmentsPage(c: Context<HonoEnv>) {
       <!-- ③ 흡수(2026-07-17): 택배사별 실행 / 준비상태(구 /shipments-dashboard) 탭 -->
       <div class="flex border-b mb-4" id="shipTabNav">
         <button id="shipExecTab" onclick="switchShipTab('exec')" class="px-5 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600"><i class="fas fa-truck mr-1"></i>택배사별 실행</button>
-        <button id="shipPrepTab" onclick="switchShipTab('prep')" class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700"><i class="fas fa-clipboard-check mr-1"></i>준비상태</button>
+        <button id="shipPrepTab" onclick="switchShipTab('prep')" class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700"><i class="fas fa-clipboard-check mr-1"></i>출고 예정·실적</button>
         <button id="shipHistTab" onclick="switchShipTab('hist')" class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700"><i class="fas fa-clock-rotate-left mr-1"></i>이력</button>
       </div>
 
@@ -155,16 +156,29 @@ export function shipmentsPage(c: Context<HonoEnv>) {
       <!-- 확정 대기 (2026-09-17) — 출고는 됐는데 청구에 필요한 값(박스 수·송장)이 안 들어온 건.
            출고 확정 경로가 10개라 어디서 내보냈든 여기로 모인다. 건이 있을 때만 표시. -->
       <div id="pendingConfirmCard" class="mb-6 ds-card overflow-hidden hidden">
-        <div class="flex items-center justify-between px-4 py-3 bg-blue-50 border-b border-blue-200">
+        <div class="flex items-center justify-between flex-wrap gap-2 px-4 py-3 bg-blue-50 border-b border-blue-200">
           <h3 class="text-sm font-semibold text-blue-800">
             <i class="fas fa-clipboard-check mr-1"></i>확정 대기 <span id="pendingConfirmCount" class="ml-1 text-xs font-normal"></span>
           </h3>
-          <span class="text-xs text-blue-700">출고는 끝났는데 박스 수·송장·배송 알림이 아직 안 들어온 건 — 채우면 배송비 청구 수량이 확정됩니다</span>
+          <!-- 일괄 처리(2026-09-23) — 확정과 알림은 여기서도 **버튼을 나눠 둔다**(결정 A: 알림은 되돌릴 수 없다) -->
+          <div class="flex items-center gap-2">
+            <span id="pcSelInfo" class="text-xs text-blue-700">선택 0건</span>
+            <button id="pcBulkConfirmBtn" onclick="confirmPendingSelected()" disabled
+                    class="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
+              <i class="fas fa-check mr-1"></i>선택 확정</button>
+            <button id="pcBulkNoticeBtn" onclick="openNoticeSendSelected()" disabled
+                    class="px-2 py-1 text-xs bg-amber-500 text-white rounded hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed">
+              <i class="fas fa-paper-plane mr-1"></i>선택 알림</button>
+          </div>
+        </div>
+        <div class="px-4 py-1.5 text-xs text-blue-700 bg-blue-50/40 border-b border-blue-100">
+          출고는 끝났는데 박스 수·송장·배송 알림이 남은 건 — 「확정」은 박스·송장을 저장해 배송비 청구 수량을 정하고, 알림까지 보내면 목록에서 빠집니다
         </div>
         <div class="overflow-x-auto">
           <table class="ds-table w-full text-sm">
             <thead>
               <tr>
+                <th class="text-center px-2 py-2" style="width:44px"><input type="checkbox" id="pcSelAll" onchange="togglePendingSelectAll(this.checked)" title="전체 선택"></th>
                 <th class="text-left px-3 py-2">거래처</th>
                 <th class="text-left px-3 py-2" style="width:150px">주문번호</th>
                 <th class="text-left px-3 py-2" style="width:110px">배송</th>
@@ -172,6 +186,7 @@ export function shipmentsPage(c: Context<HonoEnv>) {
                 <th class="text-center px-3 py-2" style="width:90px">박스</th>
                 <th class="text-left px-3 py-2" style="width:190px">송장번호</th>
                 <th class="text-center px-3 py-2" style="width:90px">알림</th>
+                <th class="text-center px-3 py-2" style="width:120px">상태</th>
                 <th class="text-center px-3 py-2" style="width:140px">발송·확정</th>
               </tr>
             </thead>
@@ -180,9 +195,9 @@ export function shipmentsPage(c: Context<HonoEnv>) {
         </div>
       </div>
 
-      <!-- 배송 알림 발송(한 건) — 단계 2, 2026-09-18.
+      <!-- 배송 알림 발송 — 단계 2, 2026-09-18. 2026-09-23 확정 대기의 [선택 알림]도 이 모달을 쓴다(여러 건).
            ★본문 미리보기가 핵심이다: 변수 치환 뒤를 보여줘 빈칸이 그대로 나가는 사고를 막는다.
-           여러 건 일괄은 아래 섹션 발송이 담당한다(여기서 겸하지 않는다). -->
+           여러 건이면 **보낼 건마다 본문을 전부** 보여 준다(한 건만 보여 주면 나머지는 확인 안 한 셈이다). -->
       <div id="noticeSendModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
         <div class="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4">
           <div class="flex items-center justify-between px-5 py-3 border-b">
@@ -500,7 +515,7 @@ export function shipmentsPage(c: Context<HonoEnv>) {
       </div>
       </div><!-- /shipExecContent -->
 
-      <!-- 준비상태 탭 (구 /shipments-dashboard 흡수) -->
+      <!-- 출고 예정·실적 탭 (구 「준비상태」·/shipments-dashboard 흡수 → 2026-09-23 예정·실적으로 재설계) -->
       <!-- ===== 이력 탭 (설계: docs/specs/2026-08-09-shipment-history-list.md) =====
            정본 = 주문 출고완료(orders.status=SHIPPED). shipments 테이블은 prod 0건이라 쓰지 않는다.
            조회는 /api/orders 를 그대로 쓴다 — 전용 엔드포인트를 만들면 조회조건이 또 두 벌이 된다. -->
@@ -585,67 +600,7 @@ export function shipmentsPage(c: Context<HonoEnv>) {
       </div>
 
       <div id="shipPrepContent" class="hidden">
-        <div class="ds-container space-y-4">
-          <!-- 필터 영역 -->
-          <div class="ds-card p-3">
-            <div class="flex flex-wrap items-end gap-3">
-              <div>
-                <label class="block text-[10px] text-gray-400 mb-1">날짜</label>
-                <input type="text" maxlength="10" inputmode="numeric" placeholder="예: 2026-01-15" id="dashDate" class="js-fp border rounded px-2 py-1 text-xs" style="color:var(--c-text);" />
-              </div>
-              <div>
-                <label class="block text-[10px] text-gray-400 mb-1">배송방법</label>
-                <select id="dashMethod" class="border rounded px-2 py-1 text-xs" style="color:var(--c-text);">
-                  <option value="">전체</option>
-                  <option value="택배">택배</option>
-                  <option value="방문수령">방문수령</option>
-                  <option value="퀵">퀵</option>
-                  <option value="직접배송">직접배송</option>
-                  <option value="화물">화물</option>
-                </select>
-              </div>
-              <div>
-                <label class="block text-[10px] text-gray-400 mb-1">상태</label>
-                <select id="dashStatus" class="border rounded px-2 py-1 text-xs" style="color:var(--c-text);">
-                  <option value="all">전체</option>
-                  <option value="ready">출고 가능</option>
-                  <option value="pending">미완료</option>
-                </select>
-              </div>
-              <div class="ml-auto flex items-center gap-2">
-                <button onclick="window.resetDashFilters()" class="text-gray-500 text-xs">초기화</button>
-                <button onclick="window.loadDashboard()" class="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-all">
-                  <i class="fas fa-search mr-1"></i>검색
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- 요약 카드 -->
-          <div class="grid grid-cols-3 gap-2">
-            <div class="ds-card p-2.5 text-center hover:shadow-md transition-shadow">
-              <div id="dashTotal" class="text-xl font-bold tabular-nums" style="color:var(--c-text);">-</div>
-              <div class="text-[10px] text-gray-400">전체</div>
-            </div>
-            <div class="ds-card p-2.5 text-center hover:shadow-md transition-shadow">
-              <div id="dashReady" class="text-xl font-bold tabular-nums text-green-600">-</div>
-              <div class="text-[10px] text-gray-400">출고 가능</div>
-            </div>
-            <div class="ds-card border-amber-200 p-2.5 text-center hover:shadow-md transition-shadow">
-              <div id="dashPending" class="text-xl font-bold tabular-nums text-amber-600">-</div>
-              <div class="text-[10px] text-amber-500 font-medium">미완료</div>
-            </div>
-          </div>
-
-          <!-- 대시보드 콘텐츠 -->
-          <div id="dashContent">
-            <div class="space-y-2">
-              <div class="ds-skeleton ds-skeleton-card"></div>
-              <div class="ds-skeleton ds-skeleton-card"></div>
-              <div class="ds-skeleton ds-skeleton-card"></div>
-            </div>
-          </div>
-        </div>
+        ${shipPlanMarkup}
       </div>
 
       <!-- 프린트 전용 영역: 라벨 (화면에는 숨김) -->

@@ -717,45 +717,84 @@ async function saveTrackingNumber(key) {
 // 출고 확정 경로가 10개라 어디서 내보냈든 여기로 모인다 — 「출고 처리」와 「출고 확정」을 나눈 두 번째 단계.
 // 날짜 필터와 무관하게(최근 14일) 남아 있는 잔여를 보여 준다.
 var _pendingConfirmRows = [];
-// ── 배송 알림 발송(한 건) — 단계 2, 2026-09-18 ──────────────────────────
-//   확정 대기 행의 [알림] 버튼이 연다. 「확정」과 **버튼을 나눠 둔다**(용준님 결정 A) —
+// 선택(2026-09-23 일괄 처리) — 행 인덱스가 아니라 **주문 id** 로 들고 있는다. 확정·발송 뒤 목록을
+//   다시 그리면 인덱스가 밀리므로, 남은 행의 선택을 id 로 되살린다.
+var _pcSelected = {};
+// ── 배송 알림 발송 — 단계 2, 2026-09-18 · 여러 건 2026-09-23 ─────────────────
+//   확정 대기 행의 [알림]·헤더의 [선택 알림]이 연다. 「확정」과 **버튼을 나눠 둔다**(용준님 결정 A) —
 //   확정만 하고 싶을 때가 있고, 합치면 실수로 발송된다. 발송은 되돌릴 수 없다.
-var _noticeSendOrderId = null;
+var _noticeSendOrderIds = [];
 
-async function openNoticeSend(idx) {
+function openNoticeSend(idx) {
   var r = _pendingConfirmRows[idx];
   if (!r) return;
-  _noticeSendOrderId = r.order_id;
+  openNoticeSendFor([r.order_id]);
+}
+
+function openNoticeSendSelected() {
+  var ids = pendingSelectedRows().map(function (r) { return r.order_id; });
+  if (!ids.length) { showToast('알림을 보낼 건을 선택하세요', 'warning'); return; }
+  openNoticeSendFor(ids);
+}
+
+async function openNoticeSendFor(orderIds) {
+  _noticeSendOrderIds = orderIds.slice();
   var modal = document.getElementById('noticeSendModal');
   if (!modal) { console.warn('[shipments] #noticeSendModal not found'); return; }
-  document.getElementById('noticeSendTo').textContent = (r.client_name || '-') + '  ' + (r.mobile || '');
+  document.getElementById('noticeSendTo').textContent = orderIds.length > 1 ? ('선택 ' + orderIds.length + '건') : '-';
   document.getElementById('noticeSendChannel').textContent = '조회 중…';
   document.getElementById('noticeSendBody').textContent = '';
   document.getElementById('noticeSendCost').textContent = '-';
   document.getElementById('noticeSendNote').classList.add('hidden');
-  document.getElementById('noticeSendBtn').disabled = true;
+  var btn = document.getElementById('noticeSendBtn');
+  btn.disabled = true;
+  btn.textContent = '발송';
   modal.classList.remove('hidden');
   modal.classList.add('flex');
 
   try {
     // 본문은 **서버가 만든다** — 미리보기와 실제 발송이 같은 함수를 써야 한다.
-    var res = await axios.post('/api/shipments/notice/preview', { order_ids: [r.order_id] });
-    var it = (res.data && res.data.data && res.data.data.items || [])[0];
-    if (!it) { showToast('발송 대상을 찾지 못했습니다', 'warning'); closeNoticeSendModal(); return; }
-    document.getElementById('noticeSendTo').textContent = (it.client_name || '-') + '  ' + (it.mobile || '');
-    document.getElementById('noticeSendChannel').textContent =
-      it.channel === 'kakao' ? ('알림톡 「' + (it.template || '') + '」') : (it.channel === 'sms' ? '문자(LMS)' : '-');
-    document.getElementById('noticeSendBody').textContent = it.preview || '';
-    document.getElementById('noticeSendCost').textContent = it.cost ? (it.cost + '원') : '-';
+    var res = await axios.post('/api/shipments/notice/preview', { order_ids: orderIds });
+    var d = (res.data && res.data.data) || {};
+    var items = d.items || [];
+    if (!items.length) { showToast('발송 대상을 찾지 못했습니다', 'warning'); closeNoticeSendModal(); return; }
     var note = document.getElementById('noticeSendNote');
-    if (it.channel === 'sms' && it.can_send) {
-      note.textContent = '이 배송수단은 승인된 알림톡 템플릿이 없어 문자로 나갑니다.';
-      note.classList.remove('hidden');
-    } else if (!it.can_send) {
-      note.textContent = '보낼 수 없습니다 — ' + (it.blocked_label || '사유 미상');
-      note.classList.remove('hidden');
+    var sendable = items.filter(function (it) { return it.can_send; });
+
+    if (items.length === 1) {
+      var it = items[0];
+      document.getElementById('noticeSendTo').textContent = (it.client_name || '-') + '  ' + (it.mobile || '');
+      document.getElementById('noticeSendChannel').textContent =
+        it.channel === 'kakao' ? ('알림톡 「' + (it.template || '') + '」') : (it.channel === 'sms' ? '문자(LMS)' : '-');
+      document.getElementById('noticeSendBody').textContent = it.preview || '';
+      document.getElementById('noticeSendCost').textContent = it.cost ? (it.cost + '원') : '-';
+      if (it.channel === 'sms' && it.can_send) {
+        note.textContent = '이 배송수단은 승인된 알림톡 템플릿이 없어 문자로 나갑니다.';
+        note.classList.remove('hidden');
+      } else if (!it.can_send) {
+        note.textContent = '보낼 수 없습니다 — ' + (it.blocked_label || '사유 미상');
+        note.classList.remove('hidden');
+      }
+    } else {
+      var kakao = sendable.filter(function (it) { return it.channel === 'kakao'; }).length;
+      document.getElementById('noticeSendTo').textContent = '선택 ' + items.length + '건 · 발송 가능 ' + sendable.length + '건';
+      document.getElementById('noticeSendChannel').textContent = '알림톡 ' + kakao + ' · 문자 ' + (sendable.length - kakao);
+      // 보낼 건마다 본문을 전부 싣는다 — 한 건만 보여 주면 나머지는 확인하지 않은 채 나간다.
+      document.getElementById('noticeSendBody').textContent = sendable.map(function (it) {
+        return '■ ' + (it.client_name || '-') + ' (' + (it.order_number || '') + ')  ' + (it.mobile || '') + '\n' + (it.preview || '');
+      }).join('\n\n');
+      var cost = (d.summary && d.summary.cost) || 0;
+      document.getElementById('noticeSendCost').textContent = cost ? (cost + '원') : '-';
+      var skipped = items.filter(function (it) { return !it.can_send; });
+      if (skipped.length) {
+        var byLabel = {};
+        skipped.forEach(function (it) { var k = it.blocked_label || '사유 미상'; byLabel[k] = (byLabel[k] || 0) + 1; });
+        note.textContent = '제외 ' + skipped.length + '건 — ' + Object.keys(byLabel).map(function (k) { return k + ' ' + byLabel[k]; }).join(', ');
+        note.classList.remove('hidden');
+      }
+      btn.textContent = sendable.length + '건 발송';
     }
-    document.getElementById('noticeSendBtn').disabled = !it.can_send;
+    btn.disabled = sendable.length === 0;
   } catch (e) {
     console.warn('[shipments] 알림 미리보기 실패', e);
     showToast('미리보기를 불러오지 못했습니다', 'error');
@@ -768,24 +807,31 @@ function closeNoticeSendModal() {
   if (!modal) return;
   modal.classList.add('hidden');
   modal.classList.remove('flex');
-  _noticeSendOrderId = null;
+  _noticeSendOrderIds = [];
 }
 
 async function doNoticeSend() {
-  if (!_noticeSendOrderId) return;
+  if (!_noticeSendOrderIds.length) return;
   var btn = document.getElementById('noticeSendBtn');
   btn.disabled = true;
+  var ids = _noticeSendOrderIds.slice();
   try {
-    var res = await axios.post('/api/shipments/notice/send', { order_ids: [_noticeSendOrderId] });
+    var res = await axios.post('/api/shipments/notice/send', { order_ids: ids });
     var d = (res.data && res.data.data) || {};
-    var one = (d.results || [])[0] || {};
-    if (d.sent > 0) {
-      showToast('배송 알림을 보냈습니다', 'success');
+    var results = d.results || [];
+    if (ids.length === 1) {
+      var one = results[0] || {};
+      if (d.sent > 0) showToast('배송 알림을 보냈습니다', 'success');
+      else showToast('발송하지 못했습니다 — ' + (one.error || one.reason_label || '사유 미상'), 'error');
     } else {
-      showToast('발송하지 못했습니다 — ' + (one.error || one.reason_label || '사유 미상'), 'error');
+      var skipped = results.filter(function (x) { return x.status === 'SKIPPED'; }).length;
+      showToast('배송 알림 ' + (d.sent || 0) + '건 발송'
+        + ((d.failed || 0) ? ' · 실패 ' + d.failed + '건' : '')
+        + (skipped ? ' · 제외 ' + skipped + '건' : ''), (d.failed || 0) ? 'warning' : 'success');
     }
     closeNoticeSendModal();
-    loadPendingConfirm();   // 배지가 「발송됨」으로 바뀐다
+    await loadPendingConfirm();   // 배지가 「발송됨」으로 바뀌고, 다 끝난 건은 목록에서 빠진다
+    flashPendingRows(ids);
   } catch (e) {
     showToast('발송 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message), 'error');
     btn.disabled = false;
@@ -815,6 +861,27 @@ function pendingNotifyBadge(r) {
   }
 }
 
+// 행이 목록에 남은 이유 — 화면이 따로 판정하지 않고 서버가 준 값(box_count·tracking_number·notice_*)만 읽는다.
+//   「확정」을 눌러도 알림이 남은 건은 **목록에 그대로 남는다**(서버 규칙, 2026-09-18). 그걸 화면이 말해 주지
+//   않아서 「눌러도 반응이 없다」로 보였다(2026-09-23 현장 피드백) → 행마다 남은 일을 적는다.
+function pendingRowNeeds(r) {
+  var needs = [];
+  if (!(Number(r.box_count) > 0)) needs.push('박스');
+  if ((r.delivery_method || '').trim() === '한진택배' && !String(r.tracking_number || '').trim()) needs.push('송장');
+  return needs;
+}
+
+function pendingStatusCell(r) {
+  var needs = pendingRowNeeds(r);
+  var st = 'font-size:11px;padding:2px 7px;border-radius:8px;white-space:nowrap';
+  if (needs.length) {
+    return '<span style="' + st + ';background:#fef3c7;color:#92400e" title="확정을 누르면 입력한 값이 저장됩니다">' + escapeHtml(needs.join('·')) + ' 미확정</span>';
+  }
+  var noticeLeft = Number(r.notice_target) === 1 && Number(r.notified) !== 1;
+  return '<span style="' + st + ';background:#dcfce7;color:#166534" title="박스·송장 저장 완료">✓ 확정됨</span>'
+    + (noticeLeft ? '<div class="text-[10px] text-gray-500 mt-0.5">알림만 남음</div>' : '');
+}
+
 async function loadPendingConfirm() {
   var card = document.getElementById('pendingConfirmCard');
   var body = document.getElementById('pendingConfirmBody');
@@ -824,12 +891,23 @@ async function loadPendingConfirm() {
     var res = await axios.get('/api/shipments/pending-confirm');
     var rows = (res.data && res.data.success) ? (res.data.data || []) : [];
     _pendingConfirmRows = rows;
-    if (!rows.length) { card.classList.add('hidden'); return; }
-    if (cnt) cnt.textContent = rows.length + '건';
+    // 사라진 행의 선택은 버린다
+    var alive = {};
+    rows.forEach(function (r) { if (_pcSelected[r.order_id]) alive[r.order_id] = true; });
+    _pcSelected = alive;
+    if (!rows.length) { card.classList.add('hidden'); updatePendingSelectionUi(); return; }
+    if (cnt) {
+      var unconfirmed = rows.filter(function (r) { return pendingRowNeeds(r).length > 0; }).length;
+      cnt.textContent = rows.length + '건' + (unconfirmed < rows.length ? ' (확정됨·알림만 남음 ' + (rows.length - unconfirmed) + ')' : '');
+    }
     body.innerHTML = rows.map(function (r, i) {
       var needTrack = r.delivery_method === '한진택배';
       var merged = Number(r.merged_count) || 0;
-      return '<tr class="border-t">'
+      var confirmed = pendingRowNeeds(r).length === 0;
+      var boxSaved = Number(r.box_count) > 0;
+      return '<tr class="border-t' + (confirmed ? ' bg-gray-50' : '') + '" data-pc-order="' + r.order_id + '">'
+        + '<td class="px-2 py-2 text-center"><input type="checkbox" class="pc-sel" data-idx="' + i + '"'
+        + (_pcSelected[r.order_id] ? ' checked' : '') + ' onchange="togglePendingSelect(' + i + ', this.checked)"></td>'
         + '<td class="px-3 py-2 font-medium">' + escapeHtml(r.client_name || '-')
         + (r.entity_name ? '<span style="background:#eef2ff;color:#4338ca;font-size:10px;padding:1px 5px;border-radius:8px;margin-left:4px">' + escapeHtml(r.entity_name) + '</span>' : '')
         + (merged > 0 ? '<span style="background:#fef3c7;color:#92400e;font-size:10px;padding:1px 5px;border-radius:8px;margin-left:4px" title="합포장 대표 — 박스 수는 이 주문에만 청구됩니다">합포장 ' + (merged + 1) + '건</span>' : '')
@@ -838,18 +916,21 @@ async function loadPendingConfirm() {
         + '<td class="px-3 py-2 text-gray-600">' + escapeHtml(r.delivery_method || '-') + '</td>'
         + '<td class="px-3 py-2 text-gray-500 text-xs">' + escapeHtml(String(r.shipped_at || '').slice(0, 10)) + '</td>'
         + '<td class="px-3 py-2 text-center">'
-        + '<input type="number" id="pc-bc-' + i + '" value="' + (Number(r.box_count) > 0 ? r.box_count : 1) + '" min="1" max="99"'
-        + ' class="ds-input w-14 px-1 py-1 text-center text-sm border rounded"'
-        + (Number(r.fee_lines) > 0 ? ' title="이 주문의 배송비 라인 수량이 이 값으로 확정됩니다"' : ' title="박스 수"') + '>'
+        // 미저장이면 1을 **제안값**으로 넣되 테두리로 「아직 저장 안 됨」을 표시한다 — 예전엔 저장 전후가 똑같이 보였다.
+        + '<input type="number" id="pc-bc-' + i + '" value="' + (boxSaved ? r.box_count : 1) + '" min="1" max="99"'
+        + ' class="ds-input w-14 px-1 py-1 text-center text-sm border rounded' + (boxSaved ? '' : ' border-amber-400 bg-amber-50') + '"'
+        + ' title="' + (boxSaved ? '저장된 박스 수' : '아직 저장 안 됨 — 확정을 누르면 이 값으로 저장됩니다')
+        + (Number(r.fee_lines) > 0 ? ' · 이 주문의 배송비 라인 수량이 이 값으로 확정됩니다' : '') + '">'
         + '</td>'
         + '<td class="px-3 py-2">'
         + (needTrack
-            ? '<input type="text" id="pc-tk-' + i + '" value="' + escapeHtml(r.tracking_number || '') + '" class="ds-input px-2 py-1 text-sm w-44 border rounded" placeholder="송장번호">'
+            ? '<input type="text" id="pc-tk-' + i + '" value="' + escapeHtml(r.tracking_number || '') + '" class="ds-input px-2 py-1 text-sm w-44 border rounded' + (String(r.tracking_number || '').trim() ? '' : ' border-amber-400 bg-amber-50') + '" placeholder="송장번호">'
             : '<span class="text-xs text-gray-400">-</span>')
         + '</td>'
         // 2026-09-18 알림 열 — 「보냈나」를 이 목록에서 바로 본다. 종전엔 보냈는지 알 길이 화면에 없었다.
         //   휴대폰이 없으면 보낼 수단이 없으므로 「연락처 없음」으로 구분한다(미발송과 다른 상태다).
         + '<td class="px-3 py-2 text-center">' + pendingNotifyBadge(r) + '</td>'
+        + '<td class="px-3 py-2 text-center">' + pendingStatusCell(r) + '</td>'
         + '<td class="px-3 py-2 text-center whitespace-nowrap">'
         // [알림]·[확정]을 **나눠 둔다**(2026-09-18 결정 A) — 확정만 하고 싶을 때가 있고,
         //   합치면 실수로 발송된다. 발송은 되돌릴 수 없다.
@@ -858,34 +939,134 @@ async function loadPendingConfirm() {
             ? 'bg-amber-500 text-white hover:bg-amber-600' : 'bg-gray-100 text-gray-400 cursor-not-allowed')
         + '" title="' + escapeHtml(Number(r.notice_can_send) === 1 ? '배송 알림을 보냅니다(본문 확인 후)' : '지금은 보낼 수 없습니다') + '">'
         + '<i class="fas fa-paper-plane mr-1"></i>알림</button>'
-        + '<button onclick="confirmPendingRow(' + i + ')" class="px-2 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">'
-        + '<i class="fas fa-check mr-1"></i>확정</button>'
+        // 확정된 행은 「수정」 — 값을 고쳐 다시 저장할 수는 있지만, 이미 끝난 일로 보이게 한다.
+        + (confirmed
+            ? '<button onclick="confirmPendingRow(' + i + ')" class="px-2 py-1.5 text-xs border border-gray-300 text-gray-600 rounded hover:bg-gray-100" title="박스·송장을 고쳐 다시 저장합니다">'
+              + '<i class="fas fa-pen mr-1"></i>수정</button>'
+            : '<button onclick="confirmPendingRow(' + i + ')" class="px-2 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">'
+              + '<i class="fas fa-check mr-1"></i>확정</button>')
         + '</td>'
         + '</tr>';
     }).join('');
     card.classList.remove('hidden');
+    updatePendingSelectionUi();
   } catch (e) {
     console.warn('[shipments] 확정 대기 조회 실패', e);
     card.classList.add('hidden');
   }
 }
 
+// ── 선택 ────────────────────────────────────────────────────────────────
+function togglePendingSelect(idx, on) {
+  var r = _pendingConfirmRows[idx];
+  if (!r) return;
+  if (on) _pcSelected[r.order_id] = true; else delete _pcSelected[r.order_id];
+  updatePendingSelectionUi();
+}
+
+function togglePendingSelectAll(on) {
+  _pcSelected = {};
+  if (on) _pendingConfirmRows.forEach(function (r) { _pcSelected[r.order_id] = true; });
+  document.querySelectorAll('#pendingConfirmBody .pc-sel').forEach(function (el) { el.checked = !!on; });
+  updatePendingSelectionUi();
+}
+
+function pendingSelectedRows() {
+  return _pendingConfirmRows.filter(function (r) { return _pcSelected[r.order_id]; });
+}
+
+function updatePendingSelectionUi() {
+  var sel = pendingSelectedRows();
+  var info = document.getElementById('pcSelInfo');
+  if (info) info.textContent = '선택 ' + sel.length + '건';
+  var all = document.getElementById('pcSelAll');
+  if (all) {
+    all.checked = sel.length > 0 && sel.length === _pendingConfirmRows.length;
+    all.indeterminate = sel.length > 0 && sel.length < _pendingConfirmRows.length;
+  }
+  var b1 = document.getElementById('pcBulkConfirmBtn');
+  if (b1) b1.disabled = sel.length === 0;
+  var b2 = document.getElementById('pcBulkNoticeBtn');
+  if (b2) b2.disabled = !sel.some(function (r) { return Number(r.notice_can_send) === 1; });
+}
+
+// 방금 처리한 행을 잠깐 칠한다 — 목록에 남은 행이 「처리됐는지」 눈으로 보이게.
+function flashPendingRows(orderIds) {
+  (orderIds || []).forEach(function (id) {
+    var tr = document.querySelector('#pendingConfirmBody tr[data-pc-order="' + id + '"]');
+    if (!tr) return;
+    tr.style.transition = 'background-color 1.2s';
+    tr.style.backgroundColor = '#bbf7d0';
+    setTimeout(function () { tr.style.backgroundColor = ''; }, 1400);
+  });
+}
+
+// 한 행의 입력값 → PATCH body. 한진택배인데 송장이 비어 있으면 null(확정할 수 없음).
+function pendingRowPayload(idx) {
+  var r = _pendingConfirmRows[idx];
+  var bcEl = document.getElementById('pc-bc-' + idx);
+  var tkEl = document.getElementById('pc-tk-' + idx);
+  var payload = { box_count: bcEl ? (parseInt(bcEl.value) || 1) : 1 };
+  if (tkEl) {
+    payload.tracking_number = tkEl.value.trim();
+    if ((r.delivery_method || '').trim() === '한진택배' && !payload.tracking_number) return null;
+  }
+  return payload;
+}
+
 // 한 행 확정 — 기존 by-order 라우트를 그대로 쓴다(서버가 배송비 라인·청구그룹까지 맞춘다).
 async function confirmPendingRow(idx) {
   var r = _pendingConfirmRows[idx];
   if (!r) return;
-  var bcEl = document.getElementById('pc-bc-' + idx);
-  var tkEl = document.getElementById('pc-tk-' + idx);
-  var payload = { box_count: bcEl ? (parseInt(bcEl.value) || 1) : 1 };
-  if (tkEl) payload.tracking_number = tkEl.value.trim();
+  var payload = pendingRowPayload(idx);
+  if (!payload) { showToast('한진택배는 송장번호를 넣어야 확정됩니다', 'warning'); return; }
   try {
     await axios.patch('/api/shipments/by-order/' + r.order_id, payload);
+    await loadPendingConfirm();
+    var still = _pendingConfirmRows.some(function (x) { return x.order_id === r.order_id; });
     showToast(escapeHtml(r.order_number) + ' 확정 — 박스 ' + payload.box_count + '개'
-      + (Number(r.fee_lines) > 0 ? ' · 배송비 수량 반영' : ''), 'success');
-    loadPendingConfirm();
+      + (Number(r.fee_lines) > 0 ? ' · 배송비 수량 반영' : '')
+      + (still ? ' · 배송 알림이 남아 목록에 유지됩니다' : ' · 목록에서 정리됐습니다'), 'success');
+    if (still) flashPendingRows([r.order_id]);
   } catch (e) {
     showToast('확정 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message || ''), 'error');
   }
+}
+
+// 선택 확정 — 행마다 **그 행에 입력된 값**으로 저장한다(박스 수는 건마다 다르다).
+//   송장이 빈 한진택배는 건너뛰고 센다. 알림은 여기서 보내지 않는다(결정 A).
+async function confirmPendingSelected() {
+  var jobs = [], noTrack = 0;
+  _pendingConfirmRows.forEach(function (r, i) {
+    if (!_pcSelected[r.order_id]) return;
+    var p = pendingRowPayload(i);
+    if (!p) { noTrack++; return; }
+    jobs.push({ r: r, payload: p });
+  });
+  if (!jobs.length) { showToast(noTrack ? '송장번호가 없는 한진택배만 선택됐습니다' : '확정할 건을 선택하세요', 'warning'); return; }
+  if (!(await showConfirm(jobs.length + '건을 입력된 박스 수·송장으로 확정합니다.'
+      + (noTrack ? '\n(송장번호가 없는 한진택배 ' + noTrack + '건은 제외)' : '')
+      + '\n배송 알림은 보내지 않습니다 — [선택 알림]으로 따로 보냅니다.'))) return;
+
+  var btn = document.getElementById('pcBulkConfirmBtn');
+  if (btn) btn.disabled = true;
+  var ok = [], fail = [];
+  // 동시 4건씩 — 200건이어도 순차보다 빠르고 서버를 한꺼번에 두드리지 않는다.
+  for (var k = 0; k < jobs.length; k += 4) {
+    await Promise.all(jobs.slice(k, k + 4).map(function (j) {
+      return axios.patch('/api/shipments/by-order/' + j.r.order_id, j.payload)
+        .then(function () { ok.push(j.r.order_id); })
+        .catch(function (e) { fail.push(j.r.order_number + '(' + ((e.response && e.response.data && e.response.data.error) || e.message) + ')'); });
+    }));
+  }
+  await loadPendingConfirm();
+  var stillCnt = ok.filter(function (id) { return _pendingConfirmRows.some(function (x) { return x.order_id === id; }); }).length;
+  showToast('확정 ' + ok.length + '건'
+    + (noTrack ? ' · 송장 없어 제외 ' + noTrack + '건' : '')
+    + (fail.length ? ' · 실패 ' + fail.length + '건' : '')
+    + (stillCnt ? ' · 알림이 남은 ' + stillCnt + '건은 목록에 유지' : ''), fail.length ? 'warning' : 'success');
+  if (fail.length) console.warn('[shipments] 선택 확정 실패', fail);
+  flashPendingRows(ok);
 }
 
 // ========== 라벨 출력 ==========
