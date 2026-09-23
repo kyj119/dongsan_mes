@@ -17,11 +17,11 @@
 (function () {
   'use strict';
 
-  var TR_SHELL_VERSION = '0.9.0';   // 0.9.0 = ★셋(용준님 2026-09-23 실기). ①**표시 색을 도련 래스터에서 정한다** — 판-1 벌②의 가운데 끈고리가 안 보였다: 사진 가장자리 1~3mm 밝은 기둥을 픽셀 반복이 시접 폭으로 늘려 띠가 흰데, 굽기 가장자리 창 평균은 「어둡다 → 백선」이었다. 이제 도련 그림이 손에 있는 순간(buildBleedPngs) 선 길이 5점을 직접 보고, 한 점이라도 다르면 x(흑선+백테두리). 굽기 추정은 도련 그림이 없는 벌(단색·늘리기·실패)의 폴백으로만. ②**원본 비율 ≠ 규격 비율이면 must** — 호스트가 두 배율로 그대로 늘려 조용히 찌그러진다(검사 0곳이었다). 2% 초과면 어느 축이 몇 % 더 늘어나는지 말한다. 막지는 않는다. ③**끈고리 자리별 선택** 상·중·하 체크(하는 상하단에만 노출), 기본 전부 켜짐. 잃는 것: 없음(호스트 불변). · 0.8.0 = ★**표시 규칙 정정 + 마감 통합**(용준님 2026-09-23 실기). ①선(접는선·끈고리)은 원본 안이 아니라 **시접 띠 위** — 벌 바깥 끝선에서 안쪽으로 시접 폭. 시접은 접혀 넘어가므로 완성면에 안 남는다. ②맨 위 줄은 끈고리가 아니라 **접는선**이었다 — 밴드가 접히는 자리 양쪽, 봉미싱일 때만·항상. 상하단이면 아래에도 접는선 2 + 끈고리 1(= 벌당 7). ③끈고리(안쪽 ①밴드 높이 아래 ②중간 ③아래 밴드 위)는 체크로 끈다(기본 켜짐) — 끄면 접는선은 남는다. ④마감 목록 = 상단 봉미싱·상하단 봉미싱·부직포 7cm·부직포 10cm(정본 plate-rules.FINISH). 부직포 = 위 여백·접는선 없음, 끈고리는 위 끝선에서 폭+1cm(7→8cm) + 중간, 봉미싱 cm 칸은 숨긴다. 5cm·레자는 제외. ⑤색 판정은 시접 자리가 굽기 밖이라 가장 가까운 가장자리 픽셀로 본다(도련이 그 픽셀을 반복한다). 호스트는 그대로(L 레코드 6번째 f|l 은 0.7.x 가 무시한다 — TR_MIN_HOST 불변). 잃는 것: 선이 시접 위라 접기 전에만 보인다(그게 의도다). · 0.7.3 = ★픽셀 도련의 **모서리를 채운다**(용준님 2026-09-23 「모서리가 채워지지 않아 아쉽다」) — 엔진 기본(타원 한계)은 실루엣용이라 사각 벌의 네 모서리가 비었다. `corner:'square'` 로 부른다. 잃는 것: 없음. · 0.7.2 = ★**도련 기본이 픽셀 반복(repeat)** — 2026-09-22 실기(고양 소노): 가장자리에 실제로 있는 것은 사진+줄무늬(좌·우·하)이고 그라디언트는 위 변 하나뿐이었는데 `extend` 가 그라디언트를 늘려 깔았다 — 「전체를 덮는 맨 위 칠」은 가장자리에 보이는 것이 아니다. 벡터로는 혼합 가장자리를 표현할 수 없어 업계 도구 전부가 픽셀 방식을 쓴다(bleed.js). 실측: 벌마다 굽기 9초 · 네 변 띄 끝 색 = 원본 가장자리 픽셀(바이트 일치). `solid`·`extend` 는 픽셀을 못 만들 때의 폴백으로만 남는다(review.js planBleed). 잃는 것: 판 만들기에 벌당 굽기 ~10초가 붙는다(종전 단색·늘리기는 즉시). · 0.7.1 = ★도련 계획의 「벌」= plate.js `outer`(벌 ∪ 밴드) — grow.t 에 밴드가 들어가 픽셀 도련도 밴드까지 늘어난다. 라벨 3면=좌·우·하단. 호스트 0.7.1 과 짝(`TR_MIN_HOST` 는 [0,7,0] 그대로 — 0.7.0 도 outer 를 받으면 그대로 그린다). 잃는 것: 없음. · 0.7.0 = ★**끈고리·하도매를 그린다**(용준님 2026-09-22 확정 규칙 — 정본 `plate-rules.marks`, 산식 `plate.js`, 게이트 `cut:plate` ㊘㊙). 입력 = 하도매 「상단 N · 측면 N」(구 수는 겹침을 빼고 자동) + 끈고리 체크(기본 켜짐). 위치는 원본 끝선 안쪽, 「안쪽」= 두 벌이 마주 보는 쪽. ★색은 표시마다 **그 자리 배경**으로 흰/검(`sampleMarkColors` — 벌마다 1mm/px 굽기 한 번, 픽셀 도련이 구웠으면 그것을 재사용). 판정이 안 서면(밝기 0.4~0.6 · 투명 · 굽기 실패) 흑선+백테두리로 보내고 **센다**. 호스트 0.7.0 이 받는다(`TR_MIN_HOST` [0,7,0] — 구 호스트는 L/H 를 조용히 버리므로 막는다). 잃는 것: 판 만들기에 벌당 굽기 한 번(수 초). · 0.6.0 = ★도련 3단 배선 — 호스트 0.6.0 과 짝이다(`TR_MIN_HOST` [0,6,0]). 가장자리가 `grad` 면 **바탕을 늘리고**(무손실), 그것도 안 되면 **가장자리 색을 바깥으로 반복**한다. 반복은 재단과 **같은 엔진**(`js/bleed.js` `repeatLastPixel`)을 쓰고, 입출구(`readPng`·`writePng`)도 **사본을 만들지 않고** `js/png-io.js` 로 빼서 재단과 공유한다 — 엔진이 공유인데 입출구가 사본이면 한쪽에서 고친 것이 다른 쪽에 안 온다(이 저장소가 형제 스윕으로 여러 번 겪은 형태). ★굽기 해상도는 `TR_BLEED_MAX_PX`(12M) 예산에서 정하고, **실제로 구운 해상도로 되환산**해 도련 폭을 잡는다(요청값을 그대로 쓰면 반올림이 도련 폭에 실린다). 도련 PNG 는 원본 **뒤에** 깔리고 원본은 벡터 그대로라 안쪽 화질은 결과에 영향이 없다. ★못 만든 벌은 **센다** — 그 벌은 도련 없이 나가므로 조용히 넘기지 않는다. 잃는 것: 반복 경로는 벌당 굽기 왕복(수 초)이 붙는다. · 0.5.0 = ★호스트 0.5.0(클립 존중 잉크 경계) 없이는 **틀린 판이 조용히 나가므로** `TR_MIN_HOST` 를 [0,5,0] 으로 올렸다. 구 호스트는 클립이 잘라 낸 부분까지 크기에 넣어 자동 분석이 문서 전체를 한 덩어리로 보고(실측 10→1), 판에는 보이지 않는 여백이 그림보다 크게 깔린다 — 예외도 경고도 없이 **결과만 틀리다**(§조용한 격하). 잃는 것: Z: 호스트가 아직 0.4.0 인 PC 는 전사 탭이 「호스트가 낡았다」로 막힌다(갱신하면 풀린다). · 0.4.0 = ★**자동 분석이 주 경로**가 됐다(용준님 2026-09-21 「재단 기능처럼, 순서만 바꿀 수 있게」). [자동 분석] 이 문서의 맨 위 개체를 가로 간격으로 갈라 왼쪽을 벌① 로 두고, 사람은 [⇄ 좌우] 로 순서만 바꾼다. 수동 지정은 **자동이 못 가를 때**의 길로 내렸다. [계산] 은 지정이 하나도 없을 때만 자동을 먼저 돌린다 — 사람이 고른 것을 덮지 않는다. ⚠️그 자동 호출을 **await 없이 던지면 안 된다** — 호스트 왕복이라 늦게 온 응답이 방금 읽은 상태를 덮는다(CLAUDE.md §늦게 온 응답이 덮는다). 콜백으로 이어 붙였다. ⚠️덩어리 수가 벌 수와 다르면 **아무것도 지정하지 않고** 몇 덩어리인지 말한다 — 억지로 가르면 반쪽짜리 판이 조용히 나간다. 잃는 것: 없음(수동 경로 그대로) · 0.3.0 = ★벌마다 원본을 지정한다([벌① 좌 지정]·[벌② 우 지정]·[⇄]·[비우기]). 1조의 두 벌은 서로 다른 그림이라(2026-08 완성판 22건 실측, 동일 복제 0건) 종전처럼 하나를 두 벌에 복제하면 **전부 틀린 판**이 나왔다. 좌우는 디자이너가 정한다. 도련도 **벌마다** 계산해 `M:idx,...` 로 보낸다 — 두 벌의 바탕색이 다른 판이 흔하다. 지정이 비면 확인 목록에 **must** 로 올린다(조용히 빈 자리로 내보내지 않는다). ⚠️최악 도련을 고르는 비교에 `RANK[m] || 9` 를 쓰면 안 된다 — **skip 이 0 이라 falsy** 다(review.js 의 `ORDER[level] || 9` 와 같은 함정, 여기서도 한 번 걸렸다). 잃는 것: [계산] 전에 지정이 필요하다(안 하면 벌①에만 현재 선택이 들어간다) · 0.2.2 = ★안쪽 탭이 **전환되지 않고 있었다**. `.trpage`(style.css L199)가 `.hidden`(L21)보다 뒤에 있어 특정도가 같으면 이겼고, 숨겨야 할 페이지가 계속 보였다 — 가로등·윈드 입력이 동시에 렌더돼 실기에서 「입력창이 동일하다」로 보고됐다. `.trpage.hidden` 로 못박았다(`.mainpage.hidden` 과 같은 방식). 겸해서 **탭마다 쓰는 버튼만** 남긴다 — 가로등의 「틀 열기」·윈드의 「판 만들기」는 눌러도 거절 문구만 나오는 선택지였다. 게이트 = `panel:smoke` §16(브라우저에서 실제 가시성을 잰다 — 텍스트 게이트로는 영원히 못 잡는 종류다). 잃는 것: 없음(산식·payload 불변) · 0.2.1 = ★호스트 미로드를 **부팅 때** 알린다. 종전엔 `none` 을 조용히 넘겨 `host ?` 만 떴고 사람은 [판 만들기] 를 누르고서야 알았다. 그리고 그때 뜨는 문구가 **Z: 를 범인으로 단정**했는데(2026-09-18 실기) 진짜 원인은 이 PC 의 스텁이 전사 호스트를 목록에 안 넣은 것이었다 — Z: 는 멀쩡했고 사람은 드라이브를 보러 갔다. → 사유를 스텁에게 되묻고(oldstub·loaderr·notloaded) **조치가 다른 세 갈래**로 나눠 말한다. 잃는 것: 없음(산식·판·payload 불변) · 0.2.0 = 원본 측정(mesTr_measure) → 도련 경로 결정 → 배치·클리핑까지 · 0.1.0 = 신설
+  var TR_SHELL_VERSION = '0.10.0';   // 0.10.0 = ★둘(용준님 2026-09-23). ①**표시 색 고정 2겹** — 배경 보고 흑/백을 고르던 판정(굽기 창 → 도련 래스터)을 전부 걷어냈다. 픽셀 반복 띠는 정의상 가장자리 색과 같아 배경 맞춤 단색선은 늘 묻힐 수 있다(판-1 실기). 모든 표시 = 검정 심 3pt + 백 테두리 1pt(총 5pt≈1.8mm, 종전 백선 4pt≈1.4mm 와 비슷 — 값은 plate-rules.marks). 두께를 L/H 레코드에 실어 보내므로 호스트 0.8.0 필요(TR_MIN_HOST). ②**롤 폭 칸 제거** — 「60폭」은 인수인계 표기고 값은 130폭 롤 상한이며 롤은 현장이 고른다. 산식은 규칙의 2벌 상한만 쓴다. 잃는 것: 배경이 밝든 어둡든 표시가 늘 검정+백이라 「배경에 맞춘 단색」은 더 못 고른다(원하지 않는 것으로 확정). · 0.9.0 = ★셋(용준님 2026-09-23 실기). ①**표시 색을 도련 래스터에서 정한다** — 판-1 벌②의 가운데 끈고리가 안 보였다: 사진 가장자리 1~3mm 밝은 기둥을 픽셀 반복이 시접 폭으로 늘려 띠가 흰데, 굽기 가장자리 창 평균은 「어둡다 → 백선」이었다. 이제 도련 그림이 손에 있는 순간(buildBleedPngs) 선 길이 5점을 직접 보고, 한 점이라도 다르면 x(흑선+백테두리). 굽기 추정은 도련 그림이 없는 벌(단색·늘리기·실패)의 폴백으로만. ②**원본 비율 ≠ 규격 비율이면 must** — 호스트가 두 배율로 그대로 늘려 조용히 찌그러진다(검사 0곳이었다). 2% 초과면 어느 축이 몇 % 더 늘어나는지 말한다. 막지는 않는다. ③**끈고리 자리별 선택** 상·중·하 체크(하는 상하단에만 노출), 기본 전부 켜짐. 잃는 것: 없음(호스트 불변). · 0.8.0 = ★**표시 규칙 정정 + 마감 통합**(용준님 2026-09-23 실기). ①선(접는선·끈고리)은 원본 안이 아니라 **시접 띠 위** — 벌 바깥 끝선에서 안쪽으로 시접 폭. 시접은 접혀 넘어가므로 완성면에 안 남는다. ②맨 위 줄은 끈고리가 아니라 **접는선**이었다 — 밴드가 접히는 자리 양쪽, 봉미싱일 때만·항상. 상하단이면 아래에도 접는선 2 + 끈고리 1(= 벌당 7). ③끈고리(안쪽 ①밴드 높이 아래 ②중간 ③아래 밴드 위)는 체크로 끈다(기본 켜짐) — 끄면 접는선은 남는다. ④마감 목록 = 상단 봉미싱·상하단 봉미싱·부직포 7cm·부직포 10cm(정본 plate-rules.FINISH). 부직포 = 위 여백·접는선 없음, 끈고리는 위 끝선에서 폭+1cm(7→8cm) + 중간, 봉미싱 cm 칸은 숨긴다. 5cm·레자는 제외. ⑤색 판정은 시접 자리가 굽기 밖이라 가장 가까운 가장자리 픽셀로 본다(도련이 그 픽셀을 반복한다). 호스트는 그대로(L 레코드 6번째 f|l 은 0.7.x 가 무시한다 — TR_MIN_HOST 불변). 잃는 것: 선이 시접 위라 접기 전에만 보인다(그게 의도다). · 0.7.3 = ★픽셀 도련의 **모서리를 채운다**(용준님 2026-09-23 「모서리가 채워지지 않아 아쉽다」) — 엔진 기본(타원 한계)은 실루엣용이라 사각 벌의 네 모서리가 비었다. `corner:'square'` 로 부른다. 잃는 것: 없음. · 0.7.2 = ★**도련 기본이 픽셀 반복(repeat)** — 2026-09-22 실기(고양 소노): 가장자리에 실제로 있는 것은 사진+줄무늬(좌·우·하)이고 그라디언트는 위 변 하나뿐이었는데 `extend` 가 그라디언트를 늘려 깔았다 — 「전체를 덮는 맨 위 칠」은 가장자리에 보이는 것이 아니다. 벡터로는 혼합 가장자리를 표현할 수 없어 업계 도구 전부가 픽셀 방식을 쓴다(bleed.js). 실측: 벌마다 굽기 9초 · 네 변 띄 끝 색 = 원본 가장자리 픽셀(바이트 일치). `solid`·`extend` 는 픽셀을 못 만들 때의 폴백으로만 남는다(review.js planBleed). 잃는 것: 판 만들기에 벌당 굽기 ~10초가 붙는다(종전 단색·늘리기는 즉시). · 0.7.1 = ★도련 계획의 「벌」= plate.js `outer`(벌 ∪ 밴드) — grow.t 에 밴드가 들어가 픽셀 도련도 밴드까지 늘어난다. 라벨 3면=좌·우·하단. 호스트 0.7.1 과 짝(`TR_MIN_HOST` 는 [0,7,0] 그대로 — 0.7.0 도 outer 를 받으면 그대로 그린다). 잃는 것: 없음. · 0.7.0 = ★**끈고리·하도매를 그린다**(용준님 2026-09-22 확정 규칙 — 정본 `plate-rules.marks`, 산식 `plate.js`, 게이트 `cut:plate` ㊘㊙). 입력 = 하도매 「상단 N · 측면 N」(구 수는 겹침을 빼고 자동) + 끈고리 체크(기본 켜짐). 위치는 원본 끝선 안쪽, 「안쪽」= 두 벌이 마주 보는 쪽. ★색은 표시마다 **그 자리 배경**으로 흰/검(`sampleMarkColors` — 벌마다 1mm/px 굽기 한 번, 픽셀 도련이 구웠으면 그것을 재사용). 판정이 안 서면(밝기 0.4~0.6 · 투명 · 굽기 실패) 흑선+백테두리로 보내고 **센다**. 호스트 0.7.0 이 받는다(`TR_MIN_HOST` [0,7,0] — 구 호스트는 L/H 를 조용히 버리므로 막는다). 잃는 것: 판 만들기에 벌당 굽기 한 번(수 초). · 0.6.0 = ★도련 3단 배선 — 호스트 0.6.0 과 짝이다(`TR_MIN_HOST` [0,6,0]). 가장자리가 `grad` 면 **바탕을 늘리고**(무손실), 그것도 안 되면 **가장자리 색을 바깥으로 반복**한다. 반복은 재단과 **같은 엔진**(`js/bleed.js` `repeatLastPixel`)을 쓰고, 입출구(`readPng`·`writePng`)도 **사본을 만들지 않고** `js/png-io.js` 로 빼서 재단과 공유한다 — 엔진이 공유인데 입출구가 사본이면 한쪽에서 고친 것이 다른 쪽에 안 온다(이 저장소가 형제 스윕으로 여러 번 겪은 형태). ★굽기 해상도는 `TR_BLEED_MAX_PX`(12M) 예산에서 정하고, **실제로 구운 해상도로 되환산**해 도련 폭을 잡는다(요청값을 그대로 쓰면 반올림이 도련 폭에 실린다). 도련 PNG 는 원본 **뒤에** 깔리고 원본은 벡터 그대로라 안쪽 화질은 결과에 영향이 없다. ★못 만든 벌은 **센다** — 그 벌은 도련 없이 나가므로 조용히 넘기지 않는다. 잃는 것: 반복 경로는 벌당 굽기 왕복(수 초)이 붙는다. · 0.5.0 = ★호스트 0.5.0(클립 존중 잉크 경계) 없이는 **틀린 판이 조용히 나가므로** `TR_MIN_HOST` 를 [0,5,0] 으로 올렸다. 구 호스트는 클립이 잘라 낸 부분까지 크기에 넣어 자동 분석이 문서 전체를 한 덩어리로 보고(실측 10→1), 판에는 보이지 않는 여백이 그림보다 크게 깔린다 — 예외도 경고도 없이 **결과만 틀리다**(§조용한 격하). 잃는 것: Z: 호스트가 아직 0.4.0 인 PC 는 전사 탭이 「호스트가 낡았다」로 막힌다(갱신하면 풀린다). · 0.4.0 = ★**자동 분석이 주 경로**가 됐다(용준님 2026-09-21 「재단 기능처럼, 순서만 바꿀 수 있게」). [자동 분석] 이 문서의 맨 위 개체를 가로 간격으로 갈라 왼쪽을 벌① 로 두고, 사람은 [⇄ 좌우] 로 순서만 바꾼다. 수동 지정은 **자동이 못 가를 때**의 길로 내렸다. [계산] 은 지정이 하나도 없을 때만 자동을 먼저 돌린다 — 사람이 고른 것을 덮지 않는다. ⚠️그 자동 호출을 **await 없이 던지면 안 된다** — 호스트 왕복이라 늦게 온 응답이 방금 읽은 상태를 덮는다(CLAUDE.md §늦게 온 응답이 덮는다). 콜백으로 이어 붙였다. ⚠️덩어리 수가 벌 수와 다르면 **아무것도 지정하지 않고** 몇 덩어리인지 말한다 — 억지로 가르면 반쪽짜리 판이 조용히 나간다. 잃는 것: 없음(수동 경로 그대로) · 0.3.0 = ★벌마다 원본을 지정한다([벌① 좌 지정]·[벌② 우 지정]·[⇄]·[비우기]). 1조의 두 벌은 서로 다른 그림이라(2026-08 완성판 22건 실측, 동일 복제 0건) 종전처럼 하나를 두 벌에 복제하면 **전부 틀린 판**이 나왔다. 좌우는 디자이너가 정한다. 도련도 **벌마다** 계산해 `M:idx,...` 로 보낸다 — 두 벌의 바탕색이 다른 판이 흔하다. 지정이 비면 확인 목록에 **must** 로 올린다(조용히 빈 자리로 내보내지 않는다). ⚠️최악 도련을 고르는 비교에 `RANK[m] || 9` 를 쓰면 안 된다 — **skip 이 0 이라 falsy** 다(review.js 의 `ORDER[level] || 9` 와 같은 함정, 여기서도 한 번 걸렸다). 잃는 것: [계산] 전에 지정이 필요하다(안 하면 벌①에만 현재 선택이 들어간다) · 0.2.2 = ★안쪽 탭이 **전환되지 않고 있었다**. `.trpage`(style.css L199)가 `.hidden`(L21)보다 뒤에 있어 특정도가 같으면 이겼고, 숨겨야 할 페이지가 계속 보였다 — 가로등·윈드 입력이 동시에 렌더돼 실기에서 「입력창이 동일하다」로 보고됐다. `.trpage.hidden` 로 못박았다(`.mainpage.hidden` 과 같은 방식). 겸해서 **탭마다 쓰는 버튼만** 남긴다 — 가로등의 「틀 열기」·윈드의 「판 만들기」는 눌러도 거절 문구만 나오는 선택지였다. 게이트 = `panel:smoke` §16(브라우저에서 실제 가시성을 잰다 — 텍스트 게이트로는 영원히 못 잡는 종류다). 잃는 것: 없음(산식·payload 불변) · 0.2.1 = ★호스트 미로드를 **부팅 때** 알린다. 종전엔 `none` 을 조용히 넘겨 `host ?` 만 떴고 사람은 [판 만들기] 를 누르고서야 알았다. 그리고 그때 뜨는 문구가 **Z: 를 범인으로 단정**했는데(2026-09-18 실기) 진짜 원인은 이 PC 의 스텁이 전사 호스트를 목록에 안 넣은 것이었다 — Z: 는 멀쩡했고 사람은 드라이브를 보러 갔다. → 사유를 스텁에게 되묻고(oldstub·loaderr·notloaded) **조치가 다른 세 갈래**로 나눠 말한다. 잃는 것: 없음(산식·판·payload 불변) · 0.2.0 = 원본 측정(mesTr_measure) → 도련 경로 결정 → 배치·클리핑까지 · 0.1.0 = 신설
   // ★호스트 최소 버전 — 자동 분석(`mesTr_autoPick`)·벌별 슬롯·벌별 도련은 **0.3.0 부터**다.
   //   구 호스트는 그 함수가 없어 「함수가 아닙니다」로 떨어지거나(0.2.x), `M:idx,..` 를 조용히
   //   무시해 도련이 없는 판을 낸다(0.1.0). 조용한 격하라서 버전을 못박는다.
-  var TR_MIN_HOST = [0, 7, 0];
+  var TR_MIN_HOST = [0, 8, 0];   // 0.8.0 = 표시 두께(심·테두리)를 레코드에서 읽는다 — 구 호스트는 4pt+1pt 고정으로 그려 두께 결정이 무시된다
 
   var cs = null;
   try { cs = new CSInterface(); } catch (e) { /* ignore: 브라우저에서 열어 본 경우 — 계산까지는 동작해야 한다 */ }
@@ -74,103 +74,6 @@
     if (el.hwHoles) el.hwHoles.value = holesTotal();
   }
 
-  /**
-   * 표시 자리마다 **그 자리 배경**으로 흑/백을 정한다 — 호스트는 픽셀을 못 읽으므로 패널이 굽기 PNG 로 본다.
-   * 배경 = 그 자리의 원본. 선(접는선·끈고리)은 원본 밖 **시접 띠** 위라 굽기 밖인데, 도련이 가장자리 픽셀을 반복해 채우므로
-   * **가장 가까운 가장자리 픽셀**로 본다(창 중심을 굽기 안으로 clamp). 표시 중심 ±2.5mm 창의 평균 밝기로 판정한다.
-   *   밝기 > 0.6 → 'k'(검정) · < 0.4 → 'w'(백) · 그 사이/투명/못 읽음 → 'x'(흑선+백테두리 — 추측하지 않는다)
-   * 굽기는 벌마다 한 번, 약 1mm/px(원본 단위로 환산). 픽셀 도련이 이미 구웠으면 그것을 다시 쓴다.
-   * @param cache  { [panel]: {img, mppPlaced} } — buildBleedPngs 가 채워 둔 것(있으면)
-   * @param pre    { [panel]: {L:{j:code}, H:{j:code}} } — buildBleedPngs 가 **도련 래스터**에서 이미 정한 색(있으면 이것이 우선)
-   */
-  /** 창(±r px) 평균 밝기 → 'k'(밝은 바탕에 검정) | 'w'(어두운 바탕에 백) | 'x'(애매·투명 — 흑선+백테두리). 굽기·도련 래스터 공용. */
-  function lumCodeAt(img, px, py, r) {
-    var sum = 0, cnt = 0, opaque = 0;
-    for (var yy = Math.round(py - r); yy <= py + r; yy++) {
-      if (yy < 0 || yy >= img.H) continue;
-      for (var xx = Math.round(px - r); xx <= px + r; xx++) {
-        if (xx < 0 || xx >= img.W) continue;
-        var o = (yy * img.W + xx) * 4, a = img.data[o + 3];
-        cnt++;
-        if (a < 128) continue;
-        opaque++;
-        sum += (0.299 * img.data[o] + 0.587 * img.data[o + 1] + 0.114 * img.data[o + 2]) / 255;
-      }
-    }
-    if (!cnt || opaque < cnt / 2) return 'x';
-    var lum = sum / opaque;
-    return (lum > 0.6) ? 'k' : ((lum < 0.4) ? 'w' : 'x');
-  }
-  /**
-   * ★표시 색은 **실제로 깔리는 도련 래스터**에서 정한다(2026-09-23 실기 — 고양 소노 판-1, 가운데 끈고리가 안 보였다).
-   *   굽기 가장자리 창(±2.5mm 평균)으로 추정하면 틀린다: 사진 가장자리에 1~3mm 밝은 기둥이 있으면 픽셀 반복이 그것을
-   *   시접 폭 23mm 로 늘려 띠 전체가 밝아지는데, 창 평균은 안쪽 어두운 그림에 끌려 「어둡다 → 백선」이 되고 백선이 흰 띠에 묻힌다.
-   *   그래서 도련 그림(res)이 손에 있는 순간 그 자리를 직접 본다. 선은 길이를 따라 5점을 보고 **한 점이라도 다르면 x**(흑선+백테두리 — 어디서나 보인다).
-   * @param res  repeatLastPixel 결과(pads 포함) · d = 그 벌의 원본 사각(판 mm) · mpp = 굽기 mm/px · lines = 접는선+끈고리(afterBleed 와 같은 순서)
-   */
-  function judgeMarksOnBleed(res, d, mpp, lines, holes, panelIdx) {
-    var out = { L: {}, H: {} }, j, k;
-    if (!res || !res.pads || !(mpp > 0)) return out;
-    var r = Math.max(1, Math.round(2.5 / mpp));
-    var at = function (xMm, yMm) { return lumCodeAt(res, (xMm - d.x) / mpp + res.pads.l, (yMm - d.y) / mpp + res.pads.t, r); };
-    for (j = 0; j < lines.length; j++) {
-      var ln = lines[j];
-      if (ln.panel !== panelIdx) continue;
-      var code = null;
-      for (k = 0; k < 5; k++) {
-        var c = at(ln.x + ln.len * (0.1 + 0.2 * k), ln.y);
-        if (code === null) code = c; else if (c !== code) { code = 'x'; break; }
-      }
-      out.L[j] = code || 'x';
-    }
-    for (j = 0; j < holes.length; j++) {
-      if (holes[j].panel !== panelIdx) continue;
-      out.H[j] = at(holes[j].cx, holes[j].cy);
-    }
-    return out;
-  }
-  function sampleMarkColors(plan, cache, pre, cb) {
-    var IO = window.MesPngIo;
-    var loops = (plan.folds || []).concat(plan.loops || []), holes = plan.holes || [];   // 선 = 접는선 + 끈고리(순서 고정 — afterBleed 와 같아야 한다)
-    if (!IO || (!loops.length && !holes.length)) { cb(loops.map(function () { return 'x'; }), holes.map(function () { return 'x'; })); return; }
-    var lc = [], hc = [], need = {}, i;
-    for (i = 0; i < loops.length; i++) need[loops[i].panel] = true;
-    for (i = 0; i < holes.length; i++) need[holes[i].panel] = true;
-    var idxs = Object.keys(need).map(function (k) { return parseInt(k, 10); });
-    var q = 0;
-    (function step() {
-      if (q >= idxs.length) {
-        // ★도련 래스터에서 이미 정한 자리는 그 값을 쓴다(정확) — 없는 벌(단색·늘리기·굽기 실패)만 굽기 가장자리로 추정한다.
-        for (i = 0; i < loops.length; i++) { var pl = pre && pre[loops[i].panel]; lc[i] = (pl && pl.L && pl.L[i]) ? pl.L[i] : judge(loops[i].panel, loops[i].x + loops[i].len / 2, loops[i].y); }
-        for (i = 0; i < holes.length; i++) { var ph = pre && pre[holes[i].panel]; hc[i] = (ph && ph.H && ph.H[i]) ? ph.H[i] : judge(holes[i].panel, holes[i].cx, holes[i].cy); }
-        cb(lc, hc);
-        return;
-      }
-      var pi = idxs[q];
-      if (cache[pi] && cache[pi].img) { q++; step(); return; }
-      var d = plan.design[pi];
-      var srcW = (lastEdges[pi] && lastEdges[pi].w > 0) ? lastEdges[pi].w : d.w;
-      var mmppSrc = 1.0 * (srcW / d.w);                 // 배치 1mm/px 를 원본 단위로
-      host('mesTr_bakeSlot(' + pi + ',' + mmppSrc.toFixed(5) + ')', function (rz, bad) {
-        var m = String(rz).match(/path=(.+)$/);
-        if (bad || !m) { cache[pi] = { img: null }; q++; step(); return; }
-        IO.readPng(m[1], function (err, img) {
-          cache[pi] = { img: (err || !img) ? null : img, mppPlaced: (img && img.W) ? (d.w / img.W) : 0 };
-          q++; step();
-        });
-      });
-    })();
-    function judge(pi, xMm, yMm) {
-      var c = cache[pi], d = plan.design[pi];
-      if (!c || !c.img || !d) return 'x';
-      var img = c.img, mpp = c.mppPlaced || (d.w / img.W);
-      var px = (xMm - d.x) / mpp, py = (yMm - d.y) / mpp, r = Math.max(1, Math.round(2.5 / mpp));
-      // 시접 띠 위의 선은 굽기 밖이다 — 도련이 반복하는 것은 가장자리 픽셀이므로 그 픽셀로 판정한다(clamp)
-      if (px < 0) px = 0; else if (px > img.W - 1) px = img.W - 1;
-      if (py < 0) py = 0; else if (py > img.H - 1) py = img.H - 1;
-      return lumCodeAt(img, px, py, r);
-    }
-  }
   function show(node, on) { if (node) node.className = node.className.replace(/\s*hidden/g, '') + (on ? '' : ' hidden'); }
 
   // ── 호스트 브릿지 ────────────────────────────────────────────────
@@ -251,7 +154,6 @@
   function populate() {
     var R = window.MesPlateRules;
     if (R) {
-      fillSelect(el.media, Object.keys(R.RULES.media));
       fillSelect(el.fabric, Object.keys(R.RULES.fabric));
       fillSelect(el.seam, Object.keys(R.RULES.seamMm), function (k) {
         return k + ' (' + R.RULES.seamMm[k] + 'mm)';
@@ -300,6 +202,7 @@
   }
 
   // ── 계산 ─────────────────────────────────────────────────────────
+  function P_RULES() { return (window.MesPlateRules && window.MesPlateRules.RULES) || { media: { '60폭': {} } }; }
   function calcPlate() {
     var P = window.MesPlate, RV = window.MesReview;
     if (!P || !RV) return { err: '엔진이 로드되지 않았습니다(plate.js·review.js)' };
@@ -310,7 +213,8 @@
       seam: el.seam.value,
       sewCm: parseFloat(el.sew.value),
       band: el.band.value,
-      media: el.media.value,
+      // 롤 폭 칸은 뺐다(용준님 2026-09-23 「현장이 알아서」) — 규칙의 첫 항목(2벌 판 폭 상한)만 산식에 쓴다
+      media: Object.keys(P_RULES().media)[0],
       sewSides: parseInt(el.sides.value, 10),
       fabric: el.fabric.value,
       hardware: (holesTotal() > 0)
@@ -571,8 +475,6 @@
    * 판을 만들 때 호스트가 `Folder.temp/mes_tr_bleed_<i>.png` 를 집어 간다(재단과 같은 규약).
    * @param idxs 픽셀 도련이 필요한 벌 번호들
    */
-  var bakeCacheRef = null;   // make() 가 잡아 준다 — 도련 굽기를 색 판정이 다시 쓴다
-  var markPreRef = null;     // make() 가 잡아 준다 — 도련 래스터에서 미리 정한 표시 색(벌별 {L:{j:code}, H:{j:code}})
   /** 원본 비율 ≠ 규격 비율 허용 오차(상대). 2% 미만은 눈에 안 띈다. 수축보정(세로 배율)은 규격 쪽에 이미 들어 있어 비교 대상이 아니다. */
   var TR_RATIO_TOL = 0.02;
   function buildBleedPngs(idxs, bls, cb) {
@@ -602,7 +504,6 @@
         var path = m[1], dir = path.replace(/[^\/\\]+$/, '');
         IO.readPng(path, function (err, img) {
           if (err || !img || !(img.W > 0)) { fail++; q++; step(); return; }
-          if (typeof bakeCacheRef === 'object' && bakeCacheRef) bakeCacheRef[i] = { img: img, mppPlaced: d.w / img.W };
           // ★**실제로 구운 해상도**로 환산한다 — 요청한 mmpp 와 반올림만큼 다르다.
           //   요청값을 그대로 쓰면 그 차이가 도련 폭에 그대로 실린다.
           var mpp = d.w / img.W, g = bl.grow;
@@ -613,11 +514,6 @@
           var res = null;
           // ★벌은 사각형이다 — 모서리까지 각지게(corner:'square'). 둥근 한계로는 가로등배너 네 모서리가 빈다(2026-09-23 실기).
           try { res = B.repeatLastPixel(img, gpx, { corner: 'square' }); } catch (e) { res = null; }
-          // ★표시 색을 **여기서** 정한다 — 도련 그림이 손에 있는 유일한 순간이다(벌당 50MB 라 들고 있지 않고, 판정값만 남긴다).
-          if (res && markPreRef && lastPlan && lastPlan.plate) {
-            var pp = lastPlan.plate;
-            try { markPreRef[i] = judgeMarksOnBleed(res, d, mpp, (pp.folds || []).concat(pp.loops || []), pp.holes || [], i); } catch (eJ) { markPreRef[i] = null; }
-          }
           if (res && IO.writePng(dir + 'mes_tr_bleed_' + i + '.png', res)) made++;
           else fail++;
           q++; step();
@@ -651,25 +547,18 @@
     //   호스트는 약속된 자리에서 집어 가므로 경로가 브릿지를 타지 않는다(한글 temp 경로 대비).
     var need = [];
     for (i = 0; i < bls.length; i++) if (bls[i] && bls[i].mode === 'repeat') need.push(i);
-    var bakeCache = {};
-    bakeCacheRef = bakeCache;
-    var markPre = {};
-    markPreRef = markPre;
     if (!need.length) { afterBleed(''); }
     else buildBleedPngs(need, bls, afterBleed);
 
-    // ★끈고리·하도매 색 — 도련 PNG 다음, 판 만들기 전. 자리마다 흑/백을 정해 L:/H: 에 실어 보낸다.
+    // ★접는선·끈고리·하도매 — 도련 PNG 다음, 판 만들기 전. 색은 **고정 2겹**(검정 심 + 백 테두리, 정본 plate-rules.marks)이라 판정이 없다.
+    //   픽셀 반복 띠는 정의상 가장자리 색과 같아 배경 맞춤 단색선은 늘 묻힐 수 있었다(용준님 2026-09-23 「가」 — 판-1 실기).
+    //   L:idx,x,y,len,color,kind,corePt,haloPt · H:idx,cx,cy,r,color,haloPt — color 는 항상 x(호스트 0.7.x 의 「흑선+백테두리」 값과 같다).
     function afterBleed(note) {
-      var loops = (p.folds || []).concat(p.loops || []), holes = p.holes || [];   // 순서 = sampleMarkColors 와 동일(접는선 → 끈고리)
-      if (!loops.length && !holes.length) { go(note); return; }
-      el.out.textContent = '표시 색 판정 중…';
-      sampleMarkColors(p, bakeCache, markPre, function (lc, hc) {
-        var xs = 0, j;
-        for (j = 0; j < loops.length; j++) { rec.push('L:' + loops[j].panel + ',' + loops[j].x + ',' + loops[j].y + ',' + loops[j].len + ',' + lc[j] + ',' + (loops[j].kind === 'fold' ? 'f' : 'l')); if (lc[j] === 'x') xs++; }
-        for (j = 0; j < holes.length; j++) { rec.push('H:' + holes[j].panel + ',' + holes[j].cx + ',' + holes[j].cy + ',' + holes[j].r + ',' + hc[j]); if (hc[j] === 'x') xs++; }
-        expr = 'mesTr_makePlate(' + asciiStr(rec.join(';')) + ')';
-        go(note + (xs ? ('\n※ 표시 ' + xs + '개는 배경을 못 정해 흑선+백테두리로 넣었습니다.') : ''));
-      });
+      var lines = (p.folds || []).concat(p.loops || []), holes = p.holes || [], j;
+      for (j = 0; j < lines.length; j++) rec.push('L:' + lines[j].panel + ',' + lines[j].x + ',' + lines[j].y + ',' + lines[j].len + ',x,' + (lines[j].kind === 'fold' ? 'f' : 'l') + ',' + lines[j].weightPt + ',' + lines[j].haloPt);
+      for (j = 0; j < holes.length; j++) rec.push('H:' + holes[j].panel + ',' + holes[j].cx + ',' + holes[j].cy + ',' + holes[j].r + ',x,' + holes[j].haloPt);
+      expr = 'mesTr_makePlate(' + asciiStr(rec.join(';')) + ')';
+      go(note);
     }
 
     function go(note) {
@@ -695,7 +584,7 @@
     if (booted) return;
     booted = true;
     el = {
-      specW: $('trSpecW'), specH: $('trSpecH'), media: $('trMedia'), fabric: $('trFabric'), vup: $('trVup'),
+      specW: $('trSpecW'), specH: $('trSpecH'), fabric: $('trFabric'), vup: $('trVup'),
       seam: $('trSeam'), sides: $('trSides'), band: $('trBand'), sew: $('trSew'),
       sewRow: $('trSewRow'), hwSize: $('trHwSize'), hwHoles: $('trHwHoles'),
       hwTop: $('trHwTop'), hwSide: $('trHwSide'), hwTotal: $('trHwTotal'),

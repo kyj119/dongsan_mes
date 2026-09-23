@@ -208,6 +208,12 @@ const base = (over = {}) => Object.assign(
     && perPanel.modes[1].color === null,
     JSON.stringify(perPanel.modes))
 
+  // 표시 레코드 — 두께는 패널이 정하고 호스트가 읽는다(0.8.0). 옛 5필드도 그대로 읽혀야 한다(패널만 낡은 조합).
+  const mk = mesTr_parse('P:100,200;N:0,0,50,200;L:0,1,2,23.25,x,f,3,1;H:0,5,5,2.5,x,1')
+  ok('㉞ ★호스트가 표시 두께(심·테두리)와 종류를 읽는다', mk.loops[0].core === 3 && mk.loops[0].halo === 1 && mk.loops[0].kind === 'f' && mk.holes[0].halo === 1, JSON.stringify(mk.loops[0]))
+  const mkOld = mesTr_parse('P:100,200;N:0,0,50,200;L:0,1,2,25,w;H:0,5,5,2.5,k')
+  ok('㉞ 옛 5필드 표시 레코드도 읽힌다(두께는 호스트 기본)', mkOld.loops[0].color === 'w' && !(mkOld.loops[0].core > 0) && mkOld.holes[0].color === 'k')
+  ok('㉞ 패널은 두께를 실어 보낸다', /weightPt \+ ',' \+ lines\[j\]\.haloPt/.test(panel) && /haloPt\)/.test(panel))
   ok('㉟ 호스트가 도련 색으로 벌을 채운다', /filled\(lyArt, pan, bgCol\)/.test(host))
   ok('㉟ ★그 색을 벌마다 따로 정한다', host.indexOf('panelCol[i]') > 0,
     '판 하나로 뭉치면 두 벌 중 한쪽이 남의 색이 된다')
@@ -315,7 +321,7 @@ const base = (over = {}) => Object.assign(
     ok('㊸ 끈고리② = 원본 중간(90·보정), 안쪽만', L0.filter((l) => near(l.y, d0.y + d0.h / 2)).map((l) => l.side).join('') === 'right')
     ok('㊸ 벌②의 안쪽은 왼쪽', r.loops.filter((l) => l.panel === 1 && near(l.y, r.design[1].y + band))[0].side === 'left')
     const fl = F0.filter((l) => l.side === 'left')[0], fr = F0.filter((l) => l.side === 'right')[0]
-    ok('㊸ ★선은 시접 띠 위 — 길이 = 시접 폭(23.25) · 4pt', F0.concat(L0).every((l) => near(l.len, seam) && l.weightPt === 4), JSON.stringify(F0[0]))
+    ok('㊸ ★선은 시접 띠 위 — 길이 = 시접 폭(23.25) · 검정 심 3pt + 백 1pt 고정', F0.concat(L0).every((l) => near(l.len, seam) && l.weightPt === 3 && l.haloPt === 1), JSON.stringify(F0[0]))
     ok('㊸ ★왼쪽 선 = [벌 왼 끝, 원본 왼 끝]', near(fl.x, p0.x) && near(fl.x + fl.len, d0.x), JSON.stringify(fl))
     ok('㊸ ★오른쪽 선 = [원본 오른 끝, 벌 오른 끝] — 원본 안으로 안 들어간다', near(fr.x, d0.x + d0.w) && near(fr.x + fr.len, p0.x + p0.w), JSON.stringify(fr))
     const off = globalThis.MesPlate.computePlate(base({ sewCm: 5, vup: 2, loops: false }))
@@ -364,7 +370,7 @@ const base = (over = {}) => Object.assign(
       H0.filter((h) => near(h.cx, d0.x + d0.w - 10) && near(h.cy, d0.y + 10)).length === 1)
     ok('㊹ 아래 안쪽 모서리 = 아래 끝선에서 1cm (90cm 원본이면 89)', H0.some((h) => near(h.cx, d0.x + d0.w - 10) && near(h.cy, d0.y + d0.h - 10)))
     ok('㊹ 측면 중간 = 원본 높이 절반', H0.some((h) => near(h.cx, d0.x + d0.w - 10) && near(h.cy, d0.y + d0.h / 2)))
-    ok('㊹ Ø0.5cm', H0.every((h) => h.r === 2.5))
+    ok('㊹ Ø0.5cm · 백 테두리 1pt', H0.every((h) => h.r === 2.5 && h.haloPt === 1))
     ok('㊹ ★하도매는 시접이 아니라 원본 끝선 기준 — 선과 기준이 다르다', H0.every((h) => h.cx >= d0.x && h.cx <= d0.x + d0.w))
     ok('㊹ 하도매 0·0 이면 없다', globalThis.MesPlate.computePlate(base({ sewCm: 5, vup: 2 })).holes.length === 0)
     ok('㊹ trace 에 개수·안쪽 기준이 남는다', r.trace.marks.folds === 4 && r.trace.marks.loops === 4 && r.trace.marks.holes === 8 && r.trace.marks.innerSide === 'facing')

@@ -162,7 +162,7 @@
       var xL = d.x, xR = d.x + d.w;
       var lineAt = function (row, side, kind) {
         var x1 = (side === 'left') ? pn.x : xR;
-        return { panel: i, x: round2(x1), y: round2(row), len: lineLen, side: side, kind: kind, weightPt: MK.line.weightPt };
+        return { panel: i, x: round2(x1), y: round2(row), len: lineLen, side: side, kind: kind, weightPt: MK.line.corePt, haloPt: MK.line.haloPt };
       };
       if (MK && MK.line && !noSeam) {
         if (hasTopBand) { folds.push(lineAt(d.y, 'left', 'fold')); folds.push(lineAt(d.y, 'right', 'fold')); }
@@ -179,7 +179,7 @@
         var pts = [], q;
         var put = function (cx, cy) {
           for (var z = 0; z < pts.length; z++) if (Math.abs(pts[z].cx - cx) < 1 && Math.abs(pts[z].cy - cy) < 1) return;   // 겹침 = 하나
-          pts.push({ panel: i, cx: round2(cx), cy: round2(cy), r: rad });
+          pts.push({ panel: i, cx: round2(cx), cy: round2(cy), r: rad, haloPt: MK.hole.haloPt });
         };
         // 상단 N — 위 끝선 아래 1cm 줄. 2 = 양 모서리(가로도 1cm 안쪽), 1 = 가운데, N≥3 = 모서리 사이 등분
         if (nTop === 1) put(xL + d.w / 2, d.y + ins);

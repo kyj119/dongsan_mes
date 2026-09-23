@@ -139,7 +139,7 @@
         code: 'marks-drawn', level: 'check',
         msg: '접는선 ' + (mk.folds || 0) + ' · 끈고리 ' + mk.loops + ' · 하도매 ' + mk.holes + '(상단 ' + mk.holesTop
           + ' · 측면 ' + mk.holesSide + ') — 선은 벌 바깥 끝선에서 안쪽 시접 폭' + (mk.lineLen ? '(' + mk.lineLen + 'mm)' : '')
-          + ' 띠 위, 하도매는 원본 끝선 안쪽 1cm. 안쪽 = '
+          + ' 띠 위(검정 심 + 백 테두리 고정), 하도매는 원본 끝선 안쪽 1cm. 안쪽 = '
           + (mk.innerSide === 'facing' ? '두 벌이 마주 보는 쪽' : '오른쪽(1벌 가정)') + '. 실물 위치를 확인한다'
       });
     }
