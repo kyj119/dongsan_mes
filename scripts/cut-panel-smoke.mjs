@@ -837,9 +837,14 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     ok('3s 번호 레이어는 재단선·돔보와 다른 이름이고 DXF 내보내기가 그 이름을 모른다(그 둘만 가져간다)',
       /var MESCUT_NUM_LAYER = '번호'/.test(hostN) && /var MESCUT_CUT_LAYER = '재단선'/.test(hostN) && /var MESCUT_MARK_LAYER = '돔보'/.test(hostN)
       && !/MESCUT_NUM_LAYER/.test(numFnBody(hostN, 'mesCut_exportDxf')))
-    ok('3s 꼬리표는 돔보 뒤에 그린다(아트보드 맞추기·칼선이 글자를 안 센다)',
-      hostN.indexOf("if (mesCut_addDombo(doc).indexOf('ok:') === 0) dombo++;") > 0
-      && hostN.indexOf("if (mesCut_addDombo(doc).indexOf('ok:') === 0) dombo++;") < hostN.indexOf('mesCut_drawTag(numLayer, sh.tags[ti], sheetH)'))
+    // ★순서 = 도련 뒤 → 꼬리표 → 아트보드 맞추기 → 돔보. 맞추기 앞이어야 글자가 합집합에 들어가 돔보 여백 밖으로 밀리지 않고,
+    //   도련 뒤여야 칼선·도련이 글자를 조각으로 안 본다(2026-09-23 실기 「번호가 돔보 밖으로」).
+    const iTag = hostN.indexOf('mesCut_drawTag(numLayer, sh.tags[ti], sheetH)')
+    const iFit = hostN.indexOf('var u = mesCut_unionOf(mesCut_topItems(doc));')
+    const iDombo = hostN.indexOf("if (mesCut_addDombo(doc).indexOf('ok:') === 0) dombo++;")
+    const iBleed = hostN.indexOf('// ── 도련 — 칼선 방식과 무관하게 조각마다')
+    ok('3s 꼬리표는 도련 뒤·아트보드 맞추기 앞·돔보 앞에 그린다(글자가 합집합에 들어가 돔보 여백 밖으로 안 밀린다)',
+      iBleed > 0 && iTag > iBleed && iTag < iFit && iFit < iDombo, `bleed ${iBleed} tag ${iTag} fit ${iFit} dombo ${iDombo}`)
     ok('3s 번호 텍스트는 아웃라인(폰트 임베드 없이 나간다)', /createOutline\(\)/.test(numFnBody(hostN, 'mesCut_drawTag')))
     ok('3s manifest 에 thumb_hi·overview·pieces·piece_numbering',
       /"thumb_hi":"thumb_hi\.png"/.test(hostN) && /"overview":"overview\.png"/.test(hostN) && /"pieces":' \+ \(piecesJson/.test(hostN) && /"piece_numbering":/.test(hostN))
