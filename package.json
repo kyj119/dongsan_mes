@@ -57,6 +57,7 @@
     "cut:bench": "node scripts/cut/bench.mjs",
     "cut:bleed": "node scripts/cut/bleed-bench.mjs",
     "cut:nest": "node scripts/cut/nest-bench.mjs",
+    "cut:number": "node scripts/cut/number-bench.mjs",
     "cut:benchmark": "node scripts/cut/nest-benchmark.mjs",
     "cut:probe": "node scripts/cut/probe-cut-file.mjs",
     "db:migrate:local": "wrangler d1 migrations apply webapp-production --local",

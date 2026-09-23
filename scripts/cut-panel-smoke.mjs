@@ -140,6 +140,63 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3 칼선 버튼 활성', !(await p.$eval('#btnMakeCut', (e) => e.disabled)))
   await p.close()
 }
+// ── 3u 조각 번호 **런타임** — 패널 안에서 꼬리표 붙이기 → 되돌리기 → 결과 문구가 실제로 돈다 (2026-09-23) ──
+//   cut:number 는 순수 모듈만 본다. 여기서는 패널 배선(prep.pieces 갱신·수량 중복 1회·폭 규칙·placement 정규화)을 검증한다.
+{
+  const p = await openPanel({ ping: 'CUT-CEP-0.51.0' })
+  const r = await p.evaluate(() => {
+    const X = window.__mesCutNumber, PN = window.MesPieceNumber
+    if (!X || !PN) return { why: 'module missing' }
+    document.getElementById('nestNumber').checked = true
+    document.getElementById('nestNumberMode').value = 'auto'
+    const mk = (id, W, H) => ({ id, W, H, m: new Uint8Array(W * H).fill(1) })
+    // p2 = 세우면 폭(48) 초과 · 눕혀도 48+꼬리표 1 = 49 > 48 → 꼬리표 불가(건너뛰고 센다)
+    const p0 = mk(0, 10, 20), p1 = mk(1, 10, 20), p2 = mk(2, 60, 48)
+    const prep = { pieces: [p0, p1, p0, p2], sizes: [{ w: 100, h: 200 }, { w: 100, h: 200 }, { w: 600, h: 480 }],
+      bounds: [{ x: 0, y: 0, w: 100, h: 200 }, { x: 120, y: 0, w: 100, h: 200 }, { x: 0, y: 300, w: 600, h: 480 }], mmpp: 10 }
+    // sheetWmm 500(파일 mm) → usable (500-20)/10 = 48px · 꼬리표 tw=ceil(20/10)=2 th=ceil(8/10)=1
+    const info = X.attach(prep, 500, false)
+    const res = { sheets: [{ placements: [
+      { id: 0, x: 0, y: 0, rot: 0, W: 10, H: 21 }, { id: 1, x: 20, y: 0, rot: 90, W: 21, H: 10 }, { id: 2, x: 0, y: 30, rot: 90, W: 48, H: 60 } ] }] }
+    X.normalize(res, prep, info)
+    const pl = res.sheets[0].placements
+    const off = X.attach({ pieces: [mk(9, 5, 5)], sizes: [{ w: 1, h: 1 }], bounds: null, mmpp: 1 }, 100, false)
+    const butt = X.attach({ pieces: [mk(8, 5, 5)], sizes: [{ w: 1, h: 1 }], bounds: [{ x: 0, y: 0, w: 5, h: 5 }], mmpp: 1 }, 100, true)
+    return {
+      labels: info.labels, mode: info.mode, tabbed: info.tabbed, skipped: info.skipped, tw: info.tw, th: info.th,
+      p0: { W: p0.W, H: p0.H, tab: !!p0.tab }, p2: { W: p2.W, H: p2.H, tab: !!p2.tab },
+      pl0: { x: pl[0].x, y: pl[0].y, W: pl[0].W, H: pl[0].H, tab: pl[0].tab },
+      pl1: { x: pl[1].x, y: pl[1].y, W: pl[1].W, H: pl[1].H, tab: pl[1].tab },
+      pl2: { x: pl[2].x, y: pl[2].y, W: pl[2].W, H: pl[2].H, tab: pl[2].tab },
+      line: X.resultLine(Object.assign({}, info, { sent: 2 }), { num: '2', numfail: '0' }),
+      lineMismatch: X.resultLine(Object.assign({}, info, { sent: 2 }), { num: '1', numfail: '0' }),
+      offWhy: off && off.off, buttWhy: butt && butt.off, buttLine: X.resultLine(butt, {}),
+    }
+  })
+  ok('3u 번호 판정 — 위 2장 + 아래 1장 = 2줄 → 줄-순번', r.mode === 'row' && (r.labels || []).join(',') === '1-1,1-2,2-1', JSON.stringify(r.labels) + ' ' + r.mode)
+  ok('3u 꼬리표 px = 실물 20×8mm ÷ mmpp(올림)', r.tw === 2 && r.th === 1, `tw=${r.tw} th=${r.th}`)
+  ok('3u 같은 객체(수량 확장)는 한 번만 · 폭 여유 없는 조각은 건너뛰고 센다', r.tabbed === 2 && r.skipped === 1 && r.p0.tab && !r.p2.tab, JSON.stringify({ tabbed: r.tabbed, skipped: r.skipped, p0: r.p0, p2: r.p2 }))
+  ok('3u 마스크는 위로 th 만큼 자란다(W 불변) · 건너뛴 조각은 그대로', r.p0.W === 10 && r.p0.H === 21 && r.p2.W === 60 && r.p2.H === 48, JSON.stringify({ p0: r.p0, p2: r.p2 }))
+  ok('3u 되돌리기 rot0 — 조각은 아래로 th · 꼬리표는 위 왼쪽(th 들여서)',
+    r.pl0.x === 0 && r.pl0.y === 1 && r.pl0.W === 10 && r.pl0.H === 20 && r.pl0.tab && r.pl0.tab.x === 1 && r.pl0.tab.y === 0 && r.pl0.tab.w === 2 && r.pl0.tab.h === 1 && !r.pl0.tab.vertical, JSON.stringify(r.pl0))
+  ok('3u 되돌리기 rot90 — 조각 사각 그대로 · 꼬리표는 오른쪽 세로',
+    r.pl1.x === 20 && r.pl1.y === 0 && r.pl1.W === 20 && r.pl1.H === 10 && r.pl1.tab && r.pl1.tab.x === 40 && r.pl1.tab.y === 1 && r.pl1.tab.w === 1 && r.pl1.tab.h === 2 && r.pl1.tab.vertical === true, JSON.stringify(r.pl1))
+  ok('3u 꼬리표 없는 조각(건너뜀)은 손대지 않는다', r.pl2.x === 0 && r.pl2.y === 30 && r.pl2.W === 48 && r.pl2.H === 60 && !r.pl2.tab, JSON.stringify(r.pl2))
+  ok('3u 결과 문구 — 표기 수·건너뜀', /판 표기 2개/.test(r.line) && /건너뜀 1개/.test(r.line), r.line)
+  ok('3u 보낸 수와 그린 수가 다르면 말한다', /2개를 보냈는데 1개만/.test(r.lineMismatch), r.lineMismatch)
+  ok('3u 경계 없음·맞붙임은 사유가 있다', r.offWhy === 'bounds' && r.buttWhy === 'butt' && /맞붙임이라 판에는 표기하지 않습니다/.test(r.buttLine), `${r.offWhy} ${r.buttWhy}`)
+  await p.close()
+  // 구버전 호스트 — 만들지 않고 **그 사실을 쓴다**
+  const q = await openPanel({ ping: 'CUT-CEP-0.50.0' })
+  const old = await q.evaluate(() => {
+    document.getElementById('nestNumber').checked = true
+    const X = window.__mesCutNumber
+    const info = X.attach({ pieces: [], sizes: [], bounds: [], mmpp: 1 }, 100, false)
+    return { off: info && info.off, line: X.resultLine(info, {}) }
+  })
+  ok('3u 호스트 구버전이면 안 만들고 결과창에 쓴다', old.off === 'host' && /구버전/.test(old.line) && /0\.51\.0/.test(old.line), JSON.stringify(old))
+  await q.close()
+}
 {
   // geometry.js 가 빠진 설치본을 재현 — 버튼이 잠기고 **이유가 title 에 남아야** 한다.
   const p = await browser.newPage()
@@ -732,6 +789,55 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     '재단이 사본을 들고 있으면 전사와 갈린다 — 정본은 js/png-io.js. '
     + '①파일→픽셀(new Image) ②픽셀→파일(toDataURL) 둘만 본다 — '
     + 'canvas 를 쓰는 것 자체는 죄가 아니다(downscaleRgba 는 축소일 뿐 입출구가 아니다)')
+
+  // ── 3s 조각 번호 (2026-09-23) — 정본 js/piece-number.js · **동작**은 cut:number 가 검증, 여기서는 배선·순서·불변 조건 ──
+  //   시트 주문의 번호는 원본 이미지·판 꼬리표·조각 목록 세 곳에 같은 id 로 간다. 배선이 하나라도 빠지면
+  //   그 축만 조용히 비고(번호 없는 판·목록 없는 manifest) 아무 게이트도 못 본다.
+  {
+    const numSrc = fs.readFileSync(path.join(PANEL_DIR, 'js', 'piece-number.js'), 'utf8')
+    const idxSrc = fs.readFileSync(PANEL, 'utf8')
+    const hostN = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
+    /** `function name(` 부터 짝 맞는 `}` 까지 */
+    const numFnBody = (src, name) => {
+      const i = src.indexOf('function ' + name + '(')
+      if (i < 0) return ''
+      let d = 0, s = src.indexOf('{', i)
+      for (let k = s; k < src.length; k++) { if (src[k] === '{') d++; else if (src[k] === '}') { d--; if (d === 0) return src.slice(s, k + 1) } }
+      return src.slice(s)
+    }
+    ok('3s 순수 모듈이 UMD 로 전역에 실린다', /root\.MesPieceNumber = api/.test(numSrc) && /module\.exports = api/.test(numSrc))
+    ok('3s 패널이 그 모듈을 탄다(줄 판정·꼬리표·되돌리기·폭 규칙)',
+      /PN\.assign\(/.test(panelSrc) && /PN\.attachTab\(/.test(panelSrc) && /PN\.placedGeom\(/.test(panelSrc) && /PN\.canTab\(/.test(panelSrc) && /PN\.mmToPng\(/.test(panelSrc))
+    ok('3s piece-number.js 가 cut-main.js 보다 먼저 실린다',
+      idxSrc.indexOf('js/piece-number.js') > 0 && idxSrc.indexOf('js/piece-number.js') < idxSrc.indexOf('js/cut-main.js'))
+    ok('3s 새 버튼 없음 — 체크박스·모드·힌트·미리보기만',
+      /id="nestNumber"/.test(idxSrc) && /id="nestNumberMode"/.test(idxSrc) && /id="nestNumberInfo"/.test(idxSrc) && /id="numPreview"/.test(idxSrc) && !/id="btnNumber/.test(idxSrc))
+    ok('3s 기본 꺼짐(기존 사용자의 판이 말없이 바뀌지 않는다)', /id="nestNumber" type="checkbox" \/>/.test(idxSrc))
+    ok('3s 꼬리표는 배치 전 · 되돌리기는 I 줄 전',
+      panelSrc.indexOf('attachNumberTabs(prep, sheetWmm, buttMode)') > 0
+      && panelSrc.indexOf('attachNumberTabs(prep, sheetWmm, buttMode)') < panelSrc.indexOf('PLC.choose({')
+      && panelSrc.indexOf('numNormalize(res, prep, numInfo)') > 0
+      && panelSrc.indexOf('numNormalize(res, prep, numInfo)') < panelSrc.indexOf("lines.push('I ' + pl.id"))
+    ok('3s 폭 추천도 같은 마스크를 본다(추천≠실행 방지)', /attachNumberTabs\(prep, toFileMm\(Math\.max\.apply\(null, ROLL_WIDTHS_MM\)\)/.test(panelSrc))
+    ok('3s 켜져 있으면 결과창에 반드시 쓴다 — 구버전·경계 실패·맞붙임 사유까지',
+      /numResultLine\(numInfo, a\)/.test(panelSrc) && /off === 'host'/.test(panelSrc) && /off === 'bounds'/.test(panelSrc) && /off === 'butt'/.test(panelSrc))
+    ok('3s 맞붙임이면 꼬리표를 안 붙인다(조각이 맞닿아 자리가 없다)', /if \(buttMode\) return info;/.test(numFnBody(panelSrc, 'attachNumberTabs')))
+    ok('3s 등록은 이미지 생성 중이면 막는다', /numArt && numArt\.pending/.test(numFnBody(panelSrc, 'registerNest')))
+    ok('3s 등록 reg 에 산출물 4종', /'NUMBERING '/.test(panelSrc) && /'OVERVIEW '/.test(panelSrc) && /'THUMBHI_' \+ nt/.test(panelSrc) && /'PIECES_' \+ np/.test(panelSrc))
+    ok('3s 호스트 API 3종 + T 줄', /function mesCut_nestBounds\(/.test(hostN) && /function mesCut_exportOverview\(/.test(hostN) && /function mesCut_drawTag\(/.test(hostN) && /p\[0\] === 'T'/.test(hostN))
+    ok('3s 번호 레이어는 재단선·돔보와 다른 이름이고 DXF 내보내기가 그 이름을 모른다(그 둘만 가져간다)',
+      /var MESCUT_NUM_LAYER = '번호'/.test(hostN) && /var MESCUT_CUT_LAYER = '재단선'/.test(hostN) && /var MESCUT_MARK_LAYER = '돔보'/.test(hostN)
+      && !/MESCUT_NUM_LAYER/.test(numFnBody(hostN, 'mesCut_exportDxf')))
+    ok('3s 꼬리표는 돔보 뒤에 그린다(아트보드 맞추기·칼선이 글자를 안 센다)',
+      hostN.indexOf("if (mesCut_addDombo(doc).indexOf('ok:') === 0) dombo++;") > 0
+      && hostN.indexOf("if (mesCut_addDombo(doc).indexOf('ok:') === 0) dombo++;") < hostN.indexOf('mesCut_drawTag(numLayer, sh.tags[ti], sheetH)'))
+    ok('3s 번호 텍스트는 아웃라인(폰트 임베드 없이 나간다)', /createOutline\(\)/.test(numFnBody(hostN, 'mesCut_drawTag')))
+    ok('3s manifest 에 thumb_hi·overview·pieces·piece_numbering',
+      /"thumb_hi":"thumb_hi\.png"/.test(hostN) && /"overview":"overview\.png"/.test(hostN) && /"pieces":' \+ \(piecesJson/.test(hostN) && /"piece_numbering":/.test(hostN))
+    ok('3s pieces 는 ASCII JSON 배열만 받는다(manifest 가 깨지는 것보다 빠지는 게 낫다)', hostN.includes(String.raw`/^\[[\x20-\x7E]*\]$/`))
+    ok('3s 응답에 num·numfail 을 센다(조용히 빠지지 않는다)', /';num=' \+ nNum \+ ';numfail=' \+ nNumFail/.test(hostN))
+    ok('3s 패널·호스트 버전 게이트 짝', /NUM_MIN_HOST = \[0, 51, 0\]/.test(panelSrc) && /CUT-CEP-0\.5[1-9]\.\d+|CUT-CEP-0\.[6-9]\d\.\d+|CUT-CEP-[1-9]/.test(hostN.match(/var MESCUT_VERSION = '([^']+)'/)?.[1] || ''))
+  }
 
   // ── 도련 상한 (2026-08-06 실사용) ──────────────────────────────
   // ★상한 초과를 **건너뛰면 단색 링**이 된다 — 아트 색이 아니라 지정색이라 재단이 밀리면 보인다.

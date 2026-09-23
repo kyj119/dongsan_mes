@@ -53,5 +53,35 @@
     } catch (e) { return false; }
   }
 
-  root.MesPngIo = { readPng: readPng, writePng: writePng };
+  /**
+   * 파일을 **그리기용 이미지**로 — 픽셀 배열이 아니라 `drawImage` 에 바로 넣을 Image (2026-09-23 · 조각 번호 오버레이).
+   *   readPng 와 같은 입구(cep.fs base64 → file:// 폴백)를 쓴다 — 재단 셸이 자기 사본을 들면 전사와 갈린다.
+   * @param cb (img|null)
+   */
+  function readImage(path, cb) {
+    var b64 = null;
+    try {
+      var r = root.cep.fs.readFile(path, b64enc());
+      if (r && r.err === 0) b64 = r.data;
+    } catch (e) { /* ignore: cep.fs 실패는 아래 file:// 폴백이 받는다 */ }
+    var img = new Image();
+    img.onload = function () { cb(img); };
+    img.onerror = function () { cb(null); };
+    img.src = b64 ? ('data:image/png;base64,' + b64) : ('file:///' + String(path).replace(/\\/g, '/'));
+  }
+
+  /** 캔버스 → dataURL(PNG). 미리보기 <img> 와 파일 쓰기가 같은 바이트를 본다. */
+  function canvasDataUrl(cv) { return cv.toDataURL('image/png'); }
+
+  /** 캔버스(또는 그 dataURL)를 그 경로에 PNG 로 쓴다. @return 성공 여부 */
+  function writeCanvas(path, cvOrDataUrl) {
+    try {
+      var url = (typeof cvOrDataUrl === 'string') ? cvOrDataUrl : canvasDataUrl(cvOrDataUrl);
+      var b64 = String(url).replace(/^data:image\/png;base64,/, '');
+      var w = root.cep.fs.writeFile(path, b64, b64enc());
+      return !!(w && w.err === 0);
+    } catch (e) { return false; }
+  }
+
+  root.MesPngIo = { readPng: readPng, writePng: writePng, readImage: readImage, canvasDataUrl: canvasDataUrl, writeCanvas: writeCanvas };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -181,7 +181,9 @@ export function findUseBeforeVar(src) {
     }
     if (declAt.size) {
       const firstUse = new Map()
-      for (const m of body.matchAll(/(^|[^.\w$])([A-Za-z_$][\w$]*)\s*(?!:)/g)) {
+      // ★식별자는 **끝까지** 먹는다(`(?![\w$])`) — 없으면 `tw: 0` 같은 객체 키에서 `(?!:)` 를 피하려고
+      //   `t` 로 되물러 「t 를 선언 전에 썼다」는 오탐이 난다(2026-09-23 attachNumberTabs 실기).
+      for (const m of body.matchAll(/(^|[^.\w$])([A-Za-z_$][\w$]*)(?![\w$])\s*(?!:)/g)) {
         const name = m[2], at = m.index + m[1].length
         if (!declAt.has(name) || firstUse.has(name) || !mine(at)) continue
         firstUse.set(name, at)
