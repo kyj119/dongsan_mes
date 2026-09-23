@@ -96,7 +96,7 @@ const BUILTIN = new Set([
 // 외부 라이브러리 전역(CDN <script>). 여기 없는 라이브러리를 새로 쓰면 이 목록에 추가한다 — 기준선이 아니라 목록이다.
 const EXTERNAL = new Set([
   'flatpickr', 'html2pdf', 'html2canvas', 'axios', 'dayjs', 'Chart', 'Quill', 'Html5Qrcode', 'Html5QrcodeScanner',
-  'Sortable', 'XLSX', 'jsPDF', 'QRCode', 'JsBarcode', 'daum', 'kakao', 'tailwind', 'lucide', 'hljs', 'marked', 'DOMPurify',
+  'Sortable', 'XLSX', 'jsPDF', 'QRCode', 'daum', 'kakao', 'tailwind', 'lucide', 'hljs', 'marked', 'DOMPurify',
   'Papa', 'saveAs', 'io', 'pdfjsLib', 'Tesseract', 'echarts', 'ApexCharts', 'd3', 'L', 'interact', 'Hammer', 'tippy',
 ]);
 // 인라인 on* 핸들러 안에서만 암묵적으로 있는 이름

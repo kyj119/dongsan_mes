@@ -22,6 +22,10 @@ import {
 } from './helpers'
 import { buildOrderListFilter, resolveOrderSort, ORDER_SORT_DEFAULT, VOUCHER_ORDER_SQL, SHIP_DATE_ESTIMATED_SQL } from './listFilter'
 
+/** 주문 상세에서 원가·마진을 볼 수 있는 역할. 나머지는 응답에서 원가 칸을 뺀다. */
+const ORDER_COST_ROLES: ReadonlySet<string> = new Set(['ADMIN', 'MANAGER', 'ACCOUNTANT'])
+const ORDER_COST_FIELDS = ['material_cost', 'ink_cost', 'pp_cost', 'total_cost', 'unit_cost', 'margin_rate'] as const
+
 const ordersCoreRouter = new Hono<HonoEnv>()
 ordersCoreRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
 
@@ -528,6 +532,16 @@ ordersCoreRouter.get('/:id', async (c) => {
       `).bind(groupRoot, groupRoot, selfId).all<{ id: number; order_number: string }>()
       consolidationMembers = (members || []).map(m => ({ id: Number(m.id), order_number: m.order_number }))
     } catch (_consErr) { /* 표시용 파생 실패는 무시 */ }
+
+    // 원가·마진은 관리·경리만 본다(용준님 2026-09-23 — 「모든 직원이 볼 필요는 없다」).
+    //   화면에서 숨기는 것만으로는 응답에 그대로 실려 가므로 **서버에서 뺀다**. 원가는 쓰기 경로가
+    //   body 로 받지 않고 `recalculateOrderCosts` 가 서버에서 다시 계산하므로 빼도 왕복 손실이 없다.
+    const viewerRole = String((c.get('user') as { role?: string } | undefined)?.role || '')
+    if (!ORDER_COST_ROLES.has(viewerRole)) {
+      for (const it of (items || []) as Array<Record<string, unknown>>) {
+        for (const k of ORDER_COST_FIELDS) delete it[k]
+      }
+    }
 
     const response: ApiResponse<any> = {
       success: true,

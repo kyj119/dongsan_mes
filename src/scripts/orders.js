@@ -1198,12 +1198,15 @@ async function bulkShipOrder(orderId) {
 }
 
 function buildCostSummary(items, order) {
-  var totalCost = 0, hasCost = false;
+  // 원가 칸은 관리·경리 역할에만 내려온다(서버 `ORDER_COST_ROLES`) — 없으면 섹션 자체가 안 뜬다.
+  // ★매출도 **원가가 잡힌 라인만** 더한다. 예전엔 주문 전체 공급가에서 일부 라인 원가만 빼서
+  //   원가 없는 라인(매입품 등)만큼 마진이 부풀려졌다.
+  var totalCost = 0, revenue = 0, costed = 0, lineCount = 0;
   (items || []).forEach(function(it) {
-    if (it.total_cost > 0) { totalCost += it.total_cost; hasCost = true; }
+    lineCount++;
+    if (it.total_cost > 0) { totalCost += it.total_cost; revenue += Number(it.amount) || 0; costed++; }
   });
-  if (!hasCost) return '';
-  var revenue = order.total_amount || 0; // 공급가액 (VAT 제외)
+  if (!costed) return '';
   var margin = revenue - totalCost;
   var marginRate = revenue > 0 ? Math.round((margin / revenue) * 100) : 0;
   var color = marginRate < 20 ? 'text-red-600' : marginRate < 40 ? 'text-amber-600' : 'text-green-600';
@@ -1212,6 +1215,7 @@ function buildCostSummary(items, order) {
     <div class="text-sm font-medium text-gray-600 mb-1">원가 분석</div>
     <div class="text-sm mb-1">총 원가: <span class="font-bold">${totalCost.toLocaleString()}원</span></div>
     <div class="text-sm mb-1">마진: <span class="font-bold ${color}">${margin.toLocaleString()}원 (${marginRate}%)</span></div>
+    ${costed < lineCount ? `<div class="text-xs text-gray-500">원가 산출 ${costed}/${lineCount}라인 기준 — 나머지 라인은 원가 미확인이라 제외</div>` : ''}
   </div>`;
 }
 
