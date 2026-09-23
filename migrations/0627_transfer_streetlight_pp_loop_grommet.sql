@@ -50,6 +50,10 @@ WHERE (i.sub_category = '가로등배너' OR i.item_code LIKE 'TRB-%')
   AND COALESCE(NULLIF(i.unit, ''), 'EA') = 'EA';
 
 -- 봉제 프리셋 — cm 는 봉미싱 길이(전사 패널의 밴드 = cm + 1)
-INSERT OR IGNORE INTO finishing_presets (name, config, sort_order, is_active) VALUES
-  ('가로등 상단봉미싱', '{"top":"봉미싱","top_cm":5,"left":"쌍침","right":"쌍침","bottom":"쌍침"}', 15, 1),
-  ('가로등 상하단봉미싱', '{"top":"봉미싱","top_cm":5,"bottom":"봉미싱","bottom_cm":5,"left":"쌍침","right":"쌍침"}', 16, 1);
+INSERT OR IGNORE INTO finishing_presets (name, config, method_group, sort_order, is_active) VALUES
+  ('가로등 상단봉미싱', '{"top":"봉미싱","top_cm":5,"left":"쌍침","right":"쌍침","bottom":"쌍침"}', 'transfer', 15, 1),
+  ('가로등 상하단봉미싱', '{"top":"봉미싱","top_cm":5,"bottom":"봉미싱","bottom_cm":5,"left":"쌍침","right":"쌍침"}', 'transfer', 16, 1);
+-- ★프리셋 목록은 method_group 으로 거른다(GET /api/finishing/presets?group=transfer). 0251 의 봉제 프리셋 5종이 기본값 output 으로 남아
+--   전사 주문서에 한 번도 안 떴을 수 있다 — 여기서 transfer 로 바로잡는다(멱등).
+UPDATE finishing_presets SET method_group = 'transfer'
+ WHERE name IN ('1면쌍침', '2면쌍침', '3면쌍침', '1면쌍침2면오바', '상단봉미싱+양쪽막음', '가로등 상단봉미싱', '가로등 상하단봉미싱');
