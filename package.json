@@ -160,7 +160,9 @@
     "test:ap-candidate": "node scripts/ap-candidate-selftest.cjs",
     "audit:loan-bank": "node scripts/loan-bank-audit.cjs",
     "test:baseline-flow": "node scripts/baseline-flow-selftest.cjs",
-    "test:income-tax": "node scripts/income-tax-selftest.cjs"
+    "test:income-tax": "node scripts/income-tax-selftest.cjs",
+    "audit:render-junk": "node scripts/render-junk-audit.cjs",
+    "audit:render-junk:selftest": "node scripts/render-junk-audit.cjs --selftest"
   },
   "dependencies": {
     "hono": "^4.13.7"

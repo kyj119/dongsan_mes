@@ -137,6 +137,9 @@ export const MENU_ITEMS: MenuGroup[] = [
       { path: '/users', icon: 'fa-users', label: '사용자 관리', roles: ['ADMIN'] },
       { path: '/permissions', icon: 'fa-user-shield', label: '권한 관리', roles: ['ADMIN'] },
       { path: '/activity-log', icon: 'fa-history', label: '시스템 로그', roles: ['ADMIN', 'MANAGER'] },
+      // ⚠️권한(permission_pages)과 사이드바 표시(이 파일)는 **다른 소스**다. 0626 에서 권한만 넣고
+      //   여기를 빠뜨려 주소를 직접 치거나 알림 링크로만 닿을 수 있었다(#660).
+      { path: '/feedback', icon: 'fa-bug', label: '문제 접수함', roles: ['ADMIN', 'MANAGER'] },
       { path: '/messages', icon: 'fa-comment-dots', label: '메시지 관리', roles: ['ADMIN', 'MANAGER'] },
       { path: '/settings', icon: 'fa-cog', label: '설정', roles: ['ADMIN'] },
       { path: '/migration', icon: 'fa-file-import', label: '데이터 이관', roles: ['ADMIN'] },
