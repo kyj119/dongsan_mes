@@ -156,5 +156,38 @@
     return { x: (x - meta.abL) * kx, y: (y - meta.abT) * ky }
   }
 
-  return { rowsOf: rowsOf, assign: assign, attachTab: attachTab, placedGeom: placedGeom, canTab: canTab, mmToPng: mmToPng, CHAIN_MAX: CHAIN_MAX }
+  // ★번호 이미지의 글자 크기 — **인쇄물에서 읽혀야** 한다 (2026-09-24 용준님 「원본 기준으로 번호를 크게」).
+  //   작업지시서는 이 그림을 장변 240px(≈63.5mm, workOrderPrint.js `.thumb`)로 줄여 찍는다. 종전 배지는 이미지 장변의
+  //   1.4% 고정이라 인쇄하면 **글자 ≈0.7mm** — 사실상 안 보였다. → 조각 **한가운데**, 크기는 **조각 안에서 최대**.
+  //   ⚠️처음에는 「인쇄 3mm 하한」을 강제했다 — 47조각 실측 배치에서 번호가 조각보다 커져 **옆 번호와 붙어 읽을 수 없었다**
+  //     (「1-11-21-3…」). 조각이 인쇄물에서 5mm 남짓이면 3mm 번호가 들어갈 자리가 없다. **겹치면 크기는 소용없다** →
+  //     조각을 넘지 않는 것을 우선한다. 인쇄 크기는 그림을 크게 찍는 쪽(작업지시서)에서 해결한다.
+  var PRINT_LONG_MM = 63.5    // 작업지시서 썸네일 장변(240px @96dpi) — 참고용(게이트 보고)
+  var MIN_DIGIT_MM = 3        // 인쇄물에서 읽기 좋은 숫자 높이(목표 — 강제하지 않는다)
+  var MIN_FONT_PX = 12        // 원본 PNG 에서의 절대 하한(아주 작은 조각)
+  var DIGIT_H = 0.72          // 숫자 높이 / 글꼴 크기(굵은 고딕 실측 근사)
+  var CHAR_W = 0.62           // 글자 폭 / 글꼴 크기(숫자·대시)
+  /**
+   * @param meta {abL,abT,abW,abH,w,h} 원본 PNG 메타 · bounds [{x,y,w,h}] 원본 mm · labels [문자열]
+   * @returns [{cx, cy, font, stroke} | null] (PNG px) — 라벨 없는 조각은 null
+   */
+  function labelLayout(meta, bounds, labels) {
+    var L = Math.max(meta.w, meta.h)
+    var maxFont = L * 0.25
+    var kx = meta.w / meta.abW, ky = meta.h / meta.abH, out = []
+    for (var i = 0; i < bounds.length; i++) {
+      var lab = labels[i]
+      if (!lab || !bounds[i]) { out.push(null); continue }
+      var p = mmToPng(meta, bounds[i].x, bounds[i].y)
+      var wPx = bounds[i].w * kx, hPx = bounds[i].h * ky
+      // 조각 안에 들어가는 크기 = 높이의 60% · 폭에 글자 수만큼 들어가는 크기(테두리 포함 88%) 중 작은 것
+      var fit = Math.min(hPx * 0.6, (wPx * 0.88) / (CHAR_W * String(lab).length + 0.3))
+      var font = Math.round(Math.min(maxFont, Math.max(MIN_FONT_PX, fit)))
+      out.push({ cx: p.x + wPx / 2, cy: p.y + hPx / 2, font: font, stroke: Math.max(2, Math.round(font * 0.12)) })
+    }
+    return out
+  }
+
+  return { rowsOf: rowsOf, assign: assign, attachTab: attachTab, placedGeom: placedGeom, canTab: canTab, mmToPng: mmToPng, labelLayout: labelLayout,
+    PRINT_LONG_MM: PRINT_LONG_MM, MIN_DIGIT_MM: MIN_DIGIT_MM, MIN_FONT_PX: MIN_FONT_PX, DIGIT_H: DIGIT_H, CHAR_W: CHAR_W, CHAIN_MAX: CHAIN_MAX }
 })

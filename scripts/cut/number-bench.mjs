@@ -10,6 +10,7 @@
  *   M4 꼬리표 기하  — attachTab 이 붙인 자리와 placedGeom 이 되돌린 자리가 **실제 회전**(nesting.js)과 일치
  *   M5 폭 규칙      — 세워야 들어가는 조각은 꼬리표 두께가 폭에 더해진다(canTab)
  *   M6 배치 비용    — 47조각 롤 1520 에서 꼬리표가 판 수를 늘리지 않고 총 길이 +1% 이내(실측 +0.13%)
+ *   M7 번호 크기    — 조각 중앙 · 조각 안에서 최대 · 서로 안 겹침 · 종전 배지보다 큼
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -132,5 +133,45 @@ const sizes = (r) => PN.rowsOf(r).map((x) => x.items.length).join(',')
   console.log(`M6 롤 ${ROLL_W}: 판 ${A.sheets.length}→${B.sheets.length} · 길이 ${len(A)}→${len(B)}mm (+${(inc * 100).toFixed(2)}%)`)
 }
 
+// ── M7 번호 이미지 글자 — 조각 중앙 · 조각 안에서 최대 · **서로 안 겹친다** (2026-09-24) ──
+//   종전 모서리 배지는 장변 1.4% 고정 → 작업지시서 인쇄(장변 63.5mm) 숫자 0.66mm.
+//   ⚠️「인쇄 3mm 하한」을 강제했더니 47조각에서 번호끼리 붙어 읽을 수 없었다(「1-11-21-3…」) → 겹침 금지가 우선이다.
+//   원본 47조각 실측 배치를 장변 1600px(`mesCut_exportOverview(1600)`)로 그린다고 보고 잰다.
+{
+  let L0 = 1e9, T0 = 1e9, R0 = -1e9, B0 = -1e9
+  for (const p of FIX) { L0 = Math.min(L0, p.x); T0 = Math.min(T0, p.y); R0 = Math.max(R0, p.x + p.w); B0 = Math.max(B0, p.y + p.h) }
+  const abW = R0 - L0, abH = B0 - T0, k = 1600 / Math.max(abW, abH)
+  const meta = { abL: L0, abT: T0, abW, abH, w: Math.round(abW * k), h: Math.round(abH * k) }
+  const labels = PN.assign(FIX, 'auto').labels
+  const lay = PN.labelLayout(meta, FIX, labels)
+  const box = (i) => {
+    const L = lay[i], tw = L.font * PN.CHAR_W * labels[i].length + 2 * L.stroke, th = L.font * PN.DIGIT_H + 2 * L.stroke
+    return { x0: L.cx - tw / 2, x1: L.cx + tw / 2, y0: L.cy - th / 2, y1: L.cy + th / 2 }
+  }
+  let offCenter = 0, outside = 0, overlap = 0
+  for (let i = 0; i < FIX.length; i++) {
+    const L = lay[i], p = FIX[i]
+    const px0 = (p.x - L0) * k, py0 = (p.y - T0) * k, pw = p.w * k, ph = p.h * k
+    if (Math.abs(L.cx - (px0 + pw / 2)) > 1 || Math.abs(L.cy - (py0 + ph / 2)) > 1) offCenter++
+    const b = box(i)
+    if (L.font > PN.MIN_FONT_PX && (b.x0 < px0 - 1 || b.x1 > px0 + pw + 1 || b.y0 < py0 - 1 || b.y1 > py0 + ph + 1)) outside++
+    for (let j = 0; j < i; j++) { const c = box(j); if (b.x0 < c.x1 && c.x0 < b.x1 && b.y0 < c.y1 && c.y0 < b.y1) overlap++ }
+  }
+  ok(offCenter === 0, 'M7', `조각 중앙이 아닌 번호 ${offCenter}개`)
+  ok(outside === 0, 'M7', `조각 밖으로 나간 번호 ${outside}개`)
+  ok(overlap === 0, 'M7', `서로 겹친 번호 ${overlap}쌍 — 겹치면 크기는 소용없다`)
+  // 조각에 비례 — 큰 조각의 번호가 더 크다
+  const big = PN.labelLayout(meta, [{ x: L0, y: T0, w: 6000, h: 6000 }], ['1'])[0]
+  const small = PN.labelLayout(meta, [{ x: L0, y: T0, w: 600, h: 600 }], ['1'])[0]
+  ok(big.font > small.font, 'M7', `크기 비례 아님 big=${big.font} small=${small.font}`)
+  ok(PN.labelLayout(meta, FIX.slice(0, 1), [''])[0] === null, 'M7', '라벨 없는 조각은 그리지 않는다')
+  // 종전 배지보다 커졌는가(중앙값) — 인쇄 장변별 숫자 높이를 기록한다(그림을 크게 찍을수록 비례해 커진다)
+  const digits = lay.map((L) => L.font * PN.DIGIT_H).sort((a, b) => a - b)
+  const oldPx = Math.round(1600 * 0.014) * 1.05 * PN.DIGIT_H
+  ok(digits[Math.floor(digits.length / 2)] > oldPx * 1.3, 'M7', `중앙값 ${digits[23].toFixed(0)}px 가 종전 ${oldPx.toFixed(0)}px 보다 충분히 크지 않다`)
+  const at = (mm) => { const f = mm / Math.max(meta.w, meta.h); return `${(digits[0] * f).toFixed(1)}/${(digits[23] * f).toFixed(1)}/${(digits[46] * f).toFixed(1)}` }
+  console.log(`M7 인쇄 숫자 높이(최소/중앙/최대 mm): 장변 63.5mm ${at(63.5)} · 180mm ${at(180)} (종전 배지 63.5mm ${(oldPx * 63.5 / 1600).toFixed(2)})`)
+}
+
 if (fails.length) { console.error('cut:number FAIL\n  ' + fails.join('\n  ')); process.exit(1) }
-console.log('cut:number OK — M1~M6 (줄 판정·폴백·수동·꼬리표 기하 4회전·폭 규칙·배치 비용)')
+console.log('cut:number OK — M1~M7 (줄 판정·폴백·수동·꼬리표 기하 4회전·폭 규칙·배치 비용·인쇄 번호 크기)')
