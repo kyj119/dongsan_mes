@@ -142,6 +142,16 @@ console.log('[shipment-notice] \u2467 \ubcf8\ubb38 \uc0dd\uc131 \u2014 \ubbf8\ub
     !/replace\(\/#\\\{/.test(preview + send))
   bodyMod.cleanup && bodyMod.cleanup()
 }
+
+// ⑨ 자동 발송 없음 (2026-09-24 용준님 결정) — 출고 알림은 사람이 「보낸다」를 눌렀을 때만 나간다.
+//   출고 등록 API 에 fire-and-forget 알림톡·이메일이 붙어 있었고 `kakao_enabled=1` 이라, 그 API 를 부르는
+//   화면이 생기는 순간 확인 없이 고객에게 나갈 자리였다. 되살아나면 여기서 걸린다.
+console.log('[shipment-notice] ⑨ 출고 등록 경로에 자동 발송이 없다')
+{
+  const shipRoute = fs.readFileSync(path.join(ROOT_DIR, 'src', 'routes', 'shipments.ts'), 'utf8')
+  check('shipments 라우트가 /api/kakao/send-shipment 를 스스로 부르지 않는다', !/\/api\/kakao\/send-shipment['"`]/.test(shipRoute))
+  check('shipments 라우트가 sendEmail 을 부르지 않는다(출고 이메일 자동 발송 없음)', !/sendEmail\s*\(/.test(shipRoute))
+}
 cleanup && cleanup()
 console.log(fails ? `[shipment-notice] FAIL ${fails}건` : '[shipment-notice] OK — 템플릿명·송장 조건·대상 분류·우선순위 전부 통과')
 process.exit(fails ? 1 : 0)
