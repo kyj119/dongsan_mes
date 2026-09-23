@@ -152,12 +152,16 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     const mk = (id, W, H) => ({ id, W, H, m: new Uint8Array(W * H).fill(1) })
     // p2 = 세우면 폭(48) 초과 · 눕혀도 48+꼬리표 1 = 49 > 48 → 꼬리표 불가(건너뛰고 센다)
     const p0 = mk(0, 10, 20), p1 = mk(1, 10, 20), p2 = mk(2, 60, 48)
-    const prep = { pieces: [p0, p1, p0, p2], sizes: [{ w: 100, h: 200 }, { w: 100, h: 200 }, { w: 600, h: 480 }],
-      bounds: [{ x: 0, y: 0, w: 100, h: 200 }, { x: 120, y: 0, w: 100, h: 200 }, { x: 0, y: 300, w: 600, h: 480 }], mmpp: 10 }
+    // p3 = 굽기 여백이 남은 마스크(14×24 캔버스, 잉크는 (2,2)~(11,21) 10×20) — 꼬리표는 **걷어낸 뒤** 붙어야 한다
+    const p3 = { id: 3, W: 14, H: 24, m: new Uint8Array(14 * 24) }
+    for (let y = 2; y < 22; y++) for (let x = 2; x < 12; x++) p3.m[y * 14 + x] = 1
+    const prep = { pieces: [p0, p1, p0, p2, p3], sizes: [{ w: 100, h: 200 }, { w: 100, h: 200 }, { w: 600, h: 480 }, { w: 100, h: 200 }],
+      bounds: [{ x: 0, y: 0, w: 100, h: 200 }, { x: 120, y: 0, w: 100, h: 200 }, { x: 0, y: 300, w: 600, h: 480 }, { x: 240, y: 0, w: 100, h: 200 }], mmpp: 10 }
     // sheetWmm 500(파일 mm) → usable (500-20)/10 = 48px · 꼬리표 tw=ceil(20/10)=2 th=ceil(8/10)=1
     const info = X.attach(prep, 500, false)
     const res = { sheets: [{ placements: [
-      { id: 0, x: 0, y: 0, rot: 0, W: 10, H: 21 }, { id: 1, x: 20, y: 0, rot: 90, W: 21, H: 10 }, { id: 2, x: 0, y: 30, rot: 90, W: 48, H: 60 } ] }] }
+      { id: 0, x: 0, y: 0, rot: 0, W: 10, H: 21 }, { id: 1, x: 20, y: 0, rot: 90, W: 21, H: 10 }, { id: 2, x: 0, y: 30, rot: 90, W: 48, H: 60 },
+      { id: 3, x: 50, y: 0, rot: 0, W: 10, H: 21 } ] }] }
     X.normalize(res, prep, info)
     const pl = res.sheets[0].placements
     const off = X.attach({ pieces: [mk(9, 5, 5)], sizes: [{ w: 1, h: 1 }], bounds: null, mmpp: 1 }, 100, false)
@@ -168,14 +172,19 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
       pl0: { x: pl[0].x, y: pl[0].y, W: pl[0].W, H: pl[0].H, tab: pl[0].tab },
       pl1: { x: pl[1].x, y: pl[1].y, W: pl[1].W, H: pl[1].H, tab: pl[1].tab },
       pl2: { x: pl[2].x, y: pl[2].y, W: pl[2].W, H: pl[2].H, tab: pl[2].tab },
+      p3: { W: p3.W, H: p3.H, tab: p3.tab }, pl3: { x: pl[3].x, y: pl[3].y, W: pl[3].W, H: pl[3].H, tab: pl[3].tab },
       line: X.resultLine(Object.assign({}, info, { sent: 2 }), { num: '2', numfail: '0' }),
       lineMismatch: X.resultLine(Object.assign({}, info, { sent: 2 }), { num: '1', numfail: '0' }),
       offWhy: off && off.off, buttWhy: butt && butt.off, buttLine: X.resultLine(butt, {}),
     }
   })
-  ok('3u 번호 판정 — 위 2장 + 아래 1장 = 2줄 → 줄-순번', r.mode === 'row' && (r.labels || []).join(',') === '1-1,1-2,2-1', JSON.stringify(r.labels) + ' ' + r.mode)
+  ok('3u 번호 판정 — 위 3장 + 아래 1장 = 2줄 → 줄-순번', r.mode === 'row' && (r.labels || []).join(',') === '1-1,1-2,2-1,1-3', JSON.stringify(r.labels) + ' ' + r.mode)
   ok('3u 꼬리표 px = 실물 20×8mm ÷ mmpp(올림)', r.tw === 2 && r.th === 1, `tw=${r.tw} th=${r.th}`)
-  ok('3u 같은 객체(수량 확장)는 한 번만 · 폭 여유 없는 조각은 건너뛰고 센다', r.tabbed === 2 && r.skipped === 1 && r.p0.tab && !r.p2.tab, JSON.stringify({ tabbed: r.tabbed, skipped: r.skipped, p0: r.p0, p2: r.p2 }))
+  ok('3u 같은 객체(수량 확장)는 한 번만 · 폭 여유 없는 조각은 건너뛰고 센다', r.tabbed === 3 && r.skipped === 1 && r.p0.tab && !r.p2.tab, JSON.stringify({ tabbed: r.tabbed, skipped: r.skipped, p0: r.p0, p2: r.p2 }))
+  // ★굽기 여백이 남은 마스크 — 걷어낸 크기(10×20)에 꼬리표가 붙어야 하고, 되돌린 조각 사각도 그 크기여야 한다
+  //   (안 걷으면 14×25 가 되고 잉크가 빈 줄만큼 위로 놓여 칼선이 꼬리표를 파고든다 — 2026-09-23 실기)
+  ok('3u 굽기 여백은 걷어낸 뒤 꼬리표를 붙인다', r.p3.tab && r.p3.W === 10 && r.p3.H === 21 && r.p3.tab.Wg === 10 && r.p3.tab.Hg === 20, JSON.stringify(r.p3))
+  ok('3u 여백 걷은 조각의 되돌리기 = 조각 사각 10×20 · 꼬리표 위', r.pl3.x === 50 && r.pl3.y === 1 && r.pl3.W === 10 && r.pl3.H === 20 && r.pl3.tab && r.pl3.tab.y === 0, JSON.stringify(r.pl3))
   ok('3u 마스크는 위로 th 만큼 자란다(W 불변) · 건너뛴 조각은 그대로', r.p0.W === 10 && r.p0.H === 21 && r.p2.W === 60 && r.p2.H === 48, JSON.stringify({ p0: r.p0, p2: r.p2 }))
   ok('3u 되돌리기 rot0 — 조각은 아래로 th · 꼬리표는 위 왼쪽(th 들여서)',
     r.pl0.x === 0 && r.pl0.y === 1 && r.pl0.W === 10 && r.pl0.H === 20 && r.pl0.tab && r.pl0.tab.x === 1 && r.pl0.tab.y === 0 && r.pl0.tab.w === 2 && r.pl0.tab.h === 1 && !r.pl0.tab.vertical, JSON.stringify(r.pl0))
