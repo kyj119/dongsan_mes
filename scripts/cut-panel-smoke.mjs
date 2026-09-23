@@ -968,7 +968,8 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   //    대신 **같은 문서에서 같은 아트보드 산수로 한 번 더 내보낸다**.
   //    실측 동등성: 도련 결과 크기 전부 동일 · 다른 픽셀 최대 0.0043%(전부 잉크 경계 AA).
   //    (대조군 = 옛 경로를 두 번 돌리면 픽셀 차이 0 → 일러는 결정적이고, 이 차이는 서브픽셀 위치 탓)
-  ok('3t 굽기가 도련 태그를 함께 받는다', /function mesCut_nestBakeAll\(mmPerPx, padMm, fillClosed, tag, bleedTag\)/.test(
+  // 뒤에 인자가 붙는 것은 허용(0.54.0 stripMm) — 지킬 성질은 「5번째가 도련 태그」다
+  ok('3t 굽기가 도련 태그를 함께 받는다', /function mesCut_nestBakeAll\(mmPerPx, padMm, fillClosed, tag, bleedTag(, \w+)*\)/.test(
     fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')))
   {
     const h = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
