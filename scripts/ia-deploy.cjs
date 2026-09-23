@@ -195,6 +195,33 @@ function staleVersions(plan) {
   return out
 }
 
+/**
+ * ★되돌림(다운그레이드) — 런타임 번호가 repo 보다 **높은** 파일. (2026-09-23 실사고)
+ *   같은 날 두 체크아웃(메인 폴더 · 병합 전 worktree)에서 번갈아 배포해 **서로의 축을 덮었다** —
+ *   worktree 는 전사를 0.8.0→0.7.1 로, 메인은 재단을 0.52.0→0.50.0 으로 되돌렸고, 사용자에게는 「전사 탭이 갑자기 퇴화」로 보였다.
+ *   드리프트 감사는 「다르다」만 보고 **어느 쪽이 새것인지** 안 봐서, 옛 코드도 「배포 대상」으로 태연히 올라왔다.
+ *   → 번호를 비교해 낮추는 복사는 막는다. 정말 되돌리려는 것이면(롤백) `--allow-downgrade` 로 명시한다.
+ */
+function verCmp(a, b) {
+  // 접두어(`CUT-CEP-` 등)를 떼고 숫자 부분만 — 안 떼면 첫 칸이 NaN 이 되어 주 번호 비교가 사라진다
+  const num = (s) => ((/(\d+(?:\.\d+)*)\s*$/.exec(String(s)) || [, '0'])[1]).split('.').map((x) => parseInt(x, 10) || 0)
+  const pa = num(a), pb = num(b)
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) { const d = (pa[i] || 0) - (pb[i] || 0); if (d) return d }
+  return 0
+}
+function downgradeVersions(plan) {
+  const out = []
+  for (const p of plan) {
+    const rel = p.rel.replace(/\\/g, '/')
+    const mark = VERSION_MARKS.find((v) => v.rel.test(rel))
+    if (!mark) continue
+    const repoV = readVer(path.join(p.repoRoot, p.rel), mark.re)
+    const runV = readVer(path.join(p.runRoot, p.rel.replace(/\//g, path.sep)), mark.re)
+    if (repoV && runV && verCmp(repoV, runV) < 0) out.push({ rel, label: mark.label, repoV, runV })
+  }
+  return out
+}
+
 // ── ④ 백업 → 복사 ───────────────────────────────────────────────────
 function copyOne(repoRoot, runRoot, rel, backupRoot) {
   const src = path.join(repoRoot, rel)
@@ -283,6 +310,17 @@ async function main() {
     console.log(C.dim('  번호를 올리고(맨 앞 주석에 무엇이 바뀌었는지 한 줄) 다시 실행하세요.'))
     if (!DRY && !SKIP_GATES) die('버전 표기를 올린 뒤 다시 실행하세요. 비상 시에만 --skip-gates.')
     if (SKIP_GATES) console.log(C.y('  --skip-gates — 그대로 진행합니다.'))
+  }
+
+  // ③-C 되돌림 — --yes·--skip-gates 로도 안 넘어간다(다른 폴더의 최신 작업을 지우는 일이라서)
+  const down = downgradeVersions(plan)
+  if (down.length) {
+    console.log(C.r('\n✖ 런타임이 이 폴더보다 **새 버전**입니다 — 이대로 배포하면 되돌립니다.'))
+    for (const s of down) console.log(`    ${s.rel}\n      ${s.label}  런타임 ${s.runV}  →  이 폴더 ${C.r(s.repoV)}`)
+    console.log(C.dim(`  이 폴더: ${REPO}`))
+    console.log(C.dim('  다른 폴더(worktree·메인)에서 먼저 배포된 것입니다. 그 작업을 이 폴더로 병합한 뒤 여기서 배포하세요.'))
+    console.log(C.dim('  정말 되돌리는 것(롤백)이면 --allow-downgrade 를 붙이세요.'))
+    if (!DRY && !has('--allow-downgrade')) die('되돌림 배포를 막았습니다.')
   }
 
   if (DRY) { console.log(C.dim('\n--dry-run — 아무것도 바꾸지 않았습니다.')); process.exit(0) }
