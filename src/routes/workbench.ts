@@ -608,13 +608,17 @@ workbenchRouter.get('/intake-config', async (c) => {
       ).all(),
     ])
     // 경로①(주문 선행)용 미가공 라인: 파일 미연결 + 진행 중 주문만
+    // ★소비자 = 전사 탭 주문 피커(패널 js/tr-order.js, 2026-09-23). 판매단위 스냅샷(sales_unit 조 = 2벌, 0620)·후가공(하도매·끈고리·부직포)·
+    //   품목코드(원단)·소분류(가로등 판정)를 싣는다. 컬럼은 전부 0001/0006/0620 스키마에 있다 — ★없는 컬럼을 넣으면 config 브로드캐스트가 통째로 죽는다.
     const ovf = orderVisibilityFilter(c, 'o')
     const { results: openLines } = await c.env.DB.prepare(`
       SELECT oi.id AS order_item_id, o.order_number, cl.client_name, oi.item_name,
-             oi.width, oi.height, oi.quantity, oi.finishing
+             oi.width, oi.height, oi.quantity, oi.unit, oi.sales_unit, oi.sales_qty, oi.unit_factor, oi.finishing,
+             oi.post_processing, oi.item_id, i.item_code, i.sub_category
       FROM order_items oi
       JOIN orders o ON o.id = oi.order_id
       LEFT JOIN clients cl ON cl.id = o.client_id
+      LEFT JOIN items i ON i.id = oi.item_id
       WHERE o.status IN ('CONFIRMED','PRODUCTION') AND oi.ai_analysis_id IS NULL${ovf.clause}
       ORDER BY o.id DESC LIMIT 200
     `).bind(...ovf.params).all()

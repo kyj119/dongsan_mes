@@ -84,6 +84,7 @@
    * @param o.edge    {solid, light}
    * @param o.framePlan  frame.plan() 결과 (mode==='frame')
    * @param o.nonwoven   부직포가 붙는가
+   * @param o.ratio      [{panel, orig(w/h), spec(w/h), axis, pct}] 원본 비율 ≠ 규격 비율인 벌 — 패널 calcPlate 가 잰다
    */
   function build(o) {
     o = o || {};
@@ -96,7 +97,8 @@
       var PR = root.MesPlateRules;
       if (PR && PR.REVIEW) {
         for (i = 0; i < PR.REVIEW.all.length; i++) items.push(PR.REVIEW.all[i]);
-        for (i = 0; i < PR.REVIEW.sew.length; i++) items.push(PR.REVIEW.sew[i]);
+        // 봉미싱 확인은 밴드가 있을 때만 — 부직포(bandCount 0)엔 봉미싱이 없다
+        if (!(o.trace && o.trace.bandCount === 0)) for (i = 0; i < PR.REVIEW.sew.length; i++) items.push(PR.REVIEW.sew[i]);
         if (o.nonwoven) for (i = 0; i < PR.REVIEW.nonwoven.length; i++) items.push(PR.REVIEW.nonwoven[i]);
       }
     }
@@ -130,14 +132,32 @@
       items.push({ code: 'sides-band', level: 'check', msg: o.trace.sidesNote });
     }
 
-    // 끈고리·하도매 — 이제 패널이 그린다(2026-09-22). 몇 개를 어디 기준으로 그렸는지 **확인 항목**으로 남긴다.
-    if (o.trace && o.trace.marks && (o.trace.marks.loops > 0 || o.trace.marks.holes > 0)) {
+    // 접는선·끈고리·하도매 — 패널이 그린다(2026-09-22 → 09-23 정정). 몇 개를 어디 기준으로 그렸는지 **확인 항목**으로 남긴다.
+    var mk = o.trace && o.trace.marks;
+    if (mk && ((mk.folds || 0) > 0 || mk.loops > 0 || mk.holes > 0)) {
       items.push({
         code: 'marks-drawn', level: 'check',
-        msg: '끈고리 ' + o.trace.marks.loops + '개 · 하도매 ' + o.trace.marks.holes + '개(상단 ' + o.trace.marks.holesTop
-          + ' · 측면 ' + o.trace.marks.holesSide + ') — 원본 끝선 안쪽, 안쪽 = '
-          + (o.trace.marks.innerSide === 'facing' ? '두 벌이 마주 보는 쪽' : '오른쪽(1벌 가정)') + '. 실물 위치를 확인한다'
+        msg: '접는선 ' + (mk.folds || 0) + ' · 끈고리 ' + mk.loops + ' · 하도매 ' + mk.holes + '(상단 ' + mk.holesTop
+          + ' · 측면 ' + mk.holesSide + ') — 선은 벌 바깥 끝선에서 안쪽 시접 폭' + (mk.lineLen ? '(' + mk.lineLen + 'mm)' : '')
+          + ' 띠 위(검정 심 + 백 테두리 고정), 하도매는 원본 끝선 안쪽 1cm. 안쪽 = '
+          + (mk.innerSide === 'facing' ? '두 벌이 마주 보는 쪽' : '오른쪽(1벌 가정)') + '. 실물 위치를 확인한다'
       });
+    }
+    // 시접이 0 이면 선을 놓을 띠가 없어 그리지 않았다 — 조용히 넘기지 않는다
+    if (mk && mk.noSeam) {
+      items.push({ code: 'marks-no-seam', level: 'check', msg: '시접이 0 이라 접는선·끈고리를 그리지 않았다(칼재단·열재단) — 필요하면 직접 넣는다' });
+    }
+    // ★원본 비율 ≠ 규격 비율 — 호스트가 가로·세로를 따로 맞춰 그대로 늘리므로 조용히 찌그러진다(용준님 2026-09-23 「경고만」).
+    if (o.ratio && o.ratio.length) {
+      var fmtR = function (wh) { return '1:' + (Math.round((1 / wh) * 100) / 100); };
+      for (i = 0; i < o.ratio.length; i++) {
+        var rn = o.ratio[i];
+        items.push({
+          code: 'ratio-' + (rn.panel + 1), level: 'must',
+          msg: '벌' + (rn.panel + 1) + ' 원본 비율 ' + fmtR(rn.orig) + ' ≠ 규격 ' + fmtR(rn.spec) + ' — 그대로 앉히면 ' + rn.axis
+            + '가 약 ' + Math.round(rn.pct * 100) + '% 더 늘어난다(찌그러짐). 규격 또는 원본을 확인한다'
+        });
+      }
     }
     // 하도매 구 수만 있고 배치가 없으면(구 패널 입력) — 종전대로 사람이 넣는다
     if (o.trace && o.trace.hardware && o.trace.hardware.holes > 0 && !(o.trace.marks && o.trace.marks.holes > 0)) {
@@ -148,11 +168,12 @@
       });
     }
 
-    // 부직포 cm 를 골랐으면 그 값을 확인 항목에 싣는다(부직포 축 자체는 아직 미지원)
+    // 부직포 — 폭이 끈고리 자리를 정한다(위 끝선에서 폭 + 1cm). 위 여백·접는선은 없다.
     if (o.trace && o.trace.nonwovenCm) {
+      var nwCm = parseFloat(o.trace.nonwovenCm);
       items.push({
         code: 'nonwoven-cm', level: 'check',
-        msg: '부직포 ' + o.trace.nonwovenCm + ' — 치수는 아직 산식에 안 들어간다. 자리를 직접 확인한다'
+        msg: '부직포 ' + nwCm + 'cm — 끈고리를 위 끝선에서 ' + (nwCm + 1) + 'cm 아래에 표시했다(위 여백·접는선 없음). 부직포 자리를 피해 글자를 옮겼는지 본다'
       });
     }
 

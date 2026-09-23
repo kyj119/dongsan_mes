@@ -60,14 +60,8 @@
 
                 // 전사(봉제)는 여백 개념이 없다(방식 margin 전부 0·프리셋=방향 조합) → cm(길이) 칸을 숨기고
                 // 방식 셀렉트만 표기·선택한다 (2026-08-10 용준님). 품목 변경으로 output 그룹이 되면 원복.
-                var isTransferGrp = group === 'transfer';
-                ['top','bottom','left','right'].forEach(function(dir) {
-                    var cmEl = document.querySelector('[name="fin_cm_' + dir + '_' + id + '"]');
-                    if (cmEl) {
-                        cmEl.classList.toggle('hidden', isTransferGrp);
-                        if (isTransferGrp) cmEl.value = '';
-                    }
-                });
+                // ★예외 = 봉미싱(2026-09-23): 그 cm 은 여백이 아니라 **봉 길이**라 전사 패널이 밴드 높이로 쓴다 → syncTransferSewCm.
+                syncTransferSewCm(id, group);
 
                 // 프리셋 버튼
                 try {
@@ -87,6 +81,26 @@
                 } catch(e) {}
             }
 
+            /**
+             * ★전사 그룹의 cm 칸 노출 규칙 — 원래 전부 숨기지만 **봉미싱을 고른 변만** 보이고 기본 5 를 넣는다(용준님 2026-09-23).
+             *   그 cm 은 여백(카드 규격에 반영)이 아니라 봉 길이라, 카드 라벨(「상 봉미싱 5cm」)과 전사 패널(밴드 = cm + 1)이 읽는다.
+             *   다른 그룹(output)은 종전대로 전부 보인다. 저장은 calc.js 가 비어 있지 않은 cm 을 그대로 직렬화한다.
+             */
+            window.syncTransferSewCm = function(id, groupHint) {
+                var group = groupHint || getFinishingGroup(id);
+                var isTransferGrp = group === 'transfer';
+                ['top','bottom','left','right'].forEach(function(dir) {
+                    var cmEl = document.querySelector('[name="fin_cm_' + dir + '_' + id + '"]');
+                    if (!cmEl) return;
+                    if (!isTransferGrp) { cmEl.classList.remove('hidden'); return; }
+                    var sel = document.querySelector('[name="fin_' + dir + '_' + id + '"]');
+                    var sew = !!(sel && sel.value === '봉미싱');
+                    cmEl.classList.toggle('hidden', !sew);
+                    if (!sew) cmEl.value = '';
+                    else if (!(parseFloat(cmEl.value) > 0)) cmEl.value = '5';
+                });
+            };
+
             // 저장된 finishing JSON을 행에 복원 — 수정·복사 프리필 공용.
             //   옵션을 먼저 채우고(loadFinishingForOrder) 값을 적용해야 셀렉트가 잡힌다.
             //   복원이 없으면 fin 셀렉트가 빈 채로 남아 저장 시 기존 마감이 빈값으로 덮여 소실된다.
@@ -105,6 +119,7 @@
                         var finCm = document.querySelector('[name="fin_cm_' + dir + '_' + id + '"]');
                         if (finCm && finSaved[dir + '_cm'] != null) finCm.value = finSaved[dir + '_cm'];
                     });
+                    syncTransferSewCm(id);   // 복원한 봉미싱 cm 은 남고, 봉미싱이 아닌 변의 cm 은 비운다
                     if (finAny) {
                         // 복원해도 4변 상세는 펼치지 않는다 — 요약(finishing_summary_)이 방향·방식을 그대로 보여준다(2026-08-19 간소화).
                         calcFinishing(id);
@@ -158,7 +173,11 @@
                     ['top','bottom','left','right'].forEach(function(dir) {
                         var sel = document.querySelector('[name="fin_' + dir + '_' + itemId + '"]');
                         if (sel && config[dir]) sel.value = config[dir];
+                        // 프리셋이 cm 을 말하면(가로등 봉미싱 5cm) 같이 넣는다 — 말하지 않는 변은 건드리지 않는다
+                        var cmEl = document.querySelector('[name="fin_cm_' + dir + '_' + itemId + '"]');
+                        if (cmEl && config[dir + '_cm'] != null) cmEl.value = config[dir + '_cm'];
                     });
+                    syncTransferSewCm(itemId);
                     // 비대칭 프리셋도 펼치지 않는다 — 요약이 '좌우 줄미싱+상하 봉미싱'까지 문장으로 보여준다(2026-08-19 간소화).
                     // 선택된 프리셋 강조 표시
                     document.querySelectorAll('[data-preset-id="' + itemId + '"]').forEach(function(b) {
@@ -204,6 +223,7 @@
                     var m = methods.find(function(fm) { return fm.name === methodName; });
                     cmInput.value = m ? m.margin : '';
                 }
+                syncTransferSewCm(itemId);   // 전사 그룹: 봉미싱이면 칸을 보이고 5, 아니면 숨기고 비운다
                 calcFinishing(itemId);
             };
 

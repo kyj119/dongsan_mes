@@ -121,6 +121,20 @@ npm run deploy:prod
    덮어쓰지 않고 exit 2 한다.
    > 2026-08-09 에도 같은 목록을 실측해 두고 **게이트가 아니라서** 한 달간 방치됐다.
 
+6. **화면 쓰레기 문자열 감사 (UI·API 응답을 건드린 배포면 필수)**
+   ```bash
+   npm run audit:render-junk -- --base https://webapp-9i0.pages.dev   # prod 57화면·탭 포함 (≈2분)
+   ```
+   화면에 값 대신 **`undefined`·`NaN`·`[object Object]`·`Invalid Date`·`null`** 이 떠 있는지 본다.
+   거의 언제나 **API 가 주는 칸 이름과 화면이 읽는 이름이 다른 것**이고, 그 축은 응답이 200 이라
+   tsc·build·smoke·check:dom·check:fn 이 **전부 통과한다**. 기준선(`scripts/render-junk-baseline.json`)은
+   **0건이 정상** — 줄이 생기면 기준선에 넣기 전에 **고칠 수 있는지 먼저 본다**.
+   자가시험 = `npm run audit:render-junk:selftest`(잡아야 할 것 6 · 잡으면 안 되는 것 5, 양방향).
+   > 2026-09-22 신설. 계기 = `/production-reports` 두 표가 API 가 주지 않는 칸을 읽어 열이 통째로
+   > 「undefined」였고, `undefined < today`·`undefined > 0` 이 **항상 false** 라 「(지연)」과 에러 수가
+   > **영영 안 떴다**. 정적 대조(라우트 SELECT ↔ 스크립트 `o.필드`)는 시제품에서 **후보 566건**이
+   > 나와 폐기했다 — 오탐이 그만큼이면 아무도 안 본다. **증상을 직접 보는 쪽이 57화면에 1건**이었다.
+
 ### Phase 5: 현황판 갱신 + 자동 트림
 
 `.claude/PROJECT_STATUS.md` 상단에 배포 배너를 추가한 뒤 **반드시** 실행:

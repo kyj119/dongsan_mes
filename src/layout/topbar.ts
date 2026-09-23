@@ -20,6 +20,12 @@ export function topBarHTML(title: string): string {
         <button id="darkModeToggle" onclick="toggleDarkMode()" class="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors" title="다크 모드 전환" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--c-text-secondary);padding:4px 8px;border-radius:6px;">
           <i id="darkModeIcon" class="fas fa-moon"></i>
         </button>
+        <!-- 문제 신고 (0626) — 막힌 **그 화면에서** 누른다. 사이드바로 보내지 않는 이유는
+             「가야 할 곳」을 만들면 안 쓰기 때문이다(card_checklist 2,496칸 중 체크 0건).
+             오른쪽 아래 플로팅은 목록 화면의 페이징·마지막 줄을 가려서 여기(탑바)에 둔다. -->
+        <button id="feedbackBtn" onclick="openFeedbackModal()" class="p-2 rounded-lg transition-colors" title="문제 신고 — 안 되는 게 있으면 눌러 주세요" aria-label="문제 신고" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--c-text-secondary);padding:4px 8px;border-radius:6px;">
+          <i class="fas fa-bug"></i>
+        </button>
         <div class="notif-wrap" id="notifWrap">
           <button onclick="toggleNotifPanel()" class="notif-btn">
             <i class="fas fa-bell"></i>

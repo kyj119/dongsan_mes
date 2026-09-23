@@ -40,7 +40,11 @@ productionReportsRouter.get('/daily-summary', async (c) => {
         COALESCE(e.name, pe.agent_id) as equipment_name,
         COUNT(CASE WHEN pe.print_status = 'OK' THEN 1 END) as ok_count,
         COUNT(CASE WHEN pe.print_status != 'OK' THEN 1 END) as error_count,
-        COUNT(*) as total
+        COUNT(*) as total,
+        -- 화면의 「면적(㎡)」·「비율」 열이 이걸 읽는데 **여기서 안 보내 항상 0 이었다**.
+        --   산식은 위 기본 통계와 같아야 한다 — 같은 날의 두 숫자가 어긋나면 안 된다.
+        COALESCE(SUM(CASE WHEN pe.print_status = 'OK'
+          THEN CAST(pe.output_width AS REAL) * CAST(pe.output_height AS REAL) * COALESCE(pe.copy_total, 1) / 1000000 END), 0) as sqm
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
       WHERE ${printEventKstDay('pe')} = ?
@@ -63,9 +67,13 @@ productionReportsRouter.get('/daily-summary', async (c) => {
     `).bind(targetDate).all()
 
     // 납기 초과 주문
+    // ★`item_count` 는 화면이 「품목 수」 열로 쓰는데 **여기서 안 보내 「undefined」가 떠 있었다**.
+    //   SELECT 절 상관 서브쿼리지만 바깥이 「납기 초과 + CONFIRMED/PRINTING」로 좁고 LIMIT 20 이라
+    //   재실행 횟수가 그 수를 못 넘는다(prod 실측 2건). 바깥이 자라는 축이 아니다(§audit:subquery).
     const ef = entityFilter(c, 'o')
     const { results: overdue } = await c.env.DB.prepare(`
-      SELECT o.id, o.order_number, o.delivery_date, c.client_name, o.status
+      SELECT o.id, o.order_number, o.delivery_date, c.client_name, o.status,
+             (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS item_count
       FROM orders o
       LEFT JOIN clients c ON o.client_id = c.id
       WHERE o.delivery_date < ? AND o.status IN ('CONFIRMED', 'PRINTING')${ef.clause}

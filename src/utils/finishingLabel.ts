@@ -40,8 +40,9 @@ export function formatFinishing(fin: any): string {
   for (const d of DIR_ORDER) {
     const m = f[d]
     if (m && typeof m === 'string') {
-      if (!groups.has(m)) groups.set(m, [])
-      groups.get(m)!.push(d)
+      const key = sewKey(m, f[d + '_cm'])
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(d)
     }
   }
   if (groups.size === 0) return ''
@@ -55,6 +56,16 @@ export function formatFinishing(fin: any): string {
   return entries
     .map(([method, dirs]) => `${dirs.map((d) => DIR_KO[d]).join('')} ${method}`)
     .join('+')
+}
+
+/**
+ * 봉미싱만 cm 을 표기에 싣는다 — `상 봉미싱 5cm`. 그 cm 은 여백(카드 규격에 이미 반영)이 아니라 **봉 길이**라
+ * 현장이 알아야 하고 전사 패널이 밴드 높이로 쓴다(2026-09-23 용준님). 다른 방식의 cm 은 종전대로 뺀다.
+ */
+function sewKey(method: string, cm: any): string {
+  if (method !== '봉미싱') return method
+  const n = Number(cm)
+  return n > 0 ? `${method} ${n}cm` : method
 }
 
 function sideRank(dirs: string[]): number {
@@ -106,7 +117,41 @@ export function formatPunching(params: any): string {
   return `${total}개(${parts.join(', ')})`
 }
 
-/** 후가공 1건 → `펀칭 4개(상 2, 모서리 좌상·우상)` · `부직포 7cm` · `열재단 상하` */
+/**
+ * 하도매 params → `5호 4구(상2·측3)`. 구수 = 상단 + 측면 − 겹치는 모서리(둘 다 2 이상이면 1) — 패널 plate.js 와 같은 규칙.
+ * 옛 라인 {size, holes:'2구'} 는 `5호 2구`. 반환값에 「하도매」는 안 붙는다(호출부가 붙임).
+ */
+export function formatGrommet(params: any): string {
+  const p = parseMaybeJson(params)
+  if (!p || typeof p !== 'object') return ''
+  const size = String(p.size || '').trim()
+  const hasPos = p.top != null || p.side != null
+  const out: string[] = []
+  if (size) out.push(size)
+  if (hasPos) {
+    const t = Math.max(0, Math.floor(Number(p.top) || 0)), s = Math.max(0, Math.floor(Number(p.side) || 0))
+    const total = t + s - ((t >= 2 && s >= 2) ? 1 : 0)
+    if (total > 0) out.push(`${total}구(상${t}·측${s})`)
+  } else {
+    const h = String(p.holes || '').trim()
+    if (h) out.push(h)
+  }
+  return out.join(' ')
+}
+
+/** 끈고리 params {top,mid,bottom: 넣음|없음} → `상·중` · 전부 없음이면 `없음` */
+export function formatLoop(params: any): string {
+  const p = parseMaybeJson(params)
+  if (!p || typeof p !== 'object') return ''
+  const on = (v: any) => { const s = String(v == null ? '' : v).trim(); return s === '넣음' || s === 'O' || s === 'Y' || s === '1' || s === 'true' || v === true }
+  const parts: string[] = []
+  if (on(p.top)) parts.push('상')
+  if (on(p.mid)) parts.push('중')
+  if (on(p.bottom)) parts.push('하')
+  return parts.length ? parts.join('·') : '없음'
+}
+
+/** 후가공 1건 → `펀칭 4개(상 2, 모서리 좌상·우상)` · `하도매 5호 4구(상2·측3)` · `끈고리 상·중` · `부직포 7cm` */
 export function formatPP(pp: any): string {
   if (!pp) return ''
   if (typeof pp === 'string') return pp
@@ -118,6 +163,15 @@ export function formatPP(pp: any): string {
   if (String(pp.code || '') === 'PUNCHING' || name === '펀칭' || isPunchParams(params)) {
     const t = formatPunching(params)
     return t ? `${name} ${t}` : name
+  }
+  // 하도매·끈고리는 숫자가 cm 이 아니라 **개수·자리**다 — 범용 formatParams 에 태우면 `2cm 3cm` 가 된다.
+  if (String(pp.code || '') === 'PP-GROMMET' || name === '하도매') {
+    const g = formatGrommet(params)
+    return g ? `${name} ${g}` : name
+  }
+  if (String(pp.code || '') === 'PP-LOOP' || name === '끈고리') {
+    const l = formatLoop(params)
+    return l ? `${name} ${l}` : name
   }
   const detail = formatParams(params, name)
   return detail ? `${name} ${detail}` : name

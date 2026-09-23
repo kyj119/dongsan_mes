@@ -210,6 +210,7 @@ D1 은 **쿼리당 바인드 ~100** 이 한도다. `arr.map(() => '?')` + `.bind
 2026-09-04 실사고: 판 길이 상한을 배치 엔진 **밖**에 뒀는데, 그 지점을 지나는 경로가 **둘**이고 `butt.js` 는 그 제약을 지킬 **능력이 없었다**(길이 무한 전제 → 판 1장). 맞붙임이 조용히 래스터로 격하돼 칼선이 두 줄로 나갔고 — `cut:butt`(엔진 단독)·`cut:smoke`(소스 텍스트)·`cut:e2e`(판이 나오나)가 **전부 통과**했다. 셋 다 「기능이 **켜진 채로** 끝났는가」를 안 본다.
 
 - **「했다」와 「됐다」는 다른 질문이다 — 실행 횟수로 결과를 판정하지 않는다** (2026-09-17 실기) — 도련의 클립 확장은 「클립 밖에 감춰진 그림」이 있어야 실효인데, 코드는 **넓힌 클립 개수**를 세어 성공으로 보고하고 픽셀·단색 폴백을 건너뛰었다. 배치 이미지가 클립에 딱 맞게 잘려 오면(**보통의 경우**) 클립만 커지고 도련은 0 이다 — 조각 6개 중 5개가 「클립 확장 5개(무손실)」로 보고됐는데 실물엔 도련이 없었다. **주석이 전제를 조건부로 적어 놓고(「클립 밖 데이터가 **있으면**」) 코드가 그 조건을 한 번도 검사하지 않은 것**이 형태다(`OffsetPath v22` 0.39.0 과 같다). 고치는 법 = 하기 **전에** 전제를 재고, 안 서면 **하지 않는다**(그래야 폴백으로 내려간다). 거절 수는 `clipskip=` 처럼 **센다**.
+- **추정한 것과 실제로 깔린 것은 다르다 — 판정은 최종 산출물에서 한다** (2026-09-23 실기) — 전사 끈고리 색을 굽기 가장자리 **창 평균**으로 정했는데, 실제로 그 자리에 깔리는 것은 픽셀 반복이 가장자리 **한 기둥**을 시접 폭으로 늘린 띠였다. 사진 가장자리 1~3mm 밝은 기둥이 23mm 흰 띠가 되고 창 평균은 안쪽 어두운 그림에 끌려 「어둡다 → 백선」 → 흰 띠 위의 백선이라 안 보였다(고양 소노 판-1 · 좌우를 바꾼 판-2 는 정상이라 사람 눈엔 「가끔 안 보인다」). 입력(굽기)으로 출력(도련)을 추정하지 말고 **출력이 손에 있는 순간 그것을 본다**. 더 나은 답은 **추정이 필요 없는 형태**였다 — 같은 날 판정을 없애고 모든 표시를 검정 심 + 백 테두리 2겹으로 고정했다(전사 0.10.0). 배경에 맞추는 선택은 그 배경을 정확히 알 때만 값어치가 있다.
 - **PC 마다 기본값이 다른 API 옵션은 명시하지 않으면 그 PC 가 정한다** (2026-09-17) — `PDFSaveOptions.viewAfterSaving` 은 **그 PC 일러의 마지막 PDF 프리셋**을 물려받는다. 켜진 PC 에서는 굳히기 PDF 저장마다 Chrome 이 떠 적용이 118.6초가 됐는데, 개발기 기본값이 `false` 라 **재현 자체가 불가능**했다([[feedback-log-encoding-per-pc]] 와 같은 축). 「한 대에서만 이상하다」가 나오면 **코드가 안 정한 값**부터 찾는다.
 - **공유 지점에 제약을 걸면 그 지점을 지나는 경로를 전부 열거한다.** 못 지키는 경로가 있으면 그건 폴백이 아니라 **미완성**이다(「형제 스윕」의 배치 엔진판).
 - **판정을 순수 모듈로 뺀다.** 엔진은 전부 하네스가 있는데(`butt.js`·`nesting.js`·`geometry.js`·`bleed.js` = "검증한 코드 = 배포된 코드") 「어느 엔진을 쓸까」만 2,800줄 UI 파일 안에 있었다 — 그 틈이 정확히 회귀가 지나간 자리다 → `placement.js`.
@@ -282,14 +283,32 @@ D1 은 **쿼리당 바인드 ~100** 이 한도다. `arr.map(() => '?')` + `.bind
 - 정본 = `shell.js mesJwtPayload()`. 당시 손으로 까는 자리가 **7곳**이었고 정확도가 제각각이었다(생짜 3 · 패딩만 치환 3). 게이트 = **`npm run audit:jwt-decode`**(CI `deploy.yml` · `ship:gate` 배선 · 자가시험으로 발화 확인).
 - ⚠️**증언과 데이터가 어긋나 보이면 증언이 가리키는 단계부터 맞춘다** — 「아무 말 없이 돌아갔다」면 로그인 API 는 **성공**한 것이라 `last_login_at` 기록과 **일치**한다. 나는 그걸 「재현 안 됨」으로 적었고, 그 직전에 **내 손에서 같은 `InvalidCharacterError` 가 났는데** 연결하지 못했다.
 
+### 화면이 읽는 칸 이름 ≠ API 가 주는 칸 이름 (`npm run audit:render-junk`)
+**응답은 200 이고 값만 없다.** 2026-09-22 실기: `/production-reports` 의 두 표가 API 가 주지 않는 칸을 읽어
+열이 통째로 **「undefined」**였다 — 「미완료 주문」은 `o.due_date`(실제 `delivery_date`)·`o.item_count`(**없음**),
+「장비별」은 `e.ok`·`e.error`(실제 `ok_count`·`error_count`)·`e.sqm`(**없음**).
+- ★**진짜 피해는 undefined 가 보이는 칸이 아니라 그 옆이다** — `undefined < today` 와 `undefined > 0` 이
+  **항상 false** 라 「(지연)」과 에러 수가 **영영 안 떴다.** 지연을 보라고 만든 표에서 지연 표시만 없었고,
+  `(e.sqm || 0)` 처럼 가드가 있으면 **0 으로 조용히** 떠서 undefined 조차 안 보인다(§조용한 격하와 같은 형태).
+- **tsc·build·smoke·check:dom·check:fn 이 전부 통과한다.** 처음 드러난 경로는 `audit:table-clip` 이었는데
+  그것도 「undefined」라는 **글자가 열보다 넓어서**였다 — 우연이다.
+- ★**정적 대조는 답이 아니었다** — 라우트의 SELECT 별칭과 스크립트의 `o.필드` 를 맞춰 보는 시제품은
+  **후보 566건**을 냈다(스크립트 하나가 여러 라우트를 부르고, 라우트가 조인으로 남의 칸을 실어 나른다).
+  오탐이 그만큼이면 아무도 안 본다(§게이트=고칠 것). **증상을 직접 보는 쪽은 57화면에 1건**이었고
+  그 1건이 진짜 결함이었다. 원인을 좁히지 말고 **사람 눈에 닿는 자리**를 본다.
+- 게이트 = **`npm run audit:render-junk`**(`/deploy-verify` Phase 4 배선 · 기준선 **0건이 정상** ·
+  자가시험 `audit:render-junk:selftest` 양방향 11항목). 잡는 것 = `undefined`·`NaN`·`[object Object]`·
+  `Invalid Date`·`null`, 텍스트와 `title`/`alt` 둘 다. 숨은 요소·`pre`/`code`·낱말 일부는 안 잡는다.
+- ⚠️**「해소」를 그대로 믿지 않는다** — 그 화면에 데이터가 없어서 안 잡힌 것일 수 있다
+  (2026-09-22: `shipments` 1행·장비배정 0건이 table-clip 에서 「해소 4건」으로 보고됐다). 행이 있는지 보고 줄인다.
 ### 배포를 실제로 막는 게이트 (2026-09-10 실측)
 **「게이트가 있다」와 「게이트가 돈다」는 다른 질문이다.** `cut:butt` 는 2026-08-06부터 있었는데 한 달간 아무도 안 돌렸고, `cut:shellsync` 도 같은 상태였다(2026-09-10 등록) — **목록이 없어서 아무도 그걸 몰랐다.**
 - **CI**(push→main, `.github/workflows/deploy.yml`): tsc · **`check:fn`**(selftest+strict) · **`audit:jwt-decode`** · **`audit:bind-limit`** · build · `test:calc` · `entity-audit.mjs` · `audit:migration-number`(#639 같은 번호·같은 테이블 DDL 충돌만 차단) · `canary:write:ci` · `smoke.cjs`(prod)
 - **커밋 훅**(`pretooluse-bash.cjs`): tsc(전건 차단) · `skill-audit`·`hook-guard-selftest`·`doc-diet-audit`·**`audit:empty-catch`**·**`check:fn`**(해당 파일이 dirty 인 커밋만 — `check:fn` 은 src/**)
 - **편집 훅**(`posttooluse-edit.cjs`): `node --check`(src/scripts/*.js) · `check:dom` 기준선 회귀 · **`check:fn`**(src/**.ts·js — 미정의 전역 함수 호출, 기준선 없음) · **`audit:empty-catch`**(IllustratorAutomat/**.jsx·js — 사유 `ignore:` 없는 빈 catch) — 넷 다 `exit 2` 차단
-- **`ia:deploy`**(`ia-deploy.cjs` `GATES`): **audit:empty-catch** · **audit:jsx-ternary** · **audit:jsx-syntax** · cut:bleed · cut:nest · cut:butt · cut:placement · cut:smoke · **cut:shellsync** · panel:smoke · cut:e2e + ia-jsx 드리프트 (⚠️`test:outcopy` 는 2026-09-15 **하루 만에 은퇴** — 지키던 코드가 에이전트로 넘어갔다. **없어진 코드를 지키는 게이트는 초록불이 아무 뜻도 없다** → 성질은 `panel:smoke` §13 으로 옮겨 실었다)
+- **`ia:deploy`**(`ia-deploy.cjs` `GATES`): **audit:empty-catch** · **audit:jsx-ternary** · **audit:jsx-syntax** · cut:bleed · cut:nest · cut:butt · cut:placement · cut:plate · cut:plate:baseline · cut:frame · cut:review · **cut:trorder**(주문→전사 입력 매핑) · cut:smoke · **cut:shellsync** · panel:smoke · cut:e2e + ia-jsx 드리프트 (⚠️`test:outcopy` 는 2026-09-15 **하루 만에 은퇴** — 지키던 코드가 에이전트로 넘어갔다. **없어진 코드를 지키는 게이트는 초록불이 아무 뜻도 없다** → 성질은 `panel:smoke` §13 으로 옮겨 실었다)
 - **`ship:gate`**: verify(tsc+build) · **check:fn** · **audit:jwt-decode** · **audit:bind-limit** · entity-audit · **test:calc** · canary:write · **journey:gate**(J0~J7 40단계, 로컬 서버 자동 기동·≈4.5분, `SKIP_JOURNEY=1` 로만 명시 건너뜀) · **`test:local-e2e`**(서버가 필요한 4종을 journey 뒤에 묶어 세운다 — symmetry·ship-stock·autodeduct·print-match. 같은 `SKIP_JOURNEY=1` 로 함께 건너뛴다)
-- **`/deploy-verify`**: Phase 1 tsc·build·**test:calc**·**journey:gate** → Phase 2 entity-audit → Phase 2-B `audit:migration-drift`(스키마 변경 시) → Phase 4 `smoke:prod` · **`audit:table-clip`**(UI·목록 변경 시 — prod 56화면 열 잘림, 기준선=`scripts/table-clip-baseline.json`)
+- **`/deploy-verify`**: Phase 1 tsc·build·**test:calc**·**journey:gate** → Phase 2 entity-audit → Phase 2-B `audit:migration-drift`(스키마 변경 시) → Phase 4 `smoke:prod` · **`audit:table-clip`**(UI·목록 변경 시 — prod 56화면 열 잘림, 기준선=`scripts/table-clip-baseline.json`) · **`audit:render-junk`**(UI·API 응답 변경 시 — prod 57화면에 `undefined`·`NaN`·`[object Object]`·`Invalid Date`·`null` 이 떠 있는가. **기준선 0건이 정상**, 자가시험 `audit:render-junk:selftest`)
 - **`LogWatcher/kit/make-kit.ps1`**(현장 키트 조립 = 장비 로그 수집기의 배포 경로): `--selftest-pexp`·`--selftest-flexi`·**`--selftest-transfer`** 3종, 하나라도 실패하면 조립 중단. **웹과 완전히 분리된 축이고 반영은 PC 방문(축 A)** — `git push`·`npm run deploy` 로는 절대 안 나간다(IA 5축과 같은 성격). 2026-09-22 배선 전까지 셋 다 문서에만 있어 **조립 때 아무도 안 돌렸다**
 > ⚠️`verify.yml` 은 `on: pull_request` 다 — 이 프로젝트(main 직접 push)에서는 **생성 이래 0회 실행**.
 > ⚠️여기 **없는** 감사는 사람이 부를 때만 돈다: `sort-audit` · `audit:query-cost` · `audit:subquery` · `audit:unit-price-semantics` · `audit:migration-drift` · `audit:stock-ledger` · `cut:quality`. (`test:symmetry`·`test:ship-stock`·`test:autodeduct`·`test:print-match` 는 2026-09-14 `test:local-e2e` 로 묶여 `ship:gate` 에 편입 — 그전까지 넷 다 미배선이었고, `test:print-match` 는 **빨간 채로** 있었다.) (`test:journey` 는 2026-09-11 `ship:gate`·`/deploy-verify` 에 편입 — 정본=`/journey-loop`, 한 사이클=`npm run journey:cycle`.)
