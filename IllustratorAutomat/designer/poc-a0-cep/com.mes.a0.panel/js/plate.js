@@ -39,7 +39,7 @@
    * @param o.sewCm  봉미싱 cm (작업지시서 「상단 N cm 봉미싱」)
    * @param o.band   마감 키 — plate-rules.FINISH ('top' | 'topbottom' | 'nonwoven7' | 'nonwoven10')
    * @param o.media  원단 — '60폭'
-   * @param o.loops  끈고리 표시를 그리는가(기본 true). 접는선은 밴드가 있으면 항상 그린다
+   * @param o.loops  끈고리 — true/false(전부) 또는 {top, mid, bottom} 자리별(기본 전부 켜짐). 접는선은 밴드가 있으면 항상
    * @param o.holesTop / o.holesSide  하도매 상단·측면 개수(기본 0·0 = 없음)
    */
   function computePlate(o) {
@@ -146,7 +146,11 @@
     //   ⚠️시접이 0(칼재단·열재단)이면 선을 놓을 띠가 없다 — 그리지 않고 trace 에 남긴다(추측해서 원본 안에 넣지 않는다).
     var MK = R.marks;
     var folds = [], loops = [], holes = [];
-    var wantLoops = (o.loops === undefined || o.loops === null) ? true : !!o.loops;
+    // 끈고리 선택 — 자리마다 따로(용준님 2026-09-23). true/false 는 전부 켜기/끄기(구 호출자 호환).
+    var sel = o.loops, wantTop, wantMid, wantBottom;
+    if (sel === undefined || sel === null || sel === true) { wantTop = true; wantMid = true; wantBottom = true; }
+    else if (sel === false) { wantTop = false; wantMid = false; wantBottom = false; }
+    else { wantTop = !!sel.top; wantMid = !!sel.mid; wantBottom = !!sel.bottom; }
     var nTop = Math.max(0, Math.round(o.holesTop || 0)), nSide = Math.max(0, Math.round(o.holesSide || 0));
     var lineLen = round2(seamActual);
     var noSeam = !(lineLen > 0);
@@ -163,12 +167,12 @@
       if (MK && MK.line && !noSeam) {
         if (hasTopBand) { folds.push(lineAt(d.y, 'left', 'fold')); folds.push(lineAt(d.y, 'right', 'fold')); }
         if (hasBottomBand) { folds.push(lineAt(d.y + d.h, 'left', 'fold')); folds.push(lineAt(d.y + d.h, 'right', 'fold')); }
-        if (wantLoops) {
+        if (wantTop) {
           if (hasTopBand) loops.push(lineAt(d.y + bandH, inner, 'loop'));
           else if (nonwovenCm !== null) loops.push(lineAt(d.y + nwLoopMm, inner, 'loop'));
-          loops.push(lineAt(d.y + d.h / 2, inner, 'loop'));
-          if (hasBottomBand) loops.push(lineAt(d.y + d.h - bandH, inner, 'loop'));
         }
+        if (wantMid) loops.push(lineAt(d.y + d.h / 2, inner, 'loop'));
+        if (wantBottom && hasBottomBand) loops.push(lineAt(d.y + d.h - bandH, inner, 'loop'));
       }
       if (MK && MK.hole && (nTop > 0 || nSide > 0)) {
         var ins = MK.hole.insetMm, rad = MK.hole.diaMm / 2;
@@ -211,7 +215,9 @@
         fabric: o.fabric || null, nonwovenCm: nonwovenCm, finish: o.band,
         hardware: o.hardware || null, sidesNote: sidesNote,
         marks: { folds: folds.length, loops: loops.length, holes: holes.length, holesTop: nTop, holesSide: nSide,
-          lineLen: lineLen, noSeam: noSeam, innerSide: (vup >= 2 ? 'facing' : 'right-assumed') }
+          lineLen: lineLen, noSeam: noSeam,
+          loopSel: ((wantTop ? 'top,' : '') + (wantMid ? 'mid,' : '') + (wantBottom ? 'bottom,' : '')).replace(/,$/, ''),
+          innerSide: (vup >= 2 ? 'facing' : 'right-assumed') }
       }
     };
   }

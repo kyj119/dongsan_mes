@@ -84,6 +84,7 @@
    * @param o.edge    {solid, light}
    * @param o.framePlan  frame.plan() 결과 (mode==='frame')
    * @param o.nonwoven   부직포가 붙는가
+   * @param o.ratio      [{panel, orig(w/h), spec(w/h), axis, pct}] 원본 비율 ≠ 규격 비율인 벌 — 패널 calcPlate 가 잰다
    */
   function build(o) {
     o = o || {};
@@ -145,6 +146,18 @@
     // 시접이 0 이면 선을 놓을 띠가 없어 그리지 않았다 — 조용히 넘기지 않는다
     if (mk && mk.noSeam) {
       items.push({ code: 'marks-no-seam', level: 'check', msg: '시접이 0 이라 접는선·끈고리를 그리지 않았다(칼재단·열재단) — 필요하면 직접 넣는다' });
+    }
+    // ★원본 비율 ≠ 규격 비율 — 호스트가 가로·세로를 따로 맞춰 그대로 늘리므로 조용히 찌그러진다(용준님 2026-09-23 「경고만」).
+    if (o.ratio && o.ratio.length) {
+      var fmtR = function (wh) { return '1:' + (Math.round((1 / wh) * 100) / 100); };
+      for (i = 0; i < o.ratio.length; i++) {
+        var rn = o.ratio[i];
+        items.push({
+          code: 'ratio-' + (rn.panel + 1), level: 'must',
+          msg: '벌' + (rn.panel + 1) + ' 원본 비율 ' + fmtR(rn.orig) + ' ≠ 규격 ' + fmtR(rn.spec) + ' — 그대로 앉히면 ' + rn.axis
+            + '가 약 ' + Math.round(rn.pct * 100) + '% 더 늘어난다(찌그러짐). 규격 또는 원본을 확인한다'
+        });
+      }
     }
     // 하도매 구 수만 있고 배치가 없으면(구 패널 입력) — 종전대로 사람이 넣는다
     if (o.trace && o.trace.hardware && o.trace.hardware.holes > 0 && !(o.trace.marks && o.trace.marks.holes > 0)) {

@@ -89,6 +89,11 @@ const panel = plate.panels[0]
   // 부직포(밴드 0)엔 봉미싱이 없다 — 봉미싱 확인 항목이 뜨면 사람이 없는 것을 찾는다(2026-09-23)
   const nwc = codes(R.build({ mode: 'plate', bleed: b, edge: {}, nonwoven: true, trace: { bandCount: 0, nonwovenCm: 7 } }))
   ok('⑬-b ★부직포(밴드 0)면 봉미싱 확인 항목이 안 뜬다', nwc.indexOf('sew-confirm') < 0 && nwc.indexOf('nonwoven-cm') >= 0, nwc.join(','))
+  // 비율 불일치 — 호스트가 조용히 늘리므로 must (용준님 2026-09-23 「경고만」)
+  const rl = R.build({ mode: 'plate', bleed: b, edge: {}, ratio: [{ panel: 0, orig: 0.4, spec: 1 / 3, axis: '세로', pct: 0.2 }] })
+  const ri = rl.filter((x) => x.code === 'ratio-1')[0]
+  ok('⑬-c ★원본 비율 ≠ 규격이면 must 로 뜬다', !!ri && ri.level === 'must' && /20%/.test(ri.msg), ri && ri.msg)
+  ok('⑬-d 자가시험 — 비율이 맞으면 안 뜬다', codes(R.build({ mode: 'plate', bleed: b, edge: {}, ratio: [] })).indexOf('ratio-1') < 0)
 
   ok('⑭ must 가 check 보다 위에 온다', list[0].level === 'must', JSON.stringify(list.map((x) => x.level)))
   ok('⑮ 같은 code 가 두 번 나오지 않는다', new Set(c).size === c.length, c.join(','))

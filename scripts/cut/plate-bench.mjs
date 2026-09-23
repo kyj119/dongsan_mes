@@ -334,6 +334,16 @@ const base = (over = {}) => Object.assign(
     ok('㊸ 아래 끈고리 = 아래 접는선에서 봉미싱 길이만큼 위, 안쪽만', tb.loops.filter((l) => l.panel === 0 && near(l.y, dT.y + dT.h - bT)).map((l) => l.side).join('') === 'right')
     ok('㊸ 중간 끈고리는 상하단에도 하나', tb.loops.filter((l) => l.panel === 0 && near(l.y, dT.y + dT.h / 2)).length === 1)
 
+    // 자리별 선택(용준님 2026-09-23 「상·중 / 상·중·하 따로」) — true/false 는 전부(구 호출자 호환)
+    const selA = globalThis.MesPlate.computePlate(base({ sewCm: 5, vup: 2, loops: { top: true, mid: false, bottom: true } }))
+    ok('㊸ 상단 봉미싱에서 {상만} 고르면 벌당 1개 — 「하」는 아래 밴드가 없어 무시', selA.loops.length === 2 && selA.loops.every((l) => near(l.y, selA.design[l.panel].y + band)), JSON.stringify(selA.loops))
+    const selB = globalThis.MesPlate.computePlate(base({ band: 'topbottom', sewCm: 5, vup: 2, loops: { top: false, mid: false, bottom: true } }))
+    ok('㊸ 상하단에서 {하만} 고르면 아래 끈고리만', selB.loops.length === 2 && selB.loops.every((l) => near(l.y, selB.design[l.panel].y + selB.design[l.panel].h - bT)), JSON.stringify(selB.loops))
+    const selC = globalThis.MesPlate.computePlate(base({ band: 'nonwoven7', vup: 2, loops: { top: false, mid: true, bottom: false } }))
+    ok('㊸ 부직포에서 {중만} 고르면 중간 하나', selC.loops.length === 2 && selC.loops.every((l) => near(l.y, selC.design[l.panel].y + selC.design[l.panel].h / 2)))
+    ok('㊸ 접는선은 선택과 무관하게 남는다', selA.folds.length === 4 && selB.folds.length === 8 && selC.folds.length === 0)
+    ok('㊸ trace 에 고른 자리가 남는다', selA.trace.marks.loopSel === 'top,bottom' && r.trace.marks.loopSel === 'top,mid,bottom', selA.trace.marks.loopSel)
+
     // 부직포 — 밴드·접는선 없음 · 끈고리 = 위 끝선 + 폭 + 1cm, 중간 (용준님 2026-09-23 「7cm 라면 8cm 위치」)
     const nw = globalThis.MesPlate.computePlate(base({ band: 'nonwoven7', vup: 2 }))
     ok('㊻ 부직포 7cm = 밴드 0 · 접는선 0 · 끈고리 2', nw.ok && nw.bands.length === 0 && nw.folds.length === 0 && nw.loops.length === 4,
