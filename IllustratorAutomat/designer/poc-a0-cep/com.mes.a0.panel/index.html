@@ -604,6 +604,15 @@
              그래서 벌마다 원본을 따로 지정한다. 좌·우 순서는 디자이너가 정한다. -->
         <!-- ★주 경로는 **자동 분석**이다 — 파일을 보고 좌·우를 스스로 가르고, 사람은 순서만 바꾼다
              (용준님 2026-09-21 「재단 기능처럼」). 수동 지정은 자동이 못 가를 때의 길이다. -->
+        <!-- ★주문에서 채우기(2026-09-23): MES open_lines(에이전트가 중계한 config.json)의 가로등 라인을 골라 규격·벌·원단·봉재·마감·
+             봉미싱 cm·하도매·끈고리를 넣는다. 매핑은 js/tr-order.js(순수·게이트 cut:trorder). 모르는 값은 채우지 않고 말한다. -->
+        <div class="row">
+          <label for="trOrder">주문</label>
+          <select id="trOrder" style="flex:1"></select>
+          <button id="trOrderLoad" type="button" class="mini" title="고른 주문 라인의 규격·마감·후가공을 아래 칸에 넣습니다">불러오기</button>
+          <button id="trOrderRefresh" type="button" class="mini" title="config.json 을 다시 읽습니다(에이전트가 MES 에서 중계)">↻</button>
+        </div>
+        <div class="row"><span id="trOrderState" class="hint"></span></div>
         <div class="row">
           <label>원본</label>
           <button id="trAuto" type="button" title="문서를 보고 좌·우를 스스로 가릅니다">자동 분석</button>
@@ -726,6 +735,7 @@
   <script src="js/tabs.js"></script>
   <script src="js/main.js"></script>
   <script src="js/cut-main.js"></script>
+  <script src="js/tr-order.js"></script>
   <script src="js/tr-main.js"></script>
 </body>
 </html>

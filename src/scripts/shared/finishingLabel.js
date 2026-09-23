@@ -27,6 +27,41 @@
     }
 
     // 마감 4변 → `4방열재단` · `좌우 줄미싱+상하 봉미싱`
+    function sewKey(method, cm) {
+        if (method !== '봉미싱') return method;
+        var n = Number(cm);
+        return n > 0 ? (method + ' ' + n + 'cm') : method;
+    }
+    // 하도매 params → `5호 4구(상2·측3)` · 옛 {holes} → `5호 2구` (정본 finishingLabel.ts formatGrommet 과 동일)
+    function formatGrommet(params) {
+        var p = parseMaybeJson(params);
+        if (!p || typeof p !== 'object') return '';
+        var size = String(p.size || '').replace(/^\s+|\s+$/g, '');
+        var hasPos = p.top != null || p.side != null;
+        var out = [];
+        if (size) out.push(size);
+        if (hasPos) {
+            var t = Math.max(0, Math.floor(Number(p.top) || 0)), s = Math.max(0, Math.floor(Number(p.side) || 0));
+            var total = t + s - ((t >= 2 && s >= 2) ? 1 : 0);
+            if (total > 0) out.push(total + '구(상' + t + '·측' + s + ')');
+        } else {
+            var h = String(p.holes || '').replace(/^\s+|\s+$/g, '');
+            if (h) out.push(h);
+        }
+        return out.join(' ');
+    }
+    // 끈고리 params {top,mid,bottom: 넣음|없음} → `상·중` · 전부 없음이면 `없음`
+    function formatLoop(params) {
+        var p = parseMaybeJson(params);
+        if (!p || typeof p !== 'object') return '';
+        var on = function(v) { var s = String(v == null ? '' : v).replace(/^\s+|\s+$/g, ''); return s === '넣음' || s === 'O' || s === 'Y' || s === '1' || s === 'true' || v === true; };
+        var parts = [];
+        if (on(p.top)) parts.push('상');
+        if (on(p.mid)) parts.push('중');
+        if (on(p.bottom)) parts.push('하');
+        return parts.length ? parts.join('·') : '없음';
+    }
+
     function formatFinishing(fin) {
         var f = parseMaybeJson(fin);
         if (!f || typeof f !== 'object') return '';
@@ -34,8 +69,9 @@
         DIR_ORDER.forEach(function(d) {
             var m = f[d];
             if (m && typeof m === 'string') {
-                if (!groups[m]) { groups[m] = []; order.push(m); }
-                groups[m].push(d);
+                var key = sewKey(m, f[d + '_cm']);   // 봉미싱만 cm 을 싣는다(봉 길이) — 정본 finishingLabel.ts 와 동일
+                if (!groups[key]) { groups[key] = []; order.push(key); }
+                groups[key].push(d);
             }
         });
         if (order.length === 0) return '';
@@ -123,6 +159,9 @@
             var t = formatPunching(params);
             return t ? name + ' ' + t : name;
         }
+        // 하도매·끈고리는 숫자가 cm 이 아니라 개수·자리다 — 범용 formatParams 에 태우면 `2cm 3cm` 가 된다.
+        if (String(pp.code || '') === 'PP-GROMMET' || name === '하도매') { var g = formatGrommet(params); return g ? (name + ' ' + g) : name; }
+        if (String(pp.code || '') === 'PP-LOOP' || name === '끈고리') { var lo = formatLoop(params); return lo ? (name + ' ' + lo) : name; }
         var detail = formatParams(params, name);
         return detail ? name + ' ' + detail : name;
     }

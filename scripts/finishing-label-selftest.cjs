@@ -38,6 +38,26 @@ eq('3변 = 방향 나열(상하좌우 순)',
 // 이 키가 라벨을 바꾸면 카드에 「좌우 줄미싱」이 안 찍혀 현장이 재봉을 빠뜨린다(0573 Phase 0).
 eq('서비스 플래그는 표기를 바꾸지 않는다',
   formatFinishing({ top: '열재단', bottom: '열재단', left: '열재단', right: '열재단', charged: false }), '4방열재단')
+// ── 봉미싱 cm 는 봉 길이라 표기에 싣는다(2026-09-23) — 다른 방식의 cm 은 종전대로 뺀다
+eq('봉미싱 cm 가 붙는다(가로등 표준 = 좌·우·하 쌍침 + 상단 봉미싱 5cm)',
+  formatFinishing({ top: '봉미싱', top_cm: 5, left: '쌍침', right: '쌍침', bottom: '쌍침' }), '하좌우 쌍침+상 봉미싱 5cm')
+eq('상·하 봉미싱 같은 cm 은 한 묶음',
+  formatFinishing({ top: '봉미싱', top_cm: 6, bottom: '봉미싱', bottom_cm: 6, left: '쌍침', right: '쌍침' }), '좌우 쌍침+상하 봉미싱 6cm')
+eq('상·하 cm 이 다르면 따로 적는다',
+  formatFinishing({ top: '봉미싱', top_cm: 5, bottom: '봉미싱', bottom_cm: 6, left: '쌍침', right: '쌍침' }), '좌우 쌍침+상 봉미싱 5cm+하 봉미싱 6cm')
+eq('열재단 cm 은 종전대로 표기에 안 실린다(여백은 규격에 반영됨)',
+  formatFinishing({ top: '열재단', top_cm: 1, bottom: '열재단', bottom_cm: 1, left: '열재단', left_cm: 1, right: '열재단', right_cm: 1 }), '4방열재단')
+// ── 하도매·끈고리 — 숫자가 cm 가 아니라 개수·자리다
+eq('하도매 상단 2·측면 3 = 4구(겹치는 모서리 1)',
+  formatPP({ code: 'PP-GROMMET', name: '하도매', params: { size: '5호', top: 2, side: 3 } }), '하도매 5호 4구(상2·측3)')
+eq('하도매 상단 2 만 = 2구',
+  formatPP({ code: 'PP-GROMMET', name: '하도매', params: { size: '5호', top: 2, side: 0 } }), '하도매 5호 2구(상2·측0)')
+eq('옛 하도매 {holes} 는 그대로',
+  formatPP({ code: 'PP-GROMMET', name: '하도매', params: { size: '5호', holes: '2구' } }), '하도매 5호 2구')
+eq('끈고리 상·중',
+  formatPP({ code: 'PP-LOOP', name: '끈고리', params: { top: '넣음', mid: '넣음', bottom: '없음' } }), '끈고리 상·중')
+eq('끈고리 전부 없음',
+  formatPP({ code: 'PP-LOOP', name: '끈고리', params: { top: '없음', mid: '없음', bottom: '없음' } }), '끈고리 없음')
 eq('서비스 플래그 + 혼재',
   formatFinishing({ top: '봉미싱', bottom: '봉미싱', left: '줄미싱', right: '줄미싱', charged: false }), '좌우 줄미싱+상하 봉미싱')
 
