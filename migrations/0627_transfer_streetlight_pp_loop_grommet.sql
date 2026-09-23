@@ -28,9 +28,13 @@ INSERT OR IGNORE INTO post_processing_options (
   'PP-LOOP', '끈고리',
   0, 0, 0, 0,
   0, '끈고리 위치 표시(패널이 시접 띠에 그린다). 상 = 접는선에서 봉미싱 길이만큼 아래(부직포는 폭+1cm), 중 = 원본 중간, 하 = 상하단 봉미싱일 때만', 1,
-  'fixed', 0, 'finish', 1,
+  'fixed', 0, 'transfer', 1,
   '{"fields":[{"key":"top","label":"상","type":"select","options":["넣음","없음"],"default":"넣음"},{"key":"mid","label":"중","type":"select","options":["넣음","없음"],"default":"넣음"},{"key":"bottom","label":"하(상하단 봉미싱만)","type":"select","options":["넣음","없음"],"default":"넣음"}]}'
 );
+
+-- ★주문서는 pp_category='transfer' 옵션만 파라미터(스키마)를 그린다(orderForm/finishing.js loadItemPP · 0256 이 하도매·부직포·수술을 transfer 로 옮긴 이유).
+--   끈고리도 같은 범주여야 상/중/하 칸이 뜬다 — 위 INSERT 값과 별개로 멱등하게 못박는다.
+UPDATE post_processing_options SET pp_category = 'transfer' WHERE option_code = 'PP-LOOP';
 
 -- 가로등배너 소분류 연결 (하도매 · 끈고리)
 INSERT OR IGNORE INTO pp_option_subcategories (pp_option_id, subcat_id)
