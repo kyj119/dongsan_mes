@@ -157,5 +157,24 @@ console.log('\n── 6 판정 — 사유를 말한다 ──')
   ok('전부 통과 → on', RF.decide({ enabled: true, hostOk: true, probe: P(2, []), check: [{ ok: true }, { ok: true }] }).on)
 }
 
+console.log('\n── 7 배선 — 못 쓰면 종전 경로로 · 조용히 격하하지 않는다 ──')
+{
+  const CM = fs.readFileSync(path.join(JS, 'cut-main.js'), 'utf8')
+  const HTML = fs.readFileSync(path.join(JS, '..', 'index.html'), 'utf8')
+  const HOST = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
+  ok('패널이 rect-fast.js 를 로드한다', /<script src="js\/rect-fast\.js"><\/script>/.test(HTML))
+  ok('설정 칸 nestRectFast 가 있고 기본 꺼짐', /<input id="nestRectFast" type="checkbox" \/>/.test(HTML))
+  ok('판정 실패 → prepareSlow(종전 굽기) + 사유', /prepareSlow\(fv, selAreaMm2, sizeList, '\\n※ 사각 빠른 경로를 쓰지 않았습니다 — ' \+ why/.test(CM))
+  ok('띠 도련 실패 → 전체 도련(buildBleedPngs)으로, 단색 아님', /var fallback = function \(why\) \{\s*buildBleedPngs\(prep, growMm/.test(CM))
+  ok('칼선은 prep.rect 일 때만 계산(아니면 종전 추적)', /prep\.rect\) \{[\s\S]{0,400}MesCutRectFast\.cutLine[\s\S]{0,300}\} else if \(wantPieceCut && !useVec && !res\.butt\) holeOut \+= \(pieceCutLines/.test(CM))
+  ok('LS 줄을 싣는다', /lines\.push\('LS ' \+ bid/.test(CM))
+  const hv = /MESCUT_VERSION = 'CUT-CEP-(\d+)\.(\d+)\.(\d+)'/.exec(HOST)
+  const need = /RECT_MIN_HOST = \[(\d+), (\d+), (\d+)\]/.exec(CM)
+  const ge = hv && need && (+hv[1] * 1e6 + +hv[2] * 1e3 + +hv[3]) >= (+need[1] * 1e6 + +need[2] * 1e3 + +need[3])
+  ok('호스트 버전 ≥ RECT_MIN_HOST', !!ge, `${hv && hv.slice(1).join('.')} vs ${need && need.slice(1).join('.')}`)
+  ok('호스트: rectProbe · 띠 굽기 · LS 배치', /function mesCut_rectProbe\(/.test(HOST) && /function mesCut_bakeStrips\(/.test(HOST) && /function mesCut_bleedPlaceStrips\(/.test(HOST) && /p\[0\] === 'LS'/.test(HOST))
+  ok('호스트: 띠 모드에 옛 조각별 경로 없음(통째 실패)', /MESCUT_STRIP_PT > 0 && !fastBake\) throw/.test(HOST))
+}
+
 console.log(fails ? `\n✗ ${fails}건 실패` : '\n✓ 전부 통과')
 process.exit(fails ? 1 : 0)

@@ -119,7 +119,7 @@ function uncommittedIa() {
 //   그것이 지키던 코드(`mesA0_outCopy`/`mesA0_copyVerify`)가 통째로 에이전트(.NET)로 넘어갔다.
 //   **없어진 코드를 지키는 게이트는 게이트가 아니라 잡음이다** — 초록불이 아무것도 뜻하지 않게 된다.
 //   픽업이 비는 것은 이제 에이전트 축에서 드러난다(패널 [⚙ 환경 점검]의 등록 잔해·MES 미반영 수).
-const GATES = ['audit:empty-catch', 'audit:jsx-ternary', 'audit:jsx-syntax', 'cut:bleed', 'cut:nest', 'cut:number', 'cut:butt', 'cut:placement', 'cut:plate', 'cut:plate:baseline', 'cut:frame', 'cut:review', 'cut:trorder', 'cut:smoke', 'cut:shellsync', 'panel:smoke', 'cut:e2e']
+const GATES = ['audit:empty-catch', 'audit:jsx-ternary', 'audit:jsx-syntax', 'cut:bleed', 'cut:nest', 'cut:number', 'cut:rectfast', 'cut:butt', 'cut:placement', 'cut:plate', 'cut:plate:baseline', 'cut:frame', 'cut:review', 'cut:trorder', 'cut:smoke', 'cut:shellsync', 'panel:smoke', 'cut:e2e']
 function runGates() {
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'))
   const list = GATES.filter((g) => pkg.scripts && pkg.scripts[g])
