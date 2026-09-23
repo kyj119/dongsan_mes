@@ -257,6 +257,51 @@ console.log('\n── 10 모서리 — 둥글게(기본) vs 각지게(사각) (2
   ok('⑨ 안이 뚫린 사각은 사각이 아니다(덮임 98% 미만)', isRectLike(holed) === false)
 }
 
+console.log('\n── 11 모서리 「집게」 회귀 — 테두리 사각의 각진 도련은 변의 색을 잇는다 (2026-09-23 실기) ──')
+// 실기: 회색 테두리 + 흰 채움 사각(국제협력처 시트)에서 각진 도련의 **정확히 대각선 위 셀만** 검게 찼다.
+//   변 셀은 수직으로 걸어 안쪽 흰색에 안정되는데, 45° 대각선 걸음은 round(0.707·t) 가 t=2 에서 t=1 과 같은
+//   픽셀을 가리켜 자기와 비교 → 「안정」 오판 → 모서리 안쪽 대각선 픽셀(테두리 색)을 그대로 썼다.
+//   규칙 = 모서리 블록은 옆 변의 도련 색을 잇는다(띠가 모서리를 돌아간다).
+{
+  const W = 30, H = 20, g = 5
+  // 1px 어두운 테두리 + 모서리 안쪽 대각선 픽셀도 어둡게(굵은 선이 모서리에서 두꺼워지는 실물 형태) + 흰 채움
+  const dark = (x, y) => x === 0 || y === 0 || x === W - 1 || y === H - 1
+    || (x === 1 && y === 1) || (x === W - 2 && y === 1) || (x === 1 && y === H - 2) || (x === W - 2 && y === H - 2)
+  const src = make(W, H, (x, y) => dark(x, y) ? [30, 30, 30] : [255, 255, 255])
+  // 재단 탭이 사각 조각에 쓰는 호출 그대로 — 가장자리 픽셀을 그대로 연장(걸음 없음)
+  const sq = repeatLastPixel(src, g, { corner: 'square', srcInsetPx: 0 })
+  const pad = sq.pad
+  ok('① pad 가 대칭이다', pad === g, String(pad))
+  let light = 0, filledOut = 0, lightAt = ''
+  for (let y = 0; y < sq.H; y++) for (let x = 0; x < sq.W; x++) {
+    const inside = x >= pad && x < pad + W && y >= pad && y < pad + H
+    if (inside) continue
+    const c = px(sq, x, y)
+    if (c[3] !== 255) continue
+    filledOut++
+    if (c[0] !== 30) { light++; if (!lightAt) lightAt = `(${x},${y})=${c.slice(0, 3)}` }
+  }
+  ok('② 도련(조각 밖) 셀은 전부 찼다 — 모서리 블록 포함', filledOut === (W + 2 * g) * (H + 2 * g) - W * H, String(filledOut))
+  ok('③ ★띠가 한 색이다 — 테두리 색 그대로 연장(흰 줄·검은 계단 없음)', light === 0, `${light}개 · 첫 자리 ${lightAt}`)
+  // 같은 픽스처를 **걸음 있는** 기본 호출로 돌리면 띠가 섞인다(흰 띠 + 테두리 열 줄무늬) — 재단 탭이 왜 걸음을 끄는지의 근거
+  const walked = repeatLastPixel(src, g, { corner: 'square' })
+  let mixedDark = 0, mixedLight = 0
+  for (let y = 0; y < walked.H; y++) for (let x = 0; x < walked.W; x++) {
+    if (x >= pad && x < pad + W && y >= pad && y < pad + H) continue
+    const c = px(walked, x, y); if (c[3] !== 255) continue
+    if (c[0] < 128) mixedDark++; else mixedLight++
+  }
+  ok('④ (근거) 걸음이 있으면 띠가 두 색으로 섞인다', mixedDark > 0 && mixedLight > 0, `dark ${mixedDark} · light ${mixedLight}`)
+  // 대각선 걸음의 같은 픽셀 두 번 밟기 — 1px 테두리(두꺼워짐 없음)에서 모서리 대각선 셀과 그 옆 셀의 답이 같아야 한다
+  const thin = make(W, H, (x, y) => (x === 0 || y === 0 || x === W - 1 || y === H - 1) ? [30, 30, 30] : [255, 255, 255])
+  const w2 = repeatLastPixel(thin, g, { corner: 'square' })
+  const diag = px(w2, pad - 2, pad - 2), beside = px(w2, pad - 3, pad - 2)
+  ok('⑤ 대각선 셀이 옆 셀과 같은 답을 낸다(같은 픽셀 두 번 밟기 정정)', diag.slice(0, 3).join() === beside.slice(0, 3).join(), `${diag} / ${beside}`)
+  // 둥근 모드는 손대지 않는다 — 실루엣 조각의 종전 동작 그대로(모서리 비움)
+  const round = repeatLastPixel(src, g)
+  ok('⑥ round 는 모서리를 비운다(종전)', px(round, 0, 0)[3] < 128)
+}
+
 console.log('\n── 9 비대칭 도련 (전사 축, 2026-09-18) ──')
 // 가로등배너는 좌우 23.25 · 밴드 쪽 0 · 반대쪽 30.48 처럼 변마다 다르다.
 // ★숫자를 넘겼을 때 동작이 **종전과 완전히 같아야** 재단 축이 안 흔들린다 — 그것부터 고정한다.

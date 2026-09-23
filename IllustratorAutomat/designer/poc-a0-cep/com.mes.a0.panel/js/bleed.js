@@ -174,9 +174,14 @@
         if (inset > 0) {
           var dlen = Math.sqrt(a * a + b * b) || 1;
           var ux = a / dlen, uy = b / dlen;
-          var prev = j;
-          for (var t = 1; t <= inset + 1; t++) {
+          var prev = j, lastCx = sx, lastCy = sy;
+          // ★대각선 걸음은 같은 픽셀을 두 번 밟을 수 있다 — `round(0.707·t)` 가 t=1·t=2 에서 둘 다 1 이다.
+          //   같은 픽셀을 자기 자신과 비교하면 차이 0 = 「안정」으로 오판해 걸음이 거기서 끝난다(2026-09-23 실기 —
+          //   사각 조각 모서리의 대각선 셀만 색이 달랐다). 밟은 픽셀이 같으면 건너뛰고 다음 t 로 간다.
+          for (var t = 1; t <= inset + 2; t++) {
             var cx = sx - Math.round(ux * t), cy = sy - Math.round(uy * t);
+            if (cx === lastCx && cy === lastCy) continue;
+            lastCx = cx; lastCy = cy;
             if (cx < 0 || cy < 0 || cx >= NW || cy >= NH) break;
             var jj = (cy * NW + cx) * 4;
             if (out[jj + 3] < aMin) break;
