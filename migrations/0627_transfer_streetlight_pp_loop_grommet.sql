@@ -36,7 +36,8 @@ INSERT OR IGNORE INTO post_processing_options (
 --   끈고리도 같은 범주여야 상/중/하 칸이 뜬다 — 위 INSERT 값과 별개로 멱등하게 못박는다.
 UPDATE post_processing_options SET pp_category = 'transfer' WHERE option_code = 'PP-LOOP';
 
--- 가로등배너 소분류 연결 (하도매 · 끈고리)
+-- 가로등배너 소분류 연결 (하도매 · 끈고리). 소분류 행 자체는 0252 가 심었지만 새 환경(로컬 부트스트랩)엔 없을 수 있어 멱등하게 한 번 더 둔다.
+INSERT OR IGNORE INTO pp_applicable_subcategories (group_name, subcat_name, sort_order) VALUES ('전사', '가로등배너', 21);
 INSERT OR IGNORE INTO pp_option_subcategories (pp_option_id, subcat_id)
   SELECT p.id, s.id
   FROM post_processing_options p, pp_applicable_subcategories s
