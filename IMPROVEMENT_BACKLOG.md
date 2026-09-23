@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-09-22T22:40:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-09-23T00:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,31 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **9** (`list_issues(state:OPEN,label:auto-improve)` 실측 — Area3 신규 #660 feedback MANAGER 알림 배선 누락) |
+| 🆕 new | **9** (`list_issues(state:OPEN,label:auto-improve)` 실측 — #660 fixed-in-tree 코멘트 게시, close는 owner 대기) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **571** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 4 데이터 정합성 (2026-09-23T00:20):**
+> - **방법**: 세션 시작 시 detached HEAD `4cd6542`(origin/main과 동일) → 로컬 `main` stale(`e04c7a9`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area4 사이클 세션시작 HEAD `27787e8`)**: `git log 27787e8..HEAD` 21커밋 — 이번 순환(Area4→5→6→1→2→3) 자신들의 북키핑 6건 + IA 전사(transfer) 호스트 신설 6커밋(비-웹앱 축, Area6가 이미 정독) + 문제 접수함(feedback, 0626) 신설·후속 4커밋(Area1/2/3가 이미 정독) + **Area4 스코프(`src/routes`·`src/utils`·`migrations`·`index.tsx`) diff 15파일**.
+> - **15파일 분류** — `migrations/0626_feedback_reports.sql`·`feedback.ts`(Area1 migration-drift·Area2 entity 렌즈 기정독)·`productionReports.ts`(undefined 렌더 버그 수정, Area1 기정독)는 제외. 나머지 **13파일이 `#657` 청크분할 커밋(`8bcad2f`, bind-limit 상한가드 오판정 수정) 신규분** — Area5(09-21T18:30)가 같은 클러스터를 entity 격리·바인드순서·batch원자성 렌즈로 이미 전수 리뷰했으나, **Area4 고유 렌즈(집계 정합성 — SUM/COUNT 누적이 청크 경계에서 이중계상·누락되는가)로는 아직 미검증** → 직접 전수 재검토.
+> - **Area4 고유 렌즈로 13파일 직접 재검증**: (1) `taxInvoices/batch.ts` monthly-create — `grouped[client_id]` Record 누적이 청크(`clientIdChunks`, client_id 기준 비중첩 분할)를 가로질러도 안전(각 client_id는 정확히 한 청크에서만 나옴 → 이중계상 불가), `MONTHLY_MAX_GROUPS` 슬라이스 전에 `allGroups.sort(client_id)`로 청크 삽입순서 편향을 되살림(청크화가 "어느 30곳이 먼저 처리되는가"의 뜻을 바꾸지 않도록 커밋 자신이 보정) = 정합. (2) `taxInvoices/helpers.ts`·`issue.ts` — 전부 쓰기(UPDATE/batch) 청크로 집계·합산 없음, 개수대조(`orders.length!==orderIds.length`)는 누적 후 수행 = 정합. (3) `payroll/core.ts` 3곳 — `existsSet`/`empRowMap`(Set/Map, employee_id 유니크)·`targets` 배열 누적(employeeIds 청크가 비중첩) = 정합. (4) `inventory.ts` 저재고 — `SUM(inv.quantity)`가 `GROUP BY i.id` 이고 item_id 청크가 비중첩(각 품목은 한 청크에서만 집계) = 정합. (5) `costs.ts`·`prices.ts`·`purchaseOrders/core.ts`×2·`purchaseRequests.ts`·`quotations.ts`·`shipments.ts`(merge/unmerge) — 전부 단순 concat 또는 Map 키 대입, 집계연산 없음 = 정합. **결함 0건** — `#657` 커밋 메시지가 스스로 남긴 "batch는 원자성 위해 하나로 유지" 원칙이 코드에 그대로 지켜짐, 청크화가 만드는 집계 경계 문제(이번 사이클의 고유 관심사) net-new 없음.
+> - **`clientSegment.ts sanitizeEntityIds` `.slice(0,50)` 재확인**: 신규 상한 절단이나, 주석이 근거(법인 prod 4곳)를 명시하고 침묵 절단이 아니라 방어적 상한(엔티티 축은 DB 행이라 고정 enum처럼 걸러지지 않음) — Area4 관점(암묵적 데이터 손실)에서도 근거 있는 트레이드오프로 판단, 이슈화 불요.
+> - **🔁 open≠unfixed 거울 — #660 fixed-in-tree 확정, GH 코멘트 게시**: churn 중 owner 자신의 `c758c04`가 #660(feedback MANAGER 알림·진입경로 배선 누락, Area3 09-22 발견)을 직접 수정 — `feedback.ts:86 notifyRoles(['ADMIN','MANAGER'])`로 정정 + `menu.ts`에 `/feedback` 사이드바 항목(ADMIN·MANAGER) 신설. 코드 대조로 두 문제 모두 해소 확인, Issue #660에 fixed-in-tree 코멘트 게시(https://github.com/kyj119/dongsan_mes/issues/660#issuecomment-5787029883, close는 owner 판단). open 카운트는 9 유지(close 전이라 목록엔 그대로).
+> - **나머지 8건**: `#659`·`#658`·`#656`·`#654`·`#650`·`#626`·`#617`·`#616` — 이번 churn 범위(15파일) 밖이라 상태 변동 근거 없음, 재확인 생략(직전 Area6 사이클이 #650 fixed-in-tree 확정한 것 외 변동 없음 재확인).
+> - **standing scan 1: `npm run audit:migration-number`** — 파일수 643개·중복번호 25쌍(변동, 신규 0621·0623 편입이나 전부 무해), **같은 테이블 DDL 충돌 0건**(변동없음).
+> - **standing scan 2: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 4건 전부 기존 FP 유지(`attendance.ts:171`·`dashboard.ts:420`·`workbench.ts:577`·`itemUnits.ts:162`).
+> - **standing scan 3: `npm run branch:clean`** — 삭제대상 0건(SKIP 1=main).
+> - **standing scan 4: `npm audit --omit=dev`** — 0건(변동없음).
+> - **prod 데이터 직접조회 불가 재확인**: 이 세션도 egress 차단(Cloudflare 자격증명 없음) — 고아 레코드·상태 불일치 등 실 데이터 기반 점검은 이번에도 불가(기존 제약 재확인, 신규 아님).
+> - **CI 헬스**: `actions_list(deploy.yml, branch:main)` 최근 5런 전부 `conclusion:success`(최종 HEAD `4cd6542` 포함, run #2047).
+> - **backlog↔GitHub 절대값 재동기화**: open **9**(변동없음, #660 close-pending) · done **571**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md 잔여참조 재확인(이미 서술식). 이번 사이클(bind-limit 청크분할의 집계정합성 재검증)은 기존 원칙(직전 Area4 사이클의 청크-분할 집계정합성 렌즈)을 새 청크 클러스터(#657)에 그대로 적용한 사례 — 새 클래스 없음. Area5가 이미 entity/바인드 렌즈로 같은 커밋을 리뷰했어도 Area4의 집계정합성 렌즈는 겹치지 않는다는 것을 재확인(다른 Area의 리뷰 완료가 자기 렌즈 점검을 대체하지 않는다는 기존 원칙의 재적용).
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 9건 → 이번 추가 후 10건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(13파일 전수 직접 검증, 청크분할 집계정합성·엔티티 세그먼트 상한 전부 clean), 자동수정 0건(고칠 결함 없음), done-sync: open 9(변동없음, #660 close-pending)·done 571(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-09-22T22:40):**
 > - **방법**: 세션 시작 시 이미 `main`(`e04c7a9`, origin/main과 동일) — detached HEAD 상태 아님, 별도 checkout 불요. `git fetch origin main` 재확인(diff 0). `npm ci`(0→89), `npx tsc --noEmit` clean.
