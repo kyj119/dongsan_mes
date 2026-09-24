@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-09-24T09:45:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-09-24T15:51:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,26 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **9** (`search_issues(is:open label:auto-improve)` 실측, 변동없음) |
+| 🆕 new | **10** (+1, #661) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **572** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 3 UX/기능 감사 (2026-09-24T15:51):**
+> - **방법**: 세션 시작 시 detached HEAD `baa1a61`(origin/main과 동일) → 로컬 `main` stale(`0425936`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area3 사이클 세션시작 HEAD `e04c7a9`)**: `git diff --stat e04c7a9..HEAD -- src/pages src/scripts index.tsx` **9파일**. 대부분(`orderForm/finishing.js`·`shared/finishingLabel.js`·`productionReports.js`)은 이번 순환 Area6(50-commit bridge, `774101f`)가 이미 정독 완료(sibling-parity 대조·XSS 표면 없음 확인). **아직 아무도 UX 렌즈로 안 본 신규** = `65af4e6`(확정 대기 상태 표시·일괄 처리 + 출고 예정·실적 재설계, 6파일: `shipments.ts`·`shipmentsDashboard.ts`·`orders.js`·`workOrderPrint.js`·`shipments.js`·`shipmentsDashboard.js`) — Area2가 이번 순환에서 이 커밋의 **백엔드**(`src/routes/shipments.ts`, entity/N+1/dead-code)는 이미 정독했으나 프론트 UX는 미검증. 일반 에이전트(general-purpose)에 8항목 체크리스트(빈 상태·로딩·에러메시지·더블클릭 가드·showConfirm 오용·크로스페이지 링크·KPI 정의·XSS)로 위임해 직접 diff+Read 검증.
+> - **🆕 신규 발견 #661 — `confirmPendingRow`(단건 확정) 더블클릭 가드 없음, 같은 커밋의 `confirmPendingSelected`(신설 일괄확정)만 가드**: `shipments.js:1038` 신설 함수는 `pcBulkConfirmBtn.disabled=true`로 시작(`:1051-1052`)하는데, **같은 커밋에서 payload 추출·"목록에 남음" 토스트까지 재작성된** `shipments.js:1018 confirmPendingRow`는 클릭 핸들러(`:944`,`:946`)에 disable/in-flight 가드가 전혀 없음. **FP 필터 적용 확인**: 15회차 codify 기준("보고 조건 = 프론트 가드 X + backend 비원자/가산 destructive write + 도달성 LIVE 셋 다")의 backend 조건을 직접 검증 — `applyShipmentFieldPatch`(`routes/shipments.ts:1475`)는 `UPDATE ... SET box_count=?,tracking_number=? WHERE id=?` **단순 덮어쓰기**(가산 아님)이고 `syncShippingFeeFromBoxes`(`utils/shippingFee.ts:51`)도 `box_count`를 다시 읽어 배송비 라인 수량을 **세팅**(가산 아님)이라 **멱등** — 데이터 손상 리스크는 없음. 그래서 심각도를 "중복 write=데이터 정합성"이 아니라 **"같은 커밋 내 형제 함수 가드 비대칭(일관성) + 불필요한 중복 요청"**으로 낮춰 보고(15회차 기준의 엄격 적용 — backend가 가산이 아니면 그대로 issue 등급을 낮추는 것이 맞는 판단이라 확인). 도달성 = onclick 배선 확인(`:944`,`:946`), FP 아님. issue-only(버튼 disable 배선=UI 변경 — Area3 자동수정 금지 정책).
+> - **8항목 체크리스트 나머지 clean**: `showConfirm(` 전 호출처(`await`/`.then()` 정상, 콜백-2번째인자 오용 0건) · 빈 상태(확정대기 카드 hidden·출고예정 리스트 "N에 해당하는 출고 건이 없습니다" 명시 문구) · escapeHtml(신규 렌더 필드 전부 `esc()`/`escapeHtml()` 적용, 알림 미리보기는 `.textContent`라 자동이스케이프) · KPI 카운터(출고완료가 `shipped ⊆ due`로 필터링돼 `shipped ≤ planned` 항상 성립, 이중계상 불가) · 바코드 제거(Code128/JsBarcode 참조 전 파일 0건, 고아 참조 없음). 크로스페이지 링크 부재(확정대기·예정표 카드→주문상세 클릭스루 없음)·`loadPendingConfirm` catch가 console-only인 점은 **이번 커밋이 손대지 않은 기존 갭**이라 스코프 밖(신규 회귀 아님).
+> - **standing scan 1: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 4건 전부 기존 FP 유지.
+> - **standing scan 2: `npm run branch:clean`** — 삭제대상 0건(SKIP 1=main). **standing scan 3: `npm audit --omit=dev`** — 0건.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최신 8런 전부 `conclusion:success`(최종 HEAD `baa1a61`, run #2063).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` 기존 9건(#660·#659·#658·#656·#654·#650·#626·#617·#616) 전건 Area3 관할 밖 또는 상태 유지, `search_issues` 중복검색(confirmPendingRow·더블클릭 가드) 결과 net-new 확인 후 #661 등록.
+> - **backlog↔GitHub 절대값 재동기화**: open **10**(+1, #661) · done **572**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md `line N` 잔여참조 재확인(0건, 이미 서술식). 이번 사이클은 기존 15회차 codify("더블클릭 중복제출 standing scan")를 신규 커밋의 형제함수 쌍에 정확히 재적용한 사례 — backend 멱등성 교차검증이 심각도를 낮추는 실제 판정 사례(FP는 아니지만 등급 조정)로 기존 레시피가 잘 작동함을 재확인. 새 클래스 없음.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 10건 → 이번 추가 후 11건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 **1건**(#661, confirmPendingRow 더블클릭 가드 비대칭 — backend 멱등이라 저위험 등급), 자동수정 0건(버튼 disable 배선=UI 변경, Area3 정책상 issue-only), done-sync: open 9→10(#661)·done 572(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-09-24T09:45):**
 > - **방법**: 세션 시작 시 detached HEAD `1f42a40`(origin/main과 동일) → 로컬 `main` stale(`0425936`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
