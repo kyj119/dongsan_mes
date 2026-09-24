@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-09-24T03:48:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-09-24T09:45:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,29 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **9** (`list_issues(state:OPEN,label:auto-improve)` 실측, 변동없음 — #660 fixed-in-tree 코멘트 게시, close는 owner 대기) |
+| 🆕 new | **9** (`search_issues(is:open label:auto-improve)` 실측, 변동없음) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **572** (+1, 아래 자동수정 `830060b`) |
+| ✔️ done | **572** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-09-24T09:45):**
+> - **방법**: 세션 시작 시 detached HEAD `1f42a40`(origin/main과 동일) → 로컬 `main` stale(`0425936`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area2 사이클 세션시작 HEAD `50c0760`)**: `git diff --stat 50c0760..HEAD -- src/routes src/types src/utils migrations index.tsx` **11파일**. 대부분(`feedback.ts`·`printEvents.ts`·`productionReports.ts`·`workbench.ts`·`finishingLabel.ts`·`printFileName.ts`·`0627` 마이그)은 각 커밋 시점을 대조한 결과 이번 순환의 Area1/3/5/6가 이미 자기 렌즈로 정독 완료(0db24a2·c758c04 등 09-22 커밋, 각 사이클 세션시작보다 이전). `orders/core.ts`(23줄)는 **Area1 자신의 이번 사이클 자동수정**(`830060b` R2 hydrate 병렬화, 커밋 09-23 18:46 — Area1이 이미 심층검증·prod 재확인 완료) — Area2 재검토 불요. **아직 아무도 안 본 신규**ㅡ `shipments.ts`(286줄, 3커밋)·`shipmentNotice.ts`(2커밋) — 전부 09-23 18:54~24 00:09, 직전 Area1(03:48)·Area6(21:45) 사이클 이후에는 안 났지만 **churn 리스트에만 잡히고 어느 로그에도 파일명이 등장하지 않음** — Area2 고유 렌즈(entity_id·authMiddleware·N+1·타입·SELECT *)로 직접 정독.
+> - **`shipments.ts` 3커밋 직접 재검증**: (1) `65af4e6`(확정대기·출고예정 재설계) — `GET /dashboard/counts`·`GET /dashboard`를 `loadShipPlan()` 공용 헬퍼로 통합, `entityFilter(c,'o')` 유지(구코드와 동일 패턴), 결과를 `Map<number,ShipPlanOrder>`로 단일 쿼리 후 메모리 집계(N+1 아님, per-order 추가 쿼리 0). (2) `5d6363d`(자동발송 제거) — `sendEmail`/`renderTemplate` import·fire-and-forget 이메일·알림톡 발송 블록 삭제, 대체 코드 없음(dead import 잔존 여부 확인 → 둘 다 import문도 같이 제거돼 있음, 미사용 import 없음). (3) `148ccbc`는 `shipmentNotice.ts`만 건드림(아래). **3커밋 전부 entity 격리·auth·N+1·dead-code 결함 0건** — 순수 정책/설계 변경(owner 의사결정, commit message에 근거 명시)이라 Area2 스코프 밖.
+> - **`shipmentNotice.ts`(`148ccbc`) 재검증**: `NOTICE_POLICY` 맵 값 변경(방문수령/직접수령 `notify:true→false`)뿐, 함수 시그니처·타입 무변경. `test:shipment-notice` selftest도 같은 커밋에서 동기화(9항목 유지) — 코드 품질 이슈 없음.
+> - **dead-code 확인**: `finishingLabel.ts`(`formatGrommet`·`formatLoop`, Area6가 이미 sibling-parity 대조 완료)·`printFileName.ts`(`doubleSidedFactor`·`DECLARED_QTY_RE`)는 grep상 파일 내부에서만 참조되는 것처럼 보였으나 직접 Read로 확인 — `doubleSidedFactor`는 `parseDeclaredQty`·`declaredQtyFor` 내부에서 실사용(export는 향후 테스트 접근용), dead code 아님.
+> - **standing scan 1: `npm run audit:entity`** — 검사 133파일·entity테이블 SELECT 75건·누락 **0건**(변동없음).
+> - **standing scan 2: authMiddleware recursive 스캔**(`find src/routes -name '*.ts'` 전수) — 무-auth 후보 7건(`publicUnsubscribe.ts`·`orders/helpers.ts`·`payroll/shared.ts`·`cron.ts`·`messagesAd.ts`·`hrSelf.ts`·`taxInvoices/helpers.ts`, 변동없음) 전부 기존 정당 클래스(barrel/helpers Map.get FP·hrSelf scoped-token·public webhook류). `shipments.ts`는 `:15` 전체 auth 적용 확인, 갭 없음.
+> - **standing scan 3: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 4건 전부 기존 FP 유지.
+> - **standing scan 4: `npm run branch:clean`** — 삭제대상 0건(SKIP 1=main). **standing scan 5: `npm audit --omit=dev`** — 0건.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최신 8런 전부 `conclusion:success`(최종 HEAD `1f42a40`, run #2062).
+> - **open 이슈 재확인(open≠unfixed)**: `search_issues(is:open label:auto-improve)` **9**건(#660·#659·#658·#656·#654·#650·#626·#617·#616, 변동없음) — 전건 Area2 관할 밖 또는 상태 유지, churn 범위(11파일)와 겹치는 건 없음.
+> - **backlog↔GitHub 절대값 재동기화**: open **9**(변동없음) · done **572**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md `line N` 잔여참조 재확인(0건, 이미 서술식). 이번 사이클은 기존 churn-bridge 원칙("다른 Area가 자기 렌즈로 이미 본 파일이라도 이 Area 고유 렌즈로는 미검증일 수 있다")을 신규 클러스터(shipments.ts 재설계 3커밋)에 정확히 재적용한 사례 — 새 클래스 없음. owner 자신이 쓴 상세 커밋 메시지(정책 근거 명시)가 있으면 Area2 재검토가 "결함 탐지"가 아니라 "결함 부재 확인"으로 빠르게 끝나는 패턴 재확인.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 이번 추가 후 사이클 로그 9건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(11파일 전수 검토 — 8개는 타 Area 기정독, 3개(shipments.ts×2 커밋+shipmentNotice.ts)는 Area2가 직접 정독해 결함 없음 확인), 자동수정 0건(고칠 결함 없음), done-sync: open 9(변동없음)·done 572(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-09-24T03:48):**
 > - **방법**: 세션 시작 시 이미 `main`(`0425936`, origin/main과 동일) — detached HEAD 아님. `npm ci`(0→89), `npx tsc --noEmit` clean.
