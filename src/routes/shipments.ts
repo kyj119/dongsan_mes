@@ -3,15 +3,13 @@ import { OWN_DELIVERY_METHODS } from '../constants/deliveryMethod'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
 import { requireAnyPagePermission, requireEditOrRole, requireAccessOrRole } from '../middleware/permissions'
-import { sendEmail } from '../services/emailProvider'
-import { renderTemplate } from '../services/emailTemplates'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { autoDeductPostProcessingMaterials } from '../utils/autoDeductPostProcessingMaterials'
 import { deductStockLinesOnShip, restoreStockLinesOnUnship } from '../utils/stockShip'
 import { clearShipBillingStmt } from '../utils/shipBilling'
 import type { Context } from 'hono'
-import { resolveShipmentNotice } from '../utils/shipmentNotice'
+import { resolveShipmentNotice, applyTemplateApproval, isApprovedTemplateState, noticePolicyFor } from '../utils/shipmentNotice'
 import { getKakaoProvider, getKakaoSettings } from './kakao'
 import { fillNoticeBody, buildSmsNoticeBody, loadItemSummary } from '../utils/shipmentNoticeBody'
 import { NOTICE_BLOCK_LABEL } from '../utils/shipmentNotice'
@@ -417,6 +415,9 @@ async function loadTemplateBodies(provider: BarobillSmsProvider): Promise<Record
     const list = await provider.listATSTemplate()
     const map: Record<string, string> = {}
     for (const t of list || []) {
+      // ★승인된 것만 싣는다(2026-09-24) — 심사 중인 템플릿으로 보내면 바로빌이 거절한다.
+      //   이 맵에 이름이 있다 = 「지금 알림톡으로 보낼 수 있다」가 되도록(한진 자동 전환의 근거).
+      if (!isApprovedTemplateState(t.state)) continue
       const key = (t.templateName || t.templateCode || '').trim()
       if (key) map[key] = t.template || ''
     }
@@ -440,12 +441,13 @@ async function buildNotice(
   templates: Record<string, string>,
   dateStr: string
 ): Promise<NoticeResolved> {
-  const decision = resolveShipmentNotice({
+  // 승인 목록(templates)에 없으면 한진은 문자로 내린다 — 승인되면 배포 없이 알림톡으로 바뀐다.
+  const decision = applyTemplateApproval(resolveShipmentNotice({
     deliveryMethod: row.delivery_method,
     hasMobile: !!(row.mobile || '').trim(),
     trackingNumber: row.tracking_number,
     alreadySent: Number(row.notified) === 1,
-  })
+  }), row.delivery_method, new Set(Object.keys(templates)))
   const vars = {
     clientName: row.client_name || '고객',
     itemSummary: await loadItemSummary(db, row.shipment_id),
@@ -706,7 +708,9 @@ shipmentsRouter.get('/pending-confirm', requireAccessOrRole('/shipments', 'MANAG
         alreadySent: Number(r.notified) === 1,
       })
       return { ...r, notice_target: d.isTarget ? 1 : 0, notice_can_send: d.canSendNow ? 1 : 0,
-               notice_block: d.blockedReason, notice_channel: d.channel, notice_template: d.template }
+               notice_block: d.blockedReason, notice_channel: d.channel, notice_template: d.template,
+               // 승인 전일 수 있는 템플릿(한진) — 목록마다 바로빌을 부르지 않으므로 「승인 전엔 문자」로만 알린다
+               notice_sms_until_approved: noticePolicyFor(r.delivery_method)?.smsUntilApproved ? 1 : 0 }
     }).filter((r) => {
       const needsBoxOrTrack = Number(r.box_count) === 0
         || ((r.delivery_method || '').trim() === '한진택배' && !String(r.tracking_number || '').trim())
@@ -1445,73 +1449,11 @@ shipmentsRouter.post('/', requireEditOrRole('/shipments', 'MANAGER', 'DESIGNER')
       console.error('PP material deduction error:', ppDeductErr)
     }
 
-    // 이메일 자동 발송 (fire-and-forget — 실패해도 출고는 성공)
-    try {
-      const client = await c.env.DB.prepare(
-        'SELECT cl.email, cl.client_name FROM clients cl JOIN orders o ON o.client_id = cl.id WHERE o.id = ?'
-      ).bind(body.order_id).first<{ email: string | null; client_name: string }>()
-
-      if (client?.email) {
-        const { results: shipItems } = await c.env.DB.prepare(`
-          SELECT oi.item_name, oi.quantity, oi.width, oi.height, oi.specification
-          FROM shipment_items si
-          LEFT JOIN cards cd ON si.card_id = cd.id
-          LEFT JOIN order_items oi ON cd.order_item_id = oi.id
-          WHERE si.shipment_id = ?
-        `).bind(shipmentId).all()
-
-        const { subject, html } = renderTemplate('SHIPMENT_NOTICE', {
-          clientName: client.client_name,
-          orderNumber: order.order_number,
-          shipmentNumber,
-          shippedAt: new Date().toLocaleDateString('ko-KR'),
-          deliveryType: body.delivery_type || 'DELIVERY',
-          courierName: body.courier_name,
-          trackingNumber: body.tracking_number,
-          items: (shipItems as { item_name: string | null; quantity: number | null; width: number | null; height: number | null; specification: string | null }[]).map(i => ({
-            itemName: i.item_name || '품목',
-            quantity: i.quantity || 1,
-            width: i.width,
-            height: i.height,
-            specification: i.specification,
-          })),
-          notes: body.notes,
-        })
-
-        await sendEmail(c.env, c.env.DB, { to: client.email, subject, html }, {
-          template: 'SHIPMENT_NOTICE',
-          relatedType: 'shipment',
-          relatedId: shipmentId as number,
-          sentBy: user?.id,
-        })
-      }
-    } catch (_emailErr) {
-      // 이메일 실패해도 출고 등록은 성공 처리
-    }
-
-    // 알림톡 자동 발송 (fire-and-forget)
-    try {
-      const kakaoEnabled = await c.env.DB.prepare(
-        `SELECT setting_value FROM settings WHERE setting_key = 'kakao_enabled'`
-      ).first<{ setting_value: string | null }>()
-      if (kakaoEnabled?.setting_value === '1') {
-        // 내부 API 호출로 알림톡 발송 위임
-        const internalRes = await fetch(new URL('/api/kakao/send-shipment', c.req.url).href, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': c.req.header('Authorization') || '',
-          },
-          body: JSON.stringify({ shipment_id: shipmentId }),
-        })
-        if (!internalRes.ok) {
-          console.warn('알림톡 발송 실패 (출고):', await internalRes.text())
-        }
-      }
-    } catch (_kakaoErr) {
-      // 알림톡 실패해도 출고 등록은 성공 처리
-      console.warn('알림톡 발송 오류 (출고):', _kakaoErr)
-    }
+    // 자동 발송(이메일·알림톡)은 2026-09-24 제거 — 용준님 결정.
+    //   출고 알림은 **사람이 명시적으로 「보낸다」를 눌렀을 때만** 나간다(일괄 출고 확인창의 별도 질문 ·
+    //   확정 대기 [알림]/[선택 알림] · 택배사별 [선택 발송]). 여기 있던 fire-and-forget 은 그 원칙을 건너뛰었고,
+    //   `kakao_enabled=1` 이라 이 API 를 부르는 화면이 생기는 순간 확인 없이 고객에게 나갈 자리였다(당시 호출 화면 0).
+    //   발송은 되돌릴 수 없으므로 자동 경로를 두지 않는다. 판정 정본 = `utils/shipmentNotice`.
 
     return c.json({
       success: true,

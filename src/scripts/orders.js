@@ -157,7 +157,7 @@ async function bulkShipSelected() {
       var mlist = Object.keys(byMethod).map(function (k) { return k + ' ' + byMethod[k]; }).join(' · ');
       var extra = [];
       if (sum.waiting_tracking > 0) extra.push('송장 입력 후 ' + sum.waiting_tracking + '건 (확정 대기로 갑니다)');
-      if (sum.not_target > 0) extra.push('알림 안 보냄 ' + sum.not_target + '건 (직배·퀵 등)');
+      if (sum.not_target > 0) extra.push('알림 안 보냄 ' + sum.not_target + '건 (직배·퀵·방문수령 등)');
       if (sum.no_mobile > 0) extra.push('연락처 없음 ' + sum.no_mobile + '건');
       if (sum.already_sent > 0) extra.push('이미 발송 ' + sum.already_sent + '건');
       noticeWanted = await showConfirm(

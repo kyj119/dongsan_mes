@@ -14,8 +14,8 @@
 //   어느 템플릿에도 `#{송장번호}` 가 **없다**. 대신택배·대신화물·방문수령은 송장 없이 완전한 문구라
 //   **출고 즉시 보낼 수 있다.** 송장을 기다려야 하는 건 템플릿이 없는 **한진택배뿐**이다(문자로 보낸다).
 //
-// ★용준님 결정 (2026-09-18)
-//   **직배·직접배송·퀵·용차·자차배송은 알림을 보내지 않는다.** 우리가 직접 가져다 주는 건이라
+// ★용준님 결정 (2026-09-18 · 2026-09-23 방문수령 추가)
+//   **직배·직접배송·퀵·용차·자차배송은 알림을 보내지 않는다.** 방문수령도 당분간 보내지 않는다(09-23, 재검토 예정). 우리가 직접 가져다 주는 건이라
 //   따로 알릴 필요가 없다 — 「문구가 없다」가 아니라 **「대상이 아니다」**로 분류한다.
 //   (이 둘을 섞으면 확정 대기 목록이 영영 안 줄어드는 미발송 건으로 가득 찬다.)
 
@@ -37,6 +37,8 @@ interface MethodPolicy {
   template?: string
   /** 송장번호가 있어야 보낼 수 있는가 */
   needsTracking?: boolean
+  /** 템플릿이 아직 승인 전일 수 있다 — 승인 목록에 없으면 문자로 보낸다(`applyTemplateApproval`) */
+  smsUntilApproved?: boolean
 }
 
 /**
@@ -44,14 +46,21 @@ interface MethodPolicy {
  * ⚠️ 템플릿명은 **바로빌에 승인된 이름 그대로**다(코드도 이름과 같다). 글자가 다르면 발송이 거절된다.
  */
 export const NOTICE_POLICY: Record<string, MethodPolicy> = {
+  // ── 방문수령 — 2026-09-23 용준님 결정: **기본값은 보내지 않는다**(나중에 다시 정한다) ──
+  //   승인 템플릿은 그대로 적어 둔다 — 되살릴 땐 `notify: true` 한 글자만 바꾸면 된다.
+  //   대상이 아니면 확정 대기 목록이 「알림 미발송」으로 붙잡지 않는다(확정만으로 빠진다).
+  '방문수령': { notify: false, template: '방문 수령 준비 완료' },
+  '직접수령': { notify: false, template: '방문 수령 준비 완료' },
+
   // ── 알림톡 (승인 템플릿 있음 · 송장 불필요 → 출고 즉시) ──
-  '방문수령': { notify: true, template: '방문 수령 준비 완료' },
-  '직접수령': { notify: true, template: '방문 수령 준비 완료' },
   '대신화물': { notify: true, template: '대신화물 출고' },
   '대신택배': { notify: true, template: '대신택배 출고' },
 
-  // ── 문자 (승인 템플릿 없음 · 송장을 본문에 넣는다 → 송장 입력 후) ──
-  '한진택배': { notify: true, needsTracking: true },
+  // ── 한진택배 — 송장이 본문에 들어가므로 **송장 입력 후** ──
+  //   알림톡 「한진택배 출고」는 2026-09-24 심사 신청(`docs/kakao-alimtalk-templates.md` §3-2).
+  //   `smsUntilApproved` = 바로빌 승인 목록에 그 템플릿이 **보일 때만** 알림톡, 아니면 지금처럼 문자.
+  //   승인되는 순간 배포 없이 알림톡(7원)으로 바뀐다 — 승인 여부는 발송할 때마다 바로빌에서 읽는다.
+  '한진택배': { notify: true, needsTracking: true, template: '한진택배 출고', smsUntilApproved: true },
 
   // ── 알림 대상 아님 (2026-09-18 용준님 결정) — 우리가 직접 가져다 준다 ──
   //   키는 **정본 표기**만 둔다. 「직배」·「자차배송」·「배송」은 SSOT ALIASES 가 「직접배송」으로 풀어 준다.
@@ -123,6 +132,30 @@ export function resolveShipmentNotice(input: NoticeInput): NoticeDecision {
     return { canSendNow: false, isTarget: true, channel, template, blockedReason: 'needs_tracking' }
   }
   return { canSendNow: true, isTarget: true, channel, template, blockedReason: null }
+}
+
+/** 바로빌 템플릿 상태 중 「승인」 — 이 값일 때만 발송에 쓴다(심사 중인 템플릿으로 보내면 거절된다). */
+export function isApprovedTemplateState(state: string | null | undefined): boolean {
+  const s = String(state ?? '').trim()
+  return s === '3' || s === 'S'
+}
+
+/**
+ * 판정 + 「지금 실제로 승인된 템플릿 이름들」 → 최종 채널.
+ * `smsUntilApproved` 정책(한진택배)은 템플릿이 승인 목록에 없으면 **문자로 내린다**.
+ * 그 외 정책은 건드리지 않는다 — 승인 템플릿이 사라졌다면 조용히 문자로 바꾸지 않고
+ * 기존처럼 「문구 조회 실패」로 멈춰 사람이 보게 한다.
+ */
+export function applyTemplateApproval(
+  decision: NoticeDecision,
+  deliveryMethod: string | null | undefined,
+  approvedTemplateNames: ReadonlySet<string>,
+): NoticeDecision {
+  if (decision.channel !== 'kakao' || !decision.template) return decision
+  if (approvedTemplateNames.has(decision.template)) return decision
+  const policy = noticePolicyFor(deliveryMethod)
+  if (policy?.smsUntilApproved) return { ...decision, channel: 'sms', template: null }
+  return decision
 }
 
 /** 화면 문구 — 배지·모달이 같은 말을 쓰게 한다. */

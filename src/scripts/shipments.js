@@ -848,16 +848,18 @@ function pendingNotifyBadge(r) {
   if (Number(r.notified) === 1) return pill('#dcfce7', '#166534', '발송됨', '배송 알림 발송 완료');
   switch (r.notice_block) {
     case 'not_target':
-      return pill('#f3f4f6', '#6b7280', '대상 아님', '직배·퀵·용차는 알림을 보내지 않습니다(2026-09-18 결정)');
+      return pill('#f3f4f6', '#6b7280', '대상 아님', '직배·퀵·용차·방문수령은 알림을 보내지 않습니다(2026-09-18·09-23 결정)');
     case 'no_mobile':
       return pill('#f3f4f6', '#6b7280', '연락처 없음', '거래처 휴대폰이 없어 보낼 수단이 없습니다');
     case 'needs_tracking':
-      return pill('#fef3c7', '#92400e', '송장 대기', '한진택배는 승인 템플릿이 없어 문자로 보냅니다 — 송장번호를 넣어야 보낼 수 있습니다');
+      return pill('#fef3c7', '#92400e', '송장 대기', '한진택배는 송장번호가 본문에 들어갑니다 — 송장번호를 넣어야 보낼 수 있습니다(알림톡 승인 전엔 문자)');
     case 'unknown_method':
       return pill('#fee2e2', '#991b1b', '배송수단 확인', '알림 정책이 정해지지 않은 배송수단입니다');
     default:
       return pill('#ffedd5', '#9a3412', '미발송',
-        '보낼 수 있습니다' + (r.notice_template ? ' — 알림톡 「' + r.notice_template + '」' : ' — 문자'));
+        '보낼 수 있습니다' + (r.notice_template
+          ? ' — 알림톡 「' + r.notice_template + '」' + (Number(r.notice_sms_until_approved) === 1 ? ' (승인 전엔 문자로 나갑니다)' : '')
+          : ' — 문자'));
   }
 }
 
