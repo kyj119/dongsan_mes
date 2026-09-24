@@ -9,7 +9,7 @@ import { autoDeductPostProcessingMaterials } from '../utils/autoDeductPostProces
 import { deductStockLinesOnShip, restoreStockLinesOnUnship } from '../utils/stockShip'
 import { clearShipBillingStmt } from '../utils/shipBilling'
 import type { Context } from 'hono'
-import { resolveShipmentNotice } from '../utils/shipmentNotice'
+import { resolveShipmentNotice, applyTemplateApproval, isApprovedTemplateState, noticePolicyFor } from '../utils/shipmentNotice'
 import { getKakaoProvider, getKakaoSettings } from './kakao'
 import { fillNoticeBody, buildSmsNoticeBody, loadItemSummary } from '../utils/shipmentNoticeBody'
 import { NOTICE_BLOCK_LABEL } from '../utils/shipmentNotice'
@@ -415,6 +415,9 @@ async function loadTemplateBodies(provider: BarobillSmsProvider): Promise<Record
     const list = await provider.listATSTemplate()
     const map: Record<string, string> = {}
     for (const t of list || []) {
+      // ★승인된 것만 싣는다(2026-09-24) — 심사 중인 템플릿으로 보내면 바로빌이 거절한다.
+      //   이 맵에 이름이 있다 = 「지금 알림톡으로 보낼 수 있다」가 되도록(한진 자동 전환의 근거).
+      if (!isApprovedTemplateState(t.state)) continue
       const key = (t.templateName || t.templateCode || '').trim()
       if (key) map[key] = t.template || ''
     }
@@ -438,12 +441,13 @@ async function buildNotice(
   templates: Record<string, string>,
   dateStr: string
 ): Promise<NoticeResolved> {
-  const decision = resolveShipmentNotice({
+  // 승인 목록(templates)에 없으면 한진은 문자로 내린다 — 승인되면 배포 없이 알림톡으로 바뀐다.
+  const decision = applyTemplateApproval(resolveShipmentNotice({
     deliveryMethod: row.delivery_method,
     hasMobile: !!(row.mobile || '').trim(),
     trackingNumber: row.tracking_number,
     alreadySent: Number(row.notified) === 1,
-  })
+  }), row.delivery_method, new Set(Object.keys(templates)))
   const vars = {
     clientName: row.client_name || '고객',
     itemSummary: await loadItemSummary(db, row.shipment_id),
@@ -704,7 +708,9 @@ shipmentsRouter.get('/pending-confirm', requireAccessOrRole('/shipments', 'MANAG
         alreadySent: Number(r.notified) === 1,
       })
       return { ...r, notice_target: d.isTarget ? 1 : 0, notice_can_send: d.canSendNow ? 1 : 0,
-               notice_block: d.blockedReason, notice_channel: d.channel, notice_template: d.template }
+               notice_block: d.blockedReason, notice_channel: d.channel, notice_template: d.template,
+               // 승인 전일 수 있는 템플릿(한진) — 목록마다 바로빌을 부르지 않으므로 「승인 전엔 문자」로만 알린다
+               notice_sms_until_approved: noticePolicyFor(r.delivery_method)?.smsUntilApproved ? 1 : 0 }
     }).filter((r) => {
       const needsBoxOrTrack = Number(r.box_count) === 0
         || ((r.delivery_method || '').trim() === '한진택배' && !String(r.tracking_number || '').trim())

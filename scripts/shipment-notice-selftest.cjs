@@ -27,7 +27,7 @@ const { compileTs } = require('./lib/compile-ts.cjs')
 const ROOT_DIR = path.join(__dirname, '..')
 const fs = require('fs')
 const { mod, cleanup } = compileTs(path.join(__dirname, '..', 'src', 'utils', 'shipmentNotice.ts'), { bundle: true })
-const { resolveShipmentNotice, noticePolicyFor, NOTICE_POLICY, NOTICE_BLOCK_LABEL } = mod
+const { resolveShipmentNotice, noticePolicyFor, NOTICE_POLICY, NOTICE_BLOCK_LABEL, applyTemplateApproval, isApprovedTemplateState } = mod
 
 let fails = 0
 const check = (name, cond, detail) => {
@@ -38,6 +38,8 @@ const ok = (method, extra) => resolveShipmentNotice({ deliveryMethod: method, ha
 
 // 2026-09-18 바로빌에서 받은 승인 템플릿 4건 중 출고용 3건의 **정확한 이름**
 const APPROVED = ['대신화물 출고', '대신택배 출고', '방문 수령 준비 완료']
+// 심사 중(2026-09-24 신청) — 정책은 이름을 들고 있되 `smsUntilApproved` 로 승인 전엔 문자로 내린다
+const PENDING = ['한진택배 출고']
 
 console.log('[shipment-notice] ① 승인 템플릿명 일치')
 {
@@ -45,15 +47,23 @@ console.log('[shipment-notice] ① 승인 템플릿명 일치')
   check('방문수령 정책에 승인 템플릿명이 보존돼 있다', noticePolicyFor('방문수령').template === '방문 수령 준비 완료', noticePolicyFor('방문수령'))
   check('대신화물 → 대신화물 출고', ok('대신화물').template === '대신화물 출고')
   check('대신택배 → 대신택배 출고', ok('대신택배').template === '대신택배 출고')
-  const used = Object.values(NOTICE_POLICY).map((p) => p.template).filter(Boolean)
-  check('★쓰이는 템플릿명이 전부 승인본 목록 안에 있다(오타 = 발송 거절)',
-    used.every((t) => APPROVED.includes(t)), used.filter((t) => !APPROVED.includes(t)))
+  const used = Object.values(NOTICE_POLICY).filter((p) => p.template)
+  const bad = used.filter((p) => !(APPROVED.includes(p.template) || (PENDING.includes(p.template) && p.smsUntilApproved)))
+  check('★쓰이는 템플릿명은 승인본이거나, 심사 중이면 반드시 smsUntilApproved(오타·미승인 = 발송 거절)', bad.length === 0, bad)
 }
 
 console.log('[shipment-notice] ② 송장이 필요한 건 한진뿐')
 {
   const h = ok('한진택배')
-  check('한진 = 문자(승인 템플릿 없음)', h.channel === 'sms' && h.template === null, h)
+  check('한진 판정 = 알림톡 「한진택배 출고」(승인 여부는 발송 시점에 가린다)', h.channel === 'kakao' && h.template === '한진택배 출고', h)
+  const tr = ok('한진택배', { trackingNumber: '1234567890' })
+  const before = applyTemplateApproval(tr, '한진택배', new Set(APPROVED))
+  check('★승인 전(목록에 없음) = 문자로 내린다', before.channel === 'sms' && before.template === null && before.canSendNow === true, before)
+  const after = applyTemplateApproval(tr, '한진택배', new Set([...APPROVED, '한진택배 출고']))
+  check('★승인 후(목록에 있음) = 알림톡 「한진택배 출고」', after.channel === 'kakao' && after.template === '한진택배 출고', after)
+  const freight = applyTemplateApproval(ok('대신화물'), '대신화물', new Set())
+  check('다른 배송수단은 템플릿이 안 보여도 문자로 조용히 내리지 않는다(문구 조회 실패로 멈춤)', freight.channel === 'kakao', freight)
+  check('템플릿 상태: 3·S 만 승인', isApprovedTemplateState('3') && isApprovedTemplateState('S') && !isApprovedTemplateState('1') && !isApprovedTemplateState('') && !isApprovedTemplateState(null))
   check('한진 = 송장 없으면 못 보낸다', h.canSendNow === false && h.blockedReason === 'needs_tracking', h)
   check('한진 = 송장 넣으면 보낼 수 있다', ok('한진택배', { trackingNumber: '1234567890' }).canSendNow === true)
   for (const m of ['대신화물', '대신택배']) {
@@ -85,7 +95,7 @@ console.log('[shipment-notice] ⑤ 이름 변형 · 부분일치 순서')
 {
   check('「동산에서 대신화물」 → 대신화물 출고', ok('동산에서 대신화물').template === '대신화물 출고', ok('동산에서 대신화물'))
   check('「동산으로 방문수령」 → 방문수령 정책(대상 아님)', ok('동산으로 방문수령').blockedReason === 'not_target', ok('동산으로 방문수령'))
-  check('「택배(한진)」 → 문자', ok('택배(한진)').channel === 'sms')
+  check('「택배(한진)」 → 승인 전엔 문자', applyTemplateApproval(ok('택배(한진)'), '택배(한진)', new Set(APPROVED)).channel === 'sms')
   check('★「직접배송」이 정확일치로 먼저 잡힌다(대상 아님)', ok('직접배송').blockedReason === 'not_target')
   // ★「배송」은 이카운트에 손으로 적던 시절의 직접배송이다(2026-09-18 용준님 확인, prod 78건).
   //   SSOT(`constants/deliveryMethod` ALIASES)가 풀어 주므로 여기서 또 판정하지 않는다.

@@ -37,6 +37,8 @@ interface MethodPolicy {
   template?: string
   /** 송장번호가 있어야 보낼 수 있는가 */
   needsTracking?: boolean
+  /** 템플릿이 아직 승인 전일 수 있다 — 승인 목록에 없으면 문자로 보낸다(`applyTemplateApproval`) */
+  smsUntilApproved?: boolean
 }
 
 /**
@@ -54,8 +56,11 @@ export const NOTICE_POLICY: Record<string, MethodPolicy> = {
   '대신화물': { notify: true, template: '대신화물 출고' },
   '대신택배': { notify: true, template: '대신택배 출고' },
 
-  // ── 문자 (승인 템플릿 없음 · 송장을 본문에 넣는다 → 송장 입력 후) ──
-  '한진택배': { notify: true, needsTracking: true },
+  // ── 한진택배 — 송장이 본문에 들어가므로 **송장 입력 후** ──
+  //   알림톡 「한진택배 출고」는 2026-09-24 심사 신청(`docs/kakao-alimtalk-templates.md` §3-2).
+  //   `smsUntilApproved` = 바로빌 승인 목록에 그 템플릿이 **보일 때만** 알림톡, 아니면 지금처럼 문자.
+  //   승인되는 순간 배포 없이 알림톡(7원)으로 바뀐다 — 승인 여부는 발송할 때마다 바로빌에서 읽는다.
+  '한진택배': { notify: true, needsTracking: true, template: '한진택배 출고', smsUntilApproved: true },
 
   // ── 알림 대상 아님 (2026-09-18 용준님 결정) — 우리가 직접 가져다 준다 ──
   //   키는 **정본 표기**만 둔다. 「직배」·「자차배송」·「배송」은 SSOT ALIASES 가 「직접배송」으로 풀어 준다.
@@ -127,6 +132,30 @@ export function resolveShipmentNotice(input: NoticeInput): NoticeDecision {
     return { canSendNow: false, isTarget: true, channel, template, blockedReason: 'needs_tracking' }
   }
   return { canSendNow: true, isTarget: true, channel, template, blockedReason: null }
+}
+
+/** 바로빌 템플릿 상태 중 「승인」 — 이 값일 때만 발송에 쓴다(심사 중인 템플릿으로 보내면 거절된다). */
+export function isApprovedTemplateState(state: string | null | undefined): boolean {
+  const s = String(state ?? '').trim()
+  return s === '3' || s === 'S'
+}
+
+/**
+ * 판정 + 「지금 실제로 승인된 템플릿 이름들」 → 최종 채널.
+ * `smsUntilApproved` 정책(한진택배)은 템플릿이 승인 목록에 없으면 **문자로 내린다**.
+ * 그 외 정책은 건드리지 않는다 — 승인 템플릿이 사라졌다면 조용히 문자로 바꾸지 않고
+ * 기존처럼 「문구 조회 실패」로 멈춰 사람이 보게 한다.
+ */
+export function applyTemplateApproval(
+  decision: NoticeDecision,
+  deliveryMethod: string | null | undefined,
+  approvedTemplateNames: ReadonlySet<string>,
+): NoticeDecision {
+  if (decision.channel !== 'kakao' || !decision.template) return decision
+  if (approvedTemplateNames.has(decision.template)) return decision
+  const policy = noticePolicyFor(deliveryMethod)
+  if (policy?.smsUntilApproved) return { ...decision, channel: 'sms', template: null }
+  return decision
 }
 
 /** 화면 문구 — 배지·모달이 같은 말을 쓰게 한다. */

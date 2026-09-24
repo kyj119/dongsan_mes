@@ -7,8 +7,8 @@ import { BarobillSmsProvider } from '../services/barobillSms'
 import { getEntityCorpNum } from '../utils/entitySettings'
 import { BAROBILL_UNIT_COST_VAT_EXCL } from '../constants/barobillCodes'
 import { resolveKakaoIdentity } from '../utils/kakaoIdentity'
-import { resolveShipmentNotice, NOTICE_BLOCK_LABEL } from '../utils/shipmentNotice'
-import { fillNoticeBody, buildSmsNoticeBody, loadItemSummary } from '../utils/shipmentNoticeBody'
+import { resolveShipmentNotice, NOTICE_BLOCK_LABEL, isApprovedTemplateState } from '../utils/shipmentNotice'
+import { fillNoticeBody, loadItemSummary } from '../utils/shipmentNoticeBody'
 import { interpretSendStatus, BAROBILL_MESSAGING_ERROR } from '../constants/barobillMessagingCodes'
 import { checkBulkLimit } from '../services/messageBulkLimit'
 import { applyAudienceGuards, describeGuardResult, recordBulkRecipients } from '../services/messageAudience'
@@ -662,9 +662,28 @@ kakaoRouter.post('/send-shipment', async (c) => {
       let tplBody = ''
       try {
         const templates = await provider.listATSTemplate()
-        const tpl = templates.find(t => t.templateCode === templateCode || t.templateName === templateCode)
+        // 승인된 것만(2026-09-24) — 심사 중인 템플릿(예: 「한진택배 출고」)으로 보내면 거절된다
+        const tpl = templates.find(t => (t.templateCode === templateCode || t.templateName === templateCode) && isApprovedTemplateState(t.state))
         tplBody = tpl?.template || ''
-      } catch (_e) { /* 조회 실패 시 폴백 본문 */ }
+      } catch (_e) { /* 조회 실패 시 아래에서 skip */ }
+      // 이 경로는 **알림톡만** 보낸다. 승인 템플릿 본문이 없으면 보내지 않는다 — 종전엔 문자용 본문을 알림톡으로
+      //   실어 보내 바로빌 거절 → 대체문자로 새는 구조였다. 한진(승인 전)·조회 실패가 여기로 온다.
+      //   문자 전환이 필요한 발송은 판정 엔진이 있는 `/api/shipments/notice/send` 가 맡는다.
+      if (!tplBody) {
+        await db.prepare(
+          `INSERT INTO kakao_send_logs (
+            receipt_num, template_code, receiver_num, receiver_name,
+            related_type, related_id, client_id, content, alt_content,
+            status, result_code, result_message, sent_by, entity_id
+          ) VALUES ('', ?, ?, ?, 'shipments', ?, ?, '', '', 'SKIPPED', 0, ?, ?, ?)`
+        ).bind(
+          templateCode, shipment.mobile, shipment.client_name,
+          shipmentId, shipment.client_id,
+          `skip: 승인된 알림톡 템플릿 없음(${templateCode})`,
+          userId, getEntityId(c)
+        ).run()
+        return c.json({ success: true, data: { status: 'SKIPPED', reason: 'template_not_approved', template_code: templateCode } })
+      }
       const dateRow = await db.prepare(`SELECT date('now','+9 hours') as d`).first<{ d: string }>()
       const vars = {
         clientName: shipment.client_name || '고객',
@@ -674,7 +693,7 @@ kakaoRouter.post('/send-shipment', async (c) => {
         deliveryMethod,
         dateStr: dateRow?.d || '',
       }
-      content = tplBody ? fillNoticeBody(tplBody, vars) : buildSmsNoticeBody(vars)
+      content = fillNoticeBody(tplBody, vars)
     }
 
     // 알림톡 발송
