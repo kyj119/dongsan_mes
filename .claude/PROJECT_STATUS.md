@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **✅ prod 2026-09-24 `5d6363d8` — 배송 알림: 방문수령 끔 + 자동 발송 제거 + 한진 알림톡 심사안** — 방문수령·직접수령=대상 아님(템플릿 보존, 재검토 예정 → 확정 대기 1→0건) · `POST /api/shipments` 의 알림톡·이메일 자동 발송 삭제(`test:shipment-notice` ⑨가 재발 차단) · `docs/kakao-alimtalk-templates.md` §3-2 「한진택배 출고」 심사안. 검증 journey 40/40·e2e 4/4·smoke:prod 134/134·write 5/5. 남은=바로빌 심사 신청→승인 후 정책 1줄
+> **✅ prod 2026-09-24 `2cc2d564` — 배송 알림 정리** — 방문수령·직접수령=대상 아님(템플릿 보존·재검토 예정) · `POST /api/shipments` 자동 발송(알림톡·이메일) 제거(`test:shipment-notice` ⑨) · 「한진택배 출고」 심사 신청 → 발송 때마다 승인(3/S) 템플릿만 읽어 **승인되면 배포 없이 알림톡**, 전엔 문자(`applyTemplateApproval`). 검증 journey 40/40·e2e 4/4·smoke:prod 134/134·write 5/5. 남은=승인 후 내부 번호 1건 시험 발송
 
 > **✅ prod 2026-09-23 `65af4e65` — 출고 현장 피드백 5건** — 확정 대기 상태 열(확정됨·알림만 남음)+체크박스 일괄 확정/알림 · 준비상태→**출고 예정·실적**(출고완료 포함·이월 7일·예정표 인쇄) · 주문 원가=ADMIN/MANAGER/경리만(서버 제거·마진 산출라인 기준) · 작업지시서 바코드·JsBarcode 제거. 검증 journey 40/40·e2e 4/4·smoke:prod 134/134·write 5/5·render-junk 0. 남은=방문수령 알림 대상 여부 결정
 
