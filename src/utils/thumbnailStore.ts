@@ -160,12 +160,13 @@ export async function externalizeGroups(env: R2Env, analysisId: number | string,
  */
 export async function hydrateGroups(env: R2Env, groups: AnalysisGroup[]): Promise<AnalysisGroup[]> {
   if (!Array.isArray(groups)) return groups
-  for (const g of groups) {
+  // #502와 동일 원칙 — 그룹별 R2 get은 서로 독립이라 순차 await(N+1)이 아니라 병렬로 낸다.
+  await Promise.all(groups.map(async (g) => {
     if (g && !g.thumbnail_base64 && typeof g.thumbnail_r2_key === 'string' && g.thumbnail_r2_key) {
       const b64 = await getThumbnailBase64(env, g.thumbnail_r2_key)
       if (b64) g.thumbnail_base64 = b64
     }
-  }
+  }))
   return groups
 }
 

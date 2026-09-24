@@ -470,9 +470,12 @@ ordersCoreRouter.get('/:id', async (c) => {
     `).bind(id).all()
 
     // R2 이관: ai_groups_json 썸네일을 emit 직전 base64로 복원(주문접수/편집 화면 무수정). r2_key 없으면 no-op.
-    for (const it of (items || []) as Array<{ ai_groups_json?: string | null }>) {
-      it.ai_groups_json = (await hydrateGroupsJson(c.env, it.ai_groups_json)) ?? null
-    }
+    // #502와 동일 원칙(aiAnalysis.ts) — 순차 await(N+1)였던 자리, 이 라우트에는 누락돼 있었다.
+    // 행수는 order_items(라인 수)로 자연 상한이라 배치 청크 없이도 안전.
+    await Promise.all((items || []).map(async (it) => {
+      (it as { ai_groups_json?: string | null }).ai_groups_json =
+        (await hydrateGroupsJson(c.env, (it as { ai_groups_json?: string | null }).ai_groups_json)) ?? null
+    }))
 
     // 주문 가시성 (멀티법인 격리·IDOR 차단): 소유(청구) 법인 + 담당 품목 보유 법인만 열람.
     // ADMIN(entityId=0)/코디네이터는 전체. 권한 없으면 존재 비노출 위해 404.
