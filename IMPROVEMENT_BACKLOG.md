@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-09-24T15:51:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-09-24T18:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,29 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **10** (+1, #661) |
+| 🆕 new | **11** (+1, #662) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **572** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 4 데이터 정합성 (2026-09-24T18:20):**
+> - **방법**: 세션 시작 시 detached HEAD `d67da50`(origin/main과 동일) → 로컬 `main` stale(`0425936`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area4 사이클 세션시작 HEAD `4cd6542`)**: `git diff --stat 4cd6542..HEAD -- src/routes src/utils migrations index.tsx` **9파일**(`0627` 마이그·`orders/core.ts`·`printEvents.ts`·`shipments.ts`·`workbench.ts`·`finishingLabel.ts`·`printFileName.ts`(신규)·`shipmentNotice.ts`·`thumbnailStore.ts`). 전부 이번 순환(Area4→5→6→1→2→3) 중 다른 Area가 자기 렌즈로 이미 정독(`0627`=Area6 idempotent 확인·`orders/core.ts`+`thumbnailStore.ts`=Area1 자신의 830060b N+1 병렬화 자체검증·`shipments.ts`=Area2 entity/N+1+Area3 UX(confirmPendingRow, #661)·`workbench.ts`=Area5 ovf 필터 확인·`finishingLabel.ts`/`printFileName.ts`=Area2 dead-code+Area6 sibling-parity·`shipmentNotice.ts`=Area2+Area5). **Area4 고유 렌즈(집계정합성·고아레코드·entity_id NULL·인덱스)로는 미검증** → 9파일 직접 재검토.
+> - **`orders/core.ts` 830060b 재검토(Area4 렌즈)**: `hydrateGroupsJson`/`hydrateGroups` 순차→`Promise.all` 병렬화는 각 order_item/group을 독립적으로 그 자리에서 mutate(`it.ai_groups_json = ...`, `g.thumbnail_base64 = ...`)하는 구조라 원소 간 공유 상태·누적 카운터 없음 — 병렬화가 집계 순서/중복에 영향 없음(Area1이 이미 성능 렌즈로, 이번엔 정합성 렌즈로 재확인, 결함 0).
+> - **🆕 신규 발견 #662 — `GET /:id/invoice`가 `GET /:id`의 원가 역할필터(65af4e6)를 못 받음**: 같은 커밋(`65af4e6`)이 `/:id`에 `ORDER_COST_ROLES`(ADMIN/MANAGER/ACCOUNTANT)/`ORDER_COST_FIELDS`(material_cost 등 6개) 서버측 삭제를 추가했는데(`core.ts:542-546`), **형제 엔드포인트 `/:id/invoice`(`:276`, 거래명세서)는 `oi.*` 로 order_items 를 그대로 반환**하며 이 필터가 없다. `/:id/invoice`는 `requireRole` 없이 라우터 공통 `requireAnyPagePermission('/orders','/cards')`(`:16`)만 걸리고, `/cards` 페이지 권한은 `0453_role_expansion_rw.sql:71,82`에서 **FINISHING·SHIPPING** job_role에도 부여돼 있어(`COALESCE(job_role,role)`가 JWT role) 원가 비공개 대상 직원이 이 API로 원가·마진을 그대로 받을 수 있음. `core.ts:280-282` 주석이 entity 가시성은 이미 형제 맞춤을 명시했는데 같은 날 추가된 역할 필터만 스윕에서 빠짐 — 이 프로젝트가 반복 codify하는 "형제 완전성 누락" 클래스의 데이터 노출판. issue-only(API 응답 형식 변경).
+> - **나머지 8파일 재확인**: `printEvents.ts`(과다출력 카드수량 분모 확장) — 읽기전용 판정 로직, 80청크 바인드 정상, 집계 컬럼 write 없음 = Area4 대상 아님. `shipments.ts`(285줄 재설계) — `git diff` grep(`UPDATE|INSERT|DELETE|SET .*\+|COALESCE`) 결과 신규 가산/누적 write 0건(전부 read-side dashboard 재구성 + 알림 발송 코드 제거), Area2가 이미 entity/N+1 확인 완료라 집계정합성 렌즈로도 추가 결함 없음. `workbench.ts`(intake-config 컬럼 확장) — 읽기전용 SELECT 확장(판매단위·후가공·품목코드 컬럼 추가), 쓰기·집계 없음. `finishingLabel.ts`/`printFileName.ts`(신규 `formatGrommet`/`formatLoop`/`parseDeclaredQty`) — 순수 포매팅 함수, DB 접근 없음. `shipmentNotice.ts`(정책값 변경) — Map 상수 스왑뿐. `0627` 마이그 — Area6가 이미 idempotent(`UPDATE`/`INSERT OR IGNORE`) 확인 + prod 배포검증 완료, net-new 없음.
+> - **standing scan 1: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 4건 전부 기존 FP 유지(`attendance.ts:171`·`dashboard.ts:420`·`workbench.ts:577`·`itemUnits.ts:162`).
+> - **standing scan 2: `npm run audit:migration-number`** — 같은 테이블 DDL 충돌 **0건**(변동없음, 중복번호 쌍 목록 동일).
+> - **standing scan 3: `npm run branch:clean`** — 삭제대상 0건(SKIP 1=main). **standing scan 4: `npm audit --omit=dev`** — 0건.
+> - **prod 데이터 직접조회 불가 재확인**: 이 세션도 egress 차단 — 고아 레코드·상태 불일치 등 실 데이터 기반 점검은 이번에도 불가(기존 제약 재확인, 신규 아님).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최신 8런 전부 `conclusion:success`(최종 HEAD `d67da50`, run #2064).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` 기존 10건(#661·#660·#659·#658·#656·#654·#650·#626·#617·#616) 전건 Area4 관할 밖 또는 상태 유지. `search_issues(invoice cost margin)` 0건 확인 후 #662 net-new 등록.
+> - **backlog↔GitHub 절대값 재동기화**: open **11**(+1, #662) · done **572**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md `line N` 잔여참조 재확인(0건, 이미 서술식). 이번 사이클은 기존 churn-bridge 원칙("다른 Area가 자기 렌즈로 이미 본 파일이라도 이 Area 고유 렌즈로는 미검증일 수 있다")을 role-기반 필드제거(entity 격리가 아니라 역할별 응답필드 제거)라는 새 하위클래스에 적용한 사례 — 기존 "형제 스윕 누락" 원칙의 정확한 재적용(entity 축의 #659/#658/#650과 같은 계열이나 이번은 role→field 축), 새 클래스 codify는 불요(기존 형제완전성 원칙이 이미 포괄).
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 10건 → 이번 추가 후 11건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 **1건**(#662, GET /:id/invoice 원가필드 역할필터 누락 — FINISHING/SHIPPING 노출), 자동수정 0건(API 응답 형식 변경=Area4 정책상 issue-only), done-sync: open 10→11(#662)·done 572(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-09-24T15:51):**
 > - **방법**: 세션 시작 시 detached HEAD `baa1a61`(origin/main과 동일) → 로컬 `main` stale(`0425936`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
