@@ -103,5 +103,47 @@ console.log('\n── 5 패널 결과창 — 적용 내역·느린 경로를 말
   ok('값이 없으면 빈 문자열', AB({}) === '')
 }
 
+console.log('\n── 6 굳힌 격자 풀기(mesCut_hardenLeaves) — 2026-09-24 프로브 구조 재현 ──')
+{
+  const lm = /function mesCut_hardenLeaves\([\s\S]*?\r?\n}\r?\n/.exec(SRC)
+  ok('소스에 mesCut_hardenLeaves 가 있다', !!lm)
+  if (lm) {
+    const fn = new Function('mesCut_inkBounds', lm[0] + '\nreturn mesCut_hardenLeaves')((it) => it.b || null)
+    // 좌표 = 일러 y-up [L, T, R, B] (pt). 격자 상자 1897×218, 칸 A(x 10~90) · B(x 110~190)
+    const gb = [0, 218, 1897, 0]
+    const P = (L, R, extra = {}) => ({ typename: 'PathItem', b: [L, 150, R, 50], ...extra })
+    const clip = (b) => ({ typename: 'PathItem', clipping: true, b, geometricBounds: b })
+    const grp = (kids, clipped = false) => {
+      let L = 1e9, T = -1e9, R = -1e9, B = 1e9
+      for (const k of kids) { if (k.clipping) continue; L = Math.min(L, k.b[0]); T = Math.max(T, k.b[1]); R = Math.max(R, k.b[2]); B = Math.min(B, k.b[3]) }
+      return { typename: 'GroupItem', clipped, pageItems: kids, b: [L, T, R, B] }
+    }
+    const cells = [[10, 90], [110, 190]]
+    const cellOf = (kb) => { let hit = -1, hits = 0; cells.forEach(([a, z], q) => { if (kb[0] >= a && kb[2] <= z) { hit = q; hits++ } }); return { hit, hits } }
+    // 프로브 모양: ROOT → 페이지 클립 그룹[클립=격자 전체, 아무것도 안 자르는 클립 그룹(898), 패스 3]
+    const noop = grp([clip(gb), P(12, 20), P(30, 88), { typename: 'CompoundPathItem', b: [40, 150, 60, 50] }, P(112, 150)], true)
+    const page = grp([clip(gb), noop, P(120, 130), P(140, 180), P(111, 189)], true)
+    const root = grp([page])
+    const r = fn(root, gb, cellOf)
+    const nA = r.items.filter((x) => x.cell === 0).length, nB = r.items.filter((x) => x.cell === 1).length
+    ok('안 자르는 클립 안으로 내려가 칸별로 담는다(A 3 · B 4)', r.ok && nA === 3 && nB === 4, `${r.why} A=${nA} B=${nB}`)
+    ok('클립 패스는 담지 않는다', r.items.every((x) => !x.it.clipping))
+    // 진짜로 자르는 클립(격자 상자보다 작다)이 두 칸에 걸침 → 포기(조각별 경로)
+    const real = grp([clip([15, 140, 170, 60]), P(20, 60), P(120, 160)], true)
+    const r2 = fn(grp([real]), gb, cellOf)
+    ok('자르는 클립이 여러 칸에 걸치면 포기(clip-span)', !r2.ok && r2.why === 'clip-span', r2.why)
+    // 한 개체(패스)가 두 칸에 걸침 → 포기
+    const r3 = fn(grp([P(50, 150)]), gb, cellOf)
+    ok('두 칸에 걸친 패스는 포기(ambig/outside)', !r3.ok && /^(ambig|outside)/.test(r3.why), r3.why)
+    // 칸 안에 온전히 든 클립 그룹은 **풀지 않고** 통째로 담는다(조각 자신의 마스크 보존)
+    const own = grp([clip([112, 150, 150, 50]), P(111, 160)], true)
+    const r4 = fn(grp([P(12, 20), own]), gb, cellOf)
+    ok('한 칸 안의 클립 그룹은 통째로(마스크 보존)', r4.ok && r4.items.some((x) => x.it === own), r4.why)
+    // 숨긴 개체는 건너뛴다
+    const r5 = fn(grp([P(12, 20), P(50, 150, { hidden: true })]), gb, cellOf)
+    ok('숨긴 개체는 무시', r5.ok && r5.items.length === 1, r5.why)
+  }
+}
+
 console.log(fails ? `\n✗ ${fails}건 실패` : '\n✓ 전부 통과')
 process.exit(fails ? 1 : 0)

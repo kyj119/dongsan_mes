@@ -1133,7 +1133,8 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     //   실제로 이 검사가 실물에서 `outside` 를 잡았다 — 부분 수용은 안전하지 않았다.
     // ★배정은 「가장 가까운 중심」이 아니라 **셀 상자 포함**이어야 한다 —
     //   굳힌 PDF 는 낱개 패스로 풀리므로 넓은 조각의 끝쪽이 옆 조각 중심에 더 가까워진다.
-    ok('3x 배정은 셀 상자 포함으로', /\(hits \? 'ambig' : 'outside'\)/.test(h2)
+    // 0.56.0: 판정이 `mesCut_hardenLeaves` 안으로 옮겨 `c.hits` 가 됐다 — 성질(셀 상자 포함)은 같다
+    ok('3x 배정은 셀 상자 포함으로', /\((?:c\.)?hits \? 'ambig' : 'outside'\)/.test(h2)
       && /MESCUT_HARDEN_GAP_MM \* MESCUT_PT_PER_MM \/ 2/.test(h2)
       && !/best < 0 \|\| d < bd/.test(h2))
     ok('3x 포기한 조각 수를 밝힌다', /;hardenskip=/.test(h2) && /MESCUT_HARDEN_SKIP\+\+/.test(h2))
