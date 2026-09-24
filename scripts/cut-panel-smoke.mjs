@@ -1111,10 +1111,18 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     //   판이 **조용히** 조각당 3초 경로로 떨어졌다(23조각 실측).
     ok('3x 굳히기 격자는 PDF 한계를 쓴다', /var MESCUT_PDF_MAX_PT = 14000;/.test(h2))
     // 격자 안의 네 자리(셀 크기·재는 줄바꿈·총크기·놓는 줄바꿈)가 전부 PDF 한계를 써야 한다
-    ok('3x 격자 네 자리 전부 PDF 한계', (h2.match(/MESCUT_PDF_MAX_PT/g) || []).length >= 5)
+    // 0.55.0: 한계가 `LIM = min(캔버스÷배율, PDF 한계)` 로 바뀌었다 — 성질(격자는 PDF 한계를 넘지 않는다)은
+    //   「LIM 이 PDF 한계로 상한」 + 「네 자리 전부 LIM」 으로 본다(개수를 세면 개선이 막힌다).
+    {
+      const gsrc = (/function mesCut_hardenGrid\([\s\S]*?\r?\n}\r?\n/.exec(h2) || [''])[0]
+      const lim = /var LIM = \(limitPt > 0\) \? Math\.min\(limitPt, MESCUT_PDF_MAX_PT\) : MESCUT_PDF_MAX_PT;/.test(gsrc)
+      const uses = (gsrc.match(/> LIM\b/g) || []).length
+      ok('3x 격자 네 자리 전부 PDF 한계', lim && uses >= 4, `LIM 상한=${lim} · LIM 비교 ${uses}곳(기대 ≥4)`)
+      ok('3x 격자 나누기 한계도 PDF 한계로 상한', /var LIM = Math\.min\(MESCUT_PDF_MAX_PT, MESCUT_CANVAS_MAX_PT \/ Math\.max\(1, k\)\);/.test(h2))
+    }
     // ★조용한 폴백은 이유를 남겨야 보인다 — 여태 null 이라 사람이 알 길이 없었다.
     ok('3x 굳히기 실패 이유를 남긴다', /var MESCUT_HARDEN_ERR = '';/.test(h2)
-      && /hardenWhy = 'grid' \+ \(MESCUT_HARDEN_ERR/.test(h2)
+      && /fail = 'grid' \+ g \+ \(MESCUT_HARDEN_ERR/.test(h2) && /hardenWhy = hg\.fail/.test(h2)
       && /hardenWhy = 'split' \+ \(MESCUT_HARDEN_ERR/.test(h2))
     // ★적용이 왜 그런지를 재는 눈금 — 판은 전혀 바뀌지 않는다(문자열에만 붙는다).
     ok('3x 적용 단계별 소요를 보낸다', /';ms=' \+ mesCut_tmStr\(\)/.test(h2)
