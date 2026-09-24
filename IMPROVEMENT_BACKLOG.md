@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-09-24T18:20:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-09-24T22:50:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,31 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **11** (+1, #662) |
+| 🆕 new | **11** (변동없음) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **572** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 5 보안 + 인프라 (2026-09-24T22:50):**
+> - **방법**: 세션 시작 시 detached HEAD `d3a1d7d`(origin/main과 동일) → 로컬 `main` stale(`0425936`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area5 사이클 세션시작 HEAD `76ff7de`)**: `git diff --stat 76ff7de..HEAD -- src/routes src/middleware src/utils index.tsx wrangler.toml .github/workflows` **6파일**(`kakao.ts`·`orders/core.ts`·`orders/queries.ts`·`shipments.ts`·`shipmentNotice.ts`·`thumbnailStore.ts`). `orders/core.ts`(830060b R2 hydrate 병렬화)·`thumbnailStore.ts`는 이번 순환 Area1(자기 성능검증)·Area4(집계정합성 렌즈)가 이미 정독 — 병렬화가 entity 필터·인증에 영향 없음 재확인만. `shipments.ts`·`shipmentNotice.ts`(65af4e6·148ccbc·5d6363d)는 Area2(entity/N+1/dead-code)·Area3(UX)가 이미 정독했으나, **Area5 고유 렌즈(IDOR·bare mutate·write-redirect 안전성)로는 미검증** → 직접 재검토. `kakao.ts`·`orders/queries.ts`(2cc2d56·8506b3b)는 아무 Area도 안 본 완전 신규 — 전수 직접 검증.
+> - **`kakao.ts` POST /send-shipment 재검증(한진 알림톡 자동전환, 2cc2d56)**: `shipment` 조회가 `entityFilter(c,'o')` 유지, 신규 SKIPPED 로그 INSERT의 `entity_id`는 `getEntityId(c)` 스탬프(격리 정상). `isApprovedTemplateState` 판정 추가는 순수 상태값 비교, DB 접근·사용자입력 렌더 없음 — IDOR·XSS·SQLi 표면 없음.
+> - **`orders/queries.ts` GET /:id/work-order 재검증(재단 번호 확대, 8506b3b)**: 신규 `designer_intakes` 조회가 `analysisIds`(이미 entity-scoped 주문 라인에서 파생) IN절을 80청크로 바인드(`audit:bind-limit` 컨벤션 준수) — entity 필터 불필요(파생 ID가 이미 격리된 상위 쿼리 결과), 신규 격리 갭 없음.
+> - **`shipments.ts` write-redirect 안전성 재확인(Area5 고유 렌즈)**: `applyShipmentFieldPatch`(내부 `SELECT merged_into_id FROM shipments WHERE id=?` bare)는 **호출부(`PATCH /:id`)가 진입 시 `entityFilter(c)`로 소유권을 먼저 검증**한 뒤에만 호출됨(FP클래스 "cross-entity 리다이렉트 — 진입점이 호출자 소유 자원만 받으면 안전"과 정확히 일치, `:1568` 확인) — 새 격리 갭 아님. `PATCH /checklist/:shipmentId`(신규/재작성)도 `entityFilter(c,'o')` JOIN 게이트 확인. `loadShipPlan()`(대시보드 재설계)도 `entityFilter(c,'o')` 유지.
+> - **standing scan 1: 시크릿 폴백** `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → `fax.ts:43` 1건(빈 문자열 폴백, 기존 FP, 변동없음).
+> - **standing scan 2: `node scripts/check-xss.mjs`**(advisory) — **109건**(직전 107, +2). 델타 2건을 직접 대조(`shipments.js:248/1969`·`workOrderPrint.js:116`) → 전부 FP, 신규 FP 하위클래스로 codify(아래). 진짜 미이스케이프 net-new 0건.
+> - **standing scan 3: `npm run audit:entity`** — 검사 133파일·entity테이블 SELECT 75건·누락 **0건**(변동없음).
+> - **standing scan 4: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 4건 전부 기존 FP 유지.
+> - **standing scan 5: `npm run branch:clean`** — 삭제대상 0건(SKIP 1=main). **standing scan 6: `npm audit --omit=dev`** — 0건.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최신 8런 전부 `conclusion:success`(최종 HEAD `d3a1d7d`, run #2070).
+> - **open≠unfixed — #658·#650 재확인(churn 무변경 근거)**: `git diff --stat 76ff7de..HEAD -- src/routes/taxInvoices/issue.ts src/routes/items.ts` = 빈 출력(두 파일 모두 직전 Area5 사이클 이후 무변경) — 직전 사이클(09-23T15:40)이 이미 직접 재확인 완료라 재조회 불필요, 그대로 미해결 유지. `#626`도 churn 밖, 상태 불변.
+> - **open 이슈 재확인**: `list_issues(state:OPEN,label:auto-improve)` **11**건(#662·#661·#660·#659·#658·#656·#654·#650·#626·#617·#616) — 전건 Area5 관할 밖 또는 상태 유지.
+> - **backlog↔GitHub 절대값 재동기화**: open **11**(변동없음) · done **572**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: area-5-security-infra.md에 새 FP 클래스 추가 — 「`check-xss.mjs`의 `+` 분절(concat-style)도 삼항조건 FP를 물려받는다 + 리터럴 속성값의 field-substring 오매치」(기존 ⓑ클래스가 템플릿리터럴 `${...}` 한정으로 적혀 있었는데 concat 스타일(`+`)에도 같은 형태가 재현됨을 이번 churn 2건에서 실측·codify). `line N` 잔여참조 재확인(0건, 이미 서술식).
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 11건 → 이번 추가 후 12건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(6파일 전수 검증, IDOR·XSS·SQLi 전부 clean, check-xss 델타 2건 FP 확인), 자동수정 0건(고칠 결함 없음), done-sync: open 11(변동없음)·done 572(변동없음)·rejected 6(변동없음). 다음 순번 **Area 6**.
+>
 
 > **Area 4 데이터 정합성 (2026-09-24T18:20):**
 > - **방법**: 세션 시작 시 detached HEAD `d67da50`(origin/main과 동일) → 로컬 `main` stale(`0425936`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
