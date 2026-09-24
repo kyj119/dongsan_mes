@@ -615,6 +615,20 @@ ordersQueriesRouter.get('/:id/work-order', async (c) => {
       }
     }
 
+    // ★재단 패널 등록(호스트 `CUT-CEP-*`)의 고해상도 그림 = **번호가 찍힌 원본 배치**(판별 강조본 thumb_hi).
+    //   240px(≈6.3cm)로 찍으면 번호가 1mm 안팎이라 판↔조각 대조가 안 된다(2026-09-24 실측 · cut:number M7).
+    //   → 그 줄만 A4 폭으로 크게 찍는다(`thumbnail_large`). 가공(A0) 등 다른 줄은 종전 그대로.
+    const cutPanelAnalysis = new Set<number>()
+    for (let i = 0; i < analysisIds.length; i += 80) {
+      const chunk = analysisIds.slice(i, i + 80)
+      const ph = chunk.map(() => '?').join(',')
+      const { results: rows } = await c.env.DB.prepare(
+        `SELECT DISTINCT ai_analysis_id FROM designer_intakes WHERE ai_analysis_id IN (${ph}) AND script_version LIKE 'CUT-CEP-%'`
+      ).bind(...chunk).all<{ ai_analysis_id: number }>()
+      for (const r of rows || []) cutPanelAnalysis.add(r.ai_analysis_id)
+    }
+    const largeByLine = new Set<number>()
+
     // R2 GET 은 병렬 — 직렬 await 면 라인 수만큼 왕복이 그대로 쌓인다(인쇄 대기 시간).
     const thumbByLine = new Map<number, string>()
     await Promise.all(lines.map(async (l) => {
@@ -626,7 +640,10 @@ ordersQueriesRouter.get('/:id/work-order', async (c) => {
           //   P2(에이전트 2장 export) 이전 데이터엔 hi 키가 없어 자동으로 sm 로 내려간다.
           const hi = (g as Record<string, unknown>).thumbnail_hi_r2_key
           const sm = g.thumbnail_r2_key
-          if (typeof hi === 'string' && hi) ref = hi
+          if (typeof hi === 'string' && hi) {
+            ref = hi
+            if (cutPanelAnalysis.has(l.ai_analysis_id)) largeByLine.add(l.id)   // 번호 그림일 때만 크게(sm 폴백은 번호가 없다)
+          }
           else if (typeof sm === 'string' && sm) ref = sm
           else if (typeof g.thumbnail_base64 === 'string' && g.thumbnail_base64) {
             thumbByLine.set(l.id, `data:image/png;base64,${g.thumbnail_base64}`)
@@ -664,6 +681,7 @@ ordersQueriesRouter.get('/:id/work-order', async (c) => {
       production_line: lineByItem.get(l.id) || null,   // null = 제작 대상 아님(출고만)
       fabric: l.item_id ? formatFabricNames(fabricByItem.get(l.item_id) || []) : null,
       thumbnail: thumbByLine.get(l.id) || null,
+      thumbnail_large: largeByLine.has(l.id) && thumbByLine.has(l.id),
     }))
 
     return c.json({ success: true, data: { order, lines: outLines } })

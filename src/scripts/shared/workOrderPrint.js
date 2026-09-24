@@ -72,6 +72,9 @@ async function printWorkOrder(orderId) {
             + '.line-section-ship { border-bottom-color: #9ca3af; color: #4b5563; }'
             + '.row { display: flex; gap: 12px; align-items: stretch; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; margin-top: 10px; page-break-inside: avoid; break-inside: avoid; }'
             + '.thumb { width: 240px; max-height: 240px; flex-shrink: 0; border: 1px solid #e5e7eb; border-radius: 6px; object-fit: contain; background: #fff; align-self: flex-start; }'
+            // ★재단 패널 번호 그림 — 줄 아래 A4 폭 전체(번호로 판↔조각을 대조하는 그림이라 6.3cm 로는 번호가 안 읽힌다)
+            + '.row-large { flex-wrap: wrap; }'
+            + '.thumb-large { order: 9; flex: 0 0 100%; width: 100%; max-height: 170mm; border: 1px solid #e5e7eb; border-radius: 6px; object-fit: contain; background: #fff; }'
             + '.thumb-empty { width: 240px; height: 120px; flex-shrink: 0; border: 1px dashed #d1d5db; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #d1d5db; font-size: 34px; align-self: flex-start; }'
             + '.info-col { flex: 1; min-width: 0; }'
             + '.title { font-size: 16px; font-weight: 700; }'
@@ -139,10 +142,12 @@ async function printWorkOrder(orderId) {
                 var qty = ln.quantity || 1;
                 var unit = ln.unit || 'EA';
 
-                html += '<div class="row">';
+                var large = !!(ln.thumbnail && ln.thumbnail_large);
+                html += '<div class="row' + (large ? ' row-large' : '') + '">';
 
-                // 시안
-                html += ln.thumbnail
+                // 시안 — 재단 패널 번호 그림은 줄 맨 아래에 크게(아래 .thumb-large), 나머지는 왼쪽 240px
+                if (large) html += '<img src="' + ln.thumbnail + '" class="thumb-large">';
+                else html += ln.thumbnail
                     ? '<img src="' + ln.thumbnail + '" class="thumb">'
                     : '<div class="thumb-empty"><span>&#128444;</span></div>';
 
