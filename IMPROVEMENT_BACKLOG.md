@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-09-25T21:45:16+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-09-26T03:46:13+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,25 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **11** (변동없음) |
+| 🆕 new | **12** (+1) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **572** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 3 UX/기능 감사 (2026-09-26T03:46):**
+> - **방법**: 세션 시작 시 로컬 `main`이 origin보다 stale(`0425936`) → `git fetch origin main` + `git checkout -B main origin/main`(`e40fd0a`)으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area3 사이클 세션시작 HEAD `baa1a61`)**: `git diff --stat baa1a61..HEAD -- src/pages src/scripts index.tsx` **2파일**(`shipments.js`·`workOrderPrint.js`, 2커밋 `2cc2d56`·`8506b3b`). 둘 다 이번 순환 Area1(workOrderPrint.js 직접확인)·Area2(백엔드 shipments.ts/kakao.ts)가 이미 정독 — `shipments.js` 배지 문구 변경은 응답 필드(`notice_sms_until_approved`)가 `shipments.ts:713`에서 실제로 내려오는지 직접 대조(정상), `workOrderPrint.js`는 순수 인쇄 레이아웃(large-thumb) 추가로 UX 체크리스트(빈상태·로딩·confirm·더블클릭·크로스링크·KPI·XSS) 해당 없음. 결함 0건.
+> - **🆕 신규 발견 #663 — `POST /api/kakao/send-shipment`(단건) 이번 커밋(`2cc2d56`)이 19줄 신규 로직(승인템플릿 확인+SKIPPED 로그)을 추가한 라우트인데, 프론트 호출처가 `src/scripts`·`src/pages` 전수 grep 0건** — 실제 UI 발송은 `notice/send`(판정엔진, shipments.js:819·orders.js:198)와 `send-shipment-bulk`(shipments.js:1680,1761) 둘뿐. `shipment-notice-selftest.cjs:162`는 "shipments.ts가 이 라우트를 스스로 안 부른다"만 검증(자동발송 방지 취지)해서 프론트 미도달을 못 잡는다. shallow clone(96커밋)이라 원래 연결돼 있었는지는 확정 불가 — 라우트 제거 vs 단건 재발송 UI 복원 중 owner 판단 필요. issue-only(라우트 삭제=자동수정 금지 항목).
+> - **standing scan 1: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 4건 전부 기존 FP 유지.
+> - **standing scan 2: `npm run branch:clean`** — 삭제대상 0건(SKIP 1=main). **standing scan 3: `npm audit --omit=dev`** — 0건.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최신 8런 전부 `conclusion:success`(최종 HEAD `e40fd0a`, run #2074).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` 기존 11건(#662·#661·#660·#659·#658·#656·#654·#650·#626·#617·#616) 전건 Area3 관할 밖 또는 상태 유지(#661=Area3 자신의 직전 발견, owner 리뷰 대기 중 재확인 불요). `search_issues(send-shipment kakao orphan 고아 라우트)` 중복 없음 확인 후 #663 등록.
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(+1, #663) · done **572**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-3-ux-audit.md `line N` 잔여참조 재확인(0건, 이미 서술식). 이번 발견(#663)은 기존 "고아 라우트" 클래스(#654, Area2)의 UX-lens 재현이나 시그니처가 다르다 — #654는 프론트 호출 0건인 **PATCH**, #663은 **여전히 기능이 계속 추가되는** POST(같은 커밋이 죽은 경로에 신규 로직을 얹음). 새 클래스로 분리 codify는 불요(기존 "형제 라우트 존재성" 계열 레시피가 이미 포괄), 다만 향후 Area3 churn 리뷰 시 "이 커밋이 바뀐 라우트가 프론트에서 불리는지"를 diff 범위 안에서 상시 확인하는 습관을 강화.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 10건 → 이번 추가 후 11건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 **1건**(#663, 단건 kakao 발송 라우트 고아화 — 죽은 코드에 계속 기능 추가), 자동수정 0건(라우트 삭제/UI 복원=Area3 정책상 issue-only), done-sync: open 11→12(#663)·done 572(변동없음)·rejected 6(변동없음). 다음 순번 **Area 4**.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-09-25T21:45):**
 > - **방법**: 세션 시작 시 로컬 `main`이 origin보다 15커밋 stale(`0425936`) → `git fetch origin main` + `git checkout -B main origin/main`(`b8ad910`)으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
