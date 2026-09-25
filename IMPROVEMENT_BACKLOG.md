@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-09-25T15:45:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-09-25T21:45:16+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,22 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **572** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 2 코드 품질 심층 분석 (2026-09-25T21:45):**
+> - **방법**: 세션 시작 시 로컬 `main`이 origin보다 15커밋 stale(`0425936`) → `git fetch origin main` + `git checkout -B main origin/main`(`b8ad910`)으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area2 사이클 세션시작 HEAD `1f42a40`)**: `git diff --stat 1f42a40..HEAD -- src/routes src/types src/utils migrations index.tsx` **4파일**(`kakao.ts`·`orders/queries.ts`·`shipments.ts`·`shipmentNotice.ts`), 2커밋(`2cc2d56` 한진 알림톡 자동전환·`8506b3b` 재단 패널 번호 확대). 둘 다 이번 순환 Area1·Area5·Area6가 이미 자기 렌즈로 정독(로그 상단 확인) — Area2 고유 렌즈(entity_id·authMiddleware·N+1·SELECT *·dead code)로 직접 재확인.
+> - **`2cc2d56`(한진 알림톡 승인 자동전환) 재검증**: `kakao.ts`·`shipments.ts`·`shipmentNotice.ts` 순수 정책 분기 추가(`isApprovedTemplateState`·`applyTemplateApproval`) — 새 DB write 없음, entity_id 관련 컬럼 미참조(바로빌 외부 API 응답 필터링뿐), N+1 없음(루프 내 DB 쿼리 신설 없음), 함수 시그니처 타입 정합. 결함 0건.
+> - **`8506b3b`(재단 패널 번호 확대) 재검증**: `orders/queries.ts:618` 신설 `cutPanelAnalysis` IN절 조회가 `analysisIds.slice(i, i+80)` **80-청크 루프로 정확히 구현**(§D1 바인드한도 컨벤션 100% 준수, chunk80 미사용이지만 동일 폭) — 이번 사이클 D1 바인드한도 standing scan(레시피: 동적 `IN (${ph})` grep)에서 자동 clean 판정. R2 GET은 기존 `Promise.all` 병렬 루프 내부에서 `largeByLine.add()`만 추가(순수 메모리 연산, 추가 왕복 없음) — N+1 아님.
+> - **standing scan 1: `npm run audit:entity`** — 검사 133파일·entity테이블 SELECT 75건·누락 **0건**(변동없음).
+> - **standing scan 2: authMiddleware recursive 스캔**(`find src/routes -name '*.ts'` 전수, top-level+subdir) — 무-auth 후보 7건(`publicUnsubscribe.ts`·`orders/helpers.ts`·`payroll/shared.ts`·`cron.ts`·`messagesAd.ts`·`hrSelf.ts`·`taxInvoices/helpers.ts`, 변동없음) 전부 기존 정당 클래스(barrel/helpers Map.get FP·hrSelf scoped-token·public webhook류).
+> - **standing scan 3: `npm run branch:clean`** — 삭제대상 0건(SKIP 1=main). **standing scan 4: `npm audit --omit=dev`** — 0건.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최신 8런 전부 `conclusion:success`(최종 HEAD `b8ad910`, run #2073).
+> - **open 이슈 재확인**: `list_issues(state:OPEN,label:auto-improve)` **11**건(#662·#661·#660·#659·#658·#656·#654·#650·#626·#617·#616, 변동없음) — Area2 라벨 신규 0건, churn 범위(4파일)와 겹치는 건 없음.
+> - **backlog↔GitHub 절대값 재동기화**: open **11**(변동없음) · done **572**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-2-code-quality.md `line N` 잔여참조 재확인(0건, grep 매치 없음, 이미 전량 서술식). 이번 사이클은 D1 바인드한도 standing scan 레시피(#458 codify)가 신규 커밋(8506b3b)의 새 IN절을 **처음부터 정확히(80청크) 구현한 사례**를 정확히 통과시켰다는 것을 확인 — 탐지 레시피가 "위반을 잡는 것"뿐 아니라 "준수를 clean으로 정확히 판정하는 것"도 검증된 회차. 새 클래스 없음.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 9건 → 이번 추가 후 10건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(churn 2커밋 전부 clean), 자동수정 0건(고칠 결함 없음), done-sync: open 11(변동없음)·done 572(변동없음)·rejected 6(변동없음). 다음 순번 **Area 3**.
+>
 
 > **Area 1 프로덕션 헬스 (2026-09-25T15:45):**
 > - **방법**: 세션 시작 시 로컬 `main`이 origin보다 1커밋 stale(`0425936`) → `git fetch origin main` + `git checkout -B main origin/main`(`485f00a`)으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
