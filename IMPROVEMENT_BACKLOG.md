@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-09-25T04:10:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-09-25T15:45:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,20 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **572** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 1 프로덕션 헬스 (2026-09-25T15:45):**
+> - **방법**: 세션 시작 시 로컬 `main`이 origin보다 1커밋 stale(`0425936`) → `git fetch origin main` + `git checkout -B main origin/main`(`485f00a`)으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최신 10런 전부 `conclusion:success`(최종 HEAD `485f00a`, run #2072 — 직전 Area6 사이클 자신의 커밋). Job 스텝 17개 전부 success(typecheck·check:fn·audit:jwt-decode·audit:bind-limit·build·test:calc·entity-audit·migration-number·canary·deploy·smoke 순).
+> - **smoke 재검증(run #2072 job 로그 직접 파싱, #636 대리지표 레시피)**: **PASS 134/134**. 500ms 초과 3건 — 전부 기존 추적 항목, 신규 없음. ① `cashSchedule.overview` **5422ms**(#636 기결정 — owner 국내 직접측정 421~424ms 대비 배수 **≈12.9배**, 기존 관측 배수대(9~14배) 안쪽 → 재이슈 조건인 "배수 이탈" 미충족, 비보고 유지). ② `orders.detail` **2774ms**(`/api/orders/12740`) — 직전 Area1 사이클(830060b, R2 hydrate 병렬화, 13394ms→3088ms)의 **효과가 이번 배포에도 유지**됨을 확인(3088ms→**2774ms**, 추가 악화 없음). 코드 재확인 결과 `orders/core.ts:475` order_items 루프·`thumbnailStore.ts:164` groups 루프 **양쪽 다 이미 `Promise.all` 병렬화 완료**(2단계 전부) — 남은 지연은 이 주문(smoke 고정 프로브, AI-분석 그룹 다수 추정)의 R2 get **동시 호출 개수 자체**로, 추가 안전 자동수정 여지 없음(캐싱/lazy-load는 API 응답 패턴 변경=기능 추가에 해당해 자동수정 정책 밖). **다음 사이클 재확인 대상에서 제외**(자릿수 개선 확정·재발 없음 — "완료로 닫지 않고 모니터링" 루프를 이걸로 종료). ③ `hr.stats` **1706ms** — 기존 관측 범위(1237~1690ms)와 동급, 자릿수 이상 악화 아님 → 조치 대상 아님(변동없음).
+> - **churn 확인(앵커 = 직전 Area1 사이클 결과 커밋 `830060b`)**: `git log 830060b..HEAD --oneline -- src/routes src/scripts src/pages src/layout src/utils migrations index.tsx` **3커밋**(`2cc2d56` 한진 알림톡 자동전환·`2437b47` merge·`8506b3b` 재단 패널 번호 확대). 둘 다 이번 순환 Area5가 이미 보안 렌즈로 정독(로그 상단 확인) — Area5 파일목록(`kakao.ts`·`orders/core.ts`·`orders/queries.ts`·`shipments.ts`·`shipmentNotice.ts`·`thumbnailStore.ts`)에 **`workOrderPrint.js`(8506b3b 프론트 렌더 변경)가 빠져 있어** Area1이 직접 `git show 8506b3b -- src/scripts/shared/workOrderPrint.js` 확인 — `.thumb-large` CSS 추가 + `ln.thumbnail`을 `<img src>`에 꽂는 신설 분기는 **기존 `else` 분기가 이미 쓰던 것과 동일한 무이스케이프 삽입 패턴**(신규 XSS 표면 아님), DB/API 접근 없는 순수 프론트 레이아웃 변경 — 결함 없음.
+> - **마이그레이션 churn**: `git log 830060b..HEAD -- migrations` 0건(DROP TABLE/COLUMN 해당 없음 — #430 write-path 맹점 트리거 미해당).
+> - **open 이슈 재확인**: `list_issues(state:OPEN,label:auto-improve)` **11**건(#662·#661·#660·#659·#658·#656·#654·#650·#626·#617·#616, 변동없음) — Area1 라벨 신규 0건, 전건 타 Area 관할.
+> - **LogWatcher 하트비트·CAPS 동기화**: egress 차단 재확인(`curl webapp-9i0.pages.dev` → connect fail, exit 56) — 기존 제약과 동일, 신규 아님.
+> - **backlog↔GitHub 절대값 재동기화**: open **11**(변동없음) · done **572**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-1-production-health.md 잔여참조 재확인(이미 서술식). 이번 사이클은 기존 두 레시피의 정확한 재적용 — ① #636 대리지표(job 로그 ms 직접 대조)로 orders.detail 자동수정 효과의 **배포 간 지속성**을 실측 확인(1회성 개선이 아니라 다음 배포에도 유지됨을 증명한 최초 사례 — "자동수정했다"와 "고쳐졌다"가 다른 질문이라는 원칙의 긍정 사례), ② churn-bridge 원칙(다른 Area 파일목록에 없는 파일은 직접 확인)을 이번엔 실제 결함 없이 clean 확인으로 종료 — 새 클래스 없음.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 8건 → 이번 추가 후 9건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(churn 2건 전부 clean, workOrderPrint.js 갭도 직접확인 결과 무해), 자동수정 0건(고칠 결함 없음 — 이번 회차 성과는 직전 자동수정의 효과 지속성 검증), done-sync: open 11(변동없음)·done 572(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-09-25T04:10):**
 > - **방법**: `npm ci`(0→89), `npx tsc --noEmit` clean.
