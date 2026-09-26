@@ -102,6 +102,13 @@ export function assertBarobillQueryOk(result: string, method: string): void {
   if (/^-\d+$/.test(trimmed)) {
     throw new Error(`Barobill ${method} 오류코드 ${trimmed} (인증/권한/파라미터 확인: senderId·CERTKEY·corpNum)`)
   }
+  // ★페이지형 응답(Paged*: CurrentPage·MaxIndex·…·목록)은 오류를 **CurrentPage 에 음수**로 담아 온다
+  //   (WSDL 확인 2026-09-26: PagedCardApprovalHistories 등 CurrentPage=int). 전체가 음수 문자열이 아니라서
+  //   위 검사를 빠져나가 빈 배열로 삼켜졌다 — 청주 법인 5주 미수집(-24005, senderId 폴백)의 모양이 이것이다.
+  const cp = /<CurrentPage>\s*(-\d+)\s*<\/CurrentPage>/.exec(result)
+  if (cp) {
+    throw new Error(`Barobill ${method} 오류코드 ${cp[1]} (페이지 응답 — 인증/권한/파라미터 확인: senderId·CERTKEY·corpNum)`)
+  }
 }
 
 /**

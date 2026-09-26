@@ -64,6 +64,12 @@ export interface StatusResult {
   stateCode?: number
   stateDT?: string
   rawResponse?: string
+  /** 바로빌 TaxInvoiceState(WSDL): 바로빌 문서 상태(음수 = 오류·미존재) */
+  barobillState?: number
+  /** 바로빌 TaxInvoiceState(WSDL): 국세청 전송 상태 */
+  ntsSendState?: number
+  /** 바로빌 TaxInvoiceState(WSDL): 국세청 전송 결과 문구 */
+  ntsSendResult?: string
 }
 
 export interface TaxProvider {

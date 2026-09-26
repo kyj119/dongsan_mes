@@ -190,7 +190,15 @@ taxInvoicesManageRouter.post('/:id/refresh-status', requireEditOrRole('/tax-invo
     let ntsResultMessage = null as string | null
     const stateCode = statusResult.stateCode || 0
 
-    if (stateCode >= 110) {
+    // ★바로빌은 국세청 전송 상태를 NTSSendState 로 준다(WSDL). 값 해석은 보수적으로 —
+    //   4 = 전송 완료 · 5 = 전송 실패 · 2·3 = 전송 대기/중. **그 밖의 값이면 상태를 바꾸지 않는다**
+    //   (모르는 코드로 성공·실패를 단정하지 않는다). 첫 실발행 때 rawResponse 로 코드표를 재확인할 것.
+    if (statusResult.ntsSendState != null && statusResult.ntsSendState > 0) {
+      const ns = statusResult.ntsSendState
+      if (ns === 4) { newStatus = 'NTS_SUCCESS'; ntsResultCode = '4'; ntsResultMessage = statusResult.ntsSendResult || '국세청 전송 성공' }
+      else if (ns === 5) { newStatus = 'NTS_FAILED'; ntsResultCode = '5'; ntsResultMessage = statusResult.ntsSendResult || '국세청 전송 실패' }
+      else if (ns === 2 || ns === 3) { newStatus = 'SENT' }
+    } else if (stateCode >= 110) {
       // 국세청 전송 결과
       newStatus = stateCode === 110 ? 'NTS_SUCCESS' : 'NTS_FAILED'
       ntsResultCode = String(stateCode)
@@ -253,8 +261,8 @@ taxInvoicesManageRouter.post('/:id/retry', requireEditOrRole('/tax-invoices', 'M
   try {
     const ef = entityFilter(c)
     const invoice = await db.prepare(
-      `SELECT id, status, invoice_number FROM tax_invoices WHERE id = ?${ef.clause}`
-    ).bind(id, ...ef.params).first<{ id: number; status: string; invoice_number: string }>()
+      `SELECT id, status, invoice_number, supplier_brn FROM tax_invoices WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; status: string; invoice_number: string; supplier_brn: string | null }>()
 
     if (!invoice) {
       return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 404)
@@ -263,6 +271,29 @@ taxInvoicesManageRouter.post('/:id/retry', requireEditOrRole('/tax-invoices', 'M
     // Phase 2: 전송실패(FAILED) + 국세청 전송실패(NTS_FAILED) 모두 DRAFT 재발행 허용.
     if (!['FAILED', 'NTS_FAILED'].includes(invoice.status)) {
       return c.json({ success: false, error: '전송실패(FAILED/국세청 전송실패) 상태의 세금계산서만 재시도할 수 있습니다.' })
+    }
+
+    // ★되돌리기 전에 바로빌에 **이미 등록됐는지** 본다(2026-09-26, #20). 재발행은 같은 invoice_number 를
+    //   관리번호(mgtKey)로 다시 쓰므로, 응답만 유실된 FAILED(NETWORK_ERROR)는 「중복 관리번호」로 거부돼
+    //   영원히 FAILED 에 갇혔다. 등록돼 있으면 FAILED → SENT 로 복구하고, NTS_FAILED 는 재발행이 아니라
+    //   수정발행으로 안내한다. 조회 자체가 실패하면(설정 없음·네트워크) 종전대로 DRAFT 로 되돌린다.
+    try {
+      const provider = invoice.supplier_brn ? await getTaxProvider(db, c.env, invoice.supplier_brn.replace(/-/g, '')) : null
+      if (provider) {
+        const st = await provider.getStatus(invoice.invoice_number)
+        const registered = (st.barobillState ?? 0) > 0
+        if (registered && invoice.status === 'FAILED') {
+          await db.prepare(
+            `UPDATE tax_invoices SET status = 'SENT', nts_result_message = '재시도 전 조회: 바로빌에 이미 등록됨 — 복구', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+          ).bind(id).run()
+          return c.json({ success: true, recovered: true, message: '바로빌에 이미 등록된 계산서라 발행 상태로 복구했습니다. [상태 조회]로 국세청 결과를 확인하세요.' })
+        }
+        if (registered && invoice.status === 'NTS_FAILED') {
+          return c.json({ success: false, error: '바로빌에 등록된 계산서라 같은 번호로 다시 발행할 수 없습니다. 수정발행으로 처리하세요.' }, 400)
+        }
+      }
+    } catch (e) {
+      console.warn('[taxInvoices/retry] 재시도 전 상태 조회 실패 — 종전대로 DRAFT 로 되돌린다:', e instanceof Error ? e.message : e)
     }
 
     // FAILED → DRAFT로 리셋, provider 관련 필드 초기화

@@ -179,12 +179,23 @@ export class BarobillTaxProvider implements TaxProvider {
       return { status: 'ERROR', stateCode: code, rawResponse: result }
     }
 
+    // ★필드 이름은 WSDL(TI.asmx TaxInvoiceState)이 정본이다(2026-09-26 대조): BarobillState · NTSSendState ·
+    //   NTSSendKey · NTSSendResult · NTSSendDT · NTSResultDT. 예전엔 팝빌 체계의 StateCode·NTSConfirmNum 을 읽어
+    //   값이 늘 비었고(stateCode=0) 상태가 **영영** 갱신되지 않았다.
     const vals = parseXmlValues(result)
+    const barobillState = parseInt(vals.BarobillState || '0')
+    if (barobillState < 0) {
+      return { status: 'ERROR', stateCode: barobillState, barobillState, rawResponse: result }
+    }
+    const ntsSendState = parseInt(vals.NTSSendState || '0')
     return {
-      status: vals.StateCode || result || 'UNKNOWN',
-      ntsApproval: vals.NTSConfirmNum || undefined,
-      stateCode: parseInt(vals.StateCode || '0'),
-      stateDT: vals.StateDT || undefined,
+      status: String(barobillState || 'UNKNOWN'),
+      ntsApproval: vals.NTSSendKey || undefined,
+      stateCode: barobillState,
+      stateDT: vals.NTSResultDT || vals.NTSSendDT || undefined,
+      barobillState,
+      ntsSendState: Number.isFinite(ntsSendState) ? ntsSendState : undefined,
+      ntsSendResult: vals.NTSSendResult || undefined,
       rawResponse: result,
     }
   }

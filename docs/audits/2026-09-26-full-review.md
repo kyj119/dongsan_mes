@@ -273,3 +273,13 @@ Workflow 15트랙(메타·게이트·도메인 코드·외부 축) → 중·고 
 | 68 | 계정 동기화 스킬(파랑 디자인) | **사용자 작업** — claude.ai 스킬 설정에서 `mes-ui-consistency` 동기화본 삭제(저장소 밖) |
 
 **결정 대기 0건.** 남은 것 = 확인 선행 3건(바로빌 WSDL #20·21·23) · 웹 밖 배포 축 4건(LogWatcher #42 · IA #43·81 · caps-worker #80) · 훅 cwd #75 · 보류 3건(지출결의·재주문·신용점수).
+
+## 바로빌 WSDL 대조 (2026-09-26) — #20·#21·#23
+
+WSDL(`ws.baroservice.com/{TI,CARD,BANKACCOUNT}.asmx?WSDL`)을 받아 대조했다.
+
+| # | 확인 | 반영 |
+|---|---|---|
+| 23 | `GetTaxInvoiceState` 응답 = `TaxInvoiceState{BarobillState, NTSSendState, NTSSendKey, NTSSendResult, NTSSendDT, NTSResultDT}` — 코드는 팝빌식 `StateCode`·`NTSConfirmNum` 을 읽어 **상태가 영영 갱신되지 않았다** | 필드명 교정 · 상태 갱신은 `NTSSendState` 4=성공·5=실패·2/3=전송중, **그 외는 변경 안 함**(코드표 원문 미확보 — ⚠️첫 실발행 때 rawResponse 로 재확인) |
+| 21 | 페이지형 응답(`Paged*`)은 `CurrentPage:int` — 오류는 여기에 음수 | `assertBarobillQueryOk` 가 `<CurrentPage>-N` 도 throw → 카드·계좌 조회 4함수 공통. 호출부는 날짜·카드 단위 catch 로 `syncErrors` 에 모아 보여 준다(빈 배열로 삼키지 않음) |
+| 20 | 재시도 = 같은 invoice_number 를 mgtKey 로 재사용 | 재시도 전 `getStatus` — 바로빌에 이미 있으면 FAILED→SENT 복구, NTS_FAILED 는 수정발행 안내 400, 조회 실패 시 종전대로 DRAFT |
