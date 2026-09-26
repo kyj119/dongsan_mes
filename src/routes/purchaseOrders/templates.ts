@@ -13,7 +13,12 @@ import { kstYmdCompact } from '../../utils/kstDate'
 import { backfillPoLineFactors } from '../../utils/itemUnits'
 
 const templatesRouter = new Hono<HonoEnv>()
-templatesRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
+// ★가드는 **자기 경로에만** 건다(2026-09-27). 이 라우터는 poRouter 에 '/' 로 합쳐지므로 '/*' 에 걸면
+//   /api/purchase-orders/* 전체(입고·입고대기함·현장 확정)가 관리자 전용이 돼, 0585 에서 현장 작업자에게 연 입고가
+//   실제로는 403 이었다(로컬 실측: OPERATOR 목록·입고대기함 403). 템플릿 기능은 종전대로 관리자·매니저만.
+for (const p of ['/templates', '/templates/*', '/from-template/*']) {
+  templatesRouter.use(p, authMiddleware, requireRole('ADMIN', 'MANAGER'))
+}
 
 templatesRouter.get('/templates', async (c) => {
   try {

@@ -9,7 +9,10 @@ import { authMiddleware, requireRole } from '../../middleware/auth'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 
 const stockAlertsRouter = new Hono<HonoEnv>()
-stockAlertsRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
+// 가드는 자기 경로에만 — '/*' 이면 발주 API 전체가 관리자 전용이 된다(templates.ts 같은 사고, 2026-09-27)
+for (const p of ['/stock-alerts', '/stock-alerts/*']) {
+  stockAlertsRouter.use(p, authMiddleware, requireRole('ADMIN', 'MANAGER'))
+}
 
 stockAlertsRouter.get('/stock-alerts', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
