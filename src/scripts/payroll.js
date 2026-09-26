@@ -76,8 +76,24 @@ function prActionsHtml(r) {
   return actions;
 }
 
+/** 급여 월의 연도 간이세액표가 없으면 경고 — 서버는 직전 연도 표로 계산한다(shared.ts lookupIncomeTax). */
+async function prCheckTaxTable(period) {
+  var el = document.getElementById('prTaxTableWarn');
+  if (!el) { console.warn('[payroll] #prTaxTableWarn not found'); return; }
+  var y = String(period || '').slice(0, 4);
+  if (!/^\d{4}$/.test(y)) { el.classList.add('hidden'); return; }
+  try {
+    var r = await axios.get('/api/payroll/tax-table/' + y + '?limit=1');
+    var n = (r.data && r.data.total) || 0;
+    el.innerHTML = n > 0 ? '' : '<i class="fas fa-exclamation-triangle mr-1"></i><b>' + y + '년 간이세액표 미등록</b> — 소득세를 직전 연도 표로 계산하고 있습니다. '
+      + '홈택스 조견표를 <a href="/settings/payroll-rates" class="underline">급여 요율 설정</a>에서 CSV 로 넣으세요.';
+    el.classList.toggle('hidden', n > 0);
+  } catch (e) { el.classList.add('hidden'); }
+}
+
 window.payrollLoad = async function() {
   var period = document.getElementById('prPeriod').value;
+  prCheckTaxTable(period);
   var status = document.getElementById('prStatus').value;
   var table = document.getElementById('prLedgerTable');
   if (table) {

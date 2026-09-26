@@ -127,11 +127,20 @@ async function stockOf(itemId) {
   })
   check('구성 동일한 수정은 통과', editSame.status === 200, `${editSame.status} ${editSame.text.slice(0, 140)}`)
 
-  // 삭제 → 재고 환원
-  const del = await api('DELETE', `/api/orders/${orderId}`)
-  check('주문 삭제 200', del.status === 200, `${del.status} ${del.text.slice(0, 140)}`)
+  // 출고된 주문은 삭제로 한 번에 되돌리지 않는다(2026-09-26 결정) — 출고취소 → 삭제 순서.
+  //   예전 정책(삭제가 곧 환원)은 /unship·/cancel 의 가드를 우회했다.
+  const delShipped = await api('DELETE', `/api/orders/${orderId}`)
+  check('★출고된 주문 삭제는 400', delShipped.status === 400, `${delShipped.status} ${delShipped.text.slice(0, 140)}`)
+  const sKeep = await stockOf(stockItem.id)
+  check('★거부된 삭제는 재고 불변', sKeep === s1, `expected=${s1} actual=${sKeep}`)
+  const unship = await api('PATCH', `/api/orders/${orderId}/unship`, {})
+  check('출고취소 200', unship.status === 200, `${unship.status} ${unship.text.slice(0, 140)}`)
   const s2 = await stockOf(stockItem.id)
-  check('★삭제 후 재고 원복 (증발 없음)', s2 === s0, `expected=${s0} actual=${s2}`)
+  check('★출고취소 후 재고 원복 (증발 없음)', s2 === s0, `expected=${s0} actual=${s2}`)
+  const del = await api('DELETE', `/api/orders/${orderId}`)
+  check('출고취소 후 주문 삭제 200', del.status === 200, `${del.status} ${del.text.slice(0, 140)}`)
+  const s3 = await stockOf(stockItem.id)
+  check('★삭제로 재고가 또 변하지 않는다(이중 환원 없음)', s3 === s0, `expected=${s0} actual=${s3}`)
 
   // ── ② 차입금 상환 이중 차감 ──────────────────────────────────────────────
   section('② 차입금 상환 재호출')

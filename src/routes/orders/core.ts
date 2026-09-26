@@ -596,6 +596,19 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       return c.json({ success: false, error: '취소된 주문입니다. 완전 삭제(복구 불가)는 관리자(ADMIN)만 가능합니다.' }, 403)
     }
 
+    // ★순서대로만(2026-09-26 결정): 회계반영·출고된 주문은 삭제로 한 번에 되돌리지 않는다.
+    //   삭제가 /unship(BILLED 차단)·/cancel(SHIPPED 차단)의 가드를 우회해 청구된 주문을 조용히 취소하고
+    //   재고까지 환원했다. → 회계반영 취소 → 출고취소 → 삭제.
+    if (order.billing_status === 'BILLED' || order.billing_status === 'PAID') {
+      return c.json({ success: false, error: '회계반영된 주문은 삭제할 수 없습니다. 회계반영 취소 → 출고취소 → 삭제 순서로 진행하세요.' }, 400)
+    }
+    const shippedCnt = await c.env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM cards WHERE order_id = ? AND shipped_at IS NOT NULL`
+    ).bind(id).first<{ n: number }>()
+    if (order.status === 'SHIPPED' || Number(shippedCnt?.n) > 0) {
+      return c.json({ success: false, error: '출고된 주문은 삭제할 수 없습니다. 먼저 출고취소를 하세요.' }, 400)
+    }
+
     // 세금계산서 발행 여부 확인
     const taxInvoiceCheck = await c.env.DB.prepare(`
       SELECT COUNT(*) as cnt FROM tax_invoices WHERE order_id = ? AND status != 'CANCELLED'

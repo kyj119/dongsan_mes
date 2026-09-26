@@ -673,7 +673,10 @@ poCoreRouter.patch('/:id/status', async (c) => {
     const validTransitions: Record<string, string[]> = {
       'DRAFT':            ['CONFIRMED', 'CANCELLED'],
       'CONFIRMED':        ['PARTIAL_RECEIVED', 'RECEIVED', 'DRAFT', 'CANCELLED'],
-      'PARTIAL_RECEIVED': ['RECEIVED', 'CANCELLED'],
+      // 부분입고 발주는 취소 불가(2026-09-26 결정) — CANCELLED 는 「발주 전체 무효」(8/25 중복해소 28건)라
+      //   AP 파생에서 통째로 빠진다. 부분입고 뒤 취소하면 **이미 입고된 분의 채무까지** 사라졌다.
+      //   남은 수량을 안 받기로 했으면 발주 수정으로 수량을 줄인다.
+      'PARTIAL_RECEIVED': ['RECEIVED'],
       'RECEIVED':         [],
       'CANCELLED':        ['DRAFT'],
     }
@@ -692,13 +695,22 @@ poCoreRouter.patch('/:id/status', async (c) => {
     }
 
     const allowed = validTransitions[po.status] || []
+    // 상태값과 무관하게 **입고 수량이 있으면** 취소 불가 — 상태가 CONFIRMED 로 남아 있는 옛 행 방어
+    if (newStatus === 'CANCELLED') {
+      const recv = await c.env.DB.prepare(
+        `SELECT COALESCE(SUM(received_quantity), 0) AS q FROM purchase_order_items WHERE po_id = ?`
+      ).bind(id).first<{ q: number }>()
+      if (Number(recv?.q) > 0) {
+        return c.json({ success: false, error: '입고된 수량이 있는 발주는 취소할 수 없습니다. 남은 수량을 받지 않을 거면 [입고완료]로 마감하세요 — 발주 금액이 실제 입고분으로 다시 계산됩니다.' }, 400)
+      }
+    }
     if (!allowed.includes(newStatus)) {
       return c.json({
         success: false,
         error: `'${po.status}' → '${newStatus}' 전환은 허용되지 않습니다. 가능한 상태: ${allowed.join(', ') || '없음'}`
       }, 400)
     }
-    // PARTIAL_RECEIVED → CANCELLED(잔량 취소)는 허용하되, 재고가 움직인 발주를 DRAFT 로 되돌리는 것은 막는다
+    // 재고가 움직인 발주를 DRAFT 로 되돌리는 것은 막는다(부분입고 → 취소는 위에서 이미 막았다)
     if (newStatus === 'DRAFT' && await poHasReceivedLines(c.env.DB, id)) {
       return c.json({ success: false, error: '입고 이력이 있는 발주는 DRAFT 로 되돌릴 수 없습니다.' }, 400)
     }
@@ -719,6 +731,29 @@ poCoreRouter.patch('/:id/status', async (c) => {
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `).bind(newStatus, user?.id || 1, user?.id || 1, id).run()
+    } else if (po.status === 'PARTIAL_RECEIVED' && newStatus === 'RECEIVED') {
+      // ★부분입고 마감(2026-09-26 결정): 남은 수량을 안 받기로 하고 닫으면 발주 금액 = **실제 입고분**.
+      //   AP 는 final_amount 파생이라 그대로 두면 받지도 않은 분까지 채무로 남는다.
+      //   부가세는 라인별(vat_included) — purchaseInvoices 매입확정과 같은 규칙. 할인은 유지하되 음수 방지.
+      //   미지급 예정(cash_schedule)도 같은 금액으로 맞춘다 — 한 batch.
+      const RECV_SUB = `(SELECT COALESCE(SUM(received_quantity * unit_price), 0) FROM purchase_order_items WHERE po_id = ?)`
+      const RECV_VAT = `(SELECT COALESCE(SUM(CASE WHEN vat_included = 1 THEN ROUND(received_quantity * unit_price * 0.1) ELSE 0 END), 0) FROM purchase_order_items WHERE po_id = ?)`
+      await c.env.DB.batch([
+        c.env.DB.prepare(`
+          UPDATE purchase_orders SET
+            status = 'RECEIVED',
+            total_amount = ${RECV_SUB},
+            vat_amount = ${RECV_VAT},
+            final_amount = MAX(0, ${RECV_SUB} + ${RECV_VAT} - COALESCE(discount_amount, 0)),
+            updated_by = ?,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).bind(id, id, id, id, user?.id || 1, id),
+        c.env.DB.prepare(`
+          UPDATE cash_schedule SET amount = (SELECT final_amount FROM purchase_orders WHERE id = ?), updated_at = CURRENT_TIMESTAMP
+          WHERE source_type = 'PURCHASE' AND source_id = ? AND status IN ('PENDING', 'OVERDUE')
+        `).bind(id, id),
+      ])
     } else {
       await c.env.DB.prepare(`
         UPDATE purchase_orders SET

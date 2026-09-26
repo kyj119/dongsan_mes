@@ -37,6 +37,8 @@ export function payrollPage(c: Context<HonoEnv>) {
           </button>
         </div>
         <div id="prHubPayroll">
+        <!-- 그 연도 간이세액표 미등록 경고 — 직전 연도 표로 계산 중(2026-09-26) -->
+        <div id="prTaxTableWarn" class="hidden rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 mb-2"></div>
         <!-- 상단 컨트롤 바 -->
         <div class="ds-card p-3 flex items-center gap-2 flex-wrap">
           <label class="text-xs text-gray-600">급여 월</label>

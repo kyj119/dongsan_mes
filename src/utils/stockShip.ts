@@ -173,7 +173,15 @@ export async function restoreStockLinesOnUnship(
     if (!out) continue   // 차감된 적 없거나 이미 환원됨
 
     // 되돌리는 양 = **실제로 뺀 양**(주문 라인 수량이 아니다). 라인이 뒤에 수정돼도 정확히 원복된다.
-    const qty = Math.abs(Number(out.quantity) || 0)
+    //   ★단, 반품 재입고(RETURN IN)로 **이미 돌아온 수량은 뺀다**(2026-09-26 결정) — 안 빼면 같은 물건이
+    //   반품으로 한 번, 출고취소로 또 한 번 재고에 더해진다(이중 복원).
+    const returned = await db.prepare(
+      `SELECT COALESCE(SUM(t.quantity), 0) AS q FROM inventory_transactions t
+         JOIN returns r ON r.id = t.reference_id
+        WHERE t.reference_type = 'RETURN' AND t.transaction_type = 'IN'
+          AND r.order_id = ? AND t.item_id = ? AND t.entity_id = ?`
+    ).bind(orderId, ln.item_id, lineEntity).first<{ q: number }>()
+    const qty = Math.max(0, Math.abs(Number(out.quantity) || 0) - Math.abs(Number(returned?.q) || 0))
     // ★창고도 **원장이 기록한 그 창고**로 되돌린다. getItemDefaultZone 을 다시 부르면
     //   그 사이 품목 기본창고(items.storage_zone_id)가 바뀐 경우 **엉뚱한 창고로 환원**된다
     //   (총량은 맞고 창고별 재고만 어긋나 발견이 늦다). autoDeductRestore 와 같은 규칙이다.

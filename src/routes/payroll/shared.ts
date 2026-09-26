@@ -528,7 +528,22 @@ export async function lookupIncomeTax(db: D1Database, year: number, monthlyPay: 
      ORDER BY monthly_pay_min DESC, id DESC LIMIT 1`
   ).bind(year, monthlyPay, monthlyPay).first<{ id: number; tax: number }>().catch(() => null)
   if (row) return { tax: row.tax || 0, rowId: row.id }
-  // fallback: 표 없으면 공식 계산 (국세청 간이세액표 공식 기준, 80/100/120% 선택은 별도 적용)
+  // ★그 연도 표가 **통째로 없으면** 직전 연도(가장 최근) 표로 계산한다(2026-09-26 결정).
+  //   종전엔 곧장 근사 산식(calcOfficialMonthlyTax)으로 떨어졌는데, 그 산식은 고시표 대비 2~3배 과대로 판명됐다
+  //   (CLAUDE.md §4대보험 「참조표는 원본인가」). 새해 1월 급여가 표를 넣기 전에 조용히 부풀었다.
+  //   급여 화면이 「그 연도 표 미등록」을 경고한다(payroll.js prCheckTaxTable).
+  const hasYear = await db.prepare(`SELECT 1 AS x FROM income_tax_table WHERE year = ? LIMIT 1`)
+    .bind(year).first<{ x: number }>().catch(() => null)
+  if (!hasYear) {
+    const prev = await db.prepare(
+      `SELECT id, ${col} as tax FROM income_tax_table
+       WHERE year = (SELECT MAX(year) FROM income_tax_table WHERE year < ?)
+         AND monthly_pay_min <= ? AND monthly_pay_max > ?
+       ORDER BY monthly_pay_min DESC, id DESC LIMIT 1`
+    ).bind(year, monthlyPay, monthlyPay).first<{ id: number; tax: number }>().catch(() => null)
+    if (prev) return { tax: prev.tax || 0, rowId: prev.id }
+  }
+  // 표 범위 밖(고소득 구간)이거나 표가 하나도 없을 때만 공식 계산 (80/100/120% 선택은 별도 적용)
   return { tax: calcOfficialMonthlyTax(monthlyPay, safeDeps), rowId: null }
 }
 
