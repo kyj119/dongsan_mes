@@ -687,21 +687,21 @@ clientsRouter.post('/import', async (c) => {
     // #563: 행당 SELECT+UPSERT 순차 N+1 → 청크(벌크 존재조회 + db.batch 쓰기).
     //   서브요청 = 행당 2회 → 청크당 2회로 축소. batch는 원자적이라 중복행/제약위반 시 청크 전체 롤백 →
     //   그 청크만 기존 순차 로직으로 폴백해 부분반영·행별 오류리포팅·업로드 내 중복코드(insert→후속 update)를 그대로 보존.
-    const buildUpdateStmt = (cd: any, id: number) => c.env.DB.prepare(`
-            UPDATE clients SET
-              client_code = ?, client_name = ?, representative = ?, business_type = ?, business_item = ?,
-              phone = ?, mobile = ?, fax = ?, email = ?, address = ?, address_detail = ?, search_keywords = ?,
-              transfer_info = ?, is_active = ?, business_registration_number = ?, delivery_method = ?,
-              delivery_address = ?, invoice_method = ?, updated_at = CURRENT_TIMESTAMP
+    // ★기존 거래처 갱신 = **파일에 있는 칸만** 바꾼다(2026-09-26 결정). 파일이 그 칸의 정본이라 빈 칸은 지우고,
+    //   파일에 없는 칸은 건드리지 않는다. 예전엔 모든 칸을 기본값으로 덮어(배송=방문수령·계산서=건별·전화/주소 NULL)
+    //   가져오기 한 번에 거래처 설정이 초기화됐다. 기본값은 **신규 등록(INSERT)** 에만 쓴다.
+    const UPDATABLE = ['client_name', 'representative', 'business_type', 'business_item', 'phone', 'mobile', 'fax', 'email',
+      'address', 'address_detail', 'search_keywords', 'transfer_info', 'is_active', 'business_registration_number',
+      'delivery_method', 'delivery_address', 'invoice_method'] as const
+    const buildUpdateStmt = (cd: any, id: number) => {
+      if (cd.invoice_method === undefined && cd.invoice_type !== undefined) cd.invoice_method = cd.invoice_type
+      const cols = UPDATABLE.filter((k) => Object.prototype.hasOwnProperty.call(cd, k) && !(k === 'client_name' && !cd[k]) && !(k === 'is_active' && (cd[k] === null || cd[k] === '')))
+      const vals = cols.map((k) => (cd[k] === '' || cd[k] === undefined) ? null : cd[k])
+      return c.env.DB.prepare(`
+            UPDATE clients SET client_code = ?${cols.map((k) => `, ${k} = ?`).join('')}, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
-          `).bind(
-      cd.client_code, cd.client_name || '', cd.representative || null, cd.business_type || null,
-      cd.business_item || null, cd.phone || null, cd.mobile || null, cd.fax || null, cd.email || null,
-      cd.address || null, cd.address_detail || null, cd.search_keywords || null, cd.transfer_info || null,
-      cd.is_active !== undefined ? cd.is_active : 1, cd.business_registration_number || null,
-      cd.delivery_method || '방문수령', cd.delivery_address || null,
-      cd.invoice_method || cd.invoice_type || 'PER_ORDER', id
-    )
+          `).bind(cd.client_code, ...vals, id)
+    }
     const buildInsertStmt = (cd: any) => c.env.DB.prepare(`
             INSERT INTO clients (
               client_code, client_name, representative, business_type, business_item,

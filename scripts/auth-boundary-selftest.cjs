@@ -7,7 +7,7 @@
  * 이 게이트는 그 경계를 값으로 못 박는다:
  *   ① 포털·셀프·role 없는 토큰 → 내부 API 401 (hr·bank·items) · 정상 로그인 토큰 → 200
  *   ② /api/auth/refresh — 포털·셀프·role 없는 토큰 401 · 비활성/없는 계정 401 · role 은 DB 값으로 · entityId 0 유지
- *   ③ /api/auth/switch-entity — 비관리자는 타법인·전체(0) 403
+ *   ③ /api/auth/switch-entity — 역할은 DB 가 정본(JWT 클레임 무시)·없는 계정 401
  *   ④ 페이지 게이트 — SPA 요청에 포털 토큰 401 · 비SPA 초기 로드는 그대로 HTML
  *   ⑤ X-Agent-Key — 틀린 키 401 · 맞는 키 통과
  *
@@ -160,16 +160,19 @@ async function req(method, p, { token, body, headers } = {}) {
     const ents = await req('GET', '/api/auth/entities', { token: tLogin })
     const ids = (ents.data?.data || []).map((e) => Number(e.id)).filter((n) => n > 0)
     const foreign = ids.find((id) => id !== Number(loginClaims.entityId))
-    // 서명은 정당하되 role 만 STAFF 인 토큰 — DB default_entity_id 가 NULL 이든 다른 법인이든 403 이어야 한다
+    // ★2026-09-26: switch-entity 는 /refresh 처럼 **DB 역할이 정본**이다(제시된 JWT 의 role 은 무시).
+    //   예전 이 절은 「DB 상 ADMIN 인 계정에 STAFF 클레임을 씌운 토큰」이 403 이길 기대했는데, 그건 JWT 를 믿는
+    //   구 동작의 성질이었다 — 비활성·강등 계정이 전환을 반복해 권한을 연장하던 바로 그 구멍.
+    //   진짜 비관리자 계정은 로컬 DB 에 없어(시드=admin) 타법인 403 은 여기서 재지 않는다.
     const staffTok = mint({ id: me.id, username: me.username, role: 'STAFF', entityId: loginClaims.entityId, exp: later })
-    if (foreign) {
-      const r = await req('POST', '/api/auth/switch-entity', { token: staffTok, body: { entity_id: foreign } })
-      check(`STAFF → switch-entity {entity_id:${foreign}} (타법인) = 403`, r.status === 403, `got ${r.status} ${r.text.slice(0, 120)}`)
-    } else {
-      skip('STAFF 타법인 전환 403', '활성 법인이 1개뿐')
-    }
-    const r0 = await req('POST', '/api/auth/switch-entity', { token: staffTok, body: { entity_id: 0 } })
-    check('STAFF → switch-entity {entity_id:0} = 403', r0.status === 403, `got ${r0.status}`)
+    const rClaim = await req('POST', '/api/auth/switch-entity', { token: staffTok, body: { entity_id: loginClaims.entityId || 1 } })
+    const tClaim = rClaim.data?.data?.token
+    check('STAFF 클레임(DB=ADMIN) → switch-entity 200, 새 토큰 role = DB 값', rClaim.status === 200 && !!tClaim && decode(tClaim).role === me.role,
+      `got ${rClaim.status} role=${tClaim ? decode(tClaim).role : '-'} db=${me.role}`)
+    const ghostTok = mint({ id: 999999999, username: 'ghost', role: 'ADMIN', entityId: 1, exp: later })
+    const rGhost = await req('POST', '/api/auth/switch-entity', { token: ghostTok, body: { entity_id: 1 } })
+    check('없는 계정 토큰 → switch-entity = 401 (DB 재확인)', rGhost.status === 401, `got ${rGhost.status}`)
+    void foreign
     const rBad = await req('POST', '/api/auth/switch-entity', { token: tLogin, body: { entity_id: 'abc' } })
     check('switch-entity {entity_id:"abc"} = 400', rBad.status === 400, `got ${rBad.status}`)
     const rPortal = await req('POST', '/api/auth/switch-entity', { token: tPortal, body: { entity_id: 1 } })

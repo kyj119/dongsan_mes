@@ -60,7 +60,9 @@ permissionsRouter.get('/matrix', requireRole('ADMIN'), async (c) => {
       if (!matrix[p.role]) matrix[p.role] = {}
       matrix[p.role][p.page_key] = { a: p.can_access ? 1 : 0, e: p.can_edit ? 1 : 0 }
     }
-    return c.json({ success: true, data: { pages: pagesRes.results || [], matrix } })
+    // ADMIN 전용 페이지는 매트릭스에 안 보인다 — 토글해도 코드가 막아 「줬는데 안 열린다」가 됐다(2026-09-26)
+    const pages = ((pagesRes.results || []) as Array<{ page_key: string }>).filter((p) => !HARD_ADMIN_ONLY_PAGES.has(p.page_key))
+    return c.json({ success: true, data: { pages, matrix } })
   } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
@@ -84,6 +86,9 @@ permissionsRouter.patch('/', requireRole('ADMIN'), async (c) => {
       }
       if (u.role === 'ADMIN') {
         return c.json({ success: false, error: 'ADMIN 권한은 편집할 수 없습니다' }, 400)
+      }
+      if (HARD_ADMIN_ONLY_PAGES.has(u.page_key) && (u.can_access || u.can_edit)) {
+        return c.json({ success: false, error: `${u.page_key} 는 관리자(ADMIN) 전용 페이지라 다른 역할에 부여할 수 없습니다` }, 400)
       }
     }
     const stmts = updates.map(u => {
@@ -109,8 +114,10 @@ permissionsRouter.patch('/', requireRole('ADMIN'), async (c) => {
 
 // 코드 레벨에서 ADMIN-only 로 하드 가드된 페이지 — 권한 토글해도 접근 불가하므로 요청 차단.
 // 신규 ADMIN-only 페이지 추가 시 여기도 등록.
+// 정본 = index.tsx 의 requireAdminPage() 사용처(2026-09-26 대조). 사용자·설정 등은 ADMIN 에서만(결정).
 const HARD_ADMIN_ONLY_PAGES = new Set<string>([
-  '/permissions',
+  '/permissions', '/users', '/settings', '/migration', '/inspections', '/facility',
+  '/ia-scan', '/ia-auto', '/ia-batch-test', '/ui-guide', '/ui-compare',
 ])
 
 // POST /api/permissions/request - 사용자가 ADMIN에게 페이지 권한 부여 요청 (notifications 생성)

@@ -196,14 +196,24 @@ portal.use('/balance', async (c, next) => {
   if (t) {
     // 임시 토큰 모드: DB에서 직접 검증
     const row = await c.env.DB.prepare(`
-      SELECT pat.client_id, pat.expires_at, cl.client_name as client_name
+      SELECT pat.client_id, pat.expires_at, cl.client_name as client_name, cl.business_registration_number
       FROM portal_access_tokens pat
       JOIN clients cl ON pat.client_id = cl.id
       WHERE pat.token = ?
-    `).bind(t).first<TokenRow>()
+    `).bind(t).first<TokenRow & { business_registration_number: string | null }>()
 
     if (!row || new Date(row.expires_at) <= new Date()) {
       return c.json({ success: false, error: '유효하지 않은 링크입니다.' }, 401)
+    }
+    // ★잔액 링크도 사업자등록번호를 확인한다(2026-09-26 결정) — verify-document(#314)와 같은 규칙.
+    //   링크만 있으면 잔액이 보였기 때문에, 링크가 다른 사람에게 전달되면 그대로 노출됐다.
+    const storedBrn = (row.business_registration_number || '').replace(/[^0-9]/g, '')
+    const inputBrn = String(c.req.header('x-portal-brn') || '').replace(/[^0-9]/g, '')
+    if (!inputBrn) {
+      return c.json({ success: false, need_brn: true, error: '사업자등록번호를 입력해 주세요.' }, 401)
+    }
+    if (!storedBrn || storedBrn !== inputBrn) {
+      return c.json({ success: false, need_brn: true, error: '사업자등록번호가 일치하지 않습니다.' }, 403)
     }
 
     // portalUser 형태로 context에 주입 (client_account_id 0: 임시 접근)

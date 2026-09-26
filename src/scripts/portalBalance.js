@@ -14,6 +14,36 @@ const accessToken = urlParams.get('t');
 
 // 임시 토큰 접근 시 저장된 clientId (verify-token 응답에서 얻음)
 let tokenClientId = null;
+// 임시 토큰 모드의 사업자등록번호(서버가 대조한다 — x-portal-brn 헤더)
+let tokenBrn = '';
+
+function showBrnForm(msg) {
+  var wrap = document.getElementById('balance-table-wrap');
+  if (wrap) wrap.style.display = 'none';
+  var box = document.getElementById('portal-brn-box');
+  if (!box) {
+    var container = document.getElementById('balance-container');
+    if (!container) { console.warn('[portalBalance] #balance-container not found'); return; }
+    box = document.createElement('div');
+    box.id = 'portal-brn-box';
+    box.className = 'max-w-sm mx-auto my-10 p-6 border rounded-lg bg-white text-center';
+    box.innerHTML = '<h2 class="text-lg font-bold text-gray-800 mb-2">사업자등록번호 확인</h2>'
+      + '<p class="text-sm text-gray-500 mb-4">잔액을 보려면 거래처의 사업자등록번호를 입력해 주세요.</p>'
+      + '<input id="portal-brn-input" inputmode="numeric" placeholder="000-00-00000" class="w-full border rounded px-3 py-2 mb-2 text-center" />'
+      + '<p id="portal-brn-msg" class="text-xs text-red-600 mb-3"></p>'
+      + '<button id="portal-brn-btn" class="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">확인</button>';
+    container.insertBefore(box, container.firstChild);
+    var go = async function () {
+      tokenBrn = (document.getElementById('portal-brn-input').value || '').trim();
+      if (!tokenBrn) return;
+      await loadBalance();
+    };
+    document.getElementById('portal-brn-btn').addEventListener('click', go);
+    document.getElementById('portal-brn-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); });
+  }
+  box.style.display = '';
+  var m = document.getElementById('portal-brn-msg'); if (m) m.textContent = msg || '';
+}
 
 async function initBalance() {
   if (accessToken) {
@@ -29,8 +59,10 @@ async function initBalance() {
       const clientNameEl = document.getElementById('portal-client-name');
       if (clientNameEl) clientNameEl.textContent = res.data.data.client_name;
       // #516: 토큰 모드 로그인 스킵은 portalLayout.ts가 리다이렉트 생략으로 이미 처리.
-      //       존재하지 않는 #token-login-note 참조(dead code) 제거.
-      await loadBalance();
+      // 잔액은 사업자등록번호 확인 후에만 보인다(2026-09-26) — 이 브라우저 탭 동안은 다시 묻지 않는다.
+      var savedBrn = '';
+      try { savedBrn = sessionStorage.getItem('portalBrn:' + accessToken) || ''; } catch (e) { /* 저장소 차단 — 매번 묻는다 */ }
+      if (savedBrn) { tokenBrn = savedBrn; await loadBalance(); } else { showBrnForm(''); }
     } catch (e) {
       showTokenError('링크 확인 중 오류가 발생했습니다.');
       console.error(e);
@@ -63,7 +95,10 @@ async function loadBalance() {
     let res;
     if (accessToken && tokenClientId) {
       // 임시 토큰 모드: ?t= 파라미터를 API에 전달
-      res = await axios.get('/api/portal/balance?t=' + encodeURIComponent(accessToken));
+      res = await axios.get('/api/portal/balance?t=' + encodeURIComponent(accessToken), { headers: { 'x-portal-brn': tokenBrn } });
+      try { sessionStorage.setItem('portalBrn:' + accessToken, tokenBrn); } catch (e) { /* 저장소 차단 — 다음에 다시 묻는다 */ }
+      var box = document.getElementById('portal-brn-box'); if (box) box.style.display = 'none';
+      var wrap = document.getElementById('balance-table-wrap'); if (wrap) wrap.style.display = '';
     } else {
       res = await axios.get('/api/portal/balance');
     }
@@ -71,6 +106,12 @@ async function loadBalance() {
     renderBalance(items, totalBalance);
   } catch (e) {
     console.error(e);
+    // 사업자번호 확인 필요·불일치 → 입력 폼(저장된 값이 틀렸으면 지운다)
+    if (accessToken && e.response && e.response.data && e.response.data.need_brn) {
+      try { sessionStorage.removeItem('portalBrn:' + accessToken); } catch (x) { /* 저장소 차단 */ }
+      showBrnForm(e.response.status === 403 ? e.response.data.error : '');
+      return;
+    }
     // 401 오류 시 토큰 모드면 만료 안내
     if (accessToken && e.response && e.response.status === 401) {
       showTokenError('링크가 만료되었습니다.');

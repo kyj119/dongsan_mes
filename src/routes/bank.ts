@@ -27,6 +27,8 @@ import { LATEST_BALANCE_SUBQUERY, isInCashPlan } from '../utils/bankBalance'
 const bankRouter = new Hono<HonoEnv>()
 
 bankRouter.use('/*', authMiddleware)
+// 권한(2026-09-26 결정): 경리(ACCOUNTANT) = 조회 + 입금 매칭·비용 분류·분류 규칙·내역 수집(개인통장 포함).
+//   계좌 관리(등록·수정·삭제·바로빌 관리 URL)만 ADMIN. 새 엔드포인트를 만들면 이 기준으로 역할을 정한다.
 
 // H5: 무인 auto-match/sync가 매칭 실패건(UNMATCHED 잔존)을 매일 전건 재스캔하며 대상 집합이
 //     무한 성장하는 것 방지. 스캔 대상을 최근 N일 + 오래된 순 상한으로 제한(매칭 알고리즘 자체는 불변).
@@ -68,7 +70,7 @@ async function getBarobillConfig(c: any) {
 // ---------------------------------------------------------------------------
 
 // GET /api/bank/accounts — 연결 계좌 목록
-bankRouter.get('/accounts', requireRole('ADMIN'), async (c) => {
+bankRouter.get('/accounts', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     const ef = entityFilter(c, 'ba')
     // 잔액·최종 거래일을 같이 준다. `last_synced_at` 은 prod 전 계좌가 NULL 이라 화면이 늘 「동기화 안됨」을 띄웠고,
@@ -107,7 +109,7 @@ bankRouter.get('/accounts', requireRole('ADMIN'), async (c) => {
 //   0539: 대표자 개인통장(is_personal=1)은 **법인 자금이 아니다** — 목록에는 남기되 total/deposit/net 어디에도 넣지 않는다.
 //     입금(수금) 반영 용도로만 살려 둔 계좌라 거래내역·매칭에는 그대로 있다. getTotalBankBalance·재무상태 현금과 같은 기준.
 //   순자금 = (예금 + 마이너스통장 잔액) − Σ대출잔액 — 기존 정의 그대로(마통은 잔액이 음수로 이미 반영).
-bankRouter.get('/fund-summary', requireRole('ADMIN'), async (c) => {
+bankRouter.get('/fund-summary', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     const ef = entityFilter(c, 'ba')
     const { results } = await c.env.DB.prepare(
@@ -175,7 +177,7 @@ bankRouter.get('/fund-summary', requireRole('ADMIN'), async (c) => {
 
 // GET /api/bank/fixed-expense-status — 당월 고정비 출금 현황(체크리스트)
 //   고정비 × 기간(YYYY-MM, 기본=당월 KST) LEFT JOIN 실적 → PAID/OVERDUE/PENDING.
-bankRouter.get('/fixed-expense-status', requireRole('ADMIN'), async (c) => {
+bankRouter.get('/fixed-expense-status', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     const period = c.req.query('period') || kstYmd().slice(0, 7) // YYYY-MM
     // ★기간 경계를 봐야 한다 — `is_active` 만 보면 **끝난 고정비가 매달 미납으로 뜬다**(prod 실측
@@ -233,7 +235,7 @@ bankRouter.get('/fixed-expense-status', requireRole('ADMIN'), async (c) => {
 // POST /api/bank/accounts — 계좌 등록
 // 반복 출금에서 **미등록 정기지출**을 찾는다. 2026-08-05 에 이 방식으로 월 15,872,480 을 찾았다.
 //   통장이 먼저고 세무장부가 확인이다 — 판관비 계정만 훑으면 비정기 거래에 묻혀 정기분이 안 보인다.
-bankRouter.get('/recurring-candidates', requireRole('ADMIN'), async (c) => {
+bankRouter.get('/recurring-candidates', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     const minMonths = Math.max(2, Number(c.req.query('min_months') || 5))
     const minAmount = Math.max(0, Number(c.req.query('min_amount') || 30000))
@@ -510,7 +512,7 @@ bankRouter.delete('/accounts/:id', requireRole('ADMIN'), async (c) => {
 })
 
 // POST /api/bank/accounts/:id/refresh — 바로빌 즉시조회 요청 (RefreshBankAccount)
-bankRouter.post('/accounts/:id/refresh', requireRole('ADMIN'), async (c) => {
+bankRouter.post('/accounts/:id/refresh', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     const id = c.req.param('id')
     const ef = entityFilter(c, 'bank_accounts')
@@ -594,7 +596,7 @@ function buildTxScope(c: Context<HonoEnv>): { clause: string; params: (string | 
 }
 
 // GET /api/bank/transactions — 거래내역 목록
-bankRouter.get('/transactions', requireRole('ADMIN'), async (c) => {
+bankRouter.get('/transactions', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     // match_status는 복수 값 지원 (?match_status=A&match_status=B)
     const matchStatuses = c.req.queries('match_status') || []
@@ -690,7 +692,7 @@ bankRouter.get('/transactions', requireRole('ADMIN'), async (c) => {
 // ---------------------------------------------------------------------------
 
 // POST /api/bank/transactions/import — 통장 거래내역 CSV 가져오기
-bankRouter.post('/transactions/import', requireRole('ADMIN'), async (c) => {
+bankRouter.post('/transactions/import', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     const body = await c.req.json()
     const { account_id, rows } = body as {
@@ -789,7 +791,7 @@ bankRouter.post('/transactions/import', requireRole('ADMIN'), async (c) => {
 // ---------------------------------------------------------------------------
 
 // POST /api/bank/sync-barobill — 바로빌 통장내역 → DB 적재 + 자동매칭
-bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
+bankRouter.post('/sync-barobill', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     const body = await c.req.json().catch(() => ({})) as { date_start?: string; date_end?: string }
 
@@ -954,7 +956,7 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
 // ---------------------------------------------------------------------------
 
 // GET /api/bank/expense-categories — 비용 카테고리 목록
-bankRouter.get('/expense-categories', requireRole('ADMIN', 'MANAGER'), async (c) => {
+bankRouter.get('/expense-categories', requireRole('ADMIN', 'MANAGER', 'ACCOUNTANT'), async (c) => {
   try {
     const ef = entityFilter(c)
     const { results } = await c.env.DB.prepare(`
@@ -970,7 +972,7 @@ bankRouter.get('/expense-categories', requireRole('ADMIN', 'MANAGER'), async (c)
 })
 
 // GET /api/bank/match-rules — 매칭 규칙 목록
-bankRouter.get('/match-rules', requireRole('ADMIN', 'MANAGER'), async (c) => {
+bankRouter.get('/match-rules', requireRole('ADMIN', 'MANAGER', 'ACCOUNTANT'), async (c) => {
   try {
     const ef = entityFilter(c, 'r')
     const { results } = await c.env.DB.prepare(`
@@ -993,7 +995,7 @@ bankRouter.get('/match-rules', requireRole('ADMIN', 'MANAGER'), async (c) => {
 })
 
 // POST /api/bank/match-rules — 매칭 규칙 생성/업데이트
-bankRouter.post('/match-rules', requireRole('ADMIN'), async (c) => {
+bankRouter.post('/match-rules', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     const body = await c.req.json()
     const { counterpart_name, matched_client_id, matched_category_id, match_type } = body
@@ -1041,7 +1043,7 @@ bankRouter.post('/match-rules', requireRole('ADMIN'), async (c) => {
 })
 
 // PUT /api/bank/match-rules/:id — 매칭 규칙 수정
-bankRouter.put('/match-rules/:id', requireRole('ADMIN'), async (c) => {
+bankRouter.put('/match-rules/:id', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json()
@@ -1074,7 +1076,7 @@ bankRouter.put('/match-rules/:id', requireRole('ADMIN'), async (c) => {
 })
 
 // DELETE /api/bank/match-rules/:id — 매칭 규칙 삭제
-bankRouter.delete('/match-rules/:id', requireRole('ADMIN'), async (c) => {
+bankRouter.delete('/match-rules/:id', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     const id = c.req.param('id')
 
@@ -1769,7 +1771,7 @@ async function runAutoMatchEngine(
 }
 
 // POST /api/bank/transactions/auto-match — 미매칭 거래 자동매칭 (입금+출금, 규칙 학습 포함)
-bankRouter.post('/transactions/auto-match', requireRole('ADMIN'), async (c) => {
+bankRouter.post('/transactions/auto-match', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     // ?days=0(또는 음수)→전체, ?limit=N→상한 조정
     const daysParam = Number(c.req.query('days'))
@@ -1794,7 +1796,7 @@ bankRouter.post('/transactions/auto-match', requireRole('ADMIN'), async (c) => {
 // ---------------------------------------------------------------------------
 
 // POST /api/bank/transactions/:id/match — 수동 거래처 매칭 (+ 규칙 학습)
-bankRouter.post('/transactions/:id/match', requireRole('ADMIN'), async (c) => {
+bankRouter.post('/transactions/:id/match', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     const id   = c.req.param('id')
     const body = await c.req.json()
@@ -2103,7 +2105,7 @@ async function applyBankTransaction(
 }
 
 // GET /api/bank/transactions/:id/link-candidates — 연결 가능한 기존 원장 기록 후보 조회 (UI 적용 모달)
-bankRouter.get('/transactions/:id/link-candidates', requireRole('ADMIN'), async (c) => {
+bankRouter.get('/transactions/:id/link-candidates', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     const id = c.req.param('id')
     const clientIdRaw = parseInt(c.req.query('client_id') || '', 10)
@@ -2127,7 +2129,7 @@ bankRouter.get('/transactions/:id/link-candidates', requireRole('ADMIN'), async 
 
 // POST /api/bank/transactions/:id/apply — 원장 반영 (link-first: 연결 우선, 없으면 생성)
 //   입금 → payments · 출금 → purchase_payments(매입 지급). body.link_payment_id=기존 건 연결, body.force_create=강제 신규.
-bankRouter.post('/transactions/:id/apply', requireRole('ADMIN'), async (c) => {
+bankRouter.post('/transactions/:id/apply', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     const id   = c.req.param('id')
     const user = c.get('user')
@@ -2215,7 +2217,7 @@ bankRouter.post('/transactions/:id/apply', requireRole('ADMIN'), async (c) => {
 })
 
 // POST /api/bank/transactions/batch-apply — 일괄 적용
-bankRouter.post('/transactions/batch-apply', requireRole('ADMIN'), async (c) => {
+bankRouter.post('/transactions/batch-apply', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     const body = await c.req.json()
     const { transaction_ids, client_map, category_map } = body as {
@@ -2361,7 +2363,7 @@ bankRouter.post('/transactions/batch-apply', requireRole('ADMIN'), async (c) => 
 // POST /api/bank/transactions/batch-match — 일괄 매칭(거래처 확정만, 원장 미반영)
 //   2026-07-27 UI 통합: [일괄 매칭] 버튼 제거 → 화면 진입점 없음. batch-apply가 확정+반영+학습을 모두 수행.
 //   라우트는 보존(외부/스크립트 호출·되돌리기 대비). UI 복원 시 pages/bank.ts 플로팅바에 버튼 추가.
-bankRouter.post('/transactions/batch-match', requireRole('ADMIN'), async (c) => {
+bankRouter.post('/transactions/batch-match', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     const body = await c.req.json()
     const { matches } = body as { matches: { transaction_id: number; client_id: number }[] }
@@ -2459,7 +2461,7 @@ bankRouter.post('/transactions/batch-match', requireRole('ADMIN'), async (c) => 
 })
 
 // POST /api/bank/transactions/:id/ignore — IGNORED 처리
-bankRouter.post('/transactions/:id/ignore', requireRole('ADMIN'), async (c) => {
+bankRouter.post('/transactions/:id/ignore', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     const id = c.req.param('id')
     const ef = entityFilter(c, 'bank_transactions')
@@ -2492,7 +2494,7 @@ bankRouter.post('/transactions/:id/ignore', requireRole('ADMIN'), async (c) => {
 // POST /api/bank/transactions/:id/unapply — APPLIED 해제
 //   CREATED(bank이 생성): 원장 기록 삭제(+AP는 미지급 잔액 복원). LINKED(기존 건 연결): 링크만 해제, 원장 기록 유지.
 //   기존 데이터(matched_link_mode NULL)는 CREATED로 간주 — 종전 동작(항상 생성)과 동일.
-bankRouter.post('/transactions/:id/unapply', requireRole('ADMIN'), async (c) => {
+bankRouter.post('/transactions/:id/unapply', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     const id = c.req.param('id')
     const ef = entityFilter(c, 'bank_transactions')
@@ -2584,7 +2586,7 @@ bankRouter.post('/transactions/:id/unapply', requireRole('ADMIN'), async (c) => 
 })
 
 // POST /api/bank/transactions/:id/unmatch — UNMATCHED로 되돌리기
-bankRouter.post('/transactions/:id/unmatch', requireRole('ADMIN'), async (c) => {
+bankRouter.post('/transactions/:id/unmatch', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     const id = c.req.param('id')
     const ef = entityFilter(c, 'bank_transactions')
@@ -2631,7 +2633,7 @@ bankRouter.post('/transactions/:id/unmatch', requireRole('ADMIN'), async (c) => 
 
 // POST /api/bank/transactions/detect-transfers — 이체 후보쌍 감지(동일금액±수수료·W+D·다계좌·±2일)
 //   ?days=N  조회 기간(기본 90). 0 이면 전 기간 — 과거분 소급 정리용.
-bankRouter.post('/transactions/detect-transfers', requireRole('ADMIN'), async (c) => {
+bankRouter.post('/transactions/detect-transfers', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     const ef = entityFilter(c, 'bt')
     // 기본은 기존 동작(최근 90일) 유지. days=0 을 줘야 전 기간을 훑는다.
@@ -2726,7 +2728,7 @@ bankRouter.post('/transactions/detect-transfers', requireRole('ADMIN'), async (c
 })
 
 // POST /api/bank/transactions/confirm-transfer — 후보쌍을 계좌이체로 확정(상호 링크 + IGNORED)
-bankRouter.post('/transactions/confirm-transfer', requireRole('ADMIN'), async (c) => {
+bankRouter.post('/transactions/confirm-transfer', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     const { withdrawal_id, deposit_id } = await c.req.json()
     if (!withdrawal_id || !deposit_id || Number(withdrawal_id) === Number(deposit_id)) {
@@ -2767,7 +2769,7 @@ bankRouter.post('/transactions/confirm-transfer', requireRole('ADMIN'), async (c
 })
 
 // POST /api/bank/transactions/:id/unlink-transfer — 이체 해제(양쪽 UNMATCHED 복원)
-bankRouter.post('/transactions/:id/unlink-transfer', requireRole('ADMIN'), async (c) => {
+bankRouter.post('/transactions/:id/unlink-transfer', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     const id = c.req.param('id')
     const ef = entityFilter(c, 'bt')
@@ -2801,7 +2803,7 @@ bankRouter.post('/transactions/:id/unlink-transfer', requireRole('ADMIN'), async
 // ---------------------------------------------------------------------------
 
 // GET /api/bank/stats
-bankRouter.get('/stats', requireRole('ADMIN'), async (c) => {
+bankRouter.get('/stats', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     // 화면의 필터(계좌·기간·입출금)와 **같은 범위**를 센다 — 목록과 탭 숫자가 어긋나면
     // 어느 쪽이 맞는지 사람이 알 수 없다. 범위 조건은 목록과 같은 헬퍼에서 나온다.
@@ -2859,7 +2861,7 @@ bankRouter.get('/stats', requireRole('ADMIN'), async (c) => {
 // ---------------------------------------------------------------------------
 // CSV 내보내기
 // ---------------------------------------------------------------------------
-bankRouter.get('/transactions/export', requireRole('ADMIN'), async (c) => {
+bankRouter.get('/transactions/export', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
     const { account_id, date_start, date_end, transaction_type } = c.req.query()
     const matchStatuses = c.req.queries('match_status') || []
@@ -2941,7 +2943,7 @@ bankRouter.get('/transactions/export', requireRole('ADMIN'), async (c) => {
 
 // POST /api/bank/auto-sync — 바로빌 자동 동기화
 // 프론트엔드에서 1시간 간격으로 자동 호출 (페이지 열려있는 동안)
-bankRouter.post('/auto-sync', requireRole('ADMIN'), async (c) => {
+bankRouter.post('/auto-sync', requireRole('ADMIN', 'ACCOUNTANT'), async (c) => {
   try {
 
     // 오늘 날짜 기준 최근 3일 동기화
@@ -3099,7 +3101,7 @@ bankRouter.post('/auto-sync', requireRole('ADMIN'), async (c) => {
 // ---------------------------------------------------------------------------
 // 거래처별 미수금 대시보드
 // ---------------------------------------------------------------------------
-bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER'), async (c) => {
+bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER', 'ACCOUNTANT'), async (c) => {
   try {
     // 사업자(법인)별 분리 (2026-08-18): clients 에는 entity_id 가 없지만 **잔액 원천**에는 전부 있다
     //   (order_billing_groups.entity_id · payments.entity_id · adjustments.entity_id).
@@ -3261,7 +3263,7 @@ bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER'), async (c) => {
 // ---------------------------------------------------------------------------
 // 거래처 검색 (은행 매칭용 — 업체명 + 대표자명)
 // ---------------------------------------------------------------------------
-bankRouter.get('/client-search', requireRole('ADMIN', 'MANAGER'), async (c) => {
+bankRouter.get('/client-search', requireRole('ADMIN', 'MANAGER', 'ACCOUNTANT'), async (c) => {
   try {
     const q = (c.req.query('q') || '').trim()
     // 빈 검색어 = 모달 브라우즈 모드(전체 나열, 미수 많은 순). 검색어 있으면 필터.

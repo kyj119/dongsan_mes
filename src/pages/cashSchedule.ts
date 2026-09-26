@@ -11,13 +11,14 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
   // 실적 첫 진입까지 bank.js Init 지연(__bankHubDefer). 실적 탭은 ADMIN에게만 노출(bank API=서버 requireRole ADMIN).
   const hubScript = `
     (function(){
+      function __canActuals(r){ return r==='ADMIN' || r==='ACCOUNTANT'; } // 통장(실적) = ADMIN·경리(2026-09-26)
       var __hubRole=''; try{ __hubRole=(JSON.parse(localStorage.getItem('user')||'{}').role)||''; }catch(e){}
       // 실적 모드는 ADMIN 전용 — 비관리자는 토글 숨김(서버에서도 bank API 차단).
       // ⚠️ role을 '읽지 못한 경우'(localStorage user 유실 등)는 숨기지 않는다 — 권한 최종 판정은 서버(401)이며,
       //    판정 실패로 탭이 통째로 사라지는 사고를 막는다(2026-07-27 실측). shell.js가 /auth/me로 복구하면 재적용.
       var __ab=document.getElementById('hubTabActuals');
       function __hubApplyRoleGate(role){
-        var nonAdmin = !!role && role !== 'ADMIN';
+        var nonAdmin = !!role && !__canActuals(role);
         if(__ab) __ab.style.display = nonAdmin ? 'none' : '';
         if(nonAdmin && typeof window.switchHubMode==='function') window.switchHubMode('plan');
       }
@@ -25,13 +26,13 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
       window.addEventListener('ds-user-restored', function(e){
         __hubRole = (e && e.detail && e.detail.role) || __hubRole;
         __hubApplyRoleGate(__hubRole);
-        if(__hubRole==='ADMIN' && typeof window.__bankHubInit==='function') window.__bankHubInit();
+        if(__canActuals(__hubRole) && typeof window.__bankHubInit==='function') window.__bankHubInit();
       });
       window.switchHubMode=function(mode){
         var plan=document.getElementById('hubPlan'), act=document.getElementById('hubActuals');
         var pb=document.getElementById('hubTabPlan'), ab=document.getElementById('hubTabActuals');
         if(!plan||!act||!pb||!ab){ console.warn('[cash-hub] hub nodes not found'); return; }
-        if(mode==='actuals' && __hubRole && __hubRole!=='ADMIN'){ return; } // 방어: 비관리자 실적 진입 차단(role 미상은 서버가 판정)
+        if(mode==='actuals' && __hubRole && !__canActuals(__hubRole)){ return; } // 방어: 비관리자 실적 진입 차단(role 미상은 서버가 판정)
         if(mode==='actuals'){
           plan.classList.add('hidden'); act.classList.remove('hidden');
           ab.classList.add('border-blue-600','text-blue-600'); ab.classList.remove('border-transparent','text-gray-500');
@@ -51,11 +52,11 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
       };
       // 상호참조 링크 노출: .hub-only(실적↔계획, 허브에서만)·.hub-actuals-link(계획→실적, ADMIN만)
       Array.prototype.forEach.call(document.querySelectorAll('.hub-only'), function(el){ el.classList.remove('hidden'); });
-      if(__hubRole==='ADMIN'){
+      if(__canActuals(__hubRole)){
         Array.prototype.forEach.call(document.querySelectorAll('.hub-actuals-link'), function(el){ el.classList.remove('hidden'); });
       }
       // 기본 랜딩 = 실적(마크업 기본). ADMIN(또는 role 미상)은 bank lazy-init, 비ADMIN만 계획으로 되돌림.
-      if(__hubRole && __hubRole!=='ADMIN'){
+      if(__hubRole && !__canActuals(__hubRole)){
         window.switchHubMode('plan');
       } else {
         if(typeof window.__bankHubInit==='function') window.__bankHubInit();

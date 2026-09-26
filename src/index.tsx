@@ -143,7 +143,6 @@ import { inspectionsPage } from './pages/inspections'
 import { receivingPage } from './pages/receiving'
 import { dashboardPage } from './pages/dashboard'
 import { taxInvoicesPage } from './pages/taxInvoices'
-import { bankPage } from './pages/bank'
 // billingPage → ledger 통합됨
 import { shipmentsPage } from './pages/shipments'
 import { qualityPage } from './pages/quality'
@@ -475,7 +474,8 @@ app.get('/my-receiving', (c) => c.redirect('/receiving', 301))
 app.get('/tax-invoices', pageAuthMiddleware, requirePagePermission('/tax-invoices'), taxInvoicesPage)
 app.get('/cash-receipts', (c) => c.redirect('/tax-invoices?tab=cash'))
 app.get('/hometax-invoices', (c) => c.redirect('/tax-invoices?tab=hometax'))
-app.get('/bank', pageAuthMiddleware, requireAdminPage(), bankPage)
+// /bank 는 자금 관리(/cash-schedule) [실적] 탭과 같은 화면 — 경로를 하나로(2026-09-26). 옛 즐겨찾기용 이동만 남긴다.
+app.get('/bank', (c) => c.redirect('/cash-schedule'))
 app.get('/billing', (c) => c.redirect('/ledger?tab=billing'))
 app.get('/shipments', pageAuthMiddleware, requirePagePermission('/shipments'), shipmentsPage)
 app.get('/shipments-dashboard', pageAuthMiddleware, requirePagePermission('/shipments-dashboard'), shipmentsDashboardPage)

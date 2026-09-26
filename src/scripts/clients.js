@@ -521,28 +521,29 @@ async function importExcel() {
             return null;
         };
 
+        // ★파일에 **있는 열만** 보낸다(2026-09-26 결정) — 서버는 받은 칸만 갱신하고, 빈 칸은 지운다.
+        //   예전엔 없는 열까지 null·기본값(방문수령·건별·활성)으로 채워 보내 기존 거래처 설정이 초기화됐다.
+        //   sheet_to_json 은 빈 셀의 키를 빼므로 「열이 있는가」는 머리행으로 판정한다.
+        var headers = (window.XLSX.utils.sheet_to_json(worksheet, { header: 1 })[0] || []).map(function(h) { return String(h || ''); });
+        var FIELDS = [
+            ['client_name', ['client_name', '거래처명']], ['representative', ['representative', '대표자명']],
+            ['business_type', ['business_type', '업태']], ['business_item', ['business_item', '종목']],
+            ['phone', ['phone', '전화']], ['mobile', ['mobile', '모바일']], ['fax', ['fax', 'Fax']], ['email', ['email', 'Email']],
+            ['address', ['address', '기본주소', '주소1']], ['address_detail', ['address_detail', '상세주소']],
+            ['search_keywords', ['search_keywords', '검색창내용']], ['transfer_info', ['transfer_info', '이체정보']],
+            ['business_registration_number', ['business_registration_number', '사업자등록번호']],
+            ['delivery_method', ['delivery_method', '배송방식']], ['delivery_address', ['delivery_address', '배송지', '지점명']],
+            ['invoice_method', ['invoice_method', 'invoice_type', '계산서유형']],
+        ];
+        var hasCol = function(keys) {
+            return headers.some(function(h) { return keys.some(function(k) { return h === k || h.indexOf(k) >= 0; }); });
+        };
+        var present = FIELDS.filter(function(f) { return hasCol(f[1]); });
         var clients = jsonData.map(function(row) {
             var code = findVal(row, ['client_code', '거래처코드']) || '';
-            return {
-                client_code: String(code),
-                client_name: findVal(row, ['client_name', '거래처명']) || '',
-                representative: findVal(row, ['representative', '대표자명']),
-                business_type: findVal(row, ['business_type', '업태']),
-                business_item: findVal(row, ['business_item', '종목']),
-                phone: findVal(row, ['phone', '전화']),
-                mobile: findVal(row, ['mobile', '모바일']),
-                fax: findVal(row, ['fax', 'Fax']),
-                email: findVal(row, ['email', 'Email']),
-                address: findVal(row, ['address', '기본주소', '주소1']),
-                address_detail: findVal(row, ['address_detail', '상세주소']),
-                search_keywords: findVal(row, ['search_keywords', '검색창내용']),
-                transfer_info: findVal(row, ['transfer_info', '이체정보']),
-                business_registration_number: findVal(row, ['business_registration_number', '사업자등록번호']) || null,
-                delivery_method: findVal(row, ['delivery_method', '배송방식']) || '방문수령',
-                delivery_address: findVal(row, ['delivery_address', '배송지', '지점명']),
-                invoice_method: findVal(row, ['invoice_method', 'invoice_type', '계산서유형']) || 'PER_ORDER',
-                is_active: 1
-            };
+            var o = { client_code: String(code) };
+            present.forEach(function(f) { var v = findVal(row, f[1]); o[f[0]] = (v === undefined || v === '') ? null : v; });
+            return o;
         }).filter(function(c) { return c.client_code && c.client_name; });
 
         var response = await axios.post('/api/clients/import', { clients });
