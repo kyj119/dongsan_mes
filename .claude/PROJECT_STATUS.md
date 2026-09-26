@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **✅ prod 2026-09-26 `6c3c7c12` — 전체 코드 리뷰(Workflow 15트랙, 확정 89) 중 가벼운 30건 반영** — ★**일일 D1 백업이 R2 에 한 번도 안 올라갔다**(`--remote` 누락, 로그 「Resource location: local」) → 수정. 급여 결근공제·자녀공제·승인분 덮기, switch-entity DB 재확인, 세무 CSV 주민번호 복호화, 취소주문 출고차감 등. 남은 것 = 결정 대기 59건 `docs/audits/2026-09-26-full-review.md`(세금계산서 취소 미연동·PAID 미수·연차 기준·스캔 출고·백업 90일 정리 고장). ⚠️내일 백업 run 에서 R2 도달 확인.
+> **✅ prod 2026-09-26 `6c3c7c12`+`48c743f4` — 전체 코드 리뷰(확정 89) 중 54건 반영** — ★**D1 백업이 R2 에 한 번도 안 올라갔다**(`--remote`) · 급여·권한·재고·계산서 결함 · 스캔 출고 본체 통합 · `check:fn` 독립페이지 판정(→거래명세서 수량표기 결함 적발) · `end-session` 이 남의 dev 서버 죽이던 것. 남은=결정 대기(세금계산서 취소 미연동·PAID 미수·연차 기준·백업 90일 정리) + 바로빌 WSDL·IA/LogWatcher 축 — `docs/audits/2026-09-26-full-review.md`. ⚠️내일 백업 run R2 도달 확인.
 
 > **✅ prod 2026-09-24 `2cc2d564` — 배송 알림 정리** — 방문수령·직접수령=대상 아님(템플릿 보존·재검토 예정) · `POST /api/shipments` 자동 발송(알림톡·이메일) 제거(`test:shipment-notice` ⑨) · 「한진택배 출고」 심사 신청 → 발송 때마다 승인(3/S) 템플릿만 읽어 **승인되면 배포 없이 알림톡**, 전엔 문자(`applyTemplateApproval`). 검증 journey 40/40·e2e 4/4·smoke:prod 134/134·write 5/5. 남은=승인 후 내부 번호 1건 시험 발송
 
