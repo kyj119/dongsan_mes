@@ -225,3 +225,4 @@ button.danger { border-color: #7a4a4a; color: #e0b0b0; }
 .regwatch { margin: 6px 0; padding: 4px 7px; font-size: 11px; border-left: 3px solid #5b8def; background: #232a36; color: #d6dbe4; }
 .regwatch.ok { border-left-color: #4caf50; }
 .regwatch.err { border-left-color: #f59e0b; color: #fbbf24; }
+.out .okeep { color: #cfd6df; }

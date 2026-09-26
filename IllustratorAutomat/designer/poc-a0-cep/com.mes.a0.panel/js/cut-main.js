@@ -435,7 +435,7 @@
   // ★결과창 요약(2026-09-27 ③) — 판짜기 결과가 20줄을 넘어 성공/실패를 바로 못 읽었다.
   //   6줄 이상이면 **첫 줄 + 소요 초 + ⚠ 줄 전부**를 위에 두고 나머지는 [자세히]로 접는다(원문은 한 글자도 안 버린다).
   //   ⚠ 줄은 격하·실패·누락 알림이라 접으면 안 된다(조용한 격하 금지). 펼침 여부는 기억한다.
-  var lastOutMsg = '', lastOutKind = '', outDetailOpen = false;
+  var lastOutMsg = '', lastOutKind = '', outState = { open: false };
   function out(msg, kind) {
     if (!elOut) return;
     lastOutMsg = String(msg == null ? '' : msg);
@@ -444,30 +444,10 @@
     numSyncLine();   // 번호 이미지가 먼저 끝났으면 「만드는 중」 줄을 완료 문구로(0.97.1 — numSyncLine 주석)
   }
   function renderOut() {
-    var msg = lastOutMsg, kind = lastOutKind;
-    elOut.className = 'out' + (kind ? ' ' + kind : '');
-    var lines = msg.split('\n');
-    if (lines.length < 6) { elOut.textContent = msg; return; }
-    var secs = '';
-    for (var i = 0; i < lines.length; i++) { var m = /^소요 ([0-9.]+)초/.exec(lines[i]); if (m) { secs = m[1]; break; } }
-    var warns = [];
-    for (var j = 1; j < lines.length; j++) if (/^\s*⚠/.test(lines[j])) warns.push(lines[j].replace(/^\s+/, ''));
-    elOut.textContent = '';
-    var head = document.createElement('div');
-    head.className = 'osum';
-    head.textContent = (kind === 'err' ? '⚠ ' : (kind === 'ok' ? '✅ ' : '')) + lines[0] + (secs ? ' · ' + secs + '초' : '');
-    elOut.appendChild(head);
-    for (var k = 0; k < warns.length; k++) {
-      var w = document.createElement('div'); w.className = 'owarn'; w.textContent = warns[k]; elOut.appendChild(w);
-    }
-    var det = document.createElement('details');
-    det.className = 'odet';
-    if (outDetailOpen) det.open = true;
-    var sm = document.createElement('summary'); sm.textContent = '자세히 (' + lines.length + '줄)';
-    var pre = document.createElement('div'); pre.className = 'opre'; pre.textContent = msg;
-    det.appendChild(sm); det.appendChild(pre);
-    det.addEventListener('toggle', function () { outDetailOpen = det.open; });
-    elOut.appendChild(det);
+    // 요약 규칙의 정본 = js/panel-ux.js(가공 탭과 공용). 모듈이 없으면(설치본 누락) 종전처럼 전문을 그대로 쓴다.
+    if (window.MesPanelUx) { window.MesPanelUx.renderSummary(elOut, lastOutMsg, lastOutKind, outState); return; }
+    elOut.className = 'out' + (lastOutKind ? ' ' + lastOutKind : '');
+    elOut.textContent = lastOutMsg;
   }
 
   // ── ★진행 단계·경과·취소 (2026-09-27 ⑥) ──────────────────────────────────
@@ -515,40 +495,12 @@
   //   등록이 만든 폴더에 에이전트 표식(.ingested/.rejected)이 생기는지 5초마다 호스트에 묻는다(최대 3분).
   //   다른 작업 중(hostBusy)이면 그 회차는 건너뛴다. 구 호스트(0.59.0 미만)면 조용히 안 한다.
   var INGEST_MIN_HOST = [0, 59, 0];
-  var ingestTimer = null;
-  function ingestLine(txt, kind) {
-    var el = $('regWatch');
-    if (!el) return;
-    el.textContent = txt;
-    el.className = 'regwatch' + (kind ? ' ' + kind : '') + (txt ? '' : ' hidden');
-  }
+  var ingestState = { timer: null };
   function watchIngest(names) {
-    if (ingestTimer) { clearInterval(ingestTimer); ingestTimer = null; }
-    ingestLine('');
-    if (!names || !/^[A-Za-z0-9_|\-]+$/.test(names) || !hostAtLeast(INGEST_MIN_HOST)) return;
-    var t0 = Date.now(), total = names.split('|').length;
-    ingestLine('대기함 수신 확인 중… 0/' + total);
-    ingestTimer = setInterval(function () {
-      var sec = Math.round((Date.now() - t0) / 1000);
-      if (hostBusy) return;
-      host('mesCut_ingestState("' + names + '")', function (r, bad) {
-        if (bad || String(r).indexOf('ok;') !== 0) return;   // 한 번 못 읽어도 다음 회차에 다시 본다
-        var k = kv(String(r).substring(3)), n = parseInt(k.n, 10) || total;
-        var ing = parseInt(k.ing, 10) || 0, rej = parseInt(k.rej, 10) || 0;
-        if (rej > 0) {
-          clearInterval(ingestTimer); ingestTimer = null;
-          ingestLine('⚠ 에이전트가 ' + rej + '건을 거절했습니다 — 등록 폴더의 .rejected 파일을 확인하세요(수신 ' + ing + '/' + n + ')', 'err');
-        } else if (ing >= n) {
-          clearInterval(ingestTimer); ingestTimer = null;
-          ingestLine('✅ 대기함 수신 완료 ' + ing + '/' + n + ' — 주문서 [가공 대기함]에서 불러오세요', 'ok');
-        } else if (sec >= 180) {
-          clearInterval(ingestTimer); ingestTimer = null;
-          ingestLine('⚠ 3분이 지나도 대기함에 안 들어갔습니다(수신 ' + ing + '/' + n + ') — 에이전트(IllustratorAutomat)가 켜져 있는지 확인하세요', 'err');
-        } else {
-          ingestLine('대기함 수신 확인 중… ' + ing + '/' + n + ' (' + sec + '초)');
-        }
-      });
-    }, 5000);
+    // 정본 = js/panel-ux.js watchIngest(가공 탭과 공용) — 여기는 재단 탭의 호출 연결뿐
+    if (!window.MesPanelUx || !hostAtLeast(INGEST_MIN_HOST)) return;
+    window.MesPanelUx.watchIngest({ hostCall: host, names: names, lineEl: $('regWatch'),
+      isBusy: function () { return hostBusy; }, state: ingestState });
   }
 
   /**

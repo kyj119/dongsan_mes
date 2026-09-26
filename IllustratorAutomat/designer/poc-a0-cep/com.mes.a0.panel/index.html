@@ -248,6 +248,9 @@
     <!-- 진행 취소 — 10건 배치는 수 분이 걸리는데 여태 멈출 수단이 없었다(2026-07-30 P2).
          실행 중인 JSX 는 중단할 수 없으므로 **호스트 호출 사이에서** 멈춘다. 평상시엔 숨김. -->
     <div class="row"><button id="btnCancel" type="button" class="cancel" style="display:none">취소</button></div>
+    <!-- ★경과 초·대기함 수신 확인(2026-09-27 ⑦) — 정본 js/panel-ux.js -->
+    <div id="a0Prog" class="nestprog hidden"></div>
+    <div id="a0RegWatch" class="regwatch hidden"></div>
     <div class="row"><div id="out" class="out"></div></div>
     <div class="row"><span id="cfgStatus" class="cfg">config…</span></div>
 
@@ -772,6 +775,7 @@
   <script src="js/review.js"></script>
   <script src="js/CSInterface.js"></script>
   <script src="js/tabs.js"></script>
+  <script src="js/panel-ux.js"></script>   <!-- ★가공·재단 공용 사용감(결과 요약·경과 초·수신 확인) — main/cut-main 보다 먼저 -->
   <script src="js/main.js"></script>
   <script src="js/cut-main.js"></script>
   <script src="js/tr-order.js"></script>

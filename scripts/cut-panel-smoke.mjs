@@ -2284,9 +2284,12 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
 // ── 사용감 2차(2026-09-27) — ③ 결과 요약은 ⚠ 줄을 접지 않는다 · ⑥ 적용 중엔 취소 불가 · ⑤ 수신 확인은 읽기 전용 ──
 {
   const src = fs.readFileSync(CUT_MAIN, 'utf8')
+  const uxSrc = fs.readFileSync(path.join(path.dirname(CUT_MAIN), 'panel-ux.js'), 'utf8')
+  const a0Src = fs.readFileSync(path.join(path.dirname(CUT_MAIN), 'main.js'), 'utf8')
   const hostSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
-  ok('9q 결과 요약이 ⚠ 줄을 위로 올린다(격하 알림을 접지 않는다)', /warns\.push\(/.test(src) && /\^\\s\*⚠/.test(src))
-  ok('9q 결과 요약은 원문을 통째로 [자세히]에 싣는다', /pre\.textContent = msg/.test(src))
+  ok('9q 두 탭이 같은 요약 모듈을 쓴다(사본 금지)', /MesPanelUx\.renderSummary/.test(src) && /MesPanelUx\.renderSummary/.test(a0Src))
+  ok('9q 결과 요약이 ⚠ 줄을 위로 올린다(격하 알림을 접지 않는다)', /warns\.push\(/.test(uxSrc) && /\^\\s\*⚠/.test(uxSrc))
+  ok('9q 결과 요약은 원문을 통째로 [자세히]에 싣는다', /pre\.textContent = msg/.test(uxSrc))
   ok('9q 적용 단계에서는 취소 버튼이 잠긴다', /name === '적용'\) \{ cb\.disabled = true/.test(src))
   ok('9q 호스트가 등록 폴더 이름을 돌려준다(names=)', /';names=' \+ names/.test(hostSrc))
   const ing = (/function mesCut_ingestState[\s\S]*?\n\}/.exec(hostSrc) || [''])[0]
