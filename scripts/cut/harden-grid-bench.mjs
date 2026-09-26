@@ -163,5 +163,14 @@ console.log('\n── 7 판 최대 길이 설정(rollMaxMm · 2026-09-26 A안) �
   ok('상수 직접 사용은 정의·함수·해상도 고르기(의도)뿐', /snapResolution\(base, 2 \* half, sheetWmm, sheetHmm \|\| NEST_ROLL_MAX_MM/.test(CM) && direct <= 8, `NEST_ROLL_MAX_MM ${direct}회`)
 }
 
+console.log('\n── 8 판 묶음 표시(등록 manifest · 0.58.0) — 판이 여럿이면 같은 batch_folder ──')
+{
+  ok('등록 시작마다 묶음 이름을 비운다', /\$\.global\.mesCutBatchFolder = '';/.test(SRC))
+  ok('판이 여럿일 때 판 1 의 폴더를 묶음 이름으로', /if \(MESCUT_NEST_DOCS\.length > 1 && idx === 0\) \$\.global\.mesCutBatchFolder = jobFolder\.fsName/.test(SRC))
+  ok('manifest batch_folder = 묶음 이름(판 1장이면 null)', /"batch_folder":' \+ \(\(MESCUT_NEST_DOCS\.length > 1 && \$\.global\.mesCutBatchFolder\)/.test(SRC))
+  ok('manifest batch_total = 총 판 수', /"batch_total":' \+ \(MESCUT_NEST_DOCS\.length > 1 \? MESCUT_NEST_DOCS\.length : 'null'\)/.test(SRC))
+  ok('종전 하드코딩 null 이 남아 있지 않다', !/"batch_folder":null/.test(SRC))
+}
+
 console.log(fails ? `\n✗ ${fails}건 실패` : '\n✓ 전부 통과')
 process.exit(fails ? 1 : 0)
