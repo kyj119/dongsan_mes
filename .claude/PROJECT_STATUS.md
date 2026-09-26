@@ -1,5 +1,7 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
+> **✅ prod 2026-09-26 `a72a8f63`·main `21978fef` — 리뷰 잔여 마감** — 바로빌 WSDL 대조(계산서 상태 필드 교정·페이지 응답 음수 오류·재시도 중복 관리번호) · 훅이 worktree 를 검사 · 현장 축 코드(LogWatcher 큐 유실·★FLEXI 억제키 수명=밤 9시 이후 selftest 실패 원인·caps-worker 실패 삼킴·IA 문서 미닫힘·오래된 ia_error.log). **Z: 준비 완료**: caps-worker src(백업 `index.js.bak-20260926-221455`)·LogWatcher-kit(git 21978fef). 남은=**IA 에이전트 재빌드·재시작(사용자)** · 경리PC/장비PC 설치 · 바로빌 NTSSendState 코드 첫 실발행 때 확인
+
 > **✅ prod 2026-09-26 `20a0d4ef`…`e1d74814` — 리뷰 결정 1~6차 24건 마감(결정 대기 0)** — 계산서 취소발행 · PAID 폐기 · 연차 회계연도+비례 · 부분입고 발주 마감=입고분 · 세액표 폴백 · 주문 삭제 순서 · /bank→자금관리·경리 통장 · 포털 사업자번호 · 거래처 가져오기 · 출력 연결·보류·출고복귀 · 재무스냅샷 · 광고 명칭 · 백업 R2 90일 · 결재 후속 알림 · 이관 기초잔액 막음 · /ship·auto-improve 규칙. 보류=지출결의·재주문·신용점수. 남은=바로빌 WSDL 3 · 웹 밖 축 4(LogWatcher·IA·caps) · 훅 cwd · ⚠️사용자=계정 동기화 스킬 삭제·백업 R2 도달 확인. 정본 `docs/audits/2026-09-26-full-review.md`
 
 > **✅ prod 2026-09-26 `6c3c7c12`+`48c743f4` — 전체 코드 리뷰(확정 89) 중 54건 반영** — ★**D1 백업이 R2 에 한 번도 안 올라갔다**(`--remote`) · 급여·권한·재고·계산서 결함 · 스캔 출고 본체 통합 · `check:fn` 독립페이지 판정(→거래명세서 수량표기 결함 적발) · `end-session` 이 남의 dev 서버 죽이던 것. 남은=결정 대기(세금계산서 취소 미연동·PAID 미수·연차 기준·백업 90일 정리) + 바로빌 WSDL·IA/LogWatcher 축 — `docs/audits/2026-09-26-full-review.md`. ⚠️내일 백업 run R2 도달 확인.
