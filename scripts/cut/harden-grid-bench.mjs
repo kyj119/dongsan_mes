@@ -145,5 +145,23 @@ console.log('\n── 6 굳힌 격자 풀기(mesCut_hardenLeaves) — 2026-09-24
   }
 }
 
+console.log('\n── 7 판 최대 길이 설정(rollMaxMm · 2026-09-26 A안) — 비우면 종전과 같다 ──')
+{
+  const CM = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'poc-a0-cep', 'com.mes.a0.panel', 'js', 'cut-main.js'), 'utf8')
+  const pick = (re) => { const x = re.exec(CM); if (!x) throw new Error('패널 소스 없음 ' + re); return x[0] }
+  const code = pick(/var NEST_ROLL_MAX_MM = \d+;/) + '\n' + pick(/function userMaxLenReal\(\) \{[\s\S]*?\r?\n {2}\}/) + '\n' + pick(/function rollMaxMm\(\) \{[\s\S]*?\r?\n {2}\}/)
+  const mk = (val, N) => new Function('document', 'toFileMm', code + '\nreturn rollMaxMm')({ getElementById: () => ({ value: val }) }, (mm) => mm / N)
+  ok('빈 칸 → 종전 5600(파일 좌표)', mk('', 1)() === 5600)
+  ok('500mm 미만(오입력) → 무시하고 종전', mk('300', 1)() === 5600)
+  ok('실물 4,000mm · 저장 1/1 → 4000', mk('4000', 1)() === 4000)
+  ok('실물 4,000mm · 저장 1/2 → 파일 2000(= 실물 4000)', mk('4000', 2)() === 2000)
+  ok('일러 한계보다 크면 한계로(8,000 → 5600)', mk('8000', 1)() === 5600)
+  // 판 길이를 쓰는 네 자리가 전부 rollMaxMm() 를 거친다 — 하나라도 상수를 직접 쓰면 설정이 거기서만 무시된다
+  const direct = (CM.match(/NEST_ROLL_MAX_MM/g) || []).length
+  const viaFn = (CM.match(/rollMaxMm\(\)/g) || []).length
+  ok('배치·맞붙임·관문·폭추천 네 자리가 rollMaxMm() 사용', viaFn >= 5, `rollMaxMm() ${viaFn}회`)
+  ok('상수 직접 사용은 정의·함수·해상도 고르기(의도)뿐', /snapResolution\(base, 2 \* half, sheetWmm, sheetHmm \|\| NEST_ROLL_MAX_MM/.test(CM) && direct <= 8, `NEST_ROLL_MAX_MM ${direct}회`)
+}
+
 console.log(fails ? `\n✗ ${fails}건 실패` : '\n✓ 전부 통과')
 process.exit(fails ? 1 : 0)

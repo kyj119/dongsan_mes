@@ -386,6 +386,10 @@
           <option value="flat:900x1800">평판 900×1800</option>
           <option value="flat:1200x2400">평판 1200×2400</option>
         </select>
+        <!-- ★판 최대 길이(2026-09-26 A안) — 재단기·RIP 가 한 번에 받는 실물 길이. 비우면 종전(일러 한계 5,600mm × 저장 배율). 정본 cut-main.js rollMaxMm -->
+        <label for="nestMaxLen" class="l2" title="롤일 때 판 한 장의 최대 길이(실물 mm, 돔보 포함). 비우면 종전대로 일러 한계까지.">판 최대</label>
+        <input id="nestMaxLen" type="number" min="500" step="100" placeholder="자동" style="width:64px" />
+        <span class="unit">mm</span>
       </div>
       <!-- ★조각 수량 (2026-08-06) — 같은 그림을 여러 장 뽑을 때 파일에서 손으로 복사하지 않는다.
            복사는 조각마다 다시 굽고(느림) 사본이 미세하게 어긋날 수 있고 원본 파일이 더러워진다.
