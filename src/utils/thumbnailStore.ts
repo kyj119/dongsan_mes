@@ -70,6 +70,14 @@ export function analysisThumbKeyLg(analysisId: number | string, groupIndex: numb
   return `${KEY_ROOT}/analysis/${analysisId}/${groupIndex}@lg.png`
 }
 
+/**
+ * 판짜기 전체 그림(원본 전체 + 조각 번호) — 재단 패널이 판 여러 개로 나눈 등록의 **판 1** 에만 있다(2026-09-26).
+ * 판짜기 작업지시서가 이 그림 위에 판별 색 테두리를 겹친다.
+ */
+export function analysisThumbKeyOv(analysisId: number | string, groupIndex: number | string): string {
+  return `${KEY_ROOT}/analysis/${analysisId}/${groupIndex}@ov.png`
+}
+
 /** base64/data URI → R2.put → bare key 반환 (범용: 썸네일·첨부 공용) */
 export async function putBase64ToR2(env: R2Env, key: string, base64OrDataUri: string, contentType: string): Promise<string> {
   await env.R2_BUCKET.put(key, base64ToBytes(base64OrDataUri), { httpMetadata: { contentType } })
@@ -101,6 +109,9 @@ export interface AnalysisGroup {
   /** 인쇄용 고해상도 — 저장 시에만 base64 로 들어오고, emit 에는 **절대 실리지 않는다**(위 keyLg 주석). */
   thumbnail_hi_base64?: string | null
   thumbnail_hi_r2_key?: string | null
+  /** 판짜기 전체 그림 — hi 와 같은 규칙(저장 때만 base64, 실패해도 base64 를 남기지 않는다) */
+  thumbnail_ov_base64?: string | null
+  thumbnail_ov_r2_key?: string | null
   [k: string]: unknown
 }
 
@@ -149,6 +160,14 @@ export async function externalizeGroups(env: R2Env, analysisId: number | string,
         g.thumbnail_hi_r2_key = keyLg
       } catch (_e) { /* sm 폴백으로 충분 */ }
       delete g.thumbnail_hi_base64
+    }
+    if (g && typeof g.thumbnail_ov_base64 === 'string' && g.thumbnail_ov_base64.length > 0) {
+      const keyOv = analysisThumbKeyOv(analysisId, g.index ?? 0)
+      try {
+        await putThumbnail(env, keyOv, g.thumbnail_ov_base64)
+        g.thumbnail_ov_r2_key = keyOv
+      } catch (_e) { /* 없으면 작업지시서가 판별 쪽으로 내려간다 */ }
+      delete g.thumbnail_ov_base64
     }
   }
   return groups

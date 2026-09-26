@@ -1097,6 +1097,21 @@ namespace IllustratorAutomation
                     if (hiBytes.Length <= 8_000_000) obj["thumb_hi_base64"] = Convert.ToBase64String(hiBytes);
                     else Console.WriteLine($"      ⚠️ 고해상도 썸네일 과대({hiBytes.Length / 1024}KB) — sm 만 전송");
                 }
+                // ★판짜기 전체 그림(2026-09-26 판짜기 작업지시서) — 재단 패널이 한 장을 판 여러 개로 나누면
+                //   판마다 폴더에 같은 overview.png 가 있다. **판 1 만** 올린다(같은 그림을 N번 싣지 않는다).
+                //   웹은 이 그림 위에 판별 색 테두리를 겹쳐 「판짜기 한 부」를 그린다. 없으면 종전과 같다(판별 쪽만).
+                int bIdx = 0, bTot = 0;
+                try { bIdx = obj["batch_index"]?.GetValue<int>() ?? 0; bTot = obj["batch_total"]?.GetValue<int>() ?? 0; } catch { /* 숫자가 아니면 판 묶음 아님 */ }
+                if (bTot >= 2 && bIdx == 1)
+                {
+                    var ovPath = Abs("overview", "overview.png");
+                    if (ovPath != null)
+                    {
+                        var ovBytes = File.ReadAllBytes(ovPath);
+                        if (ovBytes.Length <= 8_000_000) obj["overview_base64"] = Convert.ToBase64String(ovBytes);
+                        else Console.WriteLine($"      ⚠️ 전체 그림 과대({ovBytes.Length / 1024}KB) — 판별 쪽만");
+                    }
+                }
                 // 배치는 폴더 공유 → 서버 memo 기반 중복가드가 디자인 단위로 동작하게 접미 포함 유니크 키
                 obj["source_folder"] = folder + (string.IsNullOrEmpty(sfx) ? "" : "#" + sfx);
 

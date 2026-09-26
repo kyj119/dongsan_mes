@@ -24,14 +24,20 @@ eq('이상한 번호는 뺀다(스크립트·한글·빈값)', parsePlateInfo({ 
   { plate_index: 1, plate_total: 2, piece_labels: ['3-4'] })
 eq('조각이 전부 이상하면 목록 없이 판 정보만', parsePlateInfo({ batch_index: 1, batch_total: 2, pieces: [{ n: 'abc' }] }), { plate_index: 1, plate_total: 2 })
 eq('조각 500개 상한', parsePlateInfo({ batch_index: 1, batch_total: 2, pieces: Array.from({ length: 700 }, (_, i) => ({ n: String(i + 1) })) }).piece_labels.length, 500)
+eq('조각 상세 — 규격·상자(판짜기 작업지시서)', parsePlateInfo({ batch_index: 1, batch_total: 2, pieces: [{ n: '1-1', w: 540, h: 340, b: [1.5, 2, 18, 30] }, { n: '1-2', w: 480, h: 340 }] }),
+  { plate_index: 1, plate_total: 2, piece_labels: ['1-1', '1-2'], pieces: [{ n: '1-1', w: 540, h: 340, b: [1.5, 2, 18, 30] }, { n: '1-2', w: 480, h: 340 }] })
+eq('상세 — 규격 이상이면 그 조각만 뺀다 · 상자 이상은 상자만 뺀다', parsePlateInfo({ batch_index: 1, batch_total: 2, pieces: [{ n: '1-1', w: -3, h: 340 }, { n: '1-2', w: 480, h: 340, b: [1, 2, 3] }, { n: '1-3', w: 480, h: 340, b: [1, 2, 3, 'x'] }] }).pieces,
+  [{ n: '1-2', w: 480, h: 340 }, { n: '1-3', w: 480, h: 340 }])
 eq('pieces 가 배열이 아니면 무시', parsePlateInfo({ batch_index: 1, batch_total: 2, pieces: '1-1' }), { plate_index: 1, plate_total: 2 })
 
 // ── 읽는 쪽(plateOfGroup) — groups_json 의 첫 그룹 ──
 eq('읽기 정상', plateOfGroup({ index: 0, plate_index: 3, plate_total: 3, piece_labels: ['2-1', 'x', '2-2'] }), { plate_index: 3, plate_total: 3, piece_labels: ['2-1', '2-2'] })
+eq('읽기 상세', plateOfGroup({ plate_index: 1, plate_total: 2, piece_labels: ['1-1'], pieces: [{ n: '1-1', w: 540, h: 340, b: [0, 0, 50, 50] }, { n: 'x', w: 1, h: 1 }] }),
+  { plate_index: 1, plate_total: 2, piece_labels: ['1-1'], pieces: [{ n: '1-1', w: 540, h: 340, b: [0, 0, 50, 50] }] })
 eq('판 정보 없는 그룹 → null(종전 등록)', plateOfGroup({ index: 0, name: 'design' }), null)
 eq('null → null', plateOfGroup(null), null)
 eq('총 1 → null', plateOfGroup({ plate_index: 1, plate_total: 1 }), null)
 
 cleanup()
 if (fails.length) { console.error(`test:plate-info FAIL ${fails.length}건\n  ` + fails.join('\n  ')); process.exit(1) }
-console.log(`test:plate-info OK — ${pass}항목 (싣기 12 · 읽기 4)`)
+console.log(`test:plate-info OK — ${pass}항목 (싣기 14 · 읽기 5)`)

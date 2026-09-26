@@ -742,6 +742,8 @@ workbenchRouter.post('/intakes', async (c) => {
         name: 'design',
         thumbnail_base64: String(body.thumb_base64),
         thumbnail_hi_base64: body.thumb_hi_base64 ? String(body.thumb_hi_base64) : undefined,
+        // 판짜기 전체 그림 — 에이전트가 판 1 에만 싣는다(Program.cs overview_base64). 판 묶음이 아니면 버린다
+        thumbnail_ov_base64: body.overview_base64 && plate.plate_index === 1 ? String(body.overview_base64) : undefined,
         width_mm: w != null ? Math.round(w * 10) : undefined,
         height_mm: h != null ? Math.round(h * 10) : undefined,
         ...plate,

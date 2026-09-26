@@ -11,6 +11,32 @@ export interface PlateInfo {
   plate_index?: number
   plate_total?: number
   piece_labels?: string[]
+  /** 조각 상세 — 판짜기 작업지시서 목록표(규격)·배치도(원본 그림 위 상자 %). 셸 0.102.0+ 만 b 를 싣는다 */
+  pieces?: PieceInfo[]
+}
+
+export interface PieceInfo {
+  n: string
+  w: number
+  h: number
+  /** 원본 전체 그림(overview) 대비 % [x, y, w, h] — 없으면 배치도에 테두리를 못 그린다(표는 그린다) */
+  b?: [number, number, number, number]
+}
+
+const LABEL_RE = /^[0-9]{1,4}(-[0-9]{1,4})?$/
+
+/** 조각 1개 → 상세(번호·실물 mm·상자). 규격이 이상하면 null(표에 거짓 규격을 싣지 않는다) */
+function pieceOf(p: unknown): PieceInfo | null {
+  if (!p || typeof p !== 'object') return null
+  const r = p as Record<string, unknown>
+  const n = String(r.n ?? ''), w = Number(r.w), h = Number(r.h)
+  if (!LABEL_RE.test(n) || !(Number.isInteger(w) && w > 0 && w <= 100000) || !(Number.isInteger(h) && h > 0 && h <= 100000)) return null
+  const out: PieceInfo = { n, w, h }
+  const b = r.b
+  if (Array.isArray(b) && b.length === 4 && b.every((v) => typeof v === 'number' && Number.isFinite(v) && v >= -5 && v <= 105)) {
+    out.b = [b[0], b[1], b[2], b[3]] as [number, number, number, number]
+  }
+  return out
 }
 
 const MAX_PLATES = 99
@@ -24,12 +50,16 @@ export function parsePlateInfo(body: Record<string, unknown>): PlateInfo {
   const raw = body.pieces
   if (Array.isArray(raw)) {
     const labels: string[] = []
+    const detail: PieceInfo[] = []
     for (const p of raw.slice(0, MAX_PIECES)) {
       const lab = p && typeof p === 'object' ? String((p as Record<string, unknown>).n ?? '') : ''
       // 번호는 패널이 만든 「줄-순번」(1-3) 또는 일련(12) — 숫자·대시만 받는다
-      if (/^[0-9]{1,4}(-[0-9]{1,4})?$/.test(lab)) labels.push(lab)
+      if (LABEL_RE.test(lab)) labels.push(lab)
+      const d = pieceOf(p)
+      if (d) detail.push(d)
     }
     if (labels.length) out.piece_labels = labels
+    if (detail.length) out.pieces = detail
   }
   return out
 }
@@ -40,6 +70,11 @@ export function plateOfGroup(g: unknown): PlateInfo | null {
   const r = g as Record<string, unknown>
   const k = Number(r.plate_index), n = Number(r.plate_total)
   if (!(Number.isInteger(k) && Number.isInteger(n) && n >= 2 && k >= 1 && k <= n)) return null
-  const labels = Array.isArray(r.piece_labels) ? (r.piece_labels as unknown[]).map(String).filter((s) => /^[0-9]{1,4}(-[0-9]{1,4})?$/.test(s)) : []
-  return { plate_index: k, plate_total: n, piece_labels: labels }
+  const labels = Array.isArray(r.piece_labels) ? (r.piece_labels as unknown[]).map(String).filter((s) => LABEL_RE.test(s)) : []
+  const out: PlateInfo = { plate_index: k, plate_total: n, piece_labels: labels }
+  if (Array.isArray(r.pieces)) {
+    const detail = (r.pieces as unknown[]).slice(0, MAX_PIECES).map(pieceOf).filter((d): d is PieceInfo => !!d)
+    if (detail.length) out.pieces = detail
+  }
+  return out
 }

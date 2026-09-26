@@ -310,6 +310,9 @@
 
         html += '</div>'; // end cd-work-order
 
+        // ── 판짜기 작업지시서(재단 판짜기 한 부 · 2026-09-26) — 비동기로 채운다. 없으면 빈 채로 안 보인다 ──
+        html += '<div id="cdBatchBox"></div>';
+
         // ── 공정 체크리스트 (작업지시서 진행 체크, 현장 터치 입력) ──
         if (checklist.length > 0) {
             var ckDone = checklist.filter(function(s) { return s.checked_at; }).length;
@@ -407,6 +410,7 @@
 
         var root = document.getElementById('cdRoot');
         root.innerHTML = html;
+        if (card.order_id) cdLoadBatches(card.order_id);
         root.style.opacity = '';   // cdSlide 로딩 디밍 해제
     }
 
@@ -513,3 +517,37 @@
 
     load();
 })();
+
+/**
+ * 카드 상세의 「판짜기 작업지시서」 — 인쇄와 **같은 함수**(shared/workOrderPrint.js woBatchHtml)로 그린다.
+ *   묶음만 받는다(batches_only) — 라인 시안 R2 N건을 이 화면이 다시 읽지 않게. 실패·없음이면 조용히 비운다
+ *   (이 영역은 부가 정보이고 종이 작업지시서가 정본이다).
+ */
+async function cdLoadBatches(orderId) {
+    var box = document.getElementById('cdBatchBox');
+    if (!box) { console.warn('[cardDetail] #cdBatchBox not found'); return; }
+    try {
+        var res = await axios.get('/api/orders/' + orderId + '/work-order?batches_only=1');
+        var d = res.data && res.data.data;
+        var batches = (d && d.batches) || [];
+        if (!batches.length) { box.innerHTML = ''; return; }
+        if (!document.getElementById('wobCss') && typeof WO_BATCH_CSS === 'string') {
+            var st = document.createElement('style'); st.id = 'wobCss'; st.textContent = WO_BATCH_CSS;
+            document.head.appendChild(st);
+        }
+        var h = '<div class="cd-section no-print">';
+        h += '<div class="cd-section-header" onclick="this.parentElement.classList.toggle(\'collapsed\')">';
+        h += '<span class="font-bold text-gray-700"><i class="fas fa-table-cells mr-2"></i>판짜기 작업지시서 <span class="text-xs text-gray-400 ml-1">' + batches.length + '부</span></span>';
+        h += '<i class="fas fa-chevron-up cd-collapse-icon"></i></div>';
+        h += '<div class="cd-section-body" style="overflow-x:auto">';
+        batches.forEach(function(b, i) {
+            if (i) h += '<hr class="my-4">';
+            h += woBatchHtml(b, d.order, [], null);
+        });
+        h += '</div></div>';
+        box.innerHTML = h;
+    } catch (e) {
+        console.warn('[cardDetail] 판짜기 작업지시서 조회 실패', e);
+        box.innerHTML = '';
+    }
+}

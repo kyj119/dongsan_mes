@@ -16,6 +16,7 @@ import { ensureShipmentForOrder } from '../../utils/shipmentHelper'
 import { formatDeliveryTiming } from '../../utils/productionDeadline'   // 직배 배차 슬롯 표기
 import { resolveGroupByAiIndex, getThumbnailDataUri, isThumbRef, type AnalysisGroup } from '../../utils/thumbnailStore'
 import { plateOfGroup, type PlateInfo } from '../../utils/plateInfo'
+import { assembleCutBatches, type BatchGroupInput, type BatchIntakeInput } from '../../utils/cutBatch'
 
 const ordersQueriesRouter = new Hono<HonoEnv>()
 ordersQueriesRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
@@ -531,6 +532,8 @@ ordersQueriesRouter.get('/:id/work-order', async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     if (!id || isNaN(id)) return c.json({ success: false, error: '주문 ID가 올바르지 않습니다.' }, 400)
+    // 카드 상세 화면의 「판짜기 작업지시서」는 묶음만 본다 — 라인 시안(R2 N건)을 읽지 않는다
+    const batchesOnly = c.req.query('batches_only') === '1'
 
     // 형제 GET /:id·/:id/invoice 와 같은 가시성 모델(분할청구 협업 라인 포함)
     const ovf = orderVisibilityFilter(c, 'o')
@@ -640,6 +643,7 @@ ordersQueriesRouter.get('/:id/work-order', async (c) => {
         const g = resolveGroupByAiIndex(groupsByAnalysis.get(l.ai_analysis_id), l.ai_group_index)
         const pl = plateOfGroup(g)
         if (pl) plateByLine.set(l.id, pl)
+        if (batchesOnly) return
         if (g) {
           // 고해상도(@lg)가 있으면 그것을 쓴다 — 인쇄는 목록과 달리 픽셀이 필요하다.
           //   P2(에이전트 2장 export) 이전 데이터엔 hi 키가 없어 자동으로 sm 로 내려간다.
@@ -656,6 +660,7 @@ ordersQueriesRouter.get('/:id/work-order', async (c) => {
           }
         }
       }
+      if (batchesOnly) return
       if (!ref) {
         // 단품 카드 폴백 — 그 카드의 라인이 하나뿐일 때만 그림이 모호하지 않다.
         const card = cardOfItem.get(l.id)
@@ -670,6 +675,68 @@ ordersQueriesRouter.get('/:id/work-order', async (c) => {
         if (uri) thumbByLine.set(l.id, uri)
       } catch { /* 시안이 없어도 작업지시서는 나가야 한다 */ }
     }))
+
+    // ⑤ 판짜기 묶음(2026-09-26) — 한 판짜기(원본 1장 → 판 N개)를 작업지시서 한 부로. 조립 정본 = utils/cutBatch.ts
+    //   이 주문 라인의 분석 → batch_key → 그 묶음의 **모든** 등록(다른 주문·대기함 포함 — 「판 2/4 → 다른 주문」 표시)
+    const batches: Array<Record<string, unknown>> = []
+    const plateLines = lines.filter((l) => l.ai_analysis_id && plateByLine.has(l.id))
+    if (plateLines.length) {
+      const aIds = Array.from(new Set(plateLines.map((l) => l.ai_analysis_id as number)))
+      const batchOfAnalysis = new Map<number, string>()
+      for (let i = 0; i < aIds.length; i += 80) {
+        const chunk = aIds.slice(i, i + 80)
+        const ph = chunk.map(() => '?').join(',')
+        const { results: rows } = await c.env.DB.prepare(
+          `SELECT ai_analysis_id, batch_key FROM designer_intakes WHERE ai_analysis_id IN (${ph}) AND batch_key IS NOT NULL ORDER BY id ASC`
+        ).bind(...chunk).all<{ ai_analysis_id: number; batch_key: string }>()
+        for (const r of rows || []) batchOfAnalysis.set(r.ai_analysis_id, r.batch_key)
+      }
+      const keys = Array.from(new Set(batchOfAnalysis.values()))
+      const intakes: BatchIntakeInput[] = []
+      const efI = entityFilter(c, 'di')
+      for (let i = 0; i < keys.length; i += 80) {
+        const chunk = keys.slice(i, i + 80)
+        const ph = chunk.map(() => '?').join(',')
+        const { results: rows } = await c.env.DB.prepare(`
+          SELECT di.batch_key, di.ai_analysis_id AS analysis_id, oi.order_id, o.order_number
+          FROM designer_intakes di
+          LEFT JOIN order_items oi ON oi.id = di.order_item_id
+          LEFT JOIN orders o ON o.id = oi.order_id
+          WHERE di.batch_key IN (${ph})${efI.clause}
+          ORDER BY di.id ASC
+        `).bind(...chunk, ...efI.params).all<BatchIntakeInput>()
+        for (const r of rows || []) intakes.push(r)
+      }
+      // 다른 주문·대기함 판의 groups_json 은 아직 안 읽었다 → 모자란 것만 읽는다
+      const missing = Array.from(new Set(intakes.map((r) => r.analysis_id).filter((v): v is number => !!v && !groupsByAnalysis.has(v))))
+      for (let i = 0; i < missing.length; i += 80) {
+        const chunk = missing.slice(i, i + 80)
+        const ph = chunk.map(() => '?').join(',')
+        const { results: rows } = await c.env.DB.prepare(
+          `SELECT id, groups_json FROM ai_analysis_requests WHERE id IN (${ph})`
+        ).bind(...chunk).all<{ id: number; groups_json: string | null }>()
+        for (const r of rows || []) {
+          try { groupsByAnalysis.set(r.id, r.groups_json ? JSON.parse(r.groups_json) : []) } catch { groupsByAnalysis.set(r.id, []) }
+        }
+      }
+      const groupOf = new Map<number, BatchGroupInput>()
+      for (const [aid, gs] of groupsByAnalysis) {
+        const g0 = resolveGroupByAiIndex(gs, -3)
+        const pl = plateOfGroup(g0)
+        if (g0 && pl) groupOf.set(aid, { ...pl, thumbnail_ov_r2_key: (g0 as Record<string, unknown>).thumbnail_ov_r2_key })
+      }
+      const assembled = assembleCutBatches(id,
+        plateLines.map((l) => ({ line_id: l.id, analysis_id: l.ai_analysis_id as number })),
+        batchOfAnalysis, intakes, groupOf)
+      for (const b of assembled) {
+        let overview: string | null = null
+        if (b.overview_ref) {
+          try { overview = await getThumbnailDataUri(c.env, b.overview_ref) } catch { overview = null }   // 그림이 없어도 표는 나간다
+        }
+        batches.push({ plate_total: b.plate_total, piece_count: b.piece_count, overview, plates: b.plates })
+      }
+    }
+    if (batchesOnly) return c.json({ success: true, data: { order, batches } })
 
     const outLines = lines.map((l) => ({
       id: l.id,
@@ -692,7 +759,7 @@ ordersQueriesRouter.get('/:id/work-order', async (c) => {
       thumbnail_large: largeByLine.has(l.id) && thumbByLine.has(l.id),
     }))
 
-    return c.json({ success: true, data: { order, lines: outLines } })
+    return c.json({ success: true, data: { order, lines: outLines, batches } })
   } catch (error) {
     console.error('orders work-order error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

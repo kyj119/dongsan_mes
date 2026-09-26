@@ -18,6 +18,10 @@ async function printWorkOrder(orderId) {
         if (!res.data.success) { showToast('작업지시서 조회 실패', 'error'); return; }
         var order = res.data.data.order || {};
         var lines = res.data.data.lines || [];
+        // 판짜기 묶음(번호 켠 재단 판짜기) — 맨 앞에 가로 A4 한 부씩. 그 판 줄은 아래에서 작게만 찍는다.
+        var batches = res.data.data.batches || [];
+        var inBatch = {};
+        batches.forEach(function(b) { (b.plates || []).forEach(function(p) { if (p.line_id) inBatch[p.line_id] = true; }); });
 
         // QR = **출고 검수**(/pack?order=N). 종이를 든 사람이 폰으로 그대로 검수에 들어간다.
         //   예전엔 카드 목록(/cards?order_id=)이라 현장이 다시 찾아 들어가야 했다.
@@ -97,8 +101,12 @@ async function printWorkOrder(orderId) {
             + '.chk-count .blank { display: inline-block; width: 32px; border-bottom: 1.5px solid #111; margin-right: 3px; }'
             + '.chk-cap { font-size: 9px; color: #9ca3af; }'
             + '.foot { margin-top: 18px; border-top: 1px solid #d1d5db; padding-top: 8px; font-size: 11px; color: #6b7280; }'
-            + '@media print { body { padding: 0; } @page { size: A4; margin: 10mm; } }'
+            + WO_BATCH_CSS
+            + '.wob-print { page: wob; break-after: page; page-break-after: always; }'
+            + '@media print { body { padding: 0; } @page { size: A4; margin: 10mm; } @page wob { size: A4 landscape; margin: 8mm; } }'
             + '</style></head><body>';
+
+        batches.forEach(function(b) { html += '<div class="wob-print">' + woBatchHtml(b, order, lines, esc) + '</div>'; });
 
         // ── 머리 ─────────────────────────────────────────────────────────────
         html += '<div class="head"><div>';
@@ -147,9 +155,11 @@ async function printWorkOrder(orderId) {
                 var qty = ln.quantity || 1;
                 var unit = ln.unit || 'EA';
 
-                var large = !!(ln.thumbnail && ln.thumbnail_large);
+                // 판짜기 한 부에 들어간 판은 그 문서가 번호·규격을 다 싣는다 → 여기선 작게, 쪽 나눔 없이
+                var batched = !!inBatch[ln.id];
+                var large = !batched && !!(ln.thumbnail && ln.thumbnail_large);
                 var plate = (ln.plate_total > 1 && ln.plate_index >= 1) ? ln : null;
-                html += '<div class="row' + (large ? ' row-large' : '') + (plate && ln.plate_index > 1 ? ' row-break' : '') + '">';
+                html += '<div class="row' + (large ? ' row-large' : '') + (plate && !batched && ln.plate_index > 1 ? ' row-break' : '') + '">';
 
                 // 시안 — 재단 패널 번호 그림은 줄 맨 아래에 크게(아래 .thumb-large), 나머지는 왼쪽 240px
                 if (large) html += '<img src="' + ln.thumbnail + '" class="thumb-large">';
@@ -163,7 +173,8 @@ async function printWorkOrder(orderId) {
                     // 판 머리 — 재단 현장이 판 위 꼬리표 번호와 대조하는 목록
                     html += '<div class="plate-head"><span class="plate-badge">판 ' + plate.plate_index + ' / ' + plate.plate_total + '</span>'
                         + (plate.piece_labels && plate.piece_labels.length ? '조각 ' + plate.piece_labels.length + '개' : '') + '</div>';
-                    if (plate.piece_labels && plate.piece_labels.length) html += '<div class="plate-pieces">' + plate.piece_labels.map(esc).join(' · ') + '</div>';
+                    if (batched) html += '<div class="plate-pieces">번호·규격 = 앞쪽 「판짜기 전체」</div>';
+                    else if (plate.piece_labels && plate.piece_labels.length) html += '<div class="plate-pieces">' + plate.piece_labels.map(esc).join(' · ') + '</div>';
                 }
                 html += '<div class="title">#' + no + ' ' + esc(ln.item_name || '-') + '</div>';
                 html += '<div class="spec">' + (spec || '-') + ' &nbsp;/&nbsp; ' + qty + esc(unit) + '</div>';
@@ -210,4 +221,115 @@ async function printWorkOrder(orderId) {
     } catch(e) {
         showToast('작업지시서 생성 실패: ' + (e.message || e), 'error');
     }
+}
+
+// ===== 판짜기 작업지시서 (2026-09-26 용준님 「안 A」) =====
+// 한 번의 재단 판짜기(원본 1장 → 판 N개)를 **한 부**로 — 판마다 흩어진 쪽은 실제로 보기 어렵다.
+//   왼쪽 = 원본 전체 그림(번호는 그림에 이미 찍혀 있다) 위에 **판별 색 테두리** · 오른쪽 = 판별 목록표(번호·규격·확인).
+//   보는 순서 = 조각 꼬리표 번호 → 그림에서 자리 → 표에서 규격 확인·체크.
+//   데이터 = `/api/orders/:id/work-order` 의 `batches`(조립 정본 utils/cutBatch.ts). 번호 끈 판짜기는 오지 않는다.
+//   인쇄(printWorkOrder)와 카드 상세 화면이 **같은 함수**를 쓴다 — 두 벌이면 한쪽만 고쳐진다.
+var WO_PLATE_COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea', '#db2777', '#0891b2', '#ca8a04', '#4b5563'];
+function woPlateColor(k) { return WO_PLATE_COLORS[(Math.max(1, k) - 1) % WO_PLATE_COLORS.length]; }
+
+var WO_BATCH_CSS = ''
+    + '.wob-page { font-family: "Malgun Gothic", sans-serif; color: #111; }'
+    + '.wob-hd { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; border-bottom: 2px solid #111; padding-bottom: 5px; margin-bottom: 6px; }'
+    + '.wob-hd h2 { margin: 0; font-size: 18px; }'
+    + '.wob-hd .wob-sub { font-size: 12px; margin-top: 2px; }'
+    + '.wob-hd .wob-meta { font-size: 11px; color: #6b7280; text-align: right; line-height: 1.5; }'
+    + '.wob-chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 8px; }'
+    + '.wob-chip { border: 1px solid #d1d5db; border-radius: 12px; padding: 1px 9px; font-size: 12px; }'
+    + '.wob-chip.fin { background: #fef3c7; border-color: #f59e0b; }'
+    + '.wob-grid { display: flex; gap: 8mm; align-items: flex-start; }'
+    // 왼쪽 = 그림 폭만큼(세로로 긴 원본이면 좁아지고 표가 넓어진다) · 가로로 긴 원본은 62% 에서 멈춘다
+    + '.wob-left { flex: 0 1 auto; max-width: 62%; min-width: 0; }'
+    + '.wob-right { flex: 1; min-width: 0; }'
+    + '.wob-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; margin-bottom: 4px; }'
+    + '.wob-legend i { display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }'
+    // 그림 상자 = 그림 크기 그대로(inline-block) — 테두리 SVG 가 % 로 겹치려면 상자와 그림이 같아야 한다
+    + '.wob-fig { position: relative; display: inline-block; max-width: 100%; border: 1px solid #d1d5db; background: #fafafa; line-height: 0; }'
+    + '.wob-fig img { display: block; max-width: 100%; max-height: 150mm; width: auto; height: auto; }'
+    + '.wob-fig svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }'
+    + '.wob-nofig { border: 1px dashed #d1d5db; color: #9ca3af; font-size: 12px; padding: 24px; text-align: center; }'
+    + '.wob-cap { font-size: 10px; color: #6b7280; margin-top: 3px; }'
+    + '.wob-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }'
+    + '.wob-tbl th, .wob-tbl td { border: 1px solid #d1d5db; padding: 2px 6px; text-align: center; }'
+    + '.wob-tbl th { background: #f3f4f6; }'
+    + '.wob-tbl tr.wob-plate td { background: #f9fafb; text-align: left; font-weight: 700; }'
+    + '.wob-tbl td.wob-num { font-weight: 800; font-size: 13px; }'
+    + '.wob-tbl .wob-note { font-weight: 600; color: #b45309; margin-left: 6px; }'
+    + '.wob-box { display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111; }';
+
+/**
+ * 판짜기 한 부 HTML.
+ * @param b     batches[i] — {plate_total, piece_count, overview(data URI|null), plates:[{index,line_id,other_order_number,waiting,pieces:[{n,w,h,b?}]}]}
+ * @param order 주문 머리(주문번호·거래처)
+ * @param lines 이 주문의 라인(후가공 요약용 — 이 판짜기의 판 라인만 쓴다)
+ */
+function woBatchHtml(b, order, lines, esc) {
+    esc = esc || window.escapeHtml || function(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+    var byIdx = {};
+    (b.plates || []).forEach(function(p) { byIdx[p.index] = p; });
+
+    // 후가공 요약 — 이 판짜기에 속한 이 주문 라인들의 후가공·마감(중복 제거)
+    var chips = [], seen = {};
+    function chip(t) { if (t && !seen[t]) { seen[t] = 1; chips.push(t); } }
+    (lines || []).forEach(function(ln) {
+        var mine = (b.plates || []).some(function(p) { return p.line_id === ln.id; });
+        if (!mine) return;
+        try {
+            var pa = typeof ln.post_processing === 'string' ? JSON.parse(ln.post_processing) : ln.post_processing;
+            if (Array.isArray(pa)) pa.filter(function(pp) { return !woPPHidden(pp.name || pp.code || pp); })
+                .forEach(function(pp) { chip(window.MES_FIN ? window.MES_FIN.pp(pp) : String(pp.name || pp.code || pp)); });
+        } catch (e) { /* ignore: 후가공 JSON 이 깨졌으면 요약에서만 빠진다(라인 쪽에 원문이 남는다) */ }
+        var ft = window.MES_FIN ? window.MES_FIN.finishing(ln.finishing) : '';
+        if (ft) chip('마감 ' + ft);
+    });
+
+    var h = '<div class="wob-page">';
+    h += '<div class="wob-hd"><div><h2>재단 작업지시서 · 판짜기 전체</h2>'
+        + '<div class="wob-sub">' + esc((order && order.client_name) || '') + '</div></div>'
+        + '<div class="wob-meta">주문 ' + esc((order && order.order_number) || '-') + '</div></div>';
+    h += '<div class="wob-chips"><span class="wob-chip">판 <b>' + b.plate_total + '</b>개</span>'
+        + '<span class="wob-chip">조각 <b>' + b.piece_count + '</b>개</span>';
+    chips.forEach(function(t) { h += '<span class="wob-chip fin">' + esc(t) + '</span>'; });
+    h += '</div>';
+
+    h += '<div class="wob-grid"><div class="wob-left">';
+    h += '<div class="wob-legend">';
+    for (var k = 1; k <= b.plate_total; k++) {
+        var pk = byIdx[k];
+        h += '<span><i style="background:' + woPlateColor(k) + '"></i>판 ' + k + '/' + b.plate_total + (pk ? ' (' + pk.pieces.length + '개)' : ' (기록 없음)') + '</span>';
+    }
+    h += '</div>';
+    if (b.overview) {
+        // 테두리 = 원본 그림 대비 % 상자(패널 셸 0.102.0+). 구 패널 등록은 상자가 없어 그림만 나간다.
+        var rects = '';
+        (b.plates || []).forEach(function(p) {
+            p.pieces.forEach(function(pc) {
+                if (!pc.b) return;
+                rects += '<rect x="' + pc.b[0] + '" y="' + pc.b[1] + '" width="' + pc.b[2] + '" height="' + pc.b[3] + '" fill="' + woPlateColor(p.index)
+                    + '" fill-opacity="0.08" stroke="' + woPlateColor(p.index) + '" stroke-width="3" vector-effect="non-scaling-stroke"/>';
+            });
+        });
+        h += '<div class="wob-fig"><img src="' + b.overview + '">'
+            + (rects ? '<svg viewBox="0 0 100 100" preserveAspectRatio="none">' + rects + '</svg>' : '') + '</div>';
+        h += '<div class="wob-cap">원본 전체 · 번호 = 조각 꼬리표 · 테두리 색 = 나온 판</div>';
+    } else {
+        h += '<div class="wob-nofig">원본 전체 그림이 없습니다(구 버전 패널·에이전트 등록) — 목록표로 확인하세요</div>';
+    }
+    h += '</div><div class="wob-right"><table class="wob-tbl"><tr><th>번호</th><th>규격(mm)</th><th>확인</th></tr>';
+    for (var k2 = 1; k2 <= b.plate_total; k2++) {
+        var p2 = byIdx[k2], col = woPlateColor(k2);
+        var note = !p2 ? '기록 없음' : (p2.other_order_number ? '다른 주문 ' + p2.other_order_number : (p2.waiting ? '대기함 — 아직 주문에 안 넣음' : ''));
+        h += '<tr class="wob-plate"><td colspan="3" style="color:' + col + '">■ 판 ' + k2 + '/' + b.plate_total
+            + (p2 ? ' — 조각 ' + p2.pieces.length + '개' : '') + (note ? '<span class="wob-note">' + esc(note) + '</span>' : '') + '</td></tr>';
+        if (!p2) continue;
+        p2.pieces.forEach(function(pc) {
+            h += '<tr><td class="wob-num" style="color:' + col + '">' + esc(pc.n) + '</td><td>' + pc.w + ' × ' + pc.h + '</td><td><span class="wob-box"></span></td></tr>';
+        });
+    }
+    h += '</table></div></div></div>';
+    return h;
 }
