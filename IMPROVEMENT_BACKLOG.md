@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-09-26T21:35:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-09-26T22:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,24 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **572** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 1 프로덕션 헬스 (2026-09-26T22:20):**
+> - **방법**: 세션 시작 시 detached HEAD `f19075a`(origin/main과 stale) → `git fetch origin main`(force-update `0425936`→`540f529`) + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area1 사이클 세션시작 HEAD `485f00a`)**: `git log 485f00a..HEAD --oneline` **72커밋**. 웹앱 스코프(`git diff --stat 485f00a..HEAD -- src/routes src/scripts src/pages src/layout src/utils migrations index.tsx`) **90파일 2703줄** — 대부분이 owner 자신의 별도 "전체 리뷰"·"결정 1~4차" 세션(`6c3c7c1` 확정결함30건·`48c743f` 22건+2건·`20a0d4e`~`a160449` 결정1~4차) 산출물로, 각 커밋이 자체 검증(tsc·build·test:calc·check:fn·bind-limit·entity-audit·empty-catch)을 이미 통과한 상태로 착륙(Area6 62회차 기준과 동일 패턴). **Area1 고유 렌즈(prod 헬스·CI·smoke·probe staleness)로 직접 재확인**.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최신 100런(run #2014~#2113) **전부 `conclusion:success`**(연속 실패 0, transient 0) — 최종 HEAD `540f529`, run #2113.
+> - **smoke 재검증(run #2113 job #108445351361 로그 직접 파싱)**: **PASS 134/134**. 500ms 초과 3건, 전부 기존 추적 범위 안: ① `cashSchedule.overview` **4936ms**(#636 기결정 — owner 국내 실측 421~424ms 대비 배수 **≈11.7배**, 기존 관측 배수대(9~14배) 안쪽 → 재이슈 조건인 "배수 이탈" 미충족, 비보고 유지) ② `hr.stats` **1776ms**(기존 관측범위 1237~1690ms와 동급 자릿수, 소폭 상회지만 배수 이탈 아님 → 조치 대상 아님) ③ `orders.detail` **1578ms** — 직전 Area1 사이클(830060b, R2 hydrate 병렬화)이 3088ms→2774ms로 잡았던 것이 이번엔 **1578ms로 추가 개선**(악화 없음, 지속성 재확인).
+> - **마이그레이션 churn**: 신규 1건(`0628_money_flow_data_fix.sql`) — `ALTER/ADD COLUMN/DROP` 없음(`grep` 확인), 신설 `data_fix_backup` 테이블(`CREATE TABLE IF NOT EXISTS`)뿐이고 모든 UPDATE 문이 `NOT EXISTS`/대상행 조건으로 감싸여 로컬·CI 부트스트랩에서 no-op, 재실행해도 두 번째는 no-op(idempotent 확인) → #430 write-path 맹점·#483 스키마드리프트 클래스 해당 없음.
+> - **printEvents.ts 재확인(64줄 변경)**: 손사본 order-status 동기화 로직(카드 상태 집계 인라인 복제)을 정본 헬퍼 `syncOrderStatusFromCards`(cards/lifecycle.ts) 호출로 교체 — 주석이 "손사본이 SHIPPED/CANCELLED/HOLD 스킵·이력을 빠뜨렸다"를 직접 명시(형제완전성 회귀 자가수정 사례). 신규 하드코딩 audit-FK 리터럴(`changed_by=1` 류) 없음 확인.
+> - **bank.ts 라우트 재확인(145줄 변경, "결정 3차: 경리 통장 권한")**: `requireRole('ADMIN')` 다수가 `requireRole('ADMIN','ACCOUNTANT')`로 **역할 확장**됐을 뿐 — `grep -n "bankRouter\.(get|post|put|patch|delete)("` 전수 대조 결과 기존 라우트 전부 존재(제거 0건), smoke probe staleness(#429 4번째 축) 해당 없음.
+> - **standing scan 1: `npm run audit:migration-number`** — 같은 테이블 DDL 충돌 **0건**(변동없음, 중복번호 쌍 목록 동일).
+> - **standing scan 2: `npm run branch:clean`** — 삭제대상 0건(SKIP 1=main). **standing scan 3: `npm audit --omit=dev`** — 0건.
+> - **egress 재확인**: `curl webapp-9i0.pages.dev` → CONNECT tunnel failed 403(기존 제약 재확인, 신규 아님) — LogWatcher 하트비트·CAPS 동기화 직접조회 불가.
+> - **open 이슈 재확인**: `list_issues(state:OPEN,label:auto-improve)` **12**건(#663·#662·#661·#660·#659·#658·#656·#654·#650·#626·#617·#616, 변동없음) — Area1 라벨 신규 0건, 전건 타 Area 관할 또는 owner 리뷰 대기.
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · done **572**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-1-production-health.md `line N` 잔여참조 재확인(grep 매치 2건은 "15쿼리"·"line 로그" 등 숫자 우연매치로 실제 상호참조 아님, 이미 서술식). 이번 사이클은 owner의 대규모 단독 리뷰 배치(72커밋)가 착륙한 뒤 Area1 렌즈(CI·smoke·probe·write-path 맹점)로 clean 확인한 회차 — 새 클래스 없음.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 9건 → 이번 추가 후 10건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(72커밋 churn 전부 Area1 렌즈 clean, CI 100런 전부 success, smoke 134/134 이상 없음), 자동수정 0건(고칠 결함 없음), done-sync: open 12(변동없음)·done 572(변동없음)·rejected 6(변동없음). 다음 순번 **Area 2**.
+>
 
 > **Area 6 자기 진화 (2026-09-26T21:35):**
 > - **방법**: 세션 시작 시 로컬 `main`이 origin과 동일(`7b44945`). `npm ci`(0→89), `npx tsc --noEmit` clean.
